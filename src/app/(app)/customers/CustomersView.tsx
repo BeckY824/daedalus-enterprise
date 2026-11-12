@@ -62,7 +62,7 @@ import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 import { 归档档位们 } from "@/lib/enterprise/archive-tier";
 import { 字典of, 阶段们, type 阶段, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import type { 客户项目概况 } from "@/lib/project/customer-list-projects";
-import { 换客户页看法 } from "@/lib/customers-view-pref";
+import { 换客户页看法, 市场视图名 } from "@/lib/customers-view-pref";
 
 /** 「新增客户」弹窗（10-31 P5，整套建档向导）：点了才要，单拆一包，不压客户列表首屏 JS（速度闸门 850 KB） */
 // 客户看板（U-客户-06）只在切到「看板」时用，连同分页条单独一块，别压在客户列表首屏（速度闸门）
@@ -198,6 +198,8 @@ type Props = {
   项目看板?: boolean;
   /** 看板视图（C17 / C18）：服务端画好的项目看板（工具行 + 收件箱 + 按节点分列），换掉表格；页头和筛选行照列表 */
   看板体?: ReactNode;
+  /** 市场成员、市场管理（X-107）：「列表 / 看板」叫「客户列表 / 我分出去的」，看板那一边是原项目页给他们的那套（服务端画） */
+  市场视图?: boolean;
   /** 客户来源筛选的选项（企业版）；含已停用的渠道 */
   渠道筛选项?: { value: string; label: string }[];
   /** 团队有两个以上一级部门时的部门下拉（带缩进）；空 = 不摆 */
@@ -256,7 +258,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 创建排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 待交接 = null, 项目概况, 出口叫法, 项目看板 = false, 看板体,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 创建排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 待交接 = null, 项目概况, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -954,9 +956,12 @@ export default function CustomersView({
         </div>
       )}
       {/* 企业版项目模式：「看板」是按节点分列的项目看板（定稿 UI board()，11-12 第 3 批），记在 cookie 里、服务端换一屏画（projects/board-page.tsx） */}
-      {项目看板 && !空库 && !子集 && (
+      {/* 市场角色空库也摆：另一边「我分出去的」不看客户多少 */}
+      {项目看板 && (!空库 || 市场视图) && !子集 && (
         <div className="cust-view-seg">
-          <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看板体 !== undefined ? "看板" : "列表"} onChange={(v) => 换客户页看法(v === "看板" ? "board" : "list", router)} />
+          {市场视图
+            ? <Segmented<string> aria-label="客户列表 / 我分出去的" options={[...市场视图名]} value={市场视图名[0]} onChange={(v) => v === 市场视图名[1] && 换客户页看法("board", router)} />
+            : <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看板体 !== undefined ? "看板" : "列表"} onChange={(v) => 换客户页看法(v === "看板" ? "board" : "list", router)} />}
         </div>
       )}
 

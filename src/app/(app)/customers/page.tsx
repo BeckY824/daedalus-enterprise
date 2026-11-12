@@ -99,6 +99,9 @@ type SP = Promise<{
   batch?: string;
   /** 「1」= 「公海」页签；不给 = 「客户」页签，不含公海里的（子集入口例外，见 query.ts 在看子集） */
   pool?: string;
+  /** 市场角色被挡在项目详情外转来的（P-界面-11）：q 搜项目名、hl 高亮那一行，落在「我分出去的」视图 */
+  q?: string;
+  hl?: string;
 }>;
 
 /** 客户页记的「列表 / 看板」（cookie）；不在请求里（测试直接调页面函数）读不到 = 没记 */
@@ -116,9 +119,10 @@ async function 记的看法(): Promise<string | undefined> {
  * 除了页签什么都没筛 = 不收窄（和项目页一样）
  */
 async function 看板体(me: SessionUser, sp: Awaited<SP>) {
-  const { phase, node, page, pageSize, sort: _排序, ...客户的 } = sp;
+  const { phase, node, page, pageSize, sort, sortCurrency: _币, ...客户的 } = sp;
   const w = await 客户筛选条件(客户的);
-  return 项目页(me, { phase, node, page, pageSize }, { 客户: 只按页签(w) ? null : w });
+  // sort 给看板临时切成的项目列表排表头用（客户的排序在看板视图里不起作用）
+  return 项目页(me, { phase, node, page, pageSize, sort }, { 客户: 只按页签(w) ? null : w });
 }
 
 export default async function CustomersPage({ searchParams }: { searchParams: SP }) {
@@ -147,8 +151,13 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     （P-界面-05 范围 / 默认列 / 列锁定 / 创建人筛选、P-看-06 点不进、P-界面-11 被挡转来的 q / hl 高亮），照搬、不增不减：
     同一个 项目页 画法，地址落在 /customers。新建客户、导入、子集这几个客户页自己的入口照旧画客户页
   */
-  if (企业版() && b.projectMode && !sp.new && !sp.import && !在看子集(sp) && (await 读市场身份(me.id))) {
-    return 项目页(me, sp as 项目页参数, undefined, { 基址: "/customers", 标题: b.customer });
+  const 市场角色 = 企业版() && b.projectMode && !!(await 读市场身份(me.id));
+  if (市场角色 && !sp.new && !sp.import && !在看子集(sp)) {
+    // 两个视图（用户 11-12「按第 1 种做」）：列表 = 原来的客户列表；看板 = 我分出去的。记了哪个进哪个，没记过进我分出去的；带 hl（被挡转来的）一律进我分出去的
+    const 记 = await 记的看法();
+    if (sp.hl || 记 === "board" || 记 === undefined) {
+      return 项目页(me, sp as 项目页参数, undefined, { 基址: "/customers", 标题: b.customer, 换回客户列表: true });
+    }
   }
 
   /*
@@ -197,7 +206,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     （和项目页同一份取数和画法，projects/board-page.tsx）。记在 cookie（lib/customers-view-pref.ts），服务端据此只取一边：
     看板视图不取这一页客户行和两列，列表视图不取看板。子集（导入这一批、本月新增、直接推荐）里照旧是列表
   */
-  const 看板视图 = 按项目 && !子集 && (await 记的看法()) === "board";
+  // 市场角色的看板是上面那套（我分出去的），走到这里的市场角色都是列表
+  const 看板视图 = 按项目 && !子集 && !市场角色 && (await 记的看法()) === "board";
   const 看板P = 看板视图 ? 看板体(me, sp) : null;
   看板P?.catch(() => {});
   const 行P = 看板视图 ? Promise.resolve([]) : 快 ? 按序取客户行(快.ids) : sort ? 客户金额分页(where!, sort, sortCurrency, page, pageSize) : prisma.customer.findMany({
@@ -280,7 +290,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       rows={rows.map((r) => 成客户行(r, 号))}
       total={total}
       page={page}
-      requestedPage={sp.page}
+      // 看板视图的 page 是看板翻项目用的（项目页自己纠正），不按客户总数改地址
+      requestedPage={看板视图 ? undefined : sp.page}
       pageSize={pageSize}
       金额排序={sort}
       等级排序={等级排序}
@@ -352,6 +363,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       国家们={用着的国家.map((x) => x.country!).filter(Boolean)}
       项目概况={项目概况}
       项目看板={按项目}
+      市场视图={市场角色}
       看板体={看板P ? await 看板P : undefined}
       出口叫法={组织规则?.阶段.出口叫法}
     />

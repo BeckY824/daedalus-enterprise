@@ -23,7 +23,7 @@ export type 项目页参数 = { keyword?: string; ownerId?: string; pool?: strin
  * 客户页：只画看板那一块（页头、筛选行是客户页的，C17 / C18），项目按客户页那一行筛出来的客户收窄（客户 = null 是没筛客户）。
  * 落在：整页画在别的地址上（X-107：市场角色的客户页就是这一整页，筛选、翻页留在 /customers，页头叫客户）
  */
-export async function 项目页(me: SessionUser, 原: 项目页参数, 客户页?: { 客户: Prisma.CustomerWhereInput | null }, 落在?: { 基址: string; 标题: string }) {
+export async function 项目页(me: SessionUser, 原: 项目页参数, 客户页?: { 客户: Prisma.CustomerWhereInput | null }, 落在?: { 基址: string; 标题: string; 换回客户列表?: boolean }) {
   // q / hl：进不了详情转过来的（projects/[id]/page.tsx 市场挡，客户 11-05）——q 当搜索词预填，hl 是要指出的那一行。
   // 搜索框照旧认 keyword，q 只在没带 keyword 时顶上；之后再搜就只剩 keyword，hl 也跟着没了
   const { q, hl, ...其余 } = 原;
@@ -37,5 +37,5 @@ export async function 项目页(me: SessionUser, 原: 项目页参数, 客户页
   const 筛线索 = 企业版() && sp.phase === "线索";
   const 线索分配开着 = 筛线索 && (await 规则开着("线索分配"));
   const 能自动分配 = 线索分配开着 && 能分配(await 读组织(), me);
-  return <ProjectsView {...d} 列={看板分列(d.行, 企业版() ? 字典of(true, d.出口叫法) : undefined, sp.phase, d.看板合计)} 卡点们={卡点们.map(卡点给界面)} 线索分配开着={线索分配开着} 能自动分配={能自动分配} 能分公海客户项目={能自动分配 && 能管公海(me, await 读组织())} 待交接={企业版() && !客户页 ? await 离职交接入口(me) : null} 高亮={typeof hl === "string" && hl ? hl : undefined} 客户页={!!客户页} 基址={落在?.基址} 标题={落在?.标题} />;
+  return <ProjectsView {...d} 列={看板分列(d.行, 企业版() ? 字典of(true, d.出口叫法) : undefined, sp.phase, d.看板合计)} 卡点们={卡点们.map(卡点给界面)} 线索分配开着={线索分配开着} 能自动分配={能自动分配} 能分公海客户项目={能自动分配 && 能管公海(me, await 读组织())} 待交接={企业版() && !客户页 ? await 离职交接入口(me) : null} 高亮={typeof hl === "string" && hl ? hl : undefined} 客户页={!!客户页} 基址={落在?.基址} 标题={落在?.标题} 换回客户列表={!!落在?.换回客户列表} />;
 }

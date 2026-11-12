@@ -44,19 +44,19 @@ beforeAll(async () => {
     // 看板五列（11-01 C12 测「→ 还有 N 列」）：每列一张卡
     const 五列=['线索','商机','订单','成功交付','没成'].map((列,i)=>({列,数:1,合计:[],行:[{...row(10+i,'潜客培育'),phase:列==='没成'?'线索':列}]}));
     window.__画=(阶段,能分,企,o={})=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
-      <Projects 行={o.公海?[{...row(4,'线索推进'),pooled:true,客户在公海:true},{...row(5,'线索推进'),pooled:true}]:行} 列={o.看板?五列:[]} 总数={(o.公海?2:行.length)} 页={1} 每页={20} users={[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:o.phase||''}} 阶段={阶段?'线索':undefined} 线索分配开着={!!能分} 能自动分配={!!能分} 能分公海客户项目={!!o.管公海} 企业版={!!企} 客户页={!!o.客户页} 待交接={o.客户页?2:null}/>
+      <Projects 行={o.公海?[{...row(4,'线索推进'),pooled:true,客户在公海:true},{...row(5,'线索推进'),pooled:true}]:行} 列={o.看板?五列:[]} 总数={(o.公海?2:行.length)} 页={1} 每页={20} users={[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:o.phase||''}} 阶段={阶段?'线索':undefined} 线索分配开着={!!能分} 能自动分配={!!能分} 能分公海客户项目={!!o.管公海} 企业版={!!企} 客户页={!!o.客户页} 待交接={o.客户页?2:null} 换回客户列表={!!o.换回} 标题={o.换回?'客户':undefined}/>
     </BusinessProvider></App>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
   bundle = r.outputFiles[0].text; browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 选项 = { phase?: string; 看板?: boolean; 样式?: boolean; 公海?: boolean; 管公海?: boolean; 客户页?: boolean };
+type 选项 = { phase?: string; 看板?: boolean; 样式?: boolean; 公海?: boolean; 管公海?: boolean; 客户页?: boolean; 查询?: string; 换回?: boolean };
 async function 打开(新线索: boolean, width = 1280, 能分 = false, 企 = false, o: 选项 = {}): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://ent.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
-  await page.goto(`http://ent.test/${新线索 ? "leads" : "projects"}`);
+  await page.goto(`http://ent.test/${新线索 ? "leads" : o.客户页 ? "customers" : "projects"}${o.查询 ?? ""}`);
   // 排版类用例（单行、看板滑动）要真样式
   if (o.样式) await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addScriptTag({ content: bundle });
@@ -265,6 +265,32 @@ it("客户页的看板视图（11-12 第 3 批 C17 / C15）：只画看板这一
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
+});
+
+it("客户页看板视图点「分配」临时切成项目列表：表头排序留在客户页、客户那一行筛选带着、回第一页（审查 3）", async () => {
+  const { page, errors } = await 打开(false, 1280, true, true, { 看板: true, 客户页: true, phase: "线索", 查询: "?keyword=abc&phase=%E7%BA%BF%E7%B4%A2&page=3" });
+  try {
+    await page.locator(".cust-board-tool").getByRole("button", { name: /分配/ }).first().click();
+    await page.locator("thead th", { hasText: "负责人" }).first().click();
+    const 去 = await 去了(page);
+    expect(去.at(-1)).toBe("/customers?keyword=abc&phase=%E7%BA%BF%E7%B4%A2&sort=owner-asc");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("市场角色客户页的「我分出去的」视图（X-107）：原项目页整页（页头叫客户、自己的看板 / 列表照留），下面多一颗「客户列表 / 我分出去的」停在我分出去的；点客户列表记下并回客户页", async () => {
+  const { page, errors } = await 打开(false, 1280, false, true, { 看板: true, 换回: true, 查询: "?q=x&hl=p1" });
+  try {
+    expect(await page.getByRole("heading").first().innerText()).toBe("客户");
+    expect(await page.locator(".page-head .ant-segmented").count()).toBe(1);
+    const 切 = page.locator(".cust-view-seg .ant-segmented");
+    expect(await 切.locator(".ant-segmented-item-selected").innerText()).toBe("我分出去的");
+    await 切.getByText("客户列表", { exact: true }).click();
+    expect(await page.evaluate(() => document.cookie)).toContain("customers-view=list");
+    // q / hl 只对转来那一次，切走就去掉
+    expect((await 去了(page)).at(-1)).toBe("/customers");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
 });
 
 it("宽屏五列放得下的时候不出「还有 N 列」也不渐隐", async () => {

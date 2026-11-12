@@ -33,6 +33,7 @@ import { 主渠道显示名, 渠道显示名 } from "@/lib/enterprise/channel-ma
 import { 回公海文案 } from "@/lib/enterprise/recycle-text";
 import { 卡片小字, type 项目行, type 看板一列 } from "@/lib/project/board";
 import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
+import { 换客户页看法, 市场视图名 } from "@/lib/customers-view-pref";
 import type { 看板列 } from "@/lib/project/nodes";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 字典of, 结局叫法, 阶段与进程, 阶段们, type 阶段, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
@@ -85,7 +86,7 @@ function 节点文字(r: 项目行, 字典: 阶段字典) {
  * 新建照样走项目向导（落在潜客培育）；转商机之后它就只在「项目」页里了（10-26 用户定的三大阶段）。
  */
 export default function ProjectsView({
-  行, 列: 看板, 总数, 页, 每页, 要的页, 排序 = "", users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 能分公海客户项目 = false, 满额提醒: 提醒们 = [], 能按号码筛 = false, 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [], 客户页 = false, 基址 = "/projects", 标题,
+  行, 列: 看板, 总数, 页, 每页, 要的页, 排序 = "", users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 能分公海客户项目 = false, 满额提醒: 提醒们 = [], 能按号码筛 = false, 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [], 客户页 = false, 基址 = "/projects", 标题, 换回客户列表 = false,
 }: {
   行: 项目行[];
   列: 看板一列[];
@@ -153,6 +154,8 @@ export default function ProjectsView({
   基址?: string;
   /** 页头标题，默认「项目」（市场角色的客户页叫客户） */
   标题?: string;
+  /** 市场角色客户页的看板视图（X-107）：页头下面摆客户页那颗「列表 / 看板」，点「列表」回客户列表 */
+  换回客户列表?: boolean;
 }) {
   /** 客户详情合并（11-12 第 2 批）：企业版看得到客户的，项目在客户详情的项目区里，直接去那儿停在这个项目的页签；客户看不到的照旧进项目详情 */
   const 项目地址 = (r: 项目行) => (企业版 && r.customerId && r.customerName != null && !r.进不了客户详情 ? 客户页项目地址(r.customerId, r.id) : `/projects/${r.id}`);
@@ -212,6 +215,15 @@ export default function ProjectsView({
         开始翻页(() => router.push(`/customers?${q}`, { scroll: false }));
       }
     : 按筛选翻页;
+  // 客户页看板视图里改条件（临时列表的表头排序）：留在客户页、客户那一行筛选原样带着，回第一页
+  const 改条件 = 客户页
+    ? (next: Record<string, string>) => {
+        const q = new URLSearchParams(window.location.search);
+        for (const [k, v] of Object.entries(next)) if (v) q.set(k, v); else q.delete(k);
+        q.delete("page");
+        开始翻页(() => router.push(q.size ? `/customers?${q}` : "/customers", { scroll: false }));
+      }
+    : apply;
   const pending = 筛选中 || 翻页中;
   // 要的页越界（删空了最后一页、手改地址栏）：服务端已给了实际那一页，这里只把地址栏改对，不再取一次（同客户列表）
   useEffect(() => {
@@ -225,7 +237,7 @@ export default function ProjectsView({
   const 排序键: Record<string, string> = { createdAt: "created", expectedDealAt: "deal", owner: "owner" };
   const 点排序 = (key: string, order: "ascend" | "descend" | null) => {
     const 前 = 排序键[key];
-    if (前) apply({ sort: order === "ascend" ? `${前}-asc` : order === "descend" ? `${前}-desc` : "" });
+    if (前) 改条件({ sort: order === "ascend" ? `${前}-asc` : order === "descend" ? `${前}-desc` : "" });
   };
   const 序of = (key: string) => (排序 === `${排序键[key]}-asc` ? ("ascend" as const) : 排序 === `${排序键[key]}-desc` ? ("descend" as const) : null);
   const 看板框 = useRef<HTMLDivElement>(null);
@@ -474,6 +486,13 @@ export default function ProjectsView({
           <Space wrap>{项目按钮}</Space>
         }
       />
+      )}
+      {/* 市场角色客户页的「我分出去的」视图（X-107）：和客户页同一个位置、同一颗切换，点「客户列表」记下并回客户列表。
+          页头那颗「看板 / 列表」是原项目页自己的（这一视图内部两种形态），照原样留着；两颗字不一样，免得看成一回事 */}
+      {换回客户列表 && (
+        <div className="cust-view-seg">
+          <Segmented<string> aria-label="客户列表 / 我分出去的" options={[...市场视图名]} value={市场视图名[1]} onChange={(v) => v === 市场视图名[0] && 换客户页看法("list", router)} />
+        </div>
       )}
       <InviteInbox 邀请们={邀请们} />
       <VerifyInbox 们={待复核们} />

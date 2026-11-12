@@ -5,6 +5,7 @@ import { 权限组织 } from "@/lib/enterprise/org";
 import { 本套位置, 节点序号 } from "./nodes";
 import { 企业版字典, 字典of } from "./stage-dict";
 import { 阶段进程条件 } from "./list";
+import { 客户id集合 } from "@/lib/search-keyword";
 
 /** 页签、列表「当前节点」上写的节点：有结局写结局，异常写「异常 · 节点」（同客户详情项目区页签） */
 export const 节点字 = (p: { node: string; result: string | null }) => (p.result === "异常状态" ? `异常 · ${p.node}` : p.result ?? p.node);
@@ -76,5 +77,6 @@ export async function 项目阶段客户条件(me: 谁, sp: { phase?: string; no
   const 阶进 = 阶段进程条件(sp, 字典of(true));
   if (!阶进.where.length) return null;
   const 们 = await 我能看的项目们(me, { AND: 阶进.where });
-  return { id: { in: [...new Set(们.map((p) => p.customerId))] } };
+  // 小 in 拼成一个 OR（search-keyword.ts 客户id集合）：命中上千位客户时 Prisma 不会把这句拆成几条查，翻页、导出的全局排序和总数照旧在一句里算
+  return 客户id集合([...new Set(们.map((p) => p.customerId))]);
 }

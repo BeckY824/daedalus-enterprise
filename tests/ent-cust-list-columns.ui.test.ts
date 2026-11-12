@@ -42,7 +42,7 @@ beforeAll(async () => {
     const rows=[行('c1','me'),行('c2','u2'),行('c3','me')];
     const 项目概况={c1:{项目数:12,当前节点:'异常 · 某个后台改得特别特别长的节点名字',当前阶段:'订单'},c2:{项目数:1,当前节点:'方案敲定',当前阶段:'商机'}};
     root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'me',name:'小王'}}>
-      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:'',node:''}} 客户数={3} 企业版 项目概况={项目概况} 项目看板 待交接={window.__交接??null} 看板体={window.__看板?<div className='fake-board'>项目看板</div>:undefined}/>
+      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:'',node:''}} 客户数={3} 企业版 项目概况={项目概况} 项目看板 待交接={window.__交接??null} 看板体={window.__看板?<div className='fake-board'>项目看板</div>:undefined} 市场视图={!!window.__市场}/>
     </我Provider></BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [列表桩], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
@@ -166,4 +166,21 @@ it("看板视图（C17 / C18 / C15）：页头照客户列表（导入、导出�
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
+});
+
+it("市场成员、市场管理（X-107）：切换叫「客户列表 / 我分出去的」，停在客户列表；点「我分出去的」记下看板（服务端换成原项目页那套）", async () => {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } }); page.setDefaultTimeout(5000);
+  try {
+    await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+    await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+    await page.evaluate(() => { Object.assign(window, { __市场: true }); });
+    await page.addScriptTag({ content: 包 });
+    await page.locator("tr.ant-table-row").first().waitFor();
+    const 切 = page.locator(".cust-view-seg .ant-segmented");
+    expect(await 切.locator(".ant-segmented-item-label").allInnerTexts()).toEqual(["客户列表", "我分出去的"]);
+    expect(await 切.locator(".ant-segmented-item-selected").innerText()).toBe("客户列表");
+    await 切.getByText("我分出去的", { exact: true }).click();
+    expect(await page.evaluate(() => document.cookie)).toContain("customers-view=board");
+    expect(await page.evaluate(() => (window as unknown as { __push?: string }).__push)).toBe("/customers");
+  } finally { await page.close(); }
 });

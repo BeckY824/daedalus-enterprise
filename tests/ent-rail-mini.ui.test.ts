@@ -75,6 +75,7 @@ it("客户详情：壳上有 rail-mini，左栏 56 宽、字藏起来只留图�
       expect(出界, `${w}`).toEqual([]);
       // 要跟的红数原来挂在「项目」上；11-12 C1 挪到「客户」，56px 图标态的角标同一个
       expect(await page.locator(".rail-count").innerText()).toBe("99+");
+      expect(await page.locator(".rail-count").getAttribute("title")).toMatch(/，项目页「跟进」里看逾期和今天$/);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       expect(errors).toEqual([]);
     } finally { await page.close(); }

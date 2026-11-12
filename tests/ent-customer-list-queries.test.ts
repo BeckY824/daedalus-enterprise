@@ -242,38 +242,65 @@ describe("客户页「看板」视图（11-12 第 3 批 C17 / C18：页头、筛
     expect(看板of((await 量()).el)).toBeUndefined();
   });
 
-  it("市场成员（X-107）：左栏没有「项目」，客户页列表 / 看板两种记法都是原项目页那套市场视角（落在 /customers、页头叫客户），已分出去的那行只看进度；被挡转来的 q / hl 照认；销售和上级的客户页不变", async () => {
+  it("市场成员（X-107，用户 11-12「按第 1 种做」）：左栏没有「项目」；客户页两个视图——列表 = 原来的客户列表，看板 = 原项目页那套市场视角（我分出去的）；没记过进我分出去的；被挡转来的（hl）一律进我分出去的并高亮；销售和上级不变", async () => {
     const 小市 = await 造人("xs", "channel_ops");
     await setSetting(市场成员key, [小市.id]);
     忘掉企业版范围();
     const c = await prisma.customer.create({ data: { name: "市场线索客户", phone: "13900000300", salesOwnerId: 乙.id } });
     const pid = (await prisma.project.create({ data: { name: "市场线索", customerId: c.id, ownerId: 乙.id, creatorId: 小市.id, phase: "线索", node: "线索验证" } })).id;
-    type 项目页参 = { 市场: { 视角: string } | null; 行: { id: string; name: string; 只看进度?: boolean }[]; 基址?: string; 标题?: string; 客户页?: boolean; 高亮?: string; filters: Record<string, string> };
-    for (const 记 of ["", "list", "board"]) {
+    const 自己的 = await prisma.customer.create({ data: { name: "市场自己的客户", phone: "13900000301", salesOwnerId: 小市.id } });
+    type 项目页参 = { 市场: { 视角: string } | null; 行: { id: string; name: string; 只看进度?: boolean }[]; 基址?: string; 标题?: string; 客户页?: boolean; 高亮?: string; 换回客户列表?: boolean; filters: Record<string, string> };
+    const 是我分出去的 = (el: unknown) => (el as { props: 项目页参 }).props.换回客户列表 === true;
+    for (const 记 of ["", "board"]) {
       mocks.看法 = 记;
-      const p = ((await 量({}, 小市)).el as { props: 项目页参 }).props;
+      const el = (await 量({}, 小市)).el;
+      expect(是我分出去的(el), 记).toBe(true);
+      const p = (el as { props: 项目页参 }).props;
       expect(p.市场?.视角, 记).toBe("市场成员");
       expect(p).toMatchObject({ 基址: "/customers", 标题: "客户", 客户页: false });
+      // 已分出去的那行只看进度（点不进详情）
       expect(p.行.map((r) => [r.name, r.只看进度])).toEqual([["市场线索", true]]);
     }
+    // 记着列表：原来的客户列表（他看得到的客户照原来的范围），切换叫「客户列表 / 我分出去的」
+    mocks.看法 = "list";
+    const 列表 = 参数((await 量({}, 小市)).el) as unknown as { rows: { id: string }[]; 市场视图?: boolean; 看板体?: unknown };
+    expect(列表.市场视图).toBe(true);
+    expect(列表.看板体).toBeUndefined();
+    expect(列表.rows.map((r) => r.id)).toContain(自己的.id);
+    // 被挡转来的：哪怕记着列表也落到我分出去的，搜项目名、高亮那行
     const 转来 = ((await 量({ q: "市场线索", hl: pid }, 小市)).el as { props: 项目页参 }).props;
+    expect(转来.换回客户列表).toBe(true);
     expect(转来.高亮).toBe(pid);
     expect(转来.filters.keyword).toBe("市场线索");
-    // /projects 路由本身留着可进，照旧是这一套（落在 /projects）
+    // /projects 路由本身留着可进，照旧是这一套（落在 /projects，没有回客户列表那颗切换）
     const 原页 = ((await 量({}, 小市, ProjectsPage as never)).el as { props: 项目页参 }).props;
     expect(原页.市场?.视角).toBe("市场成员");
     expect(原页.基址).toBeUndefined();
-    // 客户页自己的入口（新建、导入）照旧画客户页
-    expect(参数((await 量({ new: "1" }, 小市)).el).rows).toBeDefined();
-    expect(企业版根目录("客户").map((x) => x.key)).not.toContain("/projects");
-    // 销售、上级：客户页照旧（客户行、不是项目页）
+    expect(原页.换回客户列表).toBe(false);
+    // 客户页自己的入口（新建）照旧画客户页
     mocks.看法 = "";
+    expect(是我分出去的((await 量({ new: "1" }, 小市)).el)).toBe(false);
+    expect(企业版根目录("客户").map((x) => x.key)).not.toContain("/projects");
+    // 销售、上级：没记过照旧是客户列表，切换照旧叫「列表 / 看板」
     for (const 谁 of [甲, 经理]) {
-      const p = 参数((await 量({}, 谁)).el) as unknown as { rows: unknown[]; 市场?: unknown; 基址?: string };
+      const p = 参数((await 量({}, 谁)).el) as unknown as { rows: unknown[]; 市场视图?: boolean; 换回客户列表?: boolean };
       expect(Array.isArray(p.rows), 谁.name).toBe(true);
-      expect(p.基址).toBeUndefined();
+      expect(p.市场视图, 谁.name).toBe(false);
     }
   });
+
+  it("阶段筛选命中上千位客户（客户id集合拼成一个 OR，不让 Prisma 拆句）：总数对、翻页按建档时间倒序接得上", async () => {
+    const 基 = Date.UTC(2026, 0, 1);
+    const n = 1100;
+    await prisma.customer.createMany({ data: Array.from({ length: n }, (_, i) => ({ id: `many${String(i).padStart(4, "0")}`, name: `多客户${String(i).padStart(4, "0")}`, phone: `137${String(i).padStart(8, "0")}`, salesOwnerId: 甲.id, createdAt: new Date(基 + i * 1000) })) });
+    await prisma.project.createMany({ data: Array.from({ length: n }, (_, i) => ({ name: `多项目${i}`, customerId: `many${String(i).padStart(4, "0")}`, ownerId: 甲.id, creatorId: 甲.id, phase: "订单", node: "签约" })) });
+    const 名 = (i: number) => `多客户${String(i).padStart(4, "0")}`;
+    const 第一页 = 参数((await 量({ phase: "订单", pageSize: "100" })).el) as unknown as { rows: { name: string }[]; total: number };
+    expect(第一页.total).toBe(n);
+    expect(第一页.rows.map((r) => r.name)).toEqual(Array.from({ length: 100 }, (_, k) => 名(n - 1 - k)));
+    const 末页 = 参数((await 量({ phase: "订单", pageSize: "100", page: "11" })).el) as unknown as { rows: { name: string }[] };
+    expect(末页.rows.map((r) => r.name)).toEqual(Array.from({ length: 100 }, (_, k) => 名(99 - k)));
+  }, 60_000);
 
   it("「项目数」「当前节点」和阶段筛选不算公海里的项目", async () => {
     const c1 = await prisma.customer.findFirstOrThrow({ where: { name: "列表客户1" }, select: { id: true } });
