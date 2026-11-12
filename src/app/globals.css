@@ -3852,6 +3852,8 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
   .tri-more { display: inline-flex; }
 }
 
+.tri-dlg-note { margin: 0 0 12px; color: var(--ink-soft); }
+
 /* 冷项目（C11）：页签名后一个小灰标「冷」；名字照旧省略号，小标不缩 */
 .cd-tab.cd-tab-cold { display: inline-flex; align-items: center; gap: 4px; }
 .cd-tab-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

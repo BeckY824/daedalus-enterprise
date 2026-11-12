@@ -73,7 +73,7 @@ export default function TriStateBar({ 条, customerId, 开客户转让 }: { 条:
       )}
       {框 && (
         <Modal open title={框.字} okText={框.字} cancelText="取消" confirmLoading={忙} onOk={() => void 确定()} onCancel={() => set框(null)} width={480}>
-          <p style={{ margin: "0 0 12px", color: "var(--ink-soft)" }}>{框.说明}</p>
+          <p className="tri-dlg-note">{框.说明}</p>
           {框.动作 !== "让同事结束项目" && (
             <Input.TextArea
               value={理由}
