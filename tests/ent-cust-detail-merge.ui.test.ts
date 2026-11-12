@@ -489,6 +489,46 @@ it("项目多（8 个）、1024 / 1280 宽：放不下的胶囊收进「更多 N
   }
 });
 
+/* 11-12 用户看 3702「按钮位置没对齐」：中栏四颗连体按钮（完成节点 / 新建沟通 / 新建待办 / 新建卡点）右边缘一条竖线、同高、同字号，右半箭头同宽同图标 */
+it.each([[1024, false], [1280, false], [1366, false], [1280, true], [1366, true]] as const)("%ipx 名单 %s：中栏四颗连体按钮右边缘对齐、同高同字号，右半箭头同宽同图标", async (w, 名单) => {
+  const { page, errors } = await 开(w, {});
+  try {
+    if (名单) await page.evaluate(() => { const r = document.querySelector(".rec-page") as HTMLElement; r.style.marginLeft = "280px"; });
+    const 量 = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".cd-mid .split-btn")].map(g => {
+      const bs = [...g.querySelectorAll<HTMLElement>(":scope > .ant-btn, :scope > * > .ant-btn")];
+      const 尾 = bs.at(-1)!;
+      const r = g.getBoundingClientRect(), t = 尾.getBoundingClientRect();
+      const 字 = bs.length > 1 ? getComputedStyle(bs[0]).fontSize : "";
+      const svg = 尾.querySelector("svg");
+      return { 名: bs[0].textContent!.trim() || 尾.getAttribute("aria-label"), 右: Math.round(r.right), 高: Math.round(r.height), 字, 尾宽: Math.round(t.width), 图: svg ? `${svg.getAttribute("viewBox")}|${Math.round(svg.getBoundingClientRect().width)}` : "" };
+    }));
+    expect(量.length).toBe(4);
+    expect(new Set(量.map(x => x.右)).size, JSON.stringify(量)).toBe(1);
+    expect(new Set(量.map(x => x.高)).size, JSON.stringify(量)).toBe(1);
+    expect(new Set(量.filter(x => x.字).map(x => x.字)).size, JSON.stringify(量)).toBe(1);
+    expect(new Set(量.map(x => x.尾宽)).size, JSON.stringify(量)).toBe(1);
+    expect(new Set(量.map(x => x.图)).size, JSON.stringify(量)).toBe(1);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("卡头行首「项目」两个字和项目名同色（单项目、多项目都是），字号字重照旧", async () => {
+  for (const o of [{ 单: true }, {}]) {
+    const { page, errors } = await 开(1280, o);
+    try {
+      const [字色, 名色, 号, 重] = await page.locator(".cd-pj .cd-cap").evaluate(el => {
+        const 名 = document.querySelector(".cd-pj-one .cd-pj-nm") ?? document.querySelector(".cd-pj-one");
+        const s = getComputedStyle(el);
+        return [s.color, getComputedStyle(名 ?? document.body).color, s.fontSize, s.fontWeight];
+      });
+      if (o.单) expect(字色, "单项目").toBe(名色);
+      expect(字色).toBe(await page.evaluate(() => { const d = document.createElement("i"); d.style.color = "var(--ink)"; document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; }));
+      expect([号, 重]).toEqual(["12px", "500"]);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
 it("页签变少（router.refresh 后项目删了 / 转走了）：上一轮量出来的下标越界也不崩，照新的页签重排", async () => {
   const { page, errors } = await 开(1024, { 多: true, 末: true, 锁数: 3 });
   try {

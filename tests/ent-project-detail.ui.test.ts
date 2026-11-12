@@ -97,7 +97,7 @@ it("企业版：左边节点、沟通、卡点，右边项目、交付、项目�
     // 11-01 用户：「和客户页一样，仅留转让项目，退回公海。其余的放回各模块。」记一条沟通、AI 录入、发卡点、改分配回到各自卡头；
     // 「完成节点 ▼」「新增沟通」在阶段页签那一行（M-节点-04 / U-项目-06）
     const 卡上钮 = (await page.locator(".proj-main button, .proj-side button").allInnerTexts()).map(t => t.replace(/\s/g, ""));
-    expect(卡上钮).toEqual(expect.arrayContaining(["新增沟通", "发卡点", "改分配"]));
+    expect(卡上钮).toEqual(expect.arrayContaining(["新增沟通", "新建卡点", "改分配"]));
     // 11-12：「AI 录入」不再单摆在卡头，收进记一条沟通弹窗顶上的「手动录入 | AI 录入」
     expect(卡上钮).not.toContain("AI录入");
     // 11-01 会议 §5：沟通卡头右边写「新增沟通」（走弹窗），不再有「去客户页看看」
@@ -740,7 +740,7 @@ for (const 宽 of [1280, 1024]) {
       await 点.click();
       const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu");
       await 菜单.waitFor();
-      expect((await 菜单.locator(".ant-dropdown-menu-item").allInnerTexts()).map(t => t.trim())).toEqual(["发卡点", "修改", "删除"]);
+      expect((await 菜单.locator(".ant-dropdown-menu-item").allInnerTexts()).map(t => t.trim())).toEqual(["新建卡点", "修改", "删除"]);
       const 盒 = (await 菜单.boundingBox())!;
       expect(盒.x).toBeGreaterThanOrEqual(0);
       expect(盒.x + 盒.width).toBeLessThanOrEqual(宽);
@@ -763,13 +763,13 @@ for (const 宽 of [1280, 1024]) {
   });
 }
 
-it("没有改沟通的权限：「…」里只剩发卡点（10-30 发卡点从行上收进来）", async () => {
+it("没有改沟通的权限：「…」里只剩新建卡点（10-30 从行上收进来，11-12 由发卡点改名）", async () => {
   const { page, errors } = await 覆盖(1280, { 可改沟通: false });
   try {
     await page.getByRole("button", { name: "这条沟通的更多操作" }).first().click();
     const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu");
     await 菜单.waitFor();
-    expect(new Set((await 菜单.locator(".ant-dropdown-menu-item").allInnerTexts()).map(t => t.trim()))).toEqual(new Set(["发卡点"]));
+    expect(new Set((await 菜单.locator(".ant-dropdown-menu-item").allInnerTexts()).map(t => t.trim()))).toEqual(new Set(["新建卡点"]));
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
