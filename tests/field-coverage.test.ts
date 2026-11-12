@@ -232,6 +232,7 @@ const 派生: Record<string, Record<string, string>> = {
     userId: "谁放进去的，放进公海时打上；自动掉进去的为空",
     reason: "手动 / N 天没跟进自动放进，系统打上",
     at: "放进去的那一刻，系统打上",
+    phoneIncomplete: "企业版三态到期自动进公海时系统查号码，空的 / 不对的打上「号码不全」（迁移 130），公海按它筛",
   },
   CustomerClaim: {
     customerId: "哪位客户，领取时建 / 覆盖",

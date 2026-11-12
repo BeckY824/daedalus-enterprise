@@ -44,6 +44,7 @@ import { 看全部 } from "@/lib/team-scope";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 交接中的客户, 待确认 } from "./handover-db";
 import { 客户名下在推项目进公海, 客户进公海清负责人 } from "./pool-link";
+import { 客户退回前查联系方式, 退回号码种类表 } from "./return-contact-check";
 import { 系统 } from "@/lib/project/timeout";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 忘掉企业版范围 } from "./visibility";
@@ -52,6 +53,7 @@ import { getSetting, setSetting } from "@/lib/settings";
 import { beijingDay } from "@/lib/business-clock";
 
 type 库 = Prisma.TransactionClient | typeof prisma;
+type 号码种类表 = Awaited<ReturnType<typeof 退回号码种类表>>;
 
 /** 钟上存的状态：该进公海（被挡、交接中没收成的）也记待回收 */
 export type 钟状态 = "活跃" | "沉睡" | "待回收";
@@ -475,8 +477,9 @@ async function 按客户扫(规则: 组织规则, 现在: Date, 今天: string):
   // 负责人要清空，也算一次换负责人：先钉住老签约（事务外，同手动放进公海）
   await 钉住老签约();
   const 收了: 自动收了[] = [];
+  const 号码表 = await 退回号码种类表();
   for (const id of 收) {
-    const x = await 自动进公海一位(id, 规则, org, 现在, 今天);
+    const x = await 自动进公海一位(id, 规则, org, 现在, 今天, 号码表);
     if (x) {
       收了.push(x);
       明细.进公海.push(id);
@@ -498,9 +501,9 @@ async function 按客户扫(规则: 组织规则, 现在: Date, 今天: string):
 
 /**
  * 一位客户自动进客户公海：事务里按最新的事实重算一遍（查出来到写之间有人记了沟通、点了继续持有、转走了就不收），
- * 还该进、没被挡、不在交接中（转让 / 离职）才收。钟标成「公海」。返回收了谁
+ * 还该进、没被挡、不在交接中（转让 / 离职）才收。钟标成「公海」。号码表 = 号码类型字典（事务外先读，要读设置）。返回收了谁
  */
-export async function 自动进公海一位(id: string, 规则: 组织规则, org: 组织, 现在: Date, 今天: string): Promise<自动收了 | null> {
+export async function 自动进公海一位(id: string, 规则: 组织规则, org: 组织, 现在: Date, 今天: string, 号码表: 号码种类表): Promise<自动收了 | null> {
   return 查完再写(async (tx) => {
     const c = (await 收三态客户(tx, [id], 规则, org, 现在)).get(id);
     if (!c) return null;
@@ -510,8 +513,10 @@ export async function 自动进公海一位(id: string, 规则: 组织规则, or
     await 存归零(tx, [c]);
     const 理由 = 三态进公海理由(r.节点天.进公海 - r.节点天.待回收);
     const 们 = [{ id, salesOwnerId: c.salesOwnerId }];
+    // T10：不查号码齐不齐（不挡收回），只按退回公海那一套查一遍、打「号码不全」（项目还没跟着进公海前查，同手动退回）
+    const 号码不全 = (await 客户退回前查联系方式(tx, [id], 号码表)).has(id);
     // 公海那一行不记操作人：统一公海入池方式认成超时回收（unified-pool.ts 客户入池类）
-    await tx.customerPool.create({ data: { customerId: id, userId: null, reason: 理由, at: 现在 } });
+    await tx.customerPool.create({ data: { customerId: id, userId: null, reason: 理由, at: 现在, phoneIncomplete: 号码不全 } });
     // 先项目后清负责人：项目那边靠客户原来的负责人认「他自己负责的」
     await 客户名下在推项目进公海(tx, 们, 系统.id, 理由, 现在);
     await 客户进公海清负责人(tx, 们, null);

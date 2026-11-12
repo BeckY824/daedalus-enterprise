@@ -19,6 +19,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 三态夜扫, 三态扫过键, 收三态客户, 写一批, 公海状态, 被挡理由, 暂缓解除理由, 待交接理由 } from "@/lib/enterprise/tri-state-db";
 import { 工作日数 } from "@/lib/enterprise/tri-state";
+import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
 import { 钟上三态提醒, 三态提醒水位键 } from "@/lib/enterprise/tri-state-notice";
 import { 继续持有, 暂缓回收动作 } from "@/lib/enterprise/tri-state-hold";
 import { 读组织 } from "@/lib/enterprise/org";
@@ -522,5 +523,34 @@ describe("T12 · 停用账号名下的客户：提醒走停用前上级，标待
     await prisma.entHandover.create({ data: { kind: "离职", fromUserId: 人.乙.id, toUserId: 人.丙.id, byUserId: 人.系.id, customerIds: "[]", status: "待确认", createdAt: 白天(99) } });
     await 过(100);
     expect((await 痕()).filter((x) => x.reason === 待交接理由)).toHaveLength(0);
+  });
+});
+
+describe("T10 · 到期自动进公海不查号码；收回时号码不全打标，公海列表能筛", () => {
+  async function 到期收回() {
+    await 三态夜扫(早(180));
+    await prisma.entCustomerClock.update({ where: { customerId: 客户 }, data: { noticeCount: 3, lastNoticeDay: 日(200) } });
+    await 三态夜扫(早(210));
+    return prisma.customerPool.findUnique({ where: { customerId: 客户 } });
+  }
+
+  it("客户电话空、没联系人：照收，打号码不全", async () => {
+    await prisma.customer.update({ where: { id: 客户 }, data: { phone: "" } });
+    expect(await 到期收回()).toMatchObject({ phoneIncomplete: true, userId: null });
+  });
+
+  it("号码齐全：照收，不打标", async () => {
+    expect(await 到期收回()).toMatchObject({ phoneIncomplete: false });
+  });
+
+  it("公海列表按 号码不全=1 只列打了标的", async () => {
+    await prisma.customer.update({ where: { id: 客户 }, data: { phone: "" } });
+    await 到期收回();
+    const 另一位 = await prisma.customer.create({ data: { name: "客户乙", phone: "13800000002", salesOwnerId: 人.乙.id } });
+    await prisma.customerPool.create({ data: { customerId: 另一位.id, userId: 人.系.id, reason: "手动" } });
+    const 全部 = await 读公海页({ ...人.系, role: "ADMIN" }, {}, 1, 20);
+    expect(全部.行.map((r) => r.客户名).sort()).toEqual(["客户乙", "客户甲"]);
+    const 只看 = await 读公海页({ ...人.系, role: "ADMIN" }, { 号码不全: "1" }, 1, 20);
+    expect(只看.行.map((r) => [r.客户名, r.号码不全])).toEqual([["客户甲", true]]);
   });
 });

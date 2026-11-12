@@ -79,7 +79,7 @@ function 按客户分<P extends { customerId: string }>(们: readonly P[]): Map<
   return 出;
 }
 
-const 池要的 = { customerId: true, userId: true, reason: true, at: true } satisfies Prisma.CustomerPoolSelect;
+const 池要的 = { customerId: true, userId: true, reason: true, at: true, phoneIncomplete: true } satisfies Prisma.CustomerPoolSelect;
 
 /** 客户行里要「各人看得到的项目」才拼得出的四格。没项目 = 名下一个项目都没有（按全部项目认，不按看得到的）：进程写 线索-潜客培育（11-11） */
 function 客户项目格(名下: readonly 客户的项目[], 字典: 字典, 没项目: boolean) {
@@ -195,6 +195,7 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
       // 负责人还是我的这一半；进公海清了负责人、原负责人在历史记录里的那一半 补这一页 再认
       原负责人是我: 拦 && c.salesOwnerId === me.id,
       来源id: c.channelId,
+      ...(c.pool!.phoneIncomplete ? { 号码不全: true } : {}),
     };
   });
   const 留下的项目 = 项目们.filter((p) => !(回避 && 最近放回.get(p.id)?.fromOwnerId === me.id));
