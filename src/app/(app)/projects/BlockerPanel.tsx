@@ -97,7 +97,7 @@ export function PublishBlockerModal({ followUpId, 默认, 原因们, onClose }: 
   return (
     <Modal
       open
-      title="发布卡点"
+      title="新建卡点"
       okText="发布"
       okButtonProps={{ disabled: !!差, loading: 忙 }}
       onCancel={onClose}
