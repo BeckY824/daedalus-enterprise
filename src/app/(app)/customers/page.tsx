@@ -34,6 +34,9 @@ import { 能导入导出, 新建只给自己 } from "@/lib/enterprise/import-per
 import { 删除挡 } from "@/lib/enterprise/soft-delete";
 import { 客户项目概况们 } from "@/lib/project/customer-list-projects";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
+import { cookies } from "next/headers";
+import { 客户页看法键 } from "@/lib/customers-view-pref";
+import { 项目页, 项目页参数名 } from "../projects/board-page";
 
 export const dynamic = "force-dynamic";
 
@@ -96,11 +99,28 @@ type SP = Promise<{
   pool?: string;
 }>;
 
+/** 客户页记的「列表 / 看板」（cookie）；不在请求里（测试直接调页面函数）读不到 = 没记 */
+async function 记的看法(): Promise<string | undefined> {
+  try {
+    return (await cookies()).get(客户页看法键)?.value;
+  } catch {
+    return undefined;
+  }
+}
+
 export default async function CustomersPage({ searchParams }: { searchParams: SP }) {
   const me = await requireUser();
   const sp = await searchParams;
   // 开了「N 天没跟进自动放进公海」的话，一天扫一次；扫出来的这一页就能看到。业务配置和它互不相干，一起读
   const [, b] = await Promise.all([自动掉公海(me), getBusiness()]);
+  /*
+    企业版项目模式的「看板」视图（11-12 客户详情合并第 3 批，定稿 UI board()）：按节点分列的项目看板，和项目页同一份取数和画法（projects/board-page.tsx）。
+    记在 cookie 里（lib/customers-view-pref.ts）；地址上带了客户列表自己的参数（新建、导入、子集、客户负责人…）照旧画列表。看板视图不取客户列表那一大堆，列表视图也不取看板
+  */
+  if (企业版() && b.projectMode && (await 记的看法()) === "board"
+    && Object.entries(sp).every(([k, v]) => !v || (项目页参数名 as readonly string[]).includes(k))) {
+    return 项目页(me, sp, true);
+  }
 
   const 正整数 = (raw: string | undefined, fallback: number) => {
     const n = Number(raw);
@@ -310,6 +330,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       旧职位={[...new Set(旧职位)]}
       国家们={用着的国家.map((x) => x.country!).filter(Boolean)}
       项目概况={项目概况}
+      项目看板={按项目}
       出口叫法={组织规则?.阶段.出口叫法}
     />
   );

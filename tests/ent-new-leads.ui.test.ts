@@ -44,14 +44,14 @@ beforeAll(async () => {
     // 看板五列（11-01 C12 测「→ 还有 N 列」）：每列一张卡
     const 五列=['线索','商机','订单','成功交付','没成'].map((列,i)=>({列,数:1,合计:[],行:[{...row(10+i,'潜客培育'),phase:列==='没成'?'线索':列}]}));
     window.__画=(阶段,能分,企,o={})=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
-      <Projects 行={o.公海?[{...row(4,'线索推进'),pooled:true,客户在公海:true},{...row(5,'线索推进'),pooled:true}]:行} 列={o.看板?五列:[]} 总数={(o.公海?2:行.length)} 页={1} 每页={20} users={[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:o.phase||''}} 阶段={阶段?'线索':undefined} 线索分配开着={!!能分} 能自动分配={!!能分} 能分公海客户项目={!!o.管公海} 企业版={!!企}/>
+      <Projects 行={o.公海?[{...row(4,'线索推进'),pooled:true,客户在公海:true},{...row(5,'线索推进'),pooled:true}]:行} 列={o.看板?五列:[]} 总数={(o.公海?2:行.length)} 页={1} 每页={20} users={[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:o.phase||''}} 阶段={阶段?'线索':undefined} 线索分配开着={!!能分} 能自动分配={!!能分} 能分公海客户项目={!!o.管公海} 企业版={!!企} 客户页={!!o.客户页} 待交接={o.客户页?2:null}/>
     </BusinessProvider></App>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
   bundle = r.outputFiles[0].text; browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 选项 = { phase?: string; 看板?: boolean; 样式?: boolean; 公海?: boolean; 管公海?: boolean };
+type 选项 = { phase?: string; 看板?: boolean; 样式?: boolean; 公海?: boolean; 管公海?: boolean; 客户页?: boolean };
 async function 打开(新线索: boolean, width = 1280, 能分 = false, 企 = false, o: 选项 = {}): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -244,6 +244,29 @@ it("企业版项目看板卡片（11-12 客户详情合并第 3 批）：第一�
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `宽 ${w}`).toBe(true);
       await 卡.click();
       expect(await 去了(page), `宽 ${w}`).toEqual(["/customers/c10?project=p10"]);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+it("客户页的看板视图（11-12 第 3 批）：页头叫客户、「列表 / 看板」单独一行停在看板；按节点分列的项目看板、离职交接照原样；点「列表」记下并回客户列表", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    const { page, errors } = await 打开(false, w, false, true, { 样式: true, 看板: true, 客户页: true });
+    try {
+      expect(await page.getByRole("heading").first().innerText(), `宽 ${w}`).toBe("客户");
+      const 切 = page.locator(".cust-view-seg .ant-segmented");
+      expect(await 切.locator(".ant-segmented-item-selected").innerText(), `宽 ${w}`).toBe("看板");
+      // 页头那颗项目页的「看板 / 列表」不摆（只留单独一行这个）
+      expect(await page.locator(".page-head .ant-segmented").count(), `宽 ${w}`).toBe(0);
+      expect(await page.locator(".pipe-col").count(), `宽 ${w}`).toBe(5);
+      expect(await page.getByRole("button", { name: "离职交接 2" }).count(), `宽 ${w}`).toBe(1);
+      expect(await page.getByRole("button", { name: "新增项目" }).count(), `宽 ${w}`).toBe(1);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `宽 ${w}`).toBe(true);
+      await page.locator(".pipe-card").first().click();
+      expect(await 去了(page), `宽 ${w}`).toEqual(["/customers/c10?project=p10"]);
+      await 切.getByText("列表", { exact: true }).click();
+      expect(await 去了(page), `宽 ${w}`).toEqual(["/customers/c10?project=p10", "/customers"]);
+      expect(await page.evaluate(() => document.cookie), `宽 ${w}`).toContain("customers-view=list");
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }

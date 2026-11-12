@@ -62,6 +62,7 @@ import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 import { 归档档位们 } from "@/lib/enterprise/archive-tier";
 import { 字典of, 阶段们, type 阶段, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import type { 客户项目概况 } from "@/lib/project/customer-list-projects";
+import { 换客户页看法 } from "@/lib/customers-view-pref";
 
 /** 「新增客户」弹窗（10-31 P5，整套建档向导）：点了才要，单拆一包，不压客户列表首屏 JS（速度闸门 850 KB） */
 // 客户看板（U-客户-06）只在切到「看板」时用，连同分页条单独一块，别压在客户列表首屏（速度闸门）
@@ -193,6 +194,8 @@ type Props = {
   项目概况?: Record<string, 客户项目概况>;
   /** 进程下拉里结局的叫法（组织规则里改过的出口叫法，同项目页） */
   出口叫法?: 出口叫法改动 | null;
+  /** 企业版项目模式：「列表 / 看板」的看板是按节点分列的项目看板（11-12 第 3 批，换一屏由服务端画）；按客户属性分列的看板不摆 */
+  项目看板?: boolean;
   /** 客户来源筛选的选项（企业版）；含已停用的渠道 */
   渠道筛选项?: { value: string; label: string }[];
   /** 团队有两个以上一级部门时的部门下拉（带缩进）；空 = 不摆 */
@@ -251,7 +254,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 创建排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 待交接 = null, 项目概况, 出口叫法,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 创建排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 待交接 = null, 项目概况, 出口叫法, 项目看板 = false,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -402,7 +405,8 @@ export default function CustomersView({
    * 企业版客户页「列表 / 看板」（U-客户-06，10-31 会议）：看板按客户属性（字典 custAttr）分列，交互同项目页。
    * 公海页签、子集里不摆看板；看板分的是这一页取回来的客户（分页照旧在看板下面）
    */
-  const 能看板 = 企业 && 客户属性字典.length > 0 && !公海页;
+  // 企业版项目模式的看板换成按节点分列的项目看板（第 3 批，服务端另画，见 项目看板），按客户属性分列的这块不摆
+  const 能看板 = 企业 && !项目看板 && 客户属性字典.length > 0 && !公海页;
   const [存的看法, set看法] = useLocalPref<"列表" | "看板">("customers-view", "列表");
   const 看法 = 能看板 ? 存的看法 : "列表";
   const [导出中, set导出中] = useState(false);
@@ -486,25 +490,6 @@ export default function CustomersView({
               options={FOLLOW_STATUSES.map((s) => ({ value: s, label: statusLabel(b, s) }))} />
           ),
         }]),
-    /*
-      阶段、进程（11-12 客户详情合并第 3 批，定稿 UI 筛选行）：名下有一个我能看的项目在这一阶段 / 进程上的客户。
-      下拉同项目页（选了阶段，进程只列这一阶段的）；默认收在「更多筛选」里：1024 宽筛选行本来就刚好一行（排版闸门），用户可以自己挑出来摆
-    */
-    ...(filters.phase !== undefined
-      ? [{
-          键: "phase", 名: "阶段", 宽: 110, 默认外露: false, 有值: !!f.phase,
-          渲染: (style: CSSProperties) => (
-            <Select style={style} aria-label="阶段" placeholder="全部阶段" allowClear value={f.phase || undefined}
-              onChange={(v?: string) => apply({ phase: v ?? "", node: "" })} options={阶段们.map((x) => ({ value: x, label: x }))} />
-          ),
-        }, {
-          键: "node", 名: "进程", 宽: 130, 默认外露: false, 有值: !!f.node,
-          渲染: (style: CSSProperties) => (
-            <Select style={style} aria-label="进程" placeholder="全部进程" allowClear value={f.node || undefined} popupMatchSelectWidth={false}
-              onChange={(v?: string | null) => apply({ node: v ?? "" })} options={进程选项} />
-          ),
-        }]
-      : []),
     // 外贸：国家是第一眼要分的（时差、市场、报价口径），摆在外面；只给库里真有的国家
     ...(外贸 && !企业 && (国家们.length > 0 || f.country)
       ? [{
@@ -548,6 +533,26 @@ export default function CustomersView({
               value={f.salesOwnerId || undefined}
               onChange={(v) => apply({ salesOwnerId: v ?? "" })}
               options={成员选项(users)} />
+          ),
+        }]
+      : []),
+    /*
+      阶段、进程（11-12 客户详情合并第 3 批，定稿 UI 筛选行）：名下有一个我能看的项目在这一阶段 / 进程上的客户。
+      下拉同项目页（选了阶段，进程只列这一阶段的）。照定稿摆在外面、排在负责人后面；筛选行一行放不下时这两个先自动收进「更多筛选」
+      （挤：components/CustomFilters.tsx），筛选行始终一行
+    */
+    ...(filters.phase !== undefined
+      ? [{
+          键: "phase", 名: "阶段", 宽: 110, 默认外露: true, 挤: true, 有值: !!f.phase,
+          渲染: (style: CSSProperties) => (
+            <Select style={style} aria-label="阶段" placeholder="全部阶段" allowClear value={f.phase || undefined}
+              onChange={(v?: string) => apply({ phase: v ?? "", node: "" })} options={阶段们.map((x) => ({ value: x, label: x }))} />
+          ),
+        }, {
+          键: "node", 名: "进程", 宽: 130, 默认外露: true, 挤: true, 有值: !!f.node,
+          渲染: (style: CSSProperties) => (
+            <Select style={style} aria-label="进程" placeholder="全部进程" allowClear value={f.node || undefined} popupMatchSelectWidth={false}
+              onChange={(v?: string | null) => apply({ node: v ?? "" })} options={进程选项} />
           ),
         }]
       : []),
@@ -941,8 +946,14 @@ export default function CustomersView({
 
       {/* 企业版（统一公海）的「列表 / 看板」单独一行：1024 宽开着 AI 栏时，右上那组和标题旁都放不下它（排版闸门） */}
       {统一公海 && 能看板 && !空库 && (
-        <div style={{ marginBottom: "var(--s3)" }}>
+        <div className="cust-view-seg">
           <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看法} onChange={set看法} />
+        </div>
+      )}
+      {/* 企业版项目模式：「看板」是按节点分列的项目看板（定稿 UI board()，11-12 第 3 批），记在 cookie 里、服务端换一屏画（projects/board-page.tsx） */}
+      {项目看板 && !空库 && !子集 && (
+        <div className="cust-view-seg">
+          <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value="列表" onChange={(v) => v === "看板" && 换客户页看法("board", router)} />
         </div>
       )}
 
@@ -1094,7 +1105,7 @@ export default function CustomersView({
                 onClick={async () => {
                   if (企业) {
                     const ids = [...selected];
-                    // 确认框统一叫「退回公海」（11-12 用户定 D3）；工具条上的按钮字照旧
+                    // 确认框和工具条按钮统一叫「退回公海」（11-12 用户定 D3）
                     const 问 = await 问放回公海(`把 ${ids.length} 位退回公海？`, true, "退回公海");
                     if (!问) return;
                     公海提示(await 放进公海(ids, 问.原因), "放进", ids); 清空();
@@ -1108,7 +1119,8 @@ export default function CustomersView({
                     onOk: async () => { 公海提示(await 放进公海(selected), "放进", selected); 清空(); },
                   });
                 }}>
-                放回公海
+                {/* 企业版统一叫「退回公海」（11-12 D3：工具条按钮、确认框一个说法） */}
+                {企业 ? "退回公海" : "放回公海"}
               </Button>
             ))}
             {/* 批量改跟进状态：企业版不用跟进状态，不摆（10-28 去遗留 A1） */}

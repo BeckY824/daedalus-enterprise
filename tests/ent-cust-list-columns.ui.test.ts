@@ -1,7 +1,8 @@
 /**
  * 客户表格「当前节点」「项目数」两列（11-12 客户详情合并第 3 批，定稿 UI 表格）：
  *   表头这两列紧跟客户名；当前节点画成标签、一行放不下省略号（悬停看全文是全站 TruncTip）；没有我能看的项目写「—」、项目数 0；
- *   1024 / 1280 / 1366 宽、超长客户名和超长节点名：每格一行、页面不横向撑出；「阶段」「进程」两个筛选默认收在「更多筛选」里。
+ *   1024 / 1280 / 1366 宽、超长客户名和超长节点名：每格一行、页面不横向撑出；「阶段」「进程」两个筛选照定稿摆外面，
+ *   筛选行一行放不下时自动收进「更多筛选」（筛选行始终一行）；1920 宽摆得下就在外面。
  * 数据怎么算（只算我能看的、最近有动静的那个）在 tests/ent-customer-list-queries.test.ts。
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -41,20 +42,24 @@ beforeAll(async () => {
     const rows=[行('c1','me'),行('c2','u2'),行('c3','me')];
     const 项目概况={c1:{项目数:12,当前节点:'异常 · 某个后台改得特别特别长的节点名字',当前阶段:'订单'},c2:{项目数:1,当前节点:'方案敲定',当前阶段:'商机'}};
     root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'me',name:'小王'}}>
-      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:'',node:''}} 客户数={3} 企业版 项目概况={项目概况}/>
+      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:'',node:''}} 客户数={3} 企业版 项目概况={项目概况} 项目看板/>
     </我Provider></BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [列表桩], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-it("两列紧跟客户名；节点标签一行省略、—、0；三种宽度每格一行、页面不撑出；阶段 / 进程收在更多筛选里", async () => {
-  for (const w of [1024, 1280, 1366]) {
+const 摆法: string[] = [];
+it("两列紧跟客户名；节点标签一行省略、—、0；三种宽度每格一行、页面不撑出；阶段 / 进程摆外面、放不下收进更多筛选，筛选行一行", async () => {
+  // 左边留出 220 的左栏（壳里正文就这么宽）
+  for (const [w, 右栏] of [[1024, 0], [1280, 0], [1366, 0], [1920, 0]] as const) {
     const page = await browser.newPage({ viewport: { width: w, height: 900 } }); page.setDefaultTimeout(5000);
     const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
     try {
       await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
-      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: 包 });
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+      await page.addStyleTag({ content: `#root{margin-left:220px;margin-right:${右栏}px;padding:22px 26px}` });
+      await page.addScriptTag({ content: 包 });
       await page.locator("tr.ant-table-row").first().waitFor();
       const 头 = await page.locator("thead th").allInnerTexts();
       const 名位 = 头.findIndex((t) => t.trim() === "客户");
@@ -80,9 +85,55 @@ it("两列紧跟客户名；节点标签一行省略、—、0；三种宽度每
       expect(Math.max(...格.map((g) => g.行高)) - Math.min(...格.map((g) => g.行高)), `宽 ${w}`).toBeLessThanOrEqual(1);
       expect(格[0].行高, `宽 ${w}`).toBeLessThanOrEqual(60);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `宽 ${w}`).toBe(true);
-      // 阶段、进程默认不摆在外面（1024 宽筛选行本来就刚好一行），「更多筛选」里挑得到
-      expect(await page.getByRole("combobox", { name: "阶段" }).count(), `宽 ${w}`).toBe(0);
+      // 阶段、进程照定稿摆外面；筛选行一行放不下就先收进「更多筛选」：哪种宽度都是一行，阶段要么在外面、要么在「更多筛选」里
+      const 筛选组高 = await page.locator(".list-bar > .ant-space").first().evaluate((el) => el.getBoundingClientRect().height);
+      expect(筛选组高, `宽 ${w} 筛选行一行`).toBeLessThanOrEqual(40);
+      const 外面 = await page.getByRole("combobox", { name: "阶段" }).count();
+      if (!外面) {
+        await page.getByRole("button", { name: /^更多筛选/ }).click();
+        await expect.poll(() => page.locator(".ant-popover").getByRole("combobox", { name: "阶段" }).count(), { message: `宽 ${w}` }).toBe(1);
+        expect(await page.locator(".ant-popover").getByRole("combobox", { name: "进程" }).count(), `宽 ${w}`).toBe(1);
+      } else expect(await page.getByRole("combobox", { name: "进程" }).count(), `宽 ${w}`).toBe(1);
+      摆法.push(`${w}${右栏 ? "+AI栏" : ""}:${外面 ? "外面" : "更多筛选"}`);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
+});
+afterAll(async () => { if (process.env.CUST_COLS_DUMP) (await import("node:fs")).writeFileSync(process.env.CUST_COLS_DUMP, 摆法.join("\n")); });
+
+it("拉宽窗口阶段 / 进程回到外面，再拉窄又收进去，筛选行一直一行", async () => {
+  const page = await browser.newPage({ viewport: { width: 1024, height: 900 } }); page.setDefaultTimeout(5000);
+  try {
+    await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+    await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+    await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
+    await page.addScriptTag({ content: 包 });
+    await page.locator("tr.ant-table-row").first().waitFor();
+    const 阶段在外面 = () => page.getByRole("combobox", { name: "阶段" }).count();
+    const 一行 = () => page.locator(".list-bar > .ant-space").first().evaluate((el) => el.getBoundingClientRect().height <= 40);
+    expect(await 阶段在外面()).toBe(0);
+    await page.setViewportSize({ width: 1920, height: 900 });
+    await expect.poll(阶段在外面).toBe(1);
+    expect(await 一行()).toBe(true);
+    await page.setViewportSize({ width: 1024, height: 900 });
+    await expect.poll(阶段在外面).toBe(0);
+    expect(await 一行()).toBe(true);
+  } finally { await page.close(); }
+});
+
+it("「列表 / 看板」单独一行停在列表；按客户属性分列的看板不摆；点「看板」记下并回客户页（服务端换成项目看板）", async () => {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } }); page.setDefaultTimeout(5000);
+  try {
+    await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+    await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: 包 });
+    await page.locator("tr.ant-table-row").first().waitFor();
+    const 切 = page.locator(".cust-view-seg .ant-segmented");
+    expect(await 切.count()).toBe(1);
+    expect(await 切.locator(".ant-segmented-item-selected").innerText()).toBe("列表");
+    await 切.getByText("看板", { exact: true }).click();
+    expect(await page.evaluate(() => (window as unknown as { __push?: string }).__push)).toBe("/customers");
+    expect(await page.evaluate(() => document.cookie)).toContain("customers-view=board");
+    // 还是客户列表（换不换是服务端的事），不会冒出按客户属性分列的那块
+    expect(await page.locator(".cust-board").count()).toBe(0);
+  } finally { await page.close(); }
 });

@@ -2790,6 +2790,10 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .cust-board-page { display: flex; justify-content: flex-end; margin-top: var(--s3); }
 /* 客户表格「当前节点」（11-12 第 3 批）：标签宽到格子为止，放不下省略号（.clamp-1 是块级，这里改回行内块不撑满格） */
 .cust-node-tag { display: inline-block; vertical-align: middle; margin-inline-end: 0; }
+/* 企业版客户页「列表 / 看板」单独一行（列表、看板两个视图同一个位置，11-12 第 3 批） */
+.cust-view-seg { margin-bottom: var(--s3); }
+/* 筛选组里量「折没折」的探针（components/CustomFilters.tsx useSqueezeRow）：那一格不显示、不占间距 */
+.ant-space-item:has(> .cf-probe) { display: none; }
 /* 客户页「新增项目」弹窗（U-客户-05）：带上的客户名一行，超长折行写完不撑宽弹窗 */
 .new-proj-carried { color: var(--text-muted); font-size: var(--fs-note); margin-bottom: var(--s3); overflow-wrap: anywhere; }
 /* 项目首页「新增项目」先选新客户 / 老客户（11-01）：两张整行可点的选项，说明长了折行 */

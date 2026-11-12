@@ -33,6 +33,17 @@ vi.mock("react", async (原) => {
 
 const mocks = vi.hoisted(() => ({
   user: { id: "", name: "", email: "", role: "SALES", title: "", avatar: null as string | null },
+  /** 客户页记的「列表 / 看板」（lib/customers-view-pref.ts 的 cookie）；空 = 没记 */
+  看法: "" as string,
+  在请求: false,
+}));
+// 只在打开页面那一下像在请求里（别的时候照真的一样抛：限定层等靠「不在请求里」认出是测试自己在造数据、清库）
+vi.mock("next/headers", async (原) => ({
+  ...(await 原<object>()),
+  cookies: async () => {
+    if (!mocks.在请求) throw new Error("不在请求里");
+    return { get: (k: string) => (k === "customers-view" && mocks.看法 ? { name: k, value: mocks.看法 } : undefined) };
+  },
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("next/navigation", () => ({
@@ -48,19 +59,26 @@ vi.mock("@/lib/business", async (原) => {
 });
 vi.mock("@/app/(app)/customers/CustomersView", () => ({ default: () => null }));
 vi.mock("@/app/(app)/customers/HandoverPending", () => ({ default: () => null }));
+vi.mock("@/app/(app)/projects/ProjectsView", () => ({ default: () => null }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import CustomersPage from "@/app/(app)/customers/page";
+import ProjectsPage from "@/app/(app)/projects/page";
 import { 最近有动静的 } from "@/lib/project/customer-list-projects";
 
 /**
- * 上限：11-12 改前实测 35 条；加两列后 38 条（这一页的项目一句 + 项目上我加入没有一句 + 原负责人回避名单一句，和每页几位客户无关）+ 小余量。
+ * 上限：11-12 改前实测 35 条；加两列后 37 条（这一页的项目一句 + 项目上我加入没有一句，和每页几位客户无关；公海项目不算，不用再读回避名单）+ 小余量。
  * 往上调之前先 CUST_LIST_QUERY_DUMP=<文件> 跑一遍看明细，是不是又每行查了一遍
  */
 const 客户列表查询上限 = 42;
+/**
+ * 看板视图（cookie 记着「看板」）：只取项目看板那一份（projects/board-page.tsx，和 /projects 同一份），客户列表那一大堆一条不取。
+ * 11-12 实测 26 条，和 /projects 一样多（见下面用例）；上限 = 实测 + 小余量
+ */
+const 客户页看板查询上限 = 30;
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 const 造人 = async (key: string, bizRole: string, managerId: string | null = null): Promise<人> => {
@@ -73,6 +91,7 @@ const 造人 = async (key: string, bizRole: string, managerId: string | null = n
 let 甲: 人, 乙: 人, 经理: 人;
 beforeEach(async () => {
   vi.stubEnv("CRM_ENTERPRISE", "1");
+  mocks.看法 = "";
   await resetDb();
   invalidateSettingsCache();
   await setSetting("enterprise.rule.org_scope", true);
@@ -90,9 +109,12 @@ beforeEach(async () => {
 afterAll(async () => { vi.unstubAllEnvs(); invalidateSettingsCache(); await prisma.$disconnect(); });
 
 /** 打开一次客户列表：先热一遍，再清掉请求内缓存量第二遍 */
-async function 量(sp: Record<string, string> = {}, 谁: 人 = 甲): Promise<{ 句: string[]; el: unknown }> {
+async function 量(sp: Record<string, string> = {}, 谁: 人 = 甲, 页 = CustomersPage as (a: never) => Promise<unknown>): Promise<{ 句: string[]; el: unknown }> {
   mocks.user = { ...谁 };
-  const 开 = () => 以谁的身份(谁.id, () => CustomersPage({ searchParams: Promise.resolve(sp) } as never));
+  const 开 = async () => {
+    mocks.在请求 = true;
+    try { return await 以谁的身份(谁.id, () => 页({ searchParams: Promise.resolve(sp) } as never)); } finally { mocks.在请求 = false; }
+  };
   await 开();
   记.缓存.clear(); 记.句 = []; 记.开 = true;
   let el: unknown;
@@ -167,5 +189,38 @@ describe("「当前节点」「项目数」两列（11-12 第 3 批）", () => {
     expect(参数((await 量({ phase: "商机" })).el).filters).toMatchObject({ phase: "商机", node: "" });
     // 带关键词也认（快路径接不住阶段，走老路）
     expect(参数((await 量({ phase: "商机", keyword: "列表客户1" })).el).rows.map((r) => r.name)).toEqual(["列表客户1"]);
+  });
+});
+
+describe("客户页「看板」视图（11-12 第 3 批：按节点分列的项目看板，和 /projects 同一份）", () => {
+  const 明细 = (句: string[]) => [...句.reduce((m, q) => { const k = q.replace(/\s+/g, " ").replace(/`main`\./g, "").slice(0, 140); return m.set(k, (m.get(k) ?? 0) + 1); }, new Map<string, number>())].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n}\t${k}`).join("\n");
+  it("记着看板：画项目看板（客户页模式），不取客户列表；查询条数和 /projects 一样、不超过上限", async () => {
+    mocks.看法 = "board";
+    const 看板 = await 量();
+    const p = (看板.el as { props: { 客户页?: boolean; 行: { customerName: string | null }[] } }).props;
+    expect(p.客户页).toBe(true);
+    expect(p.行.length).toBeGreaterThan(0);
+    expect(看板.句.some((q) => /FROM `Customer` .*ORDER BY `Customer`\.`createdAt`/.test(q.replace(/`main`\./g, "")))).toBe(false);
+    const 项目页 = await 量({}, 甲, ProjectsPage as never);
+    if (process.env.CUST_BOARD_QUERY_DUMP) (await import("node:fs")).writeFileSync(process.env.CUST_BOARD_QUERY_DUMP, `客户页看板 ${看板.句.length} 条，/projects ${项目页.句.length} 条\n\n${明细(看板.句)}\n`);
+    expect(看板.句.length).toBeLessThanOrEqual(项目页.句.length + 1);
+    expect(看板.句.length).toBeLessThanOrEqual(客户页看板查询上限);
+  });
+
+  it("带了客户列表自己的参数（新建、子集、客户负责人）照旧画列表；没记看板也画列表", async () => {
+    mocks.看法 = "board";
+    for (const sp of [{ new: "1" }, { batch: "b1" }, { salesOwnerId: "x" }, { custStatus: "跟进中" }] as Record<string, string>[]) {
+      expect((参数((await 量(sp)).el) as unknown as { 项目看板?: boolean }).项目看板, JSON.stringify(sp)).toBe(true);
+    }
+    mocks.看法 = "list";
+    expect(参数((await 量()).el).rows.length).toBe(6);
+  });
+
+  it("「项目数」「当前节点」和阶段筛选不算公海里的项目", async () => {
+    const c1 = await prisma.customer.findFirstOrThrow({ where: { name: "列表客户1" }, select: { id: true } });
+    await prisma.project.updateMany({ where: { customerId: c1.id }, data: { pooledAt: new Date() } });
+    const 们 = 按名(参数((await 量()).el));
+    expect(们["列表客户1"]).toBeNull();
+    expect(参数((await 量({ phase: "商机" })).el).rows.map((r) => r.name)).not.toContain("列表客户1");
   });
 });

@@ -104,9 +104,10 @@ const 点得到 = (page: Page, sel: string, 字: RegExp) => page.locator(sel).fi
   return r.left >= 0 && r.right <= window.innerWidth && r.width > 0 && (el === 顶 || el.contains(顶));
 });
 const 勾 = async (page: Page, ids: string[]) => { for (const id of ids) await page.locator(`tr[data-row-key="${id}"] .ant-checkbox-input`).check(); };
-const 批量放回 = (page: Page) => page.locator(".list-sel button").filter({ hasText: /放回公海/ });
+// 企业版批量条按钮 11-12 起叫「退回公海」（D3，和确认框一个说法）
+const 批量放回 = (page: Page) => page.locator(".list-sel button").filter({ hasText: /退回公海/ });
 
-it("客户列表批量条：勾的全是放不了的，不摆「放回公海」（三种宽度）", async () => {
+it("客户列表批量条：勾的全是放不了的，不摆「退回公海」（三种宽度）", async () => {
   for (const w of 宽们) {
     const { page, errors } = await 开(列表包, { 放不了: ["c3", "c4"] }, w, "tr.ant-table-row");
     try {
@@ -126,9 +127,9 @@ it("客户列表批量条：勾的里有放得了的就摆，不撑出页面、�
       await 勾(page, ["c1", "c2", "c3"]);
       await expect.poll(() => 批量放回(page).count(), { message: `宽 ${w}` }).toBe(1);
       expect(await 不撑出(page), `宽 ${w}`).toBe(true);
-      expect(await 点得到(page, ".list-sel button", /放回公海/), `宽 ${w}`).toBe(true);
+      expect(await 点得到(page, ".list-sel button", /退回公海/), `宽 ${w}`).toBe(true);
       await 批量放回(page).click();
-      // 批量的确认框统一叫「退回公海」（11-12 D3）；工具条按钮照旧「放回公海」
+      // 批量的确认框也叫「退回公海」（11-12 D3）
       expect(await page.locator(".ant-modal-confirm-title").innerText()).toMatch(/^把 \d+ 位退回公海？$/);
       await page.locator(".ant-modal-confirm").getByRole("button", { name: "退回公海" }).click();
       await expect.poll(() => page.evaluate(() => (window as unknown as { __放?: string[] }).__放 ?? null)).toEqual(["c1", "c2", "c3"]);
