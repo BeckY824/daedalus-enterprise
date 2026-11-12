@@ -69,7 +69,7 @@ test("15 寸 1512 宽、面板收着：记录页的时间线至少 480，AI 栏�
   await page.setViewportSize({ width: 1512, height: 982 });
   await 登录(page);
   await 进第一位客户(page);
-  const 时间线 = page.getByRole("main").locator(".rec > .rec-col").first();
+  const 时间线 = page.getByRole("main").locator(".rec > .rec-col, .rec-zone .cd-mid").first(); // 企业版（11-12 客户详情合并）：沟通在项目区中栏
   await expect(时间线).toBeVisible();
   await expect.poll(async () => (await 时间线.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(480);
 });

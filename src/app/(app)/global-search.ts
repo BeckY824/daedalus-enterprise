@@ -6,6 +6,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 客户关键词条件, 搜索词, 号码片段, 号码藏着 } from "@/lib/search-keyword";
 import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 读市场身份, 市场进不了详情的 } from "@/lib/enterprise/market-view-db";
+import { 项目链接们 } from "@/lib/project/customer-detail-direct";
 
 /**
  * 顶部全局搜索（U-项目-04，企业版项目模式）：⌘K / 左栏搜索框里打两个字以上，顺带搜客户、项目、联系人。
@@ -56,10 +57,12 @@ export async function 全局搜索(关键词: string): Promise<全局搜索结�
   // 市场角色（11-04 P-看-06）：只看进度的那条不进搜索结果（详情页本来也挡）
   const 市场挡 = 市场 ? await 市场进不了详情的(me.id, 项目们.map((p) => p.id)) : new Set<string>();
   const 能开项目 = 项目们.filter((p) => !市场挡.has(p.id)).slice(0, 每组上限);
+  // 进得了客户详情的直接去客户页那个项目页签（第 2 批审查 #3），拿不准的照旧 /projects/<id> 由项目页判
+  const 链 = await 项目链接们(me, 能开项目.map((p) => p.id));
   const 拼 = (...xs: (string | null | undefined)[]) => xs.filter(Boolean).join(" · ") || null;
   return {
     客户: 客户们.map((c) => ({ id: c.id, name: c.name, 附注: 拼(c.school, 号(c.phone)), 去: `/customers/${c.id}` })),
-    项目: 能开项目.map((p) => ({ id: p.id, name: p.name, 附注: 拼(p.customer?.name, p.phase, p.node), 去: `/projects/${p.id}` })),
+    项目: 能开项目.map((p) => ({ id: p.id, name: p.name, 附注: 拼(p.customer?.name, p.phase, p.node), 去: 链.get(p.id) ?? `/projects/${p.id}` })),
     // 联系人没有自己的详情页，点了去所属客户
     联系人: 联系人们.map((c) => ({ id: c.id, name: c.name, 附注: 拼(c.customer?.name, c.position, 号(c.phone)), 去: `/customers/${c.customerId}` })),
   };

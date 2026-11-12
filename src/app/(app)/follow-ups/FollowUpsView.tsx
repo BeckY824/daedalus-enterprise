@@ -37,7 +37,7 @@ type Row = {
   ownerName: string;
   ownerId: string;
   /** 这条沟通挂在哪个项目上；没挂 = null */
-  project: { id: string; name: string } | null;
+  project: { id: string; name: string; /** 点项目名去哪：进得了客户详情的是客户页项目页签（page.tsx 算好），没给就 /projects/<id> */ href?: string } | null;
 };
 
 /** 标题和正文开头一样（AI 速记常把正文头一句当标题）：只写一遍正文 */
@@ -127,7 +127,7 @@ export default function FollowUpsView({
       ? [{
           title: "项目", key: "project", dataIndex: "project", width: 120, responsive: ["xl"],
           render: (v: Row["project"]) =>
-            v ? <RowLink href={`/projects/${v.id}`} className="fulltext" title={v.name}>{v.name}</RowLink> : <span className="muted">—</span>,
+            v ? <RowLink href={v.href ?? `/projects/${v.id}`} className="fulltext" title={v.name}>{v.name}</RowLink> : <span className="muted">—</span>,
         } satisfies 列<Row>]
       : []),
     // 1024 宽时先收对接人，整张表不用左右拖；1200 以上才出（10-27）

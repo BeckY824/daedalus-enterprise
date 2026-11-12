@@ -32,6 +32,7 @@ import { 级别星 } from "@/lib/enterprise/level-stars";
 import { 主渠道显示名, 渠道显示名 } from "@/lib/enterprise/channel-main-core";
 import { 回公海文案 } from "@/lib/enterprise/recycle-text";
 import { 卡片小字, type 项目行, type 看板一列 } from "@/lib/project/board";
+import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
 import type { 看板列 } from "@/lib/project/nodes";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 字典of, 结局叫法, 阶段与进程, 阶段们, type 阶段, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
@@ -143,6 +144,8 @@ export default function ProjectsView({
    */
   高亮?: string;
 }) {
+  /** 客户详情合并（11-12 第 2 批）：企业版看得到客户的，项目在客户详情的项目区里，直接去那儿停在这个项目的页签；客户看不到的照旧进项目详情 */
+  const 项目地址 = (r: 项目行) => (企业版 && r.customerId && r.customerName != null && !r.进不了客户详情 ? 客户页项目地址(r.customerId, r.id) : `/projects/${r.id}`);
   const router = useRouter();
   const 预取 = useHoverPrefetch();
   const { message } = App.useApp();
@@ -447,7 +450,7 @@ export default function ProjectsView({
           空库={总数 === 0 && !在筛}
           加载中={pending}
           // 只看进度（已分给圈外的人）：行在、点不进详情（服务端详情页另挡，P-看-06）
-          行链接={(r) => (r.只看进度 ? "" : `/projects/${r.id}`)}
+          行链接={(r) => (r.只看进度 ? "" : 项目地址(r))}
           行类={(r) => (r.只看进度 ? "row-readonly" : "")}
           亮={高亮 ? [高亮] : undefined}
           分页={{ 当前页: 页, 每页, 总数, 翻页 }}
@@ -499,7 +502,7 @@ export default function ProjectsView({
                       const 小字 = 卡片小字(r, 字典);
                       // 只看进度（市场角色、已分给圈外的人）：卡片照摆、点不进详情（P-看-06）
                       const 能进 = !r.只看进度;
-                      const 去 = () => 能进 && router.push(`/projects/${r.id}`);
+                      const 去 = () => 能进 && router.push(项目地址(r));
                       return (
                         <div
                           key={r.id}
@@ -510,9 +513,9 @@ export default function ProjectsView({
                           title={异常 && 异常说明(r) ? `异常：${异常说明(r)}` : `${r.customerName ?? 领了再看(r)} · ${小字}${能进 ? "" : " · 已分给他人，只看进度"}`}
                           aria-label={`${r.name}，${r.customerName ?? 领了再看(r)}，${小字}，${金额(r.amount, r.currency)}${r.pooled ? "，在公海" : ""}${r.即将回收 ? `，${回公海文案(r.即将回收).短文字}` : ""}${能进 ? "" : "，已分给他人，只看进度"}`}
                           onClick={去}
-                          onMouseEnter={能进 ? () => 预取.进(`/projects/${r.id}`) : undefined}
+                          onMouseEnter={能进 ? () => 预取.进(项目地址(r)) : undefined}
                           onMouseLeave={能进 ? 预取.出 : undefined}
-                          onFocus={能进 ? () => 预取.进(`/projects/${r.id}`) : undefined}
+                          onFocus={能进 ? () => 预取.进(项目地址(r)) : undefined}
                           onBlur={能进 ? 预取.出 : undefined}
                           onKeyDown={(e) => {
                             if (能进 && (e.key === "Enter" || e.key === " ")) {

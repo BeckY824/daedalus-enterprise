@@ -7,6 +7,7 @@ import { 跟进筛选成员 } from "@/lib/owners";
 import { 带过来的客户 } from "@/lib/options";
 import { llmEnabled } from "@/lib/llm";
 import { 看得到的跟进数 } from "@/lib/scope-sql";
+import { 项目链接们 } from "@/lib/project/customer-detail-direct";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export default async function FollowUpsPage({
   /** customer：从某位客户带过来的，「记一条沟通」预填他；new=1：进来就把框打开 */
   searchParams: Promise<{ keyword?: string; type?: string; ownerId?: string; customer?: string; new?: string }>;
 }) {
-  await requireUser();
+  const me = await requireUser();
   const sp = await searchParams;
   // 关键词去掉前后空格再搜（2026-10-04 J-008）：复制来的「张三 」原来一个都搜不到
   const 词 = 搜索词(sp.keyword);
@@ -60,6 +61,8 @@ export default async function FollowUpsPage({
     llmEnabled(),
   ]);
 
+  // 「项目」列：进得了客户详情的直接去客户页那个项目页签（第 2 批审查 #3）
+  const 项目链 = await 项目链接们(me, rows.flatMap((f) => (f.projectNode ? [f.projectNode.project.id] : [])));
   return (
     <FollowUpsView
       总数={总数}
@@ -83,7 +86,7 @@ export default async function FollowUpsPage({
         contactName: f.contact?.name ?? null,
         ownerName: f.owner.name,
         ownerId: f.ownerId,
-        project: f.projectNode ? { id: f.projectNode.project.id, name: f.projectNode.project.name } : null,
+        project: f.projectNode ? { id: f.projectNode.project.id, name: f.projectNode.project.name, href: 项目链.get(f.projectNode.project.id) } : null,
       }))}
     />
   );

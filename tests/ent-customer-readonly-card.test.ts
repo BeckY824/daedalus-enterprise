@@ -37,6 +37,7 @@ import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibil
 import { 读客户只读卡 } from "@/lib/enterprise/customer-readonly-card";
 import { 打开客户只读卡Action } from "@/app/(app)/projects/[id]/readonly-card-actions";
 import ProjectPage from "@/app/(app)/projects/[id]/page";
+import { 读项目详情 } from "@/app/(app)/projects/[id]/load";
 import { 项目关联们 } from "@/lib/project/relate";
 import { 无负责人占位Id } from "@/lib/no-owner-db";
 import { 读项目列表 } from "@/lib/project/list";
@@ -271,16 +272,24 @@ describe("开过卡，别的范围不变", () => {
 });
 
 describe("项目详情到卡的入口", () => {
-  type 页数据 = { customer: { id: string } | null; contact: unknown; 客户入口?: string; 客户卡名?: { name: string } | null };
+  type 页数据 = { customer: { id: string } | null; contact: unknown; 客户入口?: string; 客户卡名?: { name: string } | null; 企业版?: boolean };
   const 找详情 = (x: unknown): 页数据 | null => {
     if (Array.isArray(x)) { for (const y of x) { const r = 找详情(y); if (r) return r; } return null; }
     const el = x as ReactElement<{ p?: 页数据; children?: unknown }> | null;
     if (!el || typeof el !== "object" || !("props" in el)) return null;
     return el.props.p ?? 找详情(el.props.children);
   };
+  // 11-12 客户详情合并第 2 批：看得到客户的人打开项目详情会跳到客户详情的项目区（页面抛 REDIRECT），
+  // 项目详情的数据（含 客户入口）改从共用的取数读；页面本身照样打开一遍，进得了客户详情的要跳过去、只读卡的留在原页
   const 打开 = async (u: 人, id: string) => {
-    const r = 找详情(await 以(u, () => ProjectPage({ params: Promise.resolve({ id }) } as never)));
-    if (!r) throw new Error("页面没给 ProjectDetail");
+    const 载 = await 以(u, () => 读项目详情(u as never, id));
+    // 进不了的照原样：页面自己 404（抛 NOT_FOUND）
+    if (载.种 !== "有") { await 以(u, () => ProjectPage({ params: Promise.resolve({ id }) } as never)); throw new Error("页面没给 ProjectDetail"); }
+    const r = 载.props.p as unknown as 页数据;
+    let 页: unknown = null;
+    try { 页 = await 以(u, () => ProjectPage({ params: Promise.resolve({ id }) } as never)); } catch (e) { 页 = (e as Error).message; }
+    if (r.企业版 && r.客户入口 === "详情" && r.customer) expect(页).toBe(`REDIRECT:/customers/${载.customerId}?project=${id}`);
+    else expect(找详情(页)).toEqual(r);
     return r;
   };
 

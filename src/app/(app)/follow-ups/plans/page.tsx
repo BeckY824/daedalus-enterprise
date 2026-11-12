@@ -12,6 +12,7 @@ import { 补计划详情 } from "./plan-rows";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 名下事项够不着 } from "@/lib/enterprise/follow-perm";
 import { 市场进不了详情的 } from "@/lib/enterprise/market-view-db";
+import { 项目链接们 } from "@/lib/project/customer-detail-direct";
 
 export const dynamic = "force-dynamic";
 
@@ -48,8 +49,8 @@ export default async function PlansPage({
       select: { id: true, name: true, nextStepAt: true, nextStepText: true, ownerId: true },
     });
     const 名 = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.ownerId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
-    const 进不了 = await 市场进不了详情的(me.id, rows.map((r) => r.id));
-    return rows.map((r) => ({ key: `project:${r.id}`, id: r.id, 项目名: r.name, 下一步: r.nextStepText, 时间: calendarDay(r.nextStepAt!), ownerId: r.ownerId, ownerName: 名.get(r.ownerId) ?? "已不在的成员", 进不了: 进不了.has(r.id) }));
+    const [进不了, 链] = await Promise.all([市场进不了详情的(me.id, rows.map((r) => r.id)), 项目链接们(me, rows.map((r) => r.id))]);
+    return rows.map((r) => ({ key: `project:${r.id}`, id: r.id, 项目名: r.name, 下一步: r.nextStepText, 时间: calendarDay(r.nextStepAt!), ownerId: r.ownerId, ownerName: 名.get(r.ownerId) ?? "已不在的成员", 进不了: 进不了.has(r.id), 地址: 链.get(r.id) }));
   };
   const [{ plans, tasks, 轻, 负责人 }, teamPlans, teamTasks, myPlans, myTasks, 预选客户, 项目下一步, 够不着] = await Promise.all([
     // 不限定（老板、个人版、企业版没开按组织看）时轻列表走短时缓存（lib/plans-page.ts）
