@@ -17,10 +17,10 @@ vi.mock("@/lib/enterprise/notify", async (原) => {
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 三态夜扫, 三态扫过键, 收三态客户, 写一批, 公海状态, 被挡理由, 暂缓解除理由, 待交接理由 } from "@/lib/enterprise/tri-state-db";
+import { 三态夜扫, 收三态客户, 写一批, 公海状态, 被挡理由, 暂缓解除理由, 待交接理由 } from "@/lib/enterprise/tri-state-db";
 import { 工作日数 } from "@/lib/enterprise/tri-state";
 import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
-import { 钟上三态提醒, 三态提醒水位键 } from "@/lib/enterprise/tri-state-notice";
+import { 钟上三态提醒 } from "@/lib/enterprise/tri-state-notice";
 import { 继续持有, 暂缓回收动作 } from "@/lib/enterprise/tri-state-hold";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 默认组织规则, 默认三态规则, type 组织规则, type 三态规则 } from "@/lib/project/org-rules";
