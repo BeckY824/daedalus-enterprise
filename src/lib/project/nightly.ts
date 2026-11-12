@@ -10,6 +10,8 @@
  *   - 同一个钟顺带清回收站（P9）：删了满 30 天的真删掉，每天一遍，不看项目模式（lib/enterprise/soft-delete.ts 每天清一次）
  *   - 同一个钟顺带发到期提醒（lib/enterprise/due-notice.ts）：北京 09:00 起，跟进计划、项目下一步今天到期的和昨天逾期的
  *   - 同一个钟顺带作废挂满 7 天没人处理的申请移交（lib/enterprise/handover-expire.ts，11-10 新口径）：作废、通知申请人一次，归属不变
+ *   - 客户三态（M-公海-16 起，lib/enterprise/tri-state-db.ts）：00:05 那一遍按客户算状态、写钟和留痕，待回收期满的自动进客户公海；
+ *     组织规则里三态关着这一段完全不跑。三态开着时项目超时回收不再跑（db.ts 按规则收回 直接返回）
  *
  * 服务停过怎么补（10c，2026-11-10）：这些活都挂在本进程的钟上，服务停着就不跑。
  *   - 起钟时马上跑一遍（不等第一分钟），各自的时点照旧（00:05 / 09:00 没到的那几样等到点）
@@ -27,6 +29,7 @@ import { 每天清一次 } from "@/lib/enterprise/soft-delete";
 import { 钟上到期提醒明细, type 到期提醒明细 } from "@/lib/enterprise/due-notice";
 import { 挂起移交作废 } from "@/lib/enterprise/handover-expire";
 import { 挂靠超时转上级 } from "@/lib/enterprise/attach-approval";
+import { 三态夜扫, type 三态夜扫明细 } from "@/lib/enterprise/tri-state-db";
 import { dayjs } from "../utils";
 
 export const 夜扫时刻 = { 时: 0, 分: 5 } as const;
@@ -49,7 +52,13 @@ async function 夜里扫超时明细(现在: Date): Promise<超时收回明细 |
 }
 
 /** 钟上一遍各样活各做了多少（出错的那样是 null，下一遍再试）。申请移交、挂靠审批那两段不在这里记数 */
-export type 一遍明细 = { 超时: 超时收回明细 | null; 回收站: number | null; 到期: 到期提醒明细 | null };
+export type 一遍明细 = { 超时: 超时收回明细 | null; 回收站: number | null; 到期: 到期提醒明细 | null; 三态?: 三态夜扫明细 | null };
+
+/** 三态那一段：到了 00:05 才跑；三态没开 / 不是企业版 = null */
+export async function 夜里扫三态(现在: Date): Promise<三态夜扫明细 | null> {
+  if (!企业版() || !过了夜扫时刻(现在)) return null;
+  return 三态夜扫(现在);
+}
 
 /** 这一遍补到了停机漏的没有：超时扫隔了整天、或逾期提醒从更早的日子补起 */
 export function 补了停机的(r: 一遍明细): boolean {
@@ -67,7 +76,8 @@ export function 补跑日志行(r: 一遍明细, 启动: boolean): string {
     `超时回收 ${数(超时?.收回, "个")}${超时?.补提醒 ? `（另有 ${超时.补提醒} 个停机漏了前一天提醒，已补发、宽限一天）` : ""}、` +
     `将回收提醒 ${数(超时?.将回收提醒, "条")}、` +
     `到期提醒 ${数(到期?.到期, "条")}、逾期提醒 ${数(到期 ? 到期.逾期 + 到期.补逾期 : null, "条")}${到期?.补自 ? `（从 ${到期.补自} 补起，补了 ${到期.补逾期} 条）` : ""}、` +
-    `回收站清理 ${数(r.回收站, "条")}`
+    `回收站清理 ${数(r.回收站, "条")}` +
+    (r.三态 ? `、客户三态算了 ${r.三态.算了} 位（换状态 ${r.三态.换状态}、自动进公海 ${r.三态.进公海.length}）` : "")
   );
 }
 
@@ -91,6 +101,10 @@ export function 启动夜扫(间隔毫秒 = 60_000, 先等?: Promise<unknown>): 
     return 夜里扫超时明细(现在)
       .then((x) => { r.超时 = x ?? { 收回: 0, 将回收提醒: 0, 上次扫: null, 漏扫天数: 0, 补提醒: 0 }; })
       .then(() => undefined, (e) => console.error("[超时回收] 夜里扫的时候出错，下一分钟再试", e))
+      // 客户三态：和超时回收各管各的（三态开着时超时回收本身不跑）
+      .then(() => 夜里扫三态(现在))
+      .then((x) => { r.三态 = x; })
+      .then(() => undefined, (e) => console.error("[客户三态] 夜里扫的时候出错，下一分钟再试", e))
       // 回收站到期清理：和超时回收各管各的，一边出错不拦另一边
       .then(() => (过了夜扫时刻(现在) ? 每天清一次(现在) : null))
       .then((清) => { r.回收站 = 清 ? Object.values(清).reduce((a, b) => a + b, 0) : 0; })
