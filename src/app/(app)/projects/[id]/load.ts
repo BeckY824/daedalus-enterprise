@@ -65,11 +65,12 @@ function 时限标签(nextAt: Date) {
   return 过 === 0 ? { 级别: "拿捏" as const, 文字: `下一步是今天（${日}）` } : { 级别: "稳" as const, 文字: `下一步 ${日}` };
 }
 
-/** 市场角色已分出去的那条（11-04 P-看-06）：列表里真有这一行的转回项目页高亮，别的 404；不是这种情况给 null。读项目详情 和 项目页去向 共用 */
+/** 市场角色已分出去的那条（11-04 P-看-06）：列表里真有这一行的转回客户页（11-12 X-107，原来是项目页）高亮，别的 404；不是这种情况给 null。读项目详情 和 项目页去向 共用 */
 async function 市场去向(me: SessionUser, p: { id: string; name: string; ownerId: string; creatorId: string; pooledAt: Date | null }, 已加入: string[]): Promise<{ 种: "无" } | { 种: "转向"; 到: string } | null> {
   if (!企业版() || !(await 市场进不了详情(me.id, p.id, { ownerId: p.ownerId, pooledAt: p.pooledAt, 已加入 }))) return null;
   const 圈 = (await 读市场身份(me.id))?.圈 ?? [];
-  if (p.ownerId && 圈.includes(p.creatorId)) return { 种: "转向", 到: `/projects?q=${encodeURIComponent(p.name)}&hl=${encodeURIComponent(p.id)}` };
+  // P-界面-11：落点从项目页换到客户页（X-107：市场角色左栏只有「客户」，客户页就是他们原来的项目页），同样搜项目名、高亮那一行
+  if (p.ownerId && 圈.includes(p.creatorId)) return { 种: "转向", 到: `/customers?q=${encodeURIComponent(p.name)}&hl=${encodeURIComponent(p.id)}` };
   return { 种: "无" };
 }
 

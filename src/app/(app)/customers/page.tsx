@@ -36,7 +36,9 @@ import { 客户项目概况们 } from "@/lib/project/customer-list-projects";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { cookies } from "next/headers";
 import { 客户页看法键 } from "@/lib/customers-view-pref";
-import { 项目页, 项目页参数名 } from "../projects/board-page";
+import { 项目页, type 项目页参数 } from "../projects/board-page";
+import { 读市场身份 } from "@/lib/enterprise/market-view-db";
+import type { SessionUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -108,19 +110,22 @@ async function 记的看法(): Promise<string | undefined> {
   }
 }
 
+/**
+ * 看板视图的那块看板：先按这一行筛选筛出客户（C18：「先筛客户、再出这些客户的项目卡」），再出这些客户名下我看得到的项目。
+ * 阶段 / 进程直接按项目筛（看板的列就是进程，按客户筛会冒出同一位客户别的阶段的项目，见回报待定）；页码、每页条数是看板自己的。
+ * 除了页签什么都没筛 = 不收窄（和项目页一样）
+ */
+async function 看板体(me: SessionUser, sp: Awaited<SP>) {
+  const { phase, node, page, pageSize, sort: _排序, ...客户的 } = sp;
+  const w = await 客户筛选条件(客户的);
+  return 项目页(me, { phase, node, page, pageSize }, { 客户: 只按页签(w) ? null : w });
+}
+
 export default async function CustomersPage({ searchParams }: { searchParams: SP }) {
   const me = await requireUser();
   const sp = await searchParams;
   // 开了「N 天没跟进自动放进公海」的话，一天扫一次；扫出来的这一页就能看到。业务配置和它互不相干，一起读
   const [, b] = await Promise.all([自动掉公海(me), getBusiness()]);
-  /*
-    企业版项目模式的「看板」视图（11-12 客户详情合并第 3 批，定稿 UI board()）：按节点分列的项目看板，和项目页同一份取数和画法（projects/board-page.tsx）。
-    记在 cookie 里（lib/customers-view-pref.ts）；地址上带了客户列表自己的参数（新建、导入、子集、客户负责人…）照旧画列表。看板视图不取客户列表那一大堆，列表视图也不取看板
-  */
-  if (企业版() && b.projectMode && (await 记的看法()) === "board"
-    && Object.entries(sp).every(([k, v]) => !v || (项目页参数名 as readonly string[]).includes(k))) {
-    return 项目页(me, sp, true);
-  }
 
   const 正整数 = (raw: string | undefined, fallback: number) => {
     const n = Number(raw);
@@ -137,6 +142,14 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   /** 按创建时间排（11-11）：默认就是新的在前，点表头可以换成旧的在前；不给 = 默认 */
   const 创建排序 = sp.sort === "created-asc" || sp.sort === "created-desc" ? sp.sort : "";
   const sortCurrency = 规整币种(sp.sortCurrency, b.currency);
+  /*
+    市场成员、市场管理（X-107，用户 11-12「按第 1 种做」）：左栏只有「客户」，客户页给他们的就是原来项目页给他们的那套只读视图
+    （P-界面-05 范围 / 默认列 / 列锁定 / 创建人筛选、P-看-06 点不进、P-界面-11 被挡转来的 q / hl 高亮），照搬、不增不减：
+    同一个 项目页 画法，地址落在 /customers。新建客户、导入、子集这几个客户页自己的入口照旧画客户页
+  */
+  if (企业版() && b.projectMode && !sp.new && !sp.import && !在看子集(sp) && (await 读市场身份(me.id))) {
+    return 项目页(me, sp as 项目页参数, undefined, { 基址: "/customers", 标题: b.customer });
+  }
 
   /*
     带关键词、只筛本表等值的（最常见的「搜一下」）：总数、页码和这一页的 id 一条 SQL 出（P2，query.ts 关键词分页）。
@@ -179,7 +192,15 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const 删权限org = 企 ? await 权限组织() : null;
   /** 企业版项目模式：客户表格多「当前节点」「项目数」两列和「阶段」「进程」两个筛选（第 3 批） */
   const 按项目 = 企 && b.projectMode;
-  const 行P = 快 ? 按序取客户行(快.ids) : sort ? 客户金额分页(where!, sort, sortCurrency, page, pageSize) : prisma.customer.findMany({
+  /*
+    「看板」视图（11-12 客户详情合并第 3 批，构想页 C17 / C18）：页头、筛选行和客户列表一样，表格换成按节点分列的项目看板
+    （和项目页同一份取数和画法，projects/board-page.tsx）。记在 cookie（lib/customers-view-pref.ts），服务端据此只取一边：
+    看板视图不取这一页客户行和两列，列表视图不取看板。子集（导入这一批、本月新增、直接推荐）里照旧是列表
+  */
+  const 看板视图 = 按项目 && !子集 && (await 记的看法()) === "board";
+  const 看板P = 看板视图 ? 看板体(me, sp) : null;
+  看板P?.catch(() => {});
+  const 行P = 看板视图 ? Promise.resolve([]) : 快 ? 按序取客户行(快.ids) : sort ? 客户金额分页(where!, sort, sortCurrency, page, pageSize) : prisma.customer.findMany({
       where: where!,
       orderBy: 等级排序
         ? [{ extra: { level: { sort: 等级排序 === "level-asc" ? "asc" : "desc", nulls: "last" } } }, { createdAt: "desc" }, { id: "desc" }]
@@ -221,12 +242,12 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     企 ? 页面可选项("custAttr") : [],
     企 ? 页面字典("custAttr") : [],
     企 ? 页面客户释义() : undefined,
-    // 离职交接入口（11-03 B7-2）：开了项目模式摆在项目页头，没开摆在这里
-    企 && !b.projectMode ? 离职交接入口(me) : null,
+    // 离职交接入口（11-03 B7-2）：企业版都摆在客户页页头（11-12 C15：导航去掉「项目」后入口挪到这里），谁看得见、数怎么数照原来
+    企 ? 离职交接入口(me) : null,
     // 「客户来源」筛选的候选（11-06 自定义筛选）：含停用的，老客户还挂着
     企 ? 渠道筛选选项() : [],
     // 「当前节点」「项目数」两列（11-12 客户详情合并第 3 批）：这一页的客户一句取项目，只算我能看的（和客户详情的页签同一圈）
-    按项目 ? 行P.then((rs) => 客户项目概况们(me, rs.map((r) => r.id))) : undefined,
+    按项目 && !看板视图 ? 行P.then((rs) => 客户项目概况们(me, rs.map((r) => r.id))) : undefined,
     // 进程下拉的结局叫法跟组织规则里改过的出口叫法（同项目页）
     按项目 ? 生效组织规则() : null,
   ]);
@@ -331,6 +352,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       国家们={用着的国家.map((x) => x.country!).filter(Boolean)}
       项目概况={项目概况}
       项目看板={按项目}
+      看板体={看板P ? await 看板P : undefined}
       出口叫法={组织规则?.阶段.出口叫法}
     />
   );

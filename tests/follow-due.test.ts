@@ -25,10 +25,10 @@ describe("要跟的数：一个口径、处处一样", () => {
 
   it("左栏「跟进」、手机铃铛、记录页「计划」按钮都挂它", () => {
     const 壳 = 读("src/components/AppShell.tsx");
-    // 左栏哪一项挂红数看 挂要跟：别的版本是「跟进」，企业版项目模式跟进不在左栏，挂在「项目」上（lib/enterprise/nav.ts，10-29）
+    // 左栏哪一项挂红数看 挂要跟：别的版本是「跟进」，企业版项目模式跟进不在左栏，挂在「客户」上（lib/enterprise/nav.ts；10-29 起挂「项目」，11-12 C1 去掉「项目」后挪到「客户」）
     expect(壳).toContain("n.挂要跟 && 要跟数 > 0");
     expect(壳).toMatch(/key: "\/follow-ups", icon: <InteractionOutlined \/>, label: "跟进", 组: "主", 挂要跟: true/);
-    expect(读("src/lib/enterprise/nav.ts")).toMatch(/key: "\/projects", label: "项目", 图: "项目", 挂要跟: true/);
+    expect(读("src/lib/enterprise/nav.ts")).toMatch(/key: "\/customers", label: 客户叫法, 图: "客户", 挂要跟: true/);
     expect(壳).toMatch(/<Badge count=\{要跟数\}/);
     expect(读("src/app/(app)/follow-ups/FollowUpsView.tsx")).toContain("useFollowDue()");
     // 企业版项目首页只留看板、列表（U-项目-08，10-31）：页头不再摆「沟通记录」键，项目页不挂这个数

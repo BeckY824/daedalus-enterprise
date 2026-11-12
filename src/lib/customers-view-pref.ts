@@ -6,9 +6,15 @@
 export const 客户页看法键 = "customers-view";
 export type 客户页看法 = "board" | "list";
 
-/** 浏览器里记下，再回到客户页（不带筛选，两边的筛选不通用）重新取一屏 */
+/**
+ * 浏览器里记下，再按同一组筛选重新取一屏（C18：两边是同一行筛选，切视图筛选留着）。
+ * 页码、每页条数、排序两边各算各的（列表翻客户、看板翻项目），换视图时去掉
+ */
 export function 换客户页看法(v: 客户页看法, 去: { push: (u: string) => void; refresh: () => void }) {
   document.cookie = `${客户页看法键}=${v}; path=/; max-age=31536000; samesite=lax`;
-  if (location.pathname + location.search === "/customers") 去.refresh();
-  else 去.push("/customers");
+  const q = new URLSearchParams(location.search);
+  for (const k of ["page", "pageSize", "sort", "sortCurrency"]) q.delete(k);
+  const 址 = q.size ? `/customers?${q}` : "/customers";
+  if (location.pathname + location.search === 址) 去.refresh();
+  else 去.push(址);
 }

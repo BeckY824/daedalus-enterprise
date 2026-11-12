@@ -3,7 +3,7 @@
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
 import CopyValue from "@/components/CopyValue";
 import Heat from "@/components/Heat";
-import { useEffect, useState, useSyncExternalStore, useRef, type CSSProperties } from "react";
+import { useEffect, useState, useSyncExternalStore, useRef, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Select, Space, Dropdown, App, Tag, Segmented, type MenuProps, type SelectProps } from "antd";
@@ -196,6 +196,8 @@ type Props = {
   出口叫法?: 出口叫法改动 | null;
   /** 企业版项目模式：「列表 / 看板」的看板是按节点分列的项目看板（11-12 第 3 批，换一屏由服务端画）；按客户属性分列的看板不摆 */
   项目看板?: boolean;
+  /** 看板视图（C17 / C18）：服务端画好的项目看板（工具行 + 收件箱 + 按节点分列），换掉表格；页头和筛选行照列表 */
+  看板体?: ReactNode;
   /** 客户来源筛选的选项（企业版）；含已停用的渠道 */
   渠道筛选项?: { value: string; label: string }[];
   /** 团队有两个以上一级部门时的部门下拉（带缩进）；空 = 不摆 */
@@ -254,7 +256,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 创建排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 待交接 = null, 项目概况, 出口叫法, 项目看板 = false,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 创建排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 待交接 = null, 项目概况, 出口叫法, 项目看板 = false, 看板体,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -905,7 +907,6 @@ export default function CustomersView({
           /* 主动作在页头右上角，全站六张列表页同一个位置（设计稿 11/PAGE）。
              导出是次动作，排在它左边，空库时没什么可导，不出现 */
           <Space wrap>
-            {待交接 != null && <Link href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>}
             {能看板 && !空库 && !统一公海 && <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看法} onChange={set看法} />}
             {/* 导入和导出都是次动作，排在主动作左边。导入空库时也要在——
                 第一次进来的人手上那份 Excel 正是他不想一条条录的原因 */}
@@ -940,6 +941,8 @@ export default function CustomersView({
             {能新建和领取 && <Button type="primary" icon={<PlusOutlined />} onClick={新建}>
               新建{b.customer}
             </Button>}
+            {/* 离职交接（C15）：页头最右端。谁看得见、数怎么数照原来的入口（离职交接入口），不是这页自己数 */}
+            {待交接 != null && <Link href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>}
           </Space>
         }
       />
@@ -953,7 +956,7 @@ export default function CustomersView({
       {/* 企业版项目模式：「看板」是按节点分列的项目看板（定稿 UI board()，11-12 第 3 批），记在 cookie 里、服务端换一屏画（projects/board-page.tsx） */}
       {项目看板 && !空库 && !子集 && (
         <div className="cust-view-seg">
-          <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value="列表" onChange={(v) => v === "看板" && 换客户页看法("board", router)} />
+          <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看板体 !== undefined ? "看板" : "列表"} onChange={(v) => 换客户页看法(v === "看板" ? "board" : "list", router)} />
         </div>
       )}
 
@@ -1164,7 +1167,7 @@ export default function CustomersView({
           if (key === "level") apply({ sort: order === "ascend" ? "level-asc" : order === "descend" ? "level-desc" : "" });
           if (key === "createdAt") apply({ sort: order === "ascend" ? "created-asc" : order === "descend" ? "created-desc" : "" });
         }}
-        替表格={看法 === "看板" ? <CustomerBoard 行们={rows} 字典={客户属性字典} 加载中={pending} 页={page} 每页={pageSize} 总数={total} 翻页={翻页} 去={(id) => router.push(`/customers/${id}`)} /> : undefined}
+        替表格={看板体 !== undefined ? 看板体 : 看法 === "看板" ? <CustomerBoard 行们={rows} 字典={客户属性字典} 加载中={pending} 页={page} 每页={pageSize} 总数={total} 翻页={翻页} 去={(id) => router.push(`/customers/${id}`)} /> : undefined}
         汇总={金额排序 && <Space wrap style={{ marginBottom: 12 }}><span>金额按</span><CurrencySelect aria-label="金额排序币种" value={f.sortCurrency || b.currency} onChange={v => apply({ sortCurrency: v })}/><span>在全部筛选结果中{金额排序 === "amount-asc" ? "升序" : "降序"}排列；其他币种不相加</span></Space>}
         分页={{
           当前页: page,

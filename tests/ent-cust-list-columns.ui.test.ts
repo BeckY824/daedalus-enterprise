@@ -42,7 +42,7 @@ beforeAll(async () => {
     const rows=[行('c1','me'),行('c2','u2'),行('c3','me')];
     const 项目概况={c1:{项目数:12,当前节点:'异常 · 某个后台改得特别特别长的节点名字',当前阶段:'订单'},c2:{项目数:1,当前节点:'方案敲定',当前阶段:'商机'}};
     root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'me',name:'小王'}}>
-      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:'',node:''}} 客户数={3} 企业版 项目概况={项目概况} 项目看板/>
+      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:'',node:''}} 客户数={3} 企业版 项目概况={项目概况} 项目看板 待交接={window.__交接??null} 看板体={window.__看板?<div className='fake-board'>项目看板</div>:undefined}/>
     </我Provider></BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [列表桩], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
@@ -136,4 +136,34 @@ it("「列表 / 看板」单独一行停在列表；按客户属性分列的看�
     // 还是客户列表（换不换是服务端的事），不会冒出按客户属性分列的那块
     expect(await page.locator(".cust-board").count()).toBe(0);
   } finally { await page.close(); }
+});
+
+it("看板视图（C17 / C18 / C15）：页头照客户列表（导入、导出、新建客户），离职交接在页头最右端带数；筛选行照摆、表格换成看板；切回列表筛选留着、页码去掉", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    const page = await browser.newPage({ viewport: { width: w, height: 900 } }); page.setDefaultTimeout(5000);
+    const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+    try {
+      await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+      await page.goto("http://cust-cols.test/?keyword=abc&phase=%E5%95%86%E6%9C%BA&page=3&pageSize=50");
+      await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+      await page.addStyleTag({ content: `#root{margin-left:220px;padding:22px 26px}` });
+      await page.evaluate(() => { Object.assign(window, { __看板: true, __交接: 3 }); });
+      await page.addScriptTag({ content: 包 });
+      await page.locator(".fake-board").waitFor();
+      expect(await page.locator("tr.ant-table-row").count(), `宽 ${w}`).toBe(0);
+      const 钮 = (await page.locator(".page-head button").allInnerTexts()).map((t) => t.replace(/\s+/g, ""));
+      expect(钮, `宽 ${w}`).toEqual(expect.arrayContaining(["导入", "导出", "新建客户"]));
+      expect(钮.at(-1), `宽 ${w}`).toBe("离职交接3");
+      expect(await page.locator(".page-head").getByRole("button", { name: /新增项目|分配/ }).count(), `宽 ${w}`).toBe(0);
+      // 同一行筛选：搜索框、阶段、进程都在
+      expect(await page.getByRole("combobox", { name: "阶段" }).count() + await page.getByText("更多筛选").count(), `宽 ${w}`).toBeGreaterThan(0);
+      const 切 = page.locator(".cust-view-seg .ant-segmented");
+      expect(await 切.locator(".ant-segmented-item-selected").innerText(), `宽 ${w}`).toBe("看板");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `宽 ${w}`).toBe(true);
+      await 切.getByText("列表", { exact: true }).click();
+      expect(await page.evaluate(() => document.cookie), `宽 ${w}`).toContain("customers-view=list");
+      expect(await page.evaluate(() => (window as unknown as { __push?: string }).__push), `宽 ${w}`).toBe("/customers?keyword=abc&phase=%E5%95%86%E6%9C%BA");
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
 });

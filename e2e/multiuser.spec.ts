@@ -296,7 +296,7 @@ test.describe("E 组：同账号多设备与在线停用", () => {
       await 确认.getByRole("button", { name: /确认停用/ }).click();
       await expect(管理.page.locator(".ant-message")).toContainText("已停用并转交");
     } else {
-      // 企业版办离职名下原地不动、不选接手人（11-03 C4-4），停用后到「项目 → 离职交接」里交
+      // 企业版办离职名下原地不动、不选接手人（11-03 C4-4），停用后到客户页页头「离职交接」里交（11-12 C15）
       await 确认.getByRole("button", { name: /确认停用/ }).click();
       await expect(管理.page.locator(".ant-message")).toContainText("已停用");
     }

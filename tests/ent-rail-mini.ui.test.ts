@@ -73,8 +73,8 @@ it("客户详情：壳上有 rail-mini，左栏 56 宽、字藏起来只留图�
         return [...nav.querySelectorAll("a, button, .rail-count")].filter(el => (el as HTMLElement).offsetParent !== null && el.getBoundingClientRect().right > 右 + 0.5).map(el => el.className);
       });
       expect(出界, `${w}`).toEqual([]);
-      // 要跟的红数原来挂在「项目」上；11-12 去掉「项目」后企业版左栏眼下没有哪一项挂它（挂哪儿待用户定），先钉住「不出现」
-      expect(await page.locator(".rail-count").count()).toBe(0);
+      // 要跟的红数原来挂在「项目」上；11-12 C1 挪到「客户」，56px 图标态的角标同一个
+      expect(await page.locator(".rail-count").innerText()).toBe("99+");
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       expect(errors).toEqual([]);
     } finally { await page.close(); }

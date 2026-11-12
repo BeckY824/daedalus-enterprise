@@ -68,17 +68,19 @@ import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibil
 import CustomersPage from "@/app/(app)/customers/page";
 import ProjectsPage from "@/app/(app)/projects/page";
 import { 最近有动静的 } from "@/lib/project/customer-list-projects";
+import { 市场成员key } from "@/lib/enterprise/market";
+import { 企业版根目录 } from "@/lib/enterprise/nav";
 
 /**
- * 上限：11-12 改前实测 35 条；加两列后 37 条（这一页的项目一句 + 项目上我加入没有一句，和每页几位客户无关；公海项目不算，不用再读回避名单）+ 小余量。
+ * 上限：11-12 改前实测 35 条；加两列后 37 条，页头摆离职交接（C15）后 38 条（多 1 条；离职交接入口里的下属、停用下属改从组织里取，不再另查；这一页的项目一句 + 项目上我加入没有一句，和每页几位客户无关；公海项目不算，不用再读回避名单）+ 小余量。
  * 往上调之前先 CUST_LIST_QUERY_DUMP=<文件> 跑一遍看明细，是不是又每行查了一遍
  */
 const 客户列表查询上限 = 42;
 /**
- * 看板视图（cookie 记着「看板」）：只取项目看板那一份（projects/board-page.tsx，和 /projects 同一份），客户列表那一大堆一条不取。
- * 11-12 实测 26 条，和 /projects 一样多（见下面用例）；上限 = 实测 + 小余量
+ * 看板视图（cookie 记着「看板」）：客户页的页头、页签数、筛选选项照取，这一页客户行和两列不取，多取项目看板那一份（projects/board-page.tsx）。
+ * 11-12 实测 48 条（客户页页头那份 ~22 + 项目看板那份 ~26），客户、项目多少不变（见用例）；上限 = 实测 + 小余量
  */
-const 客户页看板查询上限 = 30;
+const 客户页看板查询上限 = 52;
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 const 造人 = async (key: string, bizRole: string, managerId: string | null = null): Promise<人> => {
@@ -115,6 +117,8 @@ async function 量(sp: Record<string, string> = {}, 谁: 人 = 甲, 页 = Custom
     mocks.在请求 = true;
     try { return await 以谁的身份(谁.id, () => 页({ searchParams: Promise.resolve(sp) } as never)); } finally { mocks.在请求 = false; }
   };
+  // 热身前也清：上一条用例的请求内缓存还留着（库已经清过），热身就不会把第一次读顺手建的字典建上
+  记.缓存.clear();
   await 开();
   记.缓存.clear(); 记.句 = []; 记.开 = true;
   let el: unknown;
@@ -192,28 +196,83 @@ describe("「当前节点」「项目数」两列（11-12 第 3 批）", () => {
   });
 });
 
-describe("客户页「看板」视图（11-12 第 3 批：按节点分列的项目看板，和 /projects 同一份）", () => {
+describe("客户页「看板」视图（11-12 第 3 批 C17 / C18：页头、筛选行照客户列表，表格换成按节点分列的项目看板）", () => {
   const 明细 = (句: string[]) => [...句.reduce((m, q) => { const k = q.replace(/\s+/g, " ").replace(/`main`\./g, "").slice(0, 140); return m.set(k, (m.get(k) ?? 0) + 1); }, new Map<string, number>())].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n}\t${k}`).join("\n");
-  it("记着看板：画项目看板（客户页模式），不取客户列表；查询条数和 /projects 一样、不超过上限", async () => {
+  type 看板参数 = { 客户页?: boolean; 行: { customerName: string | null; name: string; 只看进度?: boolean }[]; 总数: number };
+  const 看板of = (el: unknown) => ((参数(el) as unknown as { 看板体?: { props: 看板参数 } }).看板体)?.props;
+  it("记着看板：客户页照画（页头、筛选行），看板体是客户页模式的项目看板；不取这一页客户行和两列；条数不超过上限、不随客户和项目多少变", async () => {
     mocks.看法 = "board";
     const 看板 = await 量();
-    const p = (看板.el as { props: { 客户页?: boolean; 行: { customerName: string | null }[] } }).props;
+    const p = 看板of(看板.el)!;
     expect(p.客户页).toBe(true);
     expect(p.行.length).toBeGreaterThan(0);
+    expect(参数(看板.el).rows).toEqual([]);
+    expect(参数(看板.el).项目概况).toBeUndefined();
     expect(看板.句.some((q) => /FROM `Customer` .*ORDER BY `Customer`\.`createdAt`/.test(q.replace(/`main`\./g, "")))).toBe(false);
-    const 项目页 = await 量({}, 甲, ProjectsPage as never);
-    if (process.env.CUST_BOARD_QUERY_DUMP) (await import("node:fs")).writeFileSync(process.env.CUST_BOARD_QUERY_DUMP, `客户页看板 ${看板.句.length} 条，/projects ${项目页.句.length} 条\n\n${明细(看板.句)}\n`);
-    expect(看板.句.length).toBeLessThanOrEqual(项目页.句.length + 1);
+    if (process.env.CUST_BOARD_QUERY_DUMP) (await import("node:fs")).writeFileSync(process.env.CUST_BOARD_QUERY_DUMP, `客户页看板 ${看板.句.length} 条\n\n${明细(看板.句)}\n`);
     expect(看板.句.length).toBeLessThanOrEqual(客户页看板查询上限);
+    // 多 12 位客户、每位 2 个项目：条数一样（不按行查）
+    for (let i = 0; i < 12; i++) {
+      const c = await prisma.customer.create({ data: { name: `加的客户${i}`, phone: `1390000020${String(i).padStart(2, "0")}`, salesOwnerId: 甲.id } });
+      for (let j = 0; j < 2; j++) await prisma.project.create({ data: { name: `加的项目${i}-${j}`, customerId: c.id, ownerId: 甲.id, creatorId: 甲.id, phase: "商机", node: "方案敲定" } });
+    }
+    expect((await 量()).句.length).toBe(看板.句.length);
   });
 
-  it("带了客户列表自己的参数（新建、子集、客户负责人）照旧画列表；没记看板也画列表", async () => {
+  it("同一行筛选（C18）：先按客户筛、再出这些客户的项目卡；阶段 / 进程按项目筛；只按页签 = 不收窄", async () => {
     mocks.看法 = "board";
-    for (const sp of [{ new: "1" }, { batch: "b1" }, { salesOwnerId: "x" }, { custStatus: "跟进中" }] as Record<string, string>[]) {
-      expect((参数((await 量(sp)).el) as unknown as { 项目看板?: boolean }).项目看板, JSON.stringify(sp)).toBe(true);
-    }
+    const 全 = 看板of((await 量()).el)!;
+    expect(new Set(全.行.map((r) => r.customerName))).toEqual(new Set(["列表客户1", "列表客户2", "列表客户3", "列表客户5"]));
+    const 搜 = 看板of((await 量({ keyword: "列表客户3" })).el)!;
+    expect(new Set(搜.行.map((r) => r.customerName))).toEqual(new Set(["列表客户3"]));
+    await prisma.project.updateMany({ where: { name: "项目3-1" }, data: { phase: "订单", node: "签约" } });
+    const 阶 = 看板of((await 量({ keyword: "列表客户3", phase: "订单" })).el)!;
+    expect(阶.行.map((r) => r.name)).toEqual(["项目3-1"]);
+    const 没对上 = 看板of((await 量({ keyword: "没有这位" })).el)!;
+    expect(没对上.行).toEqual([]);
+  });
+
+  it("子集（导入这一批）、记着列表、没记都画列表（没有看板体）", async () => {
+    mocks.看法 = "board";
+    expect(看板of((await 量({ batch: "b1" })).el)).toBeUndefined();
     mocks.看法 = "list";
+    expect(看板of((await 量()).el)).toBeUndefined();
     expect(参数((await 量()).el).rows.length).toBe(6);
+    mocks.看法 = "";
+    expect(看板of((await 量()).el)).toBeUndefined();
+  });
+
+  it("市场成员（X-107）：左栏没有「项目」，客户页列表 / 看板两种记法都是原项目页那套市场视角（落在 /customers、页头叫客户），已分出去的那行只看进度；被挡转来的 q / hl 照认；销售和上级的客户页不变", async () => {
+    const 小市 = await 造人("xs", "channel_ops");
+    await setSetting(市场成员key, [小市.id]);
+    忘掉企业版范围();
+    const c = await prisma.customer.create({ data: { name: "市场线索客户", phone: "13900000300", salesOwnerId: 乙.id } });
+    const pid = (await prisma.project.create({ data: { name: "市场线索", customerId: c.id, ownerId: 乙.id, creatorId: 小市.id, phase: "线索", node: "线索验证" } })).id;
+    type 项目页参 = { 市场: { 视角: string } | null; 行: { id: string; name: string; 只看进度?: boolean }[]; 基址?: string; 标题?: string; 客户页?: boolean; 高亮?: string; filters: Record<string, string> };
+    for (const 记 of ["", "list", "board"]) {
+      mocks.看法 = 记;
+      const p = ((await 量({}, 小市)).el as { props: 项目页参 }).props;
+      expect(p.市场?.视角, 记).toBe("市场成员");
+      expect(p).toMatchObject({ 基址: "/customers", 标题: "客户", 客户页: false });
+      expect(p.行.map((r) => [r.name, r.只看进度])).toEqual([["市场线索", true]]);
+    }
+    const 转来 = ((await 量({ q: "市场线索", hl: pid }, 小市)).el as { props: 项目页参 }).props;
+    expect(转来.高亮).toBe(pid);
+    expect(转来.filters.keyword).toBe("市场线索");
+    // /projects 路由本身留着可进，照旧是这一套（落在 /projects）
+    const 原页 = ((await 量({}, 小市, ProjectsPage as never)).el as { props: 项目页参 }).props;
+    expect(原页.市场?.视角).toBe("市场成员");
+    expect(原页.基址).toBeUndefined();
+    // 客户页自己的入口（新建、导入）照旧画客户页
+    expect(参数((await 量({ new: "1" }, 小市)).el).rows).toBeDefined();
+    expect(企业版根目录("客户").map((x) => x.key)).not.toContain("/projects");
+    // 销售、上级：客户页照旧（客户行、不是项目页）
+    mocks.看法 = "";
+    for (const 谁 of [甲, 经理]) {
+      const p = 参数((await 量({}, 谁)).el) as unknown as { rows: unknown[]; 市场?: unknown; 基址?: string };
+      expect(Array.isArray(p.rows), 谁.name).toBe(true);
+      expect(p.基址).toBeUndefined();
+    }
   });
 
   it("「项目数」「当前节点」和阶段筛选不算公海里的项目", async () => {

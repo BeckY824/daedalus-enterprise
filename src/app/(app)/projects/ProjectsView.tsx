@@ -1,7 +1,7 @@
 "use client";
 
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
@@ -33,7 +33,6 @@ import { 主渠道显示名, 渠道显示名 } from "@/lib/enterprise/channel-ma
 import { 回公海文案 } from "@/lib/enterprise/recycle-text";
 import { 卡片小字, type 项目行, type 看板一列 } from "@/lib/project/board";
 import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
-import { 换客户页看法 } from "@/lib/customers-view-pref";
 import type { 看板列 } from "@/lib/project/nodes";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 字典of, 结局叫法, 阶段与进程, 阶段们, type 阶段, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
@@ -86,7 +85,7 @@ function 节点文字(r: 项目行, 字典: 阶段字典) {
  * 新建照样走项目向导（落在潜客培育）；转商机之后它就只在「项目」页里了（10-26 用户定的三大阶段）。
  */
 export default function ProjectsView({
-  行, 列: 看板, 总数, 页, 每页, 要的页, 排序 = "", users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 能分公海客户项目 = false, 满额提醒: 提醒们 = [], 能按号码筛 = false, 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [], 客户页 = false,
+  行, 列: 看板, 总数, 页, 每页, 要的页, 排序 = "", users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 能分公海客户项目 = false, 满额提醒: 提醒们 = [], 能按号码筛 = false, 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [], 客户页 = false, 基址 = "/projects", 标题,
 }: {
   行: 项目行[];
   列: 看板一列[];
@@ -145,10 +144,15 @@ export default function ProjectsView({
    */
   高亮?: string;
   /**
-   * 画在企业版客户页的「看板」视图里（11-12 客户详情合并第 3 批，定稿 UI board()）：页头叫客户，「列表 / 看板」单独一行、切的是客户列表和这块项目看板；
-   * 筛选、翻页写在 /customers 的地址上。看板、批量分配（页头「分配」临时切到项目列表）、离职交接、项目组邀请、线索复核、我的卡点照原样
+   * 画在企业版客户页的「看板」视图里（11-12 客户详情合并第 3 批，构想页 C17 / C18 / C4）：只画看板这一块——
+   * 页头、「列表 / 看板」、筛选行都是客户页自己的（CustomersView），这里不摆；项目专用的「分配」「我分出去的」「新增项目」放看板工具行；
+   * 项目组邀请、线索复核、我的卡点照原样；离职交接在客户页页头（C15）。翻页保留地址栏上客户页的筛选
    */
   客户页?: boolean;
+  /** 整页画在哪个地址上：筛选、翻页留在这里（X-107：市场角色的客户页 = /customers）；默认 /projects */
+  基址?: string;
+  /** 页头标题，默认「项目」（市场角色的客户页叫客户） */
+  标题?: string;
 }) {
   /** 客户详情合并（11-12 第 2 批）：企业版看得到客户的，项目在客户详情的项目区里，直接去那儿停在这个项目的页签；客户看不到的照旧进项目详情 */
   const 项目地址 = (r: 项目行) => (企业版 && r.customerId && r.customerName != null && !r.进不了客户详情 ? 客户页项目地址(r.customerId, r.id) : `/projects/${r.id}`);
@@ -197,7 +201,18 @@ export default function ProjectsView({
     return () => cancelAnimationFrame(帧);
   }, [高亮]);
   // 排序跟筛选一起记在地址栏（sort），翻页、改筛选都带着；每页条数（pageSize）由 翻页 记
-  const { f, setF, apply, 翻页, reset, pending } = useUrlFilters(新线索 ? "/leads" : 客户页 ? "/customers" : "/projects", { ...filters, sort: 排序 }, 每页);
+  const { f, setF, apply, 翻页: 按筛选翻页, reset, pending: 筛选中 } = useUrlFilters(新线索 ? "/leads" : 基址, { ...filters, sort: 排序 }, 每页);
+  // 客户页看板视图：筛选是客户页那一行的（地址栏上），翻页只改 page / pageSize，别的照原样带着
+  const [翻页中, 开始翻页] = useTransition();
+  const 翻页 = 客户页
+    ? (p: number, size: number) => {
+        const q = new URLSearchParams(window.location.search);
+        q.set("page", String(p));
+        q.set("pageSize", String(size));
+        开始翻页(() => router.push(`/customers?${q}`, { scroll: false }));
+      }
+    : 按筛选翻页;
+  const pending = 筛选中 || 翻页中;
   // 要的页越界（删空了最后一页、手改地址栏）：服务端已给了实际那一页，这里只把地址栏改对，不再取一次（同客户列表）
   useEffect(() => {
     if (要的页 === undefined || 要的页 === String(页)) return;
@@ -422,36 +437,43 @@ export default function ProjectsView({
     </Space>
   );
 
+  /** 项目专用的几颗按钮：项目页在页头；客户页看板视图在看板工具行（C17 / C4） */
+  const 项目按钮 = (
+    <>
+      {项目页分 && 能自动分配 && <Button icon={<SendOutlined />} onClick={去分配}>分配</Button>}
+      {(新线索 || 项目页分) && 线索分配开着 && <AssignedOutButton />}
+      {/* 客户页看板视图的离职交接在客户页页头（C15），这里不再摆一个 */}
+      {!新线索 && !客户页 && 待交接 != null && <Link href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>}
+      {!新线索 && !客户页 && <Segmented<"列表" | "看板"> options={["看板", "列表"]} value={看法} onChange={换看法} />}
+      {/* 一个主按钮：新线索页叫「新线索」；企业版项目首页叫「新增项目」，点开先选新客户还是老客户（11-01 去掉旁边的下拉） */}
+      {(能新建 || !新线索) && <Button type={客户页 ? "default" : "primary"} icon={<PlusOutlined />} onClick={新建}>{新线索 ? "新线索" : 企业版 ? "新增项目" : "新建项目"}</Button>}
+    </>
+  );
+
   return (
     <div>
+      {客户页 ? (
+        // 看板工具行（C17 / C4）：项目专用的按钮；「分配」临时切到的项目列表从这里回看板
+        <div className="cust-board-tool">
+          <Space wrap>
+            {临时列表 && <Button onClick={() => set临时列表(false)}>回到看板</Button>}
+            {项目按钮}
+          </Space>
+        </div>
+      ) : (
       <PageHead
-        title={新线索 ? "新线索" : 客户页 ? b.customer : "项目"}
+        title={新线索 ? "新线索" : 标题 ?? "项目"}
         titleAside={卡标}
         subtitle={
           新线索
               ? "项目的线索阶段：潜客培育 → 线索验证 → 线索推进，以转商机或线索流失结束；转了商机到「项目」里接着走"
-              : 客户页 ? "全部档案与跟进" : "从线索到交付，一个项目一条线"
+              : "从线索到交付，一个项目一条线"
         }
         extra={
           // 窄屏（手机、Windows 1024）按钮多了换行，不撑出页宽
-          <Space wrap>
-            {项目页分 && 能自动分配 && <Button icon={<SendOutlined />} onClick={去分配}>分配</Button>}
-            {(新线索 || 项目页分) && 线索分配开着 && <AssignedOutButton />}
-            {!新线索 && 待交接 != null && <Link href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>}
-            {!新线索 && !客户页 && <Segmented<"列表" | "看板"> options={["看板", "列表"]} value={看法} onChange={换看法} />}
-            {/* 一个主按钮：新线索页叫「新线索」；企业版项目首页叫「新增项目」，点开先选新客户还是老客户（11-01 去掉旁边的下拉） */}
-            {(能新建 || !新线索) && <Button type="primary" icon={<PlusOutlined />} onClick={新建}>{新线索 ? "新线索" : 企业版 ? "新增项目" : "新建项目"}</Button>}
-          </Space>
+          <Space wrap>{项目按钮}</Space>
         }
       />
-
-      {/* 客户页看板视图：「列表 / 看板」单独一行，位置同客户列表（CustomersView 统一公海那一行）；点「列表」回客户列表。
-          页头「分配」临时切到的项目列表也在这里，点「看板」回来 */}
-      {客户页 && (
-        <div className="cust-view-seg">
-          <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={临时列表 ? ("" as "看板") : "看板"}
-            onChange={(v) => (v === "列表" ? 换客户页看法("list", router) : set临时列表(false))} />
-        </div>
       )}
       <InviteInbox 邀请们={邀请们} />
       <VerifyInbox 们={待复核们} />
@@ -486,7 +508,7 @@ export default function ProjectsView({
                   primary: { label: 企业版 ? "新增项目" : "新建第一个项目", onClick: 新建 },
                 }
           }
-          筛选={筛选}
+          筛选={客户页 ? undefined : 筛选}
           批量={可分 ? (选中, 清空, 选中行) => (
             <Button size="small" icon={<ThunderboltOutlined />} onClick={() => void 批量自动分(选中, 清空, 选中行)}>自动分配</Button>
           ) : undefined}
@@ -494,7 +516,7 @@ export default function ProjectsView({
       ) : (
         <>
           <div className="pipe-top">
-            {筛选}
+            {!客户页 && 筛选}
             {右边还有 > 0 && (
               <Button type="link" className="pipe-more-right" title="往右滑一列" onClick={滑一列}>→ 还有 {右边还有} 列</Button>
             )}

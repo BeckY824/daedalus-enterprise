@@ -12,11 +12,11 @@ describe("企业版根目录", () => {
     expect(r.map((x) => x.key)).toEqual(["/dashboard", "/overview", "/channels", 公海入口, "/customers"]);
   });
 
-  it("没有项目、新线索、跟进、联系人；键不重复；要跟的红数眼下没有挂处（待用户定）", () => {
+  it("没有项目、新线索、跟进、联系人；键不重复；要跟的红数挂在「客户」上（11-12 C1）", () => {
     const r = 企业版根目录("客户");
     for (const k of ["/projects", "/leads", "/follow-ups", "/contacts"]) expect(r.map((x) => x.key)).not.toContain(k);
     expect(new Set(r.map((x) => x.key)).size).toBe(r.length);
-    expect(r.filter((x) => x.挂要跟)).toEqual([]);
+    expect(r.filter((x) => x.挂要跟).map((x) => x.key)).toEqual(["/customers"]);
   });
 
   it("公海指统一公海 /pool（P7）", () => {

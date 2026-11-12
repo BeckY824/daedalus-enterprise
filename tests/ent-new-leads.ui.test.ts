@@ -61,7 +61,8 @@ async function 打开(新线索: boolean, width = 1280, 能分 = false, 企 = fa
   if (o.样式) await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addScriptTag({ content: bundle });
   await page.evaluate(([v, f, e, x]) => (window as unknown as { __画: (v: boolean, f: boolean, e: boolean, x: 选项) => void }).__画(v, f, e, x), [新线索, 能分, 企, o] as const);
-  await page.getByRole("heading").first().waitFor();
+  // 客户页模式只画看板那一块，没有页头标题：等工具行
+  await (o.客户页 ? page.locator(".cust-board-tool") : page.getByRole("heading")).first().waitFor();
   return { page, errors };
 }
 const 去了 = (page: Page) => page.evaluate(() => (window as unknown as { __去: string[] }).__去);
@@ -249,24 +250,18 @@ it("企业版项目看板卡片（11-12 客户详情合并第 3 批）：第一�
   }
 });
 
-it("客户页的看板视图（11-12 第 3 批）：页头叫客户、「列表 / 看板」单独一行停在看板；按节点分列的项目看板、离职交接照原样；点「列表」记下并回客户列表", async () => {
+it("客户页的看板视图（11-12 第 3 批 C17 / C15）：只画看板这一块——没有项目页页头、没有「看板 / 列表」、没有离职交接；新增项目在看板工具行；卡片点进客户详情", async () => {
   for (const w of [1024, 1280, 1366]) {
     const { page, errors } = await 打开(false, w, false, true, { 样式: true, 看板: true, 客户页: true });
     try {
-      expect(await page.getByRole("heading").first().innerText(), `宽 ${w}`).toBe("客户");
-      const 切 = page.locator(".cust-view-seg .ant-segmented");
-      expect(await 切.locator(".ant-segmented-item-selected").innerText(), `宽 ${w}`).toBe("看板");
-      // 页头那颗项目页的「看板 / 列表」不摆（只留单独一行这个）
-      expect(await page.locator(".page-head .ant-segmented").count(), `宽 ${w}`).toBe(0);
+      expect(await page.locator(".page-head").count(), `宽 ${w}`).toBe(0);
+      expect(await page.locator(".ant-segmented").count(), `宽 ${w}`).toBe(0);
       expect(await page.locator(".pipe-col").count(), `宽 ${w}`).toBe(5);
-      expect(await page.getByRole("button", { name: "离职交接 2" }).count(), `宽 ${w}`).toBe(1);
-      expect(await page.getByRole("button", { name: "新增项目" }).count(), `宽 ${w}`).toBe(1);
+      expect(await page.getByRole("button", { name: /离职交接/ }).count(), `宽 ${w}`).toBe(0);
+      expect(await page.locator(".cust-board-tool").getByRole("button", { name: "新增项目" }).count(), `宽 ${w}`).toBe(1);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `宽 ${w}`).toBe(true);
       await page.locator(".pipe-card").first().click();
       expect(await 去了(page), `宽 ${w}`).toEqual(["/customers/c10?project=p10"]);
-      await 切.getByText("列表", { exact: true }).click();
-      expect(await 去了(page), `宽 ${w}`).toEqual(["/customers/c10?project=p10", "/customers"]);
-      expect(await page.evaluate(() => document.cookie), `宽 ${w}`).toContain("customers-view=list");
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
