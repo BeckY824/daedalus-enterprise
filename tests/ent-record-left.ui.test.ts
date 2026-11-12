@@ -129,7 +129,7 @@ it("企业版项目模式（P14 → U-客户-03）：没有记录输入、沟通
     expect(await 新建沟通.count()).toBe(1);
     // 11-12 第 1 批：「新建沟通」是卡头的主按钮（蓝底），还是小号
     expect(await 新建沟通.evaluate((el) => [el.classList.contains("ant-btn-primary"), el.classList.contains("ant-btn-sm")])).toEqual([true, true]);
-    expect(await page.locator(".rec-acts").getByRole("button", { name: /沟通/ }).count()).toBe(0);
+    expect(await page.locator(".rec-head-acts").getByRole("button", { name: /沟通/ }).count()).toBe(0);
     expect(await page.getByText("记录跟进").count()).toBe(0);
     expect(await page.locator("textarea").count()).toBe(0);
     expect(await 沟通卡头.locator(".ant-card-head-title").innerText()).toMatch(/^沟通记录（\d+\+?）$/);
@@ -167,35 +167,32 @@ const 全开 = {
   新建项目: { 选项: {} },
   关联们: [],
 };
-const 头按钮 = (page: import("playwright").Page) => page.locator(".rec-acts button").evaluateAll((bs: HTMLElement[]) => bs.map(b => b.innerText.replace(/\s+/g, "")));
-it("企业版项目模式页头（U-客户-03 → 11-12 改名）：只留新开项目、客户转让、客户退回公海；没有主按钮、删除、下拉", async () => {
+const 头按钮 = (page: import("playwright").Page) => page.locator(".rec-head-acts button").evaluateAll((bs: HTMLElement[]) => bs.map(b => b.innerText.replace(/\s+/g, "")));
+it("企业版项目模式页头（U-客户-03 → 11-12 第 2 批）：客户名这一行右端只留客户转让、客户退回公海；新开项目进了项目区；没有主按钮、删除、下拉", async () => {
   const page = await open(true, 1366, true, 全开);
   try {
     // 编辑资料、添加 / 管理联系人、删除客户、AI 都去掉；新建沟通在沟通记录卡头、新建任务在沟通记录下方的待办卡头（11-01）
-    expect(await 头按钮(page)).toEqual(["新开项目", "客户转让", "客户退回公海"]);
-    expect(await page.locator(".rec-acts .ant-btn-primary").count()).toBe(0);
-    expect(await page.locator(".rec-acts .ant-btn-dangerous").count()).toBe(0);
+    expect(await 头按钮(page)).toEqual(["客户转让", "客户退回公海"]);
+    expect(await page.locator(".rec-head-acts .ant-btn-primary").count()).toBe(0);
+    expect(await page.locator(".rec-head-acts .ant-btn-dangerous").count()).toBe(0);
+    // 名字下面那一排没有了
+    expect(await page.locator(".rec-acts").count()).toBe(0);
     expect(await page.locator(".rec-head .ant-dropdown-trigger").count()).toBe(0);
     // 页面上别处也不给去掉的入口；新建任务在沟通栏的待办上
-    const 卡上钮 = await page.locator("button").evaluateAll((bs: HTMLElement[]) => bs.filter(b => !b.closest(".rec-head, .rec-acts")).map(b => (b.getAttribute("aria-label") ?? "") + b.innerText.replace(/\s+/g, "")));
+    const 卡上钮 = await page.locator("button").evaluateAll((bs: HTMLElement[]) => bs.filter(b => !b.closest(".rec-head")).map(b => (b.getAttribute("aria-label") ?? "") + b.innerText.replace(/\s+/g, "")));
     expect(卡上钮.filter(t => /编辑全部|添加联系人|管理联系人|删除客户|新开项目/.test(t))).toEqual([]);
     expect(await page.locator('.rec > .rec-col > .proj-fold:has(> .proj-fold-btn[aria-label="收起待办"]) > .rec-mod > .ant-card-head .ant-card-extra').getByRole("button", { name: /新建任务/ }).count()).toBe(1);
-    // 按钮一行摆在名字下面，各组对齐下面那一栏的左边
-    const [名, 排] = await Promise.all([page.locator(".rec-head-id").boundingBox(), page.locator(".rec-acts").boundingBox()]);
-    expect(排!.y).toBeGreaterThanOrEqual(名!.y + 名!.height - 1);
-    const 对齐 = await page.evaluate(() => {
-      const 栏 = [...document.querySelectorAll(".rec-page > .rec > *")].map(e => Math.round(e.getBoundingClientRect().left));
-      const 组 = [...document.querySelectorAll(".rec-acts .acts-g")].map(e => Math.round(e.getBoundingClientRect().left));
-      return { 栏, 组 };
-    });
-    expect(Math.abs(对齐.组[0] - 对齐.栏[0])).toBeLessThanOrEqual(2);
-    expect(Math.abs(对齐.组[1] - 对齐.栏[1])).toBeLessThanOrEqual(2);
+    // 按钮和客户名同一行、靠右（定稿 UI：客户名一行 + 右端两颗）
+    const [头, 名, 排] = await Promise.all([page.locator(".rec-head").boundingBox(), page.locator(".rec-head-id").boundingBox(), page.locator(".rec-head-acts").boundingBox()]);
+    expect(排!.y).toBeLessThan(名!.y + 名!.height);
+    expect(排!.y + 排!.height).toBeGreaterThan(名!.y);
+    expect(Math.abs(头!.x + 头!.width - (排!.x + 排!.width))).toBeLessThanOrEqual(2);
   } finally { await page.close(); }
 });
 it("「客户转让」开框挑人：没挑之前「下一步」点不了；挑了能点；取消关框", async () => {
   const page = await open(true, 1366, true, 全开);
   try {
-    await page.locator(".rec-acts").getByRole("button", { name: /^客\s*户\s*转\s*让$/ }).click();
+    await page.locator(".rec-head-acts").getByRole("button", { name: /^客\s*户\s*转\s*让$/ }).click();
     const 框 = page.getByRole("dialog");
     await 框.getByText("客户转让 · 客户A").waitFor();
     // 不是负责人本人发起（不用对方确认）：不摆「接手人确认后生效」那句
@@ -210,15 +207,15 @@ it("「客户转让」开框挑人：没挑之前「下一步」点不了；挑�
     await 框.getByRole("button", { name: /取\s*消/ }).click();
     await 框.waitFor({ state: "hidden" });
     // 再开一次，上次挑的人清掉
-    await page.locator(".rec-acts").getByRole("button", { name: /^客\s*户\s*转\s*让$/ }).click();
+    await page.locator(".rec-head-acts").getByRole("button", { name: /^客\s*户\s*转\s*让$/ }).click();
     expect(await page.getByRole("dialog").getByRole("button", { name: /下\s*一\s*步/ }).isDisabled()).toBe(true);
   } finally { await page.close(); }
 });
 it("负责人本人发起（转让要申请）：按钮、框标题照样叫「客户转让」，框里写明接手人确认后生效、7 天不确认作废、归属不变（11-12）", async () => {
   const page = await open(true, 1366, true, { ...全开, 转让要申请: true, 转让原因: { 选项: ["客户要求"], 自己: "qa" } });
   try {
-    expect(await 头按钮(page)).toEqual(["新开项目", "客户转让", "客户退回公海"]);
-    await page.locator(".rec-acts").getByRole("button", { name: /^客\s*户\s*转\s*让$/ }).click();
+    expect(await 头按钮(page)).toEqual(["客户转让", "客户退回公海"]);
+    await page.locator(".rec-head-acts").getByRole("button", { name: /^客\s*户\s*转\s*让$/ }).click();
     const 框 = page.getByRole("dialog");
     await 框.getByText("客户转让 · 客户A").waitFor();
     expect(await 框.getByText("申请移交").count()).toBe(0);
@@ -246,22 +243,23 @@ it("项目模式联系人（U-客户-03 去掉管理联系人）：卡上只有�
 it("虚线下属的客户（全只读）：页头一排按钮都不摆", async () => {
   const page = await open(true, 1366, true, { ...全开, 只读: "全" });
   try {
-    expect(await page.locator(".rec-acts").count()).toBe(0);
+    expect(await page.locator(".rec-head-acts, .rec-acts").count()).toBe(0);
   } finally { await page.close(); }
 });
-it("窄宽：700 / 800 / 1024 按钮一行在名字下面、从左排起、折行不出屏；都不横滚", async () => {
+it("窄宽：700 / 800 / 1024 两颗按钮在客户名那一行右端、不折行不出屏；都不横滚", async () => {
   for (const w of [700, 800, 1024]) {
     const page = await open(true, w, true, 全开);
     try {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
-      const 排 = page.locator(".rec-acts");
+      const 排 = page.locator(".rec-head-acts");
       expect(await 排.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
       const [头, 名, 框] = await Promise.all([page.locator(".rec-head").boundingBox(), page.locator(".rec-head-id").boundingBox(), 排.boundingBox()]);
-      // 每颗按钮都在屏内
-      const 右 = await 排.locator("button").evaluateAll((bs: HTMLElement[]) => Math.max(...bs.map(b => b.getBoundingClientRect().right)));
-      expect(右).toBeLessThanOrEqual(w);
-      expect(框!.y).toBeGreaterThanOrEqual(名!.y + 名!.height - 1);
-      expect(Math.abs(框!.x - 头!.x)).toBeLessThan(2);
+      // 每颗按钮都在屏内、一行
+      const 钮 = await 排.locator("button").evaluateAll((bs: HTMLElement[]) => bs.map(b => { const r = b.getBoundingClientRect(); return { 右: r.right, 高: r.height }; }));
+      expect(Math.max(...钮.map(b => b.右))).toBeLessThanOrEqual(w);
+      expect(钮.every(b => b.高 <= 40)).toBe(true);
+      expect(框!.y).toBeLessThan(名!.y + 名!.height);
+      expect(Math.abs(头!.x + 头!.width - (框!.x + 框!.width))).toBeLessThanOrEqual(2);
     } finally { await page.close(); }
   }
 });
@@ -328,15 +326,15 @@ it("超长号码、超长邮箱：1024 / 1280 / 1366 文字省略、复制键紧
   }
 });
 
-/* 11-12 页头三枚按钮（新开项目 / 客户转让 / 客户退回公海）变长后：1024、375 宽 + 超长公司名，按钮不折行不出界，名字一行不撑出（口径同 e2e 的 量：scrollWidth > clientWidth + 1 且 overflow-x visible 算文字溢出） */
-it.each([1024, 375])("客户页头 %ipx：超长公司名 + 三枚按钮，不出界、不折行、名字不撑出", async (w) => {
+/* 11-12 页头按钮（第 2 批起只剩 客户转让 / 客户退回公海，和客户名同一行）：1024、375 宽 + 超长公司名，按钮不折行不出界，名字一行不撑出（口径同 e2e 的 量：scrollWidth > clientWidth + 1 且 overflow-x visible 算文字溢出） */
+it.each([1024, 375])("客户页头 %ipx：超长公司名 + 两颗按钮，不出界、不折行、名字不撑出", async (w) => {
   const page = await open(true, w, true, { ...全开, 客户改: { name: "超长公司名有限责任公司".repeat(8) } });
   try {
-    expect(await 头按钮(page)).toEqual(["新开项目", "客户转让", "客户退回公海"]);
+    expect(await 头按钮(page)).toEqual(["客户转让", "客户退回公海"]);
     const r = await page.evaluate(() => {
       const vw = document.documentElement.clientWidth;
-      const 钮 = [...document.querySelectorAll(".rec-acts button")].map((b) => b.getBoundingClientRect());
-      const 溢出 = [...document.querySelectorAll(".rec-head *, .rec-acts *")].filter((el) => {
+      const 钮 = [...document.querySelectorAll(".rec-head-acts button")].map((b) => b.getBoundingClientRect());
+      const 溢出 = [...document.querySelectorAll(".rec-head *")].filter((el) => {
         const cs = getComputedStyle(el);
         return el.getBoundingClientRect().width >= 1 && el.scrollWidth > el.clientWidth + 1 && cs.overflowX === "visible" && cs.display !== "inline";
       }).map((el) => `${el.tagName}.${el.className}`);

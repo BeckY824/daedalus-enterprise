@@ -12,7 +12,7 @@ test.afterAll(async()=>{const db=连库();try{await 清空业务数据(db)}final
 async function login(page:Page){await page.goto("/login");await page.getByPlaceholder("用户名").fill("zhangsan");await page.getByPlaceholder("登录密码").fill("admin123");await page.getByRole("button",{name:/登\s*录/}).click();await page.waitForURL(/\/dashboard/)}
 async function ask(page:Page){
  // 企业版（10-31 R6）：页头直接摆「删除客户」按钮；别的版本是移入展开的「更多」里的菜单项
- if(企业版){const btn=page.locator(".rec-acts").getByRole("button",{name:/删除客户/});await expect(btn).toBeVisible({timeout:20_000});await btn.click();return}
+ if(企业版){const btn=page.locator(".rec-head-acts").getByRole("button",{name:/删除客户/});await expect(btn).toBeVisible({timeout:20_000});await btn.click();return}
  // SSR 可见不代表事件已接上；水合/布局变化后重新移入。只重试展开，不重试删除。
  const item=page.getByRole("menuitem",{name:/删除这位客户/});
  await expect(async()=>{

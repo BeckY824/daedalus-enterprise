@@ -60,7 +60,9 @@ const 页们 = (种子 = 企业版种子()): { 名: string; 址: string; 存?: R
   { 名: "项目列表", 址: "/projects", 存: { "projects-view": JSON.stringify("列表") } },
   // 看板 / 列表这个偏好三处共用（项目、公海、新线索），不写就接着上一页的，这里写死成默认的看板
   { 名: "项目公海", 址: "/projects?pool=1", 存: { "projects-view": JSON.stringify("看板") } },
-  { 名: "项目详情", 址: `/projects/${种子.项目}` },
+  // 11-12 客户详情合并第 2 批：项目详情并进客户详情（/projects/<id> 跳 /customers/<客户>?project=<id>），量的是客户页项目区停在这个页签。
+  // 种子第一个项目挂在 gate-scandi 名下（企业版.ts）；直接写跳过去的地址，省一跳，「项目详情-顶 / 底」改名「客户详情-项目区-顶 / 底」
+  { 名: "客户详情-项目区", 址: `/customers/gate-scandi?project=${种子.项目}` },
   { 名: "跟进记录", 址: "/follow-ups" },
   { 名: "计划", 址: "/follow-ups/plans" },
   { 名: "待跟名单", 址: "/follow-ups/watchlist" },

@@ -93,12 +93,18 @@ test("设置 → 组织架构：飞书没填凭据时，「立即同步」灰着
   await expect(飞书.getByTestId("feishu-test")).toBeEnabled();
 });
 
-test("客户详情、项目详情都能打开", async ({ page }) => {
+/** 11-12 客户详情合并第 2 批：项目详情住在客户详情的项目区里，/projects/<id> 跳到 /customers/<客户>?project=<id>、停在这个项目的页签上 */
+async function 停在项目页签(page: Page, 客户: string, 项目: string, 名: string) {
+  await page.waitForURL((u) => u.pathname === `/customers/${客户}` && u.searchParams.get("project") === 项目);
+  await expect(page.getByRole("main").locator(`.rec-zone[data-project="${项目}"] .cd-tab[aria-selected="true"]`)).toContainText(名);
+}
+
+test("客户详情、项目详情都能打开（项目详情跳到客户详情的项目区）", async ({ page }) => {
   await 登录(page, "老板");
   await page.goto(`/customers/${种.客户}`);
   await expect(page.getByRole("main").getByText("公海客户甲").first()).toBeVisible();
   await page.goto(`/projects/${种.项目2}`);
-  await expect(page.getByRole("main").locator(".page-head h1")).toHaveText("同客户项目二");
+  await 停在项目页签(page, 种.客户, 种.项目2, "同客户项目二");
 });
 
 // 按组织看客户（org_scope）：单测钉的是算范围，这条钉列表页、详情页真的按范围取数。放在会改归属的几条前面
@@ -343,11 +349,13 @@ test("项目公海：原负责人看不到公海里的项目；客户在公海�
   await page.context().clearCookies();
   await 登录(page, "销售2");
   // 11-09 起线索公海的项目能单独领（M-公海-06）；但这位客户本身在客户公海里，项目不能单独领，要先去客户公海领客户（pool-rules.ts 拦客户公海里的项目）
+  // 客户在公海、谁都看得到：项目详情跳到客户详情的项目区（11-12 第 2 批），项目的领取按钮在项目区第一行（页头那颗「领取」是领客户的）
   await page.goto(`/projects/${种.项目1}`);
+  await 停在项目页签(page, 种.客户, 种.项目1, "公海项目一");
   await expect(正文.getByText("这个项目在线索公海里", { exact: true })).toBeVisible();
   await expect(正文.getByText("这位客户在客户公海里，项目不能单独领、分或转：请先到客户公海领取或分配这位客户", { exact: true })).toBeVisible();
   await expect(正文.getByText(/你是原负责人/)).toHaveCount(0);
-  await expect(正文.getByRole("button", { name: /领\s*取/ })).toBeDisabled();
+  await expect(正文.locator(".rec-zone .cd-zh").getByRole("button", { name: /领\s*取/ })).toBeDisabled();
 
   // 去公海领客户：客户在公海里，项目不另列一行；领客户即领项目
   await page.goto("/pool");
@@ -358,7 +366,7 @@ test("项目公海：原负责人看不到公海里的项目；客户在公海�
   await expect(page.locator(".ant-message-notice", { hasText: "已领取「公海客户甲」" })).toBeVisible();
   await expect(正文.getByRole("button", { name: "领取 公海客户甲" })).toHaveCount(0);
   await page.goto(`/projects/${种.项目1}`);
-  await expect(正文.locator(".page-head h1")).toHaveText("公海项目一");
+  await 停在项目页签(page, 种.客户, 种.项目1, "公海项目一");
   await expect(正文.getByText("这个项目在线索公海里")).toHaveCount(0);
 
   const 销售2 = await db.user.findFirstOrThrow({ where: { email: 账号.销售2 } });

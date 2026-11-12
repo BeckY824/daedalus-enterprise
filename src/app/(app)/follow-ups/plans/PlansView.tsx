@@ -89,7 +89,7 @@ type 事项 = {
 };
 
 /** 企业版：项目上填的下一步时间（page.tsx 只读取来），和计划按同一套时间分组，只能点进项目去改 */
-export type 项目下一步 = { key: string; id: string; 项目名: string; 下一步: string | null; 时间: string; ownerId: string; ownerName: string; /** 市场视角进不了这个项目详情：只写名字，不给链接 */ 进不了?: boolean };
+export type 项目下一步 = { key: string; id: string; 项目名: string; 下一步: string | null; 时间: string; ownerId: string; ownerName: string; /** 市场视角进不了这个项目详情：只写名字，不给链接 */ 进不了?: boolean; /** 点项目名去哪：进得了客户详情的是客户页项目页签，别的 /projects/<id> */ 地址?: string };
 
 /** 分组只要这三样：分批时页面手里只有「全部」的这三样，详情只有要摆出来的那些（lib/plans-page.ts） */
 type 轻事项 = { key: string; 时间: string | null; ownerId: string };
@@ -621,7 +621,7 @@ function 组块({
           <span className="plan-row-m">
             <span className="plan-row-t">{x.下一步 || "下一步"}</span>
             <span className="plan-row-s">
-              {x.进不了 ? <span style={客户名样式}>{x.项目名}</span> : <a href={`/projects/${x.id}`} style={客户名样式}>{x.项目名}</a>}
+              {x.进不了 ? <span style={客户名样式}>{x.项目名}</span> : <a href={x.地址 ?? `/projects/${x.id}`} style={客户名样式}>{x.项目名}</a>}
               <Tag style={{ margin: 0 }}>来自项目</Tag>
             </span>
           </span>

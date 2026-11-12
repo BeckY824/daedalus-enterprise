@@ -5,11 +5,13 @@ import { 收藏了吗 } from "@/lib/favorites";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 历史负责人of, 我放出去的公海客户 } from "@/lib/owner-log-db";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 能改这条沟通, 能删沟通 } from "@/lib/enterprise/follow-perm";
+import { 页面能改沟通, 页面能删沟通 } from "@/lib/enterprise/follow-perm";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
 import { requireUser } from "@/lib/auth";
-import RecordView from "./RecordView";
+import CustomerDetail from "./CustomerDetail";
+import { 读项目区 } from "./project-zone";
+import { 项目详情字典们 } from "../../projects/[id]/load";
 import SameNumberBanner from "../../projects/[id]/SameNumberBanner";
 import { followHistoryInclude, followHistoryOrder, serializeFollowHistory } from "./follow-history-query";
 import { 负责人候选 } from "@/lib/owners";
@@ -27,8 +29,8 @@ import { 字段权限of, 客户列字段 } from "@/lib/enterprise/field-perm";
 import { 能管公海, 能转出自己的, 能放回客户公海, 只读角色, 能新建和领取, 转自己客户要申请 } from "@/lib/enterprise/permissions";
 import { 客户在市场手里 } from "@/lib/enterprise/market-transfer";
 import { 附件个数, 联系人分类附件数 } from "@/lib/attachments";
-import { 关联客户们, 号码种类表, 联系人号码们, 客户的联系人们, 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
-import { 页面可选项, 页面字典, 页面客户释义 } from "@/lib/enterprise/dict";
+import { 关联客户们, 页面号码种类表, 联系人号码们, 客户的联系人们, 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
+import { 页面可选项, 页面字典, 页面客户释义, 预读页面字典 } from "@/lib/enterprise/dict";
 import { 客户状态色表 } from "@/lib/enterprise/cust-status-color";
 import { 企业版字典, 本套位置 } from "@/lib/project/nodes";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -36,6 +38,7 @@ import { 字典of } from "@/lib/project/stage-dict";
 import { 客户参与的项目 } from "@/lib/project/relate";
 import { 我回避的公海项目, 回避豁免 } from "@/lib/project/pool-owner";
 import { 客户沟通汇总, 跟进去处们 } from "@/lib/enterprise/customer-follow-feed";
+import { 页面看得到的客户 } from "@/lib/project/visible-customers";
 import { 显示用客户状态 } from "@/lib/enterprise/cust-status-auto-db";
 
 export const dynamic = "force-dynamic";
@@ -45,7 +48,7 @@ export default async function CustomerDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ focus?: string }>;
+  searchParams: Promise<{ focus?: string; project?: string }>;
 }) {
   // 企业版只用项目（P14）：时间线走下面的「沟通记录」，老时间线那 51 条不取。和登录态一起读（互不依赖）
   const [me, { id }, sp, 只项目] = await Promise.all([requireUser(), params, searchParams, 企业版只用项目()]);
@@ -98,12 +101,26 @@ export default async function CustomerDetailPage({
   // 企业版联系人挂多位客户（P13 第 1 条）：挂到这位的别人家联系人排在自家的后面；自家的另外挂在哪也带上
   const 挂来的P = 企 ? 客户的联系人们(customer.id) : Promise.resolve([]);
   const 全部联系人idP = 挂来的P.then((挂来的) => [...customer.contacts.map((c) => c.id), ...挂来的.map((x) => x.contact.id)]);
+  // 这一屏要读的字典先说一声，合成两句（客户层 7 类 + 项目区那几类，lib/enterprise/dict.ts 预读页面字典）
+  if (企) 预读页面字典(["custStatus", "custType", "custAttr", "custAssign", "contactTitle", "contactKind", "transfer", ...(只项目 ? 项目详情字典们 : [])]);
   const 规则P = 只项目 ? 生效组织规则() : null;
+  // 企业版只用项目：商机一节换成这位名下的项目（10-26）；库里存着旧节点名 / 旧结局的按企业版的新名显示（10-31 改名）
+  // 先摆成 promise：项目区（读项目区）挂在它后面和下面的大 Promise.all 并行（第 2 批审查 #4）
+  const 项目们P = 只项目
+    ? 回避豁免(me).then((免) => (免 ? [] : 我回避的公海项目(prisma, me.id))).then((回避) => prisma.project.findMany({
+        // 公海里我是历史负责人的项目不列（C-01，lib/project/pool-owner.ts；总管理 / 管理员照列，回避豁免）
+        where: { customerId: customer.id, ...(回避.length ? { id: { notIn: 回避 } } : {}) },
+        orderBy: { updatedAt: "desc" },
+        select: { id: true, name: true, phase: true, node: true, result: true, pooledAt: true, amount: true, currency: true, updatedAt: true },
+      })).then((ps) => ps.map(({ updatedAt: _u, ...p }) => 本套位置(p, 企业版字典)))
+    : null;
+  // 客户详情合并（11-12 第 2 批）：企业版项目模式下右边是项目区，?project=<id> 选页签；按项目详情页同一个取数读当前项目
+  const 项目区P = 项目们P ? 项目们P.then((ps) => 读项目区(me, customer.id, ps, sp.project ?? null)) : Promise.resolve(null);
   const [
     号, users, channels, 挂来的, 另挂, 只项目四样,
     sourceLead, aiEnabled, 已收藏, 换负责人记录, 旺旺们, 项目们, 参与项目们, 只读, 客户状态选项,
     联系人分类附件, 关联们, 号码种类, 分配方式选项, 客户类型选项, 规则, 联系人附件数,
-    可改沟通, 可删沟通, 客户状态字典, 职务选项, 客户属性选项, 字典释义,
+    可改沟通, 可删沟通, 客户状态字典, 职务选项, 客户属性选项, 字典释义, 项目区,
   ] = await Promise.all([
     // 演示区是公开的，同一份数据所有访客共用：号码一律打码。自己部署的实例不受影响——销售要照着这个号打电话。
     号码脱敏器(),
@@ -118,8 +135,9 @@ export default async function CustomerDetailPage({
     */
     只项目
       ? Promise.all([
-          客户沟通汇总(me, customer.id),
-          跟进去处们(me, customer.id),
+          // 页面渲染：客户可见走请求内缓存（翻页的服务端动作照旧现读）
+          客户沟通汇总(me, customer.id, undefined, 页面看得到的客户),
+          跟进去处们(me, customer.id, 页面看得到的客户),
           页面可选项("transfer"),
           prisma.followPlan.findMany({ where: { customerId: customer.id, done: false }, orderBy: [{ plannedAt: "asc" }, { id: "asc" }], take: 20 }),
         ])
@@ -134,14 +152,7 @@ export default async function CustomerDetailPage({
       ? prisma.contactMethod.findMany({ where: { customerId: customer.id, contactId: null, kind: "wangwang" }, orderBy: { createdAt: "asc" }, select: { value: true } }).then((ms) => ms.map((m) => m.value))
       : [],
     // 企业版只用项目：商机一节换成这位名下的项目（10-26）；库里存着旧节点名 / 旧结局的按企业版的新名显示（10-31 改名）
-    只项目
-      ? 回避豁免(me).then((免) => (免 ? [] : 我回避的公海项目(prisma, me.id))).then((回避) => prisma.project.findMany({
-          // 公海里我是历史负责人的项目不列（C-01，lib/project/pool-owner.ts；总管理 / 管理员照列，回避豁免）
-          where: { customerId: customer.id, ...(回避.length ? { id: { notIn: 回避 } } : {}) },
-          orderBy: { updatedAt: "desc" },
-          select: { id: true, name: true, phase: true, node: true, result: true, pooledAt: true, amount: true, currency: true },
-        })).then((ps) => ps.map((p) => 本套位置(p, 企业版字典)))
-      : null,
+    项目们P,
     // 企业版项目关联（P17）：这位关联在哪些项目上、什么身份；只列看得到的项目（限定层），概览名称按后台改过的出口叫法叫
     规则P ? 规则P.then((r) => 客户参与的项目(customer.id, 字典of(true, r.阶段.出口叫法))) : null,
     // 团队开了互看、这位是同事的：只能看和加跟进（lib/team-scope.ts）
@@ -152,19 +163,20 @@ export default async function CustomerDetailPage({
     企 ? 全部联系人idP.then((ids) => 联系人分类附件数(defaultClient, ids)) : null,
     // 企业版客户改版（定稿 P5）：关联客户卡片、联系人号码类型、分配方式
     企 ? 关联客户们(customer.id) : null,
-    企 ? 号码种类表().then((t) => t.map((x) => ({ 名: x.名, kind: x.kind, active: x.active }))) : undefined,
+    企 ? 页面号码种类表().then((t) => t.map((x) => ({ 名: x.名, kind: x.kind, active: x.active }))) : undefined,
     企 ? 页面可选项("custAssign") : undefined,
     企 ? 页面可选项("custType") : undefined,
     规则P,
     企 ? 全部联系人idP.then(async (ids) => Object.fromEntries((await 附件个数(defaultClient, { contactIds: ids })).联系人)) : null,
     // 下面这几样原来在 JSX 里一个个 await，各等一轮库（11-01 速度闸门：按组织看那组客户详情超 300ms），并进来一起取
     // 沟通（11-09 M-权限-09 原口径）：改 = 身为负责人的管理，删 = 系统管理员或身为负责人的管理（lib/enterprise/follow-perm.ts，服务端 saveFollowUp / deleteFollowUp 同样拦）
-    企 ? 能改这条沟通(me, { customerId: customer.id }) : true,
-    企 ? 能删沟通(me, { customerId: customer.id }) : true,
+    企 ? 页面能改沟通(me, customer.id) : true,
+    企 ? 页面能删沟通(me, customer.id) : true,
     企 ? 页面字典("custStatus") : null,
     企 ? 页面可选项("contactTitle") : undefined,
     企 ? 页面可选项("custAttr") : undefined,
     企 ? 页面客户释义() : undefined,
+    项目区P,
   ]);
   const [汇总, 跟进去处, 转让选项, 待办计划] = 只项目四样 ?? [null, null, null, null];
   // 号码类的几种（手机、座机、WhatsApp、传真）和电话一样过脱敏器；微信、邮箱、旺旺照旧（同联系人老三格的口径）
@@ -191,8 +203,9 @@ export default async function CustomerDetailPage({
   });
 
   return (
-    <RecordView
+    <CustomerDetail
       key={customer.id}
+      项目数据={项目区}
       // 同号再次录入的醒目条：项目详情顶上那条，客户详情也摆（11-03 B6-9）；只看这页列出来的项目（已滤掉我回避的公海项目）
       醒目条={只项目 && 项目们?.length ? <SameNumberBanner projectId={项目们.map((p) => p.id)} /> : null}
       sourceLead={sourceLead}
