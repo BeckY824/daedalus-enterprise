@@ -658,6 +658,28 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
 /* 选中的底色是一块会滑动的层（AppShell 里的 layoutId），压在图标和字下面 */
 .rail-on-bg { position: absolute; inset: 0; border-radius: var(--r-card); background: var(--nav-on-bg); z-index: 0; }
 .rail-item > :not(.rail-on-bg) { position: relative; z-index: 1; }
+/* 客户详情上左栏收成图标窄栏（11-12，AppShell 的 rail-mini，路由在 lib/rail-mini.ts）：
+   在壳上把 --rail-w 覆盖成 56，左栏本身、反馈条 .fbt、中栏开关 .pane-toggle-float 这些按它算位置的都跟着走；
+   拖宽把手写在 :root 上的值盖不过这里，窄态下把手也不摆。字都藏起来只留图标 / 头像，名字靠悬停或键盘聚焦时的 Tooltip。
+   宽窄切换走 --t + --ease；系统开了「减弱动态效果」直接切、不做宽度动画 */
+.shell .rail { transition: width var(--t) var(--ease), padding var(--t) var(--ease); }
+body.rail-resizing .shell .rail { transition: none; }
+.rail-mini { --rail-w: 56px; }
+.rail-mini .rail { padding-left: 8px; padding-right: 8px; }
+.rail-mini .rail-resizer, .rail-mini .rail-fav-h, .rail-mini .rail-fav-n, .rail-mini .aitasks, .rail-mini .rail-meter,
+.rail-mini .rail-item b, .rail-mini .rail-num, .rail-mini .rail-ask-k,
+.rail-mini .rail-search > span:not(.anticon), .rail-mini .rail-search kbd, .rail-mini .rail-user b, .rail-mini .rail-user-caret,
+.rail-mini .rail-upd-t, .rail-mini .rail-upd-v { display: none; }
+.rail-mini .rail-top { flex-direction: column; height: auto; gap: var(--s2); }
+.rail-mini .rail-top .ant-badge { margin-left: 0; }
+.rail-mini .rail-search { width: 32px; flex: none; justify-content: center; padding: 0; }
+.rail-mini .rail-item, .rail-mini .rail-fav-i, .rail-mini .rail-user, .rail-mini .rail-upd { justify-content: center; padding-left: 0; padding-right: 0; }
+.rail-mini .rail-more .rail-item { padding-left: 0; padding-right: 0; }
+.rail-mini .rail-favs { overflow-x: hidden; }
+/* 要跟的红数挂到图标右上角，不占一行 */
+.rail-mini .rail-count { position: absolute; top: 2px; right: 0; margin: 0; min-width: 16px; height: 16px; padding: 0 4px; }
+.rail-mini .rail-account { flex-direction: column; gap: 0; }
+@media (prefers-reduced-motion: reduce) { .shell .rail { transition: none; } }
 /* 数字摆在行尾，不要挤在图标和文字中间 */
 .rail-user { border: 0; background: none; padding: 10px 12px; margin-top: 6px; cursor: pointer; border-radius: var(--r-card); line-height: 0; display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; }
 .rail-user:hover { background: var(--hover); }
