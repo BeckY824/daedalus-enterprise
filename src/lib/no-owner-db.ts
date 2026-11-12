@@ -15,3 +15,8 @@ export async function 无负责人占位Id(tx: Pick<Prisma.TransactionClient, "u
   });
   return u.id;
 }
+
+/** 只读找占位账号（没建过回 null，不建）：只拿它比「是不是挂在占位账号名下」的地方用，渲染页面时不写库 */
+export async function 无负责人占位Id只读(db: Pick<Prisma.TransactionClient, "user">): Promise<string | null> {
+  return (await db.user.findUnique({ where: { email: 无负责人占位邮箱 }, select: { id: true } }))?.id ?? null;
+}

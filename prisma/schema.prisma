@@ -676,6 +676,8 @@ model FollowUp {
   /// 企业版：从这条沟通发布的卡点、这条沟通的编号和下次时间（2026-10-26）。见 EntBlocker / EntFollowUpMeta
   blockers    EntBlocker[]
   entMeta     EntFollowUpMeta?
+  /// 企业版客户三态：先存无效、后来改成有效的那条，第一次变有效的时刻（迁移 132）。见 EntFollowUpFirstValid
+  firstValid  EntFollowUpFirstValid?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1876,4 +1878,15 @@ model EntProjectCold {
   /// 提醒到第几级：0 = 只标了冷，1 = 已抄直属上级，2 = 已给负责人三选一，3 = 已推条线总管理
   level     Int      @default(0)
   updatedAt DateTime @updatedAt
+}
+
+/// 企业版客户三态 · 沟通第一次被判为有效的时刻（2026-11-12，迁移 132，额度重置判「实时」用，tri-state-quota.ts 额度沟通日of）。
+/// 只有「存的时候无效（空、太短、只有占位词 / 链接）、后来被改成有效」的那条才有这一行，记改成有效的那一刻；写了就不再动，
+/// 之后改字、改回无效再改有效都不动。没有这一行 = 首次有效时刻按建的时刻算（建的时候就有效的、存量老数据都是这样，不用回填）。
+/// 不读 FollowUp.updatedAt：改错别字、挂接联系人、客户恢复连带的改动都会刷新它，不能让一条当天实时记的沟通事后变成补录。
+/// 不论三态开不开都在改沟通内容时维护（tri-state-db.ts 记首次有效），开关打开前的数据也对。沟通删了随沟通级联
+model EntFollowUpFirstValid {
+  followUpId String   @id
+  followUp   FollowUp @relation(fields: [followUpId], references: [id], onDelete: Cascade)
+  at         DateTime
 }

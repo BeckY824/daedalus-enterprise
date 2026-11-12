@@ -27,13 +27,42 @@ import { notify } from "./notify";
 export type 三态动作结果 = { ok: true; 剩次数?: number; 剩天数?: number; 通知了?: number } | { ok: false; error: string };
 
 type 我 = 谁 & { name: string };
-type 在计时 = Extract<三态结果, { 计时: true }>;
+export type 在计时 = Extract<三态结果, { 计时: true }>;
 
 const 没开话 = "客户三态没开";
 const 不在计时话 = (原因: string) => `这位客户现在不计三态（${原因}）`;
 /** 上级代选从沉睡第几天起（M-公海-23「沉睡第 30 天（第 120 天）起」），从进沉睡那天数 */
 export const 代选起始 = (r: 在计时) => r.节点天.沉睡 + 沉睡抄上级第几天;
 export const 能代选了 = (r: 在计时) => r.状态 !== "活跃" && r.第几天 >= 代选起始(r);
+
+/** 到期暂缓回收（被挡）的按待回收这一轮算（T11：暂缓用满后走继续持有） */
+export const 是待回收轮 = (r: 在计时) => r.状态 === "待回收" || (r.状态 === "该进公海" && r.被挡);
+
+/**
+ * 我点「我还在跟 / 写理由继续持有」按什么身份算、能不能点（按钮动作和客户详情状态条共用，状态条只看不写）：
+ * 负责人本人；直属上级（沉睡第 30 天起代选）；待回收轮收到提醒的条线总管理 / 系统管理员。额度不够也在这里回错话
+ */
+export function 继续持有身份(me: 谁, c: 三态客户, r: 在计时, org: Awaited<ReturnType<typeof 读组织>>): { 身份: "本人" | "上级" | "总管理"; 轮: "沉睡" | "待回收" } | { 错: string } {
+  const 本人 = 能继续持有三态(me, c, org);
+  const 上级 = !本人 && 能代选三态(me, c, org);
+  const 待回收轮 = 是待回收轮(r);
+  const 总管理 = !本人 && !上级 && 待回收轮 && 能总管理继续持有三态(me, c, org);
+  if (!本人 && !上级 && !总管理) return { 错: 待回收轮 ? "只有负责人本人、直属上级、这条线的总管理或系统管理员能继续持有" : "只有负责人本人或直属上级能继续持有" };
+  if (上级 && !能代选了(r)) return { 错: `直属上级从沉睡第 ${沉睡抄上级第几天} 天（第 ${代选起始(r)} 天）起才能代选` };
+  if (!r.继续持有.能推) return { 错: r.继续持有.不能原因 ?? "现在不能继续持有" };
+  return { 身份: 本人 ? "本人" : 上级 ? "上级" : "总管理", 轮: 待回收轮 ? "待回收" : "沉睡" };
+}
+
+/** 暂缓回收现在给不给点（按钮动作和状态条共用）：30 天内暂缓过、或累计用满 2 次回错话；给点回 null */
+export function 暂缓回收不给(c: 三态客户, 今天: string): string | null {
+  const 上次 = c.事实.暂缓回收日;
+  if (上次 && 差天(上次, 今天) < 被挡提醒间隔) return `${上次} 已经暂缓回收过，${被挡提醒间隔} 天内不用再裁决`;
+  // T11：累计最多 2 次（60 天），从额度上次重置（有效沟通、公海领走）起数；用满了要走继续持有、占额度
+  if (暂缓回收次数(c.留痕, c.事实.额度重置日 ?? null) >= 暂缓回收上限次数) {
+    return `暂缓回收已用满 ${暂缓回收上限次数} 次（${暂缓回收上限次数 * 被挡提醒间隔} 天），要继续留着请写理由继续持有（占继续持有的次数和天数）`;
+  }
+  return null;
+}
 
 /** 读规则、组织，在事务里按最新事实算这一位；不在计时的回错话 */
 type 备好 = { 规则: Awaited<ReturnType<typeof 生效组织规则>>; org: Awaited<ReturnType<typeof 读组织>>; 今天: string };
@@ -59,16 +88,11 @@ export async function 继续持有(me: 我, customerId: string, 理由?: string 
     const r = 算三态(c.事实, 规则.三态, 今天);
     if (!r.计时) return { ok: false as const, error: 不在计时话(r.原因) };
     await 存归零(tx, [c]);
-    const 本人 = 能继续持有三态(me, c, org);
-    const 上级 = !本人 && 能代选三态(me, c, org);
-    // 到期暂缓回收（被挡）的按待回收这一轮算（T11：暂缓用满后走继续持有）
-    const 待回收轮 = r.状态 === "待回收" || (r.状态 === "该进公海" && r.被挡);
-    const 总管理 = !本人 && !上级 && 待回收轮 && 能总管理继续持有三态(me, c, org);
+    const 身份 = 继续持有身份(me, c, r, org);
+    if ("错" in 身份) return { ok: false as const, error: 身份.错 };
+    const 上级 = 身份.身份 === "上级", 总管理 = 身份.身份 === "总管理";
     const 代选 = 上级 || 总管理;
-    if (!本人 && !代选) return { ok: false as const, error: 待回收轮 ? "只有负责人本人、直属上级、这条线的总管理或系统管理员能继续持有" : "只有负责人本人或直属上级能继续持有" };
-    if (上级 && !能代选了(r)) return { ok: false as const, error: `直属上级从沉睡第 ${沉睡抄上级第几天} 天（第 ${代选起始(r)} 天）起才能代选` };
-    if (!r.继续持有.能推) return { ok: false as const, error: r.继续持有.不能原因 ?? "现在不能继续持有" };
-    const 轮: "沉睡" | "待回收" = 待回收轮 ? "待回收" : "沉睡";
+    const 轮 = 身份.轮;
     if (轮 === "待回收" && !话) return { ok: false as const, error: "待回收时要写理由才能继续持有" };
     const 天数 = 规则.三态.继续持有.每次天数;
     const 说 = 话 || "我还在跟";
@@ -116,12 +140,8 @@ export async function 暂缓回收动作(me: 我, customerId: string, 理由?: s
   return 看全部(() => 查完再写(async (tx) => {
     const 查 = await 裁决前查(me, customerId, 现在, tx, 备);
     if ("错" in 查) return { ok: false as const, error: 查.错 };
-    const 上次 = 查.c.事实.暂缓回收日;
-    if (上次 && 差天(上次, 备.今天) < 被挡提醒间隔) return { ok: false as const, error: `${上次} 已经暂缓回收过，${被挡提醒间隔} 天内不用再裁决` };
-    // T11：累计最多 2 次（60 天），从额度上次重置（有效沟通、公海领走）起数；用满了要走继续持有、占额度
-    if (暂缓回收次数(查.c.留痕, 查.c.事实.额度重置日 ?? null) >= 暂缓回收上限次数) {
-      return { ok: false as const, error: `暂缓回收已用满 ${暂缓回收上限次数} 次（${暂缓回收上限次数 * 被挡提醒间隔} 天），要继续留着请写理由继续持有（占继续持有的次数和天数）` };
-    }
+    const 不给 = 暂缓回收不给(查.c, 备.今天);
+    if (不给) return { ok: false as const, error: 不给 };
     await tx.entCustomerStateLog.create({
       data: { customerId, fromState: "待回收", toState: "待回收", userId: me.id, via: 留痕方式.总管理裁决, reason: 话 ? `${暂缓回收}：${话}` : 暂缓回收, at: 现在 },
     });

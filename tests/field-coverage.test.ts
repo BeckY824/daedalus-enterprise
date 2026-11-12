@@ -554,6 +554,9 @@ const 派生: Record<string, Record<string, string>> = {
   EntProjectCold: {
     projectId: "哪个项目，标冷时系统建", coldDay: "从哪天冷的，系统算", level: "提醒到第几级，发提醒时系统写",
   },
+  EntFollowUpFirstValid: {
+    followUpId: "哪条沟通，存的时候无效、后来改成有效时系统建（迁移 132）", at: "改成有效的那一刻，系统写、之后不改",
+  },
 };
 
 /** 已知缺口：有字段、没写入路径。留在这里是为了让它一直显眼 */

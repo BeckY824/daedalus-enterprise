@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
@@ -213,11 +214,14 @@ export async function 还原进公海前负责人(tx: Pick<Prisma.TransactionCli
  * 详情页的「历史负责人」：这位客户全部换负责人记录，按时间正序，人名换好。
  * 名字按 id 直接查、不挑在职——停用（离职）的人登不进来，但他当过负责人、转过人照旧显示名字
  */
+/** 一位客户的换负责人日志原行（时间正序）：一次渲染里只读一遍——左栏历史负责人和客户三态（收三态客户 的预读）共用 */
+export const 换负责人原行of = cache((customerId: string) => prisma.customerOwnerLog.findMany({ where: { customerId }, orderBy: [{ at: "asc" }, { id: "asc" }] }));
+
 export async function 历史负责人of(customerId: string): Promise<换负责人记录[]> {
-  const 记录 = await prisma.customerOwnerLog.findMany({ where: { customerId }, orderBy: [{ at: "asc" }, { id: "asc" }] });
+  const 记录 = await 换负责人原行of(customerId);
   if (!记录.length) return [];
   const ids = [...new Set(记录.flatMap((r) => [r.userId, r.fromOwnerId, r.toOwnerId]).filter((x): x is string => !!x))];
   const 名 = new Map((await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
   const 叫 = (id: string | null) => (id ? (名.get(id) ?? "已删除的成员") : null);
-  return 记录.map((r) => ({ at: r.at.toISOString(), 操作人: r.userId === 系统.id ? 系统.name : (名.get(r.userId) ?? null), 从: 叫(r.fromOwnerId), 到: 叫(r.toOwnerId), kind: r.kind }));
+  return 记录.map((r) => ({ at: r.at.toISOString(), 操作人: r.userId === 系统.id ? 系统.name : (名.get(r.userId) ?? null), 从: 叫(r.fromOwnerId), 到: 叫(r.toOwnerId), kind: r.kind, ...(r.clockReset ? { 三态归零: true as const } : {}) }));
 }

@@ -92,6 +92,8 @@ export const 不同步表 = [
   "EntDupeHit",
   // 企业版客户三态：客户钟、状态留痕、冷项目（2026-11-11，migrations/121–123）：同上
   "EntCustomerClock", "EntCustomerStateLog", "EntProjectCold",
+  // 企业版客户三态：沟通第一次有效的时刻（2026-11-12，migrations/132）：同上
+  "EntFollowUpFirstValid",
 ] as const;
 
 /**

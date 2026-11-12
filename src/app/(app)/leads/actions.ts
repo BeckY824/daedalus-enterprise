@@ -41,6 +41,7 @@ import { 能分配 } from "@/lib/enterprise/lead-assign";
 import { 线索附件转给联系人 } from "@/lib/attachments";
 import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
+import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
 
 /**
  * 企业版「线索分配和配额」开着时，负责人只能经「分配」换（F2，10-25 实测）：编辑、新建里随手改负责人
@@ -188,6 +189,8 @@ async function 转项目前查(b: { projectMode?: boolean }, me: { id: string },
 
 async function 转项目之后(user: Actor, lead: { name: string }, customerId: string, projectId: string | undefined) {
   if (!projectId) return;
+  // 客户三态：转项目带了首条跟进，马上重算这位的钟（关着不查库，出错不影响转化）
+  await 存沟通后重算三态(customerId);
   await recordAudit({
     user, action: "create", entity: "Project", entityId: projectId,
     summary: `线索「${lead.name}」转化时新建项目，连同首条跟进`,

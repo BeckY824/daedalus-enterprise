@@ -31,6 +31,7 @@ import { 对得上的方式, 方式对类型 } from "@/lib/follow-method";
 import { useFormGuard } from "@/lib/form-guard";
 import { 卡点类型们, 影响等级们, 描述上限, 标题上限, 原因最多, 原因名上限, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 选沟通附件, 传沟通附件 } from "@/components/FollowAttachments";
+import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
 
 /** 记沟通时顺手标的卡点（F-跟进-08）：类型「暂无卡点」= 不生成，描述写了也不生成（11-01 答复 #5；服务端 沟通卡点 同一条规则） */
 type 卡点值 = { type: string; impact: string | null; title: string; reasons: string[]; description: string };
@@ -483,6 +484,9 @@ export default function FollowUpForm({
     resetAi();
     守.存好了();
     onSaved();
+    // 客户三态（C12）：新记的这条不算有效沟通，另给一句轻提示（照常保存，不拦）
+    const 短 = 短沟通话of(res);
+    if (短) message.info(短, 5);
     // 顺手完成那条到期计划：记录页上提示由它出（带撤销、排下一次），这里就不再单说一句「沟通已记下」
     if (要收口 && 完成了计划) return void 完成了计划(要收口, true);
     if (!挑人 || !名) {
@@ -495,6 +499,7 @@ export default function FollowUpForm({
       if (record?.id) return void message.success("已保存");
       if ("领取了" in res && res.领取了) return void message.success("已领取并记下这条沟通，这位现在归你了");
       // 本人撤销沟通去掉了（P-沟通-01，11-09），提示里不摆「撤销」
+      if (短) return;
       return void message.success("沟通已记下");
     }
 
@@ -574,9 +579,12 @@ export default function FollowUpForm({
     if ("卡点" in r && r.卡点) message.success(`已生成卡点 ${r.卡点}`);
     if ("卡点没发" in r && r.卡点没发) message.warning(`沟通记下了，卡点没生成：${r.卡点没发}`);
     if (r.自动推到?.length) message.success(`必填齐了，自动推进到 ${r.自动推到.join(" → ")}`);
+    // 客户三态（C12）：这条不算有效沟通，另给一句轻提示（照常保存，不拦）
+    const 短 = 短沟通话of(r);
+    if (短) message.info(短, 5);
     if (要收口 && !只读 && 完成了计划) return void 完成了计划(要收口, true);
     if (要收口 && !只读) return void message.success(`沟通已记下，计划「${要收口.subject}」一并完成`);
-    message.success("沟通已记下");
+    if (!短) message.success("沟通已记下");
   }
 
   const showDuration = type === "PHONE" || type === "MEETING";

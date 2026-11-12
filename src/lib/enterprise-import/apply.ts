@@ -48,6 +48,7 @@ import { 客户状态自动, 项目变了重算 } from "../enterprise/cust-statu
 import { 企业版字典, 本套名 } from "../project/stage-dict";
 import { 落到渠道 } from "../enterprise/channel-main";
 import { 是主渠道入口 } from "../enterprise/channel-main-core";
+import { 记首次有效 } from "../enterprise/tri-state-db";
 
 type Tx = Prisma.TransactionClient;
 type 结果 = "新建" | "更新" | "跳过" | "冲突";
@@ -510,6 +511,8 @@ export async function 改(tx: Tx, e: 实体, id: string, 改动: 值表, 现值:
   if (有("occurredAt")) data.occurredAt = 日(改动.occurredAt) ?? new Date(现在);
   if (有("opportunityId")) data.opportunityId = 串(改动.opportunityId);
   await tx.followUp.update({ where: { id }, data });
+  // 原来无效、这次导入改成有效：记首次有效时刻（客户三态额度判「实时」用，同客户详情改沟通）
+  if (有("content")) await 记首次有效(tx, id, 串(现值.content ?? null), String(改动.content ?? ""), new Date(现在));
   if (有("projectId") && 串(改动.projectId) !== 串(现值.projectId ?? null)) {
     await tx.followUpProject.deleteMany({ where: { followUpId: id } });
     if (改动.projectId) await 挂项目(tx, id, String(改动.projectId));

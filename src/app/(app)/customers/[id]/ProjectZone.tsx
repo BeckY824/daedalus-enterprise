@@ -10,7 +10,11 @@ import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
 import type { 项目区槽 } from "./types";
 
 /** 项目区页签行上的一个项目：名字 + 当前节点（有结局写结局） */
-export type 项目页签 = { id: string; name: string; 节点: string };
+export type 项目页签 = {
+  id: string; name: string; 节点: string;
+  /** 冷项目（C11，三态开着才有）：没推进的天数，页签名后一个小灰标「冷」 */
+  冷天数?: number;
+};
 
 /** 客户页交给项目区的数据（page.tsx 读，project-zone.ts 读项目区） */
 export type 项目区数据 = {
@@ -63,18 +67,24 @@ export function ProjectTabs({ 数据, 当前id, 开建项目, 右端 }: { 数据
       >
         {数据.页签们.map((t) => {
           const 字 = `${t.name} · ${t.节点}`;
+          const 冷 = t.冷天数 != null;
           return (
             <Link
               key={t.id}
               role="tab"
               aria-selected={t.id === 当前id}
-              className={`cd-tab${t.id === 当前id ? " on" : ""}`}
+              className={`cd-tab${t.id === 当前id ? " on" : ""}${冷 ? " cd-tab-cold" : ""}`}
               href={客户页项目地址(数据.customerId, t.id)}
               scroll={false}
               replace
-              title={字}
+              title={冷 ? `${字} · ${t.冷天数} 天没有推进` : 字}
             >
-              {字}
+              {冷 ? (
+                <>
+                  <span className="cd-tab-nm">{字}</span>
+                  <span className="cd-cold" title={`${t.冷天数} 天没有推进`}>冷</span>
+                </>
+              ) : 字}
             </Link>
           );
         })}
@@ -150,6 +160,7 @@ export default function ProjectZone({ 数据, 槽 }: { 数据: 项目区数据; 
         全部沟通数: 槽.全部沟通数,
         待办: 槽.待办,
         客户页,
+        客户状态留痕: 槽.客户状态留痕,
       }}
     />
   );

@@ -44,6 +44,7 @@ import { 分配带走的同事项目, 数进手的持有项目 } from "@/lib/car
 import type { 转走项目预览 } from "@/lib/carry-over";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 认业务线, 业务线不认得, 业务线必填, 是项目线, type 项目线 } from "@/lib/enterprise/assign-line";
+import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
 
 export type 给客户建项目输入 = {
   customerId: string;
@@ -225,6 +226,8 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     // 转走了：这位客户我可能已经看不到了，放开范围，不然推进被拦、静默跳过（同 建档向导）
     if (留下) await 看全部(() => 客户存了推项目(me, customerId));
     else await 客户存了推项目(me, customerId);
+    // 客户三态：建项目带了首条跟进，马上重算这位的钟（关着不查库，出错不影响建项目）
+    await 存沟通后重算三态(customerId);
     revalidatePath("/projects");
     revalidatePath(`/projects/${projectId}`);
     revalidatePath(`/customers/${customerId}`);
