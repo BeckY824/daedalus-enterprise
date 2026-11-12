@@ -29,7 +29,8 @@ const 日 = (n: number) => 加天(起, n);
 const 早 = (n: number) => new Date(`${日(n)}T00:10:00+08:00`);
 const 八点 = (n: number) => new Date(`${日(n)}T08:10:00+08:00`);
 const 白天 = (n: number) => new Date(`${日(n)}T10:00:00+08:00`);
-const 规则: 组织规则 = { ...默认组织规则, 三态: { ...默认三态规则, 开: true } };
+let 规则: 组织规则;
+const 默认开 = (): 组织规则 => ({ ...默认组织规则, 三态: { ...默认三态规则, 开: true } });
 
 const 人 = {} as Record<"乙" | "丙" | "甲" | "总内", { id: string; name: string }>;
 let 客户: string;
@@ -73,6 +74,7 @@ beforeEach(async () => {
   });
   客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13800000001", salesOwnerId: 人.乙.id, createdAt: new Date("2026-10-01T10:00:00+08:00") } })).id;
   await setSetting("business", { projectMode: true });
+  规则 = 默认开();
   await setSetting("orgRules", 规则);
 });
 afterEach(async () => {
@@ -130,6 +132,33 @@ describe("列表「N 天后进公海」和客户详情同一个数（钟上存�
     await 三态夜扫(早(216));
     await 钟上三态提醒(八点(216));
     expect(await 列表天(216)).toBe(await 详情天(白天(216)));
+  });
+
+  it("管理员白天改了三态天数（夜扫记号还是旧规则）：列表不读钟上按旧规则存的，退回按现在规则算，和详情一致；次日夜扫后又读存的", async () => {
+    await 三态夜扫(早(185));
+    const 旧存 = (await 钟()).poolDueDay;
+    const 新 = { ...默认三态规则.内贸, 进公海: 60 };
+    规则 = { ...默认组织规则, 三态: { ...默认三态规则, 开: true, 内贸: 新, 外贸: 新 } };
+    await setSetting("orgRules", 规则);
+    invalidateSettingsCache();
+    const 详 = await 详情天(白天(185));
+    expect(差天(日(185), 旧存!)).not.toBe(详);
+    expect(await 列表天(185)).toBe(详);
+    await 三态夜扫(早(186));
+    expect((await 钟()).poolDueDay).not.toBe(旧存);
+    expect(await 列表天(186)).toBe(await 详情天(白天(186)));
+  });
+
+  it("暂缓回收中（被挡）：钟上不存最早进公海日", async () => {
+    await prisma.project.create({ data: { name: "同事的项目", customerId: 客户, ownerId: 人.丙.id, creatorId: 人.丙.id, createdAt: new Date("2026-10-20T10:00:00+08:00") } });
+    await 三态夜扫(早(180));
+    expect((await 钟()).poolDueDay).not.toBeNull();
+    await prisma.entCustomerClock.update({ where: { customerId: 客户 }, data: { noticeCount: 3, lastNoticeDay: 日(200) } });
+    await 三态夜扫(早(210));
+    expect(await 钟()).toMatchObject({ state: "待回收", blocked: true, poolDueDay: null });
+    const 前 = (await 钟()).updatedAt;
+    await 三态夜扫(早(211));
+    expect((await 钟()).updatedAt).toEqual(前);
   });
 
   it("进了客户公海：钟上这列清空", async () => {

@@ -4,7 +4,8 @@
  * 标看的是夜扫写在钟上的状态（EntCustomerClock，tri-state-db.ts 写钟）：沉睡 / 待回收 / 待回收且被挡（对用户叫「暂缓回收中」）。
  * 负责人是市场成员（市场角色、又不兼销售，同 tri-state-db.ts 收三态客户）的一律写「不计时」，不看钟（换到市场成员名下后钟停在原状态，夜扫不再写）。
  * 待回收的「N 天后进公海」= 到最早进公海日还差几天：读钟上存的最早进公海日（poolDueDay，写钟时按完整事实算好的，同客户详情状态条，
- * 含暂缓解除后那 10 天、推后当天重起一轮）。钟上这列空（老钟、还没重扫）才退回旧算法：同服务端 算三态() 的排期（待回收最早进公海日），
+ * 含暂缓解除后那 10 天、推后当天重起一轮）。只在夜扫记号里那份规则和现在生效的一样时才读（管理员白天改了天数，详情马上按新规则算，
+ * 钟上存的还是夜扫按旧规则算的，到次日 00:05 才对上）；记号走设置缓存，不多一条查询。钟上这列空（老钟、还没重扫）或规则改过，退回旧算法：同服务端 算三态() 的排期（待回收最早进公海日），
  * 节点 = 钟上的进入日（已含继续持有顺延）+ 这位客户适用那套的进公海天数（M-公海-25 选套），再按钟上本轮提醒了几次、最近哪天提醒往后排（3 次提醒没发够不进）。
  *
  * 一页客户一次查：钟一句；内贸、外贸两套的进公海天数不一样、这一页又有钟上没存最早进公海日的待回收才再取一句这些客户的项目选套。
@@ -16,7 +17,8 @@ import { 企业版 } from "./switch";
 import { getBusiness } from "@/lib/business";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import type { 三态规则 } from "@/lib/project/org-rules";
-import { 选套, 加天, 差天, 待回收最早进公海日, type 三态项目 } from "./tri-state";
+import { 选套, 加天, 差天, 待回收最早进公海日, 三态扫过键, 扫过的是这份规则, type 三态项目 } from "./tri-state";
+import { getSetting } from "@/lib/settings";
 import { 项目业务线 } from "./assign-line";
 import { 是市场角色, 是销售角色 } from "./permissions";
 import { 读组织, type 组织 } from "./org";
@@ -57,8 +59,10 @@ export async function 三态标们(
     where: { customerId: { in: 计时的.map((r) => r.id) }, state: { in: ["沉睡", "待回收"] }, ...(市场.size ? { customer: { salesOwnerId: { notIn: [...市场] } } } : {}) },
     select: { customerId: true, state: true, enteredDay: true, blocked: true, dealDay: true, noticeCount: true, lastNoticeDay: true, poolDueDay: true },
   }));
-  // 钟上存了最早进公海日的直接读，没存的（老钟）才按提醒次数排、才要选套
-  const 待回收们 = 钟们.filter((k) => k.state === "待回收" && !k.blocked && !k.poolDueDay);
+  // 钟上存了最早进公海日、又是按现在这份规则存的直接读；没存的（老钟）、规则白天改过的才按提醒次数排、才要选套
+  const 存的算数 = 扫过的是这份规则(await getSetting<string>(三态扫过键), 规则);
+  const 读存的 = (k: { poolDueDay: string | null }): k is { poolDueDay: string } => 存的算数 && !!k.poolDueDay;
+  const 待回收们 = 钟们.filter((k) => k.state === "待回收" && !k.blocked && !读存的(k));
   // 两套进公海天数一样就不用看这位客户用哪套
   const 要选套 = 规则.内贸.进公海 !== 规则.外贸.进公海 && 待回收们.length > 0;
   const 项目of = new Map<string, 三态项目[]>();
@@ -71,7 +75,7 @@ export async function 三态标们(
   for (const k of 钟们) {
     if (k.state === "沉睡") { 出[k.customerId] = { 态: "沉睡" }; continue; }
     if (k.blocked) { 出[k.customerId] = { 态: "暂缓回收中" }; continue; }
-    if (k.poolDueDay) { 出[k.customerId] = { 态: "待回收", 几天后进公海: 差天(今天, k.poolDueDay) }; continue; }
+    if (读存的(k)) { 出[k.customerId] = { 态: "待回收", 几天后进公海: 差天(今天, k.poolDueDay) }; continue; }
     const 套 = 要选套 ? 规则[选套(项目of.get(k.customerId) ?? [], 规则, k.dealDay ? 规则.成交.活跃段 : null)] : 规则.内贸;
     // 同服务端排期（M-公海-17）：最早进公海 = max(进公海节点, 第 3 次提醒 + 间隔)；提醒没发够，天数到了也还没进
     const 最早 = 待回收最早进公海日({ 待回收: k.enteredDay, 进公海: 加天(k.enteredDay, 套.进公海) }, 套.进公海, 今天, k.noticeCount, k.lastNoticeDay);

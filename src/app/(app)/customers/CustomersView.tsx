@@ -722,7 +722,7 @@ export default function CustomersView({
   /*
     客户三态开着（企业版多「回收状态」一列）：默认列在 1280 / 1366 宽（左栏 220）不出表格内部横向滚动，各列收到一行刚好放下常见内容，
     更长的照「一行 + 省略号 + 悬停」。量法和各列为什么是这个数见 tests/ent-cust-list-columns.ui.test.ts「三态开着：默认列不横向滚」。
-    三态关着列宽照旧（只有「项目数」放宽到表头三个字放得下）
+    三态关着列宽照旧（只有「项目数」放宽到表头三个字放得下）。这一页有公海里的客户时「负责人」不收（「公海（原 X）」要放得下）
   */
   const 三态挤 = 企业 && !!三态标;
   const 宽 = (常: number, 三态开: number) => (三态挤 ? 三态开 : 常);
@@ -836,7 +836,8 @@ export default function CustomersView({
     */
     ...(企业 ? 企业列 : 外贸 ? 外贸列 : []),
     ...(不问归属 ? [] : [{
-      title: "负责人", 列名: "负责人", key: "salesOwnerName", dataIndex: "salesOwnerName", width: 宽(140, 92),
+      // 这一页有公海里的（「公海（原 X）」标签）照旧 140，三态开着也不收
+      title: "负责人", 列名: "负责人", key: "salesOwnerName", dataIndex: "salesOwnerName", width: rows.some((r) => r.pool) ? 140 : 宽(140, 92),
       // 在公海里：写「公海（原 X）」——原负责人还挂着，但谁都能领
       render: (v: string, r: CustomerRow) => r.pool
         ? <Tag className="pool-tag" title={`${公海标签(v)} · ${r.pool.reason === "手动" ? "手动放回公海" : r.pool.reason}`}>{公海标签(v)}</Tag>

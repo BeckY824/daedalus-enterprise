@@ -9,7 +9,6 @@ import { 继续持有, 暂缓回收动作, 让同事结束项目动作, type 三
 import { 读占位词, 存占位词 } from "@/lib/enterprise/tri-state-db";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能改后台设置 } from "@/lib/enterprise/permissions";
-import { 不在了 } from "@/lib/not-there";
 
 const 刷新 = (id: string) => {
   revalidatePath("/customers");
@@ -17,14 +16,15 @@ const 刷新 = (id: string) => {
 };
 
 /**
- * 写库被拦（切换视图只读、团队互看只读，code CRM_READONLY）回那一句原话，同主干别的写入（not-there.ts 不在了()）；
- * 不接的话异常抛到浏览器，状态条只能弹通用的「没办成」
+ * 只接写库被拦（切换视图只读、团队互看只读，code CRM_READONLY）：回那一句原话，同主干别的写入（not-there.ts 不在了() 的只读那一支）；
+ * 不接的话异常抛到浏览器，状态条只能弹通用的「没办成」。别的错（P2025 / P2002 / P2003 等）照旧往外抛
  */
 async function 接住(做: () => Promise<三态动作结果>): Promise<三态动作结果> {
   try {
     return await 做();
   } catch (e) {
-    return 不在了(e);
+    if ((e as { code?: string } | null)?.code === "CRM_READONLY") return { ok: false, error: (e as Error).message };
+    throw e;
   }
 }
 

@@ -17,6 +17,10 @@ import type { 项目线 } from "./assign-line";
 
 /** 系统倒计时的起算日（X-19 / M-公海-30）：这天之前的事一律按这天算 */
 export const 三态起算日 = "2026-11-01";
+/** 夜扫「今天按这份规则扫过了」的记号（Setting）：值 = 上海日 + 三态规则 JSON，规则改了当晚重算（M-公海-37）。列表也读它判钟上存的最早进公海日还算不算数 */
+export const 三态扫过键 = "entTriStateScanned";
+/** 记号里那份规则和现在生效的一样没有（tri-state-list.ts 读钟上存的最早进公海日前判） */
+export const 扫过的是这份规则 = (记号: unknown, 三态: unknown): boolean => typeof 记号 === "string" && 记号.length > 11 && 记号.slice(11) === JSON.stringify(三态);
 /** 导入那批豁免几天（M-公海-35）：基准日不早于「导入完成日 + 30」 */
 export const 导入豁免天数 = 30;
 /** 沉睡第几天起加直属上级（M-公海-17「沉睡第 30 天（第 120 天）起加上直属上级」），从进沉睡那天数 */
