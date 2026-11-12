@@ -4,7 +4,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 附件个数, 项目分类附件数 } from "@/lib/attachments";
 import { getCurrentUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
-import { 能管项目, 露客户 } from "@/lib/project/db";
+import { 能管项目, 露客户, 看得到的客户 } from "@/lib/project/db";
 import { 页面看得到的客户 } from "@/lib/project/visible-customers";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 原负责人挡着 } from "@/lib/project/pool-owner";
@@ -89,14 +89,15 @@ async function 认项目(projectId: string, 要改: boolean): Promise<{ 叫法: 
   return { 叫法: `项目「${p.name}」` };
 }
 /** 认项目 的「看」那半：看得到就给我和项目（要改 再在上面判 能管项目）。项目附件入口 看、改一起问，只走一遍这半（11-12 客户详情速度） */
-async function 认项目看(projectId: string): Promise<{ 错: string; 状态: number } | { 我: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>; p: { id: string; name: string; customerId: string; ownerId: string; pooledAt: Date | null } }> {
+/** 可见：接口里现读（看得到的客户）；只有页面渲染（项目附件入口）传请求内缓存的 页面看得到的客户 */
+async function 认项目看(projectId: string, 可见: (ids: string[]) => Promise<Set<string>> = 看得到的客户): Promise<{ 错: string; 状态: number } | { 我: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>; p: { id: string; name: string; customerId: string; ownerId: string; pooledAt: Date | null } }> {
   if (!企业版() || (await getBusiness()).projectMode !== true) return { 错: "此版本未开放项目附件", 状态: 404 };
   const 我 = await getCurrentUser();
   if (!我) return { 错: "请先登录", 状态: 401 };
   const p = await prisma.project.findFirst({ where: { id: projectId }, select: { id: true, name: true, customerId: true, ownerId: true, pooledAt: true } });
   // 公海里我是历史负责人的项目：当不在（C-01，lib/project/pool-owner.ts）
   if (!p || (await 原负责人挡着(prisma, 我, p))) return { 错: "这个项目已经不在了，刷新看看", 状态: 404 };
-  if (!露客户(我, p, await 页面看得到的客户([p.customerId]))) return { 错: "这个项目在公海里，先领取再看附件", 状态: 403 };
+  if (!露客户(我, p, await 可见([p.customerId]))) return { 错: "这个项目在公海里，先领取再看附件", 状态: 403 };
   return { 我, p };
 }
 
@@ -168,7 +169,7 @@ export async function 联系人附件入口(contactId: string): Promise<{ 个数
 export async function 项目附件入口(projectId: string): Promise<{ 合同: number; 方案: number; 验收报告: number; 其它: number; 只读: boolean } | null> {
   if (!企业版()) return null;
   // 看、改一起问：「看」那半只走一遍（同 认父记录({ projectId }, false / true)：改 = 看得到且 能管项目）
-  const 底 = await 认项目看(projectId);
+  const 底 = await 认项目看(projectId, 页面看得到的客户);
   if ("错" in 底) return null;
   const [个数, org] = await Promise.all([项目分类附件数(defaultClient, projectId), 权限组织()]);
   return { ...个数, 只读: !能管项目(底.我, 底.p, org) };

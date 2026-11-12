@@ -155,18 +155,16 @@ export async function 角色字典(db: Prisma.TransactionClient = prisma) {
   // 先取列表，有行就直接用（11-12 客户详情速度：原来每次先数一遍再取，两句）；空着才建默认、再取
   const 有 = await db.projectRole.findMany({ orderBy: [{ sort: "asc" }, { createdAt: "asc" }] });
   if (有.length) return 有;
-  {
-    // 两个窗口同时第一次读：按名字 upsert，后到的那个什么都不改
-    const 种子: [string, string][] = 企业版()
-      ? 企业版默认角色们.map((n) => [企业版默认角色id[n], n])
-      : 默认角色们.map((n) => [默认角色id[n], n]);
-    // 系统写：管理员（admin，只读）打开页面时也得建得上
-    await 系统写(async () => {
-      for (const [i, [id, name]] of 种子.entries()) {
-        await db.projectRole.upsert({ where: { name }, update: {}, create: { id, name, sort: i } });
-      }
-    });
-  }
+  // 两个窗口同时第一次读：按名字 upsert，后到的那个什么都不改
+  const 种子: [string, string][] = 企业版()
+    ? 企业版默认角色们.map((n) => [企业版默认角色id[n], n])
+    : 默认角色们.map((n) => [默认角色id[n], n]);
+  // 系统写：管理员（admin，只读）打开页面时也得建得上
+  await 系统写(async () => {
+    for (const [i, [id, name]] of 种子.entries()) {
+      await db.projectRole.upsert({ where: { name }, update: {}, create: { id, name, sort: i } });
+    }
+  });
   return db.projectRole.findMany({ orderBy: [{ sort: "asc" }, { createdAt: "asc" }] });
 }
 
@@ -237,13 +235,11 @@ export async function 异常类别字典(db: Prisma.TransactionClient = prisma) 
   // 同 角色字典：有行直接用，空着才建默认再取
   const 有 = await db.projectExceptionCategory.findMany({ orderBy: [{ sort: "asc" }, { createdAt: "asc" }] });
   if (有.length) return 有;
-  {
-    await 系统写(async () => {
-      for (const [i, name] of 默认异常类别们.entries()) {
-        await db.projectExceptionCategory.upsert({ where: { name }, update: {}, create: { id: 默认异常类别id[name], name, sort: i } });
-      }
-    });
-  }
+  await 系统写(async () => {
+    for (const [i, name] of 默认异常类别们.entries()) {
+      await db.projectExceptionCategory.upsert({ where: { name }, update: {}, create: { id: 默认异常类别id[name], name, sort: i } });
+    }
+  });
   return db.projectExceptionCategory.findMany({ orderBy: [{ sort: "asc" }, { createdAt: "asc" }] });
 }
 

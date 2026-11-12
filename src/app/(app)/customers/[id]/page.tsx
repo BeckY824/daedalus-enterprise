@@ -38,6 +38,7 @@ import { 字典of } from "@/lib/project/stage-dict";
 import { 客户参与的项目 } from "@/lib/project/relate";
 import { 我回避的公海项目, 回避豁免 } from "@/lib/project/pool-owner";
 import { 客户沟通汇总, 跟进去处们 } from "@/lib/enterprise/customer-follow-feed";
+import { 页面看得到的客户 } from "@/lib/project/visible-customers";
 import { 显示用客户状态 } from "@/lib/enterprise/cust-status-auto-db";
 
 export const dynamic = "force-dynamic";
@@ -134,8 +135,9 @@ export default async function CustomerDetailPage({
     */
     只项目
       ? Promise.all([
-          客户沟通汇总(me, customer.id),
-          跟进去处们(me, customer.id),
+          // 页面渲染：客户可见走请求内缓存（翻页的服务端动作照旧现读）
+          客户沟通汇总(me, customer.id, undefined, 页面看得到的客户),
+          跟进去处们(me, customer.id, 页面看得到的客户),
           页面可选项("transfer"),
           prisma.followPlan.findMany({ where: { customerId: customer.id, done: false }, orderBy: [{ plannedAt: "asc" }, { id: "asc" }], take: 20 }),
         ])
