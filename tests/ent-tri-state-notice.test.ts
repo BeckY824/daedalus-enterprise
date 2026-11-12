@@ -80,7 +80,7 @@ describe("什么时候发", () => {
     await 过(95);
     const 乙的 = await 三态通知(人.乙);
     expect(乙的).toHaveLength(1);
-    expect(乙的[0].title).toBe("客户三态提醒：1 家进入沉睡");
+    expect(乙的[0].title).toBe("客户三态提醒：1 家进入沉睡待定");
   });
 });
 
@@ -89,26 +89,26 @@ describe("三级提醒链", () => {
     await 过(89);
     expect(await 三态通知(人.乙)).toHaveLength(0);
     await 过(90);
-    expect((await 三态通知(人.乙)).map((x) => x.title)).toEqual(["客户三态提醒：1 家进入沉睡"]);
+    expect((await 三态通知(人.乙)).map((x) => x.title)).toEqual(["客户三态提醒：1 家进入沉睡待定"]);
     expect(await 三态通知(人.甲)).toHaveLength(0);
     await 过(91); // 周日
     await 过(92); // 周一
     await 过(93); // 周二
-    expect((await 三态通知(人.乙)).map((x) => x.title)).toEqual(["客户三态提醒：1 家进入沉睡", "客户三态提醒：1 家还在沉睡"]);
+    expect((await 三态通知(人.乙)).map((x) => x.title)).toEqual(["客户三态提醒：1 家进入沉睡待定", "客户三态提醒：1 家还在沉睡待定"]);
     await 过(120);
-    expect((await 三态通知(人.乙)).at(-1)!.title).toBe("客户三态提醒：1 家沉睡满 30 天");
-    expect((await 三态通知(人.甲)).map((x) => x.title)).toEqual(["客户三态提醒：1 家沉睡满 30 天"]);
+    expect((await 三态通知(人.乙)).at(-1)!.title).toBe("客户三态提醒：1 家沉睡待定满 30 天");
+    expect((await 三态通知(人.甲)).map((x) => x.title)).toEqual(["客户三态提醒：1 家沉睡待定满 30 天"]);
     for (const n of [180, 181, 190, 200, 209]) await 过(n);
     const 总 = await 三态通知(人.总内);
-    expect(总.map((x) => x.body)).toEqual(["「客户甲」待回收（第 1 次提醒），负责人 乙", "「客户甲」待回收（第 2 次提醒），负责人 乙", "「客户甲」待回收（第 3 次提醒），负责人 乙"]);
-    expect((await 三态通知(人.乙)).filter((x) => x.title.includes("待回收"))).toHaveLength(3);
-    expect((await 三态通知(人.甲)).filter((x) => x.title.includes("待回收"))).toHaveLength(3);
+    expect(总.map((x) => x.body)).toEqual(["「客户甲」即将回收（第 1 次提醒），负责人 乙", "「客户甲」即将回收（第 2 次提醒），负责人 乙", "「客户甲」即将回收（第 3 次提醒），负责人 乙"]);
+    expect((await 三态通知(人.乙)).filter((x) => x.title.includes("即将回收"))).toHaveLength(3);
+    expect((await 三态通知(人.甲)).filter((x) => x.title.includes("即将回收"))).toHaveLength(3);
     expect(await 三态通知(人.总外)).toHaveLength(0);
     expect(await prisma.entCustomerClock.findUniqueOrThrow({ where: { customerId: 客户 } })).toMatchObject({ state: "待回收", noticeCount: 3, lastNoticeDay: 日(200) });
     await 过(210);
     expect(await prisma.customerPool.findUnique({ where: { customerId: 客户 } })).not.toBeNull();
     const 回 = (await 通知(人.乙)).filter((x) => x.dedupeKey.startsWith("tri-pooled:"));
-    expect(回.map((x) => x.title)).toEqual(["「客户甲」待回收期满没人处理，已回客户公海"]);
+    expect(回.map((x) => x.title)).toEqual(["「客户甲」即将回收期满没人处理，已回客户公海"]);
     // 第 1 次被收回不抄上级
     expect((await 通知(人.甲)).filter((x) => x.dedupeKey.startsWith("tri-pooled:"))).toHaveLength(0);
   });
@@ -118,7 +118,7 @@ describe("三级提醒链", () => {
     await 过(90);
     const 乙的 = await 三态通知(人.乙);
     expect(乙的).toHaveLength(1);
-    expect(乙的[0].title).toBe("客户三态提醒：5 家进入沉睡");
+    expect(乙的[0].title).toBe("客户三态提醒：5 家进入沉睡待定");
     expect(乙的[0].body.split("\n")).toHaveLength(5);
   });
 });

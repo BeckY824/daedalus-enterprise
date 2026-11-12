@@ -119,7 +119,7 @@ it("三态开着：回收状态列在项目数后面、和客户状态两列；1
       expect(头.slice(名位, 名位 + 5), `宽 ${w}`).toEqual(["客户", "当前节点", "项目数", "回收状态", "客户状态"]);
       const 列 = 头.indexOf("回收状态");
       const 格 = await page.evaluate((列) => [...document.querySelectorAll("tr.ant-table-row")].map((tr) => { const td = tr.children[列] as HTMLElement; return { 字: td.innerText.trim(), 高: tr.getBoundingClientRect().height }; }), 列);
-      expect(格.map((g) => g.字), `宽 ${w}`).toEqual(["待回收 · 12 天后进公海", "暂缓回收中", "不计时"]);
+      expect(格.map((g) => g.字), `宽 ${w}`).toEqual(["即将回收 · 12 天后进公海", "暂缓待收", "不计时"]);
       expect(Math.max(...格.map((g) => g.高)), `宽 ${w}`).toBeLessThanOrEqual(60);
       expect(await page.locator(".list-bar > .ant-space").first().evaluate((el) => el.getBoundingClientRect().height), `宽 ${w} 筛选行一行`).toBeLessThanOrEqual(40);
       // 回收状态筛选要么在外面、要么收在「更多筛选」里

@@ -60,7 +60,7 @@ import type { 建档数据 } from "../projects/new/ProjectWizard";
 import { useViewAs } from "@/components/ViewAsContext";
 import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 import { 归档档位们 } from "@/lib/enterprise/archive-tier";
-import { 三态筛选值们, 三态标字, 三态标说明, type 三态标 } from "@/lib/enterprise/tri-state-label";
+import { 三态筛选值们, 三态标字, 三态标说明, 三态显示名, type 三态标 } from "@/lib/enterprise/tri-state-label";
 import { 字典of, 阶段们, type 阶段, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import type { 客户项目概况 } from "@/lib/project/customer-list-projects";
 import { 换客户页看法, 市场视图名 } from "@/lib/customers-view-pref";
@@ -576,7 +576,7 @@ export default function CustomersView({
           键: "triState", 名: "回收状态", 宽: 130, 默认外露: true, 挤: true, 有值: !!f.triState,
           渲染: (style: CSSProperties) => (
             <Select style={style} aria-label="回收状态" placeholder="全部回收状态" allowClear value={f.triState || undefined}
-              onChange={(v?: string) => apply({ triState: v ?? "" })} options={三态筛选值们.map((x) => ({ value: x, label: x }))} />
+              onChange={(v?: string) => apply({ triState: v ?? "" })} options={三态筛选值们.map((x) => ({ value: x, label: 三态显示名(x) }))} />
           ),
         }]
       : []),

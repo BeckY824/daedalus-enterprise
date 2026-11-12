@@ -7,6 +7,7 @@ import { MoreOutlined } from "@ant-design/icons";
 import type { 三态条, 三态条按钮 } from "@/lib/enterprise/tri-state-detail";
 import { fmtDateTime } from "@/lib/utils";
 import { 三态继续持有, 三态暂缓回收, 三态让同事结束项目 } from "../tri-state-actions";
+import { 三态显示名 } from "@/lib/enterprise/tri-state-label";
 
 const 标签色 = { 沉睡: "sleep", 待回收: "pend", 暂缓回收中: "hold" } as const;
 
@@ -56,7 +57,7 @@ export default function TriStateBar({ 条, customerId, 开客户转让 }: { 条:
 
   return (
     <div className={`tri-bar ${标签色[条.状态]}`} data-testid="tri-state-bar" role="status">
-      <span className={`tri-st ${标签色[条.状态]}`}>{条.状态}</span>
+      <span className={`tri-st ${标签色[条.状态]}`}>{三态显示名(条.状态)}</span>
       <span className="tri-tx" title={条.悬停}>{条.文字}</span>
       <span className="tri-sp" />
       {条.旁注 && <span className="tri-note" title={条.旁注}>{条.旁注}</span>}
