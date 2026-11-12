@@ -1,6 +1,7 @@
 import type { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
-import { 能看项目, type 谁 } from "@/lib/enterprise/permissions";
+import { cache } from "react";
+import { 能看项目, 能看全部, 只看的人, 没设业务角色, type 谁 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 本套位置, 节点序号 } from "./nodes";
 import { 企业版字典, 字典of } from "./stage-dict";
@@ -74,9 +75,37 @@ export async function 客户项目概况们(me: 谁, customerIds: readonly strin
  * 阶段、进程的认法和项目页筛选同一句（list.ts 阶段进程条件：有结局的按结局归的阶段）。都没给 / 认不出 = null（不筛）
  */
 export async function 项目阶段客户条件(me: 谁, sp: { phase?: string; node?: string }): Promise<Prisma.CustomerWhereInput | null> {
-  const 阶进 = 阶段进程条件(sp, 字典of(true));
-  if (!阶进.where.length) return null;
-  const 们 = await 我能看的项目们(me, { AND: 阶进.where });
-  // 小 in 拼成一个 OR（search-keyword.ts 客户id集合）：命中上千位客户时 Prisma 不会把这句拆成几条查，翻页、导出的全局排序和总数照旧在一句里算
-  return 客户id集合([...new Set(们.map((p) => p.customerId))]);
+  const r = await 阶段客户(me.id, me.role ?? "", sp.phase ?? "", sp.node ?? "");
+  return r === 阶段命中太多 ? { id: { in: [] } } : r;
 }
+
+/**
+ * 命中的客户点名时最多点这么多位：SQLite 一句的绑定参数上限 32766，留余量给同一句里别的条件。
+ * 超了不报错、当一位都没中，页面据 阶段筛选太多 提示「结果太多，请再加筛选条件」。测试里可以调小（设阶段命中上限）
+ */
+let 点名上限 = 30000;
+export function 设阶段命中上限(n: number) { 点名上限 = n; }
+export const 阶段命中太多 = "阶段命中太多" as const;
+
+/** 这一次请求里阶段 / 进程筛选是不是命中太多（页面提示用；和筛选同一份请求内缓存，不另查） */
+export async function 阶段筛选太多(me: 谁, sp: { phase?: string; node?: string }): Promise<boolean> {
+  if (!sp.phase && !sp.node) return false;
+  return (await 阶段客户(me.id, me.role ?? "", sp.phase ?? "", sp.node ?? "")) === 阶段命中太多;
+}
+
+const 阶段客户 = cache(async (id: string, role: string, phase: string, node: string): Promise<Prisma.CustomerWhereInput | null | typeof 阶段命中太多> => {
+  const me: 谁 = { id, role: role || null };
+  const 阶进 = 阶段进程条件({ phase, node }, 字典of(true));
+  if (!阶进.where.length) return null;
+  // 看全部的（系统管理员、不按线的管理员只读；能看项目 里同一个顺序先排掉只看某人、没设角色）：不用逐个判可见，
+  // 关联条件在库里一句筛完、不读进内存，也不点名（关联条件不过限定层，只靠它自己这几条：不在公海、没删、阶段 / 进程）
+  const org = await 权限组织();
+  if (org && !只看的人(org, id) && !没设业务角色(org, id) && 能看全部(me, org)) {
+    return { projects: { some: { AND: [...阶进.where, { pooledAt: null, deletedAt: null }] } } };
+  }
+  const 们 = await 我能看的项目们(me, { AND: 阶进.where });
+  const ids = [...new Set(们.map((p) => p.customerId))];
+  if (ids.length > 点名上限) return 阶段命中太多;
+  // 小 in 拼成一个 OR（search-keyword.ts 客户id集合）：命中上千位客户时 Prisma 不会把这句拆成几条查，翻页、导出的全局排序和总数照旧在一句里算
+  return 客户id集合(ids);
+});

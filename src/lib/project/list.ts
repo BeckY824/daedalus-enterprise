@@ -171,7 +171,9 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
   const 建于 = 创建时间段(sp.createdFrom, sp.createdTo);
   // 手机号（11-11）：先按号码找客户（电话藏着的人 = null，不筛），再取挂在这些客户上的项目，客户要露
   const 号码 = await 客户号码条件(sp.phone, me.id);
-  const 露 = 词 || 来源 || 号码 || sp.客户 ? await 露客户条件(me) : null;
+  // 客户条件只认服务端给的对象（客户页看板视图）；地址栏原样传进来的字符串（新线索页等直接把 searchParams 给进来）当没给
+  const 客户 = sp.客户 && typeof sp.客户 === "object" ? sp.客户 : null;
+  const 露 = 词 || 来源 || 号码 || 客户 ? await 露客户条件(me) : null;
   const 并露 = (w: Prisma.ProjectWhereInput): Prisma.ProjectWhereInput => (露 ? { AND: [w, 露] } : w);
   // 企业版「收回次数」：从留痕里数；按次数筛只在企业版的项目公海里生效
   const 收回筛 = 企 && sp.pool === "1" ? 收回次数筛(sp.recycled) : "";
@@ -187,7 +189,7 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
     ...(卡 === "due-soon" && 规则 ? [即将逾期紧筛(规则, 字典of(企), 今) ?? { id: { in: [] } }] : []),
     ...阶进.where,
     // 按客户的字段筛：客户不露的不列（和按客户名搜同一条，不然拿筛选试得出同事公海客户挂着哪些项目）
-    ...(sp.客户 ? [并露({ customer: sp.客户 })] : []),
+    ...(客户 ? [并露({ customer: 客户 })] : []),
     ...(市场 ? [市场项目条件(me.id, 市场.圈, 创建人)] : []),
     // 公海里同事客户的项目：不露客户名；按客户名搜也不该搜出它（否则等于拿名字试出来）。搜索词的 OR 放进 AND 里，不和别的 OR 打架
     ...(词 ? [{ OR: [{ name: { contains: 词 } }, 并露({ customer: { name: { contains: 词 } } })] }] : []),

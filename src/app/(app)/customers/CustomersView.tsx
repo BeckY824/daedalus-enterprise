@@ -205,6 +205,8 @@ type Props = {
   看板体?: ReactNode;
   /** 市场成员、市场管理（X-107）：「列表 / 看板」叫「客户列表 / 我分出去的」，看板那一边是原项目页给他们的那套（服务端画） */
   市场视图?: boolean;
+  /** 阶段 / 进程筛选命中的客户太多（服务端没点名、当一位都没中）：表格上面提示再加筛选条件 */
+  阶段太多?: boolean;
   /** 客户来源筛选的选项（企业版）；含已停用的渠道 */
   渠道筛选项?: { value: string; label: string }[];
   /** 团队有两个以上一级部门时的部门下拉（带缩进）；空 = 不摆 */
@@ -263,7 +265,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 创建排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 待交接 = null, 项目概况, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 创建排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 待交接 = null, 项目概况, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false, 阶段太多 = false,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -783,11 +785,12 @@ export default function CustomersView({
       render: (_: unknown, r: CustomerRow) => <span className="nowrap">{项目概况[r.id]?.项目数 ?? 0}</span>,
     }] satisfies 列<CustomerRow>[] : []),
     /*
-      「状态」（客户三态开着才有，P-界面-19 ①，构想页 C2）：活跃不标；沉睡 / 待回收（带几天后进公海）/ 暂缓回收中各一个小标签，
-      负责人是市场成员的写「不计时」。一行放不下省略号，悬停看说明
+      「回收状态」（客户三态开着才有，P-界面-19 ①，构想页 C2）：活跃不标；沉睡 / 待回收（带几天后进公海）/ 暂缓回收中各一个小标签，
+      负责人是市场成员的写「不计时」。一行放不下省略号，悬停看说明。
+      表头不叫「状态」：企业版另有一列「客户状态」（字典 custStatus，按项目自动算的客户阶段），两回事
     */
     ...(三态标 ? [{
-      title: "状态", key: "triState", width: 150,
+      title: "回收状态", key: "triState", width: 150,
       render: (_: unknown, r: CustomerRow) => {
         const x = 三态标[r.id];
         return x ? <span className={`tri-tag tri-${x.态}`} title={三态标说明(x)}>{三态标字(x)}</span> : null;
@@ -994,6 +997,7 @@ export default function CustomersView({
         </div>
       )}
 
+      {阶段太多 && <div role="status" className="cust-too-many">结果太多，请再加筛选条件</div>}
       <DataList<CustomerRow>
         页="customers"
         // 企业版每格一行、放不下省略号悬停看全（11-01 会议 §11）

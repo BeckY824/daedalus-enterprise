@@ -228,7 +228,11 @@ test("字段权限：销售的备注只能看就改不了；电话看不到就�
   const 编辑 = async () => {
     await page.goto("/customers");
     // 行上的编辑、删除收进「⋯」（交互规则 D，10-30）
-    await 正文.getByRole("button", { name: "更多操作 销售甲的客户", exact: true }).click();
+    const 更多 = 正文.getByRole("button", { name: "更多操作 销售甲的客户", exact: true });
+    // 服务端出的 HTML 里按钮就在；React 接管（挂上 onClick）之前点下去会落空、菜单不出来（PR #273 CI：客户页这一包变大后 dev 下接管变慢）。
+    // 等按钮身上有了 React 的属性再点，同 e2e/shell-pane.spec.ts
+    await expect.poll(() => 更多.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactProps"))), { message: "「⋯」一直没被 React 接管" }).toBe(true);
+    await 更多.click();
     await page.getByRole("menuitem", { name: "编辑", exact: true }).click();
     return page.getByRole("dialog", { name: "编辑客户" });
   };

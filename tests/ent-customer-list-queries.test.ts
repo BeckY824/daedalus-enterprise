@@ -67,7 +67,7 @@ import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import CustomersPage from "@/app/(app)/customers/page";
 import ProjectsPage from "@/app/(app)/projects/page";
-import { 最近有动静的 } from "@/lib/project/customer-list-projects";
+import { 最近有动静的, 设阶段命中上限 } from "@/lib/project/customer-list-projects";
 import { 市场成员key } from "@/lib/enterprise/market";
 import { 企业版根目录 } from "@/lib/enterprise/nav";
 import { 默认组织规则, 默认三态规则 } from "@/lib/project/org-rules";
@@ -312,6 +312,40 @@ describe("客户页「看板」视图（11-12 第 3 批 C17 / C18：页头、筛
     const 末页 = 参数((await 量({ phase: "订单", pageSize: "100", page: "11" })).el) as unknown as { rows: { name: string }[] };
     expect(末页.rows.map((r) => r.name)).toEqual(Array.from({ length: 100 }, (_, k) => 名(99 - k)));
   }, 60_000);
+
+  it("地址栏手写 ?客户=…（内部键）：客户页看板、/projects 都不报错、结果和不带一样", async () => {
+    mocks.看法 = "board";
+    const 名们 = (el: unknown) => 看板of(el)!.行.map((r) => r.name).sort();
+    const 原 = 名们((await 量()).el);
+    expect(名们((await 量({ 客户: "x" } as Record<string, string>)).el)).toEqual(原);
+    const 项目名 = (el: unknown) => (el as { props: { 行: { name: string }[] } }).props.行.map((r) => r.name).sort();
+    const 项目原 = 项目名((await 量({}, 甲, ProjectsPage as never)).el);
+    expect(项目名((await 量({ 客户: "x" } as Record<string, string>, 甲, ProjectsPage as never)).el)).toEqual(项目原);
+  });
+
+  it("阶段筛选：看全部的（系统管理员）在库里用关联条件筛、不把项目读进内存；别的范围命中超过点名上限不报错、当没中并提示", async () => {
+    const 管 = await 造人("gl", "director");
+    忘掉企业版范围();
+    const 管看 = await 量({ phase: "商机" }, 管);
+    expect(参数(管看.el).rows.map((r) => r.name).sort()).toEqual(["列表客户1", "列表客户2", "列表客户3", "列表客户5"]);
+    // 没有按阶段把项目整批取回来的那一句（我能看的项目们 带 bizLine、members）
+    const 句们 = 管看.句.map((q) => q.replace(/`main`\./g, ""));
+    expect(句们.some((q) => /^SELECT `Project`/.test(q) && /WHERE .*`Project`\.`phase`/.test(q))).toBe(false);
+    expect(句们.some((q) => /FROM `Customer`/.test(q) && /`Project`/.test(q) && /`phase`/.test(q))).toBe(true);
+    // 对照：销售照旧把这个阶段的可见项目取回来逐个判（上面那条判据认得出这一句）
+    expect((await 量({ phase: "商机" })).句.map((q) => q.replace(/`main`\./g, "")).some((q) => /^SELECT `Project`/.test(q) && /WHERE .*`Project`\.`phase`/.test(q))).toBe(true);
+    // 销售：上限调到 2，命中 4 位 → 不报错、一位都没有、带「太多」
+    设阶段命中上限(2);
+    try {
+      const 销 = 参数((await 量({ phase: "商机" })).el) as unknown as { rows: unknown[]; 阶段太多?: boolean; total: number };
+      expect(销.rows).toEqual([]);
+      expect(销.total).toBe(0);
+      expect(销.阶段太多).toBe(true);
+      // 管理员走关联条件，不受点名上限影响
+      expect((参数((await 量({ phase: "商机" }, 管)).el) as unknown as { 阶段太多?: boolean; rows: unknown[] })).toMatchObject({ 阶段太多: false });
+    } finally { 设阶段命中上限(30000); }
+    expect((参数((await 量({ phase: "商机" })).el) as unknown as { 阶段太多?: boolean }).阶段太多).toBe(false);
+  });
 
   it("「项目数」「当前节点」和阶段筛选不算公海里的项目", async () => {
     const c1 = await prisma.customer.findFirstOrThrow({ where: { name: "列表客户1" }, select: { id: true } });

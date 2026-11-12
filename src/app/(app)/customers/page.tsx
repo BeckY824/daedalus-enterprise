@@ -37,6 +37,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { cookies } from "next/headers";
 import { 客户页看法键 } from "@/lib/customers-view-pref";
 import { 项目页, type 项目页参数 } from "../projects/board-page";
+import { 阶段筛选太多 } from "@/lib/project/customer-list-projects";
 import { 读市场身份 } from "@/lib/enterprise/market-view-db";
 import type { SessionUser } from "@/lib/auth";
 import { 三态标们 } from "@/lib/enterprise/tri-state-list";
@@ -267,7 +268,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     // 进程下拉的结局叫法跟组织规则里改过的出口叫法（同项目页）
     规则P,
     /*
-      「状态」一列（客户三态开着才有，P-界面-19 ①，构想页 C2）：这一页的客户一次取钟（两套进公海天数不同时再一句项目选套），不随行数加查询。
+      「回收状态」一列（客户三态开着才有，P-界面-19 ①，构想页 C2）：这一页的客户一次取钟（两套进公海天数不同时再一句项目选套），不随行数加查询。
       三态关着不取、不出列
     */
     按项目 && !看板视图 && 规则P
@@ -381,6 +382,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       三态标={三态标}
       项目看板={按项目}
       市场视图={市场角色}
+      // 阶段 / 进程命中的客户太多、点不了名（customer-list-projects.ts 点名上限）：和筛选同一份请求内缓存，不另查
+      阶段太多={按项目 && !看板视图 ? await 阶段筛选太多(me, sp) : false}
       看板体={看板P ? await 看板P : undefined}
       出口叫法={组织规则?.阶段.出口叫法}
     />
