@@ -20,10 +20,10 @@ import { 企业版 } from "./switch";
 import { 视图中跳过 } from "./view-as";
 import { 待确认, 已作废, 读ids } from "./handover-db";
 
-export const 移交作废天数 = 7;
+import { 移交作废天数 } from "./handover-expire-days";
+
+export { 移交作废天数, 移交作废说法 } from "./handover-expire-days";
 const 一天毫秒 = 24 * 60 * 60_000;
-/** 界面上作废的申请怎么写（客户页顶上那条，HandoverPending） */
-export const 移交作废说法 = `已作废（超 ${移交作废天数} 天未处理）`;
 
 export function 移交作废键(handoverId: string): string {
   return `handover:${handoverId}:作废`;

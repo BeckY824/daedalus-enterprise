@@ -1007,7 +1007,7 @@ export default function CustomersView({
                       return void (res.交接中
                         ? message.success(res.申请移交
                           // 负责人本人转自己的 = 申请移交（X4）：对方确认才生效
-                          ? `已申请移交：${res.交接中} 名等 ${o.label} 确认后生效，确认前仍在原负责人名下${已在}`
+                          ? `已发起客户转让：${res.交接中} 名等「${o.label}」确认后生效，确认前仍在原负责人名下${已在}`
                           : `已发起交接：${res.交接中} 名等 ${o.label} 确认，确认前仍在原负责人名下${已在}`)
                         : message.info(`没有发起新的交接${已在 || "：选中的都已归 " + o.label}`));
                     }

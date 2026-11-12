@@ -29,7 +29,7 @@ beforeAll(async () => {
     import ProjectDetail from '@/app/(app)/projects/[id]/ProjectDetail';import ProjectRoster from '@/components/ProjectRoster';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {项目画像项,字典定义} from '@/lib/enterprise/dict-kinds';
     const root=createRoot(document.getElementById('root'));
     const 长='超长项目名字'.repeat(8), 串='X'.repeat(90);
-    /* 11-01 权限只认业务角色：「转让项目」按 能转让 给（总管理 / 上级），fixture 里看的人能转让 */
+    /* 11-01 权限只认业务角色：「项目转让」按 能转让 给（总管理 / 上级），fixture 里看的人能转让 */
     const 基={id:'p1',name:长,remark:null,amount:1234567.89,currency:'CNY',customer:{id:'c1',name:'超长客户名'+串,school:'某某超长公司名有限公司'.repeat(4)},contact:{id:'k1',name:'张三',position:'采购总监兼华东大区负责人'},
       来源线索:{name:'线索'+串,convertedAt:'2026-10-01'},原因选项:{回收:[],无效:[]},ownerId:'qa',ownerName:'组长甲',creatorName:'组长甲',createdAt:'2026-10-01T00:00:00.000Z',historyOwners:['乙','丙'],
       phase:'订单',node:'生产备货',result:null,exceptionReason:null,exceptionCategory:null,pooled:false,能放公海:false,能领取:false,领取不给:null,进公海:null,出口叫法:{},有效沟通差:[],
@@ -47,6 +47,8 @@ beforeAll(async () => {
     window.__over=(x)=>root.render(包(<ProjectDetail p={{...详情(true).props.p,...x}} 能改={true} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={{们:[],能发:true,默认:{默认类型:'中度卡点',默认影响:'短期不影响'},原因们:['价格']}}/>));
     /* U-项目-07 转让：候选里有接手的人（第一个是自己） */
     window.__转=()=>root.render(包(<ProjectDetail p={详情(true).props.p} 能改={true} 候选={[{id:'qa',name:'组长甲',email:'qa@x.test'},{id:'u3',name:'接手乙',email:'u3@x.test'}]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={{们:[],能发:true,默认:{默认类型:'中度卡点',默认影响:'短期不影响'},原因们:['价格']}}/>));
+    /* 页头排版（11-12 改名后「项目转让」「项目退回公海」变长）：两枚按钮都在、超长负责人 / 创建人名 */
+    window.__头=()=>root.render(包(<ProjectDetail p={{...详情(true).props.p,能放公海:true,ownerName:'负责人'+串,creatorName:'创建人'+串}} 能改={true} 候选={[{id:'qa',name:'组长甲',email:'qa@x.test'},{id:'u3',name:'接手乙',email:'u3@x.test'}]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={{们:[],能发:true,默认:{默认类型:'中度卡点',默认影响:'短期不影响'},原因们:['价格']}}/>));
     /* P17 关联客户 / 联系人：超长客户名、超长联系人显名、选满身份，挂在右栏 */
     const 关联={客户们:[{customerId:'c1',名:'超长客户名'+串,全称:'某某超长公司名有限公司'.repeat(4),身份:['业主方','总包方','分包方','投资方'],主:true,看得到:true},
       {customerId:'c2',名:'关联客户'+串,全称:'',身份:['监理方','设计方','引荐方'],主:false,看得到:true,能进详情:true},{customerId:'c3',名:'同事的客户 #ABC123',全称:'',身份:[],主:false,看得到:false}],
@@ -103,7 +105,7 @@ it("企业版：左边节点、沟通、卡点，右边项目、交付、项目�
     expect((await page.locator(".proj-stage-acts button").allInnerTexts()).map(t => t.trim())).toEqual(["完成节点", "", "新增沟通"]);
     expect(await page.locator(".proj-stage-acts button").nth(1).getAttribute("aria-label")).toBe("终止进程");
     expect(await page.locator(".proj-stage-acts .ant-btn-primary").allInnerTexts()).toEqual(["新增沟通"]);
-    expect(await 页头钮(page)).toEqual(["转让项目"]);
+    expect(await 页头钮(page)).toEqual(["项目转让"]);
     expect(await 编辑钮(page).count()).toBe(1);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
@@ -116,7 +118,7 @@ it.each([1024, 1280, 1366])("Windows %ipx：超长项目名、客户名、组员
     // 右栏里的卡片内容不能伸出卡片（右栏窄，最容易被长串撑开）
     const 伸出 = await page.locator(".proj-side .ant-card").evaluateAll(cs => cs.filter(c => c.scrollWidth > c.clientWidth + 1).map(c => c.querySelector(".ant-card-head-title")?.textContent));
     expect(伸出).toEqual([]);
-    for (const name of ["AI 录入", "新增沟通", "转让项目"]) {
+    for (const name of ["AI 录入", "新增沟通", "项目转让"]) {
       const box = await page.getByRole("button", { name }).first().boundingBox();
       expect(box!.x + box!.width).toBeLessThanOrEqual(w);
       const 点中 = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.textContent ?? "", [box!.x + box!.width / 2, box!.y + box!.height / 2]);
@@ -759,19 +761,33 @@ it("下一步：有文字写文字、有时间跟在后面；老数据只有时�
 const 页头钮 = (page: import("playwright").Page, 类 = "") =>
   page.locator(`.page-head-a button${类}`).evaluateAll(bs => bs.map(b => b.textContent!.replace(/\s/g, "")));
 
-it("R6 页头：只留转让项目 / 退回公海，没有「更多」；⌘N 落到节点卡的「新增沟通」；企业版没有删除项目", async () => {
+it("R6 页头：只留项目转让 / 项目退回公海（11-12 改名），没有「更多」；⌘N 落到节点卡的「新增沟通」；企业版没有删除项目", async () => {
   const { page, errors } = await 覆盖(1280, { 可改沟通: true });
   try {
     // 11-01 用户：「和客户页一样，仅留转让项目，退回公海。其余的放回各模块。」；
     // 编辑项目在项目卡上（U-项目-05），企业版项目不能删（服务端早就拦，这里入口也去掉）
     const 钮 = await 页头钮(page);
-    expect(钮[0]).toBe("转让项目");
-    expect(钮.every(t => t === "转让项目" || t === "退回公海")).toBe(true);
+    expect(钮[0]).toBe("项目转让");
+    expect(钮.every(t => t === "项目转让" || t === "项目退回公海")).toBe(true);
     expect(await page.getByRole("button", { name: "项目的更多操作" }).count()).toBe(0);
     expect(await page.locator(".page-head-a .ant-btn-primary").count()).toBe(0);
     expect(await page.evaluate(() => (document.querySelector(".page-head-a button.ant-btn-primary:not([disabled])") ?? document.querySelector("button[data-cmd-new]:not([disabled])"))?.textContent?.replace(/\s/g, ""))).toBe("新增沟通");
     expect(await page.getByRole("button", { name: "删除项目" }).count()).toBe(0);
     expect(await page.getByText("删除这个项目？").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("项目退回公海（11-12 改名）：确认框叫「把项目退回公海？」，写明只退这个项目、客户不动", async () => {
+  const { page, errors } = await 覆盖(1280, { 能放公海: true });
+  try {
+    await page.locator(".page-head-a").getByRole("button", { name: "项目退回公海" }).click();
+    const 窗 = page.getByRole("dialog").filter({ hasText: "把项目退回公海？" });
+    await 窗.waitFor();
+    expect(await 窗.innerText()).toMatch(/只退这个项目/);
+    expect(await 窗.innerText()).toContain("客户和客户负责人不动");
+    expect(await 窗.getByRole("button", { name: /项目退回公海/ }).count()).toBe(1);
+    expect(await page.getByText("放回线索公海？").count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -783,8 +799,8 @@ it("R6 页头跟着权限：公海里能领的只剩「领取」；退回公海�
     // 公海里的项目谁都改不了（可改 = 能改 && !pooled）：转让、退回都不摆；记沟通那几样在卡上
     expect(await 页头钮(page)).toEqual(["领取"]);
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ 能放公海: true, 提成: null, 线索验证: { 判定: "初验无效", 待: "市场复核", 无效原因: null, 复核结果: null, 最终结果: null, 终验: null, 初判即终判: false, 叫法: "初验无效", 我能: null, 痕: [] } }));
-    await page.waitForFunction(() => document.querySelector(".page-head-a")?.textContent?.includes("退回公海"));
-    expect(await page.locator(".page-head-a").getByRole("button", { name: "退回公海" }).isDisabled()).toBe(true);
+    await page.waitForFunction(() => document.querySelector(".page-head-a")?.textContent?.includes("项目退回公海"));
+    expect(await page.locator(".page-head-a").getByRole("button", { name: "项目退回公海" }).isDisabled()).toBe(true);
     // 11-01：项目卡上「线索验证」一行带当前结果，点开弹窗就是整个验证操作
     expect(await page.getByTestId("lead-verify-result").innerText()).toBe("初验无效");
     // 11-01 会议 §6：结果是纯字，不套 Tag 框
@@ -1243,8 +1259,8 @@ it("U-项目-07：转让先选人、再点「确认转让」才交；框里写�
   const { page, errors } = await open(true, 1280);
   try {
     await page.evaluate(() => (window as unknown as { __转: () => void }).__转());
-    await page.locator(".page-head-a").getByRole("button", { name: "转让项目" }).click();
-    const 窗 = page.getByRole("dialog").filter({ hasText: "转让项目" });
+    await page.locator(".page-head-a").getByRole("button", { name: "项目转让" }).click();
+    const 窗 = page.getByRole("dialog").filter({ hasText: "项目转让" });
     await 窗.waitFor();
     const 确认 = 窗.getByRole("button", { name: /确认转让/ });
     expect(await 确认.isDisabled()).toBe(true);
@@ -1437,3 +1453,63 @@ for (const [w, h] of [[1366, 768], [1280, 720], [1440, 900]] as const) {
     } finally { await page.close(); }
   });
 }
+
+/*
+ * 项目页头排版（CI 红：owner-first-batch 375 宽「文字溢出」、排版闸门 1024 宽 AI 栏常驻「伸出 4px」）：
+ * 按钮改名变长后把标题区挤到比星还窄。判定照 e2e 两处的口径：
+ *   文字溢出 = scrollWidth > clientWidth + 1 且 overflow-x 是 visible、不是 inline（owner-first-batch 的 量）；
+ *   伸出 = 子元素（非 absolute / fixed，中间没有裁切层）的右边超出它的盒子 1px 以上（e2e/layout-audit.ts 的 伸出的子）
+ */
+async function 量页头(page: import("playwright").Page) {
+  return page.locator(".proj-head").evaluate((根) => {
+    const 名 = (el: Element) => `${el.tagName}.${el.className || ""}:${(el.textContent ?? "").slice(0, 12)}`;
+    const 文字溢出: string[] = [], 伸出: string[] = [];
+    const 全部 = [根, ...根.querySelectorAll("*")].filter((el) => el.getBoundingClientRect().width >= 1);
+    for (const el of 全部) {
+      const cs = getComputedStyle(el);
+      if (el !== 根 && el.scrollWidth > el.clientWidth + 1 && cs.overflowX === "visible" && cs.display !== "inline") 文字溢出.push(名(el));
+      if (cs.display === "inline" || cs.display === "contents") continue;
+      const r = el.getBoundingClientRect();
+      for (const c of el.querySelectorAll("*")) {
+        const ccs = getComputedStyle(c);
+        if (ccs.position === "absolute" || ccs.position === "fixed" || ccs.display === "none") continue;
+        // 负外边距故意往外探的不算（同 layout-audit：从 c 到 el 每层探出去的减掉）；中间隔着裁切层的不算
+        let 裁 = false, 探右 = 0, 探左 = 0;
+        for (let e: Element | null = c; e && e !== el; e = e.parentElement) {
+          const ms = getComputedStyle(e);
+          if (e !== c && ms.overflowX !== "visible") { 裁 = true; break; }
+          探右 += Math.max(0, -parseFloat(ms.marginRight) || 0); 探左 += Math.max(0, -parseFloat(ms.marginLeft) || 0);
+        }
+        if (裁) continue;
+        const cr = c.getBoundingClientRect();
+        if (cr.width >= 1 && (cr.right - 探右 > r.right + 1 || r.left - cr.left - 探左 > 1)) { 伸出.push(`${名(el)} ⊃ ${名(c)}`); break; }
+      }
+    }
+    const h1 = 根.querySelector("h1")!;
+    const 标题 = getComputedStyle(h1);
+    return { 文字溢出, 伸出, 标题一行: 标题.whiteSpace === "nowrap" && 标题.textOverflow === "ellipsis" && h1.getBoundingClientRect().height < 40 };
+  });
+}
+it.each([
+  { 宽: 1024, 外宽: 372, label: "1024 宽 AI 栏常驻（正文约 372）" },
+  { 宽: 375, 外宽: undefined, label: "375 宽手机" },
+  { 宽: 1024, 外宽: undefined, label: "1024 宽" },
+  // 真页面上标题区还要让出名单开关、页边距，按钮组 211 宽时标题区只剩二十来 px：用更窄的正文把这种情况挤出来
+  { 宽: 1024, 外宽: 300, label: "1024 宽正文 300" },
+  { 宽: 375, 外宽: 250, label: "375 宽正文 250" },
+])("项目页头 $label：超长项目名、超长负责人名，两枚按钮都在，没有元素伸出 / 文字溢出，标题一行省略", async ({ 宽, 外宽 }) => {
+  const { page, errors } = await open(true, 宽, 外宽);
+  try {
+    await page.evaluate(() => (window as unknown as { __头: () => void }).__头());
+    await page.locator(".page-head-a").getByRole("button", { name: "项目退回公海" }).waitFor();
+    expect(await 页头钮(page)).toEqual(["项目转让", "项目退回公海"]);
+    const r = await 量页头(page);
+    expect(r.文字溢出, "文字溢出").toEqual([]);
+    expect(r.伸出, "伸出").toEqual([]);
+    expect(r.标题一行).toBe(true);
+    // 按钮整枚可见、没被压窄折成两行
+    const 钮高 = await page.locator(".page-head-a button").evaluateAll((bs) => bs.map((b) => Math.round(b.getBoundingClientRect().height)));
+    expect(钮高.every((h) => h <= 40)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
