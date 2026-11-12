@@ -32,6 +32,7 @@ import { 规则 } from "@/lib/enterprise/rules";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 仅项目客户们, 仅项目可见, 仅项目安全条件, 仅项目筛选口径 } from "@/lib/enterprise/project-only-customers";
 import { 无负责人占位Id } from "@/lib/no-owner-db";
+import { saveContact } from "@/app/(app)/customers/[id]/actions";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 let 总管: 人, 销售管理: 人, 虚线管理: 人, 甲: 人, 乙: 人, 丙: 人;
@@ -154,5 +155,48 @@ describe("仅项目安全条件", () => {
     for (const sort of ["amount-asc", "level-desc", "created-asc"]) expect(仅项目安全条件({ sort })).toBeNull();
     expect(仅项目安全条件({ 不认识: "x" } as never)).toBeNull();
     expect(仅项目安全条件({ keyword: ["a"] } as never)).toBeNull();
+  });
+});
+
+describe("saveContact 守卫（提交 2）", () => {
+  const 新建 = (u: 人, customerId: string, name = "新来联系") => 以(u, () => saveContact({ customerId, name, isPrimary: false, phone: `136${号()}` }));
+  const 有人叫 = async (name: string) => (await prisma.contact.count({ where: { name } })) > 0;
+
+  it("看不到的客户下面新建联系人：拒（只负责项目的人也一样，走专门的动作）", async () => {
+    const c = await 客户(甲.id);
+    await 项目(c, 乙.id);
+    const 外 = await 客户(甲.id);
+    忘掉企业版范围();
+    for (const [谁, id] of [[丙, 外], [乙, c]] as const) {
+      const r = await 新建(谁, id, `越界${谁.name}`);
+      expect(r.ok, 谁.name).toBe(false);
+      expect(await 有人叫(`越界${谁.name}`)).toBe(false);
+    }
+  });
+
+  it("只读看得到的客户（组员、虚线上级）：新建、编辑都拒", async () => {
+    const c = await 客户(乙.id);
+    const p = await 项目(c, 乙.id);
+    await prisma.projectMember.create({ data: { projectId: p, userId: 丙.id, inviteStatus: "JOINED" } });
+    const 老 = await 联系人(c, "老联系");
+    const 版本 = (await prisma.contact.findUniqueOrThrow({ where: { id: 老 } })).updatedAt.toISOString();
+    忘掉企业版范围();
+    for (const 谁 of [丙, 虚线管理]) {
+      expect(await 以(谁, () => prisma.customer.findUnique({ where: { id: c }, select: { id: true } })), `${谁.name} 看得到`).not.toBeNull();
+      const 建 = await 新建(谁, c, `只读新建${谁.name}`);
+      expect(建.ok, `${谁.name} 新建`).toBe(false);
+      expect(await 有人叫(`只读新建${谁.name}`)).toBe(false);
+      const 改 = await 以(谁, () => saveContact({ id: 老, 版本, customerId: c, name: `改名${谁.name}`, isPrimary: false }));
+      expect(改.ok, `${谁.name} 编辑`).toBe(false);
+      expect(await 有人叫(`改名${谁.name}`)).toBe(false);
+    }
+  });
+
+  it("客户负责人照常新建，记下是谁建的", async () => {
+    const c = await 客户(甲.id);
+    忘掉企业版范围();
+    const r = await 新建(甲, c, "负责人新建");
+    expect(r.ok).toBe(true);
+    expect((await prisma.contact.findFirstOrThrow({ where: { name: "负责人新建" } })).createdById).toBe(甲.id);
   });
 });

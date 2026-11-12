@@ -706,6 +706,18 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
       : null;
     if (input.id && !原) return { ok: false as const, error: "这位联系人已经不在这儿了，刷新看看" };
     /*
+      企业版：挂的那位客户（编辑看主客户）要看得到、且不是只读的（项目组员、虚线上级、市场相关）。
+      原来新建一路不判客户可见：随便拿一个看不到的客户 id 也建得进去（11-12 查实）。只负责项目的人另走受限详情的专门动作
+    */
+    if (企业版()) {
+      const 挂的 = 原 ? 原.customerId : input.customerId;
+      const 客 = typeof 挂的 === "string" && 挂的
+        ? await prisma.customer.findUnique({ where: { id: 挂的 }, select: { id: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } } })
+        : null;
+      if (!客) return { ok: false as const, error: "这位客户已经不在了（或你看不到），刷新看看" };
+      if (await 只读客户(defaultClient, 客)) return { ok: false as const, error: await 只读话(defaultClient) };
+    }
+    /*
       企业版联系人挂多位客户（2026-10-29 P13 第 1 条）：编辑不换主客户——从挂靠的那位客户页上编辑时，交上来的 customerId 是那一位，
       主客户和「主要联系人」照原样（主要联系人说的是主客户那边的）。换主客户走 换主客户（contact-link-actions.ts）
     */
@@ -762,7 +774,8 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
         const 写了 = await tx.contact.updateMany({ where: { id: input.id, ...版本条件(input.版本) }, data });
         if (写了.count === 0) return null;
       }
-      const savedId = input.id ?? (await tx.contact.create({ data })).id;
+      // 企业版记下谁建的（迁移 135）：受限客户详情里只负责项目的人只能改自己建的
+      const savedId = input.id ?? (await tx.contact.create({ data: { ...data, ...(企业版() ? { createdById: me.id } : {}) } })).id;
       // 企业版：新建的联系人在主客户上记一行挂靠（客户页的联系人卡片、联系人页都按挂靠表 + 主客户列出来）
       if (!input.id && 企业版()) await tx.contactCustomer.create({ data: { contactId: savedId, customerId: 主客户 } });
       /*
