@@ -54,6 +54,7 @@ describe("企业版切换视图", () => {
   beforeEach(async () => {
     await resetDb();
     vi.stubEnv("CRM_ENTERPRISE", "1");
+    vi.stubEnv("CRM_ENT_VIEW_AS", "1"); // 切换视图开关（11-12 起默认关）
     罐.票.clear();
     const 部 = (await prisma.entDept.create({ data: { name: "销售一部" } })).id;
     const 建 = async (名: string, role: string, bizRole?: string) => {
@@ -107,7 +108,7 @@ describe("企业版切换视图", () => {
   it("总管理员切到业务员甲：按甲的权限看，期间一切写被拒；退出后恢复并留痕", async () => {
     await 登录成(人.总管);
     const 名单 = await 读视图名单((await getCurrentUser())!);
-    expect(名单?.flatMap((g) => g.人.map((p) => p.id)).sort()).toEqual([人.老板, 人.甲, 人.乙].sort()); // 不列自己
+    expect(名单?.flatMap((g) => g.人.map((p) => p.id)).sort()).toEqual([人.甲, 人.乙].sort()); // 不列自己，也不列别的系统管理员（11-12）
     expect(await 开始视图(人.甲)).toEqual({ ok: true });
     expect(罐.票.has(视图票)).toBe(true);
     忘掉企业版范围();
@@ -157,7 +158,7 @@ describe("企业版切换视图", () => {
     expect(痕[0].summary).toContain("业务员甲");
   });
 
-  it("切视图时字典还是空的：第一次读照样建好默认项，不崩页；普通写和手动改字典仍拒", async () => {
+  it("切视图时字典还是空的：内存里给默认项、一笔不落库（11-12 起），不崩页；普通写和手动改字典仍拒", async () => {
     await prisma.entDictItem.deleteMany();
     await prisma.projectRole.deleteMany();
     await prisma.projectExceptionCategory.deleteMany();
@@ -167,6 +168,11 @@ describe("企业版切换视图", () => {
     expect((await 企业字典("assign")).length).toBeGreaterThan(0);
     expect((await 角色字典()).length).toBeGreaterThan(0);
     expect((await 异常类别字典()).length).toBeGreaterThan(0);
+    expect(await prisma.entDictItem.count()).toBe(0);
+    expect(await prisma.projectRole.count()).toBe(0);
+    expect(await prisma.projectExceptionCategory.count()).toBe(0);
+    // 种子写包在 系统写 里也拦（漏网的那种）
+    await expect(系统写(() => prisma.projectRole.create({ data: { name: "种子漏网" } }))).rejects.toMatchObject({ code: "CRM_READONLY" });
     await expect(prisma.customer.update({ where: { id: 甲的客户 }, data: { name: "x" } })).rejects.toMatchObject({ code: "CRM_READONLY" });
     await expect(prisma.projectRole.create({ data: { name: "视图里加的" } })).rejects.toMatchObject({ code: "CRM_READONLY" });
   });

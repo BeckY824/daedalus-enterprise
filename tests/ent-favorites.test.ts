@@ -47,6 +47,7 @@ const 甲 = () => ({ id: 人.甲, role: "SALES", name: "业务员甲" });
 beforeEach(async () => {
   await resetDb();
   vi.stubEnv("CRM_ENTERPRISE", "1");
+    vi.stubEnv("CRM_ENT_VIEW_AS", "1"); // 切换视图开关（11-12 起默认关）
   罐.票.clear();
   const 部 = (await prisma.entDept.create({ data: { name: "销售一部" } })).id;
   const 建 = async (名: string, role: string, bizRole: string) => {

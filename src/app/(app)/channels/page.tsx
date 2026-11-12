@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import ChannelsView from "./ChannelsView";
 import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { 可选项, 字典定义 } from "@/lib/enterprise/dict";
 import { 读渠道统计 } from "@/lib/enterprise/channel-stats-db";
 import { 读看板底数, 读公海底数 } from "@/lib/enterprise/channel-dash-db";
@@ -28,7 +29,8 @@ export default async function ChannelsPage({ searchParams }: { searchParams?: Pr
   const 市场 = 企业版() ? await 读市场身份(me.id) : null;
   // 渠道两层（11-08）：还没挂主渠道的渠道（老数据、导入、别处新建的）先按名字补挂上，补过的不再动。
   // 是系统补数据不是用户改：只读管理员打开也要能补，不然整页被只读拦挡掉
-  if (企业版()) await 系统写(() => 补主渠道());
+  // 切换视图（只读预览）不补：一笔不写，没挂主渠道的照原样显示
+  if (企业版() && !(await 视图中跳过())) await 系统写(() => 补主渠道());
 
   const [channels, users] = await Promise.all([
     prisma.channel.findMany({

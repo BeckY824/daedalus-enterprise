@@ -4,6 +4,8 @@ import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 企业版跳转 } from "@/lib/enterprise/web-paths";
 import { 站内路径 } from "@/lib/safe-next";
+import { 视图只读话 } from "@/lib/enterprise/view-as-words";
+import { 视图挡写 } from "@/lib/enterprise/view-as-gate";
 
 /**
  * 与 lib/auth.ts 保持一致：生产环境缺少 AUTH_SECRET 时直接失败，
@@ -75,6 +77,11 @@ function 登录后回来(request: NextRequest): string | null {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  // /api 只为切换视图进来：别的照旧不经过这里（登录跳转、页面跳转都不管 /api）
+  if (pathname === "/api" || pathname.startsWith("/api/")) {
+    if (await 视图挡写(request, SECRET)) return NextResponse.json({ error: 视图只读话 }, { status: 403 });
+    return NextResponse.next();
+  }
   // 企业版网页里不留我们云端 / 桌面端的页面（注册、条款、手机伴侣、反馈），见 lib/enterprise/web-paths.ts
   if (企业版()) {
     const 去 = 企业版跳转(pathname);
@@ -159,5 +166,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   // 排除 API 路由与静态资源（geo/ 是复盘页世界地图的国家边界）；/api/auth/logout 需要能自行清 Cookie 后跳转
-  matcher: ["/((?!api|_next/static|_next/image|ocr/|geo/|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
+  // /api/:path* 只为切换视图期间挡非 GET（见 视图挡写），别的一律原样放过
+  matcher: ["/((?!api|_next/static|_next/image|ocr/|geo/|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)", "/api/:path*"],
 };

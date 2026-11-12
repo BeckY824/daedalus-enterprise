@@ -7,7 +7,8 @@ import { recordAudit } from "@/lib/audit";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { multiTenant } from "@/lib/tenant/context";
 import { 读组织 } from "@/lib/enterprise/org";
-import { 视图票, 视图小时, 签视图票, 能切换视图, 当前视图, 视图放行 } from "@/lib/enterprise/view-as";
+import { 视图票, 视图小时, 签视图票, 能切换视图, 能被看, 当前视图, 视图放行 } from "@/lib/enterprise/view-as";
+import { 有切换视图 } from "@/lib/enterprise/view-as-menu";
 
 export type 视图结果 = { ok: true } | { ok: false; error: string };
 
@@ -17,11 +18,14 @@ export type 视图结果 = { ok: true } | { ok: false; error: string };
  * 这个 action 谁都 POST 得到：不是总管理员一律拒，不靠界面藏入口
  */
 export async function 开始视图(userId: string): Promise<视图结果> {
-  if (!企业版() || multiTenant()) return { ok: false, error: "这个部署没有切换视图" };
+  if (!企业版() || multiTenant() || !有切换视图()) return { ok: false, error: "这个部署没有切换视图" };
   const 真 = await getSessionUser();
   if (!真) return { ok: false, error: "登录已过期，请重新登录" };
-  if (!能切换视图(await 读组织(), 真.id)) return { ok: false, error: "只有系统管理员能切换视图" };
+  const org = await 读组织();
+  if (!能切换视图(org, 真.id)) return { ok: false, error: "只有系统管理员能切换视图" };
+  if (typeof userId !== "string" || !userId) return { ok: false, error: "先选一个人" };
   if (userId === 真.id) return 退出视图();
+  if (!能被看(org, userId)) return { ok: false, error: "不能以另一位系统管理员的视图查看" };
   const t = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, active: true } });
   if (!t || !t.active) return { ok: false, error: "这个人不在了或已停用，刷新一下再选" };
   (await cookies()).set(视图票, await 签视图票(真.id, t.id), {

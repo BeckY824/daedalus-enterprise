@@ -16,13 +16,17 @@
  * 界面上的按钮按 components/ViewAsContext.tsx 禁用。附件在页面里看图、播录音不拦：预览本来就要看，真身也有权限。
  * 页面渲染时顺手写库的（首页、客户页每天扫一次掉公海 / 超时收回）在切换期间直接跳过，见 pool-db.ts、project/db.ts。
  *
+ * 开关（11-12 用户：「做成带开关的正式功能、开关默认关，只在本机演示实例打开」）：环境变量 CRM_ENT_VIEW_AS=1 才有。
+ * 关着时入口不画、开始视图拒、带着的票（哪怕签名对）一律不认、写不拦——和没有这个功能完全一样，也不读 cookie。
+ * 被看的人不能是系统管理员（11-12 保守处理：管理员之间互看待定）。
+ *
  * 本模块不在顶层 import next/headers：lib/team-scope.ts（每条写都过）和测试都要用它，同 visibility.ts 是谁()。
  */
 import { SignJWT, jwtVerify } from "jose";
 import { readSecret } from "@/lib/secret";
 import { 全进程上下文 } from "@/lib/process-als";
 import { 企业版 } from "./switch";
-import { 视图外部话 } from "./view-as-words";
+import { 视图外部话, 视图只读话 } from "./view-as-words";
 import { 是系统管理员of, type 组织 } from "./org-core";
 
 /** 视图票的 cookie 名 */
@@ -34,10 +38,15 @@ export const 视图小时 = 2;
 
 export type 视图 = { 由: string; 谁: string };
 
+/** 这个部署开没开切换视图：企业版且 CRM_ENT_VIEW_AS=1。关着时下面所有判断都当没有票 */
+export function 切换视图开着(): boolean {
+  return 企业版() && process.env.CRM_ENT_VIEW_AS === "1";
+}
+
 /** 切换期间所有写被拒时那一句（code 同 lib/team-scope.ts 只读错误，not-there.ts 不在了() 原样回给界面） */
 export class 视图只读错误 extends Error {
   code = "CRM_READONLY";
-  constructor(message = "正在切换视图（只读）：不能改任何数据。要改请先点顶上的「退出」回到自己的身份") {
+  constructor(message = 视图只读话) {
     super(message);
   }
 }
@@ -48,6 +57,11 @@ export class 视图只读错误 extends Error {
  */
 export function 能切换视图(org: 组织, userId: string): boolean {
   return 是系统管理员of(org, userId);
+}
+
+/** 能不能被看：不能是系统管理员（管理员之间互看待定，先不给）。名单、开始视图、认票同这一处 */
+export function 能被看(org: 组织, userId: string): boolean {
+  return !是系统管理员of(org, userId);
 }
 
 const 钥 = () => new TextEncoder().encode(readSecret());
@@ -63,7 +77,7 @@ export async function 签视图票(由: string, 谁: string): Promise<string> {
 
 /** 验视图票：签名、没过期、类型对、而且是这个会话（sub）签的。不对回 null */
 export async function 验视图票(票: string | undefined | null, 会话sub: string | null | undefined): Promise<视图 | null> {
-  if (!票 || !会话sub) return null;
+  if (!切换视图开着() || !票 || !会话sub) return null;
   try {
     const { payload } = await jwtVerify(票, 钥());
     if (payload.typ !== "view-as" || typeof payload.va !== "string" || typeof payload.vb !== "string") return null;
@@ -89,6 +103,7 @@ let 头: Promise<typeof import("next/headers")> | undefined;
 
 /** 这个请求带着有效的视图票：回 {由, 谁}；没有、无效、不在请求里（后台、脚本）回 null */
 export async function 当前视图(): Promise<视图 | null> {
+  if (!切换视图开着()) return null;
   let 视: string | undefined;
   let 会话: string | undefined;
   try {
@@ -128,7 +143,7 @@ export async function 视图中跳过(): Promise<boolean> {
  * 不是企业版的部署直接 false，连 cookie 都不读；不在请求里（定时同步、脚本）读不到票，也是 false
  */
 export async function 正在切换视图(): Promise<boolean> {
-  return 企业版() && (await 视图中跳过());
+  return 切换视图开着() && (await 视图中跳过());
 }
 
 /** 切换视图就抛（code 同只读错误）：会抛错的 action、底层出口用 */
