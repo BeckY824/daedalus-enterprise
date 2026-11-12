@@ -3,7 +3,8 @@
  *
  * 标看的是夜扫写在钟上的状态（EntCustomerClock，tri-state-db.ts 写钟）：沉睡 / 待回收 / 待回收且被挡（对用户叫「暂缓回收中」）。
  * 负责人是市场成员（市场角色、又不兼销售，同 tri-state-db.ts 收三态客户）的一律写「不计时」，不看钟（换到市场成员名下后钟停在原状态，夜扫不再写）。
- * 待回收的「N 天后进公海」= 钟上的进入日（已含继续持有顺延）+ 这位客户适用那套的进公海天数（M-公海-25 选套），到今天还差几天。
+ * 待回收的「N 天后进公海」= 到最早进公海日还差几天：同服务端 算三态() 的排期（待回收最早进公海日），节点 = 钟上的进入日（已含继续持有顺延）+ 这位客户适用那套的进公海天数（M-公海-25 选套），
+ * 再按钟上本轮提醒了几次、最近哪天提醒往后排（3 次提醒没发够不进）。暂缓解除后那 10 天不另算（解除日在留痕里，不另查）。
  *
  * 一页客户一次查：钟一句；内贸、外贸两套的进公海天数不一样、这一页又有待回收的才再取一句这些客户的项目选套。
  * 三态关着时调用方根本不调（不多一条查询）
@@ -14,7 +15,7 @@ import { 企业版 } from "./switch";
 import { getBusiness } from "@/lib/business";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import type { 三态规则 } from "@/lib/project/org-rules";
-import { 选套, 加天, 差天, type 三态项目 } from "./tri-state";
+import { 选套, 加天, 差天, 待回收最早进公海日, type 三态项目 } from "./tri-state";
 import { 项目业务线 } from "./assign-line";
 import { 是市场角色, 是销售角色 } from "./permissions";
 import { 读组织, type 组织 } from "./org";
@@ -53,7 +54,7 @@ export async function 三态标们(
   if (!计时的.length) return 出;
   const 钟们 = await 看全部(() => prisma.entCustomerClock.findMany({
     where: { customerId: { in: 计时的.map((r) => r.id) }, state: { in: ["沉睡", "待回收"] }, ...(市场.size ? { customer: { salesOwnerId: { notIn: [...市场] } } } : {}) },
-    select: { customerId: true, state: true, enteredDay: true, blocked: true, dealDay: true },
+    select: { customerId: true, state: true, enteredDay: true, blocked: true, dealDay: true, noticeCount: true, lastNoticeDay: true },
   }));
   const 待回收们 = 钟们.filter((k) => k.state === "待回收" && !k.blocked);
   // 两套进公海天数一样就不用看这位客户用哪套
@@ -69,7 +70,9 @@ export async function 三态标们(
     if (k.state === "沉睡") { 出[k.customerId] = { 态: "沉睡" }; continue; }
     if (k.blocked) { 出[k.customerId] = { 态: "暂缓回收中" }; continue; }
     const 套 = 要选套 ? 规则[选套(项目of.get(k.customerId) ?? [], 规则, k.dealDay ? 规则.成交.活跃段 : null)] : 规则.内贸;
-    出[k.customerId] = { 态: "待回收", 几天后进公海: 差天(今天, 加天(k.enteredDay, 套.进公海)) };
+    // 同服务端排期（M-公海-17）：最早进公海 = max(进公海节点, 第 3 次提醒 + 间隔)；提醒没发够，天数到了也还没进
+    const 最早 = 待回收最早进公海日({ 待回收: k.enteredDay, 进公海: 加天(k.enteredDay, 套.进公海) }, 套.进公海, 今天, k.noticeCount, k.lastNoticeDay);
+    出[k.customerId] = { 态: "待回收", 几天后进公海: 差天(今天, 最早) };
   }
   return 出;
 }

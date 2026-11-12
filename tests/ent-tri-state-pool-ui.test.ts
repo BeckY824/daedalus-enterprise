@@ -1,7 +1,7 @@
 /**
  * 公海「号码不全」按钮上的数（三态界面 B 组，C14；用户 11-12 定要带数）：
- * 口径 = 我看得到的公海里、三态自动收回时打了「号码不全」的客户几位（带限定的客户端数，不绕过公海可见范围）；
- * 三态关着不数、不给；开着公海页只多 1 条查询。地址栏带 phoneIncomplete=1 时三态关着当没筛
+ * 口径 = 在现在这些筛选上再点「号码不全」会列出几行（11-12 审查：数和点开后看到的行数一致；同一份全量行内存里再筛，不多查库）；
+ * 三态关着不数、不给；开着公海页查询条数和关着一样。地址栏带 phoneIncomplete=1 时三态关着当没筛
  */
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 
@@ -86,11 +86,11 @@ describe("公海「号码不全」按钮带数（C14）", () => {
   it("三态关着：不给数、不开标签；带 phoneIncomplete=1 也当没筛", async () => {
     const { p } = await 量();
     expect(p.三态开).toBe(false);
-    expect(p.号码不全数).toBeNull();
+    expect(p.号码不全数).toBeUndefined();
     expect((await 量({ phoneIncomplete: "1" })).p.行).toHaveLength(3);
   });
 
-  it("三态开着：数 = 我看得到的号码不全客户几位；只多 1 条查询；筛 phoneIncomplete=1 只剩这几位", async () => {
+  it("三态开着：数 = 点开「号码不全」后的行数；不多查库；筛 phoneIncomplete=1 只剩这几位", async () => {
     const 关 = (await 量()).句.length;
     await setSetting("orgRules", { ...默认组织规则, 三态: { ...默认三态规则, 开: true } });
     invalidateSettingsCache();
@@ -98,10 +98,14 @@ describe("公海「号码不全」按钮带数（C14）", () => {
     expect(开.p.三态开).toBe(true);
     expect(开.p.号码不全数).toBe(2);
     if (process.env.POOL_QUERY_DUMP) (await import("node:fs")).appendFileSync(process.env.POOL_QUERY_DUMP, `公海页 关 ${关} 开 ${开.句.length}\n`);
-    expect(开.句.length - 关).toBe(1);
+    expect(开.句.length).toBe(关);
     const 筛 = await 量({ phoneIncomplete: "1" });
     expect(筛.p.行.map((r) => r.号码不全)).toEqual([true, true]);
-    // 数不跟这一页别的筛选走（按关键词筛不掉）
-    expect((await 量({ keyword: "号码齐" })).p.号码不全数).toBe(2);
+    expect(筛.p.号码不全数).toBe(筛.p.行.length);
+    // 跟着这一页别的筛选走：按关键词只剩「号码齐的」→ 再点号码不全一行都没有，数是 0
+    expect((await 量({ keyword: "号码齐" })).p.号码不全数).toBe(0);
+    const 不全一 = await 量({ keyword: "不全一" });
+    expect(不全一.p.号码不全数).toBe(1);
+    expect((await 量({ keyword: "不全一", phoneIncomplete: "1" })).p.行).toHaveLength(不全一.p.号码不全数!);
   });
 });

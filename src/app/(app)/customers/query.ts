@@ -14,7 +14,8 @@ import { 读团队 } from "@/lib/sync/client";
 import { 部门里的人 } from "@/lib/sync/dept-policy";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 创建时间段 } from "@/lib/custom-date-range";
-import { 三态筛选条件 } from "@/lib/enterprise/tri-state-list";
+import { 三态筛选条件, 三态界面开着 } from "@/lib/enterprise/tri-state-list";
+import { 是三态筛选值 } from "@/lib/enterprise/tri-state-label";
 
 /**
  * 客户列表的查询条件、取哪些字段、怎么变成一行——列表页和「导出」共用这一份（2026-10-02 排查）。
@@ -274,7 +275,9 @@ const 企业版才筛: readonly string[] = ["custStatus", "customerType", "archi
  * 接不住的组合（等级、部门、批次、国家来源、本月、直推、阶段进程）返回 null，调用方走老路
  */
 export async function 关键词分页(sp: 客户条件, 请求页: number, pageSize: number): Promise<{ total: number; page: number; ids: string[] } | null> {
-  if (sp.phase || sp.node || sp.triState || sp.batch || sp.level || sp.dept || sp.createdWithin || sp.directOf || sp.country || sp.source || 创建时间段(sp.createdFrom, sp.createdTo) || 搜索词(sp.phone)) return null;
+  // 回收状态筛选只在三态开着、值认得出时才算数（关着地址栏带了 triState 照样走这条快路，11-12）
+  if (sp.triState && 是三态筛选值(sp.triState) && (await 三态界面开着())) return null;
+  if (sp.phase || sp.node || sp.batch || sp.level || sp.dept || sp.createdWithin || sp.directOf || sp.country || sp.source || 创建时间段(sp.createdFrom, sp.createdTo) || 搜索词(sp.phone)) return null;
   const kw = await 客户关键词SQL(sp.keyword);
   if (!kw) return null;
   const 公海 = sp.pool === "1";

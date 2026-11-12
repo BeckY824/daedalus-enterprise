@@ -269,14 +269,10 @@ async function 补这一页(me: { id: string }, 骨: Awaited<ReturnType<typeof �
  * （tests/ent-unified-pool-paging.test.ts 拿改前的写法逐个筛选组合、逐页对）
  */
 /**
- * 号码不全数（三态 T10，公海「号码不全」按钮上的数，三态界面 B 组）：我看得到的公海里、三态自动收回时打了「号码不全」的客户几位。
- * 带限定的客户端数（同列表那句，可见范围限定层说了算），不受「各取最近 公海取上限 条」的框、也不受这一页其余筛选影响；调用方三态开着才要
+ * 选.数号码不全（客户三态开着才给，三态界面 B 组 C14）：顺带数「号码不全 N」按钮上的 N =
+ * 在现在这些筛选上再点「号码不全」会列出几行（同一份全量行在内存里再筛一遍，不多查库；客户池并行、取上限的框、渠道名单拆行都同列表）
  */
-export async function 号码不全数(): Promise<number> {
-  return prisma.customer.count({ where: { pool: { is: { phoneIncomplete: true } } } });
-}
-
-export async function 读公海页(me: { id: string; name: string; role?: string }, sp: 公海筛选, page: number, pageSize: number, 名单?: 公海名单筛) {
+export async function 读公海页(me: { id: string; name: string; role?: string }, sp: 公海筛选, page: number, pageSize: number, 名单?: 公海名单筛, 选: { 数号码不全?: boolean } = {}) {
   // 和 筛排 认关键词、来源用的是同一个判断
   const 有词 = !!(sp.keyword ?? "").trim().toLowerCase();
   // 渠道名单（渠道页「另 M 条在公海」点进来，11-11）：按项目一条一行，和渠道页数的是同一句（list.ts 公海名单条件）
@@ -290,7 +286,9 @@ export async function 读公海页(me: { id: string; name: string; role?: string
   const 页数 = Math.max(1, Math.ceil(行.length / pageSize));
   const 当前页 = Math.min(Math.max(1, page), 页数);
   const 这页 = await 补这一页(me, 骨, 行.slice((当前页 - 1) * pageSize, 当前页 * pageSize));
-  return { 行: 这页, 总数: 行.length, 当前页, 快捷数, 属性数, 截断: 骨.截断, 库里有: 骨.行.length > 0 };
+  // 不数时不带这一格（和改前的返回逐字段一样）
+  const 号码不全数 = !选.数号码不全 ? undefined : sp.号码不全 === "1" ? 行.length : 筛排(全部行, { ...sp, 号码不全: "1" }, { 按项目: !!名单条件 }).行.length;
+  return { 行: 这页, 总数: 行.length, 当前页, 快捷数, 属性数, 截断: 骨.截断, 库里有: 骨.行.length > 0, ...(号码不全数 === undefined ? {} : { 号码不全数 }) };
 }
 
 /**

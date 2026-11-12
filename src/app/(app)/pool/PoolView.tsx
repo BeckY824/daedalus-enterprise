@@ -65,7 +65,7 @@ type Props = {
   只读?: boolean;
   /** 客户三态开着（P-界面-19 ⑦，构想页 C14）：客户名后「号码不全」小红标签、「号码不全」筛选、领取 / 分配前一句提示（不拦）。关着都不出 */
   三态开?: boolean;
-  /** 我看得到的公海里号码不全的客户几位（三态开着才给，按钮上的数） */
+  /** 「号码不全」上的数 = 在现在这些筛选上再点它会列出几行（三态开着才给，lib/enterprise/unified-pool-db.ts 读公海页） */
   号码不全数?: number | null;
 };
 
@@ -463,6 +463,18 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
         <Select style={style} aria-label="客户来源" placeholder="全部客户来源" allowClear showSearch={{ optionFilterProp: "label" }} popupMatchSelectWidth={false} value={f.channelId || undefined} onChange={(v?: string) => apply({ channelId: v ?? "" })} options={渠道筛选项} />
       ),
     },
+    // 号码不全（C14，三态开着才有）：只看三态自动收回时打了「号码不全」的客户，再点一次取消。
+    // 收在「更多筛选」里（可钉到外面）：公海筛选行 1024 宽有筛选时已满两行，摆外面会折出第三行（11-12 量过）；三态关着这一项不在
+    ...(三态开 ? [{
+      键: "phoneIncomplete", 名: "号码不全", 宽: 126, 默认外露: false, 有值: f.phoneIncomplete === "1",
+      渲染: (style: CSSProperties) => (
+        <Button style={style} className="nowrap" aria-pressed={f.phoneIncomplete === "1"} type={f.phoneIncomplete === "1" ? "primary" : "default"} ghost={f.phoneIncomplete === "1"}
+          title="只看到期自动收回时号码不全的客户"
+          onClick={() => apply({ phoneIncomplete: f.phoneIncomplete === "1" ? "" : "1" })}>
+          号码不全{号码不全数 === null ? "" : ` ${号码不全数}`}
+        </Button>
+      ),
+    }] : []),
   ]);
 
   const 筛选 = (
@@ -496,14 +508,6 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
         onClick={() => apply({ quick: f.quick === "无效客户" ? "" : "无效客户" })}>
         {公海回收站} {快捷数.无效客户}
       </Button>
-      {/* 号码不全（C14，三态开着才有）：只看三态自动收回时打了「号码不全」的客户，再点一次取消 */}
-      {三态开 && (
-        <Button className="nowrap" aria-pressed={f.phoneIncomplete === "1"} type={f.phoneIncomplete === "1" ? "primary" : "default"} ghost={f.phoneIncomplete === "1"}
-          title="只看到期自动收回时号码不全的客户"
-          onClick={() => apply({ phoneIncomplete: f.phoneIncomplete === "1" ? "" : "1" })}>
-          号码不全{号码不全数 === null ? "" : ` ${号码不全数}`}
-        </Button>
-      )}
       <ResetFilters 显示={在筛} onClick={reset} />
     </div>
   );

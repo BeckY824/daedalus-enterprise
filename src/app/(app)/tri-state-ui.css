@@ -48,3 +48,20 @@
 /* 离职交接看板：挂起超过 15 个工作日或 30 个自然日的行标红（M-公海-49 / 50） */
 .tri-overdue > td { background: var(--danger-bg) !important; }
 .tri-overdue-n { color: var(--danger-text); font-weight: 500; }
+
+/* 待交接卡（离职交接看板） */
+.tri-pending { margin-bottom: 16px; }
+.tri-pending-p.ant-typography { font-size: 13px; margin-top: 0; }
+/* 设置 → 客户回收 */
+.tri-recycle { display: grid; gap: 16px; }
+.tri-muted { color: var(--text-muted); }
+.tri-note { color: var(--text-muted); margin-bottom: 12px; }
+.tri-note-top { color: var(--text-muted); margin-top: 12px; }
+.tri-set { margin-bottom: 12px; }
+.tri-set-t { font-weight: 500; margin-bottom: 8px; }
+.tri-set-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+.tri-num.ant-input-number { width: 96px; }
+.tri-words { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.tri-word.ant-tag { margin-inline-end: 0; max-width: 240px; }
+.tri-word-t { display: inline-block; vertical-align: bottom; max-width: 200px; }
+.tri-word-add { max-width: 320px; width: 100%; }

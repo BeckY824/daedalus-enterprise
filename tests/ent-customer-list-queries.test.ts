@@ -74,7 +74,8 @@ import { 默认组织规则, 默认三态规则 } from "@/lib/project/org-rules"
 import { 加天 } from "@/lib/enterprise/tri-state";
 import { beijingDay } from "@/lib/business-clock";
 import { 收客户页面筛选 } from "@/lib/ai-page-filters";
-import { 客户筛选条件 } from "@/app/(app)/customers/query";
+import { 三态标字, type 三态标 } from "@/lib/enterprise/tri-state-label";
+import { 客户筛选条件, 关键词分页 } from "@/app/(app)/customers/query";
 
 /**
  * 上限：11-12 改前实测 35 条；加两列后 37 条，页头摆离职交接（C15）后 38 条（多 1 条；离职交接入口里的下属、停用下属改从组织里取，不再另查；这一页的项目一句 + 项目上我加入没有一句，和每页几位客户无关；公海项目不算，不用再读回避名单）+ 小余量。
@@ -336,7 +337,7 @@ describe("客户三态开着：状态列、回收状态筛选、看板色点（1
   const 名id = async (n: string) => (await prisma.customer.findFirstOrThrow({ where: { name: n }, select: { id: true } })).id;
   const 造钟 = async () => {
     await prisma.entCustomerClock.create({ data: { customerId: await 名id("列表客户0"), state: "沉睡", enteredDay: 加天(今天(), -3) } });
-    await prisma.entCustomerClock.create({ data: { customerId: await 名id("列表客户1"), state: "待回收", enteredDay: 加天(今天(), -10) } });
+    await prisma.entCustomerClock.create({ data: { customerId: await 名id("列表客户1"), state: "待回收", enteredDay: 加天(今天(), -10), noticeCount: 1, lastNoticeDay: 加天(今天(), -10) } });
     await prisma.entCustomerClock.create({ data: { customerId: await 名id("列表客户2"), state: "待回收", enteredDay: 加天(今天(), -40), blocked: true } });
     await prisma.entCustomerClock.create({ data: { customerId: await 名id("列表客户3"), state: "活跃", enteredDay: 今天() } });
   };
@@ -347,6 +348,12 @@ describe("客户三态开着：状态列、回收状态筛选、看板色点（1
     expect(p.三态标).toBeUndefined();
     expect("triState" in p.filters).toBe(false);
     expect(参三((await 量({ triState: "沉睡" })).el).rows.length).toBe(6);
+    // 关着：带关键词时 triState 不挡关键词快路（一条 SQL 出 id）；开着才退回老路
+    const 快 = () => 以谁的身份(甲.id, () => 关键词分页({ keyword: "列表客户", triState: "沉睡" }, 1, 20));
+    expect(await 快()).not.toBeNull();
+    expect((await 量({ keyword: "列表客户", triState: "沉睡" })).句.length).toBe((await 量({ keyword: "列表客户" })).句.length);
+    await 开三态();
+    expect(await 快()).toBeNull();
   });
 
   it("开着：活跃不标；沉睡 / 待回收（带几天后进公海）/ 暂缓回收中；条数比关着多不超过 2 条、不随行数涨", async () => {
@@ -370,6 +377,7 @@ describe("客户三态开着：状态列、回收状态筛选、看板色点（1
     await prisma.project.updateMany({ where: { customerId: c1 }, data: { bizLine: "外贸" } });
     const 两套 = await 量();
     expect(参三(两套.el).三态标?.[c1]).toEqual({ 态: "待回收", 几天后进公海: 50 });
+    if (process.env.TRI_QUERY_DUMP) (await import("node:fs")).appendFileSync(process.env.TRI_QUERY_DUMP, `客户列表 关 ${关} 开 ${开.句.length} 两套天数不同 ${两套.句.length}\n`);
     expect(两套.句.length - 关).toBeLessThanOrEqual(2);
     expect(两套.句.length).toBeLessThanOrEqual(客户列表三态开着上限);
     // 多 30 位待回收的客户：条数一样
@@ -379,7 +387,28 @@ describe("客户三态开着：状态列、回收状态筛选、看板色点（1
     }
     const 多 = await 量({ pageSize: "50" });
     expect(参三(多.el).rows.length).toBe(36);
-    expect(多.句.length).toBe(两套.句.length);
+    // 三态那几句（钟、选套取项目业务线）条数不随行数涨；整页别的句子随一页 50 行另有起伏（成员、设置读取，和三态无关）
+    const 三态句 = (q: string[]) => q.filter((x) => x.includes("EntCustomerClock") || x.includes("`Project`.`bizLine` FROM")).length;
+    expect(三态句(两套.句)).toBe(2);
+    expect(三态句(多.句)).toBe(三态句(两套.句));
+  });
+
+  it("「N 天后进公海」同服务端排期：刚过进公海节点、3 次提醒没发够的不写「即将进公海」", async () => {
+    await 开三态();
+    const c1 = await 名id("列表客户1");
+    // 进待回收 31 天（默认进公海间隔 30 天，提醒间隔 10 天），只发了 2 次、最近一次昨天：第 3 次排到昨天 + 10，再隔 10 天才进
+    await prisma.entCustomerClock.create({ data: { customerId: c1, state: "待回收", enteredDay: 加天(今天(), -31), noticeCount: 2, lastNoticeDay: 加天(今天(), -1) } });
+    const 标 = 参三((await 量()).el).三态标?.[c1];
+    expect(标).toEqual({ 态: "待回收", 几天后进公海: 19 });
+    expect(三态标字(标 as 三态标)).not.toContain("即将");
+    // 一次没发（夜扫漏跑）：今天补第 1 次，进公海排到今天 + 30
+    await prisma.entCustomerClock.update({ where: { customerId: c1 }, data: { noticeCount: 0, lastNoticeDay: null } });
+    expect(参三((await 量()).el).三态标?.[c1]).toEqual({ 态: "待回收", 几天后进公海: 30 });
+    // 3 次发够、最后一次 10 天前：今天就到（即将进公海）
+    await prisma.entCustomerClock.update({ where: { customerId: c1 }, data: { noticeCount: 3, lastNoticeDay: 加天(今天(), -10) } });
+    const 到 = 参三((await 量()).el).三态标?.[c1] as 三态标;
+    expect(到).toEqual({ 态: "待回收", 几天后进公海: 0 });
+    expect(三态标字(到)).toContain("即将进公海");
   });
 
   it("负责人是市场成员的写「不计时」，不看钟；回收状态筛选四个值都对；导出、AI 白名单认 triState", async () => {
@@ -420,6 +449,7 @@ describe("客户三态开着：状态列、回收状态筛选、看板色点（1
     expect(点[await 名id("列表客户1")]).toEqual({ 态: "待回收", 几天后进公海: 20 });
     expect(点[await 名id("列表客户2")]).toEqual({ 态: "暂缓回收中" });
     expect(点[await 名id("列表客户3")]).toBeUndefined();
+    if (process.env.TRI_QUERY_DUMP) (await import("node:fs")).appendFileSync(process.env.TRI_QUERY_DUMP, `客户页看板 关 ${关.句.length} 开 ${开.句.length}\n`);
     expect(开.句.length - 关.句.length).toBeLessThanOrEqual(2);
     expect(开.句.length).toBeLessThanOrEqual(客户页看板查询上限 + 2);
   });

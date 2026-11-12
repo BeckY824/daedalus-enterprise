@@ -5,7 +5,7 @@ import { getBusiness } from "@/lib/business";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能管公海, 能恢复, 能新建和领取 } from "@/lib/enterprise/permissions";
-import { 读公海页, 号码不全数 } from "@/lib/enterprise/unified-pool-db";
+import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
 import { 规整公海属性, 是快捷, 规整排序 } from "@/lib/enterprise/unified-pool";
 import { 渠道筛选选项 } from "@/lib/enterprise/channel-options";
 import { 公海分配候选 } from "@/lib/owners";
@@ -63,15 +63,13 @@ export default async function PoolPage({
   const 能分配 = 能管公海(me, 权限org);
   // 组织规则在设置缓存里读：客户三态关着时「号码不全」的标签、筛选都不出（P-界面-19 ⑦），地址栏带了也当没筛
   const 规则P = 生效组织规则();
-  const [d, users, 规则, 有, 渠道筛选项, 不全数] = await Promise.all([
-    规则P.then((r) => 读公海页(me, { 属性: 筛.attr, 快捷: 筛.quick, 排序: 筛.sort, keyword: 筛.keyword, 来源: 筛.channelId, 号码不全: r.三态.开 ? 筛.phoneIncomplete : "" }, 正整数(sp.page, 1), pageSize, 按名单 ? { channelId: 筛.projChannel, phase: 筛.phase, createdFrom: 筛.createdFrom, createdTo: 筛.createdTo } : undefined)),
+  const [d, users, 规则, 有, 渠道筛选项] = await Promise.all([
+    规则P.then((r) => 读公海页(me, { 属性: 筛.attr, 快捷: 筛.quick, 排序: 筛.sort, keyword: 筛.keyword, 来源: 筛.channelId, 号码不全: r.三态.开 ? 筛.phoneIncomplete : "" }, 正整数(sp.page, 1), pageSize, 按名单 ? { channelId: 筛.projChannel, phase: 筛.phase, createdFrom: 筛.createdFrom, createdTo: 筛.createdTo } : undefined, { 数号码不全: r.三态.开 })),
     // 分配给谁：老板、主管才用得上；只列能当负责人的，不限业务线（P-转-08）
     能分配 ? 公海分配候选(me) : Promise.resolve([]),
     规则P,
     持有数(prisma, me.id),
     渠道筛选选项(),
-    // 「号码不全」按钮上的数（C14）：三态开着才数，多一句
-    规则P.then((r) => (r.三态.开 ? 号码不全数() : null)),
   ]);
   // 客户池并成一行的（11-11）：按里面每个项目认
   const 平 = d.行.flatMap((r) => r.子 ?? [r]);
@@ -92,7 +90,6 @@ export default async function PoolPage({
       pageSize={pageSize}
       filters={筛}
       三态开={规则.三态.开}
-      号码不全数={不全数}
       渠道筛选项={渠道筛选项}
       能标无效={能分配}
       能恢复={能恢复(me, 权限org)}

@@ -275,19 +275,23 @@ function TriPending({ 人们 }: { 人们: 离职待交接[] }) {
     { title: "待交接", dataIndex: "name", ellipsis: true, render: (v: string, r) => <Link href={`/customers/${r.id}`} title={v} style={省略}>{v}</Link> },
     { title: "状态", dataIndex: "状态", width: "18%", ellipsis: true, render: (v: string, r) => <span title={r.状态说明} style={省略}>{v}</span> },
     {
-      title: "挂起天数", key: "days", width: 168,
-      render: (_: unknown, r) => (
-        <span className={r.超期 ? "nowrap tri-overdue-n" : "nowrap"} title={r.超期 ? "已超过 15 个工作日或 30 个自然日（哪条先到算哪条）" : undefined}>
-          {r.挂起天数} 天 · {r.挂起工作日} 个工作日
-        </span>
-      ),
+      // 超期的行除了底色，格子里也写「超期」（不靠颜色认），放最前免得窄屏被省略掉
+      title: "挂起天数", key: "days", width: 204, ellipsis: true,
+      render: (_: unknown, r) => {
+        const 字 = `${r.超期 ? "超期 · " : ""}${r.挂起天数} 天 · ${r.挂起工作日} 个工作日`;
+        return (
+          <span className={r.超期 ? "tri-overdue-n" : undefined} style={省略} title={r.超期 ? `${字}：已超过 15 个工作日或 30 个自然日（哪条先到算哪条）` : 字}>
+            {字}
+          </span>
+        );
+      },
     },
     { title: "原负责人", dataIndex: "原负责人", width: "16%", ellipsis: true, render: (v: string) => <span title={`${v}（已停用）`} style={省略}>{v}（已停用）</span> },
     { title: "原直属上级", dataIndex: "原直属上级", width: "16%", ellipsis: true, render: (v: string | null) => <span title={v ?? undefined} style={省略}>{v ?? 空值符}</span> },
   ];
   return (
-    <Card size="small" style={{ marginBottom: 16 }} title={`待交接（${行们.length}）${超期数 ? ` · 超期 ${超期数}` : ""}`}>
-      <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginTop: 0 }}>
+    <Card size="small" className="tri-pending" title={`待交接（${行们.length}）${超期数 ? ` · 超期 ${超期数}` : ""}`}>
+      <Typography.Paragraph type="secondary" className="tri-pending-p">
         已停用账号名下、到了回收节点被标「待交接」的{b.customer}，和离职交接还在等接手人确认的{b.customer}。挂起超过 15 个工作日或 30 个自然日（哪条先到算哪条）的标红；交给谁在下面各人的卡片里交。
       </Typography.Paragraph>
       <Table<待交接行>

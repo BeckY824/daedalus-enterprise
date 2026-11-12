@@ -67,29 +67,29 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
   };
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
+    <div className="tri-recycle">
       <Card
         title="客户回收"
         extra={
           <Space>
-            {挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}
-            <span style={{ color: "var(--text-muted)" }}>{三态.开 ? "开" : "关"}</span>
+            {挡 && <span className="tri-muted">{挡}</span>}
+            <span className="tri-muted">{三态.开 ? "开" : "关"}</span>
             <Switch aria-label="客户回收（沉睡 → 待回收 → 自动进公海）" checked={三态.开} disabled={!!挡 || 忙} onChange={切开关} />
           </Space>
         }
       >
-        <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
+        <div className="tri-note">
           沉睡 → 待回收 → 自动进客户公海。{打开后果}负责人是市场成员的客户不计时。默认关。
         </div>
         {套们.map((t) => (
-          <div key={t} style={{ marginBottom: 12 }}>
-            <div style={{ fontWeight: 500, marginBottom: 8 }}>{t}客户</div>
+          <div key={t} className="tri-set">
+            <div className="tri-set-t">{t}客户</div>
             {项们.map(({ k, 前, 后, 最小, 最大 }) => (
-              <div key={k} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
+              <div key={k} className="tri-set-row">
                 <span className="nowrap">{k}：{前}</span>
                 <InputNumber
                   aria-label={`${t}客户${后.replace(/^天/, "")}的天数`}
-                  min={最小} max={最大} precision={0} style={{ width: 96 }}
+                  min={最小} max={最大} precision={0} className="tri-num"
                   disabled={!!挡 || 忙}
                   value={天[t][k]}
                   onChange={(v) => typeof v === "number" && set天((m) => ({ ...m, [t]: { ...m[t], [k]: v } }))}
@@ -99,7 +99,7 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
             ))}
           </div>
         ))}
-        <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
+        <div className="tri-note">
           客户名下内贸、外贸项目都有时取较长的一套；没有项目或项目都是「暂不分配」的按内贸。待回收期间提醒负责人 3 次。改了天数当晚按新的重算。
         </div>
         {!挡 && (
@@ -121,7 +121,7 @@ function WordsCard({ 词们 }: { 词们: string[] | null }) {
   if (!词们) {
     return (
       <Card title="占位词表">
-        <div style={{ color: "var(--text-muted)" }}>只有系统管理员能看、能改占位词表。</div>
+        <div className="tri-muted">只有系统管理员能看、能改占位词表。</div>
       </Card>
     );
   }
@@ -147,20 +147,20 @@ function WordsCard({ 词们 }: { 词们: string[] | null }) {
     void 存([...表, w], `已加「${w}」`);
   };
   return (
-    <Card title="占位词表" extra={<span style={{ color: "var(--text-muted)" }}>{表.length} 个</span>}>
-      <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>一条沟通整条只是这些词时，不算有效沟通，不会重置回收倒计时。</div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+    <Card title="占位词表" extra={<span className="tri-muted">{表.length} 个</span>}>
+      <div className="tri-note">一条沟通整条只是这些词时，不算有效沟通，不会重置回收倒计时。</div>
+      <div className="tri-words">
         {表.length ? 表.map((w) => (
-          <Tag key={w} closable={!忙} onClose={(e) => { e.preventDefault(); void 存(表.filter((x) => x !== w), `已删「${w}」`); }} style={{ marginInlineEnd: 0, maxWidth: 240 }}>
-            <span className="clamp-1" style={{ display: "inline-block", verticalAlign: "bottom", maxWidth: 200 }} title={w}>{w}</span>
+          <Tag key={w} closable={!忙} onClose={(e) => { e.preventDefault(); void 存(表.filter((x) => x !== w), `已删「${w}」`); }} className="tri-word">
+            <span className="clamp-1 tri-word-t" title={w}>{w}</span>
           </Tag>
-        )) : <span style={{ color: "var(--text-muted)" }}>一个都没有：只按下面那几条判</span>}
+        )) : <span className="tri-muted">一个都没有：只按下面那几条判</span>}
       </div>
-      <Space.Compact style={{ maxWidth: 320, width: "100%" }}>
+      <Space.Compact className="tri-word-add">
         <Input aria-label="加一个占位词" placeholder="加一个词" maxLength={20} value={新} onChange={(e) => set新(e.target.value)} onPressEnter={加} disabled={忙} />
         <Button onClick={加} disabled={忙 || !新.trim()}>添加</Button>
       </Space.Compact>
-      <div style={{ color: "var(--text-muted)", marginTop: 12 }}>
+      <div className="tri-note-top">
         其他不算有效沟通的情况（已定，不用设置）：中文去掉空白和标点后不足 4 个字；英文不足 2 个单词；只有素材没有文字。
       </div>
     </Card>
