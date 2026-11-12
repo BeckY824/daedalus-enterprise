@@ -219,5 +219,5 @@ export async function 历史负责人of(customerId: string): Promise<换负责�
   const ids = [...new Set(记录.flatMap((r) => [r.userId, r.fromOwnerId, r.toOwnerId]).filter((x): x is string => !!x))];
   const 名 = new Map((await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
   const 叫 = (id: string | null) => (id ? (名.get(id) ?? "已删除的成员") : null);
-  return 记录.map((r) => ({ at: r.at.toISOString(), 操作人: r.userId === 系统.id ? 系统.name : (名.get(r.userId) ?? null), 从: 叫(r.fromOwnerId), 到: 叫(r.toOwnerId), kind: r.kind }));
+  return 记录.map((r) => ({ at: r.at.toISOString(), 操作人: r.userId === 系统.id ? 系统.name : (名.get(r.userId) ?? null), 从: 叫(r.fromOwnerId), 到: 叫(r.toOwnerId), kind: r.kind, ...(r.clockReset ? { 三态归零: true as const } : {}) }));
 }

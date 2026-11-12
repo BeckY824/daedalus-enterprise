@@ -11,6 +11,8 @@ export type 换负责人记录 = {
   从: string | null;
   到: string | null;
   kind: string;
+  /** 客户三态：这次换负责人把钟归零了（转让、离职交接算出来的；没算过 / 不归零 = 没有这一项） */
+  三态归零?: true;
 };
 
 const 种类说法: Record<string, string> = {

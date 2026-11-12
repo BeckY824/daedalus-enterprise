@@ -68,6 +68,13 @@ export type ContactRow = {
 };
 
 export type RecordProps = {
+  /**
+   * 客户三态状态条（P-界面-19 ③ / 构想页 C10）：只在三态开着、客户沉睡 / 待回收 / 暂缓回收中时给；按钮服务端算好（lib/enterprise/tri-state-detail.ts）。
+   * 不给 = 什么都不摆（三态关着时客户详情和原来一样）
+   */
+  三态条?: import("@/lib/enterprise/tri-state-detail").三态条 | null;
+  /** 客户三态状态留痕（C13）：并进项目区「进程变更」卡的「客户状态」一段；三态关着不给 */
+  三态留痕?: import("@/lib/enterprise/tri-state-detail").三态留痕行[] | null;
   /** 摆在整页最上面的提醒条（客户详情顶上的同号再次录入醒目条，11-03 B6-9）；没有就不摆 */
   醒目条?: ReactNode;
   /** 原始转化线索；没有关联或已删除时为空，不用推荐关系推断。 */
@@ -194,4 +201,6 @@ export type 项目区槽 = {
   开建项目: (() => void) | null;
   /** 全只读（虚线下属、市场成员相关、只读管理员）：项目区也不给任何写入口的提示用 */
   全只读: boolean;
+  /** 客户三态状态留痕（C13）：挂进「进程变更」卡的一段；三态关着是 null */
+  客户状态留痕: ReactNode;
 };

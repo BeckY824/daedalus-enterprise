@@ -55,6 +55,7 @@ vi.mock("@/app/(app)/customers/[id]/CustomerDetail", () => ({ default: () => nul
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
+import { 默认组织规则, 默认三态规则 } from "@/lib/project/org-rules";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import CustomerPage from "@/app/(app)/customers/[id]/page";
 import { 企业字典, 页面字典, 预读页面字典, 字典种类们 } from "@/lib/enterprise/dict";
@@ -64,6 +65,8 @@ import { 企业字典, 页面字典, 预读页面字典, 字典种类们 } from 
  * 往上调之前先 CUST_DETAIL_QUERY_DUMP=<文件> 跑一遍看明细，是不是又把同一条查了两遍（字典逐类读、看得到的客户、沟通负责人……）
  */
 const 客户详情查询上限 = 100;
+/** 三态开着、钟上沉睡 / 待回收的客户：比关着多查的上限（收三态客户 一套 + 客户钟 + 状态留痕 + 冷项目）。11-12 实测多 26 条 */
+const 三态沉睡多查上限 = 28;
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 const 造人 = async (key: string, bizRole: string): Promise<人> => {
@@ -116,6 +119,40 @@ describe("客户详情一次打开的查询条数", () => {
       writeFileSync(process.env.CUST_DETAIL_QUERY_DUMP, `共 ${句.length} 条\n\n${[...表.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n}\t${k}`).join("\n")}\n\n顺序：\n${句.map((q) => q.replace(/\s+/g, " ").replace(/`main`\./g, "").slice(0, 160)).join("\n")}\n`);
     }
     expect(句.length).toBeLessThanOrEqual(客户详情查询上限);
+  });
+
+  /*
+    客户三态（P-界面-19）：关着一条都不多（先量关着的基数，同上面那条）；开着时活跃的客户只多 客户钟、状态留痕、冷项目一句 SQL 三条，
+    不随项目数涨；钟上沉睡 / 待回收的才收齐事实现算（收三态客户 一套固定条数，也不随项目数涨），另给一个上限
+  */
+  it("三态关着不多查；开着、活跃的客户多 ≤ 3 条；沉睡的客户另有上限，都不随项目数涨", async () => {
+    // 每种情形量两遍取第二遍：第一遍会顺手建默认字典、存归零这类一次性的写
+    const 量稳 = async () => { await 量(); return 量(); };
+    const 关着句 = await 量稳();
+    const 关着 = 关着句.length;
+    // 关着时交给客户详情的东西和原来一样（状态条、留痕不给，页签不带冷标）：界面上什么都不多
+    const 元素 = (await 以谁的身份(甲.id, () => CustomerPage({ params: Promise.resolve({ id: 客户 }), searchParams: Promise.resolve({}) } as never))) as { props: Record<string, unknown> };
+    expect(元素.props.三态条).toBeNull();
+    expect(元素.props.三态留痕).toBeNull();
+    expect((元素.props.项目数据 as { 页签们: object[] }).页签们.every((t) => !("冷天数" in t))).toBe(true);
+    // 关着：三态的表、冷项目那句 SQL 一条都不碰（11-12 实测和改前一样 92 条）
+    expect(关着句.filter((q) => /EntCustomerClock|EntCustomerStateLog|FollowUpProject" fp/.test(q))).toEqual([]);
+    await setSetting("business", { projectMode: true });
+    await setSetting("orgRules", { ...默认组织规则, 三态: { ...默认三态规则, 开: true } });
+    await prisma.entCustomerClock.create({ data: { customerId: 客户, state: "活跃", enteredDay: "2026-11-01" } });
+    invalidateSettingsCache();
+    const 活跃 = (await 量稳()).length;
+    expect(活跃 - 关着).toBeLessThanOrEqual(3);
+    await prisma.entCustomerClock.update({ where: { customerId: 客户 }, data: { state: "沉睡", enteredDay: "2026-11-01" } });
+    const 沉睡 = (await 量稳()).length;
+    expect(沉睡 - 关着).toBeLessThanOrEqual(三态沉睡多查上限);
+    // 多两个项目，条数不变
+    for (const n of ["项目四", "项目五"]) await prisma.project.create({ data: { name: n, customerId: 客户, ownerId: 甲.id, creatorId: 甲.id, phase: "商机", node: "需求确认" } });
+    const 多项目 = (await 量稳()).length;
+    await setSetting("orgRules", { ...默认组织规则 });
+    invalidateSettingsCache();
+    const 关着多项目 = (await 量稳()).length;
+    expect(多项目 - 关着多项目).toBe(沉睡 - 关着);
   });
 
   it("字典合读（预读页面字典）和逐类现读 企业字典 一个结果：新库第一次（要建默认）、建好以后（走合读）都一样", async () => {

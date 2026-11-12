@@ -3822,3 +3822,42 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
   }
 }
 .cd-empty-more { margin-top: 12px; }
+
+/* 客户三态（P-界面-19，构想页 C10 / C11 / C13）：三态关着这些类一个都不出现 */
+/* 状态条：客户名一行下面，一行不换行；文字放不下省略号（悬停看全），按钮不缩；窄了只留主按钮，其余收进「更多」 */
+.tri-bar { container: tribar / inline-size; display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; min-width: 0; margin: -4px 0 14px;
+  padding: 6px 10px 6px 12px; background: var(--panel); border-radius: var(--r-card); box-shadow: var(--shadow-card); border-left: 4px solid var(--line-strong);
+  font-size: var(--fs-note); }
+.tri-bar.pend { border-left-color: var(--warning); }
+.tri-bar.hold { border-left-color: var(--cat-violet); }
+.tri-st { flex: none; height: 22px; line-height: 22px; padding: 0 8px; border-radius: var(--r-tag); font-size: var(--fs-min); font-weight: 600; white-space: nowrap; }
+.tri-st.sleep { background: var(--hover); color: var(--text-muted); }
+.tri-st.pend { background: var(--warning-bg); color: var(--warning-text); }
+.tri-st.hold { background: color-mix(in srgb, var(--cat-violet) 12%, var(--panel)); color: color-mix(in srgb, var(--cat-violet) 70%, var(--ink)); }
+.tri-tx { flex: 0 1 auto; min-width: 0; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tri-sp { flex: 1 1 0; min-width: 0; }
+.tri-note { flex: 0 1 auto; min-width: 0; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tri-acts { flex: none; display: inline-flex; align-items: center; gap: 8px; }
+.tri-more { display: none; }
+@container tribar (max-width: 720px) {
+  .tri-sec { display: none; }
+  .tri-more { display: inline-flex; }
+}
+
+/* 冷项目（C11）：页签名后一个小灰标「冷」；名字照旧省略号，小标不缩 */
+.cd-tab.cd-tab-cold { display: inline-flex; align-items: center; gap: 4px; }
+.cd-tab-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-cold { flex: none; height: 18px; line-height: 18px; padding: 0 5px; border-radius: 5px; background: var(--hover); color: var(--text-muted); font-size: var(--fs-min); font-weight: 500; }
+
+/* 「进程变更」卡里的「客户状态」一段（C13）：默认收起，每条一行 */
+.tri-log { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line-soft); }
+.tri-log-h { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0; border: 0; background: transparent;
+  color: var(--ink); font-size: var(--fs-note); font-weight: 600; cursor: pointer; }
+.tri-log-h:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.tri-log-n { color: var(--text-muted); font-weight: 400; white-space: nowrap; }
+.tri-log-ul { list-style: none; margin: 6px 0 0; padding: 0; }
+.tri-log-li { display: flex; gap: 8px; min-width: 0; padding: 3px 0; font-size: var(--fs-min); color: var(--ink-soft); white-space: nowrap; }
+.tri-log-t { flex: none; color: var(--text-muted); }
+.tri-log-w { flex: none; max-width: 6em; overflow: hidden; text-overflow: ellipsis; }
+.tri-log-e { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tri-log-empty { margin-top: 6px; color: var(--text-muted); font-size: var(--fs-min); }

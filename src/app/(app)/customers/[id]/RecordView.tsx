@@ -68,6 +68,9 @@ import { 登记详情名 } from "@/lib/page-rows";
 import Heat, { 冷热说法, 要看冷热 } from "@/components/Heat";
 import { deleteContract, 删签约前清点, assignSalesOwner, 撤销改负责人 } from "../actions";
 import type { RecordProps, FollowUpRow, ContactRow } from "./types";
+import TriStateBar, { TriStateLog } from "./TriStateBar";
+import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
+import { 换负责人怎么来的 } from "@/lib/owner-log";
 import { useMotionTheme } from "@/components/MotionTheme";
 import { 截止说法, 已过期 } from "@/lib/deadline";
 import { 记下最近客户 } from "@/lib/last-customer";
@@ -189,6 +192,8 @@ export default function RecordView({
   项目区 = null,
   项目联系人 = null,
   项目页签们 = null,
+  三态条 = null,
+  三态留痕 = null,
 }: RecordProps) {
   // 「加跟进」= 团队版互看同事的客户；「全」= 企业版虚线下属的客户，跟进也不能记
   const 只读 = !!只读档 || 管理员只读;
@@ -637,6 +642,9 @@ export default function RecordView({
     }
     setMemo("");
     if ("领取了" in res && res.领取了) message.success("已领取并记下跟进，这位现在归你跟进");
+    // 客户三态（C12）：这条不算有效沟通时给一句轻提示（照常保存，不拦）
+    const 短 = 短沟通话of(res);
+    if (短) message.info(短, 5);
     router.refresh();
   }
 
@@ -911,6 +919,9 @@ export default function RecordView({
           </Dropdown>
         </Space.Compact>}
       </div>
+
+      {/* 客户三态状态条（C10）：只在沉睡 / 待回收 / 暂缓回收中时服务端才给；三态关着、活跃时什么都不摆 */}
+      {三态条 && <TriStateBar 条={三态条} customerId={customer.id} 开客户转让={能转让 ? () => { set转给谁(undefined); set头部框("转让"); } : null} />}
 
       {/*
         企业版页头按钮（10-31 改版 R6 → 10-31 会议 U-客户-03 精简 → 11-12 客户详情合并第 2 批）：客户名这一行右端只留「客户转让」「客户退回公海」
@@ -1308,6 +1319,13 @@ export default function RecordView({
           ), <div className="proj-mod-body" aria-label="待办">{待办身}</div>) : null,
           开建项目: 能建项目 ? 开建项目 : null,
           全只读,
+          // C13：状态留痕 + 归零了的换负责人，新的在前，并进「进程变更」卡的「客户状态」一段；三态关着不摆
+          客户状态留痕: 三态留痕 ? (
+            <TriStateLog 行们={[
+              ...三态留痕,
+              ...换负责人记录.filter((x) => x.三态归零).map((x) => ({ at: x.at, 谁: x.操作人 ?? "已删除的成员", 事: `换负责人（${换负责人怎么来的(x.kind)}${x.到 ? `给 ${x.到}` : ""}），三态钟归零` })),
+            ].sort((a, b) => b.at.localeCompare(a.at))} />
+          ) : null,
         })}
 
         {/* ================= 中栏：时间线 ================= */}

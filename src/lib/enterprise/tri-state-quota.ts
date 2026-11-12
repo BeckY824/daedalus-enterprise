@@ -82,6 +82,30 @@ export function 有内容的沟通(内容: string | null | undefined, 选: 沟�
   return !只有占位词(s, 选.占位词 ?? 默认占位词);
 }
 
+/** 一条沟通为什么不算有效沟通（客户详情保存后那句轻提示 C12 用；和 有内容的沟通 同一套判定，算有效回 null） */
+export type 无效沟通原因 = "空" | "只有链接" | "占位词" | "太短";
+export function 无效沟通原因of(内容: string | null | undefined, 选: 沟通判定选项 = {}): 无效沟通原因 | null {
+  if (有内容的沟通(内容, 选)) return null;
+  const 原 = (内容 ?? "").trim();
+  if (!原) return "空";
+  if (!去杂(原) && /(?:https?:\/\/|www\.)\S+/iu.test(原)) return "只有链接";
+  if (中文字数(原) >= 有效沟通最少字数 || 英文单词数(原) >= 有效沟通最少单词) return "占位词";
+  return 只有占位词(去杂(原), 选.占位词 ?? 默认占位词) ? "占位词" : "太短";
+}
+
+/** 前端那句轻提示（C12）：原因不同措辞略调 */
+export const 短沟通话: Record<无效沟通原因, string> = {
+  空: "已保存。这条没有文字，不计入有效沟通，不会重置回收倒计时",
+  只有链接: "已保存。这条只有链接、没有文字，不计入有效沟通，不会重置回收倒计时",
+  占位词: "已保存。这条只有「跟进」「已联系」这类占位词，不计入有效沟通，不会重置回收倒计时",
+  太短: "已保存。这条太短，不计入有效沟通，不会重置回收倒计时",
+};
+/** 保存动作回来的结果里有「短沟通」就给那句话（客户端拿去 message.info），没有回 null */
+export const 短沟通话of = (r: unknown): string | null => {
+  const k = r && typeof r === "object" && "短沟通" in r ? (r as { 短沟通?: unknown }).短沟通 : null;
+  return typeof k === "string" && k in 短沟通话 ? 短沟通话[k as 无效沟通原因] : null;
+};
+
 /** 这条沟通拨不拨钟（T1：和回满额度同源，无效沟通对客户状态一律不生效） */
 export function 拨钟的沟通(内容: string | null | undefined, 选: 沟通判定选项 = {}): boolean {
   return 有内容的沟通(内容, 选);

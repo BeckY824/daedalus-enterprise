@@ -1,6 +1,7 @@
 "use client";
 
 import DatePicker from "@/components/BusinessDatePicker";
+import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
 import { useState } from "react";
 import { Modal, Input, Segmented, Button, Space, App, Typography } from "antd";
 import type { Dayjs } from "dayjs";
@@ -157,6 +158,9 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
         },
       }).catch(() => ({ ok: false as const, error: "没保存上，请稍后重试" }));
       if (!r.ok) return void message.error("error" in r ? r.error : "没保存上，请稍后重试");
+      // 客户三态（C12）：这条不算有效沟通时给一句轻提示（照常保存，不拦）
+      const 短 = 短沟通话of(r);
+      if (短) message.info(短, 5);
       onDone({ kind: "saved", next: 下次日, 跟进id: r.id, 下次计划id: r.下次计划id ?? null });
     } finally {
       set忙(false);

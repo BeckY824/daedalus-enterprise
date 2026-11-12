@@ -36,6 +36,7 @@ import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类�
 import { 联系人查重, 联系人撞号话 } from "@/lib/enterprise/contact-dedupe";
 import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
 import { 是占位号, 占位号提示 } from "@/lib/placeholder-phone";
+import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
 
 const 只有总管理能恢复话 = "只有系统管理员或回收站副手能恢复删掉的记录";
 
@@ -274,7 +275,9 @@ export async function saveFollowUp(input: FollowUpInput) {
     // 客户最近跟进往后推了 = 名下项目的回收时钟续了：「再不跟进」的提醒跟着勾掉（11-03 B3-1）。按推进前的节点找提醒，放在自动推进前面
     await 客户跟进后勾掉将回收提醒(input.customerId, now);
     await 客户存了推项目(user, input.customerId);
-    return { ok: true as const, id: result.id, ...(result.待办id ? { 待办id: result.待办id } : {}), ...(result.下次计划id ? { 下次计划id: result.下次计划id } : {}), ...(领取了 ? { 领取了: true as const } : {}) };
+    // 客户三态（C12）：新记的这条不算有效沟通，回原因给前端一句轻提示（不拦；三态关着不查库）
+    const 短沟通 = !input.id ? await 短沟通提示(result.id, input.content) : null;
+    return { ok: true as const, id: result.id, ...(短沟通 ? { 短沟通 } : {}), ...(result.待办id ? { 待办id: result.待办id } : {}), ...(result.下次计划id ? { 下次计划id: result.下次计划id } : {}), ...(领取了 ? { 领取了: true as const } : {}) };
   } catch (e) { return 不在了(e); }
 }
 

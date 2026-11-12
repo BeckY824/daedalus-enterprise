@@ -23,6 +23,7 @@ import { 外贸精简 } from "@/lib/business-config";
 import { 币种选项, 金额, 合计文字, 按币种合计, 默认币种 } from "@/lib/currency";
 import { 阶段们, 交付还差, 交付还差话, 终止结局, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 是交付, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
 import { 超时理由 } from "@/lib/project/timeout";
+import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
 import { 阶段与进程, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import { 有效线索节点, 缺有效沟通还差 } from "@/lib/project/stage-gates";
 import type { 线索验证 } from "@/lib/project/lead-verify";
@@ -436,6 +437,8 @@ export type 嵌在客户页 = {
   待办: ReactNode;
   /** 项目退回公海 / 转走后自己看不到了：回客户详情（不带 ?project），不回项目列表 */
   客户页: string;
+  /** 客户三态状态留痕（C13）：挂在「进程变更」卡最下面一段（客户层，切页签不变）；三态关着是 null */
+  客户状态留痕?: ReactNode;
 };
 
 export default function ProjectDetail({
@@ -1122,6 +1125,7 @@ export default function ProjectDetail({
           ),
         }))}
       />
+      {嵌入?.客户状态留痕}
     </Card>
   );
   // 企业版瀑布流（U-项目-01/04）：沟通、卡点与任务各是一块，卡头最右那颗点了展开 / 收起（ProjectFold，11-01），
@@ -1827,7 +1831,10 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
     const r = 回.r;
     if (ok && r?.ok) {
       // 本人撤销沟通去掉了（P-沟通-01，11-09），提示里不摆「撤销」
-      message.success("已记下这条沟通");
+      // 客户三态（C12）：这条不算有效沟通时换成一句轻提示（照常保存，不拦）
+      const 短 = 短沟通话of(r);
+      if (短) message.info(短, 5);
+      else message.success("已记下这条沟通");
       if ("卡点" in r && r.卡点) message.success(`已生成卡点 ${r.卡点}`);
       if ("卡点没发" in r && r.卡点没发) message.warning(`沟通记下了，卡点没生成：${r.卡点没发}`);
       if (附件们.length && r.followUpId) {

@@ -52,6 +52,7 @@ import { 字典定义, 项目画像项, 认跟进方式 } from "@/lib/enterprise
 import { 改项目画像, type 画像改动, type 画像字段 } from "@/lib/project/profile";
 import { 发布卡点, 读卡点默认, 能发卡点, 可选原因们 } from "@/lib/project/blocker";
 import { 沟通卡点, type 沟通卡点输入, type 卡点默认 } from "@/lib/project/blocker-rules";
+import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
 
 const 没开 = { ok: false as const, error: "项目模式没开：请管理员在「设置 → 业务配置」里打开" };
 
@@ -721,7 +722,9 @@ export async function 记项目沟通Action(projectId: string, input: 向导跟�
       刷新项目(projectId, p?.customerId);
       revalidatePath("/follow-ups");
     }
-    return r.ok ? { ok: true as const, followUpId: r.followUpId, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}), ...卡点结果 } : r;
+    // 客户三态（C12）：这条不算有效沟通，回原因给前端一句轻提示（不拦；三态关着不查库）
+    const 短沟通 = r.ok ? await 短沟通提示(r.followUpId, input.content) : null;
+    return r.ok ? { ok: true as const, followUpId: r.followUpId, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}), ...卡点结果, ...(短沟通 ? { 短沟通 } : {}) } : r;
   } catch (e) { return 不在了(e); }
 }
 
