@@ -9,7 +9,8 @@ import { 能改这条沟通, 能删沟通 } from "@/lib/enterprise/follow-perm";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
 import { requireUser } from "@/lib/auth";
-import RecordView from "./RecordView";
+import CustomerDetail from "./CustomerDetail";
+import { 读项目区 } from "./project-zone";
 import SameNumberBanner from "../../projects/[id]/SameNumberBanner";
 import { followHistoryInclude, followHistoryOrder, serializeFollowHistory } from "./follow-history-query";
 import { 负责人候选 } from "@/lib/owners";
@@ -45,7 +46,7 @@ export default async function CustomerDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ focus?: string }>;
+  searchParams: Promise<{ focus?: string; project?: string }>;
 }) {
   // 企业版只用项目（P14）：时间线走下面的「沟通记录」，老时间线那 51 条不取。和登录态一起读（互不依赖）
   const [me, { id }, sp, 只项目] = await Promise.all([requireUser(), params, searchParams, 企业版只用项目()]);
@@ -139,8 +140,8 @@ export default async function CustomerDetailPage({
           // 公海里我是历史负责人的项目不列（C-01，lib/project/pool-owner.ts；总管理 / 管理员照列，回避豁免）
           where: { customerId: customer.id, ...(回避.length ? { id: { notIn: 回避 } } : {}) },
           orderBy: { updatedAt: "desc" },
-          select: { id: true, name: true, phase: true, node: true, result: true, pooledAt: true, amount: true, currency: true },
-        })).then((ps) => ps.map((p) => 本套位置(p, 企业版字典)))
+          select: { id: true, name: true, phase: true, node: true, result: true, pooledAt: true, amount: true, currency: true, updatedAt: true },
+        })).then((ps) => ps.map(({ updatedAt: _u, ...p }) => 本套位置(p, 企业版字典)))
       : null,
     // 企业版项目关联（P17）：这位关联在哪些项目上、什么身份；只列看得到的项目（限定层），概览名称按后台改过的出口叫法叫
     规则P ? 规则P.then((r) => 客户参与的项目(customer.id, 字典of(true, r.阶段.出口叫法))) : null,
@@ -190,9 +191,12 @@ export default async function CustomerDetailPage({
       : {}),
   });
 
+  // 客户详情合并（11-12 第 2 批）：企业版项目模式下右边是项目区，?project=<id> 选页签；按项目详情页同一个取数读当前项目
+  const 项目区 = 只项目 && 项目们 ? await 读项目区(me, customer.id, 项目们, sp.project ?? null) : null;
   return (
-    <RecordView
+    <CustomerDetail
       key={customer.id}
+      项目数据={项目区}
       // 同号再次录入的醒目条：项目详情顶上那条，客户详情也摆（11-03 B6-9）；只看这页列出来的项目（已滤掉我回避的公海项目）
       醒目条={只项目 && 项目们?.length ? <SameNumberBanner projectId={项目们.map((p) => p.id)} /> : null}
       sourceLead={sourceLead}

@@ -145,6 +145,16 @@ export type RecordProps = {
   项目们?: { id: string; name: string; phase: string; node: string; result: string | null; pooledAt: Date | null; amount: number; currency: string }[] | null;
   /** 企业版项目关联（P17）：这位客户关联在哪些项目上、什么身份（只读；含当主客户、勾了身份的那几个）。不给 = 别的版本 */
   参与项目们?: import("@/lib/project/relate").参与项目行[] | null;
+  /**
+   * 客户详情合并（11-12 第 2 批）：给了就是两层排版——左栏客户、右边项目区（带底色）；项目区画什么由客户页给（CustomerDetail.tsx）。
+   * RecordView 把只有它有的几块（这位客户全部的沟通、待办卡、开新建项目框）交出去
+   */
+  项目区?: ((槽: 项目区槽) => ReactNode) | null;
+  /**
+   * 左栏联系人跟当前项目页签走（D2，用户 11-12）：「关键」= 当前项目的主联系人（Project.contactId），
+   * 排序 = 主联系人 → 本项目联系人（带本项目里的角色 / 立场）→ 这位客户的其他联系人。不给（没有项目可选）退回客户级 isPrimary
+   */
+  项目联系人?: 项目联系人 | null;
   customer: CustomerRow;
   contacts: ContactRow[];
   contracts: ContractRow[];
@@ -166,4 +176,20 @@ export type RecordProps = {
   channels: { id: string; name: string }[];
   /** 服务端是否配置了 AI。没配时 AI 面板整体不渲染 */
   aiEnabled: boolean;
+};
+
+/** 当前项目页签的联系人主次（项目详情 关联.联系人们 + contact 算出来） */
+export type 项目联系人 = { 主: string | null; 本项目: { contactId: string; 角色: string[]; 立场: string | null }[] };
+
+/** RecordView 交给项目区的几块 */
+export type 项目区槽 = {
+  /** 「这位客户全部」：客户页那条沟通时间线（筛选条 + 时间线，含加载更多） */
+  全部沟通: ReactNode;
+  全部沟通数: string;
+  /** 待办卡（ProjectFold + 卡），没有就是 null */
+  待办: ReactNode;
+  /** 「＋ 新建项目」：能建项目才给（公海客户点了提示先领取，同原「新开项目」） */
+  开建项目: (() => void) | null;
+  /** 全只读（虚线下属、市场成员相关、只读管理员）：项目区也不给任何写入口的提示用 */
+  全只读: boolean;
 };

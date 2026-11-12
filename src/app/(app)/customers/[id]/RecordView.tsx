@@ -41,6 +41,7 @@ import FollowUpForm from "./FollowUpForm";
 import TaskForm from "./TaskForm";
 import PlanForm from "./PlanForm";
 import { 刚加的排前 } from "@/lib/fresh-first";
+import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
 import ContactForm from "./ContactForm";
 import ContactAttachments from "./ContactAttachments";
 import ContactLinks from "./ContactLinks";
@@ -185,6 +186,8 @@ export default function RecordView({
   转让原因,
   待办计划 = [],
   醒目条 = null,
+  项目区 = null,
+  项目联系人 = null,
 }: RecordProps) {
   // 「加跟进」= 团队版互看同事的客户；「全」= 企业版虚线下属的客户，跟进也不能记
   const 只读 = !!只读档 || 管理员只读;
@@ -226,6 +229,18 @@ export default function RecordView({
     : <div className="rec-contact-line rec-field-empty">没留联系方式</div>;
   // 当主客户的项目上勾过的项目身份（P17）：摆在「项目」那一节每行的小字里
   const 主项目身份 = new Map((参与项目们 ?? []).filter((x) => x.主).map((x) => [x.projectId, x.身份]));
+  /*
+    左栏联系人跟当前项目页签走（11-12 第 2 批 D2）：「关键」= 当前项目的主联系人，排在最前；接着本项目联系人（带角色 / 立场）；再是这位客户的其他联系人。
+    没有项目可选（项目联系人 = null）退回客户级「主要联系人」
+  */
+  const 本项目联系人 = new Map((项目联系人?.本项目 ?? []).map((x, i) => [x.contactId, { ...x, 序: i }]));
+  const 是关键 = (c: ContactRow) => (项目联系人 ? c.id === 项目联系人.主 : c.isPrimary);
+  const 联系人档 = (c: ContactRow) => (!项目联系人 ? 0 : c.id === 项目联系人.主 ? 0 : 本项目联系人.has(c.id) ? 1 : 2);
+  const 排好的联系人 = 项目联系人
+    ? [...contacts].sort((a, c) => 联系人档(a) - 联系人档(c) || (本项目联系人.get(a.id)?.序 ?? 0) - (本项目联系人.get(c.id)?.序 ?? 0))
+    : contacts;
+  /** 「这位客户的其他联系人」那行小标题摆在第一位「其他」前面；本项目一个联系人都没挂就不摆（全是其他，用不着分） */
+  const 其他起点 = 项目联系人 && 排好的联系人.some((c) => 联系人档(c) < 2) ? 排好的联系人.find((c) => 联系人档(c) === 2)?.id ?? null : null;
   const [资料全开, set资料全开] = useState(false);
   // 项目「完成节点」框里窗外项点「去客户页」带着 #field-xxx 来（11-03 A6-1）：没填的格收在「展开更多」里，先展开再滚到那一格
   useEffect(() => {
@@ -675,7 +690,7 @@ export default function RecordView({
       {下一步行.map((p) => (
         <div key={`next-${p.id}`} className="rec-task">
           <span className="rec-task-k">项目</span>
-          <Link className="rec-task-t" href={`/projects/${encodeURIComponent(p.id)}#project-follow`} title={`项目「${p.名}」的下一步${p.下一步文字 ? `：${p.下一步文字}` : ""}`}>
+          <Link className="rec-task-t" href={p.主 ? 客户页项目地址(customer.id, p.id, "#project-follow") : `/projects/${encodeURIComponent(p.id)}#project-follow`} title={`项目「${p.名}」的下一步${p.下一步文字 ? `：${p.下一步文字}` : ""}`}>
             {p.下一步文字 ? `${p.名} · ${p.下一步文字}` : p.名}
           </Link>
           {p.下一步 && (
@@ -854,6 +869,14 @@ export default function RecordView({
           </div>
         </div>
         <span style={{ flex: 1 }} />
+        {/* 两层排版（11-12 第 2 批）：客户名这一行右端只放整个客户的事——「客户转让」「客户退回公海」；AI 不占常驻一栏，在这里点开抽屉 */}
+        {项目区 && (aiEnabled || 能转让 || 能退回公海) && (
+          <span className="rec-head-acts">
+            {aiEnabled && <Button icon={<AiOutlined />} onClick={() => setAI抽屉开着(true)}>AI</Button>}
+            {能转让 && <Button title="客户换负责人，名下项目一起走" onClick={() => { set转给谁(undefined); set头部框("转让"); }}>客户转让</Button>}
+            {能退回公海 && <Button title="客户和你自己的项目一起进公海" onClick={() => void 公海动作("放进")}>客户退回公海</Button>}
+          </span>
+        )}
         {aiEnabled && (!量到 || AI在抽屉里) && !去项目跟进 && (
           <Button size="small" className={量到 ? undefined : "rec-ai-guess-btn"} icon={<AiOutlined />} onClick={() => setAI抽屉开着(true)} style={{ marginRight: 8 }}>
             AI
@@ -891,14 +914,13 @@ export default function RecordView({
         「新建沟通」挪进沟通记录的标题上，「新建任务」跟着待办挪到沟通记录下面，删除客户属权限限制不再给入口。
         列宽、断点和 .rec 一样：左组对齐资料栏，整个客户的事（转让、退回公海）在中组最后、靠右
       */}
-      {去项目跟进 && (能建项目 || 能转让 || 能退回公海) && (
+      {去项目跟进 && !项目区 && (能转让 || 能退回公海) && (
         <div className="rec-acts">
           <div className="acts-g" />
           <div className="rec-acts-r">
             <div className="acts-g">
-              {(能建项目 || 能转让 || 能退回公海) && (
+              {(能转让 || 能退回公海) && (
                 <span className="acts-whole">
-                  {能建项目 && <Button onClick={开建项目}>新开项目</Button>}
                   {能转让 && <Button onClick={() => { set转给谁(undefined); set头部框("转让"); }}>客户转让</Button>}
                   {能退回公海 && <Button onClick={() => void 公海动作("放进")}>客户退回公海</Button>}
                 </span>
@@ -1008,7 +1030,7 @@ export default function RecordView({
 
       <只读上下文.Provider value={只读}>
       <只能看的格上下文.Provider value={只能看的格}>
-      <div ref={recRef} className={`rec${AI在抽屉里 ? " rec-2col" : ""}${单栏 ? " rec-1col" : ""}${有右栏 ? "" : " rec-no-right"}`}>
+      <div ref={recRef} className={项目区 ? `rec rec-cd${单栏 ? " rec-1col" : ""}` : `rec${AI在抽屉里 ? " rec-2col" : ""}${单栏 ? " rec-1col" : ""}${有右栏 ? "" : " rec-no-right"}`}>
         {/* ================= 左栏：档案 ================= */}
         <aside className={`rec-rail rec-card${去项目跟进 ? " rec-rail-blocks" : ""}`}>
           {/* 名字和头像不在这儿重画一遍：页头上已经有了（设计稿 12/PAGE 的「基本资料」卡第一行就是电话）。
@@ -1142,20 +1164,29 @@ export default function RecordView({
                 </Space>
               ), <>
             {contacts.length === 0 && <div className="rec-empty">还没有联系人</div>}
-            {刚加的排前(contacts, 刚加的联系人).map((c) =>
+            {刚加的排前(排好的联系人, 刚加的联系人).map((c) =>
               企业 ? (
-                /* 企业版（10-27 会议：联系方式要完整展示）：一人一张小卡，电话 / 邮箱 / 微信各占一行；11-04 起每行一行，放不下打省略号、悬停看全文。
-                   原来一行只摆「职位或电话」其中一个，有职位就看不到电话 */
-                <div key={c.id} className={`rec-contact${c.id === 刚加的联系人 ? " rec-tl-item-flash" : ""}`}>
+                <Fragment key={c.id}>
+                {c.id === 其他起点 && <div className="rec-contact-sub">这位客户的其他联系人</div>}
+                {/* 企业版（10-27 会议：联系方式要完整展示）：一人一张小卡，电话 / 邮箱 / 微信各占一行；11-04 起每行一行，放不下打省略号、悬停看全文。
+                   原来一行只摆「职位或电话」其中一个，有职位就看不到电话 */}
+                <div className={`rec-contact${c.id === 刚加的联系人 ? " rec-tl-item-flash" : ""}`}>
                   <div className="rec-contact-h">
                     <Avatar size={26} style={{ background: avatarColor(c.name), color: AVATAR_TEXT, fontSize: 12, flex: "none" }}>{initial(c.name)}</Avatar>
                     <span className="rec-contact-n">{c.name}</span>
-                    {c.isPrimary && <Tag className="tag-key" style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>关键</Tag>}
+                    {是关键(c) && <Tag className="tag-key" style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>关键</Tag>}
                     {c.挂靠 && <Tag style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>挂靠</Tag>}
                     {c.position && <span className="rec-contact-p">{c.position}</span>}
                     {/* 号码保护（10-31）：只展示，不能点，任何逻辑都不看它（lib/enterprise/contact-guard.ts） */}
                     <号码保护标签 c={c} 客户={customer} />
                   </div>
+                  {/* 本项目里的角色 / 立场（项目关联联系人里勾的），一行，放不下省略、悬停看全 */}
+                  {本项目联系人.has(c.id) && (本项目联系人.get(c.id)!.角色.length > 0 || 本项目联系人.get(c.id)!.立场) && (
+                    <div className="rec-contact-line" data-testid="contact-project-role">
+                      <span className="rec-contact-k">本项目</span>
+                      <span className="rec-contact-v">{[...本项目联系人.get(c.id)!.角色, ...(本项目联系人.get(c.id)!.立场 ? [本项目联系人.get(c.id)!.立场!] : [])].join(" · ")}</span>
+                    </div>
+                  )}
                   {c.号码们 && 号码种类 ? (
                     /* 改版后（定稿 P5 第 24 条）：联系方式几行（类型 + 号码），一人可以好几个；性别、生日、爱好、地址填了才摆 */
                     <>
@@ -1189,6 +1220,7 @@ export default function RecordView({
                   <ContactLinks customerId={customer.id} c={c} 只读={只读} />
                   {联系人操作(c)}
                 </div>
+                </Fragment>
               ) : (
               <Fragment key={c.id}>
               <div className={`rec-mini${c.id === 刚加的联系人 ? " rec-tl-item-flash" : ""}`}>
@@ -1196,7 +1228,7 @@ export default function RecordView({
                 {/* 截断成「母亲…」之后，鼠标停上去得看得到全名 */}
                 <span className="rec-mini-n" title={c.name}>
                   {c.name}
-                  {c.isPrimary && <Tag className="tag-key" style={{ marginLeft: 6, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>关键</Tag>}
+                  {是关键(c) && <Tag className="tag-key" style={{ marginLeft: 6, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>关键</Tag>}
                 </span>
                 <span className="rec-mini-m">{c.position ?? c.phone ?? ""}</span>
                 {/* 编辑 / 删除平时不占位（审查 M4）：原来两颗图标常驻，三个字的名字被挤成「周明远…」。
@@ -1212,7 +1244,8 @@ export default function RecordView({
 
           {/* 企业版项目模式（10-26）：客户名下的项目替掉商机——用户：「去除掉商机，不要演用个人版的老模型」。
               「开项目」给这位客户再建一个项目（待定 16）：客户自动带上 */}
-          {项目们 ? 节("项目", 项目们.length, (
+          {/* 两层排版：项目在右边项目区的页签里，左栏不再列 */}
+          {项目们 && !项目区 ? 节("项目", 项目们.length, (
                 <Space size={4}>
                   {摆法.新建项目 && 新建项目 && !只读 && !去项目跟进 && <Button type="text" size="small" icon={<PlusOutlined />} onClick={开建项目}>开项目</Button>}
                   <Link href="/projects">全部 ›</Link>
@@ -1277,8 +1310,20 @@ export default function RecordView({
           )}
         </aside>
 
+        {项目区?.({
+          全部沟通: <div className="proj-mod-body">{筛选条}{时间线}</div>,
+          全部沟通数: `${history.rows.length}${history.hasMore ? "+" : ""}`,
+          待办: 摆法.待办 ? 节("待办", 待办数, !只读 && (
+            <Button size="small" icon={<PlusOutlined />} onClick={() => setTaskOpen(true)}>
+              新建任务
+            </Button>
+          ), <div className="proj-mod-body" aria-label="待办">{待办身}</div>) : null,
+          开建项目: 能建项目 ? 开建项目 : null,
+          全只读,
+        })}
+
         {/* ================= 中栏：时间线 ================= */}
-        <section className={去项目跟进 ? "rec-col rec-col-blocks rec-sum" : `rec-col rec-card${摆法.沟通汇总 ? " rec-sum" : ""}`}>
+        {!项目区 && <section className={去项目跟进 ? "rec-col rec-col-blocks rec-sum" : `rec-col rec-card${摆法.沟通汇总 ? " rec-sum" : ""}`}>
           {/* 虚线下属的客户：跟进也记不了，速记框不摆，免得写完才被拦（10-25 实测 F4）。顶上那条黄条已说清只能看 */}
           {/* 企业版项目模式：记录输入挪到项目页（定稿 P5 待定 14 黄框），客户页只看时间线 */}
           {!全只读 && 摆法.记录输入 && <div className="rec-composer">
@@ -1365,10 +1410,10 @@ export default function RecordView({
               {时间线}
             </>
           )}
-        </section>
+        </section>}
 
         {/* ================= 右栏：AI + 计划/待办 ================= */}
-        {有右栏 && (
+        {!项目区 && 有右栏 && (
         <aside className="rec-right rec-rail">
           <Space orientation="vertical" size={14} style={{ width: "100%" }}>
             {aiEnabled && !AI在抽屉里 && (
@@ -1406,7 +1451,7 @@ export default function RecordView({
 
       {/* 1180 以下 AI 收进抽屉。面板本身一个字都不用改——它的状态挂在
           进程内任务表上（lib/ai-jobs），不在组件 state 里，关掉再开还在那儿 */}
-      {aiEnabled && (!量到 || AI在抽屉里) && (
+      {aiEnabled && (!!项目区 || !量到 || AI在抽屉里) && (
         <Drawer placement="right" styles={{ wrapper: { width: 380 } }} open={AI抽屉开着} onClose={() => setAI抽屉开着(false)} title={`AI · ${customer.name}`}>
           <AiPanel customerId={customer.id} customerName={customer.name} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸 && !企业} hasRecords={followUps.length > 0} on记跟进={点跟进} 简报叫={企业 ? "智能总结" : "简报"} 不背调={!摆法.背调} 背调另放={摆法.背调卡} />
         </Drawer>

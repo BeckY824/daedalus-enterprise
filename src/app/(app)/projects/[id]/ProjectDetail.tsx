@@ -408,9 +408,8 @@ function 更多去处(当前: 位置, 组们: ReturnType<typeof 去处们>, 字�
   return [...组("forward", "往前", 往前), ...组("back", "退回", 退回), ...组("end", "结束", 结束们)];
 }
 
-export default function ProjectDetail({
-  p, 能改, 候选, 在职, 联系人们, 角色们, 类别们, 卡点 = null,
-}: {
+/** 项目详情的数据（projects/[id]/load.ts 读出来，项目详情页和客户详情的项目区都按这一份画） */
+export type 项目详情Props = {
   p: 项目详情;
   能改: boolean;
   候选: 可选成员[];
@@ -420,7 +419,25 @@ export default function ProjectDetail({
   /** 在用的异常类别（进异常状态时选） */
   类别们: { id: string; name: string }[];
   卡点?: 项目卡点 | null;
-}) {
+};
+
+/**
+ * 嵌在客户详情里（11-12 客户详情合并第 2 批，定稿 UI 客户详情-定稿UI-20261112.html 的项目区）：
+ * 不画页头，第一行是客户页给的页签行（右端放这个项目的「项目转让」「项目退回公海」）；中栏 阶段 → 沟通 → 待办 → 卡点，右栏项目资料各卡。
+ * 沟通卡标题旁「本项目 / 这位客户全部」，全部 = 客户页那条时间线（客户页给）；待办是客户页那张卡（客户页给）
+ */
+export type 嵌在客户页 = {
+  页签行: (右端: ReactNode) => ReactNode;
+  全部沟通: ReactNode;
+  全部沟通数: string;
+  待办: ReactNode;
+  /** 项目退回公海 / 转走后自己看不到了：回客户详情（不带 ?project），不回项目列表 */
+  客户页: string;
+};
+
+export default function ProjectDetail({
+  p, 能改, 候选, 在职, 联系人们, 角色们, 类别们, 卡点 = null, 嵌入,
+}: 项目详情Props & { 嵌入?: 嵌在客户页 }) {
   const router = useRouter();
   const { message, modal } = App.useApp();
   const b = useBusiness();
@@ -452,6 +469,8 @@ export default function ProjectDetail({
   const [沟通开, set沟通开] = useState(true);
   const [卡点开, set卡点开] = useState(false);
   const [搜, set搜] = useState("");
+  /** 嵌在客户页：沟通卡看「本项目」还是「这位客户全部」（定稿 D1：默认本项目） */
+  const [看全部沟通, set看全部沟通] = useState(false);
   /** 负责人点了「隐藏接手前」（11-02）：只是不显示，默认显示全部 */
   const [只看接手后, set只看接手后] = useState(false);
   /** 企业版页头具名按钮开的那个框（10-31 R6），一次只开一个 */
@@ -622,7 +641,7 @@ export default function ProjectDetail({
     if (!ok) return;
     set转给框(false);
     // 转完自己还看得到（总管理、上级）就留在这页，看不到才回列表
-    if (!p.转后还能看?.includes(新)) router.push("/projects");
+    if (!p.转后还能看?.includes(新)) router.push(嵌入?.客户页 ?? "/projects");
   };
   const 转给名 = 转给谁 ? (候选.find((m) => m.id === 转给谁)?.name ?? "TA") : null;
 
@@ -637,7 +656,7 @@ export default function ProjectDetail({
       if (!r.ok) message.error(r.error);
       else {
         message.success("已删除项目，沟通记录还留在客户下");
-        router.push("/projects");
+        router.push(嵌入?.客户页 ?? "/projects");
       }
     } finally {
       set忙(false);
@@ -767,7 +786,7 @@ export default function ProjectDetail({
   );
   const 项目卡 = (
     <Card
-      title="项目"
+      title={嵌入 ? "项目资料" : "项目"}
       // U-项目-05：企业版改项目的入口挪到项目卡右上角一个笔（页头不再摆「编辑项目」），点开还是同一个编辑框；别的版本照旧「编辑」
       extra={可改 && (p.企业版
         ? <Tooltip title="编辑项目"><Button type="text" size="small" icon={<EditOutlined />} aria-label="编辑项目" disabled={忙} onClick={() => set编辑开着(true)} /></Tooltip>
@@ -1098,7 +1117,82 @@ export default function ProjectDetail({
   const 列沟通 = 搜着 ? 显示的沟通.filter((f) => 对得上(搜词, 沟通字段(f))) : 显示的沟通;
   const 列卡点 = 卡点 ? (搜着 ? 卡点.们.filter((k) => 对得上(搜词, 卡点字段(k))) : 卡点.们) : [];
   const 沟通数字 = 搜着 ? `搜到 ${列沟通.length}` : `${显示的沟通.length}`;
-  const 沟通卡 = (
+  /** 沟通卡身（项目页和嵌在客户页共用）：普通函数，别写成组件，免得每次渲染换组件丢状态 */
+  const 沟通身 = () => (
+        <div id="project-follow-body" className={p.企业版 ? "proj-mod-body" : undefined}>
+        {p.followUps.length === 0 && <div style={{ color: "var(--text-muted)" }}>{p.customer ? "还没有挂在这个项目上的沟通" : p.pooled ? "领取后可见" : "无权查看"}</div>}
+        {搜着 && p.followUps.length > 0 && 列沟通.length === 0 && <div style={{ color: "var(--text-muted)" }}>没有对得上「{搜.trim()}」的沟通</div>}
+        {!搜着 && 隐藏中 && 列沟通.length === 0 && <div style={{ color: "var(--text-muted)" }}>接手后还没有沟通；接手前的 {p.followUps.length} 条已隐藏</div>}
+        {列沟通.map((f) => (
+          <div key={f.id} id={`follow-${f.id}`} className="proj-follow-row" style={{ marginBottom: 12 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <FollowTypeCell type={f.type} method={f.method} />
+              {f.initiator && <Tag bordered={false}>{f.initiator}</Tag>}
+              <Tag>{f.node}</Tag>
+              {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
+              <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
+              {(p.可改沟通 || p.可删沟通 || 卡点?.能发) && (
+                // 「…」放在这一行最右：发卡点、修改、删除（10-30 发卡点从行上收进来）；删除就地问一句（components/InlineConfirm.tsx），删了进回收站、提示条上还给一次撤销
+                <span style={{ marginLeft: "auto" }}>
+                  <InlineConfirm 问="删了进回收站，30 天内可恢复" 开={删问于 === f.id} set开={(v) => set删问于(v ? f.id : null)} 做={() => 删沟通(f.id)}>
+                    <Dropdown
+                      trigger={["click"]}
+                      placement="bottomRight"
+                      disabled={忙}
+                      menu={{
+                        items: [
+                          ...(卡点?.能发 ? [{ key: "blocker", label: "发卡点" }] : []),
+                          ...(p.可改沟通 ? [{ key: "edit", label: "修改" }] : []),
+                          ...(p.可删沟通 ? [{ key: "delete", label: "删除", danger: true }] : []),
+                        ],
+                        onClick: ({ key }) => (key === "blocker" ? set发卡点于(f.id) : key === "edit" ? set改沟通于(f) : set删问于(f.id)),
+                      }}
+                    >
+                      <Button type="text" size="small" icon={<MoreOutlined />} aria-label="这条沟通的更多操作" />
+                    </Dropdown>
+                  </InlineConfirm>
+                </span>
+              )}
+            </div>
+            <div style={{ marginTop: 4 }}>
+              <ProjectInlineField<string>
+                名="沟通内容"
+                规整={(v) => v.trim()}
+                值={f.content}
+                能改={p.企业版 && !!p.可改沟通}
+                多行
+                显示={(v) => <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{v}</div>}
+                存={(v) => 存沟通正文(f, v)}
+                编辑器={({ 草稿, set草稿, 忙 }) => <Input.TextArea aria-label="沟通内容" autoFocus autoSize={{ minRows: 3, maxRows: 14 }} disabled={忙} value={草稿} onChange={(e) => set草稿(e.target.value)} />}
+              />
+            </div>
+            {f.附件 && <FollowAttachments followUpId={f.id} 附件={f.附件} 能传={!!p.可改沟通 || (p.能记沟通 && !!f.我记的)} 能删={!!p.可删沟通} on变了={() => router.refresh()} />}
+          </div>
+        ))}
+        </div>
+  );
+  /** 嵌在客户页的沟通卡头：标题 + 计数 +「本项目 / 这位客户全部」，右边主按钮「新建沟通」（默认记到这个项目上） */
+  const 沟通范围钮 = 嵌入 && (
+    <span className="cd-seg" role="group" aria-label="沟通记录看哪些">
+      <button type="button" className={看全部沟通 ? undefined : "on"} aria-pressed={!看全部沟通} onClick={() => set看全部沟通(false)}>本项目</button>
+      <button type="button" className={看全部沟通 ? "on" : undefined} aria-pressed={看全部沟通} onClick={() => set看全部沟通(true)}>这位客户全部</button>
+    </span>
+  );
+  const 沟通卡 = 嵌入 ? (
+    <Card
+      className="cd-comm"
+      title={<span className="cd-comm-t"><span>沟通记录（{看全部沟通 ? 嵌入.全部沟通数 : 沟通数字}）</span>{沟通范围钮}</span>}
+      extra={((能隐藏 && !看全部沟通) || p.能记沟通) && (
+        <Space size={8} className="proj-follow-acts">
+          {能隐藏 && !看全部沟通 && <Button size="small" aria-pressed={隐藏中} title="隐藏归属人不是你的沟通，只是不显示，不删数据" onClick={() => set只看接手后(!只看接手后)} data-testid="follow-hide-before">{隐藏中 ? "显示全部" : "隐藏接手前"}</Button>}
+          {p.能记沟通 && p.aiEnabled && p.customer && <Button size="small" icon={<ThunderboltOutlined />} disabled={忙} onClick={() => set记一条开着("AI")}>AI 录入</Button>}
+          {p.能记沟通 && <Button size="small" type="primary" disabled={忙} onClick={() => set记一条开着("手填")} data-testid="follow-card-new">新建沟通</Button>}
+        </Space>
+      )}
+    >
+      {看全部沟通 ? 嵌入.全部沟通 : 沟通身()}
+    </Card>
+  ) : (
     <Card
       // 客户页「跟进」菜单跳过来的落点（/projects/<id>#project-follow，P14 第 3 条）
       // 企业版的落点 id 在外面那层模块壳上（ProjectFold）
@@ -1119,57 +1213,7 @@ export default function ProjectDetail({
           : p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页记一条</Link>
       }
     >
-      <div id="project-follow-body" className={p.企业版 ? "proj-mod-body" : undefined}>
-      {p.followUps.length === 0 && <div style={{ color: "var(--text-muted)" }}>{p.customer ? "还没有挂在这个项目上的沟通" : p.pooled ? "领取后可见" : "无权查看"}</div>}
-      {搜着 && p.followUps.length > 0 && 列沟通.length === 0 && <div style={{ color: "var(--text-muted)" }}>没有对得上「{搜.trim()}」的沟通</div>}
-      {!搜着 && 隐藏中 && 列沟通.length === 0 && <div style={{ color: "var(--text-muted)" }}>接手后还没有沟通；接手前的 {p.followUps.length} 条已隐藏</div>}
-      {列沟通.map((f) => (
-        <div key={f.id} id={`follow-${f.id}`} className="proj-follow-row" style={{ marginBottom: 12 }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <FollowTypeCell type={f.type} method={f.method} />
-            {f.initiator && <Tag bordered={false}>{f.initiator}</Tag>}
-            <Tag>{f.node}</Tag>
-            {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
-            <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
-            {(p.可改沟通 || p.可删沟通 || 卡点?.能发) && (
-              // 「…」放在这一行最右：发卡点、修改、删除（10-30 发卡点从行上收进来）；删除就地问一句（components/InlineConfirm.tsx），删了进回收站、提示条上还给一次撤销
-              <span style={{ marginLeft: "auto" }}>
-                <InlineConfirm 问="删了进回收站，30 天内可恢复" 开={删问于 === f.id} set开={(v) => set删问于(v ? f.id : null)} 做={() => 删沟通(f.id)}>
-                  <Dropdown
-                    trigger={["click"]}
-                    placement="bottomRight"
-                    disabled={忙}
-                    menu={{
-                      items: [
-                        ...(卡点?.能发 ? [{ key: "blocker", label: "发卡点" }] : []),
-                        ...(p.可改沟通 ? [{ key: "edit", label: "修改" }] : []),
-                        ...(p.可删沟通 ? [{ key: "delete", label: "删除", danger: true }] : []),
-                      ],
-                      onClick: ({ key }) => (key === "blocker" ? set发卡点于(f.id) : key === "edit" ? set改沟通于(f) : set删问于(f.id)),
-                    }}
-                  >
-                    <Button type="text" size="small" icon={<MoreOutlined />} aria-label="这条沟通的更多操作" />
-                  </Dropdown>
-                </InlineConfirm>
-              </span>
-            )}
-          </div>
-          <div style={{ marginTop: 4 }}>
-            <ProjectInlineField<string>
-              名="沟通内容"
-              规整={(v) => v.trim()}
-              值={f.content}
-              能改={p.企业版 && !!p.可改沟通}
-              多行
-              显示={(v) => <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{v}</div>}
-              存={(v) => 存沟通正文(f, v)}
-              编辑器={({ 草稿, set草稿, 忙 }) => <Input.TextArea aria-label="沟通内容" autoFocus autoSize={{ minRows: 3, maxRows: 14 }} disabled={忙} value={草稿} onChange={(e) => set草稿(e.target.value)} />}
-            />
-          </div>
-          {f.附件 && <FollowAttachments followUpId={f.id} 附件={f.附件} 能传={!!p.可改沟通 || (p.能记沟通 && !!f.我记的)} 能删={!!p.可删沟通} on变了={() => router.refresh()} />}
-        </div>
-      ))}
-      </div>
+      {沟通身()}
     </Card>
   );
   // 企业版叫「卡点与任务」（U-项目-01）：这一版只有卡点，任务还没有单独的数据，进来以后列在同一块里
@@ -1218,15 +1262,15 @@ export default function ProjectDetail({
 
   const 领取钮 = (
     <>
-      {p.能领取 && <Button type="primary" disabled={忙} onClick={() => void 跑(() => 领取项目(p.id), "已领取，你是这个项目的负责人了")}>领取</Button>}
+      {p.能领取 && <Button size={嵌入 ? "small" : undefined} type="primary" disabled={忙} onClick={() => void 跑(() => 领取项目(p.id), "已领取，你是这个项目的负责人了")}>领取</Button>}
       {/* 企业版原负责人：按钮摆着、灰着，悬停说为什么（接口也拦，lib/project/db.ts 领取公海项目） */}
-      {!p.能领取 && p.领取不给 && <Tooltip title={p.领取不给}><Button type="primary" disabled>领取</Button></Tooltip>}
+      {!p.能领取 && p.领取不给 && <Tooltip title={p.领取不给}><Button size={嵌入 ? "small" : undefined} type="primary" disabled>领取</Button></Tooltip>}
     </>
   );
   // 企业版换负责人单独一个按钮（10-30），弹窗说清转了会怎样、点「确认转让」才转（U-项目-07）
   // 11-01：转让按 能转让 给（总管理、上级能转不能改；负责人本人能改不能自己转），和 lib/project/db.ts 改项目 同一个判断
   const 转给钮 = p.企业版 && !p.pooled && !!p.能转让 && !独自一人(候选, p.ownerId) && (
-    <Button disabled={忙} onClick={() => { set转给谁(null); set转给带待办(公海规则.带待办默认勾); set转给框(true); }}>项目转让</Button>
+    <Button size={嵌入 ? "small" : undefined} title={嵌入 ? "只转当前页签的项目，客户不动" : undefined} disabled={忙} onClick={() => { set转给谁(null); set转给带待办(公海规则.带待办默认勾); set转给框(true); }}>项目转让</Button>
   );
   const 放回问 = () => {
     // 企业版：放回前可选一个「回收原因」（字典，不选也行）；别的版本照旧一个确认
@@ -1239,18 +1283,22 @@ export default function ProjectDetail({
   // 关联 + 回关联卡，邀请回项目组卡，改分配回提成卡，项目画像、附件就在各自卡上改 / 传，线索判定一直在节点卡里。
   // 公海里的项目这里是「领取」。「删除项目」企业版只摆给总管理（QA #3，进回收站；服务端 删项目 也只放总管理），收在「更多」里。
   // ⌘N 点的是页头主按钮（领取），没有就点节点卡上的「新增沟通」（data-cmd-new，components/CommandBar.tsx）
+  // 嵌在客户页时这几颗挪到项目区第一行右端（小一号、不折行），只作用于当前页签这个项目
+  const 钮号 = 嵌入 ? "small" as const : undefined;
+  const 放回钮 = p.能放公海 && (等复核
+    ? <Tooltip title={`${等复核文字}，暂时不能退回公海`}><Button size={钮号} disabled>项目退回公海</Button></Tooltip>
+    : <Button size={钮号} disabled={忙} onClick={放回问} title={嵌入 ? "只退回当前页签的项目，客户不动" : undefined}>项目退回公海</Button>);
+  const 删钮 = p.能删 && (
+    <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{ items: [{ key: "delete", danger: true, label: "删除项目" }], onClick: () => 删问() }}>
+      <Button size={钮号} icon={<MoreOutlined />} aria-label="项目的更多操作">{嵌入 ? null : "更多"}</Button>
+    </Dropdown>
+  );
   const 企业版页头钮 = (p.能领取 || !!p.领取不给 || !!转给钮 || p.能放公海 || !!p.能删) && (
     <Space wrap>
       {领取钮}
       {转给钮}
-      {p.能放公海 && (等复核
-        ? <Tooltip title={`${等复核文字}，暂时不能退回公海`}><Button disabled>项目退回公海</Button></Tooltip>
-        : <Button disabled={忙} onClick={放回问}>项目退回公海</Button>)}
-      {p.能删 && (
-        <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{ items: [{ key: "delete", danger: true, label: "删除项目" }], onClick: () => 删问() }}>
-          <Button icon={<MoreOutlined />} aria-label="项目的更多操作">更多</Button>
-        </Dropdown>
-      )}
+      {放回钮}
+      {删钮}
     </Space>
   );
 
@@ -1287,7 +1335,7 @@ export default function ProjectDetail({
 
   const 关头部框 = () => set头部框(null);
   /** 企业版每块卡包一层模块壳（ProjectFold）：卡头最右一颗收起 / 展开，各块自己记开合 */
-  const 折 = (名: string, 卡: ReactNode, id?: string) => (卡 ? <ProjectFold id={id} 名={名}>{卡}</ProjectFold> : null);
+  const 折 = (名: string, 卡: ReactNode, id?: string, 默认开 = true) => (卡 ? <ProjectFold id={id} 名={名} 默认开={默认开}>{卡}</ProjectFold> : null);
   /** 框里点了要换到别的框（推进 → 结局确认）：先关这个，焦点回到页头。「管理沟通」框 M-权限-09 去掉了，改、删在每条沟通的「…」里 */
   const 换框 = (f: () => void) => () => { set头部框(null); f(); };
   /** 「完成节点」框里填不了的必填：关框，打开或滚到能填的地方 */
@@ -1342,88 +1390,9 @@ export default function ProjectDetail({
     }
   })();
 
-  const 正文 = (
-    <div className={p.企业版 ? "proj-wrap" : undefined} style={{ maxWidth: p.企业版 ? 1200 : 960 }}>
-      {p.企业版 ? (
-        /* 企业版（P11）：项目名单在中栏（@pane/projects/[id]，components/ProjectRoster.tsx）。
-           它收起或收成抽屉时，标题最左边补一颗侧栏图标把它叫回来，和客户详情页同一颗（components/PaneToggle.tsx） */
-        <div className="proj-head">
-          <PaneToggle 栏="roster" 位置="主区" 名="项目列表" />
-          {页头}
-        </div>
-      ) : (
-        页头
-      )}
-
-      {p.pooled && (
-        <Alert type="info" showIcon style={{ marginBottom: 16 }} title="这个项目在线索公海里" description={p.能领取 ? "领取了你就是负责人，可以接着推进程" : p.领取不给 === 项目不能单独领提示 || p.领取不给 === 客户在公海项目不单领提示 ? p.领取不给 : p.领取不给 ? `你是原负责人，${p.领取不给}，等同事领取` : "是你放回去的，等同事领取"} />
-      )}
-
-      {异常 && (
-        <Alert
-          type="error" showIcon style={{ marginBottom: 16 }}
-          title={`这个项目在异常状态${p.exceptionCategory ? `：${p.exceptionCategory}` : ""}`}
-          description={p.exceptionReason ? <span style={{ whiteSpace: "pre-wrap" }}>{p.exceptionReason}</span> : undefined}
-        />
-      )}
-
-      {p.企业版 ? (
-        <>
-          {/* 企业版两栏（10-27 会后排版）：左边干活——节点、沟通、卡点；右边看资料——项目、交付、项目组、提成、节点变更。
-              容器窄了（有 AI 侧栏、窗口小）退成一栏，干活的在上（globals.css .proj-2col） */}
-          <div className="proj-2col">
-            {/* 左栏整列上下瀑布流（U-项目-01）：当前进程（固定在最上、不折叠）→ 搜索 → 沟通（默认开）→ 卡点与任务（默认收）→ 项目附件 → 回款 */}
-            <div className="proj-main">
-              {节点卡}
-              <div className="proj-search">
-                <Input
-                  allowClear
-                  prefix={<SearchOutlined aria-hidden />}
-                  placeholder="搜这个项目的沟通、卡点"
-                  aria-label="搜这个项目的沟通、卡点"
-                  value={搜}
-                  onChange={(e) => set搜(e.target.value)}
-                />
-              </div>
-              {/* 沟通、卡点跟着搜索：有词时都摊开、收起钮灰着 */}
-              <ProjectFold id="project-follow" 名="沟通" 开={沟通开} set开={set沟通开} 锁开={搜着} 控制="project-follow-body">{沟通卡}</ProjectFold>
-              {卡点区 && <ProjectFold id="project-blockers" 名="卡点与任务" 开={卡点开} set开={set卡点开} 锁开={搜着} 控制="project-blockers-body">{卡点区}</ProjectFold>}
-              {折("项目附件", 附件卡, "project-attachments-fold")}
-              {折("回款", 回款卡, "project-payments-fold")}
-            </div>
-            <aside className="proj-side" aria-label="项目资料">
-              {折("项目", 项目卡)}
-              {折("项目画像", 画像卡)}
-              {p.关联 && 折("关联客户", <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} 只="客户" />)}
-              {p.关联 && 折("关联联系人", <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} 只="联系人" />)}
-              {折("交付", 交付卡)}
-              {折("项目组", 项目组卡)}
-              {折("提成", 提成区)}
-              {折("进程变更", 变更卡)}
-            </aside>
-          </div>
-        </>
-      ) : (
-        <>
-          {节点卡}
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 16 }}>
-            {项目卡}
-            {交付卡}
-          </div>
-
-          <div style={{ marginBottom: 16 }}>{项目组卡}</div>
-
-          {提成区 && <div style={{ marginBottom: 16 }}>{提成区}</div>}
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
-            {变更卡}
-            {沟通卡}
-            {卡点区}
-          </div>
-        </>
-      )}
-
+  /** 各种弹窗：项目页和嵌在客户页共用 */
+  const 弹窗们 = (
+    <>
       {p.线索验证 && (
         <Modal open={验证开着} title="线索验证" footer={null} width={560} onCancel={() => set验证开着(false)} destroyOnHidden>
           <LeadVerifyPanel projectId={p.id} v={p.线索验证} 无效原因选项={p.原因选项.无效} 字数上限={p.字数上限} 跑={跑} 忙={忙} 缺有效沟通话={缺有效沟通话} 不给推={p.不给推} />
@@ -1511,7 +1480,7 @@ export default function ProjectDetail({
           const ok = await 跑(() => 放回项目公海(p.id, 回收原因));
           if (ok) message.success("项目已退回公海");
           // 企业版放回后原负责人看不到这个项目了（C-01，lib/project/pool-owner.ts 原负责人回避），回项目列表
-          if (ok) { set放回框(false); router.push("/projects"); }
+          if (ok) { set放回框(false); router.push(嵌入?.客户页 ?? "/projects"); }
         }}
       >
         <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>只退这个项目：退回去以后同事都能领，你作为原负责人不能再领回来，也看不到它了；你会记成这个项目的历史负责人，你在这个项目上没做完的待办会自动关闭。客户和客户负责人不动。</div>
@@ -1545,6 +1514,133 @@ export default function ProjectDetail({
           {转给名 ? `确认转给 ${转给名}？${转给谁 && p.转后还能看?.includes(转给谁) ? "转了以后你还能看这个项目" : "转了以后你看不到这个项目"}，下一步、卡点、沟通记录都跟着项目交给 ${转给名}；转了不能撤销。` : "选好接手的人，再点「确认转让」。"}
         </div>
       </Modal>
+    </>
+  );
+  const 告示 = (
+    <>
+      {p.pooled && (
+        <Alert type="info" showIcon style={{ marginBottom: 16 }} title="这个项目在线索公海里" description={p.能领取 ? "领取了你就是负责人，可以接着推进程" : p.领取不给 === 项目不能单独领提示 || p.领取不给 === 客户在公海项目不单领提示 ? p.领取不给 : p.领取不给 ? `你是原负责人，${p.领取不给}，等同事领取` : "是你放回去的，等同事领取"} />
+      )}
+
+      {异常 && (
+        <Alert
+          type="error" showIcon style={{ marginBottom: 16 }}
+          title={`这个项目在异常状态${p.exceptionCategory ? `：${p.exceptionCategory}` : ""}`}
+          description={p.exceptionReason ? <span style={{ whiteSpace: "pre-wrap" }}>{p.exceptionReason}</span> : undefined}
+        />
+      )}
+
+    </>
+  );
+  const 搜索框 = (
+    <div className="proj-search">
+      <Input
+        allowClear
+        prefix={<SearchOutlined aria-hidden />}
+        placeholder="搜这个项目的沟通、卡点"
+        aria-label="搜这个项目的沟通、卡点"
+        value={搜}
+        onChange={(e) => set搜(e.target.value)}
+      />
+    </div>
+  );
+  if (嵌入) {
+    const 项目钮 = (p.能领取 || !!p.领取不给 || !!转给钮 || p.能放公海 || !!p.能删) && <span className="cd-zh-acts">{领取钮}{转给钮}{放回钮}{删钮}</span>;
+    return (
+      /* 客户详情的项目区（定稿 UI .zone）：第一行页签 + 这个项目的两颗按钮；中栏干活，右栏看资料。1280 也是两栏，窄到放不下右栏落到中栏下面（globals.css .rec-zone） */
+      <section className="rec-zone" aria-label={`项目：${p.name}`} data-project={p.id}>
+        {嵌入.页签行(项目钮 || null)}
+        {告示}
+        <div className="cd-zb">
+          <div className="cd-mid">
+            {节点卡}
+            {搜索框}
+            <ProjectFold id="project-follow" 名="沟通记录" 开={沟通开} set开={set沟通开} 锁开={搜着} 控制="project-follow-body">{沟通卡}</ProjectFold>
+            {嵌入.待办}
+            {卡点区 && <ProjectFold id="project-blockers" 名="卡点与任务" 开={卡点开} set开={set卡点开} 锁开={搜着} 控制="project-blockers-body">{卡点区}</ProjectFold>}
+          </div>
+          <aside className="cd-side" aria-label="项目资料">
+            {折("项目资料", 项目卡)}
+            {折("项目画像", 画像卡)}
+            {折("项目附件", 附件卡, "project-attachments-fold")}
+            {折("回款", 回款卡, "project-payments-fold", false)}
+            {显示交付 && 折("交付", 交付卡, undefined, false)}
+            {折("项目组", 项目组卡, undefined, false)}
+            {折("提成", 提成区, undefined, false)}
+            {折("进程变更", 变更卡, undefined, false)}
+            {p.关联 && 折("关联客户", <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} 只="客户" />, undefined, false)}
+            {p.关联 && 折("关联联系人", <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} 只="联系人" />, undefined, false)}
+          </aside>
+        </div>
+        {弹窗们}
+      </section>
+    );
+  }
+
+  const 正文 = (
+    <div className={p.企业版 ? "proj-wrap" : undefined} style={{ maxWidth: p.企业版 ? 1200 : 960 }}>
+      {p.企业版 ? (
+        /* 企业版（P11）：项目名单在中栏（@pane/projects/[id]，components/ProjectRoster.tsx）。
+           它收起或收成抽屉时，标题最左边补一颗侧栏图标把它叫回来，和客户详情页同一颗（components/PaneToggle.tsx） */
+        <div className="proj-head">
+          <PaneToggle 栏="roster" 位置="主区" 名="项目列表" />
+          {页头}
+        </div>
+      ) : (
+        页头
+      )}
+
+      {告示}
+
+      {p.企业版 ? (
+        <>
+          {/* 企业版两栏（10-27 会后排版）：左边干活——节点、沟通、卡点；右边看资料——项目、交付、项目组、提成、节点变更。
+              容器窄了（有 AI 侧栏、窗口小）退成一栏，干活的在上（globals.css .proj-2col） */}
+          <div className="proj-2col">
+            {/* 左栏整列上下瀑布流（U-项目-01）：当前进程（固定在最上、不折叠）→ 搜索 → 沟通（默认开）→ 卡点与任务（默认收）→ 项目附件 → 回款 */}
+            <div className="proj-main">
+              {节点卡}
+              {搜索框}
+              {/* 沟通、卡点跟着搜索：有词时都摊开、收起钮灰着 */}
+              <ProjectFold id="project-follow" 名="沟通" 开={沟通开} set开={set沟通开} 锁开={搜着} 控制="project-follow-body">{沟通卡}</ProjectFold>
+              {卡点区 && <ProjectFold id="project-blockers" 名="卡点与任务" 开={卡点开} set开={set卡点开} 锁开={搜着} 控制="project-blockers-body">{卡点区}</ProjectFold>}
+              {折("项目附件", 附件卡, "project-attachments-fold")}
+              {折("回款", 回款卡, "project-payments-fold")}
+            </div>
+            <aside className="proj-side" aria-label="项目资料">
+              {折("项目", 项目卡)}
+              {折("项目画像", 画像卡)}
+              {p.关联 && 折("关联客户", <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} 只="客户" />)}
+              {p.关联 && 折("关联联系人", <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} 只="联系人" />)}
+              {折("交付", 交付卡)}
+              {折("项目组", 项目组卡)}
+              {折("提成", 提成区)}
+              {折("进程变更", 变更卡)}
+            </aside>
+          </div>
+        </>
+      ) : (
+        <>
+          {节点卡}
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 16 }}>
+            {项目卡}
+            {交付卡}
+          </div>
+
+          <div style={{ marginBottom: 16 }}>{项目组卡}</div>
+
+          {提成区 && <div style={{ marginBottom: 16 }}>{提成区}</div>}
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
+            {变更卡}
+            {沟通卡}
+            {卡点区}
+          </div>
+        </>
+      )}
+
+      {弹窗们}
     </div>
   );
   return 正文;
