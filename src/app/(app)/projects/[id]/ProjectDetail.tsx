@@ -443,6 +443,8 @@ export type 嵌在客户页 = {
   客户页: string;
   /** 客户三态状态留痕（C13）：挂在「进程变更」卡最下面一段（客户层，切页签不变）；三态关着是 null */
   客户状态留痕?: ReactNode;
+  /** 受限客户详情（只负责项目的人）：不给「这位客户全部」，沟通卡只看本项目 */
+  无全部沟通?: boolean;
 };
 
 export default function ProjectDetail({
@@ -1210,7 +1212,7 @@ export default function ProjectDetail({
         </div>
   );
   /** 嵌在客户页的沟通卡头：标题 + 计数 +「本项目 / 这位客户全部」，右边主按钮「新建沟通」（默认记到这个项目上） */
-  const 沟通范围钮 = 嵌入 && (
+  const 沟通范围钮 = 嵌入 && !嵌入.无全部沟通 && (
     <span className="cd-seg" role="group" aria-label="沟通记录看哪些">
       <button type="button" className={看全部沟通 ? undefined : "on"} aria-pressed={!看全部沟通} onClick={() => set看全部沟通(false)}>本项目</button>
       <button type="button" className={看全部沟通 ? "on" : undefined} aria-pressed={看全部沟通} onClick={() => { set看全部沟通(true); set搜(""); }}>这位客户全部</button>

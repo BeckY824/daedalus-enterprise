@@ -39,6 +39,7 @@ const plugin: Plugin = { name: "cust-detail-merge", setup(b) {
   stub(/readonly-card-actions$/, "export const 打开客户只读卡Action=async()=>({ok:false,error:'桩'});");
   stub(/^\.\/blocker-actions$/, `const f=${空跑};export const 发布卡点Action=f,认领卡点Action=f,完成卡点Action=f,删卡点Action=f,存卡点默认Action=f,存卡点角色开关Action=f,新增原因Action=f,改原因名Action=f,改原因状态Action=f,删原因Action=f,合并原因Action=f,我的卡点Action=async()=>[];`);
   stub(/^\.\.\/relate-actions$/, `const f=${空跑};export const 加关联客户Action=f,改客户身份Action=f,解除关联客户Action=f,加关联联系人Action=f,改联系人角色立场Action=f,解除关联联系人Action=f,搜项目联系人=async()=>[];`);
+  stub(/project-only-contact-actions$/, `const f=${空跑};export const 新增仅项目联系人Action=f,改仅项目联系人Action=f;`);
   stub(/^\.\.\/\.\.\/favorites$/, `export const 切换项目收藏=async()=>({ok:true,收藏了:true});`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
@@ -46,7 +47,7 @@ const plugin: Plugin = { name: "cust-detail-merge", setup(b) {
 beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
-    import CustomerDetail from '@/app/(app)/customers/[id]/CustomerDetail';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
+    import CustomerDetail from '@/app/(app)/customers/[id]/CustomerDetail';import RestrictedCustomerDetail from '@/app/(app)/customers/[id]/RestrictedCustomerDetail';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
     const root=createRoot(document.getElementById('root'));
     const 人=(id,name,isPrimary)=>({id,name,position:'采购',phone:'138000000'+id.slice(1),email:null,wechat:null,isPrimary,remark:null,updatedAt:'2026-01-01T00:00:00.000Z'});
     const contacts=[人('c1','王总',true),人('c2','李工',false),人('c3','陈经理',false)];
@@ -88,6 +89,18 @@ beforeAll(async () => {
           只读={o.只读?'全':false}
           三态条={o.提醒?{状态:'沉睡',文字:'满 90 天没有有效沟通，也可以用右上角「客户操作」转让或退回公海',悬停:'满 90 天没有有效沟通',旁注:null,按钮们:[{动作:'继续持有',字:'我还在跟',说明:'顺延 30 天',要理由:false,主:true}]}:null}
           项目数据={{customerId:'a',页签们:签,锁数:o.锁数??0,当前}}/>
+      </div></main></div></BusinessProvider></App></ConfigProvider>);
+    };
+    // 受限客户详情（只负责项目的人）：同一套项目区 + 嵌入版 ProjectDetail，左栏客户只读卡
+    window.__renderR=(o={})=>{
+      window.__sp='';
+      const 当前=当前of({...项目们.p1,name:'项目一'+长,能删:!!o.删},true);
+      root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><div className='shell rail-mini'>{innerWidth>=768&&<nav className='rail' aria-label='主导航'/>}<main className='main app-content' style={{padding:'22px 26px'}}><div>
+        <RestrictedCustomerDetail 数据={{客户:{id:'a',name:o.公司名||'客户A'},
+          卡:{客户:{name:o.公司名||'客户A',shortName:'A',school:null,customerType:null,customerAttr:null,地区:'',addrDetail:null,website:null},联系人:[{name:'王总',position:'采购',给联系方式:true,phone:'138****0001',email:null,wechat:null,号码们:[]},{name:'李工',position:null,给联系方式:false,phone:null,email:null,wechat:null,号码们:[]}]},
+          可改联系人:[],项目区:{customerId:'a',页签们:[页签们[0]],锁数:0,当前},
+          沟通:[{id:'rf1',type:'PHONE',method:null,content:'我项目上的沟通',occurredAt:'2026-10-03T02:00:00.000Z',who:'QA',项目:{id:'p1',名:'项目一'}}],
+          待办:{任务:[],计划:[]},号码种类:[],职务选项:[]}}/>
       </div></main></div></BusinessProvider></App></ConfigProvider>);
     };
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
@@ -567,6 +580,37 @@ it("地址上的 ?project= 读不出来、服务端换成了别的：地址改�
     await expect.poll(() => page.evaluate(() => (window as unknown as { __换?: string }).__换)).toBe("/customers/a?focus=plan%3Ax&project=p1&tab=2");
     await 画(page, { 地址: "focus=plan:x&project=p2", 空: true });
     await expect.poll(() => page.evaluate(() => (window as unknown as { __换?: string }).__换)).toBe("/customers/a?focus=plan%3Ax");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("受限客户详情（只负责项目的人）：页头「仅项目」+ 只有「项目操作 ▾」（没有新建项目、没有客户操作）；沟通只看本项目，没有「这位客户全部」；1024 / 1280 / 1366 不横滚", async () => {
+  const page = await browser.newPage({ viewport: { width: 1366, height: 800 } }); page.setDefaultTimeout(5000);
+  const errors: string[] = [];
+  page.on("pageerror", e => errors.push(e.message));
+  try {
+    await page.route("http://cust-merge.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+    await page.goto("http://cust-merge.test/customers/a"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
+    const 画R = async (o: { 删?: boolean; 公司名?: string } = {}) => {
+      await page.evaluate(a => (window as unknown as { __renderR: (o: object) => void }).__renderR(a), o as object);
+      await page.getByTestId("restricted-customer-detail").waitFor();
+      await page.locator(".cd-comm").waitFor();
+    };
+    await 画R({ 删: true });
+    expect(await page.locator(".rec-head").getByText("仅项目", { exact: true }).count()).toBe(1);
+    expect(await page.locator(".rec-head-acts button").allInnerTexts()).toEqual([expect.stringMatching(/^项目操作/)]);
+    expect(await 菜单项们(await 开菜单(page, "项目操作"))).toEqual([expect.stringMatching(/^⊘当前项目：项目一/), "项目转让", "项目退回公海", "—", "!删除项目"]);
+    const 卡 = page.locator(".cd-comm");
+    expect(await 卡.getByRole("button", { name: "这位客户全部" }).count()).toBe(0);
+    expect(await 卡.getByRole("button", { name: "本项目" }).count()).toBe(0);
+    expect(await 卡.getByText(/挂在项目一.*上的沟通/).count()).toBe(1);
+    // 左栏只读卡：叫「客户资料（只读）」，没给号码的那位写原因
+    expect(await page.locator(".rec-rail .rec-sec-t").first().innerText()).toMatch(/^客户资料（只读）/);
+    for (const w of [1024, 1280, 1366]) {
+      await page.setViewportSize({ width: w, height: 800 });
+      await 画R({ 公司名: "超长公司名字".repeat(10) });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `宽 ${w}`).toBe(true);
+    }
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
