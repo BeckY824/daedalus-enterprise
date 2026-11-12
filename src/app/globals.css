@@ -2802,8 +2802,10 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .pipe-top > .pipe-more-right.ant-btn { margin-left: auto; padding-inline: 4px; white-space: nowrap; }
 /* 客户页看板上方只剩「→ 还有 N 列」一句（11-12）：右对齐一行小字，行高压到一行字，不像一行工具栏 */
 .pipe-top.pipe-top-hint { margin-bottom: var(--s1); }
-/* 滑到头：这一行照留（看板不上下跳），按钮藏起来、点不到（ProjectsView 还有列） */
-.pipe-more-right.pipe-more-end { visibility: hidden; pointer-events: none; }
+/* 滑到头：这一行照留（看板不上下跳），按钮藏起来、点不到（ProjectsView 还有列）。
+   antd 按钮是 transition: all，连 visibility 也过渡——变 hidden 要等过渡走完（约 0.2s），这期间按钮还看得见；
+   到头这一下不要过渡，立刻藏（11-12 用例偶发「visible ≠ hidden」就是这个） */
+.pipe-more-right.pipe-more-end { visibility: hidden; pointer-events: none; transition: none; }
 .pipe-top.pipe-top-hint > .pipe-more-right.ant-btn { height: auto; padding-block: 0; font-size: var(--fs-note); line-height: 20px; }
 .pipe-col { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--s3); min-height: 220px;
   transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
