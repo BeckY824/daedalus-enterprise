@@ -123,6 +123,8 @@ export const 指向人的列: [string, string][] = [
   ["Channel", "channelOwnerId"],
   // 渠道创建人（2026-10-29，migrations/070）：不建外键
   ["Channel", "createdById"],
+  // 联系人谁建的（2026-11-12，migrations/135，只在受限客户详情新增时写）：不建外键
+  ["Contact", "createdById"],
   ["Customer", "salesOwnerId"],
   ["Customer", "channelOwnerId"],
   ["CustomerPool", "userId"],

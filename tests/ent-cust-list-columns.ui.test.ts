@@ -554,23 +554,27 @@ it("「仅项目」一小块（只负责项目的人）：在客户表格上面�
       // 在客户表格上面
       const [块底, 表顶] = await Promise.all([块.evaluate((el) => el.getBoundingClientRect().bottom), page.locator(".list .ant-table").last().evaluate((el) => el.getBoundingClientRect().top)]);
       expect(块底, `宽 ${w}`).toBeLessThanOrEqual(表顶);
-      const 行 = 块.locator("tr.ant-table-row");
+      const 行 = 块.locator(".cust-ponly-row");
       expect(await 行.count()).toBe(1);
       expect(await 行.locator(".ant-tag").first().innerText()).toBe("仅项目");
-      expect(await 块.locator(".ant-checkbox, .ant-dropdown-trigger, button").count(), `宽 ${w}`).toBe(0);
+      expect(await 块.locator(".ant-checkbox, .ant-dropdown-trigger, button, table").count(), `宽 ${w}`).toBe(0);
       const 格 = await 行.evaluate((tr) => {
-        const 头 = [...tr.closest("table")!.querySelectorAll("thead th")].map((th) => (th as HTMLElement).innerText.trim());
+        const 头格 = [...tr.parentElement!.querySelectorAll(".cust-ponly-head > *")] as HTMLElement[];
         const tds = [...tr.children] as HTMLElement[];
         const 名 = tds[0].querySelector("a") as HTMLElement;
-        return { 头, 字: tds.map((td) => td.innerText.trim()), 名截: 名.scrollWidth > 名.clientWidth && getComputedStyle(名).textOverflow === "ellipsis", 名悬停: 名.title, 高: tr.getBoundingClientRect().height };
+        // 列头和格同一套网格列：每格左边和对应列头左边对齐
+        const 对齐 = tds.every((td, i) => Math.abs(td.getBoundingClientRect().left - 头格[i].getBoundingClientRect().left) <= 1);
+        const 不出格 = tds.every((td) => td.scrollWidth <= td.clientWidth + 1 || getComputedStyle(td).textOverflow === "ellipsis");
+        return { 头: 头格.map((h) => h.innerText.trim()), 字: tds.map((td) => td.innerText.trim()), 对齐, 不出格, 名截: 名.scrollWidth > 名.clientWidth && getComputedStyle(名).textOverflow === "ellipsis", 名悬停: 名.title, 高: tr.getBoundingClientRect().height };
       });
+      expect(格.对齐 && 格.不出格, `宽 ${w}`).toBe(true);
       expect(格.头).toEqual(["客户", "客户类型", "地区", "当前节点", "项目数", "负责人", "级别", "客户状态", "最近跟进"]);
       expect(格.字.slice(4)).toEqual(["2", "", "", "", ""]);
       expect(格.名截, `宽 ${w}`).toBe(true);
       expect(格.名悬停).toMatch(/^仅项目的/);
       expect(格.高, `宽 ${w}`).toBeLessThanOrEqual(48);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `宽 ${w}`).toBe(true);
-      await 行.locator("td").nth(2).click();
+      await 行.locator(".cust-ponly-c").nth(2).click();
       expect(await page.evaluate(() => (window as unknown as { __push?: string }).__push)).toBe("/customers/x1");
       // 下面客户表格的总数照旧 3（这一块不算进去）
       expect(await page.locator(".ant-pagination-total-text").innerText()).toBe("共 3 条");
