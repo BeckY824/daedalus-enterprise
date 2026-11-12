@@ -237,11 +237,14 @@ export type 公海行 = {
    * 子 = 下面每个项目的项目行（入池时间新的在前），领取、分配按它们一个个做。只有一个项目的不并，就是那行项目行
    */
   子?: 公海行[];
+  /** 号码不全（T10）：三态到期自动收回时查过号码、空的 / 不对的。只有客户行有，只用来筛 */
+  号码不全?: boolean;
   /** 客户来源（渠道 id），只用来筛。项目行：项目自己选的优先，没选跟客户——客户不露（同事的客户）就当没有，不能筛一下试出同事客户从哪来 */
   来源id?: string | null;
 };
 
-export type 公海筛选 = { 属性?: string; 快捷?: string; 排序?: string; keyword?: string; 来源?: string };
+/** 号码不全 = "1" 只看打了「号码不全」的（T10，界面筛选项以后做） */
+export type 公海筛选 = { 属性?: string; 快捷?: string; 排序?: string; keyword?: string; 来源?: string; 号码不全?: string };
 
 export const 是公海属性 = (v: unknown): v is 公海属性 => typeof v === "string" && (公海属性们 as readonly string[]).includes(v);
 /**
@@ -309,7 +312,10 @@ export function 筛排(全部: readonly 公海行[], sp: 公海筛选, 选: { �
   const 词 = (sp.keyword ?? "").trim().toLowerCase();
   const 搜到 = 词 ? 全部.filter((r) => (r.客户名 ?? "").toLowerCase().includes(词) || (r.项目名 ?? "").toLowerCase().includes(词)) : [...全部];
   // 客户来源和关键词一样算在所有计数前面：属性、入池方式后面的数都是「这个来源里的」
-  const 搜 = sp.来源 ? 搜到.filter((r) => r.来源id === sp.来源) : 搜到;
+  const 按来源 = sp.来源 ? 搜到.filter((r) => r.来源id === sp.来源) : 搜到;
+  // 号码不全（T10）同来源，算在所有计数前面；按客户认（打了标的客户下的项目子行一起留着，并完再看）
+  const 不全客户 = sp.号码不全 === "1" ? new Set(全部.filter((r) => r.号码不全).map((r) => r.customerId)) : null;
+  const 搜 = 不全客户 ? 按来源.filter((r) => 不全客户.has(r.customerId)) : 按来源;
   const 搜并 = 并(搜);
   const 属性数 = { 全部: 搜并.length, 线索池: 0, 商机池: 0, 订单池: 0, 客户池: 0 } as Record<公海属性 | "全部", number>;
   for (const r of 搜并) 属性数[r.属性]++;

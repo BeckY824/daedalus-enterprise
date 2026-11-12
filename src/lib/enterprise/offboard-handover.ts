@@ -14,6 +14,9 @@ import { 规则开着 } from "@/lib/enterprise/rules";
 import { 离职交接中, 待确认 } from "@/lib/enterprise/handover-db";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能改后台设置, 只读角色, 公海分不给话, type 谁 } from "@/lib/enterprise/permissions";
+import { 待交接理由 } from "@/lib/enterprise/tri-state-quota";
+import { 差天 } from "@/lib/enterprise/tri-state";
+import { beijingDay } from "@/lib/business-clock";
 
 /**
  * 离职交接看板（11-03 B7-2）：办离职时名下客户、项目原地不动（负责人仍是他，C4-4），
@@ -28,7 +31,11 @@ import { 能改后台设置, 只读角色, 公海分不给话, type 谁 } from "
  * - 查的、改的都包 看全部：按组织看客户开着时，上级的范围里不一定有离职下属的客户
  */
 
-export type 交接客户 = { id: string; name: string; 项目数: number };
+/**
+ * 待交接日 / 挂起天数（三态 T12，客户 11-12 第二轮答复列为上线前置）：三态夜扫给这位客户标「待交接」的那天（上海日）、到今天挂了几个自然日；
+ * 没标过（三态关着、或已在离职交接待确认里）不带。原负责人 = 这一组的人，原直属上级 = 这一组的 上级
+ */
+export type 交接客户 = { id: string; name: string; 项目数: number; 待交接日?: string; 挂起天数?: number };
 export type 交接项目 = { id: string; name: string; 客户: string };
 export type 离职待交接 = {
   id: string;
@@ -159,6 +166,15 @@ export async function 读离职交接(me: 谁): Promise<离职待交接[]> {
       for (const [k, v] of 按人分(待办们.filter(没放走), (t) => t.ownerId)) 数.待办.set(k, v.length);
       for (const h of 交接们) 交接中.add(h.fromUserId);
     }
+    // 三态 T12 标的待交接：每位客户最早那次（这位离职成员名下的）
+    const 今天 = beijingDay(new Date());
+    const 标日 = new Map<string, string>();
+    for (const 批 of 分批(ids)) {
+      for (const x of await prisma.entCustomerStateLog.findMany({ where: { reason: 待交接理由, fromOwnerId: { in: 批 } }, select: { customerId: true, fromOwnerId: true, at: true }, orderBy: { at: "asc" } })) {
+        const k = `${x.fromOwnerId}|${x.customerId}`;
+        if (!标日.has(k)) 标日.set(k, beijingDay(x.at));
+      }
+    }
     const 结果: 离职待交接[] = [];
     for (const u of 人们) {
       const 客户们 = 客户们of.get(u.id) ?? [];
@@ -173,7 +189,10 @@ export async function 读离职交接(me: 谁): Promise<离职待交接[]> {
         name: u.name,
         上级: 上级of.get(u.id) ? 上级名.get(上级of.get(u.id)!) ?? null : null,
         交接中: 交接中.has(u.id),
-        客户: 客户们.map((c) => ({ id: c.id, name: c.name, 项目数: (客户上的项目of.get(c.id) ?? []).filter(算项目).length })),
+        客户: 客户们.map((c) => {
+          const 标 = 标日.get(`${u.id}|${c.id}`);
+          return { id: c.id, name: c.name, 项目数: (客户上的项目of.get(c.id) ?? []).filter(算项目).length, ...(标 ? { 待交接日: 标, 挂起天数: 差天(标, 今天) } : {}) };
+        }),
         项目: 项目们.map((p) => ({ id: p.id, name: p.name, 客户: p.customer.name })),
         其余: { 线索, 渠道, 主渠道, 待办 },
       });
