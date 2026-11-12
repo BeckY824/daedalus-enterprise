@@ -3,8 +3,8 @@
  *
  * 收哪些事实（一位客户）：
  *   - 计时范围（M-公海-34）：有负责人（不是无负责人占位账号）、不在客户公海、没标无效；负责人是市场（市场角色、又不兼销售）的不计；已删的读不到（软删统一滤掉）
- *   - 最近沟通日（拨钟）和最近有内容的沟通日（回满额度）分开取（X-102）：挂客户的、挂名下任一项目的（含同事负责的，沟通都带着 customerId）都算；
- *     发生时刻晚于现在的（排着的计划）不算。拨钟现在认任何沟通（tri-state-quota.ts 拨钟的沟通，恒真），额度只认有内容的（有内容的沟通）
+ *   - 最近有效沟通日（拨钟、回满额度同源，T1 / T2，tri-state-quota.ts 有内容的沟通）：挂客户的、挂名下任一项目的（含同事负责的，沟通都带着 customerId）都算；
+ *     发生时刻晚于现在的（排着的计划）不算；空的、不足 4 字、只有占位词、只有素材链接的不算，AI 起草成功的算
  *   - 最近项目推进日：名下没进公海的项目，建项目和换节点（ProjectNodeLog kind = node）里最晚的（建项目算一次动静，同现行超时回收的起点，推断）。
  *     现状：项目进了线索公海以后它以前的推进不再算，客户的钟可能因此往前跳（基准日变早）
  *   - 名下项目（没进公海的）：阶段、业务线（项目业务线：没填按负责人的线）、同事负责、结束没有、结束日（最后一行带结局的换节点留痕，没有就 updatedAt）
@@ -33,7 +33,7 @@ import type { 组织规则 } from "@/lib/project/org-rules";
 import { 算三态, type 三态事实, type 三态结果, type 三态项目 } from "./tri-state";
 import { 换负责人们of } from "./tri-state-transfer";
 export { 换负责人们of } from "./tri-state-transfer";
-import { 有内容的沟通, 拨钟的沟通, 留痕转推后, 最近暂缓回收日, 额度回满, 留痕方式, 自动收回次数, type 留痕行 } from "./tri-state-quota";
+import { 有内容的沟通, 默认占位词, 占位词键, 规整占位词, 留痕转推后, 最近暂缓回收日, 额度回满, 留痕方式, 自动收回次数, type 留痕行 } from "./tri-state-quota";
 import { 项目业务线 } from "./assign-line";
 import { 读组织, type 组织 } from "./org";
 import { 是市场角色, 是销售角色 } from "./permissions";
@@ -120,7 +120,7 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
       for (const g of await db.projectNodeLog.groupBy({ by: ["projectId"], where: { projectId: { in: 小 }, kind: "node" }, _max: { at: true } })) if (g._max.at) 推进.set(g.projectId, g._max.at);
       for (const g of await db.projectNodeLog.groupBy({ by: ["projectId"], where: { projectId: { in: 小 }, kind: "node", toResult: { not: null } }, _max: { at: true } })) if (g._max.at) 结局.set(g.projectId, g._max.at);
     }
-    const { 拨钟: 沟通日, 有内容: 有内容日 } = await 最近沟通日们(db, 批, 现在);
+    const 沟通日 = await 最近沟通日们(db, 批, 现在);
     const 导入 = await 导入完成日们(db, 批);
     const 换人 = await db.customerOwnerLog.findMany({ where: { customerId: { in: 批 } }, select: { id: true, customerId: true, at: true, kind: true, clockReset: true }, orderBy: [{ at: "asc" }, { id: "asc" }] });
     const 痕 = await db.entCustomerStateLog.findMany({
@@ -156,7 +156,7 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
         无效: !!c.poolInvalidAt,
         负责人是市场: 有负责人 && 是市场角色(org, c.salesOwnerId) && !是销售角色(org, c.salesOwnerId),
         最近沟通日: 沟通日.get(c.id) ?? null,
-        最近有内容沟通日: 有内容日.get(c.id) ?? null,
+        最近有内容沟通日: 沟通日.get(c.id) ?? null,
         最近推进日: 最近推进,
         导入完成日: 导入.get(c.id) ?? null,
         系统起算日: 起算日,
@@ -176,37 +176,61 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
   return 出;
 }
 
-/**
- * 每位客户最近一条拨钟的沟通、最近一条有内容的沟通（上海日），一批客户两三条查询：
- *   拨钟：按客户分组取发生时刻最晚的（拨钟的沟通 现在恒真，X-102 定了要按内容判时把这里换成和下面一样的取法）；
- *   有内容：按客户分组取最晚的非空内容，再一次取回这批「最晚那条」看是不是只有空白；只有空白的（少见）才逐位往前找。
- * 只认发生时刻不晚于现在的（同最近跟进的算法，soft-delete.ts 重算最近跟进）
- */
-async function 最近沟通日们(db: 库, ids: readonly string[], 现在: Date): Promise<{ 拨钟: Map<string, string>; 有内容: Map<string, string> }> {
-  const 拨钟 = new Map<string, string>(), 有内容 = new Map<string, string>();
-  if (拨钟的沟通(null)) {
-    for (const g of await db.followUp.groupBy({ by: ["customerId"], where: { customerId: { in: [...ids] }, occurredAt: { lte: 现在 } }, _max: { occurredAt: true } })) {
-      if (g._max.occurredAt) 拨钟.set(g.customerId, beijingDay(g._max.occurredAt));
-    }
+/** 占位词表（T2）：读 Setting 占位词键，没存 / 存坏了用默认词表。db 传 tx 时在事务里读（不走设置缓存） */
+export async function 读占位词(db: Pick<Prisma.TransactionClient, "setting"> = prisma): Promise<readonly string[]> {
+  const 行 = await db.setting.findUnique({ where: { key: 占位词键 }, select: { value: true } });
+  if (!行) return 默认占位词;
+  try {
+    return 规整占位词(JSON.parse(行.value)) ?? 默认占位词;
+  } catch {
+    return 默认占位词;
   }
+}
+
+/** 后台改占位词表（T2，界面以后做）：规整后存；传空数组 = 不认任何占位词（只剩字数那条） */
+export async function 存占位词(词们: readonly string[]): Promise<string[]> {
+  const 规整 = 规整占位词(词们) ?? [];
+  await setSetting(占位词键, 规整);
+  return 规整;
+}
+
+/**
+ * 每位客户最近一条有效沟通的上海日（T1 / T2：拨钟和回满额度同源，tri-state-quota.ts 有内容的沟通）：
+ * 按客户分组取最晚的非空内容，再一次取回这批「最晚那条」判；判下来无效的（空的、不足 4 字、只有占位词、只有链接）才逐位往前找。
+ * 只认发生时刻不晚于现在的（同最近跟进的算法，soft-delete.ts 重算最近跟进）；同一天几条只算一次（只取日子）
+ */
+async function 最近沟通日们(db: 库, ids: readonly string[], 现在: Date): Promise<Map<string, string>> {
+  const 出 = new Map<string, string>();
+  const 词们 = await 读占位词(db);
+  const 有效 = (f: { content: string; source: { followUpId: string } | null }) => 有内容的沟通(f.content, { 占位词: 词们, AI生成: !!f.source });
   const 最晚 = (await db.followUp.groupBy({ by: ["customerId"], where: { customerId: { in: [...ids] }, occurredAt: { lte: 现在 }, content: { not: "" } }, _max: { occurredAt: true } }))
     .filter((g): g is typeof g & { _max: { occurredAt: Date } } => !!g._max.occurredAt);
   const 那几条 = 最晚.length
-    ? await db.followUp.findMany({ where: { OR: 最晚.map((g) => ({ customerId: g.customerId, occurredAt: g._max.occurredAt })) }, select: { customerId: true, content: true } })
+    ? await db.followUp.findMany({ where: { OR: 最晚.map((g) => ({ customerId: g.customerId, occurredAt: g._max.occurredAt })) }, select: { customerId: true, content: true, source: { select: { followUpId: true } } } })
     : [];
-  const 有字 = new Set(那几条.filter((f) => 有内容的沟通(f.content)).map((f) => f.customerId));
+  const 有字 = new Set(那几条.filter(有效).map((f) => f.customerId));
   for (const g of 最晚) {
     if (有字.has(g.customerId)) {
-      有内容.set(g.customerId, beijingDay(g._max.occurredAt));
+      出.set(g.customerId, beijingDay(g._max.occurredAt));
       continue;
     }
-    // 最晚那条只有空白：只这位往前找
-    const 往前 = await db.followUp.findMany({ where: { customerId: g.customerId, occurredAt: { lt: g._max.occurredAt }, content: { not: "" } }, orderBy: { occurredAt: "desc" }, select: { content: true, occurredAt: true }, take: 200 });
-    const 有 = 往前.find((f) => 有内容的沟通(f.content));
-    if (有) 有内容.set(g.customerId, beijingDay(有.occurredAt));
+    // 最晚那条无效：只这位往前找，一次 200 条，找到为止
+    let 早于 = g._max.occurredAt;
+    for (;;) {
+      const 往前 = await db.followUp.findMany({
+        where: { customerId: g.customerId, occurredAt: { lt: 早于 }, content: { not: "" } },
+        orderBy: { occurredAt: "desc" }, select: { content: true, occurredAt: true, source: { select: { followUpId: true } } }, take: 200,
+      });
+      const 有 = 往前.find(有效);
+      if (有) {
+        出.set(g.customerId, beijingDay(有.occurredAt));
+        break;
+      }
+      if (往前.length < 200) break;
+      早于 = 往前[往前.length - 1].occurredAt;
+    }
   }
-  if (!拨钟的沟通(null)) for (const [k, v] of 有内容) 拨钟.set(k, v);
-  return { 拨钟, 有内容 };
+  return 出;
 }
 
 /** 这些客户里导入建的那几位：建它们的那一批（完成了、没撤销）的完成日（上海日）；一位被几批碰过取最晚一批 */

@@ -152,12 +152,13 @@ describe("整条", () => {
 });
 
 describe("沟通、被挡、交接", () => {
-  it("X-102 定之前任何沟通都拨钟：空内容也回活跃，但不回满额度；有内容的才记额度重置日", async () => {
+  it("T1 无效沟通不拨钟：空内容、占位词不回活跃也不回满额度；有效沟通才拨钟、记额度重置日", async () => {
     await 三态夜扫(第(100));
     expect((await 钟())!.state).toBe("沉睡");
     await prisma.followUp.create({ data: { type: "PHONE", title: "", content: "   ", customerId: 客户, ownerId: 乙, occurredAt: new Date(`${加天(起, 101)}T10:00:00+08:00`) } });
+    await prisma.followUp.create({ data: { type: "PHONE", title: "", content: "已联系。", customerId: 客户, ownerId: 乙, occurredAt: new Date(`${加天(起, 101)}T11:00:00+08:00`) } });
     await 三态夜扫(第(102));
-    expect(await 钟()).toMatchObject({ state: "活跃", enteredDay: 加天(起, 101), quotaResetDay: null });
+    expect(await 钟()).toMatchObject({ state: "沉睡", quotaResetDay: null });
     await prisma.followUp.create({ data: { type: "PHONE", title: "", content: "约了下周见", customerId: 客户, ownerId: 乙, occurredAt: new Date(`${加天(起, 102)}T10:00:00+08:00`) } });
     await 三态夜扫(第(103));
     expect(await 钟()).toMatchObject({ state: "活跃", enteredDay: 加天(起, 102), quotaResetDay: 加天(起, 102) });

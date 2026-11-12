@@ -2,7 +2,7 @@
  * 客户三态 · 继续持有额度和留痕的换算（M-公海-19、M-公海-23、M-公海-27、M-公海-38）：纯函数，不碰库、不读时钟。
  * 夜扫（tri-state-db.ts）和继续持有按钮（customers/tri-state-actions.ts）共用。
  *
- *   - 两个判定分开（X-102）：拨钟的沟通（现在任何沟通都拨钟，恒真）、有内容的沟通（回满额度用，空的不算；占位式的先不判，留口子在 占位式沟通）
+ *   - 有效沟通（T1 / T2）：拨钟和回满额度同一个判定（有内容的沟通），见下面
  *   - 额度挂在客户钟上、不在负责人上：换负责人不动；本人点、上级代选都扣；暂缓回收不扣
  *   - 额度回满（M-公海-38）：不在各处写沟通的地方挂钩，读的时候判——最近一条有内容的沟通（上海日）晚于「额度上次重置日」就回满、记下这天；
  *     同一天再记沟通不再回满。真正算剩几次以 算三态() 为准（它只认最近一次有内容沟通以后的推后），钟上的次数 / 天数是给界面看的缓存
@@ -20,25 +20,68 @@ export const 暂缓回收 = "暂缓回收";
 export const 让同事结束项目 = "让同事结束项目";
 
 /**
- * 占位式沟通（M-公海-38「占位式记录不算」）：标准我方还没出（X-102 待定），现在一律不算占位。
- * 定了只改这里，拨钟和回满额度同时生效
+ * 「有效沟通」判定（客户 11-12 答复 T1 / T2，覆盖 X-102）：只有有效沟通才既拨钟、又回满继续持有额度，两处同源（拨钟的沟通 = 有内容的沟通）。
+ *   - 去掉空白、标点、符号、表情和链接以后不足 4 个字的算空（只有素材——录音、截图、纪要链接——没有文字的，就落在这一条里）；
+ *   - 整条只由占位词拼成的算空（「跟进」「已联系」「1」……，词表存在 Setting 占位词键 里、后台可改，没存用默认词表）；
+ *   - AI 起草成功的（这条沟通有速记原文 FollowUpSource）以生成结果判：有字就算有效，不再按字数、占位词卡；
+ *   - 同一天几条只算一次：调用方只取最晚那天（上海日）
  */
-export function 占位式沟通(_内容: string): boolean {
-  return false;
+export const 有效沟通最少字数 = 4;
+/** 默认占位词（客户 11-12 答复 T2 原话列的那几个） */
+export const 默认占位词: readonly string[] = ["跟进", "已联系", "联系了", "已沟通", "拜访", "回访", "1"];
+/** Setting 里占位词表的键：值是字符串数组 */
+export const 占位词键 = "entTriPlaceholderWords";
+const 链接 = /(?:https?:\/\/|www\.)\S+/giu;
+/** 去掉链接、空白、标点、符号、表情（零宽连接、变体选择符一起去），英文转小写 */
+export const 去杂 = (s: string): string => s.replace(链接, "").replace(/[\s\p{P}\p{S}\p{Extended_Pictographic}\u200d\ufe0f\u20e3]/gu, "").toLowerCase();
+const 字数 = (s: string) => [...s].length;
+
+/** 整条（已去杂）能不能完全拆成占位词（可重复、可连写：「已联系跟进」「11」都算） */
+export function 只有占位词(s: string, 词们: readonly string[]): boolean {
+  const 词 = [...new Set(词们.map(去杂).filter(Boolean))];
+  if (!s || !词.length) return false;
+  const 能 = new Array<boolean>(s.length + 1).fill(false);
+  能[0] = true;
+  for (let i = 0; i < s.length; i++) {
+    if (!能[i]) continue;
+    for (const w of 词) if (s.startsWith(w, i)) 能[i + w.length] = true;
+  }
+  return 能[s.length];
 }
 
-/**
- * 这条沟通拨不拨钟（M-公海-16 / M-公海-19「要拨零得记一条沟通」）。X-102（空 / 占位式沟通拨不拨钟）定之前照旧：任何沟通都拨钟，恒真。
- * 定了只改这里（比如改成 = 有内容的沟通）；tri-state-db.ts 读库那边按这一个判定取最近沟通日
- */
-export function 拨钟的沟通(_内容: string | null | undefined): boolean {
-  return true;
+/** 占位式沟通（M-公海-38「占位式记录不算」）：去杂后整条只由占位词拼成 */
+export function 占位式沟通(内容: string, 词们: readonly string[] = 默认占位词): boolean {
+  return 只有占位词(去杂(内容), 词们);
 }
 
-/** 算不算「有内容」的沟通（重置额度用，M-公海-38）：去掉空白后还有字、又不是占位式的 */
-export function 有内容的沟通(内容: string | null | undefined): boolean {
-  const s = (内容 ?? "").replace(/[\s　]+/g, "");
-  return s.length > 0 && !占位式沟通(s);
+export type 沟通判定选项 = { 占位词?: readonly string[]; AI生成?: boolean };
+
+/** 算不算有效沟通（T1 / T2）：拨钟、回满额度都用它 */
+export function 有内容的沟通(内容: string | null | undefined, 选: 沟通判定选项 = {}): boolean {
+  const 原 = (内容 ?? "").trim();
+  if (!原) return false;
+  const s = 去杂(原);
+  if (选.AI生成) return s.length > 0;
+  if (字数(s) < 有效沟通最少字数) return false;
+  return !只有占位词(s, 选.占位词 ?? 默认占位词);
+}
+
+/** 这条沟通拨不拨钟（T1：和回满额度同源，无效沟通对客户状态一律不生效） */
+export function 拨钟的沟通(内容: string | null | undefined, 选: 沟通判定选项 = {}): boolean {
+  return 有内容的沟通(内容, 选);
+}
+
+/** 词表规整：去杂、去重、去空，每个最多 20 字、最多 100 个；不是数组当没存 */
+export function 规整占位词(v: unknown): string[] | null {
+  if (!Array.isArray(v)) return null;
+  const 出: string[] = [];
+  for (const x of v) {
+    if (typeof x !== "string") continue;
+    const w = 去杂(x.trim());
+    if (w && 字数(w) <= 20 && !出.includes(w)) 出.push(w);
+    if (出.length >= 100) break;
+  }
+  return 出;
 }
 
 export type 钟上额度 = { holdCount: number; holdDays: number; quotaResetDay: string | null };

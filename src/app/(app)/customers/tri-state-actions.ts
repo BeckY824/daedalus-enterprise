@@ -6,6 +6,9 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { 继续持有, 暂缓回收动作, 让同事结束项目动作, type 三态动作结果 } from "@/lib/enterprise/tri-state-hold";
+import { 读占位词, 存占位词 } from "@/lib/enterprise/tri-state-db";
+import { 权限组织 } from "@/lib/enterprise/org";
+import { 能改后台设置 } from "@/lib/enterprise/permissions";
 
 const 刷新 = (id: string) => {
   revalidatePath("/customers");
@@ -34,4 +37,19 @@ export async function 三态让同事结束项目(customerId: string): Promise<�
   const r = await 让同事结束项目动作(me, customerId);
   if (r.ok) 刷新(customerId);
   return r;
+}
+
+/** 后台读占位词表（T2，界面以后做）：能改后台设置的人才读得到 */
+export async function 三态读占位词(): Promise<{ ok: true; 词们: readonly string[] } | { ok: false; error: string }> {
+  const me = await requireUser();
+  if (!能改后台设置(me, await 权限组织())) return { ok: false, error: "只有系统管理员能看占位词表" };
+  return { ok: true, 词们: await 读占位词() };
+}
+
+/** 后台改占位词表（T2）：整张换掉，回规整后的 */
+export async function 三态存占位词(词们: string[]): Promise<{ ok: true; 词们: string[] } | { ok: false; error: string }> {
+  const me = await requireUser();
+  if (!能改后台设置(me, await 权限组织())) return { ok: false, error: "只有系统管理员能改占位词表" };
+  if (!Array.isArray(词们)) return { ok: false, error: "词表格式不对" };
+  return { ok: true, 词们: await 存占位词(词们) };
 }

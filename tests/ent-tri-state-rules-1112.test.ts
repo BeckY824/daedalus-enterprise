@@ -26,6 +26,8 @@ import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 加天 } from "@/lib/enterprise/tri-state";
 import { 删被撤的换负责人记录, 记换负责人 } from "@/lib/owner-log-db";
 import { 查完再写 } from "@/lib/check-then-write";
+import { 有内容的沟通, 拨钟的沟通, 默认占位词 } from "@/lib/enterprise/tri-state-quota";
+import { 读占位词, 存占位词 } from "@/lib/enterprise/tri-state-db";
 import { 等通知推完 } from "@/lib/enterprise/notify";
 
 const 起 = "2026-11-01";
@@ -129,5 +131,63 @@ describe("A · 夜扫一批写之前在事务里重收事实", () => {
     await prisma.followUp.create({ data: { type: "PHONE", title: "电话", content: "聊了下季度采购计划", customerId: 客户, ownerId: 人.乙.id, occurredAt: 白天(95) } });
     await 写一批(规则, org, 旧的, 早(96), 日(96));
     expect(await 钟()).toMatchObject({ state: "活跃", enteredDay: 日(95) });
+  });
+});
+
+describe("T1 / T2 · 有效沟通判定（纯函数）", () => {
+  it("去空白、标点、表情、链接后不足 4 字算空", () => {
+    for (const x of ["", "   ", "好的。", "OK!!", "👍👍👍👍", "电 话 了", "https://pan.example.com/s/abc123 ", "www.example.com/a/b"]) expect(有内容的沟通(x), x).toBe(false);
+    for (const x of ["约了下周见面", "客户要报价单", "这周五去拜访张总"]) expect(有内容的沟通(x), x).toBe(true);
+  });
+  it("整条只由占位词拼成算空（连写、重复都算）；夹了别的字不算占位", () => {
+    for (const x of ["跟进", "已联系，跟进。", "已沟通 已沟通 已沟通", "1111", "拜访/回访"]) expect(有内容的沟通(x), x).toBe(false);
+    expect(有内容的沟通("已联系，下周报价")).toBe(true);
+    expect(有内容的沟通("回访：设备运行正常")).toBe(true);
+  });
+  it("AI 起草成功的以生成结果判：有字就算；空的照样不算", () => {
+    expect(有内容的沟通("已联系", { AI生成: true })).toBe(true);
+    expect(有内容的沟通("  。 ", { AI生成: true })).toBe(false);
+  });
+  it("拨钟和回满额度同源", () => {
+    for (const x of ["", "跟进", "约了下周见面"]) expect(拨钟的沟通(x)).toBe(有内容的沟通(x));
+  });
+  it("词表可换：自定义词表只认表里的词", () => {
+    expect(有内容的沟通("电话沟通过了", { 占位词: ["电话沟通过了"] })).toBe(false);
+    expect(有内容的沟通("已联系已联系", { 占位词: [] })).toBe(true);
+  });
+});
+
+describe("T1 / T2 · 读库：无效沟通不拨钟、不回满", () => {
+  const 记 = (n: number, content: string, 时 = "10:00") => prisma.followUp.create({ data: { type: "PHONE", title: "", content, customerId: 客户, ownerId: 人.乙.id, occurredAt: new Date(`${日(n)}T${时}:00+08:00`) } });
+
+  it("沉睡里记了空 / 占位 / 只贴链接的沟通：不回活跃；有效的才回；同一天几条算一次", async () => {
+    await 三态夜扫(早(95));
+    await 记(96, "跟进");
+    await 记(96, "https://pan.example.com/s/录音", "11:00");
+    await 三态夜扫(早(97));
+    expect(await 钟()).toMatchObject({ state: "沉睡", quotaResetDay: null });
+    await 记(97, "约了下周见面", "09:00");
+    await 记(97, "已联系", "15:00"); // 同一天后面那条无效：往前找到上午那条
+    await 三态夜扫(早(98));
+    expect(await 钟()).toMatchObject({ state: "活跃", enteredDay: 日(97), quotaResetDay: 日(97) });
+  });
+
+  it("AI 起草成功的短沟通照样拨钟", async () => {
+    await 三态夜扫(早(95));
+    const f = await 记(96, "已联系");
+    await prisma.followUpSource.create({ data: { followUpId: f.id, text: "客户说下周来看样品" } });
+    await 三态夜扫(早(97));
+    expect(await 钟()).toMatchObject({ state: "活跃", enteredDay: 日(96) });
+  });
+
+  it("占位词表存 Setting、后台可改：默认词表；改了以后按新表判", async () => {
+    expect(await 读占位词()).toEqual(默认占位词);
+    expect(await 存占位词(["  电话沟通过了。", "电话沟通过了", "", 1 as unknown as string])).toEqual(["电话沟通过了"]);
+    invalidateSettingsCache();
+    expect(await 读占位词()).toEqual(["电话沟通过了"]);
+    await 三态夜扫(早(95));
+    await 记(96, "电话沟通过了！");
+    await 三态夜扫(早(97));
+    expect((await 钟())!.state).toBe("沉睡");
   });
 });

@@ -155,7 +155,7 @@ describe("额度回满（M-公海-38）", () => {
     await 三态夜扫(第(96));
     expect((await 读一位三态(客户, 第(96)))!.继续持有.剩次数).toBe(2);
     // 有内容：回满，钟上记重置日
-    await 沟通(100, "回访了");
+    await 沟通(100, "回访了，谈了报价");
     await 三态夜扫(第(101));
     expect((await 读一位三态(客户, 第(101)))!.继续持有).toMatchObject({ 已用次数: 0, 剩次数: 3, 剩天数: 90 });
     expect(await prisma.entCustomerClock.findUniqueOrThrow({ where: { customerId: 客户 } })).toMatchObject({ quotaResetDay: 加天(起, 100), holdCount: 0 });
