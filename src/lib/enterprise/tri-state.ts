@@ -230,6 +230,10 @@ export function 工作日数(a: string, b: string): number {
 }
 /** 交接挂起超过几个工作日没人确认就推系统管理员（T6 / T12） */
 export const 交接兜底工作日 = 15;
+/** 自然日封顶（S1：长假会把 15 个工作日拉成 20 多天）：15 个工作日或 30 个自然日，先到者触发 */
+export const 交接兜底自然日 = 30;
+/** 从 a 那天挂起，到 b 这天该不该推系统管理员：超过 15 个工作日，或超过 30 个自然日 */
+export const 交接挂起超了 = (a: string, b: string): boolean => 工作日数(a, b) > 交接兜底工作日 || 差天(a, b) > 交接兜底自然日;
 const 较晚 = (...ds: (string | null | undefined)[]) => ds.filter((x): x is string => !!x).reduce<string | null>((a, b) => (a === null || b > a ? b : a), null);
 
 /* ---------- 换负责人 ---------- */

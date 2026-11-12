@@ -18,7 +18,7 @@ vi.mock("@/lib/enterprise/notify", async (原) => {
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 三态夜扫, 收三态客户, 写一批, 公海状态, 被挡理由, 暂缓解除理由, 待交接理由 } from "@/lib/enterprise/tri-state-db";
-import { 工作日数 } from "@/lib/enterprise/tri-state";
+import { 工作日数, 交接挂起超了 } from "@/lib/enterprise/tri-state";
 import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
 import { 钟上三态提醒 } from "@/lib/enterprise/tri-state-notice";
 import { 继续持有, 暂缓回收动作 } from "@/lib/enterprise/tri-state-hold";
@@ -504,7 +504,7 @@ describe("T6 · 离职交接等确认：不收、不推提醒；确认按新负�
     await 过(123);
     const 推了 = await 兜底通知(人.系.id);
     expect(推了).toHaveLength(1);
-    expect(推了[0].title).toBe("离职交接挂起超过 15 个工作日没人确认");
+    expect(推了[0].title).toBe("离职交接挂起超过 15 个工作日（或 30 天）没人确认");
     expect(await 兜底通知(人.总内.id)).toHaveLength(0);
   });
 });
@@ -529,7 +529,7 @@ describe("T12 · 停用账号名下的客户：提醒走停用前上级，标待
     await 过(122);
     await 过(123);
     const 推了 = await 待交接通知(人.系.id);
-    expect(推了.map((x) => x.title)).toEqual(["停用账号名下 1 位客户待交接超过 15 个工作日"]);
+    expect(推了.map((x) => x.title)).toEqual(["停用账号名下 1 位客户待交接超过 15 个工作日（或 30 天）"]);
   });
 
   it("离职交接已经在等确认的不另标（T6 那条兜底管）", async () => {
@@ -602,5 +602,114 @@ describe("第三轮审查", () => {
     await 暂缓回收动作(人.总内, 客户, null, 白天(210));
     await 暂缓回收动作(人.总内, 客户, null, 白天(240));
     expect((await 读一位三态(客户, 白天(270)))!.继续持有).toMatchObject({ 能推: true });
+  });
+});
+
+describe("第二轮答复 S1–S8", () => {
+  /** 第 n 天换了负责人（钟归零）之后再走到期、被同事项目挡住 */
+  async function 再到期(n: number) {
+    await 三态夜扫(早(n + 180));
+    await prisma.entCustomerClock.update({ where: { customerId: 客户 }, data: { noticeCount: 3, lastNoticeDay: 日(n + 200) } });
+    await 三态夜扫(早(n + 210));
+    expect(await 钟()).toMatchObject({ blocked: true });
+  }
+
+  it("S1：15 个工作日或 30 个自然日，先到者（不扣节假日时工作日那条总是先到）", () => {
+    expect(交接挂起超了("2026-11-10", "2026-12-01")).toBe(false); // 15 个工作日
+    expect(交接挂起超了("2026-11-10", "2026-12-02")).toBe(true); // 第 16 个工作日
+    expect(工作日数("2026-11-10", "2026-12-10") > 15).toBe(true);
+  });
+
+  it("S2：暂缓 2 次用满后同事之间转让不重新数；公海领走才重新数", async () => {
+    await 到期被挡();
+    expect(await 暂缓回收动作(人.总内, 客户, null, 白天(210))).toEqual({ ok: true });
+    expect(await 暂缓回收动作(人.总内, 客户, null, 白天(240))).toEqual({ ok: true });
+    await 转给(人.甲.id, 250);
+    await 再到期(250);
+    expect(await 暂缓回收动作(人.总内, 客户, null, 白天(250 + 210))).toMatchObject({ ok: false, error: expect.stringContaining("暂缓回收已用满 2 次") });
+  });
+
+  it("S2：离职交接也不重新数", async () => {
+    await 到期被挡();
+    await 暂缓回收动作(人.总内, 客户, null, 白天(210));
+    await 暂缓回收动作(人.总内, 客户, null, 白天(240));
+    const c = await prisma.customer.findUniqueOrThrow({ where: { id: 客户 } });
+    await prisma.customerOwnerLog.create({ data: { customerId: 客户, userId: 人.系.id, fromOwnerId: c.salesOwnerId, toOwnerId: 人.甲.id, kind: "deactivate", at: 白天(250) } });
+    await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 人.甲.id } });
+    await 再到期(250);
+    expect(await 暂缓回收动作(人.总内, 客户, null, 白天(250 + 210))).toMatchObject({ ok: false, error: expect.stringContaining("暂缓回收已用满 2 次") });
+  });
+
+  it("S3：7 天按 7×24 小时滚动：差 1 分钟满 7×24 小时算计次，过了就不算", async () => {
+    await 三态夜扫(早(5));
+    const 撤于 = async (at: string) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(at));
+      await 删被撤的换负责人记录(prisma, 客户, 人.乙.id, 人.丙.id, 人.乙.id);
+      vi.useRealTimers();
+      await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 人.乙.id } });
+    };
+    await 转给(人.丙.id, 10);
+    await 撤于(`${日(10)}T10:00:00+08:00`);
+    await 转给(人.丙.id, 17);
+    await 撤于(`${日(17)}T09:59:00+08:00`);
+    await 转给(人.丙.id, 25);
+    await 撤于(`${日(25)}T10:00:00+08:00`); // 离上一次撤销 8 天
+    expect((await prisma.entCustomerStateLog.findMany({ where: { via: { startsWith: "撤销转让" } }, orderBy: { at: "asc" }, select: { via: true } })).map((x) => x.via))
+      .toEqual(["撤销转让", "撤销转让·计次", "撤销转让"]);
+  });
+
+  it("S5：英文按单词数，中英分别判、任一满足；数字、符号、表情不算字", () => {
+    const 判 = (x: string) => 有内容的沟通(x);
+    expect([判("Met"), 判("Call"), 判("Called back"), 判("已发报价 ok"), 判("ok 好的"), 判("12345678"), 判("👍🎉🔥😀"), 判("报价 3 万")])
+      .toEqual([false, false, true, true, false, false, false, false]);
+    expect(判("已联系 called back")).toBe(true);
+    expect(判("!!! ??? ...")).toBe(false);
+  });
+
+  it("S7：建了项目拨过的钟，项目删了（软删）或作废了也不回退", async () => {
+    await 三态夜扫(早(5));
+    const p = await prisma.project.create({ data: { name: "建了又删", customerId: 客户, ownerId: 人.乙.id, creatorId: 人.乙.id, createdAt: 白天(60) } });
+    await 三态夜扫(早(61));
+    expect(await 钟()).toMatchObject({ state: "活跃", enteredDay: 日(60), progressDay: 日(60) });
+    await prisma.project.update({ where: { id: p.id }, data: { deletedAt: 白天(62) } });
+    await 三态夜扫(早(63));
+    expect(await 钟()).toMatchObject({ state: "活跃", enteredDay: 日(60) });
+    await 三态夜扫(早(151));
+    expect(await 钟()).toMatchObject({ state: "沉睡", enteredDay: 日(150) });
+  });
+
+  it("S8：市场成员判定变了给系统管理员发一条、记操作日志；同一次变化只发一次；第一次只记快照", async () => {
+    const 变化通知 = () => prisma.entNotice.findMany({ where: { userId: 人.系.id, dedupeKey: { startsWith: "tri-market-change:" } }, orderBy: { createdAt: "asc" }, select: { title: true, body: true } });
+    await 三态夜扫(早(5));
+    expect(await 变化通知()).toHaveLength(0);
+    await prisma.entMember.update({ where: { userId: 人.乙.id }, data: { bizRole: "marketing_mgr" } });
+    invalidateSettingsCache();
+    await 三态夜扫(早(6));
+    await 三态夜扫(早(7));
+    const 一 = await 变化通知();
+    expect(一).toEqual([{ title: "1 位成员的「市场成员」判定变了，影响 1 家客户的三态计时", body: `乙 从销售变成市场成员：名下 1 家客户从 ${日(6)} 起不再计三态（市场成员另列）` }]);
+    expect(await prisma.auditLog.count({ where: { entityId: 人.乙.id, summary: { startsWith: "客户三态：" } } })).toBe(1);
+    await prisma.entMember.update({ where: { userId: 人.乙.id }, data: { bizRole: "sales" } });
+    await 三态夜扫(早(8));
+    expect((await 变化通知()).at(-1)!.body).toBe(`乙 从市场成员变成销售：名下 1 家客户从 ${日(8)} 起进入三态计时`);
+  });
+
+  it("S8：三态关着不跑", async () => {
+    await setSetting("orgRules", { ...默认组织规则 });
+    await 三态夜扫(早(5));
+    expect(await prisma.setting.findUnique({ where: { key: "entTriMarketSnapshot" } })).toBeNull();
+  });
+
+  it("交接看板：待交接的客户带待交接日和挂起天数；原负责人、原直属上级本来就有", async () => {
+    await prisma.user.update({ where: { id: 人.乙.id }, data: { active: false } });
+    const 五天前 = new Date(Date.now() - 5 * 86_400_000);
+    await prisma.entCustomerStateLog.create({ data: { customerId: 客户, toState: "活跃", reason: 待交接理由, fromOwnerId: 人.乙.id, at: 五天前 } });
+    const { 读离职交接 } = await import("@/lib/enterprise/offboard-handover");
+    const 看板 = await 读离职交接({ id: 人.系.id, role: "ADMIN" } as never);
+    const 乙那组 = 看板.find((x) => x.id === 人.乙.id)!;
+    expect(乙那组).toMatchObject({ name: "乙", 上级: "甲" });
+    expect(乙那组.客户[0]).toMatchObject({ id: 客户, 挂起天数: 5 });
+    expect(乙那组.客户[0].待交接日).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });

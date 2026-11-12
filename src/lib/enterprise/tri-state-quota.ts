@@ -21,7 +21,8 @@ export const 让同事结束项目 = "让同事结束项目";
 
 /**
  * 「有效沟通」判定（客户 11-12 答复 T1 / T2，覆盖 X-102）：只有有效沟通才既拨钟、又回满继续持有额度，两处同源（拨钟的沟通 = 有内容的沟通）。
- *   - 去掉空白、标点、符号、表情和链接以后不足 4 个字的算空（只有素材——录音、截图、纪要链接——没有文字的，就落在这一条里）；
+ *   - 字数（S5 细化）：中文和英文分别判、任一满足就有效——中文（除拉丁字母以外的文字）去掉空白标点后 ≥ 4 个字，或英文 ≥ 2 个单词；
+ *     数字、符号、表情、链接都不算字（纯数字串、纯符号、纯表情、只贴素材链接的都算空；「报价 3 万」只有 3 个中文字，算空）；
  *   - 整条只由占位词拼成的算空（「跟进」「已联系」「1」……，词表存在 Setting 占位词键 里、后台可改，没存用默认词表）；
  *   - AI 起草成功的（这条沟通有速记原文 FollowUpSource）以生成结果判：有字就算有效，不再按字数、占位词卡；
  *   - 同一天几条只算一次：调用方只取最晚那天（上海日）
@@ -35,6 +36,12 @@ const 链接 = /(?:https?:\/\/|www\.)\S+/giu;
 /** 去掉链接、空白、标点、符号、表情（零宽连接、变体选择符一起去），英文转小写 */
 export const 去杂 = (s: string): string => s.replace(链接, "").replace(/[\s\p{P}\p{S}\p{Extended_Pictographic}\u200d\ufe0f\u20e3]/gu, "").toLowerCase();
 const 字数 = (s: string) => [...s].length;
+/** 英文至少几个单词（S5：Met、Call 这种单个单词算空） */
+export const 有效沟通最少单词 = 2;
+/** 英文单词数：连续的拉丁字母算一个（链接先去掉） */
+export const 英文单词数 = (s: string): number => (s.replace(链接, " ").match(/\p{Script=Latin}+/gu) ?? []).length;
+/** 中文字数：除拉丁字母以外的文字（不含数字、符号、表情、空白标点；链接先去掉） */
+export const 中文字数 = (s: string): number => 字数(s.replace(链接, " ").replace(/\p{Script=Latin}/gu, "").replace(/[^\p{L}]/gu, ""));
 
 /** 整条（已去杂）能不能完全拆成占位词（可重复、可连写：「已联系跟进」「11」都算） */
 export function 只有占位词(s: string, 词们: readonly string[]): boolean {
@@ -62,7 +69,7 @@ export function 有内容的沟通(内容: string | null | undefined, 选: 沟�
   if (!原) return false;
   const s = 去杂(原);
   if (选.AI生成) return s.length > 0;
-  if (字数(s) < 有效沟通最少字数) return false;
+  if (中文字数(原) < 有效沟通最少字数 && 英文单词数(原) < 有效沟通最少单词) return false;
   return !只有占位词(s, 选.占位词 ?? 默认占位词);
 }
 
@@ -121,3 +128,6 @@ export const 自动进公海说法 = "自动进客户公海";
 /** T11：额度上次重置（起，不含那天）以后裁决过几次暂缓回收；起 = null 数全部 */
 export const 暂缓回收次数 = (行们: readonly 留痕行[], 起: string | null): number =>
   行们.filter((x) => x.via === 留痕方式.总管理裁决 && (x.reason ?? "").startsWith(暂缓回收) && (起 === null || x.日 > 起)).length;
+
+/** T12：负责人停用、客户还挂在他名下，标「待交接」那一行的理由（进离职交接看板 /projects/handover，超 15 个工作日或 30 天推系统管理员） */
+export const 待交接理由 = "负责人账号已停用，客户标待交接、进离职交接队列";

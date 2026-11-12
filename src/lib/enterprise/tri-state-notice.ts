@@ -22,7 +22,7 @@ import { getSetting, setSetting } from "@/lib/settings";
 import { beijingDay, beijingWallIso } from "@/lib/business-clock";
 import { 算三态, 解除后几天收, type 提醒级, type 今天提醒 } from "./tri-state";
 import { 收三态客户, 候选客户, 分批, 三态开着, 三态夜扫, 三态扫过键, 钟状态of, 离职交接中的, 待交接理由, type 自动收了 } from "./tri-state-db";
-import { 工作日数, 交接兜底工作日 } from "./tri-state";
+import { 交接挂起超了, 交接兜底工作日, 交接兜底自然日 } from "./tri-state";
 import { 待确认 } from "./handover-db";
 import type { 组织规则 } from "@/lib/project/org-rules";
 import { 读组织, type 组织 } from "./org";
@@ -190,7 +190,7 @@ export async function 已回公海通知(们: readonly 自动收了[], org: 组�
 }
 
 /**
- * 交接挂起兜底（T6 / T12）：超过 15 个工作日（周一到周五，不扣节假日）没人接手的，推系统管理员裁决，每笔只推一次。
+ * 交接挂起兜底（T6 / T12）：超过 15 个工作日（周一到周五，不扣节假日、不认调休）或超过 30 个自然日（S1，先到者）没人接手的，推系统管理员裁决，每笔只推一次。
  *   - T6：离职交接待接手人确认，从发起那天数；
  *   - T12：负责人停用、客户标了「待交接」（tri-state-db.ts 待交接理由）还挂在他名下，按人合成一条，从他名下最早那位标的那天数。
  * 返回推了几条
@@ -198,7 +198,7 @@ export async function 已回公海通知(们: readonly 自动收了[], org: 组�
 export async function 交接挂起兜底(org: 组织, 今天: string): Promise<number> {
   const 管 = 系统管理员们(org);
   if (!管.length) return 0;
-  const 超了 = (起: Date) => 工作日数(beijingDay(起), 今天) > 交接兜底工作日;
+  const 超了 = (起: Date) => 交接挂起超了(beijingDay(起), 今天);
   let n = 0;
   const 挂 = (await prisma.entHandover.findMany({ where: { kind: "离职", status: 待确认 }, select: { id: true, fromUserId: true, toUserId: true, createdAt: true } })).filter((h) => 超了(h.createdAt));
   const 标们 = await prisma.entCustomerStateLog.findMany({ where: { reason: 待交接理由 }, select: { customerId: true, fromOwnerId: true, at: true }, orderBy: { at: "asc" } });
@@ -218,7 +218,7 @@ export async function 交接挂起兜底(org: 组织, 今天: string): Promise<n
   const 名 = await 人名([...new Set([...挂.flatMap((h) => [h.fromUserId, h.toUserId]), ...超的人.map(([id]) => id)])]);
   for (const h of 挂) {
     await notify(管, {
-      kind: "三态", title: `离职交接挂起超过 ${交接兜底工作日} 个工作日没人确认`,
+      kind: "三态", title: `离职交接挂起超过 ${交接兜底工作日} 个工作日（或 ${交接兜底自然日} 天）没人确认`,
       body: `${名.get(h.fromUserId) ?? "（已停用）"} 的离职交接 ${beijingDay(h.createdAt)} 发起，接手人 ${名.get(h.toUserId) ?? "（已停用）"} 还没确认，请裁决`,
       link: "/projects/handover", key: `tri-handover-stuck:${h.id}`,
     });
@@ -226,7 +226,7 @@ export async function 交接挂起兜底(org: 组织, 今天: string): Promise<n
   }
   for (const [id, v] of 超的人) {
     await notify(管, {
-      kind: "三态", title: `停用账号名下 ${v.数.size} 位客户待交接超过 ${交接兜底工作日} 个工作日`,
+      kind: "三态", title: `停用账号名下 ${v.数.size} 位客户待交接超过 ${交接兜底工作日} 个工作日（或 ${交接兜底自然日} 天）`,
       body: `${名.get(id) ?? "（已停用）"} 停用后名下客户 ${beijingDay(v.起)} 起标了待交接，还没交给接手人，请到离职交接处理`,
       link: "/projects/handover", key: `tri-offboard-stuck:${id}`,
     });

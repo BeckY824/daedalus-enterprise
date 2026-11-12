@@ -1833,6 +1833,8 @@ model EntCustomerClock {
   dealDay       String?
   /// 额度上次重置日（迁移 125，M-公海-38）：最近一次因为有内容的沟通把继续持有额度回满是哪天（上海日），同一天只回满一次
   quotaResetDay String?
+  /// 项目推进底日（迁移 131，S7）：算到过的最近项目推进日（上海日），只往后挪；项目后来作废 / 删了钟也不回退
+  progressDay   String?
 
   @@index([state, enteredDay])
 }

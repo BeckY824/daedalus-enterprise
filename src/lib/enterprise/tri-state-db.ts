@@ -35,7 +35,7 @@ import type { 组织规则 } from "@/lib/project/org-rules";
 import { 算三态, 解除后几天收, type 三态事实, type 三态结果, type 三态项目 } from "./tri-state";
 import { 换负责人们of, 撤销计次们, 并上撤销计次 } from "./tri-state-transfer";
 export { 换负责人们of } from "./tri-state-transfer";
-import { 有内容的沟通, 暂缓回收次数, 默认占位词, 占位词键, 规整占位词, 留痕转推后, 最近暂缓回收日, 额度回满, 留痕方式, 自动收回次数, type 留痕行 } from "./tri-state-quota";
+import { 待交接理由, 有内容的沟通, 暂缓回收次数, 默认占位词, 占位词键, 规整占位词, 留痕转推后, 最近暂缓回收日, 额度回满, 留痕方式, 自动收回次数, type 留痕行 } from "./tri-state-quota";
 import { 项目业务线 } from "./assign-line";
 import { 读组织, type 组织 } from "./org";
 import { 是市场角色, 是销售角色 } from "./permissions";
@@ -95,8 +95,7 @@ export type 三态客户 = {
   待交接日: string | null;
 };
 
-/** T12：负责人停用、客户还挂在他名下，标「待交接」那一行的理由（进离职交接看板 /projects/handover，超 15 个工作日推系统管理员） */
-export const 待交接理由 = "负责人账号已停用，客户标待交接、进离职交接队列";
+export { 待交接理由 } from "./tri-state-quota";
 
 /** 把第一次算出来的归不归零存到换负责人那一行（只写还空着的，别人先存了不覆盖） */
 export async function 存归零(db: 库, 们: Iterable<Pick<三态客户, "待存归零">>): Promise<void> {
@@ -189,7 +188,8 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
         最近有内容沟通日: 沟通日.get(c.id) ?? null,
         // T4：从公海领走 / 分走是新一轮持有，额度回满（不看前手用掉的）；市场首次分配、转让、离职交接不回满
         额度重置日: 较晚日(沟通日.get(c.id) ?? null, 领取日),
-        最近推进日: 最近推进,
+        // S7：拨过的钟不回退——项目后来作废 / 删了，和钟上记的推进底日取较晚
+        最近推进日: 较晚日(最近推进, 钟?.progressDay ?? null),
         导入完成日: 导入.get(c.id) ?? null,
         系统起算日: 起算日,
         项目们: 三态项目们,
@@ -305,7 +305,7 @@ export function 钟要改(c: Pick<三态客户, "钟" | "事实">, r: Extract<�
     留痕.push({ fromState: null, toState: 状态, reason: "开始按客户计三态" });
     if (被挡) 留痕.push({ fromState: 状态, toState: 状态, reason: 被挡理由 });
     return {
-      data: { state: 状态, enteredDay: 进入日, blocked: 被挡, dealDay: 成交日, holdCount: r.继续持有.已用次数, holdDays: r.继续持有.已用天数, quotaResetDay: 额.quotaResetDay },
+      data: { state: 状态, enteredDay: 进入日, blocked: 被挡, dealDay: 成交日, holdCount: r.继续持有.已用次数, holdDays: r.继续持有.已用天数, quotaResetDay: 额.quotaResetDay, progressDay: c.事实.最近推进日 },
       留痕,
     };
   }
@@ -322,6 +322,9 @@ export function 钟要改(c: Pick<三态客户, "钟" | "事实">, r: Extract<�
   if (钟.holdCount !== r.继续持有.已用次数) data.holdCount = r.继续持有.已用次数;
   if (钟.holdDays !== r.继续持有.已用天数) data.holdDays = r.继续持有.已用天数;
   if (额.回满) data.quotaResetDay = 额.quotaResetDay;
+  // S7：推进底日只往后挪
+  const 推进 = c.事实.最近推进日;
+  if (推进 && (钟.progressDay === null || 推进 > 钟.progressDay)) data.progressDay = 推进;
   return Object.keys(data).length || 留痕.length ? { data, 留痕 } : null;
 }
 
@@ -406,6 +409,8 @@ export async function 三态夜扫(现在: Date = new Date()): Promise<三态夜
   const 旧 = await getSetting<string>(三态扫过键);
   if (typeof 旧 === "string" && 旧.slice(0, 10) === 今天) return 空明细();
   const 明细 = await 看全部(() => 按客户扫(规则, 现在, 今天));
+  // S8：市场成员判定变了的人报给系统管理员（动态引：那边引着 notify、audit）
+  await (await import("./tri-state-market")).市场成员变化(await 读组织(), 今天);
   await setSetting(三态扫过键, `${今天} ${JSON.stringify(规则.三态)}`);
   return 明细;
 }
