@@ -37,6 +37,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { cookies } from "next/headers";
 import { 客户页看法键 } from "@/lib/customers-view-pref";
 import { 项目页, type 项目页参数 } from "../projects/board-page";
+import { 阶段筛选太多 } from "@/lib/project/customer-list-projects";
 import { 读市场身份 } from "@/lib/enterprise/market-view-db";
 import type { SessionUser } from "@/lib/auth";
 
@@ -364,6 +365,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       项目概况={项目概况}
       项目看板={按项目}
       市场视图={市场角色}
+      // 阶段 / 进程命中的客户太多、点不了名（customer-list-projects.ts 点名上限）：和筛选同一份请求内缓存，不另查
+      阶段太多={按项目 && !看板视图 ? await 阶段筛选太多(me, sp) : false}
       看板体={看板P ? await 看板P : undefined}
       出口叫法={组织规则?.阶段.出口叫法}
     />

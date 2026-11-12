@@ -153,6 +153,9 @@ function useSqueezeRow(能挤: boolean): [boolean, (el: HTMLSpanElement | null) 
         if (组.getBoundingClientRect().height > 一行高) { 挤时宽.current = 宽; set挤掉(true); }
       } else if (宽 > 挤时宽.current) set挤掉(false);
     };
+    // 接管之前（服务端出的 HTML）组是不折、放不下藏在行尾的（globals.css .cf-probe:not([data-cf-ready])），
+    // 不然量之前筛选行先折成两行（PR #273 CI 1024 宽）。量之前打上标记放开折行，同一帧里量完收好，人看不到跳一下
+    探针.setAttribute("data-cf-ready", "");
     量();
     const ro = new ResizeObserver(量);
     ro.observe(行);

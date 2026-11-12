@@ -32,18 +32,21 @@ const 列表桩: Plugin = { name: "import-perm-boundaries", setup(b) {
 
 beforeAll(async () => {
   包 = (await build({ stdin: { contents: `
-    import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
+    import React from 'react';import {createRoot,hydrateRoot} from 'react-dom/client';import {renderToString} from 'react-dom/server';import {createCache,extractStyle,StyleProvider} from '@ant-design/cssinjs';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {我Provider} from '@/lib/me-client';
     import CustomersView from '@/app/(app)/customers/CustomersView';
-    const root=createRoot(document.getElementById('root'));
     const 长='某某超长贸易进出口有限公司'.repeat(6);
     const users=[{id:'me',name:'小王',email:'s1',role:'SALES',active:true},{id:'u2',name:'一个名字特别特别长的同事',email:'s2',role:'SALES',active:true}];
     const 行=(id,owner)=>({id,name:长+id,phone:'1380000000'+id.slice(1),school:null,grade:null,major:null,followStatus:'待跟进',decisionStatus:'了解中',custStatus:'跟进中',salesOwnerId:owner,salesOwnerName:owner==='me'?'小王':'一个名字特别特别长的同事',createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',lastFollowAt:'2026-11-01T00:00:00.000Z',signedAmount:0,referrerCustomerId:null,referrerName:null,channelId:null,channelName:null,expectedSignAt:null,remark:null,addrCountry:'阿拉伯联合酋长国',extra:{level:'A'}});
     const rows=[行('c1','me'),行('c2','u2'),行('c3','me')];
     const 项目概况={c1:{项目数:12,当前节点:'异常 · 某个后台改得特别特别长的节点名字',当前阶段:'订单'},c2:{项目数:1,当前节点:'方案敲定',当前阶段:'商机'}};
-    root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'me',name:'小王'}}>
+    const 树=(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'me',name:'小王'}}>
       <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:'',node:''}} 客户数={3} 企业版 项目概况={项目概况} 项目看板 待交接={window.__交接??null} 看板体={window.__看板?<div className='fake-board'>项目看板</div>:undefined} 市场视图={!!window.__市场}/>
     </我Provider></BusinessProvider></App></ConfigProvider>);
+    const el=document.getElementById('root');
+    // __静态：先只放服务端出的那份 HTML（React 还没接管），window.__水合() 再接管——照真实页面的先后
+    if(window.__静态){const c=createCache();const h=renderToString(<StyleProvider cache={c}>{树}</StyleProvider>);document.head.insertAdjacentHTML('beforeend',extractStyle(c));el.innerHTML=h;window.__水合=()=>hydrateRoot(el,树);}
+    else createRoot(el).render(树);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [列表桩], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
@@ -118,6 +121,38 @@ it("拉宽窗口阶段 / 进程回到外面，再拉窄又收进去，筛选行�
     await page.setViewportSize({ width: 1024, height: 900 });
     await expect.poll(阶段在外面).toBe(0);
     expect(await 一行()).toBe(true);
+  } finally { await page.close(); }
+});
+
+/*
+  PR #273 CI（window-sizes「最小窗口 1024」）：真实壳里 1024 宽、左栏 220 展开，量到筛选行折成两行、阶段 / 进程还在外面。
+  原因：「放不下收进更多筛选」是 React 接管后量出来的，服务端出的那份 HTML 里阶段 / 进程照摆，接管之前筛选行就是折的（慢网、CI 上都看得到）。
+  这里照真实条件复现：先只放服务端渲染出的 HTML（不接管）量一次，再接管量一次；量法照那条 E2E——取筛选行里各格的 top（不显示的探针那格不算）、
+  「列」也算上；接管后各格右边不越过筛选行（接管前是把放不下的藏在行尾，不是折行）
+*/
+it("1024 宽、左栏 220：React 接管前后筛选行和「列」都是一行，接管后阶段 / 进程收进更多筛选", async () => {
+  const page = await browser.newPage({ viewport: { width: 1024, height: 900 } }); page.setDefaultTimeout(5000);
+  const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+  try {
+    await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+    await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+    await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
+    await page.evaluate(() => { (window as unknown as { __静态: boolean }).__静态 = true; });
+    await page.addScriptTag({ content: 包 });
+    await page.locator("tr.ant-table-row").first().waitFor();
+    const 量 = () => page.locator(".list-bar").evaluate((b) => {
+      const 右 = b.getBoundingClientRect().right;
+      const 项 = [...b.querySelectorAll(":scope > .ant-space > .ant-space-item, :scope > .ant-btn, :scope > .ant-dropdown-trigger")]
+        .filter((e) => e.getClientRects().length > 0 && getComputedStyle(e).visibility !== "hidden");
+      return { 行数: new Set(项.map((e) => Math.round(e.getBoundingClientRect().top))).size, 越界: 项.filter((e) => e.getBoundingClientRect().right > 右 + 0.5).length };
+    });
+    // 接管前放不下的藏在组的行尾（组本身不越界），只看一行
+    expect((await 量()).行数, "接管前（服务端 HTML）").toBe(1);
+    await page.evaluate(() => { (window as unknown as { __水合: () => void }).__水合(); });
+    await expect.poll(() => page.getByRole("combobox", { name: "阶段" }).count(), { message: "接管后放不下，阶段收进更多筛选" }).toBe(0);
+    expect(await 量(), "接管后").toEqual({ 行数: 1, 越界: 0 });
+    expect(await page.locator(".list-bar").getByRole("button", { name: /列/ }).count()).toBeGreaterThan(0);
+    expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
 
