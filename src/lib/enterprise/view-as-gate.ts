@@ -13,6 +13,13 @@ import { 企业版 } from "./switch";
 type 请求 = { method: string; nextUrl: { pathname: string }; cookies: { get(name: string): { value: string } | undefined } };
 
 export const 视图票名 = "crm_view_as";
+/**
+ * proxy 命中时 Next 先把请求体缓冲一份、默认最多 10MB（next.config 不配 experimental.proxyClientMaxBodySize = 这个默认），
+ * 超出部分静默截断（node_modules/next/dist/server/body-streams.js）。所以 /api 只在带视图票时才进 proxy（proxy.ts matcher），
+ * 带票又没被挡（开关关着的旧票）、体比这个大的写请求在 proxy 里直接拒并删票，不让截断了的文件进路由。
+ * 不调大上限：页面路由（server action）一律经过 proxy，调大了任何页面 POST 都可能被缓冲到那么大（服务器只有约 1.7GB）
+ */
+export const proxy缓冲上限 = 10 * 1024 * 1024;
 const 会话票名 = "crm_session";
 const 只读方法 = new Set(["GET", "HEAD", "OPTIONS"]);
 

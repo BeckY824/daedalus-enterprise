@@ -5,7 +5,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 企业版跳转 } from "@/lib/enterprise/web-paths";
 import { 站内路径 } from "@/lib/safe-next";
 import { 视图只读话, 视图失效话 } from "@/lib/enterprise/view-as-words";
-import { 视图挡写, 视图票判, 视图票名, 去掉视图票 } from "@/lib/enterprise/view-as-gate";
+import { 视图挡写, 视图票判, 视图票名, 去掉视图票, proxy缓冲上限 } from "@/lib/enterprise/view-as-gate";
 
 /**
  * 与 lib/auth.ts 保持一致：生产环境缺少 AUTH_SECRET 时直接失败，
@@ -82,6 +82,16 @@ export async function proxy(request: NextRequest) {
     // 切换视图期间只读；带着验不过的视图票也拒（页面还挂着只读横幅，不能悄悄以本人身份写），见 view-as-gate.ts
     const 挡 = await 视图挡写(request, SECRET);
     if (挡) return NextResponse.json({ error: 挡 === "只读" ? 视图只读话 : 视图失效话 }, { status: 403 });
+    /*
+      走到这里 = 带着视图票（matcher 只在带票时把 /api 送进来）但没被挡：开关关着 / 不是企业版时留下的旧票。
+      体超过 proxy 缓冲上限的写请求，Next 已经把多出来的截掉了（只留前 10MB），放进路由就是存下一个坏文件：直接拒、删掉旧票，再传一次就不经过这里
+    */
+    const 长 = Number(request.headers.get("content-length") ?? 0);
+    if (!["GET", "HEAD", "OPTIONS"].includes(request.method) && (!Number.isFinite(长) || 长 > proxy缓冲上限)) {
+      const res = NextResponse.json({ error: "这次没传上去（浏览器里还留着一张已经失效的「切换视图」票），请再传一次" }, { status: 413 });
+      res.cookies.delete(视图票名);
+      return res;
+    }
     return NextResponse.next();
   }
   // 企业版网页里不留我们云端 / 桌面端的页面（注册、条款、手机伴侣、反馈），见 lib/enterprise/web-paths.ts
@@ -174,6 +184,12 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   // 排除 API 路由与静态资源（geo/ 是复盘页世界地图的国家边界）；/api/auth/logout 需要能自行清 Cookie 后跳转
-  // /api/:path* 只为切换视图期间挡非 GET（见 视图挡写），别的一律原样放过
-  matcher: ["/((?!api|_next/static|_next/image|ocr/|geo/|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)", "/api/:path*"],
+  /*
+    /api 只在带着切换视图票（cookie crm_view_as，= view-as-gate.ts 视图票名，tests/proxy-api-body.test.ts 对拍）时才进来，为的是视图期间挡非 GET（见 视图挡写）。
+    平时的 /api 不经 proxy：proxy 命中的请求体会被 Next 缓冲、超 10MB 静默截断（附件 20MB、企业导入 200MB 都会坏）。matcher 必须是字面量（Next 静态分析）
+  */
+  matcher: [
+    "/((?!api|_next/static|_next/image|ocr/|geo/|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    { source: "/api/:path*", has: [{ type: "cookie", key: "crm_view_as" }] },
+  ],
 };
