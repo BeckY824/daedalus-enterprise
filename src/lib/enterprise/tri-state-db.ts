@@ -287,6 +287,24 @@ export async function 读占位词(db: Pick<Prisma.TransactionClient, "setting">
   }
 }
 
+/**
+ * 改了一条沟通的内容之后：存的时候无效、这次改成有效的，记下「首次有效时刻」= 这一刻（EntFollowUpFirstValid，第五轮）。
+ * 已经记过的不动（之后改字、改回无效再改有效都不动）；原来就有效的不记（没有那一行 = 按建的时刻算）。
+ * 不论三态开关都维护，开关打开前改过的也对。内容没变不查库；新内容连宽松的那把尺都过不了也不查库；
+ * 要判时多两句读（占位词、是不是 AI 起草的），真的从无效变有效再加一句写
+ */
+export async function 记首次有效(
+  db: Pick<Prisma.TransactionClient, "setting" | "followUpSource" | "entFollowUpFirstValid">,
+  followUpId: string, 改前内容: string | null | undefined, 新内容: string | null | undefined, 现在: Date = new Date(),
+): Promise<void> {
+  if ((改前内容 ?? "").trim() === (新内容 ?? "").trim()) return;
+  if (!有内容的沟通(新内容, { AI生成: true })) return;
+  const 词们 = await 读占位词(db);
+  const AI生成 = !!(await db.followUpSource.findUnique({ where: { followUpId }, select: { followUpId: true } }));
+  if (有内容的沟通(改前内容, { 占位词: 词们, AI生成 }) || !有内容的沟通(新内容, { 占位词: 词们, AI生成 })) return;
+  await db.entFollowUpFirstValid.upsert({ where: { followUpId }, create: { followUpId, at: 现在 }, update: {} });
+}
+
 /** 后台改占位词表（T2，界面以后做）：规整后存；传空数组 = 不认任何占位词（只剩字数那条） */
 export async function 存占位词(词们: readonly string[]): Promise<string[]> {
   const 规整 = 规整占位词(词们) ?? [];
@@ -315,10 +333,10 @@ async function 最近沟通日们(db: 库, ids: readonly string[], 现在: Date,
   const 出 = new Map<string, 客户沟通>();
   if (!ids.length) return 出;
   const 词们 = 预读词们 ?? await 读占位词(db);
-  type 行 = { cid: string; content: string; src: unknown; at: unknown; cat: unknown; uat: unknown };
+  type 行 = { cid: string; content: string; src: unknown; at: unknown; cat: unknown; vat: unknown };
   const 生效 = (x: 行) => { const 写 = 转时刻(x.cat); return 写 ? 沟通生效时刻(转时刻(x.at), 写) : null; };
   const 有效 = (x: 行) => 有内容的沟通(x.content, { 占位词: 词们, AI生成: Number(x.src) === 1 || x.src === true });
-  const 列 = `f."customerId" AS cid, f.content AS content, EXISTS (SELECT 1 FROM "FollowUpSource" s WHERE s."followUpId" = f.id) AS src, f."occurredAt" AS at, f."createdAt" AS cat, f."updatedAt" AS uat`;
+  const 列 = `f."customerId" AS cid, f.content AS content, EXISTS (SELECT 1 FROM "FollowUpSource" s WHERE s."followUpId" = f.id) AS src, f."occurredAt" AS at, f."createdAt" AS cat, (SELECT v."at" FROM "EntFollowUpFirstValid" v WHERE v."followUpId" = f.id) AS vat`;
   const 条件 = `f."deletedAt" IS NULL AND f.content <> ''`;
   const 先看 = await db.$queryRawUnsafe<(行 & { rn: unknown })[]>(
     `SELECT * FROM (SELECT ${列}, ROW_NUMBER() OVER (PARTITION BY f."customerId" ORDER BY ${沟通生效时刻SQL("f")} DESC, f.id DESC) AS rn
@@ -329,12 +347,13 @@ async function 最近沟通日们(db: 库, ids: readonly string[], 现在: Date,
   for (const x of 先看) 按客户.set(x.cid, [...(按客户.get(x.cid) ?? []), x]);
   /** 有效的那几条，按生效日倒排（SQL 已排过，这里按同一把尺再排一次，不依赖数据库的日期存法） */
   /*
-    额度重置判定里「写入它的那一刻」用最后一次改动的时刻（updatedAt），不用建的时刻：先存一条无效的、过后改成有效，
-    要按改的那一刻之前的最近动静日比，不能倒补成建的那天（第四轮复审）。生效日照旧是沟通日期和建的时刻取早的。
-    updatedAt 也会被无关的改动刷新（挂接联系人、改类型），那样只会让判定偏严（更难重置），可以接受
+    额度重置判定里「写入它的那一刻」用这条沟通第一次被判为有效的时刻（EntFollowUpFirstValid，第五轮）：先存一条无效的、过后改成有效，
+    按改成有效的那一刻之前的最近动静日比，不能倒补成建的那天；没有那一行 = 建的时候就有效，按建的时刻。
+    不读 updatedAt：改错别字、挂接联系人、客户恢复连带的改动都会刷新它，会把当天实时记的沟通事后当成补录、倒扣已给的重置。
+    生效日照旧是沟通日期和建的时刻取早的
   */
   const 有效们 = (们: 行[]): 额度候选沟通[] => 们
-    .map((x) => ({ x, t: 生效(x), 写: 转时刻(x.uat) ?? 转时刻(x.cat) }))
+    .map((x) => ({ x, t: 生效(x), 写: 转时刻(x.vat) ?? 转时刻(x.cat) }))
     .filter((y): y is { x: 行; t: Date; 写: Date } => !!y.t && !!y.写 && y.t.getTime() <= 现在.getTime() + 生效时刻余量 && 有效(y.x))
     .sort((a, b) => b.t.getTime() - a.t.getTime())
     .map((y) => ({ 日: beijingDay(y.t), 写: y.写 }));

@@ -37,7 +37,7 @@ import { 联系人查重, 联系人撞号话 } from "@/lib/enterprise/contact-de
 import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
 import { 是占位号, 占位号提示 } from "@/lib/placeholder-phone";
 import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
-import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
+import { 存沟通后重算三态, 记首次有效 } from "@/lib/enterprise/tri-state-db";
 
 const 只有总管理能恢复话 = "只有系统管理员或回收站副手能恢复删掉的记录";
 
@@ -237,6 +237,8 @@ export async function saveFollowUp(input: FollowUpInput) {
         Object.assign(data, { dueAt: 时间.at, dueOn: 时间.on, dueHasTime: 时间.hasTime });
         const 写了 = await tx.followUp.updateMany({ where: { id: input.id, ...版本条件(input.版本) }, data: { ...data, ...推进版本(input.版本) } });
         if (写了.count === 0) return { ok: false as const, error: 版本冲突 };
+        // 存的时候无效、这次改成有效：记下首次有效时刻（客户三态额度判「实时」用；不论三态开关，内容没变不查库）
+        await 记首次有效(tx, input.id, 改前.content, data.content, now);
         await 跟着改待办(input.customerId, 改前, data, tx);
       } else {
         const sourceText = input.sourceText?.trim().slice(0, SOURCE_TEXT_MAX);

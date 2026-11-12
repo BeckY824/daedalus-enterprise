@@ -44,6 +44,7 @@ import { 读一位三态 } from "@/lib/enterprise/tri-state-hold";
 import { 等通知推完 } from "@/lib/enterprise/notify";
 import { beijingDay } from "@/lib/business-clock";
 import { saveFollowUp } from "@/app/(app)/customers/[id]/actions";
+import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 
 /*
   保存动作用真实的现在（写入时间是数据库引擎记的，假不了 Date），所以按今天往回数：系统起算日设成 起算前 天前，
@@ -239,9 +240,11 @@ describe("存了又撤：本轮已发的提醒和没发生过一样（第三轮�
 });
 
 /*
-  额度、暂缓次数重置（M-公海-54，客户 11-12 更正）：同一位客户当天只重置一次。实时记的有效沟通（生效日 = 最后改动那天）就重置，
+  额度、暂缓次数重置（M-公海-54，客户 11-12 更正）：同一位客户当天只重置一次。实时记的有效沟通（生效日 = 首次有效那天）就重置，
   不管当天是否已有建项目、换节点；补录的（含先存无效后改有效）要严格晚于改动前的「当前最近动静日」；起算日（设置里的）及以前的不算；
-  只换节点、只建项目不重置（X-109 待客户确认）；按事实算，撤销了回到没记时的样子
+  只换节点、只建项目只推钟、不重置次数（M-公海-54，客户 11-12 确认：动钟和动次数是两套条件，动次数只认有效沟通和公海领取 / 分配）；
+  按事实算，撤销了回到没记时的样子。「实时」看的是这条沟通第一次被判为有效的时刻（EntFollowUpFirstValid，没有那一行按建的时刻），
+  不看 updatedAt：事后改字、挂接联系人、客户恢复都不改变它是当天实时记的
 */
 describe("额度与暂缓次数重置只认真推进了钟的沟通", () => {
   let 起算: string;
@@ -252,8 +255,10 @@ describe("额度与暂缓次数重置只认真推进了钟的沟通", () => {
     const p = await prisma.project.findFirst({ where: { customerId: 客户 } }) ?? await prisma.project.create({ data: { name: "项目", customerId: 客户, ownerId: 乙, creatorId: 乙, createdAt: 第(1) } });
     await prisma.projectNodeLog.create({ data: { projectId: p.id, userId: 乙, toPhase: "线索", toNode: "初步接触", at: 第(n, 时) } });
   };
-  /** 沟通日期第 日 天、第 写 天写进来（最后改动也是那时） */
+  /** 沟通日期第 日 天、第 写 天写进来（建的时候就有效：首次有效时刻 = 建的时刻） */
   const 沟通 = (日: number, 写: number, 时 = "10:00", content = "电话聊了预算和交付时间") => prisma.followUp.create({ data: { customerId: 客户, ownerId: 乙, type: "PHONE", title: "", content, occurredAt: 第(日, 时), createdAt: 第(写, 时), updatedAt: 第(写, 时) } });
+  /** 记完的沟通只有管理能改（follow-perm.ts）：要改沟通的用例把乙换成销售管理 */
+  const 当管理 = async () => { await prisma.entMember.update({ where: { userId: 乙 }, data: { bizRole: "sales_mgr" } }); invalidateSettingsCache(); };
   const 看 = async () => {
     const 规则 = await 生效组织规则();
     const c = (await 收三态客户(prisma, [客户], 规则, await 读组织(), new Date())).get(客户)!;
@@ -280,9 +285,61 @@ describe("额度与暂缓次数重置只认真推进了钟的沟通", () => {
     expect(await 看()).toMatchObject({ 额度用了: 0, 暂缓: 0, 归零日: 加天(起算, 140), 重置日: 加天(起算, 140) });
   });
 
-  it("只换节点、没有有效沟通：只推钟、不重置（X-109 待客户确认）", async () => {
+  it("只换节点、没有有效沟通：只推钟、不重置（M-公海-54，客户 11-12 确认）", async () => {
     await 推进(140);
     expect(await 看()).toMatchObject({ 额度用了: 1, 暂缓: 1, 归零日: 加天(起算, 140), 重置日: null });
+  });
+
+  it("只建档 / 只建项目（没带沟通）：只推钟、不重置继续持有和暂缓回收次数（M-公海-54，客户 11-12 确认）", async () => {
+    await prisma.project.create({ data: { name: "只建项目", customerId: 客户, ownerId: 乙, creatorId: 乙, createdAt: 第(140, "09:00") } });
+    expect(await 看()).toMatchObject({ 额度用了: 1, 暂缓: 1, 归零日: 加天(起算, 140), 重置日: null });
+  });
+
+  it("从公海领取 / 分配：重置继续持有和暂缓回收次数", async () => {
+    await prisma.customerOwnerLog.create({ data: { customerId: 客户, userId: 乙, fromOwnerId: null, toOwnerId: 乙, kind: "claim", at: 第(140) } });
+    expect(await 看()).toMatchObject({ 额度用了: 0, 暂缓: 0, 重置日: 加天(起算, 140) });
+    await 持有过(150);
+    await 暂缓过(151);
+    await prisma.customerOwnerLog.create({ data: { customerId: 客户, userId: 乙, fromOwnerId: null, toOwnerId: 乙, kind: "pool-assign", at: 第(160) } });
+    expect(await 看()).toMatchObject({ 额度用了: 0, 暂缓: 0, 重置日: 加天(起算, 160) });
+  });
+
+  it("实时记的有效沟通事后被改（第五轮）：第 D 天记有效沟通并换节点、之后又推进；第 D+1 天改错别字、挂接联系人、客户软删再恢复 → 重置日、次数都不变", async () => {
+    await 推进(140, "09:00");
+    const f = await 沟通(140, 140, "10:00");
+    await 推进(145);
+    const 前后 = { 额度用了: 0, 暂缓: 0, 重置日: 加天(起算, 140) };
+    expect(await 看()).toMatchObject(前后);
+    // 改错别字：走真实的保存动作（updatedAt 记成现在；记完的沟通只有管理能改，乙换成销售管理）
+    await 当管理();
+    expect(await saveFollowUp({ id: f.id, customerId: 客户, type: "PHONE", status: "已完成", content: "电话聊了预算和交付时问", occurredAt: `${加天(起算, 140)} 10:00` })).toMatchObject({ ok: true });
+    expect(await prisma.entFollowUpFirstValid.count()).toBe(0);
+    expect(await 看()).toMatchObject(前后);
+    // 挂接联系人（customers/[id]/actions.ts 挂上 只改 contactId）、客户软删再恢复连带的改动：都只刷新 updatedAt
+    const 人 = await prisma.contact.create({ data: { name: "联系人", customerId: 客户 } });
+    await prisma.followUp.update({ where: { id: f.id }, data: { contactId: 人.id, updatedAt: 第(141) } });
+    await prisma.followUp.updateMany({ where: { customerId: 客户 }, data: { deletedAt: 第(141, "12:00"), updatedAt: 第(141, "12:00") } });
+    await 看已删(() => prisma.followUp.updateMany({ where: { customerId: 客户 }, data: { deletedAt: null, updatedAt: 第(141, "13:00") } }));
+    expect(await prisma.followUp.count({ where: { customerId: 客户 } })).toBe(1);
+    expect(await 看()).toMatchObject(前后);
+  });
+
+  it("首次有效时刻（第五轮）：新建就有效的不记行（= 建的时刻）；先无效后改有效记改的那一刻；之后改字、改回无效再改有效都不动", async () => {
+    const 新 = await 记跟进("电话聊了预算和交付时间");
+    expect(新).toMatchObject({ ok: true });
+    expect(await prisma.entFollowUpFirstValid.count()).toBe(0);
+    const 短 = await 记跟进("OK");
+    if (!短.ok) throw new Error("没存上");
+    const 改 = (content: string) => saveFollowUp({ id: 短.id, customerId: 客户, type: "PHONE", status: "已完成", content, occurredAt: `${今天} 00:00` });
+    await 当管理();
+    const 改前 = Date.now();
+    expect(await 改("客户要华东三个仓的报价")).toMatchObject({ ok: true });
+    const 行 = await prisma.entFollowUpFirstValid.findUniqueOrThrow({ where: { followUpId: 短.id } });
+    expect(行.at.getTime()).toBeGreaterThanOrEqual(改前 - 1000);
+    expect(行.at.getTime()).toBeLessThanOrEqual(Date.now() + 1000);
+    for (const c of ["客户要华南三个仓的报价", "OK", "客户要华北三个仓的报价"]) expect(await 改(c)).toMatchObject({ ok: true });
+    expect((await prisma.entFollowUpFirstValid.findUniqueOrThrow({ where: { followUpId: 短.id } })).at).toEqual(行.at);
+    expect(await prisma.entFollowUpFirstValid.count()).toBe(1);
   });
 
   it("建项目同时带出的首条沟通（向导 / 新建项目 / 转项目）：有真实内容的重置一次，占位文案不重置", async () => {
@@ -303,10 +360,13 @@ describe("额度与暂缓次数重置只认真推进了钟的沟通", () => {
   it("防倒补（第四轮第 1 条）：第 129 天记无效短沟通、第 130 天项目推进、第 140 天把它改成有效 → 不重置；当天记无效、当天改成有效、期间没别的动静 → 照常重置", async () => {
     await 推进(130);
     const f = await 沟通(129, 129, "10:00", "OK");
+    // 改成有效的那一刻记进首次有效时刻（保存动作里 记首次有效 写的就是这一行）
     await prisma.followUp.update({ where: { id: f.id }, data: { content: "电话聊了预算和交付时间", updatedAt: 第(140) } });
+    await prisma.entFollowUpFirstValid.create({ data: { followUpId: f.id, at: 第(140) } });
     expect(await 看()).toMatchObject({ 额度用了: 1, 暂缓: 1, 重置日: null });
     const g = await 沟通(150, 150, "10:00", "OK");
     await prisma.followUp.update({ where: { id: g.id }, data: { content: "电话聊了预算和交付时间", updatedAt: 第(150, "11:00") } });
+    await prisma.entFollowUpFirstValid.create({ data: { followUpId: g.id, at: 第(150, "11:00") } });
     expect(await 看()).toMatchObject({ 额度用了: 0, 暂缓: 0, 重置日: 加天(起算, 150) });
   });
 
