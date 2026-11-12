@@ -8,6 +8,7 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { 系统写 } from "@/lib/team-scope";
+import { 视图中跳过 } from "./view-as";
 import type { EntDictItem, Prisma } from "@/generated/prisma";
 import { 企业版 } from "./switch";
 import { 旧占位词 } from "@/lib/empty-value";
@@ -41,7 +42,15 @@ async function 建了就算(建: PromiseLike<unknown>) {
 }
 
 /** 一类的选项：按排序列出（停用的也列，界面自己挑）；这一类一行都没有就先建默认的 */
-export function 企业字典(kind: 字典种类, db: Prisma.TransactionClient = prisma): Promise<EntDictItem[]> {
+export async function 企业字典(kind: 字典种类, db: Prisma.TransactionClient = prisma): Promise<EntDictItem[]> {
+  // 切换视图（只读预览）：一笔不写，只读现有的；这一类一行都没有就在内存里给默认项（不落库），页面照常画
+  if (await 视图中跳过()) {
+    const 有 = await db.entDictItem.findMany({ where: { kind }, orderBy: [{ sort: "asc" }, { createdAt: "asc" }] });
+    if (有.length) return 有;
+    const 停用 = 字典定义[kind].默认停用 ?? [];
+    const 时 = new Date(0);
+    return 字典定义[kind].默认.map((name, i) => ({ id: 默认id(kind, i), kind, name, sort: 默认位置(kind, i), active: !停用.includes(name), createdAt: 时 }));
+  }
   // 第一次读顺手建默认项是系统写：管理员（admin，只读）打开页面时也得建得上
   return 系统写(() => 企业字典本体(kind, db));
 }

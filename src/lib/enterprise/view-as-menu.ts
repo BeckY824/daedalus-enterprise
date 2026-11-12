@@ -4,14 +4,24 @@
  */
 import { 企业版 } from "./switch";
 import { 演示切换, 分组演示名单, type 演示组 } from "./demo-switch";
-import { 能切换视图 } from "./view-as";
+import { 能切换视图, 能被看, 切换视图开着 } from "./view-as";
 import { multiTenant } from "@/lib/tenant/context";
 import { 本地模式 } from "@/lib/desktop/cloud";
 import type { SessionUser } from "@/lib/auth";
+import { 角色名 } from "@/lib/sync/dept-policy";
+
+/** 顶上那条的「（角色 / 部门）」：被看的人的主业务角色、部门；读组织有请求内缓存（认票时已读过），不另查 */
+export async function 视图身份说明(userId: string): Promise<string> {
+  const { 读组织 } = await import("./org");
+  const org = await 读组织();
+  const m = org.成员.get(userId);
+  const 部门 = m?.deptId ? org.部门.get(m.deptId)?.name : null;
+  return [m?.bizRole ? 角色名[m.bizRole as keyof typeof 角色名] : "没设业务角色", 部门].filter(Boolean).join(" / ");
+}
 
 /** 这个部署有没有切换视图：企业版、自部署（不是托管版、不是桌面端） */
 export function 有切换视图(): boolean {
-  return 企业版() && !multiTenant() && !本地模式();
+  return 企业版() && 切换视图开着() && !multiTenant() && !本地模式();
 }
 
 /**
@@ -29,5 +39,5 @@ export async function 读视图名单(user: SessionUser): Promise<演示组[] | 
     select: { id: true, name: true, email: true, title: true },
     orderBy: { createdAt: "asc" },
   });
-  return 分组演示名单(人们, org);
+  return 分组演示名单(人们.filter((p) => 能被看(org, p.id)), org);
 }

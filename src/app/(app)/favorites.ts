@@ -5,8 +5,11 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { getSetting, setSetting } from "@/lib/settings";
 import { 系统写 } from "@/lib/team-scope";
-import { 正在切换视图 } from "@/lib/enterprise/view-as";
-import { 视图收藏话 } from "@/lib/enterprise/view-as-words";
+import { 正在切换视图, 视图票失效, 视图只读错误 } from "@/lib/enterprise/view-as";
+import { 视图收藏话, 视图失效话 } from "@/lib/enterprise/view-as-words";
+
+/** 切换视图时不让改收藏的那一句；票失效了提示刷新 */
+const 收藏拒话 = async () => ((await 视图票失效()) ? 视图失效话 : 视图收藏话);
 import { 收藏键 as 键, 项目收藏键 as 项目键, 点得开的项目 } from "@/lib/favorites";
 
 /**
@@ -24,6 +27,8 @@ type 结果 = { ok: true; 收藏了: boolean } | { ok: false; error: string };
  * 所以写这一步走 系统写（不然 只读拦 抛错，整页崩成错误边界）。
  */
 async function 存(key: string, ids: string[]): Promise<void> {
+  // 调用方已先回过话；这里再兜一道：系统写 前必须先问过切换视图（ent-view-as-scan.test.ts 静态守卫）
+  if (await 正在切换视图()) throw new 视图只读错误(await 收藏拒话());
   await 系统写(() => setSetting(key, ids));
   // 左栏在 layout 里，layout 客户端导航不重算：让它重新取一次
   revalidatePath("/", "layout");
@@ -32,7 +37,7 @@ async function 存(key: string, ids: string[]): Promise<void> {
 /** 收藏 / 取消。新收藏的排最前；满了挤掉最早的那位 */
 export async function 切换收藏(customerId: string): Promise<结果> {
   const user = await requireUser();
-  if (await 正在切换视图()) return { ok: false, error: 视图收藏话 };
+  if (await 正在切换视图()) return { ok: false, error: await 收藏拒话() };
   const 有 = await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } });
   if (!有) return { ok: false, error: "这位客户已经不在了" };
   const 记着的 = ((await getSetting<string[]>(键(user.id))) ?? []).filter((x) => typeof x === "string");
@@ -48,7 +53,7 @@ export async function 切换收藏(customerId: string): Promise<结果> {
 /** 收藏 / 取消项目，和客户一个模式。点不开的项目（删了、不归他看了、进公海要回避的）不占名额 */
 export async function 切换项目收藏(projectId: string): Promise<结果> {
   const user = await requireUser();
-  if (await 正在切换视图()) return { ok: false, error: 视图收藏话 };
+  if (await 正在切换视图()) return { ok: false, error: await 收藏拒话() };
   const 记着的 = ((await getSetting<string[]>(项目键(user.id))) ?? []).filter((x) => typeof x === "string");
   const 能开 = new Set((await 点得开的项目(user, [...new Set([projectId, ...记着的])])).map((p) => p.id));
   const 旧 = 记着的.filter((x) => 能开.has(x));

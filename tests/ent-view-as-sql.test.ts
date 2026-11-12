@@ -22,4 +22,22 @@ describe("会写库的SQL", () => {
     expect(会写库的SQL(null)).toBe(true);
     expect(会写库的SQL('SELECT count(*) FROM "Customer"')).toBe(false);
   });
+  it("PRAGMA 按白名单：查表结构 / 检查类带不带括号都是读；读设置值只认光秃秃的写法；带 = 、设置类带括号、不在白名单的都当写", () => {
+    // 现有代码里实际用到的读
+    for (const 读 of ['PRAGMA table_info("Customer")', "PRAGMA table_info(Customer)", "pragma main.table_info('x')", "PRAGMA foreign_key_list(\"Project\")", "PRAGMA foreign_key_list", "PRAGMA foreign_key_check", "PRAGMA quick_check", "PRAGMA integrity_check(10)", "PRAGMA table_list", "PRAGMA index_list(x)", "PRAGMA index_info(i)", "PRAGMA journal_mode", "PRAGMA user_version", "PRAGMA secure_delete", "PRAGMA busy_timeout", "SELECT name FROM pragma_table_info('Customer')"]) {
+      expect(会写库的SQL(读), 读).toBe(false);
+    }
+    for (const 写 of ["PRAGMA user_version = 5", "PRAGMA user_version(5)", "PRAGMA journal_mode(WAL)", "PRAGMA journal_mode = WAL", "PRAGMA busy_timeout = 5000", "PRAGMA secure_delete = ON", "PRAGMA defer_foreign_keys = ON", "PRAGMA writable_schema", "PRAGMA case_sensitive_like = 1", "PRAGMA 不认得的", "PRAGMA table_info(x); PRAGMA optimize"]) {
+      expect(会写库的SQL(写), 写).toBe(true);
+    }
+  });
+  it("不带 = 也会动库的 PRAGMA 算写（落检查点、优化、回收空页），只读的 PRAGMA 不算", () => {
+    expect(会写库的SQL("PRAGMA wal_checkpoint(TRUNCATE)")).toBe(true);
+    expect(会写库的SQL("pragma  wal_checkpoint")).toBe(true);
+    expect(会写库的SQL("PRAGMA main.wal_checkpoint(FULL)")).toBe(true);
+    expect(会写库的SQL("PRAGMA optimize")).toBe(true);
+    expect(会写库的SQL("PRAGMA incremental_vacuum(10)")).toBe(true);
+    expect(会写库的SQL("PRAGMA table_info(\"Customer\")")).toBe(false);
+    expect(会写库的SQL("PRAGMA journal_mode")).toBe(false);
+  });
 });

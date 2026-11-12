@@ -12,6 +12,7 @@
 import type { Prisma } from "@/generated/prisma";
 import { getSetting, setSetting } from "./settings";
 import { 主号, 号键, 号键替换 } from "./phone";
+import { 视图中跳过 } from "./enterprise/view-as";
 
 const 键 = "phone.extKeptSince";
 
@@ -28,7 +29,8 @@ export async function 记下分机留存起(): Promise<void> {
     没记上下一次进页面会再试；没记上之前查重照旧按整串比，只是少认一种老号码，不伤数据
   */
   try {
-    if ((await getSetting<number>(键)) == null) await setSetting(键, Date.now());
+    // 切换视图（只读预览）：不写，等管理员自己进页面时再记
+    if ((await getSetting<number>(键)) == null && !(await 视图中跳过())) await setSetting(键, Date.now());
   } catch (e) {
     console.error("[phone-dedupe] 记分机留存起点没成，下次再试：", e instanceof Error ? e.message : e);
   }

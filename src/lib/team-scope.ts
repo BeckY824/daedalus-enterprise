@@ -63,9 +63,13 @@ export function 系统写<T>(fn: () => Promise<T>): Promise<T> {
 /** 管理员（admin）只读时，这几张表的写照样放：留痕、自己的 AI 对话、自己的账号（登录改密、改名；别人的账号在设置 action 里按 能改后台设置 拦）、铃铛通知（标已读，只改得到自己那几行）、
  *  撞号台账（查重撞了系统记一笔，也是留痕；11-10） */
 const 只读也能写 = new Set(["AuditLog", "AiConversation", "AiMessage", "AiProject", "User", "EntNotice", "EntDupeHit"]);
-/** 切换视图的写拦。系统写这段同样放：不然切视图时第一次读字典，建默认项被拒，整页崩 */
-async function 视图拦(): Promise<void> {
-  if (!系统写这段.getStore()) await 视图写拦();
+/**
+ * 切换视图的写拦：系统写这段**也拦**（11-12 起；原来放行，第一次读字典要建默认项）。
+ * 页面渲染时顺手的种子写（字典、角色、异常类别、补主渠道）在切换视图时自己跳过、内存里给默认（dict.ts、project/db.ts、channels/page.tsx），
+ * 走到这里的就是漏网的写，一律拒，库里一笔不落
+ */
+async function 视图拦(动作: string): Promise<void> {
+  await 视图写拦(动作);
 }
 async function 只读拦(db: PrismaClient, model?: string): Promise<void> {
   if (系统写这段.getStore() || (model && 只读也能写.has(model))) return;
@@ -635,29 +639,29 @@ export function 加上限定(db: PrismaClient): PrismaClient {
       // 裸 SQL 绕得过模型层：切换视图期间 $executeRaw* 一律拒，$queryRaw* 原文会写库的也拒（M-权限-08）
       // 管理员（admin）只读也在这一层拦（只读拦）
       async $executeRaw({ args, query }) {
-        if (企业版()) await 视图拦();
+        if (企业版()) await 视图拦("$executeRaw");
         if (企业版()) await 只读拦(db);
         return query(args);
       },
       async $executeRawUnsafe({ args, query }) {
-        if (企业版()) await 视图拦();
+        if (企业版()) await 视图拦("$executeRawUnsafe");
         if (企业版()) await 只读拦(db);
         return query(args);
       },
       async $queryRaw({ args, query }) {
-        if (企业版() && 会写库的SQL(原文SQL(args))) await 视图拦();
+        if (企业版() && 会写库的SQL(原文SQL(args))) await 视图拦("$queryRaw");
         if (企业版() && 会写库的SQL(原文SQL(args))) await 只读拦(db);
         return query(args);
       },
       async $queryRawUnsafe({ args, query }) {
-        if (企业版() && 会写库的SQL(原文SQL(args))) await 视图拦();
+        if (企业版() && 会写库的SQL(原文SQL(args))) await 视图拦("$queryRawUnsafe");
         if (企业版() && 会写库的SQL(原文SQL(args))) await 只读拦(db);
         return query(args);
       },
       $allModels: {
         async $allOperations({ model, operation, args: 原参数, query }) {
           // 企业版切换视图（M-权限-08）：总管理员以别人的视图查看期间，服务端一律只读
-          if (写操作.has(operation) && 企业版()) await 视图拦();
+          if (写操作.has(operation) && 企业版()) await 视图拦(`${model}.${operation}`);
           // 企业版管理员（admin，11-01）：看全部、任何写都拒——客户、项目、线索、沟通、待办、卡点、设置、分配、删除、导入都走这里
           if (写操作.has(operation) && 企业版()) await 只读拦(db, model);
           if (写操作.has(operation)) 改完推一下();
