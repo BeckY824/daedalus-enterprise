@@ -28,6 +28,7 @@ import { 读线索验证 } from "@/lib/project/lead-verify";
 import { 待分配占位 } from "@/lib/enterprise/await-assign";
 import { 市场进不了详情, 读市场身份 } from "@/lib/enterprise/market-view-db";
 import { 只读卡放行 } from "@/lib/enterprise/customer-readonly-card";
+import { 仅项目可见 } from "@/lib/enterprise/project-only-customers";
 import { dayjs } from "@/lib/utils";
 import { 项目的卡点, 能发卡点, 读卡点默认, 可选原因们, 卡点给界面, 沟通编号们 } from "@/lib/project/blocker";
 // 附件接口认权限的同一份（不是路由文件，只是放在接口旁边）：项目页给不给入口、能不能传删和接口一个口径
@@ -90,7 +91,8 @@ export async function 项目页去向(me: SessionUser, id: string): Promise<{ �
   const 市场 = await 市场去向(me, p, 已加入);
   if (市场) return 市场;
   if (!能看项目(me, { ...p, 已加入 }, await 权限组织())) return { 种: "无" };
-  if (!(await 看得到的客户([p.customerId])).has(p.customerId)) return { 种: "留" };
+  // 只负责项目的人（仅项目，lib/enterprise/project-only-customers.ts）：客户看不到也跳客户页，那边是受限客户详情
+  if (!(await 看得到的客户([p.customerId])).has(p.customerId) && !(await 仅项目可见(me, p.customerId))?.includes(p.id)) return { 种: "留" };
   if (p.pooledAt && 原负责人回避()) {
     const 放 = await prisma.projectNodeLog.findFirst({ where: { projectId: p.id, kind: "pool-release" }, orderBy: { at: "desc" }, select: { fromOwnerId: true } });
     const 上一任 = 放?.fromOwnerId ?? (p.ownerId || null);
@@ -227,7 +229,8 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   // 痛点标注、合同状态（迁移 101）：字段权限「藏」的那一项不给值（界面不摆那一行、编辑框不交那一项）
   const 权限 = 企业 ? await 字段权限of(me.id) : null;
   const 企业项目字段 = !企业 ? {} : {
-    项目来源: p.channel ? { name: p.channel.name, 跟客户: false } : 露 && p.customer.channel ? { name: p.customer.channel.name, 跟客户: true } : null,
+    // 跟客户来源的那一半只给客户看得到的（11-12 审查）：只负责项目的人、实线上级看不到客户，不露客户从哪个渠道来
+    项目来源: p.channel ? { name: p.channel.name, 跟客户: false } : 看得到客户.has(p.customerId) && p.customer.channel ? { name: p.customer.channel.name, 跟客户: true } : null,
     channelId: p.channelId,
     已立项天数: 已立项天数(p.createdAt),
     ...(能改 ? { 渠道们: await 可选渠道们(p.channelId) } : {}),

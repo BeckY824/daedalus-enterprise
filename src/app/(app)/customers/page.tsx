@@ -38,6 +38,8 @@ import { cookies } from "next/headers";
 import { 客户页看法键 } from "@/lib/customers-view-pref";
 import { 项目页, type 项目页参数 } from "../projects/board-page";
 import { 客户页看板条件 } from "./board-query";
+import { 仅项目安全条件, 仅项目筛选口径 } from "@/lib/enterprise/project-only-customers";
+import { 仅项目列表行们 } from "@/lib/enterprise/project-only-list-rows";
 import { 阶段筛选太多 } from "@/lib/project/customer-list-projects";
 import { 读市场身份 } from "@/lib/enterprise/market-view-db";
 import type { SessionUser } from "@/lib/auth";
@@ -125,8 +127,8 @@ async function 记的看法(): Promise<string | undefined> {
  */
 async function 看板体(me: SessionUser, sp: Awaited<SP>) {
   // 条件和列底「再看」同一份（board-query.ts）；sort 给看板每列的序、临时切成的项目列表排表头用（客户的排序在看板视图里不起作用）
-  const { 项目, 客户 } = await 客户页看板条件(sp);
-  return 项目页(me, 项目, { 客户 });
+  const { 项目, 客户, 仅项目客户 } = await 客户页看板条件(sp);
+  return 项目页(me, 项目, { 客户, 仅项目客户 });
 }
 
 export default async function CustomersPage({ searchParams }: { searchParams: SP }) {
@@ -224,8 +226,21 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       take: pageSize,
       select: 客户行字段,
     });
+  /*
+    「仅项目」一小块（只负责项目的人，lib/enterprise/project-only-list-rows.ts）：第 1 页、「客户」页签、不是子集、不是市场角色、列表视图，
+    筛选只认白名单（仅项目安全条件：名字 / 简称 / 公司、客户类型；别的有值、按金额 / 级别 / 创建时间排 = 不摆）。不进 total、不进导出
+  */
   // 组织规则（设置缓存里读）：进程下拉的结局叫法、三态开没开都看它
   const 规则P = 按项目 ? 生效组织规则() : null;
+  const 仅项目行P = (async () => {
+    if (!按项目 || 子集 || sp.pool === "1" || 市场角色 || 看板视图 || page !== 1) return undefined;
+    // 三态关着时地址栏带的 triState 列表当没筛（query.ts），这一块也当没筛
+    const 三态关 = !(await 规则P)?.三态.开;
+    const 认的 = Object.entries(sp).filter(([k]) => k in 仅项目筛选口径 && !(k === "triState" && 三态关));
+    const 条件 = 仅项目安全条件({ ...Object.fromEntries(认的), sort: sp.sort });
+    return 条件 ? 仅项目列表行们(me, 条件) : undefined;
+  })();
+  仅项目行P.catch(() => {});
   const [
     rows, users, channels, 用着的职位, 用着的国家,
     号, aiEnabled, 交接, 可导入导出, 只给自己, 客户状态选项, 分配方式选项, 客户类型选项, 只读ids, 转让选项, 直接推荐, 业务员,
@@ -379,6 +394,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       旧职位={[...new Set(旧职位)]}
       国家们={用着的国家.map((x) => x.country!).filter(Boolean)}
       项目概况={项目概况}
+      {...await 仅项目行P.then((x) => (x ? { 仅项目行: x.行们, 仅项目超了: x.超了 } : {}))}
       三态标={三态标}
       项目看板={按项目}
       市场视图={市场角色}

@@ -25,7 +25,7 @@ export type 项目页参数 = { keyword?: string; ownerId?: string; pool?: strin
  * 客户页：只画看板那一块（页头、筛选行是客户页的，C17 / C18），项目按客户页那一行筛出来的客户收窄（客户 = null 是没筛客户）。
  * 落在：整页画在别的地址上（X-107：市场角色的客户页就是这一整页，筛选、翻页留在 /customers，页头叫客户）
  */
-export async function 项目页(me: SessionUser, 原: 项目页参数, 客户页?: { 客户: Prisma.CustomerWhereInput | null }, 落在?: { 基址: string; 标题: string; 换回客户列表?: boolean; 能新建客户?: boolean }) {
+export async function 项目页(me: SessionUser, 原: 项目页参数, 客户页?: { 客户: Prisma.CustomerWhereInput | null; 仅项目客户: Prisma.CustomerWhereInput | null }, 落在?: { 基址: string; 标题: string; 换回客户列表?: boolean; 能新建客户?: boolean }) {
   // 落在.能新建客户 = 能新建和领取：市场角色客户页「新建 ▾」两项（新建客户、新建项目）服务端都按这一条拒，两项共用
   // 地址栏 → 条件：和看板列底「再看」同一份（page-query.ts）
   const { sp, hl } = 项目页筛选(原);
@@ -42,7 +42,7 @@ export async function 项目页(me: SessionUser, 原: 项目页参数, 客户页
     /projects、市场角色「我分出去的」的看板 / 列表是浏览器里切的，服务端不知道画哪个：两份都取，列表视图照旧
   */
   // 先读列表（里面先跑超时回收），再取「我的卡点」，看到的是收完的样子
-  const d = await 读项目列表(me, 客户页 ? { ...sp, 客户: 客户页.客户 } : sp, undefined, { 每列: true, 要列表页: !客户页 || 能自动分配 });
+  const d = await 读项目列表(me, 客户页 ? { ...sp, 客户: 客户页.客户, 仅项目客户: 客户页.仅项目客户 } : sp, undefined, { 每列: true, 要列表页: !客户页 || 能自动分配 });
   const 卡点们 = 企业版() ? await 我的卡点(me) : [];
   // 客户页看板（C5，P-界面-19 ②）：卡片客户名后的三态色点，这一屏看得到的卡片（每列的 + 列表页的）一次取钟；三态关着、不是客户页不取
   const 三态点 = 客户页 ? await 看板三态点([...d.行, ...Object.values(d.每列 ?? {}).flat()]) : undefined;

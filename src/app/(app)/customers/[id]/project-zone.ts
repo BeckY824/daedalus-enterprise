@@ -18,8 +18,9 @@ type 列表项目 = { id: string; name: string; phase: string; node: string; res
  *   - 页签 = 这位客户名下我能看的项目（列表已经过限定层、去掉了我回避的公海项目；这里再按 能看项目 挡一遍，同项目详情页）
  *   - 锁数 = 看不到的同事在推项目个数（只给个数，P-看-12）
  *   - 当前 = 选中那个项目的详情数据，和项目详情页同一个取数（projects/[id]/load.ts），权限 props 一个算法
+ *   - 不数锁：受限客户详情（restricted.ts，只负责项目的人）连同事在推项目的个数也不给，锁数恒 0
  */
-export async function 读项目区(me: SessionUser, customerId: string, 列表: readonly 列表项目[], 要的: string | null): Promise<项目区数据> {
+export async function 读项目区(me: SessionUser, customerId: string, 列表: readonly 列表项目[], 要的: string | null, 选项?: { 不数锁?: boolean }): Promise<项目区数据> {
   const org = await 权限组织();
   const 行 = 列表.length
     ? await prisma.project.findMany({
@@ -37,7 +38,7 @@ export async function 读项目区(me: SessionUser, customerId: string, 列表: 
     ...可看.map((p) => p.id),
   ];
   // 锁数和下面读当前项目详情并行（审查 #4）；读详情里的负责人候选、组织、组织规则是请求内缓存，和客户页同一份
-  const 锁数P = 看全部(() => prisma.project.count({ where: { customerId, ...在推项目条件, deletedAt: null, id: { notIn: 可看.map((p) => p.id) } } }));
+  const 锁数P = 选项?.不数锁 ? Promise.resolve(0) : 看全部(() => prisma.project.count({ where: { customerId, ...在推项目条件, deletedAt: null, id: { notIn: 可看.map((p) => p.id) } } }));
   锁数P.catch(() => undefined); // 下面读详情先抛错时别留一个没人接的 rejection；结果照样在后面 await
   let 当前: 项目区数据["当前"] = null;
   const 读不了 = new Set<string>();

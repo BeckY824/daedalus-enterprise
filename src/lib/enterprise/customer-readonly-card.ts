@@ -31,6 +31,8 @@ export type 只读卡联系人 = {
   email: string | null;
   wechat: string | null;
   号码们: { 叫法: string; value: string }[];
+  /** 受限客户详情（customers/[id]/restricted.ts）：这位是我自己建的、挂在我项目上的，能改——只有这种才给编号。项目详情的卡上一律没有 */
+  id?: string;
 };
 
 export type 客户只读卡 = {
@@ -112,7 +114,7 @@ export async function 读卡底子(customerId: string, 项目负责人: string) 
 }
 
 /** 放行之后拼卡：客户白名单 + 联系人（不在自己项目上的只给姓名、职务） */
-export async function 拼卡(me: 谁, customerId: string, { 客户, 自己项目的人 }: 卡底子): Promise<客户只读卡> {
+export async function 拼卡(me: 谁, customerId: string, { 客户, 自己项目的人 }: 卡底子, 给编号的?: ReadonlySet<string>): Promise<客户只读卡> {
   // 这家客户的联系人，含挂靠过来的（同客户详情页）；只隶属别家、没挂到这家的不列
   const [联系人行, 号, 种类表] = await Promise.all([
     看全部(() => prisma.contact.findMany({
@@ -139,6 +141,7 @@ export async function 拼卡(me: 谁, customerId: string, { 客户, 自己项目
       const 号码们 = 联系人号码们(c, c.contactMethods).map((x) => ({ kind: x.kind, value: 打码种类.has(x.kind) ? 号(x.value) : x.value }));
       const 第一 = (kind: string) => 号码们.find((x) => x.kind === kind)?.value ?? null;
       return {
+        ...(给编号的?.has(c.id) ? { id: c.id } : {}),
         name: c.name, position: c.position, 给联系方式: true,
         phone: 第一("phone"), email: 第一("email"), wechat: 第一("wechat"),
         号码们: 号码们.map((x) => ({ 叫法: 种类叫法(种类表, x.kind), value: x.value })),

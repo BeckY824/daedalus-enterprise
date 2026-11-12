@@ -31,11 +31,11 @@ import { dayjs } from "@/lib/utils";
 import { parseScheduleDate } from "@/lib/schedule-date";
 import { 是逾期 } from "@/lib/overdue";
 import { parseDateInput } from "@/lib/date-input";
-import { 性别们, 爱好上限, 联系人地址上限, 认生日 } from "@/lib/enterprise/customer-v2";
-import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类表, type 交上来的号 } from "@/lib/enterprise/customer-v2-db";
+import { 联系人电话, 规整, 规整企业联系人, type 联系人字段, type 企业联系人资料 } from "./contact-input";
+export type { 企业联系人资料 } from "./contact-input";
+import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类表 } from "@/lib/enterprise/customer-v2-db";
 import { 联系人查重, 联系人撞号话 } from "@/lib/enterprise/contact-dedupe";
 import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
-import { 是占位号, 占位号提示 } from "@/lib/placeholder-phone";
 import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
 import { 存沟通后重算三态, 记首次有效 } from "@/lib/enterprise/tri-state-db";
 
@@ -617,78 +617,6 @@ function 刷新联系人(customerId?: string | null) {
   revalidatePath("/contacts");
 }
 
-type 联系人字段 = {
-  name: string;
-  position?: string | null;
-  phone?: string | null;
-  email?: string | null;
-  wechat?: string | null;
-  remark?: string | null;
-};
-
-/**
- * 联系人的电话：共享区表单交回的是打码的样子，认回原号（排查 A2）；认不回来又带 * 的不收。
- * 联系人电话一直不做格式校验（座机、分机、「找前台转」都有人写），这里只拦打码那一种。
- */
-function 联系人电话(交回: string | null | undefined, 原: string | null | undefined): { ok: true; phone: string | null } | { ok: false; error: string } {
-  const v = String(认回打码号(交回, 原) ?? "").trim();
-  if (v.includes("*")) return { ok: false, error: "电话里不能有 *" };
-  // 占位假号（P-全局-06）：新填、改过的拦下；库里原样没动的老号照存
-  if (v !== String(原 ?? "").trim() && 是占位号(v)) return { ok: false, error: 占位号提示("电话") };
-  return { ok: true, phone: v || null };
-}
-
-function 规整(input: 联系人字段) {
-  return {
-    name: input.name.trim(),
-    position: input.position || null,
-    phone: input.phone || null,
-    email: input.email || null,
-    wechat: input.wechat || null,
-    remark: input.remark || null,
-  };
-}
-
-/**
- * 企业版联系人新几格（2026-10-29，定稿 P5 第 24 条，迁移 073）：性别、生日、爱好、地址，外加联系方式几行（类型 + 号码）。
- * 开关关着一律不看
- */
-export type 企业联系人资料 = {
-  gender?: string | null;
-  birthday?: string | null;
-  hobby?: string | null;
-  address?: string | null;
-  /** 联系方式几行：kind 是存库的那种（号码种类表 的 kind）。给了就整组换掉；不给 = 不碰 */
-  号码们?: 交上来的号[] | null;
-};
-
-/** 企业联系人资料 → 存库的四格（给了的才出现）。错了给一句话 */
-function 规整企业联系人(x: 企业联系人资料): { ok: true; data: { gender?: string | null; birthday?: string | null; hobby?: string | null; address?: string | null } } | { ok: false; error: string } {
-  const data: { gender?: string | null; birthday?: string | null; hobby?: string | null; address?: string | null } = {};
-  const 格 = (v: unknown) => (typeof v === "string" ? v.trim().replace(/\s+/g, " ") : "") || null;
-  if (x.gender !== undefined) {
-    const g = 格(x.gender);
-    if (g && !(性别们 as readonly string[]).includes(g)) return { ok: false, error: "性别只能选男或女" };
-    data.gender = g;
-  }
-  if (x.birthday !== undefined) {
-    const d = 认生日(x.birthday);
-    if (d === undefined) return { ok: false, error: "生日格式不对（要年-月-日，且是真实的日子）" };
-    data.birthday = d;
-  }
-  if (x.hobby !== undefined) {
-    const h = 格(x.hobby);
-    if (h && h.length > 爱好上限) return { ok: false, error: `爱好最多 ${爱好上限} 个字` };
-    data.hobby = h;
-  }
-  if (x.address !== undefined) {
-    const a = 格(x.address);
-    if (a && a.length > 联系人地址上限) return { ok: false, error: `地址最多 ${联系人地址上限} 个字` };
-    data.address = a;
-  }
-  return { ok: true, data };
-}
-
 /**
  * 企业版号码查重（2026-10-29 P13 第 2 条）撞了：不保存，回 撞了 给表单摆成能点的链接。
  * 照存 = 人看过提示、确认是另一个人（同一个号两个人用，比如公司总机）；再交一次带上它就不查
@@ -705,6 +633,18 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
         })
       : null;
     if (input.id && !原) return { ok: false as const, error: "这位联系人已经不在这儿了，刷新看看" };
+    /*
+      企业版：挂的那位客户（编辑看主客户）要看得到、且不是只读的（项目组员、虚线上级、市场相关）。
+      原来新建一路不判客户可见：随便拿一个看不到的客户 id 也建得进去（11-12 查实）。只负责项目的人另走受限详情的专门动作
+    */
+    if (企业版()) {
+      const 挂的 = 原 ? 原.customerId : input.customerId;
+      const 客 = typeof 挂的 === "string" && 挂的
+        ? await prisma.customer.findUnique({ where: { id: 挂的 }, select: { id: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } } })
+        : null;
+      if (!客) return { ok: false as const, error: "这位客户已经不在了（或你看不到），刷新看看" };
+      if (await 只读客户(defaultClient, 客)) return { ok: false as const, error: await 只读话(defaultClient) };
+    }
     /*
       企业版联系人挂多位客户（2026-10-29 P13 第 1 条）：编辑不换主客户——从挂靠的那位客户页上编辑时，交上来的 customerId 是那一位，
       主客户和「主要联系人」照原样（主要联系人说的是主客户那边的）。换主客户走 换主客户（contact-link-actions.ts）
@@ -762,6 +702,7 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
         const 写了 = await tx.contact.updateMany({ where: { id: input.id, ...版本条件(input.版本) }, data });
         if (写了.count === 0) return null;
       }
+      // 企业版记下谁建的（迁移 135）：受限客户详情里只负责项目的人只能改自己建的
       const savedId = input.id ?? (await tx.contact.create({ data })).id;
       // 企业版：新建的联系人在主客户上记一行挂靠（客户页的联系人卡片、联系人页都按挂靠表 + 主客户列出来）
       if (!input.id && 企业版()) await tx.contactCustomer.create({ data: { contactId: savedId, customerId: 主客户 } });

@@ -18,6 +18,7 @@ import { 本套位置 } from "./nodes";
 import type { Prisma } from "@/generated/prisma";
 import { 待我复核的, 验证结果叫法, 实际待, 无效交给 } from "./lead-verify";
 import { 看全部, 客户读条件 } from "../team-scope";
+import { 仅项目客户们 } from "@/lib/enterprise/project-only-customers";
 import { 读市场身份 } from "@/lib/enterprise/market-view-db";
 import { 市场项目条件, 只看进度 } from "@/lib/enterprise/market-view";
 import { 历史负责人们, 我回避的公海项目, 回避豁免 } from "./pool-owner";
@@ -75,6 +76,11 @@ export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; 
    * 只收窄：项目自己的可见范围照旧由限定层管。不是地址栏参数，服务端自己给
    */
   客户?: Prisma.CustomerWhereInput | null;
+  /**
+   * 客户页看板筛了客户时，「仅项目」客户（只负责项目的人，project-only-customers.ts）按这份白名单条件参与（仅项目安全条件）；
+   * null / 不给 = 这类行不参与。和 客户 一样不是地址栏参数，服务端（customers/board-query.ts）给
+   */
+  仅项目客户?: Prisma.CustomerWhereInput | null;
   /** 服务端分页（11-11，同客户列表）：第几页、每页几条（10–100）、按哪列排（认项目排序；不给 = 最近改过在前） */
   page?: string; pageSize?: string; sort?: string };
 
@@ -175,21 +181,37 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
   const 客户 = sp.客户 && typeof sp.客户 === "object" ? sp.客户 : null;
   const 露 = 词 || 来源 || 号码 || 客户 ? await 露客户条件(me) : null;
   const 并露 = (w: Prisma.ProjectWhereInput): Prisma.ProjectWhereInput => (露 ? { AND: [w, 露] } : w);
+  /*
+    按客户的字段筛（客户页看板）：只算「客户看得到」那一支，不再对「自己负责的项目」放行（11-12 堵口子）——
+    客户筛选的关键词会搜客户手机、备注、联系人电话，只负责项目的人输个号码看自己的卡留不留，就试得出看不到的客户的号码。
+    他看不到的客户（仅项目，project-only-customers.ts）另并一支：只按白名单条件（名字 / 简称 / 公司、客户类型），筛了别的不参与
+  */
+  const 客户范围 = 客户 || 号码 || 来源 ? await 客户读条件(defaultClient) : null;
+  const 看得到的 = (w: Prisma.ProjectWhereInput): Prisma.ProjectWhereInput => (客户范围 ? { AND: [w, { customer: 客户范围 as Prisma.CustomerWhereInput }] } : w);
+  const 仅项目 = 客户 && sp.仅项目客户 && typeof sp.仅项目客户 === "object" ? sp.仅项目客户 : null;
+  const 仅项目项目 = 仅项目 ? [...(await 仅项目客户们(me)).values()].flat() : [];
+  const 按客户 = (c: Prisma.CustomerWhereInput): Prisma.ProjectWhereInput => (仅项目项目.length && 仅项目
+    ? { OR: [看得到的({ customer: c }), { id: { in: 仅项目项目 }, ownerId: me.id, pooledAt: null, customer: 仅项目 }] }
+    : 看得到的({ customer: c }));
   // 企业版「收回次数」：从留痕里数；按次数筛只在企业版的项目公海里生效
   const 收回筛 = 企 && sp.pool === "1" ? 收回次数筛(sp.recycled) : "";
   const 并且: Prisma.ProjectWhereInput[] = [
     ...(建于 ? [{ createdAt: 建于 }] : []),
-    // 按号码筛中的是客户：客户不露的不列，不然拿号码试得出同事公海客户挂着哪些项目
-    ...(号码 ? [并露({ customer: 号码 })] : []),
-    // 客户不露时不拿客户的来源（同列上的「渠道」）：否则筛一下就试出同事客户从哪来
-    ...(来源 ? [{ OR: [{ channelId: 来源 }, 并露({ channelId: null, customer: { channelId: 来源 } })] }] : []),
+    /*
+      按号码筛中的是客户：只算「客户看得到」的（11-12 堵口子）。原来按「露客户」算——自己负责的项目、客户不归我也算中，
+      只负责项目的人（project-only-customers.ts）输个号码看自己的项目留不留，就试得出看不到的客户的电话、联系人电话。
+      客户看得到的照旧；搜索框的关键词只比项目名和客户名（下面 词），不碰号码、备注
+    */
+    ...(号码 ? [看得到的({ customer: 号码 })] : []),
+    // 客户看不到时不拿客户的来源（同列上的「渠道」，11-12 审查起和号码一样只认「客户看得到的」，自己负责的项目也不例外）：否则筛一下就试出客户从哪来
+    ...(来源 ? [{ OR: [{ channelId: 来源 }, 看得到的({ channelId: null, customer: { channelId: 来源 } })] }] : []),
     ...(级别筛 ? [{ level: 级别筛 === 未分级 ? null : 级别筛 }] : []),
     ...(卡 && 规则 ? [首页卡条件(卡, 规则, 字典of(企), 今), ...(卡的圈 ? [卡的圈] : [])] : []),
     // 3 天内回公海：粗筛之外再加紧筛（同首页卡的数，tests/ent-due-soon-prefilter.test.ts 两种筛对拍），候选少取一些；剩下的取回逐个算
     ...(卡 === "due-soon" && 规则 ? [即将逾期紧筛(规则, 字典of(企), 今) ?? { id: { in: [] } }] : []),
     ...阶进.where,
     // 按客户的字段筛：客户不露的不列（和按客户名搜同一条，不然拿筛选试得出同事公海客户挂着哪些项目）
-    ...(客户 ? [并露({ customer: 客户 })] : []),
+    ...(客户 ? [按客户(客户)] : []),
     ...(市场 ? [市场项目条件(me.id, 市场.圈, 创建人)] : []),
     // 公海里同事客户的项目：不露客户名；按客户名搜也不该搜出它（否则等于拿名字试出来）。搜索词的 OR 放进 AND 里，不和别的 OR 打架
     ...(词 ? [{ OR: [{ name: { contains: 词 } }, 并露({ customer: { name: { contains: 词 } } })] }] : []),
@@ -421,8 +443,10 @@ async function 拼项目行(
   };
   // 公海里同事客户的项目：不露客户名（按客户名搜、按号码筛、按客户来源算渠道的「客户要露」已在 where 里，列表条件）
   const 露 = (p: 行带include) => 露客户(me, p, 可见);
+  // 只负责项目的人（仅项目，project-only-customers.ts）：客户看不到，但点得进受限客户详情，不标「进不了」
+  const 仅项目 = 企 && rows.some((p) => !可见.has(p.customerId) && p.ownerId === me.id) ? new Set([...(await 仅项目客户们(me)).values()].flat()) : new Set<string>();
   return rows.map((p) => ({
-    id: p.id, name: p.name, customerId: p.customerId, customerName: 露(p) ? p.customer.name : null, ...(企 && !可见.has(p.customerId) ? { 进不了客户详情: true } : {}),
+    id: p.id, name: p.name, customerId: p.customerId, customerName: 露(p) ? p.customer.name : null, ...(企 && !可见.has(p.customerId) && !仅项目.has(p.id) ? { 进不了客户详情: true } : {}),
     ownerId: p.ownerId, ownerName: 名字.get(负责人of(p)) ?? (负责人of(p) ? "已不在的成员" : "没人"),
     // 库里存着旧节点名 / 旧结局的按这套的新名给界面（企业版 10-31 改名）
     ...本套位置({ phase: p.phase, node: p.node, result: p.result }, 字典of(企)), exceptionCategory: p.exceptionCategory?.name ?? null, exceptionReason: p.exceptionReason,
@@ -431,7 +455,7 @@ async function 拼项目行(
     ...(企 && p.awaitAssignAt && !p.pooledAt ? { 待分配: true } : {}),
     ...(企 ? { 即将回收: 将收(p), 回收日: 规则 && !p.pooledAt ? 项目回收日(规则, p, 超时线们) : null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null } : {}),
     // 项目来源和渠道统计同一条规则：项目自己选的优先，没选跟客户来源（lib/enterprise/channel-stats.ts 项目算哪个渠道）；客户不露时不拿客户的来源
-    ...(企 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null, 已立项天数: 已立项天数(p.createdAt, 今), 项目来源: p.channel?.name ?? (露(p) ? p.customer.channel?.name : null) ?? null, level: p.level } : {}),
+    ...(企 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null, 已立项天数: 已立项天数(p.createdAt, 今), 项目来源: p.channel?.name ?? (可见.has(p.customerId) ? p.customer.channel?.name : null) ?? null, level: p.level } : {}),
     ...(收回 ? { 收回次数: 收回.get(p.id) ?? 0 } : {}),
     ...市场格(p),
     amount: p.amount, currency: p.currency, updatedAt: p.updatedAt.toISOString(), createdAt: p.createdAt.toISOString(),

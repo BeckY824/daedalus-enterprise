@@ -3990,3 +3990,32 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .tri-log-w { flex: none; max-width: 6em; overflow: hidden; text-overflow: ellipsis; }
 .tri-log-e { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .tri-log-empty { margin-top: 6px; color: var(--text-muted); font-size: var(--fs-min); }
+
+/* 客户列表第 1 页顶上的「仅项目」一小块（customers/ProjectOnlyBlock.tsx）：和下面的客户表格分开，一行省略，不横滚 */
+.cust-ponly { margin-bottom: 12px; min-width: 0; }
+.cust-ponly-h { display: flex; align-items: baseline; gap: 8px; min-width: 0; margin-bottom: 6px; font-weight: 600; }
+.cust-ponly-h .muted { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; font-size: var(--fs-note); }
+.cust-ponly-list { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); overflow: hidden; min-width: 0; }
+/* 列宽按百分比，客户名吃剩下的：哪种宽度都不横滚 */
+.cust-ponly-r { display: grid; grid-template-columns: minmax(0, 1fr) 11% 12% 12% 8% 9% 7% 10% 10%; align-items: center; min-width: 0; }
+.cust-ponly-head { color: var(--text-muted); font-size: var(--fs-note); font-weight: 600; }
+.cust-ponly-row { position: relative; border-top: 1px solid var(--line); cursor: pointer; }
+.cust-ponly-row .cust-ponly-name > a::after { content: ""; position: absolute; inset: 0; }
+.cust-ponly-row:hover { background: var(--hover); }
+.cust-ponly-c { display: block; min-width: 0; padding: 6px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cust-ponly-name { display: flex; align-items: center; gap: 6px; }
+.cust-ponly-name > a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cust-ponly-tag { flex: none; margin: 0; }
+.cust-ponly-c .cust-node-tag { max-width: 100%; }
+
+/* 受限客户详情（customers/[id]/RestrictedCustomerDetail.tsx）和客户只读卡联系人行（projects/[id]/CustomerReadonlyCard.tsx） */
+.rcd-name { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rcd-tag { margin-inline-start: 8px; }
+.rcd-grow { flex: 1; }
+.rcd-link-btn.ant-btn { padding: 0; height: auto; flex: none; }
+.rcd-follow { padding: 8px 0; border-top: 1px solid var(--line); min-width: 0; }
+.rcd-follow-meta { display: flex; flex-wrap: wrap; gap: 0 8px; font-size: var(--fs-note); color: var(--text-muted); }
+.rcd-follow-proj { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rcd-follow-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ro-card-who { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.ro-card-who-n { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }

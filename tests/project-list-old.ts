@@ -10,6 +10,7 @@ import type { 项目行 } from "@/lib/project/board";
 import type { 阶段 } from "@/lib/project/nodes";
 import { 看得到的客户, 露客户, 公海超时收回, 待我回的邀请, 项目回收日, 算超时要的, 超时成员线 } from "@/lib/project/db";
 import { 即将回收 } from "@/lib/project/timeout";
+import { 仅项目客户们 } from "@/lib/enterprise/project-only-customers";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { dayjs } from "@/lib/utils";
@@ -134,12 +135,16 @@ export async function 旧读项目列表(me: Parameters<typeof 公海超时收�
   };
   // 公海里同事客户的项目：不露客户名；按客户名搜也不该搜出它（否则等于拿名字试出来）
   const 露 = (p: (typeof rows)[number]) => 露客户(me, p, 可见);
+  // 11-12 只负责项目的人（仅项目）点得进受限客户详情，不标「进不了」：对拍跟着产品口径改这一处（lib/project/list.ts 拼项目行）
+  const 仅项目 = 企 ? new Set([...(await 仅项目客户们(me)).values()].flat()) : new Set<string>();
   const 行: 项目行[] = rows.filter((p) => (!词 || p.name.toLowerCase().includes(词.toLowerCase()) || 露(p)) && 合收回次数(收回?.get(p.id) ?? 0, 收回筛) && (卡 !== "due-soon" || (!!规则 && 即将逾期(项目回收日(规则, p, 超时线们), 今)))
     // 客户不露时不拿客户的来源（同列上的「渠道」）：否则筛一下就试出同事客户从哪来
-    && (!来源 || p.channelId === 来源 || 露(p))
+    // 11-12 审查起和号码一样只认客户看得到的（lib/project/list.ts 同处）
+    && (!来源 || p.channelId === 来源 || 可见.has(p.customerId))
     // 按号码筛中的是客户：客户不露的不列，不然拿号码试得出同事公海客户挂着哪些项目
-    && (!号码 || 露(p))).map((p) => ({
-    id: p.id, name: p.name, customerId: p.customerId, customerName: 露(p) ? p.customer.name : null, ...(企 && !可见.has(p.customerId) ? { 进不了客户详情: true } : {}),
+    // 11-12 起只算客户看得到的：自己负责、客户不归我的项目按号码不算中（仅项目反推，lib/project/list.ts 同处）
+    && (!号码 || 可见.has(p.customerId))).map((p) => ({
+    id: p.id, name: p.name, customerId: p.customerId, customerName: 露(p) ? p.customer.name : null, ...(企 && !可见.has(p.customerId) && !仅项目.has(p.id) ? { 进不了客户详情: true } : {}),
     ownerId: p.ownerId, ownerName: 名字.get(负责人of(p)) ?? (负责人of(p) ? "已不在的成员" : "没人"),
     // 库里存着旧节点名 / 旧结局的按这套的新名给界面（企业版 10-31 改名）
     ...本套位置({ phase: p.phase, node: p.node, result: p.result }, 字典), exceptionCategory: p.exceptionCategory?.name ?? null, exceptionReason: p.exceptionReason,
@@ -148,7 +153,7 @@ export async function 旧读项目列表(me: Parameters<typeof 公海超时收�
     ...(企 && p.awaitAssignAt && !p.pooledAt ? { 待分配: true } : {}),
     ...(企 ? { 即将回收: 将收(p), 回收日: 规则 && !p.pooledAt ? 项目回收日(规则, p, 超时线们) : null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null } : {}),
     // 项目来源和渠道统计同一条规则：项目自己选的优先，没选跟客户来源（lib/enterprise/channel-stats.ts 项目算哪个渠道）；客户不露时不拿客户的来源
-    ...(企 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null, 已立项天数: 已立项天数(p.createdAt, 今), 项目来源: p.channel?.name ?? (露(p) ? p.customer.channel?.name : null) ?? null, level: p.level } : {}),
+    ...(企 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null, 已立项天数: 已立项天数(p.createdAt, 今), 项目来源: p.channel?.name ?? (可见.has(p.customerId) ? p.customer.channel?.name : null) ?? null, level: p.level } : {}),
     ...(收回 ? { 收回次数: 收回.get(p.id) ?? 0 } : {}),
     ...市场格(p),
     amount: p.amount, currency: p.currency, updatedAt: p.updatedAt.toISOString(), createdAt: p.createdAt.toISOString(),

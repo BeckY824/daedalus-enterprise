@@ -270,8 +270,12 @@ describe("原来在内存里滤的几道，挪到服务端照样生效", () => {
     const 渠道A = (await 翻到底(销管, { channelId: A })).行.map((r) => Number(r.name.slice(2)));
     expect(渠道A.filter((i) => i >= 500 && i < 540 && i % 10 === 1)).toEqual([]);
     expect(渠道A.filter((i) => i >= 500 && i < 540).length).toBe(32);
-    // 销售甲自己负责：客户不归他也露（露客户：不在公海、负责人是我），按客户名、号码、客户来源都算中
-    expect((await 翻到底(人们.销售甲, { phone: 乙客[3].phone })).行.map((r) => r.name)).toEqual(["项目523"]);
+    // 销售甲自己负责：客户不归他也露（露客户：不在公海、负责人是我），按客户名、客户来源照算中；
+    // 按号码不算中（11-12 堵口子：输个号码看自己的项目留不留，就试得出看不到的客户的电话）
+    expect((await 翻到底(人们.销售甲, { keyword: "乙方客户3" })).行.map((r) => r.name)).toContain("项目523");
+    expect((await 翻到底(人们.销售甲, { phone: 乙客[3].phone })).总数).toBe(0);
+    // 客户是自己的：号码照常算中
+    expect((await 翻到底(人们.销售甲, { phone: 甲客[5].phone })).总数).toBeGreaterThan(0);
   });
 
   it("收回次数（项目公海）：服务端数完再分页，总数对", async () => {

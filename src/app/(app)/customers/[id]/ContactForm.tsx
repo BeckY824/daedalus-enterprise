@@ -46,6 +46,7 @@ export default function ContactForm({
   onDelete,
   号码种类,
   职务选项,
+  存法,
 }: {
   open: boolean;
   onClose: () => void;
@@ -74,6 +75,11 @@ export default function ContactForm({
    * 存的还是 position 那一列，库里已有的文字原样显示。非企业版不看它，照旧「与客户关系」
    */
   职务选项?: string[];
+  /**
+   * 换一个存法（默认 saveContact）：受限客户详情（只负责项目的人）走 project-only-contact-actions.ts。
+   * 给了就不摆「关键联系人」开关、撞号时不摆「挂到本客户」（那边都不收）
+   */
+  存法?: (x: Parameters<typeof saveContact>[0]) => Promise<{ ok: true; id: string } | { ok: false; error: string; 撞了?: 撞到的联系人[] }>;
 }) {
   const [form] = Form.useForm();
   const { message } = App.useApp();
@@ -183,7 +189,7 @@ export default function ContactForm({
           号码们: (号码们 ?? []).filter((x) => x && x.value && x.value.trim()).map((x) => ({ kind: x.kind ?? "", value: x.value ?? "" })),
         }
       : null;
-    const r = await saveContact({ id: record?.id, 版本: record?.updatedAt, ...(企业 ? 其余 : v), isPrimary: Boolean(v.isPrimary), customerId: 归属, ...(企业资料 ? { 企业: 企业资料 } : {}), ...(照存 ? { 照存: true } : {}) } as Parameters<typeof saveContact>[0]);
+    const r = await (存法 ?? saveContact)({ id: record?.id, 版本: record?.updatedAt, ...(企业 ? 其余 : v), isPrimary: Boolean(v.isPrimary), customerId: 归属, ...(企业资料 ? { 企业: 企业资料 } : {}), ...(照存 ? { 照存: true } : {}) } as Parameters<typeof saveContact>[0]);
     // 原来不看返回值：联系人刚被别人移出、或电话不收时，弹框卡在那儿什么也不说（排查 D8）
     if (!r.ok) {
       if ("撞了" in r && r.撞了?.length) return void set撞号(r.撞了);
@@ -235,7 +241,7 @@ export default function ContactForm({
                         {x.name}（{x.customerName}）
                       </Link>
                       {/* 客户页上新建：多半就是同一个人，直接挂过来比再建一位好 */}
-                      {!record && customerId && x.customerId !== customerId && (
+                      {!record && customerId && !存法 && x.customerId !== customerId && (
                         <Button type="link" size="small" style={{ padding: "0 4px", height: "auto" }} disabled={存着} onClick={() => void 挂过来(x.contactId!)}>
                           挂到本{b.customer}
                         </Button>
@@ -363,7 +369,7 @@ export default function ContactForm({
               </Col>
             </>
           )}
-          {!还没归属 && (
+          {!还没归属 && !存法 && (
             <Col span={12}>
               <Form.Item name="isPrimary" label="关键联系人" valuePropName="checked" extra={未归属 && 挑的 === record?.fromCustomerId && record?.wasPrimary == null ? "移出前是否关键未记录，请核对后选择" : undefined}>
                 <Switch checkedChildren="是" unCheckedChildren="否" />
