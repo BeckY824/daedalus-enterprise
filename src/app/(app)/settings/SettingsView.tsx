@@ -23,6 +23,7 @@ import KeymapTab from "./KeymapTab";
 import AppearanceTab from "./AppearanceTab";
 import ProjectSettingsTab, { type 项目设置 } from "./ProjectSettingsTab";
 import OrgTab, { type 组织架构 } from "./OrgTab";
+import RecycleTab, { type 客户回收设置 } from "./RecycleTab";
 import type { BusinessConfig } from "@/lib/business-config";
 import type { AiUsage } from "@/lib/ai-usage";
 
@@ -42,6 +43,7 @@ const 说明表: Record<string, string> = {
   trash: "删了的 30 天内能恢复",
   project: "项目组员角色、成员的上级",
   org: "部门、角色、直属和虚线上级",
+  recycle: "沉睡、待回收、自动进公海的天数和占位词",
 };
 
 export default function SettingsView({
@@ -63,6 +65,7 @@ export default function SettingsView({
   回收站 = false,
   导出记录 = null,
   只个人 = false,
+  客户回收 = null,
 }: {
   users: Row[];
   me: SessionUser;
@@ -99,6 +102,8 @@ export default function SettingsView({
   导出记录?: AuditRow[] | null;
   /** 企业版不是系统管理员（11-03 D3-1）：只摆个人资料、登录与密码、快捷键、外观（回收站副手另有回收站），成员管理、后台设置都不出 */
   只个人?: boolean;
+  /** 企业版项目模式多一栏「客户回收」（客户三态的开关、天数、占位词，C16）；null = 不摆 */
+  客户回收?: 客户回收设置 | null;
 }) {
   const [搜, set搜] = useState("");
   // 当前页签由地址栏 ?tab= 决定：中栏那列设置项就是一组带 tab 的链接，刷新、回退都对得上
@@ -127,6 +132,7 @@ export default function SettingsView({
     ...(isAdmin ? [{ key: "business", label: "业务配置", children: <ConfigProvider componentDisabled={只读}><BusinessSettingsTab value={business} 多人={users.filter((u) => u.active).length > 1} 企业版={企业版} /></ConfigProvider> }] : []),
     ...(组织架构 ? [{ key: "org", label: "组织架构", children: <OrgTab value={组织架构} /> }] : []),
     ...(项目设置 ? [{ key: "project", label: "项目模式", children: <ProjectSettingsTab value={项目设置} 成员={持有成员} /> }] : []),
+    ...(客户回收 ? [{ key: "recycle", label: "客户回收", children: <RecycleTab value={客户回收} /> }] : []),
     ...(导入记录 ? [{ key: "imports", label: "导入记录", children: <ImportsTab /> }] : []),
     ...(企业版导入 ? [{ key: "enterprise", label: "企业版导入", children: <EnterpriseImportTab /> }] : []),
     ...(回收站 ? [{ key: "trash", label: "回收站", children: <TrashTab /> }] : []),
@@ -144,7 +150,7 @@ export default function SettingsView({
    */
   const 分组表: [string, string[]][] = [
     ["个人", ["profile", "password", "keymap", "appearance"]],
-    ["工作区", ["members", "org", "business", "project", "ai", "imports", "exports", "enterprise", "trash", "audit"]],
+    ["工作区", ["members", "org", "business", "project", "recycle", "ai", "imports", "exports", "enterprise", "trash", "audit"]],
   ];
 
   /**

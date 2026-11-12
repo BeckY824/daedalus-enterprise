@@ -1,0 +1,67 @@
+/*
+  客户三态的小标（P-界面-19 ①②⑦，构想页 C2 / C5 / C14 / 交接看板）：客户表格「状态」一列、客户页看板卡片的色点、公海「号码不全」、交接看板超期行。
+  颜色只借全站现有的几档（沉睡灰、待回收橙、暂缓回收中紫、号码不全红），不新增色值；三态关着这些类根本不出现
+*/
+.tri-tag {
+  display: inline-block;
+  vertical-align: middle;
+  max-width: 100%;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--r-tag);
+  font-size: var(--fs-min);
+  line-height: 20px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tri-沉睡 { background: var(--hover); color: var(--text-muted); }
+.tri-待回收 { background: var(--warning-bg); color: var(--warning-text); }
+.tri-暂缓回收中 { background: color-mix(in srgb, var(--cat-violet) 12%, var(--panel)); color: color-mix(in srgb, var(--cat-violet) 75%, var(--text)); }
+.tri-不计时 { background: transparent; color: var(--text-muted); box-shadow: inset 0 0 0 1px var(--line); font-weight: 400; }
+
+/* 看板卡片客户名后的色点（C5） */
+.tri-dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; }
+.tri-dot.tri-沉睡 { background: var(--text-faint); }
+.tri-dot.tri-待回收 { background: var(--warning); }
+.tri-dot.tri-暂缓回收中 { background: var(--cat-violet); }
+.pipe-card-t.tri-has-dot { display: flex; align-items: center; gap: 6px; }
+.pipe-card-t.tri-has-dot > .tri-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 公海客户名后的「号码不全」（C14） */
+.tri-miss {
+  display: inline-block;
+  flex: none;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--r-tag);
+  font-size: var(--fs-min);
+  line-height: 18px;
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  white-space: nowrap;
+}
+.tri-name-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tri-name-row > .fulltext { flex: 0 1 auto; width: auto; }
+
+/* 离职交接看板：挂起超过 15 个工作日或 30 个自然日的行标红（M-公海-49 / 50） */
+.tri-overdue > td { background: var(--danger-bg) !important; }
+.tri-overdue-n { color: var(--danger-text); font-weight: 500; }
+
+/* 待交接卡（离职交接看板） */
+.tri-pending { margin-bottom: 16px; }
+.tri-pending-p.ant-typography { font-size: var(--fs-note); margin-top: 0; }
+/* 设置 → 客户回收 */
+.tri-recycle { display: grid; gap: 16px; }
+.tri-muted { color: var(--text-muted); }
+.tri-note { color: var(--text-muted); margin-bottom: 12px; }
+.tri-note-top { color: var(--text-muted); margin-top: 12px; }
+.tri-set { margin-bottom: 12px; }
+.tri-set-t { font-weight: 500; margin-bottom: 8px; }
+.tri-set-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+.tri-num.ant-input-number { width: 96px; }
+.tri-words { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.tri-word.ant-tag { margin-inline-end: 0; max-width: 240px; }
+.tri-word-t { display: inline-block; vertical-align: bottom; max-width: 200px; }
+.tri-word-add { max-width: 320px; width: 100%; }

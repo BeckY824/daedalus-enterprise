@@ -19,12 +19,14 @@ type 人 = { id: string; name: string };
  * 每行选接手人点「交」，或卡顶「全部交给」一个人（线索、渠道一起走）。接手人候选同公海分配（B2-7）。
  * 名字、客户名都可能很长：表格固定列宽、单元格省略号，1024 宽也不横向溢出
  */
-export default function HandoverView({ 人们, 候选, 项目模式, 系统管理员, 下属 }: {
+export default function HandoverView({ 人们, 候选, 项目模式, 系统管理员, 下属, 三态开 = false }: {
   人们: 离职待交接[];
   候选: 人[];
   项目模式: boolean;
   系统管理员: boolean;
   下属: 人[];
+  /** 客户三态开着：上面多一张「待交接」表（M-公海-52）；关着不出，页面和原来一样 */
+  三态开?: boolean;
 }) {
   const b = useBusiness();
   return (
@@ -34,6 +36,7 @@ export default function HandoverView({ 人们, 候选, 项目模式, 系统管�
         subtitle={`已离职成员名下还没交走的${b.customer}${项目模式 ? "和项目" : ""}：${系统管理员 ? "系统管理员看全部" : "你是他们的直属上级"}，给每条选接手人，或一键全部交给一个人`}
       />
       {下属.length > 0 && <OffboardReport 下属={下属} />}
+      {三态开 && <TriPending 人们={人们} />}
       {人们.length ? (
         <Space orientation="vertical" size={16} style={{ width: "100%" }}>
           {人们.map((p) => <PersonCard key={p.id} p={p} 候选={候选} 项目模式={项目模式} />)}
@@ -229,6 +232,77 @@ function OffboardReport({ 下属 }: { 下属: 人[] }) {
           办离职
         </Button>
       </div>
+    </Card>
+  );
+}
+
+type 待交接行 = {
+  id: string; name: string; 挂起天数: number; 挂起工作日: number; 超期: boolean; 原负责人: string; 原直属上级: string | null;
+  /** 来源：停用账号名下被三态标了待交接 / 离职交接在等接手人确认；两种都占的只列一行 */
+  状态: string; 状态说明: string;
+};
+
+/** 一位客户两种来源合成一行：挂起按先挂起的那个算（天数大的），超期任一超了就算 */
+function 成行(p: 离职待交接, c: 离职待交接["客户"][number]): 待交接行 | null {
+  const 标 = c.待交接日 && c.挂起天数 !== undefined ? { 天: c.挂起天数, 工作日: c.挂起工作日 ?? 0, 超期: !!c.超期 } : null;
+  const 挂 = c.交接中 ? { 天: c.交接中.挂起天数, 工作日: c.交接中.挂起工作日, 超期: c.交接中.超期 } : null;
+  if (!标 && !挂) return null;
+  const 长 = 标 && 挂 ? (挂.天 >= 标.天 ? 挂 : 标) : (挂 ?? 标)!;
+  const 等谁 = c.交接中 ? `交接中 · 等${c.交接中.接手人 ?? "接手人"}确认` : "";
+  return {
+    id: c.id, name: c.name, 挂起天数: 长.天, 挂起工作日: 长.工作日, 超期: !!(标?.超期 || 挂?.超期), 原负责人: p.name, 原直属上级: p.上级,
+    状态: 等谁 || "停用待交接",
+    状态说明: 标 && 挂
+      ? `离职交接 ${c.交接中!.起日} 发起，在等接手人确认；此前 ${c.待交接日} 已被标待交接。挂起天数按先挂起的算`
+      : 挂 ? `离职交接 ${c.交接中!.起日} 发起，在等接手人确认` : `账号已停用，${c.待交接日} 到了回收节点被标待交接`,
+  };
+}
+
+/**
+ * 「待交接」（M-公海-49 / 50 / 52：客户定的三态上线前置）：两种来源合成一张表——
+ *   停用账号名下、被三态夜扫标了「待交接」的客户（T12）；离职交接还在等接手人确认的客户（T6，挂起天数从发起那天算）。
+ * 四列必须有：待交接（客户）、挂起天数、原负责人、原直属上级；另加一列状态区分来源。挂起超过 15 个工作日或 30 个自然日（先到者）的行标红。
+ * 只读：交给谁照旧在下面各人的卡片里交（用户 11-12 定）。久挂的排前面；一个都没有就不摆
+ */
+function TriPending({ 人们 }: { 人们: 离职待交接[] }) {
+  const b = useBusiness();
+  const 行们: 待交接行[] = 人们
+    .flatMap((p) => p.客户.flatMap((c) => { const r = 成行(p, c); return r ? [r] : []; }))
+    .sort((a, b2) => b2.挂起天数 - a.挂起天数 || (a.name < b2.name ? -1 : a.name > b2.name ? 1 : 0));
+  if (!行们.length) return null;
+  const 超期数 = 行们.filter((r) => r.超期).length;
+  const 列: ColumnsType<待交接行> = [
+    { title: "待交接", dataIndex: "name", ellipsis: true, render: (v: string, r) => <Link href={`/customers/${r.id}`} title={v} style={省略}>{v}</Link> },
+    { title: "状态", dataIndex: "状态", width: "18%", ellipsis: true, render: (v: string, r) => <span title={r.状态说明} style={省略}>{v}</span> },
+    {
+      // 超期的行除了底色，格子里也写「超期」（不靠颜色认），放最前免得窄屏被省略掉
+      title: "挂起天数", key: "days", width: 204, ellipsis: true,
+      render: (_: unknown, r) => {
+        const 字 = `${r.超期 ? "超期 · " : ""}${r.挂起天数} 天 · ${r.挂起工作日} 个工作日`;
+        return (
+          <span className={r.超期 ? "tri-overdue-n" : undefined} style={省略} title={r.超期 ? `${字}：已超过 15 个工作日或 30 个自然日（哪条先到算哪条）` : 字}>
+            {字}
+          </span>
+        );
+      },
+    },
+    { title: "原负责人", dataIndex: "原负责人", width: "16%", ellipsis: true, render: (v: string) => <span title={`${v}（已停用）`} style={省略}>{v}（已停用）</span> },
+    { title: "原直属上级", dataIndex: "原直属上级", width: "16%", ellipsis: true, render: (v: string | null) => <span title={v ?? undefined} style={省略}>{v ?? 空值符}</span> },
+  ];
+  return (
+    <Card size="small" className="tri-pending" title={`待交接（${行们.length}）${超期数 ? ` · 超期 ${超期数}` : ""}`}>
+      <Typography.Paragraph type="secondary" className="tri-pending-p">
+        已停用账号名下、到了回收节点被标「待交接」的{b.customer}，和离职交接还在等接手人确认的{b.customer}。挂起超过 15 个工作日或 30 个自然日（哪条先到算哪条）的标红；交给谁在下面各人的卡片里交。
+      </Typography.Paragraph>
+      <Table<待交接行>
+        size="small"
+        rowKey="id"
+        tableLayout="fixed"
+        columns={列}
+        dataSource={行们}
+        rowClassName={(r) => (r.超期 ? "tri-overdue" : "")}
+        pagination={行们.length > 20 ? { pageSize: 20, size: "small", showSizeChanger: false } : false}
+      />
     </Card>
   );
 }

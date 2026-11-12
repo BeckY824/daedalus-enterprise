@@ -14,6 +14,8 @@ import { 读团队 } from "@/lib/sync/client";
 import { 部门里的人 } from "@/lib/sync/dept-policy";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 创建时间段 } from "@/lib/custom-date-range";
+import { 三态筛选条件, 三态界面开着 } from "@/lib/enterprise/tri-state-list";
+import { 是三态筛选值 } from "@/lib/enterprise/tri-state-label";
 
 /**
  * 客户列表的查询条件、取哪些字段、怎么变成一行——列表页和「导出」共用这一份（2026-10-02 排查）。
@@ -61,6 +63,8 @@ export type 客户条件 = {
    */
   phase?: string;
   node?: string;
+  /** 「全部回收状态」（客户三态开着才认，P-界面-19 ①，构想页 C2）：沉睡 / 待回收 / 暂缓回收中 / 不计时，见 lib/enterprise/tri-state-list.ts 三态筛选条件 */
+  triState?: string;
 };
 
 /** 等级筛选：A–D 按字母筛；「未分级」= 没有档案行或等级空着的。别的值不筛（地址栏手改的） */
@@ -157,8 +161,10 @@ export async function 客户筛选条件(
   const 建于 = 创建时间段(sp.createdFrom, sp.createdTo);
   const 号码 = await 客户号码条件(sp.phone, userId);
   const 按项目 = await 项目筛选条件(sp, userId);
+  // 没带 triState 不读规则（三态关着、没筛时不多一条查询）
+  const 三态 = sp.triState ? await 三态筛选条件(sp.triState) : null;
   return {
-    AND: [keyword, ...(按项目 ? [按项目] : []), ...(本批 ? [客户id集合(本批.map(r => r.customerId))] : []), ...(等级 ? [等级] : []), ...(部门 ? [部门] : []), ...(建于 ? [{ createdAt: 建于 }] : []), ...(号码 ? [号码] : []), ...(sp.channelId && 企业版() ? [{ channelId: sp.channelId }] : [])],
+    AND: [keyword, ...(按项目 ? [按项目] : []), ...(三态 ? [三态] : []), ...(本批 ? [客户id集合(本批.map(r => r.customerId))] : []), ...(等级 ? [等级] : []), ...(部门 ? [部门] : []), ...(建于 ? [{ createdAt: 建于 }] : []), ...(号码 ? [号码] : []), ...(sp.channelId && 企业版() ? [{ channelId: sp.channelId }] : [])],
     ...(sp.grade ? { grade: sp.grade } : {}),
     ...(sp.followStatus ? { followStatus: sp.followStatus } : {}),
     ...(sp.decisionStatus ? { decisionStatus: sp.decisionStatus } : {}),
@@ -269,6 +275,8 @@ const 企业版才筛: readonly string[] = ["custStatus", "customerType", "archi
  * 接不住的组合（等级、部门、批次、国家来源、本月、直推、阶段进程）返回 null，调用方走老路
  */
 export async function 关键词分页(sp: 客户条件, 请求页: number, pageSize: number): Promise<{ total: number; page: number; ids: string[] } | null> {
+  // 回收状态筛选只在三态开着、值认得出时才算数（关着地址栏带了 triState 照样走这条快路，11-12）
+  if (sp.triState && 是三态筛选值(sp.triState) && (await 三态界面开着())) return null;
   if (sp.phase || sp.node || sp.batch || sp.level || sp.dept || sp.createdWithin || sp.directOf || sp.country || sp.source || 创建时间段(sp.createdFrom, sp.createdTo) || 搜索词(sp.phone)) return null;
   const kw = await 客户关键词SQL(sp.keyword);
   if (!kw) return null;
