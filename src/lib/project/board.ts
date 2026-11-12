@@ -109,17 +109,32 @@ export function 卡片小字(r: 项目行, 字典?: 阶段字典): string {
  */
 export type 看板合计组 = { phase: string; node: string; result: string | null; currency: string; amount: number; 数: number };
 
+function 列定义们(字典?: 阶段字典, 只看阶段?: string): 列定义[] {
+  return 字典?.名 === "企业版" ? 进程列们(字典, 只看阶段) : 看板列们.map((c) => ({ 列: c, 名: c, 色: c, 空态: 五列空态[c] }));
+}
+
+/** 一行（或库里按 阶段 / 进程 / 结局 分的一组）落在看板哪一列：企业版按进程列，团队版五列。列键 = 看板一列.列 */
+export function 看板落列(字典?: 阶段字典): (r: Pick<项目行, "phase" | "node" | "result">) => string {
+  return 字典?.名 === "企业版" ? (r) => 进程列(r, 字典) : (r) => 看板列(r);
+}
+
+/** 这一屏看板有哪几列（列键，按摆的顺序）：「再看」动作按它做白名单 */
+export function 看板列键们(字典?: 阶段字典, 只看阶段?: string): string[] {
+  return 列定义们(字典, 只看阶段).map((c) => c.列);
+}
+
 /**
  * 每列都在（空的也摆出来，列头写 0），列里按最近改过的排前。
  * 团队版五列（三个阶段 + 成功交付 + 没成）；传了企业版字典按进程分列（进程列们）。
- * 给了 全部（服务端分页时）：列头的数和金额按它算，行只是这一页的卡片；不给 = 按传进来的行算（行就是全部）
+ * 给了 全部（服务端分页时）：列头的数和金额按它算，行只是这一页的卡片；不给 = 按传进来的行算（行就是全部）。
+ * 给了 每列（客户页看板每列各自取数，list.ts 读项目列表 的 每列）：每列的卡片就是它，列底「再看」接着往后取
  */
-export function 看板分列(行: 项目行[], 字典?: 阶段字典, 只看阶段?: string, 全部?: 看板合计组[]): 看板一列[] {
-  const 企 = 字典?.名 === "企业版";
-  const 列们: 列定义[] = 企 ? 进程列们(字典!, 只看阶段) : 看板列们.map((c) => ({ 列: c, 名: c, 色: c, 空态: 五列空态[c] }));
-  const 落 = (r: Pick<项目行, "phase" | "node" | "result">) => (企 ? 进程列(r, 字典!) : 看板列(r));
+export function 看板分列(行: 项目行[], 字典?: 阶段字典, 只看阶段?: string, 全部?: 看板合计组[], 每列?: Record<string, 项目行[]>): 看板一列[] {
+  const 列们 = 列定义们(字典, 只看阶段);
+  const 落 = 看板落列(字典);
   return 列们.map((定) => {
-    const 这列 = 行.filter((r) => 落(r) === 定.列).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    // 每列各自取数（客户页看板，11-12）：服务端已按当前排序给了这一列的前几个，照给的序摆，不再按最近改过重排
+    const 这列 = 每列 ? (每列[定.列] ?? []) : 行.filter((r) => 落(r) === 定.列).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     if (!全部) return { ...定, 数: 这列.length, 合计: 按币种合计(这列, (r) => r.amount, (r) => r.currency), 行: 这列 };
     const 组 = 全部.filter((g) => 落(g) === 定.列);
     return { ...定, 数: 组.reduce((n, g) => n + g.数, 0), 合计: 按币种合计(组, (g) => g.amount, (g) => g.currency), 行: 这列 };

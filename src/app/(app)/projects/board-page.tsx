@@ -11,9 +11,9 @@ import { 读组织 } from "@/lib/enterprise/org";
 import { 能管公海 } from "@/lib/enterprise/permissions";
 import { 能分配 } from "@/lib/enterprise/lead-assign";
 import { 离职交接入口 } from "@/lib/enterprise/offboard-handover";
-import { 生效组织规则 } from "@/lib/project/org-rules-store";
-import { 三态标们 } from "@/lib/enterprise/tri-state-list";
+import { 看板三态点 } from "@/lib/project/board-tri-dots";
 import ProjectsView from "./ProjectsView";
+import { 项目页筛选 } from "./page-query";
 
 /** 项目页（看板 / 列表）认的地址栏参数 */
 export type 项目页参数 = { keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string; phase?: string; node?: string; creator?: string; channelId?: string; level?: string; createdFrom?: string; createdTo?: string; phone?: string; page?: string; pageSize?: string; sort?: string; q?: string; hl?: string };
@@ -26,27 +26,24 @@ export type 项目页参数 = { keyword?: string; ownerId?: string; pool?: strin
  * 落在：整页画在别的地址上（X-107：市场角色的客户页就是这一整页，筛选、翻页留在 /customers，页头叫客户）
  */
 export async function 项目页(me: SessionUser, 原: 项目页参数, 客户页?: { 客户: Prisma.CustomerWhereInput | null }, 落在?: { 基址: string; 标题: string; 换回客户列表?: boolean }) {
-  // q / hl：进不了详情转过来的（projects/[id]/page.tsx 市场挡，客户 11-05）——q 当搜索词预填，hl 是要指出的那一行。
-  // 搜索框照旧认 keyword，q 只在没带 keyword 时顶上；之后再搜就只剩 keyword，hl 也跟着没了
-  // 客户：读项目列表 的内部键（客户页看板视图服务端自己给的客户条件），地址栏手写的 ?客户=… 一律剔掉，不顶掉也不进 Prisma
-  const { q, hl, 客户: _地址栏的客户, ...其余 } = 原 as 项目页参数 & { 客户?: unknown };
-  const sp = { ...其余, keyword: 其余.keyword ?? q };
+  // 地址栏 → 条件：和看板列底「再看」同一份（page-query.ts）
+  const { sp, hl } = 项目页筛选(原);
   // 企业版：项目公海统一在 /pool（P7），?pool=1 的老链接（含页签、带 recycled 收回次数筛的）转过去，关键词带上
   if (企业版() && sp.pool === "1") redirect(sp.keyword ? `/pool?${new URLSearchParams({ keyword: sp.keyword })}` : "/pool");
-  // 先读列表（里面先跑超时回收），再取「我的卡点」，看到的是收完的样子
-  const d = await 读项目列表(me, 客户页 ? { ...sp, 客户: 客户页.客户 } : sp);
-  const 卡点们 = 企业版() ? await 我的卡点(me) : [];
   // 企业版阶段筛到「线索」：分配入口也摆在项目列表（11-01 会议 §5），谁能分照新线索页（leads/page.tsx）同一个口径
   const 筛线索 = 企业版() && sp.phase === "线索";
   const 线索分配开着 = 筛线索 && (await 规则开着("线索分配"));
   const 能自动分配 = 线索分配开着 && 能分配(await 读组织(), me);
   /*
-    客户页看板（C5，P-界面-19 ②）：客户三态开着时，沉睡 / 待回收 / 暂缓回收中的客户在卡片客户名后点一个色点。
-    这一页卡片上看得到的客户一次取钟（同客户表格「回收状态」一列）；三态关着、不是客户页不取。规则在设置缓存里读
+    看板每列各自取数（11-12 用户：「如果有的话为什么不安排在首页？」→「按建议改，每列各自取数」）：每列按最近改过各取前 20，
+    列底「再看 20 个」接着取（客户页 customers/board-actions.ts，别处 projects/board-actions.ts）。
+    客户页看板服务端知道画的是看板：整页共用的那一页只在能「分配」时取（分配会临时切到项目列表，ProjectsView 去分配）。
+    /projects、市场角色「我分出去的」的看板 / 列表是浏览器里切的，服务端不知道画哪个：两份都取，列表视图照旧
   */
-  const 三态规则 = 客户页 && 企业版() ? (await 生效组织规则()).三态 : null;
-  // 卡片上看得到客户名的、客户不在客户公海的；同一位客户几张卡只算一次。负责人是市场成员的在取钟那句里排掉（不点）
-  const 看得到的 = 三态规则?.开 ? [...new Set(d.行.filter((r) => r.customerName != null && !r.客户在公海).map((r) => r.customerId))] : [];
-  const 三态点 = 三态规则?.开 ? await 三态标们(看得到的.map((id) => ({ id, 在公海: false })), 三态规则) : undefined;
-  return <ProjectsView 三态点={三态点} {...d} 列={看板分列(d.行, 企业版() ? 字典of(true, d.出口叫法) : undefined, sp.phase, d.看板合计)} 卡点们={卡点们.map(卡点给界面)} 线索分配开着={线索分配开着} 能自动分配={能自动分配} 能分公海客户项目={能自动分配 && 能管公海(me, await 读组织())} 待交接={企业版() && !客户页 ? await 离职交接入口(me) : null} 高亮={typeof hl === "string" && hl ? hl : undefined} 客户页={!!客户页} 基址={落在?.基址} 标题={落在?.标题} 换回客户列表={!!落在?.换回客户列表} />;
+  // 先读列表（里面先跑超时回收），再取「我的卡点」，看到的是收完的样子
+  const d = await 读项目列表(me, 客户页 ? { ...sp, 客户: 客户页.客户 } : sp, undefined, { 每列: true, 要列表页: !客户页 || 能自动分配 });
+  const 卡点们 = 企业版() ? await 我的卡点(me) : [];
+  // 客户页看板（C5，P-界面-19 ②）：卡片客户名后的三态色点，这一屏看得到的卡片（每列的 + 列表页的）一次取钟；三态关着、不是客户页不取
+  const 三态点 = 客户页 ? await 看板三态点([...d.行, ...Object.values(d.每列 ?? {}).flat()]) : undefined;
+  return <ProjectsView 三态点={三态点} {...d} 列={看板分列(d.行, 企业版() ? 字典of(true, d.出口叫法) : undefined, sp.phase, d.看板合计, d.每列)} 卡点们={卡点们.map(卡点给界面)} 线索分配开着={线索分配开着} 能自动分配={能自动分配} 能分公海客户项目={能自动分配 && 能管公海(me, await 读组织())} 待交接={企业版() && !客户页 ? await 离职交接入口(me) : null} 高亮={typeof hl === "string" && hl ? hl : undefined} 客户页={!!客户页} 基址={落在?.基址} 标题={落在?.标题} 换回客户列表={!!落在?.换回客户列表} />;
 }

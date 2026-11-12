@@ -92,6 +92,13 @@ const 客户页看板查询上限 = 52;
  * 上限 = 关着的上限 + 2
  */
 const 客户列表三态开着上限 = 客户列表查询上限 + 2;
+/**
+ * /projects（项目页，看板 / 列表在浏览器里切，服务端两份都取）：改成看板每列各自取数（11-12）以后——
+ * 列表这一页先只取 id，再和看板每列的卡片一起一句 include（最近留痕另一句 groupBy，替掉原来 include 里的那一句）：比改前 23 条多 1 条 = 24；
+ * 每有一列超过 20 个，多 1 句只取这一列前 20 的 id。按负责人排 25 → 26（同上多 1 条；这一页落在几位名下都最多 3 句，不随人数涨）
+ */
+const 项目页查询数 = 24;
+const 项目页按负责人查询数 = 26;
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 const 造人 = async (key: string, bizRole: string, managerId: string | null = null): Promise<人> => {
@@ -209,38 +216,76 @@ describe("「当前节点」「项目数」两列（11-12 第 3 批）", () => {
 
 describe("客户页「看板」视图（11-12 第 3 批 C17 / C18：页头、筛选行照客户列表，表格换成按节点分列的项目看板）", () => {
   const 明细 = (句: string[]) => [...句.reduce((m, q) => { const k = q.replace(/\s+/g, " ").replace(/`main`\./g, "").slice(0, 140); return m.set(k, (m.get(k) ?? 0) + 1); }, new Map<string, number>())].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n}\t${k}`).join("\n");
-  type 看板参数 = { 客户页?: boolean; 行: { customerName: string | null; name: string; 只看进度?: boolean }[]; 总数: number };
+  type 卡 = { customerName: string | null; name: string; 只看进度?: boolean };
+  type 看板参数 = { 客户页?: boolean; 行: 卡[]; 列: { 列: string; 数: number; 行: 卡[] }[]; 每列?: Record<string, 卡[]>; 总数: number };
   const 看板of = (el: unknown) => ((参数(el) as unknown as { 看板体?: { props: 看板参数 } }).看板体)?.props;
+  /** 客户页看板每列各自取数（11-12）：卡片在各列里（列.行），整页共用的列表页（行）不取 */
+  const 卡们 = (p: 看板参数) => p.列.flatMap((c) => c.行);
   it("记着看板：客户页照画（页头、筛选行），看板体是客户页模式的项目看板；不取这一页客户行和两列；条数不超过上限、不随客户和项目多少变", async () => {
     mocks.看法 = "board";
     const 看板 = await 量();
     const p = 看板of(看板.el)!;
     expect(p.客户页).toBe(true);
-    expect(p.行.length).toBeGreaterThan(0);
+    expect(卡们(p).length).toBeGreaterThan(0);
+    expect(p.每列).toBeDefined();
+    expect(p.行).toEqual([]);
     expect(参数(看板.el).rows).toEqual([]);
     expect(参数(看板.el).项目概况).toBeUndefined();
     expect(看板.句.some((q) => /FROM `Customer` .*ORDER BY `Customer`\.`createdAt`/.test(q.replace(/`main`\./g, "")))).toBe(false);
     if (process.env.CUST_BOARD_QUERY_DUMP) (await import("node:fs")).writeFileSync(process.env.CUST_BOARD_QUERY_DUMP, `客户页看板 ${看板.句.length} 条\n\n${明细(看板.句)}\n`);
     expect(看板.句.length).toBeLessThanOrEqual(客户页看板查询上限);
-    // 多 12 位客户、每位 2 个项目：条数一样（不按行查）
-    for (let i = 0; i < 12; i++) {
-      const c = await prisma.customer.create({ data: { name: `加的客户${i}`, phone: `1390000020${String(i).padStart(2, "0")}`, salesOwnerId: 甲.id } });
-      for (let j = 0; j < 2; j++) await prisma.project.create({ data: { name: `加的项目${i}-${j}`, customerId: c.id, ownerId: 甲.id, creatorId: 甲.id, phase: "商机", node: "方案敲定" } });
-    }
-    expect((await 量()).句.length).toBe(看板.句.length);
+    // 多 12 位客户、每位 2 个项目（「方案敲定」一列从 6 个变 30 个，超过每列 20）：
+    // 首屏 = 1 句 include 取卡片 + 超过 20 个的列每列 1 句只取 id（list.ts 读项目列表 看板每列），所以只多这一列的 1 句，不按行查
+    const 加 = async (起: number) => {
+      for (let i = 起; i < 起 + 12; i++) {
+        const c = await prisma.customer.create({ data: { name: `加的客户${i}`, phone: `1390000020${String(i).padStart(2, "0")}`, salesOwnerId: 甲.id } });
+        for (let j = 0; j < 2; j++) await prisma.project.create({ data: { name: `加的项目${i}-${j}`, customerId: c.id, ownerId: 甲.id, creatorId: 甲.id, phase: "商机", node: "方案敲定" } });
+      }
+    };
+    await 加(0);
+    const 大一列 = await 量();
+    expect(大一列.句.length).toBe(看板.句.length + 1);
+    expect(看板of(大一列.el)!.列.find((c) => c.列 === "方案敲定")).toMatchObject({ 数: 30 });
+    expect(看板of(大一列.el)!.列.find((c) => c.列 === "方案敲定")!.行).toHaveLength(20);
+    // 再多 24 个：条数不再涨（这一列已经是一句 take 20）
+    await 加(12);
+    expect((await 量()).句.length).toBe(大一列.句.length);
+    expect(大一列.句.length).toBeLessThanOrEqual(客户页看板查询上限);
+  });
+
+  it("/projects 首屏（看板每列 + 列表这一页）：条数钉住；一列超过 20 个只多这一列的 1 句，再多项目不涨", async () => {
+    const 项目页 = (sp: Record<string, string> = {}) => 量(sp, 甲, ProjectsPage as never);
+    expect((await 项目页()).句.length).toBe(项目页查询数);
+    expect((await 项目页({ sort: "owner-asc" })).句.length).toBe(项目页按负责人查询数);
+    const 加 = async (起: number) => {
+      for (let i = 起; i < 起 + 12; i++) {
+        const c = await prisma.customer.create({ data: { name: `项目页加的${i}`, phone: `1390000060${String(i).padStart(2, "0")}`, salesOwnerId: 甲.id } });
+        for (let j = 0; j < 2; j++) await prisma.project.create({ data: { name: `项目页加的${i}-${j}`, customerId: c.id, ownerId: 甲.id, creatorId: 甲.id, phase: "商机", node: "方案敲定" } });
+      }
+    };
+    await 加(0);
+    const 大 = await 项目页();
+    expect(大.句.length).toBe(项目页查询数 + 1);
+    const 列 = (大.el as { props: { 列: { 列: string; 数: number; 行: unknown[] }[]; 行: unknown[] } }).props;
+    expect(列.列.find((c) => c.列 === "方案敲定")).toMatchObject({ 数: 30 });
+    expect(列.列.find((c) => c.列 === "方案敲定")!.行).toHaveLength(20);
+    expect(列.行).toHaveLength(20);
+    await 加(12);
+    expect((await 项目页()).句.length).toBe(大.句.length);
+    expect((await 项目页({ sort: "owner-asc" })).句.length).toBe(项目页按负责人查询数 + 1);
   });
 
   it("同一行筛选（C18）：先按客户筛、再出这些客户的项目卡；阶段 / 进程按项目筛；只按页签 = 不收窄", async () => {
     mocks.看法 = "board";
     const 全 = 看板of((await 量()).el)!;
-    expect(new Set(全.行.map((r) => r.customerName))).toEqual(new Set(["列表客户1", "列表客户2", "列表客户3", "列表客户5"]));
+    expect(new Set(卡们(全).map((r) => r.customerName))).toEqual(new Set(["列表客户1", "列表客户2", "列表客户3", "列表客户5"]));
     const 搜 = 看板of((await 量({ keyword: "列表客户3" })).el)!;
-    expect(new Set(搜.行.map((r) => r.customerName))).toEqual(new Set(["列表客户3"]));
+    expect(new Set(卡们(搜).map((r) => r.customerName))).toEqual(new Set(["列表客户3"]));
     await prisma.project.updateMany({ where: { name: "项目3-1" }, data: { phase: "订单", node: "签约" } });
     const 阶 = 看板of((await 量({ keyword: "列表客户3", phase: "订单" })).el)!;
-    expect(阶.行.map((r) => r.name)).toEqual(["项目3-1"]);
+    expect(卡们(阶).map((r) => r.name)).toEqual(["项目3-1"]);
     const 没对上 = 看板of((await 量({ keyword: "没有这位" })).el)!;
-    expect(没对上.行).toEqual([]);
+    expect(卡们(没对上)).toEqual([]);
   });
 
   it("子集（导入这一批）、记着列表、没记都画列表（没有看板体）", async () => {
@@ -315,8 +360,9 @@ describe("客户页「看板」视图（11-12 第 3 批 C17 / C18：页头、筛
 
   it("地址栏手写 ?客户=…（内部键）：客户页看板、/projects 都不报错、结果和不带一样", async () => {
     mocks.看法 = "board";
-    const 名们 = (el: unknown) => 看板of(el)!.行.map((r) => r.name).sort();
+    const 名们 = (el: unknown) => 卡们(看板of(el)!).map((r) => r.name).sort();
     const 原 = 名们((await 量()).el);
+    expect(原.length).toBeGreaterThan(0);
     expect(名们((await 量({ 客户: "x" } as Record<string, string>)).el)).toEqual(原);
     const 项目名 = (el: unknown) => (el as { props: { 行: { name: string }[] } }).props.行.map((r) => r.name).sort();
     const 项目原 = 项目名((await 量({}, 甲, ProjectsPage as never)).el);
