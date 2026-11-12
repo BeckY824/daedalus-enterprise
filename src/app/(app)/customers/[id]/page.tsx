@@ -10,6 +10,8 @@ import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
 import { requireUser } from "@/lib/auth";
 import CustomerDetail from "./CustomerDetail";
+import RestrictedCustomerDetail from "./RestrictedCustomerDetail";
+import { 读受限客户详情 } from "./restricted";
 import { 读项目区 } from "./project-zone";
 import { 项目详情字典们 } from "../../projects/[id]/load";
 import SameNumberBanner from "../../projects/[id]/SameNumberBanner";
@@ -88,7 +90,12 @@ export default async function CustomerDetailPage({
     },
   });
 
-  if (!customer) notFound();
+  if (!customer) {
+    // 只负责项目的人（用户 11-12 定）：客户看不到、名下有自己负责的项目 = 受限详情（只读卡 + 只有自己的项目）；别的照旧 404
+    const 受限 = 只项目 ? await 读受限客户详情(me, id, sp.project ?? null) : null;
+    if (!受限) notFound();
+    return <RestrictedCustomerDetail key={id} 数据={受限} />;
+  }
   // 叫你的那条已经做完 / 删了：照旧摆最早那条没做完的
   if (要看的计划 && customer.plans.length === 0) {
     customer.plans = await prisma.followPlan.findMany({ where: { customerId: id, done: false }, orderBy: [{ plannedAt: "asc" }, { id: "asc" }] });
