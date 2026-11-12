@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useCardName } from "./card-names";
 import { useRouter } from "next/navigation";
 import { App, Button, Card, InputNumber, Select, Space } from "antd";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
@@ -173,6 +174,7 @@ export function ProjectAttachmentsCard({ projectId, 起始个数, 只读, 沟通
  * 只加、删：记错了删掉重记。能改 = 能改这个项目；字段权限「商机金额」锁了的，服务端拦并回一句人话
  */
 export function ProjectPaymentsCard({ projectId, 回款们, 能改, 默认: 默认币, 合同 }: { projectId: string; 回款们: 回款[]; 能改: boolean; 默认?: string; 合同?: 应收依据 | null }) {
+  const 卡名 = useCardName();
   const { message } = App.useApp();
   const router = useRouter();
   const [日, set日] = useState<string | null>(dayjs().format("YYYY-MM-DD"));
@@ -203,7 +205,7 @@ export function ProjectPaymentsCard({ projectId, 回款们, 能改, 默认: 默�
   }
 
   return (
-    <Card title={`回款（${回款们.length}）`}>
+    <Card title={`${卡名("回款")}（${回款们.length}）`}>
       <div style={{ marginBottom: 8 }}>当前回款：<b style={{ overflowWrap: "anywhere" }}>{合计}</b></div>
       {回款们.map((x) => (
         <div key={x.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "4px 0", borderTop: "1px solid var(--line-soft)" }}>

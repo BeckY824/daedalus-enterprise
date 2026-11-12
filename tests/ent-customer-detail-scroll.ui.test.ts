@@ -62,7 +62,7 @@ async function open(width: number, height = 560, fab = false, 老 = false, 没�
 }
 const 量 = (page: import("playwright").Page) => page.evaluate(() => {
   const q = (s: string) => document.querySelector(s) as HTMLElement;
-  const 格 = q(".rec-page > .rec"), 资料 = q(".rec > .rec-rail:first-child"), 沟通 = q(".rec > .rec-col"), 右 = q(".rec > .rec-right") ?? 沟通, 待办 = [...document.querySelectorAll<HTMLElement>(".rec > .rec-col > .proj-fold")].find(e => e.querySelector('.proj-fold-btn[aria-label="收起待办"], .split-caret[aria-label="收起待办"]')) ?? null,
+  const 格 = q(".rec-page > .rec"), 资料 = q(".rec > .rec-rail:first-child"), 沟通 = q(".rec > .rec-col"), 右 = q(".rec > .rec-right") ?? 沟通, 待办 = [...document.querySelectorAll<HTMLElement>(".rec > .rec-col > .proj-fold")].find(e => e.querySelector('.proj-fold-btn[aria-label="收起所有待办"], .split-caret[aria-label="收起所有待办"]')) ?? null,
     // 项目模式（11-01 起）：沟通记录、待办各是一张能收起的卡，沟通记录在卡身里滚；非项目模式还是中栏里的时间线
     记录 = (document.querySelector(".rec > .rec-col .rec-tl")?.closest(".proj-mod-body") as HTMLElement | null) ?? q(".rec > .rec-col > .rec-tl"),
     记录块 = (记录?.closest(".proj-fold") as HTMLElement | null) ?? 记录;
@@ -310,7 +310,7 @@ for (const [w, h] of [[1366, 768], [1280, 720], [1440, 900]] as const) {
         const 栏 = document.querySelector(".rec > .rec-col") as HTMLElement;
         const 列表 = 栏.querySelector(".proj-mod-body > .rec-tl") as HTMLElement;
         const 沟通卡 = 列表.closest(".ant-card") as HTMLElement;
-        const 待办 = [...栏.querySelectorAll<HTMLElement>(".proj-fold")].find(e => e.querySelector('.proj-fold-btn[aria-label="收起待办"], .split-caret[aria-label="收起待办"]'))!;
+        const 待办 = [...栏.querySelectorAll<HTMLElement>(".proj-fold")].find(e => e.querySelector('.proj-fold-btn[aria-label="收起所有待办"], .split-caret[aria-label="收起所有待办"]'))!;
         const 待办头 = (待办.querySelector(".ant-card-head") ?? 待办) as HTMLElement;
         const 栏框 = 栏.getBoundingClientRect();
         return {

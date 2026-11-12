@@ -196,7 +196,7 @@ it("企业版项目模式页头（U-客户-03 → 11-12 用户「右上角只保
     const 卡上钮 = await page.locator("button").evaluateAll((bs: HTMLElement[]) => bs.filter(b => !b.closest(".rec-head")).map(b => (b.getAttribute("aria-label") ?? "") + b.innerText.replace(/\s+/g, "")));
     // 11-12 起联系人卡头有一颗「＋」（aria-label 新增联系人），不算这里去掉的入口
     expect(卡上钮.filter(t => /编辑全部|添加联系人|管理联系人|删除客户|新开项目/.test(t))).toEqual([]);
-    expect(await page.locator('.rec > .rec-col > .proj-fold:has(.split-caret[aria-label="收起待办"]) > .rec-mod > .ant-card-head .ant-card-extra').getByRole("button", { name: /新建待办/ }).count()).toBe(1);
+    expect(await page.locator('.rec > .rec-col > .proj-fold:has(.split-caret[aria-label="收起所有待办"]) > .rec-mod > .ant-card-head .ant-card-extra').getByRole("button", { name: /新建待办/ }).count()).toBe(1);
     // 按钮和客户名同一行、靠右（定稿 UI：客户名一行 + 右端两颗）
     const [头, 名, 排] = await Promise.all([page.locator(".rec-head").boundingBox(), page.locator(".rec-head-id").boundingBox(), page.locator(".rec-head-acts").boundingBox()]);
     expect(排!.y).toBeLessThan(名!.y + 名!.height);

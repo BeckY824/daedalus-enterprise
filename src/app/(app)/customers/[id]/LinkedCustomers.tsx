@@ -14,13 +14,20 @@ import { 关联说明上限 } from "@/lib/enterprise/customer-v2";
 import type { 关联一行 } from "@/lib/enterprise/customer-v2-db";
 import { 搜客户, type 可挑客户 } from "./pick";
 import { 关联客户, 改关联说明, 取消关联 } from "./link-actions";
+import { 客户详情左栏 } from "../../projects/[id]/card-names";
 
 /**
  * 起手：页头「关联客户」开的框里挂上时直接打开挑人那一行（10-31 R6）。
  * 不摆加：企业版客户页头已有「关联客户」，卡上不再摆「+」（10-31）
  */
 /** 卡：企业版项目模式客户页每块一张卡（外面包 ProjectFold，和项目页「关联客户」同一个样子：卡头「关联客户（n）」+ 右边「关联」） */
-export default function LinkedCustomers({ customerId, 关联们, 只读, 起手 = false, 不摆加 = false, 卡 = false }: { customerId: string; 关联们: 关联一行[]; 只读: boolean; 起手?: boolean; 不摆加?: boolean; 卡?: boolean }) {
+export default function LinkedCustomers({ customerId, 关联们, 只读, 起手 = false, 不摆加 = false, 卡 = false, 组织 = false }: {
+  customerId: string; 关联们: 关联一行[]; 只读: boolean; 起手?: boolean; 不摆加?: boolean; 卡?: boolean;
+  /** 客户详情（项目模式）里叫「关联组织」（11-12 用户，card-names.tsx）：卡名、空状态、关联钮的读屏名一起换；挑的照旧是客户 */
+  组织?: boolean;
+}) {
+  const 叫 = 组织 ? 客户详情左栏.关联 : "关联客户";
+  const 关联钮名 = 组织 ? "关联一个组织" : "关联一位客户";
   const { message } = App.useApp();
   const router = useRouter();
   const [加着, set加着] = useState(false);
@@ -76,7 +83,7 @@ export default function LinkedCustomers({ customerId, 关联们, 只读, 起手 
 
   const 身 = (
     <>
-      {关联们.length === 0 && !加着 && <div className="rec-empty">还没有关联客户</div>}
+      {关联们.length === 0 && !加着 && <div className="rec-empty">还没有{叫}</div>}
       {关联们.map((x) =>
         改的?.id === x.id ? (
           <Space.Compact key={x.id} style={{ display: "flex", marginBottom: 6 }}>
@@ -153,8 +160,8 @@ export default function LinkedCustomers({ customerId, 关联们, 只读, 起手 
     return (
       <Card
         className="rec-mod"
-        title={`关联客户（${关联们.length}）`}
-        extra={!只读 && !加着 && !不摆加 ? <Button type="text" size="small" icon={<PlusOutlined />} onClick={开加} aria-label="关联一位客户">关联</Button> : undefined}
+        title={`${叫}（${关联们.length}）`}
+        extra={!只读 && !加着 && !不摆加 ? <Button type="text" size="small" icon={<PlusOutlined />} onClick={开加} aria-label={关联钮名}>关联</Button> : undefined}
       >
         {身}
       </Card>
@@ -162,9 +169,9 @@ export default function LinkedCustomers({ customerId, 关联们, 只读, 起手 
   return (
     <div className="rec-sec">
       <div className="rec-sec-t">
-        <span>关联客户 {关联们.length > 0 && 关联们.length}</span>
+        <span>{叫} {关联们.length > 0 && 关联们.length}</span>
         {!只读 && !加着 && !不摆加 && (
-          <Button type="text" size="small" icon={<PlusOutlined />} onClick={开加} aria-label="关联一位客户" />
+          <Button type="text" size="small" icon={<PlusOutlined />} onClick={开加} aria-label={关联钮名} />
         )}
       </div>
       {身}

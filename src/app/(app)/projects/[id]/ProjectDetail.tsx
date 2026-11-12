@@ -29,6 +29,7 @@ import { 有效线索节点, 缺有效沟通还差 } from "@/lib/project/stage-g
 import type { 线索验证 } from "@/lib/project/lead-verify";
 import LeadVerifyPanel from "./LeadVerifyPanel";
 import { FoldSplit, ProjectFold, 模块钮色 } from "./ProjectFold";
+import { 卡名Provider, 客户详情卡点, 项目卡名 } from "./card-names";
 import { ProjectFillRequired, 定位到模块 } from "./ProjectFillRequired";
 import { CustomerReadonlyCard } from "./CustomerReadonlyCard";
 import type { 窗外去处, 草稿们 } from "@/lib/project/required-fill";
@@ -1075,8 +1076,11 @@ export default function ProjectDetail({
       ) : p.remark && <div style={{ marginTop: 8, whiteSpace: "pre-wrap", overflowWrap: "anywhere", color: "var(--text-muted)" }}>{p.remark}</div>}
     </Card>
   );
+  // 客户详情嵌入版的叫法（11-12，card-names.tsx）：右栏卡名补「项目」、卡点写「当前卡点」；项目详情页原样
+  const 卡名 = (名: string) => (嵌入 ? 项目卡名(名) : 名);
+  const 卡点名 = 嵌入 ? 客户详情卡点 : "卡点";
   const 交付卡 = 显示交付 && (
-    <Card title="交付">
+    <Card title={卡名("交付")}>
       {(["balanceSettled", "acceptancePassed"] as const).map((k) => {
         const 勾了 = p[k];
         const 谁 = k === "balanceSettled" ? p.balanceSettledBy : p.acceptancePassedBy;
@@ -1115,7 +1119,7 @@ export default function ProjectDetail({
   const 项目组卡 = <ProjectTeamCard projectId={p.id} 组员们={p.members} 角色们={角色们} 在职={在职} 能改={可改 || !!p.能改组员} 能加={!!p.能加组员 || 可改} 忙={忙} 跑={跑} 企业版={p.企业版} 组长={p.ownerName} />;
   const 提成区 = p.提成 && <ProjectCommissionCard key={`${p.提成.项目底价}-${p.提成.实际?.固定于 ?? ""}`} projectId={p.id} t={p.提成} 忙={忙} 跑={跑}  />;
   const 变更卡 = (
-    <Card title="进程变更">
+    <Card title={卡名("进程变更")}>
       <Timeline
         items={p.logs.map((l) => ({
           color: l.kind !== "node" ? "gray" : l.to.result === "异常状态" ? "red" : 是交付(l.to.result) ? "green" : "blue",
@@ -1247,7 +1251,7 @@ export default function ProjectDetail({
   // 企业版原叫「卡点与任务」（U-项目-01）；这一版只有卡点、没有任务数据，界面上就叫「卡点」
   const 卡点区 = 卡点 && (
     <Card
-      title={p.企业版 ? `卡点（${搜着 ? `搜到 ${列卡点.length}` : 卡点.们.length}）` : `卡点（${卡点.们.length}）`}
+      title={p.企业版 ? `${卡点名}（${搜着 ? `搜到 ${列卡点.length}` : 卡点.们.length}）` : `卡点（${卡点.们.length}）`}
       // 发卡点挂在最近一条沟通上（沟通行的「…」里也能挑别的那条）；企业版 11-01 从页头回到这块卡头，没沟通时灰着、悬停说为什么
       extra={p.企业版 ? (
         // 11-12 连体按钮：左半发卡点（没沟通时灰着、悬停说为什么），右半收起 / 展开；不能发只剩右半
@@ -1604,20 +1608,23 @@ export default function ProjectDetail({
             {!看全部沟通 && 搜索框}
             <ProjectFold id="project-follow" 名="沟通记录" 开={沟通开} set开={set沟通开} 锁开={搜着} 控制="project-follow-body" 连体>{沟通卡}</ProjectFold>
             {嵌入.待办}
-            {卡点区 && <ProjectFold id="project-blockers" 名="卡点" 开={卡点开} set开={set卡点开} 锁开={搜着} 控制="project-blockers-body" 连体>{卡点区}</ProjectFold>}
+            {卡点区 && <ProjectFold id="project-blockers" 名={卡点名} 开={卡点开} set开={set卡点开} 锁开={搜着} 控制="project-blockers-body" 连体>{卡点区}</ProjectFold>}
           </div>
-          <aside className="cd-side" aria-label="项目资料">
-            {折("项目资料", 项目卡)}
-            {折("项目画像", 画像卡)}
-            {折("项目附件", 附件卡, "project-attachments-fold")}
-            {折("回款", 回款卡, "project-payments-fold", false)}
-            {显示交付 && 折("交付", 交付卡, undefined, false)}
-            {折("项目组", 项目组卡, undefined, false)}
-            {折("提成", 提成区, undefined, false)}
-            {折("进程变更", 变更卡, undefined, false)}
-            {p.关联 && 折("关联客户", <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} 只="客户" />, undefined, false)}
-            {p.关联 && 折("关联联系人", <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} 只="联系人" />, undefined, false)}
-          </aside>
+          {/* 11-12：右栏管的是当前项目，卡名没带「项目」的补上（card-names.tsx）；卡自己写标题的（回款、提成、关联…）从 卡名Provider 取 */}
+          <卡名Provider value={项目卡名}>
+            <aside className="cd-side" aria-label="项目资料">
+              {折("项目资料", 项目卡)}
+              {折("项目画像", 画像卡)}
+              {折("项目附件", 附件卡, "project-attachments-fold")}
+              {折(卡名("回款"), 回款卡, "project-payments-fold", false)}
+              {显示交付 && 折(卡名("交付"), 交付卡, undefined, false)}
+              {折("项目组", 项目组卡, undefined, false)}
+              {折(卡名("提成"), 提成区, undefined, false)}
+              {折(卡名("进程变更"), 变更卡, undefined, false)}
+              {p.关联 && 折(卡名("关联客户"), <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} 只="客户" />, undefined, false)}
+              {p.关联 && 折(卡名("关联联系人"), <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} 只="联系人" />, undefined, false)}
+            </aside>
+          </卡名Provider>
         </div>
         {弹窗们}
       </section>

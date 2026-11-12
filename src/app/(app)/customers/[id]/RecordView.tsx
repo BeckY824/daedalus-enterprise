@@ -52,6 +52,7 @@ import RegionInlineField from "./RegionInlineField";
 import AiPanel from "./AiPanel";
 import LinkedCustomers from "./LinkedCustomers";
 import { FoldSplit, ProjectFold, 模块钮色, type 连体主钮, type 连体色 } from "../../projects/[id]/ProjectFold";
+import { 客户详情左栏, 客户详情待办 } from "../../projects/[id]/card-names";
 import NewProjectModal from "./NewProjectModal";
 import { 两行 } from "../../projects/[id]/project-menu";
 import { 客户页摆法, 级别选项, 企业级别, 拼地址, 地址叫法, 简称上限 } from "@/lib/enterprise/customer-v2";
@@ -1188,7 +1189,7 @@ export default function RecordView({
           {/* 名字和头像不在这儿重画一遍：页头上已经有了（设计稿 12/PAGE 的「基本资料」卡第一行就是电话）。
               11-04 用户：所有字段点了直接改，不再摆「编辑全部」。电话也就地改：查重、打码号认回都在服务端；
               点号码右边的小键复制，点别处才进编辑 */}
-          {节("基本资料", undefined, undefined, <>
+          {节(去项目跟进 ? 客户详情左栏.资料 : "基本资料", undefined, undefined, <>
             {摆(customer.phone) && (
               <InlineField 空时横线={企业} customerId={customer.id} field="phone" label="电话" value={customer.phone}
                 显示={企业 ? (v) => <CopyValue 叫法="电话" value={v} /> : undefined} />
@@ -1309,7 +1310,7 @@ export default function RecordView({
 
           {/* 11-12 用户：去掉「全部 ›」（原来跳 /contacts?keyword=客户名），卡头只留一颗「＋」新增联系人（同一个 ContactForm、同样的只读判断）；
              企业版项目模式原来不给加（U-客户-03），这次用户点名要加回来 */}
-          {节("联系人", contacts.length, !只读 && (
+          {节(去项目跟进 ? 客户详情左栏.联系人 : "联系人", contacts.length, !只读 && (
                 <Tooltip title="新增联系人">
                   <Button type="text" size="small" className="rec-sec-add" icon={<PlusOutlined />} aria-label="新增联系人" onClick={() => { setEditingContact(null); setContactOpen(true); }} />
                 </Tooltip>
@@ -1370,8 +1371,8 @@ export default function RecordView({
               ))}
             </>)}
           {摆法.关联客户 && 关联们 && (去项目跟进 ? (
-            <ProjectFold 名="关联客户">
-              <LinkedCustomers customerId={customer.id} 关联们={关联们} 只读={只读} 卡 />
+            <ProjectFold 名={客户详情左栏.关联}>
+              <LinkedCustomers customerId={customer.id} 关联们={关联们} 只读={只读} 卡 组织 />
             </ProjectFold>
           ) : <LinkedCustomers customerId={customer.id} 关联们={关联们} 只读={只读} />)}
           {/* 企业版项目模式：客户背调挪到左栏，只摆状态标签，点开弹详情（U-客户-03；AI 改进后再挪显眼处） */}
@@ -1407,7 +1408,7 @@ export default function RecordView({
         {项目区?.({
           全部沟通: <div className="proj-mod-body">{筛选条}{时间线}</div>,
           全部沟通数: `${history.rows.length}${history.hasMore ? "+" : ""}`,
-          待办: 摆法.待办 ? 节("待办", 待办数, null, <div className="proj-mod-body" aria-label="待办">{待办身}</div>, { 主: 只读 ? null : { 字: "新建待办", onClick: () => setTaskOpen(true) }, 色: 模块钮色.待办 }) : null,
+          待办: 摆法.待办 ? 节(客户详情待办, 待办数, null, <div className="proj-mod-body" aria-label="待办">{待办身}</div>, { 主: 只读 ? null : { 字: "新建待办", onClick: () => setTaskOpen(true) }, 色: 模块钮色.待办 }) : null,
           开建项目: 能建项目 ? 开建项目 : null,
           全只读,
           提醒: 提醒条,
@@ -1483,7 +1484,7 @@ export default function RecordView({
                 </Space>
               ), <div className="proj-mod-body">{筛选条}{时间线}</div>, { 主: { 字: "新建沟通", onClick: 点跟进 }, 色: 模块钮色.沟通 })}
               {/* 待办单独一块（11-01 用户：「你看待办板块你就和沟通记录放一起了」），摆在沟通记录下面 */}
-              {摆法.待办 && 节("待办", 待办数, null, <div className="proj-mod-body" aria-label="待办">{待办身}</div>, { 主: 只读 ? null : { 字: "新建待办", onClick: () => setTaskOpen(true) }, 色: 模块钮色.待办 })}
+              {摆法.待办 && 节(去项目跟进 ? 客户详情待办 : "待办", 待办数, null, <div className="proj-mod-body" aria-label="待办">{待办身}</div>, { 主: 只读 ? null : { 字: "新建待办", onClick: () => setTaskOpen(true) }, 色: 模块钮色.待办 })}
             </>
           ) : (
             <>
@@ -1619,7 +1620,7 @@ export default function RecordView({
         }}
       />
       {头部框 && (
-        <Modal open title={`${客户头部框叫法[头部框]} · ${customer.name}`} footer={null} width={头部框 === "转让" ? 480 : 640} onCancel={() => set头部框(null)}>
+        <Modal open title={`${头部框 === "关联客户" && 去项目跟进 ? 客户详情左栏.关联 : 客户头部框叫法[头部框]} · ${customer.name}`} footer={null} width={头部框 === "转让" ? 480 : 640} onCancel={() => set头部框(null)}>
           {头部框 === "转让" && (
             <div className="proj-modal-sec">
               {转让要申请 && <div className="rec-transfer-hint">这是你名下的{b.customer}：发出后要接手人确认才生效，确认前仍在你名下；{移交作废天数} 天内不确认自动作废，归属不变。</div>}
@@ -1674,7 +1675,7 @@ export default function RecordView({
             </div>
           )}
           {(头部框 === "关联客户" || 头部框 === "管理关联") && 关联们 && (
-            <LinkedCustomers customerId={customer.id} 关联们={关联们} 只读={只读} 起手={头部框 === "关联客户"} />
+            <LinkedCustomers customerId={customer.id} 关联们={关联们} 只读={只读} 起手={头部框 === "关联客户"} 组织={去项目跟进} />
           )}
         </Modal>
       )}
