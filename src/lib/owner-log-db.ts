@@ -4,6 +4,7 @@ import { 看全部 } from "@/lib/team-scope";
 import type { 换负责人记录 } from "@/lib/owner-log";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 系统 } from "@/lib/project/timeout";
+import { 当下归零 } from "@/lib/enterprise/tri-state-transfer";
 
 /**
  * 客户换负责人的记录（企业版 D-36，2026-10-24）：谁转的、从谁到谁、什么时候；from = 「历史负责人」。
@@ -37,8 +38,10 @@ export async function 记换负责人(
 ): Promise<void> {
   const 真换了 = 换.filter((x) => x.from !== x.to);
   if (!真换了.length) return;
+  // 企业版三态（M-公海-20 / M-公海-37）：转让 / 离职交接当下按此刻的规则定归不归零、存下，之后改规则不回改；三态关着留空
+  const 归零 = await 当下归零(tx, 真换了.map((x) => x.customerId), kind);
   await tx.customerOwnerLog.createMany({
-    data: 真换了.map((x) => ({ customerId: x.customerId, userId: 操作人, fromOwnerId: x.from, toOwnerId: x.to, kind })),
+    data: 真换了.map((x) => ({ customerId: x.customerId, userId: 操作人, fromOwnerId: x.from, toOwnerId: x.to, kind, clockReset: 归零.get(x.customerId) ?? null })),
   });
   // 进公海：公海客户没有负责人、也不是挂靠对象（P-挂靠-01），审批人不跟到占位账号上，待处理的直接关
   if (kind === "pool-release") await 挂靠申请进公海关(tx, 真换了.map((x) => x.customerId));

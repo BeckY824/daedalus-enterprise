@@ -29,7 +29,7 @@ import { 读组织 } from "@/lib/enterprise/org";
 import { 默认组织规则, 默认三态规则, type 组织规则, type 三态规则 } from "@/lib/project/org-rules";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 加天 } from "@/lib/enterprise/tri-state";
-import { 删被撤的换负责人记录 } from "@/lib/owner-log-db";
+import { 删被撤的换负责人记录, 记换负责人 } from "@/lib/owner-log-db";
 import { 等通知推完 } from "@/lib/enterprise/notify";
 
 const 起 = "2026-11-01";
@@ -226,5 +226,57 @@ describe("进公海后的钟", () => {
     await 三态夜扫(早(216));
     expect(await 钟()).toMatchObject({ state: "活跃", enteredDay: 日(215), noticeCount: 0 });
     expect((await 痕()).at(-1)).toMatchObject({ fromState: 公海状态, toState: "活跃", reason: "从客户公海领走 / 分走，换了负责人，重新起算" });
+  });
+});
+
+describe("转让当下就存归零（owner-log-db.ts 记换负责人）", () => {
+  const 存的 = async () => (await prisma.customerOwnerLog.findMany({ orderBy: [{ at: "asc" }, { id: "asc" }], select: { clockReset: true, kind: true } })).map((x) => x.clockReset);
+
+  it("三态开着：写日志那一刻按当时的规则存；当天改规则（2 次改 1 次）不改已存的，之后的按新规则", async () => {
+    await 记换负责人(prisma, [{ customerId: 客户, from: 人.乙.id, to: 人.丙.id }], 人.系.id, "assign");
+    await 记换负责人(prisma, [{ customerId: 客户, from: 人.丙.id, to: 人.乙.id }], 人.系.id, "deactivate");
+    expect(await 存的()).toEqual([true, true]);
+    await setSetting("orgRules", 开三态({ 转让归零: { 次数: 1, 窗口月数: 12 } }));
+    await 三态夜扫(new Date());
+    expect(await 存的()).toEqual([true, true]);
+    await 记换负责人(prisma, [{ customerId: 客户, from: 人.乙.id, to: 人.丙.id }], 人.系.id, "assign");
+    expect(await 存的()).toEqual([true, true, false]);
+  });
+
+  it("捞取、分配不算；三态关着留空，开了以后第一次算到时补存", async () => {
+    await 记换负责人(prisma, [{ customerId: 客户, from: 人.乙.id, to: 人.丙.id }], 人.系.id, "claim");
+    await setSetting("orgRules", { ...默认组织规则 });
+    await 记换负责人(prisma, [{ customerId: 客户, from: 人.丙.id, to: 人.乙.id }], 人.系.id, "assign");
+    expect(await 存的()).toEqual([null, null]);
+    await setSetting("orgRules", 开三态());
+    await 三态夜扫(new Date());
+    expect(await 存的()).toEqual([null, true]);
+  });
+});
+
+describe("08:00 那遍不按白天改的规则对钟", () => {
+  it("00:05 按 90 天进了沉睡，白天改成 100 天：08:00 照夜扫那份规则发「进入沉睡」，钟不退回活跃、不多留痕", async () => {
+    await 三态夜扫(早(95));
+    const 扫完 = await 痕();
+    await setSetting("orgRules", 开三态({ 内贸: { 沉睡: 100, 待回收: 180, 进公海: 30 } }));
+    await 钟上三态提醒(八点(95));
+    expect((await 三态通知(人.乙.id)).map((x) => x.title)).toEqual(["客户三态提醒：1 家进入沉睡"]);
+    expect((await 钟())!.state).toBe("沉睡");
+    expect(await 痕()).toEqual(扫完);
+    // 次日 00:05 才按新规则退回活跃
+    await 三态夜扫(早(96));
+    expect((await 钟())!.state).toBe("活跃");
+  });
+});
+
+describe("负责人换成市场成员（P-转-03 不会发生，只兜底）", () => {
+  it("旧钟停在待回收、提醒已发满：负责人是市场成员就不计时，夜扫不收、钟不动", async () => {
+    await 三态夜扫(早(180));
+    await prisma.entCustomerClock.update({ where: { customerId: 客户 }, data: { noticeCount: 3, lastNoticeDay: 日(200) } });
+    await prisma.entMember.update({ where: { userId: 人.乙.id }, data: { bizRole: "marketing_mgr" } });
+    const 前 = await 钟();
+    expect(await 三态夜扫(早(210))).toMatchObject({ 进公海: [], 算了: 0 });
+    expect(await prisma.customerPool.findUnique({ where: { customerId: 客户 } })).toBeNull();
+    expect(await 钟()).toEqual(前);
   });
 });

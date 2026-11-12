@@ -29,8 +29,10 @@ import { prisma } from "@/lib/prisma";
 import { 企业版 } from "./switch";
 import { getBusiness } from "@/lib/business";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
-import type { 组织规则, 三态规则 } from "@/lib/project/org-rules";
-import { 算三态, 换负责人归零, type 三态事实, type 三态结果, type 三态项目, type 换负责人记录, type 换负责人方式 } from "./tri-state";
+import type { 组织规则 } from "@/lib/project/org-rules";
+import { 算三态, type 三态事实, type 三态结果, type 三态项目 } from "./tri-state";
+import { 换负责人们of } from "./tri-state-transfer";
+export { 换负责人们of } from "./tri-state-transfer";
 import { 有内容的沟通, 拨钟的沟通, 留痕转推后, 最近暂缓回收日, 额度回满, 留痕方式, 自动收回次数, type 留痕行 } from "./tri-state-quota";
 import { 项目业务线 } from "./assign-line";
 import { 读组织, type 组织 } from "./org";
@@ -63,7 +65,6 @@ export const 被挡理由 = "到期该进公海，名下有同事在推的项目
 /** 夜扫「今天按这份规则扫过了」的记号（Setting）：值 = 上海日 + 三态规则 JSON，规则改了当晚重算（M-公海-37） */
 export const 三态扫过键 = "entTriStateScanned";
 
-const 换人方式: Readonly<Record<string, 换负责人方式>> = { assign: "转让", deactivate: "离职交接", claim: "公海捞取", "pool-assign": "公海指派", "market-assign": "市场首次分配" };
 
 /** 一位客户收齐的东西：算三态要的事实 + 钟 + 留痕（写回时要） */
 export type 三态客户 = {
@@ -81,30 +82,6 @@ export type 三态客户 = {
   /** 这次才第一次算出归不归零的转让 / 离职交接（CustomerOwnerLog id → 归零），写库的调用方用 存归零 存下 */
   待存归零: { id: string; 归零: boolean }[];
 };
-
-/**
- * 换负责人记录（按时间正序）→ 算三态要的记录。转让 / 离职交接：存过归不归零（clockReset）的照存的；没存过的按先后、拿现在的规则算一次，
- * 放进 待存（调用方存下，之后不再重算：M-公海-37 改规则只对之后的转让生效）
- */
-export function 换负责人们of(
-  行们: readonly { id?: string; at: Date; kind: string; clockReset?: boolean | null }[],
-  规则: Pick<三态规则, "转让归零">,
-): 换负责人记录[] & { 待存: { id: string; 归零: boolean }[] } {
-  const 出 = [] as unknown as 换负责人记录[] & { 待存: { id: string; 归零: boolean }[] };
-  出.待存 = [];
-  for (const r of 行们) {
-    const 方式 = 换人方式[r.kind];
-    if (!方式) continue;
-    const 日 = beijingDay(r.at);
-    if (方式 === "转让" || 方式 === "离职交接") {
-      const 存的 = r.clockReset ?? null;
-      const 归零 = 存的 ?? 换负责人归零(出, { 日, 方式 }, 规则);
-      if (存的 === null && r.id) 出.待存.push({ id: r.id, 归零 });
-      出.push({ 日, 方式, 归零 });
-    } else 出.push({ 日, 方式 });
-  }
-  return 出;
-}
 
 /** 把第一次算出来的归不归零存到换负责人那一行（只写还空着的，别人先存了不覆盖） */
 export async function 存归零(db: 库, 们: Iterable<Pick<三态客户, "待存归零">>): Promise<void> {

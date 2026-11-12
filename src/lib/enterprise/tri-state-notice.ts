@@ -1,7 +1,8 @@
 /**
  * 客户三态 · 提醒（三态落地计划 P5；M-公海-17、M-公海-24、M-公海-26、M-公海-27、M-公海-28、M-公海-33、M-公海-36）。
  *
- *   - 什么时候：状态在 00:05 那一遍改（tri-state-db.ts），提醒北京时间 08:00 起发，一天一遍（Setting 水位 三态提醒水位键）。
+ *   - 什么时候：状态在 00:05 那一遍改（tri-state-db.ts），提醒北京时间 08:00 起发，一天一遍（Setting 水位 三态提醒水位键）；
+ *     这一遍只读钟、不按白天改过的规则对钟（用夜扫那份规则），当天夜扫没跑过的先补跑一遍。
  *     停机几天：开机那天只发当天这一条汇总，不逐天补（M-公海-26）；漏发的「进入沉睡」「待回收第 N 次」由 算三态() 今天补发
  *   - 发什么：一个人一天只收一条汇总（站内铃铛，notify() 后台自动推飞书；没绑飞书的只有站内，推失败不重试，feishu-push.ts）。
  *     唯一例外：自动进公海当天「已回公海」单独一条（已回公海通知，夜扫收完调）
@@ -19,8 +20,9 @@ import { 看全部 } from "@/lib/team-scope";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { getSetting, setSetting } from "@/lib/settings";
 import { beijingDay, beijingWallIso } from "@/lib/business-clock";
-import type { 提醒级, 今天提醒 } from "./tri-state";
-import { 收三态客户, 写一批, 候选客户, 分批, 三态开着, type 自动收了 } from "./tri-state-db";
+import { 算三态, type 提醒级, type 今天提醒 } from "./tri-state";
+import { 收三态客户, 候选客户, 分批, 三态开着, 三态夜扫, 三态扫过键, 钟状态of, type 自动收了 } from "./tri-state-db";
+import type { 组织规则 } from "@/lib/project/org-rules";
 import { 读组织, type 组织 } from "./org";
 import { 找条线总管理, 找直属上级, 本人在职, 原负责人上级 } from "./tri-state-people";
 import { notify } from "./notify";
@@ -80,12 +82,31 @@ export async function 钟上三态提醒(现在: Date = new Date()): Promise<三
   if (!(await 三态开着(规则))) return null;
   const 今天 = beijingDay(现在);
   if ((await getSetting<string>(三态提醒水位键)) === 今天) return null;
-  const 明细 = await 看全部(() => 发三态提醒(规则, 现在, 今天));
+  // 今天 00:05 那遍没跑过（停机补跑）：先补跑一遍状态。补跑用现在的规则——停机期间没有更早的、当晚生效的规则可用
+  await 三态夜扫(现在);
+  const 明细 = await 看全部(async () => 发三态提醒(await 夜扫时的规则(规则), 现在, 今天));
   await setSetting(三态提醒水位键, 今天);
   return 明细;
 }
 
 /**
+ * 今天那遍夜扫用的三态规则（夜扫记号 = 上海日 + 那时的三态规则 JSON）：白天改了规则，提醒照夜扫那份算，
+ * 状态等次日 00:05 才按新规则变（M-公海-37「当晚重算」）。读不出来退回现在的规则
+ */
+async function 夜扫时的规则(现在的: 组织规则): Promise<组织规则> {
+  const 记号 = await getSetting<string>(三态扫过键);
+  if (typeof 记号 !== "string" || 记号.length <= 11) return 现在的;
+  try {
+    const 三态 = JSON.parse(记号.slice(11)) as 组织规则["三态"];
+    return 三态 && typeof 三态 === "object" && "内贸" in 三态 ? { ...现在的, 三态 } : 现在的;
+  } catch {
+    return 现在的;
+  }
+}
+
+/**
+ * 只读 00:05 算好的钟来发：按最新事实、夜扫那份规则算今天的提醒，不改钟的状态（只记提醒发过）。
+ * 算出来的状态和钟上的不一样（00:05 以后有人记了沟通、点了继续持有）的不发，等下一遍夜扫对齐。
  * 先算、再按人发、发成了再记（中断重跑不把没送到的算进 3 次提醒）：每发完一个人，查他那条确实记上了（EntNotice 同 key 有了），
  * 一位客户的收件人都记上了才在钟上记 lastNoticeDay / noticeCount。重跑同一天：已经记上的人 notify 按 key 去重不重发，照样认成发过
  */
@@ -94,9 +115,9 @@ async function 发三态提醒(规则: Awaited<ReturnType<typeof 生效组织规
   const 给 = new Map<string, 条[]>();
   const 要记 = new Map<string, { 收件人: Set<string>; data: { noticeCount?: number; lastNoticeDay: string } | null }>();
   for (const 批 of 分批(await 候选客户(prisma))) {
-    // 先按最新事实把钟对一遍（同夜扫一批一笔事务、钟被动过就重算），再按同一份结果发
-    for (const { c, r } of (await 写一批(规则, org, await 收三态客户(prisma, 批, 规则, org, 现在), 现在, 今天)).算) {
-      if (!r.提醒) continue;
+    for (const c of (await 收三态客户(prisma, 批, 规则, org, 现在)).values()) {
+      const r = 算三态(c.事实, 规则.三态, 今天);
+      if (!r.计时 || !r.提醒 || !c.钟 || c.钟.state !== 钟状态of(r)) continue;
       const 人们 = 提醒发给(org, r.提醒, c);
       // 被挡请裁决不记：它按日子每 30 天推一次（算三态() 自己排），记了 lastNoticeDay 会被当成待回收提醒、把最早进公海日往后推
       const data = r.提醒.事由 === "待回收提醒" ? { noticeCount: r.提醒.第几次 ?? 1, lastNoticeDay: 今天 } : r.提醒.事由 === "被挡请裁决" ? null : { lastNoticeDay: 今天 };
