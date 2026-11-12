@@ -210,7 +210,7 @@ async function 导入完成日们(db: 库, ids: readonly string[]): Promise<Map<
  * 一位客户算出来的结果要往钟上写的（没变化 = null）。纯函数，单测直接测。
  * 额度上次重置日（M-公海-38）：最近一条有内容的沟通日晚于它就记成那天；次数、合计天数按 算三态() 认的写（它只数那天以后的推后）
  */
-export function 钟要改(c: Pick<三态客户, "钟" | "事实">, r: Extract<三态结果, { 计时: true }>, 今天: string): {
+export function 钟要改(c: Pick<三态客户, "钟" | "事实">, r: Extract<三态结果, { 计时: true }>, 今天: string, 换状态说明?: string): {
   data: Partial<Omit<Prisma.EntCustomerClockUncheckedCreateInput, "customerId">>;
   留痕: { fromState: string | null; toState: string; reason: string }[];
 } | null {
@@ -230,7 +230,7 @@ export function 钟要改(c: Pick<三态客户, "钟" | "事实">, r: Extract<�
     };
   }
   const 换了 = 钟.state !== 状态;
-  if (换了) 留痕.push({ fromState: 钟.state, toState: 状态, reason: 换状态理由(钟.state, 状态, r) });
+  if (换了) 留痕.push({ fromState: 钟.state, toState: 状态, reason: 换状态说明 ?? 换状态理由(钟.state, 状态, r) });
   if (被挡 && (!钟.blocked || 换了)) 留痕.push({ fromState: 状态, toState: 状态, reason: 被挡理由 });
   const data: Partial<Omit<Prisma.EntCustomerClockUncheckedCreateInput, "customerId">> = {};
   if (换了) Object.assign(data, { state: 状态, enteredDay: 进入日, noticeCount: 0, lastNoticeDay: null, holdUntil: null });
@@ -249,9 +249,9 @@ function 换状态理由(从: string, 到: 钟状态, r: Extract<三态结果, {
   return `满 ${r.节点天.待回收} 天没动静，进入待回收`;
 }
 
-/** 按算出来的结果把钟和留痕写下去；返回换没换状态、是不是刚被挡住 */
-export async function 写钟(db: 库, c: 三态客户, r: Extract<三态结果, { 计时: true }>, 今天: string, at: Date): Promise<{ 换了状态: boolean; 新被挡: boolean }> {
-  const 改 = 钟要改(c, r, 今天);
+/** 按算出来的结果把钟和留痕写下去；返回换没换状态、是不是刚被挡住。换状态说明 = 按钮引起的换状态（继续持有顺延）写的那句，不传按天数推 */
+export async function 写钟(db: 库, c: 三态客户, r: Extract<三态结果, { 计时: true }>, 今天: string, at: Date, 换状态说明?: string): Promise<{ 换了状态: boolean; 新被挡: boolean }> {
+  const 改 = 钟要改(c, r, 今天, 换状态说明);
   if (!改) return { 换了状态: false, 新被挡: false };
   if (c.钟) await db.entCustomerClock.update({ where: { customerId: c.id }, data: 改.data });
   else await db.entCustomerClock.create({ data: { customerId: c.id, state: 钟状态of(r), ...改.data, enteredDay: 改.data.enteredDay ?? 今天 } });

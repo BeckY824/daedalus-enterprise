@@ -230,6 +230,34 @@ export function 能转出自己的(me: 谁, org: 组织 | null): boolean {
   return !!org && !只读角色(me, org) && !只看的人(org, me.id) && 有(org, me.id, [...负责人角色, "marketing_mgr", "director"]);
 }
 
+/**
+ * 客户三态「我还在跟 / 写理由继续持有」本人那一条（M-公海-19）：客户负责人本人，且能转出自己的（只读管理员、只看某人、只有项目组员角色的不行）。
+ * 状态、本轮点没点过、额度够不够在 lib/enterprise/tri-state-hold.ts 判。不是企业版没有三态
+ */
+export function 能继续持有三态(me: 谁, c: { salesOwnerId: string }, org: 组织 | null): boolean {
+  if (老() || !org) return false;
+  return c.salesOwnerId === me.id && 能转出自己的(me, org);
+}
+
+/**
+ * 客户三态上级代选（M-公海-23）：客户负责人的实线直属上级（只一级、同业务线放行，同 能转让名下 的上级那条）；虚线上级、隔级、只读、只看某人的不行。
+ * 「沉睡第 30 天（第 120 天）起」这个天数条件调用方按算出来的三态判
+ */
+export function 能代选三态(me: 谁, c: { salesOwnerId: string }, org: 组织 | null): boolean {
+  if (老() || !org || 只读角色(me, org) || 只看的人(org, me.id) || c.salesOwnerId === me.id) return false;
+  return 实线下属(org, me.id, 1).has(c.salesOwnerId) && 业务线放行(org, me.id, { ownerId: c.salesOwnerId });
+}
+
+/**
+ * 客户三态到期被挡的裁决（M-公海-27，暂缓回收 / 让同事结束项目）：负责人在他这条线上的条线总管理、系统管理员；
+ * 别线的条线总管理、销售管理、只读管理员不行。移交走现有转让（能转让客户）
+ */
+export function 能裁决三态(me: 谁, c: { salesOwnerId: string }, org: 组织 | null): boolean {
+  if (老() || !org || 只读角色(me, org) || 只看的人(org, me.id)) return false;
+  if (是系统管理员(me, org)) return true;
+  return !!条线范围of(org, me.id)?.人们.includes(c.salesOwnerId);
+}
+
 /** 转让客户（客户详情「转给」、批量转让）：同项目的白名单；公海里的客户走公海分配（能管公海） */
 export function 能转让客户(me: 谁, c: { salesOwnerId: string | null; 在公海: boolean }, org: 组织 | null): boolean {
   if (老()) return true;
