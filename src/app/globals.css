@@ -658,6 +658,33 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
 /* 选中的底色是一块会滑动的层（AppShell 里的 layoutId），压在图标和字下面 */
 .rail-on-bg { position: absolute; inset: 0; border-radius: var(--r-card); background: var(--nav-on-bg); z-index: 0; }
 .rail-item > :not(.rail-on-bg) { position: relative; z-index: 1; }
+/* 客户详情上左栏收成图标窄栏（11-12，AppShell 的 rail-mini，路由在 lib/rail-mini.ts）：
+   在壳上把 --rail-w 覆盖成 56，左栏本身、反馈条 .fbt、中栏开关 .pane-toggle-float 这些按它算位置的都跟着走；
+   拖宽把手写在 :root 上的值盖不过这里，窄态下把手也不摆。字都藏起来只留图标 / 头像，名字靠悬停或键盘聚焦时的 Tooltip。
+   宽窄切换走 --t + --ease，只在切换那一下（壳上短暂挂 rail-anim）：首帧、拖宽写入都不动画；系统开了「减弱动态效果」直接切 */
+.shell.rail-anim .rail { transition: width var(--t) var(--ease), padding var(--t) var(--ease); }
+body.rail-resizing .shell .rail { transition: none; }
+.rail-mini { --rail-w: 56px; }
+.rail-mini .rail { padding-left: 8px; padding-right: 8px; }
+.rail-mini .rail > .rail-resizer, .rail-mini .rail-fav-h, .rail-mini .rail-fav-n, .rail-mini .rail-meter,
+.rail-mini .rail-item b, .rail-mini .rail-num, .rail-mini .rail-ask-k,
+.rail-mini .rail-search > span:not(.anticon), .rail-mini .rail-search kbd, .rail-mini .rail-user b, .rail-mini .rail-user-caret,
+.rail-mini .rail-upd-t, .rail-mini .rail-upd-v { display: none; }
+.rail-mini .rail-top { flex-direction: column; height: auto; gap: var(--s2); }
+.rail-mini .rail-top .ant-badge { margin-left: 0; }
+.rail-mini .rail-search { width: 32px; flex: none; justify-content: center; padding: 0; }
+.rail-mini .rail-item, .rail-mini .rail-fav-i, .rail-mini .rail-user, .rail-mini .rail-upd { justify-content: center; padding-left: 0; padding-right: 0; }
+.rail-mini .rail-more .rail-item { padding-left: 0; padding-right: 0; }
+.rail-mini .rail-favs { overflow-x: hidden; }
+/* 要跟的红数挂到图标右上角，不占一行 */
+.rail-mini .rail-count { position: absolute; top: 2px; right: 0; margin: 0; min-width: 16px; height: 16px; padding: 0 4px; }
+.rail-mini .rail-account { flex-direction: column; gap: 0; }
+/* AI 任务那一条只剩一枚图标（AiTasks 窄），居中；进度线照旧在底下扫 */
+.rail-mini .aitask { padding-left: 0; padding-right: 0; }
+.rail-mini .aitask-l { justify-content: center; }
+.rail-mini .aitask-i { font-size: var(--ic); }
+.rail-mini .aitask-bar { left: 6px; right: 6px; }
+@media (prefers-reduced-motion: reduce) { .shell.rail-anim .rail { transition: none; } }
 /* 数字摆在行尾，不要挤在图标和文字中间 */
 .rail-user { border: 0; background: none; padding: 10px 12px; margin-top: 6px; cursor: pointer; border-radius: var(--r-card); line-height: 0; display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; }
 .rail-user:hover { background: var(--hover); }
@@ -1282,6 +1309,12 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-head .page-head-t .rec-star { flex: none; }
 /* 名字下面那行写负责人、创建人：一长串没空格的人名也折行，不伸出页头（11-02） */
 .proj-head .page-head p { overflow-wrap: anywhere; }
+/* 页头按钮（「项目转让」「项目退回公海」，11-12 改名变长）不再把标题区挤到比星还窄：标题区至少留 220（窄过它就占满一行），
+   放不下就让按钮组整组换到标题下一行；按钮组本身不压缩、太窄时组内再折（Space wrap）。
+   标题区那层的 min-width:0 是 PageHead 行内写的，只能 !important 盖（ui.tsx 共用，别的页不动） */
+.proj-head .page-head { flex-wrap: wrap; row-gap: var(--s2); }
+.proj-head .page-head > :first-child { min-width: min(220px, 100%) !important; }
+.proj-head .page-head-a { flex: 0 1 auto; max-width: 100%; }
 .proj-head > .pane-toggle { margin: 4px 0 0 -6px; flex: none; }
 /* 10-31 改版 R3：整页不滚，页头钉在顶上，两栏各自滚（滚左栏右栏不动、反过来也一样），只有最右那栏露滚动条。
    高度从正文 main 一路传下来（main → 换页那层 motion.div → .proj-wrap → .proj-2col），所以 Windows 顶上那条让位、

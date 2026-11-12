@@ -127,6 +127,8 @@ it("企业版项目模式（P14 → U-客户-03）：没有记录输入、沟通
     const 沟通卡头 = page.locator('.proj-fold:has(> .proj-fold-btn[aria-label="收起沟通记录"]) > .rec-mod > .ant-card-head');
     const 新建沟通 = 沟通卡头.locator(".ant-card-extra").getByRole("button", { name: /新建沟通$/ });
     expect(await 新建沟通.count()).toBe(1);
+    // 11-12 第 1 批：「新建沟通」是卡头的主按钮（蓝底），还是小号
+    expect(await 新建沟通.evaluate((el) => [el.classList.contains("ant-btn-primary"), el.classList.contains("ant-btn-sm")])).toEqual([true, true]);
     expect(await page.locator(".rec-acts").getByRole("button", { name: /沟通/ }).count()).toBe(0);
     expect(await page.getByText("记录跟进").count()).toBe(0);
     expect(await page.locator("textarea").count()).toBe(0);
@@ -166,11 +168,11 @@ const 全开 = {
   关联们: [],
 };
 const 头按钮 = (page: import("playwright").Page) => page.locator(".rec-acts button").evaluateAll((bs: HTMLElement[]) => bs.map(b => b.innerText.replace(/\s+/g, "")));
-it("企业版项目模式页头（U-客户-03）：只留新开项目、转让项目、退回公海；没有主按钮、删除、下拉", async () => {
+it("企业版项目模式页头（U-客户-03 → 11-12 改名）：只留新开项目、客户转让、客户退回公海；没有主按钮、删除、下拉", async () => {
   const page = await open(true, 1366, true, 全开);
   try {
     // 编辑资料、添加 / 管理联系人、删除客户、AI 都去掉；新建沟通在沟通记录卡头、新建任务在沟通记录下方的待办卡头（11-01）
-    expect(await 头按钮(page)).toEqual(["新开项目", "转让项目", "退回公海"]);
+    expect(await 头按钮(page)).toEqual(["新开项目", "客户转让", "客户退回公海"]);
     expect(await page.locator(".rec-acts .ant-btn-primary").count()).toBe(0);
     expect(await page.locator(".rec-acts .ant-btn-dangerous").count()).toBe(0);
     expect(await page.locator(".rec-head .ant-dropdown-trigger").count()).toBe(0);
@@ -190,12 +192,14 @@ it("企业版项目模式页头（U-客户-03）：只留新开项目、转让�
     expect(Math.abs(对齐.组[1] - 对齐.栏[1])).toBeLessThanOrEqual(2);
   } finally { await page.close(); }
 });
-it("「转让」开框挑人：没挑之前「下一步」点不了；挑了能点；取消关框", async () => {
+it("「客户转让」开框挑人：没挑之前「下一步」点不了；挑了能点；取消关框", async () => {
   const page = await open(true, 1366, true, 全开);
   try {
-    await page.locator(".rec-acts").getByRole("button", { name: /^转\s*让\s*项\s*目$/ }).click();
+    await page.locator(".rec-acts").getByRole("button", { name: /^客\s*户\s*转\s*让$/ }).click();
     const 框 = page.getByRole("dialog");
-    await 框.getByText("转让 · 客户A").waitFor();
+    await 框.getByText("客户转让 · 客户A").waitFor();
+    // 不是负责人本人发起（不用对方确认）：不摆「接手人确认后生效」那句
+    expect(await 框.locator(".rec-transfer-hint").count()).toBe(0);
     const 下一步 = 框.getByRole("button", { name: /下\s*一\s*步/ });
     expect(await 下一步.isDisabled()).toBe(true);
     // 候选里没有现负责人自己
@@ -206,8 +210,30 @@ it("「转让」开框挑人：没挑之前「下一步」点不了；挑了能�
     await 框.getByRole("button", { name: /取\s*消/ }).click();
     await 框.waitFor({ state: "hidden" });
     // 再开一次，上次挑的人清掉
-    await page.locator(".rec-acts").getByRole("button", { name: /^转\s*让\s*项\s*目$/ }).click();
+    await page.locator(".rec-acts").getByRole("button", { name: /^客\s*户\s*转\s*让$/ }).click();
     expect(await page.getByRole("dialog").getByRole("button", { name: /下\s*一\s*步/ }).isDisabled()).toBe(true);
+  } finally { await page.close(); }
+});
+it("负责人本人发起（转让要申请）：按钮、框标题照样叫「客户转让」，框里写明接手人确认后生效、7 天不确认作废、归属不变（11-12）", async () => {
+  const page = await open(true, 1366, true, { ...全开, 转让要申请: true, 转让原因: { 选项: ["客户要求"], 自己: "qa" } });
+  try {
+    expect(await 头按钮(page)).toEqual(["新开项目", "客户转让", "客户退回公海"]);
+    await page.locator(".rec-acts").getByRole("button", { name: /^客\s*户\s*转\s*让$/ }).click();
+    const 框 = page.getByRole("dialog");
+    await 框.getByText("客户转让 · 客户A").waitFor();
+    expect(await 框.getByText("申请移交").count()).toBe(0);
+    const 提示 = 框.locator(".rec-transfer-hint");
+    expect(await 提示.isVisible()).toBe(true);
+    expect(await 提示.innerText()).toMatch(/接手人确认才生效.*7 天内不确认自动作废，归属不变/);
+    // 挑好人点「下一步」：第二个框也叫客户转让（不叫申请移交），再说一遍要确认、7 天作废；按钮「确认转让」（审查 2）
+    await 框.getByRole("combobox", { name: "转给谁" }).click();
+    await page.locator(".ant-select-item-option").filter({ hasText: "同事乙" }).click();
+    await 框.getByRole("button", { name: /下\s*一\s*步/ }).click();
+    const 二 = page.locator(".ant-modal-confirm");
+    await 二.locator(".ant-modal-confirm-title").filter({ hasText: "把客户转让给「同事乙」" }).waitFor();
+    expect(await 二.innerText()).toMatch(/接手人确认后生效.*7 天内不确认自动作废，归属不变/);
+    expect(await 二.innerText()).not.toMatch(/申请移交|发出申请/);
+    expect(await 二.getByRole("button", { name: /确\s*认\s*转\s*让/ }).count()).toBe(1);
   } finally { await page.close(); }
 });
 it("项目模式联系人（U-客户-03 去掉管理联系人）：卡上只有编辑、没有删除", async () => {
@@ -300,4 +326,22 @@ it("超长号码、超长邮箱：1024 / 1280 / 1366 文字省略、复制键紧
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
     } finally { await page.close(); }
   }
+});
+
+/* 11-12 页头三枚按钮（新开项目 / 客户转让 / 客户退回公海）变长后：1024、375 宽 + 超长公司名，按钮不折行不出界，名字一行不撑出（口径同 e2e 的 量：scrollWidth > clientWidth + 1 且 overflow-x visible 算文字溢出） */
+it.each([1024, 375])("客户页头 %ipx：超长公司名 + 三枚按钮，不出界、不折行、名字不撑出", async (w) => {
+  const page = await open(true, w, true, { ...全开, 客户改: { name: "超长公司名有限责任公司".repeat(8) } });
+  try {
+    expect(await 头按钮(page)).toEqual(["新开项目", "客户转让", "客户退回公海"]);
+    const r = await page.evaluate(() => {
+      const vw = document.documentElement.clientWidth;
+      const 钮 = [...document.querySelectorAll(".rec-acts button")].map((b) => b.getBoundingClientRect());
+      const 溢出 = [...document.querySelectorAll(".rec-head *, .rec-acts *")].filter((el) => {
+        const cs = getComputedStyle(el);
+        return el.getBoundingClientRect().width >= 1 && el.scrollWidth > el.clientWidth + 1 && cs.overflowX === "visible" && cs.display !== "inline";
+      }).map((el) => `${el.tagName}.${el.className}`);
+      return { 横滚: document.documentElement.scrollWidth > vw, 出界: 钮.filter((b) => b.right > vw + 1 || b.left < -1).length, 折行: 钮.filter((b) => b.height > 40).length, 溢出 };
+    });
+    expect(r).toEqual({ 横滚: false, 出界: 0, 折行: 0, 溢出: [] });
+  } finally { await page.close(); }
 });

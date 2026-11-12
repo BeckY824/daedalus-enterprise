@@ -279,7 +279,8 @@ test("申请移交：销售甲把自己的客户转给销售乙，接受前还�
   // 名下有项目（线索乙）先问一起转，再问转让原因（可不选）
   await page.getByRole("dialog").getByRole("button", { name: "一起转" }).click();
   await page.getByRole("dialog").filter({ hasText: `转给「${种.名字.销售2}」` }).getByRole("button", { name: /转\s*让/ }).click();
-  await expect(提示(page, `已申请移交：1 名等 ${种.名字.销售2} 确认后生效`)).toBeVisible();
+  // 列表批量入口：框标题照旧「转给「X」」、按钮「转让」；发出后提示 11-12 起统一叫「已发起客户转让」
+  await expect(提示(page, `已发起客户转让：1 名等「${种.名字.销售2}」确认后生效`)).toBeVisible();
   expect(await 归谁()).toBe(销售1.id);
 
   await page.context().clearCookies();

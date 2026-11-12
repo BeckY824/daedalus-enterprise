@@ -1226,12 +1226,12 @@ export default function ProjectDetail({
   // 企业版换负责人单独一个按钮（10-30），弹窗说清转了会怎样、点「确认转让」才转（U-项目-07）
   // 11-01：转让按 能转让 给（总管理、上级能转不能改；负责人本人能改不能自己转），和 lib/project/db.ts 改项目 同一个判断
   const 转给钮 = p.企业版 && !p.pooled && !!p.能转让 && !独自一人(候选, p.ownerId) && (
-    <Button disabled={忙} onClick={() => { set转给谁(null); set转给带待办(公海规则.带待办默认勾); set转给框(true); }}>转让项目</Button>
+    <Button disabled={忙} onClick={() => { set转给谁(null); set转给带待办(公海规则.带待办默认勾); set转给框(true); }}>项目转让</Button>
   );
   const 放回问 = () => {
     // 企业版：放回前可选一个「回收原因」（字典，不选也行）；别的版本照旧一个确认
     if (p.企业版) { set回收原因(null); set放回框(true); return; }
-    modal.confirm({ title: "放回线索公海？", content: "放回去以后谁都能领，你自己不能再领回来", okText: "放回公海", onOk: () => 跑(() => 放回项目公海(p.id), "已放回线索公海") });
+    modal.confirm({ title: "把项目退回公海？", content: "只退这个项目，客户不动；退回去以后谁都能领，你自己不能再领回来", okText: "项目退回公海", onOk: () => 跑(() => 放回项目公海(p.id), "项目已退回公海") });
   };
   const 删问 = () => modal.confirm({ title: "删除这个项目？", content: 删除说明(p.删前清点, b.customer, p.企业版), okText: "删除", okButtonProps: { danger: true }, onOk: 删 });
 
@@ -1244,8 +1244,8 @@ export default function ProjectDetail({
       {领取钮}
       {转给钮}
       {p.能放公海 && (等复核
-        ? <Tooltip title={`${等复核文字}，暂时不能退回`}><Button disabled>退回公海</Button></Tooltip>
-        : <Button disabled={忙} onClick={放回问}>退回公海</Button>)}
+        ? <Tooltip title={`${等复核文字}，暂时不能退回公海`}><Button disabled>项目退回公海</Button></Tooltip>
+        : <Button disabled={忙} onClick={放回问}>项目退回公海</Button>)}
       {p.能删 && (
         <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{ items: [{ key: "delete", danger: true, label: "删除项目" }], onClick: () => 删问() }}>
           <Button icon={<MoreOutlined />} aria-label="项目的更多操作">更多</Button>
@@ -1503,24 +1503,24 @@ export default function ProjectDetail({
 
       <Modal
         open={放回框}
-        title="放回线索公海？"
-        okText="放回公海"
+        title="把项目退回公海？"
+        okText="项目退回公海"
         okButtonProps={{ loading: 忙, disabled: !!其他没写好(回收原因) }}
         onCancel={() => set放回框(false)}
         onOk={async () => {
           const ok = await 跑(() => 放回项目公海(p.id, 回收原因));
-          if (ok) message.success("已放回线索公海");
+          if (ok) message.success("项目已退回公海");
           // 企业版放回后原负责人看不到这个项目了（C-01，lib/project/pool-owner.ts 原负责人回避），回项目列表
           if (ok) { set放回框(false); router.push("/projects"); }
         }}
       >
-        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>放回去以后同事都能领，你作为原负责人不能再领回来，也看不到它了；你会记成这个项目的历史负责人，你在这个项目上没做完的待办会自动关闭。客户和客户负责人不动。</div>
+        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>只退这个项目：退回去以后同事都能领，你作为原负责人不能再领回来，也看不到它了；你会记成这个项目的历史负责人，你在这个项目上没做完的待办会自动关闭。客户和客户负责人不动。</div>
         <DictSelect style={{ width: "100%" }} placeholder="回收原因（可不选）" aria-label="回收原因" value={回收原因} onChange={set回收原因} options={p.原因选项.回收} />
       </Modal>
 
       <Modal
         open={转给框}
-        title="转让项目"
+        title="项目转让"
         okText="确认转让"
         okButtonProps={{ disabled: !转给谁, loading: 忙 }}
         onCancel={() => set转给框(false)}

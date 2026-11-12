@@ -73,6 +73,7 @@ import { 记下最近客户 } from "@/lib/last-customer";
 import { 金额, 金额或空, 合计文字 } from "@/lib/currency";
 import { 公海标签 } from "@/lib/pool";
 import { 带走说法 } from "@/lib/carry-over";
+import { 移交作废天数 } from "@/lib/enterprise/handover-expire-days";
 import { 少动, 滚法 } from "@/lib/reduced-motion";
 import { 放进公海, 领取, 撤销公海 } from "../pool-actions";
 import { useDeleteCustomers } from "../useDeleteCustomers";
@@ -128,7 +129,7 @@ const 单栏门槛 = 630;
 
 /** 企业版客户页头按钮开的框（10-31 改版 R6）→ 框的标题 */
 const 客户头部框叫法 = {
-  转让: "转让",
+  转让: "客户转让",
   管理联系人: "管理联系人",
   关联客户: "关联客户",
   管理关联: "管理关联",
@@ -493,7 +494,7 @@ export default function RecordView({
   async function 公海动作(动作: "放进" | "领取") {
     if (动作 === "领取" && !(await 先问转走的项目([customer.id]))) return;
     // 企业版放回前确认：联系人、项目一起退 + 必选退回原因（U-客户-04 / M-公海-09）；别的版本不问
-    const 问 = 动作 === "放进" ? await 问放回公海("把这位客户放回公海？", 企业) : null;
+    const 问 = 动作 === "放进" ? await (企业 ? 问放回公海("把这位客户退回公海？", 企业, "客户退回公海") : 问放回公海("把这位客户放回公海？", 企业)) : null;
     if (问 === false) return;
     const res = 动作 === "放进" ? await 放进公海([customer.id], 问?.原因) : await 领取([customer.id]);
     // 原负责人放进公海后自己就看不到这位了（11-03），留在详情页刷新是 404：回列表，提示条上的撤销还在
@@ -508,7 +509,7 @@ export default function RecordView({
       duration: 6,
       content: (
         <span>
-          {动作 === "放进" ? (企业 ? "已放回公海，原负责人不能再领回来" : "已放回公海，谁都能领") : `已领取，负责人改成你${带走说法(res.带走)}`}
+          {动作 === "放进" ? (企业 ? "客户已退回公海，原负责人不能再领回来" : "已放回公海，谁都能领") : `已领取，负责人改成你${带走说法(res.带走)}`}
           <Button type="link" size="small" onClick={async () => {
             message.destroy(key);
             const r = await 撤销公海(动作, 原, res.ok ? res.带过来 : undefined, undefined, res.ok ? res.公海项目 : undefined);
@@ -564,7 +565,7 @@ export default function RecordView({
     // 企业版「交接中」（D10）：负责人还没换，等接手人确认，没有可撤销的
     if (res.交接中 !== undefined) {
       return void (res.交接中
-        ? message.success(res.申请移交 ? `已申请移交：等 ${o.label} 确认后生效，确认前仍在你名下` : `已发起交接：等 ${o.label} 确认，确认前仍在原负责人名下`)
+        ? message.success(res.申请移交 ? `已发起客户转让，等「${o.label}」确认后生效，确认前仍在你名下` : `已发起交接：等 ${o.label} 确认，确认前仍在原负责人名下`)
         : message.info(res.交接已在路上 ? `这位${b.customer}已在移交中（等对方确认），没再发起` : res.没转 ? `这位${b.customer}刚被别人改了负责人，没转` : res.missing ? `这位${b.customer}已不存在（可能已删除）` : `没有发起新的交接：已归 ${o.label}`));
     }
     if (!res.updated) return void message.info(res.带走?.没转成 || res.没转 ? `这位${b.customer}刚被别人改了负责人，没转` : res.missing ? `这位${b.customer}已不存在（可能已删除）` : `本来就归 ${o.label}`);
@@ -885,7 +886,7 @@ export default function RecordView({
       </div>
 
       {/*
-        企业版页头按钮（10-31 改版 R6 → 10-31 会议 U-客户-03 精简）：只留新开项目、转让项目、退回公海（11-01 改名，新开项目在转让项目左边）。
+        企业版页头按钮（10-31 改版 R6 → 10-31 会议 U-客户-03 精简）：只留新开项目、客户转让、客户退回公海（11-01 改名，新开项目在左边；11-12 「转让项目 / 申请移交」统一叫「客户转让」、「退回公海」叫「客户退回公海」，和项目页的「项目转让 / 项目退回公海」分开）。
         编辑资料、添加 / 管理联系人、删除客户、AI、新建任务都不摆在这排：资料就地改（没权限的人改不了，M-权限-10），
         「新建沟通」挪进沟通记录的标题上，「新建任务」跟着待办挪到沟通记录下面，删除客户属权限限制不再给入口。
         列宽、断点和 .rec 一样：左组对齐资料栏，整个客户的事（转让、退回公海）在中组最后、靠右
@@ -898,8 +899,8 @@ export default function RecordView({
               {(能建项目 || 能转让 || 能退回公海) && (
                 <span className="acts-whole">
                   {能建项目 && <Button onClick={开建项目}>新开项目</Button>}
-                  {能转让 && <Button onClick={() => { set转给谁(undefined); set头部框("转让"); }}>{转让要申请 ? "申请移交" : "转让项目"}</Button>}
-                  {能退回公海 && <Button onClick={() => void 公海动作("放进")}>退回公海</Button>}
+                  {能转让 && <Button onClick={() => { set转给谁(undefined); set头部框("转让"); }}>客户转让</Button>}
+                  {能退回公海 && <Button onClick={() => void 公海动作("放进")}>客户退回公海</Button>}
                 </span>
               )}
             </div>
@@ -1083,7 +1084,7 @@ export default function RecordView({
                 一个人用（桌面端）时这两格不摆：下拉里只有自己，摆着只是让人多想一下（和客户表单同一个 独自一人 规则） */}
             {/* 企业版项目模式：客户页不转让（待定 14 红框），负责人只读；要换人在客户列表里整客户转让（连项目一起） */}
             {!独自一人(users, customer.salesOwnerId) && !摆法.转让 && (
-              <div className="rec-field" style={{ cursor: "default" }} title={去项目跟进 ? "要换负责人：点上方「转让」" : "要换负责人：在客户列表里勾上这位，点「转让」"}>
+              <div className="rec-field" style={{ cursor: "default" }} title={去项目跟进 ? "要换负责人：点上方「客户转让」" : "要换负责人：在客户列表里勾上这位，点「转让」"}>
                 <div className="rec-field-k">销售负责人</div>
                 <div className="rec-field-v">{customer.salesOwnerName ?? (企业 ? <span className="rec-field-empty" title="未分配">{空值符}</span> : <span className="rec-field-empty">未分配</span>)}</div>
               </div>
@@ -1341,7 +1342,7 @@ export default function RecordView({
                       AI
                     </Button>
                   )}
-                  <Button size="small" icon={<PlusOutlined />} onClick={点跟进}>
+                  <Button size="small" type="primary" icon={<PlusOutlined />} onClick={点跟进}>
                     新建沟通
                   </Button>
                 </Space>
@@ -1487,10 +1488,10 @@ export default function RecordView({
         }}
       />
       {头部框 && (
-        <Modal open title={`${头部框 === "转让" && 转让要申请 ? "申请移交" : 客户头部框叫法[头部框]} · ${customer.name}`} footer={null} width={头部框 === "转让" ? 480 : 640} onCancel={() => set头部框(null)}>
+        <Modal open title={`${客户头部框叫法[头部框]} · ${customer.name}`} footer={null} width={头部框 === "转让" ? 480 : 640} onCancel={() => set头部框(null)}>
           {头部框 === "转让" && (
             <div className="proj-modal-sec">
-              {转让要申请 && <div className="rec-transfer-hint">这是你名下的{b.customer}：发出后要对方确认才转到他名下；确认前仍在你名下，对方不确认不生效。</div>}
+              {转让要申请 && <div className="rec-transfer-hint">这是你名下的{b.customer}：发出后要接手人确认才生效，确认前仍在你名下；{移交作废天数} 天内不确认自动作废，归属不变。</div>}
               <Select
                 autoFocus
                 showSearch

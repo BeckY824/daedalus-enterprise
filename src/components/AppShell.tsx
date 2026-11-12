@@ -6,7 +6,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { 要跟Context } from "./FollowDue";
 import { 我Provider } from "@/lib/me-client";
 import Link from "next/link";
-import { Layout, Avatar, Dropdown, Button, Badge } from "antd";
+import { Layout, Avatar, Dropdown, Button, Badge, Tooltip } from "antd";
 import {
   SearchOutlined,
   HomeOutlined,
@@ -54,6 +54,7 @@ import { useMotionTheme } from "@/components/MotionTheme";
 import NoticeBell from "@/components/NoticeBell";
 import { 企业版根目录, 企业版亮项, 企业版页名, type 根目录图 } from "@/lib/enterprise/nav";
 import { 切换视图Provider } from "@/components/ViewAsContext";
+import { 左栏收窄 } from "@/lib/rail-mini";
 
 const { Header, Content } = Layout;
 
@@ -385,10 +386,35 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
     return () => 盯.disconnect();
   }, [desktop, 当前页名, 产品名]);
 
+  /**
+   * 客户详情上左栏收成图标窄栏（11-12，lib/rail-mini.ts）：看的是底下那页，开设置浮层不跟着展开。
+   * 窄栏里字都藏了，每一项悬停、键盘聚焦时在右边冒出名字；宽栏时 title 为空，Tooltip 什么都不弹。
+   * 一直包着 Tooltip（不按窄不窄换外壳）：换外壳会让导航项整个重挂，选中底色那块就不滑了
+   */
+  const 窄栏 = !小屏 && 左栏收窄(底下那页);
+  /*
+    宽窄过渡只在真的切换那一下有（壳上挂一会儿 rail-anim）：常驻的 transition 会让存过自定义宽度的人
+    一刷新就看着左栏从 220 滑到存的宽度，拖宽时也会拖泥带水。上一次窄不窄在渲染时比（不走 effect，同 去向 那段）
+  */
+  const [上次窄, set上次窄] = useState(窄栏);
+  const [宽窄切换中, set宽窄切换中] = useState(false);
+  if (上次窄 !== 窄栏) {
+    set上次窄(窄栏);
+    set宽窄切换中(true);
+  }
+  useEffect(() => {
+    if (!宽窄切换中) return;
+    const t = window.setTimeout(() => set宽窄切换中(false), 400);
+    return () => window.clearTimeout(t);
+  }, [宽窄切换中, 窄栏]);
+  const 带名 = (key: string, 名: string, el: React.ReactElement) => (
+    <Tooltip key={key} title={窄栏 ? 名 : undefined} placement="right" trigger={["hover", "focus"]} mouseEnterDelay={0.2}>
+      {el}
+    </Tooltip>
+  );
   /** 左栏的一项（主导航和「更多」共用）。选中那块底色仍是同一块在各项之间滑（layoutId） */
-  const 一项 = (n: (typeof nav)[number]) => (
+  const 一项 = (n: (typeof nav)[number]) => 带名(n.key, n.label, (
     <Link
-      key={n.key}
       /* 桌面端的「客户」直接进「名单 + 详情」，打开最近看过的那位（照毛玻璃原型）；表格在名单右上角。
          网页团队版照旧进表格：那边要按人分配、批量改，表格是主场。手机菜单也照旧进表格 */
       href={desktop && n.key === "/customers" ? "/customers/recent" : n.key}
@@ -431,7 +457,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
       {/* 灰的数只是「有多少」，不是「要处理」：和上面那个红的分开，红的才催人。企业版不摆（10-30：几千个客户的总数没人看，只占地方） */}
       {!企业版 && (计数[n.key] ?? 0) > 0 && <span className="rail-num">{计数[n.key]}</span>}
     </Link>
-  );
+  ));
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -626,7 +652,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
   return (
     <切换视图Provider value={!!正在视图}>
     <DockOpenContext.Provider value={面板占着地方}>
-    <div className={`shell${desktop ? " shell-desktop" : ""}${面板开着 && 底下那页 !== "/dashboard" ? " shell-dock-open" : ""}${显示浮标 ? " has-ai-fab" : ""}${从浮标开 ? " shell-fab-opened" : ""}`}>
+    <div className={`shell${desktop ? " shell-desktop" : ""}${面板开着 && 底下那页 !== "/dashboard" ? " shell-dock-open" : ""}${显示浮标 ? " has-ai-fab" : ""}${从浮标开 ? " shell-fab-opened" : ""}${窄栏 ? " rail-mini" : ""}${宽窄切换中 ? " rail-anim" : ""}`}>
       {视图条}
       {/* 桌面端顶上那条能拖窗口的把手，见 globals.css 的 .drag-strip */}
       {desktop && <div className="drag-strip" aria-hidden="true" />}
@@ -639,12 +665,14 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
             网页版原来顶上是标志；2026-10-24 企业版网页要和桌面端一个样子，也换成搜索框——
             产品名改由标签页标题（「客户 · Daedalus CRM」，见下面 当前页名）和图标、登录页来认。
           */}
-          <button type="button" className="rail-search" onClick={() => window.dispatchEvent(new Event("cmdbar:open"))} aria-label={页内占着CmdK ? "搜索" : `搜索（${modifier}K）`}>
-            <SearchOutlined />
-            <span>搜索</span>
-            {/* 首页的 ⌘K 是「回问答框」、记录页是「换一位」：那两处不写，免得标签和按下去的对不上（lib/roster.ts） */}
-            {!页内占着CmdK && <kbd><Shortcut>⌘K</Shortcut></kbd>}
-          </button>
+          {带名("search", "搜索", (
+            <button type="button" className="rail-search" onClick={() => window.dispatchEvent(new Event("cmdbar:open"))} aria-label={页内占着CmdK ? "搜索" : `搜索（${modifier}K）`}>
+              <SearchOutlined />
+              <span>搜索</span>
+              {/* 首页的 ⌘K 是「回问答框」、记录页是「换一位」：那两处不写，免得标签和按下去的对不上（lib/roster.ts） */}
+              {!页内占着CmdK && <kbd><Shortcut>⌘K</Shortcut></kbd>}
+            </button>
+          ))}
           {通知未读 !== undefined && <NoticeBell 初始未读={通知未读} />}
         </div>
         {/* 名字直接写出来，不再靠 tooltip：第一次打开的人不会去悬停，
@@ -667,14 +695,14 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
             ].filter((栏) => 栏.项.length > 0).map((栏) => (
               <div key={栏.路} className="rail-fav" aria-label={栏.标}>
                 <div className="rail-fav-h">{栏.名}</div>
-                {栏.项.map((c) => (
-                  <Link key={c.id} href={`${栏.路}/${c.id}`} className={`rail-fav-i${pathname === `${栏.路}/${c.id}` ? " on" : ""}`}>
+                {栏.项.map((c) => 带名(c.id, c.name, (
+                  <Link href={`${栏.路}/${c.id}`} className={`rail-fav-i${pathname === `${栏.路}/${c.id}` ? " on" : ""}`} aria-label={c.name}>
                     <span className="rail-fav-av" style={{ background: avatarColor(c.name), color: AVATAR_TEXT }}>
                       {initial(c.name)}
                     </span>
                     <span className="rail-fav-n">{c.name}</span>
                   </Link>
-                ))}
+                )))}
               </div>
             ))}
           </div>
@@ -690,13 +718,15 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
           {/* AI 面板收着时的入口。原来是正文右边一条 44px 的窄边，笔记本上每张表都被它挤掉最右一列，
               挪到这里就哪边都不占（见 AiDock 收起时那段）。首页就是对话本身，不用它 */}
           {ai && !小屏 && !面板开着 && 底下那页 !== "/dashboard" && (
-            <button type="button" className="rail-item rail-ask" onClick={() => 记住面板(true)} aria-label={`打开 AI 面板（${modifier}J）`}>
-              <MessageOutlined />
-              <b>问一句</b>
-              <span className="rail-ask-k"><Shortcut>⌘J</Shortcut></span>
-            </button>
+            带名("ask", "问一句", (
+              <button type="button" className="rail-item rail-ask" onClick={() => 记住面板(true)} aria-label={`打开 AI 面板（${modifier}J）`}>
+                <MessageOutlined />
+                <b>问一句</b>
+                <span className="rail-ask-k"><Shortcut>⌘J</Shortcut></span>
+              </button>
+            ))
           )}
-          <AiTasks />
+          <AiTasks 窄={窄栏} />
           <AiMeterBar />
           {/* 检查更新那一行（学 MonoCode 左下角）：常驻，写着当前版本；有新版变蓝、下载有进度、下好了点它重启 */}
           {/* 更新记录在「检查更新」上面（2026-10-04 用户）：一个看「改了什么」，一个管「有没有更新的」。
@@ -714,15 +744,17 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
             {/* 点开，不是悬停。悬停开的菜单会在你只是路过时糊你一脸，
                 而且右边那个小箭头说的就是「点我」——两者得是一回事 */}
             <Dropdown placement="topLeft" trigger={["click"]} menu={userMenu}>
-              <button type="button" className="rail-user" aria-label={`${user.name}，账号菜单`}>
-                <Avatar size={24} style={{ background: avatarColor(user.name), color: AVATAR_TEXT, fontSize: 12, fontWeight: 600, flex: "none" }}>
-                  {initial(user.name)}
-                </Avatar>
-                {/* 名字长了就省略号收尾，不再把整行吃掉；右边那个小箭头是「这儿能点开」的唯一信号——
-                    在它之前，这一行和一条静态的署名长得一模一样 */}
-                <b>{user.name}</b>
-                <DownOutlined className="rail-user-caret" aria-hidden />
-              </button>
+              {带名("me", user.name, (
+                <button type="button" className="rail-user" aria-label={`${user.name}，账号菜单`}>
+                  <Avatar size={24} style={{ background: avatarColor(user.name), color: AVATAR_TEXT, fontSize: 12, fontWeight: 600, flex: "none" }}>
+                    {initial(user.name)}
+                  </Avatar>
+                  {/* 名字长了就省略号收尾，不再把整行吃掉；右边那个小箭头是「这儿能点开」的唯一信号——
+                      在它之前，这一行和一条静态的署名长得一模一样 */}
+                  <b>{user.name}</b>
+                  <DownOutlined className="rail-user-caret" aria-hidden />
+                </button>
+              ))}
             </Dropdown>
             {/* 反馈在更新键的右边，两枚都是这一行的「出口」：一个往外拿新版本，一个往外送一句话。
                 网页版没有更新键，那儿就只有它一枚；企业版两枚都没有 */}
