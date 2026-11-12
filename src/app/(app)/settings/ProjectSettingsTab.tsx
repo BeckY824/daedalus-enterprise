@@ -554,7 +554,7 @@ function BlockerDefaultsCard({
   return (
     <Card title="卡点默认值" extra={挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}>
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        在项目沟通记录上发卡点时默认选中的类型和影响；卡点不设解决时限，只记从出现到解决用了几天。
+        在项目沟通记录上新建卡点时默认选中的类型和影响；卡点不设解决时限，只记从出现到解决用了几天。
       </div>
       <div style={行}>
         <span style={{ width: 72 }}>默认类型</span>
@@ -647,7 +647,7 @@ function BlockerReasonsCard({
       extra={挡 ? <span style={{ color: "var(--text-muted)" }}>{挡}</span> : 待审 > 0 && <Tag color="warning">{待审} 个待审核</Tag>}
     >
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        发卡点时从这里多选。用过的原因不能删，只能停用或合并进别的原因（合并后旧卡点改挂到目标原因上）；
+        新建卡点时从这里多选。用过的原因不能删，只能停用或合并进别的原因（合并后旧卡点改挂到目标原因上）；
         前台新加的原因先是「待审核」，复盘页的统计里照样算，启用就算审核通过。
       </div>
       <div className="blk-reasons" role="list" aria-label="阻碍原因字典">

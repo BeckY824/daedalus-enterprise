@@ -49,7 +49,7 @@ export function ProjectFold({ id, 名, 开: 外开, set开: 外set开, 默认开
             disabled={锁开}
             onClick={() => set开(!开)}
           >
-            {箭头}
+            {连体箭头}
           </button>
         )}
       </div>
@@ -57,7 +57,8 @@ export function ProjectFold({ id, 名, 开: 外开, set开: 外set开, 默认开
   );
 }
 
-const 箭头 = (
+/** 连体按钮右半的箭头：收起钮和「完成节点 ▾」同一个图标、同一个大小 */
+export const 连体箭头 = (
   <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden focusable="false">
     <path d="M4 6.5 8 10.5 12 6.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
@@ -67,7 +68,7 @@ const 箭头 = (
  * 连体按钮的色调（11-12 先这样定，改成全部同色只改这一处）：
  *   success = 完成节点（绿底白字，ProjectDetail 进程钮，样式 .proj-done-btn）
  *   brand   = 品牌蓝实心（新建沟通，它本来就是卡头主按钮）
- *   plain   = 同外形的描边款（新建待办、发卡点）
+ *   plain   = 同外形的描边款（新建待办、新建卡点）
  */
 export type 连体色 = "success" | "brand" | "plain";
 export const 模块钮色: Record<"沟通" | "待办" | "卡点", 连体色> = { 沟通: "brand", 待办: "plain", 卡点: "plain" };
@@ -102,7 +103,7 @@ export function FoldSplit({ 主, 色 = "plain" }: { 主?: 连体主钮 | null; �
       <Button
         type={型}
         className={`split-caret${类 ? ` ${类}` : ""}`}
-        icon={箭头}
+        icon={连体箭头}
         aria-expanded={折.摊开}
         aria-controls={折.控制}
         aria-label={`${折.摊开 ? "收起" : "展开"}${折.名}`}

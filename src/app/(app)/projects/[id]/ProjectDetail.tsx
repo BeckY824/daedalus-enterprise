@@ -29,7 +29,7 @@ import { 阶段与进程, type 出口叫法改动 } from "@/lib/project/stage-di
 import { 有效线索节点, 缺有效沟通还差 } from "@/lib/project/stage-gates";
 import type { 线索验证 } from "@/lib/project/lead-verify";
 import LeadVerifyPanel from "./LeadVerifyPanel";
-import { FoldSplit, ProjectFold, 模块钮色 } from "./ProjectFold";
+import { FoldSplit, ProjectFold, 模块钮色, 连体箭头 } from "./ProjectFold";
 import { 卡名Provider, 客户详情卡点, 项目卡名 } from "./card-names";
 import { ProjectFillRequired, 定位到模块 } from "./ProjectFillRequired";
 import { CustomerReadonlyCard } from "./CustomerReadonlyCard";
@@ -709,7 +709,7 @@ export default function ProjectDetail({
               {灰着(完成灰, <Button className="proj-done-btn" disabled={忙 || !!完成灰} onClick={() => set头部框("完成")}>完成节点</Button>)}
               {菜单.length > 0 && (
                 <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{ items: 菜单, onClick: ({ key }) => { if (key === "stop") 开终止(); } }}>
-                  <Button className="proj-done-btn" icon={<DownOutlined />} aria-label="终止进程" />
+                  <Button className="proj-done-btn split-caret" icon={连体箭头} aria-label="终止进程" />
                 </Dropdown>
               )}
             </Space.Compact>
@@ -1193,7 +1193,7 @@ export default function ProjectDetail({
                       disabled={忙}
                       menu={{
                         items: [
-                          ...(卡点?.能发 ? [{ key: "blocker", label: "发卡点" }] : []),
+                          ...(卡点?.能发 ? [{ key: "blocker", label: "新建卡点" }] : []),
                           ...(p.可改沟通 ? [{ key: "edit", label: "修改" }] : []),
                           ...(p.可删沟通 ? [{ key: "delete", label: "删除", danger: true }] : []),
                         ],
@@ -1271,12 +1271,12 @@ export default function ProjectDetail({
       title={p.企业版 ? `${卡点名}（${搜着 ? `搜到 ${列卡点.length}` : 卡点.们.length}）` : `卡点（${卡点.们.length}）`}
       // 发卡点挂在最近一条沟通上（沟通行的「…」里也能挑别的那条）；企业版 11-01 从页头回到这块卡头，没沟通时灰着、悬停说为什么
       extra={p.企业版 ? (
-        // 11-12 连体按钮：左半发卡点（没沟通时灰着、悬停说为什么），右半收起 / 展开；不能发只剩右半
-        <FoldSplit 色={模块钮色.卡点} 主={卡点.能发 ? { 字: "发卡点", onClick: () => p.followUps[0] && set发卡点于(p.followUps[0].id), disabled: 忙, 原因: p.followUps.length ? undefined : "先记一条沟通" } : null} />
+        // 11-12 连体按钮：左半「新建卡点」（11-12 用户看 3702 由「发卡点」改名；没沟通时灰着、悬停说为什么），右半收起 / 展开；不能发只剩右半
+        <FoldSplit 色={模块钮色.卡点} 主={卡点.能发 ? { 字: "新建卡点", onClick: () => p.followUps[0] && set发卡点于(p.followUps[0].id), disabled: 忙, 原因: p.followUps.length ? undefined : "先记一条沟通" } : null} />
       ) : 卡点.能发 && (
         <Space size={8}>
           {!p.followUps.length && <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>先记一条沟通</span>}
-          <Button type="primary" size="small" disabled={!p.followUps.length} onClick={() => p.followUps[0] && set发卡点于(p.followUps[0].id)}>发卡点</Button>
+          <Button type="primary" size="small" disabled={!p.followUps.length} onClick={() => p.followUps[0] && set发卡点于(p.followUps[0].id)}>新建卡点</Button>
         </Space>
       )}
     >

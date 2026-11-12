@@ -3770,6 +3770,8 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 }
 /* 卡头、卡身的留白 */
 .rec-page.ui-v2 .rec-mod > .ant-card-head { min-height: 48px; padding-inline: 16px 52px; }
+/* 收起并进卡头连体按钮的（11-12）：右边不再给那颗独立收起钮留 52，和中栏别的卡（antd 卡头 24）同一条右边线（11-12 用户看 3702「按钮位置没对齐」） */
+.rec-page.ui-v2 .proj-fold.has-split > .rec-mod > .ant-card-head { padding-inline-end: 24px; }
 .rec-page.ui-v2 .rec-rail-blocks .rec-mod > .ant-card-head { padding-inline: 16px 44px; }
 .rec-page.ui-v2 .rec-mod > .ant-card-body { padding: 12px 16px 16px; }
 .rec-page.ui-v2 .rec-rail-blocks .rec-mod > .ant-card-body { padding: 8px 8px 10px; }
@@ -3865,7 +3867,8 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 /* 项目区第一行：页签那段可缩、每个页签放不下省略（悬停看全，TruncTip + title），缩到底还放不下就横着滚（审查 #1：项目多、1024 宽时不能把锁和新建裁掉）；
    小标题、锁、新建、右端按钮在滚动段外面、不缩，整行不换行 */
 .cd-zh { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; margin: 0 2px 12px; }
-.cd-cap { flex: none; color: var(--text-muted); font-size: var(--fs-min); font-weight: 500; }
+/* 卡头行首「项目」两个字（11-12 用户看 3702）：颜色和后面的项目名一样（--ink），字号字重不动；单项目、多项目胶囊两种摆法共用 */
+.cd-cap { flex: none; color: var(--ink); font-size: var(--fs-min); font-weight: 500; }
 /* 11-12 方案一：项目切换在进程卡卡头左边（ProjectSwitch），「完成节点」在同一行右边。
    2 个以上项目是一排胶囊（名字 + 所在阶段），放不下的收进「更多 N 个」——宽度由 JS 量（ProjectZone.tsx 算可见），这里只管样子；
    量尺 .cd-pj-ruler 是 0×0、裁掉的一层，胶囊 flex:none 不被挤，量到的是真宽度，也不撑出滚动 */
