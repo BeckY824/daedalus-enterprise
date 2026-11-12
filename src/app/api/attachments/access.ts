@@ -4,7 +4,8 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 附件个数, 项目分类附件数 } from "@/lib/attachments";
 import { getCurrentUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
-import { 能管项目, 露客户, 看得到的客户 } from "@/lib/project/db";
+import { 能管项目, 露客户 } from "@/lib/project/db";
+import { 页面看得到的客户 } from "@/lib/project/visible-customers";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 原负责人挡着 } from "@/lib/project/pool-owner";
 import type { 归属 } from "@/lib/attachment-rules";
@@ -81,15 +82,22 @@ async function 企业版改附件挡(要改: true | "删", 客户: string | null
 
 /** 项目附件的权限：带限定的 prisma 取项目（看不到的项目当不在），再按 露客户 / 能管项目 挡 */
 async function 认项目(projectId: string, 要改: boolean): Promise<{ 叫法: string } | { 错: string; 状态: number }> {
+  const 底 = await 认项目看(projectId);
+  if ("错" in 底) return 底;
+  const { 我, p } = 底;
+  if (要改 && !能管项目(我, p, await 权限组织())) return { 错: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? "只有项目负责人能改" : "只有项目负责人、老板或主管能改", 状态: 403 };
+  return { 叫法: `项目「${p.name}」` };
+}
+/** 认项目 的「看」那半：看得到就给我和项目（要改 再在上面判 能管项目）。项目附件入口 看、改一起问，只走一遍这半（11-12 客户详情速度） */
+async function 认项目看(projectId: string): Promise<{ 错: string; 状态: number } | { 我: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>; p: { id: string; name: string; customerId: string; ownerId: string; pooledAt: Date | null } }> {
   if (!企业版() || (await getBusiness()).projectMode !== true) return { 错: "此版本未开放项目附件", 状态: 404 };
   const 我 = await getCurrentUser();
   if (!我) return { 错: "请先登录", 状态: 401 };
   const p = await prisma.project.findFirst({ where: { id: projectId }, select: { id: true, name: true, customerId: true, ownerId: true, pooledAt: true } });
   // 公海里我是历史负责人的项目：当不在（C-01，lib/project/pool-owner.ts）
   if (!p || (await 原负责人挡着(prisma, 我, p))) return { 错: "这个项目已经不在了，刷新看看", 状态: 404 };
-  if (!露客户(我, p, await 看得到的客户([p.customerId]))) return { 错: "这个项目在公海里，先领取再看附件", 状态: 403 };
-  if (要改 && !能管项目(我, p, await 权限组织())) return { 错: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? "只有项目负责人能改" : "只有项目负责人、老板或主管能改", 状态: 403 };
-  return { 叫法: `项目「${p.name}」` };
+  if (!露客户(我, p, await 页面看得到的客户([p.customerId]))) return { 错: "这个项目在公海里，先领取再看附件", 状态: 403 };
+  return { 我, p };
 }
 
 /**
@@ -158,7 +166,10 @@ export async function 联系人附件入口(contactId: string): Promise<{ 个数
  * 就不给这一区，改不了（不是负责人 / 老板 / 主管）就只给看。10-31 分格：合同附件 / 项目方案 / 验收报告（11-08）/ 其它附件，各几个
  */
 export async function 项目附件入口(projectId: string): Promise<{ 合同: number; 方案: number; 验收报告: number; 其它: number; 只读: boolean } | null> {
-  if (!企业版() || "错" in await 认父记录({ projectId }, false)) return null;
-  const 个数 = await 项目分类附件数(defaultClient, projectId);
-  return { ...个数, 只读: "错" in await 认父记录({ projectId }, true) };
+  if (!企业版()) return null;
+  // 看、改一起问：「看」那半只走一遍（同 认父记录({ projectId }, false / true)：改 = 看得到且 能管项目）
+  const 底 = await 认项目看(projectId);
+  if ("错" in 底) return null;
+  const [个数, org] = await Promise.all([项目分类附件数(defaultClient, projectId), 权限组织()]);
+  return { ...个数, 只读: !能管项目(底.我, 底.p, org) };
 }

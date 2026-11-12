@@ -9,10 +9,10 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import { llmEnabled } from "@/lib/llm";
 import { 已立项天数 } from "@/lib/project/project-fields";
-import { 可选项 } from "@/lib/enterprise/dict";
+import { 页面可选项, 预读页面字典, type 字典种类 } from "@/lib/enterprise/dict";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看项目, 能转让项目, 是经理, 能删除, 能新建和领取 } from "@/lib/enterprise/permissions";
-import { 能改这条沟通, 能改沟通of, 能删沟通, 能删沟通of } from "@/lib/enterprise/follow-perm";
+import { 页面能改沟通, 能改沟通of, 页面能删沟通, 能删沟通of } from "@/lib/enterprise/follow-perm";
 import { 沟通附件们 } from "@/lib/attachments";
 import type { 附件 } from "@/lib/attachment-rules";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -42,6 +42,7 @@ import type { 项目画像 } from "./ProjectExtras";
 import type { 项目详情, 项目卡点, 放回方式, 项目详情Props } from "./ProjectDetail";
 import { 去空, 有值 } from "@/lib/empty-value";
 import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
+import { 页面看得到的客户 } from "@/lib/project/visible-customers";
 
 
 /**
@@ -97,6 +98,9 @@ export async function 项目页去向(me: SessionUser, id: string): Promise<{ �
   return { 种: "客户页", 到: 客户页项目地址(p.customerId, p.id) };
 }
 
+/** 项目详情这一屏读的字典（回收 / 无效原因、项目画像各项、关联的身份 / 角色 / 立场）：客户页项目区和项目页开头一起预读，合成两句 */
+export const 项目详情字典们: readonly 字典种类[] = ["recycle", "invalid", ...项目画像项.map((x) => x.种类), "projCustRole", "projContactRole", "projStance"];
+
 /** 项目详情（团队版项目模式 1a）：改节点、勾尾款 / 验收、节点变更和挂在项目上的沟通。开关关着时不存在 */
 export async function 读项目详情(me: SessionUser, id: string): Promise<项目详情载入> {
   const p = await prisma.project.findUnique({
@@ -113,6 +117,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     },
   });
   if (!p) return { 种: "无" };
+  if (企业版()) 预读页面字典(项目详情字典们);
   // 11-01 只认业务角色（lib/enterprise/permissions.ts）：企业版 org 一定读；没设业务角色的什么都看不到
   const org = await 权限组织();
   const 已加入 = p.members.filter((m) => m.inviteStatus === "JOINED").map((m) => m.userId);
@@ -126,7 +131,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   const 能改 = 能管项目(me, p, org);
   const 能转 = 能转让项目(me, p, org);
   // 公海里同事客户的项目：只给项目本身，客户、联系人、沟通内容领了再看（lib/project/db.ts 露客户）
-  const 看得到客户 = await 看得到的客户([p.customerId]);
+  const 看得到客户 = await 页面看得到的客户([p.customerId]);
   const 露 = 露客户(me, p, 看得到客户);
   // 客户那一格点了去哪（E①）：看得到客户 = 客户详情；只负责项目的人和实线上级 = 只读卡；只露名字的（比如虚线上级）= 文字，不链到一个报「没有找到」的页。
   // 露 的含义不变，只读卡不改限定层
@@ -185,8 +190,8 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   // M-权限-09（11-09 原口径）：管理（销售管理 / 市场管理 / 总管理）以下的人，负责人本人也算，不能改、不能删。
   // 改 = 身为负责人（项目或客户的）的管理，删 = 系统管理员或身为负责人的管理（V3.5.1），两样分开给，和服务端同一套（lib/enterprise/follow-perm.ts）
   const 沟通能动 = 企业 && !公海 && 露 && !(await 只读客户(defaultClient, p.customer));
-  const 可改沟通 = 沟通能动 && (能改沟通of(me, [p.ownerId], org) || (!!p.customerId && (await 能改这条沟通(me, { customerId: p.customerId }))));
-  const 可删沟通 = 沟通能动 && (能删沟通of(me, [p.ownerId], org) || (!!p.customerId && (await 能删沟通(me, { customerId: p.customerId }))));
+  const 可改沟通 = 沟通能动 && (能改沟通of(me, [p.ownerId], org) || (!!p.customerId && (await 页面能改沟通(me, p.customerId))));
+  const 可删沟通 = 沟通能动 && (能删沟通of(me, [p.ownerId], org) || (!!p.customerId && (await 页面能删沟通(me, p.customerId))));
   // 企业版节点必填：这个节点配了必填才给；还差哪几样和 lib/project/db.ts 按必填推进 同一个算法
   // 企业版 D-37：直属上级（账号可能还是 SALES）、总管理员能改节点；负责人有直属上级时往前推只给直属上级和老板（都和 lib/project/db.ts 改节点 同一个判断）
   // 「仅上级推」开着：直属上级也给节点这块（服务端只放往前推，往后退、点结局照拦）
@@ -216,7 +221,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   // 企业版联系人附件（2026-10-28）：项目卡联系人那一行下面给「附件」，和客户页同一个弹窗；不是企业版、公海里没领的不查
   const 联系人附件 = 企业 && 露 && p.contact ? await 联系人附件入口(p.contact.id) : null;
   // 企业版字典下拉（10-27）：不是企业版 可选项 给空
-  const [回收原因们, 无效原因们] = await Promise.all([可选项("recycle"), 可选项("invalid")]);
+  const [回收原因们, 无效原因们] = await Promise.all([页面可选项("recycle"), 页面可选项("invalid")]);
   // 企业版项目来源 / 已立项天数 / AI 录入（10-29 P6）：项目自己选了渠道就用它，没选跟客户来源走（和渠道统计 lib/enterprise/channel-stats.ts 同一条规则）
   // 痛点标注、合同状态（迁移 101）：字段权限「藏」的那一项不给值（界面不摆那一行、编辑框不交那一项）
   const 权限 = 企业 ? await 字段权限of(me.id) : null;
@@ -250,7 +255,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     项们: await Promise.all(项目画像项.map(async (项) => {
       // 选项 = 启用着的 + 这个项目已经存着、后来停用的（不然下拉里显示成一串值）；「其他」要另写一句，这里一改就存，不给选
       const 存着 = 项.多选 ? 存的需求 : [p[项.键]].filter((x): x is string => 有值(x));
-      const 启用 = (await 可选项(项.种类)).filter((x) => x !== 其他项);
+      const 启用 = (await 页面可选项(项.种类)).filter((x) => x !== 其他项);
       return { 键: 项.键, 名: 字典定义[项.种类].名, 多选: 项.多选, 选项: [...启用, ...存着.filter((x) => !启用.includes(x))] };
     })),
     // 老库存的「暂未确认」这类占位按没选显示「—」（11-11）

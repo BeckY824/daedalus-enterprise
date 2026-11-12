@@ -120,10 +120,13 @@ async function 补换默认(kind: 字典种类, db: Prisma.TransactionClient) {
  * 只看项目画像里的单选项（项目画像项），别的种类不删。做完记一笔，以后不再碰
  */
 const 删旧默认记号 = (kind: 字典种类) => `entDict.defaultDropped.${kind}`;
+const 多出的旧默认 = (kind: 字典种类) => (字典定义[kind].旧默认 ?? []).flatMap((这轮) => 这轮.flatMap((旧名, j) => (默认序号of(kind, j) < 0 ? [[j, 旧名] as const] : [])));
+const 单选画像of = (kind: 字典种类) => 项目画像项.find((x) => x.种类 === kind && !x.多选);
+/** 这一类有没有「删多出的旧默认」要做（没有的不看记号就返回） */
+const 要删旧默认 = (kind: 字典种类) => !!字典定义[kind].旧默认 && 多出的旧默认(kind).length > 0 && !!单选画像of(kind);
 async function 删多出的旧默认(kind: 字典种类, db: Prisma.TransactionClient) {
-  const { 旧默认 = [] } = 字典定义[kind];
-  const 多出的 = 旧默认.flatMap((这轮) => 这轮.flatMap((旧名, j) => (默认序号of(kind, j) < 0 ? [[j, 旧名] as const] : [])));
-  const 画像 = 项目画像项.find((x) => x.种类 === kind && !x.多选);
+  const 多出的 = 多出的旧默认(kind);
+  const 画像 = 单选画像of(kind);
   if (!多出的.length || !画像) return;
   if (await db.setting.findUnique({ where: { key: 删旧默认记号(kind) } })) return;
   for (const [序, 旧名] of 多出的) {
@@ -203,7 +206,67 @@ const 能选 = (x: EntDictItem) => x.active && !旧占位词.includes(x.name.tri
  * 页面渲染用的读法：同一次请求里同一类只读一次（React cache，10-29）。客户页一屏要读好几类、中栏名单也要读客户状态，
  * 每处直接调 企业字典 是每次 3～4 句（数行数、看记号、取列表）。只给服务端组件渲染用：写库、校验提交（选的原因）照旧现读
  */
-export const 页面字典 = cache((kind: 字典种类): Promise<EntDictItem[]> => 企业字典(kind));
+export function 页面字典(kind: 字典种类): Promise<EntDictItem[]> {
+  // 同一张表上先补再取（测试里 cache 直通，每次 本次字典() 是新表，分开取会取空）
+  const 表 = 本次字典();
+  预读到(表, [kind]);
+  return 表.get(kind)!;
+}
+
+/** 这一次请求里读过 / 正在读的各类（React cache：一次请求一份；测试里 cache 直通，就是每次一张新表，照样对，只是不省） */
+const 本次字典 = cache(() => new Map<字典种类, Promise<EntDictItem[]>>());
+
+/**
+ * 页面一次要好几类时先说一声（11-12 客户详情速度：客户页 + 项目区一屏要 24 类，每类单读是 数行数 + 看记号 + 取列表 3～4 句，合计 70 多句）：
+ * 没读过的几类合成两句——这几类的修补记号一句、选项一句；修补都做过（和 企业字典本体 走一遍什么也不写的情形一一对上）的直接用，
+ * 没做过的（新库第一次读、默认改过还没补）那一类照旧走 企业字典 一遍。只给渲染用，同 页面字典
+ */
+export function 预读页面字典(kinds: readonly 字典种类[]): void {
+  预读到(本次字典(), kinds);
+}
+function 预读到(表: Map<字典种类, Promise<EntDictItem[]>>, kinds: readonly 字典种类[]): void {
+  const 缺 = [...new Set(kinds)].filter((k) => !表.has(k));
+  if (!缺.length) return;
+  const 读 = 批量读字典(缺);
+  for (const k of 缺) {
+    const 这类 = 读.then((r) => r.get(k)!);
+    // 没人取的那几类读失败了别成一个没人接的 rejection；取的人照样拿到错
+    这类.catch(() => undefined);
+    表.set(k, 这类);
+  }
+}
+
+/** 企业字典本体 里会看的修补记号（各类不一样，见上面各个 补… / 删… / 记下…） */
+function 修补记号们(kind: 字典种类): string[] {
+  const d = 字典定义[kind];
+  return [
+    ...(d.旧默认 ?? []).map((_, 轮) => 换默认记号(kind, 轮)),
+    ...(要删旧默认(kind) ? [删旧默认记号(kind)] : []),
+    ...((d.默认停用 ?? []).length ? [补停用记号(kind)] : []),
+    补新记号(kind),
+    ...(d.默认顺序 ? [换顺序记号(kind)] : []),
+  ];
+}
+/** 修补都做过了：企业字典本体 这时只会读不会写，返回的就是这一类按 sort、createdAt 排的全部行 */
+function 修补都做过(kind: 字典种类, 记: ReadonlyMap<string, string>, 有行: boolean): boolean {
+  if (!有行) return false;
+  const 补新 = 记.get(补新记号(kind));
+  if (补新 === undefined || !(Number(补新) >= 补到(kind))) return false;
+  return 修补记号们(kind).every((k) => 记.has(k));
+}
+async function 批量读字典(kinds: readonly 字典种类[]): Promise<Map<字典种类, EntDictItem[]>> {
+  const [记行, 行们] = await Promise.all([
+    prisma.setting.findMany({ where: { key: { in: kinds.flatMap(修补记号们) } }, select: { key: true, value: true } }),
+    prisma.entDictItem.findMany({ where: { kind: { in: [...kinds] } }, orderBy: [{ sort: "asc" }, { createdAt: "asc" }] }),
+  ]);
+  const 记 = new Map(记行.map((x) => [x.key, x.value]));
+  const 出 = new Map<字典种类, EntDictItem[]>();
+  for (const k of kinds) {
+    const 这类 = 行们.filter((x) => x.kind === k);
+    出.set(k, 修补都做过(k, 记, 这类.length > 0) ? 这类 : await 企业字典(k));
+  }
+  return 出;
+}
 /** 同 可选项，走 页面字典 */
 export const 页面可选项 = cache(async (kind: 字典种类): Promise<string[]> => {
   if (!企业版()) return [];

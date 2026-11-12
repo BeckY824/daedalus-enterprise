@@ -5,12 +5,13 @@ import { 收藏了吗 } from "@/lib/favorites";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 历史负责人of, 我放出去的公海客户 } from "@/lib/owner-log-db";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 能改这条沟通, 能删沟通 } from "@/lib/enterprise/follow-perm";
+import { 页面能改沟通, 页面能删沟通 } from "@/lib/enterprise/follow-perm";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
 import { requireUser } from "@/lib/auth";
 import CustomerDetail from "./CustomerDetail";
 import { 读项目区 } from "./project-zone";
+import { 项目详情字典们 } from "../../projects/[id]/load";
 import SameNumberBanner from "../../projects/[id]/SameNumberBanner";
 import { followHistoryInclude, followHistoryOrder, serializeFollowHistory } from "./follow-history-query";
 import { 负责人候选 } from "@/lib/owners";
@@ -28,8 +29,8 @@ import { 字段权限of, 客户列字段 } from "@/lib/enterprise/field-perm";
 import { 能管公海, 能转出自己的, 能放回客户公海, 只读角色, 能新建和领取, 转自己客户要申请 } from "@/lib/enterprise/permissions";
 import { 客户在市场手里 } from "@/lib/enterprise/market-transfer";
 import { 附件个数, 联系人分类附件数 } from "@/lib/attachments";
-import { 关联客户们, 号码种类表, 联系人号码们, 客户的联系人们, 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
-import { 页面可选项, 页面字典, 页面客户释义 } from "@/lib/enterprise/dict";
+import { 关联客户们, 页面号码种类表, 联系人号码们, 客户的联系人们, 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
+import { 页面可选项, 页面字典, 页面客户释义, 预读页面字典 } from "@/lib/enterprise/dict";
 import { 客户状态色表 } from "@/lib/enterprise/cust-status-color";
 import { 企业版字典, 本套位置 } from "@/lib/project/nodes";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -99,6 +100,8 @@ export default async function CustomerDetailPage({
   // 企业版联系人挂多位客户（P13 第 1 条）：挂到这位的别人家联系人排在自家的后面；自家的另外挂在哪也带上
   const 挂来的P = 企 ? 客户的联系人们(customer.id) : Promise.resolve([]);
   const 全部联系人idP = 挂来的P.then((挂来的) => [...customer.contacts.map((c) => c.id), ...挂来的.map((x) => x.contact.id)]);
+  // 这一屏要读的字典先说一声，合成两句（客户层 7 类 + 项目区那几类，lib/enterprise/dict.ts 预读页面字典）
+  if (企) 预读页面字典(["custStatus", "custType", "custAttr", "custAssign", "contactTitle", "contactKind", "transfer", ...(只项目 ? 项目详情字典们 : [])]);
   const 规则P = 只项目 ? 生效组织规则() : null;
   // 企业版只用项目：商机一节换成这位名下的项目（10-26）；库里存着旧节点名 / 旧结局的按企业版的新名显示（10-31 改名）
   // 先摆成 promise：项目区（读项目区）挂在它后面和下面的大 Promise.all 并行（第 2 批审查 #4）
@@ -158,15 +161,15 @@ export default async function CustomerDetailPage({
     企 ? 全部联系人idP.then((ids) => 联系人分类附件数(defaultClient, ids)) : null,
     // 企业版客户改版（定稿 P5）：关联客户卡片、联系人号码类型、分配方式
     企 ? 关联客户们(customer.id) : null,
-    企 ? 号码种类表().then((t) => t.map((x) => ({ 名: x.名, kind: x.kind, active: x.active }))) : undefined,
+    企 ? 页面号码种类表().then((t) => t.map((x) => ({ 名: x.名, kind: x.kind, active: x.active }))) : undefined,
     企 ? 页面可选项("custAssign") : undefined,
     企 ? 页面可选项("custType") : undefined,
     规则P,
     企 ? 全部联系人idP.then(async (ids) => Object.fromEntries((await 附件个数(defaultClient, { contactIds: ids })).联系人)) : null,
     // 下面这几样原来在 JSX 里一个个 await，各等一轮库（11-01 速度闸门：按组织看那组客户详情超 300ms），并进来一起取
     // 沟通（11-09 M-权限-09 原口径）：改 = 身为负责人的管理，删 = 系统管理员或身为负责人的管理（lib/enterprise/follow-perm.ts，服务端 saveFollowUp / deleteFollowUp 同样拦）
-    企 ? 能改这条沟通(me, { customerId: customer.id }) : true,
-    企 ? 能删沟通(me, { customerId: customer.id }) : true,
+    企 ? 页面能改沟通(me, customer.id) : true,
+    企 ? 页面能删沟通(me, customer.id) : true,
     企 ? 页面字典("custStatus") : null,
     企 ? 页面可选项("contactTitle") : undefined,
     企 ? 页面可选项("custAttr") : undefined,
