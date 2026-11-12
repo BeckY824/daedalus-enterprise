@@ -31,7 +31,7 @@ async function 挂靠审批跟着换(tx: Pick<Prisma.TransactionClient, "entDupe
 }
 
 export async function 记换负责人(
-  tx: Pick<Prisma.TransactionClient, "customerOwnerLog" | "entDupeHit">,
+  tx: Pick<Prisma.TransactionClient, "customerOwnerLog" | "entDupeHit" | "setting">,
   换: { customerId: string; from: string | null; to: string }[],
   操作人: string,
   kind: 换负责人种类,

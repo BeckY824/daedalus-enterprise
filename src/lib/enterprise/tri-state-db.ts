@@ -335,21 +335,21 @@ export async function 三态夜扫(现在: Date = new Date()): Promise<三态夜
 }
 
 /**
- * 一批客户写钟：一笔写事务（首次开三态 5 千多位建钟时按 500 一批包）。事务里重读这批的钟，和事务外读到的不一样
- * （中间有人点了继续持有、按钮先建了钟）的那几位在事务里按最新事实重算，不按旧钟写错留痕。
+ * 一批客户写钟：一笔写事务（首次开三态 5 千多位建钟时按 500 一批包）。事实整批在事务里重收再算（第二轮审查）：
+ * 事务外读到的到开事务之间，有人转让、记沟通、点了继续持有、按钮先建了钟，都按事务里最新的写，不写过时的状态留痕。
+ * 只重读钟的 updatedAt 不够——转让、记沟通不动钟。们 传客户 id 或事务外收好的（只取它的 id）。
  * 返回这批里该进公海的，和每位在计时的客户按最新事实算出来的结果（提醒那遍接着用）
  */
 export type 算过 = { c: 三态客户; r: Extract<三态结果, { 计时: true }> };
-export async function 写一批(规则: 组织规则, org: 组织, 们: Map<string, 三态客户>, 现在: Date, 今天: string, 明细: 三态夜扫明细 = 空明细()): Promise<{ 要收: string[]; 算: 算过[] }> {
+export async function 写一批(规则: 组织规则, org: 组织, 们: Map<string, 三态客户> | readonly string[], 现在: Date, 今天: string, 明细: 三态夜扫明细 = 空明细()): Promise<{ 要收: string[]; 算: 算过[] }> {
+  const ids = Array.isArray(们) ? [...们] : [...(们 as Map<string, 三态客户>).keys()];
   return 查完再写(async (tx) => {
-    const ids = [...们.keys()];
-    const 新钟 = new Map((await tx.entCustomerClock.findMany({ where: { customerId: { in: ids } }, select: { customerId: true, updatedAt: true } })).map((x) => [x.customerId, x.updatedAt.getTime()]));
-    const 动过 = ids.filter((id) => (们.get(id)!.钟?.updatedAt.getTime() ?? null) !== (新钟.get(id) ?? null));
-    const 重读 = 动过.length ? await 收三态客户(tx, 动过, 规则, org, 现在) : new Map<string, 三态客户>();
+    const 新 = await 收三态客户(tx, ids, 规则, org, 现在);
     const 要收: string[] = [];
     const 算: 算过[] = [];
     for (const id of ids) {
-      const c = 重读.get(id) ?? 们.get(id)!;
+      const c = 新.get(id);
+      if (!c) continue; // 中间被删了
       const r = 算三态(c.事实, 规则.三态, 今天);
       if (!r.计时) continue;
       算.push({ c, r });
@@ -383,7 +383,7 @@ async function 按客户扫(规则: 组织规则, 现在: Date, 今天: string):
   const ids = await 候选客户(prisma);
   const 明细 = 空明细();
   const 要收: string[] = [];
-  for (const 批 of 分批(ids)) 要收.push(...(await 写一批(规则, org, await 收三态客户(prisma, 批, 规则, org, 现在), 现在, 今天, 明细)).要收);
+  for (const 批 of 分批(ids)) 要收.push(...(await 写一批(规则, org, 批, 现在, 今天, 明细)).要收);
   明细.标公海 = await 标掉公海里的(现在, 今天);
   if (!要收.length) return 明细;
   const 中 = await 交接挡住的(prisma, 要收);
