@@ -18,13 +18,17 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {}
 vi.mock("next/navigation", () => ({ redirect: (u: string) => { throw new Error(`REDIRECT:${u}`); }, notFound: () => { throw new Error("NOT_FOUND"); } }));
 vi.mock("@/app/(app)/projects/ProjectsView", () => ({ default: () => null }));
 // 数 SQL（同 tests/ent-customer-list-queries.test.ts）：生成的 PrismaClient 换成带 query 事件的子类
-const 记 = vi.hoisted(() => ({ 开: false, 句: [] as string[] }));
+const 记 = vi.hoisted(() => ({ 开: false, 句: [] as string[], 滤: null as null | ((a: { include?: unknown }, r: { id: string }[]) => unknown) }));
 vi.mock("@/generated/prisma", async (原) => {
   const m = await 原<typeof import("@/generated/prisma")>();
   class 记数Client extends m.PrismaClient {
     constructor(o: ConstructorParameters<typeof m.PrismaClient>[0] = {}) {
       super({ ...o, log: [{ emit: "event", level: "query" }, ...((o?.log as never[]) ?? [])] } as never);
       (this as unknown as { $on: (e: string, f: (x: { query: string }) => void) => void }).$on("query", (e) => { if (记.开) 记.句.push(e.query); });
+      // 记.滤：测「两句之间项目离开了范围」时改写 project.findMany 的返回
+      return (this as unknown as { $extends: (x: unknown) => 记数Client }).$extends({
+        query: { project: { async findMany({ args, query }: { args: { include?: unknown }; query: (a: unknown) => Promise<{ id: string }[]> }) { const r = await query(args); return 记.滤 ? 记.滤(args, r) : r; } } },
+      });
     }
   }
   return { ...m, PrismaClient: 记数Client };
@@ -282,6 +286,8 @@ describe("查询数", () => {
     expect(new Set(一段.r!.行.map((r) => r.ownerId)).size).toBe(20);
     const 按人句 = (q: string[]) => q.filter((x) => /FROM `main`\.`Project` WHERE .*`ownerId`/.test(x) && /LIMIT|IN \(/.test(x) && !/GROUP BY|COUNT/.test(x)).length;
     expect(按人句(一段.句)).toBeLessThanOrEqual(3);
+    // 中间几位合成的那一句带 take 兜底（= 这几位应取的条数之和），计数之后又进来的不多取
+    expect(一段.句.some((q) => /`ownerId` IN \(/.test(q) && /LIMIT/.test(q) && !/GROUP BY/.test(q))).toBe(true);
     const 首屏句 = async () => (await 数句(() => 作为(管, () => 读项目列表(管, { sort: "owner-desc" }, undefined, { 每列: true, 要列表页: true })))).句.length;
     const 少 = await 首屏句();
     await 加人(22, 30);
@@ -349,6 +355,44 @@ describe("可见范围、参数兜底", () => {
     for (const 坏 of [[], [null, "潜客培育", 0], ["", 1, 0], ["", "潜客培育", "20"], ["", "潜客培育", 0, 500], ["", "乱写", 0], ["?batch=b1", "潜客培育", 0]]) {
       expect((await 调(...坏)).ok, JSON.stringify(坏)).toBe(false);
     }
+  });
+});
+
+describe("两句之间项目离开了范围、查询串重复键", () => {
+  it("先定 id、再带 include 取行之间少了一个（并发回收 / 转让 / 删掉）：首屏跳过它，不塞 undefined、不报错", async () => {
+    const 照 = (await 对照(人们.甲)).get("潜客培育")!;
+    const 丢 = 照[0];
+    记.滤 = (a, r) => (a?.include ? r.filter((x) => x.id !== 丢) : r);
+    try {
+      // /projects 那种：列表页先取 id、看板大列先取 id，再一句 include
+      const d = await 作为(人们.甲, () => 读项目列表(人们.甲, {}, undefined, { 每列: true, 要列表页: true }));
+      expect(d.行.every(Boolean)).toBe(true);
+      expect(d.行.map((r) => r.id)).not.toContain(丢);
+      const 列 = d.每列!["潜客培育"];
+      expect(列.every(Boolean)).toBe(true);
+      expect(列).toHaveLength(19);
+      expect(列.map((r) => r.id)).toEqual(照.slice(1, 20));
+      const 列们 = 看板分列(d.行, 字典(), undefined, d.看板合计, d.每列);
+      expect(列们.flatMap((c) => c.行).every((r) => r && typeof r.id === "string")).toBe(true);
+      // 「再看」同样跳过
+      const 二 = await 作为(人们.甲, () => 读看板一列(人们.甲, {}, "潜客培育", 0));
+      expect(二!.行.every(Boolean)).toBe(true);
+      expect(二!.行).toHaveLength(19);
+    } finally {
+      记.滤 = null;
+    }
+  });
+
+  it("两个「再看」动作：同名参数出现两次及以上直接拒（首屏会当没筛，口径对不上）；不重复的照常", async () => {
+    设身份(人们.甲);
+    const 客 = (q: string) => 以谁的身份(人们.甲.id, () => 再看一列(q, "潜客培育", 20));
+    const 项 = (q: string) => 以谁的身份(人们.甲.id, () => 再看项目页一列(q, "潜客培育", 20));
+    expect(await 客("?keyword=甲&keyword=乙")).toEqual({ ok: false, error: "参数不对" });
+    expect(await 客("?phase=线索&phase=线索&phase=商机")).toEqual({ ok: false, error: "参数不对" });
+    expect(await 项("?ownerId=a&ownerId=b")).toEqual({ ok: false, error: "参数不对" });
+    expect(await 项("?keyword=x&keyword=x")).toEqual({ ok: false, error: "参数不对" });
+    expect((await 客("?phase=线索")).ok).toBe(true);
+    expect((await 项("?phase=线索")).ok).toBe(true);
   });
 });
 

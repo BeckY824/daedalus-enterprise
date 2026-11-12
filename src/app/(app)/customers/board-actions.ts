@@ -24,9 +24,12 @@ export async function 再看一列(地址栏: unknown, 列: unknown, 偏移: unk
   const me = await requireUser();
   if (!企业版() || !(await getBusiness()).projectMode) return { ok: false, error: "项目看板没开" };
   if (typeof 地址栏 !== "string" || typeof 列 !== "string" || typeof 偏移 !== "number" || typeof 条数 !== "number") return { ok: false, error: "参数不对" };
-  // 查询串里的值都是字符串；同名参数只认第一个
+  // 查询串里的值都是字符串；同名参数出现两次及以上直接拒（首屏那头会收成数组、当没筛，两边口径对不上）
   const 值 = new Map<string, string>();
-  for (const [k, v] of new URLSearchParams(地址栏)) if (!值.has(k)) 值.set(k, v);
+  for (const [k, v] of new URLSearchParams(地址栏)) {
+    if (值.has(k)) return { ok: false, error: "参数不对" };
+    值.set(k, v);
+  }
   const sp: Record<string, string> = Object.fromEntries(值);
   // 子集（导入这一批、本月新增、直接推荐）里画的是列表，没有看板
   if (在看子集(sp)) return { ok: false, error: "这里没有看板" };

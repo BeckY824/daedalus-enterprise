@@ -20,9 +20,12 @@ export async function 再看项目页一列(地址栏: unknown, 列: unknown, �
   // 项目模式关着时项目页不存在（projects/page.tsx 404），这里也不给
   if (!(await getBusiness()).projectMode) return { ok: false, error: "项目看板没开" };
   if (typeof 地址栏 !== "string" || typeof 列 !== "string" || typeof 偏移 !== "number" || typeof 条数 !== "number") return { ok: false, error: "参数不对" };
-  // 查询串里的值都是字符串；同名参数只认第一个
+  // 查询串里的值都是字符串；同名参数出现两次及以上直接拒（首屏那头会收成数组、当没筛，两边口径对不上）
   const 值 = new Map<string, string>();
-  for (const [k, v] of new URLSearchParams(地址栏)) if (!值.has(k)) 值.set(k, v);
+  for (const [k, v] of new URLSearchParams(地址栏)) {
+    if (值.has(k)) return { ok: false, error: "参数不对" };
+    值.set(k, v);
+  }
   const { sp } = 项目页筛选(Object.fromEntries(值) as Record<string, string>);
   // 企业版 ?pool=1 首屏转去 /pool（board-page.tsx），这里没有看板
   if (企业版() && sp.pool === "1") return { ok: false, error: "这里没有看板" };

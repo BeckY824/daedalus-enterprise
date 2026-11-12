@@ -318,7 +318,8 @@ async function 按负责人取ids(w: Prisma.ProjectWhereInput, 序: readonly str
   const 中 = 段.slice(1, -1);
   const [头, 中行, 尾] = await Promise.all([
     取段(段[0]),
-    中.length ? prisma.project.findMany({ where: { AND: [w, { ownerId: { in: 中.map((x) => x.ownerId) } }] }, orderBy: 默认序, select: { id: true, ownerId: true } }) : Promise.resolve([]),
+    // take 兜底：这几位应取的条数之和（计数之后又有人进来也不多取）
+    中.length ? prisma.project.findMany({ where: { AND: [w, { ownerId: { in: 中.map((x) => x.ownerId) } }] }, orderBy: 默认序, take: 中.reduce((n, x) => n + x.取, 0), select: { id: true, ownerId: true } }) : Promise.resolve([]),
     段.length > 1 ? 取段(段[段.length - 1]) : Promise.resolve([]),
   ]);
   const 位 = new Map(中.map((x, i) => [x.ownerId, i]));
@@ -559,8 +560,10 @@ export async function 读项目列表(
   ]);
   const 全部行 = await 拼项目行(me, rows, { ...条件, 超时线们, 待复核 });
   const 按id = new Map(全部行.map((r) => [r.id, r]));
-  const 行 = 列表ids.map((id) => 按id.get(id)!);
-  const 每列 = 列ids ? Object.fromEntries([...列ids].map(([k, ids]) => [k, ids.map((id) => 按id.get(id)!)])) : undefined;
+  // 先定 id、再带 include 取行是两句：两句之间项目离开了 where（并发的超时回收收进公海、被转让、被删）就取不回，跳过，不塞 undefined
+  const 取得到 = (ids: string[]) => ids.flatMap((id) => { const r = 按id.get(id); return r ? [r] : []; });
+  const 行 = 取得到(列表ids);
+  const 每列 = 列ids ? Object.fromEntries([...列ids].map(([k, ids]) => [k, 取得到(ids)])) : undefined;
   return {
     行,
     /** 全部符合条件的条数（各页相加 = 它）；页 = 实际给的这一页（要的页越界时落到最后一页），每页 = 认过的每页条数 */
