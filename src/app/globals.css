@@ -2498,6 +2498,10 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
   .list-bar { flex-wrap: nowrap; align-items: flex-start; }
   .list-bar > .ant-space { flex: 0 1 auto; min-width: 0; }
   .list-bar > .ant-btn, .list-bar > .ant-dropdown-trigger { flex: none; }
+  /* 带「挤」项的筛选组（components/CustomFilters.tsx useSqueezeRow）：React 接管、量过之前（服务端出的 HTML、慢网）
+     放不下的先藏在行尾，不折成两行；量的那一刻探针打上 data-cf-ready，照常折，量出折了就收进「更多筛选」（PR #273 CI 1024 宽）。
+     antd Space 的 wrap 是行内样式，所以要 !important */
+  .list-bar > .ant-space:has(> .ant-space-item > .cf-probe:not([data-cf-ready])) { flex-wrap: nowrap !important; overflow: hidden; }
 }
 @media (min-width: 768px) and (max-width: 1199px) {
   .list-bar > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 160px !important; }

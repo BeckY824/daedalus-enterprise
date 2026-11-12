@@ -44,8 +44,8 @@ test.describe("网页版", () => {
     await page.waitForTimeout(1500);
     await expect(page).toHaveTitle("客户 · Daedalus CRM");
 
-    // 企业版只用项目：左栏没有商机，点项目（AppShell 的 nav）
-    const [页, 路] = 企业版 ? ["项目", /\/projects/] : ["商机", /\/opportunities/];
+    // 企业版只用项目：左栏没有商机；「项目」11-12 也去掉了（客户详情合并第 3 批），换成仍在左栏的「公海」（AppShell 的 nav）
+    const [页, 路] = 企业版 ? ["公海", /\/pool/] : ["商机", /\/opportunities/];
     await 左栏(page).getByRole("link", { name: new RegExp(`^${页}`) }).first().click();
     await page.waitForURL(路);
     await expect(page).toHaveTitle(`${页} · Daedalus CRM`);
