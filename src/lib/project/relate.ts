@@ -23,8 +23,9 @@ import { 查完再写 } from "../check-then-write";
 import { 看全部 } from "../team-scope";
 import { 去空 } from "@/lib/empty-value";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 可选项, 选的原因, type 字典种类 } from "@/lib/enterprise/dict";
-import { 能管项目, 露客户, 看得到的客户 } from "./db";
+import { 可选项, 页面可选项, 选的原因, type 字典种类 } from "@/lib/enterprise/dict";
+import { 能管项目, 露客户 } from "./db";
+import { 页面看得到的客户 } from "./visible-customers";
 import { 读产品需求 as 读多选, 存产品需求 as 存多选 } from "./profile-rules";
 import { 客户显名, 引用联系人, 短号, 概览名称 } from "./relate-names";
 import type { 阶段字典 } from "./stage-dict";
@@ -299,14 +300,15 @@ export async function 项目关联们(me: { id: string }, projectId: string): Pr
     看全部(() => prisma.projectCustomer.findMany({ where: { projectId: p.id }, orderBy: { createdAt: "asc" }, select: { customerId: true, roles: true, customer: { select: { id: true, name: true, shortName: true } } } })),
     看全部(() => prisma.projectContact.findMany({ where: { projectId: p.id }, orderBy: { createdAt: "asc" }, select: { contactId: true, roles: true, stance: true, contact: { select: { id: true, name: true, gender: true, customerId: true, customer: { select: { id: true, name: true, shortName: true } } } } } })),
     p.contactId ? 看全部(() => prisma.contact.findUnique({ where: { id: p.contactId! }, select: { id: true, name: true, gender: true, customerId: true, customer: { select: { id: true, name: true, shortName: true } } } })) : null,
-    可选项("projCustRole"), 可选项("projContactRole"), 可选项("projStance"),
+    // 渲染读的，同一请求里同一类只读一次（页面可选项，React cache）；校验提交的 认多选 照旧现读
+    页面可选项("projCustRole"), 页面可选项("projContactRole"), 页面可选项("projStance"),
   ]);
   const 主客户 = 客户行.find((r) => r.customerId === p.customerId)?.customer
     ?? await 看全部(() => prisma.customer.findUnique({ where: { id: p.customerId }, select: { id: true, name: true, shortName: true } }));
 
   const 人们 = [...(主联系人 ? [主联系人] : []), ...联系人行.map((r) => r.contact)];
   const 客户id = [...new Set([p.customerId, ...客户行.map((r) => r.customerId), ...人们.map((c) => c.customerId)])];
-  const 见客户 = await 看得到的客户(客户id);
+  const 见客户 = await 页面看得到的客户(客户id);
   // 联系人挂在看得到的客户上也算看得到（限定层的 contactCustomer 只回看得到的客户那几行）
   const 挂见 = new Set((await prisma.contactCustomer.findMany({ where: { contactId: { in: 人们.map((c) => c.id) } }, select: { contactId: true } })).map((x) => x.contactId));
   // 「项目负责人看得到自己项目的主客户」只认主客户那一家（露客户）；关联的别家只按限定层，负责人也不例外——

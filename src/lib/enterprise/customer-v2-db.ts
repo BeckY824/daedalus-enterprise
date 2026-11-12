@@ -13,7 +13,7 @@ import { prisma, defaultClient } from "@/lib/prisma";
 import { 看全部, 同事的客户 } from "@/lib/team-scope";
 import { getSetting, setSetting } from "@/lib/settings";
 import { 企业版 } from "./switch";
-import { 企业字典 } from "./dict";
+import { 企业字典, 页面字典 } from "./dict";
 import { 号码归属地 } from "./phone-region";
 import { 认号码种类, 验一行号码, 老三格, 内置号码种类, 自定种类前缀, 每人最多号码, 另一头, type 号码种类 } from "./customer-v2";
 import { 字典定义 } from "./dict-kinds";
@@ -75,10 +75,12 @@ export function 联系人挂靠回填一次(): Promise<number> {
 // ---------- 联系人号码 ----------
 
 /** 号码类型字典的全部项（停用的也在：老号还用着那一类，照样认、照样显示）。active = 下拉里还能新选 */
-export async function 号码种类表(): Promise<(号码种类 & { active: boolean })[]> {
+export async function 号码种类表(读 = 企业字典): Promise<(号码种类 & { active: boolean })[]> {
   if (!企业版()) return 内置号码种类.map((x, i) => ({ 名: 字典定义.contactKind.默认[i], kind: x.kind, 验: x.验, active: true }));
-  return (await 企业字典("contactKind")).map((项) => ({ ...认号码种类(项), active: 项.active }));
+  return (await 读("contactKind")).map((项) => ({ ...认号码种类(项), active: 项.active }));
 }
+/** 页面渲染用：走 页面字典（同一请求只读一次、能和别的几类一起预读）；校验提交照旧用 号码种类表 现读 */
+export const 页面号码种类表 = () => 号码种类表(页面字典);
 
 /** 存库的 kind → 显示的叫法：字典里有就用字典现在的叫法；自定的取 custom: 后面那段；都没有原样 */
 export function 种类叫法(表: readonly 号码种类[], kind: string): string {

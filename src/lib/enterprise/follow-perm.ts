@@ -10,6 +10,7 @@
  *
  * 不是企业版一律 true：团队版 / 桌面端还按原来的规矩（同事的客户只读那条）。
  */
+import { cache } from "react";
 import { 企业版 } from "./switch";
 import { 权限组织, type 组织 } from "./org";
 import { 能删除, 有业务角色, 只读角色, 只读角色话, 没设业务角色, 能改客户 } from "./permissions";
@@ -91,6 +92,20 @@ export async function 能改这条沟通(me: 谁, f: { customerId: string; id?: 
 export async function 能删沟通(me: 谁, f: { customerId: string; id?: string }): Promise<boolean> {
   if (!企业版()) return true;
   return 能删沟通of(me, await 沟通负责人们(f.customerId, f.id), await 权限组织());
+}
+
+/**
+ * 页面渲染用（11-12 客户详情速度）：客户页、项目区都要问「这位客户下的沟通能不能改 / 删」，每问一次读一遍客户负责人（2 句）。
+ * 同一次请求里同一位客户只读一次（React cache）；口径同 能改这条沟通 / 能删沟通 不给 f.id 的那种。服务端动作照旧用上面两个现读
+ */
+const 页面客户沟通负责人们 = cache((customerId: string) => 沟通负责人们(customerId));
+export async function 页面能改沟通(me: 谁, customerId: string): Promise<boolean> {
+  if (!企业版()) return true;
+  return 能改沟通of(me, await 页面客户沟通负责人们(customerId), await 权限组织());
+}
+export async function 页面能删沟通(me: 谁, customerId: string): Promise<boolean> {
+  if (!企业版()) return true;
+  return 能删沟通of(me, await 页面客户沟通负责人们(customerId), await 权限组织());
 }
 
 export const 没业务角色话 = "你还没有业务角色，不能改数据，请找总管理设置";
