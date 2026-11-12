@@ -51,7 +51,7 @@ import InlineField from "./InlineField";
 import RegionInlineField from "./RegionInlineField";
 import AiPanel from "./AiPanel";
 import LinkedCustomers from "./LinkedCustomers";
-import { ProjectFold } from "../../projects/[id]/ProjectFold";
+import { FoldSplit, ProjectFold, 模块钮色, type 连体主钮, type 连体色 } from "../../projects/[id]/ProjectFold";
 import NewProjectModal from "./NewProjectModal";
 import { 两行 } from "../../projects/[id]/project-menu";
 import { 客户页摆法, 级别选项, 企业级别, 拼地址, 地址叫法, 简称上限 } from "@/lib/enterprise/customer-v2";
@@ -807,10 +807,11 @@ export default function RecordView({
   ) : null;
   /* 项目模式（11-01 用户：「客户详情页各个模块都要分开，和项目详情页一致」）：每块一张卡、包 ProjectFold，
      卡头左边标题+计数、右边新增按钮、最右收起。普通函数调用，别写成 <节/>，否则每次渲染换组件、收起状态会丢 */
-  const 节 = (名: string, 数: number | string | undefined, 加: ReactNode, 身: ReactNode) =>
+  /* 11-12 用户「模块内的按钮格式保持一致，都以完成节点为参照」：中栏模块给 连体，主动作和收起并成一颗连体按钮（FoldSplit） */
+  const 节 = (名: string, 数: number | string | undefined, 加: ReactNode, 身: ReactNode, 连体?: { 主: 连体主钮 | null; 色: 连体色 }) =>
     去项目跟进 ? (
-      <ProjectFold key={名} 名={名}>
-        <Card className="rec-mod" title={数 === undefined ? 名 : `${名}（${数}）`} extra={加 || undefined}>
+      <ProjectFold key={名} 名={名} 连体={!!连体}>
+        <Card className="rec-mod" title={数 === undefined ? 名 : `${名}（${数}）`} extra={连体 ? <Space size={8}>{加}<FoldSplit 主={连体.主} 色={连体.色} /></Space> : 加 || undefined}>
           {身}
         </Card>
       </ProjectFold>
@@ -1370,11 +1371,7 @@ export default function RecordView({
         {项目区?.({
           全部沟通: <div className="proj-mod-body">{筛选条}{时间线}</div>,
           全部沟通数: `${history.rows.length}${history.hasMore ? "+" : ""}`,
-          待办: 摆法.待办 ? 节("待办", 待办数, !只读 && (
-            <Button size="small" icon={<PlusOutlined />} onClick={() => setTaskOpen(true)}>
-              新建待办
-            </Button>
-          ), <div className="proj-mod-body" aria-label="待办">{待办身}</div>) : null,
+          待办: 摆法.待办 ? 节("待办", 待办数, null, <div className="proj-mod-body" aria-label="待办">{待办身}</div>, { 主: 只读 ? null : { 字: "新建待办", onClick: () => setTaskOpen(true) }, 色: 模块钮色.待办 }) : null,
           开建项目: 能建项目 ? 开建项目 : null,
           全只读,
           提醒: 提醒条,
@@ -1447,17 +1444,10 @@ export default function RecordView({
                       AI
                     </Button>
                   )}
-                  <Button size="small" type="primary" icon={<PlusOutlined />} onClick={点跟进}>
-                    新建沟通
-                  </Button>
                 </Space>
-              ), <div className="proj-mod-body">{筛选条}{时间线}</div>)}
+              ), <div className="proj-mod-body">{筛选条}{时间线}</div>, { 主: { 字: "新建沟通", onClick: 点跟进 }, 色: 模块钮色.沟通 })}
               {/* 待办单独一块（11-01 用户：「你看待办板块你就和沟通记录放一起了」），摆在沟通记录下面 */}
-              {摆法.待办 && 节("待办", 待办数, !只读 && (
-                <Button size="small" icon={<PlusOutlined />} onClick={() => setTaskOpen(true)}>
-                  新建待办
-                </Button>
-              ), <div className="proj-mod-body" aria-label="待办">{待办身}</div>)}
+              {摆法.待办 && 节("待办", 待办数, null, <div className="proj-mod-body" aria-label="待办">{待办身}</div>, { 主: 只读 ? null : { 字: "新建待办", onClick: () => setTaskOpen(true) }, 色: 模块钮色.待办 })}
             </>
           ) : (
             <>

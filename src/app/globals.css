@@ -1271,7 +1271,16 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 企业版项目详情瀑布流（U-项目-01/04 → 11-01）：每张卡包一层 .proj-fold（ProjectFold.tsx），卡头最右一颗圆角小按钮收起 / 展开，
    开着箭头朝上、收着朝下；收着只剩卡头。沟通、卡点与任务的卡身定高、自己滚（外层左栏照旧上下滚看全部块）；上面一格搜索 */
 .proj-fold { position: relative; min-width: 0; }
-.proj-fold > .ant-card > .ant-card-head { padding-inline-end: 52px; }
+.proj-fold:not(.has-split) > .ant-card > .ant-card-head { padding-inline-end: 52px; }
+/* 11-12 模块卡头连体按钮（ProjectFold.tsx FoldSplit）：外形照「完成节点」——左半主动作、右半小箭头（这里是收起 / 展开），
+   同高同圆角同字号（antd 默认档 32 高、--r-ctl）；色调由 FoldSplit 的 色 给（模块钮色 一张表），这里只管箭头朝向 */
+.split-btn { flex: none; }
+.split-btn .split-caret { width: 28px; padding-inline: 0; }
+.split-btn .split-caret > .ant-btn-icon > svg, .split-btn .split-caret svg { transition: transform var(--t-fast) var(--ease); }
+.split-btn .split-caret[aria-expanded="true"] svg { transform: rotate(180deg); }
+.ant-space-compact.split-brand > .proj-stage-tip + .ant-btn-primary:not(:disabled),
+.ant-space-compact.split-brand > .ant-btn-primary + .ant-btn-primary:not(:disabled) { border-left-color: color-mix(in srgb, var(--on-ink) 45%, var(--brand)); }
+@media (prefers-reduced-motion: reduce) { .split-btn .split-caret svg { transition: none; } }
 /* 沟通卡头的按钮多一颗「隐藏接手前」（11-02）：窄的时候折行、靠右，不把「沟通（N）」挤没 */
 .proj-follow-acts { justify-content: flex-end; }
 .proj-fold.is-closed > .ant-card > .ant-card-body { display: none; }

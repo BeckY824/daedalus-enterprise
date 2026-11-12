@@ -278,7 +278,7 @@ it.each([1280, 1366, 1440])("提醒条 %ipx：在项目区中栏、进程卡正�
 it("项目区里：中栏 阶段 → 沟通 → 待办 → 卡点，右栏项目资料在最上；沟通默认「本项目」，切「这位客户全部」列客户时间线、切回只列本项目", async () => {
   const { page, errors } = await 开(1366);
   try {
-    const 中 = await page.locator(".cd-mid > *").evaluateAll((es: HTMLElement[]) => es.map(e => e.querySelector(":scope > .proj-fold-btn")?.getAttribute("aria-label") ?? e.className));
+    const 中 = await page.locator(".cd-mid > *").evaluateAll((es: HTMLElement[]) => es.map(e => e.querySelector(":scope > .proj-fold-btn, :scope > .ant-card > .ant-card-head .split-caret")?.getAttribute("aria-label") ?? e.className));
     // 卡点默认收着（同项目详情）
     expect(中.filter(x => /^(收起|展开)/.test(x)).map(x => x.replace(/^(收起|展开)/, ""))).toEqual(["沟通记录", "待办", "卡点"]);
     expect(中[0]).toMatch(/ant-card/);
@@ -312,6 +312,74 @@ it("只读的客户（全只读）：页头、项目区都没有写入口", asyn
   } finally { await page.close(); }
 });
 
+/* 11-12 用户「模块内的按钮格式保持一致，都以完成节点为参照」：中栏沟通 / 待办 / 卡点卡头是连体按钮（左半主动作、右半收起展开） */
+const 连体们 = (page: Page) => page.locator(".cd-mid > .proj-fold").evaluateAll((fs: HTMLElement[]) => fs.map(f => {
+  const 组 = f.querySelector(":scope > .ant-card > .ant-card-head .ant-card-extra .split-btn");
+  const 钮 = 组 ? [...组.querySelectorAll("button")] : [];
+  const 尾 = 钮.at(-1);
+  return {
+    名: 尾?.getAttribute("aria-label") ?? "", 色: 组 ? [...组.classList].find(c => /^split-(brand|plain|success)$/.test(c)) ?? "" : "",
+    独: 组?.classList.contains("split-solo") ?? false, 字: 钮.slice(0, -1).map(b => b.textContent!.trim()),
+    右半: !!尾?.classList.contains("split-caret"), 散钮: f.querySelectorAll(":scope > .proj-fold-btn").length,
+    贴: 钮.length === 2 ? Math.abs(钮[0].getBoundingClientRect().right - 钮[1].getBoundingClientRect().left) <= 1 : null,
+  };
+}));
+
+it("中栏连体按钮：沟通（品牌蓝）、待办 / 卡点（描边）左半主动作、右半收起；不再有单独的收起钮；完成节点照旧", async () => {
+  const { page, errors } = await 开(1366);
+  try {
+    const 们 = await 连体们(page);
+    expect(们.map(x => [x.名, x.色, x.字, x.右半, x.散钮, x.贴])).toEqual([
+      ["收起沟通记录", "split-brand", ["新建沟通"], true, 0, true],
+      ["收起待办", "split-plain", ["新建待办"], true, 0, true],
+      // 这份桩里卡点不能发（卡点.能发 = false）：左半不给，只剩右半
+      ["展开卡点", "split-plain", [], true, 0, null],
+    ]);
+    // 完成节点那颗还是原样：绿色连体、右半是「终止进程」下拉
+    const 完 = page.locator(".proj-stage-acts .split-btn.split-success");
+    expect(await 完.getByRole("button", { name: "完成节点" }).count()).toBe(1);
+    expect(await 完.getByRole("button", { name: "终止进程" }).count()).toBe(1);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("连体右半管收起 / 展开：只藏卡身、留卡头和左半主动作，箭头跟着翻，aria-expanded 跟着变", async () => {
+  const { page, errors } = await 开(1366);
+  try {
+    const 壳 = page.locator(".cd-mid > .proj-fold").nth(1);
+    const 身 = 壳.locator(":scope > .ant-card > .ant-card-body");
+    expect(await 身.isVisible()).toBe(true);
+    await 壳.getByRole("button", { name: "收起待办" }).click();
+    expect(await 身.isVisible()).toBe(false);
+    const 右 = 壳.getByRole("button", { name: "展开待办" });
+    expect(await 右.getAttribute("aria-expanded")).toBe("false");
+    expect(await 壳.getByRole("button", { name: /新建待办/ }).isVisible()).toBe(true);
+    await 右.click();
+    expect(await 身.isVisible()).toBe(true);
+    expect(await 壳.getByRole("button", { name: "收起待办" }).getAttribute("aria-expanded")).toBe("true");
+    // 卡点默认收着，点右半摊开
+    const 卡点 = page.locator("#project-blockers");
+    await 卡点.getByRole("button", { name: "展开卡点" }).click();
+    expect(await 卡点.locator(":scope > .ant-card > .ant-card-body").isVisible()).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("只读（没权限）：连体只剩右半那颗收起钮，照样能收起展开", async () => {
+  const { page, errors } = await 开(1366, { 只读: true });
+  try {
+    const 们 = await 连体们(page);
+    expect(们.map(x => [x.名, x.独, x.字, x.右半])).toEqual([
+      ["收起沟通记录", true, [], true],
+      ["收起待办", true, [], true],
+      ["展开卡点", true, [], true],
+    ]);
+    await page.getByRole("button", { name: "收起沟通记录" }).click();
+    expect(await page.locator("#project-follow > .ant-card > .ant-card-body").isVisible()).toBe(false);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it("手机单栏：客户名和客户按钮 → 卡头项目切换 → 阶段 → 沟通 → 待办 → 卡点 → 项目资料 → 客户资料；不横滚", async () => {
   const { page, errors } = await 开(375, {}, 900);
   try {
@@ -321,7 +389,7 @@ it("手机单栏：客户名和客户按钮 → 卡头项目切换 → 阶段 �
       ".rec-head",
       ".cd-mid > .ant-card",
       "#project-follow",
-      '.cd-mid > .proj-fold:has(> .proj-fold-btn[aria-label="收起待办"])',
+      '.cd-mid > .proj-fold:has(.split-caret[aria-label="收起待办"])',
       "#project-blockers",
       ".cd-side",
       ".rec-rail",

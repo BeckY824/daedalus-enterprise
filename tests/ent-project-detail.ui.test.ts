@@ -129,8 +129,15 @@ it.each([1024, 1280, 1366])("Windows %ipx：超长项目名、客户名、组员
     expect(笔.x + 笔.width).toBeLessThanOrEqual(w);
     expect(await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.getAttribute("aria-label"), [笔.x + 笔.width / 2, 笔.y + 笔.height / 2])).toBe("编辑项目");
     // 每张卡头最右的收起钮（11-01）：不出屏、点得中、不压卡头别的按钮，和卡标题同一行居中
+    // 11-12 起沟通、卡点的收起并进卡头连体按钮的右半（.split-caret），其余还是独立那颗
+    expect(await page.locator(".proj-fold-btn, .proj-fold .split-caret").count()).toBeGreaterThanOrEqual(7);
+    for (const b of await page.locator(".proj-fold .split-caret").all()) {
+      await b.scrollIntoViewIfNeeded();
+      const box = (await b.boundingBox())!;
+      expect(box.x + box.width).toBeLessThanOrEqual(w);
+      expect(await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.className ?? "", [box.x + box.width / 2, box.y + box.height / 2])).toContain("split-caret");
+    }
     const 收钮 = await page.locator(".proj-fold-btn").all();
-    expect(收钮.length).toBeGreaterThanOrEqual(7);
     for (const b of 收钮) {
       await b.scrollIntoViewIfNeeded();
       const box = (await b.boundingBox())!;
@@ -1185,7 +1192,7 @@ const 沟通两条 = [
   { id: "f2", type: "PHONE", content: "对方要重新报价", occurredAt: "2026-10-05T00:00:00.000Z", who: "组员丙", node: "生产备货", code: "FUL0002", 提醒: null,
     附件: [{ id: "a1", name: "通话录音.mp3", mime: "audio/mpeg", size: 2048, width: null, height: null, createdAt: "2026-10-05T00:00:00.000Z", 有文件: true }] },
 ];
-const 头 = (page: import("playwright").Page, id: string) => page.locator(`#${id} > .proj-fold-btn`);
+const 头 = (page: import("playwright").Page, id: string) => page.locator(`#${id} > .proj-fold-btn, #${id} > .ant-card > .ant-card-head .split-caret`);
 
 it("U-项目-01/04：沟通默认摊开、卡点默认收起，点卡头最右的钮开合；搜索框有词时两块都摊开、只列对得上的", async () => {
   const { page, errors } = await 覆盖(1280, { followUps: 沟通两条 });
@@ -1251,7 +1258,7 @@ it("F-项目-18：项目附件合一块，最后一格收沟通上的附件、�
     await 头(page, "project-follow").click();
     expect(await 头(page, "project-follow").getAttribute("aria-expanded")).toBe("false");
     await 组.locator(".proj-att-link").click();
-    await page.waitForFunction(() => document.querySelector("#project-follow > .proj-fold-btn")?.getAttribute("aria-expanded") === "true");
+    await page.waitForFunction(() => document.querySelector("#project-follow > .proj-fold-btn, #project-follow > .ant-card > .ant-card-head .split-caret")?.getAttribute("aria-expanded") === "true");
     await page.locator("#follow-f2").waitFor();
     expect(errors).toEqual([]);
   } finally { await page.close(); }
@@ -1422,8 +1429,11 @@ describe("沟通卡头：隐藏接手前", () => {
       expect(标题).toEqual({ 完整: true, 文字: "沟通（2）" });
       // 折叠按钮（ProjectFold）摆在卡头最右，这几颗不能压上去
       const 压 = await 钮.evaluate(e => {
-        const f = e.closest(".proj-fold")!.querySelector(".proj-fold-btn")!.getBoundingClientRect();
-        return [...e.closest(".proj-follow-acts")!.querySelectorAll("button")].filter(b => { const r = b.getBoundingClientRect(); return r.right > f.left && r.left < f.right && r.bottom > f.top && r.top < f.bottom; }).length;
+        // 11-12 起收起是连体按钮的右半（.split-caret）；同一颗连体里的左半挨着它不算压
+        const 钮 = e.closest(".proj-fold")!.querySelector(".proj-fold-btn, .split-caret")!;
+        const f = 钮.getBoundingClientRect();
+        const 同组 = 钮.closest(".split-btn");
+        return [...e.closest(".proj-follow-acts")!.querySelectorAll("button")].filter(b => b !== 钮 && (!同组 || !同组.contains(b))).filter(b => { const r = b.getBoundingClientRect(); return r.right > f.left && r.left < f.right && r.bottom > f.top && r.top < f.bottom; }).length;
       });
       expect(压).toBe(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

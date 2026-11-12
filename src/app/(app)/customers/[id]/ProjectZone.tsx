@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Card, Dropdown } from "antd";
 import { DownOutlined } from "@ant-design/icons";
 import { 阶段色 } from "../../projects/[id]/ProjectStages";
-import { ProjectFold } from "../../projects/[id]/ProjectFold";
+import { FoldSplit, ProjectFold, 模块钮色 } from "../../projects/[id]/ProjectFold";
 import ProjectDetail, { type 项目详情Props } from "../../projects/[id]/ProjectDetail";
 import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
 import type { 项目区槽 } from "./types";
@@ -233,8 +233,8 @@ export default function ProjectZone({ 数据, 槽, 挂动作 }: { 数据: 项目
         </div>
         {/* 没有项目也有这位客户的事：老的沟通记录（不挂项目的）、待办照样摆，只看 */}
         <div className="cd-mid cd-empty-more">
-          <ProjectFold id="project-follow" 名="沟通记录">
-            <Card className="cd-comm" title={`沟通记录（${槽.全部沟通数}）`}>{槽.全部沟通}</Card>
+          <ProjectFold id="project-follow" 名="沟通记录" 连体>
+            <Card className="cd-comm" title={`沟通记录（${槽.全部沟通数}）`} extra={<FoldSplit 色={模块钮色.沟通} />}>{槽.全部沟通}</Card>
           </ProjectFold>
           {槽.待办}
         </div>

@@ -28,7 +28,7 @@ import { 阶段与进程, type 出口叫法改动 } from "@/lib/project/stage-di
 import { 有效线索节点, 缺有效沟通还差 } from "@/lib/project/stage-gates";
 import type { 线索验证 } from "@/lib/project/lead-verify";
 import LeadVerifyPanel from "./LeadVerifyPanel";
-import { ProjectFold } from "./ProjectFold";
+import { FoldSplit, ProjectFold, 模块钮色 } from "./ProjectFold";
 import { ProjectFillRequired, 定位到模块 } from "./ProjectFillRequired";
 import { CustomerReadonlyCard } from "./CustomerReadonlyCard";
 import type { 窗外去处, 草稿们 } from "@/lib/project/required-fill";
@@ -687,7 +687,7 @@ export default function ProjectDetail({
         {节点可改 && (p.result
           ? 灰着(不在当前 ?? 动不了, <Button disabled={忙 || !!(不在当前 ?? 动不了)} onClick={() => set头部框("推进")}>改回进程</Button>)
           : (
-            <Space.Compact>
+            <Space.Compact className="split-btn split-success">
               {灰着(完成灰, <Button className="proj-done-btn" disabled={忙 || !!完成灰} onClick={() => set头部框("完成")}>完成节点</Button>)}
               {菜单.length > 0 && (
                 <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{ items: 菜单, onClick: ({ key }) => { if (key === "stop") 开终止(); } }}>
@@ -1213,11 +1213,12 @@ export default function ProjectDetail({
     <Card
       className="cd-comm"
       title={<span className="cd-comm-t"><span>沟通记录（{看全部沟通 ? 嵌入.全部沟通数 : 沟通数字}）</span>{沟通范围钮}</span>}
-      extra={((能隐藏 && !看全部沟通) || p.能记沟通) && (
+      extra={(
         <Space size={8} className="proj-follow-acts">
           {能隐藏 && !看全部沟通 && <Button size="small" aria-pressed={隐藏中} title="隐藏归属人不是你的沟通，只是不显示，不删数据" onClick={() => set只看接手后(!只看接手后)} data-testid="follow-hide-before">{隐藏中 ? "显示全部" : "隐藏接手前"}</Button>}
           {p.能记沟通 && p.aiEnabled && p.customer && <Button size="small" icon={<ThunderboltOutlined />} disabled={忙} onClick={() => set记一条开着("AI")}>AI 录入</Button>}
-          {p.能记沟通 && <Button size="small" type="primary" data-cmd-new disabled={忙} onClick={() => set记一条开着("手填")} data-testid="follow-card-new">新建沟通</Button>}
+          {/* 11-12 连体按钮：左半新建沟通（⌘N 落这颗）、右半收起 / 展开这块；不能记沟通只剩右半 */}
+          <FoldSplit 色={模块钮色.沟通} 主={p.能记沟通 ? { 字: "新建沟通", onClick: () => set记一条开着("手填"), disabled: 忙, testid: "follow-card-new", 主快捷: true } : null} />
         </Space>
       )}
     >
@@ -1232,13 +1233,11 @@ export default function ProjectDetail({
         p.企业版 ? (
           // 企业版：「新增沟通」「AI 录入」在这块卡头（11-01 页头只留转让、退回公海）；11-01 会议 §5：右侧写「新增沟通」、走弹窗。
           // 11-01 会议 §5：企业版删掉「去客户页看看」。窄的时候按钮折行，不把标题挤没（globals.css .proj-follow-acts）
-          (能隐藏 || p.能记沟通) && (
-            <Space size={8} wrap className="proj-follow-acts">
-              {能隐藏 && <Button size="small" aria-pressed={隐藏中} title="隐藏归属人不是你的沟通，只是不显示，不删数据" onClick={() => set只看接手后(!只看接手后)} data-testid="follow-hide-before">{隐藏中 ? "显示全部" : "隐藏接手前"}</Button>}
-              {p.能记沟通 && p.aiEnabled && p.customer && <Button size="small" icon={<ThunderboltOutlined />} disabled={忙} onClick={() => set记一条开着("AI")}>AI 录入</Button>}
-              {p.能记沟通 && <Button size="small" disabled={忙} onClick={() => set记一条开着("手填")} data-testid="follow-card-new">新增沟通</Button>}
-            </Space>
-          )
+          <Space size={8} wrap className="proj-follow-acts">
+            {能隐藏 && <Button size="small" aria-pressed={隐藏中} title="隐藏归属人不是你的沟通，只是不显示，不删数据" onClick={() => set只看接手后(!只看接手后)} data-testid="follow-hide-before">{隐藏中 ? "显示全部" : "隐藏接手前"}</Button>}
+            {p.能记沟通 && p.aiEnabled && p.customer && <Button size="small" icon={<ThunderboltOutlined />} disabled={忙} onClick={() => set记一条开着("AI")}>AI 录入</Button>}
+            <FoldSplit 色={模块钮色.沟通} 主={p.能记沟通 ? { 字: "新增沟通", onClick: () => set记一条开着("手填"), disabled: 忙, testid: "follow-card-new" } : null} />
+          </Space>
         ) : p.能记沟通 ? <Button type="link" size="small" disabled={忙} onClick={() => set记一条开着("手填")}>记一条</Button>
           // 别的版本照旧给「去客户页记一条」
           : p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页记一条</Link>
@@ -1252,14 +1251,15 @@ export default function ProjectDetail({
     <Card
       title={p.企业版 ? `卡点（${搜着 ? `搜到 ${列卡点.length}` : 卡点.们.length}）` : `卡点（${卡点.们.length}）`}
       // 发卡点挂在最近一条沟通上（沟通行的「…」里也能挑别的那条）；企业版 11-01 从页头回到这块卡头，没沟通时灰着、悬停说为什么
-      extra={卡点.能发 && (p.企业版 ? (p.followUps.length
-        ? <Button size="small" disabled={忙} onClick={() => set发卡点于(p.followUps[0].id)}>发卡点</Button>
-        : <Tooltip title="先记一条沟通"><span className="proj-stage-tip"><Button size="small" disabled>发卡点</Button></span></Tooltip>) : (
+      extra={p.企业版 ? (
+        // 11-12 连体按钮：左半发卡点（没沟通时灰着、悬停说为什么），右半收起 / 展开；不能发只剩右半
+        <FoldSplit 色={模块钮色.卡点} 主={卡点.能发 ? { 字: "发卡点", onClick: () => p.followUps[0] && set发卡点于(p.followUps[0].id), disabled: 忙, 原因: p.followUps.length ? undefined : "先记一条沟通" } : null} />
+      ) : 卡点.能发 && (
         <Space size={8}>
           {!p.followUps.length && <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>先记一条沟通</span>}
           <Button type="primary" size="small" disabled={!p.followUps.length} onClick={() => p.followUps[0] && set发卡点于(p.followUps[0].id)}>发卡点</Button>
         </Space>
-      ))}
+      )}
     >
       <div id="project-blockers-body" className={p.企业版 ? "proj-mod-body" : undefined}>
         <BlockerList 们={列卡点} 空={搜着 && 卡点.们.length ? `没有对得上「${搜.trim()}」的卡点` : "还没有卡点"} />
@@ -1604,9 +1604,9 @@ export default function ProjectDetail({
             {节点卡}
             {/* 「这位客户全部」是客户页那条时间线，不归这个搜索框管：切过去时清掉词、搜索框先藏起来（审查 #6），切回本项目再出来 */}
             {!看全部沟通 && 搜索框}
-            <ProjectFold id="project-follow" 名="沟通记录" 开={沟通开} set开={set沟通开} 锁开={搜着} 控制="project-follow-body">{沟通卡}</ProjectFold>
+            <ProjectFold id="project-follow" 名="沟通记录" 开={沟通开} set开={set沟通开} 锁开={搜着} 控制="project-follow-body" 连体>{沟通卡}</ProjectFold>
             {嵌入.待办}
-            {卡点区 && <ProjectFold id="project-blockers" 名="卡点" 开={卡点开} set开={set卡点开} 锁开={搜着} 控制="project-blockers-body">{卡点区}</ProjectFold>}
+            {卡点区 && <ProjectFold id="project-blockers" 名="卡点" 开={卡点开} set开={set卡点开} 锁开={搜着} 控制="project-blockers-body" 连体>{卡点区}</ProjectFold>}
           </div>
           <aside className="cd-side" aria-label="项目资料">
             {折("项目资料", 项目卡)}
@@ -1651,8 +1651,8 @@ export default function ProjectDetail({
               {节点卡}
               {搜索框}
               {/* 沟通、卡点跟着搜索：有词时都摊开、收起钮灰着 */}
-              <ProjectFold id="project-follow" 名="沟通" 开={沟通开} set开={set沟通开} 锁开={搜着} 控制="project-follow-body">{沟通卡}</ProjectFold>
-              {卡点区 && <ProjectFold id="project-blockers" 名="卡点" 开={卡点开} set开={set卡点开} 锁开={搜着} 控制="project-blockers-body">{卡点区}</ProjectFold>}
+              <ProjectFold id="project-follow" 名="沟通" 开={沟通开} set开={set沟通开} 锁开={搜着} 控制="project-follow-body" 连体>{沟通卡}</ProjectFold>
+              {卡点区 && <ProjectFold id="project-blockers" 名="卡点" 开={卡点开} set开={set卡点开} 锁开={搜着} 控制="project-blockers-body" 连体>{卡点区}</ProjectFold>}
               {折("项目附件", 附件卡, "project-attachments-fold")}
               {折("回款", 回款卡, "project-payments-fold")}
             </div>

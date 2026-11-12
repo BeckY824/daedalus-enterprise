@@ -125,11 +125,11 @@ it("企业版项目模式（P14 → U-客户-03）：没有记录输入、沟通
   const page = await open(true, 1024, true);
   try {
     // 11-01 起沟通记录是一张能收起的卡（照项目详情）：「新建沟通」在卡头右边
-    const 沟通卡头 = page.locator('.proj-fold:has(> .proj-fold-btn[aria-label="收起沟通记录"]) > .rec-mod > .ant-card-head');
+    const 沟通卡头 = page.locator('.proj-fold:has(.split-caret[aria-label="收起沟通记录"]) > .rec-mod > .ant-card-head');
     const 新建沟通 = 沟通卡头.locator(".ant-card-extra").getByRole("button", { name: /新建沟通$/ });
     expect(await 新建沟通.count()).toBe(1);
-    // 11-12 第 1 批：「新建沟通」是卡头的主按钮（蓝底），还是小号
-    expect(await 新建沟通.evaluate((el) => [el.classList.contains("ant-btn-primary"), el.classList.contains("ant-btn-sm")])).toEqual([true, true]);
+    // 11-12 第 1 批：「新建沟通」是卡头的主按钮（蓝底）；11-12 第 2 批起是连体按钮左半，大小照「完成节点」（默认号）
+    expect(await 新建沟通.evaluate((el) => [el.classList.contains("ant-btn-primary"), !!el.closest(".split-btn.split-brand")])).toEqual([true, true]);
     expect(await page.locator(".rec-head-acts").getByRole("button", { name: /沟通/ }).count()).toBe(0);
     expect(await page.getByText("记录跟进").count()).toBe(0);
     expect(await page.locator("textarea").count()).toBe(0);
@@ -192,7 +192,7 @@ it("企业版项目模式页头（U-客户-03 → 11-12 用户「右上角只保
     // 页面上别处也不给去掉的入口；新建待办在沟通栏的待办上
     const 卡上钮 = await page.locator("button").evaluateAll((bs: HTMLElement[]) => bs.filter(b => !b.closest(".rec-head")).map(b => (b.getAttribute("aria-label") ?? "") + b.innerText.replace(/\s+/g, "")));
     expect(卡上钮.filter(t => /编辑全部|添加联系人|管理联系人|删除客户|新开项目/.test(t))).toEqual([]);
-    expect(await page.locator('.rec > .rec-col > .proj-fold:has(> .proj-fold-btn[aria-label="收起待办"]) > .rec-mod > .ant-card-head .ant-card-extra').getByRole("button", { name: /新建待办/ }).count()).toBe(1);
+    expect(await page.locator('.rec > .rec-col > .proj-fold:has(.split-caret[aria-label="收起待办"]) > .rec-mod > .ant-card-head .ant-card-extra').getByRole("button", { name: /新建待办/ }).count()).toBe(1);
     // 按钮和客户名同一行、靠右（定稿 UI：客户名一行 + 右端两颗）
     const [头, 名, 排] = await Promise.all([page.locator(".rec-head").boundingBox(), page.locator(".rec-head-id").boundingBox(), page.locator(".rec-head-acts").boundingBox()]);
     expect(排!.y).toBeLessThan(名!.y + 名!.height);
