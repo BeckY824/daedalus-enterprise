@@ -162,8 +162,10 @@ export const 指向人的列: [string, string][] = [
   ["EntDupeHit", "ownerId"],
   ["EntDupeHit", "approverId"],
   ["EntDupeHit", "decidedById"],
-  // 企业版客户三态状态留痕（2026-11-11）：谁改的，不建外键
+  // 企业版客户三态状态留痕（2026-11-11）：谁改的；撤销转让 / 待交接那几行的从谁、到谁（迁移 128 / 129）。都不建外键
   ["EntCustomerStateLog", "userId"],
+  ["EntCustomerStateLog", "fromOwnerId"],
+  ["EntCustomerStateLog", "toOwnerId"],
   // 企业版渠道投入是谁录的（2026-10-29）
   ["EntChannelInvest", "userId"],
   // 主渠道负责人（2026-11-10，migrations/118）：不建外键
