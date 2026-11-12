@@ -1,6 +1,9 @@
 /**
- * 企业版项目模式的左栏（10-29 客户定稿）：六个根目录，顺序 首页 / 复盘 / 渠道 / 公海 / 客户 / 项目。
+ * 企业版项目模式的左栏（10-29 客户定稿）：根目录顺序 首页 / 复盘 / 渠道 / 公海 / 客户。
  * 客户原话：「联系人划掉了，不再是根目录，新增联系人放到客户里」。
+ * 11-12 客户详情合并第 3 批去掉「项目」这一项（用户：「项目页就去掉了，因为我们把客户和项目页合并了」）：
+ * 只去入口，/projects、/projects/<id>、/projects/handover 等路由都留着（旧链接、通知不 404）；复盘页的卡片、链接照旧指 /projects。
+ * 市场成员、市场管理也只有「客户」（X-107 用户 11-12 定）：他们的客户页就是原来项目页给他们的那套只读视图（customers/page.tsx）
  *
  *   - 复盘 = /overview（原来叫「数据」，10-29 叫过「看板」；定稿 -2 版改叫「复盘」），页头也叫「复盘」
  *   - 公海 = /pool（P7 统一公海：客户公海 + 项目公海一张表）；客户页、项目页带 pool=1 的老链接服务端转过去
@@ -19,19 +22,18 @@ export type 根目录 = {
   key: string;
   label: string;
   图: 根目录图;
-  /** 挂「要跟」那个红数：跟进不进左栏了，它的入口在项目页页头，红数跟着挂到「项目」上 */
+  /** 挂「要跟」那个红数（原来挂在「项目」上；11-12 C1 挪到「客户」，口径不变，56px 图标态的角标同一个） */
   挂要跟?: true;
 };
 
-/** 左栏六项。客户叫法跟着业务配置（客户 / 学员…） */
+/** 左栏五项。客户叫法跟着业务配置（客户 / 学员…） */
 export function 企业版根目录(客户叫法: string): 根目录[] {
   return [
     { key: "/dashboard", label: "首页", 图: "首页" },
     { key: "/overview", label: "复盘", 图: "复盘" },
     { key: "/channels", label: "渠道", 图: "渠道" },
     { key: 公海入口, label: "公海", 图: "公海" },
-    { key: "/customers", label: 客户叫法, 图: "客户" },
-    { key: "/projects", label: "项目", 图: "项目", 挂要跟: true },
+    { key: "/customers", label: 客户叫法, 图: "客户", 挂要跟: true },
   ];
 }
 
@@ -39,14 +41,14 @@ const 在 = (pathname: string, k: string) => pathname === k || pathname.startsWi
 
 /**
  * 当前地址亮哪一项。不在左栏的页挂到它的入口那一项上，左栏总有一项亮着，人知道自己在哪条线上：
- *   新线索、跟进 → 项目（入口在项目页页头）；联系人 → 客户（联系人在客户档案里加）
+ *   项目（11-12 并进客户详情，左栏不再有「项目」）、新线索、跟进 → 客户（原来亮「项目」，跟着它一起挂到客户上）；联系人 → 客户（联系人在客户档案里加）
  * /pool 和客户列表带着 pool=1（老链接，服务端转去 /pool）都是公海；客户档案页认不出是不是公海里的，亮「客户」。
  * 认不出的路径返回 null，交给 AppShell 按原来的办法算（设置、反馈之类）。
  */
 export function 企业版亮项(pathname: string, pool: string | null): string | null {
   if (pathname === "/customers" && pool === "1") return 公海入口;
   if (在(pathname, "/customers") || 在(pathname, "/contacts")) return "/customers";
-  if (在(pathname, "/projects") || 在(pathname, "/leads") || 在(pathname, "/follow-ups")) return "/projects";
+  if (在(pathname, "/projects") || 在(pathname, "/leads") || 在(pathname, "/follow-ups")) return "/customers";
   for (const k of ["/dashboard", "/overview", "/channels", 公海入口]) if (在(pathname, k)) return k;
   return null;
 }
@@ -63,6 +65,8 @@ export function 企业版页名(pathname: string, pool: string | null, 客户叫
   if (在(pathname, "/settings")) return "设置";
   if (在(pathname, "/projects/handover")) return "离职交接";
   if (在(pathname, "/projects/attach")) return "挂靠申请";
+  // 项目页亮「客户」（左栏没有「项目」了），标签页标题照旧叫「项目」
+  if (在(pathname, "/projects")) return "项目";
   const k = 企业版亮项(pathname, pool);
   return 企业版根目录(客户叫法).find((x) => x.key === k)?.label ?? "";
 }

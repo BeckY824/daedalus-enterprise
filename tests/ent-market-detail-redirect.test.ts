@@ -1,6 +1,6 @@
 /**
  * 市场成员打开已分给销售的项目详情（客户 11-05）：
- *   - 被「市场视角进不了详情」挡住、但这行在他的项目列表里 → 不再 404，跳回项目页：带项目名做搜索（q）、带 id 高亮那行（hl）
+ *   - 被「市场视角进不了详情」挡住、但这行在他的项目列表里 → 不再 404，跳到客户页（11-12 X-107，原来是项目页）：带项目名做搜索（q）、带 id 高亮那行（hl）
  *   - 没权限（列表里也没有这行）、不存在、已删除 → 照旧 404，不因为跳转把项目名露出去
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -73,10 +73,10 @@ beforeEach(async () => {
 afterEach(() => { vi.unstubAllEnvs(); invalidateSettingsCache(); });
 
 describe("市场成员打开已分给销售的项目", () => {
-  it("建的人、他的实线上级被市场视角挡住 → 跳回项目页，q 带项目名（编码）、hl 带 id", async () => {
+  it("建的人、他的实线上级被市场视角挡住 → 跳到客户页（11-12 X-107，原来是项目页；市场角色的客户页就是原来那套），q 带项目名（编码）、hl 带 id", async () => {
     const 名 = "华东 A&B 采购/二期";
     const id = await 项目(名, 小王, 小市);
-    const 去 = `REDIRECT:/projects?q=${encodeURIComponent(名)}&hl=${encodeURIComponent(id)}`;
+    const 去 = `REDIRECT:/customers?q=${encodeURIComponent(名)}&hl=${encodeURIComponent(id)}`;
     expect(await 打开(小市, id)).toBe(去);
     expect(await 打开(主管, id)).toBe(去);
   });

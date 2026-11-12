@@ -1,7 +1,7 @@
 "use client";
 
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
@@ -33,6 +33,7 @@ import { 主渠道显示名, 渠道显示名 } from "@/lib/enterprise/channel-ma
 import { 回公海文案 } from "@/lib/enterprise/recycle-text";
 import { 卡片小字, type 项目行, type 看板一列 } from "@/lib/project/board";
 import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
+import { 换客户页看法, 市场视图名 } from "@/lib/customers-view-pref";
 import type { 看板列 } from "@/lib/project/nodes";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 字典of, 结局叫法, 阶段与进程, 阶段们, type 阶段, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
@@ -85,7 +86,7 @@ function 节点文字(r: 项目行, 字典: 阶段字典) {
  * 新建照样走项目向导（落在潜客培育）；转商机之后它就只在「项目」页里了（10-26 用户定的三大阶段）。
  */
 export default function ProjectsView({
-  行, 列: 看板, 总数, 页, 每页, 要的页, 排序 = "", users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 能分公海客户项目 = false, 满额提醒: 提醒们 = [], 能按号码筛 = false, 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [],
+  行, 列: 看板, 总数, 页, 每页, 要的页, 排序 = "", users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 能分公海客户项目 = false, 满额提醒: 提醒们 = [], 能按号码筛 = false, 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [], 客户页 = false, 基址 = "/projects", 标题, 换回客户列表 = false,
 }: {
   行: 项目行[];
   列: 看板一列[];
@@ -143,6 +144,18 @@ export default function ProjectsView({
    * 这一屏临时按列表看、那一行亮一下（row-fresh）并滚到它；减弱动态时不滚动画、也不闪
    */
   高亮?: string;
+  /**
+   * 画在企业版客户页的「看板」视图里（11-12 客户详情合并第 3 批，构想页 C17 / C18 / C4）：只画看板这一块——
+   * 页头、「列表 / 看板」、筛选行都是客户页自己的（CustomersView），这里不摆；项目专用的「分配」「我分出去的」「新增项目」放看板工具行；
+   * 项目组邀请、线索复核、我的卡点照原样；离职交接在客户页页头（C15）。翻页保留地址栏上客户页的筛选
+   */
+  客户页?: boolean;
+  /** 整页画在哪个地址上：筛选、翻页留在这里（X-107：市场角色的客户页 = /customers）；默认 /projects */
+  基址?: string;
+  /** 页头标题，默认「项目」（市场角色的客户页叫客户） */
+  标题?: string;
+  /** 市场角色客户页的看板视图（X-107）：页头下面摆客户页那颗「列表 / 看板」，点「列表」回客户列表 */
+  换回客户列表?: boolean;
 }) {
   /** 客户详情合并（11-12 第 2 批）：企业版看得到客户的，项目在客户详情的项目区里，直接去那儿停在这个项目的页签；客户看不到的照旧进项目详情 */
   const 项目地址 = (r: 项目行) => (企业版 && r.customerId && r.customerName != null && !r.进不了客户详情 ? 客户页项目地址(r.customerId, r.id) : `/projects/${r.id}`);
@@ -182,7 +195,7 @@ export default function ProjectsView({
   const [存的看法, set看法] = useLocalPref<"列表" | "看板">("projects-view", "看板");
   // 带着要指出的那一行来：先按列表看（不改存下的看法），自己切回看板就听他的
   const [临时列表, set临时列表] = useState(!!高亮);
-  const 看法 = 新线索 || 临时列表 ? "列表" : 存的看法;
+  const 看法 = 新线索 || 临时列表 ? "列表" : 客户页 ? "看板" : 存的看法;
   const 换看法 = (v: "列表" | "看板") => { set临时列表(false); set看法(v); };
   // 要指出的那一行滚到视口中间（减弱动态时直接跳过去）；只在进来时滚一次，之后翻页、筛选不追着滚
   useEffect(() => {
@@ -191,7 +204,27 @@ export default function ProjectsView({
     return () => cancelAnimationFrame(帧);
   }, [高亮]);
   // 排序跟筛选一起记在地址栏（sort），翻页、改筛选都带着；每页条数（pageSize）由 翻页 记
-  const { f, setF, apply, 翻页, reset, pending } = useUrlFilters(新线索 ? "/leads" : "/projects", { ...filters, sort: 排序 }, 每页);
+  const { f, setF, apply, 翻页: 按筛选翻页, reset, pending: 筛选中 } = useUrlFilters(新线索 ? "/leads" : 基址, { ...filters, sort: 排序 }, 每页);
+  // 客户页看板视图：筛选是客户页那一行的（地址栏上），翻页只改 page / pageSize，别的照原样带着
+  const [翻页中, 开始翻页] = useTransition();
+  const 翻页 = 客户页
+    ? (p: number, size: number) => {
+        const q = new URLSearchParams(window.location.search);
+        q.set("page", String(p));
+        q.set("pageSize", String(size));
+        开始翻页(() => router.push(`/customers?${q}`, { scroll: false }));
+      }
+    : 按筛选翻页;
+  // 客户页看板视图里改条件（临时列表的表头排序）：留在客户页、客户那一行筛选原样带着，回第一页
+  const 改条件 = 客户页
+    ? (next: Record<string, string>) => {
+        const q = new URLSearchParams(window.location.search);
+        for (const [k, v] of Object.entries(next)) if (v) q.set(k, v); else q.delete(k);
+        q.delete("page");
+        开始翻页(() => router.push(q.size ? `/customers?${q}` : "/customers", { scroll: false }));
+      }
+    : apply;
+  const pending = 筛选中 || 翻页中;
   // 要的页越界（删空了最后一页、手改地址栏）：服务端已给了实际那一页，这里只把地址栏改对，不再取一次（同客户列表）
   useEffect(() => {
     if (要的页 === undefined || 要的页 === String(页)) return;
@@ -204,7 +237,7 @@ export default function ProjectsView({
   const 排序键: Record<string, string> = { createdAt: "created", expectedDealAt: "deal", owner: "owner" };
   const 点排序 = (key: string, order: "ascend" | "descend" | null) => {
     const 前 = 排序键[key];
-    if (前) apply({ sort: order === "ascend" ? `${前}-asc` : order === "descend" ? `${前}-desc` : "" });
+    if (前) 改条件({ sort: order === "ascend" ? `${前}-asc` : order === "descend" ? `${前}-desc` : "" });
   };
   const 序of = (key: string) => (排序 === `${排序键[key]}-asc` ? ("ascend" as const) : 排序 === `${排序键[key]}-desc` ? ("descend" as const) : null);
   const 看板框 = useRef<HTMLDivElement>(null);
@@ -226,7 +259,11 @@ export default function ProjectsView({
   const 分给了 = (r: Extract<自动分配结果, { ok: true }>) => (项目页分 ? `已分给 ${r.接手人}` : `已分给 ${r.接手人}（本月已分 ${r.已分} / 配额 ${r.配额 ?? "不限"}）`);
   // 页头「分配」：分配在列表的每行和勾选里做，看板上点它先切到列表
   const 去分配 = () => {
-    if (看法 !== "列表") 换看法("列表");
+    // 客户页看板视图（第 3 批）：临时切到项目列表，不动客户页记的「列表 / 看板」
+    if (看法 !== "列表") {
+      if (客户页) set临时列表(true);
+      else 换看法("列表");
+    }
     message.info("勾选要分的线索点「自动分配」，或点行末的「分配」指定接手人");
   };
 
@@ -412,10 +449,32 @@ export default function ProjectsView({
     </Space>
   );
 
+  /** 项目专用的几颗按钮：项目页在页头；客户页看板视图在看板工具行（C17 / C4） */
+  const 项目按钮 = (
+    <>
+      {项目页分 && 能自动分配 && <Button icon={<SendOutlined />} onClick={去分配}>分配</Button>}
+      {(新线索 || 项目页分) && 线索分配开着 && <AssignedOutButton />}
+      {/* 客户页看板视图的离职交接在客户页页头（C15），这里不再摆一个 */}
+      {!新线索 && !客户页 && 待交接 != null && <Link href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>}
+      {!新线索 && !客户页 && <Segmented<"列表" | "看板"> options={["看板", "列表"]} value={看法} onChange={换看法} />}
+      {/* 一个主按钮：新线索页叫「新线索」；企业版项目首页叫「新增项目」，点开先选新客户还是老客户（11-01 去掉旁边的下拉） */}
+      {(能新建 || !新线索) && <Button type={客户页 ? "default" : "primary"} icon={<PlusOutlined />} onClick={新建}>{新线索 ? "新线索" : 企业版 ? "新增项目" : "新建项目"}</Button>}
+    </>
+  );
+
   return (
     <div>
+      {客户页 ? (
+        // 看板工具行（C17 / C4）：项目专用的按钮；「分配」临时切到的项目列表从这里回看板
+        <div className="cust-board-tool">
+          <Space wrap>
+            {临时列表 && <Button onClick={() => set临时列表(false)}>回到看板</Button>}
+            {项目按钮}
+          </Space>
+        </div>
+      ) : (
       <PageHead
-        title={新线索 ? "新线索" : "项目"}
+        title={新线索 ? "新线索" : 标题 ?? "项目"}
         titleAside={卡标}
         subtitle={
           新线索
@@ -424,17 +483,17 @@ export default function ProjectsView({
         }
         extra={
           // 窄屏（手机、Windows 1024）按钮多了换行，不撑出页宽
-          <Space wrap>
-            {项目页分 && 能自动分配 && <Button icon={<SendOutlined />} onClick={去分配}>分配</Button>}
-            {(新线索 || 项目页分) && 线索分配开着 && <AssignedOutButton />}
-            {!新线索 && 待交接 != null && <Link href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>}
-            {!新线索 && <Segmented<"列表" | "看板"> options={["看板", "列表"]} value={看法} onChange={换看法} />}
-            {/* 一个主按钮：新线索页叫「新线索」；企业版项目首页叫「新增项目」，点开先选新客户还是老客户（11-01 去掉旁边的下拉） */}
-            {(能新建 || !新线索) && <Button type="primary" icon={<PlusOutlined />} onClick={新建}>{新线索 ? "新线索" : 企业版 ? "新增项目" : "新建项目"}</Button>}
-          </Space>
+          <Space wrap>{项目按钮}</Space>
         }
       />
-
+      )}
+      {/* 市场角色客户页的「我分出去的」视图（X-107）：和客户页同一个位置、同一颗切换，点「客户列表」记下并回客户列表。
+          页头那颗「看板 / 列表」是原项目页自己的（这一视图内部两种形态），照原样留着；两颗字不一样，免得看成一回事 */}
+      {换回客户列表 && (
+        <div className="cust-view-seg">
+          <Segmented<string> aria-label="客户列表 / 我分出去的" options={[...市场视图名]} value={市场视图名[1]} onChange={(v) => v === 市场视图名[0] && 换客户页看法("list", router)} />
+        </div>
+      )}
       <InviteInbox 邀请们={邀请们} />
       <VerifyInbox 们={待复核们} />
       <MyBlockersBoard 们={卡点们} />
@@ -468,7 +527,7 @@ export default function ProjectsView({
                   primary: { label: 企业版 ? "新增项目" : "新建第一个项目", onClick: 新建 },
                 }
           }
-          筛选={筛选}
+          筛选={客户页 ? undefined : 筛选}
           批量={可分 ? (选中, 清空, 选中行) => (
             <Button size="small" icon={<ThunderboltOutlined />} onClick={() => void 批量自动分(选中, 清空, 选中行)}>自动分配</Button>
           ) : undefined}
@@ -476,7 +535,7 @@ export default function ProjectsView({
       ) : (
         <>
           <div className="pipe-top">
-            {筛选}
+            {!客户页 && 筛选}
             {右边还有 > 0 && (
               <Button type="link" className="pipe-more-right" title="往右滑一列" onClick={滑一列}>→ 还有 {右边还有} 列</Button>
             )}
@@ -511,7 +570,7 @@ export default function ProjectsView({
                           tabIndex={能进 ? 0 : undefined}
                           role={能进 ? "link" : undefined}
                           title={异常 && 异常说明(r) ? `异常：${异常说明(r)}` : `${r.customerName ?? 领了再看(r)} · ${小字}${能进 ? "" : " · 已分给他人，只看进度"}`}
-                          aria-label={`${r.name}，${r.customerName ?? 领了再看(r)}，${小字}，${金额(r.amount, r.currency)}${r.pooled ? "，在公海" : ""}${r.即将回收 ? `，${回公海文案(r.即将回收).短文字}` : ""}${能进 ? "" : "，已分给他人，只看进度"}`}
+                          aria-label={`${企业版 ? `${r.customerName ?? 领了再看(r)}，${r.name}` : `${r.name}，${r.customerName ?? 领了再看(r)}`}，${小字}，${金额(r.amount, r.currency)}${r.pooled ? "，在公海" : ""}${r.即将回收 ? `，${回公海文案(r.即将回收).短文字}` : ""}${能进 ? "" : "，已分给他人，只看进度"}`}
                           onClick={去}
                           onMouseEnter={能进 ? () => 预取.进(项目地址(r)) : undefined}
                           onMouseLeave={能进 ? 预取.出 : undefined}
@@ -524,10 +583,19 @@ export default function ProjectsView({
                             }
                           }}
                         >
-                          <div className="pipe-card-t fulltext" title={r.name}>{r.name}</div>
-                          <div className="pipe-card-m">
-                            <span className="pipe-card-o" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看(r)}</span>
-                          </div>
+                          {/* 企业版（11-12 客户详情合并第 3 批，定稿 UI 看板）：第一行客户名、第二行项目名——点进去是这位客户的详情、停在这个项目页签上。
+                              看不到的客户（领取后可见 / 无权查看）第一行照旧写那句灰字。别的版本照原来项目名在上 */}
+                          {企业版 ? (<>
+                            <div className="pipe-card-t fulltext" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看(r)}</div>
+                            <div className="pipe-card-m">
+                              <span className="pipe-card-o">{r.name}</span>
+                            </div>
+                          </>) : (<>
+                            <div className="pipe-card-t fulltext" title={r.name}>{r.name}</div>
+                            <div className="pipe-card-m">
+                              <span className="pipe-card-o" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看(r)}</span>
+                            </div>
+                          </>)}
                           <div className="pipe-card-m">
                             <span className="pipe-card-o" style={异常 ? { color: "var(--danger-text)" } : undefined}>
                               {小字}

@@ -68,7 +68,11 @@ async function 我管的离职(me: 谁): Promise<string[]> {
   const org = await 权限组织();
   if (!org || 只读角色(me, org)) return [];
   const 全部 = 能改后台设置(me, org);
-  const 下属 = 全部 ? null : (await prisma.entMember.findMany({ where: { managerId: me.id }, select: { userId: true } })).map((m) => m.userId);
+  // 下属里停用了的：组织里记着（离职上级 = 停用的人手填的直属上级），不再另查一遍 EntMember（11-12 客户页页头摆入口，省查询）
+  const 下属 = 全部 ? null : org.离职上级
+    ? [...org.离职上级].filter(([, 上]) => 上 === me.id).map(([id]) => id)
+    : (await prisma.entMember.findMany({ where: { managerId: me.id }, select: { userId: true } })).map((m) => m.userId);
+  if (下属 && !下属.length) return [];
   const 们 = await prisma.user.findMany({
     where: { active: false, email: { not: 无负责人占位邮箱 }, ...(下属 ? { id: { in: 下属 } } : {}) },
     select: { id: true },
@@ -236,8 +240,8 @@ export async function 离职交接入口(me: 谁): Promise<number | null> {
   const n = await 待交接人数(me);
   if (n > 0) return n;
   if (能改后台设置(me, org)) return null;
-  const 下属 = (await prisma.entMember.findMany({ where: { managerId: me.id }, select: { userId: true } })).map((m) => m.userId).filter((id) => id !== me.id);
-  const 有下属 = 下属.length ? await prisma.user.count({ where: { active: true, id: { in: 下属 } } }) : 0;
+  // 有在职的直属下属：组织里只收在职的人、managerId 是手填的直属上级，和原来查 EntMember + 数在职同一个口径，不再另查
+  const 有下属 = [...org.成员.values()].some((m) => m.managerId === me.id && m.userId !== me.id);
   return 有下属 ? 0 : null;
 }
 

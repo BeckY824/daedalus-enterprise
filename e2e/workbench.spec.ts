@@ -196,7 +196,7 @@ test("客户列表：空库时不摆筛选栏，主动作还在原位", async ({
   await expect(page.getByRole("button", { name: /新建客户/ })).toBeVisible();
 });
 
-test("客户列表：默认只摆六列，其余在「列」里", async ({ page }) => {
+test("客户列表：默认只摆六列（企业版项目模式八列），其余在「列」里", async ({ page }) => {
   const p = 连库();
   await 造模拟数据(p);
   await p.$disconnect();
@@ -206,10 +206,17 @@ test("客户列表：默认只摆六列，其余在「列」里", async ({ page 
   await page.waitForSelector(".ant-table-row");
 
   // 六列 + 勾选框 + 操作列；操作列的「操作」只给读屏念（.sr-only），不算看得见的列
-  const 表头 = await page.locator(".ant-table-thead th").evaluateAll((ths) =>
+  // 只数摆着的那张表：生产构建下 DOM 里偶尔多一份藏着的同页（本机 E2E_PROD 实测数出 16 个表头）
+  const 表头 = await page.locator(".ant-table-thead:visible th").evaluateAll((ths) =>
     ths.map((th) => { const c = th.cloneNode(true) as HTMLElement; c.querySelectorAll(".sr-only").forEach((e) => e.remove()); return c.textContent ?? ""; }));
-  // 企业版：不摆「院校·专业」（10-28 去遗留 B2），跟进状态换成客户状态，多一列「级别」（定稿客户字段），还是六列
-  expect(表头.filter((t) => t.trim()).length).toBe(6);
+  // 企业版：不摆「院校·专业」（10-28 去遗留 B2），跟进状态换成客户状态，多一列「级别」（定稿客户字段）；
+  // 项目模式客户名后紧跟「当前节点」「项目数」（11-12 客户详情合并第 3 批，定稿 UI 表格），默认八列
+  const 看得见 = 表头.map((t) => t.trim()).filter(Boolean);
+  if (企业版) expect(看得见).toEqual(["客户", "当前节点", "项目数", "客户状态", "预计签约", "级别", "负责人", "最近跟进"]);
+  else expect(看得见.length).toBe(6);
+  // 1024 宽八列：表格自己能横滑可以，页面不能被撑出横向滚动
+  await page.setViewportSize({ width: 1024, height: 700 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), { message: "1024 宽客户列表把页面撑出了横向滚动" }).toBe(true);
 
   // 收起来的列要能勾出来
   await page.getByRole("button", { name: "列" }).click();
@@ -531,7 +538,8 @@ test("1024 下项目看板在框里横滑、列不压窄，页面不横滚", asy
   const r = await page.evaluate(() => {
     const d = document.documentElement;
     const pipe = document.querySelector(".pipe")!;
-    const 列宽 = [...document.querySelectorAll(".pipe-col")].map((c) => c.getBoundingClientRect().width);
+    // 只量摆着的列：生产构建下 DOM 里偶尔多一份藏着的同页，那份的列宽是 0（本机 E2E_PROD 实测）
+    const 列宽 = [...document.querySelectorAll(".pipe-col")].filter((c) => c.getClientRects().length > 0).map((c) => c.getBoundingClientRect().width);
     return {
       页面溢出: d.scrollWidth > d.clientWidth + 1,
       管道能横滑: getComputedStyle(pipe).overflowX === "auto",

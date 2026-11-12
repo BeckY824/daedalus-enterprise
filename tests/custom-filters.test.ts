@@ -14,6 +14,17 @@ const 项 = [
 const 键们 = (x: { 键: string }[]) => x.map((i) => i.键);
 
 describe("拆筛选项", () => {
+  it("挤掉（筛选行一行放不下，11-12）：带「挤」的外露项这一刻收进「更多筛选」，正筛着的照样数进按钮；不挤照旧在外面；可见（存的勾选）不变", () => {
+    const 带挤 = [...项, { 键: "phase", 默认外露: true, 挤: true, 有值: true }, { 键: "node", 默认外露: true, 挤: true, 有值: false }];
+    const 宽 = 拆筛选项(带挤, null);
+    expect(键们(宽.外露)).toEqual(["owner", "status", "phase", "node"]);
+    const 窄 = 拆筛选项(带挤, null, true);
+    expect(键们(窄.外露)).toEqual(["owner", "status"]);
+    expect(键们(窄.收着)).toEqual(["channelId", "grade", "phase", "node"]);
+    expect(窄.筛了几个).toBe(2);
+    expect(窄.可见).toEqual(宽.可见);
+  });
+
   it("没存过：外面就是系统默认的那几个，收着的不多不少", () => {
     const r = 拆筛选项(项, null);
     expect(键们(r.外露)).toEqual(["owner", "status"]);

@@ -1,6 +1,6 @@
 "use client";
 
-import { cloneElement, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { cloneElement, useLayoutEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { Button, Checkbox, Popover, Space } from "antd";
 import { FilterOutlined, LeftOutlined, SettingOutlined } from "@ant-design/icons";
 import { useLocalPref } from "@/lib/local-pref";
@@ -103,9 +103,15 @@ function MoreFiltersButton({
  */
 export function useCustomFilters(页: string, 项: 筛选项[], { 停用 = false }: { 停用?: boolean } = {}): { 外露: ReactNode[]; 更多按钮: ReactNode } {
   const [存的, 存] = useLocalPref<string[] | null>(筛选偏好键(页), null);
-  const { 可见, 外露, 收着, 筛了几个 } = 拆筛选项(项, 停用 ? null : 存的);
+  const 能挤 = 项.some((x) => x.挤);
+  const [挤掉, 探针] = useSqueezeRow(能挤);
+  const { 可见, 外露, 收着, 筛了几个 } = 拆筛选项(项, 停用 ? null : 存的, 挤掉);
   return {
-    外露: 外露.map((x) => cloneElement(x.渲染({ width: x.宽 }), { key: x.键 })),
+    外露: [
+      ...外露.map((x) => cloneElement(x.渲染({ width: x.宽 }), { key: x.键 })),
+      // 量「筛选行折没折」用的探针：不占位（globals.css .cf-probe 那一格不显示），只为从它找到所在的筛选组
+      ...(能挤 ? [<span key="cf-probe" ref={探针} className="cf-probe" aria-hidden />] : []),
+    ],
     更多按钮:
       停用 || 项.length === 0 ? null : (
         // key 要固定：Space 没 key 时按位置认子节点，钉一项位置就变，按钮会重建、弹层跟着关掉
@@ -121,4 +127,39 @@ export function useCustomFilters(页: string, 项: 筛选项[], { 停用 = false
         />
       ),
   };
+}
+
+/** 一行的高度上限：筛选控件 32 高，超过就是在组里折成两行了 */
+const 一行高 = 40;
+
+/**
+ * 筛选组（.list-bar 里的 Space）折成两行了没有：折了就把带「挤」的项收进「更多筛选」，记下那一刻的宽；
+ * 再宽过那个宽就放回来试一次（还放不下再收，记新的宽）。在画之前量（layout effect），人看不到跳一下。
+ * 手机宽（< 768）筛选行本来就折，不挤
+ */
+function useSqueezeRow(能挤: boolean): [boolean, (el: HTMLSpanElement | null) => void] {
+  const [挤掉, set挤掉] = useState(false);
+  const [探针, set探针] = useState<HTMLSpanElement | null>(null);
+  const 挤时宽 = useRef(0);
+  useLayoutEffect(() => {
+    if (!能挤 || !探针) return;
+    const 组 = 探针.closest(".ant-space") as HTMLElement | null;
+    const 行 = (探针.closest(".list-bar") as HTMLElement | null) ?? 组?.parentElement ?? null;
+    if (!组 || !行) return;
+    const 量 = () => {
+      if (!window.matchMedia("(min-width: 768px)").matches) return set挤掉(false);
+      const 宽 = 行.clientWidth;
+      if (!挤掉) {
+        if (组.getBoundingClientRect().height > 一行高) { 挤时宽.current = 宽; set挤掉(true); }
+      } else if (宽 > 挤时宽.current) set挤掉(false);
+    };
+    // 接管之前（服务端出的 HTML）组是不折、放不下藏在行尾的（globals.css .cf-probe:not([data-cf-ready])），
+    // 不然量之前筛选行先折成两行（PR #273 CI 1024 宽）。量之前打上标记放开折行，同一帧里量完收好，人看不到跳一下
+    探针.setAttribute("data-cf-ready", "");
+    量();
+    const ro = new ResizeObserver(量);
+    ro.observe(行);
+    return () => ro.disconnect();
+  }, [能挤, 探针, 挤掉]);
+  return [挤掉, set探针];
 }

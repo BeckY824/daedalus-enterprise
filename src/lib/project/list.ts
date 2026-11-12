@@ -70,6 +70,11 @@ export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; 
   createdFrom?: string; createdTo?: string;
   /** 「手机号」筛选（11-11）：项目的客户号码对得上的（同客户列表，lib/search-keyword.ts 客户号码SQL）；客户不露的不算 */
   phone?: string;
+  /**
+   * 客户页看板视图（11-12 第 3 批 C18）：先按客户页那一行筛出客户（customers/query.ts 客户筛选条件），再出这些客户名下的项目。
+   * 只收窄：项目自己的可见范围照旧由限定层管。不是地址栏参数，服务端自己给
+   */
+  客户?: Prisma.CustomerWhereInput | null;
   /** 服务端分页（11-11，同客户列表）：第几页、每页几条（10–100）、按哪列排（认项目排序；不给 = 最近改过在前） */
   page?: string; pageSize?: string; sort?: string };
 
@@ -166,7 +171,9 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
   const 建于 = 创建时间段(sp.createdFrom, sp.createdTo);
   // 手机号（11-11）：先按号码找客户（电话藏着的人 = null，不筛），再取挂在这些客户上的项目，客户要露
   const 号码 = await 客户号码条件(sp.phone, me.id);
-  const 露 = 词 || 来源 || 号码 ? await 露客户条件(me) : null;
+  // 客户条件只认服务端给的对象（客户页看板视图）；地址栏原样传进来的字符串（新线索页等直接把 searchParams 给进来）当没给
+  const 客户 = sp.客户 && typeof sp.客户 === "object" ? sp.客户 : null;
+  const 露 = 词 || 来源 || 号码 || 客户 ? await 露客户条件(me) : null;
   const 并露 = (w: Prisma.ProjectWhereInput): Prisma.ProjectWhereInput => (露 ? { AND: [w, 露] } : w);
   // 企业版「收回次数」：从留痕里数；按次数筛只在企业版的项目公海里生效
   const 收回筛 = 企 && sp.pool === "1" ? 收回次数筛(sp.recycled) : "";
@@ -181,6 +188,8 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
     // 3 天内回公海：粗筛之外再加紧筛（同首页卡的数，tests/ent-due-soon-prefilter.test.ts 两种筛对拍），候选少取一些；剩下的取回逐个算
     ...(卡 === "due-soon" && 规则 ? [即将逾期紧筛(规则, 字典of(企), 今) ?? { id: { in: [] } }] : []),
     ...阶进.where,
+    // 按客户的字段筛：客户不露的不列（和按客户名搜同一条，不然拿筛选试得出同事公海客户挂着哪些项目）
+    ...(客户 ? [并露({ customer: 客户 })] : []),
     ...(市场 ? [市场项目条件(me.id, 市场.圈, 创建人)] : []),
     // 公海里同事客户的项目：不露客户名；按客户名搜也不该搜出它（否则等于拿名字试出来）。搜索词的 OR 放进 AND 里，不和别的 OR 打架
     ...(词 ? [{ OR: [{ name: { contains: 词 } }, 并露({ customer: { name: { contains: 词 } } })] }] : []),

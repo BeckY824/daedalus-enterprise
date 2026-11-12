@@ -171,6 +171,8 @@ const 筛选说法: Record<string, string> = {
   keyword: "关键词",
   q: "关键词",
   createdWithin: "建档时间",
+  phase: "项目阶段",
+  node: "项目进程",
 };
 
 /**

@@ -6,7 +6,7 @@
   "app/(app)/contacts/ContactsView.tsx": 11,
   "app/(app)/customers/CustomerBoard.tsx": 2,
   "app/(app)/customers/CustomerForm.tsx": 15,
-  "app/(app)/customers/CustomersView.tsx": 22,
+  "app/(app)/customers/CustomersView.tsx": 21,
   "app/(app)/customers/HandoverPending.tsx": 2,
   "app/(app)/customers/ImportDrawer.tsx": 11,
   "app/(app)/customers/[id]/AiPanel.tsx": 7,

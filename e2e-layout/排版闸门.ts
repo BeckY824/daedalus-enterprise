@@ -49,10 +49,15 @@ export const 宽们 = [1024, 1280, 1366] as const;
 const 摆法们 = ["默认", "AI栏常驻", "左栏最宽"] as const;
 type 摆法 = (typeof 摆法们)[number];
 
-/** 存：进页前写进 localStorage 的偏好（项目页看板 / 列表两种看法共用一个地址）。项目 id 是起服务前建库时才定的，到用例里再取 */
-const 页们 = (种子 = 企业版种子()): { 名: string; 址: string; 存?: Record<string, string> }[] => [
+/**
+ * 存：进页前写进 localStorage 的偏好（项目页看板 / 列表两种看法共用一个地址）。项目 id 是起服务前建库时才定的，到用例里再取。
+ * 饼：进页前写的 cookie（客户页「列表 / 看板」记在 cookie 里，服务端据此画哪一个，lib/customers-view-pref.ts）
+ */
+const 页们 = (种子 = 企业版种子()): { 名: string; 址: string; 存?: Record<string, string>; 饼?: Record<string, string> }[] => [
   { 名: "首页", 址: "/" },
-  { 名: "客户列表", 址: "/customers" },
+  { 名: "客户列表", 址: "/customers", 饼: { "customers-view": "list" } },
+  // 11-12 客户详情合并第 3 批：客户页的看板视图（页头、筛选行照客户列表，表格换成按节点分列的项目看板）
+  { 名: "客户看板", 址: "/customers", 饼: { "customers-view": "board" } },
   { 名: "客户记录页", 址: "/customers/gate-scandi" },
   { 名: "客户记录页-长英文名", 址: "/customers/gate-long-uk" },
   { 名: "客户记录页-无空格名", 址: "/customers/gate-nospace" },
@@ -94,7 +99,8 @@ export async function 关掉弹窗(page: Page, 等 = 0) {
 }
 
 /** 新库第一次进主界面会在页面出来之后自己弹「已更新到 …」：等一下，弹了就关（点过一次服务端记住，后面不再弹） */
-async function 去(page: Page, 址: string, 摆: 摆法, 存?: Record<string, string>) {
+async function 去(page: Page, 址: string, 摆: 摆法, 存?: Record<string, string>, 饼?: Record<string, string>) {
+  if (饼) await page.context().addCookies(Object.entries(饼).map(([name, value]) => ({ name, value, url: new URL(page.url()).origin })));
   if (存) {
     await page.evaluate((kv) => {
       try {
@@ -157,7 +163,7 @@ export function 排版闸门(宽: (typeof 宽们)[number]) {
       }, 摆);
       const 这一组: string[] = [];
       for (const p of 页们()) {
-        await 去(page, p.址, 摆, p.存);
+        await 去(page, p.址, 摆, p.存, p.饼);
         for (const [比例, 段] of [[0, "顶"], [1, "底"]] as const) {
           await 滚到(page, 比例);
           const 问题 = await 查排版(page, { 忽略 });

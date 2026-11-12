@@ -32,6 +32,14 @@ import { 客户状态色表 } from "@/lib/enterprise/cust-status-color";
 import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
 import { 能导入导出, 新建只给自己 } from "@/lib/enterprise/import-perm";
 import { 删除挡 } from "@/lib/enterprise/soft-delete";
+import { 客户项目概况们 } from "@/lib/project/customer-list-projects";
+import { 生效组织规则 } from "@/lib/project/org-rules-store";
+import { cookies } from "next/headers";
+import { 客户页看法键 } from "@/lib/customers-view-pref";
+import { 项目页, type 项目页参数 } from "../projects/board-page";
+import { 阶段筛选太多 } from "@/lib/project/customer-list-projects";
+import { 读市场身份 } from "@/lib/enterprise/market-view-db";
+import type { SessionUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +70,9 @@ type SP = Promise<{
   createdTo?: string;
   /** 「手机号」筛选（11-11）：只比号码，口径见 lib/search-keyword.ts 客户号码SQL；电话藏着的人不认 */
   phone?: string;
+  /** 「全部阶段」「全部进程」（企业版项目模式，11-12 第 3 批）：名下有一个我能看的项目在这个阶段 / 进程上 */
+  phase?: string;
+  node?: string;
   page?: string;
   pageSize?: string;
   sort?: string;
@@ -89,7 +100,31 @@ type SP = Promise<{
   batch?: string;
   /** 「1」= 「公海」页签；不给 = 「客户」页签，不含公海里的（子集入口例外，见 query.ts 在看子集） */
   pool?: string;
+  /** 市场角色被挡在项目详情外转来的（P-界面-11）：q 搜项目名、hl 高亮那一行，落在「我分出去的」视图 */
+  q?: string;
+  hl?: string;
 }>;
+
+/** 客户页记的「列表 / 看板」（cookie）；不在请求里（测试直接调页面函数）读不到 = 没记 */
+async function 记的看法(): Promise<string | undefined> {
+  try {
+    return (await cookies()).get(客户页看法键)?.value;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 看板视图的那块看板：先按这一行筛选筛出客户（C18：「先筛客户、再出这些客户的项目卡」），再出这些客户名下我看得到的项目。
+ * 阶段 / 进程直接按项目筛（看板的列就是进程，按客户筛会冒出同一位客户别的阶段的项目，见回报待定）；页码、每页条数是看板自己的。
+ * 除了页签什么都没筛 = 不收窄（和项目页一样）
+ */
+async function 看板体(me: SessionUser, sp: Awaited<SP>) {
+  const { phase, node, page, pageSize, sort, sortCurrency: _币, ...客户的 } = sp;
+  const w = await 客户筛选条件(客户的);
+  // sort 给看板临时切成的项目列表排表头用（客户的排序在看板视图里不起作用）
+  return 项目页(me, { phase, node, page, pageSize, sort }, { 客户: 只按页签(w) ? null : w });
+}
 
 export default async function CustomersPage({ searchParams }: { searchParams: SP }) {
   const me = await requireUser();
@@ -112,6 +147,19 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   /** 按创建时间排（11-11）：默认就是新的在前，点表头可以换成旧的在前；不给 = 默认 */
   const 创建排序 = sp.sort === "created-asc" || sp.sort === "created-desc" ? sp.sort : "";
   const sortCurrency = 规整币种(sp.sortCurrency, b.currency);
+  /*
+    市场成员、市场管理（X-107，用户 11-12「按第 1 种做」）：左栏只有「客户」，客户页给他们的就是原来项目页给他们的那套只读视图
+    （P-界面-05 范围 / 默认列 / 列锁定 / 创建人筛选、P-看-06 点不进、P-界面-11 被挡转来的 q / hl 高亮），照搬、不增不减：
+    同一个 项目页 画法，地址落在 /customers。新建客户、导入、子集这几个客户页自己的入口照旧画客户页
+  */
+  const 市场角色 = 企业版() && b.projectMode && !!(await 读市场身份(me.id));
+  if (市场角色 && !sp.new && !sp.import && !在看子集(sp)) {
+    // 两个视图（用户 11-12「按第 1 种做」）：列表 = 原来的客户列表；看板 = 我分出去的。记了哪个进哪个，没记过进我分出去的；带 hl（被挡转来的）一律进我分出去的
+    const 记 = await 记的看法();
+    if (sp.hl || 记 === "board" || 记 === undefined) {
+      return 项目页(me, sp as 项目页参数, undefined, { 基址: "/customers", 标题: b.customer, 换回客户列表: true });
+    }
+  }
 
   /*
     带关键词、只筛本表等值的（最常见的「搜一下」）：总数、页码和这一页的 id 一条 SQL 出（P2，query.ts 关键词分页）。
@@ -152,7 +200,18 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const 企 = 企业版();
   const 能按号码筛 = !(await 号码藏着());
   const 删权限org = 企 ? await 权限组织() : null;
-  const 行P = 快 ? 按序取客户行(快.ids) : sort ? 客户金额分页(where!, sort, sortCurrency, page, pageSize) : prisma.customer.findMany({
+  /** 企业版项目模式：客户表格多「当前节点」「项目数」两列和「阶段」「进程」两个筛选（第 3 批） */
+  const 按项目 = 企 && b.projectMode;
+  /*
+    「看板」视图（11-12 客户详情合并第 3 批，构想页 C17 / C18）：页头、筛选行和客户列表一样，表格换成按节点分列的项目看板
+    （和项目页同一份取数和画法，projects/board-page.tsx）。记在 cookie（lib/customers-view-pref.ts），服务端据此只取一边：
+    看板视图不取这一页客户行和两列，列表视图不取看板。子集（导入这一批、本月新增、直接推荐）里照旧是列表
+  */
+  // 市场角色的看板是上面那套（我分出去的），走到这里的市场角色都是列表
+  const 看板视图 = 按项目 && !子集 && !市场角色 && (await 记的看法()) === "board";
+  const 看板P = 看板视图 ? 看板体(me, sp) : null;
+  看板P?.catch(() => {});
+  const 行P = 看板视图 ? Promise.resolve([]) : 快 ? 按序取客户行(快.ids) : sort ? 客户金额分页(where!, sort, sortCurrency, page, pageSize) : prisma.customer.findMany({
       where: where!,
       orderBy: 等级排序
         ? [{ extra: { level: { sort: 等级排序 === "level-asc" ? "asc" : "desc", nulls: "last" } } }, { createdAt: "desc" }, { id: "desc" }]
@@ -164,7 +223,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const [
     rows, users, channels, 用着的职位, 用着的国家,
     号, aiEnabled, 交接, 可导入导出, 只给自己, 客户状态选项, 分配方式选项, 客户类型选项, 只读ids, 转让选项, 直接推荐, 业务员,
-    建档, 客户状态字典, 状态自动, 客户属性选项, 客户属性字典, 字典释义, 待交接, 渠道筛选项,
+    建档, 客户状态字典, 状态自动, 客户属性选项, 客户属性字典, 字典释义, 待交接, 渠道筛选项, 项目概况, 组织规则,
   ] = await Promise.all([
     行P,
     负责人候选(),
@@ -194,10 +253,14 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     企 ? 页面可选项("custAttr") : [],
     企 ? 页面字典("custAttr") : [],
     企 ? 页面客户释义() : undefined,
-    // 离职交接入口（11-03 B7-2）：开了项目模式摆在项目页头，没开摆在这里
-    企 && !b.projectMode ? 离职交接入口(me) : null,
+    // 离职交接入口（11-03 B7-2）：企业版都摆在客户页页头（11-12 C15：导航去掉「项目」后入口挪到这里），谁看得见、数怎么数照原来
+    企 ? 离职交接入口(me) : null,
     // 「客户来源」筛选的候选（11-06 自定义筛选）：含停用的，老客户还挂着
     企 ? 渠道筛选选项() : [],
+    // 「当前节点」「项目数」两列（11-12 客户详情合并第 3 批）：这一页的客户一句取项目，只算我能看的（和客户详情的页签同一圈）
+    按项目 && !看板视图 ? 行P.then((rs) => 客户项目概况们(me, rs.map((r) => r.id))) : undefined,
+    // 进程下拉的结局叫法跟组织规则里改过的出口叫法（同项目页）
+    按项目 ? 生效组织规则() : null,
   ]);
   // 业务配置里删掉了、库里还有人在用的职位：筛选下拉照样给（第 2 期 2b「删选项后老记录照样能筛」）
   const 旧职位 = 用着的职位.map((c) => c.grade!.trim()).filter((g) => g && !b.grades.includes(g)).sort();
@@ -228,7 +291,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       rows={rows.map((r) => 成客户行(r, 号))}
       total={total}
       page={page}
-      requestedPage={sp.page}
+      // 看板视图的 page 是看板翻项目用的（项目页自己纠正），不按客户总数改地址
+      requestedPage={看板视图 ? undefined : sp.page}
       pageSize={pageSize}
       金额排序={sort}
       等级排序={等级排序}
@@ -263,6 +327,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
         createdTo: sp.createdTo ?? "",
         // 电话藏着的人（字段权限 Y27）不按号码筛：服务端不认，这里也不回显，页面不摆这一项
         phone: 能按号码筛 ? sp.phone ?? "" : "",
+        ...(按项目 ? { phase: sp.phase ?? "", node: sp.node ?? "" } : {}),
         // 企业版才有客户状态这一格（10-28）；别的版本 filters 和原来一样
         ...(企业版() ? { custStatus: sp.custStatus ?? "", customerType: sp.customerType ?? "", archiveTier: sp.archiveTier ?? "", channelId: sp.channelId ?? "" } : {}),
       }}
@@ -297,6 +362,13 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       aiEnabled={aiEnabled}
       旧职位={[...new Set(旧职位)]}
       国家们={用着的国家.map((x) => x.country!).filter(Boolean)}
+      项目概况={项目概况}
+      项目看板={按项目}
+      市场视图={市场角色}
+      // 阶段 / 进程命中的客户太多、点不了名（customer-list-projects.ts 点名上限）：和筛选同一份请求内缓存，不另查
+      阶段太多={按项目 && !看板视图 ? await 阶段筛选太多(me, sp) : false}
+      看板体={看板P ? await 看板P : undefined}
+      出口叫法={组织规则?.阶段.出口叫法}
     />
   );
   // 没有等确认的交接就只放列表，和原来一样

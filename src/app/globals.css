@@ -2498,6 +2498,10 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
   .list-bar { flex-wrap: nowrap; align-items: flex-start; }
   .list-bar > .ant-space { flex: 0 1 auto; min-width: 0; }
   .list-bar > .ant-btn, .list-bar > .ant-dropdown-trigger { flex: none; }
+  /* 带「挤」项的筛选组（components/CustomFilters.tsx useSqueezeRow）：React 接管、量过之前（服务端出的 HTML、慢网）
+     放不下的先藏在行尾，不折成两行；量的那一刻探针打上 data-cf-ready，照常折，量出折了就收进「更多筛选」（PR #273 CI 1024 宽）。
+     antd Space 的 wrap 是行内样式，所以要 !important */
+  .list-bar > .ant-space:has(> .ant-space-item > .cf-probe:not([data-cf-ready])) { flex-wrap: nowrap !important; overflow: hidden; }
 }
 @media (min-width: 768px) and (max-width: 1199px) {
   .list-bar > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 160px !important; }
@@ -2788,6 +2792,16 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .cust-board .pipe-h b { flex: 0 1 auto; min-width: 0; }
 .cust-board-meta { display: inline-flex; align-items: baseline; gap: var(--s1); min-width: 0; }
 .cust-board-page { display: flex; justify-content: flex-end; margin-top: var(--s3); }
+/* 客户表格「当前节点」（11-12 第 3 批）：标签宽到格子为止，放不下省略号（.clamp-1 是块级，这里改回行内块不撑满格） */
+.cust-node-tag { display: inline-block; vertical-align: middle; margin-inline-end: 0; }
+/* 企业版客户页「列表 / 看板」单独一行（列表、看板两个视图同一个位置，11-12 第 3 批） */
+.cust-view-seg { margin-bottom: var(--s3); }
+/* 客户页看板视图的工具行（C17）：项目专用的分配、新增项目，靠右，挨着看板 */
+.cust-board-tool { display: flex; justify-content: flex-end; margin-bottom: var(--s3); }
+/* 阶段 / 进程筛选命中太多、没出结果时的那一句（customers/page.tsx 阶段太多） */
+.cust-too-many { margin-bottom: var(--s3); color: var(--text-muted); }
+/* 筛选组里量「折没折」的探针（components/CustomFilters.tsx useSqueezeRow）：那一格不显示、不占间距 */
+.ant-space-item:has(> .cf-probe) { display: none; }
 /* 客户页「新增项目」弹窗（U-客户-05）：带上的客户名一行，超长折行写完不撑宽弹窗 */
 .new-proj-carried { color: var(--text-muted); font-size: var(--fs-note); margin-bottom: var(--s3); overflow-wrap: anywhere; }
 /* 项目首页「新增项目」先选新客户 / 老客户（11-01）：两张整行可点的选项，说明长了折行 */

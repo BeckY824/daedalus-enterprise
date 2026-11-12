@@ -5,7 +5,9 @@ import type { Prisma } from "@/generated/prisma";
 import { dayjs } from "@/lib/utils";
 import { 带币种, 签约金额, 签约合计, 签约币种 } from "@/lib/money-db";
 import { 客户关键词条件, 客户关键词SQL, 客户id集合, 客户号码条件, 搜索词 } from "@/lib/search-keyword";
-import { 读的我, 有市场只读, 现在的公海回避 } from "@/lib/team-scope";
+import { 读的我, 有市场只读, 现在的公海回避, 看全部 } from "@/lib/team-scope";
+import { requireUser } from "@/lib/auth";
+import { 项目阶段客户条件 } from "@/lib/project/customer-list-projects";
 import { 取档案 } from "@/lib/customer-extra-db";
 import { 未分级 } from "./query-shared";
 import { 读团队 } from "@/lib/sync/client";
@@ -53,6 +55,12 @@ export type 客户条件 = {
   createdTo?: string;
   /** 「手机号」筛选（11-11）：只比号码，口径见 lib/search-keyword.ts 客户号码SQL */
   phone?: string;
+  /**
+   * 「全部阶段」「全部进程」（企业版项目模式，11-12 客户详情合并第 3 批）：名下有一个我能看的项目在这个阶段 / 进程上。
+   * 认法同项目页（list.ts 阶段进程条件）；别的版本不认
+   */
+  phase?: string;
+  node?: string;
 };
 
 /** 等级筛选：A–D 按字母筛；「未分级」= 没有档案行或等级空着的。别的值不筛（地址栏手改的） */
@@ -118,6 +126,16 @@ export function 只按页签(where: Prisma.CustomerWhereInput): "非公海" | "�
   return null;
 }
 
+/** 阶段 / 进程筛选：按谁能看哪些项目算。给了 userId（AI 助手经 MCP）按那个人；不给 = 当前登录的人 */
+async function 项目筛选条件(sp: 客户条件, userId?: string): Promise<Prisma.CustomerWhereInput | null> {
+  if (!企业版() || (!sp.phase && !sp.node)) return null;
+  const me = userId
+    ? await 看全部(() => prisma.user.findUnique({ where: { id: userId }, select: { id: true, role: true } }))
+    : await requireUser();
+  if (!me) return { id: { in: [] } };
+  return 项目阶段客户条件(me, sp);
+}
+
 export async function 客户筛选条件(
   sp: 客户条件,
   /** 关键词按谁的字段权限搜（电话藏着就不按号码匹配）；不给 = 当前登录的人。AI 助手经 MCP 调时没有 cookie，要传 */
@@ -138,8 +156,9 @@ export async function 客户筛选条件(
   // 放 AND：「本月新增」子集也写 createdAt，两条都要算
   const 建于 = 创建时间段(sp.createdFrom, sp.createdTo);
   const 号码 = await 客户号码条件(sp.phone, userId);
+  const 按项目 = await 项目筛选条件(sp, userId);
   return {
-    AND: [keyword, ...(本批 ? [客户id集合(本批.map(r => r.customerId))] : []), ...(等级 ? [等级] : []), ...(部门 ? [部门] : []), ...(建于 ? [{ createdAt: 建于 }] : []), ...(号码 ? [号码] : []), ...(sp.channelId && 企业版() ? [{ channelId: sp.channelId }] : [])],
+    AND: [keyword, ...(按项目 ? [按项目] : []), ...(本批 ? [客户id集合(本批.map(r => r.customerId))] : []), ...(等级 ? [等级] : []), ...(部门 ? [部门] : []), ...(建于 ? [{ createdAt: 建于 }] : []), ...(号码 ? [号码] : []), ...(sp.channelId && 企业版() ? [{ channelId: sp.channelId }] : [])],
     ...(sp.grade ? { grade: sp.grade } : {}),
     ...(sp.followStatus ? { followStatus: sp.followStatus } : {}),
     ...(sp.decisionStatus ? { decisionStatus: sp.decisionStatus } : {}),
@@ -247,10 +266,10 @@ const 企业版才筛: readonly string[] = ["custStatus", "customerType", "archi
  * **那边的可见范围改了，这里要跟着改**（customer-keyword-page.test.ts 拿 Prisma 老路逐页对拍守着）。
  * 这里只给 id，行由调用方经限定层再取一次：范围就算写宽了，也只会多算总数，不会多给行。
  *
- * 接不住的组合（等级、部门、批次、国家来源、本月、直推）返回 null，调用方走老路
+ * 接不住的组合（等级、部门、批次、国家来源、本月、直推、阶段进程）返回 null，调用方走老路
  */
 export async function 关键词分页(sp: 客户条件, 请求页: number, pageSize: number): Promise<{ total: number; page: number; ids: string[] } | null> {
-  if (sp.batch || sp.level || sp.dept || sp.createdWithin || sp.directOf || sp.country || sp.source || 创建时间段(sp.createdFrom, sp.createdTo) || 搜索词(sp.phone)) return null;
+  if (sp.phase || sp.node || sp.batch || sp.level || sp.dept || sp.createdWithin || sp.directOf || sp.country || sp.source || 创建时间段(sp.createdFrom, sp.createdTo) || 搜索词(sp.phone)) return null;
   const kw = await 客户关键词SQL(sp.keyword);
   if (!kw) return null;
   const 公海 = sp.pool === "1";
