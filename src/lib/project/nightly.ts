@@ -12,6 +12,7 @@
  *   - 同一个钟顺带作废挂满 7 天没人处理的申请移交（lib/enterprise/handover-expire.ts，11-10 新口径）：作废、通知申请人一次，归属不变
  *   - 客户三态（M-公海-16 起，lib/enterprise/tri-state-db.ts）：00:05 那一遍按客户算状态、写钟和留痕，待回收期满的自动进客户公海；
  *     组织规则里三态关着这一段完全不跑。三态开着时项目超时回收不再跑（db.ts 按规则收回 直接返回）
+ *   - 同一个钟顺带发三态提醒（lib/enterprise/tri-state-notice.ts）：北京 08:00 起一天一遍，一人一天一条汇总；停机只补当天这一条
  *
  * 服务停过怎么补（10c，2026-11-10）：这些活都挂在本进程的钟上，服务停着就不跑。
  *   - 起钟时马上跑一遍（不等第一分钟），各自的时点照旧（00:05 / 09:00 没到的那几样等到点）
@@ -30,6 +31,7 @@ import { 钟上到期提醒明细, type 到期提醒明细 } from "@/lib/enterpr
 import { 挂起移交作废 } from "@/lib/enterprise/handover-expire";
 import { 挂靠超时转上级 } from "@/lib/enterprise/attach-approval";
 import { 三态夜扫, type 三态夜扫明细 } from "@/lib/enterprise/tri-state-db";
+import { 钟上三态提醒 } from "@/lib/enterprise/tri-state-notice";
 import { dayjs } from "../utils";
 
 export const 夜扫时刻 = { 时: 0, 分: 5 } as const;
@@ -105,6 +107,9 @@ export function 启动夜扫(间隔毫秒 = 60_000, 先等?: Promise<unknown>): 
       .then(() => 夜里扫三态(现在))
       .then((x) => { r.三态 = x; })
       .then(() => undefined, (e) => console.error("[客户三态] 夜里扫的时候出错，下一分钟再试", e))
+      // 三态提醒：排在三态那一段后面（先改状态再发），自己按北京 08:00 和当天水位判
+      .then(() => 钟上三态提醒(现在))
+      .then(() => undefined, (e) => console.error("[三态提醒] 出错，下一遍再试", e))
       // 回收站到期清理：和超时回收各管各的，一边出错不拦另一边
       .then(() => (过了夜扫时刻(现在) ? 每天清一次(现在) : null))
       .then((清) => { r.回收站 = 清 ? Object.values(清).reduce((a, b) => a + b, 0) : 0; })
