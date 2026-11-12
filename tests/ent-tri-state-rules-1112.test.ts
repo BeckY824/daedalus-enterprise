@@ -191,3 +191,88 @@ describe("T1 / T2 · 读库：无效沟通不拨钟、不回满", () => {
     expect((await 钟())!.state).toBe("沉睡");
   });
 });
+
+describe("T3 · 项目退回公海前的推进算到退回那天", () => {
+  it("项目第 80 天推进、第 100 天退回项目公海：钟停在第 80 天，不往前跳回起算日；退回本身不算动静", async () => {
+    const p = await prisma.project.create({ data: { name: "退回的", customerId: 客户, ownerId: 人.乙.id, creatorId: 人.乙.id, createdAt: 白天(10) } });
+    await prisma.projectNodeLog.create({ data: { projectId: p.id, userId: 人.乙.id, at: 白天(80), toPhase: "线索", toNode: "潜客培育", kind: "node" } });
+    await prisma.project.update({ where: { id: p.id }, data: { pooledAt: 白天(100) } });
+    await prisma.projectNodeLog.create({ data: { projectId: p.id, userId: 人.乙.id, at: 白天(100), toPhase: "线索", toNode: "潜客培育", kind: "pool-release" } });
+    await 三态夜扫(早(101));
+    expect(await 钟()).toMatchObject({ state: "活跃", enteredDay: 日(80) });
+    await 三态夜扫(早(171));
+    expect(await 钟()).toMatchObject({ state: "沉睡", enteredDay: 日(170) });
+  });
+
+  it("退回的项目只算推进日，不挡自动进公海、不定用哪套天数", async () => {
+    await prisma.customer.update({ where: { id: 客户 }, data: { bizLine: "内贸" } });
+    await prisma.project.create({ data: { name: "同事的、已退回", customerId: 客户, ownerId: 人.丙.id, creatorId: 人.丙.id, createdAt: new Date("2026-10-20T10:00:00+08:00"), pooledAt: new Date("2026-10-25T10:00:00+08:00") } });
+    await 三态夜扫(早(180));
+    await prisma.entCustomerClock.update({ where: { customerId: 客户 }, data: { noticeCount: 3, lastNoticeDay: 日(200) } });
+    await 三态夜扫(早(210));
+    expect(await prisma.customerPool.findUnique({ where: { customerId: 客户 } })).not.toBeNull();
+  });
+});
+
+describe("T4 · 公海领走 / 分走：当天起算新一轮，额度回满，不占转让 2 次", () => {
+  async function 进公海再领(到: string, n: number, kind: "claim" | "pool-assign") {
+    await prisma.customerPool.create({ data: { customerId: 客户, userId: 人.系.id, reason: "手动", at: 白天(n - 1) } });
+    await 三态夜扫(早(n));
+    expect((await 钟())!.state).toBe(公海状态);
+    await prisma.customerPool.delete({ where: { customerId: 客户 } });
+    await prisma.customerOwnerLog.create({ data: { customerId: 客户, userId: 到, fromOwnerId: 人.乙.id, toOwnerId: 到, kind, at: 白天(n) } });
+    await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 到 } });
+  }
+
+  it("前手用了 1 次继续持有，领走的人额度回满 3 次 / 90 天，钟从领取当天起", async () => {
+    expect(await 继续持有(人.乙, 客户, null, 白天(90))).toMatchObject({ ok: true, 剩次数: 2 });
+    await 进公海再领(人.丙.id, 130, "claim");
+    await 三态夜扫(早(131));
+    expect(await 钟()).toMatchObject({ state: "活跃", enteredDay: 日(130), holdCount: 0, holdDays: 0, quotaResetDay: 日(130) });
+    expect(await 继续持有(人.丙, 客户, null, 白天(220))).toMatchObject({ ok: true, 剩次数: 2, 剩天数: 60 });
+  });
+
+  it("公海指派同样回满；转让（同事之间）不回满", async () => {
+    expect(await 继续持有(人.乙, 客户, null, 白天(90))).toMatchObject({ ok: true, 剩次数: 2 });
+    await 转给(人.丙.id, 100);
+    await 三态夜扫(早(101));
+    expect(await 钟()).toMatchObject({ holdCount: 1 });
+    await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 人.乙.id } });
+    await 进公海再领(人.丙.id, 130, "pool-assign");
+    await 三态夜扫(早(131));
+    expect(await 钟()).toMatchObject({ holdCount: 0, quotaResetDay: 日(130) });
+  });
+
+  it("两次转让之间夹一次公海领取：领取不占「12 个月 2 次」，两次转让都归零", async () => {
+    await 三态夜扫(早(5));
+    await 转给(人.丙.id, 10);
+    await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 人.乙.id } });
+    await 进公海再领(人.丙.id, 30, "claim");
+    await 转给(人.乙.id, 40);
+    await 三态夜扫(早(41));
+    expect((await prisma.customerOwnerLog.findMany({ where: { kind: "assign" }, orderBy: { at: "asc" }, select: { clockReset: true } })).map((x) => x.clockReset)).toEqual([true, true]);
+  });
+});
+
+describe("T8 · 建项目算动静，建完转给同事的照算在客户上", () => {
+  it("第 60 天建项目、当天转给同事负责：客户的钟从第 60 天起", async () => {
+    await 三态夜扫(早(5));
+    const p = await prisma.project.create({ data: { name: "新项目", customerId: 客户, ownerId: 人.乙.id, creatorId: 人.乙.id, createdAt: 白天(60) } });
+    await prisma.project.update({ where: { id: p.id }, data: { ownerId: 人.丙.id } });
+    await 三态夜扫(早(61));
+    expect(await 钟()).toMatchObject({ state: "活跃", enteredDay: 日(60) });
+  });
+});
+
+describe("T9 · 市场成员认人：有市场角色、没销售角色才算；兼任按销售", () => {
+  it("市场 + 销售兼任：照常计时建钟", async () => {
+    await prisma.entMember.update({ where: { userId: 人.乙.id }, data: { bizRole: "marketing_mgr,sales" } });
+    await 三态夜扫(早(100));
+    expect(await 钟()).toMatchObject({ state: "沉睡" });
+  });
+  it("只有市场角色：不计时", async () => {
+    await prisma.entMember.update({ where: { userId: 人.乙.id }, data: { bizRole: "marketing_mgr" } });
+    await 三态夜扫(早(100));
+    expect(await 钟()).toBeNull();
+  });
+});

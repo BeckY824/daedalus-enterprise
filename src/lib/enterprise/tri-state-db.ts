@@ -5,8 +5,9 @@
  *   - 计时范围（M-公海-34）：有负责人（不是无负责人占位账号）、不在客户公海、没标无效；负责人是市场（市场角色、又不兼销售）的不计；已删的读不到（软删统一滤掉）
  *   - 最近有效沟通日（拨钟、回满额度同源，T1 / T2，tri-state-quota.ts 有内容的沟通）：挂客户的、挂名下任一项目的（含同事负责的，沟通都带着 customerId）都算；
  *     发生时刻晚于现在的（排着的计划）不算；空的、不足 4 字、只有占位词、只有素材链接的不算，AI 起草成功的算
- *   - 最近项目推进日：名下没进公海的项目，建项目和换节点（ProjectNodeLog kind = node）里最晚的（建项目算一次动静，同现行超时回收的起点，推断）。
- *     现状：项目进了线索公海以后它以前的推进不再算，客户的钟可能因此往前跳（基准日变早）
+ *   - 最近项目推进日：名下项目建项目和换节点（ProjectNodeLog kind = node）里最晚的（T8：建项目算一次动静，建完转给同事的照算在客户上）；
+ *     退回了项目公海的项目（T3），退回前的推进算到退回那天为止，退回本身不算动静
+ *   - 额度重置日（T4）：最近有效沟通、最近一次从公海领走 / 分走里较晚的那天，继续持有额度从这天起重新数
  *   - 名下项目（没进公海的）：阶段、业务线（项目业务线：没填按负责人的线）、同事负责、结束没有、结束日（最后一行带结局的换节点留痕，没有就 updatedAt）
  *   - 导入完成日：这位客户是哪一批导入建的（EntImportRow entity = customer、kind = create，批次没撤销）那一批的完成时刻
  *   - 换负责人（CustomerOwnerLog）：assign = 转让、deactivate = 离职交接、claim = 公海捞取、pool-assign = 公海指派、market-assign = 市场首次分配；
@@ -114,7 +115,9 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
       where: { customerId: { in: 批 }, pooledAt: null },
       select: { id: true, customerId: true, ownerId: true, phase: true, result: true, bizLine: true, createdAt: true, updatedAt: true },
     });
-    const 项目ids = 项目们.map((p) => p.id);
+    // T3：退回了项目公海的项目，退回前的推进照算到退回那天为止（不算退回本身，也不往后加成）
+    const 退回的 = await db.project.findMany({ where: { customerId: { in: 批 }, pooledAt: { not: null } }, select: { id: true, customerId: true, createdAt: true, pooledAt: true } });
+    const 项目ids = [...项目们.map((p) => p.id), ...退回的.map((p) => p.id)];
     const 推进 = new Map<string, Date>(), 结局 = new Map<string, Date>();
     for (const 小 of 分批(项目ids)) {
       for (const g of await db.projectNodeLog.groupBy({ by: ["projectId"], where: { projectId: { in: 小 }, kind: "node" }, _max: { at: true } })) if (g._max.at) 推进.set(g.projectId, g._max.at);
@@ -133,7 +136,7 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
       for (const x of xs) m.set(x.customerId, [...(m.get(x.customerId) ?? []), x]);
       return m;
     };
-    const 项目of = 按客户(项目们), 换人of = 按客户(换人), 痕of = 按客户(痕);
+    const 项目of = 按客户(项目们), 换人of = 按客户(换人), 痕of = 按客户(痕), 退回of = 按客户(退回的);
     for (const c of 客户们) {
       const 有负责人 = !!c.salesOwnerId && c.salesOwnerId !== 占位;
       const ps = 项目of.get(c.id) ?? [];
@@ -145,10 +148,16 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
         const 基 = { 阶段: p.phase as 三态项目["阶段"], 业务线: 项目业务线(p, 成员线), 同事负责, 最近推进日: 推 };
         return p.result ? { ...基, 结束: true as const, 结束日: beijingDay(结局.get(p.id) ?? p.updatedAt) } : { ...基, 结束: false as const };
       });
+      for (const p of 退回of.get(c.id) ?? []) {
+        const 退回日 = beijingDay(p.pooledAt!);
+        const 推 = beijingDay(推进.get(p.id) ?? p.createdAt);
+        最近推进 = 较晚日(最近推进, 推 < 退回日 ? 推 : 退回日);
+      }
       const 留痕: 留痕行[] = (痕of.get(c.id) ?? []).map((x) => ({ 日: beijingDay(x.at), fromState: x.fromState, toState: x.toState, via: x.via, reason: x.reason, holdDays: x.holdDays }));
       const 钟 = c.entClock;
       const 待回收中 = 钟?.state === "待回收";
       const 换人们 = 换负责人们of(换人of.get(c.id) ?? [], 规则.三态);
+      const 领取日 = (换人of.get(c.id) ?? []).filter((x) => x.kind === "claim" || x.kind === "pool-assign").map((x) => beijingDay(x.at)).reduce<string | null>(较晚日, null);
       const 事实: 三态事实 = {
         有负责人,
         在公海: !!c.pool,
@@ -157,6 +166,8 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
         负责人是市场: 有负责人 && 是市场角色(org, c.salesOwnerId) && !是销售角色(org, c.salesOwnerId),
         最近沟通日: 沟通日.get(c.id) ?? null,
         最近有内容沟通日: 沟通日.get(c.id) ?? null,
+        // T4：从公海领走 / 分走是新一轮持有，额度回满（不看前手用掉的）；市场首次分配、转让、离职交接不回满
+        额度重置日: 较晚日(沟通日.get(c.id) ?? null, 领取日),
         最近推进日: 最近推进,
         导入完成日: 导入.get(c.id) ?? null,
         系统起算日: 起算日,
@@ -256,7 +267,7 @@ export function 钟要改(c: Pick<三态客户, "钟" | "事实">, r: Extract<�
   const 进入日 = 状态 === "活跃" ? r.归零日 : 状态 === "沉睡" ? r.节点.沉睡 : r.节点.待回收;
   const 被挡 = r.被挡;
   const 钟 = c.钟;
-  const 额 = 额度回满({ holdCount: 钟?.holdCount ?? 0, holdDays: 钟?.holdDays ?? 0, quotaResetDay: 钟?.quotaResetDay ?? null }, c.事实.最近有内容沟通日 ?? null);
+  const 额 = 额度回满({ holdCount: 钟?.holdCount ?? 0, holdDays: 钟?.holdDays ?? 0, quotaResetDay: 钟?.quotaResetDay ?? null }, c.事实.额度重置日 ?? c.事实.最近有内容沟通日 ?? null);
   const 成交日 = 钟?.dealDay ?? (r.成交首次成立 ? 今天 : null);
   const 留痕: { fromState: string | null; toState: string; reason: string }[] = [];
   if (!钟) {
