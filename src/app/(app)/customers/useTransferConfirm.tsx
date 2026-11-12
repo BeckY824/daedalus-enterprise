@@ -5,6 +5,7 @@ import DictSelect from "@/components/DictSelect";
 import { 其他没写好 } from "@/lib/enterprise/dict-kinds";
 import { 转走项目预览of } from "./actions";
 import { useCarryConfirm } from "./useCarryConfirm";
+import { 移交作废天数 } from "@/lib/enterprise/handover-expire-days";
 
 /**
  * 换客户负责人之前先问一句（企业版 D-36，2026-10-24）：客户名下的项目会跟着走，
@@ -21,19 +22,19 @@ export function useTransferConfirm(转让原因?: { 选项: string[]; 自己: st
    * 企业版批量转给别人：问一句转让原因（字典「转让原因」，10-27，可不选）。
    * 返回选的原因 / null = 不选或不用问；false = 点了取消。转给自己、没有选项（别的版本）不弹
    */
-  /** 申请 = 负责人本人转自己的（申请移交，X4）：标题、按钮说「申请移交」 */
+  /** 申请 = 负责人本人转自己的（申请移交，X4）：界面 11-12 起统一叫「客户转让」，写明要接手人确认、几天不确认作废 */
   async function 问转让原因(给谁: string, 新负责人: string, 申请 = false): Promise<string | null | false> {
     if (!转让原因?.选项.length || 新负责人 === 转让原因.自己) return null;
     let 选: string | null = null;
     // 选了「其他」没写具体内容时「转让」点不了
     const 框 = modal.confirm({
-      title: 申请 ? `申请移交给「${给谁}」` : `转给「${给谁}」`,
+      title: 申请 ? `把客户转让给「${给谁}」` : `转给「${给谁}」`,
       icon: null,
       content: (
-        <>{申请 && <div style={{ marginBottom: 8 }}>对方确认后才转到他名下；确认前仍在你名下，对方不确认不生效。</div>}<DictSelect placeholder="转让原因（可不选）" style={{ width: "100%" }} aria-label="转让原因" options={转让原因.选项}
+        <>{申请 && <div style={{ marginBottom: 8 }}>接手人确认后生效，确认前仍在你名下；{移交作废天数} 天内不确认自动作废，归属不变。</div>}<DictSelect placeholder="转让原因（可不选）" style={{ width: "100%" }} aria-label="转让原因" options={转让原因.选项}
           onChange={(v) => { 选 = v; 框.update({ okButtonProps: { disabled: !!其他没写好(v) } }); }} /></>
       ),
-      okText: 申请 ? "发出申请" : "转让",
+      okText: 申请 ? "确认转让" : "转让",
       cancelText: "取消",
     });
     const 转 = await 框;

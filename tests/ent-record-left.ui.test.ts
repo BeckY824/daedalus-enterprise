@@ -215,7 +215,7 @@ it("「客户转让」开框挑人：没挑之前「下一步」点不了；挑�
   } finally { await page.close(); }
 });
 it("负责人本人发起（转让要申请）：按钮、框标题照样叫「客户转让」，框里写明接手人确认后生效、7 天不确认作废、归属不变（11-12）", async () => {
-  const page = await open(true, 1366, true, { ...全开, 转让要申请: true });
+  const page = await open(true, 1366, true, { ...全开, 转让要申请: true, 转让原因: { 选项: ["客户要求"], 自己: "qa" } });
   try {
     expect(await 头按钮(page)).toEqual(["新开项目", "客户转让", "客户退回公海"]);
     await page.locator(".rec-acts").getByRole("button", { name: /^客\s*户\s*转\s*让$/ }).click();
@@ -225,6 +225,15 @@ it("负责人本人发起（转让要申请）：按钮、框标题照样叫「�
     const 提示 = 框.locator(".rec-transfer-hint");
     expect(await 提示.isVisible()).toBe(true);
     expect(await 提示.innerText()).toMatch(/接手人确认才生效.*7 天内不确认自动作废，归属不变/);
+    // 挑好人点「下一步」：第二个框也叫客户转让（不叫申请移交），再说一遍要确认、7 天作废；按钮「确认转让」（审查 2）
+    await 框.getByRole("combobox", { name: "转给谁" }).click();
+    await page.locator(".ant-select-item-option").filter({ hasText: "同事乙" }).click();
+    await 框.getByRole("button", { name: /下\s*一\s*步/ }).click();
+    const 二 = page.locator(".ant-modal-confirm");
+    await 二.locator(".ant-modal-confirm-title").filter({ hasText: "把客户转让给「同事乙」" }).waitFor();
+    expect(await 二.innerText()).toMatch(/接手人确认后生效.*7 天内不确认自动作废，归属不变/);
+    expect(await 二.innerText()).not.toMatch(/申请移交|发出申请/);
+    expect(await 二.getByRole("button", { name: /确\s*认\s*转\s*让/ }).count()).toBe(1);
   } finally { await page.close(); }
 });
 it("项目模式联系人（U-客户-03 去掉管理联系人）：卡上只有编辑、没有删除", async () => {

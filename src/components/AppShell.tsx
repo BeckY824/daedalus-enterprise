@@ -392,6 +392,21 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
    * 一直包着 Tooltip（不按窄不窄换外壳）：换外壳会让导航项整个重挂，选中底色那块就不滑了
    */
   const 窄栏 = !小屏 && 左栏收窄(底下那页);
+  /*
+    宽窄过渡只在真的切换那一下有（壳上挂一会儿 rail-anim）：常驻的 transition 会让存过自定义宽度的人
+    一刷新就看着左栏从 220 滑到存的宽度，拖宽时也会拖泥带水。上一次窄不窄在渲染时比（不走 effect，同 去向 那段）
+  */
+  const [上次窄, set上次窄] = useState(窄栏);
+  const [宽窄切换中, set宽窄切换中] = useState(false);
+  if (上次窄 !== 窄栏) {
+    set上次窄(窄栏);
+    set宽窄切换中(true);
+  }
+  useEffect(() => {
+    if (!宽窄切换中) return;
+    const t = window.setTimeout(() => set宽窄切换中(false), 400);
+    return () => window.clearTimeout(t);
+  }, [宽窄切换中, 窄栏]);
   const 带名 = (key: string, 名: string, el: React.ReactElement) => (
     <Tooltip key={key} title={窄栏 ? 名 : undefined} placement="right" trigger={["hover", "focus"]} mouseEnterDelay={0.2}>
       {el}
@@ -637,7 +652,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
   return (
     <切换视图Provider value={!!正在视图}>
     <DockOpenContext.Provider value={面板占着地方}>
-    <div className={`shell${desktop ? " shell-desktop" : ""}${面板开着 && 底下那页 !== "/dashboard" ? " shell-dock-open" : ""}${显示浮标 ? " has-ai-fab" : ""}${从浮标开 ? " shell-fab-opened" : ""}${窄栏 ? " rail-mini" : ""}`}>
+    <div className={`shell${desktop ? " shell-desktop" : ""}${面板开着 && 底下那页 !== "/dashboard" ? " shell-dock-open" : ""}${显示浮标 ? " has-ai-fab" : ""}${从浮标开 ? " shell-fab-opened" : ""}${窄栏 ? " rail-mini" : ""}${宽窄切换中 ? " rail-anim" : ""}`}>
       {视图条}
       {/* 桌面端顶上那条能拖窗口的把手，见 globals.css 的 .drag-strip */}
       {desktop && <div className="drag-strip" aria-hidden="true" />}
@@ -711,7 +726,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
               </button>
             ))
           )}
-          <AiTasks />
+          <AiTasks 窄={窄栏} />
           <AiMeterBar />
           {/* 检查更新那一行（学 MonoCode 左下角）：常驻，写着当前版本；有新版变蓝、下载有进度、下好了点它重启 */}
           {/* 更新记录在「检查更新」上面（2026-10-04 用户）：一个看「改了什么」，一个管「有没有更新的」。

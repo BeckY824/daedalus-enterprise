@@ -2,7 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import Link from "next/link";
-import { CheckCircleOutlined, ExclamationCircleOutlined } from "@ant-design/icons";
+import { CheckCircleOutlined, ExclamationCircleOutlined, SyncOutlined } from "@ant-design/icons";
+import { Tooltip } from "antd";
 import { 收起任务, useAiTasks } from "@/lib/ai-jobs";
 import { 挑一条, 类名 as 态类名, 该自动消, 通知文案, 自动消毫秒 } from "@/lib/ai-task-bar";
 
@@ -28,7 +29,7 @@ declare global {
  * 挑哪一条、谁会自己走、叫人时说什么，都在 lib/ai-task-bar.ts 里，那边有用例钉着。
  * 任务本身活在模块级的任务表（lib/ai-jobs），组件卸载不影响它。
  */
-export default function AiTasks() {
+export default function AiTasks({ 窄 = false }: { 窄?: boolean }) {
   const 任务 = useAiTasks();
   const 条 = 挑一条(任务);
 
@@ -84,7 +85,19 @@ export default function AiTasks() {
 
   if (!条) return null;
 
-  const 里面 = (
+  /*
+    左栏收成图标窄栏时（客户详情，AppShell 的 rail-mini）：只摆一枚图标——跑着是转圈箭头（不转，进度靠下面那条扫的线）、
+    答完打勾、失败叹号；名字和说明放进 Tooltip 和 aria-label，点了照旧回原处
+  */
+  const 全文 = `${条.名}${条.还有 > 0 ? ` +${条.还有}` : ""} · ${条.说明}`;
+  const 里面 = 窄 ? (
+    <>
+      <span className="aitask-l">
+        <span className="aitask-i">{条.态 === "跑着" ? <SyncOutlined /> : 条.态 === "失败" ? <ExclamationCircleOutlined /> : <CheckCircleOutlined />}</span>
+      </span>
+      {条.态 === "跑着" && <span className="aitask-bar" aria-hidden />}
+    </>
+  ) : (
     <>
       <span className="aitask-l">
         {条.态 !== "跑着" && (
@@ -106,17 +119,20 @@ export default function AiTasks() {
     画成 <a href=undefined> 点了会跳到当前页、白重载一次，把他刚问的上下文冲掉。
   */
   const 点 = () => 条.态 !== "跑着" && 收起任务(条.key);
+  const 标 = 窄 ? { "aria-label": 全文 } : {};
   return (
     <div className="aitasks">
-      {条.去 ? (
-        <Link href={条.去} className={类} onClick={点}>
-          {里面}
-        </Link>
-      ) : (
-        <button type="button" className={类} onClick={点}>
-          {里面}
-        </button>
-      )}
+      <Tooltip title={窄 ? 全文 : undefined} placement="right" trigger={["hover", "focus"]}>
+        {条.去 ? (
+          <Link href={条.去} className={类} onClick={点} {...标}>
+            {里面}
+          </Link>
+        ) : (
+          <button type="button" className={类} onClick={点} {...标}>
+            {里面}
+          </button>
+        )}
+      </Tooltip>
     </div>
   );
 }

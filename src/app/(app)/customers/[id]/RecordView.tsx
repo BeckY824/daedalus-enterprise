@@ -565,7 +565,7 @@ export default function RecordView({
     // 企业版「交接中」（D10）：负责人还没换，等接手人确认，没有可撤销的
     if (res.交接中 !== undefined) {
       return void (res.交接中
-        ? message.success(res.申请移交 ? `已申请移交：等 ${o.label} 确认后生效，确认前仍在你名下` : `已发起交接：等 ${o.label} 确认，确认前仍在原负责人名下`)
+        ? message.success(res.申请移交 ? `已发起客户转让，等「${o.label}」确认后生效，确认前仍在你名下` : `已发起交接：等 ${o.label} 确认，确认前仍在原负责人名下`)
         : message.info(res.交接已在路上 ? `这位${b.customer}已在移交中（等对方确认），没再发起` : res.没转 ? `这位${b.customer}刚被别人改了负责人，没转` : res.missing ? `这位${b.customer}已不存在（可能已删除）` : `没有发起新的交接：已归 ${o.label}`));
     }
     if (!res.updated) return void message.info(res.带走?.没转成 || res.没转 ? `这位${b.customer}刚被别人改了负责人，没转` : res.missing ? `这位${b.customer}已不存在（可能已删除）` : `本来就归 ${o.label}`);
