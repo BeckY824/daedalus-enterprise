@@ -545,6 +545,7 @@ const 派生: Record<string, Record<string, string>> = {
     dealDay: "成交成立日，夜扫首次判出「成交过」那天系统写，之后不改（迁移 124）",
     quotaResetDay: "额度上次重置日，有内容的沟通让继续持有额度回满时系统写（迁移 125）",
     progressDay: "项目推进底日，夜扫按算到的最近项目推进日系统写、只往后挪（迁移 131）",
+    poolDueDay: "最早进公海日，待回收时写钟按完整事实系统算、列表读（迁移 133）",
   },
   EntCustomerStateLog: {
     customerId: "哪位客户，系统写", fromState: "变更前的状态，系统写", toState: "变更后的状态，系统写", userId: "谁改的，当前登录账号；自动的留空",

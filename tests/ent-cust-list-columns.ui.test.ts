@@ -38,7 +38,7 @@ beforeAll(async () => {
     const 长='某某超长贸易进出口有限公司'.repeat(6);
     const users=[{id:'me',name:'小王',email:'s1',role:'SALES',active:true},{id:'u2',name:'一个名字特别特别长的同事',email:'s2',role:'SALES',active:true}];
     const 行=(id,owner)=>({id,name:长+id,phone:'1380000000'+id.slice(1),school:null,grade:null,major:null,followStatus:'待跟进',decisionStatus:'了解中',custStatus:'跟进中',salesOwnerId:owner,salesOwnerName:owner==='me'?'小王':'一个名字特别特别长的同事',createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',lastFollowAt:'2026-11-01T00:00:00.000Z',signedAmount:0,referrerCustomerId:null,referrerName:null,channelId:null,channelName:null,expectedSignAt:null,remark:null,addrCountry:'阿拉伯联合酋长国',extra:{level:'A'}});
-    const rows=[行('c1','me'),行('c2','u2'),行('c3','me')];
+    const rows=[行('c1','me'),行('c2','u2'),行('c3','me')].map(r=>window.__公海?{...r,pool:{reason:'超时回收'}}:r);
     const 项目概况={c1:{项目数:12,当前节点:'异常 · 某个后台改得特别特别长的节点名字',当前阶段:'订单'},c2:{项目数:1,当前节点:'方案敲定',当前阶段:'商机'}};
     const 树=(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'me',name:'小王'}}>
       <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:'',node:'',...(window.__三态?{triState:''}:{})}} 三态标={window.__三态?{c1:{态:'待回收',几天后进公海:12},c2:{态:'暂缓回收中'},c3:{态:'不计时'}}:undefined} 客户数={3} 企业版 项目概况={项目概况} 项目看板 待交接={window.__交接??null} 看板体={window.__看板?<div className='fake-board'>项目看板</div>:undefined} 市场视图={!!window.__市场}/>
@@ -128,6 +128,86 @@ it("三态开着：回收状态列在项目数后面、和客户状态两列；1
         await expect.poll(() => page.locator(".ant-popover").getByRole("combobox", { name: "回收状态" }).count(), { message: `宽 ${w}` }).toBe(1);
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `宽 ${w}`).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+/*
+  三态开着，默认列（客户、当前节点、项目数、回收状态、客户状态、预计签约、级别、国家、负责人、最近跟进 + 勾选 + 操作）：
+  量法：左栏 220 + 正文左右各 26 内边距，表格框 = .ant-table-content 的 clientWidth（1280 → 1008，1366 → 1094，1024 → 752）；
+  1280 / 1366 框里的 scrollWidth 不超过 clientWidth（不出内部横向滚动），最后一个数据列（最近跟进）右边界不越过固定的操作列左边界；
+  1024 允许内部横滚：滚到最右时最后一个数据列不被操作列盖住，滚到最左时第一个数据列不被勾选列盖住。
+  表头都不截（scrollWidth ≤ clientWidth），「项目数」三个字放得下。三态关着列宽照旧（只有项目数 64 → 72）
+*/
+it("三态开着：默认列在 1280 / 1366 不横向滚、最后一列看得全；1024 横滚时固定列不盖内容；表头不截", async () => {
+  for (const [w, 三] of [[1024, true], [1280, true], [1366, true], [1024, false]] as const) {
+    const page = await browser.newPage({ viewport: { width: w, height: 900 } }); page.setDefaultTimeout(5000);
+    const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+    try {
+      await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") });
+      await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
+      if (三) await page.evaluate(() => { (window as unknown as { __三态: boolean }).__三态 = true; });
+      await page.addScriptTag({ content: 包 });
+      await page.locator("tr.ant-table-row").first().waitFor();
+      const 量 = (到: "左" | "右") => page.evaluate((到) => {
+        const 框 = document.querySelector(".ant-table-content") as HTMLElement;
+        框.scrollLeft = 到 === "右" ? 框.scrollWidth : 0;
+        const ths = [...document.querySelectorAll("thead th")] as HTMLElement[];
+        const 数据 = ths.filter((t) => !t.classList.contains("ant-table-selection-column") && t.innerText.trim() !== "" && !t.className.includes("fix-end") && !t.className.includes("fix-right"));
+        const 操作 = ths.find((t) => t.className.includes("fix-end") || t.className.includes("fix-right"))!;
+        const 勾 = ths.find((t) => t.classList.contains("ant-table-selection-column"))!;
+        return {
+          框宽: 框.clientWidth, 内宽: 框.scrollWidth,
+          头: 数据.map((t) => t.innerText.trim()), 宽们: 数据.map((t) => t.offsetWidth),
+          // 字比格子的内容区宽就是截了（不用 th 的 scrollWidth：固定列的阴影伪元素会把它撑大）
+          截了的头: ths.filter((t) => { const r = document.createRange(); r.selectNodeContents(t); const cs = getComputedStyle(t); return r.getBoundingClientRect().width > t.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) + 0.5; }).map((t) => t.innerText.trim()),
+          末右: 数据.at(-1)!.getBoundingClientRect().right, 操作左: 操作.getBoundingClientRect().left,
+          首左: 数据[0].getBoundingClientRect().left, 勾右: 勾.getBoundingClientRect().right,
+        };
+      }, 到);
+      const 右 = await 量("右");
+      expect(右.截了的头, `宽 ${w} 表头不截`).toEqual([]);
+      expect(右.末右, `宽 ${w} 最后一列不被操作列盖住`).toBeLessThanOrEqual(右.操作左 + 0.5);
+      if (三) expect(右.头, `宽 ${w}`).toEqual(["客户", "当前节点", "项目数", "回收状态", "客户状态", "预计签约", "级别", "国家", "负责人", "最近跟进"]);
+      if (三 && w >= 1280) expect(右.内宽, `宽 ${w} 不出表格内部横向滚动`).toBeLessThanOrEqual(右.框宽);
+      if (w === 1366) {
+        // 大一号的表头字（换皮肤 / 系统字体更宽时）：「项目数」三个字照样放得下
+        await page.addStyleTag({ content: ":root{--fs-note:16px}" });
+        expect((await 量("右")).截了的头.filter((t) => t === "项目数"), "表头 16px").toEqual([]);
+      }
+      if (w === 1024) {
+        const 左 = await 量("左");
+        expect(左.首左, `宽 ${w} 第一列不被勾选列盖住`).toBeGreaterThanOrEqual(左.勾右 - 0.5);
+        // 1024 宽表格本来就横滚，列宽 = 设的宽：三态关着照旧（项目数 64 → 72），开着按收过的
+        expect(左.宽们, `宽 ${w} 三态${三 ? "开" : "关"}`).toEqual(三 ? [136, 80, 72, 136, 76, 100, 60, 68, 92, 92] : [200, 112, 72, 110, 116, 76, 96, 140, 180]);
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+// 公海页签（三态开着照样给回收状态一列）：这一页有公海里的客户，「负责人」不收，「公海（原 X）」标签放得下
+it("三态开着、这一页是公海里的客户：负责人列照旧 140，「公海（原 小王）」不被截", async () => {
+  for (const w of [1280, 1366]) {
+    const page = await browser.newPage({ viewport: { width: w, height: 900 } }); page.setDefaultTimeout(5000);
+    const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+    try {
+      await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") });
+      await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
+      await page.evaluate(() => { const g = window as unknown as { __三态: boolean; __公海: boolean }; g.__三态 = true; g.__公海 = true; });
+      await page.addScriptTag({ content: 包 });
+      await page.locator("tr.ant-table-row").first().waitFor();
+      const 量 = await page.evaluate(() => {
+        const 框 = document.querySelector(".ant-table-content") as HTMLElement;
+        框.scrollLeft = 框.scrollWidth;
+        const ths = [...document.querySelectorAll("thead th")] as HTMLElement[];
+        const 列 = ths.findIndex((t) => t.innerText.trim() === "负责人");
+        const 标们 = [...document.querySelectorAll("tr.ant-table-row")].map((tr) => (tr.children[列] as HTMLElement).querySelector(".pool-tag") as HTMLElement | null);
+        return { 宽: ths[列].offsetWidth, 标: 标们.map((t) => t ? { 字: t.innerText.trim(), 截了: t.scrollWidth > t.clientWidth } : null) };
+      });
+      expect(量.宽, `宽 ${w}`).toBeGreaterThanOrEqual(140);
+      expect(量.标.filter((t) => t?.字 === "公海（原 小王）").map((t) => t!.截了), `宽 ${w}`).toEqual([false, false]);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }

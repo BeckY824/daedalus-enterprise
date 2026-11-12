@@ -37,6 +37,9 @@ import { 能切换视图, 视图票, 签视图票, 当前视图 } from "@/lib/en
 import { 读视图名单 } from "@/lib/enterprise/view-as-menu";
 import { 开始视图, 退出视图 } from "@/app/(app)/view-as-actions";
 import { patchCustomer } from "@/app/(app)/customers/actions";
+import { 三态继续持有, 三态暂缓回收, 三态让同事结束项目 } from "@/app/(app)/customers/tri-state-actions";
+import { 默认组织规则, 默认三态规则 } from "@/lib/project/org-rules";
+import { 视图只读话 } from "@/lib/enterprise/view-as-words";
 
 const 人 = { 老板: "", 总管: "", 甲: "", 乙: "", 光账号: "" };
 let 甲的客户 = "";
@@ -226,6 +229,24 @@ describe("企业版切换视图", () => {
     await destroySession();
     expect(罐.票.has(视图票)).toBe(false);
     expect(罐.票.has("crm_session")).toBe(false);
+  });
+
+  it("切换视图里点客户三态状态条的按钮：服务端拦下，回同一句只读提示（不是通用的「没办成」），库里不多一行", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-12-12T10:00:00+08:00") });
+    try {
+      await setSetting("business", { projectMode: true });
+      await setSetting("orgRules", { ...默认组织规则, 三态: { ...默认三态规则, 开: true, 内贸: { 沉睡: 10, 待回收: 20, 进公海: 30 }, 外贸: { 沉睡: 10, 待回收: 20, 进公海: 30 } } });
+      await 登录成(人.总管);
+      expect(await 开始视图(人.甲)).toEqual({ ok: true });
+      忘掉企业版范围();
+      const 痕数 = await prisma.entCustomerStateLog.count();
+      expect(await 三态继续持有(甲的客户, "还在谈合同")).toEqual({ ok: false, error: 视图只读话 });
+      // 另两个按钮在拦写之前先按状态判（没被挡回业务话），能走到写的同样回只读话；这里只钉不再抛到浏览器
+      for (const r of [await 三态暂缓回收(甲的客户, null), await 三态让同事结束项目(甲的客户)]) expect(r.ok).toBe(false);
+      expect(await prisma.entCustomerStateLog.count()).toBe(痕数);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("不是企业版：没有切换视图", async () => {

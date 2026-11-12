@@ -155,6 +155,29 @@ describe("C10 逐身份：按钮和服务端判定一致", () => {
     expect(给).toBe(k !== "总外" && k !== "丙");
   });
 
+  /*
+    又是直属上级、又是本线总管理（总内当乙的直属上级）：待回收节点 − 沉睡节点 < 30 天的设置下（沉睡 90、待回收 100，代选从第 120 天起），
+    第 105 天上级还不能代选，按总管理算——给「写理由继续持有」、调得成、留痕记总管理代选；只是上级的甲照旧没按钮、调不成。沉睡轮不变
+  */
+  it("待回收 · 上级 + 总管理（上级还没到代选日）：按总管理给按钮、能调成，留痕记总管理代选；沉睡轮照旧不给", async () => {
+    const 短 = { 沉睡: 90, 待回收: 100, 进公海: 30 };
+    await setSetting("orgRules", { ...默认组织规则, 三态: { ...默认三态规则, 开: true, 内贸: 短, 外贸: 短 } });
+    await prisma.entMember.update({ where: { userId: 人.乙.id }, data: { managerId: 人.总内.id } });
+    await 三态夜扫(早(95));
+    expect((await 条("总内", 95))!.状态).toBe("沉睡");
+    expect(await 按钮("总内", 95)).toEqual([]);
+    expect((await 继续持有(人.总内, 客户, null, 白天(95))).ok).toBe(false);
+    await 三态夜扫(早(105));
+    const 条们 = (await 条("总内", 105))!;
+    expect(条们.状态).toBe("待回收");
+    expect(条们.按钮们.map((b) => b.动作)).toEqual(["继续持有"]);
+    expect(await 按钮("甲", 105)).toEqual([]);
+    expect((await 继续持有(人.甲, 客户, "还在谈合同", 白天(105))).ok).toBe(false);
+    expect((await 继续持有(人.总内, 客户, "还在谈合同", 白天(105))).ok).toBe(true);
+    const 末 = await prisma.entCustomerStateLog.findFirst({ where: { customerId: 客户, userId: 人.总内.id }, orderBy: { at: "desc" } });
+    expect(末).toMatchObject({ via: "总管理代选", reason: "由 总内 代选：还在谈合同" });
+  });
+
   for (const 动作 of ["继续持有", "暂缓回收", "让同事结束项目"] as const) {
     it.each(身份们)(`暂缓回收中 · %s：「${动作}」给 ⇔ 能调`, async (_, k) => {
       await 被挡到期();
