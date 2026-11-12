@@ -3817,7 +3817,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .rec-head-acts { display: flex; align-items: center; gap: var(--s2); flex: none; }
 /* 11-12：右上角只剩「AI / 项目操作 / 客户操作」，客户名再长也和它们同一行——名字一行省略（悬停 title 看全），不把按钮挤到下一行。
    窄到手机那档照旧允许换行（名字至少留八个字宽） */
-@media (min-width: 900px) {
+@media (min-width: 768px) {
   .rec-head:has(> .rec-head-acts) { flex-wrap: nowrap; }
   .rec-head:has(> .rec-head-acts) > .rec-head-id { flex: 0 1 auto; min-width: 8em; }
 }
