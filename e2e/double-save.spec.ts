@@ -80,8 +80,8 @@ test("添加联系人：连点两次保存 → 只多一位联系人", async ({ 
 test("新建待办：连点两次创建 → 只多一条待办", async ({ page }) => {
   await 登录(page);
   await page.goto(`/customers/${客户id}`);
-  const 框 = await 打开(page, "新建任务", "新建待办任务");
-  await 框.getByLabel("任务内容").fill("连点待办");
+  const 框 = await 打开(page, "新建待办", "新建待办");
+  await 框.getByLabel("待办内容").fill("连点待办");
   await 连点保存(page, 框, /创\s*建/);
   expect(await 数((p) => p.task.count({ where: { customerId: 客户id, title: "连点待办" } })), "连点两次建出了两条待办").toBe(1);
 });

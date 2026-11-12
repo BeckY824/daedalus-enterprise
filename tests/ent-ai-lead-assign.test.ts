@@ -162,9 +162,9 @@ describe("新线索卡：和新建项目同一套必填", () => {
     expect(缺({ 节点: 后, 明确回复: true })).toEqual([建档不能过线索验证]);
     expect(缺({ 节点: "线索验证" })).toEqual([]);
   });
-  it("开了超时回收：下一步时间、下一步做什么都要（11-05）", () => {
+  it("开了超时回收：下一步时间、下一步计划都要（11-05）", () => {
     const 要 = { ...企, 要下一步: true };
-    expect(missingFields(卡({ 分配方式: 4 }) as never, undefined, 要)).toEqual(expect.arrayContaining(["下一步时间", "下一步做什么"]));
+    expect(missingFields(卡({ 分配方式: 4 }) as never, undefined, 要)).toEqual(expect.arrayContaining(["下一步时间", "下一步计划"]));
     expect(missingFields(卡({ 分配方式: 4, nextAt: "2099-01-01", 下一步: "约演示" }) as never, undefined, 要)).toEqual([]);
   });
   it("有国家 / 城市没选填到哪", () => {

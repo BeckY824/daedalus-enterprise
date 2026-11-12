@@ -86,8 +86,8 @@ const 编辑钮 = (page: import("playwright").Page) => page.locator(".proj-side"
 it("企业版：左边节点、沟通、卡点，右边项目、交付、项目组、提成、节点变更；新增沟通是主按钮，各模块的按钮回到卡上", async () => {
   const { page, errors } = await open(true);
   try {
-    // U-项目-01：左栏瀑布流——当前进程（无标题）→ 沟通（带条数）→ 卡点与任务；没给项目附件 / 回款就不摆那两块
-    expect(await 卡标题(page, ".proj-main")).toEqual(["", "沟通（1）", "卡点与任务（0）"]);
+    // U-项目-01：左栏瀑布流——当前进程（无标题）→ 沟通（带条数）→ 卡点；没给项目附件 / 回款就不摆那两块
+    expect(await 卡标题(page, ".proj-main")).toEqual(["", "沟通（1）", "卡点（0）"]);
     expect(await 卡标题(page, ".proj-side")).toEqual(["项目", "交付", "项目组", "提成", "进程变更"]);
     const [主, 侧] = await Promise.all([page.locator(".proj-main").boundingBox(), page.locator(".proj-side").boundingBox()]);
     expect(侧!.x).toBeGreaterThan(主!.x + 主!.width);
@@ -739,7 +739,7 @@ it("没有改沟通的权限：「…」里只剩发卡点（10-30 发卡点从�
   } finally { await page.close(); }
 });
 
-it("下一步：有文字写文字、有时间跟在后面；老数据只有时间就只摆时间；记一条沟通要写下一步做什么", async () => {
+it("下一步：有文字写文字、有时间跟在后面；老数据只有时间就只摆时间；记一条沟通要写下一步计划", async () => {
   const { page, errors } = await 覆盖(1280, { nextStepText: "周五前发报价单给对方采购", nextStepAt: "2026-11-01" });
   try {
     const 行 = page.locator(".proj-side").getByText("下一步", { exact: true }).locator("..");
@@ -751,8 +751,8 @@ it("下一步：有文字写文字、有时间跟在后面；老数据只有时�
     await page.getByText("只写了一句").waitFor();
     await page.getByTestId("follow-card-new").click();
     const 窗 = page.getByRole("dialog");
-    await 窗.getByLabel("下一步做什么").waitFor();
-    expect(await 窗.getByLabel("下一步做什么").getAttribute("maxlength")).toBe("100");
+    await 窗.getByLabel("下一步计划").waitFor();
+    expect(await 窗.getByLabel("下一步计划").getAttribute("maxlength")).toBe("100");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -1177,7 +1177,7 @@ it("画像能改：空的下拉占位写「—」；单选、多选第一项「�
   } finally { await page.close(); }
 });
 
-/* 10-31 会议 1.0（U-项目-01/04/07、F-项目-18）：左栏瀑布流、可收的沟通 / 卡点与任务、顶部搜索、附件合一块、转让改确认框 */
+/* 10-31 会议 1.0（U-项目-01/04/07、F-项目-18）：左栏瀑布流、可收的沟通 / 卡点、顶部搜索、附件合一块、转让改确认框 */
 const 沟通两条 = [
   { id: "f1", type: "PHONE", content: "约了下周三现场看样", occurredAt: "2026-10-03T00:00:00.000Z", who: "组长甲", node: "生产备货", code: "FUL0001", 提醒: null },
   { id: "f2", type: "PHONE", content: "对方要重新报价", occurredAt: "2026-10-05T00:00:00.000Z", who: "组员丙", node: "生产备货", code: "FUL0002", 提醒: null,
@@ -1185,7 +1185,7 @@ const 沟通两条 = [
 ];
 const 头 = (page: import("playwright").Page, id: string) => page.locator(`#${id} > .proj-fold-btn`);
 
-it("U-项目-01/04：沟通默认摊开、卡点与任务默认收起，点卡头最右的钮开合；搜索框有词时两块都摊开、只列对得上的", async () => {
+it("U-项目-01/04：沟通默认摊开、卡点默认收起，点卡头最右的钮开合；搜索框有词时两块都摊开、只列对得上的", async () => {
   const { page, errors } = await 覆盖(1280, { followUps: 沟通两条 });
   try {
     expect(await 头(page, "project-follow").getAttribute("aria-expanded")).toBe("true");
@@ -1215,7 +1215,7 @@ it("U-项目-01/04：沟通默认摊开、卡点与任务默认收起，点卡�
     await page.waitForFunction(() => document.querySelector(".proj-follow-row")?.textContent?.includes("对方要重新报价"));
     await 框.fill("没有这个词");
     await page.getByText("没有对得上「没有这个词」的沟通").waitFor();
-    expect(await page.getByText("卡点与任务（搜到 0）").count()).toBe(1);
+    expect(await page.getByText("卡点（搜到 0）").count()).toBe(1);
     await 框.fill("");
     await page.getByText("沟通（2）").waitFor();
     // 清了词回到原来的开合：沟通刚才收起了
@@ -1233,7 +1233,7 @@ it("F-项目-18：项目附件合一块，最后一格收沟通上的附件、�
     await 块.waitFor();
     // 三格的个数以接口拿回来的为准（这里接口回空），沟通附件从沟通上收过来：合计 = 0 + 0 + 0 + 1
     await page.getByText("项目附件（1）").waitFor();
-    expect((await 卡标题(page, ".proj-main")).slice(0, 4)).toEqual(["", "沟通（2）", "卡点与任务（0）", "项目附件（1）"]);
+    expect((await 卡标题(page, ".proj-main")).slice(0, 4)).toEqual(["", "沟通（2）", "卡点（0）", "项目附件（1）"]);
     expect(await 块.locator(".proj-att-h").allInnerTexts()).toEqual(["合同附件（0）", "项目方案（0）", "验收报告（0）", "其它附件（0）", "沟通附件（1）"]);
     const 组 = 块.getByTestId("follow-att-group");
     expect(await 组.count()).toBe(1);
@@ -1418,9 +1418,9 @@ describe("沟通卡头：隐藏接手前", () => {
 });
 
 /* 11-11 用户（客户详情「沟通记录模块设最长长度、整页给待办留位置，多的在模块内上下移动」，项目详情同样）：
-   30 条沟通时，三档笔记本窗口下首屏看得到「卡点与任务」卡头；沟通卡身在卡内滚，卡头不动；两栏第一张卡同一条顶线 */
+   30 条沟通时，三档笔记本窗口下首屏看得到「卡点」卡头；沟通卡身在卡内滚，卡头不动；两栏第一张卡同一条顶线 */
 for (const [w, h] of [[1366, 768], [1280, 720], [1440, 900]] as const) {
-  it(`${w}×${h} 30 条沟通：沟通卡身限高卡内滚，卡点与任务卡头在首屏，两栏顶线齐`, async () => {
+  it(`${w}×${h} 30 条沟通：沟通卡身限高卡内滚，卡点卡头在首屏，两栏顶线齐`, async () => {
     const page = await browser.newPage({ viewport: { width: w, height: h } }); page.setDefaultTimeout(5000);
     const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
     try {

@@ -89,8 +89,8 @@ it("1024 / 1280 / 1366：每个模块各一张卡、都有收起钮；待办单�
       const 沟通 = page.locator(".proj-fold", { has: page.getByRole("button", { name: "收起沟通记录" }) });
       // 待办和沟通记录是两张卡，互不包含
       expect(await 沟通.locator(".proj-fold").count(), `${w}`).toBe(0);
-      expect(await 沟通.getByRole("button", { name: /新建任务/ }).count(), `${w}`).toBe(0);
-      expect(await 待办.getByRole("button", { name: /新建任务/ }).count(), `${w}`).toBe(1);
+      expect(await 沟通.getByRole("button", { name: /新建待办/ }).count(), `${w}`).toBe(0);
+      expect(await 待办.getByRole("button", { name: /新建待办/ }).count(), `${w}`).toBe(1);
       expect(await 待办.locator(".rec-task").count(), `${w}`).toBeGreaterThan(10);
       // 待办摆在沟通记录下方、同一栏
       const 中 = 有.filter(m => m.栏 === "中").map(m => m.名);
@@ -132,10 +132,10 @@ it("1024 / 1280 / 1366：卡头标题 + 计数在左，新增按钮在右，收�
       expect(题["关联客户"]).toBe("关联客户（1）");
       expect(题["待办"]).toMatch(/^待办（15）$/);
       expect(题["沟通记录"]).toBe("沟通记录（30）");
-      // 新增按钮跟项目详情一样摆在卡头：沟通记录「新建沟通」、待办「新建任务」、关联客户「关联」
+      // 新增按钮跟项目详情一样摆在卡头：沟通记录「新建沟通」、待办「新建待办」、关联客户「关联」
       const 卡头钮 = (名: string, 钮: RegExp) => page.locator(".proj-fold", { has: page.getByRole("button", { name: `收起${名}` }) }).locator(".ant-card-head .ant-card-extra").getByRole("button", { name: 钮 }).count();
       expect(await 卡头钮("沟通记录", /新建沟通/), `${w}`).toBe(1);
-      expect(await 卡头钮("待办", /新建任务/), `${w}`).toBe(1);
+      expect(await 卡头钮("待办", /新建待办/), `${w}`).toBe(1);
       expect(await 卡头钮("关联客户", /关联/), `${w}`).toBe(1);
       expect(errors).toEqual([]);
     } finally { await page.close(); }

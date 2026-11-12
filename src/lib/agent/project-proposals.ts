@@ -250,7 +250,7 @@ export function 项目卡缺(p: 项目卡): string[] {
   }
   if (p.kind === "project_followup") {
     if (!p.content.trim()) miss.push("沟通内容");
-    if (!p.下一步.trim()) miss.push("下一步做什么");
+    if (!p.下一步.trim()) miss.push("下一步计划");
     if (p.要时间 && !p.下一步时间) miss.push("下一步时间");
     if (p.要卡点 && (!p.卡点类型 || p.卡点类型 === "暂无卡点")) miss.push("卡点类型");
   }

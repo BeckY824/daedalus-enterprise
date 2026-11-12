@@ -214,8 +214,8 @@ it("项目区里：中栏 阶段 → 沟通 → 待办 → 卡点，右栏项目
   const { page, errors } = await 开(1366);
   try {
     const 中 = await page.locator(".cd-mid > *").evaluateAll((es: HTMLElement[]) => es.map(e => e.querySelector(":scope > .proj-fold-btn")?.getAttribute("aria-label") ?? e.className));
-    // 卡点与任务默认收着（同项目详情）
-    expect(中.filter(x => /^(收起|展开)/.test(x)).map(x => x.replace(/^(收起|展开)/, ""))).toEqual(["沟通记录", "待办", "卡点与任务"]);
+    // 卡点默认收着（同项目详情）
+    expect(中.filter(x => /^(收起|展开)/.test(x)).map(x => x.replace(/^(收起|展开)/, ""))).toEqual(["沟通记录", "待办", "卡点"]);
     expect(中[0]).toMatch(/ant-card/);
     expect(await page.locator(".cd-side .ant-card-head-title").first().innerText()).toBe("项目资料");
     const 卡 = page.locator(".cd-comm");
@@ -236,7 +236,7 @@ it("项目区里：中栏 阶段 → 沟通 → 待办 → 卡点，右栏项目
 it("只读的客户（全只读）：页头、项目区都没有写入口", async () => {
   const { page, errors } = await 开(1366, { 只读: true });
   try {
-    for (const 名 of [/客户转让/, /客户退回公海/, /项目转让/, /项目退回公海/, /新建沟通/, /新增沟通/, /新建任务/, /新建项目/, /完成节点/, /编辑联系人/]) {
+    for (const 名 of [/客户转让/, /客户退回公海/, /项目转让/, /项目退回公海/, /新建沟通/, /新增沟通/, /新建待办/, /新建项目/, /完成节点/, /编辑联系人/]) {
       expect(await page.getByRole("button", { name: 名 }).count(), String(名)).toBe(0);
     }
     expect(await page.locator(".cd-add, .rec-head-acts").count()).toBe(0);

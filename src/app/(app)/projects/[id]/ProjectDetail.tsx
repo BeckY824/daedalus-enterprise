@@ -1238,10 +1238,10 @@ export default function ProjectDetail({
       {沟通身()}
     </Card>
   );
-  // 企业版叫「卡点与任务」（U-项目-01）：这一版只有卡点，任务还没有单独的数据，进来以后列在同一块里
+  // 企业版原叫「卡点与任务」（U-项目-01）；这一版只有卡点、没有任务数据，界面上就叫「卡点」
   const 卡点区 = 卡点 && (
     <Card
-      title={p.企业版 ? `卡点与任务（${搜着 ? `搜到 ${列卡点.length}` : 卡点.们.length}）` : `卡点（${卡点.们.length}）`}
+      title={p.企业版 ? `卡点（${搜着 ? `搜到 ${列卡点.length}` : 卡点.们.length}）` : `卡点（${卡点.们.length}）`}
       // 发卡点挂在最近一条沟通上（沟通行的「…」里也能挑别的那条）；企业版 11-01 从页头回到这块卡头，没沟通时灰着、悬停说为什么
       extra={卡点.能发 && (p.企业版 ? (p.followUps.length
         ? <Button size="small" disabled={忙} onClick={() => set发卡点于(p.followUps[0].id)}>发卡点</Button>
@@ -1580,7 +1580,7 @@ export default function ProjectDetail({
             {!看全部沟通 && 搜索框}
             <ProjectFold id="project-follow" 名="沟通记录" 开={沟通开} set开={set沟通开} 锁开={搜着} 控制="project-follow-body">{沟通卡}</ProjectFold>
             {嵌入.待办}
-            {卡点区 && <ProjectFold id="project-blockers" 名="卡点与任务" 开={卡点开} set开={set卡点开} 锁开={搜着} 控制="project-blockers-body">{卡点区}</ProjectFold>}
+            {卡点区 && <ProjectFold id="project-blockers" 名="卡点" 开={卡点开} set开={set卡点开} 锁开={搜着} 控制="project-blockers-body">{卡点区}</ProjectFold>}
           </div>
           <aside className="cd-side" aria-label="项目资料">
             {折("项目资料", 项目卡)}
@@ -1626,7 +1626,7 @@ export default function ProjectDetail({
               {搜索框}
               {/* 沟通、卡点跟着搜索：有词时都摊开、收起钮灰着 */}
               <ProjectFold id="project-follow" 名="沟通" 开={沟通开} set开={set沟通开} 锁开={搜着} 控制="project-follow-body">{沟通卡}</ProjectFold>
-              {卡点区 && <ProjectFold id="project-blockers" 名="卡点与任务" 开={卡点开} set开={set卡点开} 锁开={搜着} 控制="project-blockers-body">{卡点区}</ProjectFold>}
+              {卡点区 && <ProjectFold id="project-blockers" 名="卡点" 开={卡点开} set开={set卡点开} 锁开={搜着} 控制="project-blockers-body">{卡点区}</ProjectFold>}
               {折("项目附件", 附件卡, "project-attachments-fold")}
               {折("回款", 回款卡, "project-payments-fold")}
             </div>
@@ -1819,7 +1819,7 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
     set解析({ 起, 结果: 摘要.length ? `已预填：${摘要.join(" · ")}，核对无误再记下` : "没认出能填的，手动填吧" });
   };
   const 差 = !content.trim() ? "请填写这次沟通的内容" : 主体们 && !发起 ? "请选发起主体"
-    : !下一步文字.trim() ? "请写下一步做什么" : p.要下一步 && !下一步时间 ? "请填下一步时间" : "";
+    : !下一步文字.trim() ? "请写下一步计划" : p.要下一步 && !下一步时间 ? "请填下一步时间" : "";
   // 选了下一步时间就预演回收日（10-30 P0-2）：和服务端同一个算法，算不准（没底子）就不写
   const 预演 = 预演回收日(p.回收预演, dayjs(occurredAt, 沟通时间格式).format("YYYY-MM-DD"), 下一步时间);
 
@@ -1896,9 +1896,9 @@ function RecordFollowModal({ p, 外贸, AI先 = false, 卡点默认, 卡点原�
           </div>
         )}
         <div>
-          <div style={{ marginBottom: 4 }}>下一步做什么<span style={{ color: "var(--danger-text)" }}> *</span></div>
+          <div style={{ marginBottom: 4 }}>下一步计划<span style={{ color: "var(--danger-text)" }}> *</span></div>
           <Input
-            aria-label="下一步做什么"
+            aria-label="下一步计划"
             value={下一步文字}
             onChange={(e) => set下一步文字(e.target.value)}
             maxLength={下一步文字上限}

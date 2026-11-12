@@ -498,7 +498,7 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
             </Field>
             {/* 企业版建成项目：首条沟通的下一步计划 + 时间（开了超时回收都必填，11-05）；别的版本不显示 */}
             {渠道名们 && (企卡 || 要下一步) && (
-              <Field label="下一步做什么">
+              <Field label="下一步计划">
                 <Input size="small" style={{ width: 200 }} placeholder={要下一步 ? "必填，一句话" : "可留空"} maxLength={100} value={draft.下一步 ?? ""} onChange={(e) => setDraft({ ...draft, 下一步: e.target.value || undefined })} />
               </Field>
             )}
