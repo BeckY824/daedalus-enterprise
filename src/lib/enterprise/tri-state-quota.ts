@@ -117,3 +117,7 @@ export function 最近暂缓回收日(行们: readonly 留痕行[]): string | nu
 export const 自动收回次数 = (行们: readonly 留痕行[]): number => 行们.filter((x) => x.toState === "公海" && x.via === 留痕方式.自动 && (x.reason ?? "").includes(自动进公海说法)).length;
 /** 三态自动进公海那一行理由里一定有的一句（tri-state-db.ts 三态进公海理由）；手动放进公海后夜扫标掉的那行没有它 */
 export const 自动进公海说法 = "自动进客户公海";
+
+/** T11：额度上次重置（起，不含那天）以后裁决过几次暂缓回收；起 = null 数全部 */
+export const 暂缓回收次数 = (行们: readonly 留痕行[], 起: string | null): number =>
+  行们.filter((x) => x.via === 留痕方式.总管理裁决 && (x.reason ?? "").startsWith(暂缓回收) && (起 === null || x.日 > 起)).length;

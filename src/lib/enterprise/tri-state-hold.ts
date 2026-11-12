@@ -17,8 +17,8 @@ import { 查完再写 } from "@/lib/check-then-write";
 import { 看全部 } from "@/lib/team-scope";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { beijingDay } from "@/lib/business-clock";
-import { 算三态, 加天, 差天, 沉睡抄上级第几天, 被挡提醒间隔, type 三态结果 } from "./tri-state";
-import { 留痕方式, 暂缓回收, 让同事结束项目 } from "./tri-state-quota";
+import { 算三态, 加天, 差天, 沉睡抄上级第几天, 被挡提醒间隔, 暂缓回收上限次数, type 三态结果 } from "./tri-state";
+import { 留痕方式, 暂缓回收, 让同事结束项目, 暂缓回收次数 } from "./tri-state-quota";
 import { 收三态客户, 写钟, 三态开着, 存归零, type 三态客户 } from "./tri-state-db";
 import { 读组织 } from "./org";
 import { 能继续持有三态, 能代选三态, 能裁决三态, 能总管理继续持有三态, type 谁 } from "./permissions";
@@ -61,12 +61,18 @@ export async function 继续持有(me: 我, customerId: string, 理由?: string 
     await 存归零(tx, [c]);
     const 本人 = 能继续持有三态(me, c, org);
     const 上级 = !本人 && 能代选三态(me, c, org);
-    const 总管理 = !本人 && !上级 && r.状态 === "待回收" && 能总管理继续持有三态(me, c, org);
+    // 到期暂缓回收（被挡）的按待回收这一轮算（T11：暂缓用满后走继续持有）
+    const 待回收轮 = r.状态 === "待回收" || (r.状态 === "该进公海" && r.被挡);
+    const 总管理 = !本人 && !上级 && 待回收轮 && 能总管理继续持有三态(me, c, org);
     const 代选 = 上级 || 总管理;
-    if (!本人 && !代选) return { ok: false as const, error: r.状态 === "待回收" ? "只有负责人本人、直属上级、这条线的总管理或系统管理员能继续持有" : "只有负责人本人或直属上级能继续持有" };
+    if (!本人 && !代选) return { ok: false as const, error: 待回收轮 ? "只有负责人本人、直属上级、这条线的总管理或系统管理员能继续持有" : "只有负责人本人或直属上级能继续持有" };
+    // T11：到期暂缓回收的，先走总管理「暂缓回收」裁决，用满 2 次以后才能继续持有（推断：没用满时照旧不给）
+    if (r.状态 === "该进公海" && 暂缓回收次数(c.留痕, c.事实.额度重置日 ?? null) < 暂缓回收上限次数) {
+      return { ok: false as const, error: `到期暂缓回收的客户先由条线总管理裁决暂缓回收（最多 ${暂缓回收上限次数} 次），用满以后才能继续持有` };
+    }
     if (上级 && !能代选了(r)) return { ok: false as const, error: `直属上级从沉睡第 ${沉睡抄上级第几天} 天（第 ${代选起始(r)} 天）起才能代选` };
     if (!r.继续持有.能推) return { ok: false as const, error: r.继续持有.不能原因 ?? "现在不能继续持有" };
-    const 轮 = r.状态 as "沉睡" | "待回收";
+    const 轮: "沉睡" | "待回收" = 待回收轮 ? "待回收" : "沉睡";
     if (轮 === "待回收" && !话) return { ok: false as const, error: "待回收时要写理由才能继续持有" };
     const 天数 = 规则.三态.继续持有.每次天数;
     const 说 = 话 || "我还在跟";
@@ -100,7 +106,7 @@ async function 裁决前查(me: 我, customerId: string, 现在: Date, tx: Param
   const r = 算三态(c.事实, 备.规则.三态, 备.今天);
   if (!r.计时) return { 错: 不在计时话(r.原因) };
   if (!能裁决三态(me, c, 备.org)) return { 错: "只有这条线的总管理或系统管理员能裁决" };
-  if (r.状态 !== "该进公海" || !r.被挡) return { 错: "只有到期该进公海、被同事在推的项目挡住的客户才要裁决" };
+  if (r.状态 !== "该进公海" || !r.被挡) return { 错: "只有到期该进公海、因同事在推的项目暂缓回收的客户才要裁决" };
   return { c, r };
 }
 
@@ -116,6 +122,10 @@ export async function 暂缓回收动作(me: 我, customerId: string, 理由?: s
     if ("错" in 查) return { ok: false as const, error: 查.错 };
     const 上次 = 查.c.事实.暂缓回收日;
     if (上次 && 差天(上次, 备.今天) < 被挡提醒间隔) return { ok: false as const, error: `${上次} 已经暂缓回收过，${被挡提醒间隔} 天内不用再裁决` };
+    // T11：累计最多 2 次（60 天），从额度上次重置（有效沟通、公海领走）起数；用满了要走继续持有、占额度
+    if (暂缓回收次数(查.c.留痕, 查.c.事实.额度重置日 ?? null) >= 暂缓回收上限次数) {
+      return { ok: false as const, error: `暂缓回收已用满 ${暂缓回收上限次数} 次（${暂缓回收上限次数 * 被挡提醒间隔} 天），要继续留着请写理由继续持有（占继续持有的次数和天数）` };
+    }
     await tx.entCustomerStateLog.create({
       data: { customerId, fromState: "待回收", toState: "待回收", userId: me.id, via: 留痕方式.总管理裁决, reason: 话 ? `${暂缓回收}：${话}` : 暂缓回收, at: 现在 },
     });
@@ -140,7 +150,7 @@ export async function 让同事结束项目动作(me: 我, customerId: string, �
   // M-公海-33 飞书只推三级提醒链和系统管理员：同事不在链上，只记站内
   const n = await notify(结果.同事们, {
     不推飞书: true,
-    kind: "三态", title: `「${结果.名}」到期该回公海，被你负责的项目挡住了`, body: `${me.name} 请你结束这位客户名下你负责、还没结束的项目`,
+    kind: "三态", title: `「${结果.名}」到期该回公海，因你负责的项目暂缓回收`, body: `${me.name} 请你结束这位客户名下你负责、还没结束的项目`,
     link: `/customers/${customerId}`, key: `tri-end-colleague:${customerId}:${备.今天}`,
   });
   return { ok: true, 通知了: n };

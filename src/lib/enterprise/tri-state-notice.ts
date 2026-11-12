@@ -20,7 +20,7 @@ import { 看全部 } from "@/lib/team-scope";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { getSetting, setSetting } from "@/lib/settings";
 import { beijingDay, beijingWallIso } from "@/lib/business-clock";
-import { 算三态, type 提醒级, type 今天提醒 } from "./tri-state";
+import { 算三态, 解除后几天收, type 提醒级, type 今天提醒 } from "./tri-state";
 import { 收三态客户, 候选客户, 分批, 三态开着, 三态夜扫, 三态扫过键, 钟状态of, type 自动收了 } from "./tri-state-db";
 import type { 组织规则 } from "@/lib/project/org-rules";
 import { 读组织, type 组织 } from "./org";
@@ -53,9 +53,10 @@ const 类叫法: Readonly<Record<今天提醒["事由"], string>> = {
   沉睡周提醒: "还在沉睡",
   沉睡抄上级: "沉睡满 30 天",
   待回收提醒: "待回收",
-  被挡请裁决: "到期被挡、请裁决",
+  被挡请裁决: "到期暂缓回收、请裁决",
+  暂缓解除: `暂缓回收已解除（${解除后几天收} 天内没人处理就回公海）`,
 };
-const 类顺序: 今天提醒["事由"][] = ["进入沉睡", "沉睡抄上级", "沉睡周提醒", "待回收提醒", "被挡请裁决"];
+const 类顺序: 今天提醒["事由"][] = ["进入沉睡", "沉睡抄上级", "沉睡周提醒", "待回收提醒", "暂缓解除", "被挡请裁决"];
 
 type 条 = { 客户: string; 名: string; 负责人: string; 事由: 今天提醒["事由"]; 第几次?: number };
 

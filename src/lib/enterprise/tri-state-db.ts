@@ -31,7 +31,7 @@ import { 企业版 } from "./switch";
 import { getBusiness } from "@/lib/business";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import type { 组织规则 } from "@/lib/project/org-rules";
-import { 算三态, type 三态事实, type 三态结果, type 三态项目 } from "./tri-state";
+import { 算三态, 解除后几天收, type 三态事实, type 三态结果, type 三态项目 } from "./tri-state";
 import { 换负责人们of } from "./tri-state-transfer";
 export { 换负责人们of } from "./tri-state-transfer";
 import { 有内容的沟通, 默认占位词, 占位词键, 规整占位词, 留痕转推后, 最近暂缓回收日, 额度回满, 留痕方式, 自动收回次数, type 留痕行 } from "./tri-state-quota";
@@ -60,8 +60,12 @@ export const 钟状态of = (r: Extract<三态结果, { 计时: true }>): 钟状�
 
 /** 自动进客户公海那一行的说明（CustomerPool.reason、项目 pool-release 留痕、状态留痕都写它） */
 export const 三态进公海理由 = (进公海天数: number) => `待回收满 ${进公海天数} 天、3 次提醒都没人处理，自动进客户公海`;
-/** 被挡住时留痕那一句（M-公海-27） */
-export const 被挡理由 = "到期该进公海，名下有同事在推的项目，挡住了，等条线总管理裁决";
+/** 被挡住时留痕那一句（M-公海-27；T5 起对用户统一叫「暂缓回收」，标识符照旧叫被挡） */
+export const 被挡理由 = "到期该进公海，名下有同事在推的项目，暂缓回收，等条线总管理裁决";
+/** T5 改名前写的那一句（认旧留痕用） */
+const 旧被挡理由 = "到期该进公海，名下有同事在推的项目，挡住了，等条线总管理裁决";
+/** 暂缓回收解除（挡住的同事项目都结束了）留痕那一句（T5） */
+export const 暂缓解除理由 = `名下同事的项目都结束了，暂缓回收解除：提醒 1 次，满 ${解除后几天收} 天没人处理自动进客户公海`;
 
 /** 夜扫「今天按这份规则扫过了」的记号（Setting）：值 = 上海日 + 三态规则 JSON，规则改了当晚重算（M-公海-37） */
 export const 三态扫过键 = "entTriStateScanned";
@@ -156,6 +160,11 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
       const 留痕: 留痕行[] = (痕of.get(c.id) ?? []).map((x) => ({ 日: beijingDay(x.at), fromState: x.fromState, toState: x.toState, via: x.via, reason: x.reason, holdDays: x.holdDays }));
       const 钟 = c.entClock;
       const 待回收中 = 钟?.state === "待回收";
+      // T5：最近一条「解除」晚于最近一条「挡住」才算解除过（又被挡住的按新挡住算）
+      const 痕们 = 痕of.get(c.id) ?? [];
+      const 末 = (理由们: readonly string[]) => { for (let i = 痕们.length - 1; i >= 0; i--) if (理由们.includes(痕们[i].reason ?? "")) return i; return -1; };
+      const 解除下标 = 末([暂缓解除理由]);
+      const 暂缓解除日 = 解除下标 >= 0 && 解除下标 > 末([被挡理由, 旧被挡理由]) ? beijingDay(痕们[解除下标].at) : null;
       const 换人们 = 换负责人们of(换人of.get(c.id) ?? [], 规则.三态);
       const 领取日 = (换人of.get(c.id) ?? []).filter((x) => x.kind === "claim" || x.kind === "pool-assign").map((x) => beijingDay(x.at)).reduce<string | null>(较晚日, null);
       const 事实: 三态事实 = {
@@ -176,6 +185,8 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
         推后们: 留痕转推后(留痕),
         换负责人们: [...换人们],
         暂缓回收日: 最近暂缓回收日(留痕),
+        暂缓解除日,
+        上回被挡: !!钟?.blocked,
         本轮待回收提醒次数: 待回收中 ? 钟!.noticeCount : 0,
         本轮最近待回收提醒日: 待回收中 ? 钟!.lastNoticeDay : null,
         本轮进入沉睡提醒日: 钟?.state === "沉睡" ? 钟.lastNoticeDay : null,
@@ -281,6 +292,8 @@ export function 钟要改(c: Pick<三态客户, "钟" | "事实">, r: Extract<�
   const 换了 = 钟.state !== 状态;
   if (换了) 留痕.push({ fromState: 钟.state, toState: 状态, reason: 换状态说明 ?? 换状态理由(钟.state, 状态, r) });
   if (被挡 && (!钟.blocked || 换了)) 留痕.push({ fromState: 状态, toState: 状态, reason: 被挡理由 });
+  // T5：今天刚解除（钟上还记着被挡、留痕里还没有解除那行）
+  if (钟.blocked && !被挡 && r.暂缓解除日 === 今天 && !c.事实.暂缓解除日) 留痕.push({ fromState: 状态, toState: 状态, reason: 暂缓解除理由 });
   const data: Partial<Omit<Prisma.EntCustomerClockUncheckedCreateInput, "customerId">> = {};
   if (换了) Object.assign(data, { state: 状态, enteredDay: 进入日, noticeCount: 0, lastNoticeDay: null, holdUntil: null });
   else if (钟.enteredDay !== 进入日) data.enteredDay = 进入日; // 推后顺延、规则改天数：同一状态里进入日跟着挪

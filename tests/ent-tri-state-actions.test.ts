@@ -179,7 +179,7 @@ describe("被挡裁决", () => {
   }
 
   it("没被挡的不能裁决；被挡后本线总管理暂缓回收：不扣额度、30 天内再点被拒、第 30 天能再点", async () => {
-    expect(await 暂缓回收动作(人.总内, 客户, null, 第(100))).toMatchObject({ ok: false, error: "只有到期该进公海、被同事在推的项目挡住的客户才要裁决" });
+    expect(await 暂缓回收动作(人.总内, 客户, null, 第(100))).toMatchObject({ ok: false, error: "只有到期该进公海、因同事在推的项目暂缓回收的客户才要裁决" });
     await 到期被挡();
     expect(await 暂缓回收动作(人.总外, 客户, null, 第(210))).toMatchObject({ ok: false, error: "只有这条线的总管理或系统管理员能裁决" });
     expect(await 暂缓回收动作(人.甲, 客户, null, 第(210))).toMatchObject({ ok: false });
@@ -195,9 +195,9 @@ describe("被挡裁决", () => {
     expect(await 让同事结束项目动作(人.总内, 客户, 第(100))).toMatchObject({ ok: false });
     await 到期被挡();
     expect(await 让同事结束项目动作(人.总内, 客户, 第(210))).toEqual({ ok: true, 通知了: 1 });
-    expect((await prisma.entNotice.findMany({ where: { userId: 人.丙.id } }))[0].title).toContain("被你负责的项目挡住了");
+    expect((await prisma.entNotice.findMany({ where: { userId: 人.丙.id } }))[0].title).toContain("因你负责的项目暂缓回收");
     expect((await 痕())[0]).toMatchObject({ via: "总管理裁决", reason: "让同事结束项目（1 位同事）" });
-    // 被挡时继续持有不给
-    expect(await 继续持有(人.乙, 客户, "还在跟", 第(210))).toMatchObject({ ok: false, error: "只有沉睡、待回收时能继续持有" });
+    // 被挡时暂缓回收没用满 2 次，继续持有不给（T11）
+    expect(await 继续持有(人.乙, 客户, "还在跟", 第(210))).toMatchObject({ ok: false, error: "到期暂缓回收的客户先由条线总管理裁决暂缓回收（最多 2 次），用满以后才能继续持有" });
   });
 });

@@ -17,7 +17,7 @@ vi.mock("@/lib/enterprise/notify", async (原) => {
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 三态夜扫, 三态扫过键, 收三态客户, 写一批, 公海状态 } from "@/lib/enterprise/tri-state-db";
+import { 三态夜扫, 三态扫过键, 收三态客户, 写一批, 公海状态, 被挡理由, 暂缓解除理由 } from "@/lib/enterprise/tri-state-db";
 import { 钟上三态提醒, 三态提醒水位键 } from "@/lib/enterprise/tri-state-notice";
 import { 继续持有, 暂缓回收动作 } from "@/lib/enterprise/tri-state-hold";
 import { 读组织 } from "@/lib/enterprise/org";
@@ -274,5 +274,84 @@ describe("T9 · 市场成员认人：有市场角色、没销售角色才算；�
     await prisma.entMember.update({ where: { userId: 人.乙.id }, data: { bizRole: "marketing_mgr" } });
     await 三态夜扫(早(100));
     expect(await 钟()).toBeNull();
+  });
+});
+
+describe("T5 · 暂缓回收（被同事项目挡住）：期间提醒不算 3 次；解除后提醒 1 次，满 10 天没人处理才收", () => {
+  const 在公海 = async () => !!(await prisma.customerPool.findUnique({ where: { customerId: 客户 } }));
+  const 同事项目 = () => prisma.project.findFirstOrThrow({ where: { customerId: 客户, ownerId: 人.丙.id } });
+
+  it("对用户的说法改叫「暂缓回收」", () => {
+    expect(被挡理由).toContain("暂缓回收");
+    expect(被挡理由).not.toContain("挡");
+  });
+
+  it("暂缓期间每月提醒总管理，不动待回收提醒次数；解除当天并进汇总提醒 1 次，第 10 天收", async () => {
+    await 到期被挡();
+    await 钟上三态提醒(八点(210));
+    expect(await 钟()).toMatchObject({ state: "待回收", blocked: true, noticeCount: 3, lastNoticeDay: 日(200) });
+    await 过(240);
+    expect(await 钟()).toMatchObject({ noticeCount: 3, lastNoticeDay: 日(200) });
+    await prisma.project.update({ where: { id: (await 同事项目()).id }, data: { result: "丢单" } });
+    await 过(250);
+    expect(await 在公海()).toBe(false);
+    expect(await 钟()).toMatchObject({ state: "待回收", blocked: false, noticeCount: 3, lastNoticeDay: 日(250) });
+    expect((await 痕()).filter((x) => x.reason === 暂缓解除理由)).toHaveLength(1);
+    expect((await 三态通知(人.总内.id)).map((x) => x.title)).toContain("客户三态提醒：1 家暂缓回收已解除（10 天内没人处理就回公海）");
+    expect((await 三态通知(人.乙.id)).length).toBeGreaterThan(0);
+    await 过(251);
+    await 过(259);
+    expect(await 在公海()).toBe(false);
+    await 三态夜扫(早(260));
+    expect(await 在公海()).toBe(true);
+  });
+
+  it("解除后 10 天内有人记了有效沟通：不收，钟归零", async () => {
+    await 到期被挡();
+    await prisma.project.update({ where: { id: (await 同事项目()).id }, data: { result: "丢单" } });
+    await 过(215);
+    await prisma.followUp.create({ data: { type: "PHONE", title: "", content: "约了下周见面谈续约", customerId: 客户, ownerId: 人.乙.id, occurredAt: 白天(220) } });
+    await 三态夜扫(早(226));
+    expect(await 在公海()).toBe(false);
+    expect(await 钟()).toMatchObject({ state: "活跃", enteredDay: 日(220) });
+  });
+
+  it("解除后又被挡住：按新挡住算，不拿旧的解除日收", async () => {
+    await 到期被挡();
+    const p = await 同事项目();
+    await prisma.project.update({ where: { id: p.id }, data: { result: "丢单" } });
+    await 过(215);
+    await prisma.project.create({ data: { name: "同事的新项目", customerId: 客户, ownerId: 人.丙.id, creatorId: 人.丙.id, createdAt: new Date("2026-10-20T10:00:00+08:00") } });
+    await 过(216);
+    await 过(226);
+    expect(await 钟()).toMatchObject({ blocked: true });
+    await 过(240);
+    expect(await 在公海()).toBe(false);
+  });
+});
+
+describe("T11 · 暂缓回收两次至少隔 30 天、累计最多 2 次；第 3 次起走继续持有、占额度", () => {
+  it("第 210、240 天两次暂缓；第 270 天第三次被拒；改走写理由继续持有，扣 1 次、退回待回收", async () => {
+    await 到期被挡();
+    expect(await 暂缓回收动作(人.总内, 客户, null, 白天(210))).toEqual({ ok: true });
+    expect(await 暂缓回收动作(人.总内, 客户, null, 白天(225))).toMatchObject({ ok: false, error: `${日(210)} 已经暂缓回收过，30 天内不用再裁决` });
+    expect(await 暂缓回收动作(人.总内, 客户, null, 白天(240))).toEqual({ ok: true });
+    expect(await 暂缓回收动作(人.总内, 客户, null, 白天(270))).toMatchObject({ ok: false, error: "暂缓回收已用满 2 次（60 天），要继续留着请写理由继续持有（占继续持有的次数和天数）" });
+    expect(await 继续持有(人.总内, 客户, "", 白天(270))).toMatchObject({ ok: false, error: "待回收时要写理由才能继续持有" });
+    expect(await 继续持有(人.总内, 客户, "同事项目下月结束", 白天(270))).toEqual({ ok: true, 剩次数: 2, 剩天数: 60 });
+    expect(await 钟()).toMatchObject({ state: "待回收", blocked: false, holdCount: 1 });
+    expect((await 痕()).at(-1)).toMatchObject({ via: "总管理代选", reason: "由 总内 代选：同事项目下月结束" });
+  });
+
+  it("暂缓次数跟额度一起重置：中间记了有效沟通，再到期挡住又能暂缓 2 次", async () => {
+    await 到期被挡();
+    expect(await 暂缓回收动作(人.总内, 客户, null, 白天(210))).toEqual({ ok: true });
+    expect(await 暂缓回收动作(人.总内, 客户, null, 白天(240))).toEqual({ ok: true });
+    await prisma.followUp.create({ data: { type: "PHONE", title: "", content: "约了下周见面谈续约", customerId: 客户, ownerId: 人.乙.id, occurredAt: 白天(241) } });
+    await 三态夜扫(早(242));
+    await 三态夜扫(早(241 + 180));
+    await prisma.entCustomerClock.update({ where: { customerId: 客户 }, data: { noticeCount: 3, lastNoticeDay: 日(241 + 200) } });
+    await 三态夜扫(早(241 + 210));
+    expect(await 暂缓回收动作(人.总内, 客户, null, 白天(241 + 210))).toEqual({ ok: true });
   });
 });

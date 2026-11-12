@@ -16,7 +16,7 @@ vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 三态夜扫, 三态扫过键, 被挡理由, 换负责人们of } from "@/lib/enterprise/tri-state-db";
+import { 三态夜扫, 三态扫过键, 被挡理由, 暂缓解除理由, 换负责人们of } from "@/lib/enterprise/tri-state-db";
 import { 夜里扫三态 } from "@/lib/project/nightly";
 import { 公海超时收回 } from "@/lib/project/db";
 import { 默认组织规则, 默认三态规则, type 组织规则 } from "@/lib/project/org-rules";
@@ -176,7 +176,15 @@ describe("沟通、被挡、交接", () => {
     expect((await 痕()).filter((x) => x.reason === 被挡理由)).toHaveLength(1);
     // 同事结束了项目（结局在第 150 天以前就记了的话也一样；这里按今天结束 → 结束日不是订单，不拨钟）
     await prisma.project.update({ where: { id: p.id }, data: { result: "丢单" } });
+    // T5：解除后不马上收——当天提醒 1 次（这里直接记成发过），满 10 天没人处理才收
     await 三态夜扫(第(212));
+    expect(await 在公海()).toBe(false);
+    expect(await 钟()).toMatchObject({ state: "待回收", blocked: false });
+    expect((await 痕()).filter((x) => x.reason === 暂缓解除理由)).toHaveLength(1);
+    await prisma.entCustomerClock.update({ where: { customerId: 客户 }, data: { lastNoticeDay: 加天(起, 212) } });
+    await 三态夜扫(第(221));
+    expect(await 在公海()).toBe(false);
+    await 三态夜扫(第(222));
     expect(await 在公海()).toBe(true);
   });
 
