@@ -3,7 +3,11 @@
  *   - 扫 src 下所有 "use server" 文件的每个导出、所有 /api 路由的非 GET 处理函数，在切换视图里逐个调一遍（几组常见参数），
  *     调完整个库一行不差（逐表逐行比，不只比条数）。新加的 action / 路由不用登记，自动进来
  *   - /api 非 GET 在进路由之前还有 proxy 那一道（view-as-gate.ts 视图挡写）：签名对、是这个会话签的才挡，伪造 / 过期 / 别人的票不挡（也不认）
- *   - 开关（CRM_ENT_VIEW_AS）关着：带着签名对的票也什么都不算——读按自己、写照常、入口不给
+ *   - 被看的人轮流换成销售、上级、条线总管理、管理员只读（不同角色在权限判断处早退的地方不一样，换着看才走得到各自的写）；
+ *     扫描期间装探针：fetch、fs 写 / 删、控制面库的写，碰一次就算失败；返回值里不许出现对方的 AI 对话
+ *   - 系统写 的每一处调用前都先问过切换视图（静态守卫）；字典全空 + 切换视图时几张主要页面的服务端取数不崩、不写
+ *   - 开关默认开（没设环境变量就有），CRM_ENT_VIEW_AS=0 才关：关着时带着签名对的票也什么都不算——读按自己、写照常、入口不给
+ *   - 票绑在这一次登录上（会话 ims）：退出再登录，旧票作废；演示部署（CRM_DEMO_SWITCH=1）开始视图也拒
  * 会话票、视图票都从假的 next/headers 里读（同 ent-view-as.test.ts）
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -37,13 +41,13 @@ import { resetDb } from "./reset";
 import { setSetting } from "@/lib/settings";
 import { getCurrentUser } from "@/lib/auth";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import { 视图票, 签视图票, 当前视图 } from "@/lib/enterprise/view-as";
+import { 视图票, 签视图票, 当前视图, 等拦下留痕, 忘掉拦下留痕 } from "@/lib/enterprise/view-as";
 import { 读视图名单, 有切换视图 } from "@/lib/enterprise/view-as-menu";
 import { 视图挡写 } from "@/lib/enterprise/view-as-gate";
 import { 开始视图 } from "@/app/(app)/view-as-actions";
 
 const 钥 = () => new TextEncoder().encode(readSecret());
-const 签会话 = (sub: string, 有效 = "1h") => new SignJWT({}).setProtectedHeader({ alg: "HS256" }).setSubject(sub).setIssuedAt().setExpirationTime(有效).sign(钥());
+const 签会话 = (sub: string, 有效 = "1h", ims?: number) => new SignJWT(ims === undefined ? {} : { ims }).setProtectedHeader({ alg: "HS256" }).setSubject(sub).setIssuedAt().setExpirationTime(有效).sign(钥());
 const 人 = { 总管: "", 二总管: "", 甲: "", 乙: "" };
 const 物 = { 客户: "", 乙客户: "", 项目: "", 联系人: "", 跟进: "" };
 
@@ -83,7 +87,6 @@ beforeEach(async () => {
   罐.票.clear();
   await resetDb();
   vi.stubEnv("CRM_ENTERPRISE", "1");
-  vi.stubEnv("CRM_ENT_VIEW_AS", "1");
   const 部 = (await prisma.entDept.create({ data: { name: "销售一部" } })).id;
   const 建 = async (名: string, bizRole: string, managerId: string | null = null) => {
     const u = await prisma.user.create({ data: { email: `${名}@t`, name: 名, title: "", role: "SALES", password: "x" } });
@@ -105,19 +108,115 @@ beforeEach(async () => {
 afterEach(() => { vi.unstubAllEnvs(); 罐.票.clear(); 忘掉企业版范围(); });
 afterAll(() => prisma.$disconnect());
 
-describe("切换视图里调遍所有写入口，库一行不差", () => {
-  it("每个 server action 导出、每个 /api 非 GET：调完库没变（新加的自动进来）", async () => {
-    await 登录成(人.总管);
-    expect(await 开始视图(人.甲)).toEqual({ ok: true });
-    忘掉企业版范围();
-    expect((await getCurrentUser())!.视图由?.id).toBe(人.总管);
-    const 前 = await 快照();
-    // 每调一次之前把两张票原样放回：有的 action 会清 cookie（退出登录这类），清了之后的调用就不在视图里了
-    const 票们 = new Map(罐.票);
-    const 放回 = () => { 罐.票.clear(); for (const [k, v] of 票们) 罐.票.set(k, v); };
-    const 清了票的: string[] = [];
-    const 超时的: string[] = [];
+/** 被看的人的 AI 对话里的一句：扫描时任何返回值里出现它就是漏给了管理员 */
+const AI暗号 = "只有自己看得见的AI暗号";
 
+/** 再加三种角色的人（只在扫描里用，别的用例的名单不受影响）：上级、条线总管理（带业务线，不算系统管理员）、管理员只读 */
+async function 多几种角色(): Promise<Record<string, string>> {
+  const 部 = (await defaultClient.entDept.findFirstOrThrow()).id;
+  const 建 = async (名: string, bizRole: string, line: string | null = null) => {
+    const u = await prisma.user.create({ data: { email: `${名}@t`, name: 名, title: "", role: "SALES", password: "x" } });
+    await prisma.entMember.create({ data: { userId: u.id, deptId: bizRole === "director" ? null : 部, bizRole, line } });
+    return u.id;
+  };
+  const 经理 = await 建("经理", "sales_mgr");
+  await prisma.entMember.update({ where: { userId: 人.甲 }, data: { managerId: 经理 } });
+  const r = { 销售: 人.甲, 上级: 经理, 条线总管理: await 建("条线总管", "director", "内贸"), 管理员只读: await 建("只读管", "admin") };
+  for (const id of Object.values(r)) {
+    await prisma.aiConversation.create({ data: { title: `${AI暗号}标题`, ownerId: id, scope: "home", messages: { create: [{ role: "user", text: `${AI暗号}问` }, { role: "assistant", text: `${AI暗号}答` }] } } });
+  }
+  return r;
+}
+
+/** 切换视图自己的留痕（开始 view-as、退出 view-as-exit、拦下 view-as-blocked）是放行写的，快照里不算 */
+const 去掉拦下留痕 = (快: string) => {
+  const o = JSON.parse(快) as Record<string, string[]>;
+  o.AuditLog = (o.AuditLog ?? []).filter((r) => !(JSON.parse(r) as { action: string }).action.startsWith("view-as"));
+  return JSON.stringify(o);
+};
+
+/**
+ * 探针：扫描期间对外发请求（fetch）、写 / 删磁盘文件、写控制面库，任何一次都算失败。
+ * fs 用 syncBuiltinESMExports 把具名导入（import { writeFile } from "node:fs/promises"）也换成探针
+ */
+async function 装探针(): Promise<{ 记录: string[]; 拆: () => Promise<void> }> {
+  const 记录: string[] = [];
+  const { syncBuiltinESMExports } = await import("node:module");
+  const fsp = fs.promises as unknown as Record<string, unknown>;
+  const 同步 = fs as unknown as Record<string, unknown>;
+  const 换掉: [Record<string, unknown>, string, unknown][] = [];
+  const 换 = (o: Record<string, unknown>, k: string, 名: string, 异步: boolean) => {
+    换掉.push([o, k, o[k]]);
+    o[k] = (...a: unknown[]) => {
+      记录.push(`${名}(${String(a[0]).slice(0, 120)})`);
+      const e = new Error(`探针：切换视图里不许 ${名}`);
+      if (异步) return Promise.reject(e);
+      throw e;
+    };
+  };
+  for (const k of ["writeFile", "appendFile", "unlink", "rm", "rmdir", "rename", "copyFile", "truncate", "cp"]) {
+    if (typeof fsp[k] === "function") 换(fsp, k, `fs.promises.${k}`, true);
+    if (typeof 同步[`${k}Sync`] === "function") 换(同步, `${k}Sync`, `fs.${k}Sync`, false);
+    if (typeof 同步[k] === "function") 换(同步, k, `fs.${k}`, false);
+  }
+  for (const k of ["createWriteStream"]) 换(同步, k, `fs.${k}`, false);
+  syncBuiltinESMExports();
+  const 原fetch = globalThis.fetch;
+  globalThis.fetch = (async (u: unknown) => {
+    记录.push(`fetch(${String(u instanceof Request ? u.url : u).slice(0, 120)})`);
+    throw new Error("探针：切换视图里不许对外发请求");
+  }) as typeof fetch;
+  // 控制面库：自部署本来就没有；换成只记不写的假客户端，任何写方法、裸 SQL 一碰就记
+  const g = globalThis as unknown as { control?: unknown; controlPragmas?: boolean };
+  const 原控 = [g.control, g.controlPragmas] as const;
+  const 写法 = /^(create|createMany|createManyAndReturn|update|updateMany|updateManyAndReturn|upsert|delete|deleteMany|\$executeRaw|\$executeRawUnsafe|\$queryRaw|\$queryRawUnsafe|\$transaction)$/;
+  g.controlPragmas = true;
+  g.control = new Proxy({}, {
+    get(_t, 表) {
+      if (typeof 表 !== "string") return undefined;
+      if (写法.test(表)) return async () => { 记录.push(`control.${表}`); throw new Error("探针：切换视图里不许写控制面库"); };
+      return new Proxy({}, { get(_u, 法) {
+        if (typeof 法 !== "string") return undefined;
+        return async () => {
+          if (写法.test(法)) { 记录.push(`control.${表}.${法}`); throw new Error("探针：切换视图里不许写控制面库"); }
+          return 法 === "findMany" ? [] : 法 === "count" ? 0 : null;
+        };
+      } });
+    },
+  });
+  return {
+    记录,
+    拆: async () => {
+      for (const [o, k, v] of 换掉.reverse()) o[k] = v;
+      syncBuiltinESMExports();
+      globalThis.fetch = 原fetch;
+      [g.control, g.controlPragmas] = 原控;
+    },
+  };
+}
+
+/** 把一页服务端组件往下展开：异步组件（async function）调一遍、接着展开它画出来的；客户端组件（普通函数，用 hook）不调 */
+async function 展开(节点: unknown, 深 = 0): Promise<void> {
+  if (深 > 40 || 节点 == null || typeof 节点 !== "object") return;
+  if (Array.isArray(节点)) { for (const x of 节点) await 展开(x, 深 + 1); return; }
+  if (节点 instanceof Promise) { await 展开(await 节点, 深 + 1); return; }
+  const el = 节点 as { $$typeof?: symbol; type?: unknown; props?: Record<string, unknown> };
+  if (!el.$$typeof || !el.props) return;
+  if (typeof el.type === "function" && el.type.constructor.name === "AsyncFunction") {
+    await 展开(await (el.type as (p: unknown) => Promise<unknown>)(el.props), 深 + 1);
+    return;
+  }
+  for (const v of Object.values(el.props)) await 展开(v, 深 + 1);
+}
+
+describe("切换视图里调遍所有写入口，库一行不差", () => {
+  it("轮流看销售、上级、条线总管理、管理员只读：每个 server action 导出、每个 /api 非 GET 调完库没变，没对外发请求、没写盘、没碰控制面库，返回里没有对方的 AI 对话", async () => {
+    const 角色们 = await 多几种角色();
+    await 登录成(人.总管);
+    const 前 = await 快照();
+    const 调了 = new Set<string>();
+    const 路由们 = new Set<string>();
+    const 漏了AI: string[] = [];
     const 参数组: unknown[][] = [
       [],
       [物.客户],
@@ -130,49 +229,178 @@ describe("切换视图里调遍所有写入口，库一行不差", () => {
       [物.联系人, { name: "改" }],
       [物.跟进],
     ];
-    const 调了: string[] = [];
-    for (const f of 全部文件("src/app").concat(全部文件("src/lib"))) {
-      const src = fs.readFileSync(f, "utf8");
-      if (!是动作文件(src)) continue;
-      const m = (await import(/* @vite-ignore */ 别名(f))) as Record<string, unknown>;
-      for (const [名, fn] of Object.entries(m)) {
-        if (typeof fn !== "function") continue;
-        // 退出视图本身就是要放行的那一个（它只删票、记留痕给管理员本人），扫完再单独验
-        if (名 === "退出视图" || 名 === "开始视图") continue;
-        调了.push(`${别名(f)}#${名}`);
-        for (const a of 参数组) {
-          放回();
-          if ((await 限时((fn as (...x: unknown[]) => Promise<unknown>)(...a).catch(() => null))) === "超时") 超时的.push(`${别名(f)}#${名}`);
-          if (!罐.票.has(视图票)) 清了票的.push(`${别名(f)}#${名}`);
+    const 看看AI = async (名: string, r: unknown) => {
+      let t = "";
+      try { t = r instanceof Response ? await r.clone().text() : JSON.stringify(r) ?? ""; } catch { /* 带循环引用的返回值不管 */ }
+      if (t.includes(AI暗号)) 漏了AI.push(名);
+    };
+    const 动作文件 = 全部文件("src/app").concat(全部文件("src/lib")).filter((f) => 是动作文件(fs.readFileSync(f, "utf8")));
+    const 路由文件 = 全部文件("src/app/api").filter((p) => /route\.tsx?$/.test(p));
+    for (const [角色, 谁] of Object.entries(角色们)) {
+      await 登录成(人.总管);
+      expect(await 开始视图(谁), 角色).toEqual({ ok: true });
+      忘掉企业版范围();
+      expect((await getCurrentUser())!.视图由?.id, 角色).toBe(人.总管);
+      expect((await getCurrentUser())!.id, 角色).toBe(谁);
+      // 每调一次之前把两张票原样放回：有的 action 会清 cookie（退出登录这类），清了之后的调用就不在视图里了
+      const 票们 = new Map(罐.票);
+      const 放回 = () => { 罐.票.clear(); for (const [k, v] of 票们) 罐.票.set(k, v); };
+      const 清了票的: string[] = [];
+      const 超时的: string[] = [];
+      const 探针 = await 装探针();
+      try {
+        for (const f of 动作文件) {
+          const m = (await import(/* @vite-ignore */ 别名(f))) as Record<string, unknown>;
+          for (const [名, fn] of Object.entries(m)) {
+            if (typeof fn !== "function") continue;
+            // 开始 / 退出视图本身就是要放行的（只动票、记留痕给管理员本人），扫完再单独验
+            if (名 === "退出视图" || 名 === "开始视图") continue;
+            const 全名 = `${别名(f)}#${名}`;
+            调了.add(全名);
+            for (const a of 参数组) {
+              放回();
+              const r = await 限时((fn as (...x: unknown[]) => Promise<unknown>)(...a).catch(() => null));
+              if (r === "超时") 超时的.push(全名);
+              else await 看看AI(`${角色} ${全名}`, r);
+              if (!罐.票.has(视图票)) 清了票的.push(全名);
+            }
+          }
         }
-      }
-    }
-    const 路由们: string[] = [];
-    for (const f of 全部文件("src/app/api").filter((p) => /route\.tsx?$/.test(p))) {
-      const m = (await import(/* @vite-ignore */ 别名(f))) as Record<string, unknown>;
-      for (const 法 of ["POST", "PUT", "PATCH", "DELETE"]) {
-        const fn = m[法];
-        if (typeof fn !== "function") continue;
-        路由们.push(`${别名(f)}#${法}`);
-        for (const body of ["{}", JSON.stringify({ customerId: 物.客户, projectId: 物.项目, id: 物.客户, name: "x" })]) {
-          放回();
-          const req = new Request("http://ent.test/api/x", { method: 法, body, headers: { "content-type": "application/json", cookie: [...罐.票].map(([k, v]) => `${k}=${v}`).join("; ") } });
-          if ((await 限时((fn as (r: Request, c: unknown) => Promise<unknown>)(req, { params: Promise.resolve({ id: 物.客户, slug: [] }) }).catch(() => null))) === "超时") 超时的.push(`${别名(f)}#${法}`);
+        for (const f of 路由文件) {
+          const m = (await import(/* @vite-ignore */ 别名(f))) as Record<string, unknown>;
+          for (const 法 of ["POST", "PUT", "PATCH", "DELETE"]) {
+            const fn = m[法];
+            if (typeof fn !== "function") continue;
+            路由们.add(`${别名(f)}#${法}`);
+            for (const body of ["{}", JSON.stringify({ customerId: 物.客户, projectId: 物.项目, id: 物.客户, name: "x" })]) {
+              放回();
+              const req = new Request("http://ent.test/api/x", { method: 法, body, headers: { "content-type": "application/json", cookie: [...罐.票].map(([k, v]) => `${k}=${v}`).join("; ") } });
+              if ((await 限时((fn as (r: Request, c: unknown) => Promise<unknown>)(req, { params: Promise.resolve({ id: 物.客户, slug: [] }) }).catch(() => null))) === "超时") 超时的.push(`${别名(f)}#${法}`);
+            }
+          }
         }
+      } finally {
+        await 探针.拆();
       }
+      expect(探针.记录, `${角色}：\n${探针.记录.join("\n")}`).toEqual([]);
+      // 没有哪个卡住（卡住的会在测试结束后接着跑，那时已不在视图里）
+      expect(超时的, `${角色}：\n${超时的.join("\n")}`).toEqual([]);
+      // 清票的只许是退出登录（它连会话一起清，回登录页）
+      expect([...new Set(清了票的)].every((x) => /logout|退出登录|signOut/i.test(x)), [...new Set(清了票的)].join("\n")).toBe(true);
+      放回();
+      expect((await 当前视图())?.谁, 角色).toBe(谁);
+      await 等拦下留痕();
+      expect(去掉拦下留痕(await 快照()), 角色).toBe(去掉拦下留痕(前));
     }
     // 扫到的数量写进断言：少了一大截说明扫描本身坏了（比如判 "use server" 的正则失效）
-    expect(调了.length, 调了.join("\n")).toBeGreaterThan(150);
-    expect(路由们.length, 路由们.join("\n")).toBeGreaterThan(15);
-    if (process.env.VIEW_AS_SCAN_DUMP) fs.writeFileSync(process.env.VIEW_AS_SCAN_DUMP, `${调了.length} 个 action、${路由们.length} 个路由\n${调了.join("\n")}\n${路由们.join("\n")}\n`);
-    // 没有哪个卡住（卡住的会在测试结束后接着跑，那时已不在视图里）
-    expect(超时的, 超时的.join("\n")).toEqual([]);
-    // 清票的只许是退出登录（它连会话一起清，回登录页）
-    expect([...new Set(清了票的)].every((x) => /logout|退出登录|signOut/i.test(x)), [...new Set(清了票的)].join("\n")).toBe(true);
-    放回();
-    expect((await 当前视图())?.谁).toBe(人.甲);
-    expect(await 快照()).toBe(前);
-  }, 600_000);
+    expect(调了.size, [...调了].join("\n")).toBeGreaterThan(150);
+    expect(路由们.size, [...路由们].join("\n")).toBeGreaterThan(15);
+    if (process.env.VIEW_AS_SCAN_DUMP) fs.writeFileSync(process.env.VIEW_AS_SCAN_DUMP, `${调了.size} 个 action、${路由们.size} 个路由\n${[...调了].join("\n")}\n${[...路由们].join("\n")}\n`);
+    expect(漏了AI, 漏了AI.join("\n")).toEqual([]);
+    // 拦下的写记在真身名下，写明看的是谁
+    const 拦下 = await defaultClient.auditLog.findMany({ where: { action: "view-as-blocked" } });
+    expect(拦下.length).toBeGreaterThan(0);
+    expect(new Set(拦下.map((r) => r.userId))).toEqual(new Set([人.总管]));
+    expect(new Set(拦下.map((r) => r.entityId))).toEqual(new Set(Object.values(角色们)));
+  }, 900_000);
+
+  it("系统写 的每一处调用前都先问过切换视图（视图中跳过 / 正在切换视图 / 当前视图），漏了的种子写会被拦成整页报错", () => {
+    const 漏的: string[] = [];
+    let 处数 = 0;
+    for (const f of 全部文件("src")) {
+      if (f.endsWith(path.join("lib", "team-scope.ts"))) continue; // 定义处
+      const 行们 = fs.readFileSync(f, "utf8").split("\n");
+      行们.forEach((行, i) => {
+        if (!/(^|[^\w\u4e00-\u9fff])系统写\(/.test(行) || /^\s*(\/\/|\*|\/\*)/.test(行)) return;
+        处数++;
+        // 往上找到这一处所在函数的开头（顶格的 function / const … = …），这一段里要先问过
+        let 起 = i;
+        while (起 > 0 && !/^(export\s+)?(default\s+)?(async\s+)?function\b|^(export\s+)?const\s+\S+\s*=/.test(行们[起])) 起--;
+        const 段 = 行们.slice(起, i + 1).join("\n");
+        if (!/(视图中跳过|正在切换视图|当前视图)\(\)/.test(段)) 漏的.push(`${path.relative(".", f)}:${i + 1}`);
+      });
+    }
+    expect(处数).toBeGreaterThanOrEqual(5);
+    expect(漏的, 漏的.join("\n")).toEqual([]);
+  });
+
+  it("字典全空 + 切换视图：首页、客户列表、客户详情、项目、渠道、设置几页的服务端取数都不崩、一笔不写、字典还是空的", async () => {
+    const 角色们 = await 多几种角色();
+    await 登录成(人.总管);
+    const 前 = await 快照();
+    const 页们: [string, () => Promise<unknown>][] = [
+      ["壳", async () => (await import("@/app/(app)/layout")).default({ children: null, pane: null } as never)],
+      ["首页", async () => (await import("@/app/(app)/dashboard/page")).default({ searchParams: Promise.resolve({}) } as never)],
+      ["客户列表", async () => (await import("@/app/(app)/customers/page")).default({ searchParams: Promise.resolve({}) } as never)],
+      ["客户详情", async () => (await import("@/app/(app)/customers/[id]/page")).default({ params: Promise.resolve({ id: 物.客户 }), searchParams: Promise.resolve({}) } as never)],
+      ["项目", async () => (await import("@/app/(app)/projects/page")).default({ searchParams: Promise.resolve({}) } as never)],
+      ["项目详情", async () => (await import("@/app/(app)/projects/[id]/page")).default({ params: Promise.resolve({ id: 物.项目 }), searchParams: Promise.resolve({}) } as never)],
+      ["渠道", async () => (await import("@/app/(app)/channels/page")).default({ searchParams: Promise.resolve({}) } as never)],
+      ["设置", async () => (await import("@/app/(app)/settings/page")).default()],
+    ];
+    const 崩了: string[] = [];
+    for (const [角色, 谁] of Object.entries(角色们)) {
+      await 登录成(人.总管);
+      expect(await 开始视图(谁)).toEqual({ ok: true });
+      for (const [页, 画] of 页们) {
+        忘掉企业版范围();
+        try {
+          await 展开(await 画());
+        } catch (e) {
+          // 跳转（没权限进的页回首页、项目页并进客户这类）、404 不算崩
+          if (/^(REDIRECT:|NOT_FOUND$)/.test((e as Error).message)) continue;
+          崩了.push(`${角色} ${页}：${(e as Error).message}${process.env.VIEW_AS_SCAN_STACK ? `\n${(e as Error).stack}` : ""}`);
+        }
+      }
+    }
+    expect(崩了, 崩了.join("\n")).toEqual([]);
+    await 等拦下留痕();
+    expect((await defaultClient.auditLog.findMany({ where: { action: "view-as-blocked" } })).map((r) => r.summary), "页面渲染不该去碰写").toEqual([]);
+    expect(去掉拦下留痕(await 快照())).toBe(去掉拦下留痕(前));
+    expect(await defaultClient.entDictItem.count()).toBe(0);
+    expect(await defaultClient.projectRole.count()).toBe(0);
+    expect(await defaultClient.projectExceptionCategory.count()).toBe(0);
+  }, 300_000);
+});
+
+describe("AI 对话：切换视图时看不到对方的", () => {
+  it("列表回空、内容回 null（服务端取数处就不查）；对方自己登录照常看得到", async () => {
+    const { 列对话, 读对话 } = await import("@/app/(app)/dashboard/threads");
+    const c = await prisma.aiConversation.create({ data: { title: `${AI暗号}标题`, ownerId: 人.甲, scope: "home", messages: { create: [{ role: "user", text: `${AI暗号}问` }] } } });
+    await 登录成(人.甲);
+    expect((await 列对话()).map((r) => r.id)).toEqual([c.id]);
+    expect((await 读对话(c.id))?.messages[0]?.text).toBe(`${AI暗号}问`);
+    await 登录成(人.总管);
+    expect(await 开始视图(人.甲)).toEqual({ ok: true });
+    忘掉企业版范围();
+    expect((await getCurrentUser())!.id).toBe(人.甲);
+    expect(await 列对话()).toEqual([]);
+    expect(await 列对话({ scope: "home" })).toEqual([]);
+    expect(await 读对话(c.id)).toBeNull();
+  });
+});
+
+describe("拦下的写留一笔（记在真身名下，走放行通道）", () => {
+  it("同一种写一分钟内只记一条；换一种写再记；退出后不在视图就不记", async () => {
+    忘掉拦下留痕();
+    await 登录成(人.总管);
+    expect(await 开始视图(人.甲)).toEqual({ ok: true });
+    忘掉企业版范围();
+    for (let i = 0; i < 5; i++) await expect(prisma.customer.update({ where: { id: 物.客户 }, data: { remark: "改" } })).rejects.toMatchObject({ code: "CRM_READONLY" });
+    await expect(prisma.contact.update({ where: { id: 物.联系人 }, data: { name: "改" } })).rejects.toMatchObject({ code: "CRM_READONLY" });
+    await 等拦下留痕();
+    const 行 = await defaultClient.auditLog.findMany({ where: { action: "view-as-blocked" }, orderBy: { at: "asc" } });
+    expect(行.map((r) => [r.userId, r.userName, r.entityId])).toEqual([[人.总管, "总管", 人.甲], [人.总管, "总管", 人.甲]]);
+    // 留痕不等落库（见 view-as.ts 记拦下），两条的先后不定
+    expect(行.map((r) => r.summary).sort()).toEqual(["以「业务员甲」的视图查看时试图改数据，已拦下（Contact.update）", "以「业务员甲」的视图查看时试图改数据，已拦下（Customer.update）"]);
+    expect((await defaultClient.customer.findUniqueOrThrow({ where: { id: 物.客户 } })).remark).not.toBe("改");
+    const { 退出视图 } = await import("@/app/(app)/view-as-actions");
+    expect(await 退出视图()).toEqual({ ok: true });
+    忘掉企业版范围();
+    await prisma.contact.update({ where: { id: 物.联系人 }, data: { name: "退出后照常改" } });
+    await 等拦下留痕();
+    expect(await defaultClient.auditLog.count({ where: { action: "view-as-blocked" } })).toBe(2);
+  });
 });
 
 describe("proxy 那一道：/api 非 GET 在进路由前就 403", () => {
@@ -195,17 +423,25 @@ describe("proxy 那一道：/api 非 GET 在进路由前就 403", () => {
     const 篡改 = 好的.slice(0, -3) + (好的.endsWith("aaa") ? "bbb" : "aaa");
     for (const 票 of [别人签的, 过期, 外钥, 篡改, "乱写的"]) expect(await 视图挡写(请求("POST", "/api/x", { crm_session: 会话, [视图票]: 票 }), 钥())).toBe(false);
     expect(await 视图挡写(请求("POST", "/api/x", { crm_session: 会话, [视图票]: 好的 }), 钥())).toBe(true);
-    vi.stubEnv("CRM_ENT_VIEW_AS", "");
+    vi.stubEnv("CRM_ENT_VIEW_AS", "0");
     expect(await 视图挡写(请求("POST", "/api/x", { crm_session: 会话, [视图票]: 好的 }), 钥())).toBe(false);
-    vi.stubEnv("CRM_ENT_VIEW_AS", "1");
+    vi.stubEnv("CRM_ENT_VIEW_AS", "");
     vi.stubEnv("CRM_ENTERPRISE", "");
     expect(await 视图挡写(请求("POST", "/api/x", { crm_session: 会话, [视图票]: 好的 }), 钥())).toBe(false);
   });
 });
 
-describe("开关（CRM_ENT_VIEW_AS）关着：和没有这个功能一样", () => {
-  it("入口不给、开始视图拒；带着签名对的票也不认：读按自己、写照常、不当只读", async () => {
+describe("开关：默认开，CRM_ENT_VIEW_AS=0 才关", () => {
+  it("没设环境变量：企业版下就有（客户服务器上现有的照旧）", async () => {
     vi.stubEnv("CRM_ENT_VIEW_AS", "");
+    await 登录成(人.总管);
+    expect(有切换视图()).toBe(true);
+    expect(await 开始视图(人.甲)).toEqual({ ok: true });
+    忘掉企业版范围();
+    expect((await getCurrentUser())!.id).toBe(人.甲);
+  });
+  it("=0：入口不给、开始视图拒；带着签名对的票也不认：读按自己、写照常、不当只读", async () => {
+    vi.stubEnv("CRM_ENT_VIEW_AS", "0");
     await 登录成(人.总管);
     expect(有切换视图()).toBe(false);
     expect(await 读视图名单((await getCurrentUser())!)).toBeNull();
@@ -219,6 +455,38 @@ describe("开关（CRM_ENT_VIEW_AS）关着：和没有这个功能一样", () =
     expect(me.视图由).toBeUndefined();
     await prisma.customer.update({ where: { id: 物.客户 }, data: { remark: "关着照常写" } });
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: 物.客户 } })).remark).toBe("关着照常写");
+  });
+});
+
+describe("票绑在这一次登录上、演示部署不给", () => {
+  const 请求 = (票们: Record<string, string>) => ({ method: "POST", nextUrl: { pathname: "/api/x" }, cookies: { get: (n: string) => (票们[n] ? { value: 票们[n] } : undefined) } });
+  it("开始视图把会话的 ims 签进票；退出再登录（新 ims）旧票作废：认人、读、proxy 都不认", async () => {
+    罐.票.clear();
+    罐.票.set("crm_session", await 签会话(人.总管, "1h", 1_700_000_000_000));
+    忘掉企业版范围();
+    expect(await 开始视图(人.甲)).toEqual({ ok: true });
+    const 旧票 = 罐.票.get(视图票)!;
+    忘掉企业版范围();
+    expect((await getCurrentUser())!.id).toBe(人.甲);
+    expect(await 视图挡写(请求({ crm_session: 罐.票.get("crm_session")!, [视图票]: 旧票 }), 钥())).toBe(true);
+    // 退出再登录：同一个人、新会话（新 ims），把旧的视图票塞回去
+    罐.票.clear();
+    罐.票.set("crm_session", await 签会话(人.总管, "1h", 1_700_000_999_000));
+    罐.票.set(视图票, 旧票);
+    忘掉企业版范围();
+    expect(await 当前视图()).toBeNull();
+    expect((await getCurrentUser())!.id).toBe(人.总管);
+    expect(await 视图挡写(请求({ crm_session: 罐.票.get("crm_session")!, [视图票]: 旧票 }), 钥())).toBe(false);
+    await prisma.customer.update({ where: { id: 物.客户 }, data: { remark: "新会话照常写" } });
+    // 没有 ims 的会话（老票）签的视图票，换到有 ims 的会话上也不认
+    expect(await 当前视图()).toBeNull();
+  });
+  it("演示部署（CRM_DEMO_SWITCH=1）：菜单不给，开始视图也拒", async () => {
+    vi.stubEnv("CRM_DEMO_SWITCH", "1");
+    await 登录成(人.总管);
+    expect(await 读视图名单((await getCurrentUser())!)).toBeNull();
+    expect(await 开始视图(人.甲)).toEqual({ ok: false, error: "这个部署没有切换视图" });
+    expect(罐.票.has(视图票)).toBe(false);
   });
 });
 

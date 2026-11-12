@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { getSetting, setSetting } from "@/lib/settings";
 import { 系统写 } from "@/lib/team-scope";
-import { 正在切换视图 } from "@/lib/enterprise/view-as";
+import { 正在切换视图, 视图只读错误 } from "@/lib/enterprise/view-as";
 import { 视图收藏话 } from "@/lib/enterprise/view-as-words";
 import { 收藏键 as 键, 项目收藏键 as 项目键, 点得开的项目 } from "@/lib/favorites";
 
@@ -24,6 +24,8 @@ type 结果 = { ok: true; 收藏了: boolean } | { ok: false; error: string };
  * 所以写这一步走 系统写（不然 只读拦 抛错，整页崩成错误边界）。
  */
 async function 存(key: string, ids: string[]): Promise<void> {
+  // 调用方已先回过话；这里再兜一道：系统写 前必须先问过切换视图（ent-view-as-scan.test.ts 静态守卫）
+  if (await 正在切换视图()) throw new 视图只读错误(视图收藏话);
   await 系统写(() => setSetting(key, ids));
   // 左栏在 layout 里，layout 客户端导航不重算：让它重新取一次
   revalidatePath("/", "layout");

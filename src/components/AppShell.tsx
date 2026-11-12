@@ -504,6 +504,8 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
       ]
     : [];
   /** 切换视图期间钉在顶上的一条：谁的视图、只读、退出。两种布局都挂 */
+  /** 切换视图的挑人框：小屏、宽屏两个分支各挂这一份（账号菜单「以某人的视角查看」打开它） */
+  const 挑人框 = 视图名单?.length ? <ViewAsPicker open={挑视图} 名单={视图名单} 关={() => set挑视图(false)} 选={(id) => { set挑视图(false); void 看成(id); }} /> : null;
   const 视图条 = 正在视图 ? (
     <div className="view-as-bar" role="status">
       <span className="view-as-text">
@@ -607,8 +609,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
       <切换视图Provider value={!!正在视图}>
       <Layout className={显示浮标 ? "has-ai-fab" : undefined} style={{ minHeight: "100vh", background: "var(--page-bg)" }}>
         {视图条}
-      {视图名单?.length ? <ViewAsPicker open={挑视图} 名单={视图名单} 关={() => set挑视图(false)} 选={(id) => { set挑视图(false); void 看成(id); }} /> : null}
-        {视图名单?.length ? <ViewAsPicker open={挑视图} 名单={视图名单} 关={() => set挑视图(false)} 选={(id) => { set挑视图(false); void 看成(id); }} /> : null}
+        {挑人框}
         <Header style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 12px", borderBottom: "1px solid var(--line-soft)", position: "sticky", top: 0, zIndex: 10, height: 48 }}>
           <Dropdown
             trigger={["click"]}
@@ -655,6 +656,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
     <DockOpenContext.Provider value={面板占着地方}>
     <div className={`shell${desktop ? " shell-desktop" : ""}${面板开着 && 底下那页 !== "/dashboard" ? " shell-dock-open" : ""}${显示浮标 ? " has-ai-fab" : ""}${从浮标开 ? " shell-fab-opened" : ""}${窄栏 ? " rail-mini" : ""}${宽窄切换中 ? " rail-anim" : ""}`}>
       {视图条}
+      {挑人框}
       {/* 桌面端顶上那条能拖窗口的把手，见 globals.css 的 .drag-strip */}
       {desktop && <div className="drag-strip" aria-hidden="true" />}
       <nav className="rail" aria-label="主导航">

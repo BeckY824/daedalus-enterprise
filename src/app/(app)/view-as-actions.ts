@@ -2,12 +2,13 @@
 
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser, COOKIE_SECURE } from "@/lib/auth";
+import { getSessionUser, COOKIE, COOKIE_SECURE } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { multiTenant } from "@/lib/tenant/context";
 import { 读组织 } from "@/lib/enterprise/org";
-import { 视图票, 视图小时, 签视图票, 能切换视图, 能被看, 当前视图, 视图放行 } from "@/lib/enterprise/view-as";
+import { 视图票, 视图小时, 签视图票, 读会话身份, 能切换视图, 能被看, 当前视图, 视图放行 } from "@/lib/enterprise/view-as";
+import { 演示切换 } from "@/lib/enterprise/demo-switch";
 import { 有切换视图 } from "@/lib/enterprise/view-as-menu";
 
 export type 视图结果 = { ok: true } | { ok: false; error: string };
@@ -18,7 +19,8 @@ export type 视图结果 = { ok: true } | { ok: false; error: string };
  * 这个 action 谁都 POST 得到：不是总管理员一律拒，不靠界面藏入口
  */
 export async function 开始视图(userId: string): Promise<视图结果> {
-  if (!企业版() || multiTenant() || !有切换视图()) return { ok: false, error: "这个部署没有切换视图" };
+  // 演示部署（CRM_DEMO_SWITCH=1）有「切换身份」，菜单不给这一项（view-as-menu.ts 读视图名单），这里同样拒
+  if (!企业版() || multiTenant() || !有切换视图() || 演示切换()) return { ok: false, error: "这个部署没有切换视图" };
   const 真 = await getSessionUser();
   if (!真) return { ok: false, error: "登录已过期，请重新登录" };
   const org = await 读组织();
@@ -28,7 +30,11 @@ export async function 开始视图(userId: string): Promise<视图结果> {
   if (!能被看(org, userId)) return { ok: false, error: "不能以另一位系统管理员的视图查看" };
   const t = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, active: true } });
   if (!t || !t.active) return { ok: false, error: "这个人不在了或已停用，刷新一下再选" };
-  (await cookies()).set(视图票, await 签视图票(真.id, t.id), {
+  const 罐 = await cookies();
+  // 票绑在这一次登录上（会话票的 ims）：退出再登录，旧票作废
+  const 会话 = await 读会话身份(罐.get(COOKIE)?.value);
+  if (!会话 || 会话.sub !== 真.id) return { ok: false, error: "登录已过期，请重新登录" };
+  罐.set(视图票, await 签视图票(真.id, t.id, 会话.ims), {
     httpOnly: true,
     sameSite: "lax",
     secure: COOKIE_SECURE,

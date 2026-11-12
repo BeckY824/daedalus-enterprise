@@ -31,8 +31,8 @@ const 临时 = vi.hoisted(() => {
   process.env.SYNC_DIR = path.join(dir, "sync");
   process.env.ATTACH_DIR = path.join(dir, "attach");
   process.env.CRM_ENTERPRISE = "1";
-  // 切换视图开关（11-12 起默认关）：对照表按开着时谁能用来记
-  process.env.CRM_ENT_VIEW_AS = "1";
+  // 切换视图开关默认开（11-12 第二轮）：对照表按开着时谁能用来记，别让外面设的 =0 带进来
+  delete process.env.CRM_ENT_VIEW_AS;
   delete process.env.DESKTOP_LOCAL;
   delete process.env.CRM_DATA_DIR;
   delete process.env.MULTI_TENANT;

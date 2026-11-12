@@ -9,6 +9,7 @@
 import { prisma } from "../prisma";
 import { getSetting, setSetting } from "../settings";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 视图中跳过 } from "@/lib/enterprise/view-as";
 
 export const 回填记号键 = "projectExpectedDealBackfilled";
 
@@ -33,8 +34,9 @@ export async function 回填预计成交(): Promise<number> {
   return 搬了;
 }
 
-/** 同一个进程里只跑一遍（项目列表每次打开都调，别每次都查）；出错下次再试 */
-export function 回填一次(): Promise<number> {
+/** 同一个进程里只跑一遍（项目列表每次打开都调，别每次都查）；出错下次再试。切换视图（只读预览）里不跑、也不占掉这一遍 */
+export async function 回填一次(): Promise<number> {
+  if (await 视图中跳过()) return 0;
   g.__entExpectedDealBackfill ??= 回填预计成交().catch((e) => {
     g.__entExpectedDealBackfill = undefined;
     console.error("[预计成交] 回填出错，下次再试", e);

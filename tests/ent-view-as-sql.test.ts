@@ -22,4 +22,13 @@ describe("会写库的SQL", () => {
     expect(会写库的SQL(null)).toBe(true);
     expect(会写库的SQL('SELECT count(*) FROM "Customer"')).toBe(false);
   });
+  it("不带 = 也会动库的 PRAGMA 算写（落检查点、优化、回收空页），只读的 PRAGMA 不算", () => {
+    expect(会写库的SQL("PRAGMA wal_checkpoint(TRUNCATE)")).toBe(true);
+    expect(会写库的SQL("pragma  wal_checkpoint")).toBe(true);
+    expect(会写库的SQL("PRAGMA main.wal_checkpoint(FULL)")).toBe(true);
+    expect(会写库的SQL("PRAGMA optimize")).toBe(true);
+    expect(会写库的SQL("PRAGMA incremental_vacuum(10)")).toBe(true);
+    expect(会写库的SQL("PRAGMA table_info(\"Customer\")")).toBe(false);
+    expect(会写库的SQL("PRAGMA journal_mode")).toBe(false);
+  });
 });
