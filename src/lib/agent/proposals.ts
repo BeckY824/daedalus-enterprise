@@ -371,7 +371,7 @@ export function missingFields(p: Proposal, b?: 叫法, 建档?: 建档必填): s
     if (建档?.只用项目 && !p.source.trim()) miss.push("来源（渠道）");
     if (建档?.只用项目 && 建档.要下一步 && !p.nextAt) miss.push("下一步时间");
     // 开了超时回收下一步计划也必填（11-05，和 建档向导 的 要下一步文字 同口径）
-    if (建档?.只用项目 && 建档.要下一步 && !p.下一步?.trim()) miss.push("下一步做什么");
+    if (建档?.只用项目 && 建档.要下一步 && !p.下一步?.trim()) miss.push("下一步计划");
     const 企 = 企格;
     if (企) {
       if (企.有分配方式 && typeof p.分配方式 !== "number") miss.push("分配方式");

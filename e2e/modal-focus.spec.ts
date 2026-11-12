@@ -59,15 +59,15 @@ test("新建客户 / 商机 / 线索 / 渠道：弹框开好光标就在第一�
   }
 });
 
-test("客户记录页：新建任务的弹框开好光标就在第一格", async ({ page }) => {
+test("客户记录页：新建待办的弹框开好光标就在第一格", async ({ page }) => {
   await page.setViewportSize({ width: 1960, height: 900 });
   await 登录(page);
   await page.goto("/customers");
   await page.waitForSelector(".ant-table-row");
   await page.locator(".ant-table-row .link-strong").first().click();
   await expect(page).toHaveURL(/\/customers\/[^/]+$/);
-  await page.getByRole("button", { name: /新建任务/ }).first().click();
-  await 光标在第一格(page, "新建任务");
+  await page.getByRole("button", { name: /新建待办/ }).first().click();
+  await 光标在第一格(page, "新建待办");
 });
 
 /* J-206 补：文档点名的联系人弹框没覆盖；以及「首项聚焦」撞上就地建渠道——动画那 200ms 里人已经点开的下拉被拽回第一格、当场收起 */

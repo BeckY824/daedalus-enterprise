@@ -172,17 +172,17 @@ const 头按钮 = (page: import("playwright").Page) => page.locator(".rec-head-a
 it("企业版项目模式页头（U-客户-03 → 11-12 第 2 批）：客户名这一行右端只留客户转让、客户退回公海；新开项目进了项目区；没有主按钮、删除、下拉", async () => {
   const page = await open(true, 1366, true, 全开);
   try {
-    // 编辑资料、添加 / 管理联系人、删除客户、AI 都去掉；新建沟通在沟通记录卡头、新建任务在沟通记录下方的待办卡头（11-01）
+    // 编辑资料、添加 / 管理联系人、删除客户、AI 都去掉；新建沟通在沟通记录卡头、新建待办在沟通记录下方的待办卡头（11-01）
     expect(await 头按钮(page)).toEqual(["客户转让", "客户退回公海"]);
     expect(await page.locator(".rec-head-acts .ant-btn-primary").count()).toBe(0);
     expect(await page.locator(".rec-head-acts .ant-btn-dangerous").count()).toBe(0);
     // 名字下面那一排没有了
     expect(await page.locator(".rec-acts").count()).toBe(0);
     expect(await page.locator(".rec-head .ant-dropdown-trigger").count()).toBe(0);
-    // 页面上别处也不给去掉的入口；新建任务在沟通栏的待办上
+    // 页面上别处也不给去掉的入口；新建待办在沟通栏的待办上
     const 卡上钮 = await page.locator("button").evaluateAll((bs: HTMLElement[]) => bs.filter(b => !b.closest(".rec-head")).map(b => (b.getAttribute("aria-label") ?? "") + b.innerText.replace(/\s+/g, "")));
     expect(卡上钮.filter(t => /编辑全部|添加联系人|管理联系人|删除客户|新开项目/.test(t))).toEqual([]);
-    expect(await page.locator('.rec > .rec-col > .proj-fold:has(> .proj-fold-btn[aria-label="收起待办"]) > .rec-mod > .ant-card-head .ant-card-extra').getByRole("button", { name: /新建任务/ }).count()).toBe(1);
+    expect(await page.locator('.rec > .rec-col > .proj-fold:has(> .proj-fold-btn[aria-label="收起待办"]) > .rec-mod > .ant-card-head .ant-card-extra').getByRole("button", { name: /新建待办/ }).count()).toBe(1);
     // 按钮和客户名同一行、靠右（定稿 UI：客户名一行 + 右端两颗）
     const [头, 名, 排] = await Promise.all([page.locator(".rec-head").boundingBox(), page.locator(".rec-head-id").boundingBox(), page.locator(".rec-head-acts").boundingBox()]);
     expect(排!.y).toBeLessThan(名!.y + 名!.height);

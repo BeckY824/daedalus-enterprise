@@ -715,7 +715,7 @@ export default function RecordView({
       {下一步行.map((p) => (
         <div key={`next-${p.id}`} className="rec-task">
           <span className="rec-task-k">项目</span>
-          <Link className="rec-task-t" href={p.主 ? 客户页项目地址(customer.id, p.id, "#project-follow") : `/projects/${encodeURIComponent(p.id)}#project-follow`} title={`项目「${p.名}」的下一步${p.下一步文字 ? `：${p.下一步文字}` : ""}`}>
+          <Link className="rec-task-t" href={p.主 ? 客户页项目地址(customer.id, p.id, "#project-follow") : `/projects/${encodeURIComponent(p.id)}#project-follow`} title={`项目「${p.名}」的下一步计划${p.下一步文字 ? `：${p.下一步文字}` : ""}`}>
             {p.下一步文字 ? `${p.名} · ${p.下一步文字}` : p.名}
           </Link>
           {p.下一步 && (
@@ -765,7 +765,7 @@ export default function RecordView({
         <span>待办 {待办数 > 0 && 待办数}</span>
         {!只读 && (
           <Button type="link" size="small" style={{ padding: 0, height: "auto", fontWeight: 400 }} icon={<PlusOutlined />} onClick={() => setTaskOpen(true)}>
-            新建任务
+            新建待办
           </Button>
         )}
       </div>
@@ -939,8 +939,8 @@ export default function RecordView({
       {/*
         企业版页头按钮（10-31 改版 R6 → 10-31 会议 U-客户-03 精简 → 11-12 客户详情合并第 2 批）：客户名这一行右端只留「客户转让」「客户退回公海」
         （11-12 改名，和项目区第一行的「项目转让 / 项目退回公海」分开）；「新开项目」进了项目区页签行的「＋ 新建项目」。
-        编辑资料、添加 / 管理联系人、删除客户、新建任务都不摆在这排：资料就地改（没权限的人改不了，M-权限-10），
-        「新建沟通」在沟通记录卡头，「新建任务」在待办卡头，删除客户属权限限制不再给入口。原来名字下面单独那一排（.rec-acts）去掉
+        编辑资料、添加 / 管理联系人、删除客户、新建待办都不摆在这排：资料就地改（没权限的人改不了，M-权限-10），
+        「新建沟通」在沟通记录卡头，「新建待办」在待办卡头，删除客户属权限限制不再给入口。原来名字下面单独那一排（.rec-acts）去掉
       */}
 
       {/*
@@ -1328,7 +1328,7 @@ export default function RecordView({
           全部沟通数: `${history.rows.length}${history.hasMore ? "+" : ""}`,
           待办: 摆法.待办 ? 节("待办", 待办数, !只读 && (
             <Button size="small" icon={<PlusOutlined />} onClick={() => setTaskOpen(true)}>
-              新建任务
+              新建待办
             </Button>
           ), <div className="proj-mod-body" aria-label="待办">{待办身}</div>) : null,
           开建项目: 能建项目 ? 开建项目 : null,
@@ -1410,7 +1410,7 @@ export default function RecordView({
               {/* 待办单独一块（11-01 用户：「你看待办板块你就和沟通记录放一起了」），摆在沟通记录下面 */}
               {摆法.待办 && 节("待办", 待办数, !只读 && (
                 <Button size="small" icon={<PlusOutlined />} onClick={() => setTaskOpen(true)}>
-                  新建任务
+                  新建待办
                 </Button>
               ), <div className="proj-mod-body" aria-label="待办">{待办身}</div>)}
             </>

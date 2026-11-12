@@ -733,7 +733,7 @@ export default function FollowUpForm({
               </Col>
             )}
             <Col span={24}>
-              <Form.Item name="下一步" preserve={false} label="下一步做什么" rules={[requiredText("请写下一步做什么")]}>
+              <Form.Item name="下一步" preserve={false} label="下一步计划" rules={[requiredText("请写下一步计划")]}>
                 <Input maxLength={下一步文字上限} showCount placeholder="比如：周五前发报价单给对方采购" />
               </Form.Item>
             </Col>

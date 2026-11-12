@@ -6,8 +6,8 @@
  *   编辑：不摆这一格，交上去不带 projectId
  *   开关关闭（页面不给 projects）：和原来一样是「关联商机」，交上去不带 projectId
  *   Windows 1024 / 1280 / 1366：超长项目名不横向撑出，「保存」点得中
- *   选了项目且项目能记（2026-10-30 P0-3）：多出「下一步做什么」「下一步时间」，走项目详情同一个 记项目沟通Action；
- *     11-05 起不再问「客户明确回复了吗」，下一步做什么必填；
+ *   选了项目且项目能记（2026-10-30 P0-3）：多出「下一步计划」「下一步时间」，走项目详情同一个 记项目沟通Action；
+ *     11-05 起不再问「客户明确回复了吗」，下一步计划必填；
  *     选下一步时间时预演回收日（选这天 → 回收日变为 MM-DD）
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -132,7 +132,7 @@ const 卡点默认 = { 默认类型: "轻度卡点", 默认影响: "短期不影
 const 须知 = (底子: { 起点日: string; 天数: number } | null, 能发卡点 = true) => ({ ok: true, 能记: true, phase: "线索", 要下一步: true, 回收预演: 底子, contactId: "k1", 卡点默认: 能发卡点 ? 卡点默认 : null, 卡点原因们: 能发卡点 ? ["价格", "交期"] : [] });
 const 今天 = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Shanghai" }).format(new Date());
 
-it("项目能记：不再问客户明确回复了吗，下一步做什么必填，走项目同一个 action，选明天预演回收日", async () => {
+it("项目能记：不再问客户明确回复了吗，下一步计划必填，走项目同一个 action，选明天预演回收日", async () => {
   const { page, errors } = await open({ 项目: "有", 须知: 须知({ 起点日: 今天(), 天数: 7 }) });
   try {
     // F-跟进-06：主区只有内容、卡点、下一步、下一步时间；别的在默认折起的「更多」里
@@ -143,12 +143,12 @@ it("项目能记：不再问客户明确回复了吗，下一步做什么必填�
     expect(await page.getByText("客户明确回复了", { exact: true }).count()).toBe(0);
     expect(await 格(page, "标题").isVisible()).toBe(false);
     await page.locator("#content").fill("聊了报价");
-    // 没写下一步就存：拦在主区「下一步做什么」，「更多」不用展开
+    // 没写下一步就存：拦在主区「下一步计划」，「更多」不用展开
     await page.getByRole("button", { name: /保\s*存/ }).click();
-    await expect.poll(() => 格(page, "下一步做什么").innerText()).toContain("请写下一步做什么");
+    await expect.poll(() => 格(page, "下一步计划").innerText()).toContain("请写下一步计划");
     expect(await 更多.getAttribute("aria-expanded")).toBe("false");
     expect(await page.evaluate(() => Reflect.get(window, "__项目存"))).toBeUndefined();
-    await 格(page, "下一步做什么").locator("input").fill("周五前发报价单");
+    await 格(page, "下一步计划").locator("input").fill("周五前发报价单");
     const 时 = page.locator(".ant-form-item").filter({ has: page.locator('label:text-is("下一步时间")') });
     expect(await 时.innerText()).not.toContain("回收日变为");
     await 时.getByRole("button", { name: /明\s*天/ }).click();
@@ -192,7 +192,7 @@ it("F-跟进-08：卡点在沟通内容和下一步之间，选了类型写了�
     // 位置：沟通内容 < 卡点 < 下一步
     const y = async (l: import("playwright").Locator) => (await l.boundingBox())!.y;
     expect(await y(page.locator("#content"))).toBeLessThan(await y(类型));
-    expect(await y(类型)).toBeLessThan(await y(格(page, "下一步做什么")));
+    expect(await y(类型)).toBeLessThan(await y(格(page, "下一步计划")));
     // 11-01 答复 #5：选「暂无卡点」不生成卡点，影响和描述灰着；换成别的类型才能填
     expect(await page.getByRole("textbox", { name: "卡点描述" }).isDisabled()).toBe(true);
     await 类型.click();
@@ -201,7 +201,7 @@ it("F-跟进-08：卡点在沟通内容和下一步之间，选了类型写了�
     // 11-01 B9：阻碍原因多选（不选也能交，服务端记成「其他」）
     expect(await page.getByRole("combobox", { name: "阻碍原因" }).count()).toBe(1);
     await page.locator("#content").fill("聊了报价");
-    await 格(page, "下一步做什么").locator("input").fill("周五前发报价单");
+    await 格(page, "下一步计划").locator("input").fill("周五前发报价单");
     await 格(page, "下一步时间").getByRole("button", { name: "3 天后" }).click();
     await page.getByRole("button", { name: /保\s*存/ }).click();
     await page.waitForFunction(() => Reflect.get(window, "__项目存"));

@@ -66,7 +66,7 @@ describe("下一步：自己写一句话，时间可空", () => {
     expect(规整沟通({ ...基 }, { 要下一步: false })).not.toHaveProperty("error");
   });
 
-  it("项目上记一条：不写下一步做什么存不了；只写文字不填时间能存，项目上留文字、时间空", async () => {
+  it("项目上记一条：不写下一步计划存不了；只写文字不填时间能存，项目上留文字、时间空", async () => {
     expect(await 记项目沟通Action(项目, 沟通({ 下一步: "" }))).toEqual({ ok: false, error: 要下一步文字 });
     expect(await prisma.followUpProject.count({ where: { projectId: 项目 } })).toBe(0);
     expect(await 记项目沟通Action(项目, 沟通())).toMatchObject({ ok: true });

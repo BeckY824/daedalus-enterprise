@@ -90,7 +90,7 @@ export function 项目来源默认(项目选的: string | null | undefined, 客�
 export type 规整好的沟通 = { type: string; method: string | null; initiator: string | null; content: string; occurredAt: Date; nextStepAt: Date | null; nextStepText: string | null };
 
 export const 要下一步时间 = "开了超时回收：线索、商机阶段的项目记沟通要填下一步时间";
-export const 要下一步文字 = "请写下一步做什么";
+export const 要下一步文字 = "请写下一步计划";
 
 /** 首条跟进记的是一次沟通；待办、提醒要带时间，进了项目页再排 */
 const 首条能记的 = FOLLOW_TYPES.filter((t) => t.value !== "TASK" && t.value !== "REMIND").map((t) => t.value as string);
