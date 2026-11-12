@@ -27,8 +27,8 @@ import { 收三态客户, 三态开着, 读占位词, 待交接理由, type 三�
 import { 继续持有身份, 暂缓回收不给, 能代选了, 代选起始, type 在计时 } from "./tri-state-hold";
 import { 无效沟通原因of, 有内容的沟通, 沟通生效时刻, 沟通生效时刻SQL, 生效时刻余量, 规整占位词, 默认占位词, 占位词键, 暂缓回收, 让同事结束项目, type 无效沟通原因 } from "./tri-state-quota";
 import { 能裁决三态, 能继续持有三态, 能代选三态, 是市场角色, 是销售角色, type 谁 } from "./permissions";
-import { 条线的线 } from "./line-viewer";
-import { 读组织, 是系统管理员of, 实线下属, type 组织 } from "./org";
+import { 找条线总管理 } from "./tri-state-people";
+import { 读组织, 是系统管理员of, type 组织 } from "./org";
 
 /** 状态条上的一颗按钮：动作对应 customers/tri-state-actions.ts（客户转让走客户页头那个框） */
 export type 三态条按钮 = {
@@ -202,7 +202,10 @@ const 转时刻 = (v: unknown): number | null => {
   return Number.isNaN(t) ? null : t;
 };
 
-/** 每个项目最多看最近几条挂在它上面的沟通找有效的；都无效时拿最老那条的日子兜底（偏保守：少标冷，不多标） */
+/**
+ * 每个项目先看最近几条挂在它上面的沟通（按沟通生效日倒排）找有效的；都无效再只这个项目往前翻、一次 200 条，翻到第一条有效的为止
+ * （和客户钟 最近沟通日们 同一个写法）。无效沟通不算动静（M-公海-22），一条有效的都没有就只看换节点和建档
+ */
 export const 冷项目看沟通条数 = 50;
 
 /**
@@ -223,7 +226,7 @@ UNION ALL
 SELECT 'f' AS t, x.pid AS id, x.at AS a, x.cat AS b, x.content AS content, x.src AS src FROM (
   SELECT fp."projectId" AS pid, f."occurredAt" AS at, f."createdAt" AS cat, f.content AS content,
     EXISTS (SELECT 1 FROM "FollowUpSource" s WHERE s."followUpId" = f.id) AS src,
-    ROW_NUMBER() OVER (PARTITION BY fp."projectId" ORDER BY ${沟通生效时刻SQL("f")} DESC) AS rn
+    ROW_NUMBER() OVER (PARTITION BY fp."projectId" ORDER BY ${沟通生效时刻SQL("f")} DESC, f.id DESC) AS rn
   FROM "FollowUpProject" fp JOIN "FollowUp" f ON f.id = fp."followUpId" JOIN "Project" p ON p.id = fp."projectId"
   WHERE ${合格} AND f."deletedAt" IS NULL
 ) x WHERE x.rn <= ${冷项目看沟通条数}`,
@@ -232,16 +235,38 @@ SELECT 'f' AS t, x.pid AS id, x.at AS a, x.cat AS b, x.content AS content, x.src
   const 词们 = 占位词 ?? await 页面占位词();
   const 今 = 现在.getTime();
   const 项目 = new Map<string, number[]>();
-  const 沟通 = new Map<string, { t: number; 有效: boolean }[]>();
+  const 看过 = new Map<string, number>();
+  /** 每个项目最近一条有效沟通的生效时刻 */
+  const 有效沟通 = new Map<string, number>();
+  const 收 = (x: { id: string; a: unknown; b: unknown; content: string | null; src: unknown }) => {
+    const 写入 = 转时刻(x.b);
+    if (写入 === null) return;
+    const 日期 = 转时刻(x.a);
+    const t = 沟通生效时刻(日期 === null ? null : new Date(日期), new Date(写入)).getTime();
+    if (t > 今 + 生效时刻余量) return;
+    if (!有内容的沟通(x.content, { 占位词: 词们, AI生成: Number(x.src) === 1 || x.src === true })) return;
+    有效沟通.set(x.id, Math.max(有效沟通.get(x.id) ?? t, t));
+  };
   for (const x of 行们) {
     if (x.t === "p") 项目.set(x.id, [x.a, x.b].map(转时刻).filter((t): t is number => t !== null && t <= 今));
     else {
-      const 写入 = 转时刻(x.b);
-      if (写入 === null) continue;
-      const 日期 = 转时刻(x.a);
-      const t = 沟通生效时刻(日期 === null ? null : new Date(日期), new Date(写入)).getTime();
-      if (t > 今 + 生效时刻余量) continue;
-      沟通.set(x.id, [...(沟通.get(x.id) ?? []), { t, 有效: 有内容的沟通(x.content, { 占位词: 词们, AI生成: Number(x.src) === 1 || x.src === true }) }]);
+      看过.set(x.id, (看过.get(x.id) ?? 0) + 1);
+      收(x);
+    }
+  }
+  // 最近那几条都无效、还可能有更早的：只这个项目往前翻（少见）
+  for (const [id, n] of 看过) {
+    if (n < 冷项目看沟通条数 || 有效沟通.has(id)) continue;
+    for (let 跳 = n; !有效沟通.has(id); 跳 += 200) {
+      const 往前 = await prisma.$queryRawUnsafe<{ id: string; a: unknown; b: unknown; content: string | null; src: unknown }[]>(
+        `SELECT fp."projectId" AS id, f."occurredAt" AS a, f."createdAt" AS b, f.content AS content,
+    EXISTS (SELECT 1 FROM "FollowUpSource" s WHERE s."followUpId" = f.id) AS src
+  FROM "FollowUpProject" fp JOIN "FollowUp" f ON f.id = fp."followUpId"
+  WHERE fp."projectId" = ? AND f."deletedAt" IS NULL ORDER BY ${沟通生效时刻SQL("f")} DESC, f.id DESC LIMIT 200 OFFSET ${跳}`,
+        id,
+      );
+      for (const x of 往前) 收(x);
+      if (往前.length < 200) break;
     }
   }
   const 今天 = beijingDay(现在);
@@ -249,11 +274,8 @@ SELECT 'f' AS t, x.pid AS id, x.at AS a, x.cat AS b, x.content AS content, x.src
   const 标冷 = 规则.三态.冷项目.标冷;
   const 出: Record<string, number> = {};
   for (const [id, 时刻们] of 项目) {
-    const 条们 = 沟通.get(id) ?? [];
-    const 有效 = 条们.filter((f) => f.有效).map((f) => f.t);
-    // 看满了还没找到有效的：拿看到的最老那条兜底（不往更早翻，偏少标冷）
-    const 兜底 = !有效.length && 条们.length >= 冷项目看沟通条数 ? [Math.min(...条们.map((f) => f.t))] : [];
-    const 全 = [...时刻们, ...有效, ...兜底];
+    const 有效 = 有效沟通.get(id);
+    const 全 = 有效 === undefined ? 时刻们 : [...时刻们, 有效];
     if (!全.length) continue;
     const 日 = beijingDay(new Date(Math.max(...全)));
     const 天 = 差天(日 > 起算日 ? 日 : 起算日, 今天);
@@ -283,14 +305,30 @@ export function 留痕说法(x: { fromState: string | null; toState: string; via
   return 理由 ? `${换}（${理由}）` : 换;
 }
 
-/** 理由原文谁看得到（B1）：负责人本人、他的实线上级链（停用了按停用前的上级往上数）、本线条线总管理、系统管理员 */
+/**
+ * 理由原文谁看得到（B1）：负责人本人、他的上级链、本线条线总管理、系统管理员。
+ * 上级链按实线上级一级级往上数，中间哪一级停用了穿过去（停用的人按停用前手填的上级接着往上），停用的人自己不算；
+ * 本线条线总管理用主干同一个兜底（tri-state-people.ts 找条线总管理：客户线没填按负责人的线，负责人停用了 / 都没有落到系统管理员）
+ */
 export function 能看理由(me: 谁, org: 组织, c: { salesOwnerId: string; bizLine: string | null }): boolean {
   if (me.id === c.salesOwnerId || 是系统管理员of(org, me.id)) return true;
-  const 下属 = 实线下属(org, me.id);
-  const 离职上 = org.离职上级?.get(c.salesOwnerId);
-  if (下属.has(c.salesOwnerId) || (离职上 && (离职上 === me.id || 下属.has(离职上)))) return true;
-  const 线 = c.bizLine === "内贸" || c.bizLine === "外贸" ? c.bizLine : org.成员.get(c.salesOwnerId)?.line ?? null;
-  return !!线 && 条线的线(org, me.id) === 线;
+  if (上级链(org, c.salesOwnerId).has(me.id)) return true;
+  return 找条线总管理(org, c.bizLine, c.salesOwnerId).includes(me.id);
+}
+
+/** 一个人往上的实线上级（只收在职的；停用的穿过去接着往上） */
+function 上级链(org: 组织, userId: string): Set<string> {
+  const 链 = new Set<string>();
+  const 走过 = new Set<string>([userId]);
+  let 当前: string | null = userId;
+  while (当前) {
+    const 上: string | null = org.成员.get(当前)?.managerId ?? org.离职上级?.get(当前) ?? null;
+    if (!上 || 走过.has(上)) break;
+    走过.add(上);
+    if (org.成员.has(上)) 链.add(上);
+    当前 = 上;
+  }
+  return 链;
 }
 
 /** 留痕原行 → 一行一句；名字先从人名表找，找不到的一次补查 */

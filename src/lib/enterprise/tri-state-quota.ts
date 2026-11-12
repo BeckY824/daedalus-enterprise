@@ -152,6 +152,27 @@ export function 额度回满(钟: 钟上额度, 最近有内容沟通日: string
   return { holdCount: 0, holdDays: 0, quotaResetDay: 最近有内容沟通日, 回满: true };
 }
 
+/** 一条有效沟通（额度重置判定用）：生效日（上海日）、写入时间 */
+export type 额度候选沟通 = { 日: string; 写: Date };
+/** 钟上的一次动静（不是沟通的：建项目、换节点、算数的换负责人）：上海日、发生时刻（这几样都是当时写的，发生时刻就是写入时刻） */
+export type 动静事件 = { 日: string; 时: Date };
+
+/**
+ * 继续持有额度、暂缓回收次数按哪天重置（M-公海-54，客户 11-12）：一条有效沟通的生效日严格晚于写入它之前的「当前最近动静日」（钟的归零日：
+ * 起算日、项目推进、算数的换负责人、更早的有效沟通）才重置；同一天不算推进，起算日（含）之前的一律不算。
+ * 按事实算、不存决定：撤销 / 删了那条沟通，下次算就没有它，额度和次数回到没记它时的样子。
+ * 候选按生效日倒排；取第一条「写入时它之前没有不早于它生效日的动静」的。更早的有效沟通不必单列：它要是不早于候选又在候选之前写，
+ * 它自己就会先被选中（同一天的结果一样），它要是被挡了，挡它的那次动静也挡候选
+ */
+export function 额度沟通日of(候选们: readonly 额度候选沟通[], 事件们: readonly 动静事件[], 起算日: string): string | null {
+  for (const c of 候选们) {
+    if (c.日 <= 起算日) return null;
+    if (事件们.some((e) => e.日 >= c.日 && e.时.getTime() < c.写.getTime())) continue;
+    return c.日;
+  }
+  return null;
+}
+
 /** 状态留痕的一行（读库时取这几列） */
 export type 留痕行 = { 日: string; fromState: string | null; toState: string; via: string; reason: string | null; holdDays: number | null };
 

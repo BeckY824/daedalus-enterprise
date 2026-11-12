@@ -15,13 +15,15 @@ import { resetDb } from "./reset";
 import { 三态夜扫 } from "@/lib/enterprise/tri-state-db";
 import { 加天 } from "@/lib/enterprise/tri-state";
 import { 继续持有, 暂缓回收动作, 让同事结束项目动作 } from "@/lib/enterprise/tri-state-hold";
-import { 读三态条, 读客户三态, 读冷项目, 留痕说法, 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
+import { 读三态条, 读客户三态, 读冷项目, 留痕说法, 短沟通提示, 冷项目看沟通条数, 能看理由 } from "@/lib/enterprise/tri-state-detail";
+import { 读组织 } from "@/lib/enterprise/org";
 import { 无效沟通原因of, 短沟通话of } from "@/lib/enterprise/tri-state-quota";
 import { 默认组织规则, 默认三态规则, type 组织规则 } from "@/lib/project/org-rules";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 等通知推完 } from "@/lib/enterprise/notify";
 
-const 起 = "2026-11-01";
+/** 用设置里的起算日（默认组织规则），不写死日子 */
+const 起 = 默认组织规则.超时回收.起算日!;
 const 日 = (n: number) => 加天(起, n);
 const 早 = (n: number) => new Date(`${日(n)}T00:10:00+08:00`);
 const 白天 = (n: number) => new Date(`${日(n)}T10:00:00+08:00`);
@@ -186,6 +188,18 @@ describe("C11 冷项目", () => {
   });
   const 冷的线索 = async () => (await prisma.project.create({ data: { name: "线索", customerId: 客户, ownerId: 人.乙.id, creatorId: 人.乙.id, createdAt: new Date("2026-10-01T10:00:00+08:00") } })).id;
 
+  it("无效沟通不算动静、也不兜底：最近 50 多条都无效时往前翻到第一条有效的；一条有效的都没有只看建档和换节点", async () => {
+    const p = await 冷的线索();
+    await prisma.followUp.createMany({ data: Array.from({ length: 冷项目看沟通条数 + 5 }, (_, i) => ({ customerId: 客户, ownerId: 人.乙.id, type: "PHONE", title: "", content: "OK", status: "已完成", occurredAt: 白天(100 + (i % 10)), createdAt: 白天(100 + (i % 10)) })) });
+    const 无效们 = await prisma.followUp.findMany({ where: { content: "OK" }, select: { id: true } });
+    await prisma.followUpProject.createMany({ data: 无效们.map((f) => ({ followUpId: f.id, projectId: p, node: "初步接触" })) });
+    // 一条有效的都没有：从起算日数（不拿无效的兜底）
+    expect(await 读冷项目([p], 白天(120))).toEqual({ [p]: 120 });
+    // 第 30 天那条有效的排在 55 条无效的后面：翻到它
+    await 挂沟通(p, "电话聊了预算和交付时间", 30, 30);
+    expect(await 读冷项目([p], 白天(120))).toEqual({ [p]: 90 });
+  });
+
   it("B3：挂项目的无效短沟通、只有素材没文字（空内容 / 只有纪要链接）不清冷标；一条有效沟通清掉", async () => {
     const p = await 冷的线索();
     await 挂沟通(p, "OK", 100, 100);
@@ -245,6 +259,27 @@ describe("C13 状态留痕 / C12 短沟通", () => {
     for (const k of ["总外", "丙"] as const) expect(await 那条(k)).toBe("继续持有，顺延 30 天");
     expect(留痕说法({ fromState: "待回收", toState: "待回收", via: "总管理裁决", reason: "暂缓回收：月底前结项", holdDays: null }, false)).toBe("暂缓回收");
     expect(留痕说法({ fromState: "活跃", toState: "沉睡", via: "自动", reason: "满 90 天没有有效沟通", holdDays: null }, false)).toBe("活跃 → 沉睡（满 90 天没有有效沟通）");
+  });
+
+  it("B1 理由可见：上级链穿过停用的中间一级往上数；负责人停用、客户没填业务线时本线总管理按主干兜底（落到系统管理员）", async () => {
+    const 建 = async (k: string, active = true) => (await prisma.user.create({ data: { email: k, name: k, title: "", role: "SALES", password: "x", active } })).id;
+    const 上 = await 建("上"), 中 = await 建("中", false);
+    await prisma.entMember.createMany({ data: [{ userId: 上, bizRole: "sales_mgr", line: "内贸" }, { userId: 中, bizRole: "sales_mgr", line: "内贸", managerId: 上 }] });
+    await prisma.entMember.update({ where: { userId: 人.乙.id }, data: { managerId: 中 } });
+    const 看 = async (id: string, c: { salesOwnerId: string; bizLine: string | null }) => 能看理由({ id }, await 读组织(), c);
+    const 客 = { salesOwnerId: 人.乙.id, bizLine: null };
+    expect(await 看(上, 客)).toBe(true);
+    expect(await 看(中, 客)).toBe(false);
+    expect(await 看(人.甲.id, 客)).toBe(false);
+    expect(await 看(人.总内.id, 客)).toBe(true); // 客户线没填按负责人的线
+    expect(await 看(人.总外.id, 客)).toBe(false);
+    // 负责人停用、客户没填线：找条线总管理 落到系统管理员；停用前的上级链照样往上
+    await prisma.user.update({ where: { id: 人.乙.id }, data: { active: false } });
+    expect(await 看(人.总内.id, 客)).toBe(false);
+    expect(await 看(人.系.id, 客)).toBe(true);
+    expect(await 看(上, 客)).toBe(true);
+    // 客户填了线：本线总管理照看得到
+    expect(await 看(人.总内.id, { ...客, bizLine: "内贸" })).toBe(true);
   });
 
   it("短沟通：原因按同一个判定；客户在计时才提示，AI 起草的、三态关着的不提示", async () => {

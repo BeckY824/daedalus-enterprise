@@ -16,7 +16,8 @@
  *     同一对负责人 7 天内第 2 次起撤销的，状态留痕里记「撤销转让·计次」，算次数时当一次不归零的转让（tri-state-transfer.ts 撤销计次们）
  *   - 推后、暂缓回收：读状态留痕（tri-state-quota.ts 留痕转推后 / 最近暂缓回收日）
  *   - 本轮提醒：钟上的 noticeCount / lastNoticeDay。待回收时当「本轮待回收提醒次数 / 最近提醒日」；沉睡时 lastNoticeDay 当「本轮进入沉睡提醒日」
- *     （沉睡期间发的周报、抄上级也写 lastNoticeDay，日子都不早于沉睡节点日，不影响「进入沉睡那条发过没有」的判法）；换状态时清零
+ *     （沉睡期间发的周报、抄上级也写 lastNoticeDay，日子都不早于沉睡节点日，不影响「进入沉睡那条发过没有」的判法）；换状态时清零，
+ *     同一轮里进出活跃（白天存了又撤）不清，见 钟要改
  *
  * 写什么：
  *   - 客户钟：一位客户一行，状态（活跃 / 沉睡 / 待回收；该进公海也记待回收；进了客户公海记「公海」）、进入日、被挡、成交成立日（首次成立那天）、额度缓存（次数、合计天数、额度上次重置日）
@@ -32,10 +33,10 @@ import { 企业版 } from "./switch";
 import { getBusiness } from "@/lib/business";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import type { 组织规则 } from "@/lib/project/org-rules";
-import { 算三态, 解除后几天收, type 三态事实, type 三态结果, type 三态项目 } from "./tri-state";
-import { 换负责人们of, 撤销计次方式, 并上撤销计次, type 换人行 } from "./tri-state-transfer";
+import { 算三态, 解除后几天收, 计时起算日, type 三态事实, type 三态结果, type 三态项目 } from "./tri-state";
+import { 换负责人们of, 撤销计次方式, 并上撤销计次, 换人方式, type 换人行 } from "./tri-state-transfer";
 export { 换负责人们of } from "./tri-state-transfer";
-import { 待交接理由, 有内容的沟通, 沟通生效时刻, 沟通生效时刻SQL, 生效时刻余量, 暂缓回收次数, 默认占位词, 占位词键, 规整占位词, 留痕转推后, 最近暂缓回收日, 额度回满, 留痕方式, 自动收回次数, type 留痕行 } from "./tri-state-quota";
+import { 待交接理由, 有内容的沟通, 沟通生效时刻, 沟通生效时刻SQL, 生效时刻余量, 额度沟通日of, type 额度候选沟通, type 动静事件, 暂缓回收次数, 默认占位词, 占位词键, 规整占位词, 留痕转推后, 最近暂缓回收日, 留痕方式, 自动收回次数, type 留痕行 } from "./tri-state-quota";
 import { 项目业务线 } from "./assign-line";
 import { 读组织, type 组织 } from "./org";
 import { 是市场角色, 是销售角色 } from "./permissions";
@@ -159,11 +160,13 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
     const 退回的 = 全部项目.filter((p) => p.pooledAt !== null);
     const 项目ids = 全部项目.map((p) => p.id);
     const 推进 = new Map<string, Date>(), 结局 = new Map<string, Date>();
+    /** 每个项目换节点的时刻（额度重置判定要知道每次推进是什么时候写的，M-公海-54） */
+    const 换节点们 = new Map<string, Date[]>();
     for (const 小 of 分批(项目ids)) {
-      // 最近换节点、最近定结局一句读：按（项目、结局）分组取最晚，有结局的那几组再取一次最晚
-      for (const g of await db.projectNodeLog.groupBy({ by: ["projectId", "toResult"], where: { projectId: { in: 小 }, kind: "node" }, _max: { at: true } })) {
-        const t = g._max.at;
-        if (!t) continue;
+      // 换节点一句读：最近换节点、最近定结局在内存里取最晚
+      for (const g of await db.projectNodeLog.findMany({ where: { projectId: { in: 小 }, kind: "node" }, select: { projectId: true, at: true, toResult: true } })) {
+        const t = g.at;
+        换节点们.set(g.projectId, [...(换节点们.get(g.projectId) ?? []), t]);
         if (!推进.has(g.projectId) || 推进.get(g.projectId)! < t) 推进.set(g.projectId, t);
         if (g.toResult !== null && (!结局.has(g.projectId) || 结局.get(g.projectId)! < t)) 结局.set(g.projectId, t);
       }
@@ -212,18 +215,33 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
       const 末 = (理由们: readonly string[]) => { for (let i = 痕们.length - 1; i >= 0; i--) if (理由们.includes(痕们[i].reason ?? "")) return i; return -1; };
       const 解除下标 = 末([暂缓解除理由]);
       const 暂缓解除日 = 解除下标 >= 0 && 解除下标 > 末([被挡理由, 旧被挡理由]) ? beijingDay(痕们[解除下标].at) : null;
-      const 换人们 = 换负责人们of(并上撤销计次(换人of.get(c.id) ?? [], 计次.get(c.id)), 规则.三态);
+      const 换人原行 = 并上撤销计次(换人of.get(c.id) ?? [], 计次.get(c.id));
+      const 换人们 = 换负责人们of(换人原行, 规则.三态);
       const 领取日 = (换人of.get(c.id) ?? []).filter((x) => x.kind === "claim" || x.kind === "pool-assign").map((x) => beijingDay(x.at)).reduce<string | null>(较晚日, null);
+      // M-公海-54：额度、暂缓次数只被「严格晚于写入前最近动静日」的有效沟通重置。动静 = 建项目、换节点（退回项目公海的只算退回前）、算数的换负责人
+      const 动静: 动静事件[] = [];
+      for (const p of [...ps, ...(退回of.get(c.id) ?? [])]) {
+        动静.push({ 日: beijingDay(p.createdAt), 时: p.createdAt });
+        for (const t of 换节点们.get(p.id) ?? []) if (!p.pooledAt || t <= p.pooledAt) 动静.push({ 日: beijingDay(t), 时: t });
+      }
+      let 第几条 = 0;
+      for (const x of 换人原行) {
+        if (!换人方式[x.kind]) continue;
+        if (换人们[第几条++]?.归零 !== false) 动静.push({ 日: beijingDay(x.at), 时: x.at });
+      }
+      const 沟通 = 沟通日.get(c.id);
+      const 额度沟通日 = 沟通 ? 额度沟通日of(沟通.候选们, 动静, 计时起算日({ 系统起算日: 起算日, 导入完成日: 导入.get(c.id) ?? null })) : null;
+      const 额度重置日 = 较晚日(额度沟通日, 领取日);
       const 事实: 三态事实 = {
         有负责人,
         在公海: !!c.pool,
         已删: false,
         无效: !!c.poolInvalidAt,
         负责人是市场: 有负责人 && 是市场角色(org, c.salesOwnerId) && !是销售角色(org, c.salesOwnerId),
-        最近沟通日: 沟通日.get(c.id) ?? null,
-        最近有内容沟通日: 沟通日.get(c.id) ?? null,
+        最近沟通日: 沟通?.日 ?? null,
+        最近有内容沟通日: 沟通?.日 ?? null,
         // T4：从公海领走 / 分走是新一轮持有，额度回满（不看前手用掉的）；市场首次分配、转让、离职交接不回满
-        额度重置日: 较晚日(沟通日.get(c.id) ?? null, 领取日),
+        额度重置日,
         // S7：拨过的钟不回退——项目后来作废 / 删了，和钟上记的推进底日取较晚
         最近推进日: 较晚日(最近推进, 钟?.progressDay ?? null),
         导入完成日: 导入.get(c.id) ?? null,
@@ -236,7 +254,7 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
         暂缓解除日,
         上回被挡: !!钟?.blocked,
         最近被挡日: (() => { const i = 末([被挡理由, 旧被挡理由]); return i >= 0 ? beijingDay(痕们[i].at) : null; })(),
-        暂缓回收次数: 暂缓回收次数(留痕, 较晚日(沟通日.get(c.id) ?? null, 领取日)),
+        暂缓回收次数: 暂缓回收次数(留痕, 额度重置日),
         本轮待回收提醒次数: 待回收中 ? 钟!.noticeCount : 0,
         本轮最近待回收提醒日: 待回收中 ? 钟!.lastNoticeDay : null,
         本轮进入沉睡提醒日: 钟?.state === "沉睡" ? 钟.lastNoticeDay : null,
@@ -287,8 +305,10 @@ const 转时刻 = (v: unknown): Date | null => {
  * 填了未来日期的按写入时间算。一句 SQL 按生效日倒排、每位取最近几条判；都无效（空的、不足 4 字、只有占位词、只有链接）才逐位往前找。
  * 生效日晚于现在的不算；同一天几条只算一次（只取日子）；软删的不算
  */
-async function 最近沟通日们(db: 库, ids: readonly string[], 现在: Date, 预读词们?: readonly string[]): Promise<Map<string, string>> {
-  const 出 = new Map<string, string>();
+/** 一位客户的有效沟通：最近那条的生效日（拨钟用），和看到的有效沟通（按生效日倒排，额度重置判定用，tri-state-quota.ts 额度沟通日of） */
+type 客户沟通 = { 日: string; 候选们: 额度候选沟通[] };
+async function 最近沟通日们(db: 库, ids: readonly string[], 现在: Date, 预读词们?: readonly string[]): Promise<Map<string, 客户沟通>> {
+  const 出 = new Map<string, 客户沟通>();
   if (!ids.length) return 出;
   const 词们 = 预读词们 ?? await 读占位词(db);
   type 行 = { cid: string; content: string; src: unknown; at: unknown; cat: unknown };
@@ -303,23 +323,24 @@ async function 最近沟通日们(db: 库, ids: readonly string[], 现在: Date,
   );
   const 按客户 = new Map<string, 行[]>();
   for (const x of 先看) 按客户.set(x.cid, [...(按客户.get(x.cid) ?? []), x]);
-  const 找 = (们: 行[]) => {
-    // SQL 已按生效日倒排；这里按同一把尺再排一次（不依赖数据库的日期存法）
-    const 排 = 们.map((x) => ({ x, t: 生效(x) })).filter((y): y is { x: 行; t: Date } => !!y.t && y.t.getTime() <= 现在.getTime() + 生效时刻余量).sort((a, b) => b.t.getTime() - a.t.getTime());
-    return 排.find((y) => 有效(y.x))?.t ?? null;
-  };
+  /** 有效的那几条，按生效日倒排（SQL 已排过，这里按同一把尺再排一次，不依赖数据库的日期存法） */
+  const 有效们 = (们: 行[]): 额度候选沟通[] => 们
+    .map((x) => ({ x, t: 生效(x), 写: 转时刻(x.cat) }))
+    .filter((y): y is { x: 行; t: Date; 写: Date } => !!y.t && !!y.写 && y.t.getTime() <= 现在.getTime() + 生效时刻余量 && 有效(y.x))
+    .sort((a, b) => b.t.getTime() - a.t.getTime())
+    .map((y) => ({ 日: beijingDay(y.t), 写: y.写 }));
   for (const [cid, 们] of 按客户) {
-    let t = 找(们);
+    const 候选们 = 有效们(们);
     // 最近几条都无效：只这位往前翻
-    for (let 跳 = 们.length; !t && 们.length >= 最近沟通先看条数; 跳 += 200) {
+    for (let 跳 = 们.length; !候选们.length && 们.length >= 最近沟通先看条数; 跳 += 200) {
       const 往前 = await db.$queryRawUnsafe<行[]>(
         `SELECT ${列} FROM "FollowUp" f WHERE f."customerId" = ? AND ${条件} ORDER BY ${沟通生效时刻SQL("f")} DESC, f.id DESC LIMIT 200 OFFSET ${跳}`,
         cid,
       );
-      t = 找(往前);
+      候选们.push(...有效们(往前));
       if (往前.length < 200) break;
     }
-    if (t) 出.set(cid, beijingDay(t));
+    if (候选们.length) 出.set(cid, { 日: 候选们[0].日, 候选们 });
   }
   return 出;
 }
@@ -347,30 +368,39 @@ export function 钟要改(c: Pick<三态客户, "钟" | "事实">, r: Extract<�
   const 进入日 = 状态 === "活跃" ? r.归零日 : 状态 === "沉睡" ? r.节点.沉睡 : r.节点.待回收;
   const 被挡 = r.被挡;
   const 钟 = c.钟;
-  const 额 = 额度回满({ holdCount: 钟?.holdCount ?? 0, holdDays: 钟?.holdDays ?? 0, quotaResetDay: 钟?.quotaResetDay ?? null }, c.事实.额度重置日 ?? c.事实.最近有内容沟通日 ?? null);
+  // 额度上次重置日：钟上只是给界面看的缓存，跟着事实走（撤销 / 删了重置它的沟通会往回挪，M-公海-54）
+  const 重置日 = c.事实.额度重置日 ?? null;
   const 成交日 = 钟?.dealDay ?? (r.成交首次成立 ? 今天 : null);
   const 留痕: { fromState: string | null; toState: string; reason: string }[] = [];
   if (!钟) {
     留痕.push({ fromState: null, toState: 状态, reason: "开始按客户计三态" });
     if (被挡) 留痕.push({ fromState: 状态, toState: 状态, reason: 被挡理由 });
     return {
-      data: { state: 状态, enteredDay: 进入日, blocked: 被挡, dealDay: 成交日, holdCount: r.继续持有.已用次数, holdDays: r.继续持有.已用天数, quotaResetDay: 额.quotaResetDay, progressDay: c.事实.最近推进日 },
+      data: { state: 状态, enteredDay: 进入日, blocked: 被挡, dealDay: 成交日, holdCount: r.继续持有.已用次数, holdDays: r.继续持有.已用天数, quotaResetDay: 重置日, progressDay: c.事实.最近推进日 },
       留痕,
     };
   }
   const 换了 = 钟.state !== 状态;
+  /*
+    同一轮里进出活跃（白天存了一条有效沟通变活跃、又撤销 / 删掉回到原状态）：本轮已发的提醒（次数、最近提醒日、进入沉睡那条）、
+    顺延到哪天、最近一次暂缓回收的日子都留着，回来以后和没发生过一样，不重发、不往后拖进公海。
+    进活跃时这几列不动（活跃时没人读它们）；从活跃回沉睡 / 待回收时，最近提醒日不早于这一轮的节点日 = 同一轮，留着；更早的是旧一轮，清零。
+    沉睡 ↔ 待回收、从公海回来照旧一换就清
+  */
+  const 同一轮 = 换了 && 钟.state !== 公海状态 && (状态 === "活跃" || (钟.state === "活跃" && 钟.lastNoticeDay !== null && 钟.lastNoticeDay >= 进入日));
+  const 回到同一轮被挡 = 换了 && 钟.state === "活跃" && 被挡 && !!c.事实.最近被挡日 && c.事实.最近被挡日 >= r.节点.待回收;
   if (换了) 留痕.push({ fromState: 钟.state, toState: 状态, reason: 换状态说明 ?? 换状态理由(钟.state, 状态, r) });
-  if (被挡 && (!钟.blocked || 换了)) 留痕.push({ fromState: 状态, toState: 状态, reason: 被挡理由 });
+  if (被挡 && (!钟.blocked || 换了) && !回到同一轮被挡) 留痕.push({ fromState: 状态, toState: 状态, reason: 被挡理由 });
   // T5：今天刚解除（钟上还记着被挡、留痕里还没有解除那行）
   if (钟.blocked && !被挡 && r.暂缓解除日 === 今天 && !c.事实.暂缓解除日) 留痕.push({ fromState: 状态, toState: 状态, reason: 暂缓解除理由 });
   const data: Partial<Omit<Prisma.EntCustomerClockUncheckedCreateInput, "customerId">> = {};
-  if (换了) Object.assign(data, { state: 状态, enteredDay: 进入日, noticeCount: 0, lastNoticeDay: null, holdUntil: null });
+  if (换了) Object.assign(data, { state: 状态, enteredDay: 进入日 }, 同一轮 ? {} : { noticeCount: 0, lastNoticeDay: null, holdUntil: null });
   else if (钟.enteredDay !== 进入日) data.enteredDay = 进入日; // 推后顺延、规则改天数：同一状态里进入日跟着挪
   if (钟.blocked !== 被挡) data.blocked = 被挡;
   if (钟.dealDay !== 成交日) data.dealDay = 成交日;
   if (钟.holdCount !== r.继续持有.已用次数) data.holdCount = r.继续持有.已用次数;
   if (钟.holdDays !== r.继续持有.已用天数) data.holdDays = r.继续持有.已用天数;
-  if (额.回满) data.quotaResetDay = 额.quotaResetDay;
+  if (钟.quotaResetDay !== 重置日) data.quotaResetDay = 重置日;
   // S7：推进底日只往后挪
   const 推进 = c.事实.最近推进日;
   if (推进 && (钟.progressDay === null || 推进 > 钟.progressDay)) data.progressDay = 推进;
@@ -505,17 +535,30 @@ export async function 写一批(规则: 组织规则, org: 组织, 们: Map<stri
 }
 
 /**
- * 存沟通后马上重算这一位（用户 11-12「按建议」）：新建、编辑、删除、撤销一条沟通之后调，让列表的状态标签和状态筛选不用等夜扫。
- * 就是夜扫里那段 写一批（一笔事务里按最新事实重收、算、写钟和留痕，和夜扫同时跑也只按事务里最新的写），只算这一位；
- * 不自动进公海、不发提醒（那些照旧夜里做）。三态关着回去不查库；出任何错都吞掉——沟通已经存了，不能让重算把保存说成失败
+ * 存沟通后马上重算（用户 11-12「按建议」）：凡是写 / 改 / 删 / 恢复沟通的入口，事务提交以后调，让列表的状态标签和状态筛选不用等夜扫
+ * （哪些入口接了见 tests/ent-tri-state-save-recalc.test.ts 的静态守卫）。
+ * 先在事务外按最新事实算一遍：钟和留痕都不用改（无效短沟通、补录的旧沟通、同一天又一条）就到此为止，不开写事务；
+ * 要改才走夜扫里那段 写一批（一笔事务里按最新事实重收、算、写钟和留痕，和夜扫同时跑也只按事务里最新的写）。
+ * 不自动进公海、不发提醒（那些照旧夜里做）。三态关着回去不查库；出任何错都吞掉——沟通已经存了，不能让重算把保存说成失败。
+ * 和夜扫的差别：这里按「现在」的组织规则算。管理员白天改了天数，这位客户的钟马上按新天数写；其余客户照旧等当晚那遍
  */
-export async function 存沟通后重算三态(customerId: string | null | undefined, 现在: Date = new Date()): Promise<void> {
+export async function 存沟通后重算三态(customerId: string | readonly (string | null | undefined)[] | null | undefined, 现在: Date = new Date()): Promise<void> {
   try {
-    if (!customerId) return;
+    const ids = [...new Set((Array.isArray(customerId) ? customerId : [customerId]).filter((x): x is string => typeof x === "string" && !!x))];
+    if (!ids.length) return;
     const 规则 = await 生效组织规则();
     if (!(await 三态开着(规则))) return;
     const org = await 读组织();
-    await 看全部(() => 写一批(规则, org, [customerId], 现在, beijingDay(现在)));
+    const 今天 = beijingDay(现在);
+    const 先算 = await 看全部(() => 收三态客户(prisma, ids, 规则, org, 现在));
+    const 要写 = ids.filter((id) => {
+      const c = 先算.get(id);
+      if (!c) return false;
+      const r = 算三态(c.事实, 规则.三态, 今天);
+      if (!r.计时) return false;
+      return !!钟要改(c, r, 今天) || c.待存归零.length > 0 || (c.负责人停用 && !c.待交接日);
+    });
+    if (要写.length) await 看全部(() => 写一批(规则, org, 要写, 现在, 今天));
   } catch (e) {
     console.error("存沟通后重算三态失败", e);
   }

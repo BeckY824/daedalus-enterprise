@@ -33,7 +33,11 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 默认组织规则, 默认三态规则 } from "@/lib/project/org-rules";
-import { 三态夜扫, 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
+import { 三态夜扫, 存沟通后重算三态, 收三态客户 } from "@/lib/enterprise/tri-state-db";
+import { 生效组织规则 } from "@/lib/project/org-rules-store";
+import { 读组织 } from "@/lib/enterprise/org";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import path from "node:path";
 import { 加天 } from "@/lib/enterprise/tri-state";
 import { 沟通生效时刻 } from "@/lib/enterprise/tri-state-quota";
 import { 读一位三态 } from "@/lib/enterprise/tri-state-hold";
@@ -151,5 +155,175 @@ describe("存沟通后马上重算", () => {
   });
 });
 
-/** 存一条沟通后重算（写一批：一笔事务里重收一位客户的事实、算、写钟）多出的查询上限：11-12 实测关 11 / 开 32，多 21 条，上限 = 实测 +2 */
-const 存沟通后多查上限 = 23;
+/**
+ * 存一条沟通后重算多出的查询上限（钟不用改的那种：事务外收一遍事实、算完不开写事务）。
+ * 11-12 第一版（总是开写事务）实测关 11 / 开 32，多 21；第三轮先算后写，实测多 19 条，上限 = 实测 +2。要写钟时再加一遍事务里的重收和写
+ */
+const 存沟通后多查上限 = 21;
+
+/** 软删一条沟通再重算（撤销 / 删除动作最后都是这两步：沟通不算了 → 存沟通后重算三态） */
+const 删了重算 = async (id: string) => {
+  await prisma.followUp.update({ where: { id }, data: { deletedAt: new Date() } });
+  await 存沟通后重算三态(客户);
+};
+const 钟行 = () => prisma.entCustomerClock.findUniqueOrThrow({ where: { customerId: 客户 } });
+
+describe("存了又撤：本轮已发的提醒和没发生过一样（第三轮第 1 条）", () => {
+  it("待回收、已提醒 2 次 → 存有效沟通（变活跃）→ 撤销：仍是 2 次、最近提醒日不变、不重发、最早进公海日不变", async () => {
+    await 开三态(185);
+    await 三态夜扫();
+    expect(await 钟()).toBe("待回收");
+    await prisma.entCustomerClock.update({ where: { customerId: 客户 }, data: { noticeCount: 2, lastNoticeDay: 前(1) } });
+    const 前r = (await 读一位三态(客户))!;
+    const r = await 记跟进("电话聊了预算和交付时间");
+    expect(await 钟()).toBe("活跃");
+    await 删了重算((r as { id: string }).id);
+    const 后 = await 钟行();
+    expect(后).toMatchObject({ state: "待回收", noticeCount: 2, lastNoticeDay: 前(1) });
+    const 后r = (await 读一位三态(客户))!;
+    expect(后r.最早进公海日).toBe(前r.最早进公海日);
+    expect(后r.提醒).toEqual(前r.提醒);
+  });
+
+  it("沉睡、进入沉睡那条已发 → 存了又删：不重发进入沉睡", async () => {
+    await 开三态(95);
+    await 三态夜扫();
+    expect((await 读一位三态(客户))!.提醒).toMatchObject({ 事由: "进入沉睡" });
+    // 进入沉睡那条发过了（提醒那遍发成会记最近提醒日）
+    await prisma.entCustomerClock.update({ where: { customerId: 客户 }, data: { lastNoticeDay: 今天 } });
+    expect((await 读一位三态(客户))!.提醒).toBeNull();
+    const 钟前 = await 钟行();
+    const r = await 记跟进("电话聊了预算和交付时间");
+    expect(await 钟()).toBe("活跃");
+    await 删了重算((r as { id: string }).id);
+    expect(await 钟行()).toMatchObject({ state: "沉睡", lastNoticeDay: 今天, noticeCount: 钟前.noticeCount });
+    expect((await 读一位三态(客户))!.提醒).toBeNull();
+  });
+
+  it("夜扫隔了一轮真的变活跃再到期：照旧清零、重新起一轮", async () => {
+    await 开三态(185);
+    await 三态夜扫();
+    await prisma.entCustomerClock.update({ where: { customerId: 客户 }, data: { noticeCount: 2, lastNoticeDay: 前(1) } });
+    expect(await 记跟进("电话聊了预算和交付时间")).toMatchObject({ ok: true });
+    expect(await 钟行()).toMatchObject({ state: "活跃", noticeCount: 2 }); // 活跃时这几列没人读，先留着
+    // 100 天后夜扫：沉睡是新一轮（节点日晚于上次提醒），清零，进入沉睡那条要重新发
+    const 以后 = new Date(Date.now() + 100 * 86400_000);
+    await 三态夜扫(以后);
+    expect(await 钟行()).toMatchObject({ state: "沉睡", noticeCount: 0, lastNoticeDay: null });
+    expect((await 读一位三态(客户, 以后))!.提醒).toMatchObject({ 事由: "进入沉睡" });
+  });
+});
+
+/*
+  额度、暂缓次数重置（M-公海-54，客户 11-12）：有效沟通的生效日严格晚于写入前的「当前最近动静日」（钟的归零日）才重置；
+  同一天不算、起算日（设置里的）及以前的不算；按事实算，撤销了回到没记时的样子
+*/
+describe("额度与暂缓次数重置只认真推进了钟的沟通", () => {
+  let 起算: string;
+  const 第 = (n: number, 时 = "10:00") => new Date(`${加天(起算, n)}T${时}:00+08:00`);
+  const 持有过 = (n: number) => prisma.entCustomerStateLog.create({ data: { customerId: 客户, fromState: "沉睡", toState: "沉睡", via: "本人", userId: 乙, reason: "我还在跟", holdDays: 30, at: 第(n) } });
+  const 暂缓过 = (n: number) => prisma.entCustomerStateLog.create({ data: { customerId: 客户, fromState: "待回收", toState: "待回收", via: "总管理裁决", userId: 乙, reason: "暂缓回收", at: 第(n) } });
+  const 推进 = async (n: number, 时 = "09:00") => {
+    const p = await prisma.project.findFirst({ where: { customerId: 客户 } }) ?? await prisma.project.create({ data: { name: "项目", customerId: 客户, ownerId: 乙, creatorId: 乙, createdAt: 第(1) } });
+    await prisma.projectNodeLog.create({ data: { projectId: p.id, userId: 乙, toPhase: "线索", toNode: "初步接触", at: 第(n, 时) } });
+  };
+  /** 沟通日期第 日 天、第 写 天写进来 */
+  const 沟通 = (日: number, 写: number, 时 = "10:00") => prisma.followUp.create({ data: { customerId: 客户, ownerId: 乙, type: "PHONE", title: "", content: "电话聊了预算和交付时间", occurredAt: 第(日, 时), createdAt: 第(写, 时) } });
+  const 看 = async () => {
+    const 规则 = await 生效组织规则();
+    const c = (await 收三态客户(prisma, [客户], 规则, await 读组织(), new Date())).get(客户)!;
+    return { 额度用了: (await 读一位三态(客户))!.继续持有.已用次数, 暂缓: c.事实.暂缓回收次数, 归零日: (await 读一位三态(客户))!.归零日, 重置日: c.事实.额度重置日 };
+  };
+
+  beforeEach(async () => {
+    await 开三态(200);
+    invalidateSettingsCache();
+    起算 = (await 生效组织规则()).超时回收.起算日!;
+    await 持有过(95);
+    await 暂缓过(96);
+  });
+
+  it("客户原话的例子：第 95 天用过一次继续持有，第 130 天项目推进，今天补录第 100 天的有效沟通 → 不推钟、不重置、第 95 天那次仍算用掉", async () => {
+    await 推进(130);
+    await 沟通(100, 199);
+    expect(await 看()).toMatchObject({ 额度用了: 1, 暂缓: 1, 归零日: 加天(起算, 130), 重置日: null });
+  });
+
+  it("同一天不算推进：当天已有项目推进，再记一条当天的有效沟通 → 不重置", async () => {
+    await 推进(140, "09:00");
+    await 沟通(140, 140, "10:00");
+    expect(await 看()).toMatchObject({ 额度用了: 1, 暂缓: 1, 归零日: 加天(起算, 140) });
+  });
+
+  it("同一天第二条沟通不另算：第一条已经重置，第二条不再挪重置日", async () => {
+    await 沟通(140, 140, "10:00");
+    await 沟通(140, 140, "15:00");
+    expect(await 看()).toMatchObject({ 额度用了: 0, 暂缓: 0, 重置日: 加天(起算, 140) });
+  });
+
+  it("起算日及以前的一律不算：补录起算日前的沟通不推钟、不重置", async () => {
+    await 沟通(-10, 199);
+    await 沟通(0, 199);
+    expect(await 看()).toMatchObject({ 额度用了: 1, 暂缓: 1, 重置日: null });
+  });
+
+  it("严格晚于当前最近动静日的才重置（继续持有、暂缓回收一起）；撤销了按事实回去", async () => {
+    await 推进(130);
+    const f = await 沟通(140, 140);
+    expect(await 看()).toMatchObject({ 额度用了: 0, 暂缓: 0, 归零日: 加天(起算, 140), 重置日: 加天(起算, 140) });
+    await prisma.followUp.update({ where: { id: f.id }, data: { deletedAt: new Date() } });
+    expect(await 看()).toMatchObject({ 额度用了: 1, 暂缓: 1, 归零日: 加天(起算, 130), 重置日: null });
+  });
+
+  it("实时记的沟通后来才有项目推进：那条沟通当时推进了钟，照样算重置", async () => {
+    await 沟通(140, 140, "10:00");
+    await 推进(140, "15:00");
+    await 推进(150);
+    expect(await 看()).toMatchObject({ 额度用了: 0, 暂缓: 0, 重置日: 加天(起算, 140) });
+  });
+});
+
+/*
+  静态守卫（第三轮第 4 条）：凡是写 / 改 / 删 / 恢复沟通（FollowUp）的源文件，要么自己调 存沟通后重算三态，
+  要么写沟通的那段跑在调用方事务里、调用方调，要么列在豁免里写明为什么。新加一个写 FollowUp 的入口没接，这条会红
+*/
+describe("写沟通的入口都接了存沟通后重算三态", () => {
+  const 根 = path.resolve("src");
+  const 豁免: Record<string, string> = {
+    "app/(app)/demo-data.ts": "灌 / 清演示数据，整批，夜扫补",
+    "app/(app)/customers/import-actions.ts": "导入撤销，整批，夜扫补",
+    "lib/enterprise-import/apply.ts": "导入（含同号只记备注、线索建项目），整批，夜扫补",
+    "lib/enterprise-import/revert.ts": "导入撤销，整批，夜扫补",
+    "lib/enterprise/legacy-cleanup.ts": "只把沟通从商机上解挂，不改内容和日期",
+    "lib/shared-ws/dataset.ts": "桌面端示例数据，不跑三态",
+    "lib/sync/local.ts": "桌面端同步，不跑三态",
+    "lib/enterprise/lead-to-project.ts": "启动时一次性老线索转项目，整批，夜扫补",
+  };
+  /** 写沟通的那段跑在调用方事务里：调用方（右边这些文件）调 */
+  const 调用方接: Record<string, string[]> = {
+    "lib/project/db.ts": ["app/(app)/projects/actions.ts"],
+    "lib/project/wizard.ts": ["app/(app)/projects/actions.ts"],
+    "lib/project/from-lead.ts": ["app/(app)/leads/actions.ts"],
+  };
+  const 写沟通 = /\.followUp\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\b|(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+"FollowUp"|FollowUp:\s*tx\.followUp/;
+  const 文件们 = (d: string): string[] => readdirSync(d).flatMap((n) => {
+    const p = path.join(d, n);
+    if (statSync(p).isDirectory()) return n === "generated" ? [] : 文件们(p);
+    return /\.(ts|tsx)$/.test(n) ? [p] : [];
+  });
+  it("没接、也没豁免的写沟通入口：没有", () => {
+    const 读 = (rel: string) => readFileSync(path.join(根, rel), "utf8");
+    const 没接: string[] = [];
+    for (const f of 文件们(根)) {
+      const rel = path.relative(根, f).split(path.sep).join("/");
+      const 文 = readFileSync(f, "utf8");
+      if (!写沟通.test(文) || rel === "lib/enterprise/tri-state-db.ts") continue;
+      if (文.includes("存沟通后重算三态(") || rel in 豁免) continue;
+      const 上 = 调用方接[rel];
+      if (上 && 上.every((x) => 读(x).includes("存沟通后重算三态("))) continue;
+      没接.push(rel);
+    }
+    expect(没接).toEqual([]);
+  });
+});
+

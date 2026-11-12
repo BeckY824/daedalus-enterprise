@@ -121,6 +121,8 @@ export async function 恢复(me: 谁, t: 软删表名, id: string): Promise<结�
 /** 恢复一条，不查谁能恢复：回收站页（恢复，先查权限）、查重捞回（查重撞上才给）共用 */
 async function 恢复一条(t: 软删表名, id: string, 操作人 = ""): Promise<结果<恢复了>> {
   const r = await 只恢复(t, id, 操作人);
+  // 客户三态：恢复了沟通（单条，或随客户连带回来），马上重算这位的钟。tri-state-db 引着 pool-link → project/db → 本文件，按需取
+  if (r.ok && r.customerId && (t === "FollowUp" || t === "Customer")) await (await import("./tri-state-db")).存沟通后重算三态(r.customerId);
   if (!r.ok || t !== "Customer" || !企业版()) return r;
   // P-删-06：原负责人已停用 → 清空负责人进客户公海（例外留在他名下）。恢复那笔提交了再办，pool-link 引着 project/db、project/db 引着本文件，按需取
   const { 恢复后停用负责人去向 } = await import("./restore-inactive-owner");
