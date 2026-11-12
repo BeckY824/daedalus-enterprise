@@ -47,6 +47,8 @@ beforeAll(async () => {
     window.__over=(x)=>root.render(包(<ProjectDetail p={{...详情(true).props.p,...x}} 能改={true} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={{们:[],能发:true,默认:{默认类型:'中度卡点',默认影响:'短期不影响'},原因们:['价格']}}/>));
     /* U-项目-07 转让：候选里有接手的人（第一个是自己） */
     window.__转=()=>root.render(包(<ProjectDetail p={详情(true).props.p} 能改={true} 候选={[{id:'qa',name:'组长甲',email:'qa@x.test'},{id:'u3',name:'接手乙',email:'u3@x.test'}]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={{们:[],能发:true,默认:{默认类型:'中度卡点',默认影响:'短期不影响'},原因们:['价格']}}/>));
+    /* 页头排版（11-12 改名后「项目转让」「项目退回公海」变长）：两枚按钮都在、超长负责人 / 创建人名 */
+    window.__头=()=>root.render(包(<ProjectDetail p={{...详情(true).props.p,能放公海:true,ownerName:'负责人'+串,creatorName:'创建人'+串}} 能改={true} 候选={[{id:'qa',name:'组长甲',email:'qa@x.test'},{id:'u3',name:'接手乙',email:'u3@x.test'}]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={{们:[],能发:true,默认:{默认类型:'中度卡点',默认影响:'短期不影响'},原因们:['价格']}}/>));
     /* P17 关联客户 / 联系人：超长客户名、超长联系人显名、选满身份，挂在右栏 */
     const 关联={客户们:[{customerId:'c1',名:'超长客户名'+串,全称:'某某超长公司名有限公司'.repeat(4),身份:['业主方','总包方','分包方','投资方'],主:true,看得到:true},
       {customerId:'c2',名:'关联客户'+串,全称:'',身份:['监理方','设计方','引荐方'],主:false,看得到:true,能进详情:true},{customerId:'c3',名:'同事的客户 #ABC123',全称:'',身份:[],主:false,看得到:false}],
@@ -1451,3 +1453,63 @@ for (const [w, h] of [[1366, 768], [1280, 720], [1440, 900]] as const) {
     } finally { await page.close(); }
   });
 }
+
+/*
+ * 项目页头排版（CI 红：owner-first-batch 375 宽「文字溢出」、排版闸门 1024 宽 AI 栏常驻「伸出 4px」）：
+ * 按钮改名变长后把标题区挤到比星还窄。判定照 e2e 两处的口径：
+ *   文字溢出 = scrollWidth > clientWidth + 1 且 overflow-x 是 visible、不是 inline（owner-first-batch 的 量）；
+ *   伸出 = 子元素（非 absolute / fixed，中间没有裁切层）的右边超出它的盒子 1px 以上（e2e/layout-audit.ts 的 伸出的子）
+ */
+async function 量页头(page: import("playwright").Page) {
+  return page.locator(".proj-head").evaluate((根) => {
+    const 名 = (el: Element) => `${el.tagName}.${el.className || ""}:${(el.textContent ?? "").slice(0, 12)}`;
+    const 文字溢出: string[] = [], 伸出: string[] = [];
+    const 全部 = [根, ...根.querySelectorAll("*")].filter((el) => el.getBoundingClientRect().width >= 1);
+    for (const el of 全部) {
+      const cs = getComputedStyle(el);
+      if (el !== 根 && el.scrollWidth > el.clientWidth + 1 && cs.overflowX === "visible" && cs.display !== "inline") 文字溢出.push(名(el));
+      if (cs.display === "inline" || cs.display === "contents") continue;
+      const r = el.getBoundingClientRect();
+      for (const c of el.querySelectorAll("*")) {
+        const ccs = getComputedStyle(c);
+        if (ccs.position === "absolute" || ccs.position === "fixed" || ccs.display === "none") continue;
+        // 负外边距故意往外探的不算（同 layout-audit：从 c 到 el 每层探出去的减掉）；中间隔着裁切层的不算
+        let 裁 = false, 探右 = 0, 探左 = 0;
+        for (let e: Element | null = c; e && e !== el; e = e.parentElement) {
+          const ms = getComputedStyle(e);
+          if (e !== c && ms.overflowX !== "visible") { 裁 = true; break; }
+          探右 += Math.max(0, -parseFloat(ms.marginRight) || 0); 探左 += Math.max(0, -parseFloat(ms.marginLeft) || 0);
+        }
+        if (裁) continue;
+        const cr = c.getBoundingClientRect();
+        if (cr.width >= 1 && (cr.right - 探右 > r.right + 1 || r.left - cr.left - 探左 > 1)) { 伸出.push(`${名(el)} ⊃ ${名(c)}`); break; }
+      }
+    }
+    const h1 = 根.querySelector("h1")!;
+    const 标题 = getComputedStyle(h1);
+    return { 文字溢出, 伸出, 标题一行: 标题.whiteSpace === "nowrap" && 标题.textOverflow === "ellipsis" && h1.getBoundingClientRect().height < 40 };
+  });
+}
+it.each([
+  { 宽: 1024, 外宽: 372, label: "1024 宽 AI 栏常驻（正文约 372）" },
+  { 宽: 375, 外宽: undefined, label: "375 宽手机" },
+  { 宽: 1024, 外宽: undefined, label: "1024 宽" },
+  // 真页面上标题区还要让出名单开关、页边距，按钮组 211 宽时标题区只剩二十来 px：用更窄的正文把这种情况挤出来
+  { 宽: 1024, 外宽: 300, label: "1024 宽正文 300" },
+  { 宽: 375, 外宽: 250, label: "375 宽正文 250" },
+])("项目页头 $label：超长项目名、超长负责人名，两枚按钮都在，没有元素伸出 / 文字溢出，标题一行省略", async ({ 宽, 外宽 }) => {
+  const { page, errors } = await open(true, 宽, 外宽);
+  try {
+    await page.evaluate(() => (window as unknown as { __头: () => void }).__头());
+    await page.locator(".page-head-a").getByRole("button", { name: "项目退回公海" }).waitFor();
+    expect(await 页头钮(page)).toEqual(["项目转让", "项目退回公海"]);
+    const r = await 量页头(page);
+    expect(r.文字溢出, "文字溢出").toEqual([]);
+    expect(r.伸出, "伸出").toEqual([]);
+    expect(r.标题一行).toBe(true);
+    // 按钮整枚可见、没被压窄折成两行
+    const 钮高 = await page.locator(".page-head-a button").evaluateAll((bs) => bs.map((b) => Math.round(b.getBoundingClientRect().height)));
+    expect(钮高.every((h) => h <= 40)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});

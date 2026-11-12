@@ -327,3 +327,21 @@ it("超长号码、超长邮箱：1024 / 1280 / 1366 文字省略、复制键紧
     } finally { await page.close(); }
   }
 });
+
+/* 11-12 页头三枚按钮（新开项目 / 客户转让 / 客户退回公海）变长后：1024、375 宽 + 超长公司名，按钮不折行不出界，名字一行不撑出（口径同 e2e 的 量：scrollWidth > clientWidth + 1 且 overflow-x visible 算文字溢出） */
+it.each([1024, 375])("客户页头 %ipx：超长公司名 + 三枚按钮，不出界、不折行、名字不撑出", async (w) => {
+  const page = await open(true, w, true, { ...全开, 客户改: { name: "超长公司名有限责任公司".repeat(8) } });
+  try {
+    expect(await 头按钮(page)).toEqual(["新开项目", "客户转让", "客户退回公海"]);
+    const r = await page.evaluate(() => {
+      const vw = document.documentElement.clientWidth;
+      const 钮 = [...document.querySelectorAll(".rec-acts button")].map((b) => b.getBoundingClientRect());
+      const 溢出 = [...document.querySelectorAll(".rec-head *, .rec-acts *")].filter((el) => {
+        const cs = getComputedStyle(el);
+        return el.getBoundingClientRect().width >= 1 && el.scrollWidth > el.clientWidth + 1 && cs.overflowX === "visible" && cs.display !== "inline";
+      }).map((el) => `${el.tagName}.${el.className}`);
+      return { 横滚: document.documentElement.scrollWidth > vw, 出界: 钮.filter((b) => b.right > vw + 1 || b.left < -1).length, 折行: 钮.filter((b) => b.height > 40).length, 溢出 };
+    });
+    expect(r).toEqual({ 横滚: false, 出界: 0, 折行: 0, 溢出: [] });
+  } finally { await page.close(); }
+});

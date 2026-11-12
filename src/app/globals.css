@@ -1309,6 +1309,12 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-head .page-head-t .rec-star { flex: none; }
 /* 名字下面那行写负责人、创建人：一长串没空格的人名也折行，不伸出页头（11-02） */
 .proj-head .page-head p { overflow-wrap: anywhere; }
+/* 页头按钮（「项目转让」「项目退回公海」，11-12 改名变长）不再把标题区挤到比星还窄：标题区至少留 220（窄过它就占满一行），
+   放不下就让按钮组整组换到标题下一行；按钮组本身不压缩、太窄时组内再折（Space wrap）。
+   标题区那层的 min-width:0 是 PageHead 行内写的，只能 !important 盖（ui.tsx 共用，别的页不动） */
+.proj-head .page-head { flex-wrap: wrap; row-gap: var(--s2); }
+.proj-head .page-head > :first-child { min-width: min(220px, 100%) !important; }
+.proj-head .page-head-a { flex: 0 1 auto; max-width: 100%; }
 .proj-head > .pane-toggle { margin: 4px 0 0 -6px; flex: none; }
 /* 10-31 改版 R3：整页不滚，页头钉在顶上，两栏各自滚（滚左栏右栏不动、反过来也一样），只有最右那栏露滚动条。
    高度从正文 main 一路传下来（main → 换页那层 motion.div → .proj-wrap → .proj-2col），所以 Windows 顶上那条让位、
