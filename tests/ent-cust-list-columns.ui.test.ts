@@ -24,7 +24,8 @@ const 列表桩: Plugin = { name: "import-perm-boundaries", setup(b) {
   // 企业版「新增客户」弹窗（10-31 会议，新客户带潜客培育项目）：向导本身另有测试，这里只看导入导出按钮
   stub(/projects\/new\/ProjectWizard$/, "export function 建档弹窗(){return null}");
   // 页头「新建 ▾ → 新建项目」那条路（projects/NewProjectFlow.tsx，点了才挂）：里面的选客户、建项目都是 server action，这里换成一块牌子
-  stub(/projects\/NewProjectFlow$/, "export default function F(){return <div className='new-proj-flow-stub'/>}");
+  // 牌子放在一个真的 antd 弹框里：看「关了焦点回到『新建』」用（弹框关掉把焦点还给打开那一刻有焦点的元素）
+  stub(/projects\/NewProjectFlow$/, "import {useState} from 'react';import {Modal} from 'antd';export default function F(){const [o,s]=useState(true);return <Modal open={o} title='新增项目' footer={null} onCancel={()=>s(false)}><div className='new-proj-flow-stub'/></Modal>}");
   stub(/^\.\.\/channels\/actions$/, `export const saveChannel=${空跑};`);
   stub(/^(\.\/|\.\.\/)actions$/, `const f=${空跑};
     export const saveCustomer=async x=>{window.__存=x;return{ok:true,id:'new'}},checkDuplicate=async()=>null,推荐人候选=async()=>[],patchCustomer=f,
@@ -36,14 +37,16 @@ beforeAll(async () => {
   包 = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot,hydrateRoot} from 'react-dom/client';import {renderToString} from 'react-dom/server';import {createCache,extractStyle,StyleProvider} from '@ant-design/cssinjs';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {我Provider} from '@/lib/me-client';
-    import CustomersView from '@/app/(app)/customers/CustomersView';
+    import CustomersView from '@/app/(app)/customers/CustomersView';import {看板工具位} from '@/app/(app)/customers/board-slot';import {createPortal} from 'react-dom';
+    // 看板视图最坏情况（11-12 审查）：看板往筛选行右端那一格放「分配」「我分出去的」（ProjectsView 客户页筛到线索、能分配时）
+    const 假看板=()=>{const 位=React.useContext(看板工具位);return <div className='fake-board'>项目看板{window.__看板工具&&位&&createPortal(<><button type='button' className='ant-btn ant-btn-default'><span>分配</span></button><button type='button' className='ant-btn ant-btn-default'><span>我分出去的</span></button></>,位)}</div>};
     const 长='某某超长贸易进出口有限公司'.repeat(6);
     const users=[{id:'me',name:'小王',email:'s1',role:'SALES',active:true},{id:'u2',name:'一个名字特别特别长的同事',email:'s2',role:'SALES',active:true}];
     const 行=(id,owner)=>({id,name:长+id,phone:'1380000000'+id.slice(1),school:null,grade:null,major:null,followStatus:'待跟进',decisionStatus:'了解中',custStatus:'跟进中',salesOwnerId:owner,salesOwnerName:owner==='me'?'小王':'一个名字特别特别长的同事',createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',lastFollowAt:'2026-11-01T00:00:00.000Z',signedAmount:0,referrerCustomerId:null,referrerName:null,channelId:null,channelName:null,expectedSignAt:null,remark:null,addrCountry:'阿拉伯联合酋长国',extra:{level:'A'}});
     const rows=[行('c1','me'),行('c2','u2'),行('c3','me')].map(r=>window.__公海?{...r,pool:{reason:'超时回收'}}:r);
     const 项目概况={c1:{项目数:12,当前节点:'异常 · 某个后台改得特别特别长的节点名字',当前阶段:'订单'},c2:{项目数:1,当前节点:'方案敲定',当前阶段:'商机'}};
     const 树=(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'me',name:'小王'}}>
-      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:'',node:'',...(window.__三态?{triState:''}:{})}} 三态标={window.__三态?{c1:{态:'待回收',几天后进公海:12},c2:{态:'暂缓回收中'},c3:{态:'不计时'}}:undefined} 客户数={3} 企业版 项目概况={项目概况} 项目看板={!window.__非项目} 能新建和领取={!window.__不能新建} 待交接={window.__交接??null} 看板体={window.__看板?<div className='fake-board'>项目看板</div>:undefined} 市场视图={!!window.__市场}/>
+      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:window.__阶段||'',node:'',...(window.__三态?{triState:''}:{})}} 三态标={window.__三态?{c1:{态:'待回收',几天后进公海:12},c2:{态:'暂缓回收中'},c3:{态:'不计时'}}:undefined} 客户数={3} 企业版 项目概况={项目概况} 项目看板={!window.__非项目} 能新建和领取={!window.__不能新建} 待交接={window.__交接??null} 看板体={window.__看板?<假看板/>:undefined} 市场视图={!!window.__市场}/>
     </我Provider></BusinessProvider></App></ConfigProvider>);
     const el=document.getElementById('root');
     // __静态：先只放服务端出的那份 HTML（React 还没接管），window.__水合() 再接管——照真实页面的先后
@@ -424,4 +427,76 @@ it("只能建一样时直接是那一样（写全称、不出下拉）：没开�
       expect(await page.getByRole("menu").count(), JSON.stringify(旗)).toBe(0);
     } finally { await page.close(); }
   }
+});
+
+it("「新建 ▾」纯键盘：回车打开、焦点进菜单，方向键到「新建项目」回车，弹框出来；Esc 关掉焦点回到「新建」按钮", async () => {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } }); page.setDefaultTimeout(5000);
+  const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+  try {
+    await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+    await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+    await page.addScriptTag({ content: 包 });
+    await page.locator("tr.ant-table-row").first().waitFor();
+    const 钮 = page.locator(".page-head").getByRole("button", { name: /新建/ });
+    await 钮.focus();
+    await page.keyboard.press("Enter");
+    await page.getByRole("menu").waitFor();
+    // autoFocus：焦点进了菜单
+    await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest("[role=menu]"))).toBe(true);
+    // 键盘停在哪一项 = 焦点所在的那一项（rc-menu 用方向键挪焦点）
+    const 选中 = () => page.evaluate(() => (document.activeElement?.closest("[role=menuitem]") as HTMLElement | null)?.innerText.trim() ?? null);
+    // 打开时停在第一项；下移一格到「新建项目」（rc-menu 下一帧才挪焦点，等它挪过去）
+    await expect.poll(选中).toBe("新建客户");
+    await page.keyboard.press("ArrowDown");
+    await expect.poll(选中).toBe("新建项目");
+    await page.keyboard.press("Enter");
+    // 弹框开着、没被同一下回车的后半截点掉
+    await page.waitForTimeout(400);
+    expect(await page.getByRole("dialog", { name: "新增项目" }).isVisible()).toBe(true);
+    await page.locator(".new-proj-flow-stub").waitFor({ state: "attached" });
+    await page.getByRole("dialog", { name: "新增项目" }).waitFor();
+    await page.keyboard.press("Escape");
+    await page.getByRole("dialog", { name: "新增项目" }).waitFor({ state: "hidden" });
+    await expect.poll(() => 钮.evaluate((el) => el === document.activeElement)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("看板视图最坏情况：1024 宽、左栏 220、筛到线索阶段、能分配（筛选行右端「分配」「我分出去的」）、真筛选组——筛选行不越界，切换器不被压缩，放不下的收进更多筛选", async () => {
+  const page = await browser.newPage({ viewport: { width: 1024, height: 900 } }); page.setDefaultTimeout(5000);
+  const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+  try {
+    await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+    await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+    await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
+    await page.evaluate(() => { Object.assign(window, { __看板: true, __看板工具: true, __阶段: "线索" }); });
+    await page.addScriptTag({ content: 包 });
+    await page.locator(".fake-board").waitFor();
+    const 端 = page.locator(".list-bar > .list-bar-end");
+    await 端.getByText("我分出去的").waitFor();
+    // 「→ 还有 N 列」不在这一格（摆回看板上方）
+    expect(await 端.locator(".pipe-more-right").count()).toBe(0);
+    await page.waitForTimeout(300);
+    const 量 = await 量切换(page);
+    expect(量).toMatchObject({ 第一格: "list-view-seg", 同行: true, 在左: true, 字全: true });
+    const 界 = await page.locator(".list-bar").evaluate((b) => {
+      const r = b.getBoundingClientRect();
+      const 子 = [...b.querySelectorAll<HTMLElement>(":scope > *")].filter((x) => getComputedStyle(x).display !== "none");
+      // 切换器、筛选组第一行、右端那一格在同一行（组里筛了值才有的「重置」1024 宽时可以折到组的第二行，不越界）
+      const 顶们 = new Set([b.querySelector(".list-view-seg"), b.querySelector(":scope > .ant-space > .ant-space-item"), b.querySelector(".list-bar-end")].map((x) => Math.round((x as HTMLElement).getBoundingClientRect().top)));
+      const 切 = b.querySelector(".list-view-seg") as HTMLElement;
+      return {
+        不溢出: b.scrollWidth <= b.clientWidth + 1,
+        都在里面: 子.every((x) => x.getBoundingClientRect().right <= r.right + 1 && x.getBoundingClientRect().left >= r.left - 1),
+        一行: Math.max(...顶们) - Math.min(...顶们) <= 4,
+        切换器没压: 切.getBoundingClientRect().width + 0.5 >= 切.scrollWidth,
+      };
+    });
+    expect(界).toEqual({ 不溢出: true, 都在里面: true, 一行: true, 切换器没压: true });
+    // 放不下的先收进「更多筛选」（阶段带着值，也收进去、按钮上记一个数）
+    expect(await page.getByRole("combobox", { name: "阶段" }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: /^更多筛选/ }).count()).toBe(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
 });

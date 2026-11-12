@@ -159,6 +159,8 @@ function useSqueezeRow(能挤: boolean): [boolean, (el: HTMLSpanElement | null) 
     量();
     const ro = new ResizeObserver(量);
     ro.observe(行);
+    // 组自己也看：行宽没变、行里别的格后来才有东西（客户页看板往筛选行右端那一格放「分配」「我分出去的」，11-12 审查）时，组被挤折了也要收
+    ro.observe(组);
     return () => ro.disconnect();
   }, [能挤, 探针, 挤掉]);
   return [挤掉, set探针];

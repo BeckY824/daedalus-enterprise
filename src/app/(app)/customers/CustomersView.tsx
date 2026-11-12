@@ -71,7 +71,9 @@ import { 看板工具位 } from "./board-slot";
 const CustomerBoard = dynamic(() => import("./CustomerBoard"));
 const 建档弹窗 = dynamic(() => import("../projects/new/ProjectWizard").then(m => m.建档弹窗), { ssr: false });
 /** 页头「新建 ▾ → 新建项目」（11-12）：和项目页「新增项目」同一条路（先选新老客户），点了才加载、才挂上，不压客户列表首屏 JS */
-const 新建项目流程 = dynamic(() => import("../projects/NewProjectFlow"), { ssr: false });
+/** 「新建 ▾ → 新建项目」那条路的懒加载块：展开菜单时先拿起来（预取），点下去等它到了再挂、按钮转圈 */
+const 取新建项目流程 = () => import("../projects/NewProjectFlow");
+const 新建项目流程 = dynamic(取新建项目流程, { ssr: false });
 
 /**
  * 批量操作的结果文案。
@@ -939,11 +941,17 @@ export default function CustomersView({
     : 能看板 && !空库 && <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看法} onChange={set看法} />;
   /** 「新建 ▾ → 新建项目」点一次挂一份（换 key 重挂 = 重新打开选新老客户的框）；0 = 还没点过、不加载 */
   const [新建项目次, set新建项目次] = useState(0);
+  /** 点了「新建项目」、懒加载块还没到：按钮转圈、点不了（到了才挂，挂上就开框） */
+  const [项目流程载入, set项目流程载入] = useState(false);
+  const 点新建项目 = () => {
+    set项目流程载入(true);
+    void 取新建项目流程().then(() => set新建项目次((n) => n + 1), () => message.error("没打开，请重试")).finally(() => set项目流程载入(false));
+  };
   const 新建项 = [
     ...(能新建和领取 ? [{ key: "customer", label: `新建${b.customer}`, onClick: 新建 }] : []),
     // 企业版项目模式：原来只在看板上方「+ 新增项目」（先选新老客户，ProjectsView），11-12 收进页头「新建 ▾」，列表、看板两边都有。
     // 谁看得到照服务端：建档向导（不能新建项目话）、给老客户建项目（没设业务角色 / 只读角色）都按 能新建和领取 拒，这里同一条，免得摆一颗点了必被拒的
-    ...(项目看板 && 能新建和领取 ? [{ key: "project", label: "新建项目", onClick: () => set新建项目次((n) => n + 1) }] : []),
+    ...(项目看板 && 能新建和领取 ? [{ key: "project", label: "新建项目", onClick: 点新建项目 }] : []),
   ];
   const [工具位, set工具位] = useState<HTMLDivElement | null>(null);
 
@@ -1005,7 +1013,7 @@ export default function CustomersView({
               {导出中 && <Space><span role="status" style={{ fontSize: 12 }}>{导出进度}</span><Button size="small" onClick={() => 导出取消.current?.abort()}>取消导出</Button></Space>}
             </>)}
             {/* 「新建 ▾」（11-12 用户：「右上角改为新建，然后可以选择新建项目或者新建客户」）：只能建一样时直接是那一样，一样都不能不摆 */}
-            <NewMenuButton 项={新建项} />
+            <NewMenuButton 项={新建项} 载入中={项目流程载入} 预取={() => void 取新建项目流程().catch(() => {})} />
             {/* 离职交接（C15）：页头最右端。谁看得见、数怎么数照原来的入口（离职交接入口），不是这页自己数 */}
             {待交接 != null && <Link href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>}
           </Space>

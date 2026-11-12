@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { App, Modal } from "antd";
 import { RightOutlined } from "@ant-design/icons";
 import dynamic from "next/dynamic";
@@ -34,8 +34,16 @@ type 选项 = {
  * 项目页 / 市场角色「我分出去的」（ProjectsView）和客户页页头「新建 ▾」（CustomersView）共用这一份。
  * 开建档("新增客户")：市场角色「我分出去的」页头的「新建客户」，和客户页「新建客户」同一个向导框
  */
-export function useNewProjectFlow({ users, 节点们, 要下一步, 建档: 给的 = null, 起手开着 = false }: 选项): { 开选客户: () => void; 开建档: (标题: "新增项目" | "新增客户") => Promise<void>; 弹框: ReactNode } {
+export function useNewProjectFlow({ users, 节点们, 要下一步, 建档: 给的 = null, 起手开着 = false }: 选项): { 开选客户: () => void; 开建档: (标题: "新增项目" | "新增客户") => Promise<void>; 弹框: ReactNode; 取档中: boolean } {
   const { message } = App.useApp();
+  /*
+    焦点从哪来就回哪去：这条路开第一个框时有焦点的那个元素（「新建」按钮，NewMenuButton 点菜单项前先把焦点放回它）。
+    antd Modal 关掉时把焦点还给它打开那一刻有焦点的元素；框接框（选新老客户 → 建档向导 / 挑老客户 → 新建项目框）时，
+    开下一个框之前先把焦点放回起点，最后一个框关了焦点就回到「新建」，不掉到页面最上面。懒加载那份一挂上就开（起手开着），起点在挂上时记
+  */
+  const 起点 = useRef<HTMLElement | null>(起手开着 && typeof document !== "undefined" ? (document.activeElement as HTMLElement | null) : null);
+  const 记起点 = () => { if (typeof document !== "undefined") 起点.current = document.activeElement as HTMLElement | null; };
+  const 回起点 = () => { const el = 起点.current; if (el?.isConnected) el.focus({ preventScroll: true }); };
   const b = useBusiness();
   const [选客户, set选客户] = useState(起手开着);
   const [挑老客户, set挑老客户] = useState(false);
@@ -44,10 +52,13 @@ export function useNewProjectFlow({ users, 节点们, 要下一步, 建档: 给�
   const [标题, set标题] = useState<"新增项目" | "新增客户">("新增项目");
   const [取档中, set取档中] = useState(false);
   const 开建档 = async (t: "新增项目" | "新增客户") => {
+    // 从「新建 ▾」直接开（市场角色「新建客户」）：起点就是那颗按钮；从选新老客户框里点进来：起点早记好了，先把焦点放回去
+    if (选客户) 回起点(); else 记起点();
     set取档中(true);
     try {
       const d = 建档 ?? 给的 ?? (await 取建档数据());
-      if (!d) return void message.error("项目模式没开，不能新增项目");
+      // 按这一下要做的事说：「新建客户」点的说不能新增客户，别说成不能新增项目
+      if (!d) return void message.error(t === "新增客户" ? `项目模式没开，不能新增${b.customer}` : "项目模式没开，不能新增项目");
       set建档(d);
       set选客户(false);
       set标题(t);
@@ -66,17 +77,17 @@ export function useNewProjectFlow({ users, 节点们, 要下一步, 建档: 给�
             <两行 名={`新${b.customer}`} 说={`一起建好${b.customer}、联系人和首条沟通，号码先查重`} />
             <RightOutlined aria-hidden />
           </button>
-          <button type="button" className="new-proj-opt" disabled={取档中} onClick={() => { set选客户(false); set挑老客户(true); }}>
+          <button type="button" className="new-proj-opt" disabled={取档中} onClick={() => { 回起点(); set选客户(false); set挑老客户(true); }}>
             <两行 名={`老${b.customer}`} 说={`选一位已有的${b.customer}，接着填项目和首条沟通`} />
             <RightOutlined aria-hidden />
           </button>
         </div>
       </Modal>
       {建档 && <建档弹窗 open={建档开着} 标题={标题} 数据={建档} onClose={() => set建档开着(false)} />}
-      <OldCustomerProject 开={挑老客户} 关={() => set挑老客户(false)} users={users} 节点们={节点们} 要下一步={要下一步} />
+      <OldCustomerProject 开={挑老客户} 关={() => set挑老客户(false)} 回起点={回起点} users={users} 节点们={节点们} 要下一步={要下一步} />
     </>
   );
-  return { 开选客户: () => set选客户(true), 开建档, 弹框 };
+  return { 开选客户: () => { 记起点(); set选客户(true); }, 开建档, 弹框, 取档中 };
 }
 
 /** 客户页按需挂的那一份（next/dynamic 懒加载）：挂上就打开选新老客户的框；再点一次由外面换 key 重挂 */
@@ -98,7 +109,7 @@ function 两行({ 名, 说 }: { 名: string; 说: string }) {
  * 「给老客户开项目」：先挑一位已有的客户，再接客户页同一个新建项目框（customers/[id]/NewProjectModal.tsx）。
  * 能挑到谁走 搜客户 的可见范围，建项目的权限以服务端 给客户建项目 为准
  */
-function OldCustomerProject({ 开, 关, users, 节点们, 要下一步 }: { 开: boolean; 关: () => void; users: 可选成员[]; 节点们: readonly string[]; 要下一步: boolean }) {
+function OldCustomerProject({ 开, 关, 回起点, users, 节点们, 要下一步 }: { 开: boolean; 关: () => void; 回起点: () => void; users: 可选成员[]; 节点们: readonly string[]; 要下一步: boolean }) {
   const { message } = App.useApp();
   const b = useBusiness();
   const me = useMe();
@@ -116,6 +127,8 @@ function OldCustomerProject({ 开, 关, users, 节点们, 要下一步 }: { 开:
         return;
       }
       // 近况里不带谁是主要联系人，新建框默认选第一个
+      // 接新建项目框之前先把焦点放回「新建」：新建项目框关了焦点回那儿
+      回起点();
       set客户({ id: c.id, name: c.name, 联系人们: c.contacts.map((x) => ({ id: x.id, name: x.name, isPrimary: false })) });
       set选(undefined);
       关();

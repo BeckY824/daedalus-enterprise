@@ -26,7 +26,7 @@ const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[],取客户选项=async()=>[],取客户近况=async()=>null;");
   stub(/project-actions$/, "export const 给客户建项目=async()=>({ok:true});export const 新项目分配数据=async()=>null;export const 建项目带走的项目=async()=>({项目数:0,项目:[]});");
   // 「新增项目」→「新客户」：取向导数据记一笔；向导框本身换成一块写着标题的牌子（向导另有测试）
-  stub(/new\/wizard-actions$/, "export const 取建档数据=async()=>{(window.__调||=[]).push(['取建档数据']);return {users:[],要下一步:false,企业:null}};");
+  stub(/new\/wizard-actions$/, "export const 取建档数据=async()=>{(window.__调||=[]).push(['取建档数据']);if(window.__慢取档)await new Promise(r=>window.__放取档=r);return {users:[],要下一步:false,企业:null}};");
   stub(/new\/ProjectWizard$/, "export const 建档弹窗=()=>null;");
   // 看板列底「再看」（客户页 customers/board-actions.ts、别处 projects/board-actions.ts）：记下调了什么，等一会儿（看得到加载中）再回 window.__再看；
   // window.__手动 时挂起，由用例按顺序 window.__挂起[i].r(结果) 放回（复现慢请求的时序）
@@ -507,14 +507,17 @@ it("P-公海-10：销售管理 / 总管理看客户公海里的项目有「分�
   await page.close();
 });
 
-it("客户页看板视图给了筛选行那一格（board-slot）：「→ 还有 N 列」「分配」画进那一格，看板上面不另起一行；点得中", async () => {
-  // 只剩提示（没筛线索阶段）：看板上面没有 .pipe-top、没有工具行
+it("客户页看板视图给了筛选行那一格（board-slot）：「分配」类按钮画进那一格；「→ 还有 N 列」摆回看板上方（右对齐一行小字，不进那一格）；点得中", async () => {
+  // 没筛线索阶段：那一格空着；看板上方只有「→ 还有 N 列」这一句，没有工具行
   const { page, errors } = await 打开(false, 1024, false, true, { 样式: true, 看板: true, 客户页: true, 工具位: true });
   try {
-    const 提示 = page.locator("#slot > .pipe-more-right");
+    const 提示 = page.locator(".pipe-top.pipe-top-hint > .pipe-more-right");
     await 提示.waitFor();
-    expect(await page.locator(".pipe-top").count()).toBe(0);
+    expect(await page.locator("#slot > *").count()).toBe(0);
     expect(await page.locator(".cust-board-tool").count()).toBe(0);
+    const 行 = await page.locator(".pipe-top.pipe-top-hint").evaluate((el) => ({ 高: el.getBoundingClientRect().height, 右: Math.abs(el.getBoundingClientRect().right - (el.lastElementChild as HTMLElement).getBoundingClientRect().right) <= 1 }));
+    expect(行.右).toBe(true);
+    expect(行.高).toBeLessThanOrEqual(24);
     const 前 = await page.locator(".pipe").evaluate((el) => el.scrollLeft);
     await 提示.click();
     await expect.poll(() => page.locator(".pipe").evaluate((el) => el.scrollLeft)).toBeGreaterThan(前);
@@ -564,4 +567,30 @@ it("市场角色「我分出去的」页头：没设业务角色 / 只读管理�
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
+});
+
+it("客户页看板没有更多列时，看板上方不留那一行提示（不占位）", async () => {
+  const { page, errors } = await 打开(false, 1920, false, true, { 样式: true, 看板: true, 客户页: true, 工具位: true });
+  try {
+    await page.locator(".pipe-col").first().waitFor();
+    expect(await page.locator(".pipe-more-right").count()).toBe(0);
+    expect(await page.locator(".pipe-top").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("市场角色「我分出去的」页头点「新建客户」等取建档数据时：按钮转圈、点不了（不像没反应）；取到了开向导、按钮恢复", async () => {
+  const { page, errors } = await 打开(false, 1280, false, true, { 看板: true, 换回: true, 能新建客户: true });
+  try {
+    await page.evaluate(() => { (window as unknown as { __慢取档: boolean }).__慢取档 = true; });
+    const 钮 = page.locator(".page-head").getByRole("button", { name: /新建/ });
+    await 钮.click();
+    await page.getByRole("menuitem", { name: "新建客户" }).click();
+    await expect.poll(() => 钮.evaluate((el) => el.classList.contains("ant-btn-loading"))).toBe(true);
+    expect(await page.locator(".wizard-stub").count()).toBe(0);
+    await page.evaluate(() => (window as unknown as { __放取档: () => void }).__放取档());
+    await page.locator(".wizard-stub").waitFor();
+    await expect.poll(() => 钮.evaluate((el) => el.classList.contains("ant-btn-loading"))).toBe(false);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
 });

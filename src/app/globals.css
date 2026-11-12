@@ -2768,6 +2768,9 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 }
 .pipe-top { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2); margin-bottom: 12px; }
 .pipe-top > .pipe-more-right.ant-btn { margin-left: auto; padding-inline: 4px; white-space: nowrap; }
+/* 客户页看板上方只剩「→ 还有 N 列」一句（11-12）：右对齐一行小字，行高压到一行字，不像一行工具栏 */
+.pipe-top.pipe-top-hint { margin-bottom: var(--s1); }
+.pipe-top.pipe-top-hint > .pipe-more-right.ant-btn { height: auto; padding-block: 0; font-size: var(--fs-note); line-height: 20px; }
 .pipe-col { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--s3); min-height: 220px;
   transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
 .pipe-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; } /* 金额放不下就折到第二行，不截成「¥ 1,23…」（10-27，1280 宽五列时） */
@@ -2810,7 +2813,6 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 /* 客户页看板视图筛选行右端那一格（customers/board-slot.ts）：分配、我分出去的、回到看板、「→ 还有 N 列」；排在「列」那一格之后，空着不占位 */
 .list-bar-end { order: 1; flex: none; display: flex; align-items: center; gap: var(--s2); min-height: 32px; }
 .list-bar-end:empty { display: none; }
-.list-bar-end > .pipe-more-right.ant-btn { padding-inline: 4px; white-space: nowrap; }
 /* 客户页看板视图的工具行（C17）：外面没给筛选行那一格时（单独画看板），分配等按钮靠右摆在看板上面 */
 .cust-board-tool { display: flex; justify-content: flex-end; margin-bottom: var(--s3); }
 /* 阶段 / 进程筛选命中太多、没出结果时的那一句（customers/page.tsx 阶段太多） */
