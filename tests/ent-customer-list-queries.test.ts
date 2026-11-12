@@ -92,6 +92,13 @@ const 客户页看板查询上限 = 52;
  * 上限 = 关着的上限 + 2
  */
 const 客户列表三态开着上限 = 客户列表查询上限 + 2;
+/**
+ * /projects（项目页，看板 / 列表在浏览器里切，服务端两份都取）：改成看板每列各自取数（11-12）以后——
+ * 列表这一页先只取 id，再和看板每列的卡片一起一句 include（最近留痕另一句 groupBy，替掉原来 include 里的那一句）：比改前 23 条多 1 条 = 24；
+ * 每有一列超过 20 个，多 1 句只取这一列前 20 的 id。按负责人排 25 → 26（同上多 1 条；这一页落在几位名下都最多 3 句，不随人数涨）
+ */
+const 项目页查询数 = 24;
+const 项目页按负责人查询数 = 26;
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 const 造人 = async (key: string, bizRole: string, managerId: string | null = null): Promise<人> => {
@@ -244,6 +251,28 @@ describe("客户页「看板」视图（11-12 第 3 批 C17 / C18：页头、筛
     await 加(12);
     expect((await 量()).句.length).toBe(大一列.句.length);
     expect(大一列.句.length).toBeLessThanOrEqual(客户页看板查询上限);
+  });
+
+  it("/projects 首屏（看板每列 + 列表这一页）：条数钉住；一列超过 20 个只多这一列的 1 句，再多项目不涨", async () => {
+    const 项目页 = (sp: Record<string, string> = {}) => 量(sp, 甲, ProjectsPage as never);
+    expect((await 项目页()).句.length).toBe(项目页查询数);
+    expect((await 项目页({ sort: "owner-asc" })).句.length).toBe(项目页按负责人查询数);
+    const 加 = async (起: number) => {
+      for (let i = 起; i < 起 + 12; i++) {
+        const c = await prisma.customer.create({ data: { name: `项目页加的${i}`, phone: `1390000060${String(i).padStart(2, "0")}`, salesOwnerId: 甲.id } });
+        for (let j = 0; j < 2; j++) await prisma.project.create({ data: { name: `项目页加的${i}-${j}`, customerId: c.id, ownerId: 甲.id, creatorId: 甲.id, phase: "商机", node: "方案敲定" } });
+      }
+    };
+    await 加(0);
+    const 大 = await 项目页();
+    expect(大.句.length).toBe(项目页查询数 + 1);
+    const 列 = (大.el as { props: { 列: { 列: string; 数: number; 行: unknown[] }[]; 行: unknown[] } }).props;
+    expect(列.列.find((c) => c.列 === "方案敲定")).toMatchObject({ 数: 30 });
+    expect(列.列.find((c) => c.列 === "方案敲定")!.行).toHaveLength(20);
+    expect(列.行).toHaveLength(20);
+    await 加(12);
+    expect((await 项目页()).句.length).toBe(大.句.length);
+    expect((await 项目页({ sort: "owner-asc" })).句.length).toBe(项目页按负责人查询数 + 1);
   });
 
   it("同一行筛选（C18）：先按客户筛、再出这些客户的项目卡；阶段 / 进程按项目筛；只按页签 = 不收窄", async () => {

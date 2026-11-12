@@ -31,7 +31,8 @@ export async function 再看一列(地址栏: unknown, 列: unknown, 偏移: unk
   // 子集（导入这一批、本月新增、直接推荐）里画的是列表，没有看板
   if (在看子集(sp)) return { ok: false, error: "这里没有看板" };
   const { 项目, 客户 } = await 客户页看板条件(sp as 客户页看板地址);
-  const r = await 读看板一列(me, { ...项目, 客户 }, 列, 偏移, 条数);
+  // 看板列里恒按最近改过在前（同改动前的看板）：客户页上点的排序不带进来，只管看板临时切成的项目列表
+  const r = await 读看板一列(me, { ...项目, sort: undefined, 客户 }, 列, 偏移, 条数);
   if (!r) return { ok: false, error: "参数不对" };
   return { ok: true, 行: r.行, 总: r.总, 三态点: await 看板三态点(r.行) };
 }

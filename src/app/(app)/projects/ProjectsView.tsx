@@ -51,6 +51,7 @@ import { 滚法 } from "@/lib/reduced-motion";
 import type { 建档数据 } from "./new/ProjectWizard";
 import { 看板要点, 三态标说明, type 三态标 } from "@/lib/enterprise/tri-state-label";
 import { 再看一列 } from "../customers/board-actions";
+import { 再看项目页一列 } from "./board-actions";
 
 /** 「新增项目」→「新客户」的建档向导框：点了才加载，不压项目首页首屏 JS（同客户页「新增客户」） */
 const 建档弹窗 = dynamic(() => import("./new/ProjectWizard").then((m) => m.建档弹窗), { ssr: false });
@@ -161,8 +162,9 @@ export default function ProjectsView({
   /** 客户页看板、客户三态开着（C5，P-界面-19 ②）：客户 id → 回收状态；沉睡 / 待回收 / 暂缓回收中在卡片客户名后点一个色点。不给 = 不点 */
   三态点?: Record<string, 三态标>;
   /**
-   * 客户页看板每列各自取数（11-12，lib/project/list.ts 读项目列表 的 每列）：给了 = 列里的卡片就是这一列按当前排序的前 20，
-   * 列底「再看 20 个」接着往后取（customers/board-actions.ts 再看一列），不摆整页共用的翻页器。不给 = 照原来整页共用翻页（/projects）
+   * 看板每列各自取数（11-12，lib/project/list.ts 读项目列表 的 每列）：给了 = 列里的卡片就是这一列最近改过的前 20，
+   * 列底「再看 20 个」接着往后取（客户页 customers/board-actions.ts，别处 projects/board-actions.ts），看板底下不摆整页共用的翻页器。
+   * 不给 = 照原来整页共用翻页（老调用方 / 测试）
    */
   每列?: Record<string, 项目行[]>;
 }) {
@@ -236,12 +238,13 @@ export default function ProjectsView({
   const pending = 筛选中 || 翻页中;
   // 要的页越界（删空了最后一页、手改地址栏）：服务端已给了实际那一页，这里只把地址栏改对，不再取一次（同客户列表）
   useEffect(() => {
-    if (要的页 === undefined || 要的页 === String(页)) return;
+    // 客户页看板：地址栏的 page 是客户列表的，不归这里改（看板不取列表页时服务端也不给 要的页）
+    if (客户页 || 要的页 === undefined || 要的页 === String(页)) return;
     const url = new URL(window.location.href);
     if (url.searchParams.get("page") !== 要的页) return;
     url.searchParams.set("page", String(页));
     window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
-  }, [页, 要的页]);
+  }, [页, 要的页, 客户页]);
   // 表头排序：在全部筛选结果里排（服务端），再点一次回到默认（最近改过在前）
   const 排序键: Record<string, string> = { createdAt: "created", expectedDealAt: "deal", owner: "owner" };
   const 点排序 = (key: string, order: "ascend" | "descend" | null) => {
@@ -251,36 +254,48 @@ export default function ProjectsView({
   const 序of = (key: string) => (排序 === `${排序键[key]}-asc` ? ("ascend" as const) : 排序 === `${排序键[key]}-desc` ? ("descend" as const) : null);
   const 看板框 = useRef<HTMLDivElement>(null);
   // 每列「再看」追加的卡片（列键 → 追加的行、服务端回的这一列总数）和这几批卡片的三态色点。
-  // 记着是给哪一屏看板追加的（源）：筛选、刷新以后服务端给了新的一屏，追加的作废，回到每列前 20
-  const 每列取数 = 客户页 && !!每列;
-  type 追加态 = { 源: 看板一列[]; 们: Record<string, { 行: 项目行[]; 总: number }>; 点: Record<string, 三态标> };
-  const [追加原, set追加] = useState<追加态>({ 源: 看板, 们: {}, 点: {} });
-  const 追加 = 追加原.源 === 看板 ? 追加原 : { 源: 看板, 们: {}, 点: {} };
-  const [取中列, set取中列] = useState<Record<string, boolean>>({});
+  // 记着是给哪一屏看板追加的（源）：筛选、刷新以后服务端给了新的一屏，追加的、加载中的都作废，回到每列前 20
+  const 每列取数 = !!每列;
+  // 代：第几屏（服务端每给一屏 +1）；回包晚到时比它，旧一屏的不盖新一屏
+  type 追加态 = { 源: 看板一列[]; 代: number; 们: Record<string, { 行: 项目行[]; 总: number }>; 点: Record<string, 三态标> };
+  const [追加原, set追加] = useState<追加态>({ 源: 看板, 代: 0, 们: {}, 点: {} });
+  const 追加 = 追加原.源 === 看板 ? 追加原 : { 源: 看板, 代: 0, 们: {}, 点: {} };
+  const [取中原, set取中] = useState<{ 源: 看板一列[]; 列: Record<string, boolean> }>({ 源: 看板, 列: {} });
+  const 取中列 = 取中原.源 === 看板 ? 取中原.列 : {};
+  // 最新的一屏：「再看」的回包晚到（这期间改了筛选、刷新过）时拿它比，不是这一屏的就丢掉，不盖掉新一屏已经展开的
+  const 最新 = useRef({ 看板, 代: 0 });
+  useEffect(() => { 最新.current = { 看板, 代: 最新.current.代 + 1 }; }, [看板]);
   const 点表 = 三态点 ? { ...三态点, ...追加.点 } : undefined;
   async function 再看(c: 看板一列) {
+    const 源 = 看板;
+    const 代 = 最新.current.代;
     const 已有 = [...c.行, ...(追加.们[c.列]?.行 ?? [])];
-    set取中列((m) => ({ ...m, [c.列]: true }));
+    set取中((m) => ({ 源, 列: { ...(m.源 === 源 ? m.列 : {}), [c.列]: true } }));
     try {
-      const r = await 再看一列(window.location.search, c.列, 已有.length);
+      // 客户页看板带客户页那一行筛选（customers/board-actions.ts）；/projects、市场「我分出去的」照项目页的条件（projects/board-actions.ts）
+      const r = await (客户页 ? 再看一列 : 再看项目页一列)(window.location.search, c.列, 已有.length);
+      if (最新.current.看板 !== 源) return;
       if (!r.ok) return void message.error(r.error);
       set追加((前) => {
-        const 基 = 前.源 === 看板 ? 前 : { 源: 看板, 们: {}, 点: {} };
+        // 前 是更新的一屏的（这期间又换过一屏）：不动它；是更早一屏留下的：这一屏从空的起
+        if (前.代 > 代) return 前;
+        const 基 = 前.源 === 源 ? 前 : { 源, 代, 们: {}, 点: {} };
         const 这列 = [...c.行, ...(基.们[c.列]?.行 ?? [])];
         const 有 = new Set(这列.map((x) => x.id));
         const 新 = r.行.filter((x) => !有.has(x.id));
         // 一张都没取到（别人刚改过、这一列变短了）：按已摆的算到头，按钮收起
         const 总 = 新.length ? r.总 : 这列.length;
-        return { 源: 看板, 们: { ...基.们, [c.列]: { 行: [...(基.们[c.列]?.行 ?? []), ...新], 总 } }, 点: { ...基.点, ...(r.三态点 ?? {}) } };
+        return { 源, 代, 们: { ...基.们, [c.列]: { 行: [...(基.们[c.列]?.行 ?? []), ...新], 总 } }, 点: { ...基.点, ...("三态点" in r ? r.三态点 ?? {} : {}) } };
       });
     } catch {
-      message.error("没取到，请重试");
+      if (最新.current.看板 === 源) message.error("没取到，请重试");
     } finally {
-      set取中列((m) => ({ ...m, [c.列]: false }));
+      set取中((m) => (m.源 === 源 ? { 源, 列: { ...m.列, [c.列]: false } } : m));
     }
   }
   const [右边还有, 滑一列] = useKanbanMoreCols(看板框, 看法 === "看板" ? 看板 : null);
-  const 不问归属 = !f.ownerId && 列表不问归属ID(users, 行.map((r) => r.ownerId));
+  // 看板每列的卡片（含「再看」追加的）也算：客户页看板不取列表页（行 是空的），不带上的话有「已不在的成员 / 没人」的卡片也会把负责人藏掉
+  const 不问归属 = !f.ownerId && 列表不问归属ID(users, [...行, ...看板.flatMap((c) => c.行), ...Object.values(追加.们).flatMap((x) => x.行)].map((r) => r.ownerId));
   const 在筛 = Object.values(filters).some(Boolean);
   // 企业版项目首页：先问新客户还是老客户，都在弹窗里建（新客户走建档向导、先查重）；新线索页照旧去 /leads/new
   const 新建 = () => (企业版 && !新线索 ? set选客户(true) : router.push(新线索 || 企业版 ? "/leads/new" : "/projects/new"));
@@ -593,7 +608,7 @@ export default function ProjectsView({
                       <span className="pipe-sum" title={sum}>{sum}</span>
                     </div>
                     <div className="pipe-bar" style={{ background: 列色[c.色] }} />
-                    {c.行.length === 0 && <div className="pipe-empty">{c.数 > 0 && !每列取数 ? "这一页没有，翻页看" : 在筛 ? "这一列没有对上的" : c.空态}</div>}
+                    {c.行.length === 0 && <div className="pipe-empty">{在筛 ? "这一列没有对上的" : c.空态}</div>}
                     {[...c.行, ...(每列取数 ? (追加.们[c.列]?.行 ?? []) : [])].map((r) => {
                       const 异常 = r.result === "异常状态";
                       const 小字 = 卡片小字(r, 字典);
@@ -664,22 +679,8 @@ export default function ProjectsView({
                         </div>
                       );
                     })}
-                    {每列取数 && (() => {
-                      // 列底「再看 20 个」：这一列还有没摆出来的才出现；点了接在这一列后面，别的列不动、不整页刷新
-                      const 已 = c.行.length + (追加.们[c.列]?.行.length ?? 0);
-                      const 总 = 追加.们[c.列]?.总 ?? c.数;
-                      if (已 >= 总) return null;
-                      const 下批 = Math.min(20, 总 - 已);
-                      const 取中 = !!取中列[c.列];
-                      return (
-                        <div className="pipe-more">
-                          <span className="pipe-more-n">已显示 {已} / {总}</span>
-                          <Button size="small" loading={取中} disabled={取中} aria-busy={取中} aria-label={`${c.名}：再看 ${下批} 个，已显示 ${已} / ${总}`} onClick={() => void 再看(c)}>
-                            再看 {下批} 个
-                          </Button>
-                        </div>
-                      );
-                    })()}
+                    {/* 列底「再看 20 个」：这一列还有没摆出来的才出现；点了接在这一列后面，别的列不动、不整页刷新 */}
+                    {每列取数 && <列底再看 名={c.名} 已={c.行.length + (追加.们[c.列]?.行.length ?? 0)} 总={追加.们[c.列]?.总 ?? c.数} 取中={!!取中列[c.列]} 点={() => void 再看(c)} />}
                   </div>
                 );
               })}
@@ -747,6 +748,20 @@ function useKanbanMoreCols(框: React.RefObject<HTMLDivElement | null>, 列们: 
     el.scrollBy({ left: 下一列.getBoundingClientRect().right - el.getBoundingClientRect().right + 渐隐宽, behavior: 滚法() });
   };
   return [n, 滑];
+}
+
+/** 看板列底「再看 N 个」（11-12 每列各自取数）：左边写已显示几个 / 一共几个，右边次级小按钮；摆全了不画。加载中禁用、读屏报忙 */
+function 列底再看({ 名, 已, 总, 取中, 点 }: { 名: string; 已: number; 总: number; 取中: boolean; 点: () => void }) {
+  if (已 >= 总) return null;
+  const 下批 = Math.min(20, 总 - 已);
+  return (
+    <div className="pipe-more">
+      <span className="pipe-more-n">已显示 {已} / {总}</span>
+      <Button size="small" loading={取中} disabled={取中} aria-busy={取中} aria-label={`${名}：再看 ${下批} 个，已显示 ${已} / ${总}`} onClick={点}>
+        再看 {下批} 个
+      </Button>
+    </div>
+  );
 }
 
 /** 企业版超时回收：快到回收日的项目标一下（10-27）。标签直接写哪天，不用悬停；文字和项目详情同一套（recycle-text.ts） */

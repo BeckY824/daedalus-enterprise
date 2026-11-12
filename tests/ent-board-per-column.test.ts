@@ -1,9 +1,11 @@
 /**
- * 客户页看板每列各自取数（11-12 用户：以销售视角看看板，「线索验证」列头写 4 却一张卡都没有——「如果有的话为什么不安排在首页？」→「按建议改，每列各自取数」）。
- *   - 首屏每列各取按当前排序的前 20：30 个的列出 20、4 个的列全出、0 个的列是空态；不取整页共用的那一页
- *   - 列底「再看」（读看板一列 / customers/board-actions.ts 再看一列）取的是这一列第 21–40，不重不漏；默认、创建时间、预计成交、负责人几种排序都对
- *   - 可见范围：销售在任何一列、任何一次「再看」里都看不到同事的项目（直接调动作传同事的节点、大偏移也一样）；列键白名单、偏移 / 条数有上限
- *   - 后筛（收回次数）每列也各取前 20；列表视图（不传 看板）和原来一样
+ * 看板每列各自取数（11-12 用户：以销售视角看看板，「线索验证」列头写 4 却一张卡都没有——「如果有的话为什么不安排在首页？」→「按建议改，每列各自取数」）。
+ *   - 首屏每列各取前 20：30 个的列出 20、4 个的列全出、0 个的列是空态；客户页看板不取整页共用的那一页
+ *   - 列里恒按最近改过在前（同改动前的看板，审查 Q3）：地址栏的 sort 只管列表，首屏、「再看」都不跟
+ *   - 「再看」（读看板一列）取的是这一列第 21–40，不重不漏；读看板一列 仍认各种排序（给临时列表 / 以后），七种排序和列表同序
+ *   - 可见范围：销售在任何一列、任何一次「再看」里都看不到同事的项目；市场成员「我分出去的」只看到自己分出去的；列键白名单、偏移 / 条数有上限
+ *   - 后筛（收回次数）每列也各取前 20、「再看」与首屏同一圈；/projects 和市场「我分出去的」看板（审查 A）每列各取、列表那一页照旧
+ *   - 查询数：按负责人排的一段最多 3 句、不随人数涨（审查 Q1）；最近留痕一句 groupBy、不把留痕整批取回（审查 Q2）
  *   - 三态开着：「再看」那一批卡片也带色点；关着不带
  * 对照：同一组筛选下列表视图一次取全（每页 100）、按列分开的序（列表的序就是服务端排序，tests/ent-project-list-paging.test.ts 钉过）
  */
@@ -13,6 +15,24 @@ const mocks = vi.hoisted(() => ({
   user: { id: "", name: "", email: "a@x", role: "SALES", title: "", avatar: null as string | null },
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
+vi.mock("next/navigation", () => ({ redirect: (u: string) => { throw new Error(`REDIRECT:${u}`); }, notFound: () => { throw new Error("NOT_FOUND"); } }));
+vi.mock("@/app/(app)/projects/ProjectsView", () => ({ default: () => null }));
+// 数 SQL（同 tests/ent-customer-list-queries.test.ts）：生成的 PrismaClient 换成带 query 事件的子类
+const 记 = vi.hoisted(() => ({ 开: false, 句: [] as string[] }));
+vi.mock("@/generated/prisma", async (原) => {
+  const m = await 原<typeof import("@/generated/prisma")>();
+  class 记数Client extends m.PrismaClient {
+    constructor(o: ConstructorParameters<typeof m.PrismaClient>[0] = {}) {
+      super({ ...o, log: [{ emit: "event", level: "query" }, ...((o?.log as never[]) ?? [])] } as never);
+      (this as unknown as { $on: (e: string, f: (x: { query: string }) => void) => void }).$on("query", (e) => { if (记.开) 记.句.push(e.query); });
+    }
+  }
+  return { ...m, PrismaClient: 记数Client };
+});
+async function 数句<T>(fn: () => Promise<T>): Promise<{ 句: string[]; r: T }> {
+  记.句 = []; 记.开 = true;
+  try { const r = await fn(); return { 句: 记.句, r }; } finally { 记.开 = false; }
+}
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user, getCurrentUser: async () => mocks.user }));
 
 import { prisma } from "@/lib/prisma";
@@ -26,6 +46,10 @@ import { 默认组织规则, 默认三态规则 } from "@/lib/project/org-rules"
 import { 加天 } from "@/lib/enterprise/tri-state";
 import { beijingDay } from "@/lib/business-clock";
 import { 再看一列 } from "@/app/(app)/customers/board-actions";
+import { 再看项目页一列 } from "@/app/(app)/projects/board-actions";
+import { 项目页 } from "@/app/(app)/projects/board-page";
+import { 市场成员key } from "@/lib/enterprise/market";
+import type { SessionUser } from "@/lib/auth";
 
 type 人 = { id: string; name: string; role: string };
 const 人们: Record<string, 人> = {};
@@ -61,8 +85,11 @@ beforeAll(async () => {
   await 建人("甲", "SALES", "sales", 人们.经理.id);
   await 建人("丙", "SALES", "sales", 人们.经理.id);
   await 建人("乙", "SALES", "sales");
+  await 建人("市场甲", "SALES", "channel_ops");
+  await 建人("市场乙", "SALES", "channel_ops");
   await setSetting("business", { projectMode: true });
   await setSetting("enterprise.rule.org_scope", true);
+  await setSetting(市场成员key, [人们.市场甲.id, 人们.市场乙.id]);
   invalidateSettingsCache();
 
   const 客户们: Record<string, string[]> = { 甲: [], 丙: [], 乙: [] };
@@ -75,13 +102,13 @@ beforeAll(async () => {
   }
   const 基 = Date.now() - 30 * 86400_000;
   let n = 0;
-  const 建项目 = async (谁: "甲" | "丙" | "乙" | "公海", phase: string, node: string, 个: number) => {
+  const 建项目 = async (谁: "甲" | "丙" | "乙" | "公海", phase: string, node: string, 个: number, 建的人?: string) => {
     for (let i = 0; i < 个; i++) {
       n++;
       // 最近改过、创建时间都有大量同值（同值按主键兜底，翻页不重不漏）；预计成交有空的（总在最后）
       const p = await prisma.project.create({
         data: {
-          name: `${谁}-${node}-${i}`, customerId: 客户们[谁 === "公海" ? "乙" : 谁][i % 5], ownerId: 谁 === "公海" ? "" : 人们[谁].id, creatorId: 人们[谁 === "公海" ? "乙" : 谁].id,
+          name: `${谁}-${node}-${i}`, customerId: 客户们[谁 === "公海" ? "乙" : 谁][i % 5], ownerId: 谁 === "公海" ? "" : 人们[谁].id, creatorId: 建的人 ?? 人们[谁 === "公海" ? "乙" : 谁].id,
           phase, node, amount: n * 10,
           updatedAt: new Date(基 + (n % 7) * 3600_000), createdAt: new Date(基 - ((n * 37) % 11) * 60_000),
           expectedDealAt: n % 5 === 0 ? null : new Date(基 + (n % 9) * 86400_000),
@@ -89,6 +116,10 @@ beforeAll(async () => {
         },
       });
       名of.set(p.id, p.name);
+      // 收回过一次（放回公海留痕）：公海里潜客培育前 22 个、线索验证前 2 个
+      if (谁 === "公海" && i < (node === "潜客培育" ? 22 : 2)) {
+        await prisma.projectNodeLog.create({ data: { projectId: p.id, userId: 人们.乙.id, kind: "pool-release", toPhase: phase, toNode: node, fromOwnerId: 人们.乙.id, at: new Date(基 - 86400_000) } });
+      }
     }
   };
   await 建项目("甲", "线索", "潜客培育", 30);
@@ -100,12 +131,16 @@ beforeAll(async () => {
   await 建项目("乙", "商机", "方案敲定", 5);
   await 建项目("公海", "线索", "潜客培育", 25);
   await 建项目("公海", "线索", "线索验证", 3);
+  // 市场甲建了分给乙的（我分出去的）：痛点挖掘 25 个（大列）、合同审批 3 个（小列）；市场乙建了分给乙的：痛点挖掘 4 个（市场甲看不到）
+  await 建项目("乙", "商机", "痛点挖掘", 25, 人们.市场甲.id);
+  await 建项目("乙", "商机", "合同审批", 3, 人们.市场甲.id);
+  await 建项目("乙", "商机", "痛点挖掘", 4, 人们.市场乙.id);
   忘掉企业版范围();
 });
 afterAll(async () => { vi.unstubAllEnvs(); invalidateSettingsCache(); await prisma.$disconnect(); });
 
 describe("首屏每列各取前 20", () => {
-  it("销售甲：30 个的列出 20（按当前排序的前 20）、4 个的列全出、0 个的列是空的；不取整页共用的那一页", async () => {
+  it("销售甲（客户页看板）：30 个的列出 20（最近改过的前 20）、4 个的列全出、0 个的列是空的；不取整页共用的那一页", async () => {
     const d = await 首屏(人们.甲);
     expect(d.行).toEqual([]);
     expect(d.页).toBe(1);
@@ -135,39 +170,140 @@ describe("首屏每列各取前 20", () => {
   });
 });
 
-describe("「再看」接着取：第 21–40，不重不漏，几种排序都对", () => {
+describe("列里恒按最近改过在前（审查 Q3）；「再看」接着取第 21–40，不重不漏", () => {
   for (const sort of ["", "created-asc", "created-desc", "deal-asc", "deal-desc", "owner-asc", "owner-desc"]) {
-    it(`经理看「潜客培育」（42 个，甲 30 + 丙 12）sort=${sort || "默认"}：首屏 20 + 再看 20 + 再看 2 = 列表里这一列的序`, async () => {
+    it(`经理（甲 30 + 丙 12）地址栏 sort=${sort || "默认"}：首屏 + 动作「再看」两次 = 默认序下这一列的全部；列表那一页照 sort 排`, async () => {
+      const 默认 = (await 对照(人们.经理)).get("潜客培育")!;
+      expect(默认).toHaveLength(42);
       const sp: Record<string, string> = sort ? { sort } : {};
-      const 照 = (await 对照(人们.经理, sp)).get("潜客培育")!;
-      expect(照).toHaveLength(42);
-      const d = await 首屏(人们.经理, sp);
+      // /projects 那种：两份都取，列表那一页跟 sort、看板列不跟
+      const d = await 作为(人们.经理, () => 读项目列表(人们.经理, sp, undefined, { 每列: true, 要列表页: true }));
+      const 列表 = await 作为(人们.经理, () => 读项目列表(人们.经理, sp));
+      expect(d.行.map((r) => r.id)).toEqual(列表.行.map((r) => r.id));
       const 首 = d.每列!["潜客培育"].map((r) => r.id);
-      const 二 = await 作为(人们.经理, () => 读看板一列(人们.经理, sp, "潜客培育", 20));
-      const 三 = await 作为(人们.经理, () => 读看板一列(人们.经理, sp, "潜客培育", 40));
-      expect(二!.总).toBe(42);
-      expect(二!.行).toHaveLength(20);
-      expect(三!.行).toHaveLength(2);
-      const 拼 = [...首, ...二!.行.map((r) => r.id), ...三!.行.map((r) => r.id)];
-      expect(名们(拼)).toEqual(名们(照));
+      设身份(人们.经理);
+      const 再看 = (偏移: number) => 以谁的身份(人们.经理.id, () => 再看项目页一列(sort ? `?sort=${sort}` : "", "潜客培育", 偏移));
+      const 二 = await 再看(20), 三 = await 再看(40);
+      expect(二.ok && 三.ok).toBe(true);
+      if (!二.ok || !三.ok) return;
+      expect(二.总).toBe(42);
+      const 拼 = [...首, ...二.行.map((r) => r.id), ...三.行.map((r) => r.id)];
+      expect(名们(拼)).toEqual(名们(默认));
       expect(new Set(拼).size).toBe(42);
-      // 到头了再要：空的
-      expect((await 作为(人们.经理, () => 读看板一列(人们.经理, sp, "潜客培育", 42)))!.行).toEqual([]);
-      // 小列（线索推进 2 个）首屏全出、序同列表
-      expect(名们(d.每列!["线索推进"].map((r) => r.id))).toEqual(名们((await 对照(人们.经理, sp)).get("线索推进")!));
+      // 客户页看板的动作同样不跟 sort
+      const 客 = await 以谁的身份(人们.经理.id, () => 再看一列(sort ? `?sort=${sort}` : "", "潜客培育", 20));
+      expect(客.ok && 名们(客.行.map((r) => r.id))).toEqual(名们(默认.slice(20, 40)));
     });
   }
 
-  it("后筛（收回次数）：每列也各取前 20，再看接着取，和列表同一个序", async () => {
-    const sp = { pool: "1", recycled: "0" };
-    const 照 = await 对照(人们.管理员, sp);
-    expect(照.get("潜客培育")).toHaveLength(25);
-    const d = await 首屏(人们.管理员, sp);
-    expect(d.每列!["潜客培育"].map((r) => r.id)).toEqual(照.get("潜客培育")!.slice(0, 20));
-    expect(d.每列!["线索验证"].map((r) => r.id)).toEqual(照.get("线索验证"));
-    const 二 = await 作为(人们.管理员, () => 读看板一列(人们.管理员, sp, "潜客培育", 20));
-    expect(二!.总).toBe(25);
-    expect(二!.行.map((r) => r.id)).toEqual(照.get("潜客培育")!.slice(20));
+  for (const sort of ["created-asc", "created-desc", "deal-asc", "deal-desc", "owner-asc", "owner-desc"]) {
+    it(`读看板一列 仍认 sort=${sort}（给临时列表 / 以后用）：0 / 20 / 40 三段 = 列表里这一列的序`, async () => {
+      const 照 = (await 对照(人们.经理, { sort })).get("潜客培育")!;
+      const 段 = (偏移: number) => 作为(人们.经理, () => 读看板一列(人们.经理, { sort }, "潜客培育", 偏移));
+      const 拼 = [...(await 段(0))!.行, ...(await 段(20))!.行, ...(await 段(40))!.行].map((r) => r.id);
+      expect(名们(拼)).toEqual(名们(照));
+      expect((await 段(42))!.行).toEqual([]);
+    });
+  }
+
+  it("后筛（收回次数）：首屏每列各取前 20，「再看」接着取，与首屏同一圈、和列表同序", async () => {
+    for (const recycled of ["0", "1"]) {
+      const sp = { pool: "1", recycled };
+      const 照 = await 对照(人们.管理员, sp);
+      const d = await 首屏(人们.管理员, sp);
+      for (const 列 of ["潜客培育", "线索验证"]) {
+        const 全 = 照.get(列) ?? [];
+        expect(d.每列![列].map((r) => r.id), `${recycled} ${列}`).toEqual(全.slice(0, 20));
+        const 二 = await 作为(人们.管理员, () => 读看板一列(人们.管理员, sp, 列, 20));
+        expect(二!.总, `${recycled} ${列}`).toBe(全.length);
+        expect(二!.行.map((r) => r.id), `${recycled} ${列}`).toEqual(全.slice(20, 40));
+      }
+      expect(照.get("潜客培育")).toHaveLength(recycled === "1" ? 22 : 3);
+    }
+  });
+
+  it("/projects 带 pool=1、recycled=1（企业版）：首屏转去公海页，动作也不给（不比首屏看得多）", async () => {
+    await expect(作为(人们.管理员, () => 项目页(人们.管理员 as unknown as SessionUser, { pool: "1", recycled: "1" }))).rejects.toThrow("REDIRECT:/pool");
+    设身份(人们.管理员);
+    expect(await 以谁的身份(人们.管理员.id, () => 再看项目页一列("?pool=1&recycled=1", "潜客培育", 20))).toEqual({ ok: false, error: "这里没有看板" });
+  });
+});
+
+describe("/projects、市场「我分出去的」看板（审查 A）", () => {
+  type 页参 = { 行: 项目行[]; 每列?: Record<string, 项目行[]>; 列: { 列: string; 数: number; 行: 项目行[] }[]; 总数: number };
+  const 参of = (el: unknown) => (el as { props: 页参 }).props;
+  it("市场甲「我分出去的」：小列（合同审批 3 个）首屏全出、大列（痛点挖掘 25 个）出 20，再看接着取；市场乙分出去的一张都没有", async () => {
+    const 市 = 人们.市场甲;
+    const p = 参of(await 作为(市, () => 项目页(市 as unknown as SessionUser, {}, undefined, { 基址: "/customers", 标题: "客户", 换回客户列表: true })));
+    const 列 = (k: string) => p.列.find((c) => c.列 === k)!;
+    expect(列("合同审批").数).toBe(3);
+    expect(列("合同审批").行).toHaveLength(3);
+    expect(列("痛点挖掘").数).toBe(25);
+    expect(列("痛点挖掘").行).toHaveLength(20);
+    // 列表那一页照旧给（浏览器里可能切到列表）
+    expect(p.行.length).toBe(Math.min(20, p.总数));
+    设身份(市);
+    const 二 = await 以谁的身份(市.id, () => 再看项目页一列("", "痛点挖掘", 20));
+    expect(二.ok && 二.总).toBe(25);
+    const 全 = [...列("痛点挖掘").行, ...(二.ok ? 二.行 : [])];
+    expect(new Set(全.map((r) => r.id)).size).toBe(25);
+    const 建的人 = new Map((await prisma.project.findMany({ where: { id: { in: 全.map((r) => r.id) } }, select: { id: true, creatorId: true } })).map((r) => [r.id, r.creatorId]));
+    expect(new Set(全.map((r) => 建的人.get(r.id)))).toEqual(new Set([市.id]));
+    // 直接调动作、一次 100 个、要别的列：都只有自己分出去的
+    const 大 = await 以谁的身份(市.id, () => 再看项目页一列("", "痛点挖掘", 0, 100));
+    expect(大.ok && 大.总).toBe(25);
+    expect(await 以谁的身份(市.id, () => 再看项目页一列("", "潜客培育", 0, 100))).toMatchObject({ ok: true, 行: [], 总: 0 });
+  });
+
+  it("/projects（销售甲）：两份都取——列表那一页和不带看板时一样；看板小列全出、大列 20", async () => {
+    const p = 参of(await 作为(人们.甲, () => 项目页(人们.甲 as unknown as SessionUser, {})));
+    const 列表 = await 作为(人们.甲, () => 读项目列表(人们.甲, {}));
+    expect(p.行.map((r) => r.id)).toEqual(列表.行.map((r) => r.id));
+    expect(p.列.find((c) => c.列 === "线索验证")!.行).toHaveLength(4);
+    expect(p.列.find((c) => c.列 === "潜客培育")!.行).toHaveLength(20);
+  });
+});
+
+describe("查询数", () => {
+  it("按负责人排（审查 Q1）：一段落在 20 位负责人名下也最多 3 句；/projects 首屏条数不随负责人多少变", async () => {
+    // 管理员看得到的「线索推进」：一人一个，先 22 位
+    const 加人 = async (起: number, 个: number) => {
+      for (let i = 起; i < 起 + 个; i++) {
+        const u = await prisma.user.create({ data: { email: `负责${i}@t`, name: `负责人${String(i).padStart(3, "0")}`, title: "", role: "SALES", password: "x" } });
+        await prisma.entMember.create({ data: { userId: u.id, bizRole: "sales" } });
+        const c = await prisma.customer.create({ data: { name: `负责${i}的客户`, phone: `1394000${String(i).padStart(4, "0")}`, salesOwnerId: u.id } });
+        await prisma.project.create({ data: { name: `负责${i}的项目`, customerId: c.id, ownerId: u.id, creatorId: u.id, phase: "线索", node: "线索推进" } });
+      }
+    };
+    await 加人(0, 22);
+    const 管 = 人们.管理员;
+    const 段 = () => 作为(管, () => 读看板一列(管, { sort: "owner-desc" }, "线索推进", 0, 20));
+    const 一段 = await 数句(段);
+    expect(new Set(一段.r!.行.map((r) => r.ownerId)).size).toBe(20);
+    const 按人句 = (q: string[]) => q.filter((x) => /FROM `main`\.`Project` WHERE .*`ownerId`/.test(x) && /LIMIT|IN \(/.test(x) && !/GROUP BY|COUNT/.test(x)).length;
+    expect(按人句(一段.句)).toBeLessThanOrEqual(3);
+    const 首屏句 = async () => (await 数句(() => 作为(管, () => 读项目列表(管, { sort: "owner-desc" }, undefined, { 每列: true, 要列表页: true })))).句.length;
+    const 少 = await 首屏句();
+    await 加人(22, 30);
+    expect((await 数句(段)).句.length).toBe(一段.句.length);
+    expect(await 首屏句()).toBe(少);
+    await prisma.project.deleteMany({ where: { name: { startsWith: "负责" } } });
+  });
+
+  it("最近留痕（审查 Q2）：一句 groupBy 取每个项目最近一条，不再把留痕整批取回；回收日照算", async () => {
+    // 甲的潜客培育每个项目 30 条留痕
+    const ids = (await prisma.project.findMany({ where: { ownerId: 人们.甲.id, node: "潜客培育" }, select: { id: true } })).map((r) => r.id);
+    const 最近 = new Date(Date.now() - 3600_000);
+    for (const id of ids) {
+      await prisma.projectNodeLog.createMany({ data: Array.from({ length: 30 }, (_, k) => ({ projectId: id, userId: 人们.甲.id, kind: "node", toPhase: "线索", toNode: "潜客培育", at: new Date(最近.getTime() - k * 60_000) })) });
+    }
+    const { 句, r } = await 数句(() => 首屏(人们.甲));
+    const 留痕句 = 句.filter((q) => q.includes("`ProjectNodeLog`"));
+    // 取留痕时间的只有 MAX 那一句（GROUP BY）；没有原来 include 那种「projectId IN (…) ORDER BY at DESC」整批取（回避名单那几句按 kind 查、不取时间，不算）
+    expect(留痕句.filter((q) => /`ProjectNodeLog`\.`at`/.test(q) && !/GROUP BY/.test(q)).map((q) => q.slice(0, 300))).toEqual([]);
+    expect(留痕句.filter((q) => /MAX\(/.test(q) && /GROUP BY/.test(q)).length).toBe(1);
+    expect(r.每列!["潜客培育"]).toHaveLength(20);
+    await prisma.projectNodeLog.deleteMany({ where: { projectId: { in: ids }, kind: "node" } });
   });
 });
 
