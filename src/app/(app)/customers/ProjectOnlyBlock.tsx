@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { Tag } from "antd";
 import { RowLink } from "@/components/ui";
 import { 有值 } from "@/lib/empty-value";
@@ -17,10 +16,9 @@ const 列头 = ["客户", "客户类型", "地区", "当前节点", "项目数",
 /**
  * 客户列表第 1 页顶上的「仅项目」一小块（只负责项目的人：客户不归他、名下有他自己的项目；lib/enterprise/project-only-list-rows.ts）。
  * 行少（最多 50 位）、没有筛选 / 分页 / 勾选 / 列设置，不是又一个表格：一个简单列表，列宽按百分比（1024 / 1280 / 1366 都不横滚）。
- * 和下面的客户表格分开：不能勾、没有行菜单、不进总数和导出；负责人、级别、客户状态、最近跟进几格空着（这些他看不到）。点一行进受限客户详情
+ * 和下面的客户表格分开：不能勾、没有行菜单、不进总数和导出；负责人、级别、客户状态、最近跟进几格空着（这些他看不到）。点一行（客户名链接铺满整行）进受限客户详情
  */
 export default function ProjectOnlyBlock({ 行们, 超了 = false }: { 行们: 仅项目列表行[]; 超了?: boolean }) {
-  const router = useRouter();
   if (!行们.length) return null;
   return (
     <section className="cust-ponly" aria-label="仅项目的客户" data-testid="project-only-block">
@@ -37,15 +35,8 @@ export default function ProjectOnlyBlock({ 行们, 超了 = false }: { 行们: �
           {列头.map((t) => <span key={t} className="cust-ponly-c" role="columnheader">{t}</span>)}
         </div>
         {行们.map((r) => (
-          <div
-            key={r.id}
-            className="cust-ponly-r cust-ponly-row"
-            role="row"
-            onClick={(e) => {
-              if ((e.target as HTMLElement).closest("a, button")) return;
-              router.push(`/customers/${r.id}`);
-            }}
-          >
+          // 整行可点：客户名那条链接的 ::after 铺满这一行（globals.css .cust-ponly-row），键盘只停在链接上一处
+          <div key={r.id} className="cust-ponly-r cust-ponly-row" role="row">
             <span className="cust-ponly-c cust-ponly-name" role="cell">
               <Tag className="cust-ponly-tag" title="这位客户不归你，你只负责其中的项目：客户资料只能看">仅项目</Tag>
               <RowLink href={`/customers/${r.id}`} className="link-strong" title={r.name}>{r.name}</RowLink>

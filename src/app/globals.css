@@ -3999,7 +3999,8 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 /* 列宽按百分比，客户名吃剩下的：哪种宽度都不横滚 */
 .cust-ponly-r { display: grid; grid-template-columns: minmax(0, 1fr) 11% 12% 12% 8% 9% 7% 10% 10%; align-items: center; min-width: 0; }
 .cust-ponly-head { color: var(--text-muted); font-size: var(--fs-note); font-weight: 600; }
-.cust-ponly-row { border-top: 1px solid var(--line); cursor: pointer; }
+.cust-ponly-row { position: relative; border-top: 1px solid var(--line); cursor: pointer; }
+.cust-ponly-row .cust-ponly-name > a::after { content: ""; position: absolute; inset: 0; }
 .cust-ponly-row:hover { background: var(--hover); }
 .cust-ponly-c { display: block; min-width: 0; padding: 6px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cust-ponly-name { display: flex; align-items: center; gap: 6px; }

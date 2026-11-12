@@ -574,8 +574,11 @@ it("「仅项目」一小块（只负责项目的人）：在客户表格上面�
       expect(格.名悬停).toMatch(/^仅项目的/);
       expect(格.高, `宽 ${w}`).toBeLessThanOrEqual(48);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `宽 ${w}`).toBe(true);
-      await 行.locator(".cust-ponly-c").nth(2).click();
-      expect(await page.evaluate(() => (window as unknown as { __push?: string }).__push)).toBe("/customers/x1");
+      // 整行可点：点在别的格上落到的是客户名那条链接（::after 铺满整行），不是行上另挂的 onClick
+      expect(await 行.locator(".cust-ponly-c").nth(2).evaluate((el) => {
+        const b = el.getBoundingClientRect();
+        return (document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.closest("a") as HTMLAnchorElement | null)?.getAttribute("href");
+      })).toBe("/customers/x1");
       // 下面客户表格的总数照旧 3（这一块不算进去）
       expect(await page.locator(".ant-pagination-total-text").innerText()).toBe("共 3 条");
       expect(errors).toEqual([]);
