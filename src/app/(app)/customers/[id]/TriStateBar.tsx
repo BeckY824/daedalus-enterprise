@@ -57,14 +57,14 @@ export default function TriStateBar({ 条, customerId, 开客户转让 }: { 条:
   return (
     <div className={`tri-bar ${标签色[条.状态]}`} data-testid="tri-state-bar" role="status">
       <span className={`tri-st ${标签色[条.状态]}`}>{条.状态}</span>
-      <span className="tri-tx" title={条.文字}>{条.文字}</span>
+      <span className="tri-tx" title={条.悬停}>{条.文字}</span>
       <span className="tri-sp" />
       {条.旁注 && <span className="tri-note" title={条.旁注}>{条.旁注}</span>}
       {钮们.length > 0 && (
         <span className="tri-acts">
           {次.map((b) => 钮(b, "tri-sec"))}
           {次.length > 0 && (
-            <Dropdown menu={{ items: 次.map((b) => ({ key: b.动作, label: <span title={b.说明}>{b.字}</span>, onClick: () => 点(b) })) }}>
+            <Dropdown trigger={["click"]} menu={{ items: 次.map((b) => ({ key: b.动作, label: <span title={b.说明}>{b.字}</span>, onClick: () => 点(b) })) }}>
               <Button size="small" className="tri-more" icon={<MoreOutlined />} aria-label="更多">更多</Button>
             </Dropdown>
           )}

@@ -75,6 +75,8 @@ export type RecordProps = {
   三态条?: import("@/lib/enterprise/tri-state-detail").三态条 | null;
   /** 客户三态状态留痕（C13）：并进项目区「进程变更」卡的「客户状态」一段；三态关着不给 */
   三态留痕?: import("@/lib/enterprise/tri-state-detail").三态留痕行[] | null;
+  /** 没有「进程变更」卡可挂（没有项目 / 没有我能看的项目）：状态留痕放左栏客户资料下面（A1） */
+  留痕放左栏?: boolean;
   /** 摆在整页最上面的提醒条（客户详情顶上的同号再次录入醒目条，11-03 B6-9）；没有就不摆 */
   醒目条?: ReactNode;
   /** 原始转化线索；没有关联或已删除时为空，不用推荐关系推断。 */

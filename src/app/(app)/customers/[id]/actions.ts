@@ -276,7 +276,7 @@ export async function saveFollowUp(input: FollowUpInput) {
     await 客户跟进后勾掉将回收提醒(input.customerId, now);
     await 客户存了推项目(user, input.customerId);
     // 客户三态（C12）：新记的这条不算有效沟通，回原因给前端一句轻提示（不拦；三态关着不查库）
-    const 短沟通 = !input.id ? await 短沟通提示(result.id, input.content) : null;
+    const 短沟通 = !input.id ? await 短沟通提示(result.id).catch(() => null) : null;
     return { ok: true as const, id: result.id, ...(短沟通 ? { 短沟通 } : {}), ...(result.待办id ? { 待办id: result.待办id } : {}), ...(result.下次计划id ? { 下次计划id: result.下次计划id } : {}), ...(领取了 ? { 领取了: true as const } : {}) };
   } catch (e) { return 不在了(e); }
 }

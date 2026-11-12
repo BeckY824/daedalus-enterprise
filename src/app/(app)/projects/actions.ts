@@ -723,7 +723,7 @@ export async function 记项目沟通Action(projectId: string, input: 向导跟�
       revalidatePath("/follow-ups");
     }
     // 客户三态（C12）：这条不算有效沟通，回原因给前端一句轻提示（不拦；三态关着不查库）
-    const 短沟通 = r.ok ? await 短沟通提示(r.followUpId, input.content) : null;
+    const 短沟通 = r.ok ? await 短沟通提示(r.followUpId).catch(() => null) : null;
     return r.ok ? { ok: true as const, followUpId: r.followUpId, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}), ...卡点结果, ...(短沟通 ? { 短沟通 } : {}) } : r;
   } catch (e) { return 不在了(e); }
 }

@@ -22,7 +22,7 @@ const plugin: Plugin = { name: "tri-state-bar", setup(b) {
 
 const 长说明 = "「我还在跟」和「写理由继续持有」共用一个额度：每次顺延 30 天、钟不归零；沉睡轮、待回收轮各限一次；累计最多 3 次、合计 90 天；已用 1 次";
 const 暂缓条 = {
-  状态: "暂缓回收中", 文字: "到期该进公海，但名下有 3 位同事在推的项目，收不了".repeat(3), 旁注: null,
+  状态: "暂缓回收中", 文字: "到期该进公海，但名下有 3 位同事在推的项目，收不了".repeat(3), 悬停: "到期该进公海，但名下有 3 位同事在推的项目，收不了".repeat(3), 旁注: null,
   按钮们: [
     { 动作: "客户转让", 字: "客户转让", 说明: "客户换负责人，名下项目一起走", 要理由: false },
     { 动作: "让同事结束项目", 字: "让同事结束项目", 说明: "通知在推项目的同事去结束项目", 要理由: false },
@@ -73,7 +73,16 @@ it("1024 / 1280 / 1366、AI 栏开关：一行、不撑出、文字省略、按�
     expect(量.钮.every((x) => x.在屏内 && x.点得中 && x.一行), `${名} ${JSON.stringify(量.钮)}`).toBe(true);
     const 字们 = 量.钮.map((x) => x.字);
     if (量.宽 > 720) expect(字们, 名).toEqual(["客户转让", "让同事结束项目", "写理由继续持有"]);
-    else expect(字们, 名).toEqual(["更多", "写理由继续持有"]);
+    else {
+      expect(字们, 名).toEqual(["更多", "写理由继续持有"]);
+      // 「更多」点开才出菜单（悬停不弹，手机经飞书打开也点得到）
+      const 更多 = page.getByRole("button", { name: "更多" });
+      await 更多.hover();
+      await page.waitForTimeout(300);
+      expect(await page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").count(), 名).toBe(0);
+      await 更多.click();
+      await page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").getByText("让同事结束项目").waitFor();
+    }
     expect(errors, 名).toEqual([]);
     await page.close();
   }

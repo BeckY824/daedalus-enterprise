@@ -40,7 +40,8 @@ import { 我回避的公海项目, 回避豁免 } from "@/lib/project/pool-owner
 import { 客户沟通汇总, 跟进去处们 } from "@/lib/enterprise/customer-follow-feed";
 import { 页面看得到的客户 } from "@/lib/project/visible-customers";
 import { 显示用客户状态 } from "@/lib/enterprise/cust-status-auto-db";
-import { 读三态条, 读三态留痕, 读冷项目 } from "@/lib/enterprise/tri-state-detail";
+import { 读客户三态, 读冷项目 } from "@/lib/enterprise/tri-state-detail";
+import { 三态开着 } from "@/lib/enterprise/tri-state-db";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +59,8 @@ export default async function CustomerDetailPage({
     点进来就找不到它、也闪不了（2026-10-02 排查 3-3）。这时摆的是叫你的那一条
   */
   const 要看的计划 = /^plan:(.+)$/.exec(sp.focus ?? "")?.[1] ?? null;
+  // 客户三态开着（设置缓存里判，不查库）：客户行顺手带上客户钟，状态条、冷项目不再另查
+  const 三态开 = 只项目 && (await 三态开着());
 
   const customer = await prisma.customer.findUnique({
     where: { id },
@@ -69,6 +72,7 @@ export default async function CustomerDetailPage({
       attributionChannel: { select: { name: true } },
       attributionCustomer: { select: { id: true, name: true } },
       pool: { select: { reason: true } },
+      entClock: 三态开,
       extra: true,
       // 该学员自己推荐来的人，用于展示推荐链下游
       referrals: { select: { id: true, name: true, followStatus: true }, orderBy: { createdAt: "desc" } },
@@ -122,7 +126,7 @@ export default async function CustomerDetailPage({
     sourceLead, aiEnabled, 已收藏, 换负责人记录, 旺旺们, 项目们, 参与项目们, 只读, 客户状态选项,
     联系人分类附件, 关联们, 号码种类, 分配方式选项, 客户类型选项, 规则, 联系人附件数,
     可改沟通, 可删沟通, 客户状态字典, 职务选项, 客户属性选项, 字典释义, 项目区,
-    三态条, 三态留痕, 冷项目,
+    三态,
   ] = await Promise.all([
     // 演示区是公开的，同一份数据所有访客共用：号码一律打码。自己部署的实例不受影响——销售要照着这个号打电话。
     号码脱敏器(),
@@ -179,11 +183,17 @@ export default async function CustomerDetailPage({
     企 ? 页面可选项("custAttr") : undefined,
     企 ? 页面客户释义() : undefined,
     项目区P,
-    // 客户三态（P-界面-19，C10 / C13 / C11）：三态关着这三样都不查库；开着时活跃的客户只多 3 条（客户钟、状态留痕、冷项目一句 SQL）
-    只项目 ? 读三态条(me, customer.id) : null,
-    只项目 ? 负责人候选().then((们) => 读三态留痕(customer.id, new Map(们.map((u) => [u.id, u.name])))) : null,
-    项目区P.then((z) => (z ? 读冷项目(z.页签们.map((t) => t.id)) : ({} as Record<string, number>))),
+    // 客户三态（P-界面-19，C10 / C13 / C11）：关着不查库；开着、活跃的客户只多 3 条（客户钟、状态留痕、冷项目一句 SQL）。
+    // 冷项目只在客户活跃时标（M-公海-22「客户还活跃」），所以接在状态后面
+    三态开
+      ? Promise.all([负责人候选().then((们) => 读客户三态(me, customer, new Map(们.map((u) => [u.id, u.name])))), 项目区P]).then(async ([t, z]) => ({
+          条: t?.条 ?? null,
+          留痕: t?.留痕 ?? null,
+          冷: t?.活跃 && z ? await 读冷项目(z.页签们.map((x) => x.id)) : ({} as Record<string, number>),
+        }))
+      : null,
   ]);
+  const 冷项目 = 三态?.冷 ?? {};
   if (项目区) 项目区.页签们 = 项目区.页签们.map((t) => (冷项目[t.id] != null ? { ...t, 冷天数: 冷项目[t.id] } : t));
   const [汇总, 跟进去处, 转让选项, 待办计划] = 只项目四样 ?? [null, null, null, null];
   // 号码类的几种（手机、座机、WhatsApp、传真）和电话一样过脱敏器；微信、邮箱、旺旺照旧（同联系人老三格的口径）
@@ -213,8 +223,8 @@ export default async function CustomerDetailPage({
     <CustomerDetail
       key={customer.id}
       项目数据={项目区}
-      三态条={三态条}
-      三态留痕={三态留痕}
+      三态条={三态?.条 ?? null}
+      三态留痕={三态?.留痕 ?? null}
       // 同号再次录入的醒目条：项目详情顶上那条，客户详情也摆（11-03 B6-9）；只看这页列出来的项目（已滤掉我回避的公海项目）
       醒目条={只项目 && 项目们?.length ? <SameNumberBanner projectId={项目们.map((p) => p.id)} /> : null}
       sourceLead={sourceLead}

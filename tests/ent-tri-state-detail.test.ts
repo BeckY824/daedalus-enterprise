@@ -14,8 +14,8 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 三态夜扫 } from "@/lib/enterprise/tri-state-db";
 import { 加天 } from "@/lib/enterprise/tri-state";
-import { 继续持有, 暂缓回收动作 } from "@/lib/enterprise/tri-state-hold";
-import { 读三态条, 读冷项目, 读三态留痕, 留痕说法, 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
+import { 继续持有, 暂缓回收动作, 让同事结束项目动作 } from "@/lib/enterprise/tri-state-hold";
+import { 读三态条, 读客户三态, 读冷项目, 留痕说法, 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
 import { 无效沟通原因of, 短沟通话of } from "@/lib/enterprise/tri-state-quota";
 import { 默认组织规则, 默认三态规则, type 组织规则 } from "@/lib/project/org-rules";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
@@ -31,6 +31,11 @@ const 人 = {} as Record<"乙" | "丙" | "甲" | "总内" | "总外" | "系", { 
 let 客户: string;
 const 条 = (k: keyof typeof 人, n: number) => 读三态条(人[k], 客户, 白天(n));
 const 按钮 = async (k: keyof typeof 人, n: number) => ((await 条(k, n))?.按钮们 ?? []).map((b) => b.字);
+/** 照客户详情页那样：客户行连钟读一次递进去 */
+const 页面三态 = async (k: keyof typeof 人, n: number) => {
+  const c = (await prisma.customer.findUnique({ where: { id: 客户 }, select: { id: true, name: true, salesOwnerId: true, bizLine: true, poolInvalidAt: true, pool: { select: { customerId: true } }, entClock: true } }))!;
+  return 读客户三态(人[k], c, new Map(Object.values(人).map((u) => [u.id, u.name])), 白天(n));
+};
 
 beforeEach(async () => {
   await resetDb();
@@ -73,7 +78,7 @@ describe("C10 状态条", () => {
   it("沉睡：本人「我还在跟」（悬停写额度）；上级第 30 天前只有说明、之后能代选；别人只有说明", async () => {
     await 三态夜扫(早(95));
     const 本人 = (await 条("乙", 95))!;
-    expect(本人).toMatchObject({ 状态: "沉睡", 文字: "已 95 天没有有效沟通 · 再 85 天进入待回收" });
+    expect(本人).toMatchObject({ 状态: "沉睡", 文字: "已 95 天没有动静 · 再 85 天进入待回收", 悬停: "已 95 天没有动静 · 再 85 天进入待回收（动静指有效沟通或项目推进）" });
     expect(本人.按钮们).toMatchObject([{ 动作: "继续持有", 字: "我还在跟", 要理由: false, 主: true }]);
     expect(本人.按钮们[0].说明).toBe("「我还在跟」和「写理由继续持有」共用一个额度：每次顺延 30 天、钟不归零；沉睡轮、待回收轮各限一次；累计最多 3 次、合计 90 天；已用 0 次");
     expect(本人.旁注).toContain("客户转让");
@@ -100,35 +105,29 @@ describe("C10 状态条", () => {
     expect((await 条("乙", 200))?.旁注).toBe("额度已用完，可以转让、退回公海，或记一条有效沟通");
   });
 
-  it("待回收：只有这条线的条线总管理看到「写理由继续持有」；本人和上级看到已推给总管理；系统管理员、别线总管理不给按钮", async () => {
+  it("待回收：本人、直属上级、本线总管理、系统管理员都给「写理由继续持有」（要理由）；别线总管理、无关的人只有说明", async () => {
     await 三态夜扫(早(185));
     const 总 = (await 条("总内", 185))!;
     expect(总.状态).toBe("待回收");
     expect(总.文字).toMatch(/^\d+ 天后自动进公海 · 已提醒 0\/3 次$/);
     expect(总.按钮们).toMatchObject([{ 动作: "继续持有", 字: "写理由继续持有", 要理由: true }]);
-    expect(await 条("乙", 185)).toMatchObject({ 按钮们: [], 旁注: expect.stringContaining("已推给条线总管理裁决") });
-    expect(await 条("甲", 185)).toMatchObject({ 按钮们: [] });
-    expect(await 按钮("系", 185)).toEqual([]);
+    for (const k of ["乙", "甲", "系"] as const) expect(await 条(k, 185)).toMatchObject({ 按钮们: [{ 动作: "继续持有", 字: "写理由继续持有", 要理由: true }] });
+    expect(await 条("乙", 185)).toMatchObject({ 旁注: "已推给条线总管理裁决" });
     expect(await 按钮("总外", 185)).toEqual([]);
+    expect(await 按钮("丙", 185)).toEqual([]);
   });
 
-  it("暂缓回收中：线总看到客户转让 / 让同事结束项目 / 暂缓回收；用满或 30 天内换成写理由继续持有；其余人只有说明", async () => {
-    await prisma.project.create({ data: { name: "同事的项目", customerId: 客户, ownerId: 人.丙.id, creatorId: 人.丙.id, createdAt: new Date("2026-10-20T10:00:00+08:00") } });
-    await 三态夜扫(早(180));
-    await prisma.entCustomerClock.update({ where: { customerId: 客户 }, data: { noticeCount: 3, lastNoticeDay: 日(200) } });
-    await 三态夜扫(早(210));
+  it("暂缓回收中：线总、系统管理员看到客户转让 / 让同事结束项目 / 暂缓回收；30 天内换掉暂缓；其余人只有说明", async () => {
+    await 被挡到期();
     const 总 = (await 条("总内", 210))!;
     expect(总).toMatchObject({ 状态: "暂缓回收中", 文字: "到期该进公海，但名下有 1 位同事在推的项目，收不了" });
     expect(总.按钮们.map((b) => b.字)).toEqual(["客户转让", "让同事结束项目", "暂缓回收"]);
-    expect(await 条("乙", 210)).toMatchObject({ 按钮们: [], 旁注: "由条线总管理处理" });
-    expect(await 按钮("系", 210)).toEqual([]);
+    expect(await 按钮("系", 210)).toEqual(总.按钮们.map((b) => b.字));
     expect(await 暂缓回收动作(人.总内, 客户, null, 白天(210))).toEqual({ ok: true });
-    // 30 天内不给暂缓，没用满 2 次时继续持有也不给（服务端同一句话）
     const 后 = (await 条("总内", 215))!;
     expect(后.按钮们.map((b) => b.字)).toEqual(["客户转让", "让同事结束项目"]);
     expect(后.旁注).toContain("天内不用再裁决");
   });
-
   it("负责人是市场成员：不计时，不出条", async () => {
     await 三态夜扫(早(95));
     await prisma.entMember.update({ where: { userId: 人.乙.id }, data: { bizRole: "marketing_mgr" } });
@@ -136,12 +135,42 @@ describe("C10 状态条", () => {
   });
 });
 
+/** 第 210 天：到期该进公海、被同事丙在推的项目挡住 */
+async function 被挡到期() {
+  await prisma.project.create({ data: { name: "同事的项目", customerId: 客户, ownerId: 人.丙.id, creatorId: 人.丙.id, createdAt: new Date("2026-10-20T10:00:00+08:00") } });
+  await 三态夜扫(早(180));
+  await prisma.entCustomerClock.update({ where: { customerId: 客户 }, data: { noticeCount: 3, lastNoticeDay: 日(200) } });
+  await 三态夜扫(早(210));
+}
+
+/** 逐身份：界面给的按钮都能调成，没给的服务端都拒（丙是同线同事、和这位客户无关） */
+const 身份们 = [["本人", "乙"], ["直属上级", "甲"], ["本线总管理", "总内"], ["别线总管理", "总外"], ["系统管理员", "系"], ["无关的人", "丙"]] as const;
+describe("C10 逐身份：按钮和服务端判定一致", () => {
+  it.each(身份们)("待回收 · %s：有「写理由继续持有」⇔ 写理由继续持有能成", async (_, k) => {
+    await 三态夜扫(早(185));
+    const 给 = (await 条(k, 185))!.按钮们.some((b) => b.动作 === "继续持有");
+    expect((await 继续持有(人[k], 客户, "还在谈合同", 白天(185))).ok).toBe(给);
+    expect(给).toBe(k !== "总外" && k !== "丙");
+  });
+
+  for (const 动作 of ["继续持有", "暂缓回收", "让同事结束项目"] as const) {
+    it.each(身份们)(`暂缓回收中 · %s：「${动作}」给 ⇔ 能调`, async (_, k) => {
+      await 被挡到期();
+      const 给 = (await 条(k, 210))!.按钮们.some((b) => b.动作 === 动作);
+      const 调 = 动作 === "继续持有" ? 继续持有(人[k], 客户, "还在谈合同", 白天(210))
+        : 动作 === "暂缓回收" ? 暂缓回收动作(人[k], 客户, null, 白天(210)) : 让同事结束项目动作(人[k], 客户, 白天(210));
+      expect((await 调).ok).toBe(给);
+      if (动作 !== "继续持有") expect(给).toBe(k === "总内" || k === "系");
+    });
+  }
+});
+
 describe("C11 冷项目", () => {
   it("线索 / 商机没动静满 90 天标冷（从起算日数）；换节点、挂项目的沟通清掉；订单、结束了、关着都不标", async () => {
     const 建 = (name: string, x: object = {}) => prisma.project.create({ data: { name, customerId: 客户, ownerId: 人.乙.id, creatorId: 人.乙.id, createdAt: new Date("2026-10-01T10:00:00+08:00"), ...x } }).then((p) => p.id);
     const 线索 = await 建("线索的"), 换过 = await 建("换过节点"), 沟通过 = await 建("记过沟通"), 订单 = await 建("订单的", { phase: "订单", node: "签约" }), 丢了 = await 建("丢单的", { result: "丢单" });
     await prisma.projectNodeLog.create({ data: { projectId: 换过, userId: 人.乙.id, toPhase: "线索", toNode: "初步接触", at: 白天(30) } });
-    await prisma.followUp.create({ data: { customerId: 客户, ownerId: 人.乙.id, type: "PHONE", title: "", content: "电话聊了预算", status: "已完成", occurredAt: 白天(40), projectNode: { create: { projectId: 沟通过, node: "初步接触" } } } });
+    await prisma.followUp.create({ data: { customerId: 客户, ownerId: 人.乙.id, type: "PHONE", title: "", content: "电话聊了预算", status: "已完成", occurredAt: 白天(40), createdAt: 白天(40), projectNode: { create: { projectId: 沟通过, node: "初步接触" } } } });
     const ids = [线索, 换过, 沟通过, 订单, 丢了];
     expect(await 读冷项目(ids, 白天(89))).toEqual({});
     expect(await 读冷项目(ids, 白天(90))).toEqual({ [线索]: 90 });
@@ -150,6 +179,43 @@ describe("C11 冷项目", () => {
     const 查 = vi.spyOn(prisma, "$queryRawUnsafe");
     expect(await 读冷项目(ids, 白天(130))).toEqual({});
     expect(查).not.toHaveBeenCalled();
+  });
+
+  const 挂沟通 = (项目: string, content: string, 日期: number, 写入: number) => prisma.followUp.create({
+    data: { customerId: 客户, ownerId: 人.乙.id, type: "PHONE", title: "", content, status: "已完成", occurredAt: 白天(日期), createdAt: 白天(写入), projectNode: { create: { projectId: 项目, node: "初步接触" } } },
+  });
+  const 冷的线索 = async () => (await prisma.project.create({ data: { name: "线索", customerId: 客户, ownerId: 人.乙.id, creatorId: 人.乙.id, createdAt: new Date("2026-10-01T10:00:00+08:00") } })).id;
+
+  it("B3：挂项目的无效短沟通、只有素材没文字（空内容 / 只有纪要链接）不清冷标；一条有效沟通清掉", async () => {
+    const p = await 冷的线索();
+    await 挂沟通(p, "OK", 100, 100);
+    await 挂沟通(p, "", 100, 100);
+    await 挂沟通(p, "https://x.cn/minutes/1", 100, 100);
+    await 挂沟通(p, "跟进", 100, 100);
+    expect(await 读冷项目([p], 白天(100))).toEqual({ [p]: 100 });
+    await 挂沟通(p, "电话聊了预算和交付时间", 100, 100);
+    expect(await 读冷项目([p], 白天(100))).toEqual({});
+  });
+
+  it("X-108 保守取法：今天补录沟通日期 100 天前的有效沟通，冷标不变；今天写、日期今天的清掉；写成未来日期的不提前占位", async () => {
+    const p = await 冷的线索();
+    expect(await 读冷项目([p], 白天(120))).toEqual({ [p]: 120 });
+    // 补录：沟通日期第 20 天（100 天前），今天写进来——按沟通日期算动静，还冷着（天数从第 20 天数）
+    await 挂沟通(p, "电话聊了预算和交付时间", 20, 120);
+    expect(await 读冷项目([p], 白天(120))).toEqual({ [p]: 100 });
+    // 今天写、日期填成第 200 天：按写入时间（今天）算，正好清掉——换一个项目单看
+    const q = await 冷的线索();
+    await 挂沟通(q, "电话聊了预算和交付时间", 200, 20);
+    expect(await 读冷项目([q], 白天(120))).toEqual({ [q]: 100 });
+    await 挂沟通(p, "电话聊了预算和交付时间", 120, 120);
+    expect(await 读冷项目([p], 白天(120))).toEqual({});
+  });
+
+  it("冷标只在客户活跃时出：沉睡的客户页面不读冷项目（客户三态.活跃 = false）", async () => {
+    await 三态夜扫(早(5));
+    expect((await 页面三态("乙", 5))!.活跃).toBe(true);
+    await 三态夜扫(早(95));
+    expect((await 页面三态("乙", 95))!.活跃).toBe(false);
   });
 });
 
@@ -161,14 +227,24 @@ describe("C13 状态留痕 / C12 短沟通", () => {
     expect(留痕说法({ fromState: null, toState: "活跃", via: "撤销转让·计次", reason: null, holdDays: null })).toBe("撤销转让（计入 7 天内撤销次数）");
     await 三态夜扫(早(95));
     await 继续持有(人.乙, 客户, null, 白天(95));
-    const 行们 = (await 读三态留痕(客户, new Map([[人.乙.id, "乙"]])))!;
+    const 行们 = (await 页面三态("乙", 95))!.留痕;
     expect(行们.slice(0, 2)).toEqual(expect.arrayContaining([
       expect.objectContaining({ 谁: "乙", 事: "继续持有，顺延 30 天：我还在跟" }),
       expect.objectContaining({ 谁: "系统", 事: "沉睡 → 活跃（继续持有顺延 30 天，三个节点一起往后挪）" }),
     ]));
     expect(行们.at(-1)!.谁).toBe("系统");
     await setSetting("orgRules", { ...默认组织规则 });
-    expect(await 读三态留痕(客户, new Map())).toBeNull();
+    expect(await 页面三态("乙", 95)).toBeNull();
+  });
+
+  it("B1：理由原文只有本人、上级链、本线总管理、系统管理员看得到；别线总管理、同事只看做了什么", async () => {
+    await 三态夜扫(早(185));
+    expect(await 继续持有(人.总内, 客户, "下周签合同", 白天(185))).toMatchObject({ ok: true });
+    const 那条 = async (k: keyof typeof 人) => (await 页面三态(k, 186))!.留痕.find((x) => x.事.startsWith("继续持有"))!.事;
+    for (const k of ["乙", "甲", "总内", "系"] as const) expect(await 那条(k)).toBe("继续持有，顺延 30 天：由 总内 代选：下周签合同");
+    for (const k of ["总外", "丙"] as const) expect(await 那条(k)).toBe("继续持有，顺延 30 天");
+    expect(留痕说法({ fromState: "待回收", toState: "待回收", via: "总管理裁决", reason: "暂缓回收：月底前结项", holdDays: null }, false)).toBe("暂缓回收");
+    expect(留痕说法({ fromState: "活跃", toState: "沉睡", via: "自动", reason: "满 90 天没有有效沟通", holdDays: null }, false)).toBe("活跃 → 沉睡（满 90 天没有有效沟通）");
   });
 
   it("短沟通：原因按同一个判定；客户在计时才提示，AI 起草的、三态关着的不提示", async () => {
@@ -178,14 +254,22 @@ describe("C13 状态留痕 / C12 短沟通", () => {
     expect(短沟通话of({ ok: true })).toBeNull();
     const 记 = (content: string) => prisma.followUp.create({ data: { customerId: 客户, ownerId: 人.乙.id, type: "PHONE", title: "", content, status: "已完成" } }).then((f) => f.id);
     const 短 = await 记("OK");
-    expect(await 短沟通提示(短, "OK")).toBeNull(); // 还没有钟（夜扫没跑过）
+    expect(await 短沟通提示(短)).toBeNull(); // 还没有钟（夜扫没跑过）
     await 三态夜扫(早(5));
-    expect(await 短沟通提示(短, "OK")).toBe("太短");
-    expect(await 短沟通提示(await 记("电话聊了预算"), "电话聊了预算")).toBeNull();
+    expect(await 短沟通提示(短)).toBe("太短");
+    expect(await 短沟通提示(await 记("电话聊了预算"))).toBeNull();
+    // 按库里存下的内容判：库里改成了有效内容就不提示
+    await prisma.followUp.update({ where: { id: 短 }, data: { content: "电话聊了预算和交付时间" } });
+    expect(await 短沟通提示(短)).toBeNull();
     const ai = await 记("OK");
     await prisma.followUpSource.create({ data: { followUpId: ai, text: "速记原文" } });
-    expect(await 短沟通提示(ai, "OK")).toBeNull();
+    expect(await 短沟通提示(ai)).toBeNull();
+    expect(await 短沟通提示("没有这条")).toBeNull();
+    // 判的时候出错当没有，不抛（传个坏 id 让查库报错）
+    await expect(短沟通提示({ bad: 1 } as unknown as string)).resolves.toBeNull();
+    const 又短 = await 记("OK");
+    expect(await 短沟通提示(又短)).toBe("太短");
     await setSetting("orgRules", { ...默认组织规则 });
-    expect(await 短沟通提示(短, "OK")).toBeNull();
+    expect(await 短沟通提示(短)).toBeNull();
   });
 });
