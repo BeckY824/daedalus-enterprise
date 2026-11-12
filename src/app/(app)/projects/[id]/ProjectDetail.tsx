@@ -419,12 +419,15 @@ export type 项目详情Props = {
 
 /**
  * 嵌在客户详情里（11-12 客户详情合并第 2 批，定稿 UI 客户详情-定稿UI-20261112.html 的项目区）：
- * 不画页头，第一行是客户页给的页签行；中栏 阶段 → 沟通 → 待办 → 卡点，右栏项目资料各卡。
+ * 不画页头；项目切换在进程卡卡头（客户页给）；中栏 阶段 → 沟通 → 待办 → 卡点，右栏项目资料各卡。
  * 这个项目的「领取」「项目转让」「项目退回公海」「删除项目」在客户页右上角「项目操作 ▾」里（11-12 用户），点了经 动作口 递回这里开框
  * 沟通卡标题旁「本项目 / 这位客户全部」，全部 = 客户页那条时间线（客户页给）；待办是客户页那张卡（客户页给）
  */
 export type 嵌在客户页 = {
+  /** 项目切换（客户页给，11-12 方案一）：摆在进程卡卡头左边，「完成节点」在同一行右边；进程卡不再摆三个阶段页签 */
   页签行: ReactNode;
+  /** 这位客户有 2 个以上项目：右栏卡头写「项目资料 · 项目名」，看得出右栏跟着切 */
+  多项目?: boolean;
   /** 客户三态提醒条（客户页给，有才摆）：只占中栏宽、在进程卡正上方 */
   提醒?: ReactNode;
   /** 客户页「项目操作 ▾」点了哪项：这里把处理函数挂给客户页（卸载时挂 null），客户页调它 */
@@ -701,8 +704,8 @@ export default function ProjectDetail({
 
   const 位 = 阶段与进程(p, 字典);
   const 显示回收日 = p.企业版 && !!p.回收日 && !p.pooled && !p.result;
-  const 节点卡 = (
-    <Card style={p.企业版 ? undefined : { marginBottom: 16 }}>
+  const 顶块 = (
+    <>
       {/* 企业版（F-项目-19）：「阶段」「进程」两格和下面的阶段页签重复，不摆，只留回收日；别的版本照旧 */}
       {(!p.企业版 || 显示回收日) && <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", justifyContent: "space-between" }}>
         {/* P11：阶段（线索/商机/订单）和进程（节点）分两格摆，不拼成一串；成功交付、异常状态的阶段算订单 */}
@@ -747,6 +750,11 @@ export default function ProjectDetail({
           {推不了 && !p.企业版 && <div style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)", textAlign: "right" }}>{推不了}</div>}
         </div>
       </div>}
+    </>
+  );
+  const 节点卡 = (
+    <Card style={p.企业版 ? undefined : { marginBottom: 16 }}>
+      {!嵌入 && 顶块}
       {/* 企业版：三个阶段页签 + 完成节点 ▼ / 新增沟通（M-节点-04）；别的版本照旧一条进度条 */}
       {p.企业版 ? (
         <ProjectStages
@@ -759,8 +767,12 @@ export default function ProjectDetail({
           成功交付={交付了}
           动作={节点可改 || (p.能记沟通 && !嵌入) ? 进程钮 : undefined}
           提示={p.result && 节点可改 ? undefined : 完成不了}
+          卡头={嵌入?.页签行}
+          不摆阶段页签={!!嵌入}
         />
-      ) : (
+      ) : null}
+      {嵌入 && 顶块}
+      {p.企业版 ? null : (
         <Progress
           style={{ marginTop: 12, marginBottom: 0 }}
           percent={Math.round(((交付了 ? 节点总数 : 节点序号(当前, 字典)) / 节点总数) * 100)}
@@ -790,7 +802,7 @@ export default function ProjectDetail({
   );
   const 项目卡 = (
     <Card
-      title={嵌入 ? "项目资料" : "项目"}
+      title={嵌入 ? (嵌入.多项目 ? <span className="cd-info-t" title={`项目资料 · ${p.name}`}>项目资料 · {p.name}</span> : "项目资料") : "项目"}
       // U-项目-05：企业版改项目的入口挪到项目卡右上角一个笔（页头不再摆「编辑项目」），点开还是同一个编辑框；别的版本照旧「编辑」
       extra={嵌入 ? (
         // 嵌在客户页：项目收藏星挪到这张卡头（审查 #2，页签行 1024 宽已经很挤），只管当前页签这个项目；编辑笔照旧在最右
@@ -1582,12 +1594,11 @@ export default function ProjectDetail({
   if (嵌入) {
     return (
       /* 客户详情的项目区（定稿 UI .zone）：中栏干活，右栏看资料。1280 也是两栏，窄到放不下右栏落到中栏下面（globals.css .rec-zone）。
-         11-12：提醒条 / 页签行 / 告示 / 两栏都是 .cd-zb 这张网格的直接子项——提醒条只占中栏一格，页签行、告示横跨两栏，
+         11-12：提醒条 / 告示 / 两栏都是 .cd-zb 这张网格的直接子项——提醒条只占中栏一格，告示横跨两栏（项目切换在进程卡卡头里），
          进程卡和右栏「项目资料」同在下一行，顶边自然对齐；排布要调只改 globals.css 的 .cd-zb 那几条 */
       <section className="rec-zone" aria-label={`项目：${p.name}`} data-project={p.id}>
         <div className="cd-zb">
           {嵌入.提醒 && <div className="cd-alert">{嵌入.提醒}</div>}
-          {嵌入.页签行}
           {(p.pooled || 异常) && <div className="cd-notice">{告示}</div>}
           <div className="cd-mid">
             {节点卡}

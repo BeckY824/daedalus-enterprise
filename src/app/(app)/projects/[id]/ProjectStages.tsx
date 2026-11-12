@@ -8,7 +8,7 @@ import { 阶段们 } from "@/lib/project/nodes";
 import type { 阶段字典 } from "@/lib/project/stage-dict";
 
 /** 三大阶段的颜色，和数据页项目统计（overview/ProjectStatsView.tsx）同一套 */
-const 阶段色: Record<string, string> = { 线索: categorical.cyan, 商机: palette.brand, 订单: categorical.green };
+export const 阶段色: Record<string, string> = { 线索: categorical.cyan, 商机: palette.brand, 订单: categorical.green };
 
 /** 服务端渲染时没有 layout 阶段，退回 useEffect（只是为了不报警告，浮片在浏览器里才量） */
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
@@ -29,7 +29,7 @@ const 勾 = <svg className="proj-stage-tick" viewBox="0 0 12 12" aria-hidden foc
 /** 系统开了「减弱动态」：滚动不平滑 */
 const 少动 = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
-export default function ProjectStages({ 字典, 所在阶段, 所在进程, 结局, 结局色, 成功交付, 动作, 提示 }: {
+export default function ProjectStages({ 字典, 所在阶段, 所在进程, 结局, 结局色, 成功交付, 动作, 提示, 卡头, 不摆阶段页签 = false }: {
   字典: 阶段字典;
   所在阶段: string;
   所在进程: string;
@@ -39,6 +39,13 @@ export default function ProjectStages({ 字典, 所在阶段, 所在进程, 结�
   /** 参数是「看的不是所在阶段」时的灰掉原因，看的是所在阶段时为 undefined */
   动作?: (不在当前: string | undefined) => ReactNode;
   提示?: string;
+  /** 卡头左边摆的东西（客户详情：项目切换，11-12 方案一）；给了就和右边「完成节点」同一行、不换行 */
+  卡头?: ReactNode;
+  /**
+   * 不摆「线索 / 商机 / 订单」三个阶段页签（11-12 用户：客户详情卡头写了阶段，下面的页签不用显示），只看所在阶段的节点。
+   * 页签的状态和逻辑都还在，传 false 就回来；独立项目详情页照旧摆
+   */
+  不摆阶段页签?: boolean;
 }) {
   const [看, set看] = useState(所在阶段);
   const 签们 = useRef<(HTMLButtonElement | null)[]>([]);
@@ -128,8 +135,9 @@ export default function ProjectStages({ 字典, 所在阶段, 所在进程, 结�
   };
   return (
     <div className="proj-stages">
-      <div className="proj-stage-bar">
-        <div className="proj-stage-tabs" role="tablist" aria-label="项目阶段">
+      <div className={`proj-stage-bar${卡头 ? " has-head" : ""}`}>
+        {卡头 && <div className="proj-stage-head">{卡头}</div>}
+        {!不摆阶段页签 && <div className="proj-stage-tabs" role="tablist" aria-label="项目阶段">
           {阶段们.map((s, i) => (
             <button
               key={s}
@@ -149,11 +157,11 @@ export default function ProjectStages({ 字典, 所在阶段, 所在进程, 结�
               {s}
             </button>
           ))}
-        </div>
+        </div>}
         {动作 && <div className="proj-stage-acts">{动作(看 === 所在阶段 ? undefined : "只能在当前阶段操作")}</div>}
       </div>
       {提示 && <div className="proj-stage-note proj-stage-why">{提示}</div>}
-      <div id="proj-stage-panel" role="tabpanel" aria-labelledby={`proj-stage-tab-${看序}`} className="proj-stage-panel" style={{ ["--stage-c" as string]: 阶段色[看] }}>
+      <div id="proj-stage-panel" role={不摆阶段页签 ? undefined : "tabpanel"} aria-labelledby={不摆阶段页签 ? undefined : `proj-stage-tab-${看序}`} aria-label={不摆阶段页签 ? `${看}阶段的节点` : undefined} className="proj-stage-panel" style={{ ["--stage-c" as string]: 阶段色[看] }}>
         {看 !== 所在阶段 && (
           <div className="proj-stage-note">{看序 < 所在序 ? `「${看}」阶段已经走完` : `还没到「${看}」阶段`}，只能看，不能改</div>
         )}

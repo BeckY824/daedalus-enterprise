@@ -67,14 +67,14 @@ beforeAll(async () => {
       p1:项目('p1','项目一'+长,'c1',[['c1',['决策人'],null],['c2',['使用方'],'支持']]),
       p2:项目('p2','项目二'+长,'c3',[['c3',['决策人'],null]]),
     };
-    const 页签们=[{id:'p1',name:项目们.p1.name,节点:'方案报价'},{id:'p2',name:项目们.p2.name,节点:'需求确认'}];
+    const 页签们=[{id:'p1',name:项目们.p1.name,节点:'方案报价',阶段:'商机',结局:null},{id:'p2',name:项目们.p2.name,节点:'需求确认',阶段:'商机',结局:null}];
     // 项目多（审查 #1）：再补 6 个只有页签的项目，一共 8 个
-    const 多页签=[...页签们,...Array.from({length:6},(_,i)=>({id:'q'+i,name:'第'+(i+3)+'个项目'+长,节点:'需求确认'}))];
+    const 多页签=[...页签们,...Array.from({length:6},(_,i)=>({id:'q'+i,name:'第'+(i+3)+'个项目'+长,节点:i===0?'丢单':'需求确认',阶段:i%2?'订单':'线索',结局:i===0?'丢单':null}))];
     // 导航收成 56 宽的图标栏；名单在 1214 以上摆着（lib/roster.ts 名单门槛，再窄收成抽屉），手机没有导航
     const 名单=<aside className='pane pane-roster'><div className='pane-h'><span className='pane-t'>客户</span></div><div className='pane-rows'>{Array.from({length:20},(_,i)=><div key={i}>客户{i}</div>)}</div></aside>;
     window.__render=(o={})=>{
       window.__sp=o.地址||'';window.__换=undefined;
-      const 签=o.空?[]:o.多?多页签:页签们;
+      const 签=o.空?[]:o.多?(o.末?[...多页签.slice(1),多页签[0]]:多页签):o.单?[页签们[0]]:页签们;
       const 当前=o.空?null:当前of(项目们[o.选||'p1'],!o.只读);
       if(当前&&o.只读) 当前.p={...当前.p,能记沟通:false,能放公海:false,能转让:false,能改节点:false,能删:false,关联:当前.p.关联};
       if(当前&&o.删) 当前.p={...当前.p,能删:true};
@@ -95,7 +95,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 参 = { 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean };
+type 参 = { 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean };
 /** 11-12 用户「右上角只保存三个按钮：AI，项目操作，客户操作」：点开某个下拉，返回菜单 */
 const 开菜单 = async (page: Page, 名: "项目操作" | "客户操作") => {
   await page.locator(".rec-head-acts").getByRole("button", { name: new RegExp(名) }).click();
@@ -131,13 +131,13 @@ it("页签切换后左栏「关键」跟着换：本项目主联系人排最前�
     // 李工在本项目里是使用方、支持
     expect(await page.locator(".rec-contact", { hasText: "李工" }).getByTestId("contact-project-role").innerText()).toMatch(/本项目\s*使用方 · 支持/);
     // 页签是到客户详情 ?project= 的链接，当前那个标着
-    const 页签 = page.locator(".cd-tabs").getByRole("tab");
+    const 页签 = page.locator(".cd-pj-pills").getByRole("tab");
     expect(await 页签.evaluateAll((ts: HTMLElement[]) => ts.map(t => [t.getAttribute("href"), t.getAttribute("aria-selected")]))).toEqual([["/customers/a?project=p1", "true"], ["/customers/a?project=p2", "false"]]);
     // 切到项目二（服务端按 ?project=p2 重画）：关键换成陈经理、排最前；王总变成其他联系人，不再是关键
     await 画(page, { 选: "p2" });
     expect(await 联系人们(page)).toEqual(["陈经理*", "王总", "李工"]);
     expect(await page.locator(".rec-contact", { hasText: "李工" }).getByTestId("contact-project-role").count()).toBe(0);
-    expect(await page.locator(".cd-tabs").getByRole("tab", { selected: true }).getAttribute("href")).toBe("/customers/a?project=p2");
+    expect(await page.locator(".cd-pj-pills").getByRole("tab", { selected: true }).getAttribute("href")).toBe("/customers/a?project=p2");
     expect(await page.locator(".rec-zone").getAttribute("data-project")).toBe("p2");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
@@ -150,10 +150,10 @@ it("没有项目可选：项目区空状态 +「＋ 新建项目」；关键联�
     expect(await 空.innerText()).toMatch(/这位客户还没有项目/);
     expect(await 空.getByRole("button", { name: /新建项目/ }).count()).toBe(1);
     // 页签行不再摆「＋ 新建项目」；没有项目时「项目操作」里只剩新建项目
-    expect(await page.locator(".cd-zh button, .cd-add:not(.cd-add-big)").count()).toBe(0);
+    expect(await page.locator(".cd-zh button, .cd-pj button, .cd-add:not(.cd-add-big)").count()).toBe(0);
     expect(await 菜单项们(await 开菜单(page, "项目操作"))).toEqual(["新建项目"]);
     await page.keyboard.press("Escape");
-    expect(await page.locator(".cd-tabs").getByRole("tab").count()).toBe(0);
+    expect(await page.locator(".cd-pj-pills").getByRole("tab").count()).toBe(0);
     expect(await 联系人们(page)).toEqual(["王总*", "李工", "陈经理"]);
     expect(await page.locator(".rec-contact-sub").count()).toBe(0);
     // 没有项目也照样看得到这位客户的沟通记录（只看，不能新建）和待办
@@ -170,16 +170,16 @@ it("没有项目可选：项目区空状态 +「＋ 新建项目」；关键联�
 it("同事项目只给带锁的个数：不是链接、不是按钮，不露项目名；没有能看的项目时空状态说「没有你能看的项目」", async () => {
   const { page, errors } = await 开(1366, { 锁数: 2 });
   try {
-    const 锁 = page.locator(".cd-zh .cd-lock");
+    const 锁 = page.locator(".cd-pj .cd-lock");
     // 正文窄（1366 开着名单）只露锁 + 个数，宽了写「同事项目 2」；读屏都念全
     expect(await 锁.innerText()).toMatch(/^(同事项目\s*)?2$/);
     expect(await 锁.getAttribute("aria-label")).toBe("同事项目 2 个");
     expect(await 锁.locator("svg").count()).toBe(1);
     expect(await 锁.evaluate(el => !!el.closest("a, button") || !!el.querySelector("a, button"))).toBe(false);
-    expect(await page.locator(".cd-tabs").getByRole("tab").count()).toBe(2);
+    expect(await page.locator(".cd-pj-pills").getByRole("tab").count()).toBe(2);
     await 画(page, { 空: true, 锁数: 1 });
     expect(await page.getByTestId("project-zone-empty").innerText()).toMatch(/没有你能看的项目/);
-    expect(await page.locator(".cd-zh .cd-lock").count()).toBe(1);
+    expect(await page.locator(".cd-pj .cd-lock").count()).toBe(1);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -188,22 +188,27 @@ it("1024 / 1280 / 1366：页签行一行不换行、右端不再有按钮；页�
   for (const w of [1024, 1280, 1366]) {
     const { page, errors } = await 开(w, { 锁数: 1, 公司名: "超长公司名有限责任公司".repeat(8) });
     try {
-      const 行 = page.locator(".rec-zone .cd-zh");
+      // 11-12 方案一：项目切换在进程卡卡头左边、「完成节点」在同一行右边，一行放下；客户详情不摆三个阶段页签
+      const 行 = page.locator(".cd-mid > .ant-card .proj-stage-bar.has-head");
+      expect(await page.locator(".rec-zone .proj-stage-tabs").count(), `宽 ${w}`).toBe(0);
       const 量 = await 行.evaluate((el) => {
         const 框 = el.getBoundingClientRect();
-        const 块 = [...el.querySelectorAll(".cd-tab, .cd-lock")].map(b => { const r = b.getBoundingClientRect(); return { 字: (b as HTMLElement).innerText.replace(/\s+/g, ""), 上: r.top, 下: r.bottom, 左: r.left, 右: r.right }; });
-        const 页签 = [...el.querySelectorAll<HTMLElement>(".cd-tab")].map(t => ({ 截: t.scrollWidth > t.clientWidth, title: t.title, 字: t.textContent }));
-        return { 框: { 左: 框.left, 右: 框.right, 高: 框.height }, 块, 页签, 溢出: el.scrollWidth > el.clientWidth + 1, 钮: el.querySelectorAll("button").length };
+        const 块 = [...el.querySelectorAll(".cd-pj-pills > *, .cd-lock, .proj-stage-acts button")].map(b => { const r = b.getBoundingClientRect(); return { 字: (b as HTMLElement).innerText.replace(/\s+/g, ""), 上: r.top, 下: r.bottom, 左: r.left, 右: r.right }; });
+        const 页签 = [...el.querySelectorAll<HTMLElement>(".cd-pj-pills .cd-pj-pill[role=tab]")].map(t => { const n = t.querySelector<HTMLElement>(".cd-pj-nm")!; return { 截: n.scrollWidth > n.clientWidth, title: t.title, 名: n.textContent, 标: t.querySelector(".cd-pj-st")!.textContent }; });
+        return { 框: { 左: 框.left, 右: 框.right, 高: 框.height }, 块, 页签, 溢出: el.scrollWidth > el.clientWidth + 1 };
       });
       const 中 = 量.块.map(b => (b.上 + b.下) / 2);
-      expect(Math.max(...中) - Math.min(...中), `宽 ${w}`).toBeLessThanOrEqual(2);
-      expect(量.框.高, `宽 ${w}`).toBeLessThanOrEqual(36);
+      expect(Math.max(...中) - Math.min(...中), `宽 ${w}`).toBeLessThanOrEqual(4);
+      expect(量.框.高, `宽 ${w}`).toBeLessThanOrEqual(44);
       expect(量.溢出, `宽 ${w}`).toBe(false);
-      expect(量.钮, `宽 ${w}`).toBe(0);
+      expect(量.块.some(b => b.字 === "完成节点"), `宽 ${w}`).toBe(true);
       for (const b of 量.块) { expect(b.左, `宽 ${w} ${b.字}`).toBeGreaterThanOrEqual(量.框.左 - 1); expect(b.右, `宽 ${w} ${b.字}`).toBeLessThanOrEqual(量.框.右 + 1); }
-      // 超长项目名省略号 + 悬停全名（title）
+      // 胶囊 = 项目名 + 所在阶段（不写具体节点）；超长名省略号 + 悬停全名（title）
+      expect(量.页签.every(t => t.标 === "商机"), `宽 ${w}`).toBe(true);
       expect(量.页签.some(t => t.截), `宽 ${w}`).toBe(true);
-      for (const t of 量.页签) expect(t.title).toBe(t.字);
+      for (const t of 量.页签) expect(t.title.startsWith(t.名!)).toBe(true);
+      // 右栏卡头带当前项目名
+      expect(await page.locator(".cd-side .ant-card-head-title").first().innerText()).toMatch(/^项目资料 · 项目一/);
       // 页头：两颗下拉和客户名同一行、不折行
       expect(await page.locator(".rec-head-acts button").evaluateAll((bs: HTMLElement[]) => bs.map(b => b.innerText.replace(/\s+/g, "")))).toEqual(["项目操作", "客户操作"]);
       const [名, 排] = await Promise.all([page.locator(".rec-head-id").boundingBox(), page.locator(".rec-head-acts").boundingBox()]);
@@ -251,11 +256,10 @@ it.each([1280, 1366, 1440])("提醒条 %ipx：在项目区中栏、进程卡正�
     expect(await 条.count()).toBe(1);
     // 不在客户名下面通栏，在项目区那张网格里
     expect(await 条.evaluate(el => !!el.closest(".rec-zone .cd-zb > .cd-alert"))).toBe(true);
-    const [框, 中栏, 右栏, 进程卡, 页签行] = await Promise.all([条.boundingBox(), page.locator(".cd-mid").boundingBox(), page.locator(".cd-side").boundingBox(), page.locator(".cd-mid > .ant-card").first().boundingBox(), page.locator(".rec-zone .cd-zh").boundingBox()]);
+    const [框, 中栏, 右栏, 进程卡] = await Promise.all([条.boundingBox(), page.locator(".cd-mid").boundingBox(), page.locator(".cd-side").boundingBox(), page.locator(".cd-mid > .ant-card").first().boundingBox()]);
     expect(Math.abs(框!.x - 中栏!.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(框!.width - 中栏!.width)).toBeLessThanOrEqual(1);
-    expect(框!.y + 框!.height).toBeLessThanOrEqual(页签行!.y + 1);
-    expect(页签行!.y + 页签行!.height).toBeLessThanOrEqual(进程卡!.y + 1);
+    expect(框!.y + 框!.height).toBeLessThanOrEqual(进程卡!.y + 1);
     expect(Math.abs(右栏!.y - 中栏!.y)).toBeLessThanOrEqual(1);
     expect(await page.locator(".rec-head + [data-testid=tri-state-bar]").count()).toBe(0);
     expect(await 条.innerText()).toContain("右上角「客户操作」");
@@ -278,7 +282,7 @@ it("项目区里：中栏 阶段 → 沟通 → 待办 → 卡点，右栏项目
     // 卡点默认收着（同项目详情）
     expect(中.filter(x => /^(收起|展开)/.test(x)).map(x => x.replace(/^(收起|展开)/, ""))).toEqual(["沟通记录", "待办", "卡点"]);
     expect(中[0]).toMatch(/ant-card/);
-    expect(await page.locator(".cd-side .ant-card-head-title").first().innerText()).toBe("项目资料");
+    expect(await page.locator(".cd-side .ant-card-head-title").first().innerText()).toMatch(/^项目资料 · 项目一/);
     const 卡 = page.locator(".cd-comm");
     expect(await 卡.getByRole("button", { name: "本项目" }).getAttribute("aria-pressed")).toBe("true");
     expect(await 卡.getByText(/挂在项目一.*上的沟通/).count()).toBe(1);
@@ -303,19 +307,18 @@ it("只读的客户（全只读）：页头、项目区都没有写入口", asyn
     expect(await page.locator(".cd-add, .rec-head-acts").count()).toBe(0);
     expect(await page.getByRole("button", { name: /项目操作|客户操作/ }).count()).toBe(0);
     // 页签照样能切（只是看）
-    expect(await page.locator(".cd-tabs").getByRole("tab").count()).toBe(2);
+    expect(await page.locator(".cd-pj-pills").getByRole("tab").count()).toBe(2);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
 
-it("手机单栏：客户名和客户按钮 → 项目页签和项目按钮 → 阶段 → 沟通 → 待办 → 卡点 → 项目资料 → 客户资料；不横滚", async () => {
+it("手机单栏：客户名和客户按钮 → 卡头项目切换 → 阶段 → 沟通 → 待办 → 卡点 → 项目资料 → 客户资料；不横滚", async () => {
   const { page, errors } = await 开(375, {}, 900);
   try {
     await expect.poll(() => page.locator(".rec.rec-cd").evaluate(el => el.classList.contains("rec-1col"))).toBe(true);
     const 上 = (s: string) => page.locator(s).first().evaluate(el => el.getBoundingClientRect().top);
     const 顺序 = [
       ".rec-head",
-      ".rec-zone .cd-zh",
       ".cd-mid > .ant-card",
       "#project-follow",
       '.cd-mid > .proj-fold:has(> .proj-fold-btn[aria-label="收起待办"])',
@@ -331,37 +334,65 @@ it("手机单栏：客户名和客户按钮 → 项目页签和项目按钮 → 
   } finally { await page.close(); }
 });
 
-it("项目多（8 个）、1024 宽：页签那段横着滚，锁一直看得见；每个页签都够得到；整页不横滚；新建项目在「项目操作」里", async () => {
-  const { page, errors } = await 开(1024, { 多: true, 锁数: 3 });
+it("项目多（8 个）、1024 / 1280 宽：放不下的胶囊收进「更多 N 个」，不折行不横滚；选中的在「更多」里时顶到可见的最后一颗；锁一直看得见；「更多」里点了切项目", async () => {
+  for (const w of [1024, 1280]) {
+    const { page, errors } = await 开(w, { 多: true, 末: true, 锁数: 3 });
+    try {
+      const 行 = page.locator(".cd-pj");
+      const 胶囊 = page.locator(".cd-pj-pills").getByRole("tab");
+      const 更多 = page.locator(".cd-pj-pills .cd-pj-more");
+      await 更多.waitFor();
+      const 见 = await 胶囊.count();
+      expect(await 更多.innerText(), `宽 ${w}`).toMatch(new RegExp(`更多 ${8 - 见} 个`));
+      expect(见, `宽 ${w}`).toBeGreaterThanOrEqual(1);
+      // 选中的（排在最后的项目一）看得见、是可见的最后一颗
+      expect(await 胶囊.last().getAttribute("aria-selected"), `宽 ${w}`).toBe("true");
+      expect(await 胶囊.last().getAttribute("href")).toBe("/customers/a?project=p1");
+      // 一行、不溢出、不横滚
+      expect(await 行.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+      expect(await page.locator(".cd-pj-pills").evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+      const 点得着 = (sel: string) => page.locator(sel).first().evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const 中 = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return r.width > 0 && !!中 && (中 === el || el.contains(中));
+      });
+      expect(await 点得着(".cd-pj .cd-lock")).toBe(true);
+      expect(await 点得着(".cd-pj-more")).toBe(true);
+      // 「更多」里列收起来的项目；点一个 = 换地址切过去
+      await 更多.click();
+      const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .cd-pj-menu");
+      await 菜单.locator("li").first().waitFor();
+      expect(await 菜单.locator("li").count()).toBe(8 - 见);
+      await 菜单.locator("li").last().click();
+      await expect.poll(() => page.evaluate(() => (window as unknown as { __换?: string }).__换)).toMatch(/^\/customers\/a\?project=q\d$/);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+it("有结局的项目胶囊写结局（同原页签），没有的写所在阶段带阶段色点", async () => {
+  const { page, errors } = await 开(1920, { 多: true });
   try {
-    const 行 = page.locator(".rec-zone .cd-zh");
-    const 点得着 = (sel: string) => 行.locator(sel).first().evaluate((el) => {
-      const r = el.getBoundingClientRect();
-      const 中 = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-      return r.width > 0 && !!中 && (中 === el || el.contains(中));
-    });
-    expect(await 点得着(".cd-lock")).toBe(true);
-    // 锁不在滚动段里
-    expect(await 行.locator(".cd-tabs .cd-lock").count()).toBe(0);
-    // 页签段确实放不下、可以横着滚；整行、整页都不横滚
-    expect(await 行.locator(".cd-tabs").evaluate((el) => el.scrollWidth > el.clientWidth + 1)).toBe(true);
-    expect(await 行.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
-    // 每个页签：键盘走到它（focus）就整个露出来，中心点上是它自己；往回走也一样。
-    // 不能只要求「露一点」：浏览器自带的聚焦滚动对露着几像素的页签不滚（CI Linux 字体下第 7 个只露 6px），产品自己补滚
-    const 页签 = 行.locator(".cd-tabs").getByRole("tab");
-    expect(await 页签.count()).toBe(8);
-    const 整个露着 = (i: number) => 页签.nth(i).evaluate((el) => {
-      const 框 = el.parentElement!.getBoundingClientRect(), r = el.getBoundingClientRect();
-      const 中 = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-      return r.left >= 框.left - 1 && r.right <= 框.right + 1 && !!中 && el.contains(中);
-    });
-    for (const i of [0, 1, 2, 3, 4, 5, 6, 7, 6, 3, 0]) {
-      await 页签.nth(i).focus();
-      expect(await 整个露着(i), `第 ${i + 1} 个页签`).toBe(true);
-    }
-    // 「项目操作 → 新建项目」点得动（开新建项目的框）
-    await (await 开菜单(page, "项目操作")).getByRole("menuitem", { name: /^新建项目$/ }).click();
+    const 标们 = await page.locator(".cd-pj-pills [role=tab]").evaluateAll((ts: HTMLElement[]) => ts.map(t => [t.querySelector(".cd-pj-st")!.textContent, !!t.querySelector(".cd-pj-dot")]));
+    expect(标们[2]).toEqual(["丢单", false]);
+    expect(标们[3]).toEqual(["订单", true]);
+    expect(标们[0]).toEqual(["商机", true]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("只有 1 个项目：卡头直接写项目名（加粗、一行省略、悬停全文）和所在阶段，没有胶囊；右栏卡头只写「项目资料」", async () => {
+  const { page, errors } = await 开(1280, { 单: true });
+  try {
+    const 名 = page.locator(".cd-pj-one");
+    expect(await 名.locator(".cd-pj-nm").innerText()).toMatch(/^项目一超长项目名字/);
+    expect(await 名.getAttribute("title")).toMatch(/^项目一.* · 商机$/);
+    expect(await 名.locator(".cd-pj-nm").evaluate(el => getComputedStyle(el).fontWeight)).toBe("600");
+    expect(await 名.locator(".cd-pj-tag").innerText()).toBe("商机");
+    expect(await page.getByRole("tab").count()).toBe(0);
+    expect(await page.locator(".cd-side .ant-card-head-title").first().innerText()).toBe("项目资料");
+    expect(await page.locator(".proj-stage-tabs").count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -370,7 +401,7 @@ it("嵌入版的项目资料卡：收藏星在卡头（只管当前项目），�
   const { page, errors } = await 开(1366);
   try {
     const 卡 = page.locator(".cd-side .ant-card").first();
-    expect(await 卡.locator(".ant-card-head-title").innerText()).toBe("项目资料");
+    expect(await 卡.locator(".ant-card-head-title").innerText()).toMatch(/^项目资料 · 项目一/);
     expect(await 卡.locator(".ant-card-extra").getByRole("button", { name: /收藏/ }).count()).toBe(1);
     expect(await 卡.getByTestId("project-owner-row").innerText()).toMatch(/负责人\s*QA/);
     expect(await 卡.getByTestId("project-creator-row").innerText()).toMatch(/创建人\s*QA/);
@@ -404,7 +435,7 @@ it("地址上的 ?project= 读不出来、服务端换成了别的：地址改�
   const { page, errors } = await 开(1366, { 地址: "project=看不了的" });
   try {
     await expect.poll(() => page.evaluate(() => (window as unknown as { __换?: string }).__换)).toBe("/customers/a?project=p1");
-    expect(await page.locator(".cd-tabs").getByRole("tab", { selected: true }).getAttribute("href")).toBe("/customers/a?project=p1");
+    expect(await page.locator(".cd-pj-pills").getByRole("tab", { selected: true }).getAttribute("href")).toBe("/customers/a?project=p1");
     expect(await page.locator(".rec-zone").getAttribute("data-project")).toBe("p1");
     // 地址本来就对：不动
     await 画(page, { 地址: "project=p2", 选: "p2" });
