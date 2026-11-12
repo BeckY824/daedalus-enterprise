@@ -17,7 +17,8 @@ vi.mock("@/lib/enterprise/notify", async (原) => {
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 三态夜扫, 三态扫过键, 收三态客户, 写一批, 公海状态, 被挡理由, 暂缓解除理由 } from "@/lib/enterprise/tri-state-db";
+import { 三态夜扫, 三态扫过键, 收三态客户, 写一批, 公海状态, 被挡理由, 暂缓解除理由, 待交接理由 } from "@/lib/enterprise/tri-state-db";
+import { 工作日数 } from "@/lib/enterprise/tri-state";
 import { 钟上三态提醒, 三态提醒水位键 } from "@/lib/enterprise/tri-state-notice";
 import { 继续持有, 暂缓回收动作 } from "@/lib/enterprise/tri-state-hold";
 import { 读组织 } from "@/lib/enterprise/org";
@@ -428,5 +429,98 @@ describe("T7 · 撤销转让即未发生；同一对负责人 7 天内转—撤�
     await 撤(10, 人.乙.id, 人.丙.id);
     expect(await prisma.customerOwnerLog.count()).toBe(0);
     expect(await prisma.entCustomerStateLog.count()).toBe(0);
+  });
+});
+
+describe("工作日（T6 / T12 的 15 个工作日）", () => {
+  it("周一到周五算，不含起那天；不扣节假日", () => {
+    expect(工作日数("2026-11-13", "2026-11-16")).toBe(1); // 周五 → 周一
+    expect(工作日数("2026-11-13", "2026-11-20")).toBe(5);
+    expect(工作日数("2026-11-13", "2026-11-13")).toBe(0);
+    expect(工作日数("2026-09-30", "2026-10-08")).toBe(6); // 国庆照算工作日（没有节假日表）
+  });
+});
+
+describe("T6 · 离职交接等确认：不收、不推提醒；确认按新负责人起算，作废恢复原钟；挂起超 15 个工作日推系统管理员", () => {
+  const 在公海 = async () => !!(await prisma.customerPool.findUnique({ where: { customerId: 客户 } }));
+  const 兜底通知 = (u: string) => prisma.entNotice.findMany({ where: { userId: u, dedupeKey: { startsWith: "tri-handover-stuck:" } } });
+  async function 发起离职(n: number) {
+    await prisma.user.update({ where: { id: 人.乙.id }, data: { active: false } });
+    return prisma.entHandover.create({ data: { kind: "离职", fromUserId: 人.乙.id, toUserId: 人.丙.id, byUserId: 人.系.id, customerIds: JSON.stringify([客户]), status: "待确认", createdAt: 白天(n) } });
+  }
+
+  it("挂起期间到了待回收也不推提醒、不收；作废后恢复原钟、照常提醒", async () => {
+    const h = await 发起离职(100);
+    await 过(180);
+    await 过(190);
+    expect(await 三态通知(人.甲.id)).toHaveLength(0);
+    expect(await 三态通知(人.系.id)).toHaveLength(0);
+    expect(await 钟()).toMatchObject({ state: "待回收", noticeCount: 0 });
+    await 过(240);
+    expect(await 在公海()).toBe(false);
+    await prisma.entHandover.update({ where: { id: h.id }, data: { status: "已撤回", doneAt: 白天(240) } });
+    await 过(241);
+    expect(await 钟()).toMatchObject({ state: "待回收", noticeCount: 1, enteredDay: 日(180) });
+    // 负责人停用了：条线总管理按他的线找不到 → 系统管理员；直属上级按他停用前的上级
+    expect((await 三态通知(人.系.id)).length).toBe(1);
+    expect((await 三态通知(人.甲.id)).length).toBe(1);
+  });
+
+  it("确认了：按新负责人从确认那天起算", async () => {
+    const h = await 发起离职(100);
+    await 过(180);
+    await 查完再写(async (tx) => {
+      await tx.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 人.丙.id } });
+      await 记换负责人(tx, [{ customerId: 客户, from: 人.乙.id, to: 人.丙.id }], 人.丙.id, "deactivate");
+      await tx.entHandover.update({ where: { id: h.id }, data: { status: "已确认", doneAt: new Date() } });
+    });
+    const 确认那天 = (await prisma.customerOwnerLog.findFirstOrThrow({ where: { kind: "deactivate" } })).at;
+    await prisma.customerOwnerLog.updateMany({ where: { kind: "deactivate" }, data: { at: 白天(185) } });
+    expect(确认那天).toBeInstanceOf(Date);
+    await 过(186);
+    expect(await 钟()).toMatchObject({ state: "活跃", enteredDay: 日(185) });
+  });
+
+  it("挂起超过 15 个工作日：推系统管理员一次（第 100 天周二发起，第 121 天满 15 个，第 122 天推）", async () => {
+    await 发起离职(100);
+    await 过(121);
+    expect(await 兜底通知(人.系.id)).toHaveLength(0);
+    await 过(122);
+    await 过(123);
+    const 推了 = await 兜底通知(人.系.id);
+    expect(推了).toHaveLength(1);
+    expect(推了[0].title).toBe("离职交接挂起超过 15 个工作日没人确认");
+    expect(await 兜底通知(人.总内.id)).toHaveLength(0);
+  });
+});
+
+describe("T12 · 停用账号名下的客户：提醒走停用前上级，标待交接进队列，超 15 个工作日推系统管理员", () => {
+  const 待交接通知 = (u: string) => prisma.entNotice.findMany({ where: { userId: u, dedupeKey: { startsWith: "tri-offboard-stuck:" } } });
+
+  it("停用后夜扫标一次待交接（只一次）；沉睡提醒不发停用人、发他停用前的上级", async () => {
+    await prisma.user.update({ where: { id: 人.乙.id }, data: { active: false } });
+    await 过(90);
+    await 过(91);
+    expect((await 痕()).filter((x) => x.reason === 待交接理由)).toHaveLength(1);
+    expect(await 三态通知(人.乙.id)).toHaveLength(0);
+    expect((await 三态通知(人.甲.id)).length).toBeGreaterThan(0);
+  });
+
+  it("挂在停用人名下超过 15 个工作日推系统管理员一次；交出去了不再标、不再推", async () => {
+    await prisma.user.update({ where: { id: 人.乙.id }, data: { active: false } });
+    await 过(100);
+    await 过(121);
+    expect(await 待交接通知(人.系.id)).toHaveLength(0);
+    await 过(122);
+    await 过(123);
+    const 推了 = await 待交接通知(人.系.id);
+    expect(推了.map((x) => x.title)).toEqual(["停用账号名下 1 位客户待交接超过 15 个工作日"]);
+  });
+
+  it("离职交接已经在等确认的不另标（T6 那条兜底管）", async () => {
+    await prisma.user.update({ where: { id: 人.乙.id }, data: { active: false } });
+    await prisma.entHandover.create({ data: { kind: "离职", fromUserId: 人.乙.id, toUserId: 人.丙.id, byUserId: 人.系.id, customerIds: "[]", status: "待确认", createdAt: 白天(99) } });
+    await 过(100);
+    expect((await 痕()).filter((x) => x.reason === 待交接理由)).toHaveLength(0);
   });
 });

@@ -7,7 +7,7 @@
  *   - 发什么：一个人一天只收一条汇总（站内铃铛，notify() 后台自动推飞书；没绑飞书的只有站内，推失败不重试，feishu-push.ts）。
  *     唯一例外：自动进公海当天「已回公海」单独一条（已回公海通知，夜扫收完调）
  *   - 发给谁（算三态() 给的级别 → 人）：
- *       本人 = 客户负责人
+ *       本人 = 客户负责人；停用了改发他停用前的直属上级（T12，再没有按直属上级那一级往上兜）
  *       直属上级 = 负责人的实线直属上级；没有 / 停用了往上一级（条线总管理），再没有发系统管理员（X-37）
  *       条线总管理 = 客户业务线那条线的条线总管理；客户没填业务线（或暂不分配）按负责人的线；都没有发系统管理员（M-公海-24）
  *       系统管理员 = 是系统管理员的那几位（P-判定-06）
@@ -21,10 +21,12 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { getSetting, setSetting } from "@/lib/settings";
 import { beijingDay, beijingWallIso } from "@/lib/business-clock";
 import { 算三态, 解除后几天收, type 提醒级, type 今天提醒 } from "./tri-state";
-import { 收三态客户, 候选客户, 分批, 三态开着, 三态夜扫, 三态扫过键, 钟状态of, type 自动收了 } from "./tri-state-db";
+import { 收三态客户, 候选客户, 分批, 三态开着, 三态夜扫, 三态扫过键, 钟状态of, 离职交接中的, 待交接理由, type 自动收了 } from "./tri-state-db";
+import { 工作日数, 交接兜底工作日 } from "./tri-state";
+import { 待确认 } from "./handover-db";
 import type { 组织规则 } from "@/lib/project/org-rules";
 import { 读组织, type 组织 } from "./org";
-import { 找条线总管理, 找直属上级, 本人在职, 原负责人上级 } from "./tri-state-people";
+import { 找条线总管理, 找直属上级, 本人在职, 原负责人上级, 系统管理员们 } from "./tri-state-people";
 import { notify } from "./notify";
 
 export const 三态提醒时刻 = { 时: 8, 分: 0 } as const;
@@ -41,9 +43,9 @@ export { 找条线总管理, 找直属上级 } from "./tri-state-people";
 
 /** 一条提醒的级别 → 具体的人（主送、抄送合在一起，去重） */
 export function 提醒发给(org: 组织, 提醒: 今天提醒, c: { salesOwnerId: string; bizLine: string | null }): string[] {
-  // 负责人停用了不给他发；直属上级那一级按他停用前的上级找（tri-state-people.ts）
+  // 负责人停用了不给他发，本人那一级改从他停用前的直属上级发起（T12）；直属上级那一级也按他停用前的上级找（tri-state-people.ts）
   const 级人 = (级: 提醒级): string[] =>
-    级 === "本人" ? (本人在职(org, c.salesOwnerId) ? [c.salesOwnerId] : []) : 级 === "直属上级" ? 找直属上级(org, c.bizLine, c.salesOwnerId) : 找条线总管理(org, c.bizLine, c.salesOwnerId);
+    级 === "本人" ? (本人在职(org, c.salesOwnerId) ? [c.salesOwnerId] : 找直属上级(org, c.bizLine, c.salesOwnerId)) : 级 === "直属上级" ? 找直属上级(org, c.bizLine, c.salesOwnerId) : 找条线总管理(org, c.bizLine, c.salesOwnerId);
   return [...new Set([...提醒.主送, ...提醒.抄送].flatMap(级人))];
 }
 
@@ -85,7 +87,11 @@ export async function 钟上三态提醒(现在: Date = new Date()): Promise<三
   if ((await getSetting<string>(三态提醒水位键)) === 今天) return null;
   // 今天 00:05 那遍没跑过（停机补跑）：先补跑一遍状态。补跑用现在的规则——停机期间没有更早的、当晚生效的规则可用
   await 三态夜扫(现在);
-  const 明细 = await 看全部(async () => 发三态提醒(await 夜扫时的规则(规则), 现在, 今天));
+  const 明细 = await 看全部(async () => {
+    const 发了 = await 发三态提醒(await 夜扫时的规则(规则), 现在, 今天);
+    await 交接挂起兜底(await 读组织(), 今天);
+    return 发了;
+  });
   await setSetting(三态提醒水位键, 今天);
   return 明细;
 }
@@ -116,7 +122,10 @@ async function 发三态提醒(规则: Awaited<ReturnType<typeof 生效组织规
   const 给 = new Map<string, 条[]>();
   const 要记 = new Map<string, { 收件人: Set<string>; data: { noticeCount?: number; lastNoticeDay: string } | null }>();
   for (const 批 of 分批(await 候选客户(prisma))) {
+    // T6：离职交接等接手人确认的，挂起期间不推提醒（也不收，见 tri-state-db.ts 交接挡住的）
+    const 挂起 = await 离职交接中的(prisma, 批);
     for (const c of (await 收三态客户(prisma, 批, 规则, org, 现在)).values()) {
+      if (挂起.has(c.id)) continue;
       const r = 算三态(c.事实, 规则.三态, 今天);
       if (!r.计时 || !r.提醒 || !c.钟 || c.钟.state !== 钟状态of(r)) continue;
       const 人们 = 提醒发给(org, r.提醒, c);
@@ -172,4 +181,50 @@ export async function 已回公海通知(们: readonly 自动收了[], org: 组�
       await notify([上], { kind: "回收", title: `下属的客户「${x.name}」第 ${x.第几次} 次被自动收回，已回客户公海`, body: "要不要标无效由条线总管理在公海回收站里定", link: "/pool", key });
     }
   }
+}
+
+/**
+ * 交接挂起兜底（T6 / T12）：超过 15 个工作日（周一到周五，不扣节假日）没人接手的，推系统管理员裁决，每笔只推一次。
+ *   - T6：离职交接待接手人确认，从发起那天数；
+ *   - T12：负责人停用、客户标了「待交接」（tri-state-db.ts 待交接理由）还挂在他名下，按人合成一条，从他名下最早那位标的那天数。
+ * 返回推了几条
+ */
+export async function 交接挂起兜底(org: 组织, 今天: string): Promise<number> {
+  const 管 = 系统管理员们(org);
+  if (!管.length) return 0;
+  const 超了 = (起: Date) => 工作日数(beijingDay(起), 今天) > 交接兜底工作日;
+  let n = 0;
+  const 挂 = (await prisma.entHandover.findMany({ where: { kind: "离职", status: 待确认 }, select: { id: true, fromUserId: true, toUserId: true, createdAt: true } })).filter((h) => 超了(h.createdAt));
+  const 标们 = await prisma.entCustomerStateLog.findMany({ where: { reason: 待交接理由 }, select: { customerId: true, fromOwnerId: true, at: true }, orderBy: { at: "asc" } });
+  // 还挂在那位停用的人名下、不在公海里的才算（交出去了、进了公海的不再催）
+  const 还在 = new Set((await prisma.customer.findMany({
+    where: { id: { in: [...new Set(标们.map((x) => x.customerId))] }, pool: { is: null }, salesOwner: { active: false } },
+    select: { id: true, salesOwnerId: true },
+  })).filter((c) => 标们.some((x) => x.customerId === c.id && x.fromOwnerId === c.salesOwnerId)).map((c) => c.id));
+  const 按人 = new Map<string, { 起: Date; 数: Set<string> }>();
+  for (const x of 标们) {
+    if (!x.fromOwnerId || !还在.has(x.customerId)) continue;
+    const 有 = 按人.get(x.fromOwnerId) ?? { 起: x.at, 数: new Set<string>() };
+    有.数.add(x.customerId);
+    按人.set(x.fromOwnerId, 有);
+  }
+  const 超的人 = [...按人].filter(([, v]) => 超了(v.起));
+  const 名 = await 人名([...new Set([...挂.flatMap((h) => [h.fromUserId, h.toUserId]), ...超的人.map(([id]) => id)])]);
+  for (const h of 挂) {
+    await notify(管, {
+      kind: "三态", title: `离职交接挂起超过 ${交接兜底工作日} 个工作日没人确认`,
+      body: `${名.get(h.fromUserId) ?? "（已停用）"} 的离职交接 ${beijingDay(h.createdAt)} 发起，接手人 ${名.get(h.toUserId) ?? "（已停用）"} 还没确认，请裁决`,
+      link: "/projects/handover", key: `tri-handover-stuck:${h.id}`,
+    });
+    n++;
+  }
+  for (const [id, v] of 超的人) {
+    await notify(管, {
+      kind: "三态", title: `停用账号名下 ${v.数.size} 位客户待交接超过 ${交接兜底工作日} 个工作日`,
+      body: `${名.get(id) ?? "（已停用）"} 停用后名下客户 ${beijingDay(v.起)} 起标了待交接，还没交给接手人，请到离职交接处理`,
+      link: "/projects/handover", key: `tri-offboard-stuck:${id}`,
+    });
+    n++;
+  }
+  return n;
 }

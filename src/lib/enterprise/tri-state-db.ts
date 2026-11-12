@@ -87,7 +87,14 @@ export type 三态客户 = {
   同事们: string[];
   /** 这次才第一次算出归不归零的转让 / 离职交接（CustomerOwnerLog id → 归零），写库的调用方用 存归零 存下 */
   待存归零: { id: string; 归零: boolean }[];
+  /** 负责人账号停用了（T12） */
+  负责人停用: boolean;
+  /** 这一任负责人名下已经标过「待交接」（T12：最近一次换负责人以后、记的是这位负责人）的那天；没标 null */
+  待交接日: string | null;
 };
+
+/** T12：负责人停用、客户还挂在他名下，标「待交接」那一行的理由（进离职交接看板 /projects/handover，超 15 个工作日推系统管理员） */
+export const 待交接理由 = "负责人账号已停用，客户标待交接、进离职交接队列";
 
 /** 把第一次算出来的归不归零存到换负责人那一行（只写还空着的，别人先存了不覆盖） */
 export async function 存归零(db: 库, 们: Iterable<Pick<三态客户, "待存归零">>): Promise<void> {
@@ -134,9 +141,10 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
     const 计次 = await 撤销计次们(db, 批);
     const 痕 = await db.entCustomerStateLog.findMany({
       where: { customerId: { in: 批 } },
-      select: { customerId: true, at: true, fromState: true, toState: true, via: true, reason: true, holdDays: true },
+      select: { customerId: true, at: true, fromState: true, toState: true, via: true, reason: true, holdDays: true, fromOwnerId: true },
       orderBy: { at: "asc" },
     });
+    const 停用的 = new Set((await db.user.findMany({ where: { id: { in: [...new Set(客户们.map((c) => c.salesOwnerId))] }, active: false }, select: { id: true } })).map((u) => u.id));
     const 按客户 = <T extends { customerId: string }>(xs: T[]) => {
       const m = new Map<string, T[]>();
       for (const x of xs) m.set(x.customerId, [...(m.get(x.customerId) ?? []), x]);
@@ -194,7 +202,13 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
         本轮进入沉睡提醒日: 钟?.state === "沉睡" ? 钟.lastNoticeDay : null,
       };
       const 同事们 = [...new Set(ps.filter((p) => !p.result && p.ownerId && p.ownerId !== c.salesOwnerId).map((p) => p.ownerId))];
-      出.set(c.id, { id: c.id, name: c.name, salesOwnerId: c.salesOwnerId, bizLine: c.bizLine, 在公海: !!c.pool, 事实, 钟, 留痕, 同事们, 待存归零: 换人们.待存 });
+      // T12：这一任负责人（最近一次换负责人以后）名下标过的待交接
+      const 上次换人 = (换人of.get(c.id) ?? []).at(-1)?.at ?? null;
+      const 标 = 痕们.findLast((x) => x.reason === 待交接理由 && x.fromOwnerId === c.salesOwnerId && (上次换人 === null || x.at >= 上次换人));
+      出.set(c.id, {
+        id: c.id, name: c.name, salesOwnerId: c.salesOwnerId, bizLine: c.bizLine, 在公海: !!c.pool, 事实, 钟, 留痕, 同事们, 待存归零: 换人们.待存,
+        负责人停用: 有负责人 && 停用的.has(c.salesOwnerId), 待交接日: 标 ? beijingDay(标.at) : null,
+      });
     }
   }
   return 出;
@@ -344,6 +358,14 @@ export async function 候选客户(db: 库): Promise<string[]> {
 export async function 交接挡住的(db: 库, ids: readonly string[]): Promise<Set<string>> {
   if (!ids.length) return new Set();
   const 中 = await 交接中的客户([...ids], db);
+  for (const id of await 离职交接中的(db, ids)) 中.add(id);
+  return 中;
+}
+
+/** 离职交接待确认的客户（T6：挂起期间不收、不推提醒）：离职那一行列了客户的按列的，没列的按「负责人是离职那位」认 */
+export async function 离职交接中的(db: 库, ids: readonly string[]): Promise<Set<string>> {
+  const 中 = new Set<string>();
+  if (!ids.length) return 中;
   const 离职 = await db.entHandover.findMany({ where: { kind: "离职", status: 待确认 }, select: { fromUserId: true, customerIds: true } });
   if (!离职.length) return 中;
   const 要 = new Set(ids);
@@ -409,6 +431,16 @@ export async function 写一批(规则: 组织规则, org: 组织, 们: Map<stri
       if (w.换了状态) 明细.换状态++;
       if (w.新被挡) 明细.新被挡++;
       if (r.状态 === "该进公海" && !r.被挡) 要收.push(id);
+    }
+    // T12：负责人停用、还没标过、也不在离职交接待确认里（那边有 T6 的兜底）的，标「待交接」
+    const 要标 = 算.filter((x) => x.c.负责人停用 && !x.c.待交接日).map((x) => x.c);
+    if (要标.length) {
+      const 挂着 = await 离职交接中的(tx, 要标.map((c) => c.id));
+      for (const c of 要标) {
+        if (挂着.has(c.id)) continue;
+        const 态 = 钟状态of(算.find((x) => x.c === c)!.r);
+        await tx.entCustomerStateLog.create({ data: { customerId: c.id, fromState: 态, toState: 态, via: 留痕方式.自动, reason: 待交接理由, fromOwnerId: c.salesOwnerId, at: 现在 } });
+      }
     }
     return { 要收, 算 };
   }, { timeout: 60_000 });

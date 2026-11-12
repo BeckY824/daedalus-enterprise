@@ -213,6 +213,19 @@ export function 加月(d: string, n: number): string {
   return 出日(Date.UTC(年, 月份, Math.min(dd, 月末)));
 }
 const 是周一 = (d: string) => new Date(转日(d)).getUTCDay() === 1;
+/**
+ * 从 a（不含）到 b（含）有几个工作日（T6 / T12「15 个工作日」）。仓库里没有工作日 / 节假日工具，先按周一到周五算、不扣法定节假日、不补调休
+ */
+export function 工作日数(a: string, b: string): number {
+  let n = 0;
+  for (let d = 加天(a, 1); d <= b; d = 加天(d, 1)) {
+    const w = new Date(转日(d)).getUTCDay();
+    if (w !== 0 && w !== 6) n++;
+  }
+  return n;
+}
+/** 交接挂起超过几个工作日没人确认就推系统管理员（T6 / T12） */
+export const 交接兜底工作日 = 15;
 const 较晚 = (...ds: (string | null | undefined)[]) => ds.filter((x): x is string => !!x).reduce<string | null>((a, b) => (a === null || b > a ? b : a), null);
 
 /* ---------- 换负责人 ---------- */

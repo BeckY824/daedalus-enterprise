@@ -176,13 +176,13 @@ describe("提醒发到一半中断", () => {
 });
 
 describe("负责人停用", () => {
-  it("不给他发；直属上级那一级按他停用前的上级；第 90 天本人那条没人收", async () => {
+  it("不给他发；本人那一级改从他停用前的上级发起（T12），直属上级那一级也按他停用前的上级", async () => {
     await prisma.user.update({ where: { id: 人.乙.id }, data: { active: false } });
     await 过(90);
     expect(await 三态通知(人.乙.id)).toHaveLength(0);
     await 过(120);
     expect(await 三态通知(人.乙.id)).toHaveLength(0);
-    expect((await 三态通知(人.甲.id)).map((x) => x.title)).toEqual(["客户三态提醒：1 家沉睡满 30 天"]);
+    expect((await 三态通知(人.甲.id)).map((x) => x.title)).toEqual(["客户三态提醒：1 家进入沉睡", "客户三态提醒：1 家沉睡满 30 天"]);
   });
 });
 
