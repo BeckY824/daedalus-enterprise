@@ -18,8 +18,6 @@ import { 新增仅项目联系人Action, 改仅项目联系人Action } from "./p
 import type { 受限客户详情 } from "./restricted";
 import type { ContactRow } from "./types";
 
-const 灰字 = { color: "var(--text-muted)" } as const;
-
 /**
  * 受限客户详情（只负责项目的人，customers/[id]/restricted.ts）：页头只有客户名 +「仅项目」；
  * 左栏是客户只读卡那一份，右边只有我自己的项目。没有星标、AI、三态条、「客户操作 ▾」、编辑客户、关联客户卡、历史负责人。
@@ -53,16 +51,16 @@ export default function RestrictedCustomerDetail({ 数据 }: { 数据: 受限客
     <div className="proj-mod-body" data-testid="restricted-follow-all">
       {!沟通.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="你的项目上还没有沟通记录" />}
       {沟通.map((f) => (
-        <div key={f.id} style={{ padding: "8px 0", borderTop: "1px solid var(--line)", minWidth: 0 }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0 8px", fontSize: "var(--fs-note)", ...灰字 }}>
+        <div key={f.id} className="rcd-follow">
+          <div className="rcd-follow-meta">
             <span>{fmtDateTime(f.occurredAt)}</span>
             <span>{f.method || FOLLOW_TYPE_MAP[f.type]?.label || f.type}</span>
             <span>{f.who}</span>
-            <Link href={客户页项目地址(客户.id, f.项目.id, "#project-follow")} scroll={false} title={f.项目.名} style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
+            <Link href={客户页项目地址(客户.id, f.项目.id, "#project-follow")} scroll={false} title={f.项目.名} className="rcd-follow-proj">
               {f.项目.名}
             </Link>
           </div>
-          <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{f.content}</div>
+          <div className="rcd-follow-body">{f.content}</div>
         </div>
       ))}
     </div>
@@ -96,11 +94,11 @@ export default function RestrictedCustomerDetail({ 数据 }: { 数据: 受限客
       <div className="rec-head">
         <div className="rec-head-id">
           <div className="rec-head-line">
-            <h1 className="rec-head-name" style={{ margin: 0, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={客户.name}>{客户.name}</h1>
-            <Tag style={{ marginInlineStart: 8 }} title="这位客户不归你，你只负责下面的项目：客户资料只能看，项目照常推进">仅项目</Tag>
+            <h1 className="rec-head-name rcd-name" title={客户.name}>{客户.name}</h1>
+            <Tag className="rcd-tag" title="这位客户不归你，你只负责下面的项目：客户资料只能看，项目照常推进">仅项目</Tag>
           </div>
         </div>
-        <span style={{ flex: 1 }} />
+        <span className="rcd-grow" />
         {项目操作项.length > 0 && (
           <span className="rec-head-acts">
             <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items: 项目操作项, className: "rec-head-menu" }}>
@@ -116,7 +114,7 @@ export default function RestrictedCustomerDetail({ 数据 }: { 数据: 受限客
               <span>{客户详情左栏.资料}（只读）</span>
               {/* 新增的联系人挂到当前页签的项目上；没有能打开的项目就不给 */}
               {当前项目 && (
-                <Button type="link" size="small" style={{ padding: 0, height: "auto" }} title="新增的联系人挂到当前这个项目上" onClick={() => set框("新")}>
+                <Button type="link" size="small" className="rcd-link-btn" title="新增的联系人挂到当前这个项目上" onClick={() => set框("新")}>
                   新增联系人
                 </Button>
               )}
@@ -126,7 +124,7 @@ export default function RestrictedCustomerDetail({ 数据 }: { 数据: 受限客
               没给的说法="不在你的项目上，联系方式不显示"
               操作={(x) => {
                 const 行 = x.id ? 可改.get(x.id) : undefined;
-                return 行 ? <Button type="link" size="small" style={{ padding: 0, height: "auto", flex: "none" }} aria-label={`改联系人 ${x.name}`} onClick={() => set框(行)}>改</Button> : null;
+                return 行 ? <Button type="link" size="small" className="rcd-link-btn" aria-label={`改联系人 ${x.name}`} onClick={() => set框(行)}>改</Button> : null;
               }}
             />
           </div>

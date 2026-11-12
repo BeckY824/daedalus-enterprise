@@ -52,7 +52,7 @@
   "app/(app)/projects/InviteInbox.tsx": 5,
   "app/(app)/projects/ProjectsView.tsx": 8,
   "app/(app)/projects/VerifyInbox.tsx": 7,
-  "app/(app)/projects/[id]/CustomerReadonlyCard.tsx": 9,
+  "app/(app)/projects/[id]/CustomerReadonlyCard.tsx": 8,
   "app/(app)/projects/[id]/LeadVerifyPanel.tsx": 22,
   "app/(app)/projects/[id]/ProjectCommission.tsx": 16,
   "app/(app)/projects/[id]/ProjectDetail.tsx": 120,

@@ -32,6 +32,7 @@ import { 规则 } from "@/lib/enterprise/rules";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 仅项目客户们, 仅项目可见, 仅项目安全条件, 仅项目筛选口径 } from "@/lib/enterprise/project-only-customers";
 import { 无负责人占位Id } from "@/lib/no-owner-db";
+import { 默认组织规则, 默认三态规则 } from "@/lib/project/org-rules";
 import { saveContact } from "@/app/(app)/customers/[id]/actions";
 import { 客户页看板条件 } from "@/app/(app)/customers/board-query";
 import { 再看一列 } from "@/app/(app)/customers/board-actions";
@@ -50,6 +51,7 @@ import { 项目页去向 } from "@/app/(app)/projects/[id]/load";
 import { 项目链接们 } from "@/lib/project/customer-detail-direct";
 import ProjectPage from "@/app/(app)/projects/[id]/page";
 import CustomerDetailPage from "@/app/(app)/customers/[id]/page";
+import CustomersPage from "@/app/(app)/customers/page";
 import type { 受限客户详情 } from "@/app/(app)/customers/[id]/restricted";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
@@ -221,8 +223,8 @@ describe("saveContact 守卫（提交 2）", () => {
 
 describe("客户页看板（提交 3）", () => {
   const 看板 = async (u: 人, q: Record<string, string> = {}) => {
-    const { 项目: 项, 客户: 客 } = await 以(u, () => 客户页看板条件(q));
-    const d = await 以(u, () => 读项目列表(u, { ...项, 客户: 客 }, undefined, { 每列: true, 要列表页: false }));
+    const { 项目: 项, 客户: 客, 仅项目客户 } = await 以(u, () => 客户页看板条件(q));
+    const d = await 以(u, () => 读项目列表(u, { ...项, 客户: 客, 仅项目客户 }, undefined, { 每列: true, 要列表页: false }));
     return { ids: [...d.行, ...Object.values(d.每列 ?? {}).flat()].map((r) => r.id), 列: Object.entries(d.每列 ?? {}).find(([, v]) => v.length)?.[0] ?? null };
   };
   const 搭 = async () => {
@@ -263,6 +265,70 @@ describe("客户页看板（提交 3）", () => {
   });
 });
 
+describe("客户列表「仅项目」一小块（收尾 7）", () => {
+  type 页props = { total: number; rows: { id: string }[]; 仅项目行?: Record<string, unknown>[] };
+  const 页 = async (u: 人, sp: Record<string, string> = {}) => 以(u, async () => {
+    const el = (await CustomersPage({ searchParams: Promise.resolve(sp) } as never)) as unknown as { props: 页props & { children?: unknown } };
+    return el.props;
+  });
+  const 块ids = (p: 页props) => (p.仅项目行 ?? []).map((r) => r.id);
+  const 搭 = async () => {
+    const c = await 客户(甲.id, { remark: "块特征备注", custStatus: "块特征状态", shortName: "块简称", school: "块公司", customerType: "块类型", addrProvince: "浙江省", addrCity: "杭州市" });
+    await prisma.customerExtra.create({ data: { customerId: c, level: "A" } });
+    const p = await 项目(c, 乙.id);
+    await 挂项目(p, await 联系人(c, "王块联系", { phone: "13744445555" }));
+    const 乙自己 = await 客户(乙.id);
+    忘掉企业版范围();
+    return { c, p, 乙自己, 行: await prisma.customer.findUniqueOrThrow({ where: { id: c } }) };
+  };
+
+  it("乙：第 1 页顶上一块，只有白名单字段，不进 total / rows；名字、简称、公司、客户类型能搜", async () => {
+    const { c, 乙自己, 行 } = await 搭();
+    const d = await 页(乙);
+    expect(块ids(d)).toEqual([c]);
+    expect(d.rows.map((r) => r.id)).toEqual([乙自己]);
+    expect(d.total).toBe(1);
+    const 块 = d.仅项目行![0];
+    expect(Object.keys(块).sort()).toEqual(["customerAttr", "customerType", "id", "name", "school", "shortName", "仅项目", "地区", "当前节点", "当前阶段", "项目数"].sort());
+    expect(块).toMatchObject({ name: 行.name, 仅项目: true, 项目数: 1, 地区: "浙江省 杭州市" });
+    const 字 = JSON.stringify(d.仅项目行);
+    for (const 不该有 of [行.phone!, "13744445555", "块特征备注", "块特征状态", 甲.name, 甲.id]) expect(字, 不该有).not.toContain(不该有);
+    for (const keyword of [行.name, "块简称", "块公司"]) expect(块ids(await 页(乙, { keyword })), keyword).toEqual([c]);
+    expect(块ids(await 页(乙, { customerType: "块类型" }))).toEqual([c]);
+    expect(块ids(await 页(乙, { keyword: "对不上的词" }))).toEqual([]);
+  });
+
+  it("别的筛选（每个挡的键）、按金额 / 级别 / 创建时间排、号码 / 备注当关键词：这一块不摆", async () => {
+    const { 行 } = await 搭();
+    const 值: Record<string, string> = { createdWithin: "本月", createdFrom: "2020-01-01", createdTo: "2099-12-31", phone: 行.phone!, level: "A", custStatus: "块特征状态", salesOwnerId: 甲.id };
+    for (const [k, v] of Object.entries(仅项目筛选口径)) {
+      if (v !== "挡") continue;
+      // 三态关着：列表把地址栏的 triState 当没筛（query.ts），这一块也当没筛
+      if (k === "triState") {
+        expect(块ids(await 页(乙, { triState: "沉睡" })), k).toHaveLength(1);
+        await setSetting("orgRules", { ...默认组织规则, 三态: { ...默认三态规则, 开: true } });
+        invalidateSettingsCache();
+        expect(块ids(await 页(乙, { triState: "沉睡" })), "三态开着 triState").toEqual([]);
+        await setSetting("orgRules", 默认组织规则);
+        invalidateSettingsCache();
+        continue;
+      }
+      expect(块ids(await 页(乙, { [k]: 值[k] ?? "x" })), k).toEqual([]);
+    }
+    for (const sort of ["amount-desc", "amount-asc", "level-asc", "level-desc", "created-asc", "created-desc"]) {
+      expect(块ids(await 页(乙, { sort })), sort).toEqual([]);
+    }
+    for (const keyword of [行.phone!, "13744445555", "块特征备注"]) expect(块ids(await 页(乙, { keyword })), keyword).toEqual([]);
+  });
+
+  it("客户负责人、实线上级、总管理、组员、同事：没有这一块", async () => {
+    const { p } = await 搭();
+    await prisma.projectMember.create({ data: { projectId: p, userId: 丙.id, inviteStatus: "JOINED" } });
+    忘掉企业版范围();
+    for (const u of [甲, 销售管理, 总管, 丙]) expect(块ids(await 页(u)), u.name).toEqual([]);
+  });
+});
+
 describe("项目列表 /projects 的关键词、手机号（收尾 9）", () => {
   const 列表 = async (u: 人, q: Record<string, string>) => (await 以(u, () => 读项目列表(u as never, q as never))).行.map((r) => r.id);
   it("客户看不到（仅项目）：号码（客户手机、联系人号码）都不算中，关键词只比项目名和客户名；客户是自己的照常按号码算中", async () => {
@@ -273,7 +339,7 @@ describe("项目列表 /projects 的关键词、手机号（收尾 9）", () => 
     const 甲项目 = await 项目(c, 甲.id);
     忘掉企业版范围();
     const 行 = await prisma.customer.findUniqueOrThrow({ where: { id: c } });
-    for (const q of [{ phone: 行.phone! }, { phone: "13722223333" }, { keyword: 行.phone! }, { keyword: "13722223333" }, { keyword: "列表特征备注" }]) {
+    for (const q of [{ phone: 行.phone! }, { phone: "13722223333" }, { keyword: 行.phone! }, { keyword: "13722223333" }, { keyword: "列表特征备注" }] as Record<string, string>[]) {
       expect(await 列表(乙, q), JSON.stringify(q)).not.toContain(p);
     }
     expect(await 列表(乙, { keyword: 行.name })).toContain(p);

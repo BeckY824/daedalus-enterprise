@@ -36,8 +36,8 @@ export function 卡内容({ 卡, 没给的说法 = "不在这位负责人的项�
       {!卡.联系人.length && <div style={灰字}>还没有联系人</div>}
       {卡.联系人.map((x, i) => (
         <div key={i} style={{ padding: "6px 0", borderTop: "1px solid var(--line)", minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
-            <span style={{ flex: "1 1 auto", minWidth: 0, overflowWrap: "anywhere" }}>{x.name}{x.position && <span style={{ ...灰字, marginInlineStart: 8 }}>{x.position}</span>}</span>
+          <div className="ro-card-who">
+            <span className="ro-card-who-n">{x.name}{x.position && <span style={{ ...灰字, marginInlineStart: 8 }}>{x.position}</span>}</span>
             {操作?.(x)}
           </div>
           {x.号码们.map((m, j) => <行 key={j} 名={m.叫法} 值={m.value} />)}

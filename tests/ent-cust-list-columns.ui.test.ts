@@ -46,7 +46,7 @@ beforeAll(async () => {
     const rows=[行('c1','me'),行('c2','u2'),行('c3','me')].map(r=>window.__公海?{...r,pool:{reason:'超时回收'}}:r);
     const 项目概况={c1:{项目数:12,当前节点:'异常 · 某个后台改得特别特别长的节点名字',当前阶段:'订单'},c2:{项目数:1,当前节点:'方案敲定',当前阶段:'商机'}};
     const 树=(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'me',name:'小王'}}>
-      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:window.__阶段||'',node:'',...(window.__三态?{triState:''}:{})}} 三态标={window.__三态?{c1:{态:'待回收',几天后进公海:12},c2:{态:'暂缓回收中'},c3:{态:'不计时'}}:undefined} 客户数={3} 企业版 项目概况={项目概况} 项目看板={!window.__非项目} 能新建和领取={!window.__不能新建} 待交接={window.__交接??null} 看板体={window.__看板?<假看板/>:undefined} 市场视图={!!window.__市场}/>
+      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:window.__阶段||'',node:'',...(window.__三态?{triState:''}:{})}} 三态标={window.__三态?{c1:{态:'待回收',几天后进公海:12},c2:{态:'暂缓回收中'},c3:{态:'不计时'}}:undefined} 客户数={3} 企业版 项目概况={项目概况} 项目看板={!window.__非项目} 能新建和领取={!window.__不能新建} 待交接={window.__交接??null} 看板体={window.__看板?<假看板/>:undefined} 市场视图={!!window.__市场} 仅项目行={window.__仅项目?[{id:'x1',name:'仅项目的'+长,shortName:null,school:null,customerType:'某个特别长的客户类型名字',customerAttr:null,地区:'浙江省 杭州市 西湖区',当前节点:'某个后台改得特别特别长的节点名字',当前阶段:'商机',项目数:2,仅项目:true}]:undefined}/>
     </我Provider></BusinessProvider></App></ConfigProvider>);
     const el=document.getElementById('root');
     // __静态：先只放服务端出的那份 HTML（React 还没接管），window.__水合() 再接管——照真实页面的先后
@@ -536,5 +536,54 @@ it("筛选组收放跟着右端那一格走：1024 宽、筛到线索，右端�
     });
     expect(变).toBe(0);
     expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("「仅项目」一小块（只负责项目的人）：在客户表格上面单独一块、带「仅项目」标签；负责人 / 级别 / 客户状态 / 最近跟进空着；不能勾、没有行菜单；一行省略；1024 / 1280 / 1366 不横滚；点一行进客户页；看板不摆", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    const page = await browser.newPage({ viewport: { width: w, height: 900 } }); page.setDefaultTimeout(5000);
+    const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+    try {
+      await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+      await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
+      await page.evaluate(() => { (window as unknown as Record<string, unknown>).__仅项目 = true; });
+      await page.addScriptTag({ content: 包 });
+      const 块 = page.getByTestId("project-only-block");
+      await 块.waitFor();
+      // 在客户表格上面
+      const [块底, 表顶] = await Promise.all([块.evaluate((el) => el.getBoundingClientRect().bottom), page.locator(".list .ant-table").last().evaluate((el) => el.getBoundingClientRect().top)]);
+      expect(块底, `宽 ${w}`).toBeLessThanOrEqual(表顶);
+      const 行 = 块.locator("tr.ant-table-row");
+      expect(await 行.count()).toBe(1);
+      expect(await 行.locator(".ant-tag").first().innerText()).toBe("仅项目");
+      expect(await 块.locator(".ant-checkbox, .ant-dropdown-trigger, button").count(), `宽 ${w}`).toBe(0);
+      const 格 = await 行.evaluate((tr) => {
+        const 头 = [...tr.closest("table")!.querySelectorAll("thead th")].map((th) => (th as HTMLElement).innerText.trim());
+        const tds = [...tr.children] as HTMLElement[];
+        const 名 = tds[0].querySelector("a") as HTMLElement;
+        return { 头, 字: tds.map((td) => td.innerText.trim()), 名截: 名.scrollWidth > 名.clientWidth && getComputedStyle(名).textOverflow === "ellipsis", 名悬停: 名.title, 高: tr.getBoundingClientRect().height };
+      });
+      expect(格.头).toEqual(["客户", "客户类型", "地区", "当前节点", "项目数", "负责人", "级别", "客户状态", "最近跟进"]);
+      expect(格.字.slice(4)).toEqual(["2", "", "", "", ""]);
+      expect(格.名截, `宽 ${w}`).toBe(true);
+      expect(格.名悬停).toMatch(/^仅项目的/);
+      expect(格.高, `宽 ${w}`).toBeLessThanOrEqual(48);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `宽 ${w}`).toBe(true);
+      await 行.locator("td").nth(2).click();
+      expect(await page.evaluate(() => (window as unknown as { __push?: string }).__push)).toBe("/customers/x1");
+      // 下面客户表格的总数照旧 3（这一块不算进去）
+      expect(await page.locator(".ant-pagination-total-text").innerText()).toBe("共 3 条");
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } }); page.setDefaultTimeout(5000);
+  try {
+    await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+    await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+    await page.evaluate(() => { Object.assign(window, { __仅项目: true, __看板: true }); });
+    await page.addScriptTag({ content: 包 });
+    await page.locator(".fake-board").waitFor();
+    expect(await page.getByTestId("project-only-block").count()).toBe(0);
   } finally { await page.close(); }
 });
