@@ -35,7 +35,7 @@ import type { 组织规则 } from "@/lib/project/org-rules";
 import { 算三态, 解除后几天收, type 三态事实, type 三态结果, type 三态项目 } from "./tri-state";
 import { 换负责人们of, 撤销计次们, 并上撤销计次 } from "./tri-state-transfer";
 export { 换负责人们of } from "./tri-state-transfer";
-import { 有内容的沟通, 默认占位词, 占位词键, 规整占位词, 留痕转推后, 最近暂缓回收日, 额度回满, 留痕方式, 自动收回次数, type 留痕行 } from "./tri-state-quota";
+import { 有内容的沟通, 暂缓回收次数, 默认占位词, 占位词键, 规整占位词, 留痕转推后, 最近暂缓回收日, 额度回满, 留痕方式, 自动收回次数, type 留痕行 } from "./tri-state-quota";
 import { 项目业务线 } from "./assign-line";
 import { 读组织, type 组织 } from "./org";
 import { 是市场角色, 是销售角色 } from "./permissions";
@@ -199,6 +199,8 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
         暂缓回收日: 最近暂缓回收日(留痕),
         暂缓解除日,
         上回被挡: !!钟?.blocked,
+        最近被挡日: (() => { const i = 末([被挡理由, 旧被挡理由]); return i >= 0 ? beijingDay(痕们[i].at) : null; })(),
+        暂缓回收次数: 暂缓回收次数(留痕, 较晚日(沟通日.get(c.id) ?? null, 领取日)),
         本轮待回收提醒次数: 待回收中 ? 钟!.noticeCount : 0,
         本轮最近待回收提醒日: 待回收中 ? 钟!.lastNoticeDay : null,
         本轮进入沉睡提醒日: 钟?.state === "沉睡" ? 钟.lastNoticeDay : null,
@@ -390,7 +392,7 @@ export type 三态夜扫明细 = { 算了: number; 换状态: number; 进公海:
 const 空明细 = (): 三态夜扫明细 => ({ 算了: 0, 换状态: 0, 进公海: [], 新被挡: 0, 交接中没收: 0, 标公海: 0 });
 
 /** 自动进公海收了的一位：原负责人、这是第几次被三态自动收回（含这次，M-公海-28） */
-export type 自动收了 = { id: string; name: string; 原负责人: string; 第几次: number };
+export type 自动收了 = { id: string; name: string; 原负责人: string; 第几次: number; bizLine?: string | null };
 
 /**
  * 夜扫（00:05 那一遍里，nightly.ts 调）：按客户算三态、写钟和留痕，到了自动进公海的进客户公海。
@@ -523,6 +525,6 @@ export async function 自动进公海一位(id: string, 规则: 组织规则, or
     await tx.entCustomerStateLog.create({ data: { customerId: id, fromState: c.钟?.state ?? "待回收", toState: 公海状态, via: 留痕方式.自动, reason: 理由, at: 现在 } });
     const 标 = { state: 公海状态, enteredDay: 今天, noticeCount: 0, lastNoticeDay: null, blocked: false, holdUntil: null };
     await tx.entCustomerClock.upsert({ where: { customerId: id }, create: { customerId: id, ...标 }, update: 标 });
-    return { id, name: c.name, 原负责人: c.salesOwnerId, 第几次: 自动收回次数(c.留痕) + 1 };
+    return { id, name: c.name, 原负责人: c.salesOwnerId, 第几次: 自动收回次数(c.留痕) + 1, bizLine: c.bizLine };
   });
 }

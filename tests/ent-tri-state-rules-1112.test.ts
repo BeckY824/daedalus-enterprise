@@ -325,7 +325,10 @@ describe("T5 · 暂缓回收（被同事项目挡住）：期间提醒不算 3 �
     await 过(215);
     await prisma.project.create({ data: { name: "同事的新项目", customerId: 客户, ownerId: 人.丙.id, creatorId: 人.丙.id, createdAt: new Date("2026-10-20T10:00:00+08:00") } });
     await 过(216);
-    await 过(226);
+    // 再次挡住当晚就亮「暂缓回收」，不等原定进公海日；第二天照样亮着
+    expect(await 钟()).toMatchObject({ state: "待回收", blocked: true });
+    expect((await 痕()).filter((x) => x.reason === 被挡理由)).toHaveLength(2);
+    await 过(217);
     expect(await 钟()).toMatchObject({ blocked: true });
     await 过(240);
     expect(await 在公海()).toBe(false);
@@ -362,7 +365,7 @@ describe("T7 · 撤销转让即未发生；同一对负责人 7 天内转—撤�
   async function 撤(n: number, 从: string, 到: string) {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(白天(n));
-    await 删被撤的换负责人记录(prisma, 客户, 从, 到);
+    await 删被撤的换负责人记录(prisma, 客户, 从, 到, 人.甲.id);
     vi.useRealTimers();
     await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 从 } });
   }
@@ -373,7 +376,8 @@ describe("T7 · 撤销转让即未发生；同一对负责人 7 天内转—撤�
     await 三态夜扫(早(5));
     await 转给(人.丙.id, 50);
     await 撤(50, 人.乙.id, 人.丙.id);
-    expect(await 撤销痕()).toEqual([{ via: "撤销转让", fromOwnerId: 人.乙.id, toOwnerId: 人.丙.id, userId: 人.系.id }]);
+    // userId 记撤销人（甲），不是原转让人（系）
+    expect(await 撤销痕()).toEqual([{ via: "撤销转让", fromOwnerId: 人.乙.id, toOwnerId: 人.丙.id, userId: 人.甲.id }]);
     await 三态夜扫(早(51));
     expect((await 钟())!.enteredDay).toBe("2026-11-01");
     // 不占次数：之后两次转让都归零
@@ -397,6 +401,16 @@ describe("T7 · 撤销转让即未发生；同一对负责人 7 天内转—撤�
     await 三态夜扫(早(31));
     expect(await 归零们()).toEqual([true, false]);
     expect((await 钟())!.enteredDay).toBe(日(20));
+  });
+
+  it("同一对不分方向：A→B 撤了，7 天内 B→A 再撤，第二次起不还原次数", async () => {
+    await 三态夜扫(早(5));
+    await 转给(人.丙.id, 10);
+    await 撤(10, 人.乙.id, 人.丙.id);
+    await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 人.丙.id } });
+    await 转给(人.乙.id, 12);
+    await 撤(12, 人.丙.id, 人.乙.id);
+    expect((await 撤销痕()).map((x) => x.via)).toEqual(["撤销转让", "撤销转让·计次"]);
   });
 
   it("隔了 7 天以上、或换了一对负责人：照常还原", async () => {
@@ -552,5 +566,41 @@ describe("T10 · 到期自动进公海不查号码；收回时号码不全打标
     expect(全部.行.map((r) => r.客户名).sort()).toEqual(["客户乙", "客户甲"]);
     const 只看 = await 读公海页({ ...人.系, role: "ADMIN" }, { 号码不全: "1" }, 1, 20);
     expect(只看.行.map((r) => [r.客户名, r.号码不全])).toEqual([["客户甲", true]]);
+  });
+});
+
+describe("第三轮审查", () => {
+  it("公海筛号码不全按客户认：打了标的客户下的项目子行一起留着", async () => {
+    const { 筛排 } = await import("@/lib/enterprise/unified-pool");
+    const 行 = (id: string, 种: "客户" | "项目", customerId: string, 号码不全?: boolean) => ({
+      id, 种, customerId, projectId: 种 === "项目" ? id : null, 客户名: customerId, 项目名: null, 进程: null, 进程明细: null, 属性: "线索池" as const,
+      最后跟进: null, 入池时间: "2026-11-10T00:00:00.000Z", 创建时间: "2026-11-01T00:00:00.000Z", 类: "超时回收" as const, 累计: 0, 入池原因: "", 快捷: null, 原负责人是我: false,
+      ...(号码不全 ? { 号码不全 } : {}),
+    });
+    const 全部 = [行("c:甲", "客户", "甲", true), 行("p:1", "项目", "甲"), 行("p:2", "项目", "甲"), 行("p:3", "项目", "乙")];
+    const r = 筛排(全部 as never, { 号码不全: "1" });
+    expect(r.行.flatMap((x) => (x.子 ? x.子.map((y) => y.id) : [x.id])).sort()).toEqual(["c:甲", "p:1", "p:2"]);
+  });
+
+  it("已回公海：原负责人停用了改发他停用前的上级", async () => {
+    await prisma.user.update({ where: { id: 人.乙.id }, data: { active: false } });
+    await 三态夜扫(早(180));
+    await prisma.entCustomerClock.update({ where: { customerId: 客户 }, data: { noticeCount: 3, lastNoticeDay: 日(200) } });
+    await 三态夜扫(早(210));
+    expect(await prisma.customerPool.findUnique({ where: { customerId: 客户 } })).not.toBeNull();
+    const 回 = (u: string) => prisma.entNotice.findMany({ where: { userId: u, dedupeKey: { startsWith: "tri-pooled:" } }, select: { title: true } });
+    expect(await 回(人.乙.id)).toHaveLength(0);
+    expect((await 回(人.甲.id)).map((x) => x.title)).toEqual(["停用账号名下的客户「客户甲」待回收期满没人处理，已回客户公海"]);
+  });
+
+  it("到期暂缓回收、暂缓没用满 2 次：继续持有标志就是不能，和服务端拒的话一样；用满后能", async () => {
+    await 到期被挡();
+    const { 读一位三态 } = await import("@/lib/enterprise/tri-state-hold");
+    const 话 = "到期暂缓回收的客户先由条线总管理裁决暂缓回收（最多 2 次），用满以后才能继续持有";
+    expect((await 读一位三态(客户, 白天(210)))!.继续持有).toMatchObject({ 能推: false, 不能原因: 话 });
+    expect(await 继续持有(人.乙, 客户, "还在跟", 白天(210))).toMatchObject({ ok: false, error: 话 });
+    await 暂缓回收动作(人.总内, 客户, null, 白天(210));
+    await 暂缓回收动作(人.总内, 客户, null, 白天(240));
+    expect((await 读一位三态(客户, 白天(270)))!.继续持有).toMatchObject({ 能推: true });
   });
 });

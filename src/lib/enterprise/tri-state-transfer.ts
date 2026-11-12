@@ -5,7 +5,7 @@
  *   - 写日志那一刻（转让、申请移交被确认、离职交接……都走 记换负责人）按当时的三态规则算出归不归零，存进 CustomerOwnerLog.clockReset；
  *   - 三态关着时不算、留空；之后开了三态遇到空值，夜扫 / 按钮「第一次算到时」按那时的规则补存（tri-state-db.ts 存归零）
  * 撤销转让会把那一行删掉（owner-log-db.ts 删被撤的换负责人记录）：撤销即未发生，次数和钟都还原（T7）。
- * T7 护栏：同一对负责人（从谁 → 到谁）7 天内「转—撤—转」第二次起，撤销不还原次数（钟照样还原）——
+ * T7 护栏：同一对负责人（不分方向：A→B、B→A 算一对）7 天内「转—撤—转」第二次起，撤销不还原次数（钟照样还原）——
  * 撤销时在状态留痕记一行（记撤销转让），第二次起那行方式记「撤销转让·计次」，算次数时当成一次不归零的转让（撤销计次们）
  */
 import type { Prisma } from "@/generated/prisma";
@@ -107,19 +107,20 @@ const 一天毫秒 = 86_400_000;
 
 /**
  * 企业版撤销转让（删掉被撤的那行之前，同一笔事务里调）：三态在跑时每位留一行痕（每次撤销都留，T7「每次撤销留操作日志」；操作日志另有 recordAudit）。
- * 这一对负责人在这位客户上 7 天内已经撤销过一次 → 这次记「撤销转让·计次」：次数不还原。三态关着不记（零影响）
+ * 这一对负责人（不分方向）在这位客户上 7 天内已经撤销过一次 → 这次记「撤销转让·计次」：次数不还原。三态关着不记（零影响）
  */
 export async function 记撤销转让(
   tx: Pick<Prisma.TransactionClient, "setting" | "entCustomerStateLog" | "entCustomerClock">,
-  行们: readonly { customerId: string; userId: string; at: Date }[],
+  行们: readonly { customerId: string }[],
   from: string,
   to: string,
+  撤销人: string,
   现在: Date = new Date(),
 ): Promise<void> {
   if (!行们.length || !(await 事务里三态规则(tx))) return;
   const ids = [...new Set(行们.map((r) => r.customerId))];
   const 撤过 = new Set((await tx.entCustomerStateLog.findMany({
-    where: { customerId: { in: ids }, via: { in: [撤销转让方式, 撤销计次方式] }, fromOwnerId: from, toOwnerId: to, at: { gte: new Date(现在.getTime() - 撤销计次天数 * 一天毫秒) } },
+    where: { customerId: { in: ids }, via: { in: [撤销转让方式, 撤销计次方式] }, OR: [{ fromOwnerId: from, toOwnerId: to }, { fromOwnerId: to, toOwnerId: from }], at: { gte: new Date(现在.getTime() - 撤销计次天数 * 一天毫秒) } },
     select: { customerId: true },
   })).map((x) => x.customerId));
   const 钟 = new Map((await tx.entCustomerClock.findMany({ where: { customerId: { in: ids } }, select: { customerId: true, state: true } })).map((x) => [x.customerId, x.state]));
@@ -128,7 +129,7 @@ export async function 记撤销转让(
     const 态 = 钟.get(r.customerId) ?? "活跃";
     await tx.entCustomerStateLog.create({
       data: {
-        customerId: r.customerId, fromState: 态, toState: 态, userId: r.userId, via: 计次 ? 撤销计次方式 : 撤销转让方式, fromOwnerId: from, toOwnerId: to, at: 现在,
+        customerId: r.customerId, fromState: 态, toState: 态, userId: 撤销人, via: 计次 ? 撤销计次方式 : 撤销转让方式, fromOwnerId: from, toOwnerId: to, at: 现在,
         reason: 计次 ? `撤销转让：${撤销计次天数} 天内同一对负责人第 2 次起撤销，这次转让照算次数，钟还原` : "撤销转让：次数和钟都还原",
       },
     });

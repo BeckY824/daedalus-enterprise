@@ -170,6 +170,8 @@ export async function 我放出去的公海客户(们: { id: string; 在公海: 
 export async function 删被撤的换负责人记录(
   tx: Pick<Prisma.TransactionClient, "customerOwnerLog" | "entDupeHit" | "setting" | "entCustomerStateLog" | "entCustomerClock">,
   customerId: string | string[], from: string, to: string,
+  /** 谁撤的（三态 T7 撤销留痕记他）；不传记原转让人 */
+  撤销人?: string,
 ): Promise<void> {
   // 一批客户（同一个 from → to）一次查、一次删：每位只删自己最近那条
   const 们 = await tx.customerOwnerLog.findMany({
@@ -180,7 +182,8 @@ export async function 删被撤的换负责人记录(
   const 最近 = new Map<string, (typeof 们)[number]>();
   for (const r of 们) if (!最近.has(r.customerId)) 最近.set(r.customerId, r);
   // 企业版三态 T7：撤销转让留一行痕，同一对负责人 7 天内第 2 次起撤销不还原次数（tri-state-transfer.ts 记撤销转让）
-  await 记撤销转让(tx, [...最近.values()].filter((r) => r.kind === "assign"), from, to);
+  const 撤的转让 = [...最近.values()].filter((r) => r.kind === "assign");
+  if (撤的转让.length) await 记撤销转让(tx, 撤的转让, from, to, 撤销人 ?? 撤的转让[0].userId);
   if (最近.size) await tx.customerOwnerLog.deleteMany({ where: { id: { in: [...最近.values()].map((r) => r.id) } } });
   // 撤销 = 负责人还回 from：挂靠审批人也跟着还（P-挂靠-02）
   await 挂靠审批跟着换(tx, [...最近.keys()].map((c) => ({ customerId: c, to: from })));

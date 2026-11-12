@@ -1475,7 +1475,7 @@ export async function 撤销改负责人(原值: { id: string; 值: string }[], 
       for (const [原, cs] of 组) {
         await tx.customer.updateMany({ where: { id: { in: cs }, salesOwnerId: 新负责人 }, data: { salesOwnerId: 原 } });
         // 企业版被撤的那条记录删掉、不另记（P-撤销-01），操作日志照记（下面 recordAudit）
-        if (严) await 删被撤的换负责人记录(tx, cs, 原, 新负责人);
+        if (严) await 删被撤的换负责人记录(tx, cs, 原, 新负责人, me.id);
         else await 记换负责人(tx, cs.map((customerId) => ({ customerId, from: 新负责人, to: 原 })), me.id, "undo");
         if (!带过来) continue;
         const 这几位 = { in: cs };

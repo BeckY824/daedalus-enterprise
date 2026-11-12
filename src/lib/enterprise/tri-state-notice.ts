@@ -167,15 +167,21 @@ async function 人名(ids: string[]): Promise<Map<string, string>> {
 }
 
 /**
- * 「已回公海」单独一条（M-公海-26）：给原负责人；第 2 次被三态自动收回起抄原负责人的直属上级（停用了按他停用前填的上级，再没有不抄，M-公海-28）
+ * 「已回公海」单独一条（M-公海-26）：给原负责人（停用了改发他停用前的直属上级，T12 同一套找人）；第 2 次被三态自动收回起抄原负责人的直属上级（停用了按他停用前填的上级，再没有不抄，M-公海-28）
  */
 export async function 已回公海通知(们: readonly 自动收了[], org: 组织, 今天: string): Promise<void> {
   for (const x of 们) {
     // 上级要在职（停用了按原负责人停用前的上级，那位也要在职）；原负责人自己停用了不发给他
     const 上 = x.第几次 >= 2 ? 原负责人上级(org, x.原负责人) : null;
     const key = `tri-pooled:${x.id}:${今天}`;
+    const 正文 = x.第几次 >= 2 ? `这位客户第 ${x.第几次} 次被自动收回` : "";
     if (本人在职(org, x.原负责人)) {
-      await notify([x.原负责人], { kind: "回收", title: `「${x.name}」待回收期满没人处理，已回客户公海`, body: x.第几次 >= 2 ? `这位客户第 ${x.第几次} 次被自动收回` : "", link: "/pool", key });
+      await notify([x.原负责人], { kind: "回收", title: `「${x.name}」待回收期满没人处理，已回客户公海`, body: 正文, link: "/pool", key });
+    } else {
+      // 原负责人停用了：改发他停用前的直属上级（同 T12 提醒，找直属上级：找不到往条线总管理、系统管理员兜）；抄送那条不再重复发
+      const 代收 = 找直属上级(org, x.bizLine ?? null, x.原负责人);
+      await notify(代收, { kind: "回收", title: `停用账号名下的客户「${x.name}」待回收期满没人处理，已回客户公海`, body: 正文, link: "/pool", key });
+      if (上 && 代收.includes(上)) continue;
     }
     if (上 && 上 !== x.原负责人) {
       await notify([上], { kind: "回收", title: `下属的客户「${x.name}」第 ${x.第几次} 次被自动收回，已回客户公海`, body: "要不要标无效由条线总管理在公海回收站里定", link: "/pool", key });

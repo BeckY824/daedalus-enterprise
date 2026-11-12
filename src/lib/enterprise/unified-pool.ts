@@ -313,8 +313,9 @@ export function 筛排(全部: readonly 公海行[], sp: 公海筛选, 选: { �
   const 搜到 = 词 ? 全部.filter((r) => (r.客户名 ?? "").toLowerCase().includes(词) || (r.项目名 ?? "").toLowerCase().includes(词)) : [...全部];
   // 客户来源和关键词一样算在所有计数前面：属性、入池方式后面的数都是「这个来源里的」
   const 按来源 = sp.来源 ? 搜到.filter((r) => r.来源id === sp.来源) : 搜到;
-  // 号码不全（T10）同来源，算在所有计数前面
-  const 搜 = sp.号码不全 === "1" ? 按来源.filter((r) => r.号码不全) : 按来源;
+  // 号码不全（T10）同来源，算在所有计数前面；按客户认（打了标的客户下的项目子行一起留着，并完再看）
+  const 不全客户 = sp.号码不全 === "1" ? new Set(全部.filter((r) => r.号码不全).map((r) => r.customerId)) : null;
+  const 搜 = 不全客户 ? 按来源.filter((r) => 不全客户.has(r.customerId)) : 按来源;
   const 搜并 = 并(搜);
   const 属性数 = { 全部: 搜并.length, 线索池: 0, 商机池: 0, 订单池: 0, 客户池: 0 } as Record<公海属性 | "全部", number>;
   for (const r of 搜并) 属性数[r.属性]++;

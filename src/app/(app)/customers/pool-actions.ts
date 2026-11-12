@@ -539,7 +539,7 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
       // 先放回公海、再把负责人还回去（团队范围同步：放回公海那一刻还归我，之后人人可写；反过来还完负责人我就写不了公海那一行）
       await tx.customerPool.create({ data: { customerId: x.id, userId: me.id, reason: "手动" } });
       // 历史负责人记在还负责人之前：业务员互看时，还完这位就是同事的客户，挂在下面新建会被挡
-      if (企业版()) await 删被撤的换负责人记录(tx, x.id, x.值, 现);
+      if (企业版()) await 删被撤的换负责人记录(tx, x.id, x.值, 现, me.id);
       else await 记换负责人(tx, [{ customerId: x.id, from: 现, to: x.值 }], me.id, "undo");
       const 还 = await tx.customer.updateMany({ where: { id: x.id, salesOwnerId: 现 }, data: { salesOwnerId: x.值 } });
       if (!还.count) throw new Error(负责人被改过);
