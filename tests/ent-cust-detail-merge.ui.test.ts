@@ -46,7 +46,7 @@ const plugin: Plugin = { name: "cust-detail-merge", setup(b) {
 
 beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
-    import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
+    import React from 'react';import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import CustomerDetail from '@/app/(app)/customers/[id]/CustomerDetail';import RestrictedCustomerDetail from '@/app/(app)/customers/[id]/RestrictedCustomerDetail';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
     const root=createRoot(document.getElementById('root'));
     const 人=(id,name,isPrimary)=>({id,name,position:'采购',phone:'138000000'+id.slice(1),email:null,wechat:null,isPrimary,remark:null,updatedAt:'2026-01-01T00:00:00.000Z'});
@@ -80,7 +80,7 @@ beforeAll(async () => {
       if(当前&&o.只读) 当前.p={...当前.p,能记沟通:false,能放公海:false,能转让:false,能改节点:false,能删:false,关联:当前.p.关联};
       if(当前&&o.删) 当前.p={...当前.p,能删:true};
       if(当前&&o.领不了) 当前.p={...当前.p,能领取:false,领取不给:'你是原负责人，不能领回'};
-      root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><div className='shell rail-mini'>{innerWidth>=768&&<nav className='rail' aria-label='主导航'/>}{innerWidth>=1214&&名单}<main className='main app-content' style={{padding:'22px 26px'}}><div>
+      flushSync(()=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><div className='shell rail-mini'>{innerWidth>=768&&<nav className='rail' aria-label='主导航'/>}{innerWidth>=1214&&名单}<main className='main app-content' style={{padding:'22px 26px'}}><div>
         <CustomerDetail customer={{id:'a',extra:null,name:o.公司名||'客户A',phone:'13800138000',school:null,grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z',pool:null}}
           contacts={contacts} contracts={[]} tasks={[{id:'t1',title:'周五带合同上门',dueAt:'2026-11-13T02:00:00.000Z',done:false}]} plan={null}
           users={[{id:'qa',name:'QA',email:'qa@x'},{id:'u2',name:'同事乙',email:'b@x'}]} channels={[]} aiEnabled={false} followUps={客户沟通} followUpsHasMore={false}
@@ -89,19 +89,19 @@ beforeAll(async () => {
           只读={o.只读?'全':false}
           三态条={o.提醒?{状态:'沉睡',文字:'满 90 天没有有效沟通，也可以用右上角「客户操作」转让或退回公海',悬停:'满 90 天没有有效沟通',旁注:null,按钮们:[{动作:'继续持有',字:'我还在跟',说明:'顺延 30 天',要理由:false,主:true}]}:null}
           项目数据={{customerId:'a',页签们:签,锁数:o.锁数??0,当前}}/>
-      </div></main></div></BusinessProvider></App></ConfigProvider>);
+      </div></main></div></BusinessProvider></App></ConfigProvider>));
     };
     // 受限客户详情（只负责项目的人）：同一套项目区 + 嵌入版 ProjectDetail，左栏客户只读卡
     window.__renderR=(o={})=>{
       window.__sp='';
       const 当前=当前of({...项目们.p1,name:'项目一'+长,能删:!!o.删},true);
-      root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><div className='shell rail-mini'>{innerWidth>=768&&<nav className='rail' aria-label='主导航'/>}<main className='main app-content' style={{padding:'22px 26px'}}><div>
+      flushSync(()=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><div className='shell rail-mini'>{innerWidth>=768&&<nav className='rail' aria-label='主导航'/>}<main className='main app-content' style={{padding:'22px 26px'}}><div>
         <RestrictedCustomerDetail 数据={{客户:{id:'a',name:o.公司名||'客户A'},
           卡:{客户:{name:o.公司名||'客户A',shortName:'A',school:null,customerType:null,customerAttr:null,地区:'',addrDetail:null,website:null},联系人:[{name:'王总',position:'采购',给联系方式:true,phone:'138****0001',email:null,wechat:null,号码们:[]},{name:'李工',position:null,给联系方式:false,phone:null,email:null,wechat:null,号码们:[]}]},
           可改联系人:[],项目区:{customerId:'a',页签们:o.两个?页签们:[页签们[0]],锁数:0,当前},
           沟通:[{id:'rf1',type:'PHONE',method:null,content:'我项目上的沟通',occurredAt:'2026-10-03T02:00:00.000Z',who:'QA',项目:{id:'p1',名:'项目一'}}],
           待办:{任务:[],计划:[]},号码种类:[],职务选项:[]}}/>
-      </div></main></div></BusinessProvider></App></ConfigProvider>);
+      </div></main></div></BusinessProvider></App></ConfigProvider>));
     };
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
@@ -155,6 +155,17 @@ it("页签切换后左栏「关键」跟着换：本项目主联系人排最前�
     expect(await page.locator(".rec-contact", { hasText: "李工" }).getByTestId("contact-project-role").count()).toBe(0);
     expect(await page.locator(".cd-pj-pills").getByRole("tab", { selected: true }).getAttribute("href")).toBe("/customers/a?project=p2");
     expect(await page.locator(".rec-zone").getAttribute("data-project")).toBe("p2");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+// 用例时序（11-12 推送前偶发）：createRoot.render 是排进调度的，__render 返回时 DOM 可能还是上一页签，而 画 等的元素上一页早就有，
+// 有负载时就读到旧的「王总*」。__render / __renderR 用 flushSync 画完才返回；这条在同一次 evaluate 里同步读，没 flushSync 必红
+it("测试桩：__render 切页签后同步就画好（防读到上一页签的左栏）", async () => {
+  const { page, errors } = await 开(1366);
+  try {
+    const 读 = await page.evaluate(() => { (window as unknown as { __render: (o: object) => void }).__render({ 选: "p2" }); return [...document.querySelectorAll(".rec-rail .rec-contact")].map(c => c.querySelector(".rec-contact-n")!.textContent + (c.querySelector(".tag-key") ? "*" : "")); });
+    expect(读).toEqual(["陈经理*", "王总", "李工"]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
