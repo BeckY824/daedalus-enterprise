@@ -35,6 +35,7 @@ import { 规则 } from "@/lib/enterprise/rules";
 import { 字段权限key } from "@/lib/enterprise/field-perm";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 读客户只读卡 } from "@/lib/enterprise/customer-readonly-card";
+import { 仅项目可见 } from "@/lib/enterprise/project-only-customers";
 import { 打开客户只读卡Action } from "@/app/(app)/projects/[id]/readonly-card-actions";
 import ProjectPage from "@/app/(app)/projects/[id]/page";
 import { 读项目详情 } from "@/app/(app)/projects/[id]/load";
@@ -288,7 +289,9 @@ describe("项目详情到卡的入口", () => {
     const r = 载.props.p as unknown as 页数据;
     let 页: unknown = null;
     try { 页 = await 以(u, () => ProjectPage({ params: Promise.resolve({ id }) } as never)); } catch (e) { 页 = (e as Error).message; }
-    if (r.企业版 && r.客户入口 === "详情" && r.customer) expect(页).toBe(`REDIRECT:/customers/${载.customerId}?project=${id}`);
+    // 只负责项目的人（11-12 用户定）：客户看不到也跳客户页，那边是受限客户详情（tests/ent-project-only-customer.test.ts）
+    const 仅项目 = (await 以(u, () => 仅项目可见(u, 载.customerId)))?.includes(id);
+    if (r.企业版 && ((r.客户入口 === "详情" && r.customer) || 仅项目)) expect(页).toBe(`REDIRECT:/customers/${载.customerId}?project=${id}`);
     else expect(找详情(页)).toEqual(r);
     return r;
   };
@@ -378,12 +381,13 @@ describe("项目详情到卡的入口", () => {
     expect(甲的.联系人们.find((x) => x.contactId === 王)?.customerId).toBe(c);
   });
 
-  it("项目列表：只负责项目的人名字照显示、标进不了详情；客户负责人不标", async () => {
+  it("项目列表：只负责项目的人名字照显示、点得进受限客户详情（11-12 起不标进不了）；客户负责人不标", async () => {
     const { c, p, 客户名 } = await 搭();
     const 甲项目 = await 项目(c, 甲.id);
     忘掉企业版范围();
     const 乙行 = (await 以(乙, () => 读项目列表(乙 as never, {} as never))).行.find((r: { id: string }) => r.id === p);
-    expect(乙行).toMatchObject({ customerName: 客户名, 进不了客户详情: true });
+    expect(乙行).toMatchObject({ customerName: 客户名 });
+    expect(乙行?.进不了客户详情).toBeUndefined();
     const 甲行 = (await 以(甲, () => 读项目列表(甲 as never, {} as never))).行.find((r: { id: string }) => r.id === 甲项目);
     expect(甲行?.customerName).toBe(客户名);
     expect(甲行?.进不了客户详情).toBeUndefined();

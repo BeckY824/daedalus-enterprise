@@ -50,12 +50,12 @@ const 按人算 = cache(async (meId: string, role: string): Promise<Map<string, 
 });
 
 /** 我「仅项目」看得到的客户：客户 id → 我在这位客户名下的项目 id（最近改过的在前）。非企业版、项目模式关、本来看全部 = 空 */
-export function 仅项目客户们(me: { id: string; role: string }): Promise<Map<string, string[]>> {
-  return 按人算(me.id, me.role);
+export function 仅项目客户们(me: { id: string; role?: string | null }): Promise<Map<string, string[]>> {
+  return 按人算(me.id, me.role ?? "");
 }
 
 /** 这位客户我是不是「仅项目」看得到：是 = 我在他名下的项目 id；不是（看不到，或本来就看得到）= null */
-export async function 仅项目可见(me: { id: string; role: string }, customerId: string): Promise<string[] | null> {
+export async function 仅项目可见(me: { id: string; role?: string | null }, customerId: string): Promise<string[] | null> {
   return (await 仅项目客户们(me)).get(customerId) ?? null;
 }
 

@@ -111,14 +111,14 @@ describe("客户详情的项目区", () => {
     expect(链.get(公海的)).toBe(`/projects/${公海的}`);
   });
 
-  it("看得到项目、看不到客户的人（只负责项目、不负责客户）：轻判断给「留」（留在项目页走只读卡），列表链接照旧 /projects/<id>", async () => {
-    // 组员看得到客户（限定层按项目组放行），会跳客户页；只负责项目的人客户不归他、看不到，项目页给只读卡（e2e-ent/owner-first-batch 同一情形）
+  it("看得到项目、看不到客户的人（只负责项目、不负责客户）：11-12 起跳客户页（受限客户详情），列表链接也直接给客户页", async () => {
+    // 组员看得到客户（限定层按项目组放行），会跳客户页；只负责项目的人客户不归他、看不到，进受限客户详情（tests/ent-project-only-customer.test.ts）
     const 丙 = await 造人("bing", "sales");
     const 丙的 = (await prisma.project.create({ data: { name: "丙负责的项目", customerId: 客户, ownerId: 丙.id, creatorId: 甲.id, phase: "商机", node: "需求确认" } })).id;
     忘掉企业版范围();
-    expect(await 以(丙, () => 项目页去向(丙 as never, 丙的))).toEqual({ 种: "留" });
-    expect((await 以(丙, () => 项目链接们(丙 as never, [丙的]))).get(丙的)).toBe(`/projects/${丙的}`);
-    // 整页照旧：不跳客户页，留在项目页
-    expect(await 打开项目(丙, 丙的)).toBe("OK");
+    const 到 = `/customers/${客户}?project=${丙的}`;
+    expect(await 以(丙, () => 项目页去向(丙 as never, 丙的))).toEqual({ 种: "客户页", 到 });
+    expect((await 以(丙, () => 项目链接们(丙 as never, [丙的]))).get(丙的)).toBe(到);
+    expect(await 打开项目(丙, 丙的)).toBe(`REDIRECT:${到}`);
   });
 });

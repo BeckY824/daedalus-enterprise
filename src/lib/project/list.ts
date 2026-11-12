@@ -434,8 +434,10 @@ async function 拼项目行(
   };
   // 公海里同事客户的项目：不露客户名（按客户名搜、按号码筛、按客户来源算渠道的「客户要露」已在 where 里，列表条件）
   const 露 = (p: 行带include) => 露客户(me, p, 可见);
+  // 只负责项目的人（仅项目，project-only-customers.ts）：客户看不到，但点得进受限客户详情，不标「进不了」
+  const 仅项目 = 企 && rows.some((p) => !可见.has(p.customerId)) ? new Set([...(await 仅项目客户们(me)).values()].flat()) : new Set<string>();
   return rows.map((p) => ({
-    id: p.id, name: p.name, customerId: p.customerId, customerName: 露(p) ? p.customer.name : null, ...(企 && !可见.has(p.customerId) ? { 进不了客户详情: true } : {}),
+    id: p.id, name: p.name, customerId: p.customerId, customerName: 露(p) ? p.customer.name : null, ...(企 && !可见.has(p.customerId) && !仅项目.has(p.id) ? { 进不了客户详情: true } : {}),
     ownerId: p.ownerId, ownerName: 名字.get(负责人of(p)) ?? (负责人of(p) ? "已不在的成员" : "没人"),
     // 库里存着旧节点名 / 旧结局的按这套的新名给界面（企业版 10-31 改名）
     ...本套位置({ phase: p.phase, node: p.node, result: p.result }, 字典of(企)), exceptionCategory: p.exceptionCategory?.name ?? null, exceptionReason: p.exceptionReason,

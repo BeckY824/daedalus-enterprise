@@ -46,6 +46,9 @@ import { 三态暂缓回收, 三态继续持有 } from "@/app/(app)/customers/tr
 import { 全局搜索 } from "@/app/(app)/global-search";
 import { 导出客户 } from "@/app/(app)/customers/export-action";
 import { 客户页签数 } from "@/lib/pool-db";
+import { 项目页去向 } from "@/app/(app)/projects/[id]/load";
+import { 项目链接们 } from "@/lib/project/customer-detail-direct";
+import ProjectPage from "@/app/(app)/projects/[id]/page";
 import CustomerDetailPage from "@/app/(app)/customers/[id]/page";
 import type { 受限客户详情 } from "@/app/(app)/customers/[id]/restricted";
 
@@ -488,5 +491,30 @@ describe("仅项目客户：客户本身、原有联系人照旧动不了，别�
     expect((await 以(乙, () => prisma.contact.findMany({ select: { id: true } }))).map((x) => x.id)).not.toContain(老);
     const 数 = await 以(乙, () => 客户页签数());
     expect(数.非公海).toBe(1);
+  });
+});
+
+describe("路由连带（提交 6）", () => {
+  it("乙：/projects/<id> 跳客户页项目页签、站内链接直接给客户页、项目列表不标进不了；公海项目照旧留在项目页判", async () => {
+    const c = await 客户(甲.id);
+    const p = await 项目(c, 乙.id);
+    忘掉企业版范围();
+    const 到 = `/customers/${c}?project=${p}`;
+    expect(await 以(乙, () => 项目页去向(乙 as never, p))).toEqual({ 种: "客户页", 到 });
+    await expect(以(乙, () => ProjectPage({ params: Promise.resolve({ id: p }) } as never))).rejects.toThrow(`REDIRECT:${到}`);
+    expect((await 以(乙, () => 项目链接们(乙 as never, [p]))).get(p)).toBe(到);
+    const 行 = (await 以(乙, () => 读项目列表(乙 as never, {} as never))).行.find((r) => r.id === p);
+    expect(行?.进不了客户详情).toBeUndefined();
+  });
+
+  it("实线上级看下属负责、外组客户的项目：仍是只读卡（留在项目页、列表标进不了）", async () => {
+    const 外人 = await 造人("out", "外组销售", "SALES", "sales");
+    const c = await 客户(外人.id);
+    const p = await 项目(c, 乙.id);
+    忘掉企业版范围();
+    expect(await 以(销售管理, () => 项目页去向(销售管理 as never, p))).toEqual({ 种: "留" });
+    expect((await 以(销售管理, () => 项目链接们(销售管理 as never, [p]))).get(p)).toBe(`/projects/${p}`);
+    const 行 = (await 以(销售管理, () => 读项目列表(销售管理 as never, {} as never))).行.find((r) => r.id === p);
+    expect(行?.进不了客户详情).toBe(true);
   });
 });
