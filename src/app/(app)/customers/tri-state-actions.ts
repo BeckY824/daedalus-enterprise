@@ -9,16 +9,29 @@ import { 继续持有, 暂缓回收动作, 让同事结束项目动作, type 三
 import { 读占位词, 存占位词 } from "@/lib/enterprise/tri-state-db";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能改后台设置 } from "@/lib/enterprise/permissions";
+import { 不在了 } from "@/lib/not-there";
 
 const 刷新 = (id: string) => {
   revalidatePath("/customers");
   revalidatePath(`/customers/${id}`);
 };
 
+/**
+ * 写库被拦（切换视图只读、团队互看只读，code CRM_READONLY）回那一句原话，同主干别的写入（not-there.ts 不在了()）；
+ * 不接的话异常抛到浏览器，状态条只能弹通用的「没办成」
+ */
+async function 接住(做: () => Promise<三态动作结果>): Promise<三态动作结果> {
+  try {
+    return await 做();
+  } catch (e) {
+    return 不在了(e);
+  }
+}
+
 /** 沉睡时「我还在跟」（理由可空）；待回收时「写理由继续持有」（理由必填）；直属上级点 = 代选 */
 export async function 三态继续持有(customerId: string, 理由?: string | null): Promise<三态动作结果> {
   const me = await requireUser();
-  const r = await 继续持有(me, customerId, 理由);
+  const r = await 接住(() => 继续持有(me, customerId, 理由));
   if (r.ok) 刷新(customerId);
   return r;
 }
@@ -26,7 +39,7 @@ export async function 三态继续持有(customerId: string, 理由?: string | n
 /** 被挡裁决：暂缓回收（不扣继续持有额度，30 天内不再推） */
 export async function 三态暂缓回收(customerId: string, 理由?: string | null): Promise<三态动作结果> {
   const me = await requireUser();
-  const r = await 暂缓回收动作(me, customerId, 理由);
+  const r = await 接住(() => 暂缓回收动作(me, customerId, 理由));
   if (r.ok) 刷新(customerId);
   return r;
 }
@@ -34,7 +47,7 @@ export async function 三态暂缓回收(customerId: string, 理由?: string | n
 /** 被挡裁决：让同事结束项目（通知同事、留痕） */
 export async function 三态让同事结束项目(customerId: string): Promise<三态动作结果> {
   const me = await requireUser();
-  const r = await 让同事结束项目动作(me, customerId);
+  const r = await 接住(() => 让同事结束项目动作(me, customerId));
   if (r.ok) 刷新(customerId);
   return r;
 }

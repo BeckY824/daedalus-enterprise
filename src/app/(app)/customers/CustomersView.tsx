@@ -719,9 +719,16 @@ export default function CustomersView({
    * P13（2026-10-29）：级别画成星；10-31 会议 F-客户-01 改回只显示字母（components/LevelLetter.tsx）；加「客户类型」一列，
    * 字典项可以改成很长的字，超出 96 宽省略、悬停看全；默认收在「列」里，列表还是六列（1024 宽排得下）
    */
+  /*
+    客户三态开着（企业版多「回收状态」一列）：默认列在 1280 / 1366 宽（左栏 220）不出表格内部横向滚动，各列收到一行刚好放下常见内容，
+    更长的照「一行 + 省略号 + 悬停」。量法和各列为什么是这个数见 tests/ent-cust-list-columns.ui.test.ts「三态开着：默认列不横向滚」。
+    三态关着列宽照旧（只有「项目数」放宽到表头三个字放得下）
+  */
+  const 三态挤 = 企业 && !!三态标;
+  const 宽 = (常: number, 三态开: number) => (三态挤 ? 三态开 : 常);
   const 企业列: 列<CustomerRow>[] = [
     {
-      title: "级别", key: "level", width: 76,
+      title: "级别", key: "level", width: 宽(76, 60),
       sorter: true,
       sortOrder: 等级排序 === "level-asc" ? "ascend" : 等级排序 === "level-desc" ? "descend" : null,
       render: (_: unknown, r) => <LevelLetter level={r.extra?.level} 空={空} />,
@@ -736,7 +743,7 @@ export default function CustomersView({
     }] : []),
     // 国家（11-04 用户：客户列表加国家列，有值才显示）：这一页里有人填了客户所在国家才摆这一列
     ...(rows.some((r) => 有值(r.addrCountry)) ? [{
-      title: "国家", key: "addrCountry", width: 96,
+      title: "国家", key: "addrCountry", width: 宽(96, 68),
       render: (_: unknown, r: CustomerRow) => (有值(r.addrCountry) ? <span className="clamp-1" style={{ display: "block" }} title={r.addrCountry ?? ""}>{r.addrCountry}</span> : 空),
     }] : []),
     { title: "地址", key: "address", width: 180, 默认: false, render: (_: unknown, r) => { const t = 拼地址(r); return t ? <span title={t}>{t}</span> : 空; } },
@@ -761,7 +768,7 @@ export default function CustomersView({
       key: "name",
       dataIndex: "name",
       // 企业版公司名常常很长：原来一行截断、悬停看全（P13）；10-30 用户要「显示完整」，改成整段折行，列放宽到 200 少折几行
-      width: 企业 ? 200 : 160,
+      width: 企业 ? 宽(200, 136) : 160,
       常驻: true,
       render: (v, r) => 企业
         ? <RowLink href={`/customers/${r.id}`} className="link-strong fulltext" style={{ display: "block" }} title={v}>{v}</RowLink>
@@ -773,7 +780,7 @@ export default function CustomersView({
       一行放不下省略号，悬停看全（全站 TruncTip）
     */
     ...(项目概况 ? [{
-      title: "当前节点", key: "projectNode", width: 112,
+      title: "当前节点", key: "projectNode", width: 宽(112, 80),
       render: (_: unknown, r: CustomerRow) => {
         const x = 项目概况[r.id];
         return x?.当前节点
@@ -781,7 +788,8 @@ export default function CustomersView({
           : 空;
       },
     }, {
-      title: "项目数", key: "projectCount", width: 64,
+      // 72：表头三个字连左右内边距放得下（64 在大一号的字体下被截成「项…」）
+      title: "项目数", key: "projectCount", width: 72,
       render: (_: unknown, r: CustomerRow) => <span className="nowrap">{项目概况[r.id]?.项目数 ?? 0}</span>,
     }] satisfies 列<CustomerRow>[] : []),
     /*
@@ -790,7 +798,7 @@ export default function CustomersView({
       表头不叫「状态」：企业版另有一列「客户状态」（字典 custStatus，按项目自动算的客户阶段），两回事
     */
     ...(三态标 ? [{
-      title: "回收状态", key: "triState", width: 150,
+      title: "回收状态", key: "triState", width: 136,
       render: (_: unknown, r: CustomerRow) => {
         const x = 三态标[r.id];
         return x ? <span className={`tri-tag tri-${x.态}`} title={三态标说明(x)}>{三态标字(x)}</span> : null;
@@ -815,11 +823,11 @@ export default function CustomersView({
     } satisfies 列<CustomerRow>]),
     // 企业版：跟进状态换成客户状态（字典 custStatus，10-28 去遗留 A1）
     企业
-      ? { title: "客户状态", key: "custStatus", dataIndex: "custStatus", width: 110, render: (v: string | null) => (有值(v) ? <Tag color={客户状态色of(客户状态色, v)} style={{ margin: 0 }}>{v}</Tag> : 空) }
+      ? { title: "客户状态", key: "custStatus", dataIndex: "custStatus", width: 宽(110, 76), render: (v: string | null) => (有值(v) ? <Tag color={客户状态色of(客户状态色, v)} style={{ margin: 0 }}>{v}</Tag> : 空) }
       : { title: "跟进状态", key: "followStatus", dataIndex: "followStatus", width: 110, render: (v: string) => <FollowStatusTag status={v} /> },
     // 外贸不摆预计签约（2026-10-05 外贸客户：「没有意义」——采购时间点看商机的询盘时间）
     ...(外贸 ? [] : [{
-      title: "预计签约", key: "expectedSignAt", dataIndex: "expectedSignAt", width: 116,
+      title: "预计签约", key: "expectedSignAt", dataIndex: "expectedSignAt", width: 宽(116, 100),
       render: (v: string | null) => <span className="muted nowrap">{有值(v) ? fmtDate(v) : 空值符}</span>,
     }]),
     /*
@@ -828,7 +836,7 @@ export default function CustomersView({
     */
     ...(企业 ? 企业列 : 外贸 ? 外贸列 : []),
     ...(不问归属 ? [] : [{
-      title: "负责人", 列名: "负责人", key: "salesOwnerName", dataIndex: "salesOwnerName", width: 140,
+      title: "负责人", 列名: "负责人", key: "salesOwnerName", dataIndex: "salesOwnerName", width: 宽(140, 92),
       // 在公海里：写「公海（原 X）」——原负责人还挂着，但谁都能领
       render: (v: string, r: CustomerRow) => r.pool
         ? <Tag className="pool-tag" title={`${公海标签(v)} · ${r.pool.reason === "手动" ? "手动放回公海" : r.pool.reason}`}>{公海标签(v)}</Tag>
@@ -836,7 +844,7 @@ export default function CustomersView({
     }]),
     // 三列各收一点，1366 宽时默认列和公海列都不用左右拖（10-27）；负责人不收，「公海（原 X）」要放得下
     {
-      title: "最近跟进", key: "lastFollowAt", dataIndex: "lastFollowAt", width: 180,
+      title: "最近跟进", key: "lastFollowAt", dataIndex: "lastFollowAt", width: 宽(180, 92),
       // 冷热在前：扫一眼这一列就知道谁凉了，日期留着给要细看的人
       // 企业版不摆冷热：它按跟进状态算，企业版不用跟进状态（10-28 去遗留 A1）
       render: (v, r) => (

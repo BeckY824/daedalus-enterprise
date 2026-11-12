@@ -132,6 +132,60 @@ it("三态开着：回收状态列在项目数后面、和客户状态两列；1
     } finally { await page.close(); }
   }
 });
+/*
+  三态开着，默认列（客户、当前节点、项目数、回收状态、客户状态、预计签约、级别、国家、负责人、最近跟进 + 勾选 + 操作）：
+  量法：左栏 220 + 正文左右各 26 内边距，表格框 = .ant-table-content 的 clientWidth（1280 → 1008，1366 → 1094，1024 → 752）；
+  1280 / 1366 框里的 scrollWidth 不超过 clientWidth（不出内部横向滚动），最后一个数据列（最近跟进）右边界不越过固定的操作列左边界；
+  1024 允许内部横滚：滚到最右时最后一个数据列不被操作列盖住，滚到最左时第一个数据列不被勾选列盖住。
+  表头都不截（scrollWidth ≤ clientWidth），「项目数」三个字放得下。三态关着列宽照旧（只有项目数 64 → 72）
+*/
+it("三态开着：默认列在 1280 / 1366 不横向滚、最后一列看得全；1024 横滚时固定列不盖内容；表头不截", async () => {
+  for (const [w, 三] of [[1024, true], [1280, true], [1366, true], [1024, false]] as const) {
+    const page = await browser.newPage({ viewport: { width: w, height: 900 } }); page.setDefaultTimeout(5000);
+    const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+    try {
+      await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") });
+      await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
+      if (三) await page.evaluate(() => { (window as unknown as { __三态: boolean }).__三态 = true; });
+      await page.addScriptTag({ content: 包 });
+      await page.locator("tr.ant-table-row").first().waitFor();
+      const 量 = (到: "左" | "右") => page.evaluate((到) => {
+        const 框 = document.querySelector(".ant-table-content") as HTMLElement;
+        框.scrollLeft = 到 === "右" ? 框.scrollWidth : 0;
+        const ths = [...document.querySelectorAll("thead th")] as HTMLElement[];
+        const 数据 = ths.filter((t) => !t.classList.contains("ant-table-selection-column") && t.innerText.trim() !== "" && !t.className.includes("fix-end") && !t.className.includes("fix-right"));
+        const 操作 = ths.find((t) => t.className.includes("fix-end") || t.className.includes("fix-right"))!;
+        const 勾 = ths.find((t) => t.classList.contains("ant-table-selection-column"))!;
+        return {
+          框宽: 框.clientWidth, 内宽: 框.scrollWidth,
+          头: 数据.map((t) => t.innerText.trim()), 宽们: 数据.map((t) => t.offsetWidth),
+          // 字比格子的内容区宽就是截了（不用 th 的 scrollWidth：固定列的阴影伪元素会把它撑大）
+          截了的头: ths.filter((t) => { const r = document.createRange(); r.selectNodeContents(t); const cs = getComputedStyle(t); return r.getBoundingClientRect().width > t.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) + 0.5; }).map((t) => t.innerText.trim()),
+          末右: 数据.at(-1)!.getBoundingClientRect().right, 操作左: 操作.getBoundingClientRect().left,
+          首左: 数据[0].getBoundingClientRect().left, 勾右: 勾.getBoundingClientRect().right,
+        };
+      }, 到);
+      const 右 = await 量("右");
+      expect(右.截了的头, `宽 ${w} 表头不截`).toEqual([]);
+      expect(右.末右, `宽 ${w} 最后一列不被操作列盖住`).toBeLessThanOrEqual(右.操作左 + 0.5);
+      if (三) expect(右.头, `宽 ${w}`).toEqual(["客户", "当前节点", "项目数", "回收状态", "客户状态", "预计签约", "级别", "国家", "负责人", "最近跟进"]);
+      if (三 && w >= 1280) expect(右.内宽, `宽 ${w} 不出表格内部横向滚动`).toBeLessThanOrEqual(右.框宽);
+      if (w === 1366) {
+        // 大一号的表头字（换皮肤 / 系统字体更宽时）：「项目数」三个字照样放得下
+        await page.addStyleTag({ content: ":root{--fs-note:16px}" });
+        expect((await 量("右")).截了的头.filter((t) => t === "项目数"), "表头 16px").toEqual([]);
+      }
+      if (w === 1024) {
+        const 左 = await 量("左");
+        expect(左.首左, `宽 ${w} 第一列不被勾选列盖住`).toBeGreaterThanOrEqual(左.勾右 - 0.5);
+        // 1024 宽表格本来就横滚，列宽 = 设的宽：三态关着照旧（项目数 64 → 72），开着按收过的
+        expect(左.宽们, `宽 ${w} 三态${三 ? "开" : "关"}`).toEqual(三 ? [136, 80, 72, 136, 76, 100, 60, 68, 92, 92] : [200, 112, 72, 110, 116, 76, 96, 140, 180]);
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
 afterAll(async () => { if (process.env.CUST_COLS_DUMP) (await import("node:fs")).writeFileSync(process.env.CUST_COLS_DUMP, 摆法.join("\n")); });
 
 it("拉宽窗口阶段 / 进程回到外面，再拉窄又收进去，筛选行一直一行", async () => {

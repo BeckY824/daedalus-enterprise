@@ -400,12 +400,14 @@ export function 钟要改(c: Pick<三态客户, "钟" | "事实" | "留痕">, r:
   // 额度上次重置日：钟上只是给界面看的缓存，跟着事实走（撤销 / 删了重置它的沟通会往回挪，M-公海-54）
   const 重置日 = c.事实.额度重置日 ?? null;
   const 成交日 = 钟?.dealDay ?? (r.成交首次成立 ? 今天 : null);
+  // 最早进公海日：待回收时存按完整事实算的（同客户详情，含暂缓解除后 10 天、推后当天重起一轮），列表直接读（tri-state-list.ts）；别的状态空
+  const 进公海日 = 状态 === "待回收" ? r.最早进公海日 : null;
   const 留痕: { fromState: string | null; toState: string; reason: string }[] = [];
   if (!钟) {
     留痕.push({ fromState: null, toState: 状态, reason: "开始按客户计三态" });
     if (被挡) 留痕.push({ fromState: 状态, toState: 状态, reason: 被挡理由 });
     return {
-      data: { state: 状态, enteredDay: 进入日, blocked: 被挡, dealDay: 成交日, holdCount: r.继续持有.已用次数, holdDays: r.继续持有.已用天数, quotaResetDay: 重置日, progressDay: c.事实.最近推进日 },
+      data: { state: 状态, enteredDay: 进入日, blocked: 被挡, dealDay: 成交日, holdCount: r.继续持有.已用次数, holdDays: r.继续持有.已用天数, quotaResetDay: 重置日, progressDay: c.事实.最近推进日, poolDueDay: 进公海日 },
       留痕,
     };
   }
@@ -439,6 +441,7 @@ export function 钟要改(c: Pick<三态客户, "钟" | "事实" | "留痕">, r:
   // S7：推进底日只往后挪
   const 推进 = c.事实.最近推进日;
   if (推进 && (钟.progressDay === null || 推进 > 钟.progressDay)) data.progressDay = 推进;
+  if (钟.poolDueDay !== 进公海日) data.poolDueDay = 进公海日;
   return Object.keys(data).length || 留痕.length ? { data, 留痕 } : null;
 }
 
@@ -605,7 +608,7 @@ async function 标掉公海里的(现在: Date, 今天: string): Promise<number>
   for (const 批 of 分批(们)) {
     await 查完再写(async (tx) => {
       for (const x of 批) {
-        const n = await tx.entCustomerClock.updateMany({ where: { customerId: x.customerId, state: x.state }, data: { state: 公海状态, enteredDay: 今天, noticeCount: 0, lastNoticeDay: null, blocked: false, holdUntil: null } });
+        const n = await tx.entCustomerClock.updateMany({ where: { customerId: x.customerId, state: x.state }, data: { state: 公海状态, enteredDay: 今天, noticeCount: 0, lastNoticeDay: null, blocked: false, holdUntil: null, poolDueDay: null } });
         if (n.count) await tx.entCustomerStateLog.create({ data: { customerId: x.customerId, fromState: x.state, toState: 公海状态, via: 留痕方式.自动, reason: "进了客户公海，停止计时", at: 现在 } });
       }
     });
@@ -672,7 +675,7 @@ export async function 自动进公海一位(id: string, 规则: 组织规则, or
     await 客户名下在推项目进公海(tx, 们, 系统.id, 理由, 现在);
     await 客户进公海清负责人(tx, 们, null);
     await tx.entCustomerStateLog.create({ data: { customerId: id, fromState: c.钟?.state ?? "待回收", toState: 公海状态, via: 留痕方式.自动, reason: 理由, at: 现在 } });
-    const 标 = { state: 公海状态, enteredDay: 今天, noticeCount: 0, lastNoticeDay: null, blocked: false, holdUntil: null };
+    const 标 = { state: 公海状态, enteredDay: 今天, noticeCount: 0, lastNoticeDay: null, blocked: false, holdUntil: null, poolDueDay: null };
     await tx.entCustomerClock.upsert({ where: { customerId: id }, create: { customerId: id, ...标 }, update: 标 });
     return { id, name: c.name, 原负责人: c.salesOwnerId, 第几次: 自动收回次数(c.留痕) + 1, bizLine: c.bizLine };
   });
