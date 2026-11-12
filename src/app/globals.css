@@ -2770,6 +2770,8 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .pipe-top > .pipe-more-right.ant-btn { margin-left: auto; padding-inline: 4px; white-space: nowrap; }
 /* 客户页看板上方只剩「→ 还有 N 列」一句（11-12）：右对齐一行小字，行高压到一行字，不像一行工具栏 */
 .pipe-top.pipe-top-hint { margin-bottom: var(--s1); }
+/* 滑到头：这一行照留（看板不上下跳），按钮藏起来、点不到（ProjectsView 还有列） */
+.pipe-more-right.pipe-more-end { visibility: hidden; pointer-events: none; }
 .pipe-top.pipe-top-hint > .pipe-more-right.ant-btn { height: auto; padding-block: 0; font-size: var(--fs-note); line-height: 20px; }
 .pipe-col { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--s3); min-height: 220px;
   transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
@@ -2810,7 +2812,7 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 /* 筛选行最左那颗「列表 / 看板」（11-12 用户：「列表｜看板 放到和筛选栏一行，最左边」）：筛选组之外单独一格、不缩，
    窄宽度筛选组自己折 / 收进「更多筛选」，它一直在第一行最左；高和筛选控件一样（32） */
 .list-view-seg { flex: none; display: flex; align-items: center; min-height: 32px; }
-/* 客户页看板视图筛选行右端那一格（customers/board-slot.ts）：分配、我分出去的、回到看板、「→ 还有 N 列」；排在「列」那一格之后，空着不占位 */
+/* 客户页看板视图筛选行右端那一格（customers/board-slot.ts）：只放分配、我分出去的、回到看板（「→ 还有 N 列」在看板上方，不进这一格）；排在「列」那一格之后，空着不占位 */
 .list-bar-end { order: 1; flex: none; display: flex; align-items: center; gap: var(--s2); min-height: 32px; }
 .list-bar-end:empty { display: none; }
 /* 客户页看板视图的工具行（C17）：外面没给筛选行那一格时（单独画看板），分配等按钮靠右摆在看板上面 */

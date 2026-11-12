@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Button, Dropdown } from "antd";
 import { DownOutlined, PlusOutlined } from "@ant-design/icons";
 
@@ -18,6 +18,11 @@ export type 新建项 = { key: string; label: string; onClick: () => void };
  */
 export default function NewMenuButton({ 项, 载入中 = false, 预取 }: { 项: 新建项[]; 载入中?: boolean; 预取?: () => void }) {
   const 钮 = useRef<HTMLButtonElement>(null);
+  /** 推到下一轮开框的那个定时器：卸载时清掉，不在没了的页面上开框 */
+  const 定时 = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (定时.current) clearTimeout(定时.current);
+  }, []);
   if (!项.length) return null;
   const 点 = (x: 新建项) => {
     钮.current?.focus();
@@ -25,7 +30,11 @@ export default function NewMenuButton({ 项, 载入中 = false, 预取 }: { 项:
       推到下一轮再开：菜单项是按回车的 keydown 点的，同一下回车后面还跟着 keypress——弹框要是这一轮就开了、焦点进了弹框，
       那下 keypress 会落在弹框里有焦点的按钮（右上角关闭）上，弹框一闪就关（11-12 键盘用例踩到）
     */
-    setTimeout(x.onClick, 0);
+    if (定时.current) clearTimeout(定时.current);
+    定时.current = setTimeout(() => {
+      定时.current = null;
+      x.onClick();
+    }, 0);
   };
   if (项.length === 1) {
     const [x] = 项;

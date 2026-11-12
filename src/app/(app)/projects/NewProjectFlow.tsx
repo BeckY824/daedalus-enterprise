@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { App, Modal } from "antd";
 import { RightOutlined } from "@ant-design/icons";
 import dynamic from "next/dynamic";
@@ -44,6 +44,13 @@ export function useNewProjectFlow({ users, 节点们, 要下一步, 建档: 给�
   const 起点 = useRef<HTMLElement | null>(起手开着 && typeof document !== "undefined" ? (document.activeElement as HTMLElement | null) : null);
   const 记起点 = () => { if (typeof document !== "undefined") 起点.current = document.activeElement as HTMLElement | null; };
   const 回起点 = () => { const el = 起点.current; if (el?.isConnected) el.focus({ preventScroll: true }); };
+  /*
+    光靠 Modal 自己还焦点不够（11-12 复审实测）：框接框时下一个框开的那一刻，焦点被上一个框的焦点锁拉回框内，
+    它记下的「打开前的焦点」是上一个框里的按钮，关掉时还给一个已经没了的元素，焦点掉到 body。
+    所以每个框关的动画走完（afterClose）再看一眼：这条路上已经没有开着的框了，就把焦点放回起点
+  */
+  const 链开 = useRef(false);
+  const 收尾 = () => { if (!链开.current) 回起点(); };
   const b = useBusiness();
   const [选客户, set选客户] = useState(起手开着);
   const [挑老客户, set挑老客户] = useState(false);
@@ -69,9 +76,11 @@ export function useNewProjectFlow({ users, 节点们, 要下一步, 建档: 给�
       set取档中(false);
     }
   };
+  const [老客户新建开着, set老客户新建开着] = useState(false);
+  useLayoutEffect(() => { 链开.current = 选客户 || 挑老客户 || 建档开着 || 老客户新建开着; });
   const 弹框 = (
     <>
-      <Modal open={选客户} title="新增项目" footer={null} width={420} onCancel={() => set选客户(false)} destroyOnHidden>
+      <Modal open={选客户} title="新增项目" footer={null} width={420} onCancel={() => set选客户(false)} afterClose={收尾} destroyOnHidden>
         <div className="new-proj-pick">
           <button type="button" className="new-proj-opt" disabled={取档中} onClick={() => void 开建档("新增项目")}>
             <两行 名={`新${b.customer}`} 说={`一起建好${b.customer}、联系人和首条沟通，号码先查重`} />
@@ -83,8 +92,8 @@ export function useNewProjectFlow({ users, 节点们, 要下一步, 建档: 给�
           </button>
         </div>
       </Modal>
-      {建档 && <建档弹窗 open={建档开着} 标题={标题} 数据={建档} onClose={() => set建档开着(false)} />}
-      <OldCustomerProject 开={挑老客户} 关={() => set挑老客户(false)} 回起点={回起点} users={users} 节点们={节点们} 要下一步={要下一步} />
+      {建档 && <建档弹窗 open={建档开着} 标题={标题} 数据={建档} onClose={() => set建档开着(false)} afterClose={收尾} />}
+      <OldCustomerProject 开={挑老客户} 关={() => set挑老客户(false)} 回起点={回起点} 收尾={收尾} on新建框={set老客户新建开着} users={users} 节点们={节点们} 要下一步={要下一步} />
     </>
   );
   return { 开选客户: () => { 记起点(); set选客户(true); }, 开建档, 弹框, 取档中 };
@@ -109,7 +118,7 @@ function 两行({ 名, 说 }: { 名: string; 说: string }) {
  * 「给老客户开项目」：先挑一位已有的客户，再接客户页同一个新建项目框（customers/[id]/NewProjectModal.tsx）。
  * 能挑到谁走 搜客户 的可见范围，建项目的权限以服务端 给客户建项目 为准
  */
-function OldCustomerProject({ 开, 关, 回起点, users, 节点们, 要下一步 }: { 开: boolean; 关: () => void; 回起点: () => void; users: 可选成员[]; 节点们: readonly string[]; 要下一步: boolean }) {
+function OldCustomerProject({ 开, 关, 回起点, 收尾, on新建框, users, 节点们, 要下一步 }: { 开: boolean; 关: () => void; 回起点: () => void; 收尾: () => void; on新建框: (开着: boolean) => void; users: 可选成员[]; 节点们: readonly string[]; 要下一步: boolean }) {
   const { message } = App.useApp();
   const b = useBusiness();
   const me = useMe();
@@ -129,6 +138,7 @@ function OldCustomerProject({ 开, 关, 回起点, users, 节点们, 要下一�
       // 近况里不带谁是主要联系人，新建框默认选第一个
       // 接新建项目框之前先把焦点放回「新建」：新建项目框关了焦点回那儿
       回起点();
+      on新建框(true);
       set客户({ id: c.id, name: c.name, 联系人们: c.contacts.map((x) => ({ id: x.id, name: x.name, isPrimary: false })) });
       set选(undefined);
       关();
@@ -151,6 +161,7 @@ function OldCustomerProject({ 开, 关, 回起点, users, 节点们, 要下一�
           set选(undefined);
           关();
         }}
+        afterClose={收尾}
         destroyOnHidden
       >
         <CustomerSearchSelect value={选} onChange={set选} placeholder="搜名称 / 公司 / 电话" className="old-cust-pick" />
@@ -161,7 +172,12 @@ function OldCustomerProject({ 开, 关, 回起点, users, 节点们, 要下一�
       {客户 && (
         <NewProjectModal
           open
-          onClose={() => set客户(null)}
+          onClose={() => {
+            // 新建项目框关了就卸掉（没有关的动画、没有 afterClose）：卸完下一轮把焦点放回起点
+            set客户(null);
+            on新建框(false);
+            setTimeout(收尾, 0);
+          }}
           customerId={客户.id}
           customerName={客户.name}
           默认负责人={我当负责人(me, users) ?? null}

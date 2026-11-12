@@ -39,7 +39,7 @@ beforeAll(async () => {
     import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {我Provider} from '@/lib/me-client';
     import CustomersView from '@/app/(app)/customers/CustomersView';import {看板工具位} from '@/app/(app)/customers/board-slot';import {createPortal} from 'react-dom';
     // 看板视图最坏情况（11-12 审查）：看板往筛选行右端那一格放「分配」「我分出去的」（ProjectsView 客户页筛到线索、能分配时）
-    const 假看板=()=>{const 位=React.useContext(看板工具位);return <div className='fake-board'>项目看板{window.__看板工具&&位&&createPortal(<><button type='button' className='ant-btn ant-btn-default'><span>分配</span></button><button type='button' className='ant-btn ant-btn-default'><span>我分出去的</span></button></>,位)}</div>};
+    const 假看板=()=>{const 位=React.useContext(看板工具位);const [有,set有]=React.useState(!!window.__看板工具);React.useEffect(()=>{window.__切工具=set有},[]);return <div className='fake-board'>项目看板{有&&位&&createPortal(<><button type='button' className='ant-btn ant-btn-default'><span>分配</span></button><button type='button' className='ant-btn ant-btn-default'><span>我分出去的</span></button></>,位)}</div>};
     const 长='某某超长贸易进出口有限公司'.repeat(6);
     const users=[{id:'me',name:'小王',email:'s1',role:'SALES',active:true},{id:'u2',name:'一个名字特别特别长的同事',email:'s2',role:'SALES',active:true}];
     const 行=(id,owner)=>({id,name:长+id,phone:'1380000000'+id.slice(1),school:null,grade:null,major:null,followStatus:'待跟进',decisionStatus:'了解中',custStatus:'跟进中',salesOwnerId:owner,salesOwnerName:owner==='me'?'小王':'一个名字特别特别长的同事',createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',lastFollowAt:'2026-11-01T00:00:00.000Z',signedAmount:0,referrerCustomerId:null,referrerName:null,channelId:null,channelName:null,expectedSignAt:null,remark:null,addrCountry:'阿拉伯联合酋长国',extra:{level:'A'}});
@@ -235,7 +235,8 @@ it("拉宽窗口阶段 / 进程回到外面，再拉窄又收进去，筛选行�
     expect(await 一行()).toBe(true);
     await page.setViewportSize({ width: 1024, height: 900 });
     await expect.poll(阶段在外面).toBe(0);
-    expect(await 一行()).toBe(true);
+    // 窗口一变搜索框宽有个过渡（159 → 140，约几百毫秒）：过渡那几帧筛选组会短暂折一下（11-12 复审实测，整文件跑约一半撞上），等过渡走完再看是一行
+    await expect.poll(一行).toBe(true);
   } finally { await page.close(); }
 });
 
@@ -497,6 +498,43 @@ it("看板视图最坏情况：1024 宽、左栏 220、筛到线索阶段、能�
     expect(await page.getByRole("combobox", { name: "阶段" }).count()).toBe(0);
     expect(await page.getByRole("button", { name: /^更多筛选/ }).count()).toBe(1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("筛选组收放跟着右端那一格走：1024 宽、筛到线索，右端按钮出现 → 收进更多筛选，按钮拿走 → 放回来；来回切几次、静置后不振荡", async () => {
+  const page = await browser.newPage({ viewport: { width: 1024, height: 900 } }); page.setDefaultTimeout(5000);
+  const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+  try {
+    await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+    await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+    // 左栏 120（比壳里窄一点）：右端没按钮时阶段 / 进程摆得下，有按钮时摆不下
+    await page.addStyleTag({ content: "#root{margin-left:60px;padding:22px 26px}" });
+    await page.evaluate(() => { Object.assign(window, { __看板: true, __看板工具: false }); });
+    await page.addScriptTag({ content: 包 });
+    await page.locator(".fake-board").waitFor();
+    const 阶段在外面 = () => page.getByRole("combobox", { name: "阶段" }).count();
+    const 一行 = () => page.locator(".list-bar > .ant-space").first().evaluate((el) => el.getBoundingClientRect().height <= 40);
+    const 切 = (有: boolean) => page.evaluate((v) => (window as unknown as { __切工具: (x: boolean) => void }).__切工具(v), 有);
+    await expect.poll(阶段在外面).toBe(1);
+    for (let i = 0; i < 3; i++) {
+      await 切(true);
+      await expect.poll(阶段在外面).toBe(0);
+      await expect.poll(一行).toBe(true);
+      await 切(false);
+      await expect.poll(阶段在外面).toBe(1);
+      await expect.poll(一行).toBe(true);
+    }
+    // 静置：记一段时间里阶段进出的次数，不来回抖
+    const 变 = await page.evaluate(async () => {
+      let n = 0; let 前 = !!document.querySelector("[aria-label='阶段']");
+      const mo = new MutationObserver(() => { const 现 = !!document.querySelector("[aria-label='阶段']"); if (现 !== 前) { n++; 前 = 现; } });
+      mo.observe(document.body, { childList: true, subtree: true });
+      await new Promise((r) => setTimeout(r, 800));
+      mo.disconnect();
+      return n;
+    });
+    expect(变).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

@@ -272,7 +272,8 @@ export default function ProjectsView({
       set取中((m) => (m.源 === 源 ? { 源, 列: { ...m.列, [c.列]: false } } : m));
     }
   }
-  const [右边还有, 滑一列] = useKanbanMoreCols(看板框, 看法 === "看板" ? 看板 : null);
+  const 还有列钮 = useRef<HTMLButtonElement>(null);
+  const [右边还有, 滑一列, 横向溢出] = useKanbanMoreCols(看板框, 看法 === "看板" ? 看板 : null, 还有列钮);
   // 看板每列的卡片（含「再看」追加的）也算：客户页看板不取列表页（行 是空的），不带上的话有「已不在的成员 / 没人」的卡片也会把负责人藏掉
   const 不问归属 = !f.ownerId && 列表不问归属ID(users, [...行, ...看板.flatMap((c) => c.行), ...Object.values(追加.们).flatMap((x) => x.行)].map((r) => r.ownerId));
   const 在筛 = Object.values(filters).some(Boolean);
@@ -519,8 +520,16 @@ export default function ProjectsView({
   const 工具位 = useContext(看板工具位);
   const 进筛选行 = 客户页 && 工具位 !== undefined;
   const 回到看板 = 临时列表 && <Button onClick={() => set临时列表(false)}>回到看板</Button>;
-  const 还有列 = 看法 === "看板" && 右边还有 > 0 && (
-    <Button type="link" className="pipe-more-right" title="往右滑一列" onClick={滑一列}>→ 还有 {右边还有} 列</Button>
+  /*
+    「→ 还有 N 列」这一行占不占位看看板有没有横向溢出（11-12 复审：原来随滑动出现 / 消失，看板上下跳约 24px）：
+    有溢出就一直留着这一行，滑到头时按钮藏起来（visibility:hidden 保留高度、不可聚焦、读屏不念）；完全没溢出才不画
+  */
+  const 到头 = 右边还有 === 0;
+  const 还有列 = 看法 === "看板" && 横向溢出 && (
+    <Button ref={还有列钮} type="link" className={到头 ? "pipe-more-right pipe-more-end" : "pipe-more-right"} title={到头 ? undefined : "往右滑一列"} onClick={滑一列}
+      tabIndex={到头 ? -1 : undefined} aria-hidden={到头 || undefined}>
+      → 还有 {到头 ? 0 : 右边还有} 列
+    </Button>
   );
 
   return (
@@ -593,7 +602,7 @@ export default function ProjectsView({
         />
       ) : (
         <>
-          {/* 客户页看板：筛选行是客户页的，看板上方只有「→ 还有 N 列」这一句（有更多列时才出现，右对齐一行小字，不出现不占位） */}
+          {/* 客户页看板：筛选行是客户页的，看板上方只有「→ 还有 N 列」这一句（看板横向溢出时这一行一直在、滑到头按钮藏起来不跳；没溢出不占位） */}
           {(!客户页 || 还有列) && (
             <div className={客户页 ? "pipe-top pipe-top-hint" : "pipe-top"}>
               {!客户页 && 筛选}
@@ -710,13 +719,15 @@ export default function ProjectsView({
 }
 
 /**
- * 看板右边还有几列没整列露出来（11-01 会议 C12「加横向滚动条和『→ 还有 N 列』的提示」）。
- * 滚动、框变宽窄、列变了都重算；滑一列 = 把右边第一列没露全的整列滑进来，点几下到头
+ * 看板右边还有几列没整列露出来（11-01 会议 C12「加横向滚动条和『→ 还有 N 列』的提示」），以及看板有没有横向溢出。
+ * 滚动、框变宽窄、列变了都重算；滑一列 = 把右边第一列没露全的整列滑进来，点几下到头。
+ * 到头时按钮要藏起来：焦点正在它上面就先挪到看板框上（tabIndex -1，只接程序焦点），不让焦点掉到 body
  */
 /** 看板右沿渐隐的宽（和 globals.css .pipe-fade-right 的 48px 一致）：滑过来的那一列整列落在渐隐外 */
 const 渐隐宽 = 48;
-function useKanbanMoreCols(框: React.RefObject<HTMLDivElement | null>, 列们: unknown): [number, () => void] {
+function useKanbanMoreCols(框: React.RefObject<HTMLDivElement | null>, 列们: unknown, 钮?: React.RefObject<HTMLButtonElement | null>): [number, () => void, boolean] {
   const [n, setN] = useState(0);
+  const [溢出, set溢出] = useState(false);
   const 没露全的 = (el: HTMLDivElement) => {
     const 右 = el.getBoundingClientRect().right;
     return Array.from(el.children).filter((c) => c.getBoundingClientRect().right > 右 + 1);
@@ -724,7 +735,15 @@ function useKanbanMoreCols(框: React.RefObject<HTMLDivElement | null>, 列们: 
   useEffect(() => {
     const el = 框.current;
     if (!el) return; // 提示只在看板里显示，切回看板时重算
-    const 算 = () => setN(没露全的(el).length);
+    const 算 = () => {
+      const 剩 = 没露全的(el).length;
+      if (剩 === 0 && 钮?.current && document.activeElement === 钮.current) {
+        if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
+        el.focus({ preventScroll: true });
+      }
+      setN(剩);
+      set溢出(el.scrollWidth > el.clientWidth + 1);
+    };
     算();
     el.addEventListener("scroll", 算, { passive: true });
     const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(算);
@@ -733,14 +752,14 @@ function useKanbanMoreCols(框: React.RefObject<HTMLDivElement | null>, 列们: 
       el.removeEventListener("scroll", 算);
       ro?.disconnect();
     };
-  }, [框, 列们]);
+  }, [框, 列们, 钮]);
   const 滑 = () => {
     const el = 框.current;
     const 下一列 = el && 没露全的(el)[0];
     if (!el || !下一列) return;
     el.scrollBy({ left: 下一列.getBoundingClientRect().right - el.getBoundingClientRect().right + 渐隐宽, behavior: 滚法() });
   };
-  return [n, 滑];
+  return [n, 滑, 溢出];
 }
 
 /** 看板列底「再看 N 个」（11-12 每列各自取数）：左边写已显示几个 / 一共几个，右边次级小按钮；摆全了不画。加载中禁用、读屏报忙 */

@@ -133,25 +133,35 @@ export function useCustomFilters(页: string, 项: 筛选项[], { 停用 = false
 const 一行高 = 40;
 
 /**
- * 筛选组（.list-bar 里的 Space）折成两行了没有：折了就把带「挤」的项收进「更多筛选」，记下那一刻的宽；
- * 再宽过那个宽就放回来试一次（还放不下再收，记新的宽）。在画之前量（layout effect），人看不到跳一下。
- * 手机宽（< 768）筛选行本来就折，不挤
+ * 筛选组（.list-bar 里的 Space）折成两行了没有：折了就把带「挤」的项收进「更多筛选」，记下那一刻「留给筛选组的可用宽」——
+ * 行宽减去行里别的格（最左的「列表 / 看板」、右端那一格、「列」……弹性空格不算宽）和格间距。
+ * 可用宽比那一刻宽了就放回来试一次（还放不下再收、记新的可用宽，不会来回抖）。只看行宽不够：
+ * 客户页看板往右端那一格放「分配」「我分出去的」、后来又拿走时行宽不变，原来收进去就放不回来（11-12 复审）。
+ * 所以行、组、行里别的格都盯着。在画之前量（layout effect），人看不到跳一下。手机宽（< 768）筛选行本来就折，不挤
  */
 function useSqueezeRow(能挤: boolean): [boolean, (el: HTMLSpanElement | null) => void] {
   const [挤掉, set挤掉] = useState(false);
   const [探针, set探针] = useState<HTMLSpanElement | null>(null);
-  const 挤时宽 = useRef(0);
+  const 挤时可用 = useRef(0);
   useLayoutEffect(() => {
     if (!能挤 || !探针) return;
     const 组 = 探针.closest(".ant-space") as HTMLElement | null;
     const 行 = (探针.closest(".list-bar") as HTMLElement | null) ?? 组?.parentElement ?? null;
     if (!组 || !行) return;
+    const 别的格 = () => (Array.from(行.children) as HTMLElement[]).filter((x) => x !== 组 && getComputedStyle(x).display !== "none");
+    const 可用宽 = () => {
+      const 格 = 别的格();
+      const 间距 = parseFloat(getComputedStyle(行).columnGap) || 0;
+      // 弹性空格（.list-bar-gap，flex: 1）只占间距、不算宽：它的宽是挤剩下的
+      const 占 = 格.filter((x) => !x.classList.contains("list-bar-gap")).reduce((n, x) => n + x.getBoundingClientRect().width, 0);
+      return 行.clientWidth - 占 - 间距 * 格.length;
+    };
     const 量 = () => {
       if (!window.matchMedia("(min-width: 768px)").matches) return set挤掉(false);
-      const 宽 = 行.clientWidth;
+      const 宽 = 可用宽();
       if (!挤掉) {
-        if (组.getBoundingClientRect().height > 一行高) { 挤时宽.current = 宽; set挤掉(true); }
-      } else if (宽 > 挤时宽.current) set挤掉(false);
+        if (组.getBoundingClientRect().height > 一行高) { 挤时可用.current = 宽; set挤掉(true); }
+      } else if (宽 > 挤时可用.current + 1) set挤掉(false);
     };
     // 接管之前（服务端出的 HTML）组是不折、放不下藏在行尾的（globals.css .cf-probe:not([data-cf-ready])），
     // 不然量之前筛选行先折成两行（PR #273 CI 1024 宽）。量之前打上标记放开折行，同一帧里量完收好，人看不到跳一下
@@ -159,9 +169,15 @@ function useSqueezeRow(能挤: boolean): [boolean, (el: HTMLSpanElement | null) 
     量();
     const ro = new ResizeObserver(量);
     ro.observe(行);
-    // 组自己也看：行宽没变、行里别的格后来才有东西（客户页看板往筛选行右端那一格放「分配」「我分出去的」，11-12 审查）时，组被挤折了也要收
     ro.observe(组);
-    return () => ro.disconnect();
+    for (const x of Array.from(行.children)) if (x !== 组) ro.observe(x);
+    // 右端那一格里的按钮后来才放进去 / 拿走（portal，格子本身可能一直是 0 宽的 display:none）：子节点变了也量一次
+    const mo = new MutationObserver(量);
+    for (const x of Array.from(行.querySelectorAll(":scope > .list-bar-end"))) mo.observe(x, { childList: true });
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
   }, [能挤, 探针, 挤掉]);
   return [挤掉, set探针];
 }

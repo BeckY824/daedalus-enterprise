@@ -23,7 +23,8 @@ const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   // 卡点面板（我的卡点看板）的 server action：这几条测试不点卡点，回成功就行
   stub(/blocker-actions$/, "const 好=async()=>({ok:true});export const 发布卡点Action=好,认领卡点Action=好,完成卡点Action=好,删卡点Action=好,存卡点默认Action=好,存卡点角色开关Action=好,新增原因Action=好,改原因名Action=好,改原因状态Action=好,删原因Action=好,合并原因Action=好,我的卡点Action=async()=>[];");
   // 「给老客户开项目」挑客户、建项目那几个 server action：这几条测试不点，空着就行
-  stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[],取客户选项=async()=>[],取客户近况=async()=>null;");
+  // window.__搜到：挑得到一位老客户（走「给老客户开项目」整条链看焦点回位）
+  stub(/customers\/\[id\]\/pick$/, "const 甲={id:'c9',name:'老客户甲',附注:null};export const 搜客户=async()=>window.__搜到?[甲]:[],取客户选项=async()=>window.__搜到?甲:null,取客户近况=async()=>window.__搜到?{id:'c9',name:'老客户甲',上次跟进:null,未完成计划:null,未完成计划数:0,contacts:[]}:null;");
   stub(/project-actions$/, "export const 给客户建项目=async()=>({ok:true});export const 新项目分配数据=async()=>null;export const 建项目带走的项目=async()=>({项目数:0,项目:[]});");
   // 「新增项目」→「新客户」：取向导数据记一笔；向导框本身换成一块写着标题的牌子（向导另有测试）
   stub(/new\/wizard-actions$/, "export const 取建档数据=async()=>{(window.__调||=[]).push(['取建档数据']);if(window.__慢取档)await new Promise(r=>window.__放取档=r);return {users:[],要下一步:false,企业:null}};");
@@ -33,7 +34,8 @@ const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   const 再看码 = (名: string) => `export const ${名}=async(...a)=>{(window.__调||=[]).push(['${名}',...a]);if(window.__手动)return new Promise(r=>(window.__挂起||=[]).push({a,r}));await new Promise(r=>setTimeout(r,400));return window.__再看||{ok:true,行:[],总:0}};`;
   stub(/customers\/board-actions$/, 再看码("再看一列"));
   stub(/^\.\/board-actions$/, 再看码("再看项目页一列"));
-  stub(/^next\/dynamic$/, "import React from 'react';export default function d(){return function D(p){return p.open?<div className='wizard-stub'>{p.标题}</div>:null}}");
+  // 向导框换成一个真的 antd 弹框（标题、关掉都照真的走），里面一块写着标题的牌子
+  stub(/^next\/dynamic$/, "import React from 'react';import {Modal} from 'antd';export default function d(){return function D(p){return <Modal open={!!p.open} title={p.标题} footer={null} onCancel={p.onClose} afterClose={p.afterClose}>{p.open&&<div className='wizard-stub'>{p.标题}</div>}</Modal>}}");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
@@ -229,7 +231,8 @@ it("企业版项目看板（11-01 会议 C12）：1024 宽五列，右沿渐隐 
     await expect.poll(() => page.locator(".pipe").evaluate((el) => el.scrollLeft)).toBeGreaterThan(前);
     if (i < 起 - 1) await expect.poll(数).toBe(起 - i - 1);
   }
-  await 提示.waitFor({ state: "detached" });
+  // 到头：这一行照留（看板不上下跳，11-12 复审），按钮藏起来
+  await expect.poll(() => 提示.evaluate((el) => getComputedStyle(el).visibility)).toBe("hidden");
   expect(await page.locator(".pipe-wrap.pipe-fade-right").count()).toBe(0);
   // 最后一列整列露出来
   expect(await page.locator(".pipe").evaluate((el) => {
@@ -546,6 +549,9 @@ it("市场角色「我分出去的」页头：能建客户 = 「新建 ▾」两
     await page.locator(".wizard-stub").waitFor();
     expect(await page.locator(".wizard-stub").innerText()).toBe("新增客户");
     expect(await page.evaluate(() => (window as unknown as { __调?: unknown[][] }).__调?.map((x) => x[0]))).toEqual(["取建档数据"]);
+    // 向导是个弹框：先关掉再点「新建」
+    await page.keyboard.press("Escape");
+    await page.getByRole("dialog", { name: "新增客户" }).waitFor({ state: "hidden" });
     await 钮.click();
     await page.getByRole("menuitem", { name: "新建项目" }).click();
     await page.getByRole("dialog", { name: "新增项目" }).waitFor();
@@ -591,6 +597,72 @@ it("市场角色「我分出去的」页头点「新建客户」等取建档数�
     await page.evaluate(() => (window as unknown as { __放取档: () => void }).__放取档());
     await page.locator(".wizard-stub").waitFor();
     await expect.poll(() => 钮.evaluate((el) => el.classList.contains("ant-btn-loading"))).toBe(false);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("「新建 ▾ → 新建项目」框接框走完整链再关，焦点回到「新建」按钮：老客户（选新老客户 → 挑老客户 → 新建项目框 → 关）、新客户（→ 建档向导 → 关）", async () => {
+  for (const 走 of ["老客户", "新客户"] as const) {
+    const { page, errors } = await 打开(false, 1280, false, true, { 看板: true, 换回: true, 能新建客户: true });
+    try {
+      await page.evaluate(() => { (window as unknown as { __搜到: boolean }).__搜到 = true; });
+      const 钮 = page.locator(".page-head").getByRole("button", { name: /新建/ });
+      const 焦点在钮 = () => 钮.evaluate((el) => el === document.activeElement);
+      await 钮.click();
+      await page.getByRole("menuitem", { name: "新建项目" }).click();
+      const 选 = page.getByRole("dialog", { name: "新增项目" });
+      await 选.waitFor();
+      if (走 === "老客户") {
+        await 选.getByRole("button", { name: /老客户/ }).click();
+        const 挑 = page.getByRole("dialog", { name: "给老客户开项目" });
+        await 挑.waitFor();
+        await 挑.locator(".old-cust-pick").click();
+        // 这套桩里下拉层没摆进视口：用键盘选（下拉里第一位就是他）
+        await expect.poll(() => page.locator(".ant-select-item-option", { hasText: "老客户甲" }).getAttribute("aria-disabled")).toBe("false");
+        await page.locator(".ant-select-item-option", { hasText: "老客户甲" }).dispatchEvent("click");
+        await expect.poll(() => 挑.locator(".old-cust-pick").innerText()).toContain("老客户甲");
+        await 挑.getByRole("button", { name: "下一步" }).click();
+        await 挑.waitFor({ state: "hidden" });
+        // 新建项目框（customers/[id]/NewProjectModal.tsx）：开着，Esc 关掉
+        const 建 = page.locator(".ant-modal-wrap:not([style*='display: none']) .ant-modal").last();
+        await 建.waitFor();
+        await page.keyboard.press("Escape");
+        await expect.poll(() => page.locator(".ant-modal-wrap:not([style*='display: none'])").count()).toBe(0);
+      } else {
+        await 选.getByRole("button", { name: /新客户/ }).click();
+        await page.locator(".wizard-stub").waitFor();
+        await page.keyboard.press("Escape");
+        await page.locator(".wizard-stub").waitFor({ state: "hidden" });
+        await expect.poll(() => page.locator(".ant-modal-wrap:not([style*='display: none'])").count()).toBe(0);
+      }
+      await expect.poll(焦点在钮, { message: 走 }).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+it("看板横向溢出时「→ 还有 N 列」那一行一直在：滑到头按钮藏起来（不可聚焦），看板上下不跳；焦点在按钮上滑到头不掉到 body", async () => {
+  const { page, errors } = await 打开(false, 1024, false, true, { 样式: true, 看板: true, 客户页: true, 工具位: true });
+  try {
+    const 提示 = page.locator(".pipe-top.pipe-top-hint > .pipe-more-right");
+    await 提示.waitFor();
+    const 顶 = () => page.locator(".pipe").evaluate((el) => Math.round(el.getBoundingClientRect().top));
+    const 起 = await 顶();
+    // 键盘点到头：焦点在按钮上
+    await 提示.focus();
+    for (let i = 0; i < 12 && !(await 提示.evaluate((el) => el.classList.contains("pipe-more-end"))); i++) {
+      await page.keyboard.press("Enter");
+      await page.waitForTimeout(250);
+    }
+    expect(await 提示.evaluate((el) => el.classList.contains("pipe-more-end"))).toBe(true);
+    expect(await 提示.evaluate((el) => getComputedStyle(el).visibility)).toBe("hidden");
+    expect(await 提示.getAttribute("tabindex")).toBe("-1");
+    expect(await 顶()).toBe(起);
+    expect(await page.evaluate(() => document.activeElement !== document.body && !!document.activeElement?.closest(".pipe"))).toBe(true);
+    // 滑回最左：按钮回来，看板还是没跳
+    await page.locator(".pipe").evaluate((el) => { el.scrollLeft = 0; });
+    await expect.poll(() => 提示.evaluate((el) => el.classList.contains("pipe-more-end"))).toBe(false);
+    expect(await 顶()).toBe(起);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
