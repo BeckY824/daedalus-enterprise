@@ -263,6 +263,27 @@ describe("客户页看板（提交 3）", () => {
   });
 });
 
+describe("项目列表 /projects 的关键词、手机号（收尾 9）", () => {
+  const 列表 = async (u: 人, q: Record<string, string>) => (await 以(u, () => 读项目列表(u as never, q as never))).行.map((r) => r.id);
+  it("客户看不到（仅项目）：号码（客户手机、联系人号码）都不算中，关键词只比项目名和客户名；客户是自己的照常按号码算中", async () => {
+    const c = await 客户(甲.id, { remark: "列表特征备注" });
+    const p = await 项目(c, 乙.id, { name: "收尾九号项目" });
+    const 王 = await 联系人(c, "王联系", { phone: "13722223333" });
+    await 挂项目(p, 王);
+    const 甲项目 = await 项目(c, 甲.id);
+    忘掉企业版范围();
+    const 行 = await prisma.customer.findUniqueOrThrow({ where: { id: c } });
+    for (const q of [{ phone: 行.phone! }, { phone: "13722223333" }, { keyword: 行.phone! }, { keyword: "13722223333" }, { keyword: "列表特征备注" }]) {
+      expect(await 列表(乙, q), JSON.stringify(q)).not.toContain(p);
+    }
+    expect(await 列表(乙, { keyword: 行.name })).toContain(p);
+    expect(await 列表(乙, { keyword: "收尾九号" })).toContain(p);
+    // 客户负责人：号码照常算中
+    expect(await 列表(甲, { phone: 行.phone! })).toContain(甲项目);
+    expect(await 列表(甲, { phone: "13722223333" })).toContain(甲项目);
+  });
+});
+
 describe("受限客户详情（提交 4）", () => {
   /** 打开 /customers/<id>：受限详情回 数据；原详情回 "原详情"；404 抛 NOT_FOUND */
   const 打开客户 = async (u: 人, id: string, project?: string): Promise<受限客户详情 | "原详情"> => {

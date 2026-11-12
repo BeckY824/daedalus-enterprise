@@ -141,7 +141,8 @@ export async function 旧读项目列表(me: Parameters<typeof 公海超时收�
     // 客户不露时不拿客户的来源（同列上的「渠道」）：否则筛一下就试出同事客户从哪来
     && (!来源 || p.channelId === 来源 || 露(p))
     // 按号码筛中的是客户：客户不露的不列，不然拿号码试得出同事公海客户挂着哪些项目
-    && (!号码 || 露(p))).map((p) => ({
+    // 11-12 起只算客户看得到的：自己负责、客户不归我的项目按号码不算中（仅项目反推，lib/project/list.ts 同处）
+    && (!号码 || 可见.has(p.customerId))).map((p) => ({
     id: p.id, name: p.name, customerId: p.customerId, customerName: 露(p) ? p.customer.name : null, ...(企 && !可见.has(p.customerId) && !仅项目.has(p.id) ? { 进不了客户详情: true } : {}),
     ownerId: p.ownerId, ownerName: 名字.get(负责人of(p)) ?? (负责人of(p) ? "已不在的成员" : "没人"),
     // 库里存着旧节点名 / 旧结局的按这套的新名给界面（企业版 10-31 改名）

@@ -181,7 +181,7 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
     客户筛选的关键词会搜客户手机、备注、联系人电话，只负责项目的人输个号码看自己的卡留不留，就试得出看不到的客户的号码。
     他看不到的客户（仅项目，project-only-customers.ts）另并一支：只按白名单条件（名字 / 简称 / 公司、客户类型），筛了别的不参与
   */
-  const 客户范围 = 客户 ? await 客户读条件(defaultClient) : null;
+  const 客户范围 = 客户 || 号码 ? await 客户读条件(defaultClient) : null;
   const 看得到的 = (w: Prisma.ProjectWhereInput): Prisma.ProjectWhereInput => (客户范围 ? { AND: [w, { customer: 客户范围 as Prisma.CustomerWhereInput }] } : w);
   const 仅项目 = 客户 ? 仅项目条件of(客户) : null;
   const 仅项目项目 = 仅项目 ? [...(await 仅项目客户们(me)).values()].flat() : [];
@@ -192,8 +192,12 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
   const 收回筛 = 企 && sp.pool === "1" ? 收回次数筛(sp.recycled) : "";
   const 并且: Prisma.ProjectWhereInput[] = [
     ...(建于 ? [{ createdAt: 建于 }] : []),
-    // 按号码筛中的是客户：客户不露的不列，不然拿号码试得出同事公海客户挂着哪些项目
-    ...(号码 ? [并露({ customer: 号码 })] : []),
+    /*
+      按号码筛中的是客户：只算「客户看得到」的（11-12 堵口子）。原来按「露客户」算——自己负责的项目、客户不归我也算中，
+      只负责项目的人（project-only-customers.ts）输个号码看自己的项目留不留，就试得出看不到的客户的电话、联系人电话。
+      客户看得到的照旧；搜索框的关键词只比项目名和客户名（下面 词），不碰号码、备注
+    */
+    ...(号码 ? [看得到的({ customer: 号码 })] : []),
     // 客户不露时不拿客户的来源（同列上的「渠道」）：否则筛一下就试出同事客户从哪来
     ...(来源 ? [{ OR: [{ channelId: 来源 }, 并露({ channelId: null, customer: { channelId: 来源 } })] }] : []),
     ...(级别筛 ? [{ level: 级别筛 === 未分级 ? null : 级别筛 }] : []),
