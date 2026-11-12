@@ -18,7 +18,6 @@ import { App, Button, Checkbox, Dropdown, Segmented, Select, Space, Tag } from "
 import type { MenuProps } from "antd";
 import { CloseOutlined, MoreOutlined } from "@ant-design/icons";
 import DataList, { type 列 } from "@/components/DataList";
-import "../tri-state-ui.css";
 import ListSearch from "@/components/ListSearch";
 import ResetFilters from "@/components/ResetFilters";
 import CreatedRangeFilter from "@/components/CreatedRangeFilter";

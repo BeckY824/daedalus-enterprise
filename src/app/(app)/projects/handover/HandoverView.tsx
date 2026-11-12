@@ -11,7 +11,6 @@ import { useBusiness } from "@/lib/business-client";
 import type { 离职待交接, 交接客户, 交接项目 } from "@/lib/enterprise/offboard-handover";
 import { deactivateUser } from "../../settings/actions";
 import { 交接客户 as 交客户, 交接项目 as 交项目, 交接全部 } from "./actions";
-import "../../tri-state-ui.css";
 
 type 人 = { id: string; name: string };
 

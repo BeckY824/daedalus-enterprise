@@ -49,7 +49,6 @@ import { 取客户近况 } from "../customers/[id]/pick";
 import { 取建档数据 } from "./new/wizard-actions";
 import { 滚法 } from "@/lib/reduced-motion";
 import type { 建档数据 } from "./new/ProjectWizard";
-import "../tri-state-ui.css";
 import { 看板要点, 三态标说明, type 三态标 } from "@/lib/enterprise/tri-state-label";
 
 /** 「新增项目」→「新客户」的建档向导框：点了才加载，不压项目首页首屏 JS（同客户页「新增客户」） */

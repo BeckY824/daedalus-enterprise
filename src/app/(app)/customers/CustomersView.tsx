@@ -60,7 +60,6 @@ import type { 建档数据 } from "../projects/new/ProjectWizard";
 import { useViewAs } from "@/components/ViewAsContext";
 import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 import { 归档档位们 } from "@/lib/enterprise/archive-tier";
-import "../tri-state-ui.css";
 import { 三态筛选值们, 三态标字, 三态标说明, type 三态标 } from "@/lib/enterprise/tri-state-label";
 import { 字典of, 阶段们, type 阶段, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import type { 客户项目概况 } from "@/lib/project/customer-list-projects";

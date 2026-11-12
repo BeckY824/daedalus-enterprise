@@ -1,3 +1,5 @@
+// 客户三态的小标（列表状态列、看板色点、公海号码不全、交接看板超期行）：放在应用壳上引，组件里引会让 *.ui.test 的 esbuild 打包失败
+import "./tri-state-ui.css";
 import { redirect } from "next/navigation";
 import { 读收藏, 读项目收藏 } from "@/lib/favorites";
 import { 客户总数 } from "@/lib/pool-db";
