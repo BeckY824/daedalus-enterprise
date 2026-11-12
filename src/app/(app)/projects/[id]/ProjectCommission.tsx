@@ -6,6 +6,7 @@
  * 已固定的实际提成只有总管理员能更正（10-27，要写原因）
  */
 import { useState } from "react";
+import { useCardName } from "./card-names";
 import { Button, Card, Input, InputNumber, Modal, Space, Tag } from "antd";
 import { 金额 } from "@/lib/currency";
 import { 金额格式 } from "@/lib/money-input";
@@ -20,6 +21,7 @@ const 淡: React.CSSProperties = { color: "var(--text-muted)" };
 
 /** 不摆改：不在卡上摆「改分配」（10-31 页头放过；11-01 页头只留转让项目 / 退回公海，卡上照摆，目前没人传） */
 export function ProjectCommissionCard({ projectId, t, 忙, 跑, 不摆改 = false }: { projectId: string; t: 提成卡; 忙: boolean; 跑: 跑法; 不摆改?: boolean }) {
+  const 卡名 = useCardName();
   const [底价, set底价] = useState<number | null>(t.项目底价);
   const [分开着, set分开着] = useState(false);
   const [更正开着, set更正开着] = useState(false);
@@ -29,7 +31,7 @@ export function ProjectCommissionCard({ projectId, t, 忙, 跑, 不摆改 = fals
   const 底价能改 = t.能填底价 && !固定了;
 
   return (
-    <Card title="提成" extra={固定了 ? <Tag color="green">实际提成已固定</Tag> : <Tag>预估</Tag>}>
+    <Card title={卡名("提成")} extra={固定了 ? <Tag color="green">实际提成已固定</Tag> : <Tag>预估</Tag>}>
       <div style={行样}><span style={键样}>成交金额</span>{钱(t.实际?.成交金额 ?? t.成交金额)}{固定了 && t.实际!.成交金额 !== t.成交金额 && <span style={淡}>（现在项目金额 {钱(t.成交金额)}）</span>}</div>
       <div style={行样}>
         <span style={键样}>项目底价</span>

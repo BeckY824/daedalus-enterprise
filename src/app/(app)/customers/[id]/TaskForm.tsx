@@ -71,7 +71,7 @@ export default function TaskForm({
         if (record) router.refresh();
         return;
       }
-      message.success(record ? "已保存" : "任务已创建");
+      message.success(record ? "已保存" : "待办已创建");
       void window.desktopReminders?.刷新();
       守.存好了();
       onSaved();
@@ -86,7 +86,7 @@ export default function TaskForm({
     <Modal
       {...守.弹窗}
       open={open}
-      title={record ? "改待办" : "新建待办任务"}
+      title={record ? "改待办" : "新建待办"}
       onOk={onOk}
       okText={record ? "保存" : "创建"}
       cancelText="取消"
@@ -94,7 +94,7 @@ export default function TaskForm({
       destroyOnHidden
     >
       <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={守.改了}>
-        <Form.Item name="title" label="任务内容" rules={[requiredText("请填写任务内容")]}>
+        <Form.Item name="title" label="待办内容" rules={[requiredText("请填写待办内容")]}>
           <Input placeholder="如：跟进预算审批进度" />
         </Form.Item>
         <Form.Item name="hasTime" valuePropName="checked"><Checkbox>指定钟点并到点提醒</Checkbox></Form.Item>

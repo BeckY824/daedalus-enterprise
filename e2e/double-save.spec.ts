@@ -68,10 +68,12 @@ async function 数(查: (p: ReturnType<typeof 连库>) => Promise<number>) {
 }
 
 test("添加联系人：连点两次保存 → 只多一位联系人", async ({ page }) => {
-  test.skip(企业版, "企业版客户页不摆「添加联系人」（U-客户-03，联系人随项目沟通补）");
+  // 11-12 起企业版客户页卡头也有「＋ 新增联系人」了；这条还没在企业版下跑过，先照旧跳过，等跑通再放开
+  test.skip(企业版, "企业版这条还没跑过（11-12 起客户页有「＋ 新增联系人」），先在开关关着那套里验");
   await 登录(page);
   await page.goto(`/customers/${客户id}`);
-  const 框 = await 打开(page, "添加联系人", "添加联系人");
+  // 11-12 起客户页卡头是「＋」图标钮（aria-label 新增联系人），弹框标题照旧「添加联系人」
+  const 框 = await 打开(page, "新增联系人", "添加联系人");
   await 框.getByPlaceholder("张伟").fill("连点联系人");
   await 连点保存(page, 框, /保\s*存/);
   expect(await 数((p) => p.contact.count({ where: { customerId: 客户id, name: "连点联系人" } })), "连点两次建出了两位联系人").toBe(1);
@@ -80,8 +82,8 @@ test("添加联系人：连点两次保存 → 只多一位联系人", async ({ 
 test("新建待办：连点两次创建 → 只多一条待办", async ({ page }) => {
   await 登录(page);
   await page.goto(`/customers/${客户id}`);
-  const 框 = await 打开(page, "新建任务", "新建待办任务");
-  await 框.getByLabel("任务内容").fill("连点待办");
+  const 框 = await 打开(page, "新建待办", "新建待办");
+  await 框.getByLabel("待办内容").fill("连点待办");
   await 连点保存(page, 框, /创\s*建/);
   expect(await 数((p) => p.task.count({ where: { customerId: 客户id, title: "连点待办" } })), "连点两次建出了两条待办").toBe(1);
 });

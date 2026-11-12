@@ -80,12 +80,12 @@ describe("C10 状态条", () => {
   it("沉睡：本人「我还在跟」（悬停写额度）；上级第 30 天前只有说明、之后能代选；别人只有说明", async () => {
     await 三态夜扫(早(95));
     const 本人 = (await 条("乙", 95))!;
-    expect(本人).toMatchObject({ 状态: "沉睡", 文字: "已 95 天没有动静 · 再 85 天进入待回收", 悬停: "已 95 天没有动静 · 再 85 天进入待回收（动静指有效沟通或项目推进）" });
+    expect(本人).toMatchObject({ 状态: "沉睡", 文字: "已 95 天没有动静 · 再 85 天进入即将回收", 悬停: "已 95 天没有动静 · 再 85 天进入即将回收（动静指有效沟通或项目推进）" });
     expect(本人.按钮们).toMatchObject([{ 动作: "继续持有", 字: "我还在跟", 要理由: false, 主: true }]);
-    expect(本人.按钮们[0].说明).toBe("「我还在跟」和「写理由继续持有」共用一个额度：每次顺延 30 天、钟不归零；沉睡轮、待回收轮各限一次；累计最多 3 次、合计 90 天；已用 0 次");
-    expect(本人.旁注).toContain("客户转让");
-    expect(await 条("甲", 95)).toMatchObject({ 按钮们: [], 旁注: "沉睡满 30 天（第 120 天）起你也能代选「我还在跟」" });
-    expect(await 条("丙", 95)).toMatchObject({ 按钮们: [], 旁注: "沉睡阶段由负责人和直属上级处理" });
+    expect(本人.按钮们[0].说明).toBe("「我还在跟」和「写理由继续持有」共用一个额度：每次顺延 30 天、钟不归零；沉睡待定、即将回收两轮各限一次；累计最多 3 次、合计 90 天；已用 0 次");
+    expect(本人.旁注).toContain("右上角「客户操作」转让或退回公海");
+    expect(await 条("甲", 95)).toMatchObject({ 按钮们: [], 旁注: "沉睡待定满 30 天（第 120 天）起你也能代选「我还在跟」" });
+    expect(await 条("丙", 95)).toMatchObject({ 按钮们: [], 旁注: "沉睡待定阶段由负责人和直属上级处理" });
     expect(await 条("总内", 95)).toMatchObject({ 按钮们: [] });
     await 三态夜扫(早(121));
     expect(await 按钮("甲", 121)).toEqual(["我还在跟"]);
@@ -258,7 +258,7 @@ describe("C11 冷项目", () => {
 
 describe("C13 状态留痕 / C12 短沟通", () => {
   it("留痕说法：状态变化、继续持有、裁决、撤销转让各一句；三态关着不读", async () => {
-    expect(留痕说法({ fromState: "活跃", toState: "沉睡", via: "自动", reason: "满 90 天没有有效沟通", holdDays: null })).toBe("活跃 → 沉睡（满 90 天没有有效沟通）");
+    expect(留痕说法({ fromState: "活跃", toState: "沉睡", via: "自动", reason: "满 90 天没有有效沟通", holdDays: null })).toBe("正常跟进 → 沉睡待定（满 90 天没有有效沟通）");
     expect(留痕说法({ fromState: "沉睡", toState: "沉睡", via: "上级代选", reason: "由 甲 代选：我还在跟", holdDays: 30 })).toBe("继续持有，顺延 30 天：由 甲 代选：我还在跟");
     expect(留痕说法({ fromState: "待回收", toState: "待回收", via: "总管理裁决", reason: "暂缓回收", holdDays: null })).toBe("暂缓回收");
     expect(留痕说法({ fromState: null, toState: "活跃", via: "撤销转让·计次", reason: null, holdDays: null })).toBe("撤销转让（计入 7 天内撤销次数）");
@@ -267,7 +267,7 @@ describe("C13 状态留痕 / C12 短沟通", () => {
     const 行们 = (await 页面三态("乙", 95))!.留痕;
     expect(行们.slice(0, 2)).toEqual(expect.arrayContaining([
       expect.objectContaining({ 谁: "乙", 事: "继续持有，顺延 30 天：我还在跟" }),
-      expect.objectContaining({ 谁: "系统", 事: "沉睡 → 活跃（继续持有顺延 30 天，三个节点一起往后挪）" }),
+      expect.objectContaining({ 谁: "系统", 事: "沉睡待定 → 正常跟进（继续持有顺延 30 天，三个节点一起往后挪）" }),
     ]));
     expect(行们.at(-1)!.谁).toBe("系统");
     await setSetting("orgRules", { ...默认组织规则 });
@@ -281,7 +281,7 @@ describe("C13 状态留痕 / C12 短沟通", () => {
     for (const k of ["乙", "甲", "总内", "系"] as const) expect(await 那条(k)).toBe("继续持有，顺延 30 天：由 总内 代选：下周签合同");
     for (const k of ["总外", "丙"] as const) expect(await 那条(k)).toBe("继续持有，顺延 30 天");
     expect(留痕说法({ fromState: "待回收", toState: "待回收", via: "总管理裁决", reason: "暂缓回收：月底前结项", holdDays: null }, false)).toBe("暂缓回收");
-    expect(留痕说法({ fromState: "活跃", toState: "沉睡", via: "自动", reason: "满 90 天没有有效沟通", holdDays: null }, false)).toBe("活跃 → 沉睡（满 90 天没有有效沟通）");
+    expect(留痕说法({ fromState: "活跃", toState: "沉睡", via: "自动", reason: "满 90 天没有有效沟通", holdDays: null }, false)).toBe("正常跟进 → 沉睡待定（满 90 天没有有效沟通）");
   });
 
   it("B1 理由可见：上级链穿过停用的中间一级往上数；负责人停用、客户没填业务线时本线总管理按主干兜底（落到系统管理员）", async () => {

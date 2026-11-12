@@ -158,7 +158,7 @@ describe("沟通 + 卡点", () => {
   it("收卡：卡点类型不认得拒；没填下一步算缺（11-05 起不问明确回复）", () => {
     expect(收("project_followup", { targetId: 项目id, content: "x", 要卡点: true, 卡点类型: "超级卡点" })).toMatchObject({ ok: false });
     const r = 收("project_followup", { targetId: 项目id, targetName: "x", content: "聊了报价", 要卡点: true, 卡点类型: "" });
-    expect(missingFields((r as { proposal: Proposal }).proposal)).toEqual(["下一步做什么", "卡点类型"]);
+    expect(missingFields((r as { proposal: Proposal }).proposal)).toEqual(["下一步计划", "卡点类型"]);
   });
 
   it("负责人确认：转给 记项目沟通Action（带卡点）；沟通、卡点各一条；同事确认一行不写", async () => {

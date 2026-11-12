@@ -2,7 +2,7 @@
 import { dayjs } from "@/lib/utils";
 import Shortcut from "./Shortcut";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Tag, Drawer } from "antd";
@@ -13,12 +13,13 @@ import { 客户状态色 } from "@/lib/enterprise/cust-status-color";
 import { avatarColor, initial, smartTime, AVATAR_TEXT } from "@/lib/utils";
 import { useBusiness } from "@/lib/business-client";
 import { statusLabel } from "@/lib/business-config";
-import { 开名单, 关名单, 登记换一位 } from "@/lib/roster";
+import { 开名单, 关名单, 登记换一位, DockOpenContext, DOCK_W } from "@/lib/roster";
 import { 名单回车去处 } from "@/lib/cmdk";
 import { useMiddlePane, usePaneShortcut } from "@/lib/middle-pane";
 import PaneToggle from "@/components/PaneToggle";
 import { useLocalPref } from "@/lib/local-pref";
 import { RowLink } from "@/components/ui";
+import { 名单可到, 名单宽变量, 名单默认宽, 名单最窄, 夹名单宽, 存名单宽, 读名单宽 } from "@/lib/roster-width";
 
 export type CustomerRosterData = {
   total: number;
@@ -282,5 +283,95 @@ export default function CustomerRoster({ data }: { data: CustomerRosterData }) {
     );
   }
 
-  return <aside className="pane pane-roster">{内容}</aside>;
+  return (
+    <aside className="pane pane-roster pane-roster-cust">
+      {内容}
+      <RosterResizer />
+    </aside>
+  );
+}
+
+/** 服务端没有 layout 阶段，退回 useEffect（只为不报警告；宽度首帧前已由 外观预设脚本 挂好） */
+const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+/**
+ * 名单右边缘的拖条（11-12 用户「这一栏要可调节宽度」）：悬停出一道细高亮线、光标 col-resize；
+ * 拖动实时改 <html> 上的 --roster-cust-w，松手存 localStorage；双击回默认；
+ * 键盘：聚焦后左右键每次 16px、Home / End 到最窄 / 最宽。最宽随窗口收紧（lib/roster-width.ts 名单可到）。
+ * 用 pointer capture：拖出名单、拖过卡片 / iframe 也收得到松手；拖的时候整页不选字。名单收成抽屉时不摆它
+ */
+function RosterResizer() {
+  const [宽, set宽] = useState(名单默认宽);
+  const [上限, set上限] = useState(420);
+  const 拖 = useRef<{ x: number; w: number; id: number } | null>(null);
+  const 挂 = (w: number) => document.documentElement.style.setProperty(名单宽变量, `${w}px`);
+  // 右边 AI 面板开着时正文少了 DOCK_W：上限一起扣掉（CSS .shell-dock-open 下的 max-width 同样收紧）
+  const 面板开着 = useContext(DockOpenContext);
+  const 量上限 = () => 名单可到(window.innerWidth - (面板开着 ? DOCK_W : 0), document.querySelector(".rail")?.getBoundingClientRect().width ?? 0);
+  // 拖到一半名单被卸掉（切页、收成抽屉）：别把整页的 col-resize 光标、禁选字留在 <html> 上
+  useEffect(() => () => document.documentElement.classList.remove("roster-resizing"), []);
+  useIsoLayoutEffect(() => {
+    const 量 = () => {
+      const 顶 = 量上限();
+      set上限(顶);
+      const w = 夹名单宽(读名单宽(), 顶);
+      set宽(w);
+      挂(w);
+    };
+    量();
+    window.addEventListener("resize", 量);
+    return () => window.removeEventListener("resize", 量);
+    // 量上限 读的是这一轮的 面板开着；面板开合时重量一次
+  }, [面板开着]);
+  const 定 = (w: number, 存 = true) => {
+    const v = 夹名单宽(w, 上限);
+    set宽(v);
+    挂(v);
+    if (存) 存名单宽(v);
+  };
+  const 按下 = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    拖.current = { x: e.clientX, w: 宽, id: e.pointerId };
+    document.documentElement.classList.add("roster-resizing");
+  };
+  const 移 = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const d = 拖.current;
+    if (!d || d.id !== e.pointerId) return;
+    定(d.w + e.clientX - d.x, false);
+  };
+  const 松 = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const d = 拖.current;
+    if (!d || d.id !== e.pointerId) return;
+    拖.current = null;
+    document.documentElement.classList.remove("roster-resizing");
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    定(d.w + e.clientX - d.x);
+  };
+  const 键 = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const 到 = e.key === "ArrowLeft" ? 宽 - 16 : e.key === "ArrowRight" ? 宽 + 16 : e.key === "Home" ? 名单最窄 : e.key === "End" ? 上限 : null;
+    if (到 == null) return;
+    e.preventDefault();
+    定(到);
+  };
+  return (
+    <div
+      className="pane-resizer"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="调整客户名单宽度"
+      title="拖动调整宽度，双击恢复默认"
+      aria-valuenow={宽}
+      aria-valuemin={名单最窄}
+      aria-valuemax={上限}
+      tabIndex={0}
+      onPointerDown={按下}
+      onPointerMove={移}
+      onPointerUp={松}
+      onPointerCancel={松}
+      onDoubleClick={() => 定(名单默认宽)}
+      onKeyDown={键}
+    />
+  );
 }

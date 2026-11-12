@@ -96,7 +96,8 @@ test("设置 → 组织架构：飞书没填凭据时，「立即同步」灰着
 /** 11-12 客户详情合并第 2 批：项目详情住在客户详情的项目区里，/projects/<id> 跳到 /customers/<客户>?project=<id>、停在这个项目的页签上 */
 async function 停在项目页签(page: Page, 客户: string, 项目: string, 名: string) {
   await page.waitForURL((u) => u.pathname === `/customers/${客户}` && u.searchParams.get("project") === 项目);
-  await expect(page.getByRole("main").locator(`.rec-zone[data-project="${项目}"] .cd-tab[aria-selected="true"]`)).toContainText(名);
+  // 11-12 第 3 批起项目切换在进程卡卡头：多项目是选中的胶囊（.cd-pj-pill[aria-selected]），只有一个项目直接写项目名（.cd-pj-one .cd-pj-nm）
+  await expect(page.getByRole("main").locator(`.rec-zone[data-project="${项目}"]`).locator('.cd-pj-pill[aria-selected="true"] .cd-pj-nm, .cd-pj-one .cd-pj-nm').first()).toContainText(名);
 }
 
 test("客户详情、项目详情都能打开（项目详情跳到客户详情的项目区）", async ({ page }) => {
@@ -359,7 +360,10 @@ test("项目公海：原负责人看不到公海里的项目；客户在公海�
   await expect(正文.getByText("这个项目在线索公海里", { exact: true })).toBeVisible();
   await expect(正文.getByText("这位客户在客户公海里，项目不能单独领、分或转：请先到客户公海领取或分配这位客户", { exact: true })).toBeVisible();
   await expect(正文.getByText(/你是原负责人/)).toHaveCount(0);
-  await expect(正文.locator(".rec-zone .cd-zh").getByRole("button", { name: /领\s*取/ })).toBeDisabled();
+  // 11-12 起项目的「领取」收进页头「项目操作 ▾」：领不了时那一项灰着（aria-disabled）
+  await 正文.getByRole("button", { name: /项目操作/ }).click();
+  await expect(page.getByRole("menuitem", { name: /领\s*取/ })).toHaveAttribute("aria-disabled", "true");
+  await page.keyboard.press("Escape");
 
   // 去公海领客户：客户在公海里，项目不另列一行；领客户即领项目
   await page.goto("/pool");

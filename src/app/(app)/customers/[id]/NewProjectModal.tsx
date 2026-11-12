@@ -336,7 +336,7 @@ export default function NewProjectModal({
         >
           <DatePicker style={{ width: "100%" }} disabledDate={(x) => x.isBefore(dayjs(), "day")} placeholder="选一天" />
         </Form.Item>
-        <Form.Item name="下一步" label="下一步计划" rules={要下一步 ? [{ required: true, whitespace: true, message: "请写下一步做什么" }] : []}>
+        <Form.Item name="下一步" label="下一步计划" rules={要下一步 ? [{ required: true, whitespace: true, message: "请写下一步计划" }] : []}>
           <Input aria-label="下一步计划" maxLength={下一步文字上限} placeholder="下一步打算做什么，例如：发报价单" />
         </Form.Item>
         </div>

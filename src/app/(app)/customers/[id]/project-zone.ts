@@ -10,7 +10,7 @@ import { 默认页签 } from "@/lib/project/customer-detail-href";
 // 页签上写的当前节点（有结局写结局，异常写「异常 · 节点」），和客户列表「当前节点」一列同一句
 import { 节点字 } from "@/lib/project/customer-list-projects";
 
-type 列表项目 = { id: string; name: string; node: string; result: string | null; pooledAt: Date | null };
+type 列表项目 = { id: string; name: string; phase: string; node: string; result: string | null; pooledAt: Date | null };
 
 
 /**
@@ -49,5 +49,5 @@ export async function 读项目区(me: SessionUser, customerId: string, 列表: 
   }
   const 页签们 = 可看.filter((p) => !读不了.has(p.id));
   const 锁数 = await 锁数P;
-  return { customerId, 页签们: 页签们.map((p) => ({ id: p.id, name: p.name, 节点: 节点字(p) })), 锁数, 当前 };
+  return { customerId, 页签们: 页签们.map((p) => ({ id: p.id, name: p.name, 节点: 节点字(p), 阶段: p.phase, 结局: p.result })), 锁数, 当前 };
 }

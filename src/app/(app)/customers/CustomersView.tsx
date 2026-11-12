@@ -9,7 +9,6 @@ import { useRouter } from "next/navigation";
 import { Button, Select, Space, Dropdown, App, Tag, Segmented, type MenuProps, type SelectProps } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import {
-  PlusOutlined,
   ExportOutlined,
   ImportOutlined,
   UserSwitchOutlined,
@@ -60,15 +59,21 @@ import type { 建档数据 } from "../projects/new/ProjectWizard";
 import { useViewAs } from "@/components/ViewAsContext";
 import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 import { 归档档位们 } from "@/lib/enterprise/archive-tier";
-import { 三态筛选值们, 三态标字, 三态标说明, type 三态标 } from "@/lib/enterprise/tri-state-label";
+import { 三态筛选值们, 三态标字, 三态标说明, 三态显示名, 进公海理由显示, type 三态标 } from "@/lib/enterprise/tri-state-label";
 import { 字典of, 阶段们, type 阶段, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import type { 客户项目概况 } from "@/lib/project/customer-list-projects";
 import { 换客户页看法, 市场视图名 } from "@/lib/customers-view-pref";
+import NewMenuButton from "@/components/NewMenuButton";
+import { 看板工具位 } from "./board-slot";
 
 /** 「新增客户」弹窗（10-31 P5，整套建档向导）：点了才要，单拆一包，不压客户列表首屏 JS（速度闸门 850 KB） */
 // 客户看板（U-客户-06）只在切到「看板」时用，连同分页条单独一块，别压在客户列表首屏（速度闸门）
 const CustomerBoard = dynamic(() => import("./CustomerBoard"));
 const 建档弹窗 = dynamic(() => import("../projects/new/ProjectWizard").then(m => m.建档弹窗), { ssr: false });
+/** 页头「新建 ▾ → 新建项目」（11-12）：和项目页「新增项目」同一条路（先选新老客户），点了才加载、才挂上，不压客户列表首屏 JS */
+/** 「新建 ▾ → 新建项目」那条路的懒加载块：展开菜单时先拿起来（预取），点下去等它到了再挂、按钮转圈 */
+const 取新建项目流程 = () => import("../projects/NewProjectFlow");
+const 新建项目流程 = dynamic(取新建项目流程, { ssr: false });
 
 /**
  * 批量操作的结果文案。
@@ -576,7 +581,7 @@ export default function CustomersView({
           键: "triState", 名: "回收状态", 宽: 130, 默认外露: true, 挤: true, 有值: !!f.triState,
           渲染: (style: CSSProperties) => (
             <Select style={style} aria-label="回收状态" placeholder="全部回收状态" allowClear value={f.triState || undefined}
-              onChange={(v?: string) => apply({ triState: v ?? "" })} options={三态筛选值们.map((x) => ({ value: x, label: x }))} />
+              onChange={(v?: string) => apply({ triState: v ?? "" })} options={三态筛选值们.map((x) => ({ value: x, label: 三态显示名(x) }))} />
           ),
         }]
       : []),
@@ -840,7 +845,7 @@ export default function CustomersView({
       title: "负责人", 列名: "负责人", key: "salesOwnerName", dataIndex: "salesOwnerName", width: rows.some((r) => r.pool) ? 140 : 宽(140, 92),
       // 在公海里：写「公海（原 X）」——原负责人还挂着，但谁都能领
       render: (v: string, r: CustomerRow) => r.pool
-        ? <Tag className="pool-tag" title={`${公海标签(v)} · ${r.pool.reason === "手动" ? "手动放回公海" : r.pool.reason}`}>{公海标签(v)}</Tag>
+        ? <Tag className="pool-tag" title={`${公海标签(v)} · ${r.pool.reason === "手动" ? "手动放回公海" : 进公海理由显示(r.pool.reason)}`}>{公海标签(v)}</Tag>
         : <UserCell name={v} size={24} />,
     }]),
     // 三列各收一点，1366 宽时默认列和公海列都不用左右拖（10-27）；负责人不收，「公海（原 X）」要放得下
@@ -923,6 +928,33 @@ export default function CustomersView({
     },
   ];
 
+  /*
+    「列表 / 看板」（11-12 用户：「列表｜看板 放到和筛选栏一行，最左边」）：筛选行第一格，列表、看板两个视图同一个位置，切换时不跳；
+    原来摆在页头右上（按客户属性分列的看板）或标题下面单独一行（项目看板、市场角色）。不缩、不被挤进「更多筛选」（globals.css .list-view-seg）。
+    三种：企业版项目模式 = 按节点分列的项目看板（记在 cookie 里、服务端换一屏画，projects/board-page.tsx）；
+    市场角色 = 「客户列表 / 我分出去的」（另一边是原项目页给他们的那套）；企业版没开项目模式 = 按客户属性分列的看板（记在这台电脑）
+  */
+  const 看法切换 = 项目看板
+    ? (!空库 || 市场视图) && !子集 && (市场视图
+      ? <Segmented<string> aria-label="客户列表 / 我分出去的" options={[...市场视图名]} value={市场视图名[0]} onChange={(v) => v === 市场视图名[1] && 换客户页看法("board", router)} />
+      : <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看板体 !== undefined ? "看板" : "列表"} onChange={(v) => 换客户页看法(v === "看板" ? "board" : "list", router)} />)
+    : 能看板 && !空库 && <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看法} onChange={set看法} />;
+  /** 「新建 ▾ → 新建项目」点一次挂一份（换 key 重挂 = 重新打开选新老客户的框）；0 = 还没点过、不加载 */
+  const [新建项目次, set新建项目次] = useState(0);
+  /** 点了「新建项目」、懒加载块还没到：按钮转圈、点不了（到了才挂，挂上就开框） */
+  const [项目流程载入, set项目流程载入] = useState(false);
+  const 点新建项目 = () => {
+    set项目流程载入(true);
+    void 取新建项目流程().then(() => set新建项目次((n) => n + 1), () => message.error("没打开，请重试")).finally(() => set项目流程载入(false));
+  };
+  const 新建项 = [
+    ...(能新建和领取 ? [{ key: "customer", label: `新建${b.customer}`, onClick: 新建 }] : []),
+    // 企业版项目模式：原来只在看板上方「+ 新增项目」（先选新老客户，ProjectsView），11-12 收进页头「新建 ▾」，列表、看板两边都有。
+    // 谁看得到照服务端：建档向导（不能新建项目话）、给老客户建项目（没设业务角色 / 只读角色）都按 能新建和领取 拒，这里同一条，免得摆一颗点了必被拒的
+    ...(项目看板 && 能新建和领取 ? [{ key: "project", label: "新建项目", onClick: 点新建项目 }] : []),
+  ];
+  const [工具位, set工具位] = useState<HTMLDivElement | null>(null);
+
   return (
     <>
       <PageHead
@@ -950,7 +982,6 @@ export default function CustomersView({
           /* 主动作在页头右上角，全站六张列表页同一个位置（设计稿 11/PAGE）。
              导出是次动作，排在它左边，空库时没什么可导，不出现 */
           <Space wrap>
-            {能看板 && !空库 && !统一公海 && <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看法} onChange={set看法} />}
             {/* 导入和导出都是次动作，排在主动作左边。导入空库时也要在——
                 第一次进来的人手上那份 Excel 正是他不想一条条录的原因 */}
             {能导入导出 && <Button icon={<ImportOutlined />} disabled={视图中} title={视图中 ? 视图外部话 : undefined} onClick={去导入}>导入</Button>}
@@ -981,32 +1012,20 @@ export default function CustomersView({
               </Button>
               {导出中 && <Space><span role="status" style={{ fontSize: 12 }}>{导出进度}</span><Button size="small" onClick={() => 导出取消.current?.abort()}>取消导出</Button></Space>}
             </>)}
-            {能新建和领取 && <Button type="primary" icon={<PlusOutlined />} onClick={新建}>
-              新建{b.customer}
-            </Button>}
+            {/* 「新建 ▾」（11-12 用户：「右上角改为新建，然后可以选择新建项目或者新建客户」）：只能建一样时直接是那一样，一样都不能不摆 */}
+            <NewMenuButton 项={新建项} 载入中={项目流程载入} 预取={() => void 取新建项目流程().catch(() => {})} />
             {/* 离职交接（C15）：页头最右端。谁看得见、数怎么数照原来的入口（离职交接入口），不是这页自己数 */}
             {待交接 != null && <Link href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>}
           </Space>
         }
       />
 
-      {/* 企业版（统一公海）的「列表 / 看板」单独一行：1024 宽开着 AI 栏时，右上那组和标题旁都放不下它（排版闸门） */}
-      {统一公海 && 能看板 && !空库 && (
-        <div className="cust-view-seg">
-          <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看法} onChange={set看法} />
-        </div>
-      )}
-      {/* 企业版项目模式：「看板」是按节点分列的项目看板（定稿 UI board()，11-12 第 3 批），记在 cookie 里、服务端换一屏画（projects/board-page.tsx） */}
-      {/* 市场角色空库也摆：另一边「我分出去的」不看客户多少 */}
-      {项目看板 && (!空库 || 市场视图) && !子集 && (
-        <div className="cust-view-seg">
-          {市场视图
-            ? <Segmented<string> aria-label="客户列表 / 我分出去的" options={[...市场视图名]} value={市场视图名[0]} onChange={(v) => v === 市场视图名[1] && 换客户页看法("board", router)} />
-            : <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看板体 !== undefined ? "看板" : "列表"} onChange={(v) => 换客户页看法(v === "看板" ? "board" : "list", router)} />}
-        </div>
-      )}
+      {/* 市场角色空库也摆（另一边「我分出去的」不看客户多少）：空库时筛选行整条不画（DataList），只这一种情况照原来单独一行 */}
+      {空库 && 看法切换 && <div className="cust-view-seg">{看法切换}</div>}
 
       {阶段太多 && <div role="status" className="cust-too-many">结果太多，请再加筛选条件</div>}
+      {/* 看板视图：看板（ProjectsView 客户页）的分配、「→ 还有 N 列」画进筛选行右端那一格（board-slot.ts），不在看板上面另占一行 */}
+      <看板工具位.Provider value={看板体 !== undefined ? 工具位 : undefined}>
       <DataList<CustomerRow>
         页="customers"
         // 企业版每格一行、放不下省略号悬停看全（11-01 会议 §11）
@@ -1046,6 +1065,8 @@ export default function CustomersView({
             默认摆出来的只有每天都在用的：搜一句、状态、负责人；其余收进「更多筛选」，用户可以自己挑哪些摆外面（筛选项定义在上面）。
             收着的正筛着几个要写在按钮上：收起来不等于可以不告诉人，否则人会对着一张筛过的表当成全部。
           */
+          <>
+          {看法切换 && <div className="list-view-seg">{看法切换}</div>}
           <Space wrap size={[10, 10]}>
             {子集 && f.pool && (
               <Tag closable onClose={() => apply({ pool: "" })} color="processing" style={{ margin: 0, padding: "3px 10px" }}>
@@ -1081,6 +1102,8 @@ export default function CustomersView({
                 「重置」只在真筛了东西的时候看得见；位置一直留着，筛的那一下表格不往下跳（M17） */}
             <ResetFilters 显示={筛了 > 0} onClick={重置} />
           </Space>
+          {看板体 !== undefined && <div className="list-bar-end" ref={set工具位} />}
+          </>
         }
         批量={(selected, 清空, 选中行) => {
           const 全领不回 = 选中行.some((r) => r.pool) && 选中行.filter((r) => r.pool).every((r) => 领不回.has(r.id));
@@ -1223,8 +1246,11 @@ export default function CustomersView({
           翻页,
         }}
       />
+      </看板工具位.Provider>
 
       {建档 && <建档弹窗 open={建档开着 && 已水合} 标题="新增客户" 数据={建档} onClose={() => set建档开着(false)} />}
+      {/* 「新建 ▾ → 新建项目」：新客户走同一个建档向导（数据用上面那份，不再取），老客户挑一位接新建项目框 */}
+      {新建项目次 > 0 && <新建项目流程 key={新建项目次} users={users} 节点们={阶段字典.节点们.线索} 要下一步={!!建档?.要下一步} 建档={建档} />}
 
       <CustomerForm
         open={formOpen && 已水合}

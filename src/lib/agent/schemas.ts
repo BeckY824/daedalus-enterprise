@@ -229,7 +229,7 @@ export const 建议SCHEMAS: Record<string, Schema> = {
       email: 串(),
       whatsapp: 串(),
       nextAt: 串("下一步时间 YYYY-MM-DD，人提到才给"),
-      nextStep: 串("下一步做什么，一句话"),
+      nextStep: 串("下一步计划，一句话"),
       bizLine: { type: "string", enum: ["内贸", "外贸", "暂不分配"], description: "业务线，有把握才给" },
       regionTo: { type: "array", items: { type: "string", enum: ["客户", "联系人", "项目"] }, description: "国家 / 城市是谁的：客户所在区域 / 联系人所在区域 / 项目所在地；说不清（比如只说「摩洛哥客户」）就不给，让人在卡上选" },
       reason: 串(理由),
