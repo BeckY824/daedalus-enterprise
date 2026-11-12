@@ -1012,7 +1012,7 @@ it("R5 有结局 / 不能改进程：有结局换成「改回进程」、没有�
   } finally { await page.close(); }
 });
 
-it.each([1024, 800])("R5 %ipx：页签不横向溢出；进程是箭头步骤条、一排自己横滚，当前那块滚到看得见；当前进程一圈动画，减少动态效果时不动", async (w) => {
+it.each([1024, 800])("R5 %ipx：页签不横向溢出；进程是分段滑块、一排自己横滚，当前那格滚到看得见；当前进程橙点呼吸，减少动态效果时不动", async (w) => {
   const { page, errors } = await open(true, w);
   try {
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "商机", node: "合同审批", name: "长".repeat(40) }));
@@ -1022,8 +1022,10 @@ it.each([1024, 800])("R5 %ipx：页签不横向溢出；进程是箭头步骤条
     expect(伸出).toEqual([]);
     const 排 = page.locator(".proj-stage-nodes");
     expect(await 排.evaluate(e => getComputedStyle(e).overflowX)).toBe("auto");
+    // 11-12 分段滑块：每格等宽、不小于最小宽度（放不下就横滚，不挤扁）
     const 宽们 = await page.locator(".proj-stage-node").evaluateAll(ns => ns.map(n => Math.round(n.getBoundingClientRect().width)));
-    expect(new Set(宽们)).toEqual(new Set([190]));
+    expect(new Set(宽们).size).toBe(1);
+    expect(宽们[0]).toBeGreaterThanOrEqual(136);
     // 打开时「当前」那块整个露在这一排可见范围里
     const 露 = await 排.evaluate(ol => {
       const a = ol.getBoundingClientRect(), b = ol.querySelector("[aria-current=step]")!.getBoundingClientRect();
@@ -1032,7 +1034,7 @@ it.each([1024, 800])("R5 %ipx：页签不横向溢出；进程是箭头步骤条
     expect(露).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     const 动画 = () => page.locator(".proj-stage-node.is-cur .proj-stage-mark").evaluate(e => getComputedStyle(e).animationName);
-    expect(await 动画()).toBe("proj-stage-ring");
+    expect(await 动画()).toBe("proj-stage-breath");
     await page.emulateMedia({ reducedMotion: "reduce" });
     expect(await 动画()).toBe("none");
     expect(errors).toEqual([]);
@@ -1283,23 +1285,34 @@ it("U-项目-07：转让先选人、再点「确认转让」才交；框里写�
   } finally { await page.close(); }
 });
 
-it("箭头步骤条：当前块浅蓝底蓝描边橙点，别的灰底灰点，走过的绿勾；两头小箭头只在那边还有块时出现，点了往那边滚", async () => {
+it("分段滑块：当前格正文色加粗橙点、白浮片垫在下面，走过的次要字绿勾，没到的最浅字；出口在槽外；两头小箭头只在那边还有格时出现，点了往那边滚", async () => {
   const { page, errors } = await open(true, 1024);
   try {
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "商机", node: "合同审批" }));
     await page.waitForFunction(() => document.querySelector(".proj-stage-node.is-cur")?.textContent?.startsWith("合同审批"));
     const 色 = (v: string) => page.evaluate(x => { const s = document.createElement("span"); s.style.color = x; document.body.append(s); const c = getComputedStyle(s).color; s.remove(); return c; }, v);
-    const 底 = (sel: string, 伪 = "::before") => page.locator(sel).first().evaluate((e, p) => getComputedStyle(e, p).backgroundColor, 伪);
-    expect(await 底(".proj-stage-node.is-cur")).toBe(await 色("var(--brand-bg)"));
-    expect(await 底(".proj-stage-node.is-cur", "")).toBe(await 色("var(--brand)"));
-    expect(await 底(".proj-stage-node.is-cur .proj-stage-mark", "")).toBe(await 色("var(--warning)"));
-    expect(await 底(".proj-stage-node.is-todo")).toBe(await 色("var(--hover)"));
-    expect(await 底(".proj-stage-node.is-todo .proj-stage-mark", "")).toBe(await 色("var(--line-strong)"));
-    expect(await 底(".proj-stage-node.is-done .proj-stage-mark", "")).toBe(await 色("var(--success)"));
+    const 字 = (sel: string) => page.locator(sel).first().evaluate(e => getComputedStyle(e).color);
+    expect(await 字(".proj-stage-node.is-cur")).toBe(await 色("var(--ink)"));
+    expect(await page.locator(".proj-stage-node.is-cur").evaluate(e => getComputedStyle(e).fontWeight)).toBe("600");
+    expect(await page.locator(".proj-stage-node.is-cur .proj-stage-mark").evaluate(e => getComputedStyle(e).backgroundColor)).toBe(await 色("var(--warning)"));
+    expect(await 字(".proj-stage-node.is-todo")).toBe(await 色("var(--text-faint)"));
+    expect(await 字(".proj-stage-node.is-done")).toBe(await 色("var(--text-muted)"));
+    expect(await 字(".proj-stage-node.is-done .proj-stage-mark")).toBe(await 色("var(--success)"));
     expect(await page.locator(".proj-stage-node.is-done svg").count()).toBe(3);
-    // 首尾相接：后一块的左边插进前一块的尖里
+    // 读屏照旧知道哪格是当前（aria-current + 看不见的「当前」）；屏上不再写「当前」两个字
+    expect(await page.locator(".proj-stage-node[aria-current=step]").count()).toBe(1);
+    expect(await page.locator(".proj-stage-node[aria-current=step] .sr-only").innerText()).toContain("当前");
+    // 浮片正垫在当前格下面
+    const 对齐 = await page.evaluate(() => {
+      const 片 = document.querySelector(".proj-stage-thumb") as HTMLElement, 格 = document.querySelector(".proj-stage-node.is-cur") as HTMLElement;
+      return { on: 片.dataset.on, l: Math.round(片.offsetLeft - 格.offsetLeft), w: Math.round(片.offsetWidth - 格.offsetWidth) };
+    });
+    expect(对齐).toEqual({ on: "1", l: 0, w: 0 });
+    // 格与格并排不重叠；出口不在槽里，是槽外单独一颗
     const 盒们 = await page.locator(".proj-stage-node").evaluateAll(ns => ns.map(n => n.getBoundingClientRect()).map(r => ({ l: r.left, r: r.right })));
-    for (let i = 1; i < 盒们.length; i++) expect(盒们[i].l).toBeLessThan(盒们[i - 1].r);
+    for (let i = 1; i < 盒们.length; i++) expect(盒们[i].l).toBeGreaterThanOrEqual(盒们[i - 1].r - 0.5);
+    expect(await page.locator(".proj-stage-nodes .proj-stage-exit").count()).toBe(0);
+    expect(await page.locator(".proj-stage-strip > .proj-stage-exit").innerText()).toBe("商机赢单");
     // 当前在中间，两头都还有块：两个小箭头都在；点右边往右滚
     const 排 = page.locator(".proj-stage-nodes");
     await page.getByRole("button", { name: "往右看节点" }).waitFor();
@@ -1310,10 +1323,12 @@ it("箭头步骤条：当前块浅蓝底蓝描边橙点，别的灰底灰点，�
     // 滚到最右：右箭头收起来
     await 排.evaluate(e => { e.scrollLeft = e.scrollWidth; });
     await page.getByRole("button", { name: "往右看节点" }).waitFor({ state: "detached" });
-    // 换到订单页签：没有当前块，从头摆、左箭头收起来
+    // 换到订单页签：没有当前格，从头摆、左箭头收起来，浮片藏起来
     await page.locator(".proj-stage-tab").filter({ hasText: "订单" }).click();
     await page.getByRole("button", { name: "往左看节点" }).waitFor({ state: "detached" });
     expect(await 排.evaluate(e => e.scrollLeft)).toBe(0);
+    expect(await page.locator(".proj-stage-thumb").evaluate(e => (e as HTMLElement).dataset.on)).toBe("0");
+    await page.waitForFunction(() => getComputedStyle(document.querySelector(".proj-stage-thumb")!).opacity === "0");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }

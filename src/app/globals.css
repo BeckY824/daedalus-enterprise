@@ -1393,62 +1393,71 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-stage-tab.is-away.is-on { color: var(--text-muted); }
 .proj-stage-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .proj-stage-note { color: var(--text-muted); font-size: var(--fs-note, 12px); }
-/* 10-31 箭头步骤条：每个进程一块定宽的箭头（左凹右尖、首尾相接），块里居中「圆点 + 名字」。
-   一排放不下就横向滚（触控板 / 滚轮 / 两头小箭头），打开时 ProjectStages 把「当前」滚到中间。
-   当前：浅蓝底 + 蓝描边 + 橙点；其余：浅灰底、灰点；走过的：灰底 + 绿底白勾。
-   描边靠两层：块本身是描边色、::before 缩进 2px 是底色（clip-path 会把 border 一起切掉）。 */
-.proj-stage-strip { display: flex; align-items: flex-start; gap: 4px; min-width: 0; }
+/* 11-12 分段滑块（用户选的参考稿 A）：灰槽（圆角 10、内边距 3）里每个进程等宽一格，一块白浮片垫在「当前」下面，
+   当前换了就滑过去（left / width + --ease-spring，减弱动态时直接到位）。浮片由 ProjectStages 量「当前」那格的位置写进去。
+   走过的：次要字 + 绿勾一笔描出来；当前：正文色加粗 + 橙点慢呼吸（只变透明度）；没到：最浅字。
+   一排放不下就横向滚（触控板 / 滚轮 / 两头小箭头），每格有最小宽度、名字一行省略号、悬停看全名（title）。
+   出口（已转商机 / 商机赢单 / 交付结清）不是流程里的一步：槽外右边单独一颗描边胶囊，浮片不会落到它上面 */
+.proj-stage-strip { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .proj-stage-strip > .proj-stage-nodes { flex: 1 1 auto; }
 .proj-stage-nodes {
-  list-style: none; margin: 0; padding: 2px 0 8px; display: flex; flex-wrap: nowrap; gap: 0; position: relative;
+  --stage-node-w: 136px;
+  list-style: none; margin: 0; padding: 3px; display: flex; flex-wrap: nowrap; gap: 0; position: relative;
   min-width: 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none;
+  background: var(--hover); border-radius: var(--r-card);
 }
-.proj-stage-node, .proj-stage-exit {
-  --chev: 14px;
-  --chev-shape: polygon(0 0, calc(100% - var(--chev)) 0, 100% 50%, calc(100% - var(--chev)) 100%, 0 100%, var(--chev) 50%);
-  position: relative; isolation: isolate; box-sizing: border-box;
-  flex: 0 0 190px; width: 190px; height: 36px; margin-left: calc(3px - var(--chev));
+.proj-stage-thumb {
+  position: absolute; top: 3px; bottom: 3px; left: 0; width: 0; z-index: 0; pointer-events: none;
+  border-radius: var(--r-ctl); background: var(--panel);
+  box-shadow: 0 0 0 1px var(--line-soft), 0 1px 1px rgba(0, 0, 0, 0.08), 0 3px 8px rgba(0, 0, 0, 0.12);
+  transition: left var(--t-morph) var(--ease-spring), width var(--t-morph) var(--ease-morph), opacity var(--t-fast) var(--ease);
+}
+.proj-stage-thumb[data-on="0"] { opacity: 0; }
+.proj-stage-thumb[data-still] { transition: none; }
+.proj-stage-node {
+  position: relative; z-index: 1; box-sizing: border-box; overflow: hidden;
+  flex: 1 0 var(--stage-node-w); min-width: var(--stage-node-w); height: 32px;
   display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap;
-  padding: 0 calc(var(--chev) + 6px); color: var(--text-muted); background: transparent;
-  clip-path: var(--chev-shape);
+  padding: 0 10px; color: var(--text-faint); transition: color var(--t) var(--ease);
 }
-.proj-stage-node:first-child {
-  margin-left: 0;
-  --chev-shape: polygon(0 0, calc(100% - var(--chev)) 0, 100% 50%, calc(100% - var(--chev)) 100%, 0 100%);
-}
-.proj-stage-node::before, .proj-stage-exit::before {
-  content: ""; position: absolute; inset: 0; z-index: -1; background: var(--hover); clip-path: var(--chev-shape);
-}
-/* 单个节点名太长：块里放不下就省略号，悬停看全名（title） */
+/* 单个节点名太长：格里放不下就省略号，悬停看全名（title） */
 .proj-stage-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* 名字前那个记号：走过的是勾、当前的是橙点、没到的不画 */
 .proj-stage-mark {
-  width: 8px; height: 8px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
-  font-size: 9px; background: var(--line-strong); color: var(--on-ink);
-  /* 11-01 会议 §13：图标前留一点空，不贴着箭头凹口 */
+  width: 12px; height: 12px; flex: none; display: none; align-items: center; justify-content: center;
+  font-size: 9px; color: var(--success);
   margin-inline-start: var(--stage-mark-gap, 6px);
 }
-.proj-stage-node.is-done { color: var(--ink-soft); }
-.proj-stage-node.is-done .proj-stage-mark, .proj-stage-exit.is-done .proj-stage-mark { width: 14px; height: 14px; background: var(--success); }
-.proj-stage-node.is-cur { color: var(--ink); font-weight: 600; background: var(--brand); }
-.proj-stage-node.is-cur::before { inset: 2px; background: var(--brand-bg); }
-.proj-stage-node.is-cur .proj-stage-mark { background: var(--warning); animation: proj-stage-ring 2.4s ease-in-out infinite; }
+.proj-stage-tick { width: 12px; height: 12px; flex: none; }
+.proj-stage-tick path {
+  fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 16; stroke-dashoffset: 0; animation: proj-stage-tick var(--t-morph) var(--ease) both;
+}
+@keyframes proj-stage-tick { from { stroke-dashoffset: 16; } to { stroke-dashoffset: 0; } }
+.proj-stage-node.is-done { color: var(--text-muted); }
+.proj-stage-node.is-done .proj-stage-mark, .proj-stage-exit.is-done .proj-stage-mark { display: inline-flex; }
+.proj-stage-node.is-cur { color: var(--ink); font-weight: 600; }
+.proj-stage-node.is-cur .proj-stage-mark {
+  display: inline-flex; width: 6px; height: 6px; border-radius: 50%; background: var(--warning);
+  animation: proj-stage-breath 2.4s var(--ease-morph) infinite;
+}
 .proj-stage-node.is-cur .ant-tag { flex: none; }
-.proj-stage-cur { flex: none; font-size: var(--fs-min); font-weight: 400; color: var(--brand); }
-@keyframes proj-stage-ring {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warning) 45%, transparent); }
-  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 0%, transparent); }
-}
+@keyframes proj-stage-breath { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) {
-  .proj-stage-node.is-cur .proj-stage-mark { animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--warning) 30%, transparent); }
+  .proj-stage-node.is-cur .proj-stage-mark, .proj-stage-tick path { animation: none; }
+  .proj-stage-thumb { transition: opacity var(--t-fast) var(--ease); }
 }
-/* A-12：线索/商机列表末尾的出口（已转商机 / 商机赢单）：细灰描边、白底，和进程块区分开；走过了换绿描边 */
-.proj-stage-exit { color: var(--text-faint); background: var(--line-strong); }
-.proj-stage-exit::before { inset: 1.5px; background: var(--panel); }
-.proj-stage-exit.is-done { color: var(--ink-soft); background: var(--success); }
-.proj-stage-exit.is-done::before { background: var(--success-bg); }
+.proj-stage-exit {
+  flex: 0 1 auto; min-width: 0; max-width: 160px; height: 32px; box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap;
+  padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r-tag);
+  color: var(--text-faint); background: var(--panel);
+}
+.proj-stage-exit .proj-stage-mark { margin-inline-start: 0; }
+.proj-stage-exit.is-done { color: var(--ink-soft); border: 1px solid var(--success-line); background: var(--success-bg); }
 /* 两头的小箭头：只在那一侧还有没露出来的块时出现。摆在这排两边、占自己的宽度，不叠在块上（叠上去会盖住节点名，排版闸门 10-31 拦过） */
 .proj-stage-scroll {
-  flex: none; margin-top: 2px; width: 26px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+  flex: none; width: 26px; height: 38px; display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text-muted); cursor: pointer;
   box-shadow: 0 1px 4px color-mix(in srgb, var(--ink) 12%, transparent);
 }

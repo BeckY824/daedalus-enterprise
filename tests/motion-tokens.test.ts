@@ -224,3 +224,18 @@ describe("过渡和动画都走曲线 token（主题换曲线时才跟得上）"
     expect(散的, `这些过渡没走曲线 token：\n${散的.join("\n")}`).toEqual([]);
   });
 });
+
+/* 11-12 阶段条改成分段滑块：浮片用 left / width 滑（不用 transform），曲线走 token；减弱动态时只留透明度过渡 */
+describe("阶段条浮片", () => {
+  const 体 = (sel: string, 从 = 0) => { const i = css.indexOf(`${sel} {`, 从); return i < 0 ? "" : css.slice(i, css.indexOf("}", i)); };
+  it("滑动走 --ease-spring、时长用 token，不用 transform", () => {
+    const 片 = 体(".proj-stage-thumb");
+    expect(片).toContain("left var(--t-morph) var(--ease-spring)");
+    expect(片).not.toMatch(/transform|translate|cubic-bezier|\d+ms/);
+  });
+  it("减弱动态时浮片不滑，只淡入淡出", () => {
+    const i = css.indexOf(".proj-stage-thumb { transition: opacity");
+    expect(i).toBeGreaterThan(-1);
+    expect(css.lastIndexOf("@media (prefers-reduced-motion: reduce)", i)).toBeGreaterThan(css.indexOf(".proj-stage-thumb {"));
+  });
+});
