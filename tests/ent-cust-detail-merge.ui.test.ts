@@ -286,17 +286,18 @@ it("项目多（8 个）、1024 宽：页签那段横着滚，锁和「＋ 新�
     expect(await 行.locator(".cd-tabs").evaluate((el) => el.scrollWidth > el.clientWidth + 1)).toBe(true);
     expect(await 行.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
-    // 每个页签：键盘 Tab 走到它（focus）就滚进可见处，中心点上是它自己
+    // 每个页签：键盘走到它（focus）就整个露出来，中心点上是它自己；往回走也一样。
+    // 不能只要求「露一点」：浏览器自带的聚焦滚动对露着几像素的页签不滚（CI Linux 字体下第 7 个只露 6px），产品自己补滚
     const 页签 = 行.locator(".cd-tabs").getByRole("tab");
     expect(await 页签.count()).toBe(8);
-    for (let i = 0; i < 8; i++) {
-      const t = 页签.nth(i);
-      await t.focus();
-      expect(await t.evaluate((el) => {
-        const 框 = el.parentElement!.getBoundingClientRect(), r = el.getBoundingClientRect();
-        const 中 = document.elementFromPoint(Math.min(r.right, 框.right) - 4, r.top + r.height / 2);
-        return r.right > 框.left + 8 && r.left < 框.right - 8 && !!中 && el.contains(中);
-      }), `第 ${i + 1} 个页签`).toBe(true);
+    const 整个露着 = (i: number) => 页签.nth(i).evaluate((el) => {
+      const 框 = el.parentElement!.getBoundingClientRect(), r = el.getBoundingClientRect();
+      const 中 = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return r.left >= 框.left - 1 && r.right <= 框.right + 1 && !!中 && el.contains(中);
+    });
+    for (const i of [0, 1, 2, 3, 4, 5, 6, 7, 6, 3, 0]) {
+      await 页签.nth(i).focus();
+      expect(await 整个露着(i), `第 ${i + 1} 个页签`).toBe(true);
     }
     // 「＋ 新建项目」点得动（开新建项目的框）
     await 行.locator(".cd-add").click();

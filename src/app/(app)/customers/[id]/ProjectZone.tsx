@@ -33,22 +33,34 @@ const 锁 = (
 /**
  * 项目区第一行（定稿 UI .zh）：「项目」小标题、我能看的项目各一个页签、同事项目带锁的个数、「＋ 新建项目」；右端放当前页签这个项目的按钮。
  * 必须一行不换行：页签那段可缩、每个页签放不下省略号（悬停看全名，全站 TruncTip + title），再放不下这一段横着滚；
- * 锁、新建、右端按钮在滚动段外面、不缩，项目再多也一直看得见（审查 #1）。当前页签打开时滚进可见处；Tab 键走到哪个页签浏览器自己滚过去
+ * 锁、新建、右端按钮在滚动段外面、不缩，项目再多也一直看得见（审查 #1）。当前页签打开时滚到中间；Tab 键走到哪个页签就把它整个露出来——
+ * 浏览器自己的「聚焦时滚进来」只管完全看不见的，露着几个像素的不滚（11-12 CI Linux 字体下第 7 个页签只露 6px），所以自己滚
  */
+function 露出(框: HTMLElement, 那个: HTMLElement, 居中: boolean) {
+  // 只横着挪这一段，不用 scrollIntoView（它会连整页一起竖着滚）；按矩形算，不靠 offsetParent
+  const 框矩 = 框.getBoundingClientRect(), 矩 = 那个.getBoundingClientRect();
+  if (矩.left >= 框矩.left - 0.5 && 矩.right <= 框矩.right + 0.5) return;
+  const 左 = 矩.left - 框矩.left + 框.scrollLeft;
+  框.scrollLeft = Math.max(0, 居中 ? 左 - (框.clientWidth - 矩.width) / 2 : 矩.left < 框矩.left ? 左 : 左 + 矩.width - 框.clientWidth);
+}
+
 export function ProjectTabs({ 数据, 当前id, 开建项目, 右端 }: { 数据: 项目区数据; 当前id: string | null; 开建项目: (() => void) | null; 右端: ReactNode }) {
   const 段 = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const 框 = 段.current;
     const 那个 = 框?.querySelector<HTMLElement>(".cd-tab.on");
-    if (!框 || !那个) return;
-    // 只横着挪这一段，不用 scrollIntoView（它会连整页一起竖着滚）
-    const 左 = 那个.offsetLeft - 框.offsetLeft;
-    if (左 < 框.scrollLeft || 左 + 那个.offsetWidth > 框.scrollLeft + 框.clientWidth) 框.scrollLeft = Math.max(0, 左 - (框.clientWidth - 那个.offsetWidth) / 2);
+    if (框 && 那个) 露出(框, 那个, true);
   }, [当前id]);
   return (
     <div className="cd-zh">
       <span className="cd-cap">项目</span>
-      <div className="cd-tabs" role="tablist" aria-label="这位客户的项目" ref={段}>
+      <div
+        className="cd-tabs"
+        role="tablist"
+        aria-label="这位客户的项目"
+        ref={段}
+        onFocus={(e) => { const 那个 = (e.target as HTMLElement).closest<HTMLElement>(".cd-tab"); if (那个 && 段.current) 露出(段.current, 那个, false); }}
+      >
         {数据.页签们.map((t) => {
           const 字 = `${t.name} · ${t.节点}`;
           return (
