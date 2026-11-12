@@ -50,7 +50,7 @@
   "app/(app)/pool/PoolView.tsx": 12,
   "app/(app)/projects/BlockerPanel.tsx": 25,
   "app/(app)/projects/InviteInbox.tsx": 5,
-  "app/(app)/projects/ProjectsView.tsx": 12,
+  "app/(app)/projects/ProjectsView.tsx": 8,
   "app/(app)/projects/VerifyInbox.tsx": 7,
   "app/(app)/projects/[id]/CustomerReadonlyCard.tsx": 9,
   "app/(app)/projects/[id]/LeadVerifyPanel.tsx": 22,

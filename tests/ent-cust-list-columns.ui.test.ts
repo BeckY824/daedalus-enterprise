@@ -23,6 +23,8 @@ const 列表桩: Plugin = { name: "import-perm-boundaries", setup(b) {
   stub(/^\.\/CustomerPick$/, "export default function C(){return null}");
   // 企业版「新增客户」弹窗（10-31 会议，新客户带潜客培育项目）：向导本身另有测试，这里只看导入导出按钮
   stub(/projects\/new\/ProjectWizard$/, "export function 建档弹窗(){return null}");
+  // 页头「新建 ▾ → 新建项目」那条路（projects/NewProjectFlow.tsx，点了才挂）：里面的选客户、建项目都是 server action，这里换成一块牌子
+  stub(/projects\/NewProjectFlow$/, "export default function F(){return <div className='new-proj-flow-stub'/>}");
   stub(/^\.\.\/channels\/actions$/, `export const saveChannel=${空跑};`);
   stub(/^(\.\/|\.\.\/)actions$/, `const f=${空跑};
     export const saveCustomer=async x=>{window.__存=x;return{ok:true,id:'new'}},checkDuplicate=async()=>null,推荐人候选=async()=>[],patchCustomer=f,
@@ -41,7 +43,7 @@ beforeAll(async () => {
     const rows=[行('c1','me'),行('c2','u2'),行('c3','me')].map(r=>window.__公海?{...r,pool:{reason:'超时回收'}}:r);
     const 项目概况={c1:{项目数:12,当前节点:'异常 · 某个后台改得特别特别长的节点名字',当前阶段:'订单'},c2:{项目数:1,当前节点:'方案敲定',当前阶段:'商机'}};
     const 树=(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'me',name:'小王'}}>
-      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:'',node:'',...(window.__三态?{triState:''}:{})}} 三态标={window.__三态?{c1:{态:'待回收',几天后进公海:12},c2:{态:'暂缓回收中'},c3:{态:'不计时'}}:undefined} 客户数={3} 企业版 项目概况={项目概况} 项目看板 待交接={window.__交接??null} 看板体={window.__看板?<div className='fake-board'>项目看板</div>:undefined} 市场视图={!!window.__市场}/>
+      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:'',node:'',...(window.__三态?{triState:''}:{})}} 三态标={window.__三态?{c1:{态:'待回收',几天后进公海:12},c2:{态:'暂缓回收中'},c3:{态:'不计时'}}:undefined} 客户数={3} 企业版 项目概况={项目概况} 项目看板={!window.__非项目} 能新建和领取={!window.__不能新建} 待交接={window.__交接??null} 看板体={window.__看板?<div className='fake-board'>项目看板</div>:undefined} 市场视图={!!window.__市场}/>
     </我Provider></BusinessProvider></App></ConfigProvider>);
     const el=document.getElementById('root');
     // __静态：先只放服务端出的那份 HTML（React 还没接管），window.__水合() 再接管——照真实页面的先后
@@ -252,7 +254,7 @@ it("1024 宽、左栏 220：React 接管前后筛选行和「列」都是一行�
     await page.locator("tr.ant-table-row").first().waitFor();
     const 量 = () => page.locator(".list-bar").evaluate((b) => {
       const 右 = b.getBoundingClientRect().right;
-      const 项 = [...b.querySelectorAll(":scope > .ant-space > .ant-space-item, :scope > .ant-btn, :scope > .ant-dropdown-trigger")]
+      const 项 = [...b.querySelectorAll(":scope > .list-view-seg, :scope > .ant-space > .ant-space-item, :scope > .ant-btn, :scope > .ant-dropdown-trigger")]
         .filter((e) => e.getClientRects().length > 0 && getComputedStyle(e).visibility !== "hidden");
       return { 行数: new Set(项.map((e) => Math.round(e.getBoundingClientRect().top))).size, 越界: 项.filter((e) => e.getBoundingClientRect().right > 右 + 0.5).length };
     });
@@ -266,24 +268,72 @@ it("1024 宽、左栏 220：React 接管前后筛选行和「列」都是一行�
   } finally { await page.close(); }
 });
 
-it("「列表 / 看板」单独一行停在列表；按客户属性分列的看板不摆；点「看板」记下并回客户页（服务端换成项目看板）", async () => {
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } }); page.setDefaultTimeout(5000);
-  try {
-    await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
-    await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: 包 });
-    await page.locator("tr.ant-table-row").first().waitFor();
-    const 切 = page.locator(".cust-view-seg .ant-segmented");
-    expect(await 切.count()).toBe(1);
-    expect(await 切.locator(".ant-segmented-item-selected").innerText()).toBe("列表");
-    await 切.getByText("看板", { exact: true }).click();
-    expect(await page.evaluate(() => (window as unknown as { __push?: string }).__push)).toBe("/customers");
-    expect(await page.evaluate(() => document.cookie)).toContain("customers-view=board");
-    // 还是客户列表（换不换是服务端的事），不会冒出按客户属性分列的那块
-    expect(await page.locator(".cust-board").count()).toBe(0);
-  } finally { await page.close(); }
+/** 筛选行里那颗「列表 / 看板」（11-12 用户：「列表｜看板 放到和筛选栏一行，最左边」）：是筛选行第一格、在第一行最左、不被压扁 */
+const 量切换 = (page: import("playwright").Page) => page.locator(".list-bar").evaluate((b) => {
+  const 格 = b.firstElementChild as HTMLElement;
+  const 切 = 格.querySelector(".ant-segmented") as HTMLElement | null;
+  const 组 = b.querySelector(":scope > .ant-space") as HTMLElement;
+  const 首项 = 组.querySelector(".ant-space-item") as HTMLElement;
+  const r = 切?.getBoundingClientRect();
+  return {
+    第一格: 格.className, 名: 切?.getAttribute("aria-label") ?? null,
+    左: r ? Math.round(r.left - b.getBoundingClientRect().left) : null, 右: r ? Math.round(r.right) : null, 顶: r ? Math.round(r.top) : null,
+    // 和搜索框同一行、在它左边；两个字都没被截（不被压缩变形）
+    同行: r ? Math.abs(r.top + r.height / 2 - (首项.getBoundingClientRect().top + 首项.getBoundingClientRect().height / 2)) <= 2 : false,
+    在左: r ? r.right <= 首项.getBoundingClientRect().left : false,
+    字全: 切 ? [...切.querySelectorAll<HTMLElement>(".ant-segmented-item-label")].every((x) => x.scrollWidth <= x.clientWidth) : false,
+  };
 });
 
-it("看板视图（C17 / C18 / C15）：页头照客户列表（导入、导出、新建客户），离职交接在页头最右端带数；筛选行照摆、表格换成看板；切回列表筛选留着、页码去掉", async () => {
+it("「列表 / 看板」在筛选行最左（第一格，和搜索框同一行）；不再单独一行；按客户属性分列的看板不摆；点「看板」记下并回客户页（服务端换成项目看板）", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    const page = await browser.newPage({ viewport: { width: w, height: 900 } }); page.setDefaultTimeout(5000);
+    try {
+      await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+      await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
+      await page.addScriptTag({ content: 包 });
+      await page.locator("tr.ant-table-row").first().waitFor();
+      expect(await page.locator(".cust-view-seg").count(), `宽 ${w}`).toBe(0);
+      expect(await page.locator(".page-head .ant-segmented[aria-label='列表 / 看板']").count(), `宽 ${w}`).toBe(0);
+      const 量 = await 量切换(page);
+      expect(量, `宽 ${w}`).toMatchObject({ 第一格: "list-view-seg", 名: "列表 / 看板", 左: 0, 同行: true, 在左: true, 字全: true });
+      const 切 = page.getByRole("radiogroup", { name: "列表 / 看板" });
+      expect(await 切.locator(".ant-segmented-item-selected").innerText()).toBe("列表");
+      await 切.getByText("看板", { exact: true }).click();
+      expect(await page.evaluate(() => (window as unknown as { __push?: string }).__push)).toBe("/customers");
+      expect(await page.evaluate(() => document.cookie)).toContain("customers-view=board");
+      // 还是客户列表（换不换是服务端的事），不会冒出按客户属性分列的那块
+      expect(await page.locator(".cust-board").count()).toBe(0);
+    } finally { await page.close(); }
+  }
+});
+
+it("切列表 / 看板不跳：两个视图里切换器位置一样（1024 / 1280 / 1366）；看板视图筛选行右端留一格给看板的提示、空着不占位", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    const 位: unknown[] = [];
+    for (const 看板 of [false, true]) {
+      const page = await browser.newPage({ viewport: { width: w, height: 900 } }); page.setDefaultTimeout(5000);
+      try {
+        await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+        await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+        await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
+        await page.evaluate((v) => { Object.assign(window, { __看板: v }); }, 看板);
+        await page.addScriptTag({ content: 包 });
+        await page.locator(看板 ? ".fake-board" : "tr.ant-table-row").first().waitFor();
+        const 量 = await 量切换(page);
+        expect(量.第一格, `宽 ${w} ${看板 ? "看板" : "列表"}`).toBe("list-view-seg");
+        位.push([量.左, 量.右, 量.顶]);
+        const 端 = page.locator(".list-bar > .list-bar-end");
+        expect(await 端.count(), `宽 ${w}`).toBe(看板 ? 1 : 0);
+        if (看板) expect(await 端.evaluate((el) => getComputedStyle(el).display), `宽 ${w} 空着不占位`).toBe("none");
+      } finally { await page.close(); }
+    }
+    expect(位[1], `宽 ${w}`).toEqual(位[0]);
+  }
+});
+
+it("看板视图（C17 / C18 / C15）：页头照客户列表（导入、导出、新建 ▾），离职交接在页头最右端带数；筛选行照摆、表格换成看板；切回列表筛选留着、页码去掉", async () => {
   for (const w of [1024, 1280, 1366]) {
     const page = await browser.newPage({ viewport: { width: w, height: 900 } }); page.setDefaultTimeout(5000);
     const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -297,12 +347,12 @@ it("看板视图（C17 / C18 / C15）：页头照客户列表（导入、导出�
       await page.locator(".fake-board").waitFor();
       expect(await page.locator("tr.ant-table-row").count(), `宽 ${w}`).toBe(0);
       const 钮 = (await page.locator(".page-head button").allInnerTexts()).map((t) => t.replace(/\s+/g, ""));
-      expect(钮, `宽 ${w}`).toEqual(expect.arrayContaining(["导入", "导出", "新建客户"]));
-      expect(钮.at(-1), `宽 ${w}`).toBe("离职交接3");
-      expect(await page.locator(".page-head").getByRole("button", { name: /新增项目|分配/ }).count(), `宽 ${w}`).toBe(0);
+      // 页头「新建 ▾」（11-12）：看板视图也是这一颗，看板上不再单独有「新增项目」
+      expect(钮, `宽 ${w}`).toEqual(["导入", "导出", "新建", "离职交接3"]);
+      expect(await page.getByRole("button", { name: /新增项目|分配/ }).count(), `宽 ${w}`).toBe(0);
       // 同一行筛选：搜索框、阶段、进程都在
       expect(await page.getByRole("combobox", { name: "阶段" }).count() + await page.getByText("更多筛选").count(), `宽 ${w}`).toBeGreaterThan(0);
-      const 切 = page.locator(".cust-view-seg .ant-segmented");
+      const 切 = page.locator(".list-bar > .list-view-seg .ant-segmented");
       expect(await 切.locator(".ant-segmented-item-selected").innerText(), `宽 ${w}`).toBe("看板");
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `宽 ${w}`).toBe(true);
       await 切.getByText("列表", { exact: true }).click();
@@ -313,7 +363,7 @@ it("看板视图（C17 / C18 / C15）：页头照客户列表（导入、导出�
   }
 });
 
-it("市场成员、市场管理（X-107）：切换叫「客户列表 / 我分出去的」，停在客户列表；点「我分出去的」记下看板（服务端换成原项目页那套）", async () => {
+it("市场成员、市场管理（X-107）：切换叫「客户列表 / 我分出去的」、在筛选行最左，停在客户列表；点「我分出去的」记下看板（服务端换成原项目页那套）", async () => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } }); page.setDefaultTimeout(5000);
   try {
     await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
@@ -321,11 +371,58 @@ it("市场成员、市场管理（X-107）：切换叫「客户列表 / 我分�
     await page.evaluate(() => { Object.assign(window, { __市场: true }); });
     await page.addScriptTag({ content: 包 });
     await page.locator("tr.ant-table-row").first().waitFor();
-    const 切 = page.locator(".cust-view-seg .ant-segmented");
+    const 切 = page.locator(".list-bar > .list-view-seg:first-child .ant-segmented");
+    expect(await 切.getAttribute("aria-label")).toBe("客户列表 / 我分出去的");
     expect(await 切.locator(".ant-segmented-item-label").allInnerTexts()).toEqual(["客户列表", "我分出去的"]);
     expect(await 切.locator(".ant-segmented-item-selected").innerText()).toBe("客户列表");
     await 切.getByText("我分出去的", { exact: true }).click();
     expect(await page.evaluate(() => document.cookie)).toContain("customers-view=board");
     expect(await page.evaluate(() => (window as unknown as { __push?: string }).__push)).toBe("/customers");
   } finally { await page.close(); }
+});
+
+it("页头「新建 ▾」（11-12）：两样都能建 = 一颗主按钮，键盘能打开，菜单两项「新建客户」「新建项目」；点「新建项目」才挂上那条路（先选新老客户，同项目页）", async () => {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } }); page.setDefaultTimeout(5000);
+  const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+  try {
+    await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+    await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+    await page.addScriptTag({ content: 包 });
+    await page.locator("tr.ant-table-row").first().waitFor();
+    const 钮 = page.locator(".page-head").getByRole("button", { name: /新建/ });
+    expect(await 钮.count()).toBe(1);
+    expect((await 钮.innerText()).replace(/\s+/g, "")).toBe("新建");
+    expect(await 钮.getAttribute("aria-haspopup")).toBe("menu");
+    // 键盘：聚焦按钮、回车打开
+    await 钮.focus();
+    await page.keyboard.press("Enter");
+    const 菜单 = page.getByRole("menu");
+    await 菜单.waitFor();
+    expect(await 菜单.getByRole("menuitem").allInnerTexts()).toEqual(["新建客户", "新建项目"]);
+    expect(await page.locator(".new-proj-flow-stub").count()).toBe(0);
+    await 菜单.getByRole("menuitem", { name: "新建项目" }).click();
+    await page.locator(".new-proj-flow-stub").waitFor({ state: "attached" });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("只能建一样时直接是那一样（写全称、不出下拉）：没设业务角色 / 只读管理员 = 「新建项目」；没开项目模式 = 「新建客户」；两样都不能不摆", async () => {
+  for (const [旗, 应] of [[{ __不能新建: true }, "新建项目"], [{ __非项目: true }, "新建客户"], [{ __不能新建: true, __非项目: true }, null]] as const) {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } }); page.setDefaultTimeout(5000);
+    try {
+      await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+      await page.evaluate((x) => { Object.assign(window, x); }, 旗);
+      await page.addScriptTag({ content: 包 });
+      await page.locator("tr.ant-table-row").first().waitFor();
+      const 钮 = page.locator(".page-head").getByRole("button", { name: /新建/ });
+      expect(await 钮.count(), JSON.stringify(旗)).toBe(应 ? 1 : 0);
+      if (!应) continue;
+      expect((await 钮.innerText()).trim(), JSON.stringify(旗)).toBe(应);
+      expect(await 钮.getAttribute("aria-haspopup"), JSON.stringify(旗)).toBeNull();
+      await 钮.click();
+      expect(await page.getByRole("menu").count(), JSON.stringify(旗)).toBe(0);
+      if (应 === "新建项目") await page.locator(".new-proj-flow-stub").waitFor({ state: "attached" });
+    } finally { await page.close(); }
+  }
 });

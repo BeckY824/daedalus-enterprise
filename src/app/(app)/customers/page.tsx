@@ -160,7 +160,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     // 两个视图（用户 11-12「按第 1 种做」）：列表 = 原来的客户列表；看板 = 我分出去的。记了哪个进哪个，没记过进我分出去的；带 hl（被挡转来的）一律进我分出去的
     const 记 = await 记的看法();
     if (sp.hl || 记 === "board" || 记 === undefined) {
-      return 项目页(me, sp as 项目页参数, undefined, { 基址: "/customers", 标题: b.customer, 换回客户列表: true });
+      // 页头「新建 ▾」里的「新建客户」和客户列表那一边同一个判定（没设业务角色、只读管理员不摆）
+      return 项目页(me, sp as 项目页参数, undefined, { 基址: "/customers", 标题: b.customer, 换回客户列表: true, 能新建客户: 能新建和领取(me, await 权限组织()) });
     }
   }
 

@@ -42,6 +42,7 @@ beforeAll(async () => {
     import Projects from '@/app/(app)/projects/ProjectsView';
     import {BusinessProvider} from '@/lib/business-client';
     import {DEFAULT_BUSINESS} from '@/lib/business-config';
+    import {看板工具位} from '@/app/(app)/customers/board-slot';
     window.__去=[];
     const 长='某某超长名字的智能制造装备与工业自动化系统集成有限公司华东区域采购项目第二期';
     const row=(i,node)=>({id:'p'+i,name:长+i,customerId:'c'+i,customerName:长,ownerId:'u'+(i%2),ownerName:'王'+i,phase:'线索',node,result:null,exceptionCategory:null,exceptionReason:null,pooled:false,amount:1234567,currency:'CNY',updatedAt:new Date().toISOString()});
@@ -52,15 +53,16 @@ beforeAll(async () => {
     // 每次画都是新的一屏（新的数组，同服务端换了一屏）；o.数 = 第一列一共几个
     const 造每列列=(数=25)=>[{...五列[0],名:'线索',数,行:Array.from({length:20},(_,i)=>row(100+i,'潜客培育'))},...五列.slice(1).map(c=>({...c}))];
     window.__再看={ok:true,行:Array.from({length:5},(_,i)=>row(120+i,'潜客培育')),总:25};
-    window.__画=(阶段,能分,企,o={})=>(window.__root||=createRoot(document.getElementById('root'))).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
-      <Projects 行={o.每列?[]:o.公海?[{...row(4,'线索推进'),pooled:true,客户在公海:true},{...row(5,'线索推进'),pooled:true}]:行} 列={o.每列?造每列列(o.数):o.看板?五列:[]} 每列={o.每列?{}:undefined} 要的页={o.要的页} 总数={(o.公海?2:行.length)} 页={1} 每页={20} users={o.单人?[{id:'u0',name:'王0',email:'a'}]:[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:o.phase||''}} 阶段={阶段?'线索':undefined} 线索分配开着={!!能分} 能自动分配={!!能分} 能分公海客户项目={!!o.管公海} 企业版={!!企} 客户页={!!o.客户页} 待交接={o.客户页?2:null} 换回客户列表={!!o.换回} 标题={o.换回?'客户':undefined}/>
-    </BusinessProvider></App>);
+    // o.工具位：照客户页那样在上面给一条筛选行、右端留一格（customers/board-slot.ts），看板的按钮和提示画进去
+    window.__画=(阶段,能分,企,o={})=>{if(o.工具位&&!document.getElementById('slot'))document.getElementById('root').insertAdjacentHTML('beforebegin',"<div class='list-bar'><span class='list-bar-gap'></span><div class='list-bar-end' id='slot'></div></div>");return (window.__root||=createRoot(document.getElementById('root'))).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><看板工具位.Provider value={o.工具位?document.getElementById('slot'):undefined}>
+      <Projects 行={o.每列?[]:o.公海?[{...row(4,'线索推进'),pooled:true,客户在公海:true},{...row(5,'线索推进'),pooled:true}]:行} 列={o.每列?造每列列(o.数):o.看板?五列:[]} 每列={o.每列?{}:undefined} 要的页={o.要的页} 总数={(o.公海?2:行.length)} 页={1} 每页={20} users={o.单人?[{id:'u0',name:'王0',email:'a'}]:[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:o.phase||''}} 阶段={阶段?'线索':undefined} 线索分配开着={!!能分} 能自动分配={!!能分} 能分公海客户项目={!!o.管公海} 企业版={!!企} 客户页={!!o.客户页} 待交接={o.客户页?2:null} 换回客户列表={!!o.换回} 能新建客户={!!o.能新建客户} 标题={o.换回?'客户':undefined}/>
+    </看板工具位.Provider></BusinessProvider></App>);};
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
   bundle = r.outputFiles[0].text; browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 选项 = { phase?: string; 看板?: boolean; 每列?: boolean; 数?: number; 单人?: boolean; 要的页?: string; 样式?: boolean; 公海?: boolean; 管公海?: boolean; 客户页?: boolean; 查询?: string; 换回?: boolean };
+type 选项 = { phase?: string; 看板?: boolean; 每列?: boolean; 数?: number; 单人?: boolean; 要的页?: string; 样式?: boolean; 公海?: boolean; 管公海?: boolean; 客户页?: boolean; 查询?: string; 换回?: boolean; 能新建客户?: boolean; 工具位?: boolean };
 async function 打开(新线索: boolean, width = 1280, 能分 = false, 企 = false, o: 选项 = {}): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -70,8 +72,8 @@ async function 打开(新线索: boolean, width = 1280, 能分 = false, 企 = fa
   if (o.样式) await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addScriptTag({ content: bundle });
   await page.evaluate(([v, f, e, x]) => (window as unknown as { __画: (v: boolean, f: boolean, e: boolean, x: 选项) => void }).__画(v, f, e, x), [新线索, 能分, 企, o] as const);
-  // 客户页模式只画看板那一块，没有页头标题：等工具行
-  await (o.客户页 ? page.locator(".cust-board-tool") : page.getByRole("heading")).first().waitFor();
+  // 客户页模式只画看板那一块，没有页头标题：等看板
+  await (o.客户页 ? page.locator(".pipe") : page.getByRole("heading")).first().waitFor();
   return { page, errors };
 }
 const 去了 = (page: Page) => page.evaluate(() => (window as unknown as { __去: string[] }).__去);
@@ -259,7 +261,7 @@ it("企业版项目看板卡片（11-12 客户详情合并第 3 批）：第一�
   }
 });
 
-it("客户页的看板视图（11-12 第 3 批 C17 / C15）：只画看板这一块——没有项目页页头、没有「看板 / 列表」、没有离职交接；新增项目在看板工具行；卡片点进客户详情", async () => {
+it("客户页的看板视图（11-12 第 3 批 C17 / C15）：只画看板这一块——没有项目页页头、没有「看板 / 列表」、没有离职交接；没有「新增项目」（11-12 进了客户页页头「新建 ▾」），没别的按钮时看板上面不留工具行；卡片点进客户详情", async () => {
   for (const w of [1024, 1280, 1366]) {
     const { page, errors } = await 打开(false, w, false, true, { 样式: true, 看板: true, 客户页: true });
     try {
@@ -267,7 +269,8 @@ it("客户页的看板视图（11-12 第 3 批 C17 / C15）：只画看板这一
       expect(await page.locator(".ant-segmented").count(), `宽 ${w}`).toBe(0);
       expect(await page.locator(".pipe-col").count(), `宽 ${w}`).toBe(5);
       expect(await page.getByRole("button", { name: /离职交接/ }).count(), `宽 ${w}`).toBe(0);
-      expect(await page.locator(".cust-board-tool").getByRole("button", { name: "新增项目" }).count(), `宽 ${w}`).toBe(1);
+      expect(await page.getByRole("button", { name: /新增项目|新建项目|新建/ }).count(), `宽 ${w}`).toBe(0);
+      expect(await page.locator(".cust-board-tool").count(), `宽 ${w}`).toBe(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `宽 ${w}`).toBe(true);
       await page.locator(".pipe-card").first().click();
       expect(await 去了(page), `宽 ${w}`).toEqual(["/customers/c10?project=p10"]);
@@ -392,12 +395,17 @@ it("客户页看板视图点「分配」临时切成项目列表：表头排序�
   } finally { await page.close(); }
 });
 
-it("市场角色客户页的「我分出去的」视图（X-107）：原项目页整页（页头叫客户、自己的看板 / 列表照留），下面多一颗「客户列表 / 我分出去的」停在我分出去的；点客户列表记下并回客户页", async () => {
+it("市场角色客户页的「我分出去的」视图（X-107）：原项目页整页（页头叫客户、自己的看板 / 列表照留），筛选行最左一颗「客户列表 / 我分出去的」停在我分出去的；点客户列表记下并回客户页", async () => {
   const { page, errors } = await 打开(false, 1280, false, true, { 看板: true, 换回: true, 查询: "?q=x&hl=p1" });
   try {
     expect(await page.getByRole("heading").first().innerText()).toBe("客户");
     expect(await page.locator(".page-head .ant-segmented").count()).toBe(1);
-    const 切 = page.locator(".cust-view-seg .ant-segmented");
+    // 「客户列表 / 我分出去的」在筛选行最左（同客户页，11-12），不再单独一行；页头的新建和客户页同一颗（这里不能建客户 = 只有「新建项目」）
+    expect(await page.locator(".cust-view-seg").count()).toBe(0);
+    expect(await page.locator(".pipe-top > :first-child").getAttribute("class")).toBe("list-view-seg");
+    expect(await page.locator(".page-head").getByRole("button", { name: /新增项目/ }).count()).toBe(0);
+    expect((await page.locator(".page-head").getByRole("button", { name: /新建/ }).innerText()).trim()).toBe("新建项目");
+    const 切 = page.getByRole("radiogroup", { name: "客户列表 / 我分出去的" });
     expect(await 切.locator(".ant-segmented-item-selected").innerText()).toBe("我分出去的");
     await 切.getByText("客户列表", { exact: true }).click();
     expect(await page.evaluate(() => document.cookie)).toContain("customers-view=list");
@@ -497,4 +505,48 @@ it("P-公海-10：销售管理 / 总管理看客户公海里的项目有「分�
   expect(await page.getByRole("button", { name: /^自动分配 .*5$/ }).count()).toBe(1);
   expect(errors).toEqual([]);
   await page.close();
+});
+
+it("客户页看板视图给了筛选行那一格（board-slot）：「→ 还有 N 列」「分配」画进那一格，看板上面不另起一行；点得中", async () => {
+  // 只剩提示（没筛线索阶段）：看板上面没有 .pipe-top、没有工具行
+  const { page, errors } = await 打开(false, 1024, false, true, { 样式: true, 看板: true, 客户页: true, 工具位: true });
+  try {
+    const 提示 = page.locator("#slot > .pipe-more-right");
+    await 提示.waitFor();
+    expect(await page.locator(".pipe-top").count()).toBe(0);
+    expect(await page.locator(".cust-board-tool").count()).toBe(0);
+    const 前 = await page.locator(".pipe").evaluate((el) => el.scrollLeft);
+    await 提示.click();
+    await expect.poll(() => page.locator(".pipe").evaluate((el) => el.scrollLeft)).toBeGreaterThan(前);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+  // 筛到线索阶段、能分配：「分配」「我分出去的」也在那一格；点「分配」临时切成列表，「回到看板」接着在那一格
+  const 分 = await 打开(false, 1280, true, true, { 看板: true, 客户页: true, phase: "线索", 工具位: true });
+  try {
+    expect(await 分.page.locator(".cust-board-tool").count()).toBe(0);
+    expect(await 分.page.locator("#slot").getByRole("button", { name: /我分出去的/ }).count()).toBe(1);
+    await 分.page.locator("#slot").getByRole("button", { name: /分配/ }).first().click();
+    await 分.page.locator("#slot").getByRole("button", { name: "回到看板" }).waitFor();
+    expect(分.errors).toEqual([]);
+  } finally { await 分.page.close(); }
+});
+
+it("市场角色「我分出去的」页头：能建客户 = 「新建 ▾」两项；点「新建客户」取向导数据、开「新增客户」向导框（同客户页），点「新建项目」先选新老客户", async () => {
+  const { page, errors } = await 打开(false, 1280, false, true, { 看板: true, 换回: true, 能新建客户: true });
+  try {
+    const 钮 = page.locator(".page-head").getByRole("button", { name: /新建/ });
+    expect((await 钮.innerText()).replace(/\s+/g, "")).toBe("新建");
+    await 钮.click();
+    expect(await page.getByRole("menuitem").allInnerTexts()).toEqual(["新建客户", "新建项目"]);
+    await page.getByRole("menuitem", { name: "新建客户" }).click();
+    await page.locator(".wizard-stub").waitFor();
+    expect(await page.locator(".wizard-stub").innerText()).toBe("新增客户");
+    expect(await page.evaluate(() => (window as unknown as { __调?: unknown[][] }).__调?.map((x) => x[0]))).toEqual(["取建档数据"]);
+    await 钮.click();
+    await page.getByRole("menuitem", { name: "新建项目" }).click();
+    await page.getByRole("dialog", { name: "新增项目" }).waitFor();
+    expect(await 去了(page)).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
 });

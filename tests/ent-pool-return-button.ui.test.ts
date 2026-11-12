@@ -24,6 +24,8 @@ const 列表桩: Plugin = { name: "import-perm-boundaries", setup(b) {
   stub(/^\.\/CustomerPick$/, "export default function C(){return null}");
   // 企业版「新增客户」弹窗（10-31 会议，新客户带潜客培育项目）：向导本身另有测试，这里只看导入导出按钮
   stub(/projects\/new\/ProjectWizard$/, "export function 建档弹窗(){return null}");
+  // 页头「新建 ▾ → 新建项目」那条路（projects/NewProjectFlow.tsx，点了才挂）：里面的选客户、建项目都是 server action，这里换成一块牌子
+  stub(/projects\/NewProjectFlow$/, "export default function F(){return <div className='new-proj-flow-stub'/>}");
   stub(/^\.\.\/channels\/actions$/, `export const saveChannel=${空跑};`);
   stub(/^(\.\/|\.\.\/)actions$/, `const f=${空跑};
     export const saveCustomer=async x=>{window.__存=x;return{ok:true,id:'new'}},checkDuplicate=async()=>null,推荐人候选=async()=>[],patchCustomer=f,
