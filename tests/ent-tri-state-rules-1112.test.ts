@@ -130,7 +130,7 @@ describe("A · 夜扫一批写之前在事务里重收事实", () => {
     const 规则 = 开三态();
     const org = await 读组织();
     const 旧的 = await 收三态客户(prisma, [客户], 规则, org, 早(96));
-    await prisma.followUp.create({ data: { type: "PHONE", title: "电话", content: "聊了下季度采购计划", customerId: 客户, ownerId: 人.乙.id, occurredAt: 白天(95) } });
+    await prisma.followUp.create({ data: { type: "PHONE", title: "电话", content: "聊了下季度采购计划", customerId: 客户, ownerId: 人.乙.id, occurredAt: 白天(95), createdAt: 白天(95) } });
     await 写一批(规则, org, 旧的, 早(96), 日(96));
     expect(await 钟()).toMatchObject({ state: "活跃", enteredDay: 日(95) });
   });
@@ -160,7 +160,7 @@ describe("T1 / T2 · 有效沟通判定（纯函数）", () => {
 });
 
 describe("T1 / T2 · 读库：无效沟通不拨钟、不回满", () => {
-  const 记 = (n: number, content: string, 时 = "10:00") => prisma.followUp.create({ data: { type: "PHONE", title: "", content, customerId: 客户, ownerId: 人.乙.id, occurredAt: new Date(`${日(n)}T${时}:00+08:00`) } });
+  const 记 = (n: number, content: string, 时 = "10:00") => prisma.followUp.create({ data: { type: "PHONE", title: "", content, customerId: 客户, ownerId: 人.乙.id, occurredAt: new Date(`${日(n)}T${时}:00+08:00`), createdAt: new Date(`${日(n)}T${时}:00+08:00`) } });
 
   it("沉睡里记了空 / 占位 / 只贴链接的沟通：不回活跃；有效的才回；同一天几条算一次", async () => {
     await 三态夜扫(早(95));
@@ -312,7 +312,7 @@ describe("T5 · 暂缓回收（被同事项目挡住）：期间提醒不算 3 �
     await 到期被挡();
     await prisma.project.update({ where: { id: (await 同事项目()).id }, data: { result: "丢单" } });
     await 过(215);
-    await prisma.followUp.create({ data: { type: "PHONE", title: "", content: "约了下周见面谈续约", customerId: 客户, ownerId: 人.乙.id, occurredAt: 白天(220) } });
+    await prisma.followUp.create({ data: { type: "PHONE", title: "", content: "约了下周见面谈续约", customerId: 客户, ownerId: 人.乙.id, occurredAt: 白天(220), createdAt: 白天(220) } });
     await 三态夜扫(早(226));
     expect(await 在公海()).toBe(false);
     expect(await 钟()).toMatchObject({ state: "活跃", enteredDay: 日(220) });
@@ -352,7 +352,7 @@ describe("T11 · 暂缓回收两次至少隔 30 天、累计最多 2 次；第 3
     await 到期被挡();
     expect(await 暂缓回收动作(人.总内, 客户, null, 白天(210))).toEqual({ ok: true });
     expect(await 暂缓回收动作(人.总内, 客户, null, 白天(240))).toEqual({ ok: true });
-    await prisma.followUp.create({ data: { type: "PHONE", title: "", content: "约了下周见面谈续约", customerId: 客户, ownerId: 人.乙.id, occurredAt: 白天(241) } });
+    await prisma.followUp.create({ data: { type: "PHONE", title: "", content: "约了下周见面谈续约", customerId: 客户, ownerId: 人.乙.id, occurredAt: 白天(241), createdAt: 白天(241) } });
     await 三态夜扫(早(242));
     await 三态夜扫(早(241 + 180));
     await prisma.entCustomerClock.update({ where: { customerId: 客户 }, data: { noticeCount: 3, lastNoticeDay: 日(241 + 200) } });

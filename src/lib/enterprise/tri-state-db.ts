@@ -4,7 +4,7 @@
  * 收哪些事实（一位客户）：
  *   - 计时范围（M-公海-34）：有负责人（不是无负责人占位账号）、不在客户公海、没标无效；负责人是市场（市场角色、又不兼销售）的不计；已删的读不到（软删统一滤掉）
  *   - 最近有效沟通日（拨钟、回满额度同源，T1 / T2，tri-state-quota.ts 有内容的沟通）：挂客户的、挂名下任一项目的（含同事负责的，沟通都带着 customerId）都算；
- *     发生时刻晚于现在的（排着的计划）不算；空的、不足 4 字、只有占位词、只有素材链接的不算，AI 起草成功的算
+ *     一条算哪天按沟通生效日（M-公海-54：沟通日期和写入时间取早的，补录旧沟通只推到它发生那天，填未来日期的按写入时间）；空的、不足 4 字、只有占位词、只有素材链接的不算，AI 起草成功的算
  *   - 最近项目推进日：名下项目建项目和换节点（ProjectNodeLog kind = node）里最晚的（T8：建项目算一次动静，建完转给同事的照算在客户上）；
  *     退回了项目公海的项目（T3），退回前的推进算到退回那天为止，退回本身不算动静
  *   - 额度重置日（T4）：最近有效沟通、最近一次从公海领走 / 分走里较晚的那天，继续持有额度从这天起重新数
@@ -35,7 +35,7 @@ import type { 组织规则 } from "@/lib/project/org-rules";
 import { 算三态, 解除后几天收, type 三态事实, type 三态结果, type 三态项目 } from "./tri-state";
 import { 换负责人们of, 撤销计次方式, 并上撤销计次, type 换人行 } from "./tri-state-transfer";
 export { 换负责人们of } from "./tri-state-transfer";
-import { 待交接理由, 有内容的沟通, 暂缓回收次数, 默认占位词, 占位词键, 规整占位词, 留痕转推后, 最近暂缓回收日, 额度回满, 留痕方式, 自动收回次数, type 留痕行 } from "./tri-state-quota";
+import { 待交接理由, 有内容的沟通, 沟通生效时刻, 沟通生效时刻SQL, 生效时刻余量, 暂缓回收次数, 默认占位词, 占位词键, 规整占位词, 留痕转推后, 最近暂缓回收日, 额度回满, 留痕方式, 自动收回次数, type 留痕行 } from "./tri-state-quota";
 import { 项目业务线 } from "./assign-line";
 import { 读组织, type 组织 } from "./org";
 import { 是市场角色, 是销售角色 } from "./permissions";
@@ -272,41 +272,54 @@ export async function 存占位词(词们: readonly string[]): Promise<string[]>
   return 规整;
 }
 
+/** 每位客户先看最近几条（按沟通生效日倒排）；都无效再只这位往前翻，一次 200 条 */
+const 最近沟通先看条数 = 20;
+const 转时刻 = (v: unknown): Date | null => {
+  if (v == null) return null;
+  if (v instanceof Date) return v;
+  const n = typeof v === "number" || typeof v === "bigint" ? Number(v) : /^\d+$/.test(String(v)) ? Number(v) : Date.parse(String(v));
+  return Number.isNaN(n) ? null : new Date(n);
+};
+
 /**
- * 每位客户最近一条有效沟通的上海日（T1 / T2：拨钟和回满额度同源，tri-state-quota.ts 有内容的沟通）：
- * 按客户分组取最晚的非空内容，再一次取回这批「最晚那条」判；判下来无效的（空的、不足 4 字、只有占位词、只有链接）才逐位往前找。
- * 只认发生时刻不晚于现在的（同最近跟进的算法，soft-delete.ts 重算最近跟进）；同一天几条只算一次（只取日子）
+ * 每位客户最近一条有效沟通的上海日（T1 / T2：拨钟和回满额度同源，tri-state-quota.ts 有内容的沟通）。
+ * 一条沟通算哪天按沟通生效日（M-公海-54，tri-state-quota.ts 沟通生效时刻：沟通日期和写入时间取早的）：补录的旧沟通只推到它发生那天，
+ * 填了未来日期的按写入时间算。一句 SQL 按生效日倒排、每位取最近几条判；都无效（空的、不足 4 字、只有占位词、只有链接）才逐位往前找。
+ * 生效日晚于现在的不算；同一天几条只算一次（只取日子）；软删的不算
  */
 async function 最近沟通日们(db: 库, ids: readonly string[], 现在: Date, 预读词们?: readonly string[]): Promise<Map<string, string>> {
   const 出 = new Map<string, string>();
+  if (!ids.length) return 出;
   const 词们 = 预读词们 ?? await 读占位词(db);
-  const 有效 = (f: { content: string; source: { followUpId: string } | null }) => 有内容的沟通(f.content, { 占位词: 词们, AI生成: !!f.source });
-  const 最晚 = (await db.followUp.groupBy({ by: ["customerId"], where: { customerId: { in: [...ids] }, occurredAt: { lte: 现在 }, content: { not: "" } }, _max: { occurredAt: true } }))
-    .filter((g): g is typeof g & { _max: { occurredAt: Date } } => !!g._max.occurredAt);
-  const 那几条 = 最晚.length
-    ? await db.followUp.findMany({ where: { OR: 最晚.map((g) => ({ customerId: g.customerId, occurredAt: g._max.occurredAt })) }, select: { customerId: true, content: true, source: { select: { followUpId: true } } } })
-    : [];
-  const 有字 = new Set(那几条.filter(有效).map((f) => f.customerId));
-  for (const g of 最晚) {
-    if (有字.has(g.customerId)) {
-      出.set(g.customerId, beijingDay(g._max.occurredAt));
-      continue;
-    }
-    // 最晚那条无效：只这位往前找，一次 200 条，找到为止
-    let 早于 = g._max.occurredAt;
-    for (;;) {
-      const 往前 = await db.followUp.findMany({
-        where: { customerId: g.customerId, occurredAt: { lt: 早于 }, content: { not: "" } },
-        orderBy: { occurredAt: "desc" }, select: { content: true, occurredAt: true, source: { select: { followUpId: true } } }, take: 200,
-      });
-      const 有 = 往前.find(有效);
-      if (有) {
-        出.set(g.customerId, beijingDay(有.occurredAt));
-        break;
-      }
+  type 行 = { cid: string; content: string; src: unknown; at: unknown; cat: unknown };
+  const 生效 = (x: 行) => { const 写 = 转时刻(x.cat); return 写 ? 沟通生效时刻(转时刻(x.at), 写) : null; };
+  const 有效 = (x: 行) => 有内容的沟通(x.content, { 占位词: 词们, AI生成: Number(x.src) === 1 || x.src === true });
+  const 列 = `f."customerId" AS cid, f.content AS content, EXISTS (SELECT 1 FROM "FollowUpSource" s WHERE s."followUpId" = f.id) AS src, f."occurredAt" AS at, f."createdAt" AS cat`;
+  const 条件 = `f."deletedAt" IS NULL AND f.content <> ''`;
+  const 先看 = await db.$queryRawUnsafe<(行 & { rn: unknown })[]>(
+    `SELECT * FROM (SELECT ${列}, ROW_NUMBER() OVER (PARTITION BY f."customerId" ORDER BY ${沟通生效时刻SQL("f")} DESC, f.id DESC) AS rn
+  FROM "FollowUp" f WHERE f."customerId" IN (${ids.map(() => "?").join(", ")}) AND ${条件}) WHERE rn <= ${最近沟通先看条数}`,
+    ...ids,
+  );
+  const 按客户 = new Map<string, 行[]>();
+  for (const x of 先看) 按客户.set(x.cid, [...(按客户.get(x.cid) ?? []), x]);
+  const 找 = (们: 行[]) => {
+    // SQL 已按生效日倒排；这里按同一把尺再排一次（不依赖数据库的日期存法）
+    const 排 = 们.map((x) => ({ x, t: 生效(x) })).filter((y): y is { x: 行; t: Date } => !!y.t && y.t.getTime() <= 现在.getTime() + 生效时刻余量).sort((a, b) => b.t.getTime() - a.t.getTime());
+    return 排.find((y) => 有效(y.x))?.t ?? null;
+  };
+  for (const [cid, 们] of 按客户) {
+    let t = 找(们);
+    // 最近几条都无效：只这位往前翻
+    for (let 跳 = 们.length; !t && 们.length >= 最近沟通先看条数; 跳 += 200) {
+      const 往前 = await db.$queryRawUnsafe<行[]>(
+        `SELECT ${列} FROM "FollowUp" f WHERE f."customerId" = ? AND ${条件} ORDER BY ${沟通生效时刻SQL("f")} DESC, f.id DESC LIMIT 200 OFFSET ${跳}`,
+        cid,
+      );
+      t = 找(往前);
       if (往前.length < 200) break;
-      早于 = 往前[往前.length - 1].occurredAt;
     }
+    if (t) 出.set(cid, beijingDay(t));
   }
   return 出;
 }
@@ -489,6 +502,23 @@ export async function 写一批(规则: 组织规则, org: 组织, 们: Map<stri
     }
     return { 要收, 算 };
   }, { timeout: 60_000 });
+}
+
+/**
+ * 存沟通后马上重算这一位（用户 11-12「按建议」）：新建、编辑、删除、撤销一条沟通之后调，让列表的状态标签和状态筛选不用等夜扫。
+ * 就是夜扫里那段 写一批（一笔事务里按最新事实重收、算、写钟和留痕，和夜扫同时跑也只按事务里最新的写），只算这一位；
+ * 不自动进公海、不发提醒（那些照旧夜里做）。三态关着回去不查库；出任何错都吞掉——沟通已经存了，不能让重算把保存说成失败
+ */
+export async function 存沟通后重算三态(customerId: string | null | undefined, 现在: Date = new Date()): Promise<void> {
+  try {
+    if (!customerId) return;
+    const 规则 = await 生效组织规则();
+    if (!(await 三态开着(规则))) return;
+    const org = await 读组织();
+    await 看全部(() => 写一批(规则, org, [customerId], 现在, beijingDay(现在)));
+  } catch (e) {
+    console.error("存沟通后重算三态失败", e);
+  }
 }
 
 /** 别的路进了客户公海（手动放、离职放公海）的客户，钟还停在原状态：标成「公海」、留一行痕，列表按状态查时不混进待回收 */

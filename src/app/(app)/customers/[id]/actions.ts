@@ -37,6 +37,7 @@ import { 联系人查重, 联系人撞号话 } from "@/lib/enterprise/contact-de
 import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
 import { 是占位号, 占位号提示 } from "@/lib/placeholder-phone";
 import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
+import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
 
 const 只有总管理能恢复话 = "只有系统管理员或回收站副手能恢复删掉的记录";
 
@@ -275,6 +276,8 @@ export async function saveFollowUp(input: FollowUpInput) {
     // 客户最近跟进往后推了 = 名下项目的回收时钟续了：「再不跟进」的提醒跟着勾掉（11-03 B3-1）。按推进前的节点找提醒，放在自动推进前面
     await 客户跟进后勾掉将回收提醒(input.customerId, now);
     await 客户存了推项目(user, input.customerId);
+    // 客户三态：新建 / 改了一条沟通，马上重算这位的钟（不等夜扫；关着不查库，出错不影响保存）
+    await 存沟通后重算三态(input.customerId);
     // 客户三态（C12）：新记的这条不算有效沟通，回原因给前端一句轻提示（不拦；三态关着不查库）
     const 短沟通 = !input.id ? await 短沟通提示(result.id).catch(() => null) : null;
     return { ok: true as const, id: result.id, ...(短沟通 ? { 短沟通 } : {}), ...(result.待办id ? { 待办id: result.待办id } : {}), ...(result.下次计划id ? { 下次计划id: result.下次计划id } : {}), ...(领取了 ? { 领取了: true as const } : {}) };
@@ -311,6 +314,7 @@ export async function deleteFollowUp(id: string, customerId: string) {
         data: { lastFollowAt: latest?.occurredAt ?? null },
       });
     });
+    await 存沟通后重算三态(customerId);
   
     revalidatePath(`/customers/${customerId}`);
     revalidatePath("/follow-ups");
@@ -580,6 +584,7 @@ export async function 撤销记一笔(input: { customerId: string; 跟进id: str
     });
     if (!result.ok) return result;
     for (const audit of result.audits) await recordAudit(audit);
+    await 存沟通后重算三态(input.customerId);
     revalidatePath(`/customers/${input.customerId}`);
     revalidatePath("/follow-ups");
     revalidatePath("/follow-ups/plans");

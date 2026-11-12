@@ -5,7 +5,7 @@
  *     页面不自己推权限。逐身份和按钮动作同一套判定：继续持有看 tri-state-hold.ts 继续持有身份（本人、直属上级、待回收轮的条线总管理 /
  *     系统管理员），暂缓回收、让同事结束项目看 permissions.ts 能裁决三态 + 暂缓回收不给——界面给的都能调，能调的界面都给（11-12 第二轮）
  *   - 冷项目（C11，M-公海-22）：只在客户活跃时标。线索 / 商机阶段、没结束、没进公海的项目，最近一次换节点、最近一条挂在它上面的
- *     有效沟通（同客户钟那个判定，含占位词表；沟通日期和写入时间取早的，X-108）、建档三者取最晚，再不早于系统起算日；没动静满「标冷」天数（默认 90）标冷。一句 SQL
+ *     有效沟通（同客户钟那个判定，含占位词表；沟通生效日 = 沟通日期和写入时间取早的，M-公海-54）、建档三者取最晚，再不早于系统起算日；没动静满「标冷」天数（默认 90）标冷。一句 SQL
  *   - 状态留痕（C13）：最近 100 条，并进项目区「进程变更」卡的「客户状态」一段（没有进程变更卡时放左栏）。理由原文（继续持有写的、
  *     裁决写的、「由某某代选」）只有负责人本人、他的上级链、本线条线总管理、系统管理员看得到，别人只看谁、什么时候、做了什么（B1）
  *   - 短沟通提示（C12）：保存成功后按库里存下的内容判无效，回原因给前端一句轻提示；判的时候出错当没有，不影响保存结果
@@ -25,7 +25,7 @@ import { 换负责人原行of } from "@/lib/owner-log-db";
 import { 算三态, 差天, 待回收提醒次数, 三态起算日 } from "./tri-state";
 import { 收三态客户, 三态开着, 读占位词, 待交接理由, type 三态客户, type 痕原行 } from "./tri-state-db";
 import { 继续持有身份, 暂缓回收不给, 能代选了, 代选起始, type 在计时 } from "./tri-state-hold";
-import { 无效沟通原因of, 有内容的沟通, 规整占位词, 默认占位词, 占位词键, 暂缓回收, 让同事结束项目, type 无效沟通原因 } from "./tri-state-quota";
+import { 无效沟通原因of, 有内容的沟通, 沟通生效时刻, 沟通生效时刻SQL, 生效时刻余量, 规整占位词, 默认占位词, 占位词键, 暂缓回收, 让同事结束项目, type 无效沟通原因 } from "./tri-state-quota";
 import { 能裁决三态, 能继续持有三态, 能代选三态, 是市场角色, 是销售角色, type 谁 } from "./permissions";
 import { 条线的线 } from "./line-viewer";
 import { 读组织, 是系统管理员of, 实线下属, type 组织 } from "./org";
@@ -202,15 +202,6 @@ const 转时刻 = (v: unknown): number | null => {
   return Number.isNaN(t) ? null : t;
 };
 
-/**
- * 一条挂项目的沟通算作项目动静的时刻（C11 冷项目专用，客户钟不走这里）。X-108 待客户确认：
- * 客户原话要「按写入时间算、补录三个月前的沟通不把冷项目捞出来」，两句对不上；先取保守的——沟通日期和写入时间里较早的那个：
- * 补录旧沟通不清冷标，写成未来日期的也不能提前占位。改口径只改这里和 读冷项目 SQL 里同名的排序式
- */
-export function 沟通动静时刻(沟通日期: number, 写入时间: number | null): number {
-  return 写入时间 === null ? 沟通日期 : Math.min(沟通日期, 写入时间);
-}
-
 /** 每个项目最多看最近几条挂在它上面的沟通找有效的；都无效时拿最老那条的日子兜底（偏保守：少标冷，不多标） */
 export const 冷项目看沟通条数 = 50;
 
@@ -232,7 +223,7 @@ UNION ALL
 SELECT 'f' AS t, x.pid AS id, x.at AS a, x.cat AS b, x.content AS content, x.src AS src FROM (
   SELECT fp."projectId" AS pid, f."occurredAt" AS at, f."createdAt" AS cat, f.content AS content,
     EXISTS (SELECT 1 FROM "FollowUpSource" s WHERE s."followUpId" = f.id) AS src,
-    ROW_NUMBER() OVER (PARTITION BY fp."projectId" ORDER BY MIN(f."occurredAt", f."createdAt") DESC) AS rn
+    ROW_NUMBER() OVER (PARTITION BY fp."projectId" ORDER BY ${沟通生效时刻SQL("f")} DESC) AS rn
   FROM "FollowUpProject" fp JOIN "FollowUp" f ON f.id = fp."followUpId" JOIN "Project" p ON p.id = fp."projectId"
   WHERE ${合格} AND f."deletedAt" IS NULL
 ) x WHERE x.rn <= ${冷项目看沟通条数}`,
@@ -245,10 +236,11 @@ SELECT 'f' AS t, x.pid AS id, x.at AS a, x.cat AS b, x.content AS content, x.src
   for (const x of 行们) {
     if (x.t === "p") 项目.set(x.id, [x.a, x.b].map(转时刻).filter((t): t is number => t !== null && t <= 今));
     else {
+      const 写入 = 转时刻(x.b);
+      if (写入 === null) continue;
       const 日期 = 转时刻(x.a);
-      if (日期 === null) continue;
-      const t = 沟通动静时刻(日期, 转时刻(x.b));
-      if (t > 今) continue;
+      const t = 沟通生效时刻(日期 === null ? null : new Date(日期), new Date(写入)).getTime();
+      if (t > 今 + 生效时刻余量) continue;
       沟通.set(x.id, [...(沟通.get(x.id) ?? []), { t, 有效: 有内容的沟通(x.content, { 占位词: 词们, AI生成: Number(x.src) === 1 || x.src === true }) }]);
     }
   }

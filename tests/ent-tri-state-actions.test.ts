@@ -36,7 +36,7 @@ async function 转给(到: string, n: number) {
   await prisma.customerOwnerLog.create({ data: { customerId: 客户, userId: 人.系.id, fromOwnerId: c.salesOwnerId, toOwnerId: 到, kind: "assign", at: 第(n) } });
   await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 到 } });
 }
-const 沟通 = (n: number, content = "回访了", customerId = 客户) => prisma.followUp.create({ data: { type: "PHONE", title: "", content, customerId, ownerId: 人.乙.id, occurredAt: 第(n) } });
+const 沟通 = (n: number, content = "回访了", customerId = 客户) => prisma.followUp.create({ data: { type: "PHONE", title: "", content, customerId, ownerId: 人.乙.id, occurredAt: 第(n), createdAt: 第(n) } });
 
 beforeEach(async () => {
   await resetDb();

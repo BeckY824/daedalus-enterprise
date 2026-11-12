@@ -10,6 +10,23 @@
  */
 import type { 推后记录 } from "./tri-state";
 
+/**
+ * 沟通生效日（M-公海-54，客户 11-12 定）：一条沟通算哪天的动静，取「沟通日期」（occurredAt）和「记录写入时间」（createdAt）里较早的那个；
+ * 沟通日期为空时用写入时间。补录三个月前的沟通只算到三个月前那天，填了未来日期的按写入时间算。
+ * 一把尺管三处：客户的钟（tri-state-db.ts 最近沟通日们）、冷项目清冷（tri-state-detail.ts 读冷项目）、额度与暂缓次数重置（从同一个最近沟通日来）。
+ * 读库时在 SQL 里排序用 沟通生效时刻SQL，两边必须同一个取法
+ */
+export function 沟通生效时刻(沟通日期: Date | null | undefined, 写入时间: Date): Date {
+  return 沟通日期 && 沟通日期.getTime() < 写入时间.getTime() ? 沟通日期 : 写入时间;
+}
+/**
+ * 生效时刻晚于「现在」多少以内仍算（毫秒）：写入时间是数据库引擎记的，和调用方的「现在」可能差几毫秒，刚存的那条不能被当成未来的。
+ * 同保存时「发生时间不能在未来」那 1 分钟的余量
+ */
+export const 生效时刻余量 = 60_000;
+/** 同 沟通生效时刻，SQLite 表达式（表别名.列）：空的沟通日期落到写入时间 */
+export const 沟通生效时刻SQL = (表: string) => `MIN(COALESCE(${表}."occurredAt", ${表}."createdAt"), ${表}."createdAt")`;
+
 /** 留痕的方式（EntCustomerStateLog.via） */
 export const 留痕方式 = { 自动: "自动", 本人: "本人", 上级代选: "上级代选", 总管理代选: "总管理代选", 总管理裁决: "总管理裁决" } as const;
 export type 留痕方式 = (typeof 留痕方式)[keyof typeof 留痕方式];
