@@ -5,7 +5,10 @@
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { 三态叫法, 三态显示名, 三态标字, 三态标说明, 三态筛选值们, 换成新叫法, 暂缓回收按钮名 } from "@/lib/enterprise/tri-state-label";
+import { 三态叫法, 三态显示名, 三态标字, 三态标说明, 三态筛选值们, 换成新叫法, 暂缓回收按钮名, 进公海理由显示 } from "@/lib/enterprise/tri-state-label";
+import { 三态进公海理由, 被挡理由, 暂缓解除理由, 换状态理由 } from "@/lib/enterprise/tri-state-db";
+import { 留痕说法 } from "@/lib/enterprise/tri-state-detail";
+import { 自动进公海说法 } from "@/lib/enterprise/tri-state-quota";
 import { 汇总文字 } from "@/lib/enterprise/tri-state-notice";
 
 const 旧名 = /活跃|沉睡(?!待定)|待回收|暂缓回收中/;
@@ -30,15 +33,44 @@ describe("三态叫法", () => {
     expect(三态标字({ 态: "待回收", 几天后进公海: 12 })).toBe("即将回收 · 12 天后进公海");
   });
 
-  it("按钮名仍是「暂缓回收」，状态条上那颗按钮也是", () => {
-    expect(暂缓回收按钮名).toBe("暂缓回收");
+  it("按钮名「暂缓回收」和状态名「暂缓待收」故意不同；状态条上那颗按钮的字取这个常量，不另写一份", () => {
+    expect(暂缓回收按钮名).not.toBe(三态叫法.暂缓回收中);
+    expect(暂缓回收按钮名).not.toMatch(旧名);
     const 源 = readFileSync("src/lib/enterprise/tri-state-detail.ts", "utf8");
-    expect(源).toContain('动作: "暂缓回收", 字: "暂缓回收"');
+    expect(源).toContain('动作: "暂缓回收", 字: 暂缓回收按钮名');
+    expect(源).not.toContain('字: "暂缓回收"');
+  });
+
+  it("系统写进库的理由（被挡、暂缓解除、自动进公海、换状态）显示出来不带旧名；自动进公海那句留着「自动进客户公海」", () => {
+    for (const 句 of [被挡理由, 暂缓解除理由, 三态进公海理由(30)]) expect(换成新叫法(句), 句).not.toMatch(旧名);
+    expect(三态进公海理由(30)).toBe("进入即将回收满 30 天、3 次提醒都没人处理，自动进客户公海");
+    expect(三态进公海理由(30)).toContain(自动进公海说法);
+    const r = (订单在推: boolean) => ({ 订单在推, 节点天: { 沉睡: 90, 待回收: 120, 进公海: 150 } }) as unknown as Parameters<typeof 换状态理由>[2];
+    const 句们 = [
+      换状态理由("公海", "活跃", r(false)), 换状态理由("沉睡", "活跃", r(true)), 换状态理由("沉睡", "活跃", r(false)),
+      换状态理由("待回收", "沉睡", r(false)), 换状态理由("活跃", "沉睡", r(false)), 换状态理由("沉睡", "待回收", r(false)),
+    ];
+    for (const 句 of 句们) expect(句, 句).not.toMatch(旧名);
+  });
+
+  it("留痕说法：被挡那一行（自动、待回收 → 待回收）显示新名，「暂缓回收」写成进入暂缓待收", () => {
+    const 句 = 留痕说法({ fromState: "待回收", toState: "待回收", via: "自动", reason: 被挡理由, holdDays: null });
+    expect(句).not.toMatch(旧名);
+    expect(句).toBe("即将回收（到期该进公海，名下有同事在推的项目，进入暂缓待收，等条线总管理裁决）");
+  });
+
+  it("进公海理由显示：只认系统那一整句（老的「待回收满」、上一版「即将回收满」都换成现在的说法），别的理由原样", () => {
+    const 新 = "进入即将回收满 30 天、3 次提醒都没人处理，自动进客户公海";
+    expect(进公海理由显示("待回收满 30 天、3 次提醒都没人处理，自动进客户公海")).toBe(新);
+    expect(进公海理由显示("即将回收满 30 天、3 次提醒都没人处理，自动进客户公海")).toBe(新);
+    expect(进公海理由显示(新)).toBe(新);
+    expect(进公海理由显示("手动放回：客户说待回收满了再说")).toBe("手动放回：客户说待回收满了再说");
+    expect(进公海理由显示("待回收满 30 天、3 次提醒都没人处理，自动进客户公海。备注")).toBe("待回收满 30 天、3 次提醒都没人处理，自动进客户公海。备注");
   });
 
   it("库里老留痕的系统理由显示时换新名；「暂缓回收」动作、沉睡线 / 沉睡期不换；已是新名不重复换", () => {
     expect(换成新叫法("满 90 天没动静，进入沉睡")).toBe("满 90 天没动静，进入沉睡待定");
-    expect(换成新叫法("待回收满 30 天、3 次提醒都没人处理，自动进客户公海")).toBe("即将回收满 30 天、3 次提醒都没人处理，自动进客户公海");
+    expect(换成新叫法("待回收满 30 天、3 次提醒都没人处理，自动进客户公海")).toBe("进入即将回收满 30 天、3 次提醒都没人处理，自动进客户公海");
     expect(换成新叫法("名下有订单阶段没结束的项目，算活跃")).toBe("名下有订单阶段没结束的项目，算正常跟进");
     expect(换成新叫法("暂缓回收：月底前结项")).toBe("暂缓回收：月底前结项");
     expect(换成新叫法("沉睡线、沉睡期")).toBe("沉睡线、沉睡期");

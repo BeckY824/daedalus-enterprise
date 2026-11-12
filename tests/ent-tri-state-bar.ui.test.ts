@@ -20,7 +20,7 @@ const plugin: Plugin = { name: "tri-state-bar", setup(b) {
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 
-const 长说明 = "「我还在跟」和「写理由继续持有」共用一个额度：每次顺延 30 天、钟不归零；沉睡轮、待回收轮各限一次；累计最多 3 次、合计 90 天；已用 1 次";
+const 长说明 = "「我还在跟」和「写理由继续持有」共用一个额度：每次顺延 30 天、钟不归零；沉睡待定、即将回收两轮各限一次；累计最多 3 次、合计 90 天；已用 1 次";
 const 暂缓条 = {
   状态: "暂缓回收中", 文字: "到期该进公海，但名下有 3 位同事在推的项目，收不了".repeat(3), 悬停: "到期该进公海，但名下有 3 位同事在推的项目，收不了".repeat(3), 旁注: null,
   按钮们: [

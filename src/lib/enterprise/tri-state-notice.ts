@@ -176,11 +176,11 @@ export async function 已回公海通知(们: readonly 自动收了[], org: 组�
     const key = `tri-pooled:${x.id}:${今天}`;
     const 正文 = x.第几次 >= 2 ? `这位客户第 ${x.第几次} 次被自动收回` : "";
     if (本人在职(org, x.原负责人)) {
-      await notify([x.原负责人], { kind: "回收", title: `「${x.name}」即将回收期满没人处理，已回客户公海`, body: 正文, link: "/pool", key });
+      await notify([x.原负责人], { kind: "回收", title: `「${x.name}」即将回收阶段期满没人处理，已回客户公海`, body: 正文, link: "/pool", key });
     } else {
       // 原负责人停用了：改发他停用前的直属上级（同 T12 提醒，找直属上级：找不到往条线总管理、系统管理员兜）；抄送那条不再重复发
       const 代收 = 找直属上级(org, x.bizLine ?? null, x.原负责人);
-      await notify(代收, { kind: "回收", title: `停用账号名下的客户「${x.name}」即将回收期满没人处理，已回客户公海`, body: 正文, link: "/pool", key });
+      await notify(代收, { kind: "回收", title: `停用账号名下的客户「${x.name}」即将回收阶段期满没人处理，已回客户公海`, body: 正文, link: "/pool", key });
       if (上 && 代收.includes(上)) continue;
     }
     if (上 && 上 !== x.原负责人) {

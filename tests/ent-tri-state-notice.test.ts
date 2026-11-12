@@ -108,7 +108,7 @@ describe("三级提醒链", () => {
     await 过(210);
     expect(await prisma.customerPool.findUnique({ where: { customerId: 客户 } })).not.toBeNull();
     const 回 = (await 通知(人.乙)).filter((x) => x.dedupeKey.startsWith("tri-pooled:"));
-    expect(回.map((x) => x.title)).toEqual(["「客户甲」即将回收期满没人处理，已回客户公海"]);
+    expect(回.map((x) => x.title)).toEqual(["「客户甲」即将回收阶段期满没人处理，已回客户公海"]);
     // 第 1 次被收回不抄上级
     expect((await 通知(人.甲)).filter((x) => x.dedupeKey.startsWith("tri-pooled:"))).toHaveLength(0);
   });

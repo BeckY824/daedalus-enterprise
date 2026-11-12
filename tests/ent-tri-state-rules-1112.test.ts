@@ -590,7 +590,7 @@ describe("第三轮审查", () => {
     expect(await prisma.customerPool.findUnique({ where: { customerId: 客户 } })).not.toBeNull();
     const 回 = (u: string) => prisma.entNotice.findMany({ where: { userId: u, dedupeKey: { startsWith: "tri-pooled:" } }, select: { title: true } });
     expect(await 回(人.乙.id)).toHaveLength(0);
-    expect((await 回(人.甲.id)).map((x) => x.title)).toEqual(["停用账号名下的客户「客户甲」即将回收期满没人处理，已回客户公海"]);
+    expect((await 回(人.甲.id)).map((x) => x.title)).toEqual(["停用账号名下的客户「客户甲」即将回收阶段期满没人处理，已回客户公海"]);
   });
 
   it("到期暂缓回收、暂缓没用满 2 次：继续持有标志就是不能，和服务端拒的话一样；用满后能", async () => {

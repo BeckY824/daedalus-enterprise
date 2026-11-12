@@ -60,7 +60,7 @@ import type { 建档数据 } from "../projects/new/ProjectWizard";
 import { useViewAs } from "@/components/ViewAsContext";
 import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 import { 归档档位们 } from "@/lib/enterprise/archive-tier";
-import { 三态筛选值们, 三态标字, 三态标说明, 三态显示名, type 三态标 } from "@/lib/enterprise/tri-state-label";
+import { 三态筛选值们, 三态标字, 三态标说明, 三态显示名, 进公海理由显示, type 三态标 } from "@/lib/enterprise/tri-state-label";
 import { 字典of, 阶段们, type 阶段, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import type { 客户项目概况 } from "@/lib/project/customer-list-projects";
 import { 换客户页看法, 市场视图名 } from "@/lib/customers-view-pref";
@@ -840,7 +840,7 @@ export default function CustomersView({
       title: "负责人", 列名: "负责人", key: "salesOwnerName", dataIndex: "salesOwnerName", width: rows.some((r) => r.pool) ? 140 : 宽(140, 92),
       // 在公海里：写「公海（原 X）」——原负责人还挂着，但谁都能领
       render: (v: string, r: CustomerRow) => r.pool
-        ? <Tag className="pool-tag" title={`${公海标签(v)} · ${r.pool.reason === "手动" ? "手动放回公海" : r.pool.reason}`}>{公海标签(v)}</Tag>
+        ? <Tag className="pool-tag" title={`${公海标签(v)} · ${r.pool.reason === "手动" ? "手动放回公海" : 进公海理由显示(r.pool.reason)}`}>{公海标签(v)}</Tag>
         : <UserCell name={v} size={24} />,
     }]),
     // 三列各收一点，1366 宽时默认列和公海列都不用左右拖（10-27）；负责人不收，「公海（原 X）」要放得下

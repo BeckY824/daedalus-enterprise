@@ -142,7 +142,7 @@ export const 项目写工具: Tool[] = [
     name: "propose_project_followup",
     description: `建议在一个项目上记一条沟通，同时定下一步（做什么、哪天）。只出建议卡，人确认后才记。\
 开了超时回收的线索、商机项目，下一步时间必填。要顺手发卡点用 propose_blocker_add。`,
-    args: `{"project": "项目名或客户名", "projectId": "项目 id，可空", "type": "沟通方式，默认电话", "content": "沟通内容", "下一步": "下一步做什么", "下一步时间": "YYYY-MM-DD，可空", "reason": "一句话理由"}`,
+    args: `{"project": "项目名或客户名", "projectId": "项目 id，可空", "type": "沟通方式，默认电话", "content": "沟通内容", "下一步": "下一步计划", "下一步时间": "YYYY-MM-DD，可空", "reason": "一句话理由"}`,
     async run(a, ctx) {
       return 沟通卡(a, ctx, false);
     },
@@ -151,7 +151,7 @@ export const 项目写工具: Tool[] = [
     name: "propose_blocker_add",
     description: `建议给一个项目加一个卡点（卡点跟着一条沟通发布，和项目页「记沟通 + 发卡点」一样）。只出建议卡，人确认后才发。\
 卡点类型：${卡点类型说}；影响等级：${影响等级们.join("/")}。`,
-    args: `{"project": "项目名或客户名", "projectId": "项目 id，可空", "卡点类型": "${卡点类型说}", "影响等级": "${影响等级们.join("/")}，可空", "卡点描述": "卡在哪", "type": "沟通方式，默认电话", "content": "这次沟通内容，可空（空就用卡点描述）", "下一步": "下一步做什么", "下一步时间": "YYYY-MM-DD，可空", "reason": "一句话理由"}`,
+    args: `{"project": "项目名或客户名", "projectId": "项目 id，可空", "卡点类型": "${卡点类型说}", "影响等级": "${影响等级们.join("/")}，可空", "卡点描述": "卡在哪", "type": "沟通方式，默认电话", "content": "这次沟通内容，可空（空就用卡点描述）", "下一步": "下一步计划", "下一步时间": "YYYY-MM-DD，可空", "reason": "一句话理由"}`,
     async run(a, ctx) {
       return 沟通卡(a, ctx, true);
     },
