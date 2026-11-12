@@ -90,12 +90,21 @@ test("最小窗口 1024：列表筛选行一行摆下，「列」不被挤到第
   for (const 路 of 企业版 ? ["/customers", "/projects", "/channels", "/follow-ups"] : ["/customers", "/opportunities", "/follow-ups"]) {
     await page.goto(路);
     if (路 === "/projects") await page.getByText("列表", { exact: true }).first().click();
-    await page.waitForSelector(".list-bar");
-    const 顶 = await page.locator(".list-bar").evaluate((b) => {
-      const 项 = [...b.querySelectorAll(":scope > .ant-space > .ant-space-item, :scope > .ant-btn, :scope > .ant-dropdown-trigger")];
-      return 项.map((e) => Math.round(e.getBoundingClientRect().top));
+    // 只看摆着的那条：生产构建下 DOM 里有时多一份藏着（display:none）的同页，里面也有 .list-bar（本机 E2E_PROD 实测，严格模式会撞上两个）
+    const 条 = page.locator(".list-bar:visible");
+    await 条.waitFor();
+    // 带「挤」项的筛选组（客户页阶段 / 进程）：React 接管、量过之后才定哪几项收进「更多筛选」，接管前放不下的藏在行尾。
+    // 等量过再看，免得量到的是接管前那一刻（components/CustomFilters.tsx useSqueezeRow）
+    if (await 条.locator(".cf-probe").count()) await 条.locator(".cf-probe[data-cf-ready]").waitFor({ state: "attached" });
+    const { 顶, 越界 } = await 条.evaluate((b) => {
+      const 右 = b.getBoundingClientRect().right;
+      // 不显示的格不算（探针那一格 display:none，top 恒为 0）
+      const 项 = [...b.querySelectorAll(":scope > .ant-space > .ant-space-item, :scope > .ant-btn, :scope > .ant-dropdown-trigger")]
+        .filter((e) => e.getClientRects().length > 0);
+      return { 顶: 项.map((e) => Math.round(e.getBoundingClientRect().top)), 越界: 项.filter((e) => e.getBoundingClientRect().right > 右 + 0.5).length };
     });
     expect(new Set(顶).size, `${路} 的筛选行折成了 ${new Set(顶).size} 行：${顶.join(",")}`).toBe(1);
+    expect(越界, `${路} 的筛选行有 ${越界} 格伸出了行尾（被藏住）`).toBe(0);
   }
 });
 
