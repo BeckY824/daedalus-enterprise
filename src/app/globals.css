@@ -3857,6 +3857,9 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .cd-notice > .ant-alert { margin-bottom: 0 !important; }
 /* 右上角「项目操作 ▾」第一行：灰字「当前项目：名字」，不可点；名字太长一行省略、悬停看全 */
 .rec-head-menu .rec-menu-cur { cursor: default !important; }
+/* 菜单项两行（project-menu.tsx 两行）：上面名字，下面一行淡色小字说明 */
+.menu-2l { line-height: 1.4; padding: 2px 0; max-width: 280px; white-space: normal; }
+.menu-2l-note { font-size: var(--dt-aux, 12px); color: var(--text-muted); }
 .rec-menu-cur-t { display: block; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: var(--fs-min); }
 
 /* 项目区第一行：页签那段可缩、每个页签放不下省略（悬停看全，TruncTip + title），缩到底还放不下就横着滚（审查 #1：项目多、1024 宽时不能把锁和新建裁掉）；
@@ -3882,6 +3885,10 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .cd-pj-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: inherit; }
 .cd-pj-st { flex: none; font-style: normal; font-size: var(--fs-min); opacity: .75; }
 .cd-pj-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; }
+/* 胶囊上的阶段色点：和阶段条 阶段色（ProjectStages.tsx，palette.ts 的 categorical.cyan / brand / green）同一组 token */
+.cd-pj-dot[data-stage="线索"] { background: var(--cat-cyan); }
+.cd-pj-dot[data-stage="商机"] { background: var(--brand); }
+.cd-pj-dot[data-stage="订单"] { background: var(--cat-green); }
 .cd-pj-ruler { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: hidden; visibility: hidden; pointer-events: none; display: flex; gap: 6px; }
 .cd-pj-one { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .cd-pj-one > .cd-pj-nm { color: var(--ink); font-size: var(--fs-section); font-weight: 600; }

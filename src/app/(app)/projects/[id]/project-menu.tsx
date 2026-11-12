@@ -35,9 +35,9 @@ export const 项目忙说法 = "正在处理上一步，稍等";
 /** 菜单项两行：上面是名字，下面一行淡色小字说明（灰着的原因、会跳过哪几步…） */
 export function 两行(名: string, 注?: string) {
   return (
-    <div style={{ lineHeight: 1.4, padding: "2px 0", maxWidth: 280, whiteSpace: "normal" }}>
+    <div className="menu-2l">
       <div>{名}</div>
-      {注 && <div style={{ fontSize: "var(--dt-aux, 12px)", color: "var(--text-muted)" }}>{注}</div>}
+      {注 && <div className="menu-2l-note">{注}</div>}
     </div>
   );
 }

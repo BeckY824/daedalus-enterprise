@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, Dropdown } from "antd";
 import { DownOutlined } from "@ant-design/icons";
-import { 阶段色 } from "../../projects/[id]/ProjectStages";
 import { FoldSplit, ProjectFold, 模块钮色 } from "../../projects/[id]/ProjectFold";
 import ProjectDetail, { type 项目详情Props } from "../../projects/[id]/ProjectDetail";
 import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
@@ -58,7 +57,7 @@ function 胶囊身({ t }: { t: 项目页签 }) {
   const 标 = 标of(t);
   return (
     <>
-      {!t.结局 && t.阶段 && <span className="cd-pj-dot" aria-hidden style={{ background: 阶段色[t.阶段] }} />}
+      {!t.结局 && t.阶段 && <span className="cd-pj-dot" aria-hidden data-stage={t.阶段} />}
       <b className="cd-pj-nm">{t.name}</b>
       <em className="cd-pj-st">{标}</em>
       {t.冷天数 != null && <span className="cd-cold" title={`${t.冷天数} 天没有推进`}>冷</span>}
@@ -135,7 +134,7 @@ export function ProjectSwitch({ 数据, 当前id }: { 数据: 项目区数据; �
           <span className="cd-pj-one" title={`${t.name} · ${标of(t)}`}>
             <b className="cd-pj-nm">{t.name}</b>
             <span className="cd-pj-tag">
-              {!t.结局 && t.阶段 && <span className="cd-pj-dot" aria-hidden style={{ background: 阶段色[t.阶段] }} />}
+              {!t.结局 && t.阶段 && <span className="cd-pj-dot" aria-hidden data-stage={t.阶段} />}
               {标of(t)}
             </span>
             {t.冷天数 != null && <span className="cd-cold" title={`${t.冷天数} 天没有推进`}>冷</span>}
