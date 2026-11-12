@@ -703,7 +703,7 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
         if (写了.count === 0) return null;
       }
       // 企业版记下谁建的（迁移 135）：受限客户详情里只负责项目的人只能改自己建的
-      const savedId = input.id ?? (await tx.contact.create({ data: { ...data, ...(企业版() ? { createdById: me.id } : {}) } })).id;
+      const savedId = input.id ?? (await tx.contact.create({ data })).id;
       // 企业版：新建的联系人在主客户上记一行挂靠（客户页的联系人卡片、联系人页都按挂靠表 + 主客户列出来）
       if (!input.id && 企业版()) await tx.contactCustomer.create({ data: { contactId: savedId, customerId: 主客户 } });
       /*

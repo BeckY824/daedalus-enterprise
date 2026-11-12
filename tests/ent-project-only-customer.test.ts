@@ -52,7 +52,7 @@ import { 项目链接们 } from "@/lib/project/customer-detail-direct";
 import ProjectPage from "@/app/(app)/projects/[id]/page";
 import CustomerDetailPage from "@/app/(app)/customers/[id]/page";
 import CustomersPage from "@/app/(app)/customers/page";
-import type { 受限客户详情 } from "@/app/(app)/customers/[id]/restricted";
+import { 读受限客户详情, type 受限客户详情 } from "@/app/(app)/customers/[id]/restricted";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 let 总管: 人, 销售管理: 人, 虚线管理: 人, 甲: 人, 乙: 人, 丙: 人;
@@ -79,6 +79,11 @@ const 联系人 = async (customerId: string, name: string, extra: Record<string,
 };
 const 挂项目 = (projectId: string, contactId: string) => prisma.projectContact.create({ data: { projectId, contactId } });
 const 集合 = (u: 人) => 以(u, () => 仅项目客户们(u));
+/** 挡的键各给一个「这位客户对得上」的值（看板、客户列表块共用这份；没列的给 "x"）：有值就该不参与 */
+const 挡键样值 = (x: { phone: string; custStatus: string; 负责人: string }): Record<string, string> => ({
+  createdWithin: "本月", createdFrom: "2020-01-01", createdTo: "2099-12-31", phone: x.phone, level: "A", custStatus: x.custStatus, salesOwnerId: x.负责人,
+});
+const 挡键们 = () => (Object.entries(仅项目筛选口径) as [string, string][]).filter(([, v]) => v === "挡").map(([k]) => k);
 
 beforeEach(async () => {
   await resetDb();
@@ -212,12 +217,30 @@ describe("saveContact 守卫（提交 2）", () => {
     }
   });
 
-  it("客户负责人照常新建，记下是谁建的", async () => {
+  it("客户负责人照常新建；createdById 留空（只有受限详情的两个动作写它）", async () => {
     const c = await 客户(甲.id);
     忘掉企业版范围();
     const r = await 新建(甲, c, "负责人新建");
     expect(r.ok).toBe(true);
-    expect((await prisma.contact.findFirstOrThrow({ where: { name: "负责人新建" } })).createdById).toBe(甲.id);
+    expect((await prisma.contact.findFirstOrThrow({ where: { name: "负责人新建" } })).createdById).toBeNull();
+  });
+
+  it("乙以前当客户负责人时建的联系人：客户转走后，在受限详情里改不了", async () => {
+    const c = await 客户(乙.id);
+    const p = await 项目(c, 乙.id);
+    忘掉企业版范围();
+    expect((await 新建(乙, c, "乙当负责人时建的")).ok).toBe(true);
+    const 人id = (await prisma.contact.findFirstOrThrow({ where: { name: "乙当负责人时建的" } })).id;
+    await 挂项目(p, 人id);
+    await prisma.customer.update({ where: { id: c }, data: { salesOwnerId: 甲.id } });
+    忘掉企业版范围();
+    expect(await 以(乙, () => 仅项目可见(乙, c))).toEqual([p]);
+    const 详情 = (await 以(乙, () => 读受限客户详情(乙 as never, c, null)))!;
+    expect(详情.可改联系人.map((x) => x.id)).not.toContain(人id);
+    const 旧 = await prisma.contact.findUniqueOrThrow({ where: { id: 人id } });
+    const r = await 以(乙, () => 改仅项目联系人Action(人id, { name: "乙偷改", 版本: 旧.updatedAt.toISOString() }));
+    expect(r.ok).toBe(false);
+    expect((await prisma.contact.findUniqueOrThrow({ where: { id: 人id } })).name).toBe("乙当负责人时建的");
   });
 });
 
@@ -255,6 +278,17 @@ describe("客户页看板（提交 3）", () => {
     const 再 = async (q: string) => { const r = await 以(乙, () => 再看一列(q, 列, 0)); return r.ok ? r.行.map((x) => x.id) : []; };
     expect(await 再(`keyword=${encodeURIComponent(手机)}`)).not.toContain(p);
     expect(await 再("keyword=%E7%9C%8B%E6%9D%BF%E7%AE%80%E7%A7%B0")).toContain(p);
+  });
+
+  it("逐个挡的键（和客户列表块同一份名单）：卡消失；阶段 / 进程 / 回收状态是看板按项目的筛选（或看板不认）、dept 企业版不认，不算客户筛选", async () => {
+    const { p, 手机 } = await 搭();
+    const 值 = 挡键样值({ phone: 手机, custStatus: "特征状态", 负责人: 甲.id });
+    for (const k of 挡键们()) {
+      if (k === "phase" || k === "node" || k === "triState") continue;
+      // dept 是团队版（.team.json 编制）的部门筛选，企业版客户筛选条件不认 = 谁都等于没筛，看板照常（不是放宽）
+      if (k === "dept") { expect((await 看板(乙, { dept: "x" })).ids).toEqual((await 看板(乙)).ids); continue; }
+      expect((await 看板(乙, { [k]: 值[k] ?? "x" })).ids, k).not.toContain(p);
+    }
   });
 
   it("客户负责人照常按号码筛得到（看得到的那一支不变）", async () => {
@@ -300,9 +334,8 @@ describe("客户列表「仅项目」一小块（收尾 7）", () => {
 
   it("别的筛选（每个挡的键）、按金额 / 级别 / 创建时间排、号码 / 备注当关键词：这一块不摆", async () => {
     const { 行 } = await 搭();
-    const 值: Record<string, string> = { createdWithin: "本月", createdFrom: "2020-01-01", createdTo: "2099-12-31", phone: 行.phone!, level: "A", custStatus: "块特征状态", salesOwnerId: 甲.id };
-    for (const [k, v] of Object.entries(仅项目筛选口径)) {
-      if (v !== "挡") continue;
+    const 值 = 挡键样值({ phone: 行.phone!, custStatus: "块特征状态", 负责人: 甲.id });
+    for (const k of 挡键们()) {
       // 三态关着：列表把地址栏的 triState 当没筛（query.ts），这一块也当没筛
       if (k === "triState") {
         expect(块ids(await 页(乙, { triState: "沉睡" })), k).toHaveLength(1);
@@ -348,6 +381,23 @@ describe("项目列表 /projects 的关键词、手机号（收尾 9）", () => 
     expect(await 列表(甲, { phone: 行.phone! })).toContain(甲项目);
     expect(await 列表(甲, { phone: "13722223333" })).toContain(甲项目);
   });
+
+  it("按渠道（channelId）筛、渠道列：客户看不到时不认客户的来源，只认项目自己选的；客户看得到的照旧", async () => {
+    const 渠 = await prisma.channel.create({ data: { name: "收尾渠道甲", channelOwnerId: 总管.id } });
+    const c = await 客户(甲.id, { channelId: 渠.id });
+    const p跟客户 = await 项目(c, 乙.id);
+    const p自己选 = await 项目(c, 乙.id, { channelId: 渠.id });
+    const 甲项目 = await 项目(c, 甲.id);
+    忘掉企业版范围();
+    const 乙的 = await 列表(乙, { channelId: 渠.id });
+    expect(乙的).not.toContain(p跟客户);
+    expect(乙的).toContain(p自己选);
+    const 行们 = (await 以(乙, () => 读项目列表(乙 as never, {} as never))).行;
+    expect(行们.find((r) => r.id === p跟客户)?.项目来源 ?? null).toBeNull();
+    expect(行们.find((r) => r.id === p自己选)?.项目来源).toBe("收尾渠道甲");
+    expect(await 列表(甲, { channelId: 渠.id })).toContain(甲项目);
+    expect((await 以(甲, () => 读项目列表(甲 as never, {} as never))).行.find((r) => r.id === 甲项目)?.项目来源).toBe("收尾渠道甲");
+  });
 });
 
 describe("受限客户详情（提交 4）", () => {
@@ -365,7 +415,8 @@ describe("受限客户详情（提交 4）", () => {
   };
   /** 客户归甲；乙一个项目（王在上面）、乙一个已结束的项目；丙一个在推项目（李、同事沟通、合同金额）；客户级老跟进、甲的待办 */
   const 搭 = async () => {
-    const c = await 客户(甲.id, { remark: "特征备注", custStatus: "特征状态", phone: "13900009999", lastFollowAt: new Date("2026-01-02T03:04:05Z") });
+    const 渠道 = await prisma.channel.create({ data: { name: "特征客户渠道名", channelOwnerId: 总管.id } });
+    const c = await 客户(甲.id, { remark: "特征备注", custStatus: "特征状态", phone: "13900009999", lastFollowAt: new Date("2026-01-02T03:04:05Z"), channelId: 渠道.id });
     await prisma.customerExtra.create({ data: { customerId: c, level: "S" } });
     const 王 = await 联系人(c, "王联系", { phone: "13711110001" });
     const 李 = await 联系人(c, "李联系", { phone: "13711110002", wechat: "wx同事李" });
@@ -408,11 +459,15 @@ describe("受限客户详情（提交 4）", () => {
     const 当前 = d.项目区.当前!;
     const { 候选, 在职, ...其余 } = 当前;
     expect([...候选, ...在职].every((u) => Object.keys(u).every((k) => ["id", "name", "email", "role", "title", "avatar", "active"].includes(k)))).toBe(true);
-    const 文 = JSON.stringify({ ...d, 项目区: { ...d.项目区, 当前: 其余 } });
+    // 渠道选项（项目自己选渠道用）是全公司的渠道名单，和这位客户无关，单独看：这位客户的来源不能挂在项目来源上
+    const { 渠道们: _渠道选项, ...项目其余 } = 其余.p as typeof 其余.p & { 渠道们?: unknown };
+    expect((其余.p as { 项目来源?: unknown }).项目来源 ?? null).toBeNull();
+    const 文 = JSON.stringify({ ...d, 项目区: { ...d.项目区, 当前: { ...其余, p: 项目其余 } } });
     const 李行 = await prisma.contact.findUniqueOrThrow({ where: { id: 李 } });
-    for (const 不该有 of ["13900009999", 李行.phone!, "wx同事李", "987654", "876543", "765432", "salesOwnerId", 甲.name, 甲.id, "特征状态", "custStatus", "lastFollowAt", "2026-01-02", "特征备注", "同事项目备注", "同事丙的沟通", "客户级老跟进", "甲的客户待办", q]) {
+    for (const 不该有 of ["13900009999", 李行.phone!, "wx同事李", "987654", "876543", "765432", "salesOwnerId", 甲.name, 甲.id, "特征状态", "custStatus", "lastFollowAt", "2026-01-02", "特征备注", "同事项目备注", "同事丙的沟通", "客户级老跟进", "甲的客户待办", "特征客户渠道名", q]) {
       expect(文, 不该有).not.toContain(不该有);
     }
+    // 回收日（项目自己的，按项目算）不要求挡：是他自己项目的事
     // 客户级别（S）：卡上没有这一格；页面里的 level 只有项目自己的级别（没填 = null）
     expect(Object.keys(d.卡.客户)).not.toContain("level");
     expect((当前.p as { level?: unknown }).level ?? null).toBeNull();
@@ -592,6 +647,18 @@ describe("路由连带（提交 6）", () => {
     expect((await 以(乙, () => 项目链接们(乙 as never, [p]))).get(p)).toBe(到);
     const 行 = (await 以(乙, () => 读项目列表(乙 as never, {} as never))).行.find((r) => r.id === p);
     expect(行?.进不了客户详情).toBeUndefined();
+  });
+
+  it("市场成员自己负责、看不到客户的项目：不进集合、项目页不跳、列表仍标进不了", async () => {
+    const 市场 = await 造人("mkt", "市场成员某", "SALES", "channel_ops");
+    const c = await 客户(甲.id);
+    const p = await 项目(c, 市场.id);
+    忘掉企业版范围();
+    expect((await 集合(市场)).size).toBe(0);
+    expect(await 以(市场, () => 项目页去向(市场 as never, p))).not.toEqual(expect.objectContaining({ 种: "客户页" }));
+    expect((await 以(市场, () => 项目链接们(市场 as never, [p]))).get(p)).toBe(`/projects/${p}`);
+    const 行 = (await 以(市场, () => 读项目列表(市场 as never, {} as never))).行.find((r) => r.id === p);
+    expect(行?.进不了客户详情).toBe(true);
   });
 
   it("实线上级看下属负责、外组客户的项目：仍是只读卡（留在项目页、列表标进不了）", async () => {

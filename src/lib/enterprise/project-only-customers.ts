@@ -18,7 +18,7 @@ import type { 客户条件 } from "@/app/(app)/customers/query";
 import { 企业版只用项目 } from "./project-only";
 import { 权限组织 } from "./org";
 import { 能看项目, type 谁 } from "./permissions";
-import { 市场进不了详情的 } from "./market-view-db";
+import { 市场进不了详情的, 读市场身份 } from "./market-view-db";
 
 /** 一次请求一份（React cache；测试里直通，每次现算） */
 const 按人算 = cache(async (meId: string, role: string): Promise<Map<string, string[]>> => {
@@ -26,9 +26,12 @@ const 按人算 = cache(async (meId: string, role: string): Promise<Map<string, 
   if (!(await 企业版只用项目())) return 空;
   // 不限定（老板、按组织看客户关着）：客户本来都看得到，没有「仅项目」这回事
   if (!(await 限定的我(defaultClient))) return 空;
+  // 市场成员、市场管理（11-12 审查，最保守）：一律不进「仅项目」，看不到的客户照旧只读卡 / 进不了（他们的客户页是另一套视图）
+  if (await 读市场身份(meId)) return 空;
   // 候选：本人负责、没进公海、没在等分配（等分配期间只是先占着负责人一格，P-转-21）的项目；客户没进公海、没删
   const 候选 = await 看全部(() => prisma.project.findMany({
-    where: { ownerId: meId, pooledAt: null, deletedAt: null, awaitAssignAt: null, customer: { deletedAt: null, pool: { is: null } } },
+    // 自己负责的客户先砍掉（本来就看得到，省得每个销售每次都把自己的项目全捞一遍）；剩下的再按限定层核
+    where: { ownerId: meId, pooledAt: null, deletedAt: null, awaitAssignAt: null, customer: { deletedAt: null, pool: { is: null } }, NOT: { customer: { salesOwnerId: meId } } },
     select: { bizLine: true, id: true, customerId: true, ownerId: true, creatorId: true, pooledAt: true, updatedAt: true, members: { where: { inviteStatus: "JOINED" }, select: { userId: true } } },
     orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
   }));

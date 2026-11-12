@@ -445,6 +445,11 @@ export type 嵌在客户页 = {
   客户状态留痕?: ReactNode;
   /** 受限客户详情（只负责项目的人）：不给「这位客户全部」，沟通卡只看本项目 */
   无全部沟通?: boolean;
+  /**
+   * 受限客户详情：这是他在这位客户下最后一个项目时给。转让 / 退回公海 / 删除成功、自己看不到这个项目了，
+   * 回客户页会 404，改去这里（客户列表）并提示一句
+   */
+  走后去?: { 到: string; 说法: string } | null;
 };
 
 export default function ProjectDetail({
@@ -647,13 +652,20 @@ export default function ProjectDetail({
   };
 
   /** 转让项目（U-项目-07）：弹窗里点「确认转让」就换负责人，不再等 6 秒撤销；下一步、卡点、沟通都跟着项目走（11-03 A2-3）；你可能就看不到这个项目了，回项目列表 */
+  /** 转走 / 退回公海 / 删掉、自己看不到这个项目了：回客户页（嵌在客户页）或项目列表；受限详情里没别的项目了回客户列表 */
+  const 走开 = () => {
+    if (嵌入?.走后去) {
+      message.info(嵌入.走后去.说法);
+      router.push(嵌入.走后去.到);
+    } else router.push(嵌入?.客户页 ?? "/projects");
+  };
   const 确认转给 = async (新: string) => {
     const 名 = 候选.find((m) => m.id === 新)?.name ?? "TA";
     const ok = await 跑(() => 编辑项目(p.id, { name: p.name, ownerId: 新, amount: p.amount, currency: p.currency, remark: p.remark ?? "", contactId: p.contact?.id ?? null }, 带待办勾出 ? 转给带待办 : undefined), `已转给 ${名}`);
     if (!ok) return;
     set转给框(false);
     // 转完自己还看得到（总管理、上级）就留在这页，看不到才回列表
-    if (!p.转后还能看?.includes(新)) router.push(嵌入?.客户页 ?? "/projects");
+    if (!p.转后还能看?.includes(新)) 走开();
   };
   const 转给名 = 转给谁 ? (候选.find((m) => m.id === 转给谁)?.name ?? "TA") : null;
 
@@ -668,7 +680,7 @@ export default function ProjectDetail({
       if (!r.ok) message.error(r.error);
       else {
         message.success("已删除项目，沟通记录还留在客户下");
-        router.push(嵌入?.客户页 ?? "/projects");
+        走开();
       }
     } finally {
       set忙(false);
@@ -1538,7 +1550,7 @@ export default function ProjectDetail({
           const ok = await 跑(() => 放回项目公海(p.id, 回收原因));
           if (ok) message.success("项目已退回公海");
           // 企业版放回后原负责人看不到这个项目了（C-01，lib/project/pool-owner.ts 原负责人回避），回项目列表
-          if (ok) { set放回框(false); router.push(嵌入?.客户页 ?? "/projects"); }
+          if (ok) { set放回框(false); 走开(); }
         }}
       >
         <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>只退这个项目：退回去以后同事都能领，你作为原负责人不能再领回来，也看不到它了；你会记成这个项目的历史负责人，你在这个项目上没做完的待办会自动关闭。客户和客户负责人不动。</div>

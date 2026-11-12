@@ -268,7 +268,7 @@ const 派生: Record<string, Record<string, string>> = {
     detachedAt: "移出的时刻，系统打上",
   },
   FollowPlan: { plannedOn: "仅日期的原日历日，保存时派生并随同步保留", plannedHasTime: "明确钟点选择；旧数据未知为空", ownerId: "创建者，不做转派", doneAt: "实际完成时系统记录；撤销完成清空，旧记录未知则为空，不允许手工伪造" },
-  Contact: { deletedAt: "企业版删除时打上（进回收站），恢复时清掉；30 天后连行真删，不给改（lib/enterprise/soft-delete.ts）", createdById: "企业版新建时打上建的人（迁移 135），受限客户详情认「自己建的才能改」，不给改" },
+  Contact: { deletedAt: "企业版删除时打上（进回收站），恢复时清掉；30 天后连行真删，不给改（lib/enterprise/soft-delete.ts）", createdById: "只在受限客户详情新增时打上建的人（迁移 135，project-only-contact-actions.ts）；客户详情 saveContact 建的留空 = 不是从受限详情建的。受限详情认「自己建的才能改」，不给改" },
   FollowUp: { dueOn: "仅日期原日历日，随派生待办/撤销保存", dueHasTime: "明确钟点选择；旧数据未知为空", ownerId: "记录人，不做转派", deletedAt: "企业版删除时打上（进回收站），恢复时清掉；30 天后连行真删，不给改（lib/enterprise/soft-delete.ts）" },
   AiConversation: {
     ownerId: "问的人，落库时打上。对话只有自己看得见，转派没有意义",

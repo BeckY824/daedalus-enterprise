@@ -394,7 +394,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       旧职位={[...new Set(旧职位)]}
       国家们={用着的国家.map((x) => x.country!).filter(Boolean)}
       项目概况={项目概况}
-      仅项目行={await 仅项目行P}
+      {...await 仅项目行P.then((x) => (x ? { 仅项目行: x.行们, 仅项目超了: x.超了 } : {}))}
       三态标={三态标}
       项目看板={按项目}
       市场视图={市场角色}

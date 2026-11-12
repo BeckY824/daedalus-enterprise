@@ -14,7 +14,7 @@ const 一行 = (t: string | null | undefined) => (有值(t) ? <span title={t!}>{
  * 和下面的客户表格分开：不能勾、没有行菜单、不进总数和导出；负责人、级别、客户状态、最近跟进几格空着（这些他看不到）。
  * 一行、省略号、悬停看全（dl-one-line + title，全站 TruncTip）；列宽按百分比，1024 / 1280 / 1366 都不横滚。点一行进受限客户详情
  */
-export default function ProjectOnlyBlock({ 行们 }: { 行们: 仅项目列表行[] }) {
+export default function ProjectOnlyBlock({ 行们, 超了 = false }: { 行们: 仅项目列表行[]; 超了?: boolean }) {
   const router = useRouter();
   if (!行们.length) return null;
   const 列: ColumnsType<仅项目列表行> = [
@@ -44,7 +44,11 @@ export default function ProjectOnlyBlock({ 行们 }: { 行们: 仅项目列表�
     <section className="cust-ponly dl-one-line" aria-label="仅项目的客户" data-testid="project-only-block">
       <div className="cust-ponly-h">
         <span>仅项目</span>
-        <span className="muted">客户不归你、你负责其中的项目（{行们.length} 位，不计入下面的总数）</span>
+        <span className="muted">
+          {超了
+            ? `客户不归你、你负责其中的项目（前 ${行们.length} 位，更多请在看板里看；不计入下面的总数）`
+            : `客户不归你、你负责其中的项目（${行们.length} 位，不计入下面的总数）`}
+        </span>
       </div>
       <Table<仅项目列表行>
         rowKey="id"

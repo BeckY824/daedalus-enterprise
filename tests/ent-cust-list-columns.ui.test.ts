@@ -46,7 +46,7 @@ beforeAll(async () => {
     const rows=[行('c1','me'),行('c2','u2'),行('c3','me')].map(r=>window.__公海?{...r,pool:{reason:'超时回收'}}:r);
     const 项目概况={c1:{项目数:12,当前节点:'异常 · 某个后台改得特别特别长的节点名字',当前阶段:'订单'},c2:{项目数:1,当前节点:'方案敲定',当前阶段:'商机'}};
     const 树=(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'me',name:'小王'}}>
-      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:window.__阶段||'',node:'',...(window.__三态?{triState:''}:{})}} 三态标={window.__三态?{c1:{态:'待回收',几天后进公海:12},c2:{态:'暂缓回收中'},c3:{态:'不计时'}}:undefined} 客户数={3} 企业版 项目概况={项目概况} 项目看板={!window.__非项目} 能新建和领取={!window.__不能新建} 待交接={window.__交接??null} 看板体={window.__看板?<假看板/>:undefined} 市场视图={!!window.__市场} 仅项目行={window.__仅项目?[{id:'x1',name:'仅项目的'+长,shortName:null,school:null,customerType:'某个特别长的客户类型名字',customerAttr:null,地区:'浙江省 杭州市 西湖区',当前节点:'某个后台改得特别特别长的节点名字',当前阶段:'商机',项目数:2,仅项目:true}]:undefined}/>
+      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:window.__阶段||'',node:'',...(window.__三态?{triState:''}:{})}} 三态标={window.__三态?{c1:{态:'待回收',几天后进公海:12},c2:{态:'暂缓回收中'},c3:{态:'不计时'}}:undefined} 客户数={3} 企业版 项目概况={项目概况} 项目看板={!window.__非项目} 能新建和领取={!window.__不能新建} 待交接={window.__交接??null} 看板体={window.__看板?<假看板/>:undefined} 市场视图={!!window.__市场} 仅项目行={window.__仅项目?[{id:'x1',name:'仅项目的'+长,shortName:null,school:null,customerType:'某个特别长的客户类型名字',customerAttr:null,地区:'浙江省 杭州市 西湖区',当前节点:'某个后台改得特别特别长的节点名字',当前阶段:'商机',项目数:2,仅项目:true}]:undefined} 仅项目超了={!!window.__超了}/>
     </我Provider></BusinessProvider></App></ConfigProvider>);
     const el=document.getElementById('root');
     // __静态：先只放服务端出的那份 HTML（React 还没接管），window.__水合() 再接管——照真实页面的先后
@@ -586,4 +586,13 @@ it("「仅项目」一小块（只负责项目的人）：在客户表格上面�
     await page.locator(".fake-board").waitFor();
     expect(await page.getByTestId("project-only-block").count()).toBe(0);
   } finally { await page.close(); }
+  // 超过 50 位：写「前 N 位」，更多去看板
+  const 超 = await browser.newPage({ viewport: { width: 1280, height: 900 } }); 超.setDefaultTimeout(5000);
+  try {
+    await 超.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+    await 超.goto("http://cust-cols.test"); await 超.addStyleTag({ path: path.resolve("src/app/globals.css") });
+    await 超.evaluate(() => { Object.assign(window, { __仅项目: true, __超了: true }); });
+    await 超.addScriptTag({ content: 包 });
+    await expect.poll(() => 超.getByTestId("project-only-block").locator(".cust-ponly-h").innerText()).toMatch(/前 1 位，更多请在看板里看/);
+  } finally { await 超.close(); }
 });

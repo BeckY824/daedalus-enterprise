@@ -327,7 +327,7 @@ model Contact {
   updatedAt  DateTime @updatedAt
   /// 企业版软删（2026-10-29，P9）：空 = 没删；有值 = 进了回收站，30 天后清掉。读的时候 lib/enterprise/soft-delete.ts 统一滤掉
   deletedAt DateTime?
-  /// 企业版：谁建的（迁移 135，2026-11-12）。空 = 老数据；只负责项目的人在受限客户详情里只能改自己建的
+  /// 企业版：谁建的（迁移 135，2026-11-12）。只在受限客户详情新增时写；空 = 老数据或不是从受限详情建的。只负责项目的人在受限客户详情里只能改自己建的
   createdById String?
 
   followUps FollowUp[]

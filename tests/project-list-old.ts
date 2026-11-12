@@ -139,7 +139,8 @@ export async function 旧读项目列表(me: Parameters<typeof 公海超时收�
   const 仅项目 = 企 ? new Set([...(await 仅项目客户们(me)).values()].flat()) : new Set<string>();
   const 行: 项目行[] = rows.filter((p) => (!词 || p.name.toLowerCase().includes(词.toLowerCase()) || 露(p)) && 合收回次数(收回?.get(p.id) ?? 0, 收回筛) && (卡 !== "due-soon" || (!!规则 && 即将逾期(项目回收日(规则, p, 超时线们), 今)))
     // 客户不露时不拿客户的来源（同列上的「渠道」）：否则筛一下就试出同事客户从哪来
-    && (!来源 || p.channelId === 来源 || 露(p))
+    // 11-12 审查起和号码一样只认客户看得到的（lib/project/list.ts 同处）
+    && (!来源 || p.channelId === 来源 || 可见.has(p.customerId))
     // 按号码筛中的是客户：客户不露的不列，不然拿号码试得出同事公海客户挂着哪些项目
     // 11-12 起只算客户看得到的：自己负责、客户不归我的项目按号码不算中（仅项目反推，lib/project/list.ts 同处）
     && (!号码 || 可见.has(p.customerId))).map((p) => ({
@@ -152,7 +153,7 @@ export async function 旧读项目列表(me: Parameters<typeof 公海超时收�
     ...(企 && p.awaitAssignAt && !p.pooledAt ? { 待分配: true } : {}),
     ...(企 ? { 即将回收: 将收(p), 回收日: 规则 && !p.pooledAt ? 项目回收日(规则, p, 超时线们) : null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null } : {}),
     // 项目来源和渠道统计同一条规则：项目自己选的优先，没选跟客户来源（lib/enterprise/channel-stats.ts 项目算哪个渠道）；客户不露时不拿客户的来源
-    ...(企 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null, 已立项天数: 已立项天数(p.createdAt, 今), 项目来源: p.channel?.name ?? (露(p) ? p.customer.channel?.name : null) ?? null, level: p.level } : {}),
+    ...(企 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null, 已立项天数: 已立项天数(p.createdAt, 今), 项目来源: p.channel?.name ?? (可见.has(p.customerId) ? p.customer.channel?.name : null) ?? null, level: p.level } : {}),
     ...(收回 ? { 收回次数: 收回.get(p.id) ?? 0 } : {}),
     ...市场格(p),
     amount: p.amount, currency: p.currency, updatedAt: p.updatedAt.toISOString(), createdAt: p.createdAt.toISOString(),

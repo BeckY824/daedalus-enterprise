@@ -98,7 +98,7 @@ beforeAll(async () => {
       root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><div className='shell rail-mini'>{innerWidth>=768&&<nav className='rail' aria-label='主导航'/>}<main className='main app-content' style={{padding:'22px 26px'}}><div>
         <RestrictedCustomerDetail 数据={{客户:{id:'a',name:o.公司名||'客户A'},
           卡:{客户:{name:o.公司名||'客户A',shortName:'A',school:null,customerType:null,customerAttr:null,地区:'',addrDetail:null,website:null},联系人:[{name:'王总',position:'采购',给联系方式:true,phone:'138****0001',email:null,wechat:null,号码们:[]},{name:'李工',position:null,给联系方式:false,phone:null,email:null,wechat:null,号码们:[]}]},
-          可改联系人:[],项目区:{customerId:'a',页签们:[页签们[0]],锁数:0,当前},
+          可改联系人:[],项目区:{customerId:'a',页签们:o.两个?页签们:[页签们[0]],锁数:0,当前},
           沟通:[{id:'rf1',type:'PHONE',method:null,content:'我项目上的沟通',occurredAt:'2026-10-03T02:00:00.000Z',who:'QA',项目:{id:'p1',名:'项目一'}}],
           待办:{任务:[],计划:[]},号码种类:[],职务选项:[]}}/>
       </div></main></div></BusinessProvider></App></ConfigProvider>);
@@ -610,6 +610,29 @@ it("受限客户详情（只负责项目的人）：页头「仅项目」+ 只�
       await page.setViewportSize({ width: w, height: 800 });
       await 画R({ 公司名: "超长公司名字".repeat(10) });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `宽 ${w}`).toBe(true);
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("受限客户详情：最后一个项目退回公海后回客户列表并提示一句（不落 404）；还有别的项目就回这位客户的详情", async () => {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } }); page.setDefaultTimeout(5000);
+  const errors: string[] = [];
+  page.on("pageerror", e => errors.push(e.message));
+  try {
+    await page.route("http://cust-merge.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+    await page.goto("http://cust-merge.test/customers/a"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
+    for (const [两个, 去处] of [[false, "/customers"], [true, "/customers/a"]] as const) {
+      await page.evaluate(a => { const w = window as unknown as { __renderR: (o: object) => void; __去?: string }; w.__去 = undefined; w.__renderR(a); }, { 两个 });
+      await page.getByTestId("restricted-customer-detail").waitFor();
+      await (await 开菜单(page, "项目操作")).getByRole("menuitem", { name: /项目退回公海/ }).click();
+      const 框 = page.getByRole("dialog", { name: "把项目退回公海？" });
+      await 框.getByRole("button", { name: "项目退回公海" }).click();
+      await expect.poll(() => page.evaluate(() => (window as unknown as { __去?: string }).__去), { message: `两个 ${两个}` }).toBe(去处);
+      const 提示 = page.locator(".ant-message-notice", { hasText: "这位客户下已经没有你负责的项目了" });
+      if (两个) expect(await 提示.count()).toBe(0);
+      else await 提示.waitFor();
+      await page.evaluate(() => { document.querySelectorAll(".ant-message-notice").forEach((n) => n.remove()); });
     }
     expect(errors).toEqual([]);
   } finally { await page.close(); }

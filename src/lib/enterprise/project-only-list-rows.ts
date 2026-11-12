@@ -31,14 +31,16 @@ export type 仅项目列表行 = {
 /** 一块最多摆这么多位（按我的项目最近改过在前）；再多的走看板或项目列表 */
 export const 仅项目块上限 = 50;
 
-export async function 仅项目列表行们(me: { id: string; role?: string | null }, 条件: Prisma.CustomerWhereInput): Promise<仅项目列表行[]> {
+/** 行们 = 最多 仅项目块上限 位；超了 = true（块上写「前 50 位」） */
+export async function 仅项目列表行们(me: { id: string; role?: string | null }, 条件: Prisma.CustomerWhereInput): Promise<{ 行们: 仅项目列表行[]; 超了: boolean }> {
+  const 空 = { 行们: [], 超了: false };
   const 表 = await 仅项目客户们(me);
-  if (!表.size) return [];
+  if (!表.size) return 空;
   const 客户们 = await 看全部(() => prisma.customer.findMany({
     where: { AND: [{ id: { in: [...表.keys()] }, deletedAt: null, pool: { is: null } }, 条件] },
     select: { id: true, name: true, shortName: true, school: true, customerType: true, customerAttr: true, addrCountry: true, addrProvince: true, addrCity: true, addrDistrict: true },
   }));
-  if (!客户们.length) return [];
+  if (!客户们.length) return 空;
   const 项目ids = 客户们.flatMap((c) => 表.get(c.id) ?? []);
   const 项目们 = await 看全部(() => prisma.project.findMany({
     where: { id: { in: 项目ids }, ownerId: me.id, pooledAt: null, deletedAt: null },
@@ -58,5 +60,6 @@ export async function 仅项目列表行们(me: { id: string; role?: string | nu
     };
     return [{ 行, 动: Math.max(...ps.map((p) => p.updatedAt.getTime())) }];
   });
-  return 行们.sort((a, b) => b.动 - a.动 || a.行.id.localeCompare(b.行.id)).slice(0, 仅项目块上限).map((x) => x.行);
+  行们.sort((a, b) => b.动 - a.动 || a.行.id.localeCompare(b.行.id));
+  return { 行们: 行们.slice(0, 仅项目块上限).map((x) => x.行), 超了: 行们.length > 仅项目块上限 };
 }

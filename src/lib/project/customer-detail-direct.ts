@@ -21,11 +21,13 @@ export async function 项目链接们(me: SessionUser, ids: readonly string[]): 
     select: { id: true, customerId: true, ownerId: true, creatorId: true, pooledAt: true, bizLine: true, members: { where: { inviteStatus: "JOINED" }, select: { userId: true } } },
   });
   if (!行.length) return 原;
-  const [org, 市场挡, 看得到, 仅项目] = await Promise.all([
+  const [org, 市场挡, 看得到] = await Promise.all([
     权限组织(), 市场进不了详情的(me.id, 行.map((r) => r.id)), 看得到的客户(行.map((r) => r.customerId)),
-    // 只负责项目的人：客户看不到，但他自己的项目跳受限客户详情（同 项目页去向）
-    仅项目客户们(me).then((m) => new Set([...m.values()].flat())),
   ]);
+  // 只负责项目的人：客户看不到，但他自己的项目跳受限客户详情（同 项目页去向）。结果里有客户看不到、又是我负责的项目才算这份集合（全局搜索每敲一下都走这里）
+  const 仅项目 = 行.some((r) => !看得到.has(r.customerId) && r.ownerId === me.id)
+    ? new Set([...(await 仅项目客户们(me)).values()].flat())
+    : new Set<string>();
   for (const r of 行) {
     if (市场挡.has(r.id) || (!看得到.has(r.customerId) && !仅项目.has(r.id))) continue;
     if (!能看项目(me, { ...r, 已加入: r.members.map((m) => m.userId) }, org)) continue;

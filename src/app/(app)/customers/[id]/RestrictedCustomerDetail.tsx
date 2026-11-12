@@ -140,6 +140,8 @@ export default function RestrictedCustomerDetail({ 数据 }: { 数据: 受限客
             客户状态留痕: null,
             提醒: null,
             无全部沟通: true,
+            // 这是他在这位客户下最后一个项目：转走 / 退回公海 / 删了以后客户页就 404 了，回客户列表
+            走后去: 项目区.页签们.length <= 1 ? { 到: "/customers", 说法: "这位客户下已经没有你负责的项目了，已回到客户列表" } : null,
           }}
           挂动作={挂动作}
           报忙={set项目忙}

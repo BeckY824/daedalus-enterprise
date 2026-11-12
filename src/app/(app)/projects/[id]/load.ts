@@ -229,7 +229,8 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   // 痛点标注、合同状态（迁移 101）：字段权限「藏」的那一项不给值（界面不摆那一行、编辑框不交那一项）
   const 权限 = 企业 ? await 字段权限of(me.id) : null;
   const 企业项目字段 = !企业 ? {} : {
-    项目来源: p.channel ? { name: p.channel.name, 跟客户: false } : 露 && p.customer.channel ? { name: p.customer.channel.name, 跟客户: true } : null,
+    // 跟客户来源的那一半只给客户看得到的（11-12 审查）：只负责项目的人、实线上级看不到客户，不露客户从哪个渠道来
+    项目来源: p.channel ? { name: p.channel.name, 跟客户: false } : 看得到客户.has(p.customerId) && p.customer.channel ? { name: p.customer.channel.name, 跟客户: true } : null,
     channelId: p.channelId,
     已立项天数: 已立项天数(p.createdAt),
     ...(能改 ? { 渠道们: await 可选渠道们(p.channelId) } : {}),
