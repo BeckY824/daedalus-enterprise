@@ -28,6 +28,8 @@ const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   // 「新增项目」→「新客户」：取向导数据记一笔；向导框本身换成一块写着标题的牌子（向导另有测试）
   stub(/new\/wizard-actions$/, "export const 取建档数据=async()=>{(window.__调||=[]).push(['取建档数据']);return {users:[],要下一步:false,企业:null}};");
   stub(/new\/ProjectWizard$/, "export const 建档弹窗=()=>null;");
+  // 客户页看板列底「再看」（customers/board-actions.ts）：记下调了什么，等一会儿（看得到加载中）再回 window.__再看
+  stub(/customers\/board-actions$/, "export const 再看一列=async(...a)=>{(window.__调||=[]).push(['再看一列',...a]);await new Promise(r=>setTimeout(r,400));return window.__再看||{ok:true,行:[],总:0}};");
   stub(/^next\/dynamic$/, "import React from 'react';export default function d(){return function D(p){return p.open?<div className='wizard-stub'>{p.标题}</div>:null}}");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
@@ -43,15 +45,18 @@ beforeAll(async () => {
     const 行=[row(1,'潜客培育'),row(2,'线索验证'),{...row(3,'线索推进'),result:'线索流失'}];
     // 看板五列（11-01 C12 测「→ 还有 N 列」）：每列一张卡
     const 五列=['线索','商机','订单','成功交付','没成'].map((列,i)=>({列,数:1,合计:[],行:[{...row(10+i,'潜客培育'),phase:列==='没成'?'线索':列}]}));
+    // 客户页看板每列各自取数（11-12）：第一列 25 个、首屏摆了 20 个，别的列各 1 个
+    const 每列列=[{...五列[0],名:'线索',数:25,行:Array.from({length:20},(_,i)=>row(100+i,'潜客培育'))},...五列.slice(1)];
+    window.__再看={ok:true,行:Array.from({length:5},(_,i)=>row(120+i,'潜客培育')),总:25};
     window.__画=(阶段,能分,企,o={})=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
-      <Projects 行={o.公海?[{...row(4,'线索推进'),pooled:true,客户在公海:true},{...row(5,'线索推进'),pooled:true}]:行} 列={o.看板?五列:[]} 总数={(o.公海?2:行.length)} 页={1} 每页={20} users={[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:o.phase||''}} 阶段={阶段?'线索':undefined} 线索分配开着={!!能分} 能自动分配={!!能分} 能分公海客户项目={!!o.管公海} 企业版={!!企} 客户页={!!o.客户页} 待交接={o.客户页?2:null} 换回客户列表={!!o.换回} 标题={o.换回?'客户':undefined}/>
+      <Projects 行={o.公海?[{...row(4,'线索推进'),pooled:true,客户在公海:true},{...row(5,'线索推进'),pooled:true}]:行} 列={o.每列?每列列:o.看板?五列:[]} 每列={o.每列?{}:undefined} 总数={(o.公海?2:行.length)} 页={1} 每页={20} users={[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:o.phase||''}} 阶段={阶段?'线索':undefined} 线索分配开着={!!能分} 能自动分配={!!能分} 能分公海客户项目={!!o.管公海} 企业版={!!企} 客户页={!!o.客户页} 待交接={o.客户页?2:null} 换回客户列表={!!o.换回} 标题={o.换回?'客户':undefined}/>
     </BusinessProvider></App>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
   bundle = r.outputFiles[0].text; browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 选项 = { phase?: string; 看板?: boolean; 样式?: boolean; 公海?: boolean; 管公海?: boolean; 客户页?: boolean; 查询?: string; 换回?: boolean };
+type 选项 = { phase?: string; 看板?: boolean; 每列?: boolean; 样式?: boolean; 公海?: boolean; 管公海?: boolean; 客户页?: boolean; 查询?: string; 换回?: boolean };
 async function 打开(新线索: boolean, width = 1280, 能分 = false, 企 = false, o: 选项 = {}): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -262,6 +267,39 @@ it("客户页的看板视图（11-12 第 3 批 C17 / C15）：只画看板这一
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `宽 ${w}`).toBe(true);
       await page.locator(".pipe-card").first().click();
       expect(await 去了(page), `宽 ${w}`).toEqual(["/customers/c10?project=p10"]);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+it("客户页看板每列各自取数（11-12）：没摆全的列底才有「再看」，写清已显示几个；点了只在这一列后面接上、别的列不动、不跳转；加载中按钮禁用；没有整页翻页器", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    const { page, errors } = await 打开(false, w, false, true, { 样式: true, 每列: true, 客户页: true, 查询: "?keyword=abc" });
+    try {
+      const 列们 = page.locator(".pipe-col");
+      expect(await 列们.nth(0).locator(".pipe-card").count(), `宽 ${w}`).toBe(20);
+      const 钮 = page.getByRole("button", { name: "线索：再看 5 个，已显示 20 / 25" });
+      expect(await 钮.count(), `宽 ${w}`).toBe(1);
+      expect(await 列们.nth(0).locator(".pipe-more-n").innerText(), `宽 ${w}`).toBe("已显示 20 / 25");
+      // 摆全了的列没有「再看」；看板底下没有整页共用的翻页器、没有「这一页没有，翻页看」
+      expect(await page.locator(".pipe-more").count(), `宽 ${w}`).toBe(1);
+      expect(await page.locator(".ant-pagination").count(), `宽 ${w}`).toBe(0);
+      expect(await page.locator("body").innerText(), `宽 ${w}`).not.toContain("翻页看");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `宽 ${w}`).toBe(true);
+      // 按钮整个落在列里（列最窄 240 一行放得下）
+      const 钮框 = (await 钮.boundingBox())!, 列框 = (await 列们.nth(0).boundingBox())!;
+      expect(钮框.x + 钮框.width, `宽 ${w}`).toBeLessThanOrEqual(列框.x + 列框.width + 1);
+      const 别的列 = await 列们.nth(1).innerText();
+      await 钮.click();
+      await page.waitForFunction(() => document.querySelector(".pipe-more .ant-btn")?.getAttribute("aria-busy") === "true");
+      expect(await page.locator(".pipe-more .ant-btn").isDisabled(), `宽 ${w}`).toBe(true);
+      await page.waitForFunction(() => document.querySelectorAll(".pipe-col")[0].querySelectorAll(".pipe-card").length === 25);
+      expect(await page.locator(".pipe-more").count(), `宽 ${w}`).toBe(0);
+      expect(await 列们.nth(1).innerText(), `宽 ${w}`).toBe(别的列);
+      const 调 = await page.evaluate(() => (window as unknown as { __调: unknown[][] }).__调.filter((c) => c[0] === "再看一列"));
+      expect(调, `宽 ${w}`).toEqual([["再看一列", "?keyword=abc", "线索", 20]]);
+      expect(await 去了(page), `宽 ${w}`).toEqual([]);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `宽 ${w}`).toBe(true);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }

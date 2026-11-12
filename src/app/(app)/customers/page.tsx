@@ -37,6 +37,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { cookies } from "next/headers";
 import { 客户页看法键 } from "@/lib/customers-view-pref";
 import { 项目页, type 项目页参数 } from "../projects/board-page";
+import { 客户页看板条件 } from "./board-query";
 import { 阶段筛选太多 } from "@/lib/project/customer-list-projects";
 import { 读市场身份 } from "@/lib/enterprise/market-view-db";
 import type { SessionUser } from "@/lib/auth";
@@ -123,11 +124,9 @@ async function 记的看法(): Promise<string | undefined> {
  * 除了页签什么都没筛 = 不收窄（和项目页一样）
  */
 async function 看板体(me: SessionUser, sp: Awaited<SP>) {
-  // 「全部回收状态」只在列表视图有（构想页 C2 画在列表上），看板不按它筛
-  const { phase, node, page, pageSize, sort, sortCurrency: _币, triState: _三态, ...客户的 } = sp;
-  const w = await 客户筛选条件(客户的);
-  // sort 给看板临时切成的项目列表排表头用（客户的排序在看板视图里不起作用）
-  return 项目页(me, { phase, node, page, pageSize, sort }, { 客户: 只按页签(w) ? null : w });
+  // 条件和列底「再看」同一份（board-query.ts）；sort 给看板每列的序、临时切成的项目列表排表头用（客户的排序在看板视图里不起作用）
+  const { 项目, 客户 } = await 客户页看板条件(sp);
+  return 项目页(me, 项目, { 客户 });
 }
 
 export default async function CustomersPage({ searchParams }: { searchParams: SP }) {

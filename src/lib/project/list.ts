@@ -1,7 +1,7 @@
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 搜索词, 客户号码条件, 号码藏着 } from "@/lib/search-keyword";
 import { 负责人候选 } from "@/lib/owners";
-import type { 项目行, 看板合计组 } from "./board";
+import { 看板落列, 看板列键们, type 项目行, type 看板合计组 } from "./board";
 import type { 阶段 } from "./nodes";
 import { 看得到的客户, 露客户, 公海超时收回, 待我回的邀请, 项目回收日, 算超时要的, 超时成员线 } from "./db";
 import { 即将回收 } from "./timeout";
@@ -230,99 +230,134 @@ async function 负责人顺序(ownerIds: string[], 降: boolean): Promise<string
   return 降 ? 序.reverse() : 序;
 }
 
+type 列表条件包 = Awaited<ReturnType<typeof 列表条件>>;
+type 行带include = Prisma.ProjectGetPayload<{ include: ReturnType<typeof 行include> }>;
+
 /**
- * 项目页和企业版「新线索」页共用的取数：先跑超时回收，再按筛选取这一页项目、拼成 项目行（11-11 起服务端分页，同客户列表）。
- * 总数 = 全部符合条件的条数；筛选、排序都在库里对全部结果做；看板列头的数和金额也按全部算（看板合计）。
- * 只看阶段 = "线索" 时只取还在线索阶段的（含已线索流失的），企业版 /leads 用。
+ * 收回次数、3 天内回公海（后筛）：库里写不出，取回全部候选（只要几列）逐个算，按序排好（按负责人排时按名字拼音、同一位照默认序）。
+ * 候选本来就窄：收回次数只在企业版项目公海（/projects?pool=1 已转去 /pool），3 天内回公海先过紧筛
  */
-export async function 读项目列表(me: Parameters<typeof 公海超时收回>[0] & Parameters<typeof 待我回的邀请>[0] & { role: string }, sp: 项目筛选, 只看阶段?: 阶段) {
-  // 企业版超时回收：先收再列，列表里看到的就是收完的样子
-  await 公海超时收回(me).catch((e) => console.error("[超时回收] 扫的时候出错，这次先不收", e));
-  await 回填一次();
-  const { where, 词, 企, 规则, 今, 卡, 阶进, 市场, 创建人, 来源, 级别筛, 号码, 收回筛 } = await 列表条件(me, sp, 只看阶段);
-  const 排 = 认项目排序(sp.sort);
-  const 每页 = 认每页(sp.pageSize);
-  const 要页 = 认页码(sp.page);
+async function 后筛候选(c: 列表条件包, 排: 项目排序, 超时线们: Awaited<ReturnType<typeof 超时成员线>> | null) {
   const 按负责人 = 排 === "owner-asc" || 排 === "owner-desc";
-  // 超时按项目业务线分内外贸天数（C7）：老项目没填业务线按负责人的线
-  const 超时线们 = 规则 ? await 超时成员线(规则) : null;
-  const include = 行include(!!市场, me.id);
-
-  let 总数: number;
-  let 页: number;
-  let 看板合计: 看板合计组[];
-  let rows: Prisma.ProjectGetPayload<{ include: ReturnType<typeof 行include> }>[];
-  // 收回次数、3 天内回公海：库里写不出，取回全部候选（只要几列）逐个算，再按序切这一页。
-  // 候选本来就窄：收回次数只在企业版项目公海（/projects?pool=1 已转去 /pool），3 天内回公海先过紧筛
-  const 后筛 = !!收回筛 || 卡 === "due-soon";
-  if (后筛) {
-    const 候选 = await prisma.project.findMany({
-      where,
-      orderBy: 排序of(按负责人 ? "" : 排),
-      select: { ...算超时要的, amount: true, currency: true },
-    });
-    const 收回 = 收回筛 ? await 数收回次数(候选.map((r) => r.id), prisma) : null;
-    let 剩 = 候选.filter((p) => 合收回次数(收回?.get(p.id) ?? 0, 收回筛) && (卡 !== "due-soon" || (!!规则 && 即将逾期(项目回收日(规则, p, 超时线们), 今))));
-    if (按负责人) {
-      const 位 = new Map((await 负责人顺序([...new Set(剩.map((r) => r.ownerId))], 排 === "owner-desc")).map((id, i) => [id, i]));
-      剩 = 剩.map((r, i) => ({ r, i })).sort((a, b) => 位.get(a.r.ownerId)! - 位.get(b.r.ownerId)! || a.i - b.i).map((x) => x.r);
-    }
-    总数 = 剩.length;
-    页 = Math.min(要页, Math.max(1, Math.ceil(总数 / 每页)));
-    const ids = 剩.slice((页 - 1) * 每页, 页 * 每页).map((r) => r.id);
-    const 取 = new Map((await prisma.project.findMany({ where: { id: { in: ids } }, include })).map((r) => [r.id, r]));
-    rows = ids.flatMap((id) => (取.has(id) ? [取.get(id)!] : []));
-    const 组 = new Map<string, 看板合计组>();
-    for (const r of 剩) {
-      const k = JSON.stringify([r.phase, r.node, r.result, r.currency]);
-      const g = 组.get(k) ?? { phase: r.phase, node: r.node, result: r.result, currency: r.currency, amount: 0, 数: 0 };
-      g.amount += r.amount;
-      g.数 += 1;
-      组.set(k, g);
-    }
-    看板合计 = [...组.values()];
-  } else {
-    // 一句 groupBy 出总数（各组相加）和看板列头；按负责人排时再按负责人数一遍，用来定这一页落在哪几位名下
-    const [分组, 按人] = await Promise.all([
-      prisma.project.groupBy({ by: ["phase", "node", "result", "currency"], where, _count: { _all: true }, _sum: { amount: true } }),
-      按负责人 ? prisma.project.groupBy({ by: ["ownerId"], where, _count: { _all: true } }) : Promise.resolve(null),
-    ]);
-    看板合计 = 分组.map((g) => ({ phase: g.phase, node: g.node, result: g.result, currency: g.currency, amount: g._sum.amount ?? 0, 数: g._count._all }));
-    总数 = 看板合计.reduce((n, g) => n + g.数, 0);
-    页 = Math.min(要页, Math.max(1, Math.ceil(总数 / 每页)));
-    if (按人) {
-      // 负责人按名字拼音排（库里只会按编码排汉字）：先按人数定这一页从哪位的第几个起，再一位一位按默认序取，每位都走 ownerId 索引
-      const 数 = new Map(按人.map((g) => [g.ownerId, g._count._all]));
-      const 序 = await 负责人顺序([...数.keys()], 排 === "owner-desc");
-      rows = [];
-      let 起 = (页 - 1) * 每页;
-      for (const id of 序) {
-        if (rows.length >= 每页) break;
-        const n = 数.get(id)!;
-        if (起 >= n) { 起 -= n; continue; }
-        rows.push(...(await prisma.project.findMany({ where: { AND: [where, { ownerId: id }] }, orderBy: 默认序, skip: 起, take: 每页 - rows.length, include })));
-        起 = 0;
-      }
-    } else {
-      rows = 总数 ? await prisma.project.findMany({ where, orderBy: 排序of(排), skip: (页 - 1) * 每页, take: 每页, include }) : [];
-    }
+  const 候选 = await prisma.project.findMany({
+    where: c.where,
+    orderBy: 排序of(按负责人 ? "" : 排),
+    select: { ...算超时要的, amount: true, currency: true },
+  });
+  const 收回 = c.收回筛 ? await 数收回次数(候选.map((r) => r.id), prisma) : null;
+  let 剩 = 候选.filter((p) => 合收回次数(收回?.get(p.id) ?? 0, c.收回筛) && (c.卡 !== "due-soon" || (!!c.规则 && 即将逾期(项目回收日(c.规则, p, 超时线们), c.今))));
+  if (按负责人) {
+    const 位 = new Map((await 负责人顺序([...new Set(剩.map((r) => r.ownerId))], 排 === "owner-desc")).map((id, i) => [id, i]));
+    剩 = 剩.map((r, i) => ({ r, i })).sort((a, b) => 位.get(a.r.ownerId)! - 位.get(b.r.ownerId)! || a.i - b.i).map((x) => x.r);
   }
+  return 剩;
+}
 
-  const 将收 = (p: (typeof rows)[number]) => {
+/** 看板每列首屏几张、「再看」一次几张（客户页看板，11-12 用户「按建议改，每列各自取数」） */
+export const 每列条数 = 20;
+/** 「再看」动作一次最多取几张、偏移最大多少（服务端兜底，界面一次只要 每列条数） */
+export const 每列一次最多 = 100;
+const 每列偏移上限 = 100_000;
+
+/** 看板分列用的字典：和项目页画看板时同一份（board-page.tsx：企业版带组织规则改过的出口叫法） */
+const 看板字典of = (c: Pick<列表条件包, "企" | "规则">) => (c.企 ? 字典of(true, c.规则?.阶段.出口叫法) : undefined);
+
+/**
+ * 一列在库里的条件：落在这一列的那几组 阶段 / 进程 / 结局（取自 groupBy 的分组，和列头的数同一份）。
+ * 不另写一套「哪个进程算哪列」：旧节点名、认不出的进程落本阶段第一列这些，都按 看板落列 认过的组来
+ */
+function 列条件(组们: readonly { phase: string; node: string; result: string | null }[], 列: string, 落: (r: { phase: string; node: string; result: string | null }) => string): Prisma.ProjectWhereInput | null {
+  const 三 = new Map<string, { phase: string; node: string; result: string | null }>();
+  for (const g of 组们) if (落(g) === 列) 三.set(JSON.stringify([g.phase, g.node, g.result]), { phase: g.phase, node: g.node, result: g.result });
+  return 三.size ? { OR: [...三.values()].map((g) => ({ phase: g.phase, node: g.node, result: g.result })) } : null;
+}
+
+/**
+ * 一列里按当前排序的第 偏移+1 起 条数 个项目的 id（只取 id，卡片再一次 include）。
+ * 按负责人排：给了这一列每位负责人几个，按名字拼音一位一位取（同列表翻页的办法，每位走 ownerId 索引）
+ */
+async function 列里一段(where: Prisma.ProjectWhereInput, 条: Prisma.ProjectWhereInput, 排: 项目排序, 偏移: number, 条数: number, 人?: { 序: string[]; 数: Map<string, number> }): Promise<string[]> {
+  const w: Prisma.ProjectWhereInput = { AND: [where, 条] };
+  if (!人) return (await prisma.project.findMany({ where: w, orderBy: 排序of(排), skip: 偏移, take: 条数, select: { id: true } })).map((r) => r.id);
+  const ids: string[] = [];
+  let 起 = 偏移;
+  for (const id of 人.序) {
+    if (ids.length >= 条数) break;
+    const n = 人.数.get(id) ?? 0;
+    if (!n) continue;
+    if (起 >= n) { 起 -= n; continue; }
+    ids.push(...(await prisma.project.findMany({ where: { AND: [w, { ownerId: id }] }, orderBy: 默认序, skip: 起, take: 条数 - ids.length, select: { id: true } })).map((r) => r.id));
+    起 = 0;
+  }
+  return ids;
+}
+
+/** 按 id 一次取回卡片要的（include 同列表），照 ids 的序 */
+async function 按序取行(ids: string[], include: ReturnType<typeof 行include>): Promise<行带include[]> {
+  if (!ids.length) return [];
+  const 取 = new Map((await prisma.project.findMany({ where: { id: { in: ids } }, include })).map((r) => [r.id, r]));
+  return ids.flatMap((id) => (取.has(id) ? [取.get(id)!] : []));
+}
+
+/**
+ * 客户页看板「再看 N 个」（11-12）：这一列按当前排序从第 偏移+1 个起再取 条数 个，拼成卡片。
+ * 条件就是首屏那一份（列表条件：筛选、可见范围、公海 / 回避都在里面）再并上这一列的节点条件，不另写可见范围；
+ * 列键不在这一屏看板的列里（白名单，看板列键们）、偏移 / 条数不对 = null。只读：不跑超时回收、不回填
+ */
+export async function 读看板一列(me: Parameters<typeof 公海超时收回>[0] & Parameters<typeof 待我回的邀请>[0] & { role: string }, sp: 项目筛选, 列: string, 偏移: number, 条数: number = 每列条数): Promise<{ 行: 项目行[]; 总: number } | null> {
+  if (typeof 列 !== "string" || !Number.isSafeInteger(偏移) || 偏移 < 0 || 偏移 > 每列偏移上限) return null;
+  if (!Number.isSafeInteger(条数) || 条数 < 1 || 条数 > 每列一次最多) return null;
+  const c = await 列表条件(me, sp);
+  const 字典 = 看板字典of(c);
+  if (!看板列键们(字典, sp.phase).includes(列)) return null;
+  const 落 = 看板落列(字典);
+  const 排 = 认项目排序(sp.sort);
+  const 按负责人 = 排 === "owner-asc" || 排 === "owner-desc";
+  const 超时线们 = c.规则 ? await 超时成员线(c.规则) : null;
+  let 总: number;
+  let ids: string[];
+  if (!!c.收回筛 || c.卡 === "due-soon") {
+    const 这列 = (await 后筛候选(c, 排, 超时线们)).filter((r) => 落(r) === 列);
+    总 = 这列.length;
+    ids = 这列.slice(偏移, 偏移 + 条数).map((r) => r.id);
+  } else {
+    const 组 = await prisma.project.groupBy({ by: ["phase", "node", "result"], where: c.where, _count: { _all: true } });
+    const 条 = 列条件(组, 列, 落);
+    总 = 组.filter((g) => 落(g) === 列).reduce((n, g) => n + g._count._all, 0);
+    if (!条 || 偏移 >= 总) ids = [];
+    else if (按负责人) {
+      const 按人 = await prisma.project.groupBy({ by: ["ownerId"], where: { AND: [c.where, 条] }, _count: { _all: true } });
+      const 数 = new Map(按人.map((g) => [g.ownerId, g._count._all]));
+      ids = await 列里一段(c.where, 条, 排, 偏移, 条数, { 序: await 负责人顺序([...数.keys()], 排 === "owner-desc"), 数 });
+    } else ids = await 列里一段(c.where, 条, 排, 偏移, 条数);
+  }
+  const rows = await 按序取行(ids, 行include(!!c.市场, me.id));
+  return { 行: await 拼项目行(me, rows, { ...c, 超时线们 }), 总 };
+}
+
+/**
+ * 一批取回的项目拼成 项目行（列表、看板、「再看」共用）：负责人名字、客户露不露、收回次数、市场视角的验证结果都按这一批一次取，不按行查。
+ * 待复核：调用方已经取过（项目页要拿它给页上的待复核清单）就传进来，不再取一遍
+ */
+async function 拼项目行(
+  me: Parameters<typeof 待我回的邀请>[0] & { id: string },
+  rows: 行带include[],
+  c: Pick<列表条件包, "企" | "规则" | "今" | "市场"> & { 超时线们: Awaited<ReturnType<typeof 超时成员线>> | null; 待复核?: Awaited<ReturnType<typeof 待我复核的>> },
+): Promise<项目行[]> {
+  const { 企, 规则, 今, 市场, 超时线们 } = c;
+  const 将收 = (p: 行带include) => {
     if (!规则 || p.pooledAt) return null;
     const 日 = 项目回收日(规则, p, 超时线们);
     return 即将回收(日, 今) ? 日 : null;
   };
   // 公海里的项目负责人一栏写原负责人（企业版库里已清空，从留痕取）
   const 原负责人 = await 历史负责人们(prisma, rows.filter((r) => r.pooledAt).map((r) => r.id));
-  const 负责人of = (p: (typeof rows)[number]) => (p.pooledAt ? 原负责人.get(p.id) ?? p.ownerId : p.ownerId);
-  const [人, users, 可见, 邀请, 收回, 待复核] = await Promise.all([
+  const 负责人of = (p: 行带include) => (p.pooledAt ? 原负责人.get(p.id) ?? p.ownerId : p.ownerId);
+  const [人, 可见, 收回, 待复核] = await Promise.all([
     prisma.user.findMany({ where: { id: { in: [...new Set(rows.map(负责人of))] } }, select: { id: true, name: true } }),
-    负责人候选(),
     看得到的客户(rows.map((r) => r.customerId)),
-    待我回的邀请(me),
     企 ? 数收回次数(rows.map((r) => r.id), prisma) : Promise.resolve(null),
-    企 ? 待我复核的(me) : Promise.resolve([]),
+    c.待复核 ? Promise.resolve(c.待复核) : 企 ? 待我复核的(me) : Promise.resolve([]),
   ]);
   const 名字 = new Map(人.map((u) => [u.id, u.name]));
   // 市场视角：等我拍板的市场复核那几条照旧能进详情（复核要看来龙去脉）；验证结果的「待」按规则实际交给谁算（同详情页）
@@ -330,7 +365,7 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
   const 交给 = 市场 ? await 无效交给(市场.org) : "总管理终判";
   // 验证结果悬停看全过程（客户 11-05（X-09））：这一页的痕一次取、经手人名字一次取，不按行查
   const 痕们 = 市场 ? await 读验证痕们(rows.filter((r) => (r as { entLeadVerify?: unknown }).entLeadVerify).map((r) => r.id)) : new Map<string, string>();
-  const 市场格 = (p: (typeof rows)[number]): Pick<项目行, "只看进度" | "验证结果" | "验证全文"> => {
+  const 市场格 = (p: 行带include): Pick<项目行, "只看进度" | "验证结果" | "验证全文"> => {
     if (!市场) return {};
     const v = (p as { entLeadVerify?: { verdict: string; pending: string | null; salesAck: string | null; invalidReason: string | null } | null }).entLeadVerify;
     const 已加入 = ((p as { members?: { userId: string }[] }).members ?? []).map((m) => m.userId);
@@ -342,8 +377,8 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     };
   };
   // 公海里同事客户的项目：不露客户名（按客户名搜、按号码筛、按客户来源算渠道的「客户要露」已在 where 里，列表条件）
-  const 露 = (p: (typeof rows)[number]) => 露客户(me, p, 可见);
-  const 行: 项目行[] = rows.map((p) => ({
+  const 露 = (p: 行带include) => 露客户(me, p, 可见);
+  return rows.map((p) => ({
     id: p.id, name: p.name, customerId: p.customerId, customerName: 露(p) ? p.customer.name : null, ...(企 && !可见.has(p.customerId) ? { 进不了客户详情: true } : {}),
     ownerId: p.ownerId, ownerName: 名字.get(负责人of(p)) ?? (负责人of(p) ? "已不在的成员" : "没人"),
     // 库里存着旧节点名 / 旧结局的按这套的新名给界面（企业版 10-31 改名）
@@ -358,6 +393,153 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     ...市场格(p),
     amount: p.amount, currency: p.currency, updatedAt: p.updatedAt.toISOString(), createdAt: p.createdAt.toISOString(),
   }));
+}
+
+/**
+ * 项目页和企业版「新线索」页共用的取数：先跑超时回收，再按筛选取这一页项目、拼成 项目行（11-11 起服务端分页，同客户列表）。
+ * 总数 = 全部符合条件的条数；筛选、排序都在库里对全部结果做；看板列头的数和金额也按全部算（看板合计）。
+ * 只看阶段 = "线索" 时只取还在线索阶段的（含已线索流失的），企业版 /leads 用。
+ */
+export async function 读项目列表(
+  me: Parameters<typeof 公海超时收回>[0] & Parameters<typeof 待我回的邀请>[0] & { role: string },
+  sp: 项目筛选,
+  只看阶段?: 阶段,
+  /**
+   * 看板每列各自取数（客户页看板，11-12）：每列按当前排序各取前 每列条数 个，放在返回的 每列 里（列键 → 卡片），列底「再看」走 读看板一列。
+   * 要列表页 = false：不取整页共用的那一页（行 是空的，页 = 1）；客户页看板临时切到项目列表（分配）的那种才要
+   */
+  看板?: { 每列: true; 要列表页: boolean },
+) {
+  // 企业版超时回收：先收再列，列表里看到的就是收完的样子
+  await 公海超时收回(me).catch((e) => console.error("[超时回收] 扫的时候出错，这次先不收", e));
+  await 回填一次();
+  const 条件 = await 列表条件(me, sp, 只看阶段);
+  const { where, 词, 企, 规则, 卡, 阶进, 市场, 创建人, 来源, 级别筛, 号码, 收回筛 } = 条件;
+  const 排 = 认项目排序(sp.sort);
+  const 每页 = 认每页(sp.pageSize);
+  const 要页 = 认页码(sp.page);
+  const 按负责人 = 排 === "owner-asc" || 排 === "owner-desc";
+  const 要列表页 = !看板 || 看板.要列表页;
+  // 超时按项目业务线分内外贸天数（C7）：老项目没填业务线按负责人的线
+  const 超时线们 = 规则 ? await 超时成员线(规则) : null;
+  const include = 行include(!!市场, me.id);
+  const 字典 = 看板字典of(条件);
+  const 落 = 看板落列(字典);
+  const 列键们 = 看板 ? 看板列键们(字典, sp.phase) : [];
+
+  let 总数: number;
+  let 页: number;
+  let 看板合计: 看板合计组[];
+  let rows: 行带include[];
+  /** 每列首屏要的 id（照列里的序）；不是看板每列 = 不给 */
+  let 列ids: Map<string, string[]> | null = null;
+  /** 列表页那几行（照页里的序）：看板每列补取的卡片会并进 rows 一起拼，这里记着哪些是列表页的 */
+  let 列表ids: string[] = [];
+  // 收回次数、3 天内回公海：库里写不出，取回全部候选（只要几列）逐个算，再按序切这一页（后筛候选）
+  const 后筛 = !!收回筛 || 卡 === "due-soon";
+  if (后筛) {
+    const 剩 = await 后筛候选(条件, 排, 超时线们);
+    总数 = 剩.length;
+    页 = 要列表页 ? Math.min(要页, Math.max(1, Math.ceil(总数 / 每页))) : 1;
+    rows = 要列表页 ? await 按序取行(剩.slice((页 - 1) * 每页, 页 * 每页).map((r) => r.id), include) : [];
+    列表ids = rows.map((r) => r.id);
+    if (看板) {
+      列ids = new Map(列键们.map((k) => [k, [] as string[]]));
+      for (const r of 剩) {
+        const 这列 = 列ids.get(落(r));
+        if (这列 && 这列.length < 每列条数) 这列.push(r.id);
+      }
+    }
+    const 组 = new Map<string, 看板合计组>();
+    for (const r of 剩) {
+      const k = JSON.stringify([r.phase, r.node, r.result, r.currency]);
+      const g = 组.get(k) ?? { phase: r.phase, node: r.node, result: r.result, currency: r.currency, amount: 0, 数: 0 };
+      g.amount += r.amount;
+      g.数 += 1;
+      组.set(k, g);
+    }
+    看板合计 = [...组.values()];
+  } else {
+    // 一句 groupBy 出总数（各组相加）和看板列头；按负责人排时再按负责人数一遍，用来定这一页落在哪几位名下
+    // （看板每列：按 负责人 × 阶段 / 进程 / 结局 数，同一句既给列表页用、也给每列定从哪位取起）
+    const [分组, 按人] = await Promise.all([
+      prisma.project.groupBy({ by: ["phase", "node", "result", "currency"], where, _count: { _all: true }, _sum: { amount: true } }),
+      按负责人 ? prisma.project.groupBy({ by: 看板 ? ["ownerId", "phase", "node", "result"] : ["ownerId"], where, _count: { _all: true } }) : Promise.resolve(null),
+    ]);
+    看板合计 = 分组.map((g) => ({ phase: g.phase, node: g.node, result: g.result, currency: g.currency, amount: g._sum.amount ?? 0, 数: g._count._all }));
+    总数 = 看板合计.reduce((n, g) => n + g.数, 0);
+    页 = 要列表页 ? Math.min(要页, Math.max(1, Math.ceil(总数 / 每页))) : 1;
+    // 负责人按名字拼音排（库里只会按编码排汉字）：所有负责人一次排好，列表页、每列都用这一份
+    const 人数 = new Map<string, number>();
+    for (const g of 按人 ?? []) 人数.set(g.ownerId, (人数.get(g.ownerId) ?? 0) + g._count._all);
+    const 人序 = 按人 ? await 负责人顺序([...人数.keys()], 排 === "owner-desc") : [];
+    if (!要列表页 || !总数) rows = [];
+    else if (按人) {
+      // 先按人数定这一页从哪位的第几个起，再一位一位按默认序取，每位都走 ownerId 索引
+      rows = [];
+      let 起 = (页 - 1) * 每页;
+      for (const id of 人序) {
+        if (rows.length >= 每页) break;
+        const n = 人数.get(id)!;
+        if (起 >= n) { 起 -= n; continue; }
+        rows.push(...(await prisma.project.findMany({ where: { AND: [where, { ownerId: id }] }, orderBy: 默认序, skip: 起, take: 每页 - rows.length, include })));
+        起 = 0;
+      }
+    } else {
+      rows = await prisma.project.findMany({ where, orderBy: 排序of(排), skip: (页 - 1) * 每页, take: 每页, include });
+    }
+    列表ids = rows.map((r) => r.id);
+    if (看板) {
+      /*
+        每列各取前 每列条数 个，查询数不随卡片、行数涨：
+        ① 不超过 每列条数 的列（小列）整列都要——并成一句，不设 take；
+        ② 超过的列（大列）一列一句只取 id（take 每列条数；按负责人排时按名字一位一位取）；
+        ③ 卡片要的 include 一次取回（小列的条件 OR 大列的 id，外面再套一层列表条件）。
+        首屏 = 大列数 + 1 句（全是小列时就 1 句，和原来取一页一样）
+      */
+      const 列数 = new Map(列键们.map((k) => [k, 0]));
+      for (const g of 看板合计) { const k = 落(g); if (列数.has(k)) 列数.set(k, 列数.get(k)! + g.数); }
+      const 大列 = 列键们.filter((k) => 列数.get(k)! > 每列条数);
+      const 小条们 = 列键们.filter((k) => 列数.get(k)! > 0 && 列数.get(k)! <= 每列条数).flatMap((k) => { const 条 = 列条件(看板合计, k, 落); return 条 ? [条] : []; });
+      const 列人数 = (k: string) => {
+        const 数 = new Map<string, number>();
+        for (const g of (按人 ?? []) as { ownerId: string; phase: string; node: string; result: string | null; _count: { _all: number } }[]) {
+          if (落(g) === k) 数.set(g.ownerId, (数.get(g.ownerId) ?? 0) + g._count._all);
+        }
+        return { 序: 人序, 数 };
+      };
+      const 大ids = await Promise.all(大列.map((k) => 列里一段(where, 列条件(看板合计, k, 落)!, 排, 0, 每列条数, 按人 ? 列人数(k) : undefined)));
+      const 或: Prisma.ProjectWhereInput[] = [...小条们, ...(大ids.flat().length ? [{ id: { in: 大ids.flat() } }] : [])];
+      let 卡们 = 或.length ? await prisma.project.findMany({ where: { AND: [where, { OR: 或 }] }, orderBy: 排序of(按负责人 ? "" : 排), include }) : [];
+      if (按人) {
+        const 位 = new Map(人序.map((id, i) => [id, i]));
+        卡们 = 卡们.map((r, i) => ({ r, i })).sort((a, b) => (位.get(a.r.ownerId) ?? 0) - (位.get(b.r.ownerId) ?? 0) || a.i - b.i).map((x) => x.r);
+      }
+      列ids = new Map(列键们.map((k) => [k, [] as string[]]));
+      for (const r of 卡们) {
+        const 这列 = 列ids.get(落(r));
+        if (这列 && 这列.length < 每列条数) 这列.push(r.id);
+      }
+      // 卡片和列表页的行合在一起拼（同一个项目只拼一次，后面几句按这一批取）
+      const 有 = new Set(rows.map((r) => r.id));
+      rows = [...rows, ...卡们.filter((r) => !有.has(r.id))];
+    }
+  }
+  // 后筛的看板卡片：列表页那几行以外的按 id 补取一次
+  if (后筛 && 列ids) {
+    const 有 = new Set(rows.map((r) => r.id));
+    rows = [...rows, ...(await 按序取行([...列ids.values()].flat().filter((id) => !有.has(id)), include))];
+  }
+
+  const [users, 邀请, 待复核] = await Promise.all([
+    负责人候选(),
+    待我回的邀请(me),
+    企 ? 待我复核的(me) : Promise.resolve([]),
+  ]);
+  const 全部行 = await 拼项目行(me, rows, { ...条件, 超时线们, 待复核 });
+  const 按id = new Map(全部行.map((r) => [r.id, r]));
+  const 行 = 列表ids.map((id) => 按id.get(id)!);
+  const 每列 = 列ids ? Object.fromEntries([...列ids].map(([k, ids]) => [k, ids.map((id) => 按id.get(id)!)])) : undefined;
   return {
     行,
     /** 全部符合条件的条数（各页相加 = 它）；页 = 实际给的这一页（要的页越界时落到最后一页），每页 = 认过的每页条数 */
@@ -369,6 +551,8 @@ export async function 读项目列表(me: Parameters<typeof 公海超时收回>[
     排序: 排,
     /** 看板列头按全部算（看板分列 的 全部） */
     看板合计,
+    /** 看板每列各自取数时：列键 → 这一列按当前排序的前 每列条数 张卡片（看板分列 的 每列）；不是 = 不给 */
+    每列,
     // 结局叫法跟着字典：企业版组织规则里改过的出口叫法
     企业版: 企,
     出口叫法: 规则?.阶段.出口叫法,

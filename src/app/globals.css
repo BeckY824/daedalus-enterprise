@@ -2776,6 +2776,10 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .pipe-sum { margin-left: auto; font-size: var(--fs-note); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* 几种币种并排时可能放不下，悬停看全 */
 .pipe-bar { height: 3px; border-radius: 999px; opacity: 0.5; margin: var(--s2) 0 var(--s3); }
 .pipe-empty { padding: var(--s4) 0; text-align: center; color: var(--text-muted); font-size: var(--fs-note); }
+/* 客户页看板列底「再看 20 个」（11-12 每列各自取数）：左边写已显示几个 / 一共几个，右边次级小按钮；列最窄 240 一行放得下 */
+.pipe-more { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin-top: var(--s2); }
+.pipe-more-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-min); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.pipe-more > .ant-btn { flex: none; }
 .pipe-card { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: var(--r-ctl);
   padding: var(--s2) var(--s3); margin-bottom: var(--s2); cursor: grab; }
 .pipe-card:hover { border-color: var(--line-strong); }
