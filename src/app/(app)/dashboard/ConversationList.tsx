@@ -13,6 +13,8 @@ import WidthHandle, { 对话列表把手 } from "@/components/WidthHandle";
 import PaneToggle from "@/components/PaneToggle";
 import { useMiddlePane, usePaneShortcut } from "@/lib/middle-pane";
 import { 设抽屉 } from "@/lib/roster";
+import { useViewAs } from "@/components/ViewAsContext";
+import { 视图AI对话话 } from "@/lib/enterprise/view-as-words";
 
 /**
  * 首页中栏：问过的对话。
@@ -89,6 +91,8 @@ export default function ConversationList({ rows }: { rows: 对话概要[] }) {
   }
 
   const 组 = 分组(rows);
+  /** 切换视图：服务端已回空（threads.ts），这里说一句为什么是空的 */
+  const 视图中 = useViewAs();
 
   const 内容 = (
     <>
@@ -106,7 +110,9 @@ export default function ConversationList({ rows }: { rows: 对话概要[] }) {
           <PlusOutlined />
           新建对话
         </button>
-        {rows.length === 0 ? (
+        {视图中 ? (
+          <div className="pane-empty">{视图AI对话话}</div>
+        ) : rows.length === 0 ? (
           <div className="pane-empty">还没有问过什么。在右边问一句，这里就会留下一条。</div>
         ) : (
           组.map(([名, 条目]) =>

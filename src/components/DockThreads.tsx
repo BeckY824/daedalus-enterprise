@@ -24,6 +24,8 @@ import { 新起一屏, useConversationId } from "@/lib/home-thread";
 import { 载入历史 } from "@/lib/thread-history";
 import { 列对话, 读对话, type 对话概要 } from "@/app/(app)/dashboard/threads";
 import { dayjs } from "@/lib/utils";
+import { useViewAs } from "@/components/ViewAsContext";
+import { 视图AI对话话 } from "@/lib/enterprise/view-as-words";
 
 /** 下拉里列几条。再多就该去首页那条列表了 */
 const 条数 = 10;
@@ -34,6 +36,8 @@ export default function DockThreads({ scope }: { scope: string }) {
   const [转, set转] = useState(false);
   /** 这一屏现在挂在哪条对话上：下拉里给它一个选中态，人才知道自己在哪 */
   const 当前 = useConversationId(scope);
+  /** 切换视图：对方的历史服务端不回（threads.ts），下拉里说一句为什么是空的 */
+  const 视图中 = useViewAs();
 
   /**
    * 点开才去要数据。面板在每一页都渲染，开着就查一次的话，
@@ -68,7 +72,7 @@ export default function DockThreads({ scope }: { scope: string }) {
     ? [{ key: "_loading", disabled: true, label: <div className="dock-hist-x"><Spin size="small" /></div> }]
     : (rows?.length ?? 0) === 0
       ? [
-          { key: "_empty", disabled: true, label: <div className="dock-hist-x">这一页还没问过什么</div> },
+          { key: "_empty", disabled: true, label: <div className="dock-hist-x">{视图中 ? 视图AI对话话 : "这一页还没问过什么"}</div> },
           { type: "divider" as const },
           { key: "_all", label: <Link href="/dashboard">在首页看全部</Link> },
         ]

@@ -4,6 +4,8 @@ import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 企业版跳转 } from "@/lib/enterprise/web-paths";
 import { 站内路径 } from "@/lib/safe-next";
+import { 视图只读话, 视图失效话 } from "@/lib/enterprise/view-as-words";
+import { 视图挡写, 视图票判, 视图票名, 去掉视图票 } from "@/lib/enterprise/view-as-gate";
 
 /**
  * 与 lib/auth.ts 保持一致：生产环境缺少 AUTH_SECRET 时直接失败，
@@ -75,6 +77,13 @@ function 登录后回来(request: NextRequest): string | null {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  // /api 只为切换视图进来：别的照旧不经过这里（登录跳转、页面跳转都不管 /api）
+  if (pathname === "/api" || pathname.startsWith("/api/")) {
+    // 切换视图期间只读；带着验不过的视图票也拒（页面还挂着只读横幅，不能悄悄以本人身份写），见 view-as-gate.ts
+    const 挡 = await 视图挡写(request, SECRET);
+    if (挡) return NextResponse.json({ error: 挡 === "只读" ? 视图只读话 : 视图失效话 }, { status: 403 });
+    return NextResponse.next();
+  }
   // 企业版网页里不留我们云端 / 桌面端的页面（注册、条款、手机伴侣、反馈），见 lib/enterprise/web-paths.ts
   if (企业版()) {
     const 去 = 企业版跳转(pathname);
@@ -87,6 +96,9 @@ export async function proxy(request: NextRequest) {
   }
   const session = await readSession(request);
   const valid = session !== null;
+  // 视图票验不过（过期、旧版没绑会话、换了会话）：打开页面时删掉，这次渲染也当没带——只读横幅消失、以真身渲染。
+  // 非 GET（server action）不删：那次写由 加上限定 拒、提示刷新（lib/enterprise/view-as.ts），删了的话再点一下就以真身写进去了
+  const 坏视图票 = (request.method === "GET" || request.method === "HEAD") && (await 视图票判(request, SECRET)) === "坏";
 
   // 未登录也能看的页面。注册页只在托管版有内容，自部署版进去会被服务端动作拒绝；
   // /terms 与 /privacy 是注册前要读的条款，当然不能要求先登录；
@@ -107,6 +119,7 @@ export async function proxy(request: NextRequest) {
     const res = NextResponse.redirect(url);
     // 过期/损坏的 Cookie 就地清掉，避免下一次请求再走一遍
     res.cookies.delete(COOKIE);
+    if (坏视图票) res.cookies.delete(视图票名);
     return res;
   }
 
@@ -149,7 +162,9 @@ export async function proxy(request: NextRequest) {
    */
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-pathname", pathname);
+  if (坏视图票) requestHeaders.set("cookie", 去掉视图票(request.headers.get("cookie")));
   const res = NextResponse.next({ request: { headers: requestHeaders } });
+  if (坏视图票) res.cookies.delete(视图票名);
   const 新票 = session ? await 顺延(session) : null;
   if (新票) {
     res.cookies.set(COOKIE, 新票, { httpOnly: true, sameSite: "lax", secure: COOKIE_SECURE, path: "/", maxAge: SESSION_DAYS * 24 * 60 * 60 });
@@ -159,5 +174,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   // 排除 API 路由与静态资源（geo/ 是复盘页世界地图的国家边界）；/api/auth/logout 需要能自行清 Cookie 后跳转
-  matcher: ["/((?!api|_next/static|_next/image|ocr/|geo/|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
+  // /api/:path* 只为切换视图期间挡非 GET（见 视图挡写），别的一律原样放过
+  matcher: ["/((?!api|_next/static|_next/image|ocr/|geo/|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)", "/api/:path*"],
 };

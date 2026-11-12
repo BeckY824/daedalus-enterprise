@@ -328,6 +328,8 @@ html.glass .auth-solo .auth-main { background: transparent; }
 .view-as-text b { font-weight: 600; }
 .view-as-exit { flex: none; padding: 0 10px; border: 0; border-radius: 999px; background: var(--warning-text); color: var(--on-ink); font: inherit; line-height: 20px; cursor: pointer; }
 .view-as-exit:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+/* 「以某人的视角查看」挑人框（components/ViewAsPicker.tsx）：下拉占满框宽 */
+.view-as-pick { width: 100%; }
 
 * {
   box-sizing: border-box;

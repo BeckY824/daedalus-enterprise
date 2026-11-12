@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
+import { 正在切换视图 } from "@/lib/enterprise/view-as";
 import type { 历史消息 } from "@/lib/thread-history";
 
 /**
@@ -21,6 +22,9 @@ export type { 历史消息 };
  * 落库的是**答完的那一轮**：问题、回答正文、用时、模型、工具调用轨迹、涉及到的记录 id。
  * 不落的是提问带的附件原文——它只活在内存里（components/AskFiles.tsx），
  * 入了库就等于进了备份，那是另一个量级的承诺。
+ *
+ * 企业版切换视图（lib/enterprise/view-as.ts，11-12 用户定）：总管理员以别人的视角查看时，**对方的 AI 对话不给看**——
+ * 列表回空、内容回 null，在这里取数处就不查库，不靠界面藏；入口那头写一句「视角查看时不显示对方的 AI 对话」
  */
 
 export type 对话概要 = {
@@ -68,6 +72,7 @@ function 解析(s: string | null): unknown {
  */
 export async function 列对话(筛?: { scope?: string; 条数?: number }): Promise<对话概要[]> {
   const me = await requireUser();
+  if (await 正在切换视图()) return [];
   const rows = await prisma.aiConversation.findMany({
     where: { ownerId: me.id, archivedAt: null, ...(筛?.scope ? { scope: 筛.scope } : {}) },
     // createdAt 是兜底的排序键：同一毫秒里建的两条，按 lastAskedAt 分不出先后
@@ -86,6 +91,7 @@ export async function 列对话(筛?: { scope?: string; 条数?: number }): Prom
 
 export async function 读对话(id: string): Promise<{ id: string; title: string; messages: 历史消息[] } | null> {
   const me = await requireUser();
+  if (await 正在切换视图()) return null;
   const c = await prisma.aiConversation.findFirst({
     where: { id, ownerId: me.id },
     select: {
