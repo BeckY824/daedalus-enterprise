@@ -39,6 +39,7 @@ import { 客户页看法键 } from "@/lib/customers-view-pref";
 import { 项目页, type 项目页参数 } from "../projects/board-page";
 import { 读市场身份 } from "@/lib/enterprise/market-view-db";
 import type { SessionUser } from "@/lib/auth";
+import { 三态标们 } from "@/lib/enterprise/tri-state-list";
 
 export const dynamic = "force-dynamic";
 
@@ -72,6 +73,8 @@ type SP = Promise<{
   /** 「全部阶段」「全部进程」（企业版项目模式，11-12 第 3 批）：名下有一个我能看的项目在这个阶段 / 进程上 */
   phase?: string;
   node?: string;
+  /** 「全部回收状态」（客户三态开着才认，P-界面-19 ①）：沉睡 / 待回收 / 暂缓回收中 / 不计时 */
+  triState?: string;
   page?: string;
   pageSize?: string;
   sort?: string;
@@ -119,7 +122,8 @@ async function 记的看法(): Promise<string | undefined> {
  * 除了页签什么都没筛 = 不收窄（和项目页一样）
  */
 async function 看板体(me: SessionUser, sp: Awaited<SP>) {
-  const { phase, node, page, pageSize, sort, sortCurrency: _币, ...客户的 } = sp;
+  // 「全部回收状态」只在列表视图有（构想页 C2 画在列表上），看板不按它筛
+  const { phase, node, page, pageSize, sort, sortCurrency: _币, triState: _三态, ...客户的 } = sp;
   const w = await 客户筛选条件(客户的);
   // sort 给看板临时切成的项目列表排表头用（客户的排序在看板视图里不起作用）
   return 项目页(me, { phase, node, page, pageSize, sort }, { 客户: 只按页签(w) ? null : w });
@@ -219,10 +223,12 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       take: pageSize,
       select: 客户行字段,
     });
+  // 组织规则（设置缓存里读）：进程下拉的结局叫法、三态开没开都看它
+  const 规则P = 按项目 ? 生效组织规则() : null;
   const [
     rows, users, channels, 用着的职位, 用着的国家,
     号, aiEnabled, 交接, 可导入导出, 只给自己, 客户状态选项, 分配方式选项, 客户类型选项, 只读ids, 转让选项, 直接推荐, 业务员,
-    建档, 客户状态字典, 状态自动, 客户属性选项, 客户属性字典, 字典释义, 待交接, 渠道筛选项, 项目概况, 组织规则,
+    建档, 客户状态字典, 状态自动, 客户属性选项, 客户属性字典, 字典释义, 待交接, 渠道筛选项, 项目概况, 组织规则, 三态标,
   ] = await Promise.all([
     行P,
     负责人候选(),
@@ -259,8 +265,16 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     // 「当前节点」「项目数」两列（11-12 客户详情合并第 3 批）：这一页的客户一句取项目，只算我能看的（和客户详情的页签同一圈）
     按项目 && !看板视图 ? 行P.then((rs) => 客户项目概况们(me, rs.map((r) => r.id))) : undefined,
     // 进程下拉的结局叫法跟组织规则里改过的出口叫法（同项目页）
-    按项目 ? 生效组织规则() : null,
+    规则P,
+    /*
+      「状态」一列（客户三态开着才有，P-界面-19 ①，构想页 C2）：这一页的客户一次取钟（两套进公海天数不同时再一句项目选套），不随行数加查询。
+      三态关着不取、不出列
+    */
+    按项目 && !看板视图 && 规则P
+      ? Promise.all([行P, 规则P]).then(([rs, 规]) => (规.三态.开 ? 三态标们(rs.map((r) => ({ id: r.id, salesOwnerId: r.salesOwnerId, 在公海: !!r.pool })), 规.三态) : undefined))
+      : undefined,
   ]);
+  const 三态开 = !!组织规则?.三态.开;
   // 业务配置里删掉了、库里还有人在用的职位：筛选下拉照样给（第 2 期 2b「删选项后老记录照样能筛」）
   const 旧职位 = 用着的职位.map((c) => c.grade!.trim()).filter((g) => g && !b.grades.includes(g)).sort();
   // 团队有两个以上一级部门才摆「全部部门」（10-23：总管理默认看全公司，列表加部门筛选）；只有一个时等于没分部门
@@ -327,6 +341,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
         // 电话藏着的人（字段权限 Y27）不按号码筛：服务端不认，这里也不回显，页面不摆这一项
         phone: 能按号码筛 ? sp.phone ?? "" : "",
         ...(按项目 ? { phase: sp.phase ?? "", node: sp.node ?? "" } : {}),
+        // 三态开着才有「全部回收状态」这一格；关着 filters 和原来一样
+        ...(三态开 && !看板视图 ? { triState: sp.triState ?? "" } : {}),
         // 企业版才有客户状态这一格（10-28）；别的版本 filters 和原来一样
         ...(企业版() ? { custStatus: sp.custStatus ?? "", customerType: sp.customerType ?? "", archiveTier: sp.archiveTier ?? "", channelId: sp.channelId ?? "" } : {}),
       }}
@@ -362,6 +378,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       旧职位={[...new Set(旧职位)]}
       国家们={用着的国家.map((x) => x.country!).filter(Boolean)}
       项目概况={项目概况}
+      三态标={三态标}
       项目看板={按项目}
       市场视图={市场角色}
       看板体={看板P ? await 看板P : undefined}

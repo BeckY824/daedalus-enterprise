@@ -15,7 +15,7 @@ import { 离职交接中, 待确认 } from "@/lib/enterprise/handover-db";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能改后台设置, 只读角色, 公海分不给话, type 谁 } from "@/lib/enterprise/permissions";
 import { 待交接理由 } from "@/lib/enterprise/tri-state-quota";
-import { 差天 } from "@/lib/enterprise/tri-state";
+import { 差天, 工作日数, 交接挂起超了 } from "@/lib/enterprise/tri-state";
 import { beijingDay } from "@/lib/business-clock";
 
 /**
@@ -35,7 +35,11 @@ import { beijingDay } from "@/lib/business-clock";
  * 待交接日 / 挂起天数（三态 T12，客户 11-12 第二轮答复列为上线前置）：三态夜扫给这位客户标「待交接」的那天（上海日）、到今天挂了几个自然日；
  * 没标过（三态关着、或已在离职交接待确认里）不带。原负责人 = 这一组的人，原直属上级 = 这一组的 上级
  */
-export type 交接客户 = { id: string; name: string; 项目数: number; 待交接日?: string; 挂起天数?: number };
+export type 交接客户 = {
+  id: string; name: string; 项目数: number; 待交接日?: string; 挂起天数?: number;
+  /** 挂了几个工作日（周一到周五，不扣节假日，tri-state.ts 工作日数）；超期 = 超过 15 个工作日或 30 个自然日（先到者，交接挂起超了，M-公海-49 / 50） */
+  挂起工作日?: number; 超期?: boolean;
+};
 export type 交接项目 = { id: string; name: string; 客户: string };
 export type 离职待交接 = {
   id: string;
@@ -191,7 +195,7 @@ export async function 读离职交接(me: 谁): Promise<离职待交接[]> {
         交接中: 交接中.has(u.id),
         客户: 客户们.map((c) => {
           const 标 = 标日.get(`${u.id}|${c.id}`);
-          return { id: c.id, name: c.name, 项目数: (客户上的项目of.get(c.id) ?? []).filter(算项目).length, ...(标 ? { 待交接日: 标, 挂起天数: 差天(标, 今天) } : {}) };
+          return { id: c.id, name: c.name, 项目数: (客户上的项目of.get(c.id) ?? []).filter(算项目).length, ...(标 ? { 待交接日: 标, 挂起天数: 差天(标, 今天), 挂起工作日: 工作日数(标, 今天), 超期: 交接挂起超了(标, 今天) } : {}) };
         }),
         项目: 项目们.map((p) => ({ id: p.id, name: p.name, 客户: p.customer.name })),
         其余: { 线索, 渠道, 主渠道, 待办 },

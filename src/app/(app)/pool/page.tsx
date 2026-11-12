@@ -61,11 +61,13 @@ export default async function PoolPage({
   const 按名单 = !!(筛.projChannel || 筛.createdFrom || 筛.createdTo);
   const 权限org = await 权限组织();
   const 能分配 = 能管公海(me, 权限org);
+  // 组织规则在设置缓存里读：客户三态关着时「号码不全」的标签、筛选都不出（P-界面-19 ⑦），地址栏带了也当没筛
+  const 规则P = 生效组织规则();
   const [d, users, 规则, 有, 渠道筛选项] = await Promise.all([
-    读公海页(me, { 属性: 筛.attr, 快捷: 筛.quick, 排序: 筛.sort, keyword: 筛.keyword, 来源: 筛.channelId, 号码不全: 筛.phoneIncomplete }, 正整数(sp.page, 1), pageSize, 按名单 ? { channelId: 筛.projChannel, phase: 筛.phase, createdFrom: 筛.createdFrom, createdTo: 筛.createdTo } : undefined),
+    规则P.then((r) => 读公海页(me, { 属性: 筛.attr, 快捷: 筛.quick, 排序: 筛.sort, keyword: 筛.keyword, 来源: 筛.channelId, 号码不全: r.三态.开 ? 筛.phoneIncomplete : "" }, 正整数(sp.page, 1), pageSize, 按名单 ? { channelId: 筛.projChannel, phase: 筛.phase, createdFrom: 筛.createdFrom, createdTo: 筛.createdTo } : undefined)),
     // 分配给谁：老板、主管才用得上；只列能当负责人的，不限业务线（P-转-08）
     能分配 ? 公海分配候选(me) : Promise.resolve([]),
-    生效组织规则(),
+    规则P,
     持有数(prisma, me.id),
     渠道筛选选项(),
   ]);
@@ -87,6 +89,7 @@ export default async function PoolPage({
       {...d}
       pageSize={pageSize}
       filters={筛}
+      三态开={规则.三态.开}
       渠道筛选项={渠道筛选项}
       能标无效={能分配}
       能恢复={能恢复(me, 权限org)}

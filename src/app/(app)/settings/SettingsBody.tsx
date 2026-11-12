@@ -28,6 +28,8 @@ import { 本月分配情况, 读不设配额 } from "../leads/assign-actions";
 import { 读提成比例, 读按人提成比例, 能改提成比例 } from "@/lib/project/commission-db";
 import { 提成范围of } from "@/lib/project/commission";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
+import { 读占位词 } from "@/lib/enterprise/tri-state-db";
+import type { 客户回收设置 } from "./RecycleTab";
 
 /**
  * 设置的正文（服务端组件，负责取数）。**两条路由共用它**：
@@ -210,6 +212,13 @@ export default async function SettingsBody() {
         };
       })()
     : null;
+  /*
+    「客户回收」一栏（客户三态的开关、天数、占位词，P-界面-19 ⑧ / 构想页 C16）：企业版项目模式、进得了设置的人才有。
+    开关和天数谁能改同服务端 改组织规则 的三态那一块（各进程时限）；占位词表只给能改后台设置的人读（同 三态读占位词）
+  */
+  const 客户回收: 客户回收设置 | null = 项目设置底?.组织规则 && 企业版()
+    ? { 三态: 项目设置底.组织规则.三态, 挡: 挡("节点时限"), 占位词: 可改 ? [...(await 读占位词())] : null }
+    : null;
   // 谁能导入只认 import-perm.ts 一处（现在企业版是老板、总管理员），以后放宽只改那里
   const 能导入 = await 能导入导出(me);
   // 回收站：企业版的系统管理员、回收站副手（谁能看 / 恢复 / 彻底删除只认 lib/enterprise/soft-delete.ts）
@@ -229,6 +238,7 @@ export default async function SettingsBody() {
     <SettingsView
       项目设置={项目设置 && { ...项目设置, 能改提成比例: !!项目设置.提成比例 && 能改提成比例(me, org) }}
       组织架构={组织架构}
+      客户回收={客户回收}
       me={me}
       isAdmin={可进}
       /* 管理员（admin）能进来看、不能改（11-01）：AI 接入 / 业务设置那几栏控件全灰，团队成员不给编辑 */

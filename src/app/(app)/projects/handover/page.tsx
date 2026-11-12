@@ -7,6 +7,7 @@ import { 权限组织 } from "@/lib/enterprise/org";
 import { 能改后台设置, 只读角色, 是总管理 } from "@/lib/enterprise/permissions";
 import { 读离职交接 } from "@/lib/enterprise/offboard-handover";
 import { 公海分配候选 } from "@/lib/owners";
+import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import HandoverView from "./HandoverView";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,7 @@ export default async function HandoverPage() {
   const 系统管理员 = 能改后台设置(me, org);
   // 不是系统管理员、也不是谁的手填直属上级（在职离职都算）：这一页跟他没关系，直接打网址也 404
   if (!系统管理员 && !(await prisma.entMember.count({ where: { managerId: me.id, userId: { not: me.id } } }))) notFound();
-  const [人们, 候选, 项目模式, 下属] = await Promise.all([
+  const [人们, 候选, 项目模式, 下属, 规则] = await Promise.all([
     读离职交接(me),
     公海分配候选(me),
     getBusiness().then((b) => b.projectMode === true),
@@ -34,12 +35,15 @@ export default async function HandoverPage() {
       : prisma.entMember
           .findMany({ where: { managerId: me.id }, select: { userId: true } })
           .then((ms) => prisma.user.findMany({ where: { active: true, id: { in: ms.map((m) => m.userId) } }, select: { id: true, name: true }, orderBy: { name: "asc" } })),
+    // 客户三态开着才摆「待交接」那张表（M-公海-52，设置缓存里读）
+    生效组织规则(),
   ]);
   return (
     <HandoverView
       人们={人们}
       候选={候选.map((u) => ({ id: u.id, name: u.name }))}
       项目模式={项目模式}
+      三态开={项目模式 && 规则.三态.开}
       系统管理员={系统管理员}
       下属={下属.filter((u) => u.id !== me.id && !是总管理({ id: u.id, role: "" }, org))}
     />

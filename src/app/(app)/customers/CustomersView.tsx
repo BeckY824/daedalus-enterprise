@@ -60,6 +60,8 @@ import type { 建档数据 } from "../projects/new/ProjectWizard";
 import { useViewAs } from "@/components/ViewAsContext";
 import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 import { 归档档位们 } from "@/lib/enterprise/archive-tier";
+import "../tri-state-ui.css";
+import { 三态筛选值们, 三态标字, 三态标说明, type 三态标 } from "@/lib/enterprise/tri-state-label";
 import { 字典of, 阶段们, type 阶段, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import type { 客户项目概况 } from "@/lib/project/customer-list-projects";
 import { 换客户页看法, 市场视图名 } from "@/lib/customers-view-pref";
@@ -189,7 +191,11 @@ type Props = {
     /** 「全部阶段」「全部进程」（企业版项目模式，11-12 第 3 批）：名下有一个我能看的项目在这个阶段 / 进程上；不给 = 不摆这两个筛选 */
     phase?: string;
     node?: string;
+    /** 「全部回收状态」（客户三态开着才给，P-界面-19 ①）：沉睡 / 待回收 / 暂缓回收中 / 不计时；不给 = 不摆这个筛选 */
+    triState?: string;
   };
+  /** 这一页每位客户的回收状态标（客户三态开着才给，活跃的不在里面）；不给 = 不摆「状态」一列 */
+  三态标?: Record<string, 三态标>;
   /** 这一页每位客户的「项目数」「当前节点」（企业版项目模式，11-12 第 3 批；只算我能看的项目）。不给 = 不摆这两列 */
   项目概况?: Record<string, 客户项目概况>;
   /** 进程下拉里结局的叫法（组织规则里改过的出口叫法，同项目页） */
@@ -258,7 +264,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 创建排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 待交接 = null, 项目概况, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 创建排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 待交接 = null, 项目概况, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -560,6 +566,19 @@ export default function CustomersView({
           ),
         }]
       : []),
+    /*
+      「全部回收状态」（客户三态开着才有，P-界面-19 ①，构想页 C2）：按钟上的状态筛，负责人是市场成员的是「不计时」。
+      照构想页摆在外面、排在进程后面；筛选行一行放不下时和阶段、进程一样先自动收进「更多筛选」（挤），筛选行始终一行
+    */
+    ...(filters.triState !== undefined
+      ? [{
+          键: "triState", 名: "回收状态", 宽: 130, 默认外露: true, 挤: true, 有值: !!f.triState,
+          渲染: (style: CSSProperties) => (
+            <Select style={style} aria-label="回收状态" placeholder="全部回收状态" allowClear value={f.triState || undefined}
+              onChange={(v?: string) => apply({ triState: v ?? "" })} options={三态筛选值们.map((x) => ({ value: x, label: x }))} />
+          ),
+        }]
+      : []),
     {
       键: "grade", 名: b.fields.grade, 宽: 130, 默认外露: false, 有值: !!f.grade,
       渲染: (style: CSSProperties) => (
@@ -763,6 +782,17 @@ export default function CustomersView({
     }, {
       title: "项目数", key: "projectCount", width: 64,
       render: (_: unknown, r: CustomerRow) => <span className="nowrap">{项目概况[r.id]?.项目数 ?? 0}</span>,
+    }] satisfies 列<CustomerRow>[] : []),
+    /*
+      「状态」（客户三态开着才有，P-界面-19 ①，构想页 C2）：活跃不标；沉睡 / 待回收（带几天后进公海）/ 暂缓回收中各一个小标签，
+      负责人是市场成员的写「不计时」。一行放不下省略号，悬停看说明
+    */
+    ...(三态标 ? [{
+      title: "状态", key: "triState", width: 150,
+      render: (_: unknown, r: CustomerRow) => {
+        const x = 三态标[r.id];
+        return x ? <span className={`tri-tag tri-${x.态}`} title={三态标说明(x)}>{三态标字(x)}</span> : null;
+      },
     }] satisfies 列<CustomerRow>[] : []),
     // 企业版不摆院校·专业（10-28 去遗留 B2）
     ...(企业 ? [] : [{

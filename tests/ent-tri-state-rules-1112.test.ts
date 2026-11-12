@@ -760,5 +760,19 @@ describe("第二轮答复 S1–S8", () => {
     expect(乙那组).toMatchObject({ name: "乙", 上级: "甲" });
     expect(乙那组.客户[0]).toMatchObject({ id: 客户, 挂起天数: 5 });
     expect(乙那组.客户[0].待交接日).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // 三态界面 B 组（M-公海-52）：挂起工作日和超期一起给，看板标红按它
+    const { 工作日数 } = await import("@/lib/enterprise/tri-state");
+    expect(乙那组.客户[0]).toMatchObject({ 挂起工作日: 工作日数(乙那组.客户[0].待交接日!, 加天(乙那组.客户[0].待交接日!, 5)), 超期: false });
+  });
+
+  it("交接看板：挂起超过 15 个工作日或 30 个自然日（先到者）标超期", async () => {
+    await prisma.user.update({ where: { id: 人.乙.id }, data: { active: false } });
+    // 25 个自然日（不到 30）：里面最多 8 个周末日，工作日至少 17 个 → 超了 15 个工作日那条
+    await prisma.entCustomerStateLog.create({ data: { customerId: 客户, toState: "活跃", reason: 待交接理由, fromOwnerId: 人.乙.id, at: new Date(Date.now() - 25 * 86_400_000) } });
+    const { 读离职交接 } = await import("@/lib/enterprise/offboard-handover");
+    const 一位 = (await 读离职交接({ id: 人.系.id, role: "ADMIN" } as never)).find((x) => x.id === 人.乙.id)!.客户[0];
+    expect(一位.挂起天数).toBe(25);
+    expect(一位.挂起工作日).toBeGreaterThan(15);
+    expect(一位.超期).toBe(true);
   });
 });

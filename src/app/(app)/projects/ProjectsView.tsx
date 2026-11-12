@@ -49,6 +49,8 @@ import { 取客户近况 } from "../customers/[id]/pick";
 import { 取建档数据 } from "./new/wizard-actions";
 import { 滚法 } from "@/lib/reduced-motion";
 import type { 建档数据 } from "./new/ProjectWizard";
+import "../tri-state-ui.css";
+import { 看板要点, 三态标说明, type 三态标 } from "@/lib/enterprise/tri-state-label";
 
 /** 「新增项目」→「新客户」的建档向导框：点了才加载，不压项目首页首屏 JS（同客户页「新增客户」） */
 const 建档弹窗 = dynamic(() => import("./new/ProjectWizard").then((m) => m.建档弹窗), { ssr: false });
@@ -86,7 +88,7 @@ function 节点文字(r: 项目行, 字典: 阶段字典) {
  * 新建照样走项目向导（落在潜客培育）；转商机之后它就只在「项目」页里了（10-26 用户定的三大阶段）。
  */
 export default function ProjectsView({
-  行, 列: 看板, 总数, 页, 每页, 要的页, 排序 = "", users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 能分公海客户项目 = false, 满额提醒: 提醒们 = [], 能按号码筛 = false, 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [], 客户页 = false, 基址 = "/projects", 标题, 换回客户列表 = false,
+  行, 列: 看板, 总数, 页, 每页, 要的页, 排序 = "", users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 能分公海客户项目 = false, 满额提醒: 提醒们 = [], 能按号码筛 = false, 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [], 客户页 = false, 基址 = "/projects", 标题, 换回客户列表 = false, 三态点,
 }: {
   行: 项目行[];
   列: 看板一列[];
@@ -156,6 +158,8 @@ export default function ProjectsView({
   标题?: string;
   /** 市场角色客户页的看板视图（X-107）：页头下面摆客户页那颗「列表 / 看板」，点「列表」回客户列表 */
   换回客户列表?: boolean;
+  /** 客户页看板、客户三态开着（C5，P-界面-19 ②）：客户 id → 回收状态；沉睡 / 待回收 / 暂缓回收中在卡片客户名后点一个色点。不给 = 不点 */
+  三态点?: Record<string, 三态标>;
 }) {
   /** 客户详情合并（11-12 第 2 批）：企业版看得到客户的，项目在客户详情的项目区里，直接去那儿停在这个项目的页签；客户看不到的照旧进项目详情 */
   const 项目地址 = (r: 项目行) => (企业版 && r.customerId && r.customerName != null && !r.进不了客户详情 ? 客户页项目地址(r.customerId, r.id) : `/projects/${r.id}`);
@@ -586,7 +590,18 @@ export default function ProjectsView({
                           {/* 企业版（11-12 客户详情合并第 3 批，定稿 UI 看板）：第一行客户名、第二行项目名——点进去是这位客户的详情、停在这个项目页签上。
                               看不到的客户（领取后可见 / 无权查看）第一行照旧写那句灰字。别的版本照原来项目名在上 */}
                           {企业版 ? (<>
-                            <div className="pipe-card-t fulltext" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看(r)}</div>
+                            {(() => {
+                              // C5：客户名后一个小色点（沉睡灰、待回收橙、暂缓回收中紫），悬停说明；三态关着 三态点 不给
+                              const 点 = r.customerName != null ? 三态点?.[r.customerId] : undefined;
+                              return 看板要点(点) ? (
+                                <div className="pipe-card-t tri-has-dot">
+                                  <span className="tri-name">{r.customerName}</span>
+                                  <i role="img" className={`tri-dot tri-${点.态}`} title={三态标说明(点)} aria-label={三态标说明(点)} />
+                                </div>
+                              ) : (
+                                <div className="pipe-card-t fulltext" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看(r)}</div>
+                              );
+                            })()}
                             <div className="pipe-card-m">
                               <span className="pipe-card-o">{r.name}</span>
                             </div>

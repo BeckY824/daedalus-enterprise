@@ -70,6 +70,11 @@ import ProjectsPage from "@/app/(app)/projects/page";
 import { 最近有动静的 } from "@/lib/project/customer-list-projects";
 import { 市场成员key } from "@/lib/enterprise/market";
 import { 企业版根目录 } from "@/lib/enterprise/nav";
+import { 默认组织规则, 默认三态规则 } from "@/lib/project/org-rules";
+import { 加天 } from "@/lib/enterprise/tri-state";
+import { beijingDay } from "@/lib/business-clock";
+import { 收客户页面筛选 } from "@/lib/ai-page-filters";
+import { 客户筛选条件 } from "@/app/(app)/customers/query";
 
 /**
  * 上限：11-12 改前实测 35 条；加两列后 37 条，页头摆离职交接（C15）后 38 条（多 1 条；离职交接入口里的下属、停用下属改从组织里取，不再另查；这一页的项目一句 + 项目上我加入没有一句，和每页几位客户无关；公海项目不算，不用再读回避名单）+ 小余量。
@@ -81,6 +86,11 @@ const 客户列表查询上限 = 42;
  * 11-12 实测 48 条（客户页页头那份 ~22 + 项目看板那份 ~26），客户、项目多少不变（见用例）；上限 = 实测 + 小余量
  */
 const 客户页看板查询上限 = 52;
+/**
+ * 客户三态开着（11-12 三态界面 B 组，P-界面-19 ①）：「状态」一列一次取钟，内外贸两套进公海天数不同再一句项目选套 —— 比关着多 ≤ 2 条。
+ * 上限 = 关着的上限 + 2
+ */
+const 客户列表三态开着上限 = 客户列表查询上限 + 2;
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 const 造人 = async (key: string, bizRole: string, managerId: string | null = null): Promise<人> => {
@@ -308,5 +318,109 @@ describe("客户页「看板」视图（11-12 第 3 批 C17 / C18：页头、筛
     const 们 = 按名(参数((await 量()).el));
     expect(们["列表客户1"]).toBeNull();
     expect(参数((await 量({ phase: "商机" })).el).rows.map((r) => r.name)).not.toContain("列表客户1");
+  });
+});
+
+/**
+ * 客户三态的「状态」一列、「全部回收状态」筛选、客户页看板色点（P-界面-19 ①②，构想页 C2 / C5）。
+ * 三态关着：上面那些用例照旧（列不出、条数不变）；开着：列表多 ≤ 2 条（钟一句；内外贸两套进公海天数不同才再一句项目选套），不随行数涨
+ */
+describe("客户三态开着：状态列、回收状态筛选、看板色点（11-12 三态界面 B 组）", () => {
+  type 三态参 = { rows: { id: string; name: string }[]; 三态标?: Record<string, { 态: string; 几天后进公海?: number }>; filters: Record<string, string>; total: number };
+  const 参三 = (el: unknown) => 参数(el) as unknown as 三态参;
+  const 今天 = () => beijingDay(new Date());
+  const 开三态 = async (三态: Partial<typeof 默认三态规则> = {}) => {
+    await setSetting("orgRules", { ...默认组织规则, 三态: { ...默认三态规则, ...三态, 开: true } });
+    invalidateSettingsCache();
+  };
+  const 名id = async (n: string) => (await prisma.customer.findFirstOrThrow({ where: { name: n }, select: { id: true } })).id;
+  const 造钟 = async () => {
+    await prisma.entCustomerClock.create({ data: { customerId: await 名id("列表客户0"), state: "沉睡", enteredDay: 加天(今天(), -3) } });
+    await prisma.entCustomerClock.create({ data: { customerId: await 名id("列表客户1"), state: "待回收", enteredDay: 加天(今天(), -10) } });
+    await prisma.entCustomerClock.create({ data: { customerId: await 名id("列表客户2"), state: "待回收", enteredDay: 加天(今天(), -40), blocked: true } });
+    await prisma.entCustomerClock.create({ data: { customerId: await 名id("列表客户3"), state: "活跃", enteredDay: 今天() } });
+  };
+
+  it("三态关着：没有状态列、没有回收状态筛选；地址栏带了 triState 也当没筛", async () => {
+    await 造钟();
+    const p = 参三((await 量()).el);
+    expect(p.三态标).toBeUndefined();
+    expect("triState" in p.filters).toBe(false);
+    expect(参三((await 量({ triState: "沉睡" })).el).rows.length).toBe(6);
+  });
+
+  it("开着：活跃不标；沉睡 / 待回收（带几天后进公海）/ 暂缓回收中；条数比关着多不超过 2 条、不随行数涨", async () => {
+    await 造钟();
+    const 关 = (await 量()).句.length;
+    await 开三态();
+    const 开 = await 量();
+    const 按名三 = (p: 三态参) => Object.fromEntries(p.rows.map((r) => [r.name, p.三态标?.[r.id] ?? null]));
+    const 们 = 按名三(参三(开.el));
+    expect(们["列表客户0"]).toEqual({ 态: "沉睡" });
+    expect(们["列表客户1"]).toEqual({ 态: "待回收", 几天后进公海: 20 });
+    expect(们["列表客户2"]).toEqual({ 态: "暂缓回收中" });
+    expect(们["列表客户3"]).toBeNull();
+    expect(们["列表客户4"]).toBeNull();
+    expect(参三(开.el).filters.triState).toBe("");
+    expect(开.句.length - 关).toBeLessThanOrEqual(1);
+    expect(开.句.length).toBeLessThanOrEqual(客户列表三态开着上限);
+    // 内外贸进公海天数不同：多一句项目选套，外贸项目的客户按外贸那套算
+    await 开三态({ 外贸: { 沉睡: 90, 待回收: 180, 进公海: 60 } });
+    const c1 = await 名id("列表客户1");
+    await prisma.project.updateMany({ where: { customerId: c1 }, data: { bizLine: "外贸" } });
+    const 两套 = await 量();
+    expect(参三(两套.el).三态标?.[c1]).toEqual({ 态: "待回收", 几天后进公海: 50 });
+    expect(两套.句.length - 关).toBeLessThanOrEqual(2);
+    expect(两套.句.length).toBeLessThanOrEqual(客户列表三态开着上限);
+    // 多 30 位待回收的客户：条数一样
+    for (let i = 0; i < 30; i++) {
+      const c = await prisma.customer.create({ data: { name: `加的待回收${i}`, phone: `1390000040${String(i).padStart(2, "0")}`, salesOwnerId: 甲.id } });
+      await prisma.entCustomerClock.create({ data: { customerId: c.id, state: "待回收", enteredDay: 今天() } });
+    }
+    const 多 = await 量({ pageSize: "50" });
+    expect(参三(多.el).rows.length).toBe(36);
+    expect(多.句.length).toBe(两套.句.length);
+  });
+
+  it("负责人是市场成员的写「不计时」，不看钟；回收状态筛选四个值都对；导出、AI 白名单认 triState", async () => {
+    await 造钟();
+    await 开三态();
+    const 小市 = await 造人("xs2", "channel_ops");
+    await setSetting(市场成员key, [小市.id]);
+    忘掉企业版范围();
+    const 市场的 = await prisma.customer.create({ data: { name: "市场名下客户", phone: "13900000500", salesOwnerId: 小市.id } });
+    // 钟停在沉睡（换到市场成员名下以后夜扫不再写）：照样写不计时，也不进「沉睡」筛选
+    await prisma.entCustomerClock.create({ data: { customerId: 市场的.id, state: "沉睡", enteredDay: 今天() } });
+    // 经理能看到全部门下的；用系统管理员看全量省事：直接按甲 + 市场名下的各看各的
+    const 管 = await 造人("gl", "director");
+    const 全 = 参三((await 量({}, 管)).el);
+    expect(全.三态标?.[市场的.id]).toEqual({ 态: "不计时" });
+    const 筛 = async (v: string) => 参三((await 量({ triState: v }, 管)).el).rows.map((r) => r.name).sort();
+    expect(await 筛("沉睡")).toEqual(["列表客户0"]);
+    expect(await 筛("待回收")).toEqual(["列表客户1"]);
+    expect(await 筛("暂缓回收中")).toEqual(["列表客户2"]);
+    expect(await 筛("不计时")).toEqual(["市场名下客户"]);
+    expect(await 筛("乱写的")).toHaveLength(7);
+    expect(收客户页面筛选({ triState: "沉睡" })).toEqual({ triState: "沉睡" });
+    // 导出走同一份条件（customers/export-action.ts 客户筛选条件）
+    const w = await 以谁的身份(管.id, () => 客户筛选条件({ triState: "待回收" }));
+    expect((await prisma.customer.findMany({ where: w, select: { name: true } })).map((c) => c.name)).toEqual(["列表客户1"]);
+  });
+
+  it("客户页看板：沉睡 / 待回收 / 暂缓回收中的客户给色点，活跃不给；三态关着不给、条数不变", async () => {
+    await 造钟();
+    mocks.看法 = "board";
+    type 看板参三 = { 三态点?: Record<string, { 态: string }> };
+    const 点of = (el: unknown) => ((参数(el) as unknown as { 看板体?: { props: 看板参三 } }).看板体)?.props.三态点;
+    const 关 = await 量();
+    expect(点of(关.el)).toBeUndefined();
+    await 开三态();
+    const 开 = await 量();
+    const 点 = 点of(开.el)!;
+    expect(点[await 名id("列表客户1")]).toEqual({ 态: "待回收", 几天后进公海: 20 });
+    expect(点[await 名id("列表客户2")]).toEqual({ 态: "暂缓回收中" });
+    expect(点[await 名id("列表客户3")]).toBeUndefined();
+    expect(开.句.length - 关.句.length).toBeLessThanOrEqual(2);
+    expect(开.句.length).toBeLessThanOrEqual(客户页看板查询上限 + 2);
   });
 });

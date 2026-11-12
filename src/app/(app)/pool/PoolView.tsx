@@ -18,6 +18,7 @@ import { App, Button, Checkbox, Dropdown, Segmented, Select, Space, Tag } from "
 import type { MenuProps } from "antd";
 import { CloseOutlined, MoreOutlined } from "@ant-design/icons";
 import DataList, { type 列 } from "@/components/DataList";
+import "../tri-state-ui.css";
 import ListSearch from "@/components/ListSearch";
 import ResetFilters from "@/components/ResetFilters";
 import CreatedRangeFilter from "@/components/CreatedRangeFilter";
@@ -44,7 +45,9 @@ type Props = {
    * projChannel / phase：渠道名单（渠道页「另 M 条在公海」点进来）；不进筛选栏，页头挂一枚能关掉的标签。
    * createdFrom / createdTo：项目创建时间（「更多筛选」里的「创建时间」，渠道看板 TOP5 点进来也带）；筛了按项目一条一行
    */
-  filters: { keyword: string; attr: string; quick: string; sort: string; channelId: string; projChannel: string; phase: string; createdFrom: string; createdTo: string };
+  filters: { keyword: string; attr: string; quick: string; sort: string; channelId: string; projChannel: string; phase: string; createdFrom: string; createdTo: string;
+    /** 号码不全（三态 T10）：=1 只看三态自动收回时打了「号码不全」的客户；三态关着服务端不认、页面不摆 */
+    phoneIncomplete?: string };
   /** 自定义筛选「客户来源」的候选 */
   渠道筛选项: { value: string; label: string }[];
   /** 老板、主管 */
@@ -61,7 +64,12 @@ type Props = {
   持有: { 有: number; 上限: number } | null;
   /** 只读管理员（11-03 B2-1）：不摆领取、不给勾选；行末没别的操作时操作列整列不出 */
   只读?: boolean;
+  /** 客户三态开着（P-界面-19 ⑦，构想页 C14）：客户名后「号码不全」小红标签、「号码不全」筛选、领取 / 分配前一句提示（不拦）。关着都不出 */
+  三态开?: boolean;
 };
+
+/** 「号码不全」标签的悬停说明（M-公海-51：同手动退回公海那把尺） */
+const 号码不全说明 = "到期自动收回时查过联系方式：一个号码都没有，或者有号码但不对。可以照常领取，领到后记得补全";
 
 /** 项目行操作列里的短说法（整句「项目不能单独领提示」在悬停里） */
 const 项目不能单独领短说 = "要连客户一起领";
@@ -113,12 +121,12 @@ function ResultBar({ 文案, 没领到, 撤销 }: { 文案: string; 没领到: {
   );
 }
 
-export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 属性数, 截断, 库里有, filters, 渠道筛选项, 能标无效, 能恢复, 能分配, 别线ids = [], users, 持有, 只读 = false }: Props) {
+export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 属性数, 截断, 库里有, filters, 渠道筛选项, 能标无效, 能恢复, 能分配, 别线ids = [], users, 持有, 只读 = false, 三态开 = false }: Props) {
   const 别线 = new Set(别线ids);
   const router = useRouter();
   const { message, modal } = App.useApp();
   const { f, setF, apply, 翻页, reset, pending } = useUrlFilters("/pool", filters, pageSize);
-  const 在筛 = !!(f.keyword || f.attr || f.quick || f.sort || f.channelId || f.projChannel || f.createdFrom || f.createdTo);
+  const 在筛 = !!(f.keyword || f.attr || f.quick || f.sort || f.channelId || f.projChannel || f.createdFrom || f.createdTo || (三态开 && f.phoneIncomplete));
   // 渠道名单：说清现在只看哪个渠道、哪个阶段的公海项目（一条一行，条数 = 渠道页的「另 M 条在公海」），能关掉
   const 名单渠道 = filters.projChannel ? (渠道筛选项.find((o) => o.value === filters.projChannel)?.label ?? "这个渠道") : "";
   const 名单标 = filters.projChannel ? (
@@ -148,7 +156,27 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
    * 领取 / 分配一行或几行：客户行、项目行一起勾的，一次交给 领取 / 分配公海（同一个事务，持有上限整批核，超了一个都不做）；只勾了项目行的分配走 分配公海项目。
    * 提示条说清领到几个、几个没领到（能展开看原因），带一次撤销：客户行走 撤销公海，项目行走 撤销公海项目
    */
-  async function 动手(动作: "领取" | "分配", 选的: 公海行[], 给?: string) {
+  /**
+   * 领取 / 分配前：客户三态开着、勾的里面有「号码不全」的客户，确认框里提示一句（M-公海-51、C14：只提示，不拦），点确认照常做
+   */
+  function 动手(动作: "领取" | "分配", 选的: 公海行[], 给?: string): Promise<void> {
+    const 不全 = 三态开 ? 选的.filter((r) => r.号码不全) : [];
+    if (!不全.length) return 真动手(动作, 选的, 给);
+    return new Promise<void>((done) => {
+      modal.confirm({
+        title: 动作 === "领取" ? "领取前看一眼" : "分配前看一眼",
+        content: 不全.length === 1 && 选的.length === 1
+          ? `这位客户号码不全。可以照常${动作}，${动作 === "领取" ? "领到" : "分出去"}后记得补全。`
+          : `其中 ${不全.length} 位客户号码不全。可以照常${动作}，${动作 === "领取" ? "领到" : "分出去"}后记得补全。`,
+        okText: `照常${动作}`,
+        cancelText: "取消",
+        onOk: async () => { await 真动手(动作, 选的, 给); done(); },
+        onCancel: () => done(),
+      });
+    });
+  }
+
+  async function 真动手(动作: "领取" | "分配", 选的: 公海行[], 给?: string) {
     // 客户池并成一行的（11-11）：勾它 = 勾下面能动的那几个项目；动不了的不交上去，原因记下来一起说
     const 先拦: { 名: string; 原因: string }[] = [];
     const 们 = 选的.flatMap((r) => (r.子 ?? [r]).filter((c) => {
@@ -325,7 +353,15 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
     {
       title: "客户名称", key: "客户", width: 168,
       render: (_, r) => r.客户名
-        ? <RowLink href={`/customers/${r.customerId}`} className="link-strong fulltext" title={r.客户名}>{r.客户名}</RowLink>
+        ? (三态开 && r.号码不全
+          // C14：客户名后一个小红标签（三态自动收回时打的）
+          ? (
+            <span className="tri-name-row">
+              <RowLink href={`/customers/${r.customerId}`} className="link-strong fulltext" title={r.客户名}>{r.客户名}</RowLink>
+              <span className="tri-miss" title={号码不全说明}>号码不全</span>
+            </span>
+          )
+          : <RowLink href={`/customers/${r.customerId}`} className="link-strong fulltext" title={r.客户名}>{r.客户名}</RowLink>)
         : <span className="muted">领取后可见</span>,
     },
     {
@@ -459,6 +495,14 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
         onClick={() => apply({ quick: f.quick === "无效客户" ? "" : "无效客户" })}>
         {公海回收站} {快捷数.无效客户}
       </Button>
+      {/* 号码不全（C14，三态开着才有）：只看三态自动收回时打了「号码不全」的客户，再点一次取消 */}
+      {三态开 && (
+        <Button className="nowrap" aria-pressed={f.phoneIncomplete === "1"} type={f.phoneIncomplete === "1" ? "primary" : "default"} ghost={f.phoneIncomplete === "1"}
+          title="只看到期自动收回时号码不全的客户"
+          onClick={() => apply({ phoneIncomplete: f.phoneIncomplete === "1" ? "" : "1" })}>
+          号码不全
+        </Button>
+      )}
       <ResetFilters 显示={在筛} onClick={reset} />
     </div>
   );
