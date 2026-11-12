@@ -131,3 +131,17 @@ function 有值(v: unknown): boolean {
   if (Array.isArray(v)) return v.length > 0;
   return true;
 }
+
+/**
+ * 客户页看板的客户条件上挂着的「仅项目」安全条件（board-query.ts 登记，lib/project/list.ts 列表条件 取）。
+ * 用对象本身当键：客户条件对象从 board-query 一路原样传到 列表条件（客户页 page.tsx、board-page.tsx、board-actions.ts 都不拷贝），
+ * 中间几层不用各加一个参数。没登记过的客户条件 = null = 这类行不参与
+ */
+const 挂着的 = new WeakMap<object, Prisma.CustomerWhereInput | null>();
+export function 挂上仅项目条件<T extends object>(客户: T, 条件: Prisma.CustomerWhereInput | null): T {
+  挂着的.set(客户, 条件);
+  return 客户;
+}
+export function 仅项目条件of(客户: object | null | undefined): Prisma.CustomerWhereInput | null {
+  return 客户 ? 挂着的.get(客户) ?? null : null;
+}

@@ -18,6 +18,7 @@ import { 本套位置 } from "./nodes";
 import type { Prisma } from "@/generated/prisma";
 import { 待我复核的, 验证结果叫法, 实际待, 无效交给 } from "./lead-verify";
 import { 看全部, 客户读条件 } from "../team-scope";
+import { 仅项目客户们, 仅项目条件of } from "@/lib/enterprise/project-only-customers";
 import { 读市场身份 } from "@/lib/enterprise/market-view-db";
 import { 市场项目条件, 只看进度 } from "@/lib/enterprise/market-view";
 import { 历史负责人们, 我回避的公海项目, 回避豁免 } from "./pool-owner";
@@ -175,6 +176,18 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
   const 客户 = sp.客户 && typeof sp.客户 === "object" ? sp.客户 : null;
   const 露 = 词 || 来源 || 号码 || 客户 ? await 露客户条件(me) : null;
   const 并露 = (w: Prisma.ProjectWhereInput): Prisma.ProjectWhereInput => (露 ? { AND: [w, 露] } : w);
+  /*
+    按客户的字段筛（客户页看板）：只算「客户看得到」那一支，不再对「自己负责的项目」放行（11-12 堵口子）——
+    客户筛选的关键词会搜客户手机、备注、联系人电话，只负责项目的人输个号码看自己的卡留不留，就试得出看不到的客户的号码。
+    他看不到的客户（仅项目，project-only-customers.ts）另并一支：只按白名单条件（名字 / 简称 / 公司、客户类型），筛了别的不参与
+  */
+  const 客户范围 = 客户 ? await 客户读条件(defaultClient) : null;
+  const 看得到的 = (w: Prisma.ProjectWhereInput): Prisma.ProjectWhereInput => (客户范围 ? { AND: [w, { customer: 客户范围 as Prisma.CustomerWhereInput }] } : w);
+  const 仅项目 = 客户 ? 仅项目条件of(客户) : null;
+  const 仅项目项目 = 仅项目 ? [...(await 仅项目客户们(me)).values()].flat() : [];
+  const 按客户 = (c: Prisma.CustomerWhereInput): Prisma.ProjectWhereInput => (仅项目项目.length && 仅项目
+    ? { OR: [看得到的({ customer: c }), { id: { in: 仅项目项目 }, ownerId: me.id, pooledAt: null, customer: 仅项目 }] }
+    : 看得到的({ customer: c }));
   // 企业版「收回次数」：从留痕里数；按次数筛只在企业版的项目公海里生效
   const 收回筛 = 企 && sp.pool === "1" ? 收回次数筛(sp.recycled) : "";
   const 并且: Prisma.ProjectWhereInput[] = [
@@ -189,7 +202,7 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
     ...(卡 === "due-soon" && 规则 ? [即将逾期紧筛(规则, 字典of(企), 今) ?? { id: { in: [] } }] : []),
     ...阶进.where,
     // 按客户的字段筛：客户不露的不列（和按客户名搜同一条，不然拿筛选试得出同事公海客户挂着哪些项目）
-    ...(客户 ? [并露({ customer: 客户 })] : []),
+    ...(客户 ? [按客户(客户)] : []),
     ...(市场 ? [市场项目条件(me.id, 市场.圈, 创建人)] : []),
     // 公海里同事客户的项目：不露客户名；按客户名搜也不该搜出它（否则等于拿名字试出来）。搜索词的 OR 放进 AND 里，不和别的 OR 打架
     ...(词 ? [{ OR: [{ name: { contains: 词 } }, 并露({ customer: { name: { contains: 词 } } })] }] : []),

@@ -33,6 +33,9 @@ import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibil
 import { 仅项目客户们, 仅项目可见, 仅项目安全条件, 仅项目筛选口径 } from "@/lib/enterprise/project-only-customers";
 import { 无负责人占位Id } from "@/lib/no-owner-db";
 import { saveContact } from "@/app/(app)/customers/[id]/actions";
+import { 客户页看板条件 } from "@/app/(app)/customers/board-query";
+import { 再看一列 } from "@/app/(app)/customers/board-actions";
+import { 读项目列表 } from "@/lib/project/list";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 let 总管: 人, 销售管理: 人, 虚线管理: 人, 甲: 人, 乙: 人, 丙: 人;
@@ -198,5 +201,49 @@ describe("saveContact 守卫（提交 2）", () => {
     const r = await 新建(甲, c, "负责人新建");
     expect(r.ok).toBe(true);
     expect((await prisma.contact.findFirstOrThrow({ where: { name: "负责人新建" } })).createdById).toBe(甲.id);
+  });
+});
+
+describe("客户页看板（提交 3）", () => {
+  const 看板 = async (u: 人, q: Record<string, string> = {}) => {
+    const { 项目: 项, 客户: 客 } = await 以(u, () => 客户页看板条件(q));
+    const d = await 以(u, () => 读项目列表(u, { ...项, 客户: 客 }, undefined, { 每列: true, 要列表页: false }));
+    return { ids: [...d.行, ...Object.values(d.每列 ?? {}).flat()].map((r) => r.id), 列: Object.entries(d.每列 ?? {}).find(([, v]) => v.length)?.[0] ?? null };
+  };
+  const 搭 = async () => {
+    const c = await 客户(甲.id, { remark: "特征备注甲客户", custStatus: "特征状态", shortName: "看板简称", school: "看板公司", customerType: "看板类型" });
+    await prisma.customerExtra.create({ data: { customerId: c, level: "A" } });
+    const p = await 项目(c, 乙.id);
+    const 王 = await 联系人(c, "王联系", { phone: "13711112222" });
+    await 挂项目(p, 王);
+    忘掉企业版范围();
+    const 行 = await prisma.customer.findUniqueOrThrow({ where: { id: c } });
+    return { c, p, 名: 行.name, 手机: 行.phone! };
+  };
+
+  it("不筛有卡；按客户名、简称、公司、客户类型筛卡还在", async () => {
+    const { p, 名 } = await 搭();
+    expect((await 看板(乙)).ids).toContain(p);
+    for (const q of [{ keyword: 名 }, { keyword: "看板简称" }, { keyword: "看板公司" }, { customerType: "看板类型" }]) {
+      expect((await 看板(乙, q)).ids, JSON.stringify(q)).toContain(p);
+    }
+  });
+
+  it("按客户手机、联系人号码、备注、级别、状态、负责人筛：卡消失（拿筛选试不出看不到的客户）；「再看」同一份", async () => {
+    const { p, 手机 } = await 搭();
+    for (const q of [{ keyword: 手机 }, { keyword: "13711112222" }, { keyword: "特征备注" }, { level: "A" }, { custStatus: "特征状态" }, { salesOwnerId: 甲.id }, { phone: 手机 }]) {
+      expect((await 看板(乙, q)).ids, JSON.stringify(q)).not.toContain(p);
+    }
+    const 列 = (await 看板(乙)).列!;
+    const 再 = async (q: string) => { const r = await 以(乙, () => 再看一列(q, 列, 0)); return r.ok ? r.行.map((x) => x.id) : []; };
+    expect(await 再(`keyword=${encodeURIComponent(手机)}`)).not.toContain(p);
+    expect(await 再("keyword=%E7%9C%8B%E6%9D%BF%E7%AE%80%E7%A7%B0")).toContain(p);
+  });
+
+  it("客户负责人照常按号码筛得到（看得到的那一支不变）", async () => {
+    const { c, 手机 } = await 搭();
+    const 甲项目 = await 项目(c, 甲.id);
+    忘掉企业版范围();
+    expect((await 看板(甲, { keyword: 手机 })).ids).toContain(甲项目);
   });
 });
