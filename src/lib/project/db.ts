@@ -1129,7 +1129,8 @@ export async function 公海超时收回明细(me: { id: string; name: string },
 
 async function 按规则收回(me: { id: string; name: string }, 今: Date): Promise<超时收回明细> {
   const 规则 = await 生效组织规则();
-  if (!规则.超时回收.开) return 没扫();
+  // 客户三态开着时不再按项目超时回收（三态落地计划 P4：钟挂在客户身上，唯一的自动动作是待回收期满进客户公海，见 enterprise/tri-state-db.ts）
+  if (!规则.超时回收.开 || (企业版() && 规则.三态.开)) return 没扫();
   const 只扫 = 读团队() ? me.id : undefined;
   const 键 = 只扫 ? `${超时扫过键}:${只扫}` : 超时扫过键;
   const 今天 = dayjs(今).format("YYYY-MM-DD");

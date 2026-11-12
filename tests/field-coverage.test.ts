@@ -232,6 +232,7 @@ const 派生: Record<string, Record<string, string>> = {
     userId: "谁放进去的，放进公海时打上；自动掉进去的为空",
     reason: "手动 / N 天没跟进自动放进，系统打上",
     at: "放进去的那一刻，系统打上",
+    phoneIncomplete: "企业版三态到期自动进公海时系统查号码，空的 / 不对的打上「号码不全」（迁移 130），公海按它筛",
   },
   CustomerClaim: {
     customerId: "哪位客户，领取时建 / 覆盖",
@@ -515,6 +516,7 @@ const 派生: Record<string, Record<string, string>> = {
     customerId: "哪位客户，换负责人时系统写", userId: "谁换的，系统写", at: "换的那一刻，系统写",
     fromOwnerId: "换之前的负责人（历史负责人），系统写", toOwnerId: "换之后的负责人，系统写",
     kind: "改负责人、公海领取 / 分配还是成员停用，系统写",
+    clockReset: "企业版三态：这次转让归不归零，夜扫 / 三态按钮第一次算到时系统写，之后不改（迁移 127）",
   },
   // 企业版站内通知 + 飞书推送（2026-11-01，迁移 109）：lib/enterprise/notify.ts 系统写，用户只能点已读
   EntNotice: {
@@ -540,10 +542,14 @@ const 派生: Record<string, Record<string, string>> = {
     holdCount: "继续持有累计用了几次，点「我还在跟 / 写理由继续持有」时系统加", holdDays: "继续持有合计顺延了几天，同上系统加",
     holdUntil: "推后到哪天，点继续持有时系统按组织规则的每次天数算", holdReason: "最后一次继续持有的理由，点按钮时连同次数一起由动作写，之后不能单独改",
     blocked: "到期被同事项目挡住的标记，夜扫写、裁决后系统清",
+    dealDay: "成交成立日，夜扫首次判出「成交过」那天系统写，之后不改（迁移 124）",
+    quotaResetDay: "额度上次重置日，有内容的沟通让继续持有额度回满时系统写（迁移 125）",
+    progressDay: "项目推进底日，夜扫按算到的最近项目推进日系统写、只往后挪（迁移 131）",
   },
   EntCustomerStateLog: {
     customerId: "哪位客户，系统写", fromState: "变更前的状态，系统写", toState: "变更后的状态，系统写", userId: "谁改的，当前登录账号；自动的留空",
-    via: "自动 / 本人 / 上级代选 / 总管理裁决，按谁点的系统定", reason: "理由，随那次动作写入，留痕只加不改", at: "变更的那一刻，系统写",
+    via: "自动 / 本人 / 上级代选 / 总管理裁决，按谁点的系统定", reason: "理由，随那次动作写入，留痕只加不改", at: "变更的那一刻，系统写", holdDays: "这次继续持有顺延了几天，点按钮时按组织规则的每次天数系统写（迁移 126）",
+    fromOwnerId: "撤销转让 / 标待交接那一行的原负责人，系统写（迁移 128）", toOwnerId: "撤销转让那一行被撤的那次转让转给了谁，系统写（迁移 129）",
   },
   EntProjectCold: {
     projectId: "哪个项目，标冷时系统建", coldDay: "从哪天冷的，系统算", level: "提醒到第几级，发提醒时系统写",

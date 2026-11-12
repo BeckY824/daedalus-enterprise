@@ -31,7 +31,9 @@ export default async function PoolPage({
     /** 渠道名单（渠道页「另 M 条在公海」点进来，11-11）：项目来源渠道（项目没填跟客户来源）+ 同口径的阶段；按项目一条一行 */
     projChannel?: string; phase?: string;
     /** 项目创建时间（渠道看板 TOP5 点进来带时间段，11-11）：两个日历日，北京日，和项目列表同名同读法；带了也按项目一条一行 */
-    createdFrom?: string; createdTo?: string }>;
+    createdFrom?: string; createdTo?: string;
+    /** 号码不全（三态 T10）：=1 只看三态自动收回时打了「号码不全」的客户 */
+    phoneIncomplete?: string }>;
 }) {
   const me = await requireUser();
   if (!企业版() || (await getBusiness()).projectMode !== true) notFound();
@@ -54,12 +56,13 @@ export default async function PoolPage({
     // 写错的那头当没给（custom-date-range.ts 创建时间段 同样认）
     createdFrom: 是日期(sp.createdFrom) ? sp.createdFrom : "",
     createdTo: 是日期(sp.createdTo) ? sp.createdTo : "",
+    phoneIncomplete: sp.phoneIncomplete === "1" ? "1" : "",
   };
   const 按名单 = !!(筛.projChannel || 筛.createdFrom || 筛.createdTo);
   const 权限org = await 权限组织();
   const 能分配 = 能管公海(me, 权限org);
   const [d, users, 规则, 有, 渠道筛选项] = await Promise.all([
-    读公海页(me, { 属性: 筛.attr, 快捷: 筛.quick, 排序: 筛.sort, keyword: 筛.keyword, 来源: 筛.channelId }, 正整数(sp.page, 1), pageSize, 按名单 ? { channelId: 筛.projChannel, phase: 筛.phase, createdFrom: 筛.createdFrom, createdTo: 筛.createdTo } : undefined),
+    读公海页(me, { 属性: 筛.attr, 快捷: 筛.quick, 排序: 筛.sort, keyword: 筛.keyword, 来源: 筛.channelId, 号码不全: 筛.phoneIncomplete }, 正整数(sp.page, 1), pageSize, 按名单 ? { channelId: 筛.projChannel, phase: 筛.phase, createdFrom: 筛.createdFrom, createdTo: 筛.createdTo } : undefined),
     // 分配给谁：老板、主管才用得上；只列能当负责人的，不限业务线（P-转-08）
     能分配 ? 公海分配候选(me) : Promise.resolve([]),
     生效组织规则(),

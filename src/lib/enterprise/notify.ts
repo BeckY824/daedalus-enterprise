@@ -22,6 +22,8 @@ export type 通知 = {
   link?: string | null;
   /** 去重键：同一人同一 key 只记一次 */
   key?: string;
+  /** 只记站内、不推飞书（三态「让同事结束项目」：飞书只推三级提醒链上的人，M-公海-33） */
+  不推飞书?: boolean;
 };
 
 const 在推 = new Set<Promise<void>>();
@@ -56,7 +58,7 @@ export async function notify(userIds: readonly (string | null | undefined)[], n:
       if (!是重复(e)) console.warn("[通知] 没记上：", e instanceof Error ? e.message : e);
     }
   }
-  if (新的.length) {
+  if (新的.length && !n.不推飞书) {
     const p: Promise<void> = 推通知们(新的).finally(() => 在推.delete(p));
     在推.add(p);
   }

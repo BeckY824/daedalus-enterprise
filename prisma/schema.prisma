@@ -524,6 +524,8 @@ model CustomerPool {
   /// 手动 / 自动（N 天没跟进）
   reason     String   @default("手动")
   at         DateTime @default(now())
+  /// 号码不全（迁移 130，企业版三态 T10）：到期自动进公海时按退回公海那一套查号码，空的 / 不对的记 true，公海列表能按它筛；别的入池为空
+  phoneIncomplete Boolean?
 }
 
 /// 最近一次从公海领走（2026-10-04，第 6 块复查，迁移 019）。自动掉公海从「最近跟进 / 建档 / 领取」里最晚的那个算起：
@@ -1256,6 +1258,8 @@ model CustomerOwnerLog {
   toOwnerId   String?
   /// assign = 改负责人 / 批量分配；market-assign = 客户第一次从市场分给销售（算分配、不算转客户，P-转-03）；claim = 从公海领取；pool-assign = 从公海分配；deactivate = 成员停用转交；pool-release = 进公海清负责人（from = 原负责人，to = 占位账号）
   kind        String   @default("assign")
+  /// 企业版客户三态（迁移 127，M-公海-20 / M-公海-37）：这次转让 / 离职交接归不归零，第一次被三态算到时存下，之后不再按新规则重算；空 = 还没算过或不是这两种
+  clockReset  Boolean?
 
   @@index([customerId])
 }
@@ -1825,6 +1829,12 @@ model EntCustomerClock {
   /// 到期该进公海、被同事在推的项目挡住，等条线总管理裁决（M-公海-27）
   blocked       Boolean  @default(false)
   updatedAt     DateTime @updatedAt
+  /// 成交成立日（迁移 124，M-公海-21）：首次满足「成交过」那天（上海日）；成立后永久按成交客户的活跃段算，空 = 还没成立
+  dealDay       String?
+  /// 额度上次重置日（迁移 125，M-公海-38）：最近一次因为有内容的沟通把继续持有额度回满是哪天（上海日），同一天只回满一次
+  quotaResetDay String?
+  /// 项目推进底日（迁移 131，S7）：算到过的最近项目推进日（上海日），只往后挪；项目后来作废 / 删了钟也不回退
+  progressDay   String?
 
   @@index([state, enteredDay])
 }
@@ -1841,11 +1851,17 @@ model EntCustomerStateLog {
   toState    String
   /// 谁改的；自动的为空
   userId     String?
-  /// 方式：自动 / 本人 / 上级代选 / 总管理裁决
+  /// 方式：自动 / 本人 / 上级代选 / 总管理代选 / 总管理裁决 / 撤销转让 / 撤销转让·计次（T7）
   via        String   @default("自动")
   /// 理由：继续持有写的那句、代选 / 裁决的说明；自动的写因为什么（如「待回收满 30 天」）
   reason     String?
   at         DateTime @default(now())
+  /// 这次继续持有顺延了几天（迁移 126，M-公海-19）：本人点、上级代选的那几行存点的那一刻的每次天数；别的行为空
+  holdDays   Int?
+  /// 从谁（迁移 128，T7 / T12）：撤销转让那一行 = 被撤的那次转让从谁转出；标「待交接」那一行 = 停用的负责人；别的行为空
+  fromOwnerId String?
+  /// 到谁（迁移 129，T7）：撤销转让那一行 = 被撤的那次转让转给了谁；别的行为空
+  toOwnerId   String?
 
   @@index([customerId, at])
 }
