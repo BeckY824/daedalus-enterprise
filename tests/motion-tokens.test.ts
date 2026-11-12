@@ -15,6 +15,12 @@ const css = fs.readFileSync(path.resolve(__dirname, "../src/app/globals.css"), "
 const 根 = css.slice(css.indexOf(":root"), css.indexOf("\n}"));
 
 describe("动效底座", () => {
+  it("循环周期（--breath）在 :root 里，阶段条当前节点的呼吸用它，不写死秒数", () => {
+    expect(/--breath:\s*[\d.]+s;/.test(根)).toBe(true);
+    expect(css).toMatch(/animation: proj-stage-breath var\(--breath\) var\(--ease-morph\) infinite/);
+    expect(css).not.toMatch(/proj-stage-breath\s+[\d.]+m?s/);
+  });
+
   it("三条曲线、四档时长都在 :root 里", () => {
     for (const t of ["--ease:", "--ease-spring:", "--ease-morph:"]) {
       expect(根, `${t} 应该定义在 :root`).toContain(t);

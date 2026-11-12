@@ -2,7 +2,7 @@
 import { dayjs } from "@/lib/utils";
 import Shortcut from "./Shortcut";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Tag, Drawer } from "antd";
@@ -13,7 +13,7 @@ import { 客户状态色 } from "@/lib/enterprise/cust-status-color";
 import { avatarColor, initial, smartTime, AVATAR_TEXT } from "@/lib/utils";
 import { useBusiness } from "@/lib/business-client";
 import { statusLabel } from "@/lib/business-config";
-import { 开名单, 关名单, 登记换一位 } from "@/lib/roster";
+import { 开名单, 关名单, 登记换一位, DockOpenContext, DOCK_W } from "@/lib/roster";
 import { 名单回车去处 } from "@/lib/cmdk";
 import { useMiddlePane, usePaneShortcut } from "@/lib/middle-pane";
 import PaneToggle from "@/components/PaneToggle";
@@ -305,7 +305,11 @@ function RosterResizer() {
   const [上限, set上限] = useState(420);
   const 拖 = useRef<{ x: number; w: number; id: number } | null>(null);
   const 挂 = (w: number) => document.documentElement.style.setProperty(名单宽变量, `${w}px`);
-  const 量上限 = () => 名单可到(window.innerWidth, document.querySelector(".rail")?.getBoundingClientRect().width ?? 0);
+  // 右边 AI 面板开着时正文少了 DOCK_W：上限一起扣掉（CSS .shell-dock-open 下的 max-width 同样收紧）
+  const 面板开着 = useContext(DockOpenContext);
+  const 量上限 = () => 名单可到(window.innerWidth - (面板开着 ? DOCK_W : 0), document.querySelector(".rail")?.getBoundingClientRect().width ?? 0);
+  // 拖到一半名单被卸掉（切页、收成抽屉）：别把整页的 col-resize 光标、禁选字留在 <html> 上
+  useEffect(() => () => document.documentElement.classList.remove("roster-resizing"), []);
   useIsoLayoutEffect(() => {
     const 量 = () => {
       const 顶 = 量上限();
@@ -317,7 +321,8 @@ function RosterResizer() {
     量();
     window.addEventListener("resize", 量);
     return () => window.removeEventListener("resize", 量);
-  }, []);
+    // 量上限 读的是这一轮的 面板开着；面板开合时重量一次
+  }, [面板开着]);
   const 定 = (w: number, 存 = true) => {
     const v = 夹名单宽(w, 上限);
     set宽(v);

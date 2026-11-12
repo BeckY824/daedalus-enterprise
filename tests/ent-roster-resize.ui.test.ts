@@ -21,17 +21,20 @@ beforeAll(async () => {
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
     import CustomerRoster from '@/components/CustomerRoster';
+    import {DockOpenContext} from '@/lib/roster';
     const 长名='某某超长国际贸易进出口集团股份有限公司华东区域分公司'.repeat(2);
     const 行=(id,name,source)=>({id,name,followStatus:'待跟进',custStatus:'意向客户',lastFollowAt:new Date().toISOString(),ownerName:'乙',lastNote:'聊过一次',mine:true,source,nextPlanAt:null});
-    window.__render=()=>createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}>
+    let 根=null;
+    window.__卸=()=>根.unmount();
+    window.__render=(面板)=>(根=createRoot(document.getElementById('root'))).render(<DockOpenContext.Provider value={!!面板}><div className={面板?'shell shell-dock-open':'shell'}><ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}>
       <CustomerRoster data={{total:3,客户状态:{顺序:['意向客户'],颜色:{'意向客户':'blue'}},rows:[行('c1',长名,${JSON.stringify(长地区)}),行('c2','星河电子','广东省 深圳市'),行('c3','无地址公司',null)]}}/>
-    </BusinessProvider></App></ConfigProvider>);
+    </BusinessProvider></App></ConfigProvider></div></DockOpenContext.Provider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function 开(w = 1366, 存?: string) {
+async function 开(w = 1366, 存?: string, 面板 = false) {
   const page = await browser.newPage({ viewport: { width: w, height: 768 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://roster.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
@@ -39,7 +42,7 @@ async function 开(w = 1366, 存?: string) {
   // 没有左栏：--rail-w 记 0，和 JS 那边量不到 .rail 时同一口径
   await page.evaluate((v) => { document.documentElement.style.setProperty("--rail-w", "0px"); if (v) localStorage.setItem("daedalus.roster.w", v); else localStorage.removeItem("daedalus.roster.w"); }, 存 ?? "");
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
-  await page.evaluate(() => (window as unknown as { __render: () => void }).__render());
+  await page.evaluate((m) => (window as unknown as { __render: (m: boolean) => void }).__render(m), 面板);
   await page.locator(".roster-row").first().waitFor();
   return { page, errors };
 }
@@ -142,5 +145,34 @@ it("首帧前：外观预设脚本把记住的宽度挂到 <html> 的 --roster-c
     const 跑 = (v: string) => page.evaluate(([s, v]) => { localStorage.setItem("daedalus.roster.w", v); document.documentElement.style.removeProperty("--roster-cust-w"); new Function(s)(); return document.documentElement.style.getPropertyValue("--roster-cust-w"); }, [外观预设脚本, v]);
     expect(await 跑("333")).toBe("333px");
     expect(await 跑("9999")).toBe("");
+  } finally { await page.close(); }
+});
+
+it("右边 AI 面板开着：上限再扣 380（DOCK_W），拖条最大值和 CSS max-width 一起收紧", async () => {
+  // 1600 宽：不开面板 1600 − 938 = 662 → 封顶 420；开着 1600 − 380 − 938 = 282
+  const { page, errors } = await 开(1600, "400", true);
+  try {
+    expect((await 值(page))[2]).toBe("282");
+    expect(await 宽(page)).toBe(282);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+  const 关 = await 开(1600, "400", false);
+  try {
+    expect((await 值(关.page))[2]).toBe("420");
+    expect(await 宽(关.page)).toBe(400);
+  } finally { await 关.page.close(); }
+});
+
+it("拖到一半名单被卸掉：<html> 上不留 roster-resizing（整页光标、禁选字）", async () => {
+  const { page, errors } = await 开();
+  try {
+    const 框 = (await page.getByRole("separator", { name: "调整客户名单宽度" }).boundingBox())!;
+    await page.mouse.move(框.x + 框.width / 2, 框.y + 40);
+    await page.mouse.down();
+    expect(await page.evaluate(() => document.documentElement.classList.contains("roster-resizing"))).toBe(true);
+    await page.evaluate(() => (window as unknown as { __卸: () => void }).__卸());
+    expect(await page.evaluate(() => document.documentElement.classList.contains("roster-resizing"))).toBe(false);
+    await page.mouse.up();
+    expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

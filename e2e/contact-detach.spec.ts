@@ -54,7 +54,8 @@ test("客户详情：只移出、撤销、再移出", async ({ page }) => {
   test.skip(企业版, "企业版项目模式联系人是一人一张小卡（RecordView 企业版项目模式），没有行内删除钮；移出撤销在开关关着那套里验");
   await 登录(page);
   await page.goto(`/customers/${甲}`);
-  const 联系人块 = page.getByRole("main").locator(".rec-sec", { hasText: "添加联系人" });
+  // 11-12 起卡头的「添加联系人」换成「＋」图标钮（aria-label 新增联系人）
+  const 联系人块 = page.getByRole("main").locator(".rec-sec", { has: page.getByRole("button", { name: "新增联系人" }) });
   await expect(联系人块).toContainText("王经理");
 
   let 框 = await 点删除(page);
@@ -106,7 +107,8 @@ test("彻底删除也能撤销", async ({ page }) => {
   const 框 = await 点删除(page);
   await 框.getByRole("button", { name: "彻底删除" }).click();
   await expect(page.locator(".ant-message").getByText("「王经理」已删除")).toBeVisible();
-  const 联系人块 = page.getByRole("main").locator(".rec-sec", { hasText: "添加联系人" });
+  // 11-12 起卡头的「添加联系人」换成「＋」图标钮（aria-label 新增联系人）
+  const 联系人块 = page.getByRole("main").locator(".rec-sec", { has: page.getByRole("button", { name: "新增联系人" }) });
   await expect(联系人块).toContainText("还没有联系人");
 
   await page.locator(".ant-message").getByRole("button", { name: "撤销" }).click();

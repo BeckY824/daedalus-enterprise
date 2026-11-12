@@ -29,6 +29,9 @@ export function 项目菜单项们({ p, 候选 }: Pick<项目详情Props, "p" | 
   return 项们;
 }
 
+/** 项目区正在提交（领取、退回公海…）时客户页「项目操作 ▾」里那几项灰着写这句 */
+export const 项目忙说法 = "正在处理上一步，稍等";
+
 /** 菜单项两行：上面是名字，下面一行淡色小字说明（灰着的原因、会跳过哪几步…） */
 export function 两行(名: string, 注?: string) {
   return (

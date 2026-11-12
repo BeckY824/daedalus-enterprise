@@ -146,7 +146,9 @@ export function ProjectSwitch({ 数据, 当前id }: { 数据: 项目区数据; �
     );
   }
   // 首帧还没量：先全摆（CSS 让它们缩、省略），量完再收；SSR 首屏也是这样，不闪成空
-  const 摆 = 可见 ?? 页签们.map((_, i) => i);
+  // 可见存的是下标：router.refresh 后页签变少（项目删了、转走了），量完之前那一帧旧下标可能越界——先滤掉，滤空了就全摆，等布局量完再收
+  const 量过 = 可见?.filter((i) => i < 页签们.length);
+  const 摆 = 量过 && 量过.length ? 量过 : 页签们.map((_, i) => i);
   const 收 = 页签们.map((_, i) => i).filter((i) => !摆.includes(i));
   const 顺 = [...摆].sort((a, b) => a - b);
   return (
@@ -197,7 +199,7 @@ export function ProjectSwitch({ 数据, 当前id }: { 数据: 项目区数据; �
 }
 
 /** 项目区：有项目画项目详情（嵌入版），没有就是空状态 + 「＋ 新建项目」 */
-export default function ProjectZone({ 数据, 槽, 挂动作 }: { 数据: 项目区数据; 槽: 项目区槽; 挂动作?: (做: ((key: 项目动作键) => void) | null) => void }) {
+export default function ProjectZone({ 数据, 槽, 挂动作, 报忙 }: { 数据: 项目区数据; 槽: 项目区槽; 挂动作?: (做: ((key: 项目动作键) => void) | null) => void; 报忙?: (忙: boolean) => void }) {
   const 客户页 = `/customers/${encodeURIComponent(数据.customerId)}`;
   const router = useRouter();
   const 参数 = useSearchParams();
@@ -251,6 +253,7 @@ export default function ProjectZone({ 数据, 槽, 挂动作 }: { 数据: 项目
         多项目: 数据.页签们.length >= 2,
         提醒: 槽.提醒,
         挂动作,
+        报忙,
         全部沟通: 槽.全部沟通,
         全部沟通数: 槽.全部沟通数,
         待办: 槽.待办,

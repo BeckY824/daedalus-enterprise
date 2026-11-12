@@ -28,7 +28,7 @@ const plugin: Plugin = { name: "cust-detail-merge", setup(b) {
   stub(/^\.\.\/actions$|projects\/actions$/, `const f=${空跑};
     export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=f;
     export const 项目沟通须知=async()=>({ok:true,能记:false}),记项目沟通Action=async()=>({ok:true,followUpId:'f1'});
-    export const 编辑项目=f,改项目沟通=f,改项目节点=f,终止项目进程=f,勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,改项目画像Action=f,删项目沟通=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
+    export const 编辑项目=f,改项目沟通=f,改项目节点=f,终止项目进程=f,勾项目交付=f,删除项目=f,放回项目公海=(...a)=>window.__挂起?new Promise(()=>{}):f(...a),领取项目=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,改项目画像Action=f,删项目沟通=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
   stub(/^\.\/actions$/, `
     export const 客户删除预检=async()=>({ok:true}),删除前清点=async()=>({}),deleteCustomers=async()=>({ok:false});
     export const toggleTask=async()=>({ok:true}),deleteTask=toggleTask,completePlan=toggleTask,撤销记一笔=toggleTask,saveFollowUp=toggleTask,deleteFollowUp=toggleTask;
@@ -252,6 +252,22 @@ it("项目操作：删除项目在最后、危险色、上面一条线，点了�
   } finally { await page.close(); }
 });
 
+it("项目区正在提交（退回公海还没回来）：页头「项目操作 ▾」里对当前项目的几项灰着写「正在处理」，新建项目照常能点", async () => {
+  const { page, errors } = await 开(1280, { 删: true });
+  try {
+    await page.evaluate(() => { (window as unknown as { __挂起: boolean }).__挂起 = true; });
+    await (await 开菜单(page, "项目操作")).getByRole("menuitem", { name: /项目退回公海/ }).click();
+    const 框 = page.getByRole("dialog", { name: "把项目退回公海？" });
+    await 框.getByRole("button", { name: "项目退回公海" }).click();
+    await expect.poll(() => 框.getByRole("button", { name: "项目退回公海" }).evaluate(b => b.classList.contains("ant-btn-loading"))).toBe(true);
+    await 框.getByRole("button", { name: /取\s*消/ }).click();
+    const 菜单 = await 开菜单(page, "项目操作");
+    const 项们 = await 菜单项们(菜单);
+    expect(项们.slice(1)).toEqual(["新建项目", "⊘项目转让 正在处理上一步，稍等", "⊘项目退回公海 正在处理上一步，稍等", "—", "⊘!删除项目 正在处理上一步，稍等"]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it.each([1280, 1366, 1440])("提醒条 %ipx：在项目区中栏、进程卡正上方，宽度等于中栏；进程卡和右栏项目资料顶边对齐；没有提醒不占位", async (w) => {
   const { page, errors } = await 开(w, { 提醒: true });
   try {
@@ -395,6 +411,7 @@ it("客户详情三栏叫法：左栏客户资料 / 客户联系人 / 关联组�
     for (const t of 右) expect(t, t).toMatch(/^项目/);
     // 收起钮的读屏名跟着标题走
     expect(await page.getByRole("button", { name: "收起所有待办" }).count()).toBe(1);
+    expect(await page.locator('.cd-mid .proj-mod-body[aria-label="所有待办"]').count()).toBe(1);
     expect(await page.getByRole("button", { name: "展开当前卡点" }).count()).toBe(1);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
@@ -457,6 +474,19 @@ it("项目多（8 个）、1024 / 1280 宽：放不下的胶囊收进「更多 N
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
+});
+
+it("页签变少（router.refresh 后项目删了 / 转走了）：上一轮量出来的下标越界也不崩，照新的页签重排", async () => {
+  const { page, errors } = await 开(1024, { 多: true, 末: true, 锁数: 3 });
+  try {
+    await page.locator(".cd-pj-pills .cd-pj-more").waitFor();
+    // 同一个根重画（状态留着）：8 个项目变回 2 个
+    await 画(page, {});
+    await expect.poll(() => page.locator(".cd-pj-pills").getByRole("tab").count()).toBe(2);
+    expect(await page.locator(".cd-pj-pills .cd-pj-more").count()).toBe(0);
+    expect(await page.locator(".cd-pj-pills").getByRole("tab", { selected: true }).getAttribute("href")).toBe("/customers/a?project=p1");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
 });
 
 it("有结局的项目胶囊写结局（同原页签），没有的写所在阶段带阶段色点", async () => {

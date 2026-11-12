@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import RecordView from "./RecordView";
 import { 项目菜单项们, type 项目动作键 } from "../../projects/[id]/project-menu";
 import ProjectZone, { type 项目区数据 } from "./ProjectZone";
@@ -15,6 +15,8 @@ export default function CustomerDetail({ 项目数据: 项目区, ...记录 }: R
   // 右上角「项目操作 ▾」点了哪项 → 嵌入版 ProjectDetail 挂在这里的处理函数（开框、确认都还是它的）
   const 动作口 = useRef<((key: 项目动作键) => void) | null>(null);
   const 挂动作 = useCallback((做: ((key: 项目动作键) => void) | null) => { 动作口.current = 做; }, []);
+  // 项目区正在提交（领取、退回公海…）：右上角「项目操作 ▾」里那几项跟着灰，和项目页头按钮忙时变灰一样，不是点了没反应
+  const [项目忙, set项目忙] = useState(false);
   if (!项目区) return <RecordView {...记录} />;
   const p = 项目区.当前?.p;
   // 左栏联系人主次跟当前页签：主联系人 = Project.contactId；本项目联系人 = 项目关联联系人（看不到的那几位不在这位客户的联系人里，排不上）
@@ -33,7 +35,8 @@ export default function CustomerDetail({ 项目数据: 项目区, ...记录 }: R
       项目页签们={项目区.页签们.map((t) => t.id)}
       当前项目菜单={当前项目菜单}
       项目动作口={动作口}
-      项目区={(槽) => <ProjectZone 数据={项目区} 槽={槽} 挂动作={挂动作} />}
+      项目忙={项目忙}
+      项目区={(槽) => <ProjectZone 数据={项目区} 槽={槽} 挂动作={挂动作} 报忙={set项目忙} />}
     />
   );
 }

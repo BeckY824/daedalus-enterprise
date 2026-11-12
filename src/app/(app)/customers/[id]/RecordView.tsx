@@ -54,7 +54,7 @@ import LinkedCustomers from "./LinkedCustomers";
 import { FoldSplit, ProjectFold, 模块钮色, type 连体主钮, type 连体色 } from "../../projects/[id]/ProjectFold";
 import { 客户详情左栏, 客户详情待办 } from "../../projects/[id]/card-names";
 import NewProjectModal from "./NewProjectModal";
-import { 两行 } from "../../projects/[id]/project-menu";
+import { 两行, 项目忙说法 } from "../../projects/[id]/project-menu";
 import { 客户页摆法, 级别选项, 企业级别, 拼地址, 地址叫法, 简称上限 } from "@/lib/enterprise/customer-v2";
 import LevelLetter from "@/components/LevelLetter";
 import StarButton from "./StarButton";
@@ -200,6 +200,7 @@ export default function RecordView({
   留痕放左栏 = false,
   当前项目菜单 = null,
   项目动作口 = null,
+  项目忙 = false,
 }: RecordProps) {
   // 「加跟进」= 团队版互看同事的客户；「全」= 企业版虚线下属的客户，跟进也不能记
   const 只读 = !!只读档 || 管理员只读;
@@ -645,15 +646,13 @@ export default function RecordView({
       ? [{ key: "cur", disabled: true, className: "rec-menu-cur", label: <span className="rec-menu-cur-t" title={当前项目菜单.名}>当前项目：{当前项目菜单.名}</span> }]
       : []),
     ...(能建项目 ? [{ key: "new", label: "新建项目", onClick: 开建项目 }] : []),
-    ...项目菜单项们.filter((x) => x.key !== "delete").map((x) => ({
-      key: x.key,
-      disabled: !!x.灰,
-      label: x.灰 ? 两行(x.字, x.灰) : <span title={x.注}>{x.字}</span>,
-      onClick: () => 点项目项(x.key),
-    })),
+    ...项目菜单项们.filter((x) => x.key !== "delete").map((x) => {
+      const 灰 = x.灰 ?? (项目忙 ? 项目忙说法 : undefined);
+      return { key: x.key, disabled: !!灰, label: 灰 ? 两行(x.字, 灰) : <span title={x.注}>{x.字}</span>, onClick: () => 点项目项(x.key) };
+    }),
     ...项目菜单项们.filter((x) => x.key === "delete").flatMap((x) => [
       { type: "divider" as const },
-      { key: x.key, danger: true, label: x.字, onClick: () => 点项目项(x.key) },
+      { key: x.key, danger: true, disabled: 项目忙, label: 项目忙 ? 两行(x.字, 项目忙说法) : x.字, onClick: () => 点项目项(x.key) },
     ]),
   ];
   /** 「管理联系人」框里列谁：和联系人卡上露编辑 / 删除的是同一拨（见 联系人操作） */
@@ -1409,7 +1408,7 @@ export default function RecordView({
         {项目区?.({
           全部沟通: <div className="proj-mod-body">{筛选条}{时间线}</div>,
           全部沟通数: `${history.rows.length}${history.hasMore ? "+" : ""}`,
-          待办: 摆法.待办 ? 节(客户详情待办, 待办数, null, <div className="proj-mod-body" aria-label="待办">{待办身}</div>, { 主: 只读 ? null : { 字: "新建待办", onClick: () => setTaskOpen(true) }, 色: 模块钮色.待办 }) : null,
+          待办: 摆法.待办 ? 节(客户详情待办, 待办数, null, <div className="proj-mod-body" aria-label={客户详情待办}>{待办身}</div>, { 主: 只读 ? null : { 字: "新建待办", onClick: () => setTaskOpen(true) }, 色: 模块钮色.待办 }) : null,
           开建项目: 能建项目 ? 开建项目 : null,
           全只读,
           提醒: 提醒条,
@@ -1485,7 +1484,7 @@ export default function RecordView({
                 </Space>
               ), <div className="proj-mod-body">{筛选条}{时间线}</div>, { 主: { 字: "新建沟通", onClick: 点跟进 }, 色: 模块钮色.沟通 })}
               {/* 待办单独一块（11-01 用户：「你看待办板块你就和沟通记录放一起了」），摆在沟通记录下面 */}
-              {摆法.待办 && 节(去项目跟进 ? 客户详情待办 : "待办", 待办数, null, <div className="proj-mod-body" aria-label="待办">{待办身}</div>, { 主: 只读 ? null : { 字: "新建待办", onClick: () => setTaskOpen(true) }, 色: 模块钮色.待办 })}
+              {摆法.待办 && 节(去项目跟进 ? 客户详情待办 : "待办", 待办数, null, <div className="proj-mod-body" aria-label={去项目跟进 ? 客户详情待办 : "待办"}>{待办身}</div>, { 主: 只读 ? null : { 字: "新建待办", onClick: () => setTaskOpen(true) }, 色: 模块钮色.待办 })}
             </>
           ) : (
             <>

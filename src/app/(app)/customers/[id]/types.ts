@@ -165,6 +165,8 @@ export type RecordProps = {
    */
   当前项目菜单?: { 名: string; 项们: import("../../projects/[id]/project-menu").项目菜单项[] } | null;
   项目动作口?: { current: ((key: import("../../projects/[id]/project-menu").项目动作键) => void) | null } | null;
+  /** 项目区正在提交：「项目操作 ▾」里对当前项目的几项灰着、写「正在处理」 */
+  项目忙?: boolean;
   /**
    * 左栏联系人跟当前项目页签走（D2，用户 11-12）：「关键」= 当前项目的主联系人（Project.contactId），
    * 排序 = 主联系人 → 本项目联系人（带本项目里的角色 / 立场）→ 这位客户的其他联系人。不给（没有项目可选）退回客户级 isPrimary

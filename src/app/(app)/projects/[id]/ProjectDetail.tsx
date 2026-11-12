@@ -434,6 +434,8 @@ export type 嵌在客户页 = {
   提醒?: ReactNode;
   /** 客户页「项目操作 ▾」点了哪项：这里把处理函数挂给客户页（卸载时挂 null），客户页调它 */
   挂动作?: (做: ((key: 项目动作键) => void) | null) => void;
+  /** 正在提交时告诉客户页：「项目操作 ▾」里的项跟着灰（卸载时报 false） */
+  报忙?: (忙: boolean) => void;
   全部沟通: ReactNode;
   全部沟通数: string;
   待办: ReactNode;
@@ -1314,7 +1316,11 @@ export default function ProjectDetail({
   const 删问 = () => modal.confirm({ title: "删除这个项目？", content: 删除说明(p.删前清点, b.customer, p.企业版), okText: "删除", okButtonProps: { danger: true }, onOk: 删 });
   // 嵌在客户页：右上角「项目操作 ▾」点了哪项经 动作口 递到这里，和原来那几颗按钮的 onClick 一样（忙着的时候按钮是灰的，这里同样不理）
   const 挂动作 = 嵌入?.挂动作;
+  const 报忙 = 嵌入?.报忙;
+  useEffect(() => { 报忙?.(忙); }, [报忙, 忙]);
+  useEffect(() => () => 报忙?.(false), [报忙]);
   const 做动作 = (key: 项目动作键) => {
+    // 忙着时客户页菜单那几项已经灰了（报忙）；这里只防菜单关之前那一下连点
     if (忙) return;
     if (key === "claim") { if (p.能领取) void 跑(() => 领取项目(p.id), "已领取，你是这个项目的负责人了"); }
     else if (key === "transfer") { set转给谁(null); set转给带待办(公海规则.带待办默认勾); set转给框(true); }

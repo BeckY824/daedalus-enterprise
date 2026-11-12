@@ -92,6 +92,9 @@
   --t-press: 90ms; --t-fast: 120ms; --t: 180ms; --t-morph: 320ms;
   /* 进场排队的一档间隔（Rise、时间线）。不是过渡时长，所以不叫 --t-*，也不受 320 上限管 */
   --stagger: 70ms;
+  /* 呼吸那种一直循环的提示（阶段条当前节点的小圆点）一圈多久。是循环周期不是过渡时长，所以不叫 --t-*、不受 320 上限管；
+     别处写死 1.6s / 2.4s 的旧闪环先不动 */
+  --breath: 2.4s;
   /* 落印（建议卡确认那一下）专用，也只许它用。别的都守 320，唯独它上限放到 480（2026-09-28 拍板）：
      那一刻数据已经写了、还能撤，它是回执不是等待；一天十几次；盖章要落下、压实、回弹三段，
      压进 320 看不出是在盖。现状主题先用 320，以后账簿 / 高级这类主题才往上调 */
@@ -729,6 +732,8 @@ body.rail-resizing .shell .rail { transition: none; }
 /* 11-12 客户名单可拖宽（CustomerRoster 名单拖条，lib/roster-width.ts）：宽度在 <html> 的 --roster-cust-w，首帧前挂好；
    默认 280（原 220），最宽 420，再按窗口收紧：右边正文不小于 938（名单刚露出那一档的正文宽） */
 .pane-roster.pane-roster-cust { width: var(--roster-cust-w, 280px); min-width: 220px; max-width: max(220px, min(420px, calc(100vw - var(--rail-w) - 938px))); }
+/* 右边 AI 面板开着：正文再少 --dock-w，上限一起扣（和 CustomerRoster 拖条里 DOCK_W 同一个数） */
+.shell-dock-open .pane-roster.pane-roster-cust { max-width: max(220px, min(420px, calc(100vw - var(--rail-w) - var(--dock-w) - 938px))); }
 .pane-resizer { position: absolute; top: 0; right: -4px; bottom: 0; width: 8px; z-index: 3; cursor: col-resize; touch-action: none; background: transparent; }
 .pane-resizer::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; transition: background-color var(--t-fast) var(--ease); }
 .pane-resizer:hover::after, .pane-resizer:focus-visible::after, .roster-resizing .pane-resizer::after { background: var(--brand); }
@@ -1457,7 +1462,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-stage-node.is-cur { color: var(--ink); font-weight: 600; }
 .proj-stage-node.is-cur .proj-stage-mark {
   display: inline-flex; width: 6px; height: 6px; border-radius: 50%; background: var(--warning);
-  animation: proj-stage-breath 2.4s var(--ease-morph) infinite;
+  animation: proj-stage-breath var(--breath) var(--ease-morph) infinite;
 }
 .proj-stage-node.is-cur .ant-tag { flex: none; }
 @keyframes proj-stage-breath { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
