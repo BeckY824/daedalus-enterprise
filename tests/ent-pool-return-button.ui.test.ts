@@ -146,7 +146,7 @@ it("客户列表：没传 放不了ids（都放得了）照旧摆", async () => 
   } finally { await page.close(); }
 });
 
-it("客户详情：能放公海 = false 不摆「退回公海」，true 才摆；三种宽度页头不撑出、点得到", async () => {
+it("客户详情：能放公海 = false 不摆「客户退回公海」，true 才摆；三种宽度页头不撑出、点得到", async () => {
   for (const w of 宽们) {
     for (const 能放 of [false, true]) {
       const { page, errors } = await 开(详情包, { 能放 }, w, ".rec-acts");
@@ -155,6 +155,8 @@ it("客户详情：能放公海 = false 不摆「退回公海」，true 才摆�
         expect(await 钮.count(), `宽 ${w} 能放 ${能放}`).toBe(能放 ? 1 : 0);
         expect(await 不撑出(page), `宽 ${w}`).toBe(true);
         if (能放) expect(await 点得到(page, ".rec-acts button", /退回公海/), `宽 ${w}`).toBe(true);
+        // 11-12 改名：客户页头叫「客户退回公海」，和项目页的「项目退回公海」分开；三种宽度都不折行
+        if (能放) expect(await 钮.evaluate((el) => [(el as HTMLElement).innerText.replace(/\s+/g, ""), el.getBoundingClientRect().height <= 40]), `宽 ${w}`).toEqual(["客户退回公海", true]);
         expect(errors).toEqual([]);
       } finally { await page.close(); }
     }

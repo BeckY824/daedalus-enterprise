@@ -29,7 +29,7 @@ beforeAll(async () => {
     import ProjectDetail from '@/app/(app)/projects/[id]/ProjectDetail';import ProjectRoster from '@/components/ProjectRoster';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {项目画像项,字典定义} from '@/lib/enterprise/dict-kinds';
     const root=createRoot(document.getElementById('root'));
     const 长='超长项目名字'.repeat(8), 串='X'.repeat(90);
-    /* 11-01 权限只认业务角色：「转让项目」按 能转让 给（总管理 / 上级），fixture 里看的人能转让 */
+    /* 11-01 权限只认业务角色：「项目转让」按 能转让 给（总管理 / 上级），fixture 里看的人能转让 */
     const 基={id:'p1',name:长,remark:null,amount:1234567.89,currency:'CNY',customer:{id:'c1',name:'超长客户名'+串,school:'某某超长公司名有限公司'.repeat(4)},contact:{id:'k1',name:'张三',position:'采购总监兼华东大区负责人'},
       来源线索:{name:'线索'+串,convertedAt:'2026-10-01'},原因选项:{回收:[],无效:[]},ownerId:'qa',ownerName:'组长甲',creatorName:'组长甲',createdAt:'2026-10-01T00:00:00.000Z',historyOwners:['乙','丙'],
       phase:'订单',node:'生产备货',result:null,exceptionReason:null,exceptionCategory:null,pooled:false,能放公海:false,能领取:false,领取不给:null,进公海:null,出口叫法:{},有效沟通差:[],
@@ -103,7 +103,7 @@ it("企业版：左边节点、沟通、卡点，右边项目、交付、项目�
     expect((await page.locator(".proj-stage-acts button").allInnerTexts()).map(t => t.trim())).toEqual(["完成节点", "", "新增沟通"]);
     expect(await page.locator(".proj-stage-acts button").nth(1).getAttribute("aria-label")).toBe("终止进程");
     expect(await page.locator(".proj-stage-acts .ant-btn-primary").allInnerTexts()).toEqual(["新增沟通"]);
-    expect(await 页头钮(page)).toEqual(["转让项目"]);
+    expect(await 页头钮(page)).toEqual(["项目转让"]);
     expect(await 编辑钮(page).count()).toBe(1);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
@@ -116,7 +116,7 @@ it.each([1024, 1280, 1366])("Windows %ipx：超长项目名、客户名、组员
     // 右栏里的卡片内容不能伸出卡片（右栏窄，最容易被长串撑开）
     const 伸出 = await page.locator(".proj-side .ant-card").evaluateAll(cs => cs.filter(c => c.scrollWidth > c.clientWidth + 1).map(c => c.querySelector(".ant-card-head-title")?.textContent));
     expect(伸出).toEqual([]);
-    for (const name of ["AI 录入", "新增沟通", "转让项目"]) {
+    for (const name of ["AI 录入", "新增沟通", "项目转让"]) {
       const box = await page.getByRole("button", { name }).first().boundingBox();
       expect(box!.x + box!.width).toBeLessThanOrEqual(w);
       const 点中 = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.textContent ?? "", [box!.x + box!.width / 2, box!.y + box!.height / 2]);
@@ -759,19 +759,33 @@ it("下一步：有文字写文字、有时间跟在后面；老数据只有时�
 const 页头钮 = (page: import("playwright").Page, 类 = "") =>
   page.locator(`.page-head-a button${类}`).evaluateAll(bs => bs.map(b => b.textContent!.replace(/\s/g, "")));
 
-it("R6 页头：只留转让项目 / 退回公海，没有「更多」；⌘N 落到节点卡的「新增沟通」；企业版没有删除项目", async () => {
+it("R6 页头：只留项目转让 / 项目退回公海（11-12 改名），没有「更多」；⌘N 落到节点卡的「新增沟通」；企业版没有删除项目", async () => {
   const { page, errors } = await 覆盖(1280, { 可改沟通: true });
   try {
     // 11-01 用户：「和客户页一样，仅留转让项目，退回公海。其余的放回各模块。」；
     // 编辑项目在项目卡上（U-项目-05），企业版项目不能删（服务端早就拦，这里入口也去掉）
     const 钮 = await 页头钮(page);
-    expect(钮[0]).toBe("转让项目");
-    expect(钮.every(t => t === "转让项目" || t === "退回公海")).toBe(true);
+    expect(钮[0]).toBe("项目转让");
+    expect(钮.every(t => t === "项目转让" || t === "项目退回公海")).toBe(true);
     expect(await page.getByRole("button", { name: "项目的更多操作" }).count()).toBe(0);
     expect(await page.locator(".page-head-a .ant-btn-primary").count()).toBe(0);
     expect(await page.evaluate(() => (document.querySelector(".page-head-a button.ant-btn-primary:not([disabled])") ?? document.querySelector("button[data-cmd-new]:not([disabled])"))?.textContent?.replace(/\s/g, ""))).toBe("新增沟通");
     expect(await page.getByRole("button", { name: "删除项目" }).count()).toBe(0);
     expect(await page.getByText("删除这个项目？").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("项目退回公海（11-12 改名）：确认框叫「把项目退回公海？」，写明只退这个项目、客户不动", async () => {
+  const { page, errors } = await 覆盖(1280, { 能放公海: true });
+  try {
+    await page.locator(".page-head-a").getByRole("button", { name: "项目退回公海" }).click();
+    const 窗 = page.getByRole("dialog").filter({ hasText: "把项目退回公海？" });
+    await 窗.waitFor();
+    expect(await 窗.innerText()).toMatch(/只退这个项目/);
+    expect(await 窗.innerText()).toContain("客户和客户负责人不动");
+    expect(await 窗.getByRole("button", { name: /项目退回公海/ }).count()).toBe(1);
+    expect(await page.getByText("放回线索公海？").count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -783,8 +797,8 @@ it("R6 页头跟着权限：公海里能领的只剩「领取」；退回公海�
     // 公海里的项目谁都改不了（可改 = 能改 && !pooled）：转让、退回都不摆；记沟通那几样在卡上
     expect(await 页头钮(page)).toEqual(["领取"]);
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ 能放公海: true, 提成: null, 线索验证: { 判定: "初验无效", 待: "市场复核", 无效原因: null, 复核结果: null, 最终结果: null, 终验: null, 初判即终判: false, 叫法: "初验无效", 我能: null, 痕: [] } }));
-    await page.waitForFunction(() => document.querySelector(".page-head-a")?.textContent?.includes("退回公海"));
-    expect(await page.locator(".page-head-a").getByRole("button", { name: "退回公海" }).isDisabled()).toBe(true);
+    await page.waitForFunction(() => document.querySelector(".page-head-a")?.textContent?.includes("项目退回公海"));
+    expect(await page.locator(".page-head-a").getByRole("button", { name: "项目退回公海" }).isDisabled()).toBe(true);
     // 11-01：项目卡上「线索验证」一行带当前结果，点开弹窗就是整个验证操作
     expect(await page.getByTestId("lead-verify-result").innerText()).toBe("初验无效");
     // 11-01 会议 §6：结果是纯字，不套 Tag 框
@@ -1243,8 +1257,8 @@ it("U-项目-07：转让先选人、再点「确认转让」才交；框里写�
   const { page, errors } = await open(true, 1280);
   try {
     await page.evaluate(() => (window as unknown as { __转: () => void }).__转());
-    await page.locator(".page-head-a").getByRole("button", { name: "转让项目" }).click();
-    const 窗 = page.getByRole("dialog").filter({ hasText: "转让项目" });
+    await page.locator(".page-head-a").getByRole("button", { name: "项目转让" }).click();
+    const 窗 = page.getByRole("dialog").filter({ hasText: "项目转让" });
     await 窗.waitFor();
     const 确认 = 窗.getByRole("button", { name: /确认转让/ });
     expect(await 确认.isDisabled()).toBe(true);
