@@ -118,7 +118,8 @@ describe("全局搜索按角色限定范围（U-项目-04）", () => {
   it("按客户名也搜得到名下项目；结果带去处：客户、项目进详情，联系人去所属客户", async () => {
     const r = await 搜(销售A, "甲公司");
     expect(r.项目.map((x) => x.name)).toEqual(["QA搜索-甲一期"]);
-    expect(r.项目[0].去).toMatch(/^\/projects\//);
+    // 11-12 客户详情合并第 2 批：进得了客户详情的项目直接去客户页那个项目页签（不再先到 /projects/<id> 再跳）
+    expect(r.项目[0].去).toBe(`/customers/${甲}?project=${r.项目[0].id}`);
     expect(r.客户[0].去).toBe(`/customers/${甲}`);
     const 人 = await 搜(销售A, "13900003001");
     expect(人.联系人.map((x) => [x.name, x.去])).toEqual([["QA搜索-甲联系人", `/customers/${甲}`]]);

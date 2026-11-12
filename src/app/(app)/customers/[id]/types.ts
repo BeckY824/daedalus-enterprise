@@ -155,6 +155,8 @@ export type RecordProps = {
    * 排序 = 主联系人 → 本项目联系人（带本项目里的角色 / 立场）→ 这位客户的其他联系人。不给（没有项目可选）退回客户级 isPrimary
    */
   项目联系人?: 项目联系人 | null;
+  /** 项目区页签上的项目 id（CustomerDetail 给）：时间线上点这些项目直接切页签 */
+  项目页签们?: readonly string[] | null;
   customer: CustomerRow;
   contacts: ContactRow[];
   contracts: ContractRow[];

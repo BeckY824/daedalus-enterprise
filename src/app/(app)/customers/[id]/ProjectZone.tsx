@@ -1,7 +1,8 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card } from "antd";
 import { ProjectFold } from "../../projects/[id]/ProjectFold";
 import ProjectDetail, { type 项目详情Props } from "../../projects/[id]/ProjectDetail";
@@ -31,13 +32,23 @@ const 锁 = (
 
 /**
  * 项目区第一行（定稿 UI .zh）：「项目」小标题、我能看的项目各一个页签、同事项目带锁的个数、「＋ 新建项目」；右端放当前页签这个项目的按钮。
- * 必须一行不换行：页签那段可缩、每个页签放不下省略号（悬停看全名，全站 TruncTip + title），锁、新建、右端按钮不缩
+ * 必须一行不换行：页签那段可缩、每个页签放不下省略号（悬停看全名，全站 TruncTip + title），再放不下这一段横着滚；
+ * 锁、新建、右端按钮在滚动段外面、不缩，项目再多也一直看得见（审查 #1）。当前页签打开时滚进可见处；Tab 键走到哪个页签浏览器自己滚过去
  */
-export function 页签行({ 数据, 当前id, 开建项目, 右端 }: { 数据: 项目区数据; 当前id: string | null; 开建项目: (() => void) | null; 右端: ReactNode }) {
+export function ProjectTabs({ 数据, 当前id, 开建项目, 右端 }: { 数据: 项目区数据; 当前id: string | null; 开建项目: (() => void) | null; 右端: ReactNode }) {
+  const 段 = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const 框 = 段.current;
+    const 那个 = 框?.querySelector<HTMLElement>(".cd-tab.on");
+    if (!框 || !那个) return;
+    // 只横着挪这一段，不用 scrollIntoView（它会连整页一起竖着滚）
+    const 左 = 那个.offsetLeft - 框.offsetLeft;
+    if (左 < 框.scrollLeft || 左 + 那个.offsetWidth > 框.scrollLeft + 框.clientWidth) 框.scrollLeft = Math.max(0, 左 - (框.clientWidth - 那个.offsetWidth) / 2);
+  }, [当前id]);
   return (
     <div className="cd-zh">
       <span className="cd-cap">项目</span>
-      <div className="cd-tabs" role="tablist" aria-label="这位客户的项目">
+      <div className="cd-tabs" role="tablist" aria-label="这位客户的项目" ref={段}>
         {数据.页签们.map((t) => {
           const 字 = `${t.name} · ${t.节点}`;
           return (
@@ -55,18 +66,18 @@ export function 页签行({ 数据, 当前id, 开建项目, 右端 }: { 数据: 
             </Link>
           );
         })}
-        {数据.锁数 > 0 && (
-          <span className="cd-lock" title={`还有 ${数据.锁数} 个同事负责的项目，你看不到内容`} aria-label={`同事项目 ${数据.锁数} 个`}>
-            {锁}
-            <span className="cd-lock-t">同事项目 </span>{数据.锁数}
-          </span>
-        )}
-        {开建项目 && (
-          <button type="button" className="cd-add" onClick={开建项目} aria-label="新建项目">
-            ＋ 新建<span className="cd-add-t">项目</span>
-          </button>
-        )}
       </div>
+      {数据.锁数 > 0 && (
+        <span className="cd-lock" title={`还有 ${数据.锁数} 个同事负责的项目，你看不到内容`} aria-label={`同事项目 ${数据.锁数} 个`}>
+          {锁}
+          <span className="cd-lock-t">同事项目 </span>{数据.锁数}
+        </span>
+      )}
+      {开建项目 && (
+        <button type="button" className="cd-add" onClick={开建项目} aria-label="新建项目">
+          ＋ 新建<span className="cd-add-t">项目</span>
+        </button>
+      )}
       <span className="cd-sp" />
       {右端}
     </div>
@@ -76,10 +87,19 @@ export function 页签行({ 数据, 当前id, 开建项目, 右端 }: { 数据: 
 /** 项目区：有项目画项目详情（嵌入版），没有就是空状态 + 「＋ 新建项目」 */
 export default function ProjectZone({ 数据, 槽 }: { 数据: 项目区数据; 槽: 项目区槽 }) {
   const 客户页 = `/customers/${encodeURIComponent(数据.customerId)}`;
+  const router = useRouter();
+  const 要的 = useSearchParams().get("project");
+  const 显示的 = 数据.当前?.p.id ?? null;
+  // 地址上带的项目读不出来（看不了、不是这位客户的、删了）时服务端换成了默认那个：把地址改成实际显示的，
+  // 不留「地址写 A、页签和内容是 B」（审查 #5）。只换 query，锚点照留
+  useEffect(() => {
+    if (!要的 || 要的 === 显示的) return;
+    router.replace(显示的 ? 客户页项目地址(数据.customerId, 显示的, window.location.hash) : `${客户页}${window.location.hash}`, { scroll: false });
+  }, [要的, 显示的, 数据.customerId, 客户页, router]);
   if (!数据.当前) {
     return (
       <section className="rec-zone" aria-label="项目">
-        <页签行 数据={数据} 当前id={null} 开建项目={槽.开建项目} 右端={null} />
+        <ProjectTabs 数据={数据} 当前id={null} 开建项目={槽.开建项目} 右端={null} />
         <div className="cd-empty" data-testid="project-zone-empty">
           <div className="cd-empty-t">{数据.锁数 > 0 ? "没有你能看的项目" : "这位客户还没有项目"}</div>
           <div className="cd-empty-d">
@@ -107,7 +127,7 @@ export default function ProjectZone({ 数据, 槽 }: { 数据: 项目区数据; 
       key={当前.p.id}
       {...当前}
       嵌入={{
-        页签行: (右端) => <页签行 数据={数据} 当前id={当前.p.id} 开建项目={槽.开建项目} 右端={右端} />,
+        页签行: (右端) => <ProjectTabs 数据={数据} 当前id={当前.p.id} 开建项目={槽.开建项目} 右端={右端} />,
         全部沟通: 槽.全部沟通,
         全部沟通数: 槽.全部沟通数,
         待办: 槽.待办,

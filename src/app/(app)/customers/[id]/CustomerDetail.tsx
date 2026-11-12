@@ -19,5 +19,5 @@ export default function CustomerDetail({ 项目数据: 项目区, ...记录 }: R
         本项目: (p.关联?.联系人们 ?? []).filter((x) => x.看得到).map((x) => ({ contactId: x.contactId, 角色: x.角色, 立场: x.立场 })),
       }
     : null;
-  return <RecordView {...记录} 项目联系人={主次} 项目区={(槽) => <ProjectZone 数据={项目区} 槽={槽} />} />;
+  return <RecordView {...记录} 项目联系人={主次} 项目页签们={项目区.页签们.map((t) => t.id)} 项目区={(槽) => <ProjectZone 数据={项目区} 槽={槽} />} />;
 }

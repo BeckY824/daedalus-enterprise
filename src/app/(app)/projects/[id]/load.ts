@@ -41,6 +41,7 @@ import { 合同状态显示 } from "@/lib/project/proj-fields";
 import type { 项目画像 } from "./ProjectExtras";
 import type { 项目详情, 项目卡点, 放回方式, 项目详情Props } from "./ProjectDetail";
 import { 去空, 有值 } from "@/lib/empty-value";
+import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
 
 
 /**
@@ -61,6 +62,39 @@ function 时限标签(nextAt: Date) {
   const 日 = dayjs(nextAt).format("MM-DD");
   if (过 > 0) return { 级别: "超时" as const, 文字: `下一步已逾期 ${过} 天（${日}）` };
   return 过 === 0 ? { 级别: "拿捏" as const, 文字: `下一步是今天（${日}）` } : { 级别: "稳" as const, 文字: `下一步 ${日}` };
+}
+
+/** 市场角色已分出去的那条（11-04 P-看-06）：列表里真有这一行的转回项目页高亮，别的 404；不是这种情况给 null。读项目详情 和 项目页去向 共用 */
+async function 市场去向(me: SessionUser, p: { id: string; name: string; ownerId: string; creatorId: string; pooledAt: Date | null }, 已加入: string[]): Promise<{ 种: "无" } | { 种: "转向"; 到: string } | null> {
+  if (!企业版() || !(await 市场进不了详情(me.id, p.id, { ownerId: p.ownerId, pooledAt: p.pooledAt, 已加入 }))) return null;
+  const 圈 = (await 读市场身份(me.id))?.圈 ?? [];
+  if (p.ownerId && 圈.includes(p.creatorId)) return { 种: "转向", 到: `/projects?q=${encodeURIComponent(p.name)}&hl=${encodeURIComponent(p.id)}` };
+  return { 种: "无" };
+}
+
+/**
+ * /projects/<id> 先走的轻判断（11-12 第 2 批审查 #3）：只取决定跳不跳要的几个字段，不读整份详情。
+ * 口径和 读项目详情 + 页面那条跳转一一对上：找不到 / 市场挡 / 能看项目不过 / 公海回避 = 无；市场列表里有 = 转向；
+ * 看得到客户（= 露 且 客户入口 详情）= 跳客户页项目页签；看不到客户的（只读卡、只露名字）= 留在项目页读整份
+ */
+export async function 项目页去向(me: SessionUser, id: string): Promise<{ 种: "无" } | { 种: "转向"; 到: string } | { 种: "客户页"; 到: string } | { 种: "留" }> {
+  if (!企业版()) return { 种: "留" };
+  const p = await prisma.project.findUnique({
+    where: { id },
+    select: { id: true, name: true, ownerId: true, creatorId: true, pooledAt: true, bizLine: true, customerId: true, members: { where: { inviteStatus: "JOINED" }, select: { userId: true } } },
+  });
+  if (!p) return { 种: "无" };
+  const 已加入 = p.members.map((m) => m.userId);
+  const 市场 = await 市场去向(me, p, 已加入);
+  if (市场) return 市场;
+  if (!能看项目(me, { ...p, 已加入 }, await 权限组织())) return { 种: "无" };
+  if (!(await 看得到的客户([p.customerId])).has(p.customerId)) return { 种: "留" };
+  if (p.pooledAt && 原负责人回避()) {
+    const 放 = await prisma.projectNodeLog.findFirst({ where: { projectId: p.id, kind: "pool-release" }, orderBy: { at: "desc" }, select: { fromOwnerId: true } });
+    const 上一任 = 放?.fromOwnerId ?? (p.ownerId || null);
+    if (me.id === 上一任 && !(await 回避豁免(me))) return { 种: "无" };
+  }
+  return { 种: "客户页", 到: 客户页项目地址(p.customerId, p.id) };
 }
 
 /** 项目详情（团队版项目模式 1a）：改节点、勾尾款 / 验收、节点变更和挂在项目上的沟通。开关关着时不存在 */
@@ -85,11 +119,8 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   // 市场角色：已分给圈外的人的那条只在项目页看进度，详情（含直接输网址）一律不给（11-04 P-看-06）。
   // 先问这个：自己建的线索分给销售后，原来存的链接点进来不再是「找不到」——转回项目页、搜上项目名、指出那一行（客户 11-05）。
   // 只转列表里真有这一行的（建的人在我的圈里、已有负责人，同 market-view.ts 市场项目条件），别的照旧 404，不借转向露出项目名
-  if (企业版() && (await 市场进不了详情(me.id, p.id, { ownerId: p.ownerId, pooledAt: p.pooledAt, 已加入 }))) {
-    const 圈 = (await 读市场身份(me.id))?.圈 ?? [];
-    if (p.ownerId && 圈.includes(p.creatorId)) return { 种: "转向", 到: `/projects?q=${encodeURIComponent(p.name)}&hl=${encodeURIComponent(p.id)}` };
-    return { 种: "无" };
-  }
+  const 市场 = await 市场去向(me, p, 已加入);
+  if (市场) return 市场;
   // 数据层（lib/team-scope.ts 看得到的项目）在「按组织看客户」开着时已经筛过；关着也按业务角色再挡一遍
   if (企业版() && !能看项目(me, { ...p, 已加入 }, org)) return { 种: "无" };
   const 能改 = 能管项目(me, p, org);

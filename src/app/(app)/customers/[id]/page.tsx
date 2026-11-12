@@ -100,11 +100,23 @@ export default async function CustomerDetailPage({
   const 挂来的P = 企 ? 客户的联系人们(customer.id) : Promise.resolve([]);
   const 全部联系人idP = 挂来的P.then((挂来的) => [...customer.contacts.map((c) => c.id), ...挂来的.map((x) => x.contact.id)]);
   const 规则P = 只项目 ? 生效组织规则() : null;
+  // 企业版只用项目：商机一节换成这位名下的项目（10-26）；库里存着旧节点名 / 旧结局的按企业版的新名显示（10-31 改名）
+  // 先摆成 promise：项目区（读项目区）挂在它后面和下面的大 Promise.all 并行（第 2 批审查 #4）
+  const 项目们P = 只项目
+    ? 回避豁免(me).then((免) => (免 ? [] : 我回避的公海项目(prisma, me.id))).then((回避) => prisma.project.findMany({
+        // 公海里我是历史负责人的项目不列（C-01，lib/project/pool-owner.ts；总管理 / 管理员照列，回避豁免）
+        where: { customerId: customer.id, ...(回避.length ? { id: { notIn: 回避 } } : {}) },
+        orderBy: { updatedAt: "desc" },
+        select: { id: true, name: true, phase: true, node: true, result: true, pooledAt: true, amount: true, currency: true, updatedAt: true },
+      })).then((ps) => ps.map(({ updatedAt: _u, ...p }) => 本套位置(p, 企业版字典)))
+    : null;
+  // 客户详情合并（11-12 第 2 批）：企业版项目模式下右边是项目区，?project=<id> 选页签；按项目详情页同一个取数读当前项目
+  const 项目区P = 项目们P ? 项目们P.then((ps) => 读项目区(me, customer.id, ps, sp.project ?? null)) : Promise.resolve(null);
   const [
     号, users, channels, 挂来的, 另挂, 只项目四样,
     sourceLead, aiEnabled, 已收藏, 换负责人记录, 旺旺们, 项目们, 参与项目们, 只读, 客户状态选项,
     联系人分类附件, 关联们, 号码种类, 分配方式选项, 客户类型选项, 规则, 联系人附件数,
-    可改沟通, 可删沟通, 客户状态字典, 职务选项, 客户属性选项, 字典释义,
+    可改沟通, 可删沟通, 客户状态字典, 职务选项, 客户属性选项, 字典释义, 项目区,
   ] = await Promise.all([
     // 演示区是公开的，同一份数据所有访客共用：号码一律打码。自己部署的实例不受影响——销售要照着这个号打电话。
     号码脱敏器(),
@@ -135,14 +147,7 @@ export default async function CustomerDetailPage({
       ? prisma.contactMethod.findMany({ where: { customerId: customer.id, contactId: null, kind: "wangwang" }, orderBy: { createdAt: "asc" }, select: { value: true } }).then((ms) => ms.map((m) => m.value))
       : [],
     // 企业版只用项目：商机一节换成这位名下的项目（10-26）；库里存着旧节点名 / 旧结局的按企业版的新名显示（10-31 改名）
-    只项目
-      ? 回避豁免(me).then((免) => (免 ? [] : 我回避的公海项目(prisma, me.id))).then((回避) => prisma.project.findMany({
-          // 公海里我是历史负责人的项目不列（C-01，lib/project/pool-owner.ts；总管理 / 管理员照列，回避豁免）
-          where: { customerId: customer.id, ...(回避.length ? { id: { notIn: 回避 } } : {}) },
-          orderBy: { updatedAt: "desc" },
-          select: { id: true, name: true, phase: true, node: true, result: true, pooledAt: true, amount: true, currency: true, updatedAt: true },
-        })).then((ps) => ps.map(({ updatedAt: _u, ...p }) => 本套位置(p, 企业版字典)))
-      : null,
+    项目们P,
     // 企业版项目关联（P17）：这位关联在哪些项目上、什么身份；只列看得到的项目（限定层），概览名称按后台改过的出口叫法叫
     规则P ? 规则P.then((r) => 客户参与的项目(customer.id, 字典of(true, r.阶段.出口叫法))) : null,
     // 团队开了互看、这位是同事的：只能看和加跟进（lib/team-scope.ts）
@@ -166,6 +171,7 @@ export default async function CustomerDetailPage({
     企 ? 页面可选项("contactTitle") : undefined,
     企 ? 页面可选项("custAttr") : undefined,
     企 ? 页面客户释义() : undefined,
+    项目区P,
   ]);
   const [汇总, 跟进去处, 转让选项, 待办计划] = 只项目四样 ?? [null, null, null, null];
   // 号码类的几种（手机、座机、WhatsApp、传真）和电话一样过脱敏器；微信、邮箱、旺旺照旧（同联系人老三格的口径）
@@ -191,8 +197,6 @@ export default async function CustomerDetailPage({
       : {}),
   });
 
-  // 客户详情合并（11-12 第 2 批）：企业版项目模式下右边是项目区，?project=<id> 选页签；按项目详情页同一个取数读当前项目
-  const 项目区 = 只项目 && 项目们 ? await 读项目区(me, customer.id, 项目们, sp.project ?? null) : null;
   return (
     <CustomerDetail
       key={customer.id}

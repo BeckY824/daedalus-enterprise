@@ -334,10 +334,13 @@ function 进公海说法(进: 项目详情["进公海"], 原负责人: string): 
  * 页头那行：项目负责人、项目创建人各写各的（11-02，原来的「X 建于」看不出 X 是什么人）；负责人空着写「—」（11-11：没填的一律「—」）。只在页头写，项目卡不再摆一遍。
  * 在公海里时 ownerName 是原负责人：不写成负责人是 X，也不把系统收回说成 X 放回的（QA #14）
  */
-function 项目人说法(p: 项目详情): string {
+function 负责人说法(p: 项目详情): string {
   const 负责人 = (p.pooled ? "" : p.ownerName) || 空值符;
   const 公海 = p.pooled ? `（在公海里${p.ownerName ? `，原负责人 ${p.ownerName}` : ""}${进公海说法(p.进公海, p.ownerName)}）` : "";
-  return `项目负责人：${负责人}${公海} · 项目创建人：${p.creatorName || 空值符}`;
+  return `${负责人}${公海}`;
+}
+function 项目人说法(p: 项目详情): string {
+  return `项目负责人：${负责人说法(p)} · 项目创建人：${p.creatorName || 空值符}`;
 }
 
 /**
@@ -690,7 +693,8 @@ export default function ProjectDetail({
               )}
             </Space.Compact>
           ))}
-        {p.能记沟通 && <Button type="primary" data-cmd-new disabled={忙} onClick={() => set记一条开着("手填")}>新增沟通</Button>}
+        {/* 嵌在客户页：新建沟通只留沟通卡头那颗主按钮（总控 11-12 定，用户原话「新建沟通放沟通模块最上方右侧」），⌘N 的 data-cmd-new 也挂那颗 */}
+        {p.能记沟通 && !嵌入 && <Button type="primary" data-cmd-new disabled={忙} onClick={() => set记一条开着("手填")}>新增沟通</Button>}
       </>
     );
   };
@@ -753,7 +757,7 @@ export default function ProjectDetail({
           结局={位.结局}
           结局色={异常 ? "error" : 交付了 ? "success" : "default"}
           成功交付={交付了}
-          动作={节点可改 || p.能记沟通 ? 进程钮 : undefined}
+          动作={节点可改 || (p.能记沟通 && !嵌入) ? 进程钮 : undefined}
           提示={p.result && 节点可改 ? undefined : 完成不了}
         />
       ) : (
@@ -788,7 +792,13 @@ export default function ProjectDetail({
     <Card
       title={嵌入 ? "项目资料" : "项目"}
       // U-项目-05：企业版改项目的入口挪到项目卡右上角一个笔（页头不再摆「编辑项目」），点开还是同一个编辑框；别的版本照旧「编辑」
-      extra={可改 && (p.企业版
+      extra={嵌入 ? (
+        // 嵌在客户页：项目收藏星挪到这张卡头（审查 #2，页签行 1024 宽已经很挤），只管当前页签这个项目；编辑笔照旧在最右
+        <span className="cd-card-acts">
+          <ProjectStarButton projectId={p.id} 初值={p.收藏了 ?? false} />
+          {可改 && <Tooltip title="编辑项目"><Button type="text" size="small" icon={<EditOutlined />} aria-label="编辑项目" disabled={忙} onClick={() => set编辑开着(true)} /></Tooltip>}
+        </span>
+      ) : 可改 && (p.企业版
         ? <Tooltip title="编辑项目"><Button type="text" size="small" icon={<EditOutlined />} aria-label="编辑项目" disabled={忙} onClick={() => set编辑开着(true)} /></Tooltip>
         : <Button type="link" size="small" disabled={忙} onClick={() => set编辑开着(true)}>编辑</Button>)}
     >
@@ -947,6 +957,14 @@ export default function ProjectDetail({
             )}
           />
         </div>
+      )}
+      {/* 嵌在客户页没有项目页头（审查 #2）：页头副标题里的负责人、创建人、创建时间挪到这张卡上 */}
+      {嵌入 && (
+        <>
+          <div style={行样} data-testid="project-owner-row"><span style={键样}>负责人</span><span className="proj-one" title={负责人说法(p)}>{负责人说法(p)}</span></div>
+          <div style={行样} data-testid="project-creator-row"><span style={键样}>创建人</span><span className="proj-one">{p.creatorName || 空值符}</span></div>
+          <div style={行样} data-testid="project-created-row"><span style={键样}>创建于</span><span className="proj-one">{fmtDateTime(p.createdAt)}</span></div>
+        </>
       )}
       {p.企业版 && p.已立项天数 !== undefined && <div style={行样}><span style={键样}>已立项</span>{p.已立项天数 === 0 ? "今天立项" : `${p.已立项天数} 天`}</div>}
       {p.企业版 && p.项目来源 !== undefined && (
@@ -1175,7 +1193,7 @@ export default function ProjectDetail({
   const 沟通范围钮 = 嵌入 && (
     <span className="cd-seg" role="group" aria-label="沟通记录看哪些">
       <button type="button" className={看全部沟通 ? undefined : "on"} aria-pressed={!看全部沟通} onClick={() => set看全部沟通(false)}>本项目</button>
-      <button type="button" className={看全部沟通 ? "on" : undefined} aria-pressed={看全部沟通} onClick={() => set看全部沟通(true)}>这位客户全部</button>
+      <button type="button" className={看全部沟通 ? "on" : undefined} aria-pressed={看全部沟通} onClick={() => { set看全部沟通(true); set搜(""); }}>这位客户全部</button>
     </span>
   );
   const 沟通卡 = 嵌入 ? (
@@ -1186,7 +1204,7 @@ export default function ProjectDetail({
         <Space size={8} className="proj-follow-acts">
           {能隐藏 && !看全部沟通 && <Button size="small" aria-pressed={隐藏中} title="隐藏归属人不是你的沟通，只是不显示，不删数据" onClick={() => set只看接手后(!只看接手后)} data-testid="follow-hide-before">{隐藏中 ? "显示全部" : "隐藏接手前"}</Button>}
           {p.能记沟通 && p.aiEnabled && p.customer && <Button size="small" icon={<ThunderboltOutlined />} disabled={忙} onClick={() => set记一条开着("AI")}>AI 录入</Button>}
-          {p.能记沟通 && <Button size="small" type="primary" disabled={忙} onClick={() => set记一条开着("手填")} data-testid="follow-card-new">新建沟通</Button>}
+          {p.能记沟通 && <Button size="small" type="primary" data-cmd-new disabled={忙} onClick={() => set记一条开着("手填")} data-testid="follow-card-new">新建沟通</Button>}
         </Space>
       )}
     >
@@ -1554,7 +1572,8 @@ export default function ProjectDetail({
         <div className="cd-zb">
           <div className="cd-mid">
             {节点卡}
-            {搜索框}
+            {/* 「这位客户全部」是客户页那条时间线，不归这个搜索框管：切过去时清掉词、搜索框先藏起来（审查 #6），切回本项目再出来 */}
+            {!看全部沟通 && 搜索框}
             <ProjectFold id="project-follow" 名="沟通记录" 开={沟通开} set开={set沟通开} 锁开={搜着} 控制="project-follow-body">{沟通卡}</ProjectFold>
             {嵌入.待办}
             {卡点区 && <ProjectFold id="project-blockers" 名="卡点与任务" 开={卡点开} set开={set卡点开} 锁开={搜着} 控制="project-blockers-body">{卡点区}</ProjectFold>}

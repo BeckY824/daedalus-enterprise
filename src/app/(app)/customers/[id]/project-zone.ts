@@ -36,6 +36,9 @@ export async function 读项目区(me: SessionUser, customerId: string, 列表: 
     ...(() => { const d = 默认页签(可看); return d && d.id !== 要的 ? [d.id] : []; })(),
     ...可看.map((p) => p.id),
   ];
+  // 锁数和下面读当前项目详情并行（审查 #4）；读详情里的负责人候选、组织、组织规则是请求内缓存，和客户页同一份
+  const 锁数P = 看全部(() => prisma.project.count({ where: { customerId, ...在推项目条件, deletedAt: null, id: { notIn: 可看.map((p) => p.id) } } }));
+  锁数P.catch(() => undefined); // 下面读详情先抛错时别留一个没人接的 rejection；结果照样在后面 await
   let 当前: 项目区数据["当前"] = null;
   const 读不了 = new Set<string>();
   for (const id of [...new Set(顺序)]) {
@@ -44,6 +47,6 @@ export async function 读项目区(me: SessionUser, customerId: string, 列表: 
     读不了.add(id);
   }
   const 页签们 = 可看.filter((p) => !读不了.has(p.id));
-  const 锁数 = await 看全部(() => prisma.project.count({ where: { customerId, ...在推项目条件, deletedAt: null, id: { notIn: 可看.map((p) => p.id) } } }));
+  const 锁数 = await 锁数P;
   return { customerId, 页签们: 页签们.map((p) => ({ id: p.id, name: p.name, 节点: 节点字(p) })), 锁数, 当前 };
 }

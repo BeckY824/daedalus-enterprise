@@ -188,6 +188,7 @@ export default function RecordView({
   醒目条 = null,
   项目区 = null,
   项目联系人 = null,
+  项目页签们 = null,
 }: RecordProps) {
   // 「加跟进」= 团队版互看同事的客户；「全」= 企业版虚线下属的客户，跟进也不能记
   const 只读 = !!只读档 || 管理员只读;
@@ -241,6 +242,9 @@ export default function RecordView({
     : contacts;
   /** 「这位客户的其他联系人」那行小标题摆在第一位「其他」前面；本项目一个联系人都没挂就不摆（全是其他，用不着分） */
   const 其他起点 = 项目联系人 && 排好的联系人.some((c) => 联系人档(c) < 2) ? 排好的联系人.find((c) => 联系人档(c) === 2)?.id ?? null : null;
+  // 时间线「项目：X」：是项目区页签里的项目就直接切到那个页签的沟通卡（同一页软跳、保住 #project-follow），别的照旧去 /projects/<id> 让服务端判（审查 #3）
+  const 页签集 = new Set(项目页签们 ?? []);
+  const 时间线项目地址 = (id: string) => (页签集.has(id) ? 客户页项目地址(customer.id, id, "#project-follow") : 项目页地址(id));
   const [资料全开, set资料全开] = useState(false);
   // 项目「完成节点」框里窗外项点「去客户页」带着 #field-xxx 来（11-03 A6-1）：没填的格收在「展开更多」里，先展开再滚到那一格
   useEffect(() => {
@@ -822,7 +826,7 @@ export default function RecordView({
               </div>
             </motion.div>
           ) : (
-            <FollowItem key={e.f.id} f={e.f} 不挂商机={!!项目们} showOwner={!e.f.ownerId || !独自一人(users, e.f.ownerId)} index={i} onEdit={() => openFollow(e.f)} onDelete={() => deleteFollow(e.f)} 可改={!只读 && !摆法.沟通汇总 && 能改沟通} 可删={!只读 && !摆法.沟通汇总 && 能删沟通} 汇总={摆法.沟通汇总} />
+            <FollowItem key={e.f.id} f={e.f} 不挂商机={!!项目们} showOwner={!e.f.ownerId || !独自一人(users, e.f.ownerId)} index={i} onEdit={() => openFollow(e.f)} onDelete={() => deleteFollow(e.f)} 可改={!只读 && !摆法.沟通汇总 && 能改沟通} 可删={!只读 && !摆法.沟通汇总 && 能删沟通} 汇总={摆法.沟通汇总} 项目地址={时间线项目地址} />
           ),
         )}
       </AnimatePresence>
@@ -1714,7 +1718,10 @@ function StatusPicker({
   );
 }
 
-function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可删 = 可改, 不挂商机 = false, 汇总 = false }: { f: FollowUpRow; showOwner: boolean; index: number; onEdit: () => void; onDelete: () => void; 可改?: boolean; 可删?: boolean; 不挂商机?: boolean; 汇总?: boolean }) {
+/** 时间线上「项目：X」默认去项目详情的沟通卡（服务端再判跳不跳） */
+const 项目页地址 = (id: string) => `/projects/${encodeURIComponent(id)}#project-follow`;
+
+function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可删 = 可改, 不挂商机 = false, 汇总 = false, 项目地址 = 项目页地址 }: { f: FollowUpRow; showOwner: boolean; index: number; onEdit: () => void; onDelete: () => void; 可改?: boolean; 可删?: boolean; 不挂商机?: boolean; 汇总?: boolean; 项目地址?: (projectId: string) => string }) {
   const { 曲线, 时长, 间隔 } = useMotionTheme();
   const meta = FOLLOW_TYPE_MAP[f.type] ?? FOLLOW_TYPE_MAP.OTHER;
   const [srcOpen, setSrcOpen] = useState(false);
@@ -1764,7 +1771,7 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
         {f.title?.trim() && <div className="rec-sum-title">{f.title}</div>}
         <div className="rec-tl-content">{f.content}</div>
         {原文}
-        {f.项目 && <div><RowLink href={`/projects/${encodeURIComponent(f.项目.id)}#project-follow`} className="rec-sum-proj" title={`项目：${f.项目.名}`}>项目：{f.项目.名}</RowLink></div>}
+        {f.项目 && <div><RowLink href={项目地址(f.项目.id)} className="rec-sum-proj" title={`项目：${f.项目.名}`}>项目：{f.项目.名}</RowLink></div>}
         <div className="rec-tl-meta">
           {f.ownerName && <span>{f.ownerName}</span>}
           {f.duration ? <span>时长 {duration(f.duration)}</span> : null}
@@ -1786,7 +1793,7 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
           {f.title?.trim() && <span className="rec-tl-title" title={f.title}>· {f.title}</span>}
           {f.opportunity && !不挂商机 && <RowLink href={`/opportunities?opportunity=${encodeURIComponent(f.opportunity.id)}`} className="rec-tl-order" title={`关联商机：${f.opportunity.name}`}>关联商机：{f.opportunity.name}</RowLink>}
           {/* 企业版沟通记录（P14 第 6 条）：每条标出是哪个项目的，点了去项目详情的「沟通」卡记 */}
-          {f.项目 && <RowLink href={`/projects/${encodeURIComponent(f.项目.id)}#project-follow`} className="rec-tl-order rec-tl-proj" title={`项目：${f.项目.名}`}>项目：{f.项目.名}</RowLink>}
+          {f.项目 && <RowLink href={项目地址(f.项目.id)} className="rec-tl-order rec-tl-proj" title={`项目：${f.项目.名}`}>项目：{f.项目.名}</RowLink>}
           {f.status !== "已完成" && (
             <Tag color={FOLLOW_RECORD_STATUS_COLOR[f.status] ?? "default"} style={{ margin: 0 }}>
               {f.status}

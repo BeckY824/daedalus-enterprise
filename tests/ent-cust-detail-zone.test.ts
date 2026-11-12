@@ -33,6 +33,8 @@ import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibil
 import CustomerPage from "@/app/(app)/customers/[id]/page";
 import ProjectPage from "@/app/(app)/projects/[id]/page";
 import type { 项目区数据 } from "@/app/(app)/customers/[id]/ProjectZone";
+import { 项目页去向 } from "@/app/(app)/projects/[id]/load";
+import { 项目链接们 } from "@/lib/project/customer-detail-direct";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 const 造人 = async (key: string, bizRole: string, managerId?: string): Promise<人> => {
@@ -95,5 +97,17 @@ describe("客户详情的项目区", () => {
   it("/projects/<id>：进得了客户详情的跳到 /customers/<客户>?project=<id>；看不到的照旧 404", async () => {
     expect(await 打开项目(甲, 我的)).toBe(`REDIRECT:/customers/${客户}?project=${我的}`);
     expect(await 打开项目(甲, 同事的)).toBe("NOT_FOUND");
+  });
+
+  it("/projects/<id> 的轻判断（审查 #3）：跳不跳和读整份详情一个口径；站内列表能确定的直接给客户页地址，公海、看不了的照旧 /projects/<id>", async () => {
+    expect(await 以(甲, () => 项目页去向(甲 as never, 我的))).toEqual({ 种: "客户页", 到: `/customers/${客户}?project=${我的}` });
+    expect(await 以(甲, () => 项目页去向(甲 as never, 我结束的))).toEqual({ 种: "客户页", 到: `/customers/${客户}?project=${我结束的}` });
+    expect(await 以(甲, () => 项目页去向(甲 as never, 同事的))).toEqual({ 种: "无" });
+    expect(await 以(甲, () => 项目页去向(甲 as never, "没有这个"))).toEqual({ 种: "无" });
+    const 公海的 = (await prisma.project.create({ data: { name: "公海里的项目", customerId: 客户, ownerId: 乙.id, creatorId: 乙.id, phase: "商机", node: "需求确认", pooledAt: new Date() } })).id;
+    const 链 = await 以(甲, () => 项目链接们(甲 as never, [我的, 同事的, 公海的]));
+    expect(链.get(我的)).toBe(`/customers/${客户}?project=${我的}`);
+    expect(链.get(同事的)).toBe(`/projects/${同事的}`);
+    expect(链.get(公海的)).toBe(`/projects/${公海的}`);
   });
 });

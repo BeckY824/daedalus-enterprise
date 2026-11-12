@@ -12,7 +12,7 @@ const plugin: Plugin = { name: "cust-detail-merge", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
   stub(/(^|\/)InlineField$/, "export default function Inline(p){return <div className='rec-field' data-field={p.field}>{p.label}: {p.value}</div>}");
-  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(u){window.__去=u},replace(){},prefetch(){}});export const usePathname=()=>\"/customers/a\";export const useSearchParams=()=>new URLSearchParams();");
+  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(u){window.__去=u},replace(u){window.__换=u},prefetch(){}});export const usePathname=()=>\"/customers/a\";export const useSearchParams=()=>new URLSearchParams(window.__sp||'');");
   stub(/^next\/link$/, "export default function L({prefetch,scroll,replace,...p}){return <a {...p}/>}");
   stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|NewProjectModal|ContactLinks|ResearchRun|ResearchPerson)$/, "export default function Empty(){return null}");
   stub(/research\/ResearchEntry$/, "export const useResearchEntry=()=>false;");
@@ -67,19 +67,23 @@ beforeAll(async () => {
       p2:项目('p2','项目二'+长,'c3',[['c3',['决策人'],null]]),
     };
     const 页签们=[{id:'p1',name:项目们.p1.name,节点:'方案报价'},{id:'p2',name:项目们.p2.name,节点:'需求确认'}];
+    // 项目多（审查 #1）：再补 6 个只有页签的项目，一共 8 个
+    const 多页签=[...页签们,...Array.from({length:6},(_,i)=>({id:'q'+i,name:'第'+(i+3)+'个项目'+长,节点:'需求确认'}))];
     // 导航收成 56 宽的图标栏；名单在 1214 以上摆着（lib/roster.ts 名单门槛，再窄收成抽屉），手机没有导航
     const 名单=<aside className='pane pane-roster'><div className='pane-h'><span className='pane-t'>客户</span></div><div className='pane-rows'>{Array.from({length:20},(_,i)=><div key={i}>客户{i}</div>)}</div></aside>;
     window.__render=(o={})=>{
+      window.__sp=o.地址||'';window.__换=undefined;
+      const 签=o.空?[]:o.多?多页签:页签们;
       const 当前=o.空?null:当前of(项目们[o.选||'p1'],!o.只读);
       if(当前&&o.只读) 当前.p={...当前.p,能记沟通:false,能放公海:false,能转让:false,能改节点:false,能删:false,关联:当前.p.关联};
       root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><div className='shell rail-mini'>{innerWidth>=768&&<nav className='rail' aria-label='主导航'/>}{innerWidth>=1214&&名单}<main className='main app-content' style={{padding:'22px 26px'}}><div>
         <CustomerDetail customer={{id:'a',extra:null,name:o.公司名||'客户A',phone:'13800138000',school:null,grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z',pool:null}}
           contacts={contacts} contracts={[]} tasks={[{id:'t1',title:'周五带合同上门',dueAt:'2026-11-13T02:00:00.000Z',done:false}]} plan={null}
           users={[{id:'qa',name:'QA',email:'qa@x'},{id:'u2',name:'同事乙',email:'b@x'}]} channels={[]} aiEnabled={false} followUps={客户沟通} followUpsHasMore={false}
-          项目们={页签们.map(t=>({id:t.id,name:t.name,phase:'商机',node:t.节点,result:null,pooledAt:null,amount:0,currency:'CNY'}))} 参与项目们={[]} 关联们={[]} 旺旺们={[]}
+          项目们={签.map(t=>({id:t.id,name:t.name,phase:'商机',node:t.节点,result:null,pooledAt:null,amount:0,currency:'CNY'}))} 参与项目们={[]} 关联们={[]} 旺旺们={[]}
           跟进去处={[{id:'p1',名:'项目一',主:true,结束:false,说明:null,下一步:null,下一步文字:null}]} 待办计划={[]} 能放公海 新建项目={{节点们:['线索验证'],要下一步:false}}
           只读={o.只读?'全':false}
-          项目数据={{customerId:'a',页签们:o.空?[]:页签们,锁数:o.锁数??0,当前}}/>
+          项目数据={{customerId:'a',页签们:签,锁数:o.锁数??0,当前}}/>
       </div></main></div></BusinessProvider></App></ConfigProvider>);
     };
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
@@ -87,7 +91,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 参 = { 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string };
+type 参 = { 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string };
 async function 开(width: number, o: 参 = {}, height = 800) {
   const page = await browser.newPage({ viewport: { width, height } }); page.setDefaultTimeout(5000);
   const errors: string[] = [];
@@ -260,6 +264,93 @@ it("手机单栏：客户名和客户按钮 → 项目页签和项目按钮 → 
     for (const s of 顺序) 高们.push(await 上(s));
     for (let i = 1; i < 高们.length; i++) expect(高们[i], `${顺序[i - 1]} → ${顺序[i]}`).toBeGreaterThan(高们[i - 1]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("项目多（8 个）、1024 宽：页签那段横着滚，锁和「＋ 新建项目」、项目按钮一直看得见点得着；每个页签都够得到；整页不横滚", async () => {
+  const { page, errors } = await 开(1024, { 多: true, 锁数: 3 });
+  try {
+    const 行 = page.locator(".rec-zone > .cd-zh");
+    const 点得着 = (sel: string) => 行.locator(sel).first().evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const 中 = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return r.width > 0 && !!中 && (中 === el || el.contains(中));
+    });
+    expect(await 点得着(".cd-add")).toBe(true);
+    expect(await 点得着(".cd-lock")).toBe(true);
+    expect(await 点得着(".cd-zh-acts button")).toBe(true);
+    // 锁、新建不在滚动段里
+    expect(await 行.locator(".cd-tabs .cd-add, .cd-tabs .cd-lock").count()).toBe(0);
+    // 页签段确实放不下、可以横着滚；整行、整页都不横滚
+    expect(await 行.locator(".cd-tabs").evaluate((el) => el.scrollWidth > el.clientWidth + 1)).toBe(true);
+    expect(await 行.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+    // 每个页签：键盘 Tab 走到它（focus）就滚进可见处，中心点上是它自己
+    const 页签 = 行.locator(".cd-tabs").getByRole("tab");
+    expect(await 页签.count()).toBe(8);
+    for (let i = 0; i < 8; i++) {
+      const t = 页签.nth(i);
+      await t.focus();
+      expect(await t.evaluate((el) => {
+        const 框 = el.parentElement!.getBoundingClientRect(), r = el.getBoundingClientRect();
+        const 中 = document.elementFromPoint(Math.min(r.right, 框.right) - 4, r.top + r.height / 2);
+        return r.right > 框.left + 8 && r.left < 框.right - 8 && !!中 && el.contains(中);
+      }), `第 ${i + 1} 个页签`).toBe(true);
+    }
+    // 「＋ 新建项目」点得动（开新建项目的框）
+    await 行.locator(".cd-add").click();
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("嵌入版的项目资料卡：收藏星在卡头（只管当前项目），负责人、创建人、创建时间摆在卡里；阶段卡上没有「新增沟通」，⌘N 落到沟通卡头的「新建沟通」", async () => {
+  const { page, errors } = await 开(1366);
+  try {
+    const 卡 = page.locator(".cd-side .ant-card").first();
+    expect(await 卡.locator(".ant-card-head-title").innerText()).toBe("项目资料");
+    expect(await 卡.locator(".ant-card-extra").getByRole("button", { name: /收藏/ }).count()).toBe(1);
+    expect(await 卡.getByTestId("project-owner-row").innerText()).toMatch(/负责人\s*QA/);
+    expect(await 卡.getByTestId("project-creator-row").innerText()).toMatch(/创建人\s*QA/);
+    expect(await 卡.getByTestId("project-created-row").innerText()).toMatch(/创建于\s*2026-10-01/);
+    // 新建沟通只剩沟通卡头那一颗
+    expect(await page.locator(".rec-zone").getByRole("button", { name: /新增沟通/ }).count()).toBe(0);
+    expect(await page.locator(".rec-zone").getByRole("button", { name: /新建沟通/ }).count()).toBe(1);
+    expect(await page.locator("button[data-cmd-new]").evaluateAll((bs: HTMLElement[]) => bs.map((b) => b.innerText.replace(/\s+/g, "")))).toEqual(["新建沟通"]);
+    expect(await page.locator("button[data-cmd-new]").getAttribute("data-testid")).toBe("follow-card-new");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("沟通切「这位客户全部」：搜索框藏起来、词清掉（那条时间线不归它管）；切回本项目搜索框回来", async () => {
+  const { page, errors } = await 开(1366);
+  try {
+    const 搜 = page.locator(".rec-zone .proj-search input");
+    await 搜.fill("项目一");
+    const 卡 = page.locator(".cd-comm");
+    await 卡.getByRole("button", { name: "这位客户全部" }).click();
+    expect(await page.locator(".rec-zone .proj-search").count()).toBe(0);
+    expect(await 卡.getByText(/客户全部里的沟通/).count()).toBe(5);
+    await 卡.getByRole("button", { name: "本项目" }).click();
+    expect(await 搜.inputValue()).toBe("");
+    expect(await 卡.getByText(/挂在项目一.*上的沟通/).count()).toBe(1);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("地址上的 ?project= 读不出来、服务端换成了别的：地址改成实际显示的那个，页签高亮和内容是同一个", async () => {
+  const { page, errors } = await 开(1366, { 地址: "project=看不了的" });
+  try {
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __换?: string }).__换)).toBe("/customers/a?project=p1");
+    expect(await page.locator(".cd-tabs").getByRole("tab", { selected: true }).getAttribute("href")).toBe("/customers/a?project=p1");
+    expect(await page.locator(".rec-zone").getAttribute("data-project")).toBe("p1");
+    // 地址本来就对：不动
+    await 画(page, { 地址: "project=p2", 选: "p2" });
+    await page.waitForTimeout(100);
+    expect(await page.evaluate(() => (window as unknown as { __换?: string }).__换)).toBeUndefined();
+    // 没有项目可选、地址还带着：去掉 project
+    await 画(page, { 地址: "project=p2", 空: true });
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __换?: string }).__换)).toBe("/customers/a");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
