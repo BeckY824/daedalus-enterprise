@@ -3773,7 +3773,8 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 /* 卡头、卡身的留白 */
 .rec-page.ui-v2 .rec-mod > .ant-card-head { min-height: 48px; padding-inline: 16px 52px; }
 /* 收起并进卡头连体按钮的（11-12）：右边不再给那颗独立收起钮留 52，和中栏别的卡（antd 卡头 24）同一条右边线（11-12 用户看 3702「按钮位置没对齐」） */
-.rec-page.ui-v2 .proj-fold.has-split > .rec-mod > .ant-card-head { padding-inline-end: 24px; }
+/* 右边距跟 antd 卡头自己的变量走（11-12 实点 3702）：主题里是 16、默认 24，写死 24 时待办卡比另外三颗靠左 8 */
+.rec-page.ui-v2 .proj-fold.has-split > .rec-mod > .ant-card-head { padding-inline-end: var(--ant-card-header-padding, 24px); }
 .rec-page.ui-v2 .rec-rail-blocks .rec-mod > .ant-card-head { padding-inline: 16px 44px; }
 .rec-page.ui-v2 .rec-mod > .ant-card-body { padding: 12px 16px 16px; }
 .rec-page.ui-v2 .rec-rail-blocks .rec-mod > .ant-card-body { padding: 8px 8px 10px; }
