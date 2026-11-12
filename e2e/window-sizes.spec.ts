@@ -98,8 +98,8 @@ test("最小窗口 1024：列表筛选行一行摆下，「列」不被挤到第
     if (await 条.locator(".cf-probe").count()) await 条.locator(".cf-probe[data-cf-ready]").waitFor({ state: "attached" });
     const { 顶, 越界 } = await 条.evaluate((b) => {
       const 右 = b.getBoundingClientRect().right;
-      // 不显示的格不算（探针那一格 display:none，top 恒为 0）
-      const 项 = [...b.querySelectorAll(":scope > .ant-space > .ant-space-item, :scope > .ant-btn, :scope > .ant-dropdown-trigger")]
+      // 不显示的格不算（探针那一格 display:none，top 恒为 0）；筛选行最左那颗「列表 / 看板」（11-12）也算一格
+      const 项 = [...b.querySelectorAll(":scope > .list-view-seg, :scope > .ant-space > .ant-space-item, :scope > .ant-btn, :scope > .ant-dropdown-trigger")]
         .filter((e) => e.getClientRects().length > 0);
       return { 顶: 项.map((e) => Math.round(e.getBoundingClientRect().top)), 越界: 项.filter((e) => e.getBoundingClientRect().right > 右 + 0.5).length };
     });

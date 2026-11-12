@@ -192,8 +192,8 @@ test("客户列表：空库时不摆筛选栏，主动作还在原位", async ({
   await page.goto("/customers");
   await page.waitForSelector(".list");
   await expect(page.getByPlaceholder("姓名 / 电话 / 公司 / 行业")).toHaveCount(0);
-  // 「新建」任何时候都在：空状态里那个是引导，不是它的替代品
-  await expect(page.getByRole("button", { name: /新建客户/ })).toBeVisible();
+  // 「新建」任何时候都在：空状态里那个是引导，不是它的替代品。企业版项目模式页头是「新建 ▾」（新建客户 / 新建项目，11-12）
+  await expect(企业版 ? page.locator(".page-head").getByRole("button", { name: /新建/ }) : page.getByRole("button", { name: /新建客户/ })).toBeVisible();
 });
 
 test("客户列表：默认只摆六列（企业版项目模式八列），其余在「列」里", async ({ page }) => {

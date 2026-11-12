@@ -155,12 +155,13 @@ function ReferrerPicker({ value, 叫法, onChange }: { value?: string; 叫法: s
  * 「新增客户」「新增项目」弹窗（U-新建-01，10-31 会议）：和 /projects/new 同一个向导、同一套查重（含联系人查重），只是摆在弹窗里。
  * 草稿照旧每改一格存本机，关了下次点开接着填
  */
-export function 建档弹窗(props: { open: boolean; 标题: string; 数据: 建档数据; onClose: () => void }) {
+/** afterClose：关的动画走完以后（框接框的那条路用它把焦点放回「新建」，projects/NewProjectFlow.tsx） */
+export function 建档弹窗(props: { open: boolean; 标题: string; 数据: 建档数据; onClose: () => void; afterClose?: () => void }) {
   return <WizardModal {...props} />;
 }
 
 // 要用 hook（提示、当前用户），组件名得是大写英文开头（react-hooks 规则）
-function WizardModal({ open, 标题, 数据, onClose }: { open: boolean; 标题: string; 数据: 建档数据; onClose: () => void }) {
+function WizardModal({ open, 标题, 数据, onClose, afterClose }: { open: boolean; 标题: string; 数据: 建档数据; onClose: () => void; afterClose?: () => void }) {
   const { message } = App.useApp();
   const 我 = useMe();
   // 右上 X / Esc 关：和「存草稿关闭」一样说一句草稿留着（11-03 A1-3：直接关掉，人以为填的都没了）
@@ -169,7 +170,7 @@ function WizardModal({ open, 标题, 数据, onClose }: { open: boolean; 标题:
     onClose();
   };
   return (
-    <Modal open={open} title={标题} footer={null} width={760} onCancel={关} destroyOnHidden mask={{ closable: false }}>
+    <Modal open={open} title={标题} footer={null} width={760} onCancel={关} afterClose={afterClose} destroyOnHidden mask={{ closable: false }}>
       <ProjectWizard users={数据.users} 要下一步={数据.要下一步} 企业={数据.企业} 弹窗={{ 关: onClose }} />
     </Modal>
   );

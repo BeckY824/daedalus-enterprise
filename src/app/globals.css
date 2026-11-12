@@ -2542,6 +2542,8 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
   .list-bar > .ant-space > .ant-space-item > .ant-select { width: auto !important; min-width: 96px; max-width: 132px; }
   /* 渠道页两层后多一个「主渠道」下拉，搜索框再收一点留余量（选了长主渠道名也不折行） */
   .chan-list .list-bar > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 140px !important; }
+  /* 筛选行最左多一颗「列表 / 看板」（11-12）：搜索框同样收到 140，1024 宽（正文 752）筛选行和「列」仍一行 */
+  .list-bar:has(> .list-view-seg) > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 140px !important; }
 }
 /* 「更多筛选」1440 以下只留图标和数字：加了这颗按钮，默认状态也不能比原来多占一行（1024 宽筛选行要一行）。
    公海多一排分段，到 1440 才放得下全尺寸；这段宽度把两个下拉和搜索也收一点 */
@@ -2798,6 +2800,11 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 }
 .pipe-top { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2); margin-bottom: 12px; }
 .pipe-top > .pipe-more-right.ant-btn { margin-left: auto; padding-inline: 4px; white-space: nowrap; }
+/* 客户页看板上方只剩「→ 还有 N 列」一句（11-12）：右对齐一行小字，行高压到一行字，不像一行工具栏 */
+.pipe-top.pipe-top-hint { margin-bottom: var(--s1); }
+/* 滑到头：这一行照留（看板不上下跳），按钮藏起来、点不到（ProjectsView 还有列） */
+.pipe-more-right.pipe-more-end { visibility: hidden; pointer-events: none; }
+.pipe-top.pipe-top-hint > .pipe-more-right.ant-btn { height: auto; padding-block: 0; font-size: var(--fs-note); line-height: 20px; }
 .pipe-col { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--s3); min-height: 220px;
   transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
 .pipe-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; } /* 金额放不下就折到第二行，不截成「¥ 1,23…」（10-27，1280 宽五列时） */
@@ -2832,9 +2839,15 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .cust-board-page { display: flex; justify-content: flex-end; margin-top: var(--s3); }
 /* 客户表格「当前节点」（11-12 第 3 批）：标签宽到格子为止，放不下省略号（.clamp-1 是块级，这里改回行内块不撑满格） */
 .cust-node-tag { display: inline-block; vertical-align: middle; margin-inline-end: 0; }
-/* 企业版客户页「列表 / 看板」单独一行（列表、看板两个视图同一个位置，11-12 第 3 批） */
+/* 企业版客户页「列表 / 看板」单独一行：只剩空库（筛选行不画）时市场角色那颗「客户列表 / 我分出去的」还这么摆 */
 .cust-view-seg { margin-bottom: var(--s3); }
-/* 客户页看板视图的工具行（C17）：项目专用的分配、新增项目，靠右，挨着看板 */
+/* 筛选行最左那颗「列表 / 看板」（11-12 用户：「列表｜看板 放到和筛选栏一行，最左边」）：筛选组之外单独一格、不缩，
+   窄宽度筛选组自己折 / 收进「更多筛选」，它一直在第一行最左；高和筛选控件一样（32） */
+.list-view-seg { flex: none; display: flex; align-items: center; min-height: 32px; }
+/* 客户页看板视图筛选行右端那一格（customers/board-slot.ts）：只放分配、我分出去的、回到看板（「→ 还有 N 列」在看板上方，不进这一格）；排在「列」那一格之后，空着不占位 */
+.list-bar-end { order: 1; flex: none; display: flex; align-items: center; gap: var(--s2); min-height: 32px; }
+.list-bar-end:empty { display: none; }
+/* 客户页看板视图的工具行（C17）：外面没给筛选行那一格时（单独画看板），分配等按钮靠右摆在看板上面 */
 .cust-board-tool { display: flex; justify-content: flex-end; margin-bottom: var(--s3); }
 /* 阶段 / 进程筛选命中太多、没出结果时的那一句（customers/page.tsx 阶段太多） */
 .cust-too-many { margin-bottom: var(--s3); color: var(--text-muted); }
@@ -2846,6 +2859,12 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 .new-proj-pick { display: flex; flex-direction: column; gap: var(--s2); }
 .new-proj-opt { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); width: 100%; min-width: 0; padding: 12px 14px; text-align: start; font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; overflow-wrap: anywhere; }
 .new-proj-opt:hover:not(:disabled), .new-proj-opt:focus-visible { border-color: var(--brand); background: var(--brand-bg); }
+/* 选项里的名字 + 一行小字（projects/NewProjectFlow.tsx，原行内样式搬来） */
+.new-proj-opt-t { line-height: 1.4; padding: 2px 0; }
+.new-proj-opt-s { font-size: var(--fs-min); color: var(--text-muted); }
+/* 「给老客户开项目」挑客户框：下拉占满、下面一行说明 */
+.old-cust-pick { width: 100%; }
+.old-cust-pick-note { margin-top: var(--s2); font-size: var(--fs-min); color: var(--text-muted); }
 .new-proj-opt:disabled { cursor: progress; opacity: .6; }
 .new-proj-opt > .anticon { color: var(--text-muted); flex-shrink: 0; }
 .pipe-more.ant-btn { height: auto; min-height: 28px; white-space: normal; color: var(--brand); gap: 6px; }
