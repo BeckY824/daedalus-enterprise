@@ -4,12 +4,13 @@ import { 空值符 } from "@/lib/empty-value";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { App, Button, Card, Empty, Select, Space, Table, Tag, Typography } from "antd";
+import { App, Button, Card, Empty, Modal, Select, Space, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { PageHead, UserCell } from "@/components/ui";
 import { useBusiness } from "@/lib/business-client";
-import type { 离职待交接, 交接客户, 交接项目 } from "@/lib/enterprise/offboard-handover";
+import type { 离职待交接, 交接客户, 交接项目, 等确认 } from "@/lib/enterprise/offboard-handover";
 import { deactivateUser } from "../../settings/actions";
+import { 撤回交接, 改接手人 } from "../../customers/handover-actions";
 import { 交接客户 as 交客户, 交接项目 as 交项目, 交接全部 } from "./actions";
 
 type 人 = { id: string; name: string };
@@ -17,6 +18,7 @@ type 人 = { id: string; name: string };
 /**
  * 离职交接看板（11-03 B7-2）：一位离职成员一张卡，卡里列他名下还没交走的客户（项目模式再列不跟着客户走的项目），
  * 每行选接手人点「交」，或卡顶「全部交给」一个人（线索、渠道一起走）。接手人候选同公海分配（B2-7）。
+ * 11-13 起交了只是发起：接手人确认前这一行显示「等 X 确认」（满 7 天带「已等 N 天」），不能再交，发起人 / 总管理可改接手人、撤回。
  * 名字、客户名都可能很长：表格固定列宽、单元格省略号，1024 宽也不横向溢出
  */
 export default function HandoverView({ 人们, 候选, 项目模式, 系统管理员, 下属, 三态开 = false }: {
@@ -33,7 +35,7 @@ export default function HandoverView({ 人们, 候选, 项目模式, 系统管�
     <div>
       <PageHead
         title="离职交接"
-        subtitle={`已离职成员名下还没交走的${b.customer}${项目模式 ? "和项目" : ""}：${系统管理员 ? "系统管理员看全部" : "你是他们的直属上级"}，给每条选接手人，或一键全部交给一个人`}
+        subtitle={`已离职成员名下还没交走的${b.customer}${项目模式 ? "和项目" : ""}：${系统管理员 ? "系统管理员看全部" : "你是他们的直属上级"}，给每条选接手人，或一键全部交给一个人；接手人确认后才转过去`}
       />
       {下属.length > 0 && <OffboardReport 下属={下属} />}
       {三态开 && <TriPending 人们={人们} />}
@@ -50,14 +52,25 @@ export default function HandoverView({ 人们, 候选, 项目模式, 系统管�
 
 const 省略 = { display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } as const;
 
-function PickTaker({ 候选, 不要, value, onChange, placeholder = "选接手人", style }: {
-  候选: 人[]; 不要: string; value?: string; onChange: (v: string) => void; placeholder?: string; style?: React.CSSProperties;
+/** 离职交接不作废（人已停用，作废了没人管）：等满这么多天在看板上标「已等 N 天」提醒发起人（同申请移交的 7 天） */
+const 久等天数 = 7;
+
+/** 「等 X 确认」那一句；满 7 天带「已等 N 天」。悬停看全：哪天发起、等了几天 */
+function 等确认说(w: 等确认): { 字: string; 全: string; 久: boolean } {
+  const 久 = w.挂起天数 >= 久等天数;
+  const 字 = `等 ${w.接手人 ?? "接手人"} 确认${久 ? ` · 已等 ${w.挂起天数} 天` : ""}`;
+  return { 字, 全: `${w.起日} 交给 ${w.接手人 ?? "接手人"}，${w.挂起天数 ? `已等 ${w.挂起天数} 天` : "今天发起"}；接手人确认后才转过去`, 久 };
+}
+
+function PickTaker({ 候选, 不要, value, onChange, placeholder = "选接手人", style, className }: {
+  候选: 人[]; 不要: string; value?: string; onChange: (v: string) => void; placeholder?: string; style?: React.CSSProperties; className?: string;
 }) {
   return (
     <Select
       showSearch
       optionFilterProp="label"
       placeholder={placeholder}
+      className={className}
       value={value || undefined}
       onChange={onChange}
       style={{ minWidth: 0, ...style }}
@@ -74,14 +87,16 @@ function PersonCard({ p, 候选, 项目模式 }: { p: 离职待交接; 候选: �
   const [选了, set选了] = useState<Record<string, string>>({});
   const [全部给, set全部给] = useState("");
   const [忙, set忙] = useState<string | null>(null);
+  const [改, set改] = useState<等确认 | null>(null);
+  const [新, set新] = useState<string | undefined>();
   const 名 = (id: string) => 候选.find((u) => u.id === id)?.name ?? "";
 
-  async function 做(key: string, f: () => Promise<{ ok: true; message: string } | { ok: false; error: string }>) {
+  async function 做(key: string, f: () => Promise<{ ok: true; message?: string } | { ok: false; error: string }>, 成了 = "") {
     if (忙) return;
     set忙(key);
     try {
       const r = await f();
-      if (r.ok) { message.success(r.message); router.refresh(); } else message.error(r.error);
+      if (r.ok) { message.success(r.message ?? 成了); router.refresh(); } else message.error(r.error);
     } catch {
       message.error("没交成，刷新再试");
     } finally {
@@ -95,11 +110,40 @@ function PersonCard({ p, 候选, 项目模式 }: { p: 离职待交接; 候选: �
     return 做(`${kind}:${id}`, () => (kind === "c" ? 交客户(p.id, id, to) : 交项目(p.id, id, to)));
   };
 
-  const 接手列 = <T extends { id: string }>(kind: "c" | "p"): ColumnsType<T>[number] => ({
+  const 撤回 = (w: 等确认) => modal.confirm({
+    title: "撤回这笔交接？",
+    content: `「${w.接手人 ?? "接手人"}」不用再确认，数据留在「${p.name}」名下，之后可以重新交。`,
+    okText: "撤回", okButtonProps: { danger: true }, cancelText: "取消",
+    onOk: () => 做(`w:${w.id}`, () => 撤回交接(w.id), "已撤回"),
+  });
+  const 改成 = async () => {
+    if (!改 || !新) return;
+    const w = 改;
+    await 做(`w:${w.id}`, () => 改接手人(w.id, 新), "已改接手人，等对方确认");
+    set改(null);
+  };
+
+  /** 等确认那一格：「等 X 确认」一行放不下省略号、悬停看全，后面改接手人、撤回（我能撤回的才有） */
+  const 等着 = (w: 等确认) => {
+    const t = 等确认说(w);
+    return (
+      <div className="ofb-wait">
+        <Typography.Text type={t.久 ? "warning" : "secondary"} title={t.全} className="ofb-wait-t">{t.字}</Typography.Text>
+        {w.我能撤回 && (
+          <>
+            <Button size="small" type="link" className="ofb-wait-btn" disabled={!!忙} onClick={() => { set新(undefined); set改(w); }}>改人</Button>
+            <Button size="small" type="link" className="ofb-wait-btn" loading={忙 === `w:${w.id}`} disabled={!!忙 && 忙 !== `w:${w.id}`} onClick={() => 撤回(w)}>撤回</Button>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const 接手列 = <T extends { id: string; 交接中?: 等确认 }>(kind: "c" | "p"): ColumnsType<T>[number] => ({
     title: "接手人",
     key: "to",
     width: 280,
-    render: (_: unknown, r: T) => (
+    render: (_: unknown, r: T) => r.交接中 ? 等着(r.交接中) : (
       <div style={{ display: "flex", gap: 8, minWidth: 0 }}>
         <PickTaker 候选={候选} 不要={p.id} value={选了[`${kind}:${r.id}`]} onChange={(v) => set选了((m) => ({ ...m, [`${kind}:${r.id}`]: v }))} style={{ flex: 1 }} />
         <Button disabled={p.交接中 || !选了[`${kind}:${r.id}`]} loading={忙 === `${kind}:${r.id}`} onClick={() => 交这行(kind, r.id)}>交</Button>
@@ -134,7 +178,7 @@ function PersonCard({ p, 候选, 项目模式 }: { p: 离职待交接; 候选: �
     ].filter(Boolean).join("、");
     modal.confirm({
       title: `把「${p.name}」名下的全部交给「${名(全部给)}」`,
-      content: `${段 || "名下剩下的"}，连同进行中的商机、没做完的计划和待办，一起交给 TA。已经签下的业绩、有结局的项目还算在「${p.name}」头上。`,
+      content: `${段 || "名下剩下的"}，连同进行中的商机、没做完的计划和待办，一起交给 TA；TA 确认后才转过去，确认前还在「${p.name}」名下。已经签下的业绩、有结局的项目还算在「${p.name}」头上。`,
       okText: "全部交给",
       cancelText: "取消",
       onOk: () => 做("all", () => 交接全部(p.id, 全部给)),
@@ -155,17 +199,26 @@ function PersonCard({ p, 候选, 项目模式 }: { p: 离职待交接; 候选: �
         </div>
       }
     >
-      {p.交接中 && (
+      {p.整包 ? (
+        // 全部交给在等确认：整张卡不能再交，这里改接手人、撤回
+        <div className="ofb-all-wait">
+          <Typography.Text className="ofb-all-wait-l">已全部交给</Typography.Text>
+          <div className="ofb-all-wait-c">{等着(p.整包)}</div>
+        </div>
+      ) : p.交接中 ? (
         <Typography.Paragraph type="warning" style={{ fontSize: 13 }}>
           TA 还有一笔离职交接在等接手人确认：先在{b.customer}页「交接中」里撤回，再在这里交。
         </Typography.Paragraph>
+      ) : (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 12 }}>
+          <Typography.Text style={{ fontSize: 13 }}>全部交给</Typography.Text>
+          <PickTaker 候选={候选} 不要={p.id} value={全部给} onChange={set全部给} style={{ width: 220 }} />
+          <Button type="primary" disabled={p.单条等确认 > 0 || !全部给} loading={忙 === "all"} onClick={一键}>全部交给</Button>
+          {p.单条等确认 > 0
+            ? <Typography.Text type="secondary" className="ofb-hint">还有 {p.单条等确认} 笔在等接手人确认，确认或撤回后才能全部交给</Typography.Text>
+            : 其余 && <Typography.Text type="secondary" style={{ fontSize: 12 }}>另有 {其余}，「全部交给」时一起走</Typography.Text>}
+        </div>
       )}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 12 }}>
-        <Typography.Text style={{ fontSize: 13 }}>全部交给</Typography.Text>
-        <PickTaker 候选={候选} 不要={p.id} value={全部给} onChange={set全部给} style={{ width: 220 }} />
-        <Button type="primary" disabled={p.交接中 || !全部给} loading={忙 === "all"} onClick={一键}>全部交给</Button>
-        {其余 && <Typography.Text type="secondary" style={{ fontSize: 12 }}>另有 {其余}，「全部交给」时一起走</Typography.Text>}
-      </div>
       {p.客户.length > 0 && (
         <Table<交接客户>
           size="small"
@@ -189,6 +242,11 @@ function PersonCard({ p, 候选, 项目模式 }: { p: 离职待交接; 候选: �
           title={() => `TA 负责、${b.customer}不在 TA 名下的项目（${p.项目.length}）`}
         />
       )}
+      <Modal open={!!改} title="改接手人" okText="改" cancelText="取消" onCancel={() => set改(null)} onOk={改成}
+        okButtonProps={{ disabled: !新, loading: !!改 && 忙 === `w:${改.id}` }} destroyOnHidden>
+        <p>这笔交接改给另一位，等新接手人确认；原接手人「{改?.接手人 ?? ""}」不用再确认。</p>
+        <PickTaker 候选={候选.filter((u) => u.id !== 改?.接手人id)} 不要={p.id} value={新} onChange={set新} placeholder="选新接手人" className="ofb-full" />
+      </Modal>
     </Card>
   );
 }

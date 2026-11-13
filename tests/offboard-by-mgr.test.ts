@@ -19,7 +19,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting } from "@/lib/settings";
 import { deactivateUser, 停用清点, 批量停用 } from "@/app/(app)/settings/actions";
-import { 交接全部 } from "@/app/(app)/projects/handover/actions";
+import { 交接全部 } from "./helpers/offboard-auto-confirm";
 import { 月份, 本月已分 } from "@/lib/enterprise/lead-assign";
 
 type 人 = { id: string; role: string };

@@ -69,7 +69,7 @@ import { 换负责人怎么来的 } from "@/lib/owner-log";
 import { 持有数 } from "@/lib/project/db";
 import { 读项目列表 } from "@/lib/project/list";
 import { toggleTask, completePlan, saveTask, deleteTask, savePlan, deletePlan } from "@/app/(app)/customers/[id]/actions";
-import { 交接客户, 交接项目, 交接全部 } from "@/app/(app)/projects/handover/actions";
+import { 交接客户, 交接项目, 交接全部 } from "./helpers/offboard-auto-confirm";
 import { 读离职交接 } from "@/lib/enterprise/offboard-handover";
 import { 停用分拣 } from "@/lib/offboard-db";
 import { 离职放进公海 } from "@/lib/offboard-move";
@@ -1521,7 +1521,8 @@ describe("A2：客户层把市场成员的客户转给销售", () => {
     // 转让：全部项目（含同事在推的）一起转（P-转-07 Even 口径；有项目时写个数，见 ent-transfer-request）；离职交接在职同事在推的不动（P-转-14）
     const 留下话 = "确认后这些客户和名下的联系人、沟通记录、全部项目，都转到你名下；原负责人没做完的待办和计划不转过来，你也能看到。";
     const 带走话 = "确认后这些客户和名下的联系人、沟通记录、全部项目，连同原负责人没做完的待办和计划，都转到你名下。";
-    const 离职话 = "确认后这些客户和名下的联系人、沟通记录，连同原负责人自己负责的项目、没做完的待办和计划，都转到你名下；同事负责的项目负责人不变（待分配的一起转给你）。";
+    // 离职（老行、11-13 起的「全部交给」）：整包转，客户备注留一行（客户 11-13）
+    const 离职话 = "确认后原负责人名下的客户（连同联系人、沟通记录、他自己负责的项目、没做完的待办和计划）、线索、渠道都转到你名下；同事负责的项目负责人不变（待分配的一起转给你）。客户备注里会留一行交接记录。";
 
     it("市场转给销售：全部项目一起转，待办、计划还归原负责人", async () => {
       expect(await 说明(市场, 甲, "转让")).toBe(留下话);
@@ -2236,7 +2237,8 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
         await 上限(2);
         const r = await 以(总管, () => 交接客户(甲.id, x.c, 丙.id));
         expect(r.ok).toBe(false);
-        expect((r as { error: string }).error).toContain("这次要交接 2 个，最多还能交接 1 个；超了上限，这次一个都没交");
+        // 11-13 起离职交接在接手人确认那一刻核（helpers/offboard-auto-confirm 发起后马上确认）
+        expect((r as { error: string }).error).toContain("这次要交接 2 个，最多还能交接 1 个；超了上限，这笔交接没有确认");
         expect(await 客户负责人(x.c)).toBe(甲.id);
         await 上限(3);
         expect(await 以(总管, () => 交接客户(甲.id, x.c, 丙.id))).toMatchObject({ ok: true });

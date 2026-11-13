@@ -21,7 +21,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { deactivateUser, 停用清点 } from "@/app/(app)/settings/actions";
 import { 领取 } from "@/app/(app)/customers/pool-actions";
-import { 交接全部 } from "@/app/(app)/projects/handover/actions";
+import { 交接全部 } from "./helpers/offboard-auto-confirm";
 import { 公海超时收回 } from "@/lib/project/db";
 import { 默认组织规则 } from "@/lib/project/org-rules";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";

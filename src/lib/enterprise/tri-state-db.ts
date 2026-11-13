@@ -45,7 +45,7 @@ import { 无负责人占位Id, 无负责人占位Id只读 } from "@/lib/no-owner
 import { 看全部 } from "@/lib/team-scope";
 import { 看已删 } from "./soft-delete-core";
 import { 查完再写 } from "@/lib/check-then-write";
-import { 交接中的客户, 待确认 } from "./handover-db";
+import { 交接中的客户, 待确认, 离职盖住的客户 } from "./handover-db";
 import { 客户名下在推项目进公海, 客户进公海清负责人 } from "./pool-link";
 import { 客户退回前查联系方式, 退回号码种类表 } from "./return-contact-check";
 import { 系统 } from "@/lib/project/timeout";
@@ -492,18 +492,14 @@ export async function 交接挡住的(db: 库, ids: readonly string[]): Promise<
 export async function 离职交接中的(db: 库, ids: readonly string[]): Promise<Set<string>> {
   const 中 = new Set<string>();
   if (!ids.length) return 中;
-  const 离职 = await db.entHandover.findMany({ where: { kind: "离职", status: 待确认 }, select: { fromUserId: true, customerIds: true } });
+  const 离职 = await db.entHandover.findMany({ where: { kind: "离职", status: 待确认 }, select: { fromUserId: true, customerIds: true, way: true } });
   if (!离职.length) return 中;
   const 要 = new Set(ids);
   const 走的人 = new Set<string>();
+  // 单条交项目的行不盖客户；单条交客户的按列的；全部（含没清点的老行）按「负责人是离职那位」认（handover-db.ts 离职盖住的客户）
   for (const h of 离职) {
-    let 列的: unknown = [];
-    try {
-      列的 = JSON.parse(h.customerIds);
-    } catch {
-      列的 = [];
-    }
-    if (Array.isArray(列的) && 列的.length) for (const id of 列的) { if (typeof id === "string" && 要.has(id)) 中.add(id); }
+    const 盖 = 离职盖住的客户(h);
+    if (盖) for (const id of 盖) { if (要.has(id)) 中.add(id); }
     else 走的人.add(h.fromUserId);
   }
   if (走的人.size) for (const c of await db.customer.findMany({ where: { id: { in: [...ids] }, salesOwnerId: { in: [...走的人] } }, select: { id: true } })) 中.add(c.id);

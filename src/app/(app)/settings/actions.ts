@@ -504,9 +504,12 @@ export async function reactivateUser(id: string) {
   const u = typeof id === "string" && id ? await prisma.user.findUnique({ where: { id } }) : null;
   if (!u) return { ok: false as const, error: "这个成员已不存在，请刷新重试" };
   if (u.active) return { ok: true as const };
-  // 企业版「交接中」：人回来了，还没确认的离职交接作废（不然接手人之后一确认，在职的人名下的东西被转走）
-  const 在交接 = 企业版() ? await 离职交接中(id) : null;
-  if (在交接) await 了结(prisma, 在交接.id, "已撤回", me);
+  // 企业版「交接中」：人回来了，还没确认的离职交接都撤回（不然接手人之后一确认，在职的人名下的东西被转走）；11-13 起一位可能有好几笔单条的
+  if (企业版()) {
+    for (let 在交接 = await 离职交接中(id); 在交接; 在交接 = await 离职交接中(id)) {
+      if (!(await 了结(prisma, 在交接.id, "已撤回", me))) break;
+    }
+  }
   // 托管版：停用时撤掉的成员资格要加回来，否则他登录会被告知「没有工作区」
   if (托管版()) {
     const t = await resolveCurrentTenant();

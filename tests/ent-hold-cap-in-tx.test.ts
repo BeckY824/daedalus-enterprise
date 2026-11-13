@@ -1,7 +1,7 @@
 /**
  * 持有上限核在写入的同一个事务里（M-公海-18，11-11，#245 的续）：
  *   1. 确认交接（转让、离职）    2. 直接转客户的接待分配（assignSalesOwner）
- *   3. 离职交接看板（交一位客户 / 交一个项目 / 全部交给）    4. 给客户建项目指派给别人
+ *   3. 离职交接看板（交一位客户 / 交一个项目 / 全部交给；11-13 起在接手人确认那一刻核）    4. 给客户建项目指派给别人
  *   5. 总管理在公海页同时勾客户行和项目行一起分配（分配公海 带 项目ids）
  * 每处：超限 → 一个都没做、数据没变、提示说清上限 / 现有 / 这次要几个 / 最多还能几个；刚好到上限 → 成功；
  * 和另一个领取 / 分配并发、合计超限 → 恰好一个成功、另一个整批失败（跑 5 轮）；回滚时没有留下通知、待办没被搬
@@ -24,9 +24,9 @@ import { 不设配额key } from "@/lib/enterprise/lead-assign";
 import { 持有数 } from "@/lib/project/db";
 import { 默认组织规则 } from "@/lib/project/org-rules";
 import { assignSalesOwner } from "@/app/(app)/customers/actions";
-import { 待确认的交接, 确认交接 } from "@/app/(app)/customers/handover-actions";
+import { 待确认的交接, 确认交接, 撤回交接 } from "@/app/(app)/customers/handover-actions";
 import { 领取, 分配公海 } from "@/app/(app)/customers/pool-actions";
-import { 交接客户, 交接项目, 交接全部 } from "@/app/(app)/projects/handover/actions";
+import { 交接客户 as 真交接客户, 交接项目 as 真交接项目, 交接全部 as 真交接全部 } from "@/app/(app)/projects/handover/actions";
 import { 给客户建项目 } from "@/app/(app)/customers/[id]/project-actions";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
@@ -234,43 +234,60 @@ describe("3. 离职交接看板：核和交在同一个事务里", () => {
     return { c, ps, 挂别处, t };
   };
 
-  it("交一位客户超限：客户、项目、待办都没动，没发通知", async () => {
+  /** 11-13 起离职交接要接手人确认：发起只记一行，上限在接手人确认那一刻核，超了整笔回滚、交接还在等确认 */
+  const 发起 = async (r: Promise<{ ok: boolean; 交接?: string; error?: string }>) => {
+    const x = await r;
+    expect(x).toMatchObject({ ok: true });
+    return x.交接!;
+  };
+  const 超限话 = "超了上限，这笔交接没有确认、还在等你确认；先推进或放回一些再确认，或者请发起人撤回后换人";
+
+  it("交一位客户超限：接手人确认时失败，客户、项目、待办都没动，交接还在等确认，除了「等你确认」没发别的通知", async () => {
     const x = await 场景();
     await 上限(2);
     await 先有(丙, 1);
     const 通知前 = await 通知数();
-    const r = await 以(总管, () => 交接客户(甲.id, x.c, 丙.id));
-    expect(r).toEqual({ ok: false, error: "销售丙某名下现在有 1 个线索 / 商机阶段的项目，持有上限 2 个，这次要交接 2 个，最多还能交接 1 个；超了上限，这次一个都没交；先让接手人推进或放回一些，或者换一位接手人" });
+    const id = await 发起(以(总管, () => 真交接客户(甲.id, x.c, 丙.id)));
+    expect(await 通知数()).toBe(通知前 + 1);
+    const r = await 以(丙, () => 确认交接(id));
+    expect(r).toEqual({ ok: false, error: `销售丙某名下现在有 1 个线索 / 商机阶段的项目，持有上限 2 个，这次要交接 2 个，最多还能交接 1 个；${超限话}` });
     expect(await 客户负责人(x.c)).toBe(甲.id);
     for (const p of x.ps) expect(await 负责人of(p)).toBe(甲.id);
     expect((await prisma.task.findUniqueOrThrow({ where: { id: x.t } })).ownerId).toBe(甲.id);
-    expect(await 通知数()).toBe(通知前);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: x.c } })).remark ?? "").not.toContain("离职交接");
+    expect((await prisma.entHandover.findUniqueOrThrow({ where: { id } })).status).toBe("待确认");
+    expect(await 通知数()).toBe(通知前 + 1);
   });
 
-  it("交一个项目、全部交给超限：同样不动；刚好到上限能交", async () => {
+  it("交一个项目、全部交给超限：确认时同样不动；放宽上限后再确认就能转", async () => {
     const x = await 场景();
     await 上限(1);
     await 先有(丙, 1);
-    const r1 = await 以(总管, () => 交接项目(甲.id, x.挂别处, 丙.id));
-    expect((r1 as { error: string }).error).toContain("这次要交接 1 个，最多还能交接 0 个");
+    const p1 = await 发起(以(总管, () => 真交接项目(甲.id, x.挂别处, 丙.id)));
+    expect(((await 以(丙, () => 确认交接(p1))) as { error: string }).error).toContain("这次要交接 1 个，最多还能交接 0 个");
     expect(await 负责人of(x.挂别处)).toBe(甲.id);
+    // 单条在等时不能全部交给：先撤回
+    expect(await 以(总管, () => 真交接全部(甲.id, 丙.id))).toMatchObject({ ok: false, error: expect.stringContaining("笔单条交接在等接手人确认") });
+    expect(await 以(总管, () => 撤回交接(p1))).toMatchObject({ ok: true });
     await 上限(3);
-    const r2 = await 以(总管, () => 交接全部(甲.id, 丙.id));
-    expect((r2 as { error: string }).error).toContain("这次要交接 3 个，最多还能交接 2 个");
+    const 全 = await 发起(以(总管, () => 真交接全部(甲.id, 丙.id)));
+    expect(((await 以(丙, () => 确认交接(全))) as { error: string }).error).toContain("这次要交接 3 个，最多还能交接 2 个");
     expect(await 客户负责人(x.c)).toBe(甲.id);
     await 上限(4);
-    expect(await 以(总管, () => 交接全部(甲.id, 丙.id))).toMatchObject({ ok: true });
+    expect(await 以(丙, () => 确认交接(全))).toMatchObject({ ok: true });
     expect(await 持有数(prisma, 丙.id)).toBe(4);
+    expect(await 客户负责人(x.c)).toBe(丙.id);
   });
 
-  it("交一位客户和接手人自己领取公海并发、合计超限：恰好一个成功（跑 5 轮）", async () => {
+  it("接手人确认交一位客户和自己领取公海并发、合计超限：恰好一个成功（跑 5 轮）", async () => {
     for (let 轮 = 0; 轮 < 5; 轮++) {
       if (轮) await 起步();
       const x = await 场景();
       await 上限(3);
       await 先有(丙, 1);
       const 公海们 = [await 公海客户(1), await 公海客户(1)];
-      const [a, b] = await Promise.all([以(总管, () => 交接客户(甲.id, x.c, 丙.id)), 以(丙, () => 领取(公海们))]);
+      const id = await 发起(以(总管, () => 真交接客户(甲.id, x.c, 丙.id)));
+      const [a, b] = await Promise.all([以(丙, () => 确认交接(id)), 以(丙, () => 领取(公海们))]);
       expect([a, b].filter((r) => r.ok)).toHaveLength(1);
       expect(await 持有数(prisma, 丙.id)).toBe(3);
       if (a.ok) expect(await prisma.customerPool.count({ where: { customerId: { in: 公海们 } } })).toBe(2);

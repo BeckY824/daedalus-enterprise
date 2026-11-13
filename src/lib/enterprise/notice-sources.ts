@@ -8,6 +8,7 @@
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { notify } from "./notify";
+import { 离职段 } from "./handover-db";
 import { 读组织, 管理员类别们of, 负责人和上级 } from "./org";
 import { 企业版 } from "./switch";
 import { 公海入口 } from "./nav";
@@ -293,14 +294,23 @@ export type 交接事件 = "发起" | "已确认" | "已拒收" | "已撤回";
  * 11-03 C3-3：确认了也告诉原负责人（转让的；离职的人已停用不发），别人撤回的也告诉发起人。
  * 11-03 C3-5 / C4-7 / C8-1：了结之后接手人那条「等你确认」标成已读，免得一直挂着；确认的标题带客户名，发起多笔分得清
  */
-export async function 交接通知(me: 人, handoverId: string, 事件: 交接事件, 留下?: readonly 留下的活[], 实转?: readonly string[]): Promise<void> {
+/**
+ * 离职交接（11-13 起看板上交一位客户 / 交一个项目 / 全部交给都要接手人确认）：标题按交的是什么说（「1 个项目」「3 位客户、2 个项目」），
+ * 发起时的说法从 counts 拼；确认时调用方传实际转成的 段 和转不了跳过的 跳过
+ */
+export type 离职确认说 = { 段: string; 跳过: string };
+
+export async function 交接通知(me: 人, handoverId: string, 事件: 交接事件, 留下?: readonly 留下的活[], 实转?: readonly string[], 离职实?: 离职确认说): Promise<void> {
   await 稳("交接通知", async () => {
     const h = await 看全部(() => prisma.entHandover.findUnique({ where: { id: handoverId } }));
     if (!h) return;
     const 名 = new Map((await prisma.user.findMany({ where: { id: { in: [h.fromUserId, h.toUserId] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
     let 客户 = 0;
+    let 个数: Record<string, number> = {};
     try {
-      客户 = Number((JSON.parse(h.counts) as { 客户?: unknown }).客户) || 0;
+      const v = JSON.parse(h.counts) as Record<string, unknown>;
+      客户 = Number(v.客户) || 0;
+      个数 = Object.fromEntries(Object.entries(v).filter((e): e is [string, number] => typeof e[1] === "number"));
     } catch {
       /* counts 坏了就不报个数 */
     }
@@ -310,11 +320,27 @@ export async function 交接通知(me: 人, handoverId: string, 事件: 交接�
     const 从 = 名.get(h.fromUserId) ?? "";
     const 收 = 事件 === "发起" || 事件 === "已撤回" ? h.toUserId : h.byUserId;
     const 客户名 = 事件 === "已确认" ? await 交接客户名(实转 ?? 读ids(h.customerIds)) : "";
-    const 一位没转 = 事件 === "已确认" && !!实转 && !实转.length;
+    const 一位没转 = 事件 === "已确认" && !!实转 && !实转.length && !离职实?.段;
     // 负责人本人转自己的客户 = 申请移交（X-20，客户 11-09 回执 X4）：说「申请移交」，不说「交接」
     const 申请 = h.kind === "转让" && h.byUserId === h.fromUserId;
+    // 11-13 起看板发起的离职交接（way = 客户 / 项目 / 全部）：按交的是什么说，不只说几位客户
+    const 新离职 = h.kind === "离职" && ["客户", "项目", "全部"].includes(h.way ?? "");
+    const 离职发起段 = 新离职 ? 离职段(个数) || "名下剩下的" : "";
+    // 发起时接手人要知道接的是谁：单条带名字，全部在正文里列客户名（同原来当场交的通知，不带手机号）
+    const [离职客户名, 离职项目名] = 新离职 && 事件 === "发起"
+      ? await 看全部(() => Promise.all([
+          prisma.customer.findMany({ where: { id: { in: 读ids(h.customerIds).slice(0, 20) } }, select: { name: true } }).then((r) => r.map((x) => x.name)),
+          prisma.project.findMany({ where: { id: { in: 读ids(h.projectIds).slice(0, 20) } }, select: { name: true } }).then((r) => r.map((x) => x.name)),
+        ]))
+      : [[], []];
+    const 单条名 = h.way === "客户" && 离职客户名.length === 1 ? `客户：${离职客户名[0]}` : h.way === "项目" && 离职项目名.length === 1 ? `项目：${离职项目名[0]}` : "";
     const title =
-      申请 && 事件 === "发起" ? `${me.name} 申请把${几位}移交给你，等你确认`
+      新离职 && 事件 === "发起" ? `${从} 离职，${me.name} 把他名下的${单条名 ? 单条名 : ` ${离职发起段}`} 交接给你，等你确认`
+      : 新离职 && 事件 === "已确认" && 离职实 ? (离职实.段
+        ? `${me.name} 确认接手了 ${从} 名下的 ${离职实.段}${客户名}${离职实.跳过 ? `；另有 ${离职实.跳过}在交接期间已被处理，没转` : ""}`
+        : `${me.name} 确认了交接，但这些在交接期间已放回公海、换了人或结束了，没有转到 ${me.name} 名下`)
+      : 新离职 && 事件 === "已拒收" ? `${me.name} 拒收了你发起的离职交接（${离职发起段}），数据留在 ${从} 名下`
+      : 申请 && 事件 === "发起" ? `${me.name} 申请把${几位}移交给你，等你确认`
       : 申请 && 事件 === "已拒收" ? `${me.name} 拒绝了你的移交申请，客户仍在你名下`
       : 申请 && 事件 === "已撤回" && me.id === h.byUserId ? `${me.name} 撤回了移交申请，不用确认了`
       : 事件 === "发起" ? (h.kind === "离职" ? `${从} 离职，${me.name} 把他的${几位}交接给你，等你确认` : `${me.name} 把${从 && 从 !== me.name ? ` ${从} 的` : ""}${几位}交接给你，等你确认`)
@@ -327,7 +353,11 @@ export async function 交接通知(me: 人, handoverId: string, 事件: 交接�
       kind: "交接",
       title,
       body: 接一句(
-        事件 === "发起" ? (申请 ? "你确认后才转到你名下；不确认不生效，客户还在原负责人名下。" : "确认之前这些客户还在原负责人名下，确认后才转到你名下。") : "",
+        事件 === "发起"
+          ? 新离职
+            ? 接一句(单条名 ? "" : [离职客户名.length && `客户：${名单(离职客户名)}`, 离职项目名.length && `项目：${名单(离职项目名)}`].filter(Boolean).join("；"), "在客户页「等你确认的交接」里确认后才转到你名下；确认之前还在离职成员名下。")
+            : 申请 ? "你确认后才转到你名下；不确认不生效，客户还在原负责人名下。" : "确认之前这些客户还在原负责人名下，确认后才转到你名下。"
+          : "",
         留下?.length ? await 客户上还留着(留下.map((l) => ({ toUserId: h.toUserId, 留下: l }))) : null,
       ),
       link: "/customers",
@@ -412,43 +442,6 @@ export async function 项目分给你通知(谁点的: 人, toUserId: string, pr
   });
 }
 
-
-/**
- * P-转-05：「项目 → 离职交接」看板上交完（单条客户、单条项目、一键全部），告诉接手人一声。
- * 同 分给你通知（#197 转让通知接手人）一套发法：站内待办 + 飞书，不带手机号；上级自己交给自己不发。
- * 单位客户链客户详情、只交项目链项目，多条链客户列表。概要 = 一键全部时动作里拼好的「N 位客户、M 个项目…」。
- * 交接要确认那条路（发起 → 接手人确认）走 交接通知，不在这里
- */
-export async function 离职交接通知(me: 人, 离职的: string, toUserId: string, 客户ids: readonly string[], 项目ids: readonly string[] = [], 概要 = ""): Promise<void> {
-  await 稳("离职交接通知", async () => {
-    if (!toUserId || toUserId === me.id) return;
-    const 客户们 = [...new Set(客户ids)];
-    const 项目们 = [...new Set(项目ids)];
-    if (!客户们.length && !项目们.length && !概要) return;
-    if (!(await 收得到分配(toUserId))) return;
-    const [客户行, 项目行] = await 看全部(() => Promise.all([
-      客户们.length ? prisma.customer.findMany({ where: { id: { in: 客户们 } }, select: { id: true, name: true } }) : [],
-      项目们.length ? prisma.project.findMany({ where: { id: { in: 项目们 } }, select: { id: true, name: true } }) : [],
-    ]));
-    const 客户名 = new Map(客户行.map((r) => [r.id, r.name]));
-    const 项目名 = new Map(项目行.map((r) => [r.id, r.name]));
-    const 客户名们 = 客户们.map((id) => 客户名.get(id)).filter((n): n is string => !!n);
-    const 项目名们 = 项目们.map((id) => 项目名.get(id)).filter((n): n is string => !!n);
-    const 谁 = `${离职的 ? `${离职的} 离职，` : ""}${me.name}`;
-    const 单客户 = !概要 && 客户们.length === 1 && !项目们.length;
-    const 单项目 = !概要 && !客户们.length && 项目们.length === 1;
-    const 段 = 概要 || [客户们.length && `${客户们.length} 位客户`, 项目们.length && `${项目们.length} 个项目`].filter(Boolean).join("、");
-    await notify([toUserId], {
-      kind: "交接",
-      title: 单客户 && 客户名们.length ? `${谁} 把客户交接给你：${客户名们[0]}`
-        : 单项目 && 项目名们.length ? `${谁} 把项目交接给你：${项目名们[0]}`
-        : `${谁} 把${离职的 ? "他名下的" : ""} ${段} 交接给你`,
-      body: 接一句(客户名们.length && !单客户 ? `客户：${名单(客户名们)}` : "", 项目名们.length && !单项目 ? `项目：${名单(项目名们)}` : null),
-      link: 单客户 ? `/customers/${客户们[0]}` : 单项目 ? `/projects/${项目们[0]}` : !客户们.length && 项目们.length ? "/projects" : "/customers",
-      key: `offboard-handover:${[...客户们, ...项目们].sort().join(",").slice(0, 400)}:${toUserId}:${分钟()}`,
-    });
-  });
-}
 
 /** P-删-10：别人（系统管理员）删了你负责的项目，告诉你一声；进了回收站，30 天内找系统管理员能恢复。停用的不发 */
 export async function 项目被删通知(me: 人, ownerId: string, 项目名: string, customerId: string): Promise<void> {

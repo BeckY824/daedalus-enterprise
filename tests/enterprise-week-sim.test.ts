@@ -329,7 +329,18 @@ async function 剧本开() {
   const 预览 = await 要("app/(app)/projects/actions", "预览超时回收", "D-34");
   const 持有数 = await 要("lib/project/db", "持有数", "D-35");
   const 停用清点 = await 要("app/(app)/settings/actions", "停用清点", "D-36");
-  const 交接全部 = await 要("app/(app)/projects/handover/actions", "交接全部", "B7-2");
+  const 发起全部交给 = await 要("app/(app)/projects/handover/actions", "交接全部", "B7-2");
+  const 确认交接 = await 要("app/(app)/customers/handover-actions", "确认交接", "11-13 离职交接要接手人确认");
+  // 11-13 起离职交接交了只是发起，接手人确认了才转：发起 + 接手人确认一起做
+  const 交接全部 = async (from: string, to: string) => {
+    const 发起人 = mocks.user;
+    const r = 得(await 发起全部交给(from, to), "离职交接发起");
+    if (!r.交接) return r;
+    const 接手名 = Object.keys(公.id).find((k) => 公.id[k] === to)!;
+    得(await 作为(接手名, () => 确认交接(r.交接!)), "接手人确认离职交接");
+    mocks.user = 发起人;
+    return r;
+  };
   const 分给 = (谁: string, 线索: string, 给: string, line: "内贸" | "外贸" | null) =>
     作为(谁, () => 分配({ leadId: 线索id[线索], toUserId: 公.id[给], line }));
 
@@ -559,7 +570,18 @@ async function 补查() {
   const 领客户 = await 要("app/(app)/customers/pool-actions", "领取", "D-36");
   const 放客户进公海 = await 要("app/(app)/customers/pool-actions", "放进公海", "D-36");
   const 退回原因选项 = await 要("app/(app)/customers/pool-actions", "退回原因选项", "D-36");
-  const 交接全部 = await 要("app/(app)/projects/handover/actions", "交接全部", "B7-2");
+  const 发起全部交给 = await 要("app/(app)/projects/handover/actions", "交接全部", "B7-2");
+  const 确认交接 = await 要("app/(app)/customers/handover-actions", "确认交接", "11-13 离职交接要接手人确认");
+  // 11-13 起离职交接交了只是发起，接手人确认了才转：发起 + 接手人确认一起做
+  const 交接全部 = async (from: string, to: string) => {
+    const 发起人 = mocks.user;
+    const r = 得(await 发起全部交给(from, to), "离职交接发起");
+    if (!r.交接) return r;
+    const 接手名 = Object.keys(公.id).find((k) => 公.id[k] === to)!;
+    得(await 作为(接手名, () => 确认交接(r.交接!)), "接手人确认离职交接");
+    mocks.user = 发起人;
+    return r;
+  };
   拨到("2026-02-01 09:30");
   await 查("补-必填字段谁能改", async () => {
     const 改 = { 节点推进: { 开: true, 必填: { 潜客培育: ["需求"], 线索验证: ["国家"] } } };
