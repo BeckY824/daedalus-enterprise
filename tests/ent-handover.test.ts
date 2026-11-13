@@ -6,7 +6,7 @@
  *   - 转让（负责人本人发起的走申请）：给别人的先不换负责人；重复发起不重复记；确认时只转还归原负责人的，名下的活和换负责人记录一起走
  *   - 批量转让同单条（P-转-16，11-10）：不看「交接要确认」开关，负责人本人的走申请；实线上级、系统管理员直接转
  *   - 两个人同时了结同一笔只成一个；转给自己照旧当场换
- *   - 开关关掉：规则关着、不是企业版，离职 / 转让和原来一样当场转，一行交接都不写；不是企业版确认回错、列表回空
+ *   - 不建交接：企业版（库里留着老开关也一样）、不是企业版，离职 / 转让和原来一样当场转，一行交接都不写；不是企业版确认回错、列表回空
  *   - 单条换负责人（P-转-16，11-10）：客户编辑页整表保存、详情页就地改负责人不看规则开关——负责人本人发起的走申请移交、负责人不换、
  *     别的格照存；实线上级、系统管理员直接转；转给自己当场换
  */
@@ -20,7 +20,7 @@ vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: a
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { setSetting, invalidateSettingsCache } from "@/lib/settings";
+import { setSetting } from "@/lib/settings";
 import { deactivateUser, reactivateUser, 停用清点 } from "@/app/(app)/settings/actions";
 import { assignSalesOwner, patchCustomer, saveCustomer, deleteCustomers } from "@/app/(app)/customers/actions";
 import { 待确认的交接, 确认交接, 撤回交接, 拒收交接 } from "@/app/(app)/customers/handover-actions";
@@ -71,7 +71,6 @@ beforeEach(async () => {
   当(老板);
   vi.stubEnv("CRM_ENTERPRISE", "1");
   await setSetting("enterprise.rule.org_scope", true);
-  await setSetting("enterprise.rule.handover_confirm", true);
 });
 afterEach(() => { vi.unstubAllEnvs(); });
 afterAll(async () => { await prisma.$disconnect(); });
@@ -208,7 +207,7 @@ describe("转让交接中", () => {
     expect(await prisma.entHandover.count()).toBe(2);
   });
 
-  it("开关开着，实线上级、系统管理员批量转：直接转，不写交接（P-转-16 同单条，11-10）", async () => {
+  it("实线上级、系统管理员批量转：直接转，不写交接（P-转-16 同单条，11-10）", async () => {
     const a = await 客户(销售.id);
     const b = await 客户(销售.id);
     当(组长);
@@ -304,7 +303,7 @@ describe("离职交接时本来在公海的客户（11-03 完成度 C4-1）", ()
   });
 });
 
-describe("单条换负责人（P-转-16，客户 11-09 回执 X4 / 11-10 答复稿 B12）：不看「交接要确认」开关——负责人本人发起的走申请移交，接手人确认后生效；上级、系统管理员直接转", () => {
+describe("单条换负责人（P-转-16，客户 11-09 回执 X4 / 11-10 答复稿 B12）：负责人本人发起的走申请移交，接手人确认后生效；上级、系统管理员直接转", () => {
   const 编辑 = async (id: string, patch: object) => {
     const r = await prisma.customer.findUniqueOrThrow({ where: { id } });
     const base = { name: r.name, phone: r.phone, school: r.school, grade: r.grade, major: r.major, followStatus: r.followStatus, decisionStatus: r.decisionStatus, expectedSignAt: r.expectedSignAt, remark: r.remark, salesOwnerId: r.salesOwnerId, channelId: r.channelId, referrerCustomerId: r.referrerCustomerId };
@@ -351,7 +350,7 @@ describe("单条换负责人（P-转-16，客户 11-09 回执 X4 / 11-10 答复�
     expect(await prisma.entHandover.count()).toBe(1);
   });
 
-  it("开关开着，实线上级、系统管理员单条换负责人：编辑页、就地改都直接转，不写交接（照 P-转-01 ②④）", async () => {
+  it("实线上级、系统管理员单条换负责人：编辑页、就地改都直接转，不写交接（照 P-转-01 ②④）", async () => {
     const a = await 客户(销售.id);
     const b = await 客户(销售.id);
     const c = await 客户(销售.id);
@@ -405,12 +404,7 @@ describe("单条换负责人（P-转-16，客户 11-09 回执 X4 / 11-10 答复�
     expect([await 归谁(a.id), await 归谁(b.id)]).toEqual([兼任.id, 市场.id]);
   });
 
-  for (const 情形 of ["没设", "关着"] as const) it(`规则${情形}：系统管理员编辑页、就地改照旧当场换，一行交接都不写`, async () => {
-    if (情形 === "关着") await setSetting("enterprise.rule.handover_confirm", false);
-    else {
-      await prisma.setting.deleteMany({ where: { key: "enterprise.rule.handover_confirm" } });
-      invalidateSettingsCache();
-    }
+  it("系统管理员编辑页、就地改照旧当场换，一行交接都不写", async () => {
     const a = await 客户(销售.id);
     const b = await 客户(销售.id);
     const ra = await 编辑(a.id, { salesOwnerId: 接手.id });
@@ -422,17 +416,18 @@ describe("单条换负责人（P-转-16，客户 11-09 回执 X4 / 11-10 答复�
   });
 });
 
-describe("开关关掉", () => {
-  for (const 情形 of ["规则关着", "不是企业版"] as const) {
+// 规则「交接要接手人确认」11-13 拿掉（企业版办离职原地不动、不读它）：库里还留着这一行开着也不影响
+describe("办离职、上级转让都不建交接", () => {
+  for (const 情形 of ["企业版", "不是企业版"] as const) {
     it(`${情形}：离职、转让当场转，一行交接都不写`, async () => {
-      if (情形 === "规则关着") await setSetting("enterprise.rule.handover_confirm", false);
+      if (情形 === "企业版") await setSetting("enterprise.rule.handover_confirm", true);
       else vi.stubEnv("CRM_ENTERPRISE", "");
       const a = await 客户(销售.id);
       const b = await 客户(组长.id);
 
       expect(await deactivateUser(销售.id, 接手.id)).toEqual({ ok: true });
       // 企业版办离职原地不动（11-03 C4-4），不是企业版照旧当场转
-      expect(await 归谁(a.id)).toBe(情形 === "规则关着" ? 销售.id : 接手.id);
+      expect(await 归谁(a.id)).toBe(情形 === "企业版" ? 销售.id : 接手.id);
       expect(await assignSalesOwner([b.id], 接手.id)).toMatchObject({ ok: true, updated: 1 });
       expect(await 归谁(b.id)).toBe(接手.id);
       expect(await prisma.entHandover.count()).toBe(0);

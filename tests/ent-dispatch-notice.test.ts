@@ -167,8 +167,7 @@ describe("assignSalesOwner（直接换负责人）", () => {
     expect(await 分配通知们()).toEqual([]);
   });
 
-  it("「交接要确认」开着、销售转销售：走交接通知，不发分给你（确认前还不是他的）", async () => {
-    await setSetting(规则.交接要确认.key, true);
+  it("销售转销售：走交接通知，不发分给你（确认前还不是他的）", async () => {
     invalidateSettingsCache();
     const c = await 客户("客户一", 销售);
     // P-转-16（11-10）起批量转同单条：系统管理员直接转，负责人本人转自己的走申请——由负责人本人发起
@@ -179,8 +178,7 @@ describe("assignSalesOwner（直接换负责人）", () => {
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(销售);
   });
 
-  it("「交接要确认」开着、市场分给销售（P-转-17）：不走确认，当场转、只发分给你", async () => {
-    await setSetting(规则.交接要确认.key, true);
+  it("市场分给销售（P-转-17）：不走确认，当场转、只发分给你", async () => {
     invalidateSettingsCache();
     const a = await 客户("客户一", 运营);
     const b = await 客户("客户二", 运营, "13900000002");
@@ -191,8 +189,7 @@ describe("assignSalesOwner（直接换负责人）", () => {
     expect(await 分配通知们()).toMatchObject([{ userId: 销售, link: "/customers" }]);
   });
 
-  it("「交接要确认」开着、一批里混着销售的客户：整批照旧走确认", async () => {
-    await setSetting(规则.交接要确认.key, true);
+  it("一批里混着销售的客户：整批照旧走确认", async () => {
     invalidateSettingsCache();
     const a = await 客户("客户一", 运营);
     const b = await 客户("客户二", 另一销售, "13900000002");

@@ -1343,7 +1343,6 @@ const 混批走交接 = async (cs: string[], 接手: 人) => {
 };
 
 describe("A2：客户层把市场成员的客户转给销售", () => {
-  const 开交接确认 = async () => { await setSetting(规则.交接要确认.key, true); invalidateSettingsCache(); };
   const 列表行 = async (u: 人, p: string) => (await 以(u, () => 读项目列表(u as never, {} as never))).行.find((r: { id: string }) => r.id === p) as { 待分配?: boolean } | undefined;
   /** 市场手里一位客户：一个待分配项目、一个普通项目、一个已选分配方式的，加市场的待办、计划 */
   const 市场客户 = async () => {
@@ -1368,23 +1367,21 @@ describe("A2：客户层把市场成员的客户转给销售", () => {
     expect(await 列表行(接手, x.等分)).toBeDefined();
   };
 
-  it("批量转（没开交接确认）：不搬不关、清待分配、补分配方式、计入持有", async () => {
+  it("批量转：不搬不关、清待分配、补分配方式、计入持有", async () => {
     const x = await 市场客户();
     expect(await 持有数(prisma, 甲.id)).toBe(0);
     expect(await 以(市场, () => assignSalesOwner([x.c], 甲.id))).toMatchObject({ ok: true, updated: 1 });
     await 都对(x, 甲);
   });
 
-  it("开交接确认、市场自己转给销售：不走确认，当场转，结果同上（P-转-17）", async () => {
-    await 开交接确认();
+  it("市场自己转给销售：不走确认，当场转，结果同上（P-转-17）", async () => {
     const x = await 市场客户();
     expect(await 以(市场, () => assignSalesOwner([x.c], 甲.id))).toMatchObject({ ok: true, updated: 1 });
     expect(await prisma.entHandover.count()).toBe(0);
     await 都对(x, 甲);
   });
 
-  it("开交接确认、混着销售的客户整批走确认：确认前什么都不动，确认后结果同上；痕的操作人是发起的那位", async () => {
-    await 开交接确认();
+  it("混着销售的客户整批走确认：确认前什么都不动，确认后结果同上；痕的操作人是发起的那位", async () => {
     const x = await 市场客户();
     const { r, h, 组长 } = await 混批走交接([x.c], 甲);
     expect(r).toMatchObject({ ok: true, 交接中: 2 });
@@ -1436,7 +1433,6 @@ describe("A2：客户层把市场成员的客户转给销售", () => {
 
   it("销售转销售（直转、确认交接）：照旧带走；原负责人自己占着的待分配清掉（P-转-20），分配方式不动", async () => {
     for (const 走交接 of [false, true]) {
-      if (走交接) await 开交接确认();
       const c = await 客户(乙.id);
       const 等分 = await 项目(c, 乙.id, { awaitAssignAt: new Date(), phase: "线索" });
       const t = await 待办(c, 乙.id);
@@ -1558,7 +1554,6 @@ describe("A2：客户层把市场成员的客户转给销售", () => {
 });
 
 describe("两页竞争转同一位客户：慢的一页怎么报", () => {
-  const 开交接确认 = async () => { await setSetting(规则.交接要确认.key, true); invalidateSettingsCache(); };
   /** 慢页过了权限闸门，快页这时抢先把客户转走 */
   const 快页转走 = (c: string, 给: 人) => { mocks.挡字段前 = async () => { await 看全部(() => prisma.customer.update({ where: { id: c }, data: { salesOwnerId: 给.id } })); }; };
   afterEach(() => { mocks.挡字段前 = null; });
@@ -1609,7 +1604,6 @@ describe("两页竞争转同一位客户：慢的一页怎么报", () => {
   });
 
   it("开着交接确认（P-转-16 起批量转不看这个开关）：慢页同样报没转，不发起交接", async () => {
-    await 开交接确认();
     const c = await 客户(市场.id);
     快页转走(c, 甲);
     const r = await 以(市场, () => assignSalesOwner([c], 乙.id));
@@ -1619,7 +1613,6 @@ describe("两页竞争转同一位客户：慢的一页怎么报", () => {
   });
 
   it("开着交接确认（同上，不看开关）、真删了：已不存在", async () => {
-    await 开交接确认();
     const c = await 客户(市场.id);
     mocks.挡字段前 = async () => { await 看全部(() => prisma.customer.delete({ where: { id: c } })); };
     const r = await 以(市场, () => assignSalesOwner([c], 乙.id));
@@ -1653,7 +1646,6 @@ describe("市场转销售：客户层三个入口的通知也写条数（P-转-1
   const 句 = "客户上还有原负责人 2 条未完成待办、1 条未完成计划";
   /** 混批里组长转自己名下那一位：申请移交的说法 */
   const 申请那句 = "你确认后才转到你名下；不确认不生效，客户还在原负责人名下。";
-  const 开交接确认 = async () => { await setSetting(规则.交接要确认.key, true); invalidateSettingsCache(); };
   const 分配 = async (u: 人) => (await 通知们(u.id)).filter((n) => n.kind === "分配");
   const 交接 = async (u: 人) => (await 通知们(u.id)).filter((n) => n.kind === "交接");
   const 市场带活 = async () => { const c = await 客户(市场.id); await 造活(c, 市场.id); await 待办(c, 乙.id, "同事的不算"); return c; };
@@ -1716,7 +1708,6 @@ describe("市场转销售：客户层三个入口的通知也写条数（P-转-1
   });
 
   it("确认交接：接手人发起时那条就写，确认后发起人那条也写（按确认那刻数）", async () => {
-    await 开交接确认();
     const c = await 市场带活();
     const { h, 组长 } = await 混批走交接([c], 甲);
     // 陪着的销售客户那条不说；那条是组长转自己名下的，按申请移交写（P-转-16）
@@ -1735,7 +1726,6 @@ describe("市场转销售：客户层三个入口的通知也写条数（P-转-1
     await 待办(c, 市场.id, `某某${收回提醒尾}`);
     await 以(市场, () => assignSalesOwner([c], 甲.id));
     expect((await 分配(甲))[0].body).toBe("");
-    await 开交接确认();
     const d = await 客户(市场.id);
     await 混批走交接([d], 乙);
     expect((await 交接(乙)).map((n) => n.body).sort()).toEqual([申请那句, "确认之前这些客户还在原负责人名下，确认后才转到你名下。"].sort());
@@ -1751,7 +1741,6 @@ describe("市场转销售：客户层三个入口的通知也写条数（P-转-1
     for (const n of await 分配(甲)) expect(n.body).not.toContain("未完成");
     expect(await 分配(甲)).toHaveLength(2);
 
-    await 开交接确认();
     const c = await 客户(乙.id);
     await 造活(c, 乙.id);
     const { h, 组长 } = await 混批走交接([c], 丙);
@@ -1776,7 +1765,6 @@ describe("市场转销售：客户层三个入口的通知也写条数（P-转-1
 
 describe("转客户：名下全部项目（含同事在推的）随客户给接手人（Even 11-08 决策一②，P-转-07；用户 11-10 统一按 Even）", () => {
   const 开项目模式 = async () => { await setSetting("business", { projectMode: true }); invalidateSettingsCache(); };
-  const 开交接确认 = async () => { await setSetting(规则.交接要确认.key, true); invalidateSettingsCache(); };
   const 负责人of = async (p: string) => (await 项目of(p)).ownerId;
   const 待分配of = async (p: string) => (await 项目of(p)).awaitAssignAt;
   /** 客户负责人把客户转给甲的四个入口。项目分配要选中一条：选中的是原负责人自己的 */
@@ -1786,7 +1774,6 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
     ["客户页改负责人", (me, c, _选中, 给) => 以(me, () => patchCustomer(c, "salesOwnerId", 给.id))],
     // P-转-17 起市场自己转给销售不走确认，确认交接只剩混批（P-转-16 起由原负责人的实线上级连同自己名下的一起转）
     ["确认交接", async (_me, c, _选中, 给) => {
-      await 开交接确认();
       const { h } = await 混批走交接([c], 给);
       return 以(给, () => 确认交接(h.id));
     }],
@@ -2128,7 +2115,6 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
     });
 
     it("确认转让交接：接手人确认时超上限拦，交接还挂着；放宽后能确认", async () => {
-      await setSetting(规则.交接要确认.key, true);
       await 上限(2);
       await 丙先有一个();
       const c = await 客户(甲.id);
@@ -2376,7 +2362,6 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
     });
 
     it("确认转让交接：原负责人自己待分配的也算进手，超了拦", async () => {
-      await setSetting(规则.交接要确认.key, true);
       await 上限(1);
       await 项目(await 客户(丙.id), 丙.id);
       const c = await 客户(甲.id);
@@ -2395,7 +2380,6 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
 
 describe("负责人兼任市场和销售：按销售算，转出时待办和计划一起搬（用户 11-09）", () => {
   // 负责人本人转自己的走申请移交（X4），直接转由总管理来点；确认交接那条照旧由本人发起
-  const 开交接确认 = async () => { await setSetting(规则.交接要确认.key, true); invalidateSettingsCache(); };
   const 兼任写法 = ["marketing_mgr,sales", "channel_ops,sales"];
   const 造兼任 = (写法: string) => 造人(`dual-${写法.replace(/\W/g, "-")}`, "兼任某某", "SALES", 写法);
   const 他的客户 = async (主人: string) => {
@@ -2430,7 +2414,6 @@ describe("负责人兼任市场和销售：按销售算，转出时待办和计�
     });
 
     it("确认交接：确认前不动，确认后待办和计划跟着走；接手确认框说待办和计划一起转", async () => {
-      await 开交接确认();
       const 兼任 = await 造兼任(写法);
       const x = await 他的客户(兼任.id);
       expect(await 以(兼任, () => assignSalesOwner([x.c], 甲.id))).toMatchObject({ ok: true, 交接中: 1 });
@@ -2458,13 +2441,11 @@ describe("负责人兼任市场和销售：按销售算，转出时待办和计�
   });
 
   it("对照：纯市场角色同样三个入口仍不搬", async () => {
-    await setSetting(规则.交接要确认.key, false);
     invalidateSettingsCache();
     const a = await 他的客户(市场.id);
     expect(await 以(市场, () => assignSalesOwner([a.c], 甲.id))).toMatchObject({ ok: true, updated: 1 });
     const b = await 他的客户(市场.id);
     expect(await 以(市场, () => patchCustomer(b.c, "salesOwnerId", 甲.id))).toMatchObject({ ok: true });
-    await 开交接确认();
     const d = await 他的客户(市场.id);
     const { h } = await 混批走交接([d.c], 甲);
     expect(await 以(甲, () => 确认交接(h.id))).toEqual({ ok: true, 客户: 1 });

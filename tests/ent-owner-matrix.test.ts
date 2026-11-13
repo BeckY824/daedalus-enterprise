@@ -472,8 +472,7 @@ describe("C 客户进公海：清空负责人、记历史负责人、原负责�
       expect(await 客户负责人(普通)).toBe(甲.id);
     });
 
-    it("交接要确认开着：也拒，不生成交接", async () => {
-      await setSetting(规则.交接要确认.key, true);
+    it("也拒，不生成交接", async () => {
       invalidateSettingsCache();
       const { c, p } = await 放好();
       const r = await 以(销售管理, () => assignSalesOwner([c], 丙.id));
