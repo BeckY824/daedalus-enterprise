@@ -71,7 +71,7 @@ async function 灌数据(db: PrismaClient, 密码: string): Promise<种子> {
   await db.setting.createMany({
     data: [
       { key: "business", value: JSON.stringify({ projectMode: true }) },
-      ...["org_scope", "lead_assign", "field_perm", "handover_confirm"].map((k) => ({ key: `enterprise.rule.${k}`, value: "true" })),
+      ...["org_scope", "lead_assign", "field_perm"].map((k) => ({ key: `enterprise.rule.${k}`, value: "true" })),
     ],
   });
 

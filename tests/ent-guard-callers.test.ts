@@ -53,7 +53,6 @@ beforeEach(async () => {
   });
   vi.stubEnv("CRM_ENTERPRISE", "1");
   await setSetting("enterprise.rule.org_scope", true);
-  await setSetting("enterprise.rule.handover_confirm", true);
 });
 afterEach(() => { vi.unstubAllEnvs(); });
 afterAll(async () => { await prisma.$disconnect(); });

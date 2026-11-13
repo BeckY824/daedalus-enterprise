@@ -56,8 +56,6 @@ beforeEach(async () => {
   当(老板);
   vi.stubEnv("CRM_ENTERPRISE", "1");
   await setSetting("enterprise.rule.org_scope", true);
-  // 交接要确认关着：转给别人当场换负责人、给撤销条（开着时走交接，不给撤销）
-  await setSetting("enterprise.rule.handover_confirm", false);
 });
 afterEach(() => { vi.unstubAllEnvs(); });
 afterAll(async () => { await prisma.$disconnect(); });

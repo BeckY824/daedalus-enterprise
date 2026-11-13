@@ -1,3 +1,4 @@
+import type { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { getBusiness } from "@/lib/business";
 import { 钉住老签约 } from "@/lib/contract-owner";
@@ -28,6 +29,7 @@ import { beijingDay } from "@/lib/business-clock";
  *   项目走 转项目，记转让痕、卡点认领跟着）；一键全部交给 = 原来办离职时的「全部转交」（停用分拣 + 离职转给接手人），
  *   线索、渠道（连他当负责人的主渠道，迁移 118）也一起给
  * - 没开项目模式：只列客户，不动项目（单条不带项目，一键时项目那份清空）
+ * - 交过去的客户备注末尾留一行「日期 离职交接：原负责人 → 接手人（操作人）」（客户 11-13，留交接备注）；只交项目的不写
  * - 查的、改的都包 看全部：按组织看客户开着时，上级的范围里不一定有离职下属的客户
  */
 
@@ -293,6 +295,32 @@ export async function 交接挡(me: 谁, fromId: string, toId: string): Promise<
  */
 const 交接超上限尾 = "这次一个都没交；先让接手人推进或放回一些，或者换一位接手人";
 
+/** 离职交接转完留在客户备注里的那一行（客户 11-13：别「悄悄转过去没人知道」）。日期是上海日 */
+export function 交接备注行(日: string, 原负责人: string, 接手人: string, 操作人: string): string {
+  return `${日} 离职交接：原负责人 ${原负责人} → 接手人 ${接手人}（操作人 ${操作人}）`;
+}
+
+/** 备注末尾追加一行：原有内容不动，只把末尾空白规整掉再换行接上；同一行已经有了 = null（不用写） */
+export function 追加备注行(原: string | null, 行: string): string | null {
+  const 留 = (原 ?? "").trimEnd();
+  if (留.split("\n").some((l) => l.trim() === 行)) return null;
+  return 留 ? `${留}\n${行}` : 行;
+}
+
+/**
+ * 交过去的客户每位备注末尾留一行「日期 离职交接：原负责人 → 接手人（操作人）」，和换负责人同一个事务。
+ * 只改 remark：不碰最近跟进；updatedAt 跟着换负责人那一下本来就会刷
+ */
+async function 留交接备注(tx: Prisma.TransactionClient, 客户: readonly string[], fromId: string, toId: string, 操作人: string): Promise<void> {
+  if (!客户.length) return;
+  const 名of = new Map((await tx.user.findMany({ where: { id: { in: [...new Set([fromId, toId, 操作人])] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
+  const 行 = 交接备注行(beijingDay(new Date()), 名of.get(fromId) ?? fromId, 名of.get(toId) ?? toId, 名of.get(操作人) ?? 操作人);
+  for (const c of await tx.customer.findMany({ where: { id: { in: [...客户] } }, select: { id: true, remark: true } })) {
+    const 新 = 追加备注行(c.remark, 行);
+    if (新 !== null) await tx.customer.update({ where: { id: c.id }, data: { remark: 新 } });
+  }
+}
+
 /** 交一位客户：负责人还是他、不在公海才交；没做完的活跟着走，开了项目模式项目跟着客户走 */
 export async function 交一位客户(me: 谁, fromId: string, customerId: string, toId: string): Promise<boolean> {
   const 带项目 = await 项目模式();
@@ -304,6 +332,7 @@ export async function 交一位客户(me: 谁, fromId: string, customerId: strin
     if (!改.count) return false;
     await 带走一位(tx, customerId, fromId, toId, me.id, "deactivate", 带项目);
     await 整批核上限(tx, 起, "交接", 交接超上限尾);
+    await 留交接备注(tx, [customerId], fromId, toId, me.id);
     return true;
   }));
 }
@@ -335,6 +364,7 @@ export async function 全部交给(me: 谁, fromId: string, toId: string) {
     if (!带项目) 分.项目 = [];
     const 项目 = await 离职转给接手人(tx, 分, fromId, toId, me.id, 记分配);
     await 整批核上限(tx, 起, "交接", 交接超上限尾);
+    await 留交接备注(tx, 分.客户, fromId, toId, me.id);
     return { 客户: 分.客户, 商机: 分.商机, 待办: 分.待办, 计划: 分.计划, 线索: 分.线索, 渠道: 分.渠道, 主渠道: 分.主渠道, 项目 };
   }, { timeout: 30_000 }));
 }

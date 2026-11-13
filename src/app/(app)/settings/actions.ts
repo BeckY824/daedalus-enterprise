@@ -11,7 +11,7 @@ import { 能改后台设置, 是总管理, 只读角色 } from "@/lib/enterprise
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 停用分拣, 停用方式们, type 停用方式 } from "@/lib/offboard-db";
 import { 离职转给接手人, 离职放进公海 } from "@/lib/offboard-move";
-import { 交接要确认, 离职交接中, 了结 } from "@/lib/enterprise/handover-db";
+import { 离职交接中, 了结 } from "@/lib/enterprise/handover-db";
 import { 交接卡点 } from "@/lib/project/blocker";
 import { 哈希密码, 核对密码串 } from "@/lib/password";
 import { revalidatePath } from "next/cache";
@@ -32,7 +32,6 @@ import { saveLlmConfig, clearLlmConfig, resolveLlmConfigForTest, testLlm, type M
 import { getBusiness, saveBusiness, mergeBusiness, 企业版锁定, 状态名问题, 阶段名问题, type BusinessConfig } from "@/lib/business";
 import { 判断可用 } from "@/lib/jev/client";
 import { 自动判断开着, 设自动判断 } from "@/lib/jev/settings";
-import { 交接通知 } from "@/lib/enterprise/notice-sources";
 import { 视图外部拒, 正在切换视图, 视图只读错误 } from "@/lib/enterprise/view-as";
 
 /** 密码最短长度。界面上有校验，但接口直调能绕开，空密码会让任何人登进来 */
@@ -352,8 +351,6 @@ export async function deactivateUser(id: string, transferToId: string, 方式: �
   const 记分配 = await 规则开着("线索分配");
   // 函数式事务：数组式在托管版的工作区代理下会抛错，而且抛之前已经写了（2026-10-02 排查 A3）。
   // 分拣也放在事务里：清点到写完之间有人改了负责人，不会漏转、错转。一个人名下一两百条，给足时间
-  // 企业版「交接中」（规则「交接要接手人确认」，D10）：给接手人的那部分等他确认，见 lib/enterprise/handover-db.ts
-  if (await 交接要确认()) return 发起离职交接(me, id, transferToId, 方式);
   const 转走了 = await prisma.$transaction(async (tx) => {
     const 分 = await 停用分拣(tx, id, 方式, 企业版());
     const 项目 = await 离职转给接手人(tx, 分, id, transferToId, me.id, 记分配);
@@ -454,58 +451,6 @@ async function 撤托管成员(id: string) {
   const t = await resolveCurrentTenant();
   const link = await prisma.workspaceAccount.findFirst({ where: { userId: id } });
   if (t && link) await 撤成员(link.accountId, t.workspaceId);
-}
-
-/**
- * 企业版「交接中」的离职（规则「交接要接手人确认」开着，D10）：成员当场停用（离职的人不能再登录），
- * 放进公海的那部分当场放；给接手人的那部分先不动、留在他名下，记一行待确认，接手人在客户页确认了
- * 才按那时候重新分拣、转过去（customers/handover-actions.ts 确认交接）。确认前接手人的列表里看不到这些数据
- */
-async function 发起离职交接(me: Awaited<ReturnType<typeof requireUser>>, id: string, transferToId: string, 方式: 停用方式) {
-  const { 分, 交接 } = await prisma.$transaction(async (tx) => {
-    const 分 = await 停用分拣(tx, id, 方式, true);
-    await 离职放进公海(tx, 分, me.id);
-    // 给接手人的一样都没有（比如公海方式全进了公海、名下本来就空）：不建交接、不发「等你确认」，当场停用（11-03 C4-2）
-    if (![分.客户, 分.商机, 分.待办, 分.计划, 分.线索, 分.渠道, 分.主渠道, 分.项目].some((x) => x.length)) {
-      await 交接卡点(tx, id, transferToId, me.id, 分.进公海项目);
-      await tx.user.update({ where: { id }, data: { active: false } });
-      return { 分, 交接: null };
-    }
-    const h = await tx.entHandover.create({
-      data: {
-        kind: "离职", fromUserId: id, toUserId: transferToId, byUserId: me.id, way: 方式,
-        customerIds: JSON.stringify(分.客户),
-        counts: JSON.stringify({ 客户: 分.客户.length, 商机: 分.商机.length, 计划和待办: 分.计划.length + 分.待办.length, 线索: 分.线索.length, 渠道: 分.渠道.length, 项目: 分.项目.length }),
-      },
-    });
-    await tx.user.update({ where: { id }, data: { active: false } });
-    return { 分, 交接: h.id };
-  }, { timeout: 30_000 });
-  await 撤托管成员(id);
-  await 进公海挂靠通知(分.进公海客户); // 同上
-  if (交接) await 交接通知(me, 交接, "发起");
-
-  const [被停, 接手] = await Promise.all([
-    prisma.user.findUnique({ where: { id }, select: { name: true } }),
-    prisma.user.findUnique({ where: { id: transferToId }, select: { name: true } }),
-  ]);
-  const 进公海 = 分.进公海客户.length + 分.本来在公海.length;
-  await recordAudit({
-    user: me, action: "deactivate", entity: "User", entityId: id,
-    summary: (交接
-      ? `停用成员「${被停?.name ?? id}」，交接给「${接手?.name ?? transferToId}」，等对方确认后转过去：` +
-        `${分.客户.length} 位客户、${分.商机.length} 个进行中商机、${分.计划.length + 分.待办.length} 条没完成的计划和待办、` +
-        `${分.线索.length} 条线索、${分.渠道.length} 个渠道` + (分.项目.length ? `、${分.项目.length} 个项目` : "")
-      : `停用成员「${被停?.name ?? id}」，名下没有要交给「${接手?.name ?? transferToId}」的，没发起交接`) +
-      (方式 === "公海" ? `；${进公海} 位客户已放回公海` + (分.进公海项目.length ? `、${分.进公海项目.length} 个项目已放回线索公海` : "") : ""),
-    detail: { userId: id, transferToId, 方式, 交接, 交接中: !!交接, 进公海客户: 分.进公海客户, 进公海项目: 分.进公海项目 },
-  });
-
-  revalidatePath("/settings");
-  revalidatePath("/customers");
-  revalidatePath("/projects");
-  if (!交接) return { ok: true as const };
-  return { ok: true as const, 交接中: true as const };
 }
 
 /** 一次最多停用多少人：和离职交接「200 条一次做完」同一个量 */

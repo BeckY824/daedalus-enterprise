@@ -66,7 +66,6 @@ beforeEach(async () => {
   });
   vi.stubEnv("CRM_ENTERPRISE", "1");
   await setSetting("business", { projectMode: true, poolDays: 30 });
-  await setSetting("enterprise.rule.handover_confirm", false);
   invalidateSettingsCache();
   当(老板);
 });

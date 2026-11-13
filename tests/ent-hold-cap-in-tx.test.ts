@@ -94,7 +94,6 @@ afterEach(() => { vi.unstubAllEnvs(); invalidateSettingsCache(); });
 describe("1. 确认交接：核和转在同一个事务里", () => {
   /** 甲申请把自己名下一位客户（带 n 个他自己的项目、一条待办）移交给 丙，返回交接 id */
   const 甲移交给丙 = async (n: number) => {
-    await setSetting(规则.交接要确认.key, true);
     invalidateSettingsCache();
     const c = await 客户(甲.id);
     const ps: string[] = [];

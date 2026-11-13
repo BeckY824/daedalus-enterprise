@@ -50,7 +50,7 @@ type 结果 = Promise<{ ok: boolean; error?: string; 提示?: string; 要确认?
 
 const 总管级 = (r: string) => r === "director" || r === "admin";
 /** 开关的 data-testid：第一条沿用老名字，E2E 在用 */
-const 规则testid: Record<规则名, string> = { 按组织看客户: "org-rule-scope", 线索分配: "org-rule-lead-assign", 字段权限: "org-rule-field-perm", 交接要确认: "org-rule-handover-confirm", 市场复核: "org-rule-market-review" };
+const 规则testid: Record<规则名, string> = { 按组织看客户: "org-rule-scope", 线索分配: "org-rule-lead-assign", 字段权限: "org-rule-field-perm", 市场复核: "org-rule-market-review" };
 const 级别名 = { 改: "能改", 看: "只能看", 藏: "看不到" } as const;
 /**
  * 角色下拉每项下面那行「能做什么」（10-30）：只写代码里按角色写死的那几样——总管理员看全部（lib/enterprise/visibility.ts）、
