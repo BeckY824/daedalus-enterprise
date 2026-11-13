@@ -215,7 +215,7 @@ function PersonCard({ p, 候选, 项目模式 }: { p: 离职待交接; 候选: �
           <PickTaker 候选={候选} 不要={p.id} value={全部给} onChange={set全部给} style={{ width: 220 }} />
           <Button type="primary" disabled={p.单条等确认 > 0 || !全部给} loading={忙 === "all"} onClick={一键}>全部交给</Button>
           {p.单条等确认 > 0
-            ? <Typography.Text type="secondary" className="ofb-hint">还有 {p.单条等确认} 笔在等接手人确认，确认或撤回后才能全部交给</Typography.Text>
+            ? <Typography.Text type="secondary" className="ofb-hint" title={`还有 ${p.单条等确认} 笔在等接手人确认，确认或撤回后才能全部交给`}>还有 {p.单条等确认} 笔在等接手人确认，确认或撤回后才能全部交给</Typography.Text>
             : 其余 && <Typography.Text type="secondary" style={{ fontSize: 12 }}>另有 {其余}，「全部交给」时一起走</Typography.Text>}
         </div>
       )}

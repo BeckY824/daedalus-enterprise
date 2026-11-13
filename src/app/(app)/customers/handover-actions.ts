@@ -26,7 +26,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 算市场转客户 } from "@/lib/enterprise/market-transfer";
 import { 待确认, 已作废, 了结, 读ids, 能撤回别人的交接, 离职范围of, type 交接种类 } from "@/lib/enterprise/handover-db";
-import { 确认离职交接, 确认超上限尾, 留交接备注, 离职段 } from "@/lib/enterprise/offboard-handover";
+import { 确认离职交接, 确认超上限尾, 留交接备注, 离职段, 能交接 } from "@/lib/enterprise/offboard-handover";
 import { 公海分不给话 } from "@/lib/enterprise/permissions";
 import { 移交作废天数, 移交作废说法 } from "@/lib/enterprise/handover-expire";
 import { getBusiness } from "@/lib/business";
@@ -147,21 +147,28 @@ export async function 待确认的交接(): Promise<{ 等我确认: 交接行[];
   // 看全部：交接里的客户还不归接手人，限定着查他一个名字都拿不到
   return 看全部(async () => {
     const 作废的 = { status: 已作废, byUserId: me.id, doneAt: { gte: new Date(Date.now() - 移交作废天数 * 24 * 3_600_000) } };
-    const 行 = await prisma.entHandover.findMany({
-      // 管理员看全部还没确认的；别人只看给自己的、自己发起的（OR 里放空对象 Prisma 不当「全部」，分开写）
-      where: { OR: [管 ? { status: 待确认 } : { status: 待确认, OR: [{ toUserId: me.id }, { byUserId: me.id }] }, 作废的] },
+    // 等我确认的单独按接手人查、不设上限（11-13 审查：全库待确认多了，接手人自己的那笔不能被前 50 条挤掉）
+    const 给我的 = await prisma.entHandover.findMany({ where: { status: 待确认, toUserId: me.id }, orderBy: { createdAt: "desc" } });
+    const 其余 = await prisma.entHandover.findMany({
+      // 管理员看全部还没确认的；别人只看自己发起的（OR 里放空对象 Prisma 不当「全部」，分开写）；给我的上面已经取了
+      where: { OR: [管 ? { status: 待确认, toUserId: { not: me.id } } : { status: 待确认, toUserId: { not: me.id }, byUserId: me.id }, 作废的] },
       orderBy: { createdAt: "desc" },
       take: 50,
     });
+    const 行 = [...给我的, ...其余.filter((h) => !(h.status === 待确认 && h.toUserId === me.id))];
     if (!行.length) return { 等我确认: [], 我发起的: [] };
+    // 离职交接：发起人这条路还得此刻还管这位离职成员（换了上级的不能再撤回、改人），总管理不受限
+    const 还管 = new Set<string>();
+    if (!管) for (const from of new Set(行.filter((h) => h.kind === "离职" && h.byUserId === me.id && h.status === 待确认).map((h) => h.fromUserId))) if (await 能交接(me, from)) 还管.add(from);
+    const 离职能管 = (h: (typeof 行)[number]) => 管 || (h.byUserId === me.id && 还管.has(h.fromUserId));
     const 人 = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(行.flatMap((h) => [h.fromUserId, h.toUserId, h.byUserId]))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
     const 前几位 = 行.flatMap((h) => 读ids(h.customerIds).slice(0, 列几位));
-    const 名 = new Map((await prisma.customer.findMany({ where: { id: { in: 前几位 } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
+    const 名 = new Map((await 分段查(前几位, (段) => prisma.customer.findMany({ where: { id: { in: 段 } }, select: { id: true, name: true } }))).map((c) => [c.id, c.name]));
     // 转让：确认那一刻会一起转来的项目，按此刻的数据数（同 确认交接：还归原负责人、不在公海的才转）；同事在推的只给个数（P-转-07、X-49）
     const 项目句 = await 转让项目句(行.filter((h) => h.kind === "转让"));
     // 离职单条交项目：项目名（看板上交的是挂在别人客户上的项目，接手人要知道是哪个）
     const 项目ids = 行.filter((h) => h.kind === "离职").flatMap((h) => 读ids(h.projectIds).slice(0, 列几位));
-    const 项目名 = new Map(项目ids.length ? (await prisma.project.findMany({ where: { id: { in: 项目ids } }, select: { id: true, name: true } })).map((p) => [p.id, p.name]) : []);
+    const 项目名 = new Map((await 分段查(项目ids, (段) => prisma.project.findMany({ where: { id: { in: 段 } }, select: { id: true, name: true } }))).map((p) => [p.id, p.name]));
     const 成行 = (h: (typeof 行)[number]): 交接行 => {
       const ids = 读ids(h.customerIds);
       const 等 = h.status === 待确认;
@@ -179,9 +186,9 @@ export async function 待确认的交接(): Promise<{ 等我确认: 交接行[];
         个数: 读个数(h.counts), 客户: ids.slice(0, 列几位).map((id) => 名.get(id)).filter((x): x is string => !!x), 客户总数: ids.length,
         离职说: h.kind === "离职" ? 离职说(h, 名, 项目名) : "",
         createdAt: h.createdAt.toISOString(),
-        我能确认: 等 && h.toUserId === me.id, 我能撤回: 等 && (h.byUserId === me.id || 管),
+        我能确认: 等 && h.toUserId === me.id, 我能撤回: 等 && (h.kind === "离职" ? 离职能管(h) : h.byUserId === me.id || 管),
         // 申请移交：发起人本人；离职交接：发起人或总管理（11-13）
-        我能改接手人: 等 && (h.kind === "转让" ? h.byUserId === me.id && h.fromUserId === me.id : h.byUserId === me.id || 管), 接手人id: h.toUserId,
+        我能改接手人: 等 && (h.kind === "转让" ? h.byUserId === me.id && h.fromUserId === me.id : 离职能管(h)), 接手人id: h.toUserId,
         状态: 等 ? 待确认 : 移交作废说法,
       };
     };
@@ -234,6 +241,13 @@ export async function 确认交接(id: string): Promise<结果> {
   const h = await 看全部(() => prisma.entHandover.findUnique({ where: { id } }));
   if (!h || h.status !== 待确认) return { ok: false, error: 已处理 };
   if (h.toUserId !== me.id) return { ok: false, error: "只有接手人自己能确认" };
+  // 离职交接：接手人此刻还得能接（发起之后被停用、摘了业务角色、改成只读的，确认不了），同看板发起时那道闸；交接留在待确认
+  if (h.kind === "离职") {
+    const 不行 = (await prisma.user.findUnique({ where: { id: me.id }, select: { active: true } }))?.active === false
+      ? "该成员已停用"
+      : 公海分不给话(me, await 权限组织(), me.id);
+    if (不行) return { ok: false, error: `你现在接不了这笔离职交接（${不行}）；交接还在等确认，请发起人改接手人或撤回` };
+  }
   const b = await getBusiness();
   // 规则、组织在事务外读（事务占着库的唯一连接，事务里读设置会等到超时）
   const 规则 = await 生效组织规则();
@@ -331,13 +345,26 @@ export async function 确认交接(id: string): Promise<结果> {
 export async function 撤回交接(id: string): Promise<结果> {
   const me = await requireUser();
   const 别人的也能撤 = await 能撤回别人的交接(me);
-  return 了结一笔(me, id, "已撤回", (h) => h.byUserId === me.id || 别人的也能撤, "只有发起人或总管理能撤回");
+  return 了结一笔(me, id, "已撤回", async (h) => {
+    if (h.kind === "离职") return 离职不能管(me, h);
+    return h.byUserId === me.id || 别人的也能撤 ? null : "只有发起人或总管理能撤回";
+  });
+}
+
+/**
+ * 离职交接的撤回、改接手人谁能做（11-13）：总管理都能；发起人还得此刻还管这位离职成员（能交接：仍是他手填的直属上级、或是系统管理员），
+ * 换了上级、被改成只读的不能再动。能 = null，不能 = 那句话（说「撤回」，改接手人那边换词）
+ */
+async function 离职不能管(me: Awaited<ReturnType<typeof requireUser>>, h: { byUserId: string; fromUserId: string }): Promise<string | null> {
+  if (await 能撤回别人的交接(me)) return null;
+  if (h.byUserId !== me.id) return "只有发起人或总管理能撤回";
+  return (await 能交接(me, h.fromUserId)) ? null : "你现在已经不管这位离职成员了（不是 TA 的直属上级），不能撤回；请找总管理";
 }
 
 /** 接手人拒收：同撤回，数据留在原负责人名下，发起人看操作日志知道被拒了 */
 export async function 拒收交接(id: string): Promise<结果> {
   const me = await requireUser();
-  return 了结一笔(me, id, "已拒收", (h) => h.toUserId === me.id, "只有接手人自己能拒收");
+  return 了结一笔(me, id, "已拒收", (h) => (h.toUserId === me.id ? null : "只有接手人自己能拒收"));
 }
 
 /**
@@ -354,7 +381,8 @@ export async function 改接手人(id: string, toUserId: string): Promise<结果
   if (!h || h.status !== 待确认) return { ok: false, error: 已处理 };
   const 离职 = h.kind === "离职";
   if (离职) {
-    if (h.byUserId !== me.id && !(await 能撤回别人的交接(me))) return { ok: false, error: "只有发起人或总管理能改接手人" };
+    const 不能管 = await 离职不能管(me, h);
+    if (不能管) return { ok: false, error: 不能管.replace("撤回", "改接手人") };
   } else if (h.kind !== "转让" || h.byUserId !== me.id || h.fromUserId !== me.id) return { ok: false, error: "只有发起申请移交的负责人本人能改接手人" };
   if (toUserId === h.toUserId) return { ok: false, error: "接手人没变" };
   if (离职 && toUserId === h.fromUserId) return { ok: false, error: "不能交回给离职的成员" };
@@ -390,13 +418,14 @@ async function 了结一笔(
   me: Awaited<ReturnType<typeof requireUser>>,
   id: string,
   状态: "已撤回" | "已拒收",
-  能: (h: { byUserId: string; toUserId: string }) => boolean,
-  不能: string,
+  /** 能做 = null，不能 = 那句话 */
+  不能: (h: { kind: string; byUserId: string; toUserId: string; fromUserId: string }) => string | null | Promise<string | null>,
 ): Promise<结果> {
   if (!企业版() || typeof id !== "string" || !id) return { ok: false, error: 已处理 };
   const h = await 看全部(() => prisma.entHandover.findUnique({ where: { id } }));
   if (!h || h.status !== 待确认) return { ok: false, error: 已处理 };
-  if (!能(h)) return { ok: false, error: 不能 };
+  const 话 = await 不能(h);
+  if (话) return { ok: false, error: 话 };
   if (!(await 看全部(() => 了结(prisma, h.id, 状态, me)))) return { ok: false, error: 已处理 };
   const 人 = new Map((await prisma.user.findMany({ where: { id: { in: [h.fromUserId, h.toUserId] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
   const n = 读ids(h.customerIds).length;

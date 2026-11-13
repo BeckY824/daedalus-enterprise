@@ -23,7 +23,7 @@ import { beijingDay, beijingWallIso } from "@/lib/business-clock";
 import { 算三态, 解除后几天收, type 提醒级, type 今天提醒 } from "./tri-state";
 import { 收三态客户, 候选客户, 分批, 三态开着, 三态夜扫, 三态扫过键, 钟状态of, 离职交接中的, 待交接理由, type 自动收了 } from "./tri-state-db";
 import { 交接挂起超了, 交接兜底工作日, 交接兜底自然日 } from "./tri-state";
-import { 待确认 } from "./handover-db";
+import { 待确认, 离职盖住的客户, 离职盖住的项目 } from "./handover-db";
 import type { 组织规则 } from "@/lib/project/org-rules";
 import { 读组织, type 组织 } from "./org";
 import { 找条线总管理, 找直属上级, 本人在职, 原负责人上级, 系统管理员们 } from "./tri-state-people";
@@ -191,8 +191,10 @@ export async function 已回公海通知(们: readonly 自动收了[], org: 组�
 
 /**
  * 交接挂起兜底（T6 / T12）：超过 15 个工作日（周一到周五，不扣节假日、不认调休）或超过 30 个自然日（S1，先到者）没人接手的，推系统管理员裁决，每笔只推一次。
- *   - T6：离职交接待接手人确认，从发起那天数；
- *   - T12：负责人停用、客户标了「待交接」（tri-state-db.ts 待交接理由）还挂在他名下，按人合成一条，从他名下最早那位标的那天数。
+ *   - T6：离职交接待接手人确认，从发起那天数；11-13 起一位离职成员可能有好几笔单条的：按离职成员合成一条，只带这次新超期、还没推过的那几笔
+ *     （key = tri-handover-stuck:<离职成员>:<这几笔 id>，同一天重跑 key 一样不重复发；老 key tri-handover-stuck:<交接 id> 也认成推过）；
+ *   - T12：负责人停用、客户标了「待交接」（tri-state-db.ts 待交接理由）还挂在他名下，按人合成一条，从他名下最早那位标的那天数；
+ *     已经在离职交接里等确认的客户不算（T6 那条管，同一位客户不重复催）。
  * 返回推了几条
  */
 export async function 交接挂起兜底(org: 组织, 今天: string): Promise<number> {
@@ -200,13 +202,20 @@ export async function 交接挂起兜底(org: 组织, 今天: string): Promise<n
   if (!管.length) return 0;
   const 超了 = (起: Date) => 交接挂起超了(beijingDay(起), 今天);
   let n = 0;
-  const 挂 = (await prisma.entHandover.findMany({ where: { kind: "离职", status: 待确认 }, select: { id: true, fromUserId: true, toUserId: true, createdAt: true } })).filter((h) => 超了(h.createdAt));
+  const 挂 = (await prisma.entHandover.findMany({ where: { kind: "离职", status: 待确认 }, select: { id: true, fromUserId: true, toUserId: true, createdAt: true, way: true, customerIds: true, projectIds: true }, orderBy: { createdAt: "asc" } })).filter((h) => 超了(h.createdAt));
+  // 推过的笔：key 最后一段是逗号连起来的交接 id（老 key 只有一个 id）
+  const 推过 = new Set((await prisma.entNotice.findMany({ where: { dedupeKey: { startsWith: "tri-handover-stuck:" } }, select: { dedupeKey: true } }))
+    .flatMap((n) => (n.dedupeKey ?? "").slice("tri-handover-stuck:".length).split(":").pop()!.split(",")));
+  const 新挂of = new Map<string, typeof 挂>();
+  for (const h of 挂) if (!推过.has(h.id)) 新挂of.set(h.fromUserId, [...(新挂of.get(h.fromUserId) ?? []), h]);
   const 标们 = await prisma.entCustomerStateLog.findMany({ where: { reason: 待交接理由 }, select: { customerId: true, fromOwnerId: true, at: true }, orderBy: { at: "asc" } });
   // 还挂在那位停用的人名下、不在公海里的才算（交出去了、进了公海的不再催）
   const 还在 = new Set((await prisma.customer.findMany({
     where: { id: { in: [...new Set(标们.map((x) => x.customerId))] }, pool: { is: null }, salesOwner: { active: false } },
     select: { id: true, salesOwnerId: true },
   })).filter((c) => 标们.some((x) => x.customerId === c.id && x.fromOwnerId === c.salesOwnerId)).map((c) => c.id));
+  // 已经在离职交接里等确认的不在这里催（T6 那条管）
+  for (const id of await 离职交接中的(prisma, [...还在])) 还在.delete(id);
   const 按人 = new Map<string, { 起: Date; 数: Set<string> }>();
   for (const x of 标们) {
     if (!x.fromOwnerId || !还在.has(x.customerId)) continue;
@@ -216,11 +225,16 @@ export async function 交接挂起兜底(org: 组织, 今天: string): Promise<n
   }
   const 超的人 = [...按人].filter(([, v]) => 超了(v.起));
   const 名 = await 人名([...new Set([...挂.flatMap((h) => [h.fromUserId, h.toUserId]), ...超的人.map(([id]) => id)])]);
-  for (const h of 挂) {
+  for (const [from, 们] of 新挂of) {
+    const 接手人们 = [...new Set(们.map((h) => 名.get(h.toUserId) ?? "（已停用）"))].join("、");
+    const 全部 = 们.some((h) => 离职盖住的客户(h) === null);
+    const 客户 = new Set(们.flatMap((h) => [...(离职盖住的客户(h) ?? [])]));
+    const 项目 = new Set(们.flatMap((h) => [...(离职盖住的项目(h) ?? [])]));
+    const 管的 = 全部 ? "名下全部" : [客户.size && `${客户.size} 位客户`, 项目.size && `${项目.size} 个项目`].filter(Boolean).join("、");
     await notify(管, {
       kind: "三态", title: `离职交接挂起超过 ${交接兜底工作日} 个工作日（或 ${交接兜底自然日} 天）没人确认`,
-      body: `${名.get(h.fromUserId) ?? "（已停用）"} 的离职交接 ${beijingDay(h.createdAt)} 发起，接手人 ${名.get(h.toUserId) ?? "（已停用）"} 还没确认，请裁决`,
-      link: "/projects/handover", key: `tri-handover-stuck:${h.id}`,
+      body: `${名.get(from) ?? "（已停用）"} 的${们.length > 1 ? ` ${们.length} 笔` : ""}离职交接（${管的 || "名下剩下的"}）最早 ${beijingDay(们[0].createdAt)} 发起，接手人 ${接手人们} 还没确认，请裁决`,
+      link: "/projects/handover", key: `tri-handover-stuck:${from}:${们.map((h) => h.id).sort().join(",")}`,
     });
     n++;
   }

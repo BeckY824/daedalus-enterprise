@@ -12,6 +12,7 @@ import { 规则开着 } from "@/lib/enterprise/rules";
 import { 停用分拣, 停用方式们, type 停用方式 } from "@/lib/offboard-db";
 import { 离职转给接手人, 离职放进公海 } from "@/lib/offboard-move";
 import { 离职交接中, 了结 } from "@/lib/enterprise/handover-db";
+import { 恢复启用撤回交接通知 } from "@/lib/enterprise/notice-sources";
 import { 交接卡点 } from "@/lib/project/blocker";
 import { 哈希密码, 核对密码串 } from "@/lib/password";
 import { revalidatePath } from "next/cache";
@@ -505,9 +506,12 @@ export async function reactivateUser(id: string) {
   if (!u) return { ok: false as const, error: "这个成员已不存在，请刷新重试" };
   if (u.active) return { ok: true as const };
   // 企业版「交接中」：人回来了，还没确认的离职交接都撤回（不然接手人之后一确认，在职的人名下的东西被转走）；11-13 起一位可能有好几笔单条的
+  // 撤了的合成一条告诉每位接手人（11-13 审查：「X 已恢复启用，交给你的 N 笔交接已撤回」），不逐笔发
+  const 撤了: { id: string; toUserId: string }[] = [];
   if (企业版()) {
     for (let 在交接 = await 离职交接中(id); 在交接; 在交接 = await 离职交接中(id)) {
       if (!(await 了结(prisma, 在交接.id, "已撤回", me))) break;
+      撤了.push({ id: 在交接.id, toUserId: 在交接.toUserId });
     }
   }
   // 托管版：停用时撤掉的成员资格要加回来，否则他登录会被告知「没有工作区」
@@ -533,6 +537,7 @@ export async function reactivateUser(id: string) {
     user: me, action: "reactivate", entity: "User", entityId: id,
     summary: `恢复成员「${u.name}」${仍是系管 ? "，复职，仍是系统管理员" : ""}`,
   });
+  if (撤了.length) await 恢复启用撤回交接通知(me, u.name, 撤了);
   revalidatePath("/settings");
   return { ok: true as const };
 }

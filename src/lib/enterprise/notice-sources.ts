@@ -374,6 +374,28 @@ export async function 交接通知(me: 人, handoverId: string, 事件: 交接�
   });
 }
 
+/**
+ * 离职的人恢复启用，他所有没确认的离职交接都撤回了（settings/actions.ts reactivateUser）：每位接手人合成一条
+ * 「X 已恢复启用，交给你的 N 笔交接已撤回」，不逐笔发；他们那几条「等你确认」标已读。点的人自己是接手人的不发
+ */
+export async function 恢复启用撤回交接通知(me: 人, 回来的: string, 撤了: readonly { id: string; toUserId: string }[]): Promise<void> {
+  await 稳("恢复启用撤回交接通知", async () => {
+    const 按人 = new Map<string, string[]>();
+    for (const h of 撤了) 按人.set(h.toUserId, [...(按人.get(h.toUserId) ?? []), h.id]);
+    for (const [to, ids] of 按人) {
+      await prisma.entNotice.updateMany({ where: { userId: to, dedupeKey: { in: ids.map((x) => `handover:${x}:发起`) }, readAt: null }, data: { readAt: new Date() } });
+      if (to === me.id) continue;
+      await notify([to], {
+        kind: "交接",
+        title: `${回来的} 已恢复启用，交给你的 ${ids.length} 笔交接已撤回`,
+        body: "不用再确认，客户和项目还在 TA 名下。",
+        link: "/customers",
+        key: `handover-reactivate:${[...ids].sort().join(",").slice(0, 400)}:${to}`,
+      });
+    }
+  });
+}
+
 /** 交接 customerIds（JSON 数组）读成 id；坏了就空 */
 function 读ids(customerIds: string): string[] {
   try {

@@ -2,6 +2,7 @@
  * 离职交接要接手人确认（客户 11-13）的界面：
  *   - 离职交接看板：在等确认的客户 / 项目行不再给「交」，显示「等 X 确认」（满 7 天带「已等 N 天」），后面「改人」「撤回」；
  *     「全部交给」在等时整张卡顶上写「已全部交给 · 等 X 确认」；有单条在等时「全部交给」点不了并说明
+ *   - 「还有 N 笔在等…」那句说明一行放不下省略号 + 悬停看全
  *   - 客户页顶上横幅：离职交接说清交的是什么（1 个项目：X），确认框标题同
  * 1024 / 1280 / 1366 三个宽度：超长人名、客户名一行放不下省略号 + 悬停看全，页面不横滚，按钮整个在格子里、点得中
  */
@@ -103,6 +104,12 @@ for (const width of [1024, 1280, 1366]) {
       const 甲 = 卡们.nth(0);
       expect(await 甲.innerText()).toContain("还有 2 笔在等接手人确认，确认或撤回后才能全部交给");
       expect(await 甲.getByRole("button", { name: /全部交给/ }).isDisabled()).toBe(true);
+      // 那句说明一行、省略号、悬停看全，不出卡片
+      const 说明 = await 甲.evaluate((卡) => {
+        const el = 卡.querySelector(".ofb-hint") as HTMLElement; const k = 卡.getBoundingClientRect(); const r = el.getBoundingClientRect(); const cs = getComputedStyle(el);
+        return { title: el.title, 省略: cs.textOverflow === "ellipsis" && cs.whiteSpace === "nowrap" && cs.overflow === "hidden", 一行: r.height < 24, 在内: r.left >= k.left && r.right <= k.right + 0.5 };
+      });
+      expect(说明).toEqual({ title: "还有 2 笔在等接手人确认，确认或撤回后才能全部交给", 省略: true, 一行: true, 在内: true });
       expect(await 甲.getByRole("button", { name: /^交$/ }).count()).toBe(1);
       // 全部交了的人：卡顶写已全部交给 · 等确认，没有「全部交给」按钮
       const 乙 = 卡们.nth(1);
