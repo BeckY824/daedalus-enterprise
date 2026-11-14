@@ -66,6 +66,7 @@ import type { 仅项目列表行 } from "@/lib/enterprise/project-only-list-rows
 import ProjectOnlyBlock from "./ProjectOnlyBlock";
 import { 换客户页看法, 市场视图名 } from "@/lib/customers-view-pref";
 import NewMenuButton from "@/components/NewMenuButton";
+import { 取客户页表单料, type 客户页表单料 } from "./form-data-action";
 import { 看板工具位 } from "./board-slot";
 
 /** 「新增客户」弹窗（10-31 P5，整套建档向导）：点了才要，单拆一包，不压客户列表首屏 JS（速度闸门 850 KB） */
@@ -116,11 +117,14 @@ type Props = {
   能新建和领取?: boolean;
   /** 公海「分配给…」的下拉（11-03 B2-7）：只列能当负责人的，不是系统管理员再收到同业务线；没给 = 用 users */
   公海分给?: 可选成员[];
-  channels: Option[];
+  /** 新建 / 编辑表单的渠道候选：只在进来就开表单（?new=1）时随首屏给，平时点开才取（form-data-action.ts，11-15） */
+  channels?: Option[];
   /** 进来就把新建表单打开（首页空库那张「开始」卡的落点） */
   直接新建?: boolean;
   /** 企业版项目模式：「新建客户」弹建档向导框（U-新建-01）要的数据；null = 照旧（项目模式跳 /projects/new） */
   建档?: 建档数据 | null;
+  /** 企业版项目模式、首屏没带 建档（平时都不带，11-15）：「新建客户」点开时再取（form-data-action.ts）；false = 不走向导 */
+  建档要取?: boolean;
   /** 企业版没开项目模式：我能处理、名下还有客户没交走的离职成员几位（11-03 B7-2），null 不摆；0 = 摆入口不带数 */
   待交接?: number | null;
   /** 进来就把导入抽屉开在「粘一段文本」那一栏。主线入口，见 dashboard/HomeChat.tsx */
@@ -279,7 +283,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 创建排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 待交接 = null, 项目概况, 仅项目行 = [], 仅项目超了 = false, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false, 阶段太多 = false,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 创建排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 建档要取 = false, 待交接 = null, 项目概况, 仅项目行 = [], 仅项目超了 = false, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false, 阶段太多 = false,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -404,10 +408,13 @@ export default function CustomersView({
    */
   const 统一公海 = 企业 && b.projectMode === true;
   const 新建 = () => {
-    if (b.projectMode && 建档) return set建档开着(true);
+    if (b.projectMode && 有建档) return void 要表单料().then((d) => d?.建档 && set建档开着(true));
     if (b.projectMode) return router.push("/projects/new");
-    setEditing(null);
-    setFormOpen(true);
+    void 要表单料().then((d) => {
+      if (!d) return;
+      setEditing(null);
+      setFormOpen(true);
+    });
   };
 
   const { f, setF, apply, 翻页, reset, pending } = useUrlFilters("/customers", { ...filters, sort: 金额排序 || 等级排序 || 创建排序, sortCurrency: 排序币种 ?? b.currency }, pageSize);
@@ -445,7 +452,54 @@ export default function CustomersView({
     window.addEventListener("beforeunload", 拦);
     return () => window.removeEventListener("beforeunload", 拦);
   }, [导出中]);
-  const [formOpen, setFormOpen] = useState(Boolean(直接新建) && !建档);
+  /** 走建档向导：首屏带了数据，或企业版项目模式点开时再取 */
+  const 有建档 = Boolean(建档) || 建档要取;
+  /**
+   * 表单那两份料（渠道候选、建档向导数据）：首屏带了就用（?new=1），没带就点开（或展开「新建 ▾」预取）时取一次，
+   * 取回来记着，这一页再开不再取（11-15 列表页瘦身，form-data-action.ts）
+   */
+  const [表单料, set表单料] = useState<客户页表单料 | null>(channels || 建档 ? { channels: channels ?? [], 建档: 建档 ?? null } : null);
+  const [表单料取中, set表单料取中] = useState(false);
+  const 表单料请求 = useRef<Promise<客户页表单料 | null> | null>(null);
+  const 要表单料 = (出错提示 = true): Promise<客户页表单料 | null> => {
+    if (表单料) return Promise.resolve(表单料);
+    if (!表单料请求.current) {
+      set表单料取中(true);
+      表单料请求.current = 取客户页表单料()
+        .then((d) => { set表单料(d); return d; })
+        .catch(() => { 表单料请求.current = null; return null; })
+        .finally(() => set表单料取中(false));
+    }
+    return 表单料请求.current.then((d) => {
+      if (!d && 出错提示) message.error("没打开，请重试");
+      return d;
+    });
+  };
+  const [formOpen, setFormOpen] = useState(Boolean(直接新建) && !有建档);
+  /** 行菜单「编辑」点了、表单料还在取：记着是哪一行（那一行的「更多」按钮转圈），取完才开表单；取的时候再点不理 */
+  const [编辑取中, set编辑取中] = useState<string | null>(null);
+  const 编辑取中锁 = useRef(false);
+  const 去编辑 = (r: CustomerRow) => {
+    if (表单料) {
+      setEditing(r);
+      setFormOpen(true);
+      return;
+    }
+    // 同一下连点两次时 state 还没更新，用 ref 拦
+    if (编辑取中锁.current) return;
+    编辑取中锁.current = true;
+    set编辑取中(r.id);
+    void 要表单料()
+      .then((d) => {
+        if (!d) return;
+        setEditing(r);
+        setFormOpen(true);
+      })
+      .finally(() => {
+        编辑取中锁.current = false;
+        set编辑取中(null);
+      });
+  };
   /** 「新增客户」向导框（U-新建-01）：和 /projects/new 同一个向导，弹在本页 */
   const [建档开着, set建档开着] = useState(Boolean(直接新建 && 建档));
   const [导入开着, set导入开着] = useState(Boolean(直接粘贴) && 能导入导出 && !企业);
@@ -914,7 +968,7 @@ export default function CustomersView({
             key: "assign", label: "分配给…",
             children: 成员选项(分给们).map((o) => ({ key: `assign:${o.value}`, label: o.label, onClick: async () => 公海提示(await 分配公海([r.id], o.value), "分配", [r.id]) })),
           }] : []),
-          { key: "edit", label: "编辑", onClick: () => { setEditing(r); setFormOpen(true); } },
+          { key: "edit", label: "编辑", onClick: () => 去编辑(r) },
           // 先数清会一起删掉什么再问（排查 B1，见 useDeleteCustomers）
           ...(能删 && !删不了.has(r.id) ? [{ key: "delete", label: "删除", onClick: () => void 问删除([{ id: r.id, name: r.name }]) }] : []),
         ];
@@ -926,8 +980,9 @@ export default function CustomersView({
                   onClick={async () => 公海提示(await 领取([r.id]), "领取", [r.id])}>领取</Button>
               )}
               {/* 菜单画在 body 上，但 React 事件照组件树冒泡到这一行：不拦住，点完就跟着进了记录页 */}
-              <Dropdown trigger={["click"]} menu={{ items: 菜单, onClick: ({ domEvent }) => domEvent.stopPropagation() }}>
-                <Button className="row-act" aria-label={`更多操作 ${r.name}`} type="text" size="small" icon={<MoreOutlined />} />
+              {/* 展开时先把表单料拿起来（同「新建 ▾」），点「编辑」多半不用再等；还在取时这一行的按钮转圈、各行菜单都点不了（防连点） */}
+              <Dropdown trigger={["click"]} disabled={!!编辑取中} onOpenChange={(开) => { if (开) void 要表单料(false); }} menu={{ items: 菜单, onClick: ({ domEvent }) => domEvent.stopPropagation() }}>
+                <Button className="row-act" aria-label={`更多操作 ${r.name}`} type="text" size="small" icon={<MoreOutlined />} loading={编辑取中 === r.id} />
               </Dropdown>
             </Space>
             {公海里 && 能新建和领取 && 领不回.has(r.id) && <div className="muted" style={{ fontSize: 12, lineHeight: "16px" }}>{原负责人不能领回提示}</div>}
@@ -954,7 +1009,10 @@ export default function CustomersView({
   const [项目流程载入, set项目流程载入] = useState(false);
   const 点新建项目 = () => {
     set项目流程载入(true);
-    void 取新建项目流程().then(() => set新建项目次((n) => n + 1), () => message.error("没打开，请重试")).finally(() => set项目流程载入(false));
+    // 新客户那条路用建档向导数据（表单料），和懒加载块一起等
+    void Promise.all([取新建项目流程(), 要表单料(false)])
+      .then(([, d]) => { if (d) set新建项目次((n) => n + 1); else message.error("没打开，请重试"); }, () => { message.error("没打开，请重试"); })
+      .finally(() => set项目流程载入(false));
   };
   const 新建项 = [
     ...(能新建和领取 ? [{ key: "customer", label: `新建${b.customer}`, onClick: 新建 }] : []),
@@ -1022,7 +1080,7 @@ export default function CustomersView({
               {导出中 && <Space><span role="status" style={{ fontSize: 12 }}>{导出进度}</span><Button size="small" onClick={() => 导出取消.current?.abort()}>取消导出</Button></Space>}
             </>)}
             {/* 「新建 ▾」（11-12 用户：「右上角改为新建，然后可以选择新建项目或者新建客户」）：只能建一样时直接是那一样，一样都不能不摆 */}
-            <NewMenuButton 项={新建项} 载入中={项目流程载入} 预取={() => void 取新建项目流程().catch(() => {})} />
+            <NewMenuButton 项={新建项} 载入中={项目流程载入 || 表单料取中} 预取={() => { void 取新建项目流程().catch(() => {}); void 要表单料(false); }} />
             {/* 离职交接（C15）：页头最右端。谁看得见、数怎么数照原来的入口（离职交接入口），不是这页自己数 */}
             {待交接 != null && <Link href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>}
           </Space>
@@ -1257,15 +1315,16 @@ export default function CustomersView({
       />
       </看板工具位.Provider>
 
-      {建档 && <建档弹窗 open={建档开着 && 已水合} 标题="新增客户" 数据={建档} onClose={() => set建档开着(false)} />}
+      {表单料?.建档 && <建档弹窗 open={建档开着 && 已水合} 标题="新增客户" 数据={表单料.建档} onClose={() => set建档开着(false)} />}
       {/* 「新建 ▾ → 新建项目」：新客户走同一个建档向导（数据用上面那份，不再取），老客户挑一位接新建项目框 */}
-      {新建项目次 > 0 && <新建项目流程 key={新建项目次} users={users} 节点们={阶段字典.节点们.线索} 要下一步={!!建档?.要下一步} 建档={建档} />}
+      {新建项目次 > 0 && <新建项目流程 key={新建项目次} users={users} 节点们={阶段字典.节点们.线索} 要下一步={!!表单料?.建档?.要下一步} 建档={表单料?.建档 ?? null} />}
 
-      <CustomerForm
+      {/* 料到了才挂（表单拿 channels 当初值，挂上以后不再跟 props） */}
+      {表单料 && <CustomerForm
         open={formOpen && 已水合}
         editing={editing}
         users={users}
-        channels={channels}
+        channels={表单料.channels}
         负责人只能自己={负责人只能自己}
         企业版={企业}
         客户状态选项={客户状态选项}
@@ -1280,7 +1339,7 @@ export default function CustomersView({
           setEditing(null);
           if (saved) router.refresh();
         }}
-      />
+      />}
 
       {能导入导出 && !企业 && <ImportDrawer
         open={导入开着 && 已水合}

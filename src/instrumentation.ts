@@ -8,6 +8,8 @@
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  // antd 样式外链落盘（11-15，lib/antd-css-disk.ts）：哪个版本都装，重启 / 部署后旧页面引用的样式照样取得到
+  (await import("./lib/antd-css-disk")).装样式落盘();
   // 慢请求日志（CRM_REQ_LOG=1 才开，见 lib/request-log.ts）：不看企业版开关，开着就记
   if (process.env.CRM_REQ_LOG === "1") await (await import("./lib/request-log")).开请求日志();
   if (process.env.CRM_ENTERPRISE !== "1") return;
