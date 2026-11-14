@@ -284,7 +284,8 @@ export async function 关键词分页(sp: 客户条件, 请求页: number, pageS
   const 公海 = sp.pool === "1";
   const 谁 = await 读的我(defaultClient);
   // 回收站里的客户（企业版软删，P9）不进列表：裸 SQL 不过 Prisma 扩展，这里自己带上
-  const 段 = [kw.sql, 'c."deletedAt" IS NULL'];
+  // 关键词走三字索引时 deletedAt 前加 +：从名单出发按主键取，不顺 deletedAt 索引扫全表（见 客户关键词SQL 的 走索引）
+  const 段 = [kw.sql, kw.走索引 ? '+c."deletedAt" IS NULL' : 'c."deletedAt" IS NULL'];
   const 值: unknown[] = [...kw.values];
   if (公海) {
     段.push('EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id)');

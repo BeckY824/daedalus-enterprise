@@ -40,6 +40,8 @@ function 拷库(名: string): string {
 function 拆成老库(f: string) {
   const d = new DatabaseSync(f);
   d.exec('DROP INDEX IF EXISTS "CustomerExtra_alibabaIdKey_idx"');
+  // 三字索引（迁移 141）的触发器也引用着这一列：老库本来也没有它
+  d.exec('DROP TRIGGER IF EXISTS "CustomerExtraSearch_ai"; DROP TRIGGER IF EXISTS "CustomerExtraSearch_au"; DROP TRIGGER IF EXISTS "CustomerExtraSearch_ad"; DROP TABLE IF EXISTS "CustomerExtraSearch"');
   d.exec('ALTER TABLE "CustomerExtra" DROP COLUMN "alibabaId"');
   d.close();
 }

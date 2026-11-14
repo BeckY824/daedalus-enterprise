@@ -17,7 +17,7 @@
  */
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 看全部, 现在的公海回避 } from "@/lib/team-scope";
-import { 包含模式 } from "@/lib/search-keyword";
+import { 包含模式, 客户名索引式 } from "@/lib/search-keyword";
 import { 分组数SQL, 取一段SQL, 键毫秒, 按快捷分组数SQL, 非线索分组数SQL, 排掉分组数SQL, 合分组, 减分组, type 客户行筛 } from "./unified-pool-sql";
 import { 缓存分组数 } from "./pool-count-cache";
 import { 按主键取没删的 } from "./soft-delete-core";
@@ -391,7 +391,7 @@ async function 读公海页_库里分页(me: { id: string; name: string; role?: 
     if (属 === "商机池") 商机.push(id);
     else if (属 === "订单池") 订单.push(id);
   }
-  const 筛: 客户行筛 = { 商机, 订单, 排掉, ...(词 ? { 词: { 名: 包含模式(词), 项目对上: 项目名对上 } } : {}), ...(sp.来源 ? { 来源: sp.来源 } : {}), ...(sp.号码不全 === "1" ? { 号码不全: true } : {}) };
+  const 筛: 客户行筛 = { 商机, 订单, 排掉, ...(词 ? { 词: { 名: 包含模式(词), 项目对上: 项目名对上, 索引式: await 客户名索引式(词) } } : {}), ...(sp.来源 ? { 来源: sp.来源 } : {}), ...(sp.号码不全 === "1" ? { 号码不全: true } : {}) };
   const 组 = (await (词 ? 现数分组(筛) : 拆开数分组(筛))).map((r) => ({ 属性: r.属性 as 公海属性, 快捷: (r.快捷 as 快捷 | null) ?? null, 不全: Number(r.不全 ?? 0) === 1, n: Number(r.n) }));
   const 属性 = 规整公海属性(sp.属性);
   const 快捷 = 是快捷(sp.快捷) ? sp.快捷 : null;
