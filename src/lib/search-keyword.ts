@@ -64,7 +64,7 @@ function 大小写等价组() {
   return groups;
 }
 
-function 包含模式(k: string): string {
+export function 包含模式(k: string): string {
   const groups = 大小写等价组();
   return "*" + [...k].map(c => {
     const variants = groups.get(c);
@@ -94,11 +94,20 @@ export function 客户id集合(ids: readonly string[]): Prisma.CustomerWhereInpu
 }
 
 /**
+ * 客户电话按号键比（像号码的关键词、手机号筛选）。不写成 号键SQL(c.phone) GLOB ?：外层按 deletedAt 一行行扫时，每行都要现算 20 层 replace
+ * （8.5 万客户号码搜索 337 ms 里占 ~100 ms，11-14）；写成按 rowid 的子查询，子查询只读号键表达式索引（迁移 021 Customer_phoneKey_idx）里存好的值，
+ * 对上的才回表。同一张表同一行，rowid 对 rowid，结果一样；索引没建上（没跑迁移的库）退回现算，也照样对
+ */
+const 客户号键SQL = () => `c.rowid IN (SELECT x.rowid FROM "Customer" x WHERE ${号键SQL('x."phone"')} GLOB ?)`;
+
+/**
  * 联系人号码子表里能按号码搜的那几类（11-11）：手机号、WhatsApp。只算挂在联系人身上、联系人没删进回收站的（客户页上看得到的那些；
  * 客户本身挂在子表上、contactId 空的号页面上不显示，同退回公海查联系方式 return-contact-check.ts，不算）。值按号键比
  */
 export const 子表可搜号类 = ["phone", "whatsapp"] as const;
-// 用时再拼（号键SQL 在别的用例里会被 mock 掉，模块加载时就调会让整个导入失败）
+// 用时再拼（号键SQL 在别的用例里会被 mock 掉，模块加载时就调会让整个导入失败）。
+// 式子是 号键SQL("m.value")：迁移 137 给 ContactMethod 建了同一个式子的表达式索引（ContactMethod_kind_valueKey_idx，带 customerId、contactId），
+// 7.4 万行不再每行现算 20 层 replace（137 ms → 5 ms，11-14）。不换成 numberKey：那是查重的键，规则和号键不一样（WhatsApp 的键小写了等），换过去搜出来的会变
 const 联系人子表号SQL = () => `c.id IN (SELECT m."customerId" FROM "ContactMethod" m JOIN "Contact" mt ON mt.id = m."contactId" WHERE mt."deletedAt" IS NULL AND m.kind IN (${子表可搜号类.map((k) => `'${k}'`).join(", ")}) AND ${号键SQL("m.value")} GLOB ?)`;
 
 /**
@@ -115,7 +124,7 @@ export async function 客户号码SQL(raw: unknown, userId?: string): Promise<{ 
   if (!phone) return { sql: "(0)", values: [] };
   const p = 包含模式(phone);
   return {
-    sql: `(${号键SQL('c."phone"')} GLOB ? OR c.id IN (SELECT e."customerId" FROM "CustomerExtra" e WHERE ${号键SQL("e.whatsapp")} GLOB ?) OR c.id IN (SELECT t."customerId" FROM "Contact" t WHERE t."deletedAt" IS NULL AND ${号键SQL("t.phone")} GLOB ?) OR ${联系人子表号SQL()})`,
+    sql: `(${客户号键SQL()} OR c.id IN (SELECT e."customerId" FROM "CustomerExtra" e WHERE ${号键SQL("e.whatsapp")} GLOB ?) OR c.id IN (SELECT t."customerId" FROM "Contact" t WHERE t."deletedAt" IS NULL AND ${号键SQL("t.phone")} GLOB ?) OR ${联系人子表号SQL()})`,
     values: [p, p, p, p],
   };
 }
@@ -143,7 +152,7 @@ export async function 客户关键词SQL(raw: unknown, onlyPicker = false, userI
   const values = fields.map(() => pattern);
   if (!藏号) {
     parts.push('c."phone" GLOB ?'); values.push(phonePattern);
-    if (phone) { parts.push(`${号键SQL('c."phone"')} GLOB ?`); values.push(phonePattern); }
+    if (phone) { parts.push(客户号键SQL()); values.push(phonePattern); }
   }
   if (!onlyPicker) {
     // 电话藏着时 WhatsApp、联系人电话两列不进条件（Y27）

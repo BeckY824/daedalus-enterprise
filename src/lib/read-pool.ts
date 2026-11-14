@@ -22,6 +22,15 @@ import { 企业版 } from "./enterprise/switch";
 /** 只读通道的连接数（总控 10-24 定的先 4 个） */
 export const 读连接数 = 4;
 
+/**
+ * 实际开几个（11-14）：默认照旧 读连接数；部署时可以用 CRM_READ_POOL_SIZE 调（1–16 的整数，别的值一律当没写）。
+ * 先把单句降下来再按客户服务器的核数量过定，不在代码里改默认值
+ */
+export function 读连接数of(env: string | undefined = process.env.CRM_READ_POOL_SIZE): number {
+  const n = Number(env);
+  return Number.isInteger(n) && n >= 1 && n <= 16 ? n : 读连接数;
+}
+
 /** 能进只读通道的模型方法：只查、只数 */
 export const 读方法 = new Set([
   "findMany", "findFirst", "findFirstOrThrow", "findUnique", "findUniqueOrThrow",
@@ -58,7 +67,9 @@ export function 只读SQL(sql: string): boolean {
   const s = sql.trim();
   if (!/^(select|with)\b/i.test(s)) return false;
   if (s.includes(";") || s.includes("--") || s.includes("/*")) return false;
-  return !写字眼.test(s);
+  // replace(…) 是字符串函数不是写（11-14）：号码搜索、手机号筛选、查重都带着号键的 20 层 replace()，原来一律被当成写、全挤到唯一的写连接上排队。
+  // 只放过紧跟着左括号的那种；REPLACE INTO、INSERT OR REPLACE、UPDATE OR REPLACE 后面都不是左括号（或者另有 insert / update），照样拦
+  return !写字眼.test(s.replace(/\breplace\s*\(/gi, "("));
 }
 
 /** $queryRaw 的模板 / Prisma.sql、$queryRawUnsafe 的字符串：取出 SQL 原文；认不出来回 null */
@@ -119,7 +130,7 @@ const g = globalThis as unknown as { __读通道?: { 原: PrismaClient; 门: 只
 /** 连接串换成 4 个连接（原来写了 connection_limit 的也换：这条通道就是要多开） */
 export function 读连接串(url: string): string {
   const 去掉 = url.replace(/([?&])connection_limit=\d+&?/, "$1").replace(/[?&]$/, "");
-  return `${去掉}${去掉.includes("?") ? "&" : "?"}connection_limit=${读连接数}`;
+  return `${去掉}${去掉.includes("?") ? "&" : "?"}connection_limit=${读连接数of()}`;
 }
 
 /** 只读通道：用到才建（没开的部署一个连接都不多开）。关着回 null */

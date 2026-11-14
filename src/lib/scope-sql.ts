@@ -16,7 +16,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
  * 调用方照旧走 Prisma（不限定时 Prisma 那句本来就快）。tests/scope-sql.test.ts 逐个身份拿 Prisma 对拍。
  * 原负责人回避（11-03，见 team-scope 公海回避）：要回避的人多两个 AND，别人的 SQL 一个字不变；名单过上限回 null 走 Prisma
  */
-async function 看得到的(): Promise<{ where: string; 参数: string[] } | null> {
+async function 看得到的(): Promise<{ where: string; 参数: string[]; 名下: { where: string; 参数: string[] }; 回避: { sql: string; 参数: string[] } } | null> {
   const 我 = await 读的我(defaultClient);
   // 企业版市场成员（10-31）另外看得到他们相关的客户：这里只按负责人算不全，回 null 让调用方走 Prisma（限定层带着那一段）
   if (!我 || (await 有市场只读(defaultClient))) return null;
@@ -33,11 +33,29 @@ async function 看得到的(): Promise<{ where: string; 参数: string[] } | nul
     : 组员名单?.length ? { sql: ` OR c.id IN (${组员名单.map(() => "?").join(",")})`, 参数: 组员名单 } : { sql: "", 参数: [] as string[] };
   // 企业版不认渠道负责人（11-04，同 team-scope 可见客户）
   const 渠道 = 企业版() ? { sql: "", 参数: [] as string[] } : { sql: ` OR c."channelOwnerId" IN (${占})`, 参数: 们 };
+  // 回避的名单（不含「负责人是他的公海客户」那一半）：名下这一路不在公海，只剩名单这一段
+  const 名单 = 回避?.客户?.length ? { sql: ` AND c.id NOT IN (${回避.客户.map(() => "?").join(",")})`, 参数: 回避.客户 } : { sql: "", 参数: [] as string[] };
   return {
     // 回收站里的客户（企业版软删，P9）不算：裸 SQL 不过 Prisma 扩展，自己带上。外层是 AND，三段 OR 照旧各走各的索引
     where: `(c."salesOwnerId" IN (${占})${渠道.sql} OR c.id IN (SELECT "customerId" FROM "CustomerPool")${组员.sql}) AND c."deletedAt" IS NULL${避.sql}`,
     参数: [...们, ...渠道.参数, ...组员.参数, ...避.参数],
+    /**
+     * 拆成两路（8.5 万客户提速，11-14）：上面那句 = 「名下」∪「公海」，两路不相交（在不在公海表里）。
+     * 公海有 6.6 万位时，带着「OR 在公海」的那句每次都要把 6.8 万位看得到的客户整个列出来（计数 20 ms、跟进数 110 ms）；
+     * 名下这一路只走负责人（渠道负责人、组员名单）的索引，只碰自己那几千位。公海那一路人人一样（只差回避的那几位），各处另数。
+     * 回避的 NOT (负责人是他 AND 在公海) 在名下这一路恒真，不带；名单那段照带。tests/scope-sql-split.test.ts 逐个身份对拍拆前拆后
+     */
+    名下: {
+      where: `(c."salesOwnerId" IN (${占})${渠道.sql}${组员.sql}) AND c."deletedAt" IS NULL AND NOT EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id)${名单.sql}`,
+      参数: [...们, ...渠道.参数, ...组员.参数, ...名单.参数],
+    },
+    回避: 避,
   };
+}
+
+/** 范围那几句原样给测试对拍用（tests/scope-sql-split.test.ts：拆前那句 vs 拆后两路）；null = 调用方走 Prisma */
+export function 看得到的范围SQL() {
+  return 看得到的();
 }
 
 /** 回避的那段：负责人是他的公海客户 + 名单上的客户。salesOwnerId 非空，NOT (... ) 不踩 NULL */
@@ -53,8 +71,12 @@ function 回避段(本人: string, 客户: string[]): { sql: string; 参数: str
 export async function 看得到的客户数(): Promise<number> {
   const 范围 = await 看得到的();
   if (!范围) return prisma.customer.count();
-  const [r] = await prisma.$queryRawUnsafe<{ n: bigint | number }[]>(`SELECT COUNT(*) AS n FROM "Customer" c WHERE ${范围.where}`, ...范围.参数);
-  return Number(r.n);
+  // 名下（不在公海）+ 公海里看得到的（= 公海页签数，走主键、只减回避的那几位），两路不相交，相加就是原来那句的数
+  const [[r], 公海] = await Promise.all([
+    prisma.$queryRawUnsafe<{ n: bigint | number }[]>(`SELECT COUNT(*) AS n FROM "Customer" c WHERE ${范围.名下.where}`, ...范围.名下.参数),
+    看得到的公海数(),
+  ]);
+  return Number(r.n) + 公海;
 }
 
 /**
@@ -100,17 +122,24 @@ export async function 看得到的公海数(): Promise<number> {
 export async function 看得到的跟进数(筛: { type?: string; ownerId?: string }): Promise<number> {
   const 范围 = await 看得到的();
   if (!范围) return prisma.followUp.count({ where: { ...(筛.type ? { type: 筛.type } : {}), ...(筛.ownerId ? { ownerId: 筛.ownerId } : {}) } });
-  const 条件 = [`f."customerId" IN (SELECT c.id FROM "Customer" c WHERE ${范围.where})`, `f."deletedAt" IS NULL`];
-  const 参数: string[] = [...范围.参数];
+  const 筛段: string[] = [];
+  const 筛值: string[] = [];
   if (筛.type) {
-    条件.push(`f."type" = ?`);
-    参数.push(筛.type);
+    筛段.push(` AND f."type" = ?`);
+    筛值.push(筛.type);
   }
   if (筛.ownerId) {
-    条件.push(`f."ownerId" = ?`);
-    参数.push(筛.ownerId);
+    筛段.push(` AND f."ownerId" = ?`);
+    筛值.push(筛.ownerId);
   }
-  const [r] = await prisma.$queryRawUnsafe<{ n: bigint | number }[]>(`SELECT COUNT(*) AS n FROM "FollowUp" f WHERE ${条件.join(" AND ")}`, ...参数);
+  // 拆两路（11-14，8.5 万客户 25 万条跟进：原来 110–150 ms）：
+  //   名下：客户走负责人索引、跟进走 customerId 索引（+ 号让 deletedAt 不去抢 FollowUp_deletedAt_occurredAt_idx，没统计信息时 SQLite 会挑它整表扫）
+  //   公海：从公海表出发逐位数（CROSS JOIN 定死先后），跟进那头走 (customerId, deletedAt, type, ownerId) 覆盖索引（迁移 137），20 万条 ~35 ms
+  //   回避的人：公海那一路照原来那句减掉回避的那几位（回避段 原样）
+  const sql =
+    `SELECT (SELECT COUNT(*) FROM "FollowUp" f WHERE f."customerId" IN (SELECT c.id FROM "Customer" c WHERE ${范围.名下.where}) AND +f."deletedAt" IS NULL${筛段.join("")})` +
+    ` + (SELECT COUNT(*) FROM "CustomerPool" p CROSS JOIN "Customer" c CROSS JOIN "FollowUp" f WHERE c.id = p."customerId" AND f."customerId" = p."customerId" AND c."deletedAt" IS NULL AND f."deletedAt" IS NULL${筛段.join("")}${范围.回避.sql}) AS n`;
+  const [r] = await prisma.$queryRawUnsafe<{ n: bigint | number }[]>(sql, ...范围.名下.参数, ...筛值, ...筛值, ...范围.回避.参数);
   return Number(r.n);
 }
 
@@ -122,9 +151,10 @@ export async function 看得到的跟进数(筛: { type?: string; ownerId?: stri
 export async function 最近跟进的客户(n: number): Promise<string[] | null> {
   const 范围 = await 看得到的();
   if (!范围) return null;
+  // 不在公海的 = 名下那一路（11-14 拆两路）：原来那句先把 6.8 万位看得到的列出来再排掉公海，8.5 万客户 ~30 ms
   const rows = await prisma.$queryRawUnsafe<{ id: string }[]>(
-    `SELECT c.id FROM "Customer" c WHERE ${范围.where} AND NOT EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id) ORDER BY c."lastFollowAt" DESC, c."createdAt" DESC LIMIT ?`,
-    ...范围.参数,
+    `SELECT c.id FROM "Customer" c WHERE ${范围.名下.where} ORDER BY c."lastFollowAt" DESC, c."createdAt" DESC LIMIT ?`,
+    ...范围.名下.参数,
     n,
   );
   return rows.map((r) => r.id);

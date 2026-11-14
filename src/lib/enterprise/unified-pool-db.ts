@@ -4,7 +4,8 @@
  *
  * 量：先三句取行（客户、进公海那一行、公海项目），再取定属性的项目和放回留痕；项目名 / 当前进程、原负责人、客户可见只为这一页的行查（搜关键词、按来源筛时才为全部行查，见 全取），
  * 不按行再查，30 人同时开也就这么多。
- * 公海是「没人要的」那一堆，不会很大；各取最近入池的 公海取上限 条，超了页面上说一声，更早的靠搜索
+ * 客户行（公海全量导入后 6.6 万位）在库里筛、数、分页（11-14，unified-pool-sql.ts，读公海页_库里分页）；项目行、渠道名单的行量小，照旧全取在内存里筛排。
+ * 11-14 以前各取最近入池的 2000 条（公海取上限），更早入池的搜不到、也不进各池的数
  *
  * 客户的项目、项目的留痕不用 select 关联带（11-02）：关联加载内部是 外键 IN (所有父行)，公海过 999 行就超 SQLite 的参数上限，
  * Prisma 要拆批；范围层给关联补的 看得到的项目 带 pooledAt: { not: null }，否定条件没法拆，受限身份一开就 P2029（总管理不限定所以不报）。
@@ -14,8 +15,10 @@
  * 项目名、当前进程还是按各人看得到的项目，这句不放开；「没有项目」显示 线索-潜客培育 也按全部项目认（真没有才写，看不到的写「—」）
  * 项目行一律客户池；同一位客户的几行在 筛排 里并成一行（并客户池），补这一页 按里面每个项目补完再并
  */
-import { prisma } from "@/lib/prisma";
-import { 看全部 } from "@/lib/team-scope";
+import { prisma, defaultClient } from "@/lib/prisma";
+import { 看全部, 现在的公海回避 } from "@/lib/team-scope";
+import { 包含模式 } from "@/lib/search-keyword";
+import { 分组数SQL, 取一段SQL, 键毫秒, type 客户行筛 } from "./unified-pool-sql";
 import { 公海客户原负责人是 } from "@/lib/owner-log-db";
 import { 看得到的客户, 露客户, 公海超时收回 } from "@/lib/project/db";
 import { 字典of, 本套位置 } from "@/lib/project/nodes";
@@ -28,10 +31,14 @@ import type { Prisma } from "@/generated/prisma";
 import { 公海名单条件, 公海名单候选, type 公海名单筛 } from "@/lib/project/list";
 import {
   客户定状态, 客户公海属性, 进程显示项目, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排, 并客户池, 没项目进程, 项目行属性,
-  type 公海行, type 公海筛选, type 入池类,
+  规整公海属性, 是快捷, 规整排序,
+  type 公海行, type 公海筛选, type 入池类, type 公海属性, type 快捷,
 } from "./unified-pool";
 
-/** 客户公海、项目公海各最多取这么多（按入池时间新的在前） */
+/**
+ * 改前（11-14 以前）客户公海、项目公海各最多取这么多（按入池时间新的在前），更早入池的搜不到、也不进各池的数。
+ * 现在不再截：客户行在库里筛、数、分页（unified-pool-sql.ts），项目行、渠道名单的行量小，全取。只留给 tests/helpers 里改前的写法对拍用
+ */
 export const 公海取上限 = 2000;
 
 type 项目片 = { id: string; createdAt: Date; name: string; phase: string; node: string; result: string | null };
@@ -105,8 +112,39 @@ function 项目客户格(露: boolean, p: { channelId: string | null; customer: 
  * 库里筛不出一样的结果，仍在内存里筛、数、排
  */
 type 全取 = { 客户的项目: boolean; 客户可见: boolean;
-  /** 渠道名单（11-11）：只取挂着这些公海项目的客户 / 这些公海项目（名单的条件，见 读公海页），不受「各取最近 公海取上限 条」的框外那些影响 */
+  /** 客户行在不在骨架里取：读公海页 没名单时客户行改在库里分页（读客户行一页），骨架只取项目行；渠道名单照旧全取 */
+  不取客户?: boolean;
+  /** 渠道名单（11-11）：只取挂着这些公海项目的客户 / 这些公海项目（名单的条件，见 读公海页），名单之外的公海行一行不取 */
   只要?: Prisma.ProjectWhereInput };
+
+const 客户要的 = { id: true, name: true, salesOwnerId: true, lastFollowAt: true, createdAt: true, poolInvalidAt: true, poolReturns: true, channelId: true } satisfies Prisma.CustomerSelect;
+type 客户片 = Prisma.CustomerGetPayload<{ select: typeof 客户要的 }>;
+type 池片 = Prisma.CustomerPoolGetPayload<{ select: typeof 池要的 }>;
+
+/** 定属性用的项目：名下全部项目，不过范围层（属性是客户本身的事，谁看都一样；11-02） */
+function 定属性的项目(where: Prisma.ProjectWhereInput) {
+  return 看全部(() => prisma.project.findMany({ where, select: { customerId: true, phase: true, result: true } }));
+}
+
+/** 一行客户行（骨架、库里分页两条路同一个拼法）。没全取的项目格先按「一个项目都看不到」摆，补这一页 再填 */
+function 拼客户行(me: { id: string }, c: 客户片, pool: 池片, 看得到的项目: readonly 客户的项目[], 字典: 字典, 没项目: boolean, 全部项目: readonly { phase: string; result: string | null }[], 拦: boolean): 公海行 {
+  const 原类 = 客户入池类(pool);
+  const 类: 入池类 = c.poolInvalidAt ? "无效" : 原类;
+  return {
+    id: `c:${c.id}`, 种: "客户", customerId: c.id,
+    客户名: c.name,
+    ...客户项目格(看得到的项目, 字典, 没项目),
+    属性: 客户公海属性(全部项目),
+    最后跟进: c.lastFollowAt?.toISOString() ?? null,
+    入池时间: pool.at.toISOString(),
+    创建时间: c.createdAt.toISOString(),
+    类, 累计: c.poolReturns, 入池原因: 入池原因文字(原类, pool.reason), 快捷: 归到快捷({ 类, 累计: c.poolReturns }),
+    // 负责人还是我的这一半；进公海清了负责人、原负责人在历史记录里的那一半 补这一页 再认
+    原负责人是我: 拦 && c.salesOwnerId === me.id,
+    来源id: c.channelId,
+    ...(pool.phoneIncomplete ? { 号码不全: true } : {}),
+  };
+}
 
 /**
  * 取全量公海行（还没筛）。先跑一遍两种自动回收（同客户页 / 项目页：先收再列），收不动不挡列表。
@@ -120,20 +158,18 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
   ]);
   const [查到客户, 池们, 项目们, 规则] = await Promise.all([
     // 带限定的客户端：公海里的客户人人看得到（限定层说了算，这里不另写）
-    prisma.customer.findMany({
+    全取.不取客户 ? [] : prisma.customer.findMany({
       where: { pool: { isNot: null }, ...(全取.只要 ? { projects: { some: 全取.只要 } } : {}) },
       orderBy: { pool: { at: "desc" } },
-      take: 公海取上限,
-      select: { id: true, name: true, salesOwnerId: true, lastFollowAt: true, createdAt: true, poolInvalidAt: true, poolReturns: true, channelId: true },
+      select: 客户要的,
     }),
     // 进公海那一行单独取、不用 select 关联带（11-10）：关联加载是 客户 id IN (上面所有行)，一千多位时比取行本身还慢。
-    // 同一个带限定的客户端、同样按入池时间新的在前取 公海取上限 条，就是上面那些客户的；对不上的（同一刻入池卡在上限那条线上的）下面按 id 补
-    prisma.customerPool.findMany({ ...(全取.只要 ? { where: { customer: { projects: { some: 全取.只要 } } } } : {}), orderBy: { at: "desc" }, take: 公海取上限, select: 池要的 }),
+    // 同一个带限定的客户端、同样按入池时间新的在前取，就是上面那些客户的；对不上的（两句之间刚进公海的）下面按 id 补
+    全取.不取客户 ? [] : prisma.customerPool.findMany({ ...(全取.只要 ? { where: { customer: { projects: { some: 全取.只要 } } } } : {}), orderBy: { at: "desc" }, select: 池要的 }),
     // 项目公海里、客户不在客户公海的：客户在客户公海的那些已经算在客户行里（领客户即领项目）
     prisma.project.findMany({
       where: { pooledAt: { not: null }, customer: { pool: null }, ...(全取.只要 ? { AND: [全取.只要] } : {}) },
       orderBy: { pooledAt: "desc" },
-      take: 公海取上限,
       select: {
         id: true, name: true, phase: true, node: true, result: true, pooledAt: true, ownerId: true, customerId: true, createdAt: true, channelId: true,
         customer: { select: { name: true, lastFollowAt: true, poolReturns: true, channelId: true } },
@@ -149,18 +185,14 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
   // 两句之间这行被别人领走就没有进公海那一行了（11-03 测试 B2-8：整页 500），跳过这行
   const 客户们 = 查到客户.flatMap((c) => { const pool = 池of.get(c.id); return pool ? [{ ...c, pool }] : []; });
   const 字典 = 字典of(true, 规则.阶段.出口叫法);
-  // 取满了才按最早入池那一行框，没取满就是公海全部。框出来的可能比这些行多（同一刻入池的），下面按行取，多的不用
-  const 最早客户 = 客户们.length >= 公海取上限 ? 客户们[客户们.length - 1].pool!.at : null;
-  const 最早项目 = 项目们.length >= 公海取上限 ? 项目们[项目们.length - 1].pooledAt! : null;
-  const 框客户 = { customer: { pool: 最早客户 ? { at: { gte: 最早客户 } } : { isNot: null } } } satisfies Prisma.ProjectWhereInput;
+  // 不再截（11-14）：框 = 公海全部
+  const 框客户 = { customer: { pool: { isNot: null } } } satisfies Prisma.ProjectWhereInput;
   const [客户的项目们, 定属性的项目们, 留痕们, 可见] = await Promise.all([
     全取.客户的项目 && 客户们.length ? 查客户的项目(框客户) : null,
-    客户们.length
-      ? 看全部(() => prisma.project.findMany({ where: 框客户, select: { customerId: true, phase: true, result: true } }))
-      : [],
+    客户们.length ? 定属性的项目(框客户) : [],
     项目们.length
       ? prisma.projectNodeLog.findMany({
-        where: { kind: "pool-release", project: { pooledAt: 最早项目 ? { gte: 最早项目 } : { not: null }, customer: { pool: null } } },
+        where: { kind: "pool-release", project: { pooledAt: { not: null }, customer: { pool: null } } },
         orderBy: [{ at: "desc" }, { id: "desc" }],
         select: { projectId: true, userId: true, reason: true, fromOwnerId: true },
       })
@@ -179,25 +211,7 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
   // 历史负责人看不到公海里的这个项目（总管理 / 管理员不算）
   const 回避 = 原负责人回避() && !(await 回避豁免(me));
 
-  const 客户行: 公海行[] = 客户们.map((c) => {
-    const 原类 = 客户入池类(c.pool!);
-    const 类: 入池类 = c.poolInvalidAt ? "无效" : 原类;
-    return {
-      id: `c:${c.id}`, 种: "客户", customerId: c.id,
-      客户名: c.name,
-      // 没全取的先按「一个项目都看不到」摆，补这一页 再填
-      ...客户项目格(项目of客户?.get(c.id) ?? [], 字典, 没项目客户.has(c.id)),
-      属性: 客户公海属性(全部项目of客户.get(c.id) ?? []),
-      最后跟进: c.lastFollowAt?.toISOString() ?? null,
-      入池时间: c.pool!.at.toISOString(),
-      创建时间: c.createdAt.toISOString(),
-      类, 累计: c.poolReturns, 入池原因: 入池原因文字(原类, c.pool!.reason), 快捷: 归到快捷({ 类, 累计: c.poolReturns }),
-      // 负责人还是我的这一半；进公海清了负责人、原负责人在历史记录里的那一半 补这一页 再认
-      原负责人是我: 拦 && c.salesOwnerId === me.id,
-      来源id: c.channelId,
-      ...(c.pool!.phoneIncomplete ? { 号码不全: true } : {}),
-    };
-  });
+  const 客户行: 公海行[] = 客户们.map((c) => 拼客户行(me, c, c.pool, 项目of客户?.get(c.id) ?? [], 字典, 没项目客户.has(c.id), 全部项目of客户.get(c.id) ?? [], 拦));
   const 留下的项目 = 项目们.filter((p) => !(回避 && 最近放回.get(p.id)?.fromOwnerId === me.id));
   const 项目行: 公海行[] = 留下的项目.map((p) => {
     const 留痕 = 最近放回.get(p.id) ?? null;
@@ -221,7 +235,7 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
   });
   return {
     行: [...客户行, ...项目行],
-    截断: 客户们.length >= 公海取上限 || 项目们.length >= 公海取上限,
+    截断: false,
     // 补这一页 要的
     字典, 框客户, 拦, 没项目客户,
     有客户的项目: !!项目of客户 || !客户们.length,
@@ -273,22 +287,164 @@ async function 补这一页(me: { id: string }, 骨: Awaited<ReturnType<typeof �
  * 在现在这些筛选上再点「号码不全」会列出几行（同一份全量行在内存里再筛一遍，不多查库；客户池并行、取上限的框、渠道名单拆行都同列表）
  */
 export async function 读公海页(me: { id: string; name: string; role?: string }, sp: 公海筛选, page: number, pageSize: number, 名单?: 公海名单筛, 选: { 数号码不全?: boolean } = {}) {
-  // 和 筛排 认关键词、来源用的是同一个判断
-  const 有词 = !!(sp.keyword ?? "").trim().toLowerCase();
   // 渠道名单（渠道页「另 M 条在公海」点进来，11-11）：按项目一条一行，和渠道页数的是同一句（list.ts 公海名单条件）
   // 按创建时间筛（11-11，渠道看板 TOP5 点进来带时间段）也走名单：时间是项目的创建时间，客户行按项目拆开才数得对
   const 候选 = 名单 ? 公海名单候选(名单) : null;
   const 名单条件 = 候选 ? await 公海名单条件(me, 候选) : null;
-  const 骨 = await 读公海骨架(me, { 客户的项目: 有词 || !!名单条件, 客户可见: 有词 || !!sp.来源 || !!名单条件, ...(名单条件 ? { 只要: 名单条件 } : {}) });
-  const 全部行 = 名单条件 ? await 按名单展开(骨, 名单条件) : 骨.行;
+  // 没名单（公海页平常的样子）：客户行在库里筛、数、分页（11-14），见 读公海页_库里分页
+  if (!名单条件) return 读公海页_库里分页(me, sp, page, pageSize, 选);
+  const 骨 = await 读公海骨架(me, { 客户的项目: true, 客户可见: true, 只要: 名单条件 });
+  const 全部行 = await 按名单展开(骨, 名单条件);
   // 名单按项目一条一行（和渠道页对数），客户池不并
-  const { 行, 快捷数, 属性数 } = 筛排(全部行, sp, { 按项目: !!名单条件 });
+  const { 行, 快捷数, 属性数 } = 筛排(全部行, sp, { 按项目: true });
   const 页数 = Math.max(1, Math.ceil(行.length / pageSize));
   const 当前页 = Math.min(Math.max(1, page), 页数);
   const 这页 = await 补这一页(me, 骨, 行.slice((当前页 - 1) * pageSize, 当前页 * pageSize));
   // 不数时不带这一格（和改前的返回逐字段一样）
-  const 号码不全数 = !选.数号码不全 ? undefined : sp.号码不全 === "1" ? 行.length : 筛排(全部行, { ...sp, 号码不全: "1" }, { 按项目: !!名单条件 }).行.length;
+  const 号码不全数 = !选.数号码不全 ? undefined : sp.号码不全 === "1" ? 行.length : 筛排(全部行, { ...sp, 号码不全: "1" }, { 按项目: true }).行.length;
   return { 行: 这页, 总数: 行.length, 当前页, 快捷数, 属性数, 截断: 骨.截断, 库里有: 骨.行.length > 0, ...(号码不全数 === undefined ? {} : { 号码不全数 }) };
+}
+
+/**
+ * 原负责人回避掉的公海客户（这个人看不到的那几位）。公海客户人人看得到（team-scope 可见客户 第三条），限定层只可能因为回避把公海客户挡掉：
+ * 先不过范围层把「可能被回避的」圈出来（负责人是他、回避名单上的、名单过上限时按留痕认的），再用带限定的客户端问一遍哪几位看得到，剩下的就是回避掉的。
+ * 不另写一遍回避的规矩，限定层怎么挡这里就怎么排
+ */
+async function 回避掉的公海客户(): Promise<string[]> {
+  const 避 = await 现在的公海回避(defaultClient);
+  if (!避) return [];
+  const 留痕 = { kind: "pool-release", fromOwnerId: 避.本人 };
+  const 圈 = await 看全部(() => prisma.customer.findMany({
+    where: {
+      pool: { isNot: null },
+      OR: [
+        { salesOwnerId: 避.本人 },
+        ...(避.客户?.length ? [{ id: { in: 避.客户 } }] : []),
+        ...(避.客户 === null ? [{ ownerLogs: { some: 留痕 } }, { projects: { some: { pooledAt: { not: null }, logs: { some: 留痕 } } } }] : []),
+      ],
+    },
+    select: { id: true },
+  }));
+  const ids = 圈.map((c) => c.id);
+  const 看得到 = new Set<string>();
+  for (let i = 0; i < ids.length; i += 一批id数) {
+    for (const c of await prisma.customer.findMany({ where: { id: { in: ids.slice(i, i + 一批id数) } }, select: { id: true } })) 看得到.add(c.id);
+  }
+  return ids.filter((id) => !看得到.has(id));
+}
+
+type 分组行 = { 属性: string; 快捷: string | null; 不全: number | bigint | null; n: number | bigint };
+
+/**
+ * 公海页（没渠道名单）：客户行在库里、项目行在内存里，口径和 筛排 一样（tests/ent-unified-pool-paging.test.ts 拿改前的内存写法对拍）。
+ *   - 客户行：按 (属性, 快捷, 号码不全) 分组数一次，页签数 / 快捷数 / 总数 / 号码不全数都从这张表加；这一页按排序取一段，再按 id 取这一页的资料
+ *   - 项目行：照旧取全（量小），筛排 筛、并、排、数
+ *   - 两边不相交（客户行的客户在客户公海，项目行的客户不在），数直接相加；行按同一个排序键（时间倒序、同刻比行 id）合起来切这一页：
+ *     第 i 位客户行在合起来的第 i + 排在它前面的项目行数 位，所以要切 [起, 起+页大小) 只用取客户行第 起−项目行数 位到 起+页大小 位
+ */
+async function 读公海页_库里分页(me: { id: string; name: string; role?: string }, sp: 公海筛选, page: number, pageSize: number, 选: { 数号码不全?: boolean }) {
+  const 词 = (sp.keyword ?? "").trim().toLowerCase();
+  // 项目行（和骨架同一套取法，只是不取客户行；自动回收也在这里先跑）
+  const 骨 = await 读公海骨架(me, { 客户的项目: false, 客户可见: !!词 || !!sp.来源, 不取客户: true });
+  const 项目筛 = 筛排(骨.行, sp);
+  const 项目不全数 = 0; // 号码不全只打在客户行上，项目行（客户不在客户公海）一行都不会中
+  // 客户行的属性：名下全部项目（不过范围层），只有有项目的那几位可能不是线索池
+  const 框客户 = { customer: { pool: { isNot: null } } } satisfies Prisma.ProjectWhereInput;
+  const [定属性, 排掉, 项目名对上] = await Promise.all([
+    定属性的项目(框客户).then(按客户分),
+    回避掉的公海客户(),
+    // 关键词还比项目名：各人看得到的项目、按创建先后用「、」连起来（同 客户项目格 的 项目名）
+    词 ? 查客户的项目(框客户).then((们) => [...按客户分(们)].filter(([, ps]) => ps.map((p) => p.name).join("、").toLowerCase().includes(词)).map(([id]) => id)) : [],
+  ]);
+  const 商机: string[] = [], 订单: string[] = [];
+  for (const [id, ps] of 定属性) {
+    const 属 = 客户公海属性(ps);
+    if (属 === "商机池") 商机.push(id);
+    else if (属 === "订单池") 订单.push(id);
+  }
+  const 筛: 客户行筛 = { 商机, 订单, 排掉, ...(词 ? { 词: { 名: 包含模式(词), 项目对上: 项目名对上 } } : {}), ...(sp.来源 ? { 来源: sp.来源 } : {}), ...(sp.号码不全 === "1" ? { 号码不全: true } : {}) };
+  const 组 = await (async () => {
+    const q = 分组数SQL(筛);
+    return (await prisma.$queryRawUnsafe<分组行[]>(q.sql, ...q.值)).map((r) => ({ 属性: r.属性 as 公海属性, 快捷: (r.快捷 as 快捷 | null) ?? null, 不全: Number(r.不全 ?? 0) === 1, n: Number(r.n) }));
+  })();
+  const 属性 = 规整公海属性(sp.属性);
+  const 快捷 = 是快捷(sp.快捷) ? sp.快捷 : null;
+  // 数：属性数在关键词 / 来源 / 号码不全之后；快捷数再在属性之后；总数再在快捷之后（同 筛排）
+  const 属性数 = { ...项目筛.属性数 };
+  for (const g of 组) {
+    属性数.全部 += g.n;
+    属性数[g.属性] += g.n;
+  }
+  const 按属性 = 组.filter((g) => !属性 || g.属性 === 属性);
+  const 快捷数 = { ...项目筛.快捷数 };
+  for (const g of 按属性) if (g.快捷) 快捷数[g.快捷] += g.n;
+  const 客户总数 = 按属性.filter((g) => !快捷 || g.快捷 === 快捷).reduce((a, g) => a + g.n, 0);
+  const 总数 = 客户总数 + 项目筛.行.length;
+  const 页数 = Math.max(1, Math.ceil(总数 / pageSize));
+  const 当前页 = Math.min(Math.max(1, page), 页数);
+  const 起 = (当前页 - 1) * pageSize;
+  const 止 = 起 + pageSize;
+  // 客户行这一段：合起来的第 起 位之前最多有 项目行数 个项目行，所以客户行从第 起−项目行数 位取到第 止 位就够
+  const 跳过 = Math.max(0, 起 - 项目筛.行.length);
+  const 排序 = 规整排序(sp.排序);
+  const 段 = 客户总数 > 跳过
+    ? await (async () => {
+      const q = 取一段SQL(筛, { 属性, 快捷, 排序, 跳过, 取几: 止 - 跳过 });
+      return prisma.$queryRawUnsafe<{ id: string; k: unknown }[]>(q.sql, ...q.值);
+    })()
+    : [];
+  // 合起来：比 筛排 的排序（键倒序、同键比行 id），项目行的键照 筛排 的 取
+  const 项目键 = (r: 公海行) => { const v = 排序 === "follow" ? r.最后跟进 : 排序 === "created" ? r.创建时间 : r.入池时间; return v ? new Date(v).getTime() : Number.NEGATIVE_INFINITY; };
+  const 前于 = (k1: number, id1: string, k2: number, id2: string) => k1 > k2 || (!(k1 < k2) && id1 < id2);
+  const 客户段 = 段.map((x) => ({ k: 键毫秒(x.k), id: `c:${x.id}`, customerId: x.id }));
+  const 项目段 = 项目筛.行.map((r) => ({ k: 项目键(r), id: r.id, r }));
+  const 落位: { 位: number; 客户?: string; 项目?: 公海行 }[] = [];
+  客户段.forEach((c, i) => {
+    const 位 = 跳过 + i + 项目段.filter((p) => 前于(p.k, p.id, c.k, c.id)).length;
+    if (位 >= 起 && 位 < 止) 落位.push({ 位, 客户: c.customerId });
+  });
+  项目段.forEach((p, j) => {
+    const 位 = j + 跳过 + 客户段.filter((c) => 前于(c.k, c.id, p.k, p.id)).length;
+    if (位 >= 起 && 位 < 止) 落位.push({ 位, 项目: p.r });
+  });
+  落位.sort((a, b) => a.位 - b.位);
+  // 这一页的客户行资料：同一个带限定的客户端；两句之间被领走的（没有进公海那一行了）跳过，同骨架。
+  // 一页大过 一批id数（测试、一次要全部的）按批取：范围层给回避的人带着否定条件，Prisma 拆不了过 999 个参数的 IN
+  const 页客户ids = 落位.flatMap((x) => (x.客户 ? [x.客户] : []));
+  const 客户of = new Map<string, Prisma.CustomerGetPayload<{ select: typeof 客户要的 }>>();
+  const 池of = new Map<string, Prisma.CustomerPoolGetPayload<{ select: typeof 池要的 }>>();
+  for (let i = 0; i < 页客户ids.length; i += 一批id数) {
+    const 批 = 页客户ids.slice(i, i + 一批id数);
+    const [客户们, 池们] = await Promise.all([
+      prisma.customer.findMany({ where: { id: { in: 批 }, pool: { isNot: null } }, select: 客户要的 }),
+      prisma.customerPool.findMany({ where: { customerId: { in: 批 } }, select: 池要的 }),
+    ]);
+    for (const c of 客户们) 客户of.set(c.id, c);
+    for (const p of 池们) 池of.set(p.customerId, p);
+  }
+  const 拦 = 拦原负责人();
+  const 骨这页 = { ...骨, 有客户的项目: false, 没项目客户: new Set(页客户ids.filter((id) => !定属性.has(id))) };
+  const 页行 = 落位.flatMap((x): 公海行[] => {
+    if (x.项目) return [x.项目];
+    const c = 客户of.get(x.客户!);
+    const pool = 池of.get(x.客户!);
+    return c && pool ? [拼客户行(me, c, pool, [], 骨.字典, 骨这页.没项目客户.has(c.id), 定属性.get(c.id) ?? [], 拦)] : [];
+  });
+  const 这页 = await 补这一页(me, 骨这页, 页行);
+  const 号码不全数 = !选.数号码不全 ? undefined : sp.号码不全 === "1" ? 总数
+    : 按属性.filter((g) => g.不全 && (!快捷 || g.快捷 === 快捷)).reduce((a, g) => a + g.n, 0) + 项目不全数;
+  // 库里有：不看筛选，公海里有没有这个人看得到的行
+  const 库里有 = 骨.行.length > 0 || (!词 && !sp.来源 && sp.号码不全 !== "1" ? 组.length > 0 : await 有公海客户(排掉));
+  return { 行: 这页, 总数, 当前页, 快捷数, 属性数, 截断: false, 库里有, ...(号码不全数 === undefined ? {} : { 号码不全数 }) };
+}
+
+/** 公海里有没有这个人看得到的客户（不看筛选） */
+async function 有公海客户(排掉: readonly string[]): Promise<boolean> {
+  const rows = await prisma.$queryRawUnsafe<{ x: number }[]>(
+    `SELECT 1 AS x FROM "CustomerPool" p JOIN "Customer" c ON c.id = p."customerId" WHERE c."deletedAt" IS NULL${排掉.length ? ` AND c.id NOT IN (SELECT value FROM json_each(?))` : ""} LIMIT 1`,
+    ...(排掉.length ? [JSON.stringify(排掉)] : []),
+  );
+  return rows.length > 0;
 }
 
 /**

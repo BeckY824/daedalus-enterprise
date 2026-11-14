@@ -171,27 +171,29 @@ describe("统一公海过 999 行", () => {
     await expect(以谁的身份(组.销售.id, () => 我回避的公海项目(prisma, 组.销售.id))).resolves.toHaveLength(过限);
   }, 大);
 
-  it("两边都超上限：各取最新的 公海取上限 条、说一声截断，留下的行项目和入池原因都对", async () => {
+  // 11-14 起不再只取最近入池的 公海取上限 条（8.5 万客户：更早入池的搜不到、数不全，见 ent-unified-pool-paging.test.ts）：两边过上限也一行不少、不说截断
+  it("两边都超过原来的上限（2000）：一行不少、不说截断，最早入池的也在，行项目和入池原因都对", async () => {
     await 公海客户们(公海取上限 + 1, 组.销售.id);
     await 公海项目们(公海取上限 + 1, () => 组.同事.id);
     const r = await 读(组.销售);
-    expect(r.截断).toBe(true);
+    expect(r.截断).toBe(false);
     const 客户行 = r.行.filter((x) => x.种 === "客户");
     const 项目行 = r.行.filter((x) => x.种 === "项目");
-    expect(客户行).toHaveLength(公海取上限);
-    expect(项目行).toHaveLength(公海取上限);
-    expect(客户行.some((x) => x.customerId === "c0")).toBe(false);
-    expect(项目行.some((x) => x.projectId === "xp0")).toBe(false);
+    expect(客户行).toHaveLength(公海取上限 + 1);
+    expect(项目行).toHaveLength(公海取上限 + 1);
+    expect(客户行.some((x) => x.customerId === "c0")).toBe(true);
+    expect(项目行.some((x) => x.projectId === "xp0")).toBe(true);
     expect(客户行.every((x) => x.项目名 === `项目${x.customerId.slice(1)}`)).toBe(true);
     expect(项目行.every((x) => x.入池原因 === "超时回收")).toBe(true);
   }, 大);
 
-  it("同一刻入池的客户都排在上限边上：截断时不会张冠李戴", async () => {
+  it("同一刻入池的客户过 2000：一行不少、不张冠李戴", async () => {
     await 公海客户们(公海取上限 + 5, 组.销售.id);
     await prisma.customerPool.updateMany({ data: { at: 时刻(0) } });
     const r = await 读(组.销售);
     const 客户行 = r.行.filter((x) => x.种 === "客户");
-    expect(客户行).toHaveLength(公海取上限);
+    expect(客户行).toHaveLength(公海取上限 + 5);
+    expect(new Set(客户行.map((x) => x.customerId)).size).toBe(公海取上限 + 5);
     expect(客户行.every((x) => x.项目名 === `项目${x.customerId.slice(1)}`)).toBe(true);
   }, 大);
 

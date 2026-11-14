@@ -19,10 +19,12 @@ import { prisma, defaultClient as raw } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
+import { 现在的公海回避 } from "@/lib/team-scope";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 市场成员key } from "@/lib/enterprise/market";
 import { 无负责人占位邮箱, 自动理由 } from "@/lib/pool";
 import { 读公海页, 公海取上限 } from "@/lib/enterprise/unified-pool-db";
+import { 内存读公海页, 设内存上限 } from "./helpers/unified-pool-mem";
 import { 系统操作人, 快捷们, type 公海筛选 } from "@/lib/enterprise/unified-pool";
 import { 旧读公海页 } from "./helpers/unified-pool-old";
 
@@ -301,7 +303,7 @@ describe("统一公海：和改前的写法对拍", () => {
 });
 
 describe("统一公海：每翻一页少取多少", () => {
-  it("没搜关键词：取回的行数比改前少，翻到哪页都一样；查库次数最多比改前多一句", async () => {
+  it("没搜关键词：取回的行数比改前少，翻到哪页都一样；查库次数最多比改前多五句", async () => {
     for (const u of [组.全看管理员, 组.销售]) {
       await 新(u, {}, 1, 20); // 热一下：范围、组织、设置缓存
       await 旧(u, {}, 1, 20);
@@ -310,28 +312,139 @@ describe("统一公海：每翻一页少取多少", () => {
       const 新量后页 = await 量(() => 新(u, {}, 3, 20));
       expect(新量.值).toEqual(旧量.值);
       expect(新量.行).toBeLessThan(旧量.行);
-      // 进公海那一行改成单独一句取，多这一句（换掉的是关联加载那句大 IN，引擎里不算次数）
-      expect(新量.次).toBeLessThanOrEqual(旧量.次 + 1);
+      // 进公海那一行改成单独一句取，多这一句（换掉的是关联加载那句大 IN，引擎里不算次数）；
+      // 11-14 客户行改在库里筛、数、分页：多分组数、取这一段、取这一页客户三句，要回避的人再多圈回避客户两句（都是按页、按人的小句），
+      // 换掉的是把公海全部客户行取回内存（取回的行数不随公海大小涨，见下面 2000 位那组）
+      expect(新量.次).toBeLessThanOrEqual(旧量.次 + 5);
       expect(新量后页.次).toBe(新量.次);
     }
   });
 });
 
-describe("统一公海：过上限、同一刻入池的卡在上限那条线上", () => {
-  it("取哪些行、每行的入池时间和入池原因都和改前一样", async () => {
-    // 再放 公海取上限 位进客户公海，入池时间全是同一刻、比前面那些都早：前面的全留下，这一批只留得下一部分
-    const 批 = Array.from({ length: 公海取上限 }, (_, i) => ({ id: `t${String(i).padStart(4, "0")}`, name: `同刻客户${i}`, phone: `17${String(i).padStart(9, "0")}`, salesOwnerId: 占位.id }));
+/**
+ * 8.5 万客户（11-14）：客户行改成在库里筛、数、分页，不再只取最近入池的 公海取上限（2000）位。
+ * 缺陷（先写的这条）：公海超过 2000 位时，更早入池的搜不到、翻不到，各池数量、快捷数、总数也只数那 2000 位。
+ * 对拍对象是改前的内存写法去掉上限（helpers/unified-pool-mem.ts 内存读公海页）：逐个身份、逐个筛选、逐页整个返回值一样；
+ * 同一个写法把上限设回 2000（设内存上限）就是改前的样子，用来钉「改前确实错」
+ */
+describe("统一公海：公海过 2000 位，更早入池的照样搜得到、数得全", () => {
+  const 内存 = (u: 人, sp: 公海筛选, page: number, pageSize: number, 选?: { 数号码不全?: boolean }) => { 当(u); return 以谁的身份(u.id, () => 内存读公海页(u, sp, page, pageSize, undefined, 选)); };
+  const 新带 = (u: 人, sp: 公海筛选, page: number, pageSize: number, 选?: { 数号码不全?: boolean }) => { 当(u); return 以谁的身份(u.id, () => 读公海页(u, sp, page, pageSize, undefined, 选)); };
+
+  beforeAll(async () => {
+    // 再放 公海取上限 位进客户公海，入池时间全是同一刻（同刻的按客户 id 定序）、比前面那些都早；号码不全的隔三位一位
+    const 批 = Array.from({ length: 公海取上限 }, (_, i) => ({ id: `t${String(i).padStart(4, "0")}`, name: `同刻客户${i}`, phone: `17${String(i).padStart(9, "0")}`, salesOwnerId: 占位.id, channelId: i % 5 === 0 ? 来源.甲 : null, createdAt: 时刻(i % 40) }));
     await raw.customer.createMany({ data: 批 });
-    // 进公海那一行倒着建：同一刻的谁先谁后，按客户取和按进公海那一行取排出来不一样，卡在线上的要按 id 补才对得上
-    await raw.customerPool.createMany({ data: 批.map((c, i) => ({ customerId: c.id, userId: i % 2 ? 组.同事.id : null, reason: i % 2 ? "回收原因：同刻" : "项目超时", at: 时刻(10) })).reverse() });
+    // 进公海那一行倒着建：同一刻的谁先谁后不能靠插入顺序
+    await raw.customerPool.createMany({ data: 批.map((c, i) => ({ customerId: c.id, userId: i % 2 ? 组.同事.id : null, reason: i % 2 ? "回收原因：同刻" : "项目超时", at: 时刻(10), phoneIncomplete: i % 3 === 0 })).reverse() });
+    // 最早入池的那一位：全公海排最后
+    await raw.customer.create({ data: { id: "t-earliest", name: "最早入池的客户", phone: "16600000000", salesOwnerId: 占位.id } });
+    await raw.customerPool.create({ data: { customerId: "t-earliest", reason: "手动", userId: 组.同事.id, at: 时刻(-100000) } });
+    忘掉企业版范围();
+  }, 120_000);
+  afterAll(() => 设内存上限(Number.POSITIVE_INFINITY));
+
+  it("缺陷：搜最早入池的那位，改前（只取最近 2000 位）搜不到，现在搜得到；总数、各池数、快捷数数全了", async () => {
+    const 公海客户数 = await raw.customer.count({ where: { deletedAt: null, pool: { isNot: null } } });
+    expect(公海客户数).toBeGreaterThan(公海取上限);
     for (const u of [组.总管理, 组.销售]) {
-      const 应 = await 旧(u, {}, 1, 100000);
-      expect(应.截断).toBe(true);
-      expect(应.行.filter((r) => r.种 === "客户")).toHaveLength(公海取上限);
-      expect(await 新(u, {}, 1, 100000), u.name).toEqual(应);
-      for (const sp of [{ 快捷: "超时回收" }, { keyword: "同刻客户1" }, { 排序: "created", 来源: 来源.甲 }] as 公海筛选[]) {
-        for (const page of [1, 3, 9999]) expect(await 新(u, sp, page, 50), `${u.name} ${JSON.stringify(sp)} 第 ${page} 页`).toEqual(await 旧(u, sp, page, 50));
-      }
+      设内存上限(公海取上限);
+      const 改前 = await 内存(u, { keyword: "最早入池" }, 1, 20);
+      const 改前全 = await 内存(u, {}, 1, 20);
+      设内存上限(Number.POSITIVE_INFINITY);
+      expect(改前.总数).toBe(0);
+      expect(改前全.截断).toBe(true);
+      const 现在 = await 新(u, { keyword: "最早入池" }, 1, 20);
+      expect(现在.总数, u.name).toBe(1);
+      expect(现在.行.map((r) => r.customerId)).toEqual(["t-earliest"]);
+      // 按入池时间排，最早的在最后一页最后一行
+      const 全 = await 新(u, {}, 1, 20);
+      expect(全.截断).toBe(false);
+      expect(全.总数).toBeGreaterThan(改前全.总数);
+      const 末页 = await 新(u, {}, Math.ceil(全.总数 / 20), 20);
+      expect(末页.行.at(-1)?.customerId).toBe("t-earliest");
+      // 快捷数、各池数不再只数 2000 位
+      expect(全.属性数.线索池).toBeGreaterThan(改前全.属性数.线索池);
+      expect(全.快捷数.超时回收).toBeGreaterThan(改前全.快捷数.超时回收);
     }
   }, 120_000);
+
+  it("取回的行数不随公海大小涨：公海 2000 多位时翻一页取回的行和 46 位时一个量级，改前（去掉上限）要取回全部", async () => {
+    for (const u of [组.总管理, 组.销售]) {
+      await 新(u, {}, 1, 20);
+      const 现在 = await 量(() => 新(u, {}, 1, 20));
+      const 改前 = await 量(() => 内存(u, {}, 1, 20));
+      expect(现在.值).toEqual(改前.值);
+      expect(现在.行, u.name).toBeLessThan(500);
+      expect(改前.行, u.name).toBeGreaterThan(公海取上限);
+    }
+  }, 120_000);
+
+  it("和改前的内存写法（去掉上限）逐个身份、逐个筛选、逐页整个返回值一样，含号码不全数", async () => {
+    const 组合: 公海筛选[] = [{}, { 快捷: "超时回收" }, { 快捷: "离职交接" }, { keyword: "同刻客户1" }, { keyword: "alpha" }, { 排序: "created", 来源: 来源.甲 }, { 排序: "follow" }, { 属性: "线索池" }, { 属性: "商机池", 排序: "follow" }, { 号码不全: "1" }];
+    let 比了 = 0;
+    for (const u of [组.总管理, 组.销售, 组.市场管理, 组.没设角色]) {
+      for (const sp of 组合) {
+        for (const page of [1, 3, 9999]) {
+          expect(await 新(u, sp, page, 50), `${u.name} ${JSON.stringify(sp)} 第 ${page} 页`).toEqual(await 内存(u, sp, page, 50));
+          比了++;
+        }
+        expect(await 新带(u, sp, 2, 50, { 数号码不全: true }), `${u.name} ${JSON.stringify(sp)} 数号码不全`).toEqual(await 内存(u, sp, 2, 50, { 数号码不全: true }));
+      }
+    }
+    expect(比了).toBe(4 * 组合.length * 3);
+  }, 300_000);
+});
+
+/**
+ * 原负责人回避名单过上限（visibility.ts 回避名单上限 100，现在的公海回避 的 客户 = null）：限定层退回按关联写的条件，
+ * 库里分页这边的「回避掉的公海客户」也走名单过上限那一支（按留痕圈）。造一个放走过 100 多位公海客户的人，
+ * 和改前的内存写法（去掉上限）逐个筛选、逐页整个返回值一样；放走的确实看不到、别人照样看得到
+ */
+describe("统一公海：回避名单过上限（null）", () => {
+  const 内存 = (u: 人, sp: 公海筛选, page: number, pageSize: number) => { 当(u); return 以谁的身份(u.id, () => 内存读公海页(u, sp, page, pageSize)); };
+  let 退得多: 人;
+  const 放走的: string[] = [];
+
+  beforeAll(async () => {
+    退得多 = await 造人("many-release", { bizRole: "sales" });
+    // 130 位：进公海清了负责人挂占位、留痕认他（客户级）；隔五位挂一个他退的项目（项目级也过上限）；隔七位后来被同事领走又放回（只认最近一次，他看得到）
+    for (let i = 0; i < 130; i++) {
+      const id = `r${String(i).padStart(3, "0")}`;
+      await raw.customer.create({ data: { id, name: i % 9 === 0 ? `Alpha 放走的${i}` : `放走的${i}`, phone: `18${String(i).padStart(9, "0")}`, salesOwnerId: 占位.id, channelId: i % 4 === 0 ? 来源.甲 : null, lastFollowAt: i % 3 ? 时刻(3000 + i) : null, createdAt: 时刻(i % 30) } });
+      await raw.customerPool.create({ data: { customerId: id, userId: i % 2 ? 退得多.id : null, reason: i % 2 ? "手动" : 自动理由(30), at: 时刻(20 + (i % 13)) } });
+      await raw.customerOwnerLog.create({ data: { customerId: id, fromOwnerId: 退得多.id, toOwnerId: 占位.id, userId: 退得多.id, kind: "pool-release", at: 时刻(200 + i) } });
+      if (i % 7 === 0) await raw.customerOwnerLog.create({ data: { customerId: id, fromOwnerId: 组.同事.id, toOwnerId: 占位.id, userId: 组.同事.id, kind: "pool-release", at: 时刻(900 + i) } });
+      else 放走的.push(id);
+      if (i % 5 === 0) {
+        const pid = `${id}-p0`;
+        await raw.project.create({ data: { id: pid, name: `放走的项目${i}`, customerId: id, ownerId: "", creatorId: 退得多.id, phase: "线索", node: "线索验证", pooledAt: 时刻(1500 + i), createdAt: 时刻(i % 20) } });
+        await raw.projectNodeLog.create({ data: { projectId: pid, kind: "pool-release", fromOwnerId: 退得多.id, userId: 退得多.id, toPhase: "线索", toNode: "x", at: 时刻(1500 + i) } });
+      }
+    }
+    忘掉企业版范围();
+  }, 120_000);
+
+  it("名单确实过上限（客户 = null），放走的看不到、后来别人放回的看得到、同事都看得到", async () => {
+    当(退得多);
+    const 避 = await 以谁的身份(退得多.id, () => 现在的公海回避(raw));
+    expect(避?.客户).toBeNull();
+    const 他看 = new Set((await 新(退得多, {}, 1, 5000)).行.map((r) => r.customerId));
+    expect(放走的.filter((id) => 他看.has(id))).toEqual([]);
+    expect(他看.has("r007")).toBe(true); // 同事后来放回的，最近一次不是他（r000 挂着他退的项目，照样回避）
+    const 同事看 = new Set((await 新(组.同事, {}, 1, 5000)).行.map((r) => r.customerId));
+    expect(放走的.every((id) => 同事看.has(id))).toBe(true);
+  }, 120_000);
+
+  it("和改前的内存写法（去掉上限）逐个筛选、逐页整个返回值一样", async () => {
+    const 组合: 公海筛选[] = [{}, { keyword: "放走的" }, { keyword: "alpha" }, { 快捷: "超时回收" }, { 属性: "线索池" }, { 排序: "follow" }, { 排序: "created", 来源: 来源.甲 }];
+    let 比了 = 0;
+    for (const sp of 组合) {
+      for (const page of [1, 2, 9999]) {
+        expect(await 新(退得多, sp, page, 50), `${JSON.stringify(sp)} 第 ${page} 页`).toEqual(await 内存(退得多, sp, page, 50));
+        比了++;
+      }
+    }
+    expect(比了).toBe(组合.length * 3);
+  }, 300_000);
 });

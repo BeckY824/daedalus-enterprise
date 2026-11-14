@@ -27,7 +27,7 @@ const 临时 = vi.hoisted(() => {
 
 import { prisma, defaultClient as raw } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma";
-import { 读通道, 读通道开着, 关读通道, 守门, 只读SQL, 取SQL, 读连接串, 只读通道错误 } from "@/lib/read-pool";
+import { 读通道, 读通道开着, 关读通道, 守门, 只读SQL, 取SQL, 读连接串, 读连接数of, 只读通道错误 } from "@/lib/read-pool";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 
@@ -108,6 +108,24 @@ describe("开关", () => {
     expect(读连接串("file:/a.db?connection_limit=1&socket_timeout=5")).toBe("file:/a.db?socket_timeout=5&connection_limit=4");
     expect(读连接串("file:/a.db?socket_timeout=5&connection_limit=1")).toBe("file:/a.db?socket_timeout=5&connection_limit=4");
   });
+
+  it("连接数默认 4；CRM_READ_POOL_SIZE 只认 1–16 的整数，别的值一律照默认（11-14）", () => {
+    expect(读连接数of(undefined)).toBe(4);
+    for (const v of ["", "0", "-2", "17", "2.5", "abc", " ", "4x"]) expect({ v, n: 读连接数of(v) }).toEqual({ v, n: 4 });
+    expect(读连接数of("1")).toBe(1);
+    expect(读连接数of("8")).toBe(8);
+    expect(读连接数of("16")).toBe(16);
+    const 原 = process.env.CRM_READ_POOL_SIZE;
+    try {
+      delete process.env.CRM_READ_POOL_SIZE;
+      expect(读连接串("file:/a.db")).toBe("file:/a.db?connection_limit=4");
+      process.env.CRM_READ_POOL_SIZE = "6";
+      expect(读连接串("file:/a.db?connection_limit=1")).toBe("file:/a.db?connection_limit=6");
+    } finally {
+      if (原 === undefined) delete process.env.CRM_READ_POOL_SIZE;
+      else process.env.CRM_READ_POOL_SIZE = 原;
+    }
+  });
 });
 
 describe("只读通道拿不到写", () => {
@@ -145,6 +163,13 @@ describe("只读通道拿不到写", () => {
     expect(只读SQL("SELECT /* x */ 1")).toBe(false);
     expect(只读SQL("SELECT * FROM Customer WHERE name = 'update'")).toBe(false); // 认不准的宁可回主连接
     expect(只读SQL("EXPLAIN SELECT 1")).toBe(false);
+    // 号键的 replace(…) 是字符串函数（11-14 起放进只读通道）；REPLACE 当写的那几种照样拦
+    expect(只读SQL(`SELECT c.id FROM "Customer" c WHERE replace(replace(c."phone", ' ', ''), '-', '') GLOB ?`)).toBe(true);
+    expect(只读SQL(`SELECT REPLACE (name, 'a', 'b') FROM Customer`)).toBe(true);
+    expect(只读SQL("WITH a AS (SELECT 1) REPLACE INTO Setting(key, value) VALUES ('a', 'b')")).toBe(false);
+    expect(只读SQL("WITH a AS (SELECT 1) INSERT OR REPLACE INTO Setting(key, value) SELECT 'a', replace('b', 'b', 'c')")).toBe(false);
+    expect(只读SQL("WITH a AS (SELECT 1) UPDATE OR REPLACE Setting SET value = replace(value, 'a', 'b')")).toBe(false);
+    expect(只读SQL("WITH a AS (SELECT 1) REPLACE INTO Setting SELECT 'a', 'b'")).toBe(false);
     expect(取SQL("$queryRawUnsafe", ["SELECT 1"])).toBe("SELECT 1");
     expect(取SQL("$queryRaw", [Prisma.sql`SELECT ${1}`])).toBe("SELECT ?");
     expect(取SQL("$executeRaw", [Prisma.sql`SELECT 1`])).toBeNull();
