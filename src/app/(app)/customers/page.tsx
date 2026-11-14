@@ -243,6 +243,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   })();
   仅项目行P.catch(() => {});
   // 这一屏要读的字典先说一声，合成两句（同客户详情，lib/enterprise/dict.ts 预读页面字典）：原来五类各读一遍，每类 2～4 句
+  const 直接开表单 = sp.new === "1";
   if (企) 预读页面字典(["custStatus", "custAssign", "custType", "transfer", "custAttr"]);
   const [
     rows, users, channels, 用着的职位, 用着的国家,
@@ -251,7 +252,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   ] = await Promise.all([
     行P,
     负责人候选(),
-    可选渠道(),
+    // 新建 / 编辑表单的渠道候选、建档向导数据：首屏用不上，点开时再取（form-data-action.ts，11-15）；进来就开表单（?new=1）的照旧一起给
+    直接开表单 ? 可选渠道() : undefined,
     // 下拉只要去重后的值：用 groupBy 在库里去重。Prisma 的 distinct 是整列拉回来在 JS 里去重，10 倍数据一次 50–60 ms（2026-10-25）。
     // 第三轮（11-14）起按这个人的范围进 60 秒的进程内缓存、写过库就作废（lib/scope-sql.ts 看得到的下拉值）
     看得到的下拉值("grade"),
@@ -272,7 +274,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     sp.directOf ? prisma.channel.findUnique({ where: { id: sp.directOf }, select: { name: true } }).then((c) => c?.name ?? "这个渠道") : null,
     读的我(defaultClient),
     // 下面这几样原来在 JSX 里一个个 await，各等一轮库（11-01 速度闸门：按组织看那组客户页超 300ms），并进来一起取
-    企 && b.projectMode ? 建档向导数据(me) : null,
+    企 && b.projectMode && 直接开表单 ? 建档向导数据(me) : null,
     企 ? 页面字典("custStatus") : null,
     企 ? 客户状态自动() : false,
     企 ? 页面可选项("custAttr") : [],
@@ -338,6 +340,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       直接新建={sp.new === "1"}
       // 企业版项目模式：「新建客户」在本页弹向导框「新增客户」（U-新建-01），向导要的数据一起给
       建档={建档}
+      建档要取={企 && !!b.projectMode && !建档}
       待交接={待交接}
       /* ?import=paste：直接把导入抽屉开在「粘一段文本」那一栏（首页那张「开始」卡指过来） */
       直接粘贴={sp.import === "paste"}
