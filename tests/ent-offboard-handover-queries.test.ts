@@ -127,6 +127,7 @@ async function 逐位读(ids: string[], 带项目: boolean): Promise<离职待�
         name: u.name,
         上级: 上级of.get(u.id) ? 上级名.get(上级of.get(u.id)!) ?? null : null,
         交接中: !!(await 离职交接中(u.id)),
+        单条等确认: 0,
         客户: 客户们.map((c) => ({ id: c.id, name: c.name, 项目数: "_count" in c ? (c._count as { projects: number }).projects : 0 })),
         项目: 项目们.map((p) => ({ id: p.id, name: p.name, 客户: p.customer.name })),
         其余: { 线索, 渠道, 主渠道, 待办: 待办数 },
@@ -149,8 +150,8 @@ async function 逐位数(ids: string[], 带项目: boolean): Promise<number> {
     return n;
   });
 }
-/** 摘掉每位客户上的「交接中」（离职交接等确认的挂起天数、等谁确认），和改前写法比 */
-const 去掉挂起 = (们: 离职待交接[]): 离职待交接[] => 们.map((p) => ({ ...p, 客户: p.客户.map(({ 交接中: _挂, ...c }) => c) }));
+/** 摘掉每位客户、项目上的「交接中」和整张卡的「整包」（离职交接等确认的挂起天数、等谁确认），和改前写法比 */
+const 去掉挂起 = (们: 离职待交接[]): 离职待交接[] => 们.map(({ 整包: _整, ...p }) => ({ ...p, 客户: p.客户.map(({ 交接中: _挂, ...c }) => c), 项目: p.项目.map(({ 交接中: _挂, ...x }) => x) }));
 const 离职的 = async () => (await raw.user.findMany({ where: { active: false, email: { not: 无负责人占位邮箱 } }, select: { id: true } })).map((u) => u.id);
 
 beforeEach(async () => {

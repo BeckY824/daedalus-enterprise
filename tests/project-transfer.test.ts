@@ -23,7 +23,7 @@ import { resetDb } from "./reset";
 import { 编辑项目 } from "@/app/(app)/projects/actions";
 import { assignSalesOwner, 撤销改负责人 } from "@/app/(app)/customers/actions";
 import { deactivateUser } from "@/app/(app)/settings/actions";
-import { 交接全部 } from "@/app/(app)/projects/handover/actions";
+import { 交接全部 } from "./helpers/offboard-auto-confirm";
 import { 角色字典 } from "@/lib/project/db";
 
 let 甲: string;

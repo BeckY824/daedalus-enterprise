@@ -22,7 +22,7 @@ import { resetDb } from "./reset";
 import { assignSalesOwner, patchCustomer, 撤销改负责人, 转走项目预览of } from "@/app/(app)/customers/actions";
 import { 领取, 分配公海, 撤销公海 } from "@/app/(app)/customers/pool-actions";
 import { deactivateUser } from "@/app/(app)/settings/actions";
-import { 交接全部 } from "@/app/(app)/projects/handover/actions";
+import { 交接全部 } from "./helpers/offboard-auto-confirm";
 import { 历史负责人of } from "@/lib/owner-log-db";
 import { 历史负责人们, 换负责人一句, type 换负责人记录 } from "@/lib/owner-log";
 import { 转走项目说法, 预览列几个 } from "@/lib/carry-over";

@@ -8,6 +8,8 @@ import { 确认交接, 撤回交接, 拒收交接, 改接手人, type 交接行 
 /**
  * 企业版「交接中」（D10）：客户页顶上列出等我确认的交接、我发起还没被确认的。
  * 确认前这些客户还归原负责人，接手人的客户列表里没有；这里只给个数和前几位的名字，好决定接不接。
+ * 离职交接（11-13 起「项目 → 离职交接」交的都要接手人确认）：交的可能是一位客户、一个项目或全部，标题按 离职说 写；
+ * 发起人、总管理在「我发起的」里能撤回、改接手人。
  * 没有待确认的交接 = 什么都不显示（不是企业版的页面根本不放这个组件）
  */
 export default function HandoverPending({ 等我确认, 我发起的, 候选 = [], 我 }: {
@@ -28,7 +30,9 @@ export default function HandoverPending({ 等我确认, 我发起的, 候选 = [
     const 申 = 是申请(h);
     const 叫 = 申 ? { 确认: "接受", 拒收: "拒绝", 撤回: "撤回申请" }[做] : 做;
     const 走 = await modal.confirm({
-      title: 做 === "确认" ? `${申 ? "接受移交，" : ""}接手「${h.从}」的 ${h.客户总数} 位客户？` : 申 ? `${叫}这笔移交申请？` : `${做}这笔交接？`,
+      title: 做 === "确认"
+        ? (h.kind === "离职" ? `接手离职成员「${h.从}」名下的 ${h.离职说}？` : `${申 ? "接受移交，" : ""}接手「${h.从}」的 ${h.客户总数} 位客户？`)
+        : 申 ? `${叫}这笔移交申请？` : `${做}这笔交接？`,
       content: 做 === "确认"
         ? h.确认说明
         : 申 ? "移交不生效，客户还在原负责人名下。" : "什么都不转，数据留在原负责人名下。",
@@ -39,7 +43,7 @@ export default function HandoverPending({ 等我确认, 我发起的, 候选 = [
     try {
       const r = await (做 === "确认" ? 确认交接 : 做 === "拒收" ? 拒收交接 : 撤回交接)(h.id);
       if (!r.ok) message.error(r.error);
-      else message.success(做 === "确认" ? `已接手 ${r.客户} 位客户` : `已${叫}`);
+      else message.success(做 === "确认" ? r.说 ?? `已接手 ${r.客户} 位客户` : `已${叫}`);
     } catch {
       message.error("没办成，刷新再试");
     } finally {
@@ -65,12 +69,10 @@ export default function HandoverPending({ 等我确认, 我发起的, 候选 = [
 
   // 发起人转的是自己名下的：横幅写「自己名下」，不写两遍名字（11-03 C3-4，铃铛标题同样处理）
   const 说 = (h: 交接行, 发起人说 = false) => {
+    if (h.kind === "离职") return `离职成员「${h.从}」名下的 ${h.离职说}`;
     const 名 = h.客户.length ? `：${h.客户.join("、")}${h.客户总数 > h.客户.length ? ` 等 ${h.客户总数} 位` : ""}` : "";
-    const 余 = h.kind === "离职"
-      ? Object.entries(h.个数).filter(([k, n]) => k !== "客户" && n > 0).map(([k, n]) => `${n} 个${k}`).join("、")
-      : "";
-    const 谁的 = h.kind === "离职" ? `离职成员「${h.从}」` : 发起人说 && h.自己的 ? "自己名下" : `「${h.从}」名下`;
-    return `${谁的}的 ${h.客户总数} 位客户${余 ? `（另有 ${余}）` : ""}${名}${h.reason ? `（转让原因：${h.reason}）` : ""}`;
+    const 谁的 = 发起人说 && h.自己的 ? "自己名下" : `「${h.从}」名下`;
+    return `${谁的}的 ${h.客户总数} 位客户${名}${h.reason ? `（转让原因：${h.reason}）` : ""}`;
   };
 
   return (
@@ -79,7 +81,7 @@ export default function HandoverPending({ 等我确认, 我发起的, 候选 = [
       {等我确认.map((h) => (
         <Alert key={h.id} type="warning" showIcon
           title={是申请(h) ? `「${h.发起人}」申请把${说(h, true)}移交给你，等你确认` : `「${h.发起人}」把${说(h, true)}交接给你，等你确认`}
-          description={是申请(h) ? "你接受后才转到你名下；不接受不生效，客户还在原负责人名下。" : "确认前这些客户还在原负责人名下，你的客户列表里看不到。"}
+          description={是申请(h) ? "你接受后才转到你名下；不接受不生效，客户还在原负责人名下。" : h.kind === "离职" ? "你确认后才转到你名下；确认前还在离职成员名下，你的列表里看不到。" : "确认前这些客户还在原负责人名下，你的客户列表里看不到。"}
           action={<Space>
             <Button size="small" type="primary" loading={忙 === h.id} onClick={() => 办(h, "确认")}>{是申请(h) ? "接受" : "确认接手"}</Button>
             <Button size="small" disabled={忙 === h.id} onClick={() => 办(h, "拒收")}>{是申请(h) ? "拒绝" : "拒收"}</Button>
@@ -103,9 +105,9 @@ export default function HandoverPending({ 等我确认, 我发起的, 候选 = [
       ))}
       <Modal open={!!改} title="改接手人" okText="改" cancelText="取消" onCancel={() => set改(null)} onOk={改成}
         okButtonProps={{ disabled: !新, loading: !!改 && 忙 === 改.id }} destroyOnHidden>
-        <p>移交申请改给另一位，等新接手人确认；原接手人「{改?.给}」不用再确认。</p>
+        <p>{改?.kind === "离职" ? "这笔离职交接" : "移交申请"}改给另一位，等新接手人确认；原接手人「{改?.给}」不用再确认。</p>
         <Select showSearch optionFilterProp="label" style={{ width: "100%" }} placeholder="选新接手人" value={新} onChange={set新}
-          options={候选.filter((u) => u.id !== 改?.接手人id && u.id !== 我).map((u) => ({ value: u.id, label: u.name }))} />
+          options={候选.filter((u) => u.id !== 改?.接手人id && (改?.kind === "离职" || u.id !== 我)).map((u) => ({ value: u.id, label: u.name }))} />
       </Modal>
     </Space>
   );

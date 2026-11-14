@@ -21,7 +21,7 @@ import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 负责人候选 } from "@/lib/owners";
 import { assignSalesOwner } from "@/app/(app)/customers/actions";
 import { deactivateUser } from "@/app/(app)/settings/actions";
-import { 交接全部, 交接客户 } from "@/app/(app)/projects/handover/actions";
+import { 交接全部, 交接客户 } from "./helpers/offboard-auto-confirm";
 import { 分配公海项目 } from "@/app/(app)/pool/actions";
 import { 改项目 } from "@/lib/project/db";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";

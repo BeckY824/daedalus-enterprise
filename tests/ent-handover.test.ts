@@ -29,7 +29,7 @@ import { 以谁的身份 } from "@/lib/enterprise/visibility";
 import { 可选项 } from "@/lib/enterprise/dict";
 import { 放进公海 } from "@/app/(app)/customers/pool-actions";
 import { 放回公海 } from "@/lib/project/db";
-import { 交接全部 } from "@/app/(app)/projects/handover/actions";
+import { 交接全部 } from "./helpers/offboard-auto-confirm";
 
 type 人 = { id: string; role: string };
 let 老板: 人, 组长: 人, 销售: 人, 接手: 人;

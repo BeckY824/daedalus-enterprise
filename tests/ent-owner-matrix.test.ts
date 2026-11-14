@@ -36,7 +36,7 @@ import { 分配线索, 向导自动分配 } from "@/app/(app)/leads/assign-actio
 import { 分配公海项目, 撤销公海项目 } from "@/app/(app)/pool/actions";
 import { 放进公海, 领取, 分配公海, 撤销公海 } from "@/app/(app)/customers/pool-actions";
 import { assignSalesOwner, 撤销改负责人 } from "@/app/(app)/customers/actions";
-import { 交接客户 } from "@/app/(app)/projects/handover/actions";
+import { 交接客户 } from "./helpers/offboard-auto-confirm";
 import { 停用分拣 } from "@/lib/offboard-db";
 import { 离职放进公海 } from "@/lib/offboard-move";
 import { 全局搜索 } from "@/app/(app)/global-search";

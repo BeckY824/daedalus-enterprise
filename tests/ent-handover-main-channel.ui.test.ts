@@ -15,6 +15,8 @@ const plugin: Plugin = { name: "handover-boundaries", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},replace(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
   stub(/settings\/actions$/, "export const deactivateUser=async()=>({ok:true});");
+  // 等确认那一格的撤回、改接手人（11-13）
+  stub(/customers\/handover-actions$/, "export const 撤回交接=async()=>({ok:true,客户:0}),改接手人=async()=>({ok:true,客户:0});");
   stub(/^\.\/actions$/, `const 记=(名)=>async(...x)=>{(window.__交=window.__交||[]).push([名,...x]);return{ok:true,message:'好了'}};
     export const 交接客户=记('交接客户'),交接项目=记('交接项目'),交接全部=记('交接全部');`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, (a) => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));

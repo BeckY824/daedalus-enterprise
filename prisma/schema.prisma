@@ -1671,15 +1671,18 @@ model EntHandover {
   toUserId    String
   /// 谁发起的
   byUserId    String
-  /// 离职交接的方式（转交 / 公海）；转让为空
+  /// 离职交接的方式：老行 = 转交 / 公海（办离职时发起，确认时整包重新分拣）；11-13 起「项目 → 离职交接」发起的 =
+  /// 客户（单条交客户，customerIds 那几位）/ 项目（单条交项目，projectIds 那几个）/ 全部（一键全部交给，确认时整包重新分拣）；转让为空
   way         String?
   /// 转让原因（10-27，migrations/059）：「转让原因」字典里选的；不选、离职交接为空
   reason      String?
-  /// 转让：要转的客户 id（JSON 数组）；离职：发起时清点到的客户 id，只作对照，确认时按当时重新分
+  /// 转让：要转的客户 id（JSON 数组）；离职：发起时清点到的客户 id，只作对照，确认时按当时重新分（单条交客户 = 就交这几位）
   customerIds String    @default("[]")
+  /// 离职交接单条交项目（way = 项目）要转的项目 id（JSON 数组，migrations/136，11-13）；别的行为空数组
+  projectIds  String    @default("[]")
   /// 发起时清点的个数（JSON），给接手人看「要接几位客户、几个项目」
   counts      String    @default("{}")
-  /// 待确认 / 已确认 / 已撤回 / 已拒收
+  /// 待确认 / 已确认 / 已撤回 / 已拒收 / 已作废（只有申请移交会作废；离职交接不作废）
   status      String    @default("待确认")
   createdAt   DateTime  @default(now())
   doneAt      DateTime?

@@ -4025,3 +4025,14 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .rcd-follow-body { white-space: pre-wrap; overflow-wrap: anywhere; }
 .ro-card-who { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .ro-card-who-n { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+
+/* 离职交接看板「等 X 确认」那一格（projects/handover/HandoverView.tsx，11-13 离职交接要接手人确认）：一行放不下省略号、悬停看全，改人 / 撤回不被挤出去 */
+.ofb-wait { display: flex; gap: 4px; align-items: center; min-width: 0; }
+.ofb-wait-t.ant-typography { flex: 1; min-width: 0; font-size: var(--fs-note); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ofb-wait-btn.ant-btn { padding-inline: 4px; flex: none; }
+.ofb-all-wait { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; min-width: 0; }
+.ofb-all-wait-l.ant-typography { font-size: var(--fs-note); flex: none; }
+.ofb-all-wait-c { flex: 1; min-width: 0; max-width: 420px; }
+/* 「还有 N 笔在等…」：一行放不下省略号、悬停看全；在可折行的那一排里占剩下的宽度 */
+.ofb-hint.ant-typography { font-size: var(--fs-min); flex: 1 1 200px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ofb-full { width: 100%; }

@@ -3,19 +3,19 @@
 /**
  * 「项目 → 离职交接」（11-03 B7-2）的服务端动作：交一位客户、交一个项目、全部交给一个人。
  * 谁能交、交给谁、怎么交见 lib/enterprise/offboard-handover.ts。不是企业版一律 FORBIDDEN。
- * 持有上限（M-公海-18）：核和交在同一个事务里（offboard-handover.ts），超了整批回滚、一个都没交，说清谁、上限、现有几个、这次要交几个
- * 交成了给接手人发通知（P-转-05，站内待办 + 飞书，同转让通知接手人）；没交成不发
+ * 11-13 起（客户原话「离职交接也必须接手人点确认才生效」，不做开关）：这里只发起，记一行待确认交接、数据留在离职的人名下，
+ * 接手人收到「等你确认」（交接通知，站内待办 + 飞书，P-转-05）；接手人在客户页确认了才转，确认 / 拒收 / 撤回 / 改接手人走
+ * customers/handover-actions.ts。持有上限（M-公海-18）在确认那一刻核（offboard-handover.ts 确认离职交接）
  */
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 交接挡, 交一位客户, 交一个项目, 全部交给 } from "@/lib/enterprise/offboard-handover";
-import { 整批或不做 } from "@/lib/project/db";
-import { 离职交接通知 } from "@/lib/enterprise/notice-sources";
+import { 交接挡, 发起交一位客户, 发起交一个项目, 发起全部交给 } from "@/lib/enterprise/offboard-handover";
+import { 交接通知 } from "@/lib/enterprise/notice-sources";
 
-type 结果 = { ok: true; message: string } | { ok: false; error: string };
+type 结果 = { ok: true; message: string; 交接?: string } | { ok: false; error: string };
 
 const 刷新 = () => {
   for (const p of ["/projects/handover", "/projects", "/customers", "/leads", "/channels", "/settings"]) revalidatePath(p);
@@ -30,55 +30,46 @@ async function 先挡(fromId: string, toId: string) {
   return { me, 话, 从: 名.get(fromId) ?? "", 给: 名.get(toId) ?? "" };
 }
 
+const 等确认 = (给: string) => `已交给 ${给}，等 TA 确认后才转过去`;
+
 export async function 交接客户(fromId: string, customerId: string, toId: string): Promise<结果> {
   const { me, 话, 从, 给 } = await 先挡(fromId, toId);
   if (话) return { ok: false, error: 话 };
   if (typeof customerId !== "string" || !customerId) return { ok: false, error: "这位客户已不在 TA 名下" };
-  const 交 = await 整批或不做(() => 交一位客户(me, fromId, customerId, toId));
-  if (!交.ok) return { ok: false, error: 交.超 };
-  if (!交.值) return { ok: false, error: "这位客户已不在 TA 名下，刷新看看" };
+  const r = await 发起交一位客户(me, fromId, customerId, toId);
+  if (!r.ok) return r;
   const 客户 = (await prisma.customer.findUnique({ where: { id: customerId }, select: { name: true } }))?.name ?? "";
-  await recordAudit({ user: me, action: "handover", entity: "Customer", entityId: customerId, summary: `离职交接：客户「${客户}」从「${从}」交给「${给}」`, detail: { from: fromId, to: toId } });
-  await 离职交接通知(me, 从, toId, [customerId]);
+  await recordAudit({ user: me, action: "handover", entity: "Customer", entityId: customerId, summary: `离职交接：客户「${客户}」从「${从}」交给「${给}」，等对方确认`, detail: { from: fromId, to: toId, 交接: r.交接, 待确认: true } });
+  await 交接通知(me, r.交接, "发起");
   刷新();
-  return { ok: true, message: `已交给 ${给}` };
+  return { ok: true, message: 等确认(给), 交接: r.交接 };
 }
 
 export async function 交接项目(fromId: string, projectId: string, toId: string): Promise<结果> {
   const { me, 话, 从, 给 } = await 先挡(fromId, toId);
   if (话) return { ok: false, error: 话 };
   if (typeof projectId !== "string" || !projectId) return { ok: false, error: "这个项目已不在 TA 名下，刷新看看" };
-  const 交 = await 整批或不做(() => 交一个项目(me, fromId, projectId, toId));
-  if (!交.ok) return { ok: false, error: 交.超 };
-  if (!交.值) return { ok: false, error: "这个项目已不在 TA 名下，刷新看看" };
+  const r = await 发起交一个项目(me, fromId, projectId, toId);
+  if (!r.ok) return r;
   const 项目 = (await prisma.project.findUnique({ where: { id: projectId }, select: { name: true } }))?.name ?? "";
-  await recordAudit({ user: me, action: "handover", entity: "Project", entityId: projectId, summary: `离职交接：项目「${项目}」从「${从}」交给「${给}」`, detail: { from: fromId, to: toId } });
-  await 离职交接通知(me, 从, toId, [], [projectId]);
+  await recordAudit({ user: me, action: "handover", entity: "Project", entityId: projectId, summary: `离职交接：项目「${项目}」从「${从}」交给「${给}」，等对方确认`, detail: { from: fromId, to: toId, 交接: r.交接, 待确认: true } });
+  await 交接通知(me, r.交接, "发起");
   刷新();
-  return { ok: true, message: `已交给 ${给}` };
+  return { ok: true, message: 等确认(给), 交接: r.交接 };
 }
 
 export async function 交接全部(fromId: string, toId: string): Promise<结果> {
   const { me, 话, 从, 给 } = await 先挡(fromId, toId);
   if (话) return { ok: false, error: 话 };
-  const 交 = await 整批或不做(() => 全部交给(me, fromId, toId));
-  if (!交.ok) return { ok: false, error: 交.超 };
-  const r = 交.值;
-  const 段 = [
-    r.客户.length && `${r.客户.length} 位客户`,
-    r.项目.length && `${r.项目.length} 个项目`,
-    r.商机.length && `${r.商机.length} 个商机`,
-    r.待办.length + r.计划.length && `${r.待办.length + r.计划.length} 条待办和计划`,
-    r.线索.length && `${r.线索.length} 条线索`,
-    r.渠道.length && `${r.渠道.length} 个渠道`,
-    r.主渠道.length && `${r.主渠道.length} 个主渠道`,
-  ].filter(Boolean).join("、");
+  const r = await 发起全部交给(me, fromId, toId);
+  if (!r.ok) return r;
+  if (!r.交接) return { ok: true, message: "TA 名下已经没有要交的了" };
   await recordAudit({
     user: me, action: "handover", entity: "User", entityId: fromId,
-    summary: `离职交接：「${从}」名下${段 || "没有要交的"}全部交给「${给}」`,
-    detail: { to: toId, 客户: r.客户.length, 项目: r.项目.length, 商机: r.商机.length, 待办: r.待办.length, 计划: r.计划.length, 线索: r.线索.length, 渠道: r.渠道.length, 主渠道: r.主渠道.length },
+    summary: `离职交接：「${从}」名下${r.段}全部交给「${给}」，等对方确认`,
+    detail: { to: toId, 交接: r.交接, 待确认: true, 客户: r.客户.length, 项目: r.项目.length },
   });
-  if (段) await 离职交接通知(me, 从, toId, r.客户, r.项目, 段);
+  await 交接通知(me, r.交接, "发起");
   刷新();
-  return { ok: true, message: 段 ? `已把 ${段} 交给 ${给}` : "TA 名下已经没有要交的了" };
+  return { ok: true, message: `已把 ${r.段} 交给 ${给}，等 TA 确认后才转过去`, 交接: r.交接 };
 }

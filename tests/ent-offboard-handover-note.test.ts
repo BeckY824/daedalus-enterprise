@@ -20,7 +20,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { deactivateUser } from "@/app/(app)/settings/actions";
-import { 交接客户, 交接项目, 交接全部 } from "@/app/(app)/projects/handover/actions";
+import { 交接客户, 交接项目, 交接全部 } from "./helpers/offboard-auto-confirm";
 import { 交接备注行, 追加备注行 } from "@/lib/enterprise/offboard-handover";
 import { beijingDay } from "@/lib/business-clock";
 
