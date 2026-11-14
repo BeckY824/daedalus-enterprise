@@ -159,8 +159,8 @@ describe("迁移文件", () => {
       // 028及030–035也在存量基础表加列。这里保留旧表形状，不能直接用新schema掩盖加列失败。
       db.exec('CREATE TABLE "Opportunity" ("id" TEXT PRIMARY KEY)');
       db.exec('CREATE TABLE "Task" ("id" TEXT PRIMARY KEY)');
-      // 050 给 occurredAt、(ownerId, occurredAt) 建索引，这两列第一版就有
-      db.exec('CREATE TABLE "FollowUp" ("id" TEXT PRIMARY KEY, "ownerId" TEXT, "occurredAt" DATETIME)');
+      // 050 给 occurredAt、(ownerId, occurredAt) 建索引，这两列第一版就有；137 给 (customerId, deletedAt, type, ownerId) 建索引，customerId、type 也是第一版就有
+      db.exec('CREATE TABLE "FollowUp" ("id" TEXT PRIMARY KEY, "customerId" TEXT, "type" TEXT, "ownerId" TEXT, "occurredAt" DATETIME)');
       // 067–071 给渠道加列，Channel 也是第一版就有
       db.exec('CREATE TABLE "Channel" ("id" TEXT PRIMARY KEY, "name" TEXT)');
       // 073 给联系人加列，Contact 也是第一版就有
@@ -206,7 +206,7 @@ describe("迁移文件", () => {
       db.exec('CREATE TABLE "FollowPlan" ("id" TEXT PRIMARY KEY, "done" BOOLEAN, "plannedAt" DATETIME)');
       db.exec('CREATE TABLE "Opportunity" ("id" TEXT PRIMARY KEY)');
       db.exec('CREATE TABLE "Task" ("id" TEXT PRIMARY KEY)');
-      db.exec('CREATE TABLE "FollowUp" ("id" TEXT PRIMARY KEY, "ownerId" TEXT, "occurredAt" DATETIME)');
+      db.exec('CREATE TABLE "FollowUp" ("id" TEXT PRIMARY KEY, "customerId" TEXT, "type" TEXT, "ownerId" TEXT, "occurredAt" DATETIME)');
       db.exec('CREATE TABLE "Channel" ("id" TEXT PRIMARY KEY, "name" TEXT)');
       db.exec('CREATE TABLE "Contact" ("id" TEXT PRIMARY KEY, "name" TEXT)');
       db.exec('CREATE TABLE "User" ("id" TEXT PRIMARY KEY, "name" TEXT)');

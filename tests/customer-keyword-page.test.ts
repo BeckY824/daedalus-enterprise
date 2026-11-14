@@ -158,7 +158,7 @@ describe("关键词分页 = 老路", () => {
       expect(await 以谁的身份(老板, () => 关键词分页(sp, 1, 20))).toBeNull();
   });
 
-  it("文字关键词那句能进只读通道；号码关键词带 replace() 归一化，和老路一样回主连接", async () => {
+  it("文字关键词、号码关键词那句都能进只读通道（号码带的 replace() 是字符串函数，11-14 起不再当写回主连接）", async () => {
     const 那句 = async (keyword: string) => {
       临时.裸SQL.length = 0;
       await 以谁的身份(小王, () => 关键词分页({ keyword, grade: "高一" }, 1, 20));
@@ -167,7 +167,7 @@ describe("关键词分页 = 老路", () => {
       return s!;
     };
     expect(只读SQL(await 那句("甲"))).toBe(true);
-    expect(只读SQL(await 那句("138"))).toBe(false);
+    expect(只读SQL(await 那句("138"))).toBe(true);
   });
 
   it("客户来源（11-06）：关键词 + 来源和老路对拍，只出这个来源的；没开企业版时当没带", async () => {

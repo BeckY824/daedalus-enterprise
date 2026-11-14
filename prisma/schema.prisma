@@ -258,6 +258,8 @@ model Customer {
   /// 企业版首页「意向客户」按客户状态数（迁移 065）
   @@index([custStatus])
   @@index([deletedAt])
+  /// 客户列表翻页总带着 deletedAt IS NULL（迁移 137）：只有上面两条时 SQLite 先挑 deletedAt 再整表排序，8.5 万客户每页 ~20 ms
+  @@index([deletedAt, createdAt, id])
 }
 
 /// 签约记录。同一学员可多次签约（续费、补课），便于按月/季/年复盘
@@ -529,6 +531,9 @@ model CustomerPool {
   at         DateTime @default(now())
   /// 号码不全（迁移 130，企业版三态 T10）：到期自动进公海时按退回公海那一套查号码，空的 / 不对的记 true，公海列表能按它筛；别的入池为空
   phoneIncomplete Boolean?
+
+  /// 公海按入池时间倒序翻页（迁移 137），同一刻入池的按客户 id 正序（和页面排序一致）
+  @@index([at(sort: Desc), customerId])
 }
 
 /// 最近一次从公海领走（2026-10-04，第 6 块复查，迁移 019）。自动掉公海从「最近跟进 / 建档 / 领取」里最晚的那个算起：
@@ -694,6 +699,10 @@ model FollowUp {
   /// 按成员筛跟进（迁移 050）：只有上面那条时 SQLite 没统计信息，会改成按 occurredAt 扫全表再挑人
   @@index([ownerId, occurredAt])
   @@index([deletedAt])
+  /// 跟进记录页带着 deletedAt IS NULL 取最近 300 条（迁移 137）：只有 occurredAt 那条时 SQLite 改走 deletedAt、25 万条整表排序
+  @@index([deletedAt, occurredAt])
+  /// 看得到的跟进数公海那一路逐位数（迁移 137，lib/scope-sql.ts）：只读索引不回表，带 type / ownerId 筛也一样
+  @@index([customerId, deletedAt, type, ownerId])
 }
 
 /// 跟进记录的原文。
