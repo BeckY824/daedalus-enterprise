@@ -47,6 +47,8 @@ const 不用进容器: Record<string, string> = {
   CRM_REQ_LOG_MS: "慢请求日志的阈值，默认 200 毫秒；同上，只在排查时配（lib/request-log.ts）",
   NEXT_DIST_DIR: "构建产物目录名，只有本机测试换目录时才设；慢请求日志靠它找路由清单，部署一律用默认的 .next（lib/request-log.ts）",
   CRM_NAV_PREWARM: "左栏空闲预热的范围：不设就是全部预热（现状），单核服务器上才需要收窄；不走容器（lib/nav-prewarm.ts）",
+  NEXT_PHASE: "Next 构建时自己设的阶段标记，只用来认出构建期预渲染（那时 antd 样式照旧内联），不是部署要配的变量（components/AntdRegistry.tsx）",
+  CRM_ANTD_CSS_DIR: "antd 样式外链的落盘目录，不设就用系统临时目录；私有部署的服务用了私有临时目录（重启即清）时才需要另指一个留得住的位置（lib/antd-css-disk.ts）",
   CRM_ENT_VIEW_AS: "切换视图（以某人的视角查看）的关闭开关：企业版默认有这个功能，只有设成 0 才关；平时不用设，企业版部署包故意不映射（lib/enterprise/view-as.ts）",
   NEXT_RUNTIME: "Next 自己设的（nodejs / edge），不是我们配的",
   CRM_READ_POOL: "企业版只读通道的关闭开关，只在企业版生效：企业版私有部署按需写在服务器的 .env 里，根目录各 compose 不开企业版、读了也不起作用",
