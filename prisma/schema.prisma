@@ -262,6 +262,8 @@ model Customer {
   @@index([deletedAt, createdAt, id])
   /// 按负责人筛客户（迁移 137）：只有上面那条时 SQLite 会顺着它扫再挑人，名下非公海客户少的人整表扫
   @@index([salesOwnerId, deletedAt, createdAt, id])
+  /// 客户详情「他推荐来的人」（迁移 138）：只有 referrerCustomerId 单列那条时 SQLite 挑上面 (deletedAt, createdAt, id) 顺着扫整表（8.5 万客户 23 ms）
+  @@index([referrerCustomerId, deletedAt, createdAt])
 }
 
 /// 签约记录。同一学员可多次签约（续费、补课），便于按月/季/年复盘

@@ -70,7 +70,12 @@ export async function 学员名单() {
     channel: { select: { name: true } },
     addrCountry: true, addrProvince: true, addrCity: true,
     referrerCustomerId: true,
-    followUps: { orderBy: { occurredAt: "desc" as const }, take: 1, select: { content: true, type: true } },
+    /*
+      每位最近一条跟进：Prisma 把 50 位的跟进一句取回（customerId IN (50 个)，take 在内存里按位截）。只按 occurredAt 排时，
+      没统计信息的 SQLite 会挑 (deletedAt, occurredAt) 顺着时间扫 25 万条再挑这 50 位（55–60 ms，迁移 137 带出来的）；
+      先按 customerId 排，(customerId, …) 的索引接得住，每位内部还是按时间倒序，截出来的那条不变（0.2 ms，tests/perf-85k-indexes.test.ts 钉着）
+    */
+    followUps: { orderBy: [{ customerId: "asc" as const }, { occurredAt: "desc" as const }], take: 1, select: { content: true, type: true } },
     // 最近一条还没做的计划：「本周要跟」那个页签和右下角的圆点都看它
     plans: { where: { done: false }, orderBy: [{ plannedAt: "asc" as const }, { id: "asc" as const }], select: { plannedAt: true, plannedOn: true } },
   } satisfies Prisma.CustomerSelect;

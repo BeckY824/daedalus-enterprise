@@ -21,6 +21,7 @@ import { 规则 } from "@/lib/enterprise/rules";
 import { 客户筛选条件 } from "@/app/(app)/customers/query";
 
 const 迁移 = fs.readFileSync(new URL("../migrations/137-perf-85k-indexes.sql", import.meta.url), "utf8");
+const 迁移138 = fs.readFileSync(new URL("../migrations/138-perf-85k-indexes-2.sql", import.meta.url), "utf8");
 
 async function 计划(sql: string, ...值: unknown[]): Promise<string> {
   const rows = await prisma.$queryRawUnsafe<{ detail: string }[]>(`EXPLAIN QUERY PLAN ${sql}`, ...值);
@@ -54,6 +55,9 @@ describe("迁移 137 的索引", () => {
     const 有 = (await prisma.$queryRawUnsafe<{ name: string }[]>(`SELECT name FROM sqlite_master WHERE type = 'index'`)).map((r) => r.name);
     for (const n of ["CustomerPool_at_customerId_idx", "Customer_deletedAt_createdAt_id_idx", "Customer_salesOwnerId_deletedAt_createdAt_id_idx", "FollowUp_deletedAt_occurredAt_idx", "FollowUp_type_deletedAt_occurredAt_ownerId_idx", "FollowUp_customerId_deletedAt_type_ownerId_idx", "ContactMethod_kind_valueKey_idx"]) expect(有).toContain(n);
     expect(迁移).toContain(`ON "ContactMethod"("kind", ${号键SQL('"value"')}, "customerId", "contactId");`);
+    // 迁移 138（第二轮）
+    expect(有).toContain("Customer_referrerCustomerId_deletedAt_createdAt_idx");
+    expect(迁移138).toContain(`CREATE INDEX IF NOT EXISTS "Customer_referrerCustomerId_deletedAt_createdAt_idx" ON "Customer"("referrerCustomerId", "deletedAt", "createdAt");`);
   });
 
   it("查询计划：公海按入池时间翻页、客户按建档时间翻页、跟进按发生时间取前几条都顺着新索引走，不整表排序", async () => {
@@ -145,6 +149,66 @@ describe("查询计划：Prisma 实际发出的语句", () => {
     // 看得到的跟进数不限定的那句（lib/scope-sql.ts 走 Prisma count）：类型 + 成员同样不被类型那条抢走
     const 数 = await 真计划("u-idx", "FollowUp", () => 限.followUp.count({ where: { type: "PHONE", ownerId: "u-idx" } }));
     expect(数.计划).toContain("FollowUp_ownerId_occurredAt_idx");
+  });
+
+  /** 第二轮（11-14）：业务员名下几位不在公海的客户 + 一位看全部的总管理，两种身份都能看到这几位 */
+  const 总管理 = "u-idx-boss";
+  async function 备名下客户(): Promise<string[]> {
+    if (!(await prisma.user.findUnique({ where: { id: 总管理 } }))) {
+      await prisma.user.create({ data: { id: 总管理, email: "idx-boss@x.com", name: "总管理", password: "x", role: "SALES" } });
+      await prisma.entMember.create({ data: { userId: 总管理, bizRole: "director" } });
+    }
+    const 有 = await prisma.customer.findMany({ where: { salesOwnerId: 业务员, pool: null }, select: { id: true }, orderBy: { id: "asc" } });
+    if (有.length) return 有.map((c) => c.id);
+    const ids: string[] = [];
+    for (let i = 0; i < 4; i++) ids.push((await prisma.customer.create({ data: { name: `名下${i}`, phone: `1370000010${i}`, salesOwnerId: 业务员 } })).id);
+    return ids;
+  }
+
+  it("记录页窄名单每位最近一条跟进（@pane/panes.tsx，第二轮 11-14）：先按 customerId 排走 (customerId, …) 索引，不顺 (deletedAt, occurredAt) 扫全部跟进；截出来的那条不变", async () => {
+    const 客户们 = await 备名下客户();
+    // 每位挂三条、时间打乱：最近那条必须是 occurredAt 最大的
+    for (const [i, id] of 客户们.entries()) {
+      for (const d of [3, 20 - i, 9]) await prisma.followUp.create({ data: { customerId: id, type: "VISIT", ownerId: 业务员, title: `第${d}天`, content: `第${d}天`, occurredAt: new Date(Date.UTC(2026, 9, d)) } });
+    }
+    const 取 = (orderBy: object) => async () => 限.customer.findMany({ where: { id: { in: 客户们 } }, select: { id: true, followUps: { orderBy: orderBy as never, take: 1, select: { content: true, type: true } } } });
+    for (const 谁 of [总管理, 业务员]) {
+      // 改前那种写法确实会被 (deletedAt, occurredAt) 抢走：这条红了说明 SQLite 选法变了，下面那条也要重看
+      const 旧 = await 真计划(谁, "FollowUp", 取({ occurredAt: "desc" }));
+      expect(旧.计划).toContain("FollowUp_deletedAt_occurredAt_idx");
+      const 新 = await 真计划(谁, "FollowUp", 取([{ customerId: "asc" }, { occurredAt: "desc" }]));
+      expect(新.sql).toMatch(/`customerId` IN \(/);
+      expect(新.计划).not.toContain("FollowUp_deletedAt_occurredAt_idx");
+      expect(新.计划).toMatch(/FollowUp_customerId_/);
+    }
+    // 截出来的那条：和只按时间排时一样，都是各位 occurredAt 最大的那条
+    const 新行 = await 以谁的身份(业务员, 取([{ customerId: "asc" }, { occurredAt: "desc" }]));
+    const 旧行 = await 以谁的身份(业务员, 取({ occurredAt: "desc" }));
+    expect(新行.length).toBe(客户们.length);
+    const 按id = (rs: typeof 新行) => Object.fromEntries(rs.map((r) => [r.id, r.followUps[0]?.content ?? null]));
+    expect(按id(新行)).toEqual(按id(旧行));
+    const 全 = await prisma.followUp.findMany({ where: { customerId: { in: 客户们 } }, select: { customerId: true, content: true, occurredAt: true } });
+    for (const id of 客户们) expect(按id(新行)[id]).toBe(全.filter((f) => f.customerId === id).sort((a, b) => +b.occurredAt - +a.occurredAt)[0].content);
+  });
+
+  it("客户详情「他推荐来的人」（迁移 138）：referrerCustomerId IN (?) ORDER BY createdAt 走 (referrerCustomerId, deletedAt, createdAt)，不顺 (deletedAt, createdAt, id) 扫；客户列表翻页、按负责人筛照旧", async () => {
+    const [上家] = await 备名下客户();
+    await prisma.customer.create({ data: { name: "下家", phone: "13900000099", salesOwnerId: 业务员, referrerCustomerId: 上家 } });
+    for (const 谁 of [总管理, 业务员]) {
+      const r = await 真计划(谁, "Customer", () => 限.customer.findUnique({ where: { id: 上家 }, include: { referrals: { select: { id: true, name: true, followStatus: true }, orderBy: { createdAt: "desc" } } } }));
+      expect(r.sql).toMatch(/`referrerCustomerId` IN \(\?\)/);
+      expect(r.计划).toContain("Customer_referrerCustomerId_deletedAt_createdAt_idx");
+      // 列表第 1 页、按负责人筛：不被新索引带走（同上面那条）
+      const 页 = await 真计划(谁, "Customer", 客户页({}));
+      expect(页.计划).toContain("Customer_deletedAt_createdAt_id_idx");
+      expect(页.计划).not.toContain("Customer_referrerCustomerId_deletedAt_createdAt_idx");
+      const 按人 = await 真计划(谁, "Customer", 客户页({ salesOwnerId: 业务员 }));
+      expect(按人.计划).toContain("Customer_salesOwnerId_deletedAt_createdAt_id_idx");
+    }
+    // 渠道页「直接推荐」（channelId = ? AND referrerCustomerId IS NULL）：照旧顺 (deletedAt, createdAt, id)，不换到新索引上扫全部没推荐人的
+    const 直推 = await 真计划(总管理, "Customer", 客户页({ directOf: "ch-x" }));
+    expect(直推.sql).toContain("`referrerCustomerId` IS NULL");
+    expect(直推.计划).toContain("Customer_deletedAt_createdAt_id_idx");
   });
 });
 
