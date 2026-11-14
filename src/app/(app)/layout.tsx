@@ -30,6 +30,7 @@ import { ShortcutProvider } from "@/components/Shortcut";
 import { 背调有入口 } from "@/lib/research/channel";
 import { ResearchEntryProvider } from "@/components/research/ResearchEntry";
 import TruncTip from "@/components/TruncTip";
+import { 读预热设置 } from "@/lib/nav-prewarm";
 
 export default async function AppLayout({
   children,
@@ -144,6 +145,8 @@ export default async function AppLayout({
         视图退出={退出视图}
         正在视图={正在视图}
         计数={{ "/customers": 客户数 }}
+        // 左栏空闲预热哪几页：部署时 CRM_NAV_PREWARM 定，运行时读，改了重启即生效（lib/nav-prewarm.ts）
+        预热={读预热设置()}
       >
         {children}
       </AppShell>

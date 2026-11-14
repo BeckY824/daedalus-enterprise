@@ -4,9 +4,13 @@
  * 老线索转线索阶段的项目（enterprise/lead-to-project.ts）、预计成交日期回填（project/expected-deal.ts）、客户级别 D 改 C（enterprise/customer-v2-db.ts）、卡点 11-01 改版的老数据（project/blocker-migrate.ts）；
  * 最后补联系人主客户的挂靠行（同一文件，每次启动都跑、只补没有的）。
  * 桌面端、团队版服务器不设 CRM_ENTERPRISE，这里什么都不做，也不加载这些代码。
+ * 另：CRM_REQ_LOG=1 时先开慢请求日志（lib/request-log.ts）。
  */
 export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs" || process.env.CRM_ENTERPRISE !== "1") return;
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  // 慢请求日志（CRM_REQ_LOG=1 才开，见 lib/request-log.ts）：不看企业版开关，开着就记
+  if (process.env.CRM_REQ_LOG === "1") await (await import("./lib/request-log")).开请求日志();
+  if (process.env.CRM_ENTERPRISE !== "1") return;
   const { 启动定时 } = await import("./lib/enterprise-import/sync");
   启动定时();
   const { 启动夜扫 } = await import("./lib/project/nightly");
