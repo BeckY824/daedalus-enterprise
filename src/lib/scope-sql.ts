@@ -72,7 +72,14 @@ function 回避段(本人: string, 客户: string[]): { sql: string; 参数: str
 /** 看得到的客户一共几位（= prisma.customer.count()） */
 export async function 看得到的客户数(): Promise<number> {
   const 范围 = await 看得到的();
-  if (!范围) return prisma.customer.count();
+  if (!范围) {
+    // 不限定的人：一句数完（只走 deletedAt 索引）
+    if (!(await 读的我(defaultClient))) return prisma.customer.count();
+    // 限定了但裸 SQL 接不住的（市场成员相关、按线只读、回避名单过上限）：照样拆两路（第二轮 11-14）——不在公海的走 Prisma，
+    // 限定层见到「不在公海」会去掉「OR 在公海」那支（team-scope 限在非公海）；公海那头 = 公海页签数。原来一句带 OR 整表扫，市场相关的人 50 ms
+    const [非公海, 公海] = await Promise.all([prisma.customer.count({ where: { pool: { is: null } } }), 看得到的公海数()]);
+    return 非公海 + 公海;
+  }
   // 名下（不在公海）+ 公海里看得到的（= 公海页签数，走主键、只减回避的那几位），两路不相交，相加就是原来那句的数
   const [[r], 公海] = await Promise.all([
     prisma.$queryRawUnsafe<{ n: bigint | number }[]>(`SELECT COUNT(*) AS n FROM "Customer" c WHERE ${范围.名下.where}`, ...范围.名下.参数),

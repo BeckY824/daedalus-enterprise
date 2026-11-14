@@ -114,14 +114,17 @@ describe("查询计划：Prisma 实际发出的语句", () => {
   const 客户页 = (sp: Record<string, string>) => async () => 限.customer.findMany({ where: await 客户筛选条件(sp), orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: 0, take: 20, select: { id: true } });
   const 跟进页 = (where: Record<string, string>) => () => 限.followUp.findMany({ where, orderBy: { occurredAt: "desc" }, take: 300, select: { id: true } });
 
-  it("客户列表：老板不筛、业务员「我的客户」顺 (deletedAt, createdAt, id) 不整表排序；按负责人筛走负责人打头的索引", async () => {
+  it("客户列表：没设角色的、业务员「我的客户」走负责人打头的、不整表排序；按负责人筛走负责人打头的索引", async () => {
+    // u-idx 在「按组织看客户」开着时没设业务角色 = 只看公海；第二轮（11-14）起带「不在公海」只剩「负责人 IN 空名单」，走负责人打头的、直接空。
+    // 看全部的人顺 (deletedAt, createdAt, id) 那条由下面「他推荐来的人」里的总管理钉着
     const 老板 = await 真计划("u-idx", "Customer", 客户页({}));
-    expect(老板.计划).toContain("Customer_deletedAt_createdAt_id_idx");
+    expect(老板.计划).toContain("Customer_salesOwnerId_deletedAt_createdAt_id_idx");
     expect(老板.计划).not.toContain("TEMP B-TREE");
-    // 业务员：限定层发的是「负责人是我 OR 在公海」∧ 不在公海，带 OR 用不上负责人索引——这条要靠 (deletedAt, createdAt, id)
+    // 业务员：第二轮（11-14）起查询带「不在公海」时限定层不再拼「OR 在公海」那支，只剩「负责人是我」——走负责人打头的，不整表排序
     const 我的 = await 真计划(业务员, "Customer", 客户页({}));
-    expect(我的.sql).toMatch(/`salesOwnerId` IN \(\?\) OR/);
-    expect(我的.计划).toContain("Customer_deletedAt_createdAt_id_idx");
+    expect(我的.sql).toMatch(/`salesOwnerId` IN \(\?\)/);
+    expect(我的.sql).not.toMatch(/`salesOwnerId` IN \(\?\) OR/);
+    expect(我的.计划).toContain("Customer_salesOwnerId_deletedAt_createdAt_id_idx");
     expect(我的.计划).not.toContain("TEMP B-TREE");
     // 按负责人筛（老板挑一个人 / 业务员自己筛自己）：salesOwnerId = ? 不带 OR，必须走负责人打头的，不能顺 (deletedAt, createdAt, id) 扫再挑人
     for (const [谁, 筛谁] of [["u-idx", 业务员], [业务员, 业务员]]) {
@@ -200,7 +203,9 @@ describe("查询计划：Prisma 实际发出的语句", () => {
       expect(r.计划).toContain("Customer_referrerCustomerId_deletedAt_createdAt_idx");
       // 列表第 1 页、按负责人筛：不被新索引带走（同上面那条）
       const 页 = await 真计划(谁, "Customer", 客户页({}));
-      expect(页.计划).toContain("Customer_deletedAt_createdAt_id_idx");
+      // 总管理顺 (deletedAt, createdAt, id)；业务员（第二轮去掉「OR 在公海」后）走负责人打头的
+      expect(页.计划).toContain(谁 === 总管理 ? "Customer_deletedAt_createdAt_id_idx" : "Customer_salesOwnerId_deletedAt_createdAt_id_idx");
+      expect(页.计划).not.toContain("TEMP B-TREE");
       expect(页.计划).not.toContain("Customer_referrerCustomerId_deletedAt_createdAt_idx");
       const 按人 = await 真计划(谁, "Customer", 客户页({ salesOwnerId: 业务员 }));
       expect(按人.计划).toContain("Customer_salesOwnerId_deletedAt_createdAt_id_idx");
