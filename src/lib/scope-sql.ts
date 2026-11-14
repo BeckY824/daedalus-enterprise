@@ -1,6 +1,8 @@
 import { cache } from "react";
 import { prisma, defaultClient } from "@/lib/prisma";
-import { 读的我, 有市场只读, 现在的公海回避, 现在的组员客户 } from "@/lib/team-scope";
+import { 读的我, 有市场只读, 现在的公海回避, 现在的组员客户, 客户读条件 } from "@/lib/team-scope";
+import { 缓存分组数 } from "@/lib/enterprise/pool-count-cache";
+import { 在看已删, 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 企业版 } from "@/lib/enterprise/switch";
 
 /**
@@ -134,26 +136,113 @@ async function 公海数现数(): Promise<number> {
  */
 export async function 看得到的跟进数(筛: { type?: string; ownerId?: string }): Promise<number> {
   const 范围 = await 看得到的();
-  if (!范围) return prisma.followUp.count({ where: { ...(筛.type ? { type: 筛.type } : {}), ...(筛.ownerId ? { ownerId: 筛.ownerId } : {}) } });
-  const 筛段: string[] = [];
-  const 筛值: string[] = [];
-  if (筛.type) {
-    筛段.push(` AND f."type" = ?`);
-    筛值.push(筛.type);
-  }
-  if (筛.ownerId) {
-    筛段.push(` AND f."ownerId" = ?`);
-    筛值.push(筛.ownerId);
+  const { 筛段, 筛值 } = 跟进筛SQL(筛, true);
+  if (!范围) {
+    // 不限定的人：一句数完
+    if (!(await 读的我(defaultClient))) return prisma.followUp.count({ where: 跟进筛条件(筛) });
+    /*
+      限定了但裸 SQL 接不住的（市场成员 / 市场管理、回避名单过上限）：同样拆两路（第三轮 11-14）。原来 Prisma 那句
+      FollowUp LEFT JOIN Customer … OR 在公海 OR 市场相关…，只能顺 (deletedAt, occurredAt) 把 25 万条跟进整个扫一遍（单句 340–500 ms，冷的 2.3 s）。
+      名下：不在公海的看得到的客户编号交给限定层挑（客户这头见到「不在公海」会去掉「OR 在公海」那支，同 看得到的客户数），
+      再按 customerId 索引数跟进；公海：同下（公海跟进数）。
+      原来那句只排跟进自己进了回收站的、不看客户删没删（快路的裸 SQL 排掉回收站里的客户，两边本来就差这一截）：
+      这里照原来那句——客户编号在 看已删 里挑，公海那路也不排回收站里的客户，数和原来一模一样
+    */
+    const [名下客户, 公海] = await Promise.all([看已删(() => prisma.customer.findMany({ where: { pool: { is: null } }, select: { id: true } })), 公海跟进数(筛, true)]);
+    const [r] = await prisma.$queryRawUnsafe<{ n: bigint | number }[]>(
+      `SELECT COUNT(*) AS n FROM "FollowUp" f WHERE f."customerId" IN (SELECT value FROM json_each(?)) AND +f."deletedAt" IS NULL${筛段.join("")}`,
+      JSON.stringify(名下客户.map((c) => c.id)),
+      ...筛值,
+    );
+    return Number(r.n) + 公海;
   }
   // 拆两路（11-14，8.5 万客户 25 万条跟进：原来 110–150 ms）：
   //   名下：客户走负责人索引、跟进走 customerId 索引（+ 号让 deletedAt 不去抢 FollowUp_deletedAt_occurredAt_idx，没统计信息时 SQLite 会挑它整表扫）
-  //   公海：从公海表出发逐位数（CROSS JOIN 定死先后），跟进那头走 (customerId, deletedAt, type, ownerId) 覆盖索引（迁移 137），20 万条 ~35 ms
-  //   回避的人：公海那一路照原来那句减掉回避的那几位（回避段 原样）
-  const sql =
-    `SELECT (SELECT COUNT(*) FROM "FollowUp" f WHERE f."customerId" IN (SELECT c.id FROM "Customer" c WHERE ${范围.名下.where}) AND +f."deletedAt" IS NULL${筛段.join("")})` +
-    ` + (SELECT COUNT(*) FROM "CustomerPool" p CROSS JOIN "Customer" c CROSS JOIN "FollowUp" f WHERE c.id = p."customerId" AND f."customerId" = p."customerId" AND c."deletedAt" IS NULL AND f."deletedAt" IS NULL${筛段.join("")}${范围.回避.sql}) AS n`;
-  const [r] = await prisma.$queryRawUnsafe<{ n: bigint | number }[]>(sql, ...范围.名下.参数, ...筛值, ...筛值, ...范围.回避.参数);
-  return Number(r.n);
+  //   公海：见 公海跟进数。第三轮（11-14）起两路分成两句，公海那句人人一样（只差回避的那几位），进短时缓存
+  const [[r], 公海] = await Promise.all([
+    prisma.$queryRawUnsafe<{ n: bigint | number }[]>(
+      `SELECT COUNT(*) AS n FROM "FollowUp" f WHERE f."customerId" IN (SELECT c.id FROM "Customer" c WHERE ${范围.名下.where}) AND +f."deletedAt" IS NULL${筛段.join("")}`,
+      ...范围.名下.参数,
+      ...筛值,
+    ),
+    公海跟进数(筛),
+  ]);
+  return Number(r.n) + 公海;
+}
+
+/** 跟进记录页的两个筛选：Prisma 写法 / 裸 SQL 写法（表别名 f） */
+function 跟进筛条件(筛: { type?: string; ownerId?: string }) {
+  return { ...(筛.type ? { type: 筛.type } : {}), ...(筛.ownerId ? { ownerId: 筛.ownerId } : {}) };
+}
+/**
+ * 名下 = 按 customerId 编号数：这时两个筛选列前加 +（第三轮 11-14），不然 SQLite 改挑 type / (ownerId, occurredAt) 的索引、
+ * 把这一类型的跟进全扫一遍再挑客户。值照样从 (customerId, deletedAt, type, ownerId) 里读，不回表。
+ * 公海全部那句从公海表出发（CROSS JOIN 定死先后），不加
+ */
+function 跟进筛SQL(筛: { type?: string; ownerId?: string }, 名下 = false): { 筛段: string[]; 筛值: string[] } {
+  const 加 = 名下 ? "+" : "";
+  const 筛段: string[] = [];
+  const 筛值: string[] = [];
+  if (筛.type) {
+    筛段.push(` AND ${加}f."type" = ?`);
+    筛值.push(筛.type);
+  }
+  if (筛.ownerId) {
+    筛段.push(` AND ${加}f."ownerId" = ?`);
+    筛值.push(筛.ownerId);
+  }
+  return { 筛段, 筛值 };
+}
+
+/**
+ * 公海里看得到的客户的跟进几条。看得到的 ∩ 在公海 = 未删的公海客户减掉回避的那几位（范围里「在公海」那一支人人都有），
+ * 所以照 公海数现数 的办法：全部公海客户的跟进数（人人一样）减掉他回避的那几位的跟进数。
+ *   - 全部：从公海表出发逐位数（CROSS JOIN 定死先后），跟进那头走 (customerId, deletedAt, type, ownerId) 覆盖索引（迁移 137），20 万条 ~35 ms；
+ *     整句 + 参数进短时缓存（enterprise/pool-count-cache.ts，写过库就作废），只看筛选，30 人只算一次（第三轮 11-14）
+ *   - 回避的：负责人是他（走负责人索引）或名单上的（走主键）、又在公海里的那几位，只碰他自己那点行。
+ *     回避段 在公海里 = NOT (负责人是他) AND 不在名单（salesOwnerId 非空），减掉的正好是这一块
+ * 回避名单过上限（null）走 Prisma（限定层带着回避那段）。
+ * 含删了的客户：给 Prisma 老路那头对齐用（那句不看客户删没删，见 看得到的跟进数）
+ */
+async function 公海跟进数(筛: { type?: string; ownerId?: string }, 含删了的客户 = false): Promise<number> {
+  const 回避 = await 现在的公海回避(defaultClient);
+  if (回避?.客户 === null) return prisma.followUp.count({ where: { ...跟进筛条件(筛), customer: { pool: { isNot: null } } } });
+  const { 筛段, 筛值 } = 跟进筛SQL(筛);
+  const 客户没删 = 含删了的客户 ? "" : ` AND c."deletedAt" IS NULL`;
+  const 全部sql = `SELECT COUNT(*) AS n FROM "CustomerPool" p CROSS JOIN "Customer" c CROSS JOIN "FollowUp" f WHERE c.id = p."customerId" AND f."customerId" = p."customerId"${客户没删} AND f."deletedAt" IS NULL${筛段.join("")}`;
+  const 全部 = 缓存分组数(全部sql, 筛值, async () => {
+    const [r] = await prisma.$queryRawUnsafe<{ n: bigint | number }[]>(全部sql, ...筛值);
+    return Number(r.n);
+  });
+  if (!回避) return 全部;
+  const 他的 = 跟进筛SQL(筛, true);
+  const 名单 = 回避.客户 ?? [];
+  const 或名单 = 名单.length ? ` OR c.id IN (${名单.map(() => "?").join(",")})` : "";
+  const [n, [r]] = await Promise.all([
+    全部,
+    prisma.$queryRawUnsafe<{ n: bigint | number }[]>(
+      `SELECT COUNT(*) AS n FROM "FollowUp" f WHERE f."customerId" IN (SELECT c.id FROM "Customer" c WHERE (c."salesOwnerId" = ?${或名单})${客户没删} AND c.id IN (SELECT "customerId" FROM "CustomerPool")) AND +f."deletedAt" IS NULL${他的.筛段.join("")}`,
+      回避.本人,
+      ...名单,
+      ...他的.筛值,
+    ),
+  ]);
+  return n - Number(r.n);
+}
+
+/**
+ * 客户页国家 / grade 筛选下拉的去重值（= 原来那两句 groupBy 的结果，原样同序）。8.5 万客户时每次 5–20 ms，
+ * 每个客户页都要算两遍、值又几乎不变：进程内缓存 60 秒，写过库就作废（同公海分组缓存，enterprise/pool-count-cache.ts）。
+ * 键 = 列 + 企业版 / 看不看已删 + 这个人读客户时限定层并进去的那一整句条件（客户读条件：组织范围、市场、组员、回避名单全在里面），
+ * 条件一样的两个人本来就数出同一份值；条件不同就是不同的键，不会拿到按别人范围算的值。多租户、测试里不缓存（同那边）
+ */
+export async function 看得到的下拉值(列: "grade" | "country"): Promise<string[]> {
+  const 条件 = await 客户读条件(defaultClient);
+  const 查 = async () =>
+    列 === "grade"
+      ? (await prisma.customer.groupBy({ by: ["grade"], where: { grade: { not: null } } })).map((r) => r.grade!)
+      : (await prisma.customerExtra.groupBy({ by: ["country"], where: { country: { not: null } }, orderBy: { country: "asc" } })).map((r) => r.country!);
+  return 缓存分组数(`下拉:${列}`, [企业版(), 在看已删(), 条件], 查, 60_000);
 }
 
 /**

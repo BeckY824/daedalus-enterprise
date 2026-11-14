@@ -11,6 +11,7 @@
  * 项目 id 已经是上面滤过的，跟项目详情页「沟通」卡给的是同一批。
  */
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 露客户, 看得到的客户 } from "@/lib/project/db";
@@ -80,6 +81,20 @@ export async function 跟进去处们(me: { id: string; role?: string }, custome
   return [...行们.filter((x) => !x.结束), ...行们.filter((x) => x.结束)];
 }
 
+/** 挂在这些项目上的跟进记在哪几位客户名下（去重）。从 FollowUpProject 出发走 projectId 索引、再按主键连跟进，只碰这几个项目的那几条 */
+async function 挂项目的客户们(ids: string[]): Promise<string[]> {
+  const rows = await prisma.$queryRawUnsafe<{ c: string }[]>(
+    `SELECT DISTINCT f."customerId" AS c FROM "FollowUpProject" fp CROSS JOIN "FollowUp" f WHERE f.id = fp."followUpId" AND fp."projectId" IN (SELECT value FROM json_each(?))`,
+    JSON.stringify(ids),
+  );
+  return rows.map((r) => r.c);
+}
+
+/** 和 followHistoryOrder 同一个顺序（occurredAt 倒序、同一刻按 id 倒序；id 按字节比，同 SQLite 的 BINARY） */
+function 按时间线顺序(a: { occurredAt: Date; id: string }, b: { occurredAt: Date; id: string }): number {
+  return +b.occurredAt - +a.occurredAt || Buffer.compare(Buffer.from(b.id), Buffer.from(a.id));
+}
+
 /**
  * 一页：新的在前，游标是不可变的排序边界（同 loadFollowHistory）。
  * 调用方先确认这位客户当前这位看得到（客户页本身就要看得到）。
@@ -92,19 +107,30 @@ export async function 客户沟通汇总(me: { id: string; role?: string }, cust
     和客户本身的老跟进一样摆，不标项目（11-03 C2-2：原来一起藏了，客户页「还没有沟通记录」，删客户预检却数得到）
   */
   const 删了的 = (await 看全部(() => 看已删(() => prisma.project.findMany({ where: { customerId, deletedAt: { not: null } }, select: { id: true }, take: 项目上限 })))).map((p) => p.id);
-  const 范围 = { OR: [
-    { customerId, projectNode: null },
-    ...(ids.length ? [{ projectNode: { projectId: { in: ids } } }] : []),
-    ...(删了的.length ? [{ customerId, projectNode: { projectId: { in: 删了的 } } }] : []),
-  ] };
-  const rows = await 看全部(() => prisma.followUp.findMany({
-    where: { AND: [范围, ...(before ? [{ OR: [
-      { occurredAt: { lt: new Date(before.occurredAt) } },
-      { occurredAt: new Date(before.occurredAt), id: { lt: before.id } },
-    ] }] : [])] },
+  /*
+    收的是三段的并：这位客户不挂项目的、挂在 ids 上的（可能记在别的客户名下）、这位客户名下挂在 删了的 上的。
+    按「记在哪位客户名下」拆成几句、各取一页再在这里合（8.5 万客户提速第三轮，11-14）：三段 OR 在一句里时，
+    条件跨了 FollowUpProject 那张表，SQLite 用不上 customerId 的索引，改顺 (deletedAt, occurredAt) 把 25 万条跟进倒着扫、边扫边挑，
+    这位客户没几条时要扫完整表（单句 95 ms，压测 p95 712 ms）。每句都带 customerId = ? 就走 (customerId, occurredAt)（0.1 ms）。
+    每句各取 汇总每页 + 1 条，合起来再按同一个顺序截：全局前 n 条一定在各句的前 n 条里，所以页和 hasMore 跟原来一句时一样。
+    别的客户：只能是挂在 ids 上的那几条的客户，先从 FollowUpProject 出发查出来（只多不少就行，每句自己还带着项目条件）
+  */
+  const 游标 = before ? [{ OR: [
+    { occurredAt: { lt: new Date(before.occurredAt) } },
+    { occurredAt: new Date(before.occurredAt), id: { lt: before.id } },
+  ] }] : [];
+  const 别的客户 = ids.length ? (await 挂项目的客户们(ids)).filter((c) => c !== customerId) : [];
+  const 这位的项目 = [...ids, ...删了的];
+  const 一位 = (c: string, 条件: Prisma.FollowUpWhereInput) => 看全部(() => prisma.followUp.findMany({
+    where: { AND: [{ customerId: c }, 条件, ...游标] },
     orderBy: followHistoryOrder, take: 汇总每页 + 1,
     include: { ...followHistoryInclude, projectNode: { select: { projectId: true } } },
   }));
+  const 各句 = await Promise.all([
+    一位(customerId, 这位的项目.length ? { OR: [{ projectNode: null }, { projectNode: { projectId: { in: 这位的项目 } } }] } : { projectNode: null }),
+    ...别的客户.map((c) => 一位(c, { projectNode: { projectId: { in: ids } } })),
+  ]);
+  const rows = 各句.length === 1 ? 各句[0] : 各句.flat().sort(按时间线顺序).slice(0, 汇总每页 + 1);
   return {
     rows: rows.slice(0, 汇总每页).map((f) => {
       // 删了的项目不标（上面的 删了的）
