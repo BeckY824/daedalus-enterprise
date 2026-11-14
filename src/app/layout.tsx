@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import AntdRegistry from "@/components/AntdRegistry";
-import { ConfigProvider, App as AntdApp } from "antd";
-import zhCN from "antd/locale/zh_CN";
-import { themeConfig } from "@/lib/theme";
+import { App as AntdApp } from "antd";
+import AntdConfig from "@/components/AntdConfig";
 import MotionTheme from "@/components/MotionTheme";
 import ModeFollow from "@/components/ModeFollow";
 import { 外观预设脚本, 默认外观 } from "@/lib/appearance";
@@ -47,14 +46,14 @@ export default function RootLayout({
       <body>
         <ModeFollow />
         <AntdRegistry>
-          {/* 两个字的按钮 antd 默认中间插空格（「客 户」「确 定」），全站不插（10-27 界面统一） */}
-          <ConfigProvider locale={zhCN} theme={themeConfig} button={{ autoInsertSpace: false }}>
+          {/* 中文、主题、按钮不插空格：在浏览器端组件里配（components/AntdConfig.tsx），这两个对象不进每页的 RSC 负载 */}
+          <AntdConfig>
             {/* 动效的两条全局约定（减弱动态时 motion 不动、默认过渡用全站那条曲线）挂在 MotionTheme 里，
                 值跟着当前主题读——见 components/MotionTheme.tsx */}
             <MotionTheme>
               <AntdApp>{children}</AntdApp>
             </MotionTheme>
-          </ConfigProvider>
+          </AntdConfig>
         </AntdRegistry>
       </body>
     </html>
