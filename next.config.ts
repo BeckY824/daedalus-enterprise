@@ -67,6 +67,16 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
 
   /**
+   * 压缩交给前面的 nginx（11-14 体验优化）：正式服务器只有一个共享核，Node 里现压 gzip 和出页抢同一个核。
+   * `CRM_NO_COMPRESS=1` 时 Next 不压，默认照旧压。
+   * **只在构建时生效**：standalone 的 server.js 把这份配置原样烤进去（.next/required-server-files.json 同），
+   * 运行时再设这个变量没有用；`next start` 起的（3702 这类）启动时会重读本文件，跟着启动时的变量走。
+   * 打开之前 nginx 必须已对 text/html、text/x-component（RSC）、application/javascript、text/css、application/json 开 gzip，
+   * 否则就成了全程不压
+   */
+  ...(process.env.CRM_NO_COMPRESS === "1" ? { compress: false } : {}),
+
+  /**
    * 扫名片识别文件不让 Next 当 public 文件现压 gzip（不带长度、香港到伦敦约 90 KB/s，2026-10-20），
    * 在找 public 文件之前改写到 app/ocr-files，直接给预先压好的 .br / .gz
    */
