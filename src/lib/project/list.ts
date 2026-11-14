@@ -467,6 +467,16 @@ async function 拼项目行(
  * 总数 = 全部符合条件的条数；筛选、排序都在库里对全部结果做；看板列头的数和金额也按全部算（看板合计）。
  * 只看阶段 = "线索" 时只取还在线索阶段的（含已线索流失的），企业版 /leads 用。
  */
+/**
+ * 看板卡片版（11-15 列表页瘦身）：卡片（ProjectsView 看板、客户页看板视图）只画客户名、项目名、进程 / 结局 / 异常、金额、负责人、
+ * 公海 / 即将回收、只看进度；列表才有的几列（回公海日、下一步时间、收回次数、预计成交、已立项天数、渠道、级别、验证结果、创建时间）不给。
+ * 首屏一屏看板约 200 张卡片，这几样占卡片 JSON 的三四成。updatedAt 留着（不带 每列 时 看板分列 按它排）
+ */
+export function 看板卡片版(r: 项目行): 项目行 {
+  const { 回收日: _a, 下一步时间: _b, 收回次数: _c, expectedDealAt: _d, 已立项天数: _e, 项目来源: _f, level: _g, 验证结果: _h, 验证全文: _i, createdAt: _j, ...卡 } = r;
+  return 卡;
+}
+
 export async function 读项目列表(
   me: Parameters<typeof 公海超时收回>[0] & Parameters<typeof 待我回的邀请>[0] & { role: string },
   sp: 项目筛选,
@@ -587,7 +597,9 @@ export async function 读项目列表(
   // 先定 id、再带 include 取行是两句：两句之间项目离开了 where（并发的超时回收收进公海、被转让、被删）就取不回，跳过，不塞 undefined
   const 取得到 = (ids: string[]) => ids.flatMap((id) => { const r = 按id.get(id); return r ? [r] : []; });
   const 行 = 取得到(列表ids);
-  const 每列 = 列ids ? Object.fromEntries([...列ids].map(([k, ids]) => [k, 取得到(ids)])) : undefined;
+  // 只在看板卡片上的（不在列表页那几行里）：只给卡片画得到的字段（看板卡片版）；也在列表页的照旧同一个对象（RSC 只传一次）
+  const 列表里的 = new Set(列表ids);
+  const 每列 = 列ids ? Object.fromEntries([...列ids].map(([k, ids]) => [k, 取得到(ids).map((r) => (列表里的.has(r.id) ? r : 看板卡片版(r)))])) : undefined;
   return {
     行,
     /** 全部符合条件的条数（各页相加 = 它）；页 = 实际给的这一页（要的页越界时落到最后一页），每页 = 认过的每页条数 */
