@@ -6,6 +6,8 @@
  * 桌面端、团队版服务器不设 CRM_ENTERPRISE，这里什么都不做，也不加载这些代码。
  */
 export async function register() {
+  // antd 样式外链落盘（11-15，lib/antd-css-disk.ts）：哪个版本都装，重启 / 部署后旧页面引用的样式照样取得到
+  if (process.env.NEXT_RUNTIME === "nodejs") (await import("./lib/antd-css-disk")).装样式落盘();
   if (process.env.NEXT_RUNTIME !== "nodejs" || process.env.CRM_ENTERPRISE !== "1") return;
   const { 启动定时 } = await import("./lib/enterprise-import/sync");
   启动定时();

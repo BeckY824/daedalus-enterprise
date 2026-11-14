@@ -10,11 +10,12 @@
    浏览器端照旧每次挂载 createCache()，和原版一样。
 
    11-15 起吐的不是内联 <style> 而是外链（lib/antd-css-store.ts）：正文还是逐字相同的那段，
-   按「这一批哪些 key、什么先后」记号存在进程里，页面只带 <link>，浏览器按号长期缓存。 */
+   号按正文算，正文存在进程里、另落一份盘（lib/antd-css-disk.ts），页面只带 <link>，浏览器按号长期缓存；
+   「这一批哪些 key、什么先后」另记签名，同签名不再抽。构建期（静态预渲染）照原来内联。 */
 import { createCache, extractStyle, StyleProvider } from "@ant-design/cssinjs";
 import { useServerInsertedHTML } from "next/navigation";
 import { useState } from "react";
-import { 取样式, 记样式, 样式号 } from "@/lib/antd-css-store";
+import { 取样式, 查签名, 记样式, 签名号 } from "@/lib/antd-css-store";
 
 type Entity = ReturnType<typeof createCache>;
 type Value = [number, unknown];
@@ -60,26 +61,34 @@ export class 本次请求缓存 {
 const 抽的前缀 = /^(style|token|cssVar)%/;
 const 空批 = '.data-ant-cssinjs-cache-path{content:"";}';
 
+/** 这一批抽出来是什么：外链的号、内联的正文（构建期），或这一批没样式（null，同原版不吐） */
+export type 一批 = { 号: string } | { 内联: string } | null;
+
 /**
- * 抽这一批（once：上一批抽过的不再抽）的样式，返回存好的号；这一批什么都没有 = null（同原版不吐）。
- * 同一批 key、同样先后的样式逐字相同，号记过就不再跑 extractStyle，只把这批 key 记成抽过（和 extractStyle 自己记的一样）
+ * 抽这一批（once：上一批抽过的不再抽）的样式。
+ * 同一批 key、同样先后的样式逐字相同：签名记过就不再跑 extractStyle，只把这批 key 记成抽过（和 extractStyle 自己记的一样）。
+ * 构建期（next build 静态预渲染，如顶层 404 页）照原来内联：号只记在构建那个进程里，产物传到服务器后取不到
  */
-export function 抽一批(cache: 本次请求缓存): string | null {
+export function 抽一批(cache: 本次请求缓存, 构建期 = process.env.NEXT_PHASE === "phase-production-build"): 一批 {
+  if (构建期) {
+    const styleText = extractStyle(cache as unknown as Entity, { plain: true, once: true });
+    return styleText.includes(空批) ? null : { 内联: styleText };
+  }
   const 这批 = [...cache.updateTimes.entries()]
     .filter(([k]) => 抽的前缀.test(k) && !cache.extracted.has(k))
     .sort((a, b) => a[1] - b[1])
     .map(([k]) => k);
   if (!这批.length) return null;
-  const 号 = 样式号(这批.join("\n"));
-  const 有 = 取样式(号);
-  if (有 !== undefined) {
+  const 签 = 签名号(这批.join("\n"));
+  const 有 = 查签名(签);
+  // 正文被挤出进程了（记多少批）就当没记过、重抽一遍，免得页面引一个这个进程给不出的号
+  if (有 !== undefined && (有 === "" || 取样式(有) !== undefined)) {
     for (const k of 这批) cache.extracted.add(k);
-    return 有 === "" ? null : 号;
+    return 有 ? { 号: 有 } : null;
   }
   const styleText = extractStyle(cache as unknown as Entity, { plain: true, once: true });
-  const 空 = styleText.includes(空批);
-  记样式(号, 空 ? "" : styleText);
-  return 空 ? null : 号;
+  const 号 = 记样式(签, styleText.includes(空批) ? "" : styleText);
+  return 号 ? { 号 } : null;
 }
 
 export default function AntdRegistry({ children }: { children: React.ReactNode }) {
@@ -87,12 +96,21 @@ export default function AntdRegistry({ children }: { children: React.ReactNode }
     typeof window === "undefined" ? (new 本次请求缓存() as unknown as Entity) : createCache(),
   );
   useServerInsertedHTML(() => {
-    const 号 = 抽一批(cache as unknown as 本次请求缓存);
-    if (!号) return null;
+    const 批 = 抽一批(cache as unknown as 本次请求缓存);
+    if (!批) return null;
+    if ("内联" in 批) return (
+      <style
+        id="antd-cssinjs"
+        // 和原版一样排在 antd 浏览器端后插的样式前面
+        data-rc-order="prepend"
+        data-rc-priority="-1000"
+        dangerouslySetInnerHTML={{ __html: 批.内联 }}
+      />
+    );
     return (
       <>
         {/* 位置和原来那段内联样式一样（head 里 Next 的 CSS 之后；后面几批在正文里，换进来的内联脚本等它下完才跑） */}
-        <link rel="stylesheet" href={`/api/antd-css/${号}`} />
+        <link rel="stylesheet" href={`/api/antd-css/${批.号}`} />
         {/* 空的占位：antd 浏览器端后插的样式（rc-util 只认 <style>）照旧排在它后面，和原来排在那段内联样式后面一样 */}
         <style id="antd-cssinjs" data-rc-order="prepend" data-rc-priority="-1000" />
       </>
