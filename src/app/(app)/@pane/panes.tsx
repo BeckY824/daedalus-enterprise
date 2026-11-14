@@ -104,13 +104,19 @@ export async function 学员名单() {
       nextPlanAt: p ? scheduleValue(p.plannedAt, p.plannedOn) : null,
     };
   };
+  const 行们 = rows.map(一行);
+  /*
+    业务员看得到的不在公海的客户就是自己名下的：两份 50 位一模一样。同一个数组交给页面，RSC 只写一遍
+    （11-14 体验优化：客户详情每次少十几 KB）；有一位不同就照旧各给各的
+  */
+  const 同一份 = 我的.length === rows.length && 我的.every((c, i) => c.id === rows[i].id);
   return (
     <CustomerRoster
       data={{
         total: 页签数.非公海,
         客户状态: 状态字典 ? { 顺序: 状态字典.filter((x) => x.active).map((x) => x.name), 颜色: 客户状态色表(状态字典) } : null,
-        rows: rows.map(一行),
-        mineRows: 我的.map(一行),
+        rows: 行们,
+        mineRows: 同一份 ? 行们 : 我的.map(一行),
       }}
     />
   );
