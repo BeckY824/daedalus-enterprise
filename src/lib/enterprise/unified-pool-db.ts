@@ -19,6 +19,7 @@ import { prisma, defaultClient } from "@/lib/prisma";
 import { 看全部, 现在的公海回避 } from "@/lib/team-scope";
 import { 包含模式 } from "@/lib/search-keyword";
 import { 分组数SQL, 取一段SQL, 键毫秒, type 客户行筛 } from "./unified-pool-sql";
+import { 缓存分组数 } from "./pool-count-cache";
 import { 公海客户原负责人是 } from "@/lib/owner-log-db";
 import { 看得到的客户, 露客户, 公海超时收回 } from "@/lib/project/db";
 import { 字典of, 本套位置 } from "@/lib/project/nodes";
@@ -365,7 +366,9 @@ async function 读公海页_库里分页(me: { id: string; name: string; role?: 
   const 筛: 客户行筛 = { 商机, 订单, 排掉, ...(词 ? { 词: { 名: 包含模式(词), 项目对上: 项目名对上 } } : {}), ...(sp.来源 ? { 来源: sp.来源 } : {}), ...(sp.号码不全 === "1" ? { 号码不全: true } : {}) };
   const 组 = await (async () => {
     const q = 分组数SQL(筛);
-    return (await prisma.$queryRawUnsafe<分组行[]>(q.sql, ...q.值)).map((r) => ({ 属性: r.属性 as 公海属性, 快捷: (r.快捷 as 快捷 | null) ?? null, 不全: Number(r.不全 ?? 0) === 1, n: Number(r.n) }));
+    // 没关键词时人人差不多是同一句（只差回避的那几位），短时缓存几秒（pool-count-cache.ts：键是整句 + 参数，写过库就作废）；带关键词的照常现数
+    const 数 = () => prisma.$queryRawUnsafe<分组行[]>(q.sql, ...q.值);
+    return (await (词 ? 数() : 缓存分组数(q.sql, q.值, 数))).map((r) => ({ 属性: r.属性 as 公海属性, 快捷: (r.快捷 as 快捷 | null) ?? null, 不全: Number(r.不全 ?? 0) === 1, n: Number(r.n) }));
   })();
   const 属性 = 规整公海属性(sp.属性);
   const 快捷 = 是快捷(sp.快捷) ? sp.快捷 : null;

@@ -43,6 +43,7 @@ import { 企业版 } from "./enterprise/switch";
 import { 去掉已删, 在看已删 } from "./enterprise/soft-delete-core";
 import { 市场相关客户 } from "./enterprise/market";
 import { 视图写拦, 会写库的SQL, 原文SQL } from "./enterprise/view-as";
+import { 记一次写库 } from "./enterprise/pool-count-cache";
 
 const 不限 = 全进程上下文<true>("看全部");
 
@@ -608,6 +609,12 @@ function 限定关联(model: string, args: 查询参数, 条件of: (model: strin
   return out;
 }
 
+/** 写库：前后各记一次写库版本（见 enterprise/pool-count-cache.ts） */
+function 写着<T>(fn: () => Promise<T>): Promise<T> {
+  记一次写库();
+  return fn().finally(记一次写库);
+}
+
 /** 只读的那几种（查、数、聚合、分组）：「不在公海」化简只用在这些上，改 / 删照原样 */
 const 读操作 = new Set(["findUnique", "findUniqueOrThrow", "findFirst", "findFirstOrThrow", "findMany", "count", "aggregate", "groupBy"]);
 const 写操作 = new Set(["create", "createMany", "createManyAndReturn", "update", "updateMany", "updateManyAndReturn", "upsert", "delete", "deleteMany"]);
@@ -673,22 +680,24 @@ export function 加上限定(db: PrismaClient): PrismaClient {
       async $executeRaw({ args, query }) {
         if (企业版()) await 视图拦("$executeRaw");
         if (企业版()) await 只读拦(db);
-        return query(args);
+        return 写着(() => query(args));
       },
       async $executeRawUnsafe({ args, query }) {
         if (企业版()) await 视图拦("$executeRawUnsafe");
         if (企业版()) await 只读拦(db);
-        return query(args);
+        return 写着(() => query(args));
       },
       async $queryRaw({ args, query }) {
-        if (企业版() && 会写库的SQL(原文SQL(args))) await 视图拦("$queryRaw");
-        if (企业版() && 会写库的SQL(原文SQL(args))) await 只读拦(db);
-        return query(args);
+        const 写 = 会写库的SQL(原文SQL(args));
+        if (企业版() && 写) await 视图拦("$queryRaw");
+        if (企业版() && 写) await 只读拦(db);
+        return 写 ? 写着(() => query(args)) : query(args);
       },
       async $queryRawUnsafe({ args, query }) {
-        if (企业版() && 会写库的SQL(原文SQL(args))) await 视图拦("$queryRawUnsafe");
-        if (企业版() && 会写库的SQL(原文SQL(args))) await 只读拦(db);
-        return query(args);
+        const 写 = 会写库的SQL(原文SQL(args));
+        if (企业版() && 写) await 视图拦("$queryRawUnsafe");
+        if (企业版() && 写) await 只读拦(db);
+        return 写 ? 写着(() => query(args)) : query(args);
       },
       $allModels: {
         async $allOperations({ model, operation, args: 原参数, query }) {
@@ -697,16 +706,19 @@ export function 加上限定(db: PrismaClient): PrismaClient {
           // 企业版管理员（admin，11-01）：看全部、任何写都拒——客户、项目、线索、沟通、待办、卡点、设置、分配、删除、导入都走这里
           if (写操作.has(operation) && 企业版()) await 只读拦(db, model);
           if (写操作.has(operation)) 改完推一下();
+          // 写库版本前后各加一次（公海分组计数的短时缓存认它作废，enterprise/pool-count-cache.ts）：写着的时候开始读、读到旧数的那份也作废
+          if (写操作.has(operation)) 记一次写库();
           // 企业版软删（P9）：回收站里的统一滤掉，比业务员范围先算（老板也看不到删了的，除非在 看已删() 里）
           const args = (企业版() && !在看已删() ? 去掉已删(model, operation, 原参数) : 原参数) as typeof 原参数;
           const { 我, 互看, 别人的, 读, 全拦, 话, 线索全看, 线索圈, 市场, 按线, 公海回避, 组员客户, 市场全看 } = await 现在的限定(db);
           if (!我) {
-            if (!公海回避) return query(args);
+            if (!公海回避) return 写操作.has(operation) ? query(args).finally(记一次写库) : query(args);
             // 规则关着（别人都不限定）：只加原负责人回避这一段，读写都挡
             const 条件of = (m: string) => 只回避条件(m, 公海回避);
             const a = 限定关联(model, (args ?? {}) as 查询参数, 条件of);
             const 条件 = 限定的操作.has(operation) ? (读操作.has(operation) && 限在非公海(a.where) ? 只回避条件(model, 公海回避, true) : 条件of(model)) : null;
-            return query((条件 ? { ...a, where: 并限定(a.where, 条件) } : a) as typeof args);
+            const q0 = query((条件 ? { ...a, where: 并限定(a.where, 条件) } : a) as typeof args);
+            return 写操作.has(operation) ? q0.finally(记一次写库) : q0;
           }
           // 有只读的客户：团队版互看、企业版虚线下属、市场成员相关（10-31）。读谁 / 读互看 = 查、数、带出来的关联按哪个范围放开
           const 有只读 = 互看 || !!读 || !!市场 || !!市场全看 || 别人的.size > 0;
@@ -723,7 +735,8 @@ export function 加上限定(db: PrismaClient): PrismaClient {
           const 线索放 = 线索全看 && model === "Lead";
           const 条件 = !限定的操作.has(operation) ? null : 线索放 ? (线索圈 ? { OR: [{ ownerId: null }, { ownerId: { in: [...线索圈] } }] } : null) : 写操作.has(operation) ? 限定条件(model, 我, false, undefined, undefined, 公海回避) : 限定条件(model, 读谁, 读互看, 市场, 按线, 公海回避, 组员客户, 市场全看, model === "Customer" && 限在非公海(a.where));
           // 原来的 where 原样摊开、条件并进 AND：findUnique / update / delete 要求唯一键留在最外层
-          const q = query((条件 ? { ...a, where: 并限定(a.where, 条件) } : a) as typeof args);
+          const q0 = query((条件 ? { ...a, where: 并限定(a.where, 条件) } : a) as typeof args);
+          const q = 写操作.has(operation) ? q0.finally(记一次写库) : q0;
           if (!有只读 || !条件 || !单条改删.has(operation)) return q;
           try {
             return await q;
