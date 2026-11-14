@@ -22,6 +22,7 @@ import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判
 import { 公海按线拦 } from "@/lib/enterprise/pool-line-guard";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 软删一条 } from "@/lib/enterprise/soft-delete";
+import { 按主键取没删的 } from "@/lib/enterprise/soft-delete-core";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 挡改设置 } from "@/lib/enterprise/edit-perm";
 import { 选的原因, 认跟进方式 } from "@/lib/enterprise/dict";
@@ -138,13 +139,15 @@ export function 露客户(me: { id: string }, p: { customerId: string; ownerId: 
 
 /**
  * 这批客户里当前这位看得到哪几个：走带限定的客户端查一遍，限定层说了算，这里不另写一套规矩。
- * 限定层的条件带否定，名单过 999 个 Prisma 拆不了批（P2029），所以自己一批一批查；db 可能是事务，不并行
+ * 限定层的条件带否定，名单过 999 个 Prisma 拆不了批（P2029），所以自己一批一批查；db 可能是事务，不并行。
+ * 按主键取（11-14 体验优化）：带着顶层 deletedAt IS NULL 时，id 超过 4 个 SQLite 放着主键不走、顺 deletedAt 索引扫 8.5 万位
+ * （跟进计划页销售管理那句 180–445 ms），「没删」挪到内存里滤，限定层照样加，见 按主键取没删的；统一公海 unified-pool-db 同一写法
  */
 export async function 看得到的客户(customerIds: string[], db: Pick<Prisma.TransactionClient, "customer"> = prisma): Promise<Set<string>> {
   const ids = [...new Set(customerIds)];
   const 看得到 = new Set<string>();
   for (let i = 0; i < ids.length; i += 一批id数) {
-    const rows = await db.customer.findMany({ where: { id: { in: ids.slice(i, i + 一批id数) } }, select: { id: true } });
+    const rows = await 按主键取没删的(() => db.customer.findMany({ where: { id: { in: ids.slice(i, i + 一批id数) } }, select: { id: true, deletedAt: true } }));
     for (const r of rows) 看得到.add(r.id);
   }
   return 看得到;
