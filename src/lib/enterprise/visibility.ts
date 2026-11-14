@@ -22,7 +22,7 @@ import { 全进程上下文 } from "@/lib/process-als";
 import { jwtVerify } from "jose";
 import type { PrismaClient } from "@/generated/prisma";
 import { readSecret } from "@/lib/secret";
-import { 看得到, 组员的客户, type 限定, type 公海回避 } from "@/lib/team-scope";
+import { 看得到, type 限定, type 公海回避 } from "@/lib/team-scope";
 import { 回收站副手键, 只看某人键, 系统管理员标记键, 填组织设置, 建组织, 实线下属, 虚线下属, 管理员类别们of, type 组织 } from "./org-core";
 import { 按线范围of, 按线项目, 按线客户 } from "./line-viewer";
 import { 规则 } from "./rules";
@@ -221,10 +221,13 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
   // 自己负责的项目挂着的也不算只读（被指定为负责人才能编辑，在项目下记沟通）
   const 写 = 范围.写;
   const 组员只读 = new Set<string>();
-  const 组员的 = await db.customer.findMany({
-    where: 组员的客户({ in: [...(范围.读 ?? 写)] }),
-    select: { id: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, projects: { where: { deletedAt: null }, select: { ownerId: true } } },
-  });
+  const 组员编号 = await 组员客户编号(db, [...(范围.读 ?? 写)]);
+  const 组员的 = 组员编号.length
+    ? await db.customer.findMany({
+        where: { id: { in: 组员编号 } },
+        select: { id: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, projects: { where: { deletedAt: null }, select: { ownerId: true } } },
+      })
+    : [];
   for (const c of 组员的) {
     if (!看得到(c, 写) && !c.projects.some((p) => 写.includes(p.ownerId))) 组员只读.add(c.id);
   }
@@ -274,9 +277,24 @@ const 组员名单上限 = 300;
 
 /** 这几位以组员身份（点了同意）加入的项目挂着的客户编号（见 限定.组员客户）；一个都没有回 undefined，查询不多任何条件 */
 async function 组员客户of(db: PrismaClient, 人们: string[]): Promise<string[] | null | undefined> {
-  const 行 = await db.customer.findMany({ where: 组员的客户({ in: 人们 }), select: { id: true }, take: 组员名单上限 + 1 });
-  if (!行.length) return undefined;
-  return 行.length > 组员名单上限 ? null : 行.map((c) => c.id);
+  const 编号 = await 组员客户编号(db, 人们);
+  if (!编号.length) return undefined;
+  return 编号.length > 组员名单上限 ? null : 编号;
+}
+
+/**
+ * 点了同意的这几位所在的、没进回收站的项目挂着的客户编号（去重），= team-scope 组员的客户 那个条件挑出来的客户。
+ * 从项目成员出发（8.5 万客户提速第二轮，11-14）：原来写成 Customer WHERE EXISTS(Project … EXISTS(ProjectMember …))，
+ * SQLite 把 8.5 万位客户逐位套一遍子查询（19.6 ms，约 1/5 的请求都要算一次范围）；成员表只有几十行，走 userId 索引再按主键找项目，不到 0.1 ms。
+ * db 是底层客户端（不过软删扩展）：和原来那句一样，客户进没进回收站都算（项目挂的客户是外键，一定在）。tests/ent-member-scope-from-pm.test.ts 对拍
+ */
+export async function 组员客户编号(db: PrismaClient, 人们: string[]): Promise<string[]> {
+  if (!人们.length) return [];
+  const 行 = await db.projectMember.findMany({
+    where: { userId: { in: 人们 }, inviteStatus: "JOINED", project: { deletedAt: null } },
+    select: { project: { select: { customerId: true } } },
+  });
+  return [...new Set(行.map((r) => r.project.customerId))];
 }
 
 /** 回避名单的上限：再多 NOT IN 又长又慢、也怕碰 SQLite 参数上限（否定条件不能拆批），退回按关联写的条件 */

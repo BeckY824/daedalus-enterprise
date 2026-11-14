@@ -47,6 +47,7 @@ const 不用进容器: Record<string, string> = {
   NEXT_RUNTIME: "Next 自己设的（nodejs / edge），不是我们配的",
   CRM_READ_POOL: "企业版只读通道的关闭开关，只在企业版生效：企业版私有部署按需写在服务器的 .env 里，根目录各 compose 不开企业版、读了也不起作用",
   CRM_PRODUCT_NAME: "企业版界面上的产品名，只在企业版生效：企业版私有部署按需写在服务器的 .env 里，根目录各 compose 不开企业版、读了也不起作用",
+  CRM_POOL_CACHE_STATS: "企业版公海分组缓存的统计日志开关，默认关：压测时设成 1，每 30 秒打一行命中 / 未命中 / 作废次数，只数不改行为；不经 compose（lib/enterprise/pool-count-cache.ts）",
   CRM_HOME_CACHE: "企业版首页缓存的关闭开关，只在企业版生效：企业版私有部署按需写在服务器的 .env 里，根目录各 compose 不开企业版、读了也不起作用",
   CRM_SCOPED_SYNC: "范围同步灰度开关，默认关；须老板迁移流程验收、服务器备份及回退方案就绪后由运维显式加入 compose",
   CRM_SCOPED_SYNC_LEGACY_TEAMS: "范围同步开着时仍走旧协议的团队（回滚逃生口），默认空；需要时由运维和 CRM_SCOPED_SYNC 一起加入 compose",

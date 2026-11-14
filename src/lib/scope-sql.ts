@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 读的我, 有市场只读, 现在的公海回避, 现在的组员客户 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -46,7 +47,9 @@ async function 看得到的(): Promise<{ where: string; 参数: string[]; 名下
      * 回避的 NOT (负责人是他 AND 在公海) 在名下这一路恒真，不带；名单那段照带。tests/scope-sql-split.test.ts 逐个身份对拍拆前拆后
      */
     名下: {
-      where: `(c."salesOwnerId" IN (${占})${渠道.sql}${组员.sql}) AND c."deletedAt" IS NULL AND NOT EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id)${名单.sql}`,
+      // 带 OR（组员名单 / 渠道负责人）时 deletedAt 前加 +（第二轮 11-14）：不然没统计信息的 SQLite 嫌 OR 两段贵、改挑 deletedAt 索引扫整表（销售管理带组员 11–13 ms），
+      // 加了只能走 MULTI-INDEX OR 各取一段（<1 ms）。只按负责人的不加：那时 (salesOwnerId, deletedAt, …) 两列都用得上
+      where: `(c."salesOwnerId" IN (${占})${渠道.sql}${组员.sql}) AND ${组员.sql || 渠道.sql ? "+" : ""}c."deletedAt" IS NULL AND NOT EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id)${名单.sql}`,
       参数: [...们, ...渠道.参数, ...组员.参数, ...名单.参数],
     },
     回避: 避,
@@ -70,7 +73,14 @@ function 回避段(本人: string, 客户: string[]): { sql: string; 参数: str
 /** 看得到的客户一共几位（= prisma.customer.count()） */
 export async function 看得到的客户数(): Promise<number> {
   const 范围 = await 看得到的();
-  if (!范围) return prisma.customer.count();
+  if (!范围) {
+    // 不限定的人：一句数完（只走 deletedAt 索引）
+    if (!(await 读的我(defaultClient))) return prisma.customer.count();
+    // 限定了但裸 SQL 接不住的（看得到的() 只对这两种回 null：有市场只读、原负责人回避名单过上限）：照样拆两路（第二轮 11-14）——不在公海的走 Prisma，
+    // 限定层见到「不在公海」会去掉「OR 在公海」那支（team-scope 限在非公海）；公海那头 = 公海页签数。原来一句带 OR 整表扫，市场相关的人 50 ms
+    const [非公海, 公海] = await Promise.all([prisma.customer.count({ where: { pool: { is: null } } }), 看得到的公海数()]);
+    return 非公海 + 公海;
+  }
   // 名下（不在公海）+ 公海里看得到的（= 公海页签数，走主键、只减回避的那几位），两路不相交，相加就是原来那句的数
   const [[r], 公海] = await Promise.all([
     prisma.$queryRawUnsafe<{ n: bigint | number }[]>(`SELECT COUNT(*) AS n FROM "Customer" c WHERE ${范围.名下.where}`, ...范围.名下.参数),
@@ -94,9 +104,12 @@ export async function 未删公海数(): Promise<number> {
 
 /**
  * 这个人的「公海」页签数（= 公海列表条数）。不用回避的人就是 未删公海数（走主键，不 JOIN）；
- * 回避的人减掉他回避的那几位：负责人走 salesOwnerId 索引、名单走主键，只碰他自己那点行，不扫公海表。名单过上限走 Prisma
+ * 回避的人减掉他回避的那几位：负责人走 salesOwnerId 索引、名单走主键，只碰他自己那点行，不扫公海表。名单过上限走 Prisma。
+ * 一次渲染里只数一遍（React cache；第二轮 11-14：客户页的页签数和左栏角标里的看得到的客户数各数一遍）；Server Action、路由处理器里照常每次现数
  */
-export async function 看得到的公海数(): Promise<number> {
+export const 看得到的公海数 = cache(公海数现数);
+
+async function 公海数现数(): Promise<number> {
   const 回避 = await 现在的公海回避(defaultClient);
   if (!回避) return 未删公海数();
   if (回避.客户 === null) return prisma.customer.count({ where: { pool: { isNot: null } } });
