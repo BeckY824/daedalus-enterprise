@@ -6,6 +6,7 @@
  * 子渠道自己没填渠道属性的，带主渠道的（P-渠道-11，带主属性；只读时带出，不回写）。
  * 只有主渠道、一个子渠道都没有的（在售、启用）也各列一行占位（id =「main:主渠道 id」），选了它存的时候自动落成子渠道名留空的那条渠道。
  */
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import type { 可选渠道 } from "@/components/ChannelPicker";
 import { 可选渠道条件, 主渠道入口们, 来源选项列, 带主属性 } from "@/lib/enterprise/channel-main";
@@ -22,10 +23,14 @@ export async function 可选渠道们(选着?: string | null): Promise<可选渠
 }
 
 /** 列表「客户来源 / 渠道」筛选的选项：老客户、老项目还挂着停用的渠道，所以停用的也给（排在后面、标出来）；历史渠道照样能筛，标「（历史渠道）」 */
-export async function 渠道筛选选项(): Promise<{ value: string; label: string }[]> {
+/*
+  同一个请求里只取一次（React cache，11-15）：客户页看板视图里客户页筛选行、看板那块（lib/project/list.ts）各要一份，
+  原来两句 SQL、RSC 里两份一样的清单；同一个数组对象 RSC 只传一次
+*/
+export const 渠道筛选选项 = cache(async function 渠道筛选选项(): Promise<{ value: string; label: string }[]> {
   const 们 = await prisma.channel.findMany({
     select: { id: true, name: true, active: true, main: { select: { category: true } } },
     orderBy: [{ active: "desc" }, { name: "asc" }],
   });
   return 们.map((c) => ({ value: c.id, label: !c.active ? `${c.name}（已停用）` : 是历史渠道(c.main?.category) ? `${c.name}（历史渠道）` : c.name }));
-}
+});
