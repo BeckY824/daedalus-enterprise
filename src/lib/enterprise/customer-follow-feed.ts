@@ -84,7 +84,7 @@ export async function 跟进去处们(me: { id: string; role?: string }, custome
 /** 挂在这些项目上的跟进记在哪几位客户名下（去重）。从 FollowUpProject 出发走 projectId 索引、再按主键连跟进，只碰这几个项目的那几条 */
 async function 挂项目的客户们(ids: string[]): Promise<string[]> {
   const rows = await prisma.$queryRawUnsafe<{ c: string }[]>(
-    `SELECT DISTINCT f."customerId" AS c FROM "FollowUpProject" fp CROSS JOIN "FollowUp" f WHERE f.id = fp."followUpId" AND fp."projectId" IN (SELECT value FROM json_each(?))`,
+    `SELECT DISTINCT f."customerId" AS c FROM "FollowUpProject" lk CROSS JOIN "FollowUp" f WHERE f.id = lk."followUpId" AND lk."projectId" IN (SELECT value FROM json_each(?))`,
     JSON.stringify(ids),
   );
   return rows.map((r) => r.c);
