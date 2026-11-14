@@ -15,6 +15,7 @@ import { 客户筛选条件, 客户行字段, 成客户行, 客户金额分页, 
 import { 规整币种 } from "@/lib/currency";
 import { 号码藏着 } from "@/lib/search-keyword";
 import { 自动掉公海, 客户页签数 } from "@/lib/pool-db";
+import { 看得到的下拉值 } from "@/lib/scope-sql";
 import { getBusiness } from "@/lib/business";
 import { 读的我, 虚线只读的 } from "@/lib/team-scope";
 import { defaultClient } from "@/lib/prisma";
@@ -251,10 +252,11 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     行P,
     负责人候选(),
     可选渠道(),
-    // 下拉只要去重后的值：用 groupBy 在库里去重。Prisma 的 distinct 是整列拉回来在 JS 里去重，10 倍数据一次 50–60 ms（2026-10-25）
-    prisma.customer.groupBy({ by: ["grade"], where: { grade: { not: null } } }),
+    // 下拉只要去重后的值：用 groupBy 在库里去重。Prisma 的 distinct 是整列拉回来在 JS 里去重，10 倍数据一次 50–60 ms（2026-10-25）。
+    // 第三轮（11-14）起按这个人的范围进 60 秒的进程内缓存、写过库就作废（lib/scope-sql.ts 看得到的下拉值）
+    看得到的下拉值("grade"),
     // 国家筛选只给库里真有的（外贸，2026-10-05）：一百多个国家摆一长串，挑到的多半是 0 条
-    prisma.customerExtra.groupBy({ by: ["country"], where: { country: { not: null } }, orderBy: { country: "asc" } }),
+    看得到的下拉值("country"),
     号码脱敏器(),
     llmEnabled(),
     // 企业版「交接中」（D10）：等我确认 / 我发起的交接，客户页顶上一条。不是企业版不查、不放
@@ -294,7 +296,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   ]);
   const 三态开 = !!组织规则?.三态.开;
   // 业务配置里删掉了、库里还有人在用的职位：筛选下拉照样给（第 2 期 2b「删选项后老记录照样能筛」）
-  const 旧职位 = 用着的职位.map((c) => c.grade!.trim()).filter((g) => g && !b.grades.includes(g)).sort();
+  const 旧职位 = 用着的职位.map((g) => g.trim()).filter((g) => g && !b.grades.includes(g)).sort();
   // 团队有两个以上一级部门才摆「全部部门」（10-23：总管理默认看全公司，列表加部门筛选）；只有一个时等于没分部门
   const 编制 = 读团队()?.编制;
   const 部门选项 = 编制 && new Set(编制.部门.map((d) => d.top).filter(Boolean)).size >= 2
@@ -394,7 +396,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       公海里匹配={公海里匹配}
       aiEnabled={aiEnabled}
       旧职位={[...new Set(旧职位)]}
-      国家们={用着的国家.map((x) => x.country!).filter(Boolean)}
+      国家们={用着的国家.filter(Boolean)}
       项目概况={项目概况}
       {...await 仅项目行P.then((x) => (x ? { 仅项目行: x.行们, 仅项目超了: x.超了 } : {}))}
       三态标={三态标}

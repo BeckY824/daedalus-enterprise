@@ -34,7 +34,8 @@ import type { Prisma } from "@/generated/prisma";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 无负责人占位邮箱 } from "@/lib/pool";
-import { 看得到的客户数 } from "@/lib/scope-sql";
+import { 看得到的客户数, 看得到的跟进数, 看得到的下拉值 } from "@/lib/scope-sql";
+import { 测试里开公海分组缓存 } from "@/lib/enterprise/pool-count-cache";
 import { 限在非公海 } from "@/lib/team-scope";
 import { 客户筛选条件 } from "@/app/(app)/customers/query";
 
@@ -112,6 +113,15 @@ beforeAll(async () => {
   }
   // 回避人、多回避名下还各有几位不在公海的（名单那段在「客户」页签里照样要排）
   for (const 人 of [回避人, 多回避]) for (let k = 0; k < 3; k++) await raw.customer.create({ data: { name: `名下${人}${k}`, phone: `136${String(k).padStart(4, "0")}${人.length}111`, salesOwnerId: 人, createdAt: 日(3) } });
+  // 第三轮（11-14）：跟进（跟进数对拍）和国家（下拉对拍）。删了的客户下的跟进跟着进回收站（同删客户时连带）；另有几条自己删了的
+  const 全部 = await raw.customer.findMany({ select: { id: true, deletedAt: true }, orderBy: { id: "asc" } });
+  const 国家们 = ["中国", "丹麦", "乌干达", "Brazil", "日本"];
+  for (const [j, c] of 全部.entries()) {
+    for (let k = 0; k < 1 + (j % 3); k++) {
+      await raw.followUp.create({ data: { customerId: c.id, type: k % 2 ? "VISIT" : "PHONE", ownerId: 负责人们[(j + k) % 负责人们.length], title: "跟进", content: "跟进", occurredAt: 日(1 + k), deletedAt: c.deletedAt ?? (j % 11 === 0 && k === 0 ? 日(8) : null) } });
+    }
+    if (j % 3 === 0) await raw.customerExtra.create({ data: { customerId: c.id, country: 国家们[j % 国家们.length] } });
+  }
 });
 
 beforeEach(() => 忘掉企业版范围());
@@ -187,6 +197,12 @@ async function 对拍(谁: string): Promise<boolean> {
     }
     // 看得到的客户数：改前（裸 SQL 接不住时）就是 prisma.customer.count()
     expect({ 谁, n: await 看得到的客户数() }).toEqual({ 谁, n: await db.customer.count() });
+    // 第三轮（11-14）：跟进数拆两路（市场相关、回避名单过上限的也拆）= Prisma 老路；下拉值 = 原来那两句 groupBy
+    for (const 筛 of [{}, { type: "PHONE" }, { ownerId: 小王 }, { type: "VISIT", ownerId: 经理 }]) {
+      expect({ 谁, 筛, n: await 看得到的跟进数(筛) }).toEqual({ 谁, 筛, n: await db.followUp.count({ where: 筛 }) });
+    }
+    expect({ 谁, grade: [...(await 看得到的下拉值("grade"))].sort() }).toEqual({ 谁, grade: (await db.customer.groupBy({ by: ["grade"], where: { grade: { not: null } } })).map((g) => g.grade!).sort() });
+    expect({ 谁, country: await 看得到的下拉值("country") }).toEqual({ 谁, country: (await db.customerExtra.groupBy({ by: ["country"], where: { country: { not: null } }, orderBy: { country: "asc" } })).map((g) => g.country!) });
     // grade 下拉（不带公海条件，范围里公海那支照带）：不受影响，只是顺手核一遍和没限定的子集关系
     const 下拉 = (await db.customer.groupBy({ by: ["grade"], where: { grade: { not: null } } })).map((g) => g.grade);
     expect(下拉.length).toBeGreaterThan(0);
@@ -236,5 +252,44 @@ describe("不在公海的客户查询去掉「OR 在公海」：改前改后逐�
     await 全对拍();
     await 设组员(4);
     await 全对拍();
+  });
+
+  it("下拉值、公海跟进数开着缓存（第三轮 11-14）：每个身份拿到的都是自己范围的；写过库就作废", async () => {
+    await 开规则(true);
+    await 设组员(4);
+    // 只有外人名下（不在公海）的一位有的国家：看得到外人的人下拉里才有
+    const 外人独有 = await raw.customer.findFirstOrThrow({ where: { salesOwnerId: 外人, deletedAt: null, pool: null, extra: null }, select: { id: true } });
+    await raw.customerExtra.create({ data: { customerId: 外人独有.id, country: "冰川国" } });
+    测试里开公海分组缓存(true);
+    try {
+      // 先把每个人的都算一遍进缓存，再逐个对：串了范围的话后面的人会拿到前面的人的
+      for (const 谁 of 谁们) { 忘掉企业版范围(); await 以谁的身份(谁, async () => { await 看得到的下拉值("country"); await 看得到的下拉值("grade"); await 看得到的跟进数({}); }); }
+      const 各自 = new Map<string, string>();
+      for (const 谁 of 谁们) {
+        忘掉企业版范围();
+        await 以谁的身份(谁, async () => {
+          const 国 = await 看得到的下拉值("country");
+          expect({ 谁, 国 }).toEqual({ 谁, 国: (await db.customerExtra.groupBy({ by: ["country"], where: { country: { not: null } }, orderBy: { country: "asc" } })).map((g) => g.country!) });
+          expect({ 谁, n: await 看得到的跟进数({}) }).toEqual({ 谁, n: await db.followUp.count() });
+          各自.set(谁, 国.join(","));
+        });
+      }
+      // 确实有人范围不同、拿到的不同（不然上面那条测不出串数据）
+      expect(各自.get(外人)).toContain("冰川国");
+      expect(各自.get(小王)).not.toContain("冰川国");
+      // 经限定层写一笔：作废，新国家马上出现
+      await 以谁的身份(系管, async () => {
+        const 前 = await 看得到的下拉值("country");
+        const c = await raw.customer.findFirstOrThrow({ where: { deletedAt: null, extra: null }, select: { id: true } });
+        await db.customerExtra.create({ data: { customerId: c.id, country: "冰岛" } });
+        const 后 = await 看得到的下拉值("country");
+        expect(前).not.toContain("冰岛");
+        expect(后).toContain("冰岛");
+        await raw.customerExtra.delete({ where: { customerId: c.id } });
+      });
+    } finally {
+      测试里开公海分组缓存(false);
+      await raw.customerExtra.delete({ where: { customerId: 外人独有.id } });
+    }
   });
 });

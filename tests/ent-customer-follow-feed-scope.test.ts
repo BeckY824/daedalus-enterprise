@@ -29,10 +29,12 @@ vi.mock("@/lib/prisma", async () => {
   return { prisma: 加上限定(raw), defaultClient: raw };
 });
 
-import { defaultClient as raw } from "@/lib/prisma";
+import { defaultClient as raw, prisma } from "@/lib/prisma";
+import { 看全部 } from "@/lib/team-scope";
+import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
-import { 客户沟通汇总, 跟进去处们, 汇总每页 } from "@/lib/enterprise/customer-follow-feed";
+import { 客户沟通汇总, 跟进去处们, 汇总每页, 汇总的项目 } from "@/lib/enterprise/customer-follow-feed";
 
 const 销售A = "cfeed_a";
 const 销售B = "cfeed_b";
@@ -173,5 +175,53 @@ describe("删了的项目：沟通照旧留在客户下（11-03 C2-2）", () => 
     const 再 = await 以谁的身份(老板, () => 客户沟通汇总(老板我, 甲));
     expect(标题们(再.rows)).not.toContain("乙删项目的沟通");
     expect(标题们(再.rows)).toContain("要删项目的沟通");
+  });
+});
+
+/**
+ * 8.5 万客户提速第三轮（11-14）：时间线按「记在哪位客户名下」拆成几句各取一页再合。
+ * 拿原来那一句（三段 OR、一次排序截取）当对照，逐身份逐页比：每页的 id、顺序、hasMore 都一样。
+ * 造的数据专挑合并容易错的：两位客户名下的沟通时间交错、同一分钟好几条（按 id 接着排）、比一页多、删了的项目也有
+ */
+describe("时间线拆句前后一样（第三轮 11-14）", () => {
+  async function 原来那句(me: { id: string }, customerId: string, before?: { occurredAt: string; id: string }) {
+    const 项目们 = await 汇总的项目(me, customerId);
+    const ids = [...项目们.keys()];
+    const 删了的 = (await 看全部(() => 看已删(() => prisma.project.findMany({ where: { customerId, deletedAt: { not: null } }, select: { id: true } })))).map((p) => p.id);
+    const 范围 = { OR: [
+      { customerId, projectNode: null },
+      ...(ids.length ? [{ projectNode: { projectId: { in: ids } } }] : []),
+      ...(删了的.length ? [{ customerId, projectNode: { projectId: { in: 删了的 } } }] : []),
+    ] };
+    const rows = await 看全部(() => prisma.followUp.findMany({
+      where: { AND: [范围, ...(before ? [{ OR: [{ occurredAt: { lt: new Date(before.occurredAt) } }, { occurredAt: new Date(before.occurredAt), id: { lt: before.id } }] }] : [])] },
+      orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take: 汇总每页 + 1, select: { id: true, occurredAt: true },
+    }));
+    return { ids: rows.slice(0, 汇总每页).map((r) => r.id), hasMore: rows.length > 汇总每页 };
+  }
+
+  it("A、B、老板看甲：每一页都和原来那一句一样", async () => {
+    // 乙名下、挂在 A 负责的关联项目上的（A 看得到）和甲名下的交错；同一分钟三四条
+    for (let i = 0; i < 40; i++) await 记(乙, 销售A, `交错乙${i}`, 2000 + Math.floor(i / 4), A的关联项目);
+    for (let i = 0; i < 40; i++) await 记(甲, 销售A, `交错甲${i}`, 2000 + Math.floor(i / 3), i % 3 ? undefined : A的项目);
+    // B 的项目上（只有 B、老板看得到）
+    for (let i = 0; i < 12; i++) await 记(乙, 销售B, `交错B${i}`, 2001 + i, B的项目);
+    const 删的 = (await raw.project.create({ data: { name: "QA-拆句删的", customerId: 甲, ownerId: 销售A, creatorId: 销售A } })).id;
+    for (let i = 0; i < 5; i++) await 记(甲, 销售A, `删的${i}`, 2003, 删的);
+    await raw.project.update({ where: { id: 删的 }, data: { deletedAt: new Date() } });
+    for (const [谁, 我] of [[销售A, A], [销售B, B], [老板, 老板我]] as const) {
+      let before: { occurredAt: string; id: string } | undefined;
+      let 页数 = 0;
+      for (;;) {
+        const 新 = await 以谁的身份(谁, () => 客户沟通汇总(我, 甲, before));
+        const 旧 = await 以谁的身份(谁, () => 原来那句(我, 甲, before));
+        expect({ 谁, 页数, ids: 新.rows.map((r) => r.id), hasMore: 新.hasMore }).toEqual({ 谁, 页数, ids: 旧.ids, hasMore: 旧.hasMore });
+        页数++;
+        if (!新.hasMore) break;
+        const 末 = 新.rows[新.rows.length - 1];
+        before = { occurredAt: 末.occurredAt, id: 末.id };
+      }
+      expect(页数).toBeGreaterThan(1);
+    }
   });
 });

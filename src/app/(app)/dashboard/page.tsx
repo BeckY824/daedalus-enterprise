@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { 可选渠道条件, 主渠道入口们 } from "@/lib/enterprise/channel-main";
 import { 渠道触点们 } from "@/lib/enterprise/touchpoint";
 import { requireUser } from "@/lib/auth";
-import { 自动掉公海 } from "@/lib/pool-db";
+import { 自动掉公海, 客户总数 } from "@/lib/pool-db";
 import { 公海超时收回 } from "@/lib/project/db";
 import { llmEnabled, listModelOptions } from "@/lib/llm";
 import { 唯一负责人, 负责人候选 } from "@/lib/owners";
@@ -75,7 +75,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       **一条业务数据都没有**的时候，第一次打开的人最需要的是一个起点——所以空库时不论配没配 AI，
       首页都是那张「开始」卡。配了 AI 的那条路在 HomeChat 里做同样的判断。
     */
-    const 学员数 = await prisma.customer.count();
+    // 看得到的客户数（= prisma.customer.count()）：限定了的人拆两路数，不带「OR 在公海」整表扫（第三轮 11-14，lib/scope-sql.ts）
+    const 学员数 = await 客户总数();
     if (学员数 === 0 && (await 数线索(只用项目)) === 0) {
       // StartCard 自带那句「欢迎使用 <产品名>」，这里不再叠一个页头
       return <StartCard 自己服务器={自己服务器()} 去导入={await 去导入(user)} 企业版={企业版()} 产品名={自定产品名() ?? undefined} />;
@@ -95,7 +96,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     const 企 = 企业版();
     const [models, 学员数, 线索数, myPlans, 没做完的待办, 卡, 渠道, 规则, 候选, 分配] = await Promise.all([
       listModelOptions(),
-      prisma.customer.count(),
+      客户总数(),
       数新线索(),
       prisma.followPlan.count({ where: { ownerId: user.id, done: false } }),
       prisma.task.count({ where: { ownerId: user.id, done: false } }),
@@ -158,7 +159,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     prisma.customer.count({ where: { followStatus: "意向较高", pool: { is: null } } }),
     // 取行按币种合计（不换汇）：币种在 ContractMoney 上，aggregate 分不了
     prisma.contract.findMany({ select: { amount: true, ...带币种.签约 }, where: { signedAt: { gte: now.startOf("month").toDate(), lt: now.add(1, "month").startOf("month").toDate(), lte: now.toDate() } } }),
-    prisma.customer.count(),
+    客户总数(),
     数线索(只用项目),
   ]);
 

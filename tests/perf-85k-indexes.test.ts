@@ -3,6 +3,7 @@
  * 计划这几条是先写的：没有这几个索引时 SQLite（没统计信息）会挑 deletedAt 索引再整表排序、号码搜索每行现算 20 层 replace。
  * 「Prisma 实际发出的语句」那组拿另开的、记 query 日志的客户端截下真句子再 EXPLAIN：(deletedAt, createdAt, id)、(deletedAt, occurredAt)
  * 会把「按负责人筛」「跟进按类型筛」带去顺着扫再挑（审查 11-14），两条带等值列打头的索引把它们拉回来，这里钉住。
+ * 第三轮（11-14）没加索引，改的是写法：客户详情时间线、跟进数，计划在下面「第三轮」那组钉着。
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import fs from "node:fs";
@@ -15,7 +16,7 @@ import { 号键SQL, 号键索引名 } from "@/lib/phone-dedupe";
 import { 号键 } from "@/lib/phone";
 import { 包含模式, 客户号码SQL, 客户关键词SQL } from "@/lib/search-keyword";
 import { PrismaClient } from "@/generated/prisma";
-import { 加上限定 } from "@/lib/team-scope";
+import { 加上限定, 看全部 } from "@/lib/team-scope";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 客户筛选条件 } from "@/app/(app)/customers/query";
@@ -214,6 +215,54 @@ describe("查询计划：Prisma 实际发出的语句", () => {
     const 直推 = await 真计划(总管理, "Customer", 客户页({ directOf: "ch-x" }));
     expect(直推.sql).toContain("`referrerCustomerId` IS NULL");
     expect(直推.计划).toContain("Customer_deletedAt_createdAt_id_idx");
+  });
+});
+
+describe("查询计划：第三轮（11-14）客户详情时间线、跟进数", () => {
+  const 截 = new PrismaClient({ datasourceUrl: `${process.env.DATABASE_URL}?connection_limit=1`, log: [{ emit: "event", level: "query" }] });
+  const 句们: { query: string; params: string }[] = [];
+  (截 as unknown as { $on: (e: "query", f: (q: { query: string; params: string }) => void) => void }).$on("query", (q) => 句们.push(q));
+  const 限 = 加上限定(截);
+  afterAll(async () => {
+    delete process.env.CRM_ENTERPRISE;
+    忘掉企业版范围();
+    await 截.$disconnect();
+  });
+  async function 跟进计划(fn: () => Promise<unknown>): Promise<{ sql: string; 计划: string }> {
+    process.env.CRM_ENTERPRISE = "1";
+    忘掉企业版范围();
+    句们.length = 0;
+    await 看全部(fn);
+    const 主 = 句们.filter((q) => q.query.startsWith("SELECT") && q.query.includes("FROM `main`.`FollowUp`")).at(-1)!;
+    return { sql: 主.query, 计划: await 计划(主.query, ...JSON.parse(主.params)) };
+  }
+  const 序 = [{ occurredAt: "desc" as const }, { id: "desc" as const }];
+  const 取 = (where: object) => () => 限.followUp.findMany({ where, orderBy: 序, take: 51, select: { id: true } });
+
+  it("时间线（lib/enterprise/customer-follow-feed.ts）：拆成每句带 customerId = ?，走 (customerId, occurredAt)；原来三段 OR 那句被 (deletedAt, occurredAt) 抢走", async () => {
+    // 原来那句：这条红了说明 SQLite 选法变了，拆句的理由要重看
+    const 旧 = await 跟进计划(取({ OR: [{ customerId: "c1", projectNode: null }, { projectNode: { projectId: { in: ["p1", "p2"] } } }] }));
+    expect(旧.计划).toContain("FollowUp_deletedAt_occurredAt_idx");
+    for (const where of [
+      { AND: [{ customerId: "c1" }, { projectNode: null }] },
+      { AND: [{ customerId: "c1" }, { OR: [{ projectNode: null }, { projectNode: { projectId: { in: ["p1", "p2"] } } }] }] },
+      { AND: [{ customerId: "c2" }, { projectNode: { projectId: { in: ["p1"] } } }, { OR: [{ occurredAt: { lt: new Date() } }, { occurredAt: new Date(), id: { lt: "x" } }] }] },
+    ]) {
+      const 新 = await 跟进计划(取(where));
+      expect(新.sql).toContain("`customerId` = ?");
+      expect(新.计划).toContain("FollowUp_customerId_occurredAt_idx");
+      expect(新.计划).not.toContain("FollowUp_deletedAt_occurredAt_idx");
+    }
+  });
+
+  it("跟进数（lib/scope-sql.ts）：名下按 customerId 编号数、公海全部从公海表出发、回避的那几位走负责人 / 主键，都不碰 (deletedAt, occurredAt)", async () => {
+    const 名下 = await 计划(`SELECT COUNT(*) AS n FROM "FollowUp" f WHERE f."customerId" IN (SELECT value FROM json_each(?)) AND +f."deletedAt" IS NULL AND +f."type" = ? AND +f."ownerId" = ?`, JSON.stringify(["a", "b"]), "PHONE", "u");
+    expect(名下).toMatch(/FollowUp_customerId_/);
+    expect(名下).not.toContain("FollowUp_deletedAt_occurredAt_idx");
+    const 回避的 = await 计划(`SELECT COUNT(*) AS n FROM "FollowUp" f WHERE f."customerId" IN (SELECT c.id FROM "Customer" c WHERE c."deletedAt" IS NULL AND (c."salesOwnerId" = ? OR c.id IN (?)) AND c.id IN (SELECT "customerId" FROM "CustomerPool")) AND +f."deletedAt" IS NULL AND +f."type" = ?`, "u", "c", "PHONE");
+    expect(回避的).toMatch(/FollowUp_customerId_/);
+    expect(回避的).toContain("Customer_salesOwnerId_deletedAt_createdAt_id_idx");
+    expect(回避的).not.toContain("FollowUp_deletedAt_occurredAt_idx");
   });
 });
 

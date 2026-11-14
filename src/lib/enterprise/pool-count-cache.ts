@@ -17,7 +17,7 @@
 import { multiTenant } from "@/lib/tenant/context";
 
 const 存活毫秒 = 3000;
-const 最多几条 = 64;
+const 最多几条 = 256;
 
 type 项 = { 到: number; 版本: number; 值: Promise<unknown> };
 type 统计 = { 命中: number; 未命中: number; 作废: number };
@@ -61,8 +61,12 @@ function 开着(): boolean {
   return true;
 }
 
-/** 按 SQL + 参数缓存一句只读查询的结果，存活 存活毫秒、写过库就作废 */
-export function 缓存分组数<T>(sql: string, 值: readonly unknown[], 查: () => Promise<T>): Promise<T> {
+/**
+ * 按 SQL + 参数缓存一句只读查询的结果，存活 活多久 毫秒（默认 存活毫秒）、写过库就作废。
+ * 第三轮（11-14）起也给：跟进数公海那一路（scope-sql 公海跟进数，键 = 整句 + 参数）、客户页国家 / grade 下拉（scope-sql 看得到的下拉值，
+ * 键 = 列名 + 这个人读客户时限定层并进去的整句条件，活 60 秒）。键要把「结果取决于的全部输入」放进去，不同范围不会拿到同一份
+ */
+export function 缓存分组数<T>(sql: string, 值: readonly unknown[], 查: () => Promise<T>, 活多久 = 存活毫秒): Promise<T> {
   if (!开着()) return 查();
   const 键 = JSON.stringify([sql, 值]);
   const 现 = Date.now();
@@ -80,7 +84,7 @@ export function 缓存分组数<T>(sql: string, 值: readonly unknown[], 查: ()
     if (表().size >= 最多几条) 表().clear();
   }
   const p = 查();
-  表().set(键, { 到: 现 + 存活毫秒, 版本, 值: p });
+  表().set(键, { 到: 现 + 活多久, 版本, 值: p });
   // 出错的不留：下一次照常重查
   p.catch(() => {
     if (表().get(键)?.值 === p) 表().delete(键);
