@@ -40,6 +40,7 @@ import AiFab from "./AiFab";
 import { 浮标显示 } from "@/lib/enterprise/ai-fab";
 import { usePageUnderOverlay } from "@/lib/page-under-overlay";
 import { 整页预取, 省流量 } from "@/lib/prefetch-full";
+import { 按设置筛, type 预热设置 } from "@/lib/nav-prewarm";
 import type { ModelOption } from "@/lib/llm";
 import FeedbackButton from "./FeedbackButton";
 import FeedbackReplyToast from "./feedback/FeedbackReplyToast";
@@ -120,6 +121,8 @@ type Props = {
   视图退出?: () => Promise<{ ok: true } | { ok: false; error: string }>;
   /** 正在以别人的视图查看：名 = 被看的人；null = 票还在但已失效。有它顶上就挂一条只读提示 */
   正在视图?: { 名: string | null; 身份?: string } | null;
+  /** 左栏空闲预热哪几页（服务端读 CRM_NAV_PREWARM，lib/nav-prewarm.ts）；不传 = 照旧全部 */
+  预热?: 预热设置;
   children: React.ReactNode;
 };
 
@@ -141,6 +144,8 @@ type Props = {
  */
 /** 面板常驻要的最小窗口宽度，见 AppShell 里 窄窗 那段 */
 const 面板放不下 = "(max-width: 1599px)";
+/** 手机宽度：没有图标栏和中栏，左栏也不空闲预热 */
+const 手机宽 = "(max-width: 767px)";
 
 /** 企业版六个根目录的图标（lib/enterprise/nav.ts 只管名字和去处，不碰界面） */
 const 根目录图标: Record<根目录图, React.ReactNode> = {
@@ -172,7 +177,7 @@ function 身份分组(名单: 演示组[], 前缀: "view" | "demo", 我: string)
   }));
 }
 
-export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = [], 计数 = {}, 要跟, desktop, 反馈去向, 企业版项目 = false, 企业版 = false, 通知未读, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, 全局搜索, 视图名单, 视图换人, 视图退出, 正在视图, children }: Props) {
+export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = [], 计数 = {}, 要跟, desktop, 反馈去向, 企业版项目 = false, 企业版 = false, 通知未读, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, 全局搜索, 视图名单, 视图换人, 视图退出, 正在视图, 预热 = "全部", children }: Props) {
   const { 曲线, 时长 } = useMotionTheme();
   const b = useBusiness();
   const modifier = useModifierKey();
@@ -185,7 +190,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
    * 手机上没有图标栏和中栏：390px 宽的屏幕摆不下三栏。
    * 顶部一条栏 + 一个菜单按钮，正文占满。
    */
-  const 小屏 = useNarrow("(max-width: 767px)");
+  const 小屏 = useNarrow(手机宽);
   /**
    * AI 面板开着没有。壳要知道，因为 antd 的响应式断点看的是**视口**，
    * 而面板一开正文就只剩 1440 - 220 - 380 ≈ 840——断点还以为自己有 1440，
@@ -340,15 +345,21 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
     所以空闲时先把这两页的界面组件 import 进来：打包出来就是同几个脚本文件（Turbopack 按模块分块，
     10-27 对过 client-reference-manifest），点下去只等数据。只下脚本，不碰服务器上的数据
   */
+  /*
+    预热哪几页可由部署配（CRM_NAV_PREWARM，lib/nav-prewarm.ts，11-15）：不设照旧全部，none 不预热，列表只取列出的。
+    手机宽度不预热（同 小屏）：手机从飞书点进来每次都是整页打开，每开一次服务器就白算五六页
+  */
   const 预热页 = useMemo(
-    () => [...nav.filter((n) => n.组 === "主").map((n) => n.key), ...(企业版项目 ? ["/leads"] : [])].join(" "),
-    [nav, 企业版项目],
+    () => 按设置筛([...nav.filter((n) => n.组 === "主").map((n) => n.key), ...(企业版项目 ? ["/leads"] : [])], 预热).join(" "),
+    [nav, 企业版项目, 预热],
   );
   useEffect(() => {
-    if (desktop || 省流量()) return;
+    if (desktop || 小屏 || 省流量()) return;
     const 要 = 预热页.split(" ").filter(Boolean);
-    // 当前这页已经在眼前，不用再取
+    // 当前这页已经在眼前，不用再取。界面脚本照旧先下（只是静态文件，不碰服务器上的数据），设成 none 也下
     const 取 = () => {
+      // 小屏水合时先按服务端的「不是手机」跑一遍，这里再按真宽度挡一次
+      if (window.matchMedia(手机宽).matches) return;
       要.filter((k) => location.pathname !== k).forEach((k) => 整页预取(router, k));
       void import("@/app/(app)/customers/[id]/RecordView").catch(() => {});
       if (要.includes("/projects")) void import("@/app/(app)/projects/[id]/ProjectDetail").catch(() => {});
@@ -360,7 +371,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
     }
     const t = setTimeout(取, 1200);
     return () => clearTimeout(t);
-  }, [desktop, 预热页, router]);
+  }, [desktop, 小屏, 预热页, router]);
 
   /*
     网页版的标签页标题跟着当前页走（「客户 · Daedalus CRM」）：浏览器里常开着好几个标签，只写产品名分不出哪个是哪个，

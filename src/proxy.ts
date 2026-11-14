@@ -5,6 +5,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 企业版跳转 } from "@/lib/enterprise/web-paths";
 import { 站内路径 } from "@/lib/safe-next";
 import { 视图只读话, 视图失效话 } from "@/lib/enterprise/view-as-words";
+import { 用户头 } from "@/lib/request-log-header";
 import { 视图挡写, 视图票判, 视图票名, 去掉视图票, proxy缓冲上限 } from "@/lib/enterprise/view-as-gate";
 
 /**
@@ -23,6 +24,9 @@ function readSecret(): string {
 const SECRET = new TextEncoder().encode(readSecret());
 
 const COOKIE = "crm_session";
+
+/** 慢请求日志开着（CRM_REQ_LOG=1）：把验过的用户 id 放进请求头给它记 */
+const 记请求 = process.env.CRM_REQ_LOG === "1";
 
 /** 与 lib/auth.ts 的 COOKIE_SECURE 一致（那边连着数据库，Edge 里引不进来） */
 const COOKIE_SECURE =
@@ -172,6 +176,14 @@ export async function proxy(request: NextRequest) {
    */
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-pathname", pathname);
+  /*
+    慢请求日志要记是谁（只记 id，lib/request-log.ts）：验过的会话票才放进来；客户端自己带的这个头一律覆盖或删掉。
+    只在开了日志时放，平时请求头和原来一样
+  */
+  if (记请求) {
+    if (typeof session?.sub === "string") requestHeaders.set(用户头, session.sub);
+    else requestHeaders.delete(用户头);
+  }
   if (坏视图票) requestHeaders.set("cookie", 去掉视图票(request.headers.get("cookie")));
   const res = NextResponse.next({ request: { headers: requestHeaders } });
   if (坏视图票) res.cookies.delete(视图票名);
