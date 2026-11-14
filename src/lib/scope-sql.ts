@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 读的我, 有市场只读, 现在的公海回避, 现在的组员客户 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -103,9 +104,12 @@ export async function 未删公海数(): Promise<number> {
 
 /**
  * 这个人的「公海」页签数（= 公海列表条数）。不用回避的人就是 未删公海数（走主键，不 JOIN）；
- * 回避的人减掉他回避的那几位：负责人走 salesOwnerId 索引、名单走主键，只碰他自己那点行，不扫公海表。名单过上限走 Prisma
+ * 回避的人减掉他回避的那几位：负责人走 salesOwnerId 索引、名单走主键，只碰他自己那点行，不扫公海表。名单过上限走 Prisma。
+ * 一次渲染里只数一遍（React cache；第二轮 11-14：客户页的页签数和左栏角标里的看得到的客户数各数一遍）；Server Action、路由处理器里照常每次现数
  */
-export async function 看得到的公海数(): Promise<number> {
+export const 看得到的公海数 = cache(公海数现数);
+
+async function 公海数现数(): Promise<number> {
   const 回避 = await 现在的公海回避(defaultClient);
   if (!回避) return 未删公海数();
   if (回避.客户 === null) return prisma.customer.count({ where: { pool: { isNot: null } } });

@@ -25,7 +25,7 @@ import { 能管公海, 能转出自己的, 能删除, 能新建和领取, 能放
 import { 公海别线的 } from "@/lib/enterprise/pool-line-guard";
 import { 摊平部门 } from "@/lib/sync/dept-policy";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
-import { 页面可选项, 页面字典, 页面客户释义 } from "@/lib/enterprise/dict";
+import { 页面可选项, 页面字典, 页面客户释义, 预读页面字典 } from "@/lib/enterprise/dict";
 import { 渠道筛选选项 } from "@/lib/enterprise/channel-options";
 import { 建档向导数据 } from "../projects/new/wizard-data";
 import { 客户状态色表 } from "@/lib/enterprise/cust-status-color";
@@ -241,6 +241,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     return 条件 ? 仅项目列表行们(me, 条件) : undefined;
   })();
   仅项目行P.catch(() => {});
+  // 这一屏要读的字典先说一声，合成两句（同客户详情，lib/enterprise/dict.ts 预读页面字典）：原来五类各读一遍，每类 2～4 句
+  if (企) 预读页面字典(["custStatus", "custAssign", "custType", "transfer", "custAttr"]);
   const [
     rows, users, channels, 用着的职位, 用着的国家,
     号, aiEnabled, 交接, 可导入导出, 只给自己, 客户状态选项, 分配方式选项, 客户类型选项, 只读ids, 转让选项, 直接推荐, 业务员,
