@@ -46,7 +46,9 @@ async function 看得到的(): Promise<{ where: string; 参数: string[]; 名下
      * 回避的 NOT (负责人是他 AND 在公海) 在名下这一路恒真，不带；名单那段照带。tests/scope-sql-split.test.ts 逐个身份对拍拆前拆后
      */
     名下: {
-      where: `(c."salesOwnerId" IN (${占})${渠道.sql}${组员.sql}) AND c."deletedAt" IS NULL AND NOT EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id)${名单.sql}`,
+      // 带 OR（组员名单 / 渠道负责人）时 deletedAt 前加 +（第二轮 11-14）：不然没统计信息的 SQLite 嫌 OR 两段贵、改挑 deletedAt 索引扫整表（销售管理带组员 11–13 ms），
+      // 加了只能走 MULTI-INDEX OR 各取一段（<1 ms）。只按负责人的不加：那时 (salesOwnerId, deletedAt, …) 两列都用得上
+      where: `(c."salesOwnerId" IN (${占})${渠道.sql}${组员.sql}) AND ${组员.sql || 渠道.sql ? "+" : ""}c."deletedAt" IS NULL AND NOT EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id)${名单.sql}`,
       参数: [...们, ...渠道.参数, ...组员.参数, ...名单.参数],
     },
     回避: 避,
