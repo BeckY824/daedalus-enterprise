@@ -227,7 +227,7 @@ async function 公海跟进数(筛: { type?: string; ownerId?: string }, 含删�
       ...他的.筛值,
     ),
   ]);
-  return n - Number(r.n);
+  return Math.max(0, n - Number(r.n));
 }
 
 /**
