@@ -121,13 +121,29 @@ const 截止前有 = (截止: Date) => ({ OR: [{ createdAt: { lte: 截止 } }, {
   保证不变：每批照旧整批算指纹，复核（校验完整导出）照旧整表重读、逐批比指纹和条数（改过、删过、旁表变了、权限范围变了都靠它拦）。
   指纹算法不变：逐行 JSON 用逗号拼、首尾方括号，正是 JSON.stringify(整批) 的原样字节，分段喂给 sha256 结果相同
 */
-const 导出队 = globalThis as unknown as { __完整导出队尾?: Promise<void> };
+const 导出队 = globalThis as unknown as { __完整导出队尾?: Promise<void>; __完整导出排队上限毫秒?: number };
+/**
+  排队最多等 60 秒：前端每一趟等 120 秒就报超时，排 60 秒 + 自己这趟的活还在 120 秒内。
+  等过上限（含前端已取消、已超时还挂在队里的那份）：不读库、不查权限、不记导出，报「导出繁忙，请稍后再试」；
+  自己这一格接在前一个后面放掉，后面排的照旧按顺序轮到，链不会断在一个永远不放行的格子上。
+  轮到以后、真正读库之前再查一次「要能导出」：排队期间权限被收回、账号被停用的，不读库（进队前那次照旧留着，快速拒绝）
+*/
+const 导出繁忙 = "导出繁忙，请稍后再试";
 async function 排队导出<T>(活: () => Promise<T>): Promise<T> {
+  const 上限 = 导出队.__完整导出排队上限毫秒 ?? 60_000; // 只有测试改它
   const 前一个 = 导出队.__完整导出队尾 ?? Promise.resolve();
   let 放行!: () => void;
   导出队.__完整导出队尾 = new Promise<void>((r) => { 放行 = r; });
-  await 前一个;
+  const 起 = Date.now();
+  let 计时: ReturnType<typeof setTimeout> | undefined;
+  const 轮到 = await Promise.race([前一个.then(() => true), new Promise<false>((r) => { 计时 = setTimeout(() => r(false), 上限); })]);
+  clearTimeout(计时);
+  if (!轮到 || Date.now() - 起 > 上限) {
+    void 前一个.then(放行);
+    throw new Error(导出繁忙);
+  }
   try {
+    await 要能导出();
     return await 活();
   } finally {
     放行();
