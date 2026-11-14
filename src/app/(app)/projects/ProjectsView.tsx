@@ -29,7 +29,7 @@ import { 未分级 } from "@/app/(app)/customers/query-shared";
 import { 级别星 } from "@/lib/enterprise/level-stars";
 import { 主渠道显示名, 渠道显示名 } from "@/lib/enterprise/channel-main-core";
 import { 回公海文案 } from "@/lib/enterprise/recycle-text";
-import { 卡片小字, type 项目行, type 看板一列 } from "@/lib/project/board";
+import { 卡片小字, type 项目行, type 看板一列, type 看板卡片 } from "@/lib/project/board";
 import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
 import { 换客户页看法, 市场视图名 } from "@/lib/customers-view-pref";
 import type { 看板列 } from "@/lib/project/nodes";
@@ -163,7 +163,7 @@ export default function ProjectsView({
    * 列底「再看 20 个」接着往后取（客户页 customers/board-actions.ts，别处 projects/board-actions.ts），看板底下不摆整页共用的翻页器。
    * 不给 = 照原来整页共用翻页（老调用方 / 测试）
    */
-  每列?: Record<string, 项目行[]>;
+  每列?: Record<string, 看板卡片[]>;
 }) {
   /** 客户详情合并（11-12 第 2 批）：企业版看得到客户的，项目在客户详情的项目区里，直接去那儿停在这个项目的页签；客户看不到的照旧进项目详情 */
   const 项目地址 = (r: 项目行) => (企业版 && r.customerId && r.customerName != null && !r.进不了客户详情 ? 客户页项目地址(r.customerId, r.id) : `/projects/${r.id}`);
@@ -236,7 +236,7 @@ export default function ProjectsView({
   // 记着是给哪一屏看板追加的（源）：筛选、刷新以后服务端给了新的一屏，追加的、加载中的都作废，回到每列前 20
   const 每列取数 = !!每列;
   // 代：第几屏（服务端每给一屏 +1）；回包晚到时比它，旧一屏的不盖新一屏
-  type 追加态 = { 源: 看板一列[]; 代: number; 们: Record<string, { 行: 项目行[]; 总: number }>; 点: Record<string, 三态标> };
+  type 追加态 = { 源: 看板一列[]; 代: number; 们: Record<string, { 行: 看板卡片[]; 总: number }>; 点: Record<string, 三态标> };
   const [追加原, set追加] = useState<追加态>({ 源: 看板, 代: 0, 们: {}, 点: {} });
   const 追加 = 追加原.源 === 看板 ? 追加原 : { 源: 看板, 代: 0, 们: {}, 点: {} };
   const [取中原, set取中] = useState<{ 源: 看板一列[]; 列: Record<string, boolean> }>({ 源: 看板, 列: {} });

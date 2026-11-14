@@ -1,7 +1,7 @@
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 搜索词, 客户号码条件, 号码藏着 } from "@/lib/search-keyword";
 import { 负责人候选 } from "@/lib/owners";
-import { 看板落列, 看板列键们, type 项目行, type 看板合计组 } from "./board";
+import { 看板落列, 看板列键们, type 项目行, type 看板合计组, type 看板卡片 } from "./board";
 import type { 阶段 } from "./nodes";
 import { 看得到的客户, 露客户, 公海超时收回, 待我回的邀请, 项目回收日, 算超时要的, 超时成员线 } from "./db";
 import { 即将回收 } from "./timeout";
@@ -472,7 +472,7 @@ async function 拼项目行(
  * 公海 / 即将回收、只看进度；列表才有的几列（回公海日、下一步时间、收回次数、预计成交、已立项天数、渠道、级别、验证结果、创建时间）不给。
  * 首屏一屏看板约 200 张卡片，这几样占卡片 JSON 的三四成。updatedAt 留着（不带 每列 时 看板分列 按它排）
  */
-export function 看板卡片版(r: 项目行): 项目行 {
+export function 看板卡片版(r: 项目行): 看板卡片 {
   const { 回收日: _a, 下一步时间: _b, 收回次数: _c, expectedDealAt: _d, 已立项天数: _e, 项目来源: _f, level: _g, 验证结果: _h, 验证全文: _i, createdAt: _j, ...卡 } = r;
   return 卡;
 }

@@ -21,6 +21,11 @@ it("卡片版：去掉列表才用的列，卡片画的字段原样", () => {
   for (const k of ["回收日", "下一步时间", "收回次数", "expectedDealAt", "已立项天数", "项目来源", "level", "验证结果", "验证全文", "createdAt"]) delete 留[k];
   expect(卡).toEqual(留);
   expect(卡片小字(卡)).toBe(卡片小字(全));
+  // 类型上卡片也没有这几列：卡片上读它们 tsc 报错（下面两行少了报错，tsc 就挂）
+  // @ts-expect-error 看板卡片没有 level
+  void 卡.level;
+  // @ts-expect-error 看板卡片没有 回收日
+  void 卡.回收日;
   // 不改原对象（列表页那几行和卡片是同一个对象时照旧给全的）
   expect(全.回收日).toBe("2026-11-16");
 });
