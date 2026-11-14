@@ -73,6 +73,84 @@ export function 包含模式(k: string): string {
   }).join("") + "*";
 }
 
+/* ---------------- 三字索引（迁移 141，2026-11-14） ----------------
+  8.6 万客户的库，原来每次搜索都对客户表、扩展资料表整表 GLOB '*词*'（号码搜索单句 60+ ms，名字 35 ms，是 SQL 耗时第 1 名）。
+  迁移 141 建了两张 FTS5 trigram 表（区分大小写），各列原样存一份，外加号键：CustomerSearch（客户本表那几列）、CustomerExtraSearch（扩展资料那几列）。
+  trigram 的短语查询 "abc…" = 同一列里连续出现这一串，和 GLOB '*abc…*' 是同一个意思，但走索引。只在结果一定一样时才换过去：
+    - 词（以及拿去比电话、官网的那一串）每串至少 3 个字：trigram 比不了 1、2 个字（两个字的中文名照旧整表 GLOB）；
+    - 每个字都没有大小写变体（汉字、数字、标点这类）：GLOB 那边是按 包含模式 的大小写等价类比的，区分大小写的索引替不了；
+    - 字符串是合法的 Unicode（没有落单的代理项）。
+  其余照旧走 GLOB。联系人、联系人号码子表两句不在索引里，原样不动。索引表不在（没跑迁移的库）也照旧走 GLOB
+*/
+
+/** 两张索引表都在。在了就记住（表只加不删）；不在每次再看一眼，迁移跑完不用重启就用上。托管版各库不同，不记 */
+let 三字索引在过 = false;
+/** 用例用：强制走 / 不走三字索引（undefined = 按库里有没有） */
+let 三字索引强制: boolean | undefined;
+export function 设三字索引(v: boolean | undefined) { 三字索引强制 = v; }
+
+async function 三字索引可用(): Promise<boolean> {
+  if (三字索引强制 !== undefined) return 三字索引强制;
+  if (三字索引在过) return true;
+  const rows = await prisma.$queryRawUnsafe<{ n: number | bigint }[]>(
+    `SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name IN ('CustomerSearch', 'CustomerExtraSearch')`,
+  );
+  const 在 = Number(rows[0]?.n ?? 0) === 2;
+  if (在 && process.env.MULTI_TENANT !== "1") 三字索引在过 = true;
+  return 在;
+}
+
+/** 这一串能交给三字索引：≥3 个字、没有一个字有大小写变体、合法 Unicode */
+export function 三字可比(s: string): boolean {
+  const 字 = [...s];
+  if (字.length < 3 || !s.isWellFormed()) return false;
+  const groups = 大小写等价组();
+  return 字.every((c) => !groups.has(c));
+}
+
+/** 别的字小写后会变出来的字（「İ」小写是 i + U+0307 这类）。名键必含字 排掉它们 */
+let 小写产物: Set<string> | undefined;
+function 小写变出来的字() {
+  if (小写产物) return 小写产物;
+  const s = new Set<string>();
+  for (let n = 0; n <= 0x10ffff; n++) {
+    const c = String.fromCodePoint(n);
+    const l = c.toLowerCase();
+    if (l !== c) for (const x of l) s.add(x);
+  }
+  小写产物 = s;
+  return s;
+}
+
+/**
+ * 客户名查重（名键 = 全角转半角 → 去空白 → 小写，enterprise-import/clean.ts）的必要条件：名键里这些字，原名里一定原样有。
+ * 只挑「稳定」的字：不是 ASCII（全角转半角只变出 ASCII）、不是空白、没有大小写变体、也不是别的字小写后变出来的——汉字基本都是。
+ * 名键等于 k 的原名，每个这种字都只能来自原名里的它自己，所以拿 instr 在库里先筛，不漏人。最多给 3 个；一个都没有返回空数组（调用方别筛）
+ */
+export function 名键必含字(k: string): string[] {
+  const groups = 大小写等价组(), 产物 = 小写变出来的字();
+  const 出: string[] = [];
+  for (const c of k) {
+    if (出.length >= 3) break;
+    if (c.codePointAt(0)! < 0x80 || /\s/.test(c) || !c.isWellFormed() || groups.has(c) || 产物.has(c) || 出.includes(c)) continue;
+    出.push(c);
+  }
+  return 出;
+}
+
+/** FTS5 短语：整串加双引号，里面的双引号写两个 */
+const 短语 = (s: string) => `"${s.replace(/"/g, '""')}"`;
+/** {列 列 …} : "串"，几段 OR 起来 */
+const 匹配式 = (段: [readonly string[], string][]) => 段.map(([列, s]) => `{${列.join(" ")}} : ${短语(s)}`).join(" OR ");
+
+/**
+ * 客户名在三字索引里比的条件（公海搜索用；词已是调用方规整过的，比法同 包含模式(词) 的 GLOB）。用不上返回 null，调用方照旧 GLOB
+ */
+export async function 客户名索引式(词: string): Promise<string | null> {
+  if (!三字可比(词) || !(await 三字索引可用())) return null;
+  return 匹配式([[["name"], 词]]);
+}
+
 /**
  * 企业版字段权限把电话设成「藏」的人，搜索也不按号码匹配（2026-10-26 Y27）。
  * 列表上号码打了码，可拿完整号码、前 7 位、后 4 位一搜还是能把人搜出来——等于从搜索框试出号码。
@@ -101,6 +179,12 @@ export function 客户id集合(ids: readonly string[]): Prisma.CustomerWhereInpu
 const 客户号键SQL = () => `c.rowid IN (SELECT x.rowid FROM "Customer" x WHERE ${号键SQL('x."phone"')} GLOB ?)`;
 
 /**
+ * 联系人电话按号键比：同 客户号键SQL，按 rowid 的子查询只读号键表达式索引（迁移 142 Contact_phoneKey_idx）里存好的值，
+ * 不在联系人表上一行行现算 20 层 replace（5.5 千联系人约 5 ms → 0.3 ms，11-14）。用在 t = Contact 的子查询里；索引没建上照样对
+ */
+const 联系人号键SQL = () => `t.rowid IN (SELECT x.rowid FROM "Contact" x WHERE ${号键SQL('x."phone"')} GLOB ?)`;
+
+/**
  * 联系人号码子表里能按号码搜的那几类（11-11）：手机号、WhatsApp。只算挂在联系人身上、联系人没删进回收站的（客户页上看得到的那些；
  * 客户本身挂在子表上、contactId 空的号页面上不显示，同退回公海查联系方式 return-contact-check.ts，不算）。值按号键比
  */
@@ -123,8 +207,16 @@ export async function 客户号码SQL(raw: unknown, userId?: string): Promise<{ 
   const phone = 号码片段(k);
   if (!phone) return { sql: "(0)", values: [] };
   const p = 包含模式(phone);
+  // 号码片段是 ≥3 位的纯数字，三字索引一定比得了（迁移 141）；客户电话、WhatsApp 两句换成索引里的号键列，联系人两句照旧
+  if (三字可比(phone) && (await 三字索引可用())) {
+    const m = 匹配式([[["phoneKey"], phone]]);
+    return {
+      sql: `(c.id IN (SELECT s.cid FROM "CustomerSearch" s WHERE "CustomerSearch" MATCH ?) OR c.id IN (SELECT s.cid FROM "CustomerExtraSearch" s WHERE "CustomerExtraSearch" MATCH ?) OR c.id IN (SELECT t."customerId" FROM "Contact" t WHERE t."deletedAt" IS NULL AND ${联系人号键SQL()}) OR ${联系人子表号SQL()})`,
+      values: [m, m, p, p],
+    };
+  }
   return {
-    sql: `(${客户号键SQL()} OR c.id IN (SELECT e."customerId" FROM "CustomerExtra" e WHERE ${号键SQL("e.whatsapp")} GLOB ?) OR c.id IN (SELECT t."customerId" FROM "Contact" t WHERE t."deletedAt" IS NULL AND ${号键SQL("t.phone")} GLOB ?) OR ${联系人子表号SQL()})`,
+    sql: `(${客户号键SQL()} OR c.id IN (SELECT e."customerId" FROM "CustomerExtra" e WHERE ${号键SQL("e.whatsapp")} GLOB ?) OR c.id IN (SELECT t."customerId" FROM "Contact" t WHERE t."deletedAt" IS NULL AND ${联系人号键SQL()}) OR ${联系人子表号SQL()})`,
     values: [p, p, p, p],
   };
 }
@@ -139,15 +231,43 @@ export async function 客户号码条件(raw: unknown, userId?: string): Promise
 
 /**
  * 关键词拼成一段 WHERE（客户表别名 c），只有内置列名进 SQL，值全部参数绑定；没关键词返回 null。
- * 客户关键词条件和列表页的 关键词分页（customers/query.ts）共用这一份，号码藏着（Y27）、Unicode 大小写规则都在这里
+ * 客户关键词条件和列表页的 关键词分页（customers/query.ts）共用这一份，号码藏着（Y27）、Unicode 大小写规则都在这里。
+ * 走索引 = 这一段全是 c.id IN (…)（三字索引）：调用方另带的 deletedAt IS NULL 要写成 +c."deletedAt"，不然 SQLite 顺 deletedAt 索引扫 8.6 万位、逐位查名单，
+ * 写成 + 才会从名单出发逐个按主键取（MULTI-INDEX OR，名字 11 → 1 ms）
  */
-export async function 客户关键词SQL(raw: unknown, onlyPicker = false, userId?: string): Promise<{ sql: string; values: string[] } | null> {
+export async function 客户关键词SQL(raw: unknown, onlyPicker = false, userId?: string): Promise<{ sql: string; values: string[]; 走索引?: true } | null> {
   const k = 搜索词(raw);
   if (!k) return null;
   const 藏号 = await 号码藏着(userId);
   const phone = 号码片段(k);
-  const pattern = 包含模式(k), phonePattern = 包含模式(phone ?? k), sitePattern = 包含模式(网址域名(k) ?? k);
+  const 站 = 网址域名(k) ?? k;
+  const pattern = 包含模式(k), phonePattern = 包含模式(phone ?? k), sitePattern = 包含模式(站);
   const fields = onlyPicker ? ["name", "school"] : ["name", "school", "major", "grade", "remark"];
+  // 三字索引（迁移 141）：用到的每一串都比得了才换，客户本表、扩展资料两句换成索引，联系人两句照旧；逐列和下面的 GLOB 一一对应
+  if (三字可比(k) && 三字可比(phone ?? k) && (onlyPicker || 三字可比(站)) && (await 三字索引可用())) {
+    const 本表: [readonly string[], string][] = [[fields, k]];
+    if (!藏号) {
+      本表.push([["phone"], phone ?? k]);
+      if (phone) 本表.push([["phoneKey"], phone]);
+    }
+    const parts = [`c.id IN (SELECT s.cid FROM "CustomerSearch" s WHERE "CustomerSearch" MATCH ?)`];
+    const values = [匹配式(本表)];
+    if (!onlyPicker) {
+      const 扩展: [readonly string[], string][] = [[["email", "wechat", "country", "alibabaId"], k], [["website"], 站]];
+      if (!藏号) {
+        扩展.push([["whatsapp"], k], [["whatsapp"], phone ?? k]);
+        if (phone) 扩展.push([["phoneKey"], phone]);
+      }
+      parts.push(`c.id IN (SELECT s.cid FROM "CustomerExtraSearch" s WHERE "CustomerExtraSearch" MATCH ?)`);
+      values.push(匹配式(扩展));
+      const 号键比 = !藏号 && phone;
+      const 号值 = 藏号 ? [] : [pattern, phonePattern];
+      parts.push(`c.id IN (SELECT t."customerId" FROM "Contact" t WHERE t."deletedAt" IS NULL AND (t.name GLOB ? OR ${藏号 ? "" : "t.phone GLOB ? OR t.phone GLOB ? OR "}${号键比 ? `${联系人号键SQL()} OR ` : ""}t.email GLOB ? OR t.wechat GLOB ?))`);
+      values.push(pattern, ...号值, ...(号键比 ? [phonePattern] : []), pattern, pattern);
+      if (号键比) { parts.push(联系人子表号SQL()); values.push(phonePattern); }
+    }
+    return { sql: `(${parts.join(" OR ")})`, values, 走索引: true };
+  }
   const parts = fields.map(c => `c."${c}" GLOB ?`);
   const values = fields.map(() => pattern);
   if (!藏号) {
@@ -165,7 +285,7 @@ export async function 客户关键词SQL(raw: unknown, onlyPicker = false, userI
     parts.push(`c.id IN (SELECT e."customerId" FROM "CustomerExtra" e WHERE ${藏号 ? "" : "e.whatsapp GLOB ? OR e.whatsapp GLOB ? OR "}${号键比 ? `${号键SQL("e.whatsapp")} GLOB ? OR ` : ""}e.email GLOB ? OR e.wechat GLOB ? OR e.country GLOB ? OR e.website GLOB ? OR e."alibabaId" GLOB ?)`);
     values.push(...号值,...(号键比 ? [phonePattern] : []),pattern,pattern,pattern,sitePattern,pattern);
     // 回收站里的联系人（企业版软删，P9）不算命中；不是企业版 deletedAt 一直是空
-    parts.push(`c.id IN (SELECT t."customerId" FROM "Contact" t WHERE t."deletedAt" IS NULL AND (t.name GLOB ? OR ${藏号 ? "" : "t.phone GLOB ? OR t.phone GLOB ? OR "}${号键比 ? `${号键SQL("t.phone")} GLOB ? OR ` : ""}t.email GLOB ? OR t.wechat GLOB ?))`);
+    parts.push(`c.id IN (SELECT t."customerId" FROM "Contact" t WHERE t."deletedAt" IS NULL AND (t.name GLOB ? OR ${藏号 ? "" : "t.phone GLOB ? OR t.phone GLOB ? OR "}${号键比 ? `${联系人号键SQL()} OR ` : ""}t.email GLOB ? OR t.wechat GLOB ?))`);
     values.push(pattern,...号值,...(号键比 ? [phonePattern] : []),pattern,pattern);
     // 联系人号码子表（企业版，ContactMethod）里的手机号、WhatsApp（11-11）：老 Contact.phone 只存了一个号，多出来的号只在子表里
     if (号键比) { parts.push(联系人子表号SQL()); values.push(phonePattern); }

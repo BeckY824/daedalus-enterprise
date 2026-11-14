@@ -6,7 +6,7 @@
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { defaultClient as db, prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 客户关键词条件 } from "@/lib/search-keyword";
+import { 客户关键词条件, 设三字索引 } from "@/lib/search-keyword";
 import { 号键SQL } from "@/lib/phone-dedupe";
 
 const 原来 = [
@@ -20,12 +20,16 @@ const 原来 = [
 /** 号键比 那一句加在 WhatsApp / 联系人电话后面，新旧两种写法同样插进去 */
 function 加号键([现, 旧]: readonly [string, string]): [string, string] {
   const [列, 锚] = 现.includes('"CustomerExtra"') ? ["e.whatsapp", "e.email GLOB ?"] : ["t.phone", "t.email GLOB ?"];
-  const 插 = `${号键SQL(列)} GLOB ? OR ${锚}`;
+  // 联系人电话的号键按 rowid 子查询走表达式索引（迁移 142，search-keyword.ts 联系人号键SQL）；EXISTS 那边同样插这一句，两边只差 IN / EXISTS
+  const 比 = 列 === "t.phone" ? `t.rowid IN (SELECT x.rowid FROM "Contact" x WHERE ${号键SQL('x."phone"')} GLOB ?)` : `${号键SQL(列)} GLOB ?`;
+  const 插 = `${比} OR ${锚}`;
   return [现.replace(锚, 插), 旧.replace(锚, 插)];
 }
 
 let owner = "";
 beforeAll(async () => {
+  // 这里对拍的是 GLOB 那条老路的 IN / EXISTS；三字索引那条路另有 search-trigram.test.ts 拿老路对拍
+  设三字索引(false);
   await resetDb();
   owner = (await db.user.create({ data: { email: "kw-in@qa.local", name: "QA", password: "qa", role: "ADMIN" } })).id;
   const 国家 = ["美国", "德国", "日本", null];
@@ -65,7 +69,7 @@ beforeAll(async () => {
   }
   await db.contact.createMany({ data: 联系人 });
 });
-afterAll(async () => { await db.$disconnect(); });
+afterAll(async () => { 设三字索引(undefined); await db.$disconnect(); });
 
 /** 新写法命中的 id，和把同一条 SQL 换回 EXISTS 后命中的 id */
 async function 两边(k: string) {

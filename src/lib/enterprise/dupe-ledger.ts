@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { 企业版 } from "./switch";
 import { 看全部, 看得到, type 谁 } from "@/lib/team-scope";
 import { 名键 } from "@/lib/enterprise-import/clean";
+import { 名键必含字 } from "@/lib/search-keyword";
 import { 角色名 } from "@/lib/sync/dept-policy";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 拆角色, 直属上级of } from "./org-core";
@@ -201,6 +202,34 @@ export type 名撞结论 = { 我名下: { 客户名: string; 客户id: string } 
 /** 名键太短（一个字）的不比：撞得太多、多半不是同一位 */
 const 够长 = (k: string) => k.length >= 2;
 
+type 名查重行 = { id: string; name: string; school: string | null; salesOwnerId: string };
+
+/**
+ * 客户名查重要比的客户：全公司在用、不在公海的，按建档先后（同一刻按 id）。原来整批 1.9 万位经 Prisma 取回来在内存里比名键（单人 70 ms，11-14）；
+ * 现在先在库里用 名键必含字 筛（名键对上的原名一定含这几个字，见 search-keyword.ts），只取回几位，再在内存里照旧比名键——结果一样，顺序一样。
+ * 名键（或公司名键）够长却挑不出这种字（全是字母数字的名字）时照旧整批取
+ */
+async function 名查重候选(名k: string, 公k: string): Promise<名查重行[]> {
+  const 名字 = 够长(名k) ? 名键必含字(名k) : [];
+  const 公字 = 够长(公k) ? 名键必含字(公k) : [];
+  if ((够长(名k) && !名字.length) || (够长(公k) && !公字.length)) {
+    return 看全部(() => prisma.customer.findMany({
+      where: { pool: { is: null } },
+      select: { id: true, name: true, school: true, salesOwnerId: true },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    }));
+  }
+  const 或: string[] = [];
+  if (名字.length) 或.push(`(${名字.map(() => `instr(c."name", ?) > 0`).join(" AND ")})`);
+  if (公字.length) 或.push(`(${公字.map(() => `instr(c."school", ?) > 0`).join(" AND ")})`);
+  // NOT INDEXED：顺表扫一遍（7 ms）；没统计信息的 SQLite 会挑 deletedAt / createdAt 索引逐行回表（26 ms）。命中的几位再排序
+  // 裸 SQL 不过软删扩展，自己带 deletedAt IS NULL（同 看全部 + 扩展的口径：没删、不在公海）
+  return prisma.$queryRawUnsafe<名查重行[]>(
+    `SELECT c.id, c."name", c."school", c."salesOwnerId" FROM "Customer" c NOT INDEXED WHERE (${或.join(" OR ")}) AND c."deletedAt" IS NULL AND NOT EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id) ORDER BY c."createdAt" ASC, c.id ASC`,
+    ...名字, ...公字,
+  );
+}
+
 /**
  * 新建客户按客户名（和填了的公司）查重：全公司在用的客户都比（看全部；回收站里的软删扩展已经滤掉）。
  * 公海、没负责人的不算；撞了好几位认建档最早的，先认我名下的
@@ -210,11 +239,7 @@ export async function 客户名查重(我: string, 读的我: 谁 | null, 名: s
   const 名k = 名键(名 ?? "");
   const 公k = 名键(公司 ?? "");
   if (!够长(名k) && !够长(公k)) return null;
-  const 们 = await 看全部(() => prisma.customer.findMany({
-    where: { pool: { is: null } },
-    select: { id: true, name: true, school: true, salesOwnerId: true },
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-  }));
+  const 们 = await 名查重候选(名k, 公k);
   const 撞名 = (c: { name: string }) => 够长(名k) && 名键(c.name) === 名k;
   const 撞公司 = (c: { school: string | null }) => 够长(公k) && !!c.school && 名键(c.school) === 公k;
   const 命中 = 们.filter((c) => 撞名(c) || 撞公司(c));

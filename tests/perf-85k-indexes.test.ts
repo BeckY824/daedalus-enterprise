@@ -14,7 +14,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 号键SQL, 号键索引名 } from "@/lib/phone-dedupe";
 import { 号键 } from "@/lib/phone";
-import { 包含模式, 客户号码SQL, 客户关键词SQL } from "@/lib/search-keyword";
+import { 包含模式, 客户号码SQL, 客户关键词SQL, 设三字索引 } from "@/lib/search-keyword";
 import { PrismaClient } from "@/generated/prisma";
 import { 加上限定, 看全部 } from "@/lib/team-scope";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
@@ -32,6 +32,8 @@ async function 计划(sql: string, ...值: unknown[]): Promise<string> {
 const 号们 = ["138 0013 8000", "138-0013-8001", "（139）0013８002", "+86 13900138003", "13700138004", "137—0013—8005", "", "abc 138"];
 
 beforeAll(async () => {
+  // 这里钉的是 GLOB 那条路（词短、带大小写时照旧走）；三字索引那条路见 search-trigram.test.ts
+  设三字索引(false);
   delete process.env.CRM_ENTERPRISE;
   await resetDb();
   await prisma.user.create({ data: { id: "u-idx", email: "idx@x.com", name: "我", password: "x", role: "ADMIN" } });
@@ -48,6 +50,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  设三字索引(undefined);
   await resetDb();
 });
 

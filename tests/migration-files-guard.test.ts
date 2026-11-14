@@ -7,7 +7,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { 许可删除的表, 许可删除的文件, 许可重建的文件, 许可重建的语句, 切句 } from "./migration-allowed-drops";
+import { 许可删除的表, 许可删除的文件, 许可重建的文件, 许可重建的语句, 切句, 许可搜索索引的文件, 许可搜索索引的表, 许可搜索索引的源表 } from "./migration-allowed-drops";
 
 const ROOT = path.resolve(__dirname, "..");
 
@@ -25,8 +25,24 @@ describe("迁移文件守卫（README 的规矩，跑之前就拦住）", () => 
   const 许可删除 = new RegExp(`^DROP TABLE IF EXISTS "(${许可删除的表.join("|")})"$`, "i");
 
   it("每一句都是 CREATE … IF NOT EXISTS 或 ALTER TABLE … ADD COLUMN（只增不改；只放过 066 那 7 张表的 DROP TABLE IF EXISTS，107 的重建另一条钉死）", () => {
-    const 违规 = 迁移.filter((f) => f !== 许可重建的文件).flatMap((f) => 语句(f).filter((s) => !/^CREATE (UNIQUE )?(TABLE|INDEX) IF NOT EXISTS/i.test(s) && !/^ALTER TABLE \S+ ADD COLUMN/i.test(s) && !(f === 许可删除的文件 && 许可删除.test(s))).map((s) => `${f}: ${s.slice(0, 60)}`));
+    const 违规 = 迁移.filter((f) => f !== 许可重建的文件 && f !== 许可搜索索引的文件).flatMap((f) => 语句(f).filter((s) => !/^CREATE (UNIQUE )?(TABLE|INDEX) IF NOT EXISTS/i.test(s) && !/^ALTER TABLE \S+ ADD COLUMN/i.test(s) && !(f === 许可删除的文件 && 许可删除.test(s))).map((s) => `${f}: ${s.slice(0, 60)}`));
     expect(违规).toEqual([]);
+  });
+
+  it("141 三字索引只许这几种句子：建 FTS5 索引表、在源表上建触发器（体里只写索引表）、补 / 删索引表的行，都带 IF NOT EXISTS", () => {
+    expect(迁移).toContain(许可搜索索引的文件);
+    const 表 = `"(?:${许可搜索索引的表.join("|")})"`, 源 = `"(?:${许可搜索索引的源表.join("|")})"`;
+    const 写 = `(?:INSERT INTO ${表}\\([^;]*\\) (?:VALUES \\([^;]*\\)|SELECT [^;]*)|DELETE FROM ${表} WHERE [^;]*)`;
+    const 许可 = [
+      new RegExp(`^CREATE VIRTUAL TABLE IF NOT EXISTS ${表} USING fts5\\([^;]*tokenize = 'trigram case_sensitive 1'\\);$`),
+      new RegExp(`^CREATE TRIGGER IF NOT EXISTS "\\w+" AFTER (?:INSERT|DELETE|UPDATE OF [^;]*) ON ${源} BEGIN (?:${写}; )+END;$`),
+      new RegExp(`^${写};$`),
+    ];
+    // 生成的文件一句一行（触发器体里有分号，不能按分号切）
+    const 行 = fs.readFileSync(path.join(ROOT, "migrations", 许可搜索索引的文件), "utf8").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("--"));
+    const 违规 = 行.filter((l) => !许可.some((re) => re.test(l))).map((l) => l.slice(0, 80));
+    expect(违规).toEqual([]);
+    expect(行.filter((l) => l.startsWith("CREATE TRIGGER")).length).toBe(6);
   });
 
   it("066 正好删那 7 张表、先子表后父表（外键开着时父表先删会被子表挡住）", () => {

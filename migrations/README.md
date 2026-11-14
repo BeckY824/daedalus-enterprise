@@ -20,6 +20,9 @@
    第一句是不带 IF NOT EXISTS 的记号索引，全新安装 / 已重建过都抛 already exists、整个文件跳过；
    记号放在事务外面（放进 BEGIN 里抛错会留下没结束的事务）。整份文件一句一句钉在
    `tests/migration-allowed-drops.ts` 的 许可重建的语句，老库升级另有一条测试（tests/migrations.test.ts「107 老库重建」）
+   **第三个例外**是 `141-search-trigram.sql`（2026-11-14）：客户搜索的三字索引（FTS5 trigram 表 + 源表上的触发器）。
+   它只是索引，要按源表回填、删掉对不上的行，所以许可 INSERT / DELETE，**但只许写 CustomerSearch、CustomerExtraSearch 这两张索引表**，
+   不许 UPDATE、DROP；回填按 rowid 分段、补过的段第二遍只查不写。规则钉在 `tests/migration-allowed-drops.ts` 的 许可搜索索引
 4. `ALTER TABLE ... ADD COLUMN` 是第 2 条的唯一例外，因为 SQLite 没有
    `ADD COLUMN IF NOT EXISTS`：第二次执行必然抛 `duplicate column name`。
    所有 runner 都把这一句（和 `already exists`）当预期跳过：
