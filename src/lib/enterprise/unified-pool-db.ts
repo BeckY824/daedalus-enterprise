@@ -18,8 +18,9 @@
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 看全部, 现在的公海回避 } from "@/lib/team-scope";
 import { 包含模式 } from "@/lib/search-keyword";
-import { 分组数SQL, 取一段SQL, 键毫秒, type 客户行筛 } from "./unified-pool-sql";
+import { 分组数SQL, 取一段SQL, 键毫秒, 按快捷分组数SQL, 非线索分组数SQL, 排掉分组数SQL, 合分组, 减分组, type 客户行筛 } from "./unified-pool-sql";
 import { 缓存分组数 } from "./pool-count-cache";
+import { 按主键取没删的 } from "./soft-delete-core";
 import { 公海客户原负责人是 } from "@/lib/owner-log-db";
 import { 看得到的客户, 露客户, 公海超时收回 } from "@/lib/project/db";
 import { 字典of, 本套位置 } from "@/lib/project/nodes";
@@ -329,12 +330,39 @@ async function 回避掉的公海客户(): Promise<string[]> {
   const ids = 圈.map((c) => c.id);
   const 看得到 = new Set<string>();
   for (let i = 0; i < ids.length; i += 一批id数) {
-    for (const c of await prisma.customer.findMany({ where: { id: { in: ids.slice(i, i + 一批id数) } }, select: { id: true } })) 看得到.add(c.id);
+    // 按主键问（第四轮 11-14，同 读公海页_库里分页 取这一页的资料）
+    for (const c of await 按主键取没删的(() => prisma.customer.findMany({ where: { id: { in: ids.slice(i, i + 一批id数) } }, select: { id: true, deletedAt: true } }))) 看得到.add(c.id);
   }
   return ids.filter((id) => !看得到.has(id));
 }
 
 type 分组行 = { 属性: string; 快捷: string | null; 不全: number | bigint | null; n: number | bigint };
+
+/** 带关键词的：整句现数（人人的词不同，缓存不上） */
+function 现数分组(筛: 客户行筛): Promise<分组行[]> {
+  const q = 分组数SQL(筛);
+  return prisma.$queryRawUnsafe<分组行[]>(q.sql, ...q.值);
+}
+
+/**
+ * 没关键词的：拆开数（第四轮 11-14，unified-pool-sql.ts 按快捷分组数SQL 上面那段），每一份进短时缓存（pool-count-cache.ts：键是整句 + 参数，写过库就作废）。
+ * 全部那份不带回避的人，30 人共用一个键，3 秒里只现数一次（同一刻没命中的一起等同一个）；回避的人另减自己排掉的那几位（几十上百位，走主键）
+ */
+export async function 拆开数分组(筛: 客户行筛): Promise<分组行[]> {
+  const 按快捷 = 按快捷分组数SQL(筛);
+  const 非线索 = 非线索分组数SQL(筛);
+  const 全部 = 缓存分组数(`${按快捷.sql}\n;\n${非线索.sql}`, [...按快捷.值, ...非线索.值], async () => {
+    const [a, b] = await Promise.all([
+      prisma.$queryRawUnsafe<Omit<分组行, "属性">[]>(按快捷.sql, ...按快捷.值),
+      筛.商机.length || 筛.订单.length ? prisma.$queryRawUnsafe<分组行[]>(非线索.sql, ...非线索.值) : [],
+    ]);
+    return 合分组(a, b);
+  });
+  if (!筛.排掉.length) return 全部;
+  const 排 = 排掉分组数SQL(筛);
+  const [全, 掉] = await Promise.all([全部, 缓存分组数(排.sql, 排.值, () => prisma.$queryRawUnsafe<分组行[]>(排.sql, ...排.值))]);
+  return 减分组(全, 掉);
+}
 
 /**
  * 公海页（没渠道名单）：客户行在库里、项目行在内存里，口径和 筛排 一样（tests/ent-unified-pool-paging.test.ts 拿改前的内存写法对拍）。
@@ -364,12 +392,7 @@ async function 读公海页_库里分页(me: { id: string; name: string; role?: 
     else if (属 === "订单池") 订单.push(id);
   }
   const 筛: 客户行筛 = { 商机, 订单, 排掉, ...(词 ? { 词: { 名: 包含模式(词), 项目对上: 项目名对上 } } : {}), ...(sp.来源 ? { 来源: sp.来源 } : {}), ...(sp.号码不全 === "1" ? { 号码不全: true } : {}) };
-  const 组 = await (async () => {
-    const q = 分组数SQL(筛);
-    // 没关键词时人人差不多是同一句（只差回避的那几位），短时缓存几秒（pool-count-cache.ts：键是整句 + 参数，写过库就作废）；带关键词的照常现数
-    const 数 = () => prisma.$queryRawUnsafe<分组行[]>(q.sql, ...q.值);
-    return (await (词 ? 数() : 缓存分组数(q.sql, q.值, 数))).map((r) => ({ 属性: r.属性 as 公海属性, 快捷: (r.快捷 as 快捷 | null) ?? null, 不全: Number(r.不全 ?? 0) === 1, n: Number(r.n) }));
-  })();
+  const 组 = (await (词 ? 现数分组(筛) : 拆开数分组(筛))).map((r) => ({ 属性: r.属性 as 公海属性, 快捷: (r.快捷 as 快捷 | null) ?? null, 不全: Number(r.不全 ?? 0) === 1, n: Number(r.n) }));
   const 属性 = 规整公海属性(sp.属性);
   const 快捷 = 是快捷(sp.快捷) ? sp.快捷 : null;
   // 数：属性数在关键词 / 来源 / 号码不全之后；快捷数再在属性之后；总数再在快捷之后（同 筛排）
@@ -419,7 +442,8 @@ async function 读公海页_库里分页(me: { id: string; name: string; role?: 
   for (let i = 0; i < 页客户ids.length; i += 一批id数) {
     const 批 = 页客户ids.slice(i, i + 一批id数);
     const [客户们, 池们] = await Promise.all([
-      prisma.customer.findMany({ where: { id: { in: 批 }, pool: { isNot: null } }, select: 客户要的 }),
+      // 按主键取（第四轮 11-14）：带着 deletedAt IS NULL 时 SQLite 放着主键不走、顺 deletedAt 索引扫 8.5 万位（~10 ms），见 按主键取没删的
+      按主键取没删的(() => prisma.customer.findMany({ where: { id: { in: 批 }, pool: { isNot: null } }, select: { ...客户要的, deletedAt: true } })),
       prisma.customerPool.findMany({ where: { customerId: { in: 批 } }, select: 池要的 }),
     ]);
     for (const c of 客户们) 客户of.set(c.id, c);

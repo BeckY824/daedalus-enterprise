@@ -157,6 +157,46 @@ export function 去掉已删(model: string | undefined, operation: string, args:
   if (!model) return args;
   let a = 改关联(model, (args ?? {}) as 参数);
   if (a.where && (读操作.has(operation) || 带条件的写.has(operation))) a = { ...a, where: 改条件(model, a.where) };
+  // 按主键取没删的（见下）：这一句顶层的「没删」留给调用方在内存里滤，关联、关联条件照常补
+  if (顶层留给调用方(model, operation, a)) return a;
   const 条件 = 读操作.has(operation) ? 未删条件(model) : 带条件的写.has(operation) && 软.has(model) ? { deletedAt: null } : null;
   return 条件 ? { ...a, where: 并上(a.where, 条件) } : a;
+}
+
+/** 按主键取没删的 那一段：只认里面第一句 findMany（一次性），之后的查询照常补「没删」 */
+const 主键取 = 全进程上下文<{ 用过: boolean }>("按主键取没删的");
+
+function 顶层留给调用方(model: string, operation: string, a: 参数): boolean {
+  const 段 = 主键取.getStore();
+  if (!段 || 段.用过 || operation !== "findMany" || !软.has(model)) return false;
+  段.用过 = true;
+  // 分页 / 去重 / 游标的在库里滤和在内存里滤结果不一样：照常补
+  return a.take === undefined && a.skip === undefined && a.cursor === undefined && a.distinct === undefined;
+}
+
+/**
+ * 按 id 名单取几行软删表的行（8.5 万客户提速第四轮，11-14）：顶层不并 deletedAt IS NULL，取回来在内存里按 deletedAt 滤。
+ *
+ * 为什么：没统计信息的 SQLite 估「deletedAt IS NULL」只剩 ~10 行，「id IN (超过 4 个)」反倒估得多，于是放着主键不走、
+ * 顺 Customer_deletedAt_idx 把 8.5 万位没删的客户逐个比 id（单句 ~10 ms）；不带 deletedAt 就只能走主键（0.05 ms）。
+ * 不写 sqlite_stat1（整库 ANALYZE 把搜索、列表带慢了，第三轮实测）、也不动索引。
+ *
+ * 口径和直接查一样：限定层（业务员范围、原负责人回避）照样加，关联（select / include 带出来的、where 里的 some / none）照样只认没删的，
+ * 只有顶层这一个 AND 挪到内存里做，AND 在库里滤和在内存里滤是同一批行。
+ *   - 查 必须是**一句** findMany、select 里要带 deletedAt（类型上卡住）；带 take / skip / cursor / distinct 的照常在库里滤（结果仍对，只是不省）
+ *   - 已经在 看已删() 里（要连回收站一起看）、或不是企业版（去掉已删 不跑）：原样返回，不滤
+ * 返回的行去掉 deletedAt，和不带它时取到的一样
+ */
+export async function 按主键取没删的<T extends { deletedAt: Date | null }>(查: () => Promise<T[]>): Promise<Omit<T, "deletedAt">[]> {
+  const 滤 = !在看已删();
+  const 行们 = await 主键取.run({ 用过: false }, async () => await 查());
+  const 出: Omit<T, "deletedAt">[] = [];
+  for (const r of 行们) {
+    if (!("deletedAt" in r)) throw new Error("按主键取没删的：select 里要带 deletedAt");
+    if (滤 && r.deletedAt !== null) continue;
+    const { deletedAt: _删, ...余 } = r;
+    void _删;
+    出.push(余);
+  }
+  return 出;
 }

@@ -12,6 +12,7 @@ import { 列对话 } from "@/app/(app)/dashboard/threads";
 import { llmEnabled } from "@/lib/llm";
 import { FOLLOW_TYPE_MAP } from "@/lib/constants";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 按主键取没删的 } from "@/lib/enterprise/soft-delete-core";
 import ProjectRoster from "@/components/ProjectRoster";
 import { getBusiness } from "@/lib/business";
 import { 读名单项目 } from "@/lib/project/list";
@@ -80,7 +81,10 @@ export async function 学员名单() {
     plans: { where: { done: false }, orderBy: [{ plannedAt: "asc" as const }, { id: "asc" as const }], select: { plannedAt: true, plannedOn: true } },
   } satisfies Prisma.CustomerSelect;
   const [取, 我的] = await Promise.all([
-    prisma.customer.findMany({ where: ids ? { id: { in: ids } } : 列表条件, orderBy: ids ? undefined : 排序, take: ids ? undefined : 50, select: 字段 }),
+    // 按编号取走主键（第四轮 11-14）：带着 deletedAt IS NULL 时 SQLite 放着主键不走、顺 deletedAt 索引扫 8.5 万位，见 按主键取没删的
+    ids
+      ? 按主键取没删的(() => prisma.customer.findMany({ where: { id: { in: ids } }, select: { ...字段, deletedAt: true } }))
+      : prisma.customer.findMany({ where: 列表条件, orderBy: 排序, take: 50, select: 字段 }),
     prisma.customer.findMany({ where: { AND: [列表条件, { salesOwnerId: me.id }] }, orderBy: 排序, take: 50, select: 字段 }),
   ]);
   const 位 = new Map(ids?.map((id, i) => [id, i]));
