@@ -16,6 +16,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 创建时间段 } from "@/lib/custom-date-range";
 import { 三态筛选条件, 三态界面开着 } from "@/lib/enterprise/tri-state-list";
 import { 是三态筛选值 } from "@/lib/enterprise/tri-state-label";
+import { 按主键取没删的 } from "@/lib/enterprise/soft-delete-core";
 
 /**
  * 客户列表的查询条件、取哪些字段、怎么变成一行——列表页和「导出」共用这一份（2026-10-02 排查）。
@@ -331,7 +332,8 @@ SELECT n.total AS total, p.id AS id FROM n LEFT JOIN (
 /** 按给定的 id 顺序取行（经限定层）。关键词快路径用 */
 export async function 按序取客户行(ids: string[]): Promise<取到的行[]> {
   if (!ids.length) return [];
-  const 行 = await prisma.customer.findMany({ where: { id: { in: ids } }, select: 客户行字段 });
+  // 按主键取（第四轮 11-14）：带着 deletedAt IS NULL 时 SQLite 放着主键不走、顺 deletedAt 索引扫 8.5 万位，见 按主键取没删的
+  const 行 = await 按主键取没删的(() => prisma.customer.findMany({ where: { id: { in: ids } }, select: { ...客户行字段, deletedAt: true } }));
   const 位 = new Map(ids.map((id, i) => [id, i]));
   return 行.sort((a, b) => 位.get(a.id)! - 位.get(b.id)!);
 }

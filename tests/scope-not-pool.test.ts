@@ -36,7 +36,7 @@ import { 规则 } from "@/lib/enterprise/rules";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 看得到的客户数, 看得到的跟进数, 看得到的下拉值 } from "@/lib/scope-sql";
 import { 测试里开公海分组缓存 } from "@/lib/enterprise/pool-count-cache";
-import { 限在非公海 } from "@/lib/team-scope";
+import { 限在非公海, 看全部 } from "@/lib/team-scope";
 import { 客户筛选条件 } from "@/app/(app)/customers/query";
 
 const 系管 = "n_sys", 总管 = "n_dir", 线总 = "n_line", 只读 = "n_ro", 线读 = "n_rol", 经理 = "n_mgr", 小王 = "n_wang", 小张 = "n_zhang", 小赵 = "n_zhao";
@@ -263,7 +263,7 @@ describe("不在公海的客户查询去掉「OR 在公海」：改前改后逐�
     测试里开公海分组缓存(true);
     try {
       // 先把每个人的都算一遍进缓存，再逐个对：串了范围的话后面的人会拿到前面的人的
-      for (const 谁 of 谁们) { 忘掉企业版范围(); await 以谁的身份(谁, async () => { await 看得到的下拉值("country"); await 看得到的下拉值("grade"); await 看得到的跟进数({}); }); }
+      for (const 谁 of 谁们) { 忘掉企业版范围(); await 以谁的身份(谁, async () => { await 看得到的下拉值("country"); await 看得到的下拉值("grade"); await 看得到的跟进数({}); await 看得到的客户数(); }); }
       const 各自 = new Map<string, string>();
       for (const 谁 of 谁们) {
         忘掉企业版范围();
@@ -271,6 +271,8 @@ describe("不在公海的客户查询去掉「OR 在公海」：改前改后逐�
           const 国 = await 看得到的下拉值("country");
           expect({ 谁, 国 }).toEqual({ 谁, 国: (await db.customerExtra.groupBy({ by: ["country"], where: { country: { not: null } }, orderBy: { country: "asc" } })).map((g) => g.country!) });
           expect({ 谁, n: await 看得到的跟进数({}) }).toEqual({ 谁, n: await db.followUp.count() });
+          // 第四轮（11-14）：市场相关的人「不在公海」那句按范围缓存，同样不串
+          expect({ 谁, 客户数: await 看得到的客户数() }).toEqual({ 谁, 客户数: await db.customer.count() });
           各自.set(谁, 国.join(","));
         });
       }
@@ -286,6 +288,16 @@ describe("不在公海的客户查询去掉「OR 在公海」：改前改后逐�
         expect(前).not.toContain("冰岛");
         expect(后).toContain("冰岛");
         await raw.customerExtra.delete({ where: { customerId: c.id } });
+      });
+      // 市场成员：客户数那份缓存，经限定层写一笔（新建一位他建档的客户）也马上作废
+      await 以谁的身份(市员, async () => {
+        const 前 = await 看得到的客户数();
+        const 新 = await 看全部(() => db.customer.create({ data: { name: "市场新建", phone: "13999990000", salesOwnerId: 外人, creator: { create: { userId: 市员 } } } }));
+        const 后 = await 看得到的客户数();
+        expect(后).toBe(await db.customer.count());
+        expect(后).toBe(前 + 1);
+        await raw.customerCreator.delete({ where: { customerId: 新.id } });
+        await raw.customer.delete({ where: { id: 新.id } });
       });
     } finally {
       测试里开公海分组缓存(false);

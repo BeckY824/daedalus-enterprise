@@ -80,7 +80,13 @@ export async function 看得到的客户数(): Promise<number> {
     if (!(await 读的我(defaultClient))) return prisma.customer.count();
     // 限定了但裸 SQL 接不住的（看得到的() 只对这两种回 null：有市场只读、原负责人回避名单过上限）：照样拆两路（第二轮 11-14）——不在公海的走 Prisma，
     // 限定层见到「不在公海」会去掉「OR 在公海」那支（team-scope 限在非公海）；公海那头 = 公海页签数。原来一句带 OR 整表扫，市场相关的人 50 ms
-    const [非公海, 公海] = await Promise.all([prisma.customer.count({ where: { pool: { is: null } } }), 看得到的公海数()]);
+    // 不在公海的那句（市场相关的人单句 ~29 ms，OR 里带建档人那支、只能顺 deletedAt 索引扫）人人范围不同，按范围短时缓存（第四轮 11-14）：
+    // 键 = 企业版 / 看不看已删 + 这个人读客户时限定层并进去的整句条件（同 看得到的下拉值），存活 3 秒、写过库就作废（pool-count-cache.ts）
+    const 条件 = await 客户读条件(defaultClient);
+    const [非公海, 公海] = await Promise.all([
+      缓存分组数("客户数:不在公海", [企业版(), 在看已删(), 条件], () => prisma.customer.count({ where: { pool: { is: null } } })),
+      看得到的公海数(),
+    ]);
     return 非公海 + 公海;
   }
   // 名下（不在公海）+ 公海里看得到的（= 公海页签数，走主键、只减回避的那几位），两路不相交，相加就是原来那句的数
@@ -209,9 +215,10 @@ async function 公海跟进数(筛: { type?: string; ownerId?: string }, 含删�
   if (回避?.客户 === null) return prisma.followUp.count({ where: { ...跟进筛条件(筛), customer: { pool: { isNot: null } } } });
   const { 筛段, 筛值 } = 跟进筛SQL(筛);
   const 客户没删 = 含删了的客户 ? "" : ` AND c."deletedAt" IS NULL`;
-  const 全部sql = `SELECT COUNT(*) AS n FROM "CustomerPool" p CROSS JOIN "Customer" c CROSS JOIN "FollowUp" f WHERE c.id = p."customerId" AND f."customerId" = p."customerId"${客户没删} AND f."deletedAt" IS NULL${筛段.join("")}`;
-  const 全部 = 缓存分组数(全部sql, 筛值, async () => {
-    const [r] = await prisma.$queryRawUnsafe<{ n: bigint | number }[]>(全部sql, ...筛值);
+  const 全部sql = 公海全部跟进数SQL(筛段.join(""), 含删了的客户);
+  const 全部值 = 含删了的客户 ? 筛值 : [...筛值, ...筛值];
+  const 全部 = 缓存分组数(全部sql, 全部值, async () => {
+    const [r] = await prisma.$queryRawUnsafe<{ n: bigint | number }[]>(全部sql, ...全部值);
     return Number(r.n);
   });
   if (!回避) return 全部;
@@ -228,6 +235,24 @@ async function 公海跟进数(筛: { type?: string; ownerId?: string }, 含删�
     ),
   ]);
   return Math.max(0, n - Number(r.n));
+}
+
+/**
+ * 公海全部客户的跟进几条（公海跟进数 的「全部」那句，人人一样）。
+ * 第四轮（11-14）起不连客户表逐位查（原来 公海表 × 客户表 × 跟进，6.6 万位公海客户逐位回客户表读 deletedAt，单句 32–40 ms）：
+ *   - 公海表 × 跟进 直接数（公海表的 customerId 是外键，客户硬删才连带删，挂不到不存在的客户上，同 未删公海数），~20 ms
+ *   - 要排回收站里的客户时，再减掉回收站里、又在公海里的那几位的跟进（deletedAt > 0 走 deletedAt 索引，只碰回收站那几行；IS NOT NULL 这版 SQLite 不走索引）
+ * 和原来那句逐条一样（tests/perf-85k-round4.test.ts 拿原来那句对拍）。筛段带 ? 时 不含删 的要传两遍筛值
+ */
+export function 公海全部跟进数SQL(筛段: string, 含删了的客户: boolean): string {
+  const 全 = `SELECT COUNT(*) FROM "CustomerPool" p CROSS JOIN "FollowUp" f WHERE f."customerId" = p."customerId" AND f."deletedAt" IS NULL${筛段}`;
+  if (含删了的客户) return `SELECT (${全}) AS n`;
+  return `SELECT (${全}) - (SELECT COUNT(*) FROM "Customer" c CROSS JOIN "CustomerPool" p CROSS JOIN "FollowUp" f WHERE c."deletedAt" > 0 AND p."customerId" = c.id AND f."customerId" = c.id AND f."deletedAt" IS NULL${筛段}) AS n`;
+}
+
+/** 改前那句（对拍用） */
+export function 公海全部跟进数SQL_改前(筛段: string, 含删了的客户: boolean): string {
+  return `SELECT COUNT(*) AS n FROM "CustomerPool" p CROSS JOIN "Customer" c CROSS JOIN "FollowUp" f WHERE c.id = p."customerId" AND f."customerId" = p."customerId"${含删了的客户 ? "" : ` AND c."deletedAt" IS NULL`} AND f."deletedAt" IS NULL${筛段}`;
 }
 
 /**

@@ -58,10 +58,14 @@ export type 客户行筛 = {
   号码不全?: boolean;
 };
 
-/** FROM + WHERE（别名 p = CustomerPool、c = Customer），属性 / 快捷两个表达式另给 */
-function 底(筛: 客户行筛): { sql: string; 值: unknown[] } {
+/**
+ * FROM + WHERE（别名 p = CustomerPool、c = Customer），属性 / 快捷两个表达式另给。
+ * 从名单出发（第四轮 11-14，拆开数用）：只看名单上的几位，FROM 改成 名单 j → 公海表 → 客户表，逐位走主键，不扫公海表；名单的 ? 排在最前
+ */
+function 底(筛: 客户行筛, 从名单?: "名单" | "两个名单"): { sql: string; 值: unknown[] } {
   const 段: string[] = [`c.id = p."customerId"`, `c."deletedAt" IS NULL`];
   const 值: unknown[] = [];
+  if (从名单) 段.unshift(`p."customerId" = j.id`);
   if (筛.排掉.length) {
     段.push(`c.id NOT IN (SELECT value FROM json_each(?))`);
     值.push(JSON.stringify(筛.排掉));
@@ -77,6 +81,11 @@ function 底(筛: 客户行筛): { sql: string; 值: unknown[] } {
   if (筛.号码不全) 段.push(`p."phoneIncomplete" = 1`);
   // CROSS JOIN 定死从公海表出发：没有统计信息时 SQLite 以为 deletedAt IS NULL 很能筛，会从客户表的 deletedAt 索引出发、8.5 万位逐个回公海表找，
   // 按入池时间取一页也得整表排（32 ms）；从公海表的 (at DESC, customerId) 索引顺着取，一页 0.1 ms
+  if (从名单) {
+    // 去重：同一位在名单里出现两次也只数一次（同 IN 的口径）
+    const j = 从名单 === "名单" ? `(SELECT DISTINCT value AS id FROM json_each(?))` : `(SELECT value AS id FROM json_each(?) UNION SELECT value FROM json_each(?))`;
+    return { sql: `FROM ${j} j CROSS JOIN "CustomerPool" p CROSS JOIN "Customer" c WHERE ${段.join(" AND ")}`, 值 };
+  }
   return { sql: `FROM "CustomerPool" p CROSS JOIN "Customer" c WHERE ${段.join(" AND ")}`, 值 };
 }
 
@@ -89,6 +98,60 @@ export function 分组数SQL(筛: 客户行筛): { sql: string; 值: unknown[] }
     sql: `SELECT ${属性SQL} AS "属性", ${快捷SQL} AS "快捷", (p."phoneIncomplete" = 1) AS "不全", COUNT(*) AS n ${d.sql} GROUP BY 1, 2, 3`,
     值: [...属性值(筛), ...d.值],
   };
+}
+
+/**
+ * 分组数拆开数（第四轮 11-14）：分组数SQL(筛) = 全部 − 排掉的那几位，全部 = 线索池那几组（按快捷分） + 商机 / 订单名单上的几位。
+ *   - 按快捷：公海全部（不排回避的）只按 (快捷, 号码不全) 分组，不算属性那句 CASE：人人一样（属性名单、回避都不在里面），短时缓存里 30 人共用一份
+ *   - 非线索：商机 / 订单名单上的几位（一两千位）从名单出发按 (属性, 快捷, 号码不全) 分组，逐位走主键，几毫秒
+ *   - 排掉的：这个人回避掉的那几位，同样从名单出发分组，再从上面两份里减掉
+ * 回避的人原来每人一个缓存键（排掉不同），每人每 3 秒现数一遍整句（中位 68 ms）；拆开后整句只按筛选（来源 / 号码不全）分键，回避的人只多一句小的。
+ * 合起来和分组数SQL逐组一样（tests/perf-85k-round4.test.ts 对拍）；数到 0 的组不出（GROUP BY 本来就不出空组）
+ */
+export function 按快捷分组数SQL(筛: 客户行筛): { sql: string; 值: unknown[] } {
+  const d = 底({ ...筛, 排掉: [] });
+  return { sql: `SELECT ${快捷SQL} AS "快捷", (p."phoneIncomplete" = 1) AS "不全", COUNT(*) AS n ${d.sql} GROUP BY 1, 2`, 值: d.值 };
+}
+
+/** 商机 / 订单名单上的几位（不排回避的）按 (属性, 快捷, 号码不全) 分组 */
+export function 非线索分组数SQL(筛: 客户行筛): { sql: string; 值: unknown[] } {
+  const d = 底({ ...筛, 排掉: [] }, "两个名单");
+  return {
+    sql: `SELECT ${属性SQL} AS "属性", ${快捷SQL} AS "快捷", (p."phoneIncomplete" = 1) AS "不全", COUNT(*) AS n ${d.sql} GROUP BY 1, 2, 3`,
+    值: [...属性值(筛), ...属性值(筛), ...d.值],
+  };
+}
+
+/** 排掉的那几位（这个人回避掉的）按 (属性, 快捷, 号码不全) 分组 */
+export function 排掉分组数SQL(筛: 客户行筛): { sql: string; 值: unknown[] } {
+  const d = 底({ ...筛, 排掉: [] }, "名单");
+  return {
+    sql: `SELECT ${属性SQL} AS "属性", ${快捷SQL} AS "快捷", (p."phoneIncomplete" = 1) AS "不全", COUNT(*) AS n ${d.sql} GROUP BY 1, 2, 3`,
+    值: [...属性值(筛), JSON.stringify(筛.排掉), ...d.值],
+  };
+}
+
+type 一组 = { 属性: string; 快捷: string | null; 不全: number | bigint | null; n: number | bigint };
+type 按快捷一组 = Omit<一组, "属性">;
+const 不全值 = (x: number | bigint | null) => (x === null || x === undefined ? null : Number(x));
+const 组键 = (属性: string, 快捷: string | null, 不全: number | bigint | null) => JSON.stringify([属性, 快捷, 不全值(不全)]);
+
+/** 全部 = 非线索那几组 + 线索池（按快捷分的减掉非线索那几位） */
+export function 合分组(按快捷: readonly 按快捷一组[], 非线索: readonly 一组[]): 一组[] {
+  const 出 = new Map<string, 一组>();
+  for (const g of 按快捷) 出.set(组键("线索池", g.快捷, g.不全), { 属性: "线索池", 快捷: g.快捷, 不全: 不全值(g.不全), n: Number(g.n) });
+  for (const g of 非线索) {
+    出.set(组键(g.属性, g.快捷, g.不全), { 属性: g.属性, 快捷: g.快捷, 不全: 不全值(g.不全), n: Number(g.n) });
+    const 线 = 出.get(组键("线索池", g.快捷, g.不全));
+    if (线) 线.n = Number(线.n) - Number(g.n);
+  }
+  return [...出.values()].filter((g) => Number(g.n) > 0);
+}
+
+/** 全部 − 排掉的 */
+export function 减分组(全部: readonly 一组[], 排掉: readonly 一组[]): 一组[] {
+  const 减 = new Map(排掉.map((g) => [组键(g.属性, g.快捷, g.不全), Number(g.n)]));
+  return 全部.map((g) => ({ ...g, n: Number(g.n) - (减.get(组键(g.属性, g.快捷, g.不全)) ?? 0) })).filter((g) => g.n > 0);
 }
 
 export type 排序键 = "pooled" | "follow" | "created";

@@ -5,6 +5,7 @@ import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看项目, type 谁 } from "@/lib/enterprise/permissions";
 import { 回避豁免, 我回避的公海项目 } from "@/lib/project/pool-owner";
 import { 市场进不了详情的 } from "@/lib/enterprise/market-view-db";
+import { 按主键取没删的 } from "@/lib/enterprise/soft-delete-core";
 
 /** 收藏的客户、项目怎么存、怎么读（左栏那两栏，改动在 app/(app)/favorites.ts）。读的这一半不放在 "use server" 文件里：那里导出的每个函数都能被浏览器直接调，一个收 userId 的读函数放过去，就成了「传别人的 id 读别人的收藏」。 */
 export const 收藏键 = (userId: string) => `favorites:${userId}`;
@@ -16,7 +17,8 @@ export async function 读收藏(userId: string): Promise<收藏项[]> {
   const ids = (await getSetting<string[]>(收藏键(userId))) ?? [];
   if (!Array.isArray(ids) || ids.length === 0) return [];
   // 名字现查：改名跟着变、删了的自然消失。按收藏顺序排，新收的在上
-  const rows = await prisma.customer.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
+  // 按主键取（第四轮 11-14）：带着 deletedAt IS NULL 时 SQLite 放着主键不走、顺 deletedAt 索引扫 8.5 万位，见 按主键取没删的
+  const rows = await 按主键取没删的(() => prisma.customer.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, deletedAt: true } }));
   const 按id = new Map(rows.map((r) => [r.id, r]));
   return ids.map((id) => 按id.get(id)).filter((x): x is 收藏项 => Boolean(x));
 }
