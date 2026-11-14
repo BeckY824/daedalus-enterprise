@@ -19,6 +19,7 @@ import { prisma, defaultClient as raw } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
+import { 现在的公海回避 } from "@/lib/team-scope";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 市场成员key } from "@/lib/enterprise/market";
 import { 无负责人占位邮箱, 自动理由 } from "@/lib/pool";
@@ -392,5 +393,58 @@ describe("统一公海：公海过 2000 位，更早入池的照样搜得到、�
       }
     }
     expect(比了).toBe(4 * 组合.length * 3);
+  }, 300_000);
+});
+
+/**
+ * 原负责人回避名单过上限（visibility.ts 回避名单上限 100，现在的公海回避 的 客户 = null）：限定层退回按关联写的条件，
+ * 库里分页这边的「回避掉的公海客户」也走名单过上限那一支（按留痕圈）。造一个放走过 100 多位公海客户的人，
+ * 和改前的内存写法（去掉上限）逐个筛选、逐页整个返回值一样；放走的确实看不到、别人照样看得到
+ */
+describe("统一公海：回避名单过上限（null）", () => {
+  const 内存 = (u: 人, sp: 公海筛选, page: number, pageSize: number) => { 当(u); return 以谁的身份(u.id, () => 内存读公海页(u, sp, page, pageSize)); };
+  let 退得多: 人;
+  const 放走的: string[] = [];
+
+  beforeAll(async () => {
+    退得多 = await 造人("many-release", { bizRole: "sales" });
+    // 130 位：进公海清了负责人挂占位、留痕认他（客户级）；隔五位挂一个他退的项目（项目级也过上限）；隔七位后来被同事领走又放回（只认最近一次，他看得到）
+    for (let i = 0; i < 130; i++) {
+      const id = `r${String(i).padStart(3, "0")}`;
+      await raw.customer.create({ data: { id, name: i % 9 === 0 ? `Alpha 放走的${i}` : `放走的${i}`, phone: `18${String(i).padStart(9, "0")}`, salesOwnerId: 占位.id, channelId: i % 4 === 0 ? 来源.甲 : null, lastFollowAt: i % 3 ? 时刻(3000 + i) : null, createdAt: 时刻(i % 30) } });
+      await raw.customerPool.create({ data: { customerId: id, userId: i % 2 ? 退得多.id : null, reason: i % 2 ? "手动" : 自动理由(30), at: 时刻(20 + (i % 13)) } });
+      await raw.customerOwnerLog.create({ data: { customerId: id, fromOwnerId: 退得多.id, toOwnerId: 占位.id, userId: 退得多.id, kind: "pool-release", at: 时刻(200 + i) } });
+      if (i % 7 === 0) await raw.customerOwnerLog.create({ data: { customerId: id, fromOwnerId: 组.同事.id, toOwnerId: 占位.id, userId: 组.同事.id, kind: "pool-release", at: 时刻(900 + i) } });
+      else 放走的.push(id);
+      if (i % 5 === 0) {
+        const pid = `${id}-p0`;
+        await raw.project.create({ data: { id: pid, name: `放走的项目${i}`, customerId: id, ownerId: "", creatorId: 退得多.id, phase: "线索", node: "线索验证", pooledAt: 时刻(1500 + i), createdAt: 时刻(i % 20) } });
+        await raw.projectNodeLog.create({ data: { projectId: pid, kind: "pool-release", fromOwnerId: 退得多.id, userId: 退得多.id, toPhase: "线索", toNode: "x", at: 时刻(1500 + i) } });
+      }
+    }
+    忘掉企业版范围();
+  }, 120_000);
+
+  it("名单确实过上限（客户 = null），放走的看不到、后来别人放回的看得到、同事都看得到", async () => {
+    当(退得多);
+    const 避 = await 以谁的身份(退得多.id, () => 现在的公海回避(raw));
+    expect(避?.客户).toBeNull();
+    const 他看 = new Set((await 新(退得多, {}, 1, 5000)).行.map((r) => r.customerId));
+    expect(放走的.filter((id) => 他看.has(id))).toEqual([]);
+    expect(他看.has("r007")).toBe(true); // 同事后来放回的，最近一次不是他（r000 挂着他退的项目，照样回避）
+    const 同事看 = new Set((await 新(组.同事, {}, 1, 5000)).行.map((r) => r.customerId));
+    expect(放走的.every((id) => 同事看.has(id))).toBe(true);
+  }, 120_000);
+
+  it("和改前的内存写法（去掉上限）逐个筛选、逐页整个返回值一样", async () => {
+    const 组合: 公海筛选[] = [{}, { keyword: "放走的" }, { keyword: "alpha" }, { 快捷: "超时回收" }, { 属性: "线索池" }, { 排序: "follow" }, { 排序: "created", 来源: 来源.甲 }];
+    let 比了 = 0;
+    for (const sp of 组合) {
+      for (const page of [1, 2, 9999]) {
+        expect(await 新(退得多, sp, page, 50), `${JSON.stringify(sp)} 第 ${page} 页`).toEqual(await 内存(退得多, sp, page, 50));
+        比了++;
+      }
+    }
+    expect(比了).toBe(组合.length * 3);
   }, 300_000);
 });

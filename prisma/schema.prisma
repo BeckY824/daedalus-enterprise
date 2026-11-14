@@ -260,6 +260,8 @@ model Customer {
   @@index([deletedAt])
   /// 客户列表翻页总带着 deletedAt IS NULL（迁移 137）：只有上面两条时 SQLite 先挑 deletedAt 再整表排序，8.5 万客户每页 ~20 ms
   @@index([deletedAt, createdAt, id])
+  /// 按负责人筛客户（迁移 137）：只有上面那条时 SQLite 会顺着它扫再挑人，名下非公海客户少的人整表扫
+  @@index([salesOwnerId, deletedAt, createdAt, id])
 }
 
 /// 签约记录。同一学员可多次签约（续费、补课），便于按月/季/年复盘
@@ -701,6 +703,8 @@ model FollowUp {
   @@index([deletedAt])
   /// 跟进记录页带着 deletedAt IS NULL 取最近 300 条（迁移 137）：只有 occurredAt 那条时 SQLite 改走 deletedAt、25 万条整表排序
   @@index([deletedAt, occurredAt])
+  /// 跟进记录页按类型筛（迁移 137）：只有上面那条时 SQLite 顺着它扫再挑类型，少见的类型整表扫；末尾 ownerId 让「类型 + 成员」照旧走 (ownerId, occurredAt)
+  @@index([type, deletedAt, occurredAt, ownerId])
   /// 看得到的跟进数公海那一路逐位数（迁移 137，lib/scope-sql.ts）：只读索引不回表，带 type / ownerId 筛也一样
   @@index([customerId, deletedAt, type, ownerId])
 }

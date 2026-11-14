@@ -1,6 +1,8 @@
 /**
- * 迁移 137（8.5 万客户提速，11-14）的五个索引：建上了、查询计划真用上了、换写法的号码搜索结果和原来一模一样。
+ * 迁移 137（8.5 万客户提速，11-14）的七个索引：建上了、查询计划真用上了、换写法的号码搜索结果和原来一模一样。
  * 计划这几条是先写的：没有这几个索引时 SQLite（没统计信息）会挑 deletedAt 索引再整表排序、号码搜索每行现算 20 层 replace。
+ * 「Prisma 实际发出的语句」那组拿另开的、记 query 日志的客户端截下真句子再 EXPLAIN：(deletedAt, createdAt, id)、(deletedAt, occurredAt)
+ * 会把「按负责人筛」「跟进按类型筛」带去顺着扫再挑（审查 11-14），两条带等值列打头的索引把它们拉回来，这里钉住。
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import fs from "node:fs";
@@ -12,6 +14,11 @@ import { resetDb } from "./reset";
 import { 号键SQL, 号键索引名 } from "@/lib/phone-dedupe";
 import { 号键 } from "@/lib/phone";
 import { 包含模式, 客户号码SQL, 客户关键词SQL } from "@/lib/search-keyword";
+import { PrismaClient } from "@/generated/prisma";
+import { 加上限定 } from "@/lib/team-scope";
+import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
+import { 规则 } from "@/lib/enterprise/rules";
+import { 客户筛选条件 } from "@/app/(app)/customers/query";
 
 const 迁移 = fs.readFileSync(new URL("../migrations/137-perf-85k-indexes.sql", import.meta.url), "utf8");
 
@@ -43,9 +50,9 @@ afterAll(async () => {
 });
 
 describe("迁移 137 的索引", () => {
-  it("五个都建上了；号码子表那个的式子和 号键SQL('\"value\"') 原样一致", async () => {
+  it("七个都建上了；号码子表那个的式子和 号键SQL('\"value\"') 原样一致", async () => {
     const 有 = (await prisma.$queryRawUnsafe<{ name: string }[]>(`SELECT name FROM sqlite_master WHERE type = 'index'`)).map((r) => r.name);
-    for (const n of ["CustomerPool_at_customerId_idx", "Customer_deletedAt_createdAt_id_idx", "FollowUp_deletedAt_occurredAt_idx", "FollowUp_customerId_deletedAt_type_ownerId_idx", "ContactMethod_kind_valueKey_idx"]) expect(有).toContain(n);
+    for (const n of ["CustomerPool_at_customerId_idx", "Customer_deletedAt_createdAt_id_idx", "Customer_salesOwnerId_deletedAt_createdAt_id_idx", "FollowUp_deletedAt_occurredAt_idx", "FollowUp_type_deletedAt_occurredAt_ownerId_idx", "FollowUp_customerId_deletedAt_type_ownerId_idx", "ContactMethod_kind_valueKey_idx"]) expect(有).toContain(n);
     expect(迁移).toContain(`ON "ContactMethod"("kind", ${号键SQL('"value"')}, "customerId", "contactId");`);
   });
 
@@ -68,6 +75,76 @@ describe("迁移 137 的索引", () => {
     const p = await 计划(`SELECT c.id FROM "Customer" c WHERE ${w.sql}`, ...w.values);
     expect(p).toContain(号键索引名);
     expect(p).toContain("ContactMethod_kind_valueKey_idx");
+  });
+});
+
+describe("查询计划：Prisma 实际发出的语句", () => {
+  type 句 = { query: string; params: string };
+  const 截 = new PrismaClient({ datasourceUrl: `${process.env.DATABASE_URL}?connection_limit=1`, log: [{ emit: "event", level: "query" }] });
+  const 句们: 句[] = [];
+  (截 as unknown as { $on: (e: "query", f: (q: 句) => void) => void }).$on("query", (q) => 句们.push({ query: q.query, params: q.params }));
+  const 限 = 加上限定(截);
+  const 业务员 = "u-idx-sales";
+
+  beforeAll(async () => {
+    await prisma.user.create({ data: { id: 业务员, email: "idx-sales@x.com", name: "业务员", password: "x", role: "SALES" } });
+    await prisma.entMember.create({ data: { userId: 业务员, bizRole: "sales" } });
+    await prisma.setting.create({ data: { key: 规则.按组织看客户.key, value: JSON.stringify(true) } });
+  });
+  afterAll(async () => {
+    delete process.env.CRM_ENTERPRISE;
+    忘掉企业版范围();
+    await 截.$disconnect();
+  });
+
+  /** 以某人身份跑一次，截下最后一句查 表 的 SELECT，EXPLAIN 它 */
+  async function 真计划(谁: string, 表: "Customer" | "FollowUp", fn: () => Promise<unknown>): Promise<{ sql: string; 计划: string }> {
+    process.env.CRM_ENTERPRISE = "1";
+    忘掉企业版范围();
+    句们.length = 0;
+    await 以谁的身份(谁, fn);
+    const 主 = 句们.filter((q) => q.query.startsWith("SELECT") && q.query.includes(`FROM \`main\`.\`${表}\``)).at(-1);
+    expect(主, `没截到查 ${表} 的句子`).toBeTruthy();
+    return { sql: 主!.query, 计划: await 计划(主!.query, ...JSON.parse(主!.params)) };
+  }
+  const 客户页 = (sp: Record<string, string>) => async () => 限.customer.findMany({ where: await 客户筛选条件(sp), orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: 0, take: 20, select: { id: true } });
+  const 跟进页 = (where: Record<string, string>) => () => 限.followUp.findMany({ where, orderBy: { occurredAt: "desc" }, take: 300, select: { id: true } });
+
+  it("客户列表：老板不筛、业务员「我的客户」顺 (deletedAt, createdAt, id) 不整表排序；按负责人筛走负责人打头的索引", async () => {
+    const 老板 = await 真计划("u-idx", "Customer", 客户页({}));
+    expect(老板.计划).toContain("Customer_deletedAt_createdAt_id_idx");
+    expect(老板.计划).not.toContain("TEMP B-TREE");
+    // 业务员：限定层发的是「负责人是我 OR 在公海」∧ 不在公海，带 OR 用不上负责人索引——这条要靠 (deletedAt, createdAt, id)
+    const 我的 = await 真计划(业务员, "Customer", 客户页({}));
+    expect(我的.sql).toMatch(/`salesOwnerId` IN \(\?\) OR/);
+    expect(我的.计划).toContain("Customer_deletedAt_createdAt_id_idx");
+    expect(我的.计划).not.toContain("TEMP B-TREE");
+    // 按负责人筛（老板挑一个人 / 业务员自己筛自己）：salesOwnerId = ? 不带 OR，必须走负责人打头的，不能顺 (deletedAt, createdAt, id) 扫再挑人
+    for (const [谁, 筛谁] of [["u-idx", 业务员], [业务员, 业务员]]) {
+      const 按人 = await 真计划(谁, "Customer", 客户页({ salesOwnerId: 筛谁 }));
+      expect(按人.sql).toContain("`salesOwnerId` = ?");
+      expect(按人.计划).toContain("Customer_salesOwnerId_deletedAt_createdAt_id_idx");
+      expect(按人.计划).not.toContain("Customer_deletedAt_createdAt_id_idx");
+      expect(按人.计划).not.toContain("TEMP B-TREE");
+    }
+  });
+
+  it("跟进记录页：不筛顺 (deletedAt, occurredAt)；按类型筛走类型打头的、不顺 (deletedAt, occurredAt) 扫；类型 + 成员照旧走 (ownerId, occurredAt)", async () => {
+    for (const 谁 of ["u-idx", 业务员]) {
+      const 不筛 = await 真计划(谁, "FollowUp", 跟进页({}));
+      expect(不筛.计划).toContain("FollowUp_deletedAt_occurredAt_idx");
+      expect(不筛.计划).not.toContain("TEMP B-TREE");
+      const 按类型 = await 真计划(谁, "FollowUp", 跟进页({ type: "VISIT" }));
+      expect(按类型.sql).toContain("`type` = ?");
+      expect(按类型.计划).toContain("FollowUp_type_deletedAt_occurredAt_ownerId_idx");
+      expect(按类型.计划).not.toContain("FollowUp_deletedAt_occurredAt_idx");
+      expect(按类型.计划).not.toContain("TEMP B-TREE");
+      const 类型成员 = await 真计划(谁, "FollowUp", 跟进页({ type: "PHONE", ownerId: "u-idx" }));
+      expect(类型成员.计划).toContain("FollowUp_ownerId_occurredAt_idx");
+    }
+    // 看得到的跟进数不限定的那句（lib/scope-sql.ts 走 Prisma count）：类型 + 成员同样不被类型那条抢走
+    const 数 = await 真计划("u-idx", "FollowUp", () => 限.followUp.count({ where: { type: "PHONE", ownerId: "u-idx" } }));
+    expect(数.计划).toContain("FollowUp_ownerId_occurredAt_idx");
   });
 });
 
