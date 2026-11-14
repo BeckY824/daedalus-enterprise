@@ -111,40 +111,98 @@ async function 要能导出() {
 */
 const 截止前有 = (截止: Date) => ({ OR: [{ createdAt: { lte: 截止 } }, { updatedAt: { lte: 截止 } }] });
 
+/**
+  完整导出的重活（11-14 体验优化，正式服务器只有一个共享核）：
+  - 小批：客户每批 1000、跟进每批 2500（原来 5000 / 10000）。一批读库、整理、回包是一整段同步活，批越大卡主线程越久；
+    8.6 万库拷贝实测（1.87 万客户 + 4.5 万跟进）主线程最长一次阻塞 ~110 ms → ~26 ms，总耗时持平（13.0 s / 13.3 s），来回多 29 趟。
+    每批照旧一句读库：拆成小段读实测更慢（每段都把客户筛选条件重算一遍，13 s → 33 s）
+  - 读回来以后整理行、算指纹按 1000 行一段，段与段之间、批与批之间让出事件循环（setImmediate）
+  - 同一进程同一时刻只跑一份导出的读库（开始时数数、分批读、整表复核），别的导出在服务端排队等，前端照旧显示「正在导出…」，普通页面不排这个队
+  保证不变：每批照旧整批算指纹，复核（校验完整导出）照旧整表重读、逐批比指纹和条数（改过、删过、旁表变了、权限范围变了都靠它拦）。
+  指纹算法不变：逐行 JSON 用逗号拼、首尾方括号，正是 JSON.stringify(整批) 的原样字节，分段喂给 sha256 结果相同
+*/
+const 导出队 = globalThis as unknown as { __完整导出队尾?: Promise<void> };
+async function 排队导出<T>(活: () => Promise<T>): Promise<T> {
+  const 前一个 = 导出队.__完整导出队尾 ?? Promise.resolve();
+  let 放行!: () => void;
+  导出队.__完整导出队尾 = new Promise<void>((r) => { 放行 = r; });
+  await 前一个;
+  try {
+    return await 活();
+  } finally {
+    放行();
+  }
+}
+const 让一让 = () => new Promise<void>((r) => setImmediate(r));
+const 每段 = 1000;
+const 客户每批 = 1000;
+const 跟进每批 = 2500;
+
+/** 逐段映射、段间让一让：几千行的整理不一口气占住主线程 */
+async function 分段映射<T, R>(xs: readonly T[], 转: (x: T) => R): Promise<R[]> {
+  const 出: R[] = [];
+  for (let i = 0; i < xs.length; i += 每段) {
+    if (i) await 让一让();
+    for (const x of xs.slice(i, i + 每段)) 出.push(转(x));
+  }
+  return 出;
+}
+
+/** 等于 createHash("sha256").update(JSON.stringify(values)).digest("hex")，按段喂、段间让一让 */
+async function 分段指纹(values: readonly unknown[]): Promise<string> {
+  const h = createHash("sha256");
+  h.update("[");
+  for (let i = 0; i < values.length; i += 每段) {
+    if (i) { h.update(","); await 让一让(); }
+    h.update(values.slice(i, i + 每段).map((v) => JSON.stringify(v)).join(","));
+  }
+  h.update("]");
+  return h.digest("hex");
+}
+
 /** 完整导出按固定顺序分批读取，每批请求独立检查当前权限。 */
 export async function 开始完整导出(条件: 客户条件) {
   await 要能导出();
-  const 截止 = new Date();
-  const where = await 客户筛选条件(条件);
-  const [客户数, 跟进数] = await Promise.all([
-    prisma.customer.count({ where }),
-    prisma.followUp.count({ where: { customer: where, ...截止前有(截止) } }),
-  ]);
-  // 企业版渠道两层（P-渠道-01 附.5）：客户表来源拆主渠道、子渠道两列。企业版() 只在服务端读得到，随起点带给 worker
-  return { 截止: 截止.toISOString(), 客户数, 跟进数, 渠道两层: 企业版(), ...await 导出归属省略(where) };
+  return 排队导出(async () => {
+    const 截止 = new Date();
+    const where = await 客户筛选条件(条件);
+    const [客户数, 跟进数] = await Promise.all([
+      prisma.customer.count({ where }),
+      prisma.followUp.count({ where: { customer: where, ...截止前有(截止) } }),
+    ]);
+    // 企业版渠道两层（P-渠道-01 附.5）：客户表来源拆主渠道、子渠道两列。企业版() 只在服务端读得到，随起点带给 worker
+    return { 截止: 截止.toISOString(), 客户数, 跟进数, 渠道两层: 企业版(), ...await 导出归属省略(where) };
+  });
 }
 
 export async function 读取完整导出批次(条件: 客户条件, 截止文本: string, 类别: "客户" | "跟进", 游标?: string) {
   await 要能导出();
   const 截止 = new Date(截止文本);
   if (!Number.isFinite(截止.getTime()) || 截止 > new Date() || (类别 !== "客户" && 类别 !== "跟进") || (游标 !== undefined && (typeof 游标 !== "string" || 游标.length > 128))) throw new Error("导出参数无效，请重新导出");
+  return 排队导出(() => 读一批(条件, 截止, 类别, 游标));
+}
+
+/** 读一批（不排队、不查权限：调用方已排上队、查过权限） */
+async function 读一批(条件: 客户条件, 截止: Date, 类别: "客户" | "跟进", 游标?: string) {
   const where = await 客户筛选条件(条件);
   const 号 = await 号码脱敏器();
   if (类别 === "客户") {
-    const all = await prisma.customer.findMany({ where: { AND: [where, ...(游标 ? [{ id: { gt: 游标 } }] : [])] }, orderBy: { id: "asc" }, take: 5001, select: 客户行字段 });
-    const rows = all.slice(0, 5000);
+    const all = await prisma.customer.findMany({ where: { AND: [where, ...(游标 ? [{ id: { gt: 游标 } }] : [])] }, orderBy: { id: "asc" }, take: 客户每批 + 1, select: 客户行字段 });
+    const rows = all.slice(0, 客户每批);
     const 附件 = await 客户附件个数(prisma, rows.map((r) => r.id), 企业版());
-    const values = rows.map((r) => ({ ...成客户行(r, 号), 附件数: 附件.get(r.id) ?? null }));
-    return { 类别: "客户" as const, rows: values, 指纹: createHash("sha256").update(JSON.stringify(values)).digest("hex"), 游标: all.length > 5000 ? rows.at(-1)!.id : null };
+    await 让一让();
+    const values = await 分段映射(rows, (r) => ({ ...成客户行(r, 号), 附件数: 附件.get(r.id) ?? null }));
+    return { 类别: "客户" as const, rows: values, 指纹: await 分段指纹(values), 游标: all.length > 客户每批 ? rows.at(-1)!.id : null };
   }
   const all = await prisma.followUp.findMany({
     where: { customer: where, ...截止前有(截止), ...(游标 ? { id: { gt: 游标 } } : {}) },
-    orderBy: { id: "asc" }, take: 10001,
+    orderBy: { id: "asc" }, take: 跟进每批 + 1,
     select: { id: true, customerId: true, customer: { select: { name: true, phone: true } }, occurredAt: true, type: true, method: true, title: true, content: true, status: true, owner: { select: { name: true } } },
   });
-  const rows = all.slice(0, 10000);
-  const values = rows.map((f) => ({ id: f.id, customerId: f.customerId, customerName: f.customer.name, phone: 号(f.customer.phone), occurredAt: f.occurredAt.toISOString(), type: f.type, method: f.method, title: f.title, content: f.content, status: f.status, ownerName: f.owner.name }));
-  return { 类别: "跟进" as const, rows: values, 指纹: createHash("sha256").update(JSON.stringify(values)).digest("hex"), 游标: all.length > 10000 ? rows.at(-1)!.id : null };
+  const rows = all.slice(0, 跟进每批);
+  await 让一让();
+  const values = await 分段映射(rows, (f) => ({ id: f.id, customerId: f.customerId, customerName: f.customer.name, phone: 号(f.customer.phone), occurredAt: f.occurredAt.toISOString(), type: f.type, method: f.method, title: f.title, content: f.content, status: f.status, ownerName: f.owner.name }));
+  return { 类别: "跟进" as const, rows: values, 指纹: await 分段指纹(values), 游标: all.length > 跟进每批 ? rows.at(-1)!.id : null };
 }
 
 /** 导出期间发生相关写入/删除时不把分批结果冒充同一时刻的完整快照。 */
@@ -153,6 +211,14 @@ export async function 校验完整导出(条件: 客户条件, 起点: Awaited<R
   if (!起点 || typeof 起点.截止 !== "string" || !Number.isSafeInteger(起点.客户数) || 起点.客户数 < 0 || !Number.isSafeInteger(起点.跟进数) || 起点.跟进数 < 0 || !Array.isArray(指纹) || 指纹.some((x) => !x || (x.类别 !== "客户" && x.类别 !== "跟进") || !/^[a-f0-9]{64}$/.test(x.指纹))) throw new Error("导出参数无效，请重新导出");
   const 截止 = new Date(起点.截止);
   if (!Number.isFinite(截止.getTime()) || 截止 > new Date()) throw new Error("导出参数无效，请重新导出");
+  // 整表复核是最重的一步：排上队再做，批与批之间让一让（见 排队导出）
+  await 排队导出(() => 整表复核(条件, 起点, 指纹, 截止));
+  // 校验过了才记：中途失败、要重导的那次不算导出去了
+  await 记导出(条件, 起点.客户数, 起点.跟进数);
+  return { ok: true as const };
+}
+
+async function 整表复核(条件: 客户条件, 起点: Awaited<ReturnType<typeof 开始完整导出>>, 指纹: { 类别: "客户" | "跟进"; 指纹: string }[], 截止: Date) {
   const where = await 客户筛选条件(条件);
   const [客户数, 跟进数, 改过客户, 改过跟进] = await Promise.all([
     prisma.customer.count({ where }),
@@ -167,14 +233,14 @@ export async function 校验完整导出(条件: 客户条件, 起点: Awaited<R
   for (const 类别 of ["客户", "跟进"] as const) {
     let 游标: string | undefined;
     do {
-      const r = await 读取完整导出批次(条件, 起点.截止, 类别, 游标);
+      // 和原来逐批调 读取完整导出批次 一样：每批重新查一次权限（复核中途被收了权限照样拦下）
+      await 要能导出();
+      await 让一让();
+      const r = await 读一批(条件, 截止, 类别, 游标);
       const before = 指纹[index++];
       if (!before || before.类别 !== 类别 || before.指纹 !== r.指纹) throw new Error("导出期间数据或权限发生变化，请重新导出；本次不会生成不完整文件");
       游标 = r.游标 ?? undefined;
     } while (游标);
   }
   if (index !== 指纹.length) throw new Error("导出批次不完整，请重新导出");
-  // 校验过了才记：中途失败、要重导的那次不算导出去了
-  await 记导出(条件, 起点.客户数, 起点.跟进数);
-  return { ok: true as const };
 }

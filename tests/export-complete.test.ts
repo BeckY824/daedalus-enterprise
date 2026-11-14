@@ -3,6 +3,7 @@ vi.mock("next/cache", () => ({ revalidatePath() {} }));
 vi.mock("@/lib/auth", () => ({ requireUser: async () => ({ id: "export-user", name: "导出测试", role: "ADMIN" }) }));
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
+import { createHash } from "node:crypto";
 import { 开始完整导出, 读取完整导出批次, 校验完整导出, 导出客户 } from "@/app/(app)/customers/export-action";
 
 beforeEach(async () => {
@@ -114,3 +115,26 @@ it("空导出或唯一候选换成另一个人也核对身份指纹，不能仅�
  await prisma.user.create({data:{name:"新销售",email:"empty-new-sales@local",password:"x"}});
  await expect(校验完整导出({},result.start,result.fingerprints)).rejects.toThrow("负责人范围发生变化");
 });
+
+it("小批 + 分段整理（每段 1000 行、段间让出事件循环）后指纹仍等于整批 JSON 的 sha256；两份导出同时跑排队不互锁（11-14）", async () => {
+  const at = new Date("2026-01-01");
+  await prisma.customer.createMany({ data: Array.from({ length: 2500 }, (_, i) => ({ id: `s${String(i).padStart(5, "0")}`, name: `客户${i}`, phone: String(i), salesOwnerId: "export-user", createdAt: at, updatedAt: at })) });
+  await prisma.followUp.createMany({ data: Array.from({ length: 2500 }, (_, i) => ({ id: `g${String(i).padStart(5, "0")}`, customerId: `s${String(i % 2500).padStart(5, "0")}`, ownerId: "export-user", type: "PHONE", title: "回电", content: `内容${i}`, createdAt: at, updatedAt: at })) });
+  const start = await 开始完整导出({});
+  for (const kind of ["客户", "跟进"] as const) {
+    const ids: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const r = await 读取完整导出批次({}, start.截止, kind, cursor);
+      // 每批：客户 1000、跟进 2500（小批，单批整理和回包不长时间占主线程）
+      expect(r.rows.length).toBeLessThanOrEqual(kind === "客户" ? 1000 : 2500);
+      expect(r.指纹).toBe(createHash("sha256").update(JSON.stringify(r.rows)).digest("hex"));
+      ids.push(...r.rows.map((x) => x.id));
+      cursor = r.游标 ?? undefined;
+    } while (cursor);
+    expect(ids).toEqual(Array.from({ length: 2500 }, (_, i) => `${kind === "客户" ? "s" : "g"}${String(i).padStart(5, "0")}`));
+  }
+  const [a, b] = await Promise.all([收全(), 收全()]);
+  expect(a.fingerprints).toEqual(b.fingerprints);
+  await expect(Promise.all([校验完整导出({}, a.start, a.fingerprints), 校验完整导出({}, b.start, b.fingerprints), 读取完整导出批次({}, a.start.截止, "客户")])).resolves.toMatchObject([{ ok: true }, { ok: true }, { 类别: "客户" }]);
+}, 120_000);
