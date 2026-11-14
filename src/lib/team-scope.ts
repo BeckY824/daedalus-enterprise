@@ -766,7 +766,13 @@ export function 加上限定(db: PrismaClient): PrismaClient {
         await 现在的限定(db).catch(() => {});
         // 看全部() 里开事务：上面那句直接回不限定、没算真身的范围，管理员只读拦要的那份也先算好
         await 只读的话(db).catch(() => {});
-        return (v as (...x: unknown[]) => unknown).apply(t, a);
+        // 交互式事务里的写一做完就加了写库版本，可事务还没提交：这期间别人读到的提交前旧数会带着新版本号进公海分组缓存。
+        // 事务结束（提交或回滚）再记一次，那份就作废（enterprise/pool-count-cache.ts）。数组式的同样收尾，多记一次无妨
+        try {
+          return await (v as (...x: unknown[]) => Promise<unknown>).apply(t, a);
+        } finally {
+          记一次写库();
+        }
       };
     },
   });

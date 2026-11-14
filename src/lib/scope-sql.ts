@@ -76,7 +76,7 @@ export async function 看得到的客户数(): Promise<number> {
   if (!范围) {
     // 不限定的人：一句数完（只走 deletedAt 索引）
     if (!(await 读的我(defaultClient))) return prisma.customer.count();
-    // 限定了但裸 SQL 接不住的（市场成员相关、按线只读、回避名单过上限）：照样拆两路（第二轮 11-14）——不在公海的走 Prisma，
+    // 限定了但裸 SQL 接不住的（看得到的() 只对这两种回 null：有市场只读、原负责人回避名单过上限）：照样拆两路（第二轮 11-14）——不在公海的走 Prisma，
     // 限定层见到「不在公海」会去掉「OR 在公海」那支（team-scope 限在非公海）；公海那头 = 公海页签数。原来一句带 OR 整表扫，市场相关的人 50 ms
     const [非公海, 公海] = await Promise.all([prisma.customer.count({ where: { pool: { is: null } } }), 看得到的公海数()]);
     return 非公海 + 公海;

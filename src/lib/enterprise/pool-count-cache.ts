@@ -10,6 +10,9 @@
  * 不经限定层直接写库的（底层客户端、另一个进程）最多晚 存活毫秒 才看到。只缓存数，不缓存行。
  * 同一时刻同样的几句只发一次（正在算的那个 promise 大家一起等）。
  * 多租户（托管版）不缓存：键里没有工作区。测试里默认关（测试常拿底层客户端改数据再读），要测它的用 测试里开公海分组缓存
+ *
+ * 压测用的统计（只数不改行为）：命中 / 未命中（没有或过期）/ 作废（没过期但写过库）三个进程内计数，公海分组缓存统计() 读；
+ * 设 CRM_POOL_CACHE_STATS=1 时每 30 秒（有变化才）打一行日志。默认关
  */
 import { multiTenant } from "@/lib/tenant/context";
 
@@ -17,8 +20,27 @@ const 存活毫秒 = 3000;
 const 最多几条 = 64;
 
 type 项 = { 到: number; 版本: number; 值: Promise<unknown> };
-const g = globalThis as unknown as { __公海分组缓存?: Map<string, 项>; __写库版本?: number; __公海分组缓存测试?: boolean };
+type 统计 = { 命中: number; 未命中: number; 作废: number };
+const g = globalThis as unknown as { __公海分组缓存?: Map<string, 项>; __写库版本?: number; __公海分组缓存测试?: boolean; __公海分组统计?: 统计; __公海分组统计计时?: ReturnType<typeof setInterval> };
 const 表 = () => (g.__公海分组缓存 ??= new Map());
+const 计 = () => (g.__公海分组统计 ??= { 命中: 0, 未命中: 0, 作废: 0 });
+
+/** 进程启动以来的命中 / 未命中 / 作废次数（压测看缓存起没起作用） */
+export function 公海分组缓存统计(): 统计 {
+  return { ...计() };
+}
+
+function 开统计日志() {
+  if (process.env.CRM_POOL_CACHE_STATS !== "1" || g.__公海分组统计计时) return;
+  let 上次 = "";
+  g.__公海分组统计计时 = setInterval(() => {
+    const { 命中, 未命中, 作废 } = 计();
+    const 行 = `[公海分组缓存] 命中 ${命中} 未命中 ${未命中} 作废 ${作废}`;
+    if (行 !== 上次) console.log(行);
+    上次 = 行;
+  }, 30_000);
+  g.__公海分组统计计时.unref?.();
+}
 
 /** 写库版本：限定层每次写都加一（team-scope 写了库） */
 export function 写库版本(): number {
@@ -46,7 +68,13 @@ export function 缓存分组数<T>(sql: string, 值: readonly unknown[], 查: ()
   const 现 = Date.now();
   const 版本 = 写库版本();
   const 有 = 表().get(键);
-  if (有 && 有.到 > 现 && 有.版本 === 版本) return 有.值 as Promise<T>;
+  开统计日志();
+  if (有 && 有.到 > 现 && 有.版本 === 版本) {
+    计().命中++;
+    return 有.值 as Promise<T>;
+  }
+  if (有 && 有.到 > 现) 计().作废++;
+  else 计().未命中++;
   if (表().size >= 最多几条) {
     for (const [k, v] of 表()) if (v.到 <= 现 || v.版本 !== 版本) 表().delete(k);
     if (表().size >= 最多几条) 表().clear();

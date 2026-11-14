@@ -1,6 +1,7 @@
 /**
  * 公海分组计数的短时缓存（8.5 万客户提速第二轮，11-14，lib/enterprise/pool-count-cache.ts）：
- * 同一句同一组参数几秒内只查一次；参数不同（回避掉的人不同）各算各的；经限定层的任何写都让缓存作废；过了存活时间重查；查出错不留。
+ * 同一句同一组参数几秒内只查一次；参数不同（回避掉的人不同）各算各的；经限定层的任何写都让缓存作废；过了存活时间重查；查出错不留；
+ * 交互式事务里写了、提交前别人读到旧数存进缓存的那份，事务结束后作废；命中 / 未命中 / 作废有计数。
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 
@@ -8,7 +9,8 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {}
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 缓存分组数, 测试里开公海分组缓存, 写库版本 } from "@/lib/enterprise/pool-count-cache";
+import { 缓存分组数, 测试里开公海分组缓存, 写库版本, 公海分组缓存统计 } from "@/lib/enterprise/pool-count-cache";
+import { PrismaClient } from "@/generated/prisma";
 import { 分组数SQL } from "@/lib/enterprise/unified-pool-sql";
 
 beforeAll(async () => {
@@ -62,6 +64,40 @@ describe("公海分组计数短时缓存", () => {
     expect(写库版本()).toBe(v2);
     expect(await 缓存分组数("W", [], 查)).toBe(3);
     delete process.env.CRM_ENTERPRISE;
+  });
+
+  it("交互式事务：事务里写 → 提交前另一条连接读到旧数存进缓存 → 提交后再读拿到新数", async () => {
+    process.env.CRM_ENTERPRISE = "1";
+    // 另一处读：自己一条连接，只看得到已提交的
+    const 别处 = new PrismaClient({ datasourceUrl: `${process.env.DATABASE_URL}?connection_limit=1` });
+    try {
+      const 数 = () => 缓存分组数("TX", [], () => 别处.setting.count({ where: { key: { startsWith: "pool-cache-tx-" } } }));
+      expect(await 数()).toBe(0);
+      let 事务里读到 = -1;
+      await prisma.$transaction(async (tx) => {
+        await tx.setting.create({ data: { key: "pool-cache-tx-1", value: "1" } });
+        // 写已经做完、版本号已经加过，事务还没提交：这时读到的是旧数，带着最新版本号进了缓存
+        事务里读到 = await 数();
+      });
+      expect(事务里读到).toBe(0);
+      expect(await 数()).toBe(1);
+    } finally {
+      await 别处.$disconnect();
+      delete process.env.CRM_ENTERPRISE;
+    }
+  });
+
+  it("统计：命中 / 未命中 / 作废各记一次（只数不改行为）", async () => {
+    const 前 = 公海分组缓存统计();
+    const 查 = async () => 1;
+    await 缓存分组数("S1", [], 查); // 未命中
+    await 缓存分组数("S1", [], 查); // 命中
+    process.env.CRM_ENTERPRISE = "1";
+    await prisma.setting.create({ data: { key: "pool-cache-stat", value: "1" } });
+    delete process.env.CRM_ENTERPRISE;
+    await 缓存分组数("S1", [], 查); // 没过期但写过库：作废
+    const 后 = 公海分组缓存统计();
+    expect([后.未命中 - 前.未命中, 后.命中 - 前.命中, 后.作废 - 前.作废]).toEqual([1, 1, 1]);
   });
 
   it("过了存活时间重查；查出错的不留", async () => {
