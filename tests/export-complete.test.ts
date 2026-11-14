@@ -1,11 +1,14 @@
 import { afterAll, beforeEach, expect, it, vi } from "vitest";
 vi.mock("next/cache", () => ({ revalidatePath() {} }));
-vi.mock("@/lib/auth", () => ({ requireUser: async () => ({ id: "export-user", name: "导出测试", role: "ADMIN" }) }));
+const 登录 = vi.hoisted(() => ({ 停用: false }));
+vi.mock("@/lib/auth", () => ({ requireUser: async () => { if (登录.停用) throw new Error("NEXT_REDIRECT"); return { id: "export-user", name: "导出测试", role: "ADMIN" }; } }));
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
+import { createHash } from "node:crypto";
 import { 开始完整导出, 读取完整导出批次, 校验完整导出, 导出客户 } from "@/app/(app)/customers/export-action";
 
 beforeEach(async () => {
+  登录.停用 = false;
   await resetDb();
   await prisma.user.create({ data: { id: "export-user", name: "导出测试", email: "export@local", password: "x", role: "ADMIN" } });
 });
@@ -113,4 +116,85 @@ it("空导出或唯一候选换成另一个人也核对身份指纹，不能仅�
  const result=await 收全();expect(result.start.客户数).toBe(0);expect(result.start.隐藏负责人).toBe(true);
  await prisma.user.create({data:{name:"新销售",email:"empty-new-sales@local",password:"x"}});
  await expect(校验完整导出({},result.start,result.fingerprints)).rejects.toThrow("负责人范围发生变化");
+});
+
+it("小批 + 分段整理（每段 1000 行、段间让出事件循环）后指纹仍等于整批 JSON 的 sha256；两份导出同时跑排队不互锁（11-14）", async () => {
+  const at = new Date("2026-01-01");
+  await prisma.customer.createMany({ data: Array.from({ length: 2500 }, (_, i) => ({ id: `s${String(i).padStart(5, "0")}`, name: `客户${i}`, phone: String(i), salesOwnerId: "export-user", createdAt: at, updatedAt: at })) });
+  await prisma.followUp.createMany({ data: Array.from({ length: 2500 }, (_, i) => ({ id: `g${String(i).padStart(5, "0")}`, customerId: `s${String(i % 2500).padStart(5, "0")}`, ownerId: "export-user", type: "PHONE", title: "回电", content: `内容${i}`, createdAt: at, updatedAt: at })) });
+  const start = await 开始完整导出({});
+  for (const kind of ["客户", "跟进"] as const) {
+    const ids: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const r = await 读取完整导出批次({}, start.截止, kind, cursor);
+      // 每批：客户 1000、跟进 2500（小批，单批整理和回包不长时间占主线程）
+      expect(r.rows.length).toBeLessThanOrEqual(kind === "客户" ? 1000 : 2500);
+      expect(r.指纹).toBe(createHash("sha256").update(JSON.stringify(r.rows)).digest("hex"));
+      ids.push(...r.rows.map((x) => x.id));
+      cursor = r.游标 ?? undefined;
+    } while (cursor);
+    expect(ids).toEqual(Array.from({ length: 2500 }, (_, i) => `${kind === "客户" ? "s" : "g"}${String(i).padStart(5, "0")}`));
+  }
+  const [a, b] = await Promise.all([收全(), 收全()]);
+  expect(a.fingerprints).toEqual(b.fingerprints);
+  await expect(Promise.all([校验完整导出({}, a.start, a.fingerprints), 校验完整导出({}, b.start, b.fingerprints), 读取完整导出批次({}, a.start.截止, "客户")])).resolves.toMatchObject([{ ok: true }, { ok: true }, { 类别: "客户" }]);
+}, 120_000);
+
+const 队 = globalThis as unknown as { __完整导出队尾?: Promise<void>; __完整导出排队上限毫秒?: number };
+/** 塞一份「一直在跑」的导出占住队头，返回放它走的开关 */
+function 占住队头() {
+  let 放!: () => void;
+  const 前尾 = 队.__完整导出队尾 ?? Promise.resolve();
+  队.__完整导出队尾 = 前尾.then(() => new Promise<void>((r) => { 放 = r; }));
+  return () => 前尾.then(() => 放());
+}
+
+it("排队超过上限报「导出繁忙，请稍后再试」、不读库；前面那份跑完后，后面的导出照常能跑完（11-14）", async () => {
+  const at = new Date("2026-01-01");
+  await prisma.customer.createMany({ data: Array.from({ length: 3 }, (_, i) => ({ id: `q${i}`, name: `客户${i}`, phone: String(i), salesOwnerId: "export-user", createdAt: at, updatedAt: at })) });
+  const 原上限 = 队.__完整导出排队上限毫秒;
+  队.__完整导出排队上限毫秒 = 80;
+  const 读 = vi.spyOn(prisma.customer, "count");
+  try {
+    const 放 = 占住队头();
+    const 截止 = new Date().toISOString();
+    // 两份前后排着，都等过上限：都报繁忙，都不读库
+    const [a, b] = await Promise.allSettled([开始完整导出({}), 读取完整导出批次({}, 截止, "客户")]);
+    expect(a).toMatchObject({ status: "rejected", reason: { message: "导出繁忙，请稍后再试" } });
+    expect(b).toMatchObject({ status: "rejected", reason: { message: "导出繁忙，请稍后再试" } });
+    expect(读).not.toHaveBeenCalled();
+    await 放();
+    队.__完整导出排队上限毫秒 = 原上限;
+    const r = await 收全();
+    expect(r.customers).toEqual(["q0", "q1", "q2"]);
+    expect(读).toHaveBeenCalled(); // 探针确实挂在读库上：上面的「没调用」不是空过
+    await expect(校验完整导出({}, r.start, r.fingerprints)).resolves.toEqual({ ok: true });
+    expect(await prisma.auditLog.count({ where: { action: "export" } })).toBe(1);
+  } finally {
+    队.__完整导出排队上限毫秒 = 原上限;
+    读.mockRestore();
+  }
+});
+
+it("排队期间权限被收回（账号停用）：轮到时再查一次，不读库、不记导出（11-14）", async () => {
+  const at = new Date("2026-01-01");
+  await prisma.customer.create({ data: { id: "p0", name: "客户", phone: "1", salesOwnerId: "export-user", createdAt: at, updatedAt: at } });
+  const start = await 收全();
+  const 数 = vi.spyOn(prisma.customer, "count");
+  const 读 = vi.spyOn(prisma.customer, "findMany");
+  try {
+    const 放 = 占住队头();
+    const 排着 = [开始完整导出({}), 读取完整导出批次({}, start.start.截止, "客户"), 校验完整导出({}, start.start, start.fingerprints)].map((p) => p.then(() => "成了", (e: Error) => e.message));
+    await new Promise((r) => setTimeout(r, 20)); // 三份都过了进队前那次权限检查，正排着
+    登录.停用 = true;
+    await 放();
+    expect(await Promise.all(排着)).toEqual(["NEXT_REDIRECT", "NEXT_REDIRECT", "NEXT_REDIRECT"]);
+    expect(数).not.toHaveBeenCalled();
+    expect(读).not.toHaveBeenCalled();
+    expect(await prisma.auditLog.count({ where: { action: "export" } })).toBe(0);
+  } finally {
+    数.mockRestore();
+    读.mockRestore();
+  }
 });

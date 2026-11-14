@@ -26,11 +26,17 @@ describe("露客户", () => {
 
 describe("看得到的客户", () => {
   it("去重后走一次带限定的查询，限定层滤掉的就是看不到", async () => {
-    const findMany = vi.fn(async () => [{ id: "c1" }]);
+    const findMany = vi.fn(async () => [{ id: "c1", deletedAt: null }]);
     const 结果 = await 看得到的客户(["c1", "c2", "c1"], { customer: { findMany } } as never);
     expect([...结果]).toEqual(["c1"]);
     expect(findMany).toHaveBeenCalledTimes(1);
-    expect(findMany).toHaveBeenCalledWith({ where: { id: { in: ["c1", "c2"] } }, select: { id: true } });
+    // 按主键取（11-14）：顶层「没删」不进 SQL，带 deletedAt 回来在内存里滤
+    expect(findMany).toHaveBeenCalledWith({ where: { id: { in: ["c1", "c2"] } }, select: { id: true, deletedAt: true } });
+  });
+
+  it("回收站里的（deletedAt 有值）算看不到：顶层没删挪到内存里滤，结果和在库里滤一样", async () => {
+    const findMany = vi.fn(async () => [{ id: "c1", deletedAt: null }, { id: "c2", deletedAt: new Date("2026-11-01T00:00:00Z") }]);
+    expect([...(await 看得到的客户(["c1", "c2"], { customer: { findMany } } as never))]).toEqual(["c1"]);
   });
 
   it("没有客户就不查", async () => {

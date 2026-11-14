@@ -27,7 +27,7 @@ import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { 许可删除的表, 许可删除的文件, 许可重建的文件 } from "./migration-allowed-drops";
+import { 许可删除的表, 许可删除的文件, 许可重建的文件, 许可搜索索引的文件, 许可搜索索引的表 } from "./migration-allowed-drops";
 
 const ROOT = path.resolve(__dirname, "..");
 const DIR = path.join(ROOT, "migrations");
@@ -66,12 +66,23 @@ describe("迁移文件", () => {
 
   it("只能加东西：不允许 DROP / DELETE / UPDATE / INSERT（只放过 066 那 7 张表的 DROP TABLE IF EXISTS）", () => {
     // 107 的重建（建新表 / 拷 / 删旧 / 改名）一句一句钉在 tests/migration-files-guard.test.ts，这里不重复放行
-    for (const f of 文件.filter((f) => f !== 许可重建的文件)) {
+    for (const f of 文件.filter((f) => f !== 许可重建的文件 && f !== 许可搜索索引的文件)) {
       const sql = 去许可删除(去注释(f));
       for (const [禁, re] of 禁止的语句) {
         expect(re.test(sql), `${f} 含有不允许的语句：${禁}`).toBe(false);
       }
     }
+  });
+
+  it("141 三字索引：INSERT / DELETE 只许写那两张索引表，UPDATE / DROP 一句都不许（migration-allowed-drops.ts 许可搜索索引）", () => {
+    const 表 = 许可搜索索引的表.join("|");
+    // 触发器的「AFTER UPDATE OF 列」是在说什么时候触发，不是 UPDATE 语句
+    const 去许可写 = (sql: string) => sql.replace(new RegExp(`\\b(INSERT\\s+INTO|DELETE\\s+FROM)\\s+"(${表})"`, "gi"), "").replace(/\bAFTER\s+UPDATE\s+OF\b/gi, "");
+    const sql = 去许可写(去注释(许可搜索索引的文件));
+    for (const [禁, re] of 禁止的语句) expect(re.test(sql), `${许可搜索索引的文件} 含有不允许的语句：${禁}`).toBe(false);
+    // 守卫自己：写业务表照样拦
+    expect(禁止的语句.filter(([, re]) => re.test(去许可写('INSERT INTO "Customer" VALUES (1); DELETE FROM "CustomerSearch";'))).map(([禁]) => 禁)).toEqual(["INSERT"]);
+    expect(禁止的语句.filter(([, re]) => re.test(去许可写('DELETE FROM "CustomerExtra";'))).map(([禁]) => 禁)).toEqual(["DELETE"]);
   });
 
   /*
@@ -154,7 +165,8 @@ describe("迁移文件", () => {
         迁移只在已有业务表的库上跑（全新安装先 schema.sql、桌面端先拷模板库）。021 给 Customer 的号码建表达式索引（R-067），
         所以先放一张最小的 Customer——真实的库里它从第一版就在。024 给归属列建索引，这一列也是第一版就有。049 给 createdAt 建索引，同样第一版就有；137 给 salesOwnerId 建索引，也是第一版就有；138 给 referrerCustomerId 建索引，也是第一版就有
       */
-      db.exec('CREATE TABLE "Customer" ("id" TEXT NOT NULL PRIMARY KEY, "phone" TEXT NOT NULL, "attributionCustomerId" TEXT, "referrerCustomerId" TEXT, "salesOwnerId" TEXT, "createdAt" DATETIME)');
+      // 141 的三字索引按客户的名字、学校、专业、年级、备注建，这几列也是第一版就有
+      db.exec('CREATE TABLE "Customer" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT, "school" TEXT, "major" TEXT, "grade" TEXT, "remark" TEXT, "phone" TEXT NOT NULL, "attributionCustomerId" TEXT, "referrerCustomerId" TEXT, "salesOwnerId" TEXT, "createdAt" DATETIME)');
       db.exec('CREATE TABLE "FollowPlan" ("id" TEXT PRIMARY KEY, "done" BOOLEAN, "plannedAt" DATETIME)');
       // 028及030–035也在存量基础表加列。这里保留旧表形状，不能直接用新schema掩盖加列失败。
       db.exec('CREATE TABLE "Opportunity" ("id" TEXT PRIMARY KEY)');
@@ -163,11 +175,13 @@ describe("迁移文件", () => {
       db.exec('CREATE TABLE "FollowUp" ("id" TEXT PRIMARY KEY, "customerId" TEXT, "type" TEXT, "ownerId" TEXT, "occurredAt" DATETIME)');
       // 067–071 给渠道加列，Channel 也是第一版就有
       db.exec('CREATE TABLE "Channel" ("id" TEXT PRIMARY KEY, "name" TEXT)');
-      // 073 给联系人加列，Contact 也是第一版就有
-      db.exec('CREATE TABLE "Contact" ("id" TEXT PRIMARY KEY, "name" TEXT)');
+      // 073 给联系人加列，Contact 也是第一版就有；142 给联系人电话建号键索引，phone 也是第一版就有
+      db.exec('CREATE TABLE "Contact" ("id" TEXT PRIMARY KEY, "name" TEXT, "phone" TEXT)');
       // 098 给用户加飞书身份列，User 也是第一版就有
       db.exec('CREATE TABLE "User" ("id" TEXT PRIMARY KEY, "name" TEXT)');
       db.prepare('INSERT INTO "FollowPlan" VALUES (?, ?, ?)').run("old-plan", 1, 123456);
+      // 老库里已有的客户：141 第一遍要回填进三字索引，第二遍不重复
+      db.prepare('INSERT INTO "Customer" ("id", "name", "phone") VALUES (?, ?, ?)').run("old-c", "测试老客户", "138 0000 1111");
       // 第一遍：一个都不许抛。全新库上 ADD COLUMN 也是真的在加列
       for (const f of 文件) {
         expect(() => db.exec(readFileSync(path.join(DIR, f), "utf8")), `第 1 遍执行 ${f} 失败`).not.toThrow();
@@ -185,6 +199,7 @@ describe("迁移文件", () => {
       expect(表.map((t) => t.name)).toContain("AuditLog");
       // 016 / 017 每遍先把订单 / 供应商建回空表，066 再删：跑完一张都不剩
       for (const t of 许可删除的表) expect(表.map((x) => x.name), `${t} 跑完还在`).not.toContain(t);
+      expect(db.prepare(`SELECT cid, "phoneKey" FROM "CustomerSearch"`).all()).toEqual([{ cid: "old-c", phoneKey: "13800001111" }]);
       expect(db.prepare('SELECT * FROM "FollowPlan" WHERE id = ?').get("old-plan")).toMatchObject({ id: "old-plan", done: 1, plannedAt: 123456, doneAt: null });
       db.close();
     } finally {
@@ -202,13 +217,14 @@ describe("迁移文件", () => {
     rmSync(临时库, { force: true });
     try {
       const db = new DatabaseSync(临时库);
-      db.exec('CREATE TABLE "Customer" ("id" TEXT NOT NULL PRIMARY KEY, "phone" TEXT NOT NULL, "attributionCustomerId" TEXT, "referrerCustomerId" TEXT, "salesOwnerId" TEXT, "createdAt" DATETIME)');
+      // 141 的三字索引按客户的名字、学校、专业、年级、备注建，这几列也是第一版就有
+      db.exec('CREATE TABLE "Customer" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT, "school" TEXT, "major" TEXT, "grade" TEXT, "remark" TEXT, "phone" TEXT NOT NULL, "attributionCustomerId" TEXT, "referrerCustomerId" TEXT, "salesOwnerId" TEXT, "createdAt" DATETIME)');
       db.exec('CREATE TABLE "FollowPlan" ("id" TEXT PRIMARY KEY, "done" BOOLEAN, "plannedAt" DATETIME)');
       db.exec('CREATE TABLE "Opportunity" ("id" TEXT PRIMARY KEY)');
       db.exec('CREATE TABLE "Task" ("id" TEXT PRIMARY KEY)');
       db.exec('CREATE TABLE "FollowUp" ("id" TEXT PRIMARY KEY, "customerId" TEXT, "type" TEXT, "ownerId" TEXT, "occurredAt" DATETIME)');
       db.exec('CREATE TABLE "Channel" ("id" TEXT PRIMARY KEY, "name" TEXT)');
-      db.exec('CREATE TABLE "Contact" ("id" TEXT PRIMARY KEY, "name" TEXT)');
+      db.exec('CREATE TABLE "Contact" ("id" TEXT PRIMARY KEY, "name" TEXT, "phone" TEXT)');
       db.exec('CREATE TABLE "User" ("id" TEXT PRIMARY KEY, "name" TEXT)');
       // Project 由 042 建
       const 老的 = 文件.filter((f) => f < 许可重建的文件);

@@ -27,18 +27,28 @@ export default async function PlansPage({
   const 每组 = 读每组(sp.n);
 
   // Fetch team and personal windows separately: a busy team must not push my history out.
+  const 已完成上限 = 200;
   const completedPlans = (ownerId?: string) => prisma.followPlan.findMany({
     where: { done: true, ...(ownerId ? { ownerId } : {}) },
     orderBy: [{ doneAt: { sort: "desc", nulls: "last" } }, { id: "asc" }],
-    take: 200,
+    take: 已完成上限,
     include: { customer: { select: { id: true, name: true } }, owner: { select: { id: true, name: true } } },
   });
   const completedTasks = (ownerId?: string) => prisma.task.findMany({
     where: { done: true, ...(ownerId ? { ownerId } : {}) },
     orderBy: [{ doneAt: { sort: "desc", nulls: "last" } }, { id: "asc" }],
-    take: 200,
+    take: 已完成上限,
     include: { customer: { select: { id: true, name: true } }, owner: { select: { id: true, name: true } } },
   });
+  /*
+    团队那份没取满 200 条 = 看得到的已完成全在里面了；「我的」那份（ownerId = 我）的条件只比团队那份多一个 ownerId，
+    走同一个按范围收窄的 prisma，取到的必然是团队那份的子集，不用再查一次（11-14：业务员每次省两句带可见范围的查询）。
+    取满了才另查「我的」，免得忙的团队把我自己的挤出去
+  */
+  const 团队和我的 = async <T,>(取: (ownerId?: string) => Promise<T[]>): Promise<[T[], T[]]> => {
+    const 团队 = await 取();
+    return [团队, 团队.length < 已完成上限 ? [] : await 取(me.id)];
+  };
   // 企业版：项目上填的下一步时间一起摆进来（只读，标「来自项目」）。进行中、不在公海的；看得到哪些项目跟着按团队范围收窄的 prisma
   const 项目下一步们 = async () => {
     if (!企业版()) return [];
@@ -52,10 +62,10 @@ export default async function PlansPage({
     const [进不了, 链] = await Promise.all([市场进不了详情的(me.id, rows.map((r) => r.id)), 项目链接们(me, rows.map((r) => r.id))]);
     return rows.map((r) => ({ key: `project:${r.id}`, id: r.id, 项目名: r.name, 下一步: r.nextStepText, 时间: calendarDay(r.nextStepAt!), ownerId: r.ownerId, ownerName: 名.get(r.ownerId) ?? "已不在的成员", 进不了: 进不了.has(r.id), 地址: 链.get(r.id) }));
   };
-  const [{ plans, tasks, 轻, 负责人 }, teamPlans, teamTasks, myPlans, myTasks, 预选客户, 项目下一步, 够不着] = await Promise.all([
+  const [{ plans, tasks, 轻, 负责人 }, [teamPlans, myPlans], [teamTasks, myTasks], 预选客户, 项目下一步, 够不着] = await Promise.all([
     // 不限定（老板、个人版、企业版没开按组织看）时轻列表走短时缓存（lib/plans-page.ts）
     (async () => 取计划页(prisma, 每组, me.id, (await 限定的我(defaultClient)) ? undefined : 缓存着))(),
-    completedPlans(), completedTasks(), completedPlans(me.id), completedTasks(me.id),
+    团队和我的(completedPlans), 团队和我的(completedTasks),
     带过来的客户(sp.customer),
     项目下一步们(),
     名下事项够不着(me),

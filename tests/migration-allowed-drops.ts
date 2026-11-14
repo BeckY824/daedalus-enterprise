@@ -38,3 +38,14 @@ export const 切句 = (sql: string) =>
     .split(";")
     .map((s) => s.replace(/\s+/g, " ").trim())
     .filter(Boolean);
+
+/**
+ * 迁移目录里第三个例外（2026-11-14，migrations/141-search-trigram.sql）：客户搜索的三字索引（FTS5 trigram）。
+ * 它们只是索引（源表照旧是唯一的数据，随时能按源表重建），要靠触发器跟着源表写、每次启动按源表补齐 / 删掉对不上的，
+ * 所以这一份许可 INSERT / DELETE / CREATE VIRTUAL TABLE / CREATE TRIGGER，**但只许写下面这两张索引表**，不碰任何业务表；
+ * 不许 UPDATE、DROP。tests/migrations.test.ts、tests/migration-files-guard.test.ts 共用这一份
+ */
+export const 许可搜索索引的文件 = "141-search-trigram.sql";
+export const 许可搜索索引的表 = ["CustomerSearch", "CustomerExtraSearch"];
+/** 触发器挂在哪几张源表上 */
+export const 许可搜索索引的源表 = ["Customer", "CustomerExtra"];
