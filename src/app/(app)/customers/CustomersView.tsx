@@ -476,6 +476,30 @@ export default function CustomersView({
     });
   };
   const [formOpen, setFormOpen] = useState(Boolean(直接新建) && !有建档);
+  /** 行菜单「编辑」点了、表单料还在取：记着是哪一行（那一行的「更多」按钮转圈），取完才开表单；取的时候再点不理 */
+  const [编辑取中, set编辑取中] = useState<string | null>(null);
+  const 编辑取中锁 = useRef(false);
+  const 去编辑 = (r: CustomerRow) => {
+    if (表单料) {
+      setEditing(r);
+      setFormOpen(true);
+      return;
+    }
+    // 同一下连点两次时 state 还没更新，用 ref 拦
+    if (编辑取中锁.current) return;
+    编辑取中锁.current = true;
+    set编辑取中(r.id);
+    void 要表单料()
+      .then((d) => {
+        if (!d) return;
+        setEditing(r);
+        setFormOpen(true);
+      })
+      .finally(() => {
+        编辑取中锁.current = false;
+        set编辑取中(null);
+      });
+  };
   /** 「新增客户」向导框（U-新建-01）：和 /projects/new 同一个向导，弹在本页 */
   const [建档开着, set建档开着] = useState(Boolean(直接新建 && 建档));
   const [导入开着, set导入开着] = useState(Boolean(直接粘贴) && 能导入导出 && !企业);
@@ -944,7 +968,7 @@ export default function CustomersView({
             key: "assign", label: "分配给…",
             children: 成员选项(分给们).map((o) => ({ key: `assign:${o.value}`, label: o.label, onClick: async () => 公海提示(await 分配公海([r.id], o.value), "分配", [r.id]) })),
           }] : []),
-          { key: "edit", label: "编辑", onClick: () => void 要表单料().then((d) => { if (d) { setEditing(r); setFormOpen(true); } }) },
+          { key: "edit", label: "编辑", onClick: () => 去编辑(r) },
           // 先数清会一起删掉什么再问（排查 B1，见 useDeleteCustomers）
           ...(能删 && !删不了.has(r.id) ? [{ key: "delete", label: "删除", onClick: () => void 问删除([{ id: r.id, name: r.name }]) }] : []),
         ];
@@ -956,8 +980,9 @@ export default function CustomersView({
                   onClick={async () => 公海提示(await 领取([r.id]), "领取", [r.id])}>领取</Button>
               )}
               {/* 菜单画在 body 上，但 React 事件照组件树冒泡到这一行：不拦住，点完就跟着进了记录页 */}
-              <Dropdown trigger={["click"]} menu={{ items: 菜单, onClick: ({ domEvent }) => domEvent.stopPropagation() }}>
-                <Button className="row-act" aria-label={`更多操作 ${r.name}`} type="text" size="small" icon={<MoreOutlined />} />
+              {/* 展开时先把表单料拿起来（同「新建 ▾」），点「编辑」多半不用再等；还在取时这一行的按钮转圈、各行菜单都点不了（防连点） */}
+              <Dropdown trigger={["click"]} disabled={!!编辑取中} onOpenChange={(开) => { if (开) void 要表单料(false); }} menu={{ items: 菜单, onClick: ({ domEvent }) => domEvent.stopPropagation() }}>
+                <Button className="row-act" aria-label={`更多操作 ${r.name}`} type="text" size="small" icon={<MoreOutlined />} loading={编辑取中 === r.id} />
               </Dropdown>
             </Space>
             {公海里 && 能新建和领取 && 领不回.has(r.id) && <div className="muted" style={{ fontSize: 12, lineHeight: "16px" }}>{原负责人不能领回提示}</div>}

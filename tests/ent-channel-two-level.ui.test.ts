@@ -26,7 +26,7 @@ const plugin: Plugin = { name: "two-level-boundaries", setup(b) {
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
   stub(/^\.\/CustomerPick$/, "export default function C(){return null}");
   // 表单那两份料点开才取（11-15，form-data-action.ts）：首屏给了 channels 的用例用不上；没给的点开拿这一份
-  stub(/^\.\/form-data-action$/, "export const 取客户页表单料=async()=>{window.__取料次=(window.__取料次??0)+1;await new Promise(r=>setTimeout(r,50));return {channels:window.__表单渠道??[],建档:window.__表单建档??null}};");
+  stub(/^\.\/form-data-action$/, "export const 取客户页表单料=async()=>{window.__取料次=(window.__取料次??0)+1;await new Promise(r=>setTimeout(r,window.__取料延时??50));return {channels:window.__表单渠道??[],建档:window.__表单建档??null}};");
   stub(/projects\/new\/ProjectWizard$/, "export function 建档弹窗(){return null}");
   // 页头「新建 ▾ → 新建项目」那条路（projects/NewProjectFlow.tsx，点了才挂）：里面的选客户、建项目都是 server action，这里换成一块牌子
   stub(/projects\/NewProjectFlow$/, "export default function F(){return <div className='new-proj-flow-stub'/>}");
@@ -50,6 +50,7 @@ beforeAll(async () => {
     const users=[{id:'me',name:'小王',email:'s1',role:'SALES',active:true}];
     const 壳=(x)=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><我Provider value={{id:'me',name:'小王'}}><TruncTip/>{x}</我Provider></BusinessProvider></App></ConfigProvider>);
     window.__customers=()=>壳(<CustomersView rows={[{id:'c1',name:'张三',phone:'13800000001',school:null,grade:null,major:null,followStatus:'待跟进',decisionStatus:'了解中',salesOwnerId:'me',salesOwnerName:'小王',createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',lastFollowAt:null,signedAmount:0,referrerCustomerId:null,referrerName:null,channelId:'ch1',channelName:长主+'|'+长子,expectedSignAt:null,remark:null}]} total={1} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{}} 能导入导出 客户数={1} 企业版/>);
+    window.__customersLazyRow=()=>{window.__表单渠道=[{id:'ch1',name:长主+'|'+长子,attr:'公域引流',platform:长主,active:true}];window.__取料延时=600;壳(<CustomersView rows={[{id:'c1',name:'张三',phone:'13800000001',school:null,grade:null,major:null,followStatus:'待跟进',decisionStatus:'了解中',salesOwnerId:'me',salesOwnerName:'小王',createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',lastFollowAt:null,signedAmount:0,referrerCustomerId:null,referrerName:null,channelId:'ch1',channelName:长主+'|'+长子,expectedSignAt:null,remark:null}]} total={1} page={1} requestedPage="1" pageSize={20} users={users} filters={{}} 能导入导出 客户数={1} 企业版/>);};
     window.__customersLazy=()=>{window.__表单渠道=[{id:'ch1',name:长主+'|'+长子,attr:'公域引流',platform:长主,active:true}];壳(<CustomersView rows={[]} total={0} page={1} requestedPage="1" pageSize={20} users={users} filters={{}} 能导入导出 客户数={0} 公海数={1} 企业版/>);};
     const 统=(n)=>({关联线索:n,有效线索:n,关联商机:1,关联订单:0,关联项目:n,累计成交:[],当前投入:[],产出比:null,产出比说明:'还没录投入',累计运营天数:3,线索转商机:{分子:1,分母:n,比例:1/n},商机转订单:{分子:0,分母:0,比例:null}});
     const 行=(id,name,platform,mainId,active,n)=>({id,name,phone:null,remark:null,active,attr:'公域引流',platform,mainId,strategies:[],endDate:null,createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',createdByName:'QA',channelOwnerId:'me',channelOwnerName:'小王',统计:统(n)});
@@ -61,7 +62,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function open(what: "__customers" | "__channels" | "__customersLazy", width: number) {
+async function open(what: "__customers" | "__channels" | "__customersLazy" | "__customersLazyRow", width: number) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   await page.route("http://src.test/**", (r) => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
@@ -142,6 +143,25 @@ it("首屏没带渠道候选（11-15）：点「新建客户」先取一次表�
     await page.getByRole("button", { name: /新建/ }).first().click();
     await 框.waitFor();
     expect(await page.evaluate(() => (window as unknown as { __取料次: number }).__取料次)).toBe(1);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("首屏没带渠道候选：行菜单「编辑」取料时那一行的按钮转圈、连点不重取，取完打开编辑表单", async () => {
+  const { page, errors } = await open("__customersLazyRow", 1280);
+  try {
+    const 钮 = page.getByRole("button", { name: "更多操作 张三" });
+    await 钮.click();
+    // 展开菜单就预取了一次（还没回来）
+    await page.locator(".ant-dropdown:visible .ant-dropdown-menu-item").filter({ hasText: /^编辑$/ }).click();
+    await expect.poll(() => 钮.evaluate((el) => el.classList.contains("ant-btn-loading"))).toBe(true);
+    // 取的时候按钮是禁用的（菜单开不了），硬点也不会再取一次
+    expect(await 钮.isDisabled()).toBe(true);
+    await 钮.click({ force: true });
+    const 框 = page.locator(".ant-modal, .ant-drawer").filter({ hasText: "客户来源" }).first();
+    await 框.waitFor();
+    expect(await page.evaluate(() => (window as unknown as { __取料次: number }).__取料次)).toBe(1);
+    expect(await 钮.evaluate((el) => el.classList.contains("ant-btn-loading"))).toBe(false);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
