@@ -9,9 +9,11 @@
  * - route 是路由模式（按构建产物 routes-manifest.json 对），不带具体 id、不带查询串；对不上的记 "(unmatched)"。
  *   所以搜索词、客户 id 一律进不了日志
  * - bytes 是这次响应写到连接上的字节数（含响应头；开了压缩就是压缩后的），keep-alive 连接上按前后差算
- * - uid 只记用户 id：proxy.ts 验过会话票后放进请求头 x-crm-uid（客户端自己带的会被 proxy 覆盖或删掉）；
- *   3xx 不记（proxy 当场跳转的请求没经过覆盖）。不记姓名、不查库
+ * - uid 只记用户 id：proxy.ts 验过会话票后放进请求头 x-crm-uid。请求一进来（还没到 proxy）这里先把客户端自带的这个头删掉，
+ *   结束时还在的只可能是 proxy 写的——不过 proxy 的路径（matcher 外的 /apix 之类）、proxy 抛错、proxy 当场跳转的都不带 uid。
+ *   不记姓名、不查库
  * - pf=1：Next 的预取请求（next-router-prefetch 头）；abort=1：响应没写完连接就断了（人等不及走了）
+ * - 左栏空闲整页预热（lib/nav-prewarm.ts）分不出来：Next 发的请求头和站内切页一样，记成不带 pf 的 RSC
  *
  * 落点：Node 自带的 diagnostics_channel「http.server.request.start」，在 instrumentation.ts 里订一次。
  * 不包 Next 的请求处理、不要自定义 server：next start 和 standalone server.js 都是同一个进程里的 http.Server，都会发这个事件。
@@ -121,15 +123,25 @@ export function 盯一个请求(e: 起点事件, 表: 路由表 | null, 门槛: 
   const { request, response, socket } = e;
   const pathname = 纯路径(request.url ?? "/");
   if (该跳过(pathname)) return;
+  // 客户端自带的用户头不认：先删掉，之后再出现的只能是 proxy 验过票写进来的（resolve-routes 改的是同一个 req.headers）
+  delete request.headers[用户头];
   const 起 = 现在();
   const 起字节 = socket?.bytesWritten ?? 0;
   const 墙钟 = Date.now();
   response.once("close", () => {
+    // 'close' 里抛出去就是进程级的未捕获异常：记日志出了什么错都吞掉
+    try {
+      记一行();
+    } catch {
+      // 不碍事
+    }
+  });
+  function 记一行() {
     const ms = Math.round(现在() - 起);
     if (ms < 门槛) return;
     const h = request.headers;
     const status = response.statusCode;
-    const uid = typeof h[用户头] === "string" && (status < 300 || status >= 400) ? (h[用户头] as string) : undefined;
+    const uid = typeof h[用户头] === "string" ? h[用户头] : undefined;
     const 行: 一条 = {
       t: new Date(墙钟).toISOString(),
       route: 路由模式(pathname, 表),
@@ -142,14 +154,14 @@ export function 盯一个请求(e: 起点事件, 表: 路由表 | null, 门槛: 
     if (h["next-router-prefetch"]) 行.pf = 1;
     if (!response.writableFinished) 行.abort = 1;
     写(拼一行(行));
-  });
+  }
 }
 
 let 开过 = false;
 
-/** instrumentation.ts 调一次。CRM_REQ_LOG 不是 1 就什么都不做 */
-export async function 开请求日志(env: Record<string, string | undefined> = process.env) {
-  if (env.CRM_REQ_LOG !== "1" || 开过) return;
+/** instrumentation.ts 调一次。CRM_REQ_LOG 不是 1 就什么都不做（不订阅、不读路由表）；回 true = 这次订上了 */
+export async function 开请求日志(env: Record<string, string | undefined> = process.env): Promise<boolean> {
+  if (env.CRM_REQ_LOG !== "1" || 开过) return false;
   开过 = true;
   const dc = await import("node:diagnostics_channel");
   let 表: 路由表 | null = null;
@@ -175,4 +187,5 @@ export async function 开请求日志(env: Record<string, string | undefined> = 
     }
   });
   写(`${日志前缀} ${JSON.stringify({ start: true, thresholdMs: 门槛, routes: 表 ? 表.静态.size + 表.动态.length : 0 })}`);
+  return true;
 }

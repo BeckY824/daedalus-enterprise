@@ -2,15 +2,17 @@
  * 左栏空闲预热（components/AppShell.tsx，lib/nav-prewarm.ts，11-15 可配）：
  * 整页预取发的是不带 next-router-prefetch 头的 RSC 请求（视口自动预取带这个头），按这个分开数。
  * 只在生产构建里有预取，所以同 row-prefetch 只在 E2E_PROD=1 下跑。
- * 服务按 CRM_NAV_PREWARM 起：不设 → 照旧预热；none → 一个都不发；列表 → 只发列出的。手机宽度一律不发。
+ * 服务按 CRM_NAV_PREWARM 起：不设 / all → 照旧预热；none 或列表全无效 → 一个都不发；列表 → 只发列出的。手机宽度一律不发。
  */
 import { test, expect, type Page } from "@playwright/test";
+import { 读预热设置, 可预热页 } from "../src/lib/nav-prewarm";
 
 test.skip(process.env.E2E_PROD !== "1", "next dev 不预取，只在生产构建里看得出来");
 
-const 设置 = (process.env.CRM_NAV_PREWARM ?? "").trim();
-const 不预热 = 设置 === "0" || 设置.toLowerCase() === "none";
-const 列表 = 设置 && !不预热 ? 设置.split(",").map((s) => s.trim()).filter(Boolean) : null;
+// 和服务端同一套解析（all / none / 列表规整、全无效 = 不预热）
+const 设置 = 读预热设置(process.env.CRM_NAV_PREWARM, () => {});
+const 列表 = 设置 === "全部" ? null : 设置.filter((k) => 可预热页.has(k));
+const 不预热 = 列表 !== null && 列表.length === 0;
 
 async function 登录(page: Page) {
   await page.goto("/login");
