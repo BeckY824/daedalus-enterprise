@@ -68,7 +68,9 @@ async function 取样(reducedMotion: "reduce" | "no-preference") {
       const cs = getComputedStyle(document.getElementById(id)!);
       return { 透明: Number(cs.opacity), 变换: cs.transform };
     }, id);
-  // 默认过渡是弹簧，约 0.2 秒就到 95%：挂上后马上取
+  // 默认过渡是弹簧，约 0.2 秒就到 95%：挂上后等两帧就取（motion 在第一帧才把「直接到位」写上去；
+  // 挂上那一刻还是 initial，机器忙时紧接着取会取到 initial，误红）。两帧 ≈ 33ms，没开减弱动态的弹簧这时离到位还远
+  await page.evaluate(() => new Promise<void>((ok) => requestAnimationFrame(() => requestAnimationFrame(() => ok()))));
   const 默认 = await 读("dflt");
   await page.waitForTimeout(400);
   const 慢 = await 读("slow");
