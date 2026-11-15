@@ -2163,7 +2163,7 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .cli-empty .cli-welcome-t { font-size: var(--fs-num); letter-spacing: -0.6px; }
 .cli-empty .signals { justify-content: center; border-bottom: 0; padding-bottom: 0; }
 .cli-empty .cli-welcome-hints { border-top: 0; padding-top: 0; }
-.cli-mono, .cli-prompt, .cli-step, .cli-sum, .cli-cmd-k, .cli-hints kbd, .cli-menu-row kbd { font-family: var(--font-mono); }
+.cli-mono, .cli-prompt, .cli-step, .cli-cmd-k, .cli-hints kbd, .cli-menu-row kbd { font-family: var(--font-mono); }
 .cli-welcome { margin-bottom: var(--s5); }
 .cli-welcome-t { font-family: var(--font-display); font-size: var(--fs-title); font-weight: var(--fw-display); color: var(--ink); }
 /* 问候底下那行日期。设计稿里它独占一行，比信号的口径再弱一档 */
@@ -2240,13 +2240,6 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .cli-user { display: flex; justify-content: flex-end; margin-bottom: 12px; }
 .cli-bubble { max-width: 78%; padding: 9px 14px; background: var(--hover); border-radius: var(--r-pop); color: var(--ink); white-space: pre-wrap; line-height: 1.6; }
 /* 过程折成一句：答完后默认只留这一行，点开看每一步 */
-.cli-sum { display: inline-flex; align-items: center; gap: 8px; border: 0; background: none; padding: 2px 0; margin-top: 2px; font-size: var(--fs-note); color: var(--text-muted); cursor: pointer; }
-.cli-sum:hover { color: var(--ink); }
-.cli-sum-ms { color: var(--text-faint); }
-.cli-sum-chev { font-size: var(--fs-min); color: var(--text-faint); transition: transform var(--t-fast) var(--ease); }
-.cli-sum-open .cli-sum-chev { transform: rotate(90deg); }
-.cli-step-b { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; }
-.cli-step-t { flex-basis: 100%; color: var(--text-muted); font-style: italic; }
 .cli-dot-idle { background: var(--line-strong); }
 /* 打断：一行灰字，不是报错 */
 .cli-stopped { margin-top: 8px; padding-left: 20px; color: var(--text-muted); font-size: var(--fs-note); display: flex; gap: 10px; align-items: center; }
@@ -2363,7 +2356,7 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .pbat-tag { flex: 0 1 auto; min-width: 0; max-width: 40%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-min); color: var(--text-muted); background: var(--hover); border-radius: var(--r-ctl); padding: 0 6px; line-height: 18px; }
 .pbat-tag-warn { flex: none; color: var(--warning-text); background: var(--warning-bg); }
 .pbat-edit { flex: none; white-space: nowrap; }
-.pbat-chev { font-size: 10px; transition: transform var(--t-fast) var(--ease); }
+.pbat-chev { font-size: var(--fs-min); transition: transform var(--t-fast) var(--ease); }
 .pbat-chev.is-open { transform: rotate(90deg); }
 .pbat-card { padding: 0 0 10px 24px; min-width: 0; }
 .pbat-card > .prop { border-style: solid; border-color: var(--line-soft); }
@@ -2394,12 +2387,8 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .cli-step-running .cli-dot { background: var(--brand); animation: trace-breathe 1.1s ease-in-out infinite; }
 .cli-step-error .cli-dot { background: var(--danger); }
 .cli-step-l { color: var(--ink-soft); }
-.cli-step-d { color: var(--text-muted); }
-.cli-step-d::before { content: "→"; margin-right: 6px; color: var(--text-faint); }
 /* 「在想 / 在写」那一行是 AiWait（等 AI 全站一个样子），这里只让它和上面的步骤对齐；
    秒数紧跟在字后面，不推到最右——这一栏宽，推过去眼睛要跨半屏去找 */
-.cli-wait { margin-top: 6px; padding-left: 2px; }
-.cli-wait .aiw-sec { margin-left: 0; }
 /* 只剩流式光标在用 */
 @keyframes cli-blink { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
 .cli-a { margin-top: 10px; padding-left: 20px; color: var(--ink); line-height: 1.75; }
