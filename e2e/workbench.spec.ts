@@ -599,6 +599,8 @@ test("输入框：字多了就长高，长到头才在框内滚——不是永�
   const ta = page.locator(".cli-input textarea");
   // 流式出页时 body 下有一份藏着的同样内容：等只剩真的那一份再量
   await expect(ta).toHaveCount(1);
+  // 剩下那一份可能还没显示出来（流式出页换真内容那一刻），看得见了再量，不然 boundingBox 是 null
+  await expect(ta).toBeVisible();
   const 一行 = (await ta.boundingBox())!.height;
 
   // 首页这个框里有回形针和模型那一条，所以它是 column flex。
