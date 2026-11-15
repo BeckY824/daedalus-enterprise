@@ -26,7 +26,8 @@ import { 认页面 } from "@/lib/ai-context-page";
 import { 订阅页面行, 读页面行, 读详情名 } from "@/lib/page-rows";
 import { useThread } from "@/lib/home-thread";
 import { useRunningKey } from "@/lib/ai-jobs";
-import { 登记打开AI浮窗 } from "@/lib/ai-float";
+import { 登记打开AI浮窗, 订阅智能总结, 有智能总结, 打开智能总结 } from "@/lib/ai-float";
+import type { 快捷项 } from "./AiQuickAsks";
 
 /** 服务端快照。固定一个引用，useSyncExternalStore 才不会每次都当成变了 */
 const 空名单: string[] = [];
@@ -148,6 +149,9 @@ export default function AiDock({
   // 记录页上这条记录叫什么（RecordView 登记的）
   const 详情名 = useSyncExternalStore(订阅页面行, 读详情名, () => null);
 
+  /** 客户页挂着「生成智能总结」的原抽屉没有（lib/ai-float.ts）：有才摆「总结这位客户」 */
+  const 能总结 = useSyncExternalStore(订阅智能总结, 有智能总结, () => false);
+
   // 首页就是宽模式的它，不在那儿再开一块
   if (pathname === "/dashboard") return null;
 
@@ -166,6 +170,19 @@ export default function AiDock({
       set开着(false);
     };
     const 上一问 = 这屏[这屏.length - 1]?.question ?? "";
+    /*
+      客户页（dt.ai）空屏三颗快捷项。「总结这位客户」= 原来的「生成智能总结」：打开客户页那个抽屉，
+      扣额度、确认都在 AiPanel 里照旧，浮窗不另起一次；另两颗把问句交给输入框直接发
+    */
+    const 客户页 = /^\/customers\/[^/]+$/.test(pathname) && 详情名 ? 详情名 : null;
+    const 快捷: 快捷项[] | undefined = 客户页
+      ? [
+          // 抽屉从右边出来，浮窗先收回球，不叠在一起
+          ...(能总结 ? [{ label: "总结这位客户", 动作: () => { if (打开智能总结()) 收起(); } }] : []),
+          { label: "起草跟进话术", 问: `给${客户页}起草一段跟进话术` },
+          { label: "现在卡在哪", 问: `${客户页}现在卡在哪？` },
+        ]
+      : undefined;
     return (
       <aside
         ref={浮窗框}
@@ -216,6 +233,7 @@ export default function AiDock({
             models={models}
             空库={false}
             企业版={企业版}
+            空屏快捷={快捷}
           />
         </div>
       </aside>
