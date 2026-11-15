@@ -4521,7 +4521,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
   left: calc(var(--rail-w) + (100vw - var(--rail-w)) / 2); bottom: calc(16px + env(safe-area-inset-bottom));
   translate: -50% 0; transform-origin: 100% 100%;
   width: min(560px, calc(100vw - var(--rail-w) - 48px)); max-height: min(72vh, 680px);
-  border: 0; border-radius: 18px; background: var(--panel); overflow: hidden;
+  border: 0; border-radius: var(--r-pop); background: var(--panel); overflow: hidden;
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--panel) 80%, transparent), 0 0 0 0.5px color-mix(in srgb, var(--ink) 10%, transparent), 0 20px 50px rgba(20, 30, 60, 0.20), 0 2px 6px rgba(0, 0, 0, 0.05);
   opacity: 1; scale: 1; visibility: visible;
   transition: opacity var(--t-morph) var(--ease-morph), scale var(--t-morph) var(--ease-morph), visibility 0s var(--ease);
@@ -4580,7 +4580,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .ai-fab-ring {
   inset: -4px; z-index: 1;
   background: conic-gradient(from 0deg, transparent 0 60%, var(--brand) 85%, transparent);
-  -webkit-mask: radial-gradient(circle, transparent 21px, #000 22px); mask: radial-gradient(circle, transparent 21px, #000 22px);
+  -webkit-mask: radial-gradient(circle, transparent 21px, var(--brand) 22px); mask: radial-gradient(circle, transparent 21px, var(--brand) 22px);
   animation: fab-spin 1s linear infinite;
 }
 .ai-fab-done { inset: 0; z-index: 1; border: 2px solid var(--success); opacity: 0; animation: aifl-done 600ms var(--ease) 1; }
@@ -4698,7 +4698,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 @media (prefers-reduced-motion: reduce) { .cu-ho-done { animation: none; } }
 
 /* ---- PR9 设置与其他（原型 st.login / st.forgot）：错误写在格下、重发倒计时按钮 ---- */
-.auth-field-err { margin-top: calc(-1 * var(--s1, 4px)); font-size: var(--fs-note, 12px); color: var(--danger, #d1343a); animation: set-note-in var(--t) var(--ease); }
+.auth-field-err { margin-top: calc(-1 * var(--s1, 4px)); font-size: var(--fs-note, 12px); color: var(--danger); animation: set-note-in var(--t) var(--ease); }
 .auth-swap { animation: set-note-in var(--t) var(--ease); }
 @media (prefers-reduced-motion: reduce) { .auth-field-err, .auth-swap { animation: none; } }
 @keyframes set-note-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -4723,7 +4723,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 @media (prefers-reduced-motion: reduce) { .list-sel.list-sel-float, .list-sel-float .list-sel-n { animation: none; } }
 /* PR5b 渠道：停用 / 删除的就地确认从「⋯」处长出，盖在这一行右端往左长，不撑宽操作列 */
 .ch-act { position: relative; display: inline-flex; align-items: center; }
-.ch-act-ask { position: absolute; right: 0; top: 50%; translate: 0 -50%; z-index: 2; padding: 2px 4px 2px 8px; border-radius: 6px; background: var(--panel); box-shadow: 0 0 0 1px var(--line), 0 4px 12px rgb(0 0 0 / 0.08); }
+.ch-act-ask { position: absolute; right: 0; top: 50%; translate: 0 -50%; z-index: 2; padding: 2px 4px 2px 8px; border-radius: var(--r-ctl); background: var(--panel); box-shadow: 0 0 0 1px var(--line), 0 4px 12px rgb(0 0 0 / 0.08); }
 .ch-act-err { position: absolute; right: 0; top: 100%; z-index: 2; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-min); color: var(--danger-text); background: var(--panel); padding: 0 4px; }
 /* 附件：删掉的就地确认（图片格里盖在图上，文件行里在行尾） */
 .att-pic > .att-del, .follow-att-pic > .att-del { position: absolute; top: 2px; right: 2px; z-index: 1; }
@@ -4759,7 +4759,7 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 @keyframes home-kpi-open { from { opacity: 0; transform: translateY(-4px); } }
 @media (prefers-reduced-motion: reduce) { .home-kpi-body { animation: none; } }
 .ov-rc-item { list-style: none; min-width: 0; }
-.ov-rc-head { grid-template-columns: minmax(0, 14em) minmax(0, 1fr) 3em 1em; width: 100%; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; border-radius: 6px; }
+.ov-rc-head { grid-template-columns: minmax(0, 14em) minmax(0, 1fr) 3em 1em; width: 100%; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; border-radius: var(--r-ctl); }
 .ov-rc-head:disabled { cursor: default; }
 .ov-rc-ar { color: var(--text-muted); transition: transform var(--t-fast) var(--ease); }
 .ov-rc-item.is-open .ov-rc-ar { transform: rotate(90deg); }
@@ -4780,7 +4780,7 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 @media (prefers-reduced-motion: reduce) { .ov-rc-list { animation: none; } .ov-rc-ar { transition: none; } }
 /* PR5b 首页认名片：结果就地写在键上方（g.save），进度照旧走顶部那条 */
 .home-scan { position: relative; display: inline-flex; align-items: center; }
-.home-scan-note { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 5; display: flex; align-items: flex-start; gap: 6px; width: max-content; max-width: min(360px, 80vw); padding: 6px 8px 6px 10px; border-radius: 6px; background: var(--panel); box-shadow: 0 0 0 1px var(--line), 0 4px 12px rgb(0 0 0 / 0.08); font-size: var(--fs-note); color: var(--text-muted); white-space: normal; overflow-wrap: anywhere; }
+.home-scan-note { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 5; display: flex; align-items: flex-start; gap: 6px; width: max-content; max-width: min(360px, 80vw); padding: 6px 8px 6px 10px; border-radius: var(--r-ctl); background: var(--panel); box-shadow: 0 0 0 1px var(--line), 0 4px 12px rgb(0 0 0 / 0.08); font-size: var(--fs-note); color: var(--text-muted); white-space: normal; overflow-wrap: anywhere; }
 .home-scan-note.is-err { color: var(--danger-text); }
 .home-scan-note-x { flex: none; border: 0; background: none; color: inherit; cursor: pointer; padding: 0 2px; font-size: var(--fs-note); }
 
