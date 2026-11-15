@@ -4,10 +4,11 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { DownOutlined, EditOutlined, MoreOutlined, RightOutlined, SearchOutlined, ThunderboltOutlined } from "@ant-design/icons";
-import { App, Alert, Button, Card, Checkbox, Dropdown, Input, InputNumber, Menu, Modal, Progress, Segmented, Select, Space, Tag, Timeline, Tooltip, type MenuProps } from "antd";
+import { App, Alert, Button, Card, Checkbox, Dropdown, Input, InputNumber, Menu, Modal, Popover, Progress, Segmented, Select, Space, Tag, Timeline, Tooltip, type MenuProps } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import DictSelect from "@/components/DictSelect";
-import InlineConfirm from "@/components/InlineConfirm";
+import { useMotionTheme } from "@/components/MotionTheme";
+import { 少动 } from "@/lib/reduced-motion";
 import { useConsequence } from "@/components/ConsequenceDialog";
 import { showUndo } from "@/components/UndoBar";
 import { 其他没写好, 不填项, 去不填, 未选占位 } from "@/lib/enterprise/dict-kinds";
@@ -592,6 +593,9 @@ export default function ProjectDetail({
   };
 
   /** 删项目上的一条沟通：企业版软删进回收站；不给撤销（11-09），找回走回收站 */
+  /** 删成了、正在原地收起的那一条（dt.talkdel） */
+  const [删走, set删走] = useState<string | null>(null);
+  const 动效 = useMotionTheme();
   const 删沟通 = async (id: string) => {
     set删沟通错(null);
     set忙(true);
@@ -603,12 +607,15 @@ export default function ProjectDetail({
     } finally {
       set忙(false);
     }
-    // 没删成：原因交回 InlineConfirm（问句留着，原因写在问句那行）；删成了这一条从列表里收起，不弹顶部提示（问句已说了进回收站）
+    // 没删成：确认条留着，原因写在这一条下面；删成了这一条原地收起再刷新，不弹顶部提示（确认条已说了进回收站、谁能恢复）
     if (!r.ok) {
       set删沟通错({ id, 话: r.error ?? "没删成，请稍后再试" });
       return r;
     }
-    router.refresh();
+    set删问于(null);
+    set删走(id);
+    // 收起放完再刷新；刷新回来这一条就不在了（删走 留着无妨，id 不会再出现）
+    window.setTimeout(() => router.refresh(), 少动() ? 0 : 动效.时长.base * 1000);
   };
 
   /** 终止 = true：异常框 / 没成框 点确定走 终止项目进程（M-节点-04，审计写「终止进程」）；成了 = 改成了以后的提示 */
@@ -778,6 +785,48 @@ export default function ProjectDetail({
    * 11-01 会议 §13：▼ 里「改到别的进程」去掉（服务端那条路不动，改回进程框照旧用）
    * 看的不是所在阶段、或推不了，按钮灰掉、悬停写原因（灰按钮收不到鼠标，提示挂在外面那层 span 上）
    */
+  const 位 = 阶段与进程(p, 字典);
+  const 关头部框 = () => set头部框(null);
+  /** 框里点了要换到别的框（推进 → 结局确认）：先关这个，焦点回到页头。「管理沟通」框 M-权限-09 去掉了，改、删在每条沟通的「…」里 */
+  const 换框 = (f: () => void) => () => { set头部框(null); f(); };
+  /** 「完成节点」框里填不了的必填：关框，打开或滚到能填的地方 */
+  const 去补必填 = (去: 窗外去处) => {
+    set头部框(null);
+    if (去 === "沟通") set记一条开着(true);
+    else if (去 === "线索验证") set验证开着(true);
+    else if (去 === "附件") 定位到模块("project-attachments-fold");
+    else if (去 === "回款") 定位到模块("project-payments-fold");
+  };
+  /** dt.stage 补填小框（挂在「完成节点」上的 Popover 里）：M-节点-05/09 先查这个节点的必填（占位值不算填了），缺了当场填（11-03 一窗填完），
+   * 齐了写能推到哪。总管理、销售管理缺着也能「仍要推进」。Esc 收起；打开时焦点落到第一格 */
+  const 完成补填框 = () => (
+    <div
+      className="pd-fill-pop-body"
+      role="dialog"
+      aria-label={`完成节点 · ${p.name}`}
+      ref={(el) => { if (el && !el.contains(document.activeElement)) window.requestAnimationFrame(() => el.querySelector<HTMLElement>("[data-required] input:not([disabled]), [data-required] textarea:not([disabled]), button:not([disabled])")?.focus({ preventScroll: true })); }}
+      onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); 关头部框(); } }}
+    >
+      <div className="pd-fill-pop-t">完成节点 · {p.name}</div>
+      <ProjectFillRequired
+        p={p}
+        联系人们={联系人们}
+        能就地改={能就地改}
+        改不了话={改不了话}
+        现在在={`${位.阶段} · ${位.进程}`}
+        能推进={!!完成到 && !完成不了}
+        完成不了={完成不了}
+        完成到字={完成到字}
+        交付还差={完成到?.result && 是交付(完成到.result) ? 差 : undefined}
+        忙={忙}
+        on完成={换框(完成)}
+        on关={关头部框}
+        on去={去补必填}
+        读草稿={() => 必填草稿.current[p.id]}
+        留草稿={(草稿) => { 必填草稿.current[p.id] = 草稿; }}
+      />
+    </div>
+  );
   const 进程钮 = (不在当前: string | undefined) => {
     const 灰着 = (原因: string | undefined, 钮: ReactNode) => (原因 ? <Tooltip title={原因}><span className="proj-stage-tip">{钮}</span></Tooltip> : 钮);
     const 完成灰 = 不在当前 ?? 完成不了;
@@ -790,7 +839,22 @@ export default function ProjectDetail({
           ? 灰着(不在当前 ?? 动不了, <Button disabled={忙 || !!(不在当前 ?? 动不了)} onClick={() => set头部框("推进")}>改回进程</Button>)
           : (
             <Space.Compact className="split-btn split-success">
-              {灰着(完成灰, <Button className="proj-done-btn" disabled={忙 || !!完成灰} onClick={() => (要先补齐 ? set头部框("完成") : 完成())}>完成节点</Button>)}
+              {灰着(完成灰, 要先补齐 ? (
+                // dt.stage：还差必填 → 从「完成节点」下面长出补填小框（不再开大框），就地补齐再推；管理角色照旧能「仍要推进」。
+                // 内容推迟到弹出时才画（content 给函数）：补填框用到的几样在下面才定义。点外面、Esc 收起，填过的留草稿
+                <Popover
+                  open={头部框 === "完成"}
+                  trigger="click"
+                  placement="bottomRight"
+                  arrow={false}
+                  destroyOnHidden
+                  classNames={{ root: "pd-fill-pop" }}
+                  onOpenChange={(v) => set头部框(v ? "完成" : null)}
+                  content={完成补填框}
+                >
+                  <Button className="proj-done-btn" disabled={忙 || !!完成灰} aria-haspopup="dialog" aria-expanded={头部框 === "完成"}>完成节点</Button>
+                </Popover>
+              ) : <Button className="proj-done-btn" disabled={忙 || !!完成灰} onClick={() => 完成()}>完成节点</Button>)}
               {菜单.length > 0 && (
                 <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{ items: 菜单, onClick: ({ key }) => { if (key === "stop") 开终止(); } }}>
                   <Button className="proj-done-btn split-caret" icon={连体箭头} aria-label="终止进程" />
@@ -804,7 +868,6 @@ export default function ProjectDetail({
     );
   };
 
-  const 位 = 阶段与进程(p, 字典);
   const 显示回收日 = p.企业版 && !!p.回收日 && !p.pooled && !p.result;
   const 顶块 = (
     <>
@@ -1260,7 +1323,7 @@ export default function ProjectDetail({
         {搜着 && p.followUps.length > 0 && 列沟通.length === 0 && <div style={{ color: "var(--text-muted)" }}>没有对得上「{搜.trim()}」的沟通</div>}
         {!搜着 && 隐藏中 && 列沟通.length === 0 && <div style={{ color: "var(--text-muted)" }}>接手后还没有沟通；接手前的 {p.followUps.length} 条已隐藏</div>}
         {列沟通.map((f) => (
-          <div key={f.id} id={`follow-${f.id}`} className="proj-follow-row" style={{ marginBottom: 12 }}>
+          <div key={f.id} id={`follow-${f.id}`} className={`proj-follow-row${删走 === f.id ? " pd-follow-leave" : ""}`} style={{ marginBottom: 12 }}>
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <FollowTypeCell type={f.type} method={f.method} />
               {f.initiator && <Tag bordered={false}>{f.initiator}</Tag>}
@@ -1268,9 +1331,8 @@ export default function ProjectDetail({
               {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
               <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
               {(p.可改沟通 || p.可删沟通 || 卡点?.能发) && (
-                // 「…」放在这一行最右：发卡点、修改、删除（10-30 发卡点从行上收进来）；删除就地问一句（components/InlineConfirm.tsx），删了进回收站、提示条上还给一次撤销
+                // 「…」放在这一行最右：发卡点、修改、删除（10-30 发卡点从行上收进来）；删除 = 这一条下面长出确认条（dt.talkdel），见 删沟通条
                 <span style={{ marginLeft: "auto" }}>
-                  <InlineConfirm 问="删了进回收站，30 天内可恢复" 开={删问于 === f.id} set开={(v) => set删问于(v ? f.id : null)} 做={() => 删沟通(f.id)}>
                     <Dropdown
                       trigger={["click"]}
                       placement="bottomRight"
@@ -1286,7 +1348,6 @@ export default function ProjectDetail({
                     >
                       <Button type="text" size="small" icon={<MoreOutlined />} aria-label="这条沟通的更多操作" />
                     </Dropdown>
-                  </InlineConfirm>
                 </span>
               )}
             </div>
@@ -1303,6 +1364,7 @@ export default function ProjectDetail({
               />
             </div>
             {f.附件 && <FollowAttachments followUpId={f.id} 附件={f.附件} 能传={!!p.可改沟通 || (p.能记沟通 && !!f.我记的)} 能删={!!p.可删沟通} on变了={() => router.refresh()} />}
+            {删问于 === f.id && <删沟通条 忙={忙} 取消={() => { set删问于(null); set删沟通错(null); }} 删={() => void 删沟通(f.id)} />}
             {删沟通错?.id === f.id && <div role="alert" className="cd-task-err">{删沟通错.话}</div>}
           </div>
         ))}
@@ -1502,19 +1564,8 @@ export default function ProjectDetail({
     />
   );
 
-  const 关头部框 = () => set头部框(null);
   /** 企业版每块卡包一层模块壳（ProjectFold）：卡头最右一颗收起 / 展开，各块自己记开合 */
   const 折 = (名: string, 卡: ReactNode, id?: string, 默认开 = true) => (卡 ? <ProjectFold id={id} 名={名} 默认开={默认开}>{卡}</ProjectFold> : null);
-  /** 框里点了要换到别的框（推进 → 结局确认）：先关这个，焦点回到页头。「管理沟通」框 M-权限-09 去掉了，改、删在每条沟通的「…」里 */
-  const 换框 = (f: () => void) => () => { set头部框(null); f(); };
-  /** 「完成节点」框里填不了的必填：关框，打开或滚到能填的地方 */
-  const 去补必填 = (去: 窗外去处) => {
-    set头部框(null);
-    if (去 === "沟通") set记一条开着(true);
-    else if (去 === "线索验证") set验证开着(true);
-    else if (去 === "附件") 定位到模块("project-attachments-fold");
-    else if (去 === "回款") 定位到模块("project-payments-fold");
-  };
   const 头部框内容 = (() => {
     switch (头部框) {
       case "推进":
@@ -1532,27 +1583,6 @@ export default function ProjectDetail({
               </div>
             )}
           </div>
-        );
-      case "完成":
-        // M-节点-05/09：先查这个节点的必填（占位值不算填了）；缺了当场填（11-03 一窗填完），齐了写能推到哪。老板、主管缺着也能「仍要推进」
-        return (
-          <ProjectFillRequired
-            p={p}
-            联系人们={联系人们}
-            能就地改={能就地改}
-            改不了话={改不了话}
-            现在在={`${位.阶段} · ${位.进程}`}
-            能推进={!!完成到 && !完成不了}
-            完成不了={完成不了}
-            完成到字={完成到字}
-            交付还差={完成到?.result && 是交付(完成到.result) ? 差 : undefined}
-            忙={忙}
-            on完成={换框(完成)}
-            on关={关头部框}
-            on去={去补必填}
-            读草稿={() => 必填草稿.current[p.id]}
-            留草稿={(草稿) => { 必填草稿.current[p.id] = 草稿; }}
-          />
         );
       default:
         return null;
@@ -1584,7 +1614,7 @@ export default function ProjectDetail({
 
       {p.可改沟通 && 改沟通于 && <EditFollowModal projectId={p.id} f={改沟通于} 外贸={外贸精简(b)} onClose={() => set改沟通于(null)} 跑={跑} />}
 
-      {头部框 && (
+      {头部框 && 头部框 !== "完成" && (
         <Modal open title={`${头部框叫法[头部框]} · ${p.name}`} footer={null} width={520} onCancel={关头部框}>
           {头部框内容}
         </Modal>
@@ -1931,7 +1961,8 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
   const [occurredAt, setOccurredAt] = useState(() => dayjs().format(沟通时间格式));
   const [content, setContent] = useState("");
   const [下一步文字, set下一步文字] = useState("");
-  const [下一步时间, set下一步时间] = useState<string | null>(null);
+  // P-界面-34（原型 dt.follow）：下一步时间默认 3 天后，可改可清；和客户页记沟通、建档向导同一个默认
+  const [下一步时间, set下一步时间] = useState<string | null>(() => dayjs().add(3, "day").format("YYYY-MM-DD"));
   const [交中, set交中] = useState(false);
   /** 没记上的原因：写在「记下」上面、框不关 */
   const [交错, set交错] = useState<string | null>(null);
@@ -2140,7 +2171,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
           <Space size={4} wrap style={{ marginTop: 6 }}>
             {([["明天", 1], ["3 天后", 3], ["1 周后", 7]] as const).map(([名, 天]) => {
               const 日 = dayjs().add(天, "day").format("YYYY-MM-DD");
-              return <Button key={名} size="small" type={下一步时间 === 日 ? "primary" : "default"} ghost={下一步时间 === 日} onClick={() => set下一步时间(日)}>{名}</Button>;
+              return <Button key={名} size="small" type={下一步时间 === 日 ? "primary" : "default"} ghost={下一步时间 === 日} aria-pressed={下一步时间 === 日} onClick={() => set下一步时间(日)}>{名}</Button>;
             })}
           </Space>
           {预演 ? (
@@ -2183,5 +2214,22 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
         )}
       </div>
     </Modal>
+  );
+}
+
+/**
+ * 删沟通的确认条（原型 dt.talkdel，P-界面-40 就地确认）：长在这一条下面，写清进回收站、谁能恢复——
+ * 删的人自己多半恢复不了（只有系统管理员和回收站副手能恢复），原来那句「30 天内可恢复」对他不成立。
+ * 打开焦点落在「确认删除」上，Esc = 取消；删的时候键转圈、不收第二下
+ */
+function 删沟通条({ 忙, 取消, 删 }: { 忙: boolean; 取消: () => void; 删: () => void }) {
+  return (
+    <div className="pd-del-band" role="group" aria-label="确认删除这条沟通" onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); 取消(); } }}>
+      <span className="pd-del-band-t">删了进回收站 30 天，系统管理员或回收站副手能恢复</span>
+      <span className="pd-del-band-a">
+        <Button size="small" onClick={取消} disabled={忙}>取消</Button>
+        <Button size="small" type="primary" danger loading={忙} autoFocus onClick={删}>确认删除</Button>
+      </span>
+    </div>
   );
 }

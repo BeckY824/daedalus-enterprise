@@ -12,7 +12,7 @@ const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
   const 空跑 = "async()=>({ok:true})";
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
-  stub(/^\.\.\/actions$/, `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return{ok:true}},终止项目进程=async(...a)=>{(window.__终止||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return window.__编辑回||{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=f,删项目沟通=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
+  stub(/^\.\.\/actions$/, `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return{ok:true}},终止项目进程=async(...a)=>{(window.__终止||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return window.__编辑回||{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=f,删项目沟通=async(...a)=>{(window.__删沟通||=[]).push(a);return{ok:true}},加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
   stub(/^\.\.\/commission-actions$/, `const f=${空跑};export const 存项目底价=f,存提成分配=f,更正实际提成=f;`);
   stub(/^\.\.\/payment-actions$/, `const f=${空跑};export const 记回款=async(...a)=>{(window.__记回款||=[]).push(a);return window.__记回款回??{ok:true}},删回款=async(...a)=>{(window.__删回款||=[]).push(a);return window.__删回款回??{ok:true}};`);
   stub(/readonly-card-actions$/, "export const 打开客户只读卡Action=async(...a)=>{(window.__开卡||=[]).push(a);return window.__卡结果??{ok:false,error:'打不开'}};");
@@ -731,7 +731,7 @@ it.each([1024, 1280, 1366])("%ipx：超长负责人、创建人名字在页头�
 });
 
 for (const 宽 of [1280, 1024]) {
-  it(`${宽}px：每条沟通有「…」，修改 / 删除菜单不出屏；修改弹窗带上原内容；删除先就地确认`, async () => {
+  it(`${宽}px：每条沟通有「…」，修改 / 删除菜单不出屏；修改弹窗带上原内容；删除先在这条下面出确认条（dt.talkdel）`, async () => {
     const { page, errors } = await 覆盖(宽, { 可改沟通: true, 可删沟通: true, followUps: [{ id: "f1", type: "PHONE", content: "沟通内容" + "X".repeat(90), occurredAt: "2026-10-03T00:00:00.000Z", who: "组长甲", node: "生产备货", code: "FUL0001", 提醒: null, 版本: "2026-10-03T00:00:00.000Z" }] });
     try {
       const 点 = page.getByRole("button", { name: "这条沟通的更多操作" });
@@ -752,12 +752,37 @@ for (const 宽 of [1280, 1024]) {
       await 窗.waitFor({ state: "hidden" });
       await 点.click();
       await page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu").getByText("删除").click();
-      const 问 = page.locator(".inlc-ask");
+      // 原型 dt.talkdel：确认条长在这一条下面，写清进回收站 30 天、谁能恢复（和回收站权限口径一致）
+      const 问 = page.getByRole("group", { name: "确认删除这条沟通" });
       await 问.waitFor();
-      expect(await 问.innerText()).toContain("回收站");
+      expect(await 问.innerText()).toContain("删了进回收站 30 天");
+      expect(await 问.innerText()).toContain("系统管理员或回收站副手能恢复");
       const 问盒 = (await 问.boundingBox())!;
+      const 行盒 = (await page.locator("#follow-f1").boundingBox())!;
+      expect(问盒.y).toBeGreaterThanOrEqual(行盒.y);
+      expect(问盒.y + 问盒.height).toBeLessThanOrEqual(行盒.y + 行盒.height + 1);
       expect(问盒.x + 问盒.width).toBeLessThanOrEqual(宽);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      // 确认键先拿焦点；取消 = 收起、没删
+      expect(await 问.getByRole("button", { name: "确认删除" }).evaluate((b) => b === document.activeElement)).toBe(true);
+      await 问.getByRole("button", { name: /取\s*消/ }).click();
+      await 问.waitFor({ state: "hidden" });
+      expect(await page.evaluate(() => (Reflect.get(window, "__删沟通") as unknown[] | undefined)?.length ?? 0)).toBe(0);
+      // 再点删除 → Esc 也收起
+      await 点.click();
+      await page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu").getByText("删除").click();
+      await 问.waitFor();
+      await page.keyboard.press("Escape");
+      await 问.waitFor({ state: "hidden" });
+      // 确认删除：调一次删项目沟通，条收起、这一条原地收走（不弹顶部提示）
+      await 点.click();
+      await page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu").getByText("删除").click();
+      await 问.getByRole("button", { name: "确认删除" }).click();
+      await page.waitForFunction(() => ((Reflect.get(window, "__删沟通") as unknown[] | undefined)?.length ?? 0) === 1);
+      expect(await page.evaluate(() => (Reflect.get(window, "__删沟通") as unknown[][])[0][1])).toBe("f1");
+      await 问.waitFor({ state: "hidden" });
+      expect(await page.locator("#follow-f1").getAttribute("class")).toContain("pd-follow-leave");
+      expect(await page.locator(".ant-message-notice").count()).toBe(0);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   });
@@ -788,6 +813,14 @@ it("下一步：有文字写文字、有时间跟在后面；老数据只有时�
     const 窗 = page.getByRole("dialog");
     await 窗.getByLabel("下一步计划").waitFor();
     expect(await 窗.getByLabel("下一步计划").getAttribute("maxlength")).toBe("100");
+    // dt.follow（P-界面-34）：下一步时间默认 3 天后，「3 天后」快捷亮着，可改
+    const 三天后 = await page.evaluate(() => { const d = new Date(); d.setDate(d.getDate() + 3); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
+    expect(await 窗.getByLabel("下一步时间").inputValue()).toBe(三天后);
+    expect(await 窗.getByRole("button", { name: "3 天后" }).getAttribute("aria-pressed")).toBe("true");
+    const 明天 = 窗.getByRole("button", { name: /^明\s*天$/ });
+    await 明天.click();
+    expect(await 明天.getAttribute("aria-pressed")).toBe("true");
+    expect(await 窗.getByRole("button", { name: "3 天后" }).getAttribute("aria-pressed")).toBe("false");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -1002,6 +1035,39 @@ it("R5 线索（M-节点-05/09）：完成节点一次一个节点；最后一�
     await 窗.waitFor();
     expect(await 窗.locator(".proj-miss-list li").count()).toBe(1);
     expect(await 窗.getByRole("button", { name: /确认推进|仍要推进/ }).count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it.each([1280, 1024])("dt.stage %ipx：缺必填点完成节点，补填框长在按钮下面（不盖整页的弹窗），焦点进框，Esc / 取消收起", async (w) => {
+  const { page, errors } = await open(true, w);
+  try {
+    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "线索", node: "潜客培育", 必填: { 配了: ["金额"], 还差: ["金额"], 只能靠填齐: false } }));
+    await page.waitForFunction(() => document.querySelector(".proj-stage-tab.is-on")?.textContent?.startsWith("线索"));
+    const 钮 = page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" });
+    expect(await 钮.getAttribute("aria-haspopup")).toBe("dialog");
+    await 钮.click();
+    const 窗 = page.getByRole("dialog").filter({ hasText: "完成节点 · " });
+    await 窗.waitFor();
+    expect(await 钮.getAttribute("aria-expanded")).toBe("true");
+    // 锚在按钮上：不是遮整页的模态框
+    expect(await 窗.getAttribute("aria-modal")).not.toBe("true");
+    const 钮盒 = (await 钮.boundingBox())!, 窗盒 = (await 窗.boundingBox())!;
+    expect(窗盒.y).toBeGreaterThanOrEqual(钮盒.y + 钮盒.height - 1);
+    expect(窗盒.y - (钮盒.y + 钮盒.height)).toBeLessThan(40);
+    expect(窗盒.x).toBeGreaterThanOrEqual(0);
+    expect(窗盒.x + 窗盒.width).toBeLessThanOrEqual(w);
+    expect(窗盒.x + 窗盒.width).toBeGreaterThan(钮盒.x);
+    await page.waitForFunction(() => !!document.activeElement?.closest("[role=dialog]")?.textContent?.includes("完成节点 · "));
+    await page.keyboard.press("Escape");
+    await 窗.waitFor({ state: "hidden" });
+    expect(await 钮.getAttribute("aria-expanded")).toBe("false");
+    await 钮.click();
+    await 窗.waitFor();
+    await 窗.getByRole("button", { name: /取\s*消|去补齐/ }).click();
+    await 窗.waitFor({ state: "hidden" });
+    expect(await 改节点记录(page)).toBe("[]");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

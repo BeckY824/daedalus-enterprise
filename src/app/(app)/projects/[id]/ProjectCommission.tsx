@@ -14,6 +14,7 @@ import { 金额格式 } from "@/lib/money-input";
 import { 两位, 低于底价, 分配问题, 更正问题, 更正原因上限, type 提成卡, type 分配 } from "@/lib/project/commission";
 import { 存项目底价, 存提成分配, 更正实际提成 } from "../commission-actions";
 import SaveButton from "@/components/SaveButton";
+import CountUp from "@/components/CountUp";
 import { 跑给按钮, 框里原因, type 跑法 } from "./detail-note";
 
 
@@ -104,23 +105,23 @@ export function SplitBar({ 段们, 组长名 = "组长" }: { 段们: { userId: s
 export function SplitModal({ projectId, t, onClose }: { projectId: string; t: 提成卡; /** 旧接口留着：保存改成就地反馈，不再经页面的 跑 弹提示 */ 跑?: 跑法; onClose: () => void }) {
   const router = useRouter();
   const [分, set分] = useState<分配>(() => ({ ...t.分配 }));
-  const [忙, set忙] = useState(false);
-  const [错, set错] = useState<string | null>(null);
   const 给出去 = 两位(Object.values(分).reduce((a, v) => a + Math.round((v || 0) * 100), 0) / 100);
   const 问题 = 分配问题(Object.fromEntries(Object.entries(分).filter(([, v]) => v != null)));
+  // 原型 dt.team：保存在按钮里转圈 →「已保存 ✓」放完再关框、卡上的分配条跟着变；没存上原因浮在按钮上方，框不关（SaveButton / g.save）
+  const 存 = async () => {
+    const r = await 存提成分配(projectId, 分).catch(() => ({ ok: false as const, error: "没存上，请稍后再试" }));
+    if (!r.ok) return { ok: false, error: r.error ?? "没存上，请稍后再试" };
+    router.refresh();
+  };
   return (
     <Modal
-      open title="改提成分配" okText="保存" cancelText="取消" onCancel={onClose}
-      okButtonProps={{ disabled: !!问题 || 忙, loading: 忙 }}
-      onOk={async () => {
-        set忙(true);
-        set错(null);
-        // 成了关框，卡上的分配条和每人金额跟着变；没成原因写在框里不关
-        const r = await 存提成分配(projectId, 分).catch(() => ({ ok: false as const, error: "没存上，请稍后再试" }));
-        set忙(false);
-        if (r.ok) { router.refresh(); onClose(); }
-        else set错(r.error ?? "没存上，请稍后再试");
-      }}
+      open title="改提成分配" onCancel={onClose}
+      footer={(
+        <Space>
+          <Button onClick={onClose}>取消</Button>
+          <SaveButton disabled={!!问题} 做={存} 成了={onClose}>保存</SaveButton>
+        </Space>
+      )}
     >
       {t.组员.length === 0 ? (
         <div style={淡}>项目组里还没有已进组的组员（邀请要对方同意了才算），提成全归组长</div>
@@ -135,9 +136,8 @@ export function SplitModal({ projectId, t, onClose }: { projectId: string; t: �
       )}
       {t.组员.length > 0 && <SplitBar 段们={t.组员.map((m) => ({ userId: m.userId, name: m.name, 比例: 分[m.userId] ?? 0 }))} />}
       <div style={{ marginTop: 8, color: 问题 ? "var(--danger-text)" : "var(--text-muted)" }} aria-live="polite">
-        {问题 ?? `分出去 ${给出去}%，组长留 ${两位(100 - 给出去)}%`}
+        {问题 ?? <>分出去 <b className="pd-split-num"><CountUp 值={给出去} 记号={`split-out:${projectId}`} 只滚变化 格式={(n) => String(两位(n))} /></b>%，组长留 <b className="pd-split-num"><CountUp 值={两位(100 - 给出去)} 记号={`split-lead:${projectId}`} 只滚变化 格式={(n) => String(两位(n))} /></b>%</>}
       </div>
-      {错 && <div role="alert" className="csq-err">{错}</div>}
     </Modal>
   );
 }

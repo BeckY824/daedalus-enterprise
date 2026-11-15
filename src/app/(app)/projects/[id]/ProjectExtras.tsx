@@ -9,6 +9,7 @@ import FollowAttachments from "@/components/FollowAttachments";
 import type { 附件 } from "@/lib/attachment-rules";
 import DatePicker from "@/components/BusinessDatePicker";
 import SaveButton from "@/components/SaveButton";
+import CountUp from "@/components/CountUp";
 import { useConsequence } from "@/components/ConsequenceDialog";
 import { 未选占位, 不填项, 去不填, 去多选不填, type 项目画像键 } from "@/lib/enterprise/dict-kinds";
 import { 币种选项, 金额, 合计文字, 按币种合计, 默认币种 } from "@/lib/currency";
@@ -189,7 +190,10 @@ export function ProjectPaymentsCard({ projectId, 回款们, 能改, 默认: 默�
   const [数, set数] = useState<number | null>(null);
   /** 自动推进了几步：记完在卡里就地说一句（不弹顶部提示） */
   const [推到, set推到] = useState<string[] | null>(null);
-  const 合计 = 回款们.length ? 合计文字(按币种合计(回款们, (x) => x.amount, (x) => x.currency)) : "还没有回款";
+  const 各币合计 = 按币种合计(回款们, (x) => x.amount, (x) => x.currency);
+  const 合计 = 回款们.length ? 合计文字(各币合计) : "还没有回款";
+  /** 只有一种币：记一笔 / 删一笔后合计从旧数滚到新数（原型 dt.pay「数字滚到位」）；多种币各写各的，不滚 */
+  const 单币 = 各币合计.length === 1 ? 各币合计[0] : null;
   // 录的这笔少于「合同金额 − 已回」就黄字提示一句，不拦「记一笔」（A5-4）
   const 少了 = 回款少于应收(数, 币, 还应收(合同, 回款们));
 
@@ -225,7 +229,9 @@ export function ProjectPaymentsCard({ projectId, 回款们, 能改, 默认: 默�
 
   return (
     <Card title={`${卡名("回款")}（${回款们.length}）`}>
-      <div style={{ marginBottom: 8 }}>当前回款：<b style={{ overflowWrap: "anywhere" }}>{合计}</b></div>
+      <div style={{ marginBottom: 8 }}>当前回款：<b className="pd-pay-total" style={{ overflowWrap: "anywhere" }}>{单币
+        ? <CountUp 值={单币.合计} 记号={`pay:${projectId}:${单币.币种}`} 只滚变化 格式={(n) => 金额(Number.isInteger(单币.合计) ? Math.round(n) : Math.round(n * 100) / 100, 单币.币种)} />
+        : 合计}</b></div>
       {回款们.map((x) => (
         <div key={x.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "4px 0", borderTop: "1px solid var(--line-soft)" }}>
           <span style={{ color: "var(--text-muted)" }}>{dayjs(x.paidAt).format("YYYY-MM-DD")}</span>

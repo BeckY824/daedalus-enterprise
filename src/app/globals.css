@@ -4920,3 +4920,26 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 .cu-said-err { color: var(--danger-text); }
 span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 @media (prefers-reduced-motion: reduce) { .cu-said { animation: none; } }
+/* 项目详情 · 推进节点还差必填（dt.stage）：从「完成节点」下面长出补填小框，不开大框；内容长了框里滚，按钮那排照旧贴底 */
+.pd-fill-pop .ant-popover-inner { padding: var(--s3); }
+.pd-fill-pop-body { width: min(420px, calc(100vw - 32px)); max-height: min(72vh, 640px); overflow-y: auto; overscroll-behavior: contain; }
+.pd-fill-pop-t { font-weight: 600; color: var(--ink); margin-bottom: var(--s2); overflow-wrap: anywhere; }
+/* 项目详情 · 删沟通（dt.talkdel）：确认条长在这一条下面，写清进回收站、谁能恢复；删成了这一条原地收起 */
+.pd-del-band { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin-top: var(--s2); padding: var(--s2) var(--s3);
+  border-radius: var(--r-ctl); background: var(--danger-bg); border: 1px solid var(--danger-line); animation: pd-band-in var(--t) var(--ease) both; }
+.pd-del-band-t { flex: 1 1 220px; min-width: 0; color: var(--danger-text); font-size: var(--fs-note); overflow-wrap: anywhere; }
+.pd-del-band-a { display: inline-flex; gap: var(--s2); flex: none; margin-inline-start: auto; }
+@keyframes pd-band-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.pd-follow-leave { animation: pd-follow-leave var(--t) var(--ease) forwards; overflow: hidden; pointer-events: none; }
+@keyframes pd-follow-leave { to { opacity: 0; transform: translateX(8px); } }
+@media (prefers-reduced-motion: reduce) { .pd-del-band, .pd-follow-leave { animation: none; } .pd-follow-leave { opacity: 0; } }
+/* 项目详情 · 资料行内编辑（dt.field）：存上了值旁边一个 ✓ 停一下淡掉；编辑态底下那行写怎么存 */
+.pd-inline-ok { flex: none; align-self: center; margin-inline-start: var(--s1); color: var(--success-text); font-size: var(--fs-note); animation: pd-inline-ok 1.4s var(--ease) forwards; }
+@keyframes pd-inline-ok { 0% { opacity: 0; transform: scale(.8); } 15% { opacity: 1; transform: none; } 70% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .pd-inline-ok { animation: none; } }
+.proj-inline-edit[aria-busy="true"] :is(input, textarea, .ant-select-selector, .ant-picker) { opacity: .6; }
+
+/* dt.pay：回款合计滚到位时等宽，宽度不跳 */
+.pd-pay-total { font-variant-numeric: tabular-nums; }
+/* dt.team：改分配框里「分出去 / 组长留」随改数滚到位，等宽不跳 */
+.pd-split-num { font-variant-numeric: tabular-nums; }
