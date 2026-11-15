@@ -152,10 +152,18 @@
   --r-tag: 999px;                      /* 状态标签 */
   --bw: 1px;                           /* 控件边框粗细（喂给 antd 的 lineWidth） */
   --draft: dashed;                     /* 铅笔的线型：AI 起草、还没确认的 */
-  /* 16a：卡片不画边框，靠两层很淡的阴影从地面（#F5F5F7）上浮起来；浮层（弹窗、抽屉、下拉、气泡）共用 --shadow-pop */
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.05);
-  --card-line: transparent;            /* 卡片边框：现状不画；别的主题、暗黑接回 --line */
-  --shadow-pop: 0 2px 6px rgba(0, 0, 0, 0.04), 0 12px 32px rgba(0, 0, 0, 0.10);
+  /* 16a：卡片不画边框，靠很淡的阴影从地面（#F5F5F7）上浮起来；浮层（弹窗、抽屉、下拉、气泡）共用 --shadow-pop。
+     2026-11 PR2 外壳（原型 g.feel「细描边、柔阴影」）：两档都在最前面加一圈 0.5px 的发丝描边——白卡片压在白底上
+     （白底地面、弹窗里的卡）也认得出边；卡片那层影收短收淡（4/16 → 1/2 + 3/10），浮起来但不发虚 */
+  --shadow-card: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04), 0 3px 10px rgba(0, 0, 0, 0.03);
+  --card-line: transparent;            /* 卡片边框：现状不画（发丝描边在 --shadow-card 里）；别的主题、暗黑接回 --line */
+  --shadow-pop: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04), 0 12px 32px rgba(0, 0, 0, 0.10);
+  /* 输入框（PR2 外壳 g.feel）：现状主题下不画框，铺一层半透明的墨色——压在白卡上是浅灰，压在灰地面上深一档，哪儿都认得出；
+     悬停再深一点，聚焦变回白底 + 主色框。用的地方在文件后面「输入框浅灰底」那段 */
+  --field-bg: color-mix(in srgb, var(--ink) 4%, transparent);
+  --field-bg-hover: color-mix(in srgb, var(--ink) 6.5%, transparent);
+  /* 大数字的字距（PR2 外壳 g.feel「KPI 字号收紧」）：26px 的数字照正文字距会显得松，收 2%。各页的指标值按需接这个 token */
+  --num-track: -0.02em;
   --page-pattern: none;                /* 地面纹理：像素的点阵、科技的坐标格、账簿的稿纸线 */
   --page-pattern-size: auto;
 }
@@ -3899,10 +3907,29 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
   border-color: var(--card-line); box-shadow: var(--shadow-card); border-radius: var(--r-pop);
 }
 
-/* ---------- 浮层：弹窗、抽屉、下拉、气泡、选择框面板，同一个阴影、圆角 14（圆角在 lib/theme.ts） ---------- */
-:is(.ant-modal .ant-modal-content, .ant-drawer .ant-drawer-content-wrapper, .ant-popover .ant-popover-inner, .ant-dropdown .ant-dropdown-menu, .ant-select-dropdown, .ant-picker-dropdown .ant-picker-panel-container) {
+/* ---------- 浮层：弹窗、抽屉、下拉、气泡、选择框面板，同一个阴影、圆角 14（圆角在 lib/theme.ts） ----------
+   弹窗外壳 antd 6 叫 .ant-modal-container（5 里叫 -content），两个都认——原来只写了 -content，弹窗这一项一直没吃到 */
+:is(.ant-modal .ant-modal-container, .ant-modal .ant-modal-content, .ant-drawer .ant-drawer-content-wrapper, .ant-popover .ant-popover-inner, .ant-dropdown .ant-dropdown-menu, .ant-select-dropdown, .ant-picker-dropdown .ant-picker-panel-container) {
   box-shadow: var(--shadow-pop);
 }
+
+/* ---------- 输入框浅灰底（PR2 外壳 g.feel）：现状主题（明暗都算）的描边款输入框、数字框、选择框、日期框 ----------
+   不画框（框线留着、只是透明，尺寸一像素不变），铺 --field-bg；悬停深一档；聚焦回到白底 + 主色框（antd 的聚焦光晕照旧）。
+   报错 / 警告（-status-*）和禁用的不动，照 antd 原样，红框黄框要看得见。
+   换皮主题（像素、账簿……）有自己的边框语言，不挂。分量：前面垫 :root 和主题判断，压过 antd 的 hover / focus 规则 */
+:root:is(:not([data-skin]), [data-skin="now"]) :is(.ant-input-outlined, .ant-input-number-outlined, .ant-select-outlined, .ant-picker-outlined):not([class*="-status-"], [class*="-disabled"], :disabled) {
+  background: var(--field-bg); border-color: transparent;
+}
+:root:is(:not([data-skin]), [data-skin="now"]) :is(.ant-input-outlined, .ant-input-number-outlined, .ant-select-outlined, .ant-picker-outlined):not([class*="-status-"], [class*="-disabled"], :disabled):hover {
+  background: var(--field-bg-hover); border-color: transparent;
+}
+:root:is(:not([data-skin]), [data-skin="now"]) :is(.ant-input-outlined, .ant-input-number-outlined, .ant-select-outlined, .ant-picker-outlined):not([class*="-status-"], [class*="-disabled"], :disabled):is(:focus, :focus-within, [class*="-focused"]) {
+  background: var(--panel); border-color: var(--brand);
+}
+/* 数字框右边那对上下箭头 antd 自带白底，铺了灰底的框里会露出一块白 */
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-input-number-outlined .ant-input-number-actions { background: transparent; }
+/* 大数字收字距：antd 的统计数值是通用组件，接 --num-track */
+.ant-statistic-content { letter-spacing: var(--num-track); }
 
 /* ---------- 标签：默认灰底深字 12/500 胶囊；只有三种带色——要人处理（橙）、出问题 / 无效（红）、完成 / 赢单（绿）。
    字和判定不动，只按 antd 现成的颜色类归档：green/success → 绿，red/volcano/error → 红，orange/warning → 橙，其余（蓝紫青金……）→ 灰。

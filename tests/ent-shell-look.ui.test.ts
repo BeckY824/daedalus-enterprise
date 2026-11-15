@@ -64,14 +64,20 @@ beforeAll(async () => {
   壳包 = 壳.outputFiles[0].text;
 
   const 件 = await build({ ...打包选项, plugins: [件插件], stdin: { loader: "tsx", resolveDir: process.cwd(), contents: `
-    import React, {useState} from 'react';import {createRoot} from 'react-dom/client';import {App, Button, Dropdown, Table, Tooltip} from 'antd';
+    import React, {useState} from 'react';import {createRoot} from 'react-dom/client';import {App, Button, Dropdown, Input, InputNumber, Modal, Table, Tooltip} from 'antd';
     import MotionTheme from '@/components/MotionTheme';
     import Skeleton from '@/components/Skeleton';import EmptyState from '@/components/EmptyState';import CountUp from '@/components/CountUp';
     function 数(){const [v,set]=useState(1200);window.__set=set;return <b data-testid="num"><CountUp 值={v} 记号="kpi:test" 只滚变化/></b>;}
+    function 弹窗(){const [开,set开]=useState(false);window.__弹=()=>set开(true);return <Modal open={开} title="编辑客户" onCancel={()=>set开(false)}><p>弹窗正文</p></Modal>;}
     function 页(){const [空,set空]=useState(false);window.__空=()=>set空(true);return <div style={{padding:40}}>
       <Dropdown trigger={['click']} menu={{items:[{key:'a',label:'编辑'},{key:'b',label:'转让给同事'},{key:'c',label:'退回公海'}]}}><Button>更多操作</Button></Dropdown>
       <Tooltip title="提示内容"><Button>悬停看提示</Button></Tooltip>
       <Table rowKey="k" dataSource={[{k:1,n:'甲公司'},{k:2,n:'乙公司'}]} columns={[{title:'名称',dataIndex:'n'}]} pagination={false}/>
+      <Input aria-label="客户名称" placeholder="客户名称"/>
+      <Input aria-label="手机号" status="error"/>
+      <InputNumber aria-label="金额"/>
+      <Button onClick={()=>window.__弹?.()}>打开弹窗</Button>
+      <弹窗/>
       <Skeleton 行={5}/>
       <数/>
       {空 && <EmptyState title="今天没有待办" hint="下一次跟进可以在沟通里一起定" demo={false} primary={{label:'加一条待办',onClick(){}}}/>}
@@ -315,6 +321,47 @@ describe("⌘K（g.cmdk）", () => {
       const 在动 = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".cmdk-item")].filter((x) => x.style.transform && x.style.transform !== "none").length);
       expect(在动).toBe(0);
       expect(errors).toEqual([]);
+    } finally { await page.context().close(); }
+  });
+});
+
+describe("静态质感（g.feel）", () => {
+  it("输入框：平时半透明灰底、框线透明；聚焦白底 + 主色框；报错的照旧红框", async () => {
+    const { page } = await 开(件包);
+    try {
+      const 读 = (名: string) => page.getByRole(名 === "金额" ? "spinbutton" : "textbox", { name: 名 }).evaluate((el) => {
+        const 框 = (el.closest("[class*='-outlined']") ?? el) as HTMLElement;
+        const cs = getComputedStyle(框);
+        return { 底: cs.backgroundColor, 框线: cs.borderTopColor, 宽: cs.borderTopWidth };
+      });
+      const 平时 = await 读("客户名称");
+      expect(平时.底).not.toBe("rgb(255, 255, 255)");
+      expect(平时.底).toMatch(/0\.04\)$/);
+      expect(平时.框线).toBe("rgba(0, 0, 0, 0)");
+      expect(平时.宽, "框线只是透明，宽度不变，尺寸一像素不动").toBe("1px");
+      expect((await 读("金额")).底).toMatch(/0\.04\)$/);
+      await page.getByRole("textbox", { name: "客户名称" }).focus();
+      // antd 的框自带过渡，等它走完
+      await expect.poll(async () => (await 读("客户名称")).底).toBe("rgb(255, 255, 255)");
+      const 聚焦 = await 读("客户名称");
+      expect(聚焦.框线).not.toBe("rgba(0, 0, 0, 0)");
+      const 报错 = await 读("手机号");
+      expect(报错.底).toBe("rgb(255, 255, 255)");
+      expect(报错.框线).toMatch(/^rgb\(255, 77, 79\)$/);
+    } finally { await page.context().close(); }
+  });
+
+  it("浮层和弹窗带 0.5px 发丝描边的阴影（弹窗外壳 antd 6 叫 container，也吃到）", async () => {
+    const { page } = await 开(件包);
+    try {
+      await page.getByRole("button", { name: "打开弹窗" }).click();
+      await page.getByRole("dialog").getByText("弹窗正文").waitFor();
+      const 影 = await page.getByText("弹窗正文").evaluate((el) => {
+        let x: HTMLElement | null = el as HTMLElement;
+        while (x && getComputedStyle(x).boxShadow === "none") x = x.parentElement;
+        return x ? getComputedStyle(x).boxShadow : "none";
+      });
+      expect(影).toMatch(/^rgba\(0, 0, 0, 0\.08\) 0px 0px 0px 0\.5px/);
     } finally { await page.context().close(); }
   });
 });
