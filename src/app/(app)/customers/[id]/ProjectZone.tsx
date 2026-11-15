@@ -94,6 +94,14 @@ export const 落地亮毫秒 = 2000;
 function useLandingFlash(): string | null {
   const 参数 = useSearchParams();
   const [亮, set亮] = useState<string | null>(() => 参数.get("project"));
+  // 页内落地（客户页「新增项目」建好后换到 ?project=<新项目>&landed=1，原型 cr.submit「新项目卡亮 2 秒」）：
+  // 组件不重挂，按 landed 那一下再亮一次；切页签的链接不带 landed，不亮
+  const 新落 = 参数.get("landed") === "1" ? 参数.get("project") : null;
+  const [上次落, set上次落] = useState(新落);
+  if (新落 !== 上次落) {
+    set上次落(新落);
+    if (新落) set亮(新落);
+  }
   useEffect(() => {
     if (!亮) return;
     const t = window.setTimeout(() => set亮(null), 落地亮毫秒);

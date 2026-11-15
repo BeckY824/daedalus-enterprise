@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { App, Button, Card, Input, Select, Space } from "antd";
+import { Button, Card, Input, Select, Space } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import InlineConfirm from "@/components/InlineConfirm";
 import { 关联说明上限 } from "@/lib/enterprise/customer-v2";
@@ -28,7 +28,13 @@ export default function LinkedCustomers({ customerId, 关联们, 只读, 起手 
 }) {
   const 叫 = 组织 ? 客户详情左栏.关联 : "关联客户";
   const 关联钮名 = 组织 ? "关联一个组织" : "关联一位客户";
-  const { message } = App.useApp();
+  /** 做没做成就地写一行（原型 g.notice，不弹顶部提示）：错的 role=alert 留 6 秒，成了 role=status 留 3 秒 */
+  const [话, set话] = useState<{ 话: string; 错?: boolean } | null>(null);
+  useEffect(() => {
+    if (!话) return;
+    const t = setTimeout(() => set话(null), 话.错 ? 6000 : 3000);
+    return () => clearTimeout(t);
+  }, [话]);
   const router = useRouter();
   const [加着, set加着] = useState(false);
   const [候选, set候选] = useState<可挑客户[]>([]);
@@ -72,8 +78,8 @@ export default function LinkedCustomers({ customerId, 关联们, 只读, 起手 
     set存着(true);
     try {
       const r = await 做();
-      if (!r.ok) return void message.error(r.error);
-      message.success(成了);
+      if (!r.ok) return void set话({ 话: r.error, 错: true });
+      set话({ 话: 成了 });
       router.refresh();
       return true;
     } finally {
@@ -153,6 +159,7 @@ export default function LinkedCustomers({ customerId, 关联们, 只读, 起手 
           </Space>
         </div>
       )}
+      {话 && <div className={话.错 ? "cd-task-err" : "rec-plan-said"} role={话.错 ? "alert" : "status"}>{话.话}</div>}
     </>
   );
 

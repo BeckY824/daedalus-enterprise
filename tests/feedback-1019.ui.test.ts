@@ -122,7 +122,9 @@ it("填了一半按 Esc：先问；「继续填」留在原地；「留着草稿
 
   // 只填了微信：能存（四样填一样就行）
   await 框(page).getByRole("button", { name: /^保\s*存$/ }).click();
-  await expect.poll(() => 状态(page)).toBe("关着");
+  // 保存键里对勾「已创建」放完才关框（原型 g.save）
+  await 框(page).getByRole("button", { name: "已创建" }).waitFor();
+  await expect.poll(() => 状态(page), { timeout: 4000 }).toBe("关着");
   const 存 = (await 调用们()).filter((c) => c.名 === "saveCustomer");
   expect(存).toHaveLength(1);
   expect(存[0].参).toMatchObject({ name: "Wang Wei", phone: "", extra: { wechat: "wangwei_88" } });
@@ -174,6 +176,8 @@ it("编辑：改了按 Esc 也问，但不给「留着草稿」（编辑不存�
   await 编辑框.getByRole("button", { name: /^保\s*存$/ }).click();
   await 编辑框.getByText("这位没有电话，是按微信认的，微信不能清空").waitFor();
   expect((await 调用们()).filter((c) => c.名 === "saveCustomer")).toHaveLength(0);
+  // 保存键上的「没存上」停一会儿回原样（它的浮层在 Esc 栈顶，回原样前 Esc 先给它）
+  await 编辑框.getByRole("button", { name: /^保\s*存$/ }).waitFor({ timeout: 8000 });
 
   await page.keyboard.press("Escape");
   await 问框(page).waitFor();

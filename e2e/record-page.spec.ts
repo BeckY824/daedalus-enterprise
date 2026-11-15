@@ -258,7 +258,8 @@ test("签约金额：自动带上勾着的商机金额之和；取消勾一个�
   await 切到(false);
   await expect(金额).toHaveValue("12,000");
   await 签.getByRole("button", { name: /保\s*存/ }).click();
-  await expect(page.locator(".ant-message")).toContainText("签约已记录");
+  // 不弹顶部提示（原型 g.save）：保存键里对勾，框里就地一行写顺带办了什么
+  await expect(签.getByRole("status").filter({ hasText: "签约已记录" })).toBeVisible();
   const 签约 = await 查((p) => p.contract.findMany({ where: { customerId: id } }));
   expect(签约.map((c) => c.amount)).toEqual([12000]);
 });

@@ -7,11 +7,13 @@ import { requiredText, isFormValidationError } from "@/lib/form-validation";
 import OptionInput from "@/components/OptionInput";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Modal, Form, Input, App, Button, Checkbox, Typography } from "antd";
+import { Modal, Form, Input, Button, Checkbox, Typography } from "antd";
+import SaveButton from "@/components/SaveButton";
+import { showUndo } from "@/components/UndoBar";
 import { FOLLOW_METHODS } from "@/lib/constants";
 import { isCalendarDate } from "@/lib/schedule-date";
 import { dayjs } from "@/lib/utils";
-import { savePlan } from "./actions";
+import { savePlan, deletePlan } from "./actions";
 import CustomerPick, { type 客户近况 } from "./CustomerPick";
 import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
@@ -50,7 +52,6 @@ export default function PlanForm({
   有WhatsApp?: boolean;
 }) {
   const [form] = Form.useForm();
-  const { message } = App.useApp();
   const router = useRouter();
   const hasTime = Form.useWatch("hasTime", form) ?? true;
   const 计划时间 = Form.useWatch("plannedAt", form);
@@ -104,19 +105,36 @@ export default function PlanForm({
     校验没过（validateFields 抛出）也会走 finally 放开
   */
   const [存着, set存着] = useState(false);
-  async function 保存() {
-    if (存着) return;
+  /** 存好之后、对勾放完才做的事（关框 + 列表页上的撤销条）；SaveButton 的 成了 调它 */
+  const 存好后 = useRef<(() => void) | null>(null);
+  function 收尾() {
+    const f = 存好后.current;
+    存好后.current = null;
+    f?.();
+  }
+  /** 已经存上、对勾还在放时点了取消 / Esc：当收尾（照样交给页面）；没存的照旧走离开守卫 */
+  function 关或收尾() {
+    if (存好后.current) 收尾();
+    else 守.要关();
+  }
+  /**
+   * 保存（原型 g.save）：保存中 / 已保存 / 没保存上都显示在保存键里，不弹顶部提示。
+   * 回 { ok:false, error } = 没保存上，原因浮在键上方，框留着
+   */
+  async function 保存(): Promise<{ ok: boolean; error?: string }> {
+    if (存着) return { ok: false, error: "正在保存，请稍等" };
     set存着(true);
     try {
-      await onOk();
+      return await onOk();
     } catch (error) {
-      if (!isFormValidationError(error)) message.error("保存失败，请刷新确认结果后重试");
+      if (isFormValidationError(error)) return { ok: false, error: "有几项没填好，看标红的" };
+      return { ok: false, error: "保存失败，请刷新确认结果后重试" };
     } finally {
       set存着(false);
     }
   }
 
-  async function onOk() {
+  async function onOk(): Promise<{ ok: boolean; error?: string }> {
     const v = await form.validateFields();
     const 谁 = customerId ?? (v.customerId as string);
     const res = await savePlan({
@@ -128,43 +146,39 @@ export default function PlanForm({
       plannedHasTime: !record || record.plannedHasTime != null || form.isFieldTouched("hasTime") || form.isFieldTouched("plannedAt") ? Boolean(v.hasTime) : undefined,
       method: v.method,
     });
-    // 这位客户在别处被删了、打开之后这条又变过了（J-105）之类：说一句，框留着；页面数据刷成最新，关框重开就是新的那一版
+    // 这位客户在别处被删了、打开之后这条又变过了（J-105）之类：原因写在保存键上，框留着；页面数据刷成最新，关框重开就是新的那一版
     if (!res.ok) {
-      message.error(res.error);
       if (record) router.refresh();
-      return;
+      return { ok: false, error: res.error };
     }
     void window.desktopReminders?.刷新();
-    set近况(null);
+    const 名 = 近况?.name;
     守.存好了();
-    onSaved(res.id);
-    if (!挑人 || !近况) return void message.success("跟进计划已保存");
-    // 列表页上建的：人留在原地，提示里给一条去他记录页的路
-    const key = `plan-new-${res.id}`;
-    const 名 = 近况.name;
-    message.success({
-      key,
-      duration: 6,
-      content: (
-        <span>
-          已给{名}排上「{v.subject.trim()}」
-          <Button type="link" size="small" onClick={() => { message.destroy(key); router.push(`/customers/${谁}`); }}>
-            去{名}的记录页
-          </Button>
-        </span>
-      ),
-    });
+    存好后.current = () => {
+      set近况(null);
+      onSaved(res.id);
+      if (!挑人 || !名 || record) return;
+      // 列表页上建的：人留在原地，底部撤销条给一条去他记录页的路；撤销 = 删掉刚排的这条（新建才有，改的不走这里）
+      showUndo({
+        话: `已给${名}排上「${String(v.subject).trim()}」`,
+        撤销: () => deletePlan(res.id),
+        另一个动作: { 话: `去${名}的记录页`, 做: () => router.push(`/customers/${谁}`) },
+        毫秒: 6000,
+      });
+    };
+    return { ok: true };
   }
 
   return (
     <Modal
       {...守.弹窗}
+      onCancel={关或收尾}
       open={open}
       title={record ? "编辑跟进计划" : 挑人 ? "新建跟进计划" : "制定跟进计划"}
-      onOk={保存}
-      confirmLoading={存着}
-      okText="保存"
-      cancelText="取消"
+      footer={[
+        <Button key="取消" onClick={关或收尾}>取消</Button>,
+        <SaveButton key="存" 做={保存} 成了={收尾}>保存</SaveButton>,
+      ]}
       destroyOnHidden
     >
       <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={(changed) => { if ("method" in changed) 人改过方式.current = true; 守.改了(); }}>

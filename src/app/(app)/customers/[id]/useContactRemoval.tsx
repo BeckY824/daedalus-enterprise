@@ -1,7 +1,11 @@
 "use client";
 
-import { App, Button } from "antd";
+import { useState } from "react";
+import { Button } from "antd";
+import { DeleteOutlined } from "@ant-design/icons";
 import { useRouter } from "next/navigation";
+import InlineConfirm from "@/components/InlineConfirm";
+import { showUndo } from "@/components/UndoBar";
 import { useBusiness } from "@/lib/business-client";
 import { deleteContact, deleteUnassignedContact, detachContact, restoreContact, undoDetachContact } from "./actions";
 
@@ -11,102 +15,78 @@ import { deleteContact, deleteUnassignedContact, detachContact, restoreContact, 
  *   只移出   —— 客户详情上不再有他，联系人页里还在、写「未归属」，以后能挂到别的客户下面
  *   彻底删除 —— 联系人页里也没了（原来点删除就是这一条，用户删完才发现）
  *
- * 两条都给一次「撤销」：移出撤回去关键联系人原样回来；删除撤回去原来那几条跟进也接回来。
+ * 两条都给一次「撤销」（底部撤销条，原型 g.undo）：移出撤回去关键联系人原样回来；删除撤回去原来那几条跟进也接回来。
+ * 没成：回 { ok:false, error }，调用方就地写原因（不弹顶部提示，原型 g.notice）。
  */
 export function useContactRemoval() {
-  const { message, modal } = App.useApp();
   const router = useRouter();
-  const b = useBusiness();
 
   async function 移出(c: { id: string; name: string }) {
     const r = await detachContact(c.id);
-    if (!r.ok) return void message.error(r.error);
+    if (!r.ok) return r;
     router.refresh();
-    const key = `contact-${c.id}`;
-    message.success({
-      key,
-      duration: 6,
-      content: (
-        <span>
-          「{c.name}」已移出，联系人页里还留着
-          <Button
-            type="link"
-            size="small"
-            onClick={async () => {
-              message.destroy(key);
-              const u = await undoDetachContact(c.id, r.原来是关键);
-              if (!u.ok) return void message.error(u.error);
-              message.success(`「${c.name}」回来了`);
-              router.refresh();
-            }}
-          >
-            撤销
-          </Button>
-        </span>
-      ),
+    showUndo({
+      话: `「${c.name}」已移出，联系人页里还留着`,
+      毫秒: 6000,
+      撤销: async () => {
+        const u = await undoDetachContact(c.id, r.原来是关键);
+        router.refresh();
+        return u;
+      },
     });
+    return { ok: true };
   }
 
   /** `未归属` = 联系人页上那种从客户上移出过的人，删的是另一张表 */
   async function 彻底删(c: { id: string; name: string; 未归属?: boolean }) {
     const r = c.未归属 ? await deleteUnassignedContact(c.id) : await deleteContact(c.id);
-    if (!r.ok) {
-      router.refresh();
-      return void message.error(r.error);
-    }
     router.refresh();
-    const key = `contact-${c.id}`;
-    message.success({
-      key,
-      duration: 6,
-      content: (
-        <span>
-          「{c.name}」已删除
-          <Button
-            type="link"
-            size="small"
-            onClick={async () => {
-              message.destroy(key);
-              const u = await restoreContact(r.快照);
-              if (!u.ok) return void message.error(u.error);
-              message.success(`「${c.name}」回来了`);
-              router.refresh();
-            }}
-          >
-            撤销
-          </Button>
-        </span>
-      ),
+    if (!r.ok) return r;
+    showUndo({
+      话: `「${c.name}」已删除`,
+      毫秒: 6000,
+      撤销: async () => {
+        const u = await restoreContact(r.快照);
+        router.refresh();
+        return u;
+      },
     });
+    return { ok: true };
   }
 
-  /**
-   * 客户详情上点删除：先问是只移出还是彻底删。主钮是「只移出」——更不伤数据的那个，
-   * 回车直接按的也是它。
-   */
-  function 问怎么拿掉(c: { id: string; name: string }) {
-    const 框 = modal.confirm({
-      title: `把「${c.name}」从这位${b.customer}上拿掉？`,
-      content: (
-        <div style={{ lineHeight: 1.7 }}>
-          <div>只移出：联系人页里还留着，写「未归属」，以后能挂到别的{b.customer}下面。</div>
-          <div>彻底删除：联系人页里也一起删掉。</div>
-          <div className="muted">两种都不会删他的沟通记录。</div>
-        </div>
-      ),
-      footer: (
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
-          <Button onClick={() => 框.destroy()}>取消</Button>
-          <Button danger onClick={() => { 框.destroy(); void 彻底删(c); }}>
-            彻底删除
-          </Button>
-          <Button type="primary" autoFocus onClick={() => { 框.destroy(); void 移出(c); }}>
-            只移出
-          </Button>
-        </div>
-      ),
-    });
-  }
+  return { 移出, 彻底删 };
+}
 
-  return { 移出, 彻底删, 问怎么拿掉 };
+/**
+ * 客户详情上联系人那颗「删除」：原地确认（P-界面-40「移出或彻底删联系人」归原地确认），不弹框。
+ * 两颗键各自就地问一句：「移出」更不伤数据（中性色），「删除」连联系人页一起删（红）。
+ * 没成：原因写在这两颗键后面一行（role=alert），几秒后收。
+ */
+export function ContactRemoveInline({ c, 文字 = false }: { c: { id: string; name: string }; 文字?: boolean }) {
+  const { 移出, 彻底删 } = useContactRemoval();
+  const b = useBusiness();
+  const [错, set错] = useState<string | null>(null);
+  const 跑 = async (f: () => Promise<{ ok: boolean; error?: string | null }>) => {
+    set错(null);
+    const r = await f().catch(() => ({ ok: false, error: "没做成，请刷新后重试" }));
+    if (!r.ok) {
+      const 话 = r.error || "没做成，请刷新后重试";
+      set错(话);
+      setTimeout(() => set错(null), 6000);
+    }
+    return r;
+  };
+  return (
+    <>
+      <InlineConfirm 问={`联系人页里还留着，以后能挂到别的${b.customer}`} 是="只移出" 中性 做={() => 跑(() => 移出(c))}>
+        <Button type="text" size="small" aria-label={`移出联系人 ${c.name}`}>移出</Button>
+      </InlineConfirm>
+      <InlineConfirm 问="联系人页里也一起删掉，沟通记录不删" 是="彻底删除" 做={() => 跑(() => 彻底删(c))}>
+        {文字
+          ? <Button size="small" type="text" danger aria-label={`删除联系人 ${c.name}`}>删除</Button>
+          : <Button type="text" size="small" danger icon={<DeleteOutlined />} aria-label={`删除联系人 ${c.name}`} />}
+      </InlineConfirm>
+      {错 && <span role="alert" className="cd-task-err">{错}</span>}
+    </>
+  );
 }

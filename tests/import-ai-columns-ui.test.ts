@@ -225,6 +225,9 @@ describe("AI 认列回来晚了：不许改人已经看过预览的对应（J-05
     // 预览算完了才回来
     await page.evaluate(() => (window as unknown as { __认列回: ((v: unknown) => void)[] }).__认列回[0]({ c2: { 选: "school", 置信: 0.9 } }));
     await expect.poll(() => page.locator("body").innerText()).toMatch(/AI 认列的结果回来晚了/);
+    // 就地一行（role=status），不弹顶部提示
+    expect(await page.getByRole("status").filter({ hasText: "AI 认列的结果回来晚了" }).count()).toBe(1);
+    expect(await page.locator(".ant-message-notice").count()).toBe(0);
 
     await page.getByRole("button", { name: "下一步" }).click();
     await page.getByRole("button", { name: "开始导入" }).click();

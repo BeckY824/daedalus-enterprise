@@ -1,7 +1,6 @@
 "use client";
 
 import { 合计文字 } from "@/lib/currency";
-import { App } from "antd";
 import { useRouter } from "next/navigation";
 import { useBusiness } from "@/lib/business-client";
 import { 签约叫 } from "@/lib/business-config";
@@ -30,26 +29,31 @@ const 名单 = (名字: string[], 叫法: string) =>
  * 11-15 前端改版（原型 cu.delete / cu.bulkdel）：换成后果框（P-界面-40「删客户」= 后果确认框，用户 11-15「删除还是要二次确认」），
  * 后果分条；删这件事在框里做，没删成原因写在框里、框不关，不再弹顶部提示。
  * 批量里有删不了的（不是自己负责的）：不再整批拦下，框里写明「跳过」谁，删其余的（跳过 = 只传给框看，不交给服务端）。
+ * 框还没开就挡住的（预检：名下有同事在推的项目、交接中…… / 没数清楚）：交给调用方 报错 就地写（列表顶上那行、详情页头下那行），
+ * 调用方没给 报错 的：开一个只说原因的框（不弹顶部提示，原因不吞）。
  */
-export function useDeleteCustomers() {
-  const { message } = App.useApp();
+export function useDeleteCustomers(报错?: (话: string) => void) {
   const router = useRouter();
   const b = useBusiness();
 
   async function 问删除(rows: { id: string; name: string }[], 删完?: () => void, 跳过: { id: string; name: string }[] = []) {
     const ids = rows.map((r) => r.id);
     if (!ids.length) return;
+    const 题 = 删除框标题(rows.map((r) => r.name), rows.length, b.customer);
+    const 挡住 = (话: string) => {
+      if (报错) return void 报错(话);
+      void 问后果({ 题, 后果: [{ 标: "删不了", 级: "危", 话 }], 是: "知道了", 危: false, 做: () => undefined });
+    };
     let 数: 删除清点;
     try {
       const preflight = await 客户删除预检(ids);
-      // 预检挡住（名下有同事在推的项目、交接中……）：框还没开，原因只能放在这一句提示里
-      if (!preflight.ok) return void message.error(preflight.error, 8);
+      // 预检挡住（名下有同事在推的项目、交接中……）：框还没开，原因交给调用方就地写
+      if (!preflight.ok) return void 挡住(preflight.error);
       数 = await 删除前清点(ids);
     } catch {
-      return void message.error("没数清楚会一起删掉什么，先别删，刷新再试");
+      return void 挡住("没数清楚会一起删掉什么，先别删，刷新再试");
     }
 
-    const 题 = 删除框标题(rows.map((r) => r.name), rows.length, b.customer);
     const 跳过条: 后果条[] = 跳过.length
       ? [{ 标: "跳过", 话: `${名单(跳过.map((r) => r.name), b.customer)} · 不是你负责的，留在原处` }]
       : [];

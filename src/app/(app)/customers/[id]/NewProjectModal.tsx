@@ -13,9 +13,9 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import type { Dayjs } from "dayjs";
-import { Alert, App, Button, Form, Input, Modal, Select, Steps } from "antd";
+import { Alert, Button, Form, Input, Modal, Select, Steps } from "antd";
+import SaveButton from "@/components/SaveButton";
 import { 下一步文字上限 } from "@/lib/project/project-fields";
 import { 有效线索节点 } from "@/lib/project/stage-gates";
 import { 没业务角色不能新建话 } from "@/lib/enterprise/permissions";
@@ -32,7 +32,7 @@ import AddressInput, { 空地址 } from "@/components/AddressInput";
 import type { 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 给客户建项目, 建项目带走的项目, 新项目分配数据, type 新项目分配数据 as 分配数据 } from "./project-actions";
 import { useCarryConfirm } from "../useCarryConfirm";
-import { 三种业务线, 分配说明, 销售自动分确认, 建议业务线, 所在地预填, 所在地提示, type 项目线 } from "@/lib/enterprise/assign-line";
+import { 三种业务线, 分配说明, 建议业务线, 所在地预填, 所在地提示, type 项目线 } from "@/lib/enterprise/assign-line";
 
 const 时间格式 = "YYYY-MM-DD HH:mm";
 /** 和建档向导同一排步骤（ProjectWizard 步骤们）；这里前 3 步已带上 */
@@ -81,7 +81,6 @@ export default function NewProjectModal({
   /** 开了超时回收：下一步时间必填 */
   要下一步: boolean;
 }) {
-  const { message, modal } = App.useApp();
   const 问一起转 = useCarryConfirm();
   const router = useRouter();
   const b = useBusiness();
@@ -121,10 +120,15 @@ export default function NewProjectModal({
   const 有分配 = !!分配 && 分配.分配方式们.length > 0;
   // 只有指定分配（或没有分配方式可选）要选负责人
   const 要负责人 = !有分配 || 分配方式 === 0;
+  /** 建好了的那个（等对勾放完再落地）；有去向要说时摆在框里的那句 */
+  const 建好 = useRef<{ projectId: string; 提示?: string | null; 转走?: boolean; 看不到?: boolean } | null>(null);
+  const [收尾, set收尾] = useState<{ projectId: string; 提示?: string | null; 转走?: boolean; 看不到?: boolean } | null>(null);
   /** 0 = 项目，1 = 首条沟通 */
   const [步, set步] = useState(0);
   const 关 = () => {
     set步(0);
+    建好.current = null;
+    set收尾(null);
     set地址(空地址);
     set详细("");
     手选.current = false;
@@ -141,22 +145,30 @@ export default function NewProjectModal({
   const 能选类型 = 跟进类型们(外贸精简(b)).filter((t) => t.value !== "TASK" && t.value !== "REMIND");
   const 主 = 联系人们.find((c) => c.isPrimary) ?? 联系人们[0];
 
-  async function 存() {
-    let v: 表单;
-    try {
-      v = await form.validateFields();
-    } catch {
-      return 真存();
-    }
-    // 销售选自动分配：分出去后就看不到这个项目了，先确认一次（A9）
-    if (分配?.是销售 && v.分配方式 === 1) {
-      modal.confirm({ title: "按自动分配建", content: 销售自动分确认, okText: "确定，分出去", cancelText: "再想想", onOk: () => void 真存() });
-      return;
-    }
-    return 真存();
+  // 销售选自动分配：分出去后就看不到这个项目了（A9）。就地黄条说后果、按钮写明「建好并分出去」，不再叠一层确认框（原型 cr.auto，同新建弹窗）
+  const 自动分出去 = !!分配?.是销售 && 分配方式 === 1;
+
+  /**
+   * 建好之后（原型 cr.submit）：键里转圈 → 对勾「已建好」→ 框收起，客户页换到新项目、新项目卡亮 2 秒（ProjectZone 认 landed）。
+   * 有去向要说的（分走了 / 进了公海 / 待分配，或这位客户我看不到了）：对勾放完框不收，那句话就地写在框里，点了键才走（不弹顶部提示）。
+   */
+  function 落地(x: { projectId: string; 转走?: boolean; 看不到?: boolean }) {
+    关();
+    // 市场把客户分给了销售（X-18）：这位客户我看不到了，留着刷新就是 404，回客户列表
+    if (x.看不到) return void router.push("/customers");
+    // 分走了：新项目不一定还看得见，只刷新
+    if (x.转走) return void router.refresh();
+    router.replace(`/customers/${encodeURIComponent(customerId)}?project=${encodeURIComponent(x.projectId)}&landed=1`, { scroll: false });
+  }
+  function 建好之后() {
+    const x = 建好.current;
+    if (!x) return;
+    if (x.提示 || x.看不到) set收尾(x);
+    else 落地(x);
   }
 
-  async function 真存() {
+  /** 建好键（SaveButton）：回 { ok:false, error } = 没建上，原因浮在键上方、框不关，可以再点 */
+  async function 真存(): Promise<{ ok: boolean; error?: string }> {
     let v: 表单;
     try {
       v = await form.validateFields();
@@ -164,13 +176,13 @@ export default function NewProjectModal({
       // 项目那一步的格没过：退回那一步给人看
       const 错 = (e as { errorFields?: { name: (string | number)[] }[] }).errorFields ?? [];
       if (错.some((x) => (项目格 as readonly (string | number)[]).includes(x.name[0]))) set步(0);
-      return;
+      return { ok: false, error: "有几项没填好，看标红的" };
     }
     set存着(true);
     try {
       // P-转-07：这次走 X-18、客户名下有同事的项目，会一起转走的先列出来（同分配弹窗）；取消就不建，弹窗留着
       const 负责人 = 要负责人 ? v.ownerId ?? null : null;
-      if (!(await 问一起转(() => 建项目带走的项目(customerId, { ownerId: 负责人, ...(有分配 ? { 分配方式: v.分配方式 ?? null, 业务线: v.业务线 ?? null } : {}) })))) return;
+      if (!(await 问一起转(() => 建项目带走的项目(customerId, { ownerId: 负责人, ...(有分配 ? { 分配方式: v.分配方式 ?? null, 业务线: v.业务线 ?? null } : {}) })))) return { ok: false, error: "没建：一起转的项目还没确认" };
       const r = await 给客户建项目({
         customerId,
         联系人Id: v.联系人Id ?? null,
@@ -190,29 +202,11 @@ export default function NewProjectModal({
           下一步: v.下一步?.trim() || null,
         },
       });
-      if (!r.ok) {
-        message.error(r.error);
-        return;
-      }
-      // 市场把客户分给了销售（X-18）：这位客户我看不到了，留着刷新就是 404，回客户列表
-      if (r.看不到客户了) {
-        message.info(r.提示 ?? "客户已转出");
-        关();
-        router.push("/customers");
-        return;
-      }
-      // 11-01 会议 §6：整套在弹窗里走完，不跳页；建好留在客户页（刷新出新项目），提示里给一个「去看看」
-      message.success({
-        content: (
-          <span data-testid="new-project-done">
-            项目建好了 <Link href={`/projects/${r.projectId}`}>去看看</Link>
-          </span>
-        ),
-      });
-      // 按分配方式分走了 / 进了公海 / 待分配：再补一句去向
-      if (r.提示) (r.转走 ? message.info : message.warning)(r.提示);
-      关();
-      router.refresh();
+      if (!r.ok) return { ok: false, error: r.error };
+      建好.current = { projectId: r.projectId, 提示: r.看不到客户了 ? (r.提示 ?? "客户已转出") : r.提示, 转走: !!r.转走, 看不到: !!r.看不到客户了 };
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "没建上，请刷新确认结果后重试" };
     } finally {
       set存着(false);
     }
@@ -232,10 +226,12 @@ export default function NewProjectModal({
               <Button key="x" onClick={关}>取消</Button>,
               <Button key="n" type="primary" onClick={下一步} disabled={!!分配?.没角色} title={分配?.没角色 ? 没业务角色不能新建话 : undefined}>下一步</Button>,
             ]
-          : [
-              <Button key="b" onClick={() => set步(0)} disabled={存着}>上一步</Button>,
-              <Button key="ok" type="primary" loading={存着} onClick={存}>建好</Button>,
-            ]
+          : 收尾
+            ? [<Button key="go" type="primary" autoFocus onClick={() => 落地(收尾)}>{收尾.看不到 ? `回${b.customer}列表` : "知道了"}</Button>]
+            : [
+                <Button key="b" onClick={() => set步(0)} disabled={存着}>上一步</Button>,
+                <SaveButton key="ok" 做={真存} 已保存="已建好" 没保存="没建" 成了={建好之后}>{自动分出去 ? "建好并分出去" : "建好"}</SaveButton>,
+              ]
       }
     >
       <Steps
@@ -341,6 +337,12 @@ export default function NewProjectModal({
         </Form.Item>
         </div>
       </Form>
+      {自动分出去 && <Alert type="warning" showIcon data-testid="new-project-auto-warn" title="分出去后你将看不到这个项目" />}
+      {收尾?.提示 && (
+        <div className={收尾.转走 || 收尾.看不到 ? "cu-said" : "cu-said cu-said-warn"} role="status" data-testid="new-project-done">
+          项目建好了。{收尾.提示}
+        </div>
+      )}
     </Modal>
   );
 }

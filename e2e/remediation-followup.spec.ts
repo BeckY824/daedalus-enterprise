@@ -49,7 +49,8 @@ test("J-177 AI组合保存故障整体回滚，原表单重试后所有项一并
     } finally { await db.$executeRawUnsafe("DROP TRIGGER qa_ui_task_failure"); }
     await dialog.getByRole("button", { name: /保\s*存/ }).click();
     await expect(dialog).toBeHidden();
-    await expect(page.locator(".ant-message")).toContainText("一并完成");
+    // 不再弹顶部提示：记录页「下次跟进」那块就地说 / 底部撤销条
+    await expect(page.getByText(/一并完成/).first()).toBeVisible();
     expect(await db.followUp.count({ where: { customerId } })).toBe(1);
     expect(await db.task.count({ where: { customerId } })).toBe(1);
     expect(await db.followPlan.count({ where: { customerId } })).toBe(2);

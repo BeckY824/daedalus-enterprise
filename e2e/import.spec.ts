@@ -245,7 +245,8 @@ test("完成页「撤销这一批」：先问、写清会删几条；点「不�
     expect(await 库.customer.count({ where: { name: 名 } }), "点了「不了」却删了").toBe(1);
     await 撤.click();
     await 问.getByRole("button", { name: /撤\s*销/ }).click();
-    await expect(page.getByRole("dialog", { name: "已撤销这一批" })).toBeVisible({ timeout: 20_000 });
+    // 撤完不弹框：抽屉回到第一步，结果就地写在底部那行（role=status，原型 g.notice）
+    await expect(抽屉.getByRole("status").filter({ hasText: "已撤销这一批" })).toBeVisible({ timeout: 20_000 });
     await expect.poll(() => 库.customer.count({ where: { name: 名 } })).toBe(0);
   } finally {
     await 库.$disconnect();

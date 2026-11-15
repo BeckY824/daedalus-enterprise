@@ -12,7 +12,7 @@ let browser: Browser; let bundle: string;
 const plugin: Plugin = { name: "plan-quick", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "stub", pluginData: code }));
   stub(/^next\/navigation$/, "export const useRouter=()=>({push(){},refresh(){}});export const usePathname=()=>'/';");
-  stub(/^\.\/actions$/, "export const savePlan=async()=>({ok:true,id:'n1'});");
+  stub(/^\.\/actions$/, "export const savePlan=async()=>({ok:true,id:'n1'}),deletePlan=async()=>({ok:true});");
   stub(/^\.\/CustomerPick$/, "export default function P(){return null}");
   stub(/^@\/lib\/me-client$/, "export const useMe=()=>({id:'u1'});");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));

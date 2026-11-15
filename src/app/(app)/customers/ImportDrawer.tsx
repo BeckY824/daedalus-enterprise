@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { App, Alert, Drawer, Progress, Segmented, Steps, Typography, Upload } from "antd";
+import { Alert, Drawer, Progress, Segmented, Steps, Typography, Upload } from "antd";
 import { InboxOutlined } from "@ant-design/icons";
 import { 解析CSV带行号, 解码CSV, 成表, 文件太大, 读不出来的话, 只导了前面的话, 行数上限, 列数上限 } from "@/lib/import/parse";
 import { 字段表, 猜列, type 字段名 } from "@/lib/import/fields";
@@ -114,10 +114,18 @@ export default function ImportDrawer({
    */
   初始文本?: string;
 }) {
-  const { message, modal } = App.useApp();
   const 表 = useMemo(() => 字段表(b), [b]);
 
   const [步, set步] = useState(0);
+  /**
+   * 抽屉底部按钮上方一行就地提示（原型 g.save / g.notice：不弹顶部 message）：文件读不出、没检查完、没核对原文、撤销没成……
+   * 错 = role=alert（红），警 = 橙，常 = 灰。记着是哪一步说的，换了一步就不摆；下一次动作开始前也清掉
+   */
+  const [话, set话] = useState<{ 话: string; 级: "常" | "警" | "错"; 步: number | null } | null>(null);
+  /** 在步 = null：不管现在在哪一步都摆（异步回来晚了、不知道人已经走到哪一步的那种） */
+  const 说 = (x: string, 级: "常" | "警" | "错" = "错", 在步: number | null = 步) => set话({ 话: x, 级, 步: 在步 });
+  /** AI 认列的结果：写在「对列」那块上方一行（role=status）；去复核、重来时收 */
+  const [认列话, set认列话] = useState<{ 话: string; 警?: boolean } | null>(null);
   // 第一次渲染就开着（?import=paste 进来）时，下面那段「open 从假变真」碰不到，初值就得按调用方说的
   const [来路, set来路] = useState<"文件" | "文本">(open && 初始来路 ? 初始来路 : "文件");
   const [原文, set原文] = useState(open && 初始文本 ? 初始文本 : "");
@@ -229,6 +237,8 @@ export default function ImportDrawer({
   }
 
   function 重来() {
+    set话(null);
+    set认列话(null);
     这一次.current++;
     认列轮.current++;
     因预览作废.current = false;
@@ -263,9 +273,10 @@ export default function ImportDrawer({
     const 太大 = 文件太大(f.name, f.size);
     if (太大) {
       // 话长，默认 3 秒来不及看完怎么拆
-      message.error({ content: 太大, duration: 8 });
+      说(太大);
       return;
     }
+    set话(null);
     set忙(true);
     try {
       let 读到: { rows: string[][]; 行号: number[] };
@@ -274,7 +285,7 @@ export default function ImportDrawer({
         const { 读xlsx带行号 } = await import("@/lib/import/xlsx");
         读到 = 读xlsx带行号(new Uint8Array(await f.arrayBuffer()));
       } else if (/\.xls$/i.test(f.name)) {
-        message.error("这是 2003 年那种老格式，请在 Excel 里另存为 .xlsx 或 .csv 再来");
+        说("这是 2003 年那种老格式，请在 Excel 里另存为 .xlsx 或 .csv 再来");
         return;
       } else {
         // 不用 f.text()：它固定按 UTF-8 解，中文 Windows 存出来的 GBK 会是乱码
@@ -283,13 +294,13 @@ export default function ImportDrawer({
       // 表头认法用当前业务的字段叫法（院校 / 公司、年级 / 职位……随业务配置变）
       const t = 成表(读到.rows, (h) => 猜列([h], 表)[0] !== null, 读到.行号);
       if (t.表头.length === 0 || t.数据.length === 0) {
-        message.error("这份表里没有数据。第一行要是表头，第二行起是内容");
+        说("这份表里没有数据。第一行要是表头，第二行起是内容");
         return;
       }
       set编造([]); set漏掉([]); set原文核对(null); set已核对原文(false); set续作(undefined);
       收表(f.name, t.表头, t.数据, t.截断了, t.行号);
     } catch (e) {
-      message.error({ content: 读不出来的话(e), duration: 8 });
+      说(读不出来的话(e));
     } finally {
       set忙(false);
     }
@@ -329,22 +340,23 @@ export default function ImportDrawer({
     因预览作废.current = false;
     const 当时 = 映射;
     set认列中(true);
+    set认列话(null);
     try {
       const 答案 = await 猜列建议(表头, 数据.slice(0, 样例行数), 当时);
       if (轮 !== 认列轮.current) {
-        if (因预览作废.current) message.info("AI 认列的结果回来晚了，你已经往下走了，没有拿它改列的对应。要用的话回到「对列」再点一次");
+        if (因预览作废.current) 说("AI 认列的结果回来晚了，你已经往下走了，没有拿它改列的对应。要用的话回到「对列」再点一次", "常", null);
         return;
       }
       const 合 = 并进来(当时, 答案, 表);
       const 认出 = 合.filter((x, i) => x !== 当时[i]).length;
-      if (!答案) message.warning("AI 这会儿没回话，剩下的列请自己选");
-      else if (认出 === 0) message.info("AI 也没认出来，剩下的列请自己选，或者让它们并进备注");
+      if (!答案) set认列话({ 话: "AI 这会儿没回话，剩下的列请自己选", 警: true });
+      else if (认出 === 0) set认列话({ 话: "AI 也没认出来，剩下的列请自己选，或者让它们并进备注" });
       else {
         set映射((prev) => 并进来(prev, 答案, 表));
-        message.success(`AI 认出了 ${认出} 列，已经填在下面，请看一眼对不对`);
+        set认列话({ 话: `AI 认出了 ${认出} 列，已经填在下面，请看一眼对不对` });
       }
     } catch {
-      if (轮 === 认列轮.current) message.warning("AI 这会儿没回话，剩下的列请自己选");
+      if (轮 === 认列轮.current) set认列话({ 话: "AI 这会儿没回话，剩下的列请自己选", 警: true });
     } finally {
       if (轮 === 认列轮.current) set认列中(false);
     }
@@ -391,7 +403,9 @@ export default function ImportDrawer({
   const 现看 = 看 ? 按处置(看, 重复行) : null;
 
   async function 去预览() {
-    if (原文核对 && !已核对原文) return message.warning("请先逐条核对原文及遗漏提示，再勾选确认");
+    if (原文核对 && !已核对原文) return void 说("请先逐条核对原文及遗漏提示，再勾选确认", "警");
+    set话(null);
+    set认列话(null);
     // 预览照这一刻的映射算；还在路上的认列结果回来就作废（J-057）
     if (认列中) 因预览作废.current = true;
     认列轮.current++;
@@ -400,13 +414,13 @@ export default function ImportDrawer({
     try {
       let r = await 预览导入(方案(await 送表()));
       if (!r.ok && "重送" in r && r.重送) r = await 预览导入(方案(await 送表(true)));
-      if (!r.ok) return message.error(r.error);
+      if (!r.ok) return void 说(r.error);
       set看(r.预览);
       set步(2);
     } catch (e) {
       // server action 抛出来的那一种失败也要说话。不接住的话 finally 把忙置回 false，
       // 界面一声不吭，人只会以为这颗按钮坏了。原来直接弹英文（大表超 1 MB 时是「Minified React error」，2026-10-21）
-      message.error(`没检查完：${说人话(e)}。库里什么都没动，点「下一步」再试一次`);
+      说(`没检查完：${说人话(e)}。库里什么都没动，点「下一步」再试一次`);
     } finally {
       set忙(false);
     }
@@ -418,7 +432,8 @@ export default function ImportDrawer({
    * 接着导用同一批、从断的地方往下，这一批写过的服务端认得出来，不会多出一份
    */
   async function 落库() {
-    if (原文核对 && !已核对原文) return message.warning("请先核对原文");
+    if (原文核对 && !已核对原文) return void 说("请先核对原文", "警");
+    set话(null);
     set忙(true);
     let 续 = 中断?.续 ?? { 起: 0 };
     // 第一趟回话前先按表的行数显示（合并同号行之后可能少几条，第一趟回来就改成准数）
@@ -482,18 +497,19 @@ export default function ImportDrawer({
     const batchId = 结果?.batchId ?? 中断?.续.batchId;
     if (!batchId) return;
     set忙(true);
+    set话(null);
     try {
       const r = await 撤销批次(batchId);
-      if (!r.ok) return message.error(r.error);
+      if (!r.ok) return void 说(r.error);
       onDone();
       const 尾 = r.没动.length
         ? `。有 ${r.没动.length} 位没动：${r.没动.slice(0, 3).map((x) => `${x.name}（${x.原因}）`).join("、")}${r.没动.length > 3 ? " 等" : ""}`
         : "";
-      modal.success({ title: "已撤销这一批", content: `删掉 ${r.删掉} 条，还原 ${r.还原} 条${尾}` });
+      // 撤完回到第一步、抽屉不关，结果就地写在底部那行（不弹框，原型 g.notice）；有没动的用橙字
       重来();
-      onClose();
+      说(`已撤销这一批：删掉 ${r.删掉} 条，还原 ${r.还原} 条${尾}`, r.没动.length ? "警" : "常", null);
     } catch (e) {
-      message.error(e instanceof Error ? e.message : "撤销没能完成，请重试");
+      说(e instanceof Error ? e.message : "撤销没能完成，请重试");
     } finally {
       set忙(false);
     }
@@ -514,6 +530,12 @@ export default function ImportDrawer({
         setTimeout(重来, 200);
       }}
       footer={
+        <>
+        {话 && (话.步 === null || 话.步 === 步) && (
+          <div role={话.级 === "错" ? "alert" : "status"} className={话.级 === "错" ? "cu-said cu-said-err" : 话.级 === "警" ? "cu-said cu-said-warn" : "cu-said"}>
+            {话.话}
+          </div>
+        )}
         <页脚
           {...{ 步, 忙, 认人列, set步, 去预览, 落库, 撤, 重来 }}
           写入中={Boolean(进度)}
@@ -530,6 +552,7 @@ export default function ImportDrawer({
             if (id && (结果?.新建 ?? 0) + (结果?.补空 ?? 0) > 0) 看这一批?.(id);
           }}
         />
+        </>
       }
     >
       <Steps
@@ -587,6 +610,9 @@ export default function ImportDrawer({
         </>
       )}
 
+      {步 === 1 && 认列话 && (
+        <div role="status" className={认列话.警 ? "cu-said cu-said-warn" : "cu-said"}>{认列话.话}</div>
+      )}
       {步 === 1 && (
         <对列
           {...{ 表头, 数据, 映射, set映射, 表, 认人列, 文件名, 截断了, b, 没对上的列, set没对上的列, 编造, 漏掉 }}

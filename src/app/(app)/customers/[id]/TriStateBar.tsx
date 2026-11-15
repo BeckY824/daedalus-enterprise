@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { App, Button, Dropdown, Input, Modal } from "antd";
+import { Button, Dropdown, Input, Modal } from "antd";
+import SaveButton from "@/components/SaveButton";
 import { MoreOutlined } from "@ant-design/icons";
 import type { 三态条, 三态条按钮 } from "@/lib/enterprise/tri-state-detail";
 import { fmtDateTime } from "@/lib/utils";
@@ -18,7 +19,6 @@ const 标签色 = { 沉睡: "sleep", 待回收: "pend", 暂缓回收中: "hold" 
  */
 export default function TriStateBar({ 条, customerId, 开客户转让 }: { 条: 三态条; customerId: string; 开客户转让: (() => void) | null }) {
   const router = useRouter();
-  const { message } = App.useApp();
   const [框, set框] = useState<三态条按钮 | null>(null);
   const [理由, set理由] = useState("");
   const [忙, set忙] = useState(false);
@@ -32,21 +32,24 @@ export default function TriStateBar({ 条, customerId, 开客户转让 }: { 条:
     set理由("");
     set框(b);
   };
-  const 确定 = async () => {
-    if (!框) return;
+  /** 成了那一下键上的字（原型 g.save：反馈在键里，不弹顶部提示）。顺延还剩几次、通知了几位都在这句里 */
+  const [成话, set成话] = useState("已办好");
+  /** 回 { ok:false, error } = 没办成，原因浮在键上方（SaveButton），框不关、可以再点 */
+  const 确定 = async (): Promise<{ ok: boolean; error?: string }> => {
+    if (!框) return { ok: false, error: "没办成，请刷新后重试" };
     const 话 = 理由.trim();
-    if (框.要理由 && !话) return void message.warning("请写理由");
+    if (框.要理由 && !话) return { ok: false, error: "请写理由" };
     set忙(true);
     try {
       const r = 框.动作 === "继续持有" ? await 三态继续持有(customerId, 话 || null)
         : 框.动作 === "暂缓回收" ? await 三态暂缓回收(customerId, 话 || null)
         : await 三态让同事结束项目(customerId);
-      if (!r.ok) return void message.error(r.error);
-      message.success(框.动作 === "继续持有" ? `已顺延${r.剩次数 != null ? `，还可用 ${r.剩次数} 次` : ""}` : 框.动作 === "暂缓回收" ? "已暂缓回收" : `已通知${r.通知了 ? ` ${r.通知了} 位` : ""}同事`);
-      set框(null);
+      if (!r.ok) return { ok: false, error: r.error };
+      set成话(框.动作 === "继续持有" ? `已顺延${r.剩次数 != null ? `，还可用 ${r.剩次数} 次` : ""}` : 框.动作 === "暂缓回收" ? "已暂缓回收" : `已通知${r.通知了 ? ` ${r.通知了} 位` : ""}同事`);
       router.refresh();
+      return { ok: true };
     } catch {
-      message.error("没办成，请刷新后重试");
+      return { ok: false, error: "没办成，请刷新后重试" };
     } finally {
       set忙(false);
     }
@@ -73,7 +76,16 @@ export default function TriStateBar({ 条, customerId, 开客户转让 }: { 条:
         </span>
       )}
       {框 && (
-        <Modal open title={框.字} okText={框.字} cancelText="取消" confirmLoading={忙} onOk={() => void 确定()} onCancel={() => set框(null)} width={480}>
+        <Modal
+          open
+          title={框.字}
+          onCancel={() => { if (!忙) set框(null); }}
+          width={480}
+          footer={[
+            <Button key="取消" onClick={() => set框(null)} disabled={忙}>取消</Button>,
+            <SaveButton key="是" 做={确定} 已保存={成话} 没保存="没办成" 成了={() => set框(null)}>{框.字}</SaveButton>,
+          ]}
+        >
           <p className="tri-dlg-note">{框.说明}</p>
           {框.动作 !== "让同事结束项目" && (
             <Input.TextArea

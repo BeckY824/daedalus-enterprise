@@ -254,8 +254,9 @@ test("端到端：记录页「保存并完成」后点提示里的「撤销」�
   await 框.getByLabel("这次聊了什么").fill("点错了的一笔");
   await page.getByRole("button", { name: "保存并完成" }).click();
   await expect(page.getByText(/已记一笔，「接着跟进：新报价发了」完成；下次/)).toBeVisible();
-  await page.getByRole("button", { name: "撤销" }).click();
-  await expect(page.getByText("「接着跟进：新报价发了」已改回未完成，刚记的那笔已删掉")).toBeVisible();
+  // 底部撤销条（原型 g.undo）：撤成了条上写「已撤销」
+  await page.locator(".undo-bar").getByRole("button", { name: "撤销" }).click();
+  await expect(page.locator(".undo-bar")).toContainText("已撤销");
   const db2 = 连库();
   try {
     expect((await db2.followPlan.findUniqueOrThrow({ where: { id: 原计划 } })).done).toBe(false);
