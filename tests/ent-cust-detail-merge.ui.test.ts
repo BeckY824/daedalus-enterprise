@@ -14,7 +14,7 @@ const plugin: Plugin = { name: "cust-detail-merge", setup(b) {
   stub(/(^|\/)InlineField$/, "export default function Inline(p){return <div className='rec-field' data-field={p.field}>{p.label}: {p.value}</div>}");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(u){window.__去=u},replace(u){window.__换=u},prefetch(){}});export const usePathname=()=>\"/customers/a\";export const useSearchParams=()=>new URLSearchParams(window.__sp||'');");
   stub(/^next\/link$/, "export default function L({prefetch,scroll,replace,...p}){return <a {...p}/>}");
-  stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|NewProjectModal|ContactLinks|ResearchRun|ResearchPerson)$/, "export default function Empty(){return null}");
+  stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|NewProjectEntry|ContactLinks|ResearchRun|ResearchPerson)$/, "export default function Empty(){return null}");
   stub(/research\/ResearchEntry$/, "export const useResearchEntry=()=>false;");
   stub(/research\/actions$/, "export const 最近背调=async()=>null,背调价目=async()=>({可用:false,原因:'桩'});");
   stub(/^\.\/pick$|customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[];");

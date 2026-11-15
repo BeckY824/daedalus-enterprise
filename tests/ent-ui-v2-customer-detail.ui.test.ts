@@ -21,7 +21,7 @@ const plugin: Plugin = { name: "customer-ui-v2", setup(b) {
   stub(/(^|\/)useTransferConfirm$/, "export const useTransferConfirm=()=>({先问转走的项目:async()=>true});");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>\"/customers/x\";");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
-  stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|NewProjectModal|ContactLinks|ResearchRun|ResearchPerson)$/, "export default function Empty(){return null}");
+  stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|NewProjectEntry|ContactLinks|ResearchRun|ResearchPerson)$/, "export default function Empty(){return null}");
   stub(/research\/ResearchEntry$/, "export const useResearchEntry=()=>false;");
   stub(/research\/actions$/, "export const 最近背调=async()=>null,背调价目=async()=>({可用:false,原因:'桩'});");
   stub(/^\.\/pick$/, "export const 搜客户=async()=>[];");
