@@ -4923,3 +4923,12 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 @keyframes cf-chip-fade { from { opacity: .4; } }
 /* 列表分页条的总数（DataList）：滚的时候等宽，宽度不跳 */
 .list-total-n { font-variant-numeric: tabular-nums; }
+/* 列表取数中的骨架行（DataList，原型 cu.filter「先出骨架」）：每一格一条灰条（PR2 .skel-bar，减弱动态下不扫光），
+   行高撑在取数前那一屏的行高（--list-row-h，DataList 量），表头、行数、分页不动；骨架行点不动 */
+.list-skel-on .ant-table-tbody > tr > td { height: var(--list-row-h, auto); }
+.list-skel-on .ant-table-tbody { pointer-events: none; }
+.list-skel { --skel-h: 10px; animation: none; }
+.list-skel-on .ant-table-tbody > tr > td:nth-child(3n + 2) .skel-bar { width: 72%; }
+.list-skel-on .ant-table-tbody > tr > td:nth-child(3n) .skel-bar { width: 54%; }
+.list-skel-on .ant-table-tbody > tr:nth-child(2n) > td .skel-bar { max-width: 86%; }
+.list-skel-on .ant-table-tbody > tr > td.ant-table-selection-column .skel { visibility: hidden; }
