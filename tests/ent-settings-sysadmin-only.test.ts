@@ -73,9 +73,9 @@ describe("页面", () => {
     expect(body).toContain("只个人={只个人}");
   });
 
-  it("只个人时目录只留个人资料、登录与密码、快捷键、外观、线索配额（PR10b ③）、回收站", async () => {
+  it("只个人时目录只留个人资料、登录与密码、快捷键、外观、我能做什么、线索配额（PR10b ③）、全公司规则（PR9）、回收站", async () => {
     const view = await readFile("src/app/(app)/settings/SettingsView.tsx", "utf8");
-    expect(view).toContain('.filter((x) => !只个人 || ["profile", "password", "keymap", "appearance", "quota", "trash"].includes(x.key))');
+    expect(view).toContain('.filter((x) => !只个人 || ["profile", "password", "keymap", "appearance", "perm", "quota", "rules", "trash"].includes(x.key))');
     // 没带 ?tab= 时默认 members 不在目录里，落到第一栏（个人资料）
     expect(view).toContain("const 当前 = 目录.some((x) => x.key === tab) ? tab : 目录[0].key;");
   });
