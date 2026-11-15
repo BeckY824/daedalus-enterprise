@@ -48,6 +48,8 @@ import { 再看一列 } from "../customers/board-actions";
 import { 再看项目页一列 } from "./board-actions";
 import { useNewProjectFlow } from "./NewProjectFlow";
 import { useBoardDrag } from "./board-drag";
+import { 编辑项目 } from "./actions";
+import { showUndo } from "@/components/UndoBar";
 import NewMenuButton from "@/components/NewMenuButton";
 import { 看板工具位 } from "../customers/board-slot";
 
@@ -317,22 +319,41 @@ export default function ProjectsView({
     message.info("勾选要分的线索点「自动分配」，或点行末的「分配」指定接手人");
   };
 
+  // 分配结果原地写在这一行（原型 pr.autoone / pr.autobatch / pr.assign，11-15）：分给谁，或没分的原因；不再弹清单、不靠转瞬即逝的提示
+  type 分配果 = { ok: true; 接手人: string; 为什么?: string } | { ok: false; error: string };
+  const [分配果们, set分配果们] = useState<Record<string, 分配果>>({});
+  const 记果 = (们: Record<string, 分配果>) => set分配果们((m) => ({ ...m, ...们 }));
+  const 去果 = (id: string) => set分配果们((m) => { const n = { ...m }; delete n[id]; return n; });
+
   async function 自动分(r: 项目行) {
     try {
       // P-转-07：同批量，客户名下有同事的项目先列出来
       if (!(await 问一起转(() => 分配带走的项目([r.id])))) return;
       // 原负责人 = 这一行看到的负责人（乐观锁）：别人先分走了回「已被分配」，不覆盖
       const res = await 自动分配线索(r.id, { 项目: true, 原负责人: r.ownerId });
-      // 挑不到人 / 暂不分配：不是出错，留在新线索等手动指派
-      if (!res.ok) return void (res.待分配 || res.暂不分配 ? message.warning(res.error, 5) : message.error(res.error));
-      message.success(`「${r.name}」${分给了(res)}：${res.为什么}`, 5);
+      // 挑不到人 / 暂不分配：不是出错，留在新线索等手动指派——原因写在这一行
+      if (!res.ok) return void 记果({ [r.id]: { ok: false, error: res.error } });
+      记果({ [r.id]: { ok: true, 接手人: res.接手人, 为什么: res.为什么 } });
+      // 6 秒内可撤销（P-界面-40）：撤销 = 把负责人转回原来那位，走项目「转让」同一个动作和权限（编辑项目 改 ownerId）；被挡就在撤销条上写原因
+      showUndo({
+        话: `「${r.name}」${分给了(res)}`,
+        毫秒: 6000,
+        撤销: async () => {
+          const x = await 编辑项目(r.id, { ownerId: r.ownerId });
+          if (x.ok) { 去果(r.id); router.refresh(); }
+          return x;
+        },
+      });
       router.refresh();
     } catch {
       message.error("没分成，请稍后再试");
     }
   }
 
-  const 批量自动分 = useBatchAutoAssign(分给了, { 项目: true });
+  const 批量自动分 = useBatchAutoAssign(分给了, {
+    项目: true,
+    写进行里: (们) => 记果(Object.fromEntries(们.map((x) => [x.leadId, x.ok ? { ok: true as const, 接手人: x.随客户 ? `${x.接手人}（随客户）` : x.接手人, 为什么: x.为什么 } : { ok: false as const, error: x.error }]))),
+  });
 
   // 单格没填（含导入占位的 "-"）一律写「—」（11-01 用户定，lib/empty-value.ts）
   const 无 = <span style={{ color: "var(--text-muted)" }}>{空值符}</span>;
@@ -369,7 +390,7 @@ export default function ProjectsView({
       title: "", key: "act", width: 150, fixed: "right" as const,
       // 客户公海里的项目跟客户走，不单独分（线索公海的 pooled 也是真，所以不看 pooled；服务端也拦）；
       // 例外：销售管理 / 总管理能「分配」，客户整包出公海（P-公海-10），不摆自动分配
-      render: (_: unknown, r: 项目行) => (r.result ? null : r.客户在公海 ? (能分公海客户项目 ? (
+      render: (_: unknown, r: 项目行) => (分配果们[r.id] ? <分配果标 果={分配果们[r.id]} /> : r.result ? null : r.客户在公海 ? (能分公海客户项目 ? (
         <Button aria-label={`分配 ${r.name}`} type="link" size="small" onClick={() => set分配中(r)}>分配</Button>
       ) : null) : (
         <Space size={2}>
@@ -745,7 +766,8 @@ export default function ProjectsView({
       </div>
       {/* 新增项目：先选新老客户、建档向导、给老客户开项目（NewProjectFlow.tsx） */}
       {企业版 && 新项目.弹框}
-      {可分 && <AssignLeadModal lead={分配中 && { id: 分配中.id, name: 分配中.name, ownerId: 分配中.ownerId, 项目: true }} 关={() => set分配中(null)} 不看配额={项目页分} />}
+      {可分 && <AssignLeadModal lead={分配中 && { id: 分配中.id, name: 分配中.name, ownerId: 分配中.ownerId, 项目: true }} 关={() => set分配中(null)} 不看配额={项目页分}
+        分好了={(名) => { if (分配中) 记果({ [分配中.id]: { ok: true, 接手人: 名 } }); }} />}
     </div>
   );
 }
@@ -806,6 +828,13 @@ function 列底再看({ 名, 已, 总, 取中, 点 }: { 名: string; 已: number
       </Button>
     </div>
   );
+}
+
+/** 分配结果写在行末那一格：分成了「已分给 X ✓」（悬停看为什么分给他），没分写原因（一行放不下省略、悬停看全） */
+function 分配果标({ 果 }: { 果: { ok: true; 接手人: string; 为什么?: string } | { ok: false; error: string } }) {
+  return 果.ok
+    ? <Tag color="success" className="assign-done" title={果.为什么}>已分给 {果.接手人} ✓</Tag>
+    : <span className="assign-fail" title={果.error}>没分：{果.error}</span>;
 }
 
 /** 企业版超时回收：快到回收日的项目标一下（10-27）。标签直接写哪天，不用悬停；文字和项目详情同一套（recycle-text.ts） */

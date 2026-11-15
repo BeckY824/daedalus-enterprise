@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState, type CSSProperties, type RefObject, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { App, Button } from "antd";
+import { showUndo } from "@/components/UndoBar";
 import { 少动 } from "@/lib/reduced-motion";
 import type { 看板一列, 看板卡片 } from "@/lib/project/board";
 import { 改项目节点, 看板推进预检 } from "./actions";
-import { 撤销秒 } from "./useUndoLater";
+/** 推进节点的撤销窗口（原型 6 秒） */
+const 撤销毫秒 = 6000;
 
 /**
  * 看板拖动换进程（P-界面-45，原型 pr.drag / cu.board，11-15 新功能）：企业版项目看板（/projects、客户页的项目看板）上，
@@ -86,24 +88,17 @@ export function useBoardDrag({ 看板, 开, 名of, 去补齐, 刷新, 框 }: {
       const 名 = 名of(r);
       const 推到 = "自动推到" in x && x.自动推到?.length ? `，必填齐了又自动推到 ${x.自动推到.join(" → ")}` : "";
       说(`「${名}」已推到「${到.名}」${推到}`);
-      const 键 = `board-move-${r.id}`;
-      message.open({
-        key: 键,
-        type: "success",
-        duration: 撤销秒,
-        content: (
-          <span className="undo-later" data-undo={键}>
-            <span>「{名}」→ {到.名}{推到}</span>
-            <Button type="link" size="small" onClick={() => {
-              message.destroy(键);
-              改搬(r.id, null);
-              void 改项目节点(r.id, 原).then(
-                (y) => { if (!y.ok) message.error(y.error ?? "没撤回，请到项目里改"); else 说(`「${名}」已退回「${r.node}」`); 刷新(); },
-                () => message.error("没撤回，请到项目里改"),
-              );
-            }}>撤销</Button>
-          </span>
-        ),
+      // 底部撤销条（PR5a）：撤销 = 改回原来的进程，同样走服务端；被挡就在条上写原因
+      showUndo({
+        话: `「${名}」→ ${到.名}${推到}`,
+        毫秒: 撤销毫秒,
+        撤销: async () => {
+          改搬(r.id, null);
+          const y = await 改项目节点(r.id, 原);
+          if (y.ok) 说(`「${名}」已退回「${r.node}」`);
+          刷新();
+          return y;
+        },
       });
       刷新();
     } catch {

@@ -20,7 +20,7 @@ const plugin: Plugin = { name: "ent-board-drag", setup(b) {
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
   stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
   // 项目的 server action：预检、改节点记下调了什么，回 window.__预检 / window.__改（默认放行）
-  stub(/^\.\/actions$/, "const 记=(n,默)=>async(...a)=>{(window.__调||=[]).push([n,...a]);const 回=window['__'+n];return typeof 回==='function'?回(...a):回||默};export const 回项目邀请=记('回邀请',{ok:true}),市场复核Action=记('复核',{ok:true}),总管理终判Action=记('终判',{ok:true}),看板推进预检=记('预检',{ok:true,还差:[],能留空推:false}),改项目节点=记('改',{ok:true,变了:true});");
+  stub(/^\.\/actions$/, "const 记=(n,默)=>async(...a)=>{(window.__调||=[]).push([n,...a]);const 回=window['__'+n];return typeof 回==='function'?回(...a):回||默};export const 回项目邀请=记('回邀请',{ok:true}),市场复核Action=记('复核',{ok:true}),总管理终判Action=记('终判',{ok:true}),看板推进预检=记('预检',{ok:true,还差:[],能留空推:false}),改项目节点=记('改',{ok:true,变了:true}),编辑项目=记('编辑',{ok:true});");
   stub(/assign-actions$/, "export const 分配线索=async()=>({ok:true}),自动分配线索=async()=>({ok:true}),批量自动分配=async()=>({ok:true,结果:[]}),本月分配情况=async()=>[],我分出去的线索=async()=>[],关满额提醒=async()=>({ok:true}),项目分配线=async()=>null,分配带走的项目=async()=>({项目数:0,项目:[]});");
   stub(/blocker-actions$/, "const 好=async()=>({ok:true});export const 发布卡点Action=好,认领卡点Action=好,完成卡点Action=好,删卡点Action=好,存卡点默认Action=好,存卡点角色开关Action=好,新增原因Action=好,改原因名Action=好,改原因状态Action=好,删原因Action=好,合并原因Action=好,我的卡点Action=async()=>[];");
   stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[],取客户选项=async()=>null,取客户近况=async()=>null;");
@@ -102,7 +102,7 @@ it("拖到下一个进程：先预检再改节点，卡片落到新列、计数�
       expect(await 列(page, 1).locator(".pipe-n").innerText()).toBe("1");
       expect(await 去了(page)).toEqual([]);
       // 撤销 = 改回原来的进程
-      await page.locator('[data-undo="board-move-p1"]').getByRole("button", { name: "撤销" }).click();
+      await page.locator(".undo-bar").getByRole("button", { name: /撤销/ }).click();
       await 列(page, 0).locator('[data-card-id="p1"]').waitFor();
       expect((await 调了(page, "改"))[1]).toEqual(["改", "p1", { phase: "线索", node: "潜客培育", result: null }]);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `宽 ${w}`).toBe(true);

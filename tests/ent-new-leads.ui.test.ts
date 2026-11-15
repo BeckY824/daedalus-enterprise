@@ -17,9 +17,9 @@ const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({push(u){window.__去.push(u)},refresh(){},replace(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
   stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
-  stub(/^\.\/actions$/, "export const 回项目邀请=async()=>({ok:true}),市场复核Action=async()=>({ok:true}),总管理终判Action=async()=>({ok:true}),看板推进预检=async()=>({ok:true,还差:[],能留空推:false}),改项目节点=async()=>({ok:true});");
+  stub(/^\.\/actions$/, "export const 回项目邀请=async()=>({ok:true}),市场复核Action=async()=>({ok:true}),总管理终判Action=async()=>({ok:true}),看板推进预检=async()=>({ok:true,还差:[],能留空推:false}),改项目节点=async()=>({ok:true}),编辑项目=async(...a)=>{(window.__调||=[]).push(['编辑项目',...a]);return {ok:true}};");
   // 分配那几个 server action：记下调了什么，回成功
-  stub(/assign-actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return n==='本月分配情况'?{月:'2026-10',人:[]}:n==='我分出去的线索'?[]:n==='批量自动分配'?{ok:true,结果:[]}:{ok:true,toUserId:'u1',接手人:'王1',已分:1,配额:null,为什么:'按顺序'}};export const 分配线索=记('分配线索'),自动分配线索=记('自动分配线索'),批量自动分配=记('批量自动分配'),本月分配情况=记('本月分配情况'),我分出去的线索=记('我分出去的线索'),关满额提醒=记('关满额提醒'),项目分配线=async()=>({线:'内贸'}),分配带走的项目=async(...a)=>{(window.__调||=[]).push(['分配带走的项目',...a]);return window.__带走||{项目数:0,项目:[]}};");
+  stub(/assign-actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return n==='本月分配情况'?{月:'2026-10',人:[]}:n==='我分出去的线索'?[]:n==='批量自动分配'?(window.__批量||{ok:true,结果:[]}):{ok:true,toUserId:'u1',接手人:'王1',已分:1,配额:null,为什么:'按顺序'}};export const 分配线索=记('分配线索'),自动分配线索=记('自动分配线索'),批量自动分配=记('批量自动分配'),本月分配情况=记('本月分配情况'),我分出去的线索=记('我分出去的线索'),关满额提醒=记('关满额提醒'),项目分配线=async()=>({线:'内贸'}),分配带走的项目=async(...a)=>{(window.__调||=[]).push(['分配带走的项目',...a]);return window.__带走||{项目数:0,项目:[]}};");
   // 卡点面板（我的卡点看板）的 server action：这几条测试不点卡点，回成功就行
   stub(/blocker-actions$/, "const 好=async()=>({ok:true});export const 发布卡点Action=好,认领卡点Action=好,完成卡点Action=好,删卡点Action=好,存卡点默认Action=好,存卡点角色开关Action=好,新增原因Action=好,改原因名Action=好,改原因状态Action=好,删原因Action=好,合并原因Action=好,我的卡点Action=async()=>[];");
   // 「给老客户开项目」挑客户、建项目那几个 server action：这几条测试不点，空着就行
@@ -125,10 +125,19 @@ it("能分配的人：每条没结局的新线索有「分配」「自动分配�
   expect(await page.getByRole("button", { name: `自动分配 ${长}2` }).count()).toBe(1);
   expect(await page.getByRole("button", { name: `分配 ${长}3`, exact: true }).count()).toBe(0);
   await page.getByRole("button", { name: `自动分配 ${长}1` }).click();
-  await page.getByText("按顺序", { exact: false }).first().waitFor();
+  // 原型 pr.autoone（11-15）：分给谁原地写在这一行（悬停看为什么），底部撤销条 6 秒可撤
+  const 标 = page.locator(".assign-done", { hasText: "已分给 王1 ✓" });
+  await 标.waitFor();
+  expect(await 标.getAttribute("title")).toBe("按顺序");
+  expect(await page.getByRole("button", { name: `自动分配 ${长}1` }).count()).toBe(0);
   const 调 = await page.evaluate(() => (window as unknown as { __调: unknown[][] }).__调);
   expect(调.find((c) => c[0] === "自动分配线索")).toEqual(["自动分配线索", "p1", { 项目: true, 原负责人: "u1" }]);
   expect(await 去了(page)).toEqual([]); // 点按钮不触发行跳转
+  // 撤销 = 负责人转回原来那位（走项目转让同一个动作），行里的结果收掉、两颗键回来
+  await page.locator(".undo-bar").getByRole("button", { name: /撤销/ }).click();
+  await page.getByRole("button", { name: `自动分配 ${长}1` }).waitFor();
+  const 调2 = await page.evaluate(() => (window as unknown as { __调: unknown[][] }).__调);
+  expect(调2.find((c) => c[0] === "编辑项目")).toEqual(["编辑项目", "p1", { ownerId: "u1" }]);
   expect(errors).toEqual([]); await page.close();
   const 不能 = await 打开(true);
   expect(await 不能.page.getByRole("button", { name: `分配 ${长}1`, exact: true }).count()).toBe(0);
@@ -452,8 +461,8 @@ it("企业版项目页阶段筛到「线索」（11-01 会议 §5）：页头有
     expect(await page.locator("body").innerText()).not.toContain("配额");
     const 调 = await page.evaluate(() => (window as unknown as { __调: unknown[][] }).__调);
     expect(调.find((c) => c[0] === "自动分配线索")).toEqual(["自动分配线索", "p1", { 项目: true, 原负责人: "u1" }]);
-    // 指定接手人的弹窗：不写配额
-    await page.getByRole("button", { name: `分配 ${长名}1`, exact: true }).click();
+    // 指定接手人的弹窗：不写配额（第 1 行已分出去、行末写着结果，换第 2 行）
+    await page.getByRole("button", { name: `分配 ${长名}2`, exact: true }).click();
     const 框 = page.getByRole("dialog");
     await 框.waitFor();
     expect(await 框.innerText()).not.toContain("配额");
@@ -469,6 +478,25 @@ it("项目页没筛线索阶段、或不能分配的人、或非企业版：页�
     expect(await page.getByRole("button", { name: /我分出去的/ }).count()).toBe(0);
     expect(errors).toEqual([]); await page.close();
   }
+});
+
+it("批量自动分配（原型 pr.autobatch）：结果原地写进每一行——分给谁、没分的原因，不再弹结果清单", async () => {
+  const { page, errors } = await 打开(true, 1280, true);
+  await page.evaluate(() => { (window as unknown as { __批量: unknown }).__批量 = { ok: true, 结果: [
+    { leadId: "p1", name: "一", ok: true, toUserId: "u1", 接手人: "王1", 已分: 1, 配额: null, 为什么: "按顺序" },
+    { leadId: "p2", name: "二", ok: false, error: "这条线的销售本月都满额了" },
+  ] }; });
+  await page.locator("tr[data-row-key=p1] .ant-checkbox-input").check();
+  await page.locator("tr[data-row-key=p2] .ant-checkbox-input").check();
+  await page.getByRole("button", { name: /自动分配$/ }).filter({ hasNot: page.locator("xx") }).first().click();
+  await page.locator(".ant-modal-confirm").getByRole("button", { name: "分出去 2 条" }).click();
+  await page.locator("tr[data-row-key=p1] .assign-done", { hasText: "已分给 王1 ✓" }).waitFor();
+  const 败 = page.locator("tr[data-row-key=p2] .assign-fail");
+  expect(await 败.innerText()).toBe("没分：这条线的销售本月都满额了");
+  expect(await 败.getAttribute("title")).toBe("这条线的销售本月都满额了");
+  expect(await page.getByTestId("lead-auto-assign-result").count()).toBe(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(errors).toEqual([]); await page.close();
 });
 
 it("新线索页照旧：自动分配的提示带配额", async () => {

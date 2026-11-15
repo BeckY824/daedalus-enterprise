@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { App, Button, Card, Space, Tag } from "antd";
 import { fmtDate } from "@/lib/utils";
 import { 回项目邀请 } from "./actions";
-import { useUndoLater } from "./useUndoLater";
+import { showUndo } from "@/components/UndoBar";
 
 export type 邀请行 = { id: string; projectId: string; 项目: string; 负责人: string; 邀请人: string; 角色: string | null; createdAt: string };
 
@@ -19,7 +19,6 @@ export default function InviteInbox({ 邀请们 }: { 邀请们: 邀请行[] }) {
   const { message } = App.useApp();
   const [忙, set忙] = useState<string | null>(null);
   const [收起的, set收起的] = useState<ReadonlySet<string>>(() => new Set());
-  const 稍后交 = useUndoLater();
   const 摆着 = 邀请们.filter((r) => !收起的.has(r.id));
   if (!摆着.length) return null;
   const 摆回 = (id: string) => set收起的((s) => { const n = new Set(s); n.delete(id); return n; });
@@ -40,18 +39,17 @@ export default function InviteInbox({ 邀请们 }: { 邀请们: 邀请行[] }) {
   };
   const 拒绝 = (r: 邀请行) => {
     set收起的((s) => new Set(s).add(r.id));
-    稍后交(`invite-${r.id}`, {
-      文字: `已拒绝「${r.项目}」`,
-      撤: () => 摆回(r.id),
-      交: () => {
-        void 回项目邀请(r.id, false).then(
-          (x) => {
-            if (x.ok) return router.refresh();
-            摆回(r.id);
-            message.error(x.error ?? "没回成，请稍后再试");
-          },
-          () => { 摆回(r.id); message.error("没回成，请稍后再试"); },
-        );
+    // 底部撤销条（PR5a）：到点才交；没交成撤销条上写原因，这一条摆回来
+    showUndo({
+      话: `已拒绝「${r.项目}」`,
+      毫秒: 6000,
+      撤销: () => 摆回(r.id),
+      到点: async () => {
+        try {
+          const x = await 回项目邀请(r.id, false);
+          if (x.ok) router.refresh(); else 摆回(r.id);
+          return x;
+        } catch (e) { 摆回(r.id); throw e; }
       },
     });
   };

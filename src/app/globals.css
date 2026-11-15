@@ -4507,3 +4507,6 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .cr-old { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 0; }
 .cr-old-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cr-pick { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 分配结果写在行末那一格（原型 pr.autoone / pr.autobatch / pr.assign）：成功一枚绿标签，没分的原因橙字一行、放不下省略 */
+.assign-done { margin-inline-end: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+.assign-fail { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; color: var(--warning-text); font-size: var(--fs-note); }

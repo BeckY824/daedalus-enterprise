@@ -57,7 +57,7 @@ it("拒绝邀请：一步收起、计数变；6 秒内撤销 = 没交；再拒�
     await page.getByText("待我回的项目组邀请（1）").waitFor();
     expect(await page.getByRole("button", { name: /^拒\s*绝$/ }).count()).toBe(1);
     await page.getByText("已拒绝「甲项目", { exact: false }).waitFor();
-    await page.locator('[data-undo="invite-m1"]').getByRole("button", { name: "撤销" }).dispatchEvent("click");
+    await page.locator(".undo-bar .undo-btn").dispatchEvent("click");
     await page.getByText("待我回的项目组邀请（2）").waitFor();
     await page.clock.runFor(7000);
     expect(await 调用(page)).toEqual([]);

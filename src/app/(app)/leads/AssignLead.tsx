@@ -14,7 +14,7 @@ import { SendOutlined } from "@ant-design/icons";
 import { LEAD_STATUS_COLOR } from "@/lib/constants";
 import { smartTime } from "@/lib/utils";
 import { useCarryConfirm } from "@/app/(app)/customers/useCarryConfirm";
-import { 分配线索, 批量自动分配, 本月分配情况, 我分出去的线索, 项目分配线, 分配带走的项目, type 分配情况, type 自动分配结果 } from "./assign-actions";
+import { 分配线索, 批量自动分配, 本月分配情况, 我分出去的线索, 项目分配线, 分配带走的项目, type 分配情况, type 自动分配结果, type 批量自动分配结果 } from "./assign-actions";
 import type { 项目线 } from "@/lib/enterprise/assign-line";
 import type { 分出去的线索 } from "@/lib/enterprise/lead-assign";
 import { 公海规则 } from "@/lib/enterprise/pool-rules";
@@ -47,7 +47,7 @@ const 配额说法 = (p: 分配情况[number]) => `本月 ${p.已分} / ${p.配�
  * 勾选后批量自动分配，弹一张名单说清每条分给了谁：线索页和项目页共用，分给了 = 各页自己的说法。
  * 选中行 = 勾选时看到的每行负责人，交给服务端逐行比（乐观锁，X-89）：被别人先分走的那行回「已被分配」
  */
-export function useBatchAutoAssign(分给了: (r: Extract<自动分配结果, { ok: true }>) => string, 选项?: { 项目: true }) {
+export function useBatchAutoAssign(分给了: (r: Extract<自动分配结果, { ok: true }>) => string, 选项?: { 项目: true; 写进行里?: (结果们: 批量自动分配结果[]) => void }) {
   const router = useRouter();
   const { message, modal } = App.useApp();
   return async function 批量自动分(ids: string[], 清空: () => void, 选中行: readonly { id: string; ownerId: string | null }[] = []) {
@@ -74,13 +74,15 @@ export function useBatchAutoAssign(分给了: (r: Extract<自动分配结果, { 
     let res: Awaited<ReturnType<typeof 批量自动分配>>;
     try {
       const 原负责人们 = Object.fromEntries(选中行.map((r) => [r.id, r.ownerId]));
-      res = await 批量自动分配(ids, { ...选项, 原负责人们 });
+      res = await 批量自动分配(ids, { ...(选项?.项目 ? { 项目: true as const } : {}), 原负责人们 });
     } catch {
       return void message.error("没分成，请稍后再试");
     }
     if (!res.ok) return void message.error(res.error);
     清空();
     router.refresh();
+    // 原型 pr.autobatch（11-15）：结果原地写进每一行（分给谁 / 没分的原因），不再弹清单
+    if (选项?.写进行里) return void 选项.写进行里(res.结果);
     const 成 = res.结果.filter((x) => x.ok).length;
     modal.info({
       title: `自动分配：${成} 条分出去了${成 < res.结果.length ? `，${res.结果.length - 成} 条没分` : ""}`,
@@ -104,7 +106,7 @@ export function useBatchAutoAssign(分给了: (r: Extract<自动分配结果, { 
  * 给一条线索点「分配」：lead = null 时不显示；项目 = 企业版「新线索」（项目的线索阶段），id 是项目的。
  * 不看配额 = 企业版项目列表里的分配入口（11-01 会议 §5）：接手人后面、说明里不写配额，只是不显示，服务端照旧查
  */
-export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { id: string; name: string; ownerId: string | null; 项目?: boolean } | null; 关: () => void; 不看配额?: boolean }) {
+export function AssignLeadModal({ lead, 关, 不看配额 = false, 分好了 }: { lead: { id: string; name: string; ownerId: string | null; 项目?: boolean } | null; 关: () => void; 不看配额?: boolean; /** 给了 = 分成了把「分给谁」写回这一行（原型 pr.assign），不再弹成功提示 */ 分好了?: (接手人: string) => void }) {
   const router = useRouter();
   const { message } = App.useApp();
   const 问一起转 = useCarryConfirm();
@@ -179,7 +181,9 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
         return;
       }
       记上次接手人(v.toUserId);
-      message.success(`「${lead.name}」已分给 ${人们?.find((p) => p.userId === v.toUserId)?.name ?? "他"}`);
+      const 名 = 人们?.find((p) => p.userId === v.toUserId)?.name ?? "他";
+      if (分好了) 分好了(名);
+      else message.success(`「${lead.name}」已分给 ${名}`);
       关();
       router.refresh();
     } finally {
