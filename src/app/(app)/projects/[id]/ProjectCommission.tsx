@@ -6,6 +6,7 @@
  * 已固定的实际提成只有总管理员能更正（10-27，要写原因）
  */
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useCardName } from "./card-names";
 import { Button, Card, Input, InputNumber, Modal, Space, Tag } from "antd";
 import { 金额 } from "@/lib/currency";
@@ -63,6 +64,7 @@ export function ProjectCommissionCard({ projectId, t, 忙, 跑, 不摆改 = fals
         <strong>分配</strong>
         {t.能改 && !不摆改 && <Button type="link" size="small" disabled={忙} onClick={() => set分开着(true)}>改分配</Button>}
       </div>
+      {t.每人.length > 1 && <SplitBar 段们={t.每人.filter((x) => !x.组长).map((x) => ({ userId: x.userId, name: x.name, 比例: x.比例 }))} 组长名={t.每人.find((x) => x.组长)?.name} />}
       {t.每人.map((x) => (
         <div key={x.userId} style={{ ...行样, marginBottom: 4 }}>
           <span style={{ flex: "1 1 120px", minWidth: 0, overflowWrap: "anywhere" }}>{x.name}{x.组长 && <Tag style={{ marginLeft: 6 }}>组长</Tag>}</span>
@@ -72,16 +74,36 @@ export function ProjectCommissionCard({ projectId, t, 忙, 跑, 不摆改 = fals
       ))}
       <div style={{ ...淡, marginTop: 4 }}>组长把提成按比例分给已进组的组员，剩下的归组长{固定了 ? "" : "；金额按预估算，赢单后按实际提成算"}</div>
 
-      {分开着 && <SplitModal projectId={projectId} t={t} 跑={跑} onClose={() => set分开着(false)} />}
+      {分开着 && <SplitModal projectId={projectId} t={t} onClose={() => set分开着(false)} />}
       {更正开着 && t.实际 && <FixModal projectId={projectId} 现在={t.实际.合计} 钱={钱} 跑={跑} onClose={() => set更正开着(false)} />}
     </Card>
   );
 }
 
+/**
+ * 分配条（dt.team）：一根横条按比例分段，组员一段一段、剩下的归组长；改分配框里边输边变（宽度过渡只用动效令牌）。
+ * 合计超 100 时组长那段为 0、条标红
+ */
+export function SplitBar({ 段们, 组长名 = "组长" }: { 段们: { userId: string; name: string; 比例: number }[]; 组长名?: string }) {
+  const 给出去 = 段们.reduce((a, x) => a + Math.max(0, x.比例 || 0), 0);
+  const 留 = Math.max(0, 100 - 给出去);
+  const 超 = 给出去 > 100.0001;
+  return (
+    <div className={`pd-split${超 ? " is-over" : ""}`} role="img" aria-label={`提成分配：${段们.map((x) => `${x.name} ${两位(x.比例 || 0)}%`).join("，")}${段们.length ? "，" : ""}${组长名} ${两位(留)}%`}>
+      {段们.map((x, i) => (
+        <span key={x.userId} className="pd-split-seg" data-i={i % 6} data-who={x.userId} style={{ flexBasis: `${Math.min(100, Math.max(0, x.比例 || 0))}%` }} title={`${x.name} ${两位(x.比例 || 0)}%`} />
+      ))}
+      <span className="pd-split-seg is-lead" data-who="组长" style={{ flexBasis: `${留}%` }} title={`${组长名} ${两位(留)}%`} />
+    </div>
+  );
+}
+
 /** 改分配框：提成卡上的「改分配」打开（11-01 起项目页头不再摆） */
-export function SplitModal({ projectId, t, 跑, onClose }: { projectId: string; t: 提成卡; 跑: 跑法; onClose: () => void }) {
+export function SplitModal({ projectId, t, onClose }: { projectId: string; t: 提成卡; /** 旧接口留着：保存改成就地反馈，不再经页面的 跑 弹提示 */ 跑?: 跑法; onClose: () => void }) {
+  const router = useRouter();
   const [分, set分] = useState<分配>(() => ({ ...t.分配 }));
   const [忙, set忙] = useState(false);
+  const [错, set错] = useState<string | null>(null);
   const 给出去 = 两位(Object.values(分).reduce((a, v) => a + Math.round((v || 0) * 100), 0) / 100);
   const 问题 = 分配问题(Object.fromEntries(Object.entries(分).filter(([, v]) => v != null)));
   return (
@@ -90,9 +112,12 @@ export function SplitModal({ projectId, t, 跑, onClose }: { projectId: string; 
       okButtonProps={{ disabled: !!问题 || 忙, loading: 忙 }}
       onOk={async () => {
         set忙(true);
-        const ok = await 跑(() => 存提成分配(projectId, 分), "已存提成分配");
+        set错(null);
+        // 成了关框，卡上的分配条和每人金额跟着变；没成原因写在框里不关
+        const r = await 存提成分配(projectId, 分).catch(() => ({ ok: false as const, error: "没存上，请稍后再试" }));
         set忙(false);
-        if (ok) onClose();
+        if (r.ok) { router.refresh(); onClose(); }
+        else set错(r.error ?? "没存上，请稍后再试");
       }}
     >
       {t.组员.length === 0 ? (
@@ -106,9 +131,11 @@ export function SplitModal({ projectId, t, 跑, onClose }: { projectId: string; 
           </div>
         ))
       )}
-      <div style={{ marginTop: 8, color: 问题 ? "var(--danger-text)" : "var(--text-muted)" }}>
+      {t.组员.length > 0 && <SplitBar 段们={t.组员.map((m) => ({ userId: m.userId, name: m.name, 比例: 分[m.userId] ?? 0 }))} />}
+      <div style={{ marginTop: 8, color: 问题 ? "var(--danger-text)" : "var(--text-muted)" }} aria-live="polite">
         {问题 ?? `分出去 ${给出去}%，组长留 ${两位(100 - 给出去)}%`}
       </div>
+      {错 && <div role="alert" className="csq-err">{错}</div>}
     </Modal>
   );
 }

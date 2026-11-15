@@ -671,6 +671,11 @@ export default function ProjectDetail({
   const 完成到字 = !完成到 ? "" : 完成到.result
     ? 交付叫法
     : 完成到.phase !== p.phase ? `${字典.出口们[p.phase as (typeof 阶段们)[number]]?.[0]?.叫法 ?? "进下一阶段"}，进到 ${完成到.phase}·${完成到.node}` : `下一节点：${完成到.node}`;
+  /**
+   * dt.stage：必填齐了（没配也算）、推的不是结局 → 点「完成节点」一步推，推完给撤销条；
+   * 还差必填 → 开框就地补齐再推（和看板拖动缺必填同一个 ProjectFillRequired），管理角色照旧能「仍要推进」
+   */
+  const 要先补齐 = !!p.必填?.还差?.length || !!完成到?.result;
   /** 「完成节点」为什么点不了（缺必填不算：点了在框里列出来）；undefined = 能点 */
   const 完成不了 = 动不了 ?? (p.result ? "项目已经有结局，先改回某个进程" : 下 ? 往前不了 : undefined);
   const 完成 = () => {
@@ -751,7 +756,7 @@ export default function ProjectDetail({
           ? 灰着(不在当前 ?? 动不了, <Button disabled={忙 || !!(不在当前 ?? 动不了)} onClick={() => set头部框("推进")}>改回进程</Button>)
           : (
             <Space.Compact className="split-btn split-success">
-              {灰着(完成灰, <Button className="proj-done-btn" disabled={忙 || !!完成灰} onClick={() => set头部框("完成")}>完成节点</Button>)}
+              {灰着(完成灰, <Button className="proj-done-btn" disabled={忙 || !!完成灰} onClick={() => (要先补齐 ? set头部框("完成") : 完成())}>完成节点</Button>)}
               {菜单.length > 0 && (
                 <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{ items: 菜单, onClick: ({ key }) => { if (key === "stop") 开终止(); } }}>
                   <Button className="proj-done-btn split-caret" icon={连体箭头} aria-label="终止进程" />
@@ -1526,7 +1531,7 @@ export default function ProjectDetail({
         />
       )}
 
-      {卡点?.能发 && 发卡点于 && <PublishBlockerModal followUpId={发卡点于} 默认={卡点.默认} 原因们={卡点.原因们} onClose={() => set发卡点于(null)} />}
+      {卡点?.能发 && 发卡点于 && <PublishBlockerModal followUpId={发卡点于} 默认={卡点.默认} 原因们={卡点.原因们} 沟通们={p.followUps} onClose={() => set发卡点于(null)} />}
 
       {p.可改沟通 && 改沟通于 && <EditFollowModal projectId={p.id} f={改沟通于} 外贸={外贸精简(b)} onClose={() => set改沟通于(null)} 跑={跑} />}
 

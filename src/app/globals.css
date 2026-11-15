@@ -4721,3 +4721,72 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 @keyframes cu-bar-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @keyframes cu-tick { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .list-sel.list-sel-float, .list-sel-float .list-sel-n { animation: none; } }
+/* 下次跟进完成后就地说一句 + 「排下一次」（RecordView，不弹顶部提示） */
+.rec-plan-said { font-size: var(--fs-note); color: var(--text-muted); overflow-wrap: anywhere; animation: cd-pj-flash-in var(--t) var(--ease); }
+.rec-said { margin: 4px 0 6px; }
+.rec-tag-err { margin-left: 6px; white-space: normal; }
+/* 卡点（dt.blocker，项目详情 / 我的卡点）：挂在哪条沟通、类型影响一行、认领就地变色 */
+.pd-blk-on { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pd-blk-on-k { flex: none; color: var(--text-muted); font-size: var(--fs-note); }
+.pd-blk-on-v { flex: 1 1 auto; min-width: 0; }
+.pd-blk-on-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pd-blk-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pd-blk { transition: background-color var(--t) var(--ease), box-shadow var(--t) var(--ease); border-radius: var(--r-ctl); }
+.pd-blk.is-claimed { background: var(--brand-bg); box-shadow: inset 3px 0 0 var(--brand); }
+.pd-blk-claimed { font-size: var(--fs-note); color: var(--brand-deep); align-self: center; }
+@media (prefers-reduced-motion: reduce) { .pd-blk { transition: none; } }
+/* 附件上传（dt.upload，项目详情 / 联系人附件共用 AttachmentsPanel）：拖进来高亮、每个文件一圈进度到 ✓、删就地问 */
+.att-panel .ant-upload-drag { transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), transform var(--t) var(--ease-spring); }
+.att-panel .ant-upload-drag.ant-upload-drag-hover { background: var(--brand-bg); border-color: var(--brand); transform: scale(1.01); }
+.att-up { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 4px; }
+.att-up-row { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--fs-note); animation: cd-pj-flash-in var(--t) var(--ease); }
+.att-up-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.att-up-ok { color: var(--success-text); flex: none; }
+.att-up-err { color: var(--danger-text); flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.att-ring { position: relative; flex: none; width: 18px; height: 18px; display: inline-grid; place-items: center; }
+.att-ring svg { width: 18px; height: 18px; transform: rotate(-90deg); }
+.att-ring circle { fill: none; stroke-width: 2.5; }
+.att-ring-bg { stroke: var(--line); }
+.att-ring-fg { stroke: var(--brand); stroke-dasharray: 50.3; stroke-dashoffset: 37; stroke-linecap: round; transform-origin: 10px 10px; animation: att-ring-spin calc(var(--t-morph) * 3) linear infinite; transition: stroke-dashoffset var(--t-morph) var(--ease), stroke var(--t) var(--ease); }
+.att-ring-ok { position: absolute; inset: 0; display: grid; place-items: center; font-size: var(--fs-min); color: var(--success-text); opacity: 0; transform: scale(var(--pop-scale)); transition: opacity var(--t) var(--ease), transform var(--t) var(--ease-spring); }
+.att-up-row[data-state="成"] .att-ring-fg { animation: none; stroke-dashoffset: 0; stroke: var(--success); }
+.att-up-row[data-state="成"] .att-ring-ok { opacity: 1; transform: none; }
+.att-up-row[data-state="错"] .att-ring-fg { animation: none; stroke: var(--danger); stroke-dashoffset: 0; }
+@keyframes att-ring-spin { to { transform: rotate(360deg); } }
+.att-said { margin-top: 8px; font-size: var(--fs-note); color: var(--text-muted); overflow-wrap: anywhere; }
+.att-said.is-err { color: var(--danger-text); }
+.att-pic > .att-del { position: absolute; top: 2px; right: 2px; z-index: 1; }
+.att-pic > .att-del .ant-btn { background: color-mix(in srgb, var(--panel) 85%, transparent); }
+.att-pic > .att-del:has(.inlc-ask) { right: auto; left: 0; z-index: 2; background: var(--panel); border-radius: var(--r-ctl); box-shadow: 0 2px 8px rgb(0 0 0 / 0.12); white-space: nowrap; }
+.att-files li > .att-del { flex: none; }
+@media (prefers-reduced-motion: reduce) {
+  .att-panel .ant-upload-drag, .att-ring-ok, .att-ring-fg { transition: none; }
+  .att-panel .ant-upload-drag.ant-upload-drag-hover { transform: none; }
+  .att-ring-fg { animation-duration: calc(var(--t-morph) * 8); }
+}
+/* 项目组 / 提成分配（dt.team，项目详情）：刚邀请的先摆一行、分配条边输边变 */
+.pd-team-row.is-new { animation: cd-pj-flash-in var(--t) var(--ease); }
+.pd-split { display: flex; width: 100%; height: 10px; margin: 8px 0 6px; border-radius: 999px; overflow: hidden; background: var(--line-soft); }
+.pd-split-seg { flex: 0 0 0%; min-width: 0; transition: flex-basis var(--t-morph) var(--ease); }
+.pd-split-seg + .pd-split-seg { box-shadow: inset 1px 0 0 var(--panel); }
+.pd-split-seg[data-i="0"] { background: var(--cat-blue); }
+.pd-split-seg[data-i="1"] { background: var(--cat-green); }
+.pd-split-seg[data-i="2"] { background: var(--cat-violet); }
+.pd-split-seg[data-i="3"] { background: var(--cat-cyan); }
+.pd-split-seg[data-i="4"] { background: var(--cat-pink); }
+.pd-split-seg[data-i="5"] { background: var(--cat-teal); }
+.pd-split-seg.is-lead { background: var(--line-strong); }
+.pd-split.is-over { box-shadow: 0 0 0 1px var(--danger); }
+@media (prefers-reduced-motion: reduce) { .pd-split-seg { transition: none; } }
+/* 客户资料格（dt.field）：存没成 / 负责人交接的那句写在格子下面 */
+.rec-field-said { grid-column: 1 / -1; font-size: var(--fs-note); color: var(--text-muted); overflow-wrap: anywhere; animation: cd-pj-flash-in var(--t) var(--ease); }
+/* 客户背调卡（dt.research，客户页项目模式）：状态 + 发起 / 重跑一行，结果就在卡上展开 */
+.rec-research-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.rec-research-body { min-width: 0; overflow-wrap: anywhere; }
+.rec-research-body > * { animation: cd-pj-flash-in var(--t) var(--ease); }
+.rec-research-card .rec-ai-last-body { max-height: 320px; overflow: auto; white-space: pre-wrap; }
+/* 客户名单（dt.roster）：换页签淡入、选中行底色过渡 */
+.roster-swap { animation: roster-swap-in var(--t-morph) var(--ease); }
+@keyframes roster-swap-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.pane-roster-cust .roster-row.on { transition: background var(--t) var(--ease); }
+@media (prefers-reduced-motion: reduce) { .roster-swap { animation: none; } }

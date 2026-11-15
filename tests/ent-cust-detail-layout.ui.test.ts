@@ -207,6 +207,10 @@ it("开了 AI：客户背调也是一张能收的卡，状态标签在卡里", a
     const 壳 = page.locator(".proj-fold", { has: page.getByRole("button", { name: "收起客户背调" }) });
     expect(await 壳.locator(".ant-card-head-title").textContent()).toBe("客户背调");
     expect(await 壳.locator(".rec-research-tag").textContent()).toBe("无");
+    // dt.research：结果、发起 / 重跑都在卡身里，标签不再是点开弹框的按钮
+    expect(await 壳.locator(".rec-research-tag").getAttribute("role")).toBeNull();
+    expect(await 壳.locator(".rec-research-body").count()).toBe(1);
+    expect(await page.locator(".ant-modal").filter({ hasText: "客户背调" }).count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

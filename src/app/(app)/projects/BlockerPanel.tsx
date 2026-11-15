@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { App, Button, Card, Input, Modal, Popconfirm, Select, Space, Tag, Timeline } from "antd";
+import { Button, Card, Input, Modal, Select, Space, Tag, Timeline } from "antd";
+import InlineConfirm from "@/components/InlineConfirm";
 import { dayjs, fmtDateTime } from "@/lib/utils";
 import type { 卡点卡 } from "@/lib/project/blocker";
 import { 卡点类型们, 影响等级们, 动作叫法, 描述上限, 标题上限, 原因最多, 原因名上限, type 卡点默认 } from "@/lib/project/blocker-rules";
@@ -13,29 +14,33 @@ export type { 卡点卡 };
 
 type 结果 = { ok: boolean; error?: string; 解决了?: boolean };
 
-/** 跑一个卡点动作：报错弹出来、成了刷新页面 */
+/**
+ * 跑一个卡点动作（dt.blocker）：不弹顶部提示。没成回原因，由调用方就地写（框里 / 那一条卡点下面）；
+ * 成了刷新页面——卡点就地变样（认领了变色、发布了出现在列表里、删了消失）就是反馈
+ */
 function useRun() {
   const router = useRouter();
-  const { message } = App.useApp();
   const [忙, set忙] = useState(false);
-  const 跑 = async (f: () => Promise<结果>, 成了: string | ((r: 结果) => string)) => {
+  const 跑 = async (f: () => Promise<结果>): Promise<结果> => {
     set忙(true);
     try {
       const r = await f();
-      if (!r.ok) message.error(r.error ?? "没改成，请稍后再试");
-      else {
-        message.success(typeof 成了 === "function" ? 成了(r) : 成了);
-        router.refresh();
-      }
-      return r.ok;
+      if (r.ok) router.refresh();
+      return r.ok ? r : { ...r, error: r.error ?? "没改成，请稍后再试" };
     } catch {
-      message.error("没改成，请稍后再试");
-      return false;
+      return { ok: false, error: "没改成，请稍后再试" };
     } finally {
       set忙(false);
     }
   };
   return { 忙, 跑 };
+}
+
+/** 发卡点框里「挂在」那一行列的沟通：日期 + 内容开头 */
+export type 可挂沟通 = { id: string; occurredAt: string; content: string };
+export function 沟通短名(f: 可挂沟通): string {
+  const 头 = f.content.replace(/\s+/g, " ").trim().slice(0, 24);
+  return `${dayjs(f.occurredAt).format("M月D日")} ${头 || "（没写内容）"}`;
 }
 
 export const 状态色: Record<string, string> = { 待接受: "gold", 处理中: "blue", 已解决: "green" };
@@ -85,8 +90,11 @@ export function 原因选择({ 原因们, 值, on改, disabled }: { 原因们: s
  * 从一条沟通记录发布卡点：类型、影响、标题、阻碍原因（多选）、描述、资源申请。
  * 不指给谁：发出去是「待接受」，看得到的人都能认领（11-01 定稿 B1/B3）
  */
-export function PublishBlockerModal({ followUpId, 默认, 原因们, onClose }: { followUpId: string; 默认: 卡点默认; 原因们: string[]; onClose: () => void }) {
+export function PublishBlockerModal({ followUpId, 默认, 原因们, 沟通们, onClose }: { followUpId: string; 默认: 卡点默认; 原因们: string[]; /** 「挂在」可换到哪条沟通（项目详情给；不给就只写挂在哪、不能换） */ 沟通们?: 可挂沟通[]; onClose: () => void }) {
   const { 忙, 跑 } = useRun();
+  const [挂在, set挂在] = useState(followUpId);
+  const [错, set错] = useState<string | null>(null);
+  const 挂的那条 = 沟通们?.find((f) => f.id === 挂在);
   const [type, setType] = useState<string>(默认.默认类型 === "暂无卡点" ? "轻度卡点" : 默认.默认类型);
   const [impact, setImpact] = useState<string>(默认.默认影响);
   const [title, setTitle] = useState("");
@@ -103,18 +111,35 @@ export function PublishBlockerModal({ followUpId, 默认, 原因们, onClose }: 
       onCancel={onClose}
       onOk={async () => {
         if (差) return;
-        const ok = await 跑(() => 发布卡点Action(followUpId, { type, impact, title, reasons, description, resourceRequest }), "已发布，等人认领");
-        if (ok) onClose();
+        set错(null);
+        // 没成：框不关，原因写在框里；成了关框，新卡点出现在列表里（不弹「已发布」）
+        const r = await 跑(() => 发布卡点Action(挂在, { type, impact, title, reasons, description, resourceRequest }));
+        if (r.ok) onClose();
+        else set错(r.error ?? "没发出去，请稍后再试");
       }}
     >
       <Space direction="vertical" style={{ width: "100%" }}>
-        <Select aria-label="卡点类型" value={type} onChange={(v: string) => setType(v)} options={卡点类型们.filter((t) => t !== "暂无卡点").map((t) => ({ value: t, label: t }))} />
-        <Select aria-label="影响等级" value={impact} onChange={(v: string) => setImpact(v)} options={影响等级们.map((t) => ({ value: t, label: t }))} />
+        {/* 挂在哪条沟通（dt.blocker）：默认最近那条，可换 */}
+        <div className="pd-blk-on">
+          <span className="pd-blk-on-k">挂在</span>
+          {沟通们 && 沟通们.length > 1 ? (
+            <Select aria-label="挂在哪条沟通" className="pd-blk-on-v" value={挂在} onChange={(v: string) => set挂在(v)} popupMatchSelectWidth={false}
+              options={沟通们.map((f) => ({ value: f.id, label: 沟通短名(f) }))} />
+          ) : (
+            <span className="pd-blk-on-v pd-blk-on-t" title={挂的那条 ? 挂的那条.content : undefined}>{挂的那条 ? 沟通短名(挂的那条) : "这条沟通"}</span>
+          )}
+        </div>
+        {/* 类型、影响一行，带好默认值（设置 → 卡点默认值） */}
+        <div className="pd-blk-row">
+          <Select aria-label="卡点类型" value={type} onChange={(v: string) => setType(v)} options={卡点类型们.filter((t) => t !== "暂无卡点").map((t) => ({ value: t, label: t }))} />
+          <Select aria-label="影响等级" value={impact} onChange={(v: string) => setImpact(v)} options={影响等级们.map((t) => ({ value: t, label: t }))} />
+        </div>
         <Input aria-label="卡点标题" maxLength={标题上限} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="标题（不写就取描述的前 20 个字）" />
         <原因选择 原因们={原因们} 值={reasons} on改={setReasons} />
         <Input.TextArea aria-label="卡点描述" rows={3} maxLength={描述上限} showCount value={description} onChange={(e) => setDescription(e.target.value)} placeholder="卡在哪（必填）" />
         <Input.TextArea aria-label="资源申请" rows={2} maxLength={描述上限} value={resourceRequest} onChange={(e) => setResourceRequest(e.target.value)} placeholder="需要什么资源（可不写）" />
         {差 && <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{差}</div>}
+        {错 && <div role="alert" className="csq-err">{错}</div>}
       </Space>
     </Modal>
   );
@@ -158,24 +183,44 @@ export function BlockerList({ 们, 带项目 = false, 空 = "还没有卡点" }:
   const [solution, setSolution] = useState("");
   const [result, setResult] = useState("");
   const [展开, set展开] = useState<Set<string>>(new Set());
+  /** 哪条卡点下面写着没成的原因（认领 / 删除没成）；完成没成写在完成框里 */
+  const [错于, set错于] = useState<{ id: string; 话: string } | null>(null);
+  const [完成错, set完成错] = useState<string | null>(null);
+  /** 刚认领的：等刷新回来前先就地变成「处理中」的颜色（不弹提示、不给撤销） */
+  const [刚认领, set刚认领] = useState<Set<string>>(new Set());
+  const 认领 = async (b: 卡点卡) => {
+    set错于(null);
+    set刚认领((s) => new Set(s).add(b.id));
+    const r = await 跑(() => 认领卡点Action(b.id));
+    if (!r.ok) {
+      set刚认领((s) => { const n = new Set(s); n.delete(b.id); return n; });
+      set错于({ id: b.id, 话: r.error ?? "没认领上，请稍后再试" });
+    }
+  };
+  const 删 = async (b: 卡点卡) => {
+    set错于(null);
+    const r = await 跑(() => 删卡点Action(b.id));
+    if (!r.ok) set错于({ id: b.id, 话: r.error ?? "没删掉，请稍后再试" });
+    return r;
+  };
 
-  const 开完成 = (b: 卡点卡) => { setNote(""); setSolution(""); setResult(""); set完成于(b); };
+  const 开完成 = (b: 卡点卡) => { setNote(""); setSolution(""); setResult(""); set完成错(null); set完成于(b); };
   const 最后 = !!完成于?.能.最后一个;
   const 不能确定 = 最后 && (!solution.trim() || !result.trim());
   const 确定 = async () => {
     if (!完成于 || 不能确定) return;
-    const ok = await 跑(
-      () => 完成卡点Action(完成于.id, { note, ...(最后 ? { solution, result } : {}) }),
-      (r) => (r.解决了 ? "大家都完成了，卡点已解决" : "已记下，等其他认领人完成"),
-    );
-    if (ok) set完成于(null);
+    set完成错(null);
+    // 成了关框，会签行就地打勾 / 卡点变成已解决；没成原因写在框里不关框
+    const r = await 跑(() => 完成卡点Action(完成于.id, { note, ...(最后 ? { solution, result } : {}) }));
+    if (r.ok) set完成于(null);
+    else set完成错(r.error ?? "没记上，请稍后再试");
   };
 
   if (!们.length) return <div style={{ color: "var(--text-muted)" }}>{空}</div>;
   return (
     <>
       {们.map((b) => (
-        <div key={b.id} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid var(--line-soft)", minWidth: 0 }}>
+        <div key={b.id} className={`pd-blk${刚认领.has(b.id) ? " is-claimed" : ""}`} data-status={刚认领.has(b.id) && b.status === "待接受" ? "处理中" : b.status} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid var(--line-soft)", minWidth: 0 }}>
           <卡点头 b={b} 带项目={带项目} />
           <div style={{ whiteSpace: "pre-wrap", marginTop: 4, overflowWrap: "anywhere" }}>{b.description}</div>
           <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 2, overflowWrap: "anywhere" }}>
@@ -191,18 +236,19 @@ export function BlockerList({ 们, 带项目 = false, 空 = "还没有卡点" }:
           {b.solution && <div style={{ fontSize: 13, overflowWrap: "anywhere" }}>解决方案：{b.solution}</div>}
           {b.result && <div style={{ fontSize: 13, overflowWrap: "anywhere" }}>解决结果：{b.result}</div>}
           <Space wrap size={4} style={{ marginTop: 6 }}>
-            {b.能.认领 && <Button size="small" type="primary" disabled={忙} onClick={() => void 跑(() => 认领卡点Action(b.id), "已认领")}>认领</Button>}
+            {b.能.认领 && !刚认领.has(b.id) && <Button size="small" type="primary" disabled={忙} onClick={() => void 认领(b)}>认领</Button>}
+            {刚认领.has(b.id) && b.status === "待接受" && <span role="status" className="pd-blk-claimed">已认领</span>}
             {b.能.完成 && <Button size="small" type={b.能.认领 ? "default" : "primary"} disabled={忙} onClick={() => 开完成(b)}>我已完成</Button>}
             {b.能.删 && (
-              <Popconfirm title="删除这个卡点？" description="连流转记录一起删，删了找不回来" okText="删除" okButtonProps={{ danger: true }} cancelText="不删"
-                onConfirm={() => void 跑(() => 删卡点Action(b.id), "已删除")}>
+              <InlineConfirm 问="连流转记录一起删，找不回来" 做={() => 删(b)}>
                 <Button size="small" danger type="text" disabled={忙}>删除</Button>
-              </Popconfirm>
+              </InlineConfirm>
             )}
             <Button size="small" type="link" onClick={() => set展开((s) => { const n = new Set(s); if (n.has(b.id)) n.delete(b.id); else n.add(b.id); return n; })}>
               {展开.has(b.id) ? "收起流转" : `流转（${b.流转.length}）`}
             </Button>
           </Space>
+          {错于?.id === b.id && <div role="alert" className="cd-task-err">{错于.话}</div>}
           {展开.has(b.id) && (
             <Timeline
               style={{ marginTop: 8 }}
@@ -238,6 +284,7 @@ export function BlockerList({ 们, 带项目 = false, 空 = "还没有卡点" }:
             </>
           )}
           <div style={{ color: "var(--text-muted)", fontSize: 12 }}>点了就不能撤回；所有认领人都完成后卡点锁定为已解决。</div>
+          {完成错 && <div role="alert" className="csq-err">{完成错}</div>}
         </Space>
       </Modal>
     </>

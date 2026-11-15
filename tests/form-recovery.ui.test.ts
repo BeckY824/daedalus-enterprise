@@ -17,7 +17,7 @@ const plugin: Plugin = { name: "form-actions", setup(b) {
   stub(/^\.\.\/channels\/actions$/, "export const saveChannel=async()=>({ok:true});");
   stub(/^(\.\/|\.\.\/)actions$/, `
     const save=async x=>{window.__calls.push(x);if(window.__fail)throw Error('network');return {ok:true,id:'saved'}};
-    export const savePlan=save,saveTask=save,saveContact=save,saveUnassignedContact=save,saveChannel=save,改我的资料=save,submitPayment=save;
+    export const savePlan=save,saveTask=save,saveContact=save,saveUnassignedContact=save,联系人号码先查=async()=>({ok:true,撞了:[]}),saveChannel=save,改我的资料=save,submitPayment=save;
     export const saveCustomer=save,checkDuplicate=async()=>null,推荐人候选=async()=>{if(window.__refFail){window.__refFail--;throw Error('network')}return [{id:'self',name:'我自己'},{id:'other',name:'推荐人甲'}]};
     export const patchCustomer=async(id,key,value)=>save({id,key,value});
     export const saveContract=async x=>window.__duplicate&&!x.force?{duplicate:{amount:123,currency:'CNY',signedAt:new Date().toISOString()}}:save(x);

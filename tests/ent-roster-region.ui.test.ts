@@ -57,3 +57,24 @@ it("名字上方是国家地区：超长不横撑、省略号收住、title 给�
     } finally { await page.close(); }
   }
 });
+
+it("dt.roster：换页签整片名单淡入（重挂 .roster-swap、动画用令牌时长）；减弱动效时不动", async () => {
+  for (const 减弱 of [false, true]) {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 768 }, reducedMotion: 减弱 ? "reduce" : "no-preference" }); page.setDefaultTimeout(5000);
+    const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+    try {
+      await page.route("http://roster.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
+      await page.goto("http://roster.test/customers/c1"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
+      await page.evaluate(() => (window as unknown as { __render: () => void }).__render());
+      await page.locator(".roster-row").first().waitFor();
+      await page.evaluate(() => { (document.querySelector(".roster-swap") as HTMLElement & { __旧?: boolean }).__旧 = true; });
+      await page.getByRole("tab", { name: "本周要跟" }).click();
+      await expect.poll(() => page.locator(".roster-swap").getAttribute("data-tab")).toBe("本周");
+      const 动 = await page.locator(".roster-swap").evaluate(el => ({ 新挂: !(el as HTMLElement & { __旧?: boolean }).__旧, 名: getComputedStyle(el).animationName, 长: getComputedStyle(el).animationDuration }));
+      expect(动.新挂).toBe(true);
+      if (减弱) expect(动.名).toBe("none");
+      else { expect(动.名).toBe("roster-swap-in"); expect(parseFloat(动.长)).toBeGreaterThan(0); }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});

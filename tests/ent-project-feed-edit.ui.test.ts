@@ -403,7 +403,8 @@ it("项目附件格：传完马上出现、不用刷新；传着灰；失败报�
     await page.getByText("还没有附件").waitFor();
     const 钮 = page.getByRole("button", { name: /上传/ });
     await page.locator('input[type="file"]').setInputFiles([文件("甲.pdf"), 文件("乙.pdf")]);
-    await page.getByText(/正在传 2 个/).waitFor();
+    // dt.upload（PR7b）：在传的每个文件一行（进度环），不再是一句「正在传 2 个」
+    await expect.poll(() => page.locator(".att-up-row[data-state=\"传\"]").count()).toBe(2);
     expect(await 钮.isDisabled()).toBe(true);
     await page.getByTestId("attachment-item").nth(1).waitFor();
     expect(await page.getByTestId("attachment-item").count()).toBe(2);

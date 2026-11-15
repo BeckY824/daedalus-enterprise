@@ -10,7 +10,7 @@ import { Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo,
 import { 只读上下文, 只能看的格上下文 } from "./read-only";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Alert, Button, Card, Drawer, Dropdown, Input, Modal, Space, Tag, Avatar, Checkbox, Tooltip, App, Select, Typography, type MenuProps } from "antd";
+import { Alert, Button, Card, Drawer, Dropdown, Input, Modal, Space, Tag, Avatar, Checkbox, Tooltip, Select, Typography, type MenuProps } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import { 原负责人不能领回提示, 公海客户先领取话 } from "@/lib/enterprise/pool-rules";
 import { 号码保护of } from "@/lib/enterprise/contact-guard";
@@ -39,7 +39,7 @@ import { useBusiness } from "@/lib/business-client";
 import { statusLabel, 外贸订单, 外贸精简, 签约叫 } from "@/lib/business-config";
 import { 国家候选, WhatsApp网址, 官网网址, 客户等级, 客户等级说明, type 客户等级 as 客户等级值 } from "@/lib/customer-extra";
 import LocalTime from "@/components/LocalTime";
-import CompletePlanModal, { 提示记完了, type 要完成的计划 } from "./CompletePlanModal";
+import CompletePlanModal, { type 要完成的计划 } from "./CompletePlanModal";
 import FollowUpForm from "./FollowUpForm";
 import TaskForm from "./TaskForm";
 import PlanForm from "./PlanForm";
@@ -63,7 +63,7 @@ import { 客户页摆法, 级别选项, 企业级别, 拼地址, 地址叫法, �
 import LevelLetter from "@/components/LevelLetter";
 import StarButton from "./StarButton";
 import AiCost, { useAiOutOfCredits } from "@/components/AiCost";
-import { toggleTask, deleteTask, deleteFollowUp, completePlan, saveFollowUp } from "./actions";
+import { toggleTask, deleteTask, deleteFollowUp, completePlan, saveFollowUp, 撤销记一笔 } from "./actions";
 import { useContactRemoval } from "./useContactRemoval";
 import { useTransferConfirm } from "../useTransferConfirm";
 import { usePoolReturnConfirm } from "../usePoolReturnConfirm";
@@ -212,7 +212,6 @@ export default function RecordView({
   const 虚线的 = !全只读话.includes("市场成员");
   const { 曲线, 时长, 间隔 } = useMotionTheme();
   const router = useRouter();
-  const { message } = App.useApp();
   const { 问删除 } = useDeleteCustomers();
   const AI已用完 = useAiOutOfCredits();
   const b = useBusiness();
@@ -512,39 +511,56 @@ export default function RecordView({
    */
   /** 点了「下次跟进」上的完成：先弹小框记一笔（2026-10-16 外贸基础，CompletePlanModal） */
   const [在完成, set在完成] = useState<要完成的计划 | null>(null);
+  /**
+   * 页头下面那一行就地提示（不弹顶部 message）：领取没成、只能看、公海客户先领取、刷新没跟上、删沟通没成……
+   * 错的 role=alert，别的 role=status；过几秒收
+   */
+  const [就地话, set就地话] = useState<{ 话: string; 错?: boolean } | null>(null);
+  const 说就地 = (话: string, 错 = false) => set就地话({ 话, 错 });
+  // 过几秒收（换了一句就重新计时）
+  useEffect(() => {
+    if (!就地话) return;
+    const t = setTimeout(() => set就地话(null), 6000);
+    return () => clearTimeout(t);
+  }, [就地话]);
+  /** 速记框下面一行：没记上的原因、记上了顺带的提示（领取了 / 不算有效沟通） */
+  const [速记话, set速记话] = useState<{ 话: string; 错?: boolean } | null>(null);
+  /** 「加载更早的跟进」没成：原因写在按钮下面 */
+  const [加载错, set加载错] = useState<string | null>(null);
+
+  /** 计划完成后的就地说法（不弹顶部提示）：成了在「下次跟进」那块写一句 + 「排下一次」文字链接；没成写原因。过几秒收 */
+  const [计划话, set计划话] = useState<{ 话: string; 错?: boolean } | null>(null);
+
+  /** 刚完成的那条：刷新回来前「下次跟进」那块先当它没了（摆那句话 + 「排下一次」），撤销了再摆回来 */
+  const [刚完成, set刚完成] = useState<string | null>(null);
+  const 说计划 = (x: { 话: string; 错?: boolean }) => set计划话(x);
+  useEffect(() => {
+    if (!计划话) return;
+    const t = setTimeout(() => set计划话(null), 8000);
+    return () => clearTimeout(t);
+  }, [计划话]);
+  const 现计划 = plan && plan.id !== 刚完成 ? plan : null;
   async function 完成计划(p: Pick<NonNullable<typeof plan>, "id" | "subject">, 顺带?: string, 已完成 = false) {
     if (!已完成) {
       const result = await completePlan(p.id).catch(() => ({ ok: false as const, error: "计划完成失败，请稍后重试" }));
-      if (!result.ok) return void message.error(result.error);
+      if (!result.ok) return void 说计划({ 话: result.error, 错: true });
     }
     router.refresh();
     void window.desktopReminders?.刷新();
-    const key = `plan-${p.id}`;
-    message.success({
-      key,
-      duration: 6,
-      content: (
-        <span>
-          {顺带 ?? `「${p.subject}」已完成`}
-          <Button
-            type="link"
-            size="small"
-            onClick={async () => {
-              message.destroy(key);
-              const result = await completePlan(p.id, false).catch(() => ({ ok: false as const, error: "计划恢复失败，请稍后重试" }));
-              if (!result.ok) return void message.error(result.error);
-              void window.desktopReminders?.刷新();
-              message.success(`「${p.subject}」已改回未完成`);
-              router.refresh();
-            }}
-          >
-            撤销
-          </Button>
-          <Button type="link" size="small" onClick={() => { message.destroy(key); set排新计划(true); setPlanOpen(true); }}>
-            排下一次
-          </Button>
-        </span>
-      ),
+    const 话 = 顺带 ?? `「${p.subject}」已完成`;
+    set刚完成(p.id);
+    说计划({ 话 });
+    // 撤销走底部撤销条（撤销 = 改回未完成）；「排下一次」先用「下次跟进」那块里的文字链接（UndoBar 第二个动作合并后再换）
+    showUndo({
+      话,
+      毫秒: 6000,
+      撤销: async () => {
+        const result = await completePlan(p.id, false).catch(() => ({ ok: false as const, error: "计划恢复失败，请稍后重试" }));
+        if (result.ok) { set计划话(null); set刚完成(null); }
+        void window.desktopReminders?.刷新();
+        router.refresh();
+        return result;
+      },
     });
   }
 
@@ -562,8 +578,8 @@ export default function RecordView({
     // 原负责人放进公海后自己就看不到这位了（11-03），留在详情页刷新是 404：回列表，提示条上的撤销还在
     if (企业 && 动作 === "放进" && res.ok && res.updated) router.push("/customers");
     else router.refresh();
-    if (!res.ok) return void message.error(res.error);
-    if (!res.updated) return void message.info(动作 === "放进" ? "已经在公海里了" : "已经被别人领走了");
+    if (!res.ok) return void 说就地(res.error, true);
+    if (!res.updated) return void 说就地(动作 === "放进" ? "已经在公海里了" : "已经被别人领走了");
     const 原 = 动作 === "领取" ? (res.原负责人 ?? []) : [{ id: customer.id, 值: "" }];
     // 成了走底部撤销条（PR5a showUndo）：撤销 = 反着做一遍；撤不了原因写在条上
     showUndo({
@@ -578,7 +594,7 @@ export default function RecordView({
   }
 
   function openFollow(record: FollowUpRow | null, aiText?: string) {
-    if (全只读) return void message.info(管理员只读 ? "管理员只能看，不能改任何数据" : 全只读话);
+    if (全只读) return void 说就地(管理员只读 ? "管理员只能看，不能改任何数据" : 全只读话);
     setFollowInit({ record, aiText });
     setFollowOpen(true);
   }
@@ -586,7 +602,7 @@ export default function RecordView({
   const 能建项目 = !!(摆法.新建项目 && 新建项目 && !只读);
   /** 公海里的客户先领取再建项目（11-05）：按钮照摆，点了说先领取，服务端也拦 */
   function 开建项目() {
-    if (customer.pool) return void message.info(公海客户先领取话);
+    if (customer.pool) return void 说就地(公海客户先领取话);
     set建项目开着(true);
   }
   /**
@@ -601,7 +617,7 @@ export default function RecordView({
   const 跟进按钮字 = "记一条沟通";
   function 点跟进() {
     // 只读的客户（虚线下属、市场成员相关）：先说只能看，别说「还没有在推的项目」——项目可能有，只是他看不到（11-03 D3-3）
-    if (全只读) return void message.info(全只读话);
+    if (全只读) return void 说就地(全只读话);
     // P-界面-35（dt.follownp）：没有能记的在推项目也照常打开，这条记为客户沟通（弹框里写明）；不自动建项目，项目一定手动新建
     openFollow(null);
   }
@@ -724,15 +740,12 @@ export default function RecordView({
       projectId: 在推项目?.[0]?.id ?? null,
     });
     setQuickSaving(false);
-    if (!res.ok) {
-      message.error(res.error);
-      return;
-    }
+    if (!res.ok) return void set速记话({ 话: res.error, 错: true });
     setMemo("");
-    if ("领取了" in res && res.领取了) message.success("已领取并记下跟进，这位现在归你跟进");
-    // 客户三态（C12）：这条不算有效沟通时给一句轻提示（照常保存，不拦）
+    // 记上了：领取了 / 不算有效沟通（客户三态 C12，照常保存不拦）写在速记框下面一行，不弹顶部提示
+    const 领了 = "领取了" in res && res.领取了 ? "已领取并记下跟进，这位现在归你跟进" : "";
     const 短 = 短沟通话of(res);
-    if (短) message.info(短, 5);
+    set速记话(领了 || 短 ? { 话: [领了, 短].filter(Boolean).join("；") } : null);
     router.refresh();
   }
 
@@ -1038,7 +1051,8 @@ export default function RecordView({
       </AnimatePresence>
       {filter !== "CONTRACT" && history.hasMore && (
         <div style={{ padding: 16, textAlign: "center" }}>
-          <Button loading={history.loading} onClick={() => void history.loadMore().catch(error => message.error(error instanceof Error ? error.message : "历史跟进加载失败，请重试"))}>{摆法.沟通汇总 ? "加载更多" : "加载更早的跟进"}</Button>
+          <Button loading={history.loading} onClick={() => { set加载错(null); void history.loadMore().catch(error => set加载错(error instanceof Error ? error.message : "历史跟进加载失败，请重试")); }}>{摆法.沟通汇总 ? "加载更多" : "加载更早的跟进"}</Button>
+          {加载错 && <div role="alert" className="cd-task-err">{加载错}</div>}
           <div className="muted" style={{ marginTop: 8 }}>已加载 {history.rows.length} 条{摆法.沟通汇总 ? "" : "跟进"} · 筛选作用于已加载记录</div>
         </div>
       )}
@@ -1226,6 +1240,7 @@ export default function RecordView({
           </span>
         )}
       </div>
+      {就地话 && <div role={就地话.错 ? "alert" : "status"} className={就地话.错 ? "cd-task-err rec-said" : "rec-plan-said rec-said"}>{就地话.话}</div>}
 
       {只读 && !管理员只读 && (
         <Alert
@@ -1499,9 +1514,11 @@ export default function RecordView({
                 直接记
               </Button>
             </div>
+            {速记话 && <div role={速记话.错 ? "alert" : "status"} className={速记话.错 ? "cd-task-err" : "rec-plan-said"}>{速记话.话}</div>}
           </div>}
 
-          {plan && 摆法.下次跟进 && (
+          {现计划 && 摆法.下次跟进 && 计划话?.错 && <div role="alert" className="cd-task-err">{计划话.话}</div>}
+          {现计划 && plan && 摆法.下次跟进 && (
             <div className="rec-plan" data-focus={`plan:${plan.id}`}>
               <span className="rec-plan-k">下次跟进</span>
               <span className="rec-plan-v">
@@ -1573,12 +1590,17 @@ export default function RecordView({
             {!去项目跟进 && 待办卡}
 
             {/* 企业版项目模式不排「下次跟进」（定稿 P5 待定 14 红框）：下一步时间记在项目上 */}
-            {!plan && 摆法.下次跟进 && (
+            {!现计划 && 摆法.下次跟进 && (
               <div className="rec-card rec-side-card">
                 <div className="rec-side-t">
                   <span>下次跟进</span>
                 </div>
-                <Typography.Text type="secondary" style={{ fontSize: 13 }}>尚未安排</Typography.Text>
+                {计划话 && !计划话.错 ? (
+                  <div role="status" className="rec-plan-said">
+                    {计划话.话}
+                    {!只读 && <Button type="link" size="small" onClick={() => { set计划话(null); set排新计划(true); setPlanOpen(true); }}>排下一次</Button>}
+                  </div>
+                ) : <Typography.Text type="secondary" style={{ fontSize: 13 }}>尚未安排</Typography.Text>}
                 {!只读 && (
                   <Button block style={{ marginTop: 10 }} onClick={() => setPlanOpen(true)}>
                     制定跟进计划
@@ -1608,7 +1630,7 @@ export default function RecordView({
         onSaved={() => {
           setFollowOpen(false);
           setMemo("");
-          if (followInit.record?.id) void history.refreshRow(followInit.record.id).catch(() => message.warning("跟进已保存，请刷新页面核对最新内容"));
+          if (followInit.record?.id) void history.refreshRow(followInit.record.id).catch(() => 说就地("跟进已保存，请刷新页面核对最新内容"));
           router.refresh();
         }}
         customerId={customer.id}
@@ -1634,7 +1656,21 @@ export default function RecordView({
           if (r.kind === "skip") return void 完成计划(p);
           router.refresh();
           void window.desktopReminders?.刷新();
-          提示记完了(message, p, r, () => { void window.desktopReminders?.刷新(); router.refresh(); });
+          // 记一笔并完成：「下次跟进」那块就地说一句，底部撤销条可撤（撤销 = 删掉刚记的那笔和刚排的下一条、计划回到待办）
+          const 话 = r.next ? `已记一笔，「${p.subject}」完成；下次 ${dayjs(r.next).format("M 月 D 日")}` : `已记一笔，「${p.subject}」完成`;
+          if (!r.next) { set刚完成(p.id); 说计划({ 话 }); }
+          showUndo({
+            话,
+            毫秒: 6000,
+            撤销: async () => {
+              const u = await 撤销记一笔({ customerId: p.customerId, 跟进id: r.跟进id, 计划id: p.id, 下次计划id: r.下次计划id })
+                .catch(() => ({ ok: false as const, error: "没撤销成，请稍后重试" }));
+              if (u.ok) { set计划话(null); set刚完成(null); }
+              void window.desktopReminders?.刷新();
+              router.refresh();
+              return u;
+            },
+          });
         }}
       />
       <TaskForm open={taskOpen} onClose={() => setTaskOpen(false)} onSaved={() => { setTaskOpen(false); router.refresh(); }} customerId={customer.id} />
@@ -1698,7 +1734,7 @@ export default function RecordView({
                   <Space size={4}>
                     <Button size="small" onClick={换框(() => { setEditingContact(c); setContactOpen(true); })}>编辑</Button>
                     {/* 挂来的不给删，拿掉走卡上的「解除挂靠」；删之前先问只移出还是彻底删（同卡上那颗） */}
-                    {!c.挂靠 && <Button size="small" type="text" danger onClick={换框(() => 问怎么拿掉(c))}>删除</Button>}
+                    {!c.挂靠 && !去项目跟进 && <Button size="small" type="text" danger onClick={换框(() => 问怎么拿掉(c))}>删除</Button>}
                   </Space>
                 </div>
               ))}
@@ -1734,10 +1770,11 @@ export default function RecordView({
   async function deleteFollow(f: FollowUpRow) {
     const r = await deleteFollowUp(f.id, customer.id);
     router.refresh();
-    if (!r.ok) return void message.error(r.error);
+    // 没删掉：问句留着（InlineConfirm 见 {ok:false} 不收），原因写在页头下面那行
+    if (!r.ok) { 说就地(r.error, true); return r; }
     history.remove(f.id);
-    // 删了不给撤销（11-09 删 restoreFollowUp）：企业版进回收站，总管理能恢复
-    message.success("已删除这条跟进");
+    // 删了不给撤销（11-09 删 restoreFollowUp）：企业版进回收站，总管理能恢复；这一条从时间线消失就是反馈，不再弹顶部提示
+    return r;
   }
 
   async function confirmDeleteContract(r: ContractRow) {
@@ -1803,8 +1840,9 @@ function StatusPicker({
   释义?: Record<string, string>;
 }) {
   const router = useRouter();
-  const { message } = App.useApp();
   const [saving, setSaving] = useState(false);
+  /** 没改成：原因就地写在这枚状态章后面，几秒后收（不弹顶部提示） */
+  const [错, set错] = useState<string | null>(null);
   // 同事的客户（互看）、字段权限里这一格只能看（11-03 D5-1）：状态章只显示
   const 整页只读 = useContext(只读上下文);
   const 权限挡 = useContext(只能看的格上下文).includes(field);
@@ -1823,13 +1861,14 @@ function StatusPicker({
           const { patchCustomer } = await import("../actions");
           const res = await patchCustomer(customerId, field, key);
           setSaving(false);
-          if (!res.ok) message.error(res.error);
-          else router.refresh();
+          if (!res.ok) { set错(res.error); setTimeout(() => set错(null), 5000); }
+          else { set错(null); router.refresh(); }
         },
       }}
     >
       <motion.span style={{ cursor: "pointer", display: "inline-flex", opacity: saving ? 0.5 : 1 }} whileTap={{ scale: 0.96 }} layout>
         {children}
+        {错 && <span role="alert" className="cd-task-err rec-tag-err">{错}</span>}
       </motion.span>
     </Dropdown>
   );

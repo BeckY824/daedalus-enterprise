@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Card, Input, InputNumber, Modal, Popconfirm, Select, Space, Tag } from "antd";
+import { useRouter } from "next/navigation";
+import { Button, Card, Input, InputNumber, Modal, Select, Space, Tag } from "antd";
+import InlineConfirm from "@/components/InlineConfirm";
 import DatePicker from "@/components/BusinessDatePicker";
 import { 币种选项, 默认币种 } from "@/lib/currency";
 import { 金额格式 } from "@/lib/money-input";
@@ -13,7 +15,7 @@ import { 企业客户级别, 企业级别说明, type 客户地址 } from "@/lib
 import { 详细地址上限, 详细地址提示, 成交需求上限, type 项目成交钱 } from "@/lib/project/profile-rules";
 import { 合同状态们, 痛点标注上限, type 合同状态 } from "@/lib/project/proj-fields";
 import { 三种业务线, 建议业务线, 所在地提示, type 项目线 } from "@/lib/enterprise/assign-line";
-import { 换角色提示, 再邀默认角色 } from "@/lib/project/team-ui";
+import { 再邀默认角色 } from "@/lib/project/team-ui";
 import { 不填项, 去不填, 未选占位 } from "@/lib/enterprise/dict-kinds";
 import { 编辑项目, 加项目组员, 换项目组员角色, 移出项目组员 } from "../actions";
 
@@ -214,7 +216,7 @@ export function ProjectEditModal({
  * 企业版（10-26）= 发邀请，对方在项目列表上点同意才进组；没接受的可以再邀一次；组长 = 项目负责人
  */
 export function ProjectTeamCard({
-  projectId, 组员们, 角色们, 在职, 能改, 能加 = 能改, 忙, 跑, 企业版 = false, 组长,
+  projectId, 组员们, 角色们, 在职, 能改, 能加 = 能改, 忙, 企业版 = false, 组长,
 }: {
   projectId: string;
   组员们: 组员[];
@@ -224,22 +226,50 @@ export function ProjectTeamCard({
   /** 能往组里拉人（默认 = 能改；企业版项目组员也能拉，V3.5.1） */
   能加?: boolean;
   忙: boolean;
-  跑: 跑法;
+  /** 旧接口留着（11-15 起项目组改就地反馈，不再经页面的 跑 弹提示） */
+  跑?: 跑法;
   企业版?: boolean;
   组长?: string;
 }) {
+  const router = useRouter();
   const [加谁, set加谁] = useState<string | undefined>();
   const [加角色, set加角色] = useState<string | undefined>();
-  const 在组 = new Set(组员们.filter((m) => !(企业版 && m.inviteStatus === "DECLINED")).map((m) => m.userId));
+  /**
+   * 就地反馈（dt.team，不弹顶部提示）：刚邀请 / 刚加的人先在名单里摆一行（企业版带「已邀请」），刷新回来换成真的；
+   * 没成的原因写在那一行（或加人那一排）下面
+   */
+  const [刚加, set刚加] = useState<{ userId: string; name: string }[]>([]);
+  const [话, set话] = useState<{ 行: string; 话: string } | null>(null);
+  const [我忙, set我忙] = useState(false);
+  const 在忙 = 忙 || 我忙;
+  const 做 = async (行: string, f: () => Promise<{ ok: boolean; error?: string }>): Promise<{ ok: boolean; error?: string }> => {
+    set我忙(true);
+    set话(null);
+    try {
+      const r = await f();
+      if (!r.ok) set话({ 行, 话: r.error ?? "没改成，请稍后再试" });
+      else router.refresh();
+      return r;
+    } catch {
+      set话({ 行, 话: "没改成，请稍后再试" });
+      return { ok: false, error: "没改成，请稍后再试" };
+    } finally {
+      set我忙(false);
+    }
+  };
+  const 真组员 = new Set(组员们.map((m) => m.userId));
+  const 还没回来 = 刚加.filter((x) => !真组员.has(x.userId));
+  const 在组 = new Set([...组员们.filter((m) => !(企业版 && m.inviteStatus === "DECLINED")).map((m) => m.userId), ...还没回来.map((x) => x.userId)]);
   const 可加 = 在职.filter((u) => !在组.has(u.id));
   const 不能改 = 能改 ? undefined : 企业版 ? "只有项目负责人能改" : "只有项目负责人、老板或主管能改";
 
   return (
     <Card title="项目组">
       {企业版 && 组长 && <div style={{ marginBottom: 8 }}>组长：{组长}</div>}
-      {组员们.length === 0 && <div style={{ color: "var(--text-muted)", marginBottom: 8 }}>还没有拉人进项目组</div>}
+      {组员们.length === 0 && !还没回来.length && <div style={{ color: "var(--text-muted)", marginBottom: 8 }}>还没有拉人进项目组</div>}
       {组员们.map((m) => (
-        <div key={m.id} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, minWidth: 0 }}>
+        <div key={m.id} className="pd-team-row-wrap">
+        <div className="pd-team-row" style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, minWidth: 0 }}>
           <span style={{ flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={m.name}>{m.name}</span>
           {邀请说法[m.inviteStatus] && <Tag>{邀请说法[m.inviteStatus]}</Tag>}
           <Select
@@ -248,17 +278,26 @@ export function ProjectTeamCard({
             allowClear
             placeholder="不填角色"
             aria-label={`${m.name}的角色`}
-            disabled={!能改 || 忙}
+            disabled={!能改 || 在忙}
             title={不能改}
             value={m.roleId ?? undefined}
             options={角色选项(角色们, m.roleId)}
-            onChange={(v) => void 跑(() => 换项目组员角色(m.id, v ?? null), 换角色提示(角色们, v))}
+            onChange={(v) => void 做(m.id, () => 换项目组员角色(m.id, v ?? null))}
           />
           {能改 && (
-            <Popconfirm title={`把${m.name}移出项目组？`} okText="移出" okButtonProps={{ danger: true }} onConfirm={() => void 跑(() => 移出项目组员(m.id), "已移出")}>
-              <Button size="small" type="text" danger disabled={忙}>移出</Button>
-            </Popconfirm>
+            <InlineConfirm 问={`把${m.name}移出项目组`} 是="移出" 做={() => 做(m.id, () => 移出项目组员(m.id))}>
+              <Button size="small" type="text" danger disabled={在忙}>移出</Button>
+            </InlineConfirm>
           )}
+        </div>
+        {话?.行 === m.id && <div role="alert" className="cd-task-err">{话.话}</div>}
+        </div>
+      ))}
+      {/* 刚邀请 / 刚加的：刷新回来前先摆上（企业版写「已邀请」） */}
+      {还没回来.map((x) => (
+        <div key={`new-${x.userId}`} className="pd-team-row is-new" style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, minWidth: 0 }}>
+          <span style={{ flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={x.name}>{x.name}</span>
+          <Tag role="status">{企业版 ? "已邀请" : "已加进来"}</Tag>
         </div>
       ))}
       {能加 && (
@@ -267,9 +306,11 @@ export function ProjectTeamCard({
             style={{ flex: "1 1 auto", minWidth: 0 }}
             placeholder={可加.length ? "选一位成员" : "在职成员都在组里了"}
             aria-label="要加进项目组的成员"
-            disabled={!可加.length || 忙}
+            disabled={!可加.length || 在忙}
             showSearch
             optionFilterProp="label"
+            // 键盘：打字筛、↑↓ 挑、Enter 选中；选中后 Tab 到「邀请」再 Enter
+            notFoundContent="没有这个名字的在职成员"
             value={加谁}
             options={成员选项(可加)}
             onChange={(v) => {
@@ -279,12 +320,15 @@ export function ProjectTeamCard({
               if (上次) set加角色(上次);
             }}
           />
-          <Select style={{ width: 120 }} allowClear placeholder="角色" aria-label="新组员的角色" disabled={忙} value={加角色} options={角色选项(角色们)} onChange={set加角色} />
+          <Select style={{ width: 120 }} allowClear placeholder="角色" aria-label="新组员的角色" disabled={在忙} value={加角色} options={角色选项(角色们)} onChange={set加角色} />
           <Button
-            disabled={!加谁 || 忙}
+            disabled={!加谁 || 在忙}
             onClick={async () => {
               if (!加谁) return;
-              if (await 跑(() => 加项目组员(projectId, 加谁, 加角色 ?? null), 企业版 ? "已发邀请，等对方同意" : "已加进项目组")) {
+              const 谁 = 在职.find((u) => u.id === 加谁);
+              const r = await 做("加", () => 加项目组员(projectId, 加谁, 加角色 ?? null));
+              if (r.ok) {
+                if (谁) set刚加((x) => [...x.filter((y) => y.userId !== 谁.id), { userId: 谁.id, name: 谁.name }]);
                 set加谁(undefined);
                 set加角色(undefined);
               }
@@ -294,6 +338,7 @@ export function ProjectTeamCard({
           </Button>
         </Space.Compact>
       )}
+      {话?.行 === "加" && <div role="alert" className="cd-task-err">{话.话}</div>}
     </Card>
   );
 }

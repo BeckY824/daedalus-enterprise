@@ -6,7 +6,7 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { 只读上下文, 只能看的格上下文 } from "./read-only";
 import { 是空值, 有值, 空值符 } from "@/lib/empty-value";
 import { useRouter } from "next/navigation";
-import { App, AutoComplete, Input, Select } from "antd";
+import { AutoComplete, Input, Select } from "antd";
 import { dayjs } from "@/lib/utils";
 import { patchCustomer, type PatchableKey } from "../actions";
 import { 带走说法 } from "@/lib/carry-over";
@@ -67,8 +67,20 @@ export default function InlineField({
   显示?: (v: string) => React.ReactNode;
 }) {
   const router = useRouter();
-  const { message } = App.useApp();
   const { 先问转走的项目 } = useTransferConfirm();
+  /**
+   * dt.field：存的时候先摆新值（待显），刷新回来的 value 换上之前不闪回旧值；没存上就退回旧值、原因写在格子下面。
+   * 负责人那格例外：交接中的负责人还没换，不先摆
+   */
+  /** 基准 = 先摆时服务端给的值；刷新回来 value 变了就不再先摆（渲染时比，不放 effect） */
+  const [待显, set待显] = useState<{ 值: string | null; 基准: string | null } | null>(null);
+  const [话, set话] = useState<{ 话: string; 错?: boolean } | null>(null);
+  const 话计时 = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const 说 = (x: { 话: string; 错?: boolean }) => {
+    if (话计时.current) clearTimeout(话计时.current);
+    set话(x);
+    话计时.current = setTimeout(() => set话(null), 6000);
+  };
   // 企业版字段权限「只能看」的格（11-03 D5-1）：和整页只读一样只显示、不给点，悬停说为什么
   const 权限挡 = useContext(只能看的格上下文).includes(field);
   const 只读 = useContext(只读上下文) || 权限挡;
@@ -106,30 +118,35 @@ export default function InlineField({
       setDraft(value);
       return;
     }
+    if (field !== "salesOwnerId") set待显({ 值: normalized, 基准: value });
     setSaving(true);
-    const res = await patchCustomer(customerId, field, normalized);
+    const res = await patchCustomer(customerId, field, normalized).catch(() => ({ ok: false as const, error: "没存上，请稍后再试" }));
     setSaving(false);
     if (!res.ok) {
-      message.error(res.error);
+      set待显(null);
+      说({ 话: res.error, 错: true });
       setDraft(value);
       return;
     }
     // 换了销售负责人，原负责人没做完的活一起转过去了：说一声，不然人不知道计划和待办换了主（排查 B3）
     const 带走 = 带走说法(res.带走);
     // 企业版「交接中」（11-09）：同转让，负责人还没换，等接手人确认
-    if (res.交接中) message.success(res.申请移交 ? "已发起客户转让，等接手人确认后生效，确认前仍在你名下" : "已发起交接：等接手人确认，确认前仍在原负责人名下");
-    else if (res.交接已在路上) message.info("这位已在另一笔交接里，没再发起");
-    else if (res.带走?.没转成) message.warning("负责人刚被别人改了，这次没转");
-    else if (带走) message.success(`已转给新负责人${带走}`);
+    // 这几句写在负责人那格下面（不弹顶部提示）
+    if (res.交接中) 说({ 话: res.申请移交 ? "已发起客户转让，等接手人确认后生效，确认前仍在你名下" : "已发起交接：等接手人确认，确认前仍在原负责人名下" });
+    else if (res.交接已在路上) 说({ 话: "这位已在另一笔交接里，没再发起" });
+    else if (res.带走?.没转成) 说({ 话: "负责人刚被别人改了，这次没转", 错: true });
+    else if (带走) 说({ 话: `已转给新负责人${带走}` });
     router.refresh();
   }
 
+  const 显值 = 待显 && 待显.基准 === value ? 待显.值 : value;
   const 原显 =
     (kind === "select" || kind === "combo") && options
-      ? (options.find((o) => o.value === value)?.label ?? value)
-      : kind === "date" && 有值(value)
-        ? dayjs(value).format("YYYY-MM-DD")
-        : value;
+      ? (options.find((o) => o.value === 显值)?.label ?? 显值)
+      : kind === "date" && 有值(显值)
+        ? dayjs(显值).format("YYYY-MM-DD")
+        : 显值;
+  const 话行 = 话 && <div role={话.错 ? "alert" : "status"} className={话.错 ? "cd-task-err rec-field-said" : "rec-field-said"}>{话.话}</div>;
   // 导入时拿 "-" 占位的也算没填（11-01）：只读显示「—」，能编辑的照常给填写提示
   const display = typeof 原显 === "string" && 是空值(原显) ? null : 原显;
 
@@ -152,6 +169,7 @@ export default function InlineField({
             display || (只读 || 空时横线 ? 空值符 : placeholder)
           )}
         </div>
+        {话行}
       </div>
     );
   }

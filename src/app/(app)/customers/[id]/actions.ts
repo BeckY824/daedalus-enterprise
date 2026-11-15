@@ -34,7 +34,7 @@ import { parseDateInput } from "@/lib/date-input";
 import { 联系人电话, 规整, 规整企业联系人, type 联系人字段, type 企业联系人资料 } from "./contact-input";
 export type { 企业联系人资料 } from "./contact-input";
 import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类表 } from "@/lib/enterprise/customer-v2-db";
-import { 联系人查重, 联系人撞号话 } from "@/lib/enterprise/contact-dedupe";
+import { 联系人查重, 联系人撞号话, type 撞到的联系人 } from "@/lib/enterprise/contact-dedupe";
 import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
 import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
 import { 存沟通后重算三态, 记首次有效 } from "@/lib/enterprise/tri-state-db";
@@ -632,6 +632,26 @@ function 刷新联系人(customerId?: string | null) {
  * 企业版号码查重（2026-10-29 P13 第 2 条）撞了：不保存，回 撞了 给表单摆成能点的链接。
  * 照存 = 人看过提示、确认是另一个人（同一个号两个人用，比如公司总机）；再交一次带上它就不查
  */
+/**
+ * 联系人号码失焦先查（dt.contact，企业版）：填完一个号就看撞没撞，不等到点保存。只读、不写库；
+ * 号码不合规的不在这里说（保存时照旧说），查不了也不挡——保存那一步还会再查一遍。
+ * 除了 = 编辑时排除这位自己
+ */
+export async function 联系人号码先查(号码们: { kind: string; value: string }[], 除了?: string | null): Promise<{ ok: true; 撞了: 撞到的联系人[] } | { ok: false; error: string }> {
+  try {
+    await requireUser();
+    if (!企业版() || !Array.isArray(号码们)) return { ok: true, 撞了: [] };
+    const 行们 = 号码们.filter((x) => x && typeof x.kind === "string" && typeof x.value === "string" && x.value.trim() && !x.value.includes("*")).slice(0, 20);
+    if (!行们.length) return { ok: true, 撞了: [] };
+    const 号 = await 验联系人号码们(行们, []);
+    if (!号.ok) return { ok: true, 撞了: [] };
+    const 撞了 = 号.行们.length ? await 联系人查重(defaultClient, 号.行们, await 读的我(defaultClient), 除了 ?? undefined) : [];
+    return { ok: true, 撞了 };
+  } catch {
+    return { ok: false, error: "号码没查成，保存时会再查一遍" };
+  }
+}
+
 export async function saveContact(input: 联系人字段 & { id?: string; customerId: string; isPrimary: boolean; 版本?: string | null; 企业?: 企业联系人资料 | null; 照存?: boolean }) {
   try {
     const me = await requireUser();
