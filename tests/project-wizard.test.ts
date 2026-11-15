@@ -19,7 +19,7 @@ vi.mock("@/lib/business", async (原) => {
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 建档向导, 删除项目, type 建档向导输入 } from "@/app/(app)/projects/actions";
+import { 建档向导, 建档只建客户, 删除项目, type 建档向导输入 } from "@/app/(app)/projects/actions";
 import { saveCustomer, deleteCustomers, 客户删除预检 } from "@/app/(app)/customers/actions";
 import { 规整向导 } from "@/lib/project/wizard";
 import { 建档不能过线索验证 } from "@/lib/project/stage-gates";
@@ -247,6 +247,67 @@ describe("建档向导", () => {
     expect(r).toMatchObject({ ok: true });
     expect(跑了).toBe(false);
     expect(await 各表行数()).toMatchObject({ customer: 1, project: 0, contact: 0 });
+  });
+});
+
+describe("只建客户（新建弹窗没开「项目」开关，P-界面-36）", () => {
+  const 不带项目 = (补: Partial<建档向导输入> = {}) => { const { 项目: _, ...rest } = 输入(补); return rest; };
+  const 计划数 = () => prisma.followPlan.count();
+
+  it("一笔建好客户、主要联系人、首条沟通（客户沟通：不挂项目、不建项目、不写节点）", async () => {
+    const r = await 建档只建客户(不带项目());
+    expect(r).toMatchObject({ ok: true, projectId: null });
+    if (!r.ok) return;
+    expect(await 各表行数()).toEqual({ customer: 1, contact: 1, project: 0, log: 0, followUp: 1, link: 0, creator: 1 });
+    const f = await prisma.followUp.findFirstOrThrow({ include: { contact: true } });
+    expect(f).toMatchObject({ customerId: r.customerId, content: "电话聊了需求", ownerId: 甲 });
+    expect(f.contact?.name).toBe("王经理");
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: r.customerId } })).lastFollowAt).toEqual(f.occurredAt);
+    expect(await 计划数()).toBe(0);
+  });
+
+  it("填了下一步时间：记成客户上的一条跟进计划（没写计划用默认主题），早于今天拦、一行不写", async () => {
+    expect(await 建档只建客户(不带项目({ 跟进: { type: "PHONE", content: "聊了", occurredAt: "2026-10-20 10:00", 下一步时间: "2020-01-01" } }))).toMatchObject({ ok: false, error: expect.stringContaining("不能早于今天") });
+    expect(await 各表行数()).toEqual(全空);
+    const r = await 建档只建客户(不带项目({ 跟进: { type: "PHONE", content: "聊了", occurredAt: "2026-10-20 10:00", 下一步时间: "2099-01-03", 下一步: "发报价" } }));
+    expect(r).toMatchObject({ ok: true });
+    const 计划 = await prisma.followPlan.findFirstOrThrow();
+    expect(计划).toMatchObject({ subject: "发报价", plannedOn: "2099-01-03", plannedHasTime: false, done: false, ownerId: 甲 });
+  });
+
+  it("项目模式没开：拦下，一行不写（不建不改）", async () => {
+    mocks.开 = false;
+    expect(await 建档只建客户(不带项目())).toMatchObject({ ok: false, error: expect.stringContaining("项目模式没开") });
+    expect(await 各表行数()).toEqual(全空);
+    expect(await 计划数()).toBe(0);
+  });
+
+  it("走同一套权限：企业版没设业务角色的拦下、一行不写；普通销售选了别人当客户负责人也只建在自己名下", async () => {
+    vi.stubEnv("CRM_ENTERPRISE", "1");
+    const 渠道 = await prisma.channel.create({ data: { name: "小红", channelOwnerId: 甲 } });
+    const 丙 = (await prisma.user.create({ data: { email: "bing", name: "丙", title: "", role: "SALES", password: "x" } })).id;
+    mocks.user = { ...mocks.user, id: 丙, role: "SALES" };
+    const 企 = 不带项目({ 客户: { ...输入().客户, channelId: 渠道.id, salesOwnerId: 甲, 企业资料: { bizLine: "内贸" } } });
+    expect(await 建档只建客户(企)).toMatchObject({ ok: false, error: expect.stringContaining("业务角色") });
+    expect(await 各表行数()).toEqual(全空);
+    mocks.user = { ...mocks.user, id: 乙, role: "SALES" };
+    const r = await 建档只建客户(企);
+    expect(r).toMatchObject({ ok: true });
+    if (r.ok) expect((await prisma.customer.findUniqueOrThrow({ where: { id: r.customerId } })).salesOwnerId).toBe(乙);
+  });
+
+  it("企业版客户业务线、渠道照建档的规矩：没选业务线、没选渠道也没选触点都拦，一行不写", async () => {
+    vi.stubEnv("CRM_ENTERPRISE", "1");
+    const 渠道 = await prisma.channel.create({ data: { name: "小红", channelOwnerId: 甲 } });
+    expect(await 建档只建客户(不带项目({ 客户: { ...输入().客户, channelId: 渠道.id } }))).toMatchObject({ ok: false, error: expect.stringContaining("业务线") });
+    expect(await 建档只建客户(不带项目({ 客户: { ...输入().客户, 企业资料: { bizLine: "内贸" } } }))).toMatchObject({ ok: false });
+    expect(await 各表行数()).toEqual(全空);
+  });
+
+  it("客户撞号：saveCustomer 拦下，联系人、沟通都不建", async () => {
+    await prisma.customer.create({ data: { name: "老客户", phone: "13900000001", salesOwnerId: 甲 } });
+    expect(await 建档只建客户(不带项目())).toMatchObject({ ok: false });
+    expect(await 各表行数()).toEqual({ ...全空, customer: 1 });
   });
 });
 
