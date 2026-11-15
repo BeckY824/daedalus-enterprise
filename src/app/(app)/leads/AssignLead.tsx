@@ -7,17 +7,39 @@
  * - 我分出去的：分出去的线索在别人名下，「按组织架构看客户」开着时列表里看不到，这里看它们后来怎样了
  * 规则判断都在服务端，这里只摆样子、原样报错
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { App, Button, Checkbox, Form, Modal, Select, Table, Tag } from "antd";
 import { SendOutlined } from "@ant-design/icons";
 import { LEAD_STATUS_COLOR } from "@/lib/constants";
 import { smartTime } from "@/lib/utils";
 import { useCarryConfirm } from "@/app/(app)/customers/useCarryConfirm";
-import { 分配线索, 批量自动分配, 本月分配情况, 我分出去的线索, 项目分配线, 分配带走的项目, type 分配情况, type 自动分配结果 } from "./assign-actions";
+import { 分配线索, 批量自动分配, 本月分配情况, 我分出去的线索, 项目分配线, 分配带走的项目, type 分配情况, type 自动分配结果, type 批量自动分配结果 } from "./assign-actions";
 import type { 项目线 } from "@/lib/enterprise/assign-line";
 import type { 分出去的线索 } from "@/lib/enterprise/lead-assign";
 import { 公海规则 } from "@/lib/enterprise/pool-rules";
+import { 转走项目说法 } from "@/lib/carry-over";
+
+/** 「分配」框的接手人默认上次选的（原型 pr.assign）：只记在这台电脑上，不在这次可选名单里就不带 */
+const 上次接手人键 = "assign-last-to";
+function 读上次接手人(): string | undefined {
+  try { return window.localStorage.getItem(上次接手人键) ?? undefined; } catch { return undefined; }
+}
+function 记上次接手人(id: string) {
+  try { window.localStorage.setItem(上次接手人键, id); } catch { /* 无痕窗口存不了，下次不带默认而已 */ }
+}
+
+/** 会一起转走的项目：写在框里的那几行（P-转-07），不另叠一个确认框 */
+function 一起转说明({ 说法 }: { 说法: NonNullable<ReturnType<typeof 转走项目说法>> }) {
+  return (
+    <div className="assign-carry" data-testid="assign-carry">
+      <div><Tag color="orange">一起转走</Tag>{说法.标题}，负责人会一起改成新负责人</div>
+      {说法.行.length > 0 && <ul className="assign-carry-list">{说法.行.map((l, i) => <li key={i} title={l}>{l}</li>)}</ul>}
+      {说法.还有 && <div className="muted">{说法.还有}</div>}
+      {说法.同事 && <div className="muted">{说法.同事}</div>}
+    </div>
+  );
+}
 
 const 配额说法 = (p: 分配情况[number]) => `本月 ${p.已分} / ${p.配额 ?? "不限"}${p.加额 > 0 ? `（含无效补 ${p.加额}）` : ""}`;
 
@@ -25,23 +47,42 @@ const 配额说法 = (p: 分配情况[number]) => `本月 ${p.已分} / ${p.配�
  * 勾选后批量自动分配，弹一张名单说清每条分给了谁：线索页和项目页共用，分给了 = 各页自己的说法。
  * 选中行 = 勾选时看到的每行负责人，交给服务端逐行比（乐观锁，X-89）：被别人先分走的那行回「已被分配」
  */
-export function useBatchAutoAssign(分给了: (r: Extract<自动分配结果, { ok: true }>) => string, 选项?: { 项目: true }) {
+export function useBatchAutoAssign(分给了: (r: Extract<自动分配结果, { ok: true }>) => string, 选项?: { 项目: true; 写进行里?: (结果们: 批量自动分配结果[]) => void }) {
   const router = useRouter();
   const { message, modal } = App.useApp();
-  const 问一起转 = useCarryConfirm();
   return async function 批量自动分(ids: string[], 清空: () => void, 选中行: readonly { id: string; ownerId: string | null }[] = []) {
-    // P-转-07：市场客户名下有同事的项目，分之前列出来（接手人这时还没挑）
-    if (选项?.项目 && !(await 问一起转(() => 分配带走的项目(ids)))) return;
+    // 原型 pr.autobatch（P-界面-40 后果确认框）：分出去不能撤回，所以事前一个框写清「将分 N 条」、
+    // 会一起转走的项目（P-转-07，原来另叠的「一起转」框并进来）、接手人会收到通知；点「分出去 N 条」才分
+    if (选项?.项目) {
+      let 说法: ReturnType<typeof 转走项目说法> = null;
+      try { 说法 = 转走项目说法(await 分配带走的项目(ids)); } catch { /* 取不到不拦着：分本身照样会带走项目 */ }
+      const 好 = await modal.confirm({
+        title: `自动分配 ${ids.length} 条线索`,
+        width: 520,
+        content: (
+          <div className="assign-sure" data-testid="auto-assign-sure">
+            <div><Tag color="orange">会发生</Tag>按规则分给销售，分出去不能撤回</div>
+            {说法 && <一起转说明 说法={说法} />}
+            <div><Tag>通知</Tag>接手人会收到通知</div>
+          </div>
+        ),
+        okText: `分出去 ${ids.length} 条`,
+        cancelText: "取消",
+      });
+      if (!好) return;
+    }
     let res: Awaited<ReturnType<typeof 批量自动分配>>;
     try {
       const 原负责人们 = Object.fromEntries(选中行.map((r) => [r.id, r.ownerId]));
-      res = await 批量自动分配(ids, { ...选项, 原负责人们 });
+      res = await 批量自动分配(ids, { ...(选项?.项目 ? { 项目: true as const } : {}), 原负责人们 });
     } catch {
       return void message.error("没分成，请稍后再试");
     }
     if (!res.ok) return void message.error(res.error);
     清空();
     router.refresh();
+    // 原型 pr.autobatch（11-15）：结果原地写进每一行（分给谁 / 没分的原因），不再弹清单
+    if (选项?.写进行里) return void 选项.写进行里(res.结果);
     const 成 = res.结果.filter((x) => x.ok).length;
     modal.info({
       title: `自动分配：${成} 条分出去了${成 < res.结果.length ? `，${res.结果.length - 成} 条没分` : ""}`,
@@ -65,7 +106,7 @@ export function useBatchAutoAssign(分给了: (r: Extract<自动分配结果, { 
  * 给一条线索点「分配」：lead = null 时不显示；项目 = 企业版「新线索」（项目的线索阶段），id 是项目的。
  * 不看配额 = 企业版项目列表里的分配入口（11-01 会议 §5）：接手人后面、说明里不写配额，只是不显示，服务端照旧查
  */
-export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { id: string; name: string; ownerId: string | null; 项目?: boolean } | null; 关: () => void; 不看配额?: boolean }) {
+export function AssignLeadModal({ lead, 关, 不看配额 = false, 分好了 }: { lead: { id: string; name: string; ownerId: string | null; 项目?: boolean } | null; 关: () => void; 不看配额?: boolean; /** 给了 = 分成了把「分给谁」写回这一行（原型 pr.assign），不再弹成功提示 */ 分好了?: (接手人: string) => void }) {
   const router = useRouter();
   const { message } = App.useApp();
   const 问一起转 = useCarryConfirm();
@@ -80,6 +121,34 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
    */
   const 带待办勾出 = !!lead?.项目 && 公海规则.换负责人带待办 && 项目线 !== undefined && !项目线?.市场转客户;
   const 可选 = lead?.项目 ? (项目线 ? new Set(项目线.可选) : null) : undefined;
+  const 选项们 = (人们 ?? [])
+    .filter((p) => p.userId !== lead?.ownerId && (可选 === undefined || (可选 !== null && 可选.has(p.userId))));
+  const 选的 = Form.useWatch("toUserId", form);
+  const 选的名 = 选项们.find((p) => p.userId === 选的)?.name;
+  // 原型 pr.assign：接手人默认上次选的（名单取到了、上次那位在这次可选里才带）
+  const 名单好了 = 人们 !== null && (!lead?.项目 || 项目线 !== undefined);
+  useEffect(() => {
+    if (!lead || !名单好了 || form.getFieldValue("toUserId")) return;
+    const 上次 = 读上次接手人();
+    if (上次 && 选项们.some((p) => p.userId === 上次)) form.setFieldValue("toUserId", 上次);
+    // 选项们 每次画都是新数组；看取回来的名单（每次打开重取、是新数组）——打开时先清空表单再取，取到那一下带一次就够
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead, 名单好了, 人们, 项目线, form]);
+  // 会一起转走的项目写在框里（原型 pr.assign：不再在分配框上另叠「一起转」框）；按选的接手人现取，取到了提交时不再问
+  const [转走, set转走] = useState<{ 给: string; 说法: ReturnType<typeof 转走项目说法> } | null>(null);
+  const 预览请求 = useRef<{ 给: string; p: ReturnType<typeof 分配带走的项目> } | null>(null);
+  useEffect(() => {
+    if (!lead?.项目 || !选的) return;
+    let 作废 = false;
+    const p = 分配带走的项目([lead.id], 选的);
+    预览请求.current = { 给: 选的, p };
+    p.then(
+      (x) => { if (!作废) set转走({ 给: 选的, 说法: 转走项目说法(x) }); },
+      () => { /* 取不到：提交时照原来再问一次 */ },
+    );
+    return () => { 作废 = true; };
+  }, [lead?.项目, lead?.id, 选的]);
+  const 框里写了 = !!lead?.项目 && 转走?.给 === 选的;
 
   // 每次打开重取一遍：配额、已分随时在变
   function 打开了(open: boolean) {
@@ -88,6 +157,7 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
     set人们(null);
     void 本月分配情况().then((r) => set人们(r ?? []));
     set项目线(undefined);
+    set转走(null);
     if (lead?.项目) void 项目分配线(lead.id).then(set项目线, () => set项目线(null));
   }
 
@@ -98,7 +168,11 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
     set忙(true);
     try {
       // P-转-07：市场首次分给销售、客户名下有同事的项目，会一起转走的分之前列出来；点了取消就不分，弹窗留着
-      if (lead.项目 && !(await 问一起转(() => 分配带走的项目([lead.id], v.toUserId)))) return;
+      // 框里已经按这位接手人写出会一起转走的项目了，不再叠一个框；预览还在路上（点得太快）就等它，不重取
+      if (lead.项目 && 转走?.给 !== v.toUserId) {
+        const 在取 = 预览请求.current?.给 === v.toUserId ? 预览请求.current.p : null;
+        if (!(await 问一起转(() => 在取 ?? 分配带走的项目([lead.id], v.toUserId)))) return;
+      }
       const 哪条 = lead.项目 ? { projectId: lead.id } : { leadId: lead.id };
       // 原负责人 = 打开弹窗时看到的负责人（乐观锁）：别人先分走了回「已被分配」，不覆盖
       const res = await 分配线索({ ...哪条, toUserId: v.toUserId, line: v.line || null, kind: v.kind, 原负责人: lead.ownerId, ...(带待办勾出 ? { 带待办: v.带待办 } : {}) });
@@ -106,7 +180,10 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
         message.error(res.error, 5);
         return;
       }
-      message.success(`「${lead.name}」已分给 ${人们?.find((p) => p.userId === v.toUserId)?.name ?? "他"}`);
+      记上次接手人(v.toUserId);
+      const 名 = 人们?.find((p) => p.userId === v.toUserId)?.name ?? "他";
+      if (分好了) 分好了(名);
+      else message.success(`「${lead.name}」已分给 ${名}`);
       关();
       router.refresh();
     } finally {
@@ -118,7 +195,7 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
     <Modal
       open={!!lead}
       title={lead ? `分配「${lead.name}」` : ""}
-      okText="分配"
+      okText={选的名 ? `分给${选的名}` : "分配"}
       cancelText="取消"
       confirmLoading={忙}
       onOk={() => void 分()}
@@ -143,8 +220,7 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
                     ? "这条线现在没有正常参与自动分配的销售：请总管理员在 设置 → 组织架构 里看参与状态和各条线的部门"
                     : "组织里还没有销售：先在 设置 → 组织架构 里排好"
             }
-            options={(人们 ?? [])
-              .filter((p) => p.userId !== lead?.ownerId && (可选 === undefined || (可选 !== null && 可选.has(p.userId))))
+            options={选项们
               .map((p) => ({ value: p.userId, label: `${p.name}${p.line ? `（${p.line}）` : ""}${不看配额 ? "" : ` · ${配额说法(p)}`}` }))}
           />
         </Form.Item>
@@ -165,6 +241,7 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
         <Form.Item name="kind" label="线索种类">
           <Select options={[{ value: "营销", label: "营销" }, { value: "营销企划", label: "营销企划" }]} />
         </Form.Item>
+        {框里写了 && 转走?.说法 && <一起转说明 说法={转走.说法} />}
         {带待办勾出 && (
           <Form.Item name="带待办" valuePropName="checked" style={{ marginBottom: 0 }}>
             <Checkbox>原负责人没做完的待办一起转给新负责人</Checkbox>

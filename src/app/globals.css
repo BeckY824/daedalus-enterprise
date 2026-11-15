@@ -2977,6 +2977,40 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 /* 每列先摆 50 张（2026-10-24），底下接着翻；列宽固定，卡片里的字折行写完，不撑宽列 */
 /* 客户看板（U-客户-06）：按客户属性分列，点卡片进客户页（不拖）。属性名管理员能自己加、可能很长：列头名字一行省略、悬停看全 */
 .cust-board .pipe-card { cursor: pointer; }
+/* 项目页改版（原型 pr.view / pr.filter / pr.more，11-15）：
+   看板 ⇄ 列表换上来的那一块淡入、轻轻上移落位；等筛选回包时每列两张骨架卡；回来的卡片依次落位；
+   列底「再看」接上的卡片滑入并淡亮一下（同 row-fresh 的亮法），看得出是刚加的。减弱动态时全站动画时长归零，不位移 */
+.proj-view-in { animation: proj-view-in var(--t-morph) var(--ease) both; }
+@keyframes proj-view-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.pipe-card-skel { cursor: default; display: flex; flex-direction: column; gap: var(--s2); border-left-color: var(--line); pointer-events: none; }
+.pipe-card-skel > i { display: block; height: 9px; border-radius: 999px; background: var(--line); }
+.pipe-card-skel > i + i { width: 62%; }
+.pipe-card-in { animation: pipe-card-in var(--t) var(--ease) calc(var(--stagger) * var(--i, 0)) both; }
+@keyframes pipe-card-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.pipe-card-new { animation: pipe-card-in var(--t-morph) var(--ease) calc(var(--stagger) * var(--i, 0)) both, pipe-card-fresh 2s var(--ease) calc(var(--stagger) * var(--i, 0)) both; }
+@keyframes pipe-card-fresh { 0%, 55% { background-color: var(--brand-bg); } 100% { background-color: var(--panel); } }
+/* 看板拖动换进程（P-界面-45，原型 pr.drag / cu.board，projects/board-drag.tsx）：能拖的卡片手型是 grab，拖不了的照旧点进详情（手指）；
+   拖着的卡片浮起来跟手；目标列浅蓝底 + 虚线框，不能放的列（交付结清、流失、丢单）只给灰虚线；
+   被挡 / 缺必填弹回原处时左右晃一下；缺必填那张描一圈橙边，旁边长出补填小框（.board-gate） */
+.pipe .pipe-card:not([data-card-id]):not(.pipe-card-ro) { cursor: pointer; }
+.pipe-card[data-card-id] { user-select: none; -webkit-user-select: none; transition: transform var(--t) var(--ease-spring), box-shadow var(--t) var(--ease); }
+.pipe-card.is-dragging { position: relative; z-index: 5; cursor: grabbing; transition: none; box-shadow: var(--shadow-pop); }
+.pipe-card.is-bounced { animation: pipe-card-bounce var(--t-morph) var(--ease) 1; }
+@keyframes pipe-card-bounce { 0%, 100% { translate: 0; } 30% { translate: -4px 0; } 65% { translate: 3px 0; } }
+.pipe-card.is-gated { box-shadow: 0 0 0 1.5px var(--warning); }
+.pipe-col.is-drop { background: var(--brand-bg); outline: 1px dashed var(--brand); outline-offset: -1px; }
+.pipe-col.is-drop-no { outline: 1px dashed var(--line-strong); outline-offset: -1px; }
+.board-gate { position: fixed; z-index: 1050; padding: var(--s3); background: var(--panel); border-radius: var(--r-card); box-shadow: var(--shadow-pop); border: 1px solid var(--line);
+  animation: board-gate-in var(--t-pop) var(--ease) both; transform-origin: left top; overflow-wrap: anywhere; }
+@keyframes board-gate-in { from { opacity: 0; scale: var(--pop-scale); } to { opacity: 1; scale: 1; } }
+.board-gate-t { color: var(--warning-text); font-weight: 600; }
+.board-gate-name { margin-top: var(--s1); font-size: var(--fs-note); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.board-gate-list { margin: var(--s2) 0 0; padding-inline-start: 18px; }
+.board-gate-force.ant-btn { padding: 0; height: auto; margin-top: var(--s2); color: var(--warning-text); }
+.board-gate-foot { display: flex; justify-content: flex-end; gap: var(--s2); margin-top: var(--s3); }
+@media (prefers-reduced-motion: reduce) { .pipe-card[data-card-id] { transition: none; } .pipe-card.is-bounced, .board-gate { animation: none !important; } }
+/* 减弱动态：时长归零还不够，排队的延迟（--stagger × 序）会让卡片空着等一会儿，整个不放 */
+@media (prefers-reduced-motion: reduce) { .proj-view-in, .pipe-card-in, .pipe-card-new { animation: none !important; } }
 .cust-board .pipe-h b { flex: 0 1 auto; min-width: 0; }
 .cust-board-meta { display: inline-flex; align-items: baseline; gap: var(--s1); min-width: 0; }
 .cust-board-page { display: flex; justify-content: flex-end; margin-top: var(--s3); }
@@ -3002,6 +3036,17 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .new-proj-pick { display: flex; flex-direction: column; gap: var(--s2); }
 .new-proj-opt { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); width: 100%; min-width: 0; padding: 12px 14px; text-align: start; font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; overflow-wrap: anywhere; }
 .new-proj-opt:hover:not(:disabled), .new-proj-opt:focus-visible { border-color: var(--brand); background: var(--brand-bg); }
+/* 分配的后果写在框里（原型 pr.assign / pr.autobatch）：一行一件事，前面一枚小标签；一起转走的项目一行一个、放不下省略、悬停看全 */
+.assign-sure { display: flex; flex-direction: column; gap: var(--s2); overflow-wrap: anywhere; }
+.assign-carry { display: flex; flex-direction: column; gap: var(--s1); margin-bottom: var(--s3); min-width: 0; overflow-wrap: anywhere; }
+.assign-sure .assign-carry { margin-bottom: 0; }
+.assign-carry-list { margin: 0; padding-inline-start: 18px; max-height: 160px; overflow-y: auto; }
+.assign-carry-list > li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 「6 秒内可撤销」的提示（projects/useUndoLater.tsx）：字和两颗链接按钮一行，按钮不折 */
+.undo-later { display: inline-flex; align-items: center; gap: var(--s1); flex-wrap: wrap; }
+.undo-later > .ant-btn { padding-inline: 4px; height: auto; }
+/* 默认那一项（新客户，原型 pr.new）：一打开就亮着，回车即走 */
+.new-proj-opt.is-default { background: var(--brand-bg); }
 /* 选项里的名字 + 一行小字（projects/NewProjectFlow.tsx，原行内样式搬来） */
 .new-proj-opt-t { line-height: 1.4; padding: 2px 0; }
 .new-proj-opt-s { font-size: var(--fs-min); color: var(--text-muted); }
@@ -4462,6 +4507,9 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .cr-old { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 0; }
 .cr-old-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cr-pick { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 分配结果写在行末那一格（原型 pr.autoone / pr.autobatch / pr.assign）：成功一枚绿标签，没分的原因橙字一行、放不下省略 */
+.assign-done { margin-inline-end: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+.assign-fail { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; color: var(--warning-text); font-size: var(--fs-note); }
 
 /* ---------- AI 浮窗（PR3，P-界面-39；原型 ai.open / ai.minimize / ai.ask / ai.away / ai.bg / ai.ctx、dt.ai） ----------
    企业版项目模式：点右下角浮标，页面中下方长出一张毛玻璃对话框（不占右栏、正文不收窄），右上角「−」收起回球。

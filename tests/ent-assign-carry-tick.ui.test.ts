@@ -117,50 +117,56 @@ async function 开页(设: { 带走?: unknown; 失败?: boolean }): Promise<{ pa
 }
 const 调了 = (page: Page, 名: string) => page.evaluate((n) => ((window as unknown as 窗).__调 ?? []).filter((x) => x[0] === n), 名);
 // 11-15 起是后果框（ConsequenceDialog，.csq），认 role=dialog + 标题字
-const 确认框 = (page: Page) => page.getByRole("dialog").filter({ hasText: "会一起转走" });
+// 分配框自己就写着会一起转走的项目（data-testid=assign-carry），叠出来的才算另一个确认框
+const 确认框 = (page: Page) => page.getByRole("dialog").filter({ hasText: "会一起转走" }).filter({ hasNot: page.getByTestId("assign-carry") });
+/** 批量自动分配那个先确认的框（标题「自动分配 N 条线索」） */
+const 批量框 = (page: Page) => page.getByRole("dialog").filter({ hasText: "自动分配 2 条线索" });
 const 选人再分 = async (page: Page) => {
   await page.locator("#toUserId").click();
   await page.locator(".ant-select-item-option", { hasText: "王一" }).click();
   await page.locator(".ant-modal-footer .ant-btn-primary").click();
 };
 
-it("分配弹窗·只有同事在推的项目：也弹，只写个数、写明一起改成新负责人，按钮叫「一起转」", async () => {
+// 原型 pr.assign（11-15）：会一起转走的项目按选的接手人现取、写在分配框里，不再叠「一起转」框；一次提交
+const 框里 = (page: Page) => page.getByTestId("assign-carry");
+it("分配弹窗·只有同事在推的项目：框里写个数、写明一起改成新负责人；一次提交，不叠框", async () => {
   const { page, errors } = await 开页({ 带走: { 项目数: 1, 项目: [], 同事: 同事预览 } });
   await page.getByRole("button", { name: "开弹窗" }).click();
   await page.locator('[data-testid="assign-line-readonly"]', { hasText: "内贸" }).waitFor();
-  await 选人再分(page);
-  await 确认框(page).getByText("会一起转走的 1 个项目").first().waitFor();
-  const 字 = await 确认框(page).innerText();
+  await page.locator("#toUserId").click();
+  await page.locator(".ant-select-item-option", { hasText: "王一" }).click();
+  const 字 = await 框里(page).innerText();
   expect(字).toContain("有 1 个同事在推的项目，负责人会一起改成新负责人");
-  expect(字).not.toContain("留在各自负责人名下");
   expect(字).not.toContain("王二");
-  expect(字).not.toContain("这些项目的负责人会一起改成新负责人");
-  await 确认框(page).getByRole("button", { name: "一起转" }).click();
+  await page.locator(".ant-modal-footer .ant-btn-primary").click();
   await page.waitForFunction(() => ((window as unknown as 窗).__调 ?? []).some((x) => x[0] === "分配线索"));
+  expect(await 确认框(page).count()).toBe(0);
   expect(errors).toEqual([]); await page.close();
 });
 
-it("分配弹窗·有项目一起转：先列出来，同事在推的只给个数；取消就不分；点「一起转」才分", async () => {
+it("分配弹窗·有项目一起转：选了接手人框里就列出来（同事在推的只给个数），按钮写「分给某某」，一次提交；下次打开默认上次选的", async () => {
   const { page, errors } = await 开页({ 带走: 带走预览 });
   await page.getByRole("button", { name: "开弹窗" }).click();
   await page.locator('[data-testid="assign-line-readonly"]', { hasText: "内贸" }).waitFor();
-  await 选人再分(page);
-  await 确认框(page).getByText("会一起转走的 3 个项目").first().waitFor();
-  const 框字 = await 确认框(page).innerText();
-  expect(框字).toContain("这些项目的负责人会一起改成新负责人");
+  await page.locator("#toUserId").click();
+  await page.locator(".ant-select-item-option", { hasText: "王一" }).click();
+  await 框里(page).waitFor();
+  const 框字 = await 框里(page).innerText();
+  expect(框字).toContain("会一起转走的 3 个项目");
   expect(框字).toContain("公海的项目（某客户 · 线索公海）");
   expect(框字).toContain("另外有 1 个同事在推的项目，负责人也一起改成新负责人");
-  expect(框字).not.toContain("留在各自负责人名下");
   expect(框字).not.toContain("王二");
   expect(await 调了(page, "分配带走的项目")).toEqual([["分配带走的项目", ["p1"], "u1"]]);
-  await 确认框(page).getByRole("button", { name: /^取\s?消$/ }).click();
-  await 确认框(page).waitFor({ state: "hidden" });
-  expect(await 调了(page, "分配线索")).toEqual([]);
-  // 弹窗还开着，再点一次，这回确定
-  await page.locator(".ant-modal-footer .ant-btn-primary").click();
-  await 确认框(page).getByRole("button", { name: "一起转" }).click();
+  const 确定 = page.locator(".ant-modal-footer .ant-btn-primary");
+  expect((await 确定.innerText()).replace(/\s/g, "")).toBe("分给王一");
+  await 确定.click();
   await page.waitForFunction(() => ((window as unknown as 窗).__调 ?? []).some((x) => x[0] === "分配线索"));
+  expect(await 确认框(page).count()).toBe(0);
   expect((await 调了(page, "分配线索")).length).toBe(1);
+  // 再开一次：接手人默认上次选的
+  await page.locator(".ant-modal-wrap").first().waitFor({ state: "hidden" });
+  await page.getByRole("button", { name: "开弹窗" }).click();
+  await page.locator(".ant-modal .ant-select-content", { hasText: "王一" }).waitFor();
   expect(errors).toEqual([]); await page.close();
 });
 
@@ -217,23 +223,32 @@ it("分配弹窗·这条分不了（客户在公海、取不到）：提示刷�
   expect(没人.errors).toEqual([]); await 没人.page.close();
 });
 
-it("批量自动分配·有项目一起转：先列出来，取消就不分；点「一起转」才分", async () => {
+// 原型 pr.autobatch（11-15）：分出去不能撤回，所以先一个框写清将分几条、会一起转走的项目、接手人会收到通知；老线索照旧不问
+it("批量自动分配·项目：先一个框写清「将分 N 条」、一起转走的项目、通知；取消就不分；点「分出去 N 条」才分", async () => {
   const { page, errors } = await 开页({ 带走: 带走预览 });
   await page.getByRole("button", { name: "批量分项目" }).click();
-  await 确认框(page).getByText("会一起转走的 3 个项目").first().waitFor();
+  const 框 = 批量框(page);
+  await 框.waitFor();
+  const 字 = await 框.innerText();
+  expect(字).toContain("分出去不能撤回");
+  expect(字).toContain("会一起转走的 3 个项目");
+  expect(字).toContain("接手人会收到通知");
   expect(await 调了(page, "分配带走的项目")).toEqual([["分配带走的项目", ["p1", "p2"]]]);
-  await 确认框(page).getByRole("button", { name: /^取\s?消$/ }).click();
-  await 确认框(page).waitFor({ state: "hidden" });
+  await 框.locator(".ant-btn:not(.ant-btn-primary)").click();
+  await 框.waitFor({ state: "detached" });
   expect(await 调了(page, "批量自动分配")).toEqual([]);
   await page.getByRole("button", { name: "批量分项目" }).click();
-  await 确认框(page).getByRole("button", { name: "一起转" }).click();
+  await 批量框(page).getByRole("button", { name: "分出去 2 条" }).click();
   await page.waitForFunction(() => ((window as unknown as 窗).__调 ?? []).some((x) => x[0] === "批量自动分配"));
   expect(errors).toEqual([]); await page.close();
 });
 
-it("批量自动分配·没有要带走的同事项目、老线索：不弹，直接分", async () => {
+it("批量自动分配·没有要带走的项目：框里不写一起转，照样先确认；老线索不问、直接分", async () => {
   const { page, errors } = await 开页({});
   await page.getByRole("button", { name: "批量分项目" }).click();
+  await 批量框(page).waitFor();
+  expect(await 批量框(page).innerText()).not.toContain("一起转走");
+  await 批量框(page).getByRole("button", { name: "分出去 2 条" }).click();
   await page.waitForFunction(() => ((window as unknown as 窗).__调 ?? []).some((x) => x[0] === "批量自动分配"));
   expect(await 调了(page, "分配带走的项目")).toHaveLength(1);
   // X-89：每行勾选时看到的负责人一起交上去，服务端逐行比

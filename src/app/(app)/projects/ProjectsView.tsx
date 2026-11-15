@@ -47,6 +47,9 @@ import { 看板要点, 三态标说明, type 三态标 } from "@/lib/enterprise/
 import { 再看一列 } from "../customers/board-actions";
 import { 再看项目页一列 } from "./board-actions";
 import { useNewProjectFlow } from "./NewProjectFlow";
+import { useBoardDrag } from "./board-drag";
+import { 编辑项目 } from "./actions";
+import { showUndo } from "@/components/UndoBar";
 import NewMenuButton from "@/components/NewMenuButton";
 import { 看板工具位 } from "../customers/board-slot";
 
@@ -166,7 +169,7 @@ export default function ProjectsView({
   每列?: Record<string, 看板卡片[]>;
 }) {
   /** 客户详情合并（11-12 第 2 批）：企业版看得到客户的，项目在客户详情的项目区里，直接去那儿停在这个项目的页签；客户看不到的照旧进项目详情 */
-  const 项目地址 = (r: 项目行) => (企业版 && r.customerId && r.customerName != null && !r.进不了客户详情 ? 客户页项目地址(r.customerId, r.id) : `/projects/${r.id}`);
+  const 项目地址 = (r: 看板卡片) => (企业版 && r.customerId && r.customerName != null && !r.进不了客户详情 ? 客户页项目地址(r.customerId, r.id) : `/projects/${r.id}`);
   const router = useRouter();
   const 预取 = useHoverPrefetch();
   const { message } = App.useApp();
@@ -186,7 +189,9 @@ export default function ProjectsView({
   // 带着要指出的那一行来：先按列表看（不改存下的看法），自己切回看板就听他的
   const [临时列表, set临时列表] = useState(!!高亮);
   const 看法 = 新线索 || 临时列表 ? "列表" : 客户页 ? "看板" : 存的看法;
-  const 换看法 = (v: "列表" | "看板") => { set临时列表(false); set看法(v); };
+  // 看板 ⇄ 列表（原型 pr.view）：换过一次以后，换上来的那一块淡入、轻轻上移落位；第一次进页不动
+  const [换过, set换过] = useState(false);
+  const 换看法 = (v: "列表" | "看板") => { set临时列表(false); set看法(v); set换过(true); };
   // 要指出的那一行滚到视口中间（减弱动态时直接跳过去）；只在进来时滚一次，之后翻页、筛选不追着滚
   useEffect(() => {
     if (!高亮) return;
@@ -215,6 +220,9 @@ export default function ProjectsView({
       }
     : apply;
   const pending = 筛选中 || 翻页中;
+  // 原型 pr.filter：改了筛选（或翻页）等回包时看板先出骨架卡；回来以后卡片依次落位。第一次进页不排队
+  const [筛过, set筛过] = useState(false);
+  if (pending && !筛过) set筛过(true);
   // 要的页越界（删空了最后一页、手改地址栏）：服务端已给了实际那一页，这里只把地址栏改对，不再取一次（同客户列表）
   useEffect(() => {
     // 客户页看板：地址栏的 page 是客户列表的，不归这里改（看板不取列表页时服务端也不给 要的页）
@@ -245,6 +253,8 @@ export default function ProjectsView({
   const 最新 = useRef({ 看板, 代: 0 });
   useEffect(() => { 最新.current = { 看板, 代: 最新.current.代 + 1 }; }, [看板]);
   const 点表 = 三态点 ? { ...三态点, ...追加.点 } : undefined;
+  // 原型 pr.more：「再看」接上来的卡片依次滑入、淡亮一下，看得出是刚加的（只亮这一回，id 记着）
+  const [刚到, set刚到] = useState<ReadonlySet<string>>(() => new Set());
   async function 再看(c: 看板一列) {
     const 源 = 看板;
     const 代 = 最新.current.代;
@@ -255,6 +265,8 @@ export default function ProjectsView({
       const r = await (客户页 ? 再看一列 : 再看项目页一列)(window.location.search, c.列, 已有.length);
       if (最新.current.看板 !== 源) return;
       if (!r.ok) return void message.error(r.error);
+      const 有过 = new Set(已有.map((x) => x.id));
+      set刚到((m) => new Set([...m, ...r.行.filter((x) => !有过.has(x.id)).map((x) => x.id)]));
       set追加((前) => {
         // 前 是更新的一屏的（这期间又换过一屏）：不动它；是更早一屏留下的：这一屏从空的起
         if (前.代 > 代) return 前;
@@ -274,6 +286,13 @@ export default function ProjectsView({
   }
   const 还有列钮 = useRef<HTMLButtonElement>(null);
   const [右边还有, 滑一列, 横向溢出] = useKanbanMoreCols(看板框, 看法 === "看板" ? 看板 : null, 还有列钮);
+  // 看板拖动换进程（P-界面-45，原型 pr.drag / cu.board）：企业版进程列才有；规则全在服务端（board-drag.tsx）
+  const 拖 = useBoardDrag({
+    看板, 框: 看板框, 开: 企业版 && !新线索 && 看法 === "看板",
+    名of: (r) => r.name, 去补齐: (r) => router.push(项目地址(r)), 刷新: () => router.refresh(),
+  });
+  const 全部卡 = new Map<string, { 卡: 看板卡片; 列: string }>();
+  for (const c of 看板) for (const r of [...c.行, ...(每列取数 ? (追加.们[c.列]?.行 ?? []) : [])]) 全部卡.set(r.id, { 卡: r, 列: c.列 });
   // 看板每列的卡片（含「再看」追加的）也算：客户页看板不取列表页（行 是空的），不带上的话有「已不在的成员 / 没人」的卡片也会把负责人藏掉
   const 不问归属 = !f.ownerId && 列表不问归属ID(users, [...行, ...看板.flatMap((c) => c.行), ...Object.values(追加.们).flatMap((x) => x.行)].map((r) => r.ownerId));
   const 在筛 = Object.values(filters).some(Boolean);
@@ -312,22 +331,47 @@ export default function ProjectsView({
   const 分给了 = (r: Extract<自动分配结果, { ok: true }>) => (项目页分 ? `已分给 ${r.接手人}` : `已分给 ${r.接手人}（本月已分 ${r.已分} / 配额 ${r.配额 ?? "不限"}）`);
   // 页头 / 客户页看板筛选行那颗只带路的「分配」去掉（原型 pr.guide，11-15）：分配入口在列表每行末尾和勾选后的「自动分配」
 
+  // 分配结果原地写在这一行（原型 pr.autoone / pr.autobatch / pr.assign，11-15）：分给谁，或没分的原因；不再弹清单、不靠转瞬即逝的提示
+  type 分配果 = { ok: true; 接手人: string; 为什么?: string } | { ok: false; error: string };
+  const [分配果们, set分配果们] = useState<Record<string, 分配果>>({});
+  const 记果 = (们: Record<string, 分配果>) => set分配果们((m) => ({ ...m, ...们 }));
+  const 去果 = (id: string) => set分配果们((m) => { const n = { ...m }; delete n[id]; return n; });
+
   async function 自动分(r: 项目行) {
     try {
       // P-转-07：同批量，客户名下有同事的项目先列出来
       if (!(await 问一起转(() => 分配带走的项目([r.id])))) return;
       // 原负责人 = 这一行看到的负责人（乐观锁）：别人先分走了回「已被分配」，不覆盖
       const res = await 自动分配线索(r.id, { 项目: true, 原负责人: r.ownerId });
-      // 挑不到人 / 暂不分配：不是出错，留在新线索等手动指派
-      if (!res.ok) return void (res.待分配 || res.暂不分配 ? message.warning(res.error, 5) : message.error(res.error));
-      message.success(`「${r.name}」${分给了(res)}：${res.为什么}`, 5);
+      // 挑不到人 / 暂不分配：不是出错，留在新线索等手动指派——原因写在这一行
+      if (!res.ok) return void 记果({ [r.id]: { ok: false, error: res.error } });
+      记果({ [r.id]: { ok: true, 接手人: res.接手人, 为什么: res.为什么 } });
+      // 6 秒内可撤销（P-界面-40）：撤销 = 把负责人转回原来那位，走项目「转让」同一个动作和权限（编辑项目 改 ownerId）；被挡就在撤销条上写原因。
+      // 只还得回负责人：自动分配的结果里没有「一起带过去的」清单（待办、市场转销售时的客户），待分配标记也不回标——撤销条上先写明，撤完再说一次还差什么
+      const 还不了 = ["一起转过去的待办", "跟着转的客户", ...(r.待分配 ? ["「待分配」标记"] : [])];
+      showUndo({
+        话: `「${r.name}」${分给了(res)}（撤销只改回负责人）`,
+        毫秒: 6000,
+        撤销: async () => {
+          const x = await 编辑项目(r.id, { ownerId: r.ownerId });
+          if (x.ok) {
+            去果(r.id);
+            message.warning(`已把「${r.name}」的负责人改回 ${r.ownerName}；${还不了.join("、")}没还原，要还请手工改`, 8);
+            router.refresh();
+          }
+          return x;
+        },
+      });
       router.refresh();
     } catch {
       message.error("没分成，请稍后再试");
     }
   }
 
-  const 批量自动分 = useBatchAutoAssign(分给了, { 项目: true });
+  const 批量自动分 = useBatchAutoAssign(分给了, {
+    项目: true,
+    写进行里: (们) => 记果(Object.fromEntries(们.map((x) => [x.leadId, x.ok ? { ok: true as const, 接手人: x.随客户 ? `${x.接手人}（随客户）` : x.接手人, 为什么: x.为什么 } : { ok: false as const, error: x.error }]))),
+  });
 
   // 单格没填（含导入占位的 "-"）一律写「—」（11-01 用户定，lib/empty-value.ts）
   const 无 = <span style={{ color: "var(--text-muted)" }}>{空值符}</span>;
@@ -364,7 +408,7 @@ export default function ProjectsView({
       title: "", key: "act", width: 150, fixed: "right" as const,
       // 客户公海里的项目跟客户走，不单独分（线索公海的 pooled 也是真，所以不看 pooled；服务端也拦）；
       // 例外：销售管理 / 总管理能「分配」，客户整包出公海（P-公海-10），不摆自动分配
-      render: (_: unknown, r: 项目行) => (r.result ? null : r.客户在公海 ? (能分公海客户项目 ? (
+      render: (_: unknown, r: 项目行) => (分配果们[r.id] ? <分配果标 果={分配果们[r.id]} /> : r.result ? null : r.客户在公海 ? (能分公海客户项目 ? (
         <Button aria-label={`分配 ${r.name}`} type="link" size="small" onClick={() => set分配中(r)}>分配</Button>
       ) : null) : (
         <Space size={2}>
@@ -577,6 +621,7 @@ export default function ProjectsView({
       <MyBlockersBoard 们={卡点们} />
       {新线索 && <LeadFullNotices 提醒={提醒们} />}
 
+      <div key={看法} className={换过 ? "proj-view-in" : undefined}>
       {看法 === "列表" ? (
         <DataList<项目行>
           // 企业版默认只摆 7 列（1366 宽不横滚），换个键让已存的旧列设置回到新默认
@@ -622,40 +667,50 @@ export default function ProjectsView({
           {/* 每列都摆（团队版五列；企业版按进程一个一列 + 三个出口，11-03 客户反馈 6），0 个项目的列照常显示、写空态（11-01 用户定，原来企业版空列默认藏起）；列宽固定，放不下在看板框里左右滑（globals.css .pipe）。
               右边还有没露全的列：右沿渐隐 + 上面「→ 还有 N 列」（11-01 会议 C12），横向滚动条常显 */}
           <div className={右边还有 > 0 ? "pipe-wrap pipe-fade-right" : "pipe-wrap"}>
-            <div className="pipe" ref={看板框}>
+            <div className="pipe" ref={看板框} aria-busy={pending || undefined}>
               {看板.map((c) => {
                 const sum = 合计文字(c.合计, b.currency);
+                const { 卡们: 这列卡, 数: 这列数 } = 拖.列里(c, [...c.行, ...(每列取数 ? (追加.们[c.列]?.行 ?? []) : [])], 全部卡);
+                const 列拖 = 拖.列属性(c);
+                let 新第 = 0;
                 return (
-                  <div key={c.列} className="pipe-col" aria-label={`${c.阶段 ? `${c.阶段} · ` : ""}${c.名}，${c.数} 个项目`}>
+                  <div key={c.列} ref={列拖.ref} className={`pipe-col${列拖.className}`} aria-label={`${c.阶段 ? `${c.阶段} · ` : ""}${c.名}，${这列数} 个项目`}>
                     <div className="pipe-h">
                       <span className="pipe-dot" style={{ background: 列色[c.色] }} />
                       <b title={c.阶段 ? `${c.阶段}阶段` : undefined}>{c.名}</b>
-                      <span className="pipe-n">{c.数}</span>
+                      <span className="pipe-n">{这列数}</span>
                       <span className="pipe-sum" title={sum}>{sum}</span>
                     </div>
                     <div className="pipe-bar" style={{ background: 列色[c.色] }} />
-                    {c.行.length === 0 && <div className="pipe-empty">{在筛 ? "这一列没有对上的" : c.空态}</div>}
-                    {[...c.行, ...(每列取数 ? (追加.们[c.列]?.行 ?? []) : [])].map((r) => {
+                    {/* 等筛选回包：先出两张骨架卡占位（原型 pr.filter），不让人对着旧卡片以为没反应 */}
+                    {pending && <><div className="pipe-card pipe-card-skel" aria-hidden="true"><i /><i /></div><div className="pipe-card pipe-card-skel" aria-hidden="true"><i /><i /></div></>}
+                    {!pending && 这列卡.length === 0 && <div className="pipe-empty">{在筛 ? "这一列没有对上的" : c.空态}</div>}
+                    {!pending && 这列卡.map((r, 序) => {
                       const 异常 = r.result === "异常状态";
                       const 小字 = 卡片小字(r, 字典);
+                      const 刚来 = 刚到.has(r.id);
+                      const 档 = 刚来 ? 新第++ : 序;
                       // 只看进度（市场角色、已分给圈外的人）：卡片照摆、点不进详情（P-看-06）
                       const 能进 = !r.只看进度;
                       const 去 = () => 能进 && router.push(项目地址(r));
+                      const 卡拖 = 拖.卡片属性(r, c.列);
                       return (
                         <div
                           key={r.id}
-                          className={能进 ? "pipe-card" : "pipe-card pipe-card-ro"}
-                          style={{ borderLeftColor: 异常 ? "var(--danger)" : 列色[c.色] }}
+                          {...卡拖?.dom}
+                          className={`${能进 ? "pipe-card" : "pipe-card pipe-card-ro"}${刚来 ? " pipe-card-new" : 筛过 ? " pipe-card-in" : ""}${卡拖?.类 ?? ""}`}
+                          style={{ borderLeftColor: 异常 ? "var(--danger)" : 列色[c.色], ["--i" as string]: Math.min(档, 8) }}
                           tabIndex={能进 ? 0 : undefined}
                           role={能进 ? "link" : undefined}
                           title={异常 && 异常说明(r) ? `异常：${异常说明(r)}` : `${r.customerName ?? 领了再看(r)} · ${小字}${能进 ? "" : " · 已分给他人，只看进度"}`}
                           aria-label={`${企业版 ? `${r.customerName ?? 领了再看(r)}，${r.name}` : `${r.name}，${r.customerName ?? 领了再看(r)}`}，${小字}，${金额(r.amount, r.currency)}${r.pooled ? "，在公海" : ""}${r.即将回收 ? `，${回公海文案(r.即将回收).短文字}` : ""}${能进 ? "" : "，已分给他人，只看进度"}`}
-                          onClick={去}
+                          onClick={() => { if (!卡拖?.刚拖过()) 去(); }}
                           onMouseEnter={能进 ? () => 预取.进(项目地址(r)) : undefined}
                           onMouseLeave={能进 ? 预取.出 : undefined}
                           onFocus={能进 ? () => 预取.进(项目地址(r)) : undefined}
                           onBlur={能进 ? 预取.出 : undefined}
                           onKeyDown={(e) => {
+                            if (卡拖?.键(e)) return;
                             if (能进 && (e.key === "Enter" || e.key === " ")) {
                               e.preventDefault();
                               去();
@@ -712,6 +767,7 @@ export default function ProjectsView({
               })}
             </div>
           </div>
+          {拖.附件}
           {/* 看板和列表同一页（服务端分页）：列头的数和金额是全部符合条件的，卡片只摆这一页的，明说，不悄悄截断 */}
           {!每列取数 && 总数 > 行.length && (
             <div className="cust-board-page">
@@ -721,9 +777,11 @@ export default function ProjectsView({
           )}
         </>
       )}
+      </div>
       {/* 新增项目：先选新老客户、建档向导、给老客户开项目（NewProjectFlow.tsx）；新线索页、团队版只用到建档向导那一块 */}
       {新项目.弹框}
-      {可分 && <AssignLeadModal lead={分配中 && { id: 分配中.id, name: 分配中.name, ownerId: 分配中.ownerId, 项目: true }} 关={() => set分配中(null)} 不看配额={项目页分} />}
+      {可分 && <AssignLeadModal lead={分配中 && { id: 分配中.id, name: 分配中.name, ownerId: 分配中.ownerId, 项目: true }} 关={() => set分配中(null)} 不看配额={项目页分}
+        分好了={(名) => { if (分配中) 记果({ [分配中.id]: { ok: true, 接手人: 名 } }); }} />}
     </div>
   );
 }
@@ -784,6 +842,13 @@ function 列底再看({ 名, 已, 总, 取中, 点 }: { 名: string; 已: number
       </Button>
     </div>
   );
+}
+
+/** 分配结果写在行末那一格：分成了「已分给 X ✓」（悬停看为什么分给他），没分写原因（一行放不下省略、悬停看全） */
+function 分配果标({ 果 }: { 果: { ok: true; 接手人: string; 为什么?: string } | { ok: false; error: string } }) {
+  return 果.ok
+    ? <Tag color="success" className="assign-done" title={果.为什么}>已分给 {果.接手人} ✓</Tag>
+    : <span className="assign-fail" title={果.error}>没分：{果.error}</span>;
 }
 
 /** 企业版超时回收：快到回收日的项目标一下（10-27）。标签直接写哪天，不用悬停；文字和项目详情同一套（recycle-text.ts） */
