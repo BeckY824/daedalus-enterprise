@@ -6,13 +6,20 @@ import { Tooltip } from "antd";
 import { 金额 } from "@/lib/currency";
 import { 即将逾期天数 } from "@/lib/project/home-cards";
 import EmptyState from "@/components/EmptyState";
+import CountUp from "@/components/CountUp";
 import CustomerWorldMap from "./CustomerWorldMap";
 import type { 复盘概况, 预警行, 卡点分布, 客户分布 } from "@/lib/project/review-extras";
 
 /** 复盘页「数据 · 现在」多出来的三块（企业版按项目才传，团队版「数据」页不出）。口径见 review-extras.ts */
 export type 复盘概况数 = { 概况: 复盘概况; 预警: 预警行[]; 分布: 卡点分布 };
 
-type 格 = { k: string; 值: string; 注: string; 去?: string; 急?: boolean };
+/** 数 = 这一格背后的那个数：给了就在变化时从旧值滚到新值（PR2 外壳 g.numbers），值 是它的写法、也是服务端那一趟的样子 */
+type 格 = { k: string; 值: string; 数?: number; 写法?: (n: number) => string; 注: string; 去?: string; 急?: boolean };
+
+/** 滚的半路取整（金额半路不出分），到位那一下用原数原写法，和服务端那一趟一字不差 */
+function 滚动写法(终: number, 写法: (n: number) => string = String) {
+  return (n: number) => (n === 终 ? 写法(终) : 写法(Math.round(n)));
+}
 
 /** 最上面那排六格：在跟项目 / 逾期任务 / 未解决卡点 / 已回款 / 待回款 / 3 天内回公海 */
 /** 不算 = 待回款不算哪些结局（按企业版叫法传进来） */
@@ -20,14 +27,14 @@ export function 复盘概况排({ 数, 本位币, 不算 = "商机丢单 / 线�
   const 钱 = (n: number) => 金额(n, 本位币);
   const 外 = 数.外币项目 ? `；另有 ${数.外币项目} 个项目是外币，没算进来` : "";
   const 格们: 格[] = [
-    { k: "在跟项目", 值: String(数.在跟), 注: "进行中、不在公海的", 去: "/projects" },
-    { k: "逾期任务", 值: String(数.逾期任务), 注: "任务 + 跟进计划，过了时间没办", 去: "/overview?tab=todo&f=overdue", 急: 数.逾期任务 > 0 },
-    { k: "未解决卡点", 值: String(数.未解决卡点), 注: "待接受、处理中的", 去: "/overview?tab=block", 急: 数.未解决卡点 > 0 },
-    { k: "已回款", 值: 钱(数.已回款), 注: `项目上记的回款，只合 ${本位币}${外}` },
-    { k: "待回款", 值: 钱(数.待回款), 注: `合同金额减已回款，${本位币} 合同，${不算}的不算${外}` },
+    { k: "在跟项目", 值: String(数.在跟), 数: 数.在跟, 注: "进行中、不在公海的", 去: "/projects" },
+    { k: "逾期任务", 值: String(数.逾期任务), 数: 数.逾期任务, 注: "任务 + 跟进计划，过了时间没办", 去: "/overview?tab=todo&f=overdue", 急: 数.逾期任务 > 0 },
+    { k: "未解决卡点", 值: String(数.未解决卡点), 数: 数.未解决卡点, 注: "待接受、处理中的", 去: "/overview?tab=block", 急: 数.未解决卡点 > 0 },
+    { k: "已回款", 值: 钱(数.已回款), 数: 数.已回款, 写法: 钱, 注: `项目上记的回款，只合 ${本位币}${外}` },
+    { k: "待回款", 值: 钱(数.待回款), 数: 数.待回款, 写法: 钱, 注: `合同金额减已回款，${本位币} 合同，${不算}的不算${外}` },
     数.将回公海 === null
       ? { k: `${即将逾期天数} 天内回公海`, 值: "—", 注: "组织规则里没开超时回收" }
-      : { k: `${即将逾期天数} 天内回公海`, 值: String(数.将回公海), 注: "按节点天数没跟进就收回", 去: "/projects?f=due-soon", 急: 数.将回公海 > 0 },
+      : { k: `${即将逾期天数} 天内回公海`, 值: String(数.将回公海), 数: 数.将回公海, 注: "按节点天数没跟进就收回", 去: "/projects?f=due-soon", 急: 数.将回公海 > 0 },
   ];
   return (
     <section className="rkpi" aria-label="复盘概况">
@@ -35,7 +42,9 @@ export function 复盘概况排({ 数, 本位币, 不算 = "商机丢单 / 线�
         const 里 = (
           <>
             <span className="rkpi-k">{g.k}</span>
-            <b className={`rkpi-v${g.急 ? " rkpi-v-hot" : ""}`}>{g.值}</b>
+            <b className={`rkpi-v${g.急 ? " rkpi-v-hot" : ""}`}>
+              {g.数 === undefined ? g.值 : <CountUp 值={g.数} 记号={`rkpi:${g.k}`} 只滚变化 格式={滚动写法(g.数, g.写法)} />}
+            </b>
           </>
         );
         return (

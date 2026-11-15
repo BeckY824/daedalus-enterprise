@@ -34,11 +34,12 @@ export default function EmptyState({
   demo?: boolean;
 }) {
   return (
-    /* 和 StatePage 同一张脸、同一个进场：空、404、出错在人眼里是一件事 */
-    <Rise className="empty-state">
-      <div className="empty-state-t">{title}</div>
-      <p className="empty-state-h">{hint}</p>
-      <div className="empty-state-a">
+    /* 和 StatePage 同一张脸、同一个进场：空、404、出错在人眼里是一件事。
+       标题、说明、按钮三拍依次进来（原型 g.empty：每拍上浮 6px，间隔一档 --stagger） */
+    <div className="empty-state">
+      <Rise 第几个={0} className="empty-state-t">{title}</Rise>
+      <Rise 第几个={1} className="empty-state-h">{hint}</Rise>
+      <Rise 第几个={2} className="empty-state-a">
         {primary && (
           <Button type="primary" icon={<PlusOutlined />} onClick={primary.onClick}>
             {primary.label}
@@ -50,8 +51,8 @@ export default function EmptyState({
           </Button>
         ))}
         {demo && <DemoDataButton />}
-      </div>
-    </Rise>
+      </Rise>
+    </div>
   );
 }
 
