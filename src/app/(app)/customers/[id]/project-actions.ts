@@ -231,7 +231,6 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     revalidatePath("/projects");
     revalidatePath(`/projects/${projectId}`);
     revalidatePath(`/customers/${customerId}`);
-    revalidatePath("/follow-ups");
     const 分了 = 分配 ? await 建好再分(me, 分配, projectId, 项目.name, 业务线) : null;
     // 自动 / 公海 / 暂不分配 建好再分 自己管（返回对象）；指定别人走这里，自己留着函数里不发
     if (!分了) await 项目分给你通知(me, 项目.ownerId, projectId, 项目.name, customerId, 留下);

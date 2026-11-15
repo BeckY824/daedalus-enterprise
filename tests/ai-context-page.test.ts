@@ -70,7 +70,7 @@ describe("认页面", () => {
    * 漏一页的后果和上面那条一样：不报错，只是那一页永远选错工具。
    */
   it("每一页都指名了该用哪个工具", () => {
-    const 页 = ["/overview", "/leads", "/customers", "/channels", "/contacts", "/follow-ups", "/follow-ups/plans"];
+    const 页 = ["/overview", "/leads", "/customers", "/channels", "/contacts", "/follow-ups/plans"];
     // 工具名后面允许跟一段中文限定（「query_records（表=联系人）」），别把字符类写死成 ASCII
     const 漏了 = 页.filter((p) => !/这一页的数据先用 \*\*[a-z_]+[^*]*\*\* 查/.test(认页面(p, null)?.提示 ?? ""));
     expect(漏了, `这些页面没说该用哪个工具：${漏了.join("、")}`).toEqual([]);
@@ -94,7 +94,7 @@ describe("认页面", () => {
    * （要挡「拿 search_customers 查线索表」），一刀切到每一页就成了这样。
    */
   it("每一页都写明「它答不了的就换工具」，不许堵死", () => {
-    const 页 = ["/overview", "/leads", "/customers", "/channels", "/contacts", "/follow-ups", "/follow-ups/plans"];
+    const 页 = ["/overview", "/leads", "/customers", "/channels", "/contacts", "/follow-ups/plans"];
     const 堵死的 = 页.filter((p) => !/换一个合适的工具/.test(认页面(p, null)?.提示 ?? ""));
     expect(堵死的, `这些页面没给出路：${堵死的.join("、")}`).toEqual([]);
     // 那句被删掉的绝对化措辞不许回来
@@ -108,7 +108,6 @@ describe("认页面", () => {
   it("只给数 / 只给我的 / 必须带关键词的那几页，都写明了换谁", () => {
     const 要补的: [string, string][] = [
       ["/overview", "search_customers"],
-      ["/follow-ups", "query_records"],
       ["/follow-ups/plans", "query_records"],
     ];
     for (const [路, 该换成] of 要补的) {

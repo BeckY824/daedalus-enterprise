@@ -359,6 +359,21 @@ describe("客户放回公海选退回原因（M-公海-09）", () => {
 });
 
 describe("无效客户", () => {
+  it("标无效带原因（P-界面-42）：字典「无效原因」里的才收、「其他」要写；原因记进审计，不覆盖入池原因", async () => {
+    const c = await 客户(乙.id);
+    当(乙);
+    await 放进公海([c], "客户主动终止");
+    当(经理);
+    expect(await 标无效客户([c], "不在字典里的原因")).toMatchObject({ ok: false });
+    expect(await 标无效客户([c], "其他")).toMatchObject({ ok: false });
+    expect(await prisma.customer.findUniqueOrThrow({ where: { id: c } })).toMatchObject({ poolInvalidAt: null });
+    expect(await 标无效客户([c], "联系方式无效")).toEqual({ ok: true, updated: 1, unchanged: 0 });
+    const 审 = await prisma.auditLog.findFirstOrThrow({ where: { action: "pool-invalid", entityId: c } });
+    expect(审.summary).toContain("原因：联系方式无效");
+    expect(JSON.parse(审.detail!)).toEqual({ ids: [c], 原因: "联系方式无效" });
+    expect((await prisma.customerPool.findUniqueOrThrow({ where: { customerId: c } })).reason).toContain("客户主动终止");
+  });
+
   it("业务员标不了、主管能标；标了谁都领不了、分不了；只有老板能恢复；都留审计", async () => {
     const c = await 客户(乙.id);
     当(乙);

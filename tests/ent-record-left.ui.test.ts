@@ -241,6 +241,7 @@ it("负责人本人发起（转让要申请）：框标题照样叫「客户转�
     expect(await 框.getByRole("button", { name: /^发起转让$/ }).isDisabled()).toBe(false);
     // 不再接力第二个框
     expect(await page.locator(".ant-modal-confirm").count()).toBe(0);
+    // 11-15 PR7a 那版「下一步 → 第二个框（TransferDialog）」的检查：详情页已改成一个框（dt.transfer），同样的话在上面一个框里核过；TransferDialog 在客户列表的用例照留
   } finally { await page.close(); }
 });
 it("项目模式联系人（U-客户-03 去掉管理联系人）：卡上只有编辑、没有删除", async () => {

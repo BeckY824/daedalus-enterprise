@@ -61,14 +61,15 @@ it("关开关：先弹后果确认框；点「再想想」不存、开关还开�
     await 框.waitFor();
     expect(await 框.innerText()).toContain("关掉后客户不再自动回收");
     expect(await 框.innerText()).not.toContain("超时回收」开着");
-    await 框.getByRole("button", { name: "再想想" }).click();
+    await 框.getByRole("button", { name: /^取\s?消$/ }).click();
     await 框.waitFor({ state: "detached" });
     expect(await 存了的(page)).toEqual([]);
     expect(await 开关(page).isChecked()).toBe(true);
 
     await 开关(page).click();
     await page.getByRole("dialog").getByRole("button", { name: "确认关掉" }).click();
-    await page.getByText("已关客户回收").waitFor();
+    // 成了框就关、不弹顶部提示（开关跟着服务端的值变）
+    await page.getByRole("dialog").waitFor({ state: "detached" });
     expect(await 存了的(page)).toEqual([{ 三态: { 开: false } }]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
@@ -97,13 +98,13 @@ it("开着时改天数：先数会变几位再弹确认框；点「再想想」�
     expect(字).toContain("约 12 位客户的状态会变，其中约 3 位会到期自动进客户公海");
     // 预览交的就是要存的那份
     expect((await 调用们(page)).filter((c) => c[0] === "预览客户回收").map((c) => (c[1].三态 as { 内贸: { 沉睡: number } }).内贸.沉睡)).toEqual([60]);
-    await 框.getByRole("button", { name: "再想想" }).click();
+    await 框.getByRole("button", { name: /^取\s?消$/ }).click();
     await 框.waitFor({ state: "detached" });
     expect(await 存了的(page)).toEqual([]);
-
     await 保存钮(page).click();
     await page.getByRole("dialog").getByRole("button", { name: "确认修改" }).click();
-    await page.getByText("已保存").waitFor();
+    // 按钮内反馈（PR9）：保存键里亮「已保存」，不弹顶部提示
+    await page.getByRole("button", { name: /已保存/ }).waitFor();
     const [存] = await 存了的(page);
     expect(存).toMatchObject({ 三态: { 内贸: { 沉睡: 60, 待回收: 180, 进公海: 30 }, 外贸: { 沉睡: 90, 待回收: 180, 进公海: 30 } } });
     expect(errors).toEqual([]);
@@ -133,7 +134,7 @@ it("预览被服务端挡（没权限）：直接说那句，不弹确认、不�
   try {
     await 改沉睡(page, 60);
     await 保存钮(page).click();
-    await page.getByText("客户三态规则只有系统管理员能改").waitFor();
+    await page.getByRole("alert").filter({ hasText: "客户三态规则只有系统管理员能改" }).waitFor();
     expect(await page.getByRole("dialog").count()).toBe(0);
     expect(await 存了的(page)).toEqual([]);
   } finally { await page.close(); }
@@ -144,7 +145,8 @@ it("关着时改天数：不重算任何人，一次存完、不弹框、不去�
   try {
     await 改沉睡(page, 60);
     await 保存钮(page).click();
-    await page.getByText("已保存").waitFor();
+    // 按钮内反馈（PR9）：保存键里亮「已保存」，不弹顶部提示
+    await page.getByRole("button", { name: /已保存/ }).waitFor();
     expect(await page.getByRole("dialog").count()).toBe(0);
     expect((await 调用们(page)).map((c) => c[0])).toEqual(["改组织规则"]);
   } finally { await page.close(); }
@@ -169,7 +171,7 @@ it("确认框在 Windows 常见宽度（1024 / 1280 / 1366）不溢出、页面�
       expect(r.右).toBeLessThanOrEqual(w);
       expect(r.超出).toBe(false);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
-      await 框.getByRole("button", { name: "再想想" }).click();
+      await 框.getByRole("button", { name: /^取\s?消$/ }).click();
       await 开关(page).click();
       const 关框 = page.getByRole("dialog", { name: "关掉客户回收？" });
       await 关框.waitFor();

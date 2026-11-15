@@ -15,7 +15,7 @@ vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user, getCurrentUs
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("NOT_FOUND"); }, redirect: () => { throw new Error("REDIRECT"); } }));
 // 页面只跑取数，界面组件换成空壳（它们是客户端组件，不在这里测）
 for (const m of [
-  "@/app/(app)/follow-ups/FollowUpsView", "@/app/(app)/follow-ups/plans/PlansView",
+  "@/app/(app)/follow-ups/plans/PlansView",
   "@/app/(app)/contacts/ContactsView", "@/app/(app)/leads/LeadsView",
   "@/app/(app)/channels/ChannelsView", "@/app/(app)/customers/CustomersView", "@/app/(app)/customers/[id]/RecordView",
 ]) vi.doMock(m, () => ({ default: () => null }));
@@ -76,7 +76,8 @@ async function 外键体检() {
 async function 各页取数(还在的客户?: string) {
   const sp = Promise.resolve({});
   const 页 = {
-    跟进记录: () => import("@/app/(app)/follow-ups/page").then((m) => m.default({ searchParams: sp } as never)),
+    // 跟进记录页（/follow-ups）11-15 删了：同一句取数照跑，带上客户、联系人、项目，悬空引用照样抛
+    跟进记录: () => prisma.followUp.findMany({ take: 300, include: { customer: { select: { id: true, name: true } }, contact: { select: { name: true } }, projectNode: { select: { project: { select: { id: true, name: true } } } } } }),
     跟进计划: () => import("@/app/(app)/follow-ups/plans/page").then((m) => m.default({ searchParams: sp } as never)),
     // 商机列表、商机管道两页 10-28 删了（企业版只用项目）
     联系人: () => import("@/app/(app)/contacts/page").then((m) => m.default({ searchParams: sp } as never)),

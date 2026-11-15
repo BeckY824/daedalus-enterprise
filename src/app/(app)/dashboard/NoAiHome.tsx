@@ -41,7 +41,7 @@ export default function NoAiHome({ 管理员, 找谁 = "管理员", 满额提醒
           <Button type={管理员 ? "default" : "primary"} onClick={() => router.push("/projects")}>
             看项目
           </Button>
-          <Button onClick={() => router.push("/leads/new")}>新线索</Button>
+          <Button onClick={() => router.push("/leads?new=1")}>新线索</Button>
           <Button onClick={() => router.push("/customers")}>客户</Button>
         </div>
       </div>

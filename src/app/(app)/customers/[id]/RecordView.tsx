@@ -53,6 +53,7 @@ import CustomerForm from "../CustomerForm";
 import InlineField from "./InlineField";
 import RegionInlineField from "./RegionInlineField";
 import AiPanel from "./AiPanel";
+import { 打开AI浮窗, 登记智能总结 } from "@/lib/ai-float";
 import LinkedCustomers from "./LinkedCustomers";
 import { FoldSplit, ProjectFold, 模块钮色, type 连体主钮, type 连体色 } from "../../projects/[id]/ProjectFold";
 import { 客户详情左栏, 客户详情待办 } from "../../projects/[id]/card-names";
@@ -396,6 +397,12 @@ export default function RecordView({
   const AI在抽屉里 = 量到 && 正文宽 < AI栏门槛;
   const 单栏 = 量到 && 正文宽 < 单栏门槛;
   const [AI抽屉开着, setAI抽屉开着] = useState(false);
+  /*
+    企业版客户页的「AI」改叫浮窗（dt.ai）后，「生成智能总结」（扣 1 次额度）不能丢：登记给浮窗，
+    浮窗里点「总结这位客户」就开这个原抽屉——同一个 AiPanel、同一次扣减和确认（lib/ai-float.ts）
+  */
+  const 有项目区 = !!项目区;
+  useEffect(() => (有项目区 && aiEnabled ? 登记智能总结(() => setAI抽屉开着(true)) : undefined), [有项目区, aiEnabled]);
 
   const entries = useMemo<Entry[]>(() => {
     const list: Entry[] = [
@@ -1078,7 +1085,8 @@ export default function RecordView({
             每项给不给、灰不灰和原来那几颗按钮同一套判断；一项都没有的那颗不摆 */}
         {去项目跟进 && ((项目区 && aiEnabled) || 项目操作项.length > 0 || 客户操作项.length > 0) && (
           <span className="rec-head-acts">
-            {项目区 && aiEnabled && <Button icon={<AiOutlined />} onClick={() => setAI抽屉开着(true)}>AI</Button>}
+            {/* dt.ai（P-界面-39）：不开抽屉，叫壳上的 AI 浮窗出来，左上带「客户 · 名字」；没有浮窗（没登 AI 等）才照旧开抽屉 */}
+            {项目区 && aiEnabled && <Button icon={<AiOutlined />} onClick={() => { if (!打开AI浮窗()) setAI抽屉开着(true); }}>AI</Button>}
             {项目操作项.length > 0 && (
               <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items: 项目操作项, className: "rec-head-menu" }}>
                 <Button>项目操作 <DownOutlined /></Button>
@@ -1637,7 +1645,7 @@ export default function RecordView({
         customerId={customer.id}
         有WhatsApp={有WhatsApp}
         record={排新计划 ? null : plan}
-        默认天数={排新计划 ? 7 : 2}
+        默认天数={排新计划 ? 7 : 3}
       />
       <ContactForm open={contactOpen} onClose={() => setContactOpen(false)} onSaved={(新加的) => { setContactOpen(false); if (新加的) { set刚加的联系人(新加的); set开着的联系人((s) => new Set(s).add(新加的)); } router.refresh(); }} customerId={customer.id} record={editingContact} 号码种类={企业 ? 号码种类 : undefined} 职务选项={企业 ? 职务选项 : undefined} />
       <ContractForm

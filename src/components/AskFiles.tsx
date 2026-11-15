@@ -21,6 +21,22 @@ export type 附件 = { name: string; text: string; size: number };
 const 单文件上限 = 100 * 1024;
 const 可读后缀 = [".txt", ".md", ".csv", ".tsv", ".json", ".log"];
 
+/**
+ * 把一个文件读成附件、并进已带的那几个里（同名的换掉，不叠加：重选一次多半是因为选错了）。
+ * 回形针选文件和拖进输入框（首页 home.ask）走的是这同一个，后缀、大小的规矩只写一份
+ */
+export async function 读成附件(f: File, files: 附件[]): Promise<{ files: 附件[] } | { 错: string }> {
+  const 后缀 = f.name.slice(f.name.lastIndexOf(".")).toLowerCase();
+  if (!可读后缀.includes(后缀)) return { 错: `只认文本文件（${可读后缀.join(" ")}）。Excel 请另存成 csv 再来` };
+  if (f.size > 单文件上限) return { 错: `文件太大（${Math.round(f.size / 1024)} KB），上限 ${单文件上限 / 1024} KB` };
+  try {
+    const text = await f.text();
+    return { files: [...files.filter((x) => x.name !== f.name), { name: f.name, text, size: f.size }] };
+  } catch {
+    return { 错: "这个文件读不出来" };
+  }
+}
+
 export default function AskFiles({
   files,
   onChange,
@@ -45,23 +61,11 @@ export default function AskFiles({
 
   async function 选好了(list: FileList | null) {
     if (!list?.length) return;
-    const f = list[0];
-    const 后缀 = f.name.slice(f.name.lastIndexOf(".")).toLowerCase();
-    if (!可读后缀.includes(后缀)) {
-      message.error(`只认文本文件（${可读后缀.join(" ")}）。Excel 请另存成 csv 再来`);
-      return;
-    }
-    if (f.size > 单文件上限) {
-      message.error(`文件太大（${Math.round(f.size / 1024)} KB），上限 ${单文件上限 / 1024} KB`);
-      return;
-    }
     set读取中(true);
     try {
-      const text = await f.text();
-      // 同名的换掉，不叠加：重选一次多半是因为选错了
-      onChange([...files.filter((x) => x.name !== f.name), { name: f.name, text, size: f.size }]);
-    } catch {
-      message.error("这个文件读不出来");
+      const r = await 读成附件(list[0], files);
+      if ("错" in r) message.error(r.错);
+      else onChange(r.files);
     } finally {
       set读取中(false);
       if (input.current) input.current.value = "";

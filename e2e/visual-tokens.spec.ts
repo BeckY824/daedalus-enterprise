@@ -48,7 +48,7 @@ test.afterAll(async () => {
   await p.$disconnect();
 });
 
-const 页面 = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/contacts", "/projects", "/follow-ups", "/follow-ups/plans", "/settings"];
+const 页面 = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/contacts", "/projects", "/follow-ups/plans", "/settings"];
 
 /**
  * 页面上每一段「给人读的文字」的字号与颜色。
@@ -171,7 +171,7 @@ test("列表页不套外层白卡", async ({ page }) => {
    */
   await 登录(page);
   const 问题: string[] = [];
-  for (const 路径 of ["/leads", "/customers", "/channels", "/contacts", "/follow-ups"]) {
+  for (const 路径 of ["/leads", "/customers", "/channels", "/contacts"]) {
     await page.goto(路径);
     await page.waitForTimeout(400);
     const 有卡 = await page.evaluate(() => {

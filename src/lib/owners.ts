@@ -1,7 +1,6 @@
 import { cache } from "react";
 import { prisma } from "./prisma";
 import { 可担任负责人 } from "./constants";
-import { 无负责人占位邮箱 } from "./pool";
 import { 权限组织 } from "./enterprise/org";
 import { 能当负责人, 不能当负责人话, 公海分不给话, type 谁 } from "./enterprise/permissions";
 
@@ -78,16 +77,6 @@ export async function 按名字找负责人(名字: string) {
 export async function 唯一负责人(): Promise<string | null> {
   const 候选 = await 负责人候选();
   return 候选.length === 1 ? 候选[0].id : null;
-}
-
-/** 历史记录筛选不是指派：管理员及留有跟进的停用成员都必须可选。 */
-export async function 跟进筛选成员() {
-  return prisma.user.findMany({
-    // 占位账号（导入时没有负责人的沟通挂在它上面）不是成员，不进筛选
-    where: { email: { not: 无负责人占位邮箱 }, OR: [{ active: true }, { followUps: { some: {} } }] },
-    select: { id: true, name: true, email: true },
-    orderBy: [{ name: "asc" }, { id: "asc" }],
-  });
 }
 
 /**

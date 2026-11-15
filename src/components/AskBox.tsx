@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { 登记页内占用 } from "@/lib/roster";
 import { ArrowUpOutlined } from "@ant-design/icons";
 
@@ -32,6 +32,7 @@ export default function AskBox({
   栏左,
   栏右,
   引用,
+  on拖文件,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -58,9 +59,32 @@ export default function AskBox({
   栏左?: React.ReactNode;
   栏右?: React.ReactNode;
   引用?: React.RefObject<HTMLTextAreaElement | null>;
+  /**
+   * 拖文件进框（home.ask）：给了才认拖放——拖进来框亮起、说「松开即带上文件」，松开把第一个文件交给它（和回形针选文件走同一个函数）。
+   * 不给 = 这个入口不收附件，拖进来不亮、浏览器照默认处理
+   */
+  on拖文件?: (f: File) => void;
 }) {
   const 自己的 = useRef<HTMLTextAreaElement>(null);
   const ta = 引用 ?? 自己的;
+  const [拖着, set拖着] = useState(false);
+  /** 拖的是文件（不是选中的一段字）才接 */
+  const 是文件 = (e: React.DragEvent) => !!on拖文件 && Array.from(e.dataTransfer?.types ?? []).includes("Files");
+  const 拖放 = on拖文件
+    ? {
+        onDragEnter: (e: React.DragEvent) => { if (!是文件(e)) return; e.preventDefault(); set拖着(true); },
+        onDragOver: (e: React.DragEvent) => { if (!是文件(e)) return; e.preventDefault(); if (!拖着) set拖着(true); },
+        // 移到框里的子元素上也会发 dragleave：只有真的出了这个框才收
+        onDragLeave: (e: React.DragEvent<HTMLDivElement>) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) set拖着(false); },
+        onDrop: (e: React.DragEvent) => {
+          if (!是文件(e)) return;
+          e.preventDefault();
+          set拖着(false);
+          const f = e.dataTransfer.files?.[0];
+          if (f) on拖文件(f);
+        },
+      }
+    : {};
 
   /**
    * 自适应高度。**跟着 value 走，不是跟着 onChange 走**——
@@ -86,7 +110,8 @@ export default function AskBox({
   return (
     <>
       {上方}
-      <div className={`cli-input${栏左 || 栏右 ? " cli-input-rich" : ""}`}>
+      <div className={`cli-input${栏左 || 栏右 ? " cli-input-rich" : ""}${拖着 ? " is-drop" : ""}`} {...拖放}>
+        {拖着 && <div className="cli-drop-hint" aria-live="polite">松开即带上文件</div>}
         {!(栏左 || 栏右) && <span className="cli-prompt">›</span>}
         <textarea
           ref={ta}

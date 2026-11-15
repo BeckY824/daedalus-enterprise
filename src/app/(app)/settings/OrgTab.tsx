@@ -1,8 +1,11 @@
 "use client";
 
+import { useSettingsNote } from "./InlineNote";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { App, Button, Card, Checkbox, Input, Select, Space, Switch, Tag } from "antd";
+import { Button, Card, Checkbox, Input, Select, Space, Switch, Tag } from "antd";
+import { useConsequence } from "@/components/ConsequenceDialog";
+import InlineConfirm from "@/components/InlineConfirm";
 import { 角色名, 业务角色, 部门最多层数 } from "@/lib/sync/dept-policy";
 import { 部门树, type 组织部门 } from "@/lib/enterprise/org-tree";
 import { 拆角色, 合角色 } from "@/lib/enterprise/org-core";
@@ -78,7 +81,8 @@ const 人列名 = (p: 能改的人) => (p === "总管理员" ? "总管理" : p);
  */
 export default function OrgTab({ value }: { value: 组织架构 }) {
   const router = useRouter();
-  const { message, modal } = App.useApp();
+  // 就地提示（PR9：不弹顶部 message）
+  const [message, 提示条] = useSettingsNote();
   const [新名, set新名] = useState("");
   const [忙了, set忙] = useState(false);
   // 改完到新数据回来之前都算忙：router.refresh 不等它回来就放手，连着拨开关时界面还是旧数据，
@@ -102,6 +106,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
   const 改权限 = 权限草稿 && 权限草稿.基于 === 页面改权限 ? 权限草稿.表 : value.改权限;
   const 改权限改了 = JSON.stringify(改权限) !== 页面改权限;
   const { 能改, 是老板, 字段权限挡 } = value;
+  const [问后果, 后果框] = useConsequence();
   const 树 = 部门树(value.部门);
   const 名 = new Map(value.部门.map((d) => [d.id, d.name]));
   const 部门选项 = 树.map(({ d, 层 }) => ({ value: d.id, label: `${"　".repeat(层 - 1)}${d.name}` }));
@@ -113,13 +118,16 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
     try {
       const r = await f();
       if (!r.ok && r.要确认 && 确认后) {
-        modal.confirm({
-          title: "你将不再是系统管理员",
-          content: r.要确认,
-          okText: "确定改",
-          okButtonProps: { danger: true },
-          cancelText: "先不改",
-          onOk: () => { void 跑(确认后, 成了); },
+        // PR9：设管理员类 = 后果框（P-界面-40）
+        void 问后果({
+          题: "你将不再是系统管理员",
+          后果: [{ 标: "收回", 级: "危", 话: r.要确认 }],
+          是: "确定改",
+          做: async () => {
+            const again = await 确认后();
+            if (again.ok) 开始刷新(() => router.refresh());
+            return again;
+          },
         });
         return false;
       }
@@ -138,54 +146,19 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
     }
   };
 
-  function 建(parentId: string | null) {
-    const 上 = parentId ? 名.get(parentId) : null;
-    let 名字 = "";
-    modal.confirm({
-      title: 上 ? `在「${上}」下面建子部门` : "建一级部门",
-      content: <Input autoFocus maxLength={40} placeholder="部门名字，如：内贸一组" aria-label="部门名字" onChange={(e) => { 名字 = e.target.value; }} />,
-      okText: "建",
-      cancelText: "取消",
-      onOk: async () => {
-        if (!名字.trim()) { message.warning("写个名字"); throw new Error("空"); }
-        if (!(await 跑(() => 建部门(名字, parentId)))) throw new Error("没建成");
-      },
-    });
-  }
-
-  function 改(d: 组织部门) {
-    let 名字 = d.name;
-    let 上级: string | null = d.parentId;
-    // 不能挪到自己或下级底下、不能超过 3 层：服务端会再核一次
-    const 可选 = 树.filter((x) => x.d.id !== d.id && x.层 < 部门最多层数).map(({ d: x, 层 }) => ({ value: x.id, label: `${"　".repeat(层 - 1)}${x.name}` }));
-    modal.confirm({
-      title: `改部门「${d.name}」`,
-      content: (
-        <Space direction="vertical" style={{ width: "100%" }}>
-          <Input defaultValue={d.name} maxLength={40} aria-label="部门名字" onChange={(e) => { 名字 = e.target.value; }} />
-          <Select defaultValue={d.parentId ?? "__顶"} style={{ width: "100%" }} aria-label="上级部门"
-            options={[{ value: "__顶", label: "（一级部门，没有上级）" }, ...可选]} onChange={(v) => { 上级 = v === "__顶" ? null : v; }} />
-        </Space>
-      ),
-      okText: "保存",
-      cancelText: "取消",
-      onOk: async () => {
-        if (!名字.trim()) { message.warning("写个名字"); throw new Error("空"); }
-        if (!(await 跑(() => 改部门(d.id, { name: 名字, parentId: 上级 })))) throw new Error("没改成");
-      },
-    });
-  }
-
-  function 删(d: 组织部门) {
-    modal.confirm({
-      title: `删掉部门「${d.name}」？`,
-      content: "部门下面还有子部门或人时删不了，先把人换到别的部门。客户不跟部门走，跟负责人走。",
-      okText: "删掉",
-      okButtonProps: { danger: true },
-      cancelText: "取消",
-      onOk: async () => { await 跑(() => 删部门(d.id), `删了部门「${d.name}」`); },
-    });
-  }
+  /*
+    部门建 / 改 / 删（PR9，P-界面-40）：原来三个 modal.confirm。建、改能一次做完，改成行下原地编辑（回车或「保存」就存，不再多问）；
+    删一行后果说得完（有子部门或人时删不了，服务端挡），用原地确认
+  */
+  const [编, set编] = useState<{ 建在?: string; 改?: string; 名: string; 上级: string | null } | null>(null);
+  const 存编 = async () => {
+    if (!编 || !编.名.trim()) return;
+    const ok = 编.改
+      ? await 跑(() => 改部门(编.改!, { name: 编.名, parentId: 编.上级 }), `已改部门「${编.名.trim()}」`)
+      : await 跑(() => 建部门(编.名, 编.建在 ?? null), `已建部门「${编.名.trim()}」`);
+    if (ok) set编(null);
+  };
+  const 可挪到 = (d: 组织部门) => 树.filter((x) => x.d.id !== d.id && x.层 < 部门最多层数).map(({ d: x, 层 }) => ({ value: x.id, label: `${"　".repeat(层 - 1)}${x.name}` }));
 
   // 上级下拉的空值传 null 不传 undefined：undefined 会让 antd 当不受控，保存失败时框里还留着刚选的人
   const 设 = (id: string, 改: 成员改动) => void 跑(() => 设成员(id, 改), undefined, () => 设成员(id, 改, true));
@@ -205,11 +178,27 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
     const ok = await 跑(() => 设不设配额(v), v ? "已改成不设配额：人人参与自动分配、不限额" : "已改回按配额分配");
     if (!ok) set拨了不设(null);
   };
+  /**
+   * 组织规则开关（原型 st.switch，P-界面-40「组织规则开关」= 后果框）：影响全员，先说清后果再生效，不确认不动；
+   * 只这一个开关在等，不锁整页（不走 跑 的整页「忙」）
+   */
   const 拨 = async (名: 规则名, v: boolean) => {
     if (忙) return;
-    set拨了((x) => ({ ...x, [名]: { 基于: value.规则开着[名], 开: v } }));
-    const ok = await 跑(() => 设规则(v, 名), v ? `已打开「${规则[名].名}」` : `已关掉「${规则[名].名}」`);
-    if (!ok) set拨了(({ [名]: _, ...别的 }) => 别的);
+    const 成了 = await 问后果({
+      题: `${v ? "打开" : "关掉"}「${规则[名].名}」？`,
+      后果: [
+        { 标: "全员", 级: "警", 话: v ? 规则[名].说明 : `关掉以后不再按「${规则[名].名}」管，所有人回到没开时的样子` },
+        { 标: "能改回", 话: "随时可以再拨回来，已有的客户、项目、记录不会删" },
+      ],
+      是: v ? "确认打开" : "确认关掉",
+      危: !v,
+      做: async () => {
+        const r = await 设规则(v, 名);
+        if (r.ok) set拨了((x) => ({ ...x, [名]: { 基于: value.规则开着[名], 开: v } }));
+        return r;
+      },
+    });
+    if (成了) 开始刷新(() => router.refresh());
   };
   const 勾 = (项: 设置项名, 人: 能改的人, v: boolean) => {
     const 现在 = 谁能改(改权限, 项);
@@ -242,6 +231,8 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
     <div style={{ display: "grid", gap: 16, gridTemplateColumns: "minmax(0, 1fr)" }}>
       {/* 组织规则单独一块放这一屏最上面（11-01 会议 §5「组织规则放设置首屏」）；通讯录同步挪到它下面、说明收起来（OrgSyncCard）。
           10-27 把通讯录同步提到最上面是因为它夹在权限表下面找不到，现在仍在权限表之前 */}
+      {后果框}
+      {提示条}
       <Card title="组织规则" extra={只看} data-testid="org-rules">
         <p className="muted">每条规则单独开关，除了「{规则.市场复核.名}」都默认关着：关着时按原来的方式看客户。先把下面的部门和上级填好再打开。</p>
         <div style={{ display: "grid", gap: 12 }}>
@@ -372,10 +363,25 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
               {断 && <Tag color="warning">上级断了</Tag>}
               {能改 && (
                 <span className="team-dept-acts">
-                  {n < 部门最多层数 && !断 && <Button size="small" type="link" onClick={() => 建(d.id)}>加子部门</Button>}
-                  <Button size="small" type="link" onClick={() => 改(d)}>改</Button>
-                  <Button size="small" type="link" danger onClick={() => 删(d)}>删</Button>
+                  {n < 部门最多层数 && !断 && <Button size="small" type="link" onClick={() => set编({ 建在: d.id, 名: "", 上级: d.id })}>加子部门</Button>}
+                  <Button size="small" type="link" onClick={() => set编({ 改: d.id, 名: d.name, 上级: d.parentId })}>改</Button>
+                  <InlineConfirm 问="有子部门或人时删不了" 是="删" 做={() => 跑(() => 删部门(d.id), `删了部门「${d.name}」`).then((ok) => ({ ok }))}>
+                    <Button size="small" type="link" danger>删</Button>
+                  </InlineConfirm>
                 </span>
+              )}
+              {编 && (编.改 === d.id || 编.建在 === d.id) && (
+                <div className="team-dept-edit" role="group" aria-label={编.改 ? `改部门「${d.name}」` : `在「${d.name}」下面建子部门`}>
+                  <Input autoFocus size="small" maxLength={40} aria-label="部门名字" placeholder="部门名字，如：内贸一组" value={编.名}
+                    onChange={(e) => set编({ ...编, 名: e.target.value })} onPressEnter={() => void 存编()}
+                    onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); set编(null); } }} />
+                  {编.改 && (
+                    <Select size="small" className="team-dept-parent" aria-label="上级部门" value={编.上级 ?? "__顶"}
+                      options={[{ value: "__顶", label: "（一级部门，没有上级）" }, ...可挪到(d)]} onChange={(v: string) => set编({ ...编, 上级: v === "__顶" ? null : v })} />
+                  )}
+                  <Button size="small" type="primary" disabled={!编.名.trim() || 忙} loading={忙} onClick={() => void 存编()}>{编.改 ? "保存" : "建"}</Button>
+                  <Button size="small" onClick={() => set编(null)}>取消</Button>
+                </div>
               )}
             </div>
           ))}

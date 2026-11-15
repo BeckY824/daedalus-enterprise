@@ -1,5 +1,6 @@
 "use client";
 
+import { flushSync } from "react-dom";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useLocalPref } from "@/lib/local-pref";
 import { 外观键, 底色表, 主题表, 明暗表, 默认外观, 读外观, 挂外观, 网页玻璃键, 是桌面端, 挂网页玻璃, type 外观 } from "@/lib/appearance";
@@ -23,8 +24,17 @@ export default function AppearanceTab() {
    * 点亮着的那一项值没变、effect 不重跑，点了像没反应、换不回去
    */
   const 选 = (a: 外观) => {
-    存(a);
-    挂外观(a);
+    /*
+      换主题、底色时整屏交叉淡化 0.2 秒（原型 st.theme）：浏览器有 View Transitions 就让新旧两屏淡过去（时长在 settings.css
+      ::view-transition-*(root)，用 --t 令牌）；没有、或开了减弱动态，照旧直接换
+    */
+    const 换 = () => {
+      存(a);
+      挂外观(a);
+    };
+    const 文档 = document as Document & { startViewTransition?: (f: () => void) => unknown };
+    if (文档.startViewTransition && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) 文档.startViewTransition(() => flushSync(换));
+    else 换();
   };
 
   return (

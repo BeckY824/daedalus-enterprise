@@ -1,5 +1,6 @@
 "use client";
 
+import { useSettingsNote } from "./InlineNote";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Table, Button, Space, Tag, Modal, Form, Input, Select, Switch, Row as 行, Col, App, Alert, Typography, Grid, Popover, Tooltip } from "antd";
@@ -14,6 +15,8 @@ import { saveUser, deactivateUser, reactivateUser, 停用清点, 批量停用, �
 import { 设不管设置, 设系统管理员 } from "./org-actions";
 import { 按阶段说, 三阶段 } from "@/lib/project/member-count";
 import { 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
+import { useConsequence } from "@/components/ConsequenceDialog";
+import InlineConfirm from "@/components/InlineConfirm";
 
 /** 设置 · 团队成员：谁能进、谁是管理员。新增、编辑、停用（停用要先把名下的客户转交出去） */
 
@@ -71,7 +74,10 @@ export default function MembersTab({
   下属可停用?: string[];
 }) {
   const router = useRouter();
-  const { message, modal } = App.useApp();
+  const { modal } = App.useApp();
+  // 就地提示（PR9：不弹顶部 message）
+  const [message, 提示条] = useSettingsNote();
+  const [问后果, 后果框] = useConsequence();
   const b = useBusiness();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
@@ -85,6 +91,35 @@ export default function MembersTab({
   /** 拨「系统管理员」：只有能管设置的系统管理员（服务端 org-actions 设系统管理员 再拦、不能关掉最后一位） */
   const on系统管理员 = async (r: Row, on: boolean, 确认 = false) => {
     if (改不管设置中) return;
+    // 设 / 撤系统管理员（原型 st.member，P-界面-40「设管理员」= 后果框）：原来小旗点一下立即提交，只有关自己的才问
+    if (!确认) {
+      const 是我 = r.id === me.id;
+      const 成了 = await 问后果({
+        题: on ? `把「${r.name}」设为系统管理员` : 是我 ? "你将不再是系统管理员" : `「${r.name}」不再是系统管理员`,
+        后果: on
+          ? [
+              { 标: "全部权限", 级: "警", 话: "看和改全部客户、项目；后台设置、成员管理、导入导出、切换视角、回收站彻底删除" },
+              { 标: "同时", 话: "还是本业务线的条线总管理" },
+              { 标: "能改回", 话: "随时可以再撤掉" },
+            ]
+          : [
+              { 标: "收回", 级: "警", 话: `${是我 ? "你" : r.name}只管本业务线，进不了后台设置` },
+              ...(是我 ? [{ 标: "自己", 级: "危" as const, 话: "撤掉自己以后要别的系统管理员才能给你加回来" }] : []),
+            ],
+        是: on ? "设为系统管理员" : "撤掉",
+        危: !on,
+        做: async () => {
+          const res = await 设系统管理员(r.id, on, true);
+          if (res.ok) {
+            if (res.提示) message.warning(res.提示);
+            router.refresh();
+          }
+          return res;
+        },
+      });
+      void 成了;
+      return;
+    }
     set改不管设置中(r.id);
     try {
       const res = await 设系统管理员(r.id, on, 确认);
@@ -218,23 +253,28 @@ export default function MembersTab({
       return;
     }
     const 合 = 各.reduce((和, x) => (x && x.ok ? { 客户: 和.客户 + x.原地.客户, 项目: 和.项目 + x.原地.项目 } : 和), { 客户: 0, 项目: 0 });
-    modal.confirm({
-      title: `停用 ${们.length} 位成员`,
-      width: 480,
-      content: <OffboardNote names={们.map((id) => users.find((u) => u.id === id)?.name ?? "")} 点={合} />,
-      okText: "确认停用",
-      okButtonProps: { danger: true },
-      cancelText: "取消",
-      async onOk() {
+    // PR9：停用成员 = 后果框（P-界面-40），清点结果放补充里；没成的原因写在框里
+    void 问后果({
+      题: `停用 ${们.length} 位成员`,
+      宽: 480,
+      后果: [
+        { 标: "登不上", 级: "危", 话: "停用后这几位登不上，也不再出现在负责人、分配下拉里" },
+        { 标: "名下不动", 级: "警", 话: "名下的客户、项目原地不动，到「项目 → 离职交接」里交给接手人" },
+        { 标: "能恢复", 话: "在成员列表里点恢复可以再启用" },
+      ],
+      补充: <OffboardNote names={们.map((id) => users.find((u) => u.id === id)?.name ?? "")} 点={合} />,
+      是: "确认停用",
+      做: async () => {
         const res = await 批量停用(们, "").catch(() => null);
-        if (!res) { message.error("停用没成功，刷新再试"); return; }
-        if (!res.ok) { message.error(res.error); return; }
+        if (!res) return { ok: false, error: "停用没成功，刷新再试" };
+        if (!res.ok) return res;
         if (res.失败.length) {
           const 名 = (id: string) => users.find((u) => u.id === id)?.name ?? id;
           message.warning(`停用了 ${res.停了} 位；${res.失败.map((f) => `「${名(f.id)}」${f.error}`).join("；")}`);
         } else message.success(`已停用 ${res.停了} 位成员，名下的到「项目 → 离职交接」里交给接手人`);
         set勾了([]);
         router.refresh();
+        return { ok: true };
       },
     });
   }
@@ -249,19 +289,23 @@ export default function MembersTab({
         message.error(清 && "error" in 清 ? 清.error : "清点没成功，刷新再试");
         return;
       }
-      modal.confirm({
-        title: `停用成员「${r.name}」`,
-        width: 480,
-        content: <OffboardNote names={[r.name]} 点={清.原地} />,
-        okText: "确认停用",
-        okButtonProps: { danger: true },
-        cancelText: "取消",
-        async onOk() {
+      void 问后果({
+        题: `停用成员「${r.name}」`,
+        宽: 480,
+        后果: [
+          { 标: "登不上", 级: "危", 话: `停用后「${r.name}」登不上，也不再出现在负责人、分配下拉里` },
+          { 标: "名下不动", 级: "警", 话: "名下的客户、项目原地不动，到「项目 → 离职交接」里交给接手人" },
+          { 标: "能恢复", 话: "在成员列表里点恢复可以再启用" },
+        ],
+        补充: <OffboardNote names={[r.name]} 点={清.原地} />,
+        是: "确认停用",
+        做: async () => {
           const res = await deactivateUser(r.id, "");
           if (res.ok) {
-            message.success("已停用，名下的到「项目 → 离职交接」里交给接手人");
+            message.success(`已停用「${r.name}」，名下的到「项目 → 离职交接」里交给接手人`);
             router.refresh();
-          } else message.error(res.error);
+          }
+          return res;
         },
       });
       return;
@@ -492,6 +536,8 @@ export default function MembersTab({
 
   return (
     <>
+      {后果框}
+      {提示条}
       {!isAdmin && (
         <Alert
           type="info"
@@ -636,26 +682,26 @@ export default function MembersTab({
           {editing?.飞书已绑 && 刚解绑 !== editing.id && (
             <div className="member-feishu">
               <Typography.Text type="secondary">已绑定飞书：他用飞书登录会直接进这个账号。换了飞书号或绑错了人，解绑后下次按姓名重新认。</Typography.Text>
-              <Button
-                size="small"
-                loading={解绑中}
-                onClick={async () => {
+              {/* 解绑飞书（原型 st.member）：原来直接执行；改成原地确认，一行写明后果 */}
+              <InlineConfirm
+                问="解绑后他下次用飞书登录按姓名重新认"
+                是="解绑"
+                中性
+                做={async () => {
                   set解绑中(true);
                   try {
                     const r = await 解绑飞书身份(editing.id);
-                    if (!r.ok) { message.error(r.error); return; }
-                    message.success("已解绑飞书");
+                    if (!r.ok) { message.error(r.error); return r; }
                     set刚解绑(editing.id);
                     router.refresh();
-                  } catch {
-                    message.error("解绑失败，请稍后重试");
+                    return r;
                   } finally {
                     set解绑中(false);
                   }
                 }}
               >
-                解绑飞书
-              </Button>
+                <Button size="small" loading={解绑中}>解绑飞书</Button>
+              </InlineConfirm>
             </div>
           )}
         </Form>

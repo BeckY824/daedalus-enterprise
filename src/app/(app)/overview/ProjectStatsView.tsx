@@ -8,6 +8,7 @@ import type { EChartsCoreOption } from "echarts/core";
 import Chart from "@/components/Chart";
 import { StatCard } from "@/components/ui";
 import EmptyState, { 表格空态 } from "@/components/EmptyState";
+import FlipRows from "@/components/FlipRows";
 import { palette, categorical } from "@/lib/palette";
 import { 金额 } from "@/lib/currency";
 import type { 项目现在, 项目一段, 人行现在, 人行一段 } from "./project-stats";
@@ -161,6 +162,7 @@ export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口�
         {!单人 && (
           <Col xs={24} xxl={12}>
             <Card title={<span className="section-title">按负责人</span>} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>进行中的，公海里的不算</Typography.Text>} styles={{ body: { paddingTop: 8 } }}>
+              <FlipRows>
               <Table<人行现在>
                 size="small"
                 rowKey="id"
@@ -172,6 +174,7 @@ export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口�
                 scroll={{ x: 616 }}
                 locale={表格空态({ title: "还没有人手上有项目", hint: "分了线索、建了项目之后这里按人拆。", demo: false })}
               />
+              </FlipRows>
             </Card>
           </Col>
         )}
@@ -259,6 +262,7 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人, 出口叫法
 
       {!单人 && (
         <Card style={{ marginTop: 16 }} title={<span className="section-title">按负责人</span>} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>按项目现在的负责人算</Typography.Text>} styles={{ body: { paddingTop: 8 } }}>
+          <FlipRows>
           <Table<人行一段>
             size="small"
             rowKey="id"
@@ -269,6 +273,7 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人, 出口叫法
             scroll={{ x: 640 }}
             locale={表格空态({ title: "这一段还没有人动过项目", hint: "换一个时间段看看。", demo: false })}
           />
+          </FlipRows>
         </Card>
       )}
 

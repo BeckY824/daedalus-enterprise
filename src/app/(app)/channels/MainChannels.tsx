@@ -103,6 +103,8 @@ export default function MainChannels({ 主渠道们, 子渠道数, users = [], �
   const [kw, setKw] = useState("");
   const [编辑, set编辑] = useState<主渠道编辑中 | null>(null);
   const [忙, set忙] = useState<string | null>(null);
+  /** 刚存好的那个开关：「主渠道id:键:时刻」，那一格闪一下（ch.main） */
+  const [刚存, set刚存] = useState<string | null>(null);
   const 行 = useMemo(() => {
     const k = kw.trim().toLowerCase();
     return k ? 主渠道们.filter((m) => m.name.toLowerCase().includes(k)) : 主渠道们;
@@ -115,6 +117,8 @@ export default function MainChannels({ 主渠道们, 子渠道数, users = [], �
     try {
       const res = await saveMainChannel({ id: m.id, name: m.name, allowSub: m.allowSub, selfDev: m.selfDev, category: m.category, ...改 });
       if (!res.ok) return void message.error(res.error);
+      // ch.main：存好在原处闪一下（键带上是哪个开关，换一次重挂一次，动画才会再放）
+      set刚存(`${m.id}:${Object.keys(改).join()}:${Date.now()}`);
       router.refresh();
     } finally {
       set忙(null);
@@ -174,11 +178,11 @@ export default function MainChannels({ 主渠道们, 子渠道数, users = [], �
           {
             title: <Tooltip title="关掉 = 单一入口，新建、改渠道时子渠道留空；已有的子渠道名不会被拆掉"><span className="nowrap">可设子渠道</span></Tooltip>,
             key: "allowSub", width: 104, align: "center",
-            render: (_, m) => <Switch size="small" aria-label={`${m.name} 可设子渠道`} checked={m.allowSub} loading={忙 === m.id} disabled={Boolean(忙)} onChange={(v) => 存开关(m, { allowSub: v })} />,
+            render: (_, m) => { const 闪 = 刚存?.startsWith(`${m.id}:allowSub:`); return <span key={闪 ? 刚存 : "s"} className={闪 ? "chan-main-saved" : undefined}><Switch size="small" aria-label={`${m.name} 可设子渠道`} checked={m.allowSub} loading={忙 === m.id} disabled={Boolean(忙)} onChange={(v) => 存开关(m, { allowSub: v })} /></span>; },
           },
           {
             title: <span className="nowrap">支持自拓</span>, key: "selfDev", width: 92, align: "center",
-            render: (_, m) => <Switch size="small" aria-label={`${m.name} 支持自拓`} checked={m.selfDev} loading={忙 === m.id} disabled={Boolean(忙)} onChange={(v) => 存开关(m, { selfDev: v })} />,
+            render: (_, m) => { const 闪 = 刚存?.startsWith(`${m.id}:selfDev:`); return <span key={闪 ? 刚存 : "s"} className={闪 ? "chan-main-saved" : undefined}><Switch size="small" aria-label={`${m.name} 支持自拓`} checked={m.selfDev} loading={忙 === m.id} disabled={Boolean(忙)} onChange={(v) => 存开关(m, { selfDev: v })} /></span>; },
           },
           // 负责人、渠道属性（迁移 118）：只显示，在「编辑」里改；人已停用的名字照给
           { title: <span className="nowrap">负责人</span>, key: "owner", width: 104, render: (_, m) => 省略格(m.ownerId ? m.ownerName ?? "（已不在的成员）" : null) },

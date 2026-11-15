@@ -25,8 +25,9 @@ test("J-177 AI组合保存故障整体回滚，原表单重试后所有项一并
     const address = gateway.address();
     if (!address || typeof address === "string") throw new Error("QA gateway address missing");
     await 配好AI(page, `http://127.0.0.1:${address.port}/v1`);
-    // 企业版客户页的「跟进」去项目里记；带着这位到沟通记录页，页头「记一条沟通」是同一个框
-    await page.goto(企业版 ? `/follow-ups?customer=${customerId}` : `/customers/${customerId}`);
+    // 企业版原来带着这位到沟通记录页记；那页 11-15 删了，企业版记沟通在客户档案里、要先有项目（e2e-ent/record-followup.spec.ts 里验）
+    test.skip(企业版, "沟通记录页 11-15 删了：企业版记沟通在客户档案里（先有项目），e2e-ent/record-followup.spec.ts 里验");
+    await page.goto(`/customers/${customerId}`);
     // 页头按钮带加号图标，无障碍名是「plus 记一条沟通」
     await page.getByRole("button", { name: /^(plus )?记一条沟通$/ }).click();
     const dialog = page.getByRole("dialog", { name: "记一条沟通" });

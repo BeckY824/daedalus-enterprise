@@ -4,7 +4,7 @@ import { useBusinessTimeZone } from "@/lib/business-client";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Segmented, Space, Button, App, Tag } from "antd";
-import { PlusOutlined, UnorderedListOutlined, CheckCircleOutlined, EditOutlined, DeleteOutlined, ProjectOutlined } from "@ant-design/icons";
+import { PlusOutlined, CheckCircleOutlined, EditOutlined, DeleteOutlined, ProjectOutlined } from "@ant-design/icons";
 import { PageHead, UserCell } from "@/components/ui";
 import EmptyState from "@/components/EmptyState";
 import { fmtDateTime } from "@/lib/utils";
@@ -374,16 +374,13 @@ export default function PlansView({
 
   return (
     <>
-      {/* 计划和记录是同一件事的两头，「记录」是页头上的次动作，不再占一列中栏。
+      {/* 「沟通记录」主页 11-15 删了（沟通在客户档案里看）：页头只剩「新建计划」。
           「新建计划」就地弹框、第一格挑人；「上次谈到哪儿」跟着挑中的人进框里 */}
       <PageHead
         title="跟进计划"
         subtitle={`逾期、今天、本周要联系的人 · ${timeZone ? "北京时间（UTC+8）" : "本机时区"}`}
         extra={
           <Space>
-            <Button icon={<UnorderedListOutlined />} onClick={() => router.push("/follow-ups")}>
-              记录
-            </Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => set新建开着(true)}>
               新建计划
             </Button>

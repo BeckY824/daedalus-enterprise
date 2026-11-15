@@ -134,12 +134,13 @@ it("客户列表批量条：勾的里有放得了的就摆，不撑出页面、�
       expect(await 不撑出(page), `宽 ${w}`).toBe(true);
       expect(await 点得到(page, ".list-sel button", /退回公海/), `宽 ${w}`).toBe(true);
       await 批量放回(page).click();
-      // 批量的确认框也叫「退回公海」（11-12 D3）
-      expect(await page.locator(".ant-modal-confirm-title").innerText()).toMatch(/^把 \d+ 位退回公海？$/);
-      await page.locator(".ant-modal-confirm").getByRole("button", { name: "退回公海" }).click();
+      // 批量的确认框也叫「退回公海」（11-12 D3）；11-15 换成后果框：标题不带问号，后果分条
+      const 框 = page.getByRole("dialog");
+      await expect.poll(() => 框.innerText()).toMatch(/把 \d+ 位退回公海/);
+      await 框.getByRole("button", { name: "退回公海" }).click();
       await expect.poll(() => page.evaluate(() => (window as unknown as { __放?: string[] }).__放 ?? null)).toEqual(["c1", "c2", "c3"]);
-      // 放不了的服务端跳过，提示里说几位没放
-      await expect.poll(() => page.locator(".ant-message").innerText()).toMatch(/2 位你放不了，没放/);
+      // 放不了的服务端跳过，底部撤销条里说几位没放（不再弹顶部提示）
+      await expect.poll(() => page.locator(".undo-bar").innerText()).toMatch(/2 位你放不了，没放/);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }

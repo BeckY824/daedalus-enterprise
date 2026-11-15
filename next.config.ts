@@ -106,6 +106,12 @@ const nextConfig: NextConfig = {
       { source: "/start", destination: "/dashboard", permanent: false },
       { source: "/customers/recent", destination: "/customers", permanent: false },
       { source: "/follow-ups/watchlist", destination: "/dashboard", permanent: false },
+      /*
+        新建整页（PR11b）：新建都改成了弹窗（ProjectWizard 单表），老链接落到列表页、带 new=1 进来就弹向导框
+        （projects/ProjectsView.tsx 读到 new=1 开框、开了从地址上抹掉）。/follow-ups 沟通记录主页的跳转看 proxy.ts（按带不带客户分去处）
+      */
+      { source: "/leads/new", destination: "/leads?new=1", permanent: false },
+      { source: "/projects/new", destination: "/projects?new=1", permanent: false },
     ];
   },
 
