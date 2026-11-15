@@ -326,7 +326,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
       // 撤成了：那几行滑回原位、淡亮一下（撤销条自己写「已撤销」，不另弹提示）
       撤销: async () => {
         const x = await r.撤销();
-        if (x.ok) {
+        if (!x || x.ok) {
           set走的({});
           set回来的(r.到行);
           if (回来计时.current) clearTimeout(回来计时.current);
