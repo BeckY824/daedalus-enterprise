@@ -4862,3 +4862,26 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 /* 看板拖动弹回原因小卡（board-drag.tsx）：右上角收起键，6 秒也自己收 */
 .board-gate-x { float: right; margin: calc(-1 * var(--s1)) calc(-1 * var(--s1)) 0 var(--s2); padding: 0 var(--s1); border: 0; background: none; color: var(--text-muted); cursor: pointer; font-size: var(--fs-note); line-height: 1.6; border-radius: var(--r-ctl); }
 .board-gate-x:hover { color: var(--text); }
+/* ===== 公海补齐（11-15 fill-c，原型 pool.claim / pool.bin / pool.undo / pool.attr / pool.assign） ===== */
+/* 操作格：按钮在上，灰着的原因在下；原因折行写完（回收站「标了无效，要系统管理员先恢复」不被表格右边裁掉） */
+.pool-op { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; max-width: 100%; }
+.pool-op-why { display: block; max-width: 100%; font-size: var(--fs-min); line-height: 18px; white-space: normal; overflow-wrap: anywhere; }
+/* 名字下的后果 / 没领到原因：高度由 motion 从 0 长出来，收回也收（行高不跳一下） */
+.pool-why-box { overflow: hidden; white-space: normal; }
+.pool-done { margin-inline-end: 0; }
+/* 领到 / 分出去的行：「已领取 ✓」停一下再滑出；撤销回来的行滑回原位（只动格子里的内容，行上加 transform 会把固定列带歪） */
+.pool-row-leave > td > *, .pool-sub-leave { animation: pool-row-out var(--t) var(--ease) var(--t-seal) both; pointer-events: none; }
+.pool-row-back > td > *, .pool-sub-back { animation: pool-row-in var(--t) var(--ease) both; }
+@keyframes pool-row-out { to { opacity: 0; transform: translateX(16px); } }
+@keyframes pool-row-in { from { opacity: 0; transform: translateX(16px); } }
+@media (prefers-reduced-motion: reduce) {
+  .pool-row-leave > td > *, .pool-sub-leave, .pool-row-back > td > *, .pool-sub-back { transform: none; }
+  @keyframes pool-row-out { to { opacity: 0; } }
+  @keyframes pool-row-in { from { opacity: 0; } }
+}
+/* 换池时表格先换成骨架 */
+.pool-skel { padding: var(--s3) var(--s2); }
+/* 选人框：选中的那位主色描出来、带勾，打开就滚到看得见 */
+.pool-pick-p[aria-selected="true"] { background: var(--brand-bg); box-shadow: inset 0 0 0 1px var(--brand-line); }
+.pool-pick-ok { flex: none; color: var(--brand); }
+.pool-pick-p > .pool-pick-n { flex: 1 1 auto; }

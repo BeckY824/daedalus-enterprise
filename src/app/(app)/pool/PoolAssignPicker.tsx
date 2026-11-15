@@ -7,9 +7,9 @@
  *   单个：点人 = 直接分（一步完成，底部撤销条可撤）。批量：点人只是选中，按「下一步」再进后果框（P-界面-40 批量分配走后果框）。
  * 分的过程中键里转圈、不收第二下；没分成原因写在框里，不弹顶部提示。
  */
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Input, Modal } from "antd";
-import { SearchOutlined } from "@ant-design/icons";
+import { CheckOutlined, SearchOutlined } from "@ant-design/icons";
 import { 跑出原因, type 做的结果 } from "@/lib/confirm-result";
 
 const 最近键 = "pool-assign-recent";
@@ -95,6 +95,20 @@ export default function PoolAssignPicker({
   const 能选 = useMemo(() => 剩.filter((p) => !满了(p)), [剩]);
   const 名 = (id: string | null) => 人们.find((p) => p.value === id)?.label ?? "";
   const 选中 = 当前 && 能选.some((p) => p.value === 当前) ? 当前 : (能选[0]?.value ?? null);
+
+  // 打开时默认选中的那位（上次分给的 / 第一个能接的）滚到看得见：人多时他可能在名单下面，主键写着「分给 X」却看不到 X（原型 pool.assign）
+  const 选中钉 = useRef(选中);
+  useEffect(() => {
+    选中钉.current = 选中;
+  });
+  useEffect(() => {
+    if (!open) return;
+    const 帧 = requestAnimationFrame(() => {
+      const id = 选中钉.current;
+      if (id) 列表.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest" });
+    });
+    return () => cancelAnimationFrame(帧);
+  }, [open]);
 
   async function 交(id: string | null) {
     if (!id || 忙) return;
@@ -192,6 +206,7 @@ export default function PoolAssignPicker({
                   {p.上限 != null && p.持有 != null && (
                     <span className="pool-pick-cap">{满 ? "满了 · " : ""}{p.持有} / {p.上限}</span>
                   )}
+                  {p.value === 选中 && <CheckOutlined className="pool-pick-ok" aria-hidden />}
                 </div>
               );
             })}
