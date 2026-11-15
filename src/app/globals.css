@@ -4099,7 +4099,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 /* 数字框右边那对上下箭头 antd 自带白底，铺了灰底的框里会露出一块白 */
 :root:is(:not([data-skin]), [data-skin="now"]) .ant-input-number-outlined .ant-input-number-actions { background: transparent; }
 /* 大数字收字距：antd 的统计数值是通用组件，接 --num-track */
-.ant-statistic-content { letter-spacing: var(--num-track); }
+.ant-statistic-content, .home-card-v, .rkpi-v, .signal-v b, .chan-dash-kv { letter-spacing: var(--num-track); }
 
 /* ---------- 标签：默认灰底深字 12/500 胶囊；只有三种带色——要人处理（橙）、出问题 / 无效（红）、完成 / 赢单（绿）。
    字和判定不动，只按 antd 现成的颜色类归档：green/success → 绿，red/volcano/error → 红，orange/warning → 橙，其余（蓝紫青金……）→ 灰。
