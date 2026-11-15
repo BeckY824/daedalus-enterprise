@@ -30,17 +30,19 @@ declare global {
  */
 export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = false, 说明, on个数, 分类, 紧凑 = false, on变了 }: { 归属: 归属; 只读?: boolean; 说明?: string; on个数?: (n: number) => void; 分类?: string | null; 紧凑?: boolean; on变了?: () => void }) {
   /**
-   * 就地提示（g.save）：读不出来、传不上、删不掉、打不开的原因写在这一块顶上，不弹顶部提示；几秒后自己收。
-   * 错 = 红字（role=alert）；常 = 灰字（比如「必填齐了，自动推进到…」）
+   * 就地反馈（dt.upload / g.save，不弹顶部提示）：在传的每个文件一行（进度环 → ✓ / 没传上的原因），
+   * 读没成、删没成、打不开、自动推进了写在块里一行；几秒后自己收。错 = 红字（role=alert）；常 = 灰字（role=status）
    */
-  const [提示, set提示] = useState<{ 话: string; 错: boolean } | null>(null);
-  const 提示计时 = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [在传们, set在传们] = useState<{ key: number; 名: string; 态: "传" | "成" | "错"; 错?: string }[]>([]);
+  const 传号 = useRef(0);
+  const [块话, set块话] = useState<{ 话: string; 错?: boolean } | null>(null);
+  const 块话计时 = useRef<ReturnType<typeof setTimeout> | null>(null);
   const 说 = useCallback((话: string, 错 = true) => {
-    if (提示计时.current) clearTimeout(提示计时.current);
-    set提示({ 话, 错 });
-    提示计时.current = setTimeout(() => set提示(null), 错 ? 6000 : 4000);
+    if (块话计时.current) clearTimeout(块话计时.current);
+    set块话({ 话, 错 });
+    块话计时.current = setTimeout(() => set块话(null), 错 ? 6000 : 4000);
   }, []);
-  useEffect(() => () => { if (提示计时.current) clearTimeout(提示计时.current); }, []);
+  useEffect(() => () => { if (块话计时.current) clearTimeout(块话计时.current); }, []);
   // 切换视图（只读预览）：看得到列表和图，不能传、删、下载（服务端同样拒）
   const 视图中 = useViewAs();
   const 只读 = 只读参 || 视图中;
@@ -95,9 +97,16 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = f
   async function 传一个(f: File) {
     这批.current.在传++;
     set传着((n) => n + 1);
+    const key = ++传号.current;
+    set在传们((x) => [...x, { key, 名: f.name, 态: "传" }]);
+    const 改行 = (改: { 态: "成" | "错"; 错?: string }) => set在传们((x) => x.map((y) => (y.key === key ? { ...y, ...改 } : y)));
+    // ✓ 停一会儿再收；没传上的那行留着（点 × 收），原因写在行上
+    const 收 = () => set在传们((x) => x.filter((y) => y.key !== key));
     try {
-      const r = await 传附件(挂在, f, 分类);
-      if (!r.ok) return void 说(r.error);
+      const r = await 传附件(挂在, f, 分类).catch(() => ({ ok: false as const, error: "没传上，请检查网络后再试" }));
+      if (!r.ok) return void 改行({ 态: "错", 错: r.error });
+      改行({ 态: "成" });
+      setTimeout(收, 1500);
       这批.current.传成++;
       // 传上去的先摆上（列表还没读回来时 x 是 null，等这批传完读一遍），这批传完再读一遍对齐
       const 新 = r.附件;
@@ -117,24 +126,20 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = f
     }
   }
 
-  /** 删附件：就地确认一次（P-界面-40「删附件」原地确认）；没删掉回原因，问句留着、原因写在块顶上 */
-  async function 删(a: 附件): Promise<{ ok: true } | { ok: false; error: string }> {
-    let 因: string;
+  /** 删：就地问过（InlineConfirm），没删掉问句留着、原因写在块里；删掉了这一项消失 */
+  async function 删(a: 附件): Promise<{ ok: boolean; error?: string }> {
     try {
       const r = await fetch(`/api/attachments/${a.id}`, { method: "DELETE" });
       const j = (await r.json().catch(() => ({}))) as { error?: string };
-      if (r.ok) {
-        读序.current++;
-        set列表((x) => x?.filter((y) => y.id !== a.id) ?? null);
-        on变了?.();
-        return { ok: true };
-      }
-      因 = j.error ?? "没删掉";
+      if (!r.ok) { 说(j.error ?? "没删掉"); return { ok: false, error: j.error ?? "没删掉" }; }
+      读序.current++;
+      set列表((x) => x?.filter((y) => y.id !== a.id) ?? null);
+      on变了?.();
+      return { ok: true };
     } catch {
-      因 = "没删掉，请检查网络后再试";
+      说("没删掉，请检查网络后再试");
+      return { ok: false, error: "没删掉，请检查网络后再试" };
     }
-    说(因);
-    return { ok: false, error: 因 };
   }
 
   async function 打开(a: 附件) {
@@ -152,7 +157,7 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = f
       else if (r.只显示) 说("这类文件不直接运行，已在文件夹里选中它", false);
       return;
     }
-    if (视图中) return void 说(视图外部话);
+    if (视图中) return void 说(视图外部话, false);
     // 网页 / 连着服务器：当下载
     const 链 = document.createElement("a");
     链.href = `/api/attachments/${a.id}`;
@@ -168,7 +173,6 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = f
 
   return (
     <div className="att-panel" data-testid="attachments-panel">
-      {提示 && <div className={`att-note${提示.错 ? " att-note-err" : ""}`} role={提示.错 ? "alert" : "status"}>{提示.话}</div>}
       {!只读 && 紧凑 && <div data-testid="attachment-upload" className="att-compact">
         <Upload
           multiple
@@ -207,7 +211,24 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = f
         <div style={{ padding: 16, textAlign: "center" }}><Spin /></div>
       ) : (
         <>
-          {传着 > 0 && <div className="muted" style={{ marginTop: 10 }}><Spin size="small" /> 正在传 {传着} 个…</div>}
+          {在传们.length > 0 && (
+            <ul className="att-up" aria-label="上传进度">
+              {在传们.map((x) => (
+                <li key={x.key} className="att-up-row" data-state={x.态}>
+                  <span className="att-ring" aria-hidden>
+                    <svg viewBox="0 0 20 20"><circle className="att-ring-bg" cx="10" cy="10" r="8" /><circle className="att-ring-fg" cx="10" cy="10" r="8" /></svg>
+                    <span className="att-ring-ok">✓</span>
+                  </span>
+                  <span className="att-up-name" title={x.名}>{x.名}</span>
+                  {x.态 === "传" && <span className="muted" role="status">正在传</span>}
+                  {x.态 === "成" && <span className="att-up-ok" role="status">传好了</span>}
+                  {x.态 === "错" && <span role="alert" className="att-up-err">{x.错}</span>}
+                  {x.态 === "错" && <Button size="small" type="text" aria-label="收起这一行" onClick={() => set在传们((y) => y.filter((z) => z.key !== x.key))}>×</Button>}
+                </li>
+              ))}
+            </ul>
+          )}
+          {块话 && <div role={块话.错 ? "alert" : "status"} className={块话.错 ? "att-said is-err" : "att-said"}>{块话.话}</div>}
           {列表.length === 0 && 传着 === 0 && <div className="muted" style={{ marginTop: 只读 ? 0 : 10 }}>{只图 ? "还没有图片。" : "还没有附件。"}</div>}
           {图们.length > 0 && (
             <Image.PreviewGroup>
@@ -244,6 +265,7 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = f
   );
 }
 
+/** 删一个附件：就地问一句（InlineConfirm），不弹气泡框 */
 function 删按钮({ a, 删 }: { a: 附件; 删: (a: 附件) => Promise<{ ok: boolean; error?: string }> }) {
   return (
     <span className="att-del">

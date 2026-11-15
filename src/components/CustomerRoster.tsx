@@ -230,7 +230,8 @@ export default function CustomerRoster({ data }: { data: CustomerRosterData }) {
       </div>
       {/* 原来这里有一排状态筛选（全部 / 待跟进 / 跟进中…）。分组以后它和组头说的是同一件事，
           想只看一种就把别的组收起来——同一个功能摆两套入口是在让人选一个不存在的区别（2026-10-02） */}
-      <div className="pane-rows">
+      {/* dt.roster：换页签时整片名单淡出淡入（key 换了重挂一次，动画只用令牌；减弱动效时不动） */}
+      <div className="pane-rows roster-swap" key={当前页签} data-tab={当前页签}>
         {页签里.length === 0 && (
           <div className="pane-empty">
             {q

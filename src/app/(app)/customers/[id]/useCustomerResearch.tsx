@@ -194,12 +194,19 @@ export function CustomerResearchTag(props: { customerId: string; customerName: s
         {!能发起 && !有上次 && <div className="muted" style={{ fontSize: 13 }}>还没有背调记录</div>}
       </Modal>
   );
-  /* 卡：客户页项目模式每块一张卡（外面包 ProjectFold）；标签摆在卡身里 */
+  /*
+    卡（dt.research）：客户页项目模式每块一张卡（外面包 ProjectFold）。不再点标签弹框：状态、上次背调的结果、发起 / 重跑都摆在卡身里，
+    跑的进度和结果就在这张卡上展开
+  */
   if (props.卡)
     return (
-      <Card className="rec-mod" title="客户背调" aria-label="客户背调">
-        {标签}
-        {框}
+      <Card className="rec-mod rec-research-card" title="客户背调" aria-label="客户背调">
+        <div className="rec-research-head">
+          <Tag className="rec-research-tag" color={背调状态色[状态]} aria-label={`背调状态：${状态}`}>{状态}</Tag>
+          {按钮}
+        </div>
+        <div className="rec-research-body" data-state={状态}>{区}</div>
+        {!能发起 && !有上次 && <div className="muted" style={{ fontSize: 13 }}>还没有背调记录</div>}
       </Card>
     );
   return (

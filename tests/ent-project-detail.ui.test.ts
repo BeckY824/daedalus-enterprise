@@ -860,18 +860,10 @@ it("R6 弹窗：完成节点、改进程、改分配都能打开，标题带项�
       await 窗.waitFor();
       return 窗;
     };
-    const 关 = async (窗: import("playwright").Locator) => {
-      await 窗.getByRole("button", { name: /Close|关闭/ }).first().click();
-      await 窗.waitFor({ state: "hidden" });
-    };
-    // 完成节点在阶段页签那一行
+    // 完成节点在阶段页签那一行；dt.stage（PR7b）起必填齐了一步推、不开框（框里的内容见 R5 线索那条）
     await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
-    let 窗 = page.getByRole("dialog").filter({ hasText: "完成节点 · 超长项目名字" });
-    await 窗.waitFor();
-    expect(await 窗.innerText()).toContain("订单 · 生产备货");
-    expect(await 窗.innerText()).toContain("下一节点：物流运输");
-    expect(await 窗.getByRole("button", { name: "确认推进" }).count()).toBe(1);
-    await 关(窗);
+    await expect.poll(() => 改节点记录(page)).toContain("物流运输");
+    expect(await page.getByRole("dialog").filter({ hasText: "完成节点 · " }).count()).toBe(0);
     // 11-01 会议 §13：▼ 里删掉「改到别的进程」，只剩终止
     await page.getByRole("button", { name: "终止进程" }).click();
     await page.getByRole("menuitem").first().waitFor();
@@ -880,7 +872,7 @@ it("R6 弹窗：完成节点、改进程、改分配都能打开，标题带项�
     await page.keyboard.press("Escape");
     await page.getByRole("menuitem").first().waitFor({ state: "hidden" });
     expect(await page.locator(".proj-side .ant-card").filter({ hasText: "项目组" }).getByRole("button", { name: /^邀\s*请$/ }).count()).toBe(1);
-    窗 = await 开("改分配", "改提成分配");
+    const 窗 = await 开("改分配", "改提成分配");
     await 窗.getByRole("button", { name: /取\s*消/ }).click();
     await 窗.waitFor({ state: "hidden" });
     expect(await 头.getByRole("button", { name: "管理沟通" }).count()).toBe(0);
@@ -958,26 +950,12 @@ it("R5 阶段页签：三个页签、默认选所在阶段；进程按字典列�
   } finally { await page.close(); }
 });
 
-it("R5 完成节点 / 终止进程（M-节点-04/05）：完成先开框、取消不动、确认推一个节点；终止先确认，订单落到异常框、走终止项目进程", async () => {
+it("R5 完成节点 / 终止进程（M-节点-04/05）：必填齐了一步推一个节点、不开框（dt.stage，给撤销）；终止先确认，订单落到异常框、走终止项目进程", async () => {
   const { page, errors } = await open(true, 1280);
   try {
-    const 开完成 = async () => {
-      await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
-      const 窗 = page.getByRole("dialog").filter({ hasText: "完成节点 · " });
-      await 窗.waitFor();
-      return 窗;
-    };
-    {
-      const 窗 = await 开完成();
-      expect(await 窗.innerText()).toContain("这个节点没有配必填，可以推进");
-      await 窗.getByRole("button", { name: /取\s*消/ }).click();
-      await 窗.waitFor({ state: "hidden" });
-    }
-    expect(await 改节点记录(page)).toBe("[]");
-    const 窗 = await 开完成();
-    await 窗.getByRole("button", { name: "确认推进" }).click();
-    await 窗.waitFor({ state: "hidden" });
-    expect(await 改节点记录(page)).toContain("物流运输");
+    await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
+    await expect.poll(() => 改节点记录(page)).toContain("物流运输");
+    expect(await page.getByRole("dialog").filter({ hasText: "完成节点 · " }).count()).toBe(0);
     // 终止：▼ → 终止进程（写着落到哪）→ 确认 → 订单进异常框；这一步还没改节点
     await page.evaluate(() => { (window as unknown as { __改节点: unknown[] }).__改节点 = []; });
     await page.getByRole("button", { name: "终止进程" }).click();
@@ -997,6 +975,7 @@ it("R5 完成节点 / 终止进程（M-节点-04/05）：完成先开框、取�
 it("R5 线索（M-节点-05/09）：完成节点一次一个节点；最后一个节点完成写「已转商机，进到 商机·痛点挖掘」；终止落到线索流失；缺必填列出来", async () => {
   const { page, errors } = await open(true, 1280);
   try {
+    // dt.stage 起没缺必填一步推、不开框：这里给一项还差（管理能仍要推进），看框里写推到哪
     const 框字 = async () => {
       await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
       const 窗 = page.getByRole("dialog").filter({ hasText: "完成节点 · " });
@@ -1006,14 +985,14 @@ it("R5 线索（M-节点-05/09）：完成节点一次一个节点；最后一�
       await 窗.waitFor({ state: "hidden" });
       return 字;
     };
-    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "线索", node: "潜客培育" }));
+    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "线索", node: "潜客培育", 必填: { 配了: ["金额"], 还差: ["金额"], 只能靠填齐: false } }));
     await page.waitForFunction(() => document.querySelector(".proj-stage-tab.is-on")?.textContent?.startsWith("线索"));
     expect(await page.locator(".proj-stage-exit.is-todo").innerText()).toBe("已转商机");
     expect(await 框字()).toContain("下一节点：线索验证");
     await page.getByRole("button", { name: "终止进程" }).click();
     expect(await page.getByRole("menuitem", { name: /终止进程/ }).innerText()).toContain("落到「线索流失」");
     await page.keyboard.press("Escape");
-    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "线索", node: "线索推进" }));
+    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "线索", node: "线索推进", 必填: { 配了: ["金额"], 还差: ["金额"], 只能靠填齐: false } }));
     await page.waitForFunction(() => document.querySelector(".proj-stage-node.is-cur")?.textContent?.startsWith("线索推进"));
     expect(await 框字()).toContain("已转商机，进到 商机·痛点挖掘");
     // 销售缺必填：框里列出来，没有推进按钮
@@ -1605,14 +1584,12 @@ it("dt.invalid：线索终止 = 判无效，一个后果框（不再先问「终
   } finally { await page.close(); }
 });
 
-it("dt.stage：完成节点一步推，推完底部撤销条，撤销 = 改回原来的节点", async () => {
+it("dt.stage：必填齐了完成节点一步推（不开框），推完底部撤销条，撤销 = 改回原来的节点；还差必填开框就地补齐", async () => {
   const { page, errors } = await open(true, 1280);
   try {
+    // 必填齐了（没配）：一步推，不开框
     await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
-    const 窗 = page.getByRole("dialog").filter({ hasText: "完成节点 · " });
-    await 窗.waitFor();
-    await 窗.getByRole("button", { name: "确认推进" }).click();
-    await 窗.waitFor({ state: "hidden" });
+    expect(await page.getByRole("dialog").filter({ hasText: "完成节点 · " }).count()).toBe(0);
     const 条 = page.locator("#undo-host");
     await expect.poll(() => 条.innerText().catch(() => "")).toContain("已推进到");
     await 条.getByRole("button", { name: /撤销/ }).click();

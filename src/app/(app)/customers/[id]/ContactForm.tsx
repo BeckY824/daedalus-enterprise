@@ -3,14 +3,14 @@
 import { requiredText, isFormValidationError } from "@/lib/form-validation";
 import CustomerSearchSelect from "@/components/CustomerSearchSelect";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Modal, Form, Input, Switch, Row, Col, App, AutoComplete, Button, Select, Space, Alert } from "antd";
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import DatePicker from "@/components/BusinessDatePicker";
 import { dayjs } from "@/lib/utils";
 import { 性别们, 爱好上限, 联系人地址上限, 号码上限, 每人最多号码 } from "@/lib/enterprise/customer-v2";
-import { saveContact, saveUnassignedContact } from "./actions";
+import { saveContact, saveUnassignedContact, 联系人号码先查 } from "./actions";
 import { 挂到客户 } from "./contact-link-actions";
 import type { 撞到的联系人 } from "@/lib/enterprise/contact-dedupe";
 import type { ContactRow } from "./types";
@@ -152,6 +152,21 @@ export default function ContactForm({
    * 人核对后可以「仍然保存」（同一个号两个人用），或在客户页上直接把那位挂到这位客户上
    */
   const [撞号, set撞号] = useState<撞到的联系人[] | null>(null);
+  /** 撞号是失焦先查出来的（还没点保存）：黄条标题换一句；点保存撞了的照旧 */
+  const [先查的, set先查的] = useState(false);
+  const 查序 = useRef(0);
+  /** dt.contact：号码那格失焦就查一遍撞没撞（企业版），撞了把黄条摆出来，给「挂到本客户」「仍然新建」 */
+  async function 失焦查号() {
+    if (!企业) return;
+    const 们 = ((form.getFieldValue("号码们") ?? []) as { kind?: string; value?: string }[])
+      .filter((x) => x?.kind && x.value?.trim())
+      .map((x) => ({ kind: x.kind!, value: x.value!.trim() }));
+    const 序 = ++查序.current;
+    if (!们.length) return;
+    const r = await 联系人号码先查(们, record?.id ?? null).catch(() => null);
+    if (序 !== 查序.current || !r?.ok) return;
+    if (r.撞了.length) { set撞号(r.撞了); set先查的(true); }
+  }
   // 重新打开框时收起上次的黄条（渲染时比对，不放进 effect 里 setState）
   const [上次开着, set上次开着] = useState(open);
   if (上次开着 !== open) {
@@ -196,7 +211,7 @@ export default function ContactForm({
     const r = await (存法 ?? saveContact)({ id: record?.id, 版本: record?.updatedAt, ...(企业 ? 其余 : v), isPrimary: Boolean(v.isPrimary), customerId: 归属, ...(企业资料 ? { 企业: 企业资料 } : {}), ...(照存 ? { 照存: true } : {}) } as Parameters<typeof saveContact>[0]);
     // 原来不看返回值：联系人刚被别人移出、或电话不收时，弹框卡在那儿什么也不说（排查 D8）
     if (!r.ok) {
-      if ("撞了" in r && r.撞了?.length) return void set撞号(r.撞了);
+      if ("撞了" in r && r.撞了?.length) { set先查的(false); return void set撞号(r.撞了); }
       return void message.error(r.error);
     }
     message.success(record ? "已保存" : "联系人已添加");
@@ -246,7 +261,7 @@ export default function ContactForm({
           type="warning"
           showIcon
           style={{ marginTop: 8 }}
-          message="这些号码已经记在别的联系人身上，本次没保存"
+          message={先查的 ? "这个号码已经记在别的联系人身上，先核对一下" : "这些号码已经记在别的联系人身上，本次没保存"}
           description={
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {撞号.map((x, i) => (
@@ -272,14 +287,14 @@ export default function ContactForm({
               <div>
                 确认是另一个人（比如共用的总机）：
                 <Button type="link" size="small" style={{ padding: 0, height: "auto" }} disabled={存着} onClick={() => void 保存(true)}>
-                  仍然保存
+                  {record ? "仍然保存" : "仍然新建"}
                 </Button>
               </div>
             </div>
           }
         />
       )}
-      <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={() => { 守.改了(); if (撞号) set撞号(null); }}>
+      <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={() => { 守.改了(); 查序.current++; if (撞号) set撞号(null); }}>
         <Row gutter={16}>
           {/* 从联系人列表进来时先选人：联系人挂在某一位学员下面，没有归属的联系人没有意义 */}
           {!customerId && (
@@ -352,7 +367,7 @@ export default function ContactForm({
                             <Select style={{ width: 130 }} options={类型选项} aria-label="号码类型" />
                           </Form.Item>
                           <Form.Item name={[行.name, "value"]} noStyle>
-                            <Input maxLength={号码上限} placeholder="号码或账号" aria-label="号码" />
+                            <Input maxLength={号码上限} placeholder="号码或账号" aria-label="号码" onBlur={() => void 失焦查号()} />
                           </Form.Item>
                           <Button icon={<MinusCircleOutlined />} onClick={() => remove(行.name)} aria-label="去掉这一行" />
                         </Space.Compact>
