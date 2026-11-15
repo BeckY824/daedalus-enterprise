@@ -6,11 +6,11 @@ import { loadCustomerFeed } from "./follow-history-actions";
 import { CustomerResearchCard, CustomerResearchTag } from "./useCustomerResearch";
 
 
-import { Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { 只读上下文, 只能看的格上下文 } from "./read-only";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Alert, Button, Card, Drawer, Dropdown, Input, Modal, Space, Tag, Avatar, Checkbox, Tooltip, App, Select, Typography, type MenuProps } from "antd";
+import { Alert, Button, Card, Drawer, Dropdown, Input, Modal, Space, Tag, Avatar, Checkbox, Tooltip, Select, Typography, type MenuProps } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import { 原负责人不能领回提示, 公海客户先领取话 } from "@/lib/enterprise/pool-rules";
 import { 号码保护of } from "@/lib/enterprise/contact-guard";
@@ -29,6 +29,9 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import CopyValue from "@/components/CopyValue";
 import InlineConfirm from "@/components/InlineConfirm";
+import { useConsequence } from "@/components/ConsequenceDialog";
+import TransferBox, { type 转让结果 } from "./TransferBox";
+import { showUndo } from "@/components/UndoBar";
 import { 跟进类型们, FOLLOW_TYPE_MAP, FOLLOW_STATUSES, DECISION_STATUSES, FOLLOW_RECORD_STATUS_COLOR } from "@/lib/constants";
 import { 成员选项, dayjs, duration, fmtDate, fmtDateTime, initial, avatarColor, AVATAR_TEXT, 独自一人 } from "@/lib/utils";
 import { RowLink, FollowStatusTag, DecisionStatusTag, FOLLOW_TYPE_ICON } from "@/components/ui";
@@ -36,7 +39,7 @@ import { useBusiness } from "@/lib/business-client";
 import { statusLabel, 外贸订单, 外贸精简, 签约叫 } from "@/lib/business-config";
 import { 国家候选, WhatsApp网址, 官网网址, 客户等级, 客户等级说明, type 客户等级 as 客户等级值 } from "@/lib/customer-extra";
 import LocalTime from "@/components/LocalTime";
-import CompletePlanModal, { 提示记完了, type 要完成的计划 } from "./CompletePlanModal";
+import CompletePlanModal, { type 要完成的计划 } from "./CompletePlanModal";
 import FollowUpForm from "./FollowUpForm";
 import TaskForm from "./TaskForm";
 import PlanForm from "./PlanForm";
@@ -50,6 +53,7 @@ import CustomerForm from "../CustomerForm";
 import InlineField from "./InlineField";
 import RegionInlineField from "./RegionInlineField";
 import AiPanel from "./AiPanel";
+import { 打开AI浮窗, 登记智能总结 } from "@/lib/ai-float";
 import LinkedCustomers from "./LinkedCustomers";
 import { FoldSplit, ProjectFold, 模块钮色, type 连体主钮, type 连体色 } from "../../projects/[id]/ProjectFold";
 import { 客户详情左栏, 客户详情待办 } from "../../projects/[id]/card-names";
@@ -59,7 +63,7 @@ import { 客户页摆法, 级别选项, 企业级别, 拼地址, 地址叫法, �
 import LevelLetter from "@/components/LevelLetter";
 import StarButton from "./StarButton";
 import AiCost, { useAiOutOfCredits } from "@/components/AiCost";
-import { toggleTask, deleteTask, deleteFollowUp, completePlan, saveFollowUp } from "./actions";
+import { toggleTask, deleteTask, deleteFollowUp, completePlan, saveFollowUp, 撤销记一笔 } from "./actions";
 import { useContactRemoval } from "./useContactRemoval";
 import { useTransferConfirm } from "../useTransferConfirm";
 import { usePoolReturnConfirm } from "../usePoolReturnConfirm";
@@ -68,7 +72,7 @@ import { useWidth } from "@/lib/roster";
 import PaneToggle from "@/components/PaneToggle";
 import { 登记详情名 } from "@/lib/page-rows";
 import Heat, { 冷热说法, 要看冷热 } from "@/components/Heat";
-import { deleteContract, 删签约前清点, assignSalesOwner, 撤销改负责人 } from "../actions";
+import { deleteContract, 删签约前清点, assignSalesOwner, 撤销改负责人, 转走项目预览of } from "../actions";
 import type { RecordProps, FollowUpRow, ContactRow } from "./types";
 import TriStateBar, { TriStateLog } from "./TriStateBar";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
@@ -76,13 +80,12 @@ import { 进公海理由显示 } from "@/lib/enterprise/tri-state-label";
 import { 换负责人怎么来的 } from "@/lib/owner-log";
 import { useMotionTheme } from "@/components/MotionTheme";
 import { 截止说法, 已过期 } from "@/lib/deadline";
-import { 记下最近客户 } from "@/lib/last-customer";
 import { 金额, 金额或空, 合计文字 } from "@/lib/currency";
 import { 公海标签 } from "@/lib/pool";
 import { 带走说法 } from "@/lib/carry-over";
 import { 移交作废天数 } from "@/lib/enterprise/handover-expire-days";
 import { 少动, 滚法 } from "@/lib/reduced-motion";
-import { 放进公海, 领取, 撤销公海 } from "../pool-actions";
+import { 放进公海, 领取, 撤销公海, 退回原因选项 } from "../pool-actions";
 import { useDeleteCustomers } from "../useDeleteCustomers";
 import { 释义下拉宽 } from "@/components/DictNote";
 
@@ -209,15 +212,16 @@ export default function RecordView({
   const 虚线的 = !全只读话.includes("市场成员");
   const { 曲线, 时长, 间隔 } = useMotionTheme();
   const router = useRouter();
-  const { message, modal } = App.useApp();
   const { 问删除 } = useDeleteCustomers();
   const AI已用完 = useAiOutOfCredits();
   const b = useBusiness();
   // 企业版只用项目（P14 第 6 条）：时间线是各项目沟通记录的汇总，翻页走汇总那条查询
   const history = useFollowHistory(customer.id, followUps, followUpsHasMore, 跟进去处 !== null ? loadCustomerFeed : undefined);
   const { 问怎么拿掉 } = useContactRemoval();
-  const { 先问转走的项目, 问转让原因 } = useTransferConfirm(转让原因);
+  const { 先问转走的项目 } = useTransferConfirm(转让原因);
   const { 问放回公海 } = usePoolReturnConfirm();
+  /** 后果框（PR5a）：企业版客户退回公海（dt.pool：后果分条、原因点选、其他原地写） */
+  const [问后果, 后果框] = useConsequence();
   const revertChoice = useRef<string>(REVERT_CHOICES[0].value);
   /*
     企业版项目模式（10-27 会议：前台冗余优化，先做一版、对方终稿到了再调）：
@@ -230,8 +234,8 @@ export default function RecordView({
   const [建项目开着, set建项目开着] = useState(false);
   /** 企业版页头具名按钮开的框（10-31 改版 R6） */
   const [头部框, set头部框] = useState<客户头部框 | null>(null);
-  /** 「转让」框里挑中的人 */
-  const [转给谁, set转给谁] = useState<string | undefined>();
+  /** 「客户转让」一个框（dt.transfer） */
+  const [转让开, set转让开] = useState(false);
   /** 企业版只用项目：跟进去项目里记，客户页不就地记（第 1、3 条）。跟进去处 = null 是别的版本，照旧 */
   const 去项目跟进 = 摆法.跟进去项目 && 跟进去处 !== null;
   /** 记跟进默认挂的项目：没结束、不在公海的，最近动过的排前面（page.tsx 按 updatedAt 倒序给） */
@@ -321,8 +325,6 @@ export default function RecordView({
     登记详情名(customer.name);
     return () => 登记详情名(null);
   }, [customer.name]);
-  // 左栏点「客户」时回到这一位（customers/recent）
-  useEffect(() => 记下最近客户(customer.id), [customer.id]);
 
   const [filter, setFilter] = useState<string>("全部");
   const [memo, setMemo] = useState("");
@@ -394,6 +396,12 @@ export default function RecordView({
   const AI在抽屉里 = 量到 && 正文宽 < AI栏门槛;
   const 单栏 = 量到 && 正文宽 < 单栏门槛;
   const [AI抽屉开着, setAI抽屉开着] = useState(false);
+  /*
+    企业版客户页的「AI」改叫浮窗（dt.ai）后，「生成智能总结」（扣 1 次额度）不能丢：登记给浮窗，
+    浮窗里点「总结这位客户」就开这个原抽屉——同一个 AiPanel、同一次扣减和确认（lib/ai-float.ts）
+  */
+  const 有项目区 = !!项目区;
+  useEffect(() => (有项目区 && aiEnabled ? 登记智能总结(() => setAI抽屉开着(true)) : undefined), [有项目区, aiEnabled]);
 
   const entries = useMemo<Entry[]>(() => {
     const list: Entry[] = [
@@ -443,14 +451,19 @@ export default function RecordView({
   /** 留几秒。和提示条一样长：提示收了，这一条也收 */
   const 留秒 = 5;
 
+  /** 待办被挡的原因：就地写在那一行下面（不弹顶部提示），过几秒自己收 */
+  const [待办错, set待办错] = useState<Record<string, string>>({});
+  const 报待办错 = (id: string, 话: string) => {
+    set待办错((s) => ({ ...s, [id]: 话 }));
+    setTimeout(() => set待办错((s) => { const { [id]: _丢, ...剩 } = s; return 剩; }), 5000);
+  };
   async function 勾待办(t: (typeof tasks)[number], 完成: boolean) {
     const 计时 = 收起计时.current.get(t.id);
     if (计时) clearTimeout(计时);
     收起计时.current.delete(t.id);
     set勾选态((s) => ({ ...s, [t.id]: 完成 }));
     if (完成) set留着((s) => (s.includes(t.id) ? s : [...s, t.id]));
-    else message.destroy(`task-${t.id}`);
-    // 被服务端挡了（权限、这条已经不在了）回 ok:false，不是抛错：照样当没改成，不提示成功（PR10a）
+    // 被服务端挡了（权限、这条已经不在了）回 ok:false，不是抛错：照样当没改成，不提示成功（PR10a）；原因就地写在这一行
     const r = await toggleTask(t.id, 完成).catch(() => ({ ok: false as const, error: "没改成，再试一次" }));
     if (!r.ok) {
       // 勾选回到服务端的样子：勾完成没成 → 不划线、不收起；撤销没成 → 还是已完成，照常过几秒收起
@@ -460,23 +473,25 @@ export default function RecordView({
       });
       if (完成) set留着((s) => s.filter((x) => x !== t.id));
       else 排收起(t.id);
-      message.error(r.error || "没改成，再试一次");
+      报待办错(t.id, r.error || "没改成，再试一次");
       router.refresh();
       return;
     }
     router.refresh();
-    if (!完成) return void message.success(`「${t.title}」已改回未完成`);
-    message.success({
-      key: `task-${t.id}`,
-      duration: 留秒,
-      content: (
-        <span>
-          「{t.title}」已完成
-          <Button type="link" size="small" onClick={() => void 勾待办(t, false)}>
-            撤销
-          </Button>
-        </span>
-      ),
+    if (!完成) return;
+    // 勾完成一步做完（P-界面-40）：底部撤销条，撤销 = 改回未完成
+    showUndo({
+      话: `「${t.title}」已完成`,
+      毫秒: 留秒 * 1000,
+      撤销: async () => {
+        const u = await toggleTask(t.id, false).catch(() => ({ ok: false as const, error: "没改回来，再试一次" }));
+        if (u.ok) {
+          set勾选态((s) => ({ ...s, [t.id]: false }));
+          set留着((s) => s.filter((x) => x !== t.id));
+        }
+        router.refresh();
+        return u;
+      },
     });
     排收起(t.id);
   }
@@ -496,39 +511,56 @@ export default function RecordView({
    */
   /** 点了「下次跟进」上的完成：先弹小框记一笔（2026-10-16 外贸基础，CompletePlanModal） */
   const [在完成, set在完成] = useState<要完成的计划 | null>(null);
+  /**
+   * 页头下面那一行就地提示（不弹顶部 message）：领取没成、只能看、公海客户先领取、刷新没跟上、删沟通没成……
+   * 错的 role=alert，别的 role=status；过几秒收
+   */
+  const [就地话, set就地话] = useState<{ 话: string; 错?: boolean } | null>(null);
+  const 说就地 = (话: string, 错 = false) => set就地话({ 话, 错 });
+  // 过几秒收（换了一句就重新计时）
+  useEffect(() => {
+    if (!就地话) return;
+    const t = setTimeout(() => set就地话(null), 6000);
+    return () => clearTimeout(t);
+  }, [就地话]);
+  /** 速记框下面一行：没记上的原因、记上了顺带的提示（领取了 / 不算有效沟通） */
+  const [速记话, set速记话] = useState<{ 话: string; 错?: boolean } | null>(null);
+  /** 「加载更早的跟进」没成：原因写在按钮下面 */
+  const [加载错, set加载错] = useState<string | null>(null);
+
+  /** 计划完成后的就地说法（不弹顶部提示）：成了在「下次跟进」那块写一句 + 「排下一次」文字链接；没成写原因。过几秒收 */
+  const [计划话, set计划话] = useState<{ 话: string; 错?: boolean } | null>(null);
+
+  /** 刚完成的那条：刷新回来前「下次跟进」那块先当它没了（摆那句话 + 「排下一次」），撤销了再摆回来 */
+  const [刚完成, set刚完成] = useState<string | null>(null);
+  const 说计划 = (x: { 话: string; 错?: boolean }) => set计划话(x);
+  useEffect(() => {
+    if (!计划话) return;
+    const t = setTimeout(() => set计划话(null), 8000);
+    return () => clearTimeout(t);
+  }, [计划话]);
+  const 现计划 = plan && plan.id !== 刚完成 ? plan : null;
   async function 完成计划(p: Pick<NonNullable<typeof plan>, "id" | "subject">, 顺带?: string, 已完成 = false) {
     if (!已完成) {
       const result = await completePlan(p.id).catch(() => ({ ok: false as const, error: "计划完成失败，请稍后重试" }));
-      if (!result.ok) return void message.error(result.error);
+      if (!result.ok) return void 说计划({ 话: result.error, 错: true });
     }
     router.refresh();
     void window.desktopReminders?.刷新();
-    const key = `plan-${p.id}`;
-    message.success({
-      key,
-      duration: 6,
-      content: (
-        <span>
-          {顺带 ?? `「${p.subject}」已完成`}
-          <Button
-            type="link"
-            size="small"
-            onClick={async () => {
-              message.destroy(key);
-              const result = await completePlan(p.id, false).catch(() => ({ ok: false as const, error: "计划恢复失败，请稍后重试" }));
-              if (!result.ok) return void message.error(result.error);
-              void window.desktopReminders?.刷新();
-              message.success(`「${p.subject}」已改回未完成`);
-              router.refresh();
-            }}
-          >
-            撤销
-          </Button>
-          <Button type="link" size="small" onClick={() => { message.destroy(key); set排新计划(true); setPlanOpen(true); }}>
-            排下一次
-          </Button>
-        </span>
-      ),
+    const 话 = 顺带 ?? `「${p.subject}」已完成`;
+    set刚完成(p.id);
+    说计划({ 话 });
+    // 撤销走底部撤销条（撤销 = 改回未完成）；「排下一次」先用「下次跟进」那块里的文字链接（UndoBar 第二个动作合并后再换）
+    showUndo({
+      话,
+      毫秒: 6000,
+      撤销: async () => {
+        const result = await completePlan(p.id, false).catch(() => ({ ok: false as const, error: "计划恢复失败，请稍后重试" }));
+        if (result.ok) { set计划话(null); set刚完成(null); }
+        void window.desktopReminders?.刷新();
+        router.refresh();
+        return result;
+      },
     });
   }
 
@@ -537,6 +569,7 @@ export default function RecordView({
 
   /** 公海（第 6 块）：放进 / 领取这一位，提示条上带一次撤销（和列表上同一个做法） */
   async function 公海动作(动作: "放进" | "领取") {
+    if (企业 && 动作 === "放进") return 企业退回公海();
     if (动作 === "领取" && !(await 先问转走的项目([customer.id]))) return;
     // 企业版放回前确认：联系人、项目一起退 + 必选退回原因（U-客户-04 / M-公海-09）；别的版本不问
     const 问 = 动作 === "放进" ? await (企业 ? 问放回公海("把这位客户退回公海？", 企业, "客户退回公海") : 问放回公海("把这位客户放回公海？", 企业)) : null;
@@ -545,30 +578,23 @@ export default function RecordView({
     // 原负责人放进公海后自己就看不到这位了（11-03），留在详情页刷新是 404：回列表，提示条上的撤销还在
     if (企业 && 动作 === "放进" && res.ok && res.updated) router.push("/customers");
     else router.refresh();
-    if (!res.ok) return void message.error(res.error);
-    if (!res.updated) return void message.info(动作 === "放进" ? "已经在公海里了" : "已经被别人领走了");
+    if (!res.ok) return void 说就地(res.error, true);
+    if (!res.updated) return void 说就地(动作 === "放进" ? "已经在公海里了" : "已经被别人领走了");
     const 原 = 动作 === "领取" ? (res.原负责人 ?? []) : [{ id: customer.id, 值: "" }];
-    const key = `pool-${动作}-${customer.id}`;
-    message.success({
-      key,
-      duration: 6,
-      content: (
-        <span>
-          {动作 === "放进" ? (企业 ? "客户已退回公海，原负责人不能再领回来" : "已放回公海，谁都能领") : `已领取，负责人改成你${带走说法(res.带走)}`}
-          <Button type="link" size="small" onClick={async () => {
-            message.destroy(key);
-            const r = await 撤销公海(动作, 原, res.ok ? res.带过来 : undefined, undefined, res.ok ? res.公海项目 : undefined);
-            router.refresh();
-            if (!r.ok) return void message.error(`没能撤销：${r.error}`);
-            message.success("已撤销");
-          }}>撤销</Button>
-        </span>
-      ),
+    // 成了走底部撤销条（PR5a showUndo）：撤销 = 反着做一遍；撤不了原因写在条上
+    showUndo({
+      话: 动作 === "放进" ? "已放回公海，谁都能领" : `已领取，负责人改成你${带走说法(res.带走)}`,
+      毫秒: 6000,
+      撤销: async () => {
+        const r = await 撤销公海(动作, 原, res.ok ? res.带过来 : undefined, undefined, res.ok ? res.公海项目 : undefined);
+        router.refresh();
+        return r;
+      },
     });
   }
 
   function openFollow(record: FollowUpRow | null, aiText?: string) {
-    if (全只读) return void message.info(管理员只读 ? "管理员只能看，不能改任何数据" : 全只读话);
+    if (全只读) return void 说就地(管理员只读 ? "管理员只能看，不能改任何数据" : 全只读话);
     setFollowInit({ record, aiText });
     setFollowOpen(true);
   }
@@ -576,7 +602,7 @@ export default function RecordView({
   const 能建项目 = !!(摆法.新建项目 && 新建项目 && !只读);
   /** 公海里的客户先领取再建项目（11-05）：按钮照摆，点了说先领取，服务端也拦 */
   function 开建项目() {
-    if (customer.pool) return void message.info(公海客户先领取话);
+    if (customer.pool) return void 说就地(公海客户先领取话);
     set建项目开着(true);
   }
   /**
@@ -585,59 +611,87 @@ export default function RecordView({
    * 一个在推的项目都没有就开新开项目弹窗（自动带上这位）。别的版本照旧就地记一笔
    */
   const 记沟通项目 = 去项目跟进
-    ? (跟进去处 ?? []).filter((p) => !p.结束).map((p) => ({ id: p.id, name: p.主 ? p.名 : `${p.名}（关联）` }))
+    // X-143：只列我能记的（和项目详情记沟通同一条「能管项目」；组员不列）。老数据 / 夹具没这一项的照旧列
+    ? (跟进去处 ?? []).filter((p) => !p.结束 && p.能记 !== false).map((p) => ({ id: p.id, name: p.主 ? p.名 : `${p.名}（关联）` }))
     : 在推项目;
-  const 跟进按钮字 = 去项目跟进 && !记沟通项目?.length && 能建项目 ? "给他开项目" : "记一条沟通";
+  const 跟进按钮字 = "记一条沟通";
   function 点跟进() {
     // 只读的客户（虚线下属、市场成员相关）：先说只能看，别说「还没有在推的项目」——项目可能有，只是他看不到（11-03 D3-3）
-    if (全只读) return void message.info(全只读话);
-    if (!去项目跟进 || 记沟通项目?.length) return void openFollow(null);
-    if (能建项目) return 开建项目();
-    message.info(`这位${b.customer}还没有在推的项目：跟进记在项目里，请先新建项目`);
+    if (全只读) return void 说就地(全只读话);
+    // P-界面-35（dt.follownp）：没有能记的在推项目也照常打开，这条记为客户沟通（弹框里写明）；不自动建项目，项目一定手动新建
+    openFollow(null);
   }
 
   /**
-   * 「跟进」菜单里的「转让」（P14 第 3 条）：同客户列表「批量分配」一条路——先列会一起转走的项目、问转让原因、
-   * assignSalesOwner（权限、虚线只读、交接要确认都在服务端挡），转成了提示条上给一次撤销
+   * 企业版「客户退回公海」（dt.pool，P-界面-40 后果框 + P-界面-42 原因）：一个框写清后果、原因点选（其他原地写、必填）；
+   * 没成原因写在框里不关框。成了回列表（原负责人放进去后自己就看不到这位了，11-03），底部撤销条跟着到列表、6 秒内可撤
    */
-  async function 转让给(o: { value: string; label: string }) {
-    if (!(await 先问转走的项目([customer.id], o.value))) return;
-    const 原因 = await 问转让原因(o.label, o.value, 转让要申请);
-    if (原因 === false) return;
+  async function 企业退回公海() {
+    let 选项: string[] = [];
+    try { 选项 = await 退回原因选项(); } catch { 选项 = []; }
+    let 结果: Awaited<ReturnType<typeof 放进公海>> | null = null;
+    const 成了 = await 问后果({
+      题: `把「${customer.name}」退回公海`,
+      后果: [
+        { 标: "一起退", 话: "名下联系人、项目一起进公海，同事领了客户就一起归他", 级: "警" },
+        { 标: "看不到", 话: "你不能再领回来，也看不到它了", 级: "危" },
+        { 标: "能撤销", 话: "6 秒内可以撤销" },
+      ],
+      ...(选项.length ? { 原因: { 选项, 叫: "退回原因（必选）" } } : {}),
+      是: "退回公海",
+      做: async (原因) => {
+        const r = await 放进公海([customer.id], 原因 ?? null);
+        if (!r.ok) return r;
+        if (!r.updated) return { ok: false, error: "已经在公海里了，刷新看看" };
+        结果 = r;
+      },
+    });
+    const r = 结果 as Awaited<ReturnType<typeof 放进公海>> | null;
+    if (!成了 || !r || !r.ok) return;
+    showUndo({
+      话: `已把「${customer.name}」退回公海`,
+      毫秒: 6000,
+      撤销: async () => {
+        const u = await 撤销公海("放进", [{ id: customer.id, 值: "" }], r.带过来, undefined, r.公海项目);
+        router.refresh();
+        return u;
+      },
+    });
+    router.push("/customers");
+  }
+
+  /**
+   * 「客户转让」（dt.transfer）：选人、一起转走的项目、原因在同一个框里（TransferBox），assignSalesOwner（权限、虚线只读、交接要确认都在服务端挡）。
+   * 回 ok:false = 框里写原因不关框；申请移交回一句话、框里原地说；直接转的给底部撤销条
+   */
+  async function 发转让(o: { value: string; label: string }, 原因: string | null): Promise<转让结果> {
     const res = await assignSalesOwner([customer.id], o.value, 原因);
     router.refresh();
-    if (!res.ok) return void message.error(res.error);
-    // 企业版「交接中」（D10）：负责人还没换，等接手人确认，没有可撤销的
+    if (!res.ok) return { ok: false, error: res.error };
+    // 企业版「交接中」（D10）：负责人还没换，等接手人确认，没有可撤销的——框里原地说一句
     if (res.交接中 !== undefined) {
-      return void (res.交接中
-        ? message.success(res.申请移交 ? `已发起客户转让，等「${o.label}」确认后生效，确认前仍在你名下` : `已发起交接：等 ${o.label} 确认，确认前仍在原负责人名下`)
-        : message.info(res.交接已在路上 ? `这位${b.customer}已在移交中（等对方确认），没再发起` : res.没转 ? `这位${b.customer}刚被别人改了负责人，没转` : res.missing ? `这位${b.customer}已不存在（可能已删除）` : `没有发起新的交接：已归 ${o.label}`));
+      if (res.交接中) return { ok: true, 话: res.申请移交 ? `已发起客户转让，等「${o.label}」确认后生效，确认前仍在你名下` : `已发起交接：等 ${o.label} 确认，确认前仍在原负责人名下` };
+      return { ok: false, error: res.交接已在路上 ? `这位${b.customer}已在移交中（等对方确认），没再发起` : res.没转 ? `这位${b.customer}刚被别人改了负责人，没转` : res.missing ? `这位${b.customer}已不存在（可能已删除）` : `没有发起新的交接：已归 ${o.label}` };
     }
-    if (!res.updated) return void message.info(res.带走?.没转成 || res.没转 ? `这位${b.customer}刚被别人改了负责人，没转` : res.missing ? `这位${b.customer}已不存在（可能已删除）` : `本来就归 ${o.label}`);
-    const key = `transfer-${customer.id}`;
-    message.success({
-      key,
-      duration: 6,
-      content: (
-        <span>
-          已转给 {o.label}{带走说法(res.带走)}
-          <Button type="link" size="small" onClick={async () => {
-            message.destroy(key);
-            const r = await 撤销改负责人(res.原值 ?? [], o.value, res.带过来);
-            router.refresh();
-            if (!r.ok) return void message.error(`没能撤销：${r.error}`);
-            if (!r.updated) return void message.warning("没撤成：负责人已经又改过了");
-            message.success("已撤销，负责人改回原样");
-          }}>撤销</Button>
-        </span>
-      ),
+    if (!res.updated) return { ok: false, error: res.带走?.没转成 || res.没转 ? `这位${b.customer}刚被别人改了负责人，没转` : res.missing ? `这位${b.customer}已不存在（可能已删除）` : `本来就归 ${o.label}` };
+    // 直接转（实线上级、条线总管理、系统管理员，P-转-16）：底部撤销条，撤销 = 改回原负责人；撤不了原因写在条上
+    showUndo({
+      话: `已转给 ${o.label}${带走说法(res.带走)}`,
+      撤销: async () => {
+        const r = await 撤销改负责人(res.原值 ?? [], o.value, res.带过来);
+        router.refresh();
+        if (r.ok && !r.updated) return { ok: false, error: "负责人已经又改过了" };
+        return r;
+      },
     });
+    return { ok: true };
   }
+  const 取转走预览 = useCallback((接手人: string) => 转走项目预览of([customer.id], 接手人), [customer.id]);
   /** 转给谁：在职成员里去掉现任 */
   const 转让候选 = 成员选项(users).filter((o) => o.value !== customer.salesOwnerId);
   const 能转让 = 去项目跟进 && !只读 && 能转让客户 && !customer.pool && 转让候选.length > 0;
   const 能退回公海 = 去项目跟进 && !只读 && !独自一人(users) && 能放公海 && !customer.pool;
-  const 开客户转让 = () => { set转给谁(undefined); set头部框("转让"); };
+  const 开客户转让 = () => set转让开(true);
   /** 右上角「客户操作 ▾」（11-12 用户）：客户转让、客户退回公海，给不给照原来两颗按钮 */
   const 客户操作项: NonNullable<MenuProps["items"]> = [
     ...(能转让 ? [{ key: "cust-transfer", label: <span title="客户换负责人，名下项目一起走">客户转让</span>, onClick: 开客户转让 }] : []),
@@ -686,15 +740,12 @@ export default function RecordView({
       projectId: 在推项目?.[0]?.id ?? null,
     });
     setQuickSaving(false);
-    if (!res.ok) {
-      message.error(res.error);
-      return;
-    }
+    if (!res.ok) return void set速记话({ 话: res.error, 错: true });
     setMemo("");
-    if ("领取了" in res && res.领取了) message.success("已领取并记下跟进，这位现在归你跟进");
-    // 客户三态（C12）：这条不算有效沟通时给一句轻提示（照常保存，不拦）
+    // 记上了：领取了 / 不算有效沟通（客户三态 C12，照常保存不拦）写在速记框下面一行，不弹顶部提示
+    const 领了 = "领取了" in res && res.领取了 ? "已领取并记下跟进，这位现在归你跟进" : "";
     const 短 = 短沟通话of(res);
-    if (短) message.info(短, 5);
+    set速记话(领了 || 短 ? { 话: [领了, 短].filter(Boolean).join("；") } : null);
     router.refresh();
   }
 
@@ -886,20 +937,20 @@ export default function RecordView({
               <InlineConfirm
                 问="删除这条？"
                 做={async () => {
-                  // 被挡（权限）回 ok:false：不提示成功、条目留着（PR10a）
+                  // 被挡（权限）回 ok:false：不提示成功、条目留着（PR10a），原因就地写在这一行；删成了这一行收起，不再弹提示
                   const r = await deleteTask(t.id).catch(() => ({ ok: false as const, error: "没删掉，请重试" }));
                   if (!r.ok) {
-                    message.error(r.error || "没删掉，请重试");
+                    报待办错(t.id, r.error || "没删掉，请重试");
                     router.refresh();
-                    return;
+                    return r;
                   }
-                  message.success("待办已删除");
                   router.refresh();
                 }}
               >
                 <Button type="text" size="small" danger icon={<DeleteOutlined />} aria-label="删除待办" />
               </InlineConfirm>
             )}
+            {待办错[t.id] && <div role="alert" className="cd-task-err">{待办错[t.id]}</div>}
           </motion.div>
         ))}
       </AnimatePresence>
@@ -1000,7 +1051,8 @@ export default function RecordView({
       </AnimatePresence>
       {filter !== "CONTRACT" && history.hasMore && (
         <div style={{ padding: 16, textAlign: "center" }}>
-          <Button loading={history.loading} onClick={() => void history.loadMore().catch(error => message.error(error instanceof Error ? error.message : "历史跟进加载失败，请重试"))}>{摆法.沟通汇总 ? "加载更多" : "加载更早的跟进"}</Button>
+          <Button loading={history.loading} onClick={() => { set加载错(null); void history.loadMore().catch(error => set加载错(error instanceof Error ? error.message : "历史跟进加载失败，请重试")); }}>{摆法.沟通汇总 ? "加载更多" : "加载更早的跟进"}</Button>
+          {加载错 && <div role="alert" className="cd-task-err">{加载错}</div>}
           <div className="muted" style={{ marginTop: 8 }}>已加载 {history.rows.length} 条{摆法.沟通汇总 ? "" : "跟进"} · 筛选作用于已加载记录</div>
         </div>
       )}
@@ -1014,6 +1066,7 @@ export default function RecordView({
   return (
     /* ui-v2：16a 客户详情的排版（左栏加宽、联系人两行、备注折叠、筛选一行），样式在 globals.css 末尾 16a 那块 */
     <div className="rec-page ui-v2">
+      {后果框}
       {醒目条}
       <div className="rec-head">
         {/*
@@ -1046,7 +1099,8 @@ export default function RecordView({
             每项给不给、灰不灰和原来那几颗按钮同一套判断；一项都没有的那颗不摆 */}
         {去项目跟进 && ((项目区 && aiEnabled) || 项目操作项.length > 0 || 客户操作项.length > 0) && (
           <span className="rec-head-acts">
-            {项目区 && aiEnabled && <Button icon={<AiOutlined />} onClick={() => setAI抽屉开着(true)}>AI</Button>}
+            {/* dt.ai（P-界面-39）：不开抽屉，叫壳上的 AI 浮窗出来，左上带「客户 · 名字」；没有浮窗（没登 AI 等）才照旧开抽屉 */}
+            {项目区 && aiEnabled && <Button icon={<AiOutlined />} onClick={() => { if (!打开AI浮窗()) setAI抽屉开着(true); }}>AI</Button>}
             {项目操作项.length > 0 && (
               <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items: 项目操作项, className: "rec-head-menu" }}>
                 <Button>项目操作 <DownOutlined /></Button>
@@ -1186,6 +1240,7 @@ export default function RecordView({
           </span>
         )}
       </div>
+      {就地话 && <div role={就地话.错 ? "alert" : "status"} className={就地话.错 ? "cd-task-err rec-said" : "rec-plan-said rec-said"}>{就地话.话}</div>}
 
       {只读 && !管理员只读 && (
         <Alert
@@ -1459,9 +1514,11 @@ export default function RecordView({
                 直接记
               </Button>
             </div>
+            {速记话 && <div role={速记话.错 ? "alert" : "status"} className={速记话.错 ? "cd-task-err" : "rec-plan-said"}>{速记话.话}</div>}
           </div>}
 
-          {plan && 摆法.下次跟进 && (
+          {现计划 && 摆法.下次跟进 && 计划话?.错 && <div role="alert" className="cd-task-err">{计划话.话}</div>}
+          {现计划 && plan && 摆法.下次跟进 && (
             <div className="rec-plan" data-focus={`plan:${plan.id}`}>
               <span className="rec-plan-k">下次跟进</span>
               <span className="rec-plan-v">
@@ -1533,12 +1590,17 @@ export default function RecordView({
             {!去项目跟进 && 待办卡}
 
             {/* 企业版项目模式不排「下次跟进」（定稿 P5 待定 14 红框）：下一步时间记在项目上 */}
-            {!plan && 摆法.下次跟进 && (
+            {!现计划 && 摆法.下次跟进 && (
               <div className="rec-card rec-side-card">
                 <div className="rec-side-t">
                   <span>下次跟进</span>
                 </div>
-                <Typography.Text type="secondary" style={{ fontSize: 13 }}>尚未安排</Typography.Text>
+                {计划话 && !计划话.错 ? (
+                  <div role="status" className="rec-plan-said">
+                    {计划话.话}
+                    {!只读 && <Button type="link" size="small" onClick={() => { set计划话(null); set排新计划(true); setPlanOpen(true); }}>排下一次</Button>}
+                  </div>
+                ) : <Typography.Text type="secondary" style={{ fontSize: 13 }}>尚未安排</Typography.Text>}
                 {!只读 && (
                   <Button block style={{ marginTop: 10 }} onClick={() => setPlanOpen(true)}>
                     制定跟进计划
@@ -1568,7 +1630,7 @@ export default function RecordView({
         onSaved={() => {
           setFollowOpen(false);
           setMemo("");
-          if (followInit.record?.id) void history.refreshRow(followInit.record.id).catch(() => message.warning("跟进已保存，请刷新页面核对最新内容"));
+          if (followInit.record?.id) void history.refreshRow(followInit.record.id).catch(() => 说就地("跟进已保存，请刷新页面核对最新内容"));
           router.refresh();
         }}
         customerId={customer.id}
@@ -1594,7 +1656,21 @@ export default function RecordView({
           if (r.kind === "skip") return void 完成计划(p);
           router.refresh();
           void window.desktopReminders?.刷新();
-          提示记完了(message, p, r, () => { void window.desktopReminders?.刷新(); router.refresh(); });
+          // 记一笔并完成：「下次跟进」那块就地说一句，底部撤销条可撤（撤销 = 删掉刚记的那笔和刚排的下一条、计划回到待办）
+          const 话 = r.next ? `已记一笔，「${p.subject}」完成；下次 ${dayjs(r.next).format("M 月 D 日")}` : `已记一笔，「${p.subject}」完成`;
+          if (!r.next) { set刚完成(p.id); 说计划({ 话 }); }
+          showUndo({
+            话,
+            毫秒: 6000,
+            撤销: async () => {
+              const u = await 撤销记一笔({ customerId: p.customerId, 跟进id: r.跟进id, 计划id: p.id, 下次计划id: r.下次计划id })
+                .catch(() => ({ ok: false as const, error: "没撤销成，请稍后重试" }));
+              if (u.ok) { set计划话(null); set刚完成(null); }
+              void window.desktopReminders?.刷新();
+              router.refresh();
+              return u;
+            },
+          });
         }}
       />
       <TaskForm open={taskOpen} onClose={() => setTaskOpen(false)} onSaved={() => { setTaskOpen(false); router.refresh(); }} customerId={customer.id} />
@@ -1605,7 +1681,7 @@ export default function RecordView({
         customerId={customer.id}
         有WhatsApp={有WhatsApp}
         record={排新计划 ? null : plan}
-        默认天数={排新计划 ? 7 : 2}
+        默认天数={排新计划 ? 7 : 3}
       />
       <ContactForm open={contactOpen} onClose={() => setContactOpen(false)} onSaved={(新加的) => { setContactOpen(false); if (新加的) { set刚加的联系人(新加的); set开着的联系人((s) => new Set(s).add(新加的)); } router.refresh(); }} customerId={customer.id} record={editingContact} 号码种类={企业 ? 号码种类 : undefined} 职务选项={企业 ? 职务选项 : undefined} />
       <ContractForm
@@ -1636,36 +1712,9 @@ export default function RecordView({
           if (saved) router.refresh();
         }}
       />
+      <TransferBox open={转让开} 客户名={customer.name} 候选={转让候选} 要申请={转让要申请} 作废天数={移交作废天数} 原因选项={转让原因?.选项 ?? []} 取预览={取转走预览} 做={发转让} onClose={() => set转让开(false)} />
       {头部框 && (
         <Modal open title={`${头部框 === "关联客户" && 去项目跟进 ? 客户详情左栏.关联 : 客户头部框叫法[头部框]} · ${customer.name}`} footer={null} width={头部框 === "转让" ? 480 : 640} onCancel={() => set头部框(null)}>
-          {头部框 === "转让" && (
-            <div className="proj-modal-sec">
-              {转让要申请 && <div className="rec-transfer-hint">这是你名下的{b.customer}：发出后要接手人确认才生效，确认前仍在你名下；{移交作废天数} 天内不确认自动作废，归属不变。</div>}
-              <Select
-                autoFocus
-                showSearch
-                optionFilterProp="label"
-                placeholder={转让要申请 ? "移交给谁" : "转给谁"}
-                options={转让候选}
-                value={转给谁}
-                onChange={(v: string) => set转给谁(v)}
-                aria-label="转给谁"
-              />
-              <div className="rec-modal-foot">
-                <Button onClick={() => set头部框(null)}>取消</Button>
-                <Button
-                  type="primary"
-                  disabled={!转给谁}
-                  onClick={换框(() => {
-                    const o = 转让候选.find((x) => x.value === 转给谁);
-                    if (o) void 转让给(o);
-                  })}
-                >
-                  下一步
-                </Button>
-              </div>
-            </div>
-          )}
           {头部框 === "管理联系人" && (
             <div className="proj-modal-list">
               {可管联系人.map((c) => (
@@ -1685,7 +1734,7 @@ export default function RecordView({
                   <Space size={4}>
                     <Button size="small" onClick={换框(() => { setEditingContact(c); setContactOpen(true); })}>编辑</Button>
                     {/* 挂来的不给删，拿掉走卡上的「解除挂靠」；删之前先问只移出还是彻底删（同卡上那颗） */}
-                    {!c.挂靠 && <Button size="small" type="text" danger onClick={换框(() => 问怎么拿掉(c))}>删除</Button>}
+                    {!c.挂靠 && !去项目跟进 && <Button size="small" type="text" danger onClick={换框(() => 问怎么拿掉(c))}>删除</Button>}
                   </Space>
                 </div>
               ))}
@@ -1721,64 +1770,53 @@ export default function RecordView({
   async function deleteFollow(f: FollowUpRow) {
     const r = await deleteFollowUp(f.id, customer.id);
     router.refresh();
-    if (!r.ok) return void message.error(r.error);
+    // 没删掉：问句留着（InlineConfirm 见 {ok:false} 不收），原因写在页头下面那行
+    if (!r.ok) { 说就地(r.error, true); return r; }
     history.remove(f.id);
-    // 删了不给撤销（11-09 删 restoreFollowUp）：企业版进回收站，总管理能恢复
-    message.success("已删除这条跟进");
+    // 删了不给撤销（11-09 删 restoreFollowUp）：企业版进回收站，总管理能恢复；这一条从时间线消失就是反馈，不再弹顶部提示
+    return r;
   }
 
   async function confirmDeleteContract(r: ContractRow) {
     const 是最后一笔 = contracts.length === 1;
     const 退回 = (await 删签约前清点(r.id).catch(() => null))?.退回商机 ?? [];
-    // 登记时顺手标成赢单的商机会退回进行中（L-007）：删之前说清（第 2 期 2a）
-    const 商机那句 = 退回.length ? (
-      <div style={{ marginTop: 8 }}>{是订单 ? "转成这张订单的商机" : "登记这笔时一起标成赢单的商机"}{退回.map((n) => `「${n}」`).join("")}会退回进行中。</div>
-    ) : null;
-    modal.confirm({
-      title: 是订单 ? "删除这张订单？" : "删除这条签约记录？",
-      content: !是最后一笔 ? (
-        <>
-          <div>金额 {金额(r.amount, r.currency)}，删除后统计数据会同步变化。</div>
-          {商机那句}
-        </>
-      ) : (
-        <>
-          <div>
-            金额 {金额(r.amount, r.currency)}。这是该{b.customer}唯一一笔{叫}，删除后{叫}金额归零，跟进状态需要跟着退回，否则看板上会一直挂着「{statusLabel(b, "已签约")}、金额 0」。
-          </div>
-          <div style={{ marginTop: 12 }}>
-            <div style={{ marginBottom: 6, fontSize: 13 }}>跟进状态退回到：</div>
-            <Select
-              style={{ width: "100%" }}
-              defaultValue={revertChoice.current}
-              onChange={(v) => (revertChoice.current = v)}
-              options={[
-                ...REVERT_CHOICES.map((c) => ({
-                  value: c.value,
-                  label: `${statusLabel(b, c.value)} · ${statusLabel(b, c.decision)}（${c.说明}）`,
-                })),
-                { value: "", label: `保持「${statusLabel(b, "已签约")}」不变（我知道自己在做什么）` },
-              ]}
-            />
-          </div>
-          {商机那句}
-        </>
-      ),
-      okText: "删除",
-      okButtonProps: { danger: true },
-      cancelText: "取消",
-      async onOk() {
+    // 登记时顺手标成赢单的商机会退回进行中（L-007）：删之前在后果里说清（第 2 期 2a）
+    // 删签约 / 订单（P-界面-40 后果框）：后果分条写清金额和连带；没成原因写在框里不关框；成了这一笔从列表消失，不再弹顶部提示
+    revertChoice.current = REVERT_CHOICES[0].value;
+    await 问后果({
+      题: 是订单 ? "删除这张订单" : "删除这条签约记录",
+      危: true,
+      后果: [
+        { 标: "金额", 话: <b className="num" style={{ overflowWrap: "anywhere" }}>{金额(r.amount, r.currency)}</b> },
+        是最后一笔
+          ? { 标: "会发生", 话: `这是该${b.customer}唯一一笔${叫}，删除后${叫}金额归零，跟进状态跟着退回（下面选）`, 级: "警" as const }
+          : { 标: "会发生", 话: "删除后统计数据会同步变化", 级: "警" as const },
+        ...(退回.length ? [{ 标: "一起退", 话: `${是订单 ? "转成这张订单的商机" : "登记这笔时一起标成赢单的商机"}${退回.map((n) => `「${n}」`).join("")}会退回进行中`, 级: "警" as const }] : []),
+      ],
+      补充: 是最后一笔 ? (
+        <div>
+          <div style={{ marginBottom: 6, fontSize: 13 }}>跟进状态退回到：</div>
+          <Select
+            style={{ width: "100%" }}
+            aria-label="跟进状态退回到"
+            defaultValue={revertChoice.current}
+            onChange={(v) => (revertChoice.current = v)}
+            options={[
+              ...REVERT_CHOICES.map((c) => ({
+                value: c.value,
+                label: `${statusLabel(b, c.value)} · ${statusLabel(b, c.decision)}（${c.说明}）`,
+              })),
+              { value: "", label: `保持「${statusLabel(b, "已签约")}」不变（我知道自己在做什么）` },
+            ]}
+          />
+        </div>
+      ) : undefined,
+      是: "删除",
+      做: async () => {
         const picked = REVERT_CHOICES.find((c) => c.value === revertChoice.current);
         const res = await deleteContract(r.id, customer.id, 是最后一笔 && picked ? { followStatus: picked.value, decisionStatus: picked.decision } : null);
         router.refresh();
-        if (!res.ok) {
-          message.error(res.error);
-          return;
-        }
-        // 当初登记时顺手标成赢单的商机跟着退回进行中（L-007）：说一句，不然人以为商机还是赢单
-        const 退 = res.退回商机 ? `，${res.退回商机} 个商机退回进行中` : "";
-        // 退回的状态写显示名（L-058）：改过叫法的库里原来提示「已退回「已试听」」，和下拉里看到的对不上
-        message.success(是最后一笔 && picked ? `已删除，跟进状态已退回「${statusLabel(b, picked.value)}」${退}` : `已删除${退}`);
+        if (!res.ok) return res;
       },
     });
   }
@@ -1802,8 +1840,9 @@ function StatusPicker({
   释义?: Record<string, string>;
 }) {
   const router = useRouter();
-  const { message } = App.useApp();
   const [saving, setSaving] = useState(false);
+  /** 没改成：原因就地写在这枚状态章后面，几秒后收（不弹顶部提示） */
+  const [错, set错] = useState<string | null>(null);
   // 同事的客户（互看）、字段权限里这一格只能看（11-03 D5-1）：状态章只显示
   const 整页只读 = useContext(只读上下文);
   const 权限挡 = useContext(只能看的格上下文).includes(field);
@@ -1822,13 +1861,14 @@ function StatusPicker({
           const { patchCustomer } = await import("../actions");
           const res = await patchCustomer(customerId, field, key);
           setSaving(false);
-          if (!res.ok) message.error(res.error);
-          else router.refresh();
+          if (!res.ok) { set错(res.error); setTimeout(() => set错(null), 5000); }
+          else { set错(null); router.refresh(); }
         },
       }}
     >
       <motion.span style={{ cursor: "pointer", display: "inline-flex", opacity: saving ? 0.5 : 1 }} whileTap={{ scale: 0.96 }} layout>
         {children}
+        {错 && <span role="alert" className="cd-task-err rec-tag-err">{错}</span>}
       </motion.span>
     </Dropdown>
   );
@@ -1907,7 +1947,8 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
         <div className="rec-tl-head">
           <span className="rec-tl-type">{f.method || meta.label}</span>
           {f.title?.trim() && <span className="rec-tl-title" title={f.title}>· {f.title}</span>}
-          {f.opportunity && !不挂商机 && <RowLink href={`/opportunities?opportunity=${encodeURIComponent(f.opportunity.id)}`} className="rec-tl-order" title={`关联商机：${f.opportunity.name}`}>关联商机：{f.opportunity.name}</RowLink>}
+          {/* 商机页 10-28 删了（/opportunities 只剩转项目的跳转）：只标出是哪个商机，不再做成链接 */}
+          {f.opportunity && !不挂商机 && <span className="rec-tl-order" title={`关联商机：${f.opportunity.name}`}>关联商机：{f.opportunity.name}</span>}
           {/* 企业版沟通记录（P14 第 6 条）：每条标出是哪个项目的，点了去项目详情的「沟通」卡记 */}
           {f.项目 && <RowLink href={项目地址(f.项目.id)} className="rec-tl-order rec-tl-proj" title={`项目：${f.项目.名}`}>项目：{f.项目.名}</RowLink>}
           {f.status !== "已完成" && (

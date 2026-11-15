@@ -3,7 +3,7 @@
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
 import CopyValue from "@/components/CopyValue";
 import Heat from "@/components/Heat";
-import { useEffect, useState, useSyncExternalStore, useRef, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore, useRef, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Select, Space, Dropdown, App, Tag, Segmented, type MenuProps, type SelectProps } from "antd";
@@ -24,14 +24,16 @@ import { maskPhone, smartTime, fmtDate, 成员选项, 可选成员 } from "@/lib
 import ListSearch from "@/components/ListSearch";
 import { RowLink, FollowStatusTag, PageHead, UserCell, DecisionStatusTag } from "@/components/ui";
 import DataList, { type 列 } from "@/components/DataList";
-import CustomerForm, { type CustomerRow } from "./CustomerForm";
+import type { CustomerRow } from "./CustomerForm";
 import { 完整导出 } from "./export-client";
 import { 签约各币 } from "./export-table";
-import ImportDrawer from "./ImportDrawer";
 import { assignSalesOwner, bulkFollowStatus, 撤销改负责人, type BulkResult } from "./actions";
 import { useDeleteCustomers } from "./useDeleteCustomers";
 import { useTransferConfirm } from "./useTransferConfirm";
 import { usePoolReturnConfirm } from "./usePoolReturnConfirm";
+import { 转走项目预览of } from "./actions";
+import { showUndo } from "@/components/UndoBar";
+import { 问后果, 预取弹框 } from "@/components/dialog-host";
 import { 带走说法, 批量结果说法 } from "@/lib/carry-over";
 import { useBusiness } from "@/lib/business-client";
 import { statusLabel, 外贸精简, 签约叫 } from "@/lib/business-config";
@@ -77,6 +79,24 @@ const 建档弹窗 = dynamic(() => import("../projects/new/ProjectWizard").then(
 /** 「新建 ▾ → 新建项目」那条路的懒加载块：展开菜单时先拿起来（预取），点下去等它到了再挂、按钮转圈 */
 const 取新建项目流程 = () => import("../projects/NewProjectFlow");
 const 新建项目流程 = dynamic(取新建项目流程, { ssr: false });
+/*
+  下面三块也是点了才用（速度闸门 11-15：改版后客户列表首屏 JS 870 KB、线 850）：
+  客户表单（新建 / 编辑，连 Form、单选、自动补全、渠道级联）、导入抽屉（上传、步骤条、进度条）、批量转让框。
+  不 SSR、第一次要开时才挂；表单随「表单料」一起取（展开「新建 ▾」、行菜单时预取），转让框和确认框在勾选时预取
+*/
+const 取客户表单 = () => import("./CustomerForm");
+const CustomerForm = dynamic(取客户表单, { ssr: false });
+const ImportDrawer = dynamic(() => import("./ImportDrawer"), { ssr: false });
+const 取转让框 = () => import("./TransferDialog");
+const TransferDialog = dynamic(取转让框, { ssr: false });
+/** 勾了人、批量条一出来就去拿转让框和确认框的代码：点下去时多半已经到了 */
+function PrefetchOnPick() {
+  useEffect(() => {
+    void 取转让框().catch(() => {});
+    预取弹框();
+  }, []);
+  return null;
+}
 
 /**
  * 批量操作的结果文案。
@@ -121,7 +141,7 @@ type Props = {
   channels?: Option[];
   /** 进来就把新建表单打开（首页空库那张「开始」卡的落点） */
   直接新建?: boolean;
-  /** 企业版项目模式：「新建客户」弹建档向导框（U-新建-01）要的数据；null = 照旧（项目模式跳 /projects/new） */
+  /** 企业版项目模式：「新建客户」弹建档向导框（U-新建-01）要的数据；null = 项目模式没开，走老的新建客户框 */
   建档?: 建档数据 | null;
   /** 企业版项目模式、首屏没带 建档（平时都不带，11-15）：「新建客户」点开时再取（form-data-action.ts）；false = 不走向导 */
   建档要取?: boolean;
@@ -302,11 +322,16 @@ export default function CustomersView({
     window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
   }, [page, requestedPage]);
 
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
   const 视图中 = useViewAs();
   const { 问删除 } = useDeleteCustomers();
-  const { 先问转走的项目, 问转让原因 } = useTransferConfirm(转让原因);
+  const { 先问转走的项目 } = useTransferConfirm(转让原因);
   const { 问放回公海 } = usePoolReturnConfirm();
+  /** 批量转让框（原型 cu.transfer：选人、一起转走的项目、原因合成一个框）：开着时记住勾的是谁 */
+  const [转让框, set转让框] = useState<{ ids: string[]; 清空: () => void } | null>(null);
+  /** 转让框是懒块：第一次开才挂，挂上以后不卸（关的动画照放） */
+  const [转让框挂过, set转让框挂过] = useState(false);
+  const 取转走 = useCallback((人id: string) => 转走项目预览of(转让框?.ids ?? [], 人id), [转让框]);
 
   /**
    * 批量改完给一次撤销（排查 D1）。原来点一下就写库、没有退路，选错一页就是一批数据改错。
@@ -315,44 +340,31 @@ export default function CustomersView({
    */
   function 可撤销提示(res: Extract<BulkResult, { ok: true }>, 文案: string, 退回: (ids: string[], 值: string) => Promise<BulkResult>, 整批退回?: () => Promise<BulkResult>) {
     const 原值 = res.原值 ?? [];
-    if (!原值.length) return void message.success(文案);
-    const key = `bulk-${原值[0].id}-${原值.length}`;
-    message.success({
-      key,
-      duration: 6,
-      content: (
-        <span>
-          {文案}
-          <Button
-            type="link"
-            size="small"
-            onClick={async () => {
-              message.destroy(key);
-              if (整批退回) {
-                const r = await 整批退回();
-                router.refresh();
-                if (!r.ok) return void message.error(`没能全部改回去：${r.error}`);
-                return void (r.unchanged
-                  ? message.warning(`已撤销 ${r.updated} 条；${r.unchanged} 条没改回（刚被人改过，或原负责人已停用）`)
-                  : message.success(`已撤销，${r.updated} 条改回原样`));
-              }
-              const 组 = new Map<string, string[]>();
-              for (const x of 原值) 组.set(x.值, [...(组.get(x.值) ?? []), x.id]);
-              for (const [值, ids] of 组) {
-                const r = await 退回(ids, 值);
-                if (!r.ok) {
-                  router.refresh();
-                  return void message.error(`没能全部改回去：${r.error}`);
-                }
-              }
-              router.refresh();
-              message.success(`已撤销，${原值.length} 条改回原样`);
-            }}
-          >
-            撤销
-          </Button>
-        </span>
-      ),
+    // 没改动的（都已是这个值）：没有可撤的，也不弹顶部提示——列表刷新就是反馈（11-15 原型 g.save）
+    if (!原值.length) return;
+    // 底部撤销条（PR5a showUndo）：事情已经做了，撤销 = 反着做一遍；撤销被挡时条上写原因
+    showUndo({
+      话: 文案,
+      毫秒: 6000,
+      撤销: async () => {
+        if (整批退回) {
+          const r = await 整批退回();
+          router.refresh();
+          if (!r.ok) return { ok: false, error: `没能全部改回去：${r.error}` };
+          if (r.unchanged) return { ok: false, error: `已撤销 ${r.updated} 条；${r.unchanged} 条没改回（刚被人改过，或原负责人已停用）` };
+          return;
+        }
+        const 组 = new Map<string, string[]>();
+        for (const x of 原值) 组.set(x.值, [...(组.get(x.值) ?? []), x.id]);
+        for (const [值, ids] of 组) {
+          const r = await 退回(ids, 值);
+          if (!r.ok) {
+            router.refresh();
+            return { ok: false, error: `没能全部改回去：${r.error}` };
+          }
+        }
+        router.refresh();
+      },
     });
   }
   /**
@@ -376,29 +388,35 @@ export default function CustomersView({
     ].filter(Boolean);
     const 文案 = 动作 === "分配" ? `已把 ${res.updated} 位${名}${另.length ? `；${另.join("，")}` : ""}${带走说法(res.带走)}` : `已${名} ${res.updated} 位${另.length ? `；${另.join("，")}` : ""}${带走说法(res.带走)}`;
     const 原 = 动作 === "放进" ? ids.map((id) => ({ id, 值: "" })) : (res.原负责人 ?? []);
-    const key = `pool-${动作}-${ids[0]}-${ids.length}`;
-    message.success({
-      key,
-      duration: 6,
-      content: (
-        <span>
-          {文案}
-          <Button
-            type="link"
-            size="small"
-            onClick={async () => {
-              message.destroy(key);
-              const r = await 撤销公海(动作, 原, res.ok ? res.带过来 : undefined, res.ok ? res.给谁?.id : undefined, res.ok ? res.公海项目 : undefined);
-              router.refresh();
-              if (!r.ok) return void message.error(`没能撤销：${r.error}`);
-              message.success(`已撤销，${r.updated} 位改回原样`);
-            }}
-          >
-            撤销
-          </Button>
-        </span>
-      ),
+    // 底部撤销条跟着走（换页也在，原型 cu.return「撤销条跟着」）：已经做了，撤销 = 撤销公海 反着做
+    showUndo({
+      话: 文案,
+      毫秒: 6000,
+      撤销: async () => {
+        const r = await 撤销公海(动作, 原, res.ok ? res.带过来 : undefined, res.ok ? res.给谁?.id : undefined, res.ok ? res.公海项目 : undefined);
+        router.refresh();
+        if (!r.ok) return { ok: false, error: `没能撤销：${r.error}` };
+      },
     });
+  }
+  /**
+   * 退回公海在后果框里做（原型 cu.return）：没退成、一位都没退的，原因写在框里、框不关；退了的走 公海提示（撤销条）
+   */
+  async function 退回做(ids: string[], 原因?: string | null) {
+    const res = await 放进公海(ids, 原因);
+    if (!res.ok) return res;
+    if (!res.updated) {
+      router.refresh();
+      return { ok: false, error: "选中的没有能退回的：" + ([
+        res.unchanged && `${res.unchanged} 位本来就在公海`,
+        res.没权限 && `${res.没权限} 位你放不了`,
+        res.有订单 && `${res.有订单} 位名下有没结束的订单阶段项目`,
+        res.交接中 && `${res.交接中} 位正在转让交接中`,
+        res.同事在推 && `${res.同事在推} 位名下有同事负责、还没结束的项目`,
+        res.联系方式不全 && `${res.联系方式不全} 位联系方式空着或有号码不对（改好再放）`,
+      ].filter(Boolean).join("，") || "都已不在你名下") };
+    }
+    公海提示(res, "放进", ids);
   }
   const b = useBusiness();
   // 项目模式开着：新建一律走建档向导（客户、联系人、项目、首条沟通一次建好）
@@ -409,7 +427,6 @@ export default function CustomersView({
   const 统一公海 = 企业 && b.projectMode === true;
   const 新建 = () => {
     if (b.projectMode && 有建档) return void 要表单料().then((d) => d?.建档 && set建档开着(true));
-    if (b.projectMode) return router.push("/projects/new");
     void 要表单料().then((d) => {
       if (!d) return;
       setEditing(null);
@@ -452,7 +469,7 @@ export default function CustomersView({
     window.addEventListener("beforeunload", 拦);
     return () => window.removeEventListener("beforeunload", 拦);
   }, [导出中]);
-  /** 走建档向导：首屏带了数据，或企业版项目模式点开时再取 */
+  /** 走建档向导：首屏带了数据，或项目模式点开时再取 */
   const 有建档 = Boolean(建档) || 建档要取;
   /**
    * 表单那两份料（渠道候选、建档向导数据）：首屏带了就用（?new=1），没带就点开（或展开「新建 ▾」预取）时取一次，
@@ -462,11 +479,12 @@ export default function CustomersView({
   const [表单料取中, set表单料取中] = useState(false);
   const 表单料请求 = useRef<Promise<客户页表单料 | null> | null>(null);
   const 要表单料 = (出错提示 = true): Promise<客户页表单料 | null> => {
-    if (表单料) return Promise.resolve(表单料);
+    // 表单代码和料一起取（表单是懒块）：取不到代码就当没打开
+    if (表单料) return 取客户表单().then(() => 表单料, () => { if (出错提示) message.error("没打开，请重试"); return null; });
     if (!表单料请求.current) {
       set表单料取中(true);
-      表单料请求.current = 取客户页表单料()
-        .then((d) => { set表单料(d); return d; })
+      表单料请求.current = Promise.all([取客户页表单料(), 取客户表单()])
+        .then(([d]) => { set表单料(d); return d; })
         .catch(() => { 表单料请求.current = null; return null; })
         .finally(() => set表单料取中(false));
     }
@@ -483,6 +501,8 @@ export default function CustomersView({
     if (表单料) {
       setEditing(r);
       setFormOpen(true);
+      // 表单是懒块：料首屏就带了时，这里顺手把代码拿起来（已到就是空转）
+      void 取客户表单().catch(() => {});
       return;
     }
     // 同一下连点两次时 state 还没更新，用 ref 拦
@@ -500,11 +520,17 @@ export default function CustomersView({
         set编辑取中(null);
       });
   };
-  /** 「新增客户」向导框（U-新建-01）：和 /projects/new 同一个向导，弹在本页 */
+  /** 「新增客户」向导框（U-新建-01）：和项目页「新增项目」同一个向导，弹在本页 */
   const [建档开着, set建档开着] = useState(Boolean(直接新建 && 建档));
   const [导入开着, set导入开着] = useState(Boolean(直接粘贴) && 能导入导出 && !企业);
+  /** 导入抽屉是懒块：第一次开才挂，挂上以后不卸（关抽屉的动画、抽屉里的进度都留着） */
+  const [导入挂过, set导入挂过] = useState(导入开着);
   /** 企业版不用客户页这个旧导入抽屉（11-03）：导入走设置 →「企业版导入」，首页那张「开始」卡同一个去处 */
-  const 去导入 = () => (企业 ? router.push("/settings?tab=enterprise") : set导入开着(true));
+  const 去导入 = () => {
+    if (企业) return router.push("/settings?tab=enterprise");
+    set导入挂过(true);
+    set导入开着(true);
+  };
   /** ?new=1 / ?import=paste 进来就开：等水合完再开。服务端先画一个开着的弹窗，会和客户端那一版对不上（跟进页同一写法） */
   const 已水合 = useSyncExternalStore(无订阅, () => true, () => false);
   /*
@@ -965,7 +991,7 @@ export default function CustomersView({
         const 菜单: NonNullable<MenuProps["items"]> = [
           // 老板直接分给某位同事（2026-10-20）：规矩同领取，只是领的人换成选中的那位
           ...(公海里 && 能分配公海 && !公海别线.has(r.id) && 成员选项(分给们).length ? [{
-            key: "assign", label: "分配给…",
+            key: "assign", label: "分配给同事",
             children: 成员选项(分给们).map((o) => ({ key: `assign:${o.value}`, label: o.label, onClick: async () => 公海提示(await 分配公海([r.id], o.value), "分配", [r.id]) })),
           }] : []),
           { key: "edit", label: "编辑", onClick: () => 去编辑(r) },
@@ -981,7 +1007,7 @@ export default function CustomersView({
               )}
               {/* 菜单画在 body 上，但 React 事件照组件树冒泡到这一行：不拦住，点完就跟着进了记录页 */}
               {/* 展开时先把表单料拿起来（同「新建 ▾」），点「编辑」多半不用再等；还在取时这一行的按钮转圈、各行菜单都点不了（防连点） */}
-              <Dropdown trigger={["click"]} disabled={!!编辑取中} onOpenChange={(开) => { if (开) void 要表单料(false); }} menu={{ items: 菜单, onClick: ({ domEvent }) => domEvent.stopPropagation() }}>
+              <Dropdown trigger={["click"]} disabled={!!编辑取中} onOpenChange={(开) => { if (开) { void 要表单料(false); 预取弹框(); } }} menu={{ items: 菜单, onClick: ({ domEvent }) => domEvent.stopPropagation() }}>
                 <Button className="row-act" aria-label={`更多操作 ${r.name}`} type="text" size="small" icon={<MoreOutlined />} loading={编辑取中 === r.id} />
               </Dropdown>
             </Space>
@@ -1024,6 +1050,35 @@ export default function CustomersView({
 
   return (
     <>
+      {转让框挂过 && <TransferDialog
+        open={!!转让框}
+        onClose={() => set转让框(null)}
+        题={`把 ${转让框?.ids.length ?? 0} 位${b.customer}转给`}
+        人们={成员选项(users)}
+        取转走={取转走}
+        // 要不要接手人确认（P-转-16）：不在这里猜，看 取转走 回来的「要确认」（服务端 转让走交接 同一个判定）
+        原因选项={转让原因?.选项}
+        自己={转让原因?.自己}
+        做={async (人id, 原因) => {
+          if (!转让框) return;
+          const ids = 转让框.ids;
+          const 名 = 成员选项(users).find((o) => o.value === 人id)?.label ?? "";
+          const res = await assignSalesOwner(ids, 人id, 原因);
+          // 权限被挡、交接中……：原因写在框里，框不关，不提示成功
+          if (!res.ok) return res;
+          // 企业版「交接中」（D10）：一位都没发起 = 没成，原因写在框里
+          if (res.交接中 === 0) {
+            router.refresh();
+            const 已在 = (res.交接已在路上 ? `${res.交接已在路上} 名已在移交中（等对方确认）` : "") + (res.没转 ? `；${res.没转} 名刚被别人改了负责人` : "") + (res.missing ? `；${res.missing} 名已不存在` : "");
+            return { ok: false, error: `没有发起新的交接${已在 ? `：${已在}` : "：选中的都已归 " + 名}` };
+          }
+          转让框.清空();
+          router.refresh();
+          // 发起了交接：负责人还没换，等接手人确认——没有可撤销的；页顶「移交申请中」横幅就是反馈，可在那撤回
+          if (res.交接中 !== undefined) return;
+          可撤销提示(res, 批量结果说法(res, `已转给 ${名}`), assignSalesOwner, () => 撤销改负责人(res.原值 ?? [], 人id, res.带过来));
+        }}
+      />}
       <PageHead
         title={b.customer}
         subtitle="全部档案与跟进"
@@ -1094,6 +1149,7 @@ export default function CustomersView({
       {/* 看板视图：看板（ProjectsView 客户页）的分配、「→ 还有 N 列」画进筛选行右端那一格（board-slot.ts），不在看板上面另占一行 */}
       <看板工具位.Provider value={看板体 !== undefined ? 工具位 : undefined}>
       <DataList<CustomerRow>
+        浮起操作条
         页="customers"
         // 企业版每格一行、放不下省略号悬停看全（11-01 会议 §11）
         单行={企业}
@@ -1176,6 +1232,7 @@ export default function CustomersView({
           const 全领不回 = 选中行.some((r) => r.pool) && 选中行.filter((r) => r.pool).every((r) => 领不回.has(r.id));
           return (
           <>
+            <PrefetchOnPick />
             {/* 公海页签的老板：「分配给…」= 从公海直接分出去（出公海、记领取时间）；批量分配只换负责人、人还在公海里，这里不摆 */}
             {!不问归属 && 公海页 && 能分配公海 && <Dropdown
               menu={{
@@ -1190,40 +1247,15 @@ export default function CustomersView({
                 })),
               }}
             >
-              <Button size="small" icon={<UserSwitchOutlined />}>分配给…</Button>
+              <Button size="small" icon={<UserSwitchOutlined />}>分配给同事</Button>
             </Dropdown>}
             {/* 企业版批量分配（转让）：管理、总管理；负责人只转自己的（11-02，服务端 assignSalesOwner 同样拦） */}
-            {!不问归属 && !(公海页 && 能分配公海) && (!企业 || 能分配公海 || (能转出自己的 && !公海页)) && <Dropdown
-              menu={{
-                // 同样走 成员选项：批量分配比单条更需要认清人，转错了是一批数据
-                items: 成员选项(users).map((o) => ({
-                  key: o.value,
-                  label: o.label,
-                  onClick: async () => {
-                    if (!(await 先问转走的项目(selected, o.value))) return;
-                    const 原因 = await 问转让原因(o.label, o.value);
-                    if (原因 === false) return;
-                    const res = await assignSalesOwner(selected, o.value, 原因);
-                    清空();
-                    router.refresh();
-                    if (!res.ok) return void message.error(res.error);
-                    // 企业版「交接中」（D10）：负责人还没换，等接手人确认，没有可撤销的
-                    if (res.交接中 !== undefined) {
-                      const 已在 = (res.交接已在路上 ? `；${res.交接已在路上} 名已在移交中（等对方确认），没再发起` : "") + (res.没转 ? `；${res.没转} 名刚被别人改了负责人，没转` : "") + (res.missing ? `；${res.missing} 名已不存在（可能已删除）` : "");
-                      return void (res.交接中
-                        ? message.success(res.申请移交
-                          // 负责人本人转自己的 = 申请移交（X4）：对方确认才生效
-                          ? `已发起客户转让：${res.交接中} 名等「${o.label}」确认后生效，确认前仍在原负责人名下${已在}`
-                          : `已发起交接：${res.交接中} 名等 ${o.label} 确认，确认前仍在原负责人名下${已在}`)
-                        : message.info(`没有发起新的交接${已在 || "：选中的都已归 " + o.label}`));
-                    }
-                    可撤销提示(res, 批量结果说法(res, `已转给 ${o.label}`), assignSalesOwner, () => 撤销改负责人(res.原值 ?? [], o.value, res.带过来));
-                  },
-                })),
-              }}
-            >
-              <Button size="small" icon={<UserSwitchOutlined />}>批量分配</Button>
-            </Dropdown>}
+            {!不问归属 && !(公海页 && 能分配公海) && (!企业 || 能分配公海 || (能转出自己的 && !公海页)) &&
+              // 按钮文字写全（P-界面-43）；选人、一起转走的项目、原因在同一个框里（原型 cu.transfer）
+              <Button size="small" icon={<UserSwitchOutlined />}
+                onClick={() => { set转让框挂过(true); set转让框({ ids: [...selected], 清空 }); }}>
+                转让给同事
+              </Button>}
             {/* 「公海」页签只有领取，「客户」页签只有放进公海；子集里两种混着，看勾的是什么 */}
             {!不问归属 && (公海页 || (子集 && 选中行.some((r) => r.pool)) ? (能新建和领取 &&
               <>
@@ -1246,18 +1278,18 @@ export default function CustomersView({
                   if (企业) {
                     const ids = [...selected];
                     // 确认框和工具条按钮统一叫「退回公海」（11-12 用户定 D3）
-                    const 问 = await 问放回公海(`把 ${ids.length} 位退回公海？`, true, "退回公海");
-                    if (!问) return;
-                    公海提示(await 放进公海(ids, 问.原因), "放进", ids); 清空();
+                    // 退回这件事在框里做：没退成原因写在框里；退了 → 清勾、撤销条（6 秒）
+                    const 问 = await 问放回公海(`把 ${ids.length} 位退回公海`, true, "退回公海", (原因) => 退回做(ids, 原因));
+                    if (问) 清空();
                     return;
                   }
-                  modal.confirm({
-                    title: `把 ${selected.length} 位放回公海？`,
-                    content: "放回后谁都能领；6 秒内可以撤销。",
-                    okText: "放回公海",
-                    cancelText: "取消",
-                    onOk: async () => { 公海提示(await 放进公海(selected), "放进", selected); 清空(); },
-                  });
+                  const ids = [...selected];
+                  if (await 问后果({
+                    题: `把 ${ids.length} 位放回公海`,
+                    后果: [{ 标: "谁都能领", 级: "警", 话: "放回后谁都能领" }, { 标: "可撤", 话: "6 秒内可以撤销" }],
+                    是: "放回公海",
+                    做: () => 退回做(ids),
+                  })) 清空();
                 }}>
                 {/* 企业版统一叫「退回公海」（11-12 D3：工具条按钮、确认框一个说法） */}
                 {企业 ? "退回公海" : "放回公海"}
@@ -1285,13 +1317,12 @@ export default function CustomersView({
               size="small"
               icon={<DeleteOutlined />}
               // 写出是谁、会一起删掉什么（排查 B1）：人得对得上自己勾的是哪几位
+              // 勾的全是删不了的：灰着；混着的不再整批拦下，框里写明跳过谁、删其余的（原型 cu.bulkdel）
+              disabled={selected.every((id) => 删不了.has(id))}
+              title={selected.every((id) => 删不了.has(id)) ? "勾的都不是你负责的，删不了" : undefined}
               onClick={() => {
-                const 不行 = selected.filter((id) => 删不了.has(id)).length;
-                if (不行) return void message.warning(`勾的里有 ${不行} 位不是你负责的，删不了；只勾自己负责的再删`);
-                void 问删除(
-                  selected.map((id) => ({ id, name: 选中行.find((r) => r.id === id)?.name ?? "" })),
-                  清空,
-                );
+                const 名 = (id: string) => ({ id, name: 选中行.find((r) => r.id === id)?.name ?? "" });
+                void 问删除(selected.filter((id) => !删不了.has(id)).map(名), 清空, selected.filter((id) => 删不了.has(id)).map(名));
               }}
             >
               删除
@@ -1315,7 +1346,8 @@ export default function CustomersView({
       />
       </看板工具位.Provider>
 
-      {表单料?.建档 && <建档弹窗 open={建档开着 && 已水合} 标题="新增客户" 数据={表单料.建档} onClose={() => set建档开着(false)} />}
+      {/* 新建客户：一个弹窗填完，项目默认关、有项目就打开（P-界面-36） */}
+      {表单料?.建档 && <建档弹窗 open={建档开着 && 已水合} 标题="新增客户" 项目="关" 数据={表单料.建档} onClose={() => set建档开着(false)} />}
       {/* 「新建 ▾ → 新建项目」：新客户走同一个建档向导（数据用上面那份，不再取），老客户挑一位接新建项目框 */}
       {新建项目次 > 0 && <新建项目流程 key={新建项目次} users={users} 节点们={阶段字典.节点们.线索} 要下一步={!!表单料?.建档?.要下一步} 建档={表单料?.建档 ?? null} />}
 
@@ -1341,7 +1373,7 @@ export default function CustomersView({
         }}
       />}
 
-      {能导入导出 && !企业 && <ImportDrawer
+      {能导入导出 && !企业 && 导入挂过 && <ImportDrawer
         open={导入开着 && 已水合}
         b={b}
         aiEnabled={Boolean(aiEnabled)}

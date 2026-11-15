@@ -23,7 +23,8 @@ export default function StatePage({
   标题: string;
   /** 一句话说清：发生了什么、为什么、接下来做什么 */
   说明: React.ReactNode;
-  动作?: { label: string; onClick?: () => void; href?: string };
+  /** loading：点了之后原地转圈（出错页「重试」，原型 st.error） */
+  动作?: { label: string; onClick?: () => void; href?: string; loading?: boolean };
   次动作?: { label: string; onClick?: () => void; href?: string };
   /** 错误编号这类给管理员看的东西 */
   附注?: React.ReactNode;
@@ -31,12 +32,12 @@ export default function StatePage({
   return (
     /* 空、404、出错这三张脸都是「没有正文」的结果，它们出现时页面往往刚等过一会儿。
        托一下再出现，比直接砸在屏幕中央温和——人第一眼要读的是那句说明，不是一次闪现 */
-    <Rise className="empty-state">
-      <div className="empty-state-t">{标题}</div>
-      <p className="empty-state-h">{说明}</p>
-      <div className="empty-state-a">
+    <div className="empty-state">
+      <Rise 第几个={0} className="empty-state-t">{标题}</Rise>
+      <Rise 第几个={1} className="empty-state-h">{说明}</Rise>
+      <Rise 第几个={2} className="empty-state-a">
         {动作 && (
-          <Button type="primary" href={动作.href} onClick={动作.onClick}>
+          <Button type="primary" href={动作.href} onClick={动作.onClick} loading={动作.loading}>
             {动作.label}
           </Button>
         )}
@@ -45,8 +46,8 @@ export default function StatePage({
             {次动作.label}
           </Button>
         )}
-      </div>
-      {附注 && <p className="empty-state-h" style={{ marginTop: 12 }}>{附注}</p>}
-    </Rise>
+      </Rise>
+      {附注 && <Rise 第几个={3} className="empty-state-h" style={{ marginTop: 12 }}>{附注}</Rise>}
+    </div>
   );
 }

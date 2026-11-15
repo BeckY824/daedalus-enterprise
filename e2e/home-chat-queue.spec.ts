@@ -7,6 +7,7 @@
  *   2. 这时再问第二句：不并发，后端只收到一个请求
  *   3. 放开第一问：第二句自动发出去，带的是第二句的问题，答案出现在同一屏
  */
+import { 企业版 } from "./owner-pick";
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import { 装个假模型, 拆掉假模型 } from "./fake-llm";
 
@@ -17,7 +18,8 @@ test.afterAll(async ({ browser }) => 拆掉假模型(browser));
 
 async function 登录(page: Page) {
   await page.goto("/login");
-  const 提示 = page.locator(".ant-alert");
+  // 登录页 11-15 起：账号 / 密码错写在那一格底下（.auth-field-err，role=alert），网络这类才是表单底下那条 Alert
+  const 提示 = page.locator(".ant-alert, .auth-field-err");
   for (let i = 0; i < 3; i++) {
     await page.getByPlaceholder("用户名").fill(账号.用户名);
     await page.getByPlaceholder("登录密码").fill(账号.密码);
@@ -93,6 +95,8 @@ test.describe("正在答时再问：排队、答完自动发", () => {
     await 登录(page);
     await page.goto("/channels");
     const 面板 = page.locator("aside.dock");
+    // 企业版（项目模式）11-15 起 AI 是正文中下方的浮窗（P-界面-39，也是 aside.dock），默认收着、⌘J 打开；排队这件事两种摆法一样要过
+    if (企业版 && !(await 面板.isVisible().catch(() => false))) await page.keyboard.press("ControlOrMeta+j");
     await expect(面板).toBeVisible();
     await 走一遍排队(page, 面板);
   });

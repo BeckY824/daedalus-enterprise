@@ -15,7 +15,7 @@ const plugin: Plugin = { name: "history-server-boundaries", setup(b) {
   stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({问怎么拿掉(){}});");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
   stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海,退回原因选项=async()=>[];");
-  stub(/^\.\.\/actions$/, "export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=async()=>({ok:true});");
+  stub(/^\.\.\/actions$/, "export const 转走项目预览of=async()=>(window.__预览??{项目数:0,项目:[]});export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=async()=>({ok:true});");
   stub(/^\.\/useCustomerResearch$/, "export function CustomerResearchCard(){return null} export function CustomerResearchTag(){return null}");
   stub(/^\.\/follow-history-actions$/, `
     export async function loadFollowHistory(customerId,before){window.__requests.push({customerId,before});if(window.__fail){window.__fail=false;throw Error('QA网络中断，请重试')};
@@ -65,7 +65,9 @@ it("真实详情页加载第51条及153条，旧记录表单编辑/删除及时�
     const row = page.locator("#fu-a-0102"); await row.getByRole("button", { name: "编辑跟进" }).click();
     const dialog = page.getByRole("dialog"); await dialog.locator("#content").fill("第51条已改好"); await dialog.getByRole("button", { name: /保\s*存/ }).click();
     await expect.poll(() => row.locator(".rec-tl-content").innerText()).toBe("第51条已改好");
-    expect(await row.getByRole("link", { name: "关联商机：同名商机" }).getAttribute("href")).toBe("/opportunities?opportunity=unique-closed-opp");
+    // 商机页删了：只标名字，不再是指向 /opportunities 的链接
+    expect(await row.getByText("关联商机：同名商机").count()).toBe(1);
+    expect(await row.getByRole("link", { name: "关联商机：同名商机" }).count()).toBe(0);
     expect(await page.evaluate(() => (Reflect.get(window, "__saved") as unknown as { 版本: string }).版本)).toBe("2026-01-01T02:00:00.000Z");
     await row.getByRole("button", { name: "删除跟进" }).click(); await row.locator(".inlc-yes").click();
     await expect.poll(() => row.count()).toBe(0);

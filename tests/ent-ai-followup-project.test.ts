@@ -41,6 +41,8 @@ beforeEach(async () => {
   mocks.企业版 = true;
   销售 = (await prisma.user.create({ data: { email: "s1", name: "小王", title: "", role: "SALES", password: "x" } })).id;
   mocks.user = { ...mocks.user, id: 销售 };
+  // 11-01 起权限只认业务角色：AI 卡挂项目也要「能管项目」（X-143），负责人得是销售
+  await prisma.entMember.create({ data: { userId: 销售, bizRole: "sales" } });
   客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13800000001", salesOwnerId: 销售 } })).id;
   await setSetting("business", { projectMode: true });
   invalidateSettingsCache();
@@ -58,6 +60,16 @@ describe("AI 记跟进卡挂项目", () => {
   it("两个在推项目：不挂，跟进照样记在客户下", async () => {
     await 项目();
     await 项目();
+    expect(await 确认跟进卡()).toMatchObject({ ok: true });
+    expect(await 挂的项目()).toBeNull();
+    expect(await prisma.followUp.count({ where: { customerId: 客户 } })).toBe(1);
+  });
+
+  it("唯一在推的项目是同事负责、我只是组员（X-143）：不挂，跟进照样记在客户下，不整张拒", async () => {
+    const 同事 = (await prisma.user.create({ data: { email: "s2", name: "小李", title: "", role: "SALES", password: "x" } })).id;
+    await prisma.entMember.create({ data: { userId: 同事, bizRole: "sales" } });
+    const p = await 项目({ ownerId: 同事, creatorId: 同事 });
+    await prisma.projectMember.create({ data: { projectId: p.id, userId: 销售, inviteStatus: "JOINED" } });
     expect(await 确认跟进卡()).toMatchObject({ ok: true });
     expect(await 挂的项目()).toBeNull();
     expect(await prisma.followUp.count({ where: { customerId: 客户 } })).toBe(1);

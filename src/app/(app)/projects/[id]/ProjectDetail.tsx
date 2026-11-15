@@ -8,6 +8,8 @@ import { App, Alert, Button, Card, Checkbox, Dropdown, Input, InputNumber, Menu,
 import DatePicker from "@/components/BusinessDatePicker";
 import DictSelect from "@/components/DictSelect";
 import InlineConfirm from "@/components/InlineConfirm";
+import { useConsequence } from "@/components/ConsequenceDialog";
+import { showUndo } from "@/components/UndoBar";
 import { 其他没写好, 不填项, 去不填, 未选占位 } from "@/lib/enterprise/dict-kinds";
 import { 有值, 空值符 } from "@/lib/empty-value";
 import { 项目不能单独领提示, 客户在公海项目不单领提示, 公海规则 } from "@/lib/enterprise/pool-rules";
@@ -459,6 +461,8 @@ export default function ProjectDetail({
   const { message, modal } = App.useApp();
   const b = useBusiness();
   const [忙, set忙] = useState(false);
+  /** 后果框（PR5a）：判无效（dt.invalid）、删回款（dt.pay） */
+  const [问后果, 后果框] = useConsequence();
   const [异常框, set异常框] = useState<位置 | null>(null);
   const [没成框, set没成框] = useState<位置 | null>(null);
   /** 异常框 / 没成框是「终止进程」开的（M-节点-04）：确定时走 终止项目进程 */
@@ -586,7 +590,7 @@ export default function ProjectDetail({
   };
 
   /** 终止 = true：异常框 / 没成框 点确定走 终止项目进程（M-节点-04，审计写「终止进程」）；成了 = 改成了以后的提示 */
-  const 改到 = (到: 位置, 附: { 终止?: boolean; 成了?: string } = {}) => {
+  const 改到 = (到: 位置, 附: { 终止?: boolean; 成了?: string; 可撤?: boolean } = {}) => {
     set终止中(!!附.终止);
     if (到.result === "异常状态") {
       set原因("");
@@ -594,6 +598,7 @@ export default function ProjectDetail({
       set异常框(到);
       return;
     }
+    if (p.企业版 && 到.result === "线索流失" && p.原因选项.无效.length > 0) return void 判无效(到, !!附.终止);
     if (p.企业版 && 要写原因(到.result)) {
       set原因("");
       set无效原因(null);
@@ -604,7 +609,45 @@ export default function ProjectDetail({
       message.warning(交付还差话(差, 交付叫法, p.企业版));
       return;
     }
+    // 完成节点往前推一步（dt.stage，P-界面-40「推进节点可撤销」）：不弹顶部提示，底部撤销条，撤销 = 改回原来那个节点
+    if (附.可撤) {
+      const 原: 位置 = { phase: p.phase, node: p.node, result: p.result ?? null };
+      void 跑(() => 改项目节点(p.id, 到)).then((ok) => {
+        if (!ok) return;
+        showUndo({
+          话: 附.成了 ?? `已改到 ${位置文字(到, 字典)}`,
+          撤销: async () => {
+            const r = await 改项目节点(p.id, 原);
+            router.refresh();
+            return r;
+          },
+        });
+      });
+      return;
+    }
     void 跑(() => 改项目节点(p.id, 到), 附.成了 ?? `已改到 ${位置文字(到, 字典)}`);
+  };
+
+  /**
+   * 判无效（dt.invalid，P-界面-42）：一个后果框——后果分条、无效原因点选（字典 invalid，「其他」原地写、必填），
+   * 不再先问一道「终止进程？」。服务端按 选的原因("invalid") 核，挡了原因写在框里、框不关
+   */
+  const 判无效 = async (到: 位置, 终止: boolean) => {
+    const 叫 = 结局叫法("线索流失", 字典);
+    await 问后果({
+      题: `判「${p.name}」无效`,
+      后果: [
+        { 标: "会发生", 话: `项目停在「${叫}」，到此结束`, 级: "警" },
+        { 标: "能改回", 话: "以后可用「改回进程」捡回来" },
+      ],
+      原因: { 选项: p.原因选项.无效, 叫: "无效原因（必选）" },
+      是: "判无效",
+      做: async (因) => {
+        const r = await (终止 ? 终止项目进程(p.id, { 无效原因: 因 ?? null }) : 改项目节点(p.id, 到, { 无效原因: 因 ?? null }));
+        if (!r.ok) return r;
+        router.refresh();
+      },
+    });
   };
 
   /** 结束类（结局）的去处要二次确认（10-30 P2）；异常、要写原因的本来就有自己的框，成功交付没勾齐的 改到 会直接提示 */
@@ -628,17 +671,24 @@ export default function ProjectDetail({
   const 完成到字 = !完成到 ? "" : 完成到.result
     ? 交付叫法
     : 完成到.phase !== p.phase ? `${字典.出口们[p.phase as (typeof 阶段们)[number]]?.[0]?.叫法 ?? "进下一阶段"}，进到 ${完成到.phase}·${完成到.node}` : `下一节点：${完成到.node}`;
+  /**
+   * dt.stage：必填齐了（没配也算）、推的不是结局 → 点「完成节点」一步推，推完给撤销条；
+   * 还差必填 → 开框就地补齐再推（和看板拖动缺必填同一个 ProjectFillRequired），管理角色照旧能「仍要推进」
+   */
+  const 要先补齐 = !!p.必填?.还差?.length || !!完成到?.result;
   /** 「完成节点」为什么点不了（缺必填不算：点了在框里列出来）；undefined = 能点 */
   const 完成不了 = 动不了 ?? (p.result ? "项目已经有结局，先改回某个进程" : 下 ? 往前不了 : undefined);
   const 完成 = () => {
     if (!完成到) return;
     if (完成到.result) return 结束确认(完成到);
-    改到(完成到, { 成了: 完成到.phase !== p.phase ? `${完成到字}` : `已推进到 ${完成到.node}` });
+    改到(完成到, { 成了: 完成到.phase !== p.phase ? `${完成到字}` : `已推进到 ${完成到.node}`, 可撤: true });
   };
   /** 「终止进程」（M-节点-04）：按所在阶段落到 线索流失 / 丢单 / 异常状态；先确认，再到写原因 / 选类别的框 */
   const 终止到 = p.企业版 && !p.result ? 终止结局(当前, 字典) : null;
   const 开终止 = () => {
     if (!终止到) return;
+    // 判无效一个框写清后果和原因，不再先问「终止进程？」（dt.invalid）
+    if (终止到 === "线索流失" && p.原因选项.无效.length > 0) return void 判无效({ phase: p.phase, node: p.node, result: 终止到 }, true);
     const 叫 = 结局叫法(终止到, 字典);
     modal.confirm({
       title: "终止进程？",
@@ -706,7 +756,7 @@ export default function ProjectDetail({
           ? 灰着(不在当前 ?? 动不了, <Button disabled={忙 || !!(不在当前 ?? 动不了)} onClick={() => set头部框("推进")}>改回进程</Button>)
           : (
             <Space.Compact className="split-btn split-success">
-              {灰着(完成灰, <Button className="proj-done-btn" disabled={忙 || !!完成灰} onClick={() => set头部框("完成")}>完成节点</Button>)}
+              {灰着(完成灰, <Button className="proj-done-btn" disabled={忙 || !!完成灰} onClick={() => (要先补齐 ? set头部框("完成") : 完成())}>完成节点</Button>)}
               {菜单.length > 0 && (
                 <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{ items: 菜单, onClick: ({ key }) => { if (key === "stop") 开终止(); } }}>
                   <Button className="proj-done-btn split-caret" icon={连体箭头} aria-label="终止进程" />
@@ -1481,7 +1531,7 @@ export default function ProjectDetail({
         />
       )}
 
-      {卡点?.能发 && 发卡点于 && <PublishBlockerModal followUpId={发卡点于} 默认={卡点.默认} 原因们={卡点.原因们} onClose={() => set发卡点于(null)} />}
+      {卡点?.能发 && 发卡点于 && <PublishBlockerModal followUpId={发卡点于} 默认={卡点.默认} 原因们={卡点.原因们} 沟通们={p.followUps} onClose={() => set发卡点于(null)} />}
 
       {p.可改沟通 && 改沟通于 && <EditFollowModal projectId={p.id} f={改沟通于} 外贸={外贸精简(b)} onClose={() => set改沟通于(null)} 跑={跑} />}
 
@@ -1491,6 +1541,7 @@ export default function ProjectDetail({
         </Modal>
       )}
 
+      {后果框}
       {p.能记沟通 && 记一条开着 && <RecordFollowModal p={p} 外贸={外贸精简(b)} 卡点默认={卡点?.能发 ? 卡点.默认 : null} 卡点原因们={卡点?.原因们 ?? []} onClose={() => set记一条开着(false)} 跑={跑} />}
 
       <Modal
@@ -1625,8 +1676,8 @@ export default function ProjectDetail({
           {(p.pooled || 异常) && <div className="cd-notice">{告示}</div>}
           <div className="cd-mid">
             {节点卡}
-            {/* 「这位客户全部」是客户页那条时间线，不归这个搜索框管：切过去时清掉词、搜索框先藏起来（审查 #6），切回本项目再出来 */}
-            {!看全部沟通 && 搜索框}
+            {/* 「这位客户全部」是客户页那条时间线，不归这个搜索框管：切过去时清掉词（审查 #6）；搜索框原地变淡、点不了，不再藏起来让下面的卡往上跳（dt.scope） */}
+            <div className={`cd-search-wrap${看全部沟通 ? " is-off" : ""}`} inert={看全部沟通} aria-hidden={看全部沟通 || undefined}>{搜索框}</div>
             <ProjectFold id="project-follow" 名="沟通记录" 开={沟通开} set开={set沟通开} 锁开={搜着} 控制="project-follow-body" 连体>{沟通卡}</ProjectFold>
             {嵌入.待办}
             {卡点区 && <ProjectFold id="project-blockers" 名={卡点名} 开={卡点开} set开={set卡点开} 锁开={搜着} 控制="project-blockers-body" 连体>{卡点区}</ProjectFold>}

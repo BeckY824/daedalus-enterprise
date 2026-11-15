@@ -11,10 +11,12 @@ test.afterAll(async()=>{const db=连库();try{await 清空业务数据(db)}final
 async function login(page:Page){await page.goto("/login");await page.getByPlaceholder("用户名").fill("zhangsan");await page.getByPlaceholder("登录密码").fill("admin123");await page.getByRole("button",{name:/登\s*录/}).click();await page.waitForURL(/\/dashboard/)}
 test("实际搜索框回车及冷加载德文/俄文大小写一致，联系人按字面查找（订单号那路 2026-10-29 随订单表删了）",async({page})=>{
  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));await login(page);await page.goto("/customers");
- const box=page.getByPlaceholder(/姓名 \/ 电话/);await expect(box).toBeVisible();
+ const box=page.getByRole("main").getByPlaceholder(/姓名 \/ 电话/);await expect(box).toBeVisible();
  for(const [word,name] of [["müller","MÜLLER"],["москва","МОСКВА"],["жан_100%[a]*?","QA订单档案"]]){
   await box.fill(word);await box.press("Enter");await page.waitForURL(url=>url.searchParams.get("keyword")===word);
-  await expect(page.locator("tbody tr[data-row-key]")).toHaveCount(1);await expect(page.locator("tbody tr[data-row-key]")).toContainText(name);
+  await expect(page.getByRole("main").locator("tbody tr[data-row-key]")).toHaveCount(1);await expect(page.getByRole("main").locator("tbody tr[data-row-key]")).toContainText(name);
  }
- await page.reload();await expect(page.locator("tbody tr[data-row-key]")).toContainText("QA订单档案");expect(errors).toEqual([]);
+ await page.reload();
+ // 服务端流式出页时，React 揭晓 Suspense 之前会有一份藏着（hidden）的同样内容在 DOM 里，只认看得见的那份
+ await expect(page.locator("tbody tr[data-row-key]").filter({ visible: true })).toContainText("QA订单档案");expect(errors).toEqual([]);
 });

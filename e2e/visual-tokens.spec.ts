@@ -18,7 +18,8 @@ const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 
 async function 登录(page: Page) {
   await page.goto("/login");
-  const 提示 = page.locator(".ant-alert");
+  // 登录页 11-15 起：账号 / 密码错写在那一格底下（.auth-field-err，role=alert），网络这类才是表单底下那条 Alert
+  const 提示 = page.locator(".ant-alert, .auth-field-err");
   for (let i = 0; i < 3; i++) {
     await page.getByPlaceholder("用户名").fill(账号.用户名);
     await page.getByPlaceholder("登录密码").fill(账号.密码);
@@ -48,7 +49,7 @@ test.afterAll(async () => {
   await p.$disconnect();
 });
 
-const 页面 = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/contacts", "/projects", "/follow-ups", "/follow-ups/plans", "/settings"];
+const 页面 = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/contacts", "/projects", "/follow-ups/plans", "/settings"];
 
 /**
  * 页面上每一段「给人读的文字」的字号与颜色。
@@ -171,7 +172,7 @@ test("列表页不套外层白卡", async ({ page }) => {
    */
   await 登录(page);
   const 问题: string[] = [];
-  for (const 路径 of ["/leads", "/customers", "/channels", "/contacts", "/follow-ups"]) {
+  for (const 路径 of ["/leads", "/customers", "/channels", "/contacts"]) {
     await page.goto(路径);
     await page.waitForTimeout(400);
     const 有卡 = await page.evaluate(() => {

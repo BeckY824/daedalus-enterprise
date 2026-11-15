@@ -30,13 +30,13 @@ type SP = Promise<{ view?: string; from?: string; to?: string; currency?: string
 /**
  * 「数据」——看数的唯一入口。
  *
- * 以前有三处：首页那个看板、`/overview`、`/reports`，外加两个各自独立的问答框。
+ * 以前有三处：首页那个看板、`/overview`、原来的复盘页，外加两个各自独立的问答框。
  * 新来的人分不清该去哪儿，老用户也记不住哪个数在哪一页。现在合成一页三视图：
  *   现在 —— 此刻的状态：指标、漏斗、业绩排行、盯盘
  *   本月 —— 这个月签了多少，按天铺开，按人和渠道拆
  *   本年 —— 今年的走势，按月铺开
  *   自定义 —— from= to= 两个日历日（两头都算），62 天以内按天铺、再长按月（V3.5.1 P-界面-10）
- * `/reports` 这条 URL 留着（有人存了书签、也有链接指过来），跳到「本年」。
+ * 原来复盘页的老书签由 proxy.ts 转到「本年」（页面 11-15 删了）。
  */
 export default async function DataPage({ searchParams }: { searchParams: SP }) {
   const user = await requireUser();
@@ -92,19 +92,20 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
     ]);
     return (
       <DataShell view={view} 项目 选人={选人} 页签="todo">
-        <BoardTodos 数={d} 看板={板} 布局={布局} 回收={回公海.提醒} 卡={卡} 只看自己={只看 === user.id} 看全员={只看 !== user.id} />
+        <BoardTodos 数={d} 看板={板} 布局={布局} 回收={回公海.提醒} 回收项目={回公海.预警} 卡={卡} 只看自己={只看 === user.id} 看全员={只看 !== user.id} />
       </DataShell>
     );
   }
 
   // 卡点、沟通：范围同上，用 看板的人 的 谁（选了人 = [他]；总管理、管理员看全部 = 不限）
   const 谁 = 只看 ? [只看] : 人.谁;
-  // 卡点（11-01 B15）：三栏看板，谁看得到按卡点的角色开关（只看自己 / 可看全部），不跟上面的人员选择走
+  // 卡点（11-01 B15）：三栏看板，谁看得到按卡点的角色开关（只看自己 / 可看全部），不跟上面的人员选择走；
+  // 选人照传，只为人员那一行留在原地（DataShell 在卡点页签把它变淡、点不了），切页签整页不往上跳
   if (页签 === "block") {
     const 筛 = 读卡点看板筛(sp);
     const d = await 卡点看板(user, 筛);
     return (
-      <DataShell view={view} 项目 页签="block">
+      <DataShell view={view} 项目 选人={选人} 页签="block">
         <BoardBlockers
           开={d.开}
           全部={d.全部}

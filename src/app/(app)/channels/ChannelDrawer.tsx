@@ -8,12 +8,14 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { App, Button, Descriptions, Drawer, Empty, Form, Input, InputNumber, Popconfirm, Skeleton, Space, Tag } from "antd";
+import { Button, Descriptions, Drawer, Empty, Form, Input, InputNumber, Skeleton, Space, Tag } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import type { Dayjs } from "dayjs";
 import DatePicker from "@/components/BusinessDatePicker";
 import CurrencySelect from "@/components/CurrencySelect";
 import { UserCell } from "@/components/ui";
+import InlineConfirm from "@/components/InlineConfirm";
+import SaveButton from "@/components/SaveButton";
 import { useBusiness } from "@/lib/business-client";
 import { 合计文字 } from "@/lib/currency";
 import { isFormValidationError } from "@/lib/form-validation";
@@ -44,14 +46,12 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
   onEdit?: () => void;
 }) {
   const router = useRouter();
-  const { message } = App.useApp();
   const b = useBusiness();
   const [投入, set投入] = useState<投入行[] | null>(null);
   const [能录, set能录] = useState(false);
   const [不能录因, set不能录因] = useState<string | null>(null);
   const [错, set错] = useState<string | null>(null);
   const [录, set录] = useState(先录);
-  const [忙, set忙] = useState(false);
   const [form] = Form.useForm();
   const s: 渠道统计 | undefined = row.统计;
 
@@ -88,37 +88,42 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
     };
   }, [row.id]);
 
+  /**
+   * ch.invest：保存的成败都在按钮里（SaveButton 转圈 → ✓ / 没保存上 + 原因），不弹顶部提示。
+   * 成了先把新记录拉回来（滑进列表），✓ 放完再收表单。
+   */
   async function 存() {
-    if (忙) return;
-    set忙(true);
+    let v;
     try {
-      const v = await form.validateFields();
-      const res = await addChannelInvest({
-        channelId: row.id,
-        amount: Number(v.amount),
-        currency: v.currency ?? b.currency,
-        date: (v.date as Dayjs).format("YYYY-MM-DD"),
-        remark: v.remark ?? null,
-      });
-      if (!res.ok) return void message.error(res.error);
-      message.success("投入已记下");
-      form.resetFields();
-      set录(false);
-      await 读();
-      router.refresh();
+      v = await form.validateFields();
     } catch (e) {
-      if (!isFormValidationError(e)) message.error("保存失败，请刷新确认结果后重试");
-    } finally {
-      set忙(false);
+      if (isFormValidationError(e)) return { ok: false, error: "金额和日期要先填好" };
+      throw e;
     }
-  }
-
-  async function 删(id: string) {
-    const res = await deleteChannelInvest(id);
-    if (!res.ok) return void message.error(res.error);
-    message.success("已删除");
+    const res = await addChannelInvest({
+      channelId: row.id,
+      amount: Number(v.amount),
+      currency: v.currency ?? b.currency,
+      date: (v.date as Dayjs).format("YYYY-MM-DD"),
+      remark: v.remark ?? null,
+    });
+    if (!res.ok) return res;
     await 读();
     router.refresh();
+    return { ok: true };
+  }
+
+  /** ch.delinv：垃圾桶就地确认；删成了这一行从列表里拿掉（下面的补上），不弹提示；没删成原因写在列表上方 */
+  async function 删(id: string) {
+    const res = await deleteChannelInvest(id);
+    if (!res.ok) {
+      set错(res.error);
+      return res;
+    }
+    set错(null);
+    set投入((xs) => (xs ? xs.filter((x) => x.id !== id) : xs));
+    router.refresh();
+    return { ok: true };
   }
 
   /** 转化率：分母 0 是「—」，有数的后面带上几个里几个 */
@@ -237,6 +242,7 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
         <Form
           form={form}
           layout="vertical"
+          className="chan-invest-form"
           style={{ margin: "8px 0 16px" }}
           initialValues={{ currency: b.currency, date: dayjs() }}
         >
@@ -259,13 +265,13 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
             <Input placeholder="如：十月投流" maxLength={投入备注上限} />
           </Form.Item>
           <Space>
-            <Button type="primary" loading={忙} onClick={存}>保存</Button>
+            <SaveButton 做={存} 成了={() => { form.resetFields(); set录(false); }}>保存</SaveButton>
             <Button onClick={() => { form.resetFields(); set录(false); }}>取消</Button>
           </Space>
         </Form>
       )}
 
-      {错 && <div className="muted" style={{ margin: "8px 0" }}>{错}</div>}
+      {错 && <div className="muted" role="alert" style={{ margin: "8px 0" }}>{错}</div>}
       {投入 === null ? (
         <Skeleton active paragraph={{ rows: 2 }} title={false} />
       ) : 投入.length === 0 ? (
@@ -281,9 +287,11 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
               </div>
               {x.remark && <div className="muted chan-invest-remark">{x.remark}</div>}
               {能录 && (
-                <Popconfirm title="删除这笔投入？" okText="删除" okButtonProps={{ danger: true }} cancelText="取消" onConfirm={() => 删(x.id)}>
-                  <Button className="chan-invest-del" aria-label="删除这笔投入" title="删除" type="text" size="small" danger icon={<DeleteOutlined />} />
-                </Popconfirm>
+                <span className="chan-invest-del">
+                  <InlineConfirm 问="删除这笔投入？" 做={() => 删(x.id)}>
+                    <Button aria-label="删除这笔投入" title="删除" type="text" size="small" danger icon={<DeleteOutlined />} />
+                  </InlineConfirm>
+                </span>
               )}
             </li>
           ))}

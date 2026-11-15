@@ -1,8 +1,9 @@
 /**
  * 企业版「新线索」页 = 项目的线索阶段（2026-10-26 用户：「线索也要去项目里面作为三阶段」）。
  *
- *   阶段="线索"：标题「新线索」、只有列表没有看板切换、按钮「新线索」去项目向导
- *   开关关（项目页本身）：照旧「项目」、有看板/列表切换、「新建项目」
+ *   阶段="线索"：标题「新线索」、只有列表没有看板切换、按钮「新线索」就地弹建档向导，项目开关锁开（/leads/new 整页 11-15 删了）
+ *   开关关（项目页本身）：照旧「项目」、有看板/列表切换、「新建项目」（团队版同样就地弹向导、锁开）
+ *   ?new=1 进来（老链接 /leads/new、/projects/new 转过来的）：一进来就弹向导框
  *   Windows 1024 / 1280 / 1366 宽度 + 超长项目名、客户名：页面不横向溢出，新建按钮在可视区、点得中
  */
 import { beforeAll, afterAll, expect, it } from "vitest";
@@ -17,9 +18,10 @@ const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({push(u){window.__去.push(u)},refresh(){},replace(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
   stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
-  stub(/^\.\/actions$/, "export const 回项目邀请=async()=>({ok:true}),市场复核Action=async()=>({ok:true}),总管理终判Action=async()=>({ok:true});");
+  stub(/^\.\/actions$/, "export const 回项目邀请=async()=>({ok:true}),市场复核Action=async()=>({ok:true}),总管理终判Action=async()=>({ok:true}),看板推进预检=async()=>({ok:true,还差:[],能留空推:false}),改项目节点=async()=>({ok:true}),编辑项目=async(...a)=>{(window.__调||=[]).push(['编辑项目',...a]);return {ok:true}},看板补必填料=async()=>({ok:false,error:'x'});");
+  stub(/^\.\.\/actions$/, "const 好=async()=>({ok:true});export const 编辑项目=好,改项目画像Action=好,勾项目交付=好;");
   // 分配那几个 server action：记下调了什么，回成功
-  stub(/assign-actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return n==='本月分配情况'?{月:'2026-10',人:[]}:n==='我分出去的线索'?[]:n==='批量自动分配'?{ok:true,结果:[]}:{ok:true,toUserId:'u1',接手人:'王1',已分:1,配额:null,为什么:'按顺序'}};export const 分配线索=记('分配线索'),自动分配线索=记('自动分配线索'),批量自动分配=记('批量自动分配'),本月分配情况=记('本月分配情况'),我分出去的线索=记('我分出去的线索'),关满额提醒=记('关满额提醒'),项目分配线=async()=>({线:'内贸'}),分配带走的项目=async(...a)=>{(window.__调||=[]).push(['分配带走的项目',...a]);return window.__带走||{项目数:0,项目:[]}};");
+  stub(/assign-actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return n==='本月分配情况'?{月:'2026-10',人:[]}:n==='我分出去的线索'?[]:n==='批量自动分配'?(window.__批量||{ok:true,结果:[]}):{ok:true,toUserId:'u1',接手人:'王1',已分:1,配额:null,为什么:'按顺序'}};export const 分配线索=记('分配线索'),自动分配线索=记('自动分配线索'),批量自动分配=记('批量自动分配'),本月分配情况=记('本月分配情况'),我分出去的线索=记('我分出去的线索'),关满额提醒=记('关满额提醒'),项目分配线=async()=>({线:'内贸'}),分配带走的项目=async(...a)=>{(window.__调||=[]).push(['分配带走的项目',...a]);return window.__带走||{项目数:0,项目:[]}};");
   // 卡点面板（我的卡点看板）的 server action：这几条测试不点卡点，回成功就行
   stub(/blocker-actions$/, "const 好=async()=>({ok:true});export const 发布卡点Action=好,认领卡点Action=好,完成卡点Action=好,删卡点Action=好,存卡点默认Action=好,存卡点角色开关Action=好,新增原因Action=好,改原因名Action=好,改原因状态Action=好,删原因Action=好,合并原因Action=好,我的卡点Action=async()=>[];");
   // 「给老客户开项目」挑客户、建项目那几个 server action：这几条测试不点，空着就行
@@ -35,7 +37,7 @@ const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   stub(/customers\/board-actions$/, 再看码("再看一列"));
   stub(/^\.\/board-actions$/, 再看码("再看项目页一列"));
   // 向导框换成一个真的 antd 弹框（标题、关掉都照真的走），里面一块写着标题的牌子
-  stub(/^next\/dynamic$/, "import React from 'react';import {Modal} from 'antd';export default function d(){return function D(p){return <Modal open={!!p.open} title={p.标题} footer={null} onCancel={p.onClose} afterClose={p.afterClose}>{p.open&&<div className='wizard-stub'>{p.标题}</div>}</Modal>}}");
+  stub(/^next\/dynamic$/, "import React from 'react';import {Modal} from 'antd';export default function d(){return function D(p){return <Modal open={!!p.open} title={p.标题} footer={null} onCancel={p.onClose} afterClose={p.afterClose}>{p.open&&<div className='wizard-stub' data-project={p.项目||''}>{p.标题}</div>}</Modal>}}");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
@@ -80,7 +82,7 @@ async function 打开(新线索: boolean, width = 1280, 能分 = false, 企 = fa
 }
 const 去了 = (page: Page) => page.evaluate(() => (window as unknown as { __去: string[] }).__去);
 
-it("新线索页：标题「新线索」，只有列表，三个线索节点都列出来，新建去 /leads/new（同一个向导）", async () => {
+it("新线索页：标题「新线索」，只有列表，三个线索节点都列出来，新建就地弹向导框（项目开关锁开），不跳页", async () => {
   const { page, errors } = await 打开(true);
   expect(await page.getByRole("heading").first().innerText()).toBe("新线索");
   expect(await page.locator(".ant-segmented").count()).toBe(0);
@@ -93,7 +95,11 @@ it("新线索页：标题「新线索」，只有列表，三个线索节点都�
   expect(t).toContain("线索流失");
   expect(t).toContain("转了商机到「项目」里接着走");
   await page.getByRole("button", { name: /新线索$/ }).click();
-  expect(await 去了(page)).toEqual(["/leads/new"]);
+  const 框 = page.locator(".wizard-stub");
+  await expect.poll(() => 框.count()).toBe(1);
+  expect(await 框.innerText()).toBe("新线索");
+  expect(await 框.getAttribute("data-project")).toBe("锁开");
+  expect(await 去了(page)).toEqual([]);
   expect(errors).toEqual([]); await page.close();
 });
 
@@ -103,7 +109,29 @@ it("开关关（项目页本身）：标题「项目」，有看板/列表切换
   expect(await page.locator(".ant-segmented").count()).toBe(1);
   expect(await page.getByRole("button", { name: /新线索$/ }).count()).toBe(0);
   await page.getByRole("button", { name: "新建项目" }).click();
-  expect(await 去了(page)).toEqual(["/projects/new"]);
+  const 框 = page.locator(".wizard-stub");
+  await expect.poll(() => 框.count()).toBe(1);
+  expect(await 框.getAttribute("data-project")).toBe("锁开");
+  expect(await 去了(page)).toEqual([]);
+  expect(errors).toEqual([]); await page.close();
+});
+
+it.each([
+  [true, "新线索"],
+  [false, "新增项目"],
+] as const)("?new=1 进来（老链接 /leads/new、/projects/new 转过来的）：不点就弹向导框（新线索页 %s）", async (新线索, 标题) => {
+  const { page, errors } = await 打开(新线索, 1280, false, false, { 查询: "?new=1" });
+  const 框 = page.locator(".wizard-stub");
+  await expect.poll(() => 框.count()).toBe(1);
+  expect(await 框.innerText()).toBe(标题);
+  expect(await 框.getAttribute("data-project")).toBe("锁开");
+  expect(errors).toEqual([]); await page.close();
+});
+
+it("?new=1 但不能新建（没设业务角色）：不弹", async () => {
+  const { page, errors } = await 打开(true, 1280, false, false, { 查询: "?new=1", 能新建: false });
+  await page.waitForTimeout(300);
+  expect(await page.locator(".wizard-stub").count()).toBe(0);
   expect(errors).toEqual([]); await page.close();
 });
 
@@ -125,10 +153,22 @@ it("能分配的人：每条没结局的新线索有「分配」「自动分配�
   expect(await page.getByRole("button", { name: `自动分配 ${长}2` }).count()).toBe(1);
   expect(await page.getByRole("button", { name: `分配 ${长}3`, exact: true }).count()).toBe(0);
   await page.getByRole("button", { name: `自动分配 ${长}1` }).click();
-  await page.getByText("按顺序", { exact: false }).first().waitFor();
+  // 原型 pr.autoone（11-15）：分给谁原地写在这一行（悬停看为什么），底部撤销条 6 秒可撤
+  const 标 = page.locator(".assign-done", { hasText: "已分给 王1 ✓" });
+  await 标.waitFor();
+  expect(await 标.getAttribute("title")).toBe("按顺序");
+  expect(await page.getByRole("button", { name: `自动分配 ${长}1` }).count()).toBe(0);
   const 调 = await page.evaluate(() => (window as unknown as { __调: unknown[][] }).__调);
   expect(调.find((c) => c[0] === "自动分配线索")).toEqual(["自动分配线索", "p1", { 项目: true, 原负责人: "u1" }]);
   expect(await 去了(page)).toEqual([]); // 点按钮不触发行跳转
+  // 撤销 = 负责人转回原来那位（走项目转让同一个动作），行里的结果收掉、两颗键回来
+  // 只还得回负责人：撤销条上先写明，撤完如实说哪些没还原（不假装全撤回）
+  expect(await page.locator(".undo-bar").innerText()).toContain("撤销只改回负责人");
+  await page.locator(".undo-bar").getByRole("button", { name: /撤销/ }).click();
+  await page.getByRole("button", { name: `自动分配 ${长}1` }).waitFor();
+  const 调2 = await page.evaluate(() => (window as unknown as { __调: unknown[][] }).__调);
+  expect(调2.find((c) => c[0] === "编辑项目")).toEqual(["编辑项目", "p1", { ownerId: "u1" }]);
+  await page.getByText("已把「" + 长 + "1」的负责人改回 王1；一起转过去的待办、跟着转的客户没还原，要还请手工改").waitFor();
   expect(errors).toEqual([]); await page.close();
   const 不能 = await 打开(true);
   expect(await 不能.page.getByRole("button", { name: `分配 ${长}1`, exact: true }).count()).toBe(0);
@@ -150,14 +190,17 @@ it("企业版项目首页：「新增项目」一个按钮（没有旁边的下�
     await 框.waitFor();
     const 选项 = 框.locator(".new-proj-opt");
     expect(await 选项.allInnerTexts()).toEqual([expect.stringMatching(/^新客户\n/), expect.stringMatching(/^老客户\n/)]);
-    // 老客户：接「给老客户开项目」挑客户框
+    // 老客户（原型 pr.old，11-15）：不再三个框接力，进同一个新建弹窗（客户名里搜老客户，PR8 cr.old）
     await 选项.nth(1).click();
-    await page.getByRole("dialog", { name: "给老客户开项目" }).waitFor();
+    await page.locator(".wizard-stub").waitFor();
+    expect(await page.getByRole("dialog", { name: "给老客户开项目" }).count()).toBe(0);
     await page.keyboard.press("Escape");
-    await page.getByRole("dialog", { name: "给老客户开项目" }).waitFor({ state: "hidden" });
-    // 新客户：取向导数据，弹「新增项目」向导框，不跳页
+    await page.locator(".wizard-stub").waitFor({ state: "hidden" });
+    // 新客户：默认那一项（原型 pr.new）——框一开焦点就在「新客户」上，回车即走；取向导数据，弹「新增项目」向导框，不跳页
     await 钮.click();
-    await 框.locator(".new-proj-opt").first().click();
+    await page.waitForFunction(() => document.activeElement?.classList.contains("is-default") === true);
+    expect(await 框.locator(".new-proj-opt.is-default").innerText()).toMatch(/^新客户\n/);
+    await page.keyboard.press("Enter");
     await page.locator(".wizard-stub").waitFor();
     expect(await page.locator(".wizard-stub").innerText()).toBe("新增项目");
     expect(await page.evaluate(() => (window as unknown as { __调?: unknown[][] }).__调?.map((x) => x[0]))).toEqual(["取建档数据"]);
@@ -304,6 +347,9 @@ it("客户页看板每列各自取数（11-12）：没摆全的列底才有「�
       await page.waitForFunction(() => document.querySelector(".pipe-more .ant-btn")?.getAttribute("aria-busy") === "true");
       expect(await page.locator(".pipe-more .ant-btn").isDisabled(), `宽 ${w}`).toBe(true);
       await page.waitForFunction(() => document.querySelectorAll(".pipe-col")[0].querySelectorAll(".pipe-card").length === 25);
+      // 原型 pr.more：接上来的 5 张带「刚加的」样式（滑入、淡亮一下），原来的 20 张不带
+      expect(await 列们.nth(0).locator(".pipe-card.pipe-card-new").count(), `宽 ${w}`).toBe(5);
+      expect(await page.locator(".pipe-card.pipe-card-new").count(), `宽 ${w}`).toBe(5);
       expect(await page.locator(".pipe-more").count(), `宽 ${w}`).toBe(0);
       expect(await 列们.nth(1).innerText(), `宽 ${w}`).toBe(别的列);
       const 调 = await page.evaluate(() => (window as unknown as { __调: unknown[][] }).__调.filter((c) => c[0] === "再看一列"));
@@ -387,13 +433,11 @@ it("客户页看板（每列）不动地址栏上客户列表的页码（审查 
   } finally { await page.close(); }
 });
 
-it("客户页看板视图点「分配」临时切成项目列表：表头排序留在客户页、客户那一行筛选带着、回第一页（审查 3）", async () => {
+it("客户页看板视图筛到线索、能分配：筛选行不再摆只带路的「分配」（原型 pr.guide，11-15），「我分出去的」照留", async () => {
   const { page, errors } = await 打开(false, 1280, true, true, { 看板: true, 客户页: true, phase: "线索", 查询: "?keyword=abc&phase=%E7%BA%BF%E7%B4%A2&page=3" });
   try {
-    await page.locator(".cust-board-tool").getByRole("button", { name: /分配/ }).first().click();
-    await page.locator("thead th", { hasText: "负责人" }).first().click();
-    const 去 = await 去了(page);
-    expect(去.at(-1)).toBe("/customers?keyword=abc&phase=%E7%BA%BF%E7%B4%A2&sort=owner-asc");
+    await page.locator(".cust-board-tool").getByRole("button", { name: /我分出去的/ }).waitFor();
+    expect(await page.locator(".cust-board-tool").getByRole("button", { name: /^(send )?分配$/ }).count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -428,18 +472,14 @@ it("宽屏五列放得下的时候不出「还有 N 列」也不渐隐", async (
   await page.close();
 });
 
-it("企业版项目页阶段筛到「线索」（11-01 会议 §5）：页头有「分配」「我分出去的」、每行能分；不显示配额字样", async () => {
+it("企业版项目页阶段筛到「线索」（11-01 会议 §5）：页头有「我分出去的」、每行能分；不显示配额字样；只带路的「分配」已去掉（pr.guide）", async () => {
   for (const w of [1024, 1366]) {
     const { page, errors } = await 打开(false, w, true, true, { phase: "线索" });
-    const 分配钮 = page.getByRole("button", { name: /^send 分配$|^分配$/ });
-    expect(await 分配钮.count()).toBe(1);
+    // 原型 pr.guide（11-15）：页头那颗只带路的「分配」去掉，分配入口在每行末尾和勾选后的「自动分配」
+    expect(await page.getByRole("button", { name: /^send 分配$|^分配$/ }).count()).toBe(0);
     expect(await page.getByRole("button", { name: /我分出去的/ }).count()).toBe(1);
-    const box = (await 分配钮.boundingBox())!;
-    expect(box.x + box.width).toBeLessThanOrEqual(w);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    // 看板上点「分配」：切到列表、给一句怎么分
-    await 分配钮.click();
-    await page.getByText("勾选要分的线索", { exact: false }).waitFor();
+    if (!(await page.getByRole("button", { name: `分配 ${长名}1`, exact: true }).count())) await page.getByText("列表", { exact: true }).click();
     await page.getByRole("button", { name: `分配 ${长名}1`, exact: true }).waitFor();
     // 自动分配：提示只写分给了谁，不写配额
     await page.getByRole("button", { name: `自动分配 ${长名}1` }).click();
@@ -447,8 +487,8 @@ it("企业版项目页阶段筛到「线索」（11-01 会议 §5）：页头有
     expect(await page.locator("body").innerText()).not.toContain("配额");
     const 调 = await page.evaluate(() => (window as unknown as { __调: unknown[][] }).__调);
     expect(调.find((c) => c[0] === "自动分配线索")).toEqual(["自动分配线索", "p1", { 项目: true, 原负责人: "u1" }]);
-    // 指定接手人的弹窗：不写配额
-    await page.getByRole("button", { name: `分配 ${长名}1`, exact: true }).click();
+    // 指定接手人的弹窗：不写配额（第 1 行已分出去、行末写着结果，换第 2 行）
+    await page.getByRole("button", { name: `分配 ${长名}2`, exact: true }).click();
     const 框 = page.getByRole("dialog");
     await 框.waitFor();
     expect(await 框.innerText()).not.toContain("配额");
@@ -466,6 +506,25 @@ it("项目页没筛线索阶段、或不能分配的人、或非企业版：页�
   }
 });
 
+it("批量自动分配（原型 pr.autobatch）：结果原地写进每一行——分给谁、没分的原因，不再弹结果清单", async () => {
+  const { page, errors } = await 打开(true, 1280, true);
+  await page.evaluate(() => { (window as unknown as { __批量: unknown }).__批量 = { ok: true, 结果: [
+    { leadId: "p1", name: "一", ok: true, toUserId: "u1", 接手人: "王1", 已分: 1, 配额: null, 为什么: "按顺序" },
+    { leadId: "p2", name: "二", ok: false, error: "这条线的销售本月都满额了" },
+  ] }; });
+  await page.locator("tr[data-row-key=p1] .ant-checkbox-input").check();
+  await page.locator("tr[data-row-key=p2] .ant-checkbox-input").check();
+  await page.getByRole("button", { name: /自动分配$/ }).filter({ hasNot: page.locator("xx") }).first().click();
+  await page.getByRole("dialog").filter({ hasText: "自动分配 2 条线索" }).getByRole("button", { name: "分出去 2 条" }).click();
+  await page.locator("tr[data-row-key=p1] .assign-done", { hasText: "已分给 王1 ✓" }).waitFor();
+  const 败 = page.locator("tr[data-row-key=p2] .assign-fail");
+  expect(await 败.innerText()).toBe("没分：这条线的销售本月都满额了");
+  expect(await 败.getAttribute("title")).toBe("这条线的销售本月都满额了");
+  expect(await page.getByTestId("lead-auto-assign-result").count()).toBe(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(errors).toEqual([]); await page.close();
+});
+
 it("新线索页照旧：自动分配的提示带配额", async () => {
   const { page } = await 打开(true, 1280, true);
   await page.getByRole("button", { name: `自动分配 ${长名}1` }).click();
@@ -476,16 +535,16 @@ it("新线索页照旧：自动分配的提示带配额", async () => {
 it("新线索页·单条自动分配有项目一起转（P-转-07）：先列出来，取消就不分；点「一起转」才分", async () => {
   const { page, errors } = await 打开(true, 1280, true);
   await page.evaluate(() => { (window as unknown as { __带走: unknown }).__带走 = { 项目数: 1, 项目: [{ name: "公海的项目", 客户: "甲公司", 负责人: "线索公海" }] }; });
-  const 框 = page.locator(".ant-modal-confirm");
+  const 框 = page.getByRole("dialog").filter({ hasText: "会一起转走" });
   const 调了 = (n: string) => page.evaluate((名) => ((window as unknown as { __调?: unknown[][] }).__调 ?? []).filter((x) => x[0] === 名), n);
   await page.getByRole("button", { name: `自动分配 ${长名}1` }).click();
-  await 框.locator(".ant-modal-confirm-title", { hasText: "会一起转走的 1 个项目" }).waitFor();
+  await 框.getByText("会一起转走的 1 个项目").first().waitFor();
   expect((await 调了("分配带走的项目"))[0][2]).toBeUndefined();
-  await 框.locator(".ant-btn:not(.ant-btn-primary)").click();
-  await 框.waitFor({ state: "detached" });
+  await 框.getByRole("button", { name: /^取\s?消$/ }).click();
+  await 框.waitFor({ state: "hidden" });
   expect(await 调了("自动分配线索")).toEqual([]);
   await page.getByRole("button", { name: `自动分配 ${长名}1` }).click();
-  await 框.locator(".ant-btn-primary").click();
+  await 框.getByRole("button", { name: "一起转" }).click();
   await page.waitForFunction(() => ((window as unknown as { __调?: unknown[][] }).__调 ?? []).some((x) => x[0] === "自动分配线索"));
   expect(errors).toEqual([]);
   await page.close();
@@ -527,13 +586,12 @@ it("客户页看板视图给了筛选行那一格（board-slot）：「分配」
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
-  // 筛到线索阶段、能分配：「分配」「我分出去的」也在那一格；点「分配」临时切成列表，「回到看板」接着在那一格
+  // 筛到线索阶段、能分配：「我分出去的」也在那一格；只带路的「分配」去掉了（pr.guide，11-15）
   const 分 = await 打开(false, 1280, true, true, { 看板: true, 客户页: true, phase: "线索", 工具位: true });
   try {
     expect(await 分.page.locator(".cust-board-tool").count()).toBe(0);
     expect(await 分.page.locator("#slot").getByRole("button", { name: /我分出去的/ }).count()).toBe(1);
-    await 分.page.locator("#slot").getByRole("button", { name: /分配/ }).first().click();
-    await 分.page.locator("#slot").getByRole("button", { name: "回到看板" }).waitFor();
+    expect(await 分.page.locator("#slot").getByRole("button", { name: /^(send )?分配$/ }).count()).toBe(0);
     expect(分.errors).toEqual([]);
   } finally { await 分.page.close(); }
 });
@@ -601,7 +659,7 @@ it("市场角色「我分出去的」页头点「新建客户」等取建档数�
   } finally { await page.close(); }
 });
 
-it("「新建 ▾ → 新建项目」框接框走完整链再关，焦点回到「新建」按钮：老客户（选新老客户 → 挑老客户 → 新建项目框 → 关）、新客户（→ 建档向导 → 关）", async () => {
+it("「新建 ▾ → 新建项目」框接框走完整链再关，焦点回到「新建」按钮：老客户、新客户都是 选新老客户 → 同一个新建弹窗 → 关（原型 pr.old）", async () => {
   for (const 走 of ["老客户", "新客户"] as const) {
     const { page, errors } = await 打开(false, 1280, false, true, { 看板: true, 换回: true, 能新建客户: true });
     try {
@@ -612,29 +670,12 @@ it("「新建 ▾ → 新建项目」框接框走完整链再关，焦点回到�
       await page.getByRole("menuitem", { name: "新建项目" }).click();
       const 选 = page.getByRole("dialog", { name: "新增项目" });
       await 选.waitFor();
-      if (走 === "老客户") {
-        await 选.getByRole("button", { name: /老客户/ }).click();
-        const 挑 = page.getByRole("dialog", { name: "给老客户开项目" });
-        await 挑.waitFor();
-        await 挑.locator(".old-cust-pick").click();
-        // 这套桩里下拉层没摆进视口：用键盘选（下拉里第一位就是他）
-        await expect.poll(() => page.locator(".ant-select-item-option", { hasText: "老客户甲" }).getAttribute("aria-disabled")).toBe("false");
-        await page.locator(".ant-select-item-option", { hasText: "老客户甲" }).dispatchEvent("click");
-        await expect.poll(() => 挑.locator(".old-cust-pick").innerText()).toContain("老客户甲");
-        await 挑.getByRole("button", { name: "下一步" }).click();
-        await 挑.waitFor({ state: "hidden" });
-        // 新建项目框（customers/[id]/NewProjectModal.tsx）：开着，Esc 关掉
-        const 建 = page.locator(".ant-modal-wrap:not([style*='display: none']) .ant-modal").last();
-        await 建.waitFor();
-        await page.keyboard.press("Escape");
-        await expect.poll(() => page.locator(".ant-modal-wrap:not([style*='display: none'])").count()).toBe(0);
-      } else {
-        await 选.getByRole("button", { name: /新客户/ }).click();
-        await page.locator(".wizard-stub").waitFor();
-        await page.keyboard.press("Escape");
-        await page.locator(".wizard-stub").waitFor({ state: "hidden" });
-        await expect.poll(() => page.locator(".ant-modal-wrap:not([style*='display: none'])").count()).toBe(0);
-      }
+      await 选.getByRole("button", { name: 走 === "老客户" ? /老客户/ : /新客户/ }).click();
+      await page.locator(".wizard-stub").waitFor();
+      expect(await page.getByRole("dialog", { name: "给老客户开项目" }).count()).toBe(0);
+      await page.keyboard.press("Escape");
+      await page.locator(".wizard-stub").waitFor({ state: "hidden" });
+      await expect.poll(() => page.locator(".ant-modal-wrap:not([style*='display: none'])").count()).toBe(0);
       await expect.poll(焦点在钮, { message: 走 }).toBe(true);
       expect(errors).toEqual([]);
     } finally { await page.close(); }

@@ -14,7 +14,7 @@ const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
   stub(/^\.\.\/actions$/, `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return{ok:true}},终止项目进程=async(...a)=>{(window.__终止||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=f,删项目沟通=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
   stub(/^\.\.\/commission-actions$/, `const f=${空跑};export const 存项目底价=f,存提成分配=f,更正实际提成=f;`);
-  stub(/^\.\.\/payment-actions$/, `const f=${空跑};export const 记回款=f,删回款=f;`);
+  stub(/^\.\.\/payment-actions$/, `const f=${空跑};export const 记回款=async(...a)=>{(window.__记回款||=[]).push(a);return window.__记回款回??{ok:true}},删回款=async(...a)=>{(window.__删回款||=[]).push(a);return window.__删回款回??{ok:true}};`);
   stub(/readonly-card-actions$/, "export const 打开客户只读卡Action=async(...a)=>{(window.__开卡||=[]).push(a);return window.__卡结果??{ok:false,error:'打不开'}};");
   stub(/^\.\/blocker-actions$/, `const f=${空跑};export const 发布卡点Action=f,认领卡点Action=f,完成卡点Action=f,删卡点Action=f,存卡点默认Action=f,存卡点角色开关Action=f,新增原因Action=f,改原因名Action=f,改原因状态Action=f,删原因Action=f,合并原因Action=f,我的卡点Action=async()=>[];`);
   stub(/customers\/\[id\]\/ai$/, `export const parseFollowUpDraft=async()=>({ok:false,error:"未启用"});`);
@@ -860,18 +860,10 @@ it("R6 弹窗：完成节点、改进程、改分配都能打开，标题带项�
       await 窗.waitFor();
       return 窗;
     };
-    const 关 = async (窗: import("playwright").Locator) => {
-      await 窗.getByRole("button", { name: /Close|关闭/ }).first().click();
-      await 窗.waitFor({ state: "hidden" });
-    };
-    // 完成节点在阶段页签那一行
+    // 完成节点在阶段页签那一行；dt.stage（PR7b）起必填齐了一步推、不开框（框里的内容见 R5 线索那条）
     await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
-    let 窗 = page.getByRole("dialog").filter({ hasText: "完成节点 · 超长项目名字" });
-    await 窗.waitFor();
-    expect(await 窗.innerText()).toContain("订单 · 生产备货");
-    expect(await 窗.innerText()).toContain("下一节点：物流运输");
-    expect(await 窗.getByRole("button", { name: "确认推进" }).count()).toBe(1);
-    await 关(窗);
+    await expect.poll(() => 改节点记录(page)).toContain("物流运输");
+    expect(await page.getByRole("dialog").filter({ hasText: "完成节点 · " }).count()).toBe(0);
     // 11-01 会议 §13：▼ 里删掉「改到别的进程」，只剩终止
     await page.getByRole("button", { name: "终止进程" }).click();
     await page.getByRole("menuitem").first().waitFor();
@@ -880,7 +872,7 @@ it("R6 弹窗：完成节点、改进程、改分配都能打开，标题带项�
     await page.keyboard.press("Escape");
     await page.getByRole("menuitem").first().waitFor({ state: "hidden" });
     expect(await page.locator(".proj-side .ant-card").filter({ hasText: "项目组" }).getByRole("button", { name: /^邀\s*请$/ }).count()).toBe(1);
-    窗 = await 开("改分配", "改提成分配");
+    const 窗 = await 开("改分配", "改提成分配");
     await 窗.getByRole("button", { name: /取\s*消/ }).click();
     await 窗.waitFor({ state: "hidden" });
     expect(await 头.getByRole("button", { name: "管理沟通" }).count()).toBe(0);
@@ -958,26 +950,12 @@ it("R5 阶段页签：三个页签、默认选所在阶段；进程按字典列�
   } finally { await page.close(); }
 });
 
-it("R5 完成节点 / 终止进程（M-节点-04/05）：完成先开框、取消不动、确认推一个节点；终止先确认，订单落到异常框、走终止项目进程", async () => {
+it("R5 完成节点 / 终止进程（M-节点-04/05）：必填齐了一步推一个节点、不开框（dt.stage，给撤销）；终止先确认，订单落到异常框、走终止项目进程", async () => {
   const { page, errors } = await open(true, 1280);
   try {
-    const 开完成 = async () => {
-      await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
-      const 窗 = page.getByRole("dialog").filter({ hasText: "完成节点 · " });
-      await 窗.waitFor();
-      return 窗;
-    };
-    {
-      const 窗 = await 开完成();
-      expect(await 窗.innerText()).toContain("这个节点没有配必填，可以推进");
-      await 窗.getByRole("button", { name: /取\s*消/ }).click();
-      await 窗.waitFor({ state: "hidden" });
-    }
-    expect(await 改节点记录(page)).toBe("[]");
-    const 窗 = await 开完成();
-    await 窗.getByRole("button", { name: "确认推进" }).click();
-    await 窗.waitFor({ state: "hidden" });
-    expect(await 改节点记录(page)).toContain("物流运输");
+    await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
+    await expect.poll(() => 改节点记录(page)).toContain("物流运输");
+    expect(await page.getByRole("dialog").filter({ hasText: "完成节点 · " }).count()).toBe(0);
     // 终止：▼ → 终止进程（写着落到哪）→ 确认 → 订单进异常框；这一步还没改节点
     await page.evaluate(() => { (window as unknown as { __改节点: unknown[] }).__改节点 = []; });
     await page.getByRole("button", { name: "终止进程" }).click();
@@ -997,6 +975,7 @@ it("R5 完成节点 / 终止进程（M-节点-04/05）：完成先开框、取�
 it("R5 线索（M-节点-05/09）：完成节点一次一个节点；最后一个节点完成写「已转商机，进到 商机·痛点挖掘」；终止落到线索流失；缺必填列出来", async () => {
   const { page, errors } = await open(true, 1280);
   try {
+    // dt.stage 起没缺必填一步推、不开框：这里给一项还差（管理能仍要推进），看框里写推到哪
     const 框字 = async () => {
       await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
       const 窗 = page.getByRole("dialog").filter({ hasText: "完成节点 · " });
@@ -1006,14 +985,14 @@ it("R5 线索（M-节点-05/09）：完成节点一次一个节点；最后一�
       await 窗.waitFor({ state: "hidden" });
       return 字;
     };
-    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "线索", node: "潜客培育" }));
+    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "线索", node: "潜客培育", 必填: { 配了: ["金额"], 还差: ["金额"], 只能靠填齐: false } }));
     await page.waitForFunction(() => document.querySelector(".proj-stage-tab.is-on")?.textContent?.startsWith("线索"));
     expect(await page.locator(".proj-stage-exit.is-todo").innerText()).toBe("已转商机");
     expect(await 框字()).toContain("下一节点：线索验证");
     await page.getByRole("button", { name: "终止进程" }).click();
     expect(await page.getByRole("menuitem", { name: /终止进程/ }).innerText()).toContain("落到「线索流失」");
     await page.keyboard.press("Escape");
-    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "线索", node: "线索推进" }));
+    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "线索", node: "线索推进", 必填: { 配了: ["金额"], 还差: ["金额"], 只能靠填齐: false } }));
     await page.waitForFunction(() => document.querySelector(".proj-stage-node.is-cur")?.textContent?.startsWith("线索推进"));
     expect(await 框字()).toContain("已转商机，进到 商机·痛点挖掘");
     // 销售缺必填：框里列出来，没有推进按钮
@@ -1232,7 +1211,8 @@ it("U-项目-01/04：沟通默认摊开、卡点默认收起，点卡头最右�
     expect(await 头(page, "project-blockers").getAttribute("aria-expanded")).toBe("true");
     expect(await page.locator("#project-blockers-body").isVisible()).toBe(true);
     await 头(page, "project-follow").click();
-    expect(await page.locator("#project-follow-body").isVisible()).toBe(false);
+    // dt.fold（PR7b）：收起有一段高度过渡，收完才藏
+    await expect.poll(() => page.locator("#project-follow-body").isVisible()).toBe(false);
     // 搜索框在当前进程下面、沟通上面
     const 框 = page.getByRole("textbox", { name: "搜这个项目的沟通、卡点" });
     const [进程盒, 搜盒, 沟通盒] = await Promise.all([page.locator(".proj-main > .ant-card").first().boundingBox(), 框.boundingBox(), page.locator("#project-follow").boundingBox()]);
@@ -1563,6 +1543,103 @@ it.each([
     // 按钮整枚可见、没被压窄折成两行
     const 钮高 = await page.locator(".page-head-a button").evaluateAll((bs) => bs.map((b) => Math.round(b.getBoundingClientRect().height)));
     expect(钮高.every((h) => h <= 40)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+const 窗变量 = (page: import("playwright").Page, k: string) => page.evaluate((k) => JSON.stringify(Reflect.get(window, k) ?? []), k);
+const 盖 = (page: import("playwright").Page, x: unknown) => page.evaluate((x) => (window as unknown as { __over: (x: unknown) => void }).__over(x), x);
+
+it("dt.invalid：线索终止 = 判无效，一个后果框（不再先问「终止进程？」）；原因点选、不选判不了；取消不生效；确认带原因走终止项目进程", async () => {
+  const { page, errors } = await open(true, 1280);
+  try {
+    await 盖(page, { phase: "线索", node: "潜客培育", 原因选项: { 回收: [], 无效: ["需求不存在", "重复线索", "其他"] } });
+    await page.waitForFunction(() => document.querySelector(".proj-stage-tab.is-on")?.textContent?.startsWith("线索"));
+    const 开 = async () => {
+      await page.getByRole("button", { name: "终止进程" }).click();
+      await page.getByRole("menuitem", { name: /终止进程/ }).click();
+      const 框 = page.getByRole("dialog").filter({ hasText: /判「.*」无效/ });
+      await 框.waitFor();
+      return 框;
+    };
+    const 框 = await 开();
+    expect(await page.getByRole("dialog").filter({ hasText: "终止进程？" }).count()).toBe(0);
+    expect(await 框.innerText()).toContain("到此结束");
+    expect(await 框.innerText()).toContain("改回进程");
+    const 判 = 框.getByRole("button", { name: /^判无效$/ });
+    expect(await 判.isDisabled()).toBe(true);
+    await 框.getByRole("button", { name: /^取\s*消$/ }).click();
+    await 框.waitFor({ state: "hidden" });
+    expect(await 窗变量(page, "__终止")).toBe("[]");
+    const 框2 = await 开();
+    await 框2.getByRole("radio", { name: "其他" }).click();
+    expect(await 框2.getByRole("button", { name: /^判无效$/ }).isDisabled()).toBe(true);
+    await 框2.getByRole("radio", { name: "需求不存在" }).click();
+    await 框2.getByRole("button", { name: /^判无效$/ }).click();
+    await 框2.waitFor({ state: "hidden" });
+    const 终止 = JSON.parse(await 窗变量(page, "__终止")) as [string, { 无效原因?: string }][];
+    expect(终止).toHaveLength(1);
+    expect(终止[0][1].无效原因).toBe("需求不存在");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("dt.stage：必填齐了完成节点一步推（不开框），推完底部撤销条，撤销 = 改回原来的节点；还差必填开框就地补齐", async () => {
+  const { page, errors } = await open(true, 1280);
+  try {
+    // 必填齐了（没配）：一步推，不开框
+    await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
+    expect(await page.getByRole("dialog").filter({ hasText: "完成节点 · " }).count()).toBe(0);
+    const 条 = page.locator("#undo-host");
+    await expect.poll(() => 条.innerText().catch(() => "")).toContain("已推进到");
+    await 条.getByRole("button", { name: /撤销/ }).click();
+    await expect.poll(async () => (JSON.parse(await 窗变量(page, "__改节点")) as unknown[]).length).toBe(2);
+    const 两次 = JSON.parse(await 窗变量(page, "__改节点")) as [string, { node: string }][];
+    expect(两次[1][1].node).not.toBe(两次[0][1].node);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("dt.pay：删回款是后果框，写明哪一笔和删后的合计；取消不生效；服务端挡了原因留在框里", async () => {
+  for (const w of [1024, 1366]) {
+    const { page, errors } = await open(true, w);
+    try {
+      await 盖(page, { 回款们: [{ id: "r1", paidAt: "2026-11-15", currency: "USD", amount: 30000, createdAt: "2026-11-15T00:00:00.000Z", userName: "张敏" }, { id: "r2", paidAt: "2026-11-01", currency: "USD", amount: 20000, createdAt: "2026-11-01T00:00:00.000Z", userName: "张敏" }] });
+      const 卡 = page.locator("#project-payments-fold, .ant-card").filter({ hasText: /回款（2）/ }).first();
+      await 卡.waitFor();
+      await 卡.getByRole("button", { name: /^删\s*除$/ }).first().click();
+      const 框 = page.getByRole("dialog").filter({ hasText: "删掉这笔回款" });
+      await 框.waitFor();
+      expect(await 框.innerText()).toContain("30,000");
+      expect(await 框.innerText()).toContain("找不回");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `宽 ${w}`).toBe(true);
+      await 框.getByRole("button", { name: /^取\s*消$/ }).click();
+      await 框.waitFor({ state: "hidden" });
+      expect(await 窗变量(page, "__删回款")).toBe("[]");
+      await page.evaluate(() => Reflect.set(window, "__删回款回", { ok: false, error: "金额字段锁着，改不了" }));
+      await 卡.getByRole("button", { name: /^删\s*除$/ }).first().click();
+      await 框.waitFor();
+      await 框.getByRole("button", { name: /^删掉这笔回款$/ }).click();
+      await expect.poll(() => 框.getByRole("alert").innerText()).toContain("金额字段锁着");
+      expect(await 框.isVisible()).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+it("dt.fold：点过收起 / 展开才放高度过渡（首屏不动）；收着卡身不占高度；减弱动态直接到位", async () => {
+  const { page, errors } = await open(true, 1280);
+  try {
+    const 壳 = page.locator(".proj-fold").filter({ has: page.locator(".proj-fold-btn") }).first();
+    expect(await 壳.getAttribute("class")).not.toContain("fold-anim");
+    await 壳.locator(".proj-fold-btn").click();
+    expect(await 壳.getAttribute("class")).toContain("fold-anim");
+    expect(await 壳.getAttribute("class")).toContain("is-closed");
+    const 过渡 = await 壳.locator(":scope > .ant-card > .ant-card-body").evaluate((el) => getComputedStyle(el).transitionProperty);
+    expect(过渡).toContain("height");
+    await expect.poll(() => 壳.locator(":scope > .ant-card > .ant-card-body").evaluate((el) => el.getBoundingClientRect().height)).toBe(0);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    expect(await 壳.locator(":scope > .ant-card > .ant-card-body").evaluate((el) => getComputedStyle(el).transitionDuration.split(",").every((x) => parseFloat(x) < 0.02))).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

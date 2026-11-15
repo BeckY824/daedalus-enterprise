@@ -70,11 +70,13 @@ test("放进公海 → 别人在 /pool 里领走；原负责人领不回；记�
   await 张.page.getByRole("button", { name: 企业版 ? "退回公海" : "放回公海" }).click();
   // 放回前确认一次（交互规则 B）；企业版要先选退回原因（U-客户-04 + M-公海-09），选了才能点
   const 确认框 = 张.page.getByRole("dialog");
-  const 原因 = 确认框.getByRole("combobox", { name: "退回原因" });
+  // 11-15 起退回原因是字典常用项的小块（P-界面-42，role=radiogroup / radio），点一下就选；没选确认键点不了
+  const 原因 = 确认框.getByRole("radiogroup", { name: "退回原因" });
   // 确认框要等退回原因字典取回来才弹，不能拿 count() 当场判（CI 慢时还没弹出来就判成没有）
   if (企业版) {
-    await 原因.click();
-    await 张.page.locator(".ant-select-item-option", { hasText: "超时未跟进" }).click();
+    await expect(确认框.getByRole("button", { name: "退回公海" })).toBeDisabled();
+    await 原因.getByRole("radio", { name: "超时未跟进" }).click();
+    await expect(原因.getByRole("radio", { name: "超时未跟进" })).toHaveAttribute("aria-checked", "true");
   }
   // 企业版确认框也叫「退回公海」（11-12 D3）
   await 确认框.getByRole("button", { name: 企业版 ? "退回公海" : "放回公海" }).click();
@@ -101,6 +103,9 @@ test("放进公海 → 别人在 /pool 里领走；原负责人领不回；记�
   await page.goto(`/pool?keyword=${encodeURIComponent(客户名)}`);
   const 公海行 = page.getByRole("row", { name: new RegExp(客户名) });
   await 公海行.getByRole("button", { name: `领取 ${客户名}` }).click();
+  // 11-15 起领取在行上原地确认（InlineConfirm，写明「以后退回公海就不能再领回」），点「确认领取」才领
+  await expect(公海行).toContainText("以后退回公海就不能再领回");
+  await 公海行.getByRole("button", { name: "确认领取" }).click();
   await expect(page.getByText(`已领取「${客户名}」`)).toBeVisible();
   // 领走了：公海里没有它了
   await expect(page.getByRole("row", { name: new RegExp(客户名) })).toHaveCount(0);

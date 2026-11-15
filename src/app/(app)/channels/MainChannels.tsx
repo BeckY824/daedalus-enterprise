@@ -10,9 +10,11 @@
  */
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { App, Button, Form, Input, Modal, Select, Space, Switch, Table, Tag, Tooltip } from "antd";
+import { Button, Form, Input, Modal, Select, Space, Switch, Table, Tag, Tooltip } from "antd";
 import { PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import { saveMainChannel, toggleMainChannel } from "./actions";
+import SaveButton from "@/components/SaveButton";
+import { isFormValidationError } from "@/lib/form-validation";
 import { 主渠道名上限, 分类文字, type 主渠道行 } from "@/lib/enterprise/channel-main-core";
 import { 成员选项, type 可选成员 } from "@/lib/utils";
 
@@ -35,34 +37,32 @@ export function MainChannelEdit({ 编辑, users = [], 属性选项 = [], 子渠�
   onSaved?: () => void;
 }) {
   const router = useRouter();
-  const { message } = App.useApp();
-  const [忙, set忙] = useState(false);
   const [form] = Form.useForm<{ name: string; ownerId?: string; attr?: string }>();
   const 问归属 = users.length > 0;
   /** 候选：在职能当负责人的 + 这条原来的负责人（后来停用了也照旧留着，不被悄悄清掉） */
   const 人选 = 成员选项(users);
   if (编辑.ownerId && !users.some((u) => u.id === 编辑.ownerId)) 人选.push({ value: 编辑.ownerId, label: 编辑.ownerName ? `${编辑.ownerName}（已停用）` : "（已不在的成员）" });
   const 属性们 = 编辑.attr && !属性选项.includes(编辑.attr) ? [...属性选项, 编辑.attr] : 属性选项;
+  /** g.save：成败都在保存键里（SaveButton），✓ 放完再关框；不弹顶部提示 */
   async function 存() {
-    if (忙) return;
-    const v = await form.validateFields();
-    set忙(true);
+    let v;
     try {
-      const res = await saveMainChannel({
-        id: 编辑.id, name: v.name, allowSub: 编辑.allowSub, selfDev: 编辑.selfDev, category: 编辑.category,
-        ...(问归属 ? { ownerId: v.ownerId ?? null, attr: v.attr ?? null } : {}),
-      });
-      if (!res.ok) return void message.error(res.error);
-      message.success(编辑.id ? "已保存" : `主渠道「${v.name.trim()}」已新建`);
-      onSaved?.();
-      onClose();
-      router.refresh();
-    } finally {
-      set忙(false);
+      v = await form.validateFields();
+    } catch (e) {
+      if (isFormValidationError(e)) return { ok: false as const, error: "还有必填项没填" };
+      throw e;
     }
+    const res = await saveMainChannel({
+      id: 编辑.id, name: v.name, allowSub: 编辑.allowSub, selfDev: 编辑.selfDev, category: 编辑.category,
+      ...(问归属 ? { ownerId: v.ownerId ?? null, attr: v.attr ?? null } : {}),
+    });
+    if (!res.ok) return res;
+    onSaved?.();
+    router.refresh();
+    return { ok: true as const };
   }
   return (
-    <Modal open title={编辑.id ? `编辑：${编辑.name}` : "新建主渠道"} onCancel={onClose} onOk={存} confirmLoading={忙} okText="保存" cancelText="取消" destroyOnHidden width={440}>
+    <Modal open title={编辑.id ? `编辑：${编辑.name}` : "新建主渠道"} onCancel={onClose} footer={(_, { CancelBtn }) => (<><CancelBtn /><SaveButton 做={存} 成了={onClose}>保存</SaveButton></>)} cancelText="取消" destroyOnHidden width={440}>
       <Form form={form} layout="vertical" className="chan-main-form" initialValues={{ name: 编辑.name, ownerId: 编辑.ownerId ?? undefined, attr: 编辑.attr ?? undefined }}>
         <Form.Item
           label="主渠道名"
@@ -99,10 +99,14 @@ export default function MainChannels({ 主渠道们, 子渠道数, users = [], �
   onClose: () => void;
 }) {
   const router = useRouter();
-  const { message } = App.useApp();
+  /** 这一行刚才没存上的原因：就地写在操作格里，几秒后收（不弹顶部提示） */
+  const [行错, set行错] = useState<{ id: string; 话: string } | null>(null);
+  const 说行错 = (id: string, 话: string) => { set行错({ id, 话 }); setTimeout(() => set行错((x) => (x?.id === id && x.话 === 话 ? null : x)), 5000); };
   const [kw, setKw] = useState("");
   const [编辑, set编辑] = useState<主渠道编辑中 | null>(null);
   const [忙, set忙] = useState<string | null>(null);
+  /** 刚存好的那个开关：「主渠道id:键:时刻」，那一格闪一下（ch.main） */
+  const [刚存, set刚存] = useState<string | null>(null);
   const 行 = useMemo(() => {
     const k = kw.trim().toLowerCase();
     return k ? 主渠道们.filter((m) => m.name.toLowerCase().includes(k)) : 主渠道们;
@@ -114,7 +118,10 @@ export default function MainChannels({ 主渠道们, 子渠道数, users = [], �
     set忙(m.id);
     try {
       const res = await saveMainChannel({ id: m.id, name: m.name, allowSub: m.allowSub, selfDev: m.selfDev, category: m.category, ...改 });
-      if (!res.ok) return void message.error(res.error);
+      if (!res.ok) return void 说行错(m.id, res.error);
+      set行错(null);
+      // ch.main：存好在原处闪一下（键带上是哪个开关，换一次重挂一次，动画才会再放）
+      set刚存(`${m.id}:${Object.keys(改).join()}:${Date.now()}`);
       router.refresh();
     } finally {
       set忙(null);
@@ -125,8 +132,10 @@ export default function MainChannels({ 主渠道们, 子渠道数, users = [], �
     set忙(m.id);
     try {
       const res = await toggleMainChannel(m.id, !m.active);
-      if (!res.ok) return void message.error(res.error);
-      message.success(m.active ? `主渠道「${m.name}」已停用` : `主渠道「${m.name}」已启用`);
+      if (!res.ok) return void 说行错(m.id, res.error);
+      // 不弹顶部提示：这一行原地变灰 / 恢复（row-off），操作格闪一下
+      set行错(null);
+      set刚存(`${m.id}:active:${Date.now()}`);
       router.refresh();
     } finally {
       set忙(null);
@@ -174,11 +183,11 @@ export default function MainChannels({ 主渠道们, 子渠道数, users = [], �
           {
             title: <Tooltip title="关掉 = 单一入口，新建、改渠道时子渠道留空；已有的子渠道名不会被拆掉"><span className="nowrap">可设子渠道</span></Tooltip>,
             key: "allowSub", width: 104, align: "center",
-            render: (_, m) => <Switch size="small" aria-label={`${m.name} 可设子渠道`} checked={m.allowSub} loading={忙 === m.id} disabled={Boolean(忙)} onChange={(v) => 存开关(m, { allowSub: v })} />,
+            render: (_, m) => { const 闪 = 刚存?.startsWith(`${m.id}:allowSub:`); return <span key={闪 ? 刚存 : "s"} className={闪 ? "chan-main-saved" : undefined}><Switch size="small" aria-label={`${m.name} 可设子渠道`} checked={m.allowSub} loading={忙 === m.id} disabled={Boolean(忙)} onChange={(v) => 存开关(m, { allowSub: v })} /></span>; },
           },
           {
             title: <span className="nowrap">支持自拓</span>, key: "selfDev", width: 92, align: "center",
-            render: (_, m) => <Switch size="small" aria-label={`${m.name} 支持自拓`} checked={m.selfDev} loading={忙 === m.id} disabled={Boolean(忙)} onChange={(v) => 存开关(m, { selfDev: v })} />,
+            render: (_, m) => { const 闪 = 刚存?.startsWith(`${m.id}:selfDev:`); return <span key={闪 ? 刚存 : "s"} className={闪 ? "chan-main-saved" : undefined}><Switch size="small" aria-label={`${m.name} 支持自拓`} checked={m.selfDev} loading={忙 === m.id} disabled={Boolean(忙)} onChange={(v) => 存开关(m, { selfDev: v })} /></span>; },
           },
           // 负责人、渠道属性（迁移 118）：只显示，在「编辑」里改；人已停用的名字照给
           { title: <span className="nowrap">负责人</span>, key: "owner", width: 104, render: (_, m) => 省略格(m.ownerId ? m.ownerName ?? "（已不在的成员）" : null) },
@@ -190,10 +199,15 @@ export default function MainChannels({ 主渠道们, 子渠道数, users = [], �
           {
             title: "", key: "act", width: 116,
             render: (_, m) => (
-              <Space size={2}>
-                <Button type="link" size="small" onClick={() => set编辑(主渠道编辑初值(m))}>编辑</Button>
-                <Button type="link" size="small" disabled={Boolean(忙)} onClick={() => 切启用(m)}>{m.active ? "停用" : "启用"}</Button>
-              </Space>
+              <span className="ch-act">
+                <Space size={2}>
+                  <Button type="link" size="small" onClick={() => set编辑(主渠道编辑初值(m))}>编辑</Button>
+                  <span key={刚存?.startsWith(`${m.id}:active:`) ? 刚存 : "a"} className={刚存?.startsWith(`${m.id}:active:`) ? "chan-main-saved" : undefined}>
+                    <Button type="link" size="small" disabled={Boolean(忙)} onClick={() => 切启用(m)}>{m.active ? "停用" : "启用"}</Button>
+                  </span>
+                </Space>
+                {行错?.id === m.id && <span className="ch-act-err" role="alert" title={行错.话}>{行错.话}</span>}
+              </span>
             ),
           },
         ]}

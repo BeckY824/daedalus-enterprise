@@ -10,6 +10,8 @@ const plugin: Plugin = { name: "members-ui", setup(b) {
   stub(/components\/DataList$/, "export default function D(p){return <><div data-testid='rows'>{p.行.map(x=><div key={x.id}>{x.name}</div>)}</div>{p.筛选}</>}");
   stub(/\/ContactForm$/, "export default function F(){return null}");
   stub(/\/useContactRemoval$/, "export const useContactRemoval=()=>({彻底删(){}});");
+  // PR5b ls.ct.orphan：联系人页直接调删除 / 恢复两个动作（不再经 useContactRemoval）
+  stub(/\[id\]\/actions$/, "export const deleteUnassignedContact=async()=>({ok:true}),restoreContact=async()=>({ok:true});");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {

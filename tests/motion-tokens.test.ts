@@ -280,7 +280,8 @@ describe("过渡和动画都走曲线 token（主题换曲线时才跟得上）"
    *   环境动画  无限循环的呼吸、扫光、光标闪（infinite）。它们不是「一个东西变成另一个」，是背景里的节拍
    *   进度      跟着真实进度走的宽度，匀速（linear）才不骗人
    */
-  const 进度例外 = ["width var(--t) linear"];
+  // 撤销条的倒计时环（components/UndoBar.tsx）：环剩多少 = 还剩几秒，匀速才不骗人
+  const 进度例外 = ["width var(--t) linear", "undo-ring var(--undo-ms, 5s) linear forwards"];
   it("一次性的 transition / animation 必须写 var(--ease*)", () => {
     const 正文 = css.replace(/\/\*[\s\S]*?\*\//g, "");
     const 散的: string[] = [];

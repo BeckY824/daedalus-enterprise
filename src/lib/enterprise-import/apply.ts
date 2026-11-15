@@ -987,7 +987,7 @@ async function 收尾(批次Id: string, 用户: Actor): Promise<void> {
     summary: `从${来源名[批.source as 来源] ?? 批.source}${叫法}：新建 ${批.created} 条，更新 ${批.updated} 条，跳过 ${批.skipped} 条，${批.conflicts} 条冲突待定，${批.failed} 条没写进去`,
     detail: { batchId: 批次Id, source: 批.source, kind: 批.kind, created: 批.created, updated: 批.updated, skipped: 批.skipped, conflicts: 批.conflicts, failed: 批.failed },
   });
-  for (const p of ["/customers", "/leads", "/opportunities", "/projects", "/dashboard"]) revalidatePath(p);
+  for (const p of ["/customers", "/leads", "/projects", "/dashboard"]) revalidatePath(p);
 }
 
 /**

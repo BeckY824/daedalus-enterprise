@@ -14,7 +14,8 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
-import { 露客户, 看得到的客户 } from "@/lib/project/db";
+import { 露客户, 看得到的客户, 能管项目 } from "@/lib/project/db";
+import { 权限组织 } from "@/lib/enterprise/org";
 
 /** 判客户看不看得到用哪个：服务端动作（翻页）现读 看得到的客户；客户页渲染传请求内缓存的 页面看得到的客户（lib/project/visible-customers.ts） */
 export type 可见法 = (ids: string[]) => Promise<Set<string>>;
@@ -67,8 +68,11 @@ export type 跟进去处 = {
   下一步: string | null;
   /** 项目下一步做什么（10-29 起记沟通时自己写的一句话）；老数据只有时间、这里是空 */
   下一步文字: string | null;
+  /** 我能往这个项目记沟通（X-143：和项目详情记沟通同一条「能管项目」；组员、只看的上级是 false）。客户页「关联项目」下拉只列这些 */
+  能记: boolean;
 };
 export async function 跟进去处们(me: { id: string; role?: string }, customerId: string, 可见: 可见法 = 看得到的客户): Promise<跟进去处[]> {
+  const org = await 权限组织();
   const 行们 = (await 看得到的项目们(me, customerId, false, 可见)).map(({ 行, 主 }) => ({
     id: 行.id,
     名: 行.name,
@@ -77,6 +81,7 @@ export async function 跟进去处们(me: { id: string; role?: string }, custome
     说明: 行.result ? ("已结束" as const) : 行.pooledAt ? ("在公海" as const) : null,
     下一步: 行.nextStepAt?.toISOString() ?? null,
     下一步文字: 行.nextStepText,
+    能记: 能管项目({ id: me.id, role: me.role ?? "" }, 行, org),
   }));
   return [...行们.filter((x) => !x.结束), ...行们.filter((x) => x.结束)];
 }

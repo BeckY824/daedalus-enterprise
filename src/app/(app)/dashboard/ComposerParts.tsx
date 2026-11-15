@@ -198,14 +198,15 @@ export function ComposerFoot({ 摆建议, 示例槽, suggestions, suggIdx, 空, 
   背调模式: boolean;
   背调价: Awaited<ReturnType<typeof 背调价目>> | null;
   AI已用完: boolean;
-  on问: (x: Suggestion) => void;
+  /** 从 = 点的那颗示例（home.hero 飞进输入框用）；底下那排建议不给 */
+  on问: (x: Suggestion, 从?: HTMLElement) => void;
 }) {
   /* 4–6 个能直接点的具体问题，就摆在输入框底下——人的视线落在框上。
      ↑↓ 在这里面走，回车发选中的那条。企业版驾驶舱（10-31）搬到欢迎语下面、每条一行，点了照旧只填进输入框 */
   const 示例 = 摆建议 ? (
     <div className="cli-welcome-q">
       {suggestions.map((x, i) => (
-        <button key={x.label} type="button" className={`cli-q${i === suggIdx ? " cli-q-on" : ""}`} onClick={() => on问(x)} disabled={AI已用完}>
+        <button key={x.label} type="button" className={`cli-q${i === suggIdx ? " cli-q-on" : ""}`} onClick={(e) => on问(x, e.currentTarget)} disabled={AI已用完}>
           {x.label}
         </button>
       ))}

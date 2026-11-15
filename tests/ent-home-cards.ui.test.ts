@@ -42,7 +42,15 @@ it("四张卡、顺序、链接；不再有今日待办和「另有 M 条逾期�
   expect(await 卡.locator(".home-card-k").allInnerTexts()).toEqual(["本月新增", "重点项目", "暂未跟进", "3 天内回公海"]);
   // 口径直接写在卡下面（不只在悬停里）
   expect(await 卡.first().innerText()).toContain("含已结束");
-  expect(await 卡.evaluateAll((els) => els.map((e) => e.getAttribute("href")))).toEqual(["/projects?f=month-new", "/projects?f=key", "/projects?f=no-follow", "/projects?f=due-soon"]);
+  // PR5b home.kpi：点卡原地展开，展开里那颗「看这 N 个项目 ›」才去项目页对应的筛选
+  const 链接们: (string | null)[] = [];
+  for (let i = 0; i < 4; i++) {
+    await 卡.nth(i).getByRole("button", { expanded: false }).click();
+    链接们.push(await 卡.nth(i).getByRole("link").getAttribute("href"));
+  }
+  expect(链接们).toEqual(["/projects?f=month-new", "/projects?f=key", "/projects?f=no-follow", "/projects?f=due-soon"]);
+  // 同一时刻只展开一张
+  expect(await page.locator(".home-kpi-card.is-open").count()).toBe(1);
   expect(await page.locator(".home-card-more").count()).toBe(0);
   expect(await page.getByText("今日待办").count()).toBe(0);
   expect(errors).toEqual([]);

@@ -29,7 +29,8 @@ test.afterAll(async ({ browser }) => 拆掉假模型(browser));
 
 async function 登录(page: Page) {
   await page.goto("/login");
-  const 提示 = page.locator(".ant-alert");
+  // 登录页 11-15 起：账号 / 密码错写在那一格底下（.auth-field-err，role=alert），网络这类才是表单底下那条 Alert
+  const 提示 = page.locator(".ant-alert, .auth-field-err");
   for (let i = 0; i < 3; i++) {
     await page.getByPlaceholder("用户名").fill(账号.用户名);
     await page.getByPlaceholder("登录密码").fill(账号.密码);
@@ -44,6 +45,19 @@ async function 登录(page: Page) {
 }
 
 const 面板 = (p: Page) => p.locator("aside.dock");
+/**
+ * 企业版（只用项目）11-15 起 AI 不是右边常驻一栏，是正文中下方的浮窗（P-界面-39，AiDock 浮窗模式，也是 aside.dock）：默认收着，⌘J 打开。
+ * 栏才有的那些（默认开着、宽 380、拖宽、Esc 不收、开合不挪左栏、正文跟着收窄、不到 1600 宽默认收）企业版没有，那几条企业版跳过；
+ * 浮窗自己的样子（位置、不压按钮、收起、减弱动态、毛玻璃）在 tests/ent-ai-float.ui.test.ts 用真 Chromium 量，排版闸门「AI栏常驻」组也按浮窗量。
+ * 面板里那些和摆法无关的事（上下文、认人、不自动跑、建议卡确认 / 撤销、改渠道卡）两种都验：企业版先 ⌘J 把浮窗叫出来
+ */
+const 栏专属 = "企业版（项目模式）AI 是浮窗不是右栏，这条量的是右栏才有的行为；浮窗的对应检查在 tests/ent-ai-float.ui.test.ts";
+async function 开面板(p: Page) {
+  if (企业版 && !(await 面板(p).isVisible().catch(() => false))) await p.keyboard.press("ControlOrMeta+j");
+  await expect(面板(p)).toBeVisible();
+}
+/** 面板上写的「这一页的上下文」：栏里是 .dock-ctx，浮窗头上是 .dock-float-ctx */
+const 上下文条 = (p: Page) => p.locator(".dock-ctx, .dock-float-ctx");
 /** 面板收着时的入口，在左栏底部 */
 const 开键 = (p: Page) => p.getByRole("navigation", { name: "主导航" }).getByRole("button", { name: /打开 AI 面板/ });
 
@@ -58,6 +72,7 @@ test.describe("全局 AI 面板", () => {
   });
 
   test("窗口够宽时其余页面**默认就开着**，宽 380——不用点、也不用 ⌘J", async ({ page }) => {
+    test.skip(企业版, 栏专属);
     /** 用户定的：「保持常驻吧，不要点击或者 command J 才能开启」 */
     await 登录(page);
     await page.goto("/customers");
@@ -67,6 +82,7 @@ test.describe("全局 AI 面板", () => {
   });
 
   test("关掉之后记住：换一页还是关着，直到自己再打开", async ({ page }) => {
+    test.skip(企业版, 栏专属);
     await 登录(page);
     await page.goto("/customers");
     await page.getByRole("button", { name: "关闭 AI 面板" }).click();
@@ -79,6 +95,7 @@ test.describe("全局 AI 面板", () => {
   });
 
   test("面板和对话列表都能拖宽，宽度记得住", async ({ page }) => {
+    test.skip(企业版, 栏专属);
     /** 和左栏同一条缝（WidthHandle）。名字和句子多长不是我们定的，最后一寸交给用它的人 */
     await 登录(page);
     await page.goto("/channels");
@@ -119,6 +136,7 @@ test.describe("全局 AI 面板", () => {
   });
 
   test("⌘J 关了再开；关掉之后左栏有入口", async ({ page }) => {
+    test.skip(企业版, 栏专属);
     await 登录(page);
     await page.goto("/channels");
     await expect(面板(page)).toBeVisible(); // 默认开着
@@ -137,6 +155,7 @@ test.describe("全局 AI 面板", () => {
    * 想停下一个跑偏的回答会连面板一起收掉——2026-09-19 用户报上来的。
    */
   test("Esc 不收面板：它是一栏，不是弹层", async ({ page }) => {
+    test.skip(企业版, 栏专属);
     await 登录(page);
     await page.goto("/channels");
     await expect(面板(page)).toBeVisible();
@@ -149,6 +168,7 @@ test.describe("全局 AI 面板", () => {
   });
 
   test("导航稳定：开合面板时左栏一格不动", async ({ page }) => {
+    test.skip(企业版, 栏专属);
     await 登录(page);
     await page.goto("/customers");
     const 左栏 = page.locator("nav.rail");
@@ -161,6 +181,7 @@ test.describe("全局 AI 面板", () => {
   });
 
   test("收起时正文一直铺到窗口右边，入口在左栏不占正文", async ({ page }) => {
+    test.skip(企业版, 栏专属);
     /**
      * 第一版的浮钮压在「新建」上；第二版右边 44px 的窄边不压东西了，可 1120 宽时
      * 客户表的负责人、跟进表的时间都被它挤出去（2026-09-28 核对教程时看到）。
@@ -177,7 +198,8 @@ test.describe("全局 AI 面板", () => {
   test("上下文：写出来、点得掉、换一页重新带上", async ({ page }) => {
     await 登录(page);
     await page.goto("/customers?followStatus=" + encodeURIComponent("已签约"));
-    const 条 = page.locator(".dock-ctx");
+    await 开面板(page);
+    const 条 = 上下文条(page);
     await expect(条).toBeVisible();
     await expect(条).toContainText("客户");
     await expect(条).toContainText("已签约");
@@ -195,7 +217,7 @@ test.describe("全局 AI 面板", () => {
     await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "渠道" }).click();
     await expect(page).toHaveURL(/\/channels/);
     await expect(面板(page)).toBeVisible();
-    await expect(page.locator(".dock-ctx")).toContainText("渠道");
+    await expect(上下文条(page)).toContainText("渠道");
   });
 
   test("记录页：面板知道看的是谁", async ({ page }) => {
@@ -206,7 +228,8 @@ test.describe("全局 AI 面板", () => {
     try {
       await 登录(page);
       await page.goto(`/customers/${c.id}`);
-      await expect(page.locator(".dock-ctx")).toContainText("客户 · 面板认人");
+      await 开面板(page);
+      await expect(上下文条(page)).toContainText("客户 · 面板认人");
     } finally {
       await p.customer.delete({ where: { id: c.id } });
       await p.$disconnect();
@@ -230,12 +253,15 @@ test.describe("全局 AI 面板", () => {
     try {
       await 登录(page);
       await page.goto(`/customers/${c.id}`);
-      await expect(page.locator(".dock-ctx")).toContainText("不自动跑");
+      await 开面板(page);
+      await expect(上下文条(page)).toContainText("不自动跑");
       await page.waitForTimeout(4000);
       expect(叫了).toEqual([]);
       // 窄一点的窗口简报区收在页头「AI」按钮打开的抽屉里：打开抽屉也不许自己跑
       const 抽屉键 = page.getByRole("button", { name: /^thunderbolt AI$/ });
-      if (await 抽屉键.isVisible()) await 抽屉键.click();
+      // 企业版浮窗：页头「AI」只是把浮窗叫出来，智能总结的抽屉从浮窗空屏的快捷项「总结这位客户」打开（dt.ai，tests/ent-ai-float.ui.test.ts）
+      if (企业版) await 面板(page).getByRole("button", { name: "总结这位客户" }).click();
+      else if (await 抽屉键.isVisible()) await 抽屉键.click();
       await expect(page.getByRole("button", { name: 企业版 ? /生成智能总结/ : /生成简报/ })).toBeVisible();
       await page.waitForTimeout(3000);
       expect(叫了).toEqual([]);
@@ -250,6 +276,7 @@ test.describe("全局 AI 面板", () => {
   });
 
   test("面板开着时正文跟着收窄，不出横向滚动条", async ({ page }) => {
+    test.skip(企业版, 栏专属);
     await 登录(page);
     await page.goto("/channels");
     await expect(面板(page)).toBeVisible();
@@ -274,6 +301,7 @@ test.describe("面板里的回答和建议卡", () => {
   }
 
   test("J-187：面板里的对话区不撑出面板（.cli 的 100vh 最小高度在面板里归零）", async ({ page }) => {
+    test.skip(企业版, 栏专属);
     await 登录(page);
     await page.goto("/channels");
     await expect(面板(page)).toBeVisible();
@@ -291,6 +319,7 @@ test.describe("面板里的回答和建议卡", () => {
   });
 
   test("J-165：面板开着时在列表页按 ⌘K，弹的是跳转单——不是把光标塞进面板输入框", async ({ page }) => {
+    test.skip(企业版, 栏专属);
     await 登录(page);
     await page.goto("/channels");
     await expect(面板(page)).toBeVisible();
@@ -301,6 +330,7 @@ test.describe("面板里的回答和建议卡", () => {
   });
 
   test("J-162：面板里答一段很长的话，左边正文一像素都不跟着滚", async ({ page }) => {
+    test.skip(企业版, 栏专属);
     const 长 = Array.from({ length: 60 }, (_, i) => `第 ${i + 1} 条：这是一段很长的回答，用来把面板撑到要滚动。`).join("\n\n");
     await 假回答(page, { text: 长 });
     // 正文得自己能滚，才看得出被带着滚了没有：备一页满的客户
@@ -348,7 +378,7 @@ test.describe("面板里的回答和建议卡", () => {
       });
       await 登录(page);
       await page.goto("/channels");
-      await expect(面板(page)).toBeVisible();
+      await 开面板(page);
       await 在面板里问(page, "给卡片撤销记一笔电话");
       const 卡 = page.locator("aside.dock .prop").first();
       await expect(卡).toBeVisible();
@@ -389,7 +419,7 @@ test.describe("面板里的回答和建议卡", () => {
     });
     await 登录(page);
     await page.goto("/channels");
-    await expect(面板(page)).toBeVisible();
+    await 开面板(page);
     await 在面板里问(page, "卡片渠道换号了");
     const 卡 = page.locator("aside.dock .prop").first();
     await expect(卡).toBeVisible();
@@ -508,6 +538,7 @@ test.describe("窗口不到 1600 宽", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
   test("默认收着，正文占满；左栏入口和 ⌘J 都打得开", async ({ page }) => {
+    test.skip(企业版, 栏专属);
     /** 1440 是桌面端的默认窗口。常驻时正文只剩 840，商机看板只露两列半（2026-09-28 核对教程时看到） */
     await 登录(page);
     await page.goto("/customers");

@@ -85,6 +85,23 @@ export function 算可见(宽们: number[], 可用: number, 更多宽: number, �
   return [选中 >= 0 ? 选中 : 0];
 }
 
+/** 落地高亮多久（PR8：新建弹窗建好落到客户页 ?project=<新项目>，新项目卡亮 2 秒） */
+export const 落地亮毫秒 = 2000;
+/**
+ * 打开客户页时地址带 ?project=：那个项目的卡亮 2 秒（只认进页面时那一个；页内切页签不算落地、不亮）。
+ * 只动叠上去那层光圈的透明度（globals.css .cd-pj-flash），减弱动态下也只是淡入淡出
+ */
+function useLandingFlash(): string | null {
+  const 参数 = useSearchParams();
+  const [亮, set亮] = useState<string | null>(() => 参数.get("project"));
+  useEffect(() => {
+    if (!亮) return;
+    const t = window.setTimeout(() => set亮(null), 落地亮毫秒);
+    return () => window.clearTimeout(t);
+  }, [亮]);
+  return 亮;
+}
+
 /**
  * 进程卡卡头左边的项目切换（11-12 用户定「方案一：项目名放进进程卡卡头」）：行首小灰字「项目」；
  * 只有 1 个项目直接写项目名（加粗、一行省略、悬停看全）；2 个以上一排小胶囊，每颗 = 项目名 + 所在阶段（有结局写结局），选中的品牌浅底，
@@ -93,6 +110,8 @@ export function 算可见(宽们: number[], 可用: number, 更多宽: number, �
  */
 export function ProjectSwitch({ 数据, 当前id }: { 数据: 项目区数据; 当前id: string | null }) {
   const router = useRouter();
+  const 亮id = useLandingFlash();
+  const 亮 = (id: string | undefined) => (!!id && id === 亮id ? " cd-pj-flash" : "");
   const 行 = useRef<HTMLDivElement>(null);
   const 尺 = useRef<HTMLDivElement>(null);
   const 页签们 = 数据.页签们;
@@ -131,7 +150,7 @@ export function ProjectSwitch({ 数据, 当前id }: { 数据: 项目区数据; �
       <div className="cd-pj" ref={行}>
         <span className="cd-cap">项目</span>
         {t && (
-          <span className="cd-pj-one" title={`${t.name} · ${标of(t)}`}>
+          <span className={`cd-pj-one${亮(t.id)}`} data-flash={亮(t.id) ? "" : undefined} title={`${t.name} · ${标of(t)}`}>
             <b className="cd-pj-nm">{t.name}</b>
             <span className="cd-pj-tag">
               {!t.结局 && t.阶段 && <span className="cd-pj-dot" aria-hidden data-stage={t.阶段} />}
@@ -162,7 +181,8 @@ export function ProjectSwitch({ 数据, 当前id }: { 数据: 项目区数据; �
               key={t.id}
               role="tab"
               aria-selected={on}
-              className={`cd-pj-pill${on ? " on" : ""}`}
+              className={`cd-pj-pill${on ? " on" : ""}${亮(t.id)}`}
+              data-flash={亮(t.id) ? "" : undefined}
               style={最窄[i] ? { minWidth: 最窄[i] } : undefined}
               href={地址(t.id)}
               scroll={false}

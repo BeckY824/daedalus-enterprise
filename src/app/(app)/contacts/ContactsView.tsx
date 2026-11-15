@@ -12,7 +12,8 @@ import ListSearch from "@/components/ListSearch";
 import { PageHead, CustomerLink, UserCell } from "@/components/ui";
 import DataList, { type 列 } from "@/components/DataList";
 import ContactForm from "../customers/[id]/ContactForm";
-import { useContactRemoval } from "../customers/[id]/useContactRemoval";
+import { deleteUnassignedContact, restoreContact } from "../customers/[id]/actions";
+import { showUndo } from "@/components/UndoBar";
 import { avatarColor, initial, AVATAR_TEXT, 成员选项 } from "@/lib/utils";
 import { useBusiness } from "@/lib/business-client";
 
@@ -71,7 +72,25 @@ export default function ContactsView({
   const [表单开着, set表单开着] = useState(false);
   /** 点开的那位未归属联系人（编辑、挂回某位客户、彻底删除都在这个框里） */
   const [在改, set在改] = useState<Row | null>(null);
-  const { 彻底删 } = useContactRemoval();
+  /**
+   * ls.ct.orphan：未归属的人在编辑框里「彻底删除」，就地确认一次；删成了关框、底部撤销条可撤（撤销 = 照快照恢复）。
+   * 没删成：问句留着，原因由框里就地确认那一行带回（不弹顶部提示）
+   */
+  async function 彻底删(r: Row) {
+    const res = await deleteUnassignedContact(r.id);
+    if (!res.ok) return res;
+    set在改(null);
+    router.refresh();
+    showUndo({
+      话: `已删除「${r.name}」`,
+      撤销: async () => {
+        const u = await restoreContact(res.快照);
+        if (u.ok) router.refresh();
+        return u;
+      },
+    });
+    return { ok: true };
+  }
 
   /*
     关系和负责人两个筛选在本地做：这一页一次最多取 300 行，已经全在手上了，
@@ -91,15 +110,22 @@ export default function ContactsView({
   );
   /** 只有一个人：负责人列和筛选都不摆（审查 D2），见 lib/solo.ts */
   const 不问归属 = !负责人 && 列表不问归属ID(users, 全部行.filter((r) => !r.未归属).map((r) => r.ownerId));
+  /**
+   * 边打字边筛（ls.ct.search）：框里的字和服务端已经搜过的不一样时，先在手上这一批里按字筛掉对不上的，
+   * 不等停顿和服务端；服务端那一趟回来（keyword 跟上了）就以它为准、不再本地筛（它搜的是全库，字段也更全）。
+   * 只会筛少、不会多出来：手上这批没有的人要等服务端
+   */
+  const 先筛 = kw.trim() !== keyword ? kw.trim().toLowerCase() : "";
   const rows = useMemo(
     () =>
       全部行.filter(
         (r) =>
           (!关系 || r.position === 关系) &&
           (!负责人 || (!r.未归属 && r.ownerId === 负责人)) &&
-          (!归属 || (归属 === "无") === r.未归属),
+          (!归属 || (归属 === "无") === r.未归属) &&
+          (!先筛 || [r.name, r.phone, r.wechat, r.email, r.customerName, r.school, r.position].some((v) => v?.toLowerCase().includes(先筛))),
       ),
-    [全部行, 关系, 负责人, 归属],
+    [全部行, 关系, 负责人, 归属, 先筛],
   );
 
   const 列表: 列<Row>[] = [
@@ -179,6 +205,8 @@ export default function ContactsView({
         }
       />
 
+      {/* 服务端那一趟在路上：表不转圈（行已经按字先筛好了），表格淡一点说明还在核对（搜索框不淡，人还在打字） */}
+      <div className={`ct-list${pending ? " ct-wait" : ""}`} aria-busy={pending || undefined}>
       <DataList<Row>
         // 关系、负责人、归属是在本地筛的：拿取回来的行数比，筛完行变少不算截断（J-015）
         截断={{ 总数, 取回: 全部行.length }}
@@ -186,7 +214,6 @@ export default function ContactsView({
         空库={全部行.length === 0 && !keyword}
         列={列表}
         行={rows}
-        加载中={pending}
         // 未归属的人没有「他的客户」可去：点开就地编辑，在框里挂回某位或彻底删除
         行链接={(r) => (r.未归属 ? "" : `/customers/${r.customerId}`)}
         行点击={(r) => set在改(r)}
@@ -245,6 +272,7 @@ export default function ContactsView({
           </Space>
         }
       />
+      </div>
 
       <ContactForm
         open={表单开着}
@@ -271,11 +299,7 @@ export default function ContactsView({
         未归属
         onDelete={
           在改
-            ? () => {
-                const r = 在改;
-                set在改(null);
-                void 彻底删(r);
-              }
+            ? () => 彻底删(在改)
             : undefined
         }
       />

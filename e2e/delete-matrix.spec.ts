@@ -90,21 +90,25 @@ test("删客户（批量 3 位）+ 撤销导入批次：叫「学员」时确认
     await page.getByRole("button", { name: /^delete 删\s*除$|^删\s*除$/ }).click();
 
     const 框 = page.getByRole("dialog");
-    await expect(框).toContainText(`确认删除 ${名.join("、")} 这 3 位学员？`);
     if (企业版) {
-      // 企业版（P9）删了进回收站：联系人、沟通记录跟着一起进，照实说能恢复
-      await expect(框).toContainText("2 位联系人、3 条沟通记录一起进回收站");
-      await expect(框).toContainText("30 天内可在 设置 → 回收站 恢复");
+      /*
+        企业版（P9）删了进回收站：联系人、沟通记录跟着一起进，照实说能恢复。
+        11-15 起是后果框（原型 cu.bulkdel）：标题「删除 3 位学员」，会删谁、一起走什么、能不能恢复分条写；删完框收起、行没了，不再弹顶部提示
+      */
+      await expect(page.getByRole("dialog", { name: "删除 3 位学员" })).toBeVisible();
+      await expect(框.getByRole("listitem").filter({ hasText: "会删" })).toContainText(名.join("、"));
+      await expect(框.getByRole("listitem").filter({ hasText: "一起走" })).toContainText("2 位联系人、3 条沟通记录进回收站");
+      await expect(框.getByRole("listitem").filter({ hasText: "能恢复" })).toContainText("30 天内在 设置 → 回收站 恢复");
     } else {
+      await expect(框).toContainText(`确认删除 ${名.join("、")} 这 3 位学员？`);
       await expect(框).toContainText("会一起删掉：3 条跟进记录");
       await expect(框).toContainText("2 位联系人不删，留在联系人页，写「未归属」");
       await expect(框).toContainText("删除后不能恢复");
     }
     await expect(框).not.toContainText("客户");
     await 框.getByRole("button", { name: /删\s*除/ }).click();
-    await expect(page.locator(".ant-message")).toContainText(
-      企业版 ? "已删除 3 位学员，可在回收站恢复" : "已删除 3 位学员，2 位联系人留在联系人页",
-    );
+    if (企业版) await expect(框).toBeHidden();
+    else await expect(page.locator(".ant-message")).toContainText("已删除 3 位学员，2 位联系人留在联系人页");
     for (const n of 名) await expect(page.locator("tr.ant-table-row", { hasText: n })).toHaveCount(0);
     await expect(page.locator("tr.ant-table-row", { hasText: `不删的${戳}` })).toHaveCount(1);
 
@@ -117,7 +121,8 @@ test("删客户（批量 3 位）+ 撤销导入批次：叫「学员」时确认
 
     // 撤销导入批次：确认说清删几位、用学员这个叫法
     await page.goto("/settings");
-    await page.getByText("导入记录", { exact: true }).click();
+    // 设置目录 11-15 起每项是「名字 + 一行说明」的页签（原型 st.role），按页签认，不按字（正文里也有「导入记录」几个字）
+    await page.getByRole("tab", { name: /^导入记录/ }).click();
     await expect(page.getByText(`名单${戳}.csv`)).toBeVisible();
     await page.getByRole("button", { name: /撤\s*销/ }).first().click();
     const 气泡 = page.locator(".ant-popover:not(.ant-popover-hidden)");
@@ -264,11 +269,13 @@ test("删待办 / 删计划（计划页）：就地确认，删了那一行就�
   await 登录(page, 谁);
   await page.goto("/follow-ups/plans");
   for (const [标题, 提示] of [[`回访${戳}`, "计划已删除"], [`发资料${戳}`, "待办已删除"]] as const) {
-    await expect(page.getByText(标题, { exact: true })).toBeVisible();
+    // 服务端流式出页时，React 揭晓 Suspense 之前会有一份藏着（hidden）的同样内容在 DOM 里，只认看得见的那份
+    await expect(page.getByText(标题, { exact: true }).filter({ visible: true })).toBeVisible();
     await page.getByRole("button", { name: `删除 ${标题}` }).click({ force: true });
     await expect(就地确认(page)).toContainText("删除这条？");
     await 就地确认(page).getByRole("button", { name: "删除" }).click();
-    await expect(page.locator(".ant-message")).toContainText(提示);
+    // 11-15 起删后那一行收起、不弹提示（原型 ls.pl.del）：行没了就是反馈，库里也得真没了
+    void 提示;
     await expect(page.getByText(标题, { exact: true })).toHaveCount(0);
   }
 });
@@ -293,7 +300,9 @@ test("删渠道 / 删线索：有客户挂着的渠道拦下说清；没转化�
   await expect(page.locator("tr.ant-table-row", { hasText: `有人渠道${戳}` })).toHaveCount(1);
   await page.getByRole("button", { name: `更多操作 空渠道${戳}` }).click();
   await page.getByRole("menuitem", { name: "删除", exact: true }).click();
-  await page.getByRole("dialog").getByRole("button", { name: /删\s*除/ }).click();
+  // 11-15 起删渠道是就地确认（从「⋯」处长出问句 + 「删除」），不弹框
+  await expect(就地确认(page)).toContainText("删除这个渠道？");
+  await 就地确认(page).getByRole("button", { name: "删除" }).click();
   await expect(page.locator("tr.ant-table-row", { hasText: `空渠道${戳}` })).toHaveCount(0);
 
   // 企业版只用项目：左栏没有老线索页（线索在项目里），线索那半在开关关着那套里验

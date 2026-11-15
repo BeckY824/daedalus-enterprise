@@ -9,7 +9,7 @@
  *   - 窗口：Windows 常见的 1024 / 1280 / 1366 宽（高 680：任务栏 + 标题栏之后剩的），每个宽度三种摆法：默认、右边 AI 栏常驻、左栏拖到最宽
  *   - 页面：首页、客户列表、客户记录页（名单 + 详情）、商机列表 / 看板、订单列表 / 详情、跟进记录、计划、待跟名单、供应商、设置各页、团队页
  *     10-28 起本仓库只出企业版：闸门改到企业版服务上（e2e-layout/企业版.ts 建库灌数据，playwright.layout.config.ts 的「企业版」项目），
- *     页面按企业版左栏换成首页、客户列表、客户记录页、项目看板 / 列表 / 公海 / 详情、跟进记录 / 计划 / 待跟名单、数据、新线索、联系人、渠道、设置各页；
+ *     页面按企业版左栏换成首页、客户列表、客户记录页、项目看板 / 列表 / 公海 / 详情、跟进记录 / 计划、数据、新线索、联系人、渠道、设置各页；
  *     商机、订单、供应商、桌面端 / 团队设置企业版用户进不去，不再量
  *   - 每页量（e2e/layout-audit.ts）：盒子里有东西伸出去（撑出 / 被裁，有意横滚的区域不算）、按钮链接被切一半（出界）、
  *     不折行的字冲出自己的盒子（字溢出）、可点的东西中心点上是别人（被盖住）、短字被挤成竖排（折行）、整页横滚。顶上量一次，滚到底再量一次
@@ -68,9 +68,7 @@ const 页们 = (种子 = 企业版种子()): { 名: string; 址: string; 存?: R
   // 11-12 客户详情合并第 2 批：项目详情并进客户详情（/projects/<id> 跳 /customers/<客户>?project=<id>），量的是客户页项目区停在这个页签。
   // 种子第一个项目挂在 gate-scandi 名下（企业版.ts）；直接写跳过去的地址，省一跳，「项目详情-顶 / 底」改名「客户详情-项目区-顶 / 底」
   { 名: "客户详情-项目区", 址: `/customers/gate-scandi?project=${种子.项目}` },
-  { 名: "跟进记录", 址: "/follow-ups" },
   { 名: "计划", 址: "/follow-ups/plans" },
-  { 名: "待跟名单", 址: "/follow-ups/watchlist" },
   { 名: "数据", 址: "/overview" },
   // 企业版的新线索 = 线索阶段的项目（leads/page.tsx 画的是 ProjectsView），不是老线索表
   { 名: "新线索", 址: "/leads", 存: { "projects-view": JSON.stringify("看板") } },
@@ -114,13 +112,46 @@ async function 去(page: Page, 址: string, 摆: 摆法, 存?: Record<string, st
   await 关掉弹窗(page);
   // 首页（/ → /dashboard）本身就是宽模式的 AI 对话，那里没有右栏（AiDock 在 /dashboard 不画）
   if (摆 === "AI栏常驻" && !new URL(page.url()).pathname.startsWith("/dashboard")) {
-    // 不到 1600 宽默认收着；用户「保持常驻」时是 ⌘J / Ctrl+J 打开的
-    const 栏 = page.getByRole("complementary", { name: "AI 面板" });
-    if (!(await 栏.isVisible().catch(() => false))) await page.keyboard.press("Control+j");
-    await expect(栏).toBeVisible();
+    /*
+      不到 1600 宽默认收着；用户「保持常驻」时是 ⌘J / Ctrl+J 打开的。
+      企业版项目模式 11-15 起 AI 不占右边一栏，是正文中下方的浮窗（P-界面-39，AiDock 浮窗模式，读屏名「AI 对话」）：
+      同一个 ⌘J 打开，量法见下面 浮窗遮挡（滚到底时一个按钮都不许压；顶上时页头、左栏不许压）
+    */
+    const AI = page.getByRole("complementary", { name: "AI 面板" }).or(page.getByRole("complementary", { name: "AI 对话" }));
+    if (!(await AI.isVisible().catch(() => false))) await page.keyboard.press("Control+j");
+    await expect(AI).toBeVisible();
   }
   // 动画、图表、骨架屏落定
   await page.waitForTimeout(500);
+}
+
+/**
+ * AI 浮窗（企业版项目模式，P-界面-39）开着时：它就是浮在正文中下方的一层，顶上那屏正文行从它底下过是设计如此（正文底部按 --ai-float-h 让位，滚到底就让开）。
+ * 所以「顶」这一屏：页头的按钮、左栏的入口一个都不许和浮窗框有交叠（同 tests/ent-ai-float.ui.test.ts 的遮挡检查，按框交叠算、不只看中心点），浮窗不许出窗口；
+ * 「底」这一屏照通用规则量，浮窗当普通的层：滚到底还有按钮中心压在它下面就是「被盖住」
+ */
+async function 浮窗遮挡(page: Page): Promise<排版问题[]> {
+  return page.evaluate(() => {
+    const 浮窗 = document.querySelector<HTMLElement>(".dock-float:not(.is-min)");
+    if (!浮窗) return [];
+    const d = 浮窗.getBoundingClientRect();
+    const 名 = (el: Element) => {
+      const 父 = el.parentElement;
+      const 父名 = 父 ? (typeof 父.className === "string" && 父.className.trim() ? `.${父.className.trim().split(/\s+/)[0]}` : 父.tagName.toLowerCase()) : "";
+      return [父名, el.tagName.toLowerCase()].filter(Boolean).join(" > ");
+    };
+    const 问题: { 类: "被盖住" | "出界"; 在哪: string; 字: string; 量: string }[] = [];
+    for (const b of document.querySelectorAll<HTMLElement>("main .page-head button, main .page-head a, .rail a, .rail button")) {
+      if (!b.offsetParent) continue;
+      const r = b.getBoundingClientRect();
+      if (r.width === 0 || r.bottom < 0 || r.top > innerHeight) continue;
+      if (r.left < d.right && r.right > d.left && r.top < d.bottom && r.bottom > d.top)
+        问题.push({ 类: "被盖住", 在哪: 名(b), 字: (b.textContent || b.getAttribute("aria-label") || "").trim().slice(0, 30), 量: "和 AI 浮窗的框交叠" });
+    }
+    if (d.left < 0 || d.right > innerWidth + 1 || d.bottom > innerHeight + 1)
+      问题.push({ 类: "出界", 在哪: "AI 浮窗", 字: "", 量: `浮窗框 ${Math.round(d.left)}–${Math.round(d.right)} × ${Math.round(d.top)}–${Math.round(d.bottom)}，窗口 ${innerWidth} × ${innerHeight}` });
+    return 问题;
+  });
 }
 
 async function 滚到(page: Page, 比例: number) {
@@ -166,7 +197,11 @@ export function 排版闸门(宽: (typeof 宽们)[number]) {
         await 去(page, p.址, 摆, p.存, p.饼);
         for (const [比例, 段] of [[0, "顶"], [1, "底"]] as const) {
           await 滚到(page, 比例);
-          const 问题 = await 查排版(page, { 忽略 });
+          // 浮窗开着的顶上那屏：正文从它底下过是设计如此，盖没盖页头 / 左栏另用 浮窗遮挡 量；滚到底照通用规则量
+          const 浮窗顶屏 = 摆 === "AI栏常驻" && 段 === "顶" && (await page.locator(".dock-float:not(.is-min)").count()) > 0;
+          const 问题 = 浮窗顶屏
+            ? [...(await 查排版(page, { 忽略: [...忽略, ".dock-float"] })), ...(await 浮窗遮挡(page))]
+            : await 查排版(page, { 忽略 });
           if (!问题.length) continue;
           const 屏 = `${p.名}-${段}`;
           记录.push({ 宽, 摆法: 摆, 屏, 问题 });

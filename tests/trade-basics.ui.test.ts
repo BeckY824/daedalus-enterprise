@@ -2,6 +2,7 @@
  * 外贸基础（2026-10-16）的界面：真浏览器里点一遍（打包方式同 remediation-business-clock.ui.test.ts，服务端动作换成假的、记下交了什么）。
  *   计划页点 ✓ → 小框：方式按计划写的来、一句话没写时「保存并完成」是灰的、下次默认 7 天后（北京日历日）→ 交给 saveFollowUp 的就是
  *     一条已完成的跟进 + 完成这条计划 + 7 天后的日期计划；「不排」就不带计划；「跳过，直接完成」只调 completePlan
+ *   2026-11 PR5b（原型 ls.pl.done）：计划页点 ✓ 直接完成、底部撤销条可撤；小框只在客户详情的记录里用，这里挂一个壳单独点开它
  *   待办点 ✓ 不弹框，照旧直接完成
  *   对方当地时间：浏览器在伦敦，美国客户显示「对方当地 HH:mm」，是夜里的标「夜里」；比较基准固定北京（11-03），英国客户也显示
  * 2026-10-17 PR26 手测补的：
@@ -28,7 +29,9 @@ const plugin: Plugin = { name: "trade-basics-ui", setup(b) {
     export const 撤销记一笔=async(x)=>记('撤销记一笔',x);
     export const saveFollowUp=async(x)=>({...记('saveFollowUp',x),...(x.附带?.plan?{下次计划id:'n1'}:{})}),completePlan=async(id,完成=true)=>记('completePlan',{id,完成}),toggleTask=async(id,v)=>记('toggleTask',{id,v}),deletePlan=async()=>({ok:true}),deleteTask=deletePlan;
     export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'p1'});`);
-  stub(/customers\/\[id\]\/(PlanForm|TaskForm)$/, "export default function C(){return null}");
+  stub(/customers\/\[id\]\/TaskForm$/, "export default function C(){return null}");
+  // 排下一次（撤销条上那颗键）开的新计划表单：只摆个记号，看给谁排的
+  stub(/customers\/\[id\]\/PlanForm$/, "export default function C(p){return p.open&&p.record===null&&p.customerId?<div data-testid='plan-next'>{p.customerId}</div>:null}");
   b.onLoad({ filter: /.*/, namespace: "stub" }, (a) => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 
@@ -37,8 +40,13 @@ beforeAll(async () => {
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import {BusinessProvider} from '@/lib/business-client';import {BUSINESS_PRESETS} from '@/lib/business-config';
     import PlansView from '@/app/(app)/follow-ups/plans/PlansView';import LocalTime from '@/components/LocalTime';
+    import CompletePlanModal,{提示记完了} from '@/app/(app)/customers/[id]/CompletePlanModal';import {completePlan} from '@/app/(app)/customers/[id]/actions';
     const 计划=(id,subject,method,有WhatsApp)=>({id,subject,method,有WhatsApp,plannedAt:'2026-10-16T01:00:00Z',updatedAt:'2026-10-16T01:00:00Z',customerId:'c-'+id,customerName:'Acme '+id,ownerId:'u',ownerName:'我'});
-    function Test(){return <>
+    // 2026-11 PR5b（原型 ls.pl.done）：计划页点 ✓ 直接完成，小框只留在客户详情的记录里；小框本身在这里单独挂一个壳点开
+    function 小框壳(){const {message}=App.useApp();const [在,set在]=React.useState(null);const 们=[计划('p1','发新报价','WhatsApp'),计划('p2','问样品','电话沟通'),计划('p3','回访','邮件沟通'),计划('p4','催定金','电话沟通',true),计划('p5','寄目录','邮件沟通',true)];
+      return <>{们.map(x=><button key={x.id} aria-label={'完成 '+x.subject} onClick={()=>set在({id:x.id,subject:x.subject,method:x.method,customerId:x.customerId,customerName:x.customerName,有WhatsApp:x.有WhatsApp})}>✓</button>)}
+        <CompletePlanModal plan={在} onClose={()=>set在(null)} onDone={async(r)=>{const x=在;set在(null);if(r.kind==='saved')return 提示记完了(message,x,r,()=>{});await completePlan(x.id);message.success('「'+x.subject+'」已完成');}}/></>}
+    function Test(){if(decodeURIComponent(location.search).includes('m=框'))return <小框壳/>;return <>
       <div id="us"><LocalTime country="美国"/></div>
       <div id="uk"><LocalTime country="英国"/></div>
       <div id="dubai"><LocalTime country="UAE" 简短/></div>
@@ -82,13 +90,13 @@ beforeAll(async () => {
 afterAll(async () => { await browser?.close(); });
 
 type 调用 = { 名: string; 参: Record<string, unknown> };
-async function 开(): Promise<{ page: Page; errors: string[]; 调用们: () => Promise<调用[]> }> {
+async function 开(m = ""): Promise<{ page: Page; errors: string[]; 调用们: () => Promise<调用[]> }> {
   const page = await browser.newPage({ timezoneId: "Europe/London" });
   page.setDefaultTimeout(5000);
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.route("http://trade.test/**", (r) => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
-  await page.goto("http://trade.test");
+  await page.goto(`http://trade.test/${m ? `?m=${encodeURIComponent(m)}` : ""}`);
   // 伦敦 2026-10-16 07:05（夏令时）= 北京 14:05 = 纽约 02:05
   await page.clock.setFixedTime(new Date("2026-10-16T06:05:00Z"));
   await page.addScriptTag({ content: bundle });
@@ -96,7 +104,7 @@ async function 开(): Promise<{ page: Page; errors: string[]; 调用们: () => P
 }
 
 it("计划页：点 ✓ 弹小框；没写一句话时保存是灰的；保存并完成交的是「跟进 + 完成计划 + 7 天后的日期计划」", async () => {
-  const { page, errors, 调用们 } = await 开();
+  const { page, errors, 调用们 } = await 开("框");
   await page.getByRole("button", { name: "完成 发新报价" }).click();
   const 框 = page.getByTestId("complete-plan-modal");
   await 框.waitFor();
@@ -119,7 +127,7 @@ it("计划页：点 ✓ 弹小框；没写一句话时保存是灰的；保存�
 });
 
 it("小框：方式按计划写的认（电话沟通 → 电话）；「不排」就不带下次计划；「选日子」挑的那天照交", async () => {
-  const { page, 调用们 } = await 开();
+  const { page, 调用们 } = await 开("框");
   await page.getByRole("button", { name: "完成 问样品" }).click();
   const 框 = page.getByTestId("complete-plan-modal");
   await 框.waitFor();
@@ -148,19 +156,25 @@ it("小框：方式按计划写的认（电话沟通 → 电话）；「不排�
   await page.close();
 });
 
-it("小框：「跳过，直接完成」只勾掉计划（提示里照旧有撤销）；待办点 ✓ 不弹框", async () => {
+it("计划页（ls.pl.done）：点 ✓ 直接完成、不弹小框；底部撤销条点撤销 = 改回未完成；待办同样", async () => {
   const { page, 调用们 } = await 开();
   await page.getByRole("button", { name: "完成 发新报价" }).click();
-  await page.getByTestId("complete-plan-modal").waitFor();
-  await page.getByRole("button", { name: "跳过，直接完成" }).click();
-  await page.getByText("「发新报价」已完成").waitFor();
-  await page.getByRole("button", { name: "撤销" }).waitFor();
+  await page.getByText("已完成「发新报价」").waitFor();
+  expect(await page.getByTestId("complete-plan-modal").count()).toBe(0);
   expect((await 调用们()).map((x) => x.名)).toEqual(["completePlan"]);
+  await page.getByRole("button", { name: "撤销" }).click();
+  await expect.poll(async () => (await 调用们()).map((x) => x.参)).toEqual([{ id: "p1", 完成: true }, { id: "p1", 完成: false }]);
+
+  // 计划完成的撤销条上还有「排下一次」：点了开新计划表单（给这位客户），不撤销
+  await page.getByRole("button", { name: "完成 问样品" }).click();
+  await page.getByRole("button", { name: "排下一次" }).click();
+  expect(await page.getByTestId("plan-next").innerText()).toBe("c-p2");
+  expect((await 调用们()).map((x) => x.参)).toEqual([{ id: "p1", 完成: true }, { id: "p1", 完成: false }, { id: "p2", 完成: true }]);
 
   await page.getByRole("button", { name: "完成 整理报价单" }).click();
-  await page.getByText("「整理报价单」已完成").waitFor();
+  await page.getByText("已完成「整理报价单」").waitFor();
   expect(await page.getByTestId("complete-plan-modal").count()).toBe(0);
-  expect((await 调用们()).map((x) => x.名)).toEqual(["completePlan", "toggleTask"]);
+  expect((await 调用们()).map((x) => x.名)).toEqual(["completePlan", "completePlan", "completePlan", "toggleTask"]);
   await page.close();
 });
 
@@ -176,7 +190,7 @@ it("对方当地时间：美国显示「对方当地 02:05」并标夜里；迪�
 });
 
 it("有 WhatsApp 号：计划写的是老默认「电话沟通」时小框默认 WhatsApp，写了别的（邮件）照它的", async () => {
-  const { page } = await 开();
+  const { page } = await 开("框");
   await page.getByRole("button", { name: "完成 催定金" }).click();
   const 框 = page.getByTestId("complete-plan-modal");
   await 框.waitFor();
@@ -190,7 +204,7 @@ it("有 WhatsApp 号：计划写的是老默认「电话沟通」时小框默认
 });
 
 it("「保存并完成」的提示里有撤销：点了交给 撤销记一笔 的是这一笔、这条计划、刚排的下一条", async () => {
-  const { page, errors, 调用们 } = await 开();
+  const { page, errors, 调用们 } = await 开("框");
   await page.getByRole("button", { name: "完成 催定金" }).click();
   const 框 = page.getByTestId("complete-plan-modal");
   await 框.waitFor();

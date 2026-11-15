@@ -12,7 +12,7 @@ import { 能管公海 } from "@/lib/enterprise/permissions";
 import { 能分配 } from "@/lib/enterprise/lead-assign";
 import { 离职交接入口 } from "@/lib/enterprise/offboard-handover";
 import { 看板三态点 } from "@/lib/project/board-tri-dots";
-import ProjectsView from "./ProjectsView";
+import ProjectsView from "./ProjectsViewLazy";
 import { 项目页筛选 } from "./page-query";
 
 /** 项目页（看板 / 列表）认的地址栏参数 */

@@ -1,6 +1,6 @@
 /**
  * 盯盘清单的取数：从库里捞出三类原料，交给 sentinel.ts 的纯规则打分。
- * 首页（AI 对话的建议 chip）、盯盘清单页和 AI 的 get_watchlist 共用，避免各写一遍查询。
+ * 首页（AI 对话的建议 chip）和 AI 的 get_watchlist 共用，避免各写一遍查询（盯盘清单页 11-15 删了）。
  */
 import { scheduleValue } from "./schedule-date";
 import { 负责人显示名 } from "@/lib/pool";

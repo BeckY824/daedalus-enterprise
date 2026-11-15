@@ -24,6 +24,11 @@ import AppearanceTab from "./AppearanceTab";
 import ProjectSettingsTab, { type 项目设置 } from "./ProjectSettingsTab";
 import OrgTab, { type 组织架构 } from "./OrgTab";
 import RecycleTab, { type 客户回收设置 } from "./RecycleTab";
+import LeadAssignCard from "./LeadAssignCard";
+import type { 分配情况 } from "../leads/assign-actions";
+import { 我能做什么, type 设置身份 } from "@/lib/enterprise/settings-scope";
+import { PermTab, RulesTab } from "./IdentityTabs";
+import { 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
 import type { BusinessConfig } from "@/lib/business-config";
 import type { AiUsage } from "@/lib/ai-usage";
 
@@ -44,6 +49,34 @@ const 说明表: Record<string, string> = {
   project: "项目组员角色、成员的上级",
   org: "部门、角色、直属和虚线上级",
   recycle: "沉睡待定、即将回收、自动进公海的天数和占位词",
+  quota: "给下属设每月分几条线索",
+  perm: "按你的身份，能做和不能做的",
+  rules: "影响全公司的规则，只能看",
+};
+
+/**
+ * 搜设置（原型 st.find）：除了页签名和那一句说明，也搜每一栏里具体的那几项。搜「分配」能搜到线索配额，搜「公海」能搜到客户回收和持有上限。
+ * 结果写明在哪个页签、命中哪一项；回车直达第一个，正文亮一下
+ */
+const 搜词表: Record<string, string[]> = {
+  profile: ["名字", "职位"],
+  password: ["密码", "退出", "机器"],
+  keymap: ["快捷键", "键位"],
+  appearance: ["主题", "深色", "底色"],
+  members: ["系统管理员", "停用", "离职", "飞书", "解绑", "成员"],
+  org: ["部门", "直属上级", "虚线上级", "字段权限", "线索分配", "配额", "市场部门", "只看某人", "业务角色", "后台设置谁能改"],
+  business: ["叫法", "客户", "学员"],
+  project: ["持有上限", "公海", "超时回收", "进程时限", "必填", "字典", "分配方式", "回收原因", "卡点", "阻碍原因", "提成"],
+  recycle: ["公海", "沉睡", "即将回收", "天数", "占位词"],
+  ai: ["Key", "模型", "MCP", "令牌"],
+  imports: ["导入", "撤销"],
+  exports: ["导出"],
+  enterprise: ["飞书", "钉钉", "Excel", "同步"],
+  audit: ["日志", "谁改了"],
+  trash: ["恢复", "删除"],
+  quota: ["配额", "分配", "参与"],
+  perm: ["权限", "能做什么"],
+  rules: ["公海", "回收天数", "持有上限", "进程时限", "字段权限", "市场部门", "组织架构", "开通"],
 };
 
 export default function SettingsView({
@@ -66,6 +99,10 @@ export default function SettingsView({
   导出记录 = null,
   只个人 = false,
   客户回收 = null,
+  线索配额 = null,
+  身份 = "系统管理员",
+  我的角色 = [],
+  条线 = false,
 }: {
   users: Row[];
   me: SessionUser;
@@ -104,8 +141,20 @@ export default function SettingsView({
   只个人?: boolean;
   /** 企业版项目模式多一栏「客户回收」（客户三态的开关、天数、占位词，C16）；null = 不摆 */
   客户回收?: 客户回收设置 | null;
+  /** 登录身份（P-界面-46）：系统管理员 / 只读管理员 / 成员 */
+  身份?: 设置身份;
+  /** 不是系统管理员、手下有能设配额的人（PR10b ③）：单给一栏「线索配额」；null = 不摆（系统管理员在组织架构里设） */
+  线索配额?: { 行: 分配情况; 不限额: boolean } | null;
+  /** 我的业务角色（「我能做什么」按它列） */
+  我的角色?: string[];
+  /** 是条线总管理（总管理设了业务线） */
+  条线?: boolean;
 }) {
+  const 身份名 = 身份 === "系统管理员" ? "总管理（系统管理员）" : 身份 === "只读管理员" ? "管理员（只读）"
+    : 我的角色.map((r) => (r === "director" && 条线 ? "条线总管理" : 角色名[r as 业务角色] ?? r)).join("、") || "还没设业务角色";
   const [搜, set搜] = useState("");
+  // 回车直达后正文亮一下（原型 st.find）：换个 key 让动画重放
+  const [亮, set亮] = useState(0);
   // 当前页签由地址栏 ?tab= 决定：中栏那列设置项就是一组带 tab 的链接，刷新、回退都对得上
   const timeZone = useBusinessTimeZone();
   const pathname = usePathname();
@@ -132,6 +181,9 @@ export default function SettingsView({
     ...(isAdmin ? [{ key: "business", label: "业务配置", children: <ConfigProvider componentDisabled={只读}><BusinessSettingsTab value={business} 多人={users.filter((u) => u.active).length > 1} 企业版={企业版} /></ConfigProvider> }] : []),
     ...(组织架构 ? [{ key: "org", label: "组织架构", children: <OrgTab value={组织架构} /> }] : []),
     ...(项目设置 ? [{ key: "project", label: "项目模式", children: <ProjectSettingsTab value={项目设置} 成员={持有成员} /> }] : []),
+    ...(企业版 ? [{ key: "perm", label: "我能做什么", children: <PermTab 身份名={身份名} 项们={我能做什么(我的角色, 身份, 条线)} /> }] : []),
+    ...(企业版 && 只个人 ? [{ key: "rules", label: "全公司规则", children: <RulesTab /> }] : []),
+    ...(线索配额 ? [{ key: "quota", label: "线索配额", children: <LeadAssignCard rows={线索配额.行} 不限额={线索配额.不限额} /> }] : []),
     ...(客户回收 ? [{ key: "recycle", label: "客户回收", children: <RecycleTab value={客户回收} /> }] : []),
     ...(导入记录 ? [{ key: "imports", label: "导入记录", children: <ImportsTab /> }] : []),
     ...(企业版导入 ? [{ key: "enterprise", label: "企业版导入", children: <EnterpriseImportTab /> }] : []),
@@ -139,7 +191,7 @@ export default function SettingsView({
     ...(导出记录 ? [{ key: "exports", label: "导出记录", children: <AuditTab logs={导出记录} 导出 /> }] : []),
     { key: "audit", label: "操作日志", children: <AuditTab logs={logs} /> },
   ]
-    .filter((x) => !只个人 || ["profile", "password", "keymap", "appearance", "trash"].includes(x.key))
+    .filter((x) => !只个人 || ["profile", "password", "keymap", "appearance", "perm", "quota", "rules", "trash"].includes(x.key))
     // 不是托管版没有「已登录的机器」这一块（机器 = null），说明别提它（D1-2）
     .map((x) => ({ ...x, 说明: x.key === "password" && !机器 ? "改自己的登录密码" : 说明表[x.key] ?? "" })) as { key: string; label: string; 说明: string; children: React.ReactNode }[];
 
@@ -148,10 +200,21 @@ export default function SettingsView({
    * 顺序就是这里的顺序，不跟着上面那个数组走（那个数组是按谁先写的排的）。
    * 没列进来的 key 会落到最后一组，加了新栏忘了分组也不会凭空消失。
    */
-  const 分组表: [string, string[]][] = [
-    ["个人", ["profile", "password", "keymap", "appearance"]],
-    ["工作区", ["members", "org", "business", "project", "recycle", "ai", "imports", "exports", "enterprise", "trash", "audit"]],
-  ];
+  /* 按「我要做什么」分组（原型 st.role，P-界面-46）：按登录身份给，不给切换 */
+  const 分组表: [string, string[]][] = 只个人
+    ? [
+        ["我自己", ["profile", "password", "keymap", "appearance", "perm"]],
+        ["带团队", ["quota"]],
+        ["数据", ["trash"]],
+        ["全公司规则", ["rules"]],
+      ]
+    : [
+        ["我自己", ["profile", "password", "keymap", "appearance", "perm"]],
+        ["团队与权限", ["members", "org"]],
+        ["线索和公海", ["recycle", "project"]],
+        ["业务与 AI", ["business", "ai"]],
+        ["数据", ["imports", "enterprise", "exports", "trash", "audit"]],
+      ];
 
   /**
    * **真正摆出来的是哪一栏**。地址栏没带 ?tab= 时默认是 members，
@@ -163,7 +226,11 @@ export default function SettingsView({
   const 当前 = 目录.some((x) => x.key === tab) ? tab : 目录[0].key;
 
   const 词 = 搜.trim().toLowerCase();
-  const 搜到的 = 词 ? 目录.filter((x) => `${x.label}${x.说明}${x.key}`.toLowerCase().includes(词)) : 目录;
+  /** 命中的是哪一项（页签名、说明没中、具体那一项中了时写出来） */
+  const 命中of = (x: (typeof 目录)[number]) =>
+    `${x.label}${x.说明}${x.key}`.toLowerCase().includes(词) ? "" : (搜词表[x.key] ?? []).find((w) => w.toLowerCase().includes(词)) ?? null;
+  const 搜到的 = 词 ? 目录.filter((x) => 命中of(x) !== null) : 目录;
+  const 去 = (key: string) => window.history.replaceState(null, "", `${pathname}?tab=${key}`);
   const 分好组: [string, typeof 目录][] = 词
     ? [["", 搜到的]]
     : 分组表
@@ -173,7 +240,7 @@ export default function SettingsView({
 
   return (
     <>
-      <PageHead title="设置" subtitle={`成员、AI 与业务配置 · ${timeZone ? "业务日期按北京时间（UTC+8）" : "业务日期按本机时区"}`} />
+      <PageHead title="设置" subtitle={`${企业版 ? `${身份名} · ${只个人 || 只读 ? "灰掉的只能看" : "按「我要做什么」分组"}` : "成员、AI 与业务配置"} · ${timeZone ? "业务日期按北京时间（UTC+8）" : "业务日期按本机时区"}`} />
 
       {/*
         左目录，不是顶上一排页签。有两项只有管理员看得到，页签横着排时
@@ -195,7 +262,14 @@ export default function SettingsView({
             type="search"
             value={搜}
             onChange={(e) => set搜(e.target.value)}
-            placeholder="搜设置…"
+            onKeyDown={(e) => {
+              // 回车直达第一个结果，正文亮一下
+              if (e.key === "Enter" && 词 && 搜到的[0]) {
+                去(搜到的[0].key);
+                set亮((n) => n + 1);
+              }
+            }}
+            placeholder="搜一项设置，比如「公海」「分配」"
             aria-label="搜索设置"
           />
           {搜到的.length === 0 && <div className="set-nav-empty">没有匹配的设置项</div>}
@@ -219,16 +293,19 @@ export default function SettingsView({
                 （2026-09-17 用户在真机上感觉到「偶尔卡卡的」）。Next 会把原生 pushState/replaceState
                 同步进 useSearchParams，所以下面读 tab 的那行照旧生效，刷新、回退也照旧对得上。
               */
-              onClick={() => window.history.replaceState(null, "", `${pathname}?tab=${x.key}`)}
+              onClick={() => 去(x.key)}
             >
               <b>{x.label}</b>
-              <span>{x.说明}</span>
+              <span>{词 && 命中of(x) ? `${x.label} › ${命中of(x)}` : x.说明}</span>
             </button>
               ))}
             </div>
           ))}
         </div>
-        <div className="set-body" role="tabpanel" id={`set-panel-${当前}`} aria-labelledby={`set-tab-${当前}`}>
+        <div key={亮} className={`set-body${亮 ? " set-flash" : ""}`} role="tabpanel" id={`set-panel-${当前}`} aria-labelledby={`set-tab-${当前}`}>
+          {只读 && (
+            <div className="set-ro" role="note">你是只读管理员：业务数据能看全部、不能改；后台设置只有系统管理员能进。</div>
+          )}
           {目录.find((x) => x.key === 当前)?.children}
         </div>
       </div>

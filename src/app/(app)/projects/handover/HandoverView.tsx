@@ -4,9 +4,11 @@ import { 空值符 } from "@/lib/empty-value";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { App, Button, Card, Empty, Modal, Select, Space, Table, Tag, Typography } from "antd";
+import { Button, Card, Empty, Modal, Select, Space, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { PageHead, UserCell } from "@/components/ui";
+import InlineConfirm from "@/components/InlineConfirm";
+import { useConsequence } from "@/components/ConsequenceDialog";
 import { useBusiness } from "@/lib/business-client";
 import type { 离职待交接, 交接客户, 交接项目, 等确认 } from "@/lib/enterprise/offboard-handover";
 import { deactivateUser } from "../../settings/actions";
@@ -83,7 +85,9 @@ function PickTaker({ 候选, 不要, value, onChange, placeholder = "选接手�
 function PersonCard({ p, 候选, 项目模式 }: { p: 离职待交接; 候选: 人[]; 项目模式: boolean }) {
   const b = useBusiness();
   const router = useRouter();
-  const { message, modal } = App.useApp();
+  const [问后果, 后果框] = useConsequence();
+  /** 没交成 / 没撤回成的原因：写在卡顶就地（g.save：不弹顶部提示）；成了不提示，行里直接变「等 X 确认」 */
+  const [错, set错] = useState<string | null>(null);
   const [选了, set选了] = useState<Record<string, string>>({});
   const [全部给, set全部给] = useState("");
   const [忙, set忙] = useState<string | null>(null);
@@ -91,36 +95,36 @@ function PersonCard({ p, 候选, 项目模式 }: { p: 离职待交接; 候选: �
   const [新, set新] = useState<string | undefined>();
   const 名 = (id: string) => 候选.find((u) => u.id === id)?.name ?? "";
 
-  async function 做(key: string, f: () => Promise<{ ok: true; message?: string } | { ok: false; error: string }>, 成了 = "") {
-    if (忙) return;
+  /** 成了回 { ok:true }（行里自己变「等 X 确认」/ 回到可交，不弹提示）；没成原因写在卡顶，也回给调用的确认组件 */
+  async function 做(key: string, f: () => Promise<{ ok: true; message?: string } | { ok: false; error: string }>): Promise<{ ok: boolean; error?: string }> {
+    if (忙) return { ok: false, error: "上一笔还在办，稍等" };
     set忙(key);
+    set错(null);
     try {
       const r = await f();
-      if (r.ok) { message.success(r.message ?? 成了); router.refresh(); } else message.error(r.error);
+      if (r.ok) { router.refresh(); return { ok: true }; }
+      set错(r.error);
+      return r;
     } catch {
-      message.error("没交成，刷新再试");
+      set错("没交成，刷新再试");
+      return { ok: false, error: "没交成，刷新再试" };
     } finally {
       set忙(null);
     }
   }
 
+  /** ls.ho.one：选人框挑好人，按钮写明「交给 X」，点了就交；交后这一行变「等 X 确认」 */
   const 交这行 = (kind: "c" | "p", id: string) => {
     const to = 选了[`${kind}:${id}`];
-    if (!to) { message.error("先选接手人"); return; }
+    if (!to) return;
     return 做(`${kind}:${id}`, () => (kind === "c" ? 交客户(p.id, id, to) : 交项目(p.id, id, to)));
   };
 
-  const 撤回 = (w: 等确认) => modal.confirm({
-    title: "撤回这笔交接？",
-    content: `「${w.接手人 ?? "接手人"}」不用再确认，数据留在「${p.name}」名下，之后可以重新交。`,
-    okText: "撤回", okButtonProps: { danger: true }, cancelText: "取消",
-    onOk: () => 做(`w:${w.id}`, () => 撤回交接(w.id), "已撤回"),
-  });
   const 改成 = async () => {
     if (!改 || !新) return;
     const w = 改;
-    await 做(`w:${w.id}`, () => 改接手人(w.id, 新), "已改接手人，等对方确认");
-    set改(null);
+    const r = await 做(`w:${w.id}`, () => 改接手人(w.id, 新));
+    if (r.ok) set改(null);
   };
 
   /** 等确认那一格：「等 X 确认」一行放不下省略号、悬停看全，后面改接手人、撤回（我能撤回的才有） */
@@ -132,7 +136,10 @@ function PersonCard({ p, 候选, 项目模式 }: { p: 离职待交接; 候选: �
         {w.我能撤回 && (
           <>
             <Button size="small" type="link" className="ofb-wait-btn" disabled={!!忙} onClick={() => { set新(undefined); set改(w); }}>改人</Button>
-            <Button size="small" type="link" className="ofb-wait-btn" loading={忙 === `w:${w.id}`} disabled={!!忙 && 忙 !== `w:${w.id}`} onClick={() => 撤回(w)}>撤回</Button>
+            {/* ls.ho.revoke：就地确认撤回，不弹框（P-界面-40 原地确认） */}
+            <InlineConfirm 问="撤回这笔交接？" 是="撤回" 做={() => 做(`w:${w.id}`, () => 撤回交接(w.id))}>
+              <Button size="small" type="link" className="ofb-wait-btn" disabled={!!忙}>撤回</Button>
+            </InlineConfirm>
           </>
         )}
       </div>
@@ -146,7 +153,10 @@ function PersonCard({ p, 候选, 项目模式 }: { p: 离职待交接; 候选: �
     render: (_: unknown, r: T) => r.交接中 ? 等着(r.交接中) : (
       <div style={{ display: "flex", gap: 8, minWidth: 0 }}>
         <PickTaker 候选={候选} 不要={p.id} value={选了[`${kind}:${r.id}`]} onChange={(v) => set选了((m) => ({ ...m, [`${kind}:${r.id}`]: v }))} style={{ flex: 1 }} />
-        <Button disabled={p.交接中 || !选了[`${kind}:${r.id}`]} loading={忙 === `${kind}:${r.id}`} onClick={() => 交这行(kind, r.id)}>交</Button>
+        <Button className="ls-ho-give" disabled={p.交接中 || !选了[`${kind}:${r.id}`]} loading={忙 === `${kind}:${r.id}`} onClick={() => 交这行(kind, r.id)}
+          title={选了[`${kind}:${r.id}`] ? `交给 ${名(选了[`${kind}:${r.id}`])}` : undefined}>
+          {选了[`${kind}:${r.id}`] ? `交给 ${名(选了[`${kind}:${r.id}`])}` : "交"}
+        </Button>
       </div>
     ),
   });
@@ -169,19 +179,25 @@ function PersonCard({ p, 候选, 项目模式 }: { p: 离职待交接; 候选: �
     p.其余.待办 && `${p.其余.待办} 条挂在别人${b.customer}上的待办`,
   ].filter(Boolean).join("、");
 
+  /** ls.ho.all：后果框（P-界面-40「全部交给」），分条写清几位客户、几个项目跟着走、业绩还算谁 */
   const 一键 = () => {
-    if (!全部给) { message.error("先选接手人"); return; }
+    if (!全部给) return;
     const 段 = [
       p.客户.length && `${p.客户.length} 位${b.customer}`,
       p.项目.length && `${p.项目.length} 个项目`,
       其余,
     ].filter(Boolean).join("、");
-    modal.confirm({
-      title: `把「${p.name}」名下的全部交给「${名(全部给)}」`,
-      content: `${段 || "名下剩下的"}，连同进行中的商机、没做完的计划和待办，一起交给 TA；TA 确认后才转过去，确认前还在「${p.name}」名下。已经签下的业绩、有结局的项目还算在「${p.name}」头上。`,
-      okText: "全部交给",
-      cancelText: "取消",
-      onOk: () => 做("all", () => 交接全部(p.id, 全部给)),
+    const 谁 = 名(全部给);
+    void 问后果({
+      题: `把「${p.name}」名下的全部交给「${谁}」`,
+      后果: [
+        { 标: "一起走", 级: "警", 话: `${段 || "名下剩下的"}，连同进行中的商机、没做完的计划和待办` },
+        { 标: "之后", 话: `「${谁}」确认后才转过去，确认前还在「${p.name}」名下` },
+        { 标: "不动", 话: `已经签下的业绩、有结局的项目还算在「${p.name}」头上` },
+      ],
+      是: "全部交给",
+      危: false,
+      做: () => 做("all", () => 交接全部(p.id, 全部给)),
     });
   };
 
@@ -193,6 +209,7 @@ function PersonCard({ p, 候选, 项目模式 }: { p: 离职待交接; 候选: �
           <div style={{ minWidth: 0, maxWidth: 260 }}><UserCell name={p.name} size={24} /></div>
           <Tag style={{ marginInlineEnd: 0 }}>已离职</Tag>
           {p.交接中 && <Tag color="orange" style={{ marginInlineEnd: 0 }}>交接中</Tag>}
+          {错 && <Typography.Text type="danger" role="alert" className="ls-ho-err" title={错}>{错}</Typography.Text>}
           <Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 400, minWidth: 0, maxWidth: 240, ...省略 }} title={p.上级 ?? undefined}>
             直属上级：{p.上级 ?? 空值符}
           </Typography.Text>
@@ -247,6 +264,7 @@ function PersonCard({ p, 候选, 项目模式 }: { p: 离职待交接; 候选: �
         <p>这笔交接改给另一位，等新接手人确认；原接手人「{改?.接手人 ?? ""}」不用再确认。</p>
         <PickTaker 候选={候选.filter((u) => u.id !== 改?.接手人id)} 不要={p.id} value={新} onChange={set新} placeholder="选新接手人" className="ofb-full" />
       </Modal>
+      {后果框}
     </Card>
   );
 }
@@ -254,7 +272,7 @@ function PersonCard({ p, 候选, 项目模式 }: { p: 离职待交接; 候选: �
 /** 上级给直属下属办离职（设置页只给系统管理员，11-03 D3-1）：只停用，名下原地不动，停完就出现在下面 */
 function OffboardReport({ 下属 }: { 下属: 人[] }) {
   const router = useRouter();
-  const { message, modal } = App.useApp();
+  const [问后果, 后果框] = useConsequence();
   const [谁, set谁] = useState("");
   const 名 = 下属.find((u) => u.id === 谁)?.name ?? "";
   return (
@@ -274,21 +292,24 @@ function OffboardReport({ 下属 }: { 下属: 人[] }) {
         <Button
           danger
           disabled={!谁}
-          onClick={() => modal.confirm({
-            title: `停用成员「${名}」`,
-            content: "停用后 TA 登录不了；名下的客户、项目等原地不动（负责人还是 TA），停完在下面交给接手人。重新启用的话，没交走的还在 TA 名下。",
-            okText: "确认停用",
-            okButtonProps: { danger: true },
-            cancelText: "取消",
-            async onOk() {
+          onClick={() => void 问后果({
+            题: `停用成员「${名}」`,
+            后果: [
+              { 标: "登不了", 级: "警", 话: "停用后 TA 登录不了" },
+              { 标: "不动", 话: "名下的客户、项目等原地不动（负责人还是 TA），停完在下面交给接手人" },
+              { 标: "之后", 话: "重新启用的话，没交走的还在 TA 名下" },
+            ],
+            是: "停用",
+            async 做() {
               const r = await deactivateUser(谁, "").catch(() => null);
-              if (r?.ok) { message.success("已停用，在下面把 TA 名下的交给接手人"); set谁(""); router.refresh(); }
-              else message.error(r && !r.ok ? r.error : "停用没成功，刷新再试");
+              if (r?.ok) { set谁(""); router.refresh(); return { ok: true }; }
+              return { ok: false, error: r && !r.ok ? r.error : "停用没成功，刷新再试" };
             },
           })}
         >
           办离职
         </Button>
+        {后果框}
       </div>
     </Card>
   );

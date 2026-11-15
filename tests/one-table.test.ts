@@ -16,7 +16,7 @@ const 列表页 = [
   "src/app/(app)/leads/LeadsView.tsx",
   "src/app/(app)/channels/ChannelsView.tsx",
   "src/app/(app)/contacts/ContactsView.tsx",
-  "src/app/(app)/follow-ups/FollowUpsView.tsx",
+  // 沟通记录列表页（FollowUpsView）11-15 随 /follow-ups 主页删了
 ];
 
 /**
@@ -28,6 +28,8 @@ const 列表页 = [
  */
 const 不算列表页 = [
   "src/components/DataList.tsx",
+  // PR4 的 FlipRows：只在注释里写了用法「<FlipRows><Table …/></FlipRows>」，自己不画表格
+  "src/components/FlipRows.tsx",
   "src/app/(app)/reports/ReportsView.tsx",
   // 企业版「数据」页按项目统计（2026-10-26）：按负责人的两张统计小表，同复盘，列的是汇总数不是业务记录
   "src/app/(app)/overview/ProjectStatsView.tsx",
@@ -37,7 +39,7 @@ const 不算列表页 = [
   // 服务端分页强开每页条数且一页也画分页条（这里每页固定、单页不画）、行没有 Tab / 回车进入（这里 role=link）
   "src/app/(app)/overview/BoardTodos.tsx",
   // 企业版复盘页「沟通」页签（10-31 会议 U-复盘-01）：同上一页，只读、分页在服务端、点行去项目页；
-  // 没有批量、列设置、筛选栏（按人、按时间筛在页签上面），沟通记录本身的列表页还是 FollowUpsView
+  // 没有批量、列设置、筛选栏（按人、按时间筛在页签上面），沟通记录原来的列表页（/follow-ups）11-15 删了，沟通在客户档案里看
   "src/app/(app)/overview/BoardTalks.tsx",
   // 复盘页「卡点」页签（U-复盘-01）：同上，只读、分页在服务端；卡点本身的看板在项目页
   "src/app/(app)/overview/BoardBlockers.tsx",

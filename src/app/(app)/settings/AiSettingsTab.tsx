@@ -1,10 +1,13 @@
 "use client";
 
+import { useSettingsNote } from "./InlineNote";
+import { useConsequence } from "@/components/ConsequenceDialog";
+import InlineConfirm from "@/components/InlineConfirm";
 import { isFormValidationError } from "@/lib/form-validation";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, Button, Form, Input, Radio, Select, Space, Switch, Typography, App } from "antd";
+import { Alert, Button, Form, Input, Radio, Select, Space, Switch, Typography } from "antd";
 import { useCopy } from "@/lib/clipboard";
 import { 赠送说明 } from "@/lib/credits-copy";
 import type { 云端余额 } from "@/lib/llm";
@@ -47,7 +50,9 @@ export type LlmView = {
  */
 export default function AiSettingsTab({ llm, usage, 企业版 = false }: { llm: LlmView; usage: AiUsage; 企业版?: boolean }) {
   const router = useRouter();
-  const { message, modal } = App.useApp();
+  // PR9：就地提示 + 后果框，不弹顶部 message、不用 modal.confirm
+  const [message, 提示条] = useSettingsNote();
+  const [问后果, 后果框] = useConsequence();
   const 视图中 = useViewAs();
   const [form] = Form.useForm<{ providerId: string; baseUrl: string; model: string; apiKey?: string }>();
   const [testing, setTesting] = useState(false);
@@ -125,17 +130,16 @@ export default function AiSettingsTab({ llm, usage, 企业版 = false }: { llm: 
        * 拦一次，让人自己决定——不禁止，只是说清楚。
        */
       if (!testResult?.ok) {
-        const 继续 = await new Promise<boolean>((resolve) =>
-          modal.confirm({
-            title: testResult ? "这次测试没通过，还要保存吗？" : "还没测试过连接，要直接保存吗？",
-            content:
-              `保存之后，首页提问、${企业版 ? "智能总结" : "临战简报"}、问数据、盯盘话术都会走这套配置。地址或 Key 不对的话它们会一起失灵，而且要等下次使用时才发现。`,
-            okText: "仍然保存",
-            cancelText: "先测一下",
-            onOk: () => resolve(true),
-            onCancel: () => resolve(false),
-          }),
-        );
+        const 继续 = await 问后果({
+          题: testResult ? "这次测试没通过，还要保存吗？" : "还没测试过连接，要直接保存吗？",
+          后果: [
+            { 标: "全团队", 级: "警", 话: `首页提问、${企业版 ? "智能总结" : "临战简报"}、问数据、盯盘话术都会走这套配置` },
+            { 标: "风险", 级: "警", 话: "地址或 Key 不对的话它们会一起失灵，而且要等下次使用时才发现" },
+          ],
+          是: "仍然保存",
+          危: false,
+          做: () => undefined,
+        });
         if (!继续) return;
       }
       const res = await saveLlmSettings(v);
@@ -153,14 +157,16 @@ export default function AiSettingsTab({ llm, usage, 企业版 = false }: { llm: 
 
   /** 删掉自己的 Key、回到「用我们的」。单选切回去和底下那颗红字键走同一个确认 */
   function 删Key() {
-    modal.confirm({
-      title: "不用自己的 Key 了？",
-      content: "你填的 Key 会从本机数据库里删掉，之后回到云端账号的免费次数（如果登录着），否则 AI 功能整体隐藏。",
-      okText: "删掉这把 Key",
-      okButtonProps: { danger: true },
-      onOk: async () => {
+    void 问后果({
+      题: "不用自己的 Key 了？",
+      后果: [
+        { 标: "删掉", 级: "危", 话: "你填的 Key 会从数据库里删掉，要用得重新填" },
+        { 标: "之后", 话: 企业版 ? "回到这台服务器上配好的那套；没配的话 AI 功能整体隐藏" : "回到云端账号的免费次数（如果登录着），否则 AI 功能整体隐藏" },
+      ],
+      是: "删掉这把 Key",
+      做: async () => {
         await clearLlmSettings();
-        message.success("已清除");
+        message.success("已清除自己的 Key");
         set用自己的(false);
         setTestResult(null);
         router.refresh();
@@ -170,6 +176,8 @@ export default function AiSettingsTab({ llm, usage, 企业版 = false }: { llm: 
 
   return (
     <div className="set-col" style={{ paddingTop: 8 }}>
+      {后果框}
+      {提示条}
       {llm.source === null && !有平台额度 && (
         <Alert
           type="info"
@@ -356,7 +364,7 @@ export default function AiSettingsTab({ llm, usage, 企业版 = false }: { llm: 
  * 政策里怎么写的，这儿就得怎么摆。
  */
 function AssistBlock({ 企业版 }: { 企业版: boolean }) {
-  const { message } = App.useApp();
+  const [message, 提示条] = useSettingsNote();
   const [状态, set状态] = useState<{ 可用: boolean; 已开: boolean } | null>(null);
   const [忙, set忙] = useState(false);
 
@@ -381,6 +389,7 @@ function AssistBlock({ 企业版 }: { 企业版: boolean }) {
 
   return (
     <div className="mcp-block">
+      {提示条}
       <h4>
         导入时让 AI 认列
         <Switch
@@ -432,7 +441,8 @@ function McpCmd({ 命令, 多行 = false }: { 命令: string; 多行?: boolean }
  * 开出去的只有只读查询，写不了任何东西（见 lib/mcp/tools.ts）。
  */
 function McpBlock() {
-  const { message, modal } = App.useApp();
+  const [message, 提示条] = useSettingsNote();
+  const [问后果, 后果框] = useConsequence();
   const [状态, set状态] = useState<{ 可用: boolean; 已开: boolean; 地址: string; 令牌: string | null } | null>(null);
   const [忙, set忙] = useState(false);
 
@@ -449,28 +459,35 @@ function McpBlock() {
     set忙(true);
     const r = await 开启MCP();
     set忙(false);
-    if (!r.ok) return void message.error(r.error);
+    if (!r.ok) {
+      message.error(r.error);
+      return r;
+    }
     set状态({ 可用: true, 已开: true, 地址: r.地址, 令牌: r.令牌 });
     message.success("已生成接入令牌");
+    return { ok: true };
   }
 
   function 关() {
-    modal.confirm({
-      title: "关掉 MCP 接入？",
-      content: "令牌立刻作废，已经配好的 Claude Code / Codex 会连不上（重新开启会给一把新的，那边要改配置）。",
-      okText: "关掉",
-      okButtonProps: { danger: true },
-      cancelText: "算了",
-      onOk: async () => {
+    void 问后果({
+      题: "关掉 MCP 接入？",
+      后果: [
+        { 标: "作废", 级: "危", 话: "令牌立刻作废，已经配好的 Claude Code / Codex 会连不上" },
+        { 标: "再开", 话: "重新开启会给一把新的，那边要改配置" },
+      ],
+      是: "关掉",
+      做: async () => {
         await 关闭MCP();
         set状态((v) => (v ? { ...v, 已开: false, 令牌: null } : v));
-        message.success("已关闭");
+        message.success("已关闭 MCP 接入");
       },
     });
   }
 
   return (
     <div className="mcp-block">
+      {后果框}
+      {提示条}
       <h4>让别的 agent 连进来</h4>
       <p>
         把这个 CRM 接到 Claude Code、Codex 或 Claude 桌面端：在那边直接问「张三最近跟进到哪了」「这个月谁签得最多」，
@@ -498,12 +515,15 @@ function McpBlock() {
           <McpCmd 命令={命令.codex配置} 多行 />
           <p className="mcp-hint">这把令牌等于这个库的只读钥匙，别贴到公开的地方；重新生成会让旧的立刻失效。</p>
           <Space wrap>
-            <Button size="small" onClick={开} loading={忙}>重新生成令牌</Button>
+            {/* 重新生成令牌（原型 st.mcp，P-界面-40 原地确认）：原来直接执行；就地问一次，写明旧令牌立即作废 */}
+            <InlineConfirm 问="旧令牌立即作废，各处要换成新的" 是="重新生成" 中性 做={开}>
+              <Button size="small" loading={忙}>重新生成令牌</Button>
+            </InlineConfirm>
             <Button size="small" danger type="text" onClick={关}>关掉接入</Button>
           </Space>
         </>
       ) : (
-        <Button onClick={开} loading={忙}>生成接入令牌</Button>
+        <Button onClick={() => void 开()} loading={忙}>生成接入令牌</Button>
       )}
     </div>
   );

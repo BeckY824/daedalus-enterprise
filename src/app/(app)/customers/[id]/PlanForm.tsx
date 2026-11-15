@@ -21,6 +21,9 @@ import { useFormGuard } from "@/lib/form-guard";
  * （不给，第一格挑人，见 CustomerPick）。只有一份，和 ContactForm 同一个道理：
  * 两份表单迟早长出不同的字段和校验，而差别只有「是谁的」这一格。
  */
+/** 计划时间下面的快捷（ls.pl.new） */
+const 快捷天 = [["明天", 1], ["3 天后", 3], ["1 周后", 7]] as const;
+
 export default function PlanForm({
   open,
   onClose,
@@ -28,7 +31,7 @@ export default function PlanForm({
   customerId,
   预选客户,
   record,
-  默认天数 = 2,
+  默认天数 = 3,
   有WhatsApp = false,
 }: {
   open: boolean;
@@ -41,7 +44,7 @@ export default function PlanForm({
   预选客户?: { id: string; name: string } | null;
   /** updatedAt：编辑时的版本号（J-105），保存时交回去当闸门 */
   record: { id: string; subject: string; plannedAt: string; method: string; plannedHasTime?: boolean | null; updatedAt?: string } | null;
-  /** 新建时计划时间默认几天后的 9 点。完成一次之后「排下一次」默认一周后（审查 M10） */
+  /** 新建时计划时间默认几天后的 9 点（P-界面-34：3 天后，可改）。完成一次之后「排下一次」默认一周后（审查 M10） */
   默认天数?: number;
   /** 给定的这位档案里填了 WhatsApp 号：新建时方式默认 WhatsApp（2026-10-17 PR26 手测）。挑人时看挑中那位的 */
   有WhatsApp?: boolean;
@@ -50,6 +53,7 @@ export default function PlanForm({
   const { message } = App.useApp();
   const router = useRouter();
   const hasTime = Form.useWatch("hasTime", form) ?? true;
+  const 计划时间 = Form.useWatch("plannedAt", form);
   const 挑人 = !customerId;
   /** 挑中那位的近况（上次跟进、欠着的计划）。关框时清掉，下次打开不带着上一位 */
   const [近况, set近况] = useState<客户近况 | null>(null);
@@ -170,7 +174,33 @@ export default function PlanForm({
         </Form.Item>
         <Form.Item name="hasTime" valuePropName="checked"><Checkbox>指定钟点并到点提醒</Checkbox></Form.Item>
         {record && record.plannedHasTime == null && !isCalendarDate(record.plannedAt) && <Typography.Paragraph type="secondary">旧记录未保存是否选了钟点；只改其他内容会保留原提醒方式，请核对后重新选择日期或钟点。</Typography.Paragraph>}
-        <Form.Item name="plannedAt" label="计划时间" rules={[{ required: true }]}>
+        <Form.Item
+          name="plannedAt"
+          label="计划时间"
+          rules={[{ required: true }]}
+          // ls.pl.new：三个快捷，点了换到那天 9:00（不指定钟点时只取日子）；当前那个亮着
+          extra={
+            <span className="plan-quick" role="group" aria-label="快捷时间">
+              {快捷天.map(([叫法, n]) => {
+                const 是 = 计划时间 ? dayjs(计划时间).startOf("day").diff(dayjs().startOf("day"), "day") === n : false;
+                return (
+                  <button
+                    key={n}
+                    type="button"
+                    className={`plan-quick-b${是 ? " is-on" : ""}`}
+                    aria-pressed={是}
+                    onClick={() => {
+                      form.setFieldsValue({ plannedAt: dayjs().add(n, "day").hour(9).minute(0).second(0) });
+                      守.改了();
+                    }}
+                  >
+                    {叫法}
+                  </button>
+                );
+              })}
+            </span>
+          }
+        >
           <DatePicker showTime={hasTime} format={hasTime ? "YYYY-MM-DD HH:mm" : "YYYY-MM-DD"} style={{ width: "100%" }} />
         </Form.Item>
         <Form.Item name="method" label="跟进方式">

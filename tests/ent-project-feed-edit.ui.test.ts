@@ -385,7 +385,8 @@ it("沟通附件：挂载时空、props 后到也进得来（记沟通时先挂�
     expect(await page.getByTitle("c.mp3").count()).toBe(1);
     // 删掉；refresh 回来之前又来一遍旧 props：不回来
     await page.getByRole("button", { name: "删掉 后到.pdf" }).click();
-    await page.locator(".ant-popconfirm").getByRole("button", { name: /删\s*掉/ }).click();
+    // 2026-11 PR5b：删附件改就地确认（P-界面-40），按钮自己变成问句，点问句里的「删掉」
+    await page.getByRole("button", { name: "删掉", exact: true }).click();
     await page.getByTitle("后到.pdf").waitFor({ state: "detached" });
     await 后到();
     await page.waitForTimeout(50);
@@ -403,7 +404,8 @@ it("项目附件格：传完马上出现、不用刷新；传着灰；失败报�
     await page.getByText("还没有附件").waitFor();
     const 钮 = page.getByRole("button", { name: /上传/ });
     await page.locator('input[type="file"]').setInputFiles([文件("甲.pdf"), 文件("乙.pdf")]);
-    await page.getByText(/正在传 2 个/).waitFor();
+    // dt.upload（PR7b）：在传的每个文件一行（进度环），不再是一句「正在传 2 个」
+    await expect.poll(() => page.locator(".att-up-row[data-state=\"传\"]").count()).toBe(2);
     expect(await 钮.isDisabled()).toBe(true);
     await page.getByTestId("attachment-item").nth(1).waitFor();
     expect(await page.getByTestId("attachment-item").count()).toBe(2);

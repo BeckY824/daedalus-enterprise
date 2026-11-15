@@ -7,7 +7,7 @@
  */
 import { useImperativeHandle, useState } from "react";
 import Link from "next/link";
-import { Alert, App, Button, Input, Popover, Select, Space } from "antd";
+import { Alert, Button, Input, Popover, Select, Space } from "antd";
 import { FileSearchOutlined } from "@ant-design/icons";
 import { 查号码, type 查号码结果 } from "../customers/number-actions";
 import RescueKey from "../customers/RescueKey";
@@ -20,7 +20,6 @@ export default function DedupeKey({ 宽, 藏键 = false, 开: 开ref }: {
   藏键?: boolean;
   开?: React.Ref<{ 打开: () => void }>;
 }) {
-  const { message } = App.useApp();
   const [开, set开] = useState(false);
   const [类型, set类型] = useState<号码类型>("手机号");
   const [号, set号] = useState("");
@@ -36,7 +35,8 @@ export default function DedupeKey({ 宽, 藏键 = false, 开: 开ref }: {
     try {
       set结果(await 查号码(类型, 值));
     } catch {
-      message.error("查重没查成，请稍后再试");
+      // g.save：没查成就写在框里结果那一格，不弹顶部提示
+      set结果({ ok: false, 状态: "没查成", 提示: "查重没查成，请稍后再试" });
     } finally {
       set查中(false);
     }

@@ -39,9 +39,9 @@ const 页面 = [
   ["联系人", "/contacts"],
   // 商机列表 / 看板 10-28 删了（/opportunities 转到这里）
   ["项目", "/projects"],
-  ["跟进记录", "/follow-ups"],
+  // 跟进记录页（/follow-ups）11-15 删了
   ["跟进计划", "/follow-ups/plans"],
-  ["数据复盘", "/reports"],
+  ["数据-本年", "/overview?view=本年"],
   ["设置管理", "/settings"],
 ];
 

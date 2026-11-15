@@ -5,7 +5,7 @@ import { isFormValidationError } from "@/lib/form-validation";
 import { useMe, 默认负责人 } from "@/lib/me-client";
 import { useMemo, useRef, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Space, Tag, Modal, Form, Input, Select, App, Tooltip, Row as 行, Col, Radio, Dropdown, Segmented, type MenuProps } from "antd";
+import { Button, Space, Tag, Modal, Form, Input, Select, Tooltip, Row as 行, Col, Radio, Dropdown, Segmented, type MenuProps } from "antd";
 import { PlusOutlined, SearchOutlined, MoreOutlined } from "@ant-design/icons";
 import type { Dayjs } from "dayjs";
 import ResetFilters from "@/components/ResetFilters";
@@ -29,6 +29,8 @@ import { 子渠道名, 子渠道提示, 主渠道名上限, 按主渠道汇总, 
 import MainChannels, { MainChannelEdit, 主渠道编辑初值, type 主渠道编辑中 } from "./MainChannels";
 import ChannelDrawer from "./ChannelDrawer";
 import ChannelDash from "./ChannelDash";
+import SaveButton from "@/components/SaveButton";
+import InlineConfirm from "@/components/InlineConfirm";
 import { 筛渠道, type 看板底数, type 看板公海 } from "@/lib/enterprise/channel-dash";
 import type { 日期段 } from "@/lib/custom-date-range";
 
@@ -161,8 +163,17 @@ export default function ChannelsView({
   策略选项?: string[];
 }) {
   const router = useRouter();
-  const { message, modal } = App.useApp();
   const 我 = useMe();
+  /** 哪一行的「⋯」正在就地问（停用 / 删除） */
+  const [问着, set问着] = useState<{ id: string; 事: "停用" | "删除" } | null>(null);
+  /** 这一行刚才没做成的原因：就地写在操作格里，几秒后收（不弹顶部提示） */
+  const [行错, set行错] = useState<{ id: string; 话: string } | null>(null);
+  const 行错计时 = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function 说行错(id: string, 话: string) {
+    if (行错计时.current) clearTimeout(行错计时.current);
+    set行错({ id, 话 });
+    行错计时.current = setTimeout(() => set行错(null), 5000);
+  }
   const b = useBusiness();
   /* 筛选条件都在本地：行已经全在手上了 */
   const [kw, setKw] = useState("");
@@ -244,11 +255,21 @@ export default function ChannelsView({
     setOpen(true);
   }
 
+  /**
+   * 新建 / 编辑渠道的保存（g.save）：成败都在保存键里（SaveButton），不弹顶部提示；✓ 放完再关框（关框() 由 成了 调）。
+   * 表单没填好：回原因，按钮里写「没保存上」，各项下面照旧标红。
+   */
   async function onOk() {
-    if (saving) return;
     setSaving(true);
     try {
-      const v = await form.validateFields();
+      let v;
+      try {
+        v = await form.validateFields();
+      } catch (e) {
+        if (isFormValidationError(e)) return { ok: false, error: "还有必填项没填" };
+        throw e;
+      }
+      // 网断了 / 服务端抛错：同原来那句（结果不确定，先刷新确认再重试），写在保存键里
       const res = await saveChannel({
         id: editing?.id,
         版本: editing?.updatedAt,
@@ -263,15 +284,11 @@ export default function ChannelsView({
         ...(两层 ? { strategies: (v.strategies as string[] | undefined) ?? [] } : {}),
         endDate: v.endDate ? (v.endDate as Dayjs).format("YYYY-MM-DD") : null,
         active: v.active !== false,
-      });
-      if (!res.ok) return message.error(res.error);
-      message.success(editing ? "已保存" : "渠道已创建");
+      }).catch(() => ({ ok: false as const, error: "保存失败，请刷新确认结果后重试" }));
+      if (!res.ok) return res;
       守.存好了();
-      setOpen(false);
-      setEditing(null);
       router.refresh();
-    } catch (error) {
-      if (!isFormValidationError(error)) message.error("保存失败，请刷新确认结果后重试");
+      return { ok: true };
     } finally {
       setSaving(false);
     }
@@ -363,12 +380,28 @@ export default function ChannelsView({
     const 因 = [r.客户数 ? `名下有 ${r.客户数} 位${b.customer}` : "", r.投入数 ? `录过 ${r.投入数} 笔投入` : "", r.项目数 ? `是 ${r.项目数} 个项目的项目来源` : ""].filter(Boolean);
     return 因.length ? `${因.join("、")}，不能删；不用了就停用` : null;
   }
+  /**
+   * ch.toggle：停用在「⋯」那里就地确认一次（启用不问）；成了行原地变灰、属性列打「已停用」，亮一下，不弹顶部提示。
+   * 没成：原因就地写在这一行的操作格里（行错），几秒后收。
+   */
   async function 切停用(r: Row) {
     const res = await toggleChannel(r.id, !r.active);
-    if (!res.ok) return void message.error(res.error);
-    message.success(r.active ? `「${r.name}」已停用` : `「${r.name}」已启用`);
+    if (!res.ok) {
+      说行错(r.id, res.error);
+      return res;
+    }
     router.refresh();
     亮一下(r.id);
+    return { ok: true };
+  }
+  async function 删渠道(r: Row) {
+    const res = await deleteChannel(r.id);
+    if (!res.ok) {
+      说行错(r.id, res.error);
+      return res;
+    }
+    router.refresh();
+    return { ok: true };
   }
 
   const 列表: 列<Row>[] = [
@@ -439,16 +472,7 @@ export default function ChannelsView({
           {
             key: "toggle",
             label: r.active ? "停用" : "启用",
-            onClick: () =>
-              r.active
-                ? modal.confirm({
-                    title: `停用渠道「${r.name}」？`,
-                    content: "停用后新线索里选不到。",
-                    okText: "停用",
-                    cancelText: "取消",
-                    onOk: () => 切停用(r),
-                  })
-                : void 切停用(r),
+            onClick: () => (r.active ? set问着({ id: r.id, 事: "停用" }) : void 切停用(r)),
           },
           {
             key: "delete",
@@ -459,21 +483,12 @@ export default function ChannelsView({
                 <div className="muted" style={{ fontSize: 12, lineHeight: "16px", whiteSpace: "normal", maxWidth: 220 }}>{删因}</div>
               </div>
             ) : "删除",
-            onClick: () =>
-              modal.confirm({
-                title: `删除渠道「${r.name}」？`,
-                okText: "删除",
-                cancelText: "取消",
-                async onOk() {
-                  const res = await deleteChannel(r.id);
-                  if (!res.ok) return message.error(res.error);
-                  message.success("已删除");
-                  router.refresh();
-                },
-              }),
+            onClick: () => set问着({ id: r.id, 事: "删除" }),
           },
         ];
+        const 问这行 = 问着?.id === r.id ? 问着.事 : null;
         return (
+          <span className="ch-act">
           <Space size={2}>
             {能录 ? (
               <Button className="row-act" aria-label={`给 ${r.name} 录投入`} size="small" onClick={() => 看详情(r.id, true)}>录投入</Button>
@@ -486,6 +501,23 @@ export default function ChannelsView({
               </Dropdown>
             )}
           </Space>
+          {/* 确认从「⋯」处长出来，盖在这一行右端（列窄，放不下就往左盖），不弹框 */}
+          {问这行 && (
+            <span className="ch-act-ask">
+              <InlineConfirm
+                开
+                set开={(v) => { if (!v) set问着(null); }}
+                问={问这行 === "停用" ? "停用后新线索里选不到" : "删除这个渠道？"}
+                是={问这行}
+                中性={问这行 === "停用"}
+                做={() => (问这行 === "停用" ? 切停用(r) : 删渠道(r))}
+              >
+                <span />
+              </InlineConfirm>
+            </span>
+          )}
+          {行错?.id === r.id && <span className="ch-act-err" role="alert" title={行错.话}>{行错.话}</span>}
+          </span>
         );
       },
     },
@@ -658,9 +690,13 @@ export default function ChannelsView({
           {...守.弹窗}
           open
           title={editing ? "编辑渠道" : "新建渠道"}
-          onOk={onOk}
-          confirmLoading={saving}
-          okText="保存"
+          /* ch.new：弹窗从「新建渠道」那颗键处长出（antd 默认按点击位置，这里不改 transitionName）；保存键自己转圈 → ✓，✓ 放完关框（g.save） */
+          footer={(_, { CancelBtn }) => (
+            <>
+              <CancelBtn />
+              <SaveButton 做={onOk} 成了={() => { setOpen(false); setEditing(null); }}>保存</SaveButton>
+            </>
+          )}
           cancelText="取消"
           destroyOnHidden
           width={600}

@@ -88,7 +88,10 @@ it("开关关闭 / 有权限：导入、导出都在，空库卡给「从 Excel 
   try {
     expect(await page.getByRole("button", { name: /导\s*入/ }).count()).toBe(1);
     expect(await page.getByRole("button", { name: /导\s*出/ }).count()).toBe(1);
-    expect(await page.getByTestId("import-drawer").count()).toBe(1);
+    // 导入抽屉是懒块（速度闸门 11-15）：没点「导入」不挂，点了才挂上并打开
+    expect(await page.getByTestId("import-drawer").count()).toBe(0);
+    await page.getByRole("button", { name: /导\s*入/ }).click();
+    await page.locator("[data-testid='import-drawer'][data-open='true']").waitFor({ state: "attached" });
   } finally { await page.close(); }
   const 空 = await open({ what: "list", 空: true });
   try {

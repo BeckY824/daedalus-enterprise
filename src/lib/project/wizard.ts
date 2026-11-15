@@ -140,6 +140,17 @@ export function 规整沟通(
   return { type: f.type, method: 可空(f.method), initiator: 可空(f.initiator), content: 文字(f.content), occurredAt, nextStepAt, nextStepText };
 }
 
+/** 主要联系人那几格规整一遍：建档（带项目）和只建客户共用。企业版占位名（11-03 A2-2）不算填了 */
+function 规整联系人(c: 向导联系人, 企业: boolean): 规整好的["联系人"] | { error: string } {
+  if (!hasVisibleText(c.name)) return { error: "请填写联系人姓名" };
+  if (企业 && 是占位值(c.name)) return { error: 占位名提示("联系人姓名") };
+  const 电话 = 可空(c.phone);
+  if (电话?.includes("*")) return { error: "联系人电话里不能有 *" };
+  const 联系人地址 = 可空(c.address);
+  if (联系人地址 && 联系人地址.length > 联系人地址上限) return { error: `联系人地址最多 ${联系人地址上限} 个字` };
+  return { name: 文字(c.name), position: 可空(c.position), phone: 电话, email: 可空(c.email), wechat: 可空(c.wechat), ...(联系人地址 ? { address: 联系人地址 } : {}) };
+}
+
 /** 后四步交上来的规整一遍。负责人没选 = 自己；在不在职由调用方查库。要下一步 = 开了超时回收（项目建在线索阶段） */
 export function 规整向导(
   me: { id: string },
@@ -150,11 +161,8 @@ export function 规整向导(
 ): 规整好的 | { error: string } {
   const c = input.联系人, p = input.项目, f = input.跟进;
   if (!c || !p || !f) return { error: "建档信息不完整，请从头再走一遍" };
-  if (!hasVisibleText(c.name)) return { error: "请填写联系人姓名" };
-  const 电话 = 可空(c.phone);
-  if (电话?.includes("*")) return { error: "联系人电话里不能有 *" };
-  const 联系人地址 = 可空(c.address);
-  if (联系人地址 && 联系人地址.length > 联系人地址上限) return { error: `联系人地址最多 ${联系人地址上限} 个字` };
+  const 联系人 = 规整联系人(c, 企业);
+  if ("error" in 联系人) return 联系人;
 
   const 项目 = 规整项目(p, me.id);
   if ("error" in 项目) return 项目;
@@ -166,8 +174,7 @@ export function 规整向导(
   // 企业版新建线索（10-26）：负责人必选（不默认自己）、跟进节点必选；渠道必选在 建档向导 里查库
   let 企业档: 规整好的["企业"];
   if (企业) {
-    // 占位值不算填了（11-03 A2-2）：「未知」「待定」「暂未确认」这类建出来详情也算缺
-    if (是占位值(c.name)) return { error: 占位名提示("联系人姓名") };
+    // 占位值不算填了（11-03 A2-2）：「未知」「待定」「暂未确认」这类建出来详情也算缺；联系人姓名在 规整联系人 里拦
     if (是占位值(p.name)) return { error: 占位名提示("项目名称") };
     if (!文字(p.ownerId)) return { error: "请选项目负责人" };
     const 节点 = 文字(f.节点);
@@ -184,7 +191,7 @@ export function 规整向导(
   }
 
   return {
-    联系人: { name: 文字(c.name), position: 可空(c.position), phone: 电话, email: 可空(c.email), wechat: 可空(c.wechat), ...(联系人地址 ? { address: 联系人地址 } : {}) },
+    联系人,
     项目,
     跟进,
     ...(企业档 ? { 企业: 企业档 } : {}),
@@ -227,5 +234,53 @@ export function 向导接着建(me: { id: string }, 好: 规整好的, 出参: P
     if (好.企业) await 记沟通标记(tx, 跟进.id, 项目.id, 落.phase, false);
     await tx.customer.update({ where: { id: customerId }, data: { lastFollowAt: 好.跟进.occurredAt } });
     Object.assign(出参, { contactId: 联系人.id, projectId: 项目.id, followUpId: 跟进.id });
+  });
+}
+
+/**
+ * 只建客户（P-界面-36，11-15）：新建弹窗没开「项目」开关——建客户、主要联系人和首条沟通。
+ * 用户 11-15「没有开项目，就只能算客户沟通」：首条沟通只挂客户、不挂项目，不写项目节点、沟通编号；
+ * 下一步时间不跟超时回收（那是项目的钟），填了就记成客户上的一条跟进计划（和客户页记沟通「下次计划」同一张表）
+ */
+export type 规整好的只建客户 = { 联系人: 规整好的["联系人"]; 跟进: 规整好的沟通 };
+
+export function 规整只建客户(
+  input: { 联系人?: 向导联系人; 跟进?: 向导跟进 },
+  now = new Date(),
+  企业 = false,
+): 规整好的只建客户 | { error: string } {
+  const c = input.联系人, f = input.跟进;
+  if (!c || !f) return { error: "建档信息不完整，请从头再走一遍" };
+  const 联系人 = 规整联系人(c, 企业);
+  if ("error" in 联系人) return 联系人;
+  const 跟进 = 规整沟通(f, { 要下一步: false, now, 叫法: "首条" });
+  if ("error" in 跟进) return 跟进;
+  return { 联系人, 跟进 };
+}
+
+/** 下一步计划没写时跟进计划的主题 */
+export const 只建客户计划主题 = "下一步跟进";
+
+export type 建好的客户 = { contactId: string; followUpId: string; planId: string | null };
+
+/** 给 saveCustomer 的「接着建」（只建客户）：主要联系人、建档人、首条沟通（不挂项目）、有下一步时间就记一条跟进计划 */
+export function 只建客户接着建(me: { id: string }, 好: 规整好的只建客户, 出参: Partial<建好的客户>): 接着建 {
+  return 登记接着建(async (tx: Prisma.TransactionClient, customerId: string) => {
+    const 联系人 = await tx.contact.create({ data: { ...好.联系人, isPrimary: true, customerId } });
+    await tx.customerCreator.create({ data: { customerId, userId: me.id } });
+    const 跟进 = await tx.followUp.create({
+      data: { type: 好.跟进.type, method: 好.跟进.method, initiator: 好.跟进.initiator, content: 好.跟进.content, occurredAt: 好.跟进.occurredAt, title: "", status: "已完成", customerId, contactId: 联系人.id, ownerId: me.id },
+    });
+    let planId: string | null = null;
+    if (好.跟进.nextStepAt) {
+      planId = (await tx.followPlan.create({
+        data: {
+          subject: 好.跟进.nextStepText ?? 只建客户计划主题, plannedAt: 好.跟进.nextStepAt, plannedOn: dayjs(好.跟进.nextStepAt).format("YYYY-MM-DD"), plannedHasTime: false,
+          ...(好.跟进.method ? { method: 好.跟进.method } : {}), customerId, ownerId: me.id,
+        },
+      })).id;
+    }
+    await tx.customer.update({ where: { id: customerId }, data: { lastFollowAt: 好.跟进.occurredAt } });
+    Object.assign(出参, { contactId: 联系人.id, followUpId: 跟进.id, planId });
   });
 }

@@ -72,7 +72,7 @@ async function 顺延(payload: JWTPayload): Promise<string | null> {
  */
 function 登录后回来(request: NextRequest): string | null {
   const { pathname, search } = request.nextUrl;
-  if (request.method !== "GET" || pathname === "/" || pathname === "/start" || pathname === "/dashboard") return null;
+  if (request.method !== "GET" || pathname === "/" || pathname === "/dashboard") return null;
   const q = new URLSearchParams(search);
   q.delete("_rsc");
   const 串 = q.toString();
@@ -157,7 +157,7 @@ export async function proxy(request: NextRequest) {
   }
 
   /**
-   * /reports 并进了 /overview（见 app/(app)/reports/page.tsx，那份留着兜底）。跳转放在这里而不是页面里：
+   * /reports 并进了 /overview，页面 11-15 删了，老书签全靠这里（tests/route-cleanup-redirects.test.ts）。跳转放在这里而不是页面里：
    * 页面里的 redirect() 碰上已经开始流式输出的布局，Next 只能退成客户端跳转——旧书签点进来
    * 先看到一页空白的外壳再跳（e2e 零数据巡检 600ms 时抓到的就是这一瞬）。这里是一个干净的 307。
    * 不写进 next.config 的 redirects：目标里有中文，那边会把它解码进 Location 头，直接 500。
@@ -167,6 +167,19 @@ export async function proxy(request: NextRequest) {
     url.pathname = "/overview";
     url.search = "";
     url.searchParams.set("view", "本年");
+    return NextResponse.redirect(url);
+  }
+
+  /**
+   * 「沟通记录」主页 /follow-ups 11-15 删了（PR11b，tests/route-cleanup-redirects.test.ts）：沟通在客户档案里记、里看。
+   * 带客户的老链接（?customer=…，原来「记一条沟通」预填他）去那位客户的档案；别的去跟进计划。
+   * 放这里不放 next.config：那边会把老地址上的 ?customer=&new=1 原样带到新页，计划页认 new=1 会弹「新建计划」，不是原来那件事
+   */
+  if (valid && pathname === "/follow-ups") {
+    const url = request.nextUrl.clone();
+    const 客户 = url.searchParams.get("customer");
+    url.search = "";
+    url.pathname = 客户 && /^[\w-]+$/.test(客户) ? `/customers/${客户}` : "/follow-ups/plans";
     return NextResponse.redirect(url);
   }
 

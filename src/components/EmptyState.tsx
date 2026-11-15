@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { App, Button, Modal } from "antd";
+import { Button, Modal } from "antd";
 import Rise from "./Rise";
-import SlideConfirm from "./SlideConfirm";
+import HoldConfirm from "./HoldConfirm";
 import { PlusOutlined, ExperimentOutlined } from "@ant-design/icons";
 import { useRouter } from "next/navigation";
 import { 查演示数据状态, 灌一套演示数据, 清除演示数据, type 演示数据状态 } from "@/app/(app)/demo-data";
@@ -34,11 +34,12 @@ export default function EmptyState({
   demo?: boolean;
 }) {
   return (
-    /* 和 StatePage 同一张脸、同一个进场：空、404、出错在人眼里是一件事 */
-    <Rise className="empty-state">
-      <div className="empty-state-t">{title}</div>
-      <p className="empty-state-h">{hint}</p>
-      <div className="empty-state-a">
+    /* 和 StatePage 同一张脸、同一个进场：空、404、出错在人眼里是一件事。
+       标题、说明、按钮三拍依次进来（原型 g.empty：每拍上浮 6px，间隔一档 --stagger） */
+    <div className="empty-state">
+      <Rise 第几个={0} className="empty-state-t">{title}</Rise>
+      <Rise 第几个={1} className="empty-state-h">{hint}</Rise>
+      <Rise 第几个={2} className="empty-state-a">
         {primary && (
           <Button type="primary" icon={<PlusOutlined />} onClick={primary.onClick}>
             {primary.label}
@@ -50,8 +51,8 @@ export default function EmptyState({
           </Button>
         ))}
         {demo && <DemoDataButton />}
-      </div>
-    </Rise>
+      </Rise>
+    </div>
   );
 }
 
@@ -106,10 +107,11 @@ export function DemoDataSection() {
 
 function DemoDataControls({ 状态, set状态 }: { 状态: 演示数据状态; set状态: (s: 演示数据状态) => void }) {
   const b = useBusiness();
-  /** 清除前那一问。它自己是个 Modal，因为要在框里放滑动确认 */
+  /** 清除前那一问。它自己是个 Modal，因为要在框里放长按确认 */
   const [问, set问] = useState(false);
   const [pending, startTransition] = useTransition();
-  const { message } = App.useApp();
+  /** g.save：灌入 / 清除没成的原因就地写（框里、键旁），不弹顶部提示；成了的那一下由界面本身说（键变了、列表有数了） */
+  const [错, set错] = useState<string | null>(null);
   const router = useRouter();
 
   if (状态.已灌) {
@@ -119,30 +121,34 @@ function DemoDataControls({ 状态, set状态 }: { 状态: 演示数据状态; s
           清除演示数据
         </Button>
         {/*
-          **全站唯一一处滑动确认**（components/SlideConfirm.tsx）。
+          **全站唯一一处长按确认**（components/HoldConfirm.tsx，原来是滑动确认）。
           这一下删掉的是库里全部业务数据，而「确定」那颗键和「保存」长得一模一样——
           手比脑子快的时候它挡不住任何人。解释仍然要写：闸门防的是误触，说清楚防的是误解。
         */}
-        <Modal open={问} onCancel={() => set问(false)} title="清除演示数据？" footer={null} width={460}>
+        <Modal open={问} onCancel={() => { set问(false); set错(null); }} title="清除演示数据？" footer={null} width={460}>
           {/* 列全、用这个工作区的叫法（排查 D7）：原来写死「学员」，也没提联系人、签约、计划、导入记录 */}
           <p style={{ marginTop: 0, color: "var(--ink-soft)", lineHeight: 1.7 }}>
             会删掉这个库里<b>全部</b>业务数据：{b.customer}和他们的联系人、线索、渠道、商机、签约、跟进记录、计划和待办、导入记录、操作日志。
             灌完演示数据之后你自己录的也一起没。设置和账号不动。
           </p>
-          <SlideConfirm
-            话="滑到右边清除"
+          {错 && <p className="empty-demo-err" role="alert">{错}</p>}
+          <HoldConfirm
+            话="清除演示数据"
             忙={pending}
             做={() =>
-              new Promise<void>((resolve) =>
+              new Promise<{ ok: boolean; error?: string }>((resolve) =>
                 startTransition(async () => {
                   const r = await 清除演示数据();
                   if (r.ok) {
-                    message.success("演示数据已清除");
+                    set错(null);
                     set状态({ ...状态, 空库: true, 已灌: false });
                     set问(false);
                     router.refresh();
-                  } else message.error(r.error);
-                  resolve();
+                    resolve({ ok: true });
+                  } else {
+                    set错(r.error);
+                    resolve({ ok: false, error: r.error });
+                  }
                 }),
               )
             }
@@ -153,22 +159,25 @@ function DemoDataControls({ 状态, set状态 }: { 状态: 演示数据状态; s
   }
 
   return (
-    <Button
-      icon={<ExperimentOutlined />}
-      loading={pending}
-      onClick={() =>
-        startTransition(async () => {
-          const r = await 灌一套演示数据();
-          if (r.ok) {
-            message.success("演示数据已灌入，可以随便点");
-            set状态({ ...状态, 空库: false, 已灌: true });
-            router.refresh();
-          } else message.error(r.error);
-        })
-      }
-    >
-      灌一套演示数据看看
-    </Button>
+    <>
+      <Button
+        icon={<ExperimentOutlined />}
+        loading={pending}
+        onClick={() =>
+          startTransition(async () => {
+            const r = await 灌一套演示数据();
+            if (r.ok) {
+              set错(null);
+              set状态({ ...状态, 空库: false, 已灌: true });
+              router.refresh();
+            } else set错(r.error);
+          })
+        }
+      >
+        灌一套演示数据看看
+      </Button>
+      {错 && <span className="empty-demo-err" role="alert">{错}</span>}
+    </>
   );
 }
 

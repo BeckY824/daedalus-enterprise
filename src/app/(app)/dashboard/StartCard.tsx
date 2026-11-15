@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { App, Button } from "antd";
+import { Button } from "antd";
 import { ExperimentOutlined, ImportOutlined, PlusOutlined, SettingOutlined, SnippetsOutlined, TeamOutlined } from "@ant-design/icons";
 import { 查演示数据状态, 灌一套演示数据, type 演示数据状态 } from "@/app/(app)/demo-data";
 import { useBusiness } from "@/lib/business-client";
@@ -46,7 +46,8 @@ export default function StartCard({ 自己服务器 = false, 去导入 = false, 
 } = {}) {
   const b = useBusiness();
   const router = useRouter();
-  const { message } = App.useApp();
+  /** 灌演示数据没成：原因写在按钮旁（g.save）；成了页面自己满起来，不另说 */
+  const [灌错, set灌错] = useState<string | null>(null);
   const [状态, set状态] = useState<演示数据状态 | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -120,8 +121,8 @@ export default function StartCard({ 自己服务器 = false, 去导入 = false, 
               onClick={() =>
                 startTransition(async () => {
                   const r = await 灌一套演示数据();
-                  if (!r.ok) return void message.error(r.error);
-                  message.success("演示数据已灌入，可以随便点");
+                  if (!r.ok) return void set灌错(r.error);
+                  set灌错(null);
                   router.refresh();
                 })
               }
@@ -129,6 +130,7 @@ export default function StartCard({ 自己服务器 = false, 去导入 = false, 
               灌一套演示数据
             </Button>
           )}
+          {灌错 && <span className="home-start-err" role="alert">{灌错}</span>}
           {去导入 && (
             <Button type="primary" icon={<ImportOutlined />} onClick={() => router.push("/settings?tab=enterprise")}>
               导入{b.customer}数据
@@ -197,7 +199,7 @@ function 企业版开始({ b, 管理员, 产品名, 去 }: { b: ReturnType<typeo
               </Button>
             </>
           ) : (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => 去("/projects/new")}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => 去("/projects?new=1")}>
               新建项目
             </Button>
           )}

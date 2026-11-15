@@ -23,7 +23,8 @@ const 管理员 = { 用户名: "admin", 密码: "admin123" };
 
 async function 登录(page: Page, who = 账号) {
   await page.goto("/login");
-  const 提示 = page.locator(".ant-alert");
+  // 登录页 11-15 起：账号 / 密码错写在那一格底下（.auth-field-err，role=alert），网络这类才是表单底下那条 Alert
+  const 提示 = page.locator(".ant-alert, .auth-field-err");
   for (let i = 0; i < 3; i++) {
     await page.getByPlaceholder("用户名").fill(who.用户名);
     await page.getByPlaceholder("登录密码").fill(who.密码);
@@ -156,9 +157,13 @@ test("有数据的首页：一行三个信号，不是三张卡（企业版：�
     await expect(page.locator(".home-cards .home-card")).toHaveCount(4);
     // 每张卡点进去是项目页按同一口径筛好的那批（今日待办去复盘页待办页签的「今天到期」），且都带口径——
     // 口径写在卡下面一行小字里，不藏在悬停里（10-30 交互审核规则 C）
+    // 11-15 起卡是原地展开（原型 hm.cards）：点卡头展开，里面一条「看这 N 个项目 › / 去项目页 ›」链接去那批，口径还是卡下面那行小字
     for (const 卡 of await page.locator(".home-cards .home-card").all()) {
-      expect(await 卡.getAttribute("href")).toMatch(/^\/(projects\?f=|overview\?(ownerId=[^&]+&)?f=today$)/);
       expect(((await 卡.locator(".muted").first().textContent()) ?? "").trim()).not.toBe("");
+      const 头 = 卡.getByRole("button", { name: /展开$/ });
+      await 头.click();
+      await expect(卡.getByRole("button", { name: /收起$/ }).first()).toHaveAttribute("aria-expanded", "true");
+      expect(await 卡.getByRole("link").getAttribute("href")).toMatch(/^\/(projects\?f=|overview\?(ownerId=[^&]+&)?f=today$)/);
     }
     return;
   }
@@ -178,6 +183,8 @@ test("首页：⌘K 把光标放回输入框", async ({ page }) => {
   await 登录(page);
   await page.goto("/dashboard");
   await page.waitForSelector(".cli-input textarea");
+  // 流式出页时 React 揭晓前 body 下有一份藏着的同样内容：等它换成真的那一份再按
+  await expect(page.locator(".cli-input textarea")).toHaveCount(1);
   await page.locator("body").click();
   await page.keyboard.press("ControlOrMeta+k");
   await expect(page.locator(".cli-input textarea")).toBeFocused();
@@ -465,25 +472,7 @@ test("计划页「新建计划」就地弹框：挑人、说清另加不替换�
   await expect(page.getByRole("dialog").locator(".pick-ctx")).not.toContainText("上次跟进");
 });
 
-test("沟通记录页「记一条沟通」就地弹框：挑人后到期计划默认一并完成，保存后留在原页并点亮新行", async ({ page }) => {
-  const 客 = await 造一位要跟的();
-  await 登录(page);
-  await page.goto("/follow-ups");
-  await page.getByRole("button", { name: /^(plus )?记一条沟通$/ }).click();
-  const 弹窗 = await 挑(page, 客.名);
-  await expect(弹窗.getByText("同时完成计划「发二版报价」")).toBeVisible();
-  await 弹窗.getByLabel("沟通内容").fill("电话里对了交期");
-  await 弹窗.getByRole("button", { name: /保\s*存/ }).click();
-  await expect(弹窗).toBeHidden();
-  await expect(page).toHaveURL(/\/follow-ups$/);
-  await expect(page.locator(".row-fresh")).toContainText("电话里对了交期");
-  await expect(page.locator(".ant-message")).toContainText("一并完成");
-
-  const p = 连库();
-  const 那条 = await p.followPlan.findUniqueOrThrow({ where: { id: 客.旧计划id } });
-  await p.$disconnect();
-  expect(那条.done).toBe(true);
-});
+// 「沟通记录页「记一条沟通」就地弹框…」那条随沟通记录页（/follow-ups）11-15 删了；到期计划一并完成在客户档案的记沟通里照样有
 
 test("计划页「改」：框开着时这条在另一个窗口被改了，保存被拦下说清楚；关框重开是新的那一版、再存就进（J-105）", async ({ page }) => {
   const 客 = await 造一位要跟的();
@@ -608,7 +597,10 @@ test("输入框：字多了就长高，长到头才在框内滚——不是永�
   await 登录(page);
   await page.goto("/dashboard");
   const ta = page.locator(".cli-input textarea");
-  await ta.waitFor();
+  // 流式出页时 body 下有一份藏着的同样内容：等只剩真的那一份再量
+  await expect(ta).toHaveCount(1);
+  // 剩下那一份可能还没显示出来（流式出页换真内容那一刻），看得见了再量，不然 boundingBox 是 null
+  await expect(ta).toBeVisible();
   const 一行 = (await ta.boundingBox())!.height;
 
   // 首页这个框里有回形针和模型那一条，所以它是 column flex。
@@ -637,6 +629,8 @@ test("⌘K：有输入框的页面回到输入框，没有的弹跳转单", asyn
   // 首页有框：⌘K 是把光标放回去，不弹浮层
   await page.goto("/dashboard");
   await page.waitForSelector(".cli-input textarea");
+  // 流式出页时 React 揭晓前 body 下有一份藏着的同样内容：等它换成真的那一份再按
+  await expect(page.locator(".cli-input textarea")).toHaveCount(1);
   await page.locator("body").click();
   await page.keyboard.press("ControlOrMeta+k");
   await expect(page.locator(".cli-input textarea")).toBeFocused();
@@ -680,7 +674,7 @@ test("⌘K：一个页面都没匹配上时，第一条变成「问一句」", a
 test("首页斜杠命令打错：回车后原文还在，下面说「没有这个命令」，也不发问", async ({ page }) => {
   await 登录(page);
   await page.goto("/dashboard");
-  const 框 = page.locator(".cli-input textarea").first();
+  const 框 = page.locator(".cli-input textarea").filter({ visible: true }).first();
   await 框.fill("/xyz");
   await expect(page.getByText("没有这个命令")).toBeVisible();
   await 框.press("Enter");
@@ -715,10 +709,13 @@ test("设置：左目录分两组、带搜索，一页上只有一列目录", as
   // 企业版多五项：组织架构（部门、业务角色）、项目模式（企业版锁定只用项目，组织规则和字典在这一栏）、客户回收（客户三态的开关、天数、占位词，C16；三态关着也在，开关就在这里）、企业版导入（迁老系统的数据）、回收站（P9）
   expect(项).toEqual(
     process.env.CRM_ENTERPRISE === "1"
-      ? ["个人资料", "登录与密码", "快捷键", "外观", "团队成员", "组织架构", "业务配置", "项目模式", "客户回收", "AI 接入", "导入记录", "导出记录", "企业版导入", "回收站", "操作日志"]
+      // 11-15 起按「我要做什么」分组（原型 st.role，P-界面-46）：我自己 / 团队与权限 / 线索和公海 / 业务与 AI / 数据；「我能做什么」（本人权限）摆在我自己那组
+      ? ["个人资料", "登录与密码", "快捷键", "外观", "我能做什么", "团队成员", "组织架构", "客户回收", "项目模式", "业务配置", "AI 接入", "导入记录", "企业版导入", "导出记录", "回收站", "操作日志"]
       : ["个人资料", "登录与密码", "快捷键", "外观", "团队成员", "业务配置", "AI 接入", "导入记录", "导出记录", "操作日志"],
   );
-  expect(await page.locator("main .set-nav-h").allInnerTexts()).toEqual(["个人", "工作区"]);
+  expect(await page.locator("main .set-nav-h").allInnerTexts()).toEqual(
+    process.env.CRM_ENTERPRISE === "1" ? ["我自己", "团队与权限", "线索和公海", "业务与 AI", "数据"] : ["个人", "工作区"],
+  );
   // 中栏撤了：一页上摆两列目录，人得先弄清它们有什么区别
   await expect(page.locator("aside.pane")).toHaveCount(0);
   // 每一项都得说清自己管什么
@@ -727,11 +724,12 @@ test("设置：左目录分两组、带搜索，一页上只有一列目录", as
   }
 
   // 搜索：项数多了之后，「知道它叫什么、不知道在哪一栏」才是最常见的来访
-  await page.getByLabel("搜索设置").fill("密码");
+  // 限定在正文：流式出页时 body 下有一份藏着的同样内容
+  await page.getByRole("main").getByLabel("搜索设置").fill("密码");
   expect(await page.locator("main .set-nav-i b").allInnerTexts()).toEqual(["登录与密码"]);
   // 搜的时候不摆组标题：那时要的是一份短名单，不是结构
   await expect(page.locator("main .set-nav-h")).toHaveCount(0);
-  await page.getByLabel("搜索设置").fill("这个设置不存在");
+  await page.getByRole("main").getByLabel("搜索设置").fill("这个设置不存在");
   await expect(page.locator(".set-nav-empty")).toBeVisible();
 });
 
@@ -739,14 +737,15 @@ test("个人资料：不是管理员也能改自己的名字，改完整站跟�
   // 用销售登录——这条要钉的正是「不用求管理员」
   await 登录(page);
   await page.goto("/settings?tab=profile");
-  await page.getByLabel("名字", { exact: true }).fill("张三改过的名字");
+  await page.getByRole("main").getByLabel("名字", { exact: true }).fill("张三改过的名字");
   // antd 会在两个汉字中间插空格，按钮的无障碍名字是「保 存」——别处也是这么绕的
-  await page.getByRole("button", { name: /保\s*存/ }).click();
-  await expect(page.locator(".ant-message")).toContainText("已保存");
+  await page.getByRole("main").getByRole("button", { name: /保\s*存/ }).click();
+  // 11-15 起保存结果显示在按钮里（SaveButton：对勾 +「已保存」，同时读屏播报），不弹顶部提示
+  await expect(page.getByRole("status").filter({ hasText: "已保存" })).toBeAttached();
   // 左下角那一行是同一个名字的另一处出口，revalidate 没生效的话它还是旧的
   await expect(page.locator(".rail-user b")).toHaveText("张三改过的名字");
-  await page.getByLabel("名字", { exact: true }).fill("张三");
-  await page.getByRole("button", { name: /保\s*存/ }).click();
+  await page.getByRole("main").getByLabel("名字", { exact: true }).fill("张三");
+  await page.getByRole("main").getByRole("button", { name: /保\s*存/ }).click();
   await expect(page.locator(".rail-user b")).toHaveText("张三");
 });
 
@@ -754,12 +753,18 @@ test("AI 接入：没测过连接就保存会先拦一下", async ({ page }) => 
   await 登录(page, 管理员);
   await page.goto("/settings?tab=ai");
   /* 上一条用例已经存过自己的 Key，所以这一页进来就停在「用你自己的」那一屏 */
-  await page.locator("#model").fill("e2e-model-2");
-  await page.getByRole("button", { name: /保\s*存/ }).click();
+  // 限定在正文：流式出页时 body 下有一份藏着的同样内容
+  await page.getByRole("main").locator("#model").fill("e2e-model-2");
+  await page.getByRole("main").getByRole("button", { name: /保\s*存/ }).click();
   await expect(page.getByRole("dialog")).toContainText("还没测试过连接");
-  await page.getByRole("button", { name: "先测一下" }).click();
+  // 11-15 起拦的是后果框（ConsequenceDialog）：写明会影响全团队、Key 不对要等用的时候才发现，键是「取消 / 仍然保存」，不再有「先测一下」。点取消 = 不存，回去测
+  await expect(page.getByRole("dialog")).toContainText("全团队");
+  await page.getByRole("dialog").getByRole("button", { name: "取消" }).click();
+  await expect(page.getByRole("dialog")).toBeHidden();
   // 拦下来之后没有保存，提示也不该出现
   await expect(page.locator(".ant-message")).toHaveCount(0);
+  // 11-15 起保存结果也可能出在按钮里 / 就地提示（role=status）：那边同样不该说「已保存」
+  await expect(page.getByRole("status").filter({ hasText: "已保存" })).toHaveCount(0);
 });
 
 /* ---------- 收尾：指标落地、图表落地、联系人入口（2026-09-17 逐页核对后补的三件） ---------- */
@@ -884,7 +889,7 @@ test("联系人页能直接加一位，但第一格必须先选归属", async ({
   界面这一层没有——而那个输入框第一版没接表单 id，标签和输入框的关联断了（getByLabel 找不到、读屏念不出来）
 */
 test("新建线索：来源一格能直接填列表里没有的说法，按标签找得到输入框，存完列表里看得见", async ({ page }) => {
-  test.skip(process.env.CRM_ENTERPRISE === "1", "企业版只用项目：新线索走项目向导（/leads/new），不弹老的新建线索框");
+  test.skip(process.env.CRM_ENTERPRISE === "1", "企业版只用项目：新线索走项目向导（新线索页就地弹建档框），不弹老的新建线索框");
   const 名 = `朋友圈线索${Date.now().toString().slice(-5)}`;
   await 登录(page);
   await page.goto("/leads");

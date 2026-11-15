@@ -261,6 +261,21 @@ export function 默认过渡(m: 动效) {
 }
 
 /**
+ * 「选中跟着走」的过渡：左栏选中底块、⌘K 高亮块从一项滑到另一项（PR2 外壳，原型 g.nav / g.cmdk 的 S.snappy）。
+ * 默认主题走 snap 那档弹簧——比 ui 快一档，手指到哪它就到哪；换了曲线的主题照它的曲线 + --t。
+ */
+export function 跟随过渡(m: 动效) {
+  return m.是弹簧 ? 弹簧.snap : { duration: m.时长.base, ease: m.曲线.ease };
+}
+
+/**
+ * 列表重排（FLIP / motion 的 layout）最多带几行。超过就整批硬换、不做位移动画：
+ * 每一行都要量一次位置再补一段位移，几百行同时动在 Windows 的集显上掉帧，掉帧比不动更像卡。
+ * ⌘K 的结果单用它；以后长表要做 FLIP 也照这个数。
+ */
+export const 重排上限 = 40;
+
+/**
  * antd 的动效 token（16a），lib/theme.ts 直接展开。悬停 / 收起 = fast，展开 = base，浮层长出来 = morph。
  * 曲线写成 var(--ease*)：antd 只把它们原样拼进样式（transition / animation），从不拿来算，
  * 写变量就和 CSS 那边同一条——老浏览器不认 linear() 时也跟着 globals.css 的 @supports 退回 cubic-bezier，

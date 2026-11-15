@@ -23,7 +23,8 @@ const 载荷 = [
 
 async function 登录(page: Page) {
   await page.goto("/login");
-  const 提示 = page.locator(".ant-alert");
+  // 登录页 11-15 起：账号 / 密码错写在那一格底下（.auth-field-err，role=alert），网络这类才是表单底下那条 Alert
+  const 提示 = page.locator(".ant-alert, .auth-field-err");
   for (let i = 0; i < 3; i++) {
     await page.getByPlaceholder("用户名").fill(账号.用户名);
     await page.getByPlaceholder("登录密码").fill(账号.密码);
@@ -165,7 +166,8 @@ test("登录失败到阈值后会被限流，且提示说明要等多久", async
   // 按账号的阈值是 5 次：错满 5 次，第 6 次就该挡住（账号是新造的，前面没有别人留下的计数）
   expect(试了).toBe(阈值 + 1);
   // 页面上看得到这句，且说了要等多久
-  const 限流提示 = page.locator(".ant-alert", { hasText: /失败次数过多/ });
+  // 登录页 11-15 起账号密码这类错写在密码格底下（role=alert），不再是表单底下那条 Alert
+  const 限流提示 = page.locator(".ant-alert, .auth-field-err").filter({ hasText: /失败次数过多/ });
   await expect(限流提示).toBeVisible();
   await expect(限流提示).toContainText(/分钟后再试/);
 });

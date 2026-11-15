@@ -1,5 +1,4 @@
 import { beforeEach, afterEach, afterAll, it, expect, vi } from "vitest";
-import { renderToStaticMarkup } from "react-dom/server";
 const state = vi.hoisted(() => ({ user: { id: "", name: "QA", email: "qa", role: "ADMIN", title: "管理员" } }));
 vi.mock("@/lib/auth", () => ({ requireUser: async () => state.user }));
 vi.mock("@/lib/llm", () => ({ llmEnabled: async () => true, listModelOptions: async () => [] }));
@@ -25,7 +24,6 @@ import { DEFAULT_BUSINESS } from "@/lib/business-config";
 import { TOOLS } from "@/lib/agent/tools";
 import { 认意图 } from "@/lib/agent/intents";
 import DashboardPage from "@/app/(app)/dashboard/page";
-import WatchlistPage from "@/app/(app)/follow-ups/watchlist/page";
 import { 加载复盘 } from "@/app/(app)/overview/data";
 let otherId: string; let customerId: string;
 beforeEach(async () => {
@@ -39,7 +37,7 @@ async function sleepers() {
   for (const [ownerId, count, prefix] of [[state.user.id,21,"我的"],[otherId,4,"同事"]] as const)
     await prisma.customer.createMany({data:Array.from({length:count},(_,i)=>({name:`${prefix}${i}`,phone:"",salesOwnerId:ownerId,createdAt:new Date("2026-08-01")}))});
 }
-it("总数先统计再截取；首页21位与完整分页一致",async()=>{
+it("总数先统计再截取；首页21位与分页取数一致（盯盘清单页 11-15 删了，分页取数照旧验）",async()=>{
   await sleepers();
   const mine=await loadWatchlistPage(dayjs(),{ownerId:state.user.id});
   expect(mine.total).toBe(21);expect(mine.items).toHaveLength(8);
@@ -47,13 +45,14 @@ it("总数先统计再截取；首页21位与完整分页一致",async()=>{
   const first=await loadWatchlistPage(dayjs(),{ownerId:state.user.id},0,20);
   const last=await loadWatchlistPage(dayjs(),{ownerId:state.user.id},20,20);
   expect(new Set([...first.items,...last.items].map(x=>x.customerId)).size).toBe(21);
-  const markup=renderToStaticMarkup(await WatchlistPage({searchParams:Promise.resolve({scope:"mine",page:"999999"})}));
-  expect(markup).toContain("共 21 位");expect(markup).toContain("第 2 / 2 页");expect(markup).not.toContain("同事0");expect(markup).toContain("上一页");
+  expect(first.total).toBe(21);expect(last.items).toHaveLength(1);expect([...first.items,...last.items].some(x=>x.customerName.startsWith("同事"))).toBe(false);
 });
 it("AI默认本人21位，明确团队才返回25位；不把前12误称全部",async()=>{
   await sleepers();const t=TOOLS.find(t=>t.name==="get_watchlist")!;
   const ctx={userId:state.user.id,userName:"QA",b:DEFAULT_BUSINESS,recordOffset:0,proposals:[]};
   const mine=await t.run({},ctx);expect(mine.data).toMatchObject({总数:21,显示:12,范围:"我名下"});expect(JSON.stringify(mine.data)).not.toContain('"name":"同事');
+  // 盯盘清单页删了：AI 回答里不能再带指过去的链接（点了会落到跳转）
+  expect(mine.data).not.toHaveProperty("完整清单");expect(JSON.stringify(mine.data)).not.toContain("/follow-ups/");
   expect((await t.run({scope:"team"},ctx)).data).toMatchObject({总数:25,显示:12,范围:"当前权限内团队"});
   expect((await t.run({scope:"bad"},ctx)).data).toHaveProperty("error");
   expect(认意图("看看全团队盯盘清单")?.调用[0].args).toEqual({scope:"team"});

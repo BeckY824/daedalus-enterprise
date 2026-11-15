@@ -10,7 +10,7 @@ import type { Prisma } from "@/generated/prisma";
 import { requireUser } from "@/lib/auth";
 import { FOLLOW_TYPES, FOLLOW_RECORD_STATUSES } from "@/lib/constants";
 import { 客户存了推项目 } from "@/lib/project/auto-advance";
-import { 客户跟进后勾掉将回收提醒 } from "@/lib/project/db";
+import { 客户跟进后勾掉将回收提醒, 能管项目 } from "@/lib/project/db";
 import { recordAudit } from "@/lib/audit";
 import { 领取 } from "../pool-actions";
 import { 认回打码号, 号键 } from "@/lib/phone";
@@ -21,7 +21,7 @@ import { 软删开着, 撤销软删, 删除挡, 看已删 } from "@/lib/enterpri
 import { 查完再写 } from "@/lib/check-then-write";
 import { 能恢复, 没设业务角色, 没业务角色不能领话, 能领公海, 不能领公海话, 只读角色, 只读角色话 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话, 卡片刚记的能撤, 在卡片撤销里, 卡片撤销过时话, 客户事项挡, 本人勾完成挡 } from "@/lib/enterprise/follow-perm";
+import { 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话, 不能挂项目话, 卡片刚记的能撤, 在卡片撤销里, 卡片撤销过时话, 客户事项挡, 本人勾完成挡 } from "@/lib/enterprise/follow-perm";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 卡点脱离沟通 } from "@/lib/project/blocker";
 import { 在推项目条件 } from "@/lib/project/active";
@@ -34,7 +34,7 @@ import { parseDateInput } from "@/lib/date-input";
 import { 联系人电话, 规整, 规整企业联系人, type 联系人字段, type 企业联系人资料 } from "./contact-input";
 export type { 企业联系人资料 } from "./contact-input";
 import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类表 } from "@/lib/enterprise/customer-v2-db";
-import { 联系人查重, 联系人撞号话 } from "@/lib/enterprise/contact-dedupe";
+import { 联系人查重, 联系人撞号话, type 撞到的联系人 } from "@/lib/enterprise/contact-dedupe";
 import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
 import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
 import { 存沟通后重算三态, 记首次有效 } from "@/lib/enterprise/tri-state-db";
@@ -145,14 +145,20 @@ async function 跟着改待办(customerId: string, 旧: 带时间的跟进, 新:
  * 企业版新建跟进挂到项目上：和项目页记沟通（lib/project/db.ts 的 记项目沟通）一样挂当时的节点、编沟通号、记阶段标记，
  * 项目页的沟通里也看得到。不是这位客户的、已结束的、在公海的都不挂
  */
-async function 挂项目(followUpId: string, customerId: string, projectId: string, db: Prisma.TransactionClient) {
-  const p = await db.project.findFirst({ where: { id: projectId, customerId, ...在推项目条件 }, select: { id: true, node: true, phase: true } });
-  if (!p) return;
+/**
+ * 挂上了返回 true。已结束、在公海、别的客户的（含关联进来的）项目照旧不挂、存成客户沟通（X-144：调用方回「没挂上项目」）；
+ * 管不了的项目（X-143）在事务外先拦了，这里再按同一条判定核一遍，核不过也只是不挂
+ */
+async function 挂项目(me: { id: string; role: string }, followUpId: string, customerId: string, projectId: string, db: Prisma.TransactionClient): Promise<boolean> {
+  const p = await db.project.findFirst({ where: { id: projectId, customerId, ...在推项目条件 }, select: { id: true, node: true, phase: true, ownerId: true, pooledAt: true } });
+  if (!p) return false;
+  if (!能管项目(me, p, await 权限组织())) return false;
   // 库里存着旧节点名的按企业版的新名记（10-31 改名，写入一律新名）
   await db.followUpProject.create({ data: { followUpId, projectId: p.id, node: 本套名(p.node, 企业版字典) } });
   await 记沟通编号(db, followUpId, p.id, null);
   await 记沟通标记(db, followUpId, p.id, p.phase, false);
   revalidatePath(`/projects/${p.id}`);
+  return true;
 }
 
 export async function saveFollowUp(input: FollowUpInput) {
@@ -214,6 +220,14 @@ export async function saveFollowUp(input: FollowUpInput) {
       领取照电脑上原来那一套（改负责人、记领取时间、原负责人没做完的活跟过来、操作日志）；同步时和别人抢，先同步上的拿到，
       后到的那台改负责人、领取和这条跟进都进「待核对」
     */
+    /*
+      X-143（11-15 用户定）：挂项目和项目详情记沟通同一条「能管这个项目」判定——这位客户的、还在推的项目，管不了（比如只是组员）就整条不记，
+      说清楚找负责人；已结束 / 在公海 / 关联进来的照旧不挂、存成客户沟通（X-144，返回里带「没挂上项目」）
+    */
+    const 挂项目候选 = !input.id && 企业版() && typeof input.projectId === "string" && input.projectId
+      ? await prisma.project.findFirst({ where: { id: input.projectId, customerId: input.customerId, ...在推项目条件 }, select: { ownerId: true, pooledAt: true } })
+      : null;
+    if (挂项目候选 && !能管项目(user, 挂项目候选, await 权限组织())) return { ok: false as const, error: 不能挂项目话 };
     const 在公海 = !input.id && !!(await prisma.customerPool.findUnique({ where: { customerId: input.customerId }, select: { customerId: true } }));
     // 没设业务角色的领不了（11-03）：记了就等于没领到却留了条沟通，直接说清楚，不记
     if (在公海 && 企业版() && 没设业务角色(await 权限组织(), user.id)) return { ok: false as const, error: 没业务角色不能领话 };
@@ -248,7 +262,7 @@ export async function saveFollowUp(input: FollowUpInput) {
       audits.push({ user, action: input.id ? "update" : "create", entity: "FollowUp", entityId: id,
         summary: `${input.id ? "修改" : "记了"}${customer.name}的一条${"method" in data && data.method ? data.method : 类型名(data.type)}跟进（${dayjs(data.occurredAt).format("YYYY-MM-DD")}）`,
         detail: { 客户: customer.name, 类型: "method" in data && data.method ? data.method : 类型名(data.type), 状态: data.status, 内容: data.content.slice(0, 120) } });
-      if (!input.id && input.projectId && 企业版()) await 挂项目(id, input.customerId, input.projectId, tx);
+      const 挂上了 = !input.id && !!input.projectId && 企业版() ? await 挂项目(user, id, input.customerId, input.projectId, tx) : null;
       for (const item of extra?.tasks ?? []) {
         const 时间 = parseScheduleDate(item.dueAt)!;
         const task = await tx.task.create({ data: { title: item.title.trim(), dueAt: 时间.at, dueOn: 时间.on, dueHasTime: 时间.hasTime, customerId: input.customerId, ownerId: user.id } });
@@ -269,12 +283,11 @@ export async function saveFollowUp(input: FollowUpInput) {
       // 和回放时的重算同一句（lib/sync/local.ts 重算派生），日期在库里怎么存不用这里管
       if (同事的) await tx.$executeRawUnsafe('UPDATE "Customer" SET lastFollowAt = (SELECT MAX(occurredAt) FROM "FollowUp" WHERE customerId = ? AND "deletedAt" IS NULL) WHERE id = ?', input.customerId, input.customerId);
       else await tx.customer.update({ where: { id: input.customerId }, data: { lastFollowAt: latest?.occurredAt ?? null } });
-      return { ok: true as const, id, 待办id, 下次计划id, audits };
+      return { ok: true as const, id, 待办id, 下次计划id, audits, 没挂上项目: 挂上了 === false };
     });
     if (!result.ok) return result;
     for (const audit of result.audits) await recordAudit(audit);
     刷新待办(input.customerId);
-    revalidatePath("/follow-ups");
     // 客户最近跟进往后推了 = 名下项目的回收时钟续了：「再不跟进」的提醒跟着勾掉（11-03 B3-1）。按推进前的节点找提醒，放在自动推进前面
     await 客户跟进后勾掉将回收提醒(input.customerId, now);
     await 客户存了推项目(user, input.customerId);
@@ -282,7 +295,7 @@ export async function saveFollowUp(input: FollowUpInput) {
     await 存沟通后重算三态(input.customerId);
     // 客户三态（C12）：新记的这条不算有效沟通，回原因给前端一句轻提示（不拦；三态关着不查库）
     const 短沟通 = !input.id ? await 短沟通提示(result.id).catch(() => null) : null;
-    return { ok: true as const, id: result.id, ...(短沟通 ? { 短沟通 } : {}), ...(result.待办id ? { 待办id: result.待办id } : {}), ...(result.下次计划id ? { 下次计划id: result.下次计划id } : {}), ...(领取了 ? { 领取了: true as const } : {}) };
+    return { ok: true as const, id: result.id, ...(短沟通 ? { 短沟通 } : {}), ...(result.待办id ? { 待办id: result.待办id } : {}), ...(result.下次计划id ? { 下次计划id: result.下次计划id } : {}), ...(领取了 ? { 领取了: true as const } : {}), ...(result.没挂上项目 ? { 没挂上项目: true as const } : {}) };
   } catch (e) { return 不在了(e); }
 }
 
@@ -319,7 +332,6 @@ export async function deleteFollowUp(id: string, customerId: string) {
     await 存沟通后重算三态(customerId);
   
     revalidatePath(`/customers/${customerId}`);
-    revalidatePath("/follow-ups");
     return { ok: true as const };
   } catch (e) {
     return 不在了(e);
@@ -588,7 +600,6 @@ export async function 撤销记一笔(input: { customerId: string; 跟进id: str
     for (const audit of result.audits) await recordAudit(audit);
     await 存沟通后重算三态(input.customerId);
     revalidatePath(`/customers/${input.customerId}`);
-    revalidatePath("/follow-ups");
     revalidatePath("/follow-ups/plans");
     revalidatePath("/dashboard");
     return { ok: true as const };
@@ -621,6 +632,27 @@ function 刷新联系人(customerId?: string | null) {
  * 企业版号码查重（2026-10-29 P13 第 2 条）撞了：不保存，回 撞了 给表单摆成能点的链接。
  * 照存 = 人看过提示、确认是另一个人（同一个号两个人用，比如公司总机）；再交一次带上它就不查
  */
+/**
+ * 联系人号码失焦先查（dt.contact，企业版）：填完一个号就看撞没撞，不等到点保存。只读、不写库；
+ * 号码不合规的不在这里说（保存时照旧说），查不了也不挡——保存那一步还会再查一遍。
+ * 除了 = 编辑时排除这位自己
+ */
+export async function 联系人号码先查(号码们: { kind: string; value: string }[], 除了?: string | null): Promise<{ ok: true; 撞了: 撞到的联系人[] } | { ok: false; error: string }> {
+  // 认人放在 try 外：没登录照常抛（按未登录处理），不被下面「号码没查成」那句盖住
+  await requireUser();
+  try {
+    if (!企业版() || !Array.isArray(号码们)) return { ok: true, 撞了: [] };
+    const 行们 = 号码们.filter((x) => x && typeof x.kind === "string" && typeof x.value === "string" && x.value.trim() && !x.value.includes("*")).slice(0, 20);
+    if (!行们.length) return { ok: true, 撞了: [] };
+    const 号 = await 验联系人号码们(行们, []);
+    if (!号.ok) return { ok: true, 撞了: [] };
+    const 撞了 = 号.行们.length ? await 联系人查重(defaultClient, 号.行们, await 读的我(defaultClient), 除了 ?? undefined) : [];
+    return { ok: true, 撞了 };
+  } catch {
+    return { ok: false, error: "号码没查成，保存时会再查一遍" };
+  }
+}
+
 export async function saveContact(input: 联系人字段 & { id?: string; customerId: string; isPrimary: boolean; 版本?: string | null; 企业?: 企业联系人资料 | null; 照存?: boolean }) {
   try {
     const me = await requireUser();

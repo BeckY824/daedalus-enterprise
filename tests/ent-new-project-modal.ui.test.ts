@@ -100,18 +100,18 @@ it("P-转-07：有项目一起转时先列出来，同事在推的只给个数�
   const { page, 框, 点建好 } = await 填到建好((w, 带走) => { w.__带走 = 带走; });
   try {
     await 点建好();
-    const 问 = page.locator(".ant-modal-confirm");
-    await 问.locator(".ant-modal-confirm-title", { hasText: 确认标题 }).waitFor();
+    const 问 = page.getByRole("dialog").filter({ hasText: "会一起转走" });
+    await 问.getByText(确认标题).first().waitFor();
     expect(await 问.innerText()).toContain("另外有 1 个同事在推的项目，负责人也一起改成新负责人");
     expect(await page.evaluate(() => (window as unknown as 窗).__建 ?? null)).toBeNull();
-    await 问.locator(".ant-btn:not(.ant-btn-primary)").click();
-    await 问.waitFor({ state: "detached" });
+    await 问.getByRole("button", { name: /^取\s?消$/ }).click();
+    await 问.waitFor({ state: "hidden" });
     expect(await page.evaluate(() => (window as unknown as 窗).__建 ?? null)).toBeNull();
     await 框.getByRole("button", { name: /建\s*好/ }).waitFor();
     expect(await 框.getByRole("button", { name: /建\s*好/ }).isEnabled()).toBe(true);
     await 点建好();
-    await 问.locator(".ant-modal-confirm-title", { hasText: 确认标题 }).waitFor();
-    await 问.locator(".ant-btn-primary").click();
+    await 问.getByText(确认标题).first().waitFor();
+    await 问.getByRole("button", { name: "一起转" }).click();
     await page.getByTestId("new-project-done").waitFor();
     expect(await page.evaluate(() => JSON.stringify((window as unknown as 窗).__建))).toContain('"分配方式":0');
   } finally { await page.close(); }
@@ -122,7 +122,7 @@ it("P-转-07：没有要转的不弹，直接建；问的时候带上这次的�
   try {
     await 点建好();
     await page.getByTestId("new-project-done").waitFor();
-    expect(await page.locator(".ant-modal-confirm").count()).toBe(0);
+    expect(await page.getByRole("dialog").filter({ hasText: "会一起转走" }).count()).toBe(0);
     const 预览 = await page.evaluate(() => (window as unknown as 窗).__预览 ?? []);
     expect(预览).toHaveLength(1);
     expect(预览[0][0]).toBe("a");
@@ -135,6 +135,6 @@ it("P-转-07：取预览失败不拦着建（断网时服务端照常查）", as
   try {
     await 点建好();
     await page.getByTestId("new-project-done").waitFor();
-    expect(await page.locator(".ant-modal-confirm").count()).toBe(0);
+    expect(await page.getByRole("dialog").filter({ hasText: "会一起转走" }).count()).toBe(0);
   } finally { await page.close(); }
 });

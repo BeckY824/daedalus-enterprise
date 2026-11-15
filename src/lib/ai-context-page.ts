@@ -20,7 +20,7 @@
  * 人正站在哪一页是我们**确定知道**的信息，把它兑换成一句指名道姓的话，
  * 比让模型每次重新推理一遍稳得多（和 agent/intents.ts 是同一个思路）。
  */
-import { DEFAULT_BUSINESS, statusLabel, 签约叫, type BusinessConfig } from "./business-config";
+import { DEFAULT_BUSINESS, statusLabel, type BusinessConfig } from "./business-config";
 import { 客户页面筛选键, type 页面客户筛选 } from "./ai-page-filters";
 import { 三态显示名 } from "./enterprise/tri-state-label";
 export type 页面上下文 = {
@@ -89,12 +89,6 @@ const 一级: Record<string, 页> = {
     工具: "query_metric",
     补: "**query_metric 只给数，不给名单**——问「是谁」「有哪些」「列出来」时改用 search_customers（客户）或 query_records（别的表）。",
   },
-  "/reports": {
-    名: "数据 · 复盘",
-    提示: "用户正在看签约复盘页",
-    工具: "query_metric 或 list_contracts",
-    补: "**query_metric 只给数，不给名单**——问「是谁」「哪几位」时用 list_contracts 或 query_records（表=签约，可跨到客户）。",
-  },
   "/leads": {
     名: "线索",
     提示: "用户正在看线索列表",
@@ -132,12 +126,6 @@ const 一级: Record<string, 页> = {
     工具: "search_customers",
     查一个: { 工具: "search_customers", 参数: "query" },
     提醒: "这一页每行要么是公海里的一位客户，要么是客户池里一位客户在公海的项目（客户归别人，可能有好几个）；问项目时用 list_projects。",
-  },
-  "/follow-ups": {
-    名: "跟进记录",
-    提示: "用户正在看跟进记录列表",
-    工具: "search_followups",
-    补: "**search_followups 必须给关键词**——要按时间列记录、按类型筛、数个数，用 query_records（表=跟进记录）。",
   },
   "/follow-ups/plans": {
     名: "跟进计划",
@@ -226,7 +214,7 @@ export function 认页面(pathname: string, params: URLSearchParams | null, 详�
     return {
       名: 命中.名,
       标签: `${命中.名}${尾}`,
-      提示: `${pathname === "/reports" ? `用户正在看${签约叫(b)}复盘页` : 命中.提示 || `用户正在看${命中.名}`}${尾}。回答时必须使用这个范围；工具不能重现条件时说明限制，不能把全库结果当本页。${指路(命中)}${列着}`,
+      提示: `${命中.提示 || `用户正在看${命中.名}`}${尾}。回答时必须使用这个范围；工具不能重现条件时说明限制，不能把全库结果当本页。${指路(命中)}${列着}`,
       ...(命中.查一个 ? { 范围: { 表: 命中.名, 工具: 命中.查一个.工具, 参数: 命中.查一个.参数, 名字, ...(pathname === "/customers" ? { 筛选: Object.fromEntries(客户页面筛选键.flatMap(k => params?.get(k) ? [[k, params.get(k)!]] : [])) } : {}) } } : {}),
     };
   }

@@ -44,7 +44,7 @@ export function 定位到模块(id: string) {
  * 「完成节点」框（M-节点-05/09，11-03 一窗填完）：还差的必填直接摆输入，控件和页面上编辑这一项时一样；
  * 点一个按钮存齐并推进。存的逻辑在 lib/project/required-fill.ts，校验、权限都在原来的 action 里
  */
-export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了话, 现在在, 能推进, 完成不了, 完成到字, 交付还差, 忙, on完成, on关, on去, 读草稿, 留草稿 }: {
+export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了话, 现在在, 能推进, 完成不了, 完成到字, 交付还差, 忙, on完成, on关, on去, 读草稿, 留草稿, 刷新 }: {
   p: 项目详情;
   联系人们: 联系人[];
   能就地改: boolean;
@@ -63,6 +63,8 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
   /** 关了框再回来（去记沟通、传附件）草稿还在：放在 ProjectDetail 上，按项目分开 */
   读草稿: () => 草稿们 | undefined;
   留草稿: (草稿: 草稿们) => void;
+  /** 不在项目页里用（看板拖动的就地补填）：存完怎么拿到新的 p。不给就 router.refresh */
+  刷新?: () => Promise<void>;
 }) {
   const { message } = App.useApp();
   const router = useRouter();
@@ -150,11 +152,12 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
     set存着(false);
     if (接着 === "关窗" && !失败几项) {
       on关();
-      router.refresh();
+      if (刷新) void 刷新();
+      else router.refresh();
       return;
     }
     if (接着 === "推" || 接着 === "强推") 刷完要.current = 接着;
-    开始刷新(() => router.refresh());
+    开始刷新(async () => { if (刷新) await 刷新(); else router.refresh(); });
   };
 
   /** 下拉、文本、数字、日期…和项目卡 / 编辑项目框里同一套控件 */

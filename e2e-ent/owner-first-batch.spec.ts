@@ -202,7 +202,7 @@ test("A2 只负责项目的人：各入口没有点了就 404 的客户链接", 
   await 登录(page, 丙.email);
   const 正文 = page.getByRole("main");
   const 全部 = [];
-  for (const 路径 of ["/dashboard", "/overview", "/follow-ups", "/follow-ups/plans", "/follow-ups/watchlist", "/contacts", "/customers", "/projects", `/projects/${项目A}`, "/reports", "/leads", "/pool"]) {
+  for (const 路径 of ["/dashboard", "/overview", "/follow-ups/plans", "/contacts", "/customers", "/projects", `/projects/${项目A}`, "/leads", "/pool"]) {
     全部.push(...await 客户链接(page, 路径));
   }
   const 坏 = [];
@@ -287,8 +287,10 @@ test("A3 A4 市场成员的客户分给销售：弹窗没有带待办的勾，�
   await expect(那项).toBeVisible();
   await 那项.click();
   await expect(弹窗.getByText("原负责人没做完的待办一起转给新负责人")).toHaveCount(0);
-  await 弹窗.getByRole("button", { name: /分\s*配/ }).click();
-  await expect(page.locator(".ant-message-notice", { hasText: `「${名}」已分给 ${丁.name}` })).toBeVisible();
+  // 11-15 起确认键直接写「分给 某某」（原型 pr.assign），分成了不弹顶部提示：弹窗收起、结果写回那一行「已分给 某某 ✓」
+  await 弹窗.getByRole("button", { name: `分给 ${丁.name}`, exact: true }).click();
+  await expect(弹窗).toBeHidden();
+  await expect(正文.getByText(`已分给 ${丁.name} ✓`)).toBeVisible();
   expect((await db.customer.findUniqueOrThrow({ where: { id: 客户 } })).salesOwnerId).toBe(丁.id);
   expect((await db.project.findUniqueOrThrow({ where: { id: 线索 } })).ownerId).toBe(丁.id);
   expect((await db.task.findUniqueOrThrow({ where: { id: 活1.待办 } })).ownerId).toBe(市场乙.id);
@@ -308,7 +310,7 @@ test("A3 A4 市场成员的客户分给销售：弹窗没有带待办的勾，�
   await 勾计划.click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect.poll(async () => (await db.followPlan.findUniqueOrThrow({ where: { id: 活1.计划 } })).done).toBe(true);
-  const 市场链接 = [...await 客户链接(page, "/overview"), ...await 客户链接(page, "/follow-ups/plans"), ...await 客户链接(page, "/follow-ups"), ...await 客户链接(page, "/leads"), ...await 客户链接(page, "/projects")];
+  const 市场链接 = [...await 客户链接(page, "/overview"), ...await 客户链接(page, "/follow-ups/plans"), ...await 客户链接(page, "/leads"), ...await 客户链接(page, "/projects")];
   console.log(`市场成员的客户链接：${JSON.stringify(市场链接)}`);
   expect(市场链接.filter((x) => x.href.includes(客户))).toEqual([]);
   // 列表上没有改、删的入口
@@ -358,10 +360,9 @@ test("A3 A4 市场成员的客户分给销售：弹窗没有带待办的勾，�
   // 客户页上的计划行写「到跟进计划里办」：计划页切全部成员，能找到别人留下的这条并勾掉
   await page.goto("/follow-ups/plans");
   await 正文.getByText("全部成员", { exact: true }).click();
+  // 11-15 起点 ✓ 直接完成（原型 ls.pl.done），不再先弹「记一笔 / 跳过」小框；底部撤销条说完成了哪条
   await 正文.getByRole("button", { name: `完成 市场二${后缀}计划` }).click();
-  const 小框 = page.getByRole("dialog");
-  await expect(小框).toBeVisible();
-  await 小框.getByRole("button", { name: /跳过/ }).click();
+  await expect(page.getByRole("status").filter({ hasText: `已完成「市场二${后缀}计划」` })).toBeVisible();
   await expect.poll(async () => (await db.followPlan.findUniqueOrThrow({ where: { id: 活2.计划 } })).done).toBe(true);
 });
 
@@ -401,17 +402,23 @@ test("A5 批量自动分配同客户多线索：结果行写已随客户，归�
     }
     await expect(正文.getByText("已选 4 条")).toBeVisible();
     await 正文.locator("button:not([aria-label])", { hasText: "自动分配" }).click();
-    const 结果 = page.getByTestId("lead-auto-assign-result");
-    await expect(结果).toBeVisible();
-    const 行们 = 结果.locator("li");
-    await expect(行们).toHaveCount(4);
-    const 字 = await 行们.allInnerTexts();
+    /*
+      11-15 起（原型 pr.autobatch，P-界面-40）：分出去不能撤回，先一个后果框写清「自动分配 4 条线索」，点「分出去 4 条」才分；
+      分完不再弹名单，结果原地写进每一行末那格（「已分给 某某 ✓」，随客户给的写「某某（随客户）」）。窄屏下框和结果格照样不许溢出
+    */
+    const 确认 = page.getByRole("dialog", { name: "自动分配 4 条线索" });
+    await expect(确认).toBeVisible();
+    await 量(page, ".ant-modal-container", `确认框 ${宽}`);
+    await 能点(page, 确认.getByRole("button", { name: "分出去 4 条" }), `确认框 ${宽}`);
+    await 确认.getByRole("button", { name: "分出去 4 条" }).click();
+    await expect(确认).toBeHidden();
+    const 结果 = 正文.locator(".assign-done, .assign-fail");
+    await expect(结果).toHaveCount(4);
+    const 字 = await 结果.allInnerTexts();
     console.log(`批量结果行 ${宽}：${JSON.stringify(字.map((x) => x.slice(-40)))}`);
-    expect(字.filter((x) => x.includes("已随客户给"))).toHaveLength(2);
-    await 量(page, '[data-testid="lead-auto-assign-result"]', `结果行 ${宽}`);
-    await 量(page, ".ant-modal-container", `结果弹窗 ${宽}`);
-    await 能点(page, page.getByRole("button", { name: "知道了" }), `结果弹窗 ${宽}`);
-    await page.getByRole("button", { name: "知道了" }).click();
+    expect(字.filter((x) => /^已分给 .+ ✓$/.test(x.trim()))).toHaveLength(4);
+    expect(字.filter((x) => x.includes("（随客户）"))).toHaveLength(2);
+    await 量(page, "main .assign-done", `结果格 ${宽}`);
 
     const 项目们 = await db.project.findMany({ where: { id: { in: ids } }, select: { ownerId: true } });
     const 主人 = new Set(项目们.map((p) => p.ownerId));
@@ -433,7 +440,10 @@ test("A6 项目单领后进受限客户详情：领完客户负责人不变，�
   await page.goto(`/pool?keyword=${encodeURIComponent(名)}`);
   const 正文 = page.getByRole("main");
   await 正文.getByRole("button", { name: `领取 ${名}` }).click();
-  await expect(page.locator(".ant-message-notice", { hasText: "已领取" })).toBeVisible();
+  // 11-15 起领取在行上原地确认（InlineConfirm），点「确认领取」才领
+  await 正文.getByRole("button", { name: "确认领取" }).click();
+  // 11-15 起领取的反馈是底部撤销条（UndoBar，role=status），不弹顶部 message
+  await expect(page.getByRole("status").filter({ hasText: "已领取" })).toBeVisible();
   const p = await db.project.findUniqueOrThrow({ where: { id: 项目 } });
   expect(p.ownerId).toBe(丙.id);
   expect(p.pooledAt).toBeNull();

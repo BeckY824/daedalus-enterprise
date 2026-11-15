@@ -6,6 +6,7 @@ import { useOptimistic, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Segmented, Select, Tabs } from "antd";
 import { PageHead } from "@/components/ui";
+import Skeleton from "@/components/Skeleton";
 import { 视图们, type 视图 } from "./views";
 import { 读页签, 复盘页签们, 复盘页签叫法, type 复盘页签 } from "@/lib/project/board-todos";
 import CustomRangePicker from "@/components/CustomRangePicker";
@@ -77,6 +78,8 @@ export default function DataShell({
       else router.push(url, { scroll: false });
     });
   };
+  /** 卡点页签不跟人员选择（page.tsx 卡点分支）：人员那一行照摆、只是点不了。按乐观的页签算，点下去就变淡，不等服务端 */
+  const 人不适用 = 显签 === "block";
   const 视图条 = (
     <div className="data-shell-bar">
       {/* 换到别的视图把 from / to 一起去掉；选「自定义」只写 view，那一段服务端落到本月 */}
@@ -97,6 +100,7 @@ export default function DataShell({
       <Segmented
         className="data-shell-scope"
         aria-label="看我的还是团队的"
+        disabled={人不适用}
         value={值}
         onChange={(v) => 改({ ownerId: v === "mine" ? 我 : undefined, p: undefined })}
         options={[{ value: "mine", label: "我的" }, { value: "team", label: "团队" }]}
@@ -108,6 +112,7 @@ export default function DataShell({
       <Select
         className="data-shell-who"
         aria-label="看谁的"
+        disabled={人不适用}
         value={显人}
         // 换了人，待办从第一页看起
         onChange={(v: string) => 改({ ownerId: v || undefined, p: undefined })}
@@ -125,7 +130,15 @@ export default function DataShell({
       {页签 ? (
         <>
           {/* 人员选择器在页签上面：四个页签共用，切页签不丢（沟通页签的「按负责人筛」就是它） */}
-          {选人 && <div className="data-shell-bar data-shell-bar-who">{我的团队()}{人下拉()}</div>}
+          {/* 卡点按角色开关定能看谁、不跟人员选择：这一行不撤（撤了整页往上跳一截，ov.layout），留在原地变淡、点不了 */}
+          {选人 && (
+            <div
+              className={`data-shell-bar data-shell-bar-who${人不适用 ? " is-na" : ""}`}
+              title={人不适用 ? "卡点按角色定能看谁，不跟这里的人员选择" : undefined}
+            >
+              {我的团队()}{人下拉()}
+            </div>
+          )}
           <Tabs
             className="data-shell-tabs"
             activeKey={显签}
@@ -136,11 +149,18 @@ export default function DataShell({
             animated={{ inkBar: true, tabPane: false }}
             items={复盘页签们.map((k) => ({ key: k, label: 复盘页签叫法[k] }))}
           />
-          <div className={`data-shell-body${切着 ? " data-shell-pending" : ""}`} aria-busy={切着 || undefined}>
-            {/* 乐观切过去、服务端那一屏还没回来时，旧内容留在原地淡一点（不清空，下面不塌一截再撑开） */}
-            {页签 === "data" && 视图条}
-            {children}
-          </div>
+          {/* g.tabswitch：换了页签——立刻切过去、先出骨架（旧页签的内容不再灰着留 1 秒）；
+              同一页签里换筛选 / 换人——旧内容留在原地淡一点（不清空，下面不塌一截再撑开） */}
+          {切着 && 显签 !== 页签 ? (
+            <div className="data-shell-body ov-tab-skel" aria-busy>
+              <Skeleton 行={6} 说法={`正在打开「${显签 ? 复盘页签叫法[显签] : ""}」`} />
+            </div>
+          ) : (
+            <div className={`data-shell-body${切着 ? " data-shell-pending" : ""}`} aria-busy={切着 || undefined}>
+              {页签 === "data" && 视图条}
+              {children}
+            </div>
+          )}
         </>
       ) : (
         <>

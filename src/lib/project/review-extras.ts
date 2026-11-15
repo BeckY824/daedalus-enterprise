@@ -48,7 +48,9 @@ export function 按节点数(们: readonly { node: string }[], 字典: 阶段字
 }
 
 /** 超时预警的一行（数据页签）：3 天内回公海的项目，回收日早的在前 */
-export type 预警行 = { id: string; 名: string; 节点: string; 负责人: string; 回收日: string };
+export type 预警行 = { id: string; 名: string; 节点: string; 负责人: string; 回收日: string;
+  /** 项目阶段（线索 / 商机）：复盘「回收提醒」展开后原地记沟通要交（记项目沟通Action 的 阶段），PR5b ov.recycle */
+  阶段?: string };
 export const 预警最多 = 8;
 
 /** 还没沟通过的项目（沟通页签旁）：首页「暂未跟进」同口径，最近建的在前，最多 5 个 + 总数 */

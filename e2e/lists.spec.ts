@@ -155,7 +155,8 @@ test("J-013 有数据的库里搜一个不存在的词：写「没有符合条�
       await p.$disconnect();
     }
     await page.goto(`${路}?keyword=${encodeURIComponent("根本没有这个人")}`);
-    await expect(page.getByText(/没有符合条件的/)).toBeVisible();
+    // 服务端流式出页时，React 揭晓 Suspense 之前会有一份藏着（hidden）的同样内容在 DOM 里，只认看得见的那份
+    await expect(page.getByText(/没有符合条件的/).filter({ visible: true })).toBeVisible();
     await expect(page.getByRole("button", { name: 主 })).toHaveCount(0);
     await expect(page.getByPlaceholder(/姓名|名称|搜索/).first()).toHaveValue("根本没有这个人");
   }
@@ -286,7 +287,8 @@ test("J-015 联系人页按关系本地筛完：不冒「只有最近 N 条，�
   await p.$disconnect();
   await 登录(page);
   await page.goto("/contacts");
-  await expect(page.locator(".ant-table-row", { hasText: "财务丙" })).toBeVisible();
+  // 限定在正文：服务端流式出页时 body 下有一份藏着的同样内容，React 揭晓前那一瞬两份都在
+  await expect(page.getByRole("main").locator(".ant-table-row", { hasText: "财务丙" })).toBeVisible();
   const 关系 = page.locator(".ant-select", { hasText: "全部职位 / 角色" });
   await expect(async () => {
     await 关系.click();

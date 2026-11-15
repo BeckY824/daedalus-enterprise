@@ -110,9 +110,10 @@ test("J-082 记录页勾完成的待办：原地划线留着、能撤销；之�
   // 勾完不立刻消失：原地划线，提示里给撤销
   await expect(行).toHaveClass(/is-done/);
   await expect.poll(() => 查((p) => p.task.findUniqueOrThrow({ where: { id: 待办.id } }).then((t) => t.done))).toBe(true);
-  const 提示 = page.locator(".ant-message").getByText("「寄样品」已完成");
+  // 11-15 起提示和撤销在底部撤销条上（UndoBar，role=status）
+  const 提示 = page.getByRole("status").filter({ hasText: "「寄样品」已完成" });
   await expect(提示).toBeVisible();
-  await page.locator(".ant-message").getByRole("button", { name: /撤\s*销/ }).click();
+  await 提示.getByRole("button", { name: /撤\s*销/ }).click();
   await expect.poll(() => 查((p) => p.task.findUniqueOrThrow({ where: { id: 待办.id } }).then((t) => t.done))).toBe(false);
   await expect(行).not.toHaveClass(/is-done/);
 
@@ -139,7 +140,7 @@ test("J-097 记录页删待办：先问一句；点「取消」不删，点「�
 
   await 行.getByRole("button", { name: "删除待办" }).click();
   await 行.getByRole("button", { name: "删除", exact: true }).click();
-  await expect(page.locator(".ant-message")).toContainText("待办已删除");
+  // 11-15 起删后那一行收起、不弹顶部提示：行没了 + 库里没了就是结果
   await expect(page.getByRole("main").locator(".rec-task", { hasText: "回个电话" })).toHaveCount(0);
   expect(await 查((p) => p.task.count({ where: { id: 待办.id } }))).toBe(0);
 });
@@ -165,7 +166,7 @@ test("J-079 计划页每一行的「删」：先问、确认后那一行和库�
   await 点到出现(行.getByRole("button", { name: "删除 删掉的回访" }), 行.getByText("删除这条？"));
   expect(await 查((p) => p.followPlan.count({ where: { id: 计划.id } }))).toBe(1);
   await 行.getByRole("button", { name: "删除", exact: true }).click();
-  await expect(page.locator(".ant-message")).toContainText("计划已删除");
+  // 11-15 起删后那一行收起、不弹顶部提示（原型 ls.pl.del）：行没了 + 库里没了就是结果
   await expect(page.getByRole("main").locator(".plan-row", { hasText: "删掉的回访" })).toHaveCount(0);
   expect(await 查((p) => p.followPlan.count({ where: { id: 计划.id } }))).toBe(0);
 });
@@ -213,8 +214,7 @@ test("J-083 计划页点完成：那一行先留在原地打着勾，不立刻�
     await route.fallback();
   });
   await 行.getByRole("button", { name: "完成 先做的回访" }).click();
-  // 2026-10-16 起点计划的完成先弹小框（记一笔 + 排下次）；这里只看留位，走「跳过，直接完成」= 原来那一下
-  await page.getByRole("button", { name: "跳过，直接完成" }).click();
+  // 11-15 起点 ✓ 直接完成（原型 ls.pl.done「画勾、划线、收起，可撤销」），不再先弹「记一笔 / 跳过」小框
   await expect.poll(() => 扣住了, { message: "没等到「完成」那一下的请求" }).toBe(true);
   // 点完的那一刻还在原处、是「做完了」的样子；下面那条没顶上来
   await expect(行).toHaveClass(/plan-row-done/);

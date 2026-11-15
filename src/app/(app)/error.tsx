@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useTransition } from "react";
 import StatePage from "@/components/StatePage";
 import { 决定错误展示 } from "@/lib/error-display";
 
@@ -18,6 +19,9 @@ export default function AppError({
   reset: () => void;
 }) {
   const 展示 = 决定错误展示(error, process.env.NODE_ENV === "development");
+  // 点「重试」原地转圈再换内容（原型 st.error），不先闪一下空白；重来还是错就停转、留在这页
+  const [重试中, 开始] = useTransition();
+  const [点过, set点过] = useState(false);
 
   if (展示.类型 === "未登录") {
     return (
@@ -37,7 +41,7 @@ export default function AppError({
           ? 展示.文本
           : "多半是一次偶发的失败（网络断了一下、或者服务端这次没答上来）。先重试；还不行就整页重新加载。"
       }
-      动作={{ label: "重试", onClick: reset }}
+      动作={{ label: 点过 && !重试中 ? "再试一次" : "重试", loading: 重试中, onClick: () => { set点过(true); 开始(() => reset()); } }}
       次动作={{ label: "重新加载", onClick: () => window.location.reload() }}
       附注={
         展示.类型 === "编号" && 展示.digest ? (

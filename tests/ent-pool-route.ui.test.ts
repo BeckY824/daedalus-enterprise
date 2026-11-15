@@ -216,6 +216,8 @@ it.each([1024, 1280, 1366])("公海页 %ipx：客户池并成一行、展开逐�
     // 勾这一行 = 勾下面能领的项目（原负责人是我的那个不交上去，提示里说原因）
     await page.locator("tr[data-row-key='k:k1'] .ant-checkbox-input").check();
     await page.locator(".list-sel").getByRole("button", { name: /^领\s*取$/ }).click();
+    // P-界面-41（11-15）：批量领取先在选择条里原地确认
+    await page.locator(".list-sel").getByRole("button", { name: /确认领取/ }).click();
     await expect.poll(() => page.evaluate(() => (window as unknown as { __调?: unknown[][] }).__调?.length ?? 0)).toBe(1);
     const 调 = await page.evaluate(() => (window as unknown as { __调: unknown[][] }).__调[0]);
     expect([调[0], 调[2]]).toEqual([[], ["3", "2"]]);

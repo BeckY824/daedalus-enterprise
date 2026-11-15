@@ -1,10 +1,8 @@
 /**
  * 上级看下属留下的事项（11-09，P-转-10 的上级视图）：限定层放行下属名下的待办、计划，客户却可能进不去。
- * 「上级打不开的事项不给链接、权限不放宽」：计划页、盯盘清单都不给 /customers/id 链接；客户可见范围和放行条件不动。
+ * 「上级打不开的事项不给链接、权限不放宽」：计划页不给 /customers/id 链接（盯盘清单页 11-15 删了）；客户可见范围和放行条件不动。
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { renderToStaticMarkup } from "react-dom/server";
-import type { ReactElement } from "react";
 
 const mocks = vi.hoisted(() => ({ user: { id: "", name: "", email: "", role: "SALES", title: "", avatar: null as string | null } }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
@@ -27,7 +25,6 @@ import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 名下事项够不着 } from "@/lib/enterprise/follow-perm";
-import WatchlistPage from "@/app/(app)/follow-ups/watchlist/page";
 import PlansPage from "@/app/(app)/follow-ups/plans/page";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
@@ -133,33 +130,3 @@ describe("计划页：项目下一步", () => {
   });
 });
 
-describe("盯盘清单：逾期计划带来的客户", () => {
-  const 打开 = async (u: 人, scope: string) => {
-    mocks.user = { ...u };
-    const el = await 以谁的身份(u.id, () => WatchlistPage({ searchParams: Promise.resolve({ scope }) }));
-    return renderToStaticMarkup(el as ReactElement);
-  };
-
-  it("上级的团队视图：进不了的客户只写名字，不给链接", async () => {
-    const c = await 客户(甲.id);
-    await 计划(c, 成员.id);
-    const html = await 打开(上级, "team");
-    const 名 = (await prisma.customer.findUniqueOrThrow({ where: { id: c } })).name;
-    expect(html).toContain(名);
-    expect(html).not.toContain(`/customers/${c}`);
-  });
-
-  it("本人的视图：把客户分出去后留下的逾期计划也不给链接", async () => {
-    const c = await 客户(甲.id);
-    await 计划(c, 成员.id);
-    const html = await 打开(成员, "mine");
-    expect(html).not.toContain(`/customers/${c}`);
-  });
-
-  it("进得去的客户：照旧给链接", async () => {
-    const c = await 客户(成员.id);
-    await 计划(c, 成员.id);
-    const html = await 打开(上级, "team");
-    expect(html).toContain(`/customers/${c}`);
-  });
-});

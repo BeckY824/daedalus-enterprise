@@ -868,3 +868,27 @@ export async function 设自动判断开关(开: boolean): Promise<void> {
     summary: 开 ? "打开了「导入时让 AI 认列」" : "关掉了「导入时让 AI 认列」",
   });
 }
+
+/**
+ * 设置 →「全公司规则」里改不了的那一项点「找总管理开通」（原型 st.lock，P-界面-46）：给在职的系统管理员各发一条站内通知，
+ * 写明谁想改哪一项。同一人同一项一天只发一次（去重键带日期），连点不刷屏。回发给了谁，按钮原地写「已发给 xx」
+ */
+export async function 找总管理开通(项: string): Promise<{ ok: true; 发给: string[] } | { ok: false; error: string }> {
+  const me = await requireUser();
+  if (!企业版()) return { ok: false, error: "这个版本没有这项" };
+  const { 锁着的规则 } = await import("@/lib/enterprise/settings-scope");
+  const 那项 = 锁着的规则.find((x) => x.key === 项);
+  if (!那项) return { ok: false, error: "没有这一项设置" };
+  const org = await 读组织();
+  const 管们 = [...org.成员.keys()].filter((id) => id !== me.id && 是系统管理员of(org, id));
+  if (!管们.length) return { ok: false, error: "现在没有在职的系统管理员，请直接联系公司负责人" };
+  const { notify } = await import("@/lib/enterprise/notify");
+  const 今天 = new Date().toISOString().slice(0, 10);
+  await notify(管们, {
+    kind: "设置", title: `${me.name} 想改「${那项.名}」`,
+    body: `${me.name} 在设置里点了「找总管理开通」：${那项.说明}。这一项只有系统管理员能改，要改请到 设置 里处理或和他沟通。`,
+    link: "/settings", key: `ask-setting:${me.id}:${项}:${今天}`,
+  });
+  const 人 = await prisma.user.findMany({ where: { id: { in: 管们 } }, select: { name: true } });
+  return { ok: true, 发给: 人.map((u) => u.name) };
+}

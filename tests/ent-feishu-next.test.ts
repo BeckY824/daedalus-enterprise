@@ -73,11 +73,11 @@ describe("入口 /api/auth/feishu", () => {
     expect(mocks.罐.has(去处Cookie)).toBe(false);
   });
 
-  it("已登录：直接去 next；没 next 照旧 /start；恶意的也 /start", async () => {
+  it("已登录：直接去 next；没 next 照旧 /dashboard；恶意的也 /dashboard", async () => {
     mocks.已登录 = true;
     expect(去向(await 入口(请求("/api/auth/feishu?next=" + encodeURIComponent("/customers/abc"))))).toBe("/customers/abc");
-    expect(去向(await 入口(请求("/api/auth/feishu")))).toBe("/start");
-    expect(去向(await 入口(请求("/api/auth/feishu?next=" + encodeURIComponent("//evil.com"))))).toBe("/start");
+    expect(去向(await 入口(请求("/api/auth/feishu")))).toBe("/dashboard");
+    expect(去向(await 入口(请求("/api/auth/feishu?next=" + encodeURIComponent("//evil.com"))))).toBe("/dashboard");
   });
 
   it("没配飞书：回登录页，next 还在", async () => {
@@ -93,18 +93,18 @@ describe("回调 /api/auth/feishu/callback", () => {
   };
   const 回 = () => 回调(请求("/api/auth/feishu/callback?state=st&code=c"));
 
-  it("成功：回 next，Cookie 用完即清；没 next 照旧 /start", async () => {
+  it("成功：回 next，Cookie 用完即清；没 next 照旧 /dashboard", async () => {
     备好("/customers/abc");
     expect(去向(await 回())).toBe("/customers/abc");
     expect(mocks.罐.has(去处Cookie)).toBe(false);
     备好();
-    expect(去向(await 回())).toBe("/start");
+    expect(去向(await 回())).toBe("/dashboard");
   });
 
-  it("Cookie 被改成外站：不认，/start", async () => {
+  it("Cookie 被改成外站：不认，/dashboard", async () => {
     for (const 坏 of ["//evil.com", "https://evil.com", "/\\evil.com"]) {
       备好(坏);
-      expect(去向(await 回()), 坏).toBe("/start");
+      expect(去向(await 回()), 坏).toBe("/dashboard");
     }
   });
 

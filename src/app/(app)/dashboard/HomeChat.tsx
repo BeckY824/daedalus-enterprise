@@ -6,6 +6,7 @@ import { useModel } from "@/components/ModelPicker";
 import type { ModelOption } from "@/lib/llm";
 import { useBusiness } from "@/lib/business-client";
 import { 首页屏 } from "@/lib/home-thread";
+import AiQuickAsks, { type 快捷项 } from "@/components/AiQuickAsks";
 import type { 历史消息 } from "@/lib/thread-history";
 import PaneToggle from "@/components/PaneToggle";
 import StartCard, { 默认产品名 } from "./StartCard";
@@ -38,7 +39,7 @@ export type 首页信号 = {
   逾期: number; 高意向: number; 本月签约: { 币种: string; 合计: number }[]; 高意向标签: string;
 };
 
-export default function HomeChat({ 会话, userName, suggestions, context, models, 空库, 信号, 模式 = "宽", 上下文提示, 上下文范围, scope = 首页屏, 标题前缀, 自己服务器 = false, 去导入 = false, 企业版 = false, 满额提醒 = [], 渠道名们, 要下一步 = false, 新线索企业: 企业格, 产品名, 指标卡 }: {
+export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, context, models, 空库, 信号, 模式 = "宽", 上下文提示, 上下文范围, scope = 首页屏, 标题前缀, 自己服务器 = false, 去导入 = false, 企业版 = false, 满额提醒 = [], 渠道名们, 要下一步 = false, 新线索企业: 企业格, 产品名, 指标卡 }: {
   /** 地址上 ?c= 指的那条对话，服务端读好传进来。null = 一屏新对话 */
   会话: { id: string; title: string; messages: 历史消息[] } | null;
   userName: string;
@@ -54,6 +55,8 @@ export default function HomeChat({ 会话, userName, suggestions, context, model
    * 而且人是在**别的页面上**顺手问一句，不需要再被问候一次。
    */
   模式?: "宽" | "窄";
+  /** 窄模式空屏的快捷项（AI 浮窗在客户页：总结这位客户 / 起草跟进话术 / 现在卡在哪），「问」的那几项走 Composer 的 问() 直接发出去 */
+  空屏快捷?: readonly 快捷项[];
   /** 窄模式下带的当前页上下文（见 lib/ai-context-page.ts）。宽模式没有这回事 */
   上下文提示?: string;
   /** 同一份上下文的结构化那半：这一页是哪张表、上面列着谁。给服务端的意图直连用 */
@@ -135,11 +138,14 @@ export default function HomeChat({ 会话, userName, suggestions, context, model
           而且人是在**别的页面上**顺手问一句，不需要再被问候一次。
           只留一句说明——它还要告诉人「这儿带着当前页」。
         */
-        <div className="cli-narrow-hint">
-          问一句关于这一页的，或者任何{b.customer}、任何数。
-          <br />
-          输入 <kbd>/</kbd> 看命令。
-        </div>
+        <>
+          <div className="cli-narrow-hint">
+            问一句关于这一页的，或者任何{b.customer}、任何数。
+            <br />
+            输入 <kbd>/</kbd> 看命令。
+          </div>
+          {空屏快捷 && <AiQuickAsks 项={空屏快捷} 问={(q) => composerRef.current?.问(q)} />}
+        </>
       ) : empty && 空库 ? (
         /* 一条业务数据都没有：不摆信号、不摆建议问题，只有一张「开始」卡 */
         <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>

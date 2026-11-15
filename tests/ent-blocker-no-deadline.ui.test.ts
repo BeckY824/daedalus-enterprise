@@ -19,7 +19,7 @@ const plugin: Plugin = { name: "blocker-boundaries", setup(b) {
   const 空跑 = "async()=>({ok:true})";
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
-  stub(/blocker-actions$/, `const f=${空跑},字=async()=>({ok:true,字典:[]});export const 发布卡点Action=async(id,input)=>{window.__发布=input;return{ok:true}},认领卡点Action=f,完成卡点Action=f,删卡点Action=f,存卡点默认Action=async(p)=>{window.__存=p;return{ok:true}},存卡点角色开关Action=f,新增原因Action=字,改原因名Action=字,改原因状态Action=字,删原因Action=字,合并原因Action=字,我的卡点Action=async()=>[];`);
+  stub(/blocker-actions$/, `const f=${空跑},字=async()=>({ok:true,字典:[]});export const 发布卡点Action=async(id,input)=>{window.__发布=input;window.__发布挂=id;return window.__发布回??{ok:true}},认领卡点Action=async(id)=>{(window.__认领??=[]).push(id);return window.__认领回??{ok:true}},完成卡点Action=f,删卡点Action=async(id)=>{(window.__删??=[]).push(id);return window.__删回??{ok:true}},存卡点默认Action=async(p)=>{window.__存=p;return{ok:true}},存卡点角色开关Action=f,新增原因Action=字,改原因名Action=字,改原因状态Action=字,删原因Action=字,合并原因Action=字,我的卡点Action=async()=>[];`);
   stub(/\/projects\/actions$|\/ent-dict-actions$|\/commission-actions$/, `const f=${空跑};export const 加组员角色=f,改组员角色=f,加项目异常类别=f,改项目异常类别=f,改组织规则=f,预览超时回收=async()=>({ok:true,项目:[]}),改提成比例=f,改按人提成比例=f,加企业选项=f,改企业选项=f,存分配谁能用=f;`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
@@ -38,6 +38,7 @@ beforeAll(async () => {
       能:{认领:status==='待接受',完成:status==='处理中',最后一个:status==='处理中'}});
     window.__render=(what)=>root.render(<App>{
       what==='list'?<BlockerList 们={[卡('1','待接受',5,null),卡('2','处理中',4,null),卡('3','已解决',9,6)]} 带项目/>:
+      what==='publish2'?<PublishBlockerModal followUpId='f1' 沟通们={[{id:'f1',occurredAt:'2026-11-10T02:00:00.000Z',content:'最近这条：客户说预算要再批'},{id:'f2',occurredAt:'2026-11-03T02:00:00.000Z',content:'上周那条'+'很长'.repeat(40)}]} 默认={默认卡点默认} 原因们={['价格','交期']} onClose={()=>{window.__关=1}}/>:
       what==='publish'?<PublishBlockerModal followUpId='f1' 默认={默认卡点默认} 原因们={['价格','交期']} onClose={()=>{}}/>:
       <div style={{maxWidth:640,padding:16}}><Settings 成员={[]} value={{角色们:[],类别们:[],组织规则:null,持有:{},企业选项:null,卡点默认:默认卡点默认,卡点原因:[{id:'r1',name:'价格',status:'启用',sort:0,用了:2,并入:null},{id:'r2',name:'前台新加的',status:'待审核',sort:1,用了:1,并入:null}],卡点开关:默认卡点角色开关,能改卡点:true,提成比例:null,能改提成比例:false,挡:{字典:null,持有上限:null,节点时限:null,必填字段:null,阶段规则:null}}}/></div>
     }</App>);
@@ -45,7 +46,7 @@ beforeAll(async () => {
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-async function open(what: "list" | "publish" | "settings", width = 1366) {
+async function open(what: "list" | "publish" | "publish2" | "settings", width = 1366) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://blk.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
@@ -136,3 +137,65 @@ it.each([1024, 1280, 1366])("Windows %ipx：超长描述、标题、认领人名
     }
   } finally { await page.close(); }
 });
+
+/* dt.blocker（PR7b 第三批）：不弹顶部提示——认领就地变色、发布框写挂在哪条沟通（可换）、没成原因写在框里 / 那条卡点下面 */
+const 窗 = (page: import("playwright").Page, k: string) => page.evaluate((k) => Reflect.get(window, k) ?? null, k);
+it("dt.blocker：认领就地变色、不弹提示、没有撤销；被挡原因写在那条卡点下面、按钮还在", async () => {
+  const { page, errors } = await open("list");
+  try {
+    const 第一条 = page.locator(".pd-blk").first();
+    await 第一条.getByRole("button", { name: /^认\s*领$/ }).click();
+    await expect.poll(() => 第一条.getAttribute("class")).toContain("is-claimed");
+    await 第一条.getByRole("status").filter({ hasText: "已认领" }).waitFor();
+    expect(await 窗(page, "__认领")).toEqual(["1"]);
+    expect(await page.locator(".ant-message").innerText().catch(() => "")).toBe("");
+    expect(await page.locator("#undo-host").count()).toBe(0);
+    expect(await 第一条.getByRole("button", { name: /^认\s*领$/ }).count()).toBe(0);
+  } finally { await page.close(); }
+  const p2 = await open("list");
+  try {
+    await p2.page.evaluate(() => Reflect.set(window, "__认领回", { ok: false, error: "这个卡点已经有人认领了" }));
+    const 第一条 = p2.page.locator(".pd-blk").first();
+    await 第一条.getByRole("button", { name: /^认\s*领$/ }).click();
+    await 第一条.getByRole("alert").filter({ hasText: "已经有人认领" }).waitFor();
+    expect(await 第一条.getAttribute("class")).not.toContain("is-claimed");
+    expect(await 第一条.getByRole("button", { name: /^认\s*领$/ }).count()).toBe(1);
+    expect(await p2.page.locator(".ant-message").innerText().catch(() => "")).toBe("");
+    expect(p2.errors).toEqual([]);
+  } finally { await p2.page.close(); }
+  expect(errors).toEqual([]);
+});
+
+it("dt.blocker：发布框写「挂在」哪条沟通、能换；类型影响一行带默认；被挡原因写在框里、框不关", async () => {
+  for (const w of [1024, 1366]) {
+    const { page, errors } = await open("publish2", w);
+    try {
+      const dlg = page.getByRole("dialog"); await dlg.waitFor();
+      expect(await dlg.locator(".pd-blk-on").innerText()).toContain("挂在");
+      expect(await dlg.locator(".pd-blk-on").innerText()).toContain("最近这条");
+      // 类型、影响在同一行
+      const [甲, 乙] = await Promise.all([dlg.getByLabel("卡点类型").boundingBox(), dlg.getByLabel("影响等级").boundingBox()]);
+      expect(Math.abs((甲?.y ?? 0) - (乙?.y ?? 99))).toBeLessThan(4);
+      // 换挂到上周那条（超长内容不把框撑宽）
+      await dlg.getByLabel("挂在哪条沟通").click();
+      await page.locator(".ant-select-item-option").filter({ hasText: "上周那条" }).click();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+      await dlg.getByLabel("阻碍原因").click();
+      await page.locator(".ant-select-item-option").filter({ hasText: "价格" }).click();
+      await page.keyboard.press("Escape");
+      await dlg.getByLabel("卡点描述").fill("卡在报价");
+      await page.evaluate(() => Reflect.set(window, "__发布回", { ok: false, error: "这条沟通已经删了，换一条" }));
+      await dlg.getByRole("button", { name: /发\s*布/ }).click();
+      await dlg.getByRole("alert").filter({ hasText: "已经删了" }).waitFor();
+      expect(await 窗(page, "__发布挂")).toBe("f2");
+      expect(await 窗(page, "__关")).toBeNull();
+      expect(await page.locator(".ant-message").innerText().catch(() => "")).toBe("");
+      // 放行：框关，不弹「已发布」
+      await page.evaluate(() => Reflect.set(window, "__发布回", undefined));
+      await dlg.getByRole("button", { name: /发\s*布/ }).click();
+      await expect.poll(() => 窗(page, "__关")).toBe(1);
+      expect(await page.locator(".ant-message").innerText().catch(() => "")).toBe("");
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+}, 60_000);

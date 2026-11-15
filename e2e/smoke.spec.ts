@@ -30,7 +30,8 @@ const 手机号 = `139${戳}0` .slice(0, 11).padEnd(11, "8");
 async function 提交登录(page: Page, who: { 用户名: string; 密码: string }) {
   await page.goto("/login");
   // antd v6 的 Alert 没有 role="alert"，只能按类名找
-  const 提示 = page.locator(".ant-alert");
+  // 登录页 11-15 起：账号 / 密码错写在那一格底下（.auth-field-err，role=alert），网络这类才是表单底下那条 Alert
+  const 提示 = page.locator(".ant-alert, .auth-field-err");
 
   for (let i = 0; i < 3; i++) {
     await page.getByPlaceholder("用户名").fill(who.用户名);
@@ -58,7 +59,9 @@ test.describe.configure({ mode: "serial" });
 test("1. 密码错了要有明确提示，正确才放进来", async ({ page }) => {
   const r = await 提交登录(page, { 用户名: 账号.用户名, 密码: "这不是密码" });
   expect(r).toBe("err");
-  await expect(page.locator(".ant-alert")).toContainText("密码错误");
+  // 错在密码格就写在密码格底下，并挂到密码框的读屏说明上（原型 st.login）
+  await expect(page.getByRole("alert").filter({ hasText: "密码错误" })).toBeVisible();
+  await expect(page.getByPlaceholder("登录密码")).toHaveAccessibleDescription(/密码错误/);
   await expect(page).toHaveURL(/\/login/);
 
   await 登录(page);
@@ -118,19 +121,21 @@ test("5. 给客户录一条跟进，时间线上要看得见", async ({ page }) 
     try {
       const 张三 = await db.user.findFirstOrThrow({ where: { email: 账号.用户名 } });
       企业客户id = (await db.customer.create({ data: { name: 客户名, phone: 手机号, salesOwnerId: 张三.id, channelOwnerId: 张三.id } })).id;
+      // 这条的界面部分企业版跳过（见下），第 9 条「跟进记录在第二张表」要这位真有一条跟进，照原来界面记的那条在库里补上
+      await db.followUp.create({ data: { type: "PHONE", title: "首次电话沟通", content: "介绍了课程与价格", customerId: 企业客户id, ownerId: 张三.id } });
     } finally {
       await db.$disconnect();
     }
   }
+  /*
+    企业版原来从沟通记录页（/follow-ups?customer=…&new=1）带着这位记一笔；那页 11-15 删了，企业版记沟通在客户档案里、
+    要先有项目（e2e-ent/record-followup.spec.ts 里验）。上面在库里建的这位留给后面几条用，这一条到这儿为止
+  */
+  test.skip(企业版, "沟通记录页 11-15 删了：企业版记沟通在客户档案里（先有项目），e2e-ent/record-followup.spec.ts 里验");
   await 登录(page);
-  if (企业版) {
-    // 企业版客户页的沟通记录只读（各项目的跟进汇总过来）：从跟进页带着这位记一笔，回客户页看汇总里有没有
-    await page.goto(`/follow-ups?customer=${企业客户id}&new=1`);
-  } else {
-    await page.goto("/customers");
-    await page.locator("main").getByRole("link", { name: 客户名 }).click();
-    await page.getByRole("button", { name: /记录跟进/ }).first().click();
-  }
+  await page.goto("/customers");
+  await page.locator("main").getByRole("link", { name: 客户名 }).click();
+  await page.getByRole("button", { name: /记录跟进/ }).first().click();
   const 弹窗 = page.getByRole("dialog");
   await 弹窗.getByLabel("标题").fill("首次电话沟通");
   await 弹窗.getByLabel("沟通内容").fill("介绍了课程与价格");
@@ -294,8 +299,10 @@ test("9. 筛选后导出：行数对得上、中文原样、公式不会被带�
 
   // 用姓名筛出唯一一条，导出的行数应当跟着筛选走。
   // 工具栏 2026-09-17 起没有「搜索」按钮了（下拉改了就生效，关键词回车生效）
-  await page.getByPlaceholder("姓名 / 电话 / 公司 / 行业").fill(客户名);
-  await page.getByPlaceholder("姓名 / 电话 / 公司 / 行业").press("Enter");
+  // 服务端流式出页时，React 揭晓 Suspense 之前会有一份藏着（hidden）的同样内容在 DOM 里，只认看得见的那份
+  const 搜索框 = page.getByPlaceholder("姓名 / 电话 / 公司 / 行业").filter({ visible: true });
+  await 搜索框.fill(客户名);
+  await 搜索框.press("Enter");
   /**
    * 必须等 URL 真的带上筛选条件再刷新。搜索是 startTransition 里的
    * router.push，异步的；点完就 reload 会抢在它前面，把筛选条件冲掉，

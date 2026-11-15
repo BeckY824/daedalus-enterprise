@@ -16,6 +16,8 @@ const plugin: Plugin = { name: "contact-v2-boundaries", setup(b) {
   stub(/^\.\/pick$/, "export const 搜客户=async()=>[{id:'k9',name:'别的客户',附注:null}];");
   stub(/^\.\/actions$/, `
     export const saveUnassignedContact=async()=>({ok:true});
+    // dt.contact：号码失焦先查（默认没撞；__先查撞 给了就撞那几位）
+    export const 联系人号码先查=async(们,除了)=>{(window.__先查=window.__先查||[]).push([们,除了]);return {ok:true,撞了:window.__先查撞||[]};};
     export const saveContact=async(x)=>{(window.__存=window.__存||[]).push(x);
       if(x.照存) return {ok:true};
       return {ok:false,error:'撞了',撞了:[
@@ -87,7 +89,8 @@ it("号码撞了：黄条列出撞到的人（可点、可挂到本客户）、�
     await p2.getByPlaceholder(/号码/).first().fill("13900000001");
     await p2.getByRole("button", { name: /^保\s?存$/ }).click();
     await p2.locator(".ant-alert-warning").waitFor();
-    await p2.getByRole("button", { name: "仍然保存" }).click();
+    // 新建时这颗叫「仍然新建」（dt.contact）
+    await p2.getByRole("button", { name: "仍然新建" }).click();
     await p2.waitForFunction(() => (window as unknown as { __存好?: number }).__存好 === 1);
     const 存 = await p2.evaluate(() => (window as unknown as { __存: { 照存?: boolean }[] }).__存.map(x => !!x.照存));
     expect(存).toEqual([false, true]);
@@ -102,6 +105,31 @@ it("号码撞了：黄条列出撞到的人（可点、可挂到本客户）、�
     await p3.getByPlaceholder(/号码/).first().fill("13900000002");
     await p3.locator(".ant-alert-warning").waitFor({ state: "detached" });
   } finally { await p3.close(); }
+});
+
+it("dt.contact：号码一失焦就查，撞了不等点保存就摆黄条（挂到本客户 / 仍然新建）；没撞不摆", async () => {
+  const page = await open("__表单");
+  try {
+    await page.getByLabel("姓名").fill("李四");
+    // 没撞：失焦查了一遍，不摆黄条
+    await page.getByPlaceholder(/号码/).first().fill("13900000009");
+    await page.getByLabel("姓名").click();
+    await page.waitForFunction(() => ((window as unknown as { __先查?: unknown[] }).__先查 ?? []).length === 1);
+    expect(await page.locator(".ant-alert-warning").count()).toBe(0);
+    const 查的 = await page.evaluate(() => (window as unknown as { __先查: [{ kind: string; value: string }[], unknown][] }).__先查[0]);
+    expect(查的[0]).toEqual([{ kind: "phone", value: "13900000009" }]);
+    expect(查的[1]).toBeNull();
+    // 撞了：失焦就摆，标题说先核对（还没保存）
+    await page.evaluate(() => { (window as unknown as { __先查撞: unknown[] }).__先查撞 = [{ contactId: "p1", name: "张三", customerId: "k1", customerName: "甲公司", 同事: "销售", kind: "phone", value: "13900000001" }]; });
+    await page.getByPlaceholder(/号码/).first().fill("13900000001");
+    await page.getByLabel("姓名").click();
+    const 条 = page.locator(".ant-alert-warning");
+    await 条.waitFor();
+    expect(await 条.innerText()).toContain("这个号码已经记在别的联系人身上，先核对一下");
+    expect(await page.evaluate(() => (window as unknown as { __存?: unknown[] }).__存 ?? [])).toEqual([]);
+    await 条.getByRole("button", { name: /挂到本/ }).waitFor();
+    await 条.getByRole("button", { name: "仍然新建" }).waitFor();
+  } finally { await page.close(); }
 });
 
 it("挂靠一段：挂来的摆主客户和说明、能解除不能换；自家的摆也挂在、看不到的不给链接；只读不给按钮", async () => {

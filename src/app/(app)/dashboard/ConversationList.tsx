@@ -4,9 +4,11 @@ import { dayjs } from "@/lib/utils";
 
 import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { App, Drawer, Dropdown, Input, Modal } from "antd";
+import { Drawer, Dropdown, Input, Modal } from "antd";
+import { useConsequence } from "@/components/ConsequenceDialog";
 import { PlusOutlined, MoreOutlined } from "@ant-design/icons";
-import { 删掉对话的屏, 新起一屏, 当前对话, 首页屏 } from "@/lib/home-thread";
+import { 删掉对话的屏, 新起一屏, 当前对话, 首页屏, useThread, useConversationId } from "@/lib/home-thread";
+import { 占位标题 } from "./home-look";
 import { clearJob } from "@/lib/ai-jobs";
 import { 重命名对话, 删除对话, type 对话概要 } from "./threads";
 import WidthHandle, { 对话列表把手 } from "@/components/WidthHandle";
@@ -32,12 +34,22 @@ import { 视图AI对话话 } from "@/lib/enterprise/view-as-words";
 export default function ConversationList({ rows }: { rows: 对话概要[] }) {
   const router = useRouter();
   const sp = useSearchParams();
-  const { message, modal } = App.useApp();
+  const [问后果, 后果框] = useConsequence();
+  /** 改名没改成：原因写在改名框里，框不关（g.save，不弹顶部提示） */
+  const [改名错, set改名错] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   /** 正在改名的那条。null = 没有 */
   const [改名, set改名] = useState<{ id: string; title: string } | null>(null);
 
   const 选中 = sp.get("c") ?? 当前对话(首页屏) ?? "";
+  /*
+    home.threads：点了「新建对话」或这一屏问了第一句、还没落库，列表顶上先占一行（标题 = 第一句截断，和落库同一截法）；
+    答完落库、router.refresh 带回真行、对话 id 认领上，占位自己让位
+  */
+  const 屏 = useThread(首页屏);
+  const 屏对话 = useConversationId(首页屏);
+  const [刚新建, set刚新建] = useState(false);
+  const 占位 = 占位标题({ 第一句: 屏[0]?.question, 对话id: 屏对话, 刚新建, 看着老对话: !!sp.get("c") });
   // 收起 / 太窄时成抽屉（lib/middle-pane.ts）。抽屉里点了一条就关上：打开它就是为了换一条
   const 中栏 = useMiddlePane("chat");
   usePaneShortcut(中栏.切换);
@@ -45,6 +57,7 @@ export default function ConversationList({ rows }: { rows: 对话概要[] }) {
 
   function 新建() {
     关抽屉();
+    set刚新建(true);
     新起一屏(首页屏);
     router.push("/dashboard");
   }
@@ -58,21 +71,24 @@ export default function ConversationList({ rows }: { rows: 对话概要[] }) {
   async function 存名字() {
     if (!改名) return;
     const r = await 重命名对话(改名.id, 改名.title);
+    if (!r.ok) return void set改名错("改不了这条对话");
+    set改名错(null);
     set改名(null);
-    if (!r.ok) return void message.error("改不了这条对话");
     startTransition(() => router.refresh());
   }
 
+  /** 删对话：后果框（回不来 + 不受影响两条），没删掉原因写在框里、框不关 */
   function 删(c: 对话概要) {
-    modal.confirm({
-      title: "删掉这条对话？",
-      content: `「${c.title}」连同里面 ${c.条数} 条消息一起删掉，不能撤销。客户、跟进这些业务数据不受影响。`,
-      okText: "删掉",
-      okButtonProps: { danger: true },
-      cancelText: "算了",
-      onOk: async () => {
+    void 问后果({
+      题: `删掉对话「${c.title}」`,
+      后果: [
+        { 标: "回不来", 话: `连同里面 ${c.条数} 条消息一起删掉，不能撤销`, 级: "危" },
+        { 标: "不动", 话: "客户、跟进这些业务数据不受影响" },
+      ],
+      是: "删掉",
+      做: async () => {
         const r = await 删除对话(c.id);
-        if (!r.ok) return void message.error("删不掉这条对话");
+        if (!r.ok) return { ok: false, error: "删不掉这条对话" };
         /*
           库里删了还不算删完：**每一页的面板各自存着一屏**（见 lib/home-thread），
           那几屏里还挂着这条对话问过的话。2026-09-19 报上来的：在这条列表里把对话
@@ -86,6 +102,7 @@ export default function ConversationList({ rows }: { rows: 对话概要[] }) {
           router.push("/dashboard");
         }
         startTransition(() => router.refresh());
+        return { ok: true };
       },
     });
   }
@@ -112,10 +129,16 @@ export default function ConversationList({ rows }: { rows: 对话概要[] }) {
         </button>
         {视图中 ? (
           <div className="pane-empty">{视图AI对话话}</div>
-        ) : rows.length === 0 ? (
+        ) : rows.length === 0 && !占位 ? (
           <div className="pane-empty">还没有问过什么。在右边问一句，这里就会留下一条。</div>
         ) : (
-          组.map(([名, 条目]) =>
+          <>
+          {占位 && (
+            <div className="chat-row on chat-row-new" aria-current="true">
+              <span className="chat-row-b" title={占位}>{占位}</span>
+            </div>
+          )}
+          {组.map(([名, 条目]) =>
             条目.length === 0 ? null : (
               <section key={名} className="chat-g">
                 <div className="chat-g-h">{名}</div>
@@ -142,14 +165,15 @@ export default function ConversationList({ rows }: { rows: 对话概要[] }) {
                 ))}
               </section>
             ),
-          )
+          )}
+          </>
         )}
       </div>
 
       <Modal
         open={改名 !== null}
         title="重命名对话"
-        onCancel={() => set改名(null)}
+        onCancel={() => { set改名(null); set改名错(null); }}
         onOk={存名字}
         okText="保存"
         cancelText="取消"
@@ -163,7 +187,9 @@ export default function ConversationList({ rows }: { rows: 对话概要[] }) {
           onPressEnter={存名字}
           placeholder="这条对话叫什么"
         />
+        {改名错 && <p className="home-rename-err" role="alert">{改名错}</p>}
       </Modal>
+      {后果框}
     </>
   );
 

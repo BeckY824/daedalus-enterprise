@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { App, Button, Image, Popconfirm, Spin, Upload } from "antd";
+import { useEffect, useRef, useState } from "react";
+import { Button, Image, Spin, Upload } from "antd";
+import InlineConfirm from "@/components/InlineConfirm";
 import { AudioOutlined, DeleteOutlined, DownloadOutlined, PaperClipOutlined } from "@ant-design/icons";
 import { 合并附件, 是图片, 是音频, 收的沟通类型, 读大小, type 附件 } from "@/lib/attachment-rules";
 import { 传附件 } from "@/lib/attachment-upload";
@@ -18,7 +19,15 @@ import { 视图外部话 } from "@/lib/enterprise/view-as-words";
  * on变了：一批传完（有传成的）或删掉一个后叫一次，外面 router.refresh，项目附件卡的沟通格和合计跟着变
  */
 export default function FollowAttachments({ followUpId, 附件: 起始, 能传: 能传参, 能删: 能删参, on变了 }: { followUpId: string; 附件: 附件[]; 能传: boolean; 能删: boolean; on变了?: () => void }) {
-  const { message } = App.useApp();
+  /** 就地提示（g.save）：传不上、删不掉的原因写在这一块顶上，不弹顶部提示；几秒后自己收 */
+  const [错, set错] = useState<string | null>(null);
+  const 错计时 = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const 说错 = (话: string) => {
+    if (错计时.current) clearTimeout(错计时.current);
+    set错(话);
+    错计时.current = setTimeout(() => set错(null), 6000);
+  };
+  useEffect(() => () => { if (错计时.current) clearTimeout(错计时.current); }, []);
   // 切换视图（只读预览）：看图、听录音照旧，不能传、删、下载（服务端同样拒）
   const 视图中 = useViewAs();
   const 能传 = 能传参 && !视图中;
@@ -38,7 +47,7 @@ export default function FollowAttachments({ followUpId, 附件: 起始, 能传: 
     set传着((n) => n + 1);
     try {
       const r = await 传附件({ followUpId }, f);
-      if (!r.ok) return void message.error(r.error);
+      if (!r.ok) return void 说错(r.error);
       这批.current.传成++;
       const 新 = r.附件;
       if (新) set新传((x) => [...x, 新]);
@@ -52,29 +61,39 @@ export default function FollowAttachments({ followUpId, 附件: 起始, 能传: 
     }
   }
 
-  async function 删(a: 附件) {
+  /** 删附件：就地确认一次（P-界面-40）；没删掉回原因，问句留着、原因写在块顶上 */
+  async function 删(a: 附件): Promise<{ ok: true } | { ok: false; error: string }> {
+    let 因: string;
     try {
       const r = await fetch(`/api/attachments/${a.id}`, { method: "DELETE" });
       const j = (await r.json().catch(() => ({}))) as { error?: string };
-      if (!r.ok) return void message.error(j.error ?? "没删掉");
-      set删了((x) => [...x, a.id]);
-      on变了?.();
+      if (r.ok) {
+        set删了((x) => [...x, a.id]);
+        on变了?.();
+        return { ok: true };
+      }
+      因 = j.error ?? "没删掉";
     } catch {
-      message.error("没删掉，请检查网络后再试");
+      因 = "没删掉，请检查网络后再试";
     }
+    说错(因);
+    return { ok: false, error: 因 };
   }
 
   if (!列表.length && !能传) return null;
   const 图们 = 列表.filter((a) => 是图片(a.mime));
   const 别的 = 列表.filter((a) => !是图片(a.mime));
   const 删钮 = (a: 附件) => 能删 && (
-    <Popconfirm title={`删掉「${a.name}」？`} okText="删掉" okButtonProps={{ danger: true }} cancelText="不删" onConfirm={() => 删(a)}>
-      <Button size="small" type="text" danger icon={<DeleteOutlined />} aria-label={`删掉 ${a.name}`} />
-    </Popconfirm>
+    <span className="att-del">
+      <InlineConfirm 问="删掉这个？" 是="删掉" 做={() => 删(a)}>
+        <Button size="small" type="text" danger icon={<DeleteOutlined />} aria-label={`删掉 ${a.name}`} />
+      </InlineConfirm>
+    </span>
   );
 
   return (
     <div className="follow-att" data-testid="follow-attachments">
+      {错 && <div className="att-note att-note-err" role="alert">{错}</div>}
       {图们.length > 0 && (
         <Image.PreviewGroup>
           <div className="follow-att-pics">

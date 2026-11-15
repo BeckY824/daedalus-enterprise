@@ -56,7 +56,9 @@ it("切换种类、加选项、停用；375 宽不横向撑出", async () => {
   // 停用「其他」：按钮变成「启用」
   const 行 = page.locator("div").filter({ hasText: /^其他/ }).last();
   await 行.getByRole("button", { name: /停\s*用/ }).click();
-  await page.getByRole("button", { name: /确\s*定|停\s*用/ }).last().click().catch(() => {});
+  // 停用改成原地确认（PR9 st.dict）：按钮自己变成问句，再点问句里的「停用」（原生按钮，名字中间没有 antd 插的空格）
+  await page.getByText("停用后不能再选").waitFor();
+  await page.getByText("停用后不能再选").locator("..").getByRole("button", { name: "停用", exact: true }).click();
   await page.waitForFunction(() => (window as unknown as { __opts: Record<string, { name: string; active: boolean }[]> }).__opts.recycle.find((x) => x.name === "其他")?.active === false);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT, fullPage: true });
