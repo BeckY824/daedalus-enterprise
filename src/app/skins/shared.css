@@ -138,12 +138,15 @@
   --ant-box-shadow: var(--shadow-card);
   --ant-box-shadow-secondary: var(--shadow-pop);
 
-  /* antd 自己的动效也跟着主题走：像素的阶跃、高级的慢、科技的利落，下拉和弹窗里一样看得出来 */
+  /* antd 自己的动效也跟着主题走：像素的阶跃、高级的慢、科技的利落，下拉和弹窗里一样看得出来。
+     两条「back」原本都带过冲（勾选框打勾、徽标进出、表单报错收起）：全站不回弹（P-界面-38）后
+     out-back 接到不过冲的 --ease-spring，in-back（离场前先往回缩一下）接到 --ease-morph */
   --ant-motion-ease-out: var(--ease);
   --ant-motion-ease-out-circ: var(--ease);
   --ant-motion-ease-in-out: var(--ease-morph);
   --ant-motion-ease-in-out-circ: var(--ease-morph);
   --ant-motion-ease-out-back: var(--ease-spring);
+  --ant-motion-ease-in-back: var(--ease-morph);
   --ant-motion-ease-out-quint: var(--ease);
   --ant-motion-duration-fast: var(--t-fast);
   --ant-motion-duration-mid: var(--t);

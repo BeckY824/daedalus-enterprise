@@ -3,7 +3,7 @@
  * 设置 → 外观 → 主题（lib/appearance.ts）。规矩同 pixel.css 顶上：token 只用 :root 已有的名字、色值只在 token 块、
  * 形状规则不超过 10 条。
  * 守三条，免得滑向仿古：不用书法字、不用宣纸纹理、朱红不许挪作他用（--seal 只有 .prop-seal 在用）。
- * 动效：近乎没有弹性——落笔就是落笔（ease 收尾干脆、不过冲）；唯一的一点回弹留给盖章，也只过冲一丝；
+ * 动效：没有弹性——落笔就是落笔（ease 收尾干脆、不过冲）；盖章原来留了一丝过冲，11 月全站不回弹（P-界面-38）后 spring 和 ease 同值；
  * 时长和现状同四档，落印 440：落下、压实、抬起三段要看得出来。
  */
 :root[data-skin="ledger"], [data-skin-preview="ledger"] {
@@ -34,7 +34,7 @@
   --row-h: 44px;
 
   --ease: cubic-bezier(.25, .9, .3, 1);
-  --ease-spring: cubic-bezier(.3, 1.12, .5, 1);
+  --ease-spring: cubic-bezier(.25, .9, .3, 1);
   --ease-morph: cubic-bezier(.4, 0, .2, 1);
   --t-press: 90ms; --t-fast: 120ms; --t: 180ms; --t-morph: 320ms;
   --t-seal: 440ms;
