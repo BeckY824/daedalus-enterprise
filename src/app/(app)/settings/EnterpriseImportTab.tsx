@@ -28,6 +28,7 @@ import {
 import EnterpriseImportReport from "./EnterpriseImportReport";
 import { useViewAs } from "@/components/ViewAsContext";
 import { 视图外部话 } from "@/lib/enterprise/view-as-words";
+import { useSettingsNote } from "./InlineNote";
 
 /**
  * 设置 → 企业版导入（只有 CRM_ENTERPRISE=1、管理员、不在共享试用区时才摆出来）。
@@ -53,7 +54,9 @@ const 错话 = (e: unknown) => (e instanceof Error ? e.message : "没成功，�
 type 冲突页 = Awaited<ReturnType<typeof 冲突列表>>;
 
 export default function EnterpriseImportTab() {
-  const { message, modal } = App.useApp();
+  const { modal } = App.useApp();
+  // 不弹顶部提示（原型 g.notice）：成没成写在这一块底部的就地小条，出错 role=alert
+  const [就地, 提示条] = useSettingsNote();
   const [概况, set概况] = useState<企业版概况 | null>(null);
   const [出错, set出错] = useState<string | null>(null);
   const [页签, set页签] = useState("import");
@@ -103,12 +106,12 @@ export default function EnterpriseImportTab() {
         const r = await 一段(b.id);
         if (r.完了) return r;
         if (r.状态 !== 进行中) {
-          message.info("这一批别处正在处理，稍后刷新看结果");
+          就地.info("这一批别处正在处理，稍后刷新看结果");
           return null;
         }
       }
     } catch (e) {
-      message.error(`${错话(e)}。已经做了的留着，可以再点「接着」`);
+      就地.error(`${错话(e)}。已经做了的留着，可以再点「接着」`);
       return null;
     } finally {
       set跑(null);
@@ -124,7 +127,7 @@ export default function EnterpriseImportTab() {
 
   async function 写(b: 批次行) {
     const r = await 一直跑(b, "导入中", "applying", 正式导入一段);
-    if (r) message.success(`导入完成：新建 ${r.新建}，更新 ${r.更新}，跳过 ${r.跳过}${r.冲突 ? `，冲突 ${r.冲突}` : ""}${r.失败 ? `，失败 ${r.失败}` : ""}`);
+    if (r) 就地.success(`导入完成：新建 ${r.新建}，更新 ${r.更新}，跳过 ${r.跳过}${r.冲突 ? `，冲突 ${r.冲突}` : ""}${r.失败 ? `，失败 ${r.失败}` : ""}`);
   }
   async function 撤(b: 批次行) {
     const r = await 一直跑(b, "撤回中", "reverting", 撤回一段);
@@ -138,10 +141,10 @@ export default function EnterpriseImportTab() {
   async function 看报告(b: 批次行) {
     try {
       const r = await 取试跑报告(b.id);
-      if (!r) return message.warning("这一批没有存报告");
+      if (!r) return 就地.warning("这一批没有存报告");
       打开报告(b.id, r.报告, r.状态 !== "preview");
     } catch (e) {
-      message.error(错话(e));
+      就地.error(错话(e));
     }
   }
 
@@ -151,7 +154,7 @@ export default function EnterpriseImportTab() {
       if (看?.批次Id === b.id) set看(null);
       void 载入();
     } catch (e) {
-      message.error(错话(e));
+      就地.error(错话(e));
     }
   }
 
@@ -275,6 +278,7 @@ export default function EnterpriseImportTab() {
   );
 
   return (
+    <>
     <Tabs
       activeKey={页签}
       onChange={set页签}
@@ -318,13 +322,16 @@ export default function EnterpriseImportTab() {
         },
       ]}
     />
+    {提示条}
+    </>
   );
 }
 
 /* ───────────────────────── 导入：传文件 ───────────────────────── */
 
 function UploadPane({ on出报告 }: { on出报告: (批次Id: string, 报告: 试跑报告) => void }) {
-  const { message } = App.useApp();
+  // 不弹顶部提示（原型 g.notice）：成没成写在这一块底部的就地小条，出错 role=alert
+  const [就地, 提示条] = useSettingsNote();
   const 视图中 = useViewAs();
   const [文件们, set文件们] = useState<UploadFile[]>([]);
   const [传, set传] = useState(false);
@@ -340,7 +347,7 @@ function UploadPane({ on出报告 }: { on出报告: (批次Id: string, 报告: �
       set文件们([]);
       on出报告(j.批次Id, j.报告);
     } catch (e) {
-      message.error(错话(e));
+      就地.error(错话(e));
     } finally {
       set传(false);
     }
@@ -371,6 +378,7 @@ function UploadPane({ on出报告 }: { on出报告: (批次Id: string, 报告: �
       <Button type="primary" disabled={!文件们.length || 视图中} title={视图中 ? 视图外部话 : undefined} loading={传} onClick={() => void 试跑()}>
         {传 ? "读文件、认列、清洗中…" : "试跑"}
       </Button>
+      {提示条}
     </Space>
   );
 }
@@ -380,7 +388,9 @@ function UploadPane({ on出报告 }: { on出报告: (批次Id: string, 报告: �
 const 每页冲突 = 50;
 
 function ConflictPane({ on变了 }: { on变了: () => void }) {
-  const { message, modal } = App.useApp();
+  const { modal } = App.useApp();
+  // 不弹顶部提示（原型 g.notice）：成没成写在这一块底部的就地小条，出错 role=alert
+  const [就地, 提示条] = useSettingsNote();
   const [页, set页] = useState(1);
   const [数据, set数据] = useState<冲突页 | null>(null);
   const [载, set载] = useState(false);
@@ -392,9 +402,9 @@ function ConflictPane({ on变了 }: { on变了: () => void }) {
     (p: number) =>
       冲突列表({ 跳过: (p - 1) * 每页冲突, 取: 每页冲突 })
         .then(set数据)
-        .catch((e: unknown) => message.error(错话(e)))
+        .catch((e: unknown) => 就地.error(错话(e)))
         .finally(() => set载(false)),
-    [message],
+    [就地],
   );
 
   useEffect(() => {
@@ -420,12 +430,12 @@ function ConflictPane({ on变了 }: { on变了: () => void }) {
             </ul>
           ),
         });
-      } else message.success(话);
+      } else 就地.success(话);
       set载(true);
       void 拉(页);
       on变了();
     } catch (e) {
-      message.error(错话(e));
+      就地.error(错话(e));
     } finally {
       set定(null);
     }
@@ -494,6 +504,7 @@ function ConflictPane({ on变了 }: { on变了: () => void }) {
           },
         ]}
       />
+      {提示条}
     </Space>
   );
 }
@@ -503,7 +514,9 @@ const 显示 = (v: unknown) => (v === null || v === undefined || v === "" ? "（
 /* ───────────────────────── 同步与切换 ───────────────────────── */
 
 function SyncPane({ 概况, on变了, on出报告 }: { 概况: 企业版概况; on变了: () => void; on出报告: (批次Id: string, 报告: 试跑报告) => void }) {
-  const { message, modal } = App.useApp();
+  const { modal } = App.useApp();
+  // 不弹顶部提示（原型 g.notice）：成没成写在这一块底部的就地小条，出错 role=alert
+  const [就地, 提示条] = useSettingsNote();
   const 视图中 = useViewAs();
   const [忙, set忙] = useState<string | null>(null);
 
@@ -512,7 +525,7 @@ function SyncPane({ 概况, on变了, on出报告 }: { 概况: 企业版概况; 
     try {
       return await f();
     } catch (e) {
-      message.error(错话(e));
+      就地.error(错话(e));
       return null;
     } finally {
       set忙(null);
@@ -591,7 +604,7 @@ function SyncPane({ 概况, on变了, on出报告 }: { 概况: 企业版概况; 
                       title={视图中 ? 视图外部话 : undefined}
                       onClick={async () => {
                         const r = await 做(`同步-${源}`, () => 立即同步(源));
-                        if (r) message[r.结果 === "出错" ? "error" : r.结果 === "成功" ? "success" : "info"](r.话);
+                        if (r) 就地[r.结果 === "出错" ? "error" : r.结果 === "成功" ? "success" : "info"](r.话);
                       }}
                     >
                       立即同步
@@ -604,7 +617,7 @@ function SyncPane({ 概况, on变了, on出报告 }: { 概况: 企业版概况; 
                       onClick={async () => {
                         const r = await 做(`全量-${源}`, () => 从接口拉全量(源));
                         if (!r) return;
-                        if (!r.ok) return void message.error(r.error);
+                        if (!r.ok) return void 就地.error(r.error);
                         on出报告(r.批次Id, r.报告);
                       }}
                     >
@@ -678,6 +691,7 @@ function SyncPane({ 概况, on变了, on出报告 }: { 概况: 企业版概况; 
           <Typography.Text type="secondary">还没有切换过</Typography.Text>
         )}
       </Card>
+      {提示条}
     </Space>
   );
 }

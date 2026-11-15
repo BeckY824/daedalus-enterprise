@@ -14,7 +14,7 @@ import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 
 let browser: Browser, bundle: string;
-type W = { __调: Record<string, unknown[][]>; __挡?: boolean; __render: (o?: { 持有?: { 有: number; 上限: number } | null; 候选信息?: unknown; 无效原因选项?: string[] }) => void };
+type W = { __调: Record<string, unknown[][]>; __挡?: boolean; __render: (o?: { 持有?: { 有: number; 上限: number } | null; 候选信息?: unknown; 无效原因选项?: string[]; 能恢复?: boolean; 多人?: number }) => void };
 
 beforeAll(async () => {
   const plugin: Plugin = { name: "pool-confirm-boundaries", setup(b) {
@@ -43,9 +43,10 @@ beforeAll(async () => {
     const users=[{id:'u1',name:'李想',email:'a'},{id:'u2',name:'周宁',email:'b'},{id:'u3',name:'一位名字特别特别长的同事欧阳某某某',email:'c'}];
     window.__调={};
     let root;
+    const 多=(n)=>Array.from({length:n},(_,i)=>({id:'m'+i,name:'同事'+String(i).padStart(2,'0'),email:'m'+i}));
     window.__render=(o={})=>{ root=root||createRoot(document.getElementById('root')); root.render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
       <div style={{display:'flex'}}><nav style={{width:220,flex:'none'}}/><main style={{flex:1,minWidth:0,padding:24}}>
-        <Pool 行={行} 总数={3} 当前页={1} pageSize={20} 快捷数={快捷数} 属性数={{全部:3,线索池:0,商机池:0,订单池:0,客户池:3}} 截断={false} 库里有 filters={{keyword:'',attr:'',quick:'',sort:''}} 渠道筛选项={[]} 能标无效 能恢复 能分配 users={users} 候选信息={o.候选信息} 无效原因选项={o.无效原因选项} 持有={o.持有??null} 三态开/>
+        <Pool 行={行} 总数={3} 当前页={1} pageSize={20} 快捷数={快捷数} 属性数={{全部:3,线索池:0,商机池:0,订单池:0,客户池:3}} 截断={false} 库里有 filters={{keyword:'',attr:'',quick:'',sort:''}} 渠道筛选项={[]} 能标无效 能恢复={o.能恢复??true} 能分配 users={o.多人?[...users,...多(o.多人)]:users} 候选信息={o.候选信息} 无效原因选项={o.无效原因选项} 持有={o.持有??null} 三态开/>
       </main></div></BusinessProvider></App>); };
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
@@ -80,7 +81,7 @@ it("单个领取：先原地确认、写清后果；取消不调；确认连点�
     // 取消 → 回到「领取」，什么都没做
     await r.getByRole("button", { name: "取消" }).click();
     await r.getByRole("button", { name: /^领取/ }).waitFor();
-    expect(await r.locator(".pool-why").count()).toBe(0);
+    await expect.poll(() => r.locator(".pool-why").count()).toBe(0); // 后果收回去有一下收起动画（原型 pool.claim），等它放完
     expect(await 调(page, "领取")).toBe(0);
     // 再来：确认连点三下只领一次
     await r.getByRole("button", { name: /^领取/ }).click();
@@ -250,7 +251,9 @@ it.each([1024, 1280, 1366])("Windows %ipx + 超长名字：领取确认展开后
         const 顶 = document.elementFromPoint(x.left + x.width / 2, x.top + x.height / 2);
         return { 在屏: x.left >= 0 && x.right <= window.innerWidth, 点得到: !!顶 && b.contains(顶) };
       });
+      // 原型 pool.claim：后果写在名字下（客户名称那一格），不挤在操作列里
       const 格 = tr.querySelector(".pool-why")!.closest("td")!;
+      if (!格.classList.contains("dl-col-客户")) throw new Error("后果没写在名字那一格：" + 格.className);
       const 后 = tr.querySelector(".pool-why")!;
       return { 键们, 后果在格里: 后.getBoundingClientRect().right <= 格.getBoundingClientRect().right + 1 && 后.scrollWidth <= 后.clientWidth + 1, 页宽: document.documentElement.scrollWidth <= window.innerWidth };
     });
@@ -310,6 +313,85 @@ it("分配选人框（P-界面-43）：按部门分组，写持有 / 上限，�
     await page.getByLabel("搜同事名字").press("Enter");
     await expect.poll(() => 调(page, "分配公海")).toBe(1);
     expect(await page.evaluate(() => (window as unknown as W).__调["分配公海"][0][1])).toBe("u2");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("领取确认（原型 pool.claim）：后果写在名字下、高度长出来；操作格不挂全文悬停；确认后按钮处「已领取 ✓」、行滑出；撤销后滑回（pool.undo）", async () => {
+  const { page, errors } = await open();
+  try {
+    const r = 行(page, "c1");
+    const 高0 = (await r.boundingBox())!.height;
+    await r.getByRole("button", { name: /^领取/ }).click();
+    await r.getByRole("button", { name: "确认领取" }).waitFor();
+    // 后果在客户名称格；操作格只有两颗键、挂着 data-no-tip（TruncTip 不冒全文气泡）
+    expect(await r.locator("td.dl-col-客户 .pool-why").count()).toBe(1);
+    expect(await r.locator("td.dl-col-操作 .pool-why").count()).toBe(0);
+    expect(await r.locator("td.dl-col-操作 [data-no-tip]").count()).toBeGreaterThan(0);
+    // 高度是长出来的（motion 从 0 起），不是一下子跳到位：盒子量得到、内容在里面
+    await expect.poll(async () => (await r.boundingBox())!.height).toBeGreaterThan(高0);
+    // 取消：后果收回去，行高回到原来
+    await r.getByRole("button", { name: /取\s*消/ }).click();
+    await expect.poll(() => r.locator(".pool-why").count()).toBe(0);
+    await expect.poll(async () => Math.round((await r.boundingBox())!.height)).toBe(Math.round(高0));
+    // 确认：按钮处写「已领取 ✓」，行带上滑出的类
+    await r.getByRole("button", { name: /^领取/ }).click();
+    await r.getByRole("button", { name: "确认领取" }).click();
+    await r.getByText("已领取 ✓").waitFor();
+    await expect.poll(() => r.getAttribute("class")).toContain("pool-row-leave");
+    // 撤销：行滑回原位（pool-row-back），按钮复原，不另弹提示
+    await 撤销条(page).getByRole("button", { name: /撤销/ }).click();
+    await expect.poll(() => r.getAttribute("class")).toContain("pool-row-back");
+    expect(await r.getAttribute("class")).not.toContain("pool-row-leave");
+    await r.getByRole("button", { name: /^领取/ }).waitFor();
+    expect(await page.locator(".ant-message-notice").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it.each([1024, 1280])("回收站（原型 pool.bin）%ipx：不能恢复的人看到领取灰着、原因整句写完，不被表格右边裁掉", async (w) => {
+  const { page, errors } = await open(w);
+  try {
+    await page.evaluate(() => (window as unknown as W).__render({ 能恢复: false }));
+    const r = 行(page, "c3");
+    const 因 = r.locator(".pool-op-why");
+    await 因.waitFor();
+    expect(await 因.innerText()).toBe("标了无效，要系统管理员先恢复");
+    expect(await r.getByRole("button", { name: /^领取/ }).isDisabled()).toBe(true);
+    const 量 = await 因.evaluate((el) => {
+      const x = el.getBoundingClientRect();
+      const 格 = el.closest("td")!.getBoundingClientRect();
+      const 框 = el.closest(".ant-table-container")!.getBoundingClientRect();
+      const 顶 = document.elementFromPoint(x.left + x.width / 2, x.top + x.height / 2);
+      return { 没截: el.scrollWidth <= el.clientWidth + 1, 在格里: x.right <= 格.right + 1, 在表里: x.right <= 框.right + 1, 看得见: !!顶 && el.contains(顶) };
+    });
+    expect(量).toEqual({ 没截: true, 在格里: true, 在表里: true, 看得见: true });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("分配选人框（原型 pool.assign）：默认选中的人（上次分给的）在名单里高亮带勾、打开就滚到看得见", async () => {
+  const { page, errors } = await open();
+  try {
+    await page.evaluate(() => { localStorage.setItem("pool-assign-recent", JSON.stringify(["m27"])); (window as unknown as W).__render({ 多人: 30 }); });
+    await 行(page, "c1").getByRole("button", { name: /更多操作/ }).click();
+    await page.getByRole("menuitem", { name: "分配给同事" }).click();
+    const 单 = page.getByRole("listbox", { name: "同事" });
+    await 单.waitFor();
+    // 最近分配给：一点就选
+    expect(await page.locator(".pool-pick-recent").innerText()).toContain("同事27");
+    expect(await page.getByRole("button", { name: /^分给/ }).innerText()).toContain("同事27");
+    const 人 = 单.getByRole("option", { name: /同事27/ });
+    expect(await 人.getAttribute("aria-selected")).toBe("true");
+    expect(await 人.locator(".pool-pick-ok").count()).toBe(1);
+    await expect.poll(() => 人.evaluate((el) => {
+      const x = el.getBoundingClientRect(), 框 = el.closest("[role=listbox]")!.getBoundingClientRect();
+      return x.top >= 框.top - 1 && x.bottom <= 框.bottom + 1;
+    })).toBe(true);
+    // ↓ 换到下一位，勾跟着走
+    await page.getByLabel("搜同事名字").press("ArrowDown");
+    await expect.poll(() => 单.getByRole("option", { name: /同事28/ }).getAttribute("aria-selected")).toBe("true");
+    expect(await 人.locator(".pool-pick-ok").count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

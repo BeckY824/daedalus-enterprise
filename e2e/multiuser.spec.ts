@@ -290,8 +290,9 @@ test.describe("E 组：同账号多设备与在线停用", () => {
     const 确认 = 管理.page.getByRole("dialog");
     await expect(确认).toContainText("停用成员");
     if (await 确认.getByRole("combobox").count()) {
-      // 接手人默认空、必须选（11-03 C4-3），没选时确认按钮是灰的
-      await expect(确认.getByRole("button", { name: /确认停用/ })).toBeDisabled();
+      // 接手人默认空、必须选（11-03 C4-3）：停用改成后果框（P-界面-40），没选就点确认，框不关、原因就地写「先选接手人」
+      await 确认.getByRole("button", { name: /确认停用/ }).click();
+      await expect(确认.getByRole("alert")).toContainText("先选接手人");
       await 确认.getByRole("combobox").last().click();
       await 管理.page.locator(".ant-select-dropdown:visible .ant-select-item-option").first().click();
       await 确认.getByRole("button", { name: /确认停用/ }).click();

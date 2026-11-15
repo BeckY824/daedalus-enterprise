@@ -1,7 +1,7 @@
 "use client";
 /**
  * 设置各页签的就地提示（原型 g.save「不弹顶部提示」）：成没成写在这一页签底部一条贴边的小条里，跟着页签走、过一会儿自己收。
- * 用法和 antd 的 message 一样顺手：const [message, 提示条] = useSettingsNote(); … message.success("已保存") … {提示条}
+ * 用法和 antd 的 message 一样顺手（变量各处叫「就地」，免得和顶部提示混）：const [就地, 提示条] = useSettingsNote(); … 就地.success("已保存") … {提示条}
  * 能做成按钮内反馈的（SaveButton）、能撤销的（showUndo）优先用那两个；这里接住其余零散的「已改好 / 没改成」。
  * 读屏：role=status（出错 role=alert），一条覆盖上一条
  */

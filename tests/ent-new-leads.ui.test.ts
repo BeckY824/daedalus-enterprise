@@ -21,7 +21,7 @@ const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   stub(/^\.\/actions$/, "export const 回项目邀请=async()=>({ok:true}),市场复核Action=async()=>({ok:true}),总管理终判Action=async()=>({ok:true}),看板推进预检=async()=>({ok:true,还差:[],能留空推:false}),改项目节点=async()=>({ok:true}),编辑项目=async(...a)=>{(window.__调||=[]).push(['编辑项目',...a]);return {ok:true}},看板补必填料=async()=>({ok:false,error:'x'});");
   stub(/^\.\.\/actions$/, "const 好=async()=>({ok:true});export const 编辑项目=好,改项目画像Action=好,勾项目交付=好;");
   // 分配那几个 server action：记下调了什么，回成功
-  stub(/assign-actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return n==='本月分配情况'?{月:'2026-10',人:[]}:n==='我分出去的线索'?[]:n==='批量自动分配'?(window.__批量||{ok:true,结果:[]}):{ok:true,toUserId:'u1',接手人:'王1',已分:1,配额:null,为什么:'按顺序'}};export const 分配线索=记('分配线索'),自动分配线索=记('自动分配线索'),批量自动分配=记('批量自动分配'),本月分配情况=记('本月分配情况'),我分出去的线索=记('我分出去的线索'),关满额提醒=记('关满额提醒'),项目分配线=async()=>({线:'内贸'}),分配带走的项目=async(...a)=>{(window.__调||=[]).push(['分配带走的项目',...a]);return window.__带走||{项目数:0,项目:[]}};");
+  stub(/assign-actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return n==='本月分配情况'?{月:'2026-10',人:[]}:n==='我分出去的线索'?[]:n==='批量自动分配'?(window.__批量||{ok:true,结果:[]}):{ok:true,toUserId:'u1',接手人:'王1',已分:1,配额:null,为什么:'按顺序',还原:{原:'u1',待分配:null,公海:null}}};export const 分配线索=记('分配线索'),自动分配线索=记('自动分配线索'),撤销自动分配=async(...a)=>{(window.__调||=[]).push(['撤销自动分配',...a]);return window.__撤销||{ok:true}},批量自动分配=记('批量自动分配'),本月分配情况=记('本月分配情况'),我分出去的线索=记('我分出去的线索'),关满额提醒=记('关满额提醒'),项目分配线=async()=>({线:'内贸'}),分配带走的项目=async(...a)=>{(window.__调||=[]).push(['分配带走的项目',...a]);return window.__带走||{项目数:0,项目:[]}};");
   // 卡点面板（我的卡点看板）的 server action：这几条测试不点卡点，回成功就行
   stub(/blocker-actions$/, "const 好=async()=>({ok:true});export const 发布卡点Action=好,认领卡点Action=好,完成卡点Action=好,删卡点Action=好,存卡点默认Action=好,存卡点角色开关Action=好,新增原因Action=好,改原因名Action=好,改原因状态Action=好,删原因Action=好,合并原因Action=好,我的卡点Action=async()=>[];");
   // 「给老客户开项目」挑客户、建项目那几个 server action：这几条测试不点，空着就行
@@ -37,7 +37,7 @@ const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   stub(/customers\/board-actions$/, 再看码("再看一列"));
   stub(/^\.\/board-actions$/, 再看码("再看项目页一列"));
   // 向导框换成一个真的 antd 弹框（标题、关掉都照真的走），里面一块写着标题的牌子
-  stub(/^next\/dynamic$/, "import React from 'react';import {Modal} from 'antd';export default function d(){return function D(p){return <Modal open={!!p.open} title={p.标题} footer={null} onCancel={p.onClose} afterClose={p.afterClose}>{p.open&&<div className='wizard-stub' data-project={p.项目||''}>{p.标题}</div>}</Modal>}}");
+  stub(/^next\/dynamic$/, "import React from 'react';import {Modal} from 'antd';export default function d(){return function D(p){return <Modal open={!!p.open} title={p.标题} footer={null} onCancel={p.onClose} afterClose={p.afterClose}>{p.open&&<div className='wizard-stub' data-project={p.项目||''} data-old={(p.老客户&&p.老客户.id)||''}>{p.标题}</div>}</Modal>}}");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
@@ -59,14 +59,14 @@ beforeAll(async () => {
     window.__再看={ok:true,行:Array.from({length:5},(_,i)=>row(120+i,'潜客培育')),总:25};
     // o.工具位：照客户页那样在上面给一条筛选行、右端留一格（customers/board-slot.ts），看板的按钮和提示画进去
     window.__画=(阶段,能分,企,o={})=>{if(o.工具位&&!document.getElementById('slot'))document.getElementById('root').insertAdjacentHTML('beforebegin',"<div class='list-bar'><span class='list-bar-gap'></span><div class='list-bar-end' id='slot'></div></div>");return (window.__root||=createRoot(document.getElementById('root'))).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><看板工具位.Provider value={o.工具位?document.getElementById('slot'):undefined}>
-      <Projects 行={o.每列?[]:o.公海?[{...row(4,'线索推进'),pooled:true,客户在公海:true},{...row(5,'线索推进'),pooled:true}]:行} 列={o.每列?造每列列(o.数):o.看板?五列:[]} 每列={o.每列?{}:undefined} 要的页={o.要的页} 总数={(o.公海?2:行.length)} 页={1} 每页={20} users={o.单人?[{id:'u0',name:'王0',email:'a'}]:[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:o.phase||''}} 阶段={阶段?'线索':undefined} 线索分配开着={!!能分} 能自动分配={!!能分} 能分公海客户项目={!!o.管公海} 企业版={!!企} 客户页={!!o.客户页} 待交接={o.客户页?2:null} 换回客户列表={!!o.换回} 能新建客户={!!o.能新建客户} 能新建={o.能新建!==false} 标题={o.换回?'客户':undefined}/>
+      <Projects 行={o.同批?五列.map(c=>c.行[0]):o.每列?[]:o.公海?[{...row(4,'线索推进'),pooled:true,客户在公海:true},{...row(5,'线索推进'),pooled:true}]:行} 列={o.每列?造每列列(o.数):o.看板?五列:[]} 每列={o.每列?{}:undefined} 要的页={o.要的页} 总数={(o.公海?2:行.length)} 页={1} 每页={20} users={o.单人?[{id:'u0',name:'王0',email:'a'}]:[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:o.phase||''}} 阶段={阶段?'线索':undefined} 线索分配开着={!!能分} 能自动分配={!!能分} 能分公海客户项目={!!o.管公海} 企业版={!!企} 客户页={!!o.客户页} 待交接={o.客户页?2:null} 换回客户列表={!!o.换回} 能新建客户={!!o.能新建客户} 能新建={o.能新建!==false} 标题={o.换回?'客户':undefined}/>
     </看板工具位.Provider></BusinessProvider></App>);};
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
   bundle = r.outputFiles[0].text; browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 选项 = { phase?: string; 看板?: boolean; 每列?: boolean; 数?: number; 单人?: boolean; 要的页?: string; 样式?: boolean; 公海?: boolean; 管公海?: boolean; 客户页?: boolean; 查询?: string; 换回?: boolean; 能新建客户?: boolean; 能新建?: boolean; 工具位?: boolean };
+type 选项 = { phase?: string; 看板?: boolean; 同批?: boolean; 每列?: boolean; 数?: number; 单人?: boolean; 要的页?: string; 样式?: boolean; 公海?: boolean; 管公海?: boolean; 客户页?: boolean; 查询?: string; 换回?: boolean; 能新建客户?: boolean; 能新建?: boolean; 工具位?: boolean };
 async function 打开(新线索: boolean, width = 1280, 能分 = false, 企 = false, o: 选项 = {}): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -161,15 +161,25 @@ it("能分配的人：每条没结局的新线索有「分配」「自动分配�
   const 调 = await page.evaluate(() => (window as unknown as { __调: unknown[][] }).__调);
   expect(调.find((c) => c[0] === "自动分配线索")).toEqual(["自动分配线索", "p1", { 项目: true, 原负责人: "u1" }]);
   expect(await 去了(page)).toEqual([]); // 点按钮不触发行跳转
-  // 撤销 = 负责人转回原来那位（走项目转让同一个动作），行里的结果收掉、两颗键回来
-  // 只还得回负责人：撤销条上先写明，撤完如实说哪些没还原（不假装全撤回）
-  expect(await page.locator(".undo-bar").innerText()).toContain("撤销只改回负责人");
+  // 撤销 = 整批还原（P-撤销-01）：把自动分配回的还原单原样交给 撤销自动分配，服务端核对留痕后负责人、待分配、连带的客户和活一起还；
+  // 不再走「编辑项目改负责人」，撤销条上也不再写「只改回负责人」；撤成了行里的结果收掉、两颗键回来，不另弹顶部提示
+  expect(await page.locator(".undo-bar").innerText()).not.toContain("只改回负责人");
   await page.locator(".undo-bar").getByRole("button", { name: /撤销/ }).click();
   await page.getByRole("button", { name: `自动分配 ${长}1` }).waitFor();
   const 调2 = await page.evaluate(() => (window as unknown as { __调: unknown[][] }).__调);
-  expect(调2.find((c) => c[0] === "编辑项目")).toEqual(["编辑项目", "p1", { ownerId: "u1" }]);
-  await page.getByText("已把「" + 长 + "1」的负责人改回 王1；一起转过去的待办、跟着转的客户没还原，要还请手工改").waitFor();
+  expect(调2.find((c) => c[0] === "撤销自动分配")).toEqual(["撤销自动分配", "p1", { 原: "u1", 待分配: null, 公海: null }]);
+  expect(调2.find((c) => c[0] === "编辑项目")).toBeUndefined();
+  expect(await page.locator(".ant-message").count()).toBe(0);
   expect(errors).toEqual([]); await page.close();
+  // 撤销被挡（分完又被改过 / 过了时限）：撤销条原地写原因，行里的结果留着
+  const 挡 = await 打开(true, 1280, true);
+  await 挡.page.evaluate(() => { (window as unknown as { __撤销: unknown }).__撤销 = { ok: false, error: "分完之后负责人又改过，要改回请手工改" }; });
+  await 挡.page.getByRole("button", { name: `自动分配 ${长}1` }).click();
+  await 挡.page.locator(".assign-done", { hasText: "已分给 王1 ✓" }).waitFor();
+  await 挡.page.locator(".undo-bar").getByRole("button", { name: /撤销/ }).click();
+  await 挡.page.locator(".undo-bar", { hasText: "分完之后负责人又改过" }).waitFor();
+  expect(await 挡.page.locator(".assign-done", { hasText: "已分给 王1 ✓" }).count()).toBe(1);
+  await 挡.page.close();
   const 不能 = await 打开(true);
   expect(await 不能.page.getByRole("button", { name: `分配 ${长}1`, exact: true }).count()).toBe(0);
   await 不能.page.close();
@@ -190,10 +200,20 @@ it("企业版项目首页：「新增项目」一个按钮（没有旁边的下�
     await 框.waitFor();
     const 选项 = 框.locator(".new-proj-opt");
     expect(await 选项.allInnerTexts()).toEqual([expect.stringMatching(/^新客户\n/), expect.stringMatching(/^老客户\n/)]);
-    // 老客户（原型 pr.old，11-15）：不再三个框接力，进同一个新建弹窗（客户名里搜老客户，PR8 cr.old）
+    // 老客户（原型 pr.old，11-15）：点了这一项原地变搜索框（「新客户」那项收起），挑中一位才进新建弹窗、带着这一位；不再三个框接力
     await 选项.nth(1).click();
+    const 搜 = 框.getByRole("textbox", { name: "搜老客户" });
+    await 搜.waitFor();
+    expect(await 框.locator(".new-proj-opt.is-default").count()).toBe(0);
+    expect(await page.locator(".wizard-stub").count()).toBe(0);
+    await 框.getByText("还没有客户，建新客户吧").waitFor();
+    await page.evaluate(() => { (window as unknown as { __搜到: boolean }).__搜到 = true; });
+    await 搜.fill("老");
+    await 框.getByRole("button", { name: /老客户甲/ }).click();
     await page.locator(".wizard-stub").waitFor();
+    expect(await page.locator(".wizard-stub").getAttribute("data-old")).toBe("c9");
     expect(await page.getByRole("dialog", { name: "给老客户开项目" }).count()).toBe(0);
+    await page.evaluate(() => { (window as unknown as { __搜到: boolean }).__搜到 = false; });
     await page.keyboard.press("Escape");
     await page.locator(".wizard-stub").waitFor({ state: "hidden" });
     // 新客户：默认那一项（原型 pr.new）——框一开焦点就在「新客户」上，回车即走；取向导数据，弹「新增项目」向导框，不跳页
@@ -284,7 +304,7 @@ it("企业版项目看板（11-01 会议 C12）：1024 宽五列，右沿渐隐 
   expect(errors).toEqual([]); await page.close();
 });
 
-it("企业版项目看板卡片（11-12 客户详情合并第 3 批）：第一行客户名、第二行项目名，都一行省略；点卡片进客户详情停在这个项目；三种宽度不撑出", async () => {
+it("企业版项目看板卡片（11-12 客户详情合并第 3 批；原型 pr.view / cu.view 11-15 改「卡片名字不截断」）：第一行客户名、第二行项目名，折行写完不省略；点卡片进客户详情停在这个项目；三种宽度不撑出", async () => {
   for (const w of [1024, 1280, 1366]) {
     const { page, errors } = await 打开(false, w, false, true, { 样式: true, 看板: true });
     try {
@@ -292,13 +312,13 @@ it("企业版项目看板卡片（11-12 客户详情合并第 3 批）：第一�
       await 卡.waitFor();
       const 行们 = await 卡.evaluate((el) => {
         const t = el.querySelector(".pipe-card-t") as HTMLElement, o = el.querySelector(".pipe-card-m .pipe-card-o") as HTMLElement;
-        const 一行 = (x: HTMLElement) => x.getBoundingClientRect().height <= parseFloat(getComputedStyle(x).lineHeight) + 1;
-        const 截了 = (x: HTMLElement) => x.scrollWidth > x.clientWidth && getComputedStyle(x).textOverflow === "ellipsis";
-        return { 第一: t.innerText, 第二: o.innerText, 一行: 一行(t) && 一行(o), 截了: 截了(t) && 截了(o), 卡不出列: el.getBoundingClientRect().right <= el.parentElement!.getBoundingClientRect().right + 1 };
+        const 多行 = (x: HTMLElement) => x.getBoundingClientRect().height > parseFloat(getComputedStyle(x).lineHeight) * 1.5;
+        const 没裁 = (x: HTMLElement) => x.scrollWidth <= x.clientWidth + 1 && getComputedStyle(x).textOverflow !== "ellipsis";
+        return { 第一: t.innerText, 第二: o.innerText, 折行: 多行(t) && 多行(o), 没裁: 没裁(t) && 没裁(o), 卡不出列: el.getBoundingClientRect().right <= el.parentElement!.getBoundingClientRect().right + 1 };
       });
       expect(行们.第一, `宽 ${w}`).toMatch(/^某某超长名字.*第二期$/);
       expect(行们.第二, `宽 ${w}`).toMatch(/第二期10$/);
-      expect(行们.一行 && 行们.截了 && 行们.卡不出列, `宽 ${w}`).toBe(true);
+      expect(行们.折行 && 行们.没裁 && 行们.卡不出列, `宽 ${w}`).toBe(true);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `宽 ${w}`).toBe(true);
       await 卡.click();
       expect(await 去了(page), `宽 ${w}`).toEqual(["/customers/c10?project=p10"]);
@@ -671,7 +691,16 @@ it("「新建 ▾ → 新建项目」框接框走完整链再关，焦点回到�
       const 选 = page.getByRole("dialog", { name: "新增项目" });
       await 选.waitFor();
       await 选.getByRole("button", { name: 走 === "老客户" ? /老客户/ : /新客户/ }).click();
+      // 老客户：原地搜索框里键盘走完（↓ 到第一位、回车挑中），进新建弹窗
+      if (走 === "老客户") {
+        await 选.getByRole("textbox", { name: "搜老客户" }).fill("老");
+        await 选.getByRole("button", { name: /老客户甲/ }).waitFor();
+        await 选.getByRole("textbox", { name: "搜老客户" }).press("ArrowDown");
+        await expect.poll(() => page.evaluate(() => document.activeElement?.textContent ?? "")).toContain("老客户甲");
+        await page.keyboard.press("Enter");
+      }
       await page.locator(".wizard-stub").waitFor();
+      if (走 === "老客户") expect(await page.locator(".wizard-stub").getAttribute("data-old")).toBe("c9");
       expect(await page.getByRole("dialog", { name: "给老客户开项目" }).count()).toBe(0);
       await page.keyboard.press("Escape");
       await page.locator(".wizard-stub").waitFor({ state: "hidden" });
@@ -706,4 +735,62 @@ it("看板横向溢出时「→ 还有 N 列」那一行一直在：滑到头按
     expect(await 顶()).toBe(起);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
+});
+
+it("看板 ⇄ 列表原地变形（原型 pr.view）：同一批项目从卡片滑到行、再滑回卡片；卡片名字折行写完不截断（1024 / 1280）；列头计数照常", async () => {
+  for (const w of [1024, 1280]) {
+    const { page, errors } = await 打开(false, w, false, true, { 看板: true, 同批: true, 样式: true });
+    await page.evaluate(() => {
+      const 记: { 标签: string; 键: string; 起: string }[] = ((window as unknown as { __动: unknown[] }).__动 = []) as never;
+      const 原 = Element.prototype.animate;
+      Element.prototype.animate = function (this: HTMLElement, k: Keyframe[] | PropertyIndexedKeyframes | null, o?: number | KeyframeAnimationOptions) {
+        const 首 = Array.isArray(k) ? (k[0] as Record<string, unknown>) : {};
+        记.push({ 标签: this.tagName, 键: this.dataset.morphKey ?? this.dataset.rowKey ?? "", 起: String(首.transform ?? "") });
+        return 原.call(this, k, o);
+      };
+    });
+    const 卡 = page.locator(".pipe-card[data-morph-key]");
+    expect(await 卡.count()).toBe(5);
+    // 名字不截断：折行写完、没被裁，读到的是全名
+    const 量 = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".pipe-card .pipe-card-full")].map((el) => ({ 裁: el.scrollWidth > el.clientWidth + 1, ws: getComputedStyle(el).whiteSpace, 字: el.textContent ?? "" })));
+    expect(量.length).toBeGreaterThanOrEqual(10);
+    for (const x of 量) { expect(x.裁).toBe(false); expect(x.ws).toBe("normal"); }
+    expect(量.some((x) => x.字.startsWith("某某超长名字的智能制造装备与工业自动化系统集成有限公司华东区域采购项目第二期1"))).toBe(true);
+    expect(await page.locator(".pipe-n").first().innerText()).toBe("1");
+    // 看板 → 列表：看得见的卡片对应的行从卡片的位置滑过来（translate 起步），不是整块淡入；
+    // 横向滑在看板框外、没露出来的那一列不量（行照样淡入）
+    const 露着 = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".pipe-card[data-morph-key]")].filter((el) => { const r = el.getBoundingClientRect(); return r.right > 0 && r.left < innerWidth && r.bottom > 0 && r.top < innerHeight; }).map((el) => el.dataset.morphKey!).sort());
+    expect(露着.length).toBeGreaterThanOrEqual(3);
+    await page.locator(".ant-segmented").getByText("列表", { exact: true }).click();
+    await page.locator("tr[data-row-key='p10']").waitFor();
+    const 动1 = await page.evaluate(() => (window as unknown as { __动: { 标签: string; 键: string; 起: string }[] }).__动);
+    expect(动1.filter((x) => x.标签 === "TR" && x.起.startsWith("translate(")).map((x) => x.键).sort()).toEqual(露着);
+    expect(await page.locator(".proj-view-in").count()).toBe(0);
+    // 列表 → 看板：同样滑回卡片
+    await page.evaluate(() => { (window as unknown as { __动: unknown[] }).__动.length = 0; });
+    await page.locator(".ant-segmented").getByText("看板", { exact: true }).click();
+    await 卡.first().waitFor();
+    const 动2 = await page.evaluate(() => (window as unknown as { __动: { 标签: string; 键: string; 起: string }[] }).__动);
+    expect(动2.filter((x) => x.标签 === "DIV" && x.起.startsWith("translate(")).length).toBeGreaterThanOrEqual(3);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(errors).toEqual([]); await page.close();
+  }
+});
+
+it("减弱动态：看板 ⇄ 列表直接换，不位移", async () => {
+  const { page } = await 打开(false, 1280, false, true, { 看板: true, 同批: true });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.evaluate(() => {
+    const 记: string[] = ((window as unknown as { __动: string[] }).__动 = []);
+    const 原 = Element.prototype.animate;
+    Element.prototype.animate = function (this: HTMLElement, k: Keyframe[] | PropertyIndexedKeyframes | null, o?: number | KeyframeAnimationOptions) {
+      const 首 = Array.isArray(k) ? (k[0] as Record<string, unknown>) : {};
+      if (String(首.transform ?? "").startsWith("translate(")) 记.push(this.tagName);
+      return 原.call(this, k, o);
+    };
+  });
+  await page.locator(".ant-segmented").getByText("列表", { exact: true }).click();
+  await page.locator("tr[data-row-key='p10']").waitFor();
+  expect(await page.evaluate(() => (window as unknown as { __动: string[] }).__动)).toEqual([]);
+  await page.close();
 });

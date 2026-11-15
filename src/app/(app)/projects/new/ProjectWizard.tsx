@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { App, Alert, AutoComplete, Button, Input, InputNumber, Modal, Select, Space, Switch, Tag } from "antd";
+import { Alert, AutoComplete, Button, Input, InputNumber, Modal, Select, Space, Switch, Tag } from "antd";
 import { CheckOutlined } from "@ant-design/icons";
 import CopyValue from "@/components/CopyValue";
 import DatePicker from "@/components/BusinessDatePicker";
@@ -34,7 +34,8 @@ import SameNumberEntry from "./SameNumberEntry";
 import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 建档向导, 建档只建客户 } from "../actions";
 import { 搜客户, type 可挑客户 } from "../../customers/[id]/pick";
-import { 给客户建项目, 新项目分配数据 } from "../../customers/[id]/project-actions";
+import { 给客户建项目, 建项目带走的项目, 新项目分配数据 } from "../../customers/[id]/project-actions";
+import { useCarryConfirm } from "../../customers/useCarryConfirm";
 import { 三种业务线, 分配说明, 业务线必填, 客户业务线必填, 建议业务线, 所在地预填, 所在地提示 } from "@/lib/enterprise/assign-line";
 import AddressInput, { 空地址 } from "@/components/AddressInput";
 import { 详细地址上限, 详细地址提示 } from "@/lib/project/profile-rules";
@@ -79,6 +80,12 @@ export type 企业建档 = { 渠道们: 可选渠道[]; 节点们: readonly stri
 export type 建档数据 = { users: 可选成员[]; 要下一步: boolean; 企业: 企业建档 };
 /** 弹窗里摆向导（U-新建-01，10-31 会议）：不摆页头，「存草稿离开」改成关弹窗，建好了先关再跳 */
 type 弹窗模式 = { 关: () => void } | null;
+
+/**
+ * 客户页「新增项目」（原型 cr.old，11-15 起和「新增项目」同一张表）：客户已经定了是这一位——客户段收成一行、不能换，
+ * 项目名默认带客户名，负责人默认客户负责人（在候选里才带），首条沟通挂哪位联系人可选；建好落回这位客户页、停在新项目（landed 亮一下）
+ */
+export type 预选客户 = { 联系人们?: { id: string; name: string; isPrimary: boolean }[]; 项目名?: string; 默认负责人?: string | null };
 
 /** 项目开关（P-界面-36）：客户页「新建客户」默认关；「新增项目」默认开；新线索、团队版「新建项目」开着并锁住（原整页 11-15 删了，现在都是弹窗） */
 export type 项目开关 = "关" | "开" | "锁开";
@@ -160,14 +167,15 @@ function 项目沟通还差(d: 稿, 带项目: boolean, 要下一步: boolean, �
  * 项目是开关：有项目就打开、下面填项目信息，没项目只建客户（首条沟通算客户沟通）；新线索进来开着并锁住。
  * 号码、客户名离开输入框自动查重，也可手动点；中途关掉不落库，填过的每格存本机草稿（一人一份），下次接着填；建好一笔落库，失败整笔不留
  */
-export default function ProjectWizard({ users, 要下一步, 企业 = null, 新线索 = false, 弹窗 = null, 开关 = "锁开" }: { users: 可选成员[]; 要下一步: boolean; 企业?: 企业建档; 新线索?: boolean; 弹窗?: 弹窗模式; 开关?: 项目开关 }) {
+export default function ProjectWizard({ users, 要下一步, 企业 = null, 新线索 = false, 弹窗 = null, 开关 = "锁开", 老客户起手 = null, 预选 = null }: { users: 可选成员[]; 要下一步: boolean; 企业?: 企业建档; 新线索?: boolean; 弹窗?: 弹窗模式; 开关?: 项目开关; /** 「新增项目」选老客户、在选框里已经挑好的那一位（原型 pr.old）：客户段一打开就收成这一位 */ 老客户起手?: 可挑客户 | null; /** 客户页「新增项目」：老客户起手 那一位定死（原型 cr.old） */ 预选?: 预选客户 | null }) {
   // 草稿在本机 localStorage 里，服务端渲染时读不到；挂上之后再按草稿起头，免得两边对不上
   const 挂上了 = useSyncExternalStore(不订阅, () => true, () => false);
   const 我 = useMe();
-  const 全名 = 草稿全名(我?.id, 草稿键);
+  // 挑好老客户进来的：草稿按这位客户各存一份，别把新客户那份没填完的项目、沟通带到这位客户上
+  const 全名 = 草稿全名(我?.id, 老客户起手 ? `${草稿键}:${老客户起手.id}` : 草稿键);
   if (!挂上了) return null;
   const 旧 = 读草稿(全名) as { 稿?: 稿 } | null;
-  return <WizardBody key={全名} users={users} 要下一步={要下一步} 企业={企业} 新线索={新线索} 弹窗={弹窗} 开关={开关} 全名={全名} 旧={旧?.稿 && 有内容(旧.稿) ? 旧.稿 : null} />;
+  return <WizardBody key={全名} users={users} 要下一步={要下一步} 企业={企业} 新线索={新线索} 弹窗={弹窗} 开关={开关} 全名={全名} 旧={旧?.稿 && 有内容(旧.稿) ? 旧.稿 : null} 老起手={老客户起手} 预选={老客户起手 ? 预选 : null} />;
 }
 
 const 不订阅 = () => () => {};
@@ -203,15 +211,15 @@ function ReferrerPicker({ value, 叫法, onChange }: { value?: string; 叫法: s
  * 草稿照旧每改一格存本机，关掉不弹提示（角落那行「已存草稿」看得见），下次点开接着填
  */
 /** afterClose：关的动画走完以后（框接框的那条路用它把焦点放回「新建」，projects/NewProjectFlow.tsx）。项目：不给 = 开（新增项目那条路） */
-export function 建档弹窗(props: { open: boolean; 标题: string; 数据: 建档数据; onClose: () => void; afterClose?: () => void; 项目?: 项目开关 }) {
+export function 建档弹窗(props: { open: boolean; 标题: string; 数据: 建档数据; onClose: () => void; afterClose?: () => void; 项目?: 项目开关; 老客户?: 可挑客户 | null; 预选?: 预选客户 | null }) {
   return <WizardModal {...props} />;
 }
 
 // 要用 hook（当前用户），组件名得是大写英文开头（react-hooks 规则）
-function WizardModal({ open, 标题, 数据, onClose, afterClose, 项目 = "开" }: { open: boolean; 标题: string; 数据: 建档数据; onClose: () => void; afterClose?: () => void; 项目?: 项目开关 }) {
+function WizardModal({ open, 标题, 数据, onClose, afterClose, 项目 = "开", 老客户 = null, 预选 = null }: { open: boolean; 标题: string; 数据: 建档数据; onClose: () => void; afterClose?: () => void; 项目?: 项目开关; 老客户?: 可挑客户 | null; 预选?: 预选客户 | null }) {
   return (
     <Modal open={open} title={标题} footer={null} width={760} onCancel={onClose} afterClose={afterClose} destroyOnHidden mask={{ closable: false }}>
-      <ProjectWizard users={数据.users} 要下一步={数据.要下一步} 企业={数据.企业} 弹窗={{ 关: onClose }} 开关={项目} />
+      <ProjectWizard users={数据.users} 要下一步={数据.要下一步} 企业={数据.企业} 弹窗={{ 关: onClose }} 开关={项目} 老客户起手={老客户} 预选={预选} />
     </Modal>
   );
 }
@@ -221,17 +229,18 @@ const 满宽 = { width: "100%" };
 
 /** 建好后按钮上的 ✓ 停一下再走（原型 cr.submit：原地转圈 → ✓ → 落到新客户页） */
 const 落定停留 = 600;
+/** 建完有一句结果（已分给谁）时多停一会儿，读得完再关框 */
+const 读一句停留 = 1600;
 
 /**
  * 要下一步 = 企业版开了超时回收：带项目时首条沟通要填下一步时间（项目建在线索阶段）。
  * 能填下一步 = 企业版：没开超时回收也摆这一格、选填，默认 3 天后（P-界面-34）
  * 企业版 = 先选号码类型、按类型验格式、全公司查重（2026-10-26，customers/number-actions.ts）
  */
-function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, 全名, 旧 }: { users: 可选成员[]; 要下一步: boolean; 企业: 企业建档; 新线索: boolean; 弹窗: 弹窗模式; 开关: 项目开关; 全名: string; 旧: 稿 | null }) {
+function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, 全名, 旧, 老起手 = null, 预选 = null }: { users: 可选成员[]; 要下一步: boolean; 企业: 企业建档; 新线索: boolean; 弹窗: 弹窗模式; 开关: 项目开关; 全名: string; 旧: 稿 | null; 老起手?: 可挑客户 | null; 预选?: 预选客户 | null }) {
   const 企业版 = !!企业;
   const 能填下一步 = 企业版 || 要下一步;
   const router = useRouter();
-  const { message } = App.useApp();
   const b = useBusiness();
   const 我 = useMe();
   const 能选类型 = 跟进类型们(外贸精简(b)).filter((t) => t.value !== "TASK" && t.value !== "REMIND");
@@ -244,7 +253,11 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     // 分配方式按业务角色给默认值（服务端算好，能用的才给）；没给的、只有一种能用就直接选上
     const 默认 = 企业?.默认分配方式;
     const 分 = 默认 !== undefined && 默认 !== null && 企业?.分配方式们.some((x) => x.i === 默认) ? 默认 : 企业?.分配方式们.length === 1 ? 企业.分配方式们[0].i : undefined;
-    return 企业 ? { ...n, 号码类型: "手机号", 客户负责人: 我?.id, 项目: { ...n.项目, 分配方式: 分 }, 跟进: { ...跟进, 节点: 企业.节点们[0] } } : { ...n, 客户负责人: 我?.id, 跟进 };
+    // 挑好老客户进来的（cr.old / pr.old）：项目名默认带客户名（客户页给的简称优先，能改）；客户页给了默认负责人、又在候选里，就带上
+    const 起名 = 老起手 ? (预选?.项目名 || 老起手.name).slice(0, 项目名上限) : "";
+    const 起负责 = 预选?.默认负责人 && users.some((u) => u.id === 预选.默认负责人) ? 预选.默认负责人 : null;
+    const 项目 = { ...n.项目, ...(起名 ? { name: 起名 } : {}), ...(起负责 ? { ownerId: 起负责 } : {}) };
+    return 企业 ? { ...n, 号码类型: "手机号", 客户负责人: 我?.id, 项目: { ...项目, 分配方式: 分 }, 跟进: { ...跟进, 节点: 企业.节点们[0] } } : { ...n, 客户负责人: 我?.id, 项目, 跟进 };
   };
 
   const 锁 = 开关 === "锁开";
@@ -261,10 +274,41 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   const [名查中, set名查中] = useState(false);
   // 老客户新增项目（原型 cr.old）：弹窗里客户名直接搜到老客户，挑中后客户段收成一行，下面接着填项目和沟通（企业版，走 给客户建项目）
   const 能挑老客户 = 企业版 && !!弹窗;
-  const [老客户, set老客户] = useState<可挑客户 | null>(null);
+  const [老客户, set老客户] = useState<可挑客户 | null>(能挑老客户 ? 老起手 : null);
   const [候选, set候选] = useState<可挑客户[]>([]);
+  /** 客户页「新增项目」：客户定死（不摆「换」）；首条沟通挂哪位联系人（默认主要联系人） */
+  const 锁客户 = !!预选 && !!老客户 && 老客户.id === 老起手?.id;
+  const 联系人们 = 锁客户 ? 预选?.联系人们 ?? [] : [];
+  const [联系人Id, set联系人Id] = useState<string | undefined>(() => (联系人们.find((c) => c.isPrimary) ?? 联系人们[0])?.id);
+  // P-转-07：这次走 X-18、客户名下有同事的项目，会一起转走的先列出来（同分配弹窗、原客户页「新增项目」）
+  const 问一起转 = useCarryConfirm();
   const [交中, set交中] = useState(false);
   const [建好了, set建好了] = useState(false);
+  // 原型 cr.submit / g.save：建好了在「建好」按钮里打勾，不弹顶部提示；没建成 / 没查成的原因就地写（role=alert）：
+  // 查重的写在客户那节头下面，建档的写在底栏上面。下一次点的时候清掉
+  const [查错, set查错] = useState("");
+  const [交错, set交错] = useState("");
+  /**
+   * 建完的那句结果（自动分给谁 / 没分出去为什么 / 同号已写进现有项目），不弹顶部提示：写在底栏上面（role=status）。
+   * 分出去了（转走）停一会儿再关框；没分出去、同号协同要人读完：「建好」换成「知道了」，点了才关框、跳页
+   */
+  const [建后话, set建后话] = useState<{ 话: string; 警: boolean } | null>(null);
+  const [知道了, set知道了] = useState<(() => void) | null>(null);
+  /** 「知道了」那颗键上的字：客户转走、我看不到这位客户了写「回客户列表」 */
+  const [知道了字, set知道了字] = useState("知道了");
+  /** 有结果那句：转走的停 1.6 秒（读得完一句）再走；要读原因的等人点「知道了」 */
+  const 读完再走 = async (提示: string | null | undefined, 转走: boolean, 走: () => void, 等点?: string) => {
+    if (!提示) {
+      await new Promise((ok) => setTimeout(ok, 落定停留));
+      return 走();
+    }
+    set建后话({ 话: 提示, 警: !转走 });
+    // 等点：这一句后果重（我看不到这位客户了），读完点了才走，不按时间自己走
+    if (等点) set知道了字(等点);
+    if (!转走 || 等点) return void set知道了(() => 走);
+    await new Promise((ok) => setTimeout(ok, 读一句停留));
+    走();
+  };
   const [显错, set显错] = useState(false);
   const [已存, set已存] = useState(!!旧);
   const [接着填, set接着填] = useState(!!旧);
@@ -283,6 +327,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     const 号 = 稿面.phone.trim();
     if (!号 || (企业版 && !稿面.号码类型)) return null;
     set查中(true);
+    set查错("");
     try {
       if (企业版) {
         const r = await 查号码(稿面.号码类型 ?? "", 号);
@@ -304,7 +349,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
       if (n !== 稿面) { setD(n); 存草稿(全名, { 稿: n }); }
       return n;
     } catch {
-      message.error("查重没查成，请稍后再试");
+      set查错("查重没查成，请稍后再试");
       return null;
     } finally {
       set查中(false);
@@ -316,13 +361,14 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     if (!企业版) return true;
     if (!名) return false;
     set名查中(true);
+    set查错("");
     try {
       const r = await 查客户名(名);
-      if (!r.ok) { message.error(r.error); return false; }
+      if (!r.ok) { set查错(r.error); return false; }
       set名查({ 名, 撞: r.撞 ?? null, 提示: r.撞 ? r.提示 : "" });
       return !r.撞;
     } catch {
-      message.error("查重没查成，请稍后再试");
+      set查错("查重没查成，请稍后再试");
       return false;
     } finally {
       set名查中(false);
@@ -342,15 +388,27 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     const t = setTimeout(() => { 搜客户(搜词).then((r) => { if (!作废) set候选(r); }, () => {}); }, 300);
     return () => { 作废 = true; clearTimeout(t); };
   }, [搜词]);
+  // 业务线默认带这位客户的（A1，和客户页「新增项目」同一个取数）；看不到 / 没开 = null 不带
+  const 带客户业务线 = (c: 可挑客户) => {
+    新项目分配数据(c.id).then((r) => { if (r?.客户业务线 && !d.项目.业务线) 改("项目", { 业务线: r.客户业务线 }); }, () => {});
+  };
   const 挑老 = (id: string) => {
     const c = 候选.find((x) => x.id === id);
     if (!c) return;
     set老客户(c);
     set带项目(true);
     set名查(null);
-    // 业务线默认带这位客户的（A1，和客户页「新增项目」同一个取数）；看不到 / 没开 = null 不带
-    新项目分配数据(c.id).then((r) => { if (r?.客户业务线 && !d.项目.业务线) 改("项目", { 业务线: r.客户业务线 }); }, () => {});
+    带客户业务线(c);
   };
+  // 从选框里挑好老客户进来的（pr.old）：一打开就按挑中那一位带业务线（项目开关是「开」，带项目本来就开着）
+  const 起手带过 = useRef(false);
+  useEffect(() => {
+    if (起手带过.current || !能挑老客户 || !老起手) return;
+    起手带过.current = true;
+    带客户业务线(老起手);
+    // 只认打开那一下
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const 错 = (g: 格) => (显错 ? 差们.find((x) => x.格 === g)?.话 : undefined);
   const 红 = (g: 格) => (错(g) ? ("error" as const) : undefined);
   // 销售选自动分配：分出去后就看不到这个项目了（A9）。就地黄条说后果、按钮写明「并分出去」，不再叠一层确认框（原型 cr.auto）
@@ -384,29 +442,36 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   /** 老客户新增项目：走客户页「新增项目」同一个服务端动作（限定层、同事只读、公海先领取、业务角色都在那里判） */
   const 给老客户建 = async (客: 可挑客户) => {
     set交中(true);
+    set交错("");
     const 负责人 = 企业 && !要选负责人(d, 企业) ? 我?.id ?? "" : d.项目.ownerId;
     try {
+      const 这次 = { 分配方式: d.项目.分配方式 ?? null, 业务线: d.项目.业务线 ?? null };
+      if (!(await 问一起转(() => 建项目带走的项目(客.id, { ownerId: 负责人 || null, ...这次 })))) return void set交错("没建：一起转的项目还没确认");
       const r = await 给客户建项目({
         customerId: 客.id,
+        ...(联系人Id ? { 联系人Id } : {}),
         项目: {
           name: d.项目.name, ownerId: 负责人 || null, 分配方式: d.项目.分配方式 ?? null, 业务线: d.项目.业务线 ?? null,
           ...(d.项目.所在地 ? { 所在地: d.项目.所在地 } : {}),
         },
         跟进: { ...d.跟进, method: 对得上的方式(d.跟进.type, d.跟进.method) },
       });
-      if (!r.ok) return void message.error(r.error);
+      if (!r.ok) return void set交错(r.error);
       清草稿(全名);
       set建好了(true);
-      message.success(`已给「${客.name}」建好项目「${d.项目.name.trim()}」`);
-      if (r.提示) (r.转走 ? message.info : message.warning)(r.提示);
-      await new Promise((ok) => setTimeout(ok, 落定停留));
-      弹窗?.关();
-      // 客户转给了销售、我看不到了：回客户列表；项目分走了：留在原页刷新；不然落到这位客户、停在新项目
-      if (r.看不到客户了) return void router.push("/customers");
-      if (r.转走) return void router.refresh();
-      router.push(`/customers/${客.id}?project=${r.projectId}`);
+      const 看不到 = !!r.看不到客户了;
+      await 读完再走(看不到 ? r.提示 ?? `${b.customer}已转出` : r.提示, !!r.转走, () => {
+        弹窗?.关();
+        // 客户转给了销售、我看不到了：回客户列表（留着刷新就是 404）；项目分走了：留在原页刷新；
+        // 不然落到这位客户、停在新项目（landed：新项目卡亮 2 秒，原型 cr.submit）；本来就在这位客户页上的换地址不加历史
+        if (看不到) return void router.push("/customers");
+        if (r.转走) return void router.refresh();
+        const 去 = `/customers/${encodeURIComponent(客.id)}?project=${encodeURIComponent(r.projectId)}&landed=1`;
+        if (锁客户) router.replace(去, { scroll: false });
+        else router.push(去);
+      }, 看不到 ? `回${b.customer}列表` : undefined);
     } catch {
-      message.error("没建成，请稍后再试；填过的还在");
+      set交错("没建成，请稍后再试；填过的还在");
     } finally {
       set交中(false);
     }
@@ -414,6 +479,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
 
   const 提交 = async (稿面: 稿) => {
     set交中(true);
+    set交错("");
     // 企业版不是「指定分配」的：先建在我名下（服务端也这么改），建好再按分配方式转走
     const 负责人 = 企业 && !要选负责人(稿面, 企业) ? 我?.id ?? "" : 稿面.项目.ownerId;
     const { 渠道: 项目渠道, 业务线手选: _手选, ...项目稿 } = 稿面.项目;
@@ -453,12 +519,14 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         })
         : await 建档只建客户({ 客户, 联系人: 稿面.联系人, 跟进 });
       if (!r.ok && "同号协同" in r) {
-        // 同号再次录入：没新建，记录已写进现有项目（查重之后才有人录同号时走到这）
+        // 同号再次录入：没新建，记录已写进现有项目（查重之后才有人录同号时走到这）。那句写在底栏上面，点「知道了」再关框
         清草稿(全名);
-        message.info(r.error);
-        弹窗?.关();
-        if (弹窗) router.refresh();
-        else router.push(新线索 || 企业版 ? "/leads" : "/projects");
+        set建后话({ 话: r.error, 警: false });
+        set知道了(() => () => {
+          弹窗?.关();
+          if (弹窗) router.refresh();
+          else router.push(新线索 || 企业版 ? "/leads" : "/projects");
+        });
         return;
       }
       // 填的这段时间有人录了同名客户（saveCustomer 按名字挡）：就地摆出负责人和申请挂靠
@@ -469,23 +537,22 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         return;
       }
       if (!r.ok) {
-        message.error(r.error);
+        set交错(r.error);
         return;
       }
       清草稿(全名);
       set建好了(true);
-      message.success(带项目 ? `已建好项目「${稿面.项目.name.trim()}」` : `已建好${b.customer}「${稿面.客户.name.trim()}」`);
       const 转走 = "转走" in r && !!r.转走;
-      if ("提示" in r && r.提示) (转走 ? message.info : message.warning)(r.提示);
-      await new Promise((ok) => setTimeout(ok, 落定停留));
-      弹窗?.关();
-      // 分走了 / 进了公海，项目不在我名下：回线索列表（弹窗里建的：留在原页刷新）
-      if (转走) return void (弹窗 ? router.refresh() : router.push(新线索 ? "/leads" : "/projects"));
-      // 弹窗里建的落到新客户页（企业版停在这个项目的页签，客户详情合并 11-12）；整页建档照旧进项目详情
-      if (!r.projectId) return void router.push(`/customers/${r.customerId}`);
-      router.push(弹窗 && 企业版 ? `/customers/${r.customerId}?project=${r.projectId}` : `/projects/${r.projectId}`);
+      await 读完再走("提示" in r ? r.提示 : null, 转走, () => {
+        弹窗?.关();
+        // 分走了 / 进了公海，项目不在我名下：回线索列表（弹窗里建的：留在原页刷新）
+        if (转走) return void (弹窗 ? router.refresh() : router.push(新线索 ? "/leads" : "/projects"));
+        // 弹窗里建的落到新客户页（企业版停在这个项目的页签，客户详情合并 11-12）；整页建档照旧进项目详情
+        if (!r.projectId) return void router.push(`/customers/${r.customerId}`);
+        router.push(弹窗 && 企业版 ? `/customers/${r.customerId}?project=${r.projectId}` : `/projects/${r.projectId}`);
+      });
     } catch {
-      message.error("没建成，请稍后再试；填过的还在");
+      set交错("没建成，请稍后再试；填过的还在");
     } finally {
       set交中(false);
     }
@@ -494,7 +561,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   // 草稿每改一格就存了（存草稿），这里只是走开。弹窗关掉不弹提示（角落「已存草稿」看得见，原型 cr.draft）
   const 离开 = () => {
     if (弹窗) return 弹窗.关();
-    if (有内容(d)) message.info(`草稿存在这台电脑的浏览器里，下次点「${新线索 || 企业版 ? "新线索" : "新建项目"}」会接着填`);
+    // 整页向导（现在只剩测试里用，app 里都是弹窗）：草稿存了看得见（角落「✓ 已存草稿」），走开不弹提示（原型 cr.draft）
     router.push(新线索 || 企业版 ? "/leads" : "/projects");
   };
 
@@ -553,9 +620,10 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
           <b>{b.customer}</b>
           <span className="cr-sp" />
           {老客户
-            ? <Button size="small" type="link" onClick={() => set老客户(null)}>换</Button>
+            ? (锁客户 ? null : <Button size="small" type="link" onClick={() => set老客户(null)}>换</Button>)
             : <Button size="small" type="link" loading={查中 || 名查中} disabled={!!企业?.没角色} onClick={手动查重}>查重</Button>}
         </div>
+        {查错 && <div role="alert" className="cd-task-err">{查错}</div>}
         {老客户 ? (
           <div className="cr-old cr-rise" data-testid="wizard-old-customer">
             <Tag color="green">已有{b.customer}</Tag>
@@ -748,6 +816,9 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
             {(企业 ? 要选负责人(d, 企业) : !独自一人(users, d.项目.ownerId)) && 一格("负责人", "项目负责人", (
               <Select className="cr-full" aria-label="项目负责人" status={红("负责人")} value={d.项目.ownerId || undefined} placeholder="选项目负责人" options={负责人选项} onChange={(v) => 改("项目", { ownerId: v })} showSearch optionFilterProp="label" />
             ), !!企业)}
+            {联系人们.length > 0 && 一格(null, "联系人", (
+              <Select className="cr-full" aria-label="联系人" value={联系人Id} options={联系人们.map((c) => ({ value: c.id, label: c.isPrimary ? `${c.name}（主要）` : c.name }))} onChange={(v) => set联系人Id(v)} />
+            ), false, false, "首条沟通记在这位联系人上")}
             {自动分出去 && <Alert type="warning" showIcon className="cr-wide" data-testid="wizard-auto-warn" title={销售自动分后果} />}
             {业务线格}
             {/* 项目所在地（11-02，选填）：项目自己的，不是客户地址；填了按所在地建议业务线（没手动选过就预填，人确认） */}
@@ -838,14 +909,20 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         </div>
       </section>
 
+      {交错 && <div role="alert" className="csq-err">{交错}</div>}
+      {建后话 && <div role="status" className="pj-wiz-after" data-warn={建后话.警 || undefined}>{建后话.话}</div>}
       <div className="cr-foot">
         <span className="cr-saved" aria-live="polite">{已存 && !建好了 ? "✓ 已存草稿" : ""}</span>
         <span className="cr-sp" />
         {未完 && <span className="cr-miss" role="status">还差 {差们.length} 项</span>}
-        <Button onClick={离开} disabled={交中 || 建好了}>{弹窗 ? "取消" : "存草稿离开"}</Button>
-        <Button type="primary" loading={交中 && !建好了} icon={建好了 ? <CheckOutlined /> : undefined} onClick={() => void 点建好()}>
-          {建好了 ? "已建好" : 自动分出去 ? "建好并分出去" : "建好"}
-        </Button>
+        <Button onClick={离开} disabled={交中 || 建好了 || !!知道了}>{弹窗 ? "取消" : "存草稿离开"}</Button>
+        {知道了 ? (
+          <Button type="primary" autoFocus onClick={知道了}>{知道了字}</Button>
+        ) : (
+          <Button type="primary" loading={交中 && !建好了} icon={建好了 ? <CheckOutlined /> : undefined} onClick={() => void 点建好()}>
+            {建好了 ? "已建好" : 自动分出去 ? "建好并分出去" : "建好"}
+          </Button>
+        )}
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button, Card, Input, Modal, Select, Space, Tag, Timeline } from "antd";
 import InlineConfirm from "@/components/InlineConfirm";
+import SaveButton from "@/components/SaveButton";
 import { dayjs, fmtDateTime } from "@/lib/utils";
 import type { 卡点卡 } from "@/lib/project/blocker";
 import { 卡点类型们, 影响等级们, 动作叫法, 描述上限, 标题上限, 原因最多, 原因名上限, type 卡点默认 } from "@/lib/project/blocker-rules";
@@ -91,9 +92,8 @@ export function 原因选择({ 原因们, 值, on改, disabled }: { 原因们: s
  * 不指给谁：发出去是「待接受」，看得到的人都能认领（11-01 定稿 B1/B3）
  */
 export function PublishBlockerModal({ followUpId, 默认, 原因们, 沟通们, onClose }: { followUpId: string; 默认: 卡点默认; 原因们: string[]; /** 「挂在」可换到哪条沟通（项目详情给；不给就只写挂在哪、不能换） */ 沟通们?: 可挂沟通[]; onClose: () => void }) {
-  const { 忙, 跑 } = useRun();
+  const { 跑 } = useRun();
   const [挂在, set挂在] = useState(followUpId);
-  const [错, set错] = useState<string | null>(null);
   const 挂的那条 = 沟通们?.find((f) => f.id === 挂在);
   const [type, setType] = useState<string>(默认.默认类型 === "暂无卡点" ? "轻度卡点" : 默认.默认类型);
   const [impact, setImpact] = useState<string>(默认.默认影响);
@@ -106,17 +106,12 @@ export function PublishBlockerModal({ followUpId, 默认, 原因们, 沟通们, 
     <Modal
       open
       title="新建卡点"
-      okText="发布"
-      okButtonProps={{ disabled: !!差, loading: 忙 }}
       onCancel={onClose}
-      onOk={async () => {
-        if (差) return;
-        set错(null);
-        // 没成：框不关，原因写在框里；成了关框，新卡点出现在列表里（不弹「已发布」）
-        const r = await 跑(() => 发布卡点Action(挂在, { type, impact, title, reasons, description, resourceRequest }));
-        if (r.ok) onClose();
-        else set错(r.error ?? "没发出去，请稍后再试");
-      }}
+      // 原型 dt.blocker「改后」：发布键里转圈 →「已发布」放完再关框，新卡点出现在列表里；没发出去原因浮在键上方、框不关（不弹顶部提示）
+      footer={<Space>
+        <Button onClick={onClose}>取消</Button>
+        <SaveButton disabled={!!差} 已保存="已发布" 没保存="没发出去" 做={() => 跑(() => 发布卡点Action(挂在, { type, impact, title, reasons, description, resourceRequest }))} 成了={onClose}>发布</SaveButton>
+      </Space>}
     >
       <Space direction="vertical" style={{ width: "100%" }}>
         {/* 挂在哪条沟通（dt.blocker）：默认最近那条，可换 */}
@@ -139,7 +134,6 @@ export function PublishBlockerModal({ followUpId, 默认, 原因们, 沟通们, 
         <Input.TextArea aria-label="卡点描述" rows={3} maxLength={描述上限} showCount value={description} onChange={(e) => setDescription(e.target.value)} placeholder="卡在哪（必填）" />
         <Input.TextArea aria-label="资源申请" rows={2} maxLength={描述上限} value={resourceRequest} onChange={(e) => setResourceRequest(e.target.value)} placeholder="需要什么资源（可不写）" />
         {差 && <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{差}</div>}
-        {错 && <div role="alert" className="csq-err">{错}</div>}
       </Space>
     </Modal>
   );

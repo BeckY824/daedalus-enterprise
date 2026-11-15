@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Alert, App, Button, Checkbox, Input, InputNumber, Select, Space, Tag } from "antd";
+import { Alert, Button, Checkbox, Input, InputNumber, Select, Space, Tag } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import ChannelPicker from "@/components/ChannelPicker";
 import AddressInput from "@/components/AddressInput";
@@ -66,7 +66,6 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
   /** 不在项目页里用（看板拖动的就地补填）：存完怎么拿到新的 p。不给就 router.refresh */
   刷新?: () => Promise<void>;
 }) {
-  const { message } = App.useApp();
   const router = useRouter();
   const [草稿, set草稿] = useState<草稿们>(() => 读草稿() ?? {});
   const [已存, set已存] = useState<string[]>([]);
@@ -143,11 +142,13 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
     set草稿(留);
     set已存((x) => [...x, ...果.已存]);
     set失败(果.失败);
-    if (果.自动推到.length) message.success(`必填齐了，自动推进到 ${果.自动推到.join(" → ")}`);
+    // 自动推进写在框里那行（role=status），不弹顶部提示；关窗的话推进后的进程就在页面上
+    const 推到话 = 果.自动推到.length ? `必填齐了，自动推进到 ${果.自动推到.join(" → ")}` : "";
     const 接着 = 存完怎么走(果, 想);
     const 失败几项 = Object.keys(果.失败).length;
-    if (失败几项) set话(`${失败几项} 项没存上，看对应那一格的原因；其它的已存好，填的内容都在`);
-    else if (接着 === "留窗") set话("已保存，剩下的填好再完成节点");
+    if (失败几项) set话([`${失败几项} 项没存上，看对应那一格的原因；其它的已存好，填的内容都在`, 推到话].filter(Boolean).join("；"));
+    else if (接着 === "留窗") set话([推到话 || "已保存", "剩下的填好再完成节点"].join("，"));
+    else if (推到话) set话(推到话);
     锁.current = false;
     set存着(false);
     if (接着 === "关窗" && !失败几项) {

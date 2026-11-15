@@ -25,7 +25,7 @@ const plugin: Plugin = { name: "ent-create-modal", setup(b) {
   stub(/(^|\/)number-actions$/, "export const 查号码=async(t,v)=>{(window.__调||=[]).push(['查号码',t,v]);return {ok:true,状态:'首次录入',提示:'首次录入',值:v,归属地:null}};export const 查客户名=async(n)=>{(window.__调||=[]).push(['查客户名',n]);return {ok:true,撞:null}};export const 申请挂靠=async()=>({ok:true});export const 从回收站捞回=async()=>({ok:true});");
   // 老客户新增项目（cr.old）：搜得到一位老客户；给客户建项目记下交了什么
   stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async(w)=>{(window.__调||=[]).push(['搜客户',w]);return [{id:'c9',name:'华东展具',附注:'138****5678'}]};");
-  stub(/customers\/\[id\]\/project-actions$/, "export const 给客户建项目=async(x)=>{(window.__调||=[]).push(['给客户建项目',x]);return {ok:true,projectId:'np9'}};export const 新项目分配数据=async()=>({分配方式们:[],默认分配方式:0,是销售:false,客户业务线:'外贸'});");
+  stub(/customers\/\[id\]\/project-actions$/, "export const 给客户建项目=async(x)=>{(window.__调||=[]).push(['给客户建项目',x]);return {ok:true,projectId:'np9'}};export const 新项目分配数据=async()=>({分配方式们:[],默认分配方式:0,是销售:false,客户业务线:'外贸'});export const 建项目带走的项目=async()=>({项目数:0,项目:[]});");
   stub(/same-number-actions$/, "export const 同号协同录入=async()=>({ok:true});");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
@@ -161,7 +161,7 @@ it("老客户新增项目（cr.old）：客户名直接搜到老客户，挑中�
     const 交 = (await 调(page)).find((x) => x[0] === "给客户建项目")![1] as { customerId: string; 项目: Record<string, unknown>; 跟进: Record<string, unknown> };
     expect(交).toMatchObject({ customerId: "c9", 项目: { name: "华东展具-二期", ownerId: "u1", 业务线: "外贸" }, 跟进: { content: "老客户要加一套", 节点: "潜客培育" } });
     expect((await 调(page)).some((x) => x[0] === "建档向导" || x[0] === "建档只建客户" || x[0] === "查号码")).toBe(false);
-    await expect.poll(() => page.evaluate(() => (window as unknown as { __跳?: string[] }).__跳 ?? [])).toEqual(["/customers/c9?project=np9"]);
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __跳?: string[] }).__跳 ?? [])).toEqual(["/customers/c9?project=np9&landed=1"]);
   } finally { await page.close(); }
 });
 

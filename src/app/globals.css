@@ -4878,6 +4878,62 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 .pd-split-edit-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
 .pd-split-edit-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .cr-research-none { font-size: var(--fs-note); }
+/* 公海 / 项目 / 设置补齐（11-15 fill-c）：看板列底「再看」没取到的原因写在列底（原型 g.notice，不弹顶部提示） */
+.pipe-more-err { color: var(--danger-text); }
+/* 看板拖动弹回原因小卡（board-drag.tsx）：右上角收起键，6 秒也自己收 */
+.board-gate-x { float: right; margin: calc(-1 * var(--s1)) calc(-1 * var(--s1)) 0 var(--s2); padding: 0 var(--s1); border: 0; background: none; color: var(--text-muted); cursor: pointer; font-size: var(--fs-note); line-height: 1.6; border-radius: var(--r-ctl); }
+.board-gate-x:hover { color: var(--ink); }
+/* 项目详情就地回执（projects/[id]/detail-note.tsx，原型 g.save / g.notice：不弹顶部提示）：正文底部贴边一条，过一会儿自己收 */
+.pd-note { position: sticky; bottom: var(--s3); z-index: 5; display: flex; align-items: center; gap: var(--s2); width: fit-content; max-width: 100%; margin: var(--s3) 0 0 auto;
+  padding: var(--s2) var(--s3); border-radius: var(--r-pop); background: var(--panel); box-shadow: var(--shadow-pop); font-size: var(--fs-note);
+  animation: set-note-in var(--t) var(--ease); }
+.pd-note-t { min-width: 0; overflow-wrap: anywhere; }
+.pd-note-i { flex: none; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: var(--fs-min); color: var(--on-ink); background: var(--success); }
+.pd-note[data-tone="错"] .pd-note-i { background: var(--danger); }
+.pd-note[data-tone="提醒"] .pd-note-i { background: var(--warning); }
+.pd-note-x { flex: none; border: 0; background: none; padding: 0 var(--s1); color: var(--text-muted); cursor: pointer; font-size: var(--fs-note); border-radius: var(--r-ctl); }
+.pd-note-x:hover { color: var(--ink); }
+@media (prefers-reduced-motion: reduce) { .pd-note { animation: none; } }
+.pd-modal-err { margin-top: var(--s2); color: var(--danger-text); font-size: var(--fs-note); overflow-wrap: anywhere; }
+/* ===== 公海补齐（11-15 fill-c，原型 pool.claim / pool.bin / pool.undo / pool.attr / pool.assign） ===== */
+/* 操作格：按钮在上，灰着的原因在下；原因折行写完（回收站「标了无效，要系统管理员先恢复」不被表格右边裁掉） */
+.pool-op { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; max-width: 100%; }
+.pool-op-why { display: block; max-width: 100%; font-size: var(--fs-min); line-height: 18px; white-space: normal; overflow-wrap: anywhere; }
+/* 名字下的后果 / 没领到原因：高度由 motion 从 0 长出来，收回也收（行高不跳一下） */
+.pool-why-box { overflow: hidden; white-space: normal; }
+.pool-done { margin-inline-end: 0; }
+/* 领到 / 分出去的行：「已领取 ✓」停一下再滑出；撤销回来的行滑回原位（只动格子里的内容，行上加 transform 会把固定列带歪） */
+.pool-row-leave > td > *, .pool-sub-leave { animation: pool-row-out var(--t) var(--ease) var(--t) both; pointer-events: none; }
+.pool-row-back > td > *, .pool-sub-back { animation: pool-row-in var(--t) var(--ease) both; }
+@keyframes pool-row-out { to { opacity: 0; transform: translateX(16px); } }
+@keyframes pool-row-in { from { opacity: 0; transform: translateX(16px); } }
+@media (prefers-reduced-motion: reduce) {
+  .pool-row-leave > td > *, .pool-sub-leave, .pool-row-back > td > *, .pool-sub-back { transform: none; }
+  @keyframes pool-row-out { to { opacity: 0; } }
+  @keyframes pool-row-in { from { opacity: 0; } }
+}
+/* 换池时表格先换成骨架 */
+.pool-skel { padding: var(--s3) var(--s2); }
+/* 选人框：选中的那位主色描出来、带勾，打开就滚到看得见 */
+.pool-pick-p[aria-selected="true"] { background: var(--brand-bg); box-shadow: inset 0 0 0 1px var(--brand-line); }
+.pool-pick-ok { flex: none; color: var(--brand); }
+.pd-modal-err-inline { margin-top: 0; margin-right: auto; min-width: 0; }
+.pool-pick-p > .pool-pick-n { flex: 1 1 auto; }
+/* 建档向导建完的那句结果（projects/new/ProjectWizard.tsx：已分给谁 / 没分出去为什么 / 同号已写进现有项目），不弹顶部提示 */
+.pj-wiz-after { margin-top: var(--s2); padding: var(--s2) var(--s3); border-radius: var(--r-ctl); background: var(--success-bg); color: var(--ink); font-size: var(--fs-note); overflow-wrap: anywhere; animation: set-note-in var(--t) var(--ease); }
+.pj-wiz-after[data-warn] { background: var(--warning-bg); color: var(--warning-text); }
+@media (prefers-reduced-motion: reduce) { .pj-wiz-after { animation: none; } }
+/* 「新增项目」选老客户原地变搜索框（projects/NewProjectFlow.tsx，原型 pr.old）：一个框走到底 */
+.pj-old-pick { flex-direction: column; align-items: stretch; gap: var(--s2); cursor: default; animation: set-note-in var(--t) var(--ease); }
+.pj-old-res { display: flex; flex-direction: column; gap: 2px; max-height: 280px; overflow-y: auto; }
+.pj-old-it { display: flex; align-items: baseline; gap: var(--s2); min-width: 0; width: 100%; padding: var(--s1) var(--s2); border: 0; border-radius: var(--r-ctl); background: none; color: var(--ink); text-align: left; cursor: pointer; font: inherit; }
+.pj-old-it:hover, .pj-old-it:focus-visible { background: var(--brand-bg); }
+.pj-old-name { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.pj-old-sub { flex: 0 1 auto; min-width: 0; color: var(--text-muted); font-size: var(--fs-note); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pj-old-none { padding: var(--s1) var(--s2); color: var(--text-muted); font-size: var(--fs-note); }
+.pj-old-back { align-self: flex-start; padding-inline: 0; }
+@media (prefers-reduced-motion: reduce) { .pj-old-pick { animation: none; } }
+.new-proj-opt.pj-old-pick:hover { border-color: var(--line); background: var(--panel); }
 /* 客户列表 / 导入抽屉 / 回收站捞回：就地一行提示（不弹顶部 message，原型 g.save / g.notice）。错 = 红，警 = 橙，常 = 灰 */
 .cu-said { display: block; margin: 0 0 var(--s2); font-size: var(--fs-note); line-height: 1.6; color: var(--text-muted); overflow-wrap: anywhere; min-width: 0; animation: cd-pj-flash-in var(--t) var(--ease); }
 .cu-said-row { margin-bottom: var(--s3); }
@@ -4939,3 +4995,32 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 .list-skel-on .ant-table-tbody > tr > td:nth-child(3n) .skel-bar { width: 54%; }
 .list-skel-on .ant-table-tbody > tr:nth-child(2n) > td .skel-bar { max-width: 86%; }
 .list-skel-on .ant-table-tbody > tr > td.ant-table-selection-column .skel { visibility: hidden; }
+/* 项目详情 · 推进节点还差必填（dt.stage）：从「完成节点」下面长出补填小框，不开大框；内容长了框里滚，按钮那排照旧贴底 */
+.pd-fill-pop .ant-popover-inner { padding: var(--s3); }
+.pd-fill-pop-body { width: min(420px, calc(100vw - 32px)); max-height: min(72vh, 640px); overflow-y: auto; overscroll-behavior: contain; }
+.pd-fill-pop-t { font-weight: 600; color: var(--ink); margin-bottom: var(--s2); overflow-wrap: anywhere; }
+/* 项目详情 · 删沟通（dt.talkdel）：确认条长在这一条下面，写清进回收站、谁能恢复；删成了这一条原地收起 */
+.pd-del-band { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin-top: var(--s2); padding: var(--s2) var(--s3);
+  border-radius: var(--r-ctl); background: var(--danger-bg); border: 1px solid var(--danger-line); animation: pd-band-in var(--t) var(--ease) both; }
+.pd-del-band-t { flex: 1 1 220px; min-width: 0; color: var(--danger-text); font-size: var(--fs-note); overflow-wrap: anywhere; }
+.pd-del-band-a { display: inline-flex; gap: var(--s2); flex: none; margin-inline-start: auto; }
+@keyframes pd-band-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.pd-follow-leave { animation: pd-follow-leave var(--t) var(--ease) forwards; overflow: hidden; pointer-events: none; }
+@keyframes pd-follow-leave { to { opacity: 0; transform: translateX(8px); } }
+@media (prefers-reduced-motion: reduce) { .pd-del-band, .pd-follow-leave { animation: none; } .pd-follow-leave { opacity: 0; } }
+/* 项目详情 · 资料行内编辑（dt.field）：存上了值旁边一个 ✓ 停一下淡掉；编辑态底下那行写怎么存 */
+.pd-inline-ok { flex: none; align-self: center; margin-inline-start: var(--s1); color: var(--success-text); font-size: var(--fs-note); animation: pd-inline-ok 1.4s var(--ease) forwards; }
+@keyframes pd-inline-ok { 0% { opacity: 0; transform: scale(.8); } 15% { opacity: 1; transform: none; } 70% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .pd-inline-ok { animation: none; } }
+.proj-inline-edit[aria-busy="true"] :is(input, textarea, .ant-select-selector, .ant-picker) { opacity: .6; }
+
+/* dt.pay：回款合计滚到位时等宽，宽度不跳 */
+.pd-pay-total { font-variant-numeric: tabular-nums; }
+/* dt.team：改分配框里「分出去 / 组长留」随改数滚到位，等宽不跳 */
+.pd-split-num { font-variant-numeric: tabular-nums; }
+/* 项目 / 客户看板卡片：客户名、项目名折行写完，不「…」截断（原型 pr.view / cu.view「卡片名字不截断」）；列宽固定，长名折行不撑宽列 */
+.pipe-card-t.pipe-card-full,
+.pipe-card-o.pipe-card-full { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.35; }
+.pipe-card-t.tri-has-dot.pipe-card-full > .tri-name { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+/* 客户列表 ⇄ 项目看板原地变形（cu.view）：量位置用的外框，不占版面 */
+.cu-morph-wrap { display: contents; }

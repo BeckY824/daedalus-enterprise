@@ -129,7 +129,9 @@ it("改备注：不跳页；⌘↵ 存；只交这一格；存完马上显示新
     await page.getByText("新的备注").waitFor();
     expect(page.url()).toBe(url);
     expect(await 编辑记录(page)).toEqual([["p1", { remark: "新的备注" }]]);
-    expect(await 格(page, "备注").innerText()).toBe("新的备注");
+    expect(await 格(page, "备注").locator(".proj-inline-val").innerText()).toBe("新的备注");
+    // dt.field：存上了值旁边一个 ✓（读屏读「备注已保存」），停一下淡掉
+    expect(await 格(page, "备注").getByRole("status", { name: "备注已保存" }).count()).toBe(1);
     expect(await 框.count()).toBe(0);
     expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))).toBe("改备注");
     expect(await page.evaluate(() => (window as unknown as 窗).__刷新)).toBe(1);
@@ -140,7 +142,28 @@ it("改备注：不跳页；⌘↵ 存；只交这一格；存完马上显示新
   } finally { await page.close(); }
 });
 
-it("保存失败：留在编辑态、输入不丢、行内写原因；再存成功后错误消失", async () => {
+/** 焦点离开这一格（点到页面空白处）：activeElement 落回 body */
+const 点别处 = (page: Page) => page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+
+it("dt.field 失焦即存：点到别处就存、不摆「保存 / 取消」键；存完值旁 ✓、焦点不抢回笔上", async () => {
+  const { page } = await 开();
+  try {
+    await 详情(page);
+    await 笔(page, "需求描述").click();
+    const 框 = page.getByRole("textbox", { name: "需求描述" });
+    expect(await 格(page, "需求描述").getByRole("button", { name: /保\s*存|取\s*消/ }).count()).toBe(0);
+    expect(await 格(page, "需求描述").innerText()).toContain("点别处保存");
+    await 框.fill("失焦存的需求");
+    await 点别处(page);
+    await 格(page, "需求描述").getByText("失焦存的需求").waitFor();
+    expect(await 框.count()).toBe(0);
+    expect(await 编辑记录(page)).toHaveLength(1);
+    expect(await 格(page, "需求描述").getByRole("status", { name: "需求描述已保存" }).count()).toBe(1);
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))).not.toBe("改需求描述");
+  } finally { await page.close(); }
+});
+
+it("保存失败：留在编辑态、输入不丢、行内写原因；同一份草稿再失焦不重复交；再存成功后错误消失", async () => {
   const { page } = await 开();
   try {
     await 详情(page);
@@ -148,22 +171,27 @@ it("保存失败：留在编辑态、输入不丢、行内写原因；再存成�
     await 笔(page, "需求描述").click();
     const 框 = page.getByRole("textbox", { name: "需求描述" });
     await 框.fill("我打了很多字");
-    await 格(page, "需求描述").getByRole("button", { name: /保\s*存/ }).click();
+    await 点别处(page);
     await 格(page, "需求描述").getByRole("alert").getByText("字段权限：只能看").waitFor();
     expect(await 框.inputValue()).toBe("我打了很多字");
+    const 交了 = (await 编辑记录(page))?.length ?? 0;
+    await 框.focus();
+    await 点别处(page);
+    await page.waitForTimeout(50);
+    expect((await 编辑记录(page))?.length ?? 0).toBe(交了);
     // 抛错（断网）也一样
     await page.evaluate(() => { (window as unknown as 窗).__下次结果 = "抛"; });
-    await 格(page, "需求描述").getByRole("button", { name: /保\s*存/ }).click();
+    await 框.press("Control+Enter");
     await 格(page, "需求描述").getByRole("alert").getByText("没存上，请稍后再试").waitFor();
     expect(await 框.inputValue()).toBe("我打了很多字");
     await page.evaluate(() => { (window as unknown as 窗).__下次结果 = null; });
-    await 格(page, "需求描述").getByRole("button", { name: /保\s*存/ }).click();
+    await 框.press("Control+Enter");
     await page.getByText("我打了很多字").waitFor();
     expect(await 格(page, "需求描述").getByRole("alert").count()).toBe(0);
   } finally { await page.close(); }
 });
 
-it("Esc 放弃、取消：不存；再打开是原值；没改就保存不发请求", async () => {
+it("Esc 还原：不存（收起后补发的失焦也不存）；再打开是原值；没改就失焦不发请求", async () => {
   const { page } = await 开();
   try {
     await 详情(page, { remark: "原备注" });
@@ -173,10 +201,12 @@ it("Esc 放弃、取消：不存；再打开是原值；没改就保存不发请
     await 框.press("Escape");
     expect(await 框.count()).toBe(0);
     expect(await 格(page, "备注").innerText()).toContain("原备注");
+    await page.waitForTimeout(50);
+    expect(await 编辑记录(page)).toBeUndefined();
     await 笔(page, "备注").click();
     expect(await 框.inputValue()).toBe("原备注");
-    await 格(page, "备注").getByRole("button", { name: /保\s*存/ }).click();
-    expect(await 框.count()).toBe(0);
+    await 点别处(page);
+    await 框.waitFor({ state: "detached" });
     expect(await 编辑记录(page)).toBeUndefined();
   } finally { await page.close(); }
 });
@@ -285,7 +315,7 @@ it("沟通正文：只交正文 + 原样的类型时间 + 版本；空的挡；�
   } finally { await page.close(); }
 });
 
-it.each([1024, 1280, 1366])("Windows %ipx：超长内容平时、编辑态都不溢出；笔、保存点得中", async (w) => {
+it.each([1024, 1280, 1366])("Windows %ipx：超长内容平时、编辑态都不溢出；笔点得中、「怎么存」那行看得见", async (w) => {
   const { page, errors } = await 开(w);
   try {
     await 详情(page);
@@ -295,19 +325,20 @@ it.each([1024, 1280, 1366])("Windows %ipx：超长内容平时、编辑态都不
     for (const 名 of ["金额", "定金金额", "需求描述", "备注", "沟通内容"]) {
       await 笔(page, 名).evaluate((e: HTMLElement) => e.click());
       const 里 = 格(page, 名);
-      await 里.getByRole("button", { name: /保\s*存/ }).waitFor();
+      await 里.locator(".proj-inline-hint").waitFor();
       const 量 = await 里.evaluate((el) => {
         const 外 = el.closest(".ant-card")!.getBoundingClientRect();
         const 超 = [...el.querySelectorAll("*")].filter(x => { const r = x.getBoundingClientRect(); return r.width > 0 && r.right > 外.right + 0.5; }).length;
-        const 钮 = [...el.querySelectorAll("button")].find(b => /保\s*存/.test(b.textContent ?? ""))!;
-        钮.scrollIntoView({ block: "center" });
-        const r = 钮.getBoundingClientRect();
-        const 顶 = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
-        return { 超, 点得中: !!顶 && (顶 === 钮 || 钮.contains(顶)) };
+        const 提示 = el.querySelector(".proj-inline-hint")!;
+        提示.scrollIntoView({ block: "center" });
+        const r = 提示.getBoundingClientRect();
+        const 顶 = document.elementFromPoint(r.x + Math.min(8, r.width / 2), r.y + r.height / 2);
+        return { 超, 看得见: !!顶 && (顶 === 提示 || 提示.contains(顶)) };
       });
-      expect(量, 名).toEqual({ 超: 0, 点得中: true });
+      expect(量, 名).toEqual({ 超: 0, 看得见: true });
       expect((await 溢出()).页, 名).toBeLessThanOrEqual(0);
-      await 里.getByRole("button", { name: /取\s*消/ }).click();
+      await 里.locator("input, textarea").first().press("Escape");
+      await 里.locator(".proj-inline-hint").waitFor({ state: "detached" });
     }
     expect(errors).toEqual([]);
   } finally { await page.close(); }

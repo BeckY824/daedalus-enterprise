@@ -41,7 +41,7 @@ async function 打开业务配置(page: Page) {
 
 async function 保存并等提示(page: Page, 面板: ReturnType<Page["getByRole"]>) {
   await 面板.getByRole("button", { name: /^保\s*存$/ }).click();
-  await expect(page.getByText("已保存，全站措辞已更新")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "已保存" })).toBeVisible({ timeout: 15_000 });
 }
 
 /** 库里至少有一位客户。已经有就什么都不做——这一组和别的用例共用一个库 */

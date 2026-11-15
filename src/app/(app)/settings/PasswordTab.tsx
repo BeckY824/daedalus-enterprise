@@ -15,7 +15,7 @@ import { changeMyPassword, 退出这台机器, type 机器 } from "./actions";
  */
 export default function PasswordTab({ 机器 }: { 机器: 机器[] | null }) {
   const router = useRouter();
-  const [message, 提示条] = useSettingsNote();
+  const [就地, 提示条] = useSettingsNote();
   const [问后果, 后果框] = useConsequence();
   const [pwdForm] = Form.useForm();
 
@@ -37,7 +37,7 @@ export default function PasswordTab({ 机器 }: { 机器: 机器[] | null }) {
       做: async () => {
         const res = await 退出这台机器(m.id);
         if (res.ok) {
-          message.success(`已退出「${m.名字}」`);
+          就地.success(`已退出「${m.名字}」`);
           router.refresh();
         }
         return res;

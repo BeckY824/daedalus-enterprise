@@ -5,6 +5,7 @@ import { App, Alert, Button, Popconfirm, Table, Tag, Typography } from "antd";
 import { smartTime } from "@/lib/utils";
 import { useBusiness } from "@/lib/business-client";
 import { 最近批次, 撤销批次, type 批次 } from "@/app/(app)/customers/import-actions";
+import { useSettingsNote } from "./InlineNote";
 
 /**
  * 设置页的「导入记录」栏：最近几批导入，每批一颗撤销。
@@ -18,7 +19,9 @@ import { 最近批次, 撤销批次, type 批次 } from "@/app/(app)/customers/i
  * 新建的删掉、补上的还原，**导入之后被人动过的那几位留着并说清是哪几位**。
  */
 export default function ImportsTab() {
-  const { message, modal } = App.useApp();
+  // 撤销没成的原因写在这一页签底部的就地小条（原型 g.notice，不弹顶部提示）；撤完的结果框留着（要读没动的是哪几位）
+  const { modal } = App.useApp();
+  const [就地, 提示条] = useSettingsNote();
   const 叫法 = useBusiness();
   const [行, set行] = useState<批次[] | null>(null);
   const [忙, set忙] = useState<string | null>(null);
@@ -43,7 +46,7 @@ export default function ImportsTab() {
     set忙(b.id);
     try {
       const r = await 撤销批次(b.id).catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : "撤销没能完成，请重试" }));
-      if (!r.ok) return message.error(r.error);
+      if (!r.ok) return void 就地.error(r.error);
       const 尾 = r.没动.length
         ? `。有 ${r.没动.length} 位没动：${r.没动.slice(0, 5).map((x) => `${x.name}（${x.原因}）`).join("、")}${r.没动.length > 5 ? " 等" : ""}`
         : "";
@@ -139,6 +142,7 @@ export default function ImportsTab() {
           },
         ]}
       />
+      {提示条}
     </>
   );
 }

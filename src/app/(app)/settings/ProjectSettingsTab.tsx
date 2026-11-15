@@ -9,6 +9,7 @@ import { 上限最大, 时长最大, 字数上限最大, 默认起算日, 是不
 import BusinessDatePicker from "@/components/BusinessDatePicker";
 import { useConsequence } from "@/components/ConsequenceDialog";
 import InlineConfirm from "@/components/InlineConfirm";
+import SaveButton from "@/components/SaveButton";
 import { dayjs } from "@/lib/utils";
 // 这两张卡（超时回收、节点推进）只在企业版出现（组织规则 只有企业版才读），节点按企业版字典列
 import { 企业版字典, 字典of, 本套节点名, 出口叫法上限 } from "@/lib/project/stage-dict";
@@ -81,26 +82,49 @@ export type 项目设置 = {
 export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设置; 成员: { id: string; name: string }[] }) {
   const router = useRouter();
   // 就地提示（PR9：不弹顶部 message）：贴这一页签底部
-  const [message, 提示条] = useSettingsNote();
-  const [忙, set忙] = useState(false);
+  const [就地, 提示条] = useSettingsNote();
+  /*
+    忙按卡分（原型 st.dict / st.switch「不锁整页签」）：一张卡在存，只灰这张卡；字典卡再细到每一行（DictCard 里）。
+    例外：持有上限、超时回收、进程推进、阶段四张卡存的是同一份组织规则（改组织规则 读一份、合上改动、整份写回），
+    两张同时存后到的会盖掉先到的，所以共用一个键「组织规则」；提成比例、按人提成同理共用「提成」。
+    记的是这一键还有几个在跑（字典卡几行同时停用 / 启用，不会一个先回来就把别的放开）
+  */
+  const [忙们, set忙们] = useState<Readonly<Record<string, number>>>({});
+  const 记忙 = (键: string, d: 1 | -1) => set忙们((m) => ({ ...m, [键]: Math.max(0, (m[键] ?? 0) + d) }));
 
-  const 跑 = async (f: () => 结果, 成了?: string) => {
-    set忙(true);
+  const 跑 = async (键: string, f: () => 结果, 成了?: string) => {
+    记忙(键, 1);
     try {
       const r = await f();
-      if (!r.ok) message.error(r.error ?? "没改成，请稍后再试");
+      if (!r.ok) 就地.error(r.error ?? "没改成，请稍后再试");
       else {
-        if (成了) message.success(成了);
+        if (成了) 就地.success(成了);
         router.refresh();
       }
       return r.ok;
     } catch {
-      message.error("没改成，请稍后再试");
+      就地.error("没改成，请稍后再试");
       return false;
     } finally {
-      set忙(false);
+      记忙(键, -1);
     }
   };
+  /**
+   * 保存键用（原型 g.save）：成没成显示在 SaveButton 按钮里，不再写就地小条；原因回给按钮，浮在按钮上面
+   */
+  const 存 = async (键: string, f: () => 结果): Promise<{ ok: boolean; error?: string }> => {
+    记忙(键, 1);
+    try {
+      const r = await f();
+      if (r.ok) router.refresh();
+      return r;
+    } catch {
+      return { ok: false, error: "没改成，请稍后再试" };
+    } finally {
+      记忙(键, -1);
+    }
+  };
+  const 卡 = (键: string): 卡忙 => ({ 忙: (忙们[键] ?? 0) > 0, 跑: (f, 成了) => 跑(键, f, 成了), 存: (f) => 存(键, f) });
 
   // 卡点三张卡只认业务角色是不是总管理员；共享试用区照旧谁都不能改
   const 卡点挡 = value.挡.字典 === "共享试用区不能改" ? value.挡.字典 : value.能改卡点 ? null : "只有总管理能改";
@@ -111,34 +135,33 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
         title="项目组员角色" 叫法="角色" 用的说法="位组员在用" 新的提示="新角色，比如：技术负责人"
         说明="拉人进项目组时给他选一个角色。停用的角色不能再选，已经用着它的组员不受影响。"
         停用说明="停用后不能再选；已经用着它的组员不变"
-        项们={value.角色们} 挡={value.挡.字典} 忙={忙} 跑={跑} 加={加组员角色} 改={改组员角色}
+        项们={value.角色们} 挡={value.挡.字典} 跑={卡("角色").跑} 加={加组员角色} 改={改组员角色}
       />
       <DictCard
         title="异常类别" 叫法="类别" 用的说法="个项目停在这个类别" 新的提示="新类别，比如：客户失联"
         说明="项目标成异常状态时选一个类别，备注可以不写。停用的类别不能再选，已经停在这个类别上的项目照样显示。"
         停用说明="停用后不能再选；已经用着它的项目不变"
-        项们={value.类别们} 挡={value.挡.字典} 忙={忙} 跑={跑} 加={加项目异常类别} 改={改项目异常类别}
+        项们={value.类别们} 挡={value.挡.字典} 跑={卡("类别").跑} 加={加项目异常类别} 改={改项目异常类别}
       />
-      {value.企业选项 && <EntDictCard 各类={value.企业选项} 谁能用配置={value.分配谁能用 ?? {}} 挡={value.挡.字典} 忙={忙} 跑={跑} />}
-      {value.组织规则 && <HoldCapCard 规则={value.组织规则.公海} 持有={value.持有} 成员={成员} 挡={value.挡.持有上限} 忙={忙} 跑={跑} />}
+      {value.企业选项 && <EntDictCard 各类={value.企业选项} 谁能用配置={value.分配谁能用 ?? {}} 挡={value.挡.字典} 卡={卡} />}
+      {value.组织规则 && <HoldCapCard 规则={value.组织规则.公海} 持有={value.持有} 成员={成员} 挡={value.挡.持有上限} {...卡("组织规则")} />}
       {value.组织规则 && <PoolRouteCard />}
-      {value.组织规则 && <TimeoutCard 规则={value.组织规则.超时回收} 挡={value.挡.节点时限} 范围={value.时限节点 ?? "全部"} 忙={忙} 跑={跑} />}
-      {value.组织规则 && <AdvanceCard 规则={value.组织规则.节点推进} 挡={value.挡.必填字段} 忙={忙} 跑={跑} />}
-      {value.组织规则 && <StageRuleCard 规则={value.组织规则.阶段} 挡={value.挡.阶段规则} 忙={忙} 跑={跑} />}
-      {value.卡点默认 && <BlockerDefaultsCard 默认={value.卡点默认} 挡={卡点挡} 忙={忙} 跑={跑} />}
-      {value.卡点开关 && <BlockerRolesCard 开关={value.卡点开关} 挡={卡点挡} 忙={忙} 跑={跑} />}
-      {value.卡点原因 && <BlockerReasonsCard 们={value.卡点原因} 挡={卡点挡} 忙={忙} 跑={跑} />}
-      {value.提成比例 && <RatesCard 比例={value.提成比例} 能改={value.能改提成比例} 忙={忙} 跑={跑} />}
-      {value.提成比例 && value.按人提成 && <PerUserRatesCard 三套={value.提成比例} {...value.按人提成} 能改={value.能改提成比例} 忙={忙} 跑={跑} />}
+      {value.组织规则 && <TimeoutCard 规则={value.组织规则.超时回收} 挡={value.挡.节点时限} 范围={value.时限节点 ?? "全部"} {...卡("组织规则")} />}
+      {value.组织规则 && <AdvanceCard 规则={value.组织规则.节点推进} 挡={value.挡.必填字段} {...卡("组织规则")} />}
+      {value.组织规则 && <StageRuleCard 规则={value.组织规则.阶段} 挡={value.挡.阶段规则} {...卡("组织规则")} />}
+      {value.卡点默认 && <BlockerDefaultsCard 默认={value.卡点默认} 挡={卡点挡} {...卡("卡点默认")} />}
+      {value.卡点开关 && <BlockerRolesCard 开关={value.卡点开关} 挡={卡点挡} {...卡("卡点开关")} />}
+      {value.卡点原因 && <BlockerReasonsCard 们={value.卡点原因} 挡={卡点挡} {...卡("卡点原因")} />}
+      {value.提成比例 && <RatesCard 比例={value.提成比例} 能改={value.能改提成比例} {...卡("提成")} />}
+      {value.提成比例 && value.按人提成 && <PerUserRatesCard 三套={value.提成比例} {...value.按人提成} 能改={value.能改提成比例} {...卡("提成")} />}
       {提示条}
     </div>
   );
 }
 
 /** 企业版选项字典：上面切换是哪一类，下面就是那一类的字典卡。只给选项，哪里都不强制必填 */
-function EntDictCard({ 各类, 谁能用配置, 挡, 忙, 跑 }: {
-  各类: Record<string, 字典项[]>; 谁能用配置: 分配谁能用配置; 挡: string | null; 忙: boolean;
-  跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+function EntDictCard({ 各类, 谁能用配置, 挡, 卡 }: {
+  各类: Record<string, 字典项[]>; 谁能用配置: 分配谁能用配置; 挡: string | null; 卡: (键: string) => 卡忙;
 }) {
   const [种类, set种类] = useState<字典种类>(字典种类们[0]);
   const 定义 = 字典定义[种类];
@@ -159,10 +182,10 @@ function EntDictCard({ 各类, 谁能用配置, 挡, 忙, 跑 }: {
         title={`企业选项 · ${定义.名}`} 叫法="选项" 用的说法="处在用" 新的提示={`新${定义.名}`}
         说明={`${定义.说明}只给选项，不强制填。停用的选项不能再选，已经选过的照样显示。`}
         停用说明="停用后不能再选；已经选过的照样显示"
-        项们={各类[种类] ?? []} 挡={挡} 忙={忙} 跑={跑}
+        项们={各类[种类] ?? []} 挡={挡} 跑={卡(`企业选项-${种类}`).跑}
         加={(name) => 加企业选项(种类, name)} 改={改企业选项}
       />
-      {种类 === "assign" && <AssignUseCard 项们={各类.assign ?? []} 配置={谁能用配置} 挡={挡} 忙={忙} 跑={跑} />}
+      {种类 === "assign" && <AssignUseCard 项们={各类.assign ?? []} 配置={谁能用配置} 挡={挡} {...卡("分配谁能用")} />}
     </div>
   );
 }
@@ -171,9 +194,8 @@ function EntDictCard({ 各类, 谁能用配置, 挡, 忙, 跑 }: {
  * 分配方式谁能用（10-27）：每一项按业务角色勾，服务端（lib/enterprise/assign-use.ts）照这个拦；
  * 「谁能用」= 谁能选这种方式把线索分出去：线索页的指定分配、自动分配，加上新建线索向导里的五种都照这个拦（10-27 A7）；从公海领照旧非原负责人都能领
  */
-function AssignUseCard({ 项们, 配置, 挡, 忙, 跑 }: {
-  项们: 字典项[]; 配置: 分配谁能用配置; 挡: string | null; 忙: boolean;
-  跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+function AssignUseCard({ 项们, 配置, 挡, 忙, 存 }: {
+  项们: 字典项[]; 配置: 分配谁能用配置; 挡: string | null; 忙: boolean; 存: 存法;
 }) {
   const 起 = () => Object.fromEntries(项们.map((x) => { const v = 谁能用(x.id, 配置); return [x.id, v === "所有人" ? [...分配可选角色] : [...v]]; }));
   const [勾, set勾] = useState<Record<string, string[]>>(起);
@@ -197,7 +219,7 @@ function AssignUseCard({ 项们, 配置, 挡, 忙, 跑 }: {
       ))}
       {!挡 && (
         <Space>
-          <Button type="primary" disabled={忙 || !改了} onClick={() => void 跑(() => 存分配谁能用(勾), "已保存")}>保存</Button>
+          <SaveButton disabled={忙 || !改了} 做={() => 存(() => 存分配谁能用(勾))}>保存</SaveButton>
           {改了 && <Button disabled={忙} onClick={() => set勾(起())}>还原</Button>}
         </Space>
       )}
@@ -205,20 +227,36 @@ function AssignUseCard({ 项们, 配置, 挡, 忙, 跑 }: {
   );
 }
 
+/** 一张卡的忙和跑（父组件按卡分键，ProjectSettingsTab 里 卡()） */
+type 卡忙 = { 忙: boolean; 跑: (f: () => 结果, 成了?: string) => Promise<boolean>; 存: 存法 };
+/** 保存键的「做」：成没成交给 SaveButton 显示在按钮里 */
+type 存法 = (f: () => 结果) => Promise<{ ok: boolean; error?: string }>;
+
 /** 一张字典卡：列出每一项，能改的人（看卡片右上角）改名、停用 / 启用、加新的；只停用不删，用过的照样认 */
 function DictCard({
-  title, 叫法, 用的说法, 新的提示, 说明, 停用说明, 项们, 挡, 忙, 跑, 加, 改,
+  title, 叫法, 用的说法, 新的提示, 说明, 停用说明, 项们, 挡, 跑: 卡跑, 加, 改,
 }: {
   title: string; 叫法: string; 用的说法: string; 新的提示: string; 说明: string; 停用说明: string;
-  项们: 字典项[]; 挡: string | null; 忙: boolean;
+  项们: 字典项[]; 挡: string | null;
   跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
   加: (name: string) => 结果;
   改: (id: string, patch: { name?: string; active?: boolean }) => 结果;
 }) {
   const [新的, set新的] = useState("");
   const [改名中, set改名中] = useState<{ id: string; name: string } | null>(null);
-  const 加上 = async () => 新的.trim() && (await 跑(() => 加(新的), "已加上")) && set新的("");
-  const 改名 = async () => 改名中 && (await 跑(() => 改(改名中.id, { name: 改名中.name }), "已改名")) && set改名中(null);
+  // 忙细到每一行（原型 st.dict「就地确认停用，不锁整页签」）：停用这一行时别的行照常能改名、停用，加新的照常能加
+  const [行忙, set行忙] = useState<ReadonlySet<string>>(() => new Set());
+  const 忙 = (键: string) => 行忙.has(键);
+  const 跑 = async (键: string, f: () => 结果, 成了?: string) => {
+    set行忙((m) => new Set(m).add(键));
+    try {
+      return await 卡跑(f, 成了);
+    } finally {
+      set行忙((m) => { const n = new Set(m); n.delete(键); return n; });
+    }
+  };
+  const 加上 = async () => 新的.trim() && !忙("加") && (await 跑("加", () => 加(新的), "已加上")) && set新的("");
+  const 改名 = async () => 改名中 && !忙(改名中.id) && (await 跑(改名中.id, () => 改(改名中.id, { name: 改名中.name }), "已改名")) && set改名中(null);
 
   return (
     <Card title={title} extra={挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}>
@@ -236,7 +274,7 @@ function DictCard({
                 onChange={(e) => set改名中({ id: r.id, name: e.target.value })}
                 onPressEnter={() => void 改名()}
               />
-              <Button type="primary" disabled={忙 || !改名中.name.trim()} onClick={() => void 改名()}>保存</Button>
+              <Button type="primary" disabled={忙(r.id) || !改名中.name.trim()} onClick={() => void 改名()}>保存</Button>
               <Button onClick={() => set改名中(null)}>取消</Button>
             </Space.Compact>
           ) : (
@@ -246,14 +284,14 @@ function DictCard({
               {r.用的人 > 0 && <span style={{ color: "var(--text-muted)", fontSize: 12, flex: "0 0 auto" }}>{r.用的人} {用的说法}</span>}
               {!挡 && (
                 <>
-                  <Button size="small" type="text" disabled={忙} onClick={() => set改名中({ id: r.id, name: r.name })}>改名</Button>
+                  <Button size="small" type="text" disabled={忙(r.id)} onClick={() => set改名中({ id: r.id, name: r.name })}>改名</Button>
                   {r.active ? (
                     // 字典停用（原型 st.dict，P-界面-40 原地确认）：按钮自己变成问句，一行后果
-                    <InlineConfirm 问={停用说明} 是="停用" 中性 做={async () => ({ ok: await 跑(() => 改(r.id, { active: false }), "已停用") })}>
-                      <Button size="small" type="text" disabled={忙}>停用</Button>
+                    <InlineConfirm 问={停用说明} 是="停用" 中性 做={async () => ({ ok: await 跑(r.id, () => 改(r.id, { active: false }), "已停用") })}>
+                      <Button size="small" type="text" disabled={忙(r.id)}>停用</Button>
                     </InlineConfirm>
                   ) : (
-                    <Button size="small" type="text" disabled={忙} onClick={() => void 跑(() => 改(r.id, { active: true }), "已启用")}>启用</Button>
+                    <Button size="small" type="text" disabled={忙(r.id)} onClick={() => void 跑(r.id, () => 改(r.id, { active: true }), "已启用")}>启用</Button>
                   )}
                 </>
               )}
@@ -264,7 +302,7 @@ function DictCard({
       {!挡 && (
         <Space.Compact style={{ width: "100%", marginTop: 4 }}>
           <Input placeholder={新的提示} aria-label={`新${叫法}名`} maxLength={20} value={新的} onChange={(e) => set新的(e.target.value)} onPressEnter={() => void 加上()} />
-          <Button disabled={忙 || !新的.trim()} onClick={() => void 加上()}>加上</Button>
+          <Button disabled={忙("加") || !新的.trim()} onClick={() => void 加上()}>加上</Button>
         </Space.Compact>
       )}
     </Card>
@@ -276,15 +314,15 @@ function DictCard({
  * 自己建档、跟着客户转、离职交接不拦。每人可以单独设，空着 = 用默认；填 999 = 不限（10-26）
  */
 function HoldCapCard({
-  规则, 持有, 成员, 挡, 忙, 跑,
+  规则, 持有, 成员, 挡, 忙, 跑, 存,
 }: {
   规则: 组织规则["公海"]; 持有: Record<string, number>; 成员: { id: string; name: string }[];
-  挡: string | null; 忙: boolean; 跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+  挡: string | null; 忙: boolean; 跑: (f: () => 结果, 成了?: string) => Promise<boolean>; 存: 存法;
 }) {
   const [默认, set默认] = useState<number | null>(规则.默认上限);
   const [每人, set每人] = useState<Record<string, number | null>>(规则.每人上限);
   const 改了 = 默认 !== 规则.默认上限 || 成员.some((u) => (每人[u.id] ?? null) !== (规则.每人上限[u.id] ?? null));
-  const 保存 = () => 跑(() => 改组织规则({ 公海: { 默认上限: 默认 ?? undefined, 每人上限: 每人 } }), "已保存");
+  const 保存 = () => 存(() => 改组织规则({ 公海: { 默认上限: 默认 ?? undefined, 每人上限: 每人 } }));
   const [问后果, 后果框] = useConsequence();
   const 拨 = (开: boolean) => 跑(() => 改组织规则({ 公海: { 持有上限开: 开 } }), 开 ? "已开持有上限" : "已关持有上限");
   // 开之前先说会挡住谁（10-30）：一开就生效，按存着的上限数一遍现在已经到了的人；关不用问。PR9：换成后果框（组织规则开关）
@@ -345,7 +383,7 @@ function HoldCapCard({
             </div>
           ))}
           {!挡 && (
-            <Button type="primary" style={{ marginTop: 4 }} disabled={忙 || !改了 || 默认 === null} onClick={() => void 保存()}>保存</Button>
+            <SaveButton style={{ marginTop: 4 }} disabled={忙 || !改了 || 默认 === null} 做={保存}>保存</SaveButton>
           )}
         </>
       )}
@@ -364,7 +402,7 @@ function TimeoutCard({
   规则: 组织规则["超时回收"]; 挡: string | null; 范围: 时限范围; 忙: boolean;
   跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
 }) {
-  const [message, 提示条] = useSettingsNote();
+  const [就地, 提示条] = useSettingsNote();
   const router = useRouter();
   const [问后果, 后果框] = useConsequence();
   const [天数, set天数] = useState<Record<string, number | null>>(规则.节点天数);
@@ -378,11 +416,11 @@ function TimeoutCard({
   /** 先数会回收几个，有就确认；改完提示真收了几个 */
   const 确认后存 = async (改: 规则改动, 成了: string) => {
     const 看 = await 预览超时回收(改).catch(() => null);
-    if (!看) return void message.error("没改成，请稍后再试");
-    if (!看.ok) return void message.error(看.error ?? "没改成，请稍后再试");
+    if (!看) return void 就地.error("没改成，请稍后再试");
+    if (!看.ok) return void 就地.error(看.error ?? "没改成，请稍后再试");
     const 存 = () => 跑(async () => {
       const r = await 改组织规则(改);
-      if (r.ok) message.success(r.收回 ? `${成了}，${r.收回} 个项目回到了线索公海` : 成了);
+      if (r.ok) 就地.success(r.收回 ? `${成了}，${r.收回} 个项目回到了线索公海` : 成了);
       return r;
     });
     if (!看.个数) return void (await 存());
@@ -510,10 +548,10 @@ const 同一份 = (a: string[] = [], b: string[] = []) => a.length === b.length 
  * 改了清单不当场推：项目下次保存（改项目、记沟通、改客户资料）时按新清单走
  */
 function AdvanceCard({
-  规则, 挡, 忙, 跑,
+  规则, 挡, 忙, 跑, 存,
 }: {
   规则: 组织规则["节点推进"]; 挡: string | null; 忙: boolean;
-  跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+  跑: (f: () => 结果, 成了?: string) => Promise<boolean>; 存: 存法;
 }) {
   const [必填, set必填] = useState<Record<string, string[]>>(规则.必填);
   const 改了 = 能配必填的节点.some((n) => !同一份(必填[n], 规则.必填[n]));
@@ -562,7 +600,7 @@ function AdvanceCard({
           ))}
           {!挡 && (
             <Space wrap style={{ marginTop: 4 }}>
-              <Button type="primary" disabled={忙 || !改了} onClick={() => void 跑(() => 改组织规则({ 节点推进: { 必填 } }), "已保存")}>保存</Button>
+              <SaveButton disabled={忙 || !改了} 做={() => 存(() => 改组织规则({ 节点推进: { 必填 } }))}>保存</SaveButton>
               <Button disabled={忙} onClick={() => set必填(Object.fromEntries(Object.entries(建议必填).map(([n, v]) => [本套节点名(n, 企业版字典), v])))}>用建议清单</Button>
             </Space>
           )}
@@ -578,14 +616,14 @@ function AdvanceCard({
  * 只有总管理员能改
  */
 function BlockerDefaultsCard({
-  默认, 挡, 忙, 跑,
+  默认, 挡, 忙, 存,
 }: {
-  默认: 卡点默认; 挡: string | null; 忙: boolean; 跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+  默认: 卡点默认; 挡: string | null; 忙: boolean; 存: 存法;
 }) {
   const [类型, set类型] = useState(默认.默认类型);
   const [影响, set影响] = useState(默认.默认影响);
   const 改了 = 类型 !== 默认.默认类型 || 影响 !== 默认.默认影响;
-  const 保存 = () => 跑(() => 存卡点默认Action({ 默认类型: 类型, 默认影响: 影响 }), "已保存");
+  const 保存 = () => 存(() => 存卡点默认Action({ 默认类型: 类型, 默认影响: 影响 }));
   const 行 = { display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" as const };
 
   return (
@@ -602,7 +640,7 @@ function BlockerDefaultsCard({
         <Select aria-label="默认影响" style={{ width: 160 }} disabled={!!挡} value={影响} onChange={set影响} options={影响等级们.map((t) => ({ value: t, label: t }))} />
       </div>
       {!挡 && (
-        <Button type="primary" style={{ marginTop: 4 }} disabled={忙 || !改了} onClick={() => void 保存()}>保存</Button>
+        <SaveButton style={{ marginTop: 4 }} disabled={忙 || !改了} 做={保存}>保存</SaveButton>
       )}
     </Card>
   );
@@ -614,13 +652,13 @@ function BlockerDefaultsCard({
  * 账号角色不算数，没设业务角色的人看不到卡点。只有总管理员能改
  */
 function BlockerRolesCard({
-  开关, 挡, 忙, 跑,
+  开关, 挡, 忙, 存,
 }: {
-  开关: 卡点角色开关; 挡: string | null; 忙: boolean; 跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+  开关: 卡点角色开关; 挡: string | null; 忙: boolean; 存: 存法;
 }) {
   const [草稿, set草稿] = useState<卡点角色开关>(开关);
   const 改了 = 业务角色们.some((r) => 草稿.启用[r] !== 开关.启用[r] || 草稿.范围[r] !== 开关.范围[r]);
-  const 保存 = () => 跑(() => 存卡点角色开关Action(草稿), "已保存");
+  const 保存 = () => 存(() => 存卡点角色开关Action(草稿));
   return (
     <Card title="卡点：谁能用" extra={挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}>
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
@@ -650,7 +688,7 @@ function BlockerRolesCard({
       </div>
       {!挡 && (
         <Space style={{ marginTop: 12 }}>
-          <Button type="primary" disabled={忙 || !改了} onClick={() => void 保存()}>保存</Button>
+          <SaveButton disabled={忙 || !改了} 做={保存}>保存</SaveButton>
           {改了 && <Button disabled={忙} onClick={() => set草稿(开关)}>撤销修改</Button>}
         </Space>
       )}
@@ -794,9 +832,9 @@ const 范围说明: Record<提成范围, string> = {
 type 草稿比例 = Record<提成范围, { 底价比例: number | null; 溢价比例: number | null }>;
 
 function RatesCard({
-  比例, 能改, 忙, 跑,
+  比例, 能改, 忙, 存,
 }: {
-  比例: 三套提成比例; 能改: boolean; 忙: boolean; 跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+  比例: 三套提成比例; 能改: boolean; 忙: boolean; 存: 存法;
 }) {
   const [草稿, set草稿] = useState<草稿比例>(比例);
   const 交 = Object.fromEntries(提成范围们.map((k) => [k, { 底价比例: 草稿[k].底价比例 ?? undefined, 溢价比例: 草稿[k].溢价比例 ?? undefined }]));
@@ -826,7 +864,7 @@ function RatesCard({
       </div>
       {能改 && 改了 && 问题 && <div style={{ color: "var(--danger-text)", marginBottom: 8 }}>{问题}</div>}
       {能改 && (
-        <Button type="primary" disabled={忙 || !改了 || !!问题} onClick={() => void 跑(() => 改提成比例(草稿 as 三套提成比例), "已保存提成比例")}>保存</Button>
+        <SaveButton disabled={忙 || !改了 || !!问题} 做={() => 存(() => 改提成比例(草稿 as 三套提成比例))}>保存</SaveButton>
       )}
     </Card>
   );
@@ -841,10 +879,10 @@ type 草稿单设 = Record<string, { 底价比例: number | null; 溢价比例: 
 const 搜索门槛 = 8;
 
 function PerUserRatesCard({
-  三套, 人们, 比例, 能改, 忙, 跑,
+  三套, 人们, 比例, 能改, 忙, 存,
 }: {
   三套: 三套提成比例; 人们: { id: string; name: string; 范围: 提成范围 }[]; 比例: 按人提成比例;
-  能改: boolean; 忙: boolean; 跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+  能改: boolean; 忙: boolean; 存: 存法;
 }) {
   const 原 = (id: string) => ({ 底价比例: 比例[id]?.底价比例 ?? null, 溢价比例: 比例[id]?.溢价比例 ?? null });
   const [草稿, set草稿] = useState<草稿单设>(() => Object.fromEntries(人们.map((u) => [u.id, 原(u.id)])));
@@ -910,7 +948,7 @@ function PerUserRatesCard({
       {能改 && 有改动 && 问题 && <div style={{ color: "var(--danger-text)", marginBottom: 8 }}>{问题}</div>}
       {能改 && 人们.length > 0 && (
         <Space wrap>
-          <Button type="primary" disabled={忙 || !有改动 || !!问题} onClick={() => void 跑(() => 改按人提成比例(改了的), "已保存按人提成比例")}>保存</Button>
+          <SaveButton disabled={忙 || !有改动 || !!问题} 做={() => 存(() => 改按人提成比例(改了的))}>保存</SaveButton>
           {有改动 && <Button disabled={忙} onClick={() => set草稿(Object.fromEntries(人们.map((u) => [u.id, 原(u.id)])))}>撤销改动</Button>}
         </Space>
       )}
@@ -940,10 +978,10 @@ function PoolRouteCard() {
 }
 
 function StageRuleCard({
-  规则, 挡, 忙, 跑,
+  规则, 挡, 忙, 跑, 存,
 }: {
   规则: 组织规则["阶段"]; 挡: string | null; 忙: boolean;
-  跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
+  跑: (f: () => 结果, 成了?: string) => Promise<boolean>; 存: 存法;
 }) {
   const 阶段们 = ["线索", "商机"] as const;
   const 出口名 = 字典of(true, 规则.出口叫法).出口们;
@@ -953,10 +991,10 @@ function StageRuleCard({
   // 字数上限（M-节点-03）：空着 = 不设（数据交接期默认不设，正式使用后管理员来设）
   const [上限, set上限] = useState<{ 培育计划: number | null; 无效原因: number | null }>({ 培育计划: 规则.培育计划上限, 无效原因: 规则.无效原因上限 });
   const 上限改了 = 上限.培育计划 !== 规则.培育计划上限 || 上限.无效原因 !== 规则.无效原因上限;
-  const 存上限 = () => 跑(() => 改组织规则({ 阶段: { 培育计划上限: 上限.培育计划, 无效原因上限: 上限.无效原因 } }), "已保存字数上限");
-  const 存 = () => 跑(() => 改组织规则({
+  const 存上限 = () => 存(() => 改组织规则({ 阶段: { 培育计划上限: 上限.培育计划, 无效原因上限: 上限.无效原因 } }));
+  const 存叫法 = () => 存(() => 改组织规则({
     阶段: { 出口叫法: Object.fromEntries(阶段们.map((s) => [s, [叫法[s][0].trim() || null, 叫法[s][1].trim() || null] as const])) },
-  }), "已保存");
+  }));
 
   return (
     <Card title="阶段规则" extra={挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}>
@@ -1023,7 +1061,7 @@ function StageRuleCard({
           </div>
         ))}
       </div>
-      {!挡 && <Button className="org-len-save" disabled={忙 || !上限改了} onClick={() => void 存上限()}>保存字数上限</Button>}
+      {!挡 && <SaveButton type="default" className="org-len-save" disabled={忙 || !上限改了} 做={存上限}>保存字数上限</SaveButton>}
       <div style={{ fontWeight: 500, marginBottom: 8 }}>结束状态叫法<span style={{ color: "var(--text-muted)", fontWeight: 400 }}>（空着 = 用默认；只换说法，已经定了结果的项目不变）</span></div>
       {阶段们.map((s) => {
         const [成, 没成] = 企业版字典.出口们[s];
@@ -1049,7 +1087,7 @@ function StageRuleCard({
           </div>
         );
       })}
-      {!挡 && <Button type="primary" style={{ marginTop: 4 }} disabled={忙 || !改了} onClick={() => void 存()}>保存叫法</Button>}
+      {!挡 && <SaveButton style={{ marginTop: 4 }} disabled={忙 || !改了} 做={存叫法}>保存叫法</SaveButton>}
     </Card>
   );
 }

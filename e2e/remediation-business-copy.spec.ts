@@ -9,7 +9,7 @@ test.afterAll(async({browser})=>{
   await login(page);const panel=await settings(page);
   await panel.getByRole("button",{name:"通用销售",exact:true}).click();
   await panel.locator(".biz-preset-todo").getByRole("button",{name:/保\s*存/}).click();
-  await expect(page.getByText("已保存，全站措辞已更新")).toBeVisible();
+  await expect(page.getByRole("button", { name: "已保存" })).toBeVisible();
   await page.goto("/customers");await expect(page.getByRole("heading",{name:"客户",exact:true})).toBeVisible();
  }finally{await page.close();const db=连库();try{await 清空业务数据(db);await db.setting.deleteMany({where:{key:"business"}})}finally{await db.$disconnect()}}
 });
@@ -19,7 +19,7 @@ test("切外贸整组待保存再生效，名词跨数据/成员/渠道一致，
  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));await login(page);const panel=await settings(page);
  await panel.getByText("外贸",{exact:true}).click();await expect(panel.locator("#statusLabels_已签约")).toHaveValue("已下单");await expect(panel).toContainText("已填入「外贸出口」，还没保存");await expect(panel).toContainText("采购负责人");
  const db=连库();try{expect(await db.setting.findUnique({where:{key:"business"}})).toBeNull()}finally{await db.$disconnect()}
- await panel.locator("#customer").fill("伙伴");await panel.getByRole("button",{name:/^保\s*存$/}).first().click();await expect(page.getByText("已保存，全站措辞已更新")).toBeVisible();
+ await panel.locator("#customer").fill("伙伴");await panel.getByRole("button",{name:/^保\s*存$/}).first().click();await expect(page.getByRole("button", { name: "已保存" })).toBeVisible();
  await page.goto("/overview");await expect(page.getByRole("main")).toContainText("伙伴趋势分析");await expect(page.getByRole("main")).toContainText("累计伙伴");
  await page.goto("/channels");await expect(page.getByRole("main")).toContainText("展会、线上平台、代理商");await expect(page.getByRole("main")).not.toContainText("家长社群");
  await page.goto("/settings?tab=members");await expect(page.getByRole("columnheader",{name:"负责伙伴"})).toBeVisible();await page.getByRole("button",{name:/新增成员/}).click();await expect(page.getByRole("dialog")).toContainText(process.env.CRM_ENTERPRISE==="1"?"业务角色在「组织架构」里设":"销售主管与销售目前使用相同业务权限");/* 企业版角色列摆组织架构的业务角色，编辑框里只剩「账号权限」（10-28） */await page.getByRole("dialog").getByRole("button",{name:/取\s*消/}).click();

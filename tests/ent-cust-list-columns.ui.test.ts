@@ -14,7 +14,7 @@ let browser: Browser, 包: string;
 const 列表桩: Plugin = { name: "import-perm-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   const 空跑 = "async()=>({ok:true})";
-  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(u){window.__push=u},replace(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
+  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(u){window.__push=u;if(window.__服务端换)setTimeout(()=>window.__设板(b=>!b),60)},replace(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
   stub(/^\.\/ImportDrawer$/, "export default function D({open}){return <div data-testid='import-drawer' data-open={String(open)}/>}");
   stub(/^\.\/export-client$/, "export const 完整导出=async()=>({ok:true});");
@@ -41,15 +41,17 @@ beforeAll(async () => {
     import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {我Provider} from '@/lib/me-client';
     import CustomersView from '@/app/(app)/customers/CustomersView';import {看板工具位} from '@/app/(app)/customers/board-slot';import {createPortal} from 'react-dom';
     // 看板视图最坏情况（11-12 审查）：看板往筛选行右端那一格放「分配」「我分出去的」（ProjectsView 客户页筛到线索、能分配时）
-    const 假看板=()=>{const 位=React.useContext(看板工具位);const [有,set有]=React.useState(!!window.__看板工具);React.useEffect(()=>{window.__切工具=set有},[]);return <div className='fake-board'>项目看板{有&&位&&createPortal(<><button type='button' className='ant-btn ant-btn-default'><span>分配</span></button><button type='button' className='ant-btn ant-btn-default'><span>我分出去的</span></button></>,位)}</div>};
+    const 假看板=()=>{const 位=React.useContext(看板工具位);const [有,set有]=React.useState(!!window.__看板工具);React.useEffect(()=>{window.__切工具=set有},[]);return <div className='fake-board'>项目看板{window.__卡&&['c1','c2','c3'].map(k=><div key={k} className='pipe-card' data-morph-key={k}>{k}</div>)}{有&&位&&createPortal(<><button type='button' className='ant-btn ant-btn-default'><span>分配</span></button><button type='button' className='ant-btn ant-btn-default'><span>我分出去的</span></button></>,位)}</div>};
     const 长='某某超长贸易进出口有限公司'.repeat(6);
     const users=[{id:'me',name:'小王',email:'s1',role:'SALES',active:true},{id:'u2',name:'一个名字特别特别长的同事',email:'s2',role:'SALES',active:true}];
     const 行=(id,owner)=>({id,name:长+id,phone:'1380000000'+id.slice(1),school:null,grade:null,major:null,followStatus:'待跟进',decisionStatus:'了解中',custStatus:'跟进中',salesOwnerId:owner,salesOwnerName:owner==='me'?'小王':'一个名字特别特别长的同事',createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',lastFollowAt:'2026-11-01T00:00:00.000Z',signedAmount:0,referrerCustomerId:null,referrerName:null,channelId:null,channelName:null,expectedSignAt:null,remark:null,addrCountry:'阿拉伯联合酋长国',extra:{level:'A'}});
     const rows=[行('c1','me'),行('c2','u2'),行('c3','me')].map(r=>window.__公海?{...r,pool:{reason:'超时回收'}}:r);
     const 项目概况={c1:{项目数:12,当前节点:'异常 · 某个后台改得特别特别长的节点名字',当前阶段:'订单'},c2:{项目数:1,当前节点:'方案敲定',当前阶段:'商机'}};
-    const 树=(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'me',name:'小王'}}>
-      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:window.__阶段||'',node:'',...(window.__三态?{triState:''}:{})}} 三态标={window.__三态?{c1:{态:'待回收',几天后进公海:12},c2:{态:'暂缓回收中'},c3:{态:'不计时'}}:undefined} 客户数={3} 企业版 项目概况={项目概况} 项目看板={!window.__非项目} 能新建和领取={!window.__不能新建} 待交接={window.__交接??null} 看板体={window.__看板?<假看板/>:undefined} 市场视图={!!window.__市场} 仅项目行={window.__仅项目?[{id:'x1',name:'仅项目的'+长,shortName:null,school:null,customerType:'某个特别长的客户类型名字',customerAttr:null,地区:'浙江省 杭州市 西湖区',当前节点:'某个后台改得特别特别长的节点名字',当前阶段:'商机',项目数:2,仅项目:true}]:undefined} 仅项目超了={!!window.__超了}/>
+    const 根=()=>{const [板,set板]=React.useState(!!window.__看板);window.__设板=set板;return 树里(板)};
+    const 树里=(板)=>(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'me',name:'小王'}}>
+      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:window.__阶段||'',node:'',...(window.__三态?{triState:''}:{})}} 三态标={window.__三态?{c1:{态:'待回收',几天后进公海:12},c2:{态:'暂缓回收中'},c3:{态:'不计时'}}:undefined} 客户数={3} 企业版 项目概况={项目概况} 项目看板={!window.__非项目} 能新建和领取={!window.__不能新建} 待交接={window.__交接??null} 看板体={板?<假看板/>:undefined} 市场视图={!!window.__市场} 仅项目行={window.__仅项目?[{id:'x1',name:'仅项目的'+长,shortName:null,school:null,customerType:'某个特别长的客户类型名字',customerAttr:null,地区:'浙江省 杭州市 西湖区',当前节点:'某个后台改得特别特别长的节点名字',当前阶段:'商机',项目数:2,仅项目:true}]:undefined} 仅项目超了={!!window.__超了}/>
     </我Provider></BusinessProvider></App></ConfigProvider>);
+    const 树=<根/>;
     const el=document.getElementById('root');
     // __静态：先只放服务端出的那份 HTML（React 还没接管），window.__水合() 再接管——照真实页面的先后
     if(window.__静态){const c=createCache();const h=renderToString(<StyleProvider cache={c}>{树}</StyleProvider>);document.head.insertAdjacentHTML('beforeend',extractStyle(c));el.innerHTML=h;window.__水合=()=>hydrateRoot(el,树);}
@@ -604,4 +606,42 @@ it("「仅项目」一小块（只负责项目的人）：在客户表格上面�
     await 超.addScriptTag({ content: 包 });
     await expect.poll(() => 超.getByTestId("project-only-block").locator(".cust-ponly-h").innerText()).toMatch(/前 1 位，更多请在看板里看/);
   } finally { await 超.close(); }
+});
+
+it("列表 ⇄ 看板原地变形（原型 cu.view）：点了滑块先到；服务端换成看板那一帧，这位客户的卡片从他那一行滑过去，切回列表同样滑回行；减弱动态直接换", async () => {
+  for (const 少 of [false, true]) {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } }); page.setDefaultTimeout(5000);
+    const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+    try {
+      if (少) await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+      await page.evaluate(() => {
+        const w = window as unknown as { __服务端换: boolean; __卡: boolean; __动: { 标签: string; 键: string; 起: string }[] };
+        w.__服务端换 = true; w.__卡 = true; w.__动 = [];
+        const 原 = Element.prototype.animate;
+        Element.prototype.animate = function (this: HTMLElement, k: Keyframe[] | PropertyIndexedKeyframes | null, o?: number | KeyframeAnimationOptions) {
+          const 首 = Array.isArray(k) ? (k[0] as Record<string, unknown>) : {};
+          w.__动.push({ 标签: this.tagName, 键: this.dataset.morphKey ?? this.dataset.rowKey ?? "", 起: String(首.transform ?? "") });
+          return 原.call(this, k, o);
+        };
+      });
+      await page.addScriptTag({ content: 包 });
+      await page.locator("tr.ant-table-row").first().waitFor();
+      const 切 = page.getByRole("radiogroup", { name: "列表 / 看板" });
+      await 切.getByText("看板", { exact: true }).click();
+      // 滑块先到（服务端还没回）
+      expect(await 切.locator(".ant-segmented-item-selected").innerText()).toBe("看板");
+      await page.locator(".fake-board").waitFor();
+      const 动 = () => page.evaluate(() => (window as unknown as { __动: { 标签: string; 键: string; 起: string }[] }).__动.filter((x) => x.起.startsWith("translate(")));
+      if (少) expect(await 动()).toEqual([]);
+      else expect((await 动()).filter((x) => x.标签 === "DIV").map((x) => x.键).sort()).toEqual(["c1", "c2", "c3"]);
+      await page.evaluate(() => { (window as unknown as { __动: unknown[] }).__动.length = 0; });
+      await page.getByRole("radiogroup", { name: "列表 / 看板" }).getByText("列表", { exact: true }).click();
+      await page.locator("tr.ant-table-row").first().waitFor();
+      if (少) expect(await 动()).toEqual([]);
+      else expect((await 动()).filter((x) => x.标签 === "TR").map((x) => x.键).sort()).toEqual(["c1", "c2", "c3"]);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
 });

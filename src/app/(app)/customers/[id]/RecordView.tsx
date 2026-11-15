@@ -57,7 +57,7 @@ import { 打开AI浮窗, 登记智能总结 } from "@/lib/ai-float";
 import LinkedCustomers from "./LinkedCustomers";
 import { FoldSplit, ProjectFold, 模块钮色, type 连体主钮, type 连体色 } from "../../projects/[id]/ProjectFold";
 import { 客户详情左栏, 客户详情待办 } from "../../projects/[id]/card-names";
-import NewProjectModal from "./NewProjectModal";
+import NewProjectEntry from "./NewProjectEntry";
 import { 两行, 项目忙说法 } from "../../projects/[id]/project-menu";
 import { 客户页摆法, 级别选项, 企业级别, 拼地址, 地址叫法, 简称上限 } from "@/lib/enterprise/customer-v2";
 import LevelLetter from "@/components/LevelLetter";
@@ -230,6 +230,8 @@ export default function RecordView({
   /** 客户页留哪几块（定稿 P5 待定 14）：企业版项目模式下记录输入、待办移到项目，转让、背调、下次跟进不放，旧字段不摆 */
   const 摆法 = 客户页摆法(企业);
   const [建项目开着, set建项目开着] = useState(false);
+  /** 「新增项目」那张表要的数据第一次打开时才取：取着的时候「开项目」键转圈 */
+  const [取建档中, set取建档中] = useState(false);
   /** 企业版页头具名按钮开的框（10-31 改版 R6） */
   const [头部框, set头部框] = useState<客户头部框 | null>(null);
   /** 「客户转让」一个框（dt.transfer） */
@@ -1406,7 +1408,7 @@ export default function RecordView({
           {/* 两层排版：项目在右边项目区的页签里，左栏不再列 */}
           {项目们 && !项目区 ? 节("项目", 项目们.length, (
                 <Space size={4}>
-                  {摆法.新建项目 && 新建项目 && !只读 && !去项目跟进 && <Button type="text" size="small" icon={<PlusOutlined />} onClick={开建项目}>开项目</Button>}
+                  {摆法.新建项目 && 新建项目 && !只读 && !去项目跟进 && <Button type="text" size="small" icon={<PlusOutlined />} loading={取建档中} onClick={开建项目}>开项目</Button>}
                   <Link href="/projects">全部 ›</Link>
                 </Space>
               ), <>
@@ -1740,18 +1742,15 @@ export default function RecordView({
           )}
         </Modal>
       )}
-      {/* 客户页「新建项目」（定稿 P5 待定 16）：客户自动带上 */}
+      {/* 客户页「新增项目」（原型 cr.old）：同一张新建表，客户定死是这一位，只填项目和首条沟通 */}
       {新建项目 && (
-        <NewProjectModal
+        <NewProjectEntry
           open={建项目开着}
           onClose={() => set建项目开着(false)}
-          customerId={customer.id}
-          customerName={customer.shortName || customer.name}
-          默认负责人={customer.salesOwnerId}
-          users={users}
+          onError={(话) => 说就地(话, true)}
+          on取中={set取建档中}
+          customer={{ id: customer.id, name: customer.name, shortName: customer.shortName, salesOwnerId: customer.salesOwnerId }}
           联系人们={contacts.filter((c) => !c.挂靠).map((c) => ({ id: c.id, name: c.name, isPrimary: c.isPrimary }))}
-          节点们={新建项目.节点们}
-          要下一步={新建项目.要下一步}
         />
       )}
     </div>

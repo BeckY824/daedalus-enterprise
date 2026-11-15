@@ -49,7 +49,7 @@ async function 套预设(page: Page, 名: string) {
   const 面板 = page.getByRole("tabpanel", { name: "业务配置" });
   await 面板.getByRole("button", { name: 名, exact: true }).click();
   await 面板.locator(".biz-preset-todo").getByRole("button", { name: /保\s*存/ }).click();
-  await expect(page.getByText("已保存，全站措辞已更新")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "已保存" })).toBeVisible({ timeout: 15_000 });
 }
 
 async function 收拾() {

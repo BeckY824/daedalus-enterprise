@@ -22,7 +22,7 @@ const 参与选项: 参与状态[] = ["允许", "暂停", "禁止"];
 export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分配情况; 不限额?: boolean }) {
   const router = useRouter();
   // 就地提示（PR9：不弹顶部 message）
-  const [message, 提示条] = useSettingsNote();
+  const [就地, 提示条] = useSettingsNote();
   const [忙, set忙] = useState<string | null>(null);
   // 正在改的配额：失焦或回车才存
   const [草稿, set草稿] = useState<Record<string, number | null>>({});
@@ -42,10 +42,10 @@ export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分�
     try {
       const r = await f();
       ok = r.ok;
-      if (!r.ok) message.error(r.error ?? "没改成，请稍后再试");
-      else message.success(成了);
+      if (!r.ok) 就地.error(r.error ?? "没改成，请稍后再试");
+      else 就地.success(成了);
     } catch {
-      message.error("没改成，请稍后再试");
+      就地.error("没改成，请稍后再试");
     } finally {
       set忙(null);
       // 成了：草稿和新数据同一个过渡里换，新数据到了才一起显示；没成：马上退回页面上的值

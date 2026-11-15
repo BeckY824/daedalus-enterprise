@@ -7,7 +7,7 @@
  */
 import { useState } from "react";
 import Link from "next/link";
-import { App, Button, Space } from "antd";
+import { Button, Space } from "antd";
 import { 申请挂靠 } from "@/app/(app)/customers/number-actions";
 import type { 撞号露出, 负责人露出 } from "@/lib/enterprise/dupe-ledger";
 
@@ -20,9 +20,10 @@ export function 我名下入口({ 客户id }: { 客户id: string }) {
 
 /** 不给打开 = 外面已经摆了「打开它」（号码撞号面板） */
 export default function AttachEntry({ 露出, 不给打开 = false }: { 露出: 撞号露出; 不给打开?: boolean }) {
-  const { message } = App.useApp();
   const [已申请, set已申请] = useState(!!露出.已申请);
   const [忙, set忙] = useState(false);
+  // 申请的结果写在按钮旁边（原型 g.save：按钮变「已申请挂靠」+ 一句回执；没成的原因 role=alert），不弹顶部提示
+  const [话, set话] = useState<{ 错: boolean; 字: string } | null>(null);
   if (露出.同组) {
     return (
       <div data-testid="attach-same-group" style={{ marginTop: 8, color: "var(--text-muted)", overflowWrap: "anywhere" }}>
@@ -33,13 +34,14 @@ export default function AttachEntry({ 露出, 不给打开 = false }: { 露出: 
   if (!露出.撞号id) return null;
   const 点 = async () => {
     set忙(true);
+    set话(null);
     try {
       const r = await 申请挂靠(露出.撞号id!);
-      if (!r.ok) return void message.error(r.error);
+      if (!r.ok) return void set话({ 错: true, 字: r.error });
       set已申请(true);
-      message.success(r.提示);
+      set话({ 错: false, 字: r.提示 });
     } catch {
-      message.error("没申请成，请稍后再试");
+      set话({ 错: true, 字: "没申请成，请稍后再试" });
     } finally {
       set忙(false);
     }
@@ -51,6 +53,7 @@ export default function AttachEntry({ 露出, 不给打开 = false }: { 露出: 
         {已申请 ? "已申请挂靠" : "申请挂靠"}
       </Button>
       <span style={{ color: "var(--text-muted)" }}>会通知负责人，负责人不变</span>
+      {话 && (话.错 ? <span role="alert" className="cd-task-err">{话.字}</span> : <span role="status" className="cd-transfer-sent">{话.字}</span>)}
     </Space>
   );
 }

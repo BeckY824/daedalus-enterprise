@@ -18,7 +18,7 @@ const plugin: Plugin = { name: "org-rules-first", setup(b) {
   stub(/^\.\/LeadAssignCard$/, "export default function C(){return <div data-testid='lead-assign-card'/>}");
   stub(/^\.\/FeishuConnectCard$/, "export default function F(){return null}");
   stub(/^\.\/FeishuPushSwitch$/, "export default function P(){return null}");
-  stub(/^\.\/org-actions$/, `const f=${空跑};export const 建部门=f,改部门=f,删部门=f,设规则=f,设字段权限=f,设改权限=f,设市场部门=f,设只看某人=f,设回收站副手=f,设成员=f,
+  stub(/^\.\/org-actions$/, `const f=${空跑};export const 建部门=f,改部门=f,删部门=f,设规则=f,设字段权限=f,设改权限=f,设市场部门=f,设只看某人=f,设回收站副手=f,设成员=async()=>{if(window.__慢)await new Promise(r=>{window.__放=r});return{ok:true}},
     设通讯录同步=f,立即同步通讯录=f,设职务对照=f,设通讯录凭据=f,设通讯录间隔=f,飞书表概况=async()=>({ok:false,error:'没接'}),
     通讯录概况=async()=>({ok:true,角色们:[],来源们:[{源:'feishu',名:'飞书',开:false,上次:null,角色对照:{},职务们:[],间隔分钟:60,凭据:{齐了:false,字段:[]}}]});`);
   stub(/^\.\.\/leads\/assign-actions$/, `export const 设不设配额=${空跑};export const 读线部门设置=async()=>({设的:{内贸:[],外贸:[]},还没勾:[],能改:true});export const 设线部门=${空跑};`);
@@ -88,5 +88,23 @@ it.each([1024, 1280, 1366])("Windows %ipx：组织规则在首屏、不横向撑
     const box = (await page.getByTestId("org-rules").boundingBox())!;
     expect(box.y).toBeLessThan(900);
     expect(box.x + box.width).toBeLessThanOrEqual(w);
+  } finally { await page.close(); }
+});
+
+it("原型 st.switch：一项在存时只灰这一项，别的开关、别的成员照常能改（不锁整页）", async () => {
+  const { page, errors } = await open(true);
+  try {
+    await page.evaluate(() => { (window as unknown as { __慢: boolean }).__慢 = true; });
+    // 改小王的业务线：设成员 卡着不回
+    await page.getByRole("combobox", { name: "小王 的业务线" }).click();
+    await page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter({ hasText: "外贸" }).click();
+    await expect.poll(() => page.getByRole("combobox", { name: "小王 的业务线" }).isDisabled()).toBe(true);
+    // 别的成员、组织规则开关、字段权限这时都还能动
+    expect(await page.getByRole("combobox", { name: /某某超长名字的业务员.* 的业务线/ }).isDisabled()).toBe(false);
+    expect(await page.getByRole("switch", { name: "按组织架构看客户" }).isDisabled()).toBe(false);
+    expect(await page.getByRole("switch", { name: "无效线索要市场复核" }).isDisabled()).toBe(false);
+    await page.evaluate(() => { const w = window as unknown as { __慢: boolean; __放?: () => void }; w.__慢 = false; w.__放?.(); });
+    await expect.poll(() => page.getByRole("combobox", { name: "小王 的业务线" }).isDisabled()).toBe(false);
+    expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
