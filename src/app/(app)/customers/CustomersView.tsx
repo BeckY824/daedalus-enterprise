@@ -24,18 +24,16 @@ import { maskPhone, smartTime, fmtDate, 成员选项, 可选成员 } from "@/lib
 import ListSearch from "@/components/ListSearch";
 import { RowLink, FollowStatusTag, PageHead, UserCell, DecisionStatusTag } from "@/components/ui";
 import DataList, { type 列 } from "@/components/DataList";
-import CustomerForm, { type CustomerRow } from "./CustomerForm";
+import type { CustomerRow } from "./CustomerForm";
 import { 完整导出 } from "./export-client";
 import { 签约各币 } from "./export-table";
-import ImportDrawer from "./ImportDrawer";
 import { assignSalesOwner, bulkFollowStatus, 撤销改负责人, type BulkResult } from "./actions";
 import { useDeleteCustomers } from "./useDeleteCustomers";
 import { useTransferConfirm } from "./useTransferConfirm";
 import { usePoolReturnConfirm } from "./usePoolReturnConfirm";
-import TransferDialog from "./TransferDialog";
 import { 转走项目预览of } from "./actions";
 import { showUndo } from "@/components/UndoBar";
-import { 问后果 } from "@/components/dialog-host";
+import { 问后果, 预取弹框 } from "@/components/dialog-host";
 import { 带走说法, 批量结果说法 } from "@/lib/carry-over";
 import { useBusiness } from "@/lib/business-client";
 import { statusLabel, 外贸精简, 签约叫 } from "@/lib/business-config";
@@ -81,6 +79,24 @@ const 建档弹窗 = dynamic(() => import("../projects/new/ProjectWizard").then(
 /** 「新建 ▾ → 新建项目」那条路的懒加载块：展开菜单时先拿起来（预取），点下去等它到了再挂、按钮转圈 */
 const 取新建项目流程 = () => import("../projects/NewProjectFlow");
 const 新建项目流程 = dynamic(取新建项目流程, { ssr: false });
+/*
+  下面三块也是点了才用（速度闸门 11-15：改版后客户列表首屏 JS 870 KB、线 850）：
+  客户表单（新建 / 编辑，连 Form、单选、自动补全、渠道级联）、导入抽屉（上传、步骤条、进度条）、批量转让框。
+  不 SSR、第一次要开时才挂；表单随「表单料」一起取（展开「新建 ▾」、行菜单时预取），转让框和确认框在勾选时预取
+*/
+const 取客户表单 = () => import("./CustomerForm");
+const CustomerForm = dynamic(取客户表单, { ssr: false });
+const ImportDrawer = dynamic(() => import("./ImportDrawer"), { ssr: false });
+const 取转让框 = () => import("./TransferDialog");
+const TransferDialog = dynamic(取转让框, { ssr: false });
+/** 勾了人、批量条一出来就去拿转让框和确认框的代码：点下去时多半已经到了 */
+function PrefetchOnPick() {
+  useEffect(() => {
+    void 取转让框().catch(() => {});
+    预取弹框();
+  }, []);
+  return null;
+}
 
 /**
  * 批量操作的结果文案。
@@ -313,6 +329,8 @@ export default function CustomersView({
   const { 问放回公海 } = usePoolReturnConfirm();
   /** 批量转让框（原型 cu.transfer：选人、一起转走的项目、原因合成一个框）：开着时记住勾的是谁 */
   const [转让框, set转让框] = useState<{ ids: string[]; 清空: () => void } | null>(null);
+  /** 转让框是懒块：第一次开才挂，挂上以后不卸（关的动画照放） */
+  const [转让框挂过, set转让框挂过] = useState(false);
   const 取转走 = useCallback((人id: string) => 转走项目预览of(转让框?.ids ?? [], 人id), [转让框]);
 
   /**
@@ -461,11 +479,12 @@ export default function CustomersView({
   const [表单料取中, set表单料取中] = useState(false);
   const 表单料请求 = useRef<Promise<客户页表单料 | null> | null>(null);
   const 要表单料 = (出错提示 = true): Promise<客户页表单料 | null> => {
-    if (表单料) return Promise.resolve(表单料);
+    // 表单代码和料一起取（表单是懒块）：取不到代码就当没打开
+    if (表单料) return 取客户表单().then(() => 表单料, () => { if (出错提示) message.error("没打开，请重试"); return null; });
     if (!表单料请求.current) {
       set表单料取中(true);
-      表单料请求.current = 取客户页表单料()
-        .then((d) => { set表单料(d); return d; })
+      表单料请求.current = Promise.all([取客户页表单料(), 取客户表单()])
+        .then(([d]) => { set表单料(d); return d; })
         .catch(() => { 表单料请求.current = null; return null; })
         .finally(() => set表单料取中(false));
     }
@@ -482,6 +501,8 @@ export default function CustomersView({
     if (表单料) {
       setEditing(r);
       setFormOpen(true);
+      // 表单是懒块：料首屏就带了时，这里顺手把代码拿起来（已到就是空转）
+      void 取客户表单().catch(() => {});
       return;
     }
     // 同一下连点两次时 state 还没更新，用 ref 拦
@@ -502,8 +523,14 @@ export default function CustomersView({
   /** 「新增客户」向导框（U-新建-01）：和项目页「新增项目」同一个向导，弹在本页 */
   const [建档开着, set建档开着] = useState(Boolean(直接新建 && 建档));
   const [导入开着, set导入开着] = useState(Boolean(直接粘贴) && 能导入导出 && !企业);
+  /** 导入抽屉是懒块：第一次开才挂，挂上以后不卸（关抽屉的动画、抽屉里的进度都留着） */
+  const [导入挂过, set导入挂过] = useState(导入开着);
   /** 企业版不用客户页这个旧导入抽屉（11-03）：导入走设置 →「企业版导入」，首页那张「开始」卡同一个去处 */
-  const 去导入 = () => (企业 ? router.push("/settings?tab=enterprise") : set导入开着(true));
+  const 去导入 = () => {
+    if (企业) return router.push("/settings?tab=enterprise");
+    set导入挂过(true);
+    set导入开着(true);
+  };
   /** ?new=1 / ?import=paste 进来就开：等水合完再开。服务端先画一个开着的弹窗，会和客户端那一版对不上（跟进页同一写法） */
   const 已水合 = useSyncExternalStore(无订阅, () => true, () => false);
   /*
@@ -980,7 +1007,7 @@ export default function CustomersView({
               )}
               {/* 菜单画在 body 上，但 React 事件照组件树冒泡到这一行：不拦住，点完就跟着进了记录页 */}
               {/* 展开时先把表单料拿起来（同「新建 ▾」），点「编辑」多半不用再等；还在取时这一行的按钮转圈、各行菜单都点不了（防连点） */}
-              <Dropdown trigger={["click"]} disabled={!!编辑取中} onOpenChange={(开) => { if (开) void 要表单料(false); }} menu={{ items: 菜单, onClick: ({ domEvent }) => domEvent.stopPropagation() }}>
+              <Dropdown trigger={["click"]} disabled={!!编辑取中} onOpenChange={(开) => { if (开) { void 要表单料(false); 预取弹框(); } }} menu={{ items: 菜单, onClick: ({ domEvent }) => domEvent.stopPropagation() }}>
                 <Button className="row-act" aria-label={`更多操作 ${r.name}`} type="text" size="small" icon={<MoreOutlined />} loading={编辑取中 === r.id} />
               </Dropdown>
             </Space>
@@ -1023,7 +1050,7 @@ export default function CustomersView({
 
   return (
     <>
-      <TransferDialog
+      {转让框挂过 && <TransferDialog
         open={!!转让框}
         onClose={() => set转让框(null)}
         题={`把 ${转让框?.ids.length ?? 0} 位${b.customer}转给`}
@@ -1051,7 +1078,7 @@ export default function CustomersView({
           if (res.交接中 !== undefined) return;
           可撤销提示(res, 批量结果说法(res, `已转给 ${名}`), assignSalesOwner, () => 撤销改负责人(res.原值 ?? [], 人id, res.带过来));
         }}
-      />
+      />}
       <PageHead
         title={b.customer}
         subtitle="全部档案与跟进"
@@ -1205,6 +1232,7 @@ export default function CustomersView({
           const 全领不回 = 选中行.some((r) => r.pool) && 选中行.filter((r) => r.pool).every((r) => 领不回.has(r.id));
           return (
           <>
+            <PrefetchOnPick />
             {/* 公海页签的老板：「分配给…」= 从公海直接分出去（出公海、记领取时间）；批量分配只换负责人、人还在公海里，这里不摆 */}
             {!不问归属 && 公海页 && 能分配公海 && <Dropdown
               menu={{
@@ -1225,7 +1253,7 @@ export default function CustomersView({
             {!不问归属 && !(公海页 && 能分配公海) && (!企业 || 能分配公海 || (能转出自己的 && !公海页)) &&
               // 按钮文字写全（P-界面-43）；选人、一起转走的项目、原因在同一个框里（原型 cu.transfer）
               <Button size="small" icon={<UserSwitchOutlined />}
-                onClick={() => set转让框({ ids: [...selected], 清空 })}>
+                onClick={() => { set转让框挂过(true); set转让框({ ids: [...selected], 清空 }); }}>
                 转让给同事
               </Button>}
             {/* 「公海」页签只有领取，「客户」页签只有放进公海；子集里两种混着，看勾的是什么 */}
@@ -1345,7 +1373,7 @@ export default function CustomersView({
         }}
       />}
 
-      {能导入导出 && !企业 && <ImportDrawer
+      {能导入导出 && !企业 && 导入挂过 && <ImportDrawer
         open={导入开着 && 已水合}
         b={b}
         aiEnabled={Boolean(aiEnabled)}

@@ -1,7 +1,6 @@
 "use client";
 
 import { 挂框 } from "@/components/dialog-host";
-import TransferDialog from "./TransferDialog";
 import { 转走项目预览of } from "./actions";
 import { useCarryConfirm } from "./useCarryConfirm";
 
@@ -24,6 +23,9 @@ export function useTransferConfirm(转让原因?: { 选项: string[]; 自己: st
   async function 问转让原因(给谁: string, 新负责人: string, 申请 = false): Promise<string | null | false> {
     if (!转让原因?.选项.length || 新负责人 === 转让原因.自己) return null;
     let 选: string | null = null;
+    // 转让框点了才加载（不压首屏 JS，速度闸门 11-15）；没取到 = 当取消，不转
+    const TransferDialog = await import("./TransferDialog").then((m) => m.default, () => null);
+    if (!TransferDialog) return false;
     const 转 = await 挂框<boolean>(
       (开, 关) => (
         <TransferDialog

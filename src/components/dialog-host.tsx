@@ -1,86 +1,40 @@
 "use client";
 /**
- * 不用在调用方 JSX 里挂节点的弹框：`await 挂框(画, 默认值)`。
+ * 弹框宿主（dialog-host-root.tsx）的懒入口：`await 挂框(画, 默认值)`、`await 问后果(参数)`，用法和原来一样。
  *
- * 为什么要它：客户页那几个 use*Confirm（删客户、退回公海、转让、一起转走）原来是 antd modal.confirm，
- * 调用方遍布客户列表、客户详情、编辑表单、线索分配、项目页——换成后果框（ConsequenceDialog）要是逼每个调用方
- * 都多挂一个 {框}，就得动一圈别人的文件。这里学 UndoBar：第一次用时在 <body> 底下自己长一个根，套上全站 antd 配置
- * （AntdConfig：中文、主题），同一时刻只有一个框；上一个还开着又来一个，上一个按「默认值」（= 取消）结束。
- *
- * 画进来的东西不在调用方的 React 树里：别在里面用调用方的 context（business、me……），要用的值先取好再传进来。
+ * 为什么懒：宿主连同后果框（ConsequenceDialog）、antd 中文配置只在点了「删除 / 退回公海 / 转让…」之后才用，
+ * 静态 import 会全压进客户列表首屏 JS（速度闸门 11-15 红过：870 KB，线 850）。这里点下去才 import，
+ * 勾选 / 鼠标移上时调 预取弹框() 先拿起来，点的时候多半已经到了。
+ * 代码没取到（断网）：按「默认值」（= 取消）结束，不确认不生效。
  */
-import { useSyncExternalStore, type ReactNode } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import AntdConfig from "@/components/AntdConfig";
-import ConsequenceDialog, { type 后果框参数 } from "@/components/ConsequenceDialog";
+import type { ReactNode } from "react";
+import type { 后果框参数 } from "@/components/ConsequenceDialog";
 
-type 画法 = (开: boolean, 关: (v: unknown) => void) => ReactNode;
-type 态 = { id: number; 画: 画法; 开: boolean } | null;
+const 载 = () => import("@/components/dialog-host-root");
 
-let 当前: 态 = null;
-let 序 = 0;
-let 等: { id: number; 默认: unknown; resolve: (v: unknown) => void } | null = null;
-const 听众 = new Set<() => void>();
-let 根: Root | null = null;
-
-function 设(x: 态) {
-  当前 = x;
-  for (const f of 听众) f();
+/** 先把弹框代码拿起来（勾选、hover 时调），失败不吭声：点的时候会再取 */
+export function 预取弹框() {
+  void 载().catch(() => {});
 }
 
-function Host() {
-  const s = useSyncExternalStore(
-    (f) => {
-      听众.add(f);
-      return () => 听众.delete(f);
-    },
-    () => 当前,
-    () => null,
-  );
-  if (!s) return null;
-  const id = s.id;
-  return <>{s.画(s.开, (v) => 结束(id, v))}</>;
-}
-
-function 结束(id: number, v: unknown) {
-  if (等?.id === id) {
-    const r = 等.resolve;
-    等 = null;
-    r(v);
+/** 宿主没取到（断网）时按默认值（= 取消）结束 */
+async function 用宿主<R>(做: (宿主: Awaited<ReturnType<typeof 载>>) => Promise<R>, 默认: R): Promise<R> {
+  let 宿主: Awaited<ReturnType<typeof 载>>;
+  try {
+    宿主 = await 载();
+  } catch (e) {
+    console.error("弹框没加载出来", e);
+    return 默认;
   }
-  // 先收（open=false 让 antd 放关闭动画），destroyOnHidden 会自己卸里面的东西
-  if (当前?.id === id) 设({ ...当前, 开: false });
-}
-
-function 挂上() {
-  if (根 || typeof document === "undefined") return;
-  const el = document.createElement("div");
-  el.setAttribute("data-dialog-host", "");
-  document.body.appendChild(el);
-  根 = createRoot(el);
-  根.render(
-    <AntdConfig>
-      <Host />
-    </AntdConfig>,
-  );
+  return 做(宿主);
 }
 
 /** 开一个框，等它结束：关(v) 的 v 就是结果；被下一个框顶掉 = 默认 */
 export function 挂框<T>(画: (开: boolean, 关: (v: T) => void) => ReactNode, 默认: T): Promise<T> {
-  挂上();
-  if (等) {
-    const r = 等;
-    等 = null;
-    r.resolve(r.默认);
-  }
-  const id = ++序;
-  return new Promise<T>((resolve) => {
-    等 = { id, 默认, resolve: resolve as (v: unknown) => void };
-    设({ id, 画: 画 as 画法, 开: true });
-  });
+  return 用宿主((h) => h.挂框(画, 默认), 默认);
 }
 
 /** 后果框（ConsequenceDialog）的命令式版：成了 true，取消 false。做 没成时原因写在框里、框不关 */
 export function 问后果(p: 后果框参数): Promise<boolean> {
-  return 挂框<boolean>((开, 关) => <ConsequenceDialog {...p} open={开} onClose={(成了) => 关(成了)} />, false);
+  return 用宿主((h) => h.问后果(p), false);
 }
