@@ -9,6 +9,7 @@ import { SettingOutlined } from "@ant-design/icons";
 import type { ColumnType, TableProps } from "antd/es/table";
 import type { SortOrder } from "antd/es/table/interface";
 import EmptyState from "@/components/EmptyState";
+import CountUp from "@/components/CountUp";
 import { useLocalPref } from "@/lib/local-pref";
 import { 只留当前行, 露出这一列, 算可见列, 切换后存 } from "@/lib/list-select";
 
@@ -142,6 +143,11 @@ export default function DataList<T extends { id: string }>({
   /** 真的只取了一部分：库里的总数比取回来的多（本地筛掉的不算，见 截断.取回） */
   const 取回 = 截断?.取回 ?? 行.length;
   const 真截断 = !!截断 && 截断.总数 > 取回;
+  const 总数 = (t: number) => (
+    <span className="list-total-n">
+      <CountUp 值={t} 记号={`list-total:${页}`} 只滚变化 />
+    </span>
+  );
   const [选中, set选中] = useState<string[]>([]);
   /*
     行一换就把看不见的勾选清掉。在渲染里比上一次的行来改（React 文档「props 变了调整 state」的写法），
@@ -393,6 +399,7 @@ export default function DataList<T extends { id: string }>({
             : undefined
         }
         pagination={
+          /* 总数换了（筛选、翻页签）从旧数滚到新数（原型 cu.filter「总数滚到新值」）；第一次进来直接是数，等宽不跳 */
           分页 === false
             ? false
             : 分页
@@ -400,14 +407,14 @@ export default function DataList<T extends { id: string }>({
                   current: 分页.当前页,
                   pageSize: 分页.每页,
                   total: 分页.总数,
-                  showTotal: (t) => `共 ${t} 条`,
+                  showTotal: (t) => <>共 {总数(t)} 条</>,
                   showSizeChanger: true,
                   onChange: 分页.翻页,
                 }
               : {
                   pageSize: 20,
                   // 截断时 `t` 是取回来的行数，不是库里的总数——别让它冒充总数
-                  showTotal: (t) => (真截断 ? `这里 ${t} 条` : `共 ${t} 条`),
+                  showTotal: (t) => (真截断 ? <>这里 {总数(t)} 条</> : <>共 {总数(t)} 条</>),
                   showSizeChanger: true,
                 }
         }

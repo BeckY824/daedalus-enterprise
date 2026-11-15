@@ -4909,3 +4909,17 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 }
 /* 保存键没存上的原因（SaveButton）：同复制那句的红签，原因长时折行、不出窗口 */
 .copy-tip.save-why { white-space: normal; max-width: min(320px, calc(100vw - 16px)); text-align: center; }
+/* 筛选条（原型 cu.filter）：摆在外面、正筛着的下拉变成一枚「名：值 ×」标签（components/CustomFilters 外露项）。
+   宽度跟着字走；× 一直看得见，不用悬停；下拉箭头让给 ×。点标签照旧弹出下拉换值。出现时轻轻一弹，减弱动态下只淡入 */
+.ant-select.cf-chip { width: auto; max-width: 280px; }
+.ant-select.cf-chip.ant-select-outlined, .ant-select.cf-chip.ant-select-outlined:hover { background: var(--brand-bg); border-color: color-mix(in srgb, var(--brand) 35%, transparent); }
+.ant-select.cf-chip .ant-select-prefix { color: var(--text-muted); margin-inline-end: 0; white-space: nowrap; }
+.ant-select.cf-chip .ant-select-content { color: var(--brand-deep); min-width: 0; }
+.ant-select.cf-chip .ant-select-suffix { visibility: hidden; }
+.ant-select.cf-chip .ant-select-clear { opacity: 1; color: var(--brand-deep); background: transparent; }
+.ant-select.cf-chip { animation: cf-chip-in var(--t-fast) var(--ease-spring); }
+@keyframes cf-chip-in { from { opacity: .4; scale: .94; } }
+@media (prefers-reduced-motion: reduce) { .ant-select.cf-chip { animation-name: cf-chip-fade; } }
+@keyframes cf-chip-fade { from { opacity: .4; } }
+/* 列表分页条的总数（DataList）：滚的时候等宽，宽度不跳 */
+.list-total-n { font-variant-numeric: tabular-nums; }

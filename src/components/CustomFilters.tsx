@@ -1,7 +1,7 @@
 "use client";
 
 import { cloneElement, useLayoutEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
-import { Button, Checkbox, Popover, Space } from "antd";
+import { Button, Checkbox, Popover, Select, Space, type SelectProps } from "antd";
 import { FilterOutlined, LeftOutlined, SettingOutlined } from "@ant-design/icons";
 import { useLocalPref } from "@/lib/local-pref";
 import { 切换外露, 拆筛选项, 筛选偏好键, type 筛选项元 } from "@/lib/custom-filters";
@@ -97,6 +97,20 @@ function MoreFiltersButton({
 }
 
 /**
+ * 摆在外面、正筛着的下拉（原型 cu.filter）：变成一枚「名：值 ×」标签——前缀写这一项叫什么，× 一直看得见（不用悬停），
+ * 点标签照旧弹出下拉换值。只认 antd 的 Select（单选，各页筛选行都是它）：别的控件（日期段、号码框）自己有样子，照旧。
+ * 宽度跟着字走（globals.css .cf-chip），每页不用改：名字、有值都在筛选项里了
+ */
+function 外露项(x: 筛选项): ReactElement {
+  const el = x.有值 ? x.渲染({}) : x.渲染({ width: x.宽 });
+  if (!x.有值 || el.type !== Select) return cloneElement(el, { key: x.键 });
+  const 下拉 = el as ReactElement<SelectProps>;
+  const p = 下拉.props;
+  if (p.mode) return cloneElement(x.渲染({ width: x.宽 }), { key: x.键 });
+  return cloneElement(下拉, { key: x.键, prefix: `${x.名}：`, allowClear: true, className: [p.className, "cf-chip"].filter(Boolean).join(" ") });
+}
+
+/**
  * 把一页的下拉分成摆外面的和收在「更多筛选」里的。返回的 `外露` 是带 key 的数组，直接放进筛选栏的 Space：
  * 每个下拉仍是 `.ant-space-item` 的直接子元素，窄屏收缩规则（globals.css .list-bar）照常命中。
  * `停用`：这一页不给自定义（共用视图的线索页），只摆默认项、不要按钮。
@@ -108,7 +122,7 @@ export function useCustomFilters(页: string, 项: 筛选项[], { 停用 = false
   const { 可见, 外露, 收着, 筛了几个 } = 拆筛选项(项, 停用 ? null : 存的, 挤掉);
   return {
     外露: [
-      ...外露.map((x) => cloneElement(x.渲染({ width: x.宽 }), { key: x.键 })),
+      ...外露.map(外露项),
       // 量「筛选行折没折」用的探针：不占位（globals.css .cf-probe 那一格不显示），只为从它找到所在的筛选组
       ...(能挤 ? [<span key="cf-probe" ref={探针} className="cf-probe" aria-hidden />] : []),
     ],
