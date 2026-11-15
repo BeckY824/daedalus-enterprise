@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, App, Button, Card, Empty, Modal, Skeleton, Space, Table, Tag } from "antd";
+import { Alert, Button, Card, Empty, Modal, Skeleton, Space, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { PageHead } from "@/components/ui";
+import InlineConfirm from "@/components/InlineConfirm";
 import { dayjs } from "@/lib/utils";
 import type { 待审批挂靠, 我的挂靠 } from "@/lib/enterprise/attach-approval";
 import type { 客户只读卡 } from "@/lib/enterprise/customer-readonly-card";
@@ -19,19 +20,24 @@ const 省略 = { ellipsis: true } as const;
  * 客户名、人名可能很长：表格固定列宽、单元格省略号，窄屏不横向溢出
  */
 export default function AttachView({ 待批, 我的 }: { 待批: 待审批挂靠[]; 我的: 我的挂靠[] }) {
-  const { message } = App.useApp();
   const router = useRouter();
   const [忙, set忙] = useState<string | null>(null);
+  /** 没办成的原因：就地写在那一行的操作格里（g.save：不弹顶部提示）；办成了这一行刷新后自己走 */
+  const [行错, set行错] = useState<{ id: string; 话: string } | null>(null);
   const [卡, set卡] = useState<{ 开着: boolean; 卡: 客户只读卡 | null; 错: string | null }>({ 开着: false, 卡: null, 错: null });
 
+  /** ls.at.approve：批准 / 拒绝都先就地确认一次（P-界面-40「挂靠审批」），确认了才发 */
   const 审 = async (id: string, 批: boolean) => {
     set忙(id);
+    set行错(null);
     const r = await (批 ? 批准挂靠 : 拒绝挂靠)(id).catch(() => ({ ok: false as const, error: "没办成，网络可能断了，再点一次" }));
     set忙(null);
     if (r.ok) {
-      message.success(批 ? "已批准，对方拿到这家客户的只读卡" : "已拒绝");
       router.refresh();
-    } else message.error(r.error);
+      return { ok: true };
+    }
+    set行错({ id, 话: r.error });
+    return r;
   };
   const 开卡 = async (id: string) => {
     set卡({ 开着: true, 卡: null, 错: null });
@@ -46,11 +52,18 @@ export default function AttachView({ 待批, 我的 }: { 待批: 待审批挂靠
     { title: "客户负责人", dataIndex: "负责人", width: 110, ...省略 },
     { title: "申请时间", dataIndex: "申请时间", width: 150, render: 时刻 },
     {
-      title: "", key: "op", width: 150, render: (_, r) => (
-        <Space size={4}>
-          <Button size="small" type="primary" loading={忙 === r.id} disabled={!!忙} onClick={() => void 审(r.id, true)}>批准</Button>
-          <Button size="small" disabled={!!忙} onClick={() => void 审(r.id, false)}>拒绝</Button>
-        </Space>
+      title: "", key: "op", width: 300, render: (_, r) => (
+        <div className="ls-at-op">
+          <Space size={4}>
+            <InlineConfirm 问="对方拿到只读卡，负责人不变" 是="批准" 中性 做={() => 审(r.id, true)}>
+              <Button size="small" type="primary" disabled={!!忙 && 忙 !== r.id}>批准</Button>
+            </InlineConfirm>
+            <InlineConfirm 问="对方看不到这家客户" 是="拒绝" 中性 做={() => 审(r.id, false)}>
+              <Button size="small" disabled={!!忙 && 忙 !== r.id}>拒绝</Button>
+            </InlineConfirm>
+          </Space>
+          {行错?.id === r.id && <div className="ls-row-err" role="alert" title={行错.话}>{行错.话}</div>}
+        </div>
       ),
     },
   ];
@@ -67,7 +80,7 @@ export default function AttachView({ 待批, 我的 }: { 待批: 待审批挂靠
       <PageHead title="挂靠申请" subtitle="同事撞上你负责的客户、申请一起跟：你批准后客户负责人不变，对方只拿到这家客户的只读卡；24 小时没处理会转给直属上级，没有上级转给总管理" />
       <Space orientation="vertical" size={16} style={{ width: "100%" }}>
         <Card title="等我审批" size="small">
-          {待批.length ? <Table rowKey="id" size="small" columns={待批列} dataSource={待批} pagination={false} tableLayout="fixed" scroll={{ x: 880 }} /> : <Empty description="没有等你审批的挂靠申请" />}
+          {待批.length ? <Table rowKey="id" size="small" columns={待批列} dataSource={待批} pagination={false} tableLayout="fixed" scroll={{ x: 1030 }} /> : <Empty description="没有等你审批的挂靠申请" />}
         </Card>
         <Card title="我的申请" size="small">
           {我的.length ? <Table rowKey="id" size="small" columns={我的列} dataSource={我的} pagination={false} tableLayout="fixed" scroll={{ x: 710 }} /> : <Empty description="还没申请过挂靠" />}

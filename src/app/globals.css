@@ -4431,3 +4431,30 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .cr-saved { font-size: var(--fs-note); color: var(--text-muted); white-space: nowrap; }
 .cr-miss { font-size: var(--fs-note); color: var(--danger-text); white-space: nowrap; }
 @media (max-width: 767px) { .cr-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* PR5b 渠道：停用 / 删除的就地确认从「⋯」处长出，盖在这一行右端往左长，不撑宽操作列 */
+.ch-act { position: relative; display: inline-flex; align-items: center; }
+.ch-act-ask { position: absolute; right: 0; top: 50%; translate: 0 -50%; z-index: 2; padding: 2px 4px 2px 8px; border-radius: 6px; background: var(--panel); box-shadow: 0 0 0 1px var(--line), 0 4px 12px rgb(0 0 0 / 0.08); }
+.ch-act-err { position: absolute; right: 0; top: 100%; z-index: 2; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-min); color: var(--danger-text); background: var(--panel); padding: 0 4px; }
+/* 附件：删掉的就地确认（图片格里盖在图上，文件行里在行尾） */
+.att-pic > .att-del, .follow-att-pic > .att-del { position: absolute; top: 2px; right: 2px; z-index: 1; }
+.att-pic > .att-del .ant-btn, .follow-att-pic > .att-del .ant-btn { background: color-mix(in srgb, var(--panel) 85%, transparent); }
+.att-pic > .att-del:has(.inlc-ask), .follow-att-pic > .att-del:has(.inlc-ask) { left: 2px; right: 2px; background: var(--panel); border-radius: 6px; box-shadow: 0 0 0 1px var(--line); }
+.att-pic .inlc-ask, .follow-att-pic .inlc-ask { flex-wrap: wrap; white-space: normal; row-gap: 4px; padding: 4px; }
+.att-note { margin: 0 0 8px; font-size: var(--fs-note); color: var(--text-muted); overflow-wrap: anywhere; }
+.att-note-err { color: var(--danger-text); }
+/* PR5b 列表：删掉 / 完成了的行先收起再刷新（不弹提示）；没做成的原因写在行上 */
+.ls-row-gone { opacity: 0; max-height: 0 !important; min-height: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; margin: 0 !important; overflow: hidden; transition: opacity var(--t-fast) var(--ease), max-height var(--t) var(--ease), padding var(--t) var(--ease); }
+@media (prefers-reduced-motion: reduce) { .ls-row-gone { transition: none; } }
+.ls-row-err { min-width: 0; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-min); color: var(--danger-text); }
+.ls-ho-give { flex: 0 1 auto; min-width: 0; max-width: 60%; }
+.ls-ho-give > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ls-ho-err { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-min); color: var(--danger-text); }
+.ls-ld-note { margin: 0 0 8px; font-size: var(--fs-note); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ls-ld-note.is-err { color: var(--danger-text); }
+.ls-ld-result, .ls-ld-err { margin-bottom: 12px; }
+/* PR5b 首页 / 复盘 / 全局：没做成的原因就地写（g.save），页签切换先出骨架（g.tabswitch） */
+.ov-todo-err, .home-start-err, .empty-demo-err { min-width: 0; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-note); color: var(--danger-text); }
+p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overflow-wrap: anywhere; margin: 8px 0 0; font-size: var(--fs-note); color: var(--danger-text); }
+.ov-tab-skel { padding: 12px 0; }
+.ls-ct-del { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }

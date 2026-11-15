@@ -66,10 +66,13 @@ for (const width of [1024, 1280, 1366]) {
       await 乙.locator(".ant-select").first().click();
       await page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter({ hasText: /^接手人$/ }).click();
       await 乙.getByRole("button", { name: /全部交给/ }).click();
-      const 框 = page.locator(".ant-modal-confirm");
+      // ls.ho.all（PR5b）：后果框分条写清，不点确认不交
+      const 框 = page.getByRole("dialog");
       await 框.waitFor();
       expect(await 框.innerText()).toContain("2 个主渠道");
-      await 框.getByRole("button", { name: /确\s*定|全部交给|交/ }).last().click();
+      expect(await 框.innerText()).toContain("还算在");
+      expect(await page.evaluate(() => (window as unknown as { __交?: unknown[][] }).__交 ?? [])).toEqual([]);
+      await 框.getByRole("button", { name: "全部交给" }).click();
       await expect.poll(() => page.evaluate(() => (window as unknown as { __交?: unknown[][] }).__交 ?? [])).toEqual([["交接全部", "b", "u"]]);
       expect(errors).toEqual([]);
     } finally { await page.close(); }

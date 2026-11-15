@@ -18,6 +18,8 @@ import { useBusiness } from "@/lib/business-client";
 import { 关系候选 } from "@/lib/business-config";
 import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
+import InlineConfirm from "@/components/InlineConfirm";
+import { 跑出原因, type 做的结果 } from "@/lib/confirm-result";
 
 /*
   与客户的关系。取值有限却不封闭（教培里有姑姑、哥哥，公司里有「副总」），
@@ -62,8 +64,8 @@ export default function ContactForm({
    * 这时「所属」可以不挑——不挑就还留在未归属，挑了就是挂回去
    */
   未归属?: boolean;
-  /** 给了就在左下角摆「彻底删除」。联系人页上未归属的人只有这儿能删 */
-  onDelete?: () => void;
+  /** 给了就在左下角摆「彻底删除」，点了就地确认一次（ls.ct.orphan）。联系人页上未归属的人只有这儿能删 */
+  onDelete?: () => 做的结果 | Promise<做的结果>;
   /**
    * 企业版联系人改版（2026-10-29，定稿 P5 第 24 条）：给了就换成企业版那一套——性别、生日、爱好、地址，
    * 联系方式是几行「类型 + 号码」（类型来自字典 contactKind；active=false 的停用了，下拉里只给这位原来就用着的）。
@@ -143,6 +145,8 @@ export default function ContactForm({
     校验没过（validateFields 抛出）也会走 finally 放开
   */
   const [存着, set存着] = useState(false);
+  /** 彻底删除没删成的原因：就地写在删除键旁（不弹顶部提示） */
+  const [删错, set删错] = useState<string | null>(null);
   /**
    * 企业版号码查重撞了（P13 第 2 条）：不静默合并，框顶上摆撞到的那几位（看得到的能点进去）。
    * 人核对后可以「仍然保存」（同一个号两个人用），或在客户页上直接把那位挂到这位客户上
@@ -214,9 +218,22 @@ export default function ContactForm({
       footer={(原来的) =>
         onDelete ? (
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <Button danger type="text" onClick={onDelete}>
-              彻底删除
-            </Button>
+            <span className="ls-ct-del">
+              <InlineConfirm
+                问="彻底删掉这位联系人？"
+                是="彻底删除"
+                做={async () => {
+                  const 因 = await 跑出原因(onDelete);
+                  set删错(因);
+                  return 因 ? { ok: false, error: 因 } : { ok: true };
+                }}
+              >
+                <Button danger type="text">
+                  彻底删除
+                </Button>
+              </InlineConfirm>
+              {删错 && <span className="ls-row-err" role="alert" title={删错}>{删错}</span>}
+            </span>
             <div style={{ display: "flex", gap: 8 }}>{原来的}</div>
           </div>
         ) : (

@@ -385,7 +385,8 @@ it("沟通附件：挂载时空、props 后到也进得来（记沟通时先挂�
     expect(await page.getByTitle("c.mp3").count()).toBe(1);
     // 删掉；refresh 回来之前又来一遍旧 props：不回来
     await page.getByRole("button", { name: "删掉 后到.pdf" }).click();
-    await page.locator(".ant-popconfirm").getByRole("button", { name: /删\s*掉/ }).click();
+    // 2026-11 PR5b：删附件改就地确认（P-界面-40），按钮自己变成问句，点问句里的「删掉」
+    await page.getByRole("button", { name: "删掉", exact: true }).click();
     await page.getByTitle("后到.pdf").waitFor({ state: "detached" });
     await 后到();
     await page.waitForTimeout(50);

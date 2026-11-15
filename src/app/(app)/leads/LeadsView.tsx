@@ -6,7 +6,7 @@ import { requiredText } from "@/lib/form-validation";
 
 import { 签约叫 } from "@/lib/business-config";
 import OptionInput from "@/components/OptionInput";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Input, Button, Space, Select, Tag, Modal, Form, Row, Col, App } from "antd";
 import {
@@ -95,8 +95,19 @@ export default function LeadsView({
   联系人附件?: boolean;
 }) {
   const router = useRouter();
-  const { message, modal } = App.useApp();
+  const { modal } = App.useApp();
   const b = useBusiness();
+  /**
+   * g.save：这一页做完一件事的回话（保存了、分给谁了、删了、没成的原因）就地写在列表上方一行，几秒后收，不弹顶部提示。
+   * 错的留久一点（要读原因）
+   */
+  const [提示, set提示] = useState<{ 话: string; 错?: boolean } | null>(null);
+  const 提示计时 = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const 说 = (话: string, 错 = false) => {
+    if (提示计时.current) clearTimeout(提示计时.current);
+    set提示({ 话, 错 });
+    提示计时.current = setTimeout(() => set提示(null), 错 ? 8000 : 5000);
+  };
   // 项目模式开着：新建一律走建档向导。企业版例外，线索先单独建、转化时再建项目（10-25 F1）
   const 新建 = () => {
     if (b.projectMode && !企业版项目) return router.push("/projects/new");
@@ -142,17 +153,17 @@ export default function LeadsView({
     if (!v) return;
     const res = await saveLead({ id: editing?.id, 版本: editing?.updatedAt, ...v });
     if (!res.ok && "同号协同" in res) {
-      message.info(res.error);
+      说(res.error);
       守.存好了();
       setOpen(false);
       router.refresh();
       return;
     }
     if (!res.ok) {
-      message.error(res.error);
+      说(res.error, true);
       return;
     }
-    message.success(editing ? "已保存" : "线索已创建");
+    说(editing ? "已保存" : "线索已创建");
     守.存好了();
     setOpen(false);
     router.refresh();
@@ -181,9 +192,8 @@ export default function LeadsView({
       async onOk() {
         const res = await mergeLeadInto(r.id, 到, 跟进);
         if (res.ok) {
-          message.success(`已并到「${撞.客户名}」${res.projectId ? "，建好了项目" : ""}`);
           router.push(res.projectId ? `/projects/${res.projectId}` : `/customers/${res.customerId}`);
-        } else message.error(res.error);
+        } else 说(res.error, true);
       },
     });
   }
@@ -194,15 +204,15 @@ export default function LeadsView({
   async function 自动分(r: Row) {
     try {
       const res = await 自动分配线索(r.id, { 原负责人: r.ownerId });
-      if (!res.ok) return void message.error(res.error);
-      message.success(`「${r.name}」${分给了(res)}：${res.为什么}`, 5);
+      if (!res.ok) return void 说(res.error, true);
+      说(`「${r.name}」${分给了(res)}：${res.为什么}`);
       router.refresh();
     } catch {
-      message.error("没分成，请稍后再试");
+      说("没分成，请稍后再试", true);
     }
   }
 
-  const 批量自动分 = useBatchAutoAssign(分给了);
+  const 批量自动分 = useBatchAutoAssign(分给了, { 先问: true });
 
   /** 只有一个人：负责人列不摆（审查 D2），见 lib/solo.ts */
   const 不问归属 = !f.ownerId && 列表不问归属ID(users, rows.map((r) => r.ownerId));
@@ -252,10 +262,9 @@ export default function LeadsView({
                   async onOk() {
                     const res = await convertLead(r.id);
                     if (res.ok) {
-                      message.success(`已转为${b.customer}`);
                       router.push(res.projectId ? `/projects/${res.projectId}` : `/customers/${res.customerId}`);
                     } else if (res.撞号) 撞号了(r, res.撞号, res.error);
-                    else message.error(res.error);
+                    else 说(res.error, true);
                   },
                 })
               }
@@ -310,11 +319,11 @@ export default function LeadsView({
                   async onOk() {
                     const res = await deleteLeads([r.id]);
                     if (!res.ok) {
-                      message.error(res.error);
+                      说(res.error, true);
                       return;
                     }
                     // 行可能已被别人删掉，如实说，别一律提示「已删除」
-                    message.success(res.deleted ? "已删除" : "这条线索已经不在了（可能已删除）");
+                    说(res.deleted ? `已删除「${r.name}」` : "这条线索已经不在了（可能已删除）");
                     router.refresh();
                   },
                 })
@@ -345,6 +354,10 @@ export default function LeadsView({
       />
 
       <LeadFullNotices 提醒={满额提醒} />
+      {批量自动分.框}
+      {提示 && (
+        <div className={`ls-ld-note${提示.错 ? " is-err" : ""}`} role={提示.错 ? "alert" : "status"} title={提示.话}>{提示.话}</div>
+      )}
 
       <DataList<Row>
         截断={{ 总数 }}
@@ -474,12 +487,11 @@ export default function LeadsView({
             const res = await convertLead(r.id, 跟进);
             if (res.ok) {
               set转项目(null);
-              message.success("已转为项目");
               router.push(res.projectId ? `/projects/${res.projectId}` : `/customers/${res.customerId}`);
             } else if (res.撞号) {
               set转项目(null);
               撞号了(r, res.撞号, res.error, 跟进);
-            } else message.error(res.error);
+            } else 说(res.error, true);
           }}
         />
       )}

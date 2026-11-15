@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { App, Button, Image, Popconfirm, Spin, Upload } from "antd";
+import { Button, Image, Spin, Upload } from "antd";
+import InlineConfirm from "@/components/InlineConfirm";
 import { DeleteOutlined, FileOutlined, InboxOutlined, UploadOutlined } from "@ant-design/icons";
 import { 附件上限字节, 图片长边, 是图片, 每条最多, 读大小, 只收图片, 收的类型, 收所有文件, type 附件, type 归属 } from "@/lib/attachment-rules";
 import { 传附件, 归属查询 } from "@/lib/attachment-upload";
@@ -28,7 +29,18 @@ declare global {
  * 紧凑（F-项目-18，项目附件合成一块后每格用）：大拖放框换成一颗小「上传」按钮，上限、提示一样
  */
 export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = false, 说明, on个数, 分类, 紧凑 = false, on变了 }: { 归属: 归属; 只读?: boolean; 说明?: string; on个数?: (n: number) => void; 分类?: string | null; 紧凑?: boolean; on变了?: () => void }) {
-  const { message } = App.useApp();
+  /**
+   * 就地提示（g.save）：读不出来、传不上、删不掉、打不开的原因写在这一块顶上，不弹顶部提示；几秒后自己收。
+   * 错 = 红字（role=alert）；常 = 灰字（比如「必填齐了，自动推进到…」）
+   */
+  const [提示, set提示] = useState<{ 话: string; 错: boolean } | null>(null);
+  const 提示计时 = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const 说 = useCallback((话: string, 错 = true) => {
+    if (提示计时.current) clearTimeout(提示计时.current);
+    set提示({ 话, 错 });
+    提示计时.current = setTimeout(() => set提示(null), 错 ? 6000 : 4000);
+  }, []);
+  useEffect(() => () => { if (提示计时.current) clearTimeout(提示计时.current); }, []);
   // 切换视图（只读预览）：看得到列表和图，不能传、删、下载（服务端同样拒）
   const 视图中 = useViewAs();
   const 只读 = 只读参 || 视图中;
@@ -59,11 +71,11 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = f
         (e: unknown) => {
           if (序 !== 读序.current) return;
           set列表((x) => x ?? []);
-          message.error(e instanceof Error ? e.message : `读${叫}没成`);
+          说(e instanceof Error ? e.message : `读${叫}没成`);
         },
       );
     },
-    [读, message, 叫],
+    [读, 说, 叫],
   );
 
   useEffect(() => {
@@ -74,24 +86,24 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = f
       (e: unknown) => {
         if (走了 || 序 !== 读序.current) return;
         set列表([]);
-        message.error(e instanceof Error ? e.message : `读${叫}没成`);
+        说(e instanceof Error ? e.message : `读${叫}没成`);
       },
     );
     return () => { 走了 = true; };
-  }, [读, message, 叫]);
+  }, [读, 说, 叫]);
 
   async function 传一个(f: File) {
     这批.current.在传++;
     set传着((n) => n + 1);
     try {
       const r = await 传附件(挂在, f, 分类);
-      if (!r.ok) return void message.error(r.error);
+      if (!r.ok) return void 说(r.error);
       这批.current.传成++;
       // 传上去的先摆上（列表还没读回来时 x 是 null，等这批传完读一遍），这批传完再读一遍对齐
       const 新 = r.附件;
       if (新) set列表((x) => (x && !x.some((y) => y.id === 新.id) ? [...x, 新] : x));
       // 企业版节点必填：传了合同 / 方案把必填填齐，项目自动往前推了
-      if (r.自动推到?.length) message.success(`必填齐了，自动推进到 ${r.自动推到.join(" → ")}`);
+      if (r.自动推到?.length) 说(`必填齐了，自动推进到 ${r.自动推到.join(" → ")}`, false);
     } finally {
       set传着((n) => n - 1);
       if (--这批.current.在传 === 0) {
@@ -105,35 +117,42 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = f
     }
   }
 
-  async function 删(a: 附件) {
+  /** 删附件：就地确认一次（P-界面-40「删附件」原地确认）；没删掉回原因，问句留着、原因写在块顶上 */
+  async function 删(a: 附件): Promise<{ ok: true } | { ok: false; error: string }> {
+    let 因: string;
     try {
       const r = await fetch(`/api/attachments/${a.id}`, { method: "DELETE" });
       const j = (await r.json().catch(() => ({}))) as { error?: string };
-      if (!r.ok) return void message.error(j.error ?? "没删掉");
-      读序.current++;
-      set列表((x) => x?.filter((y) => y.id !== a.id) ?? null);
-      on变了?.();
+      if (r.ok) {
+        读序.current++;
+        set列表((x) => x?.filter((y) => y.id !== a.id) ?? null);
+        on变了?.();
+        return { ok: true };
+      }
+      因 = j.error ?? "没删掉";
     } catch {
-      message.error("没删掉，请检查网络后再试");
+      因 = "没删掉，请检查网络后再试";
     }
+    说(因);
+    return { ok: false, error: 因 };
   }
 
   async function 打开(a: 附件) {
     if (!a.有文件) {
       // 团队版：别人刚传的可能还在路上，问一句服务器那边到了没有
       const r = await fetch(`/api/attachments/${a.id}`, { method: "HEAD" }).catch(() => null);
-      if (r?.status === 409) return void message.info("对方还在上传，稍后再看");
-      if (!r?.ok) return void message.warning("文件不在这台电脑上");
+      if (r?.status === 409) return void 说("对方还在上传，稍后再看", false);
+      if (!r?.ok) return void 说("文件不在这台电脑上");
       await 刷新();
     }
     const 桥 = typeof window !== "undefined" ? window.desktopAttachments : undefined;
     if (桥) {
       const r = await 桥.open(a.id, a.name);
-      if (!r.ok) message.error(r.error ?? "没打开");
-      else if (r.只显示) message.info("这类文件不直接运行，已在文件夹里选中它");
+      if (!r.ok) 说(r.error ?? "没打开");
+      else if (r.只显示) 说("这类文件不直接运行，已在文件夹里选中它", false);
       return;
     }
-    if (视图中) return void message.warning(视图外部话);
+    if (视图中) return void 说(视图外部话);
     // 网页 / 连着服务器：当下载
     const 链 = document.createElement("a");
     链.href = `/api/attachments/${a.id}`;
@@ -149,6 +168,7 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = f
 
   return (
     <div className="att-panel" data-testid="attachments-panel">
+      {提示 && <div className={`att-note${提示.错 ? " att-note-err" : ""}`} role={提示.错 ? "alert" : "status"}>{提示.话}</div>}
       {!只读 && 紧凑 && <div data-testid="attachment-upload" className="att-compact">
         <Upload
           multiple
@@ -224,10 +244,12 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = f
   );
 }
 
-function 删按钮({ a, 删 }: { a: 附件; 删: (a: 附件) => Promise<void> }) {
+function 删按钮({ a, 删 }: { a: 附件; 删: (a: 附件) => Promise<{ ok: boolean; error?: string }> }) {
   return (
-    <Popconfirm title={`删掉「${a.name}」？`} okText="删掉" okButtonProps={{ danger: true }} cancelText="不删" onConfirm={() => 删(a)}>
-      <Button size="small" type="text" danger icon={<DeleteOutlined />} aria-label={`删掉 ${a.name}`} data-testid="attachment-delete" />
-    </Popconfirm>
+    <span className="att-del">
+      <InlineConfirm 问="删掉这个？" 是="删掉" 做={() => 删(a)}>
+        <Button size="small" type="text" danger icon={<DeleteOutlined />} aria-label={`删掉 ${a.name}`} data-testid="attachment-delete" />
+      </InlineConfirm>
+    </span>
   );
 }

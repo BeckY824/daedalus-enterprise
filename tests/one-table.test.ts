@@ -28,6 +28,8 @@ const 列表页 = [
  */
 const 不算列表页 = [
   "src/components/DataList.tsx",
+  // PR4 的 FlipRows：只在注释里写了用法「<FlipRows><Table …/></FlipRows>」，自己不画表格
+  "src/components/FlipRows.tsx",
   "src/app/(app)/reports/ReportsView.tsx",
   // 企业版「数据」页按项目统计（2026-10-26）：按负责人的两张统计小表，同复盘，列的是汇总数不是业务记录
   "src/app/(app)/overview/ProjectStatsView.tsx",

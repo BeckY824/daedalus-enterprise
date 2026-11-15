@@ -12,7 +12,8 @@ import ListSearch from "@/components/ListSearch";
 import { PageHead, CustomerLink, UserCell } from "@/components/ui";
 import DataList, { type 列 } from "@/components/DataList";
 import ContactForm from "../customers/[id]/ContactForm";
-import { useContactRemoval } from "../customers/[id]/useContactRemoval";
+import { deleteUnassignedContact, restoreContact } from "../customers/[id]/actions";
+import { showUndo } from "@/components/UndoBar";
 import { avatarColor, initial, AVATAR_TEXT, 成员选项 } from "@/lib/utils";
 import { useBusiness } from "@/lib/business-client";
 
@@ -71,7 +72,25 @@ export default function ContactsView({
   const [表单开着, set表单开着] = useState(false);
   /** 点开的那位未归属联系人（编辑、挂回某位客户、彻底删除都在这个框里） */
   const [在改, set在改] = useState<Row | null>(null);
-  const { 彻底删 } = useContactRemoval();
+  /**
+   * ls.ct.orphan：未归属的人在编辑框里「彻底删除」，就地确认一次；删成了关框、底部撤销条可撤（撤销 = 照快照恢复）。
+   * 没删成：问句留着，原因由框里就地确认那一行带回（不弹顶部提示）
+   */
+  async function 彻底删(r: Row) {
+    const res = await deleteUnassignedContact(r.id);
+    if (!res.ok) return res;
+    set在改(null);
+    router.refresh();
+    showUndo({
+      话: `已删除「${r.name}」`,
+      撤销: async () => {
+        const u = await restoreContact(res.快照);
+        if (u.ok) router.refresh();
+        return u;
+      },
+    });
+    return { ok: true };
+  }
 
   /*
     关系和负责人两个筛选在本地做：这一页一次最多取 300 行，已经全在手上了，
@@ -280,11 +299,7 @@ export default function ContactsView({
         未归属
         onDelete={
           在改
-            ? () => {
-                const r = 在改;
-                set在改(null);
-                void 彻底删(r);
-              }
+            ? () => 彻底删(在改)
             : undefined
         }
       />

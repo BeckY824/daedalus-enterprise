@@ -3,7 +3,7 @@
 import { useBusinessTimeZone } from "@/lib/business-client";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Segmented, Space, Button, App, Tag } from "antd";
+import { Segmented, Space, Button, Tag } from "antd";
 import { PlusOutlined, UnorderedListOutlined, CheckCircleOutlined, EditOutlined, DeleteOutlined, ProjectOutlined } from "@ant-design/icons";
 import { PageHead, UserCell } from "@/components/ui";
 import EmptyState from "@/components/EmptyState";
@@ -17,7 +17,7 @@ import InlineConfirm from "@/components/InlineConfirm";
 import PlanForm from "../../customers/[id]/PlanForm";
 import { 截止说法 } from "@/lib/deadline";
 import { 滚法 } from "@/lib/reduced-motion";
-import CompletePlanModal, { 提示记完了, type 要完成的计划, type 记完了 as 记完了结果 } from "../../customers/[id]/CompletePlanModal";
+import { showUndo } from "@/components/UndoBar";
 
 
 /** 无空格的长客户名（AlRashidTrading…FreeZoneAuthority）曾把后面两个标签挤出这一行、压住「逾期 N 天」，1024 宽整页横滚（10-19 排版闸门）：名字可断行 */
@@ -166,7 +166,6 @@ export default function PlansView({
   const 改不了 = useMemo(() => new Set(改不了的客户), [改不了的客户]);
   const timeZone = useBusinessTimeZone();
   const router = useRouter();
-  const { message } = App.useApp();
   const [scope, setScope] = useState<string | number>(全员 ? "全部成员" : "我的");
   /**
    * 看待办还是看做完的。
@@ -178,10 +177,6 @@ export default function PlansView({
   const [看, set看] = useState<string | number>("待办");
   /** 刚点过完成、还留在原地的那几条 */
   const [刚完成, set刚完成] = useState<string[]>([]);
-  /** 「排下一次」给哪一位排：完成一条计划之后提示条里点进来（审查 M10） */
-  const [排给, set排给] = useState<{ customerId: string; 有WhatsApp?: boolean } | null>(null);
-  /** 正在完成的那条计划：先弹小框记一笔（2026-10-16 外贸基础），待办照旧一点就完 */
-  const [在完成, set在完成] = useState<(要完成的计划 & { key: string; 标题: string }) | null>(null);
   /** 正在改的那一条（计划或待办） */
   const [在改, set在改] = useState<事项 | null>(null);
   // 表单的 record 要稳定：它是 useEffect 的依赖，每次渲染新建一个对象会让表单边输入边被重置
@@ -191,13 +186,24 @@ export default function PlansView({
   );
   const 改待办 = useMemo(() => (在改?.kind === "task" ? { id: 在改.id, title: 在改.标题, dueAt: 在改.时间, dueHasTime: 在改.明确钟点, updatedAt: 在改.版本 } : null), [在改]);
 
+  /** 删掉了的那几条：行先收起（ls.pl.del「删后行收起，不弹提示」），再刷新 */
+  const [收起, set收起] = useState<string[]>([]);
+  /** 行内提示：没删掉 / 没完成成的原因就写在那一行上，不弹顶部提示（g.save） */
+  const [行错, set行错] = useState<Record<string, string>>({});
+  const 记错 = (key: string, 话: string | null) => set行错((v) => { const n = { ...v }; if (话) n[key] = 话; else delete n[key]; return n; });
   async function 删掉(x: 事项) {
     const r = x.kind === "plan" ? await deletePlan(x.id) : await deleteTask(x.id);
-    if (!r.ok) return void message.error("error" in r ? r.error : "没删掉，请重试");
-    message.success(x.kind === "plan" ? "计划已删除" : "待办已删除");
+    if (!r.ok) {
+      const 话 = "error" in r && r.error ? r.error : "没删掉，请重试";
+      记错(x.key, 话);
+      // 回给就地确认：问句留着，可以再点或取消
+      return { ok: false as const, error: 话 };
+    }
+    记错(x.key, null);
+    set收起((v) => [...v, x.key]);
     // Dock 上的数、到点提醒要马上跟上
     void window.desktopReminders?.刷新();
-    router.refresh();
+    setTimeout(() => router.refresh(), 240);
   }
   /** 手里有详情的事项：服务端给的，加上分批时页面后来补取的（换了一版 plans / tasks 就作废，新的一版里有） */
   const 带来的 = useMemo(() => new Map([...plans.map(计划成事项), ...tasks.map(待办成事项)].map((x) => [x.key, x])), [plans, tasks]);
@@ -290,78 +296,39 @@ export default function PlansView({
     开始翻(() => router.replace(`${window.location.pathname}?${p}`, { scroll: false }));
   };
 
-  /** 点了计划前面的 ✓：先弹小框（方式 + 一句话 + 下次），待办照旧直接完成 */
+  /** 点了 ✓：直接完成（原型 ls.pl.done「点 ✓ 直接完成：画勾、划线、收起，可撤销」），不再先弹小框 */
   function 点完成(x: 事项) {
-    if (x.kind === "plan" && !进不了.has(x.customerId)) return void set在完成({ id: x.id, subject: x.标题, method: x.方式 ?? "", customerId: x.customerId, customerName: x.customerName, 有WhatsApp: x.有WhatsApp, key: x.key, 标题: x.标题 });
     void 完成(x);
   }
 
-  /** 小框里保存了：计划已经在服务端一起完成了，这里只管留位、提示（带撤销） */
-  function 记完了(x: 要完成的计划 & { key: string }, r: 记完了结果) {
-    set刚完成((v) => [...v, x.key]);
-    提示记完了(message, x, r, () => {
-      set刚完成((v) => v.filter((k) => k !== x.key));
-      void window.desktopReminders?.刷新();
-      router.refresh();
-    });
-    void window.desktopReminders?.刷新();
-    setTimeout(() => {
-      set刚完成((v) => v.filter((k) => k !== x.key));
-      router.refresh();
-    }, 600);
-  }
-
   async function 完成(x: 事项) {
+    记错(x.key, null);
     set刚完成((v) => [...v, x.key]);
     const r = x.kind === "plan" ? await completePlan(x.id) : await toggleTask(x.id, true);
     if (!r.ok) {
+      // 被挡：勾退回去，原因写在这一行上，不提示成功
       set刚完成((v) => v.filter((k) => k !== x.key));
-      message.error(r.error || "没完成成，刷新看看");
-      router.refresh();
+      记错(x.key, r.error || "没完成成，刷新看看");
       return;
     }
-    /*
-      提示里带「撤销」，计划还带「排下一次」（审查 M10）：原来点完 600ms 这条就没了，
-      点错了只能去「已完成」里找也改不回来；做完一次跟进，下一次什么时候也没人问
-    */
-    const key = `done-${x.key}`;
-    message.success({
-      key,
-      duration: 6,
-      content: (
-        <span>
-          「{x.标题}」已完成
-          <Button type="link" size="small" onClick={() => { message.destroy(key); void 撤销完成(x); }}>
-            撤销
-          </Button>
-          {x.kind === "plan" && !改不了.has(x.customerId) && (
-            <Button type="link" size="small" onClick={() => { message.destroy(key); set排给({ customerId: x.customerId, 有WhatsApp: x.有WhatsApp }); }}>
-              排下一次
-            </Button>
-          )}
-        </span>
-      ),
+    // 底部撤销条：撤销 = 反着做（改回未完成）。全站一条，换页它还在
+    showUndo({
+      话: `已完成「${x.标题}」`,
+      毫秒: 6000,
+      撤销: async () => {
+        const u = x.kind === "plan" ? await completePlan(x.id, false) : await toggleTask(x.id, false);
+        if (u.ok) { void window.desktopReminders?.刷新(); router.refresh(); }
+        return u;
+      },
     });
     // 桌面端：Dock 上那个数马上跟着少一个，不等壳下一分钟再问（网页版没有这个口子）
     void window.desktopReminders?.刷新();
-    // 留位 600ms 再让它从列表里消失：立刻抽走，下面的行会跳上来顶替位置
+    // 画勾、划线那一下放完（约 600ms）再收起、刷新：立刻抽走，下面的行会跳上来顶替位置
+    setTimeout(() => set收起((v) => [...v, x.key]), 540);
     setTimeout(() => {
       set刚完成((v) => v.filter((k) => k !== x.key));
       router.refresh();
-    }, 600);
-  }
-
-  async function 撤销完成(x: 事项) {
-    const r = x.kind === "plan" ? await completePlan(x.id, false) : await toggleTask(x.id, false);
-    set刚完成((v) => v.filter((k) => k !== x.key));
-    if (!r.ok) {
-      message.error(r.error || "没改回来，刷新看看");
-      router.refresh();
-      return;
-    }
-    message.success(`「${x.标题}」已改回未完成`);
-    void window.desktopReminders?.刷新();
-    router.refresh();
+    }, 800);
   }
 
   const 我的已完成 = useMemo(
@@ -448,33 +415,17 @@ export default function PlansView({
           <div className="plans">
             {/* 三组的空文案各不相同：全写「这一组是空的」，人分不出
                 「今天没排」和「已经全做完了」——那是两件完全不同的事 */}
-            <组块 meId={meId} 名="逾期" 进不了={进不了} 改不了={改不了} 说明="计划时间已经过去了，先处理这些" 空话="没有逾期的，都跟上了" 行={摆.逾期.行} 项目={项目组.逾期} 共={组.逾期.length} 还有={摆.逾期.还有} 再看={() => 再看(0)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 危险 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} />
-            <组块 meId={meId} 名="今天" 进不了={进不了} 改不了={改不了} 说明="今天之内要做的" 空话="今天没有排计划" 行={摆.今天.行} 项目={项目组.今天} 共={组.今天.length} 还有={摆.今天.还有} 再看={() => 再看(1)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} />
-            <组块 meId={meId} 名="本周" 进不了={进不了} 改不了={改不了} 说明="这周剩下的几天" 空话="这周剩下的几天还没排" 行={摆.本周.行} 项目={项目组.本周} 共={组.本周.length} 还有={摆.本周.还有} 再看={() => 再看(2)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} />
+            <组块 meId={meId} 名="逾期" 进不了={进不了} 改不了={改不了} 说明="计划时间已经过去了，先处理这些" 空话="没有逾期的，都跟上了" 行={摆.逾期.行} 项目={项目组.逾期} 共={组.逾期.length} 还有={摆.逾期.还有} 再看={() => 再看(0)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 危险 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} 收起={收起} 行错={行错} />
+            <组块 meId={meId} 名="今天" 进不了={进不了} 改不了={改不了} 说明="今天之内要做的" 空话="今天没有排计划" 行={摆.今天.行} 项目={项目组.今天} 共={组.今天.length} 还有={摆.今天.还有} 再看={() => 再看(1)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} 收起={收起} 行错={行错} />
+            <组块 meId={meId} 名="本周" 进不了={进不了} 改不了={改不了} 说明="这周剩下的几天" 空话="这周剩下的几天还没排" 行={摆.本周.行} 项目={项目组.本周} 共={组.本周.length} 还有={摆.本周.还有} 再看={() => 再看(2)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} 收起={收起} 行错={行错} />
             {组.以后.length + 项目组.以后.length > 0 && (
-              <组块 meId={meId} 名="以后" 进不了={进不了} 改不了={改不了} 说明="更远的，和还没定时间的" 空话="没有更远的" 行={摆.以后.行} 项目={项目组.以后} 共={组.以后.length} 还有={摆.以后.还有} 再看={() => 再看(3)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} />
+              <组块 meId={meId} 名="以后" 进不了={进不了} 改不了={改不了} 说明="更远的，和还没定时间的" 空话="没有更远的" 行={摆.以后.行} 项目={项目组.以后} 共={组.以后.length} 还有={摆.以后.还有} 再看={() => 再看(3)} 翻着={翻着} 没取到={没取到 ? 重取 : undefined} 完成={点完成} 刚完成={刚完成} 刚建={刚建} 刚建那行={刚建那行} scope={scope} 只有我={只有我} 改={set在改} 删={删掉} 收起={收起} 行错={行错} />
             )}
           </div>
           )}
         </>
       )}
 
-      <CompletePlanModal
-        plan={在完成}
-        onClose={() => set在完成(null)}
-        onDone={(r) => {
-          const x = 在完成;
-          set在完成(null);
-          if (!x) return;
-          if (r.kind === "saved") return 记完了(x, r);
-          // 跳过：和原来点 ✓ 一模一样（先原地打勾、再存；提示里带撤销、排下一次）
-          const 原 = 详.get(x.key);
-          if (原) void 完成(原);
-        }}
-      />
-      {排给 && (
-        <PlanForm open onClose={() => set排给(null)} onSaved={() => { set排给(null); router.refresh(); }} customerId={排给.customerId} 有WhatsApp={排给.有WhatsApp} record={null} 默认天数={7} />
-      )}
       {在改?.kind === "plan" && (
         <PlanForm
           open
@@ -514,11 +465,11 @@ export default function PlansView({
 type 待取 = { key: string; 待取: true };
 
 function 组块({
-  meId, 进不了, 改不了, 名, 说明, 空话, 行, 项目, 共, 还有, 再看, 翻着, 没取到, 危险, 完成, 刚完成, 刚建, 刚建那行, scope, 只有我, 改, 删,
+  meId, 进不了, 改不了, 名, 说明, 空话, 行, 项目, 共, 还有, 再看, 翻着, 没取到, 危险, 完成, 刚完成, 刚建, 刚建那行, scope, 只有我, 改, 删, 收起, 行错,
 }: {
   /** 改这一条：计划开计划表单，待办开待办表单（2026-10-02 排查 3-4：原来计划页上只能「完成」） */
   改: (x: 事项) => void;
-  删: (x: 事项) => Promise<void>;
+  删: (x: 事项) => Promise<{ ok: false; error: string } | void>;
   名: string;
   说明: string;
   /** 客户详情开不了的客户：客户名不给链接 */
@@ -544,6 +495,10 @@ function 组块({
   危险?: boolean;
   完成: (x: 事项) => void;
   刚完成: string[];
+  /** 删掉 / 完成了、正在收起的那几条 */
+  收起: string[];
+  /** 行内提示：没删掉 / 没完成成的原因 */
+  行错: Record<string, string>;
   /** 刚在这一页新建的那条的 key：亮两秒 */
   刚建: string | null;
   刚建那行: React.RefObject<HTMLDivElement | null>;
@@ -573,11 +528,12 @@ function 组块({
             );
           }
           const 完了 = 刚完成.includes(x.key);
+          const 错 = 行错[x.key];
           return (
             <div
               key={x.key}
               ref={x.key === 刚建 ? 刚建那行 : undefined}
-              className={`plan-row${完了 ? " plan-row-done" : ""}${x.key === 刚建 ? " row-fresh" : ""}`}
+              className={`plan-row${完了 ? " plan-row-done" : ""}${收起.includes(x.key) ? " ls-row-gone" : ""}${x.key === 刚建 ? " row-fresh" : ""}`}
             >
               {/* 改不了的客户上，本人名下的事项还能勾（服务端 本人勾完成挡，P-转-10）；别人的（下属留下、我没在上面负责项目）点了只报错，不摆 ✓，留个空位让标题对齐 */}
               {改不了.has(x.customerId) && x.ownerId !== meId ? (
@@ -603,6 +559,7 @@ function 组块({
               {!只有我 && scope === "全部成员" && <UserCell name={x.ownerName} size={22} />}
               {/* 截止时间一种说法：逾期 N 天 / 今天 / 明天 / M 月 D 日（审查 D1，lib/deadline.ts） */}
               <span className="plan-row-d" title={x.时间 ? fmtDateTime(x.时间) : undefined}>{截止说法(x.时间)}</span>
+              {错 && <span className="ls-row-err" role="alert" title={错}>{错}</span>}
               {!完了 && !改不了.has(x.customerId) && (
                 <span className="plan-row-act">
                   <Button type="text" size="small" icon={<EditOutlined />} aria-label={`改 ${x.标题}`} onClick={() => 改(x)} />

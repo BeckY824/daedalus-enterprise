@@ -9,7 +9,8 @@
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { App, Button, Checkbox, Form, Modal, Select, Table, Tag } from "antd";
+import { Alert, App, Button, Checkbox, Form, Modal, Select, Table, Tag } from "antd";
+import { useConsequence } from "@/components/ConsequenceDialog";
 import { SendOutlined } from "@ant-design/icons";
 import { LEAD_STATUS_COLOR } from "@/lib/constants";
 import { smartTime } from "@/lib/utils";
@@ -25,17 +26,50 @@ const 配额说法 = (p: 分配情况[number]) => `本月 ${p.已分} / ${p.配�
  * 勾选后批量自动分配，弹一张名单说清每条分给了谁：线索页和项目页共用，分给了 = 各页自己的说法。
  * 选中行 = 勾选时看到的每行负责人，交给服务端逐行比（乐观锁，X-89）：被别人先分走的那行回「已被分配」
  */
-export function useBatchAutoAssign(分给了: (r: Extract<自动分配结果, { ok: true }>) => string, 选项?: { 项目: true }) {
+export function useBatchAutoAssign(分给了: (r: Extract<自动分配结果, { ok: true }>) => string, 选项?: { 项目?: true; 先问?: true }) {
   const router = useRouter();
   const { message, modal } = App.useApp();
   const 问一起转 = useCarryConfirm();
-  return async function 批量自动分(ids: string[], 清空: () => void, 选中行: readonly { id: string; ownerId: string | null }[] = []) {
+  const [问后果, 后果框] = useConsequence();
+  /** 先问那种（线索页，ls.ld.batch）：分完的名单就地摆在列表上方，可以收，不弹 modal.info */
+  const [名单, set名单] = useState<Extract<Awaited<ReturnType<typeof 批量自动分配>>, { ok: true }>["结果"] | null>(null);
+  const { 先问, ...传给服务端 } = 选项 ?? {};
+  const 批量自动分 = async function 批量自动分(ids: string[], 清空: () => void, 选中行: readonly { id: string; ownerId: string | null }[] = []) {
+    if (先问) {
+      /*
+        ls.ld.batch（P-界面-40 批量分配 = 后果框）：先说清分给谁、分不出去的怎么办，确认了才分。
+        几条分不出去事先算不出（一条条按顺序分、前一条分完再挑下一条的人），所以写规则；分完名单就地列出每条结果
+      */
+      let 结果: typeof 名单 = null;
+      const 成了 = await 问后果({
+        题: `自动分配勾选的 ${ids.length} 条线索`,
+        后果: [
+          { 标: "分给谁", 级: "警", 话: "一条条按顺序分给还有配额的销售，前一条分完再挑下一条的人" },
+          { 标: "分不出", 话: "配额满了、没有合适销售的那几条不分，留在原处，分完列出来" },
+          { 标: "之后", 话: "接手人会收到通知；分完的名单列在列表上方" },
+        ],
+        是: "自动分配",
+        危: false,
+        async 做() {
+          const 原负责人们 = Object.fromEntries(选中行.map((r) => [r.id, r.ownerId]));
+          const res = await 批量自动分配(ids, { ...传给服务端, 原负责人们 });
+          if (!res.ok) return res;
+          结果 = res.结果;
+          return { ok: true };
+        },
+      });
+      if (!成了 || !结果) return;
+      清空();
+      set名单(结果);
+      router.refresh();
+      return;
+    }
     // P-转-07：市场客户名下有同事的项目，分之前列出来（接手人这时还没挑）
     if (选项?.项目 && !(await 问一起转(() => 分配带走的项目(ids)))) return;
     let res: Awaited<ReturnType<typeof 批量自动分配>>;
     try {
       const 原负责人们 = Object.fromEntries(选中行.map((r) => [r.id, r.ownerId]));
-      res = await 批量自动分配(ids, { ...选项, 原负责人们 });
+      res = await 批量自动分配(ids, { ...传给服务端, 原负责人们 });
     } catch {
       return void message.error("没分成，请稍后再试");
     }
@@ -59,6 +93,33 @@ export function useBatchAutoAssign(分给了: (r: Extract<自动分配结果, { 
       ),
     });
   };
+  const 成数 = 名单?.filter((x) => x.ok).length ?? 0;
+  const 框 = (
+    <>
+      {后果框}
+      {名单 && (
+        <Alert
+          className="ls-ld-result"
+          type={成数 < 名单.length ? "warning" : "success"}
+          showIcon
+          closable={{ "aria-label": "收起分配结果" }}
+          afterClose={() => set名单(null)}
+          title={`自动分配：${成数} 条分出去了${成数 < 名单.length ? `，${名单.length - 成数} 条没分` : ""}`}
+          description={
+            <ul className="lead-auto-assign-list" data-testid="lead-auto-assign-result">
+              {名单.map((x) => (
+                <li key={x.leadId}>
+                  <span className="lead-auto-assign-name" title={x.name}>{x.name}</span>
+                  {x.ok ? <span>{x.随客户 ? `已随客户给 ${x.接手人}` : 分给了(x)}</span> : <span className="muted">没分：{x.error}</span>}
+                </li>
+              ))}
+            </ul>
+          }
+        />
+      )}
+    </>
+  );
+  return Object.assign(批量自动分, { 框 });
 }
 
 /**
@@ -67,11 +128,15 @@ export function useBatchAutoAssign(分给了: (r: Extract<自动分配结果, { 
  */
 export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { id: string; name: string; ownerId: string | null; 项目?: boolean } | null; 关: () => void; 不看配额?: boolean }) {
   const router = useRouter();
-  const { message } = App.useApp();
   const 问一起转 = useCarryConfirm();
+  /** 没分成的原因：就地写在框里（g.save：不弹顶部提示），框不关 */
+  const [错, set错] = useState<string | null>(null);
   const [form] = Form.useForm<{ toUserId: string; line: "" | "内贸" | "外贸"; kind: "营销" | "营销企划"; 带待办: boolean }>();
   const [人们, set人们] = useState<分配情况 | null>(null);
   const [忙, set忙] = useState(false);
+  /** ls.ld.assign：确认键写明分给谁（P-界面-40「选人框里写后果」） */
+  const 挑的 = Form.useWatch("toUserId", form);
+  const 挑的名 = 挑的 ? 人们?.find((p) => p.userId === 挑的)?.name : undefined;
   // 新线索（项目）的业务线（只读）和能指派的人（正常参与、线对得上的销售）；undefined = 还在取，null = 取不到
   const [项目线, set项目线] = useState<{ 线: 项目线; 可选: string[]; 市场转客户?: boolean } | null | undefined>(undefined);
   /**
@@ -85,6 +150,7 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
   function 打开了(open: boolean) {
     if (!open) return;
     form.resetFields();
+    set错(null);
     set人们(null);
     void 本月分配情况().then((r) => set人们(r ?? []));
     set项目线(undefined);
@@ -96,6 +162,7 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
     const v = await form.validateFields().catch(() => null);
     if (!v) return;
     set忙(true);
+    set错(null);
     try {
       // P-转-07：市场首次分给销售、客户名下有同事的项目，会一起转走的分之前列出来；点了取消就不分，弹窗留着
       if (lead.项目 && !(await 问一起转(() => 分配带走的项目([lead.id], v.toUserId)))) return;
@@ -103,10 +170,10 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
       // 原负责人 = 打开弹窗时看到的负责人（乐观锁）：别人先分走了回「已被分配」，不覆盖
       const res = await 分配线索({ ...哪条, toUserId: v.toUserId, line: v.line || null, kind: v.kind, 原负责人: lead.ownerId, ...(带待办勾出 ? { 带待办: v.带待办 } : {}) });
       if (!res.ok) {
-        message.error(res.error, 5);
+        set错(res.error);
         return;
       }
-      message.success(`「${lead.name}」已分给 ${人们?.find((p) => p.userId === v.toUserId)?.name ?? "他"}`);
+      // 分成了：关框，这一行刷新后负责人就是 TA，不另弹提示
       关();
       router.refresh();
     } finally {
@@ -118,7 +185,8 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
     <Modal
       open={!!lead}
       title={lead ? `分配「${lead.name}」` : ""}
-      okText="分配"
+      okText={挑的名 ? `分给 ${挑的名}` : "分配"}
+      okButtonProps={{ className: "ls-ld-ok", title: 挑的名 ? `分给 ${挑的名}` : undefined }}
       cancelText="取消"
       confirmLoading={忙}
       onOk={() => void 分()}
@@ -126,6 +194,7 @@ export function AssignLeadModal({ lead, 关, 不看配额 = false }: { lead: { i
       afterOpenChange={打开了}
       destroyOnHidden
     >
+      {错 && <Alert type="error" showIcon role="alert" className="ls-ld-err" title={错} />}
       <p className="muted" style={{ marginTop: 0 }}>{不看配额 ? "只能分给销售或销售管理，分完记进分配记录。" : "只能分给销售或销售管理；配额分满了会拦下，分完记进分配记录。"}</p>
       <Form form={form} layout="vertical" initialValues={{ line: "", kind: "营销", 带待办: 公海规则.带待办默认勾 }}>
         <Form.Item name="toUserId" label="接手人" rules={[{ required: true, message: "选一个接手人" }]}>

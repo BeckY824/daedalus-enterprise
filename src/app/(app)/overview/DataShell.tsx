@@ -6,6 +6,7 @@ import { useOptimistic, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Segmented, Select, Tabs } from "antd";
 import { PageHead } from "@/components/ui";
+import Skeleton from "@/components/Skeleton";
 import { 视图们, type 视图 } from "./views";
 import { 读页签, 复盘页签们, 复盘页签叫法, type 复盘页签 } from "@/lib/project/board-todos";
 import CustomRangePicker from "@/components/CustomRangePicker";
@@ -148,11 +149,18 @@ export default function DataShell({
             animated={{ inkBar: true, tabPane: false }}
             items={复盘页签们.map((k) => ({ key: k, label: 复盘页签叫法[k] }))}
           />
-          <div className={`data-shell-body${切着 ? " data-shell-pending" : ""}`} aria-busy={切着 || undefined}>
-            {/* 乐观切过去、服务端那一屏还没回来时，旧内容留在原地淡一点（不清空，下面不塌一截再撑开） */}
-            {页签 === "data" && 视图条}
-            {children}
-          </div>
+          {/* g.tabswitch：换了页签——立刻切过去、先出骨架（旧页签的内容不再灰着留 1 秒）；
+              同一页签里换筛选 / 换人——旧内容留在原地淡一点（不清空，下面不塌一截再撑开） */}
+          {切着 && 显签 !== 页签 ? (
+            <div className="data-shell-body ov-tab-skel" aria-busy>
+              <Skeleton 行={6} 说法={`正在打开「${显签 ? 复盘页签叫法[显签] : ""}」`} />
+            </div>
+          ) : (
+            <div className={`data-shell-body${切着 ? " data-shell-pending" : ""}`} aria-busy={切着 || undefined}>
+              {页签 === "data" && 视图条}
+              {children}
+            </div>
+          )}
         </>
       ) : (
         <>

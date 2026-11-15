@@ -21,6 +21,8 @@ import {
 import { 名单段 } from "@/lib/enterprise/channel-stats";
 import Link from "next/link";
 import { RosterNote } from "./RosterNote";
+import CountUp from "@/components/CountUp";
+import Skeleton from "@/components/Skeleton";
 
 /** 一位小数的百分比；算不了是「—」 */
 function 百分(r: number | null): string {
@@ -29,6 +31,8 @@ function 百分(r: number | null): string {
   return `${(Math.round(r * 1000) / 10).toLocaleString("zh-CN")}%`;
 }
 const 数 = (n: number) => n.toLocaleString("zh-CN");
+/** ch.dash：换周期数字从旧值滚到新值（CountUp 只滚变化：第一次直接是数，不从 0 滚） */
+const 滚数 = (值: number, 记号: string) => <CountUp 值={值} 记号={`ch-dash:${记号}`} 格式={(n) => 数(Math.round(n))} 只滚变化 />;
 /** 上一层到这一层少了多少（比例超过 1 就是多了） */
 const 差 = (r: number | null) => (r == null ? "—" : r > 1 ? `+${百分(r - 1)}` : `−${百分(1 - r)}`);
 
@@ -65,6 +69,7 @@ export default function ChannelDash({
   const 期底 = useMemo(() => (期 === 自定义 ? 底数.自定义 ?? {} : 底数[期]), [期, 底数]);
   const k = useMemo(() => 算看板(渠道们, 期底, 筛了负责人), [渠道们, 期底, 筛了负责人]);
   const 起 = 期 === 自定义 ? null : 周期起点(期, new Date());
+  const 等自定义 = 期 === 自定义 && 换着;
   /** 改地址栏的 view / from / to，别的参数原样留着；不滚动、不进历史 */
   const 写地址 = (改: { view?: string; from?: string; to?: string }) => {
     const q = new URLSearchParams(参数.toString());
@@ -116,16 +121,21 @@ export default function ChannelDash({
         </span>
       </div>
 
+      {/* ch.dash：自定义那一段还在路上（服务端现算）先出骨架，不拿旧数压暗了冒充；三个预设本来就在手上，切了直接滚 */}
+      {等自定义 ? (
+        <Skeleton 行={5} 高={16} 说法="正在算这一段" className="ch-dash-skel" />
+      ) : (
+      <>
       <div className="chan-dash-kpi">
         <div className="chan-dash-k">
           <span className="chan-dash-kk">总线索</span>
-          <span className="chan-dash-kv">{数(k.线索)}</span>
+          <span className="chan-dash-kv">{滚数(k.线索, "线索")}</span>
           {/* 跨渠道的合计：项目列表按渠道只能单选，只带时间段的链接会混进别的渠道、没渠道的项目，所以这里不链（TOP5 每行能点） */}
           <span className="chan-dash-ks">按项目创建时间，{含公海(k.公海?.线索)}</span>
         </div>
         <div className="chan-dash-k">
           <span className="chan-dash-kk">MQL 有效线索</span>
-          <span className="chan-dash-kv">{k.已判定 ? 数(k.有效) : "—"}</span>
+          <span className="chan-dash-kv">{k.已判定 ? 滚数(k.有效, "有效") : "—"}</span>
           <span className="chan-dash-ks">{k.已判定 ? `有效率 ${百分(k.有效率)} · ` : ""}已判定 {数(k.已判定)} 条</span>
         </div>
         <div className="chan-dash-k">
@@ -135,7 +145,7 @@ export default function ChannelDash({
               <span className="chan-dash-q" tabIndex={0} aria-label="商机怎么数">?</span>
             </Tooltip>
           </span>
-          <span className="chan-dash-kv">{数(k.商机)}</span>
+          <span className="chan-dash-kv">{滚数(k.商机, "商机")}</span>
           <span className="chan-dash-ks">线索→商机 {百分(k.转商机.比例)}</span>
         </div>
         <div className="chan-dash-k">
@@ -145,7 +155,7 @@ export default function ChannelDash({
               <span className="chan-dash-q" tabIndex={0} aria-label="订单怎么数">?</span>
             </Tooltip>
           </span>
-          <span className="chan-dash-kv">{数(k.订单)}</span>
+          <span className="chan-dash-kv">{滚数(k.订单, "订单")}</span>
           <span className="chan-dash-ks">商机→订单 {百分(k.转订单)}</span>
         </div>
         <div className="chan-dash-k">
@@ -287,6 +297,8 @@ export default function ChannelDash({
           )}
         </div>
       </div>
+      </>
+      )}
 
       {公海 && (
         <div className="chan-dash-cell chan-dash-pool">

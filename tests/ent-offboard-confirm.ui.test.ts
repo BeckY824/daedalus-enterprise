@@ -117,12 +117,14 @@ for (const width of [1024, 1280, 1366]) {
       expect(await 乙.getByRole("button", { name: /全部交给/ }).count()).toBe(0);
       const 顶 = await 乙.evaluate((卡) => { const k = 卡.getBoundingClientRect(); return [...卡.querySelectorAll("button")].every((b) => { const r = b.getBoundingClientRect(); return r.left >= k.left && r.right <= k.right; }); });
       expect(顶).toBe(true);
-      // 撤回 → 确认框 → 调 撤回交接(h1)
+      // 撤回 → 就地确认（ls.ho.revoke，PR5b）：不点确认不调；点了才调 撤回交接(h1)
       await 甲.locator(".ant-table-tbody button", { hasText: "撤回" }).first().click();
-      const 框 = page.locator(".ant-modal-confirm");
-      await 框.waitFor();
-      expect(await 框.innerText()).toContain("不用再确认");
-      await 框.getByRole("button", { name: /撤\s*回/ }).click();
+      const 问 = 甲.locator(".inlc-ask").first();
+      await 问.waitFor();
+      expect(await 问.innerText()).toContain("撤回这笔交接");
+      expect(await page.evaluate(() => (window as unknown as { __调?: unknown[][] }).__调 ?? [])).toEqual([]);
+      expect(await 不横滚(page)).toBe(true);
+      await 问.getByRole("button", { name: "撤回" }).click();
       await expect.poll(() => page.evaluate(() => (window as unknown as { __调?: unknown[][] }).__调 ?? [])).toEqual([["撤回交接", "h1"]]);
       // 改人 → 选新接手人 → 调 改接手人(h1, u)
       await 甲.locator(".ant-table-tbody button", { hasText: "改人" }).first().click();

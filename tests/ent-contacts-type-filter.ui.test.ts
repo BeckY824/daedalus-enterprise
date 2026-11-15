@@ -14,7 +14,8 @@ const plugin: Plugin = { name: "contacts-type", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({push(){return new Promise(()=>{})},refresh(){}});");
   stub(/components\/DataList$/, "export default function D(p){return <><div data-testid='rows' data-loading={String(!!p.加载中)}>{p.行.map(x=><div key={x.id}>{x.name}</div>)}</div>{p.筛选}</>}");
   stub(/\/ContactForm$/, "export default function F(){return null}");
-  stub(/\/useContactRemoval$/, "export const useContactRemoval=()=>({彻底删(){}});");
+  // PR5b（ls.ct.orphan）：彻底删除改成 ContactsView 自己调 action + 底部撤销条
+  stub(/\[id\]\/actions$/, "export const deleteUnassignedContact=async()=>({ok:true}),restoreContact=async()=>({ok:true});");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
