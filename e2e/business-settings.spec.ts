@@ -81,7 +81,7 @@ test.afterAll(async () => {
 
 test.describe.serial("业务配置", () => {
   test("把「客户」改成「学员」，侧边栏、列表页标题与表头同步变；改回去后恢复", async ({ page }) => {
-    test.skip(企业版, "企业版新建客户走 /projects/new 整页，没有新建客户弹框");
+    test.skip(企业版, "企业版新建客户走建档向导框（ProjectWizard），没有老的新建客户弹框");
     await 登录(page);
     await 改客户名词(page, "学员");
 
@@ -115,7 +115,7 @@ test.describe.serial("业务配置", () => {
     await 保存并等提示(page, 面板);
 
     if (企业版) {
-      // 企业版列表不摆档案字段那一列（10-28 去遗留），新建又走 /projects/new 整页，改名看编辑框里的字段名
+      // 企业版列表不摆档案字段那一列（10-28 去遗留），新建又走建档向导框，改名看编辑框里的字段名
       await 确保有一位客户(page);
       await page.goto("/customers");
       // 行上的编辑、删除收进「⋯」（交互规则 D，10-30）

@@ -18,7 +18,8 @@ import { 规则开着, 规则名们 } from "@/lib/enterprise/rules";
 import { 同名带邮箱 } from "@/lib/utils";
 import { 读组织, 直属上级of, 虚线上级of, 权限组织 } from "@/lib/enterprise/org";
 import { 拆角色, 是系统管理员of } from "@/lib/enterprise/org-core";
-import { 能进设置, 能改后台设置, 是总管理 } from "@/lib/enterprise/permissions";
+import { 能进设置, 是总管理 } from "@/lib/enterprise/permissions";
+import { 设置范围of } from "@/lib/enterprise/settings-scope";
 import { 规整字段配置, 字段权限key } from "@/lib/enterprise/field-perm";
 import { 市场部门key, 市场成员key, 规整市场部门 } from "@/lib/enterprise/market";
 import { getSetting } from "@/lib/settings";
@@ -81,11 +82,15 @@ export default async function SettingsBody() {
   // 进设置页 / 改后台设置（11-01 #9）：企业版只认业务角色——系统管理员，勾了「不管设置」的不行；
   // 别的版本照旧账号 ADMIN。和服务端 settings/actions.ts 能改设置、org-actions.ts 能改的人 同一套
   const 权限org = 企业版() ? await 权限组织() : null;
-  const 可进 = (企业版() ? 能进设置(me, 权限org) : me.role === "ADMIN");
-  const 可改 = (企业版() ? 能改后台设置(me, 权限org) : me.role === "ADMIN");
-  // 企业版不是系统管理员（11-03 D3-1）：只给个人资料、登录与密码、快捷键、外观（回收站副手另多回收站），
-  // 成员、组织架构、项目模式、操作日志都不出、数据也不取
-  const 只个人 = 企业版() && !可进;
+  /*
+    按登录身份（P-界面-46，lib/enterprise/settings-scope.ts）：系统管理员全看全改；只读管理员（admin、没设业务线）后台设置看得见、一律灰；
+    别人只个人几项（加自己能改的，比如给下属设线索配额）。原来「只读 = 可进 && !可改」而 可进 和 可改 是同一个判断，只读恒为 false，
+    管理员进来只剩个人几项（PR10b ④）。成员、组织架构、项目模式、操作日志在 只个人 时都不出、数据也不取
+  */
+  const 范围 = 设置范围of(me, 权限org, 企业版());
+  const { 可看, 可改, 只读, 只个人 } = 范围;
+  // 导入导出、导出记录、回收站这些「做事」的栏只给系统管理员（只读管理员看不了：它们的数据走各自的服务端动作，只读的一调就拒）
+  const 可进 = 企业版() ? 能进设置(me, 权限org) : me.role === "ADMIN";
 
   // 项目模式（团队版 1a）开着才多一栏：组员角色字典、异常类别字典
   const 项目设置底 = business.projectMode && !只个人
@@ -219,6 +224,12 @@ export default async function SettingsBody() {
   const 客户回收: 客户回收设置 | null = 项目设置底?.组织规则 && 企业版()
     ? { 三态: 项目设置底.组织规则.三态, 超时回收开: 项目设置底.组织规则.超时回收.开, 挡: 挡("节点时限"), 占位词: 可改 ? [...(await 读占位词())] : null }
     : null;
+  /*
+    线索配额（PR10b ③）：「后台设置谁能改」表里线索配额默认给直属上级、虚线上级（edit-perm-table.ts），
+    可入口 LeadAssignCard 原来只在系统管理员才有的「组织架构」页签里，销售管理有权限却找不到。
+    只个人的人手下有能设配额的人时，单给一栏「线索配额」；系统管理员照旧在组织架构里
+  */
+  const 线索配额 = 只个人 && 线索分配?.some((r) => r.能设配额) ? { 行: 线索分配, 不限额: 不设配额 === true } : null;
   // 谁能导入只认 import-perm.ts 一处（现在企业版是老板、总管理员），以后放宽只改那里
   const 能导入 = await 能导入导出(me);
   // 回收站：企业版的系统管理员、回收站副手（谁能看 / 恢复 / 彻底删除只认 lib/enterprise/soft-delete.ts）
@@ -240,9 +251,13 @@ export default async function SettingsBody() {
       组织架构={组织架构}
       客户回收={客户回收}
       me={me}
-      isAdmin={可进}
+      isAdmin={可看}
       /* 管理员（admin）能进来看、不能改（11-01）：AI 接入 / 业务设置那几栏控件全灰，团队成员不给编辑 */
-      只读={可进 && !可改}
+      只读={只读}
+      身份={范围.身份}
+      我的角色={[...(权限org?.成员.get(me.id)?.角色们 ?? [])]}
+      条线={!!权限org?.成员.get(me.id)?.line && !是总管理(me, 权限org)}
+      线索配额={线索配额}
       /* 勾了「不管设置」的总管理进不了设置（C1）：导入、回收站这几栏也跟着「可进」走，不只看本人能不能导入（D2-1） */
       企业版导入={企业版() && 可进 && 能导入}
       /* 不能导入的人那栏永远是空的，不摆 */

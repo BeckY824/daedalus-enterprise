@@ -21,7 +21,7 @@
 export type 预热设置 = "全部" | string[];
 
 /** 会出现在预热名单里的页：企业版左栏五项 + 新线索，团队版左栏主组（AppShell 预热页）。只用来判断列表写没写错 */
-export const 可预热页 = new Set(["/dashboard", "/overview", "/channels", "/pool", "/customers", "/projects", "/follow-ups", "/leads"]);
+export const 可预热页 = new Set(["/dashboard", "/overview", "/channels", "/pool", "/customers", "/projects", "/follow-ups/plans", "/leads"]);
 
 function 规整(项: string): string {
   let s = 项.trim().replace(/\/+$/, "");

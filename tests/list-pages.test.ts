@@ -16,14 +16,12 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {}
 vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
 vi.mock("@/app/(app)/leads/LeadsView", () => ({ default: () => null }));
 vi.mock("@/app/(app)/contacts/ContactsView", () => ({ default: () => null }));
-vi.mock("@/app/(app)/follow-ups/FollowUpsView", () => ({ default: () => null }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 造本人, 造客户 } from "./r2-data-helpers";
 import LeadsPage from "@/app/(app)/leads/page";
 import ContactsPage from "@/app/(app)/contacts/page";
-import FollowUpsPage from "@/app/(app)/follow-ups/page";
 
 type 元素 = { props: Record<string, unknown> };
 const 空 = () => Promise.resolve({});
@@ -55,12 +53,7 @@ describe("J-018 列表页「共 N 条」是真总数，不是 take: 300 的上�
     expect(el.props.总数).toBe(308);
   });
 
-  it("跟进 305 条 → 总数 305", async () => {
-    const c = await 造客户(我);
-    await prisma.followUp.createMany({ data: 一串((i) => ({ type: "PHONE", title: `跟进${i}`, content: "聊过", customerId: c.id, ownerId: 我 })) });
-    const el = (await FollowUpsPage({ searchParams: 空() })) as unknown as 元素;
-    expect(el.props.总数).toBe(条数);
-  });
+  // 跟进记录页（/follow-ups）11-15 删了，「跟进 305 条 → 总数 305」那条跟着删
 });
 
 describe("联系人页按时间倒序（11-03 C1-9）", () => {

@@ -241,8 +241,9 @@ it("负责人本人发起（转让要申请）：按钮、框标题照样叫「�
     await 框.getByRole("combobox", { name: "转给谁" }).click();
     await page.locator(".ant-select-item-option").filter({ hasText: "同事乙" }).click();
     await 框.getByRole("button", { name: /下\s*一\s*步/ }).click();
-    const 二 = page.locator(".ant-modal-confirm");
-    await 二.locator(".ant-modal-confirm-title").filter({ hasText: "把客户转让给「同事乙」" }).waitFor();
+    // 11-15 第二个框换成转让框（TransferDialog，人已选好；原因点选可不选）
+    const 二 = page.getByRole("dialog").filter({ hasText: "把客户转让给「同事乙」" });
+    await 二.waitFor();
     expect(await 二.innerText()).toMatch(/接手人确认后生效.*7 天内不确认自动作废，归属不变/);
     expect(await 二.innerText()).not.toMatch(/申请移交|发出申请/);
     expect(await 二.getByRole("button", { name: /确\s*认\s*转\s*让/ }).count()).toBe(1);

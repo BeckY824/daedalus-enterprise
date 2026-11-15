@@ -3,11 +3,11 @@
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
 import { useContext, useEffect, useRef, useState, useTransition, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
 import { App, Button, Pagination, Select, Space, Segmented, Tag, Typography, type SelectProps } from "antd";
-import { CloseOutlined, PlusOutlined, SendOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { CloseOutlined, PlusOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { PageHead, CustomerLink, UserCell } from "@/components/ui";
 import DataList, { type 列 } from "@/components/DataList";
 import ListSearch from "@/components/ListSearch";
@@ -296,8 +296,28 @@ export default function ProjectsView({
   // 看板每列的卡片（含「再看」追加的）也算：客户页看板不取列表页（行 是空的），不带上的话有「已不在的成员 / 没人」的卡片也会把负责人藏掉
   const 不问归属 = !f.ownerId && 列表不问归属ID(users, [...行, ...看板.flatMap((c) => c.行), ...Object.values(追加.们).flatMap((x) => x.行)].map((r) => r.ownerId));
   const 在筛 = Object.values(filters).some(Boolean);
-  // 企业版项目首页：先问新客户还是老客户，都在弹窗里建（新客户走建档向导、先查重）；新线索页照旧去 /leads/new
-  const 新建 = () => (企业版 && !新线索 ? 新项目.开选客户() : router.push(新线索 || 企业版 ? "/leads/new" : "/projects/new"));
+  /*
+    企业版项目首页：先问新客户还是老客户，都在弹窗里建（新客户走建档向导、先查重）。
+    新线索页、团队版项目页：直接弹建档向导，项目开关开着锁住（原 /leads/new、/projects/new 整页，11-15 删了，老链接转到 ?new=1）
+  */
+  const 新建 = () => (企业版 && !新线索 ? 新项目.开选客户() : void 新项目.开建档(新线索 ? "新线索" : "新增项目", "锁开"));
+  /*
+    ?new=1 进来就开（老链接 /leads/new、/projects/new 转过来的，next.config）：等挂上再开，开了把 new 从地址上抹掉，
+    刷新、桌面端记住的最后一页不会再弹（同客户页 ?new=1）。客户页看板、不能新建的人不理
+  */
+  const 地址新建 = useSearchParams()?.get("new") === "1";
+  const 带新建 = !客户页 && 能新建 && 地址新建;
+  const 开过 = useRef(false);
+  useEffect(() => {
+    if (!带新建 || 开过.current) return;
+    开过.current = true;
+    新建();
+    const q = new URLSearchParams(window.location.search);
+    q.delete("new");
+    router.replace(q.size ? `${window.location.pathname}?${q}` : window.location.pathname, { scroll: false });
+    // 只认进来那一下：新建、router 每次渲染都是新的，不该再触发
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [带新建]);
   // 从首页指标卡点进来：页头标题右边挂一枚能关掉的标签，说清现在只看哪一批
   const 卡 = 认首页卡(filters.f);
   const 卡标 = 卡 ? (
@@ -309,15 +329,7 @@ export default function ProjectsView({
   const 领了再看 = (r: { pooled: boolean }) => (r.pooled ? "领取后可见" : "无权查看");
 
   const 分给了 = (r: Extract<自动分配结果, { ok: true }>) => (项目页分 ? `已分给 ${r.接手人}` : `已分给 ${r.接手人}（本月已分 ${r.已分} / 配额 ${r.配额 ?? "不限"}）`);
-  // 页头「分配」：分配在列表的每行和勾选里做，看板上点它先切到列表
-  const 去分配 = () => {
-    // 客户页看板视图（第 3 批）：临时切到项目列表，不动客户页记的「列表 / 看板」
-    if (看法 !== "列表") {
-      if (客户页) set临时列表(true);
-      else 换看法("列表");
-    }
-    message.info("勾选要分的线索点「自动分配」，或点行末的「分配」指定接手人");
-  };
+  // 页头 / 客户页看板筛选行那颗只带路的「分配」去掉（原型 pr.guide，11-15）：分配入口在列表每行末尾和勾选后的「自动分配」
 
   // 分配结果原地写在这一行（原型 pr.autoone / pr.autobatch / pr.assign，11-15）：分给谁，或没分的原因；不再弹清单、不靠转瞬即逝的提示
   type 分配果 = { ok: true; 接手人: string; 为什么?: string } | { ok: false; error: string };
@@ -524,18 +536,14 @@ export default function ProjectsView({
       {筛选外露}
       {更多筛选按钮}
       <ResetFilters 显示={Object.values(f).some(Boolean)} onClick={reset} />
-      {/* 企业版项目首页只留看板、列表（U-项目-08）：「新线索列表」「沟通记录」入口去掉，/leads、/follow-ups 路由还在，⌘K 搜得到 */}
+      {/* 企业版项目首页只留看板、列表（U-项目-08）：「新线索列表」「沟通记录」入口去掉：/leads 路由还在、⌘K 搜得到；沟通记录主页 11-15 删了 */}
     </Space>
   </>);
 
-  // 原型 pr.guide（11-15）：项目页页头那颗「分配」只是带路（切到列表 + 一句说明），去掉——勾选后操作条里就有「自动分配」、每行末有「分配」。
-  // 客户页看板视图那一格照旧（客户列表另有改版，不在这里动）
-  const 有分配钮 = 客户页 && 项目页分 && 能自动分配;
   const 有分出去钮 = (新线索 || 项目页分) && 线索分配开着;
   /** 项目专用的几颗按钮：项目页在页头；客户页看板视图在筛选行右端（C17 / C4；11-12 起新增项目挪进客户页页头「新建 ▾」） */
   const 项目按钮 = (
     <>
-      {有分配钮 && <Button icon={<SendOutlined />} onClick={去分配}>分配</Button>}
       {有分出去钮 && <AssignedOutButton />}
       {/* 客户页看板视图的离职交接在客户页页头（C15），这里不再摆一个 */}
       {!新线索 && !客户页 && 待交接 != null && <Link href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>}
@@ -577,7 +585,7 @@ export default function ProjectsView({
       {进筛选行 ? (
         工具位 && createPortal(<>{回到看板}{项目按钮}</>, 工具位)
       ) : 客户页 ? (
-        (临时列表 || 有分配钮 || 有分出去钮) && (
+        (临时列表 || 有分出去钮) && (
           <div className="cust-board-tool">
             <Space wrap>
               {回到看板}
@@ -764,8 +772,8 @@ export default function ProjectsView({
         </>
       )}
       </div>
-      {/* 新增项目：先选新老客户、建档向导、给老客户开项目（NewProjectFlow.tsx） */}
-      {企业版 && 新项目.弹框}
+      {/* 新增项目：先选新老客户、建档向导、给老客户开项目（NewProjectFlow.tsx）；新线索页、团队版只用到建档向导那一块 */}
+      {新项目.弹框}
       {可分 && <AssignLeadModal lead={分配中 && { id: 分配中.id, name: 分配中.name, ownerId: 分配中.ownerId, 项目: true }} 关={() => set分配中(null)} 不看配额={项目页分}
         分好了={(名) => { if (分配中) 记果({ [分配中.id]: { ok: true, 接手人: 名 } }); }} />}
     </div>

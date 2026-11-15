@@ -36,14 +36,14 @@ describe("开关本身", () => {
 });
 
 describe("A2 记跟进的关联项目", () => {
-  it("有在推项目：必选、不能清空；没有：照旧能记，提示先建项目", async () => {
+  it("有在推项目：必选、不能清空；没有：照旧能记，写明记为客户沟通（P-界面-35）", async () => {
     const s = await 读("src/app/(app)/customers/[id]/FollowUpForm.tsx");
     expect(s).toMatch(/projects\.length > 0 \?/);
     expect(s).toContain('rules={[{ required: true, message: "请选择关联项目" }]}');
-    expect(s).toContain('extra="没挂项目，建议先建项目"');
+    expect(s).toContain('extra={<span role="note" className="fu-np-note">{没项目话}</span>}');
     // 关联项目那格不再能清空、不再有「不挂项目」
     expect(s).not.toContain('placeholder="不挂项目"');
-    const 段 = s.slice(s.indexOf('name="projectId"'), s.indexOf('extra="没挂项目'));
+    const 段 = s.slice(s.indexOf('name="projectId"'), s.indexOf('extra={<span role="note"'));
     expect(段).not.toContain("allowClear");
     // 没项目时照旧存空
     expect(s).toContain("projectId: v.projectId ?? null");

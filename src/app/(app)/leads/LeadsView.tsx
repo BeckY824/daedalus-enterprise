@@ -34,6 +34,7 @@ import { 自动分配线索, type 自动分配结果 } from "./assign-actions";
 import { AssignLeadModal, AssignedOutButton, useBatchAutoAssign } from "./AssignLead";
 import LeadFullNotices from "./LeadFullNotices";
 import ConvertProjectModal from "./ConvertProjectModal";
+import { useNewProjectFlow } from "../projects/NewProjectFlow";
 import type { 向导跟进 } from "@/lib/project/wizard";
 import { 公海线索先领取话 } from "@/lib/enterprise/pool-rules";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
@@ -97,9 +98,13 @@ export default function LeadsView({
   const router = useRouter();
   const { message, modal } = App.useApp();
   const b = useBusiness();
-  // 项目模式开着：新建一律走建档向导。企业版例外，线索先单独建、转化时再建项目（10-25 F1）
+  /*
+    项目模式开着：新建一律走建档向导，在本页弹框、项目开关开着锁住（原 /projects/new 整页，11-15 删了）。
+    企业版例外，线索先单独建、转化时再建项目（10-25 F1）。节点们只给「老客户」那条路用，这里不开
+  */
+  const 建档向导 = useNewProjectFlow({ users, 节点们: [], 要下一步: false });
   const 新建 = () => {
-    if (b.projectMode && !企业版项目) return router.push("/projects/new");
+    if (b.projectMode && !企业版项目) return void 建档向导.开建档("新增项目", "锁开");
     setEditing(null);
     setOpen(true);
   };
@@ -327,6 +332,7 @@ export default function LeadsView({
 
   return (
     <>
+      {建档向导.弹框}
       <PageHead
         title={企业版项目 ? "新线索" : "线索"}
         subtitle="还没建档的线索"

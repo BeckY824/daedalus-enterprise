@@ -16,6 +16,7 @@ import { 改组织规则, 预览客户回收 } from "@/app/(app)/projects/action
 import { 三态存占位词 } from "@/app/(app)/customers/tri-state-actions";
 import type { 三态规则, 三态天数 } from "@/lib/project/org-rules";
 import { 三态显示名 } from "@/lib/enterprise/tri-state-label";
+import { useConsequence } from "@/components/ConsequenceDialog";
 
 export type 客户回收设置 = {
   三态: 三态规则;
@@ -41,21 +42,30 @@ const 项们: { k: keyof 三态天数; 前: string; 后: string; 最小: number;
 
 export default function RecycleTab({ value }: { value: 客户回收设置 }) {
   const router = useRouter();
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
+  // 确认用 PR5a 后果框（PR9：设置各页签的 modal.confirm 都换成它），不确认不存
+  const [问后果, 后果框] = useConsequence();
   const [忙, set忙] = useState(false);
   const { 三态, 挡 } = value;
   const [天, set天] = useState<Record<(typeof 套们)[number], 三态天数>>({ 内贸: { ...三态.内贸 }, 外贸: { ...三态.外贸 } });
   const 改了 = 套们.some((t) => 项们.some(({ k }) => 天[t][k] !== 三态[t][k]));
 
-  const 存 = async (改: Parameters<typeof 改组织规则>[0], 成了: string) => {
+  /** 存；回结果给后果框（没成原因写在框里、框不关）。不经后果框的（关着时改天数）没成就提示 */
+  const 存 = async (改: Parameters<typeof 改组织规则>[0], 成了: string, 框里 = true): Promise<{ ok: boolean; error?: string }> => {
     set忙(true);
     try {
       const r = await 改组织规则(改);
-      if (!r.ok) return void message.error(("error" in r && r.error) || "没改成，请稍后再试");
+      if (!r.ok) {
+        const 话 = ("error" in r && r.error) || "没改成，请稍后再试";
+        if (!框里) message.error(话);
+        return { ok: false, error: 话 };
+      }
       message.success(成了);
       router.refresh();
+      return { ok: true };
     } catch {
-      message.error("没改成，请稍后再试");
+      if (!框里) message.error("没改成，请稍后再试");
+      return { ok: false, error: "没改成，请稍后再试" };
     } finally {
       set忙(false);
     }
@@ -64,21 +74,22 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
   const 切开关 = (开: boolean) => {
     // 关也有后果（P-界面-40 组织规则开关 = 后果确认框），不确认不生效（PR10a）
     if (!开) {
-      return void modal.confirm({
-        title: "关掉客户回收？",
-        content: 关掉后果 + (value.超时回收开 ? "「超时回收」开着：关掉后改回按项目超时回收，线索、商机阶段超时的项目回线索公海。" : ""),
-        okText: "确认关掉",
-        okButtonProps: { danger: true },
-        cancelText: "再想想",
-        onOk: () => 存({ 三态: { 开: false } }, "已关客户回收"),
+      return void 问后果({
+        题: "关掉客户回收？",
+        后果: [
+          { 标: "全员", 级: "警", 话: 关掉后果 },
+          ...(value.超时回收开 ? [{ 标: "改回", 话: "「超时回收」开着：关掉后改回按项目超时回收，线索、商机阶段超时的项目回线索公海。" }] : []),
+        ],
+        是: "确认关掉",
+        做: () => 存({ 三态: { 开: false } }, "已关客户回收"),
       });
     }
-    modal.confirm({
-      title: "打开客户回收？",
-      content: 打开后果,
-      okText: "确认打开",
-      cancelText: "再想想",
-      onOk: () => 存({ 三态: { 开: true } }, "已打开客户回收，已开始计时"),
+    void 问后果({
+      题: "打开客户回收？",
+      后果: [{ 标: "全员", 级: "警", 话: 打开后果 }],
+      是: "确认打开",
+      危: false,
+      做: () => 存({ 三态: { 开: true } }, "已打开客户回收，已开始计时"),
     });
   };
 
@@ -88,7 +99,7 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
    */
   const 存天数 = async () => {
     const 改: Parameters<typeof 改组织规则>[0] = { 三态: { 内贸: 天.内贸, 外贸: 天.外贸 } };
-    if (!三态.开) return void 存(改, "已保存");
+    if (!三态.开) return void 存(改, "已保存", false);
     set忙(true);
     // 预览要整库算一遍，客户多时可能慢：最多等 5 秒，过时就不写数字、照常弹确认
     const 看 = await Promise.race([
@@ -100,27 +111,24 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
     if (看 && !看.ok) return void message.error(("error" in 看 && 看.error) || "没改成，请稍后再试");
     const 数 = 看?.ok ? 看.预览 : null;
     const 改了的 = 套们.flatMap((t) => 项们.filter(({ k }) => 天[t][k] !== 三态[t][k]).map(({ k }) => `${t}客户${k === "进公海" ? `${三态显示名("待回收")}后进公海` : `进入${三态显示名(k)}`}：${三态[t][k]} → ${天[t][k]} 天`));
-    modal.confirm({
-      title: "改客户回收天数？",
-      content: (
-        <div>
-          <div>{改了的.join("；")}。</div>
-          <div>今晚（北京时间 0 点后）起按新天数对全员重算，白天有人记了沟通的客户当场按新天数算。</div>
-          {数 && (
-            <div>
-              {数.变 ? `按现在的数据，约 ${数.变} 位客户的状态会变${数.进公海 ? `，其中约 ${数.进公海} 位会到期自动进客户公海` : ""}。` : "按现在的数据，没有客户的状态会变。"}
-            </div>
-          )}
-        </div>
-      ),
-      okText: "确认修改",
-      cancelText: "再想想",
-      onOk: () => 存(改, "已保存"),
+    void 问后果({
+      题: "改客户回收天数？",
+      后果: [
+        { 标: "改了", 话: `${改了的.join("；")}。` },
+        { 标: "全员", 级: "警", 话: "今晚（北京时间 0 点后）起按新天数对全员重算，白天有人记了沟通的客户当场按新天数算。" },
+        ...(数 ? [{ 标: "影响", 级: "警" as const, 话: 数.变 ? `按现在的数据，约 ${数.变} 位客户的状态会变${数.进公海 ? `，其中约 ${数.进公海} 位会到期自动进客户公海` : ""}。` : "按现在的数据，没有客户的状态会变。" }] : []),
+        { 标: "能改回", 话: "改回原来的天数，当晚再按原来的算一次；已经进公海的不会回来" },
+      ],
+      是: "确认修改",
+      危: false,
+      宽: 480,
+      做: () => 存(改, "已保存"),
     });
   };
 
   return (
     <div className="tri-recycle">
+      {后果框}
       <Card
         title="客户回收"
         extra={

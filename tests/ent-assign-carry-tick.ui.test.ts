@@ -116,7 +116,11 @@ async function 开页(设: { 带走?: unknown; 失败?: boolean }): Promise<{ pa
   return { page, errors };
 }
 const 调了 = (page: Page, 名: string) => page.evaluate((n) => ((window as unknown as 窗).__调 ?? []).filter((x) => x[0] === n), 名);
-const 确认框 = (page: Page) => page.locator(".ant-modal-confirm");
+// 11-15 起是后果框（ConsequenceDialog，.csq），认 role=dialog + 标题字
+// 分配框自己就写着会一起转走的项目（data-testid=assign-carry），叠出来的才算另一个确认框
+const 确认框 = (page: Page) => page.getByRole("dialog").filter({ hasText: "会一起转走" }).filter({ hasNot: page.getByTestId("assign-carry") });
+/** 批量自动分配那个先确认的框（标题「自动分配 N 条线索」） */
+const 批量框 = (page: Page) => page.getByRole("dialog").filter({ hasText: "自动分配 2 条线索" });
 const 选人再分 = async (page: Page) => {
   await page.locator("#toUserId").click();
   await page.locator(".ant-select-item-option", { hasText: "王一" }).click();
@@ -223,8 +227,8 @@ it("分配弹窗·这条分不了（客户在公海、取不到）：提示刷�
 it("批量自动分配·项目：先一个框写清「将分 N 条」、一起转走的项目、通知；取消就不分；点「分出去 N 条」才分", async () => {
   const { page, errors } = await 开页({ 带走: 带走预览 });
   await page.getByRole("button", { name: "批量分项目" }).click();
-  const 框 = 确认框(page);
-  await 框.locator(".ant-modal-confirm-title", { hasText: "自动分配 2 条线索" }).waitFor();
+  const 框 = 批量框(page);
+  await 框.waitFor();
   const 字 = await 框.innerText();
   expect(字).toContain("分出去不能撤回");
   expect(字).toContain("会一起转走的 3 个项目");
@@ -234,7 +238,7 @@ it("批量自动分配·项目：先一个框写清「将分 N 条」、一起�
   await 框.waitFor({ state: "detached" });
   expect(await 调了(page, "批量自动分配")).toEqual([]);
   await page.getByRole("button", { name: "批量分项目" }).click();
-  await 确认框(page).getByRole("button", { name: "分出去 2 条" }).click();
+  await 批量框(page).getByRole("button", { name: "分出去 2 条" }).click();
   await page.waitForFunction(() => ((window as unknown as 窗).__调 ?? []).some((x) => x[0] === "批量自动分配"));
   expect(errors).toEqual([]); await page.close();
 });
@@ -242,9 +246,9 @@ it("批量自动分配·项目：先一个框写清「将分 N 条」、一起�
 it("批量自动分配·没有要带走的项目：框里不写一起转，照样先确认；老线索不问、直接分", async () => {
   const { page, errors } = await 开页({});
   await page.getByRole("button", { name: "批量分项目" }).click();
-  await 确认框(page).locator(".ant-modal-confirm-title", { hasText: "自动分配 2 条线索" }).waitFor();
-  expect(await 确认框(page).innerText()).not.toContain("一起转走");
-  await 确认框(page).getByRole("button", { name: "分出去 2 条" }).click();
+  await 批量框(page).waitFor();
+  expect(await 批量框(page).innerText()).not.toContain("一起转走");
+  await 批量框(page).getByRole("button", { name: "分出去 2 条" }).click();
   await page.waitForFunction(() => ((window as unknown as 窗).__调 ?? []).some((x) => x[0] === "批量自动分配"));
   expect(await 调了(page, "分配带走的项目")).toHaveLength(1);
   // X-89：每行勾选时看到的负责人一起交上去，服务端逐行比

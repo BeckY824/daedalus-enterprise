@@ -23,6 +23,8 @@ import { 卡片刚记的能撤, 卡片撤销放行, 卡片撤销过时话 } from
 import { 是业务线 } from "@/lib/enterprise/assign-line";
 import { 要下一步时间, 联系人地址上限 } from "@/lib/project/wizard";
 import { 客户在推项目 } from "@/lib/project/active";
+import { 能管项目 } from "@/lib/project/db";
+import { 权限组织 } from "@/lib/enterprise/org";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版字典 } from "@/lib/project/stage-dict";
 import { 验号码, 号码类型叫法 } from "@/lib/enterprise/contact-format";
@@ -466,8 +468,11 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
       有好几个先不挂（照旧只记在客户下）——卡片上让人挑一个是后续的事，这里不猜。挂的时候 saveFollowUp 里的 挂项目 再核一遍
     */
     const 在推 = 只用项目 ? await 客户在推项目(p.customerId, 2) : [];
+    // X-143：只有一个在推的、但我管不了（只是组员）就不挂，照旧记在客户下——saveFollowUp 对管不了的项目会整条拒
+    const 唯一 = 在推.length === 1 ? await prisma.project.findUnique({ where: { id: 在推[0].id }, select: { id: true, ownerId: true, pooledAt: true } }) : null;
+    const 挂它 = 唯一 && 能管项目(me, 唯一, await 权限组织()) ? 唯一.id : null;
     const r = await saveFollowUp({
-      ...(在推.length === 1 ? { projectId: 在推[0].id } : {}),
+      ...(挂它 ? { projectId: 挂它 } : {}),
       customerId: p.customerId,
       type: p.type,
       title: p.title || null,

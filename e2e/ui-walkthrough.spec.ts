@@ -41,7 +41,7 @@ const 页面 = [
   { 路径: "/channels", 名字: "渠道" },
   { 路径: "/contacts", 名字: "联系人" },
   { 路径: "/projects", 名字: "项目" },
-  { 路径: "/follow-ups", 名字: "跟进记录" },
+  // 跟进记录页（/follow-ups）11-15 删了
   { 路径: "/follow-ups/plans", 名字: "跟进计划" },
   { 路径: "/overview?view=本年", 名字: "数据-本年" },
   { 路径: "/settings", 名字: "设置管理" },
@@ -102,7 +102,7 @@ test("每个页面在零数据下都要有给人看的引导，不能一片空�
 
 test("表格类页面零数据时要显示空状态提示，而不是只有表头", async ({ page }) => {
   await 登录(page);
-  const 有表格的 = ["/leads", "/customers", "/channels", "/contacts", "/projects", "/follow-ups"];
+  const 有表格的 = ["/leads", "/customers", "/channels", "/contacts", "/projects"];
   const 问题: string[] = [];
 
   for (const 路径 of 有表格的) {

@@ -3,7 +3,8 @@
 import { isFormValidationError } from "@/lib/form-validation";
 
 import { useState } from "react";
-import { Form, Input, Button, Avatar, App } from "antd";
+import { Form, Input, Avatar } from "antd";
+import SaveButton from "@/components/SaveButton";
 import { avatarColor, initial, AVATAR_TEXT } from "@/lib/utils";
 import { 改我的资料 } from "./actions";
 
@@ -20,24 +21,17 @@ import { 改我的资料 } from "./actions";
 export default function ProfileTab({ me }: {
   me: { name: string; title: string; email: string };
 }) {
-  const { message } = App.useApp();
   const [form] = Form.useForm();
-  const [saving, setSaving] = useState(false);
   // 头像跟着输入实时变——改名之后它长什么样，当场就看得见
   const [预览, set预览] = useState(me.name);
 
+  /** 保存（原型 st.profile）：按钮原地转圈 → ✓「已保存」，不弹顶部提示；没成的原因浮在按钮上 */
   async function 保存() {
-    if (saving) return;
-    setSaving(true);
     try {
       const v = await form.validateFields();
-      const r = await 改我的资料({ name: v.name, title: v.title ?? "" });
-      if (!r.ok) return void message.error(r.error);
-      message.success("已保存");
+      return await 改我的资料({ name: v.name, title: v.title ?? "" });
     } catch (error) {
-      if (!isFormValidationError(error)) message.error("保存失败，请刷新确认结果后重试");
-    } finally {
-      setSaving(false);
+      return { ok: false, error: isFormValidationError(error) ? "先把标红的格填好" : "保存失败，请刷新确认结果后重试" };
     }
   }
 
@@ -71,9 +65,7 @@ export default function ProfileTab({ me }: {
         <Form.Item label="登录名" extra="登录用的就是它，建好之后不能改——它同时是账号的标识">
           <Input value={me.email} disabled />
         </Form.Item>
-        <Button type="primary" onClick={保存} loading={saving}>
-          保存
-        </Button>
+        <SaveButton 做={保存}>保存</SaveButton>
       </Form>
     </div>
   );

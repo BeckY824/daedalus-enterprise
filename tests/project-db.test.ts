@@ -10,7 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import {
   改节点, 勾交付, 角色字典, 加角色, 改角色, 默认角色们, 企业版默认角色们, 企业版默认角色id, 客户的项目数, 能管项目, 改项目, 加组员, 换组员角色, 移出组员,
-  异常类别字典, 加异常类别, 改异常类别, 默认异常类别们, 放回公海, 领取公海项目, 公海超时收回, 持有数,
+  异常类别字典, 加异常类别, 改异常类别, 默认异常类别们, 放回公海, 领取公海项目, 公海超时收回, 持有数, 各人持有数,
   回邀请, 待我回的邀请, 记项目沟通,
 } from "@/lib/project/db";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
@@ -338,6 +338,8 @@ describe("项目公海", () => {
     await 放回公海(乙, a.id);
     await 放回公海(乙, b.id);
     expect(await 持有数(prisma, 丙.id)).toBe(1);
+    // 公海选人框一次查几个人（11-15 P-界面-43）：和 持有数 同一口径，没项目的人是 0
+    expect(await 各人持有数(prisma, [丙.id, 乙.id, 老板.id])).toEqual({ [丙.id]: 1, [乙.id]: await 持有数(prisma, 乙.id), [老板.id]: await 持有数(prisma, 老板.id) });
     expect(await 领取公海项目(丙, a.id)).toEqual({ ok: true });
     expect(await 领取公海项目(丙, b.id)).toMatchObject({ ok: false, error: expect.stringContaining("持有上限（2 个）") });
     expect(await prisma.project.findUniqueOrThrow({ where: { id: b.id } })).toMatchObject({ ownerId: "" });

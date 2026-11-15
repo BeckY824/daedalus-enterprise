@@ -73,7 +73,6 @@ export default function CommandBar({ 有AI, 企业版项目 = false, 全局搜�
           { 名: b.customer, 去: "/customers", 说明: "全部档案与跟进" },
           { 名: "新线索", 去: "/leads", 说明: "还没建档的人" },
           { 名: "联系人", 去: "/contacts", 说明: "客户那边对接的人" },
-          { 名: "沟通记录", 去: "/follow-ups", 说明: "已经发生的沟通" },
           { 名: "跟进计划", 去: "/follow-ups/plans", 说明: "排好还没做的" },
           { 名: "设置", 去: "/settings", 说明: "账号、密码、AI 接入、业务配置" },
         ]
@@ -86,7 +85,6 @@ export default function CommandBar({ 有AI, 企业版项目 = false, 全局搜�
       { 名: "联系人", 去: "/contacts", 说明: b.fields.school === "院校" ? "家长、老师、经办人" : "客户那边对接的人" },
       // 企业版只用项目（10-26）；商机两项（/opportunities 一律转到 /projects）和外贸订单 10-28 删了，和左栏一致
       ...(b.projectMode ? [{ 名: "项目", 去: "/projects", 说明: "线索、商机、订单三个阶段" }] : []),
-      { 名: "跟进记录", 去: "/follow-ups", 说明: "已经发生的沟通" },
       { 名: "跟进计划", 去: "/follow-ups/plans", 说明: "排好还没做的" },
       { 名: "设置", 去: "/settings", 说明: "账号、密码、AI 接入、业务配置" },
         ],

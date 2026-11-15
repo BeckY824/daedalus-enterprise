@@ -19,7 +19,7 @@ const 没开 = { ok: false as const, error: "回收站没开（只在企业版�
 const 是表 = (t: unknown): t is 软删表名 => (软删表 as readonly unknown[]).includes(t);
 
 function 刷新() {
-  for (const p of ["/customers", "/contacts", "/projects", "/follow-ups", "/settings"]) revalidatePath(p);
+  for (const p of ["/customers", "/contacts", "/projects", "/settings"]) revalidatePath(p);
 }
 
 export async function 回收站列表动作(): Promise<{ ok: true; 条目: 回收站条目[]; 能彻底删除: boolean } | { ok: false; error: string }> {

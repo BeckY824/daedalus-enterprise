@@ -117,7 +117,7 @@ export async function 从回收站捞回(类型: string, 值: string): Promise<�
     }
     // P-删-06：捞回的客户原负责人已停用，进了客户公海 / 例外留在他名下，告诉他的直属上级（没有就系统管理员），几位合成一条
     await 恢复到停用负责人通知(me, r.回来的.flatMap((x) => (x.停用负责人 ? [{ id: x.id, ...x.停用负责人 }] : [])));
-    for (const p of ["/customers", "/contacts", "/projects", "/follow-ups", "/settings"]) revalidatePath(p);
+    for (const p of ["/customers", "/contacts", "/projects", "/settings"]) revalidatePath(p);
     const 客户 = r.回来的.filter((x) => x.t === "Customer").length;
     const 联系人 = r.回来的.length - 客户;
     const 提示 = `已从回收站捞回${客户 ? ` ${客户} 位客户（连同联系人、项目、跟进）` : ""}${客户 && 联系人 ? "、" : ""}${联系人 ? ` ${联系人} 位联系人` : ""}`;

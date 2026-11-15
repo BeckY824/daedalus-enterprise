@@ -75,7 +75,7 @@ it("J-181 操作日志真实表格显示全部业务对象中文，导入不再�
   expect(text).not.toMatch(/Opportunity|Contact|FollowUp|FollowPlan|TradeOrder|Supplier|import/); expect(await page.locator("body").innerText()).not.toContain("所有人都能查看和修改全部"); await page.close();
 });
 it.each([false, true])("H-097 跟进角标说明符合desktop=%s", async desktop => {
-  const page = await open("/follow-ups" + (desktop ? "?desktop" : ""));
+  const page = await open("/follow-ups/plans" + (desktop ? "?desktop" : ""));
   const title = await page.getByRole("link", { name: "跟进，要跟 3 条（逾期 1）" }).locator(".rail-count").getAttribute("title");
   expect(title).toContain(desktop ? "应用图标提示" : "跟进计划"); if (!desktop) expect(title).not.toContain("图标"); await page.close();
 });

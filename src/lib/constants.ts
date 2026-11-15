@@ -104,7 +104,7 @@ export const LEAD_STATUS_COLOR: Record<string, string> = {
 
 /** 跟进记录类型 */
 export const FOLLOW_TYPES = [
-  // 这些 color 会被拼上透明度后缀（见 FollowUpsView），必须是真 hex——所以取 palette 不取 var()
+  // 这些 color 会被拼上透明度后缀（跟进类型标签用），必须是真 hex——所以取 palette 不取 var()
   { value: "PHONE", label: "电话沟通", color: categorical.green, icon: "phone" },
   { value: "MEETING", label: "线上会议", color: categorical.blue, icon: "team" },
   { value: "VISIT", label: "上门拜访", color: categorical.violet, icon: "shop" },

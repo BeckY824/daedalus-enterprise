@@ -14,6 +14,8 @@ import { saveUser, deactivateUser, reactivateUser, 停用清点, 批量停用, �
 import { 设不管设置, 设系统管理员 } from "./org-actions";
 import { 按阶段说, 三阶段 } from "@/lib/project/member-count";
 import { 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
+import { useConsequence } from "@/components/ConsequenceDialog";
+import InlineConfirm from "@/components/InlineConfirm";
 
 /** 设置 · 团队成员：谁能进、谁是管理员。新增、编辑、停用（停用要先把名下的客户转交出去） */
 
@@ -72,6 +74,7 @@ export default function MembersTab({
 }) {
   const router = useRouter();
   const { message, modal } = App.useApp();
+  const [问后果, 后果框] = useConsequence();
   const b = useBusiness();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
@@ -85,6 +88,35 @@ export default function MembersTab({
   /** 拨「系统管理员」：只有能管设置的系统管理员（服务端 org-actions 设系统管理员 再拦、不能关掉最后一位） */
   const on系统管理员 = async (r: Row, on: boolean, 确认 = false) => {
     if (改不管设置中) return;
+    // 设 / 撤系统管理员（原型 st.member，P-界面-40「设管理员」= 后果框）：原来小旗点一下立即提交，只有关自己的才问
+    if (!确认) {
+      const 是我 = r.id === me.id;
+      const 成了 = await 问后果({
+        题: on ? `把「${r.name}」设为系统管理员` : 是我 ? "你将不再是系统管理员" : `「${r.name}」不再是系统管理员`,
+        后果: on
+          ? [
+              { 标: "全部权限", 级: "警", 话: "看和改全部客户、项目；后台设置、成员管理、导入导出、切换视角、回收站彻底删除" },
+              { 标: "同时", 话: "还是本业务线的条线总管理" },
+              { 标: "能改回", 话: "随时可以再撤掉" },
+            ]
+          : [
+              { 标: "收回", 级: "警", 话: `${是我 ? "你" : r.name}只管本业务线，进不了后台设置` },
+              ...(是我 ? [{ 标: "自己", 级: "危" as const, 话: "撤掉自己以后要别的系统管理员才能给你加回来" }] : []),
+            ],
+        是: on ? "设为系统管理员" : "撤掉",
+        危: !on,
+        做: async () => {
+          const res = await 设系统管理员(r.id, on, true);
+          if (res.ok) {
+            if (res.提示) message.warning(res.提示);
+            router.refresh();
+          }
+          return res;
+        },
+      });
+      void 成了;
+      return;
+    }
     set改不管设置中(r.id);
     try {
       const res = await 设系统管理员(r.id, on, 确认);
@@ -492,6 +524,7 @@ export default function MembersTab({
 
   return (
     <>
+      {后果框}
       {!isAdmin && (
         <Alert
           type="info"
@@ -636,26 +669,26 @@ export default function MembersTab({
           {editing?.飞书已绑 && 刚解绑 !== editing.id && (
             <div className="member-feishu">
               <Typography.Text type="secondary">已绑定飞书：他用飞书登录会直接进这个账号。换了飞书号或绑错了人，解绑后下次按姓名重新认。</Typography.Text>
-              <Button
-                size="small"
-                loading={解绑中}
-                onClick={async () => {
+              {/* 解绑飞书（原型 st.member）：原来直接执行；改成原地确认，一行写明后果 */}
+              <InlineConfirm
+                问="解绑后他下次用飞书登录按姓名重新认"
+                是="解绑"
+                中性
+                做={async () => {
                   set解绑中(true);
                   try {
                     const r = await 解绑飞书身份(editing.id);
-                    if (!r.ok) { message.error(r.error); return; }
-                    message.success("已解绑飞书");
+                    if (!r.ok) { message.error(r.error); return r; }
                     set刚解绑(editing.id);
                     router.refresh();
-                  } catch {
-                    message.error("解绑失败，请稍后重试");
+                    return r;
                   } finally {
                     set解绑中(false);
                   }
                 }}
               >
-                解绑飞书
-              </Button>
+                <Button size="small" loading={解绑中}>解绑飞书</Button>
+              </InlineConfirm>
             </div>
           )}
         </Form>
