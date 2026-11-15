@@ -23,7 +23,7 @@ const plugin: Plugin = { name: "ent-board-drag", setup(b) {
   stub(/^\.\/actions$/, "const 记=(n,默)=>async(...a)=>{(window.__调||=[]).push([n,...a]);const 回=window['__'+n];return typeof 回==='function'?回(...a):回||默};export const 回项目邀请=记('回邀请',{ok:true}),市场复核Action=记('复核',{ok:true}),总管理终判Action=记('终判',{ok:true}),看板推进预检=记('预检',{ok:true,还差:[],能留空推:false}),改项目节点=记('改',{ok:true,变了:true}),编辑项目=记('编辑',{ok:true}),看板补必填料=记('补必填料',{ok:false,error:'读不到'});");
   // 就地补填框（ProjectFillRequired）存字段走 [id] 下的 ../actions
   stub(/^\.\.\/actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return{ok:true}};export const 编辑项目=记('详编'),改项目画像Action=记('画像'),勾项目交付=记('交付');");
-  stub(/assign-actions$/, "export const 分配线索=async()=>({ok:true}),自动分配线索=async()=>({ok:true}),批量自动分配=async()=>({ok:true,结果:[]}),本月分配情况=async()=>[],我分出去的线索=async()=>[],关满额提醒=async()=>({ok:true}),项目分配线=async()=>null,分配带走的项目=async()=>({项目数:0,项目:[]});");
+  stub(/assign-actions$/, "export const 分配线索=async()=>({ok:true}),自动分配线索=async()=>({ok:true}),撤销自动分配=async()=>({ok:true}),批量自动分配=async()=>({ok:true,结果:[]}),本月分配情况=async()=>[],我分出去的线索=async()=>[],关满额提醒=async()=>({ok:true}),项目分配线=async()=>null,分配带走的项目=async()=>({项目数:0,项目:[]});");
   stub(/blocker-actions$/, "const 好=async()=>({ok:true});export const 发布卡点Action=好,认领卡点Action=好,完成卡点Action=好,删卡点Action=好,存卡点默认Action=好,存卡点角色开关Action=好,新增原因Action=好,改原因名Action=好,改原因状态Action=好,删原因Action=好,合并原因Action=好,我的卡点Action=async()=>[];");
   stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[],取客户选项=async()=>null,取客户近况=async()=>null;");
   stub(/project-actions$/, "export const 给客户建项目=async()=>({ok:true});export const 新项目分配数据=async()=>null;export const 建项目带走的项目=async()=>({项目数:0,项目:[]});");
