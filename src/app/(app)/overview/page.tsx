@@ -99,12 +99,13 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
 
   // 卡点、沟通：范围同上，用 看板的人 的 谁（选了人 = [他]；总管理、管理员看全部 = 不限）
   const 谁 = 只看 ? [只看] : 人.谁;
-  // 卡点（11-01 B15）：三栏看板，谁看得到按卡点的角色开关（只看自己 / 可看全部），不跟上面的人员选择走
+  // 卡点（11-01 B15）：三栏看板，谁看得到按卡点的角色开关（只看自己 / 可看全部），不跟上面的人员选择走；
+  // 选人照传，只为人员那一行留在原地（DataShell 在卡点页签把它变淡、点不了），切页签整页不往上跳
   if (页签 === "block") {
     const 筛 = 读卡点看板筛(sp);
     const d = await 卡点看板(user, 筛);
     return (
-      <DataShell view={view} 项目 页签="block">
+      <DataShell view={view} 项目 选人={选人} 页签="block">
         <BoardBlockers
           开={d.开}
           全部={d.全部}

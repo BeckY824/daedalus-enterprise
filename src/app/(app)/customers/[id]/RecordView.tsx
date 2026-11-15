@@ -1602,7 +1602,7 @@ export default function RecordView({
         customerId={customer.id}
         有WhatsApp={有WhatsApp}
         record={排新计划 ? null : plan}
-        默认天数={排新计划 ? 7 : 2}
+        默认天数={排新计划 ? 7 : 3}
       />
       <ContactForm open={contactOpen} onClose={() => setContactOpen(false)} onSaved={(新加的) => { setContactOpen(false); if (新加的) { set刚加的联系人(新加的); set开着的联系人((s) => new Set(s).add(新加的)); } router.refresh(); }} customerId={customer.id} record={editingContact} 号码种类={企业 ? 号码种类 : undefined} 职务选项={企业 ? 职务选项 : undefined} />
       <ContractForm
