@@ -4594,3 +4594,11 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 @keyframes cd-pj-flash-in { from { opacity: 0; } }
 /* 没有能记的在推项目时记沟通（P-界面-35）：弹框里写明这条记为客户沟通 */
 .fu-np-note { color: var(--brand-deep); }
+/* 浮窗空屏的快捷项（dt.ai：客户页「总结这位客户 / 起草跟进话术 / 现在卡在哪」）：一排胶囊，摆不下就折行 */
+.cli-quick { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: var(--s2); }
+.cli-quick-i {
+  max-width: 100%; padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--panel) 70%, transparent);
+  font: inherit; font-size: var(--fs-note); color: var(--ink-soft); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.cli-quick-i:hover { background: var(--hover); color: var(--ink); }

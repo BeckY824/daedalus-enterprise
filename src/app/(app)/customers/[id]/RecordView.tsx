@@ -52,7 +52,7 @@ import CustomerForm from "../CustomerForm";
 import InlineField from "./InlineField";
 import RegionInlineField from "./RegionInlineField";
 import AiPanel from "./AiPanel";
-import { 打开AI浮窗 } from "@/lib/ai-float";
+import { 打开AI浮窗, 登记智能总结 } from "@/lib/ai-float";
 import LinkedCustomers from "./LinkedCustomers";
 import { FoldSplit, ProjectFold, 模块钮色, type 连体主钮, type 连体色 } from "../../projects/[id]/ProjectFold";
 import { 客户详情左栏, 客户详情待办 } from "../../projects/[id]/card-names";
@@ -396,6 +396,12 @@ export default function RecordView({
   const AI在抽屉里 = 量到 && 正文宽 < AI栏门槛;
   const 单栏 = 量到 && 正文宽 < 单栏门槛;
   const [AI抽屉开着, setAI抽屉开着] = useState(false);
+  /*
+    企业版客户页的「AI」改叫浮窗（dt.ai）后，「生成智能总结」（扣 1 次额度）不能丢：登记给浮窗，
+    浮窗里点「总结这位客户」就开这个原抽屉——同一个 AiPanel、同一次扣减和确认（lib/ai-float.ts）
+  */
+  const 有项目区 = !!项目区;
+  useEffect(() => (有项目区 && aiEnabled ? 登记智能总结(() => setAI抽屉开着(true)) : undefined), [有项目区, aiEnabled]);
 
   const entries = useMemo<Entry[]>(() => {
     const list: Entry[] = [

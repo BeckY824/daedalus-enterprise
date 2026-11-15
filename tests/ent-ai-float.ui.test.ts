@@ -15,7 +15,8 @@ import { beforeAll, afterAll, describe, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
-import { 打开AI浮窗, 登记打开AI浮窗 } from "@/lib/ai-float";
+import { readFileSync } from "node:fs";
+import { 打开AI浮窗, 登记打开AI浮窗, 打开智能总结, 登记智能总结, 有智能总结, 订阅智能总结 } from "@/lib/ai-float";
 
 let browser: Browser;
 let 包: string;
@@ -27,12 +28,14 @@ const 插件: Plugin = { name: "ent-ai-float", setup(b) {
   b.onResolve({ filter: /dashboard\/HomeChat$/ }, (a) => ({ path: a.path, namespace: "homechat" }));
   b.onLoad({ filter: /.*/, namespace: "homechat" }, () => ({ resolveDir: process.cwd(), loader: "jsx", contents: `
     import React from 'react';import {useThread,addTurn} from '@/lib/home-thread';import {runJob} from '@/lib/ai-jobs';
-    export default function HomeChat({scope}){
+    import AiQuickAsks from '@/components/AiQuickAsks';
+    export default function HomeChat({scope,空屏快捷}){
       const t=useThread(scope);
       window.__问=(q)=>addTurn(scope,{question:q,kind:'ask'});
       window.__跑=(q)=>{const x=addTurn(scope,{question:q,kind:'ask'});runJob('home:'+x.id,()=>new Promise(r=>{window.__完=()=>r({ok:true,value:1})}));};
       return <div className={'cli cli-narrow'+(t.length?'':' cli-empty')}><div className="cli-col">
         {t.map(x=><p key={x.id}>{x.question} 的回答</p>)}
+        {!t.length && 空屏快捷 && <AiQuickAsks 项={空屏快捷} 问={(q)=>addTurn(scope,{question:q,kind:'ask'})}/>}
         <div className={'cli-composer'+(t.length?' cli-composer-sticky':'')}><textarea aria-label="问一句" rows={2} style={{width:'100%'}}/></div>
       </div></div>;
     }` }));
@@ -46,6 +49,7 @@ beforeAll(async () => {
     import React from 'react';import {createRoot} from 'react-dom/client';import {App, Button} from 'antd';
     import MotionTheme from '@/components/MotionTheme';
     import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import Shell from '@/components/AppShell';
+    import {登记详情名} from '@/lib/page-rows';import {登记智能总结} from '@/lib/ai-float';
     window.__route='';
     const 长='华东超长名字展览展示器材制造与进出口贸易集团股份有限公司上海分公司第二事业部';
     function 页(){return <div>
@@ -53,24 +57,26 @@ beforeAll(async () => {
       {Array.from({length:40},(_,i)=><div key={i} style={{padding:'8px 0',borderBottom:'1px solid #eee'}}>第{i}家{长}</div>)}
       <div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:12}}><Button>上一页</Button><Button>下一页</Button></div>
     </div>;}
+    function 客户页(){const [开,set]=React.useState(0);React.useEffect(()=>{登记详情名(长);const a=登记智能总结(()=>set(n=>n+1));return ()=>{登记详情名(null);a();};},[]);
+      return <div><Button>页头按钮</Button>{开>0 && <div role="dialog" aria-label="智能总结抽屉">生成智能总结（第{开}次打开）</div>}</div>;}
     createRoot(document.getElementById('root')).render(<MotionTheme><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
       <Shell user={{id:'qa',name:'测试同事',email:'qa@example.test',role:'ADMIN',title:''}} workspace={{name:'工作区'}} desktop={false} 反馈去向="none"
         企业版项目={true} 企业版={true} pane={null} ai={{models:[]}} 要跟={{逾期:0,今天:0}} 收藏={[]} 项目收藏={[]}
-        全局搜索={async()=>({客户:[],项目:[],联系人:[]})}><页/></Shell>
+        全局搜索={async()=>({客户:[],项目:[],联系人:[]})}>{location.pathname.startsWith('/customers/')?<客户页/>:<页/>}</Shell>
     </BusinessProvider></App></MotionTheme>);` } });
   包 = r.outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function 开(宽 = 1280, 少动 = false): Promise<{ page: Page; errors: string[] }> {
+async function 开(宽 = 1280, 少动 = false, 址 = "/customers"): Promise<{ page: Page; errors: string[] }> {
   const ctx = await browser.newContext({ viewport: { width: 宽, height: 800 }, reducedMotion: 少动 ? "reduce" : "no-preference" });
   const page = await ctx.newPage();
   page.setDefaultTimeout(5000);
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.route("http://ent.test/**", (r) => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
-  await page.goto("http://ent.test/customers");
+  await page.goto(`http://ent.test${址}`);
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addScriptTag({ content: 包 });
   await page.getByRole("button", { name: "打开 AI 对话" }).waitFor();
@@ -92,6 +98,33 @@ describe("lib/ai-float：页里的按钮叫浮窗", () => {
     expect(开了).toBe(1);
     取消();
     expect(打开AI浮窗()).toBe(false);
+  });
+});
+
+describe("lib/ai-float：智能总结入口（扣额度的付费入口不能丢）", () => {
+  it("没登记不摆、点了 false；客户页登记后订阅的人收到通知、点了走登记的那个（原抽屉）；卸掉后又没有", () => {
+    let 通知 = 0;
+    const 退订 = 订阅智能总结(() => { 通知++; });
+    expect(有智能总结()).toBe(false);
+    expect(打开智能总结()).toBe(false);
+    let 开抽屉 = 0;
+    const 取消 = 登记智能总结(() => { 开抽屉++; });
+    expect(通知).toBe(1);
+    expect(有智能总结()).toBe(true);
+    expect(打开智能总结()).toBe(true);
+    expect(开抽屉).toBe(1);
+    取消();
+    expect(通知).toBe(2);
+    expect(有智能总结()).toBe(false);
+    退订();
+  });
+
+  it("接线（源码）：客户页把「开原 AiPanel 抽屉」登记给浮窗；HomeChat 窄模式空屏的快捷项走 Composer 的 问()", () => {
+    const 客户页 = readFileSync(path.resolve("src/app/(app)/customers/[id]/RecordView.tsx"), "utf8");
+    expect(客户页).toMatch(/登记智能总结\(\(\) => setAI抽屉开着\(true\)\)/);
+    expect(客户页).toMatch(/open=\{AI抽屉开着\}[\s\S]{0,200}<AiPanel/);
+    const 对话 = readFileSync(path.resolve("src/app/(app)/dashboard/HomeChat.tsx"), "utf8");
+    expect(对话).toMatch(/<AiQuickAsks 项=\{空屏快捷\} 问=\{\(q\) => composerRef\.current\?\.问\(q\)\} \/>/);
   });
 });
 
@@ -222,6 +255,32 @@ describe("AI 浮窗（P-界面-39）", () => {
       expect(await 面()).toEqual({ 底: "rgb(255, 255, 255)", 糊: "none" });
       expect(errors).toEqual([]);
     } finally { await page.context().close(); }
+  });
+
+  it("客户页（dt.ai）：空屏三颗快捷项；「总结这位客户」开原智能总结抽屉、浮窗收回球；另两颗直接发问句；别的页不摆", async () => {
+    const { page, errors } = await 开(1280, false, "/customers/c1");
+    try {
+      await 打开(page);
+      const 组 = page.getByRole("group", { name: "快捷提问" });
+      expect(await 组.getByRole("button").allTextContents()).toEqual(["总结这位客户", "起草跟进话术", "现在卡在哪"]);
+      expect(await page.locator(".dock-float-ctx").textContent()).toContain("客户 · ");
+      await 组.getByRole("button", { name: "总结这位客户" }).click();
+      expect(await page.getByRole("dialog", { name: "智能总结抽屉" }).textContent()).toContain("第1次打开");
+      await page.getByRole("button", { name: "打开 AI 对话" }).waitFor();
+      expect(await page.getByRole("complementary", { name: "AI 对话" }).count(), "浮窗收回球，不和抽屉叠").toBe(0);
+      await page.getByRole("button", { name: "打开 AI 对话" }).click();
+      await page.waitForTimeout(400);
+      await page.getByRole("group", { name: "快捷提问" }).getByRole("button", { name: "现在卡在哪" }).click();
+      await page.getByText(/现在卡在哪？ 的回答$/).waitFor();
+      expect(await page.getByText(/^华东超长名字.*现在卡在哪？ 的回答$/).count()).toBe(1);
+      expect(await page.getByRole("group", { name: "快捷提问" }).count(), "问过之后不摆").toBe(0);
+      expect(errors).toEqual([]);
+    } finally { await page.context().close(); }
+    const 列表 = await 开(1280);
+    try {
+      await 打开(列表.page);
+      expect(await 列表.page.getByRole("group", { name: "快捷提问" }).count(), "列表页不摆").toBe(0);
+    } finally { await 列表.page.context().close(); }
   });
 
   for (const 宽 of [1024, 1280, 1366]) {
