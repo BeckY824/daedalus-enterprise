@@ -36,6 +36,7 @@ import type { 全局搜索结果 } from "@/app/(app)/global-search";
  *   打字筛掉一些行，留下的行从原位置滑到新位置（motion 的 layout），新冒出来的行淡入；
  *   行数超过 重排上限（lib/motion）就不做滑动，整批硬换——几百行一起量位置会掉帧。
  *   减弱动态下滑动、位移都不做（MotionTheme 的 reducedMotion），只剩淡入。
+ *   弹窗本身是毛玻璃（rootClassName="cmdk-root"，globals.css）：不支持、减少透明度、低配机退回实色。
  */
 /** 焦点在输入框 / 文本域 / 可编辑区里。⌘N 这类「页面级」快捷键那时不该接管 */
 function 在输入框里(e: KeyboardEvent) {
@@ -198,7 +199,7 @@ export default function CommandBar({ 有AI, 企业版项目 = false, 全局搜�
   }
 
   return (
-    <Modal open={open} onCancel={() => setOpen(false)} footer={null} closable={false} width={520} styles={{ body: { padding: 0 } }}>
+    <Modal open={open} onCancel={() => setOpen(false)} footer={null} closable={false} width={520} rootClassName="cmdk-root" styles={{ body: { padding: 0 } }}>
       <div className="cmdk">
         <div className="cmdk-in">
           <SearchOutlined />
