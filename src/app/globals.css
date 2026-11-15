@@ -4907,3 +4907,5 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
   .ct-side .ant-modal:is(.ant-zoom-enter-active, .ant-zoom-appear-active) { animation-name: crm-pop-fade-in !important; }
   .ct-side .ant-modal.ant-zoom-leave-active { animation-name: crm-pop-fade-out !important; }
 }
+/* 保存键没存上的原因（SaveButton）：同复制那句的红签，原因长时折行、不出窗口 */
+.copy-tip.save-why { white-space: normal; max-width: min(320px, calc(100vw - 16px)); text-align: center; }

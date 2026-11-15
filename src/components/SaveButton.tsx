@@ -12,8 +12,9 @@
  *
  * 和 antd Button 一样摆：type、size、danger、disabled、className 都透传。默认 type="primary"。
  */
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Button, Tooltip, type ButtonProps } from "antd";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Button, type ButtonProps } from "antd";
 import { 跑出原因, type 做的结果 } from "@/lib/confirm-result";
 
 type 态 = "闲" | "存着" | "成了" | "没成";
@@ -51,6 +52,9 @@ export default function SaveButton({
   const [因, set因] = useState("");
   const 键 = useRef<HTMLButtonElement>(null);
   const 里 = useRef<HTMLSpanElement>(null);
+  /** 没成时浮在按钮正上方的那句原因 */
+  const 签 = useRef<HTMLDivElement>(null);
+  const 签id = useId();
   const 原宽 = useRef(0);
   const 计时 = useRef<ReturnType<typeof setTimeout> | null>(null);
   const 活着 = useRef(true);
@@ -85,7 +89,17 @@ export default function SaveButton({
     if (!el || (态 !== "成了" && 态 !== "没成")) return;
     const cs = getComputedStyle(el);
     const 边 = ["paddingLeft", "paddingRight", "borderLeftWidth", "borderRightWidth"].reduce((n, k) => n + (parseFloat(cs[k as "paddingLeft"]) || 0), 0);
-    钉(Math.max((里.current?.scrollWidth ?? 0) + 边, el.offsetHeight));
+    const 宽 = Math.max((里.current?.scrollWidth ?? 0) + 边, el.offsetHeight);
+    钉(宽);
+    // 原因对准按钮长完之后的正中（宽在过渡，按终点算）
+    const s = 签.current;
+    if (s) {
+      const r = el.getBoundingClientRect();
+      // 按钮贴着窗口右边（弹框底栏的保存键多半在右边）：整句收回窗口里，两边留 8
+      const 半 = s.offsetWidth / 2;
+      s.style.left = `${Math.round(Math.min(Math.max(r.left + 宽 / 2, 8 + 半), window.innerWidth - 8 - 半))}px`;
+      s.style.top = `${Math.max(8, Math.round(r.top - 6))}px`;
+    }
   }, [态]);
 
   async function 存() {
@@ -137,36 +151,48 @@ export default function SaveButton({
 
   return (
     <>
-      <Tooltip open={态 === "没成" && !!因} title={因} placement="top" color="var(--danger)">
-        <Button
-          {...rest}
-          ref={键}
-          type={type}
-          disabled={disabled}
-          aria-busy={态 === "存着" || undefined}
-          aria-label={态 === "存着" ? "正在保存" : undefined}
-          className={["save-btn", className].filter(Boolean).join(" ")}
-          data-state={态}
-          onClick={() => void 存()}
-        >
-          <span className="save-in" ref={里}>
-            {态 === "存着" ? (
-              <span className="save-spin" aria-hidden />
-            ) : 态 === "成了" ? (
-              <>
-                <svg className="save-tick" width="12" height="12" viewBox="0 0 12 12" aria-hidden>
-                  <path d="M2 6.5l2.6 2.5L10 3.5" />
-                </svg>
-                {已保存}
-              </>
-            ) : 态 === "没成" ? (
-              没保存
-            ) : (
-              children
-            )}
-          </span>
-        </Button>
-      </Tooltip>
+      {/*
+        原因不用 antd Tooltip：强制打开的 Tooltip 进了弹层的 Esc 栈顶，「没保存上」那 4 秒里按 Esc 关不掉弹框（b 核对时踩到）。
+        改成一块普通的浮签（React 自己的 portal，不进 antd 的 Esc 栈），样子同复制那句（.copy-tip）
+      */}
+      {态 === "没成" &&
+        因 &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div ref={签} id={签id} role="tooltip" className="copy-tip is-bad save-why">
+            {因}
+          </div>,
+          document.body,
+        )}
+      <Button
+        {...rest}
+        ref={键}
+        type={type}
+        disabled={disabled}
+        aria-busy={态 === "存着" || undefined}
+        aria-label={态 === "存着" ? "正在保存" : undefined}
+        aria-describedby={态 === "没成" && 因 ? 签id : undefined}
+        className={["save-btn", className].filter(Boolean).join(" ")}
+        data-state={态}
+        onClick={() => void 存()}
+      >
+        <span className="save-in" ref={里}>
+          {态 === "存着" ? (
+            <span className="save-spin" aria-hidden />
+          ) : 态 === "成了" ? (
+            <>
+              <svg className="save-tick" width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+                <path d="M2 6.5l2.6 2.5L10 3.5" />
+              </svg>
+              {已保存}
+            </>
+          ) : 态 === "没成" ? (
+            没保存
+          ) : (
+            children
+          )}
+        </span>
+      </Button>
       <span className="sr-only" role="status" aria-live="polite">
         {读屏}
       </span>

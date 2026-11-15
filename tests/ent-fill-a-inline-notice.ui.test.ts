@@ -5,6 +5,7 @@
  *   问答框选文件（AskFiles）：读不了 → 文件签那一排出一枚红签写原因，✕ 收掉；读成了不出
  *   面板历史（DockThreads）：翻不出 / 那条对话已经不在 → 原因写在下拉第一行，下拉不关
  *   复制（lib/clipboard useCopy）：成了 / 不成的那句浮在刚点的那颗键正上方（status / alert），1024 宽不横向溢出
+ *   保存键（SaveButton）没存上：原因浮在键上方，那 4 秒里弹框照样按 Esc 关得掉（原来强制打开的 Tooltip 占住了 Esc）
  */
 import { beforeAll, afterAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -22,13 +23,16 @@ const plugin: Plugin = { name: "ent-fill-a-inline-notice", setup(b) {
 } };
 beforeAll(async () => {
   const r = await build({ stdin: { contents: `
-    import React,{useState} from 'react';import {createRoot} from 'react-dom/client';import {App} from 'antd';
+    import React,{useState} from 'react';import {createRoot} from 'react-dom/client';import {App, Modal} from 'antd';
+    import SaveButton from '@/components/SaveButton';
     import FavoriteStar from '@/components/FavoriteStar';
     import AskFiles from '@/components/AskFiles';
     import DockThreads from '@/components/DockThreads';
     import {useCopy} from '@/lib/clipboard';
     function 拷键(){const 拷=useCopy();return <button type="button" style={{marginLeft:900}} onClick={()=>拷('华东展具','已复制电话')}>复制电话</button>}
     function 文件(){const [f,setF]=useState([]);return <div className="cli-tools"><AskFiles files={f} onChange={setF}/></div>}
+    function 框(){const [开,set开]=useState(true);window.__框开=开;return <Modal open={开} title="编辑资料" onCancel={()=>set开(false)} footer={<SaveButton 做={async()=>({ok:false,error:'名额已满，先退回几个再保存这一位客户的资料'})}/>}>内容</Modal>}
+    window.__框=()=>createRoot(document.getElementById('root2')).render(<App><框/></App>);
     window.__画=()=>createRoot(document.getElementById('root')).render(<App>
       <div style={{padding:80}}>
         <FavoriteStar 初值={false} 切换={async()=>window.__星不行?{ok:false,error:'收藏夹满了，先拿掉几位'}:{ok:true,收藏了:true}}/>
@@ -47,7 +51,7 @@ async function 打开(o: { width?: number; init?: string } = {}): Promise<{ page
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   if (o.init) await page.addInitScript(o.init);
   // localhost 才是安全上下文；clipboard 用桩
-  await page.route("http://localhost:9/**", r => r.fulfill({ contentType: "text/html", body: "<!doctype html><meta charset='utf-8'><div id='root'></div>" }));
+  await page.route("http://localhost:9/**", r => r.fulfill({ contentType: "text/html", body: "<!doctype html><meta charset='utf-8'><div id='root'></div><div id='root2'></div>" }));
   await page.goto("http://localhost:9/customers");
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addScriptTag({ content: bundle });
@@ -127,4 +131,28 @@ it("复制：那句浮在刚点的键正上方；不成用 alert；1024 宽不�
     expect(errors).toEqual([]);
     await page.close();
   }
+});
+
+it("保存键没存上：原因浮在键上方、不出窗口；这 4 秒里弹框照样按 Esc 关得掉", async () => {
+  const { page, errors } = await 打开();
+  await page.evaluate(() => (window as unknown as { __框: () => void }).__框());
+  const 框 = page.getByRole("dialog", { name: "编辑资料" });
+  await 框.waitFor();
+  await 框.getByRole("button", { name: /^保 ?存$/ }).click();
+  const 键 = 框.getByRole("button", { name: "没保存上" });
+  await 键.waitFor();
+  const 因 = page.getByRole("tooltip").filter({ hasText: "名额已满" });
+  await 因.waitFor();
+  const [键盒, 因盒] = await Promise.all([键.boundingBox(), 因.boundingBox()]);
+  expect(因盒!.y + 因盒!.height).toBeLessThanOrEqual(键盒!.y + 1);
+  expect(因盒!.x).toBeGreaterThanOrEqual(8);
+  expect(因盒!.x + 因盒!.width).toBeLessThanOrEqual(1280 - 8 + 1);
+  expect(await 键.getAttribute("aria-describedby")).toBeTruthy();
+  // 还在「没保存上」那 4 秒里：Esc 关框
+  await page.keyboard.press("Escape");
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __框开: boolean }).__框开)).toBe(false);
+  await 框.waitFor({ state: "hidden" });
+  await 无顶部提示(page);
+  expect(errors).toEqual([]);
+  await page.close();
 });
