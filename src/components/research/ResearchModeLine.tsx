@@ -8,7 +8,7 @@
 import type { 背调价目 } from "@/lib/research/actions";
 
 export default function ResearchModeLine({ 价 }: { 价: Awaited<ReturnType<typeof 背调价目>> | null }) {
-  if (!价) return <span className="cli-quota">背调 · 正在查还剩几次…</span>;
+  if (!价) return <span className="cli-quota">背调 · 正在查还剩几次</span>;
   if (!价.可用) return <span className="cli-quota cli-quota-out">背调用不了：{价.原因}</span>;
   if (价.模拟) return <span className="cli-quota">背调 · 开发环境用模拟数据，不扣次数</span>;
   if (价.还剩 == null) return <span className="cli-quota">背调 · 开始搜索后扣 {价.扣次} 次 · 不限</span>;

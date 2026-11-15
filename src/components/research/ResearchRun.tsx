@@ -88,7 +88,7 @@ export default function ResearchRun({
       undefined,
       { 名: `背调 ${company}`.slice(0, 18), 去: 任务去 },
     );
-  if (!job) return 直接开跑 ? <AutoStart jobKey={jobKey} onStart={开跑} text={`开始${对象 ?? `背调 ${company}`}…`} /> : <Confirm company={company} onCancel={onCancel} onStart={开跑} />;
+  if (!job) return 直接开跑 ? <AutoStart jobKey={jobKey} onStart={开跑} text={`开始${对象 ?? `背调 ${company}`}`} /> : <Confirm company={company} onCancel={onCancel} onStart={开跑} />;
   if (!s) return job.status === "error" ? <div className="rs-err">{job.error}</div> : null;
 
   const 出错 = job.status === "error" ? job.error : undefined;
@@ -124,7 +124,7 @@ export default function ResearchRun({
  * 直接开跑：挂上就发一次。开发模式下 StrictMode 会把 effect 跑两遍，第二遍时任务表里已经有这一条了（runStream 同步登记），
  * 所以按任务表判断、不按组件 state 判断——不然一次背调扣两次
  */
-export function AutoStart({ jobKey, onStart, text = "开始背调…" }: { jobKey: string; onStart: () => void; text?: string }) {
+export function AutoStart({ jobKey, onStart, text = "开始背调" }: { jobKey: string; onStart: () => void; text?: string }) {
   const 发过 = useRef(false);
   useEffect(() => {
     if (发过.current || getJob(jobKey)) return;
@@ -196,7 +196,7 @@ function Confirm({ company, onStart, onCancel }: { company: string; onStart: () 
       活 = false;
     };
   }, []);
-  if (!价) return <div className="rs-confirm"><span className="rs-confirm-t">正在准备背调「{company}」…</span></div>;
+  if (!价) return <div className="rs-confirm"><span className="rs-confirm-t">正在准备背调「{company}」</span></div>;
   if (!价.可用)
     return (
       <div className="rs-confirm">

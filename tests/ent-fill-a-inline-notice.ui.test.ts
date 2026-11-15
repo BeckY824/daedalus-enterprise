@@ -10,6 +10,7 @@
 import { beforeAll, afterAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
 import { chromium, type Browser, type Page } from "playwright";
 
 let browser: Browser; let bundle: string;
@@ -155,4 +156,16 @@ it("保存键没存上：原因浮在键上方、不出窗口；这 4 秒里弹�
   await 无顶部提示(page);
   expect(errors).toEqual([]);
   await page.close();
+});
+
+it("背调进度文案不带省略号（原型 dt.research「进度文案去省略号」）：components/research 里给人看的字不以「…」收尾", () => {
+  const 目录 = path.resolve("src/components/research");
+  const 带的: string[] = [];
+  for (const f of readdirSync(目录).filter((x) => x.endsWith(".tsx"))) {
+    readFileSync(path.join(目录, f), "utf8").split("\n").forEach((行, i) => {
+      if (/^\s*(\/\/|\*|\/\*)/.test(行) || /placeholder=/.test(行)) return;
+      if (/…\s*(["'`]|<\/)/.test(行)) 带的.push(`${f}:${i + 1} ${行.trim()}`);
+    });
+  }
+  expect(带的).toEqual([]);
 });

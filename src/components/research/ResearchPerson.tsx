@@ -53,9 +53,9 @@ export default function ResearchPerson({
   const running = job?.status === "loading";
   const s = job?.value?.answer?.research ?? job?.value?.research;
   const 开跑 = () => runStream<找人答案>(jobKey, { mode: "research", person: { name: 名, phone: 电话 }, need: 需求 }, undefined, { 名: `找 ${名 || 电话} 的公司`.slice(0, 18), 去: 任务去 });
-  if (!job && 直接开跑) return <AutoStart jobKey={jobKey} onStart={开跑} text={`开始找 ${名 || 电话} 的公司…`} />;
+  if (!job && 直接开跑) return <AutoStart jobKey={jobKey} onStart={开跑} text={`开始找 ${名 || 电话} 的公司`} />;
   if (!job) return <Confirm 名={名} 电话={电话} onStart={开跑} onAsCompany={onAsCompany} onCancel={onCancel} />;
-  if (!s?.人) return job.status === "error" ? <div className="rs-err">{job.error}</div> : <div className="rs-confirm"><span className="rs-confirm-t">开始找公司…</span></div>;
+  if (!s?.人) return job.status === "error" ? <div className="rs-err">{job.error}</div> : <div className="rs-confirm"><span className="rs-confirm-t">开始找公司</span></div>;
   const runId = job.value?.answer?.runId;
   const 证据 = job.value?.answer?.材料 ?? [];
   return <PersonCard s={s} running={running} error={job.status === "error" ? job.error : undefined} onPick={runId ? (c) => onPick(c, runId, 证据.filter((r) => r.url === c.来源.url), s.人?.出现 ?? { 号码: [], 名字: [] }) : undefined} onStop={() => cancelStream(jobKey)} onRetry={() => clearJob(jobKey)} />;
@@ -76,7 +76,7 @@ function Confirm({ 名, 电话, onStart, onAsCompany, onCancel }: { 名?: string
       活 = false;
     };
   }, [电话]);
-  if (!价 || 号 === undefined) return <div className="rs-confirm"><span className="rs-confirm-t">正在看这个号码…</span></div>;
+  if (!价 || 号 === undefined) return <div className="rs-confirm"><span className="rs-confirm-t">正在看这个号码</span></div>;
   const 不够 = 价.可用 && 价.还剩 != null && 价.还剩 < 价.扣次;
   return (
     <div className="rs-confirm rs-pick" role="group" aria-label="找这个人所在的公司">
