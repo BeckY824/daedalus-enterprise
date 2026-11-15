@@ -53,7 +53,7 @@ import { 改项目画像, type 画像改动, type 画像字段 } from "@/lib/pro
 import { 发布卡点, 读卡点默认, 能发卡点, 可选原因们 } from "@/lib/project/blocker";
 import { 沟通卡点, type 沟通卡点输入, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
-import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
+import { 存沟通后重算三态, 三态改天数预览 } from "@/lib/enterprise/tri-state-db";
 
 const 没开 = { ok: false as const, error: "项目模式没开：请管理员在「设置 → 业务配置」里打开" };
 
@@ -690,6 +690,24 @@ export async function 预览超时回收(改: 规则改动) {
     const 新 = 合上改动(await 读组织规则(), 改);
     if ("error" in 新) return { ok: false as const, error: 新.error };
     return { ok: true as const, 个数: await 超时预览(新), 团队: !!读团队() };
+  } catch (e) { return 不在了(e); }
+}
+
+/**
+ * 设置 →「客户回收」改天数前先看（PR10a）：按改完的天数，现在约有几位客户的状态会变、其中几位会到期进客户公海。
+ * 三态关着 = 预览 null（关着改天数不重算任何人）。谁能看同 改组织规则 的三态那一块
+ */
+export async function 预览客户回收(改: 规则改动) {
+  try {
+    const me = await requireUser();
+    if (!(await 开着())) return 没开;
+    if (!企业版()) return { ok: false as const, error: "组织规则是企业版的功能" };
+    if (改?.三态 === undefined) return { ok: false as const, error: "没有要改的客户回收设置" };
+    const 挡 = await 挡组织规则(me, 改);
+    if (挡) return { ok: false as const, error: 挡 };
+    const 新 = 合上改动(await 读组织规则(), 改);
+    if ("error" in 新) return { ok: false as const, error: 新.error };
+    return { ok: true as const, 预览: await 三态改天数预览(新.三态) };
   } catch (e) { return 不在了(e); }
 }
 

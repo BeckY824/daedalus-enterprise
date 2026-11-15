@@ -450,11 +450,18 @@ export default function RecordView({
     set勾选态((s) => ({ ...s, [t.id]: 完成 }));
     if (完成) set留着((s) => (s.includes(t.id) ? s : [...s, t.id]));
     else message.destroy(`task-${t.id}`);
-    try {
-      await toggleTask(t.id, 完成);
-    } catch {
-      set勾选态((s) => ({ ...s, [t.id]: !完成 }));
-      message.error("没改成，再试一次");
+    // 被服务端挡了（权限、这条已经不在了）回 ok:false，不是抛错：照样当没改成，不提示成功（PR10a）
+    const r = await toggleTask(t.id, 完成).catch(() => ({ ok: false as const, error: "没改成，再试一次" }));
+    if (!r.ok) {
+      // 勾选回到服务端的样子：勾完成没成 → 不划线、不收起；撤销没成 → 还是已完成，照常过几秒收起
+      set勾选态((s) => {
+        const { [t.id]: _丢, ...剩 } = s;
+        return 剩;
+      });
+      if (完成) set留着((s) => s.filter((x) => x !== t.id));
+      else 排收起(t.id);
+      message.error(r.error || "没改成，再试一次");
+      router.refresh();
       return;
     }
     router.refresh();
@@ -471,11 +478,15 @@ export default function RecordView({
         </span>
       ),
     });
+    排收起(t.id);
+  }
+  /** 勾完成的那条留 留秒 秒再收起 */
+  function 排收起(id: string) {
     收起计时.current.set(
-      t.id,
+      id,
       setTimeout(() => {
-        收起计时.current.delete(t.id);
-        set留着((s) => s.filter((x) => x !== t.id));
+        收起计时.current.delete(id);
+        set留着((s) => s.filter((x) => x !== id));
       }, 留秒 * 1000),
     );
   }
@@ -875,7 +886,13 @@ export default function RecordView({
               <InlineConfirm
                 问="删除这条？"
                 做={async () => {
-                  await deleteTask(t.id);
+                  // 被挡（权限）回 ok:false：不提示成功、条目留着（PR10a）
+                  const r = await deleteTask(t.id).catch(() => ({ ok: false as const, error: "没删掉，请重试" }));
+                  if (!r.ok) {
+                    message.error(r.error || "没删掉，请重试");
+                    router.refresh();
+                    return;
+                  }
                   message.success("待办已删除");
                   router.refresh();
                 }}
