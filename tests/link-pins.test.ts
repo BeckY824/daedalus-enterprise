@@ -144,7 +144,7 @@ describe("L-051 建议卡确认 / 撤销之后刷新这一页", () => {
     const 确认 = s.slice(s.indexOf("const r = await applyProposal("), s.indexOf("} else {", s.indexOf("const r = await applyProposal(")));
     expect(确认).toMatch(/if \(r\.ok\)/);
     expect(确认).toMatch(/router\.refresh\(\)/);
-    const 撤销 = s.slice(s.indexOf("async function undo()"), s.indexOf("if (state === \"denied\")"));
+    const 撤销 = s.slice(s.indexOf("async function undo("), s.indexOf("if (state === \"denied\")"));
     expect(撤销).toMatch(/router\.refresh\(\)/);
   });
 });

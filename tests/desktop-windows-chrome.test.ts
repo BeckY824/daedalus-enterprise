@@ -60,7 +60,7 @@ describe("Windows 关了「显示动画」", () => {
   it("进度点和转圈改成原地明暗呼吸，不停、不转、不挪", () => {
     const i = css.indexOf("@media (prefers-reduced-motion: reduce)");
     const 块 = css.slice(i, css.indexOf("@keyframes rd-pulse"));
-    for (const sel of [".trace-dot-run", ".aiw-dot-run", ".cli-step-running .cli-dot", ".ant-spin-dot", ".anticon-spin"]) expect(块).toContain(sel);
+    for (const sel of [".ais-running .ais-dot", ".aiw-dot-run", ".cli-step-running .cli-dot", ".ant-spin-dot", ".anticon-spin"]) expect(块).toContain(sel);
     expect(块).toMatch(/animation: rd-pulse [^;]*infinite !important; transform: none !important;/);
     expect(css).toMatch(/@keyframes rd-pulse \{ 0%, 100% \{ opacity: [\d.]+; \} 50% \{ opacity: 1; \} \}/);
   });
