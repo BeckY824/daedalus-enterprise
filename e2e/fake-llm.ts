@@ -27,7 +27,8 @@ const 管理员 = { 用户名: "admin", 密码: "admin123" };
 
 async function 登录管理员(page: Page) {
   await page.goto("/login");
-  const 提示 = page.locator(".ant-alert");
+  // 登录页 11-15 起：账号 / 密码错写在那一格底下（.auth-field-err，role=alert），网络这类才是表单底下那条 Alert
+  const 提示 = page.locator(".ant-alert, .auth-field-err");
   for (let i = 0; i < 3; i++) {
     await page.getByPlaceholder("用户名").fill(管理员.用户名);
     await page.getByPlaceholder("登录密码").fill(管理员.密码);
@@ -58,7 +59,8 @@ export async function 配好AI(page: Page, baseUrl = "http://127.0.0.1:9/v1") {
   await page.getByRole("button", { name: /保\s*存/ }).click();
   // 没测过连接会先拦一下：整套 AI 都走这套配置，地址不对会一起失灵
   await page.getByRole("button", { name: "仍然保存" }).click();
-  await expect(page.locator(".ant-message")).toContainText("已保存");
+  // 设置页 11-15 起不弹顶部 message：成没成写在页签底部的就地小条里（InlineNote，role=status）
+  await expect(page.getByRole("status").filter({ hasText: "已保存" })).toBeVisible();
 }
 
 /** 给 `test.beforeAll({ browser })` 用：自己开一页、自己登录、填完关掉 */
@@ -85,7 +87,7 @@ export async function 拆掉假模型(browser: Browser) {
     await page.goto("/settings?tab=ai");
     await page.getByRole("button", { name: "删掉这把 Key" }).click();
     await page.getByRole("button", { name: "删掉这把 Key" }).last().click();
-    await expect(page.locator(".ant-message")).toContainText("已清除");
+    await expect(page.getByRole("status").filter({ hasText: "已清除" })).toBeVisible();
     /*
       **把重新渲染那一下自己吃掉。**
 

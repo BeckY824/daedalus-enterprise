@@ -152,7 +152,12 @@ async function 选(page: Page, 框名: string, 项: string) {
     await expect(选上了.first()).toBeVisible({ timeout: 5_000 });
   }).toPass();
 }
-const 提示 = (page: Page, 字: string | RegExp) => page.locator(".ant-message-notice", { hasText: 字 });
+/**
+ * 成没成的那句话：11-15 改版后有三种落点——还没改的页照旧顶部 message；设置各页签写在页签底部的就地小条（InlineNote，role=status / 出错 role=alert）；
+ * 做了能撤的（领取、退回……）是底部撤销条（UndoBar，role=status）。认的是「这句话出现在给人看的反馈里」，不认它浮在哪
+ */
+const 提示 = (page: Page, 字: string | RegExp) =>
+  page.locator(".ant-message-notice").or(page.getByRole("status")).or(page.getByRole("alert")).filter({ hasText: 字 });
 
 // A7（11-01 权限只认业务角色）：分配线索 = 市场管理、销售管理、总管理
 test("线索分配：老板、销售管理、市场管理有「分配」，销售没有；市场把线索甲分给销售乙", async ({ page }) => {
@@ -186,8 +191,10 @@ test("线索分配：老板、销售管理、市场管理有「分配」，销�
     await expect(那项).toBeVisible({ timeout: 2_000 });
   }).toPass();
   await 那项.click();
-  await 弹窗.getByRole("button", { name: /分\s*配/ }).click();
-  await expect(提示(page, `「线索甲」已分给 ${种.名字.销售2}`)).toBeVisible();
+  // 11-15 起确认键直接写「分给 某某」（原型 pr.assign），分成了不弹顶部提示：弹窗收起、结果写回那一行「已分给 某某 ✓」
+  await 弹窗.getByRole("button", { name: `分给 ${种.名字.销售2}`, exact: true }).click();
+  await expect(弹窗).toBeHidden();
+  await expect(正文.getByText(`已分给 ${种.名字.销售2} ✓`)).toBeVisible();
 
   const 销售2 = await db.user.findFirstOrThrow({ where: { email: 账号.销售2 } });
   expect((await db.project.findFirstOrThrow({ where: { name: "线索甲" } })).ownerId).toBe(销售2.id);
@@ -284,14 +291,21 @@ test("申请移交：销售甲把自己的客户转给销售乙，接受前还�
   await 登录(page, "销售1");
   await page.goto("/customers");
   await 正文.getByRole("row", { name: /销售甲的客户/ }).getByRole("checkbox").check();
-  await 正文.getByRole("button", { name: /批量分配/ }).click();
-  // 侧栏也是 menuitem，限定在下拉里
-  await page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").getByRole("menuitem", { name: 种.名字.销售2 }).click();
-  // 名下有项目（线索乙）先问一起转，再问转让原因（可不选）
-  await page.getByRole("dialog").getByRole("button", { name: "一起转" }).click();
-  await page.getByRole("dialog").filter({ hasText: `转给「${种.名字.销售2}」` }).getByRole("button", { name: /转\s*让/ }).click();
-  // 列表批量入口：框标题照旧「转给「X」」、按钮「转让」；发出后提示 11-12 起统一叫「已发起客户转让」
-  await expect(提示(page, `已发起客户转让：1 名等「${种.名字.销售2}」确认后生效`)).toBeVisible();
+  /*
+    11-15 起（原型 cu.transfer）：批量条上的键写全「转让给同事」；选人、会一起转走的项目、什么时候生效、转让原因合成一个框，
+    不再「下拉选人 → 一起转框 → 原因框」三层。负责人本人转自己的 = 申请移交：框里写明要对方接受才生效，
+    发出后不弹提示，页顶「移交申请中」横幅就是反馈（可在那撤回）
+  */
+  await 正文.getByRole("button", { name: "转让给同事" }).click();
+  const 转框 = page.getByRole("dialog", { name: "把 1 位客户转给" });
+  await 转框.getByRole("combobox", { name: "转给谁" }).click();
+  await page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: 种.名字.销售2 }).click();
+  // 名下有项目（线索乙）：框里列出会一起转走的
+  await expect(转框).toContainText("线索乙");
+  await expect(转框).toContainText(`要「${种.名字.销售2}」点接受`);
+  await 转框.getByRole("button", { name: `转给${种.名字.销售2}` }).click();
+  await expect(转框).toBeHidden();
+  await expect(正文.getByText(new RegExp(`移交申请中：.*等「${种.名字.销售2}」确认`))).toBeVisible();
   expect(await 归谁()).toBe(销售1.id);
 
   await page.context().clearCookies();
@@ -301,9 +315,9 @@ test("申请移交：销售甲把自己的客户转给销售乙，接受前还�
   // 接手人确认前看得到接的是谁（客户名；前面的用例可能改过名，只认开头）
   await expect(待确认).toContainText(new RegExp(`「${种.名字.销售1}」申请把自己名下的 1 位客户：销售甲的客户\\S*移交给你`));
   await expect(正文.getByRole("row", { name: /销售甲的客户/ })).toHaveCount(0);
+  // 11-15 起接受不再弹确认框（原型 cu.handover：确认后转过来什么写在横幅里先看清）；接受完横幅收掉、这位进了自己的列表
   await 待确认.getByRole("button", { name: "接受" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: /接\s*受/ }).click();
-  await expect(提示(page, "已接手 1 位客户")).toBeVisible();
+  await expect(待确认).toHaveCount(0);
   await expect(正文.getByRole("row", { name: /销售甲的客户/ })).toBeVisible();
   expect(await 归谁()).toBe(销售2.id);
   expect((await db.project.findFirstOrThrow({ where: { name: "线索乙" } })).ownerId).toBe(销售2.id);
@@ -371,7 +385,9 @@ test("项目公海：原负责人看不到公海里的项目；客户在公海�
   // 客户行的「项目名称」里列着公海项目一，但没有单独的项目行（项目行才链到项目详情）
   await expect(正文.locator(`a[href="/projects/${种.项目1}"]`)).toHaveCount(0);
   await 正文.getByRole("button", { name: "领取 公海客户甲" }).click();
-  await expect(page.locator(".ant-message-notice", { hasText: "已领取「公海客户甲」" })).toBeVisible();
+  // 11-15 起领取在行上原地确认（InlineConfirm），点「确认领取」才领
+  await 正文.getByRole("button", { name: "确认领取" }).click();
+  await expect(提示(page, "已领取「公海客户甲」")).toBeVisible();
   await expect(正文.getByRole("button", { name: "领取 公海客户甲" })).toHaveCount(0);
   await page.goto(`/projects/${种.项目1}`);
   await 停在项目页签(page, 种.客户, 种.项目1, "公海项目一");

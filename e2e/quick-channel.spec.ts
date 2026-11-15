@@ -15,7 +15,8 @@ const 客户名 = `就地建客户${戳}`;
 
 async function 登录(page: Page) {
   await page.goto("/login");
-  const 提示 = page.locator(".ant-alert");
+  // 登录页 11-15 起：账号 / 密码错写在那一格底下（.auth-field-err，role=alert），网络这类才是表单底下那条 Alert
+  const 提示 = page.locator(".ant-alert, .auth-field-err");
   for (let i = 0; i < 3; i++) {
     await page.getByPlaceholder("用户名").fill(账号.用户名);
     await page.getByPlaceholder("登录密码").fill(账号.密码);

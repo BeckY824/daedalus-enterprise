@@ -47,22 +47,25 @@ test("有项目时在客户档案记沟通：「新建沟通」开框、关联�
 
   // 有在推的项目：卡头按钮叫「新建沟通」，不是「给他开项目」
   await expect(正文.getByRole("button", { name: /给他开项目/ })).toHaveCount(0);
-  await 正文.getByRole("button", { name: /新建沟通/ }).first().click();
+  // 11-15 起客户档案里在推的项目整块摆出来（region「项目：X」），「新建沟通」在这个项目的沟通记录卡头：从哪个项目点开就记在哪个项目上，框里不再另挑「关联项目」
+  const 项目块 = 正文.getByRole("region", { name: `项目：记沟通项目${后缀}` });
+  await expect(项目块).toBeVisible();
+  await 项目块.getByRole("button", { name: /新建沟通/ }).first().click();
   const 框 = page.getByRole("dialog", { name: "记一条沟通" });
   await expect(框).toBeVisible();
-  // 关联项目默认选最近动过的那个（这位只有一个）
-  await expect(框.locator(".ant-form-item", { hasText: "关联项目" }).first()).toContainText(`记沟通项目${后缀}`);
 
   // 发起主体字典里有「我方发起」时自动带上；没带上就挑第一项
-  const 主体 = 框.locator(".ant-form-item", { hasText: "发起主体" }).first();
-  if ((await 主体.locator(".ant-select-selection-item").count()) === 0) {
-    await 主体.locator(".ant-select").click();
+  // 11-15 起记沟通框是项目那张（F-跟进-06），不是 antd Form.Item：按读屏名认这一格
+  const 主体 = 框.getByRole("combobox", { name: "发起主体" });
+  if (!(await 框.getByText("我方发起", { exact: true }).count())) {
+    await 主体.click();
     await page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option").first().click();
   }
   await 框.getByLabel("沟通内容").fill(内容);
   await 框.getByLabel("下一步计划").fill(`下一步：发报价${后缀}`);
   await 框.getByRole("button", { name: "3 天后" }).click();
-  await 框.getByRole("button", { name: /保\s*存/ }).click();
+  // 项目那张记沟通框的提交键叫「记下」（11-15，原型 F-跟进-06），不叫「保存」
+  await 框.getByRole("button", { name: "记下", exact: true }).click();
   await expect(框).toBeHidden();
 
   // 不跳页，这条出现在沟通记录卡里

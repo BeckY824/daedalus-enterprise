@@ -18,7 +18,8 @@ const 戳 = String(Date.now()).slice(-6);
 
 async function 登录(page: Page, who: { 用户名: string; 密码: string }) {
   await page.goto("/login");
-  const 提示 = page.locator(".ant-alert");
+  // 登录页 11-15 起：账号 / 密码错写在那一格底下（.auth-field-err，role=alert），网络这类才是表单底下那条 Alert
+  const 提示 = page.locator(".ant-alert, .auth-field-err");
   for (let i = 0; i < 3; i++) {
     await page.getByPlaceholder("用户名").fill(who.用户名);
     await page.getByPlaceholder("登录密码").fill(who.密码);
@@ -180,17 +181,10 @@ test.describe("D 组：批量操作交叉", () => {
     // 乙在这期间批量把负责人改成别人
     await 乙.page.goto("/customers");
     await 乙.page.getByRole("row", { name: new RegExp(姓名) }).getByRole("checkbox").check();
-    await 乙.page.getByRole("button", { name: /批量分配/ }).click();
-    // 必须限定在下拉里选：侧边栏用的也是 menuitem 角色，不限定会点到导航上去
-    const 下拉 = 乙.page.locator(".ant-dropdown:not(.ant-dropdown-hidden)");
-    await 下拉.waitFor({ state: "visible" });
-    // 管理员已不在负责人候选里（只做系统维护），转给另一名销售
-    await 下拉.getByRole("menuitem", { name: "李四" }).click();
-    if (企业版) {
-      // 企业版转给别人先问转让原因（可不选，useTransferConfirm）；规则「交接要接手人确认」开着时提示是「已发起交接」
-      await 乙.page.getByRole("dialog").filter({ hasText: "转给「李四」" }).getByRole("button", { name: /转\s*让/ }).click();
-      await expect(乙.page.locator(".ant-message")).toContainText(/条|交接/);
-    } else await expect(乙.page.locator(".ant-message")).toContainText(/条/);
+    // 11-15 起（原型 cu.transfer）：批量条上「转让给同事」，选人、一起转走的、原因在同一个框里；管理员已不在负责人候选里，转给另一名销售
+    await 转给(乙.page, "李四");
+    // 直接转了是底部撤销条「已转给 李四」；规则「交接要接手人确认」开着时不弹，页顶「交接中」横幅就是反馈
+    await expect(乙.page.getByRole("status").filter({ hasText: "已转给 李四" }).or(乙.page.getByText(/交接中：.*等「李四」确认/))).toBeVisible();
 
     // 甲改的是公司，不是负责人，应当自动合并
     await 甲.page.getByRole("dialog").getByLabel("公司").fill("星辰科技");
@@ -206,6 +200,16 @@ test.describe("D 组：批量操作交叉", () => {
     await 乙.ctx.close();
   });
 });
+
+/** 列表勾好之后批量转给某人（11-15 原型 cu.transfer：「转让给同事」一个框里选人、点「转给某某」） */
+async function 转给(page: Page, 名: string) {
+  await page.getByRole("button", { name: "转让给同事" }).click();
+  const 框 = page.getByRole("dialog", { name: /^把 \d+ 位.+转给$/ });
+  await 框.getByRole("combobox", { name: "转给谁" }).click();
+  await page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: 名 }).click();
+  await 框.getByRole("button", { name: `转给${名}` }).click();
+  await expect(框).toBeHidden();
+}
 
 test.describe("D2 组：批量改负责人的撤销（T-019）", () => {
   /*
@@ -230,18 +234,15 @@ test.describe("D2 组：批量改负责人的撤销（T-019）", () => {
       await 管.page.goto(`/customers?keyword=${encodeURIComponent(前缀)}`);
       await expect(管.page.locator("tr.ant-table-row")).toHaveCount(2);
       for (const c of 客户们) await 管.page.getByRole("row", { name: new RegExp(c.name) }).getByRole("checkbox").check();
-      await 管.page.getByRole("button", { name: /批量分配/ }).click();
-      const 下拉 = 管.page.locator(".ant-dropdown:not(.ant-dropdown-hidden)");
-      await 下拉.waitFor({ state: "visible" });
-      await 下拉.getByRole("menuitem", { name: "李四" }).click();
-      // 企业版转给别人先问转让原因（可不选，useTransferConfirm）
-      if (企业版) await 管.page.getByRole("dialog").filter({ hasText: "转给「李四」" }).getByRole("button", { name: /转\s*让/ }).click();
-      const 提示 = 管.page.locator(".ant-message-notice", { hasText: "已转给 李四" });
+      await 转给(管.page, "李四");
+      // 11-15 起批量改负责人的反馈是底部撤销条（UndoBar，role=status），撤销键在条上
+      const 提示 = 管.page.getByRole("status").filter({ hasText: "已转给 李四" });
       await expect(提示).toBeVisible();
       await expect.poll(async () => (await p.customer.findMany({ where: { name: { startsWith: 前缀 } } })).every((c) => c.salesOwnerId === 李四.id)).toBe(true);
 
       await 提示.getByRole("button", { name: /撤\s*销/ }).click();
-      await expect(管.page.locator(".ant-message")).toContainText("已撤销，2 条改回原样");
+      // 撤成了条上改写「已撤销」（撤不全会写「撤销不了：…」）；改回几条下面按库逐条核
+      await expect(管.page.getByRole("status").filter({ hasText: /^已撤销$/ })).toBeVisible();
       await expect.poll(async () => (await p.customer.findMany({ where: { name: { startsWith: 前缀 } } })).map((c) => c.salesOwnerId)).toEqual([张三.id, 张三.id]);
       for (const c of 客户们) {
         expect((await p.followPlan.findFirstOrThrow({ where: { customerId: c.id, subject: `${c.name} 回访` } })).ownerId, "带过去的计划回原负责人").toBe(张三.id);
@@ -294,11 +295,13 @@ test.describe("E 组：同账号多设备与在线停用", () => {
       await 确认.getByRole("combobox").last().click();
       await 管理.page.locator(".ant-select-dropdown:visible .ant-select-item-option").first().click();
       await 确认.getByRole("button", { name: /确认停用/ }).click();
-      await expect(管理.page.locator(".ant-message")).toContainText("已停用并转交");
+      // 设置页 11-15 起不弹顶部 message，成没成写在页签底部的就地小条（InlineNote，role=status）
+      await expect(管理.page.getByRole("status").filter({ hasText: "已停用并转交" })).toBeVisible();
     } else {
       // 企业版办离职名下原地不动、不选接手人（11-03 C4-4），停用后到客户页页头「离职交接」里交（11-12 C15）
       await 确认.getByRole("button", { name: /确认停用/ }).click();
-      await expect(管理.page.locator(".ant-message")).toContainText("已停用");
+      // 设置页 11-15 起不弹顶部 message，成没成写在页签底部的就地小条（InlineNote，role=status）
+      await expect(管理.page.getByRole("status").filter({ hasText: "已停用" })).toBeVisible();
     }
 
     // 丙的下一次操作必须被挡回登录页，而不是继续用着已失效的会话

@@ -46,10 +46,11 @@ test("确认框列出会一起删掉的东西；有签约要先勾一下；联�
   const 框 = page.getByRole("dialog");
   if (企业版) {
     // 企业版（P9）删了进回收站：照实说能恢复，签约不用另勾；联系人跟着客户一起进回收站
-    await expect(框).toContainText("1 位联系人、1 条沟通记录一起进回收站");
-    await expect(框).toContainText("30 天内可在 设置 → 回收站 恢复");
+    // 11-15 起是后果框（原型 cu.delete）：「一起走」「能恢复」分条写在框里，删完框收起、不再弹顶部提示
+    await expect(框.getByRole("listitem").filter({ hasText: "一起走" })).toContainText("1 位联系人、1 条沟通记录进回收站");
+    await expect(框.getByRole("listitem").filter({ hasText: "能恢复" })).toContainText("30 天内在 设置 → 回收站 恢复");
     await 框.getByRole("button", { name: /删\s*除/ }).click();
-    await expect(page.locator(".ant-message")).toContainText("可在回收站恢复");
+    await expect(框).toBeHidden();
     await expect(page.locator("tr.ant-table-row", { hasText: "删除测试甲" })).toHaveCount(0);
     const p = 连库();
     try {

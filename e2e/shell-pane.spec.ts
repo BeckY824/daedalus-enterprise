@@ -40,7 +40,8 @@ test.beforeAll(async () => {
 
 async function 登录(page: Page) {
   await page.goto("/login");
-  const 提示 = page.locator(".ant-alert");
+  // 登录页 11-15 起：账号 / 密码错写在那一格底下（.auth-field-err，role=alert），网络这类才是表单底下那条 Alert
+  const 提示 = page.locator(".ant-alert, .auth-field-err");
   for (let i = 0; i < 3; i++) {
     await page.getByPlaceholder("用户名").fill(账号.用户名);
     await page.getByPlaceholder("登录密码").fill(账号.密码);
@@ -295,34 +296,21 @@ test.describe("中栏跟着路由走", () => {
 });
 
 /*
-  桌面端（UA 带 Electron/）的「客户」：照毛玻璃原型直接进「名单 + 详情」，打开最近看过的那位（2026-10-03）。
-  网页版照旧进表格——上面那组钉着。
+  桌面端（UA 带 Electron/）的「客户」：2026-10-03 起曾直接进「名单 + 详情」（最近看过的那位，/customers/recent 跳板）。
+  11-15 PR11a 把这个跳板删了（tests/route-cleanup-redirects.test.ts 钉着老地址 /customers/recent → /customers）：
+  桌面端和网页一样进客户列表，老书签也落到列表、不落 404
 */
-test.describe("桌面端：左栏「客户」直接进名单 + 详情", () => {
+test.describe("桌面端：左栏「客户」进客户列表（最近客户跳板 11-15 删了）", () => {
   test.use({ userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) DaedalusCRM/0.46.15 Chrome/138.0.0.0 Electron/38.8.6 Safari/537.36" });
 
-  test("点「客户」进某位的详情、中栏名单在；换一位再回首页，点「客户」回到刚才那位", async ({ page }) => {
+  test("点「客户」进列表、表格在；老地址 /customers/recent 也落到列表", async ({ page }) => {
     await 登录(page);
     await page.setViewportSize({ width: 1960, height: 900 });
-    await 点侧栏(page, "客户", /\/customers\/[^/]+$/);
-    await expect(中栏(page)).toBeVisible();
-    // 在名单里换第二位
-    const 第二位 = 中栏(page).locator(".roster-row").nth(1);
-    const 去处 = await 第二位.getAttribute("href");
-    await 第二位.click();
-    await expect(page).toHaveURL(new RegExp(`${去处}$`));
-    /*
-      地址栏变了不等于这位已经「看过」：(app)/loading.tsx 让地址栏先跳、详情还在路上，
-      「最近看过」要等详情页画出来才记（RecordView 的 记下最近客户）。不等就去首页，记的还是上一位——
-      CI 机器慢时两次都这么红过（2026-10-21，#68 的 run 39623777970）。人眼里也是：没看到这位，就不算看过
-    */
-    const 这位 = 去处!.split("/").pop();
-    await expect.poll(async () => (await page.context().cookies()).find((c) => c.name === "crm_last_customer")?.value).toBe(这位);
-    await 点侧栏(page, "首页", /\/dashboard$/);
-    await 点侧栏(page, "客户", new RegExp(`${去处}$`));
-    // 表格还在名单右上角
-    await 中栏(page).getByRole("link", { name: /表格/ }).first().click();
+    await 点侧栏(page, "客户", /\/customers$/);
+    await expect(page.getByRole("main").getByRole("columnheader").first()).toBeVisible();
+    await page.goto("/customers/recent");
     await expect(page).toHaveURL(/\/customers$/);
+    await expect(page.getByRole("main").getByRole("columnheader").first()).toBeVisible();
   });
 });
 
