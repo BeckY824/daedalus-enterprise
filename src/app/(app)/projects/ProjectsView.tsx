@@ -346,13 +346,19 @@ export default function ProjectsView({
       // 挑不到人 / 暂不分配：不是出错，留在新线索等手动指派——原因写在这一行
       if (!res.ok) return void 记果({ [r.id]: { ok: false, error: res.error } });
       记果({ [r.id]: { ok: true, 接手人: res.接手人, 为什么: res.为什么 } });
-      // 6 秒内可撤销（P-界面-40）：撤销 = 把负责人转回原来那位，走项目「转让」同一个动作和权限（编辑项目 改 ownerId）；被挡就在撤销条上写原因
+      // 6 秒内可撤销（P-界面-40）：撤销 = 把负责人转回原来那位，走项目「转让」同一个动作和权限（编辑项目 改 ownerId）；被挡就在撤销条上写原因。
+      // 只还得回负责人：自动分配的结果里没有「一起带过去的」清单（待办、市场转销售时的客户），待分配标记也不回标——撤销条上先写明，撤完再说一次还差什么
+      const 还不了 = ["一起转过去的待办", "跟着转的客户", ...(r.待分配 ? ["「待分配」标记"] : [])];
       showUndo({
-        话: `「${r.name}」${分给了(res)}`,
+        话: `「${r.name}」${分给了(res)}（撤销只改回负责人）`,
         毫秒: 6000,
         撤销: async () => {
           const x = await 编辑项目(r.id, { ownerId: r.ownerId });
-          if (x.ok) { 去果(r.id); router.refresh(); }
+          if (x.ok) {
+            去果(r.id);
+            message.warning(`已把「${r.name}」的负责人改回 ${r.ownerName}；${还不了.join("、")}没还原，要还请手工改`, 8);
+            router.refresh();
+          }
           return x;
         },
       });

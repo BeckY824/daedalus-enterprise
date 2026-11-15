@@ -162,10 +162,13 @@ it("能分配的人：每条没结局的新线索有「分配」「自动分配�
   expect(调.find((c) => c[0] === "自动分配线索")).toEqual(["自动分配线索", "p1", { 项目: true, 原负责人: "u1" }]);
   expect(await 去了(page)).toEqual([]); // 点按钮不触发行跳转
   // 撤销 = 负责人转回原来那位（走项目转让同一个动作），行里的结果收掉、两颗键回来
+  // 只还得回负责人：撤销条上先写明，撤完如实说哪些没还原（不假装全撤回）
+  expect(await page.locator(".undo-bar").innerText()).toContain("撤销只改回负责人");
   await page.locator(".undo-bar").getByRole("button", { name: /撤销/ }).click();
   await page.getByRole("button", { name: `自动分配 ${长}1` }).waitFor();
   const 调2 = await page.evaluate(() => (window as unknown as { __调: unknown[][] }).__调);
   expect(调2.find((c) => c[0] === "编辑项目")).toEqual(["编辑项目", "p1", { ownerId: "u1" }]);
+  await page.getByText("已把「" + 长 + "1」的负责人改回 王1；一起转过去的待办、跟着转的客户没还原，要还请手工改").waitFor();
   expect(errors).toEqual([]); await page.close();
   const 不能 = await 打开(true);
   expect(await 不能.page.getByRole("button", { name: `分配 ${长}1`, exact: true }).count()).toBe(0);
