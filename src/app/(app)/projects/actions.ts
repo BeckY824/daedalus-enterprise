@@ -18,11 +18,11 @@ import { 登记接着建 } from "@/lib/project/hook";
 import { 规整向导, 向导接着建, 项目来源默认, 占位名提示, type 建好的, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
-import { 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 能管项目, 能进公海的阶段, 超时成员线, 超时线, type 交付项 } from "@/lib/project/db";
+import { 读必填数据, 能改节点, 上级只推, 直属才推, 只有负责人改进程, 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 能管项目, 能进公海的阶段, 超时成员线, 超时线, type 交付项 } from "@/lib/project/db";
 import { 合上改动, 是不限, 三态改动摘要, type 规则改动 } from "@/lib/project/org-rules";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 不能新建项目话 } from "@/lib/enterprise/permissions";
+import { 不能新建项目话, 是经理 } from "@/lib/enterprise/permissions";
 import { 看全部 } from "@/lib/team-scope";
 import { 挡改设置, 读改权限, 能改时限的节点, 挡时限改动, type 设置项名 } from "@/lib/enterprise/edit-perm";
 import { 读组织, 权限组织 } from "@/lib/enterprise/org";
@@ -34,11 +34,11 @@ import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/pro
 import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知, 项目被删通知, 项目放回公海通知 } from "@/lib/enterprise/notice-sources";
 import { 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
 import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
-import { 按必填走, 是占位值 } from "@/lib/project/required";
+import { 按必填走, 是占位值, 还差 as 必填还差, 必填叫法 } from "@/lib/project/required";
 import { 字典of } from "@/lib/project/stage-dict";
 import type { 回收预演底子 } from "@/lib/enterprise/recycle-text";
 import { 读团队 } from "@/lib/sync/client";
-import { 要写原因, type 位置 } from "@/lib/project/nodes";
+import { 要写原因, 本套位置, 节点序号, type 位置 } from "@/lib/project/nodes";
 import { 判MQL, MQL合格去, MQL不合格去 } from "@/lib/project/mql";
 import { 销售初判, 市场复核, 销售终验, 总管理终判, 销售认领, 撤回验证, type 初判 } from "@/lib/project/lead-verify";
 import { saveCustomer, type CustomerInput } from "../customers/actions";
@@ -265,6 +265,30 @@ export async function 改项目节点(projectId: string, 到: 位置, 异常?: {
       刷新项目(projectId, p?.customerId);
     }
     return r;
+  } catch (e) { return 不在了(e); }
+}
+
+/**
+ * 看板拖到别的进程之前先问一句（P-界面-45，原型 pr.drag / cu.board）：这一步往前推、当前进程配了必填、还没填齐的，
+ * 回还差哪几项（显示名）和能不能留空先推（总管理、销售管理 = 是经理，和 改节点 里放行的是同一拨人）。
+ * 只是预演：真推照旧走 改项目节点，权限、推进关、必填都在那里再判一遍；改不了进程的人这里就回那句原因，卡片弹回
+ */
+export async function 看板推进预检(projectId: string, 到: 位置): Promise<{ ok: true; 还差: string[]; 能留空推: boolean } | { ok: false; error: string }> {
+  try {
+    const me = await requireUser();
+    if (!(await 开着())) return 没开;
+    if (!到 || typeof 到 !== "object" || typeof 到.phase !== "string" || typeof 到.node !== "string") return { ok: false, error: "要改到哪个进程？" };
+    const p = await prisma.project.findUnique({ where: { id: String(projectId ?? "") } });
+    if (!p) return { ok: false, error: "这个项目已经不在了，刷新看看" };
+    const [规则, org] = await Promise.all([生效组织规则(), 权限组织()]);
+    if (!能改节点(me, p, org) && !上级只推(me, p, await 直属才推(org), 规则)) {
+      return { ok: false, error: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? 只有负责人改进程 : "只有项目负责人、老板或主管能改进程" };
+    }
+    const 字典 = 字典of(企业版(), 企业版() ? 规则.阶段.出口叫法 : null);
+    const 往前 = !p.result && 节点序号(本套位置({ ...到, result: null }, 字典), 字典) > 节点序号(本套位置(p, 字典), 字典);
+    if (!往前 || !按必填走(规则, p.node)) return { ok: true, 还差: [], 能留空推: false };
+    const 差 = 必填还差(规则, await 读必填数据(prisma, p, 规则));
+    return { ok: true, 还差: 差.map(必填叫法), 能留空推: 是经理(me, org) };
   } catch (e) { return 不在了(e); }
 }
 

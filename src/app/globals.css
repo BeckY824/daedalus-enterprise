@@ -2910,6 +2910,26 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 @keyframes pipe-card-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .pipe-card-new { animation: pipe-card-in var(--t-morph) var(--ease) calc(var(--stagger) * var(--i, 0)) both, pipe-card-fresh 2s var(--ease) calc(var(--stagger) * var(--i, 0)) both; }
 @keyframes pipe-card-fresh { 0%, 55% { background-color: var(--brand-bg); } 100% { background-color: var(--panel); } }
+/* 看板拖动换进程（P-界面-45，原型 pr.drag / cu.board，projects/board-drag.tsx）：能拖的卡片手型是 grab，拖不了的照旧点进详情（手指）；
+   拖着的卡片浮起来跟手；目标列浅蓝底 + 虚线框，不能放的列（交付结清、流失、丢单）只给灰虚线；
+   被挡 / 缺必填弹回原处时左右晃一下；缺必填那张描一圈橙边，旁边长出补填小框（.board-gate） */
+.pipe .pipe-card:not([data-card-id]):not(.pipe-card-ro) { cursor: pointer; }
+.pipe-card[data-card-id] { user-select: none; -webkit-user-select: none; transition: transform var(--t) var(--ease-spring), box-shadow var(--t) var(--ease); }
+.pipe-card.is-dragging { position: relative; z-index: 5; cursor: grabbing; transition: none; box-shadow: var(--shadow-pop); }
+.pipe-card.is-bounced { animation: pipe-card-bounce var(--t-morph) var(--ease) 1; }
+@keyframes pipe-card-bounce { 0%, 100% { translate: 0; } 30% { translate: -4px 0; } 65% { translate: 3px 0; } }
+.pipe-card.is-gated { box-shadow: 0 0 0 1.5px var(--warning); }
+.pipe-col.is-drop { background: var(--brand-bg); outline: 1px dashed var(--brand); outline-offset: -1px; }
+.pipe-col.is-drop-no { outline: 1px dashed var(--line-strong); outline-offset: -1px; }
+.board-gate { position: fixed; z-index: 1050; padding: var(--s3); background: var(--panel); border-radius: var(--r-card); box-shadow: var(--shadow-pop); border: 1px solid var(--line);
+  animation: board-gate-in var(--t-pop) var(--ease) both; transform-origin: left top; overflow-wrap: anywhere; }
+@keyframes board-gate-in { from { opacity: 0; scale: var(--pop-scale); } to { opacity: 1; scale: 1; } }
+.board-gate-t { color: var(--warning-text); font-weight: 600; }
+.board-gate-name { margin-top: var(--s1); font-size: var(--fs-note); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.board-gate-list { margin: var(--s2) 0 0; padding-inline-start: 18px; }
+.board-gate-force.ant-btn { padding: 0; height: auto; margin-top: var(--s2); color: var(--warning-text); }
+.board-gate-foot { display: flex; justify-content: flex-end; gap: var(--s2); margin-top: var(--s3); }
+@media (prefers-reduced-motion: reduce) { .pipe-card[data-card-id] { transition: none; } .pipe-card.is-bounced, .board-gate { animation: none !important; } }
 /* 减弱动态：时长归零还不够，排队的延迟（--stagger × 序）会让卡片空着等一会儿，整个不放 */
 @media (prefers-reduced-motion: reduce) { .proj-view-in, .pipe-card-in, .pipe-card-new { animation: none !important; } }
 .cust-board .pipe-h b { flex: 0 1 auto; min-width: 0; }
