@@ -178,7 +178,14 @@ export default function PoolAssignPicker({
                   aria-disabled={满 || undefined}
                   className="pool-pick-p"
                   onMouseEnter={() => !忙 && !满 && set当前(p.value)}
+                  tabIndex={-1}
                   onClick={() => !忙 && !满 && 点人(p.value)}
+                  onKeyDown={(e) => {
+                    // 主路径是搜索框里上下键 + 回车；焦点落到这一行（点过 / 读屏跳过来）时回车、空格也能选
+                    if (e.key !== "Enter" && e.key !== " ") return;
+                    e.preventDefault();
+                    if (!忙 && !满) 点人(p.value);
+                  }}
                 >
                   <span className="pool-pick-av" aria-hidden>{p.label.slice(0, 1)}</span>
                   <span className="pool-pick-n">{p.label}</span>
