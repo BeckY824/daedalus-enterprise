@@ -169,7 +169,7 @@ test("2b 简报空数据兜底：没有跟进记录的客户明说，不硬生�
 
 test("3 问数据：答得出真实数字，也拒得掉预测性问题", async ({ page }) => {
   await 登录(page);
-  await page.goto("/reports");
+  await page.goto("/overview?view=本年");
 
   const 卡片 = page.locator(".ant-card").filter({ hasText: "问数据" });
 

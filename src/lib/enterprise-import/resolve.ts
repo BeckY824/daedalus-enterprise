@@ -204,7 +204,7 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
       summary: `处理从${来源名[源] ?? 源}同步来的冲突：${r.定了} 笔${选}${r.过时 ? `，${r.过时} 笔已过时` : ""}${r.没定.length - r.过时 > 0 ? `，${r.没定.length - r.过时} 笔没定` : ""}`,
       detail: { batchId: r.批次Id, source: 源, 选, 定了: r.定了, 过时: r.过时, 没定: r.没定.slice(0, 50) },
     });
-    for (const p of ["/customers", "/leads", "/opportunities", "/projects", "/dashboard"]) revalidatePath(p);
+    for (const p of ["/customers", "/leads", "/projects", "/dashboard"]) revalidatePath(p);
   }
   return r;
 }

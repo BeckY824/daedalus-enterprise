@@ -72,8 +72,8 @@ describe("没登录打开某一页：登录后回来（11-06）", () => {
     expect((await 去向("/customers/abc?_rsc=xyz")).searchParams.get("next")).toBe("/customers/abc");
   });
 
-  it("首页类不记：/、/start、/dashboard", async () => {
-    for (const p of ["/", "/start", "/dashboard"]) expect((await 去向(p)).search, p).toBe("");
+  it("首页类不记：/、/dashboard（/start 11-15 删了，next.config 先转去首页）", async () => {
+    for (const p of ["/", "/dashboard"]) expect((await 去向(p)).search, p).toBe("");
   });
 
   it("//evil.com 这种路径：不记 next", async () => {

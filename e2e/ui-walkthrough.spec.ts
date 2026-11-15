@@ -43,7 +43,7 @@ const 页面 = [
   { 路径: "/projects", 名字: "项目" },
   { 路径: "/follow-ups", 名字: "跟进记录" },
   { 路径: "/follow-ups/plans", 名字: "跟进计划" },
-  { 路径: "/reports", 名字: "数据-本年" },
+  { 路径: "/overview?view=本年", 名字: "数据-本年" },
   { 路径: "/settings", 名字: "设置管理" },
 ];
 

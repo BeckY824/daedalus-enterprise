@@ -472,7 +472,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "get_watchlist",
-    description: "盯盘清单，默认只看我名下，scope=team 看当前权限内团队。返回总数和前 12 位，更多时给分页入口。",
+    description: "盯盘清单，默认只看我名下，scope=team 看当前权限内团队。返回总数和前 12 位。",
     args: '{"scope":"mine|team，可空，默认mine"}',
     async run(args, ctx) {
       if (args.scope !== undefined && args.scope !== "mine" && args.scope !== "team") return { summary: "范围不正确", data: { error: "scope只能是mine或team" } };
@@ -480,7 +480,6 @@ export const TOOLS: Tool[] = [
       const page = await loadWatchlistPage(dayjs(), team ? {} : { ownerId: ctx.userId }, 0, 12);
       return { summary: `${team ? "当前可见团队" : "我名下"}共 ${page.total} 位，显示 ${page.items.length} 位`, data: {
         范围: team ? "当前权限内团队" : "我名下", 总数: page.total, 显示: page.items.length,
-        完整清单: `/follow-ups/watchlist?scope=${team ? "team" : "mine"}`,
         items: page.items.map((w) => ({ customerId: w.customerId, name: w.customerName, owner: w.ownerName, reason: w.reason })),
       } };
     },

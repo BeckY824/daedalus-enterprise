@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     if (e instanceof 飞书登录出错) return 没成(e.原因);
     throw e;
   }
-  return 跳(去处 ?? "/start");
+  return 跳(去处 ?? "/dashboard");
 }
 
 function 同(a: string, b: string) {
