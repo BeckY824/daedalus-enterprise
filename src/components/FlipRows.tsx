@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, type RefObject } from "react";
 import { useMotionTheme } from "@/components/MotionTheme";
+import { 少动 } from "@/lib/reduced-motion";
 
 /** 行数超过这个就不做动画：一次量几百行的位置会卡，而且那么多行一起滑也看不清谁去了哪 */
 export const 动画行上限 = 50;
@@ -20,7 +21,6 @@ export function useFlipRows(容器: RefObject<HTMLElement | null>) {
     const 行们 = () => [...tbody.querySelectorAll<HTMLTableRowElement>(":scope > tr[data-row-key]")];
     const 记 = () => new Map(行们().map((tr) => [tr.dataset.rowKey ?? "", tr.offsetTop]));
     let 旧 = 记();
-    const 少动 = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
     const 观察 = new MutationObserver(() => {
       const 现在 = 行们();
       if (!少动() && 现在.length <= 动画行上限) {

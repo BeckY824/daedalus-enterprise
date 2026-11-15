@@ -9,6 +9,7 @@
 import { beforeAll, afterAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
+import { 北京日期 } from "./helpers/beijing-date";
 import { chromium, type Browser, type Page } from "playwright";
 
 let browser: Browser; let bundle: string;
@@ -32,7 +33,7 @@ beforeAll(async () => {
     import {DEFAULT_BUSINESS} from '@/lib/business-config';
     const 长=${JSON.stringify(长)};
     const 回收={开:true,总数:3,条:[{阶段:'线索',节点:'潜客培育',天数:7,数:3},{阶段:'商机',节点:'方案制定',天数:30,数:0}]};
-    const 今=new Date();const 日=(n)=>{const d=new Date(今);d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)};
+    const 日表=${JSON.stringify({ 1: 北京日期(1), 3: 北京日期(3) })};const 日=(n)=>日表[n];
     const 项目=[{id:'p1',名:长,节点:'潜客培育',负责人:'甲',回收日:日(1),阶段:'线索'},{id:'p2',名:'乙项目',节点:'潜客培育',负责人:'乙',回收日:日(3),阶段:'线索'}];
     window.__画=(o)=>{
       createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>

@@ -3,6 +3,7 @@
 import { flushSync } from "react-dom";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useLocalPref } from "@/lib/local-pref";
+import { 少动 } from "@/lib/reduced-motion";
 import { 外观键, 底色表, 主题表, 明暗表, 默认外观, 读外观, 挂外观, 网页玻璃键, 是桌面端, 挂网页玻璃, type 外观 } from "@/lib/appearance";
 
 /**
@@ -33,7 +34,7 @@ export default function AppearanceTab() {
       挂外观(a);
     };
     const 文档 = document as Document & { startViewTransition?: (f: () => void) => unknown };
-    if (文档.startViewTransition && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) 文档.startViewTransition(() => flushSync(换));
+    if (文档.startViewTransition && !少动()) 文档.startViewTransition(() => flushSync(换));
     else 换();
   };
 
