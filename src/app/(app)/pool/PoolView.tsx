@@ -317,8 +317,8 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
   function 报(r: Extract<动手结果, { ok: true }>) {
     set结果(r.没领到.length ? { 文案: r.文案, 没领到: r.没领到 } : null);
     set走的(Object.fromEntries(r.到行.map((id) => [id, r.字])));
-    // 行滑出（CSS：停 --t-seal 再走 --t）放完再刷新，刷新回来它就不在了
-    if (r.到行.length) setTimeout(() => router.refresh(), (时长.seal + 时长.base) * 1000 + 40);
+    // 行滑出（CSS：停 --t 再走 --t；--t-seal 只许落印用，见 motion-tokens 测试）放完再刷新，刷新回来它就不在了
+    if (r.到行.length) setTimeout(() => router.refresh(), (时长.base * 2) * 1000 + 40);
     else router.refresh();
     showUndo({
       话: r.文案,

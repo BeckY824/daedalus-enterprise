@@ -4882,7 +4882,7 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 .pool-why-box { overflow: hidden; white-space: normal; }
 .pool-done { margin-inline-end: 0; }
 /* 领到 / 分出去的行：「已领取 ✓」停一下再滑出；撤销回来的行滑回原位（只动格子里的内容，行上加 transform 会把固定列带歪） */
-.pool-row-leave > td > *, .pool-sub-leave { animation: pool-row-out var(--t) var(--ease) var(--t-seal) both; pointer-events: none; }
+.pool-row-leave > td > *, .pool-sub-leave { animation: pool-row-out var(--t) var(--ease) var(--t) both; pointer-events: none; }
 .pool-row-back > td > *, .pool-sub-back { animation: pool-row-in var(--t) var(--ease) both; }
 @keyframes pool-row-out { to { opacity: 0; transform: translateX(16px); } }
 @keyframes pool-row-in { from { opacity: 0; transform: translateX(16px); } }

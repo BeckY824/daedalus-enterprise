@@ -100,8 +100,8 @@ it("拖到下一个进程：先预检再改节点，卡片落到新列、计数�
       await 列(page, 1).locator('[data-card-id="p1"]').waitFor();
       expect(await 调了(page, "预检")).toEqual([["预检", "p1", { phase: "线索", node: "线索验证" }]]);
       expect(await 调了(page, "改")).toEqual([["改", "p1", { phase: "线索", node: "线索验证", result: null }]]);
-      expect(await 列(page, 0).locator(".pipe-n").innerText()).toBe("1");
-      expect(await 列(page, 1).locator(".pipe-n").innerText()).toBe("1");
+      await expect.poll(() => 列(page, 0).locator(".pipe-n").innerText()).toBe("1");
+      await expect.poll(() => 列(page, 1).locator(".pipe-n").innerText()).toBe("1");
       expect(await 去了(page)).toEqual([]);
       // 撤销 = 改回原来的进程
       await page.locator(".undo-bar").getByRole("button", { name: /撤销/ }).click();
