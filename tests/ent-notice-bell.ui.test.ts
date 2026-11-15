@@ -157,7 +157,7 @@ it.each([1024, 1280])("Windows %ipx：搜索框 + 铃铛一行不折，页面不
   await page.close();
 });
 
-it("手机 375：抽屉不超出屏幕", async () => {
+it("手机 375：抽屉不超出屏幕（浮起的面板两边各留 8px）", async () => {
   const { page } = await 打开(三条, { width: 375 });
   await 铃(page).click();
   await page.waitForTimeout(400);
@@ -183,7 +183,8 @@ it("减弱动态：抽屉打开不走过渡，一点就到位", async () => {
   // 不等动画：下一帧抽屉就在最终位置
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   const 盒 = await page.locator(".notice-drawer .ant-drawer-content-wrapper").boundingBox();
-  expect(Math.round(盒!.x + 盒!.width)).toBe(1280);
+  // g.notice：浮起的面板离窗口右边 8px
+  expect(Math.round(盒!.x + 盒!.width)).toBe(1280 - 8);
   const 时长 = await page.locator(".notice-drawer .ant-drawer-content-wrapper").evaluate((e) => getComputedStyle(e).transitionDuration);
   expect(时长.split(",").every((d) => parseFloat(d) === 0)).toBe(true);
   expect(errors).toEqual([]);
@@ -216,4 +217,30 @@ it.each([1024, 1280, 1366])("%ipx 正文 1200 字：铃铛里只两行，「展�
   await expect.poll(() => page.locator(".notice-body.full").count()).toBe(0);
   expect(errors).toEqual([]);
   await page.close();
+});
+
+it("g.notice：浮起的面板——离窗口边 8px、四角圆、不压暗页面；条目依次落位（减弱动态不位移）", async () => {
+  for (const 减弱 of [false, true]) {
+    const { page, errors } = await 打开(三条, { width: 1024, 减弱 });
+    await 铃(page).click();
+    const 壳 = page.locator(".notice-drawer .ant-drawer-content-wrapper");
+    await 壳.waitFor();
+    await page.getByRole("list", { name: "通知列表" }).waitFor();
+    await expect.poll(() => 壳.evaluate((e) => Math.round(e.getBoundingClientRect().top))).toBe(8);
+    await expect.poll(() => 壳.evaluate((e) => Math.round(innerWidth - e.getBoundingClientRect().right))).toBe(8);
+    const 位 = await 壳.evaluate((e) => { const r = e.getBoundingClientRect(); return { 右: Math.round(innerWidth - r.right), 下: Math.round(innerHeight - r.bottom), 圆: parseFloat(getComputedStyle(e).borderTopLeftRadius) }; });
+    expect(位).toMatchObject({ 右: 8, 下: 8 });
+    expect(位.圆).toBeGreaterThan(0);
+    // 遮罩透明（不压暗），但还在：点页面别处照样收
+    expect(await page.locator(".notice-drawer .ant-drawer-mask").evaluate((e) => getComputedStyle(e).backgroundColor)).toMatch(/rgba\(0, 0, 0, 0\)|transparent/);
+    // 第一条落位后不再有位移；减弱动态从头到尾没有 transform
+    const 第一条 = page.getByRole("list", { name: "通知列表" }).locator("li").first();
+    if (减弱) expect(await 第一条.evaluate((e) => getComputedStyle(e).transform)).toBe("none");
+    await expect.poll(() => 第一条.evaluate((e) => getComputedStyle(e).opacity)).toBe("1");
+    await expect.poll(() => 第一条.evaluate((e) => getComputedStyle(e).transform)).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
+    await page.mouse.click(300, 400);
+    await expect.poll(() => page.locator(".notice-drawer.ant-drawer-open").count()).toBe(0);
+    expect(errors).toEqual([]);
+    await page.close();
+  }
 });

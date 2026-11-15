@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { App, Checkbox } from "antd";
+import { Checkbox } from "antd";
 import { CheckOutlined, CloseOutlined, RightOutlined } from "@ant-design/icons";
 import { motion } from "motion/react";
 import ProposalCard, { 自动分整句, type 卡况, type 卡句柄 } from "@/components/ProposalCard";
@@ -25,7 +25,8 @@ import { useMotionTheme } from "@/components/MotionTheme";
  */
 export default function ProposalBatch({ proposals, 记号前缀, 报 }: { proposals: Proposal[]; 记号前缀: string; 报?: (id: string, 况: 卡况) => void }) {
   const b = useBusiness();
-  const { message } = App.useApp();
+  /** 上一次「确认」里没写进去的项数：清单头下面就地说一句 */
+  const [没写, set没写] = useState(0);
   const { 曲线, 时长 } = useMotionTheme();
   const 字段表 = 可改字段表(b);
   const 记号 = useCallback((p: Proposal) => `${记号前缀}:${p.id}`, [记号前缀]);
@@ -91,7 +92,8 @@ export default function ProposalBatch({ proposals, 记号前缀, 报 }: { propos
     }
     // 没勾的不动：留着待确认，人可以接着勾、接着确认；只有点「全部忽略」才算忽略
     set展开(new Set(败));
-    if (败.length) message.warning(`${这批.length - 败.length} 项已写入，${败.length} 项没写进去，原因写在卡上`);
+    // 没写进去的几项：清单头下面就地写一句，原因各写在卡上（原型 g.notice：不弹顶部提示）
+    set没写(败.length);
   }
 
   async function 撤销() {
@@ -110,8 +112,8 @@ export default function ProposalBatch({ proposals, 记号前缀, 报 }: { propos
     } finally {
       set忙(null);
     }
-    set看回执(false);
-    if (成) message.success(`已撤销 ${成} 项，回到确认之前`);
+    // 撤成的那几项原地回到「待确认」，不再弹提示；有没撤成的，回执摊开，原因在各自那一行上
+    set看回执(成 < 这批.length);
   }
 
   if (在.length === 0) return null;
@@ -154,6 +156,11 @@ export default function ProposalBatch({ proposals, 记号前缀, 报 }: { propos
         <div className="pbat-h">
           <span className="prop-tag">AI 草稿</span>
           <span className="pbat-h-t">待确认 {待.length} 项</span>
+        </div>
+      )}
+      {没写 > 0 && 有待 && (
+        <div className="prop-err" role="alert">
+          {没写} 项没写进去，原因写在卡上
         </div>
       )}
       {proposals.map((p, i) => {

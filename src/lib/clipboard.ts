@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback } from "react";
-import { App } from "antd";
 
 /**
  * 复制到剪贴板。原来十处各写一份，一半没接失败：没授权、窗口没焦点、非 https 时
@@ -45,13 +44,33 @@ function 老办法复制(text: string): boolean {
   }
 }
 
-/** 复制并提示一句：成了说 成功，不成说 失败（各处可以给自己的说法）。函数引用稳定，可以放进依赖数组 */
+/**
+ * 在刚点的那颗键正上方浮一句（原型 g.save / g.notice：反馈在原处，不弹顶部提示）。
+ * 成了停 1.4 秒、没成停 4 秒（和 SaveButton 一样长，没成要读原因）。读屏：成了 role=status，没成 role=alert。
+ * 找不到刚点的键（焦点在 body 上）就浮在窗口下方正中。样式在 globals.css 的 .copy-tip（动效走令牌）。
+ */
+function 原处说一句(话: string, 成了: boolean, 键: Element | null) {
+  if (typeof document === "undefined" || !document.body) return;
+  document.querySelectorAll(".copy-tip").forEach((x) => x.remove());
+  const 签 = document.createElement("div");
+  签.className = `copy-tip${成了 ? "" : " is-bad"}`;
+  签.setAttribute("role", 成了 ? "status" : "alert");
+  签.textContent = 话;
+  const 框 = 键 && 键 !== document.body ? 键.getBoundingClientRect() : null;
+  if (框 && 框.width > 0) {
+    签.style.left = `${Math.round(框.left + 框.width / 2)}px`;
+    签.style.top = `${Math.max(8, Math.round(框.top - 6))}px`;
+  } else 签.classList.add("is-free");
+  (键?.closest('[role="dialog"]') ?? document.body).appendChild(签);
+  setTimeout(() => 签.remove(), 成了 ? 1400 : 4000);
+}
+
+/** 复制并说一句：成了说 成功，不成说 失败（各处可以给自己的说法），话浮在刚点的那颗键上方。函数引用稳定，可以放进依赖数组 */
 export function useCopy() {
-  const { message } = App.useApp();
   return useCallback(async (text: string, 成功: string, 失败 = 复制失败文案) => {
+    const 键 = typeof document === "undefined" ? null : document.activeElement;
     const ok = await 复制文字(text);
-    if (ok) message.success(成功);
-    else message.error(失败);
+    原处说一句(ok ? 成功 : 失败, ok, 键);
     return ok;
-  }, [message]);
+  }, []);
 }

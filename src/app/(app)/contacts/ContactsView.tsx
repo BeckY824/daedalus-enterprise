@@ -14,6 +14,7 @@ import DataList, { type 列 } from "@/components/DataList";
 import ContactForm from "../customers/[id]/ContactForm";
 import { deleteUnassignedContact, restoreContact } from "../customers/[id]/actions";
 import { showUndo } from "@/components/UndoBar";
+import FlipRows from "@/components/FlipRows";
 import { avatarColor, initial, AVATAR_TEXT, 成员选项 } from "@/lib/utils";
 import { useBusiness } from "@/lib/business-client";
 
@@ -207,6 +208,8 @@ export default function ContactsView({
 
       {/* 服务端那一趟在路上：表不转圈（行已经按字先筛好了），表格淡一点说明还在核对（搜索框不淡，人还在打字） */}
       <div className={`ct-list${pending ? " ct-wait" : ""}`} aria-busy={pending || undefined}>
+      {/* ls.ct.search「改后」：边打字边筛，留下的行从原位置滑到新位置（FLIP），不是整表一跳；减弱动态 / 行多直接换 */}
+      <FlipRows>
       <DataList<Row>
         // 关系、负责人、归属是在本地筛的：拿取回来的行数比，筛完行变少不算截断（J-015）
         截断={{ 总数, 取回: 全部行.length }}
@@ -272,6 +275,7 @@ export default function ContactsView({
           </Space>
         }
       />
+      </FlipRows>
       </div>
 
       <ContactForm

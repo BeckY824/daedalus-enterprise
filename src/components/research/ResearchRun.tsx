@@ -14,7 +14,6 @@
  */
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { App } from "antd";
 import { useCopy } from "@/lib/clipboard";
 import ResearchCard from "./ResearchCard";
 import { useJob, clearJob, getJob } from "@/lib/ai-jobs";
@@ -231,20 +230,21 @@ function Confirm({ company, onStart, onCancel }: { company: string; onStart: () 
 
 /** 跑完以后的按钮。所有写库都是人点的（AI 不自己改数据） */
 function Done({ s, customer, on记跟进 }: { s: 背调状态; customer?: { id: string; name: string }; on记跟进?: () => void }) {
-  const { message } = App.useApp();
   const [存到, set存到] = useState<{ id: string; name: string } | null>(null);
   const [开存, set开存] = useState(false);
   const [忙, set忙] = useState(false);
+  /** 没存上的原因：就地写在按钮下面（原型 g.save：不弹顶部提示，存成了按钮自己变「✓ 已存进」） */
+  const [错, set错] = useState("");
 
   const 拷 = useCopy();
   const 复制 = () => 拷(报告文本(s), "报告已复制");
   const 存给 = async (c: { id: string; name: string }) => {
     set忙(true);
+    set错("");
     const r = await 存背调到客户(c.id, s).finally(() => set忙(false));
-    if (!r.ok) return void message.error(r.error);
+    if (!r.ok) return void set错(r.error);
     set存到(c);
     set开存(false);
-    message.success(`已存进「${c.name}」的跟进记录`);
   };
 
   return (
@@ -277,6 +277,11 @@ function Done({ s, customer, on记跟进 }: { s: 背调状态; customer?: { id: 
           复制报告
         </button>
       </div>
+      {错 && (
+        <p className="rs-err" role="alert">
+          没存上：{错}
+        </p>
+      )}
       {开存 && !存到 && <SavePicker s={s} onPick={存给} onCreated={(c) => { set存到(c); set开存(false); }} />}
     </>
   );
@@ -287,7 +292,6 @@ function Done({ s, customer, on记跟进 }: { s: 背调状态; customer?: { id: 
  * **不自己猜着合并**——挂错客户比没挂更糟。新建时把查到的国家、邮箱、电话填好，人可以改。
  */
 function SavePicker({ s, onPick, onCreated }: { s: 背调状态; onPick: (c: { id: string; name: string }) => void; onCreated: (c: { id: string; name: string }) => void }) {
-  const { message } = App.useApp();
   const 外贸 = useBusiness().template === "trade";
   const [像的, set像的] = useState<{ id: string; name: string }[] | null>(null);
   const [名, set名] = useState(s.目标.name);
@@ -295,6 +299,7 @@ function SavePicker({ s, onPick, onCreated }: { s: 背调状态; onPick: (c: { i
   const [邮箱, set邮箱] = useState("");
   const [电话, set电话] = useState("");
   const [忙, set忙] = useState(false);
+  const [错, set错] = useState("");
   useEffect(() => {
     let 活 = true;
     找同名客户(s.目标.name).then((r) => 活 && set像的(r)).catch(() => 活 && set像的([]));
@@ -310,9 +315,10 @@ function SavePicker({ s, onPick, onCreated }: { s: 背调状态; onPick: (c: { i
 
   const 新建 = async () => {
     set忙(true);
+    set错("");
     const r = await 新建客户并存背调({ name: 名, country: 国家, email: 邮箱, phone: 电话 }, s).finally(() => set忙(false));
-    if (!r.ok) return void message.error(r.error);
-    message.success(`已新建「${名}」并存进报告`);
+    if (!r.ok) return void set错(r.error);
+    // 成了：外面的「存进客户」键变成「✓ 已存进「名」」，不再弹顶部提示
     onCreated({ id: r.id, name: 名 });
   };
 
@@ -339,6 +345,11 @@ function SavePicker({ s, onPick, onCreated }: { s: 背调状态; onPick: (c: { i
           新建客户并存入
         </button>
       </div>
+      {错 && (
+        <p className="rs-err" role="alert">
+          没建成：{错}
+        </p>
+      )}
       <span className="rs-save-hint">
         {/* 认人的规矩和新建客户表单同一条（customers/actions.ts saveCustomer）：外贸三样填一样，别的模版电话必填 */}
         {外贸 ? "电话、WhatsApp、邮箱至少填一个（CRM 靠它认人）。" : "电话必填（CRM 靠它认人）。"}报告会存成这位客户的一条跟进记录，来源链接都在。

@@ -7,7 +7,7 @@ import { BellOutlined } from "@ant-design/icons";
 import { AnimatePresence, motion } from "motion/react";
 import { businessDayjs } from "@/lib/business-clock";
 import { useSystemReducedMotion } from "@/lib/reduced-motion";
-import { 时长 } from "@/lib/motion";
+import { 时长, 曲线, 间隔 } from "@/lib/motion";
 import { 读我的通知, 读未读通知数, 标已读, 全部标已读 } from "@/app/(app)/notice-actions";
 import type { 通知行 } from "@/lib/enterprise/notify";
 
@@ -50,6 +50,8 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
   const [未读, set未读] = useState(初始未读);
   const [开着, set开着] = useState(false);
   const [挂过, set挂过] = useState(false);
+  /** 第几次打开：列表按它换 key，每次打开条目都依次落位一遍（原型 g.notice「改后」） */
+  const [开次, set开次] = useState(0);
   const [行们, set行们] = useState<通知行[] | null>(null);
   const [忙, set忙] = useState(false);
   const [展开的, set展开的] = useState<ReadonlySet<string>>(() => new Set());
@@ -90,6 +92,7 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
   const 打开 = () => {
     set挂过(true);
     set开着(true);
+    set开次((n) => n + 1);
     void 拉();
   };
 
@@ -135,17 +138,23 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
                 全部已读
               </Button>
             }
-            styles={{ wrapper: { width: "min(380px, 100vw)" }, body: { padding: 0 } }}
+            styles={{ wrapper: { width: "min(380px, calc(100vw - 16px))" }, body: { padding: 0 } }}
           >
             {行们 === null ? (
               <p className="notice-empty muted">正在读取…</p>
             ) : 行们.length === 0 ? (
               <p className="notice-empty muted">还没有通知</p>
             ) : (
-              <ul className="notice-list" aria-label="通知列表">
-                <AnimatePresence initial={false}>
-                  {行们.map((r) => (
-                    <motion.li key={r.id} initial={少 ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 少 ? 0 : 时长.base }}>
+              <ul key={开次} className="notice-list" aria-label="通知列表">
+                {/* 打开时条目从右边一点点依次落位（前 6 条错开，再往后同时到，不让人等）；减弱动态只淡入不位移 */}
+                <AnimatePresence initial={!少}>
+                  {行们.map((r, i) => (
+                    <motion.li
+                      key={r.id}
+                      initial={少 ? false : { opacity: 0, x: 10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 少 ? 0 : 时长.base, ease: 曲线.ease, delay: 少 ? 0 : Math.min(i, 6) * 间隔 }}
+                    >
                       <button type="button" className={`notice-item${r.read ? "" : " unread"}`} onClick={() => 点(r)} aria-label={`${r.read ? "" : "未读，"}${r.title}`}>
                         <span className="notice-dot" aria-hidden="true" />
                         <span className="notice-main">

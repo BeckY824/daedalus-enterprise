@@ -7,7 +7,7 @@ import Shortcut from "./Shortcut";
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { App, Select, Input, Checkbox } from "antd";
+import { Select, Input, Checkbox } from "antd";
 import { CheckOutlined, CloseOutlined, RightOutlined } from "@ant-design/icons";
 import { motion } from "motion/react";
 import { applyProposal, undoProposal, type 撤销凭据, type 附件去处 } from "@/app/(app)/dashboard/apply";
@@ -119,7 +119,6 @@ export default function ProposalCard({
   const 企 = useContext(新线索企业);
   /* 三个档案字段叫什么、「职位」那一格有哪些选项，跟着业务配置走（通用版 vs 教培预设） */
   const 字段表 = 可改字段表(b);
-  const { message } = App.useApp();
   const router = useRouter();
   // 企业版新线索卡：默认值和新建向导一致 —— 分配方式按角色默认（只有一种能用就直接选上）、进程默认线索第一步、业务线按国家 / 城市猜
   // 渠道：AI 常只写平台名（「TikTok」），按 apply.ts 落库同一个 认渠道 认出唯一一个就直接预选上；认不出（或对上多个）照原样留给人选
@@ -154,6 +153,9 @@ export default function ProposalCard({
   /** 这一下刚发生：只有刚点的那次落印才「盖下去」、刚撤销的那次才「褪回去」；重挂时都是静止的结果 */
   const [刚, set刚] = useState<"落印" | "撤销" | null>(null);
   const [撤销中, set撤销中] = useState(false);
+  /** 撤销没成的原因 / 名片原图没存全：都写在回执那一行下面，不弹顶部提示 */
+  const [撤错, set撤错] = useState("");
+  const [图错, set图错] = useState("");
   const 根 = useRef<HTMLDivElement>(null);
   /** 这张卡建出来的联系人 / 线索：撤销时连「刚建的」一起忘掉 */
   const 建出的去处 = useRef<附件去处 | null>(null);
@@ -241,26 +243,28 @@ export default function ProposalCard({
       if (!r.ok) 错.push(r.error);
     }
     const 到哪补 = "contactId" in 去处 ? "到客户的联系人上点「附件」补传" : "到线索页编辑这条线索补传";
-    if (错.length === 图们.length) message.warning(`名片照片没存上：${错[0]}。${到哪补}`);
-    else if (错.length) message.warning(`${图们.length} 张名片照片存了 ${图们.length - 错.length} 张，${错.length} 张没存上（${错[0]}）。${到哪补}`);
+    // 写在回执下面（原型 g.notice：不弹顶部提示），人看得见、也知道到哪补
+    if (错.length === 图们.length) set图错(`名片照片没存上：${错[0]}。${到哪补}`);
+    else if (错.length) set图错(`${图们.length} 张名片照片存了 ${图们.length - 错.length} 张，${错.length} 张没存上（${错[0]}）。${到哪补}`);
     router.refresh();
   }
 
-  /** 静默：合并清单一次撤好几张，只在清单上说一句，不每张各弹一次 */
-  async function undo(静默 = false): Promise<boolean> {
+  /** 撤销成了不弹提示：卡片原地褪回「等你确认」就是回答；没撤成，原因写在回执行里（原型 g.undo / g.notice） */
+  async function undo(): Promise<boolean> {
     if (!落印?.撤销) return false;
     set撤销中(true);
+    set撤错("");
     let r: Awaited<ReturnType<typeof undoProposal>>;
     try {
       r = await undoProposal(落印.撤销);
     } catch (e) {
-      message.error(`没撤销成功：${e instanceof Error && e.message ? e.message : "网络或服务出错"}，可以再点一次`);
+      set撤错(`没撤销成功：${e instanceof Error && e.message ? e.message : "网络或服务出错"}，可以再点一次`);
       return false;
     } finally {
       set撤销中(false);
     }
     if (!r.ok) {
-      message.error(r.error);
+      set撤错(r.error);
       return false;
     }
     if (建出的去处.current) 忘掉刚建的(建出的去处.current);
@@ -270,7 +274,6 @@ export default function ProposalCard({
     set刚("撤销");
     set状态("idle");
     if (记号) 清掉建议结果(记号);
-    if (!静默) message.success("已撤销，档案回到确认之前");
     router.refresh();
     return true;
   }
@@ -295,7 +298,7 @@ export default function ProposalCard({
     if (!交句柄) return;
     交句柄(proposal.id, {
       提交: () => (最新.current.能确认 ? 最新.current.提交() : Promise.resolve(false)),
-      撤销: () => 最新.current.undo(true),
+      撤销: () => 最新.current.undo(),
       忽略: () => 最新.current.setState("denied"),
     });
     return () => 交句柄(proposal.id, null);
@@ -330,6 +333,16 @@ export default function ProposalCard({
             查看 <RightOutlined style={{ fontSize: 10 }} />
           </Link>
         </span>
+        {撤错 && (
+          <span className="prop-err prop-err-inline" role="alert">
+            {撤错}
+          </span>
+        )}
+        {图错 && (
+          <span className="prop-err prop-err-inline" role="alert">
+            {图错}
+          </span>
+        )}
       </motion.div>
     );
   }
