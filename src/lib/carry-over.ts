@@ -48,6 +48,11 @@ export type 转走项目预览 = {
   项目数: number;
   项目: { name: string; 客户: string; 负责人?: string }[];
   同事?: { 项目数: number };
+  /**
+   * 转给这位要不要接手人确认（申请移交，P-转-16）：客户页转让框按它写「生效」那一条。
+   * 服务端用的就是 assignSalesOwner 里的同一个判定（转让走交接）；没给 = 不知道，框里写中性说法
+   */
+  要确认?: boolean;
 };
 type 一段 = { 标题: string; 行: string[]; 还有: string };
 

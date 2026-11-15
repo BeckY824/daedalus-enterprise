@@ -38,7 +38,7 @@ const 桩: Plugin = { name: "cust-list-confirm", setup(b) {
     export const deleteCustomers=async(ids)=>{(window.__调??=[]).push(['删',ids]);return window.__删回??{ok:true,deleted:ids.length}};
     export const 删除前清点=async()=>({跟进:6,计划和待办:0,签约:0,签约金额:[],联系人:2,线索:0,进回收站:true,项目:1});
     export const 客户删除预检=async()=>({ok:true});
-    export const 转走项目预览of=async()=>({项目数:1,项目:[{name:'VR 乐园二期'+名,客户:名,负责人:null}]});`);
+    export const 转走项目预览of=async(ids,to)=>({项目数:1,项目:[{name:'VR 乐园二期'+名,客户:名,负责人:null}],...(window.__要确认===undefined?{}:{要确认:typeof window.__要确认==='function'?window.__要确认(to):window.__要确认})});`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 
@@ -64,6 +64,8 @@ beforeAll(async () => {
     const 长='某某超长贸易进出口有限公司'.repeat(6);
     const h={id:'h1',kind:'转让',自己的:false,发起人:'李想',从:'李想',给:'小王',接手人id:'me',客户:[长,'B'+长],客户总数:3,reason:null,状态:'待确认',确认说明:'',我能撤回:false,我能改接手人:false};
     window.__render=()=>root.render(<ConfigProvider locale={zhCN}><App><HandoverPending 等我确认={[h]} 我发起的={[]} 我="me"/></App></ConfigProvider>);
+    // 模拟 router.refresh 之后：这笔已不在等我确认里
+    window.__重画=()=>root.render(<ConfigProvider locale={zhCN}><App><HandoverPending 等我确认={[]} 我发起的={[]} 我="me"/></App></ConfigProvider>);
   `);
   browser = await chromium.launch();
 }, 120_000);
@@ -177,6 +179,7 @@ it("转让三层合一：按钮写全「转让给同事」，一个框里选人�
   for (const w of [1024, 1280, 1366]) {
     const { page, errors } = await 开(列表包, w, "tr.ant-table-row");
     try {
+      await page.evaluate(() => { (window as unknown as { __要确认: unknown }).__要确认 = true; });
       await 勾(page, ["c1", "c2"]);
       expect(await page.locator(".list-sel").innerText()).not.toMatch(/…/);
       await 批量钮(page, /转让给同事$/).click();
@@ -243,5 +246,80 @@ it("确认接手被挡：原因写在横幅里，按钮还在", async () => {
     await page.getByRole("button", { name: /^确认接手$/ }).click();
     await expect.poll(() => page.getByRole("alert").filter({ hasText: "这笔交接已被撤回" }).count()).toBeGreaterThan(0);
     await expect.poll(() => page.getByRole("button", { name: /确认接手$/ }).count()).toBe(1);
+  } finally { await page.close(); }
+});
+
+it("转让框「生效」按服务端判定写（P-转-16）：要确认 / 直接生效 / 取不到写中性说法，不写错", async () => {
+  const { page, errors } = await 开(列表包, 1280, "tr.ant-table-row");
+  try {
+    // 转给小张要确认、小李直接生效（服务端 转让走交接 按人、按勾的客户判）
+    await page.evaluate(() => { (window as unknown as { __要确认: unknown }).__要确认 = (to: string) => to === "u2"; });
+    await 勾(page, ["c1"]);
+    await 批量钮(page, /转让给同事$/).click();
+    const 生效 = () => 框(page).locator(".csq-row").filter({ hasText: "生效" }).innerText();
+    await 框(page).getByRole("combobox", { name: "转给谁" }).fill("小张");
+    await page.keyboard.press("Enter");
+    await expect.poll(生效).toMatch(/接手人确认后生效/);
+    await 框(page).getByRole("combobox", { name: "转给谁" }).fill("小李");
+    await page.keyboard.press("Enter");
+    await expect.poll(生效).toMatch(/马上转到「小李」名下/);
+    await 框(page).getByRole("button", { name: /^取\s?消$/ }).click();
+    // 预览没带「要确认」（取不到）：写中性说法
+    await page.evaluate(() => { (window as unknown as { __要确认: unknown }).__要确认 = undefined; });
+    await 批量钮(page, /转让给同事$/).click();
+    await 框(page).getByRole("combobox", { name: "转给谁" }).fill("小李");
+    await page.keyboard.press("Enter");
+    await expect.poll(生效).toMatch(/以接手人确认为准，或直接生效/);
+    expect(await 生效()).not.toMatch(/马上转到/);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("批量条浮在列表底部（cu.select）：表格不往下挪；条贴可视区底部；滚到底不压最后一行；× 一键清空（三种宽度、超长名）", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    const { page, errors } = await 开(列表包, w, "tr.ant-table-row");
+    try {
+      await page.setViewportSize({ width: w, height: 360 });
+      const 表顶 = () => page.locator(".ant-table").first().evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
+      const 前 = await 表顶();
+      await 勾(page, ["c1", "c2"]);
+      const 条 = page.getByRole("toolbar", { name: "批量操作" });
+      await expect.poll(() => 条.innerText()).toMatch(/2\s*位已选/);
+      expect(await 表顶(), `宽 ${w} 表格不挪`).toBe(前);
+      expect(await 条.evaluate((el) => getComputedStyle(el).position)).toBe("sticky");
+      // 没滚：条在可视区里（贴底），按钮点得到
+      expect(await 条.evaluate((el) => el.getBoundingClientRect().bottom <= window.innerHeight + 0.5), `宽 ${w}`).toBe(true);
+      expect(await 条.evaluate((el) => el.scrollWidth <= el.clientWidth + 1 && el.getBoundingClientRect().right <= window.innerWidth), `宽 ${w}`).toBe(true);
+      // 滚到底：最后一行整行在条上面，不被压
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      const 量 = await page.evaluate(() => {
+        const 行们 = document.querySelectorAll("tr.ant-table-row"); const 末 = 行们[行们.length - 1].getBoundingClientRect();
+        const 条 = document.querySelector('[role="toolbar"][aria-label="批量操作"]')!.getBoundingClientRect();
+        return 末.bottom <= 条.top + 0.5;
+      });
+      expect(量, `宽 ${w} 不压最后一行`).toBe(true);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await 条.getByRole("button", { name: "取消选择" }).click();
+      await expect.poll(() => 条.count()).toBe(0);
+      expect(await page.locator('tr.ant-table-row .ant-checkbox-input:checked').count()).toBe(0);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+it("确认接手后服务端回了一句（部分没转成）：横幅里写出来，刷新后横幅留着、点收起才没", async () => {
+  const { page, errors } = await 开(交接包, 1024, "button");
+  try {
+    await page.evaluate(() => { (window as unknown as { __交接回: unknown }).__交接回 = { ok: true, 客户: 1, 说: "已接手 1 位客户；另有 2 位客户在交接期间已被处理，没转" }; });
+    await page.getByRole("button", { name: /^确认接手$/ }).click();
+    await expect.poll(() => page.getByRole("status").filter({ hasText: "没转" }).count()).toBe(1);
+    // 刷新后这笔已不在「等我确认」里：横幅留着把这句写出来
+    await page.evaluate(() => (window as unknown as { __重画: () => void }).__重画());
+    await expect.poll(() => page.locator("body").innerText()).toMatch(/另有 2 位客户在交接期间已被处理，没转/);
+    expect(await page.locator("body").innerText()).toMatch(/你已确认/);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.getByRole("button", { name: "收起" }).click();
+    await expect.poll(() => page.locator("body").innerText()).not.toMatch(/没转/);
+    expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

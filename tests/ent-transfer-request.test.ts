@@ -39,7 +39,7 @@ vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: a
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
-import { assignSalesOwner, patchCustomer, saveCustomer, deleteCustomers, 撤销改负责人 } from "@/app/(app)/customers/actions";
+import { assignSalesOwner, patchCustomer, saveCustomer, deleteCustomers, 撤销改负责人, 转走项目预览of } from "@/app/(app)/customers/actions";
 import { 待确认的交接, 确认交接, 撤回交接, 拒收交接, 改接手人 } from "@/app/(app)/customers/handover-actions";
 import { 挂起移交作废, 移交作废键, 移交预告键 } from "@/lib/enterprise/handover-expire";
 import { 领取, 分配公海 } from "@/app/(app)/customers/pool-actions";
@@ -91,6 +91,18 @@ afterEach(() => { vi.unstubAllEnvs(); mocks.poolDays = 0; });
 afterAll(async () => { await prisma.$disconnect(); });
 
 describe("负责人本人转客户 = 申请移交", () => {
+  it("转前预览顺带说要不要接手人确认（客户页转让框「生效」那条，P-转-16）：和真转同一个判定", async () => {
+    const a = await 客户(销售.id);
+    // 负责人本人转自己的：要确认，真转也走申请
+    expect(await 转走项目预览of([a.id], 接手.id)).toMatchObject({ 要确认: true });
+    // 转给自己：不用确认
+    expect(await 转走项目预览of([a.id], 销售.id)).toMatchObject({ 要确认: false });
+    // 实线上级转下属的：直接生效
+    当(组长);
+    expect(await 转走项目预览of([a.id], 接手.id)).toMatchObject({ 要确认: false });
+    expect(await assignSalesOwner([a.id], 接手.id)).toMatchObject({ ok: true, updated: 1 });
+  });
+
   it("不当场换；记一笔本人发起的交接；接手人收到「申请移交」、列表里能确认；本人能撤回", async () => {
     const a = await 客户(销售.id);
     const b = await 客户(销售.id);

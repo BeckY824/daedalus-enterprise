@@ -66,6 +66,11 @@ type Props<T> = {
    * 第三个参数是勾中的那几行本身——确认框要写出「是谁」，只有 id 写不出来
    */
   批量?: (选中: string[], 清空: () => void, 选中行: T[]) => React.ReactNode;
+  /**
+   * 批量工具条浮在列表底部（原型 cu.select「改后」）：不插在表格上方、表格不往下挪；条跟着滚动贴在可视区底部，
+   * 但在文档流里占着位置（放在表格后面），滚到底时不压最后一行。默认关：别的列表页照旧插在表格上方。
+   */
+  浮起操作条?: boolean;
   加载中?: boolean;
   /** 点一行去哪。给了就整行可点；点在按钮、链接、勾选框上不算 */
   行链接?: (r: T) => string;
@@ -130,7 +135,7 @@ function 行名(r: object): string | null {
 }
 
 export default function DataList<T extends { id: string }>({
-  页, 列: 全部列, 行, 空库, 空态, 没对上, 筛选, 汇总, 替表格, 批量, 加载中, 行链接, 行点击, 横向, 分页, 截断, 亮, 行类, 不可勾, 排序, 单行 = true, 展开,
+  页, 列: 全部列, 行, 空库, 空态, 没对上, 筛选, 汇总, 替表格, 批量, 浮起操作条 = false, 加载中, 行链接, 行点击, 横向, 分页, 截断, 亮, 行类, 不可勾, 排序, 单行 = true, 展开,
 }: Props<T>) {
   const router = useRouter();
   const 预取 = useHoverPrefetch();
@@ -330,7 +335,7 @@ export default function DataList<T extends { id: string }>({
 
       {替表格 !== undefined ? 替表格 : (<>
       {/* 批量工具条：勾了才出现，而且要说清「已选 N 条」——不说人对不上自己勾了几条 */}
-      {批量 && 选中.length > 0 && (
+      {批量 && !浮起操作条 && 选中.length > 0 && (
         <div className="list-sel">
           <b>已选 {选中.length} 条</b>
           {批量(选中, () => set选中([]), 选中行)}
@@ -407,6 +412,16 @@ export default function DataList<T extends { id: string }>({
                 }
         }
       />
+      {批量 && 浮起操作条 && 选中.length > 0 && (
+        <div className="list-sel list-sel-float" role="toolbar" aria-label="批量操作">
+          {/* 数字换了就换 key：重放一下跳动（.list-sel-n） */}
+          <b><span key={选中.length} className="list-sel-n">{选中.length}</span> 位已选</b>
+          {批量(选中, () => set选中([]), 选中行)}
+          <button type="button" className="list-sel-x list-sel-float-x" aria-label="取消选择" title="取消选择" onClick={() => set选中([])}>
+            ×
+          </button>
+        </div>
+      )}
       </>)}
       {真截断 && (
         <div className="muted" style={{ fontSize: 13, marginTop: 8, textAlign: "right" }}>
