@@ -4827,6 +4827,7 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
   .att-ring-fg { animation-duration: calc(var(--t-morph) * 8); }
 }
 /* 项目组 / 提成分配（dt.team，项目详情）：刚邀请的先摆一行、分配条边输边变 */
+.pd-team-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; min-width: 0; }
 .pd-team-row.is-new { animation: cd-pj-flash-in var(--t) var(--ease); }
 .pd-split { display: flex; width: 100%; height: 10px; margin: 8px 0 6px; border-radius: 999px; overflow: hidden; background: var(--line-soft); }
 .pd-split-seg { flex: 0 0 0%; min-width: 0; transition: flex-basis var(--t-morph) var(--ease); }
@@ -4852,3 +4853,7 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 @keyframes roster-swap-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .pane-roster-cust .roster-row.on { transition: background var(--t) var(--ease); }
 @media (prefers-reduced-motion: reduce) { .roster-swap { animation: none; } }
+/* 整合：从行内样式搬出来的几条（行内样式只减不增） */
+.pd-split-edit-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.pd-split-edit-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.cr-research-none { font-size: var(--fs-note); }

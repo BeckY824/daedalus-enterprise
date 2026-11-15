@@ -269,7 +269,7 @@ export function ProjectTeamCard({
       {组员们.length === 0 && !还没回来.length && <div style={{ color: "var(--text-muted)", marginBottom: 8 }}>还没有拉人进项目组</div>}
       {组员们.map((m) => (
         <div key={m.id} className="pd-team-row-wrap">
-        <div className="pd-team-row" style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, minWidth: 0 }}>
+        <div className="pd-team-row">
           <span style={{ flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={m.name}>{m.name}</span>
           {邀请说法[m.inviteStatus] && <Tag>{邀请说法[m.inviteStatus]}</Tag>}
           <Select
@@ -295,7 +295,7 @@ export function ProjectTeamCard({
       ))}
       {/* 刚邀请 / 刚加的：刷新回来前先摆上（企业版写「已邀请」） */}
       {还没回来.map((x) => (
-        <div key={`new-${x.userId}`} className="pd-team-row is-new" style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, minWidth: 0 }}>
+        <div key={`new-${x.userId}`} className="pd-team-row is-new">
           <span style={{ flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={x.name}>{x.name}</span>
           <Tag role="status">{企业版 ? "已邀请" : "已加进来"}</Tag>
         </div>

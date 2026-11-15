@@ -191,7 +191,7 @@ export function CustomerResearchTag(props: { customerId: string; customerName: s
       <Modal open={开着} title="客户背调" footer={null} width={640} onCancel={() => set开着(false)}>
         {按钮 && <div style={{ marginBottom: 8 }}>{按钮}</div>}
         {区}
-        {!能发起 && !有上次 && <div className="muted" style={{ fontSize: 13 }}>还没有背调记录</div>}
+        {!能发起 && !有上次 && <div className="muted cr-research-none">还没有背调记录</div>}
       </Modal>
   );
   /*
@@ -206,7 +206,7 @@ export function CustomerResearchTag(props: { customerId: string; customerName: s
           {按钮}
         </div>
         <div className="rec-research-body" data-state={状态}>{区}</div>
-        {!能发起 && !有上次 && <div className="muted" style={{ fontSize: 13 }}>还没有背调记录</div>}
+        {!能发起 && !有上次 && <div className="muted cr-research-none">还没有背调记录</div>}
       </Card>
     );
   return (
@@ -233,7 +233,7 @@ export function CustomerResearchCard(props: { customerId: string; customerName: 
         {按钮}
       </div>
       {区}
-      {!能发起 && !有上次 && <div className="muted" style={{ fontSize: 13 }}>还没有背调记录</div>}
+      {!能发起 && !有上次 && <div className="muted cr-research-none">还没有背调记录</div>}
     </div>
   );
 }

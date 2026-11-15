@@ -124,8 +124,8 @@ export function SplitModal({ projectId, t, onClose }: { projectId: string; t: �
         <div style={淡}>项目组里还没有已进组的组员（邀请要对方同意了才算），提成全归组长</div>
       ) : (
         t.组员.map((m) => (
-          <div key={m.userId} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-            <span style={{ flex: "1 1 auto", minWidth: 0, overflowWrap: "anywhere" }}>{m.name}</span>
+          <div key={m.userId} className="pd-split-edit-row">
+            <span className="pd-split-edit-name">{m.name}</span>
             <InputNumber<number> aria-label={`${m.name}的提成比例`} min={0} max={100} precision={2} suffix="%" style={{ width: 120 }}
               value={分[m.userId] ?? 0} onChange={(v) => set分((o) => ({ ...o, [m.userId]: v ?? 0 }))} />
           </div>
