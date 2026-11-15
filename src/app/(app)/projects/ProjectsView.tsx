@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
 import { App, Button, Pagination, Select, Space, Segmented, Tag, Typography, type SelectProps } from "antd";
-import { CloseOutlined, PlusOutlined, SendOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { CloseOutlined, PlusOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { PageHead, CustomerLink, UserCell } from "@/components/ui";
 import DataList, { type 列 } from "@/components/DataList";
 import ListSearch from "@/components/ListSearch";
@@ -290,15 +290,7 @@ export default function ProjectsView({
   const 领了再看 = (r: { pooled: boolean }) => (r.pooled ? "领取后可见" : "无权查看");
 
   const 分给了 = (r: Extract<自动分配结果, { ok: true }>) => (项目页分 ? `已分给 ${r.接手人}` : `已分给 ${r.接手人}（本月已分 ${r.已分} / 配额 ${r.配额 ?? "不限"}）`);
-  // 页头「分配」：分配在列表的每行和勾选里做，看板上点它先切到列表
-  const 去分配 = () => {
-    // 客户页看板视图（第 3 批）：临时切到项目列表，不动客户页记的「列表 / 看板」
-    if (看法 !== "列表") {
-      if (客户页) set临时列表(true);
-      else 换看法("列表");
-    }
-    message.info("勾选要分的线索点「自动分配」，或点行末的「分配」指定接手人");
-  };
+  // 页头 / 客户页看板筛选行那颗只带路的「分配」去掉（原型 pr.guide，11-15）：分配入口在列表每行末尾和勾选后的「自动分配」
 
   async function 自动分(r: 项目行) {
     try {
@@ -490,12 +482,10 @@ export default function ProjectsView({
     </Space>
   </>);
 
-  const 有分配钮 = 项目页分 && 能自动分配;
   const 有分出去钮 = (新线索 || 项目页分) && 线索分配开着;
   /** 项目专用的几颗按钮：项目页在页头；客户页看板视图在筛选行右端（C17 / C4；11-12 起新增项目挪进客户页页头「新建 ▾」） */
   const 项目按钮 = (
     <>
-      {有分配钮 && <Button icon={<SendOutlined />} onClick={去分配}>分配</Button>}
       {有分出去钮 && <AssignedOutButton />}
       {/* 客户页看板视图的离职交接在客户页页头（C15），这里不再摆一个 */}
       {!新线索 && !客户页 && 待交接 != null && <Link href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>}
@@ -537,7 +527,7 @@ export default function ProjectsView({
       {进筛选行 ? (
         工具位 && createPortal(<>{回到看板}{项目按钮}</>, 工具位)
       ) : 客户页 ? (
-        (临时列表 || 有分配钮 || 有分出去钮) && (
+        (临时列表 || 有分出去钮) && (
           <div className="cust-board-tool">
             <Space wrap>
               {回到看板}

@@ -387,13 +387,11 @@ it("客户页看板（每列）不动地址栏上客户列表的页码（审查 
   } finally { await page.close(); }
 });
 
-it("客户页看板视图点「分配」临时切成项目列表：表头排序留在客户页、客户那一行筛选带着、回第一页（审查 3）", async () => {
+it("客户页看板视图筛到线索、能分配：筛选行不再摆只带路的「分配」（原型 pr.guide，11-15），「我分出去的」照留", async () => {
   const { page, errors } = await 打开(false, 1280, true, true, { 看板: true, 客户页: true, phase: "线索", 查询: "?keyword=abc&phase=%E7%BA%BF%E7%B4%A2&page=3" });
   try {
-    await page.locator(".cust-board-tool").getByRole("button", { name: /分配/ }).first().click();
-    await page.locator("thead th", { hasText: "负责人" }).first().click();
-    const 去 = await 去了(page);
-    expect(去.at(-1)).toBe("/customers?keyword=abc&phase=%E7%BA%BF%E7%B4%A2&sort=owner-asc");
+    await page.locator(".cust-board-tool").getByRole("button", { name: /我分出去的/ }).waitFor();
+    expect(await page.locator(".cust-board-tool").getByRole("button", { name: /^(send )?分配$/ }).count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -428,18 +426,14 @@ it("宽屏五列放得下的时候不出「还有 N 列」也不渐隐", async (
   await page.close();
 });
 
-it("企业版项目页阶段筛到「线索」（11-01 会议 §5）：页头有「分配」「我分出去的」、每行能分；不显示配额字样", async () => {
+it("企业版项目页阶段筛到「线索」（11-01 会议 §5）：页头有「我分出去的」、每行能分；不显示配额字样；只带路的「分配」已去掉（pr.guide）", async () => {
   for (const w of [1024, 1366]) {
     const { page, errors } = await 打开(false, w, true, true, { phase: "线索" });
-    const 分配钮 = page.getByRole("button", { name: /^send 分配$|^分配$/ });
-    expect(await 分配钮.count()).toBe(1);
+    // 原型 pr.guide（11-15）：页头那颗只带路的「分配」去掉，分配入口在每行末尾和勾选后的「自动分配」
+    expect(await page.getByRole("button", { name: /^send 分配$|^分配$/ }).count()).toBe(0);
     expect(await page.getByRole("button", { name: /我分出去的/ }).count()).toBe(1);
-    const box = (await 分配钮.boundingBox())!;
-    expect(box.x + box.width).toBeLessThanOrEqual(w);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    // 看板上点「分配」：切到列表、给一句怎么分
-    await 分配钮.click();
-    await page.getByText("勾选要分的线索", { exact: false }).waitFor();
+    if (!(await page.getByRole("button", { name: `分配 ${长名}1`, exact: true }).count())) await page.getByText("列表", { exact: true }).click();
     await page.getByRole("button", { name: `分配 ${长名}1`, exact: true }).waitFor();
     // 自动分配：提示只写分给了谁，不写配额
     await page.getByRole("button", { name: `自动分配 ${长名}1` }).click();
@@ -476,16 +470,16 @@ it("新线索页照旧：自动分配的提示带配额", async () => {
 it("新线索页·单条自动分配有项目一起转（P-转-07）：先列出来，取消就不分；点「一起转」才分", async () => {
   const { page, errors } = await 打开(true, 1280, true);
   await page.evaluate(() => { (window as unknown as { __带走: unknown }).__带走 = { 项目数: 1, 项目: [{ name: "公海的项目", 客户: "甲公司", 负责人: "线索公海" }] }; });
-  const 框 = page.locator(".ant-modal-confirm");
+  const 框 = page.getByRole("dialog").filter({ hasText: "会一起转走" });
   const 调了 = (n: string) => page.evaluate((名) => ((window as unknown as { __调?: unknown[][] }).__调 ?? []).filter((x) => x[0] === 名), n);
   await page.getByRole("button", { name: `自动分配 ${长名}1` }).click();
-  await 框.locator(".ant-modal-confirm-title", { hasText: "会一起转走的 1 个项目" }).waitFor();
+  await 框.getByText("会一起转走的 1 个项目").first().waitFor();
   expect((await 调了("分配带走的项目"))[0][2]).toBeUndefined();
-  await 框.locator(".ant-btn:not(.ant-btn-primary)").click();
-  await 框.waitFor({ state: "detached" });
+  await 框.getByRole("button", { name: /^取\s?消$/ }).click();
+  await 框.waitFor({ state: "hidden" });
   expect(await 调了("自动分配线索")).toEqual([]);
   await page.getByRole("button", { name: `自动分配 ${长名}1` }).click();
-  await 框.locator(".ant-btn-primary").click();
+  await 框.getByRole("button", { name: "一起转" }).click();
   await page.waitForFunction(() => ((window as unknown as { __调?: unknown[][] }).__调 ?? []).some((x) => x[0] === "自动分配线索"));
   expect(errors).toEqual([]);
   await page.close();
@@ -527,13 +521,12 @@ it("客户页看板视图给了筛选行那一格（board-slot）：「分配」
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
-  // 筛到线索阶段、能分配：「分配」「我分出去的」也在那一格；点「分配」临时切成列表，「回到看板」接着在那一格
+  // 筛到线索阶段、能分配：「我分出去的」也在那一格；只带路的「分配」去掉了（pr.guide，11-15）
   const 分 = await 打开(false, 1280, true, true, { 看板: true, 客户页: true, phase: "线索", 工具位: true });
   try {
     expect(await 分.page.locator(".cust-board-tool").count()).toBe(0);
     expect(await 分.page.locator("#slot").getByRole("button", { name: /我分出去的/ }).count()).toBe(1);
-    await 分.page.locator("#slot").getByRole("button", { name: /分配/ }).first().click();
-    await 分.page.locator("#slot").getByRole("button", { name: "回到看板" }).waitFor();
+    expect(await 分.page.locator("#slot").getByRole("button", { name: /^(send )?分配$/ }).count()).toBe(0);
     expect(分.errors).toEqual([]);
   } finally { await 分.page.close(); }
 });

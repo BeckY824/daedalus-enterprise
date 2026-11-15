@@ -4354,3 +4354,19 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .cr-saved { font-size: var(--fs-note); color: var(--text-muted); white-space: nowrap; }
 .cr-miss { font-size: var(--fs-note); color: var(--danger-text); white-space: nowrap; }
 @media (max-width: 767px) { .cr-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* ===== 客户列表（PR7a，原型 cu.transfer / cu.handover / cu.delete）：类名一律 cu- 打头 ===== */
+.cu-tr-who { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; min-width: 0; }
+.cu-tr-who .ant-select { flex: 1; min-width: 0; }
+.cu-tr-hint { flex: none; font-size: var(--fs-note); color: var(--text-muted); }
+.cu-tr-skel { color: var(--text-muted); }
+.cu-carry-list { margin: 6px 0 0; padding-inline-start: 18px; max-height: 180px; overflow-y: auto; font-size: var(--fs-note); color: var(--ink-soft); }
+.cu-carry-list li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cu-carry-more { margin-top: 4px; font-size: var(--fs-note); color: var(--text-muted); }
+.cu-ho-what { margin-top: 4px; color: var(--ink-soft); overflow-wrap: anywhere; }
+.cu-ho-err { margin-top: 6px; color: var(--danger-text); overflow-wrap: anywhere; }
+.cu-ho-done { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: var(--r-tag);
+  background: var(--success-bg); color: var(--success-text); font-size: var(--fs-note); font-weight: 500;
+  animation: cu-pop var(--t) var(--ease-spring); }
+@keyframes cu-pop { from { opacity: 0; scale: 0.9; } to { opacity: 1; scale: 1; } }
+@media (prefers-reduced-motion: reduce) { .cu-ho-done { animation: none; } }
