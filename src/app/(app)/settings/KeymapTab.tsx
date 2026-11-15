@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState } from "react";
 import Shortcut, { useModifierKey } from "@/components/Shortcut";
 
 /**
@@ -16,6 +17,9 @@ const 组: { 名: string; 项: { 键: string[]; 说明: string }[] }[] = [
     项: [
       { 键: ["⌘", "K"], 说明: "跳到任意一页；已经在有输入框的页面上时，光标回到输入框" },
       { 键: ["⌘", "N"], 说明: "在当前页新建——它点的就是页头右上角那个主按钮" },
+      // 原型 st.keys：补上漏的两个（AiDock.tsx ⌘J、lib/middle-pane.ts ⌘\）。⌘, 是桌面端菜单，企业版网页没有，不列
+      { 键: ["⌘", "J"], 说明: "打开 / 收起右边的 AI 栏" },
+      { 键: ["⌘", "\\"], 说明: "收起 / 放出中间那一栏（名单）" },
     ],
   },
   {
@@ -30,8 +34,27 @@ const 组: { 名: string; 项: { 键: string[]; 说明: string }[] }[] = [
   },
 ];
 
+/** 这一下按的是不是这一行（⌘ 认 Meta 或 Ctrl） */
+function 按中(键: string[], e: KeyboardEvent): boolean {
+  const 要命令 = 键.includes("⌘") || 键.includes("Ctrl");
+  if (要命令 !== (e.metaKey || e.ctrlKey)) return false;
+  if (键.includes("Shift") !== e.shiftKey) return false;
+  const 主 = 键[键.length - 1];
+  return 主.length === 1 ? e.key.toLowerCase() === 主.toLowerCase() || (主 === "\\" && e.code === "Backslash") : e.key === 主;
+}
+
 export default function KeymapTab() {
   const modifier = useModifierKey();
+  // 原型 st.keys：按下时对应那一行亮一下（不拦按键，照常生效）
+  const [亮, set亮] = useState<{ 行: string; 次: number } | null>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const 中 = 组.flatMap((g) => g.项).find((x) => 按中(x.键, e));
+      if (中) set亮((p) => ({ 行: 中.键.join("+") + 中.说明, 次: (p?.次 ?? 0) + 1 }));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   return (
     <div className="set-body">
       {组.map((g) => {
@@ -41,7 +64,10 @@ export default function KeymapTab() {
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>{g.名}</div>
             <div className="keymap">
               {项.map((x) => (
-                <div key={x.键.join("+") + x.说明} className="keymap-row">
+                <div
+                  key={x.键.join("+") + x.说明 + (亮?.行 === x.键.join("+") + x.说明 ? 亮.次 : "")}
+                  className={`keymap-row${亮?.行 === x.键.join("+") + x.说明 ? " keymap-hit" : ""}`}
+                >
                   <div className="keymap-keys">
                     {x.键.map((k) => (
                       <kbd key={k}>{k === "⌘" ? modifier.replace("+", "") : k}</kbd>

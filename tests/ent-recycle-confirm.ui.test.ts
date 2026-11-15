@@ -61,7 +61,7 @@ it("关开关：先弹后果确认框；点「再想想」不存、开关还开�
     await 框.waitFor();
     expect(await 框.innerText()).toContain("关掉后客户不再自动回收");
     expect(await 框.innerText()).not.toContain("超时回收」开着");
-    await 框.getByRole("button", { name: "再想想" }).click();
+    await 框.getByRole("button", { name: /^取\s?消$/ }).click();
     await 框.waitFor({ state: "detached" });
     expect(await 存了的(page)).toEqual([]);
     expect(await 开关(page).isChecked()).toBe(true);
@@ -97,7 +97,7 @@ it("开着时改天数：先数会变几位再弹确认框；点「再想想」�
     expect(字).toContain("约 12 位客户的状态会变，其中约 3 位会到期自动进客户公海");
     // 预览交的就是要存的那份
     expect((await 调用们(page)).filter((c) => c[0] === "预览客户回收").map((c) => (c[1].三态 as { 内贸: { 沉睡: number } }).内贸.沉睡)).toEqual([60]);
-    await 框.getByRole("button", { name: "再想想" }).click();
+    await 框.getByRole("button", { name: /^取\s?消$/ }).click();
     await 框.waitFor({ state: "detached" });
     expect(await 存了的(page)).toEqual([]);
 
@@ -169,7 +169,7 @@ it("确认框在 Windows 常见宽度（1024 / 1280 / 1366）不溢出、页面�
       expect(r.右).toBeLessThanOrEqual(w);
       expect(r.超出).toBe(false);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
-      await 框.getByRole("button", { name: "再想想" }).click();
+      await 框.getByRole("button", { name: /^取\s?消$/ }).click();
       await 开关(page).click();
       const 关框 = page.getByRole("dialog", { name: "关掉客户回收？" });
       await 关框.waitFor();

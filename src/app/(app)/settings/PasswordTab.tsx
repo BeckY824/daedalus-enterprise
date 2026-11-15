@@ -3,6 +3,8 @@
 import { Table, Button, Form, Input, App, Alert, Typography } from "antd";
 import { useRouter } from "next/navigation";
 import { dayjs } from "@/lib/utils";
+import SaveButton from "@/components/SaveButton";
+import { isFormValidationError } from "@/lib/form-validation";
 import { changeMyPassword, 退出这台机器, type 机器 } from "./actions";
 
 /**
@@ -62,13 +64,6 @@ export default function PasswordTab({ 机器 }: { 机器: 机器[] | null }) {
         form={pwdForm}
         layout="vertical"
         style={{ maxWidth: 380 }}
-        onFinish={async (v) => {
-          const res = await changeMyPassword(v.oldPwd, v.newPwd);
-          if (res.ok) {
-            message.success("密码已更新");
-            pwdForm.resetFields();
-          } else message.error(res.error);
-        }}
       >
         <Form.Item name="oldPwd" label="原密码" rules={[{ required: true, message: "请输入原密码" }]}>
           <Input.Password />
@@ -99,9 +94,23 @@ export default function PasswordTab({ 机器 }: { 机器: 机器[] | null }) {
         >
           <Input.Password />
         </Form.Item>
-        <Button type="primary" htmlType="submit">
+        {/* 原型 st.pwd：写明保存后其他设备会退出（企业版改密码也会让别处下线，actions.ts changeMyPassword）；按钮内转圈防连点、成没成写在按钮上 */}
+        {!机器 && <p className="set-pwd-note">保存后，你在其他浏览器和设备上的登录会退出，要用新密码重新登录。</p>}
+        <SaveButton
+          已保存="密码已更新"
+          做={async () => {
+            try {
+              const v = await pwdForm.validateFields();
+              const res = await changeMyPassword(v.oldPwd, v.newPwd);
+              if (res.ok) pwdForm.resetFields();
+              return res;
+            } catch (error) {
+              return { ok: false, error: isFormValidationError(error) ? "先把标红的格填好" : "没保存上，请稍后再试" };
+            }
+          }}
+        >
           保存
-        </Button>
+        </SaveButton>
       </Form>
       {机器 && (
         <div style={{ marginTop: 32, maxWidth: 620 }}>

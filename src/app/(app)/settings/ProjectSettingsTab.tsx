@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { App, Button, Card, Checkbox, Input, InputNumber, Popconfirm, Radio, Segmented, Select, Space, Switch, Tag } from "antd";
+import { App, Button, Card, Checkbox, Input, InputNumber, Radio, Segmented, Select, Space, Switch, Tag } from "antd";
 import { 加组员角色, 改组员角色, 加项目异常类别, 改项目异常类别, 改组织规则, 预览超时回收 } from "@/app/(app)/projects/actions";
 import { 上限最大, 时长最大, 字数上限最大, 默认起算日, 是不限, 到上限的人数, 推进权限们, type 推进权限, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
 import BusinessDatePicker from "@/components/BusinessDatePicker";
+import { useConsequence } from "@/components/ConsequenceDialog";
+import InlineConfirm from "@/components/InlineConfirm";
 import { dayjs } from "@/lib/utils";
 // 这两张卡（超时回收、节点推进）只在企业版出现（组织规则 只有企业版才读），节点按企业版字典列
 import { 企业版字典, 字典of, 本套节点名, 出口叫法上限 } from "@/lib/project/stage-dict";
@@ -243,9 +245,10 @@ function DictCard({
                 <>
                   <Button size="small" type="text" disabled={忙} onClick={() => set改名中({ id: r.id, name: r.name })}>改名</Button>
                   {r.active ? (
-                    <Popconfirm title={`停用「${r.name}」？`} description={停用说明} okText="停用" onConfirm={() => void 跑(() => 改(r.id, { active: false }), "已停用")}>
+                    // 字典停用（原型 st.dict，P-界面-40 原地确认）：按钮自己变成问句，一行后果
+                    <InlineConfirm 问={停用说明} 是="停用" 中性 做={async () => ({ ok: await 跑(() => 改(r.id, { active: false }), "已停用") })}>
                       <Button size="small" type="text" disabled={忙}>停用</Button>
-                    </Popconfirm>
+                    </InlineConfirm>
                   ) : (
                     <Button size="small" type="text" disabled={忙} onClick={() => void 跑(() => 改(r.id, { active: true }), "已启用")}>启用</Button>
                   )}
@@ -354,7 +357,9 @@ function TimeoutCard({
   规则: 组织规则["超时回收"]; 挡: string | null; 范围: 时限范围; 忙: boolean;
   跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
 }) {
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
+  const router = useRouter();
+  const [问后果, 后果框] = useConsequence();
   const [天数, set天数] = useState<Record<string, number | null>>(规则.节点天数);
   // 外贸那套（C7）：空着 = 和内贸一样
   const [外贸天数, set外贸天数] = useState<Record<string, number | null>>(规则.外贸节点天数 ?? {});
@@ -374,16 +379,39 @@ function TimeoutCard({
       return r;
     });
     if (!看.个数) return void (await 存());
-    modal.confirm({
-      title: `按新设置，现在会有 ${看.个数} 个项目回到线索公海`,
-      content: 看.团队
-        ? "这些项目在进程上已经超过处理时长没跟进。确认后你名下的马上回到公海；别人名下的在他下次打开首页或项目列表时回到公海。负责人都会收到提醒。"
-        : "这些项目在进程上已经超过处理时长没跟进。确认后它们马上回到公海，负责人会收到提醒。",
-      okText: "确认保存",
-      cancelText: "再想想",
-      onOk: () => void 存(),
+    // PR9：换成后果框，写明多少个回公海、谁会收到提醒
+    void 问后果({
+      题: `按新设置，现在会有 ${看.个数} 个项目回到线索公海`,
+      后果: [
+        { 标: "回公海", 级: "警", 话: 看.团队
+          ? "这些项目在进程上已经超过处理时长没跟进。确认后你名下的马上回到公海；别人名下的在他下次打开首页或项目列表时回到公海"
+          : "这些项目在进程上已经超过处理时长没跟进，确认后它们马上回到公海" },
+        { 标: "提醒", 话: "负责人都会收到提醒" },
+      ],
+      是: "确认保存",
+      做: async () => void (await 存()),
     });
   };
+
+  /**
+   * 关开关（PR10b ⑤）：组织规则开关按 P-界面-40 用后果框确认，原来一点就关、全员的项目从此不再超时回收。
+   * 不确认不生效：取消了开关还是开着（Switch 受控，checked 跟着服务端的 规则.开）
+   */
+  const 关掉 = () =>
+    问后果({
+      题: "关掉超时回收？",
+      后果: [
+        { 标: "全员", 级: "警", 话: "所有人的线索、商机项目不再按进程时长自动回线索公海，也不再发超时提醒" },
+        { 标: "不变", 话: "已经回到公海的项目不会回来；各进程填的天数留着，再打开照旧按它算" },
+        { 标: "之后", 话: "记沟通不再必须填下一步时间" },
+      ],
+      是: "确认关掉",
+      做: async () => {
+        const r = await 改组织规则({ 超时回收: { 开: false } });
+        if (r.ok) router.refresh();
+        return r;
+      },
+    });
 
   return (
     <Card
@@ -395,11 +423,12 @@ function TimeoutCard({
             aria-label="超时回收"
             checked={规则.开}
             disabled={!!挡 || !全能 || 忙}
-            onChange={(开) => void (开 ? 确认后存({ 超时回收: { 开 } }, "已开超时回收") : 跑(() => 改组织规则({ 超时回收: { 开 } }), "已关超时回收"))}
+            onChange={(开) => void (开 ? 确认后存({ 超时回收: { 开 } }, "已开超时回收") : 关掉())}
           />
         </Space>
       }
     >
+      {后果框}
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
         开了以后，线索、商机阶段的项目在一个进程上超过处理时长还没跟进，自动回到线索公海，负责人会收到提醒；记沟通时填了下一步时间的，过了那天还没跟进也会回收。项目上记沟通要填下一步时间。{默认天数 ? `没填天数的进程按 ${默认天数} 天算` : "没填天数的进程不回收"}，订单阶段不回收。默认关。
         内贸、外贸项目各按各的时长算（按项目的业务线）；外贸空着 = 和内贸一样。业务线选「暂不分配」的、老项目没填业务线的负责人也没设的，按内贸算。
@@ -633,6 +662,7 @@ function BlockerReasonsCard({
   const [新名, set新名] = useState("");
   const [改名中, set改名中] = useState<{ id: string; name: string } | null>(null);
   const [并入, set并入] = useState<{ 从: string; 到?: string } | null>(null);
+  const [问后果, 后果框] = useConsequence();
   const 现有 = 们.filter((r) => !r.并入);
   const 待审 = 现有.filter((r) => r.status === "待审核").length;
   const 名of = new Map(们.map((r) => [r.id, r.name]));
@@ -642,6 +672,8 @@ function BlockerReasonsCard({
     if (await 跑(() => 新增原因Action(n), "已添加")) set新名("");
   };
   return (
+    <>
+    {后果框}
     <Card
       title="阻碍原因"
       extra={挡 ? <span style={{ color: "var(--text-muted)" }}>{挡}</span> : 待审 > 0 && <Tag color="warning">{待审} 个待审核</Tag>}
@@ -688,9 +720,9 @@ function BlockerReasonsCard({
                     )}
                     <Button size="small" type="link" disabled={忙 || !现有.some((x) => x.id !== r.id && x.status === "启用")} onClick={() => set并入({ 从: r.id })}>合并到…</Button>
                     {r.用了 === 0 && (
-                      <Popconfirm title={`删除「${r.name}」？`} okText="删除" cancelText="不删" onConfirm={() => void 跑(() => 删原因Action(r.id), "已删除")}>
+                      <InlineConfirm 问="没有卡点用它，删了就没了" 做={async () => ({ ok: await 跑(() => 删原因Action(r.id), "已删除") })}>
                         <Button size="small" type="link" danger disabled={忙}>删除</Button>
-                      </Popconfirm>
+                      </InlineConfirm>
                     )}
                   </>
                 )}
@@ -707,7 +739,20 @@ function BlockerReasonsCard({
                 />
                 <Button
                   size="small" type="primary" disabled={忙 || !并入.到}
-                  onClick={async () => { if (await 跑(() => 合并原因Action(r.id, 并入.到!), `已合并到「${名of.get(并入.到!) ?? ""}」`)) set并入(null); }}
+                  onClick={async () => {
+                    // 卡点原因合并（原型 st.merge，P-界面-40 后果框）：写明几条卡点会改、拆不回
+                    const 到 = 并入.到!;
+                    const 到名 = 名of.get(到) ?? "";
+                    if (await 问后果({
+                      题: `把「${r.name}」合并到「${到名}」`,
+                      后果: [
+                        { 标: "会改", 级: "警", 话: r.用了 ? `${r.用了} 条卡点的原因改成「${到名}」` : "现在没有卡点用它" },
+                        { 标: "拆不回", 级: "危", 话: `合并后「${r.name}」不再单独出现，之后也拆不回来` },
+                      ],
+                      是: "合并",
+                      做: async () => ({ ok: await 跑(() => 合并原因Action(r.id, 到), `已合并到「${到名}」`) }),
+                    })) set并入(null);
+                  }}
                 >合并</Button>
                 <Button size="small" disabled={忙} onClick={() => set并入(null)}>取消</Button>
               </div>
@@ -725,6 +770,7 @@ function BlockerReasonsCard({
         </Space.Compact>
       )}
     </Card>
+    </>
   );
 }
 
