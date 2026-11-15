@@ -6,7 +6,7 @@ import { loadCustomerFeed } from "./follow-history-actions";
 import { CustomerResearchCard, CustomerResearchTag } from "./useCustomerResearch";
 
 
-import { Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { 只读上下文, 只能看的格上下文 } from "./read-only";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -30,6 +30,7 @@ import { motion, AnimatePresence } from "motion/react";
 import CopyValue from "@/components/CopyValue";
 import InlineConfirm from "@/components/InlineConfirm";
 import { useConsequence } from "@/components/ConsequenceDialog";
+import TransferBox, { type 转让结果 } from "./TransferBox";
 import { showUndo } from "@/components/UndoBar";
 import { 跟进类型们, FOLLOW_TYPE_MAP, FOLLOW_STATUSES, DECISION_STATUSES, FOLLOW_RECORD_STATUS_COLOR } from "@/lib/constants";
 import { 成员选项, dayjs, duration, fmtDate, fmtDateTime, initial, avatarColor, AVATAR_TEXT, 独自一人 } from "@/lib/utils";
@@ -71,7 +72,7 @@ import { useWidth } from "@/lib/roster";
 import PaneToggle from "@/components/PaneToggle";
 import { 登记详情名 } from "@/lib/page-rows";
 import Heat, { 冷热说法, 要看冷热 } from "@/components/Heat";
-import { deleteContract, 删签约前清点, assignSalesOwner, 撤销改负责人 } from "../actions";
+import { deleteContract, 删签约前清点, assignSalesOwner, 撤销改负责人, 转走项目预览of } from "../actions";
 import type { RecordProps, FollowUpRow, ContactRow } from "./types";
 import TriStateBar, { TriStateLog } from "./TriStateBar";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
@@ -211,14 +212,14 @@ export default function RecordView({
   const 虚线的 = !全只读话.includes("市场成员");
   const { 曲线, 时长, 间隔 } = useMotionTheme();
   const router = useRouter();
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
   const { 问删除 } = useDeleteCustomers();
   const AI已用完 = useAiOutOfCredits();
   const b = useBusiness();
   // 企业版只用项目（P14 第 6 条）：时间线是各项目沟通记录的汇总，翻页走汇总那条查询
   const history = useFollowHistory(customer.id, followUps, followUpsHasMore, 跟进去处 !== null ? loadCustomerFeed : undefined);
   const { 问怎么拿掉 } = useContactRemoval();
-  const { 先问转走的项目, 问转让原因 } = useTransferConfirm(转让原因);
+  const { 先问转走的项目 } = useTransferConfirm(转让原因);
   const { 问放回公海 } = usePoolReturnConfirm();
   /** 后果框（PR5a）：企业版客户退回公海（dt.pool：后果分条、原因点选、其他原地写） */
   const [问后果, 后果框] = useConsequence();
@@ -234,8 +235,8 @@ export default function RecordView({
   const [建项目开着, set建项目开着] = useState(false);
   /** 企业版页头具名按钮开的框（10-31 改版 R6） */
   const [头部框, set头部框] = useState<客户头部框 | null>(null);
-  /** 「转让」框里挑中的人 */
-  const [转给谁, set转给谁] = useState<string | undefined>();
+  /** 「客户转让」一个框（dt.transfer） */
+  const [转让开, set转让开] = useState(false);
   /** 企业版只用项目：跟进去项目里记，客户页不就地记（第 1、3 条）。跟进去处 = null 是别的版本，照旧 */
   const 去项目跟进 = 摆法.跟进去项目 && 跟进去处 !== null;
   /** 记跟进默认挂的项目：没结束、不在公海的，最近动过的排前面（page.tsx 按 updatedAt 倒序给） */
@@ -451,14 +452,19 @@ export default function RecordView({
   /** 留几秒。和提示条一样长：提示收了，这一条也收 */
   const 留秒 = 5;
 
+  /** 待办被挡的原因：就地写在那一行下面（不弹顶部提示），过几秒自己收 */
+  const [待办错, set待办错] = useState<Record<string, string>>({});
+  const 报待办错 = (id: string, 话: string) => {
+    set待办错((s) => ({ ...s, [id]: 话 }));
+    setTimeout(() => set待办错((s) => { const { [id]: _丢, ...剩 } = s; return 剩; }), 5000);
+  };
   async function 勾待办(t: (typeof tasks)[number], 完成: boolean) {
     const 计时 = 收起计时.current.get(t.id);
     if (计时) clearTimeout(计时);
     收起计时.current.delete(t.id);
     set勾选态((s) => ({ ...s, [t.id]: 完成 }));
     if (完成) set留着((s) => (s.includes(t.id) ? s : [...s, t.id]));
-    else message.destroy(`task-${t.id}`);
-    // 被服务端挡了（权限、这条已经不在了）回 ok:false，不是抛错：照样当没改成，不提示成功（PR10a）
+    // 被服务端挡了（权限、这条已经不在了）回 ok:false，不是抛错：照样当没改成，不提示成功（PR10a）；原因就地写在这一行
     const r = await toggleTask(t.id, 完成).catch(() => ({ ok: false as const, error: "没改成，再试一次" }));
     if (!r.ok) {
       // 勾选回到服务端的样子：勾完成没成 → 不划线、不收起；撤销没成 → 还是已完成，照常过几秒收起
@@ -468,23 +474,25 @@ export default function RecordView({
       });
       if (完成) set留着((s) => s.filter((x) => x !== t.id));
       else 排收起(t.id);
-      message.error(r.error || "没改成，再试一次");
+      报待办错(t.id, r.error || "没改成，再试一次");
       router.refresh();
       return;
     }
     router.refresh();
-    if (!完成) return void message.success(`「${t.title}」已改回未完成`);
-    message.success({
-      key: `task-${t.id}`,
-      duration: 留秒,
-      content: (
-        <span>
-          「{t.title}」已完成
-          <Button type="link" size="small" onClick={() => void 勾待办(t, false)}>
-            撤销
-          </Button>
-        </span>
-      ),
+    if (!完成) return;
+    // 勾完成一步做完（P-界面-40）：底部撤销条，撤销 = 改回未完成
+    showUndo({
+      话: `「${t.title}」已完成`,
+      毫秒: 留秒 * 1000,
+      撤销: async () => {
+        const u = await toggleTask(t.id, false).catch(() => ({ ok: false as const, error: "没改回来，再试一次" }));
+        if (u.ok) {
+          set勾选态((s) => ({ ...s, [t.id]: false }));
+          set留着((s) => s.filter((x) => x !== t.id));
+        }
+        router.refresh();
+        return u;
+      },
     });
     排收起(t.id);
   }
@@ -557,22 +565,15 @@ export default function RecordView({
     if (!res.ok) return void message.error(res.error);
     if (!res.updated) return void message.info(动作 === "放进" ? "已经在公海里了" : "已经被别人领走了");
     const 原 = 动作 === "领取" ? (res.原负责人 ?? []) : [{ id: customer.id, 值: "" }];
-    const key = `pool-${动作}-${customer.id}`;
-    message.success({
-      key,
-      duration: 6,
-      content: (
-        <span>
-          {动作 === "放进" ? (企业 ? "客户已退回公海，原负责人不能再领回来" : "已放回公海，谁都能领") : `已领取，负责人改成你${带走说法(res.带走)}`}
-          <Button type="link" size="small" onClick={async () => {
-            message.destroy(key);
-            const r = await 撤销公海(动作, 原, res.ok ? res.带过来 : undefined, undefined, res.ok ? res.公海项目 : undefined);
-            router.refresh();
-            if (!r.ok) return void message.error(`没能撤销：${r.error}`);
-            message.success("已撤销");
-          }}>撤销</Button>
-        </span>
-      ),
+    // 成了走底部撤销条（PR5a showUndo）：撤销 = 反着做一遍；撤不了原因写在条上
+    showUndo({
+      话: 动作 === "放进" ? "已放回公海，谁都能领" : `已领取，负责人改成你${带走说法(res.带走)}`,
+      毫秒: 6000,
+      撤销: async () => {
+        const r = await 撤销公海(动作, 原, res.ok ? res.带过来 : undefined, undefined, res.ok ? res.公海项目 : undefined);
+        router.refresh();
+        return r;
+      },
     });
   }
 
@@ -644,23 +645,19 @@ export default function RecordView({
   }
 
   /**
-   * 「跟进」菜单里的「转让」（P14 第 3 条）：同客户列表「批量分配」一条路——先列会一起转走的项目、问转让原因、
-   * assignSalesOwner（权限、虚线只读、交接要确认都在服务端挡），转成了提示条上给一次撤销
+   * 「客户转让」（dt.transfer）：选人、一起转走的项目、原因在同一个框里（TransferBox），assignSalesOwner（权限、虚线只读、交接要确认都在服务端挡）。
+   * 回 ok:false = 框里写原因不关框；申请移交回一句话、框里原地说；直接转的给底部撤销条
    */
-  async function 转让给(o: { value: string; label: string }) {
-    if (!(await 先问转走的项目([customer.id], o.value))) return;
-    const 原因 = await 问转让原因(o.label, o.value, 转让要申请);
-    if (原因 === false) return;
+  async function 发转让(o: { value: string; label: string }, 原因: string | null): Promise<转让结果> {
     const res = await assignSalesOwner([customer.id], o.value, 原因);
     router.refresh();
-    if (!res.ok) return void message.error(res.error);
-    // 企业版「交接中」（D10）：负责人还没换，等接手人确认，没有可撤销的
+    if (!res.ok) return { ok: false, error: res.error };
+    // 企业版「交接中」（D10）：负责人还没换，等接手人确认，没有可撤销的——框里原地说一句
     if (res.交接中 !== undefined) {
-      return void (res.交接中
-        ? message.success(res.申请移交 ? `已发起客户转让，等「${o.label}」确认后生效，确认前仍在你名下` : `已发起交接：等 ${o.label} 确认，确认前仍在原负责人名下`)
-        : message.info(res.交接已在路上 ? `这位${b.customer}已在移交中（等对方确认），没再发起` : res.没转 ? `这位${b.customer}刚被别人改了负责人，没转` : res.missing ? `这位${b.customer}已不存在（可能已删除）` : `没有发起新的交接：已归 ${o.label}`));
+      if (res.交接中) return { ok: true, 话: res.申请移交 ? `已发起客户转让，等「${o.label}」确认后生效，确认前仍在你名下` : `已发起交接：等 ${o.label} 确认，确认前仍在原负责人名下` };
+      return { ok: false, error: res.交接已在路上 ? `这位${b.customer}已在移交中（等对方确认），没再发起` : res.没转 ? `这位${b.customer}刚被别人改了负责人，没转` : res.missing ? `这位${b.customer}已不存在（可能已删除）` : `没有发起新的交接：已归 ${o.label}` };
     }
-    if (!res.updated) return void message.info(res.带走?.没转成 || res.没转 ? `这位${b.customer}刚被别人改了负责人，没转` : res.missing ? `这位${b.customer}已不存在（可能已删除）` : `本来就归 ${o.label}`);
+    if (!res.updated) return { ok: false, error: res.带走?.没转成 || res.没转 ? `这位${b.customer}刚被别人改了负责人，没转` : res.missing ? `这位${b.customer}已不存在（可能已删除）` : `本来就归 ${o.label}` };
     // 直接转（实线上级、条线总管理、系统管理员，P-转-16）：底部撤销条，撤销 = 改回原负责人；撤不了原因写在条上
     showUndo({
       话: `已转给 ${o.label}${带走说法(res.带走)}`,
@@ -671,12 +668,14 @@ export default function RecordView({
         return r;
       },
     });
+    return { ok: true };
   }
+  const 取转走预览 = useCallback((接手人: string) => 转走项目预览of([customer.id], 接手人), [customer.id]);
   /** 转给谁：在职成员里去掉现任 */
   const 转让候选 = 成员选项(users).filter((o) => o.value !== customer.salesOwnerId);
   const 能转让 = 去项目跟进 && !只读 && 能转让客户 && !customer.pool && 转让候选.length > 0;
   const 能退回公海 = 去项目跟进 && !只读 && !独自一人(users) && 能放公海 && !customer.pool;
-  const 开客户转让 = () => { set转给谁(undefined); set头部框("转让"); };
+  const 开客户转让 = () => set转让开(true);
   /** 右上角「客户操作 ▾」（11-12 用户）：客户转让、客户退回公海，给不给照原来两颗按钮 */
   const 客户操作项: NonNullable<MenuProps["items"]> = [
     ...(能转让 ? [{ key: "cust-transfer", label: <span title="客户换负责人，名下项目一起走">客户转让</span>, onClick: 开客户转让 }] : []),
@@ -925,20 +924,20 @@ export default function RecordView({
               <InlineConfirm
                 问="删除这条？"
                 做={async () => {
-                  // 被挡（权限）回 ok:false：不提示成功、条目留着（PR10a）
+                  // 被挡（权限）回 ok:false：不提示成功、条目留着（PR10a），原因就地写在这一行；删成了这一行收起，不再弹提示
                   const r = await deleteTask(t.id).catch(() => ({ ok: false as const, error: "没删掉，请重试" }));
                   if (!r.ok) {
-                    message.error(r.error || "没删掉，请重试");
+                    报待办错(t.id, r.error || "没删掉，请重试");
                     router.refresh();
-                    return;
+                    return r;
                   }
-                  message.success("待办已删除");
                   router.refresh();
                 }}
               >
                 <Button type="text" size="small" danger icon={<DeleteOutlined />} aria-label="删除待办" />
               </InlineConfirm>
             )}
+            {待办错[t.id] && <div role="alert" className="cd-task-err">{待办错[t.id]}</div>}
           </motion.div>
         ))}
       </AnimatePresence>
@@ -1677,36 +1676,9 @@ export default function RecordView({
           if (saved) router.refresh();
         }}
       />
+      <TransferBox open={转让开} 客户名={customer.name} 候选={转让候选} 要申请={转让要申请} 作废天数={移交作废天数} 原因选项={转让原因?.选项 ?? []} 取预览={取转走预览} 做={发转让} onClose={() => set转让开(false)} />
       {头部框 && (
         <Modal open title={`${头部框 === "关联客户" && 去项目跟进 ? 客户详情左栏.关联 : 客户头部框叫法[头部框]} · ${customer.name}`} footer={null} width={头部框 === "转让" ? 480 : 640} onCancel={() => set头部框(null)}>
-          {头部框 === "转让" && (
-            <div className="proj-modal-sec">
-              {转让要申请 && <div className="rec-transfer-hint">这是你名下的{b.customer}：发出后要接手人确认才生效，确认前仍在你名下；{移交作废天数} 天内不确认自动作废，归属不变。</div>}
-              <Select
-                autoFocus
-                showSearch
-                optionFilterProp="label"
-                placeholder={转让要申请 ? "移交给谁" : "转给谁"}
-                options={转让候选}
-                value={转给谁}
-                onChange={(v: string) => set转给谁(v)}
-                aria-label="转给谁"
-              />
-              <div className="rec-modal-foot">
-                <Button onClick={() => set头部框(null)}>取消</Button>
-                <Button
-                  type="primary"
-                  disabled={!转给谁}
-                  onClick={换框(() => {
-                    const o = 转让候选.find((x) => x.value === 转给谁);
-                    if (o) void 转让给(o);
-                  })}
-                >
-                  下一步
-                </Button>
-              </div>
-            </div>
-          )}
           {头部框 === "管理联系人" && (
             <div className="proj-modal-list">
               {可管联系人.map((c) => (
@@ -1771,55 +1743,43 @@ export default function RecordView({
   async function confirmDeleteContract(r: ContractRow) {
     const 是最后一笔 = contracts.length === 1;
     const 退回 = (await 删签约前清点(r.id).catch(() => null))?.退回商机 ?? [];
-    // 登记时顺手标成赢单的商机会退回进行中（L-007）：删之前说清（第 2 期 2a）
-    const 商机那句 = 退回.length ? (
-      <div style={{ marginTop: 8 }}>{是订单 ? "转成这张订单的商机" : "登记这笔时一起标成赢单的商机"}{退回.map((n) => `「${n}」`).join("")}会退回进行中。</div>
-    ) : null;
-    modal.confirm({
-      title: 是订单 ? "删除这张订单？" : "删除这条签约记录？",
-      content: !是最后一笔 ? (
-        <>
-          <div>金额 {金额(r.amount, r.currency)}，删除后统计数据会同步变化。</div>
-          {商机那句}
-        </>
-      ) : (
-        <>
-          <div>
-            金额 {金额(r.amount, r.currency)}。这是该{b.customer}唯一一笔{叫}，删除后{叫}金额归零，跟进状态需要跟着退回，否则看板上会一直挂着「{statusLabel(b, "已签约")}、金额 0」。
-          </div>
-          <div style={{ marginTop: 12 }}>
-            <div style={{ marginBottom: 6, fontSize: 13 }}>跟进状态退回到：</div>
-            <Select
-              style={{ width: "100%" }}
-              defaultValue={revertChoice.current}
-              onChange={(v) => (revertChoice.current = v)}
-              options={[
-                ...REVERT_CHOICES.map((c) => ({
-                  value: c.value,
-                  label: `${statusLabel(b, c.value)} · ${statusLabel(b, c.decision)}（${c.说明}）`,
-                })),
-                { value: "", label: `保持「${statusLabel(b, "已签约")}」不变（我知道自己在做什么）` },
-              ]}
-            />
-          </div>
-          {商机那句}
-        </>
-      ),
-      okText: "删除",
-      okButtonProps: { danger: true },
-      cancelText: "取消",
-      async onOk() {
+    // 登记时顺手标成赢单的商机会退回进行中（L-007）：删之前在后果里说清（第 2 期 2a）
+    // 删签约 / 订单（P-界面-40 后果框）：后果分条写清金额和连带；没成原因写在框里不关框；成了这一笔从列表消失，不再弹顶部提示
+    revertChoice.current = REVERT_CHOICES[0].value;
+    await 问后果({
+      题: 是订单 ? "删除这张订单" : "删除这条签约记录",
+      危: true,
+      后果: [
+        { 标: "金额", 话: <b className="num" style={{ overflowWrap: "anywhere" }}>{金额(r.amount, r.currency)}</b> },
+        是最后一笔
+          ? { 标: "会发生", 话: `这是该${b.customer}唯一一笔${叫}，删除后${叫}金额归零，跟进状态跟着退回（下面选）`, 级: "警" as const }
+          : { 标: "会发生", 话: "删除后统计数据会同步变化", 级: "警" as const },
+        ...(退回.length ? [{ 标: "一起退", 话: `${是订单 ? "转成这张订单的商机" : "登记这笔时一起标成赢单的商机"}${退回.map((n) => `「${n}」`).join("")}会退回进行中`, 级: "警" as const }] : []),
+      ],
+      补充: 是最后一笔 ? (
+        <div>
+          <div style={{ marginBottom: 6, fontSize: 13 }}>跟进状态退回到：</div>
+          <Select
+            style={{ width: "100%" }}
+            aria-label="跟进状态退回到"
+            defaultValue={revertChoice.current}
+            onChange={(v) => (revertChoice.current = v)}
+            options={[
+              ...REVERT_CHOICES.map((c) => ({
+                value: c.value,
+                label: `${statusLabel(b, c.value)} · ${statusLabel(b, c.decision)}（${c.说明}）`,
+              })),
+              { value: "", label: `保持「${statusLabel(b, "已签约")}」不变（我知道自己在做什么）` },
+            ]}
+          />
+        </div>
+      ) : undefined,
+      是: "删除",
+      做: async () => {
         const picked = REVERT_CHOICES.find((c) => c.value === revertChoice.current);
         const res = await deleteContract(r.id, customer.id, 是最后一笔 && picked ? { followStatus: picked.value, decisionStatus: picked.decision } : null);
         router.refresh();
-        if (!res.ok) {
-          message.error(res.error);
-          return;
-        }
-        // 当初登记时顺手标成赢单的商机跟着退回进行中（L-007）：说一句，不然人以为商机还是赢单
-        const 退 = res.退回商机 ? `，${res.退回商机} 个商机退回进行中` : "";
-        // 退回的状态写显示名（L-058）：改过叫法的库里原来提示「已退回「已试听」」，和下拉里看到的对不上
-        message.success(是最后一笔 && picked ? `已删除，跟进状态已退回「${statusLabel(b, picked.value)}」${退}` : `已删除${退}`);
+        if (!res.ok) return res;
       },
     });
   }

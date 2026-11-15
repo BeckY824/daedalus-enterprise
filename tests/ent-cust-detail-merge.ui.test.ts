@@ -26,7 +26,7 @@ const plugin: Plugin = { name: "cust-detail-merge", setup(b) {
   stub(/^\.\/follow-history-actions$/, "export const loadFollowHistory=async()=>({ok:true,rows:[],hasMore:false}),readFollowHistoryRow=async()=>({ok:true,row:null}),loadCustomerFeed=async()=>({ok:true,rows:[],hasMore:false});");
   // customers/actions（RecordView 的 ../actions）和 projects/actions（ProjectDetail 的 ../actions）都是 ../actions：并成一份桩
   stub(/^\.\.\/actions$|projects\/actions$/, `const f=${空跑};
-    export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=f;
+    export const 转走项目预览of=async()=>({项目数:0,项目:[]}),deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=f;
     export const 项目沟通须知=async()=>({ok:true,能记:false}),记项目沟通Action=async()=>({ok:true,followUpId:'f1'});
     export const 编辑项目=f,改项目沟通=f,改项目节点=f,终止项目进程=f,勾项目交付=f,删除项目=f,放回项目公海=(...a)=>window.__挂起?new Promise(()=>{}):f(...a),领取项目=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,改项目画像Action=f,删项目沟通=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
   stub(/^\.\/actions$/, `
@@ -391,19 +391,19 @@ it("连体右半管收起 / 展开：只藏卡身、留卡头和左半主动作�
   try {
     const 壳 = page.locator(".cd-mid > .proj-fold").nth(1);
     const 身 = 壳.locator(":scope > .ant-card > .ant-card-body");
-    expect(await 身.isVisible()).toBe(true);
+    await expect.poll(() => 身.isVisible()).toBe(true);
     await 壳.getByRole("button", { name: "收起所有待办" }).click();
-    expect(await 身.isVisible()).toBe(false);
+    await expect.poll(() => 身.isVisible()).toBe(false);
     const 右 = 壳.getByRole("button", { name: "展开所有待办" });
     expect(await 右.getAttribute("aria-expanded")).toBe("false");
     expect(await 壳.getByRole("button", { name: /新建待办/ }).isVisible()).toBe(true);
     await 右.click();
-    expect(await 身.isVisible()).toBe(true);
+    await expect.poll(() => 身.isVisible()).toBe(true);
     expect(await 壳.getByRole("button", { name: "收起所有待办" }).getAttribute("aria-expanded")).toBe("true");
     // 卡点默认收着，点右半摊开
     const 卡点 = page.locator("#project-blockers");
     await 卡点.getByRole("button", { name: "展开当前卡点" }).click();
-    expect(await 卡点.locator(":scope > .ant-card > .ant-card-body").isVisible()).toBe(true);
+    await expect.poll(() => 卡点.locator(":scope > .ant-card > .ant-card-body").isVisible()).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -418,7 +418,7 @@ it("只读（没权限）：连体只剩右半那颗收起钮，照样能收起�
       ["展开当前卡点", true, [], true],
     ]);
     await page.getByRole("button", { name: "收起沟通记录" }).click();
-    expect(await page.locator("#project-follow > .ant-card > .ant-card-body").isVisible()).toBe(false);
+    await expect.poll(() => page.locator("#project-follow > .ant-card > .ant-card-body").isVisible()).toBe(false);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -597,14 +597,18 @@ it("嵌入版的项目资料卡：收藏星在卡头（只管当前项目），�
   } finally { await page.close(); }
 });
 
-it("沟通切「这位客户全部」：搜索框藏起来、词清掉（那条时间线不归它管）；切回本项目搜索框回来", async () => {
+it("沟通切「这位客户全部」：词清掉（那条时间线不归它管）、搜索框原地变淡点不了、沟通卡不挪位（dt.scope）；切回本项目搜索框回来", async () => {
   const { page, errors } = await 开(1366);
   try {
     const 搜 = page.locator(".rec-zone .proj-search input");
     await 搜.fill("项目一");
     const 卡 = page.locator(".cd-comm");
+    const 卡顶 = (await 卡.boundingBox())!.y;
     await 卡.getByRole("button", { name: "这位客户全部" }).click();
-    expect(await page.locator(".rec-zone .proj-search").count()).toBe(0);
+    expect(await page.locator(".rec-zone .cd-search-wrap.is-off").count()).toBe(1);
+    expect(await page.locator(".rec-zone .cd-search-wrap").evaluate((el) => (el as HTMLElement).inert)).toBe(true);
+    await expect.poll(() => page.locator(".rec-zone .cd-search-wrap").evaluate((el) => Number(getComputedStyle(el).opacity))).toBeLessThan(0.6);
+    expect(Math.abs((await 卡.boundingBox())!.y - 卡顶)).toBeLessThan(2);
     expect(await 卡.getByText(/客户全部里的沟通/).count()).toBe(5);
     await 卡.getByRole("button", { name: "本项目" }).click();
     expect(await 搜.inputValue()).toBe("");

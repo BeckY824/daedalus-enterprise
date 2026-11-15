@@ -78,24 +78,33 @@ export default function LoginForm({
   const [抖, set抖] = useState(0);
   const 秒 = (t: number) => (少动 ? 0 : t);
   const 报错 = (msg: string) => {
+    set格错(null);
     setError(msg);
+    set抖((n) => n + 1);
+  };
+  /** 错在哪一格就写在那一格下面（原型 st.login），网络这类不属于哪一格的才用表单底下那条 */
+  const [格错, set格错] = useState<{ 格: "账号" | "密码"; 话: string } | null>(null);
+  const 格上报错 = (格: "账号" | "密码", 话: string) => {
+    setError(null);
+    set格错({ 格, 话 });
     set抖((n) => n + 1);
   };
 
   async function 提交() {
     if (loading) return;
     if (!账号.trim()) {
-      报错(`请输入${账号名}`);
+      格上报错("账号", `请输入${账号名}`);
       账号框.current?.focus();
       return;
     }
     if (!密码) {
-      报错("请输入密码");
+      格上报错("密码", "请输入密码");
       密码框.current?.focus();
       return;
     }
     setLoading(true);
     setError(null);
+    set格错(null);
 
     let res: Awaited<ReturnType<typeof login>>;
     try {
@@ -115,7 +124,9 @@ export default function LoginForm({
     }
 
     if (!res.ok) {
-      报错(res.error);
+      // 账号或密码不对：写在密码格下面（光标回密码格，好接着改）
+      格上报错("密码", res.error);
+      密码框.current?.focus();
       setLoading(false);
       return;
     }
@@ -190,12 +201,16 @@ export default function LoginForm({
               }}
               size="large"
               value={账号}
-              onChange={(e) => set账号(e.target.value)}
+              onChange={(e) => { set账号(e.target.value); if (格错?.格 === "账号") set格错(null); }}
+              status={格错?.格 === "账号" ? "error" : undefined}
+              aria-invalid={格错?.格 === "账号" || undefined}
+              aria-describedby={格错?.格 === "账号" ? "auth-account-err" : undefined}
               placeholder={账号名}
               autoComplete={用邮箱 ? "email" : "username"}
               inputMode={用邮箱 ? "email" : undefined}
               autoFocus
             />
+            {格错?.格 === "账号" && <div id="auth-account-err" className="auth-field-err" role="alert">{格错.话}</div>}
             <label className="auth-label" htmlFor="auth-pw">
               密码
             </label>
@@ -206,10 +221,14 @@ export default function LoginForm({
               }}
               size="large"
               value={密码}
-              onChange={(e) => set密码(e.target.value)}
+              onChange={(e) => { set密码(e.target.value); if (格错?.格 === "密码") set格错(null); }}
+              status={格错?.格 === "密码" ? "error" : undefined}
+              aria-invalid={格错?.格 === "密码" || undefined}
+              aria-describedby={格错?.格 === "密码" ? "auth-pw-err" : undefined}
               placeholder="登录密码"
               autoComplete="current-password"
             />
+            {格错?.格 === "密码" && <div id="auth-pw-err" className="auth-field-err" role="alert">{格错.话}</div>}
             <Button type="primary" htmlType="submit" size="large" block loading={loading}>
               登录
             </Button>

@@ -11,12 +11,14 @@
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { App, Button, Card, Input, InputNumber, Space, Switch, Tag } from "antd";
+import { Button, Card, Input, InputNumber, Space, Switch, Tag } from "antd";
 import { 改组织规则, 预览客户回收 } from "@/app/(app)/projects/actions";
 import { 三态存占位词 } from "@/app/(app)/customers/tri-state-actions";
 import type { 三态规则, 三态天数 } from "@/lib/project/org-rules";
 import { 三态显示名 } from "@/lib/enterprise/tri-state-label";
 import { useConsequence } from "@/components/ConsequenceDialog";
+import { showUndo } from "@/components/UndoBar";
+import { useDirtyMark } from "@/lib/settings-dirty";
 
 export type 客户回收设置 = {
   三态: 三态规则;
@@ -42,29 +44,41 @@ const 项们: { k: keyof 三态天数; 前: string; 后: string; 最小: number;
 
 export default function RecycleTab({ value }: { value: 客户回收设置 }) {
   const router = useRouter();
-  const { message } = App.useApp();
+  // 反馈都在原地（原型 g.save）：存成了保存键里写「✓ 已保存」，没成写在键旁边；不弹顶部提示
+  const [刚存, set刚存] = useState(false);
+  const [错, set错] = useState("");
   // 确认用 PR5a 后果框（PR9：设置各页签的 modal.confirm 都换成它），不确认不存
   const [问后果, 后果框] = useConsequence();
   const [忙, set忙] = useState(false);
   const { 三态, 挡 } = value;
   const [天, set天] = useState<Record<(typeof 套们)[number], 三态天数>>({ 内贸: { ...三态.内贸 }, 外贸: { ...三态.外贸 } });
-  const 改了 = 套们.some((t) => 项们.some(({ k }) => 天[t][k] !== 三态[t][k]));
+  const 改了几项 = 套们.reduce((n, t) => n + 项们.filter(({ k }) => 天[t][k] !== 三态[t][k]).length, 0);
+  const 改了 = 改了几项 > 0;
+  // 没存就关先问（原型 st.dirty）：登记给设置浮层；改了就浮出保存条（贴底，不跟着滚走）
+  useDirtyMark("recycle-days", 改了几项);
 
-  /** 存；回结果给后果框（没成原因写在框里、框不关）。不经后果框的（关着时改天数）没成就提示 */
-  const 存 = async (改: Parameters<typeof 改组织规则>[0], 成了: string, 框里 = true): Promise<{ ok: boolean; error?: string }> => {
+  /**
+   * 存；回结果给后果框（没成原因写在框里、框不关）。不经后果框的（关着时改天数）没成写在保存键旁边。
+   * 存天数成了保存键里亮「✓ 已保存」；开关成了看开关本身，不另提示
+   */
+  const 存 = async (改: Parameters<typeof 改组织规则>[0], 是天数: boolean, 框里 = true): Promise<{ ok: boolean; error?: string }> => {
     set忙(true);
+    set错("");
     try {
       const r = await 改组织规则(改);
       if (!r.ok) {
         const 话 = ("error" in r && r.error) || "没改成，请稍后再试";
-        if (!框里) message.error(话);
+        if (!框里) set错(话);
         return { ok: false, error: 话 };
       }
-      message.success(成了);
+      if (是天数) {
+        set刚存(true);
+        setTimeout(() => set刚存(false), 1400);
+      }
       router.refresh();
       return { ok: true };
     } catch {
-      if (!框里) message.error("没改成，请稍后再试");
+      if (!框里) set错("没改成，请稍后再试");
       return { ok: false, error: "没改成，请稍后再试" };
     } finally {
       set忙(false);
@@ -81,7 +95,7 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
           ...(value.超时回收开 ? [{ 标: "改回", 话: "「超时回收」开着：关掉后改回按项目超时回收，线索、商机阶段超时的项目回线索公海。" }] : []),
         ],
         是: "确认关掉",
-        做: () => 存({ 三态: { 开: false } }, "已关客户回收"),
+        做: () => 存({ 三态: { 开: false } }, false),
       });
     }
     void 问后果({
@@ -89,7 +103,7 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
       后果: [{ 标: "全员", 级: "警", 话: 打开后果 }],
       是: "确认打开",
       危: false,
-      做: () => 存({ 三态: { 开: true } }, "已打开客户回收，已开始计时"),
+      做: () => 存({ 三态: { 开: true } }, false),
     });
   };
 
@@ -99,7 +113,7 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
    */
   const 存天数 = async () => {
     const 改: Parameters<typeof 改组织规则>[0] = { 三态: { 内贸: 天.内贸, 外贸: 天.外贸 } };
-    if (!三态.开) return void 存(改, "已保存", false);
+    if (!三态.开) return void 存(改, true, false);
     set忙(true);
     // 预览要整库算一遍，客户多时可能慢：最多等 5 秒，过时就不写数字、照常弹确认
     const 看 = await Promise.race([
@@ -108,7 +122,7 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
     ]);
     set忙(false);
     // 没权限、天数不对这类服务端明说不行的，直接说，不弹确认
-    if (看 && !看.ok) return void message.error(("error" in 看 && 看.error) || "没改成，请稍后再试");
+    if (看 && !看.ok) return void set错(("error" in 看 && 看.error) || "没改成，请稍后再试");
     const 数 = 看?.ok ? 看.预览 : null;
     const 改了的 = 套们.flatMap((t) => 项们.filter(({ k }) => 天[t][k] !== 三态[t][k]).map(({ k }) => `${t}客户${k === "进公海" ? `${三态显示名("待回收")}后进公海` : `进入${三态显示名(k)}`}：${三态[t][k]} → ${天[t][k]} 天`));
     void 问后果({
@@ -122,7 +136,7 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
       是: "确认修改",
       危: false,
       宽: 480,
-      做: () => 存(改, "已保存"),
+      做: () => 存(改, true),
     });
   };
 
@@ -164,7 +178,14 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
           客户名下内贸、外贸项目都有时取较长的一套；没有项目或项目都是「暂不分配」的按内贸。即将回收期间提醒负责人 3 次。改了天数当晚按新的重算。
         </div>
         {!挡 && (
-          <Button type="primary" disabled={忙 || !改了} onClick={() => void 存天数()}>保存</Button>
+          <div className={`tri-save${改了 ? " tri-dirty" : ""}`}>
+            {改了 && <span className="tri-dirty-t">改了 {改了几项} 项，还没保存</span>}
+            {改了 && <Button disabled={忙} onClick={() => { set天({ 内贸: { ...三态.内贸 }, 外贸: { ...三态.外贸 } }); set错(""); }}>放弃</Button>}
+            <Button type="primary" disabled={(忙 || !改了) && !刚存} onClick={() => void 存天数()} className={刚存 ? "tri-saved" : undefined}>
+              {刚存 ? "✓ 已保存" : "保存"}
+            </Button>
+            {错 && <span className="tri-err" role="alert">{错}</span>}
+          </div>
         )}
       </Card>
       <WordsCard 词们={value.占位词} />
@@ -175,8 +196,9 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
 /** 有效沟通的占位词表（T2）：一条沟通整条只是这些词时，不算有效沟通 */
 function WordsCard({ 词们 }: { 词们: string[] | null }) {
   const router = useRouter();
-  const { message } = App.useApp();
   const [表, set表] = useState<string[]>(词们 ?? []);
+  // 就地提示（不弹顶部）：已在表里 / 没改成
+  const [提示, set提示] = useState("");
   const [新, set新] = useState("");
   const [忙, set忙] = useState(false);
   if (!词们) {
@@ -186,16 +208,21 @@ function WordsCard({ 词们 }: { 词们: string[] | null }) {
       </Card>
     );
   }
-  const 存 = async (下一版: string[], 成了: string) => {
+  const 存 = async (下一版: string[]): Promise<{ ok: boolean; error?: string }> => {
     set忙(true);
+    set提示("");
     try {
       const r = await 三态存占位词(下一版);
-      if (!r.ok) return void message.error(r.error);
+      if (!r.ok) {
+        set提示(r.error);
+        return r;
+      }
       set表(r.词们);
-      message.success(成了);
       router.refresh();
+      return { ok: true };
     } catch {
-      message.error("没改成，请稍后再试");
+      set提示("没改成，请稍后再试");
+      return { ok: false, error: "没改成，请稍后再试" };
     } finally {
       set忙(false);
     }
@@ -203,16 +230,21 @@ function WordsCard({ 词们 }: { 词们: string[] | null }) {
   const 加 = () => {
     const w = 新.trim();
     if (!w) return;
-    if (表.includes(w)) return void message.info(`「${w}」已经在表里`);
+    if (表.includes(w)) return void set提示(`「${w}」已经在表里`);
     set新("");
-    void 存([...表, w], `已加「${w}」`);
+    void 存([...表, w]);
+  };
+  // 删一个词：一步做完，底部撤销条可撤（P-界面-40 一步完成 + 撤销 = 反着做）
+  const 删 = async (w: string) => {
+    const 原 = 表;
+    if ((await 存(表.filter((x) => x !== w))).ok) showUndo({ 话: `已删「${w}」`, 撤销: () => 存(原) });
   };
   return (
     <Card title="占位词表" extra={<span className="tri-muted">{表.length} 个</span>}>
       <div className="tri-note">一条沟通整条只是这些词时，不算有效沟通，不会重置回收倒计时。</div>
       <div className="tri-words">
         {表.length ? 表.map((w) => (
-          <Tag key={w} closable={!忙} onClose={(e) => { e.preventDefault(); void 存(表.filter((x) => x !== w), `已删「${w}」`); }} className="tri-word">
+          <Tag key={w} closable={!忙} onClose={(e) => { e.preventDefault(); void 删(w); }} className="tri-word">
             <span className="clamp-1 tri-word-t" title={w}>{w}</span>
           </Tag>
         )) : <span className="tri-muted">一个都没有：只按下面那几条判</span>}
@@ -221,6 +253,7 @@ function WordsCard({ 词们 }: { 词们: string[] | null }) {
         <Input aria-label="加一个占位词" placeholder="加一个词" maxLength={20} value={新} onChange={(e) => set新(e.target.value)} onPressEnter={加} disabled={忙} />
         <Button onClick={加} disabled={忙 || !新.trim()}>添加</Button>
       </Space.Compact>
+      {提示 && <div className="tri-err" role="status">{提示}</div>}
       <div className="tri-note-top">
         其他不算有效沟通的情况（已定，不用设置）：中文去掉空白和标点后不足 4 个字；英文不足 2 个单词；只有素材没有文字。
       </div>

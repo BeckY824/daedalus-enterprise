@@ -1,9 +1,10 @@
 "use client";
 
+import { useSettingsNote } from "./InlineNote";
 import { 空值符 } from "@/lib/empty-value";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { App, Button, Card, InputNumber, Segmented, Tag } from "antd";
+import { Button, Card, InputNumber, Segmented, Tag } from "antd";
 import { 设配额, 设自动分配参与, type 分配情况 } from "../leads/assign-actions";
 // lead-assign 那边连着库，这里只拿类型
 import type { 参与状态 } from "@/lib/enterprise/lead-assign";
@@ -20,7 +21,8 @@ const 参与选项: 参与状态[] = ["允许", "暂停", "禁止"];
  */
 export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分配情况; 不限额?: boolean }) {
   const router = useRouter();
-  const { message } = App.useApp();
+  // 就地提示（PR9：不弹顶部 message）
+  const [message, 提示条] = useSettingsNote();
   const [忙, set忙] = useState<string | null>(null);
   // 正在改的配额：失焦或回车才存
   const [草稿, set草稿] = useState<Record<string, number | null>>({});
@@ -62,6 +64,7 @@ export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分�
   return (
     <Card id="lead-assign" title="线索分配" data-testid="org-lead-assign"
       extra={!能改参与 && <span style={{ color: "var(--text-muted)" }}>参与状态只有总管理员能改</span>}>
+      {提示条}
       {不限额 ? (
         <p className="muted" data-testid="org-lead-no-quota-note">
           现在是「不设配额」：自动分配在 线索 页点「自动分配」，挑参与的人里本月已分最少的，一样多先给最早进分配池的；配额不起作用，手动分也不查满额。

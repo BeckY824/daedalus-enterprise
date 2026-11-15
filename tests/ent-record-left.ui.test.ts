@@ -17,7 +17,7 @@ const plugin: Plugin = { name: "record-left-boundaries", setup(b) {
   stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({问怎么拿掉(){}});");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
   stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海,退回原因选项=async()=>[];");
-  stub(/^\.\.\/actions$/, "export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=async()=>({ok:true});");
+  stub(/^\.\.\/actions$/, "export const 转走项目预览of=async()=>(window.__预览??{项目数:0,项目:[]});export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=async()=>({ok:true});");
   stub(/^\.\/useCustomerResearch$/, "export function CustomerResearchCard(){return null} export function CustomerResearchTag(){return null}");
   stub(/^\.\/follow-history-actions$/, "export const loadFollowHistory=async()=>({ok:true,rows:[],hasMore:false}),readFollowHistoryRow=async()=>({ok:true,row:null}),loadCustomerFeed=async()=>({ok:true,rows:[],hasMore:false});");
   stub(/projects\/actions$/, "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};");
@@ -204,29 +204,29 @@ it("企业版项目模式页头（U-客户-03 → 11-12 用户「右上角只保
     expect(Math.abs(头!.x + 头!.width - (排!.x + 排!.width))).toBeLessThanOrEqual(2);
   } finally { await page.close(); }
 });
-it("「客户转让」开框挑人：没挑之前「下一步」点不了；挑了能点；取消关框", async () => {
+it("「客户转让」一个框（dt.transfer）：没挑人「转让」点不了；挑了能点；取消关框", async () => {
   const page = await open(true, 1366, true, 全开);
   try {
     await 点客户转让(page);
     const 框 = page.getByRole("dialog");
     await 框.getByText("客户转让 · 客户A").waitFor();
-    // 不是负责人本人发起（不用对方确认）：不摆「接手人确认后生效」那句
-    expect(await 框.locator(".rec-transfer-hint").count()).toBe(0);
-    const 下一步 = 框.getByRole("button", { name: /下\s*一\s*步/ });
-    expect(await 下一步.isDisabled()).toBe(true);
+    // 不是负责人本人发起（不用对方确认）：不写「接手人确认后生效」
+    expect(await 框.innerText()).not.toContain("接手人确认后生效");
+    const 转 = 框.getByRole("button", { name: /^转\s*让$/ });
+    expect(await 转.isDisabled()).toBe(true);
     // 候选里没有现负责人自己
     await 框.getByRole("combobox", { name: "转给谁" }).click();
     expect(await page.locator(".ant-select-item-option").allInnerTexts()).toEqual(["同事乙"]);
     await page.locator(".ant-select-item-option").first().click();
-    expect(await 下一步.isDisabled()).toBe(false);
+    expect(await 转.isDisabled()).toBe(false);
     await 框.getByRole("button", { name: /取\s*消/ }).click();
     await 框.waitFor({ state: "hidden" });
     // 再开一次，上次挑的人清掉
     await 点客户转让(page);
-    expect(await page.getByRole("dialog").getByRole("button", { name: /下\s*一\s*步/ }).isDisabled()).toBe(true);
+    expect(await page.getByRole("dialog").getByRole("button", { name: /^转\s*让$/ }).isDisabled()).toBe(true);
   } finally { await page.close(); }
 });
-it("负责人本人发起（转让要申请）：按钮、框标题照样叫「客户转让」，框里写明接手人确认后生效、7 天不确认作废、归属不变（11-12）", async () => {
+it("负责人本人发起（转让要申请）：框标题照样叫「客户转让」，同一个框里写明接手人确认后生效、7 天不确认作废；原因点选；按钮「发起转让」（dt.transfer）", async () => {
   const page = await open(true, 1366, true, { ...全开, 转让要申请: true, 转让原因: { 选项: ["客户要求"], 自己: "qa" } });
   try {
     expect(await 头按钮(page)).toEqual(["客户操作"]);
@@ -234,19 +234,14 @@ it("负责人本人发起（转让要申请）：按钮、框标题照样叫「�
     const 框 = page.getByRole("dialog");
     await 框.getByText("客户转让 · 客户A").waitFor();
     expect(await 框.getByText("申请移交").count()).toBe(0);
-    const 提示 = 框.locator(".rec-transfer-hint");
-    expect(await 提示.isVisible()).toBe(true);
-    expect(await 提示.innerText()).toMatch(/接手人确认才生效.*7 天内不确认自动作废，归属不变/);
-    // 挑好人点「下一步」：第二个框也叫客户转让（不叫申请移交），再说一遍要确认、7 天作废；按钮「确认转让」（审查 2）
+    expect(await 框.innerText()).toMatch(/接手人确认后生效.*7 天不确认自动作废/);
     await 框.getByRole("combobox", { name: "转给谁" }).click();
     await page.locator(".ant-select-item-option").filter({ hasText: "同事乙" }).click();
-    await 框.getByRole("button", { name: /下\s*一\s*步/ }).click();
-    // 11-15 第二个框换成转让框（TransferDialog，人已选好；原因点选可不选）
-    const 二 = page.getByRole("dialog").filter({ hasText: "把客户转让给「同事乙」" });
-    await 二.waitFor();
-    expect(await 二.innerText()).toMatch(/接手人确认后生效.*7 天内不确认自动作废，归属不变/);
-    expect(await 二.innerText()).not.toMatch(/申请移交|发出申请/);
-    expect(await 二.getByRole("button", { name: /确\s*认\s*转\s*让/ }).count()).toBe(1);
+    expect(await 框.getByRole("radio", { name: "客户要求" }).count()).toBe(1);
+    expect(await 框.getByRole("button", { name: /^发起转让$/ }).isDisabled()).toBe(false);
+    // 不再接力第二个框
+    expect(await page.locator(".ant-modal-confirm").count()).toBe(0);
+    // 11-15 PR7a 那版「下一步 → 第二个框（TransferDialog）」的检查：详情页已改成一个框（dt.transfer），同样的话在上面一个框里核过；TransferDialog 在客户列表的用例照留
   } finally { await page.close(); }
 });
 it("项目模式联系人（U-客户-03 去掉管理联系人）：卡上只有编辑、没有删除", async () => {

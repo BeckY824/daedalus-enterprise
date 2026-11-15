@@ -1,5 +1,6 @@
 "use client";
 
+import { useSettingsNote } from "./InlineNote";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Table, Button, Space, Tag, Modal, Form, Input, Select, Switch, Row as 行, Col, App, Alert, Typography, Grid, Popover, Tooltip } from "antd";
@@ -73,7 +74,9 @@ export default function MembersTab({
   下属可停用?: string[];
 }) {
   const router = useRouter();
-  const { message, modal } = App.useApp();
+  const { modal } = App.useApp();
+  // 就地提示（PR9：不弹顶部 message）
+  const [message, 提示条] = useSettingsNote();
   const [问后果, 后果框] = useConsequence();
   const b = useBusiness();
   const [open, setOpen] = useState(false);
@@ -250,23 +253,28 @@ export default function MembersTab({
       return;
     }
     const 合 = 各.reduce((和, x) => (x && x.ok ? { 客户: 和.客户 + x.原地.客户, 项目: 和.项目 + x.原地.项目 } : 和), { 客户: 0, 项目: 0 });
-    modal.confirm({
-      title: `停用 ${们.length} 位成员`,
-      width: 480,
-      content: <OffboardNote names={们.map((id) => users.find((u) => u.id === id)?.name ?? "")} 点={合} />,
-      okText: "确认停用",
-      okButtonProps: { danger: true },
-      cancelText: "取消",
-      async onOk() {
+    // PR9：停用成员 = 后果框（P-界面-40），清点结果放补充里；没成的原因写在框里
+    void 问后果({
+      题: `停用 ${们.length} 位成员`,
+      宽: 480,
+      后果: [
+        { 标: "登不上", 级: "危", 话: "停用后这几位登不上，也不再出现在负责人、分配下拉里" },
+        { 标: "名下不动", 级: "警", 话: "名下的客户、项目原地不动，到「项目 → 离职交接」里交给接手人" },
+        { 标: "能恢复", 话: "在成员列表里点恢复可以再启用" },
+      ],
+      补充: <OffboardNote names={们.map((id) => users.find((u) => u.id === id)?.name ?? "")} 点={合} />,
+      是: "确认停用",
+      做: async () => {
         const res = await 批量停用(们, "").catch(() => null);
-        if (!res) { message.error("停用没成功，刷新再试"); return; }
-        if (!res.ok) { message.error(res.error); return; }
+        if (!res) return { ok: false, error: "停用没成功，刷新再试" };
+        if (!res.ok) return res;
         if (res.失败.length) {
           const 名 = (id: string) => users.find((u) => u.id === id)?.name ?? id;
           message.warning(`停用了 ${res.停了} 位；${res.失败.map((f) => `「${名(f.id)}」${f.error}`).join("；")}`);
         } else message.success(`已停用 ${res.停了} 位成员，名下的到「项目 → 离职交接」里交给接手人`);
         set勾了([]);
         router.refresh();
+        return { ok: true };
       },
     });
   }
@@ -281,19 +289,23 @@ export default function MembersTab({
         message.error(清 && "error" in 清 ? 清.error : "清点没成功，刷新再试");
         return;
       }
-      modal.confirm({
-        title: `停用成员「${r.name}」`,
-        width: 480,
-        content: <OffboardNote names={[r.name]} 点={清.原地} />,
-        okText: "确认停用",
-        okButtonProps: { danger: true },
-        cancelText: "取消",
-        async onOk() {
+      void 问后果({
+        题: `停用成员「${r.name}」`,
+        宽: 480,
+        后果: [
+          { 标: "登不上", 级: "危", 话: `停用后「${r.name}」登不上，也不再出现在负责人、分配下拉里` },
+          { 标: "名下不动", 级: "警", 话: "名下的客户、项目原地不动，到「项目 → 离职交接」里交给接手人" },
+          { 标: "能恢复", 话: "在成员列表里点恢复可以再启用" },
+        ],
+        补充: <OffboardNote names={[r.name]} 点={清.原地} />,
+        是: "确认停用",
+        做: async () => {
           const res = await deactivateUser(r.id, "");
           if (res.ok) {
-            message.success("已停用，名下的到「项目 → 离职交接」里交给接手人");
+            message.success(`已停用「${r.name}」，名下的到「项目 → 离职交接」里交给接手人`);
             router.refresh();
-          } else message.error(res.error);
+          }
+          return res;
         },
       });
       return;
@@ -525,6 +537,7 @@ export default function MembersTab({
   return (
     <>
       {后果框}
+      {提示条}
       {!isAdmin && (
         <Alert
           type="info"

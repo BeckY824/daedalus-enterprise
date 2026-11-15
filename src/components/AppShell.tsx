@@ -510,7 +510,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
     : [];
   /** 切换视图期间钉在顶上的一条：谁的视图、只读、退出。两种布局都挂 */
   /** 切换视图的挑人框：小屏、宽屏两个分支各挂这一份（账号菜单「以某人的视角查看」打开它） */
-  const 挑人框 = 视图名单?.length ? <ViewAsPicker open={挑视图} 名单={视图名单} 关={() => set挑视图(false)} 选={(id) => { set挑视图(false); void 看成(id); }} /> : null;
+  const 挑人框 = 视图名单?.length ? <ViewAsPicker open={挑视图} 名单={视图名单} 关={() => set挑视图(false)} 选={(id) => 看成(id)} /> : null;
   const 视图条 = 正在视图 ? (
     <div className="view-as-bar" role="status">
       <span className="view-as-text">

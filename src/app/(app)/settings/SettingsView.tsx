@@ -304,7 +304,7 @@ export default function SettingsView({
         </div>
         <div key={亮} className={`set-body${亮 ? " set-flash" : ""}`} role="tabpanel" id={`set-panel-${当前}`} aria-labelledby={`set-tab-${当前}`}>
           {只读 && (
-            <div className="set-ro" role="note">你是只读管理员：后台设置都能看，不能改；要改请找系统管理员。</div>
+            <div className="set-ro" role="note">你是只读管理员：业务数据能看全部、不能改；后台设置只有系统管理员能进。</div>
           )}
           {目录.find((x) => x.key === 当前)?.children}
         </div>

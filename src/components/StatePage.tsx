@@ -23,7 +23,8 @@ export default function StatePage({
   标题: string;
   /** 一句话说清：发生了什么、为什么、接下来做什么 */
   说明: React.ReactNode;
-  动作?: { label: string; onClick?: () => void; href?: string };
+  /** loading：点了之后原地转圈（出错页「重试」，原型 st.error） */
+  动作?: { label: string; onClick?: () => void; href?: string; loading?: boolean };
   次动作?: { label: string; onClick?: () => void; href?: string };
   /** 错误编号这类给管理员看的东西 */
   附注?: React.ReactNode;
@@ -36,7 +37,7 @@ export default function StatePage({
       <Rise 第几个={1} className="empty-state-h">{说明}</Rise>
       <Rise 第几个={2} className="empty-state-a">
         {动作 && (
-          <Button type="primary" href={动作.href} onClick={动作.onClick}>
+          <Button type="primary" href={动作.href} onClick={动作.onClick} loading={动作.loading}>
             {动作.label}
           </Button>
         )}

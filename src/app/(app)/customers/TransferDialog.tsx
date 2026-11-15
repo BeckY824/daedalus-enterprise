@@ -56,8 +56,11 @@ export default function TransferDialog({
   固定人?: 人;
   /** 换人就现取「会一起转走的项目」；不给 = 不说 */
   取转走?: (人id: string) => Promise<转走项目预览 | null | undefined>;
-  /** 转给这位要不要接手人确认（申请移交） */
-  申请: boolean | ((人id: string) => boolean);
+  /**
+   * 转给这位要不要接手人确认（申请移交）。不给 = 看 取转走 回来的「要确认」（服务端同一个判定）；
+   * 两边都说不清 = 生效那条写中性说法，不写错
+   */
+  申请?: boolean;
   /** 字典「转让原因」；空 = 不问 */
   原因选项?: readonly string[];
   /** 我是谁：转给自己不问原因 */
@@ -72,7 +75,7 @@ export default function TransferDialog({
   const [写, set写] = useState("");
   const [忙, set忙] = useState(false);
   const [错, set错] = useState("");
-  const [转走, set转走] = useState<{ 谁: string; 说法: ReturnType<typeof 转走项目说法> } | null>(null);
+  const [转走, set转走] = useState<{ 谁: string; 说法: ReturnType<typeof 转走项目说法>; 要确认?: boolean } | null>(null);
   const 写框 = useRef<HTMLInputElement>(null);
 
   // 每次打开从头来（同后果框）：渲染时比上一次的 open
@@ -93,7 +96,7 @@ export default function TransferDialog({
     if (!open || !谁 || !取转走) return;
     let 还在 = true;
     取转走(谁).then(
-      (p) => 还在 && set转走({ 谁, 说法: 转走项目说法(p) }),
+      (p) => 还在 && set转走({ 谁, 说法: 转走项目说法(p), 要确认: p?.要确认 }),
       // 取不到不拦着：转本身照样会带走项目，这里只是提前说
       () => 还在 && set转走({ 谁, 说法: null }),
     );
@@ -107,7 +110,8 @@ export default function TransferDialog({
   const 原因齐 = !要原因 || 选 !== 其他项 || !!写.trim();
   const 转走好了 = !取转走 || (转走 && 转走.谁 === 谁);
   const 能转 = !!谁 && 原因齐 && !忙;
-  const 是申请 = !!谁 && (typeof 申请 === "function" ? 申请(谁) : 申请);
+  /** true 要确认 / false 直接生效 / undefined 说不清（还在取、取不到） */
+  const 是申请: boolean | undefined = !谁 ? undefined : 申请 ?? (转走好了 ? 转走?.要确认 : undefined);
 
   async function 转() {
     if (!能转 || !谁) return;
@@ -190,9 +194,12 @@ export default function TransferDialog({
               生效
             </span>
             <span className="csq-t">
-              {是申请
+              {是申请 === true
                 ? `要「${名}」点接受：接手人确认后生效，确认前仍在你名下；${移交作废天数} 天内不确认自动作废，归属不变`
-                : `马上转到「${名}」名下，名下联系人、项目一起转过去`}
+                : 是申请 === false
+                  ? `马上转到「${名}」名下，名下联系人、项目一起转过去`
+                  // 判定没取到：不猜，两种都说
+                  : `以接手人确认为准，或直接生效：负责人本人转出的要「${名}」确认后才生效（${移交作废天数} 天内不确认作废），上级、管理员转的直接生效`}
             </span>
           </li>
         </ul>

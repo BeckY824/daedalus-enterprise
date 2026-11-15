@@ -1,6 +1,8 @@
 "use client";
 
-import { Table, Button, Form, Input, App, Alert, Typography } from "antd";
+import { useSettingsNote } from "./InlineNote";
+import { Table, Button, Form, Input, Alert, Typography } from "antd";
+import { useConsequence } from "@/components/ConsequenceDialog";
 import { useRouter } from "next/navigation";
 import { dayjs } from "@/lib/utils";
 import SaveButton from "@/components/SaveButton";
@@ -13,7 +15,8 @@ import { changeMyPassword, 退出这台机器, type 机器 } from "./actions";
  */
 export default function PasswordTab({ 机器 }: { 机器: 机器[] | null }) {
   const router = useRouter();
-  const { message, modal } = App.useApp();
+  const [message, 提示条] = useSettingsNote();
+  const [问后果, 后果框] = useConsequence();
   const [pwdForm] = Form.useForm();
 
   /**
@@ -23,29 +26,29 @@ export default function PasswordTab({ 机器 }: { 机器: 机器[] | null }) {
    * 而按钮就摆在表格行里，误点的成本比翻一次确认框高。
    */
   function onRevoke(m: 机器) {
-    modal.confirm({
-      title: `退出「${m.名字}」？`,
-      content: (
-        <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginTop: 12, marginBottom: 0 }}>
-          那台机器上的 CRM 会回到登录界面，AI 立刻停。<b>本地数据都在那台机器上，不受影响</b>，
-          拿账号密码重新登录就能接着用。
-        </Typography.Paragraph>
-      ),
-      okText: "退出这台",
-      okButtonProps: { danger: true },
-      cancelText: "取消",
-      async onOk() {
+    // PR9：modal.confirm 换成后果框（P-界面-40），后果分条写
+    void 问后果({
+      题: `退出「${m.名字}」`,
+      后果: [
+        { 标: "那台机器", 级: "警", 话: "CRM 回到登录界面，AI 立刻停" },
+        { 标: "不受影响", 话: "本地数据都在那台机器上，拿账号密码重新登录就能接着用" },
+      ],
+      是: "退出这台",
+      做: async () => {
         const res = await 退出这台机器(m.id);
         if (res.ok) {
-          message.success("已退出");
+          message.success(`已退出「${m.名字}」`);
           router.refresh();
-        } else message.error(res.error);
+        }
+        return res;
       },
     });
   }
 
   return (
     <div style={{ paddingTop: 8 }}>
+      {后果框}
+      {提示条}
       {/*
         改密码的代价要写在按钮旁边，不是等人发现。它会把这个账号的桌面端
         全部踢下线（见 lib/tenant/members.ts 的 改密码），而「我只是换个密码」

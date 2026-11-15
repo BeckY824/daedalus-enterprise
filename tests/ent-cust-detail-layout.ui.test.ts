@@ -22,7 +22,7 @@ const plugin: Plugin = { name: "customer-modules", setup(b) {
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
   stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海,退回原因选项=async()=>[];");
   stub(/(^|\/)tri-state-actions$/, "export const 三态继续持有=async()=>({ok:false,error:\"\"}),三态暂缓回收=三态继续持有,三态让同事结束项目=三态继续持有;");
-  stub(/^\.\.\/actions$/, "export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=async()=>({ok:true});");
+  stub(/^\.\.\/actions$/, "export const 转走项目预览of=async()=>(window.__预览??{项目数:0,项目:[]});export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=async()=>({ok:true});");
   stub(/^\.\/follow-history-actions$/, "export const loadFollowHistory=async()=>({ok:true,rows:[],hasMore:false}),readFollowHistoryRow=async()=>({ok:true,row:null}),loadCustomerFeed=async()=>({ok:true,rows:[],hasMore:false});");
   stub(/projects\/actions$/, "export const 项目沟通须知=async()=>({ok:true,能记:false}),记项目沟通Action=async()=>({ok:true,followUpId:'f1'});");
   stub(/^\.\/actions$/, `
@@ -158,12 +158,13 @@ it("1024 / 1280 / 1366：点收起只藏卡身、留卡头，再点又摊开；�
         const 开高 = (await 壳.boundingBox())!.height;
         await 壳.getByRole("button", { name: `收起${名}` }).click();
         const 收 = page.locator(".proj-fold", { has: page.getByRole("button", { name: `展开${名}` }) });
-        expect(await 收.locator(":scope > .ant-card > .ant-card-body").isVisible(), `${w} ${名}`).toBe(false);
+        // dt.fold（PR7b）：收起有一段高度过渡，收完才藏
+        await expect.poll(() => 收.locator(":scope > .ant-card > .ant-card-body").isVisible(), { message: `${w} ${名}` }).toBe(false);
         expect(await 收.locator(":scope > .ant-card > .ant-card-head").isVisible(), `${w} ${名}`).toBe(true);
         expect((await 收.boundingBox())!.height, `${w} ${名}`).toBeLessThan(开高);
         await 收.getByRole("button", { name: `展开${名}` }).click();
         expect(await 头.isVisible(), `${w} ${名}`).toBe(true);
-        expect(await 身.isVisible(), `${w} ${名}`).toBe(true);
+        await expect.poll(() => 身.isVisible(), { message: `${w} ${名}` }).toBe(true);
       }
       expect(errors).toEqual([]);
     } finally { await page.close(); }

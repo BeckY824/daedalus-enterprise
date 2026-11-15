@@ -17,7 +17,7 @@ const plugin: Plugin = { name: "task-denied-boundaries", setup(b) {
   stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({问怎么拿掉(){}});");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
   stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海,退回原因选项=async()=>[];");
-  stub(/^\.\.\/actions$/, "export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=async()=>({ok:true});");
+  stub(/^\.\.\/actions$/, "export const 转走项目预览of=async()=>(window.__预览??{项目数:0,项目:[]});export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=async()=>({ok:true});");
   stub(/^\.\/useCustomerResearch$/, "export function CustomerResearchCard(){return null} export function CustomerResearchTag(){return null}");
   stub(/^\.\/follow-history-actions$/, "export const loadFollowHistory=async()=>({ok:true,rows:[],hasMore:false}),readFollowHistoryRow=async()=>({ok:true,row:null}),loadCustomerFeed=async()=>({ok:true,rows:[],hasMore:false});");
   stub(/projects\/actions$/, "export const 项目沟通须知=async()=>({ok:true,能记:false}),记项目沟通Action=async()=>({ok:true});");
@@ -56,8 +56,8 @@ async function open(回: { toggle?: unknown; delete?: unknown } = {}, width = 13
   return { page, errors };
 }
 const 调用们 = (page: Page) => page.evaluate(() => (window as unknown as { __calls?: unknown[][] }).__calls ?? []);
-/** 顶部提示条里的字（antd message 挂在 body 下） */
-const 提示 = (page: Page) => page.locator(".ant-message").innerText().catch(() => "");
+/** 页面上所有提示（顶部提示、底部撤销条）里的字：被挡时都不该出现成功的话（PR7b 起成功走底部撤销条，被挡原因就地写在那一行） */
+const 提示 = (page: Page) => page.evaluate(() => [".ant-message", "#undo-host"].map((q) => (document.querySelector(q) as HTMLElement | null)?.innerText ?? "").join("\n"));
 
 it("勾完成被权限挡：不提示「已完成」，提示被挡的那句，勾选回滚、条目还在", async () => {
   const { page, errors } = await open({ toggle: { ok: false, error: 挡话 } });
@@ -92,32 +92,34 @@ it("删除待办被权限挡：不提示「待办已删除」，提示被挡的�
   } finally { await page.close(); }
 });
 
-it("服务端放行时照旧：勾完成提示「已完成」带撤销；删除提示「待办已删除」", async () => {
+it("服务端放行：勾完成走底部撤销条「已完成」带撤销；删除就地确认后直接删、不弹提示、行里没有被挡的话", async () => {
   const { page } = await open();
   try {
     await page.getByRole("checkbox", { name: "完成 整理报价单" }).click();
-    await page.getByText("「整理报价单」已完成").waitFor();
-    await page.getByRole("button", { name: "撤 销" }).or(page.getByRole("button", { name: "撤销" })).first().waitFor();
+    const 条 = page.locator("#undo-host");
+    await expect.poll(() => 条.innerText().catch(() => "")).toContain("「整理报价单」已完成");
+    await 条.getByRole("button", { name: /撤\s*销/ }).waitFor();
     const 行 = page.locator(".rec-task", { hasText: "寄样品" });
     await 行.getByRole("button", { name: "删除待办" }).click();
     await 行.getByRole("button", { name: "删除", exact: true }).click();
-    await page.getByText("待办已删除").waitFor();
+    await expect.poll(() => 调用们(page)).toContainEqual(["deleteTask", "t2"]);
+    expect(await 行.getByRole("alert").count()).toBe(0);
+    expect(await page.locator(".ant-message").innerText().catch(() => "")).not.toContain("待办已删除");
   } finally { await page.close(); }
 });
 
-it("提示在 Windows 常见宽度（1024 / 1280 / 1366）不溢出、页面不横滚", async () => {
+it("被挡的原因在 Windows 常见宽度（1024 / 1280 / 1366）就地显示、不溢出、页面不横滚", async () => {
   for (const w of [1024, 1280, 1366]) {
     const { page } = await open({ toggle: { ok: false, error: 挡话 } }, w);
     try {
       await page.getByRole("checkbox", { name: "完成 整理报价单" }).click();
       const 字 = page.getByText(挡话);
       await 字.waitFor();
-      // 整个提示条（字往上找到 .ant-message 下面那一层）都在视口里
+      // 被挡的原因就地写在那一行（role=alert，PR7b 起不弹顶部提示）：整句在视口里、没横向溢出
       const 框 = await 字.evaluate((el) => {
-        let x: HTMLElement = el as HTMLElement;
-        while (x.parentElement && !x.parentElement.classList.contains("ant-message")) x = x.parentElement;
-        const r = x.getBoundingClientRect();
-        return { 左: r.left, 右: r.right, 找到: !!x.parentElement };
+        const x = el.closest("[role=alert]") as HTMLElement | null;
+        const r = (x ?? (el as HTMLElement)).getBoundingClientRect();
+        return { 左: r.left, 右: r.right, 找到: !!x?.closest(".rec-task") && x.scrollWidth <= x.clientWidth + 1 };
       });
       expect(框.找到).toBe(true);
       expect(框.左).toBeGreaterThanOrEqual(0);

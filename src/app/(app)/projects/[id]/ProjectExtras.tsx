@@ -8,7 +8,8 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import FollowAttachments from "@/components/FollowAttachments";
 import type { 附件 } from "@/lib/attachment-rules";
 import DatePicker from "@/components/BusinessDatePicker";
-import InlineConfirm from "@/components/InlineConfirm";
+import SaveButton from "@/components/SaveButton";
+import { useConsequence } from "@/components/ConsequenceDialog";
 import { 未选占位, 不填项, 去不填, 去多选不填, type 项目画像键 } from "@/lib/enterprise/dict-kinds";
 import { 币种选项, 金额, 合计文字, 按币种合计, 默认币种 } from "@/lib/currency";
 import { dayjs } from "@/lib/utils";
@@ -175,33 +176,45 @@ export function ProjectAttachmentsCard({ projectId, 起始个数, 只读, 沟通
  */
 export function ProjectPaymentsCard({ projectId, 回款们, 能改, 默认: 默认币, 合同 }: { projectId: string; 回款们: 回款[]; 能改: boolean; 默认?: string; 合同?: 应收依据 | null }) {
   const 卡名 = useCardName();
-  const { message } = App.useApp();
   const router = useRouter();
+  const [问后果, 后果框] = useConsequence();
   const [日, set日] = useState<string | null>(dayjs().format("YYYY-MM-DD"));
   const [币, set币] = useState(默认币 ?? 默认币种);
   const [数, set数] = useState<number | null>(null);
-  const [忙, set忙] = useState(false);
+  /** 自动推进了几步：记完在卡里就地说一句（不弹顶部提示） */
+  const [推到, set推到] = useState<string[] | null>(null);
   const 合计 = 回款们.length ? 合计文字(按币种合计(回款们, (x) => x.amount, (x) => x.currency)) : "还没有回款";
   // 录的这笔少于「合同金额 − 已回」就黄字提示一句，不拦「记一笔」（A5-4）
   const 少了 = 回款少于应收(数, 币, 还应收(合同, 回款们));
 
+  /** 记一笔（dt.pay）：成了 / 没成都写在按钮里（SaveButton），不弹顶部提示；自动推进了在卡里说一句 */
   async function 记() {
-    if (!日 || !数) return;
-    set忙(true);
-    try {
-      const r = await 记回款(projectId, { paidAt: 日, currency: 币, amount: 数 });
-      if (!r.ok) { message.error(r.error); return; }
-      message.success("自动推到" in r && r.自动推到?.length ? `已记一笔回款，必填齐了，自动推到「${r.自动推到.join("」→「")}」` : "已记一笔回款");
-      set数(null);
-      router.refresh();
-    } finally { set忙(false); }
+    if (!日 || !数) return { ok: false, error: "先填回款时间和金额" };
+    const r = await 记回款(projectId, { paidAt: 日, currency: 币, amount: 数 });
+    if (!r.ok) return r;
+    set推到("自动推到" in r && r.自动推到?.length ? r.自动推到 : null);
+    set数(null);
+    router.refresh();
   }
 
-  async function 删(id: string) {
-    const r = await 删回款(id);
-    if (!r.ok) { message.error(r.error); return; }
-    message.success("已删掉这笔回款");
-    router.refresh();
+  /** 删一笔（dt.pay，P-界面-40 后果框）：框里写明哪一笔、删了回款合计变成多少；硬删找不回 */
+  async function 问删(x: 回款) {
+    const 剩 = 回款们.filter((y) => y.id !== x.id);
+    const 删后 = 剩.length ? 合计文字(按币种合计(剩, (y) => y.amount, (y) => y.currency)) : "没有回款";
+    await 问后果({
+      题: "删掉这笔回款",
+      补充: <b className="num" style={{ overflowWrap: "anywhere" }}>{dayjs(x.paidAt).format("YYYY-MM-DD")} · {金额(x.amount, x.currency)}</b>,
+      后果: [
+        { 标: "会发生", 话: <>当前回款从 {合计} 变成 {删后}</>, 级: "警" },
+        { 标: "找不回", 话: "删了不能恢复，只能重记", 级: "危" },
+      ],
+      是: "删掉这笔回款",
+      做: async () => {
+        const r = await 删回款(x.id);
+        if (!r.ok) return r;
+        router.refresh();
+      },
+    });
   }
 
   return (
@@ -211,7 +224,7 @@ export function ProjectPaymentsCard({ projectId, 回款们, 能改, 默认: 默�
         <div key={x.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "4px 0", borderTop: "1px solid var(--line-soft)" }}>
           <span style={{ color: "var(--text-muted)" }}>{dayjs(x.paidAt).format("YYYY-MM-DD")}</span>
           <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>{金额(x.amount, x.currency)}</span>
-          {能改 && <InlineConfirm 问="删掉这笔回款" 做={() => 删(x.id)}><Button type="link" size="small" danger>删除</Button></InlineConfirm>}
+          {能改 && <Button type="link" size="small" danger onClick={() => void 问删(x)}>删除</Button>}
         </div>
       ))}
       {能改 && (
@@ -219,10 +232,12 @@ export function ProjectPaymentsCard({ projectId, 回款们, 能改, 默认: 默�
           <DatePicker aria-label="回款时间" allowClear={false} value={日 ? dayjs(日, "YYYY-MM-DD") : null} onChange={(v) => set日(v ? v.format("YYYY-MM-DD") : null)} />
           <Select aria-label="回款币种" showSearch style={{ width: 130 }} value={币} options={币种选项()} onChange={(v: string) => set币(v)} />
           <InputNumber aria-label="回款金额" min={0.01} max={1e12} precision={2} placeholder="回款金额" style={{ width: 160 }} value={数} onChange={(v) => set数(typeof v === "number" ? v : null)} />
-          <Button type="primary" loading={忙} disabled={!日 || !数} onClick={() => void 记()}>记一笔</Button>
+          <SaveButton disabled={!日 || !数} 做={记} 已保存="已记下">记一笔</SaveButton>
         </Space>
       )}
       {能改 && 少了 && <div role="status" className="pay-short-hint">{少了}</div>}
+      {推到 && <div role="status" className="pay-short-hint">必填齐了，自动推到「{推到.join("」→「")}」</div>}
+      {后果框}
     </Card>
   );
 }

@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { 没存数, 清没存 } from "@/lib/settings-dirty";
+import ConsequenceDialog from "@/components/ConsequenceDialog";
 import { useRouter } from "next/navigation";
 import { CloseOutlined } from "@ant-design/icons";
 import { motion, useReducedMotion } from "motion/react";
@@ -22,10 +24,28 @@ export default function SettingsModal({ children }: { children: React.ReactNode 
   const { 曲线, 时长 } = useMotionTheme();
   const router = useRouter();
   const 少动 = useReducedMotion();
+  // 关之前（原型 st.dirty / st.open）：有没存的先问一句；关的时候放退场（淡出 + 下沉 6px），放完再回上一页
+  const [问, set问] = useState(0);
+  const [走, set走] = useState(false);
+  const 问着 = useRef(false);
+  useEffect(() => {
+    问着.current = 问 > 0;
+  }, [问]);
+  const 退场 = useCallback(() => {
+    if (少动) return router.back();
+    set走(true);
+  }, [少动, router]);
+  const 关 = useCallback(() => {
+    if (问着.current) return;
+    const n = 没存数();
+    if (n > 0) set问(n);
+    else 退场();
+  }, [退场]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") router.back();
+      // 后果框开着时 Esc 归它（它自己关），不连带把设置也关了
+      if (e.key === "Escape" && !e.defaultPrevented && !问着.current) 关();
     };
     window.addEventListener("keydown", onKey);
     // 浮层开着时底下不跟着滚——两层滚动条会让人不知道自己在滚哪一层
@@ -35,16 +55,16 @@ export default function SettingsModal({ children }: { children: React.ReactNode 
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = 原来的;
     };
-  }, [router]);
+  }, [关]);
 
   return (
     <motion.div
       className="setm"
       role="presentation"
-      onClick={() => router.back()}
+      onClick={关}
       /* 遮罩跟着淡，比浮层快一档：先暗下去，再看见设置长出来 */
       initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
+      animate={{ opacity: 走 ? 0 : 1 }}
       transition={{ duration: 少动 ? 0 : 时长.base, ease: 曲线.ease }}
     >
       <motion.div
@@ -56,15 +76,24 @@ export default function SettingsModal({ children }: { children: React.ReactNode 
            曲线用形变那条（两头慢、中间快），因为这一层的意思是「当前这一页变成了设置」，
            不是「有个东西飞过来了」。--t-morph（320ms）——再快就看不出它从哪儿来 */
         initial={{ opacity: 0, y: 少动 ? 0 : 6, scale: 少动 ? 1 : 0.985 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 少动 ? 0 : 时长.morph, ease: 曲线.morph }}
+        animate={走 ? { opacity: 0, y: 6, scale: 0.985 } : { opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 少动 ? 0 : 走 ? 时长.fast : 时长.morph, ease: 走 ? 曲线.ease : 曲线.morph }}
+        onAnimationComplete={() => { if (走) router.back(); }}
         /* 点在浮层里面不关——只有点到外面那层灰才算「我要走了」 */
         onClick={(e) => e.stopPropagation()}
       >
-        <button type="button" className="setm-x" aria-label="关闭设置" onClick={() => router.back()}>
+        <button type="button" className="setm-x" aria-label="关闭设置" onClick={关}>
           <CloseOutlined />
         </button>
         <div className="setm-scroll">{children}</div>
+        <ConsequenceDialog
+          open={问 > 0}
+          onClose={() => set问(0)}
+          题={`还有 ${问} 项没保存`}
+          后果={[{ 标: "会丢", 级: "危", 话: "现在关掉，刚改的不会存；想留着就点「取消」回去保存" }]}
+          是="放弃改动并关闭"
+          做={() => { 清没存(); 退场(); }}
+        />
       </motion.div>
     </motion.div>
   );
