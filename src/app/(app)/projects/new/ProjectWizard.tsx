@@ -3,7 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { App, Alert, Button, Input, InputNumber, Modal, Select, Space, Switch, Tag } from "antd";
+import { App, Alert, AutoComplete, Button, Input, InputNumber, Modal, Select, Space, Switch, Tag } from "antd";
 import { CheckOutlined } from "@ant-design/icons";
 import CopyValue from "@/components/CopyValue";
 import DatePicker from "@/components/BusinessDatePicker";
@@ -33,6 +33,8 @@ import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import SameNumberEntry from "./SameNumberEntry";
 import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 建档向导, 建档只建客户 } from "../actions";
+import { 搜客户, type 可挑客户 } from "../../customers/[id]/pick";
+import { 给客户建项目, 新项目分配数据 } from "../../customers/[id]/project-actions";
 import { 三种业务线, 分配说明, 业务线必填, 客户业务线必填, 建议业务线, 所在地预填, 所在地提示 } from "@/lib/enterprise/assign-line";
 import AddressInput, { 空地址 } from "@/components/AddressInput";
 import { 详细地址上限, 详细地址提示 } from "@/lib/project/profile-rules";
@@ -111,10 +113,18 @@ type 差项 = { 格: 格; 话: string };
  * 整张表还差什么（一个弹窗填完，P-界面-36）；空 = 能建。按钮不变灰，点了才把这些就地标红（原型 cr.validate）。
  * 没开项目：只看客户和首条沟通；企业版客户业务线必填（M-必填-13），开了项目跟项目的业务线走
  */
-function 还差们(d: 稿, 带项目: boolean, 要下一步: boolean, 企业: 企业建档 = null): 差项[] {
-  const 企 = !!企业;
+function 还差们(d: 稿, 带项目: boolean, 要下一步: boolean, 企业: 企业建档 = null, 老 = false): 差项[] {
   const 差: 差项[] = [];
   const 记 = (格: 格, 话: string) => void 差.push({ 格, 话 });
+  // 挑了老客户（原型 cr.old）：客户那几格不用填，只看项目和首条沟通
+  if (!老) 客户还差(d, 企业, 记);
+  if (企业 && !d.项目.业务线) 记("业务线", 带项目 ? 业务线必填 : 客户业务线必填);
+  项目沟通还差(d, 带项目, 要下一步, 企业, 记);
+  return 差;
+}
+
+function 客户还差(d: 稿, 企业: 企业建档, 记: (格: 格, 话: string) => void) {
+  const 企 = !!企业;
   if (企 && !d.号码类型) 记("号码类型", "请选择号码类型");
   if (!d.phone.trim()) 记("号码", 企 ? "请填号码" : "请填电话");
   // 企业版：「未知」「待定」「暂未确认」这类占位不算填了（11-03 A2-2，服务端同一句）
@@ -124,7 +134,10 @@ function 还差们(d: 稿, 带项目: boolean, 要下一步: boolean, 企业: �
   else if (企 && 是占位值(d.联系人.name)) 记("联系人", 占位名提示("联系人姓名"));
   const 来源 = 企业 ? 新建来源还差(d.客户.渠道, d.客户.触点) : "";
   if (来源) 记("来源", 来源);
-  if (企业 && !d.项目.业务线) 记("业务线", 带项目 ? 业务线必填 : 客户业务线必填);
+}
+
+function 项目沟通还差(d: 稿, 带项目: boolean, 要下一步: boolean, 企业: 企业建档, 记: (格: 格, 话: string) => void) {
+  const 企 = !!企业;
   if (带项目) {
     if (!d.项目.name.trim()) 记("项目名", "请填写项目名称");
     else if (企 && 是占位值(d.项目.name)) 记("项目名", 占位名提示("项目名称"));
@@ -140,7 +153,6 @@ function 还差们(d: 稿, 带项目: boolean, 要下一步: boolean, 企业: �
   // 超时回收是项目的钟：没开项目不要求下一步（填了记成客户上的跟进计划）
   if (带项目 && 要下一步 && !d.跟进.下一步时间) 记("下一步时间", "请填下一步时间：过了那天还没有新的沟通，项目会自动回到公海");
   if (带项目 && 要下一步 && 企业 && !d.跟进.下一步?.trim()) 记("下一步计划", "请写下一步计划");
-  return 差;
 }
 
 /**
@@ -247,6 +259,10 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   // 企业版客户名查重（P-挂靠-01）：离开客户名那格就查；撞了就地摆出负责人和申请挂靠，改了名字再查
   const [名查, set名查] = useState<{ 名: string; 撞: 名撞结论 | null; 提示: string } | null>(null);
   const [名查中, set名查中] = useState(false);
+  // 老客户新增项目（原型 cr.old）：弹窗里客户名直接搜到老客户，挑中后客户段收成一行，下面接着填项目和沟通（企业版，走 给客户建项目）
+  const 能挑老客户 = 企业版 && !!弹窗;
+  const [老客户, set老客户] = useState<可挑客户 | null>(null);
+  const [候选, set候选] = useState<可挑客户[]>([]);
   const [交中, set交中] = useState(false);
   const [建好了, set建好了] = useState(false);
   const [显错, set显错] = useState(false);
@@ -317,7 +333,24 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   const 号拦 = 号查过 && (企业版 ? !!企查 && !(企查.ok && 企查.状态 === "首次录入") : !!撞);
   const 名对上 = !!名查 && 名查.名 === d.客户.name.trim();
   const 名拦 = 企业版 && 名对上 && !!名查?.撞;
-  const 差们 = 还差们(d, 带项目, 要下一步, 企业);
+  const 差们 = 还差们(d, 带项目, 要下一步, 企业, !!老客户);
+  // 客户名一边打一边搜老客户（停 300ms 再问，晚回来的旧结果丢掉）
+  const 搜词 = 能挑老客户 && !老客户 ? d.客户.name.trim() : "";
+  useEffect(() => {
+    if (!搜词) return;
+    let 作废 = false;
+    const t = setTimeout(() => { 搜客户(搜词).then((r) => { if (!作废) set候选(r); }, () => {}); }, 300);
+    return () => { 作废 = true; clearTimeout(t); };
+  }, [搜词]);
+  const 挑老 = (id: string) => {
+    const c = 候选.find((x) => x.id === id);
+    if (!c) return;
+    set老客户(c);
+    set带项目(true);
+    set名查(null);
+    // 业务线默认带这位客户的（A1，和客户页「新增项目」同一个取数）；看不到 / 没开 = null 不带
+    新项目分配数据(c.id).then((r) => { if (r?.客户业务线 && !d.项目.业务线) 改("项目", { 业务线: r.客户业务线 }); }, () => {});
+  };
   const 错 = (g: 格) => (显错 ? 差们.find((x) => x.格 === g)?.话 : undefined);
   const 红 = (g: 格) => (错(g) ? ("error" as const) : undefined);
   // 销售选自动分配：分出去后就看不到这个项目了（A9）。就地黄条说后果、按钮写明「并分出去」，不再叠一层确认框（原型 cr.auto）
@@ -339,12 +372,44 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     set显错(true);
     if (企业?.没角色) return;
     if (差们.length) return 滚到(差们[0].格);
+    if (老客户) return void 给老客户建(老客户);
     let 稿面: 稿 | null = d;
     if (!号查过) 稿面 = await 查号(d);
     else if (号拦) 稿面 = null;
     if (!稿面) return 滚到("号码");
     if (企业版 && !(名对上 ? !名查?.撞 : await 查名())) return 滚到("客户名");
     void 提交(稿面);
+  };
+
+  /** 老客户新增项目：走客户页「新增项目」同一个服务端动作（限定层、同事只读、公海先领取、业务角色都在那里判） */
+  const 给老客户建 = async (客: 可挑客户) => {
+    set交中(true);
+    const 负责人 = 企业 && !要选负责人(d, 企业) ? 我?.id ?? "" : d.项目.ownerId;
+    try {
+      const r = await 给客户建项目({
+        customerId: 客.id,
+        项目: {
+          name: d.项目.name, ownerId: 负责人 || null, 分配方式: d.项目.分配方式 ?? null, 业务线: d.项目.业务线 ?? null,
+          ...(d.项目.所在地 ? { 所在地: d.项目.所在地 } : {}),
+        },
+        跟进: { ...d.跟进, method: 对得上的方式(d.跟进.type, d.跟进.method) },
+      });
+      if (!r.ok) return void message.error(r.error);
+      清草稿(全名);
+      set建好了(true);
+      message.success(`已给「${客.name}」建好项目「${d.项目.name.trim()}」`);
+      if (r.提示) (r.转走 ? message.info : message.warning)(r.提示);
+      await new Promise((ok) => setTimeout(ok, 落定停留));
+      弹窗?.关();
+      // 客户转给了销售、我看不到了：回客户列表；项目分走了：留在原页刷新；不然落到这位客户、停在新项目
+      if (r.看不到客户了) return void router.push("/customers");
+      if (r.转走) return void router.refresh();
+      router.push(`/customers/${客.id}?project=${r.projectId}`);
+    } catch {
+      message.error("没建成，请稍后再试；填过的还在");
+    } finally {
+      set交中(false);
+    }
   };
 
   const 提交 = async (稿面: 稿) => {
@@ -487,9 +552,16 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         <div className="cr-sec-head">
           <b>{b.customer}</b>
           <span className="cr-sp" />
-          <Button size="small" type="link" loading={查中 || 名查中} disabled={!!企业?.没角色} onClick={手动查重}>查重</Button>
+          {老客户
+            ? <Button size="small" type="link" onClick={() => set老客户(null)}>换</Button>
+            : <Button size="small" type="link" loading={查中 || 名查中} disabled={!!企业?.没角色} onClick={手动查重}>查重</Button>}
         </div>
-        <div className="cr-grid">
+        {老客户 ? (
+          <div className="cr-old cr-rise" data-testid="wizard-old-customer">
+            <Tag color="green">已有{b.customer}</Tag>
+            <span className="cr-old-name" title={[老客户.name, 老客户.附注].filter(Boolean).join(" · ")}>{老客户.name}{老客户.附注 ? ` · ${老客户.附注}` : ""}</span>
+          </div>
+        ) : <div className="cr-grid">
           {企业版 ? 一格("号码", "联系方式", (
             <Space.Compact className="cr-full">
               <Select
@@ -563,7 +635,22 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
               ) : <Alert type="success" showIcon title="没人录过这个号码" />}
             </div>
           )}
-          {一格("客户名", `${b.customer}名称`, (
+          {一格("客户名", `${b.customer}名称`, 能挑老客户 ? (
+            <AutoComplete
+              className="cr-full"
+              value={d.客户.name}
+              status={红("客户名") ?? (名拦 ? "error" : undefined)}
+              options={搜词 ? [
+                ...候选.map((c) => ({ value: `old:${c.id}`, label: <span className="cr-pick"><Tag color="green">已有{b.customer}</Tag>{c.name}{c.附注 ? ` · ${c.附注}` : ""}</span> })),
+                { value: "new", label: <span className="cr-pick">＋ 新{b.customer}「{搜词}」</span> },
+              ] : []}
+              onChange={(v: string) => { if (!v.startsWith("old:") && v !== "new") 改("客户", { name: v }); }}
+              onSelect={(v: string) => { if (v.startsWith("old:")) 挑老(v.slice(4)); }}
+              onBlur={() => { const 名 = d.客户.name.trim(); if (名 && 名查?.名 !== 名) void 查名(名); }}
+            >
+              <Input aria-label={`${b.customer}名称`} placeholder="公司或个人；已有的直接搜到" />
+            </AutoComplete>
+          ) : (
             <Input
               aria-label={`${b.customer}名称`}
               value={d.客户.name}
@@ -623,20 +710,20 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
           ))}
           {!企业 && 一格(null, b.fields.school, <Input aria-label={b.fields.school} value={d.客户.school} onChange={(e) => 改("客户", { school: e.target.value })} />)}
           {!企业 && 一格(null, "备注", <Input.TextArea aria-label={`${b.customer}备注`} rows={2} value={d.客户.remark} onChange={(e) => 改("客户", { remark: e.target.value })} />, false, true)}
-        </div>
+        </div>}
       </section>
 
       <section className="cr-sec" aria-label="项目">
         <div className="cr-sec-head">
           <b>项目</b>
-          <Switch size="small" aria-label="有项目" checked={带项目} disabled={锁} onChange={(v) => set带项目(v)} />
-          <span className="cr-hint">{锁 ? "新线索建好就是一个线索阶段的项目" : 带项目 ? "下面填项目信息；关掉就不建项目" : "有项目就打开，下面填项目信息"}</span>
+          <Switch size="small" aria-label="有项目" checked={带项目} disabled={锁 || !!老客户} onChange={(v) => set带项目(v)} />
+          <span className="cr-hint">{老客户 ? `给已有${b.customer}新增项目` : 锁 ? "新线索建好就是一个线索阶段的项目" : 带项目 ? "下面填项目信息；关掉就不建项目" : "有项目就打开，下面填项目信息"}</span>
         </div>
         {带项目 && (
           <div className="cr-grid cr-rise">
             {一格("项目名", "项目名称", <Input aria-label="项目名称" status={红("项目名")} value={d.项目.name} maxLength={项目名上限} showCount onChange={(e) => 改("项目", { name: e.target.value })} />, true)}
             {/* 项目来源（迁移 077）：默认带客户的渠道；老客户这一单从别的渠道来就在这改。清掉 = 回到跟客户 */}
-            {企业 && 一格(null, "项目渠道", (
+            {企业 && !老客户 && 一格(null, "项目渠道", (
               <ChannelPicker
                 aria-label="项目渠道"
                 层级="两级"

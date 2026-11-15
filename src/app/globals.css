@@ -4431,3 +4431,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .cr-saved { font-size: var(--fs-note); color: var(--text-muted); white-space: nowrap; }
 .cr-miss { font-size: var(--fs-note); color: var(--danger-text); white-space: nowrap; }
 @media (max-width: 767px) { .cr-grid { grid-template-columns: minmax(0, 1fr); } }
+/* 老客户新增项目（原型 cr.old）：挑中老客户后客户段收成一行；搜到的候选一行省略 */
+.cr-old { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 0; }
+.cr-old-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-pick { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
