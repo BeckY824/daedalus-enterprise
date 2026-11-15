@@ -638,8 +638,9 @@ function 刷新联系人(customerId?: string | null) {
  * 除了 = 编辑时排除这位自己
  */
 export async function 联系人号码先查(号码们: { kind: string; value: string }[], 除了?: string | null): Promise<{ ok: true; 撞了: 撞到的联系人[] } | { ok: false; error: string }> {
+  // 认人放在 try 外：没登录照常抛（按未登录处理），不被下面「号码没查成」那句盖住
+  await requireUser();
   try {
-    await requireUser();
     if (!企业版() || !Array.isArray(号码们)) return { ok: true, 撞了: [] };
     const 行们 = 号码们.filter((x) => x && typeof x.kind === "string" && typeof x.value === "string" && x.value.trim() && !x.value.includes("*")).slice(0, 20);
     if (!行们.length) return { ok: true, 撞了: [] };

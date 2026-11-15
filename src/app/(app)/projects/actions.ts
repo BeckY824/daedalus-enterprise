@@ -390,8 +390,9 @@ export async function 看板补必填料(projectId: string): Promise<
   | { ok: true; p: 项目详情Props["p"]; 联系人们: 项目详情Props["联系人们"]; 能就地改: boolean; 改不了话: string }
   | { ok: false; error: string }
 > {
+  // 认人放在 try 外：没登录照常抛（按未登录处理），不被下面「没读到这个项目」那句盖住
+  const me = await requireUser();
   try {
-    const me = await requireUser();
     if (!(await 开着())) return 没开;
     const r = await 读项目详情(me, String(projectId ?? ""));
     if (r.种 !== "有") return { ok: false, error: "这个项目现在看不到，进项目里补" };
