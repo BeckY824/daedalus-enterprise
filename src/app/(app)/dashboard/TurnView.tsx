@@ -218,7 +218,12 @@ export default function TurnView({
   const answer = job?.status === "done" ? job.value?.answer : undefined;
   const writing = job?.value?.steps?.some((s) => s.id === "answer" && s.status === "running");
   const ms = job?.value?.ms;
+  /*
+    还有几张等人确认。停用的卡（老存档里的商机卡，点不了确认）不算——算进去状态条就永远停在「等你确认」。
+    刷新后翻出来的历史轮次本来就不还原建议卡（lib/thread-history.ts 的 proposals: []），自然是 0
+  */
   const 待确认 = (answer?.proposals ?? []).filter((p) => {
+    if (p.kind === "add_opportunity") return false;
     const st = 卡况们[p.id]?.状态 ?? "idle";
     return st === "idle" || st === "saving";
   }).length;

@@ -19,7 +19,7 @@ const plugin: Plugin = { name: "ai-status-boundaries", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
   stub(/^next\/link$/, "export default function L({children,...p}){return <a {...p}>{children}</a>}");
   stub(/^next\/dynamic$/, "export default ()=>()=>null;");
-  stub(/dashboard\/apply$/, "export const applyProposal=async p=>{(window.__交||=[]).push(p);return{ok:true,撤销:{kind:'add_followup',customerId:'c',id:p.id}}};export const undoProposal=async u=>{(window.__撤||=[]).push(u.id);return{ok:true}};");
+  stub(/dashboard\/apply$/, "export const applyProposal=async p=>{if(window.__抛===p.id)throw new Error('断网');(window.__交||=[]).push(p);return{ok:true,撤销:{kind:'add_followup',customerId:'c',id:p.id}}};export const undoProposal=async u=>{if(window.__抛===u.id)throw new Error('断网');(window.__撤||=[]).push(u.id);return{ok:true}};");
   stub(/card-scan\/originals$/, "export const 取走名片原图=()=>null,记下刚建的=()=>{},忘掉刚建的=()=>{};");
   stub(/attachment-upload$/, "export const 传附件=async()=>({ok:true});");
   stub(/customers\/RescueKey$/, "export default function R(){return null}");
@@ -35,8 +35,8 @@ beforeAll(async () => {
     const root=createRoot(document.getElementById('root'));
     const 包=(x)=><ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><div className="cli-col" style={{padding:16}}>{x}</div></BusinessProvider></App></ConfigProvider>;
     window.__status=(p)=>{window.__重试=0;flushSync(()=>root.render(包(<AiStatus 客户="客户" {...p} onRetry={p.无重试?undefined:()=>{window.__重试++}}/>)))};
-    window.__batch=(ps)=>{window.__交=[];window.__撤=[];flushSync(()=>root.render(包(<ProposalBatch key={Math.random()} proposals={ps} 记号前缀={'t'+Math.random()}/>)))};
-    window.__card=(p,企)=>{window.__交=[];root.render(包(企?<新线索来源.Provider value={['展会']}><新线索企业.Provider value={企}><ProposalCard proposal={p}/></新线索企业.Provider></新线索来源.Provider>:<ProposalCard proposal={p}/>))};
+    window.__batch=(ps,企)=>{window.__交=[];window.__撤=[];window.__抛=null;const x=<ProposalBatch key={Math.random()} proposals={ps} 记号前缀={'t'+Math.random()}/>;flushSync(()=>root.render(包(企?<新线索来源.Provider value={['展会']}><新线索企业.Provider value={企}>{x}</新线索企业.Provider></新线索来源.Provider>:x)))};
+    window.__card=(p,企)=>{window.__交=[];window.__抛=null;root.render(包(企?<新线索来源.Provider value={['展会']}><新线索企业.Provider value={企}><ProposalCard proposal={p}/></新线索企业.Provider></新线索来源.Provider>:<ProposalCard proposal={p}/>))};
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
@@ -74,6 +74,10 @@ it("进行中：头部写人话、不写工具名，只露最近 3 步，更早�
   expect(全文).toContain("查了项目 · 4 个");
   await page.locator(".ais-more").click();
   expect(await page.locator(".ais-row").count()).toBe(5);
+  // 工具都做完、还没定下一步：已经是第 6 步了
+  await 画(page, { steps: steps.slice(0, 5), 态: "running", 起 });
+  expect(await 头(page)).toBe("正在想下一步…");
+  expect(await page.locator(".ais-mt").first().innerText()).toMatch(/^第 6 步 · /);
   // 回答写着的时候
   await 画(page, { steps: steps.map((s) => ({ ...s, status: "done" })), 态: "running", 起, 写着: true });
   expect(await 头(page)).toBe("正在写回答…");
@@ -134,9 +138,19 @@ it("出错：「停在第 N 步：原因」，前面做完的留着，有重试�
 const 长名 = "某某超长国际贸易进出口集团股份有限公司华东区域分公司".repeat(4);
 const 计划 = (id: string, 名: string, subject = "发报价") => ({ id, kind: "add_plan", customerId: `c-${id}`, customerName: 名, reason: "到期了", subject, plannedAt: "2026-11-23", method: "电话" });
 
-it("≥2 张卡合并确认：只勾一部分 → 只写勾上的，没勾的算忽略；写完收成一行，撤销逐张调", async () => {
+type 窗 = { __batch: (p: unknown, q?: unknown) => void; __card: (p: unknown, q?: unknown) => void; __交: { id: string; subject: string }[]; __撤: string[]; __抛: string | null };
+const 窗 = (page: Page) => ({
+  交: () => page.evaluate(() => (window as unknown as 窗).__交.map((p) => p.id)),
+  撤: () => page.evaluate(() => (window as unknown as 窗).__撤),
+  抛: (id: string | null) => page.evaluate((id) => { (window as unknown as 窗).__抛 = id; }, id),
+});
+const 企销售 = { 成员: [{ value: "u1", label: "乙" }], 分配方式们: [{ i: 1, 名: "自动分配" }], 默认分配方式: 1, 是销售: true };
+const 线索 = (id: string) => ({ id, kind: "add_lead", customerId: "", customerName: "", reason: "x", name: `某公司${id}`, contact: "周经理", phone: "13800000000", source: "展会", status: "待跟进", remark: "", 业务线: "内贸", 节点: undefined });
+
+it("≥2 张卡合并确认：只写勾上的；没勾的仍待确认、还能再确认；撤销只撤已写入的", async () => {
   const { page, errors } = await open();
-  await page.evaluate((ps) => (window as unknown as { __batch: (p: unknown) => void }).__batch(ps), [计划("a", "华东展具"), 计划("b", "北岸游乐"), 计划("c", "Lumen Arcade")]);
+  const w = 窗(page);
+  await page.evaluate((ps) => (window as unknown as 窗).__batch(ps), [计划("a", "华东展具"), 计划("b", "北岸游乐"), 计划("c", "Lumen Arcade")]);
   await page.locator(".pbat").waitFor();
   expect(await page.locator(".pbat-h-t").innerText()).toBe("待确认 3 项");
   expect(await page.locator(".pbat-li").count()).toBe(3);
@@ -147,44 +161,110 @@ it("≥2 张卡合并确认：只勾一部分 → 只写勾上的，没勾的算
   await page.locator(".pbat-li").nth(1).locator(".ant-checkbox-input").uncheck();
   const 确认 = page.locator(".pbat > .prop-foot .prop-ok");
   expect(await 确认.innerText()).toContain("确认选中 2 项");
-  // 展开第一张就地改「谈什么」
+  // 展开第一张就地改「谈什么」，⌘↵ 等于点确认
   await page.locator(".pbat-edit").first().click();
   const 谈 = page.locator(".pbat-card").first().locator(".prop-f").filter({ hasText: "谈什么" }).locator("input");
   await 谈.fill("发新版报价");
-  // ⌘↵ 等于点确认
   await 谈.press("Control+Enter");
-  await page.locator(".pbat-done").waitFor();
-  const 交 = await page.evaluate(() => (window as unknown as { __交: { id: string; subject: string }[] }).__交);
-  expect(交.map((p) => p.id)).toEqual(["a", "c"]);
-  expect(交[0].subject).toBe("发新版报价");
-  expect(await page.locator(".pbat-done-h .prop-seal").innerText()).toContain("已写入 2 项");
+  await expect.poll(() => page.locator(".pbat-done-h .prop-seal").count()).toBe(1);
+  expect(await w.交()).toEqual(["a", "c"]);
+  expect(await page.evaluate(() => (window as unknown as 窗).__交[0].subject)).toBe("发新版报价");
+  // 没勾的那张没被忽略：清单收成「已写入 2 项 · 还有 1 项待确认」，它照样能勾
+  expect(await page.locator(".pbat-done-h").innerText()).toMatch(/已写入 2 项[\s\S]*还有 1 项待确认/);
+  expect(await page.locator(".pbat").evaluate((e) => e.classList.contains("pbat-done"))).toBe(false);
+  const 剩 = page.locator(".pbat-li:visible");
+  expect(await 剩.count()).toBe(1);
+  expect(await 剩.locator(".pbat-n").innerText()).toContain("北岸游乐");
+  expect(await 确认.isDisabled()).toBe(true); // 一项都没勾
+  // 撤销只撤已写入的那两张，没写过的那张不碰
   await page.getByRole("button", { name: "撤销", exact: true }).click();
-  await expect.poll(() => page.evaluate(() => (window as unknown as { __撤: string[] }).__撤)).toEqual(["a", "c"]);
-  // 撤销后回到待确认：没勾的那张已经按忽略收掉了，剩下撤回来的两张
-  await page.locator(".pbat-h-t").waitFor();
-  expect(await page.locator(".pbat-h-t").innerText()).toBe("待确认 2 项");
+  await expect.poll(() => w.撤()).toEqual(["a", "c"]);
+  await expect.poll(() => page.locator(".pbat-h-t").innerText()).toBe("待确认 3 项");
+  // 再勾上它，单独确认
+  await page.locator(".pbat-li").nth(0).locator(".ant-checkbox-input").uncheck();
+  await page.locator(".pbat-li").nth(2).locator(".ant-checkbox-input").uncheck();
+  await page.locator(".pbat-li").nth(1).locator(".ant-checkbox-input").check();
+  await 确认.click();
+  await expect.poll(() => w.交()).toEqual(["a", "c", "b"]);
+  expect(await page.locator(".pbat-done-h").innerText()).toMatch(/已写入 1 项[\s\S]*还有 2 项待确认/);
+  // 只有「全部忽略」才算忽略
+  await page.getByRole("button", { name: /全部忽略/ }).click();
+  await expect.poll(() => page.locator(".pbat").evaluate((e) => e.classList.contains("pbat-done"))).toBe(true);
   expect(errors).toEqual([]);
   await page.close();
 });
 
-it("只有 1 张卡保持原样；销售自动分配不再弹框，后果写在按钮上", async () => {
+it("提交抛错（断网）：清单不锁死，后面的卡照写；只展开失败的那张、卡上写原因，能再试", async () => {
+  const { page, errors } = await open();
+  const w = 窗(page);
+  await page.evaluate((ps) => (window as unknown as 窗).__batch(ps), [计划("a", "甲"), 计划("b", "乙"), 计划("c", "丙")]);
+  await page.locator(".pbat").waitFor();
+  await w.抛("b");
+  const 确认 = page.locator(".pbat > .prop-foot .prop-ok");
+  await 确认.click();
+  await expect.poll(() => w.交()).toEqual(["a", "c"]);
+  // 「写入中」复位，失败的那张展开、写着原因，别的不展开
+  await expect.poll(() => 确认.innerText()).toContain("确认选中 1 项");
+  expect(await 确认.isEnabled()).toBe(true);
+  expect(await page.locator(".pbat-card:visible").count()).toBe(1);
+  expect(await page.locator(".pbat-card:visible .prop-err").innerText()).toContain("没写进去：断网");
+  await w.抛(null);
+  await 确认.click();
+  await expect.poll(() => w.交()).toEqual(["a", "c", "b"]);
+  await expect.poll(() => page.locator(".pbat").evaluate((e) => e.classList.contains("pbat-done"))).toBe(true);
+  // 撤销抛错：也不锁死
+  await w.抛("a");
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  await expect.poll(() => w.撤()).toEqual(["b", "c"]);
+  expect(await page.getByRole("button", { name: /撤销/ }).first().isEnabled()).toBe(true);
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
+it("单张卡提交抛错：回到可重试、卡上写原因", async () => {
   const { page } = await open();
-  await page.evaluate((p) => (window as unknown as { __card: (p: unknown) => void }).__card(p), 计划("a", "华东展具"));
+  const w = 窗(page);
+  await page.evaluate((p) => (window as unknown as 窗).__card(p), 计划("a", "甲"));
+  await page.locator(".prop-ok").waitFor();
+  await w.抛("a");
+  await page.locator(".prop-ok").click();
+  await expect.poll(() => page.locator(".prop-err").innerText()).toContain("没写进去：断网");
+  expect((await page.locator(".prop-ok").innerText()).trim()).toBe("确认");
+  expect(await page.locator(".prop-ok").isEnabled()).toBe(true);
+  await w.抛(null);
+  await page.locator(".prop-ok").click();
+  await page.locator(".prop-done").waitFor();
+  expect(await w.交()).toEqual(["a"]);
+  await page.close();
+});
+
+it("只有 1 张卡保持原样；自动分配不弹框，后果整句写在屏上（不靠 title），清单里也是", async () => {
+  const { page } = await open(375);
+  await page.evaluate((p) => (window as unknown as 窗).__card(p), 计划("a", "华东展具"));
   await page.locator(".prop-ok").waitFor();
   expect(await page.locator(".pbat").count()).toBe(0);
   expect((await page.locator(".prop-ok").innerText()).trim()).toBe("确认");
   await page.locator(".prop-ok").click();
   await page.locator(".prop-done").waitFor();
-  const 企 = { 成员: [{ value: "u1", label: "乙" }], 分配方式们: [{ i: 1, 名: "自动分配" }], 默认分配方式: 1, 是销售: true };
-  const 线索 = { id: "l1", kind: "add_lead", customerId: "", customerName: "", reason: "x", name: "某公司", contact: "周经理", phone: "13800000000", source: "展会", status: "待跟进", remark: "", 业务线: "内贸", 节点: undefined };
-  await page.evaluate(([p, q]) => (window as unknown as { __card: (p: unknown, q: unknown) => void }).__card(p, q), [线索, 企] as const);
+  await page.evaluate(([p, q]) => (window as unknown as 窗).__card(p, q), [线索("l1"), 企销售] as const);
   await page.locator(".prop-ok").waitFor();
   expect(await page.locator(".prop-ok").innerText()).toContain("确认，自动分出去");
-  expect(await page.locator(".prop-note").innerText()).toContain("分出去后你将看不到这个项目");
+  const 句 = page.locator(".prop-consequence");
+  expect(await 句.innerText()).toBe("确认后自动分出去，你将看不到这个项目");
+  // 整句真的露在屏上：没被省略号截掉
+  expect(await 句.evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
   await page.locator(".prop-ok").click();
   await page.locator(".prop-done").waitFor();
   expect(await page.locator(".ant-modal").count()).toBe(0);
-  expect(await page.evaluate(() => (window as unknown as { __交: { id: string }[] }).__交.map((p) => p.id))).toEqual(["l1"]);
+  expect(await page.evaluate(() => (window as unknown as 窗).__交.map((p) => p.id))).toEqual(["l1"]);
+  // 合并清单：选中项含自动分配，⌘↵ 之前底部已经写着那句
+  await page.evaluate(([ps, q]) => (window as unknown as 窗).__batch(ps, q), [[线索("l2"), 计划("x", "甲")], 企销售] as const);
+  await page.locator(".pbat").waitFor();
+  const 清单句 = page.locator(".pbat > .prop-foot .prop-consequence");
+  await expect.poll(() => 清单句.innerText()).toBe("其中 1 项会自动分出去，你将看不到这个项目");
+  expect(await 清单句.evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+  await page.locator(".pbat-li").nth(0).locator(".ant-checkbox-input").uncheck();
+  expect(await 清单句.count()).toBe(0);
   await page.close();
 });
 

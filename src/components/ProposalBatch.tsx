@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { App, Checkbox } from "antd";
 import { CheckOutlined, CloseOutlined, RightOutlined } from "@ant-design/icons";
 import { motion } from "motion/react";
-import ProposalCard, { type 卡况, type 卡句柄 } from "@/components/ProposalCard";
+import ProposalCard, { 自动分整句, type 卡况, type 卡句柄 } from "@/components/ProposalCard";
 import Shortcut from "@/components/Shortcut";
 import { describeProposal, 可改字段表, type Proposal } from "@/lib/agent/proposals";
 import { useBusiness } from "@/lib/business-client";
@@ -18,8 +18,8 @@ import { useMotionTheme } from "@/components/MotionTheme";
  *   底部  「确认选中 N 项」（⌘↵），逐张调用卡片自己那套确认（applyProposal），不并发、不绕路
  *   写完  收成一行「已写入 N 项 · 撤销」；撤销逐张调用卡片自己那套撤销（undoProposal，只认本人、限时，规则一行没动）
  *
- * **人的决定一次都没少**：每一项写不写由那个勾说了算，底部那一下是人点的；没勾的那几张算「忽略」，
- * 和单张卡上点忽略同一个结果。只有 1 张卡时不走这里，照旧单张确认（TurnView）。
+ * **人的决定一次都没少**：每一项写不写由那个勾说了算，底部那一下是人点的；没勾的那几张留着待确认，
+ * 清单收成「已写入 N 项 · 还有 K 项待确认」，剩下的照样能勾、能确认。只有点「全部忽略」才算忽略。只有 1 张卡时不走这里，照旧单张确认（TurnView）。
  *
  * 卡片一直挂着（收起时只是藏起来）：草稿里改过的字段、记号恢复的状态都在卡里，卸掉就丢了。
  */
@@ -70,59 +70,76 @@ export default function ProposalBatch({ proposals, 记号前缀, 报 }: { propos
 
   async function 确认() {
     if (!能确认) return;
+    const 这批 = 选中.slice();
     set忙("写入");
-    let 失败 = 0;
-    // 逐张、按顺序：每张走它自己的 applyProposal，服务端每张各判一次权限
-    for (const p of 选中) {
-      const h = 句柄们.current.get(p.id);
-      if (!h || !(await h.提交())) 失败 += 1;
+    /** 按 提交() 的返回值认失败的那几张：渲染时的状态这会儿还没更新，靠不住 */
+    const 败: string[] = [];
+    try {
+      // 逐张、按顺序：每张走它自己的 applyProposal，服务端每张各判一次权限
+      for (const p of 这批) {
+        const h = 句柄们.current.get(p.id);
+        let 成 = false;
+        try {
+          成 = !!h && (await h.提交());
+        } catch {
+          成 = false; // 卡片自己已经接住并写了原因；这里兜底，后面的卡照样往下走
+        }
+        if (!成) 败.push(p.id);
+      }
+    } finally {
+      set忙(null);
     }
-    if (失败 === 0) {
-      // 都写进去了：没勾的那几张就是人说了不要，按「忽略」收掉
-      for (const p of 待) if (!勾.has(p.id)) 句柄们.current.get(p.id)?.忽略();
-    } else {
-      // 有没写进去的：展开它们，卡上写着原因，人改完再点一次
-      set展开(new Set(选中.filter((p) => 况们[p.id]?.状态 !== "done").map((p) => p.id)));
-      message.warning(`${选中.length - 失败} 项已写入，${失败} 项没写进去，原因写在卡上`);
-    }
-    set忙(null);
+    // 没勾的不动：留着待确认，人可以接着勾、接着确认；只有点「全部忽略」才算忽略
+    set展开(new Set(败));
+    if (败.length) message.warning(`${这批.length - 败.length} 项已写入，${败.length} 项没写进去，原因写在卡上`);
   }
 
   async function 撤销() {
-    if (!可撤.length) return;
+    const 这批 = 可撤.slice();
+    if (!这批.length) return;
     set忙("撤销");
     let 成 = 0;
-    for (const p of 可撤) if (await 句柄们.current.get(p.id)?.撤销()) 成 += 1;
-    set忙(null);
+    try {
+      for (const p of 这批) {
+        try {
+          if (await 句柄们.current.get(p.id)?.撤销()) 成 += 1;
+        } catch {
+          /* 卡片自己报了错；接着撤下一张 */
+        }
+      }
+    } finally {
+      set忙(null);
+    }
     set看回执(false);
     if (成) message.success(`已撤销 ${成} 项，回到确认之前`);
   }
 
   if (在.length === 0) return null;
-  const 都结了 = 待.length === 0 && 写了.length > 0;
+  const 有写 = 写了.length > 0;
+  const 有待 = 待.length > 0;
   const 已写摘要 = 写了.map((p) => describeProposal(p, b.customer, 字段表, b)).join("；");
 
   /* 待确认和写完两种样子用同一棵树：卡片挂在同一个位置上，换样子时不重挂（重挂会丢掉卡里刚建的那些记号） */
   return (
     <motion.div
-      className={`pbat${都结了 ? " pbat-done" : ""}`}
+      className={`pbat${有待 ? "" : " pbat-done"}`}
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 时长.base, ease: 曲线.ease }}
       onKeyDown={(e) => {
-        if (!都结了 && (e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        if (有待 && (e.metaKey || e.ctrlKey) && e.key === "Enter") {
           e.preventDefault();
           void 确认();
         }
       }}
     >
-      {都结了 ? (
+      {有写 ? (
         <motion.div key="done" className="pbat-done-h" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 时长.morph, ease: 曲线.morph }}>
           <span className="prop-seal">
             <CheckOutlined /> 已写入 {写了.length} 项
           </span>
-          <span className="pbat-done-t" title={已写摘要}>
-            {已写摘要}
+          <span className={`pbat-done-t${有待 ? " is-left" : ""}`} title={有待 ? undefined : 已写摘要}>
+            {有待 ? `还有 ${待.length} 项待确认` : 已写摘要}
           </span>
           {可撤.length > 0 && (
             <button type="button" className="cli-link" onClick={() => void 撤销()} disabled={!!忙}>
@@ -137,7 +154,6 @@ export default function ProposalBatch({ proposals, 记号前缀, 报 }: { propos
         <div className="pbat-h">
           <span className="prop-tag">AI 草稿</span>
           <span className="pbat-h-t">待确认 {待.length} 项</span>
-          {写了.length > 0 && <span className="pbat-h-n">另有 {写了.length} 项已写入</span>}
         </div>
       )}
       {proposals.map((p, i) => {
@@ -145,45 +161,34 @@ export default function ProposalBatch({ proposals, 记号前缀, 报 }: { propos
         const 已写 = c?.状态 === "done";
         const 摘要 = describeProposal(p, b.customer, 字段表, b);
         const 开 = 展开.has(p.id);
-        const 露卡 = 都结了 ? 看回执 : 开;
+        /* 写进去的那几张收在「已写入 N 项」那一行里，点「逐项看」才露回执；待确认的照常一行一项 */
         return (
-          <div key={p.id} className={`pbat-row${已写 ? " is-done" : ""}${!已写 && !勾.has(p.id) ? " is-off" : ""}`} hidden={c?.状态 === "denied" || (都结了 && !看回执)}>
-            {!都结了 && (
+          <div key={p.id} className={`pbat-row${已写 ? " is-done" : ""}${!已写 && !勾.has(p.id) ? " is-off" : ""}`} hidden={c?.状态 === "denied" || (已写 && !看回执)}>
+            {!已写 && (
               <div className="pbat-li">
-                {已写 ? (
-                  <span className="pbat-ok" aria-label="已写入">
-                    <CheckOutlined />
-                  </span>
-                ) : (
-                  <Checkbox
-                    checked={勾.has(p.id)}
-                    disabled={!!忙}
-                    aria-label={`确认这一项：${摘要}`}
-                    onChange={(e) =>
-                      set勾((s) => {
-                        const n = new Set(s);
-                        if (e.target.checked) n.add(p.id);
-                        else n.delete(p.id);
-                        return n;
-                      })
-                    }
-                  />
-                )}
+                <Checkbox
+                  checked={勾.has(p.id)}
+                  disabled={!!忙}
+                  aria-label={`确认这一项：${摘要}`}
+                  onChange={(e) =>
+                    set勾((s) => {
+                      const n = new Set(s);
+                      if (e.target.checked) n.add(p.id);
+                      else n.delete(p.id);
+                      return n;
+                    })
+                  }
+                />
                 <span className="pbat-n" title={p.reason ? `${摘要}\n${p.reason}` : 摘要}>
                   {摘要}
                 </span>
-                {!已写 && c?.后果 && (
-                  <span className="pbat-tag pbat-tag-warn" title={c.后果}>
-                    确认后自动分出去
-                  </span>
-                )}
-                {!已写 && c?.不可撤销 && <span className="pbat-tag pbat-tag-warn">不可撤销</span>}
-                {!已写 && c && !c.能确认 && c.缺 && (
+                {c?.后果 && <span className="pbat-tag pbat-tag-warn">确认后自动分出去</span>}
+                {c?.不可撤销 && <span className="pbat-tag pbat-tag-warn">不可撤销</span>}
+                {c && !c.能确认 && c.缺 && (
                   <span className="pbat-tag" title={c.缺}>
                     {c.缺}
                   </span>
                 )}
-                {已写 && <span className="pbat-tag">已写入</span>}
                 <button
                   type="button"
                   className="cli-link pbat-edit"
@@ -198,26 +203,28 @@ export default function ProposalBatch({ proposals, 记号前缀, 报 }: { propos
                     })
                   }
                 >
-                  {开 ? "收起" : 已写 ? "查看" : "改"} <RightOutlined className={`pbat-chev${开 ? " is-open" : ""}`} />
+                  {开 ? "收起" : "改"} <RightOutlined className={`pbat-chev${开 ? " is-open" : ""}`} />
                 </button>
               </div>
             )}
-            <div className="pbat-card" hidden={!露卡}>
+            <div className="pbat-card" hidden={已写 ? !看回执 : !开}>
               <ProposalCard proposal={p} 记号={记号(p)} 报={收况} 批={批} />
             </div>
           </div>
         );
       })}
-      {!都结了 && (
+      {有待 && (
         <div className="prop-foot">
-          <button type="button" className="prop-ok" onClick={() => void 确认()} disabled={!能确认} title={选中后果.length ? 况(选中后果[0])?.后果 : undefined}>
+          <button type="button" className="prop-ok" onClick={() => void 确认()} disabled={!能确认}>
             <CheckOutlined /> {忙 === "写入" ? "写入中…" : `确认选中 ${选中.length} 项${选中后果.length ? `（${选中后果.length} 项自动分出去）` : ""}`}
           </button>
           <button type="button" className="prop-no" disabled={!!忙} onClick={() => 待.forEach((p) => 句柄们.current.get(p.id)?.忽略())}>
             <CloseOutlined /> 全部忽略
           </button>
+          {/* 后果整句写在屏上（不只放悬停）：⌘↵ 之前人就看得见 */}
+          {选中后果.length > 0 && <span className="prop-consequence">{自动分整句(选中后果.length, true)}</span>}
           <span className="prop-note">
-            {选中.length === 0 ? "一项都没选" : 选中缺.length ? `${选中缺.length} 项还没填完，点「改」补上` : <Shortcut>没勾的算忽略 · 确认前不会写入任何数据 · ⌘↵</Shortcut>}
+            {选中.length === 0 ? "一项都没选" : 选中缺.length ? `${选中缺.length} 项还没填完，点「改」补上` : <Shortcut>没勾的留着待确认 · 确认前不会写入任何数据 · ⌘↵</Shortcut>}
           </span>
         </div>
       )}

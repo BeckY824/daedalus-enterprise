@@ -78,5 +78,14 @@ it("答完：≥2 张卡走合并清单、状态条「等你确认」；1 张照
   await expect.poll(() => page.locator(".ais-tt").innerText()).toBe("等你确认 1 项");
   await 画(page, 答(2), "done");
   await expect.poll(() => page.locator(".ais-tt").innerText()).toBe("用了 4 秒 · 1 步");
+  // 停用的老商机卡点不了确认，不算「等你确认」；刷新后的历史轮次 proposals 是空的（thread-history.ts），也不算
+  const 停用 = 答(0);
+  停用.value.answer.proposals = [{ id: "o1", kind: "add_opportunity", customerId: "c", customerName: "甲", reason: "" } as never, 计划("p9")];
+  await 画(page, 停用, "done");
+  await expect.poll(() => page.locator(".ais-tt").innerText()).toBe("用了 4 秒 · 1 步");
+  await 画(page, 停用);
+  await expect.poll(() => page.locator(".ais-tt").innerText()).toBe("等你确认 1 项");
+  await 画(page, 答(0));
+  await expect.poll(() => page.locator(".ais-tt").innerText()).toBe("用了 4 秒 · 1 步");
   await page.close();
 });

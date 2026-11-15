@@ -80,8 +80,9 @@ export default function AiStatus({
   let 标题: string;
   let 尾: string | null = null;
   if (跑着) {
+    // 「正在想下一步」：做完的那几步之后，下一步还没定是哪个工具——它已经是第 len + 1 步了
     标题 = 当前 ? `${一步人话(当前, true, 客户)}…` : 写着 ? "正在写回答…" : 步们.length ? "正在想下一步…" : "正在想…";
-    尾 = [`第 ${Math.max(1, 步们.length)} 步`, `${秒数(now - (开始 ?? now))} 秒`, 附注].filter(Boolean).join(" · ");
+    尾 = [`第 ${当前 || 写着 ? Math.max(1, 步们.length) : 步们.length + 1} 步`, `${秒数(now - (开始 ?? now))} 秒`, 附注].filter(Boolean).join(" · ");
   } else if (态 === "error") {
     标题 = 出错步 >= 0 ? `停在第 ${出错步 + 1} 步：${原因 || "出错了"}` : `出错了：${原因 || "没有拿到回答"}`;
   } else if (态 === "interrupted") {

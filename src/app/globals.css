@@ -2311,6 +2311,8 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .prop-f-arrow { color: var(--text-faint); text-decoration: none; display: inline-block; margin-left: 2px; }
 .prop-err { margin-top: 8px; color: var(--danger-text); font-size: var(--fs-note); }
 .prop-err-inline { margin: 0; }
+/* 确认之后会发生、人要先知道的事（自动分配：分出去自己就看不到了）：整句写在页脚，不只放悬停 */
+.prop-consequence { flex: 1 1 100%; min-width: 0; font-size: var(--fs-note); color: var(--warning-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /*
   页脚：确认 / 忽略 / 一句提示。
   **必须能换行**——面板只有 380 宽，三样挤一行时提示文字占掉 141px，
@@ -2364,6 +2366,8 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .pbat-done-h { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: var(--fs-note); }
 .pbat-done-t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
 .pbat-done-h > .cli-link { flex: none; white-space: nowrap; }
+.pbat:not(.pbat-done) > .pbat-done-h { padding-bottom: 6px; margin-bottom: 2px; border-bottom: 1px solid var(--line-soft); }
+.pbat-done-t.is-left { color: var(--warning-text); }
 .pbat-done .pbat-row { border-bottom: 0; }
 .pbat-done .pbat-card { padding: 8px 0 0; }
 /* 冷热信号条（components/Heat.tsx）：四格竖条，从左往右亮。形不跟着字号缩 */

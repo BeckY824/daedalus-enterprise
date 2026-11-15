@@ -93,6 +93,8 @@ export type 卡句柄 = { 提交: () => Promise<boolean>; 撤销: () => Promise<
 
 /** 销售选自动分配：分出去自己就看不到了。原来确认前再弹一次框问，现在把这句写在按钮上（照新建向导的 销售自动分确认 那个意思） */
 export const 自动分后果 = "分出去后你将看不到这个项目";
+/** 屏上那整句。单张卡 n = 1；合并清单里写「其中 n 项」 */
+export const 自动分整句 = (n: number, 清单 = false) => (清单 ? `其中 ${n} 项会自动分出去，你将看不到${n > 1 ? "这些" : "这个"}项目` : "确认后自动分出去，你将看不到这个项目");
 
 /** 老商机卡上那句（和 dashboard/apply.ts 拦下时回的话同一个意思） */
 const 商机卡停用话 = "这里商机已并入项目，这张老建议卡不能再确认：请到项目页把项目推到商机阶段";
@@ -184,7 +186,15 @@ export default function ProposalCard({
     // 确认完这张卡就没有输入框了：焦点原来在卡里的，送回对话框，让人接着说下一句
     const 焦点在卡里 = !!根.current?.contains(document.activeElement);
     const 对话框 = 找对话框(根.current);
-    const r = await applyProposal(要提交的);
+    /* 断网 / 服务端抛错：卡片回到能再点一次的样子，原因写在卡上（不然一直「写入中…」，合并清单也跟着锁死） */
+    let r: Awaited<ReturnType<typeof applyProposal>>;
+    try {
+      r = await applyProposal(要提交的);
+    } catch (e) {
+      setState("idle");
+      setErr(`没写进去：${e instanceof Error && e.message ? e.message : "网络或服务出错"}，可以再点一次`);
+      return false;
+    }
     if (r.ok) {
       const 回执: 落印回执 = { at: dayjs().format("HH:mm"), 撤销: r.撤销, ...(r.项目 ? { 项目: r.项目 } : {}) };
       set落印(回执);
@@ -240,8 +250,15 @@ export default function ProposalCard({
   async function undo(静默 = false): Promise<boolean> {
     if (!落印?.撤销) return false;
     set撤销中(true);
-    const r = await undoProposal(落印.撤销);
-    set撤销中(false);
+    let r: Awaited<ReturnType<typeof undoProposal>>;
+    try {
+      r = await undoProposal(落印.撤销);
+    } catch (e) {
+      message.error(`没撤销成功：${e instanceof Error && e.message ? e.message : "网络或服务出错"}，可以再点一次`);
+      return false;
+    } finally {
+      set撤销中(false);
+    }
     if (!r.ok) {
       message.error(r.error);
       return false;
@@ -678,10 +695,9 @@ export default function ProposalCard({
             此操作不可撤销{draft.kind === "customer_delete" ? "（删后进回收站，30 天内可恢复）" : ""}
           </span>
         )}
-        <span className="prop-note">
-          {提示 || (后果 ? `${后果} · ` : "")}
-          {!提示 && <Shortcut>确认前不会写入任何数据 · ⌘↵</Shortcut>}
-        </span>
+        {/* 后果整句写在屏上（不只放悬停）：⌘↵ 之前人就看得见 */}
+        {后果 && <span className="prop-consequence" title={自动分整句(1)}>{自动分整句(1)}</span>}
+        <span className="prop-note">{提示 || <Shortcut>确认前不会写入任何数据 · ⌘↵</Shortcut>}</span>
       </div>
       )}
     </motion.div>

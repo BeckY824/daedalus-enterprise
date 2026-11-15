@@ -141,7 +141,7 @@ describe("L-111 删掉的页，AI 面板不给指路", () => {
 describe("L-051 建议卡确认 / 撤销之后刷新这一页", () => {
   it("ProposalCard：applyProposal 成功那一支和 undo 成功之后都调 router.refresh()", () => {
     const s = readFileSync(path.join(ROOT, "src/components/ProposalCard.tsx"), "utf8");
-    const 确认 = s.slice(s.indexOf("const r = await applyProposal("), s.indexOf("} else {", s.indexOf("const r = await applyProposal(")));
+    const 确认 = s.slice(s.indexOf("r = await applyProposal("), s.indexOf("} else {", s.indexOf("r = await applyProposal(")));
     expect(确认).toMatch(/if \(r\.ok\)/);
     expect(确认).toMatch(/router\.refresh\(\)/);
     const 撤销 = s.slice(s.indexOf("async function undo("), s.indexOf("if (state === \"denied\")"));
