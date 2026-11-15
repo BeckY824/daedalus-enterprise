@@ -52,6 +52,7 @@ import Shortcut, { useModifierKey } from "./Shortcut";
 import { useBusiness } from "@/lib/business-client";
 import { DockOpenContext, useNarrow, usePageOwnsCmdK } from "@/lib/roster";
 import { useMotionTheme } from "@/components/MotionTheme";
+import { 默认过渡, 跟随过渡 } from "@/lib/motion";
 import NoticeBell from "@/components/NoticeBell";
 import { 企业版根目录, 企业版亮项, 企业版页名, type 根目录图 } from "@/lib/enterprise/nav";
 import { 切换视图Provider } from "@/components/ViewAsContext";
@@ -178,7 +179,7 @@ function 身份分组(名单: 演示组[], 前缀: "view" | "demo", 我: string)
 }
 
 export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = [], 计数 = {}, 要跟, desktop, 反馈去向, 企业版项目 = false, 企业版 = false, 通知未读, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, 全局搜索, 视图名单, 视图换人, 视图退出, 正在视图, 预热 = "全部", children }: Props) {
-  const { 曲线, 时长 } = useMotionTheme();
+  const 动效值 = useMotionTheme();
   const b = useBusiness();
   const modifier = useModifierKey();
   const router = useRouter();
@@ -314,7 +315,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
     // 企业版项目模式：不在左栏的新线索、跟进、联系人挂到入口那一项上（lib/enterprise/nav.ts）
     const 企 = 企业版项目 ? 企业版亮项(pathname, pool) : null;
     if (企) return 企;
-    const flat = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/reports", "/contacts", "/opportunities", "/projects", "/pool", "/follow-ups", "/settings"];
+    const flat = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/contacts", "/projects", "/pool", "/follow-ups", "/settings"];
     // 「我的反馈」不在导航里：哪一项都不亮，亮的是左下角的反馈键（FeedbackButton）
     if (pathname === "/feedback" || pathname.startsWith("/feedback/")) return "";
     return flat.find((k) => pathname === k || pathname.startsWith(k + "/")) ?? "/dashboard";
@@ -427,37 +428,27 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
   /** 左栏的一项（主导航和「更多」共用）。选中那块底色仍是同一块在各项之间滑（layoutId） */
   const 一项 = (n: (typeof nav)[number]) => 带名(n.key, n.label, (
     <Link
-      /* 桌面端的「客户」直接进「名单 + 详情」，打开最近看过的那位（照毛玻璃原型）；表格在名单右上角。
-         网页团队版照旧进表格：那边要按人分配、批量改，表格是主场。手机菜单也照旧进表格 */
-      href={desktop && n.key === "/customers" ? "/customers/recent" : n.key}
-      prefetch={desktop && n.key === "/customers" ? false : undefined}
+      href={n.key}
       /* 网页版悬停就整页预取（默认只取到骨架，点进去还要再等一趟数据）。桌面端在本机，照旧。
          next/link 的类型取的是老路由那份，没有这一项；运行时用的是 app 路由的 Link，认这一项 */
       {...(desktop ? {} : { unstable_dynamicOnHover: true })}
-      /* 跳转页的结果会被客户端路由缓存住（staleTimes 60 秒）：第二次点会回到上一次跳去的那位，
-         不是刚看过的那位。每次带一个新参数，确保回到服务端读 cookie */
       onClick={
-        desktop && n.key === "/customers"
-          ? (e) => {
-              if (e.metaKey || e.ctrlKey || e.shiftKey) return;
-              e.preventDefault();
-              router.push(`/customers/recent?t=${Date.now()}`);
+        desktop
+          ? undefined
+          : (e) => {
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+              if (n.key !== selectedKey) set去向(n.key);
             }
-          : desktop
-            ? undefined
-            : (e) => {
-                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
-                if (n.key !== selectedKey) set去向(n.key);
-              }
       }
       aria-label={n.挂要跟 && 要跟说法 ? `${n.label}，${要跟说法}` : n.label}
       className={`rail-item${亮项 === n.key ? " on" : ""}`}
     >
       {/* 选中那块底色是**同一块**在两项之间滑过去的（layoutId），不是这边灭那边亮。
           切页时眼睛跟着它走，不用重新找自己在哪一项上。
+          PR2 外壳（原型 g.nav）：滑动改 snap 那档不回弹弹簧（P-界面-38），比原来的 180ms 曲线跟手。
           系统开了「减弱动态效果」就按 0 秒，等于原来的瞬切。 */}
       {亮项 === n.key && (
-        <motion.span layoutId="rail-on" className="rail-on-bg" transition={{ duration: 少动 ? 0 : 时长.base, ease: 曲线.ease }} />
+        <motion.span layoutId="rail-on" className="rail-on-bg" transition={少动 ? { duration: 0 } : 跟随过渡(动效值)} />
       )}
       {n.icon}
       <b>{n.label}</b>
@@ -792,7 +783,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
           一个文档只能有一个 main，两个会让读屏和测试都认不出正文是哪块 */}
       <main className="main app-content" style={{ padding: 正在视图 ? "44px 26px 22px" : "22px 26px" }}>
         {/*
-          换页时正文淡进来、抬 6px。**--t（180ms），而且只有正文**——
+          换页时正文淡进来、抬 4px（PR2 外壳 g.nav：原来 6px + 180ms 曲线，改成 ui 那档不回弹弹簧，和底块一起到位）。**只有正文**——
           左栏和中栏不动，动的只是"这一页的内容换了"这件事本身。
           在这之前换页是硬切：上一页的表格原地变成下一页的表格，人得自己确认屏幕真的换了。
 
@@ -802,9 +793,9 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
         */}
         <motion.div
           key={底下那页}
-          initial={{ opacity: 0, y: 少动 ? 0 : 6 }}
+          initial={{ opacity: 0, y: 少动 ? 0 : 4 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 少动 ? 0 : 时长.base, ease: 曲线.ease }}
+          transition={默认过渡(动效值)}
           style={{ maxWidth: 1720, margin: "0 auto" }}
         >
           <我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟}>{children}</要跟Context.Provider></我Provider>

@@ -202,7 +202,7 @@ test("A2 只负责项目的人：各入口没有点了就 404 的客户链接", 
   await 登录(page, 丙.email);
   const 正文 = page.getByRole("main");
   const 全部 = [];
-  for (const 路径 of ["/dashboard", "/overview", "/follow-ups", "/follow-ups/plans", "/follow-ups/watchlist", "/contacts", "/customers", "/projects", `/projects/${项目A}`, "/reports", "/leads", "/pool"]) {
+  for (const 路径 of ["/dashboard", "/overview", "/follow-ups", "/follow-ups/plans", "/contacts", "/customers", "/projects", `/projects/${项目A}`, "/leads", "/pool"]) {
     全部.push(...await 客户链接(page, 路径));
   }
   const 坏 = [];

@@ -237,6 +237,7 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
         <Form
           form={form}
           layout="vertical"
+          className="chan-invest-form"
           style={{ margin: "8px 0 16px" }}
           initialValues={{ currency: b.currency, date: dayjs() }}
         >

@@ -24,9 +24,9 @@ import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
 /** 状态在界面上叫什么。日志是给人看的，不能写 WON / LOST */
 const 状态名: Record<string, string> = { OPEN: "进行中", WON: "赢单", LOST: "丢单" };
 
-/** 商机一动，列表、看板、首页数字都得重算；带上客户就连那张详情页一起 */
+/** 商机一动，首页数字得重算；带上客户就连那张详情页一起（商机列表、看板两页 10-28 删了） */
 function 刷新商机(客户id?: string) {
-  for (const p of ["/opportunities", "/opportunities/pipeline", "/dashboard"]) revalidatePath(p);
+  revalidatePath("/dashboard");
   if (客户id) revalidatePath(`/customers/${客户id}`);
 }
 

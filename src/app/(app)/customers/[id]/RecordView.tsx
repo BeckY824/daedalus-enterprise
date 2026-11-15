@@ -76,7 +76,6 @@ import { 进公海理由显示 } from "@/lib/enterprise/tri-state-label";
 import { 换负责人怎么来的 } from "@/lib/owner-log";
 import { useMotionTheme } from "@/components/MotionTheme";
 import { 截止说法, 已过期 } from "@/lib/deadline";
-import { 记下最近客户 } from "@/lib/last-customer";
 import { 金额, 金额或空, 合计文字 } from "@/lib/currency";
 import { 公海标签 } from "@/lib/pool";
 import { 带走说法 } from "@/lib/carry-over";
@@ -321,8 +320,6 @@ export default function RecordView({
     登记详情名(customer.name);
     return () => 登记详情名(null);
   }, [customer.name]);
-  // 左栏点「客户」时回到这一位（customers/recent）
-  useEffect(() => 记下最近客户(customer.id), [customer.id]);
 
   const [filter, setFilter] = useState<string>("全部");
   const [memo, setMemo] = useState("");
@@ -1605,7 +1602,7 @@ export default function RecordView({
         customerId={customer.id}
         有WhatsApp={有WhatsApp}
         record={排新计划 ? null : plan}
-        默认天数={排新计划 ? 7 : 2}
+        默认天数={排新计划 ? 7 : 3}
       />
       <ContactForm open={contactOpen} onClose={() => setContactOpen(false)} onSaved={(新加的) => { setContactOpen(false); if (新加的) { set刚加的联系人(新加的); set开着的联系人((s) => new Set(s).add(新加的)); } router.refresh(); }} customerId={customer.id} record={editingContact} 号码种类={企业 ? 号码种类 : undefined} 职务选项={企业 ? 职务选项 : undefined} />
       <ContractForm
@@ -1907,7 +1904,8 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
         <div className="rec-tl-head">
           <span className="rec-tl-type">{f.method || meta.label}</span>
           {f.title?.trim() && <span className="rec-tl-title" title={f.title}>· {f.title}</span>}
-          {f.opportunity && !不挂商机 && <RowLink href={`/opportunities?opportunity=${encodeURIComponent(f.opportunity.id)}`} className="rec-tl-order" title={`关联商机：${f.opportunity.name}`}>关联商机：{f.opportunity.name}</RowLink>}
+          {/* 商机页 10-28 删了（/opportunities 只剩转项目的跳转）：只标出是哪个商机，不再做成链接 */}
+          {f.opportunity && !不挂商机 && <span className="rec-tl-order" title={`关联商机：${f.opportunity.name}`}>关联商机：{f.opportunity.name}</span>}
           {/* 企业版沟通记录（P14 第 6 条）：每条标出是哪个项目的，点了去项目详情的「沟通」卡记 */}
           {f.项目 && <RowLink href={项目地址(f.项目.id)} className="rec-tl-order rec-tl-proj" title={`项目：${f.项目.名}`}>项目：{f.项目.名}</RowLink>}
           {f.status !== "已完成" && (

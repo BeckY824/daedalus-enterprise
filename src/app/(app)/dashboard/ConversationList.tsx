@@ -6,7 +6,8 @@ import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { App, Drawer, Dropdown, Input, Modal } from "antd";
 import { PlusOutlined, MoreOutlined } from "@ant-design/icons";
-import { 删掉对话的屏, 新起一屏, 当前对话, 首页屏 } from "@/lib/home-thread";
+import { 删掉对话的屏, 新起一屏, 当前对话, 首页屏, useThread, useConversationId } from "@/lib/home-thread";
+import { 占位标题 } from "./home-look";
 import { clearJob } from "@/lib/ai-jobs";
 import { 重命名对话, 删除对话, type 对话概要 } from "./threads";
 import WidthHandle, { 对话列表把手 } from "@/components/WidthHandle";
@@ -38,6 +39,14 @@ export default function ConversationList({ rows }: { rows: 对话概要[] }) {
   const [改名, set改名] = useState<{ id: string; title: string } | null>(null);
 
   const 选中 = sp.get("c") ?? 当前对话(首页屏) ?? "";
+  /*
+    home.threads：点了「新建对话」或这一屏问了第一句、还没落库，列表顶上先占一行（标题 = 第一句截断，和落库同一截法）；
+    答完落库、router.refresh 带回真行、对话 id 认领上，占位自己让位
+  */
+  const 屏 = useThread(首页屏);
+  const 屏对话 = useConversationId(首页屏);
+  const [刚新建, set刚新建] = useState(false);
+  const 占位 = 占位标题({ 第一句: 屏[0]?.question, 对话id: 屏对话, 刚新建, 看着老对话: !!sp.get("c") });
   // 收起 / 太窄时成抽屉（lib/middle-pane.ts）。抽屉里点了一条就关上：打开它就是为了换一条
   const 中栏 = useMiddlePane("chat");
   usePaneShortcut(中栏.切换);
@@ -45,6 +54,7 @@ export default function ConversationList({ rows }: { rows: 对话概要[] }) {
 
   function 新建() {
     关抽屉();
+    set刚新建(true);
     新起一屏(首页屏);
     router.push("/dashboard");
   }
@@ -112,10 +122,16 @@ export default function ConversationList({ rows }: { rows: 对话概要[] }) {
         </button>
         {视图中 ? (
           <div className="pane-empty">{视图AI对话话}</div>
-        ) : rows.length === 0 ? (
+        ) : rows.length === 0 && !占位 ? (
           <div className="pane-empty">还没有问过什么。在右边问一句，这里就会留下一条。</div>
         ) : (
-          组.map(([名, 条目]) =>
+          <>
+          {占位 && (
+            <div className="chat-row on chat-row-new" aria-current="true">
+              <span className="chat-row-b" title={占位}>{占位}</span>
+            </div>
+          )}
+          {组.map(([名, 条目]) =>
             条目.length === 0 ? null : (
               <section key={名} className="chat-g">
                 <div className="chat-g-h">{名}</div>
@@ -142,7 +158,8 @@ export default function ConversationList({ rows }: { rows: 对话概要[] }) {
                 ))}
               </section>
             ),
-          )
+          )}
+          </>
         )}
       </div>
 

@@ -72,7 +72,7 @@ async function 顺延(payload: JWTPayload): Promise<string | null> {
  */
 function 登录后回来(request: NextRequest): string | null {
   const { pathname, search } = request.nextUrl;
-  if (request.method !== "GET" || pathname === "/" || pathname === "/start" || pathname === "/dashboard") return null;
+  if (request.method !== "GET" || pathname === "/" || pathname === "/dashboard") return null;
   const q = new URLSearchParams(search);
   q.delete("_rsc");
   const 串 = q.toString();
@@ -157,7 +157,7 @@ export async function proxy(request: NextRequest) {
   }
 
   /**
-   * /reports 并进了 /overview（见 app/(app)/reports/page.tsx，那份留着兜底）。跳转放在这里而不是页面里：
+   * /reports 并进了 /overview，页面 11-15 删了，老书签全靠这里（tests/route-cleanup-redirects.test.ts）。跳转放在这里而不是页面里：
    * 页面里的 redirect() 碰上已经开始流式输出的布局，Next 只能退成客户端跳转——旧书签点进来
    * 先看到一页空白的外壳再跳（e2e 零数据巡检 600ms 时抓到的就是这一瞬）。这里是一个干净的 307。
    * 不写进 next.config 的 redirects：目标里有中文，那边会把它解码进 Location 头，直接 500。

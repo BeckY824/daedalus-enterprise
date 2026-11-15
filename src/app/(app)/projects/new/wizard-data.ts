@@ -6,6 +6,7 @@ import { 企业版字典 } from "@/lib/project/nodes";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import type { 建档数据 } from "./ProjectWizard";
 import type { SessionUser } from "@/lib/auth";
+import { 新建只给自己 } from "@/lib/enterprise/import-perm";
 
 /**
  * 向导要的数据：建档页和客户页「新增客户」弹窗（U-新建-01）共用。调用方自己先认人、判项目模式。
@@ -17,12 +18,14 @@ export async function 建档向导数据(me: SessionUser): Promise<建档数据>
   // 企业版新建线索：渠道、负责人、跟进节点必选（节点只到线索验证，11-05 去掉明确回复）（lib/project/wizard.ts 规整向导 + 建档向导 也拦）
   // 四样互不依赖，一起取（11-01 速度闸门：原来渠道、分配方式各等一轮）
   const 企 = 企业版();
-  const [users, 规则, 渠道们, 分配方式们] = await Promise.all([
+  const [users, 规则, 渠道们, 分配方式们, 只给自己] = await Promise.all([
     负责人候选(),
     生效组织规则(),
     企 ? 可选渠道们() : null,
     企 ? 新建分配方式数据(me) : null,
+    企 ? 新建只给自己(me) : false,
   ]);
-  const 企业 = 企 ? { 渠道们: 渠道们!, 节点们: 企业版字典.节点们.线索, ...分配方式们! } : null;
+  // 客户只给自己（10-27 会议）：新建弹窗没开项目时「客户负责人」不给选（服务端 saveCustomer 同样落到自己）
+  const 企业 = 企 ? { 渠道们: 渠道们!, 节点们: 企业版字典.节点们.线索, ...分配方式们!, 客户只给自己: 只给自己 } : null;
   return { users, 要下一步: 规则.超时回收.开, 企业 };
 }

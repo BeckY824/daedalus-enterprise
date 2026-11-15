@@ -35,7 +35,6 @@ const 字形放行: Record<string, string> = {
   ".rec-chip-caret": "记录筛选片上的下拉小箭头（DownOutlined）",
   ".cf-any-mark": "客户表单「四选一」的角标符号，aria-hidden，悬停看说明",
   ".proj-stage-mark": "项目阶段条里 8px 圆点里的图标",
-  ".slc-k": "滑动确认的把手箭头",
   ".md-code": "行内代码跟着所在段落缩一点（0.92em），不是固定字号",
   ".rs-bars": "背调评分条 ●●●○○，字形当图形用",
 };

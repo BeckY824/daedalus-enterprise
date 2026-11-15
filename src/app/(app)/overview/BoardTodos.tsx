@@ -6,6 +6,7 @@ import Link from "next/link";
 import { App, Button, Checkbox, Segmented, Table, Tooltip } from "antd";
 import { dayjs, fmtDateTime } from "@/lib/utils";
 import EmptyState, { 表格空态 } from "@/components/EmptyState";
+import CountUp from "@/components/CountUp";
 import { toggleTask, completePlan } from "../customers/[id]/actions";
 import {
   待办卡们, 待办卡叫法, 状态of, 复盘待办每页,
@@ -186,7 +187,8 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
               onClick={() => { if (!选中) 改({ f: k }); }}
             >
               <span className="home-card-k">{待办卡叫法[k]}</span>
-              <b className="home-card-v">{n}</b>
+              {/* 数变了（打完一条、换了筛选）从旧数滚到新数，等宽不跳（PR2 外壳 g.numbers）；第一次进来直接是数 */}
+              <b className="home-card-v"><CountUp 值={n} 记号={`btodo:${k}`} 只滚变化 /></b>
             </button>
           );
         })}

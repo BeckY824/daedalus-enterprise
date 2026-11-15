@@ -431,6 +431,7 @@ describe("写沟通的调用点都接了存沟通后重算三态", () => {
   const 调用方接: Record<string, string[]> = {
     "lib/project/db.ts#记项目沟通": ["app/(app)/projects/actions.ts#记项目沟通Action"],
     "lib/project/wizard.ts#向导接着建": ["app/(app)/projects/actions.ts#建档向导"],
+    "lib/project/wizard.ts#只建客户接着建": ["app/(app)/projects/actions.ts#只建客户写"],
     "lib/project/from-lead.ts#线索建项目": ["app/(app)/leads/actions.ts#转项目之后"],
     "lib/enterprise/soft-delete.ts#表": ["lib/enterprise/soft-delete.ts#恢复一条"],
   };

@@ -138,7 +138,10 @@
      别的主题（src/app/skins/*.css）只在这里已有的名字上换值——名字拼错不会报错，
      只会悄悄沿用现状，所以 tests/skins.test.ts 钉着「主题只许定义 :root 里有的名字」。 */
   --seal: var(--ink);                  /* 你确认的那一下（建议卡落的印）。账簿换成朱红，且只许它用 */
-  --nav-on-bg: var(--hover);           /* 左栏当前项的底：16a 起浅灰底深字，不用蓝底（蓝留给要人点的东西） */
+  /* 左栏当前项的底：16a 起不用蓝底（蓝留给要人点的东西）。2026-11 PR2 外壳（原型 g.feel / g.nav）：
+     浅灰底改成白底 + 一层很薄的阴影，像从灰色侧栏里浮起来的一块（Apple 侧栏的选中态）；
+     阴影只给现状明亮（下面 .rail-on-bg 那条），换皮、暗黑各用自己的 --nav-on-bg、不带阴影；白底地面上退回浅灰（白压白看不出） */
+  --nav-on-bg: var(--panel);
   --nav-on-fg: var(--ink);             /* 左栏当前项的字 */
   --font-ui: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "SF Pro SC", "PingFang SC", "Noto Sans SC", "Daedalus YaHei", "Microsoft YaHei", Roboto, sans-serif;
   /* 等宽：中文要有落脚处——Mac 落苹方，Windows 落雅黑（2026-10-14 之前没写雅黑，Windows 上中文掉到宋体） */
@@ -149,10 +152,18 @@
   --r-tag: 999px;                      /* 状态标签 */
   --bw: 1px;                           /* 控件边框粗细（喂给 antd 的 lineWidth） */
   --draft: dashed;                     /* 铅笔的线型：AI 起草、还没确认的 */
-  /* 16a：卡片不画边框，靠两层很淡的阴影从地面（#F5F5F7）上浮起来；浮层（弹窗、抽屉、下拉、气泡）共用 --shadow-pop */
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.05);
-  --card-line: transparent;            /* 卡片边框：现状不画；别的主题、暗黑接回 --line */
-  --shadow-pop: 0 2px 6px rgba(0, 0, 0, 0.04), 0 12px 32px rgba(0, 0, 0, 0.10);
+  /* 16a：卡片不画边框，靠很淡的阴影从地面（#F5F5F7）上浮起来；浮层（弹窗、抽屉、下拉、气泡）共用 --shadow-pop。
+     2026-11 PR2 外壳（原型 g.feel「细描边、柔阴影」）：两档都在最前面加一圈 0.5px 的发丝描边——白卡片压在白底上
+     （白底地面、弹窗里的卡）也认得出边；卡片那层影收短收淡（4/16 → 1/2 + 3/10），浮起来但不发虚 */
+  --shadow-card: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04), 0 3px 10px rgba(0, 0, 0, 0.03);
+  --card-line: transparent;            /* 卡片边框：现状不画（发丝描边在 --shadow-card 里）；别的主题、暗黑接回 --line */
+  --shadow-pop: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04), 0 12px 32px rgba(0, 0, 0, 0.10);
+  /* 输入框（PR2 外壳 g.feel）：现状主题下不画框，铺一层半透明的墨色——压在白卡上是浅灰，压在灰地面上深一档，哪儿都认得出；
+     悬停再深一点，聚焦变回白底 + 主色框。用的地方在文件后面「输入框浅灰底」那段 */
+  --field-bg: color-mix(in srgb, var(--ink) 4%, transparent);
+  --field-bg-hover: color-mix(in srgb, var(--ink) 6.5%, transparent);
+  /* 大数字的字距（PR2 外壳 g.feel「KPI 字号收紧」）：26px 的数字照正文字距会显得松，收 2%。各页的指标值按需接这个 token */
+  --num-track: -0.02em;
   --page-pattern: none;                /* 地面纹理：像素的点阵、科技的坐标格、账簿的稿纸线 */
   --page-pattern-size: auto;
 }
@@ -169,6 +180,8 @@
    只换值，不换结构。<html> 上的 data-paper / data-skin 在第一次绘制前由 layout 里那段小脚本挂好，
    所以刷新时不会先闪一下原底。这里不许写裸色值（tests/design-tokens.test.ts），只许指到已有 token 上 */
 :root[data-paper="white"] { --page-bg: var(--panel); }
+/* 白底地面上左栏选中块退回浅灰：白底 + 阴影压在白地面上只剩一圈影子，认不出选中的是哪项 */
+:root[data-paper="white"]:not([data-mode="dark"]) { --nav-on-bg: var(--hover); }
 /* 设置 → 外观 那一栏 */
 .appr { display: flex; flex-direction: column; gap: var(--s5); max-width: 640px; }
 .appr-note { margin: 0; color: var(--text-muted); font-size: var(--fs-note); }
@@ -677,6 +690,10 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
 .rail-ask-k { margin-left: auto; font-size: var(--fs-min); color: var(--text-faint); }
 /* 选中的底色是一块会滑动的层（AppShell 里的 layoutId），压在图标和字下面 */
 .rail-on-bg { position: absolute; inset: 0; border-radius: var(--r-card); background: var(--nav-on-bg); z-index: 0; }
+/* 现状明亮下的选中块：白底 + 一圈 0.5px 发丝描边 + 1px 软影（原型 g.feel）。换皮、暗黑、白底地面不挂，各走各的底色 */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-mode="dark"]):not([data-paper="white"]) :is(.rail-on-bg, .rail-fav-i.on) {
+  box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--ink) 6%, transparent), 0 1px 2px color-mix(in srgb, var(--ink) 8%, transparent);
+}
 .rail-item > :not(.rail-on-bg) { position: relative; z-index: 1; }
 /* 客户详情上左栏收成图标窄栏（11-12，AppShell 的 rail-mini，路由在 lib/rail-mini.ts）：
    在壳上把 --rail-w 覆盖成 56，左栏本身、反馈条 .fbt、中栏开关 .pane-toggle-float 这些按它算位置的都跟着走；
@@ -1823,7 +1840,15 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
   display: flex; align-items: center; min-width: 3em; height: 32px; padding: 0 var(--s3); box-sizing: border-box;
   border-radius: var(--r-ctl); border: 1px solid var(--brand-line);
   background: color-mix(in srgb, var(--brand) 18%, var(--panel));
+  /* ov.data：进页从零长出（从左往右揭开，条上的数字不被压扁），一条接一条；换本月 / 本年同一张图，宽度平滑过去 */
+  animation: pfun-grow var(--t-morph) var(--ease-morph) backwards;
+  animation-delay: calc(var(--stagger) * var(--pfun-i, 0));
+  transition: width var(--t-morph) var(--ease-morph);
 }
+@keyframes pfun-grow { from { clip-path: inset(0 100% 0 0 round var(--r-ctl)); } to { clip-path: inset(0 0 0 0 round var(--r-ctl)); } }
+.pfun-row:nth-child(2) .pfun-bar { --pfun-i: 1; }
+.pfun-row:nth-child(3) .pfun-bar { --pfun-i: 2; }
+.pfun-row:nth-child(n+4) .pfun-bar { --pfun-i: 3; }
 /* 0 个：条不画实底，只留虚线框和一个 0，免得看着像少画了一条 */
 .pfun-bar-0 { background: transparent; border-style: dashed; border-color: var(--line); }
 .pfun-n { font-size: var(--fs-body); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
@@ -1846,7 +1871,9 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .custom-range.ant-picker-small { width: 216px; }
 .data-shell-who .ant-select-selection-item { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 复盘页两个页签（P15）：人员选择在页签上面；Tabs 只当导航，内容由服务端给、摆在 .data-shell-body 里 */
-.data-shell-bar-who { margin-bottom: var(--s2); }
+.data-shell-bar-who { margin-bottom: var(--s2); transition: opacity var(--t) var(--ease); }
+/* 卡点页签（ov.layout）：卡点按角色定能看谁，人员那一行不撤（撤了整页上跳一截），留在原地变淡；控件本身 disabled 点不了 */
+.data-shell-bar-who.is-na { opacity: 0.4; }
 .data-shell-tabs { margin-bottom: var(--s4); }
 .data-shell-tabs > .ant-tabs-nav { margin-bottom: 0; }
 .data-shell-tabs > .ant-tabs-content-holder { display: none; }
@@ -1918,6 +1945,9 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .btodo-head-r { flex-wrap: wrap; justify-content: flex-end; }
 .btodo-wrap > .btodo-list + .btodo-list, .btodo-wrap > .btodo-list + .rtalk-side { margin-top: var(--s4); }
 .is-pending { opacity: 0.55; transition: opacity var(--t) var(--ease); }
+/* 联系人边打字边筛（ls.ct.search）：服务端那一趟在路上只淡表格，不转圈、搜索框不淡 */
+.ct-list .ant-table-wrapper { transition: opacity var(--t) var(--ease); }
+.ct-list.ct-wait .ant-table-wrapper { opacity: 0.55; }
 .data-shell-scope { flex: none; }
 /* 任务：三列看板 */
 .btodo-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3); transition: opacity var(--t) var(--ease); }
@@ -1995,7 +2025,11 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .rtalk-m { width: 120px; }
 .rtalk-tl { position: relative; margin: 0; padding: 0 0 0 20px; list-style: none; }
 .rtalk-tl::before { content: ""; position: absolute; left: 5px; top: 6px; bottom: 6px; width: 2px; border-radius: 999px; background: var(--line); }
-.rtalk-i { position: relative; min-width: 0; }
+.rtalk-i { position: relative; min-width: 0; animation: rtalk-in var(--t) var(--ease) backwards; }
+/* ov.talk：按天一个小标题；换时间段新进来的条目从上方 6px 滑入落位（只填起始帧，不压悬停） */
+@keyframes rtalk-in { from { opacity: 0; transform: translateY(-6px); } }
+.rtalk-day + .rtalk-day { margin-top: var(--s4); }
+.rtalk-day-h { margin: 0 0 var(--s2); font-size: var(--fs-note); font-weight: 500; color: var(--text-muted); }
 .rtalk-i + .rtalk-i { margin-top: var(--s2); }
 .rtalk-pt { position: absolute; left: -19px; top: 14px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--panel); background: var(--brand); }
 .rtalk-k { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--panel); cursor: pointer; transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
@@ -2180,7 +2214,10 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .cli-empty .cli-welcome-hints { border-top: 0; padding-top: 0; }
 .cli-mono, .cli-prompt, .cli-step, .cli-cmd-k, .cli-hints kbd, .cli-menu-row kbd { font-family: var(--font-mono); }
 .cli-welcome { margin-bottom: var(--s5); }
-.cli-welcome-t { font-family: var(--font-display); font-size: var(--fs-title); font-weight: var(--fw-display); color: var(--ink); }
+.cli-welcome-t { font-family: var(--font-display); font-size: var(--fs-title); font-weight: var(--fw-display); color: var(--ink);
+  /* home.hero：问候从一点模糊里淡出来（外面那层 Welcome 自己还有 y 6 淡入）；只填起始帧，结束后不留任何样式 */
+  animation: cli-greet-in var(--t-morph) var(--ease) backwards; }
+@keyframes cli-greet-in { from { opacity: 0; filter: blur(6px); transform: translateY(4px); } }
 /* 问候底下那行日期。设计稿里它独占一行，比信号的口径再弱一档 */
 .cli-welcome-d { margin-top: var(--s1); color: var(--text-muted); font-size: var(--fs-note); }
 .cli-welcome-s { margin-top: 4px; color: var(--text-muted); }
@@ -2420,8 +2457,19 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .cli-draft > div:last-child { margin-top: 6px; display: flex; gap: 12px; }
 .cli-composer { padding-top: 8px; }
 .cli-composer-sticky { position: sticky; bottom: 0; background: linear-gradient(to bottom, transparent, var(--page-bg) 28%); padding-top: 22px; padding-bottom: 6px; }
-.cli-input { display: flex; align-items: flex-end; gap: 10px; min-height: var(--field-h); padding: 10px 14px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--r-card); transition: border-color var(--t-fast) var(--ease); }
-.cli-input:focus-within { border-color: var(--text-faint); }
+.cli-input { display: flex; align-items: flex-end; gap: 10px; min-height: var(--field-h); padding: 10px 14px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--r-card); transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
+/* home.ask：聚焦时一圈品牌色的浅环（像系统输入框那样），一眼看得出字会打进哪儿 */
+.cli-input:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 14%, transparent); }
+/* home.ask：拖文件进框——环再粗一档、底色转品牌浅底，框中间一行「松开即带上文件」（盖在上面，不撑高框） */
+.cli-input { position: relative; }
+.cli-input.is-drop { border-color: var(--brand); box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 20%, transparent); background: var(--brand-bg); }
+.cli-drop-hint {
+  position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center;
+  border-radius: inherit; background: color-mix(in srgb, var(--brand-bg) 88%, transparent);
+  color: var(--brand); font-size: var(--fs-note); font-weight: 500; pointer-events: none;
+  animation: cli-drop-in var(--t-fast) var(--ease) backwards;
+}
+@keyframes cli-drop-in { from { opacity: 0; } }
 .cli-input .cli-prompt { line-height: 22px; color: var(--ink); }
 /* 发送 / 停止：一个圆钮，跑着的时候变成方块 */
 /* 框里那一条：左边动作（加文件），右边选择（模型）+ 发送键。照 Claude Code / Codex 的形状 */
@@ -2444,6 +2492,9 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .cli-file button:hover { color: var(--danger); }
 .cli-send { flex: none; width: 28px; height: 28px; border-radius: 50%; border: 0; background: var(--ink); color: var(--on-ink); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-note); transition: opacity var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
 .cli-send:disabled { background: var(--line); color: var(--on-ink); cursor: default; }
+/* home.ask：从灰变成能发的那一下弹一下（选择器开始命中时动画才起，所以只在「变可点」那一刻放）；用 transform，不碰按下的 scale */
+.cli-send:not(:disabled) { animation: cli-send-on var(--t) var(--ease-spring) backwards; }
+@keyframes cli-send-on { from { transform: scale(0.6); } }
 .cli-stop-sq { width: 10px; height: 10px; background: var(--panel); border-radius: 2px; }
 .cli-menu-row { display: flex; align-items: center; gap: 24px; justify-content: space-between; min-width: 180px; }
 .cli-menu-row kbd { font-size: var(--fs-min); color: var(--text-muted); }
@@ -2624,6 +2675,20 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
    属性 / 「已停用」标签另成一列，两个并排。空库那一格是引导文字，照旧折行 */
 .chan-list .ant-table-thead > tr > th,
 .chan-list .ant-table-tbody > tr:not(.ant-table-placeholder) > td { white-space: nowrap; }
+/* ch.seg：换「按子渠道 / 按主渠道」整张表换一张，行一条接一条淡入落位（前 8 条排队，再往后一起出来；按带 data-row-key 的真数据行数，antd 的测量行、空态行不算）。
+   只动格子的透明度：行上加 transform 会把固定列（sticky）带歪。:where 把权重压到 0，刚建那一行的 row-fresh 照样盖得过 */
+:where(.chan-list .ant-table-tbody > tr:not(.ant-table-placeholder)) > td {
+  animation: chan-row-in var(--t) var(--ease) backwards;
+  animation-delay: calc(var(--stagger) * var(--row-i, 0));
+}
+:where(.chan-list .ant-table-tbody > tr:nth-child(2 of [data-row-key])) > td { --row-i: 1; }
+:where(.chan-list .ant-table-tbody > tr:nth-child(3 of [data-row-key])) > td { --row-i: 2; }
+:where(.chan-list .ant-table-tbody > tr:nth-child(4 of [data-row-key])) > td { --row-i: 3; }
+:where(.chan-list .ant-table-tbody > tr:nth-child(5 of [data-row-key])) > td { --row-i: 4; }
+:where(.chan-list .ant-table-tbody > tr:nth-child(6 of [data-row-key])) > td { --row-i: 5; }
+:where(.chan-list .ant-table-tbody > tr:nth-child(7 of [data-row-key])) > td { --row-i: 6; }
+:where(.chan-list .ant-table-tbody > tr:nth-child(n+8 of [data-row-key])) > td { --row-i: 7; }
+@keyframes chan-row-in { from { opacity: 0; } }
 .chan-name { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .chan-tags { display: inline-flex; gap: 4px; flex-wrap: nowrap; }
 /* 按主渠道那张表：名字在 flex 里要能缩（配 .chan-name 的省略）；属性标签一行省略、不撑出格子 */
@@ -2718,6 +2783,12 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 /* 渠道详情里的投入记录：一笔一行，删除钮靠右 */
 .chan-invest { list-style: none; margin: 0; padding: 0; }
 .chan-invest > li { position: relative; padding: var(--s2) 32px var(--s2) 0; border-bottom: 1px solid var(--line); }
+/* ch.drawer / ch.invest：投入记录从骨架换上来、新录的一笔进来时，从上方 6px 淡入落位；录入表单展开时同样浮出来。只填起始帧 */
+.chan-invest > li, .chan-invest-form { animation: chan-invest-in var(--t) var(--ease) backwards; }
+@keyframes chan-invest-in { from { opacity: 0; transform: translateY(-6px); } }
+/* ch.main：开关存好，在原处那一格闪一下（和 row-fresh 同一个底色，短一档） */
+.chan-main-saved { animation: chan-main-saved var(--t-morph) var(--ease) backwards; border-radius: var(--r-ctl); }
+@keyframes chan-main-saved { from { background-color: var(--brand-bg); } }
 .chan-invest-main { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: nowrap; min-width: 0; }
 .chan-invest-main > * { flex: none; }
 .chan-invest-main > .chan-invest-who { flex: 0 1 auto; }
@@ -2826,7 +2897,15 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .plan-row-was > .anticon { width: 24px; flex: none; text-align: center; }
 .plan-row-was-p { color: var(--text-faint); }
 /* 计划页上刚新建的那一条：和列表的 row-fresh 同一个亮法，只是这里是 div 不是 td，退回透明（这一组没有底色） */
-.plan-row.row-fresh { animation: plan-fresh 2s var(--ease) 1 both; }
+.plan-row.row-fresh { animation: plan-fresh 2s var(--ease) 1 both, plan-drop var(--t) var(--ease) backwards; }
+/* ls.pl.new：新排的那条从上方 4px 落进分组，再亮两秒 */
+@keyframes plan-drop { from { opacity: 0; transform: translateY(-4px); } }
+/* 排计划框里计划时间下面的快捷（ls.pl.new）：明天 / 3 天后 / 1 周后，当前那个亮着 */
+.plan-quick { display: inline-flex; gap: var(--s1); margin-top: var(--s1); }
+.plan-quick-b { font: inherit; font-size: var(--fs-min); padding: 1px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--text-muted); cursor: pointer; transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
+.plan-quick-b:hover { color: var(--ink); border-color: var(--line-strong); }
+.plan-quick-b.is-on { color: var(--brand); border-color: var(--brand-line); background: var(--brand-bg); }
+.plan-quick-b:focus-visible { outline: 1.5px solid var(--brand); outline-offset: 2px; }
 @keyframes plan-fresh {
   0% { background-color: var(--brand-bg); }
   55% { background-color: var(--brand-bg); }
@@ -2987,6 +3066,26 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 
 /* ---------- ⌘K ----------
    跳页和问一句共用一张单子。藏起来的快捷键等于不存在，所以左栏底下常驻一行提示。 */
+/* ⌘K 弹窗毛玻璃（PR2 外壳 g.feel，原型 sheet）：半透明面板 + 背后模糊提饱和，遮罩改淡（看得见底下那页，知道自己没离开）。
+   CommandBar 的 Modal 挂 rootClassName="cmdk-root"，只管这一张，别的弹窗不动。antd 的选择器两层类，前面垫 :root 压过它；面板 antd 6 叫 .ant-modal-container（5 叫 -content），两个都认。
+   三种情况退回实色面板（--panel）：浏览器不支持 backdrop-filter（@supports）、系统开了「减少透明度」、
+   低配机（html.lite-fx，外观预设脚本按 CPU 核数 / 内存挂上——整页模糊每帧都要重算，集显上会掉帧） */
+:root .cmdk-root :is(.ant-modal-container, .ant-modal-content) {
+  background: var(--panel); border-radius: var(--r-pop);
+  box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--ink) 10%, transparent), var(--shadow-pop);
+}
+:root .cmdk-root .ant-modal-mask { background: color-mix(in srgb, var(--ink) 18%, transparent); }
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  html:not(.lite-fx) .cmdk-root :is(.ant-modal-container, .ant-modal-content) {
+    background: color-mix(in srgb, var(--panel) 82%, transparent);
+    -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+  }
+  html:not(.lite-fx) .cmdk-root .ant-modal-mask { -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  html:not(.lite-fx) .cmdk-root :is(.ant-modal-container, .ant-modal-content) { background: var(--panel); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  html:not(.lite-fx) .cmdk-root .ant-modal-mask { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
 .cmdk-in { display: flex; align-items: center; gap: var(--s2); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line); color: var(--text-muted); }
 .cmdk-in input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; font-size: var(--fs-section); color: var(--ink); }
 .cmdk-in input::placeholder { color: var(--text-faint); }
@@ -2996,6 +3095,12 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .cmdk-row b { flex: none; font-weight: 500; color: var(--ink); }
 .cmdk-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-note); color: var(--text-muted); }
 .cmdk-row-on { background: var(--brand-bg); }
+/* 高亮是同一块底色在行间滑（CommandBar 的 layoutId="cmdk-on"，PR2 外壳 g.cmdk）：行自己不再上底色，字压在那块上面。
+   「问一句」那一行不在 .cmdk-item 里，没有滑块，照旧自己上底色 */
+.cmdk-item > .cmdk-row { position: relative; }
+.cmdk-item > .cmdk-row-on { background: transparent; }
+.cmdk-on-bg { position: absolute; inset: 0; border-radius: var(--r-ctl); background: var(--brand-bg); z-index: 0; pointer-events: none; }
+.cmdk-item > .cmdk-row > :not(.cmdk-on-bg) { position: relative; z-index: 1; }
 /* 企业版全局搜索（U-项目-04）：分组小标题；搜到的名字可能很长，名字和附注一起省略，不撑出横滚 */
 .cmdk-sec { padding: var(--s2) var(--s3) var(--s1); font-size: var(--fs-min); color: var(--text-faint); }
 /* ⌘K 搜不到（11-03 C10-2）：输入已在 lib/cmdk.ts 截断，这里只兜一手不撑出横滚 */
@@ -3080,6 +3185,21 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 /* 空首页上那排能直接点的问题。比说明文字更该占这个位置——
    第一次进来的人需要的是一个能点的起点，不是用法讲解 */
 .cli-welcome-q { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 14px; }
+/* home.hero：示例跟在问候后面一条条浮上来（一档 --stagger）。只填起始帧（backwards）：
+   填终帧会把 transform 钉死，悬停抬 3px 那条就不灵了 */
+.cli-welcome-q > .cli-q {
+  animation: cli-q-in var(--t) var(--ease) backwards;
+  animation-delay: calc(var(--stagger) * var(--q-i, 1));
+}
+.cli-welcome-q > .cli-q:nth-child(2) { --q-i: 2; }
+.cli-welcome-q > .cli-q:nth-child(3) { --q-i: 3; }
+.cli-welcome-q > .cli-q:nth-child(n+4) { --q-i: 4; }
+@keyframes cli-q-in { from { opacity: 0; transform: translateY(8px); } }
+/* home.hero：示例飞进输入框时那个克隆（home-look.ts 飞进去 挂在 body 上）：不抬、不带阴影 */
+.cli-q-fly { transform: none; box-shadow: none; }
+/* home.threads：对话列表顶上先占一行（还没落库的这条），轻轻弹进来 */
+.chat-row-new { animation: chat-row-in var(--t) var(--ease-spring) backwards; cursor: default; }
+@keyframes chat-row-in { from { opacity: 0; transform: translateY(-6px) scale(0.96); } }
 .cli-q { font: inherit; font-size: var(--fs-note); color: var(--ink); background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 6px 13px; cursor: pointer; transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
 .cli-q:hover { border-color: var(--brand); color: var(--brand); }
 /* ↑↓ 选中的那条。只靠 hover 的话键盘走到哪儿是看不见的 */
@@ -3130,6 +3250,15 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
   100% { background-color: var(--panel); }
 }
 
+/* 骨架条（components/Skeleton.tsx，PR2 外壳；以后页签 / 页面切换先出它、数据到了再淡入，原型 g.tabswitch）。
+   浅灰圆角条 + 一道很淡的光从右往左扫过去；条宽三档轮着（100 / 86 / 72%），看着像一段段文字而不是一堵墙。
+   出现时只淡入，不位移（--t-fast）。减弱动态下不扫光，静止的灰条（文件末尾那段 @media） */
+.skel { display: flex; flex-direction: column; gap: var(--skel-gap, 10px); animation: crm-pop-fade-in var(--t-fast) var(--ease) both; }
+.skel-bar { height: var(--skel-h, 12px); border-radius: var(--r-ctl); background: linear-gradient(90deg, var(--hover) 0%, color-mix(in srgb, var(--hover) 35%, var(--panel)) 40%, var(--hover) 80%); background-size: 300% 100%; animation: skel-sweep 1.4s linear infinite; }
+.skel-bar:nth-child(3n + 2) { width: 86%; }
+.skel-bar:nth-child(3n) { width: 72%; }
+@keyframes skel-sweep { from { background-position: 100% 0; } to { background-position: -50% 0; } }
+
 /* 骨架屏晚 180ms 再出现：这段时间内页面要是已经好了，就一眼都不会看见它。
    原来快的那几页也会闪一下灰块，闪一下比等一下更像出了问题。 */
 .app-loading { animation: app-loading-in var(--t) var(--ease) var(--t) both; }
@@ -3155,10 +3284,19 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
   transition:
     scale var(--t-fast) var(--ease),
     transform var(--t-fast) var(--ease),
-    background var(--t-fast) var(--ease),
-    color var(--t-fast) var(--ease),
-    border-color var(--t-fast) var(--ease),
+    background var(--t-leave) var(--ease),
+    color var(--t-leave) var(--ease),
+    border-color var(--t-leave) var(--ease),
     opacity var(--t-fast) var(--ease);
+}
+/* 悬停「进入即时、离开 150ms」（P-界面-38，PR2 外壳）：指上去底色当场就在，移开才用 --t-leave 慢慢褪。
+   过渡用的是「变化之后」那份样式的时长，所以只要 :hover 时把底色、字色、描边三项的时长写成 0：
+   进入那一下读到 0（立刻），离开那一下读回上面的 --t-leave。缩放、位移、透明度不在此列，照旧 --t-fast。
+   **这一条必须在下面那几条 :active 前面**：同样的选择器分量，后写的赢——按下那一档（--t-press）要压过它 */
+.press:hover, .rail-item:hover, .rail-fb:hover, .pane-ib:hover, .pane-chip:hover, .rec-chip:hover, .cli-tool:hover, .cli-send:hover, .cli-ic:hover,
+.cli-q:hover, .cli-sugg:hover, .cli-cmd:hover, .mp-btn:hover, .prop-ok:hover, .prop-no:hover, .bill-plan:hover, .set-nav-i:hover, .cmdk-row:hover,
+.setm-x:hover, .list-sel-x:hover, .plan-switch:hover, .rail-user:hover {
+  transition-duration: var(--t-fast), var(--t-fast), 0s, 0s, 0s, var(--t-fast);
 }
 .press:active, .rail-fb:active, .pane-ib:active, .pane-chip:active, .rec-chip:active,
 .cli-tool:active, .cli-send:active, .cli-ic:active, .cli-q:active, .cli-sugg:active,
@@ -3209,19 +3347,76 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 
 /* antd 的按钮和菜单项：它们自己带 transition: all，所以只补按下这一档。
    不逐个改组件——全站的按钮都是 antd 的，一条规则比一百处调用点可靠 */
-.ant-btn:not(:disabled):active { scale: 0.92; transition-duration: var(--t-press); }
-.ant-dropdown-menu-item, .ant-select-item, .ant-picker-cell { transition: scale var(--t-press) var(--ease), background var(--t-fast) var(--ease); }
-.ant-dropdown-menu-item:active, .ant-select-item:active { scale: 0.965; }
+/* 悬停「进入即时、离开 150ms」（P-界面-38）落到 antd 身上：按钮、下拉菜单项、选单项、表格行。
+   antd 自己的选择器分量比一个类高（按钮 .ant-btn 由它运行时插样式、先后说不准；菜单项三层类、选单项两层、表格格三层），
+   所以前面都垫一个 :root 压过它，不用 !important（主题还要能改）。
+   按钮原来是 antd 的 transition: all 180ms：悬停变色改成进入 0、离开 --t-leave；缩放单列出来照旧 --t-fast 松开，按下那档 --t-press 不变。
+   菜单项 / 选单项：鼠标停在哪一项，antd 是给它挂 -active 类（选单键盘上下也是这个类），所以 :hover 和 -active 都算「进入」。
+   表格行只变底色、不缩放（P-界面-38「表格行不缩放」）。 */
+:root .ant-btn { transition: all var(--t-leave) var(--ease-morph), scale var(--t-fast) var(--ease); }
+:root .ant-btn:not(:disabled):hover { transition-duration: 0s, var(--t-fast); }
+:root .ant-btn:not(:disabled):active { scale: 0.92; transition-duration: var(--t-press); }
+:root .ant-dropdown .ant-dropdown-menu :is(.ant-dropdown-menu-item, .ant-dropdown-menu-submenu-title),
+:root .ant-select-dropdown .ant-select-item,
+.ant-picker-cell {
+  transition: background-color var(--t-leave) var(--ease), color var(--t-leave) var(--ease), scale var(--t-press) var(--ease);
+}
+:root .ant-dropdown .ant-dropdown-menu :is(.ant-dropdown-menu-item, .ant-dropdown-menu-submenu-title):is(:hover, .ant-dropdown-menu-item-active, .ant-dropdown-menu-submenu-active),
+:root .ant-select-dropdown .ant-select-item:is(:hover, .ant-select-item-option-active),
+.ant-picker-cell:hover {
+  transition-duration: 0s, 0s, var(--t-press);
+}
+:root .ant-dropdown .ant-dropdown-menu .ant-dropdown-menu-item:active, :root .ant-select-dropdown .ant-select-item:active { scale: 0.965; }
+:root .ant-table-wrapper .ant-table-tbody > tr > td { transition: background-color var(--t-leave) var(--ease), border-color var(--t-leave) var(--ease); }
+:root .ant-table-wrapper .ant-table-tbody > tr:hover > td { transition-duration: 0s; }
 /* 表格行按下去只变底色：缩放会把整张表带着晃 */
 .ant-table-tbody > tr.ant-table-row:active > td { background: var(--hover); }
 
 
-/* antd 的弹出层（下拉、选单、气泡、日期）：只换曲线和时长，不碰它画什么。
-   它自带的 cubic-bezier(.08,.82,.17,1) 比我们这套软一档，两种曲线同屏会显得不是一套东西。
-   菜单用 --ease-spring：起步快、到位不越过（11 月起不再过冲，P-界面-38）。 */
-.ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown, .ant-tooltip, .ant-popover {
+/* antd 的弹出层（下拉、选单、气泡、日期）：只换「怎么出来」，不碰它画什么。
+   P-界面-38（PR2 外壳，原型 g.menu「从按钮处长出，0.1 秒，不拖沓」）：
+     进场 —— 从触发处 --pop-scale（.97）放大到位 + 淡入，--t-pop（100ms），--ease（不回弹弹簧的形状）。
+             antd 自带的是 scaleY(.8) 往下拉开（下拉、选单、日期）和 scale(.8) 鼓出来（气泡、提示），都比这一下重、也慢。
+     离场 —— 淡出、缩回 .97，--t-fast（120ms），和原型的关菜单一致。
+     「触发处」—— 下拉、选单、日期、级联按它实际摆在哪边（antd 挂的 -placement-* 类）定缩放原点：在按钮下面就从上沿长出、
+             靠左对齐就从左上角；翻到上面去了就从下沿。气泡、提示 antd 已经把原点放在箭头那一点上（--arrow-x / --arrow-y），不动它。
+   只在 -enter-active / -leave-active 那一拍换关键帧（和 antd 自己一样）：之前那一拍 rc-trigger 还在量位置，不能先缩着。
+   减弱动态下只淡入淡出、不缩放（文件末尾那段 @media）。 */
+:is(.ant-dropdown, .ant-dropdown-menu-submenu-popup, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown, .ant-tooltip, .ant-popover) {
   --antd-motion-ease: var(--ease-spring);
 }
+@keyframes crm-pop-in { from { opacity: 0; transform: scale(var(--pop-scale)); } to { opacity: 1; transform: none; } }
+@keyframes crm-pop-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(var(--pop-scale)); } }
+@keyframes crm-pop-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes crm-pop-fade-out { from { opacity: 1; } to { opacity: 0; } }
+:is(.ant-dropdown, .ant-dropdown-menu-submenu-popup, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown, .ant-tooltip, .ant-popover):is(
+  .ant-slide-up-enter, .ant-slide-up-appear, .ant-slide-down-enter, .ant-slide-down-appear,
+  .ant-zoom-big-enter, .ant-zoom-big-appear, .ant-zoom-big-fast-enter, .ant-zoom-big-fast-appear) {
+  animation-duration: var(--t-pop) !important;
+  animation-timing-function: var(--ease) !important;
+}
+:is(.ant-dropdown, .ant-dropdown-menu-submenu-popup, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown, .ant-tooltip, .ant-popover):is(
+  .ant-slide-up-enter-active, .ant-slide-up-appear-active, .ant-slide-down-enter-active, .ant-slide-down-appear-active,
+  .ant-zoom-big-enter-active, .ant-zoom-big-appear-active, .ant-zoom-big-fast-enter-active, .ant-zoom-big-fast-appear-active) {
+  animation-name: crm-pop-in !important;
+}
+:is(.ant-dropdown, .ant-dropdown-menu-submenu-popup, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown, .ant-tooltip, .ant-popover):is(
+  .ant-slide-up-leave, .ant-slide-down-leave, .ant-zoom-big-leave, .ant-zoom-big-fast-leave) {
+  animation-duration: var(--t-fast) !important;
+  animation-timing-function: var(--ease) !important;
+}
+:is(.ant-dropdown, .ant-dropdown-menu-submenu-popup, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown, .ant-tooltip, .ant-popover):is(
+  .ant-slide-up-leave-active, .ant-slide-down-leave-active, .ant-zoom-big-leave-active, .ant-zoom-big-fast-leave-active) {
+  animation-name: crm-pop-out !important;
+}
+/* 缩放原点 = 挨着触发处的那条边。先写居中，再让带 Left / Right 的覆盖（同分量，后写的赢） */
+:is(.ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown)[class*="-placement-bottom"] { transform-origin: 50% 0; }
+:is(.ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown)[class*="-placement-top"] { transform-origin: 50% 100%; }
+:is(.ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown)[class*="-placement-bottomLeft"] { transform-origin: 0 0; }
+:is(.ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown)[class*="-placement-bottomRight"] { transform-origin: 100% 0; }
+:is(.ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown)[class*="-placement-topLeft"] { transform-origin: 0 100%; }
+:is(.ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown)[class*="-placement-topRight"] { transform-origin: 100% 100%; }
+/* 其余用 antd 动效类的（模态框的 zoom、别处的 slide）照旧：只换曲线和时长 */
 .ant-slide-up-enter, .ant-slide-up-appear, .ant-slide-down-enter, .ant-slide-down-appear,
 .ant-zoom-big-enter, .ant-zoom-big-appear, .ant-zoom-enter, .ant-zoom-appear {
   animation-duration: var(--t) !important;
@@ -3246,36 +3441,129 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .ant-segmented-thumb, .ant-segmented-item-label { transition-timing-function: var(--ease) !important; transition-duration: var(--t) !important; }
 
 
+/* ── 确认与反馈（PR5a）：就地确认 / 长按确认 / 后果框 / 撤销条 / 保存按钮 ──────────────
+   原型 前端改版-逐块确认 g.confirm1/2/3、g.undo、g.save「改后」。规矩见各组件文件头；哪件事用哪种确认看机制总表 P-界面-40。
+   时长曲线一律用令牌（--t-press / --t-fast / --t / --ease / --ease-spring），这里不写数；减弱动态的例外写在文件末尾那块。 */
+
 /* 就地确认（components/InlineConfirm.tsx）。形状参考 bencho.dev 的 Inline confirm（MIT）。
-   问句用正常字色、「删除」用红——**红只给真的会删的那一下**，问句本身不必也红 */
+   展开后：一行后果 + 实心确认键 + 取消。后果那行：删除这类用危险色，中性的事用灰；
+   确认键是这一行唯一的实心块。从右边长出来（它总在行尾），弹一点点 */
 .inlc { display: inline-flex; align-items: center; }
-.inlc-ask { display: inline-flex; align-items: center; gap: 6px; padding-left: 4px; white-space: nowrap; }
-.inlc-q { font-size: var(--fs-min); color: var(--text-muted); }
-.inlc-yes, .inlc-no { font: inherit; font-size: var(--fs-min); line-height: 1; border: 0; background: none;
-  padding: 3px 6px; border-radius: var(--r-ctl); cursor: pointer;
-  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease), scale var(--t-press) var(--ease); }
-.inlc-yes { color: var(--danger-text); font-weight: 600; }
-.inlc-yes:hover { background: var(--danger-bg); }
+.inlc-ask { display: inline-flex; align-items: center; gap: 6px; padding-left: 4px; white-space: nowrap; transform-origin: right center; }
+.inlc-q { font-size: var(--fs-min); color: var(--danger-text); }
+.inlc-ask[data-tone="neutral"] .inlc-q { color: var(--text-muted); }
+.inlc-yes, .inlc-no { font: inherit; font-size: var(--fs-min); line-height: 1; border: 1px solid transparent; background: none;
+  height: 24px; padding: 0 10px; border-radius: var(--r-ctl); cursor: pointer; white-space: nowrap;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease), opacity var(--t-fast) var(--ease), scale var(--t-press) var(--ease); }
+.inlc-yes { background: var(--danger); border-color: var(--danger); color: var(--on-ink); font-weight: 600; }
+.inlc-yes:hover { filter: brightness(0.94); }
+.inlc-ask[data-tone="neutral"] .inlc-yes { background: var(--brand); border-color: var(--brand); }
 .inlc-no { color: var(--text-muted); }
 .inlc-no:hover { background: var(--hover); color: var(--ink); }
-.inlc-yes:active, .inlc-no:active { scale: 0.90; }
+.inlc-yes:active, .inlc-no:active { scale: 0.96; }
 .inlc-yes:focus-visible, .inlc-no:focus-visible { outline: 1.5px solid var(--brand); outline-offset: 2px; }
-.inlc-yes:disabled { opacity: 0.5; cursor: default; }
+.inlc-yes:disabled { opacity: 0.55; cursor: progress; }
 
+/* 长按确认（components/HoldConfirm.tsx，替掉原来的滑动确认）。
+   危险色描边的键，按住时浅红的底从左往右灌满（--hold-p 0~1，JS 按帧写，不走过渡）；
+   松手早了退回去、摇一下；做着转圈；成了换成绿。整颗键撑满一行，手指好找 */
+.hold-btn { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; height: 40px; padding: 0 16px;
+  border: 1px solid var(--danger-line); border-radius: var(--r-ctl); background: var(--panel); color: var(--danger-text);
+  font: inherit; font-size: var(--fs-body); font-weight: 600; overflow: hidden; cursor: pointer; user-select: none; -webkit-user-select: none;
+  touch-action: none; -webkit-touch-callout: none;
+  transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
+.hold-btn:hover { border-color: var(--danger); }
+.hold-btn:focus-visible { outline: 1.5px solid var(--brand); outline-offset: 2px; }
+.hold-fill { position: absolute; inset: 0; background: var(--danger-bg); transform-origin: left center; transform: scaleX(var(--hold-p, 0)); pointer-events: none; }
+.hold-btn[data-state="按着"] { border-color: var(--danger); }
+.hold-btn[data-state="按着"] .hold-fill, .hold-btn[data-state="做着"] .hold-fill { background: var(--danger-line); }
+.hold-btn[data-state="成了"] { border-color: var(--success-line); color: var(--success-text); background: var(--success-bg); }
+.hold-btn[data-state="成了"] .hold-fill { opacity: 0; }
+.hold-btn:disabled { cursor: default; }
+.hold-btn[data-state="闲"]:disabled { opacity: 0.55; }
+.hold-t { position: relative; display: inline-flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hold-spin, .undo-spin, .save-spin { width: 12px; height: 12px; flex: none; border-radius: 50%; border: 1.5px solid currentColor; border-right-color: transparent; animation: confirm-spin 0.8s linear infinite; }
+.hold-btn[data-shake="a"] { animation: hold-shake-a var(--t) var(--ease); }
+.hold-btn[data-shake="b"] { animation: hold-shake-b var(--t) var(--ease); }
+@keyframes hold-shake-a { 0%, 100% { translate: 0; } 25% { translate: -3px; } 60% { translate: 3px; } }
+@keyframes hold-shake-b { 0%, 100% { translate: 0; } 25% { translate: -3px; } 60% { translate: 3px; } }
+@keyframes confirm-spin { to { rotate: 360deg; } }
 
-/* 滑动确认（components/SlideConfirm.tsx）。形状参考 bencho.dev 的 Slide to confirm（MIT）。
-   轨道是危险色的浅底，但**不是整块红**：红留给拖到头的那一刻 */
-.slc { position: relative; height: 40px; border-radius: 999px; background: var(--danger-bg);
-  border: 1px solid var(--danger-line); display: flex; align-items: center; justify-content: center;
-  overflow: hidden; user-select: none; transition: background var(--t) var(--ease), border-color var(--t) var(--ease); }
-.slc.on { background: var(--danger); border-color: var(--danger); }
-.slc-t { font-size: var(--fs-note); color: var(--danger-text); pointer-events: none; }
-.slc-k { position: absolute; left: 3px; top: 3px; width: 38px; height: 32px; border: 0; border-radius: 999px;
-  background: var(--panel); color: var(--danger-text); font-size: 16px; line-height: 1; cursor: grab;
-  box-shadow: 0 1px 3px rgba(17, 24, 39, 0.16); display: inline-flex; align-items: center; justify-content: center; }
-.slc-k:active { cursor: grabbing; }
-.slc-k:focus-visible { outline: 1.5px solid var(--brand); outline-offset: 2px; }
-.slc.on .slc-k { color: var(--success-text); }
+/* 后果框（components/ConsequenceDialog.tsx）。外壳是 antd Modal（居中、限高、进出场走上面那段 .ant-modal 规则），
+   里面：后果分条、每条一个小标签打头；原因是可点的小块；确认键在右、取消在左 */
+.csq-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.csq-row { display: flex; align-items: flex-start; gap: 8px; font-size: var(--fs-body); line-height: 22px; color: var(--ink); min-width: 0; }
+.csq-t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.csq-tag { flex: none; display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: var(--r-tag);
+  font-size: var(--fs-min); font-weight: 500; white-space: nowrap; background: var(--hover); color: var(--text-muted); }
+.csq-tag[data-level="危"] { background: var(--danger-bg); color: var(--danger-text); }
+.csq-tag[data-level="警"] { background: var(--warning-bg); color: var(--warning-text); }
+.csq-more { margin-top: 10px; font-size: var(--fs-note); line-height: 1.7; color: var(--ink-soft); overflow-wrap: anywhere; }
+.csq-why { margin-top: 14px; }
+.csq-why-h { margin-bottom: 6px; font-size: var(--fs-note); color: var(--text-muted); }
+.csq-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.csq-chip { height: 28px; max-width: 100%; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r-tag); background: var(--panel);
+  font: inherit; font-size: var(--fs-note); color: var(--ink); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease), scale var(--t-press) var(--ease); }
+.csq-chip:hover { border-color: var(--ink-soft); }
+.csq-chip:active { scale: 0.96; }
+.csq-chip[aria-checked="true"] { background: var(--brand-bg); border-color: var(--brand); color: var(--brand-deep); font-weight: 500; }
+.csq-chip:focus-visible { outline: 1.5px solid var(--brand); outline-offset: 2px; }
+.csq-chip:disabled { cursor: default; opacity: 0.55; }
+.csq-other { margin-top: 8px; }
+.csq-ack { margin-top: 14px; }
+.csq-err { margin-top: 12px; padding: 8px 10px; border-radius: var(--r-ctl); background: var(--danger-bg); color: var(--danger-text); font-size: var(--fs-note); line-height: 1.6; overflow-wrap: anywhere; }
+.csq-foot { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+
+/* 撤销条（components/UndoBar.tsx）。全站一条，底部居中的玻璃胶囊：图标 + 一句话 + 撤销 + 倒计时环。
+   从下面弹上来（--ease-spring），收的时候只淡出；鼠标停在上面倒计时（环）一起停 */
+.undo-bar { position: fixed; left: 50%; bottom: 24px; z-index: 1060; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px; max-width: min(520px, calc(100vw - 32px)); min-height: 40px; padding: 6px 8px 6px 14px;
+  border-radius: var(--r-tag); border: 1px solid var(--line); box-shadow: var(--shadow-pop);
+  background: color-mix(in srgb, var(--panel) 88%, transparent); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+  font-size: var(--fs-note); color: var(--ink); animation: undo-in var(--t) var(--ease-spring) both; }
+.undo-bar[data-out] { animation: undo-out var(--t-fast) var(--ease) both; pointer-events: none; }
+.undo-ic { flex: none; display: inline-flex; color: var(--success); }
+.undo-bar[data-state="挡了"] .undo-ic, .undo-bar[data-state="没成"] .undo-ic { color: var(--danger); }
+.undo-bar[data-state="挡了"] .undo-t, .undo-bar[data-state="没成"] .undo-t { color: var(--danger-text); }
+.undo-t { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.undo-btn { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: var(--r-tag);
+  background: transparent; font: inherit; font-size: var(--fs-note); font-weight: 600; color: var(--brand); cursor: pointer;
+  transition: background var(--t-fast) var(--ease), scale var(--t-press) var(--ease); }
+.undo-btn:hover { background: var(--brand-bg); }
+.undo-btn:active { scale: 0.96; }
+.undo-btn:disabled { cursor: progress; opacity: 0.7; }
+.undo-btn:focus-visible, .undo-x:focus-visible { outline: 1.5px solid var(--brand); outline-offset: 2px; }
+.undo-ring { flex: none; margin-right: 4px; }
+.undo-ring circle { fill: none; stroke-width: 2; }
+.undo-ring-bg { stroke: var(--line); }
+.undo-ring-fg { stroke: var(--brand); stroke-dasharray: 37.7; stroke-dashoffset: 0; animation: undo-ring var(--undo-ms, 5s) linear forwards; }
+.undo-bar[data-paused] .undo-ring-fg, .undo-bar[data-state="撤着"] .undo-ring-fg { animation-play-state: paused; }
+.undo-x { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: 0; border-radius: 50%;
+  background: transparent; color: var(--text-muted); cursor: pointer; transition: background var(--t-fast) var(--ease); }
+.undo-x:hover { background: var(--hover); color: var(--ink); }
+@keyframes undo-in { from { opacity: 0; transform: translate(-50%, 16px) scale(0.96); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+@keyframes undo-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes undo-ring { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 37.7; } }
+
+/* 保存按钮（components/SaveButton.tsx）。宽度在具体 px 之间过渡（--save-w，JS 写）：原宽 → 圆 → 内容宽 → 原宽 */
+.save-btn[data-fixed] { width: var(--save-w); min-width: 0; overflow: hidden; justify-content: center;
+  transition: width var(--t) var(--ease-spring), background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
+.save-btn[data-state="存着"] { padding-inline: 0; cursor: progress; }
+.save-in { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; }
+.save-tick path { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 12; stroke-dashoffset: 12;
+  animation: save-tick var(--t) var(--ease) forwards; }
+@keyframes save-tick { to { stroke-dashoffset: 0; } }
+.ant-btn.save-btn[data-state="成了"], .ant-btn.save-btn[data-state="成了"]:hover { background: var(--success); border-color: var(--success); color: var(--on-ink); }
+.ant-btn.save-btn[data-state="没成"], .ant-btn.save-btn[data-state="没成"]:hover { background: var(--danger); border-color: var(--danger); color: var(--on-ink); }
+
+/* 减弱动态：灌满的进度和倒计时环是「还剩多久」，不是装饰——全局那条把动画压成一帧的话，环一出来就空了，
+   所以这两样照常走（只动描边长度和底色，不位移）；摇一下、弹上来、转圈换成不动 */
+@media (prefers-reduced-motion: reduce) {
+  .undo-bar .undo-ring-fg { animation-duration: var(--undo-ms, 5s) !important; }
+  .hold-btn[data-shake] { animation: none !important; }
+  .hold-spin, .undo-spin, .save-spin { animation: rd-pulse 1.4s ease-in-out infinite !important; rotate: none !important; }
+}
 
 
 /* ── antd 的弹框：居中，并且不再"蹿"出来 ──────────────────────────
@@ -3423,6 +3711,27 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
   .ant-cascader-dropdown, .ant-mentions-dropdown, .ant-tour {
     transition: none !important;
   }
+  /* 弹层、模态框（P-界面-38「减弱动态只留透明度」）：上面那些进场规则的分量比兜底的 * 高，时长压不下来，
+     不管的话照样从 .97 放大出来。这里只把关键帧换成纯淡入淡出，时长照旧（浮层 --t-pop、模态 --t），缩放一点都不做 */
+  :is(.ant-dropdown, .ant-dropdown-menu-submenu-popup, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown, .ant-tooltip, .ant-popover):is(
+    .ant-slide-up-enter-active, .ant-slide-up-appear-active, .ant-slide-down-enter-active, .ant-slide-down-appear-active,
+    .ant-zoom-big-enter-active, .ant-zoom-big-appear-active, .ant-zoom-big-fast-enter-active, .ant-zoom-big-fast-appear-active),
+  .ant-modal:is(.ant-zoom-enter, .ant-zoom-appear) {
+    animation-name: crm-pop-fade-in !important;
+  }
+  :is(.ant-dropdown, .ant-dropdown-menu-submenu-popup, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown, .ant-tooltip, .ant-popover):is(
+    .ant-slide-up-leave-active, .ant-slide-down-leave-active, .ant-zoom-big-leave-active, .ant-zoom-big-fast-leave-active),
+  .ant-modal.ant-zoom-leave {
+    animation-name: crm-pop-fade-out !important;
+  }
+  /* antd 在进场前那几拍给根节点挂了静态的 transform: scale(0)（平时被关键帧盖住）；换成纯淡入以后它会露出来，
+     弹层缩成一个点、淡完才一下子出现——这里撤掉 */
+  :is(.ant-dropdown, .ant-dropdown-menu-submenu-popup, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown, .ant-tooltip, .ant-popover):is(
+    .ant-slide-up-enter, .ant-slide-up-appear, .ant-slide-down-enter, .ant-slide-down-appear,
+    .ant-zoom-big-enter, .ant-zoom-big-appear, .ant-zoom-big-fast-enter, .ant-zoom-big-fast-appear),
+  .ant-modal:is(.ant-zoom-enter, .ant-zoom-appear) {
+    transform: none !important;
+  }
   /* 复盘页页签（P15）：下划线换页签时是横着滑过去的，减弱动态下直接跳到位，也不淡入淡出 */
   .data-shell-tabs .ant-tabs-ink-bar, .data-shell-body { transition: none !important; }
   /* 11-01 复盘页融合：看板卡、卡点卡、沟通卡、横条、KPI 格的悬停 / 换页淡入，减弱动态下一律不过渡 */
@@ -3452,6 +3761,8 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
     scale: none !important;
     translate: none !important;  /* 像素主题按下是「沉下去 2px」，走的是 translate，也算位移 */
   }
+  /* 骨架条不扫光：一直在动的东西对开了这个开关的人最难受，静止的灰条已经说清「在加载」 */
+  .skel-bar { animation: none !important; }
   /* 落印不放大落下，直接就是盖好的样子 */
   .prop-seal.is-new { animation: none !important; }
   .rail-upd-bar.idle i { animation: none !important; }
@@ -3811,10 +4122,29 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
   border-color: var(--card-line); box-shadow: var(--shadow-card); border-radius: var(--r-pop);
 }
 
-/* ---------- 浮层：弹窗、抽屉、下拉、气泡、选择框面板，同一个阴影、圆角 14（圆角在 lib/theme.ts） ---------- */
-:is(.ant-modal .ant-modal-content, .ant-drawer .ant-drawer-content-wrapper, .ant-popover .ant-popover-inner, .ant-dropdown .ant-dropdown-menu, .ant-select-dropdown, .ant-picker-dropdown .ant-picker-panel-container) {
+/* ---------- 浮层：弹窗、抽屉、下拉、气泡、选择框面板，同一个阴影、圆角 14（圆角在 lib/theme.ts） ----------
+   弹窗外壳 antd 6 叫 .ant-modal-container（5 里叫 -content），两个都认——原来只写了 -content，弹窗这一项一直没吃到 */
+:is(.ant-modal .ant-modal-container, .ant-modal .ant-modal-content, .ant-drawer .ant-drawer-content-wrapper, .ant-popover .ant-popover-inner, .ant-dropdown .ant-dropdown-menu, .ant-select-dropdown, .ant-picker-dropdown .ant-picker-panel-container) {
   box-shadow: var(--shadow-pop);
 }
+
+/* ---------- 输入框浅灰底（PR2 外壳 g.feel）：现状主题（明暗都算）的描边款输入框、数字框、选择框、日期框 ----------
+   不画框（框线留着、只是透明，尺寸一像素不变），铺 --field-bg；悬停深一档；聚焦回到白底 + 主色框（antd 的聚焦光晕照旧）。
+   报错 / 警告（-status-*）和禁用的不动，照 antd 原样，红框黄框要看得见。
+   换皮主题（像素、账簿……）有自己的边框语言，不挂。分量：前面垫 :root 和主题判断，压过 antd 的 hover / focus 规则 */
+:root:is(:not([data-skin]), [data-skin="now"]) :is(.ant-input-outlined, .ant-input-number-outlined, .ant-select-outlined, .ant-picker-outlined):not([class*="-status-"], [class*="-disabled"], :disabled) {
+  background: var(--field-bg); border-color: transparent;
+}
+:root:is(:not([data-skin]), [data-skin="now"]) :is(.ant-input-outlined, .ant-input-number-outlined, .ant-select-outlined, .ant-picker-outlined):not([class*="-status-"], [class*="-disabled"], :disabled):hover {
+  background: var(--field-bg-hover); border-color: transparent;
+}
+:root:is(:not([data-skin]), [data-skin="now"]) :is(.ant-input-outlined, .ant-input-number-outlined, .ant-select-outlined, .ant-picker-outlined):not([class*="-status-"], [class*="-disabled"], :disabled):is(:focus, :focus-within, [class*="-focused"]) {
+  background: var(--panel); border-color: var(--brand);
+}
+/* 数字框右边那对上下箭头 antd 自带白底，铺了灰底的框里会露出一块白 */
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-input-number-outlined .ant-input-number-actions { background: transparent; }
+/* 大数字收字距：antd 的统计数值是通用组件，接 --num-track */
+.ant-statistic-content, .home-card-v, .rkpi-v, .signal-v b, .chan-dash-kv { letter-spacing: var(--num-track); }
 
 /* ---------- 标签：默认灰底深字 12/500 胶囊；只有三种带色——要人处理（橙）、出问题 / 无效（红）、完成 / 赢单（绿）。
    字和判定不动，只按 antd 现成的颜色类归档：green/success → 绿，red/volcano/error → 红，orange/warning → 橙，其余（蓝紫青金……）→ 灰。
@@ -4143,3 +4473,37 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 /* 「还有 N 笔在等…」：一行放不下省略号、悬停看全；在可折行的那一排里占剩下的宽度 */
 .ofb-hint.ant-typography { font-size: var(--fs-min); flex: 1 1 200px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ofb-full { width: 100%; }
+
+/* 新建弹窗（projects/new/ProjectWizard.tsx，P-界面-36）：客户 / 项目 / 首条沟通一个表单分三段，两列格子；窄了收成一列 */
+.cr-sheet { max-width: 720px; min-width: 0; }
+.cr-alert { margin-bottom: 12px; }
+.cr-sec { padding: 4px 0 12px; min-width: 0; }
+.cr-sec + .cr-sec { border-top: 1px solid var(--line); }
+.cr-sec-head { display: flex; align-items: center; gap: 8px; padding: 8px 0; min-width: 0; }
+.cr-sp { flex: 1; }
+.cr-hint { font-size: var(--fs-note); color: var(--text-muted); min-width: 0; overflow-wrap: anywhere; }
+.cr-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px 16px; min-width: 0; }
+.cr-wide { grid-column: 1 / -1; min-width: 0; }
+.cr-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cr-label { color: var(--text-muted); }
+.cr-req { color: var(--danger); }
+.cr-err { font-size: var(--fs-note); color: var(--danger-text); overflow-wrap: anywhere; }
+.cr-note { font-size: var(--fs-note); color: var(--text-muted); overflow-wrap: anywhere; }
+.cr-warn { color: var(--warning-text); }
+.cr-ok { color: var(--success-text); }
+.cr-wrap { overflow-wrap: anywhere; }
+.cr-gap { margin-top: 8px; }
+.cr-full { width: 100%; min-width: 0; }
+.cr-type { width: 132px; flex: none; }
+.cr-cur { width: 120px; flex: none; }
+.cr-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.cr-rise { animation: cr-rise var(--t-morph) var(--ease-morph); }
+@keyframes cr-rise { from { opacity: 0; transform: translateY(-4px); } }
+.cr-foot { position: sticky; bottom: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 12px 0 0; background: var(--panel); border-top: 1px solid var(--line); min-width: 0; }
+.cr-saved { font-size: var(--fs-note); color: var(--text-muted); white-space: nowrap; }
+.cr-miss { font-size: var(--fs-note); color: var(--danger-text); white-space: nowrap; }
+@media (max-width: 767px) { .cr-grid { grid-template-columns: minmax(0, 1fr); } }
+/* 老客户新增项目（原型 cr.old）：挑中老客户后客户段收成一行；搜到的候选一行省略 */
+.cr-old { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 0; }
+.cr-old-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-pick { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

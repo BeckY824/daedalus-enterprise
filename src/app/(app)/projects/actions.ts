@@ -15,7 +15,7 @@ import { 读的我 } from "@/lib/team-scope";
 import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 验联系人号码, 企业号码查重, 全公司查号, 撞号结论, 记号码, 联系人号码撞了 } from "@/lib/enterprise/contact-dedupe";
 import { 登记接着建 } from "@/lib/project/hook";
-import { 规整向导, 向导接着建, 项目来源默认, 占位名提示, type 建好的, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
+import { 规整向导, 向导接着建, 规整只建客户, 只建客户接着建, 项目来源默认, 占位名提示, type 建好的, type 建好的客户, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
 import { 读必填数据, 能改节点, 上级只推, 直属才推, 只有负责人改进程, 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 能管项目, 能进公海的阶段, 超时成员线, 超时线, type 交付项 } from "@/lib/project/db";
@@ -68,6 +68,8 @@ function 刷新项目(projectId?: string, customerId?: string) {
 }
 
 export type 建档向导输入 = { 客户: CustomerInput; 联系人: 向导联系人; 项目: 向导项目; 跟进: 向导跟进 };
+/** 新建弹窗没开「项目」开关（P-界面-36，11-15）：只建客户、主要联系人和首条沟通（算客户沟通） */
+export type 只建客户输入 = Omit<建档向导输入, "项目">;
 
 /** 建档时指派给别人超了持有上限：「超了上限，」后面那半句 */
 const 建档超上限尾 = "客户和项目都没有建；先推进或放回一些，或者换一位负责人";
@@ -79,11 +81,8 @@ const 建档超上限尾 = "客户和项目都没有建；先推进或放回一�
 export async function 建档向导(输入: 建档向导输入) {
   try {
     const me = await requireUser();
-    if (!(await 开着())) return 没开;
-    if (!输入 || typeof 输入 !== "object" || !输入.客户 || typeof 输入.客户 !== "object") return { ok: false as const, error: "建档信息不完整，请从头再走一遍" };
-    // 没设业务角色、只读管理员不能新建（11-03 D3-7 ④）：页面上「新线索」不摆，这里再拦
-    const 新建挡 = 企业版() ? 不能新建项目话(me, await 权限组织()) : null;
-    if (新建挡) return { ok: false as const, error: 新建挡 };
+    const 挡 = await 建档前挡(me, 输入);
+    if (挡) return 挡;
     // 企业版分配方式（A7，10-27）：只能用分配方式字典里这个人能用、还启用着的那几种（assign-use.ts）。
     // 指定分配 = 负责人是选的那位；另外四种都先建在我名下，自动分配建好后按自动分配转出去、公海捞取建好后放进项目公海
     const 分配 = 企业版() ? await 定分配方式(me, 输入.项目) : null;
@@ -244,6 +243,101 @@ export async function 建档向导(输入: 建档向导输入) {
   } catch (e) { return 不在了(e); }
 }
 
+
+/**
+ * 新建弹窗没开「项目」开关（P-界面-36，11-15）：客户、主要联系人、首条沟通一笔建好，哪一样写失败整笔不留。
+ * 权限和建档同一套：项目模式开关、新建挡由 建档向导 先拦；客户负责人（企业版普通销售只能建给自己）、客户查重、
+ * 客户业务线必填都由 saveCustomer 管；号码按类型验格式、全公司查重同建档。不走分配方式、不建项目
+ */
+export async function 建档只建客户(输入: 只建客户输入) {
+  try {
+    const me = await requireUser();
+    const 挡 = await 建档前挡(me, 输入);
+    if (挡) return 挡;
+    return await 只建客户写(me, 输入);
+  } catch (e) { return 不在了(e); }
+}
+
+/** 建档、只建客户共用的门：项目模式开关（关着一行不写）、交上来的形状、没设业务角色 / 只读管理员不能新建（11-03 D3-7 ④） */
+async function 建档前挡(me: Awaited<ReturnType<typeof requireUser>>, 输入: unknown) {
+  if (!(await 开着())) return 没开;
+  const 客户 = 输入 && typeof 输入 === "object" ? (输入 as { 客户?: unknown }).客户 : null;
+  if (!客户 || typeof 客户 !== "object") return { ok: false as const, error: "建档信息不完整，请从头再走一遍" };
+  // 页面上「新建」「新线索」不摆，这里再拦
+  const 新建挡 = 企业版() ? 不能新建项目话(me, await 权限组织()) : null;
+  return 新建挡 ? { ok: false as const, error: 新建挡 } : null;
+}
+
+async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输入: 只建客户输入) {
+  const 企 = 企业版();
+  let 客户 = 输入.客户;
+  if (企) {
+    const 客源 = await 落到渠道(客户.channelId ? String(客户.channelId) : null, me);
+    if (!客源.ok) return { ok: false as const, error: 客源.error };
+    if (是主渠道入口(客户.channelId)) 客户 = { ...客户, channelId: 客源.id };
+    if (是占位值(String(客户.name ?? ""))) return { ok: false as const, error: 占位名提示("客户名称") };
+    const 触点 = 认渠道触点(客户.touchpoint);
+    if (触点 === undefined) return { ok: false as const, error: `渠道触点只能是 ${渠道触点们.join(" / ")}` };
+    const 来源还差 = 新建来源还差(客户.channelId, 触点);
+    if (来源还差) return { ok: false as const, error: 来源还差 };
+    const 渠道不行 = 客户.channelId ? await 新数据渠道不行(String(客户.channelId)) : null;
+    if (渠道不行) return { ok: false as const, error: 渠道不行 === "停用" ? "这个渠道不存在或已停用，换一个" : 渠道不行 };
+  }
+  const 认 = 输入.跟进 ? await 认跟进方式(输入.跟进) : 输入.跟进;
+  if (认 && "error" in 认) return { ok: false as const, error: 认.error };
+  const 好 = 规整只建客户({ 联系人: 输入.联系人, 跟进: 认 ?? undefined }, new Date(), 企);
+  if ("error" in 好) return { ok: false as const, error: 好.error };
+
+  // 号码：第一步那个号、联系人的号按类型验格式、全公司查重（同建档）；撞到有人在跟的走同号再次录入，不建
+  const 第一步 = 企 && 客户.企业号码 ? 验号码(客户.企业号码.类型, 客户.企业号码.值) : null;
+  const 联号 = 企 ? 验联系人号码(好.联系人, 第一步?.ok ? 第一步 : null) : [];
+  if ("error" in 联号) return { ok: false as const, error: 联号.error };
+  const 同号录入 = { 入口: "手工建档", 渠道id: 客户.channelId, 内容: 好.跟进.content };
+  if (第一步?.ok) {
+    const 结论 = await 企业号码查重(prisma, 第一步, me.id, await 读的我(defaultClient));
+    const 协同 = 结论.状态 !== "首次录入" ? await 同号再次录入(me, 第一步, 同号录入) : null;
+    if (协同?.走) return { ok: false as const, error: 协同.反馈, 同号协同: true as const };
+  }
+  const 要查 = 联号.filter((号) => !号.同第一步);
+  for (const 号 of 要查) {
+    const 结论 = await 企业号码查重(prisma, 号, me.id, await 读的我(defaultClient));
+    if (结论.状态 !== "首次录入") {
+      const 协同 = await 同号再次录入(me, 号, 同号录入);
+      if (协同.走) return { ok: false as const, error: 协同.反馈, 同号协同: true as const };
+      return { ok: false as const, error: `${号.格}：${结论.提示}` };
+    }
+  }
+
+  const 建了: Partial<建好的客户> = {};
+  const 建 = 只建客户接着建(me, 好, 建了);
+  // 只写刚建的这个客户和它名下的东西，放开范围（同建档：负责人不是我时客户一建好在我这儿可能是只读的）
+  const 接着 = 登记接着建((tx, customerId) => 看全部(async () => {
+    for (const 号 of 要查) {
+      const ids = await 全公司查号(tx, 号.类型, 号.值, 号.键, customerId);
+      if (ids.length) throw new 联系人号码撞了(ids, 号.格);
+    }
+    await 建(tx, customerId);
+    for (const 号 of 联号) await 记号码(tx, { 刚建的: customerId }, 建了.contactId ?? null, 号);
+  }));
+  let r: Awaited<ReturnType<typeof saveCustomer>>;
+  try {
+    r = await saveCustomer({ ...客户, id: undefined, updatedAt: null, base: null }, 接着);
+  } catch (e) {
+    if (!(e instanceof 联系人号码撞了)) throw e;
+    return { ok: false as const, error: `${e.格}：${(await 撞号结论(prisma, e.ids, me.id, await 读的我(defaultClient))).提示}` };
+  }
+  if (!r.ok) return r;
+  await recordAudit({
+    user: me, action: "create", entity: "Customer", entityId: r.id,
+    summary: `新建客户「${String(客户.name ?? "").trim()}」，连同主要联系人「${好.联系人.name}」和首条沟通（没建项目）`,
+    detail: { 联系人: 好.联系人.name, 下一步时间: 好.跟进.nextStepAt ? 好.跟进.nextStepAt.toISOString().slice(0, 10) : null },
+  });
+  await 存沟通后重算三态(r.id);
+  刷新项目(undefined, r.id);
+  revalidatePath("/customers");
+  revalidatePath("/follow-ups");
+  return { ok: true as const, customerId: r.id, projectId: null, ...(企 ? { contactId: 建了.contactId ?? null } : {}) };
+}
 
 /** 改节点。进异常状态时带上异常类别（必选）和备注（可空）；企业版点线索流失、丢单时 备注 = 原因（必填） */
 export async function 改项目节点(projectId: string, 到: 位置, 异常?: { categoryId?: string | null; 备注?: string | null } | null) {
