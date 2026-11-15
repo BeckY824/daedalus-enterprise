@@ -14,9 +14,10 @@
  *   4. 动效只用四档时长；减弱动态时不位移（globals.css 里 .dock 那几条）。
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useFloatDrag, 浮窗位置键 } from "./useFloatDrag";
 import { useSearchParams } from "next/navigation";
 import { usePageUnderOverlay } from "@/lib/page-under-overlay";
-import { CloseOutlined, MinusOutlined } from "@ant-design/icons";
+import { CloseOutlined, HolderOutlined, MinusOutlined } from "@ant-design/icons";
 import WidthHandle, { 面板把手 } from "./WidthHandle";
 import DockThreads from "./DockThreads";
 import HomeChat, { type Suggestion } from "@/app/(app)/dashboard/HomeChat";
@@ -34,6 +35,7 @@ const 空名单: string[] = [];
 
 export default function AiDock({
   userName,
+  userId,
   models,
   开着,
   set开着,
@@ -41,6 +43,8 @@ export default function AiDock({
   浮窗 = false,
 }: {
   userName: string;
+  /** 浮窗拖到哪按人记（useFloatDrag）：同一台电脑换个人登录，各是各的位置 */
+  userId?: string;
   models: ModelOption[];
   /**
    * 开合状态**由壳持有**，不在这儿。因为正文宽度跟着它变，壳要据此调响应式断点
@@ -89,23 +93,21 @@ export default function AiDock({
   const 有对话 = 这屏.length > 0;
 
   /*
-    浮窗开着时把它的实际高写到 <html> 的 --ai-float-h：正文底下按这个高让位（globals.css 的 .dock-float 段），
-    滚到底的分页、最后一行按钮停在浮窗上面。输入框态、缩成一行、长成对话三种高不一样，所以量，不写死
+    浮窗是叠在页面上的一层（position:fixed），**开不开都不动页面排版**（11-15 用户：点开之后挡掉了客户页三栏底下一截）。
+    原来这里量浮窗高写进 <html> 的 --ai-float-h，正文底下按它让位；记录页（.main 定高 100vh、三栏各自滚）
+    那条让位的选择器比「记录页底部只留 22px」那条更具体，盖过去之后 .main 底下多出一大块内边距，
+    三栏被压矮、在浮窗上沿处截断（图3）。现在底下只留一份固定的让位（--ai-room，和球在不在、浮窗开不开无关），
+    浮窗想挡什么由人拖开（useFloatDrag）
   */
   const 浮窗框 = useRef<HTMLElement>(null);
+  const 拖 = useFloatDrag(浮窗框, 浮窗位置键(userId ?? "_"), 浮窗 && 开着);
+
+  // 浮窗一开光标就在输入框里：开它就是要问；空屏快捷项、剩几次也跟着焦点摆出来（globals.css .dock-float:not(:focus-within, :hover)）
   useEffect(() => {
-    const el = 浮窗框.current;
-    if (!浮窗 || !开着 || !el) return;
-    const 根 = document.documentElement.style;
-    const 量 = () => 根.setProperty("--ai-float-h", `${Math.round(el.getBoundingClientRect().height)}px`);
-    量();
-    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(量);
-    ro?.observe(el);
-    return () => {
-      ro?.disconnect();
-      根.removeProperty("--ai-float-h");
-    };
-  }, [浮窗, 开着, 开过的页]);
+    if (!浮窗 || !开着) return;
+    const id = requestAnimationFrame(() => 浮窗框.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(id);
+  }, [浮窗, 开着]);
 
   // 页里的按钮（客户页页头「AI」）叫浮窗出来，见 lib/ai-float.ts
   useEffect(() => (浮窗 ? 登记打开AI浮窗(() => set开着(true)) : undefined), [浮窗, set开着]);
@@ -195,7 +197,21 @@ export default function AiDock({
           if (e.key === "Escape" && !在跑 && 有对话 && !e.defaultPrevented) set收拢(true);
         }}
       >
-        <div className="dock-h dock-float-h">
+        {/*
+          头一行：把手 + 上下文 + 历史 + 收起。按住把手或这一行空白处拖；按钮照旧是按钮（useFloatDrag 里「不拖」那份）
+        */}
+        <div className="dock-h dock-float-h" onPointerDown={拖.onPointerDown}>
+          <button
+            type="button"
+            className="dock-float-grip"
+            data-float-grip=""
+            aria-label="拖动 AI 对话框（方向键挪动，双击回到默认位置）"
+            title="拖动；双击回到默认位置"
+            onKeyDown={拖.onKeyDown}
+            onDoubleClick={拖.复位}
+          >
+            <HolderOutlined />
+          </button>
           {上下文 && !不带上下文 ? (
             <span className="dock-float-ctx" key={上下文.标签}>
               <span className="dock-ctx-n">{上下文.标签}</span>
