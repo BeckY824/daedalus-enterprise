@@ -506,6 +506,34 @@ export async function 离职交接中的(db: 库, ids: readonly string[]): Promi
   return 中;
 }
 
+/**
+ * 设置里改三态天数前先数一遍（PR10a，确认框里写「约 X 位客户会受影响」）：按现在库里的事实，旧天数、新天数各算一遍，
+ * 数状态会变的客户（正常跟进 / 沉睡待定 / 即将回收 / 该进公海之间换了），其中按新天数会到期该进公海、没被挡的另数。
+ * 只读不写（收三态客户 不写库，归不归零只算不存）；三态没开 = null（关着时改天数不重算任何人）。
+ * 是估数：交接中不收、夜里提醒补发这些不细抠，界面写「约」
+ */
+export async function 三态改天数预览(新三态: 组织规则["三态"], 现在: Date = new Date()): Promise<{ 变: number; 进公海: number } | null> {
+  const 规则 = await 生效组织规则();
+  if (!(await 三态开着(规则))) return null;
+  const 今天 = beijingDay(现在);
+  return 看全部(async () => {
+    const org = await 读组织();
+    const ids = await 候选客户(prisma);
+    let 变 = 0, 进公海 = 0;
+    for (const 批 of 分批(ids)) {
+      const 们 = await 收三态客户(prisma, 批, 规则, org, 现在);
+      for (const c of 们.values()) {
+        const 旧 = 算三态(c.事实, 规则.三态, 今天);
+        const 新 = 算三态(c.事实, 新三态, 今天);
+        if (!旧.计时 || !新.计时 || 旧.状态 === 新.状态) continue;
+        变++;
+        if (新.状态 === "该进公海" && !新.被挡) 进公海++;
+      }
+    }
+    return { 变, 进公海 };
+  });
+}
+
 export type 三态夜扫明细 = { 算了: number; 换状态: number; 进公海: string[]; 新被挡: number; 交接中没收: number; 标公海: number };
 const 空明细 = (): 三态夜扫明细 => ({ 算了: 0, 换状态: 0, 进公海: [], 新被挡: 0, 交接中没收: 0, 标公海: 0 });
 

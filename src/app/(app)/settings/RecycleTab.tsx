@@ -12,13 +12,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { App, Button, Card, Input, InputNumber, Space, Switch, Tag } from "antd";
-import { 改组织规则 } from "@/app/(app)/projects/actions";
+import { 改组织规则, 预览客户回收 } from "@/app/(app)/projects/actions";
 import { 三态存占位词 } from "@/app/(app)/customers/tri-state-actions";
 import type { 三态规则, 三态天数 } from "@/lib/project/org-rules";
 import { 三态显示名 } from "@/lib/enterprise/tri-state-label";
 
 export type 客户回收设置 = {
   三态: 三态规则;
+  /** 旧的「项目超时回收」开着没有：关客户回收时确认框要说清会改回按项目超时回收（db.ts 三态开着时超时回收不跑） */
+  超时回收开?: boolean;
   /** 开关、天数这个人能不能改：null = 能改，否则是「只有……能改」那句 */
   挡: string | null;
   /** 占位词表；null = 这个人看不了（只有能改后台设置的人能看、能改，同 三态读占位词） */
@@ -27,6 +29,8 @@ export type 客户回收设置 = {
 
 /** 打开时说清后果（开关旁、确认框里同一句） */
 const 打开后果 = "打开后立即开始按客户计时，几分钟内给每位客户建好状态：很久没有有效沟通的客户会进入沉睡待定、即将回收；系统每天 08:00（北京时间）起给负责人和上级发提醒，过了 08:00 才打开的当天就发第一遍；即将回收满期还没人处理的自动进客户公海。";
+/** 关掉的后果（确认框里，PR10a）：关了夜扫整段不跑（三态夜扫 开着才扫），提醒、自动进公海都停 */
+const 关掉后果 = "关掉后客户不再自动回收：不再按客户计时，不再发沉睡待定、即将回收的提醒，到期的客户也不会自动进客户公海。";
 
 const 套们 = ["内贸", "外贸"] as const;
 const 项们: { k: keyof 三态天数; 前: string; 后: string; 最小: number; 最大: number }[] = [
@@ -58,13 +62,56 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
   };
 
   const 切开关 = (开: boolean) => {
-    if (!开) return void 存({ 三态: { 开: false } }, "已关客户回收");
+    // 关也有后果（P-界面-40 组织规则开关 = 后果确认框），不确认不生效（PR10a）
+    if (!开) {
+      return void modal.confirm({
+        title: "关掉客户回收？",
+        content: 关掉后果 + (value.超时回收开 ? "「超时回收」开着：关掉后改回按项目超时回收，线索、商机阶段超时的项目回线索公海。" : ""),
+        okText: "确认关掉",
+        okButtonProps: { danger: true },
+        cancelText: "再想想",
+        onOk: () => 存({ 三态: { 开: false } }, "已关客户回收"),
+      });
+    }
     modal.confirm({
       title: "打开客户回收？",
       content: 打开后果,
       okText: "确认打开",
       cancelText: "再想想",
       onOk: () => 存({ 三态: { 开: true } }, "已打开客户回收，已开始计时"),
+    });
+  };
+
+  /**
+   * 存天数（PR10a）：客户回收开着时改了天数，今晚的夜扫按新天数对全员重算——先数一遍会变几位，确认了才存；
+   * 数不出来（超时、出错）就不写数字。关着时改天数不重算任何人，一次存完不弹框（能一次做完的不加确认）
+   */
+  const 存天数 = async () => {
+    const 改: Parameters<typeof 改组织规则>[0] = { 三态: { 内贸: 天.内贸, 外贸: 天.外贸 } };
+    if (!三态.开) return void 存(改, "已保存");
+    set忙(true);
+    const 看 = await 预览客户回收(改).catch(() => null);
+    set忙(false);
+    // 没权限、天数不对这类服务端明说不行的，直接说，不弹确认
+    if (看 && !看.ok) return void message.error(("error" in 看 && 看.error) || "没改成，请稍后再试");
+    const 数 = 看?.ok ? 看.预览 : null;
+    const 改了的 = 套们.flatMap((t) => 项们.filter(({ k }) => 天[t][k] !== 三态[t][k]).map(({ k }) => `${t}客户${k === "进公海" ? `${三态显示名("待回收")}后进公海` : `进入${三态显示名(k)}`}：${三态[t][k]} → ${天[t][k]} 天`));
+    modal.confirm({
+      title: "改客户回收天数？",
+      content: (
+        <div>
+          <div>{改了的.join("；")}。</div>
+          <div>今晚（北京时间 0 点后）起按新天数对全员重算，白天有人记了沟通的客户当场按新天数算。</div>
+          {数 && (
+            <div>
+              {数.变 ? `按现在的数据，约 ${数.变} 位客户的状态会变${数.进公海 ? `，其中约 ${数.进公海} 位会到期自动进客户公海` : ""}。` : "按现在的数据，没有客户的状态会变。"}
+            </div>
+          )}
+        </div>
+      ),
+      okText: "确认修改",
+      cancelText: "再想想",
+      onOk: () => 存(改, "已保存"),
     });
   };
 
@@ -105,7 +152,7 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
           客户名下内贸、外贸项目都有时取较长的一套；没有项目或项目都是「暂不分配」的按内贸。即将回收期间提醒负责人 3 次。改了天数当晚按新的重算。
         </div>
         {!挡 && (
-          <Button type="primary" disabled={忙 || !改了} onClick={() => void 存({ 三态: { 内贸: 天.内贸, 外贸: 天.外贸 } }, "已保存")}>保存</Button>
+          <Button type="primary" disabled={忙 || !改了} onClick={() => void 存天数()}>保存</Button>
         )}
       </Card>
       <WordsCard 词们={value.占位词} />
