@@ -5,9 +5,10 @@ import Link from "next/link";
 import { Tooltip } from "antd";
 import { useCopy } from "@/lib/clipboard";
 import { CopyOutlined, ReloadOutlined, CloseOutlined, RightOutlined } from "@ant-design/icons";
-import ProposalCard from "@/components/ProposalCard";
+import ProposalCard, { type 卡况 } from "@/components/ProposalCard";
+import ProposalBatch from "@/components/ProposalBatch";
+import AiStatus, { type AiStatus态 } from "@/components/AiStatus";
 import dynamic from "next/dynamic";
-import AiWait from "@/components/AiWait";
 import StreamMarkdown from "@/components/StreamMarkdown";
 import type { BriefRecord } from "@/lib/ai-draft";
 import { useBusiness } from "@/lib/business-client";
@@ -19,7 +20,6 @@ import type { AgentAnswer } from "@/lib/thread-history";
 import type { 提到的客户 } from "@/lib/agent/run";
 import { 认死胡同 } from "@/lib/ask-dead-end";
 import type { StepEvent } from "@/lib/ai-steps";
-import { summarizeSteps } from "@/lib/agent/step-summary";
 import { dayjs } from "@/lib/utils";
 import { 起草, 草稿键, useCopyDraft, type 草稿类 } from "@/lib/draft-jobs";
 import AiCost, { useAiOutOfCredits } from "@/components/AiCost";
@@ -136,7 +136,9 @@ export default function TurnView({
   const job = useJob<StreamJob<AgentAnswer>>(`home:${turn.id}`);
   const ref = useRef<HTMLDivElement>(null);
   const done = job?.status === "done" || job?.status === "error";
-  const [open, setOpen] = useState(false);
+  /** 这一轮每张建议卡现在什么状态（卡片自己报上来）：还有没处理的，状态条就是「等你确认」 */
+  const [卡况们, set卡况们] = useState<Record<string, 卡况>>({});
+  const 报卡 = useCallback((id: string, 况: 卡况) => set卡况们((m) => (m[id]?.状态 === 况.状态 ? m : { ...m, [id]: 况 })), []);
   /**
    * 「移除这一轮」先不真移（审查 M16）：原地收成一行「已移除 · 撤销」，5 秒后才真的去掉。
    * × 紧挨着 ↻，一点就连同还没确认的建议卡一起没了，原来也不能反悔。
@@ -215,9 +217,19 @@ export default function TurnView({
   const 死胡同 = 认死胡同(text, turn.question, 查过几次工具);
   const answer = job?.status === "done" ? job.value?.answer : undefined;
   const writing = job?.value?.steps?.some((s) => s.id === "answer" && s.status === "running");
-  const thinking = Boolean(job) && !done && !text;
   const ms = job?.value?.ms;
-  const showRows = !done || open;
+  /*
+    还有几张等人确认。停用的卡（老存档里的商机卡，点不了确认）不算——算进去状态条就永远停在「等你确认」。
+    刷新后翻出来的历史轮次本来就不还原建议卡（lib/thread-history.ts 的 proposals: []），自然是 0
+  */
+  const 待确认 = (answer?.proposals ?? []).filter((p) => {
+    if (p.kind === "add_opportunity") return false;
+    const st = 卡况们[p.id]?.状态 ?? "idle";
+    return st === "idle" || st === "saving";
+  }).length;
+  const 态: AiStatus态 = !done ? "running" : interrupted ? "interrupted" : job?.status === "error" ? "error" : 待确认 > 0 ? "wait" : "done";
+  /* 答完了、一个工具都没调、也没卡要确认：状态条只会写一句「没查数据」，不摆（和原来没步骤就不出摘要一样） */
+  const 摆状态条 = Boolean(job) && (!done || steps.length > 0 || 态 === "error" || 态 === "interrupted" || 态 === "wait");
   /** 这一轮答完之后能接着问什么。最多三条，全部由这次回答提到的人生成 */
   const 追问 = !answer
     ? []
@@ -307,28 +319,20 @@ export default function TurnView({
         </div>
       )}
 
-      {steps.length > 0 && done && (
-        <button type="button" className={`cli-sum${open ? " cli-sum-open" : ""}`} onClick={() => setOpen((v) => !v)}>
-          <span>{summarizeSteps(steps, b.customer)}</span>
-          {ms ? <span className="cli-sum-ms">{(ms / 1000).toFixed(1)}s</span> : null}
-          <RightOutlined className="cli-sum-chev" />
-        </button>
-      )}
-      {showRows &&
-        steps.map((s) => (
-          <div key={s.id} className={`cli-step cli-step-${s.status}`}>
-            <span className="cli-dot" />
-            <span className="cli-step-b">
-              <span className="cli-step-l">{s.label}</span>
-              {s.detail && <span className="cli-step-d">{s.detail}</span>}
-              {open && s.thought && <span className="cli-step-t">{s.thought}</span>}
-            </span>
-          </div>
-        ))}
-      {/* 等 AI 全站一个样子（AiWait）：呼吸点 + 字上扫光 + 秒数。
-          「比平时慢」那行不要：agent 一步步查，二三十秒是常态，不是慢 */}
-      {thinking && job && (
-        <AiWait className="cli-wait" 在做={writing ? "在写" : "在想"} 起={job.startedAt} 慢于秒={Infinity} 附注="Esc 打断" />
+      {/* 一条回答一个状态条：跑着写在做什么，做完收成一行，出错写停在第几步（components/AiStatus.tsx） */}
+      {摆状态条 && job && (
+        <AiStatus
+          steps={steps}
+          态={态}
+          起={job.startedAt}
+          ms={ms}
+          客户={b.customer}
+          原因={job.status === "error" ? job.error : undefined}
+          写着={writing}
+          等确认={待确认}
+          附注={!done ? "Esc 打断" : undefined}
+          onRetry={onRetry}
+        />
       )}
 
       {text && (
@@ -364,24 +368,6 @@ export default function TurnView({
         </div>
       )}
 
-      {interrupted && (
-        <div className="cli-stopped">
-          <span className="cli-stop-mark" />
-          已中断
-          <button type="button" className="cli-link" onClick={onRetry}>
-            重试
-          </button>
-        </div>
-      )}
-      {job?.status === "error" && !interrupted && (
-        <div className="cli-err">
-          {job.error}
-          <button type="button" className="cli-link" onClick={onRetry}>
-            重试
-          </button>
-        </div>
-      )}
-
       {answer && turn.存照片 && (
         <div className="prop-list">
           <PhotoSaveCard 存照片={turn.存照片} />
@@ -390,9 +376,12 @@ export default function TurnView({
 
       {answer && answer.proposals?.length > 0 && (
         <div className="prop-list">
-          {answer.proposals.map((p) => (
-            <ProposalCard key={p.id} proposal={p} 记号={`home:${turn.id}:${p.id}`} />
-          ))}
+          {/* 同一轮 ≥2 张卡并成一张「待确认 N 项」清单；只有 1 张照旧 */}
+          {answer.proposals.length >= 2 ? (
+            <ProposalBatch proposals={answer.proposals} 记号前缀={`home:${turn.id}`} 报={报卡} />
+          ) : (
+            answer.proposals.map((p) => <ProposalCard key={p.id} proposal={p} 记号={`home:${turn.id}:${p.id}`} 报={报卡} />)
+          )}
         </div>
       )}
 

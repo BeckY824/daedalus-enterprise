@@ -99,4 +99,19 @@ describe("工具表 ↔ 过程条口语表", () => {
     const 名字 = new Set(TOOLS.map((t) => t.name));
     expect(Object.keys(工具口语).filter((n) => !名字.has(n))).toEqual([]);
   });
+  /* 状态条（components/AiStatus.tsx）头部写「正在…」、展开写「…了」：漏登记的工具只会说「正在查数据」 */
+  it("每个工具单步都有「进行中 / 完成」两种说法", async () => {
+    const { 单步口语 } = await import("@/lib/agent/step-summary");
+    const 漏了 = TOOLS.filter((t) => !单步口语[t.name]?.在做 || !单步口语[t.name]?.做完).map((t) => t.name);
+    expect(漏了, `这些工具状态条上不会说人话：${漏了.join("、")}`).toEqual([]);
+    const 名字 = new Set(TOOLS.map((t) => t.name));
+    expect(Object.keys(单步口语).filter((n) => !名字.has(n))).toEqual([]);
+  });
+  it("单步人话里不露工具名", async () => {
+    const { 单步口语 } = await import("@/lib/agent/step-summary");
+    for (const [n, 说] of Object.entries(单步口语)) {
+      expect(说.在做("客户")).not.toMatch(/[a-z_]{3,}/);
+      expect(说.做完("客户"), n).not.toMatch(/[a-z_]{3,}/);
+    }
+  });
 });

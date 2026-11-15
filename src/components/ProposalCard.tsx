@@ -4,7 +4,7 @@ import DatePicker from "@/components/BusinessDatePicker";
 import OptionInput from "@/components/OptionInput";
 import Shortcut from "./Shortcut";
 
-import { createContext, useContext, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { App, Select, Input, Checkbox } from "antd";
@@ -14,7 +14,7 @@ import { applyProposal, undoProposal, type 撤销凭据, type 附件去处 } fro
 import { 取走名片原图, 记下刚建的, 忘掉刚建的 } from "@/lib/card-scan/originals";
 import { 传附件 } from "@/lib/attachment-upload";
 import { describeProposal, missingFields, 只留选中的改动, 可改字段表, 区域去处叫法, type Proposal, type 线索待确认格, type 区域去处 } from "@/lib/agent/proposals";
-import { 三种业务线, 分配说明, 销售自动分确认, 建议业务线 } from "@/lib/enterprise/assign-line";
+import { 三种业务线, 分配说明, 建议业务线 } from "@/lib/enterprise/assign-line";
 import { 认渠道 } from "@/lib/enterprise/channel-match";
 import { useBusiness } from "@/lib/business-client";
 import { 币种符号 } from "@/lib/currency";
@@ -73,10 +73,45 @@ const 线索节点们 = 企业版字典.节点们.线索.slice(0, 企业版字�
 
 type 落印回执 = { at: string; 撤销?: 撤销凭据; 项目?: string };
 
+/**
+ * 卡片报给外面的状态（2026-11-15）：首页那一轮靠它知道还有没有「等你确认」的，
+ * 合并确认清单（ProposalBatch）靠它画每一行（还差什么、会有什么后果、写没写进去）。
+ */
+export type 卡况 = {
+  状态: "idle" | "saving" | "done" | "denied";
+  能确认: boolean;
+  /** 不能确认时那句原因（「还差电话」「一项都没选」） */
+  缺: string;
+  /** 写进去了、而且还能撤 */
+  能撤: boolean;
+  /** 确认之后会发生、人要先知道的事（自动分配：分出去自己就看不到了） */
+  后果?: string;
+  不可撤销: boolean;
+};
+/** 合并确认清单拿着它逐张确认 / 撤销 / 忽略——走的还是这张卡自己那一套（applyProposal / undoProposal），一行不少 */
+export type 卡句柄 = { 提交: () => Promise<boolean>; 撤销: () => Promise<boolean>; 忽略: () => void };
+
+/** 销售选自动分配：分出去自己就看不到了。原来确认前再弹一次框问，现在把这句写在按钮上（照新建向导的 销售自动分确认 那个意思） */
+export const 自动分后果 = "分出去后你将看不到这个项目";
+/** 屏上那整句。单张卡 n = 1；合并清单里写「其中 n 项」 */
+export const 自动分整句 = (n: number, 清单 = false) => (清单 ? `其中 ${n} 项会自动分出去，你将看不到${n > 1 ? "这些" : "这个"}项目` : "确认后自动分出去，你将看不到这个项目");
+
 /** 老商机卡上那句（和 dashboard/apply.ts 拦下时回的话同一个意思） */
 const 商机卡停用话 = "这里商机已并入项目，这张老建议卡不能再确认：请到项目页把项目推到商机阶段";
 
-export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal; 记号?: string }) {
+export default function ProposalCard({
+  proposal,
+  记号,
+  报,
+  批,
+}: {
+  proposal: Proposal;
+  记号?: string;
+  /** 状态变了就报一声（见 卡况） */
+  报?: (id: string, 况: 卡况) => void;
+  /** 在合并确认清单里：不画自己的确认 / 忽略按钮，⌘↵ 交给清单；把 卡句柄 交出去 */
+  批?: { 交句柄: (id: string, h: 卡句柄 | null) => void };
+}) {
   const { 曲线, 时长 } = useMotionTheme();
   const b = useBusiness();
   const 渠道名们 = useContext(新线索来源);
@@ -84,7 +119,7 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
   const 企 = useContext(新线索企业);
   /* 三个档案字段叫什么、「职位」那一格有哪些选项，跟着业务配置走（通用版 vs 教培预设） */
   const 字段表 = 可改字段表(b);
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
   const router = useRouter();
   // 企业版新线索卡：默认值和新建向导一致 —— 分配方式按角色默认（只有一种能用就直接选上）、进程默认线索第一步、业务线按国家 / 城市猜
   // 渠道：AI 常只写平台名（「TikTok」），按 apply.ts 落库同一个 认渠道 认出唯一一个就直接预选上；认不出（或对上多个）照原样留给人选
@@ -135,24 +170,31 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
   const 停用卡 = draft.kind === "add_opportunity";
   const 能确认 = state !== "saving" && !停用卡 && missing.length === 0 && 勾了.length > 0;
 
+  /* 销售选自动分配：分出去自己就看不到了。原来点确认后再弹一次框问（两次点击才是一次决定），
+     现在后果直接写在确认按钮上，点它就是那一个决定 */
+  const 后果 = 企?.是销售 && 要提交的.kind === "add_lead" && 要提交的.分配方式 === 1 ? 自动分后果 : undefined;
+
   function confirm() {
     if (!能确认) return;
-    // 销售选自动分配：分出去自己就看不到了，和新建向导同一句先问一下
-    if (企?.是销售 && 要提交的.kind === "add_lead" && 要提交的.分配方式 === 1) {
-      modal.confirm({ title: "按自动分配建", content: 销售自动分确认, okText: "确定，分出去", cancelText: "再想想", onOk: () => void 提交() });
-      return;
-    }
     void 提交();
   }
 
-  async function 提交() {
+  async function 提交(): Promise<boolean> {
     setState("saving");
     setErr("");
     set回收站号(null);
     // 确认完这张卡就没有输入框了：焦点原来在卡里的，送回对话框，让人接着说下一句
     const 焦点在卡里 = !!根.current?.contains(document.activeElement);
     const 对话框 = 找对话框(根.current);
-    const r = await applyProposal(要提交的);
+    /* 断网 / 服务端抛错：卡片回到能再点一次的样子，原因写在卡上（不然一直「写入中…」，合并清单也跟着锁死） */
+    let r: Awaited<ReturnType<typeof applyProposal>>;
+    try {
+      r = await applyProposal(要提交的);
+    } catch (e) {
+      setState("idle");
+      setErr(`没写进去：${e instanceof Error && e.message ? e.message : "网络或服务出错"}，可以再点一次`);
+      return false;
+    }
     if (r.ok) {
       const 回执: 落印回执 = { at: dayjs().format("HH:mm"), 撤销: r.撤销, ...(r.项目 ? { 项目: r.项目 } : {}) };
       set落印(回执);
@@ -177,11 +219,12 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
         refresh 只重取服务端数据，不动这一屏的对话（那是模块级的，见 lib/home-thread.ts）。
       */
       router.refresh();
-    } else {
-      setState("idle");
-      setErr(r.error);
-      set回收站号(r.回收站号 ?? null);
+      return true;
     }
+    setState("idle");
+    setErr(r.error);
+    set回收站号(r.回收站号 ?? null);
+    return false;
   }
 
   /**
@@ -203,14 +246,22 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
     router.refresh();
   }
 
-  async function undo() {
-    if (!落印?.撤销) return;
+  /** 静默：合并清单一次撤好几张，只在清单上说一句，不每张各弹一次 */
+  async function undo(静默 = false): Promise<boolean> {
+    if (!落印?.撤销) return false;
     set撤销中(true);
-    const r = await undoProposal(落印.撤销);
-    set撤销中(false);
+    let r: Awaited<ReturnType<typeof undoProposal>>;
+    try {
+      r = await undoProposal(落印.撤销);
+    } catch (e) {
+      message.error(`没撤销成功：${e instanceof Error && e.message ? e.message : "网络或服务出错"}，可以再点一次`);
+      return false;
+    } finally {
+      set撤销中(false);
+    }
     if (!r.ok) {
       message.error(r.error);
-      return;
+      return false;
     }
     if (建出的去处.current) 忘掉刚建的(建出的去处.current);
     建出的去处.current = null;
@@ -219,9 +270,36 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
     set刚("撤销");
     set状态("idle");
     if (记号) 清掉建议结果(记号);
-    message.success("已撤销，档案回到确认之前");
+    if (!静默) message.success("已撤销，档案回到确认之前");
     router.refresh();
+    return true;
   }
+
+  const 提示 = 停用卡 ? "这张卡不能确认" : 勾了.length === 0 ? "一项都没选" : missing.length ? `还差${missing.join("、")}` : "";
+  /* 往外报状态、交句柄。句柄里调的是最新这一次渲染的 提交 / undo（草稿改过的字段要跟着走），所以经 ref 转一道 */
+  const 最新 = useRef({ 提交, undo, 能确认, setState });
+  useEffect(() => {
+    最新.current = { 提交, undo, 能确认, setState };
+  });
+  const 报Ref = useRef(报);
+  useEffect(() => {
+    报Ref.current = 报;
+  });
+  const 能撤 = state === "done" && !!落印?.撤销;
+  const 卡不可撤 = 是项目卡(draft.kind) && 不可撤销(draft.kind);
+  useEffect(() => {
+    报Ref.current?.(proposal.id, { 状态: state, 能确认, 缺: 提示, 能撤, 后果, 不可撤销: 卡不可撤 });
+  }, [proposal.id, state, 能确认, 提示, 能撤, 后果, 卡不可撤]);
+  const 交句柄 = 批?.交句柄;
+  useEffect(() => {
+    if (!交句柄) return;
+    交句柄(proposal.id, {
+      提交: () => (最新.current.能确认 ? 最新.current.提交() : Promise.resolve(false)),
+      撤销: () => 最新.current.undo(true),
+      忽略: () => 最新.current.setState("denied"),
+    });
+    return () => 交句柄(proposal.id, null);
+  }, [交句柄, proposal.id]);
 
   if (state === "denied") return null;
 
@@ -244,7 +322,7 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
         <span className="prop-done-t">{describeProposal(draft, b.customer, 字段表, b)}</span>
         <span className="prop-done-acts">
           {落印?.撤销 && (
-            <button type="button" className="cli-link" onClick={undo} disabled={撤销中}>
+            <button type="button" className="cli-link" onClick={() => void undo()} disabled={撤销中}>
               {撤销中 ? "撤销中…" : "撤销"}
             </button>
           )}
@@ -268,7 +346,8 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
       /* ⌘↵ = 点「确认」。光标在卡片里任何一个输入框时都管用——
          改完最后一个字段还要伸手去点按钮，是这张卡最烦的一下 */
       onKeyDown={(e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        // 在合并清单里：⌘↵ 冒泡给清单，确认的是勾上的那几张
+        if (!批 && (e.metaKey || e.ctrlKey) && e.key === "Enter") {
           e.preventDefault();
           confirm();
         }
@@ -585,9 +664,18 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
         </div>
       )}
 
+      {批 ? (
+        /* 清单里：确认 / 忽略在清单底部，这里只留提示 */
+        (卡不可撤 || 提示) && (
+          <div className="prop-foot">
+            {卡不可撤 && <span className="prop-err prop-err-inline">此操作不可撤销{draft.kind === "customer_delete" ? "（删后进回收站，30 天内可恢复）" : ""}</span>}
+            {提示 && <span className="prop-note">{提示}</span>}
+          </div>
+        )
+      ) : (
       <div className="prop-foot">
-        <button type="button" className="prop-ok" onClick={confirm} disabled={!能确认}>
-          <CheckOutlined /> {state === "saving" ? "写入中…" : 逐项 ? `确认选中 ${勾了.length} 项` : "确认"}
+        <button type="button" className="prop-ok" onClick={confirm} disabled={!能确认} title={后果}>
+          <CheckOutlined /> {state === "saving" ? "写入中…" : 逐项 ? `确认选中 ${勾了.length} 项` : 后果 ? "确认，自动分出去" : "确认"}
         </button>
         {逐项 && (
           <button
@@ -602,15 +690,16 @@ export default function ProposalCard({ proposal, 记号 }: { proposal: Proposal;
         <button type="button" className="prop-no" onClick={() => setState("denied")} disabled={state === "saving"}>
           <CloseOutlined /> 忽略
         </button>
-        {是项目卡(draft.kind) && 不可撤销(draft.kind) && (
+        {卡不可撤 && (
           <span className="prop-err" style={{ margin: 0 }}>
             此操作不可撤销{draft.kind === "customer_delete" ? "（删后进回收站，30 天内可恢复）" : ""}
           </span>
         )}
-        <span className="prop-note">
-          {停用卡 ? "这张卡不能确认" : 勾了.length === 0 ? "一项都没选" : missing.length ? `还差${missing.join("、")}` : <Shortcut>确认前不会写入任何数据 · ⌘↵</Shortcut>}
-        </span>
+        {/* 后果整句写在屏上（不只放悬停）：⌘↵ 之前人就看得见 */}
+        {后果 && <span className="prop-consequence" title={自动分整句(1)}>{自动分整句(1)}</span>}
+        <span className="prop-note">{提示 || <Shortcut>确认前不会写入任何数据 · ⌘↵</Shortcut>}</span>
       </div>
+      )}
     </motion.div>
   );
 }

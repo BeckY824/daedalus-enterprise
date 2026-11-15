@@ -8,7 +8,7 @@ import type { CustomerBrief, BriefRecord } from "@/lib/ai-draft";
 import { useBusiness } from "@/lib/business-client";
 import { useJob, setJobValue, clearJob, getJob } from "@/lib/ai-jobs";
 import { runStream, type StreamJob } from "@/lib/ai-stream";
-import AiTrace from "@/components/AiTrace";
+import AiStatus from "@/components/AiStatus";
 import AiWait from "@/components/AiWait";
 import BriefBody from "./BriefBody";
 import AiCost, { useAiMeter, useAiOutOfCredits } from "@/components/AiCost";
@@ -137,9 +137,17 @@ export default function AiPanel({
   // 有追问就显示追问的结果，否则显示简报本身
   const shown = askJob ?? briefJob;
   const loading = shown?.status === "loading";
-  const error = !hasRecords ? `该${b.customer}还没有任何沟通记录，暂时没有可提炼的内容` : shown?.status === "error" ? shown.error : null;
+  /* 没记录这句还用黄条说；调用出错改由状态条说（「停在第 N 步：原因」+ 重试），不再两处各说一遍 */
+  const 无记录 = !hasRecords ? `该${b.customer}还没有任何沟通记录，暂时没有可提炼的内容` : null;
+  const 调用错 = shown?.status === "error" ? shown.error ?? "调用失败" : null;
+  const 打断了 = 调用错 === "已取消";
   const result = shown?.status === "done" ? shown.value?.answer : undefined;
-  const steps = shown?.value?.steps ?? [];
+  // 出错 / 打断时还挂着 running 的那一步：打断算做完（写「被打断」），出错标成停在这一步。和首页 TurnView 同一套
+  const steps = (shown?.value?.steps ?? []).map((s) =>
+    调用错 && s.status === "running" ? { ...s, status: 打断了 ? ("done" as const) : ("error" as const), detail: 打断了 ? "被打断" : s.detail } : s,
+  );
+  /** 重试走原来那条路：追问就再问一遍同一句，简报就重新生成 */
+  const 重试 = () => (askJob && shown === askJob && askJob.meta ? ask(askJob.meta) : regenerate());
 
   return (
     <div className="rec-ai">
@@ -161,10 +169,21 @@ export default function AiPanel({
 
       {背调.区}
 
-      {hasRecords && (loading || steps.length > 0) && <AiTrace steps={steps} done={!loading} ms={shown?.value?.ms} compact />}
+      {hasRecords && (loading || steps.length > 0 || 调用错) && (
+        <AiStatus
+          steps={steps}
+          态={loading ? "running" : 打断了 ? "interrupted" : 调用错 ? "error" : "done"}
+          起={shown?.startedAt}
+          ms={shown?.value?.ms}
+          客户={b.customer}
+          原因={调用错 ?? undefined}
+          onRetry={AI已用完 ? undefined : 重试}
+          compact
+        />
+      )}
 
       {/* 还没生成过：摆一颗按钮，不替人做决定。点了才花那一次额度 */}
-      {hasRecords && !loading && !result && !error && (
+      {hasRecords && !loading && !result && !调用错 && (
         <div className="rec-ai-idle">
           <Button type="primary" size="small" icon={<ThunderboltOutlined />} onClick={regenerate} disabled={AI已用完}>
             生成{简报叫}
@@ -174,9 +193,9 @@ export default function AiPanel({
       )}
 
       <AnimatePresence mode="wait">
-        {!loading && error && (
+        {!loading && 无记录 && (
           <motion.div key="error" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-            <Alert type="warning" showIcon title={error} />
+            <Alert type="warning" showIcon title={无记录} />
           </motion.div>
         )}
         {!loading && result && (
