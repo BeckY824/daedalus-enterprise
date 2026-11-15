@@ -29,7 +29,9 @@ const plugin: Plugin = { name: "trade-basics-ui", setup(b) {
     export const 撤销记一笔=async(x)=>记('撤销记一笔',x);
     export const saveFollowUp=async(x)=>({...记('saveFollowUp',x),...(x.附带?.plan?{下次计划id:'n1'}:{})}),completePlan=async(id,完成=true)=>记('completePlan',{id,完成}),toggleTask=async(id,v)=>记('toggleTask',{id,v}),deletePlan=async()=>({ok:true}),deleteTask=deletePlan;
     export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'p1'});`);
-  stub(/customers\/\[id\]\/(PlanForm|TaskForm)$/, "export default function C(){return null}");
+  stub(/customers\/\[id\]\/TaskForm$/, "export default function C(){return null}");
+  // 排下一次（撤销条上那颗键）开的新计划表单：只摆个记号，看给谁排的
+  stub(/customers\/\[id\]\/PlanForm$/, "export default function C(p){return p.open&&p.record===null&&p.customerId?<div data-testid='plan-next'>{p.customerId}</div>:null}");
   b.onLoad({ filter: /.*/, namespace: "stub" }, (a) => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 
@@ -163,10 +165,16 @@ it("计划页（ls.pl.done）：点 ✓ 直接完成、不弹小框；底部撤�
   await page.getByRole("button", { name: "撤销" }).click();
   await expect.poll(async () => (await 调用们()).map((x) => x.参)).toEqual([{ id: "p1", 完成: true }, { id: "p1", 完成: false }]);
 
+  // 计划完成的撤销条上还有「排下一次」：点了开新计划表单（给这位客户），不撤销
+  await page.getByRole("button", { name: "完成 问样品" }).click();
+  await page.getByRole("button", { name: "排下一次" }).click();
+  expect(await page.getByTestId("plan-next").innerText()).toBe("c-p2");
+  expect((await 调用们()).map((x) => x.参)).toEqual([{ id: "p1", 完成: true }, { id: "p1", 完成: false }, { id: "p2", 完成: true }]);
+
   await page.getByRole("button", { name: "完成 整理报价单" }).click();
   await page.getByText("已完成「整理报价单」").waitFor();
   expect(await page.getByTestId("complete-plan-modal").count()).toBe(0);
-  expect((await 调用们()).map((x) => x.名)).toEqual(["completePlan", "completePlan", "toggleTask"]);
+  expect((await 调用们()).map((x) => x.名)).toEqual(["completePlan", "completePlan", "completePlan", "toggleTask"]);
   await page.close();
 });
 

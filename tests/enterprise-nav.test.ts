@@ -14,7 +14,7 @@ describe("企业版根目录", () => {
 
   it("没有项目、新线索、跟进、联系人；键不重复；要跟的红数挂在「客户」上（11-12 C1）", () => {
     const r = 企业版根目录("客户");
-    for (const k of ["/projects", "/leads", "/follow-ups", "/contacts"]) expect(r.map((x) => x.key)).not.toContain(k);
+    for (const k of ["/projects", "/leads", "/follow-ups/plans", "/contacts"]) expect(r.map((x) => x.key)).not.toContain(k);
     expect(new Set(r.map((x) => x.key)).size).toBe(r.length);
     expect(r.filter((x) => x.挂要跟).map((x) => x.key)).toEqual(["/customers"]);
   });
@@ -36,7 +36,6 @@ describe("企业版亮项", () => {
 
   it("不在左栏的页挂到客户：项目、新线索、跟进（11-12 原来亮项目）、联系人", () => {
     expect(企业版亮项("/leads", null)).toBe("/customers");
-    expect(企业版亮项("/follow-ups", null)).toBe("/customers");
     expect(企业版亮项("/follow-ups/plans", null)).toBe("/customers");
     expect(企业版亮项("/projects", null)).toBe("/customers");
     expect(企业版亮项("/projects/p1", null)).toBe("/customers");

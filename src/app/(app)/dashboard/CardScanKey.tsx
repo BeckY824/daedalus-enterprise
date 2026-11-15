@@ -74,14 +74,25 @@ export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, on存
   const { message } = App.useApp();
   const 选 = useRef<HTMLInputElement>(null);
   const [认着, set认着] = useState(false);
+  /**
+   * 认的结果（没认出 / 出错 / 张数超了 / 只读视图）：就地写在这颗键上方，几秒后收（g.save，不弹顶部提示）。
+   * 认的过程（第几张、百分之几）照旧走顶部那条进度
+   */
+  const [结果话, set结果话] = useState<{ 话: string; 错?: boolean } | null>(null);
+  const 结果计时 = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const 就地说 = (话: string, 错 = false) => {
+    if (结果计时.current) clearTimeout(结果计时.current);
+    set结果话({ 话, 错 });
+    结果计时.current = setTimeout(() => set结果话(null), 错 ? 8000 : 6000);
+  };
   const 视图中 = useViewAs();
   useImperativeHandle(开, () => ({
     打开: () => {
       // 切换视图只读：服务端也拒，这里先说清，免得选了图才报「没认出」
-      if (视图中) void message.warning(视图外部话);
+      if (视图中) 就地说(视图外部话);
       else if (!在跑 && !认着) 选.current?.click();
     },
-  }), [视图中, 在跑, 认着, message]);
+  }), [视图中, 在跑, 认着]);
 
   async function 认(图们: File[]) {
     set认着(true);
@@ -137,7 +148,8 @@ export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, on存
       }
       if (怎么办 === "备用出卡" && 备用) 人们.push({ ...备用, 图们: 待挂 });
       if (!人们.length) {
-        message.open({ key: 键, type: "warning", content: "没认出名片或微信资料。名片横着放、靠近一点、别反光，再拍一张试试；客户照片要和他的名片或微信截图一起选" });
+        message.destroy(键);
+        就地说("没认出名片或微信资料。名片横着放、靠近一点、别反光，再拍一张试试；客户照片要和他的名片或微信截图一起选");
         return;
       }
       const 起 = Date.now().toString(36);
@@ -150,20 +162,22 @@ export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, on存
         卡们.push(卡.proposal);
       }
       if (!卡们.length) {
-        message.open({ key: 键, type: "warning", content: "没认出姓名或公司，换一张清楚点的照片再试" });
+        message.destroy(键);
+        就地说("没认出姓名或公司，换一张清楚点的照片再试");
         return;
       }
       message.destroy(键);
       on出卡(卡们, 卡们.map((p) => (p.kind === "add_lead" ? [p.name, p.contact].filter(Boolean).join(" · ") : "")).filter(Boolean).join("、"));
     } catch (e) {
-      message.open({ key: 键, type: "error", content: 错的话(e).话 });
+      message.destroy(键);
+      就地说(错的话(e).话, true);
     } finally {
       set认着(false);
     }
   }
 
   return (
-    <>
+    <span className="home-scan">
       {!藏键 && <button
         type="button"
         className={`cli-tool${宽 ? " cli-tool-t" : ""}`}
@@ -187,10 +201,16 @@ export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, on存
         onChange={(e) => {
           const 图们 = [...(e.target.files ?? [])].filter((f) => f.type.startsWith("image/"));
           e.target.value = "";
-          if (图们.length > 名片最多张) message.warning(`一次最多 ${名片最多张} 张，只用前 ${名片最多张} 张`);
+          if (图们.length > 名片最多张) 就地说(`一次最多 ${名片最多张} 张，只用前 ${名片最多张} 张`);
           if (图们.length) void 认(图们.slice(0, 名片最多张));
         }}
       />
-    </>
+      {结果话 && (
+        <span className={`home-scan-note${结果话.错 ? " is-err" : ""}`} role={结果话.错 ? "alert" : "status"}>
+          {结果话.话}
+          <button type="button" className="home-scan-note-x" aria-label="收起" onClick={() => set结果话(null)}>×</button>
+        </span>
+      )}
+    </span>
   );
 }

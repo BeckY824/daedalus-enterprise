@@ -202,7 +202,7 @@ test("A2 只负责项目的人：各入口没有点了就 404 的客户链接", 
   await 登录(page, 丙.email);
   const 正文 = page.getByRole("main");
   const 全部 = [];
-  for (const 路径 of ["/dashboard", "/overview", "/follow-ups", "/follow-ups/plans", "/contacts", "/customers", "/projects", `/projects/${项目A}`, "/leads", "/pool"]) {
+  for (const 路径 of ["/dashboard", "/overview", "/follow-ups/plans", "/contacts", "/customers", "/projects", `/projects/${项目A}`, "/leads", "/pool"]) {
     全部.push(...await 客户链接(page, 路径));
   }
   const 坏 = [];
@@ -308,7 +308,7 @@ test("A3 A4 市场成员的客户分给销售：弹窗没有带待办的勾，�
   await 勾计划.click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect.poll(async () => (await db.followPlan.findUniqueOrThrow({ where: { id: 活1.计划 } })).done).toBe(true);
-  const 市场链接 = [...await 客户链接(page, "/overview"), ...await 客户链接(page, "/follow-ups/plans"), ...await 客户链接(page, "/follow-ups"), ...await 客户链接(page, "/leads"), ...await 客户链接(page, "/projects")];
+  const 市场链接 = [...await 客户链接(page, "/overview"), ...await 客户链接(page, "/follow-ups/plans"), ...await 客户链接(page, "/leads"), ...await 客户链接(page, "/projects")];
   console.log(`市场成员的客户链接：${JSON.stringify(市场链接)}`);
   expect(市场链接.filter((x) => x.href.includes(客户))).toEqual([]);
   // 列表上没有改、删的入口

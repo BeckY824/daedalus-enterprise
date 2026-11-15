@@ -7,6 +7,7 @@ import { requiredText } from "@/lib/form-validation";
 import { 签约叫 } from "@/lib/business-config";
 import OptionInput from "@/components/OptionInput";
 import { useEffect, useRef, useState } from "react";
+import { useConsequence } from "@/components/ConsequenceDialog";
 import { useRouter } from "next/navigation";
 import { Input, Button, Space, Select, Tag, Modal, Form, Row, Col, App } from "antd";
 import {
@@ -34,6 +35,7 @@ import { 自动分配线索, type 自动分配结果 } from "./assign-actions";
 import { AssignLeadModal, AssignedOutButton, useBatchAutoAssign } from "./AssignLead";
 import LeadFullNotices from "./LeadFullNotices";
 import ConvertProjectModal from "./ConvertProjectModal";
+import { useNewProjectFlow } from "../projects/NewProjectFlow";
 import type { 向导跟进 } from "@/lib/project/wizard";
 import { 公海线索先领取话 } from "@/lib/enterprise/pool-rules";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
@@ -96,6 +98,7 @@ export default function LeadsView({
 }) {
   const router = useRouter();
   const { modal } = App.useApp();
+  const [问后果, 后果框] = useConsequence();
   const b = useBusiness();
   /**
    * g.save：这一页做完一件事的回话（保存了、分给谁了、删了、没成的原因）就地写在列表上方一行，几秒后收，不弹顶部提示。
@@ -108,9 +111,13 @@ export default function LeadsView({
     set提示({ 话, 错 });
     提示计时.current = setTimeout(() => set提示(null), 错 ? 8000 : 5000);
   };
-  // 项目模式开着：新建一律走建档向导。企业版例外，线索先单独建、转化时再建项目（10-25 F1）
+  /*
+    项目模式开着：新建一律走建档向导，在本页弹框、项目开关开着锁住（原 /projects/new 整页，11-15 删了）。
+    企业版例外，线索先单独建、转化时再建项目（10-25 F1）。节点们只给「老客户」那条路用，这里不开
+  */
+  const 建档向导 = useNewProjectFlow({ users, 节点们: [], 要下一步: false });
   const 新建 = () => {
-    if (b.projectMode && !企业版项目) return router.push("/projects/new");
+    if (b.projectMode && !企业版项目) return void 建档向导.开建档("新增项目", "锁开");
     setEditing(null);
     setOpen(true);
   };
@@ -184,22 +191,76 @@ export default function LeadsView({
       return;
     }
     const 到 = 撞.customerId;
-    modal.confirm({
-      title: `电话已经是${b.customer}「${撞.客户名}」的号码`,
-      content: `${撞.在公海 ? "这位在公海里" : `负责人：${撞.负责人}`}。把「${r.name}」并到这位${b.customer}？线索标成已转化、关联到「${撞.客户名}」，不另建档案，也不改「${撞.客户名}」的资料。${企业版项目 ? `会在「${撞.客户名}」名下建一个项目「${r.name}」。` : ""}`,
-      okText: `并到「${撞.客户名}」`,
-      cancelText: "取消",
-      async onOk() {
+    // 并入：后果框分条说清（P-界面-40）；没并成原因写在框里、框不关
+    void 问后果({
+      题: `把「${r.name}」并到${b.customer}「${撞.客户名}」`,
+      后果: [
+        { 标: "撞号", 话: `电话已经是「${撞.客户名}」的号码；${撞.在公海 ? "这位在公海里" : `负责人：${撞.负责人}`}` },
+        { 标: "之后", 话: `线索标成已转化、关联到「${撞.客户名}」，不另建档案${企业版项目 ? `；会在「${撞.客户名}」名下建一个项目「${r.name}」` : ""}` },
+        { 标: "不动", 话: `不改「${撞.客户名}」的资料` },
+      ],
+      是: `并到「${撞.客户名}」`,
+      危: false,
+      做: async () => {
         const res = await mergeLeadInto(r.id, 到, 跟进);
-        if (res.ok) {
-          router.push(res.projectId ? `/projects/${res.projectId}` : `/customers/${res.customerId}`);
-        } else 说(res.error, true);
+        if (!res.ok) return res;
+        router.push(res.projectId ? `/projects/${res.projectId}` : `/customers/${res.customerId}`);
+        return { ok: true };
       },
     });
   }
 
   /** 「已分给 某某（本月已分 N / 配额 M）」：D-38 的说法，单条和批量共用 */
   const 分给了 = (r: Extract<自动分配结果, { ok: true }>) => `已分给 ${r.接手人}（本月已分 ${r.已分} / 配额 ${r.配额 ?? "不限"}）`;
+
+  /** 转客户：后果框（建一位客户 + 带过去哪些格子）；撞号了框先关，接着问要不要并过去（撞号了） */
+  async function 转客户(r: Row) {
+    let 撞: { 撞号: 线索撞号; error: string } | null = null;
+    const 带 = 转化会带上(r, b.fields);
+    await 问后果({
+      题: `把「${r.name}」转为${b.customer}`,
+      后果: [
+        // 按实际会填的格子、用当前叫法说（2026-10-04 L-016），见 lib/lead-convert.ts 转化会带上
+        { 标: "新建", 话: `会建一位${b.customer}${带 ? `，${带}一起带过去` : ""}` },
+        { 标: "之后", 话: "线索标记为已转化" },
+      ],
+      是: `转为${b.customer}`,
+      危: false,
+      做: async () => {
+        const res = await convertLead(r.id);
+        if (res.ok) {
+          router.push(res.projectId ? `/projects/${res.projectId}` : `/customers/${res.customerId}`);
+          return { ok: true };
+        }
+        if (res.撞号) {
+          撞 = { 撞号: res.撞号, error: res.error };
+          return { ok: true };
+        }
+        return res;
+      },
+    });
+    const 撞到 = 撞 as { 撞号: 线索撞号; error: string } | null;
+    if (撞到) 撞号了(r, 撞到.撞号, 撞到.error);
+  }
+
+  /** 删线索：删除类，后果框（回不来）；没删成原因写在框里；删成了就地说一句（行可能已被别人删掉，如实说） */
+  function 删线索(r: Row) {
+    void 问后果({
+      题: `删除线索「${r.name}」`,
+      后果: [
+        { 标: "回不来", 话: "删除后不可恢复", 级: "危" },
+        { 标: "核对", 话: "确认前请核对线索名称；取消不会修改资料" },
+      ],
+      是: "删除",
+      做: async () => {
+        const res = await deleteLeads([r.id]);
+        if (!res.ok) return res;
+        说(res.deleted ? `已删除「${r.name}」` : "这条线索已经不在了（可能已删除）");
+        router.refresh();
+        return { ok: true };
+      },
+    });
+  }
 
   async function 自动分(r: Row) {
     try {
@@ -250,23 +311,7 @@ export default function LeadsView({
               size="small"
               icon={<SwapRightOutlined />}
               onClick={() =>
-                企业版项目 ? set转项目(r) : modal.confirm({
-                  title: `将「${r.name}」转为${b.customer}？`,
-                  // 按实际会填的格子、用当前叫法说（2026-10-04 L-016），见 lib/lead-convert.ts 转化会带上
-                  content: (() => {
-                    const 带 = 转化会带上(r, b.fields);
-                    return `会建一位${b.customer}${带 ? `，${带}一起带过去` : ""}，线索标记为已转化。`;
-                  })(),
-                  okText: `转为${b.customer}`,
-                  cancelText: "取消",
-                  async onOk() {
-                    const res = await convertLead(r.id);
-                    if (res.ok) {
-                      router.push(res.projectId ? `/projects/${res.projectId}` : `/customers/${res.customerId}`);
-                    } else if (res.撞号) 撞号了(r, res.撞号, res.error);
-                    else 说(res.error, true);
-                  },
-                })
+                企业版项目 ? set转项目(r) : void 转客户(r)
               }
             >
               {企业版项目 ? "转项目" : `转${b.customer}`}
@@ -309,25 +354,7 @@ export default function LeadsView({
               size="small"
               danger
               icon={<DeleteOutlined />}
-              onClick={() =>
-                modal.confirm({
-                  title: `删除线索「${r.name}」？`,
-                  content: "删除后不可恢复。确认前请核对线索名称；取消不会修改资料。",
-                  okText: "删除",
-                  okButtonProps: { danger: true },
-                  cancelText: "取消",
-                  async onOk() {
-                    const res = await deleteLeads([r.id]);
-                    if (!res.ok) {
-                      说(res.error, true);
-                      return;
-                    }
-                    // 行可能已被别人删掉，如实说，别一律提示「已删除」
-                    说(res.deleted ? `已删除「${r.name}」` : "这条线索已经不在了（可能已删除）");
-                    router.refresh();
-                  },
-                })
-              }
+              onClick={() => void 删线索(r)}
             />
           </Space>
         ),
@@ -336,6 +363,8 @@ export default function LeadsView({
 
   return (
     <>
+      {建档向导.弹框}
+      {后果框}
       <PageHead
         title={企业版项目 ? "新线索" : "线索"}
         subtitle="还没建档的线索"

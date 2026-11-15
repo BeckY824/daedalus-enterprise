@@ -23,6 +23,9 @@ const plugin: Plugin = { name: "ent-create-modal", setup(b) {
   stub(/^\.\.\/actions$/, "export const 建档向导=async(x)=>{(window.__调||=[]).push(['建档向导',x]);return window.__回??{ok:true,customerId:'c1',projectId:'p1'}};export const 建档只建客户=async(x)=>{(window.__调||=[]).push(['建档只建客户',x]);return {ok:true,customerId:'c2',projectId:null}};");
   stub(/customers\/actions$/, "export const checkDuplicate=async()=>null;export const 推荐人候选=async()=>[];");
   stub(/(^|\/)number-actions$/, "export const 查号码=async(t,v)=>{(window.__调||=[]).push(['查号码',t,v]);return {ok:true,状态:'首次录入',提示:'首次录入',值:v,归属地:null}};export const 查客户名=async(n)=>{(window.__调||=[]).push(['查客户名',n]);return {ok:true,撞:null}};export const 申请挂靠=async()=>({ok:true});export const 从回收站捞回=async()=>({ok:true});");
+  // 老客户新增项目（cr.old）：搜得到一位老客户；给客户建项目记下交了什么
+  stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async(w)=>{(window.__调||=[]).push(['搜客户',w]);return [{id:'c9',name:'华东展具',附注:'138****5678'}]};");
+  stub(/customers\/\[id\]\/project-actions$/, "export const 给客户建项目=async(x)=>{(window.__调||=[]).push(['给客户建项目',x]);return {ok:true,projectId:'np9'}};export const 新项目分配数据=async()=>({分配方式们:[],默认分配方式:0,是销售:false,客户业务线:'外贸'});");
   stub(/same-number-actions$/, "export const 同号协同录入=async()=>({ok:true});");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
@@ -129,6 +132,49 @@ it("新线索进来：项目开关开着并锁住；销售选自动分配就地�
     expect(await 框.getByTestId("wizard-auto-warn").innerText()).toContain("分出去后你将看不到这个项目");
     await 框.getByRole("button", { name: "建好并分出去" }).waitFor();
     expect(await page.getByRole("dialog").count()).toBe(1);
+  } finally { await page.close(); }
+});
+
+it("老客户新增项目（cr.old）：客户名直接搜到老客户，挑中后客户段收成一行、项目开关开着锁住；建好走「给客户建项目」，不新建客户，落到这位客户停在新项目", async () => {
+  const page = await 开(1280, { __开关: "开", __标题: "新增项目" });
+  try {
+    const 框 = page.getByRole("dialog");
+    await 框.getByLabel("客户名称").fill("华东");
+    const 项 = page.locator(".ant-select-dropdown:visible").getByText("华东展具", { exact: false }).first();
+    await 项.waitFor();
+    await page.locator(".ant-select-dropdown:visible").getByText(/新客户「华东」/).waitFor();
+    await 项.click();
+    const 一行 = 框.getByTestId("wizard-old-customer");
+    await 一行.waitFor();
+    expect(await 一行.innerText()).toContain("已有客户");
+    expect(await 框.getByLabel("号码", { exact: true }).count()).toBe(0);
+    expect(await 框.getByLabel("联系人姓名").count()).toBe(0);
+    const 开关 = 框.getByRole("switch", { name: "有项目" });
+    expect(await 开关.getAttribute("aria-checked")).toBe("true");
+    expect(await 开关.isDisabled()).toBe(true);
+    // 业务线默认带这位客户的
+    await expect.poll(() => 框.locator("[data-ge='业务线']").innerText()).toContain("外贸");
+    await 框.getByLabel("项目名称").fill("华东展具-二期");
+    await 框.getByLabel("沟通内容").fill("老客户要加一套");
+    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await expect.poll(async () => (await 调(page)).find((x) => x[0] === "给客户建项目")).toBeTruthy();
+    const 交 = (await 调(page)).find((x) => x[0] === "给客户建项目")![1] as { customerId: string; 项目: Record<string, unknown>; 跟进: Record<string, unknown> };
+    expect(交).toMatchObject({ customerId: "c9", 项目: { name: "华东展具-二期", ownerId: "u1", 业务线: "外贸" }, 跟进: { content: "老客户要加一套", 节点: "潜客培育" } });
+    expect((await 调(page)).some((x) => x[0] === "建档向导" || x[0] === "建档只建客户" || x[0] === "查号码")).toBe(false);
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __跳?: string[] }).__跳 ?? [])).toEqual(["/customers/c9?project=np9"]);
+  } finally { await page.close(); }
+});
+
+it("挑了老客户点「换」：回到新客户那几格，开关照入口恢复可点", async () => {
+  const page = await 开(1280, { __开关: "关" });
+  try {
+    const 框 = page.getByRole("dialog");
+    await 框.getByLabel("客户名称").fill("华东");
+    await page.locator(".ant-select-dropdown:visible").getByText("华东展具", { exact: false }).first().click();
+    await 框.getByTestId("wizard-old-customer").waitFor();
+    await 框.getByRole("button", { name: "换" }).click();
+    await 框.getByLabel("号码", { exact: true }).waitFor();
+    expect(await 框.getByRole("switch", { name: "有项目" }).isDisabled()).toBe(false);
   } finally { await page.close(); }
 });
 

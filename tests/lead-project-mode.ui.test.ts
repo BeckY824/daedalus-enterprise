@@ -2,7 +2,7 @@
  * 企业版项目模式下的线索页（10-25 企业版实测 F1、F6）。
  *
  *   F1 项目模式开着点「新建线索」跳建档向导，市场、渠道建不了单条线索。企业版改成照常弹线索表单；
- *      不是企业版照旧跳 /projects/new
+ *      不是企业版：就地弹建档向导框、项目开关锁开（/projects/new 整页 11-15 删了）
  *   F6 线索只能转客户。企业版行上按钮叫「转项目」，转好去项目页
  */
 import { beforeAll, afterAll, it, expect } from "vitest";
@@ -18,6 +18,8 @@ const plugin: Plugin = { name: "leads-ui", setup(b) {
   stub(/components\/DataList$/, "export default function D(p){const 动=p.列.find(c=>c.key==='act');return <div data-testid='rows'>{p.行.map(r=><div key={r.id}>{动.render(null,r)}</div>)}</div>}");
   stub(/^\.\/actions$/, "export const saveLead=async()=>({ok:true});export const deleteLeads=async()=>({ok:true});export const mergeLeadInto=async()=>{window.__并=(window.__并||0)+1;return {ok:true}};export const convertLead=async()=>window.__转;");
   stub(/^\.\/assign-actions$/, "export const 分配带走的项目=async()=>({项目数:0,项目:[]});export const 自动分配线索=async()=>({});export const 批量自动分配=async()=>({});export const 分配线索=async()=>({});export const 本月分配情况=async()=>[];export const 我分出去的线索=async()=>[];export const 关满额提醒=async()=>({ok:true});export const 项目分配线=async()=>({线:null});");
+  // 建档向导那条路（projects/NewProjectFlow.tsx）：记下开了什么标题、什么项目开关（向导本身另有测试）
+  stub(/projects\/NewProjectFlow$/, "export function useNewProjectFlow(){return {开选客户(){},取档中:false,弹框:null,开建档:async(t,k)=>{(window.__建档||=[]).push([t,k])}}}");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
@@ -55,10 +57,11 @@ it("企业版项目模式：点「新建线索」弹线索表单，不跳建档�
   expect(errors).toEqual([]); await page.close();
 });
 
-it("不是企业版的项目模式照旧：点「新建线索」去 /projects/new（F1 开关关和 main 一样）", async () => {
+it("不是企业版的项目模式：点「新建线索」就地弹建档向导、项目开关锁开，不跳页（F1；/projects/new 整页 11-15 删了）", async () => {
   const { page, errors, 去了 } = await 打开(false);
   await page.getByRole("button", { name: /新建线索/ }).click();
-  await expect.poll(去了).toEqual(["/projects/new"]);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __建档?: unknown[] }).__建档)).toEqual([["新增项目", "锁开"]]);
+  expect(await 去了()).toEqual([]);
   expect(await page.locator(".ant-modal-title").filter({ hasText: "新建线索" }).count()).toBe(0);
   expect(errors).toEqual([]); await page.close();
 });

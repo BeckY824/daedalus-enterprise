@@ -63,7 +63,9 @@ describe("服务端", () => {
 describe("页面", () => {
   it("只个人 = 企业版且进不了设置；只个人时不取项目模式、组织架构，成员和日志给空", async () => {
     const body = await readFile("src/app/(app)/settings/SettingsBody.tsx", "utf8");
-    expect(body).toContain("const 只个人 = 企业版() && !可进;");
+    // 只个人按登录身份算（P-界面-46，settings-scope.ts，各身份见 ent-settings-by-identity.test.ts）：只读管理员看得见、改不了，不再只个人
+    expect(body).toContain("const 范围 = 设置范围of(me, 权限org, 企业版());");
+    expect(body).toContain("只读={只读}");
     expect(body).toContain("const 项目设置底 = business.projectMode && !只个人");
     expect(body).toMatch(/const 组织架构: 组织架构 \| null = org && 开关 && 字段权限 && 改权限 && !只个人/);
     expect(body).toContain("logs={(只个人 ? [] : logs)");
@@ -71,9 +73,9 @@ describe("页面", () => {
     expect(body).toContain("只个人={只个人}");
   });
 
-  it("只个人时目录只留个人资料、登录与密码、快捷键、外观、回收站", async () => {
+  it("只个人时目录只留个人资料、登录与密码、快捷键、外观、我能做什么、线索配额（PR10b ③）、全公司规则（PR9）、回收站", async () => {
     const view = await readFile("src/app/(app)/settings/SettingsView.tsx", "utf8");
-    expect(view).toContain('.filter((x) => !只个人 || ["profile", "password", "keymap", "appearance", "trash"].includes(x.key))');
+    expect(view).toContain('.filter((x) => !只个人 || ["profile", "password", "keymap", "appearance", "perm", "quota", "rules", "trash"].includes(x.key))');
     // 没带 ?tab= 时默认 members 不在目录里，落到第一栏（个人资料）
     expect(view).toContain("const 当前 = 目录.some((x) => x.key === tab) ? tab : 目录[0].key;");
   });

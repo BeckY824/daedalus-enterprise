@@ -48,7 +48,7 @@ export async function 将回公海of(范围: 范围, 今: Date = new Date()): Pr
   const 叫 = await 叫们(前几.map((x) => x.p.ownerId));
   return {
     提醒: 回收条们(规则, 字典, 按节点数(们.map((x) => x.p), 字典)),
-    预警: 前几.map(({ p, 日 }) => ({ id: p.id, 名: p.name, 节点: p.node, 负责人: 叫.get(p.ownerId) ?? "—", 回收日: 日 })),
+    预警: 前几.map(({ p, 日 }) => ({ id: p.id, 名: p.name, 节点: p.node, 负责人: 叫.get(p.ownerId) ?? "—", 回收日: 日, 阶段: p.phase })),
   };
 }
 

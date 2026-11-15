@@ -3,8 +3,14 @@
 import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Checkbox, Segmented, Table, Tooltip } from "antd";
+import { Checkbox, Input, Segmented, Table, Tooltip } from "antd";
 import { showUndo } from "@/components/UndoBar";
+import SaveButton from "@/components/SaveButton";
+import BusinessDatePicker from "@/components/BusinessDatePicker";
+import { 记项目沟通Action } from "../projects/actions";
+import FollowMethodSelect from "@/components/FollowMethodSelect";
+import { 跟进类型们 } from "@/lib/constants";
+import type { 预警行 } from "@/lib/project/review-extras";
 import { dayjs, fmtDateTime } from "@/lib/utils";
 import EmptyState, { 表格空态 } from "@/components/EmptyState";
 import CountUp from "@/components/CountUp";
@@ -29,7 +35,7 @@ import { 即将逾期天数 } from "@/lib/project/home-cards";
  * 右上角「看板 / 列表」切换（lay=list 回到上面那张表）；点逾期 / 今天 / 本周那几张卡照旧是筛过的表。
  * 看板下面是「回收提醒」：按节点一条，天数从组织规则读，条长 = 这一圈 3 天内要回公海的项目数。
  */
-export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 只看自己, 看全员 }: {
+export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 回收项目 = [], 只看自己, 看全员 }: {
   /** 表格那份（列表时给） */
   数?: 复盘待办;
   /** 三列看板那份（全部待办、没选列表时给）；给了就摆看板、不摆表 */
@@ -38,6 +44,8 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
   布局?: 待办布局;
   /** 回收提醒；不给就不摆这块 */
   回收?: 回收提醒;
+  /** 3 天内要回公海的那几个项目（同 将回公海of 的 预警，回收日早的在前、最多 8 个）：回收提醒点开节点就列它们，原地记沟通 */
+  回收项目?: 预警行[];
   只看自己: boolean; 看全员: boolean;
 }) {
   const router = useRouter();
@@ -265,7 +273,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
         />
         )}
       </section>
-      {回收 && <回收提醒块 回收={回收} />}
+      {回收 && <RecycleBlock 回收={回收} 项目={回收项目} />}
     </div>
   );
 }
@@ -300,9 +308,14 @@ function 待办卡片({ x, 完成中, 看全员, 完成 }: { x: 复盘待办行;
   );
 }
 
-/** 回收提醒：按节点一条横条，「<节点> · N 天没跟进收回」，条长 = 3 天内要回公海的项目数（同首页卡口径） */
-function 回收提醒块({ 回收 }: { 回收: 回收提醒 }) {
+/**
+ * 回收提醒：按节点一条横条，「<节点> · N 天没跟进收回」，条长 = 3 天内要回公海的项目数（同首页卡口径）。
+ * PR5b ov.recycle：点一条原地展开这一节点快到期的项目（还剩几天），每个项目「记一条沟通」原地长出一个小表单，
+ * 记上了（记项目沟通Action，同项目详情）回收的钟就重新走；成败都在保存键里（SaveButton），不弹顶部提示、不整页跳。
+ */
+function RecycleBlock({ 回收, 项目 }: { 回收: 回收提醒; 项目: 预警行[] }) {
   const 最多 = Math.max(1, ...回收.条.map((c) => c.数));
+  const [开着, set开着] = useState<string | null>(null);
   return (
     <section className="btodo-list btodo-recycle" aria-label="回收提醒">
       <div className="btodo-head">
@@ -318,18 +331,90 @@ function 回收提醒块({ 回收 }: { 回收: 回收提醒 }) {
         <p className="btodo-recycle-off">线索、商机的节点都没设回收天数。</p>
       ) : (
         <ul className="btodo-rc">
-          {回收.条.map((c) => (
-            <Tooltip key={`${c.阶段}-${c.节点}`} title={`${c.阶段} · ${c.节点}：${c.天数} 天没跟进收回公海，${即将逾期天数} 天内要收回 ${c.数} 个`} placement="topLeft" mouseEnterDelay={0.2}>
-              <li className="btodo-rc-row" tabIndex={0}>
-                <span className="btodo-rc-k">{c.节点} · {c.天数} 天没跟进收回</span>
-                <span className="btodo-rc-bar" aria-hidden><i style={{ width: `${(c.数 / 最多) * 100}%` }} /></span>
-                <b className="btodo-rc-v">{c.数}</b>
+          {回收.条.map((c) => {
+            const 键 = `${c.阶段}-${c.节点}`;
+            const 开 = 开着 === 键;
+            const 这节点 = 项目.filter((p) => p.节点 === c.节点);
+            return (
+              <li key={键} className={`ov-rc-item${开 ? " is-open" : ""}`}>
+                <Tooltip title={`${c.阶段} · ${c.节点}：${c.天数} 天没跟进收回公海，${即将逾期天数} 天内要收回 ${c.数} 个`} placement="topLeft" mouseEnterDelay={0.2}>
+                  <button type="button" className="btodo-rc-row ov-rc-head" aria-expanded={开} disabled={c.数 === 0} onClick={() => set开着(开 ? null : 键)}>
+                    <span className="btodo-rc-k">{c.节点} · {c.天数} 天没跟进收回</span>
+                    <span className="btodo-rc-bar" aria-hidden><i style={{ width: `${(c.数 / 最多) * 100}%` }} /></span>
+                    <b className="btodo-rc-v">{c.数}</b>
+                    <span className="ov-rc-ar" aria-hidden>›</span>
+                  </button>
+                </Tooltip>
+                {开 && (
+                  <ul className="ov-rc-list" aria-label={`${c.节点} 快到期的项目`}>
+                    {这节点.map((p) => <RecycleProjectRow key={p.id} p={p} />)}
+                    {c.数 > 这节点.length && (
+                      <li className="ov-rc-more">
+                        <Link href="/projects?f=due-soon" className="link-strong">还有 {c.数 - 这节点.length} 个 · 去项目页看 ›</Link>
+                      </li>
+                    )}
+                  </ul>
+                )}
               </li>
-            </Tooltip>
-          ))}
+            );
+          })}
         </ul>
       )}
     </section>
+  );
+}
+
+/** 展开后的一行：项目名、还剩几天；「记一条沟通」原地长出小表单（内容 + 下一步 + 下一步时间，默认 3 天后，P-界面-34） */
+function RecycleProjectRow({ p }: { p: 预警行 }) {
+  const router = useRouter();
+  const [记, set记] = useState(false);
+  const [内容, set内容] = useState("");
+  const [下一步, set下一步] = useState("");
+  const [下一步时间, set下一步时间] = useState(() => dayjs().add(3, "day"));
+  /** 沟通方式由人选（同项目详情 / 完成计划小框那一套），不替人写死 */
+  const [类型, set类型] = useState("PHONE");
+  const [方式, set方式] = useState<string | null>(null);
+  const 剩 = Math.max(0, dayjs(p.回收日).startOf("day").diff(dayjs().startOf("day"), "day"));
+  async function 存() {
+    if (!内容.trim()) return { ok: false, error: "先写几句沟通内容" };
+    if (!下一步.trim()) return { ok: false, error: "写一句下一步计划" };
+    const r = await 记项目沟通Action(p.id, {
+      type: 类型, method: 方式 ?? undefined, content: 内容, occurredAt: new Date().toISOString(),
+      阶段: p.阶段, 下一步, 下一步时间: 下一步时间 ? 下一步时间.format("YYYY-MM-DD") : null,
+    });
+    if (!r.ok) return { ok: false, error: "error" in r ? r.error : "没记上，请刷新后重试" };
+    return { ok: true };
+  }
+  return (
+    <li className="ov-rc-p">
+      <div className="ov-rc-prow">
+        <Link href={`/projects/${p.id}`} className="ov-rc-name" title={p.名}>{p.名}</Link>
+        <span className={`ov-rc-left${剩 <= 1 ? " is-late" : ""}`}>{剩 === 0 ? "今天收回" : `还剩 ${剩} 天`}</span>
+        {!记 && (
+          <button type="button" className="ov-rc-log" onClick={() => set记(true)}>记一条沟通</button>
+        )}
+      </div>
+      {记 && (
+        <div className="ov-rc-form">
+          <FollowMethodSelect
+            aria-label="沟通方式"
+            type={类型}
+            method={方式}
+            类型们={跟进类型们(false).filter((t) => t.value !== "TASK" && t.value !== "REMIND")}
+            onChange={(v) => { set类型(v.type); set方式(v.method); }}
+          />
+          <Input.TextArea aria-label={`和「${p.名}」沟通了什么`} placeholder="沟通了什么" autoSize={{ minRows: 2, maxRows: 5 }} maxLength={2000} value={内容} onChange={(e) => set内容(e.target.value)} />
+          <div className="ov-rc-next">
+            <Input aria-label="下一步计划" placeholder="下一步计划（一句话）" maxLength={200} value={下一步} onChange={(e) => set下一步(e.target.value)} />
+            <BusinessDatePicker aria-label="下一步时间" value={下一步时间} onChange={(v) => v && set下一步时间(v)} allowClear={false} />
+          </div>
+          <div className="ov-rc-act">
+            <SaveButton 做={存} 成了={() => { set记(false); set内容(""); set下一步(""); router.refresh(); }}>记下</SaveButton>
+            <button type="button" className="ov-rc-cancel" onClick={() => set记(false)}>取消</button>
+          </div>
+        </div>
+      )}
+    </li>
   );
 }
 

@@ -228,9 +228,11 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
   const 窄窗 = useNarrow(面板放不下, true);
   /** 这一次会话里手动开合过。null = 还没动过，听存档的 */
   const [手动, set手动] = useState<boolean | null>(null);
-  const 面板开着 = 手动 ?? (窄窗 ? false : 存的面板);
+  /** 企业版项目模式的 AI 是中下方浮窗（P-界面-39）：不占右边一栏、正文不收窄；默认收着，点右下角浮标才出来 */
+  const 浮窗 = 企业版项目;
+  const 面板开着 = 手动 ?? (窄窗 || 浮窗 ? false : 存的面板);
   /** 名单和记录页的断点要知道右边这条面板占了地方（见 lib/roster.ts 的 DockOpenContext） */
-  const 面板占着地方 = Boolean(ai) && !小屏 && 面板开着 && 底下那页 !== "/dashboard";
+  const 面板占着地方 = Boolean(ai) && !小屏 && 面板开着 && !浮窗 && 底下那页 !== "/dashboard";
   const 记住面板 = (开: boolean) => {
     set手动(开);
     try {
@@ -283,7 +285,8 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
             // 企业版只用项目一条线，没有商机（10-26）；/opportunities 一律转到 /projects，左栏这一项 10-28 删了
             // 团队版项目模式开着才有（2026-10-23，D-31）；关着时 /projects 是 404
             ...(b.projectMode ? [{ key: "/projects", icon: <ProjectOutlined />, label: "项目", 组: "主" as const }] : []),
-            { key: "/follow-ups", icon: <InteractionOutlined />, label: "跟进", 组: "主", 挂要跟: true },
+            // 「沟通记录」主页 11-15 删了（沟通在客户档案里记、里看），左栏「跟进」直接进计划页，红数照旧挂这儿
+            { key: "/follow-ups/plans", icon: <InteractionOutlined />, label: "跟进", 组: "主", 挂要跟: true },
             { key: "/overview", icon: <DashboardOutlined />, label: "数据", 组: "主" },
             { key: "/leads", icon: <ShareAltOutlined />, label: "线索", 组: "更多" },
             { key: "/contacts", icon: <ContactsOutlined />, label: "联系人", 组: "更多" },
@@ -315,7 +318,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
     // 企业版项目模式：不在左栏的新线索、跟进、联系人挂到入口那一项上（lib/enterprise/nav.ts）
     const 企 = 企业版项目 ? 企业版亮项(pathname, pool) : null;
     if (企) return 企;
-    const flat = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/contacts", "/projects", "/pool", "/follow-ups", "/settings"];
+    const flat = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/contacts", "/projects", "/pool", "/follow-ups/plans", "/settings"];
     // 「我的反馈」不在导航里：哪一项都不亮，亮的是左下角的反馈键（FeedbackButton）
     if (pathname === "/feedback" || pathname.startsWith("/feedback/")) return "";
     return flat.find((k) => pathname === k || pathname.startsWith(k + "/")) ?? "/dashboard";
@@ -656,7 +659,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
   return (
     <切换视图Provider value={!!正在视图}>
     <DockOpenContext.Provider value={面板占着地方}>
-    <div className={`shell${desktop ? " shell-desktop" : ""}${面板开着 && 底下那页 !== "/dashboard" ? " shell-dock-open" : ""}${显示浮标 ? " has-ai-fab" : ""}${从浮标开 ? " shell-fab-opened" : ""}${窄栏 ? " rail-mini" : ""}${宽窄切换中 ? " rail-anim" : ""}`}>
+    <div className={`shell${desktop ? " shell-desktop" : ""}${面板开着 && !浮窗 && 底下那页 !== "/dashboard" ? " shell-dock-open" : ""}${显示浮标 ? " has-ai-fab" : ""}${从浮标开 ? " shell-fab-opened" : ""}${窄栏 ? " rail-mini" : ""}${宽窄切换中 ? " rail-anim" : ""}`}>
       {视图条}
       {挑人框}
       {/* 桌面端顶上那条能拖窗口的把手，见 globals.css 的 .drag-strip */}
@@ -806,7 +809,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
         它自己决定首页不出现（首页就是宽模式的同一块东西）。
         手机上不出现：390 宽摆不下正文 + 380 的面板。
       */}
-      {ai && !小屏 && <AiDock userName={user.name} models={ai.models} 开着={面板开着} set开着={开合面板} 企业版={企业版} />}
+      {ai && !小屏 && <AiDock userName={user.name} models={ai.models} 开着={面板开着} set开着={开合面板} 企业版={企业版} 浮窗={浮窗} />}
       {/* 面板收着时右下角的入口（企业版项目模式）。面板一开它就让开：两个入口不同时出现，也不压在面板的输入框上 */}
       {显示浮标 && (
         <AiFab

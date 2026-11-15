@@ -51,8 +51,8 @@ beforeAll(async () => {
 
     W.__save = () => { W.__做 = []; W.__成了 = 0; 画(<div className="foot" style={{ paddingTop: 80 }}><Button>取消</Button><SaveButton 做={记('__做')} 成了={() => W.__成了++} /></div>); };
 
-    W.__undo = (话, p = {}) => { const id = 话; (W.__起 ||= []).push(id); return showUndo({ 话, 毫秒: p.毫秒 ?? 5000, 撤销: async () => { (W.__撤 ||= []).push(id); if (W.__慢撤) await 睡(W.__慢撤); if (W.__挡) return { ok: false, error: W.__挡 }; }, 到点: p.已做 ? undefined : async () => { (W.__交 ||= []).push(id); } }); };
-    W.__undoReset = () => { dismissUndo(); W.__起 = []; W.__撤 = []; W.__交 = []; W.__挡 = null; W.__慢撤 = 0; };
+    W.__undo = (话, p = {}) => { const id = 话; (W.__起 ||= []).push(id); return showUndo({ 话, 毫秒: p.毫秒 ?? 5000, 撤销: async () => { (W.__撤 ||= []).push(id); if (W.__慢撤) await 睡(W.__慢撤); if (W.__挡) return { ok: false, error: W.__挡 }; }, 到点: p.已做 ? undefined : async () => { (W.__交 ||= []).push(id); }, ...(p.另 ? { 另一个动作: { 话: p.另, 做: () => (W.__另 ||= []).push(id) } } : {}) }); };
+    W.__undoReset = () => { dismissUndo(); W.__起 = []; W.__撤 = []; W.__交 = []; W.__另 = []; W.__挡 = null; W.__慢撤 = 0; };
     function 发撤销的() { return <button type="button" onClick={() => W.__undo('已取消关注「Nordic Fun AB」', { 毫秒: 800 })}>取消关注</button>; }
     W.__undoCaller = () => 画(<发撤销的 />);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, logLevel: "silent" })).outputFiles[0].text;
@@ -334,6 +334,25 @@ describe("撤销条", () => {
     expect(await 条(page).count()).toBe(1);
     expect(await 取(page, "__交")).toEqual(["已退回「华东展具」", "已退回「星河乐园」", "第三条"]);
     expect(errors).toEqual([]);
+    await page.close();
+  });
+
+  it("另一个动作（排下一次）：倒计时里和撤销并排；点了 = 条按到点收掉、调它一次，不撤销", async () => {
+    const { page } = await open();
+    await 调(page, "__undoReset");
+    await 调(page, "__undo", "已完成「发新报价」", { 毫秒: 5000, 另: "排下一次" });
+    const 键 = page.getByRole("button", { name: "排下一次" });
+    await 键.waitFor();
+    expect(await page.getByRole("button", { name: "撤销" }).count()).toBe(1);
+    await 键.click();
+    await expect.poll(() => 取(page, "__另")).toEqual(["已完成「发新报价」"]);
+    await expect.poll(() => 取(page, "__交")).toEqual(["已完成「发新报价」"]);
+    expect(await 取(page, "__撤")).toEqual([]);
+    await page.getByText("已完成「发新报价」").waitFor({ state: "detached", timeout: 3000 });
+    // 不给 另一个动作 的照旧只有撤销
+    await 调(page, "__undo", "已退回「华东展具」");
+    await page.getByText("已退回「华东展具」").waitFor();
+    expect(await page.getByRole("button", { name: "排下一次" }).count()).toBe(0);
     await page.close();
   });
 

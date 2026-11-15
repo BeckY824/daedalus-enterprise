@@ -148,11 +148,12 @@ for (const width of [1024, 1280, 1366]) {
       expect(await 不横滚(page)).toBe(true);
       const 钮在屏内 = await page.evaluate(() => [...document.querySelectorAll(".ant-alert button")].every((b) => { const r = b.getBoundingClientRect(); return r.left >= 0 && r.right <= document.documentElement.clientWidth; }));
       expect(钮在屏内).toBe(true);
+      // 11-15（原型 cu.handover）：确认接手不再弹框——原来框里那句「确认后什么转过来」挪到横幅里；点了直接接、按钮原地变 ✓
+      expect(await 条.innerText()).toContain("客户负责人不变");
       await 条.getByRole("button", { name: /确认接手/ }).click();
-      const 框 = page.locator(".ant-modal-confirm");
-      await 框.waitFor();
-      expect(await 框.innerText()).toContain("名下的 1 个项目：");
-      expect(await 框.innerText()).toContain("客户负责人不变");
+      await expect.poll(() => page.evaluate(() => (window as unknown as { __调?: unknown[][] }).__调 ?? [])).toEqual([["确认交接", "h9"]]);
+      await 条.getByRole("status").filter({ hasText: "已接手" }).waitFor();
+      expect(await page.getByRole("dialog").count()).toBe(0);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }, 60_000);

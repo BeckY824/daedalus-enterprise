@@ -18,6 +18,8 @@ const plugin: Plugin = { name: "pr5b-home", setup(b) {
   stub(/^next\/navigation$/, "const 记=()=>{};export const useRouter=()=>({push:记,refresh(){},replace:记});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
   stub(/^@\/app\/\(app\)\/demo-data$/, "const 记=(n)=>(window.__调||(window.__调=[])).push(n);export const 查演示数据状态=async()=>({可用:true,可灌:false,有权限:true,空库:false,已灌:true});export const 灌一套演示数据=async()=>({ok:true});export const 清除演示数据=async()=>{记('清除');return window.__挡?{ok:false,error:window.__挡}:{ok:true}};");
   stub(/customers\/\[id\]\/actions$/, "const 记=(n,id,v)=>(window.__调||(window.__调=[])).push(n+':'+id+':'+v);const 回=()=>window.__挡?{ok:false,error:window.__挡}:{ok:true};export const toggleTask=async(id,v)=>{记('task',id,v);return 回()};export const completePlan=async(id,v=true)=>{记('plan',id,v);return 回()};");
+  stub(/projects\/actions$/, "export const 记项目沟通Action=async()=>({ok:true});");
+  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {

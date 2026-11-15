@@ -35,10 +35,15 @@ export type 撤销参数 = {
   到点?: () => 做的结果 | Promise<做的结果>;
   /** 倒计时，毫秒。默认 5000（原型 g.undo）；退回公海这类后果重的给 6000 */
   毫秒?: number;
+  /**
+   * 撤销之外的另一个顺手动作（比如完成计划后「排下一次」）。只在倒计时里出现、排在撤销前面；
+   * 点了 = 这件事就这么定了：条按到点收掉（有 到点 的照常做），再调 做
+   */
+  另一个动作?: { 话: string; 做: () => void };
 };
 
 type 态 = "数" | "撤着" | "撤了" | "挡了" | "没成";
-type 条 = { id: number; 话: string; 态: 态; 毫秒: number; 停: boolean; 出: boolean };
+type 条 = { id: number; 话: string; 态: 态; 毫秒: number; 停: boolean; 出: boolean; 另?: string };
 
 const 默认毫秒 = 5000;
 /** 「已撤销」留多久；「撤销不了 / 没做成」留多久——要读原因，长一点 */
@@ -50,7 +55,7 @@ const 收起兜底 = 600;
 let 当前: 条 | null = null;
 let 序 = 0;
 /** 当前这条的回调和计时，不进快照（快照只放画得出来的东西） */
-let 手: { 撤销: 撤销参数["撤销"]; 到点?: 撤销参数["到点"]; 计时: ReturnType<typeof setTimeout> | null; 剩: number; 起: number } | null = null;
+let 手: { 撤销: 撤销参数["撤销"]; 到点?: 撤销参数["到点"]; 另?: () => void; 计时: ReturnType<typeof setTimeout> | null; 剩: number; 起: number } | null = null;
 /** 有新的一条在倒计时时冒出来的错，等它收了再一条条显示 */
 const 待显: { 话: string; 态: "挡了" | "没成" }[] = [];
 const 听众 = new Set<() => void>();
@@ -179,9 +184,9 @@ export function showUndo(p: 撤销参数): { 收: () => void } {
   else 清计时();
   const id = ++序;
   const 毫秒 = p.毫秒 ?? 默认毫秒;
-  手 = { 撤销: p.撤销, 到点: p.到点, 计时: null, 剩: 毫秒, 起: Date.now() };
+  手 = { 撤销: p.撤销, 到点: p.到点, 另: p.另一个动作?.做, 计时: null, 剩: 毫秒, 起: Date.now() };
   手.计时 = setTimeout(() => 到点了(id), 毫秒);
-  设({ id, 话: p.话, 态: "数", 毫秒, 停: false, 出: false });
+  设({ id, 话: p.话, 态: "数", 毫秒, 停: false, 出: false, 另: p.另一个动作?.话 });
   return { 收: () => 到点了(id) };
 }
 
@@ -251,6 +256,19 @@ function UndoBarView() {
       <span className="undo-t" title={条.话}>{条.话}</span>
       {(条.态 === "数" || 条.态 === "撤着") && (
         <>
+          {条.另 && 条.态 === "数" && (
+            <button
+              type="button"
+              className="undo-btn undo-btn-alt"
+              onClick={() => {
+                const 做 = 手?.另;
+                到点了(条.id);
+                做?.();
+              }}
+            >
+              {条.另}
+            </button>
+          )}
           <button
             type="button"
             className="undo-btn"

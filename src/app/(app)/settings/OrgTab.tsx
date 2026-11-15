@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { App, Button, Card, Checkbox, Input, Select, Space, Switch, Tag } from "antd";
+import { useConsequence } from "@/components/ConsequenceDialog";
 import { 角色名, 业务角色, 部门最多层数 } from "@/lib/sync/dept-policy";
 import { 部门树, type 组织部门 } from "@/lib/enterprise/org-tree";
 import { 拆角色, 合角色 } from "@/lib/enterprise/org-core";
@@ -102,6 +103,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
   const 改权限 = 权限草稿 && 权限草稿.基于 === 页面改权限 ? 权限草稿.表 : value.改权限;
   const 改权限改了 = JSON.stringify(改权限) !== 页面改权限;
   const { 能改, 是老板, 字段权限挡 } = value;
+  const [问后果, 后果框] = useConsequence();
   const 树 = 部门树(value.部门);
   const 名 = new Map(value.部门.map((d) => [d.id, d.name]));
   const 部门选项 = 树.map(({ d, 层 }) => ({ value: d.id, label: `${"　".repeat(层 - 1)}${d.name}` }));
@@ -205,11 +207,27 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
     const ok = await 跑(() => 设不设配额(v), v ? "已改成不设配额：人人参与自动分配、不限额" : "已改回按配额分配");
     if (!ok) set拨了不设(null);
   };
+  /**
+   * 组织规则开关（原型 st.switch，P-界面-40「组织规则开关」= 后果框）：影响全员，先说清后果再生效，不确认不动；
+   * 只这一个开关在等，不锁整页（不走 跑 的整页「忙」）
+   */
   const 拨 = async (名: 规则名, v: boolean) => {
     if (忙) return;
-    set拨了((x) => ({ ...x, [名]: { 基于: value.规则开着[名], 开: v } }));
-    const ok = await 跑(() => 设规则(v, 名), v ? `已打开「${规则[名].名}」` : `已关掉「${规则[名].名}」`);
-    if (!ok) set拨了(({ [名]: _, ...别的 }) => 别的);
+    const 成了 = await 问后果({
+      题: `${v ? "打开" : "关掉"}「${规则[名].名}」？`,
+      后果: [
+        { 标: "全员", 级: "警", 话: v ? 规则[名].说明 : `关掉以后不再按「${规则[名].名}」管，所有人回到没开时的样子` },
+        { 标: "能改回", 话: "随时可以再拨回来，已有的客户、项目、记录不会删" },
+      ],
+      是: v ? "确认打开" : "确认关掉",
+      危: !v,
+      做: async () => {
+        const r = await 设规则(v, 名);
+        if (r.ok) set拨了((x) => ({ ...x, [名]: { 基于: value.规则开着[名], 开: v } }));
+        return r;
+      },
+    });
+    if (成了) 开始刷新(() => router.refresh());
   };
   const 勾 = (项: 设置项名, 人: 能改的人, v: boolean) => {
     const 现在 = 谁能改(改权限, 项);
@@ -242,6 +260,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
     <div style={{ display: "grid", gap: 16, gridTemplateColumns: "minmax(0, 1fr)" }}>
       {/* 组织规则单独一块放这一屏最上面（11-01 会议 §5「组织规则放设置首屏」）；通讯录同步挪到它下面、说明收起来（OrgSyncCard）。
           10-27 把通讯录同步提到最上面是因为它夹在权限表下面找不到，现在仍在权限表之前 */}
+      {后果框}
       <Card title="组织规则" extra={只看} data-testid="org-rules">
         <p className="muted">每条规则单独开关，除了「{规则.市场复核.名}」都默认关着：关着时按原来的方式看客户。先把下面的部门和上级填好再打开。</p>
         <div style={{ display: "grid", gap: 12 }}>

@@ -200,7 +200,6 @@ async function 转项目之后(user: Actor, lead: { name: string }, customerId: 
   await 项目变了重算([customerId]);
   await 客户存了推项目(user, customerId);
   revalidatePath("/projects");
-  revalidatePath("/follow-ups");
 }
 
 /**

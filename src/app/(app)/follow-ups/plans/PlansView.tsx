@@ -4,7 +4,7 @@ import { useBusinessTimeZone } from "@/lib/business-client";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Segmented, Space, Button, Tag } from "antd";
-import { PlusOutlined, UnorderedListOutlined, CheckCircleOutlined, EditOutlined, DeleteOutlined, ProjectOutlined } from "@ant-design/icons";
+import { PlusOutlined, CheckCircleOutlined, EditOutlined, DeleteOutlined, ProjectOutlined } from "@ant-design/icons";
 import { PageHead, UserCell } from "@/components/ui";
 import EmptyState from "@/components/EmptyState";
 import { fmtDateTime } from "@/lib/utils";
@@ -177,6 +177,8 @@ export default function PlansView({
   const [看, set看] = useState<string | number>("待办");
   /** 刚点过完成、还留在原地的那几条 */
   const [刚完成, set刚完成] = useState<string[]>([]);
+  /** 「排下一次」给哪一位排：完成一条计划之后撤销条上点进来（审查 M10；默认 3 天后，P-界面-34） */
+  const [排给, set排给] = useState<{ customerId: string; 有WhatsApp?: boolean } | null>(null);
   /** 正在改的那一条（计划或待办） */
   const [在改, set在改] = useState<事项 | null>(null);
   // 表单的 record 要稳定：它是 useEffect 的依赖，每次渲染新建一个对象会让表单边输入边被重置
@@ -315,6 +317,10 @@ export default function PlansView({
     showUndo({
       话: `已完成「${x.标题}」`,
       毫秒: 6000,
+      // 计划做完顺手排下一次（客户改不了的不给）；点了 = 完成就这么定了，撤销条收掉
+      ...(x.kind === "plan" && !改不了.has(x.customerId)
+        ? { 另一个动作: { 话: "排下一次", 做: () => set排给({ customerId: x.customerId, 有WhatsApp: x.有WhatsApp }) } }
+        : {}),
       撤销: async () => {
         const u = x.kind === "plan" ? await completePlan(x.id, false) : await toggleTask(x.id, false);
         if (u.ok) { void window.desktopReminders?.刷新(); router.refresh(); }
@@ -341,16 +347,13 @@ export default function PlansView({
 
   return (
     <>
-      {/* 计划和记录是同一件事的两头，「记录」是页头上的次动作，不再占一列中栏。
+      {/* 「沟通记录」主页 11-15 删了（沟通在客户档案里看）：页头只剩「新建计划」。
           「新建计划」就地弹框、第一格挑人；「上次谈到哪儿」跟着挑中的人进框里 */}
       <PageHead
         title="跟进计划"
         subtitle={`逾期、今天、本周要联系的人 · ${timeZone ? "北京时间（UTC+8）" : "本机时区"}`}
         extra={
           <Space>
-            <Button icon={<UnorderedListOutlined />} onClick={() => router.push("/follow-ups")}>
-              记录
-            </Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => set新建开着(true)}>
               新建计划
             </Button>
@@ -426,6 +429,9 @@ export default function PlansView({
         </>
       )}
 
+      {排给 && (
+        <PlanForm open onClose={() => set排给(null)} onSaved={() => { set排给(null); router.refresh(); }} customerId={排给.customerId} 有WhatsApp={排给.有WhatsApp} record={null} />
+      )}
       {在改?.kind === "plan" && (
         <PlanForm
           open

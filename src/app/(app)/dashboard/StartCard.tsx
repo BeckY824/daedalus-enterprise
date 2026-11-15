@@ -199,7 +199,7 @@ function 企业版开始({ b, 管理员, 产品名, 去 }: { b: ReturnType<typeo
               </Button>
             </>
           ) : (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => 去("/projects/new")}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => 去("/projects?new=1")}>
               新建项目
             </Button>
           )}

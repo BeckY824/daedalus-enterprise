@@ -5,7 +5,7 @@ import { 该跳过, 请求种类, 读路由表, 纯路径, 路由模式, 阈值,
 
 /** routes-manifest.json 的形状（只留用到的字段） */
 const 表 = 读路由表({
-  staticRoutes: [{ page: "/customers", regex: "^/customers(?:/)?$" }, { page: "/projects/new", regex: "^/projects/new(?:/)?$" }, { page: "/", regex: "^/(?:/)?$" }],
+  staticRoutes: [{ page: "/customers", regex: "^/customers(?:/)?$" }, { page: "/projects/handover", regex: "^/projects/handover(?:/)?$" }, { page: "/", regex: "^/(?:/)?$" }],
   dynamicRoutes: [
     { page: "/customers/[id]", regex: "^/customers/([^/]+?)(?:/)?$" },
     { page: "/projects/[id]", regex: "^/projects/([^/]+?)(?:/)?$" },
@@ -16,7 +16,7 @@ describe("慢请求日志：归一和分类", () => {
   it("路由模式不带 id、不带查询串；对不上的不露路径", () => {
     expect(路由模式(纯路径("/customers/cmabc123xyz?do=followup"), 表)).toBe("/customers/[id]");
     expect(路由模式(纯路径("/customers?keyword=%E5%BC%A0%E4%B8%89&page=3"), 表)).toBe("/customers");
-    expect(路由模式(纯路径("/projects/new"), 表)).toBe("/projects/new");
+    expect(路由模式(纯路径("/projects/handover"), 表)).toBe("/projects/handover");
     expect(路由模式(纯路径("/projects/p1/"), 表)).toBe("/projects/[id]");
     expect(路由模式(纯路径("/no/such/13800138000"), 表)).toBe("(unmatched)");
     expect(路由模式(纯路径("/"), 表)).toBe("/");

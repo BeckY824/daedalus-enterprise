@@ -118,7 +118,6 @@ const 页面 = [
   // 搜一个人名（10-26 加）：种子里每个全名各 5000 位，走的是关键词那条整表 GLOB；只加这一页，前面几页照旧
   { 名: "客户搜索", 路径: () => `/customers?keyword=${encodeURIComponent(搜的名字[Math.floor(Math.random() * 搜的名字.length)])}` },
   { 名: "客户详情", 路径: (u) => `/customers/${u.customers[Math.floor(Math.random() * u.customers.length)]}` },
-  { 名: "跟进记录", 路径: () => "/follow-ups" },
   { 名: "跟进计划", 路径: () => "/follow-ups/plans" },
 ];
 const 方式 = ["HTML", "RSC"];

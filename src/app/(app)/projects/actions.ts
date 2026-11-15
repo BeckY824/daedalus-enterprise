@@ -229,7 +229,6 @@ export async function 建档向导(输入: 建档向导输入) {
     // 客户三态：向导带了首条跟进，马上重算这位的钟（关着不查库，出错不影响建档）
     await 存沟通后重算三态(r.id);
     刷新项目(建了.projectId, r.id);
-    revalidatePath("/follow-ups");
     // 指定给了别人：项目不在我名下，跳详情页会是「不存在或无权查看」（11-03 A2-1），和自动分配一样回线索列表
     const 再分 = 分配 ? await 建好再分(me, 分配, 建了.projectId!, 好.项目.name, 好.企业?.业务线 ?? null) : null;
     // 指定给了别人：告诉接手人。客户转过去了链客户详情（看得到联系方式）；客户没转就是项目分给他，链项目详情。自动分配、进公海走 建好再分 里自己的通知，这里不重复
@@ -335,7 +334,6 @@ async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输�
   await 存沟通后重算三态(r.id);
   刷新项目(undefined, r.id);
   revalidatePath("/customers");
-  revalidatePath("/follow-ups");
   return { ok: true as const, customerId: r.id, projectId: null, ...(企 ? { contactId: 建了.contactId ?? null } : {}) };
 }
 
@@ -837,7 +835,6 @@ export async function 记项目沟通Action(projectId: string, input: 向导跟�
       // 客户三态：记了一条沟通（可能还推了节点），马上重算这位的钟（关着不查库，出错不影响保存）
       await 存沟通后重算三态(p?.customerId);
       刷新项目(projectId, p?.customerId);
-      revalidatePath("/follow-ups");
     }
     // 客户三态（C12）：这条不算有效沟通，回原因给前端一句轻提示（不拦；三态关着不查库）
     const 短沟通 = r.ok ? await 短沟通提示(r.followUpId).catch(() => null) : null;

@@ -1,5 +1,6 @@
 "use client";
 
+import InlineConfirm from "@/components/InlineConfirm";
 import { isFormValidationError } from "@/lib/form-validation";
 
 import { useEffect, useState } from "react";
@@ -449,9 +450,13 @@ function McpBlock() {
     set忙(true);
     const r = await 开启MCP();
     set忙(false);
-    if (!r.ok) return void message.error(r.error);
+    if (!r.ok) {
+      message.error(r.error);
+      return r;
+    }
     set状态({ 可用: true, 已开: true, 地址: r.地址, 令牌: r.令牌 });
     message.success("已生成接入令牌");
+    return { ok: true };
   }
 
   function 关() {
@@ -498,12 +503,15 @@ function McpBlock() {
           <McpCmd 命令={命令.codex配置} 多行 />
           <p className="mcp-hint">这把令牌等于这个库的只读钥匙，别贴到公开的地方；重新生成会让旧的立刻失效。</p>
           <Space wrap>
-            <Button size="small" onClick={开} loading={忙}>重新生成令牌</Button>
+            {/* 重新生成令牌（原型 st.mcp，P-界面-40 原地确认）：原来直接执行；就地问一次，写明旧令牌立即作废 */}
+            <InlineConfirm 问="旧令牌立即作废，各处要换成新的" 是="重新生成" 中性 做={开}>
+              <Button size="small" loading={忙}>重新生成令牌</Button>
+            </InlineConfirm>
             <Button size="small" danger type="text" onClick={关}>关掉接入</Button>
           </Space>
         </>
       ) : (
-        <Button onClick={开} loading={忙}>生成接入令牌</Button>
+        <Button onClick={() => void 开()} loading={忙}>生成接入令牌</Button>
       )}
     </div>
   );

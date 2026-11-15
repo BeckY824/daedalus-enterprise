@@ -92,7 +92,7 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
     ]);
     return (
       <DataShell view={view} 项目 选人={选人} 页签="todo">
-        <BoardTodos 数={d} 看板={板} 布局={布局} 回收={回公海.提醒} 卡={卡} 只看自己={只看 === user.id} 看全员={只看 !== user.id} />
+        <BoardTodos 数={d} 看板={板} 布局={布局} 回收={回公海.提醒} 回收项目={回公海.预警} 卡={卡} 只看自己={只看 === user.id} 看全员={只看 !== user.id} />
       </DataShell>
     );
   }
