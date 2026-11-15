@@ -38,3 +38,29 @@
 .keymap-hit { animation: set-flash-row 1.2s var(--ease); border-radius: 8px; }
 @keyframes set-flash-row { 0%, 40% { background: var(--hover); } 100% { background: transparent; } }
 @media (prefers-reduced-motion: reduce) { .keymap-hit { animation: none; } }
+.tri-save { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tri-saved { background: var(--success, #1f9d55) !important; border-color: transparent !important; color: #fff !important; transition: background var(--t) var(--ease); }
+.tri-err { color: var(--danger, #d1343a); font-size: 13px; margin-top: 6px; }
+/* 就地提示条（InlineNote.tsx）：贴页签底部，不弹顶部 */
+.set-note { position: sticky; bottom: 12px; z-index: 5; display: flex; align-items: center; gap: 8px; width: fit-content; max-width: 100%; margin: 12px 0 0 auto;
+  padding: 7px 12px; border-radius: 12px; background: var(--card-bg, #fff); box-shadow: 0 0 0 .5px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.12); font-size: 13px;
+  animation: set-note-in var(--t) var(--ease); }
+.set-note-t { min-width: 0; overflow-wrap: anywhere; }
+.set-note-i { flex: none; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; color: #fff; background: var(--success, #1f9d55); }
+.set-note[data-tone="错"] .set-note-i { background: var(--danger, #d1343a); }
+.set-note[data-tone="提醒"] .set-note-i { background: var(--warning, #c27c0e); }
+@keyframes set-note-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .set-note { animation: none; } }
+.team-dept-edit { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 0 4px; animation: set-note-in var(--t) var(--ease); }
+.team-dept-edit .ant-input { max-width: 220px; }
+.team-dept-parent { min-width: 180px; max-width: 100%; }
+.team-dept-row:has(.team-dept-edit) { flex-wrap: wrap; }
+/* 没存就关先问（st.dirty）：改了就浮出保存条，贴底不跟着滚走 */
+.tri-dirty { position: sticky; bottom: 12px; z-index: 4; justify-content: flex-end; padding: 8px 12px; border-radius: 12px; background: var(--card-bg, #fff);
+  box-shadow: 0 0 0 .5px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.12); animation: set-note-in var(--t) var(--ease); }
+.tri-dirty-t { margin-right: auto; font-size: 13px; min-width: 0; }
+/* 设置浮层骨架（st.open） */
+.set-skel { padding: 4px 0; }
+.set-skel-nav, .set-skel-body { width: 100%; }
+/* 换主题整屏交叉淡化（st.theme）：0.2 秒附近，用 --t 令牌 */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--t); animation-timing-function: var(--ease); }

@@ -1,8 +1,9 @@
 "use client";
 
+import { useSettingsNote } from "./InlineNote";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { App, Button, Card, Checkbox, Input, InputNumber, Radio, Segmented, Select, Space, Switch, Tag } from "antd";
+import { Button, Card, Checkbox, Input, InputNumber, Radio, Segmented, Select, Space, Switch, Tag } from "antd";
 import { 加组员角色, 改组员角色, 加项目异常类别, 改项目异常类别, 改组织规则, 预览超时回收 } from "@/app/(app)/projects/actions";
 import { 上限最大, 时长最大, 字数上限最大, 默认起算日, 是不限, 到上限的人数, 推进权限们, type 推进权限, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
 import BusinessDatePicker from "@/components/BusinessDatePicker";
@@ -79,7 +80,8 @@ export type 项目设置 = {
  */
 export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设置; 成员: { id: string; name: string }[] }) {
   const router = useRouter();
-  const { message } = App.useApp();
+  // 就地提示（PR9：不弹顶部 message）：贴这一页签底部
+  const [message, 提示条] = useSettingsNote();
   const [忙, set忙] = useState(false);
 
   const 跑 = async (f: () => 结果, 成了?: string) => {
@@ -128,6 +130,7 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
       {value.卡点原因 && <BlockerReasonsCard 们={value.卡点原因} 挡={卡点挡} 忙={忙} 跑={跑} />}
       {value.提成比例 && <RatesCard 比例={value.提成比例} 能改={value.能改提成比例} 忙={忙} 跑={跑} />}
       {value.提成比例 && value.按人提成 && <PerUserRatesCard 三套={value.提成比例} {...value.按人提成} 能改={value.能改提成比例} 忙={忙} 跑={跑} />}
+      {提示条}
     </div>
   );
 }
@@ -282,18 +285,21 @@ function HoldCapCard({
   const [每人, set每人] = useState<Record<string, number | null>>(规则.每人上限);
   const 改了 = 默认 !== 规则.默认上限 || 成员.some((u) => (每人[u.id] ?? null) !== (规则.每人上限[u.id] ?? null));
   const 保存 = () => 跑(() => 改组织规则({ 公海: { 默认上限: 默认 ?? undefined, 每人上限: 每人 } }), "已保存");
-  const { modal } = App.useApp();
+  const [问后果, 后果框] = useConsequence();
   const 拨 = (开: boolean) => 跑(() => 改组织规则({ 公海: { 持有上限开: 开 } }), 开 ? "已开持有上限" : "已关持有上限");
-  // 开之前先说会挡住谁（10-30）：一开就生效，按存着的上限数一遍现在已经到了的人；关不用问
+  // 开之前先说会挡住谁（10-30）：一开就生效，按存着的上限数一遍现在已经到了的人；关不用问。PR9：换成后果框（组织规则开关）
   const 开前预览 = () => {
     const n = 到上限的人数(规则, 持有, 成员.map((u) => u.id));
     const 按 = `按${是不限(规则.默认上限) ? "不限" : ` ${规则.默认上限} 个`}${Object.keys(规则.每人上限).length ? "（单独设过的按各自的）" : ""}算`;
-    modal.confirm({
-      title: "开持有上限？",
-      content: n ? `${按}，现在有 ${n} 人已经到了上限，他们暂时领不了公海。` : `${按}，现在没有人到上限。`,
-      okText: "开",
-      cancelText: "取消",
-      onOk: () => void 拨(true),
+    void 问后果({
+      题: "开持有上限？",
+      后果: [
+        { 标: "全员", 级: "警", 话: n ? `${按}，现在有 ${n} 人已经到了上限，他们暂时领不了公海` : `${按}，现在没有人到上限` },
+        { 标: "能改回", 话: "随时可以关掉，关了就不再挡" },
+      ],
+      是: "开持有上限",
+      危: false,
+      做: async () => ({ ok: await 拨(true) }),
     });
   };
 
@@ -312,6 +318,7 @@ function HoldCapCard({
         </Space>
       }
     >
+      {后果框}
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
         开了以后，每人手上线索 / 商机阶段、还在跟的项目到了上限，就不能再从线索公海领、也不能再被指派新项目；自己建档的不拦。关着时不限个数。填 {上限最大} = 不限。
       </div>
@@ -357,7 +364,7 @@ function TimeoutCard({
   规则: 组织规则["超时回收"]; 挡: string | null; 范围: 时限范围; 忙: boolean;
   跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
 }) {
-  const { message } = App.useApp();
+  const [message, 提示条] = useSettingsNote();
   const router = useRouter();
   const [问后果, 后果框] = useConsequence();
   const [天数, set天数] = useState<Record<string, number | null>>(规则.节点天数);
@@ -429,6 +436,7 @@ function TimeoutCard({
       }
     >
       {后果框}
+      {提示条}
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
         开了以后，线索、商机阶段的项目在一个进程上超过处理时长还没跟进，自动回到线索公海，负责人会收到提醒；记沟通时填了下一步时间的，过了那天还没跟进也会回收。项目上记沟通要填下一步时间。{默认天数 ? `没填天数的进程按 ${默认天数} 天算` : "没填天数的进程不回收"}，订单阶段不回收。默认关。
         内贸、外贸项目各按各的时长算（按项目的业务线）；外贸空着 = 和内贸一样。业务线选「暂不分配」的、老项目没填业务线的负责人也没设的，按内贸算。

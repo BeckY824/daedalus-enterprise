@@ -59,9 +59,10 @@ for (const [名, 宽] of [["宽屏", 1280], ["小屏", 390]] as const) {
         await 挑人框(page).waitFor();
         expect(await 挑人框(page).count()).toBe(1);
         expect(await page.locator(".ant-modal:visible").count()).toBe(1);
-        expect(await page.getByRole("combobox", { name: "选一位成员" }).count()).toBe(1);
-        await page.getByRole("combobox", { name: "选一位成员" }).click();
-        await page.locator(".ant-select-item-option").filter({ hasText: "测试乙" }).click();
+        // PR9 st.viewas：挑人框换成搜索框 + 分组名单（↑↓ 回车能选），认 role 不认 antd 类名
+        expect(await page.getByRole("textbox", { name: "搜名字或部门" }).count()).toBe(1);
+        await page.getByRole("textbox", { name: "搜名字或部门" }).fill("测试乙");
+        await page.getByRole("option").filter({ hasText: "测试乙" }).click();
         await expect.poll(() => page.evaluate(() => (window as unknown as { __换: string[] }).__换)).toEqual(["u2"]);
         expect(errors).toEqual([]);
       } finally { await page.close(); }

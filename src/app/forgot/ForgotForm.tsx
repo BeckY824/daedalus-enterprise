@@ -103,7 +103,8 @@ export default function ForgotForm() {
 
         <Form form={form} layout="vertical" onFinish={onFinish} requiredMark={false} disabled={loading}>
           {/* ---------- 第一步：只有邮箱 ---------- */}
-          <div style={{ display: 步骤 === 1 ? "block" : "none" }}>
+          {/* 两步之间平滑换内容（原型 st.forgot）：从 display:none 换出来时 .auth-swap 淡入上移 6px；重发键自己倒计时（useCountdown） */}
+          <div className="auth-swap" style={{ display: 步骤 === 1 ? "block" : "none" }}>
             <Form.Item
               name="target"
               rules={[
@@ -127,7 +128,7 @@ export default function ForgotForm() {
           </div>
 
           {/* ---------- 第二步：验证码 + 新密码 ---------- */}
-          <div style={{ display: 步骤 === 2 ? "block" : "none" }}>
+          <div className="auth-swap" style={{ display: 步骤 === 2 ? "block" : "none" }}>
             <p className="auth-hint" style={{ marginBottom: 14 }}>
               <b>{邮箱}</b>
               <button

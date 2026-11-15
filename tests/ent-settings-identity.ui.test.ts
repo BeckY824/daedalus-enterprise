@@ -1,7 +1,7 @@
 /**
  * PR9 设置页按登录身份（P-界面-46，原型 st.role / st.lock / st.perm / st.find）和设置各页签的确认替换（P-界面-40，PR5a 组件）：
  *   - 各身份看到的页签、分组：系统管理员全有；销售管理、市场管理只有「我自己 / 带团队 / 全公司规则」，看不到团队成员、操作日志
- *   - 只读管理员：后台设置看得见、改不了（顶上写明只读、开关灰、成员不给加）
+ *   - 只读管理员：仍只有个人页签（P-全局-02 不放宽），顶上写明只读
  *   - 全公司规则：灰着写「只有总管理能改」，「找总管理开通」原地变「已发给 xx」
  *   - 搜一项：搜说明里没有的具体项（「分配」→ 线索配额），结果写明在哪个页签，回车直达
  *   - 确认项不确认不生效：设系统管理员（后果框）、字典停用（原地确认）
@@ -29,9 +29,9 @@ afterAll(async () => { await browser?.close(); });
 const 长名 = "欧阳上官慕容诸葛司马长孙宇文东方皇甫尉迟公孙轩辕令狐钟离";
 const 人 = (id: string, name: string, extra: Record<string, unknown> = {}) => ({ id, name, email: id, title: "", role: "SALES", active: true, customerCount: 0, oppCount: 0, followCount: 0, ...extra });
 const props = (身份: "系统管理员" | "只读管理员" | "成员", extra: Record<string, unknown> = {}) => ({
-  users: 身份 === "成员" ? [] : [人("u1", "周宁", { 业务角色: ["director"] }), 人("u2", "李想", { 业务角色: ["director"], 系统管理员: { on: false, 有线: true } })],
+  users: 身份 !== "系统管理员" ? [] : [人("u1", "周宁", { 业务角色: ["director"] }), 人("u2", "李想", { 业务角色: ["director"], 系统管理员: { on: false, 有线: true } })],
   me: { id: "u1", name: "周宁", email: "u1", role: "SALES", title: "" },
-  isAdmin: 身份 !== "成员", 只读: 身份 === "只读管理员", 只个人: 身份 === "成员", 身份, 企业版: true,
+  isAdmin: 身份 === "系统管理员", 只读: 身份 === "只读管理员", 只个人: 身份 !== "系统管理员", 身份, 企业版: true,
   我的角色: 身份 === "系统管理员" ? ["director"] : 身份 === "只读管理员" ? ["admin"] : ["sales_mgr"],
   logs: [], llm: { source: null, baseUrl: "", model: "", keyMasked: null, options: [] }, aiUsage: [], 机器: null,
   ...extra,
@@ -86,15 +86,13 @@ it("全公司规则：灰着写只有总管理能改；「找总管理开通」�
   } finally { await page.close(); }
 });
 
-it("只读管理员：顶上写明只读；客户回收开关灰、成员不给加", async () => {
-  const { page } = await 开页(browser, 页包, props("只读管理员", { 客户回收: true }), 1366, "?tab=recycle");
+it("只读管理员：仍只有个人页签（不扩大可见范围），顶上写明只读", async () => {
+  const { page } = await 开页(browser, 页包, props("只读管理员"));
   try {
     await page.getByRole("note").filter({ hasText: "只读管理员" }).waitFor();
-    expect(await page.getByRole("switch", { name: /客户回收/ }).isDisabled()).toBe(true);
-    await page.getByRole("tab", { name: /团队成员/ }).click();
-    await page.getByRole("tab", { name: /团队成员/, selected: true }).waitFor();
-    expect(await page.getByRole("button", { name: /添加成员|新建成员|加成员/ }).count()).toBe(0);
-    expect(await page.getByRole("button", { name: /编辑 李想/ }).count()).toBe(0);
+    expect(await 页签们(page)).toEqual(["个人资料", "登录与密码", "快捷键", "外观", "我能做什么", "全公司规则"]);
+    await page.getByRole("tab", { name: /我能做什么/ }).click();
+    expect(await page.getByRole("region", { name: "我能做什么" }).getByRole("listitem").filter({ hasText: "改任何数据" }).getByLabel("不能").count()).toBe(1);
   } finally { await page.close(); }
 });
 
