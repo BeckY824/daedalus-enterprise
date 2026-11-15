@@ -13,7 +13,7 @@ import { 拆角色 } from "@/lib/enterprise/org-core";
 import { 两条线, 线部门们, type 线部门 } from "@/lib/enterprise/assign-line";
 import type { 组织部门 } from "@/lib/enterprise/org-tree";
 import { 读线部门设置, 设线部门, type 线部门设置 } from "../leads/assign-actions";
-import { useSettingsNote } from "./InlineNote";
+import SaveButton from "@/components/SaveButton";
 
 const 销售 = (bizRole: string) => 拆角色(bizRole).some((r) => r === "sales" || r === "sales_mgr");
 
@@ -27,8 +27,6 @@ export default function LineDeptCard({
   成员: { id: string; name: string; deptId: string | null; bizRole: string }[];
 }) {
   const router = useRouter();
-  // 不弹顶部提示（原型 g.save / g.notice）：成没成写在这一块底部的就地小条（InlineNote，出错 role=alert）
-  const [就地, 提示条] = useSettingsNote();
   const [设置, set设置] = useState<线部门设置 | null | undefined>(undefined);
   const [草稿, set草稿] = useState<线部门 | null>(null);
   const [忙, set忙] = useState(false);
@@ -51,19 +49,19 @@ export default function LineDeptCard({
     return 成员.filter((m) => m.deptId && 里.has(m.deptId) && 销售(m.bizRole)).map((m) => m.name);
   };
 
-  async function 存(v: 线部门) {
-    if (忙) return;
+  /** 保存（原型 g.save）：成没成显示在保存键里（SaveButton），原因浮在键上，不写就地小条 */
+  async function 存(v: 线部门): Promise<{ ok: boolean; error?: string }> {
+    if (忙) return { ok: false, error: "上一下还在存" };
     set忙(true);
     try {
       const r = await 设线部门(v);
-      if (!r.ok) {
-        就地.error(r.error);
-        return;
-      }
-      就地.success("各条线参与自动分配的部门已保存");
+      if (!r.ok) return r;
       set设置({ ...设置!, 设的: v, 还没勾: 两条线.filter((l) => !v[l].some((id) => 部门表.has(id))) });
       set草稿(null);
       router.refresh();
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "没改成，请稍后再试" };
     } finally {
       set忙(false);
     }
@@ -118,11 +116,10 @@ export default function LineDeptCard({
       </div>
       {设置.能改 && (
         <Space wrap style={{ marginTop: 12 }}>
-          <Button type="primary" disabled={!改了 || 忙} data-testid="org-line-depts-save" onClick={() => void 存(选)}>保存</Button>
+          <SaveButton disabled={!改了 || 忙} data-testid="org-line-depts-save" 做={() => 存(选)}>保存</SaveButton>
           <Button disabled={!改了 || 忙} onClick={() => set草稿(null)}>放弃修改</Button>
         </Space>
       )}
-      {提示条}
     </Card>
   );
 }

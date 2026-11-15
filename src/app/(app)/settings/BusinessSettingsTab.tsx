@@ -10,6 +10,7 @@ import { FOLLOW_STATUSES, DECISION_STATUSES, OPP_STAGES } from "@/lib/constants"
 import { saveBusinessSettings } from "./actions";
 import { DemoDataSection } from "@/components/EmptyState";
 import { useSettingsNote } from "./InlineNote";
+import SaveButton from "@/components/SaveButton";
 
 /**
  * 业务配置：把「客户 / 公司 / 职位 / 行业」这些措辞交给用户自己定。
@@ -29,7 +30,6 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
   // 不弹顶部提示（原型 g.save / g.notice）：成没成写在这一块底部的就地小条（InlineNote，出错 role=alert）
   const [就地, 提示条] = useSettingsNote();
   const [form] = Form.useForm<BusinessConfig>();
-  const [saving, setSaving] = useState(false);
   const template = Form.useWatch("template", form) ?? value.template;
   const school = Form.useWatch(["fields", "school"], form) ?? value.fields.school;
   const examples = BUSINESS_PRESETS[template === "general" && school === "院校" ? "教培招生" : 模版预设[template as BusinessTemplate]];
@@ -40,22 +40,23 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
    */
   const [套了, set套了] = useState<string | null>(null);
 
-  async function onSave() {
+  /**
+   * 保存（原型 g.save）：成没成显示在保存键里（SaveButton：转圈 → ✓ 已保存 / 没保存上 + 原因浮在键上），不再写一句「已保存，全站措辞已更新」；
+   * 格子没填对：键上写原因，格子标红。顺带补了来源的那一句是额外的结果，还写在底部就地小条
+   */
+  async function onSave(): Promise<{ ok: boolean; error?: string }> {
     const v = await form.validateFields().catch(() => null);
-    if (!v) return;
+    if (!v) return { ok: false, error: "有几格没填对，看标红的那几格" };
     const 状态错误 = 状态名问题(v);
     if (Object.keys(状态错误).length) {
       form.setFields(Object.entries(状态错误).map(([key, error]) => ({ name: ["statusLabels", key], errors: [error] })));
-      就地.error(Object.values(状态错误)[0]);
-      return;
+      return { ok: false, error: Object.values(状态错误)[0] };
     }
     const 阶段错误 = 阶段名问题(v);
     if (Object.keys(阶段错误).length) {
       form.setFields(Object.entries(阶段错误).map(([key, error]) => ({ name: ["stageLabels", key], errors: [error] })));
-      就地.error(Object.values(阶段错误)[0]);
-      return;
+      return { ok: false, error: Object.values(阶段错误)[0] };
     }
-    setSaving(true);
     // 摆着这一项时清空 = 不开（存 0）；没摆时表单里没有它，照原值存回去，别悄悄关掉（表单公海天数，T-044 有用例）
     try {
       // 项目模式同理：没摆（一个人用）时照原值存回去
@@ -65,15 +66,13 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
           ? { ...v, template: "general", poolDays: 0, projectMode: true, statusLabels: value.statusLabels, stageLabels: value.stageLabels ?? {} }
           : { ...v, poolDays: 表单公海天数(v.poolDays, 多人, value.poolDays), projectMode: 多人 ? v.projectMode === true : value.projectMode },
       );
-      if (res.ok) {
-        set套了(null);
-        就地.success(res.补了来源 ? `已保存，全站措辞已更新；${res.补了来源} 位${v.customer ?? "客户"}的来源从渠道 / 线索补了过来` : "已保存，全站措辞已更新");
-        router.refresh();
-      } else 就地.error(res.error);
+      if (!res.ok) return res;
+      set套了(null);
+      if (res.补了来源) 就地.success(`${res.补了来源} 位${v.customer ?? "客户"}的来源从渠道 / 线索补了过来`);
+      router.refresh();
+      return { ok: true };
     } catch {
-      就地.error("保存失败，请刷新核对后重试；当前填写内容仍保留");
-    } finally {
-      setSaving(false);
+      return { ok: false, error: "保存失败，请刷新核对后重试；当前填写内容仍保留" };
     }
   }
 
@@ -114,7 +113,7 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
         {套了 ? (
           <span className="biz-preset-todo" role="status">
             已填入「{套了}」，还没保存
-            <Button size="small" type="primary" loading={saving} onClick={onSave}>保存</Button>
+            <SaveButton size="small" 做={onSave}>保存</SaveButton>
             <Button size="small" type="text" onClick={放弃}>放弃</Button>
           </span>
         ) : (
@@ -248,7 +247,7 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
         </Row>
         </>}
 
-        <Button type="primary" onClick={onSave} loading={saving}>保存</Button>
+        <SaveButton 做={onSave}>保存</SaveButton>
         {!企业版 && <Button type="text" style={{ marginLeft: 8 }} onClick={() => 套用("通用销售")}>恢复默认</Button>}
         {提示条}
         <Typography.Paragraph type="secondary" style={{ marginTop: 12, fontSize: 13 }}>

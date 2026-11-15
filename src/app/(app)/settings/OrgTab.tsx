@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button, Card, Checkbox, Input, Select, Space, Switch, Tag } from "antd";
 import { useConsequence } from "@/components/ConsequenceDialog";
 import InlineConfirm from "@/components/InlineConfirm";
+import SaveButton from "@/components/SaveButton";
 import { 角色名, 业务角色, 部门最多层数 } from "@/lib/sync/dept-policy";
 import { 部门树, type 组织部门 } from "@/lib/enterprise/org-tree";
 import { 拆角色, 合角色 } from "@/lib/enterprise/org-core";
@@ -84,11 +85,22 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
   // 就地提示（PR9：不弹顶部 message）
   const [就地, 提示条] = useSettingsNote();
   const [新名, set新名] = useState("");
-  const [忙了, set忙] = useState(false);
-  // 改完到新数据回来之前都算忙：router.refresh 不等它回来就放手，连着拨开关时界面还是旧数据，
-  // 第二下按旧值算、显示和库里对不上（10-25 质量：连关开关要刷新才对）
-  const [刷新中, 开始刷新] = useTransition();
-  const 忙 = 忙了 || 刷新中;
+  /*
+    忙按项分（原型 st.switch / st.dict「不锁整页」）：一项在存、在等新数据，只灰这一项，别的照常能点。
+    键：规则-名、不设配额、字段权限、改权限、部门、市场、副手、成员-id。
+    改完到新数据回来之前这一项还算忙：router.refresh 不等它回来就放手，连着拨同一个开关时界面还是旧数据，
+    第二下按旧值算、显示和库里对不上（10-25 质量：连关开关要刷新才对）
+  */
+  const [忙们, set忙们] = useState<ReadonlySet<string>>(() => new Set());
+  const [刷新中, 开始刷新_] = useTransition();
+  const [等刷新, set等刷新] = useState<ReadonlySet<string>>(() => new Set());
+  const 忙 = (键: string) => 忙们.has(键) || (刷新中 && 等刷新.has(键));
+  const 刷新 = (键: string) => {
+    // 上一次刷新已经回来了：之前等的那些不再算忙，从这一项重新记
+    set等刷新((m) => new Set([...(刷新中 ? m : []), 键]));
+    开始刷新_(() => router.refresh());
+  };
+  const 占 = (键: string, 开: boolean) => set忙们((m) => { const n = new Set(m); if (开) n.add(键); else n.delete(键); return n; });
   // 刚拨的开关先按拨的显示；「基于」是拨时页面上的值，页面数据一变（新数据回来、别人也改了）就听页面的
   const [拨了, set拨了] = useState<Partial<Record<规则名, { 基于: boolean; 开: boolean }>>>({});
   const 开着 = (名: 规则名) => {
@@ -112,9 +124,9 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
   const 部门选项 = 树.map(({ d, 层 }) => ({ value: d.id, label: `${"　".repeat(层 - 1)}${d.name}` }));
 
   /** 确认后：服务端回 要确认（改自己会不再是系统管理员，P-判定-06）时先弹二次确认，确认了跑这个 */
-  const 跑 = async (f: () => 结果, 成了?: string, 确认后?: () => 结果): Promise<boolean> => {
-    if (忙) return false;
-    set忙(true);
+  const 跑 = async (键: string, f: () => 结果, 成了?: string, 确认后?: () => 结果): Promise<boolean> => {
+    if (忙(键)) return false;
+    占(键, true);
     try {
       const r = await f();
       if (!r.ok && r.要确认 && 确认后) {
@@ -125,7 +137,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
           是: "确定改",
           做: async () => {
             const again = await 确认后();
-            if (again.ok) 开始刷新(() => router.refresh());
+            if (again.ok) 刷新(键);
             return again;
           },
         });
@@ -135,14 +147,35 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
       else {
         if (r.提示) 就地.warning(r.提示);
         else if (成了) 就地.success(成了);
-        开始刷新(() => router.refresh());
+        刷新(键);
       }
       return r.ok;
     } catch {
       就地.error("没改成，请稍后再试");
       return false;
     } finally {
-      set忙(false);
+      占(键, false);
+    }
+  };
+
+  /**
+   * 保存键（原型 g.save）：成没成显示在 SaveButton 按钮里（✓ 已保存 / 没保存上 + 原因浮在键上），不写就地小条；
+   * 服务端顺带说的提醒（提示）不是成没成，照旧写就地小条
+   */
+  const 存 = async (键: string, f: () => 结果): Promise<{ ok: boolean; error?: string }> => {
+    if (忙(键)) return { ok: false, error: "上一下还在存" };
+    占(键, true);
+    try {
+      const r = await f();
+      if (r.ok) {
+        if (r.提示) 就地.warning(r.提示);
+        刷新(键);
+      }
+      return r;
+    } catch {
+      return { ok: false, error: "没改成，请稍后再试" };
+    } finally {
+      占(键, false);
     }
   };
 
@@ -154,14 +187,14 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
   const 存编 = async () => {
     if (!编 || !编.名.trim()) return;
     const ok = 编.改
-      ? await 跑(() => 改部门(编.改!, { name: 编.名, parentId: 编.上级 }), `已改部门「${编.名.trim()}」`)
-      : await 跑(() => 建部门(编.名, 编.建在 ?? null), `已建部门「${编.名.trim()}」`);
+      ? await 跑("部门", () => 改部门(编.改!, { name: 编.名, parentId: 编.上级 }), `已改部门「${编.名.trim()}」`)
+      : await 跑("部门", () => 建部门(编.名, 编.建在 ?? null), `已建部门「${编.名.trim()}」`);
     if (ok) set编(null);
   };
   const 可挪到 = (d: 组织部门) => 树.filter((x) => x.d.id !== d.id && x.层 < 部门最多层数).map(({ d: x, 层 }) => ({ value: x.id, label: `${"　".repeat(层 - 1)}${x.name}` }));
 
   // 上级下拉的空值传 null 不传 undefined：undefined 会让 antd 当不受控，保存失败时框里还留着刚选的人
-  const 设 = (id: string, 改: 成员改动) => void 跑(() => 设成员(id, 改), undefined, () => 设成员(id, 改, true));
+  const 设 = (id: string, 改: 成员改动) => void 跑(`成员-${id}`, () => 设成员(id, 改), undefined, () => 设成员(id, 改, true));
   const 设格 = (f: 字段名, r: 业务角色, v: keyof typeof 级别名) => {
     const 行 = { ...表[f] };
     if (v === "改") delete 行[r];
@@ -173,17 +206,19 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
   const [拨了不设, set拨了不设] = useState<{ 基于: boolean | null | undefined; 开: boolean } | null>(null);
   const 不设配额 = 拨了不设 && 拨了不设.基于 === value.线索不设配额 ? 拨了不设.开 : value.线索不设配额 === true;
   const 拨不设 = async (v: boolean) => {
-    if (忙) return;
+    if (忙("不设配额")) return;
     set拨了不设({ 基于: value.线索不设配额, 开: v });
-    const ok = await 跑(() => 设不设配额(v), v ? "已改成不设配额：人人参与自动分配、不限额" : "已改回按配额分配");
+    const ok = await 跑("不设配额", () => 设不设配额(v), v ? "已改成不设配额：人人参与自动分配、不限额" : "已改回按配额分配");
     if (!ok) set拨了不设(null);
   };
   /**
    * 组织规则开关（原型 st.switch，P-界面-40「组织规则开关」= 后果框）：影响全员，先说清后果再生效，不确认不动；
-   * 只这一个开关在等，不锁整页（不走 跑 的整页「忙」）
+   * 只这一个开关在等，不锁整页：忙只算这一个开关（规则-名）
    */
   const 拨 = async (名: 规则名, v: boolean) => {
-    if (忙) return;
+    const 键 = `规则-${名}`;
+    if (忙(键)) return;
+    占(键, true);
     const 成了 = await 问后果({
       题: `${v ? "打开" : "关掉"}「${规则[名].名}」？`,
       后果: [
@@ -198,7 +233,8 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
         return r;
       },
     });
-    if (成了) 开始刷新(() => router.refresh());
+    占(键, false);
+    if (成了) 刷新(键);
   };
   const 勾 = (项: 设置项名, 人: 能改的人, v: boolean) => {
     const 现在 = 谁能改(改权限, 项);
@@ -238,7 +274,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
         <div style={{ display: "grid", gap: 12 }}>
           {规则名们.map((名) => (
             <Space align="start" key={名}>
-              <Switch checked={开着(名)} disabled={!能改 || 忙} aria-label={规则[名].名} data-testid={规则testid[名]}
+              <Switch checked={开着(名)} disabled={!能改 || 忙(`规则-${名}`)} aria-label={规则[名].名} data-testid={规则testid[名]}
                 onChange={(v) => void 拨(名, v)} />
               <div>
                 <b>{规则[名].名}</b>
@@ -246,7 +282,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
                 {/* 规则开着才有这个选项（10-30）：开了以后配额不起作用，下面「线索分配」里配额框灰掉 */}
                 {名 === "线索分配" && 开着(名) && value.线索不设配额 != null && (
                   <Space align="start" style={{ marginTop: 8 }}>
-                    <Switch size="small" checked={不设配额} disabled={!能改 || 忙} aria-label="不设配额（人人参与、不限额）"
+                    <Switch size="small" checked={不设配额} disabled={!能改 || 忙("不设配额")} aria-label="不设配额（人人参与、不限额）"
                       data-testid="org-rule-lead-no-quota" onChange={(v) => void 拨不设(v)} />
                     <div>
                       <span>不设配额（人人参与、不限额）</span>
@@ -286,7 +322,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
                   <th scope="row">{字段[f].名}<div className="muted">{字段[f].用在}</div></th>
                   {业务角色.map((r) => (
                     <td key={r}>
-                      <Select size="small" style={{ minWidth: 76 }} aria-label={`${角色名[r]} 对「${字段[f].名}」`} disabled={!!字段权限挡 || 忙}
+                      <Select size="small" style={{ minWidth: 76 }} aria-label={`${角色名[r]} 对「${字段[f].名}」`} disabled={!!字段权限挡 || 忙("字段权限")}
                         value={字段级别of(表, f, r)} onChange={(v) => 设格(f, r, v)}
                         options={(字段[f].能藏 ? (["改", "看", "藏"] as const) : (["改", "看"] as const)).map((x) => ({ value: x, label: 级别名[x] }))} />
                     </td>
@@ -298,9 +334,9 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
         </div>
         {!字段权限挡 && (
           <Space style={{ marginTop: 12 }}>
-            <Button type="primary" disabled={!表改了 || 忙} data-testid="org-field-perm-save" onClick={() => void 跑(() => 设字段权限(表), "字段权限已保存")}>保存字段权限</Button>
-            <Button disabled={!表改了 || 忙} onClick={() => set草稿(null)}>放弃修改</Button>
-            <Button disabled={忙} data-testid="org-field-perm-suggest" onClick={() => set草稿({ 基于: 页面表, 表: 推荐字段配置 })}>用推荐表</Button>
+            <SaveButton disabled={!表改了 || 忙("字段权限")} data-testid="org-field-perm-save" 做={() => 存("字段权限", () => 设字段权限(表))}>保存字段权限</SaveButton>
+            <Button disabled={!表改了 || 忙("字段权限")} onClick={() => set草稿(null)}>放弃修改</Button>
+            <Button disabled={忙("字段权限")} data-testid="org-field-perm-suggest" onClick={() => set草稿({ 基于: 页面表, 表: 推荐字段配置 })}>用推荐表</Button>
           </Space>
         )}
       </Card>
@@ -328,7 +364,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
                     {人列.map((p) => (
                       <td key={p}>
                         {可选.includes(p) ? (
-                          <Checkbox checked={谁.includes(p)} disabled={!能改 || 忙} aria-label={`${人列名(p)} 能改「${设置项[项].名}」`}
+                          <Checkbox checked={谁.includes(p)} disabled={!能改 || 忙("改权限")} aria-label={`${人列名(p)} 能改「${设置项[项].名}」`}
                             onChange={(e) => 勾(项, p, e.target.checked)} />
                         ) : <span className="muted">—</span>}
                       </td>
@@ -341,8 +377,8 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
         </div>
         {能改 && (
           <Space style={{ marginTop: 12 }}>
-            <Button type="primary" disabled={!改权限改了 || 忙} data-testid="org-edit-perm-save" onClick={() => void 跑(() => 设改权限(改权限), "已保存谁能改")}>保存</Button>
-            <Button disabled={!改权限改了 || 忙} onClick={() => set权限草稿(null)}>放弃修改</Button>
+            <SaveButton disabled={!改权限改了 || 忙("改权限")} data-testid="org-edit-perm-save" 做={() => 存("改权限", () => 设改权限(改权限))}>保存</SaveButton>
+            <Button disabled={!改权限改了 || 忙("改权限")} onClick={() => set权限草稿(null)}>放弃修改</Button>
           </Space>
         )}
       </Card>
@@ -365,7 +401,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
                 <span className="team-dept-acts">
                   {n < 部门最多层数 && !断 && <Button size="small" type="link" onClick={() => set编({ 建在: d.id, 名: "", 上级: d.id })}>加子部门</Button>}
                   <Button size="small" type="link" onClick={() => set编({ 改: d.id, 名: d.name, 上级: d.parentId })}>改</Button>
-                  <InlineConfirm 问="有子部门或人时删不了" 是="删" 做={() => 跑(() => 删部门(d.id), `删了部门「${d.name}」`).then((ok) => ({ ok }))}>
+                  <InlineConfirm 问="有子部门或人时删不了" 是="删" 做={() => 跑("部门", () => 删部门(d.id), `删了部门「${d.name}」`).then((ok) => ({ ok }))}>
                     <Button size="small" type="link" danger>删</Button>
                   </InlineConfirm>
                 </span>
@@ -379,7 +415,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
                     <Select size="small" className="team-dept-parent" aria-label="上级部门" value={编.上级 ?? "__顶"}
                       options={[{ value: "__顶", label: "（一级部门，没有上级）" }, ...可挪到(d)]} onChange={(v: string) => set编({ ...编, 上级: v === "__顶" ? null : v })} />
                   )}
-                  <Button size="small" type="primary" disabled={!编.名.trim() || 忙} loading={忙} onClick={() => void 存编()}>{编.改 ? "保存" : "建"}</Button>
+                  <Button size="small" type="primary" disabled={!编.名.trim() || 忙("部门")} loading={忙("部门")} onClick={() => void 存编()}>{编.改 ? "保存" : "建"}</Button>
                   <Button size="small" onClick={() => set编(null)}>取消</Button>
                 </div>
               )}
@@ -388,8 +424,8 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
           {能改 && (
             <Space.Compact style={{ width: "100%", maxWidth: 360, marginTop: 8 }}>
               <Input value={新名} onChange={(e) => set新名(e.target.value)} placeholder="新的一级部门，如：外贸部" maxLength={40} aria-label="新的一级部门"
-                onPressEnter={() => 新名.trim() && void 跑(() => 建部门(新名, null)).then((ok) => ok && set新名(""))} />
-              <Button disabled={!新名.trim() || 忙} onClick={() => void 跑(() => 建部门(新名, null)).then((ok) => ok && set新名(""))}>建部门</Button>
+                onPressEnter={() => 新名.trim() && void 跑("部门", () => 建部门(新名, null)).then((ok) => ok && set新名(""))} />
+              <Button disabled={!新名.trim() || 忙("部门")} onClick={() => void 跑("部门", () => 建部门(新名, null)).then((ok) => ok && set新名(""))}>建部门</Button>
             </Space.Compact>
           )}
         </div>
@@ -400,12 +436,12 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
           打开「{规则.按组织看客户.名}」才生效。这几个部门（连下级部门）的人算市场成员：自己建的、建过项目的、负责过的客户，转给销售以后还看得到这位客户和市场成员自己建的项目，只能看，不能改、不能记沟通、不能转。
           市场管理看得到所有市场成员看得到的。没设 = 名字带「市场」的部门和下级。市场成员建的项目，线索验证判无效照旧交市场复核。
         </p>
-        <Select mode="multiple" allowClear style={{ width: "100%", maxWidth: 480 }} aria-label="市场部门" disabled={!能改 || 忙}
+        <Select mode="multiple" allowClear style={{ width: "100%", maxWidth: 480 }} aria-label="市场部门" disabled={!能改 || 忙("市场")}
           placeholder="没设：名字带「市场」的部门和下级" optionFilterProp="label"
           value={市场选} onChange={(v: string[]) => set市场草稿({ 基于: 页面市场, 选: v, 人: 市场人 })}
           options={部门选项} />
         <p className="muted" style={{ margin: "12px 0 4px" }}>另外单独算市场成员的人（部门不用动，比如岗位调整试行期的人）：</p>
-        <Select mode="multiple" allowClear style={{ width: "100%", maxWidth: 480 }} aria-label="单独设的市场成员" disabled={!能改 || 忙}
+        <Select mode="multiple" allowClear style={{ width: "100%", maxWidth: 480 }} aria-label="单独设的市场成员" disabled={!能改 || 忙("市场")}
           placeholder="没有" optionFilterProp="label" data-testid="org-market-users"
           value={市场人} onChange={(v: string[]) => set市场草稿({ 基于: 页面市场, 选: 市场选, 人: v })}
           options={人选项} />
@@ -414,23 +450,23 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
         </p>
         {能改 && (
           <Space wrap style={{ marginTop: 12 }}>
-            <Button type="primary" disabled={!市场改了 || 忙} data-testid="org-market-depts-save" onClick={() => void 跑(() => 设市场部门(市场选, 市场人), "市场成员已保存")}>保存</Button>
-            <Button disabled={!市场改了 || 忙} onClick={() => set市场草稿(null)}>放弃修改</Button>
-            <Button disabled={value.市场部门 == null || 忙} onClick={() => void 跑(() => 设市场部门([]), "已恢复默认：名字带「市场」的部门")}>恢复默认</Button>
+            <SaveButton disabled={!市场改了 || 忙("市场")} data-testid="org-market-depts-save" 做={() => 存("市场", () => 设市场部门(市场选, 市场人))}>保存</SaveButton>
+            <Button disabled={!市场改了 || 忙("市场")} onClick={() => set市场草稿(null)}>放弃修改</Button>
+            <Button disabled={value.市场部门 == null || 忙("市场")} onClick={() => void 跑("市场", () => 设市场部门([]), "已恢复默认：名字带「市场」的部门")}>恢复默认</Button>
           </Space>
         )}
       </Card>
 
       <Card title="回收站副手" extra={只看} data-testid="org-trash-helpers">
         <p className="muted">系统管理员之外，这些人也能看回收站、恢复删掉的数据（只看得到平时看得到的）；彻底删除仍只有系统管理员。</p>
-        <Select mode="multiple" allowClear style={{ width: "100%", maxWidth: 480 }} aria-label="回收站副手" disabled={!能改 || 忙}
+        <Select mode="multiple" allowClear style={{ width: "100%", maxWidth: 480 }} aria-label="回收站副手" disabled={!能改 || 忙("副手")}
           placeholder="没有" optionFilterProp="label"
           value={副手} onChange={(v: string[]) => set副手草稿({ 基于: 页面副手, 人: v })}
           options={人选项} />
         {能改 && (
           <Space wrap style={{ marginTop: 12 }}>
-            <Button type="primary" disabled={!副手改了 || 忙} data-testid="org-trash-helpers-save" onClick={() => void 跑(() => 设回收站副手(副手), "回收站副手已保存")}>保存</Button>
-            <Button disabled={!副手改了 || 忙} onClick={() => set副手草稿(null)}>放弃修改</Button>
+            <SaveButton disabled={!副手改了 || 忙("副手")} data-testid="org-trash-helpers-save" 做={() => 存("副手", () => 设回收站副手(副手))}>保存</SaveButton>
+            <Button disabled={!副手改了 || 忙("副手")} onClick={() => set副手草稿(null)}>放弃修改</Button>
           </Space>
         )}
       </Card>
@@ -446,12 +482,12 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
             return (
               <li key={m.id} data-testid={`org-member-${m.id}`}>
                 <b>{m.name}</b>
-                <Select size="small" style={{ minWidth: 120 }} aria-label={`${m.name} 的部门`} disabled={!改他 || 忙}
+                <Select size="small" style={{ minWidth: 120 }} aria-label={`${m.name} 的部门`} disabled={!改他 || 忙(`成员-${m.id}`)}
                   value={m.deptId ?? "__无"} onChange={(v) => 设(m.id, { deptId: v === "__无" ? null : v })}
                   labelRender={({ value: v }) => 名.get(String(v)) ?? "未分部门"}
                   options={[{ value: "__无", label: "未分部门" }, ...部门选项]} />
                 {/* 业务角色可多选（10-27）：一个人兼销售管理和市场管理之类；至少留一个，清空不交 */}
-                <Select size="small" mode="multiple" style={{ minWidth: 150, maxWidth: 320 }} aria-label={`${m.name} 的角色`} disabled={!改他 || 忙}
+                <Select size="small" mode="multiple" style={{ minWidth: 150, maxWidth: 320 }} aria-label={`${m.name} 的角色`} disabled={!改他 || 忙(`成员-${m.id}`)}
                   value={他的角色} onChange={(v: string[]) => { if (v.length) 设(m.id, { bizRole: 合角色(v) }); }}
                   popupMatchSelectWidth={280}
                   options={业务角色.filter((r) => 是老板 || !总管级(r) || 他的角色.includes(r)).map((r) => ({ value: r, label: 角色名[r] }))}
@@ -461,20 +497,20 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
                       <div className="muted" style={{ fontSize: 12, whiteSpace: "normal" }}>{角色能做[o.value as 业务角色]}</div>
                     </div>
                   )} />
-                <Select size="small" style={{ minWidth: 110 }} aria-label={`${m.name} 的业务线`} disabled={!改他 || 忙}
+                <Select size="small" style={{ minWidth: 110 }} aria-label={`${m.name} 的业务线`} disabled={!改他 || 忙(`成员-${m.id}`)}
                   value={m.line ?? "__都"} onChange={(v) => 设(m.id, { line: v === "__都" ? null : v })}
                   options={[{ value: "__都", label: "两边都做" }, { value: "内贸", label: "内贸" }, { value: "外贸", label: "外贸" }]} />
-                <Select size="small" style={{ minWidth: 140 }} allowClear showSearch optionFilterProp="label" aria-label={`${m.name} 的直属上级`} disabled={!改他 || 忙}
+                <Select size="small" style={{ minWidth: 140 }} allowClear showSearch optionFilterProp="label" aria-label={`${m.name} 的直属上级`} disabled={!改他 || 忙(`成员-${m.id}`)}
                   placeholder="直属：没有"
                   value={m.managerId ?? null} onChange={(v) => 设(m.id, { managerId: v ?? null })}
                   options={别人.map((x) => ({ ...x, label: `直属：${x.label}` }))} />
-                <Select size="small" style={{ minWidth: 140 }} allowClear showSearch optionFilterProp="label" aria-label={`${m.name} 的虚线上级`} disabled={!改他 || 忙}
+                <Select size="small" style={{ minWidth: 140 }} allowClear showSearch optionFilterProp="label" aria-label={`${m.name} 的虚线上级`} disabled={!改他 || 忙(`成员-${m.id}`)}
                   placeholder="虚线上级（只能看）"
                   value={m.dottedManagerId ?? null} onChange={(v) => 设(m.id, { dottedManagerId: v ?? null })}
                   options={别人.map((x) => ({ ...x, label: `虚线：${x.label}` }))} />
-                <Select size="small" style={{ minWidth: 140 }} allowClear showSearch optionFilterProp="label" aria-label={`${m.name} 只看某人`} disabled={!改他 || 忙}
+                <Select size="small" style={{ minWidth: 140 }} allowClear showSearch optionFilterProp="label" aria-label={`${m.name} 只看某人`} disabled={!改他 || 忙(`成员-${m.id}`)}
                   placeholder="只看某人：没设"
-                  value={只看表[m.id] ?? null} onChange={(v) => void 跑(() => 设只看某人(m.id, v ?? null), v ? "已设「只看某人」" : "已取消「只看某人」")}
+                  value={只看表[m.id] ?? null} onChange={(v) => void 跑(`成员-${m.id}`, () => 设只看某人(m.id, v ?? null), v ? "已设「只看某人」" : "已取消「只看某人」")}
                   options={别人.map((x) => ({ ...x, label: `只看：${x.label}` }))} />
               </li>
             );

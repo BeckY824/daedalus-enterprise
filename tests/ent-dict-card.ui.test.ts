@@ -10,7 +10,7 @@ const plugin: Plugin = { name: "stub-actions", setup(b) {
     const 空=async()=>({ok:true});
     export const 加组员角色=空, 改组员角色=空, 加项目异常类别=空, 改项目异常类别=空, 改组织规则=空, 预览超时回收=async()=>({ok:true,项目:[]}), 存卡点默认Action=空, 存卡点角色开关Action=空, 新增原因Action=空, 改原因名Action=空, 改原因状态Action=空, 删原因Action=空, 合并原因Action=空, 改提成比例=空, 改按人提成比例=空;
     export const 加企业选项=async(kind,name)=>{window.__opts[kind].push({id:'n'+name,name,active:true,用的人:0});window.__rerender();return{ok:true}};
-    export const 改企业选项=async(id,patch)=>{for(const xs of Object.values(window.__opts))for(const x of xs)if(x.id===id)Object.assign(x,patch);window.__rerender();return{ok:true}};
+    export const 改企业选项=async(id,patch)=>{if(window.__慢)await new Promise(r=>{window.__放=r});for(const xs of Object.values(window.__opts))for(const x of xs)if(x.id===id)Object.assign(x,patch);window.__rerender();return{ok:true}};
     export const 存分配谁能用=async(v)=>{window.__assignUse=v;return{ok:true}};
     export const useRouter=()=>({refresh(){}});` }));
 } };
@@ -40,6 +40,8 @@ it("切换种类、加选项、停用；375 宽不横向撑出", async () => {
   await 捞取.getByText("销售成员").click();
   await page.getByRole("button", { name: /保\s*存/ }).last().click();
   await page.waitForFunction(() => !!(window as unknown as { __assignUse?: unknown }).__assignUse);
+  // 原型 g.save：成没成显示在保存键里（SaveButton ✓ 已保存），不写就地小条
+  await page.getByRole("button", { name: "已保存" }).waitFor();
   const 交的 = await page.evaluate(() => (window as unknown as { __assignUse: Record<string, string[]> }).__assignUse);
   expect(交的["dict-assign-2"]).toEqual(expect.arrayContaining(["marketing_mgr", "channel_ops", "project_ops", "sales"]));
   expect(交的["dict-assign-2"]).toHaveLength(4);
@@ -62,5 +64,27 @@ it("切换种类、加选项、停用；375 宽不横向撑出", async () => {
   await page.waitForFunction(() => (window as unknown as { __opts: Record<string, { name: string; active: boolean }[]> }).__opts.recycle.find((x) => x.name === "其他")?.active === false);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT, fullPage: true });
+  await page.close();
+});
+
+it("原型 st.dict：停用一行在等回包时只灰这一行，别的行照常能停用、能加新的（不锁整页签）", async () => {
+  const page = await browser.newPage({ viewport: { width: 1024, height: 800 } });
+  await page.route("http://dict.test/**", (r) => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
+  await page.goto("http://dict.test");
+  await page.addScriptTag({ content: bundle });
+  await page.getByText("回收原因", { exact: true }).click();
+  await page.getByText("企业选项 · 回收原因").waitFor();
+  await page.evaluate(() => { (window as unknown as { __慢: boolean }).__慢 = true; });
+  const 行of = (名: string) => page.locator("div").filter({ hasText: new RegExp(`^${名}`) }).last();
+  await 行of("其他").getByRole("button", { name: /停\s*用/ }).click();
+  await page.getByText("停用后不能再选").locator("..").getByRole("button", { name: "停用", exact: true }).click();
+  // 「其他」在等：这一行的改名灰着；「销售离职」那一行照常能点，加新的照常能加
+  await expect.poll(() => 行of("其他").getByRole("button", { name: /改\s*名/ }).isDisabled()).toBe(true);
+  expect(await 行of("销售离职").getByRole("button", { name: /停\s*用/ }).isDisabled()).toBe(false);
+  expect(await 行of("销售离职").getByRole("button", { name: /改\s*名/ }).isDisabled()).toBe(false);
+  await page.getByLabel("新选项名").fill("客户搬迁");
+  expect(await page.getByRole("button", { name: /加\s*上/ }).last().isDisabled()).toBe(false);
+  await page.evaluate(() => { const w = window as unknown as { __慢: boolean; __放?: () => void }; w.__慢 = false; w.__放?.(); });
+  await page.waitForFunction(() => (window as unknown as { __opts: Record<string, { name: string; active: boolean }[]> }).__opts.recycle.find((x) => x.name === "其他")?.active === false);
   await page.close();
 });

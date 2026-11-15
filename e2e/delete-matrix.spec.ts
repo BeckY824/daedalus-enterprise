@@ -35,7 +35,7 @@ async function 改客户名词(page: Page, 名词: string) {
   const 面板 = page.getByRole("tabpanel", { name: "业务配置" });
   await 面板.getByLabel("客户叫什么").fill(名词);
   await 面板.getByRole("button", { name: /^保\s*存$/ }).click();
-  await expect(page.getByText("已保存，全站措辞已更新")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "已保存" })).toBeVisible({ timeout: 15_000 });
 }
 
 /** 就地确认（InlineConfirm）：点平时那颗键 → 那一行变成问句 + 「删除」 */
