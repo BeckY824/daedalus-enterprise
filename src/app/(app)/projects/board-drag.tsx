@@ -2,11 +2,13 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type RefObject, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { App, Button } from "antd";
+import { App, Button, Modal } from "antd";
 import { showUndo } from "@/components/UndoBar";
 import { 少动 } from "@/lib/reduced-motion";
 import type { 看板一列, 看板卡片 } from "@/lib/project/board";
-import { 改项目节点, 看板推进预检 } from "./actions";
+import type { 草稿们 } from "@/lib/project/required-fill";
+import { 改项目节点, 看板推进预检, 看板补必填料 } from "./actions";
+import { ProjectFillRequired } from "./[id]/ProjectFillRequired";
 /** 推进节点的撤销窗口（原型 6 秒） */
 const 撤销毫秒 = 6000;
 
@@ -15,7 +17,8 @@ const 撤销毫秒 = 6000;
  * 把卡片拖到另一个进程列 = 改到那个进程。规则一条不在这里判：
  *   ① 先问服务端 看板推进预检（改不了进程的人 → 回原因；当前进程配了必填、没填齐 → 回还差哪几项、能不能留空先推）；
  *   ② 真推照旧走 改项目节点（权限、推进关、必填、补全期全在那里再判一遍），被挡就弹回原位、说原因。
- * 缺必填：卡片先弹回原处，旁边长出一个小框写清还差哪几项——「去补齐」进项目（完成节点框里一窗填完），
+ * 缺必填：卡片先弹回原处，弹一个小框就地补填（11-15 用户定：和项目详情「完成节点」同一个 ProjectFillRequired，填完直接推过去）；
+ * 小框里填不了的（沟通、附件、回款这类）照旧给「去…」进项目。读不到项目料时退回只列还差哪几项的小框——「去补齐」进项目，
  * 总管理、销售管理多一颗「仍要推进 · 缺的留空」（和项目详情「完成节点」放行的是同一拨人）。
  * 推成了：底部一句「已推到 X」带「撤销」（P-界面-40 推进节点可撤销），撤销 = 改回原来的进程（同样走服务端）。
  * 只有进程列能放（交付结清、流失、丢单要写原因、勾验收，回项目里点）；有结局的、在公海的、只看进度的卡片不给拖。
@@ -24,7 +27,8 @@ const 撤销毫秒 = 6000;
  */
 
 type 落点 = { 列: string; 名: string; phase: string; node: string };
-type 补框 = { id: string; 卡名: string; 到: 落点; 还差: string[]; 能留空推: boolean; 锚: DOMRect; 原: 看板卡片 };
+type 补框 = { id: string; 卡名: string; 到: 落点; 还差: string[]; 能留空推: boolean; 锚: DOMRect; 原: 看板卡片; 从名: string; 料?: 补料 };
+type 补料 = Extract<Awaited<ReturnType<typeof 看板补必填料>>, { ok: true }>;
 type 拖着 = { id: string; 卡: 看板卡片; 从列: string; el: HTMLElement; x0: number; y0: number; 动了: boolean; pointerId: number };
 
 /** 拖多远才算拖（像素）：比这近是点一下，照旧进详情 */
@@ -118,7 +122,10 @@ export function useBoardDrag({ 看板, 开, 名of, 去补齐, 刷新, 框 }: {
         弹回去(r.id);
         const 锚 = (el ?? document.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(r.id)}"]`))?.getBoundingClientRect() ?? new DOMRect(innerWidth / 2, innerHeight / 3, 0, 0);
         说(`推到「${到.名}」前还差 ${预.还差.length} 项：${预.还差.join("、")}`);
-        return set补({ id: r.id, 卡名: 名of(r), 到, 还差: 预.还差, 能留空推: 预.能留空推, 锚, 原: r });
+        // 读得到项目料、且项目页那套也认还差 → 就地补填；不然退回只列还差的小框
+        const 料 = await 看板补必填料(r.id).catch(() => null);
+        const 用料 = 料?.ok && 料.p.必填?.还差?.length ? 料 : undefined;
+        return set补({ id: r.id, 卡名: 名of(r), 到, 还差: 预.还差, 能留空推: 预.能留空推, 锚, 原: r, 从名: 看板.find((x) => x.列 === 从列)?.名 ?? "", 料: 用料 });
       }
     } catch {
       return 弹回去(r.id, "没推成，请稍后再试");
@@ -237,6 +244,13 @@ export function useBoardDrag({ 看板, 开, 名of, 去补齐, 刷新, 框 }: {
   });
 
   const 关补 = () => set补(null);
+  /** 小框里填了一半关掉，再拖同一张卡回来草稿还在 */
+  const 草稿 = useRef(new Map<string, 草稿们>());
+  const 补新料 = async (id: string) => {
+    const x = await 看板补必填料(id).catch(() => null);
+    if (x?.ok) set补((b) => (b && b.id === id ? { ...b, 料: x } : b));
+    刷新();
+  };
   const 补框位置 = (锚: DOMRect): CSSProperties => {
     const 宽 = 280;
     const 右边放得下 = 锚.right + 8 + 宽 <= innerWidth - 8;
@@ -247,7 +261,29 @@ export function useBoardDrag({ 看板, 开, 名of, 去补齐, 刷新, 框 }: {
     <>
       <span id="board-drag-hint" hidden>拖到别的进程列改进程；也可以按 Alt 加右方向键推到下一个进程，Alt 加左方向键退回上一个</span>
       <span role="status" aria-live="polite" className="sr-only">{播报}</span>
-      {补 && typeof document !== "undefined" && createPortal(
+      {补?.料 && (
+        <Modal open title={`推到「${补.到.名}」前还差 ${补.还差.length} 项`} footer={null} width={560} destroyOnHidden
+          onCancel={关补} className="board-fill">
+          <div className="board-gate-name" title={补.卡名}>{补.卡名}</div>
+          <ProjectFillRequired
+            p={补.料.p}
+            联系人们={补.料.联系人们}
+            能就地改={补.料.能就地改}
+            改不了话={补.料.改不了话}
+            现在在={补.从名}
+            能推进
+            完成到字={`推到「${补.到.名}」`}
+            忙={false}
+            on完成={() => { const x = 补; 关补(); void 真推(x.原, x.到); }}
+            on关={关补}
+            on去={() => { const x = 补; 关补(); 去补齐(x.原); }}
+            读草稿={() => 草稿.current.get(补.id)}
+            留草稿={(d) => { 草稿.current.set(补.id, d); }}
+            刷新={() => 补新料(补.id)}
+          />
+        </Modal>
+      )}
+      {补 && !补.料 && typeof document !== "undefined" && createPortal(
         <BoardGate 框={补} style={补框位置(补.锚)} 关={关补}
           去补齐={() => { 关补(); 去补齐(补.原); }}
           留空推={补.能留空推 ? () => { const x = 补; 关补(); void 真推(x.原, x.到); } : undefined} />,

@@ -5,6 +5,8 @@
  * 规矩在 lib/project/nodes.ts、读写在 lib/project/db.ts、建档向导在 lib/project/wizard.ts，这里只管登录、开关、操作日志和刷新。
  */
 import { revalidatePath } from "next/cache";
+import { 读项目详情 } from "./[id]/load";
+import type { 项目详情Props } from "./[id]/ProjectDetail";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 不能当负责人 } from "@/lib/owners";
 import { requireUser } from "@/lib/auth";
@@ -367,6 +369,30 @@ export async function 改项目节点(projectId: string, 到: 位置, 异常?: {
  * 回还差哪几项（显示名）和能不能留空先推（总管理、销售管理 = 是经理，和 改节点 里放行的是同一拨人）。
  * 只是预演：真推照旧走 改项目节点，权限、推进关、必填都在那里再判一遍；改不了进程的人这里就回那句原因，卡片弹回
  */
+/**
+ * 看板拖动缺必填时就地补填（原型 pr.drag / cu.board「小框里直接填」）：给小框读和项目页同一份项目料（同一个 读项目详情，看得见才回）。
+ * 能不能就地改的口径照项目页：能改 && 不在公海 && 企业版
+ */
+export async function 看板补必填料(projectId: string): Promise<
+  | { ok: true; p: 项目详情Props["p"]; 联系人们: 项目详情Props["联系人们"]; 能就地改: boolean; 改不了话: string }
+  | { ok: false; error: string }
+> {
+  try {
+    const me = await requireUser();
+    if (!(await 开着())) return 没开;
+    const r = await 读项目详情(me, String(projectId ?? ""));
+    if (r.种 !== "有") return { ok: false, error: "这个项目现在看不到，进项目里补" };
+    const { p, 能改, 联系人们 } = r.props;
+    return {
+      ok: true, p, 联系人们,
+      能就地改: 能改 && !p.pooled && !!p.企业版,
+      改不了话: p.企业版 ? "只有项目负责人能改，其他人只能看" : "只有项目负责人、老板或主管能改",
+    };
+  } catch {
+    return { ok: false, error: "没读到这个项目，进项目里补" };
+  }
+}
+
 export async function 看板推进预检(projectId: string, 到: 位置): Promise<{ ok: true; 还差: string[]; 能留空推: boolean } | { ok: false; error: string }> {
   try {
     const me = await requireUser();

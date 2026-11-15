@@ -20,7 +20,9 @@ const plugin: Plugin = { name: "ent-board-drag", setup(b) {
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
   stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
   // 项目的 server action：预检、改节点记下调了什么，回 window.__预检 / window.__改（默认放行）
-  stub(/^\.\/actions$/, "const 记=(n,默)=>async(...a)=>{(window.__调||=[]).push([n,...a]);const 回=window['__'+n];return typeof 回==='function'?回(...a):回||默};export const 回项目邀请=记('回邀请',{ok:true}),市场复核Action=记('复核',{ok:true}),总管理终判Action=记('终判',{ok:true}),看板推进预检=记('预检',{ok:true,还差:[],能留空推:false}),改项目节点=记('改',{ok:true,变了:true}),编辑项目=记('编辑',{ok:true});");
+  stub(/^\.\/actions$/, "const 记=(n,默)=>async(...a)=>{(window.__调||=[]).push([n,...a]);const 回=window['__'+n];return typeof 回==='function'?回(...a):回||默};export const 回项目邀请=记('回邀请',{ok:true}),市场复核Action=记('复核',{ok:true}),总管理终判Action=记('终判',{ok:true}),看板推进预检=记('预检',{ok:true,还差:[],能留空推:false}),改项目节点=记('改',{ok:true,变了:true}),编辑项目=记('编辑',{ok:true}),看板补必填料=记('补必填料',{ok:false,error:'读不到'});");
+  // 就地补填框（ProjectFillRequired）存字段走 [id] 下的 ../actions
+  stub(/^\.\.\/actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return{ok:true}};export const 编辑项目=记('详编'),改项目画像Action=记('画像'),勾项目交付=记('交付');");
   stub(/assign-actions$/, "export const 分配线索=async()=>({ok:true}),自动分配线索=async()=>({ok:true}),批量自动分配=async()=>({ok:true,结果:[]}),本月分配情况=async()=>[],我分出去的线索=async()=>[],关满额提醒=async()=>({ok:true}),项目分配线=async()=>null,分配带走的项目=async()=>({项目数:0,项目:[]});");
   stub(/blocker-actions$/, "const 好=async()=>({ok:true});export const 发布卡点Action=好,认领卡点Action=好,完成卡点Action=好,删卡点Action=好,存卡点默认Action=好,存卡点角色开关Action=好,新增原因Action=好,改原因名Action=好,改原因状态Action=好,删原因Action=好,合并原因Action=好,我的卡点Action=async()=>[];");
   stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[],取客户选项=async()=>null,取客户近况=async()=>null;");
@@ -170,6 +172,37 @@ it("管理（能留空推）：小框多一颗「仍要推进 · 缺的留空」
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
+
+it("必填没填齐、读得到项目料：弹小框就地补填（和完成节点同一套），填好保存就推过去；三种宽度框在视口里", async () => {
+  const 基 = { id: "p1", name: "项目一", amount: 0, currency: "USD", customer: { id: "c1" }, contact: null, expectedDealAt: null, channelId: null, 渠道们: [], level: null,
+    所在地: { addrCountry: null, addrProvince: null, addrCity: null, addrDistrict: null, location: null }, 成交钱: { dealDemand: "暂无", contractAmount: null, contractCurrency: null, depositAmount: null, depositCurrency: null },
+    项目新字段: { painPoints: null, contractStatus: null }, 画像: null, balanceSettled: false, acceptancePassed: false, 能记沟通: true, 项目附件: {}, 回款们: [], 线索验证: {}, 只能看字段: [], 企业版: true };
+  for (const w of [1024, 1280, 1366]) {
+    const { page, errors } = await 打开(w, { 预检: { ok: true, 还差: ["金额"], 能留空推: false } });
+    try {
+      await page.evaluate((b) => {
+        const x = window as unknown as Record<string, unknown> & { __调?: unknown[][] };
+        x.__补必填料 = () => ({ ok: true, 联系人们: [], 能就地改: true, 改不了话: "只有项目负责人能改",
+          p: { ...b, 必填: { 配了: ["金额"], 还差: (x.__调 ?? []).some((c) => c[0] === "详编") ? [] : ["金额"] } } });
+      }, 基);
+      await 拖到(page, 1);
+      const 框 = page.getByRole("dialog", { name: "推到「线索验证」前还差 1 项" });
+      await 框.getByRole("spinbutton", { name: "金额" }).waitFor();
+      // 弹回原列、还没改节点
+      expect(await 列(page, 0).locator('[data-card-id="p1"]').count()).toBe(1);
+      expect(await 调了(page, "改")).toEqual([]);
+      const b = (await 框.boundingBox())!;
+      expect(b.x).toBeGreaterThanOrEqual(0);
+      expect(b.x + b.width).toBeLessThanOrEqual(w);
+      await 框.getByRole("spinbutton", { name: "金额" }).fill("100");
+      await 框.getByRole("button", { name: "保存并完成节点" }).click();
+      await expect.poll(() => 调了(page, "改")).toEqual([["改", "p1", { phase: "线索", node: "线索验证", result: null }]]);
+      expect((await 调了(page, "详编"))[0]?.[1]).toBe("p1");
+      await expect.poll(() => 框.count()).toBe(0);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+}, 90_000);
 
 it("出口列（交付结清）不能放：弹回、说去项目里点，不预检不改", async () => {
   const { page, errors } = await 打开(1366);
