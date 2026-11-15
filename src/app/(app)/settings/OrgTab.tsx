@@ -82,7 +82,7 @@ const 人列名 = (p: 能改的人) => (p === "总管理员" ? "总管理" : p);
 export default function OrgTab({ value }: { value: 组织架构 }) {
   const router = useRouter();
   // 就地提示（PR9：不弹顶部 message）
-  const [message, 提示条] = useSettingsNote();
+  const [就地, 提示条] = useSettingsNote();
   const [新名, set新名] = useState("");
   const [忙了, set忙] = useState(false);
   // 改完到新数据回来之前都算忙：router.refresh 不等它回来就放手，连着拨开关时界面还是旧数据，
@@ -131,15 +131,15 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
         });
         return false;
       }
-      if (!r.ok) message.error(r.error ?? "没改成，请稍后再试");
+      if (!r.ok) 就地.error(r.error ?? "没改成，请稍后再试");
       else {
-        if (r.提示) message.warning(r.提示);
-        else if (成了) message.success(成了);
+        if (r.提示) 就地.warning(r.提示);
+        else if (成了) 就地.success(成了);
         开始刷新(() => router.refresh());
       }
       return r.ok;
     } catch {
-      message.error("没改成，请稍后再试");
+      就地.error("没改成，请稍后再试");
       return false;
     } finally {
       set忙(false);

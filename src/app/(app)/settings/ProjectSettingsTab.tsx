@@ -81,21 +81,21 @@ export type 项目设置 = {
 export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设置; 成员: { id: string; name: string }[] }) {
   const router = useRouter();
   // 就地提示（PR9：不弹顶部 message）：贴这一页签底部
-  const [message, 提示条] = useSettingsNote();
+  const [就地, 提示条] = useSettingsNote();
   const [忙, set忙] = useState(false);
 
   const 跑 = async (f: () => 结果, 成了?: string) => {
     set忙(true);
     try {
       const r = await f();
-      if (!r.ok) message.error(r.error ?? "没改成，请稍后再试");
+      if (!r.ok) 就地.error(r.error ?? "没改成，请稍后再试");
       else {
-        if (成了) message.success(成了);
+        if (成了) 就地.success(成了);
         router.refresh();
       }
       return r.ok;
     } catch {
-      message.error("没改成，请稍后再试");
+      就地.error("没改成，请稍后再试");
       return false;
     } finally {
       set忙(false);
@@ -364,7 +364,7 @@ function TimeoutCard({
   规则: 组织规则["超时回收"]; 挡: string | null; 范围: 时限范围; 忙: boolean;
   跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
 }) {
-  const [message, 提示条] = useSettingsNote();
+  const [就地, 提示条] = useSettingsNote();
   const router = useRouter();
   const [问后果, 后果框] = useConsequence();
   const [天数, set天数] = useState<Record<string, number | null>>(规则.节点天数);
@@ -378,11 +378,11 @@ function TimeoutCard({
   /** 先数会回收几个，有就确认；改完提示真收了几个 */
   const 确认后存 = async (改: 规则改动, 成了: string) => {
     const 看 = await 预览超时回收(改).catch(() => null);
-    if (!看) return void message.error("没改成，请稍后再试");
-    if (!看.ok) return void message.error(看.error ?? "没改成，请稍后再试");
+    if (!看) return void 就地.error("没改成，请稍后再试");
+    if (!看.ok) return void 就地.error(看.error ?? "没改成，请稍后再试");
     const 存 = () => 跑(async () => {
       const r = await 改组织规则(改);
-      if (r.ok) message.success(r.收回 ? `${成了}，${r.收回} 个项目回到了线索公海` : 成了);
+      if (r.ok) 就地.success(r.收回 ? `${成了}，${r.收回} 个项目回到了线索公海` : 成了);
       return r;
     });
     if (!看.个数) return void (await 存());

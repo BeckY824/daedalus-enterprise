@@ -8,6 +8,7 @@ import { 改映射重新试跑, 丢掉试跑, 正式导入一段, 下载对照�
 import { useViewAs } from "@/components/ViewAsContext";
 import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 import { 无负责人占位名 } from "@/lib/pool";
+import { useSettingsNote } from "./InlineNote";
 
 /**
  * 企业版导入的试跑报告：看清这次会写多少、哪些跳过、映射认得对不对；改了映射重新试跑；确认后正式导入。
@@ -42,7 +43,9 @@ export default function EnterpriseImportReport({
   /** 导完了、或者丢掉了：回到列表 */
   on完了: () => void;
 }) {
-  const { message, modal } = App.useApp();
+  const { modal } = App.useApp();
+  // 不弹顶部提示（原型 g.notice）：成没成写在报告底部的就地小条，出错 role=alert
+  const [就地, 提示条] = useSettingsNote();
   const 视图中 = useViewAs();
   const [改, set改] = useState<映射改动>({});
   const [忙, set忙] = useState<"重跑" | "导入" | "丢掉" | "对照表" | null>(null);
@@ -75,9 +78,9 @@ export default function EnterpriseImportReport({
       const r = await 改映射重新试跑(批次Id, 改);
       set改({});
       on改了(r);
-      message.success("已按改的重新试跑");
+      就地.success("已按改的重新试跑");
     } catch (e) {
-      message.error(错话(e));
+      就地.error(错话(e));
     } finally {
       set忙(null);
     }
@@ -94,7 +97,7 @@ export default function EnterpriseImportReport({
       a.click();
       URL.revokeObjectURL(a.href);
     } catch (e) {
-      message.error(错话(e));
+      就地.error(错话(e));
     } finally {
       set忙(null);
     }
@@ -112,9 +115,9 @@ export default function EnterpriseImportReport({
       }
       const 话 = r.改了 ? `对照表改了 ${r.改了} 处，已重新试跑` : "对照表和现在的一样，没改";
       if (r.问题.length) modal.warning({ title: `${话}；有 ${r.问题.length} 行没认出来，没算`, content: <ul style={{ paddingLeft: 18, maxHeight: 320, overflow: "auto" }}>{r.问题.slice(0, 50).map((x) => <li key={x}>{x}</li>)}</ul> });
-      else message.success(话);
+      else 就地.success(话);
     } catch (e) {
-      message.error(错话(e));
+      就地.error(错话(e));
     } finally {
       set忙(null);
     }
@@ -142,13 +145,13 @@ export default function EnterpriseImportReport({
         }
         // 别处在写同一批（两个人同时点了导入）：它会写完，这边不抢
         if (r.状态 !== "applying") {
-          message.info("这一批别处正在导入，到批次列表里看进度");
+          就地.info("这一批别处正在导入，到批次列表里看进度");
           on完了();
           return;
         }
       }
     } catch (e) {
-      message.error(`${错话(e)}。已写进去的留着，到批次列表里点「接着导入」`);
+      就地.error(`${错话(e)}。已写进去的留着，到批次列表里点「接着导入」`);
     } finally {
       set忙(null);
       set进度(null);
@@ -161,7 +164,7 @@ export default function EnterpriseImportReport({
       await 丢掉试跑(批次Id);
       on完了();
     } catch (e) {
-      message.error(错话(e));
+      就地.error(错话(e));
     } finally {
       set忙(null);
     }
@@ -642,6 +645,7 @@ export default function EnterpriseImportReport({
           </Popconfirm>
         </Space>
       )}
+      {提示条}
     </Space>
   );
 }

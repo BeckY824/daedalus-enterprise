@@ -58,21 +58,28 @@ export function useNewProjectFlow({ 建档: 给的 = null, 起手开着 = false 
   /** 项目开关：不给 = 开（新增项目）；新线索、团队版「新建项目」锁开（原整页建档的口径） */
   const [开关, set开关] = useState<项目开关 | undefined>(undefined);
   const [取档中, set取档中] = useState(false);
+  /**
+   * 没打开建档框的原因：从选新老客户框里点的，写在那个框里（role=alert，原型 g.notice 不弹顶部提示）；
+   * 从「新建 ▾」直接开的没有框可写，才退回顶部提示——报错不能吞
+   */
+  const [开档错, set开档错] = useState("");
+  const 报开档错 = (话: string) => (选客户 ? set开档错(话) : message.error(话));
   const 开建档 = async (t: 建档标题, 项目?: 项目开关) => {
     // 从「新建 ▾」直接开（市场角色「新建客户」）：起点就是那颗按钮；从选新老客户框里点进来：起点早记好了，先把焦点放回去
     if (选客户) 回起点(); else 记起点();
     set取档中(true);
+    set开档错("");
     try {
       const d = 建档 ?? 给的 ?? (await 取建档数据());
       // 按这一下要做的事说：「新建客户」点的说不能新增客户，别说成不能新增项目
-      if (!d) return void message.error(t === "新增客户" ? `项目模式没开，不能新增${b.customer}` : "项目模式没开，不能新增项目");
+      if (!d) return void 报开档错(t === "新增客户" ? `项目模式没开，不能新增${b.customer}` : "项目模式没开，不能新增项目");
       set建档(d);
       set选客户(false);
       set标题(t);
       set开关(项目);
       set建档开着(true);
     } catch {
-      message.error("没打开，请重试");
+      报开档错("没打开，请重试");
     } finally {
       set取档中(false);
     }
@@ -93,6 +100,7 @@ export function useNewProjectFlow({ 建档: 给的 = null, 起手开着 = false 
             <RightOutlined aria-hidden />
           </button>
         </div>
+        {开档错 && <div role="alert" className="csq-err">{开档错}</div>}
       </Modal>
       {建档 && <建档弹窗 open={建档开着} 标题={标题} 项目={开关} 数据={建档} onClose={() => set建档开着(false)} afterClose={收尾} />}
     </>

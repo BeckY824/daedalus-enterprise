@@ -118,7 +118,9 @@ it("被权限挡（预检回原因 / 真推回原因）：卡片弹回原列，�
   const { page, errors } = await 打开(1280, { 预检: { ok: false, error: 话 } });
   try {
     await 拖到(page, 1);
-    await page.getByText(话).first().waitFor();
+    // 原因浮在卡片旁边那张小卡上（role=alert，不弹顶部提示）
+    await page.getByRole("alert").filter({ hasText: 话 }).waitFor();
+    expect(await page.locator(".ant-message").count()).toBe(0);
     expect(await 列(page, 0).locator('[data-card-id="p1"]').count()).toBe(1);
     expect(await 列(page, 1).locator('[data-card-id="p1"]').count()).toBe(0);
     expect(await 调了(page, "改")).toEqual([]);
@@ -127,7 +129,7 @@ it("被权限挡（预检回原因 / 真推回原因）：卡片弹回原列，�
   const 二 = await 打开(1280, { 改: { ok: false, error: "这个项目在公海里，先领取再改" } });
   try {
     await 拖到(二.page, 2);
-    await 二.page.getByText("这个项目在公海里，先领取再改").first().waitFor();
+    await 二.page.getByRole("alert").filter({ hasText: "这个项目在公海里，先领取再改" }).waitFor();
     await 列(二.page, 0).locator('[data-card-id="p1"]').waitFor();
     expect(await 列(二.page, 2).locator('[data-card-id="p1"]').count()).toBe(0);
     expect(二.errors).toEqual([]);
@@ -210,7 +212,7 @@ it("出口列（交付结清）不能放：弹回、说去项目里点，不预�
     // 交付结清在第 4 列，1366 宽可能要滑过去：直接把看板滑到最右
     await page.locator(".pipe").evaluate((el) => { el.scrollLeft = el.scrollWidth; });
     await 拖到(page, 3);
-    await page.getByText("请进项目里点", { exact: false }).first().waitFor();
+    await page.getByRole("alert").filter({ hasText: "请进项目里点" }).waitFor();
     expect(await 调了(page, "预检")).toEqual([]);
     expect(await 列(page, 0).locator('[data-card-id="p1"]').count()).toBe(1);
     expect(errors).toEqual([]);

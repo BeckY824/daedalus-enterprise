@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { App, Button, Card, Input, Select, Space, Switch, Tag } from "antd";
+import { Button, Card, Input, Select, Space, Switch, Tag } from "antd";
 import { fmtDateTime } from "@/lib/utils";
 import { 部门最多层数 } from "@/lib/sync/dept-policy";
 import { 通讯录概况, 飞书表概况, 设通讯录同步, 立即同步通讯录, 设职务对照, 设通讯录凭据, 设通讯录间隔, type 通讯录一栏 } from "./org-actions";
@@ -10,6 +10,7 @@ import FeishuConnectCard from "./FeishuConnectCard";
 import FeishuPushSwitch from "./FeishuPushSwitch";
 import { useViewAs } from "@/components/ViewAsContext";
 import { 视图外部话 } from "@/lib/enterprise/view-as-words";
+import { useSettingsNote } from "./InlineNote";
 
 /**
  * 设置 → 组织架构 →「通讯录同步」（企业版 F1，10-26）：飞书 / 钉钉的部门、成员、直属上级、职务每小时（可改每半小时）拉一次，写进组织架构。
@@ -23,7 +24,8 @@ const 结果色: Record<string, string> = { 成功: "success", 没变化: "defau
 
 export default function OrgSyncCard() {
   const router = useRouter();
-  const { message } = App.useApp();
+  // 不弹顶部提示（原型 g.save / g.notice）：成没成写在这一块底部的就地小条（InlineNote，出错 role=alert）
+  const [就地, 提示条] = useSettingsNote();
   const 视图中 = useViewAs();
   const [数据, set数据] = useState<{ 来源们: 通讯录一栏[]; 角色们: { value: string; label: string }[] } | null>(null);
   const [错, set错] = useState<string | null>(null);
@@ -51,13 +53,13 @@ export default function OrgSyncCard() {
     set忙(键);
     try {
       const r = await f();
-      if (!r.ok) message.error(r.error ?? "没改成，请稍后再试");
-      else if (成了) message.success(成了);
+      if (!r.ok) 就地.error(r.error ?? "没改成，请稍后再试");
+      else if (成了) 就地.success(成了);
       await 读();
       if (r.ok) 开始刷新(() => router.refresh());
       return r.ok;
     } catch {
-      message.error("没改成，请稍后再试");
+      就地.error("没改成，请稍后再试");
       return false;
     } finally {
       set忙(null);
@@ -69,8 +71,8 @@ export default function OrgSyncCard() {
       const r = await 立即同步通讯录(s.源);
       if (!r.ok) return r;
       const { 结果, 话 } = r.一次;
-      if (结果 === "成功" || 结果 === "没变化") message.success(`${s.名}通讯录：${话}`);
-      else message.warning(`${s.名}通讯录：${话}`);
+      if (结果 === "成功" || 结果 === "没变化") 就地.success(`${s.名}通讯录：${话}`);
+      else 就地.warning(`${s.名}通讯录：${话}`);
       return { ok: true };
     }, null);
 
@@ -173,6 +175,7 @@ export default function OrgSyncCard() {
           );
         })}
       </div>
+      {提示条}
     </Card>
   );
 }

@@ -269,8 +269,11 @@ it("项目操作：删除项目在最后、危险色、上面一条线，点了�
     const 项们 = await 菜单项们(菜单);
     expect(项们.slice(1)).toEqual(["新建项目", "⊘领取 你是原负责人，不能领回", "项目转让", "项目退回公海", "—", "!删除项目"]);
     await 菜单.getByRole("menuitem", { name: /删除项目/ }).click();
-    await page.locator(".ant-modal-confirm-title").filter({ hasText: "删除这个项目？" }).waitFor();
-    await page.locator(".ant-modal-confirm").getByRole("button", { name: /取\s*消/ }).click();
+    // 后果框（PR5a，替代 modal.confirm）：标题、删前清点写在框里，取消关掉
+    const 删框 = page.getByRole("dialog").filter({ hasText: "删除这个项目？" });
+    await 删框.waitFor();
+    await 删框.getByRole("button", { name: /取\s*消/ }).click();
+    await 删框.waitFor({ state: "hidden" });
     expect(await 菜单项们(await 开菜单(page, "客户操作"))).toEqual(["客户转让", "客户退回公海"]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }

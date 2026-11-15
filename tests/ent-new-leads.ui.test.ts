@@ -21,7 +21,7 @@ const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   stub(/^\.\/actions$/, "export const 回项目邀请=async()=>({ok:true}),市场复核Action=async()=>({ok:true}),总管理终判Action=async()=>({ok:true}),看板推进预检=async()=>({ok:true,还差:[],能留空推:false}),改项目节点=async()=>({ok:true}),编辑项目=async(...a)=>{(window.__调||=[]).push(['编辑项目',...a]);return {ok:true}},看板补必填料=async()=>({ok:false,error:'x'});");
   stub(/^\.\.\/actions$/, "const 好=async()=>({ok:true});export const 编辑项目=好,改项目画像Action=好,勾项目交付=好;");
   // 分配那几个 server action：记下调了什么，回成功
-  stub(/assign-actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return n==='本月分配情况'?{月:'2026-10',人:[]}:n==='我分出去的线索'?[]:n==='批量自动分配'?(window.__批量||{ok:true,结果:[]}):{ok:true,toUserId:'u1',接手人:'王1',已分:1,配额:null,为什么:'按顺序'}};export const 分配线索=记('分配线索'),自动分配线索=记('自动分配线索'),批量自动分配=记('批量自动分配'),本月分配情况=记('本月分配情况'),我分出去的线索=记('我分出去的线索'),关满额提醒=记('关满额提醒'),项目分配线=async()=>({线:'内贸'}),分配带走的项目=async(...a)=>{(window.__调||=[]).push(['分配带走的项目',...a]);return window.__带走||{项目数:0,项目:[]}};");
+  stub(/assign-actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return n==='本月分配情况'?{月:'2026-10',人:[]}:n==='我分出去的线索'?[]:n==='批量自动分配'?(window.__批量||{ok:true,结果:[]}):{ok:true,toUserId:'u1',接手人:'王1',已分:1,配额:null,为什么:'按顺序',还原:{原:'u1',待分配:null,公海:null}}};export const 分配线索=记('分配线索'),自动分配线索=记('自动分配线索'),撤销自动分配=async(...a)=>{(window.__调||=[]).push(['撤销自动分配',...a]);return window.__撤销||{ok:true}},批量自动分配=记('批量自动分配'),本月分配情况=记('本月分配情况'),我分出去的线索=记('我分出去的线索'),关满额提醒=记('关满额提醒'),项目分配线=async()=>({线:'内贸'}),分配带走的项目=async(...a)=>{(window.__调||=[]).push(['分配带走的项目',...a]);return window.__带走||{项目数:0,项目:[]}};");
   // 卡点面板（我的卡点看板）的 server action：这几条测试不点卡点，回成功就行
   stub(/blocker-actions$/, "const 好=async()=>({ok:true});export const 发布卡点Action=好,认领卡点Action=好,完成卡点Action=好,删卡点Action=好,存卡点默认Action=好,存卡点角色开关Action=好,新增原因Action=好,改原因名Action=好,改原因状态Action=好,删原因Action=好,合并原因Action=好,我的卡点Action=async()=>[];");
   // 「给老客户开项目」挑客户、建项目那几个 server action：这几条测试不点，空着就行
@@ -161,15 +161,25 @@ it("能分配的人：每条没结局的新线索有「分配」「自动分配�
   const 调 = await page.evaluate(() => (window as unknown as { __调: unknown[][] }).__调);
   expect(调.find((c) => c[0] === "自动分配线索")).toEqual(["自动分配线索", "p1", { 项目: true, 原负责人: "u1" }]);
   expect(await 去了(page)).toEqual([]); // 点按钮不触发行跳转
-  // 撤销 = 负责人转回原来那位（走项目转让同一个动作），行里的结果收掉、两颗键回来
-  // 只还得回负责人：撤销条上先写明，撤完如实说哪些没还原（不假装全撤回）
-  expect(await page.locator(".undo-bar").innerText()).toContain("撤销只改回负责人");
+  // 撤销 = 整批还原（P-撤销-01）：把自动分配回的还原单原样交给 撤销自动分配，服务端核对留痕后负责人、待分配、连带的客户和活一起还；
+  // 不再走「编辑项目改负责人」，撤销条上也不再写「只改回负责人」；撤成了行里的结果收掉、两颗键回来，不另弹顶部提示
+  expect(await page.locator(".undo-bar").innerText()).not.toContain("只改回负责人");
   await page.locator(".undo-bar").getByRole("button", { name: /撤销/ }).click();
   await page.getByRole("button", { name: `自动分配 ${长}1` }).waitFor();
   const 调2 = await page.evaluate(() => (window as unknown as { __调: unknown[][] }).__调);
-  expect(调2.find((c) => c[0] === "编辑项目")).toEqual(["编辑项目", "p1", { ownerId: "u1" }]);
-  await page.getByText("已把「" + 长 + "1」的负责人改回 王1；一起转过去的待办、跟着转的客户没还原，要还请手工改").waitFor();
+  expect(调2.find((c) => c[0] === "撤销自动分配")).toEqual(["撤销自动分配", "p1", { 原: "u1", 待分配: null, 公海: null }]);
+  expect(调2.find((c) => c[0] === "编辑项目")).toBeUndefined();
+  expect(await page.locator(".ant-message").count()).toBe(0);
   expect(errors).toEqual([]); await page.close();
+  // 撤销被挡（分完又被改过 / 过了时限）：撤销条原地写原因，行里的结果留着
+  const 挡 = await 打开(true, 1280, true);
+  await 挡.page.evaluate(() => { (window as unknown as { __撤销: unknown }).__撤销 = { ok: false, error: "分完之后负责人又改过，要改回请手工改" }; });
+  await 挡.page.getByRole("button", { name: `自动分配 ${长}1` }).click();
+  await 挡.page.locator(".assign-done", { hasText: "已分给 王1 ✓" }).waitFor();
+  await 挡.page.locator(".undo-bar").getByRole("button", { name: /撤销/ }).click();
+  await 挡.page.locator(".undo-bar", { hasText: "分完之后负责人又改过" }).waitFor();
+  expect(await 挡.page.locator(".assign-done", { hasText: "已分给 王1 ✓" }).count()).toBe(1);
+  await 挡.page.close();
   const 不能 = await 打开(true);
   expect(await 不能.page.getByRole("button", { name: `分配 ${长}1`, exact: true }).count()).toBe(0);
   await 不能.page.close();

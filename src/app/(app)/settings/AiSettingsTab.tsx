@@ -51,7 +51,7 @@ export type LlmView = {
 export default function AiSettingsTab({ llm, usage, 企业版 = false }: { llm: LlmView; usage: AiUsage; 企业版?: boolean }) {
   const router = useRouter();
   // PR9：就地提示 + 后果框，不弹顶部 message、不用 modal.confirm
-  const [message, 提示条] = useSettingsNote();
+  const [就地, 提示条] = useSettingsNote();
   const [问后果, 后果框] = useConsequence();
   const 视图中 = useViewAs();
   const [form] = Form.useForm<{ providerId: string; baseUrl: string; model: string; apiKey?: string }>();
@@ -121,7 +121,7 @@ export default function AiSettingsTab({ llm, usage, 企业版 = false }: { llm: 
       await form.validateFields();
       const v = 收表单();
       if (!v.apiKey && !已有key) {
-        message.error("请填写 API Key");
+        就地.error("请填写 API Key");
         return;
       }
       /**
@@ -144,12 +144,12 @@ export default function AiSettingsTab({ llm, usage, 企业版 = false }: { llm: 
       }
       const res = await saveLlmSettings(v);
       if (res.ok) {
-        message.success("已保存，AI 功能已按新配置生效");
+        就地.success("已保存，AI 功能已按新配置生效");
         form.setFieldValue("apiKey", "");
         router.refresh();
-      } else message.error(res.error);
+      } else 就地.error(res.error);
     } catch (error) {
-      if (!isFormValidationError(error)) message.error("保存失败，请刷新确认结果后重试");
+      if (!isFormValidationError(error)) 就地.error("保存失败，请刷新确认结果后重试");
     } finally {
       setSaving(false);
     }
@@ -166,7 +166,7 @@ export default function AiSettingsTab({ llm, usage, 企业版 = false }: { llm: 
       是: "删掉这把 Key",
       做: async () => {
         await clearLlmSettings();
-        message.success("已清除自己的 Key");
+        就地.success("已清除自己的 Key");
         set用自己的(false);
         setTestResult(null);
         router.refresh();
@@ -364,7 +364,7 @@ export default function AiSettingsTab({ llm, usage, 企业版 = false }: { llm: 
  * 政策里怎么写的，这儿就得怎么摆。
  */
 function AssistBlock({ 企业版 }: { 企业版: boolean }) {
-  const [message, 提示条] = useSettingsNote();
+  const [就地, 提示条] = useSettingsNote();
   const [状态, set状态] = useState<{ 可用: boolean; 已开: boolean } | null>(null);
   const [忙, set忙] = useState(false);
 
@@ -379,9 +379,9 @@ function AssistBlock({ 企业版 }: { 企业版: boolean }) {
     try {
       await 设自动判断开关(开);
       set状态((v) => (v ? { ...v, 已开: 开 } : v));
-      message.success(开 ? "已打开，导入第 1 步会多一颗「让 AI 认一下」" : "已关掉，导入只用内置的表头对照规则");
+      就地.success(开 ? "已打开，导入第 1 步会多一颗「让 AI 认一下」" : "已关掉，导入只用内置的表头对照规则");
     } catch {
-      message.error("改不了，刷新页面再试");
+      就地.error("改不了，刷新页面再试");
     } finally {
       set忙(false);
     }
@@ -441,7 +441,7 @@ function McpCmd({ 命令, 多行 = false }: { 命令: string; 多行?: boolean }
  * 开出去的只有只读查询，写不了任何东西（见 lib/mcp/tools.ts）。
  */
 function McpBlock() {
-  const [message, 提示条] = useSettingsNote();
+  const [就地, 提示条] = useSettingsNote();
   const [问后果, 后果框] = useConsequence();
   const [状态, set状态] = useState<{ 可用: boolean; 已开: boolean; 地址: string; 令牌: string | null } | null>(null);
   const [忙, set忙] = useState(false);
@@ -460,11 +460,11 @@ function McpBlock() {
     const r = await 开启MCP();
     set忙(false);
     if (!r.ok) {
-      message.error(r.error);
+      就地.error(r.error);
       return r;
     }
     set状态({ 可用: true, 已开: true, 地址: r.地址, 令牌: r.令牌 });
-    message.success("已生成接入令牌");
+    就地.success("已生成接入令牌");
     return { ok: true };
   }
 
@@ -479,7 +479,7 @@ function McpBlock() {
       做: async () => {
         await 关闭MCP();
         set状态((v) => (v ? { ...v, 已开: false, 令牌: null } : v));
-        message.success("已关闭 MCP 接入");
+        就地.success("已关闭 MCP 接入");
       },
     });
   }

@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, Button, Col, Form, Input, InputNumber, Radio, Row, Select, Switch, Typography, App } from "antd";
+import { Alert, Button, Col, Form, Input, InputNumber, Radio, Row, Select, Switch, Typography } from "antd";
 import type { BusinessConfig, BusinessTemplate } from "@/lib/business-config";
 import { DEFAULT_BUSINESS, BUSINESS_PRESETS, RELABELABLE_STATUSES, 表单公海天数, 模版预设, statusLabel, 状态名问题, 阶段名问题, 阶段名上限 } from "@/lib/business-config";
 import { 币种选项 } from "@/lib/currency";
 import { FOLLOW_STATUSES, DECISION_STATUSES, OPP_STAGES } from "@/lib/constants";
 import { saveBusinessSettings } from "./actions";
 import { DemoDataSection } from "@/components/EmptyState";
+import { useSettingsNote } from "./InlineNote";
 
 /**
  * 业务配置：把「客户 / 公司 / 职位 / 行业」这些措辞交给用户自己定。
@@ -25,7 +26,8 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
   企业版?: boolean;
 }) {
   const router = useRouter();
-  const { message } = App.useApp();
+  // 不弹顶部提示（原型 g.save / g.notice）：成没成写在这一块底部的就地小条（InlineNote，出错 role=alert）
+  const [就地, 提示条] = useSettingsNote();
   const [form] = Form.useForm<BusinessConfig>();
   const [saving, setSaving] = useState(false);
   const template = Form.useWatch("template", form) ?? value.template;
@@ -44,13 +46,13 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
     const 状态错误 = 状态名问题(v);
     if (Object.keys(状态错误).length) {
       form.setFields(Object.entries(状态错误).map(([key, error]) => ({ name: ["statusLabels", key], errors: [error] })));
-      message.error(Object.values(状态错误)[0]);
+      就地.error(Object.values(状态错误)[0]);
       return;
     }
     const 阶段错误 = 阶段名问题(v);
     if (Object.keys(阶段错误).length) {
       form.setFields(Object.entries(阶段错误).map(([key, error]) => ({ name: ["stageLabels", key], errors: [error] })));
-      message.error(Object.values(阶段错误)[0]);
+      就地.error(Object.values(阶段错误)[0]);
       return;
     }
     setSaving(true);
@@ -65,11 +67,11 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
       );
       if (res.ok) {
         set套了(null);
-        message.success(res.补了来源 ? `已保存，全站措辞已更新；${res.补了来源} 位${v.customer ?? "客户"}的来源从渠道 / 线索补了过来` : "已保存，全站措辞已更新");
+        就地.success(res.补了来源 ? `已保存，全站措辞已更新；${res.补了来源} 位${v.customer ?? "客户"}的来源从渠道 / 线索补了过来` : "已保存，全站措辞已更新");
         router.refresh();
-      } else message.error(res.error);
+      } else 就地.error(res.error);
     } catch {
-      message.error("保存失败，请刷新核对后重试；当前填写内容仍保留");
+      就地.error("保存失败，请刷新核对后重试；当前填写内容仍保留");
     } finally {
       setSaving(false);
     }
@@ -248,6 +250,7 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
 
         <Button type="primary" onClick={onSave} loading={saving}>保存</Button>
         {!企业版 && <Button type="text" style={{ marginLeft: 8 }} onClick={() => 套用("通用销售")}>恢复默认</Button>}
+        {提示条}
         <Typography.Paragraph type="secondary" style={{ marginTop: 12, fontSize: 13 }}>
           不做的：自定义字段、自定义状态流转——那是另一个量级的功能。
         </Typography.Paragraph>

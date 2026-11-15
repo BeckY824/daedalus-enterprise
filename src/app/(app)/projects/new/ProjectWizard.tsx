@@ -265,6 +265,10 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   const [候选, set候选] = useState<可挑客户[]>([]);
   const [交中, set交中] = useState(false);
   const [建好了, set建好了] = useState(false);
+  // 原型 cr.submit / g.save：建好了在「建好」按钮里打勾，不弹顶部提示；没建成 / 没查成的原因就地写（role=alert）：
+  // 查重的写在客户那节头下面，建档的写在底栏上面。下一次点的时候清掉
+  const [查错, set查错] = useState("");
+  const [交错, set交错] = useState("");
   const [显错, set显错] = useState(false);
   const [已存, set已存] = useState(!!旧);
   const [接着填, set接着填] = useState(!!旧);
@@ -283,6 +287,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     const 号 = 稿面.phone.trim();
     if (!号 || (企业版 && !稿面.号码类型)) return null;
     set查中(true);
+    set查错("");
     try {
       if (企业版) {
         const r = await 查号码(稿面.号码类型 ?? "", 号);
@@ -304,7 +309,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
       if (n !== 稿面) { setD(n); 存草稿(全名, { 稿: n }); }
       return n;
     } catch {
-      message.error("查重没查成，请稍后再试");
+      set查错("查重没查成，请稍后再试");
       return null;
     } finally {
       set查中(false);
@@ -316,13 +321,14 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     if (!企业版) return true;
     if (!名) return false;
     set名查中(true);
+    set查错("");
     try {
       const r = await 查客户名(名);
-      if (!r.ok) { message.error(r.error); return false; }
+      if (!r.ok) { set查错(r.error); return false; }
       set名查({ 名, 撞: r.撞 ?? null, 提示: r.撞 ? r.提示 : "" });
       return !r.撞;
     } catch {
-      message.error("查重没查成，请稍后再试");
+      set查错("查重没查成，请稍后再试");
       return false;
     } finally {
       set名查中(false);
@@ -384,6 +390,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   /** 老客户新增项目：走客户页「新增项目」同一个服务端动作（限定层、同事只读、公海先领取、业务角色都在那里判） */
   const 给老客户建 = async (客: 可挑客户) => {
     set交中(true);
+    set交错("");
     const 负责人 = 企业 && !要选负责人(d, 企业) ? 我?.id ?? "" : d.项目.ownerId;
     try {
       const r = await 给客户建项目({
@@ -394,10 +401,9 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         },
         跟进: { ...d.跟进, method: 对得上的方式(d.跟进.type, d.跟进.method) },
       });
-      if (!r.ok) return void message.error(r.error);
+      if (!r.ok) return void set交错(r.error);
       清草稿(全名);
       set建好了(true);
-      message.success(`已给「${客.name}」建好项目「${d.项目.name.trim()}」`);
       if (r.提示) (r.转走 ? message.info : message.warning)(r.提示);
       await new Promise((ok) => setTimeout(ok, 落定停留));
       弹窗?.关();
@@ -406,7 +412,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
       if (r.转走) return void router.refresh();
       router.push(`/customers/${客.id}?project=${r.projectId}`);
     } catch {
-      message.error("没建成，请稍后再试；填过的还在");
+      set交错("没建成，请稍后再试；填过的还在");
     } finally {
       set交中(false);
     }
@@ -414,6 +420,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
 
   const 提交 = async (稿面: 稿) => {
     set交中(true);
+    set交错("");
     // 企业版不是「指定分配」的：先建在我名下（服务端也这么改），建好再按分配方式转走
     const 负责人 = 企业 && !要选负责人(稿面, 企业) ? 我?.id ?? "" : 稿面.项目.ownerId;
     const { 渠道: 项目渠道, 业务线手选: _手选, ...项目稿 } = 稿面.项目;
@@ -469,12 +476,11 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         return;
       }
       if (!r.ok) {
-        message.error(r.error);
+        set交错(r.error);
         return;
       }
       清草稿(全名);
       set建好了(true);
-      message.success(带项目 ? `已建好项目「${稿面.项目.name.trim()}」` : `已建好${b.customer}「${稿面.客户.name.trim()}」`);
       const 转走 = "转走" in r && !!r.转走;
       if ("提示" in r && r.提示) (转走 ? message.info : message.warning)(r.提示);
       await new Promise((ok) => setTimeout(ok, 落定停留));
@@ -485,7 +491,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
       if (!r.projectId) return void router.push(`/customers/${r.customerId}`);
       router.push(弹窗 && 企业版 ? `/customers/${r.customerId}?project=${r.projectId}` : `/projects/${r.projectId}`);
     } catch {
-      message.error("没建成，请稍后再试；填过的还在");
+      set交错("没建成，请稍后再试；填过的还在");
     } finally {
       set交中(false);
     }
@@ -556,6 +562,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
             ? <Button size="small" type="link" onClick={() => set老客户(null)}>换</Button>
             : <Button size="small" type="link" loading={查中 || 名查中} disabled={!!企业?.没角色} onClick={手动查重}>查重</Button>}
         </div>
+        {查错 && <div role="alert" className="cd-task-err">{查错}</div>}
         {老客户 ? (
           <div className="cr-old cr-rise" data-testid="wizard-old-customer">
             <Tag color="green">已有{b.customer}</Tag>
@@ -838,6 +845,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         </div>
       </section>
 
+      {交错 && <div role="alert" className="csq-err">{交错}</div>}
       <div className="cr-foot">
         <span className="cr-saved" aria-live="polite">{已存 && !建好了 ? "✓ 已存草稿" : ""}</span>
         <span className="cr-sp" />

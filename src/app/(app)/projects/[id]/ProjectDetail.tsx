@@ -458,11 +458,13 @@ export default function ProjectDetail({
   p, 能改, 候选, 在职, 联系人们, 角色们, 类别们, 卡点 = null, 嵌入,
 }: 项目详情Props & { 嵌入?: 嵌在客户页 }) {
   const router = useRouter();
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
   const b = useBusiness();
   const [忙, set忙] = useState(false);
   /** 后果框（PR5a）：判无效（dt.invalid）、删回款（dt.pay） */
   const [问后果, 后果框] = useConsequence();
+  /** 删沟通没删成：原因写在那条沟通下面（就地，不弹顶部提示） */
+  const [删沟通错, set删沟通错] = useState<{ id: string; 话: string } | null>(null);
   const [异常框, set异常框] = useState<位置 | null>(null);
   const [没成框, set没成框] = useState<位置 | null>(null);
   /** 异常框 / 没成框是「终止进程」开的（M-节点-04）：确定时走 终止项目进程 */
@@ -575,6 +577,7 @@ export default function ProjectDetail({
 
   /** 删项目上的一条沟通：企业版软删进回收站；不给撤销（11-09），找回走回收站 */
   const 删沟通 = async (id: string) => {
+    set删沟通错(null);
     set忙(true);
     let r: Awaited<ReturnType<typeof 删项目沟通>>;
     try {
@@ -584,9 +587,12 @@ export default function ProjectDetail({
     } finally {
       set忙(false);
     }
-    if (!r.ok) return void message.error(r.error);
+    // 没删成：原因交回 InlineConfirm（问句留着，原因写在问句那行）；删成了这一条从列表里收起，不弹顶部提示（问句已说了进回收站）
+    if (!r.ok) {
+      set删沟通错({ id, 话: r.error ?? "没删成，请稍后再试" });
+      return r;
+    }
     router.refresh();
-    message.success("已删除，30 天内可在「设置 → 回收站」恢复");
   };
 
   /** 终止 = true：异常框 / 没成框 点确定走 终止项目进程（M-节点-04，审计写「终止进程」）；成了 = 改成了以后的提示 */
@@ -653,11 +659,16 @@ export default function ProjectDetail({
   /** 结束类（结局）的去处要二次确认（10-30 P2）；异常、要写原因的本来就有自己的框，成功交付没勾齐的 改到 会直接提示 */
   const 结束确认 = (到: 位置) => {
     if (!到.result || 到.result === "异常状态" || (p.企业版 && 要写原因(到.result)) || (是交付(到.result) && 差.length)) return 改到(到);
-    modal.confirm({
-      title: `改到「${结局叫法(到.result, 字典)}」？`,
-      content: 是交付(到.result) ? `项目算${交付叫法}、到此结束；以后要改可以把进程改回去` : "项目到此结束；以后要捡回来可以把进程改回去",
-      okText: "确定",
-      onOk: () => 改到(到),
+    // 后果框（PR5a，P-界面-40）：结局是一件事到此结束，写清能改回
+    void 问后果({
+      题: `改到「${结局叫法(到.result, 字典)}」？`,
+      后果: [
+        { 标: "会发生", 话: 是交付(到.result) ? `项目算${交付叫法}、到此结束` : "项目到此结束", 级: "警" },
+        { 标: "能改回", 话: 是交付(到.result) ? "以后要改可以把进程改回去" : "以后要捡回来可以把进程改回去" },
+      ],
+      是: "确定",
+      危: false,
+      做: () => 改到(到),
     });
   };
   const 不能往前 = !!缺必填 || !!p.不给推 || 卡有效沟通;
@@ -690,14 +701,21 @@ export default function ProjectDetail({
     // 判无效一个框写清后果和原因，不再先问「终止进程？」（dt.invalid）
     if (终止到 === "线索流失" && p.原因选项.无效.length > 0) return void 判无效({ phase: p.phase, node: p.node, result: 终止到 }, true);
     const 叫 = 结局叫法(终止到, 字典);
-    modal.confirm({
-      title: "终止进程？",
-      content: 终止到 === "异常状态"
-        ? `项目停在「${位.阶段}·${位.进程}」，标成「${叫}」；下一步选异常类别。处理好了把进程改回去就恢复`
-        : `项目停在「${位.阶段}·${位.进程}」，落到「${叫}」、到此结束；下一步写原因。以后要捡回来可以把进程改回去`,
-      okText: "继续",
-      okButtonProps: { danger: true },
-      onOk: () => 改到({ phase: p.phase, node: p.node, result: 终止到 }, { 终止: true }),
+    void 问后果({
+      题: "终止进程？",
+      后果: 终止到 === "异常状态"
+        ? [
+          { 标: "会发生", 话: `项目停在「${位.阶段}·${位.进程}」，标成「${叫}」`, 级: "警" },
+          { 标: "之后", 话: "下一步选异常类别" },
+          { 标: "能改回", 话: "处理好了把进程改回去就恢复" },
+        ]
+        : [
+          { 标: "会发生", 话: `项目停在「${位.阶段}·${位.进程}」，落到「${叫}」、到此结束`, 级: "警" },
+          { 标: "之后", 话: "下一步写原因" },
+          { 标: "能改回", 话: "以后要捡回来可以把进程改回去" },
+        ],
+      是: "继续",
+      做: () => 改到({ phase: p.phase, node: p.node, result: 终止到 }, { 终止: true }),
     });
   };
 
@@ -723,15 +741,13 @@ export default function ProjectDetail({
   const 选无效原因 = 没成框?.result === "线索流失" && p.原因选项.无效.length > 0;
   const 没成备注 = 选无效原因 && 无效原因 ? [`${无效原因前缀}${无效原因}`, 原因.trim()].filter(Boolean).join("\n") : 原因.trim();
 
+  /** 后果框里点「删除」：没删成把原因交回框里（框不关）；删成了离开这页，项目不在列表里就是回执 */
   const 删 = async () => {
     set忙(true);
     try {
       const r = await 删除项目(p.id);
-      if (!r.ok) message.error(r.error);
-      else {
-        message.success("已删除项目，沟通记录还留在客户下");
-        走开();
-      }
+      if (!r.ok) return r;
+      走开();
     } finally {
       set忙(false);
     }
@@ -1269,6 +1285,7 @@ export default function ProjectDetail({
               />
             </div>
             {f.附件 && <FollowAttachments followUpId={f.id} 附件={f.附件} 能传={!!p.可改沟通 || (p.能记沟通 && !!f.我记的)} 能删={!!p.可删沟通} on变了={() => router.refresh()} />}
+            {删沟通错?.id === f.id && <div role="alert" className="cd-task-err">{删沟通错.话}</div>}
           </div>
         ))}
         </div>
@@ -1375,9 +1392,23 @@ export default function ProjectDetail({
   const 放回问 = () => {
     // 企业版：放回前可选一个「回收原因」（字典，不选也行）；别的版本照旧一个确认
     if (p.企业版) { set回收原因(null); set放回框(true); return; }
-    modal.confirm({ title: "把项目退回公海？", content: "只退这个项目，客户不动；退回去以后谁都能领，你自己不能再领回来", okText: "项目退回公海", onOk: () => 跑(() => 放回项目公海(p.id), "项目已退回公海") });
+    // 后果框：没退成原因写在框里、框不关；退成了框关、页面刷新成公海态，不再弹顶部提示
+    void 问后果({
+      题: "把项目退回公海？",
+      后果: [
+        { 标: "只退它", 话: "只退这个项目，客户不动" },
+        { 标: "领不回", 话: "退回去以后谁都能领，你自己不能再领回来", 级: "危" },
+      ],
+      是: "项目退回公海",
+      做: async () => {
+        const r = await 放回项目公海(p.id);
+        if (!r.ok) return r;
+        router.refresh();
+      },
+    });
   };
-  const 删问 = () => modal.confirm({ title: "删除这个项目？", content: 删除说明(p.删前清点, b.customer, p.企业版), okText: "删除", okButtonProps: { danger: true }, onOk: 删 });
+  // 后果框：删前清点写在框里；没删成原因写在框里、框不关
+  const 删问 = () => void 问后果({ 题: "删除这个项目？", 后果: [{ 标: "会删掉", 话: 删除说明(p.删前清点, b.customer, p.企业版), 级: "危" }], 是: "删除", 做: 删 });
   // 嵌在客户页：右上角「项目操作 ▾」点了哪项经 动作口 递到这里，和原来那几颗按钮的 onClick 一样（忙着的时候按钮是灰的，这里同样不理）
   const 挂动作 = 嵌入?.挂动作;
   const 报忙 = 嵌入?.报忙;
@@ -1599,7 +1630,6 @@ export default function ProjectDetail({
         onCancel={() => set放回框(false)}
         onOk={async () => {
           const ok = await 跑(() => 放回项目公海(p.id, 回收原因));
-          if (ok) message.success("项目已退回公海");
           // 企业版放回后原负责人看不到这个项目了（C-01，lib/project/pool-owner.ts 原负责人回避），回项目列表
           if (ok) { set放回框(false); 走开(); }
         }}

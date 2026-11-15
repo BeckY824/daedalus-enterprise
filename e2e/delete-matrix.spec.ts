@@ -226,7 +226,8 @@ test("企业版删项目上的一条沟通：「…」→ 删除，就地确认�
   const 行 = page.locator("tr.ant-table-row", { hasText: `电话聊了报价${戳}` });
   await expect(行).toContainText("沟通记录");
   await 行.getByRole("button", { name: /恢\s*复/ }).click();
-  await expect(page.locator(".ant-message")).toContainText("已恢复沟通记录");
+  // 设置页不弹顶部提示（原型 g.save），成没成写在页签底部的就地小条（InlineNote，role=status）
+  await expect(page.getByRole("status").filter({ hasText: "已恢复沟通记录" })).toBeVisible();
   await page.goto(`/projects/${项目.id}`);
   await expect(那条).toBeVisible();
 });

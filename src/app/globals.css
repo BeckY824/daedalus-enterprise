@@ -4857,3 +4857,8 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 .pd-split-edit-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
 .pd-split-edit-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .cr-research-none { font-size: var(--fs-note); }
+/* 公海 / 项目 / 设置补齐（11-15 fill-c）：看板列底「再看」没取到的原因写在列底（原型 g.notice，不弹顶部提示） */
+.pipe-more-err { color: var(--danger-text); }
+/* 看板拖动弹回原因小卡（board-drag.tsx）：右上角收起键，6 秒也自己收 */
+.board-gate-x { float: right; margin: calc(-1 * var(--s1)) calc(-1 * var(--s1)) 0 var(--s2); padding: 0 var(--s1); border: 0; background: none; color: var(--text-muted); cursor: pointer; font-size: var(--fs-note); line-height: 1.6; border-radius: var(--r-ctl); }
+.board-gate-x:hover { color: var(--text); }
