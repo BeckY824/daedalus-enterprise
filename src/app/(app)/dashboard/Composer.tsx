@@ -9,7 +9,11 @@ import { useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import ModelPicker from "@/components/ModelPicker";
-import type { 附件 } from "@/components/AskFiles";
+import { 读成附件, type 附件 } from "@/components/AskFiles";
+import { App } from "antd";
+import { useReducedMotion } from "motion/react";
+import { useMotionTheme } from "@/components/MotionTheme";
+import { 飞进去 } from "./home-look";
 import type { ModelOption } from "@/lib/llm";
 import { useBusiness } from "@/lib/business-client";
 import { clearJob, setJobValue } from "@/lib/ai-jobs";
@@ -210,6 +214,9 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
   const [suggIdx, setSuggIdx] = useState(-1);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
+  const { message } = App.useApp();
+  const 动效 = useMotionTheme();
+  const 少动 = useReducedMotion();
   useComposerHeight(composerRef);
 
   function 认一下粘的是什么(e: React.ClipboardEvent<HTMLTextAreaElement>) {
@@ -339,8 +346,10 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
   const canSend = q.trim().length > 0 && (背调模式 ? 调.背调能发 : !AI已用完);
   /** 输入框底下摆不摆那排建议问题：只在还没问过、且库里有东西的时候 */
   const 摆建议 = empty && !空库 && suggestions.length > 0 && 模式 === "宽";
-  const 问这条 = (x: Suggestion) => {
+  const 问这条 = async (x: Suggestion, 从?: HTMLElement) => {
     if (x.kind === "fill") {
+      // home.hero：点的是一颗示例，先让它飞进框里再填字（减弱动态 / 量不到 = 直接填）
+      if (从 && taRef.current) await 飞进去(从, taRef.current, 动效, !!少动);
       setQ(x.question);
       requestAnimationFrame(() => {
         const ta = taRef.current;
@@ -355,6 +364,13 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
   const 宽 = 模式 === "宽";
   /** 手机宽度（和 globals.css 的手机断点同一条线）：企业版项目模式的「附件」在这里改成调相机 */
   const 手机 = useNarrow("(max-width: 767px)");
+  /** 拖文件进框（home.ask）：只在这一刻摆着加文件键的时候收——背调模式没有附件，手机上企业版的「附件」换成了拍照 */
+  const 收附件 = !背调模式 && !(渠道名们 && 手机) && running == null;
+  const 拖进来 = async (f: File) => {
+    const r = await 读成附件(f, files);
+    if ("错" in r) message.error(r.错);
+    else setFiles(r.files);
+  };
 
   return (
     <>
@@ -368,6 +384,7 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
           }}
           onSubmit={() => submit(cmdMatches.length ? cmdMatches[cmdIdx].cmd : q)}
           onPaste={认一下粘的是什么}
+          on拖文件={收附件 ? 拖进来 : undefined}
           placeholder={
             背调模式
               ? "输入公司名、官网或一句需求，比如：帮我查 Rexel 适不适合我们"

@@ -81,3 +81,18 @@ describe("渠道", () => {
     expect(css).toContain(".row-fresh > td { animation: row-fresh");
   });
 });
+
+describe("渠道（第二轮）", () => {
+  it("排队序号只数真数据行（data-row-key），不假设第一行是测量行", () => {
+    expect(css).toContain(":where(.chan-list .ant-table-tbody > tr:nth-child(2 of [data-row-key])) > td { --row-i: 1; }");
+    expect(css).not.toMatch(/chan-list \.ant-table-tbody > tr:nth-child\(\d\)\)/);
+  });
+  it("投入记录 / 录入表单淡入落位；主渠道开关存好闪一下：只用令牌", () => {
+    const 投 = 规则(".chan-invest > li, .chan-invest-form");
+    expect(投).toMatch(/animation:\s*chan-invest-in var\(--t\) var\(--ease\) backwards/);
+    只用令牌(投, "chan-invest");
+    const 闪 = 规则(".chan-main-saved");
+    expect(闪).toMatch(/animation:\s*chan-main-saved var\(--t-morph\) var\(--ease\) backwards/);
+    只用令牌(闪, "chan-main-saved");
+  });
+});

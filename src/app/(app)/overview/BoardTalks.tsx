@@ -4,7 +4,8 @@ import { useOptimistic, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Pagination, Segmented, Select, Tooltip } from "antd";
-import { fmtDateTime } from "@/lib/utils";
+import { dayjs, fmtDateTime } from "@/lib/utils";
+import { isCalendarDate } from "@/lib/schedule-date";
 import { 有值 } from "@/lib/empty-value";
 import EmptyState from "@/components/EmptyState";
 import { 筛选方式名 } from "@/lib/follow-method";
@@ -15,6 +16,7 @@ import {
 import type { 缺沟通 } from "@/lib/project/review-extras";
 import CustomRangePicker from "@/components/CustomRangePicker";
 import { 读日期段, type 日期段 } from "@/lib/custom-date-range";
+import { 沟通按天 } from "@/lib/project/talk-days";
 
 /**
  * 复盘页「沟通」页签（P7 U-复盘-01；11-01 参考复盘稿融合改成时间线）：项目负责人本人在项目上记的跟进（别人记的不算，11-02），时间倒序。
@@ -95,9 +97,15 @@ export default function BoardTalks({ 数, 段, 区间, 方式 = "", 只看自己
             demo={false}
           />
         ) : (
-          <ol className="rtalk-tl">
-            {数.行.map((x) => <沟通条 key={x.id} x={x} 去={() => 去(x)} />)}
-          </ol>
+          // 按天分组（ov.talk）：今天 / 昨天 / M-D 一个小标题，下面照旧一条时间线；换时间段新进来的条目从上往下滑入（globals.css .rtalk-i）
+          沟通按天(数.行).map((g) => (
+            <section key={g.键} className="rtalk-day" aria-label={g.叫法}>
+              <h3 className="rtalk-day-h">{g.叫法}</h3>
+              <ol className="rtalk-tl">
+                {g.行.map((x) => <沟通条 key={x.id} x={x} 去={() => 去(x)} />)}
+              </ol>
+            </section>
+          ))
         )}
         {数.总数 > 复盘列表每页 && (
           <Pagination
@@ -132,7 +140,8 @@ function 沟通条({ x, 去 }: { x: 复盘沟通行; 去: () => void }) {
         onKeyDown={(e) => { if (e.key === "Enter") 去(); }}
       >
         <div className="rtalk-k-top">
-          <time className="btodo-time nowrap" dateTime={x.时间}>{fmtDateTime(x.时间)}</time>
+          {/* 日子在分组标题上，这里只写钟点；只记了日子的（没有钟点）写「—」不写 00:00。悬停看全 */}
+          <time className="btodo-time nowrap" dateTime={x.时间} title={fmtDateTime(x.时间)}>{isCalendarDate(x.时间) ? "—" : dayjs(x.时间).format("HH:mm")}</time>
           <Tooltip title={`${x.项目} · ${x.节点} · ${x.客户}`} placement="topLeft" mouseEnterDelay={0.4}>
             <span className="rtalk-proj">
               {x.项目}

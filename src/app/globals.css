@@ -1913,6 +1913,9 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .btodo-head-r { flex-wrap: wrap; justify-content: flex-end; }
 .btodo-wrap > .btodo-list + .btodo-list, .btodo-wrap > .btodo-list + .rtalk-side { margin-top: var(--s4); }
 .is-pending { opacity: 0.55; transition: opacity var(--t) var(--ease); }
+/* 联系人边打字边筛（ls.ct.search）：服务端那一趟在路上只淡表格，不转圈、搜索框不淡 */
+.ct-list .ant-table-wrapper { transition: opacity var(--t) var(--ease); }
+.ct-list.ct-wait .ant-table-wrapper { opacity: 0.55; }
 .data-shell-scope { flex: none; }
 /* 任务：三列看板 */
 .btodo-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3); transition: opacity var(--t) var(--ease); }
@@ -1990,7 +1993,11 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .rtalk-m { width: 120px; }
 .rtalk-tl { position: relative; margin: 0; padding: 0 0 0 20px; list-style: none; }
 .rtalk-tl::before { content: ""; position: absolute; left: 5px; top: 6px; bottom: 6px; width: 2px; border-radius: 999px; background: var(--line); }
-.rtalk-i { position: relative; min-width: 0; }
+.rtalk-i { position: relative; min-width: 0; animation: rtalk-in var(--t) var(--ease) backwards; }
+/* ov.talk：按天一个小标题；换时间段新进来的条目从上方 6px 滑入落位（只填起始帧，不压悬停） */
+@keyframes rtalk-in { from { opacity: 0; transform: translateY(-6px); } }
+.rtalk-day + .rtalk-day { margin-top: var(--s4); }
+.rtalk-day-h { margin: 0 0 var(--s2); font-size: var(--fs-note); font-weight: 500; color: var(--text-muted); }
 .rtalk-i + .rtalk-i { margin-top: var(--s2); }
 .rtalk-pt { position: absolute; left: -19px; top: 14px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--panel); background: var(--brand); }
 .rtalk-k { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--panel); cursor: pointer; transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
@@ -2421,6 +2428,16 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .cli-input { display: flex; align-items: flex-end; gap: 10px; min-height: var(--field-h); padding: 10px 14px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--r-card); transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
 /* home.ask：聚焦时一圈品牌色的浅环（像系统输入框那样），一眼看得出字会打进哪儿 */
 .cli-input:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 14%, transparent); }
+/* home.ask：拖文件进框——环再粗一档、底色转品牌浅底，框中间一行「松开即带上文件」（盖在上面，不撑高框） */
+.cli-input { position: relative; }
+.cli-input.is-drop { border-color: var(--brand); box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 20%, transparent); background: var(--brand-bg); }
+.cli-drop-hint {
+  position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center;
+  border-radius: inherit; background: color-mix(in srgb, var(--brand-bg) 88%, transparent);
+  color: var(--brand); font-size: var(--fs-note); font-weight: 500; pointer-events: none;
+  animation: cli-drop-in var(--t-fast) var(--ease) backwards;
+}
+@keyframes cli-drop-in { from { opacity: 0; } }
 .cli-input .cli-prompt { line-height: 22px; color: var(--ink); }
 /* 发送 / 停止：一个圆钮，跑着的时候变成方块 */
 /* 框里那一条：左边动作（加文件），右边选择（模型）+ 发送键。照 Claude Code / Codex 的形状 */
@@ -2626,19 +2643,19 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
    属性 / 「已停用」标签另成一列，两个并排。空库那一格是引导文字，照旧折行 */
 .chan-list .ant-table-thead > tr > th,
 .chan-list .ant-table-tbody > tr:not(.ant-table-placeholder) > td { white-space: nowrap; }
-/* ch.seg：换「按子渠道 / 按主渠道」整张表换一张，行一条接一条淡入落位（前 8 条排队，再往后一起出来）。
+/* ch.seg：换「按子渠道 / 按主渠道」整张表换一张，行一条接一条淡入落位（前 8 条排队，再往后一起出来；按带 data-row-key 的真数据行数，antd 的测量行、空态行不算）。
    只动格子的透明度：行上加 transform 会把固定列（sticky）带歪。:where 把权重压到 0，刚建那一行的 row-fresh 照样盖得过 */
 :where(.chan-list .ant-table-tbody > tr:not(.ant-table-placeholder)) > td {
   animation: chan-row-in var(--t) var(--ease) backwards;
   animation-delay: calc(var(--stagger) * var(--row-i, 0));
 }
-:where(.chan-list .ant-table-tbody > tr:nth-child(3)) > td { --row-i: 1; }
-:where(.chan-list .ant-table-tbody > tr:nth-child(4)) > td { --row-i: 2; }
-:where(.chan-list .ant-table-tbody > tr:nth-child(5)) > td { --row-i: 3; }
-:where(.chan-list .ant-table-tbody > tr:nth-child(6)) > td { --row-i: 4; }
-:where(.chan-list .ant-table-tbody > tr:nth-child(7)) > td { --row-i: 5; }
-:where(.chan-list .ant-table-tbody > tr:nth-child(8)) > td { --row-i: 6; }
-:where(.chan-list .ant-table-tbody > tr:nth-child(n+9)) > td { --row-i: 7; }
+:where(.chan-list .ant-table-tbody > tr:nth-child(2 of [data-row-key])) > td { --row-i: 1; }
+:where(.chan-list .ant-table-tbody > tr:nth-child(3 of [data-row-key])) > td { --row-i: 2; }
+:where(.chan-list .ant-table-tbody > tr:nth-child(4 of [data-row-key])) > td { --row-i: 3; }
+:where(.chan-list .ant-table-tbody > tr:nth-child(5 of [data-row-key])) > td { --row-i: 4; }
+:where(.chan-list .ant-table-tbody > tr:nth-child(6 of [data-row-key])) > td { --row-i: 5; }
+:where(.chan-list .ant-table-tbody > tr:nth-child(7 of [data-row-key])) > td { --row-i: 6; }
+:where(.chan-list .ant-table-tbody > tr:nth-child(n+8 of [data-row-key])) > td { --row-i: 7; }
 @keyframes chan-row-in { from { opacity: 0; } }
 .chan-name { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .chan-tags { display: inline-flex; gap: 4px; flex-wrap: nowrap; }
@@ -2734,6 +2751,12 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 /* 渠道详情里的投入记录：一笔一行，删除钮靠右 */
 .chan-invest { list-style: none; margin: 0; padding: 0; }
 .chan-invest > li { position: relative; padding: var(--s2) 32px var(--s2) 0; border-bottom: 1px solid var(--line); }
+/* ch.drawer / ch.invest：投入记录从骨架换上来、新录的一笔进来时，从上方 6px 淡入落位；录入表单展开时同样浮出来。只填起始帧 */
+.chan-invest > li, .chan-invest-form { animation: chan-invest-in var(--t) var(--ease) backwards; }
+@keyframes chan-invest-in { from { opacity: 0; transform: translateY(-6px); } }
+/* ch.main：开关存好，在原处那一格闪一下（和 row-fresh 同一个底色，短一档） */
+.chan-main-saved { animation: chan-main-saved var(--t-morph) var(--ease) backwards; border-radius: var(--r-ctl); }
+@keyframes chan-main-saved { from { background-color: var(--brand-bg); } }
 .chan-invest-main { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: nowrap; min-width: 0; }
 .chan-invest-main > * { flex: none; }
 .chan-invest-main > .chan-invest-who { flex: 0 1 auto; }
@@ -2842,7 +2865,15 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .plan-row-was > .anticon { width: 24px; flex: none; text-align: center; }
 .plan-row-was-p { color: var(--text-faint); }
 /* 计划页上刚新建的那一条：和列表的 row-fresh 同一个亮法，只是这里是 div 不是 td，退回透明（这一组没有底色） */
-.plan-row.row-fresh { animation: plan-fresh 2s var(--ease) 1 both; }
+.plan-row.row-fresh { animation: plan-fresh 2s var(--ease) 1 both, plan-drop var(--t) var(--ease) backwards; }
+/* ls.pl.new：新排的那条从上方 4px 落进分组，再亮两秒 */
+@keyframes plan-drop { from { opacity: 0; transform: translateY(-4px); } }
+/* 排计划框里计划时间下面的快捷（ls.pl.new）：明天 / 3 天后 / 1 周后，当前那个亮着 */
+.plan-quick { display: inline-flex; gap: var(--s1); margin-top: var(--s1); }
+.plan-quick-b { font: inherit; font-size: var(--fs-min); padding: 1px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--text-muted); cursor: pointer; transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
+.plan-quick-b:hover { color: var(--ink); border-color: var(--line-strong); }
+.plan-quick-b.is-on { color: var(--brand); border-color: var(--brand-line); background: var(--brand-bg); }
+.plan-quick-b:focus-visible { outline: 1.5px solid var(--brand); outline-offset: 2px; }
 @keyframes plan-fresh {
   0% { background-color: var(--brand-bg); }
   55% { background-color: var(--brand-bg); }
@@ -3061,6 +3092,11 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .cli-welcome-q > .cli-q:nth-child(3) { --q-i: 3; }
 .cli-welcome-q > .cli-q:nth-child(n+4) { --q-i: 4; }
 @keyframes cli-q-in { from { opacity: 0; transform: translateY(8px); } }
+/* home.hero：示例飞进输入框时那个克隆（home-look.ts 飞进去 挂在 body 上）：不抬、不带阴影 */
+.cli-q-fly { transform: none; box-shadow: none; }
+/* home.threads：对话列表顶上先占一行（还没落库的这条），轻轻弹进来 */
+.chat-row-new { animation: chat-row-in var(--t) var(--ease-spring) backwards; cursor: default; }
+@keyframes chat-row-in { from { opacity: 0; transform: translateY(-6px) scale(0.96); } }
 .cli-q { font: inherit; font-size: var(--fs-note); color: var(--ink); background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 6px 13px; cursor: pointer; transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
 .cli-q:hover { border-color: var(--brand); color: var(--brand); }
 /* ↑↓ 选中的那条。只靠 hover 的话键盘走到哪儿是看不见的 */
