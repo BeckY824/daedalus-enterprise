@@ -458,7 +458,8 @@ test("计划页「新建计划」就地弹框：挑人、说清另加不替换�
   await expect(弹窗).toBeHidden();
   await expect(page).toHaveURL(/\/follow-ups\/plans$/);
   await expect(page.getByRole("main").locator(".plan-row.row-fresh")).toContainText("约第三次沟通");
-  await expect(page.locator(".ant-message")).toContainText(`去${客.名}的记录页`);
+  // 底部撤销条（原型 g.undo）：撤销 = 删掉刚排的这条，另给一条去他记录页的路
+  await expect(page.locator(".undo-bar")).toContainText(`去${客.名}的记录页`);
   // 原来那条还在
   await expect(page.getByRole("main").locator(".plan-row").filter({ hasText: "发二版报价" }).filter({ hasText: 客.名 })).toHaveCount(1);
 

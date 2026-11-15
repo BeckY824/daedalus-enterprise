@@ -17,7 +17,7 @@ const plugin: Plugin = { name: "form-actions", setup(b) {
   stub(/^\.\.\/channels\/actions$/, "export const saveChannel=async()=>({ok:true});");
   stub(/^(\.\/|\.\.\/)actions$/, `
     const save=async x=>{window.__calls.push(x);if(window.__fail)throw Error('network');return {ok:true,id:'saved'}};
-    export const savePlan=save,saveTask=save,saveContact=save,saveUnassignedContact=save,联系人号码先查=async()=>({ok:true,撞了:[]}),saveChannel=save,改我的资料=save,submitPayment=save;
+    export const savePlan=save,deletePlan=save,saveTask=save,saveContact=save,saveUnassignedContact=save,联系人号码先查=async()=>({ok:true,撞了:[]}),saveChannel=save,改我的资料=save,submitPayment=save;
     export const saveCustomer=save,checkDuplicate=async()=>null,推荐人候选=async()=>{if(window.__refFail){window.__refFail--;throw Error('network')}return [{id:'self',name:'我自己'},{id:'other',name:'推荐人甲'}]};
     export const patchCustomer=async(id,key,value)=>save({id,key,value});
     export const saveContract=async x=>window.__duplicate&&!x.force?{duplicate:{amount:123,currency:'CNY',signedAt:new Date().toISOString()}}:save(x);
@@ -148,12 +148,13 @@ it("重复签约确认后的网络失败不会产生未处理拒绝，原表单�
   await page.locator("#amount").fill("123");
   await page.getByRole("button",{name:/保\s*存/}).click();
   await page.getByRole("button",{name:"确实是另一笔，继续录入"}).click();
-  await page.getByText("保存失败，请刷新确认结果后重试",{exact:true}).waitFor();
+  // 断网：原因写在后果框里、框不关（不弹顶部提示），原表单的值还在；在框里再点一次就能重试
+  await page.getByRole("dialog").getByText("保存失败，请刷新确认结果后重试",{exact:true}).waitFor();
   expect(await page.locator("#amount").inputValue()).toBe("123");
   await page.evaluate(() => {window.__fail=false});
-  await page.getByRole("button",{name:/保\s*存/}).click();
   await page.getByRole("button",{name:"确实是另一笔，继续录入"}).click();
-  await expect.poll(() => page.evaluate(()=>window.__saved)).toBe(1);
+  // 保存键里对勾放完才关框交回（原型 g.save）
+  await expect.poll(() => page.evaluate(()=>window.__saved), { timeout: 4000 }).toBe(1);
   expect(await page.evaluate(()=>window.__calls.length)).toBe(2);
   expect(errors).toEqual([]);
   await page.close();

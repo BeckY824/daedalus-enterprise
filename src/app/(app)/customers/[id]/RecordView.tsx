@@ -64,7 +64,7 @@ import LevelLetter from "@/components/LevelLetter";
 import StarButton from "./StarButton";
 import AiCost, { useAiOutOfCredits } from "@/components/AiCost";
 import { toggleTask, deleteTask, deleteFollowUp, completePlan, saveFollowUp, 撤销记一笔 } from "./actions";
-import { useContactRemoval } from "./useContactRemoval";
+import { ContactRemoveInline } from "./useContactRemoval";
 import { useTransferConfirm } from "../useTransferConfirm";
 import { usePoolReturnConfirm } from "../usePoolReturnConfirm";
 import { 历史负责人们, 换负责人一句 } from "@/lib/owner-log";
@@ -212,12 +212,10 @@ export default function RecordView({
   const 虚线的 = !全只读话.includes("市场成员");
   const { 曲线, 时长, 间隔 } = useMotionTheme();
   const router = useRouter();
-  const { 问删除 } = useDeleteCustomers();
   const AI已用完 = useAiOutOfCredits();
   const b = useBusiness();
   // 企业版只用项目（P14 第 6 条）：时间线是各项目沟通记录的汇总，翻页走汇总那条查询
   const history = useFollowHistory(customer.id, followUps, followUpsHasMore, 跟进去处 !== null ? loadCustomerFeed : undefined);
-  const { 问怎么拿掉 } = useContactRemoval();
   const { 先问转走的项目 } = useTransferConfirm(转让原因);
   const { 问放回公海 } = usePoolReturnConfirm();
   /** 后果框（PR5a）：企业版客户退回公海（dt.pool：后果分条、原因点选、其他原地写） */
@@ -517,6 +515,8 @@ export default function RecordView({
    */
   const [就地话, set就地话] = useState<{ 话: string; 错?: boolean } | null>(null);
   const 说就地 = (话: string, 错 = false) => set就地话({ 话, 错 });
+  // 删除前预检被挡：原因写在页头下面那一行（不弹顶部提示）
+  const { 问删除 } = useDeleteCustomers((话) => 说就地(话, true));
   // 过几秒收（换了一句就重新计时）
   useEffect(() => {
     if (!就地话) return;
@@ -785,15 +785,8 @@ export default function RecordView({
     <span className="rec-mini-acts">
       <Button type="text" size="small" icon={<EditOutlined />} aria-label={`编辑联系人 ${c.name}`} onClick={() => { setEditingContact(c); setContactOpen(true); }} />
       {/* 企业版项目模式去掉「管理联系人」后，删联系人不再给入口（U-客户-03）；编辑照旧给有权限的人 */}
-      {!c.挂靠 && !去项目跟进 && <Button
-        type="text"
-        size="small"
-        danger
-        icon={<DeleteOutlined />}
-        aria-label={`删除联系人 ${c.name}`}
-        // 先问只移出还是彻底删（2026-10-01 用户反馈：删完联系人页里也没了）
-        onClick={() => 问怎么拿掉(c)}
-      />}
+      {/* 只移出 / 彻底删 各自原地确认（P-界面-40；2026-10-01 用户反馈：删完联系人页里也没了） */}
+      {!c.挂靠 && !去项目跟进 && <ContactRemoveInline c={c} />}
     </span>
   );
 
@@ -1656,6 +1649,8 @@ export default function RecordView({
           if (r.kind === "skip") return void 完成计划(p);
           router.refresh();
           void window.desktopReminders?.刷新();
+          // 记下的这笔不算有效沟通之类的那句（框里说过一次，框收得快）：页头下面就地再说一遍
+          if (r.提示) 说就地(r.提示);
           // 记一笔并完成：「下次跟进」那块就地说一句，底部撤销条可撤（撤销 = 删掉刚记的那笔和刚排的下一条、计划回到待办）
           const 话 = r.next ? `已记一笔，「${p.subject}」完成；下次 ${dayjs(r.next).format("M 月 D 日")}` : `已记一笔，「${p.subject}」完成`;
           if (!r.next) { set刚完成(p.id); 说计划({ 话 }); }
@@ -1733,8 +1728,8 @@ export default function RecordView({
                   </div>
                   <Space size={4}>
                     <Button size="small" onClick={换框(() => { setEditingContact(c); setContactOpen(true); })}>编辑</Button>
-                    {/* 挂来的不给删，拿掉走卡上的「解除挂靠」；删之前先问只移出还是彻底删（同卡上那颗） */}
-                    {!c.挂靠 && !去项目跟进 && <Button size="small" type="text" danger onClick={换框(() => 问怎么拿掉(c))}>删除</Button>}
+                    {/* 挂来的不给删，拿掉走卡上的「解除挂靠」；只移出 / 彻底删 各自原地确认（同卡上那颗） */}
+                    {!c.挂靠 && !去项目跟进 && <ContactRemoveInline c={c} 文字 />}
                   </Space>
                 </div>
               ))}

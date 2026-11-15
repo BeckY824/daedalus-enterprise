@@ -4913,3 +4913,10 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 .pj-old-back { align-self: flex-start; padding-inline: 0; }
 @media (prefers-reduced-motion: reduce) { .pj-old-pick { animation: none; } }
 .new-proj-opt.pj-old-pick:hover { border-color: var(--line); background: var(--panel); }
+/* 客户列表 / 导入抽屉 / 回收站捞回：就地一行提示（不弹顶部 message，原型 g.save / g.notice）。错 = 红，警 = 橙，常 = 灰 */
+.cu-said { display: block; margin: 0 0 var(--s2); font-size: var(--fs-note); line-height: 1.6; color: var(--text-muted); overflow-wrap: anywhere; min-width: 0; animation: cd-pj-flash-in var(--t) var(--ease); }
+.cu-said-row { margin-bottom: var(--s3); }
+.cu-said-warn { color: var(--warning-text); }
+.cu-said-err { color: var(--danger-text); }
+span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
+@media (prefers-reduced-motion: reduce) { .cu-said { animation: none; } }

@@ -4,9 +4,10 @@ import DatePicker from "@/components/BusinessDatePicker";
 
 import { requiredText } from "@/lib/form-validation";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Modal, Form, Input, App, Checkbox, Typography } from "antd";
+import { Modal, Form, Input, Checkbox, Typography, Button } from "antd";
+import SaveButton from "@/components/SaveButton";
 import { isCalendarDate } from "@/lib/schedule-date";
 import { dayjs } from "@/lib/utils";
 import { saveTask } from "./actions";
@@ -29,7 +30,6 @@ export default function TaskForm({
   record?: { id: string; title: string; dueAt: string | null; dueHasTime?: boolean | null; updatedAt?: string } | null;
 }) {
   const [form] = Form.useForm();
-  const { message } = App.useApp();
   const router = useRouter();
   const hasTime = Form.useWatch("hasTime", form) ?? true;
   // 保存中：网慢时连点两下会建出两条一样的待办（2026-10-02 排查）
@@ -46,16 +46,30 @@ export default function TaskForm({
     }
   }, [open, form, record]);
 
-  async function onOk() {
+  /**
+   * 保存（原型 g.save）：保存中 / 已保存 / 没存上都显示在保存键里，不弹顶部提示。
+   * 回 { ok:false, error } = 没存上，原因浮在键上方；对勾放完（SaveButton 的 成了）才关框
+   */
+  /** 存上了、对勾还在放：这时点取消 / Esc 当「存好了关框」，照样交给页面刷新 */
+  const 存上了 = useRef(false);
+  function 收尾() {
+    存上了.current = false;
+    onSaved();
+  }
+  function 关或收尾() {
+    if (存上了.current) 收尾();
+    else 守.要关();
+  }
+  async function 提交(): Promise<{ ok: boolean; error?: string }> {
     /*
       和另外三个弹框一样先拦再校验（2026-10-04 J-107）：原来 set存着 在 validateFields 之后，
       校验那一下的空当里第二下点击还能进来，只靠按钮转圈挡着
     */
-    if (存着) return;
+    if (存着) return { ok: false, error: "正在保存，请稍等" };
     set存着(true);
-    // 校验没过：红字在框里，不另报「没存上」
+    // 校验没过：红字在框里
     const v = await form.validateFields().catch(() => null);
-    if (!v) return void set存着(false);
+    if (!v) { set存着(false); return { ok: false, error: "有几项没填好，看标红的" }; }
     try {
       const r = await saveTask({
         id: record?.id,
@@ -67,16 +81,15 @@ export default function TaskForm({
       });
       if (!r.ok) {
         // 服务端那句话照说（打开之后这条又变过了 / 已经删了，J-105），原来一律「没存上，请重试」，人只会再点一次、再被拦
-        message.error("error" in r && r.error ? r.error : "没存上，请重试");
         if (record) router.refresh();
-        return;
+        return { ok: false, error: "error" in r && r.error ? r.error : "没存上，请重试" };
       }
-      message.success(record ? "已保存" : "待办已创建");
       void window.desktopReminders?.刷新();
       守.存好了();
-      onSaved();
+      存上了.current = true;
+      return { ok: true };
     } catch {
-      message.error("没存上，请重试");
+      return { ok: false, error: "没存上，请重试" };
     } finally {
       set存着(false);
     }
@@ -85,12 +98,13 @@ export default function TaskForm({
   return (
     <Modal
       {...守.弹窗}
+      onCancel={关或收尾}
       open={open}
       title={record ? "改待办" : "新建待办"}
-      onOk={onOk}
-      okText={record ? "保存" : "创建"}
-      cancelText="取消"
-      confirmLoading={存着}
+      footer={[
+        <Button key="取消" onClick={关或收尾}>取消</Button>,
+        <SaveButton key="存" 做={提交} 已保存={record ? "已保存" : "已创建"} 没保存="没存上" 成了={() => { if (存上了.current) 收尾(); }}>{record ? "保存" : "创建"}</SaveButton>,
+      ]}
       destroyOnHidden
     >
       <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={守.改了}>

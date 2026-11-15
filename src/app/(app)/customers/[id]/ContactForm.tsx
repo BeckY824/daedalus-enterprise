@@ -5,7 +5,8 @@ import CustomerSearchSelect from "@/components/CustomerSearchSelect";
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Modal, Form, Input, Switch, Row, Col, App, AutoComplete, Button, Select, Space, Alert } from "antd";
+import { Modal, Form, Input, Switch, Row, Col, AutoComplete, Button, Select, Space, Alert } from "antd";
+import SaveButton from "@/components/SaveButton";
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import DatePicker from "@/components/BusinessDatePicker";
 import { dayjs } from "@/lib/utils";
@@ -84,7 +85,6 @@ export default function ContactForm({
   存法?: (x: Parameters<typeof saveContact>[0]) => Promise<{ ok: true; id: string } | { ok: false; error: string; 撞了?: 撞到的联系人[] }>;
 }) {
   const [form] = Form.useForm();
-  const { message } = App.useApp();
   const b = useBusiness();
   const 挑的 = Form.useWatch("customerId", form) as string | undefined;
   /** 未归属又还没挑客户：谈不上是谁的关键联系人，那个开关不摆 */
@@ -130,9 +130,9 @@ export default function ContactForm({
     if (!customerId || 存着) return;
     set存着(true);
     try {
-      const r = await 挂到客户(contactId, customerId);
-      if (!r.ok) return void message.error(r.error);
-      message.success(`已挂到本${b.customer}`);
+      set就地错(null);
+      const r = await 挂到客户(contactId, customerId).catch(() => ({ ok: false as const, error: "没挂上，请重试" }));
+      if (!r.ok) return void set就地错(r.error);
       守.存好了();
       onSaved(contactId);
     } finally {
@@ -173,29 +173,50 @@ export default function ContactForm({
     set上次开着(open);
     if (open) set撞号(null);
   }
-  async function 保存(照存 = false) {
-    if (存着) return;
+  /** 黄条里「挂到本客户」「仍然保存」没成的原因：就地写在框顶上（不弹顶部提示，原型 g.notice） */
+  const [就地错, set就地错] = useState<string | null>(null);
+  /** 存上了、等对勾放完再交回去（SaveButton 的 成了）；这时点取消 / Esc 也照样交回去 */
+  const 存好交回 = useRef<(() => void) | null>(null);
+  function 交回() {
+    const f = 存好交回.current;
+    存好交回.current = null;
+    f?.();
+  }
+  function 关或收尾() {
+    if (存好交回.current) 交回();
+    else 守.要关();
+  }
+  /** 保存键（原型 g.save）：保存中 / 已保存 / 没存上都在键里；回 { ok:false, error } = 没存上，原因浮在键上方 */
+  async function 保存(照存 = false): Promise<{ ok: boolean; error?: string }> {
+    if (存着) return { ok: false, error: "正在保存，请稍等" };
     set存着(true);
+    set就地错(null);
     try {
-      await onOk(照存);
+      return await onOk(照存);
     } catch (error) {
-      if (!isFormValidationError(error)) message.error("保存失败，请刷新确认结果后重试");
+      return { ok: false, error: isFormValidationError(error) ? "有几项没填好，看标红的" : "保存失败，请刷新确认结果后重试" };
     } finally {
       set存着(false);
     }
   }
+  /** 黄条里的「仍然保存 / 仍然新建」：不经保存键，成了直接交回，没成原因写在框顶上 */
+  async function 照存() {
+    const r = await 保存(true);
+    if (r.ok) 交回();
+    else if (r.error) set就地错(r.error);
+  }
 
-  async function onOk(照存 = false) {
+  async function onOk(照存 = false): Promise<{ ok: boolean; error?: string }> {
     const v = await form.validateFields();
     // 记录页给的 customerId 说了算；列表页上它在表单里
     const 归属 = customerId ?? (v.customerId as string);
     if (未归属 && record) {
       // 未归属的人：挑了客户就是挂过去，不挑就还留在未归属、只改资料
       const r = await saveUnassignedContact({ id: record.id, 版本: record.updatedAt, ...v, isPrimary: Boolean(v.isPrimary), customerId: 归属 || null });
-      if (!r.ok) return void message.error(r.error);
-      message.success(r.挂到 ? `已挂到「${r.挂到}」` : "已保存");
+      if (!r.ok) return { ok: false, error: r.error };
       守.存好了();
-      return void onSaved();
+      存好交回.current = () => onSaved();
+      return { ok: true };
     }
     // 企业版：新几格和号码几行另装一包（actions.ts 的 企业联系人资料），老三格由号码几行算，不再单交
     const { gender, birthday, hobby, address, 号码们, ...其余 } = v as Record<string, unknown> & { birthday?: { format: (f: string) => string } | null; 号码们?: { kind?: string; value?: string }[] };
@@ -211,51 +232,48 @@ export default function ContactForm({
     const r = await (存法 ?? saveContact)({ id: record?.id, 版本: record?.updatedAt, ...(企业 ? 其余 : v), isPrimary: Boolean(v.isPrimary), customerId: 归属, ...(企业资料 ? { 企业: 企业资料 } : {}), ...(照存 ? { 照存: true } : {}) } as Parameters<typeof saveContact>[0]);
     // 原来不看返回值：联系人刚被别人移出、或电话不收时，弹框卡在那儿什么也不说（排查 D8）
     if (!r.ok) {
-      if ("撞了" in r && r.撞了?.length) { set先查的(false); return void set撞号(r.撞了); }
-      return void message.error(r.error);
+      if ("撞了" in r && r.撞了?.length) { set先查的(false); set撞号(r.撞了); return { ok: false, error: "号码撞了，看框顶上" }; }
+      return { ok: false, error: r.error };
     }
-    message.success(record ? "已保存" : "联系人已添加");
     守.存好了();
-    onSaved(record ? undefined : r.id);
+    存好交回.current = () => onSaved(record ? undefined : r.id);
+    return { ok: true };
   }
 
-  return (
-    <Modal
-      {...守.弹窗}
-      open={open}
-      title={record ? `编辑联系人 · ${record.name}` : "添加联系人"}
-      onOk={() => void 保存()}
-      confirmLoading={存着}
-      okText="保存"
-      cancelText="取消"
-      width={560}
-      destroyOnHidden
-      footer={(原来的) =>
-        onDelete ? (
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span className="ls-ct-del">
-              <InlineConfirm
-                问="彻底删掉这位联系人？"
-                是="彻底删除"
-                做={async () => {
-                  const 因 = await 跑出原因(onDelete);
-                  set删错(因);
-                  return 因 ? { ok: false, error: 因 } : { ok: true };
-                }}
-              >
-                <Button danger type="text">
-                  彻底删除
-                </Button>
-              </InlineConfirm>
-              {删错 && <span className="ls-row-err" role="alert" title={删错}>{删错}</span>}
-            </span>
-            <div style={{ display: "flex", gap: 8 }}>{原来的}</div>
-          </div>
-        ) : (
-          原来的
-        )
-      }
-    >
+  const 脚 = (() => {
+    const 原来的 = (
+      <>
+        <Button onClick={关或收尾}>取消</Button>
+        <SaveButton 做={() => 保存()} 已保存={record ? "已保存" : "已添加"} 没保存="没存上" 成了={交回}>保存</SaveButton>
+      </>
+    );
+    return onDelete ? (
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span className="ls-ct-del">
+          <InlineConfirm
+            问="彻底删掉这位联系人？"
+            是="彻底删除"
+            做={async () => {
+              const 因 = await 跑出原因(onDelete);
+              set删错(因);
+              return 因 ? { ok: false, error: 因 } : { ok: true };
+            }}
+          >
+            <Button danger type="text">
+              彻底删除
+            </Button>
+          </InlineConfirm>
+          {删错 && <span className="ls-row-err" role="alert" title={删错}>{删错}</span>}
+        </span>
+        <div style={{ display: "flex", gap: 8 }}>{原来的}</div>
+      </div>
+    ) : (
+      原来的
+    );
+  })();
+  const 身 = (
+    <>
+      {就地错 && <div className="csq-err" role="alert">{就地错}</div>}
       {撞号 && (
         <Alert
           type="warning"
@@ -286,7 +304,7 @@ export default function ContactForm({
               ))}
               <div>
                 确认是另一个人（比如共用的总机）：
-                <Button type="link" size="small" style={{ padding: 0, height: "auto" }} disabled={存着} onClick={() => void 保存(true)}>
+                <Button type="link" size="small" style={{ padding: 0, height: "auto" }} disabled={存着} onClick={() => void 照存()}>
                   {record ? "仍然保存" : "仍然新建"}
                 </Button>
               </div>
@@ -415,6 +433,21 @@ export default function ContactForm({
           </Col>
         </Row>
       </Form>
+    </>
+  );
+  const 题 = record ? `编辑联系人 · ${record.name}` : "添加联系人";
+
+  return (
+    <Modal
+      {...守.弹窗}
+      open={open}
+      title={题}
+      onCancel={关或收尾}
+      width={560}
+      destroyOnHidden
+      footer={脚}
+    >
+      {身}
     </Modal>
   );
 }

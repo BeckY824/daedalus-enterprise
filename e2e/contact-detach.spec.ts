@@ -1,7 +1,7 @@
 /**
  * 联系人「只移出、不删」（2026-10-01 用户反馈：在客户详情里删联系人，联系人页里也跟着没了）。
  *
- * 走一遍人会走的路：客户详情点删除 → 问只移出还是彻底删 → 撤销 → 再移出 →
+ * 走一遍人会走的路：客户详情点「移出」→ 原地确认「只移出」（彻底删是另一颗，也原地确认）→ 底部撤销条撤销 → 再移出 →
  * 联系人页里写「未归属」→ 点开挂到别的客户下面。彻底删也能撤销。
  */
 import { test, expect, type Page } from "@playwright/test";
@@ -39,15 +39,16 @@ test.afterAll(async () => {
   await p.$disconnect();
 });
 
-/** 联系人那一小块里王经理那行的删除钮（平时藏着，悬停才出来） */
-async function 点删除(page: Page) {
+/** 联系人那一小块里王经理那行的「移出」：原地确认（P-界面-40「移出或彻底删联系人」= 原地确认，不弹框；平时藏着，悬停才出来） */
+async function 点移出(page: Page) {
   // 只认 main 里那份：整页加载时 React 流式渲染先把内容放在 <div hidden id="S:1"> 里，那一瞬有两份（同 record-plan.spec.ts）
   const 行 = page.getByRole("main").locator(".rec-mini", { hasText: "王经理" });
   await 行.hover();
-  await 行.getByRole("button", { name: "删除联系人 王经理" }).click();
-  const 框 = page.getByRole("dialog");
-  await expect(框).toContainText("把「王经理」从这位");
-  return 框;
+  await 行.getByRole("button", { name: "移出联系人 王经理" }).click();
+  // 按钮原地变成一行后果 + 「只移出」，不弹框
+  await expect(行).toContainText("联系人页里还留着");
+  expect(await page.getByRole("dialog").count()).toBe(0);
+  return 行;
 }
 
 test("客户详情：只移出、撤销、再移出", async ({ page }) => {
@@ -58,22 +59,21 @@ test("客户详情：只移出、撤销、再移出", async ({ page }) => {
   const 联系人块 = page.getByRole("main").locator(".rec-sec", { has: page.getByRole("button", { name: "新增联系人" }) });
   await expect(联系人块).toContainText("王经理");
 
-  let 框 = await 点删除(page);
-  // 主钮是更不伤数据的那个
-  await expect(框.getByRole("button", { name: "只移出" })).toBeFocused();
-  await 框.getByRole("button", { name: "只移出" }).click();
-  const 提示 = page.locator(".ant-message").getByText("「王经理」已移出，联系人页里还留着");
-  await expect(提示).toBeVisible();
+  let 行 = await 点移出(page);
+  await 行.getByRole("button", { name: "只移出" }).click();
+  // 撤销条在底部（原型 g.undo），不弹顶部提示
+  const 条 = page.locator(".undo-bar");
+  await expect(条).toContainText("「王经理」已移出，联系人页里还留着");
   await expect(联系人块).toContainText("还没有联系人");
 
-  await page.locator(".ant-message").getByRole("button", { name: "撤销" }).click();
-  await expect(page.locator(".ant-message").getByText("「王经理」回来了")).toBeVisible();
+  await 条.getByRole("button", { name: "撤销" }).click();
+  await expect(条).toContainText("已撤销");
   await expect(联系人块).toContainText("王经理");
   // 关键联系人原样回来
   await expect(page.getByRole("main").locator(".rec-mini", { hasText: "王经理" })).toContainText("关键");
 
-  框 = await 点删除(page);
-  await 框.getByRole("button", { name: "只移出" }).click();
+  行 = await 点移出(page);
+  await 行.getByRole("button", { name: "只移出" }).click();
   await expect(联系人块).toContainText("还没有联系人");
 });
 
@@ -91,7 +91,8 @@ test("联系人页：写「未归属」，点开挂到别的客户下面", async
   await 框.getByRole("combobox").first().click();
   await page.locator(".ant-select-dropdown").getByText("移出测试乙 · 13811110002", { exact: true }).click();
   await 框.getByRole("button", { name: /保\s*存/ }).click();
-  await expect(page.locator(".ant-message").getByText("已挂到「移出测试乙」")).toBeVisible();
+  // 不弹顶部提示（原型 g.save）：保存键里对勾，框收起后行上写新客户
+  await expect(框.getByRole("button", { name: "已保存" })).toBeVisible();
   await expect(行).toContainText("移出测试乙");
   await expect(行).not.toContainText("未归属");
 });
@@ -104,14 +105,18 @@ test("彻底删除也能撤销", async ({ page }) => {
 
   await 登录(page);
   await page.goto(`/customers/${甲}`);
-  const 框 = await 点删除(page);
-  await 框.getByRole("button", { name: "彻底删除" }).click();
-  await expect(page.locator(".ant-message").getByText("「王经理」已删除")).toBeVisible();
+  const 行 = page.getByRole("main").locator(".rec-mini", { hasText: "王经理" });
+  await 行.hover();
+  await 行.getByRole("button", { name: "删除联系人 王经理" }).click();
+  await expect(行).toContainText("联系人页里也一起删掉");
+  await 行.getByRole("button", { name: "彻底删除" }).click();
+  const 条 = page.locator(".undo-bar");
+  await expect(条).toContainText("「王经理」已删除");
   // 11-12 起卡头的「添加联系人」换成「＋」图标钮（aria-label 新增联系人）
   const 联系人块 = page.getByRole("main").locator(".rec-sec", { has: page.getByRole("button", { name: "新增联系人" }) });
   await expect(联系人块).toContainText("还没有联系人");
 
-  await page.locator(".ant-message").getByRole("button", { name: "撤销" }).click();
+  await 条.getByRole("button", { name: "撤销" }).click();
   await expect(联系人块).toContainText("王经理");
 });
 

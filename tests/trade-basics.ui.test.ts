@@ -45,7 +45,7 @@ beforeAll(async () => {
     // 2026-11 PR5b（原型 ls.pl.done）：计划页点 ✓ 直接完成，小框只留在客户详情的记录里；小框本身在这里单独挂一个壳点开
     function 小框壳(){const {message}=App.useApp();const [在,set在]=React.useState(null);const 们=[计划('p1','发新报价','WhatsApp'),计划('p2','问样品','电话沟通'),计划('p3','回访','邮件沟通'),计划('p4','催定金','电话沟通',true),计划('p5','寄目录','邮件沟通',true)];
       return <>{们.map(x=><button key={x.id} aria-label={'完成 '+x.subject} onClick={()=>set在({id:x.id,subject:x.subject,method:x.method,customerId:x.customerId,customerName:x.customerName,有WhatsApp:x.有WhatsApp})}>✓</button>)}
-        <CompletePlanModal plan={在} onClose={()=>set在(null)} onDone={async(r)=>{const x=在;set在(null);if(r.kind==='saved')return 提示记完了(message,x,r,()=>{});await completePlan(x.id);message.success('「'+x.subject+'」已完成');}}/></>}
+        <CompletePlanModal plan={在} onClose={()=>set在(null)} onDone={async(r)=>{const x=在;set在(null);if(r.kind==='saved')return 提示记完了(x,r,()=>{});await completePlan(x.id);message.success('「'+x.subject+'」已完成');}}/></>}
     function Test(){if(decodeURIComponent(location.search).includes('m=框'))return <小框壳/>;return <>
       <div id="us"><LocalTime country="美国"/></div>
       <div id="uk"><LocalTime country="英国"/></div>
@@ -63,7 +63,7 @@ beforeAll(async () => {
     stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
     stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
     stub(/projects\/actions$/, "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};");
-    stub(/^\.\/actions$/, "export const saveFollowUp=async()=>({ok:true,id:'f1'}),completePlan=saveFollowUp,savePlan=saveFollowUp;export const saveTask=async()=>({ok:true,id:'t1'});");
+    stub(/^\.\/actions$/, "export const saveFollowUp=async()=>({ok:true,id:'f1'}),completePlan=saveFollowUp,savePlan=saveFollowUp,deletePlan=saveFollowUp;export const saveTask=async()=>({ok:true,id:'t1'});");
     stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no'});");
     stub(/^\.\/CustomerPick$/, `const 人=(id,name,有WhatsApp)=>({id,name,上次跟进:null,未完成计划:null,未完成计划数:0,contacts:[],opportunities:[],orders:[],有WhatsApp});
       export default function C(p){return <><button type='button' onClick={()=>p.on近况(人('c9','Zeta',true))}>挑 Zeta</button><button type='button' onClick={()=>p.on近况(人('c8','Bright',false))}>挑 Bright</button></>}`);
@@ -203,7 +203,7 @@ it("有 WhatsApp 号：计划写的是老默认「电话沟通」时小框默认
   await page.close();
 });
 
-it("「保存并完成」的提示里有撤销：点了交给 撤销记一笔 的是这一笔、这条计划、刚排的下一条", async () => {
+it("「保存并完成」的底部撤销条：点了交给 撤销记一笔 的是这一笔、这条计划、刚排的下一条", async () => {
   const { page, errors, 调用们 } = await 开("框");
   await page.getByRole("button", { name: "完成 催定金" }).click();
   const 框 = page.getByTestId("complete-plan-modal");
@@ -212,8 +212,9 @@ it("「保存并完成」的提示里有撤销：点了交给 撤销记一笔 �
   await page.getByRole("button", { name: "保存并完成" }).click();
   // 这条只管「撤销」交了什么；下次是哪天由第一条（7 天后）管，这里不绑日期。CI 全量并发时提示条偶尔超 5 秒才出来，放宽到 15 秒
   await page.getByText(/已记一笔，「催定金」完成；下次 \d+ 月 \d+ 日/).waitFor({ timeout: 15_000 });
-  await page.getByRole("button", { name: "撤销" }).click();
-  await page.getByText("「催定金」已改回未完成，刚记的那笔已删掉").waitFor();
+  // 撤销在底部撤销条上（原型 g.undo），撤成了条上写「已撤销」，不再弹顶部提示
+  await page.locator(".undo-bar").getByRole("button", { name: "撤销" }).click();
+  await page.locator(".undo-bar").getByText("已撤销").waitFor();
   const 撤 = (await 调用们()).filter((x) => x.名 === "撤销记一笔");
   expect(撤.map((x) => x.参)).toEqual([{ customerId: "c-p4", 跟进id: "f1", 计划id: "p4", 下次计划id: "n1" }]);
   expect(errors).toEqual([]);

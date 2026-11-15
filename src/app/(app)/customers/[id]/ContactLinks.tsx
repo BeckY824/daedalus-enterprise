@@ -6,10 +6,10 @@
  *   - 自家的：另外挂在哪几位客户上摆一行；能「挂到别的客户」「换主客户」
  * 看不到的客户只露名字不给链接。动作在 contact-link-actions.ts；挑客户照 LinkedCustomers 的写法（pick.ts 的 搜客户）
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { App, Button, Input, Select, Space } from "antd";
+import { Button, Input, Select, Space } from "antd";
 import InlineConfirm from "@/components/InlineConfirm";
 import { 挂靠说明上限 } from "@/lib/enterprise/customer-v2";
 import { 搜客户, type 可挑客户 } from "./pick";
@@ -22,7 +22,13 @@ const 客户链接 = (x: { id: string; name: string; 看得到: boolean }) =>
   x.看得到 ? <Link href={`/customers/${encodeURIComponent(x.id)}`}>{x.name}</Link> : <span title="不在你的范围，只显示名字">{x.name}</span>;
 
 export default function ContactLinks({ customerId, c, 只读 }: { customerId: string; c: ContactRow; 只读: boolean }) {
-  const { message } = App.useApp();
+  /** 做没做成就地写一行（原型 g.notice，不弹顶部提示）：错的 role=alert 留 6 秒，成了 role=status 留 3 秒 */
+  const [话, set话] = useState<{ 话: string; 错?: boolean } | null>(null);
+  useEffect(() => {
+    if (!话) return;
+    const t = setTimeout(() => set话(null), 话.错 ? 6000 : 3000);
+    return () => clearTimeout(t);
+  }, [话]);
   const router = useRouter();
   /** 正在做的那件：挂到别的客户 / 换主客户 / 改说明 */
   const [做着, set做着] = useState<"挂" | "换" | "说明" | null>(null);
@@ -60,8 +66,8 @@ export default function ContactLinks({ customerId, c, 只读 }: { customerId: st
     set存着(true);
     try {
       const r = await 做();
-      if (!r.ok) return void message.error(r.error);
-      message.success(成了);
+      if (!r.ok) { set话({ 话: r.error, 错: true }); return r; }
+      set话({ 话: 成了 });
       set做着(null);
       router.refresh();
     } finally {
@@ -166,6 +172,7 @@ export default function ContactLinks({ customerId, c, 只读 }: { customerId: st
           </Space>
         </div>
       )}
+      {话 && <div className={话.错 ? "cd-task-err" : "rec-plan-said"} role={话.错 ? "alert" : "status"}>{话.话}</div>}
     </>
   );
 }

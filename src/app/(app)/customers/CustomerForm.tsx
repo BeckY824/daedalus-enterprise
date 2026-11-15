@@ -6,8 +6,9 @@ import { isCalendarDate } from "@/lib/schedule-date";
 import { requiredText } from "@/lib/form-validation";
 
 import OptionInput from "@/components/OptionInput";
-import { useEffect, useState } from "react";
-import { Alert, App, AutoComplete, Button, Col, Divider, Form, Input, Modal, Radio, Row, Select, Space, Spin, Tag, Typography } from "antd";
+import { useEffect, useRef, useState } from "react";
+import SaveButton from "@/components/SaveButton";
+import { Alert, AutoComplete, Button, Col, Divider, Form, Input, Modal, Radio, Row, Select, Space, Spin, Tag, Typography } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import { FOLLOW_STATUSES, DECISION_STATUSES } from "@/lib/constants";
 import { dayjs, 成员选项, 独自一人, 可选成员 } from "@/lib/utils";
@@ -188,7 +189,6 @@ function CustomerFormInner({
    * 企业版客户改版（定稿 P5 第 22、23 条）：这些不摆（库里照留），换成简称、级别 S/A/B/C、地址、官网、分配方式
    */
   const 外贸档 = 外贸 && !企业;
-  const { message } = App.useApp();
   const [form] = Form.useForm();
   const 我 = useMe();
   const { 先问转走的项目 } = useTransferConfirm();
@@ -287,12 +287,23 @@ function CustomerFormInner({
     setDup(await checkDuplicate(phone, editing?.id));
   }
 
-  async function onOk() {
-    // 校验没过 antd 自己把错标在格子下面；Modal 不接 onOk 的拒绝，不吞掉就是一条未处理的报错（10-07 外贸 e2e 盯控制台抓到）
+  /**
+   * 保存（原型 g.save）：保存中 / 已保存 / 没存上都在保存键里，不弹顶部提示。
+   * 存上了顺带的那句（发起了交接 / 一起转了什么 / 这次没转）对勾放着时就地写在框里（role=status，没转成的用 alert），
+   * 对勾放完（SaveButton 的 成了）才关框。
+   */
+  const 存上了 = useRef(false);
+  const [成话, set成话] = useState<{ 话: string; 错?: boolean } | null>(null);
+  function 关或收尾() {
+    if (存上了.current) { 存上了.current = false; onClose(true); }
+    else 守.要关();
+  }
+  async function onOk(): Promise<{ ok: boolean; error?: string }> {
+    // 校验没过 antd 自己把错标在格子下面；键上再说一句
     const v = await form.validateFields().catch(() => null);
-    if (!v) return;
+    if (!v) return { ok: false, error: "有几项没填好，看标红的" };
     // 编辑时换了销售负责人：客户名下的项目跟着走（企业版同事负责的留下，P-转-07），先列出来问一句（D-36）；取消 = 留在表单里
-    if (editing && v.salesOwnerId && v.salesOwnerId !== editing.salesOwnerId && !(await 先问转走的项目([editing.id], v.salesOwnerId))) return;
+    if (editing && v.salesOwnerId && v.salesOwnerId !== editing.salesOwnerId && !(await 先问转走的项目([editing.id], v.salesOwnerId))) return { ok: false, error: "没存：负责人没换" };
     setSaving(true);
     try {
       const res = await saveCustomer({
@@ -387,20 +398,22 @@ function CustomerFormInner({
         // 并发冲突要留在原地把话说清楚，用一闪而过的 toast 说不明白
         if (res.conflict) {
           setConflict(res.conflict);
-          return;
+          return { ok: false, error: "这位刚被别人改过，看框顶上" };
         }
-        message.error(res.error);
-        return;
+        return { ok: false, error: res.error };
       }
       // 换了负责人时，原负责人没做完的活一起转了过去，说一声（排查 B3）
       const 带走 = 带走说法(res.带走);
       // 企业版「交接中」（11-09）：换负责人同转让，别的格存了，负责人等接手人确认后才换
-      if (res.交接中) message.success(res.申请移交 ? "已保存；已发起客户转让，等接手人确认后生效，确认前仍在你名下" : "已保存；已发起交接，等接手人确认，确认前仍在原负责人名下");
-      else if (res.交接已在路上) message.info("已保存；这位已在另一笔交接里，负责人没再发起交接");
-      else if (res.带走?.没转成) message.warning("已保存，但负责人刚被别人改了，这次没转");
-      else message.success(editing ? (带走 ? `已保存${带走}一起转给了新负责人` : "已保存") : `${b.customer}已创建`);
+      if (res.交接中) set成话({ 话: res.申请移交 ? "已发起客户转让，等接手人确认后生效，确认前仍在你名下" : "已发起交接，等接手人确认，确认前仍在原负责人名下" });
+      else if (res.交接已在路上) set成话({ 话: "这位已在另一笔交接里，负责人没再发起交接" });
+      else if (res.带走?.没转成) set成话({ 话: "负责人刚被别人改了，这次没转", 错: true });
+      else if (editing && 带走) set成话({ 话: `${带走.replace(/^[，、]/, "")}一起转给了新负责人` });
       守.存好了();
-      onClose(true);
+      存上了.current = true;
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "保存失败，请刷新确认结果后重试" };
     } finally {
       setSaving(false);
     }
@@ -412,13 +425,15 @@ function CustomerFormInner({
       {...守.弹窗}
       open={open}
       title={editing ? `编辑${b.customer}` : `新建${b.customer}`}
-      onOk={onOk}
-      confirmLoading={saving}
-      okText="保存"
-      cancelText="取消"
+      onCancel={关或收尾}
+      footer={[
+        <Button key="取消" onClick={关或收尾}>取消</Button>,
+        <SaveButton key="存" 做={onOk} 已保存={editing ? "已保存" : "已创建"} 没保存="没存上" 成了={() => { if (存上了.current) { 存上了.current = false; onClose(true); } }}>保存</SaveButton>,
+      ]}
       width={760}
       destroyOnHidden
     >
+      {成话 && <div className={成话.错 ? "csq-err" : "rec-plan-said"} role={成话.错 ? "alert" : "status"}>{成话.话}</div>}
       <Form
         form={form}
         layout="vertical"
@@ -1019,15 +1034,20 @@ function QuickChannelModal({
   onClose: (created: Option | null) => void;
 }) {
   const b = useBusiness();
-  const { message } = App.useApp();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const 守 = useFormGuard({ open, form, 关: () => onClose(null), 忙: saving, afterOpenChange: 聚焦首项 });
 
-  async function onOk() {
-    // 校验没过 antd 自己把错标在格子下面；Modal 不接 onOk 的拒绝，不吞掉就是一条未处理的报错（10-07 外贸 e2e 盯控制台抓到）
+  /** 建好的渠道：对勾放完（SaveButton 的 成了）才交回去关框（原型 g.save，不弹顶部提示） */
+  const 建好 = useRef<{ id: string; name: string } | null>(null);
+  function 关或收尾() {
+    const x = 建好.current;
+    if (x) { 建好.current = null; onClose(x); }
+    else 守.要关();
+  }
+  async function onOk(): Promise<{ ok: boolean; error?: string }> {
     const v = await form.validateFields().catch(() => null);
-    if (!v) return;
+    if (!v) return { ok: false, error: "有几项没填好，看标红的" };
     setSaving(true);
     try {
       const res = await saveChannel({
@@ -1038,11 +1058,12 @@ function QuickChannelModal({
       });
       if (!res.ok) {
         // 重名是这里最常见的失败，留在原地让用户改名字，别关掉弹窗
-        message.error(res.error);
-        return;
+        return { ok: false, error: res.error };
       }
-      message.success(`渠道「${v.name}」已创建`);
-      onClose({ id: res.id, name: v.name.trim() });
+      建好.current = { id: res.id, name: v.name.trim() };
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "没建上，请重试" };
     } finally {
       setSaving(false);
     }
@@ -1053,10 +1074,11 @@ function QuickChannelModal({
       {...守.弹窗}
       open={open}
       title="新建外部渠道"
-      onOk={onOk}
-      confirmLoading={saving}
-      okText="创建"
-      cancelText="取消"
+      onCancel={关或收尾}
+      footer={[
+        <Button key="取消" onClick={关或收尾}>取消</Button>,
+        <SaveButton key="存" 做={onOk} 已保存="已创建" 没保存="没建上" 成了={关或收尾}>创建</SaveButton>,
+      ]}
       width={460}
       destroyOnHidden
       // 盖在「新建学员」上层，否则会被它的遮罩挡住
