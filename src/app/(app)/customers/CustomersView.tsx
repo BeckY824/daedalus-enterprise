@@ -3,7 +3,7 @@
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
 import CopyValue from "@/components/CopyValue";
 import Heat from "@/components/Heat";
-import { useEffect, useState, useSyncExternalStore, useRef, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore, useRef, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Select, Space, Dropdown, App, Tag, Segmented, type MenuProps, type SelectProps } from "antd";
@@ -32,6 +32,11 @@ import { assignSalesOwner, bulkFollowStatus, 撤销改负责人, type BulkResult
 import { useDeleteCustomers } from "./useDeleteCustomers";
 import { useTransferConfirm } from "./useTransferConfirm";
 import { usePoolReturnConfirm } from "./usePoolReturnConfirm";
+import TransferDialog from "./TransferDialog";
+import { 转走项目预览of } from "./actions";
+import { showUndo } from "@/components/UndoBar";
+import { 问后果 } from "@/components/dialog-host";
+import { useMe } from "@/lib/me-client";
 import { 带走说法, 批量结果说法 } from "@/lib/carry-over";
 import { useBusiness } from "@/lib/business-client";
 import { statusLabel, 外贸精简, 签约叫 } from "@/lib/business-config";
@@ -302,11 +307,15 @@ export default function CustomersView({
     window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
   }, [page, requestedPage]);
 
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
   const 视图中 = useViewAs();
   const { 问删除 } = useDeleteCustomers();
-  const { 先问转走的项目, 问转让原因 } = useTransferConfirm(转让原因);
+  const { 先问转走的项目 } = useTransferConfirm(转让原因);
   const { 问放回公海 } = usePoolReturnConfirm();
+  const 我 = useMe();
+  /** 批量转让框（原型 cu.transfer：选人、一起转走的项目、原因合成一个框）：开着时记住勾的是谁 */
+  const [转让框, set转让框] = useState<{ ids: string[]; 我的: boolean; 清空: () => void } | null>(null);
+  const 取转走 = useCallback((人id: string) => 转走项目预览of(转让框?.ids ?? [], 人id), [转让框]);
 
   /**
    * 批量改完给一次撤销（排查 D1）。原来点一下就写库、没有退路，选错一页就是一批数据改错。
@@ -315,44 +324,31 @@ export default function CustomersView({
    */
   function 可撤销提示(res: Extract<BulkResult, { ok: true }>, 文案: string, 退回: (ids: string[], 值: string) => Promise<BulkResult>, 整批退回?: () => Promise<BulkResult>) {
     const 原值 = res.原值 ?? [];
-    if (!原值.length) return void message.success(文案);
-    const key = `bulk-${原值[0].id}-${原值.length}`;
-    message.success({
-      key,
-      duration: 6,
-      content: (
-        <span>
-          {文案}
-          <Button
-            type="link"
-            size="small"
-            onClick={async () => {
-              message.destroy(key);
-              if (整批退回) {
-                const r = await 整批退回();
-                router.refresh();
-                if (!r.ok) return void message.error(`没能全部改回去：${r.error}`);
-                return void (r.unchanged
-                  ? message.warning(`已撤销 ${r.updated} 条；${r.unchanged} 条没改回（刚被人改过，或原负责人已停用）`)
-                  : message.success(`已撤销，${r.updated} 条改回原样`));
-              }
-              const 组 = new Map<string, string[]>();
-              for (const x of 原值) 组.set(x.值, [...(组.get(x.值) ?? []), x.id]);
-              for (const [值, ids] of 组) {
-                const r = await 退回(ids, 值);
-                if (!r.ok) {
-                  router.refresh();
-                  return void message.error(`没能全部改回去：${r.error}`);
-                }
-              }
-              router.refresh();
-              message.success(`已撤销，${原值.length} 条改回原样`);
-            }}
-          >
-            撤销
-          </Button>
-        </span>
-      ),
+    // 没改动的（都已是这个值）：没有可撤的，也不弹顶部提示——列表刷新就是反馈（11-15 原型 g.save）
+    if (!原值.length) return;
+    // 底部撤销条（PR5a showUndo）：事情已经做了，撤销 = 反着做一遍；撤销被挡时条上写原因
+    showUndo({
+      话: 文案,
+      毫秒: 6000,
+      撤销: async () => {
+        if (整批退回) {
+          const r = await 整批退回();
+          router.refresh();
+          if (!r.ok) return { ok: false, error: `没能全部改回去：${r.error}` };
+          if (r.unchanged) return { ok: false, error: `已撤销 ${r.updated} 条；${r.unchanged} 条没改回（刚被人改过，或原负责人已停用）` };
+          return;
+        }
+        const 组 = new Map<string, string[]>();
+        for (const x of 原值) 组.set(x.值, [...(组.get(x.值) ?? []), x.id]);
+        for (const [值, ids] of 组) {
+          const r = await 退回(ids, 值);
+          if (!r.ok) {
+            router.refresh();
+            return { ok: false, error: `没能全部改回去：${r.error}` };
+          }
+        }
+        router.refresh();
+      },
     });
   }
   /**
@@ -376,29 +372,35 @@ export default function CustomersView({
     ].filter(Boolean);
     const 文案 = 动作 === "分配" ? `已把 ${res.updated} 位${名}${另.length ? `；${另.join("，")}` : ""}${带走说法(res.带走)}` : `已${名} ${res.updated} 位${另.length ? `；${另.join("，")}` : ""}${带走说法(res.带走)}`;
     const 原 = 动作 === "放进" ? ids.map((id) => ({ id, 值: "" })) : (res.原负责人 ?? []);
-    const key = `pool-${动作}-${ids[0]}-${ids.length}`;
-    message.success({
-      key,
-      duration: 6,
-      content: (
-        <span>
-          {文案}
-          <Button
-            type="link"
-            size="small"
-            onClick={async () => {
-              message.destroy(key);
-              const r = await 撤销公海(动作, 原, res.ok ? res.带过来 : undefined, res.ok ? res.给谁?.id : undefined, res.ok ? res.公海项目 : undefined);
-              router.refresh();
-              if (!r.ok) return void message.error(`没能撤销：${r.error}`);
-              message.success(`已撤销，${r.updated} 位改回原样`);
-            }}
-          >
-            撤销
-          </Button>
-        </span>
-      ),
+    // 底部撤销条跟着走（换页也在，原型 cu.return「撤销条跟着」）：已经做了，撤销 = 撤销公海 反着做
+    showUndo({
+      话: 文案,
+      毫秒: 6000,
+      撤销: async () => {
+        const r = await 撤销公海(动作, 原, res.ok ? res.带过来 : undefined, res.ok ? res.给谁?.id : undefined, res.ok ? res.公海项目 : undefined);
+        router.refresh();
+        if (!r.ok) return { ok: false, error: `没能撤销：${r.error}` };
+      },
     });
+  }
+  /**
+   * 退回公海在后果框里做（原型 cu.return）：没退成、一位都没退的，原因写在框里、框不关；退了的走 公海提示（撤销条）
+   */
+  async function 退回做(ids: string[], 原因?: string | null) {
+    const res = await 放进公海(ids, 原因);
+    if (!res.ok) return res;
+    if (!res.updated) {
+      router.refresh();
+      return { ok: false, error: "选中的没有能退回的：" + ([
+        res.unchanged && `${res.unchanged} 位本来就在公海`,
+        res.没权限 && `${res.没权限} 位你放不了`,
+        res.有订单 && `${res.有订单} 位名下有没结束的订单阶段项目`,
+        res.交接中 && `${res.交接中} 位正在转让交接中`,
+        res.同事在推 && `${res.同事在推} 位名下有同事负责、还没结束的项目`,
+        res.联系方式不全 && `${res.联系方式不全} 位联系方式空着或有号码不对（改好再放）`,
+      ].filter(Boolean).join("，") || "都已不在你名下") };
+    }
+    公海提示(res, "放进", ids);
   }
   const b = useBusiness();
   // 项目模式开着：新建一律走建档向导（客户、联系人、项目、首条沟通一次建好）
@@ -964,7 +966,7 @@ export default function CustomersView({
         const 菜单: NonNullable<MenuProps["items"]> = [
           // 老板直接分给某位同事（2026-10-20）：规矩同领取，只是领的人换成选中的那位
           ...(公海里 && 能分配公海 && !公海别线.has(r.id) && 成员选项(分给们).length ? [{
-            key: "assign", label: "分配给…",
+            key: "assign", label: "分配给同事",
             children: 成员选项(分给们).map((o) => ({ key: `assign:${o.value}`, label: o.label, onClick: async () => 公海提示(await 分配公海([r.id], o.value), "分配", [r.id]) })),
           }] : []),
           { key: "edit", label: "编辑", onClick: () => 去编辑(r) },
@@ -1023,6 +1025,36 @@ export default function CustomersView({
 
   return (
     <>
+      <TransferDialog
+        open={!!转让框}
+        onClose={() => set转让框(null)}
+        题={`把 ${转让框?.ids.length ?? 0} 位${b.customer}转给`}
+        人们={成员选项(users)}
+        取转走={取转走}
+        // 负责人本人转自己的 = 申请移交（P-转-16）：勾的里有自己负责的就整批走申请（服务端 转让走交接 同口径）
+        申请={(人id) => 企业 && !!转让框?.我的 && 人id !== 我?.id}
+        原因选项={转让原因?.选项}
+        自己={转让原因?.自己}
+        做={async (人id, 原因) => {
+          if (!转让框) return;
+          const ids = 转让框.ids;
+          const 名 = 成员选项(users).find((o) => o.value === 人id)?.label ?? "";
+          const res = await assignSalesOwner(ids, 人id, 原因);
+          // 权限被挡、交接中……：原因写在框里，框不关，不提示成功
+          if (!res.ok) return res;
+          // 企业版「交接中」（D10）：一位都没发起 = 没成，原因写在框里
+          if (res.交接中 === 0) {
+            router.refresh();
+            const 已在 = (res.交接已在路上 ? `${res.交接已在路上} 名已在移交中（等对方确认）` : "") + (res.没转 ? `；${res.没转} 名刚被别人改了负责人` : "") + (res.missing ? `；${res.missing} 名已不存在` : "");
+            return { ok: false, error: `没有发起新的交接${已在 ? `：${已在}` : "：选中的都已归 " + 名}` };
+          }
+          转让框.清空();
+          router.refresh();
+          // 发起了交接：负责人还没换，等接手人确认——没有可撤销的；页顶「移交申请中」横幅就是反馈，可在那撤回
+          if (res.交接中 !== undefined) return;
+          可撤销提示(res, 批量结果说法(res, `已转给 ${名}`), assignSalesOwner, () => 撤销改负责人(res.原值 ?? [], 人id, res.带过来));
+        }}
+      />
       <PageHead
         title={b.customer}
         subtitle="全部档案与跟进"
@@ -1189,40 +1221,15 @@ export default function CustomersView({
                 })),
               }}
             >
-              <Button size="small" icon={<UserSwitchOutlined />}>分配给…</Button>
+              <Button size="small" icon={<UserSwitchOutlined />}>分配给同事</Button>
             </Dropdown>}
             {/* 企业版批量分配（转让）：管理、总管理；负责人只转自己的（11-02，服务端 assignSalesOwner 同样拦） */}
-            {!不问归属 && !(公海页 && 能分配公海) && (!企业 || 能分配公海 || (能转出自己的 && !公海页)) && <Dropdown
-              menu={{
-                // 同样走 成员选项：批量分配比单条更需要认清人，转错了是一批数据
-                items: 成员选项(users).map((o) => ({
-                  key: o.value,
-                  label: o.label,
-                  onClick: async () => {
-                    if (!(await 先问转走的项目(selected, o.value))) return;
-                    const 原因 = await 问转让原因(o.label, o.value);
-                    if (原因 === false) return;
-                    const res = await assignSalesOwner(selected, o.value, 原因);
-                    清空();
-                    router.refresh();
-                    if (!res.ok) return void message.error(res.error);
-                    // 企业版「交接中」（D10）：负责人还没换，等接手人确认，没有可撤销的
-                    if (res.交接中 !== undefined) {
-                      const 已在 = (res.交接已在路上 ? `；${res.交接已在路上} 名已在移交中（等对方确认），没再发起` : "") + (res.没转 ? `；${res.没转} 名刚被别人改了负责人，没转` : "") + (res.missing ? `；${res.missing} 名已不存在（可能已删除）` : "");
-                      return void (res.交接中
-                        ? message.success(res.申请移交
-                          // 负责人本人转自己的 = 申请移交（X4）：对方确认才生效
-                          ? `已发起客户转让：${res.交接中} 名等「${o.label}」确认后生效，确认前仍在原负责人名下${已在}`
-                          : `已发起交接：${res.交接中} 名等 ${o.label} 确认，确认前仍在原负责人名下${已在}`)
-                        : message.info(`没有发起新的交接${已在 || "：选中的都已归 " + o.label}`));
-                    }
-                    可撤销提示(res, 批量结果说法(res, `已转给 ${o.label}`), assignSalesOwner, () => 撤销改负责人(res.原值 ?? [], o.value, res.带过来));
-                  },
-                })),
-              }}
-            >
-              <Button size="small" icon={<UserSwitchOutlined />}>批量分配</Button>
-            </Dropdown>}
+            {!不问归属 && !(公海页 && 能分配公海) && (!企业 || 能分配公海 || (能转出自己的 && !公海页)) &&
+              // 按钮文字写全（P-界面-43）；选人、一起转走的项目、原因在同一个框里（原型 cu.transfer）
+              <Button size="small" icon={<UserSwitchOutlined />}
+                onClick={() => set转让框({ ids: [...selected], 我的: 选中行.some((r) => !r.pool && r.salesOwnerId === 我?.id), 清空 })}>
+                转让给同事
+              </Button>}
             {/* 「公海」页签只有领取，「客户」页签只有放进公海；子集里两种混着，看勾的是什么 */}
             {!不问归属 && (公海页 || (子集 && 选中行.some((r) => r.pool)) ? (能新建和领取 &&
               <>
@@ -1245,18 +1252,18 @@ export default function CustomersView({
                   if (企业) {
                     const ids = [...selected];
                     // 确认框和工具条按钮统一叫「退回公海」（11-12 用户定 D3）
-                    const 问 = await 问放回公海(`把 ${ids.length} 位退回公海？`, true, "退回公海");
-                    if (!问) return;
-                    公海提示(await 放进公海(ids, 问.原因), "放进", ids); 清空();
+                    // 退回这件事在框里做：没退成原因写在框里；退了 → 清勾、撤销条（6 秒）
+                    const 问 = await 问放回公海(`把 ${ids.length} 位退回公海`, true, "退回公海", (原因) => 退回做(ids, 原因));
+                    if (问) 清空();
                     return;
                   }
-                  modal.confirm({
-                    title: `把 ${selected.length} 位放回公海？`,
-                    content: "放回后谁都能领；6 秒内可以撤销。",
-                    okText: "放回公海",
-                    cancelText: "取消",
-                    onOk: async () => { 公海提示(await 放进公海(selected), "放进", selected); 清空(); },
-                  });
+                  const ids = [...selected];
+                  if (await 问后果({
+                    题: `把 ${ids.length} 位放回公海`,
+                    后果: [{ 标: "谁都能领", 级: "警", 话: "放回后谁都能领" }, { 标: "可撤", 话: "6 秒内可以撤销" }],
+                    是: "放回公海",
+                    做: () => 退回做(ids),
+                  })) 清空();
                 }}>
                 {/* 企业版统一叫「退回公海」（11-12 D3：工具条按钮、确认框一个说法） */}
                 {企业 ? "退回公海" : "放回公海"}
@@ -1284,13 +1291,12 @@ export default function CustomersView({
               size="small"
               icon={<DeleteOutlined />}
               // 写出是谁、会一起删掉什么（排查 B1）：人得对得上自己勾的是哪几位
+              // 勾的全是删不了的：灰着；混着的不再整批拦下，框里写明跳过谁、删其余的（原型 cu.bulkdel）
+              disabled={selected.every((id) => 删不了.has(id))}
+              title={selected.every((id) => 删不了.has(id)) ? "勾的都不是你负责的，删不了" : undefined}
               onClick={() => {
-                const 不行 = selected.filter((id) => 删不了.has(id)).length;
-                if (不行) return void message.warning(`勾的里有 ${不行} 位不是你负责的，删不了；只勾自己负责的再删`);
-                void 问删除(
-                  selected.map((id) => ({ id, name: 选中行.find((r) => r.id === id)?.name ?? "" })),
-                  清空,
-                );
+                const 名 = (id: string) => ({ id, name: 选中行.find((r) => r.id === id)?.name ?? "" });
+                void 问删除(selected.filter((id) => !删不了.has(id)).map(名), 清空, selected.filter((id) => 删不了.has(id)).map(名));
               }}
             >
               删除
