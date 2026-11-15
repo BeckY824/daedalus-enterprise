@@ -203,7 +203,7 @@ export function ProjectPaymentsCard({ projectId, 回款们, 能改, 默认: 默�
     const 删后 = 剩.length ? 合计文字(按币种合计(剩, (y) => y.amount, (y) => y.currency)) : "没有回款";
     await 问后果({
       题: "删掉这笔回款",
-      补充: <b className="num" style={{ overflowWrap: "anywhere" }}>{dayjs(x.paidAt).format("YYYY-MM-DD")} · {金额(x.amount, x.currency)}</b>,
+      补充: <b className="num pay-del-num">{dayjs(x.paidAt).format("YYYY-MM-DD")} · {金额(x.amount, x.currency)}</b>,
       后果: [
         { 标: "会发生", 话: <>当前回款从 {合计} 变成 {删后}</>, 级: "警" },
         { 标: "找不回", 话: "删了不能恢复，只能重记", 级: "危" },

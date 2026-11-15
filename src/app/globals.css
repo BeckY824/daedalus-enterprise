@@ -4783,3 +4783,6 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 .home-scan-note { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 5; display: flex; align-items: flex-start; gap: 6px; width: max-content; max-width: min(360px, 80vw); padding: 6px 8px 6px 10px; border-radius: 6px; background: var(--panel); box-shadow: 0 0 0 1px var(--line), 0 4px 12px rgb(0 0 0 / 0.08); font-size: var(--fs-note); color: var(--text-muted); white-space: normal; overflow-wrap: anywhere; }
 .home-scan-note.is-err { color: var(--danger-text); }
 .home-scan-note-x { flex: none; border: 0; background: none; color: inherit; cursor: pointer; padding: 0 2px; font-size: var(--fs-note); }
+
+/* 删回款后果框里的金额：长串不撑破 */
+.pay-del-num { overflow-wrap: anywhere; }

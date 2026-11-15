@@ -20,7 +20,7 @@
   "app/(app)/customers/[id]/LinkedCustomers.tsx": 2,
   "app/(app)/customers/[id]/NewProjectModal.tsx": 4,
   "app/(app)/customers/[id]/PlanForm.tsx": 2,
-  "app/(app)/customers/[id]/RecordView.tsx": 64,
+  "app/(app)/customers/[id]/RecordView.tsx": 63,
   "app/(app)/customers/[id]/RegionInlineField.tsx": 1,
   "app/(app)/customers/[id]/TaskForm.tsx": 2,
   "app/(app)/customers/[id]/useContactRemoval.tsx": 2,
