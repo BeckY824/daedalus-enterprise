@@ -138,7 +138,10 @@
      别的主题（src/app/skins/*.css）只在这里已有的名字上换值——名字拼错不会报错，
      只会悄悄沿用现状，所以 tests/skins.test.ts 钉着「主题只许定义 :root 里有的名字」。 */
   --seal: var(--ink);                  /* 你确认的那一下（建议卡落的印）。账簿换成朱红，且只许它用 */
-  --nav-on-bg: var(--hover);           /* 左栏当前项的底：16a 起浅灰底深字，不用蓝底（蓝留给要人点的东西） */
+  /* 左栏当前项的底：16a 起不用蓝底（蓝留给要人点的东西）。2026-11 PR2 外壳（原型 g.feel / g.nav）：
+     浅灰底改成白底 + 一层很薄的阴影，像从灰色侧栏里浮起来的一块（Apple 侧栏的选中态）；
+     阴影只给现状明亮（下面 .rail-on-bg 那条），换皮、暗黑各用自己的 --nav-on-bg、不带阴影；白底地面上退回浅灰（白压白看不出） */
+  --nav-on-bg: var(--panel);
   --nav-on-fg: var(--ink);             /* 左栏当前项的字 */
   --font-ui: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "SF Pro SC", "PingFang SC", "Noto Sans SC", "Daedalus YaHei", "Microsoft YaHei", Roboto, sans-serif;
   /* 等宽：中文要有落脚处——Mac 落苹方，Windows 落雅黑（2026-10-14 之前没写雅黑，Windows 上中文掉到宋体） */
@@ -169,6 +172,8 @@
    只换值，不换结构。<html> 上的 data-paper / data-skin 在第一次绘制前由 layout 里那段小脚本挂好，
    所以刷新时不会先闪一下原底。这里不许写裸色值（tests/design-tokens.test.ts），只许指到已有 token 上 */
 :root[data-paper="white"] { --page-bg: var(--panel); }
+/* 白底地面上左栏选中块退回浅灰：白底 + 阴影压在白地面上只剩一圈影子，认不出选中的是哪项 */
+:root[data-paper="white"]:not([data-mode="dark"]) { --nav-on-bg: var(--hover); }
 /* 设置 → 外观 那一栏 */
 .appr { display: flex; flex-direction: column; gap: var(--s5); max-width: 640px; }
 .appr-note { margin: 0; color: var(--text-muted); font-size: var(--fs-note); }
@@ -677,6 +682,10 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
 .rail-ask-k { margin-left: auto; font-size: var(--fs-min); color: var(--text-faint); }
 /* 选中的底色是一块会滑动的层（AppShell 里的 layoutId），压在图标和字下面 */
 .rail-on-bg { position: absolute; inset: 0; border-radius: var(--r-card); background: var(--nav-on-bg); z-index: 0; }
+/* 现状明亮下的选中块：白底 + 一圈 0.5px 发丝描边 + 1px 软影（原型 g.feel）。换皮、暗黑、白底地面不挂，各走各的底色 */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-mode="dark"]):not([data-paper="white"]) :is(.rail-on-bg, .rail-fav-i.on) {
+  box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--ink) 6%, transparent), 0 1px 2px color-mix(in srgb, var(--ink) 8%, transparent);
+}
 .rail-item > :not(.rail-on-bg) { position: relative; z-index: 1; }
 /* 客户详情上左栏收成图标窄栏（11-12，AppShell 的 rail-mini，路由在 lib/rail-mini.ts）：
    在壳上把 --rail-w 覆盖成 56，左栏本身、反馈条 .fbt、中栏开关 .pane-toggle-float 这些按它算位置的都跟着走；
@@ -2942,6 +2951,26 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 
 /* ---------- ⌘K ----------
    跳页和问一句共用一张单子。藏起来的快捷键等于不存在，所以左栏底下常驻一行提示。 */
+/* ⌘K 弹窗毛玻璃（PR2 外壳 g.feel，原型 sheet）：半透明面板 + 背后模糊提饱和，遮罩改淡（看得见底下那页，知道自己没离开）。
+   CommandBar 的 Modal 挂 rootClassName="cmdk-root"，只管这一张，别的弹窗不动。antd 的选择器两层类，前面垫 :root 压过它；面板 antd 6 叫 .ant-modal-container（5 叫 -content），两个都认。
+   三种情况退回实色面板（--panel）：浏览器不支持 backdrop-filter（@supports）、系统开了「减少透明度」、
+   低配机（html.lite-fx，外观预设脚本按 CPU 核数 / 内存挂上——整页模糊每帧都要重算，集显上会掉帧） */
+:root .cmdk-root :is(.ant-modal-container, .ant-modal-content) {
+  background: var(--panel); border-radius: var(--r-pop);
+  box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--ink) 10%, transparent), var(--shadow-pop);
+}
+:root .cmdk-root .ant-modal-mask { background: color-mix(in srgb, var(--ink) 18%, transparent); }
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  html:not(.lite-fx) .cmdk-root :is(.ant-modal-container, .ant-modal-content) {
+    background: color-mix(in srgb, var(--panel) 82%, transparent);
+    -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+  }
+  html:not(.lite-fx) .cmdk-root .ant-modal-mask { -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  html:not(.lite-fx) .cmdk-root :is(.ant-modal-container, .ant-modal-content) { background: var(--panel); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  html:not(.lite-fx) .cmdk-root .ant-modal-mask { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
 .cmdk-in { display: flex; align-items: center; gap: var(--s2); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line); color: var(--text-muted); }
 .cmdk-in input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; font-size: var(--fs-section); color: var(--ink); }
 .cmdk-in input::placeholder { color: var(--text-faint); }
