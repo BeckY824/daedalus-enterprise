@@ -4873,3 +4873,16 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 .notice-drawer .ant-drawer-mask { background: transparent; }
 .notice-drawer.ant-drawer-right .ant-drawer-content-wrapper { top: 8px; bottom: 8px; right: 8px; border-radius: var(--r-pop); overflow: hidden; }
 .cli-file.cli-file-bad .cli-file-n { white-space: normal; }
+/* ls.ct.orphan「改后」：未归属联系人的编辑是右侧浮起的面板（contacts/OrphanSidePanel.tsx 挂 .ct-side）——离窗口边 8px、四角圆、从右边滑进来；
+   减弱动态只淡入淡出。框里叫出来的问句不吃这个类名，照旧在中间 */
+.ct-side .ant-modal { position: fixed; top: 8px; right: 8px; bottom: 8px; margin: 0; padding: 0; max-width: calc(100vw - 16px); transform-origin: 100% 50%; }
+.ct-side .ant-modal-container { height: 100%; display: flex; flex-direction: column; border-radius: var(--r-pop); }
+.ct-side .ant-modal-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+@keyframes ct-side-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes ct-side-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(24px); } }
+.ct-side .ant-modal:is(.ant-zoom-enter-active, .ant-zoom-appear-active) { animation-name: ct-side-in !important; animation-timing-function: var(--ease) !important; }
+.ct-side .ant-modal.ant-zoom-leave-active { animation-name: ct-side-out !important; }
+@media (prefers-reduced-motion: reduce) {
+  .ct-side .ant-modal:is(.ant-zoom-enter-active, .ant-zoom-appear-active) { animation-name: crm-pop-fade-in !important; }
+  .ct-side .ant-modal.ant-zoom-leave-active { animation-name: crm-pop-fade-out !important; }
+}

@@ -15,6 +15,7 @@ import ContactForm from "../customers/[id]/ContactForm";
 import { deleteUnassignedContact, restoreContact } from "../customers/[id]/actions";
 import { showUndo } from "@/components/UndoBar";
 import FlipRows from "@/components/FlipRows";
+import OrphanSidePanel from "./OrphanSidePanel";
 import { avatarColor, initial, AVATAR_TEXT, 成员选项 } from "@/lib/utils";
 import { useBusiness } from "@/lib/business-client";
 
@@ -291,6 +292,8 @@ export default function ContactsView({
         职务选项={职务选项}
       />
 
+      {/* ls.ct.orphan：未归属的人在右侧浮起的面板里改、挂回、彻底删除 */}
+      <OrphanSidePanel>
       <ContactForm
         open={在改 !== null}
         onClose={() => set在改(null)}
@@ -307,6 +310,7 @@ export default function ContactsView({
             : undefined
         }
       />
+      </OrphanSidePanel>
     </>
   );
 }

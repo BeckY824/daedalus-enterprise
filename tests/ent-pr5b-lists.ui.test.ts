@@ -71,9 +71,10 @@ beforeAll(async () => {
   `);
   包.联系人 = await 打包(`
     import ContactForm from '@/app/(app)/customers/[id]/ContactForm';
-    function Test(){return <ContactForm open onClose={()=>{}} onSaved={()=>{}} 学员们={[]} 未归属
+    import OrphanSidePanel from '@/app/(app)/contacts/OrphanSidePanel';
+    function Test(){return <OrphanSidePanel><ContactForm open onClose={()=>{}} onSaved={()=>{}} 学员们={[]} 未归属
       record={{id:'k1',name:'老张',position:null,phone:null,email:null,wechat:null,isPrimary:false,remark:null,updatedAt:'2026-11-01T00:00:00Z'}}
-      onDelete={async()=>{(window.__调=window.__调||[]).push(['删']);return {ok:true}}}/>}
+      onDelete={async()=>{(window.__调=window.__调||[]).push(['删']);return {ok:true}}}/></OrphanSidePanel>}
   `);
   browser = await chromium.launch();
 }, 180_000);
@@ -236,4 +237,37 @@ it("ls.ct.orphan：彻底删除就地确认，不确认不删", async () => {
     await expect.poll(() => 调了(page)).toEqual(["删"]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
+}, 60_000);
+
+it("ls.ct.orphan：编辑是右侧浮起的面板——离窗口边 8px、占满高度、1024 / 375 不横滚；滑进来，减弱动态不位移", async () => {
+  for (const [width, 减弱] of [[1024, false], [375, false], [1280, true]] as const) {
+    const page = await browser.newPage({ viewport: { width, height: 800 }, reducedMotion: 减弱 ? "reduce" : "no-preference" }); page.setDefaultTimeout(5000);
+    const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
+    try {
+      await page.route("http://src.test/**", (r) => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
+      await page.goto("http://src.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: 包.联系人 });
+      // 进场那一段每帧看一眼：有没有位移、放的是哪一段关键帧（认我们自己的 ct-side-in，不是 antd 的放大）
+      const 位移过 = page.evaluate(() => new Promise<{ 移: boolean; 名: string[] }>((ok) => {
+        let 移 = false; const 名 = new Set<string>();
+        const 看 = () => {
+          const d = document.querySelector<HTMLElement>("[role=dialog]"); if (!d) return;
+          const cs = getComputedStyle(d.closest(".ant-modal") ?? d); if (cs.animationName !== "none") 名.add(cs.animationName);
+          if (cs.transform !== "none" && !/matrix\(1, 0, 0, 1, 0, 0\)/.test(cs.transform)) 移 = true;
+        };
+        const 停 = performance.now() + 900; const 走 = () => { 看(); if (performance.now() < 停) requestAnimationFrame(走); else ok({ 移, 名: [...名] }); }; requestAnimationFrame(走);
+      }));
+      await page.evaluate(() => (window as unknown as Record<string, () => void>).__go());
+      const 框 = page.getByRole("dialog");
+      await 框.waitFor();
+      const 进场 = await 位移过;
+      if (减弱) { expect(进场.移, "减弱动态不位移").toBe(false); expect(进场.名).not.toContain("ct-side-in"); }
+      else { expect(进场.移, "从右边滑进来").toBe(true); expect(进场.名).toContain("ct-side-in"); }
+      await expect.poll(() => 框.evaluate((e) => { const r = (e.closest(".ant-modal") ?? e).getBoundingClientRect(); return [Math.round(r.top), Math.round(innerWidth - r.right), Math.round(innerHeight - r.bottom)]; })).toEqual([8, 8, 8]);
+      expect(await 框.evaluate((e) => Math.round((e.closest(".ant-modal") ?? e).getBoundingClientRect().left))).toBeGreaterThanOrEqual(8);
+      expect(await 不横滚(page)).toBe(true);
+      // 彻底删除照旧在面板里就地确认
+      await page.getByRole("button", { name: "彻底删除" }).waitFor();
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
 }, 60_000);
