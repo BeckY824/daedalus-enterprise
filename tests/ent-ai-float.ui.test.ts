@@ -332,6 +332,35 @@ describe("AI 浮窗（P-界面-39）", () => {
     });
   }
 
+  /* 排版闸门「AI栏常驻」（11-15 整合后量出来的）：设置这类不摆浮标的页，⌘J 照样叫得出浮窗；叫出来时正文底下也要留那一截，
+     不然滚到底最后几行（设置左栏的回收站、操作日志，表单的保存）压在浮窗下面。有浮标的页开不开都是同一截（上一条） */
+  it("没有浮标的页（/settings）⌘J 叫出浮窗：正文底下也留出那一截，滚到底最后一行在浮窗上面；收起后回原样", async () => {
+    const ctx = await browser.newContext({ viewport: { width: 1024, height: 680 } });
+    const page = await ctx.newPage();
+    page.setDefaultTimeout(5000);
+    try {
+      await page.route("http://ent.test/**", (r) => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
+      await page.goto("http://ent.test/settings");
+      await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+      await page.addScriptTag({ content: 包 });
+      await page.getByRole("button", { name: "下一页" }).waitFor();
+      expect(await page.getByRole("button", { name: "打开 AI 对话" }).count(), "设置页不摆浮标").toBe(0);
+      const 底 = () => page.evaluate(() => getComputedStyle(document.querySelector("main")!).paddingBottom);
+      const 关着 = await 底();
+      await page.keyboard.press("Control+j");
+      await page.getByRole("complementary", { name: "AI 对话" }).waitFor();
+      await page.waitForTimeout(450);
+      expect(await 底()).toBe("160px");
+      await page.evaluate(() => { for (const e of document.querySelectorAll<HTMLElement>("*")) if (e.scrollHeight > e.clientHeight + 1) e.scrollTop = e.scrollHeight; window.scrollTo(0, document.documentElement.scrollHeight); });
+      await page.waitForTimeout(200);
+      const [键, 窗] = await Promise.all([page.getByRole("button", { name: "下一页" }).boundingBox(), 浮窗(page).boundingBox()]);
+      expect(键!.y + 键!.height, "滚到底，最后一行的按钮在浮窗上沿之上").toBeLessThanOrEqual(窗!.y);
+      await page.getByRole("button", { name: "收起 AI 对话" }).click();
+      await page.waitForTimeout(450);
+      expect(await 底()).toBe(关着);
+    } finally { await ctx.close(); }
+  });
+
   it("图4 那样一条：没问过时只是一条输入框（头一行 + 输入 + 一排小键），不过 140 高；快捷键说明、快捷项手不在浮窗上时不摆", async () => {
     const { page, errors } = await 开(1280, false, "/customers/c1");
     try {

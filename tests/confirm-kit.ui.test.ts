@@ -337,6 +337,35 @@ describe("撤销条", () => {
     await page.close();
   });
 
+  it("收起动画期间又来一条 / 离页 / 鼠标移开：已经到点做过的那条不再做第二次，也撤不了", async () => {
+    const { page, errors } = await open();
+    await 调(page, "__undoReset");
+    await 调(page, "__undo", "已移除这一轮", { 毫秒: 300 });
+    await page.waitForFunction(() => ((window as unknown as W).__交 ?? []).length === 1, null, { timeout: 2000, polling: "raf" });
+    // 还在收起动画里（同一帧里做完）：鼠标进出（原来会重开计时）、Ctrl+Z、点撤销都不算；再来一条新的，旧的「到点」不再调第二次
+    const 在收 = await page.evaluate(() => {
+      const 条 = document.querySelector<HTMLElement>("#undo-host .undo-bar")!;
+      const 收着 = 条.hasAttribute("data-out");
+      条.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, relatedTarget: document.body }));
+      条.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true }));
+      [...条.querySelectorAll("button")].find((b) => b.textContent?.includes("撤销"))?.click();
+      (window as unknown as W).__undo("已退回「星河乐园」");
+      return 收着;
+    });
+    expect(在收, "确实卡在收起动画里").toBe(true);
+    await page.getByText("已退回「星河乐园」").waitFor();
+    expect(await page.getByText("已移除这一轮").count()).toBe(0);
+    await page.waitForTimeout(700);
+    expect(await 取(page, "__交")).toEqual(["已移除这一轮"]);
+    expect(await 取(page, "__撤")).toEqual([]);
+    // 新的那条照常：再来一条把它顶掉，它到点一次
+    await 调(page, "__undo", "第三条");
+    expect(await 取(page, "__交")).toEqual(["已移除这一轮", "已退回「星河乐园」"]);
+    expect(errors).toEqual([]);
+    await page.close();
+  });
+
   it("另一个动作（排下一次）：倒计时里和撤销并排；点了 = 条按到点收掉、调它一次，不撤销", async () => {
     const { page } = await open();
     await 调(page, "__undoReset");

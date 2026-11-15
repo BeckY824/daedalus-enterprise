@@ -396,7 +396,9 @@ test.describe("面板里的回答和建议卡", () => {
       await expect.poll(() => p.followUp.count({ where: { customerId: c.id } })).toBe(1);
 
       await 回执.getByRole("button", { name: "撤销" }).click();
-      await expect(page.locator(".ant-message")).toContainText("已撤销");
+      // 11-15 起撤销成了不弹顶部提示：卡片原地褪回「等你确认」就是回答（ProposalCard，原型 g.undo / g.notice）
+      await expect(回执).toHaveCount(0);
+      await expect(page.locator(".ant-message-notice")).toHaveCount(0);
       // 企业版撤销是软删进回收站（10-29 起），开关关着是真删：两种都只数没删的
       await expect.poll(() => p.followUp.count({ where: { customerId: c.id, deletedAt: null } })).toBe(0);
       // 撤销完卡片回到「等你确认」，还能再确认或忽略

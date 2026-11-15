@@ -71,23 +71,20 @@ export default function LoginForm({
   const 账号框 = useRef<HTMLInputElement>(null);
   const 密码框 = useRef<HTMLInputElement>(null);
   /**
-   * 动效只有两下：报错条撑开（不是砸下来）、登录失败时表单横向抖一下（3px，一个来回）——
-   * 密码错了这件事，看见比读见快。系统开了「减弱动态效果」就全部按 0 处理。
+   * 动效只有一下：报错条撑开（不是砸下来）。登录失败原来还让整张表横向抖 3px，原型 st.login 去掉了——
+   * 错写在对应那一格下面，看那一格就知道。系统开了「减弱动态效果」就全部按 0 处理。
    */
   const 少动 = useReducedMotion();
-  const [抖, set抖] = useState(0);
   const 秒 = (t: number) => (少动 ? 0 : t);
   const 报错 = (msg: string) => {
     set格错(null);
     setError(msg);
-    set抖((n) => n + 1);
   };
   /** 错在哪一格就写在那一格下面（原型 st.login），网络这类不属于哪一格的才用表单底下那条 */
   const [格错, set格错] = useState<{ 格: "账号" | "密码"; 话: string } | null>(null);
   const 格上报错 = (格: "账号" | "密码", 话: string) => {
     setError(null);
     set格错({ 格, 话 });
-    set抖((n) => n + 1);
   };
 
   async function 提交() {
@@ -142,15 +139,13 @@ export default function LoginForm({
       {!居中 && <AuthSide 门={用邮箱 ? "托管版" : "自部署"} 产品名={产品名} />}
 
       <main className="auth-main">
-        <motion.form
+        <form
           className="auth-form"
           noValidate
           onSubmit={(e) => {
             e.preventDefault();
             void 提交();
           }}
-          animate={{ x: 抖 && !少动 ? [0, -3, 3, -2, 2, 0] : 0 }}
-          transition={{ x: { duration: 秒(时长.morph), ease: 曲线.ease } }}
         >
           <div className="auth-mobile-mark" aria-hidden>
             <PixelLogo size={40} />
@@ -273,7 +268,7 @@ export default function LoginForm({
               </motion.div>
             )}
           </AnimatePresence>
-        </motion.form>
+        </form>
       </main>
     </div>
   );

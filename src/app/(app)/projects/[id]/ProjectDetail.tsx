@@ -1,10 +1,11 @@
 "use client";
 
+import { 留落地话 } from "@/lib/landing-note";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { DownOutlined, EditOutlined, MoreOutlined, RightOutlined, SearchOutlined, ThunderboltOutlined } from "@ant-design/icons";
-import { App, Alert, Button, Card, Checkbox, Dropdown, Input, InputNumber, Menu, Modal, Popover, Progress, Segmented, Select, Space, Tag, Timeline, Tooltip, type MenuProps } from "antd";
+import { Alert, Button, Card, Checkbox, Dropdown, Input, InputNumber, Menu, Modal, Popover, Progress, Segmented, Select, Space, Tag, Timeline, Tooltip, type MenuProps } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import DictSelect from "@/components/DictSelect";
 import { useMotionTheme } from "@/components/MotionTheme";
@@ -462,8 +463,6 @@ export default function ProjectDetail({
   const router = useRouter();
   // 不弹顶部提示（原型 g.save / g.notice）：页面上做的事成没成写在正文底部的就地小条；弹框里的原因写在框里（跑 的 报错）
   const [就地, 回执条] = useDetailNote();
-  /** 只给 走开 用（见那里的注释） */
-  const { message } = App.useApp();
   const b = useBusiness();
   const [忙, set忙] = useState(false);
   /** 后果框（PR5a）：判无效（dt.invalid）、删回款（dt.pay） */
@@ -746,9 +745,8 @@ export default function ProjectDetail({
   /** 转走 / 退回公海 / 删掉、自己看不到这个项目了：回客户页（嵌在客户页）或项目列表；受限详情里没别的项目了回客户列表 */
   const 走开 = () => {
     if (嵌入?.走后去) {
-      // 唯一留着的顶部提示：这一下就跳去客户列表（受限详情里最后一个项目走了），本页没有地方写、目标页（客户列表，customers 范围）
-      // 也没有接回执的口子；跳过去仍要让人知道为什么回到列表（tests/ent-cust-detail-merge.ui.test.ts 认它）
-      message.info(嵌入.走后去.说法);
+      // 这一下就跳去客户列表（受限详情里最后一个项目走了），本页没地方写：带一句过去，客户列表落地后在原处说（lib/landing-note.ts、LandingNote）
+      留落地话(嵌入.走后去.到, 嵌入.走后去.说法);
       router.push(嵌入.走后去.到);
     } else router.push(嵌入?.客户页 ?? "/projects");
   };

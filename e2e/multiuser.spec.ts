@@ -189,7 +189,7 @@ test.describe("D 组：批量操作交叉", () => {
     // 甲改的是公司，不是负责人，应当自动合并
     await 甲.page.getByRole("dialog").getByLabel("公司").fill("星辰科技");
     await 甲.page.getByRole("dialog").getByRole("button", { name: /保\s*存/ }).click();
-    await expect(甲.page.getByText("已保存")).toBeVisible();
+    await expect(甲.page.getByRole("button", { name: "已保存" })).toBeVisible(); // 11-15 起存好写在保存键里（SaveButton 对勾 +「已保存」，读屏另有一句同样的话）
 
     // 两边的改动都在：公司是甲写的，负责人是乙改的
     await 甲.page.reload();

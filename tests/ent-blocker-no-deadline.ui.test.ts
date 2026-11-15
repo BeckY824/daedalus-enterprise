@@ -189,7 +189,10 @@ it("dt.blocker：发布框写「挂在」哪条沟通、能换；类型影响一
       await 发布键.click();
       // 没发出去（原型 dt.blocker 发布键里反馈）：键上写「没发出去」，原因浮在键正上方（不是顶部提示），读屏也读得到；框不关
       await expect.poll(() => 发布键.innerText()).toContain("没发出去");
-      await page.locator(".ant-tooltip").filter({ hasText: "已经删了" }).waitFor();
+      // 原因浮签（SaveButton 11-15 起不用 antd Tooltip，是自己的浮签 role=tooltip，键 aria-describedby 指向它）
+      const 浮签 = page.getByRole("tooltip").filter({ hasText: "已经删了" });
+      await 浮签.waitFor();
+      expect(await 发布键.getAttribute("aria-describedby")).toBe(await 浮签.getAttribute("id"));
       expect(await dlg.getByRole("status").innerText()).toContain("已经删了");
       expect(await 窗(page, "__发布挂")).toBe("f2");
       expect(await 窗(page, "__关")).toBeNull();

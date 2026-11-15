@@ -20,7 +20,6 @@
  * 拍到的照片照样走上面这一套认名片；桌面上还是选文件、叫「名片」
  */
 import { useImperativeHandle, useRef, useState } from "react";
-import { App } from "antd";
 import { CameraOutlined, IdcardOutlined, LoadingOutlined } from "@ant-design/icons";
 import { useBusiness } from "@/lib/business-client";
 import { useViewAs } from "@/components/ViewAsContext";
@@ -71,14 +70,14 @@ export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, on存
   开?: React.Ref<{ 打开: () => void }>;
 }) {
   const b = useBusiness();
-  const { message } = App.useApp();
   const 选 = useRef<HTMLInputElement>(null);
   const [认着, set认着] = useState(false);
   /**
    * 认的结果（没认出 / 出错 / 张数超了 / 只读视图）：就地写在这颗键上方，几秒后收（g.save，不弹顶部提示）。
-   * 认的过程（第几张、百分之几）照旧走顶部那条进度
+   * 认的过程（第几张、百分之几）也写在同一处（进度，role=status），不再走顶部那条转圈提示
    */
   const [结果话, set结果话] = useState<{ 话: string; 错?: boolean } | null>(null);
+  const [进度, set进度] = useState<string | null>(null);
   const 结果计时 = useRef<ReturnType<typeof setTimeout> | null>(null);
   const 就地说 = (话: string, 错 = false) => {
     if (结果计时.current) clearTimeout(结果计时.current);
@@ -96,8 +95,7 @@ export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, on存
 
   async function 认(图们: File[]) {
     set认着(true);
-    const 键 = "home-card-scan";
-    const 说 = (话: string) => message.open({ key: 键, type: "loading", content: 话, duration: 0 });
+    const 说 = (话: string) => set进度(话);
     try {
       预热();
       const { 认名片, AI整理 } = await import("@/lib/card-scan/ocr");
@@ -116,7 +114,7 @@ export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, on存
         }
         let 附加: Parameters<typeof 名片转表单>[2];
         if (r.框数) {
-          说(`${第几}正在整理…`);
+          说(`${第几}正在整理`);
           const 整 = await AI整理(r, 字段是行业(b.fields.major) ? b.industries : []);
           if (整) { r = { ...r, 字段: 整.字段 }; 附加 = 整.附加; }
         }
@@ -142,13 +140,13 @@ export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, on存
       if (怎么办 === "存到刚建的" && 刚建) {
         const id = `photo-${Date.now().toString(36)}`;
         记下名片原图(id, 图们);
-        message.destroy(键);
+        set进度(null);
         on存照片(id, Math.min(图们.length, 名片最多张), 刚建);
         return;
       }
       if (怎么办 === "备用出卡" && 备用) 人们.push({ ...备用, 图们: 待挂 });
       if (!人们.length) {
-        message.destroy(键);
+        set进度(null);
         就地说("没认出名片或微信资料。名片横着放、靠近一点、别反光，再拍一张试试；客户照片要和他的名片或微信截图一起选");
         return;
       }
@@ -162,16 +160,17 @@ export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, on存
         卡们.push(卡.proposal);
       }
       if (!卡们.length) {
-        message.destroy(键);
+        set进度(null);
         就地说("没认出姓名或公司，换一张清楚点的照片再试");
         return;
       }
-      message.destroy(键);
+      set进度(null);
       on出卡(卡们, 卡们.map((p) => (p.kind === "add_lead" ? [p.name, p.contact].filter(Boolean).join(" · ") : "")).filter(Boolean).join("、"));
     } catch (e) {
-      message.destroy(键);
+      set进度(null);
       就地说(错的话(e).话, true);
     } finally {
+      set进度(null);
       set认着(false);
     }
   }
@@ -205,6 +204,12 @@ export default function CardScanKey({ 宽, 在跑, 渠道名们, on出卡, on存
           if (图们.length) void 认(图们.slice(0, 名片最多张));
         }}
       />
+      {进度 && !结果话 && (
+        <span className="home-scan-note" role="status">
+          <LoadingOutlined aria-hidden />
+          {进度}
+        </span>
+      )}
       {结果话 && (
         <span className={`home-scan-note${结果话.错 ? " is-err" : ""}`} role={结果话.错 ? "alert" : "status"}>
           {结果话.话}

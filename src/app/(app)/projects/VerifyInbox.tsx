@@ -47,7 +47,7 @@ export default function VerifyInbox({ 们 }: { 们: 待复核行[] }) {
     记错(id, null);
     补一句的.current.delete(id);
     set收起的((s) => new Set(s).add(id));
-    // 只交一次：撤销条收起动画没放完时来了新的一条，UndoBar 会再按一次到点（src/components/UndoBar.tsx 到点了 只看 态、没看 出）
+    // 只交一次：UndoBar 11-15 起已保证到点只调一次（收起动画里来新的一条、鼠标进出都不再重调），这里的 交过 只是双保险
     let 交过 = false;
     showUndo({
       话: `「${r.项目}」已判有效，交回负责人`,

@@ -42,7 +42,7 @@ export default function InviteInbox({ 邀请们 }: { 邀请们: 邀请行[] }) {
     set收起的((s) => new Set(s).add(r.id));
     记错(r.id, null);
     // 底部撤销条（PR5a）：到点才交；没交成撤销条上写原因，这一条摆回来
-    // 只交一次：撤销条收起动画没放完时来了新的一条，UndoBar 会再按一次到点（src/components/UndoBar.tsx 到点了 只看 态、没看 出）
+    // 只交一次：UndoBar 11-15 起已保证到点只调一次（收起动画里来新的一条、鼠标进出都不再重调），这里的 交过 只是双保险
     let 交过 = false;
     showUndo({
       话: `已拒绝「${r.项目}」`,

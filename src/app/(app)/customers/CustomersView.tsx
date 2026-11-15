@@ -1,5 +1,6 @@
 "use client";
 
+import LandingNote from "@/components/LandingNote";
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
 import CopyValue from "@/components/CopyValue";
 import Heat from "@/components/Heat";
@@ -1195,6 +1196,8 @@ export default function CustomersView({
       {/* 市场角色空库也摆（另一边「我分出去的」不看客户多少）：空库时筛选行整条不画（DataList），只这一种情况照原来单独一行 */}
       {空库 && 看法切换 && <div className="cust-view-seg">{看法切换}</div>}
 
+      {/* 从别处跳回来时带的一句（比如嵌在客户页的项目详情里最后一个项目走了，回到这里）：写在原处，不弹顶部提示 */}
+      <LandingNote 路径="/customers" />
       {列表话 && <div role={列表话.错 ? "alert" : "status"} className={列表话.错 ? "cu-said cu-said-row cu-said-err" : "cu-said cu-said-row"}>{列表话.话}</div>}
       {阶段太多 && <div role="status" className="cust-too-many">结果太多，请再加筛选条件</div>}
       {/* 看板视图：看板（ProjectsView 客户页）的分配、「→ 还有 N 列」画进筛选行右端那一格（board-slot.ts），不在看板上面另占一行 */}

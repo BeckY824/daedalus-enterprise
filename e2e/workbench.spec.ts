@@ -491,7 +491,9 @@ test("计划页「改」：框开着时这条在另一个窗口被改了，保�
 
   await 弹窗.getByLabel("跟进主题").fill("发三版报价");
   await 弹窗.getByRole("button", { name: /保\s*存/ }).click();
-  await expect(page.locator(".ant-message")).toContainText("又变过了");
+  // 11-15 起没存上的原因写在保存键上（SaveButton：键上「没保存上」+ 旁边浮签写原因，读屏同时播报），不弹顶部提示
+  await expect(page.getByRole("tooltip").filter({ hasText: "又变过了" })).toBeVisible();
+  await expect(page.locator(".ant-message-notice")).toHaveCount(0);
   await expect(弹窗).toBeVisible();
   expect((await p.followPlan.findUniqueOrThrow({ where: { id: 客.旧计划id } })).subject).toBe("发二版报价（含运费）");
 

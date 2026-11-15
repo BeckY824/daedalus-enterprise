@@ -105,6 +105,17 @@ function 显示错(话: string, 态: "挡了" | "没成") {
 /** 到点（或被新的一条顶掉、或离页）：倒计时那条收掉，有 到点 的现在做 */
 function 到点了(id: number, { 立刻拿掉 = false } = {}) {
   if (当前?.id !== id || 当前.态 !== "数" || !手) return;
+  /*
+    已经在收了（到点那一下已经做过，正在放收起动画）：不再做第二次。收起动画期间又来一条新的、离页、
+    鼠标移开重开计时都会再走到这里，原来会把「到点」再调一次（11-15 c 发现）。要立刻拿掉的照拿掉
+  */
+  if (当前.出) {
+    if (立刻拿掉) {
+      手 = null;
+      设(null);
+    }
+    return;
+  }
   清计时();
   const 做 = 手.到点;
   if (立刻拿掉) {
@@ -115,7 +126,8 @@ function 到点了(id: number, { 立刻拿掉 = false } = {}) {
 }
 
 async function 撤(id: number) {
-  if (当前?.id !== id || 当前.态 !== "数" || !手) return;
+  // 在收的那条（已经到点做过了）不能再撤：撤销键还在动画里看得见，点了也不算
+  if (当前?.id !== id || 当前.态 !== "数" || 当前.出 || !手) return;
   清计时();
   const 撤销 = 手.撤销;
   改(id, { 态: "撤着" });
@@ -135,7 +147,7 @@ async function 撤(id: number) {
 }
 
 function 停表(id: number) {
-  if (当前?.id !== id || 当前.停 || !手) return;
+  if (当前?.id !== id || 当前.停 || 当前.出 || !手) return;
   if (当前.态 === "数" && 手.计时) {
     clearTimeout(手.计时);
     手.计时 = null;
@@ -144,7 +156,7 @@ function 停表(id: number) {
   改(id, { 停: true });
 }
 function 走表(id: number) {
-  if (当前?.id !== id || !当前.停 || !手) return;
+  if (当前?.id !== id || !当前.停 || 当前.出 || !手) return;
   if (当前.态 === "数" && !手.计时) {
     手.起 = Date.now();
     手.计时 = setTimeout(() => 到点了(id), 手.剩);

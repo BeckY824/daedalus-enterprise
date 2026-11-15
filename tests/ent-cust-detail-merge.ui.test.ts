@@ -673,7 +673,7 @@ it("受限客户详情（只负责项目的人）：页头「仅项目」+ 只�
   } finally { await page.close(); }
 });
 
-it("受限客户详情：最后一个项目退回公海后回客户列表并提示一句（不落 404）；还有别的项目就回这位客户的详情", async () => {
+it("受限客户详情：最后一个项目退回公海后回客户列表、带一句过去（不落 404、不弹顶部提示）；还有别的项目就回这位客户的详情", async () => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = [];
   page.on("pageerror", e => errors.push(e.message));
@@ -687,10 +687,12 @@ it("受限客户详情：最后一个项目退回公海后回客户列表并提�
       const 框 = page.getByRole("dialog", { name: "把项目退回公海？" });
       await 框.getByRole("button", { name: "项目退回公海" }).click();
       await expect.poll(() => page.evaluate(() => (window as unknown as { __去?: string }).__去), { message: `两个 ${两个}` }).toBe(去处);
-      const 提示 = page.locator(".ant-message-notice", { hasText: "这位客户下已经没有你负责的项目了" });
-      if (两个) expect(await 提示.count()).toBe(0);
-      else await 提示.waitFor();
-      await page.evaluate(() => { document.querySelectorAll(".ant-message-notice").forEach((n) => n.remove()); });
+      // 不弹顶部提示；回客户列表的那一下带一句过去（lib/landing-note.ts），客户列表落地后在原处说（LandingNote，见 tests/ent-landing-note.ui.test.ts）
+      expect(await page.locator(".ant-message-notice").count()).toBe(0);
+      const 带的 = await page.evaluate(() => JSON.parse(sessionStorage.getItem("crm:landing-note") ?? "null") as { 到: string; 话: string } | null);
+      if (两个) expect(带的).toBeNull();
+      else expect(带的).toMatchObject({ 到: "/customers", 话: "这位客户下已经没有你负责的项目了，已回到客户列表" });
+      await page.evaluate(() => sessionStorage.removeItem("crm:landing-note"));
     }
     expect(errors).toEqual([]);
   } finally { await page.close(); }
