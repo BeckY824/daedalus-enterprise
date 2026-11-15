@@ -6,6 +6,7 @@ import { App, Button, Card, Checkbox, Input, InputNumber, Popconfirm, Radio, Seg
 import { 加组员角色, 改组员角色, 加项目异常类别, 改项目异常类别, 改组织规则, 预览超时回收 } from "@/app/(app)/projects/actions";
 import { 上限最大, 时长最大, 字数上限最大, 默认起算日, 是不限, 到上限的人数, 推进权限们, type 推进权限, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
 import BusinessDatePicker from "@/components/BusinessDatePicker";
+import { useConsequence } from "@/components/ConsequenceDialog";
 import { dayjs } from "@/lib/utils";
 // 这两张卡（超时回收、节点推进）只在企业版出现（组织规则 只有企业版才读），节点按企业版字典列
 import { 企业版字典, 字典of, 本套节点名, 出口叫法上限 } from "@/lib/project/stage-dict";
@@ -355,6 +356,8 @@ function TimeoutCard({
   跑: (f: () => 结果, 成了?: string) => Promise<boolean>;
 }) {
   const { message, modal } = App.useApp();
+  const router = useRouter();
+  const [问后果, 后果框] = useConsequence();
   const [天数, set天数] = useState<Record<string, number | null>>(规则.节点天数);
   // 外贸那套（C7）：空着 = 和内贸一样
   const [外贸天数, set外贸天数] = useState<Record<string, number | null>>(规则.外贸节点天数 ?? {});
@@ -385,6 +388,26 @@ function TimeoutCard({
     });
   };
 
+  /**
+   * 关开关（PR10b ⑤）：组织规则开关按 P-界面-40 用后果框确认，原来一点就关、全员的项目从此不再超时回收。
+   * 不确认不生效：取消了开关还是开着（Switch 受控，checked 跟着服务端的 规则.开）
+   */
+  const 关掉 = () =>
+    问后果({
+      题: "关掉超时回收？",
+      后果: [
+        { 标: "全员", 级: "警", 话: "所有人的线索、商机项目不再按进程时长自动回线索公海，也不再发超时提醒" },
+        { 标: "不变", 话: "已经回到公海的项目不会回来；各进程填的天数留着，再打开照旧按它算" },
+        { 标: "之后", 话: "记沟通不再必须填下一步时间" },
+      ],
+      是: "确认关掉",
+      做: async () => {
+        const r = await 改组织规则({ 超时回收: { 开: false } });
+        if (r.ok) router.refresh();
+        return r;
+      },
+    });
+
   return (
     <Card
       title="超时回收"
@@ -395,11 +418,12 @@ function TimeoutCard({
             aria-label="超时回收"
             checked={规则.开}
             disabled={!!挡 || !全能 || 忙}
-            onChange={(开) => void (开 ? 确认后存({ 超时回收: { 开 } }, "已开超时回收") : 跑(() => 改组织规则({ 超时回收: { 开 } }), "已关超时回收"))}
+            onChange={(开) => void (开 ? 确认后存({ 超时回收: { 开 } }, "已开超时回收") : 关掉())}
           />
         </Space>
       }
     >
+      {后果框}
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
         开了以后，线索、商机阶段的项目在一个进程上超过处理时长还没跟进，自动回到线索公海，负责人会收到提醒；记沟通时填了下一步时间的，过了那天还没跟进也会回收。项目上记沟通要填下一步时间。{默认天数 ? `没填天数的进程按 ${默认天数} 天算` : "没填天数的进程不回收"}，订单阶段不回收。默认关。
         内贸、外贸项目各按各的时长算（按项目的业务线）；外贸空着 = 和内贸一样。业务线选「暂不分配」的、老项目没填业务线的负责人也没设的，按内贸算。

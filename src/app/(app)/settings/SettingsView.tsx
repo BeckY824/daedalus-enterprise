@@ -24,6 +24,9 @@ import AppearanceTab from "./AppearanceTab";
 import ProjectSettingsTab, { type 项目设置 } from "./ProjectSettingsTab";
 import OrgTab, { type 组织架构 } from "./OrgTab";
 import RecycleTab, { type 客户回收设置 } from "./RecycleTab";
+import LeadAssignCard from "./LeadAssignCard";
+import type { 分配情况 } from "../leads/assign-actions";
+import type { 设置身份 } from "@/lib/enterprise/settings-scope";
 import type { BusinessConfig } from "@/lib/business-config";
 import type { AiUsage } from "@/lib/ai-usage";
 
@@ -44,6 +47,7 @@ const 说明表: Record<string, string> = {
   project: "项目组员角色、成员的上级",
   org: "部门、角色、直属和虚线上级",
   recycle: "沉睡待定、即将回收、自动进公海的天数和占位词",
+  quota: "给下属设每月分几条线索",
 };
 
 export default function SettingsView({
@@ -66,6 +70,7 @@ export default function SettingsView({
   导出记录 = null,
   只个人 = false,
   客户回收 = null,
+  线索配额 = null,
 }: {
   users: Row[];
   me: SessionUser;
@@ -104,6 +109,10 @@ export default function SettingsView({
   只个人?: boolean;
   /** 企业版项目模式多一栏「客户回收」（客户三态的开关、天数、占位词，C16）；null = 不摆 */
   客户回收?: 客户回收设置 | null;
+  /** 登录身份（P-界面-46）：系统管理员 / 只读管理员 / 成员 */
+  身份?: 设置身份;
+  /** 不是系统管理员、手下有能设配额的人（PR10b ③）：单给一栏「线索配额」；null = 不摆（系统管理员在组织架构里设） */
+  线索配额?: { 行: 分配情况; 不限额: boolean } | null;
 }) {
   const [搜, set搜] = useState("");
   // 当前页签由地址栏 ?tab= 决定：中栏那列设置项就是一组带 tab 的链接，刷新、回退都对得上
@@ -132,6 +141,7 @@ export default function SettingsView({
     ...(isAdmin ? [{ key: "business", label: "业务配置", children: <ConfigProvider componentDisabled={只读}><BusinessSettingsTab value={business} 多人={users.filter((u) => u.active).length > 1} 企业版={企业版} /></ConfigProvider> }] : []),
     ...(组织架构 ? [{ key: "org", label: "组织架构", children: <OrgTab value={组织架构} /> }] : []),
     ...(项目设置 ? [{ key: "project", label: "项目模式", children: <ProjectSettingsTab value={项目设置} 成员={持有成员} /> }] : []),
+    ...(线索配额 ? [{ key: "quota", label: "线索配额", children: <LeadAssignCard rows={线索配额.行} 不限额={线索配额.不限额} /> }] : []),
     ...(客户回收 ? [{ key: "recycle", label: "客户回收", children: <RecycleTab value={客户回收} /> }] : []),
     ...(导入记录 ? [{ key: "imports", label: "导入记录", children: <ImportsTab /> }] : []),
     ...(企业版导入 ? [{ key: "enterprise", label: "企业版导入", children: <EnterpriseImportTab /> }] : []),
@@ -139,7 +149,7 @@ export default function SettingsView({
     ...(导出记录 ? [{ key: "exports", label: "导出记录", children: <AuditTab logs={导出记录} 导出 /> }] : []),
     { key: "audit", label: "操作日志", children: <AuditTab logs={logs} /> },
   ]
-    .filter((x) => !只个人 || ["profile", "password", "keymap", "appearance", "trash"].includes(x.key))
+    .filter((x) => !只个人 || ["profile", "password", "keymap", "appearance", "quota", "trash"].includes(x.key))
     // 不是托管版没有「已登录的机器」这一块（机器 = null），说明别提它（D1-2）
     .map((x) => ({ ...x, 说明: x.key === "password" && !机器 ? "改自己的登录密码" : 说明表[x.key] ?? "" })) as { key: string; label: string; 说明: string; children: React.ReactNode }[];
 
@@ -150,7 +160,7 @@ export default function SettingsView({
    */
   const 分组表: [string, string[]][] = [
     ["个人", ["profile", "password", "keymap", "appearance"]],
-    ["工作区", ["members", "org", "business", "project", "recycle", "ai", "imports", "exports", "enterprise", "trash", "audit"]],
+    ["工作区", ["quota", "members", "org", "business", "project", "recycle", "ai", "imports", "exports", "enterprise", "trash", "audit"]],
   ];
 
   /**
