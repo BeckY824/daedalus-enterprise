@@ -90,7 +90,11 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
     const 改: Parameters<typeof 改组织规则>[0] = { 三态: { 内贸: 天.内贸, 外贸: 天.外贸 } };
     if (!三态.开) return void 存(改, "已保存");
     set忙(true);
-    const 看 = await 预览客户回收(改).catch(() => null);
+    // 预览要整库算一遍，客户多时可能慢：最多等 5 秒，过时就不写数字、照常弹确认
+    const 看 = await Promise.race([
+      预览客户回收(改).catch(() => null),
+      new Promise<null>((ok) => setTimeout(() => ok(null), 5000)),
+    ]);
     set忙(false);
     // 没权限、天数不对这类服务端明说不行的，直接说，不弹确认
     if (看 && !看.ok) return void message.error(("error" in 看 && 看.error) || "没改成，请稍后再试");
