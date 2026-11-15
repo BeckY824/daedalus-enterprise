@@ -7,6 +7,7 @@ import { App, Button, Card, Input, Modal, Space, Tag } from "antd";
 import { fmtDate } from "@/lib/utils";
 import { 原因上限 } from "@/lib/project/nodes";
 import { 市场复核Action, 总管理终判Action } from "./actions";
+import { useUndoLater } from "./useUndoLater";
 
 export type 待复核行 = {
   projectId: string; 项目: string; 负责人: string; 步: "市场复核" | "销售终验" | "总管理终判" | "销售认领";
@@ -18,7 +19,9 @@ const 步叫法: Record<待复核行["步"], string> = { 市场复核: "等你�
 
 /**
  * 企业版线索验证（P12）：项目列表 / 新线索页顶上「待复核的线索」，和项目组邀请放一块。
- * 复核两步（市场管理、总管理）在这里直接判；销售终验、认领要看详情，给链接
+ * 复核两步（市场管理、总管理）在这里直接判；销售终验、认领要看详情，给链接。
+ * 判有效一步完成（原型 pr.verify，P-界面-40）：这一条马上收起，6 秒内能撤销、也能「补一句」复核说明，6 秒后才交给服务端；
+ * 判无效照旧先弹框确认（会记线索流失、补额度）
  */
 export default function VerifyInbox({ 们 }: { 们: 待复核行[] }) {
   const router = useRouter();
@@ -26,16 +29,42 @@ export default function VerifyInbox({ 们 }: { 们: 待复核行[] }) {
   const [忙, set忙] = useState(false);
   const [框, set框] = useState<{ r: 待复核行; 有效: boolean } | null>(null);
   const [说明, set说明] = useState("");
-  if (!们.length) return null;
+  const [收起的, set收起的] = useState<ReadonlySet<string>>(() => new Set());
+  const 稍后交 = useUndoLater();
+  const 摆着 = 们.filter((r) => !收起的.has(r.projectId));
+  if (!摆着.length && !框) return null;
+  const 摆回 = (id: string) => set收起的((s) => { const n = new Set(s); n.delete(id); return n; });
+  const 动作of = (r: 待复核行) => (r.步 === "总管理终判" ? 总管理终判Action : 市场复核Action);
+  const 判有效 = (r: 待复核行) => {
+    set收起的((s) => new Set(s).add(r.projectId));
+    稍后交(`verify-${r.projectId}`, {
+      文字: "已判有效，交回负责人",
+      撤: () => 摆回(r.projectId),
+      // 补一句：不再等计时，开原来那个说明框（判有效），写完点确定才交
+      另一钮: { 字: "补一句", 点: () => { 摆回(r.projectId); set说明(""); set框({ r, 有效: true }); } },
+      交: () => {
+        void 动作of(r)(r.projectId, true, "").then(
+          (x) => {
+            if (x.ok) return router.refresh();
+            摆回(r.projectId);
+            message.error(x.error ?? "没判成，请稍后再试");
+          },
+          () => { 摆回(r.projectId); message.error("没判成，请稍后再试"); },
+        );
+      },
+    });
+  };
   const 判 = async () => {
     if (!框) return;
     set忙(true);
     try {
-      const act = 框.r.步 === "总管理终判" ? 总管理终判Action : 市场复核Action;
+      const act = 动作of(框.r);
       const x = await act(框.r.projectId, 框.有效, 说明);
       if (!x.ok) message.error(x.error ?? "没判成，请稍后再试");
       else {
         message.success(框.有效 ? "已判有效，交回负责人" : "已判无效线索");
+        const id = 框.r.projectId;
+        set收起的((s) => new Set(s).add(id));
         set框(null);
         router.refresh();
       }
@@ -46,8 +75,8 @@ export default function VerifyInbox({ 们 }: { 们: 待复核行[] }) {
     }
   };
   return (
-    <Card title={`待复核的线索（${们.length}）`} size="small" style={{ marginBottom: 16 }} data-testid="verify-inbox">
-      {们.map((r) => {
+    <Card title={`待复核的线索（${摆着.length}）`} size="small" style={{ marginBottom: 16 }} data-testid="verify-inbox">
+      {摆着.map((r) => {
         const 复核 = r.步 === "市场复核" || r.步 === "总管理终判";
         const 附 = [r.无效原因 ? `无效原因：${r.无效原因}` : null, r.初判说明, r.步 === "总管理终判" && r.异议说明 ? `异议：${r.异议说明}` : null, r.步 === "销售终验" && r.复核说明 ? `复核说明：${r.复核说明}` : null].filter(Boolean).join(" · ");
         return (
@@ -60,7 +89,7 @@ export default function VerifyInbox({ 们 }: { 们: 待复核行[] }) {
             </span>
             {复核 ? (
               <Space>
-                <Button type="primary" size="small" disabled={忙} onClick={() => { set说明(""); set框({ r, 有效: true }); }}>判有效</Button>
+                <Button type="primary" size="small" disabled={忙} onClick={() => 判有效(r)}>判有效</Button>
                 <Button danger size="small" disabled={忙} onClick={() => { set说明(""); set框({ r, 有效: false }); }}>判无效</Button>
               </Space>
             ) : (

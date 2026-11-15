@@ -186,7 +186,9 @@ export default function ProjectsView({
   // 带着要指出的那一行来：先按列表看（不改存下的看法），自己切回看板就听他的
   const [临时列表, set临时列表] = useState(!!高亮);
   const 看法 = 新线索 || 临时列表 ? "列表" : 客户页 ? "看板" : 存的看法;
-  const 换看法 = (v: "列表" | "看板") => { set临时列表(false); set看法(v); };
+  // 看板 ⇄ 列表（原型 pr.view）：换过一次以后，换上来的那一块淡入、轻轻上移落位；第一次进页不动
+  const [换过, set换过] = useState(false);
+  const 换看法 = (v: "列表" | "看板") => { set临时列表(false); set看法(v); set换过(true); };
   // 要指出的那一行滚到视口中间（减弱动态时直接跳过去）；只在进来时滚一次，之后翻页、筛选不追着滚
   useEffect(() => {
     if (!高亮) return;
@@ -215,6 +217,9 @@ export default function ProjectsView({
       }
     : apply;
   const pending = 筛选中 || 翻页中;
+  // 原型 pr.filter：改了筛选（或翻页）等回包时看板先出骨架卡；回来以后卡片依次落位。第一次进页不排队
+  const [筛过, set筛过] = useState(false);
+  if (pending && !筛过) set筛过(true);
   // 要的页越界（删空了最后一页、手改地址栏）：服务端已给了实际那一页，这里只把地址栏改对，不再取一次（同客户列表）
   useEffect(() => {
     // 客户页看板：地址栏的 page 是客户列表的，不归这里改（看板不取列表页时服务端也不给 要的页）
@@ -245,6 +250,8 @@ export default function ProjectsView({
   const 最新 = useRef({ 看板, 代: 0 });
   useEffect(() => { 最新.current = { 看板, 代: 最新.current.代 + 1 }; }, [看板]);
   const 点表 = 三态点 ? { ...三态点, ...追加.点 } : undefined;
+  // 原型 pr.more：「再看」接上来的卡片依次滑入、淡亮一下，看得出是刚加的（只亮这一回，id 记着）
+  const [刚到, set刚到] = useState<ReadonlySet<string>>(() => new Set());
   async function 再看(c: 看板一列) {
     const 源 = 看板;
     const 代 = 最新.current.代;
@@ -255,6 +262,8 @@ export default function ProjectsView({
       const r = await (客户页 ? 再看一列 : 再看项目页一列)(window.location.search, c.列, 已有.length);
       if (最新.current.看板 !== 源) return;
       if (!r.ok) return void message.error(r.error);
+      const 有过 = new Set(已有.map((x) => x.id));
+      set刚到((m) => new Set([...m, ...r.行.filter((x) => !有过.has(x.id)).map((x) => x.id)]));
       set追加((前) => {
         // 前 是更新的一屏的（这期间又换过一屏）：不动它；是更早一屏留下的：这一屏从空的起
         if (前.代 > 代) return 前;
@@ -490,7 +499,9 @@ export default function ProjectsView({
     </Space>
   </>);
 
-  const 有分配钮 = 项目页分 && 能自动分配;
+  // 原型 pr.guide（11-15）：项目页页头那颗「分配」只是带路（切到列表 + 一句说明），去掉——勾选后操作条里就有「自动分配」、每行末有「分配」。
+  // 客户页看板视图那一格照旧（客户列表另有改版，不在这里动）
+  const 有分配钮 = 客户页 && 项目页分 && 能自动分配;
   const 有分出去钮 = (新线索 || 项目页分) && 线索分配开着;
   /** 项目专用的几颗按钮：项目页在页头；客户页看板视图在筛选行右端（C17 / C4；11-12 起新增项目挪进客户页页头「新建 ▾」） */
   const 项目按钮 = (
@@ -567,6 +578,7 @@ export default function ProjectsView({
       <MyBlockersBoard 们={卡点们} />
       {新线索 && <LeadFullNotices 提醒={提醒们} />}
 
+      <div key={看法} className={换过 ? "proj-view-in" : undefined}>
       {看法 === "列表" ? (
         <DataList<项目行>
           // 企业版默认只摆 7 列（1366 宽不横滚），换个键让已存的旧列设置回到新默认
@@ -612,9 +624,10 @@ export default function ProjectsView({
           {/* 每列都摆（团队版五列；企业版按进程一个一列 + 三个出口，11-03 客户反馈 6），0 个项目的列照常显示、写空态（11-01 用户定，原来企业版空列默认藏起）；列宽固定，放不下在看板框里左右滑（globals.css .pipe）。
               右边还有没露全的列：右沿渐隐 + 上面「→ 还有 N 列」（11-01 会议 C12），横向滚动条常显 */}
           <div className={右边还有 > 0 ? "pipe-wrap pipe-fade-right" : "pipe-wrap"}>
-            <div className="pipe" ref={看板框}>
+            <div className="pipe" ref={看板框} aria-busy={pending || undefined}>
               {看板.map((c) => {
                 const sum = 合计文字(c.合计, b.currency);
+                let 新第 = 0;
                 return (
                   <div key={c.列} className="pipe-col" aria-label={`${c.阶段 ? `${c.阶段} · ` : ""}${c.名}，${c.数} 个项目`}>
                     <div className="pipe-h">
@@ -624,18 +637,22 @@ export default function ProjectsView({
                       <span className="pipe-sum" title={sum}>{sum}</span>
                     </div>
                     <div className="pipe-bar" style={{ background: 列色[c.色] }} />
-                    {c.行.length === 0 && <div className="pipe-empty">{在筛 ? "这一列没有对上的" : c.空态}</div>}
-                    {[...c.行, ...(每列取数 ? (追加.们[c.列]?.行 ?? []) : [])].map((r) => {
+                    {/* 等筛选回包：先出两张骨架卡占位（原型 pr.filter），不让人对着旧卡片以为没反应 */}
+                    {pending && <><div className="pipe-card pipe-card-skel" aria-hidden="true"><i /><i /></div><div className="pipe-card pipe-card-skel" aria-hidden="true"><i /><i /></div></>}
+                    {!pending && c.行.length === 0 && <div className="pipe-empty">{在筛 ? "这一列没有对上的" : c.空态}</div>}
+                    {!pending && [...c.行, ...(每列取数 ? (追加.们[c.列]?.行 ?? []) : [])].map((r, 序) => {
                       const 异常 = r.result === "异常状态";
                       const 小字 = 卡片小字(r, 字典);
+                      const 刚来 = 刚到.has(r.id);
+                      const 档 = 刚来 ? 新第++ : 序;
                       // 只看进度（市场角色、已分给圈外的人）：卡片照摆、点不进详情（P-看-06）
                       const 能进 = !r.只看进度;
                       const 去 = () => 能进 && router.push(项目地址(r));
                       return (
                         <div
                           key={r.id}
-                          className={能进 ? "pipe-card" : "pipe-card pipe-card-ro"}
-                          style={{ borderLeftColor: 异常 ? "var(--danger)" : 列色[c.色] }}
+                          className={`${能进 ? "pipe-card" : "pipe-card pipe-card-ro"}${刚来 ? " pipe-card-new" : 筛过 ? " pipe-card-in" : ""}`}
+                          style={{ borderLeftColor: 异常 ? "var(--danger)" : 列色[c.色], ["--i" as string]: Math.min(档, 8) }}
                           tabIndex={能进 ? 0 : undefined}
                           role={能进 ? "link" : undefined}
                           title={异常 && 异常说明(r) ? `异常：${异常说明(r)}` : `${r.customerName ?? 领了再看(r)} · ${小字}${能进 ? "" : " · 已分给他人，只看进度"}`}
@@ -711,6 +728,7 @@ export default function ProjectsView({
           )}
         </>
       )}
+      </div>
       {/* 新增项目：先选新老客户、建档向导、给老客户开项目（NewProjectFlow.tsx） */}
       {企业版 && 新项目.弹框}
       {可分 && <AssignLeadModal lead={分配中 && { id: 分配中.id, name: 分配中.name, ownerId: 分配中.ownerId, 项目: true }} 关={() => set分配中(null)} 不看配额={项目页分} />}

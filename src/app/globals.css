@@ -2898,6 +2898,20 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 /* 每列先摆 50 张（2026-10-24），底下接着翻；列宽固定，卡片里的字折行写完，不撑宽列 */
 /* 客户看板（U-客户-06）：按客户属性分列，点卡片进客户页（不拖）。属性名管理员能自己加、可能很长：列头名字一行省略、悬停看全 */
 .cust-board .pipe-card { cursor: pointer; }
+/* 项目页改版（原型 pr.view / pr.filter / pr.more，11-15）：
+   看板 ⇄ 列表换上来的那一块淡入、轻轻上移落位；等筛选回包时每列两张骨架卡；回来的卡片依次落位；
+   列底「再看」接上的卡片滑入并淡亮一下（同 row-fresh 的亮法），看得出是刚加的。减弱动态时全站动画时长归零，不位移 */
+.proj-view-in { animation: proj-view-in var(--t-morph) var(--ease) both; }
+@keyframes proj-view-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.pipe-card-skel { cursor: default; display: flex; flex-direction: column; gap: var(--s2); border-left-color: var(--line); pointer-events: none; }
+.pipe-card-skel > i { display: block; height: 9px; border-radius: 999px; background: var(--line); }
+.pipe-card-skel > i + i { width: 62%; }
+.pipe-card-in { animation: pipe-card-in var(--t) var(--ease) calc(var(--stagger) * var(--i, 0)) both; }
+@keyframes pipe-card-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.pipe-card-new { animation: pipe-card-in var(--t-morph) var(--ease) calc(var(--stagger) * var(--i, 0)) both, pipe-card-fresh 2s var(--ease) calc(var(--stagger) * var(--i, 0)) both; }
+@keyframes pipe-card-fresh { 0%, 55% { background-color: var(--brand-bg); } 100% { background-color: var(--panel); } }
+/* 减弱动态：时长归零还不够，排队的延迟（--stagger × 序）会让卡片空着等一会儿，整个不放 */
+@media (prefers-reduced-motion: reduce) { .proj-view-in, .pipe-card-in, .pipe-card-new { animation: none !important; } }
 .cust-board .pipe-h b { flex: 0 1 auto; min-width: 0; }
 .cust-board-meta { display: inline-flex; align-items: baseline; gap: var(--s1); min-width: 0; }
 .cust-board-page { display: flex; justify-content: flex-end; margin-top: var(--s3); }
@@ -2923,6 +2937,17 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .new-proj-pick { display: flex; flex-direction: column; gap: var(--s2); }
 .new-proj-opt { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); width: 100%; min-width: 0; padding: 12px 14px; text-align: start; font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; overflow-wrap: anywhere; }
 .new-proj-opt:hover:not(:disabled), .new-proj-opt:focus-visible { border-color: var(--brand); background: var(--brand-bg); }
+/* 分配的后果写在框里（原型 pr.assign / pr.autobatch）：一行一件事，前面一枚小标签；一起转走的项目一行一个、放不下省略、悬停看全 */
+.assign-sure { display: flex; flex-direction: column; gap: var(--s2); overflow-wrap: anywhere; }
+.assign-carry { display: flex; flex-direction: column; gap: var(--s1); margin-bottom: var(--s3); min-width: 0; overflow-wrap: anywhere; }
+.assign-sure .assign-carry { margin-bottom: 0; }
+.assign-carry-list { margin: 0; padding-inline-start: 18px; max-height: 160px; overflow-y: auto; }
+.assign-carry-list > li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 「6 秒内可撤销」的提示（projects/useUndoLater.tsx）：字和两颗链接按钮一行，按钮不折 */
+.undo-later { display: inline-flex; align-items: center; gap: var(--s1); flex-wrap: wrap; }
+.undo-later > .ant-btn { padding-inline: 4px; height: auto; }
+/* 默认那一项（新客户，原型 pr.new）：一打开就亮着，回车即走 */
+.new-proj-opt.is-default { background: var(--brand-bg); }
 /* 选项里的名字 + 一行小字（projects/NewProjectFlow.tsx，原行内样式搬来） */
 .new-proj-opt-t { line-height: 1.4; padding: 2px 0; }
 .new-proj-opt-s { font-size: var(--fs-min); color: var(--text-muted); }

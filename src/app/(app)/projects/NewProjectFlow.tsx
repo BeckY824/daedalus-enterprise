@@ -77,12 +77,14 @@ export function useNewProjectFlow({ users, 节点们, 要下一步, 建档: 给�
     }
   };
   const [老客户新建开着, set老客户新建开着] = useState(false);
+  // 原型 pr.new：框一开「新客户」就是默认那一项（亮着、焦点在它上面），回车即走；框从点的那颗按钮处长出（antd 弹框按点击处放大）
+  const 新客户钮 = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => { 链开.current = 选客户 || 挑老客户 || 建档开着 || 老客户新建开着; });
   const 弹框 = (
     <>
-      <Modal open={选客户} title="新增项目" footer={null} width={420} onCancel={() => set选客户(false)} afterClose={收尾} destroyOnHidden>
+      <Modal open={选客户} title="新增项目" footer={null} width={420} onCancel={() => set选客户(false)} afterClose={收尾} afterOpenChange={(开) => { if (开) 新客户钮.current?.focus(); }} destroyOnHidden>
         <div className="new-proj-pick">
-          <button type="button" className="new-proj-opt" disabled={取档中} onClick={() => void 开建档("新增项目")}>
+          <button ref={新客户钮} type="button" className="new-proj-opt is-default" disabled={取档中} onClick={() => void 开建档("新增项目")}>
             <两行 名={`新${b.customer}`} 说={`一起建好${b.customer}、联系人和首条沟通，号码先查重`} />
             <RightOutlined aria-hidden />
           </button>
