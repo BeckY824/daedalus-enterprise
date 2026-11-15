@@ -2951,6 +2951,12 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .cmdk-row b { flex: none; font-weight: 500; color: var(--ink); }
 .cmdk-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-note); color: var(--text-muted); }
 .cmdk-row-on { background: var(--brand-bg); }
+/* 高亮是同一块底色在行间滑（CommandBar 的 layoutId="cmdk-on"，PR2 外壳 g.cmdk）：行自己不再上底色，字压在那块上面。
+   「问一句」那一行不在 .cmdk-item 里，没有滑块，照旧自己上底色 */
+.cmdk-item > .cmdk-row { position: relative; }
+.cmdk-item > .cmdk-row-on { background: transparent; }
+.cmdk-on-bg { position: absolute; inset: 0; border-radius: var(--r-ctl); background: var(--brand-bg); z-index: 0; pointer-events: none; }
+.cmdk-item > .cmdk-row > :not(.cmdk-on-bg) { position: relative; z-index: 1; }
 /* 企业版全局搜索（U-项目-04）：分组小标题；搜到的名字可能很长，名字和附注一起省略，不撑出横滚 */
 .cmdk-sec { padding: var(--s2) var(--s3) var(--s1); font-size: var(--fs-min); color: var(--text-faint); }
 /* ⌘K 搜不到（11-03 C10-2）：输入已在 lib/cmdk.ts 截断，这里只兜一手不撑出横滚 */
@@ -3085,6 +3091,15 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
   100% { background-color: var(--panel); }
 }
 
+/* 骨架条（components/Skeleton.tsx，PR2 外壳；以后页签 / 页面切换先出它、数据到了再淡入，原型 g.tabswitch）。
+   浅灰圆角条 + 一道很淡的光从右往左扫过去；条宽三档轮着（100 / 86 / 72%），看着像一段段文字而不是一堵墙。
+   出现时只淡入，不位移（--t-fast）。减弱动态下不扫光，静止的灰条（文件末尾那段 @media） */
+.skel { display: flex; flex-direction: column; gap: var(--skel-gap, 10px); animation: crm-pop-fade-in var(--t-fast) var(--ease) both; }
+.skel-bar { height: var(--skel-h, 12px); border-radius: var(--r-ctl); background: linear-gradient(90deg, var(--hover) 0%, color-mix(in srgb, var(--hover) 35%, var(--panel)) 40%, var(--hover) 80%); background-size: 300% 100%; animation: skel-sweep 1.4s linear infinite; }
+.skel-bar:nth-child(3n + 2) { width: 86%; }
+.skel-bar:nth-child(3n) { width: 72%; }
+@keyframes skel-sweep { from { background-position: 100% 0; } to { background-position: -50% 0; } }
+
 /* 骨架屏晚 180ms 再出现：这段时间内页面要是已经好了，就一眼都不会看见它。
    原来快的那几页也会闪一下灰块，闪一下比等一下更像出了问题。 */
 .app-loading { animation: app-loading-in var(--t) var(--ease) var(--t) both; }
@@ -3110,10 +3125,19 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
   transition:
     scale var(--t-fast) var(--ease),
     transform var(--t-fast) var(--ease),
-    background var(--t-fast) var(--ease),
-    color var(--t-fast) var(--ease),
-    border-color var(--t-fast) var(--ease),
+    background var(--t-leave) var(--ease),
+    color var(--t-leave) var(--ease),
+    border-color var(--t-leave) var(--ease),
     opacity var(--t-fast) var(--ease);
+}
+/* 悬停「进入即时、离开 150ms」（P-界面-38，PR2 外壳）：指上去底色当场就在，移开才用 --t-leave 慢慢褪。
+   过渡用的是「变化之后」那份样式的时长，所以只要 :hover 时把底色、字色、描边三项的时长写成 0：
+   进入那一下读到 0（立刻），离开那一下读回上面的 --t-leave。缩放、位移、透明度不在此列，照旧 --t-fast。
+   **这一条必须在下面那几条 :active 前面**：同样的选择器分量，后写的赢——按下那一档（--t-press）要压过它 */
+.press:hover, .rail-item:hover, .rail-fb:hover, .pane-ib:hover, .pane-chip:hover, .rec-chip:hover, .cli-tool:hover, .cli-send:hover, .cli-ic:hover,
+.cli-q:hover, .cli-sugg:hover, .cli-cmd:hover, .mp-btn:hover, .prop-ok:hover, .prop-no:hover, .bill-plan:hover, .set-nav-i:hover, .cmdk-row:hover,
+.setm-x:hover, .list-sel-x:hover, .plan-switch:hover, .rail-user:hover {
+  transition-duration: var(--t-fast), var(--t-fast), 0s, 0s, 0s, var(--t-fast);
 }
 .press:active, .rail-fb:active, .pane-ib:active, .pane-chip:active, .rec-chip:active,
 .cli-tool:active, .cli-send:active, .cli-ic:active, .cli-q:active, .cli-sugg:active,
@@ -3164,19 +3188,76 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 
 /* antd 的按钮和菜单项：它们自己带 transition: all，所以只补按下这一档。
    不逐个改组件——全站的按钮都是 antd 的，一条规则比一百处调用点可靠 */
-.ant-btn:not(:disabled):active { scale: 0.92; transition-duration: var(--t-press); }
-.ant-dropdown-menu-item, .ant-select-item, .ant-picker-cell { transition: scale var(--t-press) var(--ease), background var(--t-fast) var(--ease); }
-.ant-dropdown-menu-item:active, .ant-select-item:active { scale: 0.965; }
+/* 悬停「进入即时、离开 150ms」（P-界面-38）落到 antd 身上：按钮、下拉菜单项、选单项、表格行。
+   antd 自己的选择器分量比一个类高（按钮 .ant-btn 由它运行时插样式、先后说不准；菜单项三层类、选单项两层、表格格三层），
+   所以前面都垫一个 :root 压过它，不用 !important（主题还要能改）。
+   按钮原来是 antd 的 transition: all 180ms：悬停变色改成进入 0、离开 --t-leave；缩放单列出来照旧 --t-fast 松开，按下那档 --t-press 不变。
+   菜单项 / 选单项：鼠标停在哪一项，antd 是给它挂 -active 类（选单键盘上下也是这个类），所以 :hover 和 -active 都算「进入」。
+   表格行只变底色、不缩放（P-界面-38「表格行不缩放」）。 */
+:root .ant-btn { transition: all var(--t-leave) var(--ease-morph), scale var(--t-fast) var(--ease); }
+:root .ant-btn:not(:disabled):hover { transition-duration: 0s, var(--t-fast); }
+:root .ant-btn:not(:disabled):active { scale: 0.92; transition-duration: var(--t-press); }
+:root .ant-dropdown .ant-dropdown-menu :is(.ant-dropdown-menu-item, .ant-dropdown-menu-submenu-title),
+:root .ant-select-dropdown .ant-select-item,
+.ant-picker-cell {
+  transition: background-color var(--t-leave) var(--ease), color var(--t-leave) var(--ease), scale var(--t-press) var(--ease);
+}
+:root .ant-dropdown .ant-dropdown-menu :is(.ant-dropdown-menu-item, .ant-dropdown-menu-submenu-title):is(:hover, .ant-dropdown-menu-item-active, .ant-dropdown-menu-submenu-active),
+:root .ant-select-dropdown .ant-select-item:is(:hover, .ant-select-item-option-active),
+.ant-picker-cell:hover {
+  transition-duration: 0s, 0s, var(--t-press);
+}
+:root .ant-dropdown .ant-dropdown-menu .ant-dropdown-menu-item:active, :root .ant-select-dropdown .ant-select-item:active { scale: 0.965; }
+:root .ant-table-wrapper .ant-table-tbody > tr > td { transition: background-color var(--t-leave) var(--ease), border-color var(--t-leave) var(--ease); }
+:root .ant-table-wrapper .ant-table-tbody > tr:hover > td { transition-duration: 0s; }
 /* 表格行按下去只变底色：缩放会把整张表带着晃 */
 .ant-table-tbody > tr.ant-table-row:active > td { background: var(--hover); }
 
 
-/* antd 的弹出层（下拉、选单、气泡、日期）：只换曲线和时长，不碰它画什么。
-   它自带的 cubic-bezier(.08,.82,.17,1) 比我们这套软一档，两种曲线同屏会显得不是一套东西。
-   菜单用 --ease-spring：起步快、到位不越过（11 月起不再过冲，P-界面-38）。 */
-.ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown, .ant-tooltip, .ant-popover {
+/* antd 的弹出层（下拉、选单、气泡、日期）：只换「怎么出来」，不碰它画什么。
+   P-界面-38（PR2 外壳，原型 g.menu「从按钮处长出，0.1 秒，不拖沓」）：
+     进场 —— 从触发处 --pop-scale（.97）放大到位 + 淡入，--t-pop（100ms），--ease（不回弹弹簧的形状）。
+             antd 自带的是 scaleY(.8) 往下拉开（下拉、选单、日期）和 scale(.8) 鼓出来（气泡、提示），都比这一下重、也慢。
+     离场 —— 淡出、缩回 .97，--t-fast（120ms），和原型的关菜单一致。
+     「触发处」—— 下拉、选单、日期、级联按它实际摆在哪边（antd 挂的 -placement-* 类）定缩放原点：在按钮下面就从上沿长出、
+             靠左对齐就从左上角；翻到上面去了就从下沿。气泡、提示 antd 已经把原点放在箭头那一点上（--arrow-x / --arrow-y），不动它。
+   只在 -enter-active / -leave-active 那一拍换关键帧（和 antd 自己一样）：之前那一拍 rc-trigger 还在量位置，不能先缩着。
+   减弱动态下只淡入淡出、不缩放（文件末尾那段 @media）。 */
+:is(.ant-dropdown, .ant-dropdown-menu-submenu-popup, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown, .ant-tooltip, .ant-popover) {
   --antd-motion-ease: var(--ease-spring);
 }
+@keyframes crm-pop-in { from { opacity: 0; transform: scale(var(--pop-scale)); } to { opacity: 1; transform: none; } }
+@keyframes crm-pop-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(var(--pop-scale)); } }
+@keyframes crm-pop-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes crm-pop-fade-out { from { opacity: 1; } to { opacity: 0; } }
+:is(.ant-dropdown, .ant-dropdown-menu-submenu-popup, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown, .ant-tooltip, .ant-popover):is(
+  .ant-slide-up-enter, .ant-slide-up-appear, .ant-slide-down-enter, .ant-slide-down-appear,
+  .ant-zoom-big-enter, .ant-zoom-big-appear, .ant-zoom-big-fast-enter, .ant-zoom-big-fast-appear) {
+  animation-duration: var(--t-pop) !important;
+  animation-timing-function: var(--ease) !important;
+}
+:is(.ant-dropdown, .ant-dropdown-menu-submenu-popup, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown, .ant-tooltip, .ant-popover):is(
+  .ant-slide-up-enter-active, .ant-slide-up-appear-active, .ant-slide-down-enter-active, .ant-slide-down-appear-active,
+  .ant-zoom-big-enter-active, .ant-zoom-big-appear-active, .ant-zoom-big-fast-enter-active, .ant-zoom-big-fast-appear-active) {
+  animation-name: crm-pop-in !important;
+}
+:is(.ant-dropdown, .ant-dropdown-menu-submenu-popup, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown, .ant-tooltip, .ant-popover):is(
+  .ant-slide-up-leave, .ant-slide-down-leave, .ant-zoom-big-leave, .ant-zoom-big-fast-leave) {
+  animation-duration: var(--t-fast) !important;
+  animation-timing-function: var(--ease) !important;
+}
+:is(.ant-dropdown, .ant-dropdown-menu-submenu-popup, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown, .ant-tooltip, .ant-popover):is(
+  .ant-slide-up-leave-active, .ant-slide-down-leave-active, .ant-zoom-big-leave-active, .ant-zoom-big-fast-leave-active) {
+  animation-name: crm-pop-out !important;
+}
+/* 缩放原点 = 挨着触发处的那条边。先写居中，再让带 Left / Right 的覆盖（同分量，后写的赢） */
+:is(.ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown)[class*="-placement-bottom"] { transform-origin: 50% 0; }
+:is(.ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown)[class*="-placement-top"] { transform-origin: 50% 100%; }
+:is(.ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown)[class*="-placement-bottomLeft"] { transform-origin: 0 0; }
+:is(.ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown)[class*="-placement-bottomRight"] { transform-origin: 100% 0; }
+:is(.ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown)[class*="-placement-topLeft"] { transform-origin: 0 100%; }
+:is(.ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown)[class*="-placement-topRight"] { transform-origin: 100% 100%; }
+/* 其余用 antd 动效类的（模态框的 zoom、别处的 slide）照旧：只换曲线和时长 */
 .ant-slide-up-enter, .ant-slide-up-appear, .ant-slide-down-enter, .ant-slide-down-appear,
 .ant-zoom-big-enter, .ant-zoom-big-appear, .ant-zoom-enter, .ant-zoom-appear {
   animation-duration: var(--t) !important;
@@ -3378,6 +3459,27 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
   .ant-cascader-dropdown, .ant-mentions-dropdown, .ant-tour {
     transition: none !important;
   }
+  /* 弹层、模态框（P-界面-38「减弱动态只留透明度」）：上面那些进场规则的分量比兜底的 * 高，时长压不下来，
+     不管的话照样从 .97 放大出来。这里只把关键帧换成纯淡入淡出，时长照旧（浮层 --t-pop、模态 --t），缩放一点都不做 */
+  :is(.ant-dropdown, .ant-dropdown-menu-submenu-popup, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown, .ant-tooltip, .ant-popover):is(
+    .ant-slide-up-enter-active, .ant-slide-up-appear-active, .ant-slide-down-enter-active, .ant-slide-down-appear-active,
+    .ant-zoom-big-enter-active, .ant-zoom-big-appear-active, .ant-zoom-big-fast-enter-active, .ant-zoom-big-fast-appear-active),
+  .ant-modal:is(.ant-zoom-enter, .ant-zoom-appear) {
+    animation-name: crm-pop-fade-in !important;
+  }
+  :is(.ant-dropdown, .ant-dropdown-menu-submenu-popup, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown, .ant-tooltip, .ant-popover):is(
+    .ant-slide-up-leave-active, .ant-slide-down-leave-active, .ant-zoom-big-leave-active, .ant-zoom-big-fast-leave-active),
+  .ant-modal.ant-zoom-leave {
+    animation-name: crm-pop-fade-out !important;
+  }
+  /* antd 在进场前那几拍给根节点挂了静态的 transform: scale(0)（平时被关键帧盖住）；换成纯淡入以后它会露出来，
+     弹层缩成一个点、淡完才一下子出现——这里撤掉 */
+  :is(.ant-dropdown, .ant-dropdown-menu-submenu-popup, .ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown, .ant-tooltip, .ant-popover):is(
+    .ant-slide-up-enter, .ant-slide-up-appear, .ant-slide-down-enter, .ant-slide-down-appear,
+    .ant-zoom-big-enter, .ant-zoom-big-appear, .ant-zoom-big-fast-enter, .ant-zoom-big-fast-appear),
+  .ant-modal:is(.ant-zoom-enter, .ant-zoom-appear) {
+    transform: none !important;
+  }
   /* 复盘页页签（P15）：下划线换页签时是横着滑过去的，减弱动态下直接跳到位，也不淡入淡出 */
   .data-shell-tabs .ant-tabs-ink-bar, .data-shell-body { transition: none !important; }
   /* 11-01 复盘页融合：看板卡、卡点卡、沟通卡、横条、KPI 格的悬停 / 换页淡入，减弱动态下一律不过渡 */
@@ -3407,6 +3509,8 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
     scale: none !important;
     translate: none !important;  /* 像素主题按下是「沉下去 2px」，走的是 translate，也算位移 */
   }
+  /* 骨架条不扫光：一直在动的东西对开了这个开关的人最难受，静止的灰条已经说清「在加载」 */
+  .skel-bar { animation: none !important; }
   /* 落印不放大落下，直接就是盖好的样子 */
   .prop-seal.is-new { animation: none !important; }
   .rail-upd-bar.idle i { animation: none !important; }

@@ -52,6 +52,7 @@ import Shortcut, { useModifierKey } from "./Shortcut";
 import { useBusiness } from "@/lib/business-client";
 import { DockOpenContext, useNarrow, usePageOwnsCmdK } from "@/lib/roster";
 import { useMotionTheme } from "@/components/MotionTheme";
+import { 默认过渡, 跟随过渡 } from "@/lib/motion";
 import NoticeBell from "@/components/NoticeBell";
 import { 企业版根目录, 企业版亮项, 企业版页名, type 根目录图 } from "@/lib/enterprise/nav";
 import { 切换视图Provider } from "@/components/ViewAsContext";
@@ -178,7 +179,7 @@ function 身份分组(名单: 演示组[], 前缀: "view" | "demo", 我: string)
 }
 
 export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = [], 计数 = {}, 要跟, desktop, 反馈去向, 企业版项目 = false, 企业版 = false, 通知未读, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, 全局搜索, 视图名单, 视图换人, 视图退出, 正在视图, 预热 = "全部", children }: Props) {
-  const { 曲线, 时长 } = useMotionTheme();
+  const 动效值 = useMotionTheme();
   const b = useBusiness();
   const modifier = useModifierKey();
   const router = useRouter();
@@ -455,9 +456,10 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
     >
       {/* 选中那块底色是**同一块**在两项之间滑过去的（layoutId），不是这边灭那边亮。
           切页时眼睛跟着它走，不用重新找自己在哪一项上。
+          PR2 外壳（原型 g.nav）：滑动改 snap 那档不回弹弹簧（P-界面-38），比原来的 180ms 曲线跟手。
           系统开了「减弱动态效果」就按 0 秒，等于原来的瞬切。 */}
       {亮项 === n.key && (
-        <motion.span layoutId="rail-on" className="rail-on-bg" transition={{ duration: 少动 ? 0 : 时长.base, ease: 曲线.ease }} />
+        <motion.span layoutId="rail-on" className="rail-on-bg" transition={少动 ? { duration: 0 } : 跟随过渡(动效值)} />
       )}
       {n.icon}
       <b>{n.label}</b>
@@ -792,7 +794,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
           一个文档只能有一个 main，两个会让读屏和测试都认不出正文是哪块 */}
       <main className="main app-content" style={{ padding: 正在视图 ? "44px 26px 22px" : "22px 26px" }}>
         {/*
-          换页时正文淡进来、抬 6px。**--t（180ms），而且只有正文**——
+          换页时正文淡进来、抬 4px（PR2 外壳 g.nav：原来 6px + 180ms 曲线，改成 ui 那档不回弹弹簧，和底块一起到位）。**只有正文**——
           左栏和中栏不动，动的只是"这一页的内容换了"这件事本身。
           在这之前换页是硬切：上一页的表格原地变成下一页的表格，人得自己确认屏幕真的换了。
 
@@ -802,9 +804,9 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
         */}
         <motion.div
           key={底下那页}
-          initial={{ opacity: 0, y: 少动 ? 0 : 6 }}
+          initial={{ opacity: 0, y: 少动 ? 0 : 4 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 少动 ? 0 : 时长.base, ease: 曲线.ease }}
+          transition={默认过渡(动效值)}
           style={{ maxWidth: 1720, margin: "0 auto" }}
         >
           <我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟}>{children}</要跟Context.Provider></我Provider>

@@ -5,6 +5,9 @@ import { 交给首页问 } from "@/lib/home-ask";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "antd";
+import { LayoutGroup, motion } from "motion/react";
+import { useMotionTheme } from "@/components/MotionTheme";
+import { 默认过渡, 跟随过渡, 重排上限 } from "@/lib/motion";
 import { SearchOutlined } from "@ant-design/icons";
 import { useBusiness } from "@/lib/business-client";
 import { 换一位 } from "@/lib/roster";
@@ -27,6 +30,12 @@ import type { 全局搜索结果 } from "@/app/(app)/global-search";
  *
  * 企业版项目模式（U-项目-04 全局搜索）：打两个字以上，页面下面接着出客户、项目、联系人，
  * 范围按角色走（global-search.ts，服务端 加上限定），回车 / 点一下进详情；三组都没搜到、页面也没对上才当问题。
+ *
+ * 观感（PR2 外壳，原型 g.cmdk「高亮跟手，打字时结果滑动排好」，P-界面-38）：
+ *   高亮是**同一块**底色（layoutId），↑↓ / 悬停时从这一行滑到那一行，snap 那档不回弹弹簧；
+ *   打字筛掉一些行，留下的行从原位置滑到新位置（motion 的 layout），新冒出来的行淡入；
+ *   行数超过 重排上限（lib/motion）就不做滑动，整批硬换——几百行一起量位置会掉帧。
+ *   减弱动态下滑动、位移都不做（MotionTheme 的 reducedMotion），只剩淡入。
  */
 /** 焦点在输入框 / 文本域 / 可编辑区里。⌘N 这类「页面级」快捷键那时不该接管 */
 function 在输入框里(e: KeyboardEvent) {
@@ -41,6 +50,14 @@ export default function CommandBar({ 有AI, 企业版项目 = false, 全局搜�
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [idx, setIdx] = useState(0);
+  const 动效值 = useMotionTheme();
+  /** 第几次打开：高亮块的 layoutId 按这一回分组，关了再开不会从上一回停的那行滑过来 */
+  const [第几回, set第几回] = useState(0);
+  const [上回开着, set上回开着] = useState(open);
+  if (open !== 上回开着) {
+    set上回开着(open);
+    if (open) set第几回((n) => n + 1);
+  }
 
   const 页面 = useMemo(
     () => 企业版项目
@@ -221,18 +238,26 @@ export default function CommandBar({ 有AI, 企业版项目 = false, 全局搜�
               <span>{有AI ? `「${q.trim()}」——去首页问，它会读完记录再答` : "问题保留在输入框中。启用 AI 接入后，可以在这里继续提问。"}</span>
             </button>
           ) : (
-            <>
+            <LayoutGroup id={`cmdk-${第几回}`}>
               {行们.map((p, i) => (
-                <div key={p.key} className="cmdk-item">
+                <motion.div
+                  key={p.key}
+                  className="cmdk-item"
+                  layout={行们.length <= 重排上限 ? "position" : false}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={默认过渡(动效值)}
+                >
                   {p.组 && p.组 !== 行们[i - 1]?.组 && <div className="cmdk-sec">{p.组}</div>}
                   <button type="button" className={`cmdk-row${i === idx ? " cmdk-row-on" : ""}${p.组 ? " cmdk-hit" : ""}`} title={p.组 ? p.名 : undefined} onClick={() => 走(i)} onMouseEnter={() => setIdx(i)}>
+                    {i === idx && <motion.span layoutId="cmdk-on" className="cmdk-on-bg" aria-hidden transition={跟随过渡(动效值)} />}
                     <b>{p.名}</b>
                     <span>{p.说明}</span>
                   </button>
-                </div>
+                </motion.div>
               ))}
               {要搜 && 搜着 && <div className="cmdk-sec">正在搜{b.customer}、项目、联系人…</div>}
-            </>
+            </LayoutGroup>
           )}
         </div>
         <div className="cmdk-foot">
