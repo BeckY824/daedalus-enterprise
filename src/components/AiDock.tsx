@@ -13,10 +13,10 @@
  *   3. 首页不出现它：首页本身就是宽模式的同一块东西，两处同时画会共用同一条对话、互相打架。
  *   4. 动效只用四档时长；减弱动态时不位移（globals.css 里 .dock 那几条）。
  */
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 import { usePageUnderOverlay } from "@/lib/page-under-overlay";
-import { CloseOutlined } from "@ant-design/icons";
+import { CloseOutlined, MinusOutlined } from "@ant-design/icons";
 import WidthHandle, { 面板把手 } from "./WidthHandle";
 import DockThreads from "./DockThreads";
 import HomeChat, { type Suggestion } from "@/app/(app)/dashboard/HomeChat";
@@ -24,6 +24,9 @@ import type { ModelOption } from "@/lib/llm";
 import { useBusiness } from "@/lib/business-client";
 import { 认页面 } from "@/lib/ai-context-page";
 import { 订阅页面行, 读页面行, 读详情名 } from "@/lib/page-rows";
+import { useThread } from "@/lib/home-thread";
+import { useRunningKey } from "@/lib/ai-jobs";
+import { 登记打开AI浮窗 } from "@/lib/ai-float";
 
 /** 服务端快照。固定一个引用，useSyncExternalStore 才不会每次都当成变了 */
 const 空名单: string[] = [];
@@ -34,6 +37,7 @@ export default function AiDock({
   开着,
   set开着,
   企业版 = false,
+  浮窗 = false,
 }: {
   userName: string;
   models: ModelOption[];
@@ -46,6 +50,11 @@ export default function AiDock({
   set开着: (开: boolean) => void;
   /** 企业版（经 AppShell 传下来）：回答里提到的客户不摆「起草转介绍邀请」 */
   企业版?: boolean;
+  /**
+   * 浮窗模式（P-界面-39，企业版项目模式）：不占右边一栏，点右下角浮标在页面中下方长出毛玻璃对话框，
+   * 右上角「−」收起回球。收起时不卸载（只藏起来、inert），正在跑的那一问接着跑，再点球原样回来
+   */
+  浮窗?: boolean;
 }) {
   /*
     不是地址栏：设置浮层开着时地址栏是 /settings，而底下还是刚才那页。
@@ -61,6 +70,55 @@ export default function AiDock({
    */
   const [不带上下文的页, set不带上下文的页] = useState<string | null>(null);
   const 不带上下文 = 不带上下文的页 === pathname;
+  /**
+   * 浮窗：这一页打开过没有。没开过不挂 HomeChat（每页都挂一份没必要）；开过之后「−」只藏不卸。
+   * 用「渲染时按上一次的值调整」的写法（React 文档那一种），不是 effect 里 setState
+   */
+  const [开过的页, set开过的页] = useState<string | null>(null);
+  if (浮窗 && 开着 && 开过的页 !== pathname) set开过的页(pathname);
+  /** 浮窗：点了页面别处，对话缩成一行摘要压在输入框上（ai.away）；点「展开」或再问一句就恢复 */
+  const [收拢, set收拢] = useState(false);
+  const 这屏 = useThread(pathname);
+  const 在跑 = useRunningKey(这屏.map((t) => `home:${t.id}`)) != null;
+  const [上次轮数, set上次轮数] = useState(这屏.length);
+  if (上次轮数 !== 这屏.length) {
+    set上次轮数(这屏.length);
+    if (收拢) set收拢(false); // 又问了一句：对话长回来
+  }
+  const 有对话 = 这屏.length > 0;
+
+  /*
+    浮窗开着时把它的实际高写到 <html> 的 --ai-float-h：正文底下按这个高让位（globals.css 的 .dock-float 段），
+    滚到底的分页、最后一行按钮停在浮窗上面。输入框态、缩成一行、长成对话三种高不一样，所以量，不写死
+  */
+  const 浮窗框 = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = 浮窗框.current;
+    if (!浮窗 || !开着 || !el) return;
+    const 根 = document.documentElement.style;
+    const 量 = () => 根.setProperty("--ai-float-h", `${Math.round(el.getBoundingClientRect().height)}px`);
+    量();
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(量);
+    ro?.observe(el);
+    return () => {
+      ro?.disconnect();
+      根.removeProperty("--ai-float-h");
+    };
+  }, [浮窗, 开着, 开过的页]);
+
+  // 页里的按钮（客户页页头「AI」）叫浮窗出来，见 lib/ai-float.ts
+  useEffect(() => (浮窗 ? 登记打开AI浮窗(() => set开着(true)) : undefined), [浮窗, set开着]);
+
+  // 点页面别处（正文、左栏）：对话缩成一行。弹层（下拉、确认框）挂在 body 上，不在正文里，点它们不算「别处」
+  useEffect(() => {
+    if (!浮窗 || !开着 || 收拢 || !有对话) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (t?.closest?.(".main, .rail")) set收拢(true);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [浮窗, 开着, 收拢, 有对话]);
 
   /*
     ⌘J / Ctrl+J 开关。在输入框里也认——它开的是另一块地方，不抢当前输入。
@@ -101,6 +159,69 @@ export default function AiDock({
     第二版改成右边 44px 的窄边，不压东西了，可 13、14 寸笔记本上它把每张表格挤掉最右一列
     （1120 宽时客户表的负责人、跟进表的时间，2026-09-28 核对教程时看到）。放进左栏两头都不占。
   */
+  if (浮窗) {
+    if (!开着 && 开过的页 !== pathname) return null;
+    const 收起 = () => {
+      set收拢(false);
+      set开着(false);
+    };
+    const 上一问 = 这屏[这屏.length - 1]?.question ?? "";
+    return (
+      <aside
+        ref={浮窗框}
+        className={`dock dock-float${开着 ? "" : " is-min"}${收拢 && 有对话 ? " is-folded" : ""}${有对话 ? " has-turns" : ""}`}
+        aria-label="AI 对话"
+        aria-hidden={!开着}
+        inert={!开着}
+        onKeyDown={(e) => {
+          // Esc：答案在流时归 HomeChat（打断）；没在跑才缩成一行
+          if (e.key === "Escape" && !在跑 && 有对话 && !e.defaultPrevented) set收拢(true);
+        }}
+      >
+        <div className="dock-h dock-float-h">
+          {上下文 && !不带上下文 ? (
+            <span className="dock-float-ctx" key={上下文.标签}>
+              <span className="dock-ctx-n">{上下文.标签}</span>
+              <button type="button" className="dock-ctx-x" onClick={() => set不带上下文的页(pathname)} aria-label="不带这一页的上下文">
+                <CloseOutlined />
+              </button>
+            </span>
+          ) : (
+            <b>问一句</b>
+          )}
+          <span className="dock-float-sp" />
+          <DockThreads scope={pathname} />
+          <button type="button" className="dock-x dock-float-min" onClick={收起} aria-label="收起 AI 对话" title="收起">
+            <MinusOutlined />
+          </button>
+        </div>
+        {收拢 && 有对话 && (
+          <button type="button" className="dock-float-peek" onClick={() => set收拢(false)} aria-label="展开对话">
+            <span className="dock-float-peek-dot" aria-hidden="true" />
+            <span className="dock-float-peek-t">{上一问}</span>
+            <span className="dock-float-peek-go">展开</span>
+          </button>
+        )}
+        <div className="dock-body">
+          <HomeChat
+            模式="窄"
+            上下文提示={上下文 && !不带上下文 ? 上下文.提示 : undefined}
+            上下文范围={上下文 && !不带上下文 ? 上下文.范围 : undefined}
+            scope={pathname}
+            标题前缀={上下文?.名}
+            会话={null}
+            userName={userName}
+            suggestions={[] as Suggestion[]}
+            context=""
+            models={models}
+            空库={false}
+            企业版={企业版}
+          />
+        </div>
+      </aside>
+    );
+  }
+
   if (!开着) return null;
 
   return (
