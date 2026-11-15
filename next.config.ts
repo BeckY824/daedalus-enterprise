@@ -98,6 +98,14 @@ const nextConfig: NextConfig = {
       { source: "/orders/:path*", destination: "/projects", permanent: false },
       { source: "/suppliers", destination: "/projects", permanent: false },
       { source: "/suppliers/:path*", destination: "/projects", permanent: false },
+      /*
+        11-15 清理没用到的页面（tests/route-cleanup-redirects.test.ts）：页面删了，老书签、通知、AI 回答里存着的链接照样不落 404。
+        /start 原来就只是转去首页的跳板；/customers/recent 是桌面端左栏「客户」的跳板，企业版网页走不到；
+        盯盘清单就在首页。/reports 的跳转在 proxy.ts（目标带中文，这里写会 500）
+      */
+      { source: "/start", destination: "/dashboard", permanent: false },
+      { source: "/customers/recent", destination: "/customers", permanent: false },
+      { source: "/follow-ups/watchlist", destination: "/dashboard", permanent: false },
     ];
   },
 

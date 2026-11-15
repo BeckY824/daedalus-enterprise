@@ -314,7 +314,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
     // 企业版项目模式：不在左栏的新线索、跟进、联系人挂到入口那一项上（lib/enterprise/nav.ts）
     const 企 = 企业版项目 ? 企业版亮项(pathname, pool) : null;
     if (企) return 企;
-    const flat = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/reports", "/contacts", "/opportunities", "/projects", "/pool", "/follow-ups", "/settings"];
+    const flat = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/contacts", "/projects", "/pool", "/follow-ups", "/settings"];
     // 「我的反馈」不在导航里：哪一项都不亮，亮的是左下角的反馈键（FeedbackButton）
     if (pathname === "/feedback" || pathname.startsWith("/feedback/")) return "";
     return flat.find((k) => pathname === k || pathname.startsWith(k + "/")) ?? "/dashboard";
@@ -427,28 +427,17 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
   /** 左栏的一项（主导航和「更多」共用）。选中那块底色仍是同一块在各项之间滑（layoutId） */
   const 一项 = (n: (typeof nav)[number]) => 带名(n.key, n.label, (
     <Link
-      /* 桌面端的「客户」直接进「名单 + 详情」，打开最近看过的那位（照毛玻璃原型）；表格在名单右上角。
-         网页团队版照旧进表格：那边要按人分配、批量改，表格是主场。手机菜单也照旧进表格 */
-      href={desktop && n.key === "/customers" ? "/customers/recent" : n.key}
-      prefetch={desktop && n.key === "/customers" ? false : undefined}
+      href={n.key}
       /* 网页版悬停就整页预取（默认只取到骨架，点进去还要再等一趟数据）。桌面端在本机，照旧。
          next/link 的类型取的是老路由那份，没有这一项；运行时用的是 app 路由的 Link，认这一项 */
       {...(desktop ? {} : { unstable_dynamicOnHover: true })}
-      /* 跳转页的结果会被客户端路由缓存住（staleTimes 60 秒）：第二次点会回到上一次跳去的那位，
-         不是刚看过的那位。每次带一个新参数，确保回到服务端读 cookie */
       onClick={
-        desktop && n.key === "/customers"
-          ? (e) => {
-              if (e.metaKey || e.ctrlKey || e.shiftKey) return;
-              e.preventDefault();
-              router.push(`/customers/recent?t=${Date.now()}`);
+        desktop
+          ? undefined
+          : (e) => {
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+              if (n.key !== selectedKey) set去向(n.key);
             }
-          : desktop
-            ? undefined
-            : (e) => {
-                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
-                if (n.key !== selectedKey) set去向(n.key);
-              }
       }
       aria-label={n.挂要跟 && 要跟说法 ? `${n.label}，${要跟说法}` : n.label}
       className={`rail-item${亮项 === n.key ? " on" : ""}`}

@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   const 去处 = 站内路径(request.nextUrl.searchParams.get("next"));
   const 凭据 = await 飞书登录凭据();
   if (!凭据) return 跳(`/login?reason=feishu-off${去处 ? `&next=${encodeURIComponent(去处)}` : ""}`);
-  if (await getCurrentUser()) return 跳(去处 ?? "/start");
+  if (await getCurrentUser()) return 跳(去处 ?? "/dashboard");
   const state = randomBytes(16).toString("hex");
   const store = await cookies();
   store.set(状态Cookie, state, 状态Cookie选项);

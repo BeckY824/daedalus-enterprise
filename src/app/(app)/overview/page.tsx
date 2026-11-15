@@ -30,13 +30,13 @@ type SP = Promise<{ view?: string; from?: string; to?: string; currency?: string
 /**
  * 「数据」——看数的唯一入口。
  *
- * 以前有三处：首页那个看板、`/overview`、`/reports`，外加两个各自独立的问答框。
+ * 以前有三处：首页那个看板、`/overview`、原来的复盘页，外加两个各自独立的问答框。
  * 新来的人分不清该去哪儿，老用户也记不住哪个数在哪一页。现在合成一页三视图：
  *   现在 —— 此刻的状态：指标、漏斗、业绩排行、盯盘
  *   本月 —— 这个月签了多少，按天铺开，按人和渠道拆
  *   本年 —— 今年的走势，按月铺开
  *   自定义 —— from= to= 两个日历日（两头都算），62 天以内按天铺、再长按月（V3.5.1 P-界面-10）
- * `/reports` 这条 URL 留着（有人存了书签、也有链接指过来），跳到「本年」。
+ * 原来复盘页的老书签由 proxy.ts 转到「本年」（页面 11-15 删了）。
  */
 export default async function DataPage({ searchParams }: { searchParams: SP }) {
   const user = await requireUser();

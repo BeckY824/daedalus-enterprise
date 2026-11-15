@@ -23,7 +23,7 @@ import type { 轻项 } from "@/lib/plans-page";
 export const 复盘页签们 = ["todo", "block", "talk", "data"] as const;
 export type 复盘页签 = (typeof 复盘页签们)[number];
 export const 复盘页签叫法: Record<复盘页签, string> = { todo: "任务", block: "卡点", talk: "沟通", data: "数据" };
-/** 地址栏没写 tab 但带了 view（首页信号「本月」、/reports 跳过来的「本年」，都是要看数）→「数据」；都没写 →「任务」 */
+/** 地址栏没写 tab 但带了 view（首页信号「本月」、老复盘书签跳过来的「本年」，都是要看数）→「数据」；都没写 →「任务」 */
 export const 读页签 = (tab?: string, view?: string): 复盘页签 =>
   (复盘页签们 as readonly string[]).includes(tab ?? "") ? (tab as 复盘页签) : view ? "data" : "todo";
 

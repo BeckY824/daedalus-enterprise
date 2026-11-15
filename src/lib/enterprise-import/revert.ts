@@ -523,7 +523,7 @@ export async function 撤回一批(批次Id: string, 用户: Actor, opts: { 段�
       summary: `撤回从${来源名[源] ?? 源}${叫法(批.kind)}的那一批：删掉 ${r.删掉} 条，还原 ${r.还原} 条${r.留下数 ? `，${r.留下数} 条导入后被动过、留下没动` : ""}`,
       detail: { batchId: 批次Id, 删掉: r.删掉, 还原: r.还原, 留下数: r.留下数 },
     });
-    for (const p of ["/customers", "/leads", "/opportunities", "/projects", "/dashboard"]) revalidatePath(p);
+    for (const p of ["/customers", "/leads", "/projects", "/dashboard"]) revalidatePath(p);
   }
   return 结果(批次Id);
 }
@@ -612,7 +612,7 @@ export async function 恢复一批(批次Id: string, 用户: Actor, opts: { 段�
       summary: `恢复撤回的那一批（${来源名[批.source as 来源] ?? 批.source}${叫法(批.kind)}）：恢复 ${r.恢复} 条${r.留下数 ? `，${r.留下数} 条撤回后又有变动、跳过` : ""}`,
       detail: { batchId: 批次Id, 恢复: r.恢复, 留下数: r.留下数 },
     });
-    for (const p of ["/customers", "/leads", "/opportunities", "/projects", "/dashboard"]) revalidatePath(p);
+    for (const p of ["/customers", "/leads", "/projects", "/dashboard"]) revalidatePath(p);
   }
   return 结果(批次Id);
 }

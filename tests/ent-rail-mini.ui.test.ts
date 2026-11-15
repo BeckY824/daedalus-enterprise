@@ -1,7 +1,7 @@
 /**
  * 客户详情上左栏收成图标窄栏（11-12 客户详情第 1 批，AppShell 的 rail-mini，路由判断在 lib/rail-mini.ts）：
  *   /customers/<id> 收成 56 宽、只留图标，悬停 / 键盘聚焦在右边冒出名字，每项有 aria-label；
- *   列表 /customers、/customers/recent、别的页照旧 220；手机宽度不渲染左栏，不受影响；
+ *   列表 /customers、/customers/new、别的页照旧 220；手机宽度不渲染左栏，不受影响；
  *   1024 / 1280 / 1366 下窄栏里的东西不横向撑出、账号菜单点得开
  */
 import { beforeAll, afterAll, describe, expect, it } from "vitest";
@@ -13,7 +13,7 @@ import { 左栏收窄 } from "@/lib/rail-mini";
 describe("左栏收窄（路由）", () => {
   it("只认客户详情 /customers/<id>", () => {
     expect(["/customers/c1", "/customers/abc123", "/customers/c1?tab=x"].map(左栏收窄)).toEqual([true, true, true]);
-    expect(["/customers", "/customers/", "/customers/recent", "/customers/new", "/customers/c1/edit", "/projects/p1", "/pool", "/dashboard", "", null, undefined].map(左栏收窄)).toEqual(Array(11).fill(false));
+    expect(["/customers", "/customers/", "/customers/new", "/customers/import", "/customers/c1/edit", "/projects/p1", "/pool", "/dashboard", "", null, undefined].map(左栏收窄)).toEqual(Array(11).fill(false));
   });
 });
 
@@ -96,8 +96,8 @@ it("客户详情：悬停导航项右边冒出名字；键盘 Tab 聚焦也冒�
   } finally { await page.close(); }
 });
 
-it("客户列表、最近、项目详情：没有 rail-mini，左栏照旧 220、名字写出来、悬停不冒提示", async () => {
-  for (const 址 of ["/customers", "/customers/recent", "/projects/p1"]) {
+it("客户列表、新建客户、项目详情：没有 rail-mini，左栏照旧 220、名字写出来、悬停不冒提示", async () => {
+  for (const 址 of ["/customers", "/customers/new", "/projects/p1"]) {
     const { page, errors } = await 打开(址, 1280);
     try {
       expect(await 窄态(page), 址).toBe(false);

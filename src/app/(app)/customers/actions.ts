@@ -1725,7 +1725,7 @@ export async function saveContract(input: {
     // 留痕仍为旁路：只在事务提交后写，失败的签约不会留下成功日志。
     for (const 日志 of 收尾?.日志 ?? []) await recordAudit(日志);
     const 联动 = 收尾?.结果;
-    if (联动) for (const path of ["/opportunities", "/opportunities/pipeline", "/follow-ups/plans", "/dashboard"]) revalidatePath(path);
+    if (联动) for (const path of ["/follow-ups/plans", "/dashboard"]) revalidatePath(path);
 
     revalidateCustomer(input.customerId);
     return { ok: true, ...(联动 ? { 联动 } : {}) };
