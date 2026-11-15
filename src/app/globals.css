@@ -4618,3 +4618,18 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
   animation: cu-pop var(--t) var(--ease-spring); }
 @keyframes cu-pop { from { opacity: 0; scale: 0.9; } to { opacity: 1; scale: 1; } }
 @media (prefers-reduced-motion: reduce) { .cu-ho-done { animation: none; } }
+
+/* ---- PR9 设置与其他（原型 st.login / st.forgot）：错误写在格下、重发倒计时按钮 ---- */
+.auth-field-err { margin-top: calc(-1 * var(--s1, 4px)); font-size: var(--fs-note, 12px); color: var(--danger, #d1343a); animation: set-note-in var(--t) var(--ease); }
+.auth-swap { animation: set-note-in var(--t) var(--ease); }
+@media (prefers-reduced-motion: reduce) { .auth-field-err, .auth-swap { animation: none; } }
+@keyframes set-note-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+/* PR9 切换视角挑人框（components/ViewAsPicker.tsx，原型 st.viewas） */
+.view-as-list { margin-top: 10px; max-height: 360px; overflow-y: auto; }
+.view-as-g { padding: 8px 8px 2px; font-size: 12px; color: var(--text-muted); }
+.view-as-i { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; cursor: pointer; min-width: 0; }
+.view-as-i.on { background: var(--hover); }
+.view-as-n { flex: none; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.view-as-d { flex: 1 1 auto; min-width: 0; color: var(--text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.view-as-busy { flex: none; margin-left: auto; color: var(--text-muted); font-size: 12px; display: inline-flex; gap: 6px; align-items: center; }
+.view-as-empty { padding: 12px 8px; color: var(--text-muted); }

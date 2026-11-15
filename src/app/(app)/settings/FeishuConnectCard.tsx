@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { App, Button, Input, Select, Space, Tag } from "antd";
+import { Button, Input, Select, Space, Tag } from "antd";
+import { useSettingsNote } from "./InlineNote";
 import { 测试飞书连接动作, 飞书表概况, 设飞书表 } from "./org-actions";
 import type { 主表槽, 测试结果, 数据表 } from "@/lib/enterprise/feishu-connect";
 import { useViewAs } from "@/components/ViewAsContext";
@@ -31,7 +32,8 @@ function 起始(r: 表概况结果 | null) {
 }
 
 export default function FeishuConnectCard({ 草稿, 初始 }: { 草稿: Record<string, string>; 初始: 表概况结果 | null }) {
-  const { message } = App.useApp();
+  // 就地提示（PR9：不弹顶部 message）
+  const [message, 提示条] = useSettingsNote();
   const 视图中 = useViewAs();
   const [起] = useState(() => 起始(初始));
   const [主表们] = useState<主表[]>(起.主表们);
@@ -55,15 +57,25 @@ export default function FeishuConnectCard({ 草稿, 初始 }: { 草稿: Record<s
       if (表) {
         set表们(表.表们);
         // 原来选的还在这个多维表格里就留着，不在的（换了链接）用自动对上的
-        set选((原) => {
-          const 新: Partial<Record<主表槽, string | null>> = {};
-          for (const t of 主表们) {
-            const 旧 = 原[t.槽];
-            新[t.槽] = 旧 && 表.表们.some((x) => x.tableId === 旧) ? 旧 : 表.对上[t.槽];
-          }
-          return 新;
-        });
+        const 新: Partial<Record<主表槽, string | null>> = {};
+        for (const t of 主表们) {
+          const 旧 = 选[t.槽];
+          新[t.槽] = 旧 && 表.表们.some((x) => x.tableId === 旧) ? 旧 : 表.对上[t.槽];
+        }
+        set选(新);
         set改过表(true);
+        /*
+          「测试并保存」（原型 st.feishu）：每一步都通过、链接也填了，就顺手把对照存上，不用再点第二颗键。
+          没全过只摆结果、不存；下拉里手改过对照的照旧点「保存对照」
+        */
+        if (r.结果.步们.every((x) => x.通过) && 链接.trim()) {
+          const 存 = await 设飞书表(链接, 新 as Record<string, string | null>);
+          if (!存.ok) message.error(存.error);
+          else {
+            message.success("测试通过，多维表格对照已保存，导入和同步按这个拉");
+            set改过表(false);
+          }
+        }
       }
     } catch {
       message.error("测试没跑成，请稍后再试");
@@ -93,6 +105,7 @@ export default function FeishuConnectCard({ 草稿, 初始 }: { 草稿: Record<s
 
   return (
     <div data-testid="feishu-connect" style={{ marginTop: 12 }}>
+      {提示条}
       <b>飞书连接</b>
       <p className="muted" style={{ margin: "4px 0 8px" }}>
         在飞书开放平台建一个企业自建应用，开通「通讯录」和「多维表格」的读取权限并发布版本，再把应用加进多维表格（多维表格右上角「…」→「添加文档应用」）。
@@ -105,7 +118,7 @@ export default function FeishuConnectCard({ 草稿, 初始 }: { 草稿: Record<s
             onChange={(e) => set链接(e.target.value)} />
         </label>
         <div>
-          <Button type="primary" loading={忙 === "test"} disabled={!!忙 || 视图中} title={视图中 ? 视图外部话 : undefined} onClick={() => void 测试()} data-testid="feishu-test">测试连接</Button>
+          <Button type="primary" loading={忙 === "test"} disabled={!!忙 || 视图中} title={视图中 ? 视图外部话 : undefined} onClick={() => void 测试()} data-testid="feishu-test">测试并保存</Button>
         </div>
       </div>
 
