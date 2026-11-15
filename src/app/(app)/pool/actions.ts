@@ -24,7 +24,7 @@ import { 钉住老签约 } from "@/lib/contract-owner";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
 import { 公海分配通知, 同事待分配随客户通知 } from "@/lib/enterprise/notice-sources";
-import { 分配方式叫法 } from "@/lib/enterprise/dict";
+import { 分配方式叫法, 选的原因 } from "@/lib/enterprise/dict";
 import { 撤销公海 } from "@/app/(app)/customers/pool-actions";
 import { 在事务里分公海项目们, type 整包撤销 } from "@/lib/enterprise/pool-assign-projects";
 import { 公海按线拦 } from "@/lib/enterprise/pool-line-guard";
@@ -49,8 +49,12 @@ function 刷新() {
   revalidatePath("/projects");
 }
 
-/** 老板、主管把公海里的客户标成无效：标了的领不了、分不了。已经是无效的算没变 */
-export async function 标无效客户(ids: string[]): Promise<标记结果> {
+/**
+ * 老板、主管把公海里的客户标成无效：标了的领不了、分不了。已经是无效的算没变。
+ * 原因（P-界面-42，11-15）：设置里字典「无效原因」的一项，选「其他」写一句存成「其他：xxx」；可不传（老调用照旧）。
+ * 不另加字段：原因记进这一条操作记录（审计日志 summary + detail.原因）；「入池原因」一列仍是退回时的原因，不被覆盖
+ */
+export async function 标无效客户(ids: string[], 原因?: unknown): Promise<标记结果> {
   const me = await requireUser();
   const org = await 权限组织();
   if (!能管公海(me, org)) return { ok: false, error: "只有总管理和销售管理能标无效客户" };
@@ -60,13 +64,16 @@ export async function 标无效客户(ids: string[]): Promise<标记结果> {
   // 销管、条线总管理只能标本业务线的（P-公海-07）：混了别线的整批不标
   const 别线 = await 公海按线拦(prisma, me, org, { 客户: 们 }, "标无效");
   if (别线) return { ok: false, error: 别线 };
+  // 能标了才认原因：权限、业务线那几句照旧先说
+  const 选 = await 选的原因("invalid", 原因);
+  if (!选.ok) return 选;
   // 只改还在公海里、还没标的：领走了的不标（标了也没意义，还会在他以后再进公海时冒出来）
   const r = await prisma.customer.updateMany({ where: { id: { in: 们 }, pool: { isNot: null }, poolInvalidAt: null }, data: { poolInvalidAt: new Date() } });
   if (r.count) {
     await recordAudit({
       user: me, action: "pool-invalid", entity: "Customer", entityId: 们.length === 1 ? 们[0] : null,
-      summary: `把公海里 ${r.count} 名客户标成无效客户`,
-      detail: { ids: 们 },
+      summary: `把公海里 ${r.count} 名客户标成无效客户${选.值 ? `（原因：${选.值}）` : ""}`,
+      detail: 选.值 ? { ids: 们, 原因: 选.值 } : { ids: 们 },
     });
     刷新();
   }

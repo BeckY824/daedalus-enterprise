@@ -65,6 +65,10 @@ type Props = {
   别线ids?: string[];
   /** 分配给谁（能分配时才有） */
   users: 可选成员[];
+  /** 选人框用（P-界面-43）：每位候选的部门（空 = 没分部门）、当前持有 / 上限（上限没开或不限 = null） */
+  候选信息?: Record<string, { 组: string; 组序?: number; 持有: number | null; 上限: number | null }>;
+  /** 标无效时选的原因（P-界面-42，字典「无效原因」启用项）；空 = 不问 */
+  无效原因选项?: string[];
   /** 持有上限开着、我不是不限：手上几个（同 超上限 的口径） / 上限几个；没开为 null */
   持有: { 有: number; 上限: number } | null;
   /** 只读管理员（11-03 B2-1）：不摆领取、不给勾选；行末没别的操作时操作列整列不出 */
@@ -130,7 +134,7 @@ function ResultNote({ 文案, 没领到, 关 }: { 文案: string; 没领到: 没
   );
 }
 
-export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 属性数, 截断, 库里有, filters, 渠道筛选项, 能标无效, 能恢复, 能分配, 别线ids = [], users, 持有, 只读 = false, 三态开 = false, 号码不全数 = null }: Props) {
+export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 属性数, 截断, 库里有, filters, 渠道筛选项, 能标无效, 能恢复, 能分配, 别线ids = [], users, 候选信息 = {}, 无效原因选项 = [], 持有, 只读 = false, 三态开 = false, 号码不全数 = null }: Props) {
   const 别线 = new Set(别线ids);
   const router = useRouter();
   const { f, setF, apply, 翻页, reset, pending } = useUrlFilters("/pool", filters, pageSize);
@@ -354,8 +358,10 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
         { 标: "不变", 话: "全员还看得到、查重查得到" },
       ],
       是: "标成无效",
-      做: async () => {
-        const res = await 标无效客户([r.customerId]);
+      // P-界面-42：字典常用项做小块，「其他」原地写（后果框自带）；字典一项都没启用就不问
+      原因: 无效原因选项.length ? { 选项: 无效原因选项, 叫: "无效原因" } : undefined,
+      做: async (原因) => {
+        const res = await 标无效客户([r.customerId], 原因);
         router.refresh();
         if (!res.ok) return res;
         if (!res.updated) return { ok: false, error: "已经是无效客户，或者已被领走" };
@@ -695,7 +701,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
       <PoolAssignPicker
         open={!!选人}
         题={选人 ? (选人.们.length === 1 && !选人.批 ? `把「${行名(选人.们[0])}」分配给` : `把 ${选人.们.length} 个分配给`) : ""}
-        人们={分给谁}
+        人们={分给谁.map((o) => ({ ...o, ...候选信息[o.value] }))}
         批={选人?.批}
         后果={(名) => [`${名} 会收到通知`, 待办说法(名), 选人 && 不全数(选人.们) ? "号码不全，分出去后记得补全" : "", 选人?.批 ? "" : "6 秒内可撤销"].filter(Boolean).join(" · ")}
         做={async (id, 名) => {

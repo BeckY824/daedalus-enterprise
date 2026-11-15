@@ -4385,3 +4385,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .pool-pick-foot { display: flex; align-items: center; gap: 8px; }
 .pool-pick-eff { flex: 1; min-width: 0; text-align: start; font-size: var(--fs-min); color: var(--text-muted); overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: reduce) { .pool-why, .pool-batch-ask, .pool-note { animation: none; } }
+.pool-pick-g { padding: 6px 8px 2px; font-size: var(--fs-min); color: var(--text-muted); overflow-wrap: anywhere; }
+.pool-pick-cap { flex: none; margin-left: auto; font-size: var(--fs-min); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.pool-pick-p[aria-disabled="true"] { cursor: default; color: var(--text-faint); }
+.pool-pick-p[aria-disabled="true"] .pool-pick-cap { color: var(--warning-text); }

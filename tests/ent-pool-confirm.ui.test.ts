@@ -14,7 +14,7 @@ import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 
 let browser: Browser, bundle: string;
-type W = { __调: Record<string, unknown[][]>; __挡?: boolean; __render: (o?: { 持有?: { 有: number; 上限: number } | null }) => void };
+type W = { __调: Record<string, unknown[][]>; __挡?: boolean; __render: (o?: { 持有?: { 有: number; 上限: number } | null; 候选信息?: unknown; 无效原因选项?: string[] }) => void };
 
 beforeAll(async () => {
   const plugin: Plugin = { name: "pool-confirm-boundaries", setup(b) {
@@ -45,7 +45,7 @@ beforeAll(async () => {
     let root;
     window.__render=(o={})=>{ root=root||createRoot(document.getElementById('root')); root.render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
       <div style={{display:'flex'}}><nav style={{width:220,flex:'none'}}/><main style={{flex:1,minWidth:0,padding:24}}>
-        <Pool 行={行} 总数={3} 当前页={1} pageSize={20} 快捷数={快捷数} 属性数={{全部:3,线索池:0,商机池:0,订单池:0,客户池:3}} 截断={false} 库里有 filters={{keyword:'',attr:'',quick:'',sort:''}} 渠道筛选项={[]} 能标无效 能恢复 能分配 users={users} 持有={o.持有??null} 三态开/>
+        <Pool 行={行} 总数={3} 当前页={1} pageSize={20} 快捷数={快捷数} 属性数={{全部:3,线索池:0,商机池:0,订单池:0,客户池:3}} 截断={false} 库里有 filters={{keyword:'',attr:'',quick:'',sort:''}} 渠道筛选项={[]} 能标无效 能恢复 能分配 users={users} 候选信息={o.候选信息} 无效原因选项={o.无效原因选项} 持有={o.持有??null} 三态开/>
       </main></div></BusinessProvider></App>); };
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
@@ -265,6 +265,51 @@ it.each([1024, 1280, 1366])("Windows %ipx + 超长名字：领取确认展开后
     await 人.waitFor();
     expect(await 人.evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("标成无效带原因（P-界面-42）：字典项是小块，选「其他」原地写；没选好确认点不了；原因交给服务端", async () => {
+  const { page, errors } = await open();
+  try {
+    await page.evaluate(() => (window as unknown as W).__render({ 无效原因选项: ["联系方式无效", "重复线索", "其他"] }));
+    await 行(page, "c1").getByRole("button", { name: /更多操作/ }).click();
+    await page.getByRole("menuitem", { name: "标成无效客户" }).click();
+    const 框 = page.getByRole("dialog");
+    const 是 = 框.getByRole("button", { name: "标成无效" });
+    await 是.waitFor();
+    expect(await 框.getByRole("radiogroup", { name: "无效原因" }).getByRole("radio").allInnerTexts()).toEqual(["联系方式无效", "重复线索", "其他"]);
+    expect(await 是.isDisabled()).toBe(true);
+    await 框.getByRole("radio", { name: "其他" }).click();
+    expect(await 是.isDisabled()).toBe(true);
+    await 框.getByLabel("无效原因：其他的具体内容").fill("客户已注销");
+    await 是.click();
+    await expect.poll(() => 调(page, "标无效")).toBe(1);
+    expect(await page.evaluate(() => (window as unknown as W).__调["标无效"][0])).toEqual([["c1"], "其他：客户已注销"]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("分配选人框（P-界面-43）：按部门分组，写持有 / 上限，满了的置灰点不了、回车跳过", async () => {
+  const { page, errors } = await open();
+  try {
+    await page.evaluate(() => (window as unknown as W).__render({ 候选信息: { u1: { 组: "销售一组", 组序: 1, 持有: 10, 上限: 10 }, u2: { 组: "销售二组", 组序: 2, 持有: 3, 上限: 10 }, u3: { 组: "", 持有: null, 上限: null } } }));
+    await 行(page, "c1").getByRole("button", { name: /更多操作/ }).click();
+    await page.getByRole("menuitem", { name: "分配给同事" }).click();
+    const 单 = page.getByRole("listbox", { name: "同事" });
+    await 单.waitFor();
+    expect(await 单.getByRole("group").evaluateAll(els => els.map(e => e.getAttribute("aria-label")))).toEqual(["销售一组", "销售二组", "没分部门"]);
+    const 满 = 单.getByRole("option", { name: /李想/ });
+    expect(await 满.getAttribute("aria-disabled")).toBe("true");
+    expect(await 满.innerText()).toContain("满了 · 10 / 10");
+    expect(await 单.getByRole("option", { name: /周宁/ }).innerText()).toContain("3 / 10");
+    await 满.click({ force: true });
+    expect(await 调(page, "分配公海")).toBe(0);
+    // 回车：默认落在第一个选得了的人（周宁），不是满了的李想
+    expect(await page.getByRole("button", { name: /^分给/ }).innerText()).toContain("周宁");
+    await page.getByLabel("搜同事名字").press("Enter");
+    await expect.poll(() => 调(page, "分配公海")).toBe(1);
+    expect(await page.evaluate(() => (window as unknown as W).__调["分配公海"][0][1])).toBe("u2");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
