@@ -11,7 +11,7 @@ import CustomerSearchSelect from "@/components/CustomerSearchSelect";
 import NewProjectModal from "../customers/[id]/NewProjectModal";
 import { 取客户近况 } from "../customers/[id]/pick";
 import { 取建档数据 } from "./new/wizard-actions";
-import type { 建档数据 } from "./new/ProjectWizard";
+import type { 建档数据, 项目开关 } from "./new/ProjectWizard";
 
 /** 「新增项目」→「新客户」的建档向导框：点了才加载，不压首屏 JS（同客户页「新增客户」） */
 const 建档弹窗 = dynamic(() => import("./new/ProjectWizard").then((m) => m.建档弹窗), { ssr: false });
@@ -28,13 +28,16 @@ type 选项 = {
   起手开着?: boolean;
 };
 
+/** 建档向导框的标题：「新线索」= 新线索页的新建（项目开关开着锁住，原 /leads/new 整页，11-15 删了） */
+type 建档标题 = "新增项目" | "新增客户" | "新线索";
+
 /**
  * 企业版「新增项目」整条路（11-01 用户：「也是弹窗进行……打开新增的时候给一个选项新客户还是老客户」）：
  * 先问新客户还是老客户，新客户走建档向导（先查重），老客户挑一位再接客户页同一个新建项目框。
  * 项目页 / 市场角色「我分出去的」（ProjectsView）和客户页页头「新建 ▾」（CustomersView）共用这一份。
  * 开建档("新增客户")：市场角色「我分出去的」页头的「新建客户」，和客户页「新建客户」同一个向导框
  */
-export function useNewProjectFlow({ users, 节点们, 要下一步, 建档: 给的 = null, 起手开着 = false }: 选项): { 开选客户: () => void; 开建档: (标题: "新增项目" | "新增客户") => Promise<void>; 弹框: ReactNode; 取档中: boolean } {
+export function useNewProjectFlow({ users, 节点们, 要下一步, 建档: 给的 = null, 起手开着 = false }: 选项): { 开选客户: () => void; 开建档: (标题: 建档标题, 项目?: 项目开关) => Promise<void>; 弹框: ReactNode; 取档中: boolean } {
   const { message } = App.useApp();
   /*
     焦点从哪来就回哪去：这条路开第一个框时有焦点的那个元素（「新建」按钮，NewMenuButton 点菜单项前先把焦点放回它）。
@@ -56,9 +59,11 @@ export function useNewProjectFlow({ users, 节点们, 要下一步, 建档: 给�
   const [挑老客户, set挑老客户] = useState(false);
   const [建档, set建档] = useState<建档数据 | null>(给的);
   const [建档开着, set建档开着] = useState(false);
-  const [标题, set标题] = useState<"新增项目" | "新增客户">("新增项目");
+  const [标题, set标题] = useState<建档标题>("新增项目");
+  /** 项目开关：不给 = 开（新增项目）；新线索、团队版「新建项目」锁开（原整页建档的口径） */
+  const [开关, set开关] = useState<项目开关 | undefined>(undefined);
   const [取档中, set取档中] = useState(false);
-  const 开建档 = async (t: "新增项目" | "新增客户") => {
+  const 开建档 = async (t: 建档标题, 项目?: 项目开关) => {
     // 从「新建 ▾」直接开（市场角色「新建客户」）：起点就是那颗按钮；从选新老客户框里点进来：起点早记好了，先把焦点放回去
     if (选客户) 回起点(); else 记起点();
     set取档中(true);
@@ -69,6 +74,7 @@ export function useNewProjectFlow({ users, 节点们, 要下一步, 建档: 给�
       set建档(d);
       set选客户(false);
       set标题(t);
+      set开关(项目);
       set建档开着(true);
     } catch {
       message.error("没打开，请重试");
@@ -92,7 +98,7 @@ export function useNewProjectFlow({ users, 节点们, 要下一步, 建档: 给�
           </button>
         </div>
       </Modal>
-      {建档 && <建档弹窗 open={建档开着} 标题={标题} 数据={建档} onClose={() => set建档开着(false)} afterClose={收尾} />}
+      {建档 && <建档弹窗 open={建档开着} 标题={标题} 项目={开关} 数据={建档} onClose={() => set建档开着(false)} afterClose={收尾} />}
       <OldCustomerProject 开={挑老客户} 关={() => set挑老客户(false)} 回起点={回起点} 收尾={收尾} on新建框={set老客户新建开着} users={users} 节点们={节点们} 要下一步={要下一步} />
     </>
   );

@@ -20,7 +20,7 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {}
 vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user, getCurrentUser: async () => mocks.user }));
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("NOT_FOUND"); }, redirect: () => { throw new Error("REDIRECT"); } }));
 for (const m of [
-  "@/app/(app)/follow-ups/FollowUpsView", "@/app/(app)/follow-ups/plans/PlansView",
+  "@/app/(app)/follow-ups/plans/PlansView",
   "@/app/(app)/contacts/ContactsView", "@/app/(app)/leads/LeadsView",
   "@/app/(app)/channels/ChannelsView", "@/app/(app)/customers/CustomersView",
 ]) vi.doMock(m, () => ({ default: () => null }));
@@ -129,7 +129,8 @@ const 行 = (el: unknown, key = "rows") => (el as 页面).props[key] as Record<s
 async function 看一遍() {
   const [联系人, 跟进, 商机, 计划页, 公海, 线索, 渠道] = await Promise.all([
     import("@/app/(app)/contacts/page").then((m) => m.default(sp())),
-    import("@/app/(app)/follow-ups/page").then((m) => m.default(sp())),
+    // 跟进记录页（/follow-ups）11-15 删了：同一句取数（看得到的跟进，按时间倒序），沟通现在在客户档案里看
+    prisma.followUp.findMany({ orderBy: { occurredAt: "desc" }, include: { customer: { select: { name: true } }, contact: { select: { name: true } } } }),
     // 只校验级联（不是页面）：进行中的 + 赢下的，沿用原来管道页的取法（本测试里赢单都是刚赢的，落在原来的 30 天里）
     // 这列只核级联，可见性另有用例
     prisma.opportunity.findMany({ where: { status: { in: ["OPEN", "WON"] } }, include: { customer: { select: { name: true } } } }),
@@ -144,7 +145,7 @@ async function 看一遍() {
   const 排 = (xs: string[]) => xs.sort();
   return {
     联系人页: 排(行(联系人).map((r) => (r.未归属 ? `未归属|${r.name}（原${r.原来}）` : `${r.customerName}|${r.name}${r.isPrimary ? "★" : ""}`))),
-    跟进页: 排(行(跟进).map((r) => `${r.customerName}|${r.content}|跟${r.contactName ?? "—"}`)),
+    跟进页: 排(跟进.map((r) => `${r.customer.name}|${r.content}|跟${r.contact?.name ?? "—"}`)),
     商机表: 排(商机.map((o) => `${o.customer.name}|${o.name}|${o.status}|${o.stage}`)),
     签约业绩: { 笔数: 复盘.total.count, 金额: 复盘.total.amount },
     待办计划: 排([

@@ -1,5 +1,5 @@
 /**
- * 「要跟的数」只有一个：Dock 上的、左栏「跟进」上的、手机顶栏铃铛上的、跟进记录页「计划」按钮上的。
+ * 「要跟的数」只有一个：Dock 上的、左栏「跟进」上的、手机顶栏铃铛上的（跟进记录页 11-15 删了，它那颗「计划」按钮一起没了）。
  * 2026-09-29 用户：Dock 上挂着 1，打开应用不知道去哪儿看、去哪儿处理——那时应用里没有任何地方写着这个 1，
  * 手机顶栏的铃铛倒有个数，数的却是「全部没做完的待办」，又是另一个意思。
  * 这里钉住：三处都走 lib/reminders-db.ts 的 取提醒项 + lib/reminders.ts 的 算提醒，谁换了口径就红。
@@ -23,14 +23,14 @@ describe("要跟的数：一个口径、处处一样", () => {
     expect(布局).not.toMatch(/task\.count\(/);
   });
 
-  it("左栏「跟进」、手机铃铛、记录页「计划」按钮都挂它", () => {
+  it("左栏「跟进」、手机铃铛都挂它", () => {
     const 壳 = 读("src/components/AppShell.tsx");
     // 左栏哪一项挂红数看 挂要跟：别的版本是「跟进」，企业版项目模式跟进不在左栏，挂在「客户」上（lib/enterprise/nav.ts；10-29 起挂「项目」，11-12 C1 去掉「项目」后挪到「客户」）
     expect(壳).toContain("n.挂要跟 && 要跟数 > 0");
-    expect(壳).toMatch(/key: "\/follow-ups", icon: <InteractionOutlined \/>, label: "跟进", 组: "主", 挂要跟: true/);
+    // 团队版左栏「跟进」直接进计划页（沟通记录主页 11-15 删了）
+    expect(壳).toMatch(/key: "\/follow-ups\/plans", icon: <InteractionOutlined \/>, label: "跟进", 组: "主", 挂要跟: true/);
     expect(读("src/lib/enterprise/nav.ts")).toMatch(/key: "\/customers", label: 客户叫法, 图: "客户", 挂要跟: true/);
     expect(壳).toMatch(/<Badge count=\{要跟数\}/);
-    expect(读("src/app/(app)/follow-ups/FollowUpsView.tsx")).toContain("useFollowDue()");
     // 企业版项目首页只留看板、列表（U-项目-08，10-31）：页头不再摆「沟通记录」键，项目页不挂这个数
     expect(读("src/app/(app)/projects/ProjectsView.tsx")).not.toContain("useFollowDue()");
   });

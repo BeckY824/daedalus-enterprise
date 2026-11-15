@@ -1,8 +1,9 @@
 /**
  * 企业版「新线索」页 = 项目的线索阶段（2026-10-26 用户：「线索也要去项目里面作为三阶段」）。
  *
- *   阶段="线索"：标题「新线索」、只有列表没有看板切换、按钮「新线索」去项目向导
- *   开关关（项目页本身）：照旧「项目」、有看板/列表切换、「新建项目」
+ *   阶段="线索"：标题「新线索」、只有列表没有看板切换、按钮「新线索」就地弹建档向导，项目开关锁开（/leads/new 整页 11-15 删了）
+ *   开关关（项目页本身）：照旧「项目」、有看板/列表切换、「新建项目」（团队版同样就地弹向导、锁开）
+ *   ?new=1 进来（老链接 /leads/new、/projects/new 转过来的）：一进来就弹向导框
  *   Windows 1024 / 1280 / 1366 宽度 + 超长项目名、客户名：页面不横向溢出，新建按钮在可视区、点得中
  */
 import { beforeAll, afterAll, expect, it } from "vitest";
@@ -35,7 +36,7 @@ const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   stub(/customers\/board-actions$/, 再看码("再看一列"));
   stub(/^\.\/board-actions$/, 再看码("再看项目页一列"));
   // 向导框换成一个真的 antd 弹框（标题、关掉都照真的走），里面一块写着标题的牌子
-  stub(/^next\/dynamic$/, "import React from 'react';import {Modal} from 'antd';export default function d(){return function D(p){return <Modal open={!!p.open} title={p.标题} footer={null} onCancel={p.onClose} afterClose={p.afterClose}>{p.open&&<div className='wizard-stub'>{p.标题}</div>}</Modal>}}");
+  stub(/^next\/dynamic$/, "import React from 'react';import {Modal} from 'antd';export default function d(){return function D(p){return <Modal open={!!p.open} title={p.标题} footer={null} onCancel={p.onClose} afterClose={p.afterClose}>{p.open&&<div className='wizard-stub' data-project={p.项目||''}>{p.标题}</div>}</Modal>}}");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
@@ -80,7 +81,7 @@ async function 打开(新线索: boolean, width = 1280, 能分 = false, 企 = fa
 }
 const 去了 = (page: Page) => page.evaluate(() => (window as unknown as { __去: string[] }).__去);
 
-it("新线索页：标题「新线索」，只有列表，三个线索节点都列出来，新建去 /leads/new（同一个向导）", async () => {
+it("新线索页：标题「新线索」，只有列表，三个线索节点都列出来，新建就地弹向导框（项目开关锁开），不跳页", async () => {
   const { page, errors } = await 打开(true);
   expect(await page.getByRole("heading").first().innerText()).toBe("新线索");
   expect(await page.locator(".ant-segmented").count()).toBe(0);
@@ -93,7 +94,11 @@ it("新线索页：标题「新线索」，只有列表，三个线索节点都�
   expect(t).toContain("线索流失");
   expect(t).toContain("转了商机到「项目」里接着走");
   await page.getByRole("button", { name: /新线索$/ }).click();
-  expect(await 去了(page)).toEqual(["/leads/new"]);
+  const 框 = page.locator(".wizard-stub");
+  await expect.poll(() => 框.count()).toBe(1);
+  expect(await 框.innerText()).toBe("新线索");
+  expect(await 框.getAttribute("data-project")).toBe("锁开");
+  expect(await 去了(page)).toEqual([]);
   expect(errors).toEqual([]); await page.close();
 });
 
@@ -103,7 +108,29 @@ it("开关关（项目页本身）：标题「项目」，有看板/列表切换
   expect(await page.locator(".ant-segmented").count()).toBe(1);
   expect(await page.getByRole("button", { name: /新线索$/ }).count()).toBe(0);
   await page.getByRole("button", { name: "新建项目" }).click();
-  expect(await 去了(page)).toEqual(["/projects/new"]);
+  const 框 = page.locator(".wizard-stub");
+  await expect.poll(() => 框.count()).toBe(1);
+  expect(await 框.getAttribute("data-project")).toBe("锁开");
+  expect(await 去了(page)).toEqual([]);
+  expect(errors).toEqual([]); await page.close();
+});
+
+it.each([
+  [true, "新线索"],
+  [false, "新增项目"],
+] as const)("?new=1 进来（老链接 /leads/new、/projects/new 转过来的）：不点就弹向导框（新线索页 %s）", async (新线索, 标题) => {
+  const { page, errors } = await 打开(新线索, 1280, false, false, { 查询: "?new=1" });
+  const 框 = page.locator(".wizard-stub");
+  await expect.poll(() => 框.count()).toBe(1);
+  expect(await 框.innerText()).toBe(标题);
+  expect(await 框.getAttribute("data-project")).toBe("锁开");
+  expect(errors).toEqual([]); await page.close();
+});
+
+it("?new=1 但不能新建（没设业务角色）：不弹", async () => {
+  const { page, errors } = await 打开(true, 1280, false, false, { 查询: "?new=1", 能新建: false });
+  await page.waitForTimeout(300);
+  expect(await page.locator(".wizard-stub").count()).toBe(0);
   expect(errors).toEqual([]); await page.close();
 });
 

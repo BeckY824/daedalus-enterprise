@@ -68,7 +68,6 @@ const 页们 = (种子 = 企业版种子()): { 名: string; 址: string; 存?: R
   // 11-12 客户详情合并第 2 批：项目详情并进客户详情（/projects/<id> 跳 /customers/<客户>?project=<id>），量的是客户页项目区停在这个页签。
   // 种子第一个项目挂在 gate-scandi 名下（企业版.ts）；直接写跳过去的地址，省一跳，「项目详情-顶 / 底」改名「客户详情-项目区-顶 / 底」
   { 名: "客户详情-项目区", 址: `/customers/gate-scandi?project=${种子.项目}` },
-  { 名: "跟进记录", 址: "/follow-ups" },
   { 名: "计划", 址: "/follow-ups/plans" },
   { 名: "数据", 址: "/overview" },
   // 企业版的新线索 = 线索阶段的项目（leads/page.tsx 画的是 ProjectsView），不是老线索表

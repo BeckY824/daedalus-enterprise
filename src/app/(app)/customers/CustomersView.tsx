@@ -121,7 +121,7 @@ type Props = {
   channels?: Option[];
   /** 进来就把新建表单打开（首页空库那张「开始」卡的落点） */
   直接新建?: boolean;
-  /** 企业版项目模式：「新建客户」弹建档向导框（U-新建-01）要的数据；null = 照旧（项目模式跳 /projects/new） */
+  /** 企业版项目模式：「新建客户」弹建档向导框（U-新建-01）要的数据；null = 项目模式没开，走老的新建客户框 */
   建档?: 建档数据 | null;
   /** 企业版项目模式、首屏没带 建档（平时都不带，11-15）：「新建客户」点开时再取（form-data-action.ts）；false = 不走向导 */
   建档要取?: boolean;
@@ -409,7 +409,6 @@ export default function CustomersView({
   const 统一公海 = 企业 && b.projectMode === true;
   const 新建 = () => {
     if (b.projectMode && 有建档) return void 要表单料().then((d) => d?.建档 && set建档开着(true));
-    if (b.projectMode) return router.push("/projects/new");
     void 要表单料().then((d) => {
       if (!d) return;
       setEditing(null);
@@ -452,7 +451,7 @@ export default function CustomersView({
     window.addEventListener("beforeunload", 拦);
     return () => window.removeEventListener("beforeunload", 拦);
   }, [导出中]);
-  /** 走建档向导：首屏带了数据，或企业版项目模式点开时再取 */
+  /** 走建档向导：首屏带了数据，或项目模式点开时再取 */
   const 有建档 = Boolean(建档) || 建档要取;
   /**
    * 表单那两份料（渠道候选、建档向导数据）：首屏带了就用（?new=1），没带就点开（或展开「新建 ▾」预取）时取一次，
@@ -500,7 +499,7 @@ export default function CustomersView({
         set编辑取中(null);
       });
   };
-  /** 「新增客户」向导框（U-新建-01）：和 /projects/new 同一个向导，弹在本页 */
+  /** 「新增客户」向导框（U-新建-01）：和项目页「新增项目」同一个向导，弹在本页 */
   const [建档开着, set建档开着] = useState(Boolean(直接新建 && 建档));
   const [导入开着, set导入开着] = useState(Boolean(直接粘贴) && 能导入导出 && !企业);
   /** 企业版不用客户页这个旧导入抽屉（11-03）：导入走设置 →「企业版导入」，首页那张「开始」卡同一个去处 */
