@@ -3186,36 +3186,129 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .ant-segmented-thumb, .ant-segmented-item-label { transition-timing-function: var(--ease) !important; transition-duration: var(--t) !important; }
 
 
+/* ── 确认与反馈（PR5a）：就地确认 / 长按确认 / 后果框 / 撤销条 / 保存按钮 ──────────────
+   原型 前端改版-逐块确认 g.confirm1/2/3、g.undo、g.save「改后」。规矩见各组件文件头；哪件事用哪种确认看机制总表 P-界面-40。
+   时长曲线一律用令牌（--t-press / --t-fast / --t / --ease / --ease-spring），这里不写数；减弱动态的例外写在文件末尾那块。 */
+
 /* 就地确认（components/InlineConfirm.tsx）。形状参考 bencho.dev 的 Inline confirm（MIT）。
-   问句用正常字色、「删除」用红——**红只给真的会删的那一下**，问句本身不必也红 */
+   展开后：一行后果 + 实心确认键 + 取消。后果那行：删除这类用危险色，中性的事用灰；
+   确认键是这一行唯一的实心块。从右边长出来（它总在行尾），弹一点点 */
 .inlc { display: inline-flex; align-items: center; }
-.inlc-ask { display: inline-flex; align-items: center; gap: 6px; padding-left: 4px; white-space: nowrap; }
-.inlc-q { font-size: var(--fs-min); color: var(--text-muted); }
-.inlc-yes, .inlc-no { font: inherit; font-size: var(--fs-min); line-height: 1; border: 0; background: none;
-  padding: 3px 6px; border-radius: var(--r-ctl); cursor: pointer;
-  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease), scale var(--t-press) var(--ease); }
-.inlc-yes { color: var(--danger-text); font-weight: 600; }
-.inlc-yes:hover { background: var(--danger-bg); }
+.inlc-ask { display: inline-flex; align-items: center; gap: 6px; padding-left: 4px; white-space: nowrap; transform-origin: right center; }
+.inlc-q { font-size: var(--fs-min); color: var(--danger-text); }
+.inlc-ask[data-tone="neutral"] .inlc-q { color: var(--text-muted); }
+.inlc-yes, .inlc-no { font: inherit; font-size: var(--fs-min); line-height: 1; border: 1px solid transparent; background: none;
+  height: 24px; padding: 0 10px; border-radius: var(--r-ctl); cursor: pointer; white-space: nowrap;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease), opacity var(--t-fast) var(--ease), scale var(--t-press) var(--ease); }
+.inlc-yes { background: var(--danger); border-color: var(--danger); color: var(--on-ink); font-weight: 600; }
+.inlc-yes:hover { filter: brightness(0.94); }
+.inlc-ask[data-tone="neutral"] .inlc-yes { background: var(--brand); border-color: var(--brand); }
 .inlc-no { color: var(--text-muted); }
 .inlc-no:hover { background: var(--hover); color: var(--ink); }
-.inlc-yes:active, .inlc-no:active { scale: 0.90; }
+.inlc-yes:active, .inlc-no:active { scale: 0.96; }
 .inlc-yes:focus-visible, .inlc-no:focus-visible { outline: 1.5px solid var(--brand); outline-offset: 2px; }
-.inlc-yes:disabled { opacity: 0.5; cursor: default; }
+.inlc-yes:disabled { opacity: 0.55; cursor: progress; }
 
+/* 长按确认（components/HoldConfirm.tsx，替掉原来的滑动确认）。
+   危险色描边的键，按住时浅红的底从左往右灌满（--hold-p 0~1，JS 按帧写，不走过渡）；
+   松手早了退回去、摇一下；做着转圈；成了换成绿。整颗键撑满一行，手指好找 */
+.hold-btn { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; height: 40px; padding: 0 16px;
+  border: 1px solid var(--danger-line); border-radius: var(--r-ctl); background: var(--panel); color: var(--danger-text);
+  font: inherit; font-size: var(--fs-body); font-weight: 600; overflow: hidden; cursor: pointer; user-select: none; -webkit-user-select: none;
+  touch-action: none; -webkit-touch-callout: none;
+  transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
+.hold-btn:hover { border-color: var(--danger); }
+.hold-btn:focus-visible { outline: 1.5px solid var(--brand); outline-offset: 2px; }
+.hold-fill { position: absolute; inset: 0; background: var(--danger-bg); transform-origin: left center; transform: scaleX(var(--hold-p, 0)); pointer-events: none; }
+.hold-btn[data-state="按着"] { border-color: var(--danger); }
+.hold-btn[data-state="按着"] .hold-fill, .hold-btn[data-state="做着"] .hold-fill { background: var(--danger-line); }
+.hold-btn[data-state="成了"] { border-color: var(--success-line); color: var(--success-text); background: var(--success-bg); }
+.hold-btn[data-state="成了"] .hold-fill { opacity: 0; }
+.hold-btn:disabled { cursor: default; }
+.hold-btn[data-state="闲"]:disabled { opacity: 0.55; }
+.hold-t { position: relative; display: inline-flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hold-spin, .undo-spin, .save-spin { width: 12px; height: 12px; flex: none; border-radius: 50%; border: 1.5px solid currentColor; border-right-color: transparent; animation: confirm-spin 0.8s linear infinite; }
+.hold-btn[data-shake="a"] { animation: hold-shake-a var(--t) var(--ease); }
+.hold-btn[data-shake="b"] { animation: hold-shake-b var(--t) var(--ease); }
+@keyframes hold-shake-a { 0%, 100% { translate: 0; } 25% { translate: -3px; } 60% { translate: 3px; } }
+@keyframes hold-shake-b { 0%, 100% { translate: 0; } 25% { translate: -3px; } 60% { translate: 3px; } }
+@keyframes confirm-spin { to { rotate: 360deg; } }
 
-/* 滑动确认（components/SlideConfirm.tsx）。形状参考 bencho.dev 的 Slide to confirm（MIT）。
-   轨道是危险色的浅底，但**不是整块红**：红留给拖到头的那一刻 */
-.slc { position: relative; height: 40px; border-radius: 999px; background: var(--danger-bg);
-  border: 1px solid var(--danger-line); display: flex; align-items: center; justify-content: center;
-  overflow: hidden; user-select: none; transition: background var(--t) var(--ease), border-color var(--t) var(--ease); }
-.slc.on { background: var(--danger); border-color: var(--danger); }
-.slc-t { font-size: var(--fs-note); color: var(--danger-text); pointer-events: none; }
-.slc-k { position: absolute; left: 3px; top: 3px; width: 38px; height: 32px; border: 0; border-radius: 999px;
-  background: var(--panel); color: var(--danger-text); font-size: 16px; line-height: 1; cursor: grab;
-  box-shadow: 0 1px 3px rgba(17, 24, 39, 0.16); display: inline-flex; align-items: center; justify-content: center; }
-.slc-k:active { cursor: grabbing; }
-.slc-k:focus-visible { outline: 1.5px solid var(--brand); outline-offset: 2px; }
-.slc.on .slc-k { color: var(--success-text); }
+/* 后果框（components/ConsequenceDialog.tsx）。外壳是 antd Modal（居中、限高、进出场走上面那段 .ant-modal 规则），
+   里面：后果分条、每条一个小标签打头；原因是可点的小块；确认键在右、取消在左 */
+.csq-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.csq-row { display: flex; align-items: flex-start; gap: 8px; font-size: var(--fs-body); line-height: 22px; color: var(--ink); min-width: 0; }
+.csq-t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.csq-tag { flex: none; display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: var(--r-tag);
+  font-size: var(--fs-min); font-weight: 500; white-space: nowrap; background: var(--hover); color: var(--text-muted); }
+.csq-tag[data-level="危"] { background: var(--danger-bg); color: var(--danger-text); }
+.csq-tag[data-level="警"] { background: var(--warning-bg); color: var(--warning-text); }
+.csq-more { margin-top: 10px; font-size: var(--fs-note); line-height: 1.7; color: var(--ink-soft); overflow-wrap: anywhere; }
+.csq-why { margin-top: 14px; }
+.csq-why-h { margin-bottom: 6px; font-size: var(--fs-note); color: var(--text-muted); }
+.csq-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.csq-chip { height: 28px; max-width: 100%; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r-tag); background: var(--panel);
+  font: inherit; font-size: var(--fs-note); color: var(--ink); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease), scale var(--t-press) var(--ease); }
+.csq-chip:hover { border-color: var(--ink-soft); }
+.csq-chip:active { scale: 0.96; }
+.csq-chip[aria-checked="true"] { background: var(--brand-bg); border-color: var(--brand); color: var(--brand-deep); font-weight: 500; }
+.csq-chip:focus-visible { outline: 1.5px solid var(--brand); outline-offset: 2px; }
+.csq-chip:disabled { cursor: default; opacity: 0.55; }
+.csq-other { margin-top: 8px; }
+.csq-ack { margin-top: 14px; }
+.csq-err { margin-top: 12px; padding: 8px 10px; border-radius: var(--r-ctl); background: var(--danger-bg); color: var(--danger-text); font-size: var(--fs-note); line-height: 1.6; overflow-wrap: anywhere; }
+.csq-foot { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+
+/* 撤销条（components/UndoBar.tsx）。全站一条，底部居中的玻璃胶囊：图标 + 一句话 + 撤销 + 倒计时环。
+   从下面弹上来（--ease-spring），收的时候只淡出；鼠标停在上面倒计时（环）一起停 */
+.undo-bar { position: fixed; left: 50%; bottom: 24px; z-index: 1060; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px; max-width: min(520px, calc(100vw - 32px)); min-height: 40px; padding: 6px 8px 6px 14px;
+  border-radius: var(--r-tag); border: 1px solid var(--line); box-shadow: var(--shadow-pop);
+  background: color-mix(in srgb, var(--panel) 88%, transparent); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+  font-size: var(--fs-note); color: var(--ink); animation: undo-in var(--t) var(--ease-spring) both; }
+.undo-bar[data-out] { animation: undo-out var(--t-fast) var(--ease) both; pointer-events: none; }
+.undo-ic { flex: none; display: inline-flex; color: var(--success); }
+.undo-bar[data-state="挡了"] .undo-ic, .undo-bar[data-state="没成"] .undo-ic { color: var(--danger); }
+.undo-bar[data-state="挡了"] .undo-t, .undo-bar[data-state="没成"] .undo-t { color: var(--danger-text); }
+.undo-t { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.undo-btn { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: var(--r-tag);
+  background: transparent; font: inherit; font-size: var(--fs-note); font-weight: 600; color: var(--brand); cursor: pointer;
+  transition: background var(--t-fast) var(--ease), scale var(--t-press) var(--ease); }
+.undo-btn:hover { background: var(--brand-bg); }
+.undo-btn:active { scale: 0.96; }
+.undo-btn:disabled { cursor: progress; opacity: 0.7; }
+.undo-btn:focus-visible, .undo-x:focus-visible { outline: 1.5px solid var(--brand); outline-offset: 2px; }
+.undo-ring { flex: none; margin-right: 4px; }
+.undo-ring circle { fill: none; stroke-width: 2; }
+.undo-ring-bg { stroke: var(--line); }
+.undo-ring-fg { stroke: var(--brand); stroke-dasharray: 37.7; stroke-dashoffset: 0; animation: undo-ring var(--undo-ms, 5s) linear forwards; }
+.undo-bar[data-paused] .undo-ring-fg, .undo-bar[data-state="撤着"] .undo-ring-fg { animation-play-state: paused; }
+.undo-x { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: 0; border-radius: 50%;
+  background: transparent; color: var(--text-muted); cursor: pointer; transition: background var(--t-fast) var(--ease); }
+.undo-x:hover { background: var(--hover); color: var(--ink); }
+@keyframes undo-in { from { opacity: 0; transform: translate(-50%, 16px) scale(0.96); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+@keyframes undo-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes undo-ring { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 37.7; } }
+
+/* 保存按钮（components/SaveButton.tsx）。宽度在具体 px 之间过渡（--save-w，JS 写）：原宽 → 圆 → 内容宽 → 原宽 */
+.save-btn[data-fixed] { width: var(--save-w); min-width: 0; overflow: hidden; justify-content: center;
+  transition: width var(--t) var(--ease-spring), background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
+.save-btn[data-state="存着"] { padding-inline: 0; cursor: progress; }
+.save-in { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; }
+.save-tick path { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 12; stroke-dashoffset: 12;
+  animation: save-tick var(--t) var(--ease) forwards; }
+@keyframes save-tick { to { stroke-dashoffset: 0; } }
+.ant-btn.save-btn[data-state="成了"], .ant-btn.save-btn[data-state="成了"]:hover { background: var(--success); border-color: var(--success); color: var(--on-ink); }
+.ant-btn.save-btn[data-state="没成"], .ant-btn.save-btn[data-state="没成"]:hover { background: var(--danger); border-color: var(--danger); color: var(--on-ink); }
+
+/* 减弱动态：灌满的进度和倒计时环是「还剩多久」，不是装饰——全局那条把动画压成一帧的话，环一出来就空了，
+   所以这两样照常走（只动描边长度和底色，不位移）；摇一下、弹上来、转圈换成不动 */
+@media (prefers-reduced-motion: reduce) {
+  .undo-bar .undo-ring-fg { animation-duration: var(--undo-ms, 5s) !important; }
+  .hold-btn[data-shake] { animation: none !important; }
+  .hold-spin, .undo-spin, .save-spin { animation: rd-pulse 1.4s ease-in-out infinite !important; rotate: none !important; }
+}
 
 
 /* ── antd 的弹框：居中，并且不再"蹿"出来 ──────────────────────────
