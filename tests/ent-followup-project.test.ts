@@ -40,6 +40,8 @@ beforeEach(async () => {
   mocks.企业版 = true;
   销售 = (await prisma.user.create({ data: { email: "s1", name: "小王", title: "", role: "SALES", password: "x" } })).id;
   mocks.user = { ...mocks.user, id: 销售, role: "SALES" };
+  // 11-01 起权限只认业务角色：挂项目和项目详情记沟通同一条「能管项目」（X-143），负责人得是销售
+  await prisma.entMember.create({ data: { userId: 销售, bizRole: "sales" } });
   客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13800000001", salesOwnerId: 销售 } })).id;
   别的客户 = (await prisma.customer.create({ data: { name: "客户乙", phone: "13800000002", salesOwnerId: 销售 } })).id;
 });

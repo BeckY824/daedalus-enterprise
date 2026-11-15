@@ -29,6 +29,8 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import CopyValue from "@/components/CopyValue";
 import InlineConfirm from "@/components/InlineConfirm";
+import { useConsequence } from "@/components/ConsequenceDialog";
+import { showUndo } from "@/components/UndoBar";
 import { 跟进类型们, FOLLOW_TYPE_MAP, FOLLOW_STATUSES, DECISION_STATUSES, FOLLOW_RECORD_STATUS_COLOR } from "@/lib/constants";
 import { 成员选项, dayjs, duration, fmtDate, fmtDateTime, initial, avatarColor, AVATAR_TEXT, 独自一人 } from "@/lib/utils";
 import { RowLink, FollowStatusTag, DecisionStatusTag, FOLLOW_TYPE_ICON } from "@/components/ui";
@@ -82,7 +84,7 @@ import { 公海标签 } from "@/lib/pool";
 import { 带走说法 } from "@/lib/carry-over";
 import { 移交作废天数 } from "@/lib/enterprise/handover-expire-days";
 import { 少动, 滚法 } from "@/lib/reduced-motion";
-import { 放进公海, 领取, 撤销公海 } from "../pool-actions";
+import { 放进公海, 领取, 撤销公海, 退回原因选项 } from "../pool-actions";
 import { useDeleteCustomers } from "../useDeleteCustomers";
 import { 释义下拉宽 } from "@/components/DictNote";
 
@@ -218,6 +220,8 @@ export default function RecordView({
   const { 问怎么拿掉 } = useContactRemoval();
   const { 先问转走的项目, 问转让原因 } = useTransferConfirm(转让原因);
   const { 问放回公海 } = usePoolReturnConfirm();
+  /** 后果框（PR5a）：企业版客户退回公海（dt.pool：后果分条、原因点选、其他原地写） */
+  const [问后果, 后果框] = useConsequence();
   const revertChoice = useRef<string>(REVERT_CHOICES[0].value);
   /*
     企业版项目模式（10-27 会议：前台冗余优化，先做一版、对方终稿到了再调）：
@@ -535,6 +539,7 @@ export default function RecordView({
 
   /** 公海（第 6 块）：放进 / 领取这一位，提示条上带一次撤销（和列表上同一个做法） */
   async function 公海动作(动作: "放进" | "领取") {
+    if (企业 && 动作 === "放进") return 企业退回公海();
     if (动作 === "领取" && !(await 先问转走的项目([customer.id]))) return;
     // 企业版放回前确认：联系人、项目一起退 + 必选退回原因（U-客户-04 / M-公海-09）；别的版本不问
     const 问 = 动作 === "放进" ? await (企业 ? 问放回公海("把这位客户退回公海？", 企业, "客户退回公海") : 问放回公海("把这位客户放回公海？", 企业)) : null;
@@ -583,15 +588,53 @@ export default function RecordView({
    * 一个在推的项目都没有就开新开项目弹窗（自动带上这位）。别的版本照旧就地记一笔
    */
   const 记沟通项目 = 去项目跟进
-    ? (跟进去处 ?? []).filter((p) => !p.结束).map((p) => ({ id: p.id, name: p.主 ? p.名 : `${p.名}（关联）` }))
+    // X-143：只列我能记的（和项目详情记沟通同一条「能管项目」；组员不列）。老数据 / 夹具没这一项的照旧列
+    ? (跟进去处 ?? []).filter((p) => !p.结束 && p.能记 !== false).map((p) => ({ id: p.id, name: p.主 ? p.名 : `${p.名}（关联）` }))
     : 在推项目;
-  const 跟进按钮字 = 去项目跟进 && !记沟通项目?.length && 能建项目 ? "给他开项目" : "记一条沟通";
+  const 跟进按钮字 = "记一条沟通";
   function 点跟进() {
     // 只读的客户（虚线下属、市场成员相关）：先说只能看，别说「还没有在推的项目」——项目可能有，只是他看不到（11-03 D3-3）
     if (全只读) return void message.info(全只读话);
-    if (!去项目跟进 || 记沟通项目?.length) return void openFollow(null);
-    if (能建项目) return 开建项目();
-    message.info(`这位${b.customer}还没有在推的项目：跟进记在项目里，请先新建项目`);
+    // P-界面-35（dt.follownp）：没有能记的在推项目也照常打开，这条记为客户沟通（弹框里写明）；不自动建项目，项目一定手动新建
+    openFollow(null);
+  }
+
+  /**
+   * 企业版「客户退回公海」（dt.pool，P-界面-40 后果框 + P-界面-42 原因）：一个框写清后果、原因点选（其他原地写、必填）；
+   * 没成原因写在框里不关框。成了回列表（原负责人放进去后自己就看不到这位了，11-03），底部撤销条跟着到列表、6 秒内可撤
+   */
+  async function 企业退回公海() {
+    let 选项: string[] = [];
+    try { 选项 = await 退回原因选项(); } catch { 选项 = []; }
+    let 结果: Awaited<ReturnType<typeof 放进公海>> | null = null;
+    const 成了 = await 问后果({
+      题: `把「${customer.name}」退回公海`,
+      后果: [
+        { 标: "一起退", 话: "名下联系人、项目一起进公海，同事领了客户就一起归他", 级: "警" },
+        { 标: "看不到", 话: "你不能再领回来，也看不到它了", 级: "危" },
+        { 标: "能撤销", 话: "6 秒内可以撤销" },
+      ],
+      ...(选项.length ? { 原因: { 选项, 叫: "退回原因（必选）" } } : {}),
+      是: "退回公海",
+      做: async (原因) => {
+        const r = await 放进公海([customer.id], 原因 ?? null);
+        if (!r.ok) return r;
+        if (!r.updated) return { ok: false, error: "已经在公海里了，刷新看看" };
+        结果 = r;
+      },
+    });
+    const r = 结果 as Awaited<ReturnType<typeof 放进公海>> | null;
+    if (!成了 || !r || !r.ok) return;
+    showUndo({
+      话: `已把「${customer.name}」退回公海`,
+      毫秒: 6000,
+      撤销: async () => {
+        const u = await 撤销公海("放进", [{ id: customer.id, 值: "" }], r.带过来, undefined, r.公海项目);
+        router.refresh();
+        return u;
+      },
+    });
+    router.push("/customers");
   }
 
   /**
@@ -612,23 +655,15 @@ export default function RecordView({
         : message.info(res.交接已在路上 ? `这位${b.customer}已在移交中（等对方确认），没再发起` : res.没转 ? `这位${b.customer}刚被别人改了负责人，没转` : res.missing ? `这位${b.customer}已不存在（可能已删除）` : `没有发起新的交接：已归 ${o.label}`));
     }
     if (!res.updated) return void message.info(res.带走?.没转成 || res.没转 ? `这位${b.customer}刚被别人改了负责人，没转` : res.missing ? `这位${b.customer}已不存在（可能已删除）` : `本来就归 ${o.label}`);
-    const key = `transfer-${customer.id}`;
-    message.success({
-      key,
-      duration: 6,
-      content: (
-        <span>
-          已转给 {o.label}{带走说法(res.带走)}
-          <Button type="link" size="small" onClick={async () => {
-            message.destroy(key);
-            const r = await 撤销改负责人(res.原值 ?? [], o.value, res.带过来);
-            router.refresh();
-            if (!r.ok) return void message.error(`没能撤销：${r.error}`);
-            if (!r.updated) return void message.warning("没撤成：负责人已经又改过了");
-            message.success("已撤销，负责人改回原样");
-          }}>撤销</Button>
-        </span>
-      ),
+    // 直接转（实线上级、条线总管理、系统管理员，P-转-16）：底部撤销条，撤销 = 改回原负责人；撤不了原因写在条上
+    showUndo({
+      话: `已转给 ${o.label}${带走说法(res.带走)}`,
+      撤销: async () => {
+        const r = await 撤销改负责人(res.原值 ?? [], o.value, res.带过来);
+        router.refresh();
+        if (r.ok && !r.updated) return { ok: false, error: "负责人已经又改过了" };
+        return r;
+      },
     });
   }
   /** 转给谁：在职成员里去掉现任 */
@@ -1012,6 +1047,7 @@ export default function RecordView({
   return (
     /* ui-v2：16a 客户详情的排版（左栏加宽、联系人两行、备注折叠、筛选一行），样式在 globals.css 末尾 16a 那块 */
     <div className="rec-page ui-v2">
+      {后果框}
       {醒目条}
       <div className="rec-head">
         {/*

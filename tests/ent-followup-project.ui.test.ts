@@ -2,7 +2,8 @@
  * 企业版客户页记跟进默认挂项目（10-27 会议：「默认自动关联当前项目」；服务端规则见 ent-followup-project.test.ts）。
  *
  *   给了在推项目：「关联商机」换成「关联项目」，默认选第一个（页面按最近动过排）；必选，不能清空（10-28 A2）
- *   给了空列表：这一格还在，提示「没挂项目，建议先建项目」，照旧能记，交上去是 null
+ *   给了空列表：这一格还在，写明「没有你能记的在推项目，这条记为客户沟通」（P-界面-35），照旧能记，交上去是 null
+ *   服务端回「没挂上项目」（X-144：项目刚结束 / 进公海 / 关联进来的）：提示「没挂上项目，已记为客户沟通」，不报「沟通已记下」
  *   编辑：不摆这一格，交上去不带 projectId
  *   开关关闭（页面不给 projects）：和原来一样是「关联商机」，交上去不带 projectId
  *   Windows 1024 / 1280 / 1366：超长项目名不横向撑出，「保存」点得中
@@ -21,7 +22,7 @@ const plugin: Plugin = { name: "followup-project-boundaries", setup(b) {
   stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
   stub(/projects\/actions$/, "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x,卡点)=>{window.__项目存={id,...x};window.__卡点=卡点;return{ok:true,followUpId:'f1',自动推到:window.__推到}};");
-  stub(/^\.\/actions$/, "export const saveFollowUp=async x=>{window.__存=x;return{ok:true,id:'f1'}},completePlan=async()=>({ok:true});export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'n1'});");
+  stub(/^\.\/actions$/, "export const saveFollowUp=async x=>{window.__存=x;return{ok:true,id:'f1',...(window.__存回??{})}},completePlan=async()=>({ok:true});export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'n1'});");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no'});");
   stub(/^\.\/CustomerPick$/, "export default function C(){return null}");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
@@ -82,12 +83,33 @@ it("有在推项目时「关联项目」必选：没有清除按钮", async () =
   } finally { await page.close(); }
 });
 
-it("没有在推的项目：这一格提示一句，交上去是 null", async () => {
+it("没有在推的项目（P-界面-35）：照常能记，弹框里写明记为客户沟通，交上去是 null", async () => {
   const { page, errors } = await open({ 项目: "空" });
   try {
-    expect(await 格(page, "关联项目").innerText()).toContain("没挂项目，建议先建项目");
+    expect(await 格(page, "关联项目").getByRole("note").innerText()).toBe("没有你能记的在推项目，这条记为客户沟通");
+    expect(await 格(page, "关联项目").innerText()).toContain("—（客户沟通）");
     expect((await 存(page)).projectId).toBeNull();
     expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("X-144：服务端回「没挂上项目」——提示「没挂上项目，已记为客户沟通」，不报「沟通已记下」", async () => {
+  const { page, errors } = await open({ 项目: "有" });
+  try {
+    await page.evaluate(() => Reflect.set(window, "__存回", { 没挂上项目: true }));
+    expect((await 存(page)).projectId).toBe("p1");
+    await page.getByText("没挂上项目，已记为客户沟通").waitFor();
+    expect(await page.getByText("沟通已记下").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("挂上了（没回「没挂上项目」）：不出那句提示", async () => {
+  const { page } = await open({ 项目: "有" });
+  try {
+    await 存(page);
+    await page.getByText("沟通已记下").waitFor();
+    expect(await page.getByText("没挂上项目，已记为客户沟通").count()).toBe(0);
   } finally { await page.close(); }
 });
 
