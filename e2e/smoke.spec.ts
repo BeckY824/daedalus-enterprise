@@ -124,9 +124,9 @@ test("5. 给客户录一条跟进，时间线上要看得见", async ({ page }) 
   }
   /*
     企业版原来从沟通记录页（/follow-ups?customer=…&new=1）带着这位记一笔；那页 11-15 删了，企业版记沟通在客户档案里、
-    要先有项目（e2e-ent 里验）。上面在库里建的这位留给后面几条用，这一条到这儿为止
+    要先有项目（e2e-ent/record-followup.spec.ts 里验）。上面在库里建的这位留给后面几条用，这一条到这儿为止
   */
-  test.skip(企业版, "沟通记录页 11-15 删了：企业版记沟通在客户档案里（先有项目），e2e-ent 里验");
+  test.skip(企业版, "沟通记录页 11-15 删了：企业版记沟通在客户档案里（先有项目），e2e-ent/record-followup.spec.ts 里验");
   await 登录(page);
   await page.goto("/customers");
   await page.locator("main").getByRole("link", { name: 客户名 }).click();

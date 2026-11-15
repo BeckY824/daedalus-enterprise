@@ -49,8 +49,8 @@ async function 进第一位客户(page: Page) {
 test("最小窗口 1024×700：「新建跟进」比窗口高也看得见「保存」，中间那段自己滚", async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 700 });
   await 登录(page);
-  // 企业版原来在沟通记录页页头开这个框；那页 11-15 删了，企业版记沟通在客户档案里、要先有项目（e2e-ent 里验）
-  test.skip(企业版, "沟通记录页 11-15 删了：企业版记沟通在客户档案里（先有项目），e2e-ent 里验");
+  // 企业版原来在沟通记录页页头开这个框；那页 11-15 删了，企业版记沟通在客户档案里、要先有项目（e2e-ent/record-followup.spec.ts 里验）
+  test.skip(企业版, "沟通记录页 11-15 删了：企业版记沟通在客户档案里（先有项目），e2e-ent/record-followup.spec.ts 里验");
   await 进第一位客户(page);
   await page.getByRole("button", { name: /记录跟进/ }).first().click();
   const 框 = page.locator(".ant-modal-container").last();
