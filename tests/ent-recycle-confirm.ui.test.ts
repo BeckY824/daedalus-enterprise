@@ -75,6 +75,19 @@ it("关开关：先弹后果确认框；点「再想想」不存、开关还开�
   } finally { await page.close(); }
 });
 
+it("开开关：确认打开后在页签底部就地照实说「已打开客户回收，已开始计时」，不弹顶部提示", async () => {
+  const { page, errors } = await open(false);
+  try {
+    await 开关(page).click();
+    await page.getByRole("dialog", { name: "打开客户回收？" }).getByRole("button", { name: "确认打开" }).click();
+    await page.getByRole("dialog").waitFor({ state: "detached" });
+    expect(await 存了的(page)).toEqual([{ 三态: { 开: true } }]);
+    await page.locator(".set-note[role=status]").filter({ hasText: "已打开客户回收，已开始计时" }).waitFor();
+    expect(await page.locator(".ant-message").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it("关开关时旧「超时回收」开着：确认框里说清会改回按项目超时回收", async () => {
   const { page } = await open(true, undefined, 1366, true);
   try {

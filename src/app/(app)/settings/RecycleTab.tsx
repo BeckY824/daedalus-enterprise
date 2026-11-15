@@ -19,6 +19,7 @@ import { 三态显示名 } from "@/lib/enterprise/tri-state-label";
 import { useConsequence } from "@/components/ConsequenceDialog";
 import { showUndo } from "@/components/UndoBar";
 import { useDirtyMark } from "@/lib/settings-dirty";
+import { useSettingsNote } from "./InlineNote";
 
 export type 客户回收设置 = {
   三态: 三态规则;
@@ -49,6 +50,8 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
   const [错, set错] = useState("");
   // 确认用 PR5a 后果框（PR9：设置各页签的 modal.confirm 都换成它），不确认不存
   const [问后果, 后果框] = useConsequence();
+  // 打开成了照实说一句「已开始计时」（打开即计时），写在页签底部的就地提示条里（g.save，不弹顶部）
+  const [提示, 提示条] = useSettingsNote();
   const [忙, set忙] = useState(false);
   const { 三态, 挡 } = value;
   const [天, set天] = useState<Record<(typeof 套们)[number], 三态天数>>({ 内贸: { ...三态.内贸 }, 外贸: { ...三态.外贸 } });
@@ -59,7 +62,7 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
 
   /**
    * 存；回结果给后果框（没成原因写在框里、框不关）。不经后果框的（关着时改天数）没成写在保存键旁边。
-   * 存天数成了保存键里亮「✓ 已保存」；开关成了看开关本身，不另提示
+   * 存天数成了保存键里亮「✓ 已保存」；关掉成了看开关本身，不另提示；打开成了在页签底部就地说一句「已开始计时」
    */
   const 存 = async (改: Parameters<typeof 改组织规则>[0], 是天数: boolean, 框里 = true): Promise<{ ok: boolean; error?: string }> => {
     set忙(true);
@@ -103,7 +106,11 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
       后果: [{ 标: "全员", 级: "警", 话: 打开后果 }],
       是: "确认打开",
       危: false,
-      做: () => 存({ 三态: { 开: true } }, false),
+      做: async () => {
+        const r = await 存({ 三态: { 开: true } }, false);
+        if (r.ok) 提示.success("已打开客户回收，已开始计时");
+        return r;
+      },
     });
   };
 
@@ -189,6 +196,7 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
         )}
       </Card>
       <WordsCard 词们={value.占位词} />
+      {提示条}
     </div>
   );
 }
