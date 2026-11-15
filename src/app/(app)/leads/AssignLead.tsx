@@ -53,8 +53,10 @@ export function useBatchAutoAssign(
   选项?: { 项目?: true; 先问?: true; 写进行里?: (结果们: 批量自动分配结果[]) => void },
 ) {
   const router = useRouter();
-  const { message, modal } = App.useApp();
+  const { modal } = App.useApp();
   const [问后果, 后果框] = useConsequence();
+  /** 不先问的那条路没分成：原因就地摆在列表上方（原型 g.notice：不弹顶部提示），可以收 */
+  const [批错, set批错] = useState<string | null>(null);
   /** 先问那种（线索页，ls.ld.batch）：分完的名单就地摆在列表上方，可以收，不弹 modal.info */
   const [名单, set名单] = useState<Extract<Awaited<ReturnType<typeof 批量自动分配>>, { ok: true }>["结果"] | null>(null);
   const 传给服务端 = 选项?.项目 ? { 项目: true as const } : {};
@@ -116,12 +118,13 @@ export function useBatchAutoAssign(
       if (!好 || !分完) return;
       res = 分完;
     } else {
+      set批错(null);
       try {
         res = await 批量自动分配(ids, { ...传给服务端, 原负责人们 });
       } catch {
-        return void message.error("没分成，请稍后再试");
+        return void set批错("没分成，请稍后再试");
       }
-      if (!res.ok) return void message.error(res.error);
+      if (!res.ok) return void set批错(res.error);
     }
     if (!res.ok) return;
     清空();
@@ -149,6 +152,17 @@ export function useBatchAutoAssign(
   const 框 = (
     <>
       {后果框}
+      {批错 && (
+        <Alert
+          className="ls-ld-result"
+          type="error"
+          showIcon
+          role="alert"
+          closable={{ "aria-label": "收起" }}
+          afterClose={() => set批错(null)}
+          title={`自动分配没分成：${批错}`}
+        />
+      )}
       {名单 && (
         <Alert
           className="ls-ld-result"

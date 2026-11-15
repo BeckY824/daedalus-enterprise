@@ -187,3 +187,28 @@ it("编辑：改了按 Esc 也问，但不给「留着草稿」（编辑不存�
   expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("daedalus:草稿:")))).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+it("草稿接着填：不弹顶部提示，底部撤销条说一句；点「撤销」= 不要草稿（填的放回原样、草稿扔掉）", async () => {
+  const { page, errors } = await 开();
+  // 真样式：撤销条要压在弹窗上面（z-index 在 globals.css），点得到
+  await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+  await page.getByRole("button", { name: "开新建" }).click();
+  await 框(page).waitFor();
+  await 框(page).getByLabel("客户姓名").fill("Li Lei");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "留着草稿，先关掉" }).click();
+  await expect.poll(() => 状态(page)).toBe("关着");
+  await page.getByRole("button", { name: "开新建" }).click();
+  await 框(page).waitFor();
+  await expect.poll(() => 框(page).getByLabel("客户姓名").inputValue()).toBe("Li Lei");
+  await page.getByText("接着上次没填完的继续填").waitFor();
+  expect(await page.locator(".ant-message-notice").count()).toBe(0);
+  await page.getByRole("button", { name: "撤销" }).click();
+  await expect.poll(() => 框(page).getByLabel("客户姓名").inputValue()).toBe("");
+  expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("daedalus:草稿:")))).toEqual([]);
+  // 放回原样之后没填过：直接关，不再问
+  await page.keyboard.press("Escape");
+  await expect.poll(() => 状态(page)).toBe("关着");
+  expect(errors).toEqual([]);
+  await page.close();
+});

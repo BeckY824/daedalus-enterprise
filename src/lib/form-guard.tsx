@@ -18,6 +18,7 @@ import { App, Button, Space } from "antd";
 import type { FormInstance } from "antd";
 import { dayjs } from "@/lib/utils";
 import { useMe } from "@/lib/me-client";
+import { showUndo } from "@/components/UndoBar";
 
 const 前缀 = "daedalus:草稿:";
 const 放几天 = 7;
@@ -102,7 +103,7 @@ export type 守卫选项 = {
 };
 
 export function useFormGuard({ open, 关, form, 草稿键 = null, 填过, 忙 = false, afterOpenChange, 不存 }: 守卫选项) {
-  const { modal, message } = App.useApp();
+  const { modal } = App.useApp();
   const 我 = useMe();
   const 全名 = 草稿键 ? 草稿全名(我?.id, 草稿键) : null;
   const 改过 = useRef(false);
@@ -143,13 +144,24 @@ export function useFormGuard({ open, 关, form, 草稿键 = null, 填过, 忙 = 
       待恢复.current = null;
       // 动画没走完人已经动手填了：以人填的为准，不拿草稿盖
       if (开了 && 全名 && form && 稿 && !改过.current) {
+        // 盖草稿之前先记下这几格原来的值：撤销 = 放回去、草稿也扔掉（不动草稿里没有的那些格，程序填的默认值还在）
+        const 原来: Record<string, unknown> = {};
+        for (const k of Object.keys(稿)) 原来[k] = form.getFieldValue(k);
         form.setFieldsValue(稿);
         改过.current = true;
-        message.info({ key: "草稿恢复", content: "接着上次没填完的继续填" });
+        // 原型 g.undo / g.notice：不弹顶部提示，底部撤销条说一句、给一个「不要草稿」的退路
+        showUndo({
+          话: "接着上次没填完的继续填",
+          撤销: () => {
+            form.setFieldsValue(原来);
+            改过.current = false;
+            清草稿(全名);
+          },
+        });
       }
       afterOpenChange?.(开了);
     },
-    [全名, form, message, afterOpenChange],
+    [全名, form, afterOpenChange],
   );
 
   const 要关 = useCallback(() => {

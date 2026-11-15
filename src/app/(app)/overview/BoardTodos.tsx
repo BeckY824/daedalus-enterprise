@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useLayoutEffect, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Checkbox, Input, Segmented, Table, Tooltip } from "antd";
@@ -14,6 +14,9 @@ import type { 预警行 } from "@/lib/project/review-extras";
 import { dayjs, fmtDateTime } from "@/lib/utils";
 import EmptyState, { 表格空态 } from "@/components/EmptyState";
 import CountUp from "@/components/CountUp";
+import { useMotionTheme } from "@/components/MotionTheme";
+import { 动画行上限 } from "@/components/FlipRows";
+import { 少动 } from "@/lib/reduced-motion";
 import { toggleTask, completePlan } from "../customers/[id]/actions";
 import {
   待办卡们, 待办卡叫法, 状态of, 复盘待办每页,
@@ -54,6 +57,47 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
   /** 没完成成的原因：就地写在列表标题旁（g.save），不弹顶部提示、不提示成功 */
   const [错, set错] = useState<string | null>(null);
   const [换着, start] = useTransition();
+  const { 时长 } = useMotionTheme();
+  /**
+   * ov.view「改后」：看板 ↔ 列表，同一批待办从卡片的位置移到行的位置（反过来一样），不像重新加载。
+   * 点切换时记下每张卡 / 每一行在屏上的位置（按待办的 key），新样子画出来之后（数据照旧由服务端按 lay 给，一次只取一种，口径不动），
+   * 每个对得上的从旧位置滑到新位置；对不上的（看板每列只摆前几条、列表一页 N 条）淡入。
+   * 等新数据那一会儿：旧样子不变灰、表格不转圈——人看到的是「变过去」，不是「刷一遍」。
+   * 减弱动态、件数超过 动画行上限：直接换，不位移。
+   */
+  const 变形起点 = useRef<Map<string, DOMRect> | null>(null);
+  const 包 = useRef<HTMLDivElement>(null);
+  /** 点了要换成哪种（还没到 = 正在变过去）；到了以后和 现在布局 一样，自然就不算在换 */
+  const [换布局到, set换布局到] = useState<待办布局 | null>(null);
+  const 现在布局: 待办布局 = 看板 ? "board" : "list";
+  // 新样子到了：清掉（渲染时就清，React 推荐的「随 props 调整 state」写法），以后别的原因换了样子不算变形
+  if (换布局到 !== null && 换布局到 === 现在布局) set换布局到(null);
+  const 变形中 = 换布局到 !== null && 换布局到 !== 现在布局;
+  const 量件们 = () => {
+    const m = new Map<string, DOMRect>();
+    包.current?.querySelectorAll<HTMLElement>("[data-morph-key], tr[data-row-key]").forEach((el) => {
+      const k = el.dataset.morphKey ?? el.dataset.rowKey;
+      if (k) m.set(k, el.getBoundingClientRect());
+    });
+    return m;
+  };
+  useLayoutEffect(() => {
+    const 起 = 变形起点.current;
+    变形起点.current = null;
+    const 根 = 包.current;
+    if (!起 || !根 || 少动()) return;
+    const 件们 = [...根.querySelectorAll<HTMLElement>("[data-morph-key], tr[data-row-key]")];
+    if (件们.length > 动画行上限) return;
+    // WAAPI 认不了 var()：从 <html> 上读当前主题的 --ease-morph（同 FlipRows），读不到退回线性
+    const ease = getComputedStyle(document.documentElement).getPropertyValue("--ease-morph").trim() || "linear";
+    const 时 = { duration: 时长.morph * 1000, easing: ease };
+    for (const el of 件们) {
+      const 旧 = 起.get(el.dataset.morphKey ?? el.dataset.rowKey ?? "");
+      const 新 = el.getBoundingClientRect();
+      if (旧) el.animate?.([{ transform: `translate(${Math.round(旧.left - 新.left)}px, ${Math.round(旧.top - 新.top)}px)` }, { transform: "none" }], 时);
+      else el.animate?.([{ opacity: 0 }, { opacity: 1 }], 时);
+    }
+  }, [现在布局, 时长]);
 
   /** 换卡从第一页看起；翻页只改 p。replace：筛选不进历史，返回键回到进复盘页之前那一页 */
   const 改 = (k: { f?: 待办卡; lay?: 待办布局; p?: number }) => {
@@ -66,6 +110,11 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
     if ("lay" in k) {
       if (k.lay === "list") q.set("lay", "list");
       else q.delete("lay");
+      // 只换样子（同一张卡、第一页）才变形；「看全部 N 条」那种同时换了卡，是去另一张表，照旧
+      if (!("f" in k) && k.lay) {
+        变形起点.current = 量件们();
+        set换布局到(k.lay);
+      }
     }
     if (k.p && k.p > 1) q.set("p", String(k.p));
     else q.delete("p");
@@ -169,7 +218,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
   const 空提示 = 卡 !== "all" ? "换一张卡看看。" : 只看自己 ? "你名下的跟进计划和待办都做完了。" : "跟进计划和待办都做完了，这里就空着。";
 
   return (
-    <div className="btodo-wrap">
+    <div className="btodo-wrap" ref={包}>
       {/* 四张卡就是筛选：选中的那张描主色边、底色淡一档；逾期有数才红（是 0 就是个灰数） */}
       <div className="btodo-cards" role="group" aria-label="按到期筛选">
         {待办卡们.map((k) => {
@@ -200,7 +249,8 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
                 size="small"
                 aria-label="看板还是列表"
                 className="btodo-lay"
-                value={看板 ? "board" : 布局}
+                // 点下去滑块先到，不等数据（数据到了样子再变过去）
+                value={变形中 && 换布局到 ? 换布局到 : 看板 ? "board" : 布局}
                 onChange={(v) => 改({ lay: v as 待办布局 })}
                 options={[{ value: "board", label: "看板" }, { value: "list", label: "列表" }]}
               />
@@ -210,7 +260,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
         {看板 && 计数.all === 0 ? (
           <EmptyState title="没有待办" hint={空提示} demo={false} />
         ) : 看板 ? (
-          <div className={`btodo-board${换着 ? " is-pending" : ""}`}>
+          <div className={`btodo-board${换着 && !变形中 ? " is-pending" : ""}`}>
             {看板列们.map((c) => {
               const 列 = 看板.列[c];
               return (
@@ -223,7 +273,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
                   {列.行.length ? (
                     <ul className="btodo-col-list">
                       {列.行.map((x) => (
-                        <li key={x.key}>
+                        <li key={x.key} data-morph-key={x.key}>
                           <待办卡片 x={x} 完成中={刚完成.includes(x.key)} 看全员={看全员} 完成={() => void 完成(x)} />
                         </li>
                       ))}
@@ -246,7 +296,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
           size="small"
           rowKey="key"
           tableLayout="fixed"
-          loading={换着 ? { delay: 150 } : false}
+          loading={换着 && !变形中 ? { delay: 150 } : false}
           dataSource={数?.行 ?? []}
           columns={cols}
           pagination={{

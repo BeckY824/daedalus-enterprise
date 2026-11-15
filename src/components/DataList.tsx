@@ -1,7 +1,7 @@
 "use client";
 
 import { 登记页面行 } from "@/lib/page-rows";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
 import { Table, Button, Dropdown, Checkbox, Grid } from "antd";
@@ -9,6 +9,8 @@ import { SettingOutlined } from "@ant-design/icons";
 import type { ColumnType, TableProps } from "antd/es/table";
 import type { SortOrder } from "antd/es/table/interface";
 import EmptyState from "@/components/EmptyState";
+import CountUp from "@/components/CountUp";
+import Skeleton from "@/components/Skeleton";
 import { useLocalPref } from "@/lib/local-pref";
 import { 只留当前行, 露出这一列, 算可见列, 切换后存 } from "@/lib/list-select";
 
@@ -134,6 +136,19 @@ function 行名(r: object): string | null {
   return null;
 }
 
+/** 取数中、原来又一行都没有时摆的占位（骨架行要有行可摆）。id 只给 rowKey 用 */
+const 占位行 = [{ id: "skel-0" }, { id: "skel-1" }, { id: "skel-2" }] as never[];
+/** 取数中每一格换成一条灰条：td 的属性（类名、固定列的位置）照留，只换里面的东西 */
+const 骨架格 = {
+  body: {
+    cell: ({ children: _旧, ...td }: React.TdHTMLAttributes<HTMLTableCellElement> & { children?: React.ReactNode }) => (
+      <td {...td}>
+        <Skeleton 行={1} 静默 className="list-skel" />
+      </td>
+    ),
+  },
+};
+
 export default function DataList<T extends { id: string }>({
   页, 列: 全部列, 行, 空库, 空态, 没对上, 筛选, 汇总, 替表格, 批量, 浮起操作条 = false, 加载中, 行链接, 行点击, 横向, 分页, 截断, 亮, 行类, 不可勾, 排序, 单行 = true, 展开,
 }: Props<T>) {
@@ -142,6 +157,11 @@ export default function DataList<T extends { id: string }>({
   /** 真的只取了一部分：库里的总数比取回来的多（本地筛掉的不算，见 截断.取回） */
   const 取回 = 截断?.取回 ?? 行.length;
   const 真截断 = !!截断 && 截断.总数 > 取回;
+  const 总数 = (t: number) => (
+    <span className="list-total-n">
+      <CountUp 值={t} 记号={`list-total:${页}`} 只滚变化 />
+    </span>
+  );
   const [选中, set选中] = useState<string[]>([]);
   /*
     行一换就把看不见的勾选清掉。在渲染里比上一次的行来改（React 文档「props 变了调整 state」的写法），
@@ -221,6 +241,17 @@ export default function DataList<T extends { id: string }>({
    * 算法在 lib/list-select.ts 的 露出这一列，单测钉着。
    */
   const 表框 = useRef<HTMLDivElement>(null);
+  /*
+    取数中（换筛选、翻页、排序：地址栏变了等服务端那一屏）先出骨架行（原型 cu.filter「先出骨架再换内容」），不再整表转圈：
+    表头、行数、行高、分页都不动，每一格换成一条灰条（PR2 的 Skeleton）。行高量的是取数前那一屏的第一行，取数中按它撑住，
+    骨架行比真行矮也不往上缩。原来就没有行（上一屏筛出 0 条）时摆三行占位
+  */
+  useLayoutEffect(() => {
+    if (加载中) return;
+    const 框 = 表框.current;
+    const 行高 = 框?.querySelector<HTMLElement>(".ant-table-tbody > tr.ant-table-row")?.offsetHeight;
+    if (框 && 行高) 框.style.setProperty("--list-row-h", `${行高}px`);
+  });
   /** 刚勾上、等渲染出来再挪的那一列。放 ref 里、在下面的 effect 里挪：那时新列已经在 DOM 里了 */
   const 待露 = useRef<string | null>(null);
   function 挪到看得见(k: string) {
@@ -288,7 +319,8 @@ export default function DataList<T extends { id: string }>({
     .reduce((s2, c) => s2 + (typeof c.width === "number" ? c.width : 120), 0);
 
   return (
-    <div className={单行 ? "list dl-one-line" : "list"} ref={表框}>
+    <div className={[单行 ? "list dl-one-line" : "list", 加载中 ? "list-skel-on" : ""].filter(Boolean).join(" ")} ref={表框} aria-busy={加载中 || undefined}>
+      {加载中 && <span className="sr-only" role="status">正在加载</span>}
       {/* 工具栏只有一条：搜索 + 筛选在左，列设置顶到最右（设计稿 10-17 的六张列表页都是这个形）。
           主动作（新建 / 记录）不在这儿，它在页头右上角——那是全站找它的地方，
           列表页不该把它藏在筛选中间。 */}
@@ -348,14 +380,15 @@ export default function DataList<T extends { id: string }>({
       <Table<T>
         rowKey="id"
         size="middle"
-        dataSource={行}
+        dataSource={加载中 && 行.length === 0 ? 占位行 : 行}
         columns={显示的列}
+        components={加载中 ? 骨架格 : undefined}
         onChange={(_, __, sorter, extra) => {
           if (extra.action !== "sort" || !排序) return;
           const current = Array.isArray(sorter) ? sorter[0] : sorter;
           排序(String(current?.columnKey ?? ""), current?.order ?? null);
         }}
-        loading={加载中}
+        loading={false}
         /*
           筛出 0 条 ≠ 空库（2026-10-02 排查 H5）：原来一律画空库引导「还没有… / 新建第一位 / 从 Excel 导入 / 演示数据」，
           人筛了一下就以为数据没了。在筛的时候只说没对上，指一条回去的路（筛选栏上的「重置」）
@@ -393,6 +426,8 @@ export default function DataList<T extends { id: string }>({
             : undefined
         }
         pagination={
+          加载中 && 行.length === 0 ? false :
+          /* 总数换了（筛选、翻页签）从旧数滚到新数（原型 cu.filter「总数滚到新值」）；第一次进来直接是数，等宽不跳 */
           分页 === false
             ? false
             : 分页
@@ -400,14 +435,14 @@ export default function DataList<T extends { id: string }>({
                   current: 分页.当前页,
                   pageSize: 分页.每页,
                   total: 分页.总数,
-                  showTotal: (t) => `共 ${t} 条`,
+                  showTotal: (t) => <>共 {总数(t)} 条</>,
                   showSizeChanger: true,
                   onChange: 分页.翻页,
                 }
               : {
                   pageSize: 20,
                   // 截断时 `t` 是取回来的行数，不是库里的总数——别让它冒充总数
-                  showTotal: (t) => (真截断 ? `这里 ${t} 条` : `共 ${t} 条`),
+                  showTotal: (t) => (真截断 ? <>这里 {总数(t)} 条</> : <>共 {总数(t)} 条</>),
                   showSizeChanger: true,
                 }
         }

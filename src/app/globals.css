@@ -3899,12 +3899,17 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 
 /* 正文底下给浮标让出一截：滚到底，分页和最后一行的按钮都在它上面，不被它压着。
    正文的内边距写在 AppShell 行内，所以要 !important；反馈提示出着时两个取大的（它在左下、浮标在右下） */
-.has-ai-fab .app-content:not(:has(.cli-composer-sticky)) { padding-bottom: 88px !important; }
-html.fbt-room .has-ai-fab .app-content:not(:has(.cli-composer-sticky)) { padding-bottom: max(88px, var(--fbt-room)) !important; }
+/* 11-15 起这一截也给 AI 浮窗的输入框态留着（--ai-room，见 .dock-float 段）：**开不开浮窗都是这一个数**，
+   浮窗是叠在页面上的一层，开它不动正文排版（原来开着时另按浮窗量出的高加一截，记录页的三栏被顶短、在浮窗上沿截断）。
+   has-ai-fab 由壳按「这一页摆不摆浮标」给，桌面上浮窗开着时也不摘（AppShell 留AI位） */
+.has-ai-fab { --ai-room: 160px; }
+.has-ai-fab .app-content:not(:has(.cli-composer-sticky)) { padding-bottom: var(--ai-room) !important; }
+html.fbt-room .has-ai-fab .app-content:not(:has(.cli-composer-sticky)) { padding-bottom: max(var(--ai-room), var(--fbt-room)) !important; }
 /* 客户、项目详情（各栏自己滚）例外：正文底下不让那 88，栏一直铺到窗口底（10-31 用户「我要整个页面本来就有显示」，
    原来栏底下空一截灰、一进来像要往下滑）。让位挪进各栏自己的滚动里：滚到底，最后一张卡停在浮标、反馈提示上面。
    选择器多叠一层 html body / .app-content，是为了盖过上面两条带 !important 的 */
-.has-ai-fab { --detail-tail: 64px; }
+.has-ai-fab { --detail-tail: calc(var(--ai-room) - 16px); }
+html.fbt-room .has-ai-fab .main { --detail-tail: max(calc(var(--ai-room) - 16px), var(--fbt-room)); }
 html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 @media (min-width: 768px) {
   html body .main.app-content.app-content:has(:is(.rec-page, .proj-wrap)) { padding-bottom: 22px !important; }
@@ -4520,7 +4525,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
   position: fixed; z-index: 26; top: auto; height: auto;
   left: calc(var(--rail-w) + (100vw - var(--rail-w)) / 2); bottom: calc(16px + env(safe-area-inset-bottom));
   translate: -50% 0; transform-origin: 100% 100%;
-  width: min(560px, calc(100vw - var(--rail-w) - 48px)); max-height: min(72vh, 680px);
+  width: min(560px, calc(100vw - var(--rail-w) - 48px)); max-height: min(60vh, 600px);
   border: 0; border-radius: var(--r-pop); background: var(--panel); overflow: hidden;
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--panel) 80%, transparent), 0 0 0 0.5px color-mix(in srgb, var(--ink) 10%, transparent), 0 20px 50px rgba(20, 30, 60, 0.20), 0 2px 6px rgba(0, 0, 0, 0.05);
   opacity: 1; scale: 1; visibility: visible;
@@ -4529,8 +4534,11 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .shell-desktop .dock.dock-float { padding-top: 0; }
 /* 右栏那种「从浮标长出来」的关键帧不要：浮窗自己有进出场过渡，两套叠在一起会抖 */
 .shell-fab-opened .dock.dock-float { animation: none; }
-/* 问过之后向上长成对话：固定一个高，记录在里面自己滚 */
-.dock.dock-float.has-turns:not(.is-folded) { height: min(72vh, 680px); }
+/* 问过之后向上长成对话（底不动，往上长）：多高随内容，最高 60% 屏高（max-height 那条），再多在里面自己滚 */
+/* 人拖过（useFloatDrag 写 --float-x / --float-y，已夹进窗口、四边留 8px）：按左边 + 离底摆，不再居中。
+   left / bottom 不在过渡名单里：拖到哪停哪，松手不滑、不回弹 */
+.dock.dock-float[data-moved] { left: var(--float-x); bottom: var(--float-y); translate: none; }
+.dock.dock-float[data-dragging], .dock.dock-float[data-dragging] * { cursor: grabbing; user-select: none; -webkit-user-select: none; }
 /* 收起：缩回右下角那颗球的方向，淡出后整个藏起来（读屏、Tab 都够不着，AiDock 上还挂着 inert） */
 .dock.dock-float.is-min {
   opacity: 0; scale: .92; visibility: hidden; pointer-events: none;
@@ -4548,7 +4556,14 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
   html:not(.lite-fx) .dock.dock-float { background: var(--panel); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 /* 头一行：左上是当前页标签（换页淡入换字），右上是历史和「−」 */
-.dock-float-h { padding: 10px 10px 4px 14px; gap: 6px; }
+/* 11-15 改成图4 那样一条：头一行压薄（把手 + 标签 + 历史 + −），输入框不再自带边框和底色——浮窗本身就是那条框 */
+.dock-float-h { padding: 6px 8px 0 4px; gap: 4px; min-height: 0; cursor: grab; touch-action: none; }
+.dock-float-grip {
+  flex: none; display: inline-grid; place-items: center; width: 22px; height: 24px; padding: 0;
+  border: 0; border-radius: var(--r-ctl); background: transparent; color: var(--text-faint); cursor: grab; touch-action: none;
+}
+.dock-float-grip:hover { color: var(--text-muted); background: color-mix(in srgb, var(--ink) 5%, transparent); }
+.dock-float-grip:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 .dock-float-sp { flex: 1; }
 .dock-float-ctx {
   display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 70%;
@@ -4562,7 +4577,17 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .dock-float .dock-body { overflow-y: auto; }
 /* 输入框态只要一条：那句说明在浮窗里不摆（标签和占位字已经说了带着这一页） */
 .dock-float .cli-narrow-hint { display: none; }
-.dock-float .cli-narrow .cli-col { padding: 0 14px 12px; }
+.dock-float .cli-narrow .cli-col { padding: 0 10px 8px; }
+.dock-float .cli-composer { padding-top: 2px; }
+.dock-float .cli-composer-sticky { background: none; padding-top: 6px; padding-bottom: 0; }
+.dock-float .cli-input { background: transparent; border-color: transparent; box-shadow: none; }
+.dock-float .cli-input:focus-within { border-color: transparent; box-shadow: none; }
+/* 输入框没了自己的框，焦点改画在浮窗外沿一圈（键盘用户看得见光标在这儿） */
+.dock.dock-float:has(.cli-input:focus-within) { outline: 1.5px solid color-mix(in srgb, var(--brand) 45%, transparent); outline-offset: -1.5px; }
+.dock-float .cli-input-rich { padding: 4px 4px 0; gap: 6px; }
+/* 快捷键说明、剩几次、空屏快捷项：手在浮窗上（指着或在里面打字）才摆，平时就一条输入框 */
+.dock-float:not(:focus-within, :hover) :is(.cli-hints, .cli-quick) { display: none; }
+.dock-float .cli-quick { padding: 2px 4px 4px; }
 /* 点页面别处：对话藏起来，只剩上一问一行 +「展开」，压在输入框上 */
 .dock-float.is-folded .cli-col > :not(.cli-composer) { display: none; }
 .dock-float-peek {
@@ -4572,10 +4597,6 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .dock-float-peek-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
 .dock-float-peek-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dock-float-peek-go { flex: none; color: var(--brand); }
-/* 浮窗开着时正文底下让出一截：滚到底，分页和最后一行按钮停在浮窗上面。--ai-float-h 是 AiDock 量的浮窗实际高（量到之前按一条输入框算） */
-.shell:has(.dock-float:not(.is-min)) .app-content:not(:has(.cli-composer-sticky)) { padding-bottom: calc(var(--ai-float-h, 120px) + 32px) !important; }
-.shell:has(.dock-float:not(.is-min)) { --detail-tail: calc(var(--ai-float-h, 120px) + 24px); }
-
 /* 浮标：后台在做时外圈转（ai.bg），跑完绿光一闪，有对话时右上角一个小点 */
 .ai-fab-ring {
   inset: -4px; z-index: 1;
@@ -4864,3 +4885,57 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 .cu-said-err { color: var(--danger-text); }
 span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 @media (prefers-reduced-motion: reduce) { .cu-said { animation: none; } }
+/* 外壳与其余页（fill-a）：顶部提示换成原处反馈 */
+/* 复制：话浮在刚点的那颗键正上方（lib/clipboard.ts useCopy），不弹顶部提示 */
+.copy-tip { position: fixed; z-index: 2100; transform: translate(-50%, -100%); padding: 4px 10px; border-radius: var(--r-ctl); background: var(--ink); color: var(--on-ink); font-size: var(--fs-note); line-height: 20px; white-space: nowrap; pointer-events: none; box-shadow: var(--shadow-pop); animation: copy-tip-in var(--t-fast) var(--ease) both; }
+.copy-tip.is-bad { background: var(--danger); }
+.copy-tip.is-free { left: 50%; top: auto; bottom: 24px; transform: translateX(-50%); }
+@keyframes copy-tip-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .copy-tip { animation: none; } }
+/* 问答框：读不了的附件，原因作为一枚红签摆在文件签那一排 / 拖进来读不了的写在输入框下面 */
+.cli-file.cli-file-bad { border-color: var(--danger); color: var(--danger-text); max-width: 320px; }
+.cli-file-err { margin: 6px 4px 0; font-size: var(--fs-note); color: var(--danger-text); }
+/* 建议卡：撤销没成 / 名片原图没存全，写在回执那一行下面，占满一行 */
+.prop-done > .prop-err-inline { flex-basis: 100%; }
+/* 通知（g.notice「改后」）：浮起的面板——离窗口边 8px、四角圆，不压暗页面；点页面别处照样收（遮罩还在，只是透明） */
+.notice-drawer .ant-drawer-mask { background: transparent; }
+.notice-drawer.ant-drawer-right .ant-drawer-content-wrapper { top: 8px; bottom: 8px; right: 8px; border-radius: var(--r-pop); overflow: hidden; }
+.cli-file.cli-file-bad .cli-file-n { white-space: normal; }
+/* ls.ct.orphan「改后」：未归属联系人的编辑是右侧浮起的面板（contacts/OrphanSidePanel.tsx 挂 .ct-side）——离窗口边 8px、四角圆、从右边滑进来；
+   减弱动态只淡入淡出。框里叫出来的问句不吃这个类名，照旧在中间 */
+.ct-side .ant-modal { position: fixed; top: 8px; right: 8px; bottom: 8px; margin: 0; padding: 0; max-width: calc(100vw - 16px); transform-origin: 100% 50%; }
+.ct-side .ant-modal-container { height: 100%; display: flex; flex-direction: column; border-radius: var(--r-pop); }
+.ct-side .ant-modal-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+@keyframes ct-side-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes ct-side-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(24px); } }
+.ct-side .ant-modal:is(.ant-zoom-enter-active, .ant-zoom-appear-active) { animation-name: ct-side-in !important; animation-timing-function: var(--ease) !important; }
+.ct-side .ant-modal.ant-zoom-leave-active { animation-name: ct-side-out !important; }
+@media (prefers-reduced-motion: reduce) {
+  .ct-side .ant-modal:is(.ant-zoom-enter-active, .ant-zoom-appear-active) { animation-name: crm-pop-fade-in !important; }
+  .ct-side .ant-modal.ant-zoom-leave-active { animation-name: crm-pop-fade-out !important; }
+}
+/* 保存键没存上的原因（SaveButton）：同复制那句的红签，原因长时折行、不出窗口 */
+.copy-tip.save-why { white-space: normal; max-width: min(320px, calc(100vw - 16px)); text-align: center; }
+/* 筛选条（原型 cu.filter）：摆在外面、正筛着的下拉变成一枚「名：值 ×」标签（components/CustomFilters 外露项）。
+   宽度跟着字走；× 一直看得见，不用悬停；下拉箭头让给 ×。点标签照旧弹出下拉换值。出现时轻轻一弹，减弱动态下只淡入 */
+.ant-select.cf-chip { width: auto; max-width: 280px; }
+.ant-select.cf-chip.ant-select-outlined, .ant-select.cf-chip.ant-select-outlined:hover { background: var(--brand-bg); border-color: color-mix(in srgb, var(--brand) 35%, transparent); }
+.ant-select.cf-chip .ant-select-prefix { color: var(--text-muted); margin-inline-end: 0; white-space: nowrap; }
+.ant-select.cf-chip .ant-select-content { color: var(--brand-deep); min-width: 0; }
+.ant-select.cf-chip .ant-select-suffix { visibility: hidden; }
+.ant-select.cf-chip .ant-select-clear { opacity: 1; color: var(--brand-deep); background: transparent; }
+.ant-select.cf-chip { animation: cf-chip-in var(--t-fast) var(--ease-spring); }
+@keyframes cf-chip-in { from { opacity: .4; scale: .94; } }
+@media (prefers-reduced-motion: reduce) { .ant-select.cf-chip { animation-name: cf-chip-fade; } }
+@keyframes cf-chip-fade { from { opacity: .4; } }
+/* 列表分页条的总数（DataList）：滚的时候等宽，宽度不跳 */
+.list-total-n { font-variant-numeric: tabular-nums; }
+/* 列表取数中的骨架行（DataList，原型 cu.filter「先出骨架」）：每一格一条灰条（PR2 .skel-bar，减弱动态下不扫光），
+   行高撑在取数前那一屏的行高（--list-row-h，DataList 量），表头、行数、分页不动；骨架行点不动 */
+.list-skel-on .ant-table-tbody > tr > td { height: var(--list-row-h, auto); }
+.list-skel-on .ant-table-tbody { pointer-events: none; }
+.list-skel { --skel-h: 10px; animation: none; }
+.list-skel-on .ant-table-tbody > tr > td:nth-child(3n + 2) .skel-bar { width: 72%; }
+.list-skel-on .ant-table-tbody > tr > td:nth-child(3n) .skel-bar { width: 54%; }
+.list-skel-on .ant-table-tbody > tr:nth-child(2n) > td .skel-bar { max-width: 86%; }
+.list-skel-on .ant-table-tbody > tr > td.ant-table-selection-column .skel { visibility: hidden; }

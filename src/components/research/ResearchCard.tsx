@@ -321,7 +321,7 @@ export default function ResearchCard({ s, running, error, 起, ms, actions }: Re
                 {官网}
               </a>
             ) : running ? (
-              "正在确认官网…"
+              "正在确认官网"
             ) : (
               "没找到官网"
             )}
