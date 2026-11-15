@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Card, Input, Modal, Space, Tag } from "antd";
 import { fmtDate } from "@/lib/utils";
 import { 原因上限 } from "@/lib/project/nodes";
 import { 市场复核Action, 总管理终判Action } from "./actions";
-import { useUndoLater } from "./useUndoLater";
+import { showUndo } from "@/components/UndoBar";
 
 export type 待复核行 = {
   projectId: string; 项目: string; 负责人: string; 步: "市场复核" | "销售终验" | "总管理终判" | "销售认领";
@@ -20,8 +20,8 @@ const 步叫法: Record<待复核行["步"], string> = { 市场复核: "等你�
 /**
  * 企业版线索验证（P12）：项目列表 / 新线索页顶上「待复核的线索」，和项目组邀请放一块。
  * 复核两步（市场管理、总管理）在这里直接判；销售终验、认领要看详情，给链接。
- * 判有效一步完成（原型 pr.verify，P-界面-40）：这一条马上收起，6 秒内能撤销、也能「补一句」复核说明，6 秒后才交给服务端；
- * 判无效照旧先弹框确认（会记线索流失、补额度）
+ * 判有效一步完成（原型 pr.verify，P-界面-40）：这一条马上收起，底部撤销条（全站同一条，g.undo）6 秒内能撤销、
+ * 也能「补一句」复核说明，6 秒后才交给服务端（到点才做：撤销 = 不交）；判无效照旧先弹框确认（会记线索流失、补额度）
  */
 export default function VerifyInbox({ 们 }: { 们: 待复核行[] }) {
   const router = useRouter();
@@ -33,29 +33,46 @@ export default function VerifyInbox({ 们 }: { 们: 待复核行[] }) {
   const [框, set框] = useState<{ r: 待复核行; 有效: boolean } | null>(null);
   const [说明, set说明] = useState("");
   const [收起的, set收起的] = useState<ReadonlySet<string>>(() => new Set());
-  const 稍后交 = useUndoLater();
+  /**
+   * 点了「补一句」的那几条：撤销条的「另一个动作」点下去会先按到点收条（UndoBar：先调 到点、紧接着同步调 另一个动作），
+   * 所以 到点 把真交推到下一个微任务、交之前看一眼这里——补一句的这一次不交，等说明框点确定带着说明交
+   */
+  const 补一句的 = useRef(new Set<string>());
   const 摆着 = 们.filter((r) => !收起的.has(r.projectId));
   if (!摆着.length && !框) return null;
   const 摆回 = (id: string) => set收起的((s) => { const n = new Set(s); n.delete(id); return n; });
   const 动作of = (r: 待复核行) => (r.步 === "总管理终判" ? 总管理终判Action : 市场复核Action);
   const 判有效 = (r: 待复核行) => {
-    记错(r.projectId, null);
-    set收起的((s) => new Set(s).add(r.projectId));
-    稍后交(`verify-${r.projectId}`, {
-      文字: "已判有效，交回负责人",
-      撤: () => 摆回(r.projectId),
-      // 补一句：不再等计时，开原来那个说明框（判有效），写完点确定才交
-      另一钮: { 字: "补一句", 点: () => { 摆回(r.projectId); set说明(""); set框错(""); set框({ r, 有效: true }); } },
-      交: () => {
-        void 动作of(r)(r.projectId, true, "").then(
-          (x) => {
-            if (x.ok) return router.refresh();
-            摆回(r.projectId);
-            记错(r.projectId, x.error ?? "没判成，请稍后再试");
-          },
-          () => { 摆回(r.projectId); 记错(r.projectId, "没判成，请稍后再试"); },
-        );
-      },
+    const id = r.projectId;
+    记错(id, null);
+    补一句的.current.delete(id);
+    set收起的((s) => new Set(s).add(id));
+    // 只交一次：撤销条收起动画没放完时来了新的一条，UndoBar 会再按一次到点（src/components/UndoBar.tsx 到点了 只看 态、没看 出）
+    let 交过 = false;
+    showUndo({
+      话: `「${r.项目}」已判有效，交回负责人`,
+      毫秒: 6000,
+      // 到点才交：撤销 = 不交，这一条摆回来
+      撤销: () => { 摆回(id); },
+      到点: () => Promise.resolve().then(async () => {
+        if (交过) return;
+        交过 = true;
+        if (补一句的.current.delete(id)) return;
+        try {
+          const x = await 动作of(r)(id, true, "");
+          if (x.ok) return void router.refresh();
+          // 没判成：这一条摆回来、原因写在行下面；撤销条上也写「没做成：原因」（换了页也看得见）
+          摆回(id);
+          记错(id, x.error ?? "没判成，请稍后再试");
+          return x;
+        } catch {
+          摆回(id);
+          记错(id, "没判成，请稍后再试");
+          return { ok: false, error: "没判成，请稍后再试" };
+        }
+      }),
+      // 补一句：这一次不交，开原来那个说明框（判有效），写完点确定才带着说明交
+      另一个动作: { 话: "补一句", 做: () => { 补一句的.current.add(id); 摆回(id); set说明(""); set框错(""); set框({ r, 有效: true }); } },
     });
   };
   const 判 = async () => {

@@ -10,8 +10,8 @@ import { 原因上限 } from "@/lib/project/nodes";
 import { 有效线索节点 } from "@/lib/project/stage-gates";
 import type { 线索验证 } from "@/lib/project/lead-verify";
 import { 线索初判Action, 市场复核Action, 销售终验Action, 总管理终判Action, 销售认领Action, 撤回验证Action } from "../actions";
+import { 框里原因, type 跑法 } from "./detail-note";
 
-type 跑法 = (f: () => Promise<{ ok: boolean; error?: string; 自动推到?: string[] }>, 成了?: string) => Promise<boolean>;
 
 // 11-01：显示客户定的六个叫法（v.叫法），颜色和项目卡那一行一样
 const 叫法色: Record<string, string> = { 暂未验证: "default", 初验无效: "orange", 复核有效: "blue", 终验无效: "volcano", 有效线索: "green", 无效线索: "red" };
@@ -64,12 +64,19 @@ export default function LeadVerifyPanel({
   const [说明, set说明] = useState("");
   const [培育日, set培育日] = useState<string | null>(null);
   const [培育计划, set培育计划] = useState("");
+  /**
+   * 没做成的原因（不弹顶部提示）：这一块整个在「线索验证」弹窗里，页面底部的就地小条被遮罩盖着，所以原因写在这里——
+   * 判定框开着写在判定框里（框不关），没开写在按钮下面。成了验证结果、时间线自己会变，回执照常写在详情底部
+   */
+  const [错, set错] = useState<string | null>(null);
+  const 跑这: 跑法 = (f, 成了) => 跑(f, 成了, { 报错: set错 });
 
   const 开 = (k: NonNullable<typeof 框>) => {
     set无效原因(null);
     set说明("");
     set培育日(null);
     set培育计划("");
+    set错(null);
     set框(k);
   };
   // 往前推（有效 / 接受复核 / 认领继续）一样要过有效沟通、直属推进这两道门
@@ -91,7 +98,7 @@ export default function LeadVerifyPanel({
       return {
         title: "判为无效线索",
         ok: 原因好了,
-        做: () => 跑(() => 线索初判Action(projectId, "无效", { invalidReason: 无效原因, verifyNote: 说明 }), v.初判即终判 ? "已判无效线索" : v.无效交给 === "总管理终判" ? "已判无效，等管理员最终确认" : "已判无效，交给复核"),
+        做: () => 跑这(() => 线索初判Action(projectId, "无效", { invalidReason: 无效原因, verifyNote: 说明 }), v.初判即终判 ? "已判无效线索" : v.无效交给 === "总管理终判" ? "已判无效，等管理员最终确认" : "已判无效，交给复核"),
         身: (
           <>
             <div style={{ marginBottom: 8, color: "var(--text-muted)" }} data-testid="lead-verify-invalid-hint">
@@ -115,7 +122,7 @@ export default function LeadVerifyPanel({
       return {
         title: "还需培育：回潜客培育",
         ok: !!培育日 && !!培育计划.trim(),
-        做: () => 跑(() => 线索初判Action(projectId, "还需培育", { 下一步时间: 培育日, 计划内容: 培育计划 }), `已回到潜客培育，${培育日} 再跟进`),
+        做: () => 跑这(() => 线索初判Action(projectId, "还需培育", { 下一步时间: 培育日, 计划内容: 培育计划 }), `已回到潜客培育，${培育日} 再跟进`),
         身: (
           <>
             <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>项目回到「线索·潜客培育」，按你选的日子排一条跟进计划，到时候提醒负责人再聊。</div>
@@ -144,7 +151,7 @@ export default function LeadVerifyPanel({
       return {
         title: "提交异议",
         ok: !!说明.trim(),
-        做: () => 跑(() => 销售终验Action(projectId, false, 说明), "已提交异议，等管理员最终确认"),
+        做: () => 跑这(() => 销售终验Action(projectId, false, 说明), "已提交异议，等管理员最终确认"),
         身: (
           <>
             <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>你仍认为这条线索无效：写清理由，交给管理员最终确认。</div>
@@ -160,7 +167,7 @@ export default function LeadVerifyPanel({
         title: `${复核步 ? 步叫法[复核步] : "复核"}：判${有效 ? "有效" : "无效"}`,
         ok: true,
         danger: !有效,
-        做: () => 跑(() => act(projectId, 有效, 说明), 有效 ? "已判有效，交回负责人" : "已判无效线索"),
+        做: () => 跑这(() => act(projectId, 有效, 说明), 有效 ? "已判有效，交回负责人" : "已判无效线索"),
         身: (
           <>
             <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>
@@ -186,21 +193,21 @@ export default function LeadVerifyPanel({
         <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
           {v.我能 === "初判" && (
             <>
-              {推按钮("有效", () => void 跑(() => 线索初判Action(projectId, "有效"), "判为有效线索，已推到线索推进"), "lead-verify-valid")}
+              {推按钮("有效", () => void 跑这(() => 线索初判Action(projectId, "有效"), "判为有效线索，已推到线索推进"), "lead-verify-valid")}
               <Button size="small" danger disabled={忙} onClick={() => 开("无效")} data-testid="lead-verify-invalid">无效</Button>
               <Button size="small" disabled={忙} onClick={() => 开("培育")} data-testid="lead-verify-nurture">还需培育</Button>
             </>
           )}
           {v.我能 === "销售终验" && (
             <>
-              {推按钮("接受复核", () => void 跑(() => 销售终验Action(projectId, true), "已接受复核，推到线索推进"), "lead-verify-accept")}
+              {推按钮("接受复核", () => void 跑这(() => 销售终验Action(projectId, true), "已接受复核，推到线索推进"), "lead-verify-accept")}
               <Button size="small" disabled={忙} onClick={() => 开("异议")} data-testid="lead-verify-dispute">提交异议</Button>
             </>
           )}
           {v.我能 === "销售认领" && (
             <>
-              {推按钮("认领继续", () => void 跑(() => 销售认领Action(projectId, true), "已认领，推到线索推进"), "lead-verify-claim")}
-              <Popconfirm title="退回线索公海？" description="算你主动退回，别人可以领走" okText="退回" cancelText="再想想" onConfirm={() => void 跑(() => 销售认领Action(projectId, false), "已退回线索公海")}>
+              {推按钮("认领继续", () => void 跑这(() => 销售认领Action(projectId, true), "已认领，推到线索推进"), "lead-verify-claim")}
+              <Popconfirm title="退回线索公海？" description="算你主动退回，别人可以领走" okText="退回" cancelText="再想想" onConfirm={() => void 跑这(() => 销售认领Action(projectId, false), "已退回线索公海")}>
                 <Button size="small" disabled={忙} data-testid="lead-verify-return">放回公海</Button>
               </Popconfirm>
             </>
@@ -220,12 +227,13 @@ export default function LeadVerifyPanel({
             description="线索回到验证前（暂未验证），之后能改负责人、重新判"
             okText="撤回"
             cancelText="再想想"
-            onConfirm={() => void 跑(() => 撤回验证Action(projectId), "已撤回验证")}
+            onConfirm={() => void 跑这(() => 撤回验证Action(projectId), "已撤回验证")}
           >
             <Button size="small" disabled={忙} data-testid="lead-verify-withdraw">撤回验证</Button>
           </Popconfirm>
         </div>
       )}
+      {!弹框 && <框里原因 话={错} />}
       {推不了 && (v.我能 === "初判" || v.我能 === "销售终验" || v.我能 === "销售认领") && (
         <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>{推不了}</div>
       )}
@@ -259,13 +267,14 @@ export default function LeadVerifyPanel({
         title={弹框?.title}
         okText="确定"
         okButtonProps={{ disabled: !弹框?.ok, loading: 忙, danger: !!弹框?.danger || 框 === "无效" }}
-        onCancel={() => set框(null)}
+        onCancel={() => { set框(null); set错(null); }}
         onOk={async () => {
           if (!弹框?.ok) return;
           if (await 弹框.做()) set框(null);
         }}
       >
         {弹框?.身}
+        {!!弹框 && <框里原因 话={错} />}
       </Modal>
     </div>
   );

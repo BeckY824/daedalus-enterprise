@@ -37,7 +37,7 @@ const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   stub(/customers\/board-actions$/, 再看码("再看一列"));
   stub(/^\.\/board-actions$/, 再看码("再看项目页一列"));
   // 向导框换成一个真的 antd 弹框（标题、关掉都照真的走），里面一块写着标题的牌子
-  stub(/^next\/dynamic$/, "import React from 'react';import {Modal} from 'antd';export default function d(){return function D(p){return <Modal open={!!p.open} title={p.标题} footer={null} onCancel={p.onClose} afterClose={p.afterClose}>{p.open&&<div className='wizard-stub' data-project={p.项目||''}>{p.标题}</div>}</Modal>}}");
+  stub(/^next\/dynamic$/, "import React from 'react';import {Modal} from 'antd';export default function d(){return function D(p){return <Modal open={!!p.open} title={p.标题} footer={null} onCancel={p.onClose} afterClose={p.afterClose}>{p.open&&<div className='wizard-stub' data-project={p.项目||''} data-old={(p.老客户&&p.老客户.id)||''}>{p.标题}</div>}</Modal>}}");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
@@ -200,10 +200,20 @@ it("企业版项目首页：「新增项目」一个按钮（没有旁边的下�
     await 框.waitFor();
     const 选项 = 框.locator(".new-proj-opt");
     expect(await 选项.allInnerTexts()).toEqual([expect.stringMatching(/^新客户\n/), expect.stringMatching(/^老客户\n/)]);
-    // 老客户（原型 pr.old，11-15）：不再三个框接力，进同一个新建弹窗（客户名里搜老客户，PR8 cr.old）
+    // 老客户（原型 pr.old，11-15）：点了这一项原地变搜索框（「新客户」那项收起），挑中一位才进新建弹窗、带着这一位；不再三个框接力
     await 选项.nth(1).click();
+    const 搜 = 框.getByRole("textbox", { name: "搜老客户" });
+    await 搜.waitFor();
+    expect(await 框.locator(".new-proj-opt.is-default").count()).toBe(0);
+    expect(await page.locator(".wizard-stub").count()).toBe(0);
+    await 框.getByText("还没有客户，建新客户吧").waitFor();
+    await page.evaluate(() => { (window as unknown as { __搜到: boolean }).__搜到 = true; });
+    await 搜.fill("老");
+    await 框.getByRole("button", { name: /老客户甲/ }).click();
     await page.locator(".wizard-stub").waitFor();
+    expect(await page.locator(".wizard-stub").getAttribute("data-old")).toBe("c9");
     expect(await page.getByRole("dialog", { name: "给老客户开项目" }).count()).toBe(0);
+    await page.evaluate(() => { (window as unknown as { __搜到: boolean }).__搜到 = false; });
     await page.keyboard.press("Escape");
     await page.locator(".wizard-stub").waitFor({ state: "hidden" });
     // 新客户：默认那一项（原型 pr.new）——框一开焦点就在「新客户」上，回车即走；取向导数据，弹「新增项目」向导框，不跳页
@@ -681,7 +691,16 @@ it("「新建 ▾ → 新建项目」框接框走完整链再关，焦点回到�
       const 选 = page.getByRole("dialog", { name: "新增项目" });
       await 选.waitFor();
       await 选.getByRole("button", { name: 走 === "老客户" ? /老客户/ : /新客户/ }).click();
+      // 老客户：原地搜索框里键盘走完（↓ 到第一位、回车挑中），进新建弹窗
+      if (走 === "老客户") {
+        await 选.getByRole("textbox", { name: "搜老客户" }).fill("老");
+        await 选.getByRole("button", { name: /老客户甲/ }).waitFor();
+        await 选.getByRole("textbox", { name: "搜老客户" }).press("ArrowDown");
+        await expect.poll(() => page.evaluate(() => document.activeElement?.textContent ?? "")).toContain("老客户甲");
+        await page.keyboard.press("Enter");
+      }
       await page.locator(".wizard-stub").waitFor();
+      if (走 === "老客户") expect(await page.locator(".wizard-stub").getAttribute("data-old")).toBe("c9");
       expect(await page.getByRole("dialog", { name: "给老客户开项目" }).count()).toBe(0);
       await page.keyboard.press("Escape");
       await page.locator(".wizard-stub").waitFor({ state: "hidden" });

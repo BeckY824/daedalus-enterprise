@@ -31,6 +31,7 @@ import { 阶段与进程, type 出口叫法改动 } from "@/lib/project/stage-di
 import { 有效线索节点, 缺有效沟通还差 } from "@/lib/project/stage-gates";
 import type { 线索验证 } from "@/lib/project/lead-verify";
 import LeadVerifyPanel from "./LeadVerifyPanel";
+import { useDetailNote, 框里原因, type 跑法, type 就地回执 } from "./detail-note";
 import { FoldSplit, ProjectFold, 模块钮色, 连体箭头 } from "./ProjectFold";
 import { 卡名Provider, 客户详情卡点, 项目卡名 } from "./card-names";
 import { ProjectFillRequired, 定位到模块 } from "./ProjectFillRequired";
@@ -458,6 +459,9 @@ export default function ProjectDetail({
   p, 能改, 候选, 在职, 联系人们, 角色们, 类别们, 卡点 = null, 嵌入,
 }: 项目详情Props & { 嵌入?: 嵌在客户页 }) {
   const router = useRouter();
+  // 不弹顶部提示（原型 g.save / g.notice）：页面上做的事成没成写在正文底部的就地小条；弹框里的原因写在框里（跑 的 报错）
+  const [就地, 回执条] = useDetailNote();
+  /** 只给 走开 用（见那里的注释） */
   const { message } = App.useApp();
   const b = useBusiness();
   const [忙, set忙] = useState(false);
@@ -488,6 +492,12 @@ export default function ProjectDetail({
   /** 企业版 C-06：原负责人没做完的待办一起转给接手人（默认勾，可以手动关掉；pool-rules.ts）。不是企业版不摆这个勾、不传 */
   const 带待办勾出 = p.企业版 && 公海规则.换负责人带待办;
   const [转给带待办, set转给带待办] = useState<boolean>(公海规则.带待办默认勾);
+  /** 异常框 / 没成框 / 放回框 / 转让框（同一时刻只开一个）没做成的原因：写在框里、框不关（g.save，不弹顶部提示）；换框、关框就清 */
+  const 开着的框 = 异常框 ? "异常" : 没成框 ? "没成" : 放回框 ? "放回" : 转给框 ? "转给" : null;
+  const [框错原, set框错原] = useState<{ 框: string | null; 话: string } | null>(null);
+  /** 只认记下它的那个框：换了框、关了再开（下一次 跑 先清），旧原因不跟过去 */
+  const 框错 = 框错原 && 框错原.框 === 开着的框 ? 框错原.话 : null;
+  const 框报错 = { 报错: (话: string | null) => set框错原(话 ? { 框: 开着的框, 话 } : null) };
   /** 企业版瀑布流（U-项目-01/04）：沟通默认展开、卡点与任务默认收起；搜索词非空时两块都摊开、只列搜得到的 */
   const [沟通开, set沟通开] = useState(true);
   const [卡点开, set卡点开] = useState(false);
@@ -542,7 +552,7 @@ export default function ProjectDetail({
   const 存项目项 = async (patch: Parameters<typeof 编辑项目>[1]): Promise<string | null> => {
     const r = await 编辑项目(p.id, patch);
     if (!r.ok) return r.error ?? "没存上，请稍后再试";
-    if (r.自动推到?.length) message.success(`必填齐了，自动推进到 ${r.自动推到.join(" → ")}`);
+    if (r.自动推到?.length) 就地.success(`必填齐了，自动推进到 ${r.自动推到.join(" → ")}`);
     router.refresh();
     return null;
   };
@@ -555,20 +565,26 @@ export default function ProjectDetail({
     return r.ok ? null : r.error ?? "没存上，请稍后再试";
   };
 
-  const 跑 = async (f: () => Promise<{ ok: boolean; error?: string; 自动推到?: string[] }>, 成了?: string) => {
+  /**
+   * 跑一个改动：成了回执写在正文底部的就地小条（成了 那句；必填齐了自动推进几步也写），页面刷新；
+   * 没成的原因交给 选.报错（弹框里做的事：写在框里、框不关），没给就写在就地小条上（role=alert）。不弹顶部提示（g.save）
+   */
+  const 跑: 跑法 = async (f, 成了, 选) => {
+    const 报 = (话: string) => (选?.报错 ? 选.报错(话) : 就地.error(话));
+    选?.报错?.(null);
     set忙(true);
     try {
       const r = await f();
-      if (!r.ok) message.error(r.error ?? "没改成，请稍后再试");
+      if (!r.ok) 报(r.error ?? "没改成，请稍后再试");
       else {
-        if (成了) message.success(成了);
         // 企业版节点必填：这次保存把必填填齐了，项目自动往前推了几步
-        if (r.自动推到?.length) message.success(`必填齐了，自动推进到 ${r.自动推到.join(" → ")}`);
+        const 推 = r.自动推到?.length ? `必填齐了，自动推进到 ${r.自动推到.join(" → ")}` : null;
+        if (成了 || 推) 就地.success([成了, 推].filter(Boolean).join("；"));
         router.refresh();
       }
       return r.ok;
     } catch {
-      message.error("没改成，请稍后再试");
+      报("没改成，请稍后再试");
       return false;
     } finally {
       set忙(false);
@@ -612,7 +628,7 @@ export default function ProjectDetail({
       return;
     }
     if (是交付(到.result) && 差.length) {
-      message.warning(交付还差话(差, 交付叫法, p.企业版));
+      就地.warning(交付还差话(差, 交付叫法, p.企业版));
       return;
     }
     // 完成节点往前推一步（dt.stage，P-界面-40「推进节点可撤销」）：不弹顶部提示，底部撤销条，撤销 = 改回原来那个节点
@@ -723,13 +739,15 @@ export default function ProjectDetail({
   /** 转走 / 退回公海 / 删掉、自己看不到这个项目了：回客户页（嵌在客户页）或项目列表；受限详情里没别的项目了回客户列表 */
   const 走开 = () => {
     if (嵌入?.走后去) {
+      // 唯一留着的顶部提示：这一下就跳去客户列表（受限详情里最后一个项目走了），本页没有地方写、目标页（客户列表，customers 范围）
+      // 也没有接回执的口子；跳过去仍要让人知道为什么回到列表（tests/ent-cust-detail-merge.ui.test.ts 认它）
       message.info(嵌入.走后去.说法);
       router.push(嵌入.走后去.到);
     } else router.push(嵌入?.客户页 ?? "/projects");
   };
   const 确认转给 = async (新: string) => {
     const 名 = 候选.find((m) => m.id === 新)?.name ?? "TA";
-    const ok = await 跑(() => 编辑项目(p.id, { name: p.name, ownerId: 新, amount: p.amount, currency: p.currency, remark: p.remark ?? "", contactId: p.contact?.id ?? null }, 带待办勾出 ? 转给带待办 : undefined), `已转给 ${名}`);
+    const ok = await 跑(() => 编辑项目(p.id, { name: p.name, ownerId: 新, amount: p.amount, currency: p.currency, remark: p.remark ?? "", contactId: p.contact?.id ?? null }, 带待办勾出 ? 转给带待办 : undefined), `已转给 ${名}`, 框报错);
     if (!ok) return;
     set转给框(false);
     // 转完自己还看得到（总管理、上级）就留在这页，看不到才回列表
@@ -1573,7 +1591,7 @@ export default function ProjectDetail({
       )}
 
       {后果框}
-      {p.能记沟通 && 记一条开着 && <RecordFollowModal p={p} 外贸={外贸精简(b)} 卡点默认={卡点?.能发 ? 卡点.默认 : null} 卡点原因们={卡点?.原因们 ?? []} onClose={() => set记一条开着(false)} 跑={跑} />}
+      {p.能记沟通 && 记一条开着 && <RecordFollowModal p={p} 外贸={外贸精简(b)} 卡点默认={卡点?.能发 ? 卡点.默认 : null} 卡点原因们={卡点?.原因们 ?? []} onClose={() => set记一条开着(false)} 跑={跑} 回执={就地} />}
 
       <Modal
         open={!!异常框}
@@ -1584,7 +1602,7 @@ export default function ProjectDetail({
         onOk={async () => {
           if (!异常框 || !类别) return;
           const 附 = { categoryId: 类别, 备注: 原因 };
-          const ok = await 跑(() => (终止中 ? 终止项目进程(p.id, 附) : 改项目节点(p.id, 异常框, 附)), 终止中 ? "已终止进程，标成异常状态" : "已标成异常状态");
+          const ok = await 跑(() => (终止中 ? 终止项目进程(p.id, 附) : 改项目节点(p.id, 异常框, 附)), 终止中 ? "已终止进程，标成异常状态" : "已标成异常状态", 框报错);
           if (ok) set异常框(null);
         }}
       >
@@ -1598,6 +1616,7 @@ export default function ProjectDetail({
           aria-label="异常类别"
         />
         <Input.TextArea rows={4} maxLength={原因上限} showCount value={原因} onChange={(e) => set原因(e.target.value)} placeholder="备注（可不写）" />
+        {!!异常框 && <框里原因 话={框错} />}
       </Modal>
 
       <Modal
@@ -1611,6 +1630,7 @@ export default function ProjectDetail({
           const ok = await 跑(
             () => (终止中 ? 终止项目进程(p.id, { 备注: 没成备注 }) : 改项目节点(p.id, 没成框, { 备注: 没成备注 })),
             终止中 ? `已终止进程：${结局叫法(没成框.result ?? "", 字典)}` : `已改到 ${位置文字(没成框, 字典)}`,
+            框报错,
           );
           if (ok) set没成框(null);
         }}
@@ -1620,6 +1640,7 @@ export default function ProjectDetail({
           <DictSelect style={{ width: "100%", marginBottom: 8 }} placeholder="无效原因" aria-label="无效原因" value={无效原因} onChange={set无效原因} options={p.原因选项.无效} />
         )}
         <Input.TextArea rows={4} maxLength={原因上限 - (无效原因 ? 无效原因.length + 无效原因前缀.length + 1 : 0)} showCount value={原因} onChange={(e) => set原因(e.target.value)} placeholder={选无效原因 ? "补充说明" : "原因（必填）"} aria-label="原因" />
+        {!!没成框 && <框里原因 话={框错} />}
       </Modal>
 
       <Modal
@@ -1629,13 +1650,14 @@ export default function ProjectDetail({
         okButtonProps={{ loading: 忙, disabled: !!其他没写好(回收原因) }}
         onCancel={() => set放回框(false)}
         onOk={async () => {
-          const ok = await 跑(() => 放回项目公海(p.id, 回收原因));
+          const ok = await 跑(() => 放回项目公海(p.id, 回收原因), undefined, 框报错);
           // 企业版放回后原负责人看不到这个项目了（C-01，lib/project/pool-owner.ts 原负责人回避），回项目列表
           if (ok) { set放回框(false); 走开(); }
         }}
       >
         <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>只退这个项目：退回去以后同事都能领，你作为原负责人不能再领回来，也看不到它了；你会记成这个项目的历史负责人，你在这个项目上没做完的待办会自动关闭。客户和客户负责人不动。</div>
         <DictSelect style={{ width: "100%" }} placeholder="回收原因（可不选）" aria-label="回收原因" value={回收原因} onChange={set回收原因} options={p.原因选项.回收} />
+        {放回框 && <框里原因 话={框错} />}
       </Modal>
 
       <Modal
@@ -1664,6 +1686,7 @@ export default function ProjectDetail({
         <div style={{ color: "var(--text-muted)" }}>
           {转给名 ? `确认转给 ${转给名}？${转给谁 && p.转后还能看?.includes(转给谁) ? "转了以后你还能看这个项目" : "转了以后你看不到这个项目"}，下一步、卡点、沟通记录都跟着项目交给 ${转给名}；转了不能撤销。` : "选好接手的人，再点「确认转让」。"}
         </div>
+        {转给框 && <框里原因 话={框错} />}
       </Modal>
     </>
   );
@@ -1728,6 +1751,7 @@ export default function ProjectDetail({
             </aside>
           </卡名Provider>
         </div>
+        {回执条}
         {弹窗们}
       </section>
     );
@@ -1796,6 +1820,7 @@ export default function ProjectDetail({
         </>
       )}
 
+      {回执条}
       {弹窗们}
     </div>
   );
@@ -1811,7 +1836,7 @@ function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
   f: 项目详情["followUps"][number];
   外贸: boolean;
   onClose: () => void;
-  跑: (f: () => Promise<{ ok: boolean; error?: string }>, 成了?: string) => Promise<boolean>;
+  跑: 跑法;
 }) {
   const 能选类型 = 跟进类型们(外贸).filter((t) => t.value !== "TASK" && t.value !== "REMIND");
   // 老数据可能是待办 / 提醒类型：下拉里补上它自己，不改类型就原样存回
@@ -1824,10 +1849,12 @@ function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
   const [occurredAt, setOccurredAt] = useState(() => dayjs(f.occurredAt).format(沟通时间格式));
   const [content, setContent] = useState(f.content);
   const [交中, set交中] = useState(false);
+  /** 没存上的原因（版本冲突、没权限……）：写在框里、框不关，不弹顶部提示 */
+  const [交错, set交错] = useState<string | null>(null);
   const 差 = !content.trim() ? "请填写这次沟通的内容" : 主体们 && f.initiator && !发起 ? "请选发起主体" : "";
   const 交 = async () => {
     set交中(true);
-    const ok = await 跑(() => 改项目沟通(projectId, f.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 版本: f.版本 }), "已保存修改");
+    const ok = await 跑(() => 改项目沟通(projectId, f.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 版本: f.版本 }), "已保存修改", { 报错: set交错 });
     set交中(false);
     if (ok) onClose();
   };
@@ -1850,6 +1877,7 @@ function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
         />
         <Input.TextArea aria-label="沟通内容" rows={4} value={content} onChange={(e) => setContent(e.target.value)} placeholder="这次聊了什么" />
         {差 && <div style={{ color: "var(--text-muted)" }}>{差}</div>}
+        <框里原因 话={交错} />
       </div>
     </Modal>
   );
@@ -1874,7 +1902,7 @@ function 存录入模式(v: 录入模式) {
   try { if (v === "AI") localStorage.setItem(录入模式键, "AI"); else localStorage.removeItem(录入模式键); } catch { /* 无痕、禁用：只这一次 */ }
 }
 
-function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onClose, 跑 }: {
+function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onClose, 跑, 回执 }: {
   p: 项目详情;
   外贸: boolean;
   /** 能发卡点才给（企业版）；null = 不摆卡点那一块 */
@@ -1882,7 +1910,9 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
   /** 阻碍原因下拉（设置里启用的）；也能现打新的，发出去进待审核 */
   卡点原因们?: string[];
   onClose: () => void;
-  跑: (f: () => Promise<{ ok: boolean; error?: string }>, 成了?: string) => Promise<boolean>;
+  跑: 跑法;
+  /** 记完框就关：回执（短沟通、卡点生成 / 没生成、附件没传上）写在详情正文底部的就地小条 */
+  回执: 就地回执;
 }) {
   const 能选类型 = 跟进类型们(外贸).filter((t) => t.value !== "TASK" && t.value !== "REMIND");
   const [type, setType] = useState<string>(能选类型[0]?.value ?? "PHONE");
@@ -1903,6 +1933,8 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
   const [下一步文字, set下一步文字] = useState("");
   const [下一步时间, set下一步时间] = useState<string | null>(null);
   const [交中, set交中] = useState(false);
+  /** 没记上的原因：写在「记下」上面、框不关 */
+  const [交错, set交错] = useState<string | null>(null);
   const [更多开, set更多开] = useState(false);
   const [卡点类型, set卡点类型] = useState<string>("暂无卡点");
   const [卡点影响, set卡点影响] = useState<string | null>(null);
@@ -1910,7 +1942,6 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
   const [卡点标题, set卡点标题] = useState("");
   const [卡点原因, set卡点原因] = useState<string[]>([]);
   const [附件们, set附件们] = useState<File[]>([]);
-  const { message } = App.useApp();
   const router = useRouter();
   // ---- AI 录入（10-29 P6）：粘原话 → 复用客户页「跟进速记」那条解析（parseFollowUpDraft，同一个模型、同一份额度）→ 只往格子里预填，
   // 人核对后点「记下」才写库；解析本身不写任何业务表。企业版、配了模型、看得到客户才给
@@ -1973,21 +2004,23 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
     set交中(true);
     const 回: { r: Awaited<ReturnType<typeof 记项目沟通Action>> | null } = { r: null };
     const 卡点 = 卡点默认 ? { type: 卡点类型, impact: 卡点影响, title: 卡点标题, reasons: 卡点原因, description: 卡点描述 } : undefined;
-    const ok = await 跑(async () => (回.r = await 记项目沟通Action(p.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 下一步: 下一步文字, 下一步时间, ...(p.企业版 ? { 阶段: p.phase } : {}) }, 卡点)));
+    // 没记上的原因写在框里、框不关（g.save，不弹顶部提示）
+    const ok = await 跑(async () => (回.r = await 记项目沟通Action(p.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 下一步: 下一步文字, 下一步时间, ...(p.企业版 ? { 阶段: p.phase } : {}) }, 卡点)), undefined, { 报错: set交错 });
     const r = 回.r;
     if (ok && r?.ok) {
-      // 本人撤销沟通去掉了（P-沟通-01，11-09），提示里不摆「撤销」
-      // 客户三态（C12）：这条不算有效沟通时换成一句轻提示（照常保存，不拦）
+      // 本人撤销沟通去掉了（P-沟通-01，11-09），回执里不摆「撤销」。框关了，回执合成一句写在详情底部（一条盖一条，所以合起来说）：
+      // 客户三态（C12）这条不算有效沟通时换成一句轻提示（照常保存，不拦）；卡点生成 / 没生成；附件没传上的（出错，role=alert）
       const 短 = 短沟通话of(r);
-      if (短) message.info(短, 5);
-      else message.success("已记下这条沟通");
-      if ("卡点" in r && r.卡点) message.success(`已生成卡点 ${r.卡点}`);
-      if ("卡点没发" in r && r.卡点没发) message.warning(`沟通记下了，卡点没生成：${r.卡点没发}`);
+      const 话们: string[] = [短 ?? "已记下这条沟通"];
+      let 调: "success" | "warning" | "error" = 短 ? "warning" : "success";
+      if ("卡点" in r && r.卡点) 话们.push(`已生成卡点 ${r.卡点}`);
+      if ("卡点没发" in r && r.卡点没发) { 话们.push(`卡点没生成：${r.卡点没发}`); 调 = "warning"; }
       if (附件们.length && r.followUpId) {
         const 错 = await 传沟通附件(r.followUpId, 附件们);
-        for (const e of 错) message.error(e);
+        if (错.length) { 话们.push(...错); 调 = "error"; }
         router.refresh();
       }
+      回执[调](话们.join("；"));
     }
     set交中(false);
     if (ok) 关();
@@ -2002,6 +2035,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
       // 还差哪一格写在「记下」旁边，不用悬停
       footer={(按钮) => (
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
+          {交错 && <span className="pd-modal-err pd-modal-err-inline" role="alert">{交错}</span>}
           {差 && <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{差}</span>}
           <span>{按钮}</span>
         </div>

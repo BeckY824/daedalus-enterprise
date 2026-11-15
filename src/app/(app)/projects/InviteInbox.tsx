@@ -42,11 +42,15 @@ export default function InviteInbox({ 邀请们 }: { 邀请们: 邀请行[] }) {
     set收起的((s) => new Set(s).add(r.id));
     记错(r.id, null);
     // 底部撤销条（PR5a）：到点才交；没交成撤销条上写原因，这一条摆回来
+    // 只交一次：撤销条收起动画没放完时来了新的一条，UndoBar 会再按一次到点（src/components/UndoBar.tsx 到点了 只看 态、没看 出）
+    let 交过 = false;
     showUndo({
       话: `已拒绝「${r.项目}」`,
       毫秒: 6000,
       撤销: () => 摆回(r.id),
       到点: async () => {
+        if (交过) return;
+        交过 = true;
         try {
           const x = await 回项目邀请(r.id, false);
           if (x.ok) router.refresh(); else 摆回(r.id);

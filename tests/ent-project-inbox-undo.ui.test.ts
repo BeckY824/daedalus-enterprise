@@ -80,21 +80,48 @@ it("判有效：一步收起，6 秒后才交（不带说明）；「补一句�
     await page.getByText("待复核的线索（1）").waitFor();
     expect(await page.getByTestId("verify-row-v1").count()).toBe(0);
     expect(await 调用(page)).toEqual([]);
+    // 6 秒内撤销 = 没交，这一条摆回来
+    await page.locator(".undo-bar").getByRole("button", { name: /撤销/ }).dispatchEvent("click");
+    await page.getByText("待复核的线索（2）").waitFor();
+    await page.clock.runFor(7000);
+    expect(await 调用(page)).toEqual([]);
+    await page.getByTestId("verify-row-v1").getByRole("button", { name: "判有效" }).click();
+    await page.getByText("待复核的线索（1）").waitFor();
     await page.clock.runFor(6500);
     await page.waitForFunction(() => ((window as unknown as { __calls?: unknown[] }).__calls ?? []).length > 0);
     expect(await 调用(page)).toEqual([["市场复核", "v1", true, ""]]);
     // 总管理终判那一条：补一句
     await page.getByTestId("verify-row-v2").getByRole("button", { name: "判有效" }).click();
-    // 提示条进出场时位置在挪（上一条正收起），按「稳定」等会被假时钟卡住：直接派发点击
-    await page.locator('[data-undo="verify-v2"]').getByRole("button", { name: "补一句" }).dispatchEvent("click");
+    // 判有效的撤销条走全站底部那一条（g.undo），不是顶部提示；写着哪一条
+    await page.locator(".undo-bar", { hasText: "「待复核二」已判有效" }).waitFor();
+    expect(await page.locator(".ant-message").count()).toBe(0);
+    // 撤销条进出场时位置在挪（上一条正收起），按「稳定」等会被假时钟卡住：直接派发点击
+    await page.locator(".undo-bar").getByRole("button", { name: "补一句" }).dispatchEvent("click");
     const 框 = page.getByRole("dialog", { name: "判有效" });
     await 框.waitFor();
     await 框.getByLabel("复核说明").fill("电话打通了");
     await page.clock.runFor(7000);
-    expect((await 调用(page)).length).toBe(1); // 开着说明框不自动交
+    expect(await 调用(page)).toEqual([["市场复核", "v1", true, ""]]); // 开着说明框不自动交
     await 框.getByRole("button", { name: /确\s*定/ }).click();
     await page.waitForFunction(() => ((window as unknown as { __calls?: unknown[] }).__calls ?? []).length > 1);
     expect((await 调用(page))[1]).toEqual(["总管理终判", "v2", true, "电话打通了"]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("到点交出去、撤销条还在收起时又拒一条 / 判一条：前一条不重交（UndoBar 收起动画里再按到点）", async () => {
+  const { page, errors } = await open();
+  try {
+    await page.getByRole("button", { name: /^拒\s*绝$/ }).first().click();
+    await page.clock.runFor(6100); // 到点（6 秒），收起动画还没放完（兜底 600ms）
+    await page.waitForFunction(() => ((window as unknown as { __calls?: unknown[] }).__calls ?? []).length > 0);
+    await page.getByRole("button", { name: /^拒\s*绝$/ }).first().click();
+    await page.getByTestId("verify-row-v1").getByRole("button", { name: "判有效" }).click();
+    await page.clock.runFor(100);
+    expect(await 调用(page)).toEqual([["回邀请", "m1", false], ["回邀请", "m2", false]]);
+    await page.clock.runFor(7000);
+    await page.waitForFunction(() => ((window as unknown as { __calls?: unknown[] }).__calls ?? []).length > 2);
+    expect(await 调用(page)).toEqual([["回邀请", "m1", false], ["回邀请", "m2", false], ["市场复核", "v1", true, ""]]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

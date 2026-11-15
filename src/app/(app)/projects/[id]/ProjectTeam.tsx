@@ -18,8 +18,9 @@ import { 三种业务线, 建议业务线, 所在地提示, type 项目线 } fro
 import { 再邀默认角色 } from "@/lib/project/team-ui";
 import { 不填项, 去不填, 未选占位 } from "@/lib/enterprise/dict-kinds";
 import { 编辑项目, 加项目组员, 换项目组员角色, 移出项目组员 } from "../actions";
+import SaveButton from "@/components/SaveButton";
+import { 跑给按钮, type 跑法 } from "./detail-note";
 
-type 跑法 = (f: () => Promise<{ ok: boolean; error?: string }>, 成了?: string) => Promise<boolean>;
 export type 组员 = { id: string; userId: string; name: string; roleId: string | null; inviteStatus: string };
 export type 角色 = { id: string; name: string; active: boolean };
 export type 联系人 = { id: string; name: string; position: string | null };
@@ -81,7 +82,6 @@ export function ProjectEditModal({
   const 新 = p.项目新字段;
   const [痛点, set痛点] = useState(新?.painPoints ?? "");
   const [合同, set合同] = useState<合同状态 | null>(新?.contractStatus ?? null);
-  const [忙, set忙] = useState(false);
   const 改 = (x: Partial<typeof d>) => setD((o) => ({ ...o, ...x }));
   const 改钱 = (x: Partial<NonNullable<typeof 钱>>) => set钱((o) => (o ? { ...o, ...x } : o));
   // 没传的不交：服务端按「没传 = 不动」处理（项目级别和地址改成）
@@ -103,15 +103,14 @@ export function ProjectEditModal({
     <Modal
       open={open}
       title="编辑项目"
-      okText="保存"
-      okButtonProps={{ loading: 忙, disabled: !d.name.trim() }}
       onCancel={onClose}
-      onOk={async () => {
-        set忙(true);
-        const ok = await 跑(() => 编辑项目(p.id, { ...d, amount: d.amount ?? 0, ...附带 }), "已保存");
-        set忙(false);
-        if (ok) onClose();
-      }}
+      // 保存反馈在按钮里（原型 g.save）：转圈 → 「已保存」✓ 后关框；没存上原因浮在按钮上方、框不关，不弹顶部提示
+      footer={(
+        <Space>
+          <Button onClick={onClose}>取消</Button>
+          <SaveButton disabled={!d.name.trim()} 做={() => 跑给按钮(跑, () => 编辑项目(p.id, { ...d, amount: d.amount ?? 0, ...附带 }))} 成了={onClose}>保存</SaveButton>
+        </Space>
+      )}
     >
       {行("项目名称", <Input value={d.name} maxLength={项目名上限} showCount onChange={(e) => 改({ name: e.target.value })} />)}
       {p.level !== undefined && 行("项目级别", (
