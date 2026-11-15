@@ -4354,3 +4354,13 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .cr-saved { font-size: var(--fs-note); color: var(--text-muted); white-space: nowrap; }
 .cr-miss { font-size: var(--fs-note); color: var(--danger-text); white-space: nowrap; }
 @media (max-width: 767px) { .cr-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- PR7b 客户详情（cd-*） ---------- */
+/* 新建项目落地（?project=<新项目>）：那颗项目卡叠一层品牌色光圈亮 2 秒（JS 管多久），进来淡入、走时淡出；只动透明度，减弱动态下也只是淡 */
+.cd-pj-pill, .cd-pj-one { position: relative; }
+.cd-pj-pill::after, .cd-pj-one::after { content: ""; position: absolute; inset: 0; border-radius: var(--r-tag); box-shadow: inset 0 0 0 2px var(--brand); background: var(--brand-bg);
+  mix-blend-mode: multiply; opacity: 0; pointer-events: none; transition: opacity var(--t-leave) var(--ease); }
+.cd-pj-flash::after { opacity: 1; transition-duration: var(--t); animation: cd-pj-flash-in var(--t) var(--ease); }
+@keyframes cd-pj-flash-in { from { opacity: 0; } }
+/* 没有能记的在推项目时记沟通（P-界面-35）：弹框里写明这条记为客户沟通 */
+.fu-np-note { color: var(--brand-deep); }
