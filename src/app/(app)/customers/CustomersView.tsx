@@ -36,7 +36,6 @@ import TransferDialog from "./TransferDialog";
 import { 转走项目预览of } from "./actions";
 import { showUndo } from "@/components/UndoBar";
 import { 问后果 } from "@/components/dialog-host";
-import { useMe } from "@/lib/me-client";
 import { 带走说法, 批量结果说法 } from "@/lib/carry-over";
 import { useBusiness } from "@/lib/business-client";
 import { statusLabel, 外贸精简, 签约叫 } from "@/lib/business-config";
@@ -312,9 +311,8 @@ export default function CustomersView({
   const { 问删除 } = useDeleteCustomers();
   const { 先问转走的项目 } = useTransferConfirm(转让原因);
   const { 问放回公海 } = usePoolReturnConfirm();
-  const 我 = useMe();
   /** 批量转让框（原型 cu.transfer：选人、一起转走的项目、原因合成一个框）：开着时记住勾的是谁 */
-  const [转让框, set转让框] = useState<{ ids: string[]; 我的: boolean; 清空: () => void } | null>(null);
+  const [转让框, set转让框] = useState<{ ids: string[]; 清空: () => void } | null>(null);
   const 取转走 = useCallback((人id: string) => 转走项目预览of(转让框?.ids ?? [], 人id), [转让框]);
 
   /**
@@ -1031,8 +1029,7 @@ export default function CustomersView({
         题={`把 ${转让框?.ids.length ?? 0} 位${b.customer}转给`}
         人们={成员选项(users)}
         取转走={取转走}
-        // 负责人本人转自己的 = 申请移交（P-转-16）：勾的里有自己负责的就整批走申请（服务端 转让走交接 同口径）
-        申请={(人id) => 企业 && !!转让框?.我的 && 人id !== 我?.id}
+        // 要不要接手人确认（P-转-16）：不在这里猜，看 取转走 回来的「要确认」（服务端 转让走交接 同一个判定）
         原因选项={转让原因?.选项}
         自己={转让原因?.自己}
         做={async (人id, 原因) => {
@@ -1125,6 +1122,7 @@ export default function CustomersView({
       {/* 看板视图：看板（ProjectsView 客户页）的分配、「→ 还有 N 列」画进筛选行右端那一格（board-slot.ts），不在看板上面另占一行 */}
       <看板工具位.Provider value={看板体 !== undefined ? 工具位 : undefined}>
       <DataList<CustomerRow>
+        浮起操作条
         页="customers"
         // 企业版每格一行、放不下省略号悬停看全（11-01 会议 §11）
         单行={企业}
@@ -1227,7 +1225,7 @@ export default function CustomersView({
             {!不问归属 && !(公海页 && 能分配公海) && (!企业 || 能分配公海 || (能转出自己的 && !公海页)) &&
               // 按钮文字写全（P-界面-43）；选人、一起转走的项目、原因在同一个框里（原型 cu.transfer）
               <Button size="small" icon={<UserSwitchOutlined />}
-                onClick={() => set转让框({ ids: [...selected], 我的: 选中行.some((r) => !r.pool && r.salesOwnerId === 我?.id), 清空 })}>
+                onClick={() => set转让框({ ids: [...selected], 清空 })}>
                 转让给同事
               </Button>}
             {/* 「公海」页签只有领取，「客户」页签只有放进公海；子集里两种混着，看勾的是什么 */}

@@ -1161,7 +1161,10 @@ export async function 转走项目预览of(ids: string[], 新负责人?: string)
   // 不传 = 转给自己（公海领取）
   const 新 = 新负责人 ?? me.id;
   if (!Array.isArray(ids) || typeof 新 !== "string" || !新) return { 项目数: 0, 项目: [] };
-  return 数转走的项目(ids.filter((x) => typeof x === "string"), 新);
+  const 们 = ids.filter((x) => typeof x === "string");
+  // 顺带说转给这位要不要接手人确认：和真转时（assignSalesOwner）同一个判定，转让框照它写「生效」那一条（P-转-16）
+  const [预览, 走法] = await Promise.all([数转走的项目(们, 新), 转让走交接(me, 新, 们)]);
+  return { ...预览, 要确认: 走法 === "申请" };
 }
 
 /** 企业版转了不归自己管的客户（界面不摆，直接调接口才到这） */

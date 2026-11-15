@@ -20,14 +20,18 @@ export default function HandoverPending({ 等我确认, 我发起的, 候选 = [
 }) {
   const router = useRouter();
   const [忙, set忙] = useState<string | null>(null);
-  /** 接手成了的那几笔：按钮原地变「✓ 已接手」，横幅等列表刷新后自己收（原型 cu.handover） */
-  const [接了, set接了] = useState<Set<string>>(() => new Set());
+  /**
+   * 接手成了的那几笔：按钮原地变「✓ 已接手」（原型 cu.handover）。服务端回了一句「说」（接了哪些、几位在交接期间被处理没转）的，
+   * 刷新后这笔已不在「等我确认」里，横幅照样留着把这句写出来，点 ✕ 才收；没有「说」的跟着刷新自己收
+   */
+  const [接了, set接了] = useState<Map<string, { h: 交接行; 说?: string }>>(() => new Map());
   /** 没办成的原因：写在这一条横幅里，不弹顶部提示 */
   const [错, set错] = useState<Record<string, string>>({});
   const [改, set改] = useState<交接行 | null>(null);
   const [新, set新] = useState<string | undefined>();
   const [改错, set改错] = useState("");
-  if (!等我确认.length && !我发起的.length) return null;
+  const 留着的 = [...接了.values()].filter((x) => x.说 && !等我确认.some((h) => h.id === x.h.id)).map((x) => x.h);
+  if (!等我确认.length && !我发起的.length && !留着的.length) return null;
 
   /** 负责人本人转自己的 = 申请移交（X4）：说「接受 / 拒绝 / 撤回申请」 */
   const 是申请 = (h: 交接行) => h.kind === "转让" && h.自己的;
@@ -45,7 +49,7 @@ export default function HandoverPending({ 等我确认, 我发起的, 候选 = [
         set错((e) => ({ ...e, [h.id]: r.error }));
         return { ok: false, error: r.error };
       }
-      if (做 === "确认") set接了((s) => new Set(s).add(h.id));
+      if (做 === "确认") set接了((m) => new Map(m).set(h.id, { h, 说: "说" in r && r.说 ? r.说 : undefined }));
     } catch {
       set错((e) => ({ ...e, [h.id]: "没办成，刷新再试" }));
       return { ok: false, error: "没办成，刷新再试" };
@@ -82,14 +86,16 @@ export default function HandoverPending({ 等我确认, 我发起的, 候选 = [
   return (
     // 名字很长（外文公司名不带空格）也要折行，不顶出右边按钮（Windows 1024 宽）
     <Space orientation="vertical" style={{ width: "100%", marginBottom: 12, overflowWrap: "anywhere" }}>
-      {等我确认.map((h) => (
+      {[...等我确认, ...留着的].map((h) => (
         <Alert key={h.id} type="warning" showIcon
-          title={是申请(h) ? `「${h.发起人}」申请把${说(h, true)}移交给你，等你确认` : `「${h.发起人}」把${说(h, true)}交接给你，等你确认`}
+          closable={留着的.includes(h) ? { "aria-label": "收起", onClose: () => set接了((m) => { const n = new Map(m); n.delete(h.id); return n; }) } : undefined}
+          title={(是申请(h) ? `「${h.发起人}」申请把${说(h, true)}移交给你` : `「${h.发起人}」把${说(h, true)}交接给你`) + (接了.has(h.id) ? "，你已确认" : "，等你确认")}
           description={<>
             {是申请(h) ? "你接受后才转到你名下；不接受不生效，客户还在原负责人名下。" : h.kind === "离职" ? "你确认后才转到你名下；确认前还在离职成员名下，你的列表里看不到。" : "确认前这些客户还在原负责人名下，你的客户列表里看不到。"}
             {/* 原来写在确认框里的「确认后什么转过来」：确认不再弹框，挪到横幅里先看清（cu.handover） */}
             {h.确认说明 && <div className="cu-ho-what">{h.确认说明}</div>}
             {错[h.id] && <div className="cu-ho-err" role="alert">{错[h.id]}</div>}
+            {接了.get(h.id)?.说 && <div className="cu-ho-said" role="status">{接了.get(h.id)?.说}</div>}
           </>}
           action={接了.has(h.id) ? <span className="cu-ho-done" role="status">✓ {是申请(h) ? "已接受" : "已接手"}</span> : <Space>
             <Button size="small" type="primary" loading={忙 === h.id} onClick={() => void 办(h, "确认")}>{是申请(h) ? "接受" : "确认接手"}</Button>
