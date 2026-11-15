@@ -1,7 +1,7 @@
 "use client";
 
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
-import { useContext, useEffect, useRef, useState, useTransition, type CSSProperties } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState, useTransition, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -42,7 +42,10 @@ import { 自动分配线索, 撤销自动分配, 分配带走的项目, type 自
 import { useCarryConfirm } from "../customers/useCarryConfirm";
 import { AssignLeadModal, AssignedOutButton, useBatchAutoAssign } from "../leads/AssignLead";
 import LeadFullNotices from "../leads/LeadFullNotices";
-import { 滚法 } from "@/lib/reduced-motion";
+import { 滚法, 少动 } from "@/lib/reduced-motion";
+import { useMotionTheme } from "@/components/MotionTheme";
+import CountUp from "@/components/CountUp";
+import { 量变形起点, 放变形 } from "./view-morph";
 import { 看板要点, 三态标说明, type 三态标 } from "@/lib/enterprise/tri-state-label";
 import { 再看一列 } from "../customers/board-actions";
 import { 再看项目页一列 } from "./board-actions";
@@ -187,9 +190,25 @@ export default function ProjectsView({
   // 带着要指出的那一行来：先按列表看（不改存下的看法），自己切回看板就听他的
   const [临时列表, set临时列表] = useState(!!高亮);
   const 看法 = 新线索 || 临时列表 ? "列表" : 客户页 ? "看板" : 存的看法;
-  // 看板 ⇄ 列表（原型 pr.view）：换过一次以后，换上来的那一块淡入、轻轻上移落位；第一次进页不动
+  // 看板 ⇄ 列表（原型 pr.view「改后」）：同一批项目从卡片的位置移到行的位置（反过来一样），对不上的淡入（./view-morph.ts，同 ov.view）。
+  // 点切换时量下每张卡 / 每一行的位置，新样子画出来那一帧（useLayoutEffect）从旧位置滑过去；
+  // 一个都对不上（列表那页没有看板上露着的）或减弱动态：退回原来那样，换上来的整块淡入、轻轻上移落位。第一次进页不动
   const [换过, set换过] = useState(false);
-  const 换看法 = (v: "列表" | "看板") => { set临时列表(false); set看法(v); set换过(true); };
+  const 视图包 = useRef<HTMLDivElement>(null);
+  const 变形起点 = useRef<Map<string, DOMRect> | null>(null);
+  const { 时长: 动效时长 } = useMotionTheme();
+  const 换看法 = (v: "列表" | "看板") => {
+    const 起 = 少动() ? null : 量变形起点(视图包.current);
+    变形起点.current = 起;
+    set临时列表(false); set看法(v); set换过(!起?.size);
+  };
+  useLayoutEffect(() => {
+    const 起 = 变形起点.current;
+    变形起点.current = null;
+    if (!起?.size) return;
+    // 一个都没对上：整块淡入上移（同没量到时）
+    if (!放变形(视图包.current, 起, 动效时长.morph)) set换过(true);
+  }, [看法, 动效时长]);
   // 要指出的那一行滚到视口中间（减弱动态时直接跳过去）；只在进来时滚一次，之后翻页、筛选不追着滚
   useEffect(() => {
     if (!高亮) return;
@@ -624,7 +643,7 @@ export default function ProjectsView({
       <MyBlockersBoard 们={卡点们} />
       {新线索 && <LeadFullNotices 提醒={提醒们} />}
 
-      <div key={看法} className={换过 ? "proj-view-in" : undefined}>
+      <div key={看法} ref={视图包} className={换过 ? "proj-view-in" : undefined}>
       {看法 === "列表" ? (
         <DataList<项目行>
           // 企业版默认只摆 7 列（1366 宽不横滚），换个键让已存的旧列设置回到新默认
@@ -681,7 +700,7 @@ export default function ProjectsView({
                     <div className="pipe-h">
                       <span className="pipe-dot" style={{ background: 列色[c.色] }} />
                       <b title={c.阶段 ? `${c.阶段}阶段` : undefined}>{c.名}</b>
-                      <span className="pipe-n">{这列数}</span>
+                      <span className="pipe-n"><CountUp 值={这列数} 记号={`pipe-n:${c.列}`} 只滚变化 /></span>
                       <span className="pipe-sum" title={sum}>{sum}</span>
                     </div>
                     <div className="pipe-bar" style={{ background: 列色[c.色] }} />
@@ -700,6 +719,7 @@ export default function ProjectsView({
                       return (
                         <div
                           key={r.id}
+                          data-morph-key={客户页 ? r.customerId : r.id}
                           {...卡拖?.dom}
                           className={`${能进 ? "pipe-card" : "pipe-card pipe-card-ro"}${刚来 ? " pipe-card-new" : 筛过 ? " pipe-card-in" : ""}${卡拖?.类 ?? ""}`}
                           style={{ borderLeftColor: 异常 ? "var(--danger)" : 列色[c.色], ["--i" as string]: Math.min(档, 8) }}
@@ -727,21 +747,21 @@ export default function ProjectsView({
                               // C5：客户名后一个小色点（沉睡灰、待回收橙、暂缓回收中紫），悬停说明；三态关着 三态点 不给
                               const 点 = r.customerName != null ? 点表?.[r.customerId] : undefined;
                               return 看板要点(点) ? (
-                                <div className="pipe-card-t tri-has-dot">
+                                <div className="pipe-card-t tri-has-dot pipe-card-full">
                                   <span className="tri-name">{r.customerName}</span>
                                   <i role="img" className={`tri-dot tri-${点.态}`} title={三态标说明(点)} aria-label={三态标说明(点)} />
                                 </div>
                               ) : (
-                                <div className="pipe-card-t fulltext" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看(r)}</div>
+                                <div className="pipe-card-t pipe-card-full" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看(r)}</div>
                               );
                             })()}
                             <div className="pipe-card-m">
-                              <span className="pipe-card-o">{r.name}</span>
+                              <span className="pipe-card-o pipe-card-full">{r.name}</span>
                             </div>
                           </>) : (<>
-                            <div className="pipe-card-t fulltext" title={r.name}>{r.name}</div>
+                            <div className="pipe-card-t pipe-card-full">{r.name}</div>
                             <div className="pipe-card-m">
-                              <span className="pipe-card-o" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看(r)}</span>
+                              <span className="pipe-card-o pipe-card-full" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看(r)}</span>
                             </div>
                           </>)}
                           <div className="pipe-card-m">

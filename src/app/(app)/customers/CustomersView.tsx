@@ -3,7 +3,10 @@
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
 import CopyValue from "@/components/CopyValue";
 import Heat from "@/components/Heat";
-import { useCallback, useEffect, useState, useSyncExternalStore, useRef, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore, useRef, type CSSProperties, type ReactNode } from "react";
+import { 少动 } from "@/lib/reduced-motion";
+import { useMotionTheme } from "@/components/MotionTheme";
+import { 量变形起点, 放变形 } from "../projects/view-morph";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Select, Space, Dropdown, Tag, Segmented, type MenuProps, type SelectProps } from "antd";
@@ -1036,6 +1039,34 @@ export default function CustomersView({
   ];
 
   /*
+    列表 ⇄ 看板原地变形（原型 cu.view「改后」，同 ov.view / pr.view，projects/view-morph.ts）：
+    项目看板是服务端换一屏画的（cookie），点下去滑块先到，量下每一行（tr[data-row-key] = 客户）的位置；新样子到了那一帧，
+    这位客户的卡片（data-morph-key = 客户）从他那一行的位置滑过去，反过来一样，对不上的淡入。看板那半边懒加载、第一次可能晚几帧才挂上：
+    没对上就再等几帧（最多 12 帧），还没有就算了，照常直接换。减弱动态不量不动
+  */
+  const 变形包 = useRef<HTMLDivElement>(null);
+  const 变形起点 = useRef<Map<string, DOMRect> | null>(null);
+  const { 时长: 动效时长 } = useMotionTheme();
+  const 项目看法: "列表" | "看板" = 看板体 !== undefined ? "看板" : "列表";
+  const [换项目看法到, set换项目看法到] = useState<"列表" | "看板" | null>(null);
+  // 新样子到了：清掉（随 props 调整 state 的写法），以后别的原因换了样子不算变形
+  if (换项目看法到 !== null && 换项目看法到 === 项目看法) set换项目看法到(null);
+  const 换项目看法 = (v: "列表" | "看板") => {
+    变形起点.current = 少动() ? null : 量变形起点(变形包.current);
+    set换项目看法到(v);
+    换客户页看法(v === "看板" ? "board" : "list", router);
+  };
+  useLayoutEffect(() => {
+    const 起 = 变形起点.current;
+    变形起点.current = null;
+    if (!起?.size) return;
+    let 帧 = 0;
+    let id = 0;
+    const 试 = () => { if (!放变形(变形包.current, 起, 动效时长.morph) && ++帧 < 12) id = requestAnimationFrame(试); };
+    试();
+    return () => cancelAnimationFrame(id);
+  }, [项目看法, 动效时长]);
+  /*
     「列表 / 看板」（11-12 用户：「列表｜看板 放到和筛选栏一行，最左边」）：筛选行第一格，列表、看板两个视图同一个位置，切换时不跳；
     原来摆在页头右上（按客户属性分列的看板）或标题下面单独一行（项目看板、市场角色）。不缩、不被挤进「更多筛选」（globals.css .list-view-seg）。
     三种：企业版项目模式 = 按节点分列的项目看板（记在 cookie 里、服务端换一屏画，projects/board-page.tsx）；
@@ -1044,7 +1075,7 @@ export default function CustomersView({
   const 看法切换 = 项目看板
     ? (!空库 || 市场视图) && !子集 && (市场视图
       ? <Segmented<string> aria-label="客户列表 / 我分出去的" options={[...市场视图名]} value={市场视图名[0]} onChange={(v) => v === 市场视图名[1] && 换客户页看法("board", router)} />
-      : <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看板体 !== undefined ? "看板" : "列表"} onChange={(v) => 换客户页看法(v === "看板" ? "board" : "list", router)} />)
+      : <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={换项目看法到 ?? 项目看法} onChange={换项目看法} />)
     : 能看板 && !空库 && <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看法} onChange={set看法} />;
   /** 「新建 ▾ → 新建项目」点一次挂一份（换 key 重挂 = 重新打开选新老客户的框）；0 = 还没点过、不加载 */
   const [新建项目次, set新建项目次] = useState(0);
@@ -1168,6 +1199,7 @@ export default function CustomersView({
       {阶段太多 && <div role="status" className="cust-too-many">结果太多，请再加筛选条件</div>}
       {/* 看板视图：看板（ProjectsView 客户页）的分配、「→ 还有 N 列」画进筛选行右端那一格（board-slot.ts），不在看板上面另占一行 */}
       <看板工具位.Provider value={看板体 !== undefined ? 工具位 : undefined}>
+      <div ref={变形包} className="cu-morph-wrap">
       <DataList<CustomerRow>
         浮起操作条
         页="customers"
@@ -1364,6 +1396,7 @@ export default function CustomersView({
           翻页,
         }}
       />
+      </div>
       </看板工具位.Provider>
 
       {/* 新建客户：一个弹窗填完，项目默认关、有项目就打开（P-界面-36） */}

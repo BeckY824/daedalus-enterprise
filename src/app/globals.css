@@ -4943,3 +4943,9 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 .pd-pay-total { font-variant-numeric: tabular-nums; }
 /* dt.team：改分配框里「分出去 / 组长留」随改数滚到位，等宽不跳 */
 .pd-split-num { font-variant-numeric: tabular-nums; }
+/* 项目 / 客户看板卡片：客户名、项目名折行写完，不「…」截断（原型 pr.view / cu.view「卡片名字不截断」）；列宽固定，长名折行不撑宽列 */
+.pipe-card-t.pipe-card-full,
+.pipe-card-o.pipe-card-full { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.35; }
+.pipe-card-t.tri-has-dot.pipe-card-full > .tri-name { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+/* 客户列表 ⇄ 项目看板原地变形（cu.view）：量位置用的外框，不占版面 */
+.cu-morph-wrap { display: contents; }

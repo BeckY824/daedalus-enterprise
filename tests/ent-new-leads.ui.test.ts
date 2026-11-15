@@ -59,14 +59,14 @@ beforeAll(async () => {
     window.__再看={ok:true,行:Array.from({length:5},(_,i)=>row(120+i,'潜客培育')),总:25};
     // o.工具位：照客户页那样在上面给一条筛选行、右端留一格（customers/board-slot.ts），看板的按钮和提示画进去
     window.__画=(阶段,能分,企,o={})=>{if(o.工具位&&!document.getElementById('slot'))document.getElementById('root').insertAdjacentHTML('beforebegin',"<div class='list-bar'><span class='list-bar-gap'></span><div class='list-bar-end' id='slot'></div></div>");return (window.__root||=createRoot(document.getElementById('root'))).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><看板工具位.Provider value={o.工具位?document.getElementById('slot'):undefined}>
-      <Projects 行={o.每列?[]:o.公海?[{...row(4,'线索推进'),pooled:true,客户在公海:true},{...row(5,'线索推进'),pooled:true}]:行} 列={o.每列?造每列列(o.数):o.看板?五列:[]} 每列={o.每列?{}:undefined} 要的页={o.要的页} 总数={(o.公海?2:行.length)} 页={1} 每页={20} users={o.单人?[{id:'u0',name:'王0',email:'a'}]:[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:o.phase||''}} 阶段={阶段?'线索':undefined} 线索分配开着={!!能分} 能自动分配={!!能分} 能分公海客户项目={!!o.管公海} 企业版={!!企} 客户页={!!o.客户页} 待交接={o.客户页?2:null} 换回客户列表={!!o.换回} 能新建客户={!!o.能新建客户} 能新建={o.能新建!==false} 标题={o.换回?'客户':undefined}/>
+      <Projects 行={o.同批?五列.map(c=>c.行[0]):o.每列?[]:o.公海?[{...row(4,'线索推进'),pooled:true,客户在公海:true},{...row(5,'线索推进'),pooled:true}]:行} 列={o.每列?造每列列(o.数):o.看板?五列:[]} 每列={o.每列?{}:undefined} 要的页={o.要的页} 总数={(o.公海?2:行.length)} 页={1} 每页={20} users={o.单人?[{id:'u0',name:'王0',email:'a'}]:[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:o.phase||''}} 阶段={阶段?'线索':undefined} 线索分配开着={!!能分} 能自动分配={!!能分} 能分公海客户项目={!!o.管公海} 企业版={!!企} 客户页={!!o.客户页} 待交接={o.客户页?2:null} 换回客户列表={!!o.换回} 能新建客户={!!o.能新建客户} 能新建={o.能新建!==false} 标题={o.换回?'客户':undefined}/>
     </看板工具位.Provider></BusinessProvider></App>);};
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
   bundle = r.outputFiles[0].text; browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 选项 = { phase?: string; 看板?: boolean; 每列?: boolean; 数?: number; 单人?: boolean; 要的页?: string; 样式?: boolean; 公海?: boolean; 管公海?: boolean; 客户页?: boolean; 查询?: string; 换回?: boolean; 能新建客户?: boolean; 能新建?: boolean; 工具位?: boolean };
+type 选项 = { phase?: string; 看板?: boolean; 同批?: boolean; 每列?: boolean; 数?: number; 单人?: boolean; 要的页?: string; 样式?: boolean; 公海?: boolean; 管公海?: boolean; 客户页?: boolean; 查询?: string; 换回?: boolean; 能新建客户?: boolean; 能新建?: boolean; 工具位?: boolean };
 async function 打开(新线索: boolean, width = 1280, 能分 = false, 企 = false, o: 选项 = {}): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -304,7 +304,7 @@ it("企业版项目看板（11-01 会议 C12）：1024 宽五列，右沿渐隐 
   expect(errors).toEqual([]); await page.close();
 });
 
-it("企业版项目看板卡片（11-12 客户详情合并第 3 批）：第一行客户名、第二行项目名，都一行省略；点卡片进客户详情停在这个项目；三种宽度不撑出", async () => {
+it("企业版项目看板卡片（11-12 客户详情合并第 3 批；原型 pr.view / cu.view 11-15 改「卡片名字不截断」）：第一行客户名、第二行项目名，折行写完不省略；点卡片进客户详情停在这个项目；三种宽度不撑出", async () => {
   for (const w of [1024, 1280, 1366]) {
     const { page, errors } = await 打开(false, w, false, true, { 样式: true, 看板: true });
     try {
@@ -312,13 +312,13 @@ it("企业版项目看板卡片（11-12 客户详情合并第 3 批）：第一�
       await 卡.waitFor();
       const 行们 = await 卡.evaluate((el) => {
         const t = el.querySelector(".pipe-card-t") as HTMLElement, o = el.querySelector(".pipe-card-m .pipe-card-o") as HTMLElement;
-        const 一行 = (x: HTMLElement) => x.getBoundingClientRect().height <= parseFloat(getComputedStyle(x).lineHeight) + 1;
-        const 截了 = (x: HTMLElement) => x.scrollWidth > x.clientWidth && getComputedStyle(x).textOverflow === "ellipsis";
-        return { 第一: t.innerText, 第二: o.innerText, 一行: 一行(t) && 一行(o), 截了: 截了(t) && 截了(o), 卡不出列: el.getBoundingClientRect().right <= el.parentElement!.getBoundingClientRect().right + 1 };
+        const 多行 = (x: HTMLElement) => x.getBoundingClientRect().height > parseFloat(getComputedStyle(x).lineHeight) * 1.5;
+        const 没裁 = (x: HTMLElement) => x.scrollWidth <= x.clientWidth + 1 && getComputedStyle(x).textOverflow !== "ellipsis";
+        return { 第一: t.innerText, 第二: o.innerText, 折行: 多行(t) && 多行(o), 没裁: 没裁(t) && 没裁(o), 卡不出列: el.getBoundingClientRect().right <= el.parentElement!.getBoundingClientRect().right + 1 };
       });
       expect(行们.第一, `宽 ${w}`).toMatch(/^某某超长名字.*第二期$/);
       expect(行们.第二, `宽 ${w}`).toMatch(/第二期10$/);
-      expect(行们.一行 && 行们.截了 && 行们.卡不出列, `宽 ${w}`).toBe(true);
+      expect(行们.折行 && 行们.没裁 && 行们.卡不出列, `宽 ${w}`).toBe(true);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `宽 ${w}`).toBe(true);
       await 卡.click();
       expect(await 去了(page), `宽 ${w}`).toEqual(["/customers/c10?project=p10"]);
@@ -735,4 +735,62 @@ it("看板横向溢出时「→ 还有 N 列」那一行一直在：滑到头按
     expect(await 顶()).toBe(起);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
+});
+
+it("看板 ⇄ 列表原地变形（原型 pr.view）：同一批项目从卡片滑到行、再滑回卡片；卡片名字折行写完不截断（1024 / 1280）；列头计数照常", async () => {
+  for (const w of [1024, 1280]) {
+    const { page, errors } = await 打开(false, w, false, true, { 看板: true, 同批: true, 样式: true });
+    await page.evaluate(() => {
+      const 记: { 标签: string; 键: string; 起: string }[] = ((window as unknown as { __动: unknown[] }).__动 = []) as never;
+      const 原 = Element.prototype.animate;
+      Element.prototype.animate = function (this: HTMLElement, k: Keyframe[] | PropertyIndexedKeyframes | null, o?: number | KeyframeAnimationOptions) {
+        const 首 = Array.isArray(k) ? (k[0] as Record<string, unknown>) : {};
+        记.push({ 标签: this.tagName, 键: this.dataset.morphKey ?? this.dataset.rowKey ?? "", 起: String(首.transform ?? "") });
+        return 原.call(this, k, o);
+      };
+    });
+    const 卡 = page.locator(".pipe-card[data-morph-key]");
+    expect(await 卡.count()).toBe(5);
+    // 名字不截断：折行写完、没被裁，读到的是全名
+    const 量 = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".pipe-card .pipe-card-full")].map((el) => ({ 裁: el.scrollWidth > el.clientWidth + 1, ws: getComputedStyle(el).whiteSpace, 字: el.textContent ?? "" })));
+    expect(量.length).toBeGreaterThanOrEqual(10);
+    for (const x of 量) { expect(x.裁).toBe(false); expect(x.ws).toBe("normal"); }
+    expect(量.some((x) => x.字.startsWith("某某超长名字的智能制造装备与工业自动化系统集成有限公司华东区域采购项目第二期1"))).toBe(true);
+    expect(await page.locator(".pipe-n").first().innerText()).toBe("1");
+    // 看板 → 列表：看得见的卡片对应的行从卡片的位置滑过来（translate 起步），不是整块淡入；
+    // 横向滑在看板框外、没露出来的那一列不量（行照样淡入）
+    const 露着 = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".pipe-card[data-morph-key]")].filter((el) => { const r = el.getBoundingClientRect(); return r.right > 0 && r.left < innerWidth && r.bottom > 0 && r.top < innerHeight; }).map((el) => el.dataset.morphKey!).sort());
+    expect(露着.length).toBeGreaterThanOrEqual(3);
+    await page.locator(".ant-segmented").getByText("列表", { exact: true }).click();
+    await page.locator("tr[data-row-key='p10']").waitFor();
+    const 动1 = await page.evaluate(() => (window as unknown as { __动: { 标签: string; 键: string; 起: string }[] }).__动);
+    expect(动1.filter((x) => x.标签 === "TR" && x.起.startsWith("translate(")).map((x) => x.键).sort()).toEqual(露着);
+    expect(await page.locator(".proj-view-in").count()).toBe(0);
+    // 列表 → 看板：同样滑回卡片
+    await page.evaluate(() => { (window as unknown as { __动: unknown[] }).__动.length = 0; });
+    await page.locator(".ant-segmented").getByText("看板", { exact: true }).click();
+    await 卡.first().waitFor();
+    const 动2 = await page.evaluate(() => (window as unknown as { __动: { 标签: string; 键: string; 起: string }[] }).__动);
+    expect(动2.filter((x) => x.标签 === "DIV" && x.起.startsWith("translate(")).length).toBeGreaterThanOrEqual(3);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(errors).toEqual([]); await page.close();
+  }
+});
+
+it("减弱动态：看板 ⇄ 列表直接换，不位移", async () => {
+  const { page } = await 打开(false, 1280, false, true, { 看板: true, 同批: true });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.evaluate(() => {
+    const 记: string[] = ((window as unknown as { __动: string[] }).__动 = []);
+    const 原 = Element.prototype.animate;
+    Element.prototype.animate = function (this: HTMLElement, k: Keyframe[] | PropertyIndexedKeyframes | null, o?: number | KeyframeAnimationOptions) {
+      const 首 = Array.isArray(k) ? (k[0] as Record<string, unknown>) : {};
+      if (String(首.transform ?? "").startsWith("translate(")) 记.push(this.tagName);
+      return 原.call(this, k, o);
+    };
+  });
+  await page.locator(".ant-segmented").getByText("列表", { exact: true }).click();
+  await page.locator("tr[data-row-key='p10']").waitFor();
+  expect(await page.evaluate(() => (window as unknown as { __动: string[] }).__动)).toEqual([]);
+  await page.close();
 });
