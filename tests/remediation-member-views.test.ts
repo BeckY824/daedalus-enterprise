@@ -3,13 +3,11 @@ const state = vi.hoisted(() => ({ user: { id: "", name: "老板", email: "boss",
 vi.mock("@/lib/auth", () => ({ requireUser: async () => state.user }));
 vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
 vi.mock("@/app/(app)/contacts/ContactsView", () => ({ default: () => null }));
-vi.mock("@/app/(app)/follow-ups/FollowUpsView", () => ({ default: () => null }));
 vi.mock("@/app/(app)/overview/DataShell", () => ({ default: () => null }));
 vi.mock("@/app/(app)/reports/ReportsView", () => ({ default: () => null }));
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import ContactsPage from "@/app/(app)/contacts/page";
-import FollowUpsPage from "@/app/(app)/follow-ups/page";
 import DataPage from "@/app/(app)/overview/page";
 import { 加载复盘 } from "@/app/(app)/overview/data";
 let salesId: string; let customerId: string;
@@ -28,15 +26,7 @@ it("联系人服务器数据保留同名成员的不同ID和登录名", async ()
   expect(rows.map((r: { ownerId: string }) => r.ownerId).sort()).toEqual([salesId, other.id].sort());
   expect(rows.map((r: { ownerEmail: string }) => r.ownerEmail).sort()).toEqual(["sales-a", "sales-b"]);
 });
-it("跟进筛选包括管理员及有历史的停用成员，逐人筛选不混记录", async () => {
-  const old = await prisma.user.create({ data: { email: "old", name: "停用同事", active: false, password: "x" } });
-  for (const ownerId of [state.user.id, salesId, old.id]) await prisma.followUp.create({ data: { type: "PHONE", title: ownerId, content: "QA", customerId, ownerId } });
-  for (const ownerId of [state.user.id, salesId, old.id]) {
-    const props = (await FollowUpsPage({ searchParams: Promise.resolve({ ownerId }) })).props;
-    expect(props.users.map((u: { id: string }) => u.id)).toContain(ownerId);
-    expect(props.总数).toBe(1); expect(props.rows[0].title).toBe(ownerId);
-  }
-});
+// 「跟进筛选包括管理员及有历史的停用成员」随跟进记录页（/follow-ups）11-15 删了
 it("只有一个在职销售时仍显示停用同事业绩，恢复后金额不变", async () => {
   const old = await prisma.user.create({ data: { email: "old-sales", name: "停用同事", active: false, password: "x", role: "SALES" } });
   const contract = await prisma.contract.create({ data: { amount: 1200, signedAt: new Date("2026-10-02"), customerId } });

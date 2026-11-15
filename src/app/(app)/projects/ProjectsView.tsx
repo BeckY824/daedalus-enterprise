@@ -3,7 +3,7 @@
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
 import { useContext, useEffect, useRef, useState, useTransition, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
 import { App, Button, Pagination, Select, Space, Segmented, Tag, Typography, type SelectProps } from "antd";
@@ -277,8 +277,28 @@ export default function ProjectsView({
   // 看板每列的卡片（含「再看」追加的）也算：客户页看板不取列表页（行 是空的），不带上的话有「已不在的成员 / 没人」的卡片也会把负责人藏掉
   const 不问归属 = !f.ownerId && 列表不问归属ID(users, [...行, ...看板.flatMap((c) => c.行), ...Object.values(追加.们).flatMap((x) => x.行)].map((r) => r.ownerId));
   const 在筛 = Object.values(filters).some(Boolean);
-  // 企业版项目首页：先问新客户还是老客户，都在弹窗里建（新客户走建档向导、先查重）；新线索页照旧去 /leads/new
-  const 新建 = () => (企业版 && !新线索 ? 新项目.开选客户() : router.push(新线索 || 企业版 ? "/leads/new" : "/projects/new"));
+  /*
+    企业版项目首页：先问新客户还是老客户，都在弹窗里建（新客户走建档向导、先查重）。
+    新线索页、团队版项目页：直接弹建档向导，项目开关开着锁住（原 /leads/new、/projects/new 整页，11-15 删了，老链接转到 ?new=1）
+  */
+  const 新建 = () => (企业版 && !新线索 ? 新项目.开选客户() : void 新项目.开建档(新线索 ? "新线索" : "新增项目", "锁开"));
+  /*
+    ?new=1 进来就开（老链接 /leads/new、/projects/new 转过来的，next.config）：等挂上再开，开了把 new 从地址上抹掉，
+    刷新、桌面端记住的最后一页不会再弹（同客户页 ?new=1）。客户页看板、不能新建的人不理
+  */
+  const 地址新建 = useSearchParams()?.get("new") === "1";
+  const 带新建 = !客户页 && 能新建 && 地址新建;
+  const 开过 = useRef(false);
+  useEffect(() => {
+    if (!带新建 || 开过.current) return;
+    开过.current = true;
+    新建();
+    const q = new URLSearchParams(window.location.search);
+    q.delete("new");
+    router.replace(q.size ? `${window.location.pathname}?${q}` : window.location.pathname, { scroll: false });
+    // 只认进来那一下：新建、router 每次渲染都是新的，不该再触发
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [带新建]);
   // 从首页指标卡点进来：页头标题右边挂一枚能关掉的标签，说清现在只看哪一批
   const 卡 = 认首页卡(filters.f);
   const 卡标 = 卡 ? (
@@ -486,7 +506,7 @@ export default function ProjectsView({
       {筛选外露}
       {更多筛选按钮}
       <ResetFilters 显示={Object.values(f).some(Boolean)} onClick={reset} />
-      {/* 企业版项目首页只留看板、列表（U-项目-08）：「新线索列表」「沟通记录」入口去掉，/leads、/follow-ups 路由还在，⌘K 搜得到 */}
+      {/* 企业版项目首页只留看板、列表（U-项目-08）：「新线索列表」「沟通记录」入口去掉：/leads 路由还在、⌘K 搜得到；沟通记录主页 11-15 删了 */}
     </Space>
   </>);
 
@@ -711,8 +731,8 @@ export default function ProjectsView({
           )}
         </>
       )}
-      {/* 新增项目：先选新老客户、建档向导、给老客户开项目（NewProjectFlow.tsx） */}
-      {企业版 && 新项目.弹框}
+      {/* 新增项目：先选新老客户、建档向导、给老客户开项目（NewProjectFlow.tsx）；新线索页、团队版只用到建档向导那一块 */}
+      {新项目.弹框}
       {可分 && <AssignLeadModal lead={分配中 && { id: 分配中.id, name: 分配中.name, ownerId: 分配中.ownerId, 项目: true }} 关={() => set分配中(null)} 不看配额={项目页分} />}
     </div>
   );

@@ -171,6 +171,19 @@ export async function proxy(request: NextRequest) {
   }
 
   /**
+   * 「沟通记录」主页 /follow-ups 11-15 删了（PR11b，tests/route-cleanup-redirects.test.ts）：沟通在客户档案里记、里看。
+   * 带客户的老链接（?customer=…，原来「记一条沟通」预填他）去那位客户的档案；别的去跟进计划。
+   * 放这里不放 next.config：那边会把老地址上的 ?customer=&new=1 原样带到新页，计划页认 new=1 会弹「新建计划」，不是原来那件事
+   */
+  if (valid && pathname === "/follow-ups") {
+    const url = request.nextUrl.clone();
+    const 客户 = url.searchParams.get("customer");
+    url.search = "";
+    url.pathname = 客户 && /^[\w-]+$/.test(客户) ? `/customers/${客户}` : "/follow-ups/plans";
+    return NextResponse.redirect(url);
+  }
+
+  /**
    * 把路径写进请求头：(app)/layout.tsx 要按路由决定中栏放什么（首页放「今天」、学员放列表），
    * 而 Server Component 的布局拿不到路径，只有这里能给。只是一个只读的提示，不涉及权限。
    */

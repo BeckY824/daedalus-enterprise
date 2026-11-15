@@ -11,7 +11,7 @@ const 开 = { 企业版项目: true, 有AI: true, 面板开着: false };
 
 describe("浮标显示", () => {
   it("首页以外的根目录和它们底下的页：出现", () => {
-    for (const p of ["/overview", "/channels", "/customers", "/projects", "/projects/abc", "/customers/c1", "/leads", "/follow-ups", "/follow-ups/plans", "/contacts"])
+    for (const p of ["/overview", "/channels", "/customers", "/projects", "/projects/abc", "/customers/c1", "/leads", "/follow-ups/plans", "/contacts"])
       expect(浮标显示(p, null, 开), p).toBe(true);
     expect(浮标显示("/customers", "1", 开), "公海").toBe(true);
   });

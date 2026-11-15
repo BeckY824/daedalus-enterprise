@@ -283,7 +283,8 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
             // 企业版只用项目一条线，没有商机（10-26）；/opportunities 一律转到 /projects，左栏这一项 10-28 删了
             // 团队版项目模式开着才有（2026-10-23，D-31）；关着时 /projects 是 404
             ...(b.projectMode ? [{ key: "/projects", icon: <ProjectOutlined />, label: "项目", 组: "主" as const }] : []),
-            { key: "/follow-ups", icon: <InteractionOutlined />, label: "跟进", 组: "主", 挂要跟: true },
+            // 「沟通记录」主页 11-15 删了（沟通在客户档案里记、里看），左栏「跟进」直接进计划页，红数照旧挂这儿
+            { key: "/follow-ups/plans", icon: <InteractionOutlined />, label: "跟进", 组: "主", 挂要跟: true },
             { key: "/overview", icon: <DashboardOutlined />, label: "数据", 组: "主" },
             { key: "/leads", icon: <ShareAltOutlined />, label: "线索", 组: "更多" },
             { key: "/contacts", icon: <ContactsOutlined />, label: "联系人", 组: "更多" },
@@ -315,7 +316,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
     // 企业版项目模式：不在左栏的新线索、跟进、联系人挂到入口那一项上（lib/enterprise/nav.ts）
     const 企 = 企业版项目 ? 企业版亮项(pathname, pool) : null;
     if (企) return 企;
-    const flat = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/contacts", "/projects", "/pool", "/follow-ups", "/settings"];
+    const flat = ["/dashboard", "/overview", "/leads", "/customers", "/channels", "/contacts", "/projects", "/pool", "/follow-ups/plans", "/settings"];
     // 「我的反馈」不在导航里：哪一项都不亮，亮的是左下角的反馈键（FeedbackButton）
     if (pathname === "/feedback" || pathname.startsWith("/feedback/")) return "";
     return flat.find((k) => pathname === k || pathname.startsWith(k + "/")) ?? "/dashboard";

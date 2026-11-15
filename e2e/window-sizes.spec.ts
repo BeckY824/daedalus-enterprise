@@ -49,13 +49,10 @@ async function 进第一位客户(page: Page) {
 test("最小窗口 1024×700：「新建跟进」比窗口高也看得见「保存」，中间那段自己滚", async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 700 });
   await 登录(page);
-  if (企业版) {
-    // 企业版客户页的「跟进」去项目里记；同一个「新建跟进」框在跟进页页头
-    await page.goto("/follow-ups?new=1");
-  } else {
-    await 进第一位客户(page);
-    await page.getByRole("button", { name: /记录跟进/ }).first().click();
-  }
+  // 企业版原来在沟通记录页页头开这个框；那页 11-15 删了，企业版记沟通在客户档案里、要先有项目（e2e-ent 里验）
+  test.skip(企业版, "沟通记录页 11-15 删了：企业版记沟通在客户档案里（先有项目），e2e-ent 里验");
+  await 进第一位客户(page);
+  await page.getByRole("button", { name: /记录跟进/ }).first().click();
   const 框 = page.locator(".ant-modal-container").last();
   await expect(框).toBeVisible();
   const 保存 = 框.locator(".ant-modal-footer").getByRole("button", { name: /保\s*存/ });
@@ -87,7 +84,7 @@ test("最小窗口 1024：列表筛选行一行摆下，「列」不被挤到第
   }
   await 登录(page);
   // 企业版只用项目：/opportunities 转去项目页，项目页默认看板，切到「列表」才有这条筛选行
-  for (const 路 of 企业版 ? ["/customers", "/projects", "/channels", "/follow-ups"] : ["/customers", "/opportunities", "/follow-ups"]) {
+  for (const 路 of 企业版 ? ["/customers", "/projects", "/channels"] : ["/customers", "/opportunities"]) {
     await page.goto(路);
     if (路 === "/projects") await page.getByText("列表", { exact: true }).first().click();
     // 只看摆着的那条：生产构建下 DOM 里有时多一份藏着（display:none）的同页，里面也有 .list-bar（本机 E2E_PROD 实测，严格模式会撞上两个）

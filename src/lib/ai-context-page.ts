@@ -127,12 +127,6 @@ const 一级: Record<string, 页> = {
     查一个: { 工具: "search_customers", 参数: "query" },
     提醒: "这一页每行要么是公海里的一位客户，要么是客户池里一位客户在公海的项目（客户归别人，可能有好几个）；问项目时用 list_projects。",
   },
-  "/follow-ups": {
-    名: "跟进记录",
-    提示: "用户正在看跟进记录列表",
-    工具: "search_followups",
-    补: "**search_followups 必须给关键词**——要按时间列记录、按类型筛、数个数，用 query_records（表=跟进记录）。",
-  },
   "/follow-ups/plans": {
     名: "跟进计划",
     提示: "用户正在看跟进计划列表",

@@ -48,7 +48,7 @@ const 在 = (pathname: string, k: string) => pathname === k || pathname.startsWi
 export function 企业版亮项(pathname: string, pool: string | null): string | null {
   if (pathname === "/customers" && pool === "1") return 公海入口;
   if (在(pathname, "/customers") || 在(pathname, "/contacts")) return "/customers";
-  if (在(pathname, "/projects") || 在(pathname, "/leads") || 在(pathname, "/follow-ups")) return "/customers";
+  if (在(pathname, "/projects") || 在(pathname, "/leads") || 在(pathname, "/follow-ups/plans")) return "/customers";
   for (const k of ["/dashboard", "/overview", "/channels", 公海入口]) if (在(pathname, k)) return k;
   return null;
 }
@@ -60,7 +60,7 @@ export function 企业版亮项(pathname: string, pool: string | null): string |
 export function 企业版页名(pathname: string, pool: string | null, 客户叫法: string): string {
   if (pathname === "/customers" && pool === "1") return "公海";
   if (在(pathname, "/leads")) return "新线索";
-  if (在(pathname, "/follow-ups")) return "跟进";
+  if (在(pathname, "/follow-ups/plans")) return "跟进";
   if (在(pathname, "/contacts")) return "联系人";
   if (在(pathname, "/settings")) return "设置";
   if (在(pathname, "/projects/handover")) return "离职交接";

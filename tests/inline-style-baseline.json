@@ -34,7 +34,6 @@
   "app/(app)/dashboard/DedupeKey.tsx": 2,
   "app/(app)/dashboard/HomeCards.tsx": 1,
   "app/(app)/dashboard/TurnView.tsx": 2,
-  "app/(app)/follow-ups/FollowUpsView.tsx": 4,
   "app/(app)/follow-ups/plans/PlansView.tsx": 10,
   "app/(app)/leads/AssignLead.tsx": 7,
   "app/(app)/leads/ConvertProjectModal.tsx": 10,

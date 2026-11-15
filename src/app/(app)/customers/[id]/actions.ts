@@ -274,7 +274,6 @@ export async function saveFollowUp(input: FollowUpInput) {
     if (!result.ok) return result;
     for (const audit of result.audits) await recordAudit(audit);
     刷新待办(input.customerId);
-    revalidatePath("/follow-ups");
     // 客户最近跟进往后推了 = 名下项目的回收时钟续了：「再不跟进」的提醒跟着勾掉（11-03 B3-1）。按推进前的节点找提醒，放在自动推进前面
     await 客户跟进后勾掉将回收提醒(input.customerId, now);
     await 客户存了推项目(user, input.customerId);
@@ -319,7 +318,6 @@ export async function deleteFollowUp(id: string, customerId: string) {
     await 存沟通后重算三态(customerId);
   
     revalidatePath(`/customers/${customerId}`);
-    revalidatePath("/follow-ups");
     return { ok: true as const };
   } catch (e) {
     return 不在了(e);
@@ -588,7 +586,6 @@ export async function 撤销记一笔(input: { customerId: string; 跟进id: str
     for (const audit of result.audits) await recordAudit(audit);
     await 存沟通后重算三态(input.customerId);
     revalidatePath(`/customers/${input.customerId}`);
-    revalidatePath("/follow-ups");
     revalidatePath("/follow-ups/plans");
     revalidatePath("/dashboard");
     return { ok: true as const };

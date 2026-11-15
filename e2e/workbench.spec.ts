@@ -465,25 +465,7 @@ test("计划页「新建计划」就地弹框：挑人、说清另加不替换�
   await expect(page.getByRole("dialog").locator(".pick-ctx")).not.toContainText("上次跟进");
 });
 
-test("沟通记录页「记一条沟通」就地弹框：挑人后到期计划默认一并完成，保存后留在原页并点亮新行", async ({ page }) => {
-  const 客 = await 造一位要跟的();
-  await 登录(page);
-  await page.goto("/follow-ups");
-  await page.getByRole("button", { name: /^(plus )?记一条沟通$/ }).click();
-  const 弹窗 = await 挑(page, 客.名);
-  await expect(弹窗.getByText("同时完成计划「发二版报价」")).toBeVisible();
-  await 弹窗.getByLabel("沟通内容").fill("电话里对了交期");
-  await 弹窗.getByRole("button", { name: /保\s*存/ }).click();
-  await expect(弹窗).toBeHidden();
-  await expect(page).toHaveURL(/\/follow-ups$/);
-  await expect(page.locator(".row-fresh")).toContainText("电话里对了交期");
-  await expect(page.locator(".ant-message")).toContainText("一并完成");
-
-  const p = 连库();
-  const 那条 = await p.followPlan.findUniqueOrThrow({ where: { id: 客.旧计划id } });
-  await p.$disconnect();
-  expect(那条.done).toBe(true);
-});
+// 「沟通记录页「记一条沟通」就地弹框…」那条随沟通记录页（/follow-ups）11-15 删了；到期计划一并完成在客户档案的记沟通里照样有
 
 test("计划页「改」：框开着时这条在另一个窗口被改了，保存被拦下说清楚；关框重开是新的那一版、再存就进（J-105）", async ({ page }) => {
   const 客 = await 造一位要跟的();
@@ -884,7 +866,7 @@ test("联系人页能直接加一位，但第一格必须先选归属", async ({
   界面这一层没有——而那个输入框第一版没接表单 id，标签和输入框的关联断了（getByLabel 找不到、读屏念不出来）
 */
 test("新建线索：来源一格能直接填列表里没有的说法，按标签找得到输入框，存完列表里看得见", async ({ page }) => {
-  test.skip(process.env.CRM_ENTERPRISE === "1", "企业版只用项目：新线索走项目向导（/leads/new），不弹老的新建线索框");
+  test.skip(process.env.CRM_ENTERPRISE === "1", "企业版只用项目：新线索走项目向导（新线索页就地弹建档框），不弹老的新建线索框");
   const 名 = `朋友圈线索${Date.now().toString().slice(-5)}`;
   await 登录(page);
   await page.goto("/leads");
