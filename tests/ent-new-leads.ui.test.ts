@@ -150,11 +150,12 @@ it("企业版项目首页：「新增项目」一个按钮（没有旁边的下�
     await 框.waitFor();
     const 选项 = 框.locator(".new-proj-opt");
     expect(await 选项.allInnerTexts()).toEqual([expect.stringMatching(/^新客户\n/), expect.stringMatching(/^老客户\n/)]);
-    // 老客户：接「给老客户开项目」挑客户框
+    // 老客户（原型 pr.old，11-15）：不再三个框接力，进同一个新建弹窗（客户名里搜老客户，PR8 cr.old）
     await 选项.nth(1).click();
-    await page.getByRole("dialog", { name: "给老客户开项目" }).waitFor();
+    await page.locator(".wizard-stub").waitFor();
+    expect(await page.getByRole("dialog", { name: "给老客户开项目" }).count()).toBe(0);
     await page.keyboard.press("Escape");
-    await page.getByRole("dialog", { name: "给老客户开项目" }).waitFor({ state: "hidden" });
+    await page.locator(".wizard-stub").waitFor({ state: "hidden" });
     // 新客户：默认那一项（原型 pr.new）——框一开焦点就在「新客户」上，回车即走；取向导数据，弹「新增项目」向导框，不跳页
     await 钮.click();
     await page.waitForFunction(() => document.activeElement?.classList.contains("is-default") === true);
@@ -605,7 +606,7 @@ it("市场角色「我分出去的」页头点「新建客户」等取建档数�
   } finally { await page.close(); }
 });
 
-it("「新建 ▾ → 新建项目」框接框走完整链再关，焦点回到「新建」按钮：老客户（选新老客户 → 挑老客户 → 新建项目框 → 关）、新客户（→ 建档向导 → 关）", async () => {
+it("「新建 ▾ → 新建项目」框接框走完整链再关，焦点回到「新建」按钮：老客户、新客户都是 选新老客户 → 同一个新建弹窗 → 关（原型 pr.old）", async () => {
   for (const 走 of ["老客户", "新客户"] as const) {
     const { page, errors } = await 打开(false, 1280, false, true, { 看板: true, 换回: true, 能新建客户: true });
     try {
@@ -616,29 +617,12 @@ it("「新建 ▾ → 新建项目」框接框走完整链再关，焦点回到�
       await page.getByRole("menuitem", { name: "新建项目" }).click();
       const 选 = page.getByRole("dialog", { name: "新增项目" });
       await 选.waitFor();
-      if (走 === "老客户") {
-        await 选.getByRole("button", { name: /老客户/ }).click();
-        const 挑 = page.getByRole("dialog", { name: "给老客户开项目" });
-        await 挑.waitFor();
-        await 挑.locator(".old-cust-pick").click();
-        // 这套桩里下拉层没摆进视口：用键盘选（下拉里第一位就是他）
-        await expect.poll(() => page.locator(".ant-select-item-option", { hasText: "老客户甲" }).getAttribute("aria-disabled")).toBe("false");
-        await page.locator(".ant-select-item-option", { hasText: "老客户甲" }).dispatchEvent("click");
-        await expect.poll(() => 挑.locator(".old-cust-pick").innerText()).toContain("老客户甲");
-        await 挑.getByRole("button", { name: "下一步" }).click();
-        await 挑.waitFor({ state: "hidden" });
-        // 新建项目框（customers/[id]/NewProjectModal.tsx）：开着，Esc 关掉
-        const 建 = page.locator(".ant-modal-wrap:not([style*='display: none']) .ant-modal").last();
-        await 建.waitFor();
-        await page.keyboard.press("Escape");
-        await expect.poll(() => page.locator(".ant-modal-wrap:not([style*='display: none'])").count()).toBe(0);
-      } else {
-        await 选.getByRole("button", { name: /新客户/ }).click();
-        await page.locator(".wizard-stub").waitFor();
-        await page.keyboard.press("Escape");
-        await page.locator(".wizard-stub").waitFor({ state: "hidden" });
-        await expect.poll(() => page.locator(".ant-modal-wrap:not([style*='display: none'])").count()).toBe(0);
-      }
+      await 选.getByRole("button", { name: 走 === "老客户" ? /老客户/ : /新客户/ }).click();
+      await page.locator(".wizard-stub").waitFor();
+      expect(await page.getByRole("dialog", { name: "给老客户开项目" }).count()).toBe(0);
+      await page.keyboard.press("Escape");
+      await page.locator(".wizard-stub").waitFor({ state: "hidden" });
+      await expect.poll(() => page.locator(".ant-modal-wrap:not([style*='display: none'])").count()).toBe(0);
       await expect.poll(焦点在钮, { message: 走 }).toBe(true);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
