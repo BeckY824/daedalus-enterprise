@@ -31,12 +31,15 @@ export function ProjectFold({ id, 名, 开: 外开, set开: 外set开, 默认开
   children: ReactNode;
 }) {
   const [内开, set内开] = useState(默认开);
+  /** 人点过收起 / 展开才放高度动画（dt.fold）：首屏、搜索联动摊开不动，免得一进页面每张卡都从 0 长出来 */
+  const [点过, set点过] = useState(false);
   const 开 = 外开 ?? 内开;
-  const set开 = 外set开 ?? set内开;
+  const 存开 = 外set开 ?? set内开;
+  const set开 = (v: boolean) => { set点过(true); 存开(v); };
   const 摊开 = 开 || 锁开;
   return (
     <折叠上下文.Provider value={{ 摊开, 锁开, 名, 控制, 切: () => set开(!开) }}>
-      <div id={id} className={`proj-fold${摊开 ? "" : " is-closed"}${连体 ? " has-split" : ""}`}>
+      <div id={id} className={`proj-fold${摊开 ? "" : " is-closed"}${连体 ? " has-split" : ""}${点过 ? " fold-anim" : ""}`}>
         {children}
         {!连体 && (
           <button

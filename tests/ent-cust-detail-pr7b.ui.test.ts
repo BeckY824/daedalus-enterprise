@@ -29,7 +29,7 @@ const 桩: Plugin = { name: "pr7b-detail", setup(b) {
   stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({问怎么拿掉(){}});");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
   stub(/(^|\/)pool-actions$/, "export const 放进公海=async(ids,原因)=>{(window.__放??=[]).push({ids,原因});return window.__放回??{ok:true,updated:1,unchanged:0}},领取=async()=>({ok:false}),撤销公海=async()=>{window.__撤=true;return{ok:true,updated:1}},退回原因选项=async()=>['客户无意向','联系不上','其他'];");
-  stub(/^\.\.\/actions$/, "export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=async()=>({ok:true});");
+  stub(/^\.\.\/actions$/, "export const 转走项目预览of=async()=>(window.__预览??{项目数:0,项目:[]});export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async(ids,to,因)=>{window.__转={ids,to,因};return window.__转回??{ok:false,error:'桩'}},撤销改负责人=async()=>{window.__撤转=true;return{ok:true,updated:1}},patchCustomerRegion=async()=>({ok:true});");
   stub(/^\.\/follow-history-actions$/, "export const loadFollowHistory=async()=>({ok:true,rows:[],hasMore:false}),readFollowHistoryRow=async()=>({ok:true,row:null}),loadCustomerFeed=async()=>({ok:true,rows:[],hasMore:false});");
   stub(/projects\/actions$/, "export const 项目沟通须知=async()=>({ok:true,能记:false}),记项目沟通Action=async()=>({ok:true,followUpId:'f1'});");
   stub(/^\.\/actions$/, `
@@ -49,10 +49,10 @@ beforeAll(async () => {
     const 长='某某超长贸易进出口有限公司'.repeat(6);
     window.__长=长;
     const users=[{id:'qa',name:'小王',email:'s1',role:'SALES',active:true},{id:'u2',name:'小张',email:'s2',role:'SALES',active:true}];
-    window.__render=({去处})=>{
+    window.__render=({去处,申请})=>{
       const 项目们=去处.map(p=>({id:p.id,name:p.名,phase:'商机',node:'报价',result:null,pooledAt:null,amount:0,currency:'CNY'}));
       root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><div className='shell'><nav className='rail' aria-label='主导航'/><main className='main app-content' style={{padding:'22px 26px'}}><div>
-      <Record customer={{id:'a',extra:null,name:长,phone:'13800138000',school:长,grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'小王',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z'}} contacts={[]} contracts={[]} opportunities={[]} tasks={[]} plan={null} users={users} channels={[]} aiEnabled={false} followUpsHasMore={false} 项目们={项目们} 参与项目们={[]} 关联们={[]} 旺旺们={[]} 企业版 能放公海 能转让客户
+      <Record customer={{id:'a',extra:null,name:长,phone:'13800138000',school:长,grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'小王',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z'}} contacts={[]} contracts={[]} opportunities={[]} tasks={[]} plan={null} users={users} channels={[]} aiEnabled={false} followUpsHasMore={false} 项目们={项目们} 参与项目们={[]} 关联们={[]} 旺旺们={[]} 企业版 能放公海 能转让客户 转让要申请={!!申请} 转让原因={{选项:['客户迁移','岗位调整','其他'],自己:'qa'}}
         跟进去处={去处} 待办计划={[]} followUps={[]} 新建项目={{节点们:['线索验证'],要下一步:false}}/>
     </div></main></div></BusinessProvider></App></ConfigProvider>);
     };
@@ -64,12 +64,17 @@ afterAll(async () => { await browser?.close(); });
 type 去处 = { id: string; 名: string; 主: boolean; 结束: boolean; 说明: null; 下一步: null; 下一步文字: null; 能记?: boolean };
 const 项 = (id: string, 名: string, 能记 = true): 去处 => ({ id, 名, 主: true, 结束: false, 说明: null, 下一步: null, 下一步文字: null, 能记 });
 
-async function 开(去处: 去处[], width = 1280, 放回?: unknown) {
+async function 开(去处: 去处[], width = 1280, 放回?: unknown, 额外: { 申请?: boolean; 转回?: unknown; 预览?: unknown } = {}) {
   const page = await browser.newPage({ viewport: { width, height: 860 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://pr7b.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
   await page.goto("http://pr7b.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: 包 });
-  await page.evaluate(x => { if (x.放回) Reflect.set(window, "__放回", x.放回); (window as unknown as { __render: (x: object) => void }).__render({ 去处: x.去处 }); }, { 去处, 放回 });
+  await page.evaluate(x => {
+    if (x.放回) Reflect.set(window, "__放回", x.放回);
+    if (x.额外.转回) Reflect.set(window, "__转回", x.额外.转回);
+    if (x.额外.预览) Reflect.set(window, "__预览", x.额外.预览);
+    (window as unknown as { __render: (x: object) => void }).__render({ 去处: x.去处, 申请: x.额外.申请 });
+  }, { 去处, 放回, 额外 });
   await page.locator(".rec-head").first().waitFor();
   return { page, errors };
 }
@@ -192,4 +197,83 @@ it("X-143：只是组员的项目（能记 = false）不进「关联项目」下
     await 二.page.getByRole("note").filter({ hasText: "这条记为客户沟通" }).waitFor();
     expect(二.errors).toEqual([]);
   } finally { await 二.page.close(); }
+});
+
+async function 点转让(page: Page) {
+  await page.locator(".rec-head-acts button").filter({ hasText: /客户操作/ }).click();
+  await page.locator(".rec-head-menu").last().getByRole("menuitem", { name: /^客户转让$/ }).click();
+  const 框 = page.getByRole("dialog").filter({ hasText: "客户转让" });
+  await 框.waitFor();
+  return 框;
+}
+async function 选人(page: Page, 框: import("playwright").Locator, 名: string) {
+  await 框.getByRole("combobox", { name: "转给谁" }).click();
+  await page.locator(".ant-select-item-option").filter({ hasText: 名 }).click();
+}
+
+it("dt.transfer：选人、一起转走的项目、原因在同一个框；没选人发不了；取消 = 不生效", async () => {
+  const { page, errors } = await 开([项("p1", "项目一")], 1280, undefined, { 申请: true, 预览: { 项目数: 1, 项目: [{ name: "项目一", 客户: "甲" }] } });
+  try {
+    const 框 = await 点转让(page);
+    const 发 = 框.getByRole("button", { name: /^发起转让$/ });
+    expect(await 发.isDisabled()).toBe(true);
+    expect(await 框.innerText()).toContain("接手人确认后生效");
+    await 选人(page, 框, "小张");
+    await expect.poll(() => 框.getByTestId("transfer-carry").innerText()).toContain("项目一");
+    expect(await 框.getByRole("radiogroup", { name: /转让原因/ }).getByRole("radio").count()).toBe(3);
+    expect(await 发.isDisabled()).toBe(false);
+    await 框.getByRole("radio", { name: "其他" }).click();
+    expect(await 发.isDisabled()).toBe(true);
+    await 框.getByRole("button", { name: /^取\s*消$/ }).click();
+    await 框.waitFor({ state: "hidden" });
+    expect(await 取(page, "__转")).toBeNull();
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("dt.transfer：负责人本人发起 = 申请移交，发出后框里原地说等对方确认，没有撤销条", async () => {
+  const { page, errors } = await 开([项("p1", "项目一")], 1280, undefined, { 申请: true, 转回: { ok: true, updated: 0, 交接中: true, 申请移交: true } });
+  try {
+    const 框 = await 点转让(page);
+    await 选人(page, 框, "小张");
+    await 框.getByRole("radio", { name: "客户迁移" }).click();
+    await 框.getByRole("button", { name: /^发起转让$/ }).click();
+    await expect.poll(() => 框.getByRole("status").innerText()).toContain("等「小张」确认后生效");
+    expect(await 取(page, "__转")).toEqual({ ids: ["a"], to: "u2", 因: "客户迁移" });
+    expect(await page.locator("#undo-host").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("dt.transfer：服务端挡了——原因写在框里、框不关、不报成功", async () => {
+  const { page, errors } = await 开([项("p1", "项目一")], 1280, undefined, { 转回: { ok: false, error: "这位客户已在移交中" } });
+  try {
+    const 框 = await 点转让(page);
+    await 选人(page, 框, "小张");
+    await 框.getByRole("button", { name: /^转\s*让$/ }).click();
+    await expect.poll(() => 框.getByRole("alert").innerText()).toContain("已在移交中");
+    expect(await 框.isVisible()).toBe(true);
+    expect(await page.locator("#undo-host").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("dt.transfer：直接转成了关框、底部撤销条能撤；1024 / 1366 + 超长名字框不撑出", async () => {
+  for (const w of [1024, 1366]) {
+    const { page, errors } = await 开([项("p1", "项目一")], w, undefined, { 转回: { ok: true, updated: 1, 原值: [{ id: "a", 值: "qa" }] }, 预览: { 项目数: 1, 项目: [{ name: "某某超长项目名".repeat(12), 客户: "甲" }] } });
+    try {
+      const 框 = await 点转让(page);
+      await 选人(page, 框, "小张");
+      await expect.poll(() => 框.getByTestId("transfer-carry").innerText()).toContain("某某超长项目名");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `宽 ${w}`).toBe(true);
+      expect(await 框.evaluate((el) => { const m = el.closest(".ant-modal") as HTMLElement; const l = m.querySelector(".cd-transfer-list") as HTMLElement; return l.scrollWidth <= l.clientWidth + 1 && m.getBoundingClientRect().right <= window.innerWidth; }), `宽 ${w}`).toBe(true);
+      await 框.getByRole("button", { name: /^转\s*让$/ }).click();
+      await 框.waitFor({ state: "hidden" });
+      const 条 = page.locator("#undo-host");
+      await expect.poll(() => 条.innerText()).toContain("已转给 小张");
+      await 条.getByRole("button", { name: /撤销/ }).click();
+      await expect.poll(() => 取(page, "__撤转")).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
 });

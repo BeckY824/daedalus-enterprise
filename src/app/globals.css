@@ -4364,3 +4364,32 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 @keyframes cd-pj-flash-in { from { opacity: 0; } }
 /* 没有能记的在推项目时记沟通（P-界面-35）：弹框里写明这条记为客户沟通 */
 .fu-np-note { color: var(--brand-deep); }
+/* 客户转让一个框（dt.transfer）：选人、一起转、原因三行 */
+.cd-transfer-body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.cd-transfer-row { display: flex; gap: 10px; align-items: flex-start; min-width: 0; }
+.cd-transfer-k { flex: none; width: 48px; padding-top: 5px; color: var(--text-muted); font-size: var(--fs-note); }
+.cd-transfer-v { flex: 1; min-width: 0; }
+.cd-transfer-t { font-weight: 600; margin-top: 5px; }
+.cd-transfer-list { margin: 4px 0 0; padding-inline-start: 18px; max-height: 160px; overflow-y: auto; }
+.cd-transfer-list > li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cd-transfer-mut { display: inline-block; padding-top: 5px; color: var(--text-muted); font-size: var(--fs-note); }
+.cd-transfer-cq { margin-left: 58px; color: var(--text-muted); font-size: var(--fs-note); }
+.cd-transfer-sent { animation: cd-pj-flash-in var(--t) var(--ease); }
+/* 客户详情待办被挡：原因就地写在那一行下面（不弹顶部提示） */
+.rec-task:has(.cd-task-err) { flex-wrap: wrap; }
+.cd-task-err { flex: 1 0 100%; min-width: 0; color: var(--danger-text); font-size: var(--fs-note); overflow-wrap: anywhere; animation: cd-pj-flash-in var(--t) var(--ease); }
+/* 卡片折叠展开（dt.fold）：卡身高度弹簧收放、下面的卡跟着移，不再 display:none 硬切（浏览器支持 interpolate-size 时；不支持的退回原来的硬切）。
+   关着仍是 display:none（读屏、Tab 都跳过），用 allow-discrete 让它等高度收完再藏；展开从 0 长出来（@starting-style）。
+   只在人点过之后（.fold-anim，ProjectFold.tsx）才动，首屏不动。减弱动态：直接到位 */
+@supports (interpolate-size: allow-keywords) {
+  .proj-fold.fold-anim > .ant-card > .ant-card-body { interpolate-size: allow-keywords; overflow: clip; overflow-clip-margin: 6px;
+    transition: height var(--t-morph) var(--ease-spring), padding-block var(--t-morph) var(--ease-spring), opacity var(--t) var(--ease), display var(--t-morph) allow-discrete; }
+  .proj-fold.is-closed > .ant-card > .ant-card-body { height: 0; padding-block: 0; opacity: 0; }
+  @starting-style { .proj-fold.fold-anim:not(.is-closed) > .ant-card > .ant-card-body { height: 0; padding-block: 0; opacity: 0; } }
+}
+@media (prefers-reduced-motion: reduce) { .proj-fold.fold-anim > .ant-card > .ant-card-body { transition: none; } }
+/* 沟通「本项目 / 这位客户全部」（dt.scope）：切到全部时搜索框原地变淡、点不了，不挪位；滑块选中底色跟着淡过去 */
+.cd-search-wrap { transition: opacity var(--t) var(--ease); }
+.cd-search-wrap.is-off { opacity: .35; pointer-events: none; }
+.cd-seg > button { transition: background-color var(--t) var(--ease), color var(--t) var(--ease), box-shadow var(--t) var(--ease); }
+@media (prefers-reduced-motion: reduce) { .cd-seg > button { transition: none; } }

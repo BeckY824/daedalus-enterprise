@@ -48,7 +48,7 @@ import { scheduleValue } from "@/lib/schedule-date";
 import { 定分配方式, 建好再分 } from "@/lib/project/after-create-assign";
 import { 认业务线, 业务线必填 } from "@/lib/enterprise/assign-line";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
-import { 字典定义, 项目画像项, 认跟进方式 } from "@/lib/enterprise/dict";
+import { 字典定义, 项目画像项, 认跟进方式, 选的原因 } from "@/lib/enterprise/dict";
 import { 改项目画像, type 画像改动, type 画像字段 } from "@/lib/project/profile";
 import { 发布卡点, 读卡点默认, 能发卡点, 可选原因们 } from "@/lib/project/blocker";
 import { 沟通卡点, type 沟通卡点输入, type 卡点默认 } from "@/lib/project/blocker-rules";
@@ -340,12 +340,27 @@ async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输�
 }
 
 /** 改节点。进异常状态时带上异常类别（必选）和备注（可空）；企业版点线索流失、丢单时 备注 = 原因（必填） */
-export async function 改项目节点(projectId: string, 到: 位置, 异常?: { categoryId?: string | null; 备注?: string | null } | null) {
+/**
+ * 判无效（dt.invalid，P-界面-42）：前端交「无效原因」（字典 invalid 里点选的一项，或「其他：xxx」），服务端照公海标无效同一个 选的原因("invalid") 核
+ * （停用了、不在字典里、「其他」没写的都拒），合成「无效原因：X」+ 补充说明记进节点变更的备注。没给 = 照旧只用 备注
+ */
+async function 合无效原因(附: { 备注?: string | null; 无效原因?: string | null } | null | undefined): Promise<{ ok: true; 备注: string | null } | { ok: false; error: string }> {
+  const 备注 = typeof 附?.备注 === "string" ? 附.备注 : null;
+  if (!附 || 附.无效原因 == null || 附.无效原因 === "") return { ok: true, 备注 };
+  const 选 = await 选的原因("invalid", 附.无效原因);
+  if (!选.ok) return 选;
+  if (!选.值) return { ok: true, 备注 };
+  return { ok: true, 备注: [`无效原因：${选.值}`, (备注 ?? "").trim()].filter(Boolean).join("\n") };
+}
+
+export async function 改项目节点(projectId: string, 到: 位置, 异常?: { categoryId?: string | null; 备注?: string | null; 无效原因?: string | null } | null) {
   try {
     const me = await requireUser();
     if (!(await 开着())) return 没开;
     if (!到 || typeof 到 !== "object") return { ok: false as const, error: "要改到哪个进程？" };
-    const 异 = 异常 && typeof 异常 === "object" ? { categoryId: 异常.categoryId ?? null, 备注: 异常.备注 ?? null } : undefined;
+    const 因 = await 合无效原因(异常);
+    if (!因.ok) return { ok: false as const, error: 因.error };
+    const 异 = 异常 && typeof 异常 === "object" ? { categoryId: 异常.categoryId ?? null, 备注: 因.备注 } : undefined;
     const r = await 改节点(me, projectId, 到, 异);
     if (r.ok && r.变了) {
       const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true, exceptionCategory: { select: { name: true } } } });
@@ -363,11 +378,13 @@ export async function 改项目节点(projectId: string, 到: 位置, 异常?: {
 }
 
 /** 企业版「终止进程」（M-节点-04）：按所在阶段落到线索流失 / 丢单 / 异常状态；线索流失、丢单 备注 = 原因（必填），异常状态带类别。审计和 改项目节点 一样记 */
-export async function 终止项目进程(projectId: string, 附?: { categoryId?: string | null; 备注?: string | null } | null) {
+export async function 终止项目进程(projectId: string, 附?: { categoryId?: string | null; 备注?: string | null; 无效原因?: string | null } | null) {
   try {
     const me = await requireUser();
     if (!(await 开着())) return 没开;
-    const 带 = 附 && typeof 附 === "object" ? { categoryId: 附.categoryId ?? null, 备注: 附.备注 ?? null } : undefined;
+    const 因 = await 合无效原因(附);
+    if (!因.ok) return { ok: false as const, error: 因.error };
+    const 带 = 附 && typeof 附 === "object" ? { categoryId: 附.categoryId ?? null, 备注: 因.备注 } : undefined;
     const r = await 终止进程(me, projectId, 带);
     if (r.ok && r.变了 && r.到) {
       const 到 = r.到;
