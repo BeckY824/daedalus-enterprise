@@ -384,6 +384,22 @@ describe("回归核对补钉（10-06，W-外贸并进）", () => {
     expect(备注).toContain("销售负责人：张三");
   });
 
+  it("11-17 客户编号：自家导出的「客户编号」（NO.00012）「系统 ID」导回来不收、不并进备注，新建的另取新号；别家表里的客户编号照旧并进备注", async () => {
+    await 外贸();
+    const 表头 = ["客户名称", "联系电话", "备注", "客户编号", "系统 ID"];
+    const w = await 执行导入({ 表头, 数据: [["Ann", "+998 90 000 3333", "老备注", "NO.00012", "cmzzzzzzzzzzzzzzzzzzzzzz"], ["Bob", "+998 90 000 4444", "", "A-001", "cmyyyyyyyyyyyyyyyyyyyyyy"]], 映射: 猜列(表头, 字段表(BUSINESS_PRESETS["外贸出口"])), 重复行: "跳过" }, "a.xlsx");
+    if (!w.ok) throw new Error(w.error);
+    const ann = await prisma.customer.findFirstOrThrow({ where: { name: "Ann" } });
+    const bob = await prisma.customer.findFirstOrThrow({ where: { name: "Bob" } });
+    expect(ann.remark ?? "").not.toContain("NO.00012");
+    expect(ann.remark ?? "").not.toContain("cmzzzz");
+    expect(bob.remark ?? "").toContain("客户编号：A-001");
+    expect(bob.remark ?? "").not.toContain("cmyyyy");
+    // 导进来的是新客户：编号另取（不是表里的 12）
+    expect(ann.customerNo).not.toBe(12);
+    expect(typeof ann.customerNo).toBe("number");
+  });
+
   it("W-054 写档案推客户版本号：严格往前（不往回退）", async () => {
     await 外贸();
     const c = await 客户();

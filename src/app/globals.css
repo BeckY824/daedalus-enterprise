@@ -1000,6 +1000,8 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
 .nowrap {
   white-space: nowrap;
 }
+/* 客户编号（11-17 客户抬头 PR-1）：NO.00012 数字等宽，列表一列对齐 */
+.cust-no { white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 /* 一行显示，放不下打省略号，悬停看全文（2026-11-04 用户：「尽量所有信息都在一行显示完整。除了备注」
    「一行显示不下的用... 但是悬浮要做好，鼠标移上去可以看完整」；替掉 10-30「要显示完整」的折行做法）。

@@ -48,6 +48,7 @@ import { 查完再写 } from "@/lib/check-then-write";
 import { 收块, 取暂存, type 一块 } from "@/lib/import/staging";
 import { 名键, 公司名键, 归档号键, 撞已有客户 } from "@/lib/enterprise-import/clean";
 import { 读导入查重索引, type 导入查重索引 } from "@/lib/enterprise-import/dedup";
+import { 带客户编号 } from "@/lib/customer-no";
 
 /** 一次导入最多落多少条。和 parse.ts 的行数上限一致，服务端再收一道 */
 const 落库上限 = 10000;
@@ -554,7 +555,7 @@ async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = fa
         // 企业版不到 10 位的号不比（M-导入-29），短号不拦
         if (!短号 && await 看全部(async () => tx.customer.findFirst({ where: phone ? await 同号条件(tx, phone, null) : email ? await 同邮箱条件(tx, email) : wechat ? await 同微信条件(tx, wechat) : await 同阿里条件(tx, alibabaId), select: { id: true } }))) return null;
         const c = await tx.customer.create({
-          data: {
+          data: await 带客户编号(tx, {
             name: r.值.name!,
             phone,
             school: r.值.school ?? null,
@@ -570,7 +571,7 @@ async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = fa
             ...attribution,
             // 企业版客户业务线必填（M-必填-13）：Excel 表里没有这一格，新建的记「暂不分配」（同归档导入没选线时）。只管新建，补空 / 更新不碰业务线
             ...(企业版() ? { bizLine: "暂不分配" } : {}),
-          },
+          }),
         });
         await 写外贸档案(tx, c.id, Object.fromEntries(外贸导入字段.filter((k) => r.值[k]).map((k) => [k, r.值[k]!])), false);
         await tx.importRow.create({ data: { batchId: 现场.batchId, customerId: c.id, kind: "create", writtenAt: c.updatedAt } });

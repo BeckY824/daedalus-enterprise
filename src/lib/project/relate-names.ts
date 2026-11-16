@@ -19,14 +19,9 @@ export const 姓名未核实 = "🔥姓名暂未核实";
 /** 新建项目没起名时的默认名：项目显名里当没名字 */
 export const 潜在项目名 = "潜在项目";
 
-/**
- * 短号：库里的 id 是 cuid（一长串），客户没有编号这一列、项目也没有，要显示「编号」时取 id 末 6 位、转大写，前面加 #。
- * 只为了看着能分开，不保证全局唯一（同一页上撞号的概率很小），也不能拿来查
- */
-export function 短号(id: string): string {
-  const t = (id ?? "").trim();
-  return t ? `#${t.slice(-6).toUpperCase()}` : "";
-}
+/** 短号挪到 lib/customer-no.ts（11-17 PR-1：列表、详情这些客户端组件要用，不把这里的依赖带进客户端包），这里照旧导出 */
+import { 短号 } from "@/lib/customer-no";
+export { 短号 };
 
 /** 项目显名：有简称用简称、没有用全称；全称是「潜在项目」当空；空白全去掉。项目表只有 name 一列（没有简称列），所以就是 name 去空白 */
 export function 项目显名(p: { name?: string | null; shortName?: string | null }): string {

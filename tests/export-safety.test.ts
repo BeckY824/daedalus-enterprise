@@ -29,5 +29,5 @@ it("导出使用的本地日期格式在上海凌晨和纽约跨日边界不取U
 it("单人通用及外贸导出表头与每行对齐，默认保留历史调用方负责人",async()=>{
  const {客户导出表}=await import("@/app/(app)/customers/export-table");const {BUSINESS_PRESETS}=await import("@/lib/business-config");
  const row={name:"甲",phone:"",school:null,major:null,grade:null,followStatus:"待跟进",decisionStatus:"了解中",expectedSignAt:null,signedAmount:0,salesOwnerName:"本人",channelOwnerName:"本人",remark:"尾列备注"};
- for(const b of [BUSINESS_PRESETS["通用销售"],BUSINESS_PRESETS["外贸出口"]]){const full=客户导出表([row],b),solo=客户导出表([row],b,true);expect(full.head).toContain("销售负责人");expect(solo.head).not.toContain("销售负责人");expect(solo.head).not.toContain("渠道负责人");expect(solo.body[0]).toHaveLength(solo.head.length);expect(solo.body[0].at(-1)).toBe("尾列备注");expect(full.body[0]).toHaveLength(full.head.length)}
+ for(const b of [BUSINESS_PRESETS["通用销售"],BUSINESS_PRESETS["外贸出口"]]){const full=客户导出表([row],b),solo=客户导出表([row],b,true);expect(full.head).toContain("销售负责人");expect(solo.head).not.toContain("销售负责人");expect(solo.head).not.toContain("渠道负责人");expect(solo.body[0]).toHaveLength(solo.head.length);expect(solo.body[0].at(-2)).toBe("尾列备注");expect(solo.head.at(-1)).toBe(`${b.customer}编号`);expect(full.body[0]).toHaveLength(full.head.length)}
 });

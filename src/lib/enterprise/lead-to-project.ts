@@ -19,6 +19,7 @@ import { 线索建项目 } from "../project/from-lead";
 import { 企业版只用项目 } from "./project-only";
 import { 重算客户状态 } from "./cust-status-auto-db";
 import { 公海客户要先领取, 公海客户先领取说 } from "./pool-customer-guard";
+import { 带客户编号 } from "@/lib/customer-no";
 
 export const 转项目记号键 = "entLeadToProject.v1";
 
@@ -63,7 +64,7 @@ export async function 老线索转项目(): Promise<转项目计数 | null> {
         }
         if (!customerId) {
           // 企业版客户业务线必填（M-必填-13）：老线索没有业务线，新建的记「暂不分配」（同归档导入没选线时）；挂已有客户的不动它的线
-          customerId = (await tx.customer.create({ data: { name: l.name, phone: l.phone?.trim() ?? "", salesOwnerId: 负责人, bizLine: "暂不分配" }, select: { id: true } })).id;
+          customerId = (await tx.customer.create({ data: await 带客户编号(tx, { name: l.name, phone: l.phone?.trim() ?? "", salesOwnerId: 负责人, bizLine: "暂不分配" }), select: { id: true } })).id;
           计.新客户++;
           联系人Id = null;
           if (l.contact?.trim()) {

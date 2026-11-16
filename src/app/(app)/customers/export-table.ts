@@ -9,6 +9,7 @@ import { fmtDate, fmtDateTime } from "@/lib/utils";
 import { 跟进方式名 } from "@/lib/follow-method";
 import type { 外贸档案 } from "@/lib/customer-extra";
 import { 拆主子 } from "@/lib/enterprise/channel-main-core";
+import { 客户编号文字 } from "@/lib/customer-no";
 
 /** 导出要用到的那几样。CustomerRow（列表行）和 客户行（导出取数）都满足 */
 export type 导出行 = {
@@ -31,6 +32,8 @@ export type 导出行 = {
   remark: string | null;
   /** 外贸档案（2026-10-05）。外贸模版导出时写成五列 */
   extra?: 外贸档案 | null;
+  /** 客户编号（迁移 146，11-17 PR-1）：导出写 NO.00012，回填前没有编号的留空 */
+  customerNo?: number | null;
   /** 这位的联系人上一共挂了几张图片（D-24；企业版联系人附件：名片原图等，10-28）。图片不进 Excel，只写张数 */
   附件数?: { 联系人?: number } | null;
 };
@@ -52,6 +55,13 @@ export function 拆导出渠道(全称: string | null | undefined): [string, str
   return [主, 子 === 主 ? "" : 子];
 }
 
+/**
+ * 客户编号一列（11-17 客户抬头 PR-1）：系统发的号，写在「备注」后面，表头跟叫法走（「客户编号」/「学员编号」）；最末一列是 export.worker.ts 补的「系统 ID」（库里的 id）。
+ * 两列都是系统给的、导回来不收：普通导入见 lib/import/plan.ts 自家导出只读列，数据接入见 enterprise-import/mapping.ts 规则猜列
+ */
+export const 编号列 = (b: Pick<BusinessConfig, "customer">) => `${b.customer}编号`;
+export const 系统ID列 = "系统 ID";
+
 export function 客户导出表(rows: 导出行[], b: BusinessConfig, 隐藏负责人 = false, 渠道两层 = false): { head: string[]; body: string[][] } {
   /*
     外贸模版（2026-10-05）：多国家 / WhatsApp / 微信 / 邮箱 / 来源五列，不写推荐人、渠道归属、渠道负责人、预计签约
@@ -60,12 +70,13 @@ export function 客户导出表(rows: 导出行[], b: BusinessConfig, 隐藏负�
   if (外贸精简(b)) {
     const 金额 = (r: 导出行) => 签约各币(r).filter((x) => x.合计 > 0).map((x) => `${x.币种} ${x.合计}`).join(" · ");
     return {
-      head: [`${b.customer}姓名`, "联系电话", b.fields.school, b.fields.major, b.fields.grade, "国家", "WhatsApp", "微信", "邮箱", "来源", "客户等级", "官网", "阿里国际站 ID", "跟进状态", "决策状态", `${签约叫(b)}金额`, ...(隐藏负责人 ? [] : ["销售负责人"]), "图片张数", "备注"],
+      head: [`${b.customer}姓名`, "联系电话", b.fields.school, b.fields.major, b.fields.grade, "国家", "WhatsApp", "微信", "邮箱", "来源", "客户等级", "官网", "阿里国际站 ID", "跟进状态", "决策状态", `${签约叫(b)}金额`, ...(隐藏负责人 ? [] : ["销售负责人"]), "图片张数", "备注", 编号列(b)],
       body: rows.map((r) => [
         r.name, r.phone, r.school ?? "", r.major ?? "", r.grade ?? "",
         r.extra?.country ?? "", r.extra?.whatsapp ?? "", r.extra?.wechat ?? "", r.extra?.email ?? "", r.extra?.source ?? "",
         r.extra?.level ?? "", r.extra?.website ?? "", r.extra?.alibabaId ?? "",
         statusLabel(b, r.followStatus), statusLabel(b, r.decisionStatus), 金额(r), ...(隐藏负责人 ? [] : [r.salesOwnerName]), 附件个数说法(r.附件数), r.remark ?? "",
+        客户编号文字(r.customerNo) ?? "",
       ]),
     };
   }
@@ -74,7 +85,7 @@ export function 客户导出表(rows: 导出行[], b: BusinessConfig, 隐藏负�
     不会变成「某某：…」并进别处（2026-10-04 J-073）
   */
   // 姓名那一列跟叫法走（L-057：叫「学员」的库导出来还写「客户姓名」）；导入的别名认 `${b.customer}姓名`，导回来照样认得
-  const head = [`${b.customer}姓名`, "联系电话", b.fields.school, b.fields.major, b.fields.grade, "推荐人", "渠道归属", ...(渠道两层 ? ["主渠道", "子渠道"] : []), "跟进状态", "决策状态", "预计签约", "签约金额", ...(隐藏负责人 ? [] : ["销售负责人", "渠道负责人"]), "图片张数", "备注"];
+  const head = [`${b.customer}姓名`, "联系电话", b.fields.school, b.fields.major, b.fields.grade, "推荐人", "渠道归属", ...(渠道两层 ? ["主渠道", "子渠道"] : []), "跟进状态", "决策状态", "预计签约", "签约金额", ...(隐藏负责人 ? [] : ["销售负责人", "渠道负责人"]), "图片张数", "备注", 编号列(b)];
   const body = rows.map((r) => [
     r.name, r.phone, r.school ?? "", r.major ?? "", r.grade ?? "",
     r.referrerName ?? "", r.attributionName ?? "",
@@ -87,6 +98,7 @@ export function 客户导出表(rows: 导出行[], b: BusinessConfig, 隐藏负�
     // 图片不进 Excel（D-24），写明联系人上挂了几张；导回来这列不收（lib/import/plan.ts 自家导出只读列）
     附件个数说法(r.附件数),
     r.remark ?? "",
+    客户编号文字(r.customerNo) ?? "",
   ]);
   return { head, body };
 }

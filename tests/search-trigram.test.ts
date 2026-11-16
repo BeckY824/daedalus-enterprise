@@ -10,7 +10,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { defaultClient as db, prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 客户关键词SQL, 客户号码SQL, 客户名索引式, 包含模式, 设三字索引, 三字可比, 名键必含字, 客户编号 } from "@/lib/search-keyword";
+import { 客户关键词SQL, 客户号码SQL, 客户名索引式, 包含模式, 设三字索引, 三字可比, 名键必含字 } from "@/lib/search-keyword";
+import { 看成客户编号 as 客户编号 } from "@/lib/customer-no";
 import { 号键SQL } from "@/lib/phone-dedupe";
 import { 分组数SQL, 取一段SQL } from "@/lib/enterprise/unified-pool-sql";
 import { 名键 } from "@/lib/enterprise-import/clean";
@@ -37,6 +38,8 @@ beforeAll(async () => {
         remark: i % 3 === 0 ? `备注里有 1390000 和 测试科技 ${i}` : null,
         // 简称（11-17 PR-0）：不在三字索引里，走迁移 145 的部分索引；两个字、三个字以上、带大小写的都有
         shortName: i % 10 === 2 ? `恒信达${i}` : i % 10 === 6 ? `恒信${i}` : i === 13 ? "HengXin" : null,
+        // 客户编号（11-17 PR-1）：前 30 位有号（和下标错开，免得「编号 = 名字里的数字」碰巧对上），后 10 位还没回填
+        customerNo: i < 30 ? 100 + i : null,
         salesOwnerId: owner,
       },
     });
@@ -87,6 +90,8 @@ const 关键词 = [
   "acme", "ACME", "Trading", "ＡＢＣ", "abc", "\"测试\"", "引号\"测", "[符]*?", "*?号", "没有这个人啊",
   // 简称：两个字（GLOB）、三个字以上（三字索引 + 部分索引）、带大小写、简称和名字都对不上
   "恒信", "恒信达", "信达1", "hengxin", "恒信达没有",
+  // 客户编号：NO. 写法、纯数字、全角、没发过的号
+  "NO.00112", "no 112", "112", "ＮＯ．００１１５", "NO.00999", "NO.00100",
 ];
 
 describe("三字索引和整表 GLOB 命中同一批客户", () => {
@@ -142,6 +147,33 @@ describe("三字索引和整表 GLOB 命中同一批客户", () => {
     expect(计划).not.toMatch(/SCAN c\b/);
   });
 
+  it("客户编号（11-17 PR-1）：NO. 写法、纯数字、全角都精确比编号；两条路一样；只中那一位、号码片段照旧", async () => {
+    const 号 = async (n: number) => (await db.customer.findFirst({ where: { customerNo: n }, select: { id: true } }))?.id;
+    for (const 弹窗 of [false, true]) {
+      for (const k of ["NO.00112", "no.112", "No 00112", "ＮＯ．００１１２"]) {
+        const r = await 两边(k, 弹窗);
+        expect({ k, 弹窗, ids: r.新 }).toEqual({ k, 弹窗, ids: [await 号(112)] });
+      }
+    }
+    // 纯数字：编号精确比和号码 / 名字片段并行（OR），编号那一位在里面，其余照旧是片段命中
+    const 纯 = await 两边("112");
+    expect(纯.新).toContain(await 号(112));
+    // 没发过的号谁也不中；删了的客户（fts-05 = 105）不出
+    expect((await 两边("NO.00999")).新).toEqual([]);
+    expect((await 两边("NO.00105")).新).toEqual([]);
+  });
+
+  it("查询计划：纯数字走三字索引时，编号那段按唯一索引精确取（迁移 146）；带 NO. 的有大小写、照旧走 GLOB", async () => {
+    设三字索引(true);
+    expect((await 客户关键词SQL("NO.00112"))!.走索引).toBeFalsy();
+    const w = (await 客户关键词SQL("00112"))!;
+    设三字索引(undefined);
+    expect(w.走索引).toBe(true);
+    const 计划 = (await prisma.$queryRawUnsafe<{ detail: string }[]>(`EXPLAIN QUERY PLAN SELECT c.id FROM "Customer" c WHERE ${w.sql} AND +c."deletedAt" IS NULL`, ...w.values)).map((r) => r.detail).join(" | ");
+    expect(计划).toContain("Customer_customerNo_key");
+    expect(计划).not.toMatch(/SCAN c\b/);
+  });
+
   it("手机号筛选（客户号码SQL）：走索引和原来一样", async () => {
     for (const k of ["0000", "1111", "138 0000", "（137）0000", "+86 136", "7777", "900999", "1111 0004", "abc", "12"]) {
       设三字索引(false); const a = await 客户号码SQL(k);
@@ -164,18 +196,23 @@ describe("三字索引和整表 GLOB 命中同一批客户", () => {
 });
 
 describe("公海搜索：从名字对上的名单出发和整表 GLOB 一样", () => {
-  it.each(["华东测试", "示例教育", "测试", "acme", "改过名", "没有这个人啊", "恒信", "恒信达", "hengxin"])("「%s」", async (raw) => {
+  it.each(["华东测试", "示例教育", "测试", "acme", "改过名", "没有这个人啊", "恒信", "恒信达", "hengxin", "NO.00115", "115", "NO.00999"])("「%s」", async (raw) => {
     const 词 = raw.toLowerCase();
     设三字索引(true);
     const 式 = await 客户名索引式(词);
     设三字索引(undefined);
     expect(!!式).toBe(三字可比(词));
-    const 底筛 = { 商机: ["fts-00"], 订单: ["fts-03"], 排掉: ["fts-06"], 词: { 名: 包含模式(词), 项目对上: ["fts-09", "fts-12"] } };
+    const 底筛 = { 商机: ["fts-00"], 订单: ["fts-03"], 排掉: ["fts-06"], 词: { 名: 包含模式(词), 编号: 客户编号(raw), 项目对上: ["fts-09", "fts-12"] } };
     const 跑 = async (筛: typeof 底筛 & { 词: { 索引式?: string | null } }) => {
       const g = 分组数SQL(筛), q = 取一段SQL(筛, { 排序: "pooled", 跳过: 0, 取几: 50 });
       return [await db.$queryRawUnsafe(g.sql, ...g.值), await db.$queryRawUnsafe(q.sql, ...q.值)].map((r) => JSON.stringify(r, (_k, v) => (typeof v === "bigint" ? Number(v) : v)));
     };
-    expect(await 跑({ ...底筛, 词: { ...底筛.词, 索引式: 式 } })).toEqual(await 跑(底筛));
+    const 走索引 = await 跑({ ...底筛, 词: { ...底筛.词, 索引式: 式 } });
+    expect(走索引).toEqual(await 跑(底筛));
+    const 一段 = 走索引[1];
+    // 编号精确比：NO.00115 只中 fts-15（名字、号码里都没有 115）；不是空对空
+    if (raw === "NO.00115") expect(一段).toContain("fts-15");
+    if (raw === "NO.00999") expect(一段).not.toContain("fts-15");
   });
 });
 
@@ -233,7 +270,7 @@ describe("客户名查重的预筛（名键必含字）", () => {
   });
 });
 
-describe("客户编号的写法（11-17 PR-0 挂点，编号列 PR-1 接）", () => {
+describe("客户编号的写法（看成客户编号，11-17 PR-1）", () => {
   it("NO. 开头、带空格、全角、纯数字都认成编号；0、超长、夹字母的不认", () => {
     for (const [k, n] of [["NO.00123", 123], ["no.123", 123], ["No 00007", 7], ["NO00001", 1], ["ＮＯ．００１２", 12], ["00123", 123], ["123", 123], ["１２３", 123], [" NO.42 ", 42]] as const) expect({ k, n: 客户编号(k) }).toEqual({ k, n });
     for (const k of ["NO.", "0", "00000", "1234567890", "NO.12a", "A123", "138 0000", "NO-123", "恒信"]) expect({ k, n: 客户编号(k) }).toEqual({ k, n: null });

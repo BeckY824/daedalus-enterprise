@@ -28,6 +28,7 @@ import { 来源名, 实体名, 实体顺序, type 来源, type 实体 } from "./
 import { 建回项目, 是项目, 项目快照, 项目挂件 } from "./project-target";
 import { 客户状态自动, 跟着项目重算 } from "../enterprise/cust-status-auto-db";
 import { 卡点脱离沟通 } from "../project/blocker";
+import { 带客户编号 } from "@/lib/customer-no";
 
 type Tx = Prisma.TransactionClient;
 type 引用行 = Prisma.EntExternalRefGetPayload<object>;
@@ -202,8 +203,10 @@ async function 删空档案(tx: Tx, customerId: string): Promise<void> {
 /** 快照照原 id 建回去 */
 async function 建回(tx: Tx, e: 实体, data: Record<string, unknown>): Promise<void> {
   if (e === "customer") {
-    const { extra, creator, pool, ...主 } = data;
-    await tx.customer.create({ data: 主 as Prisma.CustomerUncheckedCreateInput });
+    const { extra, creator, pool, customerNo: 原号, ...主 } = data;
+    // 客户编号（11-17 PR-1）：快照里带着原号就原样建回（号不改、不复用，原号不会被别人占）；
+    // 编号上线前拍的老快照没有这一格、或拍时还没回填（空），按新建取一个号
+    await tx.customer.create({ data: await 带客户编号(tx, 主 as Prisma.CustomerUncheckedCreateInput, 原号) });
     // 子表的号跟着客户删掉了（Cascade），照主表的号重记（快照里不存子表，老快照也一样能建回）
     await 记客户号(tx, String(主.id), 主.phone);
     if (extra) await tx.customerExtra.create({ data: extra as Prisma.CustomerExtraUncheckedCreateInput });

@@ -60,7 +60,9 @@ it("W025：真实Worker导出超上限全量ZIP，清单/分片/稳定编号完�
     const xlsx = unzipSync(files[part.文件]);
     const xml = strFromU8(xlsx["xl/worksheets/sheet1.xml"]);
     expect((xml.match(/<row\b/g)?.length ?? 0)-1).toBe(part.条数);
-    expect(xml).toContain("客户编号");
+    // 11-17 PR-1：cuid 那列改叫「系统 ID」；客户表另有真正的「客户编号」（NO. + 5 位）一列
+    expect(xml).toContain("系统 ID");
+    if (part.类别 === "客户") expect(xml).toContain("客户编号");
     expect(xml).not.toContain("<f>");
     counts[part.类别] += part.条数;
   }

@@ -42,6 +42,7 @@ import { 线索附件转给联系人 } from "@/lib/attachments";
 import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
+import { 带客户编号 } from "@/lib/customer-no";
 
 /**
  * 企业版「线索分配和配额」开着时，负责人只能经「分配」换（F2，10-25 实测）：编辑、新建里随手改负责人
@@ -294,7 +295,7 @@ export async function convertLead(id: string, 跟进?: 向导跟进): Promise<
     // 线索名 → 公司、联系人 → 姓名、行业和来源一起带过去（审查 M13），规则在 lib/lead-convert.ts
     const 档案 = 线索转档案(lead, b.fields, b.template === "trade");
     const customer = await tx.customer.create({
-      data: {
+      data: await 带客户编号(tx, {
         name: 档案.name,
         phone,
         school: 档案.school,
@@ -317,7 +318,7 @@ export async function convertLead(id: string, 跟进?: 向导跟进): Promise<
               },
             }
           : undefined,
-      },
+      }),
       include: { contacts: { select: { id: true } } },
     });
     // 企业版联系人附件：线索上的名片原图跟到新建的联系人上（线索没写联系人就只留在线索上，导出按客户照样数得到）

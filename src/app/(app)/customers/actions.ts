@@ -75,6 +75,7 @@ import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
 import { 交接通知, 分给你通知, 改负责人通知, 同事待分配随客户通知 } from "@/lib/enterprise/notice-sources";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 import { 是占位号, 占位号提示 } from "@/lib/placeholder-phone";
+import { 带客户编号 } from "@/lib/customer-no";
 
 
 /** 状态不在取值表里就给那句报错，合法给 null。建客户、批量改、撤销、行内改四处共用，报错文案一字不改 */
@@ -698,7 +699,8 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
         const ids = await 全公司查号(tx, 企号.类型, 企号.值, 企号.键);
         if (ids.length) return { 企撞: ids } as const;
       }
-      const created = await tx.customer.create({ data });
+      // 客户编号（11-17 PR-1）：同一个事务里取号，建不成号跟着回滚
+      const created = await tx.customer.create({ data: await 带客户编号(tx, data) });
       await 写外贸档案(tx, created.id, { ...档案.data, ...(企号?.类型 === "邮箱" ? { email: 企号.值 } : 企号?.类型 === "微信" ? { wechat: 企号.值 } : {}) }, false);
       if (企号) await 记号码(tx, { 刚建的: created.id }, null, 企号);
       if (认得(接着)) await 接着(tx, created.id);

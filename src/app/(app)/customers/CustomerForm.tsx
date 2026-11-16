@@ -46,6 +46,8 @@ export type CustomerRow = {
   custStatus?: string | null;
   /** 企业版客户改版（定稿 P5，迁移 072）：简称、地址四格、分配方式。老调用方没给就当没填 */
   shortName?: string | null;
+  /** 客户编号（迁移 146，11-17 PR-1）：系统发的号，只读、表单不交；回填前为空（页面显示短号） */
+  customerNo?: number | null;
   addrCountry?: string | null;
   addrProvince?: string | null;
   addrCity?: string | null;

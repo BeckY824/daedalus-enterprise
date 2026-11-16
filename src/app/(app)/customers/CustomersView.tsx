@@ -75,6 +75,7 @@ import { 换客户页看法, 市场视图名 } from "@/lib/customers-view-pref";
 import NewMenuButton from "@/components/NewMenuButton";
 import { 取客户页表单料, type 客户页表单料 } from "./form-data-action";
 import { 看板工具位 } from "./board-slot";
+import { 客户编号显示 } from "@/lib/customer-no";
 
 /** 「新增客户」弹窗（10-31 P5，整套建档向导）：点了才要，单拆一包，不压客户列表首屏 JS（速度闸门 850 KB） */
 // 客户看板（U-客户-06）只在切到「看板」时用，连同分页条单独一块，别压在客户列表首屏（速度闸门）
@@ -919,6 +920,14 @@ export default function CustomersView({
         : <RowLink href={`/customers/${r.id}`} className="link-strong">{v}</RowLink>,
     },
     /*
+      客户编号（11-17 客户抬头 PR-1）：以后列表上显示的抬头可以重名，唯一性只靠编号，所以企业版常驻一列、紧跟客户名，不进「列」的可选项。
+      104 宽：过了 99999 的「NO.123456」16px 字也一行放全（三态开着也不收）；存量回填前没有编号的写短号（#+ id 末 6 位，lib/customer-no.ts 客户编号显示）
+    */
+    ...(企业 ? [{
+      title: "编号", 列名: "客户编号", key: "customerNo", width: 104, 常驻: true,
+      render: (_: unknown, r: CustomerRow) => <span className="cust-no">{客户编号显示(r)}</span>,
+    }] satisfies 列<CustomerRow>[] : []),
+    /*
       「当前节点」「项目数」（11-12 客户详情合并第 3 批，定稿 UI 表格）：只算我能看的项目。
       当前节点 = 点进这位客户默认停的那个项目页签的节点（lib/project/customer-list-projects.ts）；没有我能看的项目写「—」，项目数写 0。
       一行放不下省略号，悬停看全（全站 TruncTip）
@@ -970,8 +979,9 @@ export default function CustomersView({
       ? { title: "客户状态", key: "custStatus", dataIndex: "custStatus", width: 宽(110, 76), render: (v: string | null) => (有值(v) ? <Tag color={客户状态色of(客户状态色, v)} style={{ margin: 0 }}>{v}</Tag> : 空) }
       : { title: "跟进状态", key: "followStatus", dataIndex: "followStatus", width: 110, render: (v: string) => <FollowStatusTag status={v} /> },
     // 外贸不摆预计签约（2026-10-05 外贸客户：「没有意义」——采购时间点看商机的询盘时间）
+    // 三态开着默认收进「列」（11-17 客户抬头 PR-1）：给常驻的「编号」腾位置，1280 宽照旧不出表格内部横滚；要看的人在「列」里勾回来
     ...(外贸 ? [] : [{
-      title: "预计签约", key: "expectedSignAt", dataIndex: "expectedSignAt", width: 宽(116, 100),
+      title: "预计签约", key: "expectedSignAt", dataIndex: "expectedSignAt", width: 宽(116, 100), ...(三态挤 ? { 默认: false } : {}),
       render: (v: string | null) => <span className="muted nowrap">{有值(v) ? fmtDate(v) : 空值符}</span>,
     }]),
     /*

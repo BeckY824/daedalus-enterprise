@@ -18,6 +18,7 @@
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 看全部, 现在的公海回避 } from "@/lib/team-scope";
 import { 包含模式, 客户名索引式 } from "@/lib/search-keyword";
+import { 看成客户编号 } from "@/lib/customer-no";
 import { 分组数SQL, 取一段SQL, 键毫秒, 按快捷分组数SQL, 非线索分组数SQL, 排掉分组数SQL, 合分组, 减分组, type 客户行筛 } from "./unified-pool-sql";
 import { 缓存分组数 } from "./pool-count-cache";
 import { 按主键取没删的 } from "./soft-delete-core";
@@ -101,8 +102,13 @@ function 客户项目格(名下: readonly 客户的项目[], 字典: 字典, 没
 }
 
 /** 项目行里要「我看不看得到这位客户」才定得下的两格：客户不露就不写名字，来源也只认项目自己选的 */
-function 项目客户格(露: boolean, p: { channelId: string | null; customer: { name: string; shortName: string | null; channelId: string | null } }) {
-  return { 客户名: 露 ? p.customer.name : null, ...(露 && p.customer.shortName ? { 客户简称: p.customer.shortName } : {}), 来源id: p.channelId ?? (露 ? p.customer.channelId : null) };
+function 项目客户格(露: boolean, p: { channelId: string | null; customer: { name: string; shortName: string | null; customerNo: number | null; channelId: string | null } }) {
+  return {
+    客户名: 露 ? p.customer.name : null,
+    ...(露 && p.customer.shortName ? { 客户简称: p.customer.shortName } : {}),
+    ...(露 && p.customer.customerNo ? { 客户编号: p.customer.customerNo } : {}),
+    来源id: p.channelId ?? (露 ? p.customer.channelId : null),
+  };
 }
 
 /**
@@ -119,7 +125,7 @@ type 全取 = { 客户的项目: boolean; 客户可见: boolean;
   /** 渠道名单（11-11）：只取挂着这些公海项目的客户 / 这些公海项目（名单的条件，见 读公海页），名单之外的公海行一行不取 */
   只要?: Prisma.ProjectWhereInput };
 
-const 客户要的 = { id: true, name: true, shortName: true, salesOwnerId: true, lastFollowAt: true, createdAt: true, poolInvalidAt: true, poolReturns: true, channelId: true } satisfies Prisma.CustomerSelect;
+const 客户要的 = { id: true, name: true, shortName: true, customerNo: true, salesOwnerId: true, lastFollowAt: true, createdAt: true, poolInvalidAt: true, poolReturns: true, channelId: true } satisfies Prisma.CustomerSelect;
 type 客户片 = Prisma.CustomerGetPayload<{ select: typeof 客户要的 }>;
 type 池片 = Prisma.CustomerPoolGetPayload<{ select: typeof 池要的 }>;
 
@@ -136,6 +142,7 @@ function 拼客户行(me: { id: string }, c: 客户片, pool: 池片, 看得到�
     id: `c:${c.id}`, 种: "客户", customerId: c.id,
     客户名: c.name,
     ...(c.shortName ? { 客户简称: c.shortName } : {}),
+    ...(c.customerNo ? { 客户编号: c.customerNo } : {}),
     ...客户项目格(看得到的项目, 字典, 没项目),
     属性: 客户公海属性(全部项目),
     最后跟进: c.lastFollowAt?.toISOString() ?? null,
@@ -175,7 +182,7 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
       orderBy: { pooledAt: "desc" },
       select: {
         id: true, name: true, phase: true, node: true, result: true, pooledAt: true, ownerId: true, customerId: true, createdAt: true, channelId: true,
-        customer: { select: { name: true, shortName: true, lastFollowAt: true, poolReturns: true, channelId: true } },
+        customer: { select: { name: true, shortName: true, customerNo: true, lastFollowAt: true, poolReturns: true, channelId: true } },
       },
     }),
     生效组织规则(),
@@ -392,7 +399,7 @@ async function 读公海页_库里分页(me: { id: string; name: string; role?: 
     if (属 === "商机池") 商机.push(id);
     else if (属 === "订单池") 订单.push(id);
   }
-  const 筛: 客户行筛 = { 商机, 订单, 排掉, ...(词 ? { 词: { 名: 包含模式(词), 项目对上: 项目名对上, 索引式: await 客户名索引式(词) } } : {}), ...(sp.来源 ? { 来源: sp.来源 } : {}), ...(sp.号码不全 === "1" ? { 号码不全: true } : {}) };
+  const 筛: 客户行筛 = { 商机, 订单, 排掉, ...(词 ? { 词: { 名: 包含模式(词), 项目对上: 项目名对上, 索引式: await 客户名索引式(词), 编号: 看成客户编号(词) } } : {}), ...(sp.来源 ? { 来源: sp.来源 } : {}), ...(sp.号码不全 === "1" ? { 号码不全: true } : {}) };
   const 组 = (await (词 ? 现数分组(筛) : 拆开数分组(筛))).map((r) => ({ 属性: r.属性 as 公海属性, 快捷: (r.快捷 as 快捷 | null) ?? null, 不全: Number(r.不全 ?? 0) === 1, n: Number(r.n) }));
   const 属性 = 规整公海属性(sp.属性);
   const 快捷 = 是快捷(sp.快捷) ? sp.快捷 : null;
