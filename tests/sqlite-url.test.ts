@@ -6,15 +6,22 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { 单连接 } from "@/lib/sqlite-url";
+import { 单连接, 带等锁 } from "@/lib/sqlite-url";
 
 describe("单连接", () => {
-  it("file: 连接串加上 connection_limit=1；已经写了的原样；不是 file: 的不动", () => {
-    expect(单连接("file:/data/crm.db")).toBe("file:/data/crm.db?connection_limit=1");
+  it("file: 连接串加上 connection_limit=1 和 socket_timeout=15（11-16 多进程等锁）；已经写了的原样；不是 file: 的不动", () => {
+    expect(单连接("file:/data/crm.db")).toBe("file:/data/crm.db?socket_timeout=15&connection_limit=1");
     expect(单连接("file:/a b/张 三/crm.db?socket_timeout=10")).toBe("file:/a b/张 三/crm.db?socket_timeout=10&connection_limit=1");
-    expect(单连接("file:x.db?connection_limit=3")).toBe("file:x.db?connection_limit=3");
+    expect(单连接("file:x.db?connection_limit=3")).toBe("file:x.db?connection_limit=3&socket_timeout=15");
     expect(单连接(undefined)).toBeUndefined();
     expect(单连接("postgresql://x")).toBe("postgresql://x");
+  });
+
+  it("带等锁：没写 socket_timeout 的加上 15 秒，写了的原样，不是 file: 的不动", () => {
+    expect(带等锁("file:/d/crm.db")).toBe("file:/d/crm.db?socket_timeout=15");
+    expect(带等锁("file:/d/crm.db?connection_limit=1")).toBe("file:/d/crm.db?connection_limit=1&socket_timeout=15");
+    expect(带等锁("file:/d/crm.db?socket_timeout=3")).toBe("file:/d/crm.db?socket_timeout=3");
+    expect(带等锁("postgresql://x")).toBe("postgresql://x");
   });
 
   it("业务库、工作区库、控制面库三个客户端都走 单连接", () => {

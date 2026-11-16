@@ -5,8 +5,8 @@ import { resolveCurrentTenant } from "./tenant/resolve";
 import { TrialExpiredError } from "./tenant/guard";
 import { 加上限定 } from "./team-scope";
 import { 企业版 } from "./enterprise/switch";
-import { 单连接 } from "./sqlite-url";
-import { 读通道, 读通道开着, 读方法, 取SQL, 只读SQL, 只读查询, 关读通道 } from "./read-pool";
+import { 单连接, 等锁秒 } from "./sqlite-url";
+import { 读通道, 读通道开着, 读方法, 取SQL, 只读SQL, 只读查询, 关读通道, 登记主连接 } from "./read-pool";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -40,7 +40,8 @@ if (!globalForPrisma.pragmasApplied) {
       // 这几条 PRAGMA 都会返回结果行，必须用 queryRaw；
       // executeRaw 在 SQLite 下遇到返回值会直接报错
       await defaultClient.$queryRawUnsafe("PRAGMA journal_mode = WAL");
-      await defaultClient.$queryRawUnsafe("PRAGMA busy_timeout = 5000");
+      // 和连接串里的 socket_timeout（lib/sqlite-url 等锁秒）一致：这里写小了会把写连接又压回去
+      await defaultClient.$queryRawUnsafe(`PRAGMA busy_timeout = ${等锁秒 * 1000}`);
       await defaultClient.$queryRawUnsafe("PRAGMA synchronous = NORMAL");
     } catch (e) {
       console.error("设置 SQLite pragma 失败：", e);
@@ -49,6 +50,8 @@ if (!globalForPrisma.pragmasApplied) {
 }
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = defaultClient;
+// 企业版范围在只读通道上算时认它（read-pool 读通道不限定）：限定钩子拿到的 db 是它，才换成同一个库的只读连接
+登记主连接(defaultClient);
 
 /**
  * 团队版业务员只看自己的（lib/team-scope.ts）：读、改、删都加一句 where。桌面端本地模式生效；

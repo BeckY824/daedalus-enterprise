@@ -1,7 +1,7 @@
 /**
  * 系统设置：键值读写与缓存、敏感值加解密、业务配置回退、AI 配置两级读取。
  */
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { getSetting, setSetting, invalidateSettingsCache, encryptSecret, decryptSecret, maskSecret } from "@/lib/settings";
 import { mergeBusiness, DEFAULT_BUSINESS, BUSINESS_PRESETS, RELABELABLE_STATUSES, statusLabel } from "@/lib/business-config";
@@ -26,13 +26,15 @@ describe("键值读写与缓存", () => {
     expect(await getSetting("k")).toEqual({ a: 1, b: ["x"] });
   });
 
-  it("读取走缓存：绕过 setSetting 直接改库，不失效就读到旧值，失效后读到新值", async () => {
+  it("读取走缓存：绕过 setSetting 直接改库，失效后读到新值；不失效也不会永远是旧值（库指纹变了后台重读，11-16）", async () => {
     await setSetting("k", 1);
     expect(await getSetting("k")).toBe(1);
     await prisma.setting.update({ where: { key: "k" }, data: { value: "2" } });
-    expect(await getSetting("k"), "缓存命中，仍是旧值").toBe(1);
     invalidateSettingsCache();
     expect(await getSetting("k")).toBe(2);
+    // 别的进程 / 脚本直接改了库：不调 invalidate 也认得出（指纹或兜底时限），见 tests/settings-cache-fingerprint.test.ts
+    await prisma.setting.update({ where: { key: "k" }, data: { value: "3" } });
+    await vi.waitFor(async () => expect(await getSetting("k")).toBe(3), { timeout: 5_000, interval: 100 });
   });
 
   it("库里存了非法 JSON 时按没配处理，不抛错", async () => {

@@ -1,6 +1,7 @@
 import { PrismaClient } from "@/generated/prisma";
 import { 加上限定 } from "./team-scope";
 import { 企业版 } from "./enterprise/switch";
+import { 带等锁 } from "./sqlite-url";
 
 /**
  * 企业版的只读通道（2026-10-24）：查询另开 4 个连接，写入照旧走那 1 个。
@@ -125,11 +126,16 @@ export function 守门(db: PrismaClient): 只读客户端 {
   }) as unknown as 只读客户端;
 }
 
-const g = globalThis as unknown as { __读通道?: { 原: PrismaClient; 门: 只读客户端 } };
+const g = globalThis as unknown as { __读通道?: { 原: PrismaClient; 门: 只读客户端; 裸门?: PrismaClient }; __主连接?: WeakSet<object> };
+/** 和只读通道连同一个库（DATABASE_URL）的主连接：lib/prisma 建好 defaultClient 后登记 */
+const 主连接们 = (g.__主连接 ??= new WeakSet());
+export function 登记主连接(c: PrismaClient): void {
+  主连接们.add(c);
+}
 
-/** 连接串换成 4 个连接（原来写了 connection_limit 的也换：这条通道就是要多开） */
+/** 连接串换成 4 个连接（原来写了 connection_limit 的也换：这条通道就是要多开）；同样带上 socket_timeout（lib/sqlite-url 带等锁） */
 export function 读连接串(url: string): string {
-  const 去掉 = url.replace(/([?&])connection_limit=\d+&?/, "$1").replace(/[?&]$/, "");
+  const 去掉 = 带等锁(url.replace(/([?&])connection_limit=\d+&?/, "$1").replace(/[?&]$/, ""));
   return `${去掉}${去掉.includes("?") ? "&" : "?"}connection_limit=${读连接数of()}`;
 }
 
@@ -146,6 +152,18 @@ export function 读通道(): 只读客户端 | null {
   return g.__读通道.门;
 }
 
+/**
+ * 只读通道底下那个**不带限定**的客户端（照样套着守门，只能查）。给限定钩子里算企业版范围用（visibility.ts）：
+ * 带限定的那个每条查询又会进钩子、等自己那份范围；主连接在交互式事务里时现算又要等事务放连接。
+ * 关着、或者 db 不是登记过的主连接回 null（调用方照旧用 db）
+ */
+export function 读通道不限定(db: PrismaClient): PrismaClient | null {
+  if (!读通道()) return null;
+  const x = g.__读通道!;
+  // 只替登记过的主连接（和只读通道本身）换：别的客户端（测试拷出来的库、脚本自己建的）连的不一定是同一个库
+  if (db !== x.原 && !主连接们.has(db)) return null;
+  return (x.裸门 ??= 守门(x.原) as unknown as PrismaClient);
+}
 /** 关掉只读通道的连接（$disconnect 时一起关；测试换开关时也用） */
 export async function 关读通道(): Promise<void> {
   const x = g.__读通道;
