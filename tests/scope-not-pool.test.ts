@@ -33,6 +33,7 @@ import { prisma as db, defaultClient as raw } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
+import { 等日志齐 } from "./query-log";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 看得到的客户数, 看得到的跟进数, 看得到的下拉值 } from "@/lib/scope-sql";
 import { 测试里开公海分组缓存 } from "@/lib/enterprise/pool-count-cache";
@@ -177,11 +178,15 @@ async function 对拍(谁: string): Promise<boolean> {
       for (const 序 of [[{ createdAt: "desc" as const }, { id: "desc" as const }], [{ createdAt: "asc" as const }, { id: "asc" as const }]]) {
         const 在公海支 = (q: string) => (q.match(/NOT \(`j\d+`\.`customerId` IS NULL\)/g) ?? []).length;
         const 末句 = () => 临时.句.filter((q) => q.startsWith("SELECT") && q.includes("FROM `main`.`Customer`")).at(-1) ?? "";
+        // query 日志可能比结果晚到（tests/query-log.ts）：清之前、取之前都等齐
+        await 等日志齐(raw, 临时.句);
         临时.句.length = 0;
         const 全旧 = (await db.customer.findMany({ where: 旧w, orderBy: 序, select: { id: true } })).map((r) => r.id);
+        await 等日志齐(raw, 临时.句);
         const 旧句 = 末句();
         临时.句.length = 0;
         const 全新 = (await db.customer.findMany({ where: 新w, orderBy: 序, select: { id: true } })).map((r) => r.id);
+        await 等日志齐(raw, 临时.句);
         // 化简真发生了：新句子里「在公海」的支比改前少（按线只读那段自己带的公海条件不动，所以比个数）
         if (在公海支(末句()) < 在公海支(旧句)) 化简了 = true;
         expect({ 谁, sp, 全: 全新 }).toEqual({ 谁, sp, 全: 全旧 });

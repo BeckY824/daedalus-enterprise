@@ -13,6 +13,16 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {}
 vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
+/**
+ * 一次领 / 分 1100 位是一整个交互式事务（查完再写，限时 15 秒），每位十来句查询：空闲时 2 秒多，
+ * pre-push 全套 + tsc 一起跑、机器满载时过 15 秒，事务被 Prisma 收掉（P2028「Transaction not found / already closed」），
+ * 查完再写 重来三轮都超时，报「系统正忙」（11-16）。这里要钉的是过 999 个参数不报 P2029、行数对，不是快慢：
+ * 事务限时给足。别的错（P2029、整批超上限、数不对）照样红
+ */
+vi.mock("@/lib/check-then-write", async (原) => {
+  const m = await 原<typeof import("@/lib/check-then-write")>();
+  return { ...m, 查完再写: ((fn, 选项 = {}) => m.查完再写(fn, { ...选项, timeout: Math.max(选项.timeout ?? 0, 90_000) })) as typeof m.查完再写 };
+});
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";

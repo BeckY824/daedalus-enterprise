@@ -42,6 +42,7 @@ import { 离职理由们 } from "@/lib/enterprise/unified-pool";
 import { 公海全部跟进数SQL, 公海全部跟进数SQL_改前 } from "@/lib/scope-sql";
 import { 客户行字段 } from "@/app/(app)/customers/query";
 import { 看全部 } from "@/lib/team-scope";
+import { 等日志齐 } from "./query-log";
 
 const 系管 = "r4_sys", 总管 = "r4_dir", 经理 = "r4_mgr", 小王 = "r4_wang", 回避人 = "r4_back", 市员 = "r4_mkt1", 市管 = "r4_mkt", 占位 = "r4_hold";
 const 谁们 = [系管, 总管, 经理, 小王, 回避人, 市员, 市管];
@@ -116,8 +117,11 @@ async function 计划(sql: string, params: string): Promise<string> {
 
 /** 跑一次，截下按 id 名单查客户表的那句（顶层；限定层自己算范围的句子不算），EXPLAIN 它 */
 async function 顶层计划(fn: () => Promise<unknown>): Promise<{ sql: string; 计划: string }> {
+  // query 日志可能比结果晚到（见 tests/query-log.ts）：清之前先等前面的到齐，不然上一段晚到的会混进这一段；跑完再等齐了才找
+  await 等日志齐(raw, 临时.句);
   临时.句.length = 0;
   await fn();
+  await 等日志齐(raw, 临时.句);
   const 主 = 临时.句.filter((q) => q.query.startsWith("SELECT") && q.query.includes("FROM `main`.`Customer` ") && q.query.includes("`main`.`Customer`.`id` IN (")).at(0);
   expect(主, "没截到查客户表的句子").toBeTruthy();
   return { sql: 主!.query, 计划: await 计划(主!.query, 主!.params) };

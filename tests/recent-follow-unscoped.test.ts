@@ -30,6 +30,7 @@ vi.mock("@/lib/prisma", async () => {
 
 import { prisma as db, defaultClient as raw } from "@/lib/prisma";
 import { PrismaClient } from "@/generated/prisma";
+import { 等日志齐 } from "./query-log";
 import { 加上限定 } from "@/lib/team-scope";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
@@ -204,8 +205,11 @@ describe("计划：新那句走 (lastFollowAt, createdAt, id)；名下不到 50 
   it("小王（名下不到 50 位）：「我的」那句和名下那句都不走新索引，照旧走负责人打头的", async () => {
     await 开规则(true);
     expect(await raw.customer.count({ where: { salesOwnerId: 小王, deletedAt: null } })).toBeLessThan(50);
+    // query 日志可能比结果晚到（见 tests/query-log.ts）：清之前先等前面的到齐，跑完再等齐了才找
+    await 等日志齐(截, 句们);
     句们.length = 0;
     await 以谁的身份(小王, async () => 限.customer.findMany({ where: { AND: [await 客户筛选条件({}, 小王), { salesOwnerId: 小王 }] }, orderBy: 排序, take: 50, select: { id: true } }));
+    await 等日志齐(截, 句们);
     const 我的 = 句们.filter((q) => q.query.startsWith("SELECT") && q.query.includes("FROM `main`.`Customer`") && q.query.includes("ORDER BY")).at(-1)!;
     expect(我的, "没截到「我的」那句").toBeTruthy();
     const p我的 = await 计划(我的.query, ...JSON.parse(我的.params));
@@ -217,8 +221,10 @@ describe("计划：新那句走 (lastFollowAt, createdAt, id)；名下不到 50 
     expect(p名下).not.toContain(新索引);
     expect(p名下).toContain("Customer_salesOwnerId");
     // 不限定的人按负责人筛（客户列表挑一个人）也不被抢走
+    await 等日志齐(截, 句们);
     句们.length = 0;
     await 以谁的身份(总管理, async () => 限.customer.findMany({ where: { AND: [await 客户筛选条件({}, 总管理), { salesOwnerId: 小王 }] }, orderBy: 排序, take: 50, select: { id: true } }));
+    await 等日志齐(截, 句们);
     const 按人 = 句们.filter((q) => q.query.startsWith("SELECT") && q.query.includes("FROM `main`.`Customer`") && q.query.includes("ORDER BY")).at(-1)!;
     const p按人 = await 计划(按人.query, ...JSON.parse(按人.params));
     expect(p按人).not.toContain(新索引);

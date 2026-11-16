@@ -9,13 +9,19 @@
  */
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 
-const 记 = vi.hoisted(() => ({ 开: false, 句: [] as string[], 缓存: new Map<unknown, Map<string, unknown>>() }));
+const 记 = vi.hoisted(() => ({ 开: false, 句: [] as string[], 们: new Set<{ $queryRawUnsafe: (sql: string) => Promise<unknown> }>(), 缓存: new Map<unknown, Map<string, unknown>>() }));
 vi.mock("@/generated/prisma", async (原) => {
   const m = await 原<typeof import("@/generated/prisma")>();
   class 记数Client extends m.PrismaClient {
+    async $disconnect() {
+      记.们.delete(this as never);
+      return super.$disconnect();
+    }
     constructor(o: ConstructorParameters<typeof m.PrismaClient>[0] = {}) {
       super({ ...o, log: [{ emit: "event", level: "query" }, ...((o?.log as never[]) ?? [])] } as never);
       (this as unknown as { $on: (e: string, f: (x: { query: string }) => void) => void }).$on("query", (e) => { if (记.开) 记.句.push(e.query); });
+      // 量的时候每个客户端都要等日志齐（tests/query-log.ts 都等齐）；断开的不再算
+      记.们.add(this as never);
     }
   }
   return { ...m, PrismaClient: 记数Client };
@@ -54,6 +60,7 @@ vi.mock("@/app/(app)/customers/[id]/CustomerDetail", () => ({ default: () => nul
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
+import { 都等齐 } from "./query-log";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 默认组织规则, 默认三态规则 } from "@/lib/project/org-rules";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
@@ -62,9 +69,10 @@ import { 企业字典, 页面字典, 预读页面字典, 字典种类们 } from 
 
 /**
  * 上限：11-12 改完实测 92 条（客户层 52、项目区 40）+ 小余量。改前主干 184 条（#270 之前 77 条）。
+ * 11-16 沟通汇总和「跟进」菜单共用一遍看得到的项目（customer-follow-feed.ts 客户页沟通两样）：93 → 89 条，上限 100 → 95。
  * 往上调之前先 CUST_DETAIL_QUERY_DUMP=<文件> 跑一遍看明细，是不是又把同一条查了两遍（字典逐类读、看得到的客户、沟通负责人……）
  */
-const 客户详情查询上限 = 100;
+const 客户详情查询上限 = 95;
 /** 三态开着、钟上沉睡 / 待回收的客户：比关着多查的上限（收三态客户 一套，客户行连钟、换负责人记录、占位词复用页面的）。
  * 11-12 第一轮实测多 26 条；第二轮同一请求去重后多 11 条（关 92 / 活跃 95 / 沉睡 103）；最近沟通日改一句 SQL（沟通生效日）后多 8 条（沉睡 100），上限 = 实测 +2 */
 const 三态沉睡多查上限 = 10;
@@ -101,8 +109,8 @@ async function 量(): Promise<string[]> {
   mocks.user = { ...甲 };
   const 开 = () => 以谁的身份(甲.id, () => CustomerPage({ params: Promise.resolve({ id: 客户 }), searchParams: Promise.resolve({}) } as never));
   await 开();
-  记.缓存.clear(); 记.句 = []; 记.开 = true;
-  try { await 开(); } finally { 记.开 = false; }
+  记.缓存.clear(); 记.句 = []; 记.开 = true; await 都等齐(记.们, 记.句); 记.句 = [];
+  try { await 开(); await 都等齐(记.们, 记.句); } finally { 记.开 = false; }
   return 记.句;
 }
 
