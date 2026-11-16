@@ -48,7 +48,8 @@ import { 字典定义 } from "@/lib/enterprise/dict-kinds";
 import LevelLetter from "@/components/LevelLetter";
 import { useLocalPref } from "@/lib/local-pref";
 import LocalTime from "@/components/LocalTime";
-import { 未分级 } from "./query-shared";
+import { 未分级, 久未跟进天数们 } from "./query-shared";
+import IdleDaysFilter from "@/components/IdleDaysFilter";
 import { useUrlFilters } from "@/lib/url-filters";
 import { 列表不问归属 } from "@/lib/solo";
 import { 公海标签, type 客户页签归属 } from "@/lib/pool";
@@ -125,6 +126,8 @@ type Props = {
   等级排序?: string;
   /** 按创建时间排（11-11）：created-asc / created-desc；空 = 默认（新的在前） */
   创建排序?: string;
+  /** 按最近跟进排（员工反馈 1I，11-16，企业版）：follow-asc = 最久没跟进的在前（从没跟进过的最前）/ follow-desc */
+  跟进排序?: string;
   /** 摆不摆「手机号」筛选：电话藏着的人（字段权限 Y27）不摆，服务端也不认。不给 = 摆 */
   能按号码筛?: boolean;
   排序币种?: string;
@@ -227,6 +230,8 @@ type Props = {
     node?: string;
     /** 「全部回收状态」（客户三态开着才给，P-界面-19 ①）：沉睡 / 待回收 / 暂缓回收中 / 不计时；不给 = 不摆这个筛选 */
     triState?: string;
+    /** 「超过 N 天没跟进」（员工反馈 1I，企业版才有这一格）：天数 */
+    idleDays?: string;
   };
   /** 这一页每位客户的回收状态标（客户三态开着才给，活跃的不在里面）；不给 = 不摆「状态」一列 */
   三态标?: Record<string, 三态标>;
@@ -307,7 +312,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 创建排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 建档要取 = false, 待交接 = null, 项目概况, 仅项目行 = [], 仅项目超了 = false, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false, 阶段太多 = false,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 创建排序 = "", 跟进排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 建档要取 = false, 待交接 = null, 项目概况, 仅项目行 = [], 仅项目超了 = false, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false, 阶段太多 = false,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -455,7 +460,7 @@ export default function CustomersView({
     });
   };
 
-  const { f, setF, apply, 翻页, reset, pending } = useUrlFilters("/customers", { ...filters, sort: 金额排序 || 等级排序 || 创建排序, sortCurrency: 排序币种 ?? b.currency }, pageSize);
+  const { f, setF, apply, 翻页, reset, pending } = useUrlFilters("/customers", { ...filters, sort: 金额排序 || 等级排序 || 创建排序 || 跟进排序, sortCurrency: 排序币种 ?? b.currency }, pageSize);
   /**
    * 「空库」是「一条都没有 **且** 没在筛」。筛出 0 条不算——
    * 那时筛选栏必须留着，否则人看不见自己筛了什么，也点不到重置。
@@ -739,6 +744,27 @@ export default function CustomersView({
               value={f.channelId || undefined} onChange={(v) => apply({ channelId: v ?? "" })}
               options={渠道筛选项} />
           ),
+        }, {
+          // 国家（员工反馈 1C，11-16）：按客户地址里的国家（列表「国家」一列那一格），只给看得到的客户里真有的；默认收着（1024 宽筛选行放不下），
+          // 要常用的在「更多筛选」里自己摆出来（useCustomFilters 记在本机）
+          键: "country", 名: "国家", 宽: 140, 默认外露: false, 有值: !!f.country,
+          渲染: (style: CSSProperties) => (
+            <Select style={style} placeholder="全部国家" allowClear aria-label="国家" showSearch={{ optionFilterProp: "label" }}
+              popupMatchSelectWidth={false}
+              value={f.country || undefined} onChange={(v) => apply({ country: v ?? "" })}
+              options={[...new Set([...国家们.filter((x) => 有值(x)), ...(f.country ? [f.country] : [])])].map((x) => ({ value: x, label: x }))} />
+          ),
+        }, {
+          /*
+            超过 N 天没跟进（员工反馈 1I，11-16）：自动提醒（客户三态）打开前的临时替代——挑出这么多天没记过沟通的客户。
+            从没跟进过的按建档时间算；只收窄本来看得到的（query.ts 久未跟进条件）。选上时没在按别的排，就顺手按最近跟进正序（最久没跟进的在前）
+          */
+          键: "idleDays", 名: "久未跟进", 宽: 160, 默认外露: false, 有值: !!f.idleDays,
+          渲染: (style: CSSProperties) => (
+            // 常用天数直接选，「自定义天数…」填 1–3650 天（原话「可统一设定时间」，components/IdleDaysFilter.tsx）
+            <IdleDaysFilter style={style} value={f.idleDays ?? ""} 天数们={久未跟进天数们}
+              改={(v) => apply({ idleDays: v, ...(v && !f.sort ? { sort: "follow-asc" } : {}) })} />
+          ),
         }]
       : []),
     // 手机号（11-11 使用方：「没有手机号……的筛选选项」）：只比号码，和搜索框里像号码的那一半同一套（去空格、横杠、括号、+86；输后几位也行），
@@ -856,11 +882,14 @@ export default function CustomersView({
       title: "客户属性", key: "customerAttr", width: 112, 默认: false,
       render: (_: unknown, r: CustomerRow) => (有值(r.customerAttr) ? <span className="clamp-1" style={{ display: "block" }} title={r.customerAttr}>{r.customerAttr}</span> : 空),
     }] : []),
-    // 国家（11-04 用户：客户列表加国家列，有值才显示）：这一页里有人填了客户所在国家才摆这一列
-    ...(rows.some((r) => 有值(r.addrCountry)) ? [{
+    /*
+      国家（11-04 用户：客户列表加国家列）：原来这一页有人填了才摆，翻一页这一列就时有时无（员工反馈 1C，11-16）——
+      改成固定摆，没填的写「—」（X-08 空值都采用「—」）。客户名里带的「｜国家」（M-导入-54 补名字）不拆，另问业务方
+    */
+    {
       title: "国家", key: "addrCountry", width: 宽(96, 68),
       render: (_: unknown, r: CustomerRow) => (有值(r.addrCountry) ? <span className="clamp-1" style={{ display: "block" }} title={r.addrCountry ?? ""}>{r.addrCountry}</span> : 空),
-    }] : []),
+    },
     { title: "地址", key: "address", width: 180, 默认: false, render: (_: unknown, r) => { const t = 拼地址(r); return t ? <span title={t}>{t}</span> : 空; } },
     {
       title: "官网", key: "website", width: 170, 默认: false,
@@ -961,6 +990,8 @@ export default function CustomersView({
     // 三列各收一点，1366 宽时默认列和公海列都不用左右拖（10-27）；负责人不收，「公海（原 X）」要放得下
     {
       title: "最近跟进", key: "lastFollowAt", dataIndex: "lastFollowAt", width: 宽(180, 92),
+      // 企业版点表头在全部筛选结果里排（1I，11-16）：正序 = 最久没跟进的在前，从没跟进过的最前
+      ...(企业 ? { sorter: true, sortOrder: 跟进排序 === "follow-asc" ? "ascend" as const : 跟进排序 === "follow-desc" ? "descend" as const : null } : {}),
       // 冷热在前：扫一眼这一列就知道谁凉了，日期留着给要细看的人
       // 企业版不摆冷热：它按跟进状态算，企业版不用跟进状态（10-28 去遗留 A1）
       render: (v, r) => (
@@ -1389,6 +1420,7 @@ export default function CustomersView({
           if (key === "signedAmount") apply({ sort: order === "ascend" ? "amount-asc" : order === "descend" ? "amount-desc" : "", sortCurrency: f.sortCurrency || b.currency });
           if (key === "level") apply({ sort: order === "ascend" ? "level-asc" : order === "descend" ? "level-desc" : "" });
           if (key === "createdAt") apply({ sort: order === "ascend" ? "created-asc" : order === "descend" ? "created-desc" : "" });
+          if (key === "lastFollowAt") apply({ sort: order === "ascend" ? "follow-asc" : order === "descend" ? "follow-desc" : "" });
         }}
         替表格={看板体 !== undefined ? 看板体 : 看法 === "看板" ? <CustomerBoard 行们={rows} 字典={客户属性字典} 加载中={pending} 页={page} 每页={pageSize} 总数={total} 翻页={翻页} 去={(id) => router.push(`/customers/${id}`)} /> : undefined}
         汇总={<>{看板体 === undefined && 看法 !== "看板" && <ProjectOnlyBlock 行们={仅项目行} 超了={仅项目超了} />}{金额排序 && <Space wrap style={{ marginBottom: 12 }}><span>金额按</span><CurrencySelect aria-label="金额排序币种" value={f.sortCurrency || b.currency} onChange={v => apply({ sortCurrency: v })}/><span>在全部筛选结果中{金额排序 === "amount-asc" ? "升序" : "降序"}排列；其他币种不相加</span></Space>}</>}

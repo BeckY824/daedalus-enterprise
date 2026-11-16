@@ -114,6 +114,16 @@ export function invalidateSettingsCache() {
   g.__settingsLoading = new Map();
 }
 
+/** 几个 key 原样存的字符串（不解析），走同一份缓存；库里没有的 key 不在结果里 */
+export async function 设置原值们(keys: readonly string[]): Promise<Map<string, string>> {
+  const all = await loadAll();
+  const 出 = new Map<string, string>();
+  for (const k of keys) {
+    const v = all.get(k);
+    if (v !== undefined) 出.set(k, v);
+  }
+  return 出;
+}
 export async function getSetting<T>(key: string): Promise<T | null> {
   const all = await loadAll();
   const raw = all.get(key);

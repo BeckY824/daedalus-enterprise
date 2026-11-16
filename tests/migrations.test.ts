@@ -163,10 +163,10 @@ describe("迁移文件", () => {
       const db = new DatabaseSync(临时库);
       /*
         迁移只在已有业务表的库上跑（全新安装先 schema.sql、桌面端先拷模板库）。021 给 Customer 的号码建表达式索引（R-067），
-        所以先放一张最小的 Customer——真实的库里它从第一版就在。024 给归属列建索引，这一列也是第一版就有。049 给 createdAt 建索引，同样第一版就有；137 给 salesOwnerId 建索引，也是第一版就有；138 给 referrerCustomerId 建索引，也是第一版就有
+        所以先放一张最小的 Customer——真实的库里它从第一版就在。024 给归属列建索引，这一列也是第一版就有。049 给 createdAt 建索引，同样第一版就有；137 给 salesOwnerId 建索引，也是第一版就有；138 给 referrerCustomerId 建索引，也是第一版就有；143 给 (lastFollowAt, createdAt, id) 建索引，lastFollowAt 也是第一版就有
       */
       // 141 的三字索引按客户的名字、学校、专业、年级、备注建，这几列也是第一版就有
-      db.exec('CREATE TABLE "Customer" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT, "school" TEXT, "major" TEXT, "grade" TEXT, "remark" TEXT, "phone" TEXT NOT NULL, "attributionCustomerId" TEXT, "referrerCustomerId" TEXT, "salesOwnerId" TEXT, "createdAt" DATETIME)');
+      db.exec('CREATE TABLE "Customer" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT, "school" TEXT, "major" TEXT, "grade" TEXT, "remark" TEXT, "phone" TEXT NOT NULL, "attributionCustomerId" TEXT, "referrerCustomerId" TEXT, "salesOwnerId" TEXT, "createdAt" DATETIME, "lastFollowAt" DATETIME)');
       db.exec('CREATE TABLE "FollowPlan" ("id" TEXT PRIMARY KEY, "done" BOOLEAN, "plannedAt" DATETIME)');
       // 028及030–035也在存量基础表加列。这里保留旧表形状，不能直接用新schema掩盖加列失败。
       db.exec('CREATE TABLE "Opportunity" ("id" TEXT PRIMARY KEY)');
@@ -218,7 +218,7 @@ describe("迁移文件", () => {
     try {
       const db = new DatabaseSync(临时库);
       // 141 的三字索引按客户的名字、学校、专业、年级、备注建，这几列也是第一版就有
-      db.exec('CREATE TABLE "Customer" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT, "school" TEXT, "major" TEXT, "grade" TEXT, "remark" TEXT, "phone" TEXT NOT NULL, "attributionCustomerId" TEXT, "referrerCustomerId" TEXT, "salesOwnerId" TEXT, "createdAt" DATETIME)');
+      db.exec('CREATE TABLE "Customer" ("id" TEXT NOT NULL PRIMARY KEY, "name" TEXT, "school" TEXT, "major" TEXT, "grade" TEXT, "remark" TEXT, "phone" TEXT NOT NULL, "attributionCustomerId" TEXT, "referrerCustomerId" TEXT, "salesOwnerId" TEXT, "createdAt" DATETIME, "lastFollowAt" DATETIME)');
       db.exec('CREATE TABLE "FollowPlan" ("id" TEXT PRIMARY KEY, "done" BOOLEAN, "plannedAt" DATETIME)');
       db.exec('CREATE TABLE "Opportunity" ("id" TEXT PRIMARY KEY)');
       db.exec('CREATE TABLE "Task" ("id" TEXT PRIMARY KEY)');
