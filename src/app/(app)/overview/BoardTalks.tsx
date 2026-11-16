@@ -17,6 +17,7 @@ import type { 缺沟通 } from "@/lib/project/review-extras";
 import CustomRangePicker from "@/components/CustomRangePicker";
 import { 读日期段, type 日期段 } from "@/lib/custom-date-range";
 import { 沟通按天 } from "@/lib/project/talk-days";
+import { TalkKindSwitch } from "./BoardTopics";
 
 /**
  * 复盘页「沟通」页签（P7 U-复盘-01；11-01 参考复盘稿融合改成时间线）：项目负责人本人在项目上记的跟进（别人记的不算，11-02），时间倒序。
@@ -25,9 +26,11 @@ import { 沟通按天 } from "@/lib/project/talk-days";
  * 只读，点一条去项目页（这里不给删改，A-13；沟通只能挂在项目节点上记，这里没有「新增」）。
  * 旁边「还没沟通过的项目」= 首页「暂未跟进」卡同口径，这一圈人负责的，最近建的 5 个。
  */
-export default function BoardTalks({ 数, 段, 区间, 方式 = "", 只看自己, 缺 }: {
+export default function BoardTalks({ 数, 段, 区间, 方式 = "", 只看自己, 缺, 有主题 = false }: {
   /** 区间：段 = custom 时服务端读好的那一段（缺 / 错已落到本月 1 号到今天） */
   数: 复盘沟通; 段: 沟通段; 区间?: 日期段; 方式?: 沟通方式 | ""; 只看自己: boolean; 缺?: 缺沟通;
+  /** 企业版：标题旁摆「沟通 | 主题」（教练主题，11-17） */
+  有主题?: boolean;
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -67,7 +70,12 @@ export default function BoardTalks({ 数, 段, 区间, 方式 = "", 只看自己
     <div className={`btodo-wrap rtalk-wrap${缺 ? " rtalk-has-side" : ""}`}>
       <section className={`btodo-list${换着 ? " is-pending" : ""}`} aria-label="沟通记录列表" aria-busy={换着}>
         <div className="btodo-head">
-          <b className="section-title">项目沟通</b>
+          {有主题 ? (
+            <span className="rtopic-head-l">
+              <b className="section-title">项目沟通</b>
+              <TalkKindSwitch 当前="talk" />
+            </span>
+          ) : <b className="section-title">项目沟通</b>}
           <div className="btodo-head-r">
             <Select<沟通方式 | "">
               size="small"

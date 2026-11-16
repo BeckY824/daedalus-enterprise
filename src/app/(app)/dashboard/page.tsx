@@ -21,6 +21,7 @@ import { multiTenant } from "@/lib/tenant/context";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 自定产品名 } from "@/lib/enterprise/brand";
 import { 读满额提醒 } from "@/lib/enterprise/lead-full-notice";
+import { 待回复主题of } from "@/lib/enterprise/coach-topic-db";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import NoAiHome from "./NoAiHome";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -68,6 +69,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const 对话 = sp0.c ? await 读对话(sp0.c) : null;
   // 企业版自动分配因都已满额没分出去的提醒：首页顶部也摆一份，和线索页同一份数据，哪边关了两边都没了
   const 满额提醒们 = 企业版() ? await 读满额提醒(user.id) : [];
+  // 企业版首页待办「待回复主题」（11-17，教练主题）：我负责的项目上等我回的
+  const 待回复主题 = 企业版() ? await 待回复主题of(user.id) : null;
   // 企业版项目：首页是对话 + 右侧四张指标卡（10-29 首页改版），其余数据在「复盘」页
   const 只用项目 = await 企业版只用项目();
   if (!(await llmEnabled())) {
@@ -83,7 +86,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     }
     // 老的数据看板（Board / DashboardView）10-28 删了：企业版只用项目，没配 AI 的首页一律是这一屏
     // 「去设置里配 AI」那个按钮：能改后台设置的人才摆（企业版 = 总管理，11-01 只认业务角色）
-    return <NoAiHome 管理员={企业版() ? 能改后台设置(user, await 权限组织()) : user.role === "ADMIN"} 找谁={企业版() ? "总管理" : "管理员"} 满额提醒={满额提醒们} />;
+    return <NoAiHome 管理员={企业版() ? 能改后台设置(user, await 权限组织()) : user.role === "ADMIN"} 找谁={企业版() ? "总管理" : "管理员"} 满额提醒={满额提醒们} 待回复主题={待回复主题} />;
   }
 
   if (只用项目) {
@@ -128,6 +131,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         企业版
         产品名={自定产品名() ?? undefined}
         满额提醒={满额提醒们}
+        待回复主题={待回复主题}
         渠道名们={[...渠道.map((c) => c.name), /* 渠道触点（P-渠道-08）也能选：主渠道留空、记触点（apply.ts） */ ...渠道触点们.filter((x) => !渠道.some((c) => c.name === x))]}
         要下一步={规则.超时回收.开}
         新线索企业={新线索企业格}

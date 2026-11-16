@@ -5,6 +5,7 @@ import { Button } from "antd";
 import { ApiOutlined } from "@ant-design/icons";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import LeadFullNotices from "../leads/LeadFullNotices";
+import CoachTopicTodo, { type 待回复主题数 } from "./CoachTopicTodo";
 
 /**
  * 企业版项目、但还没配 AI 时的首页（2026-10-26 用户定：首页改成对话框，和桌面端首页一样）。
@@ -18,11 +19,12 @@ import LeadFullNotices from "../leads/LeadFullNotices";
  * 找谁：企业版能配 AI 的是总管理（能改后台设置），业务角色「管理员」是只读的、配不了（11-03 C5-2）。
  * 原来一律写「请找管理员」，只读管理员自己打开首页看到「请找管理员」，不知道该找谁
  */
-export default function NoAiHome({ 管理员, 找谁 = "管理员", 满额提醒 = [] }: { 管理员: boolean; 找谁?: string; 满额提醒?: 满额提醒[] }) {
+export default function NoAiHome({ 管理员, 找谁 = "管理员", 满额提醒 = [], 待回复主题 = null }: { 管理员: boolean; 找谁?: string; 满额提醒?: 满额提醒[]; 待回复主题?: 待回复主题数 | null }) {
   const router = useRouter();
   return (
     <>
       <LeadFullNotices 提醒={满额提醒} />
+      <CoachTopicTodo 数据={待回复主题} />
       <h1 className="start-h">首页</h1>
       <div className="start">
         <span className="start-badge">AI 未配置</span>

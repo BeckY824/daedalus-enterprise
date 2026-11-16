@@ -47,7 +47,7 @@ import { 规则 } from "@/lib/enterprise/rules";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 主题写 } from "@/lib/team-scope";
 import { 发起身份of, 能发主题, 能看主题, 能回主题, 能关主题, 能删主题, 冻结了, 回复后状态, 发起通知谁, 回复通知谁, 关闭通知谁 } from "@/lib/enterprise/coach-topic";
-import { 读项目主题, 读一条主题, 待回复主题of } from "@/lib/enterprise/coach-topic-db";
+import { 读项目主题, 读一条主题, 待回复主题of, 复盘主题of } from "@/lib/enterprise/coach-topic-db";
 import { 放回公海 } from "@/lib/project/db";
 import { 进公海关主题动作 } from "@/lib/project/pool-owner";
 import { 发主题动作, 回复主题动作, 关闭主题动作, 删主题动作 } from "@/app/(app)/customers/[id]/coach-topic-actions";
@@ -480,5 +480,39 @@ describe("收尾：发起人不在了、第三方回复、第二次追问", () =
     }
     expect(await raw.entNotice.count({ where: { userId: 人.甲 } })).toBe(3); // 发起 1 + 追问 2
     expect(await raw.entNotice.count({ where: { userId: 人.教练 } })).toBe(2); // 回复 2
+  });
+});
+
+describe("复盘「沟通」页签的「主题」一档（PR3b）", () => {
+  it("我发起的 / 待我回复 / 全部 + 状态；每条过 能看主题，圈外、组员、看不到项目的拿不到", async () => {
+    await 发("教练");
+    await 发("组长");
+    await 发("市场", 乙项目);
+    const 组长的 = await raw.entCoachTopic.findFirstOrThrow({ where: { authorId: 人.组长 } });
+    当("甲");
+    await 回复主题动作(组长的.id, "收到");
+    const 名 = (d: { 行: { 标题: string }[] }) => d.行.map((x) => x.标题).sort();
+    // 教练：全部 = 看得到的全部（圈不限）
+    expect(名(await 复盘主题of(我("教练"), undefined, { 范围: "all" }))).toEqual(["组长的主题", "教练的主题", "市场的主题"].sort());
+    expect(名(await 复盘主题of(我("教练"), undefined, { 范围: "mine" }))).toEqual(["教练的主题"]);
+    // 甲：待我回复只剩教练那条；状态筛已回复 = 组长那条
+    expect(名(await 复盘主题of(我("甲"), [人.甲], { 范围: "wait" }))).toEqual(["教练的主题"]);
+    expect(名(await 复盘主题of(我("甲"), [人.甲], { 范围: "all", 状态: "已回复" }))).toEqual(["组长的主题"]);
+    // 乙：圈不限也只看到自己项目上的（甲的项目他看不到）
+    expect(名(await 复盘主题of(我("乙"), undefined, { 范围: "all" }))).toEqual(["市场的主题"]);
+    // 组员：看得到项目、但不在 Q6 名单里 → 一条都没有
+    expect((await 复盘主题of(我("组员"), undefined, { 范围: "all" })).总数).toBe(0);
+    const 行 = (await 复盘主题of(我("教练"), undefined, { 范围: "mine" })).行[0];
+    expect(行).toMatchObject({ projectId: 项目, 项目: "甲的项目", 状态: "待回复", 发起人: "教练", 身份: "销售教练", 回复数: 0 });
+  });
+
+  it("项目进了回收站的不列；删了的主题不列", async () => {
+    await 发("教练");
+    const t = await 一条();
+    await raw.project.update({ where: { id: 项目 }, data: { deletedAt: new Date() } });
+    expect((await 复盘主题of(我("教练"), undefined, { 范围: "all" })).总数).toBe(0);
+    await raw.project.update({ where: { id: 项目 }, data: { deletedAt: null } });
+    await raw.entCoachTopic.update({ where: { id: t.id }, data: { deletedAt: new Date() } });
+    expect((await 复盘主题of(我("教练"), undefined, { 范围: "all" })).总数).toBe(0);
   });
 });
