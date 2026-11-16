@@ -14,7 +14,7 @@ import { applyProposal, undoProposal, type 撤销凭据, type 附件去处 } fro
 import { 取走名片原图, 记下刚建的, 忘掉刚建的 } from "@/lib/card-scan/originals";
 import { 传附件 } from "@/lib/attachment-upload";
 import { describeProposal, missingFields, 只留选中的改动, 可改字段表, 区域去处叫法, type Proposal, type 线索待确认格, type 区域去处 } from "@/lib/agent/proposals";
-import { 三种业务线, 分配说明, 建议业务线 } from "@/lib/enterprise/assign-line";
+import { 三种业务线, 分配说明, 建议业务线, 认分给 } from "@/lib/enterprise/assign-line";
 import { 认渠道 } from "@/lib/enterprise/channel-match";
 import { useBusiness } from "@/lib/business-client";
 import { 币种符号 } from "@/lib/currency";
@@ -130,9 +130,12 @@ export default function ProposalCard({
     if (!企) return 预选;
     const 默认 = 企.默认分配方式;
     const 分 = 默认 !== null && 企.分配方式们.some((x) => x.i === 默认) ? 默认 : 企.分配方式们.length === 1 ? 企.分配方式们[0].i : undefined;
+    // 原话说了分给谁（1E）：候选里认出唯一一位、这人能用指定分配，就预选指定分配 + 那一位；人仍点确认。卡回传过的（已有分配方式 / 负责人）不再覆盖
+    const 给 = proposal.分配方式 === undefined && !proposal.ownerId ? 认分给(proposal.分给, 企.成员, 企.分配方式们.map((x) => x.i)) : null;
     return {
       ...预选,
-      分配方式: proposal.分配方式 ?? 分,
+      ...(给 ? { ownerId: 给.ownerId } : {}),
+      分配方式: 给?.分配方式 ?? proposal.分配方式 ?? 分,
       节点: proposal.节点 && 线索节点们.includes(proposal.节点) ? proposal.节点 : 线索节点们[0],
       业务线: proposal.业务线 ?? 建议业务线({ addrCountry: proposal.country, addrCity: proposal.city }) ?? undefined,
     };

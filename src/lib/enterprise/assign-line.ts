@@ -199,3 +199,16 @@ export const 分配说明: Readonly<Record<number, string>> = {
   3: "建好后记在你名下，在潜客培育自己跟进，之后可以再分配",
   4: "记在你名下，自己跟进",
 };
+
+/**
+ * 首页 AI 新线索卡预填「分给谁」（反馈第 1 批 1E）：人在原话里说了分给谁（模型原样给的名字），
+ * 在卡上的负责人候选里认出**唯一**一位、这人又能用「指定分配」，就预选 指定分配 + 那一位；人仍要在卡上点确认。
+ * 认不出 / 对上多位（同名的候选写成「名字（邮箱）」）/ 用不了指定分配（销售只有个人自持、暂不分配，P-转-15）= 不预填，照旧留给人选，
+ * 同 P-字段-02 渠道「认不出就空着让人选」
+ */
+export function 认分给(名: string | undefined, 成员: readonly { value: string; label: string }[], 能用: readonly number[]): { 分配方式: number; ownerId: string } | null {
+  const 要 = (名 ?? "").trim();
+  if (!要 || !能用.includes(分配方式序号.指定分配)) return null;
+  const 中 = 成员.filter((m) => m.label === 要 || m.label.startsWith(`${要}（`));
+  return 中.length === 1 ? { 分配方式: 分配方式序号.指定分配, ownerId: 中[0].value } : null;
+}

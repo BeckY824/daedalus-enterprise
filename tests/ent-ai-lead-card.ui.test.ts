@@ -32,9 +32,9 @@ beforeAll(async () => {
     const root=createRoot(document.getElementById('root'));
     const 长名='某某超长国际贸易进出口集团股份有限公司华东区域分公司'.repeat(4);
     const 企={成员:[{value:'u1',label:'乙'}],分配方式们:[{i:0,名:'指定分配'},{i:1,名:'自动分配'},{i:3,名:'暂不分配'}],默认分配方式:null,是销售:false};
-    window.__render=()=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}>
-      <新线索来源.Provider value={['展会',${JSON.stringify(长渠道)}]}><新线索企业.Provider value={企}>
-        <div className="cli-col"><ProposalCard proposal={{id:'p1',kind:'add_lead',customerId:'',customerName:'',reason:'x',name:长名,contact:'周经理',phone:'13800000000',source:${JSON.stringify(长渠道)},status:'待跟进',remark:'',country:'摩洛哥',city:'卡萨布兰卡'}}/></div>
+    window.__render=(补={},企补={})=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}>
+      <新线索来源.Provider value={['展会',${JSON.stringify(长渠道)}]}><新线索企业.Provider value={{...企,...企补}}>
+        <div className="cli-col"><ProposalCard proposal={{id:'p1',kind:'add_lead',customerId:'',customerName:'',reason:'x',name:长名,contact:'周经理',phone:'13800000000',source:${JSON.stringify(长渠道)},status:'待跟进',remark:'',country:'摩洛哥',city:'卡萨布兰卡',...补}}/></div>
       </新线索企业.Provider></新线索来源.Provider>
     </BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
@@ -42,12 +42,12 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function open(width: number, height = 900) {
+async function open(width: number, height = 900, 补: Record<string, unknown> = {}, 企补: Record<string, unknown> = {}) {
   const page = await browser.newPage({ viewport: { width, height } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://lead.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://lead.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
-  await page.evaluate(() => (window as unknown as { __render: () => void }).__render());
+  await page.evaluate(([a, b]) => (window as unknown as { __render: (a: unknown, b: unknown) => void }).__render(a, b), [补, 企补]);
   await page.locator(".prop-ok").waitFor();
   return { page, errors };
 }
@@ -96,6 +96,45 @@ it("字段名、分配方式必选、指定才出负责人、国家 / 城市要�
       expect(交).toMatchObject({ 分配方式: 0, ownerId: "u1", country: "摩洛哥", city: "卡萨布兰卡", 下一步: "发报价单" });
       expect(交).not.toHaveProperty("明确回复");
       expect(交.区域去处).toContain("客户");
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+// 反馈 1E：原话说了分给谁（模型给 assignTo → 分给），卡上认出唯一一位就预选「指定分配 + 那一位」，人仍要点确认
+it("原话说了分给谁：预选指定分配 + 那一位，不横撑，确认交上去的是那一位（1024 / 1280 / 1366）", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    const 长名 = "超长名字的同事" + "很长".repeat(30);
+    const { page, errors } = await open(w, 900, { 分给: 长名 }, { 成员: [{ value: "u1", label: "乙" }, { value: "u9", label: 长名 }] });
+    try {
+      expect(await 格(page, "分配方式").innerText()).toContain("指定分配");
+      expect(await 格(page, "项目负责人").count()).toBe(1);
+      expect(await 格(page, "项目负责人").innerText()).toContain("超长名字的同事");
+      expect(await 不横撑(page)).toEqual({ 页: true, 出界: 0 });
+      // 还没确认：交上去之前什么都没写
+      expect(await page.evaluate(() => Reflect.get(window, "__交"))).toBeFalsy();
+      await 格(page, "国家 / 城市填到").getByText("客户", { exact: false }).first().click();
+      if (await 格(page, "业务线").locator(".ant-select-selection-placeholder").count()) await 选(page, "业务线", "外贸");
+      await 格(page, "下一步计划").locator("input").fill("发报价单");
+      await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
+      await page.locator(".prop-ok").click();
+      await page.waitForFunction(() => Reflect.get(window, "__交"));
+      expect(await page.evaluate(() => Reflect.get(window, "__交") as Record<string, unknown>)).toMatchObject({ 分配方式: 0, ownerId: "u9" });
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+it("分给谁认不出 / 同名两位 / 这人用不了指定分配：不预填，照旧留给人选", async () => {
+  for (const [补, 企补] of [
+    [{ 分给: "没这个人" }, {}],
+    [{ 分给: "王芳" }, { 成员: [{ value: "a", label: "王芳（a@x.com）" }, { value: "b", label: "王芳（b@x.com）" }] }],
+    [{ 分给: "乙" }, { 分配方式们: [{ i: 3, 名: "暂不分配" }, { i: 4, 名: "个人自持" }], 是销售: true }],
+  ] as const) {
+    const { page, errors } = await open(1024, 900, 补, 企补);
+    try {
+      expect(await 格(page, "项目负责人").count()).toBe(0);
+      expect(await 格(page, "分配方式").innerText()).not.toContain("指定分配");
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }

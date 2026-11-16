@@ -44,7 +44,7 @@ export function 这一家的工具(b: Pick<BusinessConfig, "projectMode">, 只�
     .filter((t) => 只用项目 || !项目写工具名.has(t.name))
     .map((t) =>
       只用项目 && t.name === "propose_lead"
-        ? { ...t, description: "建议新建一条新线索：确认后建一位客户和一个在「线索」阶段的项目。只知道名字也要提，留空的字段人会在卡片上补。" }
+        ? { ...t, description: "建议新建一条新线索：确认后建一位客户和一个在「线索」阶段的项目。只知道名字也要提，留空的字段人会在卡片上补。人说了「分给谁」就把姓名原样放 assignTo，说了来源（平台、展会、渠道）就原样放 source——卡上认得出会预选，人确认；没说就不给，别猜。" }
         : t,
     );
   return { TOOLS, TOOL_MAP: new Map(TOOLS.map((t) => [t.name, t])) as typeof 全部工具表 };
@@ -416,6 +416,7 @@ ${工作方式}
 - 确定是客户、还要看他的跟进时间线时，用 find_person 给的 id 调 get_customer；同名多位时不要猜，直接 final 并在回答里说清楚有哪几位
 - 按条件筛一批客户（某个学校 / 状态 / 我负责的）才用 search_customers——那是「找一批」，不是「找一个人」
 - 问某一类人（某个学校 / 专业 / 跟进状态 / 我负责的，"有多少、分别是谁"）：search_customers 用那个关键词或过滤条件，它返回总数和名单，直接据此回答，不用逐个 get_customer
+- **「我的客户」只算我负责的**：search_customers 不给 scope 时首页默认只查我负责的；问团队 / 下属 / 某位同事名下的用 scope=team，问公海里的用 scope=pool。工具每行带「归属」（我负责的 / 同事或下属负责的 / 公海），回答按归属分开列并写明，不要把别人负责的、公海里的混进「我的」
 - **工具回话里带了「这个名字在别的表里」时，那就是答案**：照着它给的记录直接回答（渠道、联系人、线索、团队成员都是这个库里的人），不要再说"没找到"，更不要反过来让用户给更完整的姓名
 - 所有查询都经过当前账号的权限和条件过滤；未找到或 0 条只表示当前可访问范围内未找到，不能判断全系统不存在，也不能判断是否由权限造成。不要说“不是权限问题”或断言别人拥有这条资料
 - 工具没找到、也没告诉你别处有时，只说“当前可访问范围内未找到”，不要把关键词当成人名
@@ -494,7 +495,7 @@ ${工作方式}
     而 AI 工具原来是**没人接上的第四个出口**——问一句就能拿到完整号码，
     还会原样写进回答和对话存档。见 lib/shared-ws/current.ts。
   */
-  const ctx: ToolContext = { userId: user.id, userName: user.name, b, recordOffset: 0, proposals: [], 号: await 号码脱敏器(), 页面筛选: 页面范围?.表 === "客户" ? 页面范围.筛选 : undefined };
+  const ctx: ToolContext = { userId: user.id, userName: user.name, b, recordOffset: 0, proposals: [], 号: await 号码脱敏器(), 页面筛选: 页面范围?.表 === "客户" ? 页面范围.筛选 : undefined, 页面: 页面范围?.表 };
   const records: BriefRecord[] = [];
   const customers = new Map<string, 提到的客户>();
   const mentioned = new Map<string, 提到的客户>();

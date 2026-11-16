@@ -122,11 +122,13 @@ function 收线索多的格(args: Record<string, unknown>): 线索卡多的格 {
 
 /**
  * 企业版只用项目时，新线索卡和「新建项目」对齐的几格（11-04）：分配方式 / 指定的负责人 / 进程由人在卡上选（11-05 去掉明确回复），
- * 模型不给；业务线、下一步文字、国家城市填到哪模型有把握才给，没把握留空让人选。别的版本不看
+ * 模型不给（只给原话里的「分给谁」assignTo，卡上认出唯一一位才预选，人仍确认，1E）；业务线、下一步文字、国家城市填到哪模型有把握才给，没把握留空让人选。别的版本不看
  */
 export type 区域去处 = "客户" | "联系人" | "项目";
 export const 区域去处叫法: Record<区域去处, string> = { 客户: "客户所在区域", 联系人: "联系人所在区域", 项目: "项目所在地" };
-export type 线索建档格 = { 分配方式?: number; ownerId?: string; 业务线?: string; 节点?: string; 下一步?: string; 区域去处?: 区域去处[] };
+export type 线索建档格 = { 分配方式?: number; ownerId?: string; 业务线?: string; 节点?: string; 下一步?: string; 区域去处?: 区域去处[];
+  /** 原话里说的「分给谁」（模型原样给的名字，1E）：卡上按负责人候选认出唯一一位才预选指定分配 + 那一位（assign-line.ts 认分给），落库只认 分配方式 / ownerId */
+  分给?: string };
 const 是区域去处 = (x: unknown): x is 区域去处 => typeof x === "string" && Object.hasOwn(区域去处叫法, x);
 
 /** 模型给 bizLine / nextStep / regionTo；卡片回传的是收好的中文键（业务线 / 下一步 / 区域去处 + 人选的四格），两种都认，再校验一遍 */
@@ -144,6 +146,8 @@ function 收线索建档格(args: Record<string, unknown>): 线索建档格 {
   if (负责) 出.ownerId = 负责;
   const 节 = str(args.节点, 30);
   if (节) 出.节点 = 节;
+  const 给 = str(args.分给 ?? args.assignTo, 30);
+  if (给) 出.分给 = 给;
   return 出;
 }
 

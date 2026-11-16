@@ -170,8 +170,9 @@ const 拿到: Record<接口, (id: string) => Promise<string | null>> = {
   AI查客户: async (id) => {
     const me = await requireUser();
     const c = ctx(me, await 号码脱敏器());
-    const 搜 = (await TOOL_MAP.get("search_customers")!.run({ query: 搜索词 }, c)).data as { customers?: { id: string; phone: string | null }[] };
-    const 在搜里 = (搜.customers ?? []).find((x) => x.id === id);
+    // 首页默认只查我负责的（1B，P-看-03）；这里核的是「AI 这条路能不能查到」，和上面列表一样两个范围都试：看得到的（不含公海）、公海
+    const 搜们 = await Promise.all((["team", "pool"] as const).map(async (scope) => (await TOOL_MAP.get("search_customers")!.run({ query: 搜索词, scope }, c)).data as { customers?: { id: string; phone: string | null }[] }));
+    const 在搜里 = 搜们.flatMap((搜) => 搜.customers ?? []).find((x) => x.id === id);
     const 读 = (await TOOL_MAP.get("get_customer")!.run({ id }, c)).data as { 找到?: number; profile?: string };
     // 两条路径口径必须一致：搜得到 ⇔ 读得到，读到的档案里也是同一个号
     expect(读.找到 !== 0, "search_customers 和 get_customer 不一致").toBe(!!在搜里);

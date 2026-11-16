@@ -217,8 +217,11 @@ describe("Y27 电话藏着：按号码搜不出来", () => {
     });
   // 和 api/mcp/route.ts 一样：没有 cookie，只用 以谁的身份 告诉限定层是谁
   const MCP = (u: 谁, name: string, args: Record<string, unknown>) => 以谁的身份(u, () => 跑工具(name, args, { id: u, name: u }));
-  const AI搜到 = async (u: 谁, k: string, cid: string) =>
-    ((await MCP(u, "search_customers", { query: k })).data as { customers?: { id: string }[] }).customers?.some((c) => c.id === cid) ?? false;
+  // 首页默认只查我负责的（1B，P-看-03）；这里核的是号码能不能搜到，按「看得到的（不含公海）」和「公海」两个范围都试
+  const AI搜到 = async (u: 谁, k: string, cid: string) => {
+    for (const scope of ["team", "pool"]) if (((await MCP(u, "search_customers", { query: k, scope })).data as { customers?: { id: string }[] }).customers?.some((c) => c.id === cid)) return true;
+    return false;
+  };
   const AI线索搜到 = async (u: 谁, k: string) => JSON.stringify((await MCP(u, "list_leads", { keyword: k })).data).includes("线索那家");
 
   it("号码藏着 只对藏电话的人为真；开关关着谁都为假", async () => {
