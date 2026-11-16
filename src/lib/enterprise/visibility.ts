@@ -17,6 +17,10 @@
  *
  * 缓存 10 秒，按会话票分开；到期先用旧的、后台再认一次——理由同 team-scope 现在的限定：
  * 这一句常落在交互式事务里，SQLite 只开一个连接，现查要等事务放连接。改组织、拨开关后 忘掉企业版范围()。
+ *
+ * 多进程（11-16 用满 4 核）：忘掉企业版范围() 同时把跨进程纪元加一（scope-epoch.ts，数据目录里一个文件的大小），
+ * 每个进程用缓存前比一下纪元，变了就整个清掉、现算——「过期先给旧的」只在纪元没变时才有。
+ * 只读通道开着时范围在只读通道上算（不带限定、只能查）：不等写连接上开着的事务，纪元一变正好在事务里的请求也不会卡住。
  */
 import { 全进程上下文 } from "@/lib/process-als";
 import { jwtVerify } from "jose";
@@ -29,6 +33,8 @@ import { 规则 } from "./rules";
 import { 市场部门key, 市场成员key, 市场成员们, 市场相关客户, 市场只读话, 规整市场部门 } from "./market";
 import { 视图票, 验视图票, 会话时刻, 切换视图开着 } from "./view-as";
 import { 能看全部, 只读角色, 只读角色话, 只看的人, 只看某人话, 没设业务角色, 业务线放行 } from "./permissions";
+import { 读纪元, 加纪元 } from "./scope-epoch";
+import { 读通道不限定 } from "@/lib/read-pool";
 
 /** lib/auth.ts 的 COOKIE */
 const 会话票 = "crm_session";
@@ -67,15 +73,40 @@ export function 以谁的身份<T>(userId: string, fn: () => Promise<T>): Promis
   return 身份.run(userId, async () => await fn());
 }
 
-type 缓存项 = { 值: 限定 | null; 到: number };
-const g = globalThis as unknown as { __企业范围?: Map<string, 缓存项>; __企业范围刷新?: Map<string, Promise<限定 | null>> };
+/** 纪：算的时候的跨进程纪元（scope-epoch.ts）；纪元变了这条作废 */
+type 缓存项 = { 值: 限定 | null; 到: number; 纪: number };
+const g = globalThis as unknown as {
+  __企业范围?: Map<string, 缓存项>;
+  __企业范围刷新?: Map<string, Promise<限定 | null>>;
+  /** 本进程上次看到的纪元 */
+  __企业范围纪元?: number;
+};
 const 缓存 = () => (g.__企业范围 ??= new Map());
 const 刷新中 = () => (g.__企业范围刷新 ??= new Map());
 
-/** 组织、规则开关、人员改了：别等缓存过期 */
-export function 忘掉企业版范围() {
+function 清本进程() {
   g.__企业范围 = undefined;
   g.__企业范围刷新 = undefined;
+}
+
+/**
+ * 组织、规则开关、人员改了：别等缓存过期。本进程清掉，别的进程靠纪元（下一次用缓存前发现）。
+ * 先加纪元、记下，再清：加和清之间别的进程也加过的，这边清掉之后现算的都在它提交之后，记成看过不会漏
+ */
+export function 忘掉企业版范围() {
+  加纪元();
+  g.__企业范围纪元 = 读纪元();
+  清本进程();
+}
+
+/** 别的进程加过纪元：本进程这份整个作废。返回现在的纪元 */
+function 对纪元(): number {
+  const 纪 = 读纪元();
+  if (g.__企业范围纪元 !== 纪) {
+    清本进程();
+    g.__企业范围纪元 = 纪;
+  }
+  return 纪;
 }
 
 /**
@@ -121,26 +152,28 @@ async function 是谁(): Promise<{ 钥: string; id: string | null } | "无请求
 export async function 企业版范围(db: PrismaClient): Promise<限定 | null> {
   const 人 = await 是谁();
   if (人 === "无请求") return null;
+  const 纪 = 对纪元();
   const 现 = 缓存().get(人.钥);
-  if (现 && 现.到 > Date.now()) return 现.值;
-  if (现) {
-    void 认一次(db, 人.钥, 人.id).catch(() => {});
+  if (现 && 现.纪 === 纪 && 现.到 > Date.now()) return 现.值;
+  if (现 && 现.纪 === 纪) {
+    void 认一次(db, 人.钥, 人.id, 纪).catch(() => {});
     return 现.值;
   }
-  return 认一次(db, 人.钥, 人.id);
+  return 认一次(db, 人.钥, 人.id, 纪);
 }
 
-function 认一次(db: PrismaClient, 钥: string, id: string | null): Promise<限定 | null> {
+function 认一次(db: PrismaClient, 钥: string, id: string | null, 纪: number): Promise<限定 | null> {
   const 在跑 = 刷新中().get(钥);
   if (在跑) return 在跑;
   const 表 = 刷新中();
-  const p = 算(db, id)
+  // 只读通道开着就在那上面算（见文件头）；关着照旧用钩子给的 db
+  const p = 算(读通道不限定(db) ?? db, id)
     .then((值) => {
-      // 认的过程中被忘掉过：结果可能是旧的，不写
+      // 认的过程中被忘掉过（本进程，或别的进程加了纪元、这边已经清过）：结果可能是旧的，不写
       if (g.__企业范围刷新 === 表) {
         const c = 缓存();
         if (c.size > 500) c.clear();
-        c.set(钥, { 值, 到: Date.now() + 10_000 });
+        c.set(钥, { 值, 到: Date.now() + 10_000, 纪 });
       }
       return 值;
     })

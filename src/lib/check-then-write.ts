@@ -20,12 +20,28 @@
 import type { Prisma } from "@/generated/prisma";
 import { prisma } from "./prisma";
 
-/** 「库忙 / 写冲突 / 事务没开成或超时被关」：这一轮什么都没写进去，可以整段重来 */
-function 撞上别的写入(e: unknown): boolean {
+/**
+ * 「库忙 / 写冲突 / 事务没开成或超时被关」：这一轮什么都没写进去，可以整段重来。
+ * P1008（Socket timeout，11-16）：多个进程共用一个库时，别的进程占着写锁超过 busy_timeout（lib/sqlite-url 等锁秒），
+ * 交互式事务开头的 BEGIN IMMEDIATE 等不到锁就抛这个——事务没开成，同样什么都没写
+ */
+export function 撞上别的写入(e: unknown): boolean {
   const code = (e as { code?: string } | null)?.code;
-  if (code === "P2034" || code === "P2028") return true;
+  if (code === "P2034" || code === "P2028" || code === "P1008") return true;
   const msg = e instanceof Error ? e.message : String(e);
   return /database is locked|SQLITE_BUSY/i.test(msg);
+}
+
+export const 库忙话 = "系统正忙，请稍后再试";
+
+/** 几轮都撞上别的写入：给人看的话（不露 Socket timeout 这类英文），code 和原来的错照旧带着，日志、调用方还认得出 */
+export class 库忙错误 extends Error {
+  readonly code?: string;
+  constructor(cause: unknown) {
+    super(库忙话, { cause });
+    this.name = "库忙错误";
+    this.code = (cause as { code?: string } | null)?.code;
+  }
 }
 
 /** 选项.timeout：一笔要转很多位客户的（确认交接、离职交接一键全部）放宽到 30 秒，同它们原来的事务 */
@@ -35,7 +51,11 @@ export async function 查完再写<T>(fn: (tx: Prisma.TransactionClient) => Prom
       // 排队等前一个事务的时间放宽：默认 2 秒，前面恰好有一段同步回放时会误报失败
       return await prisma.$transaction(fn, { maxWait: 10_000, timeout: 选项.timeout ?? 15_000 });
     } catch (e) {
-      if (第几轮 >= 3 || !撞上别的写入(e)) throw e;
+      if (!撞上别的写入(e)) throw e;
+      if (第几轮 >= 3) {
+        console.error("查完再写：几轮都撞上别的写入", e);
+        throw new 库忙错误(e);
+      }
       await new Promise((r) => setTimeout(r, 30 * 第几轮));
     }
   }
