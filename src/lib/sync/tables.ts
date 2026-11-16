@@ -90,7 +90,7 @@ export const 不同步表 = [
   "EntChannelMain",
   // 企业版撞号台账（2026-11-10，migrations/115）：同上
   "EntDupeHit",
-  // 企业版教练主题（2026-11-17，迁移 143）：企业版是一台服务器上的网页，不走团队同步
+  // 企业版教练主题（2026-11-17，迁移 144）：企业版是一台服务器上的网页，不走团队同步
   "EntCoachTopic", "EntCoachReply",
   // 企业版客户三态：客户钟、状态留痕、冷项目（2026-11-11，migrations/121–123）：同上
   "EntCustomerClock", "EntCustomerStateLog", "EntProjectCold",
@@ -168,7 +168,7 @@ export const 指向人的列: [string, string][] = [
   ["EntDupeHit", "ownerId"],
   ["EntDupeHit", "approverId"],
   ["EntDupeHit", "decidedById"],
-  // 企业版教练主题（2026-11-17，迁移 143）：发起人、关的人、回复人，不建外键
+  // 企业版教练主题（2026-11-17，迁移 144）：发起人、关的人、回复人，不建外键
   ["EntCoachTopic", "authorId"],
   ["EntCoachTopic", "closedById"],
   ["EntCoachReply", "userId"],
