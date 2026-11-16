@@ -15,7 +15,8 @@ describe("要跟的数：一个口径、处处一样", () => {
   // Dock 的接口 api/desktop/reminders 在死代码第三批删了（只有桌面端的壳会问，企业版没有壳）
   it("页面布局和计划页取的是同一份（取提醒项 → 算提醒 / 数提醒，同一条今天界线），不再各数各的", () => {
     const 布局 = 读("src/app/(app)/layout.tsx");
-    expect(布局).toContain("数提醒(user.id)");
+    // 11-16 起左栏走 数角标（跟进的数 + 未读通知一句 SQL），数提醒 就是它去掉未读通知（同一条今天界线）
+    expect(布局).toContain("数角标(user.id,");
     const 库 = 读("src/lib/reminders-db.ts");
     expect(库).toMatch(/export async function 数提醒[\s\S]*今天界线\(now\)/);
     expect(读("src/lib/reminders.ts")).toMatch(/export function 算提醒[^]*?今天界线\(now\)/);
