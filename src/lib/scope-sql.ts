@@ -261,12 +261,15 @@ export function 公海全部跟进数SQL_改前(筛段: string, 含删了的客�
  * 键 = 列 + 企业版 / 看不看已删 + 这个人读客户时限定层并进去的那一整句条件（客户读条件：组织范围、市场、组员、回避名单全在里面），
  * 条件一样的两个人本来就数出同一份值；条件不同就是不同的键，不会拿到按别人范围算的值。多租户、测试里不缓存（同那边）
  */
-export async function 看得到的下拉值(列: "grade" | "country"): Promise<string[]> {
+export async function 看得到的下拉值(列: "grade" | "country" | "addrCountry"): Promise<string[]> {
   const 条件 = await 客户读条件(defaultClient);
   const 查 = async () =>
     列 === "grade"
       ? (await prisma.customer.groupBy({ by: ["grade"], where: { grade: { not: null } } })).map((r) => r.grade!)
-      : (await prisma.customerExtra.groupBy({ by: ["country"], where: { country: { not: null } }, orderBy: { country: "asc" } })).map((r) => r.country!);
+      : 列 === "addrCountry"
+        // 企业版国家筛选（1C，11-16）：客户地址里的国家，列表「国家」一列显示的那一格；只给这个人看得到的客户里真有的
+        ? (await prisma.customer.groupBy({ by: ["addrCountry"], where: { addrCountry: { not: null } }, orderBy: { addrCountry: "asc" } })).map((r) => r.addrCountry!)
+        : (await prisma.customerExtra.groupBy({ by: ["country"], where: { country: { not: null } }, orderBy: { country: "asc" } })).map((r) => r.country!);
   return 缓存分组数(`下拉:${列}`, [企业版(), 在看已删(), 条件], 查, 60_000);
 }
 

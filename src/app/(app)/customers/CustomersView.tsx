@@ -739,6 +739,16 @@ export default function CustomersView({
               value={f.channelId || undefined} onChange={(v) => apply({ channelId: v ?? "" })}
               options={渠道筛选项} />
           ),
+        }, {
+          // 国家（员工反馈 1C，11-16）：按客户地址里的国家（列表「国家」一列那一格），只给看得到的客户里真有的；默认收着（1024 宽筛选行放不下），
+          // 要常用的在「更多筛选」里自己摆出来（useCustomFilters 记在本机）
+          键: "country", 名: "国家", 宽: 140, 默认外露: false, 有值: !!f.country,
+          渲染: (style: CSSProperties) => (
+            <Select style={style} placeholder="全部国家" allowClear aria-label="国家" showSearch={{ optionFilterProp: "label" }}
+              popupMatchSelectWidth={false}
+              value={f.country || undefined} onChange={(v) => apply({ country: v ?? "" })}
+              options={[...new Set([...国家们.filter((x) => 有值(x)), ...(f.country ? [f.country] : [])])].map((x) => ({ value: x, label: x }))} />
+          ),
         }]
       : []),
     // 手机号（11-11 使用方：「没有手机号……的筛选选项」）：只比号码，和搜索框里像号码的那一半同一套（去空格、横杠、括号、+86；输后几位也行），
@@ -856,11 +866,14 @@ export default function CustomersView({
       title: "客户属性", key: "customerAttr", width: 112, 默认: false,
       render: (_: unknown, r: CustomerRow) => (有值(r.customerAttr) ? <span className="clamp-1" style={{ display: "block" }} title={r.customerAttr}>{r.customerAttr}</span> : 空),
     }] : []),
-    // 国家（11-04 用户：客户列表加国家列，有值才显示）：这一页里有人填了客户所在国家才摆这一列
-    ...(rows.some((r) => 有值(r.addrCountry)) ? [{
+    /*
+      国家（11-04 用户：客户列表加国家列）：原来这一页有人填了才摆，翻一页这一列就时有时无（员工反馈 1C，11-16）——
+      改成固定摆，没填的写「—」（X-08 空值都采用「—」）。客户名里带的「｜国家」（M-导入-54 补名字）不拆，另问业务方
+    */
+    {
       title: "国家", key: "addrCountry", width: 宽(96, 68),
       render: (_: unknown, r: CustomerRow) => (有值(r.addrCountry) ? <span className="clamp-1" style={{ display: "block" }} title={r.addrCountry ?? ""}>{r.addrCountry}</span> : 空),
-    }] : []),
+    },
     { title: "地址", key: "address", width: 180, 默认: false, render: (_: unknown, r) => { const t = 拼地址(r); return t ? <span title={t}>{t}</span> : 空; } },
     {
       title: "官网", key: "website", width: 170, 默认: false,

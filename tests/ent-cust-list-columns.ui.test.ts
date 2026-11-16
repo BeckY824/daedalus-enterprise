@@ -44,7 +44,7 @@ beforeAll(async () => {
     const 假看板=()=>{const 位=React.useContext(看板工具位);const [有,set有]=React.useState(!!window.__看板工具);React.useEffect(()=>{window.__切工具=set有},[]);return <div className='fake-board'>项目看板{window.__卡&&['c1','c2','c3'].map(k=><div key={k} className='pipe-card' data-morph-key={k}>{k}</div>)}{有&&位&&createPortal(<><button type='button' className='ant-btn ant-btn-default'><span>分配</span></button><button type='button' className='ant-btn ant-btn-default'><span>我分出去的</span></button></>,位)}</div>};
     const 长='某某超长贸易进出口有限公司'.repeat(6);
     const users=[{id:'me',name:'小王',email:'s1',role:'SALES',active:true},{id:'u2',name:'一个名字特别特别长的同事',email:'s2',role:'SALES',active:true}];
-    const 行=(id,owner)=>({id,name:长+id,phone:'1380000000'+id.slice(1),school:null,grade:null,major:null,followStatus:'待跟进',decisionStatus:'了解中',custStatus:'跟进中',salesOwnerId:owner,salesOwnerName:owner==='me'?'小王':'一个名字特别特别长的同事',createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',lastFollowAt:'2026-11-01T00:00:00.000Z',signedAmount:0,referrerCustomerId:null,referrerName:null,channelId:null,channelName:null,expectedSignAt:null,remark:null,addrCountry:'阿拉伯联合酋长国',extra:{level:'A'}});
+    const 行=(id,owner)=>({id,name:长+id,phone:'1380000000'+id.slice(1),school:null,grade:null,major:null,followStatus:'待跟进',decisionStatus:'了解中',custStatus:'跟进中',salesOwnerId:owner,salesOwnerName:owner==='me'?'小王':'一个名字特别特别长的同事',createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',lastFollowAt:'2026-11-01T00:00:00.000Z',signedAmount:0,referrerCustomerId:null,referrerName:null,channelId:null,channelName:null,expectedSignAt:null,remark:null,addrCountry:window.__无国家?null:'阿拉伯联合酋长国',extra:{level:'A'}});
     const rows=[行('c1','me'),行('c2','u2'),行('c3','me')].map(r=>window.__公海?{...r,pool:{reason:'超时回收'}}:r);
     const 项目概况={c1:{项目数:12,当前节点:'异常 · 某个后台改得特别特别长的节点名字',当前阶段:'订单'},c2:{项目数:1,当前节点:'方案敲定',当前阶段:'商机'}};
     const 根=()=>{const [板,set板]=React.useState(!!window.__看板);window.__设板=set板;return 树里(板)};
@@ -191,6 +191,56 @@ it("三态开着：默认列在 1280 / 1366 不横向滚、最后一列看得全
         // 1024 宽表格本来就横滚，列宽 = 设的宽：三态关着照旧（项目数 64 → 72），开着按收过的
         expect(左.宽们, `宽 ${w} 三态${三 ? "开" : "关"}`).toEqual(三 ? [136, 80, 72, 136, 76, 100, 60, 68, 92, 92] : [200, 112, 72, 110, 116, 76, 96, 140, 180]);
       }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+/*
+  国家一列固定摆（员工反馈 1C，11-16）：原来这一页没人填国家就不摆，翻一页这一列时有时无。这一页全没填：照样有「国家」一列、每格「—」；
+  1024 / 1280 / 1366、超长客户名：页面不横向撑出，三态开着 1280 / 1366 表格不出内部横滚、最后一列（最近跟进）不被操作列盖住；
+  国家筛选（企业版按客户地址的国家）默认收在「更多筛选」里
+*/
+it("这一页没人填国家：「国家」一列照摆、每格「—」；三种宽度不横向撑出；国家筛选在更多筛选里", async () => {
+  for (const [w, 三] of [[1024, true], [1280, true], [1366, true], [1024, false], [1366, false]] as const) {
+    const page = await browser.newPage({ viewport: { width: w, height: 900 } }); page.setDefaultTimeout(5000);
+    const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+    try {
+      await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") });
+      await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
+      await page.evaluate((三) => { const x = window as unknown as { __无国家: boolean; __三态: boolean }; x.__无国家 = true; x.__三态 = 三; }, 三);
+      await page.addScriptTag({ content: 包 });
+      await page.locator("tr.ant-table-row").first().waitFor();
+      const 量 = await page.evaluate(() => {
+        const 框 = document.querySelector(".ant-table-content") as HTMLElement;
+        框.scrollLeft = 框.scrollWidth;
+        const ths = [...document.querySelectorAll("thead th")] as HTMLElement[];
+        const 列 = ths.findIndex((t) => t.innerText.trim() === "国家");
+        const 数据 = ths.filter((t) => !t.classList.contains("ant-table-selection-column") && t.innerText.trim() !== "" && !t.className.includes("fix-end") && !t.className.includes("fix-right"));
+        const 操作 = ths.find((t) => t.className.includes("fix-end") || t.className.includes("fix-right"))!;
+        const 名 = document.querySelector("tr.ant-table-row td a, tr.ant-table-row td .clamp-1") as HTMLElement | null;
+        return {
+          列,
+          格: 列 < 0 ? [] : [...document.querySelectorAll("tr.ant-table-row")].map((tr) => (tr.children[列] as HTMLElement).innerText.trim()),
+          高: Math.max(...[...document.querySelectorAll("tr.ant-table-row")].map((tr) => tr.getBoundingClientRect().height)),
+          框宽: 框.clientWidth, 内宽: 框.scrollWidth,
+          末右: 数据.at(-1)!.getBoundingClientRect().right, 操作左: 操作.getBoundingClientRect().left, 末: 数据.at(-1)!.innerText.trim(),
+          页宽: document.documentElement.scrollWidth,
+          名截: 名 ? 名.scrollWidth > 名.clientWidth : null,
+        };
+      });
+      expect(量.列, `宽 ${w} 有国家一列`).toBeGreaterThan(0);
+      expect(量.格, `宽 ${w}`).toEqual(["—", "—", "—"]);
+      expect(量.高, `宽 ${w} 每格一行`).toBeLessThanOrEqual(60);
+      expect(量.末, `宽 ${w}`).toBe("最近跟进");
+      expect(量.末右, `宽 ${w} 最后一列不被操作列盖住`).toBeLessThanOrEqual(量.操作左 + 0.5);
+      if (三 && w >= 1280) expect(量.内宽, `宽 ${w} 不出表格内部横向滚动`).toBeLessThanOrEqual(量.框宽);
+      expect(量.页宽, `宽 ${w} 页面不横向撑出`).toBeLessThanOrEqual(w);
+      if (!(await page.getByRole("combobox", { name: "国家" }).count())) {
+        await page.getByRole("button", { name: /^更多筛选/ }).click();
+        await expect.poll(() => page.locator(".ant-popover").getByRole("combobox", { name: "国家" }).count(), { message: `宽 ${w}` }).toBe(1);
+      }
+      摆法.push(`国家 ${w}${三 ? " 三态" : ""}: 框 ${量.框宽} 内 ${量.内宽} 末右 ${Math.round(量.末右)} 操作左 ${Math.round(量.操作左)} 页 ${量.页宽}`);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }

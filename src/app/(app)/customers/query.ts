@@ -68,6 +68,14 @@ export type 客户条件 = {
   triState?: string;
 };
 
+/**
+ * 企业版国家筛选（1C，11-16）：按客户地址里的国家（Customer.addrCountry，列表「国家」一列显示的就是它）；
+ * 别的版本照旧按外贸档案的国家（CustomerExtra.country）
+ */
+function 国家条件(country: string | undefined): Prisma.CustomerWhereInput | null {
+  return country && 企业版() ? { addrCountry: country } : null;
+}
+
 /** 等级筛选：A–D 按字母筛；「未分级」= 没有档案行或等级空着的。别的值不筛（地址栏手改的） */
 function 等级条件(level: string | undefined): Prisma.CustomerWhereInput | null {
   if (!level) return null;
@@ -164,8 +172,11 @@ export async function 客户筛选条件(
   const 按项目 = await 项目筛选条件(sp, userId);
   // 没带 triState 不读规则（三态关着、没筛时不多一条查询）
   const 三态 = sp.triState ? await 三态筛选条件(sp.triState) : null;
+  const 国家 = 国家条件(sp.country);
+  // 企业版国家走 addrCountry（上面 国家条件），外贸档案那一层只剩来源
+  const 档案国家 = 国家 ? undefined : sp.country;
   return {
-    AND: [keyword, ...(按项目 ? [按项目] : []), ...(三态 ? [三态] : []), ...(本批 ? [客户id集合(本批.map(r => r.customerId))] : []), ...(等级 ? [等级] : []), ...(部门 ? [部门] : []), ...(建于 ? [{ createdAt: 建于 }] : []), ...(号码 ? [号码] : []), ...(sp.channelId && 企业版() ? [{ channelId: sp.channelId }] : [])],
+    AND: [keyword, ...(国家 ? [国家] : []), ...(按项目 ? [按项目] : []), ...(三态 ? [三态] : []), ...(本批 ? [客户id集合(本批.map(r => r.customerId))] : []), ...(等级 ? [等级] : []), ...(部门 ? [部门] : []), ...(建于 ? [{ createdAt: 建于 }] : []), ...(号码 ? [号码] : []), ...(sp.channelId && 企业版() ? [{ channelId: sp.channelId }] : [])],
     ...(sp.grade ? { grade: sp.grade } : {}),
     ...(sp.followStatus ? { followStatus: sp.followStatus } : {}),
     ...(sp.decisionStatus ? { decisionStatus: sp.decisionStatus } : {}),
@@ -186,8 +197,8 @@ export async function 客户筛选条件(
       ? { channelId: sp.directOf, referrerCustomerId: null }
       : {}),
     ...公海条件(sp),
-    ...(sp.country || sp.source
-      ? { extra: { is: { ...(sp.country ? { country: sp.country } : {}), ...(sp.source ? { source: sp.source } : {}) } } }
+    ...(档案国家 || sp.source
+      ? { extra: { is: { ...(档案国家 ? { country: 档案国家 } : {}), ...(sp.source ? { source: sp.source } : {}) } } }
       : {}),
   };
 }
