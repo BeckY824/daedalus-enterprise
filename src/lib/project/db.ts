@@ -18,7 +18,7 @@ import { 落到渠道 } from "@/lib/enterprise/channel-main";
 import { 是主渠道入口 } from "@/lib/enterprise/channel-main-core";
 import { parseDateInput } from "@/lib/date-input";
 import { 直属上级of, 权限组织, 读组织, 负责人和上级, type 组织 } from "@/lib/enterprise/org";
-import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除, 能删一些, 没设业务角色, 没业务角色不能领话, 不能领公海话, 能领公海, 只读角色, 只读角色话, 有业务角色, 是系统管理员 } from "@/lib/enterprise/permissions";
+import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除, 能删一些, 没设业务角色, 没业务角色不能领话, 不能领公海话, 能领公海, 只读角色, 只读话of, 有业务角色, 是系统管理员 } from "@/lib/enterprise/permissions";
 import { 公海按线拦 } from "@/lib/enterprise/pool-line-guard";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 软删一条 } from "@/lib/enterprise/soft-delete";
@@ -960,7 +960,7 @@ export async function 领公海项目准备(me: 谁, projectIds: string[], 带�
   // 停用的人业务角色已清，先说停用，话才准
   if (企业版() && 没设业务角色(await 权限组织(), me.id)) return { ok: false, error: (await 在职(prisma, me.id)) ? 没业务角色不能领话 : "账号已停用" };
   // 只读管理员先说只读（11-03 B2-1：原来落到「项目不能单独领」，同领客户 pool-actions 领取）
-  if (企业版() && 只读角色(me, await 权限组织())) return { ok: false, error: 只读角色话 };
+  if (企业版() && 只读角色(me, await 权限组织())) return { ok: false, error: 只读话of(me, await 权限组织()) };
   // 角色不领公海的（市管、渠运、项目组员、只看某人的，V3.5.1）
   if (企业版() && !能领公海(me, await 权限组织())) return { ok: false, error: 不能领公海话 };
   const 规则 = await 生效组织规则();

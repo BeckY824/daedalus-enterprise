@@ -20,7 +20,7 @@ import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 读组织, 建组织, 拆角色, 合角色, 部门挪动问题, 上级设置问题, 权限组织, 填组织设置, 规整只看某人, 回收站副手键, 只看某人键, 系统管理员标记键, 是系统管理员of, 能管设置of, 有人能管设置, 读组织于, 留一位系统管理员错, 留一位系统管理员话, 直属上级of, type 组织, type 组织部门 } from "@/lib/enterprise/org";
 import type { Prisma } from "@/generated/prisma";
 import { 能改后台设置 } from "@/lib/enterprise/permissions";
-import { 是业务角色, 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
+import { 是业务角色, 角色名, 角色组合问题, type 业务角色 } from "@/lib/sync/dept-policy";
 import { 规整字段配置, 字段权限key } from "@/lib/enterprise/field-perm";
 import { 市场部门key, 市场成员key, 规整市场部门 } from "@/lib/enterprise/market";
 import { 挡改设置, 规整改权限, 改权限key, 设置项, 设置项们, 谁能改的话, type 设置项名 } from "@/lib/enterprise/edit-perm";
@@ -188,6 +188,9 @@ export async function 设成员(userId: string, 传来的: 成员改动, 确认 
     if (!传.length) return { ok: false, error: "至少要有一个角色" };
     if (!传.every(是业务角色)) return { ok: false, error: "没有这个角色" };
     新角色们 = 拆角色(传.join(","));
+    // Q10：销售教练不兼销售类角色（dept-policy.ts 教练不能兼的角色）
+    const 组合 = 角色组合问题(新角色们);
+    if (组合) return { ok: false, error: 组合 };
     改.bizRole = 合角色(新角色们);
   }
   if (改.line !== undefined && 改.line !== null && 改.line !== "内贸" && 改.line !== "外贸") return { ok: false, error: "业务线只能是内贸、外贸或两边都做" };

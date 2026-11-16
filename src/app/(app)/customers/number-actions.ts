@@ -12,7 +12,7 @@ import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { 不在了 } from "@/lib/not-there";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 没设业务角色, 只读角色, 只读角色话 } from "@/lib/enterprise/permissions";
+import { 没设业务角色, 只读角色, 只读话of } from "@/lib/enterprise/permissions";
 import { 查重捞回, 回收站叫法 } from "@/lib/enterprise/soft-delete";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 读的我 } from "@/lib/team-scope";
@@ -76,7 +76,7 @@ export async function 申请挂靠(撞号id: string): Promise<{ ok: true; 提示
     if (!企业版()) return { ok: false, error: "企业版才有申请挂靠" };
     const org = await 权限组织();
     if (!org || 没设业务角色(org, me.id)) return { ok: false, error: "你还没有业务角色，不能改数据，请找总管理设置" };
-    if (只读角色(me, org)) return { ok: false, error: 只读角色话 };
+    if (只读角色(me, org)) return { ok: false, error: 只读话of(me, org) };
     return await 记申请挂靠(me, 撞号id);
   } catch (e) { return 不在了(e); }
 }
@@ -97,7 +97,7 @@ export async function 从回收站捞回(类型: string, 值: string): Promise<�
     if (!企业版()) return { ok: false, error: "回收站只在企业版里有" };
     const org = await 权限组织();
     if (!org || 没设业务角色(org, me.id)) return { ok: false, error: "你还没有业务角色，不能改数据，请找总管理设置" };
-    if (只读角色(me, org)) return { ok: false, error: 只读角色话 };
+    if (只读角色(me, org)) return { ok: false, error: 只读话of(me, org) };
     const 号 = 验号码(类型, 值);
     if (!号.ok) return { ok: false, error: 号.提示 };
     const 先查 = await 查号码(类型, 值);

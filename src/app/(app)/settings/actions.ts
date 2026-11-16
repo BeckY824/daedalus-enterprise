@@ -323,7 +323,7 @@ export async function deactivateUser(id: string, transferToId: string, 方式: �
   }
   // 接收人要能当负责人（11-03 完成度 C3-1）：原来能交给只读管理员，客户转过去谁都动不了
   const 接收不行 = await 不能当负责人(transferToId);
-  if (接收不行) return { ok: false as const, error: `接收人${接收不行.startsWith("管理员") ? "是只读管理员" : "还没设业务角色"}，不能接手` };
+  if (接收不行) return { ok: false as const, error: `接收人${接收不行.startsWith("管理员") ? "是只读管理员" : 接收不行.startsWith("销售教练") ? "是销售教练（只读）" : "还没设业务角色"}，不能接手` };
   if (await wouldLoseLastAdmin(id)) {
     return {
       ok: false as const,

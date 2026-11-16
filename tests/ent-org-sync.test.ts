@@ -239,6 +239,21 @@ describe("业务角色", () => {
     expect((await 成员行(老板))!.bizRole).toBe("director");
     expect((await 成员行(张三))!.bizRole).toBe("director");
   });
+
+  it("销售教练（11-17）同总管级：同步和角色对照都不动，对照里给教练会被丢掉", async () => {
+    await prisma.user.update({ where: { id: 经理 }, data: { role: "SALES" } });
+    await prisma.entMember.create({ data: { userId: 经理, bizRole: "coach" } });
+    await prisma.entMember.create({ data: { userId: 张三, bizRole: "coach" } });
+    await 存角色对照("feishu", { 外贸专员: "sales", 市场专员: "coach" }, { id: 老板, name: "老板" });
+    expect((await 读通讯录设置("feishu")).角色对照).toEqual({ 外贸专员: "sales" });
+    await 接飞书();
+    await 同步通讯录("feishu");
+    换联网(假网(飞书录).网);
+    await 同步通讯录("feishu");
+    // 经理在飞书是负责人、张三职务对上了「外贸专员」：都不换掉教练
+    expect((await 成员行(经理))!.bizRole).toBe("coach");
+    expect((await 成员行(张三))!.bizRole).toBe("coach");
+  });
 });
 
 describe("直属上级", () => {

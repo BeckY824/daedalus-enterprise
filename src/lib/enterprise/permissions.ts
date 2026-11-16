@@ -17,13 +17,15 @@
  *   - 渠运（channel_ops）：本人负责的能看、编、软删，成熟后转出给销售；自己创建的客户一直看得到（market.ts）；不领公海
  *   - 设了「只看某人」的（org.只看某人，V3.5.1 市管特例）：业务数据只看 那个人 = 创建人或负责人 的，公海照常；不当负责人、不编、不转、不删
  *   - 管理员只读（admin、不兼 director）：看全部（设了业务线只看这条线，line-viewer.ts）；什么都不能改，服务端统一拦在 team-scope
+ *   - 销售教练（coach、不兼 director，11-17）：同管理员只读那套（看全部 / 设线只看线、写全拦、不当负责人、不领不建）；
+ *     另能发起教练主题（单独的表，判定在 coach-topic.ts），电话对他藏（field-perm.ts 教练固定字段）
  *   - 没设角色 / 停用：只看公海
  * 转让白名单（四选一）：负责人本人、实线直属上级（只一级）、条线总管理（条线内）、系统管理员。
  * 领公海：销售、销管、条线总管理、系统管理员。回收站：系统管理员 + 回收站副手（org.回收站副手）。
  *
  * 不是企业版（这个仓库已不部署）按老规矩（账号角色）走，见 老；企业版里 org 传 null 一律拒。org 用 org.ts 的 权限组织() 读。
  */
-import type { 业务角色, 业务线 } from "@/lib/sync/dept-policy";
+import { 是只读角色们, type 业务角色, type 业务线 } from "@/lib/sync/dept-policy";
 import { 项目业务线 } from "./assign-line";
 import { 按线的线, 按线范围of, 条线范围of } from "./line-viewer";
 import { 实线下属, 虚线下属, 是系统管理员of, type 组织 } from "./org-core";
@@ -98,15 +100,25 @@ export function 只读按线(me: 谁, org: 组织 | null): 业务线 | null {
 }
 
 /**
- * 只读角色：业务角色里有管理员（admin）、又不是总管理（director）。「可以看所有。但不能做任何编辑」（11-01）。
+ * 只读角色：业务角色里有管理员（admin）或销售教练（coach，11-17）、又不是总管理（director）。「可以看所有。但不能做任何编辑」（11-01）。
  * 写全拒：服务端在 lib/team-scope.ts 加上限定统一拦（visibility.ts 算出来的范围带 只读），界面写入按钮按这个藏 / 灰。
- * 不是企业版没有这个角色
+ * 名单在 dept-policy.ts 只读业务角色。不是企业版没有这个角色
  */
 export function 只读角色(me: 谁, org: 组织 | null): boolean {
-  return !老() && !!org && 有(org, me.id, ["admin"]) && !有(org, me.id, ["director"]);
+  return !老() && !!org && 是只读角色们(角色们(org, me.id));
 }
-/** 只读角色写的时候那一句 */
+/** 只读角色写的时候那一句（管理员）；按人说用 只读话of */
 export const 只读角色话 = "管理员只能看，不能改任何数据";
+/** 销售教练写的时候那一句 */
+export const 教练只读话 = "销售教练只能看，不能改任何数据";
+/** 是不是销售教练（只读那一类，不兼总管理）：只读那句话、不能当负责人那句话按这个说 */
+export function 是教练(me: 谁, org: 组织 | null): boolean {
+  return 只读角色(me, org) && 有(org!, me.id, ["coach"]) && !有(org!, me.id, ["admin"]);
+}
+/** 只读角色写的时候那一句，按人说：销售教练说教练那句，别的（管理员、兼了管理员的）照旧 */
+export function 只读话of(me: 谁, org: 组织 | null): string {
+  return 是教练(me, org) ? 教练只读话 : 只读角色话;
+}
 /**
  * 能当负责人（11-03 完成度 D3-9 / C3-1）：企业版 = 有业务角色、不是只读管理员（含按线的）；不看账号角色——
  * 账号 ADMIN 的真销售能选，没设角色的人、只读管理员选不到（原来只排除账号 ADMIN，管理员照样进下拉、能被转给、能接交接）。
@@ -121,7 +133,7 @@ export function 能当负责人(org: 组织 | null, userId: string): boolean {
 export function 不能当负责人话(org: 组织 | null, userId: string): string | null {
   if (老()) return null;
   if (没设业务角色(org, userId)) return "该成员还没设业务角色，不能当负责人，请找总管理设置";
-  if (只读角色({ id: userId }, org)) return "管理员只读，不能当负责人";
+  if (只读角色({ id: userId }, org)) return 是教练({ id: userId }, org) ? "销售教练只读，不能当负责人" : "管理员只读，不能当负责人";
   if (只看的人(org, userId)) return "设了「只看某人」的成员只能看，不能当负责人";
   return null;
 }
@@ -373,7 +385,7 @@ export function 能新建和领取(me: 谁, org: 组织 | null): boolean {
 /** 新建项目（建档向导）挡在哪：能 = null；只读管理员说只能看，没设业务角色说去设（11-03 D3-7 ④） */
 export function 不能新建项目话(me: 谁, org: 组织 | null): string | null {
   if (能新建和领取(me, org)) return null;
-  return org && 只读角色(me, org) ? 只读角色话 : 没业务角色不能新建话;
+  return org && 只读角色(me, org) ? 只读话of(me, org) : 没业务角色不能新建话;
 }
 
 /**
@@ -412,5 +424,5 @@ export function 是经理(me: 谁, org: 组织 | null): boolean {
 export function 是管理层(me: 谁, org: 组织 | null): boolean {
   if (老()) return 老管(me);
   if (!org || 只看的人(org, me.id)) return false;
-  return 有(org, me.id, ["director", "admin", "sales_mgr", "marketing_mgr"]) || 实线下属(org, me.id, 1).size > 0 || 虚线下属(org, me.id, 1).size > 0;
+  return 有(org, me.id, ["director", "admin", "coach", "sales_mgr", "marketing_mgr"]) || 实线下属(org, me.id, 1).size > 0 || 虚线下属(org, me.id, 1).size > 0;
 }

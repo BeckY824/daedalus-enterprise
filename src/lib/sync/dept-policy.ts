@@ -9,12 +9,33 @@
  */
 import type { 范围 } from "./scope-policy";
 
-export const 业务角色 = ["director", "admin", "sales_mgr", "sales", "channel_ops", "marketing_mgr", "project_ops"] as const;
+/**
+ * coach = 销售教练（企业版 11-17）：看全部、只读（另能在项目沟通卡里发起教练主题）。
+ * 排在最后：老角色的顺序（主角色 = 排最前的那个、设置页下拉的前几项）不动；教练只兼总管理、管理员，主角色照旧是那两个
+ */
+export const 业务角色 = ["director", "admin", "sales_mgr", "sales", "channel_ops", "marketing_mgr", "project_ops", "coach"] as const;
 export type 业务角色 = (typeof 业务角色)[number];
 export const 角色名: Record<业务角色, string> = {
-  director: "总管理", admin: "管理员", sales_mgr: "销售管理", sales: "销售成员",
+  director: "总管理", admin: "管理员", coach: "销售教练", sales_mgr: "销售管理", sales: "销售成员",
   channel_ops: "渠道运营", marketing_mgr: "市场管理", project_ops: "项目组员",
 };
+/**
+ * 只读角色（企业版）：业务角色里有这几个、又不兼总管理（director）= 看得到、什么业务数据都不能改。
+ * 管理员（admin，11-01）、销售教练（coach，11-17「照只读管理员那套」）。permissions.ts 只读角色、line-viewer.ts 按线、卡点只读都认这一份
+ */
+export const 只读业务角色: readonly 业务角色[] = ["admin", "coach"];
+export const 是只读角色们 = (们: readonly string[]): boolean => 们.some((r) => (只读业务角色 as readonly string[]).includes(r)) && !们.includes("director");
+/**
+ * Q10（11-17 用户「先按建议」）：销售教练 v1 单独当，不兼能当负责人、能改数据的那几类角色（兼了要另做「全部只看 + 自己的能改」）。
+ * 兼总管理（director 盖过只读）、管理员（同是只读）不拦。要改口只动这一份
+ */
+export const 教练不能兼的角色: readonly 业务角色[] = ["sales_mgr", "sales", "channel_ops", "marketing_mgr", "project_ops"];
+/** 这组角色能不能一起设：能 = null；不能 = 那一句（设置页下拉、服务端 设成员 共用） */
+export function 角色组合问题(们: readonly string[]): string | null {
+  if (!们.includes("coach")) return null;
+  const 撞 = 教练不能兼的角色.filter((r) => 们.includes(r));
+  return 撞.length ? `销售教练不能兼${撞.map((r) => 角色名[r]).join("、")}：教练只看不改，要兼的话请分两个账号` : null;
+}
 /**
  * 数据范围：本人 / 本人 + 互看开关 / 本一级部门 / 全公司。
  * 「本人 + 直属下属」（self_reports）只列在选项里，这一版不实现（直属上级的权限没定稿），设了按「本人」算
@@ -26,7 +47,7 @@ export type 数据范围 = (typeof 数据范围)[number];
  * 管理员按 10-23 拍板也默认看全公司（「配置表里能改」）；渠道运营、市场管理、项目组员同销售成员
  */
 export const 默认范围: Record<业务角色, 数据范围> = {
-  director: "all", admin: "all", sales_mgr: "dept", sales: "self_share", channel_ops: "self_share", marketing_mgr: "self_share", project_ops: "self_share",
+  director: "all", admin: "all", coach: "all", sales_mgr: "dept", sales: "self_share", channel_ops: "self_share", marketing_mgr: "self_share", project_ops: "self_share",
 };
 /** 能建部门、调人、改角色和配置表的角色（建团队的人永远能） */
 export const 能管人 = new Set<业务角色>(["director", "admin"]);

@@ -14,7 +14,7 @@ import type { SessionUser } from "@/lib/auth";
 import { saveUser, deactivateUser, reactivateUser, 停用清点, 批量停用, 解绑飞书身份 } from "./actions";
 import { 设不管设置, 设系统管理员 } from "./org-actions";
 import { 按阶段说, 三阶段 } from "@/lib/project/member-count";
-import { 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
+import { 角色名, 是只读角色们, type 业务角色 } from "@/lib/sync/dept-policy";
 import { useConsequence } from "@/components/ConsequenceDialog";
 import InlineConfirm from "@/components/InlineConfirm";
 
@@ -51,7 +51,7 @@ export type Row = {
 
 /** 管人的红、带团队的蓝，其余默认灰——跟账号角色那套颜色同一个意思 */
 const 业务角色色: Record<业务角色, string | undefined> = {
-  director: "red", admin: "red", sales_mgr: "blue", marketing_mgr: "blue",
+  director: "red", admin: "red", coach: "purple", sales_mgr: "blue", marketing_mgr: "blue",
   sales: undefined, channel_ops: undefined, project_ops: undefined,
 };
 
@@ -198,7 +198,8 @@ export default function MembersTab({
 
   const [清点中, set清点中] = useState<string | null>(null);
   // 接手人同负责人候选（11-03 完成度 C3-1，lib/enterprise/permissions.ts 能当负责人）：企业版要有业务角色、不是只读管理员
-  const 能接手 = (u: Row) => u.active && (!企业版 || (!!u.业务角色?.length && (!u.业务角色.includes("admin") || u.业务角色.includes("director"))));
+  // 接手人要能当负责人：只读角色（管理员、销售教练，不兼总管理）不进下拉
+  const 能接手 = (u: Row) => u.active && (!企业版 || (!!u.业务角色?.length && !是只读角色们(u.业务角色)));
   const 能停 = (r: Row) => r.active && (isAdmin ? r.id !== me.id : 下属可停用.includes(r.id));
   // 企业版批量离职：勾几个人，同一个接手人、同一种方式一次办完
   const [勾了, set勾了] = useState<string[]>([]);
