@@ -39,7 +39,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 客户参与的项目 } from "@/lib/project/relate";
 import { 我回避的公海项目, 回避豁免 } from "@/lib/project/pool-owner";
-import { 客户沟通汇总, 跟进去处们 } from "@/lib/enterprise/customer-follow-feed";
+import { 客户页沟通两样 } from "@/lib/enterprise/customer-follow-feed";
 import { 页面看得到的客户 } from "@/lib/project/visible-customers";
 import { 显示用客户状态 } from "@/lib/enterprise/cust-status-auto-db";
 import { 读客户三态, 读冷项目 } from "@/lib/enterprise/tri-state-detail";
@@ -129,7 +129,7 @@ export default async function CustomerDetailPage({
   // 客户详情合并（11-12 第 2 批）：企业版项目模式下右边是项目区，?project=<id> 选页签；按项目详情页同一个取数读当前项目
   const 项目区P = 项目们P ? 项目们P.then((ps) => 读项目区(me, customer.id, ps, sp.project ?? null)) : Promise.resolve(null);
   const [
-    号, users, channels, 挂来的, 另挂, 只项目四样,
+    号, users, channels, 挂来的, 另挂, 只项目几样,
     sourceLead, aiEnabled, 已收藏, 换负责人记录, 旺旺们, 项目们, 参与项目们, 只读, 客户状态选项,
     联系人分类附件, 关联们, 号码种类, 分配方式选项, 客户类型选项, 规则, 联系人附件数,
     可改沟通, 可删沟通, 客户状态字典, 职务选项, 客户属性选项, 字典释义, 项目区,
@@ -148,9 +148,8 @@ export default async function CustomerDetailPage({
     */
     只项目
       ? Promise.all([
-          // 页面渲染：客户可见走请求内缓存（翻页的服务端动作照旧现读）
-          客户沟通汇总(me, customer.id, undefined, 页面看得到的客户),
-          跟进去处们(me, customer.id, 页面看得到的客户),
+          // 页面渲染：客户可见走请求内缓存（翻页的服务端动作照旧现读）；沟通汇总和「跟进」菜单共用一遍看得到的项目（原来各算一遍）
+          客户页沟通两样(me, customer.id, 页面看得到的客户),
           页面可选项("transfer"),
           prisma.followPlan.findMany({ where: { customerId: customer.id, done: false }, orderBy: [{ plannedAt: "asc" }, { id: "asc" }], take: 20 }),
         ])
@@ -202,7 +201,7 @@ export default async function CustomerDetailPage({
   ]);
   const 冷项目 = 三态?.冷 ?? {};
   if (项目区) 项目区.页签们 = 项目区.页签们.map((t) => (冷项目[t.id] != null ? { ...t, 冷天数: 冷项目[t.id] } : t));
-  const [汇总, 跟进去处, 转让选项, 待办计划] = 只项目四样 ?? [null, null, null, null];
+  const [[汇总, 跟进去处], 转让选项, 待办计划] = 只项目几样 ?? [[null, null], null, null];
   // 号码类的几种（手机、座机、WhatsApp、传真）和电话一样过脱敏器；微信、邮箱、旺旺照旧（同联系人老三格的口径）
   const 打码种类 = new Set(["phone", "landline", "whatsapp", "fax"]);
   const 联系人一行 = (c: (typeof customer.contacts)[number]) => ({

@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { prisma, defaultClient } from "@/lib/prisma";
-import { 读的我, 有市场只读, 现在的公海回避, 现在的组员客户, 客户读条件 } from "@/lib/team-scope";
+import { 读的我, 限定的我, 有市场只读, 现在的公海回避, 现在的组员客户, 客户读条件 } from "@/lib/team-scope";
 import { 缓存分组数 } from "@/lib/enterprise/pool-count-cache";
 import { 在看已删, 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -261,12 +261,16 @@ export function 公海全部跟进数SQL_改前(筛段: string, 含删了的客�
  * 键 = 列 + 企业版 / 看不看已删 + 这个人读客户时限定层并进去的那一整句条件（客户读条件：组织范围、市场、组员、回避名单全在里面），
  * 条件一样的两个人本来就数出同一份值；条件不同就是不同的键，不会拿到按别人范围算的值。多租户、测试里不缓存（同那边）
  */
-export async function 看得到的下拉值(列: "grade" | "country"): Promise<string[]> {
+export async function 看得到的下拉值(列: "grade" | "country" | "addrCountry"): Promise<string[]> {
   const 条件 = await 客户读条件(defaultClient);
   const 查 = async () =>
     列 === "grade"
       ? (await prisma.customer.groupBy({ by: ["grade"], where: { grade: { not: null } } })).map((r) => r.grade!)
-      : (await prisma.customerExtra.groupBy({ by: ["country"], where: { country: { not: null } }, orderBy: { country: "asc" } })).map((r) => r.country!);
+      : 列 === "addrCountry"
+        // 企业版国家筛选（1C，11-16）：客户地址里的国家，列表「国家」一列显示的那一格；只给这个人「客户」页签里能出现的客户里真有的
+        // （和列表同一个范围：限定层 + 不在公海，P-看-03）——公海里才有的国家选了是 0 条
+        ? (await prisma.customer.groupBy({ by: ["addrCountry"], where: { addrCountry: { not: null }, pool: { is: null } }, orderBy: { addrCountry: "asc" } })).map((r) => r.addrCountry!)
+        : (await prisma.customerExtra.groupBy({ by: ["country"], where: { country: { not: null } }, orderBy: { country: "asc" } })).map((r) => r.country!);
   return 缓存分组数(`下拉:${列}`, [企业版(), 在看已删(), 条件], 查, 60_000);
 }
 
@@ -282,6 +286,25 @@ export async function 最近跟进的客户(n: number): Promise<string[] | null>
   const rows = await prisma.$queryRawUnsafe<{ id: string }[]>(
     `SELECT c.id FROM "Customer" c WHERE ${范围.名下.where} ORDER BY c."lastFollowAt" DESC, c."createdAt" DESC LIMIT ?`,
     ...范围.名下.参数,
+    n,
+  );
+  return rows.map((r) => r.id);
+}
+
+/**
+ * 不限定的人（总管理、系统管理员这类，限定层对客户的读一个字不加）看的不在公海的最近跟进前 n 位编号，顺序同 orderBy [lastFollowAt desc, createdAt desc]。
+ * 4 核提速 C（11-16）：Prisma 那句是 LEFT JOIN 公海 + deletedAt IS NULL，SQLite 挑 deletedAt 索引把 1.9 万位不在公海的客户取出来临时排一遍（18–24 ms）；
+ * 这里 deletedAt 前加 +、公海写 NOT EXISTS，顺 (lastFollowAt, createdAt, id)（迁移 143）倒着走、凑够 n 位就停（0.03 ms）。
+ *
+ * 只在「真不限定」时走：限定的我() 为空、也没有原负责人回避——正是 加上限定 里客户读原样放过去的那一支（team-scope.ts「if (!我) { if (!公海回避) …」）。
+ * 读的我() / 看得到的() 回 null 不等于不限定：有市场只读、回避名单过上限的人也回 null，这里一律回 null，调用方照旧走 Prisma（范围层带着）。
+ * 「没删」照 Prisma 扩展的口径：企业版、不在 看已删() 里才滤。tests/recent-follow-unscoped.test.ts 逐个身份对拍改前那句
+ */
+export async function 不限定时最近跟进的客户(n: number): Promise<string[] | null> {
+  if ((await 限定的我(defaultClient)) || (await 现在的公海回避(defaultClient))) return null;
+  const 滤删 = 企业版() && !在看已删();
+  const rows = await prisma.$queryRawUnsafe<{ id: string }[]>(
+    `SELECT c.id FROM "Customer" c WHERE ${滤删 ? `+c."deletedAt" IS NULL AND ` : ""}NOT EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id) ORDER BY c."lastFollowAt" DESC, c."createdAt" DESC LIMIT ?`,
     n,
   );
   return rows.map((r) => r.id);

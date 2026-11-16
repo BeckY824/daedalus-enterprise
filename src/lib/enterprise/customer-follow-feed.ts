@@ -30,15 +30,20 @@ const 项目上限 = 500;
 
 type 项目行 = { id: string; name: string; customerId: string; ownerId: string; pooledAt: Date | null; result: string | null; nextStepAt: Date | null; nextStepText: string | null; updatedAt: Date };
 
-/** 这位客户、当前这位看得到沟通内容的项目（主客户是它的 + 关联进来的；连挂过 = 再加历史上挂过这位跟进的） */
-async function 看得到的项目们(me: { id: string; role?: string }, customerId: string, 连挂过: boolean, 可见: 可见法): Promise<{ 行: 项目行; 主: boolean }[]> {
+/**
+ * 这位客户、当前这位看得到沟通内容的项目（主客户是它的 + 关联进来的；连挂过 = 再加历史上挂过这位跟进的）。
+ * 只挂过 = 这一个只因「挂过」才在里面（主客户不是它、也没关联它）：连挂过 = true 的结果滤掉这些，就是连挂过 = false 的结果
+ * （每个项目自己过可见、回避，不看别的项目；顺序按 updatedAt 排，滤掉几个不改别的先后）
+ */
+async function 看得到的项目们(me: { id: string; role?: string }, customerId: string, 连挂过: boolean, 可见: 可见法): Promise<{ 行: 项目行; 主: boolean; 只挂过: boolean }[]> {
   const [主, 关联, 挂过] = await Promise.all([
     prisma.project.findMany({ where: { customerId }, select: { id: true }, take: 项目上限 }),
     prisma.projectCustomer.findMany({ where: { customerId }, select: { projectId: true }, take: 项目上限 }),
     // 历史上记在这位客户名下、后来挂到项目上的（项目主客户改过的老数据）
     连挂过 ? prisma.followUpProject.findMany({ where: { followUp: { customerId } }, select: { projectId: true }, distinct: ["projectId"], take: 项目上限 }) : Promise.resolve([]),
   ]);
-  const ids = [...new Set([...主.map((p) => p.id), ...关联.map((r) => r.projectId), ...挂过.map((r) => r.projectId)])];
+  const 直接 = new Set([...主.map((p) => p.id), ...关联.map((r) => r.projectId)]);
+  const ids = [...new Set([...直接, ...挂过.map((r) => r.projectId)])];
   if (ids.length === 0) return [];
   const ps = await prisma.project.findMany({
     where: { id: { in: ids } },
@@ -47,12 +52,14 @@ async function 看得到的项目们(me: { id: string; role?: string }, customer
   });
   // 公海里我是历史负责人的项目：沟通入口、时间线都不出（C-01，lib/project/pool-owner.ts；总管理 / 管理员照出）
   const [看得到, 回避] = await Promise.all([可见(ps.map((p) => p.customerId)), 回避豁免(me).then((免) => (免 ? ([] as string[]) : 我回避的公海项目(prisma, me.id)))]);
-  return ps.filter((p) => 露客户(me, p, 看得到) && !回避.includes(p.id)).map((p) => ({ 行: p, 主: p.customerId === customerId }));
+  return ps.filter((p) => 露客户(me, p, 看得到) && !回避.includes(p.id)).map((p) => ({ 行: p, 主: p.customerId === customerId, 只挂过: !直接.has(p.id) }));
 }
+
+const 项目名表 = (们: { 行: 项目行 }[]) => new Map(们.map(({ 行 }) => [行.id, 行.name]));
 
 /** 汇总时间线收哪些项目：id → 名称 */
 export async function 汇总的项目(me: { id: string; role?: string }, customerId: string, 可见: 可见法 = 看得到的客户): Promise<Map<string, string>> {
-  return new Map((await 看得到的项目们(me, customerId, true, 可见)).map(({ 行 }) => [行.id, 行.name]));
+  return 项目名表(await 看得到的项目们(me, customerId, true, 可见));
 }
 
 /** 「跟进」菜单列的项目（第 3 条）：主客户的 + 关联进来的，进行中的在前、各自按最近改动排 */
@@ -73,7 +80,11 @@ export type 跟进去处 = {
 };
 export async function 跟进去处们(me: { id: string; role?: string }, customerId: string, 可见: 可见法 = 看得到的客户): Promise<跟进去处[]> {
   const org = await 权限组织();
-  const 行们 = (await 看得到的项目们(me, customerId, false, 可见)).map(({ 行, 主 }) => ({
+  return 排去处(me, await 看得到的项目们(me, customerId, false, 可见), org);
+}
+
+function 排去处(me: { id: string; role?: string }, 项目们: { 行: 项目行; 主: boolean }[], org: Awaited<ReturnType<typeof 权限组织>>): 跟进去处[] {
+  const 行们 = 项目们.map(({ 行, 主 }) => ({
     id: 行.id,
     名: 行.name,
     主,
@@ -105,7 +116,19 @@ function 按时间线顺序(a: { occurredAt: Date; id: string }, b: { occurredAt
  * 调用方先确认这位客户当前这位看得到（客户页本身就要看得到）。
  */
 export async function 客户沟通汇总(me: { id: string; role?: string }, customerId: string, before?: 沟通游标, 可见: 可见法 = 看得到的客户): Promise<{ rows: FollowUpRow[]; hasMore: boolean }> {
-  const 项目们 = await 汇总的项目(me, customerId, 可见);
+  return 汇总一页(customerId, await 汇总的项目(me, customerId, 可见), before);
+}
+
+/**
+ * 客户页渲染一次要两样（沟通记录第一页 + 「跟进」菜单）：看得到的项目只算一遍（连挂过 = true），
+ * 菜单滤掉只从「挂过」来的——和分开调 客户沟通汇总、跟进去处们 结果一样，少算一遍项目（主客户、关联、项目行、客户可见、回避各一句）
+ */
+export async function 客户页沟通两样(me: { id: string; role?: string }, customerId: string, 可见: 可见法 = 看得到的客户): Promise<[{ rows: FollowUpRow[]; hasMore: boolean }, 跟进去处[]]> {
+  const [们, org] = await Promise.all([看得到的项目们(me, customerId, true, 可见), 权限组织()]);
+  return Promise.all([汇总一页(customerId, 项目名表(们), undefined), 排去处(me, 们.filter((x) => !x.只挂过), org)]);
+}
+
+async function 汇总一页(customerId: string, 项目们: Map<string, string>, before?: 沟通游标): Promise<{ rows: FollowUpRow[]; hasMore: boolean }> {
   const ids = [...项目们.keys()];
   /*
     这位客户名下进了回收站的项目：挂在上面、记在这位客户名下的沟通照旧留在客户下（删项目时就是这么说的），
