@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defaultClient as db, prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 客户关键词SQL, 客户号码SQL, 客户名索引式, 包含模式, 设三字索引, 三字可比, 名键必含字 } from "@/lib/search-keyword";
+import { 客户关键词SQL, 客户号码SQL, 客户名索引式, 包含模式, 设三字索引, 三字可比, 名键必含字, 客户编号 } from "@/lib/search-keyword";
 import { 号键SQL } from "@/lib/phone-dedupe";
 import { 分组数SQL, 取一段SQL } from "@/lib/enterprise/unified-pool-sql";
 import { 名键 } from "@/lib/enterprise-import/clean";
@@ -35,6 +35,8 @@ beforeAll(async () => {
         major: i % 6 === 0 ? "国际贸易" : null,
         grade: i % 5 === 0 ? "高三" : null,
         remark: i % 3 === 0 ? `备注里有 1390000 和 测试科技 ${i}` : null,
+        // 简称（11-17 PR-0）：不在三字索引里，走迁移 145 的部分索引；两个字、三个字以上、带大小写的都有
+        shortName: i % 10 === 2 ? `恒信达${i}` : i % 10 === 6 ? `恒信${i}` : i === 13 ? "HengXin" : null,
         salesOwnerId: owner,
       },
     });
@@ -83,6 +85,8 @@ const 关键词 = [
   "德国", "美国", "微信号", "改过的微信", "旺旺", "示例1", "7700 9000", "900999", "联系人甲", "1111 0004",
   // 带大小写的（不走索引）、全角字母、引号、通配符、谁也不中
   "acme", "ACME", "Trading", "ＡＢＣ", "abc", "\"测试\"", "引号\"测", "[符]*?", "*?号", "没有这个人啊",
+  // 简称：两个字（GLOB）、三个字以上（三字索引 + 部分索引）、带大小写、简称和名字都对不上
+  "恒信", "恒信达", "信达1", "hengxin", "恒信达没有",
 ];
 
 describe("三字索引和整表 GLOB 命中同一批客户", () => {
@@ -109,6 +113,35 @@ describe("三字索引和整表 GLOB 命中同一批客户", () => {
     expect((await 两边("测试")).新!.length).toBeGreaterThan(5);
   });
 
+  it("简称（11-17 PR-0）：两条路都搜得到，选客户弹窗也比；名字里没有这个词也中", async () => {
+    const 有简称 = (await db.customer.findMany({ where: { shortName: { not: null } }, select: { id: true, shortName: true }, orderBy: { id: "asc" } }));
+    const 应 = (词: string) => 有简称.filter((c) => c.shortName!.toLowerCase().includes(词.toLowerCase())).map((c) => c.id);
+    for (const [k, 走索引] of [["恒信", false], ["恒信达", true], ["信达1", true], ["hengxin", false]] as const) {
+      expect(应(k).length, k).toBeGreaterThan(0);
+      for (const 弹窗 of [false, true]) {
+        const r = await 两边(k, 弹窗);
+        expect({ k, 弹窗, 走索引: r.走索引 }).toEqual({ k, 弹窗, 走索引 });
+        // 这几个词名字、学校、备注里都没有：命中的就是简称对上的那几位
+        expect({ k, 弹窗, ids: r.新 }).toEqual({ k, 弹窗, ids: 应(k) });
+      }
+    }
+    // 改简称：旧的搜不到、新的搜得到（部分索引是普通索引，随行走，不用触发器）
+    await db.customer.update({ where: { id: "fts-02" }, data: { shortName: "换了简称" } });
+    expect((await 两边("恒信达2")).新).not.toContain("fts-02");
+    expect((await 两边("换了简称")).新).toEqual(["fts-02"]);
+    await db.customer.update({ where: { id: "fts-02" }, data: { shortName: "恒信达2" } });
+  });
+
+  it("查询计划：简称那段按迁移 145 的部分索引扫（不整表扫客户）", async () => {
+    设三字索引(true);
+    const w = (await 客户关键词SQL("恒信达"))!;
+    设三字索引(undefined);
+    const 计划 = (await prisma.$queryRawUnsafe<{ detail: string }[]>(`EXPLAIN QUERY PLAN SELECT c.id FROM "Customer" c WHERE ${w.sql} AND +c."deletedAt" IS NULL`, ...w.values)).map((r) => r.detail).join(" | ");
+    expect(计划).toContain("Customer_shortName_idx");
+    expect(计划).toContain("MULTI-INDEX OR");
+    expect(计划).not.toMatch(/SCAN c\b/);
+  });
+
   it("手机号筛选（客户号码SQL）：走索引和原来一样", async () => {
     for (const k of ["0000", "1111", "138 0000", "（137）0000", "+86 136", "7777", "900999", "1111 0004", "abc", "12"]) {
       设三字索引(false); const a = await 客户号码SQL(k);
@@ -131,7 +164,7 @@ describe("三字索引和整表 GLOB 命中同一批客户", () => {
 });
 
 describe("公海搜索：从名字对上的名单出发和整表 GLOB 一样", () => {
-  it.each(["华东测试", "示例教育", "测试", "acme", "改过名", "没有这个人啊"])("「%s」", async (raw) => {
+  it.each(["华东测试", "示例教育", "测试", "acme", "改过名", "没有这个人啊", "恒信", "恒信达", "hengxin"])("「%s」", async (raw) => {
     const 词 = raw.toLowerCase();
     设三字索引(true);
     const 式 = await 客户名索引式(词);
@@ -197,5 +230,12 @@ describe("客户名查重的预筛（名键必含字）", () => {
         for (const 字 of 名键必含字(名键(n))) expect(v.includes(字), `${v} 应含 ${字}`).toBe(true);
       }
     }
+  });
+});
+
+describe("客户编号的写法（11-17 PR-0 挂点，编号列 PR-1 接）", () => {
+  it("NO. 开头、带空格、全角、纯数字都认成编号；0、超长、夹字母的不认", () => {
+    for (const [k, n] of [["NO.00123", 123], ["no.123", 123], ["No 00007", 7], ["NO00001", 1], ["ＮＯ．００１２", 12], ["00123", 123], ["123", 123], ["１２３", 123], [" NO.42 ", 42]] as const) expect({ k, n: 客户编号(k) }).toEqual({ k, n });
+    for (const k of ["NO.", "0", "00000", "1234567890", "NO.12a", "A123", "138 0000", "NO-123", "恒信"]) expect({ k, n: 客户编号(k) }).toEqual({ k, n: null });
   });
 });

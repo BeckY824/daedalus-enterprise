@@ -22,7 +22,7 @@ vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
-import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
+import { 忘掉企业版范围, 以谁的身份 } from "@/lib/enterprise/visibility";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 无负责人占位Id } from "@/lib/no-owner-db";
 import { 无主入池理由 } from "@/lib/enterprise-import/project-target";
@@ -477,6 +477,48 @@ describe("项目行", () => {
     expect(领后.子!.map((x) => x.projectId)).toEqual([晚, 早]);
     // 纯规矩：一个就原样返回
     expect(并客户池([页.行.find((r) => r.customerId === c2)!])).toBe(页.行.find((r) => r.customerId === c2));
+  });
+});
+
+describe("关键词搜简称（11-17 客户抬头 PR-0）", () => {
+  const 简称 = (id: string, shortName: string) => prisma.customer.update({ where: { id }, data: { shortName } });
+  it("客户行：两个字（GLOB）、三个字以上（三字索引那条路）都搜得到；名字里没有这个词也中；原负责人回避的照样搜不到", async () => {
+    const a = await 客户(乙.id), b = await 客户(乙.id), 不中 = await 客户(乙.id);
+    await 简称(a, "恒信");
+    await 简称(b, "恒信达贸易");
+    当(乙);
+    expect(await 放进公海([a, b, 不中], "客户主动终止")).toMatchObject({ ok: true, updated: 3 });
+    当(丙);
+    // 读公海页按这个请求是谁认范围（回避）：搜之前切成这个人
+    const 搜 = async (u: 人, keyword: string) => { 当(u); return 以谁的身份(u.id, async () => (await 读公海页(u, { keyword }, 1, 20)).行.map((r) => r.customerId).sort()); };
+    expect(await 搜(丙, "恒信")).toEqual([a, b].sort());
+    expect(await 搜(丙, "恒信达")).toEqual([b]);
+    expect(await 搜(丙, "信达贸")).toEqual([b]);
+    expect(await 搜(丙, "没有这个简称")).toEqual([]);
+    // 名字照旧搜得到，简称不挤掉名字
+    const 名 = (await prisma.customer.findUniqueOrThrow({ where: { id: 不中 } })).name;
+    expect(await 搜(丙, 名)).toEqual([不中]);
+    // 乙自己放进公海的（P-公海-04 回避）：简称搜也不出
+    expect(await 搜(乙, "恒信")).toEqual([]);
+    expect(await 搜(老板, "恒信达")).toEqual([b]);
+  });
+
+  it("项目行：看得到客户的人按简称搜得到；客户名对他不露的，简称也不露、搜不到", async () => {
+    const c = await 客户(乙.id);
+    await 简称(c, "远航科技");
+    await 项目(乙.id, c, { phase: "订单", node: "签约" });
+    const p = await 项目(乙.id, c, { phase: "商机", node: "需求确认" });
+    expect(await 放回公海(乙, p)).toEqual({ ok: true });
+    当(老板);
+    const 老板看 = (await 以谁的身份(老板.id, () => 读公海页(老板, { keyword: "远航" }, 1, 20))).行;
+    expect(老板看.map((r) => r.projectId)).toEqual([p]);
+    expect(老板看[0].客户名).not.toBeNull();
+    当(丙);
+    const 丙全 = (await 以谁的身份(丙.id, () => 读公海页(丙, {}, 1, 20))).行.find((r) => r.projectId === p)!;
+    const 丙搜 = (await 以谁的身份(丙.id, () => 读公海页(丙, { keyword: "远航科技" }, 1, 20))).行.map((r) => r.projectId);
+    // 丙看不看得到这位客户，按公海项目的露客户规则；简称跟着客户名一起露
+    expect(丙搜).toEqual(丙全.客户名 === null ? [] : [p]);
+    if (丙全.客户名 === null) expect(丙全.客户简称).toBeUndefined();
   });
 });
 

@@ -101,8 +101,8 @@ function 客户项目格(名下: readonly 客户的项目[], 字典: 字典, 没
 }
 
 /** 项目行里要「我看不看得到这位客户」才定得下的两格：客户不露就不写名字，来源也只认项目自己选的 */
-function 项目客户格(露: boolean, p: { channelId: string | null; customer: { name: string; channelId: string | null } }) {
-  return { 客户名: 露 ? p.customer.name : null, 来源id: p.channelId ?? (露 ? p.customer.channelId : null) };
+function 项目客户格(露: boolean, p: { channelId: string | null; customer: { name: string; shortName: string | null; channelId: string | null } }) {
+  return { 客户名: 露 ? p.customer.name : null, ...(露 && p.customer.shortName ? { 客户简称: p.customer.shortName } : {}), 来源id: p.channelId ?? (露 ? p.customer.channelId : null) };
 }
 
 /**
@@ -119,7 +119,7 @@ type 全取 = { 客户的项目: boolean; 客户可见: boolean;
   /** 渠道名单（11-11）：只取挂着这些公海项目的客户 / 这些公海项目（名单的条件，见 读公海页），名单之外的公海行一行不取 */
   只要?: Prisma.ProjectWhereInput };
 
-const 客户要的 = { id: true, name: true, salesOwnerId: true, lastFollowAt: true, createdAt: true, poolInvalidAt: true, poolReturns: true, channelId: true } satisfies Prisma.CustomerSelect;
+const 客户要的 = { id: true, name: true, shortName: true, salesOwnerId: true, lastFollowAt: true, createdAt: true, poolInvalidAt: true, poolReturns: true, channelId: true } satisfies Prisma.CustomerSelect;
 type 客户片 = Prisma.CustomerGetPayload<{ select: typeof 客户要的 }>;
 type 池片 = Prisma.CustomerPoolGetPayload<{ select: typeof 池要的 }>;
 
@@ -135,6 +135,7 @@ function 拼客户行(me: { id: string }, c: 客户片, pool: 池片, 看得到�
   return {
     id: `c:${c.id}`, 种: "客户", customerId: c.id,
     客户名: c.name,
+    ...(c.shortName ? { 客户简称: c.shortName } : {}),
     ...客户项目格(看得到的项目, 字典, 没项目),
     属性: 客户公海属性(全部项目),
     最后跟进: c.lastFollowAt?.toISOString() ?? null,
@@ -174,7 +175,7 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
       orderBy: { pooledAt: "desc" },
       select: {
         id: true, name: true, phase: true, node: true, result: true, pooledAt: true, ownerId: true, customerId: true, createdAt: true, channelId: true,
-        customer: { select: { name: true, lastFollowAt: true, poolReturns: true, channelId: true } },
+        customer: { select: { name: true, shortName: true, lastFollowAt: true, poolReturns: true, channelId: true } },
       },
     }),
     生效组织规则(),
