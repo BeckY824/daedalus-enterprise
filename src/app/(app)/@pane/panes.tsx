@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { 负责人显示名 } from "@/lib/pool";
-import { 最近跟进的客户 } from "@/lib/scope-sql";
+import { 最近跟进的客户, 不限定时最近跟进的客户 } from "@/lib/scope-sql";
 import { 客户页签数 } from "@/lib/pool-db";
 import { 客户筛选条件 } from "@/app/(app)/customers/query";
 import type { Prisma } from "@/generated/prisma";
@@ -63,7 +63,11 @@ export async function 学员名单() {
     总数 = 客户列表「客户」页签那个数（lib/pool-db.ts 客户页签数），行的条件 = 客户列表不筛时的条件（query.ts 客户筛选条件），
     「我的」另取自己负责的最近 50 位，不在「全部」那 50 位里再筛
   */
-  const [页签数, ids, 列表条件, 状态字典] = await Promise.all([客户页签数(), 最近跟进的客户(50), 客户筛选条件({}, me.id), 企业 ? 页面字典("custStatus") : null]);
+  /*
+    不限定的人（4 核提速 C，11-16）另走一句裸 SQL 取编号（顺 (lastFollowAt, createdAt, id) 凑够 50 位就停，见 不限定时最近跟进的客户）；
+    有市场只读、回避名单过上限这些两边都回 null 的照旧走下面 Prisma 那句
+  */
+  const [页签数, ids, 列表条件, 状态字典] = await Promise.all([客户页签数(), 最近跟进的客户(50).then((x) => x ?? 不限定时最近跟进的客户(50)), 客户筛选条件({}, me.id), 企业 ? 页面字典("custStatus") : null]);
   const 排序 = [{ lastFollowAt: "desc" as const }, { createdAt: "desc" as const }];
   const 字段 = {
     id: true, name: true, followStatus: true, custStatus: true, lastFollowAt: true, salesOwnerId: true,
