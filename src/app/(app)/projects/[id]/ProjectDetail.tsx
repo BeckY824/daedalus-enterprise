@@ -15,7 +15,7 @@ import { showUndo } from "@/components/UndoBar";
 import { 其他没写好, 不填项, 去不填, 未选占位 } from "@/lib/enterprise/dict-kinds";
 import { 有值, 空值符 } from "@/lib/empty-value";
 import { 项目不能单独领提示, 客户在公海项目不单领提示, 公海规则 } from "@/lib/enterprise/pool-rules";
-import { 必填叫法 } from "@/lib/project/required";
+import { 必填叫法, type 必填项 } from "@/lib/project/required";
 import { PageHead, CustomerLink, FollowTypeCell } from "@/components/ui";
 import { useBusiness } from "@/lib/business-client";
 import { dayjs, fmtDateTime, 成员选项 } from "@/lib/utils";
@@ -123,6 +123,8 @@ export type 项目详情 = {
   出口叫法: 出口叫法改动;
   /** 企业版线索阶段：推过线索验证还差哪几样（显示名，11-05），空 = 齐了 */
   有效沟通差: string[];
+  /** 企业版：组织规则里「线索验证」节点配的必填 key（线索验证面板写判定依据用）；没开节点推进 = 空 */
+  线索验证必填?: 必填项[];
   /**
    * 企业版超时回收：nextStepAt 是最近一次沟通填的下一步时间（服务端排好的 YYYY-MM-DD）；回收日 = 哪天没人跟进就自动回公海（null = 不会）；
    * 要下一步 = 记沟通必须填下一步时间；能记沟通 = 企业版里的负责人（11-01 起组员只能看），且不在公海（不是企业版照原来去客户页记）
@@ -1592,7 +1594,7 @@ export default function ProjectDetail({
     <>
       {p.线索验证 && (
         <Modal open={验证开着} title="线索验证" footer={null} width={560} onCancel={() => set验证开着(false)} destroyOnHidden>
-          <LeadVerifyPanel projectId={p.id} v={p.线索验证} 无效原因选项={p.原因选项.无效} 字数上限={p.字数上限} 跑={跑} 忙={忙} 缺有效沟通话={缺有效沟通话} 不给推={p.不给推} />
+          <LeadVerifyPanel projectId={p.id} v={p.线索验证} 无效原因选项={p.原因选项.无效} 字数上限={p.字数上限} 跑={跑} 忙={忙} 缺有效沟通话={缺有效沟通话} 不给推={p.不给推} 线索验证必填={p.线索验证必填 ?? []} />
         </Modal>
       )}
       {可改 && 编辑开着 && (
