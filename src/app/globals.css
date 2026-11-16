@@ -1177,7 +1177,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
    被右边四颗按钮挤到 3px，「钱同学」竖着一字一行（2026-09-28 走查时看到） */
 /* 详情页页头上面那一行「← 回到客户列表（第 N 页）」（员工反馈 1A，components/ListReturn.tsx）：单占一行，长了省略，不撑横滚 */
 .back-to-list-row { display: flex; min-width: 0; margin: -6px 0 6px; }
-.back-to-list { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; min-height: 24px; padding: 0 6px; margin-left: -6px; border-radius: 6px;
+.back-to-list { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; min-height: 24px; padding: 0 6px; margin-left: -6px; border-radius: var(--r-ctl);
   color: var(--text-muted); font-size: var(--fs-note); line-height: 24px; text-decoration: none; }
 .back-to-list:hover, .back-to-list:focus-visible { color: var(--ink); background: var(--row-hover); }
 .back-to-list > .anticon { flex: none; }
