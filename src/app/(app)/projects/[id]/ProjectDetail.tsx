@@ -67,6 +67,8 @@ import FollowAttachments, { 选沟通附件 as 选沟通附件框, 传沟通附�
 import { ProjectCommissionCard } from "./ProjectCommission";
 import { ContactAttachmentsButton } from "../../customers/[id]/ContactAttachments";
 import type { 提成卡 } from "@/lib/project/commission";
+import type { 项目主题们 } from "@/lib/enterprise/coach-topic-db";
+import CoachTopics, { NewTopicButton } from "./CoachTopics";
 import PaneToggle from "@/components/PaneToggle";
 import BackToList from "@/components/BackToList";
 import { ProjectAttachmentsCard, ProjectPaymentsCard, ProjectProfileCard, type 沟通附件组, type 项目画像 } from "./ProjectExtras";
@@ -425,6 +427,8 @@ export type 项目详情Props = {
   /** 在用的异常类别（进异常状态时选） */
   类别们: { id: string; name: string }[];
   卡点?: 项目卡点 | null;
+  /** 企业版教练主题（11-17）：看得到才给；没有主题、我也发不了 = null，沟通卡里不出这一块 */
+  教练主题?: 项目主题们 | null;
 };
 
 /**
@@ -461,7 +465,7 @@ export type 嵌在客户页 = {
 };
 
 export default function ProjectDetail({
-  p, 能改, 候选, 在职, 联系人们, 角色们, 类别们, 卡点 = null, 嵌入,
+  p, 能改, 候选, 在职, 联系人们, 角色们, 类别们, 卡点 = null, 教练主题 = null, 嵌入,
 }: 项目详情Props & { 嵌入?: 嵌在客户页 }) {
   const router = useRouter();
   // 不弹顶部提示（原型 g.save / g.notice）：页面上做的事成没成写在正文底部的就地小条；弹框里的原因写在框里（跑 的 报错）
@@ -1320,6 +1324,8 @@ export default function ProjectDetail({
   /** 沟通卡身（项目页和嵌在客户页共用）：普通函数，别写成组件，免得每次渲染换组件丢状态 */
   const 沟通身 = () => (
         <div id="project-follow-body" className={p.企业版 ? "proj-mod-body" : undefined}>
+        {/* 教练主题（11-17）：没关的钉在最上面，不混进下面这一串沟通（看全部沟通那条时间线里也不混） */}
+        <CoachTopics 数据={教练主题} />
         {p.followUps.length === 0 && <div style={{ color: "var(--text-muted)" }}>{p.customer ? "还没有挂在这个项目上的沟通" : p.pooled ? "领取后可见" : "无权查看"}</div>}
         {搜着 && p.followUps.length > 0 && 列沟通.length === 0 && <div style={{ color: "var(--text-muted)" }}>没有对得上「{搜.trim()}」的沟通</div>}
         {!搜着 && 隐藏中 && 列沟通.length === 0 && <div style={{ color: "var(--text-muted)" }}>接手后还没有沟通；接手前的 {p.followUps.length} 条已隐藏</div>}
@@ -1386,6 +1392,7 @@ export default function ProjectDetail({
         <Space size={8} className="proj-follow-acts">
           {能隐藏 && !看全部沟通 && <Button size="small" aria-pressed={隐藏中} title="隐藏归属人不是你的沟通，只是不显示，不删数据" onClick={() => set只看接手后(!只看接手后)} data-testid="follow-hide-before">{隐藏中 ? "显示全部" : "隐藏接手前"}</Button>}
           {/* 11-12：「AI 录入」不再单摆，进「新建沟通」弹窗顶上切「手动录入 | AI 录入」。连体按钮：左半新建沟通（⌘N 落这颗）、右半收起 / 展开这块；不能记沟通只剩右半 */}
+          {!看全部沟通 && <NewTopicButton 数据={教练主题} projectId={p.id} />}
           <FoldSplit 色={模块钮色.沟通} 主={p.能记沟通 ? { 字: "新建沟通", onClick: () => set记一条开着(true), disabled: 忙, testid: "follow-card-new", 主快捷: true } : null} />
         </Space>
       )}
@@ -1403,6 +1410,7 @@ export default function ProjectDetail({
           // 11-01 会议 §5：企业版删掉「去客户页看看」。窄的时候按钮折行，不把标题挤没（globals.css .proj-follow-acts）
           <Space size={8} wrap className="proj-follow-acts">
             {能隐藏 && <Button size="small" aria-pressed={隐藏中} title="隐藏归属人不是你的沟通，只是不显示，不删数据" onClick={() => set只看接手后(!只看接手后)} data-testid="follow-hide-before">{隐藏中 ? "显示全部" : "隐藏接手前"}</Button>}
+            <NewTopicButton 数据={教练主题} projectId={p.id} />
             <FoldSplit 色={模块钮色.沟通} 主={p.能记沟通 ? { 字: "新增沟通", onClick: () => set记一条开着(true), disabled: 忙, testid: "follow-card-new" } : null} />
           </Space>
         ) : p.能记沟通 ? <Button type="link" size="small" disabled={忙} onClick={() => set记一条开着(true)}>记一条</Button>

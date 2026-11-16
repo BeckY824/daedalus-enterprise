@@ -5010,6 +5010,32 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
   border-radius: var(--r-ctl); background: var(--danger-bg); border: 1px solid var(--danger-line); animation: pd-band-in var(--t) var(--ease) both; }
 .pd-del-band-t { flex: 1 1 220px; min-width: 0; color: var(--danger-text); font-size: var(--fs-note); overflow-wrap: anywhere; }
 .pd-del-band-a { display: inline-flex; gap: var(--s2); flex: none; margin-inline-start: auto; }
+
+/* 教练主题（11-17，projects/[id]/CoachTopics.tsx）：没关的钉在沟通卡身最上面，标「教练发起」；已关闭的收起来。长标题、长内容都在格子里断行，不撑宽沟通卡 */
+.cth-list { display: flex; flex-direction: column; gap: var(--s2); margin-bottom: 12px; min-width: 0; }
+.cth-frozen { font-size: var(--fs-note); }
+.cth-item { min-width: 0; padding: var(--s2) var(--s3); border: 1px solid var(--line-soft); border-radius: var(--r-card); background: var(--panel); }
+.cth-item.cth-wait { border-color: var(--line-strong); }
+.cth-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.cth-head .ant-tag { margin-inline-end: 0; }
+.cth-meta { color: var(--text-muted); font-size: var(--fs-note); overflow-wrap: anywhere; }
+.cth-title { margin-top: 4px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.cth-body { margin-top: 2px; color: var(--ink-soft); white-space: pre-wrap; overflow-wrap: anywhere; }
+.cth-replies { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
+.cth-reply { font-size: var(--fs-body); overflow-wrap: anywhere; min-width: 0; }
+.cth-reply-who { color: var(--ink); }
+.cth-reply-body { white-space: pre-wrap; }
+.cth-acts { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--s2); margin-top: var(--s2); min-width: 0; }
+.cth-reply-input { flex: 1 1 200px; min-width: 0; }
+.cth-btns { display: inline-flex; flex-wrap: wrap; gap: var(--s2); flex: none; margin-inline-start: auto; }
+.cth-form { display: flex; flex-direction: column; gap: var(--s3); }
+.cth-form-row { display: flex; align-items: flex-start; gap: var(--s3); min-width: 0; }
+.cth-form-k { flex: none; width: 5em; color: var(--text-muted); line-height: 32px; }
+.cth-form-v { flex: 1; min-width: 0; line-height: 32px; overflow-wrap: anywhere; }
+.cth-form-v .ant-input, .cth-form-v .ant-input-affix-wrapper, .cth-form-v textarea { line-height: normal; }
+.cth-ellipsis { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.cth-closed-toggle { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--text-muted); font-size: var(--fs-note); cursor: pointer; }
+.cth-closed-toggle:hover { color: var(--ink); text-decoration: underline; }
 @keyframes pd-band-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .pd-follow-leave { animation: pd-follow-leave var(--t) var(--ease) forwards; overflow: hidden; pointer-events: none; }
 @keyframes pd-follow-leave { to { opacity: 0; transform: translateX(8px); } }
