@@ -15,7 +15,7 @@ import CustomRangePicker from "@/components/CustomRangePicker";
 import { 读日期段, type 日期段 } from "@/lib/custom-date-range";
 import { beijingDay } from "@/lib/business-clock";
 import {
-  周期们, 周期起点, 算看板, 判够占比, 预警线索下限, 自定义, 算进公海, 进公海明细, 原因最多, 看板时段, 榜链接,
+  周期们, 周期起点, 算看板, 判够占比, 预警线索下限, 自定义, 算进公海, 进公海明细, 原因最多, 看板时段, 榜链接, 榜最多,
   type 档, type 看板底数, type 看板渠道, type 看板公海,
 } from "@/lib/enterprise/channel-dash";
 import { 名单段 } from "@/lib/enterprise/channel-stats";
@@ -97,6 +97,10 @@ export default function ChannelDash({
   const 投入空 = k.投入.length === 0;
   const 环合计 = k.环?.段.reduce((s, x) => s + x.数, 0) ?? 0;
   const 榜顶 = k.榜[0]?.线索 ?? 0;
+  // 线索榜默认 TOP5，「展开全部」摆这一档、这批渠道（看得到的范围）里有新线索的全部渠道（员工反馈 #5）；切档不收起
+  const [榜全开, set榜全开] = useState(false);
+  const 榜能展开 = k.榜.length > 榜最多;
+  const 榜摆 = 榜全开 && 榜能展开 ? k.榜 : k.榜.slice(0, 榜最多);
   // TOP5 点进去带的创建时间段（北京日）：和这一档数线索的那一段一样
   const 时段 = 看板时段(期, new Date(), 显段);
   /** 卡片上「含公海 M 条」：带了名单才写数，没带只写口径 */
@@ -275,12 +279,13 @@ export default function ChannelDash({
           </div>
         </div>
         <div className="chan-dash-cell">
-          <div className="chan-dash-h">线索 TOP5</div>
+          <div className="chan-dash-h">{榜全开 && 榜能展开 ? `线索排行（全部 ${k.榜.length} 个渠道）` : "线索 TOP5"}</div>
           {k.榜.length === 0 ? (
             <p className="chan-dash-none">这段时间没有新线索</p>
           ) : (
-            <ul className="chan-dash-top">
-              {k.榜.map((x) => {
+            <>
+            <ul className={榜全开 && 榜能展开 ? "chan-dash-top chan-dash-top-all" : "chan-dash-top"} data-testid="chan-dash-top">
+              {榜摆.map((x) => {
                 // 数字点进去：这个渠道 + 同一段创建时间（11-11）；项目列表里一条没有、全在公海的直接去公海页。对不上的悬停里拆开说
                 const 链 = { 列表: 榜链接(x.id, 时段, "列表"), 公海: 榜链接(x.id, 时段, "公海") };
                 const 去 = x.名单 && x.名单.列表 === 0 && x.名单.公海 > 0 ? 链.公海 : 链.列表;
@@ -294,6 +299,12 @@ export default function ChannelDash({
                 );
               })}
             </ul>
+            {榜能展开 && (
+              <button type="button" className="link-plain chan-dash-top-more" aria-expanded={榜全开} onClick={() => set榜全开((x) => !x)} data-testid="chan-dash-top-more">
+                {榜全开 ? "收起" : `展开全部（共 ${k.榜.length} 个渠道）`}
+              </button>
+            )}
+            </>
           )}
         </div>
       </div>
