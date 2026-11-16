@@ -267,8 +267,9 @@ export async function 看得到的下拉值(列: "grade" | "country" | "addrCoun
     列 === "grade"
       ? (await prisma.customer.groupBy({ by: ["grade"], where: { grade: { not: null } } })).map((r) => r.grade!)
       : 列 === "addrCountry"
-        // 企业版国家筛选（1C，11-16）：客户地址里的国家，列表「国家」一列显示的那一格；只给这个人看得到的客户里真有的
-        ? (await prisma.customer.groupBy({ by: ["addrCountry"], where: { addrCountry: { not: null } }, orderBy: { addrCountry: "asc" } })).map((r) => r.addrCountry!)
+        // 企业版国家筛选（1C，11-16）：客户地址里的国家，列表「国家」一列显示的那一格；只给这个人「客户」页签里能出现的客户里真有的
+        // （和列表同一个范围：限定层 + 不在公海，P-看-03）——公海里才有的国家选了是 0 条
+        ? (await prisma.customer.groupBy({ by: ["addrCountry"], where: { addrCountry: { not: null }, pool: { is: null } }, orderBy: { addrCountry: "asc" } })).map((r) => r.addrCountry!)
         : (await prisma.customerExtra.groupBy({ by: ["country"], where: { country: { not: null } }, orderBy: { country: "asc" } })).map((r) => r.country!);
   return 缓存分组数(`下拉:${列}`, [企业版(), 在看已删(), 条件], 查, 60_000);
 }

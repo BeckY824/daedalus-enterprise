@@ -273,6 +273,56 @@ it("久未跟进筛选在更多筛选里，选上顺手按最近跟进正序；�
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
+/*
+  「超过 N 天没跟进」自定义天数（1I，原话「可统一设定时间」）：下拉最后一项「自定义天数…」换成填天数的框，回车写 idleDays=N；
+  框在「更多筛选」弹层里：1024 / 1280 / 1366 弹层不出窗口、框里「超过 … 天」放得下（不截）、页面不横向撑出
+*/
+it("久未跟进自定义天数：选「自定义天数…」填 45 回车写 idleDays=45；三种宽度弹层和框都放得下", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    const page = await browser.newPage({ viewport: { width: w, height: 900 } }); page.setDefaultTimeout(5000);
+    const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+    try {
+      await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") });
+      await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
+      await page.evaluate(() => { (window as unknown as { __三态: boolean }).__三态 = true; });
+      await page.addScriptTag({ content: 包 });
+      await page.locator("tr.ant-table-row").first().waitFor();
+      await page.getByRole("button", { name: /^更多筛选/ }).click();
+      await page.locator(".ant-popover .ant-select", { has: page.getByRole("combobox", { name: "久未跟进" }) }).click();
+      await page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter({ hasText: "自定义天数…" }).first().click();
+      const 框 = page.getByRole("spinbutton", { name: "久未跟进天数" });
+      await expect.poll(() => 框.evaluate((el) => document.activeElement === el), { message: `宽 ${w} 框拿到焦点` }).toBe(true);
+      await 框.fill("45");
+      const 量 = await page.evaluate(() => {
+        const 入 = document.querySelector("[aria-label='久未跟进天数']") as HTMLInputElement;
+        const 盒 = 入.closest(".ant-input-number") as HTMLElement;
+        const 层 = 入.closest(".ant-popover") as HTMLElement;
+        const b = 盒.getBoundingClientRect(), p = 层.getBoundingClientRect();
+        return {
+          盒: [Math.round(b.left), Math.round(b.right)], 层: [Math.round(p.left), Math.round(p.right)], 窗: innerWidth,
+          字截: 入.scrollWidth > 入.clientWidth, 盒撑出: 盒.scrollWidth > 盒.clientWidth + 1, 高: Math.round(b.height),
+          页宽: document.documentElement.scrollWidth,
+          中心是框: (document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.closest(".ant-input-number") ?? null) === 盒,
+        };
+      });
+      摆法.push(`自定义天数 ${w}: 框 ${量.盒.join("–")} 弹层 ${量.层.join("–")} 窗 ${量.窗} 高 ${量.高} 页 ${量.页宽}`);
+      expect(量.层[0], `宽 ${w}`).toBeGreaterThanOrEqual(0);
+      expect(量.层[1], `宽 ${w} 弹层不出窗口`).toBeLessThanOrEqual(量.窗);
+      expect(量.盒[0], `宽 ${w}`).toBeGreaterThanOrEqual(量.层[0]);
+      expect(量.盒[1], `宽 ${w} 框在弹层里`).toBeLessThanOrEqual(量.层[1]);
+      expect(量.字截, `宽 ${w} 45 放得下`).toBe(false);
+      expect(量.盒撑出, `宽 ${w} 「超过 … 天」不撑出`).toBe(false);
+      expect(量.中心是框, `宽 ${w} 框没被盖住`).toBe(true);
+      expect(量.页宽, `宽 ${w} 页面不横向撑出`).toBeLessThanOrEqual(w);
+      await 框.press("Enter");
+      await expect.poll(() => page.evaluate(() => (window as unknown as { __push?: string }).__push ?? ""), { message: `宽 ${w}` }).toContain("idleDays=45");
+      const q = new URLSearchParams((await page.evaluate(() => (window as unknown as { __push?: string }).__push ?? "")).split("?")[1]);
+      expect(q.get("sort"), `宽 ${w}`).toBe("follow-asc");
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
 // 公海页签（三态开着照样给回收状态一列）：这一页有公海里的客户，「负责人」不收，「公海（原 X）」标签放得下
 it("三态开着、这一页是公海里的客户：负责人列照旧 140，「公海（原 小王）」不被截", async () => {
   for (const w of [1280, 1366]) {

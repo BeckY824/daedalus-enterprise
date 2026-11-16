@@ -92,6 +92,11 @@ describe("1C 企业版国家筛选", () => {
     await prisma.customerPool.create({ data: { customerId: 公海.id } });
     // 乙才有的国家：甲的下拉里不给
     await 客户("沙特乙", 乙.id, { addrCountry: "沙特" });
+    // 只有公海里的客户才有的国家：甲在「客户」页签里筛不出任何人，下拉里也不给（公海人人看得到，但不进客户页签）
+    const 公海巴西 = await 客户("巴西公海", 甲.id, { addrCountry: "巴西" });
+    await prisma.customerPool.create({ data: { customerId: 公海巴西.id } });
+    const 别人公海 = await 客户("智利公海", 乙.id, { addrCountry: "智利" });
+    await prisma.customerPool.create({ data: { customerId: 别人公海.id } });
   });
 
   it("按客户地址里的国家筛：只出甲自己负责、不在公海的；外贸档案的国家不算", async () => {
@@ -116,6 +121,12 @@ describe("1C 企业版国家筛选", () => {
     expect(p.国家们).toContain("阿联酋");
     expect(p.国家们).toContain("越南");
     expect(p.国家们).not.toContain("沙特");
+  });
+
+  it("国家下拉和客户页签同一个范围：只在公海里出现的国家不给（选了是 0 条）", async () => {
+    const p = await 打开({}, 甲);
+    expect(p.国家们).toEqual(["越南", "阿联酋"].sort());
+    expect((await 打开({ country: "巴西" }, 甲)).total).toBe(0);
   });
 });
 

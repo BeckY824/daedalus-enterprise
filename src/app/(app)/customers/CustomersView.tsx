@@ -49,6 +49,7 @@ import LevelLetter from "@/components/LevelLetter";
 import { useLocalPref } from "@/lib/local-pref";
 import LocalTime from "@/components/LocalTime";
 import { 未分级, 久未跟进天数们 } from "./query-shared";
+import IdleDaysFilter from "@/components/IdleDaysFilter";
 import { useUrlFilters } from "@/lib/url-filters";
 import { 列表不问归属 } from "@/lib/solo";
 import { 公海标签, type 客户页签归属 } from "@/lib/pool";
@@ -760,10 +761,9 @@ export default function CustomersView({
           */
           键: "idleDays", 名: "久未跟进", 宽: 160, 默认外露: false, 有值: !!f.idleDays,
           渲染: (style: CSSProperties) => (
-            <Select style={style} placeholder="不限跟进时间" allowClear aria-label="久未跟进" popupMatchSelectWidth={false}
-              value={f.idleDays || undefined}
-              onChange={(v?: string) => apply({ idleDays: v ?? "", ...(v && !f.sort ? { sort: "follow-asc" } : {}) })}
-              options={[...new Set([...久未跟进天数们, ...(f.idleDays ? [f.idleDays] : [])])].map((d) => ({ value: d, label: `超过 ${d} 天没跟进` }))} />
+            // 常用天数直接选，「自定义天数…」填 1–3650 天（原话「可统一设定时间」，components/IdleDaysFilter.tsx）
+            <IdleDaysFilter style={style} value={f.idleDays ?? ""} 天数们={久未跟进天数们}
+              改={(v) => apply({ idleDays: v, ...(v && !f.sort ? { sort: "follow-asc" } : {}) })} />
           ),
         }]
       : []),
