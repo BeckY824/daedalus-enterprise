@@ -307,7 +307,10 @@ describe("离职交接等确认并进待交接表（三态界面 B 组，用户 
     await 读离职交接(老板);
     const 没有 = await 数查库(() => 读离职交接(老板));
     for (const p of 们) await raw.entHandover.create({ data: { kind: "离职", fromUserId: p.id, toUserId: 在职.id, byUserId: 老板.id, status: "待确认" } });
-    const 有 = await 数查库(() => 读离职交接(老板));
+    // 写过库再热一遍，和上面「没有」一样量热的：设置缓存按库指纹作废（lib/settings.ts），写完头一次读要重读一句 Setting，
+    // 不热的话这一句算进「有」里，比的就不是交接笔数了
+    await 读离职交接(老板);
+    const 有 =await 数查库(() => 读离职交接(老板));
     if (process.env.HANDOVER_QUERY_DUMP) (await import("node:fs")).appendFileSync(process.env.HANDOVER_QUERY_DUMP, `读离职交接 没有交接 ${没有.次} 有交接 ${有.次}\n`);
     expect(有.次).toBe(没有.次);
     for (const p of 有.值) {

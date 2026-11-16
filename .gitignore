@@ -48,6 +48,8 @@ test.db
 /prisma/dev.db-wal
 /prisma/test.db-shm
 /prisma/test.db-wal
+# 企业版范围的跨进程纪元（src/lib/enterprise/scope-epoch.ts，库文件旁边）
+.scope-epoch
 /backups/
 
 # Prisma 生成的客户端，由 `prisma generate` 产出，不进版本库
@@ -100,3 +102,6 @@ research-bench-out/
 /public/ocr/v1/models/*.gz
 # 服务器识别名片的 worker（build-ocr.mjs 生成）
 /ocr-server/
+
+# 跨进程锁文件（lib/proc-lock.ts，默认在库文件旁边）
+.crm-locks/

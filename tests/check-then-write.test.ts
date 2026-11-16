@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 查完再写 } from "@/lib/check-then-write";
+import { 查完再写, 撞上别的写入, 库忙错误, 库忙话 } from "@/lib/check-then-write";
 
 let 我: string;
 beforeEach(async () => {
@@ -64,7 +64,29 @@ describe("查完再写", () => {
     await expect(查完再写(async () => {
       跑了++;
       throw Object.assign(new Error("Transaction already closed"), { code: "P2028" });
-    })).rejects.toMatchObject({ code: "P2028" });
+    })).rejects.toMatchObject({ code: "P2028", message: 库忙话 });
     expect(跑了).toBe(3);
+  });
+
+  it("别的进程占着写锁等过了 busy_timeout（P1008 Socket timeout）：也重来；三轮都不行给人话，不露英文", async () => {
+    let 跑了 = 0;
+    const r = await 查完再写(async () => {
+      跑了++;
+      if (跑了 === 1) throw Object.assign(new Error("Socket timeout (the database failed to respond to a query within the configured timeout)"), { code: "P1008" });
+      return "过了";
+    });
+    expect([r, 跑了]).toEqual(["过了", 2]);
+
+    跑了 = 0;
+    const 错 = await 查完再写(async () => {
+      跑了++;
+      throw Object.assign(new Error("Socket timeout"), { code: "P1008" });
+    }).catch((e: unknown) => e);
+    expect(跑了).toBe(3);
+    expect(错).toBeInstanceOf(库忙错误);
+    expect(错).toMatchObject({ code: "P1008", message: "系统正忙，请稍后再试" });
+    expect(String(错)).not.toMatch(/Socket timeout/);
+    expect(撞上别的写入(Object.assign(new Error("x"), { code: "P1008" }))).toBe(true);
+    expect(撞上别的写入(Object.assign(new Error("x"), { code: "P2002" }))).toBe(false);
   });
 });

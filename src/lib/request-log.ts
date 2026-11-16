@@ -24,6 +24,7 @@ import path from "node:path";
 
 export const 日志前缀 = "[crm-req]";
 import { 用户头 } from "./request-log-header";
+import { 实例号 } from "./proc-lock";
 export { 用户头 };
 
 export type 请求种类 = "HTML" | "RSC" | "ACTION";
@@ -101,6 +102,8 @@ export type 一条 = {
   uid?: string;
   pf?: 1;
   abort?: 1;
+  /** 多进程（11-16）：设了 CRM_INSTANCE 才带，journal 里分得清是哪个进程 */
+  i?: number;
 };
 
 export function 拼一行(x: 一条): string {
@@ -153,6 +156,7 @@ export function 盯一个请求(e: 起点事件, 表: 路由表 | null, 门槛: 
     if (uid) 行.uid = uid;
     if (h["next-router-prefetch"]) 行.pf = 1;
     if (!response.writableFinished) 行.abort = 1;
+    if (process.env.CRM_INSTANCE?.trim()) 行.i = 实例号();
     写(拼一行(行));
   }
 }

@@ -18,6 +18,7 @@ import crypto from "node:crypto";
 import type { PrismaClient } from "@/generated/prisma";
 import { 是附件编号, type 附件, type 归属 } from "./attachment-rules";
 import { 看已删 } from "./enterprise/soft-delete-core";
+import { 本进程跑后台任务 } from "./jobs";
 
 /**
  * 附件放哪：桌面端 = 数据目录（每个账号一个，和 crm.db 放一起，自动备份跟着走）；
@@ -240,10 +241,12 @@ const g = globalThis as unknown as { __附件清理?: number };
  *   - 行在、线索 / 联系人 / 项目（企业版 P11）/ 沟通记录都不在了（只挂过商机 / 订单的也算：这两张表企业版已清空，企业版老数据清理早已删过这些附件）：第一次看到记下来（attachments/.orphans.json），满 1 天还不在（没撤销）就连文件删掉
  *   - 文件在、行不在（存到一半断了、从备份恢复了更早的库）：文件 10 分钟没动过就删
  * db 要传**不加限定的**（defaultClient 包在 看全部 里）：业务员那台看不到的线索 / 联系人不等于没了。
- * 列附件时顺手跑，一小时最多一次；出错不往外抛
+ * 列附件时顺手跑，一小时最多一次；多进程时只有跑后台任务的那个进程跑（lib/jobs.ts）；出错不往外抛
  */
 export async function 清孤儿(db: PrismaClient, 目录 = 附件目录(), 现在 = Date.now(), 强制 = false): Promise<{ 删行: number; 删文件: number }> {
   const 结果 = { 删行: 0, 删文件: 0 };
+  // 多进程（11-16）：只在跑后台任务的那个进程顺手清（CRM_JOBS=0 的跳过），不然 N 个进程同时读写 .orphans.json
+  if (!强制 && !本进程跑后台任务()) return 结果;
   if (!强制 && g.__附件清理 && 现在 - g.__附件清理 < 3600 * 1000) return 结果;
   g.__附件清理 = 现在;
   try {

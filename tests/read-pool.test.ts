@@ -27,7 +27,7 @@ const 临时 = vi.hoisted(() => {
 
 import { prisma, defaultClient as raw } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma";
-import { 读通道, 读通道开着, 关读通道, 守门, 只读SQL, 取SQL, 读连接串, 读连接数of, 只读通道错误 } from "@/lib/read-pool";
+import { 读通道, 读通道开着, 关读通道, 守门, 只读SQL, 取SQL, 读连接串, 读连接数of, 只读通道错误, 读通道不限定 } from "@/lib/read-pool";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 
@@ -103,8 +103,8 @@ describe("开关", () => {
   });
 
   it("连接串换成 4 个连接，原来写了 connection_limit 的也换", () => {
-    expect(读连接串("file:/a.db")).toBe("file:/a.db?connection_limit=4");
-    expect(读连接串("file:/a.db?connection_limit=1")).toBe("file:/a.db?connection_limit=4");
+    expect(读连接串("file:/a.db")).toBe("file:/a.db?socket_timeout=15&connection_limit=4");
+    expect(读连接串("file:/a.db?connection_limit=1")).toBe("file:/a.db?socket_timeout=15&connection_limit=4");
     expect(读连接串("file:/a.db?connection_limit=1&socket_timeout=5")).toBe("file:/a.db?socket_timeout=5&connection_limit=4");
     expect(读连接串("file:/a.db?socket_timeout=5&connection_limit=1")).toBe("file:/a.db?socket_timeout=5&connection_limit=4");
   });
@@ -118,9 +118,9 @@ describe("开关", () => {
     const 原 = process.env.CRM_READ_POOL_SIZE;
     try {
       delete process.env.CRM_READ_POOL_SIZE;
-      expect(读连接串("file:/a.db")).toBe("file:/a.db?connection_limit=4");
+      expect(读连接串("file:/a.db")).toBe("file:/a.db?socket_timeout=15&connection_limit=4");
       process.env.CRM_READ_POOL_SIZE = "6";
-      expect(读连接串("file:/a.db?connection_limit=1")).toBe("file:/a.db?connection_limit=6");
+      expect(读连接串("file:/a.db?connection_limit=1")).toBe("file:/a.db?socket_timeout=15&connection_limit=6");
     } finally {
       if (原 === undefined) delete process.env.CRM_READ_POOL_SIZE;
       else process.env.CRM_READ_POOL_SIZE = 原;
@@ -176,15 +176,17 @@ describe("只读通道拿不到写", () => {
     expect(取SQL("$queryRaw", [123])).toBeNull();
   });
 
-  it("只读通道的连接也有 busy_timeout ≥ 5 秒、在 WAL 下", async () => {
+  it("只读通道的连接也有 busy_timeout = 15 秒（连接串 socket_timeout=15，11-16）、在 WAL 下；主连接也是 15 秒", async () => {
     开();
     expect(读通道()).not.toBeNull();
     const g = globalThis as unknown as { __读通道: { 原: typeof raw } };
     // 同时发 16 条才会摊到 4 条连接上（一条条 await 只会拿到同一条）。
-    // 5000 是 Prisma 6 每开一条连接自带的默认值，不是这里设的：升级后默认变了这条会红
+    // 不带 socket_timeout 时是 Prisma 6 每开一条连接自带的 5000；带了是 15000（lib/sqlite-url 带等锁）
     const 各连接 = await Promise.all(Array.from({ length: 16 }, () =>
       g.__读通道.原.$queryRawUnsafe<{ timeout: number }[]>("PRAGMA busy_timeout")));
-    for (const [t] of 各连接) expect(Number(t.timeout)).toBeGreaterThanOrEqual(5000);
+    for (const [t] of 各连接) expect(Number(t.timeout)).toBe(15000);
+    const [主] = await raw.$queryRawUnsafe<{ timeout: number }[]>("PRAGMA busy_timeout");
+    expect(Number(主.timeout)).toBe(15000);
     const [j] = await g.__读通道.原.$queryRawUnsafe<{ journal_mode: string }[]>("PRAGMA journal_mode");
     expect(String(j.journal_mode).toLowerCase()).toBe("wal");
   });
@@ -227,6 +229,42 @@ describe("分流", () => {
     await 写;
     await 裸;
     expect(await prisma.setting.count({ where: { key: { in: ["rp_未提交", "rp_外面写"] } } })).toBe(2);
+  });
+
+  it("企业版范围在只读通道上算（11-16）：事务里纪元一变（别的进程作废了范围），事务里的下一句现算范围不等自己那条写连接", async () => {
+    开();
+    const 键 = 规则.按组织看客户.key;
+    await raw.setting.upsert({ where: { key: 键 }, update: { value: "true" }, create: { key: 键, value: "true" } });
+    忘掉企业版范围();
+    try {
+      const 事务 = 以谁的身份(经理, () => prisma.$transaction(async (tx) => {
+        await tx.setting.create({ data: { key: "rp_事务里", value: "1" } });
+        忘掉企业版范围(); // 开事务前算好的那份作废了：下一句要现算
+        return tx.customer.findMany({ select: { salesOwnerId: true } });
+      }, { timeout: 4_000 }));
+      const r = await 赛跑(事务, 3_000);
+      expect(r).not.toBe("超时");
+      // 经理只看自己、实线下属（小王）的和公海：范围是真算出来的，不是「不限定」
+      const 主人们 = new Set((r as { salesOwnerId: string | null }[]).map((c) => c.salesOwnerId));
+      expect(主人们.has(小张)).toBe(false);
+      expect(主人们.has(经理) && 主人们.has(小王)).toBe(true);
+    } finally {
+      await raw.setting.delete({ where: { key: 键 } });
+      忘掉企业版范围();
+    }
+  });
+
+  it("读通道不限定：只替登记过的主连接和只读通道本身换，套着守门；别的客户端回 null", async () => {
+    开();
+    const 换 = 读通道不限定(raw);
+    expect(换).not.toBeNull();
+    expect(() => (换 as unknown as { setting: { create: unknown } }).setting.create).toThrow(只读通道错误);
+    expect(await 换!.user.count()).toBeGreaterThan(0);
+    const { PrismaClient } = await import("@/generated/prisma");
+    const 别的 = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL });
+    expect(读通道不限定(别的)).toBeNull();
+    关();
+    expect(读通道不限定(raw)).toBeNull();
   });
 
   it("关着（CRM_READ_POOL=0）：和原来一样，所有查询排在那一个连接上", async () => {

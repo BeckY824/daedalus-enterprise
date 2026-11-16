@@ -5,6 +5,7 @@
  * 最后补联系人主客户的挂靠行（同一文件，每次启动都跑、只补没有的）。
  * 桌面端、团队版服务器不设 CRM_ENTERPRISE，这里什么都不做，也不加载这些代码。
  * 另：CRM_REQ_LOG=1 时先开慢请求日志（lib/request-log.ts）。
+ * 多进程部署（11-16）：上面的钟和老数据活只在 CRM_JOBS 开着、并且占到「jobs」跨进程锁的那个进程跑（lib/jobs.ts）；样式落盘和慢请求日志每个进程都开。
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
@@ -13,6 +14,12 @@ export async function register() {
   // 慢请求日志（CRM_REQ_LOG=1 才开，见 lib/request-log.ts）：不看企业版开关，开着就记
   if (process.env.CRM_REQ_LOG === "1") await (await import("./lib/request-log")).开请求日志();
   if (process.env.CRM_ENTERPRISE !== "1") return;
+  // 多进程（11-16）：钟和老数据活只许一个进程跑。CRM_JOBS=0 的不跑；开着的先占「jobs」跨进程锁，占不到也不跑（lib/jobs.ts）
+  const { 起后台任务 } = await import("./lib/jobs");
+  await 起后台任务(跑后台任务);
+}
+
+async function 跑后台任务() {
   const { 启动定时 } = await import("./lib/enterprise-import/sync");
   启动定时();
   const { 启动夜扫 } = await import("./lib/project/nightly");

@@ -16,6 +16,7 @@ import { businessDayjs } from "../business-clock";
 import { getSetting, setSetting } from "../settings";
 import type { Actor } from "../audit";
 import { 企业版 } from "../enterprise/switch";
+import { 占锁, 看锁, type 锁信息 } from "../proc-lock";
 import { 定时同步通讯录 } from "../enterprise/org-sync";
 import { 取适配器, 还没接, type 现有列 } from "./adapter";
 import { 写一批 } from "./apply";
@@ -118,17 +119,39 @@ export async function 同步一次(源: 来源, opts: { 用户?: Actor; 现在?:
   const 在 = 正在同步(源);
   if (在) return { 结果: "跳过", 话: `正在同步（${在.谁} ${businessDayjs(在.开始).format("HH:mm")} 开始的那次还没完），这次不再拉` };
   const 开始 = opts.现在 ?? new Date();
-  在同步[源] = { 开始: new Date().toISOString(), 谁: opts.用户?.name || "定时同步" };
+  const 这次 = { 开始: new Date().toISOString(), 谁: opts.用户?.name || "定时同步" };
+  // 多进程（11-16）：再占一把跨进程锁，钟在 1 号进程拉的时候，别的进程上点「立即同步」也拉不了
+  const 占 = 占锁(同步锁名(源), { 附: 这次 });
+  if (!占.ok) {
+    const 别处 = 锁里的这次(占.占着的);
+    return { 结果: "跳过", 话: `正在同步（${别处.谁} ${businessDayjs(别处.开始).format("HH:mm")} 开始的那次还没完），这次不再拉` };
+  }
+  在同步[源] = 这次;
   try {
     return await 拉了写(源, 设置, 开始, opts.用户);
   } finally {
     delete 在同步[源];
+    占.锁.放();
   }
 }
 
-/** 正在拉的那次（谁点的、什么时候开始，服务器时间）；没在拉给 null。界面拿它显示「正在同步」 */
+const 同步锁名 = (源: 来源) => `import-sync-${源}`;
+
+function 锁里的这次(x: 锁信息 | null): { 开始: string; 谁: string } {
+  const 谁 = x?.附 && typeof x.附.谁 === "string" ? x.附.谁 : "另一个服务进程";
+  const 开始 = x?.附 && typeof x.附.开始 === "string" ? x.附.开始 : (x?.开始 ?? new Date().toISOString());
+  return { 开始, 谁 };
+}
+
+/**
+ * 正在拉的那次（谁点的、什么时候开始，服务器时间）；没在拉给 null。界面拿它显示「正在同步」。
+ * 先看本进程，再看跨进程锁（别的服务进程在拉也算）
+ */
 export function 正在同步(源: 来源): { 开始: string; 谁: string } | null {
-  return 在同步[源] ?? null;
+  const 本进程 = 在同步[源];
+  if (本进程) return 本进程;
+  const 锁 = 看锁(同步锁名(源));
+  return 锁 ? 锁里的这次(锁) : null;
 }
 
 async function 拉了写(源: 来源, 设置: 同步设置, 开始: Date, 手动的人?: Actor): Promise<同步一次结果> {

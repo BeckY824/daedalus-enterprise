@@ -22,8 +22,32 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { prisma } from "./prisma";
 import { readSecret } from "./secret";
 import { multiTenant, currentTenant } from "./tenant/context";
+import { 库指纹 } from "./home-cache";
+import { 读通道开着 } from "./read-pool";
 
-const g = globalThis as unknown as { __settingsCache?: Map<string, Map<string, string>> };
+/**
+ * 一格缓存：载入时的库指纹（lib/home-cache 库指纹，-shm 里的 WAL 索引头，任何进程、任何脚本提交都会变）。
+ * 多个进程共用一个库（11-16 用满 4 核）：别的进程改了权限、规则、记号，本进程不能没有时限地用旧副本——
+ * 读之前比一下指纹，变了就重读整张表（几十行，一句 SELECT）。拿不到指纹（不是 WAL、相对路径、托管版）时最多用 兜底毫秒。
+ */
+type 份 = { 值: Map<string, string>; 指纹: string | null; 到: number };
+const g = globalThis as unknown as {
+  __settingsCache?: Map<string, 份>;
+  /** 同一格正在读的那一次：同时来的人等它，不各读一遍 */
+  __settingsLoading?: Map<string, Promise<Map<string, string>>>;
+};
+
+/** 拿不到库指纹时，一份设置最多用几毫秒 */
+export const 兜底毫秒 = 3_000;
+
+/** 托管版每个工作区一个库，默认库的指纹说明不了什么，一律按时限 */
+function 现指纹(): string | null {
+  return multiTenant() ? null : 库指纹();
+}
+
+function 还新(x: 份, 指纹: string | null): boolean {
+  return 指纹 !== null && x.指纹 !== null ? x.指纹 === 指纹 : x.到 > Date.now();
+}
 
 /**
  * 这一次读取该用哪一格缓存。
@@ -40,24 +64,54 @@ async function 缓存格(): Promise<string> {
   return (await resolveCurrentTenant())?.workspaceId ?? ":未知";
 }
 
+/**
+ * 旧了怎么办：
+ * - 企业版只读通道开着：现读（走只读通道，不排在写连接上的事务后面），读好再给——权限改了要马上生效；
+ * - 只读通道关着（只有那 1 条写连接）：先给旧的、后台重读一次。这一句常落在交互式事务里，
+ *   现读要等事务放连接、等到事务超时（同 team-scope 现在的限定）；后台那一句排在事务后面，提交了就换上。
+ * 本进程自己写过设置（invalidateSettingsCache）不给旧的：整格清掉，下一次一定现读
+ */
 async function loadAll(): Promise<Map<string, string>> {
   const 格 = await 缓存格();
+  const 有 = (g.__settingsCache ??= new Map()).get(格);
+  if (有 && 还新(有, 现指纹())) return 有.值;
+  if (有 && !读通道开着()) {
+    void 重读(格).catch(() => {});
+    return 有.值;
+  }
+  return 重读(格);
+}
+
+function 重读(格: string): Promise<Map<string, string>> {
   const 全部 = (g.__settingsCache ??= new Map());
-  const 命中 = 全部.get(格);
-  if (命中) return 命中;
-  const rows = await prisma.setting.findMany();
-  const m = new Map(rows.map((r) => [r.key, r.value]));
-  全部.set(格, m);
-  return m;
+  const 在读 = (g.__settingsLoading ??= new Map());
+  const 已在读 = 在读.get(格);
+  if (已在读) return 已在读;
+  // 先取指纹再读：读的过程中有人提交，存下的是旧指纹，下一次一比就重读
+  const 指纹 = 现指纹();
+  const p = prisma.setting
+    .findMany()
+    .then((rows) => {
+      const m = new Map(rows.map((r) => [r.key, r.value]));
+      // 读的过程中本进程写过设置（整个换了一份）：这次读到的可能是写之前的，不放
+      if (g.__settingsCache === 全部) 全部.set(格, { 值: m, 指纹, 到: Date.now() + 兜底毫秒 });
+      return m;
+    })
+    .finally(() => {
+      if (在读.get(格) === p) 在读.delete(格);
+    });
+  在读.set(格, p);
+  return p;
 }
 
 /**
  * 测试与写入后调用：让下一次读取重新查库。
  * 整个清掉而不是只清当前那一格——写设置是极少发生的动作，
- * 多查几次库换一个「不会漏清」的简单规则，划算。
+ * 多查几次库换一个「不会漏清」的简单规则，划算。正在读的那几次也不认了（可能读到写之前的）
  */
 export function invalidateSettingsCache() {
   g.__settingsCache = new Map();
+  g.__settingsLoading = new Map();
 }
 
 export async function getSetting<T>(key: string): Promise<T | null> {
