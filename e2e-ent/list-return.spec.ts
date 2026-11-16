@@ -36,8 +36,14 @@ test.beforeAll(async () => {
     await db.customerPool.create({ data: { customerId: c.id, userId: 销售甲.id } });
   }
 });
+// 跑完把自己造的删干净：这份排在 main-flow 前面、共一个库，公海默认按入池时间倒序、每页 20，
+// 留着 25 位新入池的会把种子里的「公海客户甲」挤到第 2 页（CI 上 main-flow「可见范围」就这么红的）；
+// 45 位客户同理会把「销售甲的客户」挤出老板 / 经理的客户列表第 1 页。项目、入池记录随客户级联删掉
 test.afterAll(async () => {
-  await db?.$disconnect();
+  if (db) {
+    await db.customer.deleteMany({ where: { OR: [{ name: { startsWith: 客户前缀 } }, { name: { startsWith: 公海前缀 } }] } });
+    await db.$disconnect();
+  }
 });
 
 async function 登录(page: Page, 谁: keyof typeof 账号) {
@@ -48,6 +54,9 @@ async function 登录(page: Page, 谁: keyof typeof 账号) {
   await page.waitForURL(/\/dashboard/);
 }
 
+// 只在 main 里找：整页打开（page.goto）时 React 流式渲染先把整页放在 body 末尾的 <div hidden id="S:1"> 里、再换进 main，
+// 那一下页面上有两个「回到列表」，不限 main 的话严格模式直接报「解析到 2 个」（本地复跑见过）
+const 回列表 = (page: Page) => page.getByRole("main").getByTestId("back-to-list");
 const 当前地址 = (page: Page) => page.evaluate(() => location.pathname + location.search);
 const 滚到 = (page: Page) => page.evaluate(() => Math.round(window.scrollY));
 
@@ -85,7 +94,7 @@ test("客户列表：筛选 + 排序 + 第 2 页，滚下去点进详情 →「�
   expect(挑.y).toBeGreaterThan(200);
   await page.getByRole("main").getByRole("link", { name: 挑.名, exact: true }).click();
   await page.waitForURL(/\/customers\/[^/?]+/);
-  const 回 = page.getByTestId("back-to-list");
+  const 回 = 回列表(page);
   await expect(回).toHaveText("回到客户列表（第 2 页）");
   expect(await 回.getAttribute("href")).toBe(原地址);
   await 回.click();
@@ -122,8 +131,8 @@ test("公海：筛选 + 第 2 页点进客户 →「回到公海（第 2 页）�
   await 登录(page, "老板");
   // 没记过（新标签页直接打开详情）：回客户列表第 1 页
   await page.goto(`/customers/${长名客户}`);
-  await expect(page.getByTestId("back-to-list")).toHaveText("回到客户列表");
-  expect(await page.getByTestId("back-to-list").getAttribute("href")).toBe("/customers");
+  await expect(回列表(page)).toHaveText("回到客户列表");
+  expect(await 回列表(page).getAttribute("href")).toBe("/customers");
 
   const 列表 = `/pool?${new URLSearchParams({ pageSize: "10", keyword: 公海前缀, page: "2" })}`;
   await page.goto(列表);
@@ -133,7 +142,7 @@ test("公海：筛选 + 第 2 页点进客户 →「回到公海（第 2 页）�
   const 名 = (await 行.textContent())!;
   await 行.click();
   await page.waitForURL(/\/customers\/[^/?]+/);
-  const 回 = page.getByTestId("back-to-list");
+  const 回 = 回列表(page);
   await expect(回).toHaveText("回到公海（第 2 页）");
   // 左栏「公海」也回这一屏
   await expect(page.locator("a.rail-item", { hasText: "公海" }).first()).toHaveAttribute("href", 原地址);
@@ -155,7 +164,7 @@ test("项目看板：筛着点开一张卡 →「回到客户列表」回看板�
   const 原地址 = await 当前地址(page);
   await 卡.click();
   await page.waitForURL(/\/customers\/[^/?]+/);
-  const 回 = page.getByTestId("back-to-list");
+  const 回 = 回列表(page);
   await expect(回).toHaveText("回到客户列表");
   await 回.click();
   await page.waitForURL((u) => u.pathname + u.search === 原地址);
@@ -173,10 +182,10 @@ for (const 宽 of [1024, 1280, 1366]) {
     expect(列表横滚, "列表页不横滚").toBeLessThanOrEqual(0);
     await page.getByRole("main").getByRole("link", { name: 长名 }).first().click();
     await page.waitForURL(/\/customers\/[^/?]+/);
-    const 回 = page.getByTestId("back-to-list");
+    const 回 = 回列表(page);
     await expect(回).toBeVisible();
     const 量 = await page.evaluate(() => {
-      const a = document.querySelector<HTMLElement>('[data-testid="back-to-list"]')!;
+      const a = document.querySelector<HTMLElement>('main [data-testid="back-to-list"]')!;
       const r = a.getBoundingClientRect();
       const 中 = document.elementFromPoint(r.left + Math.min(r.width / 2, 40), r.top + r.height / 2);
       const 名 = document.querySelector<HTMLElement>(".rec-head-name")!;
