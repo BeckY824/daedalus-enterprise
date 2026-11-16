@@ -5,6 +5,8 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
+// 先演一遍放宽限时：这里对的是「预演数 = 写入数」，负载高时 3 秒演不完会让 报告.预演 = null（见 tests/import-preview-time.ts）
+vi.mock("@/lib/enterprise-import/apply", async (原) => (await import("./import-preview-time")).预演放宽(await 原()));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";

@@ -25,7 +25,7 @@ import { 同事的客户, 只读话, 看全部 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 公海客户先领取话 } from "@/lib/enterprise/pool-rules";
-import { 没设业务角色, 只读角色, 只读角色话 } from "@/lib/enterprise/permissions";
+import { 没设业务角色, 只读角色, 只读话of } from "@/lib/enterprise/permissions";
 import { 认跟进方式 } from "@/lib/enterprise/dict";
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
 import { 企业版字典, 节点序号 } from "@/lib/project/nodes";
@@ -130,7 +130,7 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     // 11-02：只认业务角色。没设的、管理员（只读）不给建
     const org = await 权限组织();
     if (!org || 没设业务角色(org, me.id)) return { ok: false, error: "你还没有业务角色，不能改数据，请找总管理设置" };
-    if (只读角色(me, org)) return { ok: false, error: 只读角色话 };
+    if (只读角色(me, org)) return { ok: false, error: 只读话of(me, org) };
     const 分配 = 输入.项目.分配方式 === undefined || 输入.项目.分配方式 === null ? null : await 定分配方式(me, 输入.项目);
     if (分配 && "error" in 分配) return { ok: false, error: 分配.error };
     let 指定分配名 = 分配?.i === 0 ? 分配.名 : null;

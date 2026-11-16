@@ -16,7 +16,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const 认的角色 = ["director", "admin", "sales_mgr", "sales", "channel_ops", "marketing_mgr", "project_ops"];
+export const 认的角色 = ["director", "admin", "sales_mgr", "sales", "channel_ops", "marketing_mgr", "project_ops", "coach"];
 export const 按组织看客户key = "enterprise.rule.org_scope";
 /** 系统管理员标记存的 Setting 键，同 org-core.ts 系统管理员标记键 */
 export const 系统管理员标记key = "enterprise.sysadmin_flag";

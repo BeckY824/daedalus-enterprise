@@ -10,7 +10,7 @@
  * 管理员的默认（默认类型 / 影响）存 Setting 的 entBlockerDefaults；角色开关存 entBlockerRoles
  */
 import { dayjs } from "../utils";
-import { 业务角色 as 业务角色们, type 业务角色 } from "../sync/dept-policy";
+import { 业务角色 as 业务角色们, 是只读角色们, type 业务角色 } from "../sync/dept-policy";
 
 export const 卡点类型们 = ["暂无卡点", "轻度卡点", "中度卡点", "重要卡点"] as const;
 export const 影响等级们 = ["短期不影响", "项目暂停", "项目终止", "可能丢单"] as const;
@@ -229,7 +229,8 @@ export function 改版后(status: string, assigneeId: string | null | undefined)
 export type 卡点范围 = "自己" | "全部";
 export type 卡点角色开关 = { 启用: Record<业务角色, boolean>; 范围: Record<业务角色, 卡点范围> };
 export const 卡点角色键 = "entBlockerRoles";
-const 全部默认角色 = new Set<业务角色>(["director", "admin"]);
+/** 卡点默认「可看全部」：总管理、管理员、销售教练（11-17，看全部的只读角色） */
+const 全部默认角色 = new Set<业务角色>(["director", "admin", "coach"]);
 export const 默认卡点角色开关: 卡点角色开关 = {
   启用: Object.fromEntries(业务角色们.map((r) => [r, true])) as Record<业务角色, boolean>,
   范围: Object.fromEntries(业务角色们.map((r) => [r, 全部默认角色.has(r) ? "全部" : "自己"])) as Record<业务角色, 卡点范围>,
@@ -285,7 +286,8 @@ export function 卡点权限of(角色们: readonly 业务角色[], 开关: 卡�
  * （发布、认领、我已完成、改设置、管字典、删）。和全局权限的「只读角色」一个口径
  */
 export function 卡点只读(角色们: readonly 业务角色[]): boolean {
-  return 角色们.includes("admin") && !角色们.includes("director");
+  // 销售教练（11-17）同管理员：名单在 dept-policy.ts 只读业务角色
+  return 是只读角色们(角色们);
 }
 /** 改卡点设置、管阻碍原因字典、删原因、删卡点：只有总管理（director） */
 export function 能管卡点(角色们: readonly 业务角色[]): boolean {

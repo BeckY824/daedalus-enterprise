@@ -17,6 +17,7 @@ import ContactForm from "./ContactForm";
 import { 新增仅项目联系人Action, 改仅项目联系人Action } from "./project-only-contact-actions";
 import type { 受限客户详情 } from "./restricted";
 import type { ContactRow } from "./types";
+import BackToList from "@/components/BackToList";
 
 /**
  * 受限客户详情（只负责项目的人，customers/[id]/restricted.ts）：页头只有客户名 +「仅项目」；
@@ -91,6 +92,8 @@ export default function RestrictedCustomerDetail({ 数据 }: { 数据: 受限客
 
   return (
     <div className="rec-page ui-v2" data-testid="restricted-customer-detail">
+      {/* 回到进来前那张列表（员工反馈 1A，components/BackToList.tsx） */}
+      <div className="back-to-list-row"><BackToList /></div>
       <div className="rec-head">
         <div className="rec-head-id">
           <div className="rec-head-line">

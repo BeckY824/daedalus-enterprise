@@ -68,7 +68,8 @@ const 间隔毫秒 = (s: Pick<通讯录设置, "间隔分钟">) => (s.间隔分�
 const 规整角色 = (x: string | null | undefined) => 拆角色(x).join(",");
 /** 通讯录只管销售这一摊：换掉销售 / 销售管理，兼着的其它角色留着 */
 const 换销售角色 = (现: string | undefined, 新: "sales" | "sales_mgr") => 合角色([...拆角色(现).filter((r) => r !== "sales" && r !== "sales_mgr"), 新]);
-export const 对照能给的角色 = (r: unknown): r is 业务角色 => 是业务角色(r) && r !== "director" && r !== "admin";
+/** 职务对照能自动给的角色：总管理、管理员、销售教练（看全部的）只能在设置里手动给 */
+export const 对照能给的角色 = (r: unknown): r is 业务角色 => 是业务角色(r) && r !== "director" && r !== "admin" && r !== "coach";
 /** 同步建的账号的密码占位：不是 bcrypt 串，登录永远对不上，要管理员在用户管理里设密码 */
 const 不能登录 = "!通讯录同步建的账号-请在用户管理里设密码";
 
@@ -416,7 +417,7 @@ async function 写进去(源: 通讯录来源, s: 通讯录设置, 本: 通讯�
         // 现有的人：没有 EntMember 行的当没设业务角色（11-02：只认业务角色，不按账号角色推）
         const 现角色 = uid ? (成员有.get(uid)?.bizRole ?? "") : undefined;
         const 老板 = uid ? 用户有.get(uid)?.role === "ADMIN" : false;
-        const 总管级 = 拆角色(现角色).some((r) => r === "director" || r === "admin");
+        const 总管级 = 拆角色(现角色).some((r) => r === "director" || r === "admin" || r === "coach");
         const 手动改过 = !!uid && s.给过[uid] !== undefined && 规整角色(现角色) !== 规整角色(s.给过[uid]);
         // 第一次同步认到的现有账号：只有职务对照（管理员明确配的）能改它的角色，别的保持原样
         const 第一次认到 = !!uid && s.给过[uid] === undefined;

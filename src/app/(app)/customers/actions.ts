@@ -48,7 +48,7 @@ import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 落到渠道 } from "@/lib/enterprise/channel-main";
 import { 是主渠道入口 } from "@/lib/enterprise/channel-main-core";
-import { 能转让客户, 能改客户, 没设业务角色, 只读角色, 只读角色话, 是系统管理员, 转自己客户要申请 } from "@/lib/enterprise/permissions";
+import { 能转让客户, 能改客户, 没设业务角色, 只读角色, 只读话of, 是系统管理员, 转自己客户要申请 } from "@/lib/enterprise/permissions";
 import { 有同事在推的客户, 同事在推不能删话 } from "@/lib/enterprise/colleague-projects";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 补潜客培育, 要补潜客培育 } from "@/lib/project/nurture";
@@ -1204,7 +1204,7 @@ async function 改客户挡(me: Awaited<ReturnType<typeof requireUser>>, id?: st
   const org = await 权限组织();
   if (!org || 没设业务角色(org, me.id)) return "你还没有业务角色，不能改数据，请找总管理设置";
   // 只读管理员新建也拦（11-03 D3-7 ④）：改已有的下面 能改客户 就不给，限定层也拦
-  if (!id) return 只读角色(me, org) ? 只读角色话 : null;
+  if (!id) return 只读角色(me, org) ? 只读话of(me, org) : null;
   const c = await defaultClient.customer.findUnique({ where: { id }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
   if (!c) return null; // 不在了：后面照原样报「已删除」
   if (c.pool) return 公海先领话;

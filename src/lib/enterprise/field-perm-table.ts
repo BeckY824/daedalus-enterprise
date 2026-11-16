@@ -94,6 +94,15 @@ export function 规整字段配置(x: unknown): 字段配置 {
   return out;
 }
 
+/**
+ * Q9（11-17 用户「先按建议」）：销售教练（业务角色有 coach、不兼总管理）的字段级别固定，不看「字段权限」开关、不看配置表——
+ * 电话 / WhatsApp 看不到（页面、AI 助手里打码；导出本来只给系统管理员），别的字段只能看（教练本来就只读）。要改口只动这一份
+ */
+export const 教练固定字段: Partial<Record<字段名, "藏">> = { 电话: "藏" };
+export const 教练字段级别 = (名: 字段名): 字段级别 => 教练固定字段[名] ?? "看";
+/** 按这组业务角色走 教练字段级别 吗：有销售教练、不兼总管理（兼了总管理按总管理） */
+export const 按教练字段 = (角色们: readonly string[]): boolean => 角色们.includes("coach") && !角色们.includes("director");
+
 export function 字段级别of(配置: 字段配置, 名: 字段名, 角色: 业务角色): 字段级别 {
   return 配置[名]?.[角色] ?? "改";
 }

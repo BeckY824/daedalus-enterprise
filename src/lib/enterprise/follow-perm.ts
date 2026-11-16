@@ -13,7 +13,7 @@
 import { cache } from "react";
 import { 企业版 } from "./switch";
 import { 权限组织, type 组织 } from "./org";
-import { 能删除, 有业务角色, 只读角色, 只读角色话, 没设业务角色, 能改客户 } from "./permissions";
+import { 能删除, 有业务角色, 只读角色, 只读话of, 没设业务角色, 能改客户 } from "./permissions";
 import { defaultClient, prisma } from "@/lib/prisma";
 import { 限定的我 } from "@/lib/team-scope";
 import { 看得到的客户 } from "@/lib/project/db";
@@ -121,7 +121,7 @@ export async function 客户事项挡(me: 谁, customerId: string | null | undef
   if (!企业版()) return null;
   const org = await 权限组织();
   if (!org || 没设业务角色(org, me.id)) return 没业务角色话;
-  if (只读角色(me, org)) return 只读角色话;
+  if (只读角色(me, org)) return 只读话of(me, org);
   if (!customerId) return null;
   const c = await defaultClient.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
   if (!c) return null; // 不在了：后面照原样报

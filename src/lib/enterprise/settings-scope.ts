@@ -48,7 +48,7 @@ export function 设置范围of(me: 谁 & { role?: string | null }, org: 组织 |
  * 纯数据，客户端也 import。兼几个角色的：同一件事任一个角色能做就算能做
  */
 export type 能做项 = { 事: string; 能: boolean; 注?: string };
-type 角色键 = "director" | "admin" | "sales_mgr" | "sales" | "channel_ops" | "marketing_mgr" | "project_ops";
+type 角色键 = "director" | "admin" | "coach" | "sales_mgr" | "sales" | "channel_ops" | "marketing_mgr" | "project_ops";
 const 各角色: Record<角色键 | "条线总管理", 能做项[]> = {
   director: [
     { 事: "看和改全部客户、项目", 能: true }, { 事: "成员、业务角色、组织架构", 能: true }, { 事: "全公司规则和天数", 能: true },
@@ -61,6 +61,12 @@ const 各角色: Record<角色键 | "条线总管理", 能做项[]> = {
   admin: [
     { 事: "看全部客户和项目", 能: true }, { 事: "改任何数据", 能: false, 注: "管理员只读" },
     { 事: "当负责人、接交接", 能: false, 注: "管理员只读" }, { 事: "进后台设置", 能: false, 注: "只有系统管理员" },
+  ],
+  // 销售教练（11-17）：同管理员只读；电话看不到（Q9）
+  coach: [
+    { 事: "看全部客户和项目", 能: true, 注: "设了业务线也看全部" },
+    { 事: "改任何数据", 能: false, 注: "销售教练只读" }, { 事: "看客户电话", 能: false, 注: "对销售教练藏" }, { 事: "看提成", 能: false, 注: "对销售教练藏" },
+    { 事: "当负责人、接交接", 能: false, 注: "销售教练只读" }, { 事: "导出、进后台设置", 能: false, 注: "只有系统管理员" },
   ],
   sales_mgr: [
     { 事: "领公海客户", 能: true }, { 事: "改自己负责的客户和项目", 能: true }, { 事: "转直属下属的客户", 能: true, 注: "同业务线" },

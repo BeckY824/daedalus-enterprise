@@ -61,6 +61,7 @@ const 人 = {
   管理员: "m_adm", // admin，只读
   没角色: "m_none", // 账号 ADMIN，没有业务角色
   多角色: "m_multi", // sales,marketing_mgr，上级 组长
+  教练: "m_coach", // coach（销售教练，11-17），账号 ADMIN：账号角色不放行
 } as const;
 type 谁 = keyof typeof 人;
 const 客户 = { 甲的: "", 乙的: "", 丙的: "" };
@@ -95,7 +96,7 @@ async function 重建() {
   await raw.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
   for (const t of ["Customer", "Channel", "User"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
   for (const [名, id] of Object.entries(人)) {
-    await raw.user.create({ data: { id, email: `${id}@x.com`, name: 名, password: "x", role: 名 === "没角色" ? "ADMIN" : "SALES", active: true } });
+    await raw.user.create({ data: { id, email: `${id}@x.com`, name: 名, password: "x", role: 名 === "没角色" || 名 === "教练" ? "ADMIN" : "SALES", active: true } });
   }
   await raw.entMember.createMany({
     data: [
@@ -109,6 +110,7 @@ async function 重建() {
       { userId: 人.市场, bizRole: "marketing_mgr", managerId: 人.老板 },
       { userId: 人.管理员, bizRole: "admin", managerId: 人.老板 },
       { userId: 人.多角色, bizRole: "sales,marketing_mgr", managerId: 人.组长 },
+      { userId: 人.教练, bizRole: "coach" },
     ],
   });
   客户.甲的 = (await raw.customer.create({ data: { name: "甲的客户", phone: "13800330001", salesOwnerId: 人.销售甲 } })).id;
@@ -138,7 +140,7 @@ const 项目负责人 = async () => (await raw.project.findUnique({ where: { id:
 const 客户负责人 = async (id: string) => (await raw.customer.findUnique({ where: { id }, select: { salesOwnerId: true } }))?.salesOwnerId;
 
 describe("编辑项目 · 改名称：负责人、系统管理员（规则开、项目模式，V3.5.1）", () => {
-  const 表: [谁, boolean][] = [["销售甲", true], ["销售乙", false], ["组长", false], ["老板", true], ["管理员", false], ["没角色", false], ["市场", false]];
+  const 表: [谁, boolean][] = [["销售甲", true], ["销售乙", false], ["组长", false], ["老板", true], ["管理员", false], ["教练", false], ["没角色", false], ["市场", false]];
   for (const [r, 应] of 表) {
     it(`${r} 改甲的项目名 → ${应 ? "能" : "拒"}`, async () => {
       const x = await 试(r, () => 编辑项目(项目.甲的, { name: `${r}改的` } as never));
@@ -149,7 +151,7 @@ describe("编辑项目 · 改名称：负责人、系统管理员（规则开、
 });
 
 describe("编辑项目 · 改负责人（转让）：负责人转自己的、实线上级、总管理", () => {
-  const 表: [谁, boolean][] = [["销售甲", true], ["组长", true], ["老板", true], ["闲总", true], ["销售乙", false], ["组长二", false], ["管理员", false], ["没角色", false], ["市场", false]];
+  const 表: [谁, boolean][] = [["销售甲", true], ["组长", true], ["老板", true], ["闲总", true], ["销售乙", false], ["组长二", false], ["管理员", false], ["教练", false], ["没角色", false], ["市场", false]];
   for (const [r, 应] of 表) {
     it(`${r} 把甲的项目转给销售乙 → ${应 ? "能" : "拒"}`, async () => {
       const x = await 试(r, () => 编辑项目(项目.甲的, { name: "甲的项目", ownerId: 人.销售乙 } as never));
@@ -162,7 +164,7 @@ describe("编辑项目 · 改负责人（转让）：负责人转自己的、实
 describe("删除项目：总管理（含不管设置的）、负责人本人（V3.5.1 软删）", () => {
   // 客户只剩最后一个项目不能单删（X-74）：这里只测谁能删，给客户再挂一个
   beforeEach(async () => { await raw.project.create({ data: { name: "甲的二期", customerId: 客户.甲的, ownerId: 人.销售甲, creatorId: 人.销售甲 } }); });
-  const 表: [谁, boolean][] = [["老板", true], ["闲总", true], ["销售甲", true], ["销售乙", false], ["组长", false], ["管理员", false], ["没角色", false], ["市场", false]];
+  const 表: [谁, boolean][] = [["老板", true], ["闲总", true], ["销售甲", true], ["销售乙", false], ["组长", false], ["管理员", false], ["教练", false], ["没角色", false], ["市场", false]];
   for (const [r, 应] of 表) {
     it(`${r} 删甲的项目 → ${应 ? "能" : "拒"}`, async () => {
       const x = await 试(r, () => 删除项目(项目.甲的));
@@ -178,7 +180,7 @@ describe("assignSalesOwner（客户转让 / 分配）", () => {
   // 负责人本人转自己的 = 申请移交（客户 11-09 回执 X4）：发得出，确认前不生效
   const 表: [谁, string, boolean | "申请"][] = [
     ["销售甲", "甲的", "申请"], ["销售甲", "乙的", false], ["组长", "甲的", true], ["老板", "甲的", true], ["组长二", "甲的", false],
-    ["管理员", "甲的", false], ["没角色", "甲的", false], ["市场", "甲的", false],
+    ["管理员", "甲的", false], ["教练", "甲的", false], ["没角色", "甲的", false], ["市场", "甲的", false],
   ];
   for (const [r, 谁的, 应] of 表) {
     it(`${r} 把${谁的}客户转给销售丙 → ${应 === "申请" ? "申请移交" : 应 ? "能" : "拒"}`, async () => {
@@ -198,7 +200,7 @@ describe("assignSalesOwner（客户转让 / 分配）", () => {
 });
 
 describe("deleteCustomers：总管理、负责人本人（V3.5.1 软删）", () => {
-  const 表: [谁, boolean][] = [["老板", true], ["闲总", true], ["销售甲", true], ["销售乙", false], ["组长", false], ["管理员", false], ["没角色", false], ["市场", false], ["多角色", false]];
+  const 表: [谁, boolean][] = [["老板", true], ["闲总", true], ["销售甲", true], ["销售乙", false], ["组长", false], ["管理员", false], ["教练", false], ["没角色", false], ["市场", false], ["多角色", false]];
   for (const [r, 应] of 表) {
     it(`${r} 删甲的客户 → ${应 ? "能" : "拒"}`, async () => {
       const x = await 试(r, () => deleteCustomers([客户.甲的]));
@@ -211,7 +213,7 @@ describe("deleteCustomers：总管理、负责人本人（V3.5.1 软删）", () 
 });
 
 describe("放进公海：负责人可以，别人和 admin 拒", () => {
-  const 表: [谁, boolean][] = [["销售甲", true], ["销售乙", false], ["管理员", false], ["没角色", false], ["市场", false]];
+  const 表: [谁, boolean][] = [["销售甲", true], ["销售乙", false], ["管理员", false], ["教练", false], ["没角色", false], ["市场", false]];
   for (const [r, 应] of 表) {
     it(`${r} 把甲的客户放进公海 → ${应 ? "能" : "拒"}`, async () => {
       const 原因 = (await 可选项("recycle"))[0];
@@ -234,6 +236,7 @@ describe("deactivateUser（离职交接）", () => {
     ["老板（能管设置）办销售甲", "老板", "销售甲", "销售乙", true, true],
     ["销售乙办同事销售甲", "销售乙", "销售甲", "销售乙", true, false],
     ["admin 办销售甲", "管理员", "销售甲", "销售乙", true, false],
+    ["销售教练办销售甲", "教练", "销售甲", "销售乙", true, false],
     ["没角色（账号 ADMIN）办销售甲", "没角色", "销售甲", "销售乙", true, false],
   ];
   for (const [说明, r, 停, 给, 规则开, 应] of 表) {
@@ -245,4 +248,18 @@ describe("deactivateUser（离职交接）", () => {
       expect(u?.active).toBe(!应);
     });
   }
+});
+
+describe("销售教练（coach，11-17）：不能当负责人、不能被转给", () => {
+  it("老板把甲的项目转给教练 → 拒，负责人不变", async () => {
+    const x = await 试("老板", () => 编辑项目(项目.甲的, { name: "甲的项目", ownerId: 人.教练 } as never));
+    expect(x.成了, JSON.stringify(x.回)).toBe(false);
+    expect(await 项目负责人()).toBe(人.销售甲);
+  });
+  it("老板把甲的客户转给教练 → 拒，负责人不变", async () => {
+    const x = await 试("老板", () => assignSalesOwner([客户.甲的], 人.教练));
+    const 真成 = x.成了 && (x.回 as { updated?: number })?.updated !== 0;
+    expect(真成, JSON.stringify(x.回)).toBe(false);
+    expect(await 客户负责人(客户.甲的)).toBe(人.销售甲);
+  });
 });

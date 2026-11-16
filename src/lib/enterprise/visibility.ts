@@ -32,7 +32,7 @@ import { 按线范围of, 按线项目, 按线客户 } from "./line-viewer";
 import { 规则 } from "./rules";
 import { 市场部门key, 市场成员key, 市场成员们, 市场相关客户, 市场只读话, 规整市场部门 } from "./market";
 import { 视图票, 验视图票, 会话时刻, 切换视图开着 } from "./view-as";
-import { 能看全部, 只读角色, 只读角色话, 只看的人, 只看某人话, 没设业务角色, 业务线放行 } from "./permissions";
+import { 能看全部, 只读角色, 只读话of, 只看的人, 只看某人话, 没设业务角色, 业务线放行 } from "./permissions";
 import { 读纪元, 加纪元 } from "./scope-epoch";
 import { 读通道不限定 } from "@/lib/read-pool";
 
@@ -211,14 +211,15 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
   const 我 = users.find((u) => u.id === id);
   if (!我 || !我.active) return 只看公海;
   const org = 填组织设置(建组织(users, members, depts), 副手?.value, 只看?.value, 标记?.value ?? null);
-  // 管理员（admin）：看全部、写全拒（规则开不开都一样）
+  // 管理员（admin）、销售教练（coach）：看全部、写全拒（规则开不开都一样）
   if (只读角色({ id }, org)) {
     const 线 = 按线范围of(org, id);
-    if (!线) return { 我: null, 互看: false, 别人的: new Set(), 只读: 只读角色话 };
+    const 话 = 只读话of({ id }, org);
+    if (!线) return { 我: null, 互看: false, 别人的: new Set(), 只读: 话 };
     // 设了业务线：按人的那一半走 读 + 市场（看得到客户、raw SQL 回退 Prisma），按标签的那一半走 按线
     return {
       我: [id], 读: 线.人们, 市场: 线.人们, 组员客户: await 组员客户of(db, 线.人们), 按线: { 本人: id, 项目: 按线项目(线), 客户: 按线客户(线) },
-      互看: false, 别人的: new Set(), 全拦: true, 话: 只读角色话, 只读: 只读角色话,
+      互看: false, 别人的: new Set(), 全拦: true, 话, 只读: 话,
     };
   }
   // 只看某人（V3.5.1 市管特例，规则开不开都算）：业务数据只看 那个人（和自己）是负责人、或是创建人且不在公海的，公海照常；

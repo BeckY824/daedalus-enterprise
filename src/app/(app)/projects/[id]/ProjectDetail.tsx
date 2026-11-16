@@ -68,6 +68,7 @@ import { ProjectCommissionCard } from "./ProjectCommission";
 import { ContactAttachmentsButton } from "../../customers/[id]/ContactAttachments";
 import type { 提成卡 } from "@/lib/project/commission";
 import PaneToggle from "@/components/PaneToggle";
+import BackToList from "@/components/BackToList";
 import { ProjectAttachmentsCard, ProjectPaymentsCard, ProjectProfileCard, type 沟通附件组, type 项目画像 } from "./ProjectExtras";
 import { 词们, 对得上, 沟通字段, 卡点字段, 沟通来源, 能隐藏接手前 } from "@/lib/project/detail-search";
 import type { 回款 } from "@/lib/project/payment-db";
@@ -1792,10 +1793,14 @@ export default function ProjectDetail({
       {p.企业版 ? (
         /* 企业版（P11）：项目名单在中栏（@pane/projects/[id]，components/ProjectRoster.tsx）。
            它收起或收成抽屉时，标题最左边补一颗侧栏图标把它叫回来，和客户详情页同一颗（components/PaneToggle.tsx） */
+        <>
+        {/* 回到进来前那张列表（员工反馈 1A，components/BackToList.tsx）；企业版没有项目列表入口，没记过回客户列表 */}
+        <div className="back-to-list-row"><BackToList /></div>
         <div className="proj-head">
           <PaneToggle 栏="roster" 位置="主区" 名="项目列表" />
           {页头}
         </div>
+        </>
       ) : (
         页头
       )}

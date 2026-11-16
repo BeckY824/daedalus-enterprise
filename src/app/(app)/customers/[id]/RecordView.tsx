@@ -70,6 +70,7 @@ import { usePoolReturnConfirm } from "../usePoolReturnConfirm";
 import { 历史负责人们, 换负责人一句 } from "@/lib/owner-log";
 import { useWidth } from "@/lib/roster";
 import PaneToggle from "@/components/PaneToggle";
+import BackToList from "@/components/BackToList";
 import { 登记详情名 } from "@/lib/page-rows";
 import Heat, { 冷热说法, 要看冷热 } from "@/components/Heat";
 import { deleteContract, 删签约前清点, assignSalesOwner, 撤销改负责人, 转走项目预览of } from "../actions";
@@ -1064,12 +1065,14 @@ export default function RecordView({
     <div className="rec-page ui-v2">
       {后果框}
       {醒目条}
+      {/*
+        「← 回到客户列表（第 N 页）」（员工反馈 1A，11-16）：原来按设计稿 12/PAGE「切人不再返回列表」不摆，靠窄名单换人；
+        员工是按列表一页一页盘点的，窄名单（最近跟进 50 位）不是那一页。回的是进来前那张列表的原地址（筛选、页码、页签），
+        滚动位置由外壳滚回去（components/ListReturn.tsx）。单占一行在页头上面，不和名字、右上角按钮抢宽度
+      */}
+      <div className="back-to-list-row"><BackToList /></div>
       <div className="rec-head">
-        {/*
-          没有「← 返回列表」。左边就是窄名单，换一个人点一下就换（设计稿 12/PAGE：
-          「切人不再返回列表」）；真要回列表，侧栏那一项一直在。
-          名单不在时（窗口太窄收成抽屉，或者人自己点了收起），最左边补一颗侧栏图标把它叫回来（components/PaneToggle.tsx）。
-        */}
+        {/* 名单不在时（窗口太窄收成抽屉，或者人自己点了收起），最左边补一颗侧栏图标把它叫回来（components/PaneToggle.tsx） */}
         <PaneToggle 栏="roster" 位置="主区" />
         {/* 头像圆片 + 名字 + 星（2026-10-02 照毛玻璃原型）：一眼认出这是谁，星是「放到左栏，下次一点就到」 */}
         <span className="rec-head-av" aria-hidden="true" style={{ background: avatarColor(customer.name), color: AVATAR_TEXT }}>

@@ -58,6 +58,7 @@ import { 企业版根目录, 企业版亮项, 企业版页名, type 根目录图
 import { 切换视图Provider } from "@/components/ViewAsContext";
 import ViewAsPicker from "@/components/ViewAsPicker";
 import { 左栏收窄 } from "@/lib/rail-mini";
+import { ListMemory, useRailHref } from "@/components/ListReturn";
 
 const { Header, Content } = Layout;
 
@@ -185,6 +186,8 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
   const router = useRouter();
   const pathname = usePathname();
   const 页内占着CmdK = usePageOwnsCmdK();
+  /** 从详情页点左栏「客户」「公海」：回记住的那一屏（员工反馈 1A，components/ListReturn.tsx） */
+  const 左栏地址 = useRailHref();
   /** 设置浮层开着时，底下那页（不是地址栏的 /settings）。见 lib/page-under-overlay.ts */
   const 底下那页 = usePageUnderOverlay();
   /**
@@ -441,7 +444,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
   /** 左栏的一项（主导航和「更多」共用）。选中那块底色仍是同一块在各项之间滑（layoutId） */
   const 一项 = (n: (typeof nav)[number]) => 带名(n.key, n.label, (
     <Link
-      href={n.key}
+      href={左栏地址(n.key)}
       /* 网页版悬停就整页预取（默认只取到骨架，点进去还要再等一趟数据）。桌面端在本机，照旧。
          next/link 的类型取的是老路由那份，没有这一项；运行时用的是 app 路由的 Link，认这一项 */
       {...(desktop ? {} : { unstable_dynamicOnHover: true })}
@@ -632,7 +635,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
               /* 整行可点：label 里塞 <Link> 的话，点在图标或右边空白上只会把菜单关掉 */
               items: [...nav.map(({ key, icon, label }) => ({ key, icon, label })), { key: "/settings", icon: <SettingOutlined />, label: "设置" }],
               selectedKeys: [selectedKey],
-              onClick: ({ key }) => router.push(key),
+              onClick: ({ key }) => router.push(左栏地址(key)),
             }}
           >
             <Button type="text" icon={<MenuOutlined />} aria-label="打开导航菜单" />
@@ -654,6 +657,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
           </Dropdown>
         </Header>
         <Content className="app-content" style={{ padding: "22px 26px" }}>
+          <ListMemory />
           <我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟}>{children}</要跟Context.Provider></我Provider>
         </Content>
         {/* 企业版项目模式：手机上也能问一句。点浮标，面板铺满屏（globals.css 的手机 .dock），× 收起 */}
@@ -804,6 +808,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
           开设置浮层也不算换页——挂在 pathname 上的话，一开设置底下整页重挂、状态丢掉。
           超宽屏下限制正文宽度并居中，避免表格被拉得过于稀疏。
         */}
+        <ListMemory />
         <motion.div
           key={底下那页}
           initial={{ opacity: 0, y: 少动 ? 0 : 4 }}

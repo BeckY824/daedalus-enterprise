@@ -31,6 +31,7 @@ vi.mock("@/lib/prisma", async () => {
 });
 
 import { defaultClient as raw } from "@/lib/prisma";
+import { 等日志齐 } from "./query-log";
 import { 看全部, 读的我 } from "@/lib/team-scope";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
@@ -173,11 +174,12 @@ describe("数角标 和老实现（4 句 count + 未读通知数）逐项一样"
     for (const 谁 of [人们.销售A, 人们.销售管理, 人们.总管理]) {
       await 以谁的身份(谁, () => 数角标(谁, true, 现在));
       await 以谁的身份(谁, () => 老实现(谁, true, 现在));
-      临时.句 = []; 临时.开 = true;
-      try { await 以谁的身份(谁, () => 数角标(谁, true, 现在)); } finally { 临时.开 = false; }
+      // query 日志可能比结果晚到（见 tests/query-log.ts）：开开关后先等齐再清空，跑完、关开关前再等齐才数
+      临时.句 = []; 临时.开 = true; await 等日志齐(raw, 临时.句); 临时.句 = [];
+      try { await 以谁的身份(谁, () => 数角标(谁, true, 现在)); await 等日志齐(raw, 临时.句); } finally { 临时.开 = false; }
       const 新句 = 临时.句;
-      临时.句 = []; 临时.开 = true;
-      try { await 以谁的身份(谁, () => 老实现(谁, true, 现在)); } finally { 临时.开 = false; }
+      临时.句 = []; 临时.开 = true; await 等日志齐(raw, 临时.句); 临时.句 = [];
+      try { await 以谁的身份(谁, () => 老实现(谁, true, 现在)); await 等日志齐(raw, 临时.句); } finally { 临时.开 = false; }
       const 旧句 = 临时.句;
       expect({ 谁, 新: 新句.length }).toEqual({ 谁, 新: 1 });
       expect(只读SQL(新句[0])).toBe(true);

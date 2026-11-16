@@ -8,13 +8,19 @@
  */
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 
-const 记 = vi.hoisted(() => ({ 开: false, 句: [] as string[], 缓存: new Map<unknown, Map<string, unknown>>() }));
+const 记 = vi.hoisted(() => ({ 开: false, 句: [] as string[], 们: new Set<{ $queryRawUnsafe: (sql: string) => Promise<unknown> }>(), 缓存: new Map<unknown, Map<string, unknown>>() }));
 vi.mock("@/generated/prisma", async (原) => {
   const m = await 原<typeof import("@/generated/prisma")>();
   class 记数Client extends m.PrismaClient {
+    async $disconnect() {
+      记.们.delete(this as never);
+      return super.$disconnect();
+    }
     constructor(o: ConstructorParameters<typeof m.PrismaClient>[0] = {}) {
       super({ ...o, log: [{ emit: "event", level: "query" }, ...((o?.log as never[]) ?? [])] } as never);
       (this as unknown as { $on: (e: string, f: (x: { query: string }) => void) => void }).$on("query", (e) => { if (记.开) 记.句.push(e.query); });
+      // 量的时候每个客户端都要等日志齐（tests/query-log.ts 都等齐）；断开的不再算
+      记.们.add(this as never);
     }
   }
   return { ...m, PrismaClient: 记数Client };
@@ -63,6 +69,7 @@ vi.mock("@/app/(app)/projects/ProjectsView", () => ({ default: () => null }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
+import { 都等齐 } from "./query-log";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import CustomersPage from "@/app/(app)/customers/page";
@@ -145,9 +152,9 @@ async function 量(sp: Record<string, string> = {}, 谁: 人 = 甲, 页 = Custom
   // 第二遍不再写库就不会再重读；要是每次打开都写库，量的那一遍照样多出重读，照样红
   记.缓存.clear();
   await 开();
-  记.缓存.clear(); 记.句 = []; 记.开 = true;
+  记.缓存.clear(); 记.句 = []; 记.开 = true; await 都等齐(记.们, 记.句); 记.句 = [];
   let el: unknown;
-  try { el = await 开(); } finally { 记.开 = false; }
+  try { el = await 开(); await 都等齐(记.们, 记.句); } finally { 记.开 = false; }
   return { 句: 记.句, el };
 }
 

@@ -17,18 +17,19 @@ const 临时 = vi.hoisted(() => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "crm-cfeed-once-"));
   fs.copyFileSync(path.resolve(__dirname, "../prisma/test.db"), path.join(dir, "A.db"));
   if (fs.existsSync(path.resolve(__dirname, "../prisma/test.db-wal"))) fs.copyFileSync(path.resolve(__dirname, "../prisma/test.db-wal"), path.join(dir, "A.db-wal"));
-  return { dir, 开: false, 句: 0 };
+  return { dir, 开: false, 句: [] as string[] };
 });
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@/generated/prisma");
   const { 加上限定 } = await import("@/lib/team-scope");
   const raw = new PrismaClient({ datasourceUrl: `file:${path.join(临时.dir, "A.db")}?connection_limit=1`, log: [{ emit: "event", level: "query" }] });
-  (raw as unknown as { $on: (e: string, f: () => void) => void }).$on("query", () => { if (临时.开) 临时.句++; });
+  (raw as unknown as { $on: (e: string, f: (x: { query: string }) => void) => void }).$on("query", (e) => { if (临时.开) 临时.句.push(e.query); });
   return { prisma: 加上限定(raw), defaultClient: raw };
 });
 
 import { defaultClient as raw } from "@/lib/prisma";
+import { 等日志齐 } from "./query-log";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 客户沟通汇总, 跟进去处们, 客户页沟通两样, type 可见法 } from "@/lib/enterprise/customer-follow-feed";
@@ -91,11 +92,15 @@ afterAll(async () => {
 });
 
 async function 数<T>(fn: () => Promise<T>): Promise<{ r: T; 句: number }> {
-  临时.句 = 0;
+  // query 日志可能比结果晚到（见 tests/query-log.ts）：开开关后先等齐再清空，跑完、关开关前再等齐才数
+  临时.句 = [];
   临时.开 = true;
+  await 等日志齐(raw, 临时.句);
+  临时.句 = [];
   try {
     const r = await fn();
-    return { r, 句: 临时.句 };
+    await 等日志齐(raw, 临时.句);
+    return { r, 句: 临时.句.length };
   } finally {
     临时.开 = false;
   }

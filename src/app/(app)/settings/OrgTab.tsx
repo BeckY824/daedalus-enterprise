@@ -7,11 +7,11 @@ import { Button, Card, Checkbox, Input, Select, Space, Switch, Tag } from "antd"
 import { useConsequence } from "@/components/ConsequenceDialog";
 import InlineConfirm from "@/components/InlineConfirm";
 import SaveButton from "@/components/SaveButton";
-import { 角色名, 业务角色, 部门最多层数 } from "@/lib/sync/dept-policy";
+import { 角色名, 业务角色, 部门最多层数, 角色组合问题 } from "@/lib/sync/dept-policy";
 import { 部门树, type 组织部门 } from "@/lib/enterprise/org-tree";
 import { 拆角色, 合角色 } from "@/lib/enterprise/org-core";
 import { 规则, 规则名们, type 规则名 } from "@/lib/enterprise/rules-table";
-import { 字段, 字段名们, 字段级别of, 推荐字段配置, type 字段配置, type 字段名 } from "@/lib/enterprise/field-perm-table";
+import { 字段, 字段名们, 字段级别of, 推荐字段配置, 教练字段级别, type 字段配置, type 字段名 } from "@/lib/enterprise/field-perm-table";
 import { 设置项, 设置项们, 谁能改, type 改权限配置, type 能改的人, type 设置项名 } from "@/lib/enterprise/edit-perm-table";
 import { 市场部门们 } from "@/lib/enterprise/market";
 import { 建部门, 改部门, 删部门, 设成员, 设规则, 设字段权限, 设改权限, 设市场部门, 设只看某人, 设回收站副手, type 成员改动 } from "./org-actions";
@@ -52,7 +52,8 @@ export type 组织架构 = {
 };
 type 结果 = Promise<{ ok: boolean; error?: string; 提示?: string; 要确认?: string }>;
 
-const 总管级 = (r: string) => r === "director" || r === "admin";
+/** 只有系统管理员能给、能改的角色：总管理、管理员、销售教练（看全部的那几个） */
+const 总管级 = (r: string) => r === "director" || r === "admin" || r === "coach";
 /** 开关的 data-testid：第一条沿用老名字，E2E 在用 */
 const 规则testid: Record<规则名, string> = { 按组织看客户: "org-rule-scope", 线索分配: "org-rule-lead-assign", 字段权限: "org-rule-field-perm", 市场复核: "org-rule-market-review" };
 const 级别名 = { 改: "能改", 看: "只能看", 藏: "看不到" } as const;
@@ -64,6 +65,7 @@ const 级别名 = { 改: "能改", 看: "只能看", 藏: "看不到" } as const
 const 角色能做: Record<业务角色, string> = {
   director: "看全部客户；改组织架构；分配线索、改销售的参与状态、录渠道投入；终判无效线索",
   admin: "只能看、不能改。没设业务线看全部；设了只看这条线的数据、下属和公海",
+  coach: "只能看、不能改，电话和提成看不到。看全部（设了业务线也看全部）。不能兼销售类角色",
   sales_mgr: "能分到线索；手动指派线索",
   sales: "能分到线索",
   marketing_mgr: "分配线索、录渠道投入；复核被判无效的线索",
@@ -320,7 +322,10 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
               {字段名们.map((f) => (
                 <tr key={f}>
                   <th scope="row">{字段[f].名}<div className="muted">{字段[f].用在}</div></th>
-                  {业务角色.map((r) => (
+                  {业务角色.map((r) => r === "coach" ? (
+                    // 销售教练的字段级别固定（Q9，field-perm-table.ts 教练字段级别）：不进配置表
+                    <td key={r} className="muted" data-testid={`org-field-perm-coach-${f}`}>{级别名[教练字段级别(f)]}</td>
+                  ) : (
                     <td key={r}>
                       <Select size="small" style={{ minWidth: 76 }} aria-label={`${角色名[r]} 对「${字段[f].名}」`} disabled={!!字段权限挡 || 忙("字段权限")}
                         value={字段级别of(表, f, r)} onChange={(v) => 设格(f, r, v)}
@@ -488,9 +493,13 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
                   options={[{ value: "__无", label: "未分部门" }, ...部门选项]} />
                 {/* 业务角色可多选（10-27）：一个人兼销售管理和市场管理之类；至少留一个，清空不交 */}
                 <Select size="small" mode="multiple" style={{ minWidth: 150, maxWidth: 320 }} aria-label={`${m.name} 的角色`} disabled={!改他 || 忙(`成员-${m.id}`)}
-                  value={他的角色} onChange={(v: string[]) => { if (v.length) 设(m.id, { bizRole: 合角色(v) }); }}
+                  value={他的角色} onChange={(v: string[]) => { if (v.length && !角色组合问题(v)) 设(m.id, { bizRole: 合角色(v) }); }}
                   popupMatchSelectWidth={280}
-                  options={业务角色.filter((r) => 是老板 || !总管级(r) || 他的角色.includes(r)).map((r) => ({ value: r, label: 角色名[r] }))}
+                  options={业务角色.filter((r) => 是老板 || !总管级(r) || 他的角色.includes(r)).map((r) => ({
+                    value: r, label: 角色名[r],
+                    // Q10：销售教练不兼销售类角色，撞了的那几项灰掉（服务端 设成员 同样挡）
+                    disabled: !他的角色.includes(r) && !!角色组合问题([...他的角色, r]),
+                  }))}
                   optionRender={(o) => (
                     <div>
                       <div>{o.label}</div>

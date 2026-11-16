@@ -20,6 +20,7 @@ import { 加上限定, 看全部 } from "@/lib/team-scope";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 客户筛选条件 } from "@/app/(app)/customers/query";
+import { 等日志齐 } from "./query-log";
 
 const 迁移 = fs.readFileSync(new URL("../migrations/137-perf-85k-indexes.sql", import.meta.url), "utf8");
 const 迁移138 = fs.readFileSync(new URL("../migrations/138-perf-85k-indexes-2.sql", import.meta.url), "utf8");
@@ -109,8 +110,11 @@ describe("查询计划：Prisma 实际发出的语句", () => {
   async function 真计划(谁: string, 表: "Customer" | "FollowUp", fn: () => Promise<unknown>): Promise<{ sql: string; 计划: string }> {
     process.env.CRM_ENTERPRISE = "1";
     忘掉企业版范围();
+    // query 日志可能比结果晚到（见 tests/query-log.ts）：清之前先等前面的到齐、跑完再等齐了才找，不然取到的是空的或上一段的
+    await 等日志齐(截, 句们);
     句们.length = 0;
     await 以谁的身份(谁, fn);
+    await 等日志齐(截, 句们);
     const 主 = 句们.filter((q) => q.query.startsWith("SELECT") && q.query.includes(`FROM \`main\`.\`${表}\``)).at(-1);
     expect(主, `没截到查 ${表} 的句子`).toBeTruthy();
     return { sql: 主!.query, 计划: await 计划(主!.query, ...JSON.parse(主!.params)) };
@@ -260,8 +264,10 @@ describe("查询计划：第三轮（11-14）客户详情时间线、跟进数",
   async function 跟进计划(fn: () => Promise<unknown>): Promise<{ sql: string; 计划: string }> {
     process.env.CRM_ENTERPRISE = "1";
     忘掉企业版范围();
+    await 等日志齐(截, 句们);
     句们.length = 0;
     await 看全部(fn);
+    await 等日志齐(截, 句们);
     const 主 = 句们.filter((q) => q.query.startsWith("SELECT") && q.query.includes("FROM `main`.`FollowUp`")).at(-1)!;
     return { sql: 主.query, 计划: await 计划(主.query, ...JSON.parse(主.params)) };
   }
