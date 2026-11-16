@@ -140,6 +140,11 @@ async function 量(sp: Record<string, string> = {}, 谁: 人 = 甲, 页 = Custom
   // 热身前也清：上一条用例的请求内缓存还留着（库已经清过），热身就不会把第一次读顺手建的字典建上
   记.缓存.clear();
   await 开();
+  // 热两遍：清过的库第一次打开会顺手补字典、写记号（Setting），设置缓存按库指纹作废（lib/settings.ts），
+  // 只热一遍的话量的那一遍要多一句重读 Setting——数的就成了「第一次打开」而不是平常打开。
+  // 第二遍不再写库就不会再重读；要是每次打开都写库，量的那一遍照样多出重读，照样红
+  记.缓存.clear();
+  await 开();
   记.缓存.clear(); 记.句 = []; 记.开 = true;
   let el: unknown;
   try { el = await 开(); } finally { 记.开 = false; }

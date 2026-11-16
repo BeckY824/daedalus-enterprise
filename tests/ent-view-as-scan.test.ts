@@ -146,8 +146,11 @@ async function 装探针(): Promise<{ 记录: string[]; 拆: () => Promise<void>
   const 同步 = fs as unknown as Record<string, unknown>;
   const 换掉: [Record<string, unknown>, string, unknown][] = [];
   const 换 = (o: Record<string, unknown>, k: string, 名: string, 异步: boolean) => {
-    换掉.push([o, k, o[k]]);
+    const 原 = o[k] as (...a: unknown[]) => unknown;
+    换掉.push([o, k, 原]);
     o[k] = (...a: unknown[]) => {
+      // 多进程缓存协调（范围纪元、跨进程锁）不是业务数据，放行
+      if (/(\.scope-epoch|\.crm-locks[\\/])/.test(String(a[0]))) return 原.apply(o, a);
       记录.push(`${名}(${String(a[0]).slice(0, 120)})`);
       const e = new Error(`探针：切换视图里不许 ${名}`);
       if (异步) return Promise.reject(e);
