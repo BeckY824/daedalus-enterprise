@@ -1051,6 +1051,8 @@ model Project {
   entLeadVerifyLogs EntLeadVerifyLog[]
   /// 企业版冷项目（迁移 123）：有这一行 = 现在是冷的。见 EntProjectCold
   entCold           EntProjectCold?
+  /// 企业版教练主题（迁移 144，11-17）。见 EntCoachTopic
+  coachTopics       EntCoachTopic[]
   /// 企业版项目关联客户 / 联系人（2026-10-29 P17，迁移 094 / 095）。见 ProjectCustomer / ProjectContact
   customerLinks ProjectCustomer[]
   contactLinks  ProjectContact[]
@@ -1927,4 +1929,50 @@ model EntFollowUpFirstValid {
   followUpId String   @id
   followUp   FollowUp @relation(fields: [followUpId], references: [id], onDelete: Cascade)
   at         DateTime
+}
+
+/// 企业版教练主题（2026-11-17，迁移 144，判定在 lib/enterprise/coach-topic.ts）：销售教练、上级、系统管理员在项目「沟通记录」卡里发起的点评或建议，
+/// 项目负责人在主题下回复。**不是沟通记录**：不拨三态钟、不清冷标、不重置额度、不顶替下一步计划、不算节点推进的有效沟通，跟进统计也不算。
+/// 回复人永远是当时的项目负责人（不另存「谁来回复」）：转让、交接、公海领取后待回复的跟到新负责人名下。
+/// 状态：待回复 / 已回复 / 已关闭。发出后不能改、不能删；只有系统管理员软删（deletedAt 只打记号，第一版不进回收站、不能恢复）。
+/// 项目进公海：没关的自动关（closedById 空 = 系统关的，AuditLog 留痕）。项目进回收站：冻结成只读（读的时候按项目判）。项目真删随项目级联。
+/// 不存客户编号（客户合并后会过期）：要按客户查从项目连过去
+model EntCoachTopic {
+  id         String          @id @default(cuid())
+  projectId  String
+  project    Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// 发起时项目所在的节点
+  node       String
+  /// 一句话，40 字以内
+  title      String
+  body       String
+  /// 填写人 = 发起的那一刻登录的人（Q5 锁定，不能代别人发）
+  authorId   String
+  /// 待回复 / 已回复 / 已关闭
+  status     String          @default("待回复")
+  /// 谁关的；空 + 已关闭 = 项目进公海时系统自动关
+  closedById String?
+  closedAt   DateTime?
+  /// 软删（系统管理员）：空 = 没删；有值 = 删了（第一版只是记号，不进回收站）
+  deletedAt  DateTime?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  replies    EntCoachReply[]
+
+  @@index([projectId, status])
+  @@index([authorId, status])
+  /// 首页「我负责的项目里待回复的」从状态出发连项目
+  @@index([status, projectId])
+}
+
+/// 教练主题下的回复（迁移 144）：负责人回复、发起一方追问都是一行。发出后不能改、不能删；主题真删随主题级联
+model EntCoachReply {
+  id        String        @id @default(cuid())
+  topicId   String
+  topic     EntCoachTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  userId    String
+  body      String
+  createdAt DateTime      @default(now())
+
+  @@index([topicId, createdAt])
 }
