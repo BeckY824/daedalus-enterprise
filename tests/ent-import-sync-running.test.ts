@@ -16,6 +16,9 @@ import { 换适配器, 现成适配器 } from "@/lib/enterprise-import/adapter";
 import { 接口出错, 读JSON, 单个请求最长毫秒 } from "@/lib/enterprise-import/net";
 import { 改同步设置, 读同步设置, 同步一次, 拉全量试跑, 正在同步 } from "@/lib/enterprise-import/sync";
 import type { 原始记录 } from "@/lib/enterprise-import/types";
+import { 锁目录 } from "@/lib/proc-lock";
+import { 同步通讯录 } from "@/lib/enterprise/org-sync";
+import { 开子进程占锁 } from "./proc-lock-child";
 
 const 我 = { id: "tester-id", name: "测试员" };
 const 一条: 原始记录 = { 实体: "customer", 外部ID: "fs-1", 字段: { 客户名称: "杭州云帆科技有限公司", 手机号码: "13800000001", 客户负责人: "测试员" } };
@@ -92,6 +95,66 @@ describe("正在同步", () => {
     闸!.放([]);
     expect(await 再一次).toMatchObject({ 结果: "没变化" });
     expect(拉了).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("正在同步 · 多进程（11-16）", () => {
+  it("另一个服务进程在拉同一来源：本进程显示「正在同步」、点立即同步跳过不拉；它拉完了照常拉", async () => {
+    const 别处 = await 开子进程占锁(锁目录(), "import-sync-feishu", "钟在 1 号进程");
+    try {
+      expect(别处.结果).toBe("OK");
+      expect(正在同步("feishu")).toMatchObject({ 谁: "钟在 1 号进程" });
+      expect(正在同步("dingtalk")).toBeNull();
+      const r = await 同步一次("feishu", { 用户: 我 });
+      expect(r.结果).toBe("跳过");
+      expect(r.话).toMatch(/正在同步（钟在 1 号进程 \d\d:\d\d 开始的那次还没完）/);
+      expect(拉了).not.toHaveBeenCalled();
+      expect((await 读同步设置("feishu")).上次).toBeNull();
+    } finally {
+      await 别处.放();
+    }
+    expect(正在同步("feishu")).toBeNull();
+    const 再 = 同步一次("feishu", { 用户: 我 });
+    await 等开始拉();
+    闸!.放([]);
+    expect(await 再).toMatchObject({ 结果: "没变化" });
+    expect(拉了).toHaveBeenCalledTimes(1);
+  });
+
+  it("本进程在拉：另一个服务进程占不到同一来源的锁；本进程拉完锁放掉", async () => {
+    const 头一次 = 同步一次("feishu", { 用户: 我 });
+    await 等开始拉();
+    const 别处 = await 开子进程占锁(锁目录(), "import-sync-feishu", "别的进程");
+    await 别处.放();
+    expect(别处.结果).toBe("HELD");
+    闸!.放([]);
+    expect(await 头一次).toMatchObject({ 结果: "没变化" });
+    const 又 = await 开子进程占锁(锁目录(), "import-sync-feishu", "别的进程");
+    await 又.放();
+    expect(又.结果).toBe("OK");
+  });
+
+  it("另一个服务进程在拉的那个崩了（kill -9）：不用等过期，马上能再拉", async () => {
+    const 别处 = await 开子进程占锁(锁目录(), "import-sync-feishu", "崩了的");
+    await 别处.杀();
+    expect(正在同步("feishu")).toBeNull();
+    const 再 = 同步一次("feishu", { 用户: 我 });
+    await 等开始拉();
+    闸!.放([]);
+    expect(await 再).toMatchObject({ 结果: "没变化" });
+  });
+
+  it("通讯录同步：另一个服务进程在同步同一来源时跳过（不拉、不写）", async () => {
+    const 原 = process.env.CRM_ENTERPRISE;
+    process.env.CRM_ENTERPRISE = "1";
+    const 别处 = await 开子进程占锁(锁目录(), "org-sync-feishu", "钟在 1 号进程");
+    try {
+      expect(await 同步通讯录("feishu", { 用户: 我 })).toMatchObject({ 结果: "跳过", 话: "上一次还没同步完" });
+    } finally {
+      await 别处.放();
+      if (原 === undefined) delete process.env.CRM_ENTERPRISE;
+      else process.env.CRM_ENTERPRISE = 原;
+    }
   });
 });
 

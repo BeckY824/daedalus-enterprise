@@ -23,6 +23,7 @@ import { prisma } from "@/lib/prisma";
 import { encryptSecret, getSetting, invalidateSettingsCache, maskSecret } from "@/lib/settings";
 import { recordAudit, type Actor } from "@/lib/audit";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 占锁 } from "@/lib/proc-lock";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 建组织, 上级设置问题, 拆角色, 合角色 } from "@/lib/enterprise/org-core";
 import { 是业务角色, 部门最多层数, type 业务角色 } from "@/lib/sync/dept-policy";
@@ -245,6 +246,9 @@ const 在同步 = new Set<通讯录来源>();
 export async function 同步通讯录(源: 通讯录来源, opts: { 用户?: Actor; 现在?: Date } = {}): Promise<通讯录一次结果> {
   if (!企业版()) return { 结果: "跳过", 话: "不是企业版", 报告: [] };
   if (在同步.has(源)) return { 结果: "跳过", 话: "上一次还没同步完", 报告: [] };
+  // 多进程（11-16）：跨进程锁，钟在 1 号进程同步时别的进程上点「立即同步」不叠（写组织架构的事务最长 120 秒，叠了就撞写锁）
+  const 占 = 占锁(`org-sync-${源}`, { 附: { 谁: opts.用户?.name || "定时同步" } });
+  if (!占.ok) return { 结果: "跳过", 话: "上一次还没同步完", 报告: [] };
   在同步.add(源);
   const 现在 = opts.现在 ?? new Date();
   const 名 = 通讯录来源名[源];
@@ -274,6 +278,7 @@ export async function 同步通讯录(源: 通讯录来源, opts: { 用户?: Act
     }
   } finally {
     在同步.delete(源);
+    占.锁.放();
   }
 }
 
