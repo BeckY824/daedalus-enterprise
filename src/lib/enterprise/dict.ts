@@ -264,11 +264,13 @@ function 修补都做过(kind: 字典种类, 记: ReadonlyMap<string, string>, �
   return 修补记号们(kind).every((k) => 记.has(k));
 }
 async function 批量读字典(kinds: readonly 字典种类[]): Promise<Map<字典种类, EntDictItem[]>> {
-  const [记行, 行们] = await Promise.all([
-    prisma.setting.findMany({ where: { key: { in: kinds.flatMap(修补记号们) } }, select: { key: true, value: true } }),
+  // 修补记号走设置缓存（lib/settings.ts，按库指纹作废），不再每页单查一句（11-16 F1）。
+  // 记号只加不删、补新的数只涨：缓存旧了顶多是少看到记号 → 那一类走 企业字典 现读现补，结果一样，只是慢一点
+  const { 设置原值们 } = await import("@/lib/settings");
+  const [记, 行们] = await Promise.all([
+    设置原值们(kinds.flatMap(修补记号们)),
     prisma.entDictItem.findMany({ where: { kind: { in: [...kinds] } }, orderBy: [{ sort: "asc" }, { createdAt: "asc" }] }),
   ]);
-  const 记 = new Map(记行.map((x) => [x.key, x.value]));
   const 出 = new Map<字典种类, EntDictItem[]>();
   for (const k of kinds) {
     const 这类 = 行们.filter((x) => x.kind === k);
