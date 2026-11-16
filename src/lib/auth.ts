@@ -7,6 +7,7 @@ import { multiTenant, runWithTenant } from "./tenant/context";
 import { resolveTenant } from "./tenant/workspaces";
 import { control } from "./tenant/control";
 import { 会话已作废 } from "./tenant/session-cutoff";
+import { 请求内记住 } from "./request-memo";
 import { 企业版 } from "./enterprise/switch";
 import { 视图票, 验视图票, 读会话身份, 能切换视图, 能被看, 切换视图开着 } from "./enterprise/view-as";
 
@@ -109,12 +110,19 @@ async function 视图里的人(票: string, 真: SessionUser, 会话票: string 
   }
 }
 
-/** 会话票上的那个人（真身）：不认切换视图。只有切换视图自己的 action 用它，别处一律 getCurrentUser */
+/**
+ * 会话票上的那个人（真身）：不认切换视图。只有切换视图自己的 action 用它，别处一律 getCurrentUser。
+ * 一次渲染里布局、页面、各栏都要问（每页 2–3 遍）：按会话票请求内只认一遍（lib/request-memo.ts，11-16 F1）——
+ * 不跨请求；同一请求里库写过（指纹变了）就重认；换了票（登录、退出、切工作区）键就不同
+ */
 export async function getSessionUser(): Promise<SessionUser | null> {
   const store = await cookies();
   const token = store.get(COOKIE)?.value;
   if (!token) return null;
+  return 请求内记住(`会话用户:${token}`, () => 按票认人(token));
+}
 
+async function 按票认人(token: string): Promise<SessionUser | null> {
   try {
     const { payload } = await jwtVerify(token, SECRET);
     const id = payload.sub as string;
