@@ -10,7 +10,7 @@ import { 公海分不给 } from "@/lib/owners";
 import { 看全部, 虚线只读挡 } from "@/lib/team-scope";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import { 能管公海, 能放回客户公海, 只读角色, 只读角色话, 没设业务角色, 没业务角色不能领话, 能领公海, 不能领公海话 } from "@/lib/enterprise/permissions";
+import { 能管公海, 能放回客户公海, 只读角色, 只读话of, 没设业务角色, 没业务角色不能领话, 能领公海, 不能领公海话 } from "@/lib/enterprise/permissions";
 import { requireUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
 import { recordAudit } from "@/lib/audit";
@@ -257,7 +257,7 @@ export async function 领取(ids: string[], 带待办?: boolean, 项目ids: stri
   }
   if (!ids.length) return { ok: true, updated: 0, unchanged: 0, 没权限: 0 };
   // 管理员只读（11-02）：公海看得到、领不走。下面的事务包着 看全部，team-scope 拦不到
-  if (企业版() && 只读角色(me, await 权限组织())) return { ok: false, error: 只读角色话 };
+  if (企业版() && 只读角色(me, await 权限组织())) return { ok: false, error: 只读话of(me, await 权限组织()) };
   // 没设业务角色的不能领（11-03 用户定）：权限只认业务角色，账号 ADMIN / MANAGER 不算。别人分给他（分配公海）不走这里
   if (企业版() && 没设业务角色(await 权限组织(), me.id)) return { ok: false, error: 没业务角色不能领话 };
   // 角色不领公海的（市管、渠运、项目组员、只看某人的，V3.5.1）

@@ -19,7 +19,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 定沟通方式, 定发起主体 } from "@/lib/enterprise/dict";
 import { 软删开着, 撤销软删, 删除挡, 看已删 } from "@/lib/enterprise/soft-delete";
 import { 查完再写 } from "@/lib/check-then-write";
-import { 能恢复, 没设业务角色, 没业务角色不能领话, 能领公海, 不能领公海话, 只读角色, 只读角色话 } from "@/lib/enterprise/permissions";
+import { 能恢复, 没设业务角色, 没业务角色不能领话, 能领公海, 不能领公海话, 只读角色, 只读话of } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话, 不能挂项目话, 卡片刚记的能撤, 在卡片撤销里, 卡片撤销过时话, 客户事项挡, 本人勾完成挡 } from "@/lib/enterprise/follow-perm";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
@@ -232,7 +232,7 @@ export async function saveFollowUp(input: FollowUpInput) {
     // 没设业务角色的领不了（11-03）：记了就等于没领到却留了条沟通，直接说清楚，不记
     if (在公海 && 企业版() && 没设业务角色(await 权限组织(), user.id)) return { ok: false as const, error: 没业务角色不能领话 };
     // 角色不领公海的（市管、渠运、项目组员，V3.5.1）同样不记
-    if (在公海 && 企业版() && !能领公海(user, await 权限组织())) return { ok: false as const, error: 只读角色(user, await 权限组织()) ? 只读角色话 : 不能领公海话 };
+    if (在公海 && 企业版() && !能领公海(user, await 权限组织())) return { ok: false as const, error: 只读角色(user, await 权限组织()) ? 只读话of(user, await 权限组织()) : 不能领公海话 };
     const 领取了 = 在公海 && await 领取([input.customerId]).then((r) => r.ok && r.updated > 0);
     const result = await prisma.$transaction(async (tx) => {
       const customer = await tx.customer.findUnique({ where: { id: input.customerId }, select: { name: true } });

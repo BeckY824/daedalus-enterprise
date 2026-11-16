@@ -8,10 +8,12 @@
  *   痛点标注、合同状态（迁移 101）——只在项目详情页出现，page.tsx 按级别不给值。
  *   别的字段要藏得一页页改，等清单定了再加，表里先只给「改 / 看」。
  * - 11-01 起只认业务角色：账号管理员（老板）不再放行，按他的业务角色查表；没设业务角色的 = 每个字段都「藏」（没权限）。
+ * - 销售教练（11-17 Q9）：规则开不开都按 教练字段级别（电话藏、别的只能看），不查配置表。
  *
  * 纯数据和纯函数在 field-perm-table.ts（设置页客户端组件 import 那个），这里 re-export 再加读库的两个。
  */
-import { 字段权限key, 字段级别of, 规整字段配置, 改不了的话, type 字段名, type 字段级别 } from "./field-perm-table";
+import { 字段权限key, 字段级别of, 规整字段配置, 改不了的话, 按教练字段, 教练字段级别, type 字段名, type 字段级别 } from "./field-perm-table";
+import { 企业版 } from "./switch";
 
 export * from "./field-perm-table";
 
@@ -28,11 +30,22 @@ const 最宽 = (们: 字段级别[]): 字段级别 => 们.reduce((a, b) => (宽�
  */
 export async function 字段权限of(userId?: string | null): Promise<(名: 字段名) => 字段级别> {
   const { 规则开着 } = await import("./rules");
-  if (!(await 规则开着("字段权限"))) return 全能改;
-  const id = userId === undefined ? (await (await import("@/lib/auth")).getCurrentUser())?.id ?? null : userId;
+  const 开 = await 规则开着("字段权限");
+  // 销售教练（Q9）规则关着也藏电话：企业版里规则关着也得认一下人
+  if (!开 && !企业版()) return 全能改;
+  let id: string | null;
+  try {
+    id = userId === undefined ? (await (await import("@/lib/auth")).getCurrentUser())?.id ?? null : userId;
+  } catch (e) {
+    // 规则关着时原来根本不认人：请求外（定时任务、测试）认不到人照旧全能改；Next 的「这页要动态」信号原样抛回去
+    if (开 || (e && typeof e === "object" && "digest" in e)) throw e;
+    return 全能改;
+  }
   if (!id) return 全能改;
   const { 读组织 } = await import("./org");
   const 角色们 = (await 读组织()).成员.get(id)?.角色们;
+  if (角色们 && 按教练字段(角色们)) return 教练字段级别;
+  if (!开) return 全能改;
   if (!角色们?.length) return () => "藏";
   const { getSetting } = await import("@/lib/settings");
   const 配置 = 规整字段配置(await getSetting<unknown>(字段权限key));
