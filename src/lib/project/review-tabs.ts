@@ -96,3 +96,36 @@ export type 复盘沟通行 = {
   附件: number;
 };
 export type 复盘沟通 = { 总数: number; 页: number; 行: 复盘沟通行[] };
+
+/* ───────── 「沟通」页签里的「主题」一档（销售教练角色 PR3b，11-17）：不加第五个页签 ───────── */
+
+/**
+ * 地址栏：tv=topic 看主题（不给 = 沟通）；tw=mine（我发起的）| wait（待我回复）| all（全部，默认）；ts=待回复 | 已回复 | 已关闭（不给 = 全部状态）；p=页码。
+ * 谁看得到哪条照 lib/enterprise/coach-topic.ts 能看主题（先判能看项目），取数在 coach-topic-db.ts 复盘主题of
+ */
+export const 沟通档们 = ["talk", "topic"] as const;
+export type 沟通档 = (typeof 沟通档们)[number];
+export const 读沟通档 = (v?: string): 沟通档 => (v === "topic" ? "topic" : "talk");
+export const 主题范围们 = ["all", "mine", "wait"] as const;
+export type 主题范围 = (typeof 主题范围们)[number];
+export const 主题范围叫法: Record<主题范围, string> = { all: "全部", mine: "我发起的", wait: "待我回复" };
+export const 读主题范围 = (v?: string): 主题范围 => ((主题范围们 as readonly string[]).includes(v ?? "") ? (v as 主题范围) : "all");
+export const 主题状态们 = ["待回复", "已回复", "已关闭"] as const;
+export type 主题状态筛 = (typeof 主题状态们)[number];
+export const 读主题状态 = (v?: string): 主题状态筛 | "" => ((主题状态们 as readonly string[]).includes(v ?? "") ? (v as 主题状态筛) : "");
+
+export type 复盘主题行 = {
+  id: string;
+  /** 发起时刻 */
+  时间: string;
+  projectId: string;
+  项目: string;
+  /** 发起时项目在哪个节点 */
+  节点: string;
+  状态: 主题状态筛;
+  标题: string;
+  发起人: string;
+  身份: string;
+  回复数: number;
+};
+export type 复盘主题 = { 总数: number; 页: number; 行: 复盘主题行[] };

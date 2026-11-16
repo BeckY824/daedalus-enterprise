@@ -20,6 +20,7 @@ import {
   发起通知谁, 回复通知谁, 关闭通知谁, type 主题项目, type 发起身份, type 主题状态,
 } from "./coach-topic";
 import { 能看项目, type 谁 } from "./permissions";
+import { 夹页, 复盘列表每页, type 主题范围, type 主题状态筛, type 复盘主题 } from "@/lib/project/review-tabs";
 
 type 结果<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -241,4 +242,49 @@ export async function 待回复主题of(userId: string): Promise<{ 条数: numbe
     defaultClient.entCoachTopic.findFirst({ where, orderBy: { createdAt: "asc" }, select: { createdAt: true, projectId: true, title: true } }),
   ]);
   return { 条数, 最早: 最早 ? { at: 最早.createdAt.toISOString(), projectId: 最早.projectId, title: 最早.title } : null };
+}
+
+/** 复盘「沟通」页签「主题」一档最多翻这么多条（主题量小，判完可见再分页；多出来的不列） */
+const 复盘主题上限 = 1000;
+
+/**
+ * 复盘「沟通」页签里的「主题」一档（PR3b）：我发起的 / 待我回复 / 全部（这一圈负责的项目上的；谁 = undefined 不限人），可按状态筛。
+ * 每条都过 能看主题（先判能看项目）：两张表不在限定层里，这里自己挡。项目进了回收站的不列（点进去也打不开）
+ */
+export async function 复盘主题of(
+  me: 谁,
+  圈: readonly string[] | undefined,
+  q: { 范围: 主题范围; 状态?: 主题状态筛 | ""; 页?: number; 每页?: number },
+): Promise<复盘主题> {
+  const 每页 = q.每页 ?? 复盘列表每页;
+  if (!企业版()) return { 总数: 0, 页: 1, 行: [] };
+  const 状态 = q.范围 === "wait" ? "待回复" : q.状态 || undefined;
+  const 行们 = await defaultClient.entCoachTopic.findMany({
+    where: {
+      deletedAt: null,
+      ...(状态 ? { status: 状态 } : {}),
+      ...(q.范围 === "mine"
+        ? { authorId: me.id, project: { deletedAt: null } }
+        : q.范围 === "wait"
+          ? { project: { ownerId: me.id, pooledAt: null, deletedAt: null } }
+          : { project: { deletedAt: null, ...(圈 ? { ownerId: { in: [...圈] } } : {}) } }),
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+    take: 复盘主题上限,
+    select: { id: true, node: true, title: true, status: true, authorId: true, createdAt: true, deletedAt: true, project: { select: 项目选 }, _count: { select: { replies: true } } },
+  });
+  const org = await 读组织();
+  const 看得到 = 行们.filter((t) => 能看主题(me, t, 判项目(t.project as 项目行), org));
+  const 总数 = 看得到.length;
+  const 页 = 夹页(q.页 ?? 1, 总数, 每页);
+  const 这页 = 看得到.slice((页 - 1) * 每页, 页 * 每页);
+  const 名 = new Map((await defaultClient.user.findMany({ where: { id: { in: [...new Set(这页.map((t) => t.authorId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
+  return {
+    总数,
+    页,
+    行: 这页.map((t) => ({
+      id: t.id, 时间: t.createdAt.toISOString(), projectId: t.project.id, 项目: t.project.name, 节点: t.node || "—",
+      状态: t.status as 主题状态筛, 标题: t.title, 发起人: 名.get(t.authorId) ?? "已不在的成员", 身份: 角色叫法(org, t.authorId), 回复数: t._count.replies,
+    })),
+  };
 }

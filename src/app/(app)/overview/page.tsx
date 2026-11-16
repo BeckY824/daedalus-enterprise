@@ -14,18 +14,21 @@ import BoardTodos from "./BoardTodos";
 import { 看板的人 } from "@/lib/project/board-member";
 import { 复盘待办of, 复盘看板of } from "@/lib/project/board-todos-db";
 import { 读页签, 读卡, 读页码, 读布局 } from "@/lib/project/board-todos";
-import { 读卡点看板筛, 读沟通段, 读沟通方式 } from "@/lib/project/review-tabs";
+import { 读卡点看板筛, 读沟通段, 读沟通方式, 读沟通档, 读主题范围, 读主题状态 } from "@/lib/project/review-tabs";
+import { 复盘主题of } from "@/lib/enterprise/coach-topic-db";
+import { 企业版 } from "@/lib/enterprise/switch";
 import { 将回公海of, 缺沟通of, 复盘概况of, 客户分布of } from "@/lib/project/review-extras-db";
 import { 复盘沟通of } from "@/lib/project/review-tabs-db";
 import { 卡点看板, 卡点给界面 } from "@/lib/project/blocker";
 import BoardBlockers from "./BoardBlockers";
 import BoardTalks from "./BoardTalks";
+import BoardTopics from "./BoardTopics";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 读日期段, 日期段界, 日期段粒度, 日期段叫法, type 日期段 } from "@/lib/custom-date-range";
 
 export const dynamic = "force-dynamic";
 
-type SP = Promise<{ view?: string; from?: string; to?: string; currency?: string; ownerId?: string; tab?: string; f?: string; kind?: string; t?: string; tf?: string; tt?: string; p?: string; lay?: string; m?: string; bm?: string; bo?: string; br?: string; bt?: string; bi?: string; bp?: string }>;
+type SP = Promise<{ view?: string; from?: string; to?: string; currency?: string; ownerId?: string; tab?: string; f?: string; kind?: string; t?: string; tf?: string; tt?: string; p?: string; lay?: string; m?: string; bm?: string; bo?: string; br?: string; bt?: string; bi?: string; bp?: string; tv?: string; tw?: string; ts?: string }>;
 
 /**
  * 「数据」——看数的唯一入口。
@@ -119,6 +122,17 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
       </DataShell>
     );
   }
+  if (页签 === "talk" && 企业版() && 读沟通档(sp.tv) === "topic") {
+    // 「沟通」页签里的「主题」一档（教练主题，11-17）：全部 = 这一圈负责的项目上的，每条再过 能看主题
+    const 档 = 读主题范围(sp.tw);
+    const 状态 = 读主题状态(sp.ts);
+    const d = await 复盘主题of(user, 谁, { 范围: 档, 状态, 页: 读页码(sp.p) });
+    return (
+      <DataShell view={view} 项目 选人={选人} 页签="talk">
+        <BoardTopics 数={d} 范围={档} 状态={状态} />
+      </DataShell>
+    );
+  }
   if (页签 === "talk") {
     const 段 = 读沟通段(sp.t);
     // 自定义（t=custom）：tf= tt= 两头都算，缺 / 错 = 本月 1 号到今天
@@ -127,7 +141,7 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
     const [d, 缺] = await Promise.all([复盘沟通of(谁, { 段, 区间, 方式, 页: 读页码(sp.p) }), 缺沟通of(范围)]);
     return (
       <DataShell view={view} 项目 选人={选人} 页签="talk">
-        <BoardTalks 数={d} 段={段} 区间={区间} 方式={方式} 缺={缺} 只看自己={只看 === user.id} />
+        <BoardTalks 数={d} 段={段} 区间={区间} 方式={方式} 缺={缺} 只看自己={只看 === user.id} 有主题={企业版()} />
       </DataShell>
     );
   }

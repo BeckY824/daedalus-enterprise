@@ -2021,6 +2021,11 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 /* 沟通：时间线 + 右边还没沟通过的项目（窄了落到下面） */
 .rtalk-wrap.rtalk-has-side { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: var(--s4); align-items: start; }
 .rtalk-wrap.rtalk-has-side > .btodo-list + .rtalk-side { margin-top: 0; }
+/* 复盘「沟通」页签的「沟通 | 主题」和主题列表（教练主题，11-17，overview/BoardTopics.tsx）：主题一条一张卡，不画时间线圆点 */
+.rtopic-head-l { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--s2); min-width: 0; }
+.rtopic-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.rtopic-i { min-width: 0; }
+.rtopic-k .ant-tag { margin-inline-end: 0; }
 @container (max-width: 760px) { .rtalk-wrap.rtalk-has-side { grid-template-columns: minmax(0, 1fr); } }
 .rtalk-m { width: 120px; }
 .rtalk-tl { position: relative; margin: 0; padding: 0 0 0 20px; list-style: none; }
@@ -5027,6 +5032,11 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 .cth-ellipsis { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .cth-closed-toggle { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--text-muted); font-size: var(--fs-note); cursor: pointer; }
 .cth-closed-toggle:hover { color: var(--ink); text-decoration: underline; }
+/* 首页待办「待回复主题」（overview 之外的首页，dashboard/CoachTopicTodo.tsx）：一行，窄了折行，长主题省略 */
+.home-cth-todo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px var(--s3); margin-bottom: 16px; padding: var(--s2) var(--s3); border: 1px solid var(--line-soft); border-radius: var(--r-card); background: var(--panel); min-width: 0; }
+.home-cth-todo-t { font-weight: 600; color: var(--ink); white-space: nowrap; }
+.home-cth-todo-s { flex: 1 1 200px; min-width: 0; color: var(--text-muted); font-size: var(--fs-note); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-cth-todo-a { white-space: nowrap; margin-inline-start: auto; }
 @keyframes pd-band-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .pd-follow-leave { animation: pd-follow-leave var(--t) var(--ease) forwards; overflow: hidden; pointer-events: none; }
 @keyframes pd-follow-leave { to { opacity: 0; transform: translateX(8px); } }
