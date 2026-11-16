@@ -33,7 +33,7 @@ function 起始(r: 表概况结果 | null) {
 
 export default function FeishuConnectCard({ 草稿, 初始 }: { 草稿: Record<string, string>; 初始: 表概况结果 | null }) {
   // 就地提示（PR9：不弹顶部 message）
-  const [message, 提示条] = useSettingsNote();
+  const [就地, 提示条] = useSettingsNote();
   const 视图中 = useViewAs();
   const [起] = useState(() => 起始(初始));
   const [主表们] = useState<主表[]>(起.主表们);
@@ -49,7 +49,7 @@ export default function FeishuConnectCard({ 草稿, 初始 }: { 草稿: Record<s
     try {
       const r = await 测试飞书连接动作({ 填: { appId: 草稿.appId, appSecret: 草稿.appSecret }, 链接 });
       if (!r.ok) {
-        message.error(r.error);
+        就地.error(r.error);
         return;
       }
       set结果(r.结果);
@@ -70,15 +70,15 @@ export default function FeishuConnectCard({ 草稿, 初始 }: { 草稿: Record<s
         */
         if (r.结果.步们.every((x) => x.通过) && 链接.trim()) {
           const 存 = await 设飞书表(链接, 新 as Record<string, string | null>);
-          if (!存.ok) message.error(存.error);
+          if (!存.ok) 就地.error(存.error);
           else {
-            message.success("测试通过，多维表格对照已保存，导入和同步按这个拉");
+            就地.success("测试通过，多维表格对照已保存，导入和同步按这个拉");
             set改过表(false);
           }
         }
       }
     } catch {
-      message.error("测试没跑成，请稍后再试");
+      就地.error("测试没跑成，请稍后再试");
     } finally {
       set忙(null);
     }
@@ -88,13 +88,13 @@ export default function FeishuConnectCard({ 草稿, 初始 }: { 草稿: Record<s
     set忙("save");
     try {
       const r = await 设飞书表(链接, 选 as Record<string, string | null>);
-      if (!r.ok) message.error(r.error);
+      if (!r.ok) 就地.error(r.error);
       else {
-        message.success("多维表格对照已保存，导入和同步按这个拉");
+        就地.success("多维表格对照已保存，导入和同步按这个拉");
         set改过表(false);
       }
     } catch {
-      message.error("没存成，请稍后再试");
+      就地.error("没存成，请稍后再试");
     } finally {
       set忙(null);
     }

@@ -11,8 +11,8 @@ const plugin: Plugin = { name: "history-server-boundaries", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__refresh++},push(){}});export const usePathname=()=>\"/customers/x\";");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
   stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick)$/, "export default function Empty(){return null}");
-  stub(/^\.\/(LinkedCustomers|NewProjectModal|ContactLinks)$/, "export default function Empty(){return null}");
-  stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({问怎么拿掉(){}});");
+  stub(/^\.\/(LinkedCustomers|NewProjectEntry|ContactLinks)$/, "export default function Empty(){return null}");
+  stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({});export const ContactRemoveInline=()=>null;");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
   stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海,退回原因选项=async()=>[];");
   stub(/^\.\.\/actions$/, "export const 转走项目预览of=async()=>(window.__预览??{项目数:0,项目:[]});export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=async()=>({ok:true});");
@@ -64,7 +64,8 @@ it("真实详情页加载第51条及153条，旧记录表单编辑/删除及时�
     });
     const row = page.locator("#fu-a-0102"); await row.getByRole("button", { name: "编辑跟进" }).click();
     const dialog = page.getByRole("dialog"); await dialog.locator("#content").fill("第51条已改好"); await dialog.getByRole("button", { name: /保\s*存/ }).click();
-    await expect.poll(() => row.locator(".rec-tl-content").innerText()).toBe("第51条已改好");
+    // 保存键里对勾放完（原型 g.save，约 1.4 秒）才关框、交回去刷新这一行
+    await expect.poll(() => row.locator(".rec-tl-content").innerText(), { timeout: 4000 }).toBe("第51条已改好");
     // 商机页删了：只标名字，不再是指向 /opportunities 的链接
     expect(await row.getByText("关联商机：同名商机").count()).toBe(1);
     expect(await row.getByRole("link", { name: "关联商机：同名商机" }).count()).toBe(0);

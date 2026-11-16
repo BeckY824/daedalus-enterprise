@@ -57,14 +57,14 @@ import { 打开AI浮窗, 登记智能总结 } from "@/lib/ai-float";
 import LinkedCustomers from "./LinkedCustomers";
 import { FoldSplit, ProjectFold, 模块钮色, type 连体主钮, type 连体色 } from "../../projects/[id]/ProjectFold";
 import { 客户详情左栏, 客户详情待办 } from "../../projects/[id]/card-names";
-import NewProjectModal from "./NewProjectModal";
+import NewProjectEntry from "./NewProjectEntry";
 import { 两行, 项目忙说法 } from "../../projects/[id]/project-menu";
 import { 客户页摆法, 级别选项, 企业级别, 拼地址, 地址叫法, 简称上限 } from "@/lib/enterprise/customer-v2";
 import LevelLetter from "@/components/LevelLetter";
 import StarButton from "./StarButton";
 import AiCost, { useAiOutOfCredits } from "@/components/AiCost";
 import { toggleTask, deleteTask, deleteFollowUp, completePlan, saveFollowUp, 撤销记一笔 } from "./actions";
-import { useContactRemoval } from "./useContactRemoval";
+import { ContactRemoveInline } from "./useContactRemoval";
 import { useTransferConfirm } from "../useTransferConfirm";
 import { usePoolReturnConfirm } from "../usePoolReturnConfirm";
 import { 历史负责人们, 换负责人一句 } from "@/lib/owner-log";
@@ -212,12 +212,10 @@ export default function RecordView({
   const 虚线的 = !全只读话.includes("市场成员");
   const { 曲线, 时长, 间隔 } = useMotionTheme();
   const router = useRouter();
-  const { 问删除 } = useDeleteCustomers();
   const AI已用完 = useAiOutOfCredits();
   const b = useBusiness();
   // 企业版只用项目（P14 第 6 条）：时间线是各项目沟通记录的汇总，翻页走汇总那条查询
   const history = useFollowHistory(customer.id, followUps, followUpsHasMore, 跟进去处 !== null ? loadCustomerFeed : undefined);
-  const { 问怎么拿掉 } = useContactRemoval();
   const { 先问转走的项目 } = useTransferConfirm(转让原因);
   const { 问放回公海 } = usePoolReturnConfirm();
   /** 后果框（PR5a）：企业版客户退回公海（dt.pool：后果分条、原因点选、其他原地写） */
@@ -232,6 +230,8 @@ export default function RecordView({
   /** 客户页留哪几块（定稿 P5 待定 14）：企业版项目模式下记录输入、待办移到项目，转让、背调、下次跟进不放，旧字段不摆 */
   const 摆法 = 客户页摆法(企业);
   const [建项目开着, set建项目开着] = useState(false);
+  /** 「新增项目」那张表要的数据第一次打开时才取：取着的时候「开项目」键转圈 */
+  const [取建档中, set取建档中] = useState(false);
   /** 企业版页头具名按钮开的框（10-31 改版 R6） */
   const [头部框, set头部框] = useState<客户头部框 | null>(null);
   /** 「客户转让」一个框（dt.transfer） */
@@ -517,6 +517,8 @@ export default function RecordView({
    */
   const [就地话, set就地话] = useState<{ 话: string; 错?: boolean } | null>(null);
   const 说就地 = (话: string, 错 = false) => set就地话({ 话, 错 });
+  // 删除前预检被挡：原因写在页头下面那一行（不弹顶部提示）
+  const { 问删除 } = useDeleteCustomers((话) => 说就地(话, true));
   // 过几秒收（换了一句就重新计时）
   useEffect(() => {
     if (!就地话) return;
@@ -785,15 +787,8 @@ export default function RecordView({
     <span className="rec-mini-acts">
       <Button type="text" size="small" icon={<EditOutlined />} aria-label={`编辑联系人 ${c.name}`} onClick={() => { setEditingContact(c); setContactOpen(true); }} />
       {/* 企业版项目模式去掉「管理联系人」后，删联系人不再给入口（U-客户-03）；编辑照旧给有权限的人 */}
-      {!c.挂靠 && !去项目跟进 && <Button
-        type="text"
-        size="small"
-        danger
-        icon={<DeleteOutlined />}
-        aria-label={`删除联系人 ${c.name}`}
-        // 先问只移出还是彻底删（2026-10-01 用户反馈：删完联系人页里也没了）
-        onClick={() => 问怎么拿掉(c)}
-      />}
+      {/* 只移出 / 彻底删 各自原地确认（P-界面-40；2026-10-01 用户反馈：删完联系人页里也没了） */}
+      {!c.挂靠 && !去项目跟进 && <ContactRemoveInline c={c} />}
     </span>
   );
 
@@ -1413,7 +1408,7 @@ export default function RecordView({
           {/* 两层排版：项目在右边项目区的页签里，左栏不再列 */}
           {项目们 && !项目区 ? 节("项目", 项目们.length, (
                 <Space size={4}>
-                  {摆法.新建项目 && 新建项目 && !只读 && !去项目跟进 && <Button type="text" size="small" icon={<PlusOutlined />} onClick={开建项目}>开项目</Button>}
+                  {摆法.新建项目 && 新建项目 && !只读 && !去项目跟进 && <Button type="text" size="small" icon={<PlusOutlined />} loading={取建档中} onClick={开建项目}>开项目</Button>}
                   <Link href="/projects">全部 ›</Link>
                 </Space>
               ), <>
@@ -1656,6 +1651,8 @@ export default function RecordView({
           if (r.kind === "skip") return void 完成计划(p);
           router.refresh();
           void window.desktopReminders?.刷新();
+          // 记下的这笔不算有效沟通之类的那句（框里说过一次，框收得快）：页头下面就地再说一遍
+          if (r.提示) 说就地(r.提示);
           // 记一笔并完成：「下次跟进」那块就地说一句，底部撤销条可撤（撤销 = 删掉刚记的那笔和刚排的下一条、计划回到待办）
           const 话 = r.next ? `已记一笔，「${p.subject}」完成；下次 ${dayjs(r.next).format("M 月 D 日")}` : `已记一笔，「${p.subject}」完成`;
           if (!r.next) { set刚完成(p.id); 说计划({ 话 }); }
@@ -1733,8 +1730,8 @@ export default function RecordView({
                   </div>
                   <Space size={4}>
                     <Button size="small" onClick={换框(() => { setEditingContact(c); setContactOpen(true); })}>编辑</Button>
-                    {/* 挂来的不给删，拿掉走卡上的「解除挂靠」；删之前先问只移出还是彻底删（同卡上那颗） */}
-                    {!c.挂靠 && !去项目跟进 && <Button size="small" type="text" danger onClick={换框(() => 问怎么拿掉(c))}>删除</Button>}
+                    {/* 挂来的不给删，拿掉走卡上的「解除挂靠」；只移出 / 彻底删 各自原地确认（同卡上那颗） */}
+                    {!c.挂靠 && !去项目跟进 && <ContactRemoveInline c={c} 文字 />}
                   </Space>
                 </div>
               ))}
@@ -1745,18 +1742,15 @@ export default function RecordView({
           )}
         </Modal>
       )}
-      {/* 客户页「新建项目」（定稿 P5 待定 16）：客户自动带上 */}
+      {/* 客户页「新增项目」（原型 cr.old）：同一张新建表，客户定死是这一位，只填项目和首条沟通 */}
       {新建项目 && (
-        <NewProjectModal
+        <NewProjectEntry
           open={建项目开着}
           onClose={() => set建项目开着(false)}
-          customerId={customer.id}
-          customerName={customer.shortName || customer.name}
-          默认负责人={customer.salesOwnerId}
-          users={users}
+          onError={(话) => 说就地(话, true)}
+          on取中={set取建档中}
+          customer={{ id: customer.id, name: customer.name, shortName: customer.shortName, salesOwnerId: customer.salesOwnerId }}
           联系人们={contacts.filter((c) => !c.挂靠).map((c) => ({ id: c.id, name: c.name, isPrimary: c.isPrimary }))}
-          节点们={新建项目.节点们}
-          要下一步={新建项目.要下一步}
         />
       )}
     </div>

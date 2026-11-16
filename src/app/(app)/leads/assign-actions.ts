@@ -36,6 +36,7 @@ import { 看全部 } from "@/lib/team-scope";
 import { 项目业务线, 线部门key, 规整线部门, 线勾了部门, 按部门候选, 只留销售, 两条线, 是业务线, type 线部门, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 历史负责人 } from "@/lib/project/pool-owner";
 import { 换负责人待办, 待办痕, 接上待办痕, 带待办勾 } from "@/lib/project/carry-tasks";
+import { 规整还原单, 撤回自动分配, 自动分配撤销对不上, type 自动分配还原 } from "@/lib/enterprise/auto-assign-undo";
 import {
   企划线索计数key, 我分出去的, 月份, 本月已分, 本月加额们, 生效配额, 满了, 接手问题, 能分配, 能设配额, 能改参与, 线索种类, 计不计数, 配额of, 挑接手人, 挑的理由, 自动分配不参与key,
   认参与状态, 参与状态of, 是参与状态, type 参与状态, 不设配额key, 自动候选人们,
@@ -157,7 +158,7 @@ export async function 分配线索(input: { leadId?: string; projectId?: string;
  * 乐观锁（QA #4）：原负责人 = 分的人看到的负责人（undefined = 不比）；事务里读到的负责人不是他、或写的时候负责人已经变了，
  * 都回 已被分配: true，不覆盖别人刚分的
  */
-type 分给结果 = { ok: true; 留下?: 留下的活 } | { ok: false; error: string; 满?: true; 已被分配?: true };
+type 分给结果 = { ok: true; 留下?: 留下的活; 还原?: 自动分配还原 } | { ok: false; error: string; 满?: true; 已被分配?: true };
 const 已被分配: { ok: false; error: string; 已被分配: true } = { ok: false, error: 已被分配的话, 已被分配: true };
 
 async function 分给(
@@ -238,7 +239,7 @@ async function 分项目给(
   const 查额 = counted && !(await 不设配额开着());
   const 月 = 月份();
   // 同老线索：入口查过能分配、看得到，事务里看全部（11-03 A3-4 市场管理分别人名下的假报「已被分配」）
-  const 落库 = await 看全部(() => 查完再写(async (tx): Promise<{ ok: true; fromUserId: string | null; 留下?: 留下的活; 同事待分配?: 同事待分配条[] } | Exclude<分给结果, { ok: true }>> => {
+  const 落库 = await 看全部(() => 查完再写(async (tx): Promise<{ ok: true; fromUserId: string | null; 留下?: 留下的活; 同事待分配?: 同事待分配条[]; 还原: 自动分配还原 } | Exclude<分给结果, { ok: true }>> => {
     const p = await tx.project.findUnique({ where: { id: p0.id } });
     if (!p) return { ok: false, error: 项目不在 };
     // 分前看查过一次；这里再查：弹框开着时客户可能刚被放进公海（放在乐观锁前面，说的是真原因）
@@ -292,7 +293,12 @@ async function 分项目给(
     await tx.entLeadAssign.create({
       data: { projectId: p.id, toUserId: input.toUserId, fromUserId: 原, byUserId: me.id, line: input.line, kind: input.kind, counted, month: 月, way: input.way },
     });
-    return { ok: true, fromUserId: 原, 留下: 转?.留下, 同事待分配: 转?.同事待分配 };
+    // 还原单（撤销自动分配整批还原用，auto-assign-undo.ts）：分之前的负责人、待分配 / 入池时刻、市场转销售连带过去的客户和活
+    const 还原: 自动分配还原 = {
+      原, 待分配: p.awaitAssignAt?.toISOString() ?? null, 公海: p.pooledAt?.toISOString() ?? null,
+      ...(转 && 客户 ? { 客户: { customerId: p.customerId, 原: 客户.salesOwnerId, 带过来: 转.带过来 } } : {}),
+    };
+    return { ok: true, fromUserId: 原, 留下: 转?.留下, 同事待分配: 转?.同事待分配, 还原 };
   }));
   if (!落库.ok) return 落库;
   if (落库.同事待分配?.length) await 同事待分配随客户通知(me.id, input.toUserId, 落库.同事待分配);
@@ -306,7 +312,7 @@ async function 分项目给(
   });
   revalidatePath("/leads");
   revalidatePath("/projects");
-  return { ok: true, ...留下字段(落库.留下) };
+  return { ok: true, ...留下字段(落库.留下), 还原: 落库.还原 };
 }
 
 /**
@@ -402,7 +408,7 @@ export async function 分配带走的项目(projectIds: string[], 接手人?: st
 }
 
 export type 自动分配结果 =
-  | { ok: true; toUserId: string; 接手人: string; 已分: number; 配额: number | null; 为什么: string; 随客户?: true }
+  | { ok: true; toUserId: string; 接手人: string; 已分: number; 配额: number | null; 为什么: string; 随客户?: true; 还原?: 自动分配还原 }
   | { ok: false; error: string; 都满额?: true; 暂不分配?: true; 已被分配?: true; 待分配?: true };
 /**
  * 服务端自己用：多带 留下（分配通知要）、要标（挑不到人、还没待分配的新线索：调用方标待分配、发提醒，X-85），不给浏览器
@@ -467,6 +473,43 @@ export async function 自动分配线索(id: string, opts: { line?: 线 | null; 
       await 发满额提醒(org, [看?.ok ? 看.名 : id], me.name).catch((e) => console.error("[满额提醒] 没发出去", e));
     }
     return 对外(r);
+  } catch (e) {
+    return 不在了(e);
+  }
+}
+
+/**
+ * 撤销行末「自动分配」（原型 pr.autoone，6 秒撤销条；P-撤销-01 按原样回滚）：整批还原——负责人、待分配标记、将回收提醒、卡点认领，
+ * 市场转销售连带过去的客户和计划 / 待办 / 项目，删被撤的转让痕和这次的分配记录（不占额度）。还原单 是 自动分配线索 回的，不可信，
+ * 全靠留痕核对（auto-assign-undo.ts）；对不上整批不动、回原因。谁撤的记操作日志。分配通知发出去了收不回，不另发撤销通知
+ */
+export async function 撤销自动分配(projectId: string, 还原: unknown): Promise<{ ok: true } | { ok: false; error: string }> {
+  const me = await 进门();
+  if (!me) return 没开;
+  try {
+    const org = await 读组织();
+    if (!能分配(org, me)) return { ok: false, error: 能分配的话 };
+    const 单 = 规整还原单(还原);
+    if (!单 || typeof projectId !== "string" || !projectId) return { ok: false, error: "撤销参数不对，刷新看看" };
+    let r: Awaited<ReturnType<typeof 撤回自动分配>>;
+    try {
+      const 方式 = await 分配方式叫法(1);
+      r = await 看全部(() => 查完再写((tx) => 撤回自动分配(tx, projectId, 单, me.id, 方式)));
+    } catch (e) {
+      if (e instanceof 自动分配撤销对不上) return { ok: false, error: `${e.message}，要改回请手工改` };
+      throw e;
+    }
+    if (!r.ok) return r;
+    const 人 = await prisma.user.findMany({ where: { id: { in: [r.原, r.现] } }, select: { id: true, name: true } });
+    const 名 = (id: string) => 人.find((u) => u.id === id)?.name ?? id;
+    await recordAudit({
+      user: me, action: "update", entity: "Project", entityId: projectId,
+      summary: `撤销了刚才的自动分配：新线索「${r.名}」从 ${名(r.现)} 改回 ${名(r.原)}${单.客户 ? "，客户和一起转过去的活一并还原" : ""}`,
+      detail: { 从: r.现, 改回: r.原, 连客户: !!单.客户 },
+    });
+    revalidatePath("/leads");
+    revalidatePath("/projects");
+    return { ok: true };
   } catch (e) {
     return 不在了(e);
   }
@@ -565,7 +608,7 @@ async function 自动分给(
     const 为什么 = 挑的理由(候选, 跳过, 查满, 谁, 不限额);
     const r = await 分给(me, org, { ...哪条, toUserId: 谁, line, 查线, kind, 自动: true, 原负责人: 比谁 });
     if (r.ok) {
-      return { ok: true, toUserId: 谁, 接手人: 建号.find((u) => u.id === 谁)?.name ?? 谁, 已分: await 本月已分(谁, 月), 配额: 不限额 ? null : (额.get(谁) ?? null), 为什么, ...留下字段(r.留下) };
+      return { ok: true, toUserId: 谁, 接手人: 建号.find((u) => u.id === 谁)?.name ?? 谁, 已分: await 本月已分(谁, 月), 配额: 不限额 ? null : (额.get(谁) ?? null), 为什么, ...留下字段(r.留下), ...(r.还原 ? { 还原: r.还原 } : {}) };
     }
     if (r.已被分配) return 已被分配;
     if (!r.满) return { ok: false, error: r.error };

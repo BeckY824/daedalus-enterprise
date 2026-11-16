@@ -23,7 +23,7 @@ const plugin: Plugin = { name: "ent-board-drag", setup(b) {
   stub(/^\.\/actions$/, "const 记=(n,默)=>async(...a)=>{(window.__调||=[]).push([n,...a]);const 回=window['__'+n];return typeof 回==='function'?回(...a):回||默};export const 回项目邀请=记('回邀请',{ok:true}),市场复核Action=记('复核',{ok:true}),总管理终判Action=记('终判',{ok:true}),看板推进预检=记('预检',{ok:true,还差:[],能留空推:false}),改项目节点=记('改',{ok:true,变了:true}),编辑项目=记('编辑',{ok:true}),看板补必填料=记('补必填料',{ok:false,error:'读不到'});");
   // 就地补填框（ProjectFillRequired）存字段走 [id] 下的 ../actions
   stub(/^\.\.\/actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return{ok:true}};export const 编辑项目=记('详编'),改项目画像Action=记('画像'),勾项目交付=记('交付');");
-  stub(/assign-actions$/, "export const 分配线索=async()=>({ok:true}),自动分配线索=async()=>({ok:true}),批量自动分配=async()=>({ok:true,结果:[]}),本月分配情况=async()=>[],我分出去的线索=async()=>[],关满额提醒=async()=>({ok:true}),项目分配线=async()=>null,分配带走的项目=async()=>({项目数:0,项目:[]});");
+  stub(/assign-actions$/, "export const 分配线索=async()=>({ok:true}),自动分配线索=async()=>({ok:true}),撤销自动分配=async()=>({ok:true}),批量自动分配=async()=>({ok:true,结果:[]}),本月分配情况=async()=>[],我分出去的线索=async()=>[],关满额提醒=async()=>({ok:true}),项目分配线=async()=>null,分配带走的项目=async()=>({项目数:0,项目:[]});");
   stub(/blocker-actions$/, "const 好=async()=>({ok:true});export const 发布卡点Action=好,认领卡点Action=好,完成卡点Action=好,删卡点Action=好,存卡点默认Action=好,存卡点角色开关Action=好,新增原因Action=好,改原因名Action=好,改原因状态Action=好,删原因Action=好,合并原因Action=好,我的卡点Action=async()=>[];");
   stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[],取客户选项=async()=>null,取客户近况=async()=>null;");
   stub(/project-actions$/, "export const 给客户建项目=async()=>({ok:true});export const 新项目分配数据=async()=>null;export const 建项目带走的项目=async()=>({项目数:0,项目:[]});");
@@ -100,8 +100,8 @@ it("拖到下一个进程：先预检再改节点，卡片落到新列、计数�
       await 列(page, 1).locator('[data-card-id="p1"]').waitFor();
       expect(await 调了(page, "预检")).toEqual([["预检", "p1", { phase: "线索", node: "线索验证" }]]);
       expect(await 调了(page, "改")).toEqual([["改", "p1", { phase: "线索", node: "线索验证", result: null }]]);
-      expect(await 列(page, 0).locator(".pipe-n").innerText()).toBe("1");
-      expect(await 列(page, 1).locator(".pipe-n").innerText()).toBe("1");
+      await expect.poll(() => 列(page, 0).locator(".pipe-n").innerText()).toBe("1");
+      await expect.poll(() => 列(page, 1).locator(".pipe-n").innerText()).toBe("1");
       expect(await 去了(page)).toEqual([]);
       // 撤销 = 改回原来的进程
       await page.locator(".undo-bar").getByRole("button", { name: /撤销/ }).click();
@@ -118,7 +118,9 @@ it("被权限挡（预检回原因 / 真推回原因）：卡片弹回原列，�
   const { page, errors } = await 打开(1280, { 预检: { ok: false, error: 话 } });
   try {
     await 拖到(page, 1);
-    await page.getByText(话).first().waitFor();
+    // 原因浮在卡片旁边那张小卡上（role=alert，不弹顶部提示）
+    await page.getByRole("alert").filter({ hasText: 话 }).waitFor();
+    expect(await page.locator(".ant-message").count()).toBe(0);
     expect(await 列(page, 0).locator('[data-card-id="p1"]').count()).toBe(1);
     expect(await 列(page, 1).locator('[data-card-id="p1"]').count()).toBe(0);
     expect(await 调了(page, "改")).toEqual([]);
@@ -127,7 +129,7 @@ it("被权限挡（预检回原因 / 真推回原因）：卡片弹回原列，�
   const 二 = await 打开(1280, { 改: { ok: false, error: "这个项目在公海里，先领取再改" } });
   try {
     await 拖到(二.page, 2);
-    await 二.page.getByText("这个项目在公海里，先领取再改").first().waitFor();
+    await 二.page.getByRole("alert").filter({ hasText: "这个项目在公海里，先领取再改" }).waitFor();
     await 列(二.page, 0).locator('[data-card-id="p1"]').waitFor();
     expect(await 列(二.page, 2).locator('[data-card-id="p1"]').count()).toBe(0);
     expect(二.errors).toEqual([]);
@@ -210,7 +212,7 @@ it("出口列（交付结清）不能放：弹回、说去项目里点，不预�
     // 交付结清在第 4 列，1366 宽可能要滑过去：直接把看板滑到最右
     await page.locator(".pipe").evaluate((el) => { el.scrollLeft = el.scrollWidth; });
     await 拖到(page, 3);
-    await page.getByText("请进项目里点", { exact: false }).first().waitFor();
+    await page.getByRole("alert").filter({ hasText: "请进项目里点" }).waitFor();
     expect(await 调了(page, "预检")).toEqual([]);
     expect(await 列(page, 0).locator('[data-card-id="p1"]').count()).toBe(1);
     expect(errors).toEqual([]);

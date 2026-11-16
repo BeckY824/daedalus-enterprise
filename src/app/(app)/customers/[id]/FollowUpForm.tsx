@@ -9,7 +9,9 @@ import { requiredText } from "@/lib/form-validation";
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Modal, Form, Input, Select, InputNumber, Row, Col, App, Button, Checkbox, Space, Typography } from "antd";
+import { Modal, Form, Input, Select, InputNumber, Row, Col, Button, Checkbox, Space, Typography } from "antd";
+import SaveButton from "@/components/SaveButton";
+import { showUndo } from "@/components/UndoBar";
 import { DownOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { FOLLOW_TYPES, FOLLOW_RECORD_STATUSES, 跟进类型们 } from "@/lib/constants";
 import { dayjs, fmtDateTime } from "@/lib/utils";
@@ -75,6 +77,9 @@ const 字段名: Record<string, string> = {
 export const 没项目话 = "没有你能记的在推项目，这条记为客户沟通";
 /** X-144：选的项目没挂上（已结束 / 在公海 / 关联进来的），照存成客户沟通 */
 export const 没挂上项目话 = "没挂上项目，已记为客户沟通";
+
+/** 当前毫秒。放在组件外：解析计时在事件里用、逾期判断按每次渲染的此刻算（原来就是这样），不当成纯值缓存 */
+const 此刻 = () => Date.now();
 const 主区格 = new Set(["customerId", "projectId", "type", "initiator", "content", "下一步", "下一步时间"]);
 
 type Rec = {
@@ -169,7 +174,6 @@ export default function FollowUpForm({
   只读?: boolean;
 }) {
   const [form] = Form.useForm();
-  const { message } = App.useApp();
   const AI已用完 = useAiOutOfCredits();
   const router = useRouter();
   const b = useBusiness();
@@ -178,7 +182,7 @@ export default function FollowUpForm({
   const dueAt = Form.useWatch("dueAt", form);
   const dueHasTime = Form.useWatch("dueHasTime", form) ?? true;
   const status = Form.useWatch("status", form);
-  const 创建过期待办 = !record?.id && (type === "TASK" || type === "REMIND") && status !== "已完成" && dueAt && (dueHasTime ? dueAt.valueOf() < Date.now() - 60_000 : 是逾期(dueAt.format("YYYY-MM-DD")));
+  const 创建过期待办 = !record?.id && (type === "TASK" || type === "REMIND") && status !== "已完成" && dueAt && (dueHasTime ? dueAt.valueOf() < 此刻() - 60_000 : 是逾期(dueAt.format("YYYY-MM-DD")));
 
   const projectId = Form.useWatch("projectId", form) as string | undefined;
   const 沟通时刻 = Form.useWatch("occurredAt", form) as ReturnType<typeof dayjs> | undefined;
@@ -281,6 +285,9 @@ export default function FollowUpForm({
     set更多开(null);
     set卡点(空卡点);
     set附件们([]);
+    set速记错(null);
+    set存后(null);
+    set停下看(false);
   }
   /*
     点外面不关、关前问一句、新建的草稿留在本机（2026-10-19 客户反馈，lib/form-guard.tsx）。
@@ -305,16 +312,12 @@ export default function FollowUpForm({
 
   async function runParse(text: string) {
     if (AI已用完) return;
-    if (!customerId) {
-      message.warning(`先挑一位${b.customer}`);
-      return;
-    }
-    if (text.trim().length < 5) {
-      message.warning("先把沟通过程随手写几句");
-      return;
-    }
+    // 前置没过：就地写在速记框下面（role=alert），不弹顶部提示
+    if (!customerId) return void set速记错(`先挑一位${b.customer}`);
+    if (text.trim().length < 5) return void set速记错("先把沟通过程随手写几句");
+    set速记错(null);
     const 轮 = ++这一次.current;
-    const 起 = Date.now();
+    const 起 = 此刻();
     set解析({ 起 });
     const 请求 = parseFollowUpDraft({ customerId, text });
     // 任务表只记「跑着 / 好了 / 出错」给侧栏和系统通知用；草稿本身由下面这条 await 接
@@ -367,7 +370,7 @@ export default function FollowUpForm({
       d.plan?.plannedAt ? `下次 ${dayjs(d.plan.plannedAt).format("M 月 D 日")}` : null,
       d.tasks.length ? `${d.tasks.length} 条待办` : null,
       跳过说明(跳过, 字段名),
-      `${((Date.now() - 起) / 1000).toFixed(1)}s`,
+      `${((此刻() - 起) / 1000).toFixed(1)}s`,
     ].filter(Boolean);
     set解析({ 起, 结果: `已预填：${摘要.join(" · ")}` });
   }
@@ -420,6 +423,8 @@ export default function FollowUpForm({
         status: "已完成", dueHasTime: true,
         occurredAt: dayjs(),
         projectId: 默认项目,
+        // P-界面-34（原型 dt.follow）：下一步时间默认 3 天后，可改可清
+        下一步时间: dayjs().add(3, "day").startOf("day"),
       });
     }
   // 只在开关面板、换记录时重置：runParse、initialAiText 这些每次渲染都变，放进来会把填到一半的表单清掉
@@ -431,21 +436,58 @@ export default function FollowUpForm({
     校验没过（validateFields 抛出）也会走 finally 放开
   */
   const [存着, set存着] = useState(false);
-  async function 保存() {
-    if (存着) return;
+  /**
+   * 存上之后框里就地说的几句（原型 g.save / g.notice：不弹顶部提示）：领取了、加进了待办、不算有效沟通、卡点生成了、自动推进了……
+   * 错 = 存上了但有一块没成（没挂上项目、附件 / 待办没存上、卡点没生成）：框不自己关，停下来让人看完点「知道了」
+   */
+  const [存后, set存后] = useState<{ 话: string; 错?: boolean }[] | null>(null);
+  const [停下看, set停下看] = useState(false);
+  /** 保存键对勾时的字（没挂上项目时不说「已记下」） */
+  const [成了字, set成了字] = useState("已记下");
+  /** 存上之后、对勾放完才做的事（交给页面 onSaved、完成计划、列表页的撤销条）。SaveButton 的 成了 调它 */
+  const 收尾 = useRef<(() => void) | null>(null);
+  const 有错 = useRef(false);
+  /** AI 解析前置没过（没挑人 / 没写几句）：速记框下面一行 */
+  const [速记错, set速记错] = useState<string | null>(null);
+  function 做收尾() {
+    const f = 收尾.current;
+    收尾.current = null;
+    set存后(null);
+    set停下看(false);
+    f?.();
+  }
+  /** 关框：已经存上、在等对勾 / 停下来看的，关 = 收尾（照样交给页面刷新）；没存的照旧走离开守卫 */
+  function 关或收尾() {
+    if (收尾.current) 做收尾();
+    else 守.要关();
+  }
+  function 存成了() {
+    if (有错.current) set停下看(true);
+    else 做收尾();
+  }
+  function 存后说(话们: { 话: string; 错?: boolean }[], 字 = "已记下") {
+    有错.current = 话们.some((x) => x.错);
+    set存后(话们.length ? 话们 : null);
+    set成了字(字);
+  }
+
+  /** 保存（原型 g.save）：转圈 → 对勾在保存键里；没成原因浮在键上方，框留着可以再点 */
+  async function 保存(): Promise<{ ok: boolean; error?: string }> {
+    if (存着) return { ok: false, error: "正在保存，请稍等" };
     set存着(true);
     try {
-      await onOk();
+      return await onOk();
     } catch (error) {
-      if (!error || typeof error !== "object" || !("errorFields" in error)) message.error("保存失败，请刷新确认结果后重试");
+      if (!error || typeof error !== "object" || !("errorFields" in error)) return { ok: false, error: "保存失败，请刷新确认结果后重试" };
       // 收起来的「更多」里有格子没过（比如发生时间）：展开让人看到
-      else if (收起 && (error as { errorFields: { name: (string | number)[] }[] }).errorFields.some((e) => !主区格.has(String(e.name[0])))) set更多开(true);
+      if (收起 && (error as { errorFields: { name: (string | number)[] }[] }).errorFields.some((e) => !主区格.has(String(e.name[0])))) set更多开(true);
+      return { ok: false, error: "有几项没填好，看标红的" };
     } finally {
       set存着(false);
     }
   }
 
-  async function onOk() {
+  async function onOk(): Promise<{ ok: boolean; error?: string }> {
     const v = await form.validateFields();
     const 谁 = 给定客户 ?? (v.customerId as string);
     const 名 = 近况?.name;
@@ -477,71 +519,55 @@ export default function FollowUpForm({
         完成计划: 只读 ? undefined : 要收口?.id,
       } } : {}),
     });
-    // 校验不通过时必须如实报错，否则界面照样提示成功、人以为已经存下了
+    // 校验不通过时必须如实报错，否则界面照样提示成功、人以为已经存下了：原因写在保存键上，框留着
     if (!res.ok) {
-      message.error(res.error);
       // 撞了版本（J-105）：页面上的数据先刷成最新的，人关框重开就是新的那一版，不然拿着旧版本再存还是被拦
       if (record?.id) router.refresh();
-      return;
+      return { ok: false, error: res.error };
     }
 
     resetAi();
     守.存好了();
-    onSaved();
+    const 话们: { 话: string; 错?: boolean }[] = [];
     // X-144（11-15 用户定）：选的项目刚结束 / 进了公海 / 是关联进来的，服务端照存成客户沟通，这里说一句，不再静默
-    if ("没挂上项目" in res && res.没挂上项目) message.warning(没挂上项目话, 5);
+    const 没挂上 = "没挂上项目" in res && !!res.没挂上项目;
+    if (没挂上) 话们.push({ 话: 没挂上项目话, 错: true });
     // 客户三态（C12）：新记的这条不算有效沟通，另给一句轻提示（照常保存，不拦）
     const 短 = 短沟通话of(res);
-    if (短) message.info(短, 5);
-    // 顺手完成那条到期计划：记录页上提示由它出（带撤销、排下一次），这里就不再单说一句「沟通已记下」
-    if (要收口 && 完成了计划) return void 完成了计划(要收口, true);
-    if (!挑人 || !名) {
+    if (短) 话们.push({ 话: 短 });
+    // 顺手完成那条到期计划：记录页上提示由它出（带撤销、排下一次）
+    if (要收口 && 完成了计划) {
+      收尾.current = () => { onSaved(); 完成了计划(要收口, true); };
+    } else if (!挑人 || !名) {
       if (要收口) void window.desktopReminders?.刷新();
       if ("待办id" in res && res.待办id) {
         // 顺带建了待办：Dock 数和到点提醒要马上跟上
         void window.desktopReminders?.刷新();
-        return void message.success("沟通已记下，也加进了待办——到点会提醒你");
+        话们.push({ 话: "也加进了待办——到点会提醒你" });
       }
-      if (record?.id) return void message.success("已保存");
-      if ("没挂上项目" in res && res.没挂上项目) return;
-      if ("领取了" in res && res.领取了) return void message.success("已领取并记下这条沟通，这位现在归你了");
-      // 本人撤销沟通去掉了（P-沟通-01，11-09），提示里不摆「撤销」
-      if (短) return;
-      return void message.success("沟通已记下");
+      if (!record?.id && "领取了" in res && res.领取了) 话们.push({ 话: "已领取，这位现在归你了" });
+      收尾.current = () => onSaved();
+    } else {
+      // 跟进页上挑人记的：人留在原地（新的那行会亮一下）；顺手完成了计划的，底部撤销条给撤销完成 + 去他记录页（沟通本身不撤，P-沟通-01）
+      if (要收口) void window.desktopReminders?.刷新();
+      收尾.current = () => {
+        onSaved();
+        if (!要收口) return;
+        showUndo({
+          话: `沟通已记下，计划「${要收口.subject}」一并完成`,
+          毫秒: 6000,
+          撤销: async () => {
+            const u = await completePlan(要收口.id, false).catch(() => ({ ok: false as const, error: "没撤销成，请稍后重试" }));
+            void window.desktopReminders?.刷新();
+            router.refresh();
+            return u;
+          },
+          另一个动作: { 话: `去${名}的记录页`, 做: () => router.push(`/customers/${谁}`) },
+        });
+      };
     }
-
-    // 跟进页上挑人记的：人留在原地（新的那行会亮一下），提示里给去他记录页的路；顺手完成了计划的给撤销完成（沟通本身不撤，P-沟通-01）
-    if (要收口) {
-      void window.desktopReminders?.刷新();
-    }
-    const key = `followup-new-${res.id}`;
-    message.success({
-      key,
-      duration: 6,
-      content: (
-        <span>
-          {要收口 ? `沟通已记下，计划「${要收口.subject}」一并完成` : `已记下和${名}的这次沟通`}
-          {要收口 && (
-            <Button
-              type="link"
-              size="small"
-              onClick={async () => {
-                message.destroy(key);
-                await completePlan(要收口.id, false);
-                void window.desktopReminders?.刷新();
-                message.success(`「${要收口.subject}」已改回未完成`);
-                router.refresh();
-              }}
-            >
-              撤销
-            </Button>
-          )}
-          <Button type="link" size="small" onClick={() => { message.destroy(key); router.push(`/customers/${谁}`); }}>
-            去{名}的记录页
-          </Button>
-        </span>
-      ),
-    });
+    存后说(话们, 没挂上 ? "记为客户沟通" : record?.id ? "已保存" : "已记下");
+    return { ok: true };
   }
 
   /**
@@ -549,8 +575,8 @@ export default function FollowUpForm({
    * 标题、另选的联系人、状态、时长、参与人一起交），再传截图录音，最后做顺带的（完成到期计划、AI 拆出的待办和计划）。
    * 后两步各自是一次请求，不和第一步同一个事务：第一步成了就算记下了，后面哪步没成单独说
    */
-  async function 记到项目(v: Awaited<ReturnType<typeof form.validateFields>>, 谁: string, 要收口: typeof 收口计划) {
-    if (!须知) return;
+  async function 记到项目(v: Awaited<ReturnType<typeof form.validateFields>>, 谁: string, 要收口: typeof 收口计划): Promise<{ ok: boolean; error?: string }> {
+    if (!须知) return { ok: false, error: "这个项目的记法没读到，请关掉重开" };
     // 标题、另选的联系人、状态、时长、参与人随这一次一起交（服务端 认沟通额外），不再事后拿 saveFollowUp 补——普通成员不能改沟通了（M-权限-09）
     const r = await 记项目沟通Action(v.projectId, {
       type: v.type, method: 对得上的方式(v.type, v.method), initiator: v.initiator ?? null, content: v.content, occurredAt: v.occurredAt.toISOString(),
@@ -561,7 +587,7 @@ export default function FollowUpForm({
         durationMinutes: v.durationMinutes ?? null, participants: v.participants ?? null,
       },
     }, 须知.卡点默认 ? 卡点 : undefined);
-    if (!r.ok) return void message.error("error" in r ? r.error : "没记上，请刷新后重试");
+    if (!r.ok) return { ok: false, error: "error" in r && r.error ? r.error : "没记上，请刷新后重试" };
     const 没存上: string[] = [];
     if (附件们.length && r.followUpId) {
       const 错 = await 传沟通附件(r.followUpId, 附件们);
@@ -581,17 +607,22 @@ export default function FollowUpForm({
     }
     resetAi();
     守.存好了();
-    onSaved();
-    if (没存上.length) message.warning(`沟通已记下，${没存上.join("、")}没存上，请到记录页补一下`);
-    if ("卡点" in r && r.卡点) message.success(`已生成卡点 ${r.卡点}`);
-    if ("卡点没发" in r && r.卡点没发) message.warning(`沟通记下了，卡点没生成：${r.卡点没发}`);
-    if (r.自动推到?.length) message.success(`必填齐了，自动推进到 ${r.自动推到.join(" → ")}`);
+    // 顺带的几件就地说在框里（不弹顶部提示）；有没成的（错）框停下来，看完点「知道了」
+    const 话们: { 话: string; 错?: boolean }[] = [];
+    if (没存上.length) 话们.push({ 话: `沟通已记下，${没存上.join("、")}没存上，请到记录页补一下`, 错: true });
+    if ("卡点" in r && r.卡点) 话们.push({ 话: `已生成卡点 ${r.卡点}` });
+    if ("卡点没发" in r && r.卡点没发) 话们.push({ 话: `沟通记下了，卡点没生成：${r.卡点没发}`, 错: true });
+    if (r.自动推到?.length) 话们.push({ 话: `必填齐了，自动推进到 ${r.自动推到.join(" → ")}` });
     // 客户三态（C12）：这条不算有效沟通，另给一句轻提示（照常保存，不拦）
     const 短 = 短沟通话of(r);
-    if (短) message.info(短, 5);
-    if (要收口 && !只读 && 完成了计划) return void 完成了计划(要收口, true);
-    if (要收口 && !只读) return void message.success(`沟通已记下，计划「${要收口.subject}」一并完成`);
-    if (!短) message.success("沟通已记下");
+    if (短) 话们.push({ 话: 短 });
+    if (要收口 && !只读 && 完成了计划) 收尾.current = () => { onSaved(); 完成了计划(要收口, true); };
+    else {
+      if (要收口 && !只读) 话们.push({ 话: `计划「${要收口.subject}」一并完成` });
+      收尾.current = () => onSaved();
+    }
+    存后说(话们);
+    return { ok: true };
   }
 
   const showDuration = type === "PHONE" || type === "MEETING";
@@ -674,6 +705,7 @@ export default function FollowUpForm({
         <AiCost />
       </Button>
     </div>
+    {速记错 && <div role="alert" className="csq-err">{速记错}</div>}
     {AI已用完 && <AiRemaining />}
   </div>
   );
@@ -681,12 +713,16 @@ export default function FollowUpForm({
   return (
     <Modal
       {...守.弹窗}
+      // 存上了（对勾还在放 / 停下来让人看没成的那块）：Esc / X / 取消 也当「知道了」，照样交给页面刷新
+      onCancel={关或收尾}
       open={open}
       title={record?.id ? "编辑沟通记录" : "记一条沟通"}
-      onOk={保存}
-      confirmLoading={存着 || 须知问着}
-      okText="保存"
-      cancelText="取消"
+      footer={停下看 ? [
+        <Button key="知道了" type="primary" onClick={做收尾}>知道了</Button>,
+      ] : [
+        <Button key="取消" onClick={关或收尾}>取消</Button>,
+        <SaveButton key="存" 做={保存} disabled={须知问着} 已保存={成了字} 成了={存成了}>保存</SaveButton>,
+      ]}
       width={640}
       destroyOnHidden
     >
@@ -994,6 +1030,13 @@ export default function FollowUpForm({
               </Typography.Text>
             )}
           </Space>
+        </div>
+      )}
+      {存后 && (
+        <div className="fu-said">
+          {存后.map((x) => (
+            <div key={x.话} role={x.错 ? "alert" : "status"} className={x.错 ? "csq-err" : "rec-plan-said"}>{x.话}</div>
+          ))}
         </div>
       )}
     </Modal>

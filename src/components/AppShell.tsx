@@ -310,6 +310,16 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
   /** 这一次是从浮标点开的：面板从右下角长出来，接上刚才点的那个位置；关掉就清 */
   const [从浮标开, set从浮标开] = useState(false);
   const 显示浮标 = 浮标显示(pathname, pool, { 企业版项目, 有AI: Boolean(ai), 面板开着: 小屏 ? 手机开着 : 面板开着 });
+  /**
+   * 正文底下给浮标 / 浮窗留的那一截（globals.css 的 has-ai-fab、--ai-room）。桌面上浮窗是叠在页面上的一层，
+   * **开不开都留同一截**：原来跟着「显示浮标」走，一开浮窗就摘掉、再按浮窗高另加，页面排版跟着变（11-15 记录页三栏被截断）
+   */
+  /*
+    没有浮标的页（设置、反馈这类，浮标让开）照样能 ⌘J 叫出浮窗：叫出来时也留这一截，滚到底最后几行（设置左栏的回收站、
+    操作日志，表单的保存）停在浮窗上面（排版闸门「AI栏常驻」量的）。这些页都是正常往下滚的页，多一截底只是能多滚一点，
+    不像记录页那样定高一屏、会把三栏压矮；有浮标的页开不开都是同一截，不变
+  */
+  const 留AI位 = 小屏 ? 显示浮标 : 浮标显示(pathname, pool, { 企业版项目, 有AI: Boolean(ai), 面板开着: false }) || (浮窗 && 面板开着 && Boolean(ai) && 底下那页 !== "/dashboard");
   const 开合面板 = (开: boolean) => {
     if (!开) set从浮标开(false);
     记住面板(开);
@@ -648,7 +658,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
         </Content>
         {/* 企业版项目模式：手机上也能问一句。点浮标，面板铺满屏（globals.css 的手机 .dock），× 收起 */}
         {ai && 企业版项目 && (
-          <AiDock userName={user.name} models={ai.models} 开着={手机开着} set开着={(开) => set手机开在(开 ? 底下那页 : null)} 企业版={企业版} />
+          <AiDock userName={user.name} userId={user.id} models={ai.models} 开着={手机开着} set开着={(开) => set手机开在(开 ? 底下那页 : null)} 企业版={企业版} />
         )}
         {显示浮标 && <AiFab onClick={() => set手机开在(底下那页)} />}
       </Layout>
@@ -659,7 +669,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
   return (
     <切换视图Provider value={!!正在视图}>
     <DockOpenContext.Provider value={面板占着地方}>
-    <div className={`shell${desktop ? " shell-desktop" : ""}${面板开着 && !浮窗 && 底下那页 !== "/dashboard" ? " shell-dock-open" : ""}${显示浮标 ? " has-ai-fab" : ""}${从浮标开 ? " shell-fab-opened" : ""}${窄栏 ? " rail-mini" : ""}${宽窄切换中 ? " rail-anim" : ""}`}>
+    <div className={`shell${desktop ? " shell-desktop" : ""}${面板开着 && !浮窗 && 底下那页 !== "/dashboard" ? " shell-dock-open" : ""}${留AI位 ? " has-ai-fab" : ""}${从浮标开 ? " shell-fab-opened" : ""}${窄栏 ? " rail-mini" : ""}${宽窄切换中 ? " rail-anim" : ""}`}>
       {视图条}
       {挑人框}
       {/* 桌面端顶上那条能拖窗口的把手，见 globals.css 的 .drag-strip */}
@@ -809,7 +819,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
         它自己决定首页不出现（首页就是宽模式的同一块东西）。
         手机上不出现：390 宽摆不下正文 + 380 的面板。
       */}
-      {ai && !小屏 && <AiDock userName={user.name} models={ai.models} 开着={面板开着} set开着={开合面板} 企业版={企业版} 浮窗={浮窗} />}
+      {ai && !小屏 && <AiDock userName={user.name} userId={user.id} models={ai.models} 开着={面板开着} set开着={开合面板} 企业版={企业版} 浮窗={浮窗} />}
       {/* 面板收着时右下角的入口（企业版项目模式）。面板一开它就让开：两个入口不同时出现，也不压在面板的输入框上 */}
       {显示浮标 && (
         <AiFab

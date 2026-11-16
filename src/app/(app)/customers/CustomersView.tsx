@@ -1,12 +1,16 @@
 "use client";
 
+import LandingNote from "@/components/LandingNote";
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
 import CopyValue from "@/components/CopyValue";
 import Heat from "@/components/Heat";
-import { useCallback, useEffect, useState, useSyncExternalStore, useRef, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore, useRef, type CSSProperties, type ReactNode } from "react";
+import { 少动 } from "@/lib/reduced-motion";
+import { useMotionTheme } from "@/components/MotionTheme";
+import { 量变形起点, 放变形 } from "../projects/view-morph";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button, Select, Space, Dropdown, App, Tag, Segmented, type MenuProps, type SelectProps } from "antd";
+import { Button, Select, Space, Dropdown, Tag, Segmented, type MenuProps, type SelectProps } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import {
   ExportOutlined,
@@ -322,9 +326,26 @@ export default function CustomersView({
     window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
   }, [page, requestedPage]);
 
-  const { message } = App.useApp();
+  /**
+   * 列表顶上一行就地提示（原型 g.save / g.notice：不弹顶部 message）：批量没改成、公海没动、表单没打开、删不了……
+   * 错的 role=alert，别的 role=status；过几秒收（换一句重新计时）
+   */
+  const [列表话, set列表话] = useState<{ 话: string; 错?: boolean } | null>(null);
+  const 说 = useCallback((话: string, 错 = false) => set列表话({ 话, 错 }), []);
+  useEffect(() => {
+    if (!列表话) return;
+    const t = setTimeout(() => set列表话(null), 列表话.错 ? 8000 : 6000);
+    return () => clearTimeout(t);
+  }, [列表话]);
+  /** 导出完 / 没导出成：写在导出键旁边一行，过几秒收 */
+  const [导出话, set导出话] = useState<{ 话: string; 错?: boolean } | null>(null);
+  useEffect(() => {
+    if (!导出话) return;
+    const t = setTimeout(() => set导出话(null), 8000);
+    return () => clearTimeout(t);
+  }, [导出话]);
   const 视图中 = useViewAs();
-  const { 问删除 } = useDeleteCustomers();
+  const { 问删除 } = useDeleteCustomers((话) => 说(话, true));
   const { 先问转走的项目 } = useTransferConfirm(转让原因);
   const { 问放回公海 } = usePoolReturnConfirm();
   /** 批量转让框（原型 cu.transfer：选人、一起转走的项目、原因合成一个框）：开着时记住勾的是谁 */
@@ -373,10 +394,10 @@ export default function CustomersView({
    */
   function 公海提示(res: 公海结果, 动作: "放进" | "领取" | "分配", ids: string[]) {
     router.refresh();
-    if (!res.ok) return void message.error(res.error);
+    if (!res.ok) return void 说(res.error, true);
     const 名 = 动作 === "放进" ? "放回公海" : 动作 === "分配" ? `分给「${res.给谁?.name ?? "同事"}」` : "领取";
     if (!res.updated) {
-      return void message.info(动作 === "放进" ? "选中的已经都在公海里了" : 动作 === "分配" ? "选中的已经被领走了，没有可分的" : "选中的已经被领走了，没有可领的");
+      return void 说(动作 === "放进" ? "选中的已经都在公海里了" : 动作 === "分配" ? "选中的已经被领走了，没有可分的" : "选中的已经被领走了，没有可领的");
     }
     const 另 = [
       res.unchanged && (动作 === "放进" ? `${res.unchanged} 位本来就在公海` : `${res.unchanged} 位已被别人领走或不在公海`),
@@ -480,7 +501,7 @@ export default function CustomersView({
   const 表单料请求 = useRef<Promise<客户页表单料 | null> | null>(null);
   const 要表单料 = (出错提示 = true): Promise<客户页表单料 | null> => {
     // 表单代码和料一起取（表单是懒块）：取不到代码就当没打开
-    if (表单料) return 取客户表单().then(() => 表单料, () => { if (出错提示) message.error("没打开，请重试"); return null; });
+    if (表单料) return 取客户表单().then(() => 表单料, () => { if (出错提示) 说("没打开，请重试", true); return null; });
     if (!表单料请求.current) {
       set表单料取中(true);
       表单料请求.current = Promise.all([取客户页表单料(), 取客户表单()])
@@ -489,7 +510,7 @@ export default function CustomersView({
         .finally(() => set表单料取中(false));
     }
     return 表单料请求.current.then((d) => {
-      if (!d && 出错提示) message.error("没打开，请重试");
+      if (!d && 出错提示) 说("没打开，请重试", true);
       return d;
     });
   };
@@ -1019,6 +1040,34 @@ export default function CustomersView({
   ];
 
   /*
+    列表 ⇄ 看板原地变形（原型 cu.view「改后」，同 ov.view / pr.view，projects/view-morph.ts）：
+    项目看板是服务端换一屏画的（cookie），点下去滑块先到，量下每一行（tr[data-row-key] = 客户）的位置；新样子到了那一帧，
+    这位客户的卡片（data-morph-key = 客户）从他那一行的位置滑过去，反过来一样，对不上的淡入。看板那半边懒加载、第一次可能晚几帧才挂上：
+    没对上就再等几帧（最多 12 帧），还没有就算了，照常直接换。减弱动态不量不动
+  */
+  const 变形包 = useRef<HTMLDivElement>(null);
+  const 变形起点 = useRef<Map<string, DOMRect> | null>(null);
+  const { 时长: 动效时长 } = useMotionTheme();
+  const 项目看法: "列表" | "看板" = 看板体 !== undefined ? "看板" : "列表";
+  const [换项目看法到, set换项目看法到] = useState<"列表" | "看板" | null>(null);
+  // 新样子到了：清掉（随 props 调整 state 的写法），以后别的原因换了样子不算变形
+  if (换项目看法到 !== null && 换项目看法到 === 项目看法) set换项目看法到(null);
+  const 换项目看法 = (v: "列表" | "看板") => {
+    变形起点.current = 少动() ? null : 量变形起点(变形包.current);
+    set换项目看法到(v);
+    换客户页看法(v === "看板" ? "board" : "list", router);
+  };
+  useLayoutEffect(() => {
+    const 起 = 变形起点.current;
+    变形起点.current = null;
+    if (!起?.size) return;
+    let 帧 = 0;
+    let id = 0;
+    const 试 = () => { if (!放变形(变形包.current, 起, 动效时长.morph) && ++帧 < 12) id = requestAnimationFrame(试); };
+    试();
+    return () => cancelAnimationFrame(id);
+  }, [项目看法, 动效时长]);
+  /*
     「列表 / 看板」（11-12 用户：「列表｜看板 放到和筛选栏一行，最左边」）：筛选行第一格，列表、看板两个视图同一个位置，切换时不跳；
     原来摆在页头右上（按客户属性分列的看板）或标题下面单独一行（项目看板、市场角色）。不缩、不被挤进「更多筛选」（globals.css .list-view-seg）。
     三种：企业版项目模式 = 按节点分列的项目看板（记在 cookie 里、服务端换一屏画，projects/board-page.tsx）；
@@ -1027,7 +1076,7 @@ export default function CustomersView({
   const 看法切换 = 项目看板
     ? (!空库 || 市场视图) && !子集 && (市场视图
       ? <Segmented<string> aria-label="客户列表 / 我分出去的" options={[...市场视图名]} value={市场视图名[0]} onChange={(v) => v === 市场视图名[1] && 换客户页看法("board", router)} />
-      : <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看板体 !== undefined ? "看板" : "列表"} onChange={(v) => 换客户页看法(v === "看板" ? "board" : "list", router)} />)
+      : <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={换项目看法到 ?? 项目看法} onChange={换项目看法} />)
     : 能看板 && !空库 && <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看法} onChange={set看法} />;
   /** 「新建 ▾ → 新建项目」点一次挂一份（换 key 重挂 = 重新打开选新老客户的框）；0 = 还没点过、不加载 */
   const [新建项目次, set新建项目次] = useState(0);
@@ -1037,7 +1086,7 @@ export default function CustomersView({
     set项目流程载入(true);
     // 新客户那条路用建档向导数据（表单料），和懒加载块一起等
     void Promise.all([取新建项目流程(), 要表单料(false)])
-      .then(([, d]) => { if (d) set新建项目次((n) => n + 1); else message.error("没打开，请重试"); }, () => { message.error("没打开，请重试"); })
+      .then(([, d]) => { if (d) set新建项目次((n) => n + 1); else 说("没打开，请重试", true); }, () => { 说("没打开，请重试", true); })
       .finally(() => set项目流程载入(false));
   };
   const 新建项 = [
@@ -1118,11 +1167,12 @@ export default function CustomersView({
                   const controller = new AbortController();
                   导出取消.current = controller;
                   set导出中(true);
+                  set导出话(null);
                   try {
                     const r = await 完整导出(filters, b, set导出进度, controller.signal);
-                    message.success(`已完整导出 ${r.客户} 位${b.customer}、${r.跟进} 条跟进，ZIP内附分批Excel和核对清单`);
+                    set导出话({ 话: `已完整导出 ${r.客户} 位${b.customer}、${r.跟进} 条跟进，ZIP内附分批Excel和核对清单` });
                   } catch (error) {
-                    if (!controller.signal.aborted) message.error(error instanceof Error ? error.message : "导出失败，请重试");
+                    if (!controller.signal.aborted) set导出话({ 话: error instanceof Error ? error.message : "导出失败，请重试", 错: true });
                   } finally {
                     导出取消.current = null;
                     set导出中(false);
@@ -1133,6 +1183,7 @@ export default function CustomersView({
                 导出
               </Button>
               {导出中 && <Space><span role="status" style={{ fontSize: 12 }}>{导出进度}</span><Button size="small" onClick={() => 导出取消.current?.abort()}>取消导出</Button></Space>}
+              {!导出中 && 导出话 && <span role={导出话.错 ? "alert" : "status"} className={导出话.错 ? "cu-said cu-said-err" : "cu-said"}>{导出话.话}</span>}
             </>)}
             {/* 「新建 ▾」（11-12 用户：「右上角改为新建，然后可以选择新建项目或者新建客户」）：只能建一样时直接是那一样，一样都不能不摆 */}
             <NewMenuButton 项={新建项} 载入中={项目流程载入 || 表单料取中} 预取={() => { void 取新建项目流程().catch(() => {}); void 要表单料(false); }} />
@@ -1145,9 +1196,13 @@ export default function CustomersView({
       {/* 市场角色空库也摆（另一边「我分出去的」不看客户多少）：空库时筛选行整条不画（DataList），只这一种情况照原来单独一行 */}
       {空库 && 看法切换 && <div className="cust-view-seg">{看法切换}</div>}
 
+      {/* 从别处跳回来时带的一句（比如嵌在客户页的项目详情里最后一个项目走了，回到这里）：写在原处，不弹顶部提示 */}
+      <LandingNote 路径="/customers" />
+      {列表话 && <div role={列表话.错 ? "alert" : "status"} className={列表话.错 ? "cu-said cu-said-row cu-said-err" : "cu-said cu-said-row"}>{列表话.话}</div>}
       {阶段太多 && <div role="status" className="cust-too-many">结果太多，请再加筛选条件</div>}
       {/* 看板视图：看板（ProjectsView 客户页）的分配、「→ 还有 N 列」画进筛选行右端那一格（board-slot.ts），不在看板上面另占一行 */}
       <看板工具位.Provider value={看板体 !== undefined ? 工具位 : undefined}>
+      <div ref={变形包} className="cu-morph-wrap">
       <DataList<CustomerRow>
         浮起操作条
         页="customers"
@@ -1305,7 +1360,7 @@ export default function CustomersView({
                     const res = await bulkFollowStatus(selected, s);
                     清空();
                     router.refresh();
-                    if (!res.ok) return void message.error(res.error);
+                    if (!res.ok) return void 说(res.error, true);
                     可撤销提示(res, 批量结果说法(res, `已改为「${statusLabel(b, s)}」`), bulkFollowStatus);
                   },
                 })),
@@ -1344,6 +1399,7 @@ export default function CustomersView({
           翻页,
         }}
       />
+      </div>
       </看板工具位.Provider>
 
       {/* 新建客户：一个弹窗填完，项目默认关、有项目就打开（P-界面-36） */}

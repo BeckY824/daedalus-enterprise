@@ -167,7 +167,7 @@ it("dt.team：移出就地问（不弹气泡框），确认才交服务端", asy
   } finally { await page.close(); }
 });
 
-it("dt.team：改分配框里的分配条边输边变，组长那段跟着缩；被挡原因写在框里、框不关", async () => {
+it("dt.team：改分配框里的分配条边输边变，组长那段跟着缩、分出去 / 组长留跟着变；被挡原因浮在保存键上方、框不关；存上了键里「已保存」放完才关", async () => {
   const { page, errors } = await 开("split", 1024);
   try {
     const 条 = page.locator(".pd-split");
@@ -181,11 +181,22 @@ it("dt.team：改分配框里的分配条边输边变，组长那段跟着缩；
     expect(await 宽("组长")).toBe("60%");
     expect(await 条.getAttribute("aria-label")).toContain("组长 60%");
     await page.evaluate(() => Reflect.set(window, "__分回", { ok: false, error: "组员刚退出了项目组，刷新再分" }));
-    await page.getByRole("button", { name: /保\s*存/ }).click();
-    await page.getByRole("dialog").getByRole("alert").filter({ hasText: "刷新再分" }).waitFor();
+    await expect.poll(() => page.getByRole("dialog").innerText()).toContain("分出去 40%，组长留 60%");
+    const 存 = page.getByRole("dialog").getByRole("button", { name: /保\s*存|没保存上/ });
+    await 存.click();
+    // g.save：没存上的原因浮在保存键正上方（不是顶部提示），框不关
+    await page.getByRole("tooltip").filter({ hasText: "刷新再分" }).waitFor();
     expect(await 窗(page, "__关")).toBeNull();
     expect(await 顶部提示(page)).toBe("");
     expect(await 不横滚(page)).toBe(true);
+    // 放行：键里转圈 →「已保存」，放完才关框
+    await page.evaluate(() => Reflect.set(window, "__分回", undefined));
+    await page.getByRole("tooltip").filter({ hasText: "刷新再分" }).waitFor({ state: "hidden", timeout: 6000 });
+    await 存.click();
+    await page.getByRole("dialog").getByRole("button", { name: /已保存/ }).waitFor();
+    expect(await 窗(page, "__关")).toBeNull();
+    await expect.poll(() => 窗(page, "__关"), { timeout: 4000 }).toBe(1);
+    expect(await 顶部提示(page)).toBe("");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

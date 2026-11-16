@@ -12,7 +12,7 @@ let browser: Browser; let bundle: string;
 const plugin: Plugin = { name: "ent-review-head-steady", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "stub", pluginData: code }));
   stub(/^next\/link$/, "import React from 'react';export default function L({href,prefetch,...p}){return <a href={href} {...p}/>}");
-  stub(/^next\/navigation$/, "export const useRouter=()=>({push(){},refresh(){},replace(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
+  stub(/^next\/navigation$/, "export const useRouter=()=>({push(){},refresh(){},replace(){},prefetch(u){(window.__预取||(window.__预取=[])).push(u)}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
@@ -68,4 +68,17 @@ it("1024 / 1280 / 1366：卡点和任务页签的页签顶线一样高，不横�
     }
     expect(tops[1], `${w} 宽`).toBe(tops[0]);
   }
+});
+
+it("g.tabswitch：鼠标停在页签上就预取那一页；同一个页签只预取一次", async () => {
+  const { page, errors } = await 打开("todo");
+  await page.getByRole("tab", { name: "沟通" }).hover();
+  await page.getByRole("tab", { name: "数据" }).hover();
+  await page.getByRole("tab", { name: "沟通" }).hover();
+  const 预取 = await page.evaluate(() => (window as unknown as { __预取?: string[] }).__预取 ?? []);
+  expect(预取.length).toBe(2);
+  expect(预取[0]).toMatch(/^\/overview\?.*tab=/);
+  expect(new Set(预取).size).toBe(2);
+  expect(errors).toEqual([]);
+  await page.close();
 });

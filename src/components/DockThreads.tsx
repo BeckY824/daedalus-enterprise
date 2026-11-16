@@ -17,7 +17,7 @@
  */
 import { useState } from "react";
 import Link from "next/link";
-import { App, Dropdown, Spin } from "antd";
+import { Dropdown, Spin } from "antd";
 import { PlusOutlined, HistoryOutlined } from "@ant-design/icons";
 import type { MenuProps } from "antd";
 import { 新起一屏, useConversationId } from "@/lib/home-thread";
@@ -31,9 +31,12 @@ import { 视图AI对话话 } from "@/lib/enterprise/view-as-words";
 const 条数 = 10;
 
 export default function DockThreads({ scope }: { scope: string }) {
-  const { message } = App.useApp();
   const [rows, setRows] = useState<对话概要[] | null>(null);
   const [转, set转] = useState(false);
+  /** 下拉开着没有：受控，这样「这条对话已经不在了」可以把下拉留着、原因写在里面（原型 g.notice：不弹顶部提示） */
+  const [开着, set开着] = useState(false);
+  /** 翻历史出错的原因：写在下拉第一行 */
+  const [错, set错] = useState("");
   /** 这一屏现在挂在哪条对话上：下拉里给它一个选中态，人才知道自己在哪 */
   const 当前 = useConversationId(scope);
   /** 切换视图：对方的历史服务端不回（threads.ts），下拉里说一句为什么是空的 */
@@ -44,13 +47,15 @@ export default function DockThreads({ scope }: { scope: string }) {
    * 每次换页都白跑一趟——而多数时候人根本不会点这枚按钮。
    */
   async function 打开(开: boolean) {
+    set开着(开);
     if (!开) return;
     set转(true);
+    set错("");
     try {
       setRows(await 列对话({ scope, 条数 }));
     } catch {
       setRows([]);
-      message.error("翻不出这一页的历史");
+      set错("翻不出这一页的历史，再点一次试试");
     } finally {
       set转(false);
     }
@@ -61,22 +66,28 @@ export default function DockThreads({ scope }: { scope: string }) {
     const c = await 读对话(id);
     // 读不到 = 在首页那条列表里删掉了。刷新一下下拉，别让一条幽灵留在单子上
     if (!c) {
-      message.error("这条对话已经不在了");
+      set错("这条对话已经不在了");
       setRows((v) => v?.filter((r) => r.id !== id) ?? null);
+      set开着(true);
       return;
     }
     载入历史(scope, c);
   }
 
+  const 错行: NonNullable<MenuProps["items"]> = 错
+    ? [{ key: "_err", disabled: true, label: <div className="dock-hist-x" role="alert">{错}</div> }]
+    : [];
   const items: MenuProps["items"] = 转
     ? [{ key: "_loading", disabled: true, label: <div className="dock-hist-x"><Spin size="small" /></div> }]
     : (rows?.length ?? 0) === 0
       ? [
+          ...错行,
           { key: "_empty", disabled: true, label: <div className="dock-hist-x">{视图中 ? 视图AI对话话 : "这一页还没问过什么"}</div> },
           { type: "divider" as const },
           { key: "_all", label: <Link href="/dashboard">在首页看全部</Link> },
         ]
       : [
+          ...错行,
           ...(rows ?? []).map((r) => ({
             key: r.id,
             label: (
@@ -103,6 +114,7 @@ export default function DockThreads({ scope }: { scope: string }) {
       </button>
       <Dropdown
         trigger={["click"]}
+        open={开着}
         onOpenChange={打开}
         placement="bottomRight"
         menu={{

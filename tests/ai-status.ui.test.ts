@@ -208,6 +208,9 @@ it("提交抛错（断网）：清单不锁死，后面的卡照写；只展开�
   expect(await 确认.isEnabled()).toBe(true);
   expect(await page.locator(".pbat-card:visible").count()).toBe(1);
   expect(await page.locator(".pbat-card:visible .prop-err").innerText()).toContain("没写进去：断网");
+  // g.notice：没写进去的几项就地说在清单头下面，不弹顶部提示
+  expect(await page.locator(".pbat > [role=alert]").innerText()).toBe("1 项没写进去，原因写在卡上");
+  expect(await page.locator(".ant-message-notice").count()).toBe(0);
   await w.抛(null);
   await 确认.click();
   await expect.poll(() => w.交()).toEqual(["a", "c", "b"]);
@@ -217,6 +220,9 @@ it("提交抛错（断网）：清单不锁死，后面的卡照写；只展开�
   await page.getByRole("button", { name: "撤销", exact: true }).click();
   await expect.poll(() => w.撤()).toEqual(["b", "c"]);
   expect(await page.getByRole("button", { name: /撤销/ }).first().isEnabled()).toBe(true);
+  // 撤成的不弹「已撤销」顶部提示；没撤成的那张回执摊开，原因写在它那一行上
+  await expect.poll(() => page.locator(".prop-done [role=alert]").innerText()).toContain("没撤销成功");
+  expect(await page.locator(".ant-message-notice").count()).toBe(0);
   expect(errors).toEqual([]);
   await page.close();
 });

@@ -15,9 +15,10 @@
  * 我们回了（2026-10-19）：键上出一个红点。有红点时点它直接去「我的反馈」里那一串（人点它就是为了看回复）；
  * 没红点照旧弹写反馈的框，框的右上角有「我的反馈」进去看发过的。看过了红点就没了（已读记在本机）。
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Modal, Input, Button, App } from "antd";
+import { Modal, Input, Button } from "antd";
+import SaveButton from "@/components/SaveButton";
 import { useBusiness } from "@/lib/business-client";
 import { useMyFeedback, 刷新我的反馈 } from "./feedback/store";
 
@@ -47,8 +48,9 @@ export default function FeedbackButton({ 去向 }: { 去向: "cloud" | "github" 
   const pathname = usePathname();
   const router = useRouter();
   const 在我的反馈 = pathname === "/feedback";
-  const { message } = App.useApp();
   const b = useBusiness();
+  /** ⌘Enter 也走「发送」那颗键：转圈、对勾、没发出去的原因都在键上（原型 g.save） */
+  const 发送键 = useRef<HTMLSpanElement>(null);
   const 我的 = useMyFeedback(去向 === "cloud");
   const 头一条没看的 = 我的.反馈.find((f) => f.未读);
 
@@ -75,9 +77,10 @@ export default function FeedbackButton({ 去向 }: { 去向: "cloud" | "github" 
     return () => window.removeEventListener(反馈事件, 开);
   }, [去向]);
 
-  async function 发送() {
+  /** 发送：成了键上打对勾再关框；没发出去原因浮在键上方、框不关（原型 g.save，不弹顶部提示） */
+  async function 发送(): Promise<{ ok: boolean; error?: string }> {
     const body = 文字.trim();
-    if (!body || 发送中) return; // ⌘Enter 不看按钮转圈，连按会发两条
+    if (!body || 发送中) return { ok: false, error: "先写几句" }; // ⌘Enter 不看按钮转圈，连按会发两条
     set发送中(true);
     try {
       const r = await fetch("/api/feedback", {
@@ -86,16 +89,11 @@ export default function FeedbackButton({ 去向 }: { 去向: "cloud" | "github" 
         body: JSON.stringify({ body, path: pathname, platform: navigator.userAgent }),
       });
       const 回 = (await r.json().catch(() => ({}))) as { error?: string };
-      if (!r.ok) throw new Error(回.error || "没发出去");
-      // 收下了就说收下了，不额外承诺「我们会尽快回复」——回不回得看是什么事。只说回了会在哪儿看到
-      if (我的.可用) {
-        message.success("收到了，谢谢。我们回复的话，会出现在「我的反馈」里");
-        void 刷新我的反馈({ 新: true });
-      } else message.success("收到了，谢谢");
-      setOpen(false);
-      set文字("");
+      if (!r.ok) return { ok: false, error: 回.error || "没发出去" };
+      if (我的.可用) void 刷新我的反馈({ 新: true });
+      return { ok: true };
     } catch (e) {
-      message.error(e instanceof Error ? e.message : "没发出去");
+      return { ok: false, error: e instanceof Error ? e.message : "没发出去" };
     } finally {
       set发送中(false);
     }
@@ -148,12 +146,14 @@ export default function FeedbackButton({ 去向 }: { 去向: "cloud" | "github" 
           maxLength={4000}
           /* ⌘/Ctrl+Enter 发送：这是个只有一个输入框的框，手不必离开键盘 */
           onKeyDown={(e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") void 发送();
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") 发送键.current?.querySelector("button")?.click();
           }}
         />
         {/* 承诺写在人看得见的地方，不写在隐私政策的第七条里 */}
         <p className="fb-note">
           会一起发过去：版本、系统、你正在看的页面（{pathname}）。<b>不含任何{b.customer}、商机或跟进数据。</b>
+          {/* 收下了就说收下了，不额外承诺「我们会尽快回复」——回不回得看是什么事。只说回了会在哪儿看到（原来是发完弹的顶部提示） */}
+          {我的.可用 && " 我们回复的话，会出现在「我的反馈」里。"}
         </p>
         <div className="fb-foot">
           <a href={ISSUES} target="_blank" rel="noopener noreferrer">
@@ -161,9 +161,20 @@ export default function FeedbackButton({ 去向 }: { 去向: "cloud" | "github" 
           </a>
           <span style={{ flex: 1 }} />
           <Button onClick={() => setOpen(false)}>取消</Button>
-          <Button type="primary" loading={发送中} disabled={!文字.trim()} onClick={() => void 发送()}>
-            发送
-          </Button>
+          <span ref={发送键}>
+            <SaveButton
+              做={发送}
+              disabled={!文字.trim()}
+              已保存="收到了，谢谢"
+              没保存="没发出去"
+              成了={() => {
+                setOpen(false);
+                set文字("");
+              }}
+            >
+              发送
+            </SaveButton>
+          </span>
         </div>
       </Modal>
     </>

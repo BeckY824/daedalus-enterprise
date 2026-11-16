@@ -1,15 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { App, Switch } from "antd";
+import { Switch } from "antd";
 import { 读飞书推送, 设飞书推送, type 飞书推送概况 } from "../notice-actions";
+import { useSettingsNote } from "./InlineNote";
 
 /**
  * 设置 → 组织架构 → 飞书一栏 →「飞书推送」（企业版，11-01）：开了以后站内通知（铃铛里的每一条）同时用飞书应用机器人推给本人。
  * 默认关；只有业务角色是总管理员的人能开关。没绑飞书的人照旧只有站内通知。
  */
 export default function FeishuPushSwitch({ 凭据齐了 }: { 凭据齐了?: boolean }) {
-  const { message } = App.useApp();
+  // 不弹顶部提示（原型 g.save / g.notice）：成没成写在这一块底部的就地小条（InlineNote，出错 role=alert）
+  const [就地, 提示条] = useSettingsNote();
   const [概况, set概况] = useState<飞书推送概况 | null>(null);
   const [忙, set忙] = useState(false);
 
@@ -26,9 +28,9 @@ export default function FeishuPushSwitch({ 凭据齐了 }: { 凭据齐了?: bool
     set忙(true);
     try {
       const r = await 设飞书推送(开);
-      if (!r.ok) return void message.error(r.error);
+      if (!r.ok) return void 就地.error(r.error);
       set概况(r.概况);
-      message.success(开 ? "飞书推送已打开" : "飞书推送已关掉");
+      就地.success(开 ? "飞书推送已打开" : "飞书推送已关掉");
     } finally {
       set忙(false);
     }
@@ -49,6 +51,7 @@ export default function FeishuPushSwitch({ 凭据齐了 }: { 凭据齐了?: bool
         {!概况.能改 ? "只有总管理员能改。" : 打不开 && "先在上面填好飞书的 App ID 和 App Secret 才能打开。"}
       </span>
       {概况.开 && 缺.length > 0 && <span className="muted">注意：{缺.join("；")}。</span>}
+      {提示条}
     </div>
   );
 }

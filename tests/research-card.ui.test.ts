@@ -105,7 +105,7 @@ beforeAll(async () => {
               export const 背调价目 = async () => (window.__价目 ?? { 可用: true, 扣次: 1, 还剩: 3, 模拟: false });
               export const 找同名客户 = async () => [{ id: 'c-9', name: 'Lumora GmbH' }];
               export const 认联系方式 = async () => ({ email: 'sales@lumora-trading.example', phone: '' });
-              export const 存背调到客户 = async (id, s) => { window.__存.push([id, s.目标.name]); return { ok: true, id }; };
+              export const 存背调到客户 = async (id, s) => { if (window.__存不行) return { ok: false, error: window.__存不行 }; window.__存.push([id, s.目标.name]); return { ok: true, id }; };
               export const 新建客户并存背调 = async () => ({ ok: true, id: 'new' });
               export const 最近背调 = async () => null;
               export const 认号码动作 = async (号) => 号.includes('7946')
@@ -479,5 +479,22 @@ it("只有人名 + 电话：候选公司点选接着背调；「都不是」出�
   expect(全).toContain("在 1 个公开页面上出现过");
   expect(全).toContain("回邮件问一句公司全名和官网");
   expect(全).toContain("没有登录、没有抓取");
+  await page.close();
+}, 30_000);
+
+it("存进客户没存上：原因就地写在按钮下面（alert），不弹顶部提示；再点存成了原因收掉", async () => {
+  (globalThis as unknown as { __请求: unknown[] }).__请求 = [];
+  const page = await open("run");
+  await page.getByRole("button", { name: "开始背调" }).click();
+  await page.getByText("已完成").waitFor();
+  await page.evaluate(() => ((window as unknown as { __存不行: string | null }).__存不行 = "这位客户已经删了"));
+  await page.getByRole("button", { name: "存进客户" }).click();
+  await page.getByRole("button", { name: "存到「Lumora GmbH」" }).click();
+  await page.getByRole("alert").filter({ hasText: "没存上：这位客户已经删了" }).waitFor();
+  expect(await page.locator(".ant-message-notice").count()).toBe(0);
+  await page.evaluate(() => ((window as unknown as { __存不行: string | null }).__存不行 = null));
+  await page.getByRole("button", { name: "存到「Lumora GmbH」" }).click();
+  await page.getByRole("button", { name: "✓ 已存进「Lumora GmbH」" }).waitFor();
+  expect(await page.getByRole("alert").filter({ hasText: "没存上" }).count()).toBe(0);
   await page.close();
 }, 30_000);

@@ -1,12 +1,12 @@
 "use client";
 
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
-import { useContext, useEffect, useRef, useState, useTransition, type CSSProperties } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState, useTransition, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
-import { App, Button, Pagination, Select, Space, Segmented, Tag, Typography, type SelectProps } from "antd";
+import { Button, Pagination, Select, Space, Segmented, Tag, Typography, type SelectProps } from "antd";
 import { CloseOutlined, PlusOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { PageHead, CustomerLink, UserCell } from "@/components/ui";
 import DataList, { type 列 } from "@/components/DataList";
@@ -38,17 +38,19 @@ import { 字典of, 结局叫法, 阶段与进程, 阶段们, type 阶段, type �
 import InviteInbox, { type 邀请行 } from "./InviteInbox";
 import VerifyInbox, { type 待复核行 } from "./VerifyInbox";
 import { MyBlockersBoard, type 卡点卡 } from "./BlockerPanel";
-import { 自动分配线索, 分配带走的项目, type 自动分配结果 } from "../leads/assign-actions";
+import { 自动分配线索, 撤销自动分配, 分配带走的项目, type 自动分配结果 } from "../leads/assign-actions";
 import { useCarryConfirm } from "../customers/useCarryConfirm";
 import { AssignLeadModal, AssignedOutButton, useBatchAutoAssign } from "../leads/AssignLead";
 import LeadFullNotices from "../leads/LeadFullNotices";
-import { 滚法 } from "@/lib/reduced-motion";
+import { 滚法, 少动 } from "@/lib/reduced-motion";
+import { useMotionTheme } from "@/components/MotionTheme";
+import CountUp from "@/components/CountUp";
+import { 量变形起点, 放变形 } from "./view-morph";
 import { 看板要点, 三态标说明, type 三态标 } from "@/lib/enterprise/tri-state-label";
 import { 再看一列 } from "../customers/board-actions";
 import { 再看项目页一列 } from "./board-actions";
 import { useNewProjectFlow } from "./NewProjectFlow";
 import { useBoardDrag } from "./board-drag";
-import { 编辑项目 } from "./actions";
 import { showUndo } from "@/components/UndoBar";
 import NewMenuButton from "@/components/NewMenuButton";
 import { 看板工具位 } from "../customers/board-slot";
@@ -172,7 +174,6 @@ export default function ProjectsView({
   const 项目地址 = (r: 看板卡片) => (企业版 && r.customerId && r.customerName != null && !r.进不了客户详情 ? 客户页项目地址(r.customerId, r.id) : `/projects/${r.id}`);
   const router = useRouter();
   const 预取 = useHoverPrefetch();
-  const { message } = App.useApp();
   const 问一起转 = useCarryConfirm();
   const 字典 = 字典of(企业版, 出口叫法);
   const b = useBusiness();
@@ -189,9 +190,25 @@ export default function ProjectsView({
   // 带着要指出的那一行来：先按列表看（不改存下的看法），自己切回看板就听他的
   const [临时列表, set临时列表] = useState(!!高亮);
   const 看法 = 新线索 || 临时列表 ? "列表" : 客户页 ? "看板" : 存的看法;
-  // 看板 ⇄ 列表（原型 pr.view）：换过一次以后，换上来的那一块淡入、轻轻上移落位；第一次进页不动
+  // 看板 ⇄ 列表（原型 pr.view「改后」）：同一批项目从卡片的位置移到行的位置（反过来一样），对不上的淡入（./view-morph.ts，同 ov.view）。
+  // 点切换时量下每张卡 / 每一行的位置，新样子画出来那一帧（useLayoutEffect）从旧位置滑过去；
+  // 一个都对不上（列表那页没有看板上露着的）或减弱动态：退回原来那样，换上来的整块淡入、轻轻上移落位。第一次进页不动
   const [换过, set换过] = useState(false);
-  const 换看法 = (v: "列表" | "看板") => { set临时列表(false); set看法(v); set换过(true); };
+  const 视图包 = useRef<HTMLDivElement>(null);
+  const 变形起点 = useRef<Map<string, DOMRect> | null>(null);
+  const { 时长: 动效时长 } = useMotionTheme();
+  const 换看法 = (v: "列表" | "看板") => {
+    const 起 = 少动() ? null : 量变形起点(视图包.current);
+    变形起点.current = 起;
+    set临时列表(false); set看法(v); set换过(!起?.size);
+  };
+  useLayoutEffect(() => {
+    const 起 = 变形起点.current;
+    变形起点.current = null;
+    if (!起?.size) return;
+    // 一个都没对上：整块淡入上移（同没量到时）
+    if (!放变形(视图包.current, 起, 动效时长.morph)) set换过(true);
+  }, [看法, 动效时长]);
   // 要指出的那一行滚到视口中间（减弱动态时直接跳过去）；只在进来时滚一次，之后翻页、筛选不追着滚
   useEffect(() => {
     if (!高亮) return;
@@ -255,16 +272,19 @@ export default function ProjectsView({
   const 点表 = 三态点 ? { ...三态点, ...追加.点 } : undefined;
   // 原型 pr.more：「再看」接上来的卡片依次滑入、淡亮一下，看得出是刚加的（只亮这一回，id 记着）
   const [刚到, set刚到] = useState<ReadonlySet<string>>(() => new Set());
+  // 「再看」没取到：原因写在这一列列底（原型 g.notice：不弹顶部提示），再点一次就清
+  const [再看错, set再看错] = useState<Record<string, string>>({});
   async function 再看(c: 看板一列) {
     const 源 = 看板;
     const 代 = 最新.current.代;
     const 已有 = [...c.行, ...(追加.们[c.列]?.行 ?? [])];
     set取中((m) => ({ 源, 列: { ...(m.源 === 源 ? m.列 : {}), [c.列]: true } }));
+    set再看错((m) => { const n = { ...m }; delete n[c.列]; return n; });
     try {
       // 客户页看板带客户页那一行筛选（customers/board-actions.ts）；/projects、市场「我分出去的」照项目页的条件（projects/board-actions.ts）
       const r = await (客户页 ? 再看一列 : 再看项目页一列)(window.location.search, c.列, 已有.length);
       if (最新.current.看板 !== 源) return;
-      if (!r.ok) return void message.error(r.error);
+      if (!r.ok) return void set再看错((m) => ({ ...m, [c.列]: r.error }));
       const 有过 = new Set(已有.map((x) => x.id));
       set刚到((m) => new Set([...m, ...r.行.filter((x) => !有过.has(x.id)).map((x) => x.id)]));
       set追加((前) => {
@@ -279,7 +299,7 @@ export default function ProjectsView({
         return { 源, 代, 们: { ...基.们, [c.列]: { 行: [...(基.们[c.列]?.行 ?? []), ...新], 总 } }, 点: { ...基.点, ...("三态点" in r ? r.三态点 ?? {} : {}) } };
       });
     } catch {
-      if (最新.current.看板 === 源) message.error("没取到，请重试");
+      if (最新.current.看板 === 源) set再看错((m) => ({ ...m, [c.列]: "没取到，请重试" }));
     } finally {
       set取中((m) => (m.源 === 源 ? { 源, 列: { ...m.列, [c.列]: false } } : m));
     }
@@ -346,25 +366,27 @@ export default function ProjectsView({
       // 挑不到人 / 暂不分配：不是出错，留在新线索等手动指派——原因写在这一行
       if (!res.ok) return void 记果({ [r.id]: { ok: false, error: res.error } });
       记果({ [r.id]: { ok: true, 接手人: res.接手人, 为什么: res.为什么 } });
-      // 6 秒内可撤销（P-界面-40）：撤销 = 把负责人转回原来那位，走项目「转让」同一个动作和权限（编辑项目 改 ownerId）；被挡就在撤销条上写原因。
-      // 只还得回负责人：自动分配的结果里没有「一起带过去的」清单（待办、市场转销售时的客户），待分配标记也不回标——撤销条上先写明，撤完再说一次还差什么
-      const 还不了 = ["一起转过去的待办", "跟着转的客户", ...(r.待分配 ? ["「待分配」标记"] : [])];
-      showUndo({
-        话: `「${r.name}」${分给了(res)}（撤销只改回负责人）`,
-        毫秒: 6000,
-        撤销: async () => {
-          const x = await 编辑项目(r.id, { ownerId: r.ownerId });
-          if (x.ok) {
-            去果(r.id);
-            message.warning(`已把「${r.name}」的负责人改回 ${r.ownerName}；${还不了.join("、")}没还原，要还请手工改`, 8);
-            router.refresh();
-          }
-          return x;
-        },
-      });
+      // 6 秒内可撤销（原型 pr.autoone，P-界面-40）：撤销 = 整批还原（P-撤销-01）——负责人、待分配标记、提醒和卡点认领、
+      // 市场转销售连带过去的客户和活、分配记录都还回去（服务端按 还原单 核对留痕，leads/assign-actions.ts 撤销自动分配）。
+      // 撤成了这一行的结果收起、列表刷新；被挡（又改过、过了时限、原负责人停用）撤销条原地写原因
+      const 还原 = res.还原;
+      if (还原) {
+        showUndo({
+          话: `「${r.name}」${分给了(res)}`,
+          毫秒: 6000,
+          撤销: async () => {
+            const x = await 撤销自动分配(r.id, 还原);
+            if (x.ok) {
+              去果(r.id);
+              router.refresh();
+            }
+            return x;
+          },
+        });
+      }
       router.refresh();
     } catch {
-      message.error("没分成，请稍后再试");
+      记果({ [r.id]: { ok: false, error: "没分成，请稍后再试" } });
     }
   }
 
@@ -621,7 +643,7 @@ export default function ProjectsView({
       <MyBlockersBoard 们={卡点们} />
       {新线索 && <LeadFullNotices 提醒={提醒们} />}
 
-      <div key={看法} className={换过 ? "proj-view-in" : undefined}>
+      <div key={看法} ref={视图包} className={换过 ? "proj-view-in" : undefined}>
       {看法 === "列表" ? (
         <DataList<项目行>
           // 企业版默认只摆 7 列（1366 宽不横滚），换个键让已存的旧列设置回到新默认
@@ -678,7 +700,7 @@ export default function ProjectsView({
                     <div className="pipe-h">
                       <span className="pipe-dot" style={{ background: 列色[c.色] }} />
                       <b title={c.阶段 ? `${c.阶段}阶段` : undefined}>{c.名}</b>
-                      <span className="pipe-n">{这列数}</span>
+                      <span className="pipe-n"><CountUp 值={这列数} 记号={`pipe-n:${c.列}`} 只滚变化 /></span>
                       <span className="pipe-sum" title={sum}>{sum}</span>
                     </div>
                     <div className="pipe-bar" style={{ background: 列色[c.色] }} />
@@ -697,6 +719,7 @@ export default function ProjectsView({
                       return (
                         <div
                           key={r.id}
+                          data-morph-key={客户页 ? r.customerId : r.id}
                           {...卡拖?.dom}
                           className={`${能进 ? "pipe-card" : "pipe-card pipe-card-ro"}${刚来 ? " pipe-card-new" : 筛过 ? " pipe-card-in" : ""}${卡拖?.类 ?? ""}`}
                           style={{ borderLeftColor: 异常 ? "var(--danger)" : 列色[c.色], ["--i" as string]: Math.min(档, 8) }}
@@ -724,21 +747,21 @@ export default function ProjectsView({
                               // C5：客户名后一个小色点（沉睡灰、待回收橙、暂缓回收中紫），悬停说明；三态关着 三态点 不给
                               const 点 = r.customerName != null ? 点表?.[r.customerId] : undefined;
                               return 看板要点(点) ? (
-                                <div className="pipe-card-t tri-has-dot">
+                                <div className="pipe-card-t tri-has-dot pipe-card-full">
                                   <span className="tri-name">{r.customerName}</span>
                                   <i role="img" className={`tri-dot tri-${点.态}`} title={三态标说明(点)} aria-label={三态标说明(点)} />
                                 </div>
                               ) : (
-                                <div className="pipe-card-t fulltext" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看(r)}</div>
+                                <div className="pipe-card-t pipe-card-full" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看(r)}</div>
                               );
                             })()}
                             <div className="pipe-card-m">
-                              <span className="pipe-card-o">{r.name}</span>
+                              <span className="pipe-card-o pipe-card-full">{r.name}</span>
                             </div>
                           </>) : (<>
-                            <div className="pipe-card-t fulltext" title={r.name}>{r.name}</div>
+                            <div className="pipe-card-t pipe-card-full">{r.name}</div>
                             <div className="pipe-card-m">
-                              <span className="pipe-card-o" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看(r)}</span>
+                              <span className="pipe-card-o pipe-card-full" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看(r)}</span>
                             </div>
                           </>)}
                           <div className="pipe-card-m">
@@ -761,7 +784,7 @@ export default function ProjectsView({
                       );
                     })}
                     {/* 列底「再看 20 个」：这一列还有没摆出来的才出现；点了接在这一列后面，别的列不动、不整页刷新 */}
-                    {每列取数 && <列底再看 名={c.名} 已={c.行.length + (追加.们[c.列]?.行.length ?? 0)} 总={追加.们[c.列]?.总 ?? c.数} 取中={!!取中列[c.列]} 点={() => void 再看(c)} />}
+                    {每列取数 && <列底再看 名={c.名} 已={c.行.length + (追加.们[c.列]?.行.length ?? 0)} 总={追加.们[c.列]?.总 ?? c.数} 取中={!!取中列[c.列]} 错={再看错[c.列]} 点={() => void 再看(c)} />}
                   </div>
                 );
               })}
@@ -833,12 +856,12 @@ function useKanbanMoreCols(框: React.RefObject<HTMLDivElement | null>, 列们: 
 }
 
 /** 看板列底「再看 N 个」（11-12 每列各自取数）：左边写已显示几个 / 一共几个，右边次级小按钮；摆全了不画。加载中禁用、读屏报忙 */
-function 列底再看({ 名, 已, 总, 取中, 点 }: { 名: string; 已: number; 总: number; 取中: boolean; 点: () => void }) {
+function 列底再看({ 名, 已, 总, 取中, 错, 点 }: { 名: string; 已: number; 总: number; 取中: boolean; 错?: string; 点: () => void }) {
   if (已 >= 总) return null;
   const 下批 = Math.min(20, 总 - 已);
   return (
     <div className="pipe-more">
-      <span className="pipe-more-n">已显示 {已} / {总}</span>
+      {错 ? <span className="pipe-more-n pipe-more-err" role="alert" title={错}>{错}</span> : <span className="pipe-more-n">已显示 {已} / {总}</span>}
       <Button size="small" loading={取中} disabled={取中} aria-busy={取中} aria-label={`${名}：再看 ${下批} 个，已显示 ${已} / ${总}`} onClick={点}>
         再看 {下批} 个
       </Button>

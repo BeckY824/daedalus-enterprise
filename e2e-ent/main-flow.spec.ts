@@ -231,7 +231,8 @@ test("字段权限：销售的备注只能看就改不了；电话看不到就�
   const 正文 = page.getByRole("main");
   const 存表 = async () => {
     await 正文.getByTestId("org-field-perm-save").click();
-    await expect(提示(page, "字段权限已保存").last()).toBeVisible();
+    // 原型 g.save：成没成显示在保存键里（SaveButton ✓ 已保存），不再弹一句「字段权限已保存」
+    await expect(正文.getByTestId("org-field-perm-save")).toHaveAttribute("data-state", "成了");
   };
   const 编辑 = async () => {
     await page.goto("/customers");

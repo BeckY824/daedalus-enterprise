@@ -2,7 +2,7 @@
 
 import { useBusiness } from "@/lib/business-client";
 import { 签约叫 } from "@/lib/business-config";
-import { useOptimistic, useTransition } from "react";
+import { useOptimistic, useRef, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Segmented, Select, Tabs } from "antd";
 import { PageHead } from "@/components/ui";
@@ -62,14 +62,25 @@ export default function DataShell({
   const [显视图, set显视图] = useOptimistic(view);
 
   /** 在当前地址上改几个参数：页签、人、视图都保留另外几样（看着某个人切到「数据」还是那个人，回到「待办」筛选还在） */
-  const 改 = (k: Record<string, string | undefined>, 换 = false) => {
+  const 地址 = (k: Record<string, string | undefined>) => {
     const q = new URLSearchParams(sp.toString());
     for (const [key, v] of Object.entries(k)) {
       if (v) q.set(key, v);
       else q.delete(key);
     }
     const t = q.toString();
-    const url = `/overview${t ? `?${t}` : ""}`;
+    return `/overview${t ? `?${t}` : ""}`;
+  };
+  /** g.tabswitch「改后」：鼠标停在页签上就预取那一页，点下去少等一截。同一个页签只预取一次 */
+  const 预取过 = useRef(new Set<string>());
+  const 预取 = (tab: string) => {
+    const url = 地址({ tab, p: undefined });
+    if (预取过.current.has(url)) return;
+    预取过.current.add(url);
+    router.prefetch(url);
+  };
+  const 改 = (k: Record<string, string | undefined>, 换 = false) => {
+    const url = 地址(k);
     start(() => {
       if (k.tab) set显签(读页签(k.tab));
       if ("ownerId" in k) set显人(k.ownerId ?? "");
@@ -147,7 +158,7 @@ export default function DataShell({
             onChange={(k) => 改({ tab: 读页签(k), p: undefined })}
             // 内容在下面由服务端给，Tabs 只当导航；面板不滑（crm-motion-rules：减弱动态不许位移），下划线的移动在 globals.css 里按减弱动态关掉
             animated={{ inkBar: true, tabPane: false }}
-            items={复盘页签们.map((k) => ({ key: k, label: 复盘页签叫法[k] }))}
+            items={复盘页签们.map((k) => ({ key: k, label: <span onMouseEnter={() => 预取(读页签(k))}>{复盘页签叫法[k]}</span> }))}
           />
           {/* g.tabswitch：换了页签——立刻切过去、先出骨架（旧页签的内容不再灰着留 1 秒）；
               同一页签里换筛选 / 换人——旧内容留在原地淡一点（不清空，下面不塌一截再撑开） */}

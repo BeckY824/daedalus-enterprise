@@ -14,12 +14,12 @@ const plugin: Plugin = { name: "cust-detail-merge", setup(b) {
   stub(/(^|\/)InlineField$/, "export default function Inline(p){return <div className='rec-field' data-field={p.field}>{p.label}: {p.value}</div>}");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(u){window.__去=u},replace(u){window.__换=u},prefetch(){}});export const usePathname=()=>\"/customers/a\";export const useSearchParams=()=>new URLSearchParams(window.__sp||'');");
   stub(/^next\/link$/, "export default function L({prefetch,scroll,replace,...p}){return <a {...p}/>}");
-  stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|NewProjectModal|ContactLinks|ResearchRun|ResearchPerson)$/, "export default function Empty(){return null}");
+  stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|NewProjectEntry|ContactLinks|ResearchRun|ResearchPerson)$/, "export default function Empty(){return null}");
   stub(/research\/ResearchEntry$/, "export const useResearchEntry=()=>false;");
   stub(/research\/actions$/, "export const 最近背调=async()=>null,背调价目=async()=>({可用:false,原因:'桩'});");
   stub(/^\.\/pick$|customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[];");
   stub(/^\.\/link-actions$/, "export const 关联客户=async()=>({ok:true}),改关联说明=关联客户,取消关联=关联客户;");
-  stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({问怎么拿掉(){}});");
+  stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({});export const ContactRemoveInline=()=>null;");
   stub(/^\.\/ai$|customers\/\[id\]\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
   stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海,退回原因选项=async()=>[];");
   stub(/(^|\/)tri-state-actions$/, "export const 三态继续持有=async()=>({ok:false,error:\"\"}),三态暂缓回收=三态继续持有,三态让同事结束项目=三态继续持有;");
@@ -269,8 +269,11 @@ it("项目操作：删除项目在最后、危险色、上面一条线，点了�
     const 项们 = await 菜单项们(菜单);
     expect(项们.slice(1)).toEqual(["新建项目", "⊘领取 你是原负责人，不能领回", "项目转让", "项目退回公海", "—", "!删除项目"]);
     await 菜单.getByRole("menuitem", { name: /删除项目/ }).click();
-    await page.locator(".ant-modal-confirm-title").filter({ hasText: "删除这个项目？" }).waitFor();
-    await page.locator(".ant-modal-confirm").getByRole("button", { name: /取\s*消/ }).click();
+    // 后果框（PR5a，替代 modal.confirm）：标题、删前清点写在框里，取消关掉
+    const 删框 = page.getByRole("dialog").filter({ hasText: "删除这个项目？" });
+    await 删框.waitFor();
+    await 删框.getByRole("button", { name: /取\s*消/ }).click();
+    await 删框.waitFor({ state: "hidden" });
     expect(await 菜单项们(await 开菜单(page, "客户操作"))).toEqual(["客户转让", "客户退回公海"]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
@@ -670,7 +673,7 @@ it("受限客户详情（只负责项目的人）：页头「仅项目」+ 只�
   } finally { await page.close(); }
 });
 
-it("受限客户详情：最后一个项目退回公海后回客户列表并提示一句（不落 404）；还有别的项目就回这位客户的详情", async () => {
+it("受限客户详情：最后一个项目退回公海后回客户列表、带一句过去（不落 404、不弹顶部提示）；还有别的项目就回这位客户的详情", async () => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = [];
   page.on("pageerror", e => errors.push(e.message));
@@ -684,10 +687,12 @@ it("受限客户详情：最后一个项目退回公海后回客户列表并提�
       const 框 = page.getByRole("dialog", { name: "把项目退回公海？" });
       await 框.getByRole("button", { name: "项目退回公海" }).click();
       await expect.poll(() => page.evaluate(() => (window as unknown as { __去?: string }).__去), { message: `两个 ${两个}` }).toBe(去处);
-      const 提示 = page.locator(".ant-message-notice", { hasText: "这位客户下已经没有你负责的项目了" });
-      if (两个) expect(await 提示.count()).toBe(0);
-      else await 提示.waitFor();
-      await page.evaluate(() => { document.querySelectorAll(".ant-message-notice").forEach((n) => n.remove()); });
+      // 不弹顶部提示；回客户列表的那一下带一句过去（lib/landing-note.ts），客户列表落地后在原处说（LandingNote，见 tests/ent-landing-note.ui.test.ts）
+      expect(await page.locator(".ant-message-notice").count()).toBe(0);
+      const 带的 = await page.evaluate(() => JSON.parse(sessionStorage.getItem("crm:landing-note") ?? "null") as { 到: string; 话: string } | null);
+      if (两个) expect(带的).toBeNull();
+      else expect(带的).toMatchObject({ 到: "/customers", 话: "这位客户下已经没有你负责的项目了，已回到客户列表" });
+      await page.evaluate(() => sessionStorage.removeItem("crm:landing-note"));
     }
     expect(errors).toEqual([]);
   } finally { await page.close(); }

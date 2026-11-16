@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { useCardName } from "./card-names";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { App, Button, Card, Select, Space, Tag } from "antd";
+import { Button, Card, Select, Space, Tag } from "antd";
 import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import InlineConfirm from "@/components/InlineConfirm";
 import type { 项目关联, 关联客户行, 关联联系人行 } from "@/lib/project/relate";
@@ -27,28 +27,35 @@ const 空 = <span className="unconfirmed" style={{ color: "var(--text-faint)" }}
 /** 下拉选项 = 启用着的 + 这一行已经存着、后来停用的（不然下拉里显示不出来） */
 const 并上 = (启用: string[], 存着: readonly (string | null)[]) => [...启用, ...存着.filter((x): x is string => !!x && !启用.includes(x))].map((x) => ({ value: x, label: x }));
 
-/** 跑一个动作：失败提示并回退，成了刷新 */
+/**
+ * 跑一个动作：失败回退、原因写在这张卡底下（错，role=alert，原型 g.notice 不弹顶部提示）；成了刷新——
+ * 新关联的一行出现 / 解除的一行收起就是回执，不再弹「关联好了」「已解除」
+ */
 function useRelateRun() {
-  const { message } = App.useApp();
   const router = useRouter();
   const [忙, set忙] = useState(false);
-  const 跑 = async (做: () => Promise<结果>, 回退?: () => void, 成了?: string) => {
+  const [错, set错] = useState("");
+  const 跑 = async (做: () => Promise<结果>, 回退?: () => void) => {
     set忙(true);
+    set错("");
     try {
       const r = await 做();
       if (!r.ok) {
-        message.error(r.error);
+        set错(r.error);
         回退?.();
         return false;
       }
-      if (成了) message.success(成了);
       router.refresh();
       return true;
+    } catch {
+      set错("没存上，请稍后再试");
+      回退?.();
+      return false;
     } finally {
       set忙(false);
     }
   };
-  return { 忙, 跑 };
+  return { 忙, 跑, 错 };
 }
 
 /** 防抖搜：最后一次输入 250ms 后才发，旧的回来晚了不覆盖新的 */
@@ -105,7 +112,7 @@ function 名字({ 名, 全称, href, 主, 主叫 }: { 名: string; 全称: strin
 
 function RelateCustomers({ projectId, 关联, 能改, 起手, 不摆加 }: { projectId: string; 关联: 项目关联; 能改: boolean; 起手: boolean; 不摆加: boolean }) {
   const 卡名 = useCardName();
-  const { 忙, 跑 } = useRelateRun();
+  const { 忙, 跑, 错 } = useRelateRun();
   const [加着, set加着] = useState(false);
   const [挑中, set挑中] = useState<string | undefined>();
   const [身份, set身份] = useState<string[]>([]);
@@ -147,12 +154,13 @@ function RelateCustomers({ projectId, 关联, 能改, 起手, 不摆加 }: { pro
             />
             <Select mode="multiple" allowClear placeholder="项目身份（可多选）" value={身份} onChange={set身份} options={并上(关联.选项.身份, [])} aria-label="项目身份" style={{ width: "100%" }} />
             <Space size={6}>
-              <Button size="small" type="primary" disabled={!挑中} loading={忙} onClick={() => void 跑(() => 加关联客户Action(projectId, 挑中!, 身份), undefined, "关联好了").then((ok) => ok && set加着(false))}>关联</Button>
+              <Button size="small" type="primary" disabled={!挑中} loading={忙} onClick={() => void 跑(() => 加关联客户Action(projectId, 挑中!, 身份)).then((ok) => ok && set加着(false))}>关联</Button>
               <Button size="small" onClick={() => set加着(false)}>取消</Button>
             </Space>
           </div>
         )}
       </div>
+      {错 && <div role="alert" className="cd-task-err">{错}</div>}
     </Card>
   );
 }
@@ -170,7 +178,7 @@ function CustomerRow({ projectId, x, 选项, 能改, 忙, 跑 }: { projectId: st
       <div className="proj-rel-head">
         <名字 名={x.名} 全称={x.全称} href={x.能进详情 ? `/customers/${encodeURIComponent(x.customerId)}` : null} 主={x.主} 主叫="主客户" />
         {能改 && !x.主 && (
-          <InlineConfirm 问="解除这家关联？" 是="解除" 做={async () => void (await 跑(() => 解除关联客户Action(projectId, x.customerId), undefined, "已解除"))}>
+          <InlineConfirm 问="解除这家关联？" 是="解除" 做={async () => void (await 跑(() => 解除关联客户Action(projectId, x.customerId)))}>
             <Button type="text" size="small" danger icon={<DeleteOutlined />} aria-label={`解除和 ${x.名} 的关联`} />
           </InlineConfirm>
         )}
@@ -207,7 +215,7 @@ function CustomerRow({ projectId, x, 选项, 能改, 忙, 跑 }: { projectId: st
 
 function RelateContacts({ projectId, 关联, 能改, 起手, 不摆加 }: { projectId: string; 关联: 项目关联; 能改: boolean; 起手: boolean; 不摆加: boolean }) {
   const 卡名 = useCardName();
-  const { 忙, 跑 } = useRelateRun();
+  const { 忙, 跑, 错 } = useRelateRun();
   const [加着, set加着] = useState(false);
   const [挑中, set挑中] = useState<string | undefined>();
   const [角色, set角色] = useState<string[]>([]);
@@ -251,12 +259,13 @@ function RelateContacts({ projectId, 关联, 能改, 起手, 不摆加 }: { proj
             <Select mode="multiple" allowClear placeholder="项目角色（可多选）" value={角色} onChange={set角色} options={并上(关联.选项.角色, [])} aria-label="项目角色" style={{ width: "100%" }} />
             <Select allowClear placeholder="项目立场" value={立场} onChange={set立场} options={并上(关联.选项.立场, [])} aria-label="项目立场" style={{ width: "100%" }} />
             <Space size={6}>
-              <Button size="small" type="primary" disabled={!挑中} loading={忙} onClick={() => void 跑(() => 加关联联系人Action(projectId, 挑中!, { roles: 角色, stance: 立场 ?? null }), undefined, "关联好了").then((ok) => ok && set加着(false))}>关联</Button>
+              <Button size="small" type="primary" disabled={!挑中} loading={忙} onClick={() => void 跑(() => 加关联联系人Action(projectId, 挑中!, { roles: 角色, stance: 立场 ?? null })).then((ok) => ok && set加着(false))}>关联</Button>
               <Button size="small" onClick={() => set加着(false)}>取消</Button>
             </Space>
           </div>
         )}
       </div>
+      {错 && <div role="alert" className="cd-task-err">{错}</div>}
     </Card>
   );
 }
@@ -273,7 +282,7 @@ function ContactRow({ projectId, x, 选项, 能改, 忙, 跑 }: { projectId: str
       <div className="proj-rel-head">
         <名字 名={x.名} 全称={x.姓名} href={x.customerId ? `/customers/${encodeURIComponent(x.customerId)}` : null} 主={x.主} 主叫="主联系人" />
         {能改 && !x.主 && (
-          <InlineConfirm 问="解除这位关联？" 是="解除" 做={async () => void (await 跑(() => 解除关联联系人Action(projectId, x.contactId), undefined, "已解除"))}>
+          <InlineConfirm 问="解除这位关联？" 是="解除" 做={async () => void (await 跑(() => 解除关联联系人Action(projectId, x.contactId)))}>
             <Button type="text" size="small" danger icon={<DeleteOutlined />} aria-label={`解除和 ${x.名} 的关联`} />
           </InlineConfirm>
         )}

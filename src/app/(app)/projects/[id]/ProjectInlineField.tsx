@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { EditOutlined } from "@ant-design/icons";
-import { Button } from "antd";
 import Shortcut from "@/components/Shortcut";
 import { useViewAs } from "@/components/ViewAsContext";
 
@@ -14,11 +13,14 @@ export type 编辑器参数<T> = { 草稿: T; set草稿: (v: T) => void; 提交:
  *
  * - 没权限（能改 = false）、切换视图中只渲染 显示，DOM 里没有入口
  * - 点这一格或那颗小笔进入编辑；选中文字时不进（方便复制）
- * - 单行 Enter 存（回车存），多行 ⌘↵ / Ctrl+↵ 存，Esc 放弃；中文输入法选字时的回车、Esc 不算
- * - 不做失焦自动存：点到别处不会悄悄改掉，也不会丢（输入留着，还开着）；改了字点到别处，行内提示「还没保存」（A8-2）
- * - 打开时把「保存」那排滚进可视区（1024×768 下右栏多行备注的按钮常落在屏幕外，A8-2）
- * - 存失败（存 返回一句话、或抛错）：留在编辑态、输入不丢、行内写原因
- * - 存成功先显示新值，等 router.refresh 带回新 props 就听服务端的（值变了清掉乐观值，渲染时比，不用 effect）
+ * - 原型 dt.field（11-15）：和客户卡同一口径——**失焦即存**，单行 Enter 存（回车存），多行 ⌘↵ / Ctrl+↵ 存，Esc 还原并收起；
+ *   不再摆「保存 / 取消」两颗键（原来 11-03 自测 A8-2「失焦不存也不提示」是我们自己测出来的毛病，不是客户定的口径，
+ *   当时补了「还没保存」提示，这次按原型改成失焦就存）。中文输入法选字时的回车、Esc 不算
+ * - 失焦认的是焦点真离开这一格：点进这一格自己的下拉 / 日期面板（挂在 body 上）不算；Esc、选了就存收起之后浏览器补发的那次失焦不存
+ * - 编辑态下面一行写怎么存（回车 / ⌘↵ / 点别处 · Esc 还原），打开时滚进可视区（1024×768 下右栏多行备注常落在屏幕外）
+ * - 存失败（存 返回一句话、或抛错）：留在编辑态、输入不丢、行内写原因；同一份草稿再失焦不重复交，改了字再失焦才再交
+ * - 存成功先显示新值，旁边一个 ✓ 停一下淡掉；等 router.refresh 带回新 props 就听服务端的（值变了清掉乐观值，渲染时比，不用 effect）
+ * - 失焦存的不把焦点抢回笔上（人已经点到别处了）；回车 / ⌘↵ / Esc 收起时焦点回到笔上
  *
  * 客户页的 InlineField 绑死了 patchCustomer，不能复用，这里只借它的按键习惯
  */
@@ -43,7 +45,12 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
   const [错, set错] = useState<string | null>(null);
   const [忙, set忙] = useState(false);
   const [乐观, set乐观] = useState<{ 基准: string; 值: T } | null>(null);
-  const [没存, set没存] = useState(false);
+  /** 刚存上：值旁边的 ✓ 停一下淡掉（dt.field） */
+  const [刚存, set刚存] = useState(0);
+  /** 收起之后（Esc、选了就存、存上了）浏览器补发的失焦不算 */
+  const 收起了 = useRef(true);
+  /** 上次没存上的那份草稿：没改字再失焦不重复交 */
+  const 失败的 = useRef<string | null>(null);
   // 连按两下回车 / 双击保存：setState 还没生效时第二下也拦得住
   const 在存 = useRef(false);
   const 笔 = useRef<HTMLButtonElement>(null);
@@ -62,41 +69,55 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
     }
   }, [开着]);
 
-  // 打开后「保存 / 取消」也要看得见：滚到最近的可视位置，已经在屏幕里就不动
+  // 打开后下面那行「怎么存」也要看得见：滚到最近的可视位置，已经在屏幕里就不动
   useEffect(() => {
     if (开着) 按钮排.current?.scrollIntoView?.({ block: "nearest" });
   }, [开着]);
+
+  useEffect(() => {
+    if (!刚存) return;
+    const t = setTimeout(() => set刚存(0), 1400);
+    return () => clearTimeout(t);
+  }, [刚存]);
 
   if (!能改 || 视图中) return <>{显示(现)}</>;
 
   const 开 = () => {
     set草稿(现);
     set错(null);
-    set没存(false);
+    失败的.current = null;
+    收起了.current = false;
     set开着(true);
   };
-  const 关 = () => {
-    回焦.current = true;
+  /** 收起。焦点回不回笔上：失焦存的不抢焦点 */
+  const 关 = (回笔 = true) => {
+    收起了.current = true;
+    回焦.current = 回笔;
     set开着(false);
     set错(null);
-    set没存(false);
   };
 
-  async function 提交(传的?: T) {
-    if (在存.current) return;
+  async function 提交(传的?: T, 失焦 = false) {
+    if (在存.current || 收起了.current) return;
     const 输入 = 传的 === undefined ? 草稿 : 传的;
     set草稿(输入);
     const v = 规整 ? 规整(输入) : 输入;
-    if (JSON.stringify(v) === JSON.stringify(现)) return 关();
+    if (JSON.stringify(v) === JSON.stringify(现)) return 关(!失焦);
+    if (失焦 && 失败的.current === JSON.stringify(输入)) return;
     在存.current = true;
     set忙(true);
     set错(null);
     try {
       const 话 = await 存(v);
-      if (话) return set错(话);
+      if (话) {
+        失败的.current = JSON.stringify(输入);
+        return set错(话);
+      }
       set乐观({ 基准: 键, 值: v });
-      关();
+      set刚存((n) => n + 1);
+      关(!失焦);
     } catch {
+      失败的.current = JSON.stringify(输入);
       set错("没存上，请稍后再试");
     } finally {
       在存.current = false;
@@ -116,6 +137,7 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
         }}
       >
         <div className={`proj-inline-val${多行 && !一行显示 ? " is-multi" : ""}`}>{显示(现)}</div>
+        {刚存 > 0 && <span key={刚存} className="pd-inline-ok" role="status" aria-label={`${名}已保存`}>✓</span>}
         <button
           ref={笔}
           type="button"
@@ -137,7 +159,7 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
     if (e.nativeEvent.isComposing) return;
     if (e.key === "Escape") {
       e.stopPropagation();
-      return 关();
+      return 关(true);
     }
     if (e.key !== "Enter") return;
     // 下拉框里的回车是选项用的，这里不抢
@@ -152,22 +174,25 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
     <div
       className="proj-inline-edit"
       data-inline-field={名}
+      aria-busy={忙 || undefined}
       onKeyDown={按键}
-      onFocus={() => set没存(false)}
-      // 焦点离开这一格（点到页面别处）且改过：提示还没存，输入照留
+      // 失焦即存（dt.field）：焦点真离开这一格才存——点进这一格自己的下拉 / 日期面板（挂在 body 上）不算，等一拍看焦点落到哪
       onBlur={(e) => {
-        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-        const v = 规整 ? 规整(草稿) : 草稿;
-        if (JSON.stringify(v) !== JSON.stringify(现)) set没存(true);
+        const 格 = e.currentTarget;
+        if (格.contains(e.relatedTarget as Node | null)) return;
+        window.setTimeout(() => {
+          const 活 = document.activeElement;
+          if (活 && 活 !== document.body && (格.contains(活) || 活.closest(".ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown, .ant-popover, .ant-dropdown"))) return;
+          void 提交(undefined, true);
+        }, 0);
       }}
     >
       <编辑区 编辑器={编辑器} 草稿={草稿} set草稿={set草稿} 提交={(v) => void 提交(v)} 忙={忙} />
       {错 && <div className="proj-inline-err" role="alert">{错}</div>}
-      {!错 && 没存 && <div className="proj-inline-err" role="status">还没保存：点「保存」存下，或「取消」放弃</div>}
       <div className="proj-inline-acts" ref={按钮排}>
-        <Button size="small" type="primary" loading={忙} onClick={() => void 提交()}>保存</Button>
-        <Button size="small" disabled={忙} onClick={关}>取消</Button>
-        {多行 && <span className="proj-inline-hint"><Shortcut>⌘↵</Shortcut> 保存 · Esc 放弃</span>}
+        <span className="proj-inline-hint" role={忙 ? "status" : undefined}>
+          {忙 ? "存着…" : 多行 ? <><Shortcut>⌘↵</Shortcut> 或点别处保存 · Esc 还原</> : 回车存 ? "回车或点别处保存 · Esc 还原" : "点别处保存 · Esc 还原"}
+        </span>
       </div>
     </div>
   );

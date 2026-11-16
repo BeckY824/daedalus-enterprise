@@ -5,7 +5,9 @@ import DatePicker from "@/components/BusinessDatePicker";
 import { isFormValidationError } from "@/lib/form-validation";
 
 import { cloneElement, useEffect, useRef, useState, type ReactElement, type MouseEventHandler } from "react";
-import { Modal, Form, InputNumber, Input, App, Checkbox, Space } from "antd";
+import { Modal, Form, InputNumber, Input, Checkbox, Space, Button } from "antd";
+import SaveButton from "@/components/SaveButton";
+import { useConsequence } from "@/components/ConsequenceDialog";
 import { dayjs, fmtDate } from "@/lib/utils";
 import { 金额 } from "@/lib/currency";
 import CurrencySelect from "@/components/CurrencySelect";
@@ -74,7 +76,12 @@ function Inner({
   赢这一单: 赢的商机 | null;
   onClose: (saved: boolean) => void;
 }) {
-  const { message, modal } = App.useApp();
+  /** 疑似重复那一问：后果框（不用 antd modal.confirm） */
+  const [问后果, 后果框] = useConsequence();
+  /** 联动事项没读出来：就地写在框里（不弹顶部提示） */
+  const [联动错, set联动错] = useState<string | null>(null);
+  /** 存上了顺带办了哪些联动（赢了几个商机、完成几条计划）：对勾放着时在框里说一句 */
+  const [成话, set成话] = useState<string | null>(null);
   const b = useBusiness();
   /**
    * 外贸模版：界面上把签约叫订单（2026-10-05 外贸客户建议），签约时间叫「订单确认时间」。
@@ -116,7 +123,7 @@ function Inner({
       set可收(r);
       set勾({ 赢单: r.商机.map((x) => x.id), 完成计划: r.计划.map((x) => x.id), 完成待办: r.待办.map((x) => x.id) });
       带金额(r.商机.map((x) => x.id), r);
-    }).catch(() => { if (还在) message.error("联动事项读取失败，请关闭后重试"); });
+    }).catch(() => { if (还在) set联动错("联动事项读取失败，请关闭后重试"); });
     return () => { 还在 = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerId, editing, 赢这一单]);
@@ -157,54 +164,63 @@ function Inner({
     });
   }
 
-  async function onOk() {
-    if (saving) return;
+  /**
+   * 保存（原型 g.save）：保存中 / 已保存 / 没存上都在保存键里，不弹顶部提示。
+   * 回 { ok:false, error } = 没存上，原因浮在键上方；对勾放完（SaveButton 的 成了）才关框。
+   */
+  const 存上了 = useRef(false);
+  function 关或收尾() {
+    if (存上了.current) onClose(true);
+    else 守.要关();
+  }
+  async function 提交(): Promise<{ ok: boolean; error?: string }> {
+    if (saving) return { ok: false, error: "正在保存，请稍等" };
     setSaving(true);
     try {
       const res = await submit(false);
       if (res.ok) {
-        message.success(editing ? "已保存" : 订单 ? `订单已建好${联动说法(res.联动, true)}` : `签约已记录${联动说法(res.联动)}`);
+        if (!editing) set成话(订单 ? `订单已建好${联动说法(res.联动, true)}` : `签约已记录${联动说法(res.联动)}`);
         守.存好了();
-        onClose(true);
-        return;
+        存上了.current = true;
+        return { ok: true };
       }
-      if ("error" in res) {
-        message.error(res.error);
-        return;
-      }
+      if ("error" in res) return { ok: false, error: res.error };
 
       /**
        * 同学员 + 同金额 + 同一天，多半是两个人各录了一次同一笔。
        * 但续费和分期本来就可能同额同日，所以只确认、不硬拦。
        */
       const dup = res.duplicate;
-      const 继续 = await modal.confirm({
-        title: 订单 ? "这张订单可能已经录过了" : "这笔签约可能已经录过了",
-        content: (
-          <>
-            <div>
-              该{b.customer}在 {dayjs(dup.signedAt).format("YYYY-MM-DD")} 已有一笔{" "}
-              <b>{金额(dup.amount, dup.currency)}</b> 的{订单 ? "订单" : "签约记录"}
-              {dup.remark ? `（备注：${dup.remark}）` : ""}。
-            </div>
-            <div style={{ marginTop: 8 }}>
-              如果这是续费或分期的另一笔，可以继续录入；如果是同一笔，请点取消，
-              重复录入会让业绩合计翻倍。
-            </div>
-          </>
-        ),
-        okText: "确实是另一笔，继续录入",
-        cancelText: "取消",
+      let 再存联动: 签约联动结果 | undefined;
+      const 继续 = await 问后果({
+        题: 订单 ? "这张订单可能已经录过了" : "这笔签约可能已经录过了",
+        后果: [
+          {
+            标: "已有",
+            话: <>该{b.customer}在 {dayjs(dup.signedAt).format("YYYY-MM-DD")} 已有一笔 <b>{金额(dup.amount, dup.currency)}</b> 的{订单 ? "订单" : "签约记录"}{dup.remark ? `（备注：${dup.remark}）` : ""}</>,
+            级: "警",
+          },
+          { 标: "翻倍", 话: "如果是同一笔，重复录入会让业绩合计翻倍，请点取消", 级: "危" },
+          { 标: "可继续", 话: "如果这是续费或分期的另一笔，可以继续录入" },
+        ],
+        是: "确实是另一笔，继续录入",
+        危: false,
+        // 再存没成（含断网抛错）：原因写在这个框里、框不关，可以在框里再点一次（后果框的规矩）
+        做: async () => {
+          const again = await submit(true).catch(() => null);
+          if (!again) return { ok: false, error: "保存失败，请刷新确认结果后重试" };
+          if (again.ok) { 再存联动 = again.联动; return { ok: true }; }
+          return { ok: false, error: "error" in again ? again.error : "还是被当成重复了，请刷新确认后重试" };
+        },
       });
-      if (!继续) return;
-      const again = await submit(true);
-      if (again.ok) {
-        message.success(editing ? "已保存" : 订单 ? `订单已建好${联动说法(again.联动, true)}` : `签约已记录${联动说法(again.联动)}`);
-        守.存好了();
-        onClose(true);
-      } else if ("error" in again) message.error(again.error);
+      if (!继续) return { ok: false, error: "没录：可能和已有的一笔重复" };
+      if (!editing) set成话(订单 ? `订单已建好${联动说法(再存联动, true)}` : `签约已记录${联动说法(再存联动)}`);
+      守.存好了();
+      存上了.current = true;
+      return { ok: true };
     } catch (error) {
-      if (!isFormValidationError(error)) message.error("保存失败，请刷新确认结果后重试");
+      if (isFormValidationError(error)) return { ok: false, error: "有几项没填好，看标红的" };
+      return { ok: false, error: "保存失败，请刷新确认结果后重试" };
     } finally {
       setSaving(false);
     }
@@ -215,12 +231,16 @@ function Inner({
       {...守.弹窗}
       open
       title={订单 ? (editing ? "编辑订单" : 赢这一单 ? "转为订单" : "新建订单") : editing ? "编辑签约记录" : "登记签约"}
-      onOk={onOk}
-      confirmLoading={saving}
-      okText="保存"
-      cancelText="取消"
+      onCancel={关或收尾}
+      footer={[
+        <Button key="取消" onClick={关或收尾}>取消</Button>,
+        <SaveButton key="存" 做={提交} 已保存={editing ? "已保存" : 订单 ? "订单已建好" : "签约已记录"} 没保存="没存上" 成了={() => { if (存上了.current) onClose(true); }}>保存</SaveButton>,
+      ]}
       destroyOnHidden
     >
+      {后果框}
+      {联动错 && <div className="csq-err" role="alert">{联动错}</div>}
+      {成话 && <div className="rec-plan-said" role="status">{成话}</div>}
       <Form
         form={form}
         layout="vertical"

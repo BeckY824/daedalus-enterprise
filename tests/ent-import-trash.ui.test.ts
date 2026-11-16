@@ -63,25 +63,40 @@ it("确认那一步：单独数出号码在回收站几行、列行号、说怎�
   } finally { await page.close(); }
 });
 
-it("捞回时号码已不在回收站：提醒样式、写明已不在回收站，不出成功样式；新结论照样交出去", async () => {
+it("捞回时号码已不在回收站：键后就地一行提醒样式（橙）、写明已不在回收站，不出成功样式、不弹顶部提示；新结论照样交出去", async () => {
   const { page, errors } = await open({ ok: true, 已不在: true, 提示: "这个号码已不在回收站里了（可能刚被别人捞回，或已彻底删除），按最新的查重结果来", 查: { ok: true, 状态: "我的通讯录已有" } });
   try {
     await page.getByTestId("rescue-from-trash").click();
     await page.locator(".ant-popconfirm .ant-btn-primary").click();
-    await page.locator(".ant-message-warning").waitFor();
-    expect(await page.locator(".ant-message-warning").innerText()).toContain("已不在回收站");
-    expect(await page.locator(".ant-message-success").count()).toBe(0);
+    const 说 = page.getByRole("status").filter({ hasText: "已不在回收站" });
+    await 说.waitFor();
+    expect(await 说.getAttribute("class")).toContain("cu-said-warn");
+    expect(await page.getByRole("alert").filter({ hasText: "已不在回收站" }).count()).toBe(0);
+    expect(await page.locator(".ant-message-notice").count()).toBe(0);
     expect(await page.evaluate(() => Reflect.get(window, "__新结论"))).toMatchObject({ 状态: "我的通讯录已有" });
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
 
-it("捞成了：照旧成功样式", async () => {
+it("捞成了：键后就地一行（灰，不是提醒样式），不弹顶部提示", async () => {
   const { page } = await open({ ok: true, 提示: "已从回收站捞回 1 位客户（连同联系人、项目、跟进）", 查: { ok: true, 状态: "我的通讯录已有" } });
   try {
     await page.getByTestId("rescue-from-trash").click();
     await page.locator(".ant-popconfirm .ant-btn-primary").click();
-    await page.locator(".ant-message-success").waitFor();
-    expect(await page.locator(".ant-message-warning").count()).toBe(0);
+    const 说 = page.getByRole("status").filter({ hasText: "已从回收站捞回" });
+    await 说.waitFor();
+    expect(await 说.getAttribute("class")).not.toContain("cu-said-warn");
+    expect(await page.locator(".ant-message-notice").count()).toBe(0);
+  } finally { await page.close(); }
+});
+
+it("捞回被挡（服务端回 ok:false）：原因就地红字 role=alert，不吞、不弹顶部提示", async () => {
+  const { page } = await open({ ok: false, error: "你没有权限捞回这位" });
+  try {
+    await page.getByTestId("rescue-from-trash").click();
+    await page.locator(".ant-popconfirm .ant-btn-primary").click();
+    const 错 = page.getByRole("alert").filter({ hasText: "你没有权限捞回这位" });
+    await 错.waitFor();
+    expect(await page.locator(".ant-message-notice").count()).toBe(0);
   } finally { await page.close(); }
 });

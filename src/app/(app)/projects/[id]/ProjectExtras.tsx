@@ -3,12 +3,13 @@
 import { useMemo, useState } from "react";
 import { useCardName } from "./card-names";
 import { useRouter } from "next/navigation";
-import { App, Button, Card, InputNumber, Select, Space } from "antd";
+import { Button, Card, InputNumber, Select, Space } from "antd";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import FollowAttachments from "@/components/FollowAttachments";
 import type { 附件 } from "@/lib/attachment-rules";
 import DatePicker from "@/components/BusinessDatePicker";
 import SaveButton from "@/components/SaveButton";
+import CountUp from "@/components/CountUp";
 import { useConsequence } from "@/components/ConsequenceDialog";
 import { 未选占位, 不填项, 去不填, 去多选不填, type 项目画像键 } from "@/lib/enterprise/dict-kinds";
 import { 币种选项, 金额, 合计文字, 按币种合计, 默认币种 } from "@/lib/currency";
@@ -32,10 +33,11 @@ const 空 = <span className="unconfirmed" style={{ color: "var(--text-faint)" }}
  * 存失败（选项刚被停用、没权限了）提示原因并回到存之前的样子
  */
 export function ProjectProfileCard({ projectId, 画像, 能改 }: { projectId: string; 画像: 项目画像; 能改: boolean }) {
-  const { message } = App.useApp();
   const router = useRouter();
   const [值, set值] = useState(画像.值);
   const [忙, set忙] = useState(false);
+  // 存的结果写在卡底下（原型 g.notice：不弹顶部提示）：没存上的原因（alert）、或这次存完自动推进到哪（status）
+  const [话, set话] = useState<{ 错: boolean; 字: string } | null>(null);
   // 服务端刷新后（别人改了、自己存完 router.refresh）跟着新值走；渲染时比上一次的，不用 effect
   const [上次, set上次] = useState(画像);
   if (画像 !== 上次) {
@@ -45,15 +47,19 @@ export function ProjectProfileCard({ projectId, 画像, 能改 }: { projectId: s
 
   const 存 = async (patch: Parameters<typeof 改项目画像Action>[1], 回退: () => void) => {
     set忙(true);
+    set话(null);
     try {
       const r = await 改项目画像Action(projectId, patch);
       if (!r.ok) {
-        message.error(r.error);
+        set话({ 错: true, 字: r.error });
         回退();
       } else {
-        if ("自动推到" in r && r.自动推到?.length) message.success(`必填齐了，自动推进到 ${r.自动推到.join(" → ")}`);
+        if ("自动推到" in r && r.自动推到?.length) set话({ 错: false, 字: `必填齐了，自动推进到 ${r.自动推到.join(" → ")}` });
         router.refresh();
       }
+    } catch {
+      set话({ 错: true, 字: "没存上，请稍后再试" });
+      回退();
     } finally {
       set忙(false);
     }
@@ -113,6 +119,7 @@ export function ProjectProfileCard({ projectId, 画像, 能改 }: { projectId: s
           </div>
         ))}
       </div>
+      {话 && (话.错 ? <div role="alert" className="cd-task-err">{话.字}</div> : <div role="status" className="cd-transfer-sent">{话.字}</div>)}
     </Card>
   );
 }
@@ -183,7 +190,10 @@ export function ProjectPaymentsCard({ projectId, 回款们, 能改, 默认: 默�
   const [数, set数] = useState<number | null>(null);
   /** 自动推进了几步：记完在卡里就地说一句（不弹顶部提示） */
   const [推到, set推到] = useState<string[] | null>(null);
-  const 合计 = 回款们.length ? 合计文字(按币种合计(回款们, (x) => x.amount, (x) => x.currency)) : "还没有回款";
+  const 各币合计 = 按币种合计(回款们, (x) => x.amount, (x) => x.currency);
+  const 合计 = 回款们.length ? 合计文字(各币合计) : "还没有回款";
+  /** 只有一种币：记一笔 / 删一笔后合计从旧数滚到新数（原型 dt.pay「数字滚到位」）；多种币各写各的，不滚 */
+  const 单币 = 各币合计.length === 1 ? 各币合计[0] : null;
   // 录的这笔少于「合同金额 − 已回」就黄字提示一句，不拦「记一笔」（A5-4）
   const 少了 = 回款少于应收(数, 币, 还应收(合同, 回款们));
 
@@ -219,7 +229,9 @@ export function ProjectPaymentsCard({ projectId, 回款们, 能改, 默认: 默�
 
   return (
     <Card title={`${卡名("回款")}（${回款们.length}）`}>
-      <div style={{ marginBottom: 8 }}>当前回款：<b style={{ overflowWrap: "anywhere" }}>{合计}</b></div>
+      <div style={{ marginBottom: 8 }}>当前回款：<b className="pd-pay-total" style={{ overflowWrap: "anywhere" }}>{单币
+        ? <CountUp 值={单币.合计} 记号={`pay:${projectId}:${单币.币种}`} 只滚变化 格式={(n) => 金额(Number.isInteger(单币.合计) ? Math.round(n) : Math.round(n * 100) / 100, 单币.币种)} />
+        : 合计}</b></div>
       {回款们.map((x) => (
         <div key={x.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "4px 0", borderTop: "1px solid var(--line-soft)" }}>
           <span style={{ color: "var(--text-muted)" }}>{dayjs(x.paidAt).format("YYYY-MM-DD")}</span>

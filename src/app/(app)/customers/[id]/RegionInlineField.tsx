@@ -2,7 +2,6 @@
 
 import { useContext, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { App } from "antd";
 import AddressInput from "@/components/AddressInput";
 import { 拼地址, type 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 有值, 空值符 } from "@/lib/empty-value";
@@ -18,12 +17,20 @@ const 同 = (a: 客户地址, b: 客户地址) => 拼地址(a) === 拼地址(b) 
  */
 export default function RegionInlineField({ customerId, value, 空时横线 = false }: { customerId: string; value: 客户地址; 空时横线?: boolean }) {
   const router = useRouter();
-  const { message } = App.useApp();
+  /** 没存上的原因：就地写在这一格下面（role=alert），不弹顶部提示（原型 g.notice）；过几秒收 */
+  const [错, set错] = useState<string | null>(null);
+  useEffect(() => {
+    if (!错) return;
+    const t = setTimeout(() => set错(null), 6000);
+    return () => clearTimeout(t);
+  }, [错]);
   const 权限挡 = useContext(只能看的格上下文).includes("addrCountry");
   const 只读 = useContext(只读上下文) || 权限挡;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<客户地址>(value);
   const [saving, setSaving] = useState(false);
+  /** 新值先显示（原型 dt.field「新值立刻显示」，同 InlineField）：存着的时候、刷新回来之前都摆刚改的；基准变了（刷新到了）就用新的 value */
+  const [待显, set待显] = useState<{ 值: 客户地址; 基准: 客户地址 } | null>(null);
   const 最新 = useRef(value);
   const 交过了 = useRef(false);
   const 框 = useRef<HTMLDivElement>(null);
@@ -45,11 +52,13 @@ export default function RegionInlineField({ customerId, value, 空时横线 = fa
     setEditing(false);
     const next = 最新.current;
     if (同(next, value)) return;
+    set待显({ 值: next, 基准: value });
     setSaving(true);
-    const res = await patchCustomerRegion(customerId, next);
+    const res = await patchCustomerRegion(customerId, next).catch(() => ({ ok: false as const, error: "没存上，请稍后再试" }));
     setSaving(false);
     if (!res.ok) {
-      message.error(res.error);
+      set待显(null);
+      set错(res.error);
       setDraft(value);
       return;
     }
@@ -70,7 +79,7 @@ export default function RegionInlineField({ customerId, value, 空时横线 = fa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing]);
 
-  const 文字 = 拼地址(value);
+  const 文字 = 拼地址(待显 && 同(待显.基准, value) ? 待显.值 : value);
   if (!editing) {
     return (
       <div
@@ -84,6 +93,7 @@ export default function RegionInlineField({ customerId, value, 空时横线 = fa
         <div className={`rec-field-v is-line${有值(文字) ? "" : " rec-field-empty"}${saving ? " rec-field-saving" : ""}`} title={!有值(文字) && 空时横线 && !只读 ? "点击填写" : undefined}>
           {有值(文字) ? 文字 : 只读 || 空时横线 ? 空值符 : "点击填写"}
         </div>
+        {错 && <div className="cd-task-err" role="alert">{错}</div>}
       </div>
     );
   }

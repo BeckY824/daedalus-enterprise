@@ -198,7 +198,9 @@ it("断了选撤销：撤的是已经写进去的那一批", async () => {
   await page.getByText("导到第 1,000 / 3,000 条时停下了").waitFor();
   await page.getByRole("button", { name: "撤销已导入的" }).click();
   await page.getByRole("button", { name: /^撤\s*销$/ }).click();
-  await page.locator(".ant-modal-confirm-title", { hasText: "已撤销这一批" }).waitFor();
+  // 撤完不弹框：抽屉回到第一步，结果就地写在底部那行（role=status）
+  await page.getByRole("status").filter({ hasText: "已撤销这一批" }).waitFor();
+  expect(await page.locator(".ant-modal-confirm").count()).toBe(0);
   expect(await 调用(page, "撤销")).toEqual([["b9"]]);
   await page.close();
 }, 60_000);
@@ -223,7 +225,9 @@ it("检查那一步后台出错：说人话，不弹英文", async () => {
   const page = await 开();
   await page.evaluate(() => Object.assign(window, { __预览错: "Minified React error #441; visit https://react.dev/errors/441" }));
   await page.getByRole("button", { name: "下一步" }).click();
-  await page.getByText("没检查完：后台服务出了错，没有回话。库里什么都没动，点「下一步」再试一次").waitFor();
+  // 就地写在抽屉底部按钮上方（role=alert），不弹顶部提示
+  await page.getByRole("alert").filter({ hasText: "没检查完：后台服务出了错，没有回话。库里什么都没动，点「下一步」再试一次" }).waitFor();
+  expect(await page.locator(".ant-message-notice").count()).toBe(0);
   await page.close();
 }, 60_000);
 

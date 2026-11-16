@@ -39,7 +39,7 @@ async function 填阶段名(page: Page, 名: Record<string, string>) {
   await expect(区).toBeVisible();
   for (const [i, v] of Object.keys(新名).entries()) await 区.getByLabel(`第 ${i + 1} 步 · ${v}`, { exact: true }).fill(名[v] ?? "");
   await 面板.getByRole("button", { name: /^保\s*存$/ }).click();
-  await expect(page.getByText("已保存，全站措辞已更新")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "已保存" })).toBeVisible({ timeout: 15_000 });
   return 区;
 }
 

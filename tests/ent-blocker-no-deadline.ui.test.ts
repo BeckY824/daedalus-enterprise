@@ -185,15 +185,24 @@ it("dt.blocker：发布框写「挂在」哪条沟通、能换；类型影响一
       await page.keyboard.press("Escape");
       await dlg.getByLabel("卡点描述").fill("卡在报价");
       await page.evaluate(() => Reflect.set(window, "__发布回", { ok: false, error: "这条沟通已经删了，换一条" }));
-      await dlg.getByRole("button", { name: /发\s*布/ }).click();
-      await dlg.getByRole("alert").filter({ hasText: "已经删了" }).waitFor();
+      const 发布键 = dlg.locator(".ant-modal-footer").getByRole("button").last();
+      await 发布键.click();
+      // 没发出去（原型 dt.blocker 发布键里反馈）：键上写「没发出去」，原因浮在键正上方（不是顶部提示），读屏也读得到；框不关
+      await expect.poll(() => 发布键.innerText()).toContain("没发出去");
+      // 原因浮签（SaveButton 11-15 起不用 antd Tooltip，是自己的浮签 role=tooltip，键 aria-describedby 指向它）
+      const 浮签 = page.getByRole("tooltip").filter({ hasText: "已经删了" });
+      await 浮签.waitFor();
+      expect(await 发布键.getAttribute("aria-describedby")).toBe(await 浮签.getAttribute("id"));
+      expect(await dlg.getByRole("status").innerText()).toContain("已经删了");
       expect(await 窗(page, "__发布挂")).toBe("f2");
       expect(await 窗(page, "__关")).toBeNull();
       expect(await page.locator(".ant-message").innerText().catch(() => "")).toBe("");
-      // 放行：框关，不弹「已发布」
+      // 放行：键里「已发布」放完框才关，不弹顶部提示
       await page.evaluate(() => Reflect.set(window, "__发布回", undefined));
-      await dlg.getByRole("button", { name: /发\s*布/ }).click();
-      await expect.poll(() => 窗(page, "__关")).toBe(1);
+      await 发布键.click();
+      await expect.poll(() => 发布键.innerText()).toContain("已发布");
+      expect(await 窗(page, "__关")).toBeNull();
+      await expect.poll(() => 窗(page, "__关"), { timeout: 4000 }).toBe(1);
       expect(await page.locator(".ant-message").innerText().catch(() => "")).toBe("");
       expect(errors).toEqual([]);
     } finally { await page.close(); }

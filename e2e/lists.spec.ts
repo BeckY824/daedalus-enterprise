@@ -143,7 +143,8 @@ test("导出按当前的子集和筛选：本月新增里导出的是这 22 位�
   const 行 = 读取完整导出(readFileSync((await 下载.path())!)).客户.slice(1);
   expect(行.length).toBe(22);
   expect(行.filter((r) => !r[0].startsWith("本月新")), "导出里混进了子集以外的人").toEqual([]);
-  await expect(page.locator(".ant-message")).toContainText("已完整导出 22 位");
+  // 11-15 起导出的结果写在导出键旁边（role=status，原型 g.notice），不弹顶部提示
+  await expect(page.getByRole("status").filter({ hasText: "已完整导出 22 位" })).toBeVisible();
 });
 
 test("J-013 有数据的库里搜一个不存在的词：写「没有符合条件的」，不画「新建第一位」，筛选栏还在", async ({ page }) => {

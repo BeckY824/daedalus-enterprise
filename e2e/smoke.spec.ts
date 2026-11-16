@@ -238,11 +238,11 @@ test("8. 两个人同时改同一条客户：改不同字段自动合并，改�
   const 乙改 = 企业版 ? "简称" : "行业";
   await 甲.getByRole("dialog").getByLabel("公司").fill("星辰科技");
   await 甲.getByRole("dialog").getByRole("button", { name: /保\s*存/ }).click();
-  await expect(甲.getByText("已保存")).toBeVisible();
+  await expect(甲.getByRole("button", { name: "已保存" })).toBeVisible(); // 11-15 起存好写在保存键里（SaveButton 对勾 +「已保存」，读屏另有一句同样的话）
 
   await 乙.getByRole("dialog").getByLabel(乙改).fill("软件服务");
   await 乙.getByRole("dialog").getByRole("button", { name: /保\s*存/ }).click();
-  await expect(乙.getByText("已保存")).toBeVisible();
+  await expect(乙.getByRole("button", { name: "已保存" })).toBeVisible(); // 11-15 起存好写在保存键里（SaveButton 对勾 +「已保存」，读屏另有一句同样的话）
 
   // 两人的改动都在
   await 改动都在(甲, { 公司: "星辰科技", [乙改]: "软件服务" });
@@ -252,7 +252,7 @@ test("8. 两个人同时改同一条客户：改不同字段自动合并，改�
   await 打开编辑框(乙);
   await 甲.getByRole("dialog").getByLabel("公司").fill("远望信息");
   await 甲.getByRole("dialog").getByRole("button", { name: /保\s*存/ }).click();
-  await expect(甲.getByText("已保存")).toBeVisible();
+  await expect(甲.getByRole("button", { name: "已保存" })).toBeVisible(); // 11-15 起存好写在保存键里（SaveButton 对勾 +「已保存」，读屏另有一句同样的话）
 
   await 乙.getByRole("dialog").getByLabel("公司").fill("合德智造");
   await 乙.getByRole("dialog").getByRole("button", { name: /保\s*存/ }).click();

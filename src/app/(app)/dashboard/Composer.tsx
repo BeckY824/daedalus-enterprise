@@ -10,7 +10,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import ModelPicker from "@/components/ModelPicker";
 import { 读成附件, type 附件 } from "@/components/AskFiles";
-import { App } from "antd";
 import { useReducedMotion } from "motion/react";
 import { useMotionTheme } from "@/components/MotionTheme";
 import { 飞进去 } from "./home-look";
@@ -214,7 +213,8 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
   const [suggIdx, setSuggIdx] = useState(-1);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
-  const { message } = App.useApp();
+  /** 拖进来的文件读不了的原因：写在输入框下面，不弹顶部提示 */
+  const [拖错, set拖错] = useState("");
   const 动效 = useMotionTheme();
   const 少动 = useReducedMotion();
   useComposerHeight(composerRef);
@@ -368,8 +368,12 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
   const 收附件 = !背调模式 && !(渠道名们 && 手机) && running == null;
   const 拖进来 = async (f: File) => {
     const r = await 读成附件(f, files);
-    if ("错" in r) message.error(r.错);
-    else setFiles(r.files);
+    // 读不了的文件：原因就地写在输入框下面（原型 g.notice：不弹顶部提示），下一次拖成了就收
+    if ("错" in r) set拖错(r.错);
+    else {
+      set拖错("");
+      setFiles(r.files);
+    }
   };
 
   return (
@@ -458,6 +462,11 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
           }
         />
 
+        {拖错 && (
+          <div className="cli-file-err" role="alert">
+            {拖错}
+          </div>
+        )}
         <ComposerFoot 摆建议={摆建议} 示例槽={示例槽} suggestions={suggestions} suggIdx={suggIdx} 空={empty} 在跑={running != null} 背调模式={背调模式} 背调价={调.背调价} AI已用完={AI已用完} on问={问这条} />
       </div>
 

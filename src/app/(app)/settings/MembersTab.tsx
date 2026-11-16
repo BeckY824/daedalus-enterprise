@@ -1,9 +1,9 @@
 "use client";
 
 import { useSettingsNote } from "./InlineNote";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Table, Button, Space, Tag, Modal, Form, Input, Select, Switch, Row as 行, Col, App, Alert, Typography, Grid, Popover, Tooltip } from "antd";
+import { Table, Button, Space, Tag, Modal, Form, Input, Select, Switch, Row as 行, Col, Alert, Typography, Grid, Popover, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { PlusOutlined, EditOutlined, StopOutlined, UndoOutlined, SafetyCertificateFilled, SafetyCertificateOutlined, SettingOutlined } from "@ant-design/icons";
 import { UserCell } from "@/components/ui";
@@ -74,9 +74,8 @@ export default function MembersTab({
   下属可停用?: string[];
 }) {
   const router = useRouter();
-  const { modal } = App.useApp();
   // 就地提示（PR9：不弹顶部 message）
-  const [message, 提示条] = useSettingsNote();
+  const [就地, 提示条] = useSettingsNote();
   const [问后果, 后果框] = useConsequence();
   const b = useBusiness();
   const [open, setOpen] = useState(false);
@@ -89,59 +88,34 @@ export default function MembersTab({
   const 按业务角色 = users.some((u) => u.业务角色);
   const [改不管设置中, set改不管设置中] = useState<string | null>(null);
   /** 拨「系统管理员」：只有能管设置的系统管理员（服务端 org-actions 设系统管理员 再拦、不能关掉最后一位） */
-  const on系统管理员 = async (r: Row, on: boolean, 确认 = false) => {
+  const on系统管理员 = async (r: Row, on: boolean) => {
     if (改不管设置中) return;
-    // 设 / 撤系统管理员（原型 st.member，P-界面-40「设管理员」= 后果框）：原来小旗点一下立即提交，只有关自己的才问
-    if (!确认) {
-      const 是我 = r.id === me.id;
-      const 成了 = await 问后果({
-        题: on ? `把「${r.name}」设为系统管理员` : 是我 ? "你将不再是系统管理员" : `「${r.name}」不再是系统管理员`,
-        后果: on
-          ? [
-              { 标: "全部权限", 级: "警", 话: "看和改全部客户、项目；后台设置、成员管理、导入导出、切换视角、回收站彻底删除" },
-              { 标: "同时", 话: "还是本业务线的条线总管理" },
-              { 标: "能改回", 话: "随时可以再撤掉" },
-            ]
-          : [
-              { 标: "收回", 级: "警", 话: `${是我 ? "你" : r.name}只管本业务线，进不了后台设置` },
-              ...(是我 ? [{ 标: "自己", 级: "危" as const, 话: "撤掉自己以后要别的系统管理员才能给你加回来" }] : []),
-            ],
-        是: on ? "设为系统管理员" : "撤掉",
-        危: !on,
-        做: async () => {
-          const res = await 设系统管理员(r.id, on, true);
-          if (res.ok) {
-            if (res.提示) message.warning(res.提示);
-            router.refresh();
-          }
-          return res;
-        },
-      });
-      void 成了;
-      return;
-    }
-    set改不管设置中(r.id);
-    try {
-      const res = await 设系统管理员(r.id, on, 确认);
-      // 关自己的：服务端回 要确认，先弹二次确认，确认了再来一次
-      if (!res.ok && "要确认" in res && res.要确认) {
-        modal.confirm({
-          title: "你将不再是系统管理员",
-          content: res.要确认,
-          okText: "确定关掉",
-          okButtonProps: { danger: true },
-          cancelText: "先不关",
-          onOk: () => { void on系统管理员(r, on, true); },
-        });
-      } else if (!res.ok) message.error(res.error ?? "没改成，请稍后再试");
-      else {
-        if (res.提示) message.warning(res.提示);
-        else message.success(on ? `${r.name} 设为系统管理员，同时还是本线条线总管理` : `${r.name} 不再是系统管理员，只管本业务线`);
+    // 设 / 撤系统管理员（原型 st.member，P-界面-40「设管理员」= 后果框）：原来小旗点一下立即提交，只有关自己的才问；
+    // 现在一律先出后果框，确认了带 确认=true 交给服务端（关自己的那句后果写在框里，不再二次弹 modal.confirm）
+    const 是我 = r.id === me.id;
+    await 问后果({
+      题: on ? `把「${r.name}」设为系统管理员` : 是我 ? "你将不再是系统管理员" : `「${r.name}」不再是系统管理员`,
+      后果: on
+        ? [
+            { 标: "全部权限", 级: "警", 话: "看和改全部客户、项目；后台设置、成员管理、导入导出、切换视角、回收站彻底删除" },
+            { 标: "同时", 话: "还是本业务线的条线总管理" },
+            { 标: "能改回", 话: "随时可以再撤掉" },
+          ]
+        : [
+            { 标: "收回", 级: "警", 话: `${是我 ? "你" : r.name}只管本业务线，进不了后台设置` },
+            ...(是我 ? [{ 标: "自己", 级: "危" as const, 话: "撤掉自己以后要别的系统管理员才能给你加回来" }] : []),
+          ],
+      是: on ? "设为系统管理员" : "撤掉",
+      危: !on,
+      做: async () => {
+        const res = await 设系统管理员(r.id, on, true);
+        if (!res.ok) return { ok: false, error: res.error ?? "没改成，请稍后再试" };
+        if (res.提示) 就地.warning(res.提示);
+        else 就地.success(on ? `${r.name} 设为系统管理员，同时还是本线条线总管理` : `${r.name} 不再是系统管理员，只管本业务线`);
         router.refresh();
-      }
-    } finally {
-      set改不管设置中(null);
-    }
+        return { ok: true };
+      },
+    });
   };
   /** 勾 / 取消「不管设置」：只有能改组织架构的总管理（服务端 org-actions 设不管设置 再拦一遍、保至少一位能管设置的总管理） */
   const on不管设置 = async (r: Row, on: boolean) => {
@@ -149,9 +123,9 @@ export default function MembersTab({
     set改不管设置中(r.id);
     try {
       const res = await 设不管设置(r.id, on);
-      if (!res.ok) message.error(res.error ?? "没改成，请稍后再试");
+      if (!res.ok) 就地.error(res.error ?? "没改成，请稍后再试");
       else {
-        message.success(on ? `${r.name} 不再管设置` : `${r.name} 又能管设置了`);
+        就地.success(on ? `${r.name} 不再管设置` : `${r.name} 又能管设置了`);
         router.refresh();
       }
     } finally {
@@ -186,13 +160,13 @@ export default function MembersTab({
 
     const res = await 提交();
     if (res.ok) {
-      message.success(editing ? "已保存" : "成员已创建");
+      就地.success(editing ? "已保存" : "成员已创建");
       setOpen(false);
       router.refresh();
       return;
     }
     if ("error" in res) {
-      message.error(res.error);
+      就地.error(res.error);
       return;
     }
 
@@ -201,38 +175,28 @@ export default function MembersTab({
      * 但要让他知道系统里已经有一个，避免把「张三」错建成第二条而不自知。
      */
     const 同名 = res.duplicateName;
-    modal.confirm({
-      title: "已有同名成员",
-      content: (
-        <>
-          <div>
-            系统里已有一位<b>{同名.name}</b>
-，{用邮箱登录 ? "登录邮箱" : "登录用户名"} <b>{同名.email}</b>。
-          </div>
-          <div style={{ marginTop: 8 }}>
-            如果这是另一个人，可以继续创建，各处负责人下拉会自动带上登录名区分；
-            如果是同一个人，请点取消。
-          </div>
-        </>
-      ),
-      okText: "确实是另一个人，继续创建",
-      cancelText: "取消",
-      async onOk() {
+    // 同名提醒（原型 g.confirm3 / P-界面-40）：后果框写清是谁、怎么区分；确认了带 force 再交一次，没成原因写在框里
+    void 问后果({
+      题: "已有同名成员",
+      危: false,
+      后果: [
+        { 标: "已有", 级: "警", 话: <>系统里已有一位<b>{同名.name}</b>，{用邮箱登录 ? "登录邮箱" : "登录用户名"} <b>{同名.email}</b></> },
+        { 标: "另一个人", 话: "可以继续创建，各处负责人下拉会自动带上登录名区分" },
+        { 标: "同一个人", 话: "点取消，不要再建一条" },
+      ],
+      是: "确实是另一个人，继续创建",
+      做: async () => {
         const again = await 提交(true);
-        if (again.ok) {
-          message.success(editing ? "已保存" : "成员已创建");
-          setOpen(false);
-          router.refresh();
-        } else if ("error" in again) {
-          message.error(again.error);
-        }
+        if (!again.ok) return { ok: false, error: "error" in again ? again.error : "没保存上，请稍后再试" };
+        就地.success(editing ? "已保存" : "成员已创建");
+        setOpen(false);
+        router.refresh();
+        return { ok: true };
       },
     });
   }
 
   const [清点中, set清点中] = useState<string | null>(null);
-  // 停用对话框：选了接手人才能点确认（11-03 C4-3），选的时候回头改确认按钮
-  const 停用框 = useRef<ReturnType<typeof modal.confirm> | null>(null);
   // 接手人同负责人候选（11-03 完成度 C3-1，lib/enterprise/permissions.ts 能当负责人）：企业版要有业务角色、不是只读管理员
   const 能接手 = (u: Row) => u.active && (!企业版 || (!!u.业务角色?.length && (!u.业务角色.includes("admin") || u.业务角色.includes("director"))));
   const 能停 = (r: Row) => r.active && (isAdmin ? r.id !== me.id : 下属可停用.includes(r.id));
@@ -249,7 +213,7 @@ export default function MembersTab({
     set清点中(null);
     const 坏 = 各.find((x) => !x?.ok);
     if (坏 !== undefined) {
-      message.error(坏 && "error" in 坏 ? 坏.error : "清点没成功，刷新再试");
+      就地.error(坏 && "error" in 坏 ? 坏.error : "清点没成功，刷新再试");
       return;
     }
     const 合 = 各.reduce((和, x) => (x && x.ok ? { 客户: 和.客户 + x.原地.客户, 项目: 和.项目 + x.原地.项目 } : 和), { 客户: 0, 项目: 0 });
@@ -270,8 +234,8 @@ export default function MembersTab({
         if (!res.ok) return res;
         if (res.失败.length) {
           const 名 = (id: string) => users.find((u) => u.id === id)?.name ?? id;
-          message.warning(`停用了 ${res.停了} 位；${res.失败.map((f) => `「${名(f.id)}」${f.error}`).join("；")}`);
-        } else message.success(`已停用 ${res.停了} 位成员，名下的到「项目 → 离职交接」里交给接手人`);
+          就地.warning(`停用了 ${res.停了} 位；${res.失败.map((f) => `「${名(f.id)}」${f.error}`).join("；")}`);
+        } else 就地.success(`已停用 ${res.停了} 位成员，名下的到「项目 → 离职交接」里交给接手人`);
         set勾了([]);
         router.refresh();
         return { ok: true };
@@ -286,7 +250,7 @@ export default function MembersTab({
       const 清 = await 停用清点(r.id).catch(() => null);
       set清点中(null);
       if (!清?.ok) {
-        message.error(清 && "error" in 清 ? 清.error : "清点没成功，刷新再试");
+        就地.error(清 && "error" in 清 ? 清.error : "清点没成功，刷新再试");
         return;
       }
       void 问后果({
@@ -302,7 +266,7 @@ export default function MembersTab({
         做: async () => {
           const res = await deactivateUser(r.id, "");
           if (res.ok) {
-            message.success(`已停用「${r.name}」，名下的到「项目 → 离职交接」里交给接手人`);
+            就地.success(`已停用「${r.name}」，名下的到「项目 → 离职交接」里交给接手人`);
             router.refresh();
           }
           return res;
@@ -312,44 +276,39 @@ export default function MembersTab({
     }
     const others = users.filter((u) => 能接手(u) && u.id !== r.id);
     if (!others.length) {
-      message.error("没有可接手的成员");
+      就地.error("没有可接手的成员");
       return;
     }
-    // 接手人默认空、必须选（11-03 C4-3）
+    // 接手人默认空、必须选（11-03 C4-3）：停用 = 后果框（P-界面-40），接手人在框里选；没选点确认，原因写在框里、框不关
     let target = "";
-    const 可确认 = () => 停用框.current?.update({ okButtonProps: { danger: true, disabled: !target } });
-    停用框.current = modal.confirm({
-      title: `停用成员「${r.name}」`,
-      width: 480,
-      content: (
-        <div style={{ marginTop: 12 }}>
-          {/* 说清转交的是往后要跟的活、历史业绩不动（排查 B2）。原来只写「名下 N 个客户、N 个商机」，叫法还写死成「客户」 */}
-          <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginBottom: 8 }}>
-            {r.customerCount} 位{b.customer}，连同进行中的商机、没做完的计划和待办、线索、渠道，一起转交给：
-          </Typography.Paragraph>
-          <Select
-            showSearch
-            optionFilterProp="label"
-            placeholder="选接手人"
-            style={{ width: "100%" }}
-            onChange={(v: string) => { target = v; 可确认(); }}
-            options={others.map((u) => ({ value: u.id, label: u.name }))}
-          />
-          <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginTop: 8, marginBottom: 0 }}>
-            {外贸订单(b) ? "已经下的订单、转了订单和丢单的商机" : "已经签下的业绩、赢单和丢单的商机"}，还算在「{r.name}」头上。
-          </Typography.Paragraph>
-        </div>
+    void 问后果({
+      题: `停用成员「${r.name}」`,
+      宽: 480,
+      后果: [
+        { 标: "登不上", 级: "危", 话: `停用后「${r.name}」登不上，也不再出现在负责人、分配下拉里` },
+        // 说清转交的是往后要跟的活、历史业绩不动（排查 B2）
+        { 标: "转交", 级: "警", 话: `${r.customerCount} 位${b.customer}，连同进行中的商机、没做完的计划和待办、线索、渠道，一起转交给下面选的人` },
+        { 标: "不动", 话: `${外贸订单(b) ? "已经下的订单、转了订单和丢单的商机" : "已经签下的业绩、赢单和丢单的商机"}，还算在「${r.name}」头上` },
+      ],
+      补充: (
+        <Select
+          showSearch
+          optionFilterProp="label"
+          placeholder="选接手人"
+          aria-label="接手人"
+          style={{ width: "100%" }}
+          onChange={(v: string) => { target = v; }}
+          options={others.map((u) => ({ value: u.id, label: u.name }))}
+        />
       ),
-      okText: "确认停用",
-      okButtonProps: { danger: true, disabled: true },
-      cancelText: "取消",
-      async onOk() {
-        if (!target) { message.error("先选接手人"); return; }
+      是: "确认停用",
+      做: async () => {
+        if (!target) return { ok: false, error: "先选接手人" };
         const res = await deactivateUser(r.id, target);
-        if (res.ok) {
-          message.success("已停用并转交");
-          router.refresh();
-        } else message.error(res.error);
+        if (!res.ok) return res;
+        就地.success("已停用并转交");
+        router.refresh();
+        return { ok: true };
       },
     });
   }
@@ -518,11 +477,11 @@ export default function MembersTab({
                   set恢复中(r.id);
                   try {
                     const result = await reactivateUser(r.id);
-                    if (!result.ok) { message.error(result.error); return; }
-                    message.success("已恢复");
+                    if (!result.ok) { 就地.error(result.error); return; }
+                    就地.success("已恢复");
                     router.refresh();
                   } catch {
-                    message.error("恢复失败，请稍后重试");
+                    就地.error("恢复失败，请稍后重试");
                   } finally {
                     set恢复中(null);
                   }
@@ -691,7 +650,7 @@ export default function MembersTab({
                   set解绑中(true);
                   try {
                     const r = await 解绑飞书身份(editing.id);
-                    if (!r.ok) { message.error(r.error); return r; }
+                    if (!r.ok) { 就地.error(r.error); return r; }
                     set刚解绑(editing.id);
                     router.refresh();
                     return r;

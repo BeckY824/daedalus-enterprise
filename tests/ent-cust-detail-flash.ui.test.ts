@@ -75,3 +75,18 @@ it("减弱动态：只淡（过渡、动画都只碰透明度，不缩放不位�
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
+
+it("页内落地（客户页「新增项目」建好换到 ?project=新项目&landed=1，原型 cr.submit）：组件不重挂也亮那颗；切页签（不带 landed）不亮", async () => {
+  const { page, errors } = await 开("", { 个数: 2, 当前: "p1" });
+  try {
+    expect(await page.locator(".cd-pj-flash").count()).toBe(0);
+    await page.evaluate(() => { history.pushState(null, "", "/customers/c1?project=p2&landed=1"); (window as unknown as { __render: (x: object) => void }).__render({ 个数: 2, 当前: "p2" }); });
+    await expect.poll(() => page.locator('[role=tab][href*="p2"]').getAttribute("class")).toContain("cd-pj-flash");
+    await page.waitForTimeout(2200);
+    expect(await page.locator(".cd-pj-flash").count()).toBe(0);
+    await page.evaluate(() => { history.pushState(null, "", "/customers/c1?project=p1"); (window as unknown as { __render: (x: object) => void }).__render({ 个数: 2, 当前: "p1" }); });
+    await page.waitForTimeout(300);
+    expect(await page.locator(".cd-pj-flash").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});

@@ -2,8 +2,10 @@
 
 import DatePicker from "@/components/BusinessDatePicker";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
-import { useState } from "react";
-import { Modal, Input, Segmented, Button, Space, App, Typography } from "antd";
+import { useRef, useState } from "react";
+import { Modal, Input, Segmented, Button, Space, Typography } from "antd";
+import SaveButton from "@/components/SaveButton";
+import { showUndo } from "@/components/UndoBar";
 import type { Dayjs } from "dayjs";
 import { dayjs } from "@/lib/utils";
 import { 跟进类型们, FOLLOW_TYPE_MAP } from "@/lib/constants";
@@ -65,7 +67,8 @@ export function 下次主题(内容: string): string {
 
 type 下次 = "none" | "3" | "7" | "pick";
 
-export type 记完了 = { kind: "saved"; next: string | null; 跟进id: string; 下次计划id: string | null };
+/** 提示：这笔不算有效沟通之类的轻提示（C12），框里已就地说过一遍；页面想留着说就接它 */
+export type 记完了 = { kind: "saved"; next: string | null; 跟进id: string; 下次计划id: string | null; 提示?: string };
 
 /**
  * 「保存并完成」之后的提示，带「撤销」（2026-10-17 PR26 手测：「跳过，直接完成」有撤销，这边没有，
@@ -73,34 +76,20 @@ export type 记完了 = { kind: "saved"; next: string | null; 跟进id: string; 
  * 记录页和计划页共用；撤销成了由页面自己刷新
  */
 export function 提示记完了(
-  message: ReturnType<typeof App.useApp>["message"],
   plan: Pick<要完成的计划, "id" | "subject" | "customerId">,
   r: 记完了,
   撤销完了: () => void,
 ) {
-  const key = `plan-saved-${plan.id}`;
-  message.success({
-    key,
-    duration: 6,
-    content: (
-      <span>
-        {r.next ? `已记一笔，「${plan.subject}」完成；下次 ${dayjs(r.next).format("M 月 D 日")}` : `已记一笔，「${plan.subject}」完成`}
-        <Button
-          type="link"
-          size="small"
-          onClick={async () => {
-            message.destroy(key);
-            const u = await 撤销记一笔({ customerId: plan.customerId, 跟进id: r.跟进id, 计划id: plan.id, 下次计划id: r.下次计划id })
-              .catch(() => ({ ok: false as const, error: "没撤销成，请稍后重试" }));
-            if (!u.ok) return void message.error(u.error);
-            message.success(`「${plan.subject}」已改回未完成，刚记的那笔已删掉`);
-            撤销完了();
-          }}
-        >
-          撤销
-        </Button>
-      </span>
-    ),
+  // 底部撤销条（原型 g.undo），不弹顶部提示；撤销没成由撤销条自己写「撤销不了：原因」
+  showUndo({
+    话: r.next ? `已记一笔，「${plan.subject}」完成；下次 ${dayjs(r.next).format("M 月 D 日")}` : `已记一笔，「${plan.subject}」完成`,
+    毫秒: 6000,
+    撤销: async () => {
+      const u = await 撤销记一笔({ customerId: plan.customerId, 跟进id: r.跟进id, 计划id: plan.id, 下次计划id: r.下次计划id })
+        .catch(() => ({ ok: false as const, error: "没撤销成，请稍后重试" }));
+      if (u.ok) 撤销完了();
+      return u;
+    },
   });
 }
 
@@ -124,7 +113,6 @@ export default function CompletePlanModal(p: 框参数) {
 function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要完成的计划 }) {
   const b = useBusiness();
   const 外贸 = 外贸精简(b);
-  const { message } = App.useApp();
   const [类型, set类型] = useState(() => 默认完成类型(plan.method, 外贸, plan.有WhatsApp));
   // 企业版沟通方式（10-31）：计划上写的正好是字典里的一种、又对得上类型就先选它
   const [方式, set方式] = useState<string | null>(() => 对得上的方式(类型, plan.method) ?? null);
@@ -138,8 +126,25 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
   const 下次日 = 下次 === "none" ? null : 下次 === "pick" ? 日子?.format("YYYY-MM-DD") ?? null : dayjs().add(Number(下次), "day").format("YYYY-MM-DD");
   const 可存 = hasVisibleText(字) && (下次 !== "pick" || !!日子);
 
-  async function 保存() {
-    if (忙 || !可存) return;
+  /** 这笔不算有效沟通（C12）：框里就地说一句（role=status），对勾放完再关框 */
+  const [短话, set短话] = useState<string | null>(null);
+  /** 存好了、等对勾放完再交给页面的那一下 */
+  const 存好后 = useRef<(() => void) | null>(null);
+  const 保存键 = useRef<HTMLSpanElement>(null);
+  function 交出去() {
+    const f = 存好后.current;
+    存好后.current = null;
+    f?.();
+  }
+  /** 已经存上了、在等对勾放完：「跳过」不能再点（不然又完成一次） */
+  const [已存, set已存] = useState(false);
+
+  /**
+   * 保存并完成（原型 g.save）：转圈 → 对勾都在键里；没成原因浮在键上方，框留着可以再点。不弹顶部提示
+   */
+  async function 保存(): Promise<{ ok: boolean; error?: string }> {
+    if (忙) return { ok: false, error: "正在保存，请稍等" };
+    if (!可存) return { ok: false, error: "先写一句这次聊了什么" };
     set忙(true);
     try {
       const 内容 = 字.trim();
@@ -157,18 +162,20 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
           完成计划: plan.id,
         },
       }).catch(() => ({ ok: false as const, error: "没保存上，请稍后重试" }));
-      if (!r.ok) return void message.error("error" in r ? r.error : "没保存上，请稍后重试");
+      if (!r.ok) return { ok: false, error: "error" in r && r.error ? r.error : "没保存上，请稍后重试" };
       // 客户三态（C12）：这条不算有效沟通时给一句轻提示（照常保存，不拦）
-      const 短 = 短沟通话of(r);
-      if (短) message.info(短, 5);
-      onDone({ kind: "saved", next: 下次日, 跟进id: r.id, 下次计划id: r.下次计划id ?? null });
+      const 短 = 短沟通话of(r) ?? undefined;
+      if (短) set短话(短);
+      set已存(true);
+      存好后.current = () => onDone({ kind: "saved", next: 下次日, 跟进id: r.id, 下次计划id: r.下次计划id ?? null, ...(短 ? { 提示: 短 } : {}) });
+      return { ok: true };
     } finally {
       set忙(false);
     }
   }
 
   function 跳过() {
-    if (忙) return;
+    if (忙 || 已存) return;
     onDone({ kind: "skip" });
   }
 
@@ -177,16 +184,20 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
       open
       title="完成这条计划"
       {...守.弹窗}
+      // 存上了、对勾还在放：Esc / X 当「存好了」，照样交给页面（撤销条、刷新）
+      onCancel={() => (存好后.current ? 交出去() : 守.要关())}
       destroyOnHidden
       width={480}
       footer={
         <Space>
-          <Button onClick={跳过} disabled={忙}>
+          <Button onClick={跳过} disabled={忙 || 已存}>
             跳过，直接完成
           </Button>
-          <Button type="primary" onClick={() => void 保存()} loading={忙} disabled={!可存}>
-            保存并完成
-          </Button>
+          <span ref={保存键}>
+            <SaveButton 做={保存} disabled={!可存} 已保存="已完成" 成了={交出去}>
+              保存并完成
+            </SaveButton>
+          </span>
         </Space>
       }
     >
@@ -214,7 +225,7 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
               maxLength={2000}
               value={字}
               onChange={(e) => set字(e.target.value)}
-              onPressEnter={(e) => { if (e.metaKey || e.ctrlKey) void 保存(); }}
+              onPressEnter={(e) => { if (e.metaKey || e.ctrlKey) 保存键.current?.querySelector("button")?.click(); }}
               placeholder="聊了什么、结果怎样，比如：客户要了新报价，下周回"
             />
           </div>
@@ -238,6 +249,7 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
               )}
             </Space>
           </div>
+          {短话 && <div role="status" className="rec-plan-said">{短话}</div>}
           {下次日 && <div className="done-plan-tip">{`会排一条 ${dayjs(下次日).format("M 月 D 日")}的计划：${下次主题(字)}`}</div>}
         </div>
       )}

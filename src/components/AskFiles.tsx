@@ -2,7 +2,6 @@
 
 import { useImperativeHandle, useRef, useState } from "react";
 import { PaperClipOutlined, CloseOutlined } from "@ant-design/icons";
-import { App } from "antd";
 
 /**
  * 问一句的时候带上一个文件。
@@ -54,9 +53,10 @@ export default function AskFiles({
   藏键?: boolean;
   开?: React.Ref<{ 打开: () => void }>;
 }) {
-  const { message } = App.useApp();
   const input = useRef<HTMLInputElement>(null);
   const [读取中, set读取中] = useState(false);
+  /** 选的文件读不了（太大、不是文本）：原因作为一枚红色小签摆在文件签那一排，点 ✕ 收；不弹顶部提示（原型 g.notice） */
+  const [错, set错] = useState("");
   useImperativeHandle(开, () => ({ 打开: () => { if (!disabled && !读取中) input.current?.click(); } }), [disabled, 读取中]);
 
   async function 选好了(list: FileList | null) {
@@ -64,8 +64,11 @@ export default function AskFiles({
     set读取中(true);
     try {
       const r = await 读成附件(list[0], files);
-      if ("错" in r) message.error(r.错);
-      else onChange(r.files);
+      if ("错" in r) set错(r.错);
+      else {
+        set错("");
+        onChange(r.files);
+      }
     } finally {
       set读取中(false);
       if (input.current) input.current.value = "";
@@ -92,6 +95,14 @@ export default function AskFiles({
         <PaperClipOutlined />
         {字 && <span>{字}</span>}
       </button>}
+      {错 && (
+        <span className="cli-file cli-file-bad" role="alert">
+          <span className="cli-file-n" title={错}>{错}</span>
+          <button type="button" aria-label="知道了" onClick={() => set错("")}>
+            <CloseOutlined />
+          </button>
+        </span>
+      )}
       {files.map((f) => (
         <span key={f.name} className="cli-file" title={`${f.name} · ${Math.round(f.size / 1024) || 1} KB · 只随这一问发出，不会存下来`}>
           <span className="cli-file-n">{f.name}</span>

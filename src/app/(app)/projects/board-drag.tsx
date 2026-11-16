@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type RefObject, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { App, Button, Modal } from "antd";
+import { Button, Modal } from "antd";
 import { showUndo } from "@/components/UndoBar";
 import { 少动 } from "@/lib/reduced-motion";
 import type { 看板一列, 看板卡片 } from "@/lib/project/board";
@@ -49,7 +49,6 @@ export function useBoardDrag({ 看板, 开, 名of, 去补齐, 刷新, 框 }: {
   去补齐: (r: 看板卡片) => void;
   刷新: () => void;
 }) {
-  const { message } = App.useApp();
   // 乐观落位：id → 列键。服务端给了新的一屏就作废（推成了的那一屏里它本来就在新列）
   const [搬原, set搬] = useState<{ 源: 看板一列[]; 表: Record<string, string> }>({ 源: 看板, 表: {} });
   const 搬 = 搬原.源 === 看板 ? 搬原.表 : {};
@@ -64,6 +63,9 @@ export function useBoardDrag({ 看板, 开, 名of, 去补齐, 刷新, 框 }: {
   const [弹回, set弹回] = useState<string | null>(null);
   const [补, set补] = useState<补框 | null>(null);
   const [播报, set播报] = useState("");
+  /** 卡片弹回的原因：一张小卡浮在那张卡旁边（同还差小框的样子），不弹顶部提示；点一下或 6 秒后收 */
+  const [弹回话, set弹回话] = useState<{ 话: string; 位: CSSProperties; 次: number } | null>(null);
+  const 弹回次 = useRef(0);
   const 拖 = useRef<拖着 | null>(null);
   const 刚拖过 = useRef(false);
   const 列们 = useRef(new Map<string, HTMLElement>());
@@ -78,7 +80,11 @@ export function useBoardDrag({ 看板, 开, 名of, 去补齐, 刷新, 框 }: {
     set弹回(id);
     window.setTimeout(() => set弹回((x) => (x === id ? null : x)), 400);
     if (话) {
-      message.warning(话, 5);
+      const el = document.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(id)}"]`);
+      const 锚 = el?.getBoundingClientRect() ?? new DOMRect(innerWidth / 2, innerHeight / 3, 0, 0);
+      const 次 = ++弹回次.current;
+      set弹回话({ 话, 位: 补框位置(锚), 次 });
+      window.setTimeout(() => set弹回话((x) => (x?.次 === 次 ? null : x)), 6000);
       说(话);
     }
   };
@@ -251,16 +257,17 @@ export function useBoardDrag({ 看板, 开, 名of, 去补齐, 刷新, 框 }: {
     if (x?.ok) set补((b) => (b && b.id === id ? { ...b, 料: x } : b));
     刷新();
   };
-  const 补框位置 = (锚: DOMRect): CSSProperties => {
-    const 宽 = 280;
-    const 右边放得下 = 锚.right + 8 + 宽 <= innerWidth - 8;
-    const left = 右边放得下 ? 锚.right + 8 : Math.max(8, 锚.left - 8 - 宽);
-    return { left, top: Math.max(8, Math.min(锚.top, innerHeight - 220)), width: 宽 };
-  };
   const 附件 = (
     <>
       <span id="board-drag-hint" hidden>拖到别的进程列改进程；也可以按 Alt 加右方向键推到下一个进程，Alt 加左方向键退回上一个</span>
       <span role="status" aria-live="polite" className="sr-only">{播报}</span>
+      {弹回话 && (
+        <div className="board-gate" role="alert" style={弹回话.位}>
+          <button type="button" className="board-gate-x" aria-label="收起" onClick={() => set弹回话(null)}>×</button>
+          <div className="board-gate-t">没推过去</div>
+          <div>{弹回话.话}</div>
+        </div>
+      )}
       {补?.料 && (
         <Modal open title={`推到「${补.到.名}」前还差 ${补.还差.length} 项`} footer={null} width={560} destroyOnHidden
           onCancel={关补} className="board-fill">
@@ -293,6 +300,14 @@ export function useBoardDrag({ 看板, 开, 名of, 去补齐, 刷新, 框 }: {
   );
 
   return { 列里, 卡片属性, 列属性, 附件 };
+}
+
+/** 还差小框、弹回原因小卡贴在卡片旁边：右边放得下放右边，不然放左边；上下不出视口 */
+function 补框位置(锚: DOMRect): CSSProperties {
+  const 宽 = 280;
+  const 右边放得下 = 锚.right + 8 + 宽 <= innerWidth - 8;
+  const left = 右边放得下 ? 锚.right + 8 : Math.max(8, 锚.left - 8 - 宽);
+  return { left, top: Math.max(8, Math.min(锚.top, innerHeight - 220)), width: 宽 };
 }
 
 function BoardGate({ 框: x, style, 关, 去补齐, 留空推 }: { 框: 补框; style: CSSProperties; 关: () => void; 去补齐: () => void; 留空推?: () => void }) {

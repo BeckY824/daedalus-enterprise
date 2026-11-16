@@ -13,8 +13,10 @@ import { 金额 } from "@/lib/currency";
 import { 金额格式 } from "@/lib/money-input";
 import { 两位, 低于底价, 分配问题, 更正问题, 更正原因上限, type 提成卡, type 分配 } from "@/lib/project/commission";
 import { 存项目底价, 存提成分配, 更正实际提成 } from "../commission-actions";
+import SaveButton from "@/components/SaveButton";
+import CountUp from "@/components/CountUp";
+import { 跑给按钮, 框里原因, type 跑法 } from "./detail-note";
 
-type 跑法 = (f: () => Promise<{ ok: boolean; error?: string }>, 成了?: string) => Promise<boolean>;
 
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "baseline", marginBottom: 8, minWidth: 0, flexWrap: "wrap" };
 const 键样: React.CSSProperties = { color: "var(--text-muted)", flex: "0 0 64px" };
@@ -39,7 +41,8 @@ export function ProjectCommissionCard({ projectId, t, 忙, 跑, 不摆改 = fals
         {底价能改 ? (
           <Space.Compact>
             <InputNumber<number> aria-label="项目底价" min={0} precision={2} formatter={金额格式} style={{ width: 160 }} placeholder="还没填" value={底价} onChange={(v) => set底价(v ?? null)} />
-            <Button disabled={忙 || 底价 === t.项目底价} onClick={() => void 跑(() => 存项目底价(projectId, 底价), "已存项目底价")}>保存</Button>
+            {/* 按钮内反馈（g.save）：转圈 → 已保存 ✓；没存上原因浮在按钮上方 */}
+            <SaveButton type="default" disabled={忙 || 底价 === t.项目底价} 做={() => 跑给按钮(跑, () => 存项目底价(projectId, 底价))}>保存</SaveButton>
           </Space.Compact>
         ) : (
           <span title={t.能填底价 && 固定了 ? "已经赢单，实际提成已固定，不能再改" : "项目底价由项目负责人填"}>{钱(t.实际?.项目底价 ?? t.项目底价)}</span>
@@ -102,23 +105,23 @@ export function SplitBar({ 段们, 组长名 = "组长" }: { 段们: { userId: s
 export function SplitModal({ projectId, t, onClose }: { projectId: string; t: 提成卡; /** 旧接口留着：保存改成就地反馈，不再经页面的 跑 弹提示 */ 跑?: 跑法; onClose: () => void }) {
   const router = useRouter();
   const [分, set分] = useState<分配>(() => ({ ...t.分配 }));
-  const [忙, set忙] = useState(false);
-  const [错, set错] = useState<string | null>(null);
   const 给出去 = 两位(Object.values(分).reduce((a, v) => a + Math.round((v || 0) * 100), 0) / 100);
   const 问题 = 分配问题(Object.fromEntries(Object.entries(分).filter(([, v]) => v != null)));
+  // 原型 dt.team：保存在按钮里转圈 →「已保存 ✓」放完再关框、卡上的分配条跟着变；没存上原因浮在按钮上方，框不关（SaveButton / g.save）
+  const 存 = async () => {
+    const r = await 存提成分配(projectId, 分).catch(() => ({ ok: false as const, error: "没存上，请稍后再试" }));
+    if (!r.ok) return { ok: false, error: r.error ?? "没存上，请稍后再试" };
+    router.refresh();
+  };
   return (
     <Modal
-      open title="改提成分配" okText="保存" cancelText="取消" onCancel={onClose}
-      okButtonProps={{ disabled: !!问题 || 忙, loading: 忙 }}
-      onOk={async () => {
-        set忙(true);
-        set错(null);
-        // 成了关框，卡上的分配条和每人金额跟着变；没成原因写在框里不关
-        const r = await 存提成分配(projectId, 分).catch(() => ({ ok: false as const, error: "没存上，请稍后再试" }));
-        set忙(false);
-        if (r.ok) { router.refresh(); onClose(); }
-        else set错(r.error ?? "没存上，请稍后再试");
-      }}
+      open title="改提成分配" onCancel={onClose}
+      footer={(
+        <Space>
+          <Button onClick={onClose}>取消</Button>
+          <SaveButton disabled={!!问题} 做={存} 成了={onClose}>保存</SaveButton>
+        </Space>
+      )}
     >
       {t.组员.length === 0 ? (
         <div style={淡}>项目组里还没有已进组的组员（邀请要对方同意了才算），提成全归组长</div>
@@ -133,9 +136,8 @@ export function SplitModal({ projectId, t, onClose }: { projectId: string; t: �
       )}
       {t.组员.length > 0 && <SplitBar 段们={t.组员.map((m) => ({ userId: m.userId, name: m.name, 比例: 分[m.userId] ?? 0 }))} />}
       <div style={{ marginTop: 8, color: 问题 ? "var(--danger-text)" : "var(--text-muted)" }} aria-live="polite">
-        {问题 ?? `分出去 ${给出去}%，组长留 ${两位(100 - 给出去)}%`}
+        {问题 ?? <>分出去 <b className="pd-split-num"><CountUp 值={给出去} 记号={`split-out:${projectId}`} 只滚变化 格式={(n) => String(两位(n))} /></b>%，组长留 <b className="pd-split-num"><CountUp 值={两位(100 - 给出去)} 记号={`split-lead:${projectId}`} 只滚变化 格式={(n) => String(两位(n))} /></b>%</>}
       </div>
-      {错 && <div role="alert" className="csq-err">{错}</div>}
     </Modal>
   );
 }
@@ -144,6 +146,8 @@ function FixModal({ projectId, 现在, 钱, 跑, onClose }: { projectId: string;
   const [金额, set金额] = useState<number | null>(现在);
   const [原因, set原因] = useState("");
   const [忙, set忙] = useState(false);
+  /** 没更正成的原因：写在框里、框不关（不弹顶部提示） */
+  const [错, set错] = useState<string | null>(null);
   const 问题 = 更正问题(金额, 原因);
   return (
     <Modal
@@ -151,7 +155,7 @@ function FixModal({ projectId, 现在, 钱, 跑, onClose }: { projectId: string;
       okButtonProps={{ disabled: !!问题 || 金额 === 现在 || 忙, loading: 忙 }}
       onOk={async () => {
         set忙(true);
-        const ok = await 跑(() => 更正实际提成(projectId, 金额, 原因), "已更正实际提成");
+        const ok = await 跑(() => 更正实际提成(projectId, 金额, 原因), "已更正实际提成", { 报错: set错 });
         set忙(false);
         if (ok) onClose();
       }}
@@ -162,6 +166,7 @@ function FixModal({ projectId, 现在, 钱, 跑, onClose }: { projectId: string;
         <InputNumber<number> aria-label="更正后的实际提成" min={0} precision={2} formatter={金额格式} style={{ width: 180 }} value={金额} onChange={(v) => set金额(v ?? null)} />
       </div>
       <Input.TextArea aria-label="更正原因" rows={3} maxLength={更正原因上限} showCount placeholder="更正原因（必填），比如：回款少了一笔，按实收重算" value={原因} onChange={(e) => set原因(e.target.value)} />
+      <框里原因 话={错} />
     </Modal>
   );
 }

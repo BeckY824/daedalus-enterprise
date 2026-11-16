@@ -9,7 +9,7 @@
  *   Windows 1024 / 1280 / 1366：超长项目名不横向撑出，「保存」点得中
  *   选了项目且项目能记（2026-10-30 P0-3）：多出「下一步计划」「下一步时间」，走项目详情同一个 记项目沟通Action；
  *     11-05 起不再问「客户明确回复了吗」，下一步计划必填；
- *     选下一步时间时预演回收日（选这天 → 回收日变为 MM-DD）
+ *     选下一步时间时预演回收日（选这天 → 回收日变为 MM-DD）；下一步时间默认 3 天后（P-界面-34），可改
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -98,8 +98,10 @@ it("X-144：服务端回「没挂上项目」——提示「没挂上项目，�
   try {
     await page.evaluate(() => Reflect.set(window, "__存回", { 没挂上项目: true }));
     expect((await 存(page)).projectId).toBe("p1");
-    await page.getByText("没挂上项目，已记为客户沟通").waitFor();
-    expect(await page.getByText("沟通已记下").count()).toBe(0);
+    // 框里就地一行 role=alert（不弹顶部提示），框停下来等人点「知道了」；保存键上不说「已记下」
+    await page.getByRole("alert").filter({ hasText: "没挂上项目，已记为客户沟通" }).waitFor();
+    await page.getByRole("button", { name: "知道了" }).waitFor();
+    expect(await page.getByRole("button", { name: "已记下" }).count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -108,7 +110,8 @@ it("挂上了（没回「没挂上项目」）：不出那句提示", async () =
   const { page } = await open({ 项目: "有" });
   try {
     await 存(page);
-    await page.getByText("沟通已记下").waitFor();
+    // 成了在保存键里说（原型 g.save）
+    await page.getByRole("button", { name: "已记下" }).waitFor();
     expect(await page.getByText("没挂上项目，已记为客户沟通").count()).toBe(0);
   } finally { await page.close(); }
 });
@@ -172,7 +175,8 @@ it("项目能记：不再问客户明确回复了吗，下一步计划必填，�
     expect(await page.evaluate(() => Reflect.get(window, "__项目存"))).toBeUndefined();
     await 格(page, "下一步计划").locator("input").fill("周五前发报价单");
     const 时 = page.locator(".ant-form-item").filter({ has: page.locator('label:text-is("下一步时间")') });
-    expect(await 时.innerText()).not.toContain("回收日变为");
+    // P-界面-34（原型 dt.follow）：下一步时间默认 3 天后，「3 天后」那颗亮着；改成明天照样能改
+    expect(await 时.getByRole("button", { name: "3 天后" }).getAttribute("class")).toContain("ant-btn-primary");
     await 时.getByRole("button", { name: /明\s*天/ }).click();
     const 明 = new Date(Date.parse(今天() + "T00:00:00Z") + 86400_000).toISOString().slice(0, 10);
     const 后 = new Date(Date.parse(今天() + "T00:00:00Z") + 2 * 86400_000).toISOString().slice(5, 10);

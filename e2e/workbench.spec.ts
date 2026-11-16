@@ -458,7 +458,8 @@ test("计划页「新建计划」就地弹框：挑人、说清另加不替换�
   await expect(弹窗).toBeHidden();
   await expect(page).toHaveURL(/\/follow-ups\/plans$/);
   await expect(page.getByRole("main").locator(".plan-row.row-fresh")).toContainText("约第三次沟通");
-  await expect(page.locator(".ant-message")).toContainText(`去${客.名}的记录页`);
+  // 底部撤销条（原型 g.undo）：撤销 = 删掉刚排的这条，另给一条去他记录页的路
+  await expect(page.locator(".undo-bar")).toContainText(`去${客.名}的记录页`);
   // 原来那条还在
   await expect(page.getByRole("main").locator(".plan-row").filter({ hasText: "发二版报价" }).filter({ hasText: 客.名 })).toHaveCount(1);
 
@@ -490,7 +491,9 @@ test("计划页「改」：框开着时这条在另一个窗口被改了，保�
 
   await 弹窗.getByLabel("跟进主题").fill("发三版报价");
   await 弹窗.getByRole("button", { name: /保\s*存/ }).click();
-  await expect(page.locator(".ant-message")).toContainText("又变过了");
+  // 11-15 起没存上的原因写在保存键上（SaveButton：键上「没保存上」+ 旁边浮签写原因，读屏同时播报），不弹顶部提示
+  await expect(page.getByRole("tooltip").filter({ hasText: "又变过了" })).toBeVisible();
+  await expect(page.locator(".ant-message-notice")).toHaveCount(0);
   await expect(弹窗).toBeVisible();
   expect((await p.followPlan.findUniqueOrThrow({ where: { id: 客.旧计划id } })).subject).toBe("发二版报价（含运费）");
 

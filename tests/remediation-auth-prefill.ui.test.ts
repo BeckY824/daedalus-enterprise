@@ -5,7 +5,7 @@ import {chromium,type Browser} from "playwright";
 let browser:Browser,bundle:string;
 const plugin:Plugin={name:"auth-prefill-boundaries",setup(b){
  const stub=(filter:RegExp,contents:string)=>{b.onResolve({filter},a=>({path:a.path,namespace:"stub",pluginData:contents}))};
- stub(/^\.\/actions$/,`const call=(name,...args)=>{window.__calls.push({name,args});return Promise.resolve({ok:true})};export const login=(...a)=>call('login',...a);export const 核对重置码=async()=>({对:true});export const 发送重置码=(...a)=>call('send',...a);export const 重置密码=(...a)=>call('reset',...a);`);
+ stub(/^\.\/actions$/,`const call=(name,...args)=>{window.__calls.push({name,args});return Promise.resolve(window.__坏?{ok:false,error:window.__坏}:{ok:true})};export const login=(...a)=>call('login',...a);export const 核对重置码=async()=>({对:true});export const 发送重置码=(...a)=>call('send',...a);export const 重置密码=(...a)=>call('reset',...a);`);
  stub(/^next\/navigation$/,`export const useRouter=()=>({refresh(){}});`);
  stub(/^\.\/after-login$/,"export const 登录之后=async()=>{};");stub(/AuthSide$/,"export default()=>null;");
  stub(/^next\/link$/,"import React from 'react';export default({href,children,onClick,...p})=>React.createElement('a',{href,...p,onClick:e=>{onClick?.(e);e.preventDefault();history.pushState({},'',href);window.__render(href==='/forgot'?'forgot':'login')}},children);");
@@ -41,3 +41,18 @@ it("浏览器禁止存储时仍可安全交接邮箱",async()=>{const page=await
  await page.evaluate(()=>{Storage.prototype.setItem=()=>{throw new DOMException("blocked","SecurityError")};Storage.prototype.getItem=()=>{throw new DOMException("blocked","SecurityError")}});
  await page.getByPlaceholder("邮箱",{exact:true}).fill("memory@example.test");await page.getByRole("link",{name:"忘记密码？"}).click();await expect.poll(()=>page.getByPlaceholder("注册时用的邮箱").inputValue()).toBe("memory@example.test");expect(await page.evaluate(()=>Reflect.get(window,"__calls"))).toEqual([]);
  }finally{await page.close()}});
+it("登录失败：错写在密码格下面，表单不横向抖（原型 st.login 去掉了抖动，平时也不动）",async()=>{const page=await open();try{
+ await page.emulateMedia({reducedMotion:"no-preference"});
+ // 换了动态偏好重新挂一次（useReducedMotion 挂上时读）
+ await page.evaluate(()=>{(Reflect.get(window,"__render") as (w:string)=>void)("nothing")});await page.evaluate(()=>{(Reflect.get(window,"__render") as (w:string)=>void)("login")});await page.locator("form").waitFor();
+ await page.evaluate(()=>{Reflect.set(window,"__坏","邮箱或密码不对");Reflect.set(window,"__移",[]);const 表=document.querySelector("form")!;const 量=(n:number)=>{(Reflect.get(window,"__移") as string[]).push(getComputedStyle(表).transform+"|"+Math.round(表.getBoundingClientRect().left));if(n>0)requestAnimationFrame(()=>量(n-1))};Reflect.set(window,"__量",()=>量(40))});
+ const 起=await page.evaluate(()=>Math.round(document.querySelector("form")!.getBoundingClientRect().left));
+ await page.getByPlaceholder("邮箱",{exact:true}).fill("qa@example.test");await page.locator('input[autocomplete="current-password"]').fill("wrong");
+ await page.evaluate(()=>(Reflect.get(window,"__量") as ()=>void)());
+ await page.locator('input[autocomplete="current-password"]').press("Enter");
+ await page.getByRole("alert").filter({hasText:"邮箱或密码不对"}).waitFor();
+ await page.waitForTimeout(500);
+ const 移=await page.evaluate(()=>Reflect.get(window,"__移") as string[]);
+ expect(new Set(移)).toEqual(new Set([`none|${起}`]));
+ expect(await page.locator('input[autocomplete="current-password"]').getAttribute("aria-describedby")).toBe("auth-pw-err");
+}finally{await page.close()}});

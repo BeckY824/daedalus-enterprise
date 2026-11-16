@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { App, Button, Table, Tag, Typography } from "antd";
+import { Button, Table, Tag, Typography } from "antd";
 import { smartTime } from "@/lib/utils";
 import { useBusiness } from "@/lib/business-client";
 import { 回收站列表动作, 恢复回收站, 彻底删除回收站 } from "./trash-actions";
 import { 撤回验证Action } from "@/app/(app)/projects/actions";
 import type { 回收站条目 } from "@/lib/enterprise/soft-delete";
+import { useConsequence } from "@/components/ConsequenceDialog";
+import { useSettingsNote } from "./InlineNote";
 
 /**
  * 设置 → 回收站（企业版，P9 2026-10-29）：近 30 天删的客户、项目、联系人、沟通记录。
@@ -15,7 +17,9 @@ import type { 回收站条目 } from "@/lib/enterprise/soft-delete";
  * 宽度：设置正文 1024 宽时 494、开着 AI 栏时 370 上下，只给时间、按钮两列定宽（合计 196），名称列分剩下的
  */
 export default function TrashTab() {
-  const { message, modal } = App.useApp();
+  // 不弹顶部提示（原型 g.save / g.notice）：成没成写在页签底部的就地小条；两处确认换后果框（P-界面-40）
+  const [就地, 提示条] = useSettingsNote();
+  const [问后果, 后果框] = useConsequence();
   const b = useBusiness();
   const [行, set行] = useState<回收站条目[] | null>(null);
   const [能真删, set能真删] = useState(false);
@@ -39,14 +43,19 @@ export default function TrashTab() {
 
   /** 项目恢复要换负责人、线索在验证中（X-77）：问一句，撤回验证再恢复（撤回只有提交验证的人和系统管理员能做，后台再核） */
   function 撤了再恢(r: 回收站条目, 原因: string) {
-    modal.confirm({
-      title: "撤回验证再恢复？",
-      content: `${原因}。撤回后线索回到提交验证前（暂未判定），留一行痕。`,
-      okText: "撤回验证并恢复",
-      onOk: async () => {
+    void 问后果({
+      题: "撤回验证再恢复？",
+      危: false,
+      后果: [
+        { 标: "验证中", 级: "警", 话: 原因 },
+        { 标: "之后", 话: "撤回后线索回到提交验证前（暂未判定），留一行痕" },
+      ],
+      是: "撤回验证并恢复",
+      做: async () => {
         const w = await 撤回验证Action(r.id).catch(() => ({ ok: false as const, error: "撤回没能完成，请重试" }));
-        if (!w.ok) { message.error(w.error); return; }
-        await 恢(r);
+        if (!w.ok) return w;
+        void 恢(r);
+        return { ok: true };
       },
     });
   }
@@ -56,8 +65,8 @@ export default function TrashTab() {
     try {
       const x = await 恢复回收站(r.表, r.id).catch(() => ({ ok: false as const, error: "恢复没能完成，请重试" }));
       if (!x.ok && r.表 === "Project" && x.error.includes("先撤回验证")) return 撤了再恢(r, x.error);
-      if (!x.ok) return message.error(x.error);
-      message.success(`已恢复${叫(r.表)}「${r.名称}」${x.连带 ? `，连同 ${x.连带} 条一起` : ""}`);
+      if (!x.ok) return void 就地.error(x.error);
+      就地.success(`已恢复${叫(r.表)}「${r.名称}」${x.连带 ? `，连同 ${x.连带} 条一起` : ""}`);
       await 拉();
     } finally {
       set忙(null);
@@ -71,25 +80,22 @@ export default function TrashTab() {
     const 单删话 = 单删的.length
       ? `另外单独删的${单删的.slice(0, 3).map((x) => `${叫(x.表)}「${x.名称}」`).join("、")}${单删的.length > 3 ? ` 等 ${单删的.length} 条` : ""}也会一起彻底删掉，不能再恢复。`
       : "";
-    modal.confirm({
-      title: `彻底删除${叫(r.表)}「${r.名称}」？`,
-      content: (
-        <>
-          <div>删了就找不回来了{连 ? `，${连}一起删掉` : ""}。</div>
-          {单删话 && <div>{单删话}</div>}
-          <div style={{ color: "var(--text-muted)" }}>不急的话放着就好，30 天到了会自动清掉。</div>
-        </>
-      ),
-      okText: "彻底删除",
-      okButtonProps: { danger: true },
-      cancelText: "不了",
-      onOk: async () => {
+    void 问后果({
+      题: `彻底删除${叫(r.表)}「${r.名称}」？`,
+      后果: [
+        { 标: "找不回", 级: "危", 话: `删了就找不回来了${连 ? `，${连}一起删掉` : ""}` },
+        ...(单删话 ? [{ 标: "一起删", 级: "危" as const, 话: 单删话 }] : []),
+        { 标: "不急", 话: "放着就好，30 天到了会自动清掉" },
+      ],
+      是: "彻底删除",
+      做: async () => {
         set忙(r.id);
         try {
           const x = await 彻底删除回收站(r.表, r.id).catch(() => ({ ok: false as const, error: "没能删掉，请重试" }));
-          if (!x.ok) { message.error(x.error); return; }
-          message.success("已彻底删除");
+          if (!x.ok) return x;
+          就地.success(`已彻底删除${叫(r.表)}「${r.名称}」`);
           await 拉();
+          return { ok: true };
         } finally {
           set忙(null);
         }
@@ -174,6 +180,8 @@ export default function TrashTab() {
           },
         ]}
       />
+      {提示条}
+      {后果框}
     </>
   );
 }

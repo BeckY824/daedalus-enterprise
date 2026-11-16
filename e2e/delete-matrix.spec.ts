@@ -35,7 +35,7 @@ async function 改客户名词(page: Page, 名词: string) {
   const 面板 = page.getByRole("tabpanel", { name: "业务配置" });
   await 面板.getByLabel("客户叫什么").fill(名词);
   await 面板.getByRole("button", { name: /^保\s*存$/ }).click();
-  await expect(page.getByText("已保存，全站措辞已更新")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "已保存" })).toBeVisible({ timeout: 15_000 });
 }
 
 /** 就地确认（InlineConfirm）：点平时那颗键 → 那一行变成问句 + 「删除」 */
@@ -191,7 +191,7 @@ test("删跟进（顺带建了待办的提醒）：就地确认说「连同它�
   await expect(待办).toHaveCount(1);
 });
 
-test("企业版删项目上的一条沟通：「…」→ 删除，就地确认说进回收站；提示条撤销能拿回来，再删一次去回收站恢复", async ({ page }) => {
+test("企业版删项目上的一条沟通：「…」→ 删除，确认条长在这条下面、写清进回收站和谁能恢复；不给撤销，去回收站恢复", async ({ page }) => {
   test.skip(!企业版, "项目详情的「…」只在企业版（软删进回收站）；开关关着那套删跟进在上一条");
   const p = 连库();
   const c = await p.customer.create({ data: { name: `项目沟通客户${戳}`, phone: `1389${戳}0`.slice(0, 11), salesOwnerId: 我 } });
@@ -208,17 +208,17 @@ test("企业版删项目上的一条沟通：「…」→ 删除，就地确认�
   const 删一次 = async () => {
     await page.getByRole("button", { name: "这条沟通的更多操作" }).click();
     await page.getByRole("menuitem", { name: "删除" }).click();
-    await expect(就地确认(page)).toContainText("删了进回收站");
-    await 就地确认(page).getByRole("button", { name: "删除" }).click();
-    const 提示 = page.locator(".ant-message", { hasText: "设置 → 回收站" });
-    await expect(提示).toBeVisible();
+    // 原型 dt.talkdel：确认条长在这一条下面，写清进回收站、谁能恢复；删成了这一条原地收起，不弹顶部提示
+    const 条 = page.getByRole("group", { name: "确认删除这条沟通" });
+    await expect(条).toContainText("删了进回收站");
+    await expect(条).toContainText("系统管理员或回收站副手能恢复");
+    await 条.getByRole("button", { name: "确认删除" }).click();
     await expect(那条).toHaveCount(0);
-    return 提示;
   };
 
-  // 删了不给撤销（11-09 删 restoreFollowUp）：提示条上没有撤销，去设置 → 回收站 恢复
-  const 提示 = await 删一次();
-  await expect(提示.getByRole("button", { name: /撤\s*销/ })).toHaveCount(0);
+  // 删了不给撤销（11-09 删 restoreFollowUp）：没有撤销，去设置 → 回收站 恢复
+  await 删一次();
+  await expect(page.locator(".ant-message").getByRole("button", { name: /撤\s*销/ })).toHaveCount(0);
   const q = 连库();
   expect((await q.followUp.findUnique({ where: { id: f.id }, select: { deletedAt: true } }))?.deletedAt).toBeInstanceOf(Date);
   await q.$disconnect();
@@ -226,7 +226,8 @@ test("企业版删项目上的一条沟通：「…」→ 删除，就地确认�
   const 行 = page.locator("tr.ant-table-row", { hasText: `电话聊了报价${戳}` });
   await expect(行).toContainText("沟通记录");
   await 行.getByRole("button", { name: /恢\s*复/ }).click();
-  await expect(page.locator(".ant-message")).toContainText("已恢复沟通记录");
+  // 设置页不弹顶部提示（原型 g.save），成没成写在页签底部的就地小条（InlineNote，role=status）
+  await expect(page.getByRole("status").filter({ hasText: "已恢复沟通记录" })).toBeVisible();
   await page.goto(`/projects/${项目.id}`);
   await expect(那条).toBeVisible();
 });

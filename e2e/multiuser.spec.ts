@@ -189,7 +189,7 @@ test.describe("D 组：批量操作交叉", () => {
     // 甲改的是公司，不是负责人，应当自动合并
     await 甲.page.getByRole("dialog").getByLabel("公司").fill("星辰科技");
     await 甲.page.getByRole("dialog").getByRole("button", { name: /保\s*存/ }).click();
-    await expect(甲.page.getByText("已保存")).toBeVisible();
+    await expect(甲.page.getByRole("button", { name: "已保存" })).toBeVisible(); // 11-15 起存好写在保存键里（SaveButton 对勾 +「已保存」，读屏另有一句同样的话）
 
     // 两边的改动都在：公司是甲写的，负责人是乙改的
     await 甲.page.reload();
@@ -290,8 +290,9 @@ test.describe("E 组：同账号多设备与在线停用", () => {
     const 确认 = 管理.page.getByRole("dialog");
     await expect(确认).toContainText("停用成员");
     if (await 确认.getByRole("combobox").count()) {
-      // 接手人默认空、必须选（11-03 C4-3），没选时确认按钮是灰的
-      await expect(确认.getByRole("button", { name: /确认停用/ })).toBeDisabled();
+      // 接手人默认空、必须选（11-03 C4-3）：停用改成后果框（P-界面-40），没选就点确认，框不关、原因就地写「先选接手人」
+      await 确认.getByRole("button", { name: /确认停用/ }).click();
+      await expect(确认.getByRole("alert")).toContainText("先选接手人");
       await 确认.getByRole("combobox").last().click();
       await 管理.page.locator(".ant-select-dropdown:visible .ant-select-item-option").first().click();
       await 确认.getByRole("button", { name: /确认停用/ }).click();

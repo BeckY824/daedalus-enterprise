@@ -21,12 +21,12 @@ const 桩: Plugin = { name: "pr7b-detail", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(u){window.__push=u},replace(){}});export const usePathname=()=>\"/customers/x\";export const useSearchParams=()=>new URLSearchParams(location.search);");
   stub(/^next\/link$/, "export default function L({prefetch,scroll,replace,...p}){return <a {...p}/>}");
   stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|ContactLinks|ResearchRun|ResearchPerson)$/, "export default function Empty(){return null}");
-  stub(/(^|\/)NewProjectModal$/, "export default function N({open}){return open?<div data-testid='new-project-modal'/>:null}");
+  stub(/(^|\/)NewProjectEntry$/, "export default function N({open}){return open?<div data-testid='new-project-modal'/>:null}");
   stub(/research\/ResearchEntry$/, "export const useResearchEntry=()=>false;");
   stub(/research\/actions$/, "export const 最近背调=async()=>null,背调价目=async()=>({可用:false,原因:'桩'});");
   stub(/^\.\/pick$/, "export const 搜客户=async()=>[];");
   stub(/^\.\/link-actions$/, "export const 关联客户=async()=>({ok:true}),改关联说明=关联客户,取消关联=关联客户;");
-  stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({问怎么拿掉(){}});");
+  stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({});export const ContactRemoveInline=()=>null;");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
   stub(/(^|\/)pool-actions$/, "export const 放进公海=async(ids,原因)=>{(window.__放??=[]).push({ids,原因});return window.__放回??{ok:true,updated:1,unchanged:0}},领取=async()=>({ok:false}),撤销公海=async()=>{window.__撤=true;return{ok:true,updated:1}},退回原因选项=async()=>['客户无意向','联系不上','其他'];");
   stub(/^\.\.\/actions$/, "export const 转走项目预览of=async()=>(window.__预览??{项目数:0,项目:[]});export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async(ids,to,因)=>{window.__转={ids,to,因};return window.__转回??{ok:false,error:'桩'}},撤销改负责人=async()=>{window.__撤转=true;return{ok:true,updated:1}},patchCustomerRegion=async()=>({ok:true});");
