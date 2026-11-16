@@ -44,7 +44,7 @@ export function 这一家的工具(b: Pick<BusinessConfig, "projectMode">, 只�
     .filter((t) => 只用项目 || !项目写工具名.has(t.name))
     .map((t) =>
       只用项目 && t.name === "propose_lead"
-        ? { ...t, description: "建议新建一条新线索：确认后建一位客户和一个在「线索」阶段的项目。只知道名字也要提，留空的字段人会在卡片上补。" }
+        ? { ...t, description: "建议新建一条新线索：确认后建一位客户和一个在「线索」阶段的项目。只知道名字也要提，留空的字段人会在卡片上补。人说了「分给谁」就把姓名原样放 assignTo，说了来源（平台、展会、渠道）就原样放 source——卡上认得出会预选，人确认；没说就不给，别猜。" }
         : t,
     );
   return { TOOLS, TOOL_MAP: new Map(TOOLS.map((t) => [t.name, t])) as typeof 全部工具表 };
