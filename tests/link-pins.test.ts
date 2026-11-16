@@ -75,11 +75,12 @@ describe("L-039 客户列表 directOf = 直接从这个渠道来的那几位", (
 });
 
 describe("L-043 首页欢迎句的「今天要跟 N 条」和左栏角标、Dock 同一个函数", () => {
-  it("dashboard/page.tsx 和左栏（layout.tsx）都用 数提醒 数，不自己数计划（P15：一个函数出这个数）", () => {
+  it("dashboard/page.tsx 和左栏（layout.tsx）都用 数提醒 数，不自己数计划（P15：一个函数出这个数；左栏 11-16 起走 数角标，数提醒 就是它去掉未读通知）", () => {
     const 首页 = readFileSync(path.join(ROOT, "src/app/(app)/dashboard/page.tsx"), "utf8");
     const 左栏 = readFileSync(path.join(ROOT, "src/app/(app)/layout.tsx"), "utf8");
     expect(首页).toMatch(/数提醒\(user\.id\)/);
-    expect(左栏).toMatch(/数提醒\(user\.id\)/);
+    expect(左栏).toMatch(/数角标\(user\.id,/);
+    expect(readFileSync(path.join(ROOT, "src/lib/reminders-db.ts"), "utf8")).toMatch(/export async function 数提醒[^]*?await 数角标\(ownerId, false, now\)/);
     expect(首页).not.toMatch(/取提醒项|算提醒\(/);
     expect(首页).toMatch(/今天要跟 \$\{今天要跟\} 条/);
   });

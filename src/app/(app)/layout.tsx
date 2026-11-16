@@ -6,14 +6,13 @@ import { 客户总数 } from "@/lib/pool-db";
 import { headers } from "next/headers";
 import { getCurrentUser } from "@/lib/auth";
 import AppShell from "@/components/AppShell";
-import { 数提醒 } from "@/lib/reminders-db";
+import { 数角标 } from "@/lib/reminders-db";
 import { getBusiness } from "@/lib/business";
 import { BusinessProvider } from "@/lib/business-client";
 import { businessTimeZone } from "@/lib/business-clock";
 import { 本地模式, 归属对不上, 读 as 读云端凭据 } from "@/lib/desktop/cloud";
 import { multiTenant } from "@/lib/tenant/context";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 未读通知数 } from "@/lib/enterprise/notify";
 import { 自定产品名 } from "@/lib/enterprise/brand";
 import { 读演示名单 } from "@/lib/enterprise/demo-switch";
 import { 演示登录 } from "@/app/login/demo-actions";
@@ -69,9 +68,10 @@ export default async function AppLayout({
     但完成、改期、新建之后各处都会 router.refresh()——那时它跟着变。中栏要的数据在 @pane 槽位里各自查
   */
   const 业务 = getBusiness();
-  const [要跟, business, ua, 有AI, models, 收藏, 项目收藏, 客户数] = await Promise.all([
-    // 只要两个数：在库里数（lib/reminders-db.ts 数提醒，口径同 算提醒），不把名下没做的全拉回来
-    数提醒(user.id),
+  const [角标, business, ua, 有AI, models, 收藏, 项目收藏, 客户数] = await Promise.all([
+    // 只要几个数：在库里数（lib/reminders-db.ts 数角标，口径同 算提醒），不把名下没做的全拉回来；
+    // 企业版铃铛上的未读通知数一起数（以别人视图看时不摆），和跟进的 逾期 / 今天 一句 SQL（原来 5 句）
+    数角标(user.id, 企业版() && !user.视图由),
     // 业务术语（学员/客户、院校/年级/专业…）：全站客户端组件从这里拿
     业务,
     headers().then((h) => h.get("user-agent") ?? ""),
@@ -90,6 +90,7 @@ export default async function AppLayout({
     // 左栏商机一项 10-28 删了（/opportunities 一律转到 /projects），在谈商机数也不数了
     客户总数(),
   ]);
+  const 要跟 = { 逾期: 角标.逾期, 今天: 角标.今天 };
   /*
     这个人点 AI 按钮花不花次数、还剩几次（lib/ai-meter.ts）：全站的「1 次」角标和输入框下那行字都认它。
     这里**不去云端问余额**（桌面端要联网，断网时会把整页拖住），数由浏览器随后问 /api/ai/meter。
@@ -129,8 +130,8 @@ export default async function AppLayout({
         // 企业版只用项目一条线：左栏和 ⌘K 没有商机，线索叫「新线索」（lib/enterprise/project-only.ts）
         企业版项目={企业版() && business.projectMode === true}
         企业版={企业版()}
-        // 企业版站内通知（11-01）：铃铛上的未读数，之后铃铛自己每分钟问一次（lib/enterprise/notify.ts）；以别人视图看时不摆
-        通知未读={企业版() && !user.视图由 ? await 未读通知数(user.id) : undefined}
+        // 企业版站内通知（11-01）：铃铛上的未读数，之后铃铛自己每分钟问一次（lib/enterprise/notify.ts）；以别人视图看时不摆（上面 数角标 没数，是 undefined）
+        通知未读={角标.通知未读}
         产品名={自定产品名() ?? undefined}
         pane={pane}
         ai={有AI ? { models } : null}

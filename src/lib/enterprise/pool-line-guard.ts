@@ -16,6 +16,7 @@ import type { 组织 } from "./org-core";
 import type { 业务线 } from "@/lib/sync/dept-policy";
 import { 客户属线条件, 客户说不清线, 项目属线条件, 项目说不清线 } from "./line-viewer";
 import { 看全部 } from "@/lib/team-scope";
+import { 按主键取没删的 } from "./soft-delete-core";
 
 type 库 = Prisma.TransactionClient | typeof prisma;
 
@@ -46,17 +47,21 @@ export async function 公海别线的(
     const 行 = new Set(放行.map((x) => x.id));
     return 全.filter((x) => !行.has(x.id));
   };
+  /*
+    四句都按主键取（4 核提速 B，11-16）：带着 deletedAt IS NULL 时 SQLite 放着主键不走、顺 deletedAt 索引把 8.5 万位客户逐个比 id（单句 ~6 ms），
+    「没删」挪到内存里滤，同一批行（见 按主键取没删的；tests/pool-line-guard-pk.test.ts 钉计划和结果）
+  */
   const [客户, 项目] = await 看全部(() => Promise.all([
     客户ids.length
       ? Promise.all([
-          db.customer.findMany({ where: { id: { in: 客户ids } }, select: { id: true, name: true } }),
-          db.customer.findMany({ where: { id: { in: 客户ids }, OR: [客户属线条件(线, 外贸们), 客户说不清线] }, select: { id: true } }),
+          按主键取没删的(() => db.customer.findMany({ where: { id: { in: 客户ids } }, select: { id: true, name: true, deletedAt: true } })),
+          按主键取没删的(() => db.customer.findMany({ where: { id: { in: 客户ids }, OR: [客户属线条件(线, 外贸们), 客户说不清线] }, select: { id: true, deletedAt: true } })),
         ]).then(([全, 放行]) => 差(全, 放行))
       : Promise.resolve([]),
     项目ids.length
       ? Promise.all([
-          db.project.findMany({ where: { id: { in: 项目ids } }, select: { id: true, name: true } }),
-          db.project.findMany({ where: { id: { in: 项目ids }, OR: [项目属线条件(线, 外贸们), 项目说不清线] }, select: { id: true } }),
+          按主键取没删的(() => db.project.findMany({ where: { id: { in: 项目ids } }, select: { id: true, name: true, deletedAt: true } })),
+          按主键取没删的(() => db.project.findMany({ where: { id: { in: 项目ids }, OR: [项目属线条件(线, 外贸们), 项目说不清线] }, select: { id: true, deletedAt: true } })),
         ]).then(([全, 放行]) => 差(全, 放行))
       : Promise.resolve([]),
   ]));
