@@ -82,6 +82,8 @@ const 集合 = (u: 人) => 以(u, () => 仅项目客户们(u));
 /** 挡的键各给一个「这位客户对得上」的值（看板、客户列表块共用这份；没列的给 "x"）：有值就该不参与 */
 const 挡键样值 = (x: { phone: string; custStatus: string; 负责人: string }): Record<string, string> => ({
   createdWithin: "本月", createdFrom: "2020-01-01", createdTo: "2099-12-31", phone: x.phone, level: "A", custStatus: x.custStatus, salesOwnerId: x.负责人,
+  // 超过 N 天没跟进（1I）：地址栏的 x 不认（当没筛），要给个认得的天数
+  idleDays: "1",
 });
 const 挡键们 = () => (Object.entries(仅项目筛选口径) as [string, string][]).filter(([, v]) => v === "挡").map(([k]) => k);
 
@@ -160,7 +162,7 @@ describe("仅项目安全条件", () => {
   it("登记的键和客户条件对得上（客户条件新加键要在这里和 仅项目筛选口径 两边登记）", () => {
     expect(Object.keys(仅项目筛选口径).sort()).toEqual([
       "archiveTier", "batch", "channelId", "channelOwnerId", "country", "createdFrom", "createdTo", "createdWithin", "custStatus", "customerType",
-      "decisionStatus", "dept", "directOf", "followStatus", "grade", "keyword", "level", "node", "phase", "phone", "pool", "salesOwnerId", "source", "triState",
+      "decisionStatus", "dept", "directOf", "followStatus", "grade", "idleDays", "keyword", "level", "node", "phase", "phone", "pool", "salesOwnerId", "source", "triState",
     ].sort());
     expect(Object.entries(仅项目筛选口径).filter(([, v]) => v === "认").map(([k]) => k).sort()).toEqual(["customerType", "keyword", "pool"]);
   });

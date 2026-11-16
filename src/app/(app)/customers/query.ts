@@ -66,7 +66,29 @@ export type 客户条件 = {
   node?: string;
   /** 「全部回收状态」（客户三态开着才认，P-界面-19 ①，构想页 C2）：沉睡 / 待回收 / 暂缓回收中 / 不计时，见 lib/enterprise/tri-state-list.ts 三态筛选条件 */
   triState?: string;
+  /** 「超过 N 天没跟进」（员工反馈 1I，11-16，提醒的临时替代）：正整数天数，口径见 久未跟进条件 */
+  idleDays?: string;
 };
+
+/** 「超过 N 天没跟进」认的天数：1–3650 的整数；别的（地址栏手改的、0、小数）当没筛 */
+export function 久未跟进天数(raw: string | undefined): number | null {
+  if (!raw || !/^\d{1,4}$/.test(raw)) return null;
+  const n = Number(raw);
+  return n >= 1 && n <= 3650 ? n : null;
+}
+
+/**
+ * 「超过 N 天没跟进」（1I）：最近跟进（Customer.lastFollowAt，记沟通时随手写的那一格）早于「今天往前数 N 天的 0 点」；
+ * 从没跟进过的按建档时间算（同 lib/pool-db.ts 按天扫、M-公海-29「没有跟进记录的按建档日」）——昨天刚建、还没来得及跟的不算。
+ * 北京日界线：今天 11-16、N = 30，10-16 及更早跟进过的算，10-17 跟进过的不算。
+ * 只收窄这个人本来看得到的那些（条件并进 AND，范围由限定层管），不碰公海这一层
+ */
+export function 久未跟进条件(raw: string | undefined, 今: Date = new Date()): Prisma.CustomerWhereInput | null {
+  const n = 久未跟进天数(raw);
+  if (n == null) return null;
+  const 截止 = dayjs(今).startOf("day").subtract(n, "day").toDate();
+  return { OR: [{ lastFollowAt: { lt: 截止 } }, { lastFollowAt: null, createdAt: { lt: 截止 } }] };
+}
 
 /**
  * 企业版国家筛选（1C，11-16）：按客户地址里的国家（Customer.addrCountry，列表「国家」一列显示的就是它）；
@@ -172,11 +194,12 @@ export async function 客户筛选条件(
   const 按项目 = await 项目筛选条件(sp, userId);
   // 没带 triState 不读规则（三态关着、没筛时不多一条查询）
   const 三态 = sp.triState ? await 三态筛选条件(sp.triState) : null;
+  const 久未跟进 = 久未跟进条件(sp.idleDays);
   const 国家 = 国家条件(sp.country);
   // 企业版国家走 addrCountry（上面 国家条件），外贸档案那一层只剩来源
   const 档案国家 = 国家 ? undefined : sp.country;
   return {
-    AND: [keyword, ...(国家 ? [国家] : []), ...(按项目 ? [按项目] : []), ...(三态 ? [三态] : []), ...(本批 ? [客户id集合(本批.map(r => r.customerId))] : []), ...(等级 ? [等级] : []), ...(部门 ? [部门] : []), ...(建于 ? [{ createdAt: 建于 }] : []), ...(号码 ? [号码] : []), ...(sp.channelId && 企业版() ? [{ channelId: sp.channelId }] : [])],
+    AND: [keyword, ...(久未跟进 ? [久未跟进] : []), ...(国家 ? [国家] : []), ...(按项目 ? [按项目] : []), ...(三态 ? [三态] : []), ...(本批 ? [客户id集合(本批.map(r => r.customerId))] : []), ...(等级 ? [等级] : []), ...(部门 ? [部门] : []), ...(建于 ? [{ createdAt: 建于 }] : []), ...(号码 ? [号码] : []), ...(sp.channelId && 企业版() ? [{ channelId: sp.channelId }] : [])],
     ...(sp.grade ? { grade: sp.grade } : {}),
     ...(sp.followStatus ? { followStatus: sp.followStatus } : {}),
     ...(sp.decisionStatus ? { decisionStatus: sp.decisionStatus } : {}),
@@ -289,7 +312,7 @@ const 企业版才筛: readonly string[] = ["custStatus", "customerType", "archi
 export async function 关键词分页(sp: 客户条件, 请求页: number, pageSize: number): Promise<{ total: number; page: number; ids: string[] } | null> {
   // 回收状态筛选只在三态开着、值认得出时才算数（关着地址栏带了 triState 照样走这条快路，11-12）
   if (sp.triState && 是三态筛选值(sp.triState) && (await 三态界面开着())) return null;
-  if (sp.phase || sp.node || sp.batch || sp.level || sp.dept || sp.createdWithin || sp.directOf || sp.country || sp.source || 创建时间段(sp.createdFrom, sp.createdTo) || 搜索词(sp.phone)) return null;
+  if (sp.phase || sp.node || sp.batch || sp.level || sp.dept || sp.createdWithin || sp.directOf || sp.country || sp.source || 创建时间段(sp.createdFrom, sp.createdTo) || 搜索词(sp.phone) || 久未跟进天数(sp.idleDays)) return null;
   const kw = await 客户关键词SQL(sp.keyword);
   if (!kw) return null;
   const 公海 = sp.pool === "1";

@@ -80,6 +80,8 @@ type SP = Promise<{
   node?: string;
   /** 「全部回收状态」（客户三态开着才认，P-界面-19 ①）：沉睡 / 待回收 / 暂缓回收中 / 不计时 */
   triState?: string;
+  /** 「超过 N 天没跟进」（员工反馈 1I，11-16）：正整数天数，口径见 query.ts 久未跟进条件 */
+  idleDays?: string;
   page?: string;
   pageSize?: string;
   sort?: string;
@@ -150,6 +152,12 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const 等级排序 = sp.sort === "level-asc" || sp.sort === "level-desc" ? sp.sort : "";
   /** 按创建时间排（11-11）：默认就是新的在前，点表头可以换成旧的在前；不给 = 默认 */
   const 创建排序 = sp.sort === "created-asc" || sp.sort === "created-desc" ? sp.sort : "";
+  /**
+   * 按最近跟进排（员工反馈 1I，11-16，提醒的临时替代）：follow-asc = 最久没跟进的在前，从没跟进过的排最前（其中建档早的在前）；
+   * follow-desc 反过来、从没跟进过的在最后。lastFollowAt 没有索引（迁移 138 试过、会把「我的」那几句带歪，没留）：
+   * 只在点了这个排序时整段排一次，默认的按建档时间翻页不受影响
+   */
+  const 跟进排序 = sp.sort === "follow-asc" || sp.sort === "follow-desc" ? sp.sort : "";
   const sortCurrency = 规整币种(sp.sortCurrency, b.currency);
   /*
     市场成员、市场管理（X-107，用户 11-12「按第 1 种做」）：左栏只有「客户」，客户页给他们的就是原来项目页给他们的那套只读视图
@@ -176,7 +184,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const 页签数P = 子集 ? Promise.resolve(null) : 客户页签数();
   // 中间那两步先抛了的话，这条别成「没人接的拒绝」；它自己出错照样在下面 Promise.all 里抛
   页签数P.catch(() => {});
-  const 快 = sort || 等级排序 || 创建排序 ? null : await 关键词分页(sp, 正整数(sp.page, 1), pageSize);
+  const 快 = sort || 等级排序 || 创建排序 || 跟进排序 ? null : await 关键词分页(sp, 正整数(sp.page, 1), pageSize);
   const where = 快 ? null : await 客户筛选条件(sp);
   /*
     两个页签上的数：都不带筛选、和左栏「客户」角标在同一套限定下数（layout.tsx 的 customer.count()），
@@ -220,7 +228,11 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       where: where!,
       orderBy: 等级排序
         ? [{ extra: { level: { sort: 等级排序 === "level-asc" ? "asc" : "desc", nulls: "last" } } }, { createdAt: "desc" }, { id: "desc" }]
-        : 创建排序 === "created-asc" ? [{ createdAt: "asc" }, { id: "asc" }] : [{ createdAt: "desc" }, { id: "desc" }],
+        : 跟进排序 === "follow-asc"
+          ? [{ lastFollowAt: { sort: "asc", nulls: "first" } }, { createdAt: "asc" }, { id: "asc" }]
+          : 跟进排序 === "follow-desc"
+            ? [{ lastFollowAt: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }, { id: "desc" }]
+            : 创建排序 === "created-asc" ? [{ createdAt: "asc" }, { id: "asc" }] : [{ createdAt: "desc" }, { id: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
       select: 客户行字段,
@@ -332,6 +344,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       金额排序={sort}
       等级排序={等级排序}
       创建排序={创建排序}
+      跟进排序={跟进排序}
       能按号码筛={能按号码筛}
       排序币种={sortCurrency}
       users={users}
@@ -367,7 +380,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
         // 三态开着才有「全部回收状态」这一格；关着 filters 和原来一样
         ...(三态开 && !看板视图 ? { triState: sp.triState ?? "" } : {}),
         // 企业版才有客户状态这一格（10-28）；别的版本 filters 和原来一样
-        ...(企业版() ? { custStatus: sp.custStatus ?? "", customerType: sp.customerType ?? "", archiveTier: sp.archiveTier ?? "", channelId: sp.channelId ?? "" } : {}),
+        ...(企业版() ? { custStatus: sp.custStatus ?? "", customerType: sp.customerType ?? "", archiveTier: sp.archiveTier ?? "", channelId: sp.channelId ?? "", idleDays: sp.idleDays ?? "" } : {}),
       }}
       企业版={企业版()}
       客户状态选项={客户状态选项}

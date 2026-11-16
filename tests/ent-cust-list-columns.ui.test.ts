@@ -245,6 +245,34 @@ it("这一页没人填国家：「国家」一列照摆、每格「—」；三�
     } finally { await page.close(); }
   }
 });
+/*
+  「超过 N 天没跟进」+ 按最近跟进排（员工反馈 1I，11-16）：筛选默认收在「更多筛选」里；选上时没在按别的排，地址带上 sort=follow-asc（最久没跟进的在前）；
+  「最近跟进」表头能点着排（企业版），三态开着列宽 92 时表头带排序箭头也不截（上面「表头不截」那条同样量着）
+*/
+it("久未跟进筛选在更多筛选里，选上顺手按最近跟进正序；点「最近跟进」表头排序", async () => {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } }); page.setDefaultTimeout(5000);
+  const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+  try {
+    await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+    await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+    await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
+    await page.addScriptTag({ content: 包 });
+    await page.locator("tr.ant-table-row").first().waitFor();
+    const 去了 = () => page.evaluate(() => (window as unknown as { __push?: string }).__push ?? "");
+    await page.getByRole("button", { name: /^更多筛选/ }).click();
+    await page.locator(".ant-popover .ant-select", { has: page.getByRole("combobox", { name: "久未跟进" }) }).click();
+    await page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter({ hasText: "超过 30 天没跟进" }).first().click();
+    await expect.poll(去了).toContain("idleDays=30");
+    expect(new URLSearchParams((await 去了()).split("?")[1]).get("sort")).toBe("follow-asc");
+    // 再点一下「更多筛选」收起弹层（弹层开着会盖住表头）
+    await page.getByRole("button", { name: /^更多筛选/ }).click();
+    await expect.poll(() => page.locator(".ant-popover:visible").count()).toBe(0);
+    await page.evaluate(() => { (window as unknown as { __push?: string }).__push = ""; });
+    await page.locator("thead th", { hasText: "最近跟进" }).click();
+    await expect.poll(去了).toContain("sort=follow-");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
 // 公海页签（三态开着照样给回收状态一列）：这一页有公海里的客户，「负责人」不收，「公海（原 X）」标签放得下
 it("三态开着、这一页是公海里的客户：负责人列照旧 140，「公海（原 小王）」不被截", async () => {
   for (const w of [1280, 1366]) {

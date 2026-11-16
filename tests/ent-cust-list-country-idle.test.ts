@@ -1,6 +1,7 @@
 /**
  * 客户列表员工反馈第 1 批（11-16）：
  *   1C 企业版国家筛选按客户地址里的国家（Customer.addrCountry，列表「国家」一列那一格）；下拉只给看得到的客户里真有的。
+ *   1I「超过 N 天没跟进」筛选（从没跟进过的按建档时间算）+ 按最近跟进排（正序 = 最久没跟进的在前，从没跟进过的最前）。
  * 只收窄这个人本来看得到的（按组织看的销售看不到同事的客户），公海里的照旧不进「客户」页签（P-看-03）。
  * 打开页面的量法同 tests/ent-customer-list-queries.test.ts：CustomersView 换成空的，拿它收到的 props 看
  */
@@ -38,6 +39,8 @@ import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import CustomersPage from "@/app/(app)/customers/page";
+import { 久未跟进条件, 久未跟进天数 } from "@/app/(app)/customers/query";
+import { dayjs } from "@/lib/utils";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 const 造人 = async (key: string, bizRole: string, managerId: string | null = null): Promise<人> => {
@@ -113,5 +116,58 @@ describe("1C 企业版国家筛选", () => {
     expect(p.国家们).toContain("阿联酋");
     expect(p.国家们).toContain("越南");
     expect(p.国家们).not.toContain("沙特");
+  });
+});
+
+describe("1I 超过 N 天没跟进 + 按最近跟进排", () => {
+  /** 今天北京 0 点往前 d 天，再挪 分 分钟 */
+  const 前 = (d: number, 分 = 0) => dayjs().startOf("day").subtract(d, "day").add(分, "minute").toDate();
+  beforeEach(async () => {
+    await 客户("90天前跟进", 甲.id, { lastFollowAt: 前(90, 600), createdAt: 前(400) });
+    await 客户("31天前跟进", 甲.id, { lastFollowAt: 前(31, 600), createdAt: 前(400) });
+    // 边界：N = 30 时「30 天前那天」跟进过的不算超过 30 天；前一天深夜的算
+    await 客户("正好30天前跟进", 甲.id, { lastFollowAt: 前(30, 1), createdAt: 前(400) });
+    await 客户("30天前前一刻跟进", 甲.id, { lastFollowAt: 前(30, -1), createdAt: 前(400) });
+    await 客户("昨天跟进", 甲.id, { lastFollowAt: 前(1, 600), createdAt: 前(400) });
+    // 从没跟进过：按建档时间算
+    await 客户("从没跟进老客户", 甲.id, { createdAt: 前(40) });
+    await 客户("从没跟进更老客户", 甲.id, { createdAt: 前(200) });
+    await 客户("从没跟进新客户", 甲.id, { createdAt: 前(2) });
+    // 同事的、公海里的：再久没跟进也不进甲的客户页签
+    await 客户("同事的久未跟进", 乙.id, { lastFollowAt: 前(300), createdAt: 前(400) });
+    const 公海 = await 客户("公海久未跟进", 甲.id, { lastFollowAt: 前(300), createdAt: 前(400) });
+    await prisma.customerPool.create({ data: { customerId: 公海.id } });
+  });
+
+  it("天数只认 1–3650 的整数；口径：早于今天往前 N 天的 0 点，从没跟进过的按建档时间", () => {
+    expect(["1", "30", "3650"].map(久未跟进天数)).toEqual([1, 30, 3650]);
+    expect(["", "0", "-3", "1.5", "abc", "3651", "99999", undefined].map((x) => 久未跟进天数(x))).toEqual(Array(8).fill(null));
+    const 今 = new Date("2026-11-16T15:00:00+08:00");
+    expect(久未跟进条件("30", 今)).toEqual({ OR: [{ lastFollowAt: { lt: new Date("2026-10-17T00:00:00+08:00") } }, { lastFollowAt: null, createdAt: { lt: new Date("2026-10-17T00:00:00+08:00") } }] });
+    expect(久未跟进条件("x", 今)).toBeNull();
+  });
+
+  it("超过 30 天没跟进：只出甲自己负责、不在公海、30 天前那天之前跟进的和建档早于那天还没跟进过的", async () => {
+    const p = await 打开({ idleDays: "30" }, 甲);
+    expect(名们(p)).toEqual(["90天前跟进", "31天前跟进", "30天前前一刻跟进", "从没跟进老客户", "从没跟进更老客户"].sort());
+    expect(p.total).toBe(5);
+    expect(p.filters.idleDays).toBe("30");
+  });
+
+  it("带关键词（关键词快路）也按天数筛；认不得的天数当没筛（范围不变）", async () => {
+    expect(名们(await 打开({ keyword: "跟进", idleDays: "60" }, 甲))).toEqual(["90天前跟进", "从没跟进更老客户"].sort());
+    for (const idleDays of ["0", "abc", "99999"]) expect((await 打开({ idleDays }, 甲)).total, idleDays).toBe(8);
+  });
+
+  it("按最近跟进正序：从没跟进过的最前（建档早的在前），再从最久没跟进的往近排；倒序反过来", async () => {
+    const 正 = (await 打开({ sort: "follow-asc" }, 甲)).rows.map((r) => r.name);
+    expect(正).toEqual(["从没跟进更老客户", "从没跟进老客户", "从没跟进新客户", "90天前跟进", "31天前跟进", "30天前前一刻跟进", "正好30天前跟进", "昨天跟进"]);
+    const 倒 = (await 打开({ sort: "follow-desc" }, 甲)).rows.map((r) => r.name);
+    expect(倒).toEqual(["昨天跟进", "正好30天前跟进", "30天前前一刻跟进", "31天前跟进", "90天前跟进", "从没跟进新客户", "从没跟进老客户", "从没跟进更老客户"]);
+  });
+
+  it("筛选 + 正序一起用：只排筛出来的那些，从没跟进过的在前", async () => {
+    const 一 = (await 打开({ idleDays: "30", sort: "follow-asc", pageSize: "10" }, 甲)).rows.map((r) => r.name);
+    expect(一).toEqual(["从没跟进更老客户", "从没跟进老客户", "90天前跟进", "31天前跟进", "30天前前一刻跟进"]);
   });
 });
