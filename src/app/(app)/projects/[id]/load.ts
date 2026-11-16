@@ -25,6 +25,7 @@ import { 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 本套位置 } from "@/lib/project/nodes";
 import { 读线索验证 } from "@/lib/project/lead-verify";
+import { 有效线索节点 } from "@/lib/project/stage-gates";
 import { 待分配占位 } from "@/lib/enterprise/await-assign";
 import { 市场进不了详情, 读市场身份 } from "@/lib/enterprise/market-view-db";
 import { 只读卡放行 } from "@/lib/enterprise/customer-readonly-card";
@@ -252,6 +253,8 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   };
   // 企业版线索验证（P12）：状态、时间线、我现在能做哪一步；不是企业版不查。11-01 起项目卡上一直摆「线索验证」结果，过了线索阶段也读
   const 线索验证 = 企业 ? await 读线索验证(me, p) : null;
+  // 线索验证面板的「判定依据」照组织规则里「线索验证」节点配的必填写（员工反馈 #7；和 有效沟通差 同一份配置）
+  const 线索验证必填 = 线索验证 ? 节点必填(规则, 有效线索节点) : [];
   // 企业版项目画像、项目附件（P11）：画像和附件是客户那边的资料，公海里同事客户的项目没领之前不给（同 联系人附件）。
   // 项目名单在中栏（@pane/projects/[id] → panes.tsx 项目名单），不在这页里读
   const 存的需求 = 读产品需求(p.productNeeds);
@@ -282,7 +285,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     // 在公海里 ownerName 给原负责人（界面写「原负责人 X」），企业版库里负责人已经清空，从留痕取；没这个人就是空串，界面写「暂无」
     ownerId: p.ownerId, ownerName: (公海 ? 叫(上一任) : 叫(p.ownerId)) ?? "", historyOwners: 历史负责人.map((x) => 叫(x)!), creatorName: 叫(p.creatorId)!, createdAt: p.createdAt.toISOString(),
     phase: 现.phase, node: 现.node, result: 现.result, exceptionReason: p.exceptionReason, exceptionCategory: p.exceptionCategory?.name ?? null,
-    pooled: 公海, 我是负责人: p.ownerId === me.id, 企业版: 企业, 出口叫法: 企业 ? 规则.阶段.出口叫法 : {}, 有效沟通差, 来源线索, ...(线索验证 ? { 线索验证 } : {}),
+    pooled: 公海, 我是负责人: p.ownerId === me.id, 企业版: 企业, 出口叫法: 企业 ? 规则.阶段.出口叫法 : {}, 有效沟通差, 来源线索, ...(线索验证 ? { 线索验证, 线索验证必填 } : {}),
     原因选项: { 回收: 回收原因们, 无效: 无效原因们 },
     // 培育计划、无效原因字数上限（M-节点-03）：组织规则里管理员设的，没设 = null = 不限
     ...(企业 ? { 字数上限: { 培育计划: 规则.阶段.培育计划上限, 无效原因: 规则.阶段.无效原因上限 } } : {}),

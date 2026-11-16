@@ -9,6 +9,8 @@ import { dayjs, fmtDateTime } from "@/lib/utils";
 import { 原因上限 } from "@/lib/project/nodes";
 import { 有效线索节点 } from "@/lib/project/stage-gates";
 import type { 线索验证 } from "@/lib/project/lead-verify";
+import { 线索验证依据 } from "@/lib/project/lead-verify-basis";
+import type { 必填项 } from "@/lib/project/required";
 import { 线索初判Action, 市场复核Action, 销售终验Action, 总管理终判Action, 销售认领Action, 撤回验证Action } from "../actions";
 import { 框里原因, type 跑法 } from "./detail-note";
 
@@ -47,6 +49,7 @@ export default function LeadVerifyPanel({
   忙,
   缺有效沟通话,
   不给推,
+  线索验证必填 = [],
 }: {
   projectId: string;
   v: 线索验证;
@@ -58,6 +61,8 @@ export default function LeadVerifyPanel({
   /** 推过线索验证还差有效沟通时的话（带还差哪几项），齐了 null */
   缺有效沟通话: string | null;
   不给推: string | null;
+  /** 组织规则里「线索验证」节点配的必填（顶上「判定依据」按它写，和推进时拦的是同一份）；没开节点推进 = 空 = 只看需求状态 */
+  线索验证必填?: readonly 必填项[];
 }) {
   const [框, set框] = useState<null | "无效" | "培育" | "异议" | "复核有效" | "复核无效">(null);
   const [无效原因, set无效原因] = useState<string | null>(null);
@@ -181,8 +186,20 @@ export default function LeadVerifyPanel({
     return null;
   })();
 
+  // 员工反馈 #7「判定依据不明确」：顶上写系统真在用的判法（lead-verify-basis.ts），不另立规矩
+  const 依据 = 线索验证依据({ 线索验证必填, 初判即终判: v.初判即终判, 无效交给: v.无效交给 });
+
   return (
     <div data-testid="lead-verify">
+      <div className="lead-verify-basis" data-testid="lead-verify-basis">
+        <div className="lead-verify-basis-h">判定依据</div>
+        <ul>
+          <li data-testid="lead-verify-basis-valid">{依据.有效}</li>
+          <li data-testid="lead-verify-basis-invalid">{依据.无效}</li>
+          <li>{依据.培育}</li>
+          <li data-testid="lead-verify-basis-repeat">{依据.复购}</li>
+        </ul>
+      </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <span style={{ color: "var(--text-muted)" }}>验证结果：</span>
         <Tag color={叫法色[v.叫法] ?? "default"} style={{ marginInlineEnd: 0 }} data-testid="lead-verify-verdict">{v.叫法}</Tag>

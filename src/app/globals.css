@@ -5024,3 +5024,10 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 /* 跳过来时带的一句（LandingNote）：字后面一颗「知道了」 */
 .landing-note-x { margin-inline-start: var(--s2); padding: 0; border: 0; background: none; font: inherit; color: var(--brand); cursor: pointer; }
 .landing-note-x:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: var(--r-ctl); }
+/* 线索验证面板顶上「判定依据」（员工反馈 #7）：灰字小号、左边一条线，长字照常换行不撑宽 */
+.lead-verify-basis { margin-bottom: var(--s3); padding: 6px 10px; border-inline-start: 3px solid var(--line); background: var(--panel); color: var(--text-muted); font-size: var(--fs-note); line-height: 1.6; overflow-wrap: anywhere; min-width: 0; }
+.lead-verify-basis-h { color: var(--ink); font-weight: 500; margin-bottom: 2px; }
+.lead-verify-basis ul { margin: 0; padding-inline-start: 1.2em; }
+/* 渠道看板线索榜「展开全部」（员工反馈 #5）：展开后列表自己滚，不把整行格子撑高；按钮靠左一行小字 */
+.chan-dash-top-all { max-height: 320px; overflow-y: auto; overflow-x: hidden; padding-inline-end: 4px; }
+.chan-dash-top-more { margin-top: var(--s2); font-size: var(--fs-min); color: var(--brand); }
