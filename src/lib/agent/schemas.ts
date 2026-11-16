@@ -46,6 +46,7 @@ export const 只读SCHEMAS: Record<string, Schema> = {
       expectedSignFrom: 串("预计签约起 YYYY-MM-DD"),
       expectedSignTo: 串("预计签约止，含当天"),
       mine: 真假("只看我负责的"),
+      scope: { type: "string", enum: ["mine", "team", "pool"], description: "mine 我负责的（首页默认）/ team 我看得到的、不含公海 / pool 公海" },
     },
     additionalProperties: false,
   },

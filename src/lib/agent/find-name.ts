@@ -119,7 +119,8 @@ export async function 名字在别处(名: string, 号: (p: string | null) => st
  * 挑错不报错，只是答「没找到」，而那个人好好地躺在另一张表里。
  */
 /** 叫：存储值 → 这家的叫法（外贸「已签约」显示成「已下单」，2026-10-06 G.3 实测模型照抄了原值） */
-export async function 找人(名: string, 号: (p: string | null) => string | null, 叫: (v: string) => string = (v) => v): Promise<别处命中[]> {
+/** 我：问的人。给了就每位客户标归属（我负责的 / 同事或下属负责的 / 公海，P-看-03） */
+export async function 找人(名: string, 号: (p: string | null) => string | null, 叫: (v: string) => string = (v) => v, 我?: string): Promise<别处命中[]> {
   const q = 名.trim();
   if (!q) return [];
   const [客户, 其余] = await Promise.all([
@@ -127,7 +128,7 @@ export async function 找人(名: string, 号: (p: string | null) => string | nu
       where: { name: { contains: q } },
       take: 每表最多,
       orderBy: { lastFollowAt: "desc" },
-      select: { id: true, name: true, phone: true, school: true, grade: true, followStatus: true, salesOwner: { select: { name: true } } },
+      select: { id: true, name: true, phone: true, school: true, grade: true, followStatus: true, salesOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } },
     }),
     名字在别处(q, 号),
   ]);
@@ -136,7 +137,10 @@ export async function 找人(名: string, 号: (p: string | null) => string | nu
     out.push({
       表: "客户",
       条数: 客户.length,
-      记录: 客户.map((c) => ({ id: c.id, 姓名: c.name, 电话: 号(c.phone), 学校或公司: c.school, 年级或职位: c.grade, 跟进状态: 叫(c.followStatus), 负责人: 负责人显示名(c.salesOwner.name) })),
+      记录: 客户.map((c) => ({ id: c.id, 姓名: c.name, 电话: 号(c.phone), 学校或公司: c.school, 年级或职位: c.grade, 跟进状态: 叫(c.followStatus),
+        // 公海里的只写「公海」，不露原负责人（公海页签同样不列）
+        负责人: c.pool ? "公海" : 负责人显示名(c.salesOwner.name),
+        ...(我 ? { 归属: c.pool ? "公海" : c.salesOwnerId === 我 ? "我负责的" : "同事或下属负责的" } : {}) })),
       怎么查: `get_customer（id=…）读这一位的完整档案和跟进时间线`,
     });
   return [...out, ...其余];

@@ -51,6 +51,11 @@ export type ToolContext = {
   userId: string;
   userName: string;
   页面筛选?: 页面客户筛选;
+  /**
+   * 在哪一页问的（页面范围的「表」：客户 / 公海 / 项目……）。首页、没带页面的入口为空。
+   * 找客户的默认范围按它定（P-看-03，反馈第 1 批 1B）：公海页默认看公海，其余没有客户页筛选的入口默认只看我负责的
+   */
+  页面?: string;
   b: BusinessConfig;
   /** 已读过的记录编号偏移，保证多次读取时编号不重复 */
   recordOffset: number;
@@ -119,21 +124,57 @@ function 用到电话(规格: 查询规格, b: BusinessConfig): boolean {
     || (!!规格.分组 && 是号(规格.表, 规格.分组));
 }
 
+/**
+ * 找客户的范围（反馈第 1 批 1B；P-看-03：个人视角——含首页——只算自己负责的，公海只在公海页签出现）。
+ *
+ * 限定层给的是「看得到」：业务员 = 名下 ∪ 公海 ∪ 组员项目的客户，管理再加下属的。它没错，但比「属于我」宽；
+ * 原来不传 mine 就是这一整圈混成一张名单（负责人写「公海」也照列），业务员在首页问 AI 就看到了不是自己的客户。
+ * 现在按入口定默认（首页、浮窗、客户页面板共用这套工具，不在工具里一刀切）：
+ * - 客户页带了页面筛选：跟页面走（页面条件里自带「客户 / 公海」页签那一层，customers/query.ts 公海条件）；
+ * - 在公海页：公海；客户页上没筛什么：「客户」页签那一圈（= scope team）；
+ * - 问的是某位同事名下（ownerName）：列表那一圈（不含公海），看不看得到照旧由限定层定；
+ * - 其余（首页、别的页上的浮窗、MCP）：只看我负责的，另有多少位看得到但不归我负责的只给个数。
+ * 模型可以明说 scope：mine = 我负责的；team = 客户列表「客户」页签那一圈（限定层 ∧ 不在公海）；pool = 公海。
+ * 不管哪种，每行都标归属，我负责的排前面——回答里不把别人的、公海的混进「我的」。
+ */
+type 客户范围 = "mine" | "team" | "pool" | "page" | "all";
+const 归属叫法 = { 我: "我负责的", 别人: "同事或下属负责的", 公海: "公海" } as const;
+const 客户归属 = (me: string, c: { salesOwnerId: string | null; pool?: unknown }): string =>
+  c.pool ? 归属叫法.公海 : c.salesOwnerId === me ? 归属叫法.我 : 归属叫法.别人;
+/** 公海里的客户负责人一栏只写「公海」：原负责人不该从 AI 这边露出来（公海页签同样不列原负责人） */
+const 客户负责人名 = (c: { pool?: unknown; salesOwner: { name: string } }) => (c.pool ? "公海" : 负责人显示名(c.salesOwner.name));
+function 认客户范围(args: Record<string, unknown>, ctx: ToolContext, 有页面条件: boolean): 客户范围 {
+  if (args.mine === true || args.scope === "mine") return "mine";
+  if (args.scope === "team") return "team";
+  if (args.scope === "pool") return "pool";
+  if (有页面条件) return "page";
+  // 不是企业版（团队版 / 个人版）没有这条规矩：照旧限定层看得到的全部
+  if (!企业版()) return "all";
+  if (ctx.页面 === "公海") return "pool";
+  // 客户页上没筛什么：就是「客户」页签那一圈（不含公海）
+  if (ctx.页面 === "客户") return "team";
+  if (str(args.ownerName, 20)) return "team";
+  return "mine";
+}
+const 客户范围条件 = (r: 客户范围, me: string): Prisma.CustomerWhereInput =>
+  r === "mine" ? { salesOwnerId: me, pool: { is: null } } : r === "team" ? { pool: { is: null } } : r === "pool" ? { pool: { isNot: null } } : {};
+const 范围说法: Record<客户范围, string> = { mine: "我负责的", team: "我看得到的（不含公海）", pool: "公海", page: "当前客户页", all: "我看得到的" };
+
 export const TOOLS: Tool[] = [
   {
     name: "search_customers",
     description:
       "按关键词或条件找一批客户，返回总数和名单。query 同时匹配姓名、学校、年级、专业、备注，外贸的 WhatsApp / 邮箱 / 微信 / 国家、联系人（「武汉大学的有几位」→ query=\"武汉大学\"）。" +
       "「小红这个渠道里有谁」用 channelName（先用 list_channels 看渠道叫什么），「李四手上有哪些客户」用 ownerName，「这周新增了哪些」用 createdFrom/To，" +
-      "「这个月预计能签哪几个」用 expectedSignFrom/To（按预计签约日从近到远）。找到某一位后用 get_customer 读记录。",
-    args: '{"query": "姓名 / 学校 / 年级 / 专业 / 备注 / WhatsApp / 邮箱里的关键词，可为空", "channelName": "渠道名称，可选", "ownerName": "销售负责人姓名，可选", "followStatus": "跟进状态，可选", "decisionStatus": "决策状态，可选", "createdFrom": "建档起始 YYYY-MM-DD，可选", "createdTo": "建档截止，可选", "expectedSignFrom": "预计签约起始，可选", "expectedSignTo": "预计签约截止，可选", "mine": true|false 可选}',
+      "「这个月预计能签哪几个」用 expectedSignFrom/To（按预计签约日从近到远）。找到某一位后用 get_customer 读记录。" +
+      "默认只看我负责的；问团队 / 下属 / 同事名下的用 scope=team，问公海里的用 scope=pool。每行带「归属」（我负责的 / 同事或下属负责的 / 公海），回答按归属分开说。",
+    args: '{"query": "姓名 / 学校 / 年级 / 专业 / 备注 / WhatsApp / 邮箱里的关键词，可为空", "channelName": "渠道名称，可选", "ownerName": "销售负责人姓名，可选", "followStatus": "跟进状态，可选", "decisionStatus": "决策状态，可选", "createdFrom": "建档起始 YYYY-MM-DD，可选", "createdTo": "建档截止，可选", "expectedSignFrom": "预计签约起始，可选", "expectedSignTo": "预计签约截止，可选", "mine": true|false 可选, "scope": "mine|team|pool，可空：不给时首页默认 mine（只看我负责的），公海页默认 pool，客户页跟页面"}',
     async run(args, ctx) {
       const q = str(args.query, 20);
       const channel = str(args.channelName, 20);
       const owner = str(args.ownerName, 20);
       const status = str(args.followStatus, 20);
       const decision = str(args.decisionStatus, 20);
-      const mine = args.mine === true;
       // statusLabels 是「原值 → 这家的叫法」的重命名表，两个状态共用一张；反查回原值，查不到就按原样用
       const 原值 = (v: string) => (v ? (Object.entries(ctx.b.statusLabels).find(([, x]) => x === v)?.[0] ?? v) : "");
       const statusKey = 原值(status);
@@ -145,9 +186,13 @@ export const TOOLS: Tool[] = [
       const 预签条件 = 区间条件(预签);
       const 号 = 脱敏(ctx);
       const 页面条件 = ctx.页面筛选 && Object.keys(ctx.页面筛选).length ? await 客户筛选条件(ctx.页面筛选, ctx.userId) : null;
-      if (!页面条件 && !q && !channel && !owner && !status && !decision && !mine && !建档条件 && !预签条件)
-        return { summary: "没给条件", data: { error: "query / channelName / ownerName / followStatus / decisionStatus / mine / createdFrom-To / expectedSignFrom-To 至少给一个" } };
-      const where = {
+      const 明说范围 = args.mine === true || args.scope === "mine" || args.scope === "team" || args.scope === "pool";
+      if (!页面条件 && !q && !channel && !owner && !status && !decision && !明说范围 && !建档条件 && !预签条件)
+        return { summary: "没给条件", data: { error: "query / channelName / ownerName / followStatus / decisionStatus / scope / createdFrom-To / expectedSignFrom-To 至少给一个" } };
+      const 范围 = 认客户范围(args, ctx, Boolean(页面条件));
+      const me = ctx.userId;
+      // 不带范围的那一份：数「另有几位看得到但不归我负责」用
+      const 条件: Prisma.CustomerWhereInput = {
         AND: [await 客户关键词条件(q, false, ctx.userId), ...(页面条件 ? [页面条件] : []), ...(预签条件 ? [{ OR: [
           { expectedSignOn: { ...(预签.from ? { gte: 预签.from.format("YYYY-MM-DD") } : {}), ...(预签.to ? { lte: 预签.to.format("YYYY-MM-DD") } : {}) } },
           { expectedSignOn: null, expectedSignAt: 预签条件 },
@@ -160,27 +205,43 @@ export const TOOLS: Tool[] = [
         ...(statusKey ? { followStatus: statusKey } : {}),
         ...(decisionKey ? { decisionStatus: decisionKey } : {}),
         ...(建档条件 ? { createdAt: 建档条件 } : {}),
-        ...(mine ? { salesOwnerId: ctx.userId } : {}),
       };
-      const select = { id: true, name: true, phone: true, school: true, grade: true, major: true, followStatus: true, decisionStatus: true, salesOwner: { select: { name: true } }, channel: { select: { name: true } }, expectedSignAt: true, expectedSignOn: true, createdAt: true, lastFollowAt: true } as const;
+      const where: Prisma.CustomerWhereInput = { AND: [条件, 客户范围条件(范围, me)] };
+      // 我负责的排前面（库里排不出「等于我」，分两句取）
+      const 我的条件 = { salesOwnerId: me, pool: { is: null } } satisfies Prisma.CustomerWhereInput;
+      const 我的 = { AND: [where, 我的条件] };
+      const 别的 = { AND: [where, { OR: [{ salesOwnerId: { not: me } }, { pool: { isNot: null } }] }] };
+      const select = { id: true, name: true, phone: true, school: true, grade: true, major: true, followStatus: true, decisionStatus: true, salesOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } }, channel: { select: { name: true } }, expectedSignAt: true, expectedSignOn: true, createdAt: true, lastFollowAt: true } as const;
       const read = (args: unknown) => prisma.customer.findMany({ ...(args as Prisma.CustomerFindManyArgs), select });
-      const [total, rows] = await Promise.all([
+      type 行 = Awaited<ReturnType<typeof read>>;
+      const 取 = (w: Prisma.CustomerWhereInput, n: number): Promise<行> =>
+        n <= 0 ? Promise.resolve([]) : 预签条件
+          ? readCalendarSorted(read, w, select, n, "expectedSignAt", "expectedSignOn", "asc") as Promise<行>
+          : read({ where: w, take: n, orderBy: { lastFollowAt: "desc" } });
+      const [total, 我的数, 公海数, 我的行, 另有] = await Promise.all([
         prisma.customer.count({ where }),
-        预签条件
-          ? readCalendarSorted(read, where, select, 30, "expectedSignAt", "expectedSignOn", "asc") as Promise<Awaited<ReturnType<typeof read>>>
-          : read({ where, take: 30, orderBy: { lastFollowAt: "desc" } }),
+        prisma.customer.count({ where: 我的 }),
+        范围 === "pool" || 范围 === "page" || 范围 === "all" ? prisma.customer.count({ where: { AND: [where, { pool: { isNot: null } }] } }) : Promise.resolve(0),
+        取(我的, 30),
+        范围 === "mine" ? prisma.customer.count({ where: { AND: [条件, { pool: { is: null } }, { salesOwnerId: { not: me } }] } }) : Promise.resolve(0),
       ]);
+      const rows = 范围 === "mine" ? 我的行 : [...我的行, ...(await 取(别的, 30 - 我的行.length))];
       const data = {
         total,
         shown: rows.length,
-        customers: rows.map((r) => ({ id: r.id, name: r.name, phone: 号(r.phone), school: r.school, grade: r.grade, major: r.major, followStatus: statusLabel(ctx.b, r.followStatus), decisionStatus: statusLabel(ctx.b, r.decisionStatus), owner: 负责人显示名(r.salesOwner.name), channel: r.channel?.name ?? null, expectedSignAt: r.expectedSignOn ?? (r.expectedSignAt ? dayjs(r.expectedSignAt).format("YYYY-MM-DD") : null), createdAt: dayjs(r.createdAt).format("YYYY-MM-DD"), lastFollowAt: r.lastFollowAt ? dayjs(r.lastFollowAt).format("MM-DD") : null })),
+        范围: 范围说法[范围],
+        分组: { [归属叫法.我]: 我的数, [归属叫法.别人]: total - 我的数 - 公海数, [归属叫法.公海]: 公海数 },
+        ...(另有 ? { 另有, 另有说明: `另有 ${另有} 位你看得到、但不归你负责（同事或下属负责的、你在组里的项目挂的）；用户问团队 / 下属 / 同事的才用 scope=team 查，别混进「我的客户」` } : {}),
+        customers: rows.map((r) => ({ id: r.id, name: r.name, 归属: 客户归属(me, r), phone: 号(r.phone), school: r.school, grade: r.grade, major: r.major, followStatus: statusLabel(ctx.b, r.followStatus), decisionStatus: statusLabel(ctx.b, r.decisionStatus), owner: 客户负责人名(r), channel: r.channel?.name ?? null, expectedSignAt: r.expectedSignOn ?? (r.expectedSignAt ? dayjs(r.expectedSignAt).format("YYYY-MM-DD") : null), createdAt: dayjs(r.createdAt).format("YYYY-MM-DD"), lastFollowAt: r.lastFollowAt ? dayjs(r.lastFollowAt).format("MM-DD") : null })),
       };
       const 区间说法 = (r: { from?: Dayjs; to?: Dayjs }, 名: string) =>
         r.from || r.to ? `${名} ${r.from ? r.from.format("YYYY-MM-DD") : "最早"}~${r.to ? r.to.format("YYYY-MM-DD") : "今天"}` : "";
-      const cond = [页面条件 && "当前客户页筛选", q && `「${q}」`, channel && `渠道 ${channel}`, owner && `负责人 ${owner}`, status && `状态 ${status}`, decision && `决策 ${decision}`, 区间说法(建档, "建档"), 区间说法(预签, "预计签约"), mine && "我负责的"].filter(Boolean).join("、");
+      const cond = [页面条件 && "当前客户页筛选", q && `「${q}」`, channel && `渠道 ${channel}`, owner && `负责人 ${owner}`, status && `状态 ${status}`, decision && `决策 ${decision}`, 区间说法(建档, "建档"), 区间说法(预签, "预计签约")].filter(Boolean).join("、") || "全部";
       if (total) {
-        return { summary: `${cond}：${total} 位${total > rows.length ? `，列出前 ${rows.length}` : ""}——${rows.slice(0, 6).map((r) => r.name).join("、")}${rows.length > 6 ? "…" : ""}`, data };
+        return { summary: `${范围说法[范围]} · ${cond}：${total} 位${total > rows.length ? `，列出前 ${rows.length}` : ""}——${rows.slice(0, 6).map((r) => r.name).join("、")}${rows.length > 6 ? "…" : ""}`, data };
       }
+      // 我负责的里没有、但看得到的别人名下有：照实说「你负责的里没有」，不去别的表找（那一位就在客户表里）
+      if (另有) return { summary: `${范围说法[范围]}里没有匹配 ${cond} 的${ctx.b.customer}（另有 ${另有} 位不归你负责）`, data: { ...data, 没有匹配: cond } };
       /*
         **搜空的时候，别只说「没有」。**
 
@@ -194,7 +255,7 @@ export const TOOLS: Tool[] = [
       const 别处 = q ? await 名字在别处(q, 号) : [];
       const 附 = 别处附件(q, 别处);
       return {
-        summary: `没有匹配 ${cond} 的${ctx.b.customer}${别处说法(q, 别处)}`,
+        summary: `${范围说法[范围]}里没有匹配 ${cond} 的${ctx.b.customer}${别处说法(q, 别处)}`,
         data: 附 ? { ...data, ...附 } : { ...data, 没有匹配: cond },
       };
     },
@@ -209,7 +270,7 @@ export const TOOLS: Tool[] = [
     async run(args, ctx) {
       const name = str(args.name, 20);
       if (!name) return { summary: "没给名字", data: { error: "name 必填" } };
-      const 命中 = await 找人(name, 脱敏(ctx), (v) => statusLabel(ctx.b, v));
+      const 命中 = await 找人(name, 脱敏(ctx), (v) => statusLabel(ctx.b, v), ctx.userId);
       if (!命中.length) return { summary: `当前可访问范围内未找到「${name}」`, data: { 找到: 0, error: `当前可访问范围内未找到「${name}」；无法据此判断记录不存在还是无权访问` } };
       const 条 = 命中.reduce((n, h) => n + h.条数, 0);
       return {
@@ -240,7 +301,7 @@ export const TOOLS: Tool[] = [
           where: { name: { contains: name } },
           take: 6,
           orderBy: { lastFollowAt: "desc" },
-          select: { id: true, name: true, school: true, phone: true, salesOwner: { select: { name: true } } },
+          select: { id: true, name: true, school: true, phone: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } },
         });
         if (!候选.length) {
           // 和 search_customers 同一条：查无此人时把别的表一起看了，别让模型只会说「没有」
@@ -254,7 +315,7 @@ export const TOOLS: Tool[] = [
         if (候选.length > 1)
           return {
             summary: `叫「${name}」的有 ${候选.length} 位，要哪一位`,
-            data: { 需要挑一位: 候选.map((c) => ({ id: c.id, 姓名: c.name, 学校: c.school, 电话: 号(c.phone), 负责人: 负责人显示名(c.salesOwner.name) })) },
+            data: { 需要挑一位: 候选.map((c) => ({ id: c.id, 姓名: c.name, 学校: c.school, 电话: 号(c.phone), 负责人: 客户负责人名(c) })) },
           };
         id = 候选[0].id;
       }
@@ -263,6 +324,7 @@ export const TOOLS: Tool[] = [
         where: { id },
         include: {
           salesOwner: { select: { name: true } },
+          pool: { select: { customerId: true } },
           referrerCustomer: { select: { name: true } },
           channel: { select: { name: true } },
           contracts: { select: { amount: true, signedAt: true, ...带币种.签约 } },
@@ -314,6 +376,7 @@ export const TOOLS: Tool[] = [
       const data = {
         id: c.id,
         name: c.name,
+        归属: 客户归属(ctx.userId, c),
         sourceLead: await 客户来源线索(c.id),
         // 电话一定要给：不给的话模型会如实说「系统里没存电话」，
         // 然后建议人去补一条**本来就存在**的数据——比缺功能更伤，
@@ -613,7 +676,7 @@ export const TOOLS: Tool[] = [
     description: `列项目。项目模式下线索、商机、订单是**同一个项目的三个阶段**（${阶段们.join(" → ")}），没有单独的线索表和商机表：\
 问「有哪些新线索」用 phase=线索，「手上的商机」用 phase=商机，「在交付的订单」用 phase=订单。\
 默认只列进行中的（没结局）；问「流失的 / 丢的 / 交付完的 / 异常的」用 result（${结局们.join(" / ")}，或「全部」）。\
-「多久没动的」用 idleDays，「公海里的」用 pooled。按最近改过排，给总数和各阶段个数。`,
+「多久没动的」用 idleDays，「公海里的」用 pooled（不给就不含公海里的）。按最近改过排，给总数和各阶段个数；每个项目带「归属」，回答按归属分开说。`,
     args: `{"phase": "${阶段们.join("/")}，可空", "node": "当前进程名，可空", "result": "${结局们.join("/")}/全部，可空，默认只看进行中", "ownerName": "负责人姓名，可空", "keyword": "项目名或客户名里的关键词，可空", "idleDays": 至少几天没动，可空, "pooled": 只看公海里的，可空}`,
     async run(args, ctx) {
       const phase = 是阶段(args.phase) ? args.phase : null;
@@ -630,7 +693,8 @@ export const TOOLS: Tool[] = [
         ...(ownerName ? { ownerId: { in: (await prisma.user.findMany({ where: { name: { contains: ownerName } }, select: { id: true } })).map((u) => u.id) } } : {}),
         ...(词 ? { OR: [{ name: { contains: 词 } }, { customer: { name: { contains: 词 } } }] } : {}),
         ...(天 ? { updatedAt: { lt: dayjs().subtract(天, "day").toDate() } } : {}),
-        ...(args.pooled === true ? { pooledAt: { not: null } } : {}),
+        // 公海里的项目只在问公海时列（P-看-03；企业版项目列表默认也不列公海项目，lib/project/list.ts 列表条件）。团队版照旧混着、行上写「在公海」
+        ...(args.pooled === true ? { pooledAt: { not: null } } : 企业版() ? { pooledAt: null } : {}),
       };
       const [total, 各阶段, rows] = await Promise.all([
         prisma.project.count({ where }),
@@ -671,6 +735,7 @@ export const TOOLS: Tool[] = [
             金额: p.amount,
             币种: p.currency,
             负责人: p.pooledAt ? "在公海" : (名字.get(p.ownerId) ?? "已不在的成员"),
+            归属: p.pooledAt ? 归属叫法.公海 : p.ownerId === ctx.userId ? 归属叫法.我 : 归属叫法.别人,
             下一步: p.nextStepText ?? null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null,
             多久没动: `${dayjs().diff(p.updatedAt, "day")} 天`,
           })),
@@ -799,7 +864,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "search_followups",
-    description: "在**所有**跟进记录里按关键词跨人搜（「谁提过预算」「哪几个人说过要对比方案」），自动连同义词一起搜（预算＝费用＝学费＝价格），不用换词重试。读某一位客户的完整跟进用 get_customer。",
+    description: "在**所有**跟进记录里按关键词跨人搜（「谁提过预算」「哪几个人说过要对比方案」），自动连同义词一起搜（预算＝费用＝学费＝价格），不用换词重试。读某一位客户的完整跟进用 get_customer。公海客户身上的不搜；每条带客户「归属」（我负责的 / 同事或下属负责的），回答按归属分开说。",
     args: '{"keyword": "内容里的关键词", "days": 最近多少天，可空, "mine": true|false 可空}',
     async run(args, ctx) {
       const q = str(args.keyword, 30);
@@ -811,8 +876,10 @@ export const TOOLS: Tool[] = [
         而那次来回本来可以不发生（见 lib/agent/synonyms.ts）。
       */
       const 词们 = 扩同义词(q);
-      const where = {
+      const where: Prisma.FollowUpWhereInput = {
         OR: 词们.flatMap((w) => [{ content: { contains: w } }, { title: { contains: w } }]),
+        // 公海客户身上的沟通不跨人搜出来（P-看-03：公海只在公海页签；要看去公海页点那一位）
+        ...(企业版() ? { customer: { pool: { is: null } } } : {}),
         // 「最近 N 天」从 N 天前的零点起算，和 my_recap、query_records 一个口径（排查 C7）
         ...(days ? { occurredAt: { gte: dayjs().subtract(days, "day").startOf("day").toDate() } } : {}),
         ...(args.mine === true ? { ownerId: ctx.userId } : {}),
@@ -821,7 +888,7 @@ export const TOOLS: Tool[] = [
         prisma.followUp.count({ where }),
         prisma.followUp.findMany({
           where, orderBy: { occurredAt: "desc" }, take: 15,
-          select: { content: true, type: true, occurredAt: true, customer: { select: { id: true, name: true } }, owner: { select: { name: true } } },
+          select: { content: true, type: true, occurredAt: true, customer: { select: { id: true, name: true, salesOwnerId: true } }, owner: { select: { name: true } } },
         }),
       ]);
       // 说清到底搜了哪些词：答案里出现「费用」而用户问的是「预算」时，人要能看懂为什么
@@ -834,6 +901,7 @@ export const TOOLS: Tool[] = [
           记录: rows.map((f) => ({
             customerId: f.customer.id,
             客户: f.customer.name,
+            归属: 客户归属(ctx.userId, f.customer),
             时间: dayjs(f.occurredAt).format("YYYY-MM-DD"),
             类型: FOLLOW_TYPE_MAP[f.type]?.label ?? f.type,
             跟进人: f.owner?.name ?? null,
@@ -885,6 +953,7 @@ export const TOOLS: Tool[] = [
       "通用查询：按任意条件找记录、排序、计数、分组统计。**别的工具能直接答的别用它**；" +
       "它接的是：联系人（没有专门工具）、要排序（「哪条线索最久没动」）、要跨一张表（「9 月签约的学员里哪几个是小红老师带来的」）、" +
       "以及项目、卡点、节点记录、回款、线索验证、提成、公海、组织架构、同事这些没有专门工具的表。人和部门字段直接写名字（「负责人 等于 张三」）。" +
+      "「客户」表不含公海里的客户，问公海查「公海」表。" +
       "能查的表：" + Object.keys(表们).join("、") + "。字段或运算填错会返回能用的选项，照着改一次就行。",
     args:
       '{"表": "' + Object.keys(表们).join("/") + '", ' +
@@ -955,6 +1024,8 @@ export const TOOLS: Tool[] = [
         else if (["商机", "签约", "联系人", "跟进记录", "跟进计划", "任务", "项目"].includes(规格.表)) where = { AND: [where, { customer: { is: 页面条件 } }] };
         else return { summary: "当前范围是客户", data: { error: `当前客户页筛选不能用于${规格.表}，请移除页面上下文后查询。` } };
       }
+      // 企业版「客户」表不带页面筛选时不含公海里的（P-看-03，同 search_customers）；公海里的客户查「公海」表
+      else if (规格.表 === "客户" && 企业版()) where = { AND: [where, { pool: { is: null } }] };
       const 表定义 = 查询表(规格.表, ctx.b);
       /*
         回款、线索验证、提成这几张表不在团队限定层里（lib/team-scope.ts 只管客户、项目那一串），
