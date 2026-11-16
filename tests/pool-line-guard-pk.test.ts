@@ -12,6 +12,7 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {}
 import { prisma } from "@/lib/prisma";
 import { PrismaClient } from "@/generated/prisma";
 import { resetDb } from "./reset";
+import { 等日志齐 } from "./query-log";
 import { 加上限定, 看全部 } from "@/lib/team-scope";
 import { 建组织, 填组织设置, type 组织 } from "@/lib/enterprise/org-core";
 import { 公海别线的, 公海操作限线 } from "@/lib/enterprise/pool-line-guard";
@@ -129,8 +130,11 @@ describe("公海别线的：真发出去的四句走主键", () => {
   afterAll(() => 截.$disconnect());
 
   it("客户、项目各两句：顶层不带 deletedAt IS NULL，计划走主键、不顺 deletedAt 索引扫", async () => {
+    // query 日志可能比结果晚到（见 tests/query-log.ts）：清之前先等前面的到齐，跑完再等齐了才找
+    await 等日志齐(截, 句们);
     句们.length = 0;
     await 公海别线的(限, { id: "plg-in-mgr", role: "SALES" }, org, { 客户: 客户ids, 项目: 项目ids });
+    await 等日志齐(截, 句们);
     for (const 表 of ["Customer", "Project"]) {
       const 主 = 句们.filter((q) => q.query.startsWith("SELECT") && q.query.includes(`FROM \`main\`.\`${表}\` `) && q.query.includes(`\`${表}\`.\`id\` IN (`));
       expect(主.length, 表).toBe(2);

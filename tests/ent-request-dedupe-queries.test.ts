@@ -12,15 +12,21 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { AsyncLocalStorage } from "node:async_hooks";
 
-const 记 = vi.hoisted(() => ({ 开: false, 句: [] as string[] }));
+const 记 = vi.hoisted(() => ({ 开: false, 句: [] as string[], 们: new Set<{ $queryRawUnsafe: (sql: string) => Promise<unknown> }>() }));
 const 请求 = vi.hoisted(() => ({ als: undefined as unknown as import("node:async_hooks").AsyncLocalStorage<{ 缓存: Map<unknown, Map<string, unknown>>; 票: string; 看法: string }> }));
 请求.als = new AsyncLocalStorage();
 vi.mock("@/generated/prisma", async (原) => {
   const m = await 原<typeof import("@/generated/prisma")>();
   class 记数Client extends m.PrismaClient {
+    async $disconnect() {
+      记.们.delete(this as never);
+      return super.$disconnect();
+    }
     constructor(o: ConstructorParameters<typeof m.PrismaClient>[0] = {}) {
       super({ ...o, log: [{ emit: "event", level: "query" }, ...((o?.log as never[]) ?? [])] } as never);
       (this as unknown as { $on: (e: string, f: (x: { query: string; params: string }) => void) => void }).$on("query", (e) => { if (记.开) 记.句.push(/`Setting`/.test(e.query) ? `${e.query} ${e.params}` : e.query); });
+      // 量的时候每个客户端都要等日志齐（tests/query-log.ts 都等齐）；断开的不再算
+      记.们.add(this as never);
     }
   }
   return { ...m, PrismaClient: 记数Client };
@@ -64,6 +70,7 @@ vi.mock("@/lib/business", async (原) => {
 import { SignJWT } from "jose";
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
+import { 都等齐 } from "./query-log";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { SECRET, getCurrentUser, requireUser } from "@/lib/auth";
@@ -119,8 +126,9 @@ async function 量(p: 页, 谁: 人 = 甲): Promise<string[]> {
   const 开 = () => 在请求里(谁, () => Promise.all([AppLayout({ children: null } as never), p.开()]), p.看法);
   await 开();
   await 开();
-  记.句 = []; 记.开 = true;
-  try { await 开(); } finally { 记.开 = false; }
+  // query 日志可能比结果晚到（见 tests/query-log.ts）：开开关后先等齐再清空，量完、关开关前再等齐
+  记.句 = []; 记.开 = true; await 都等齐(记.们, 记.句); 记.句 = [];
+  try { await 开(); await 都等齐(记.们, 记.句); } finally { 记.开 = false; }
   return 记.句;
 }
 
@@ -181,13 +189,15 @@ describe("一次请求里参考数据只读一遍（F1）", () => {
     const { 读市场成员们 } = await import("@/lib/enterprise/market-db");
     const { 读组织 } = await import("@/lib/enterprise/org");
     const 数 = async () => {
-      记.句 = []; 记.开 = true;
+      // 同 量()：开开关后先等齐再清空，跑完、关开关前再等齐才数（晚到的日志进来时开关已关会被丢掉，数少）
+      记.句 = []; 记.开 = true; await 都等齐(记.们, 记.句); 记.句 = [];
       try {
         await 在请求里(甲, async () => {
           const org = await 读组织();
           await Promise.all([getCurrentUser(), requireUser(), 读市场成员们(org)]);
           await Promise.all([getCurrentUser(), 读市场成员们(org)]);
         });
+        await 都等齐(记.们, 记.句);
       } finally { 记.开 = false; }
       // Prisma 会把同一刻的几条 findUnique 并成一句 IN，按句数不稳：数参数里出现几次市场成员设置的 key
       return { 会话: 记.句.filter(是会话用户).length, 市场: 记.句.filter((q) => /FROM `Setting`/.test(平(q))).map((q) => q.split("enterprise.market_users").length - 1).reduce((a, b) => a + b, 0) };

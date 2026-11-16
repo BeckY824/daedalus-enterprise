@@ -8,6 +8,8 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
+// 先演一遍放宽限时：这里对的是「预演数 = 写入数」，负载高时 3 秒演不完会让 报告.预演 = null（见 tests/import-preview-time.ts）
+vi.mock("@/lib/enterprise-import/apply", async (原) => (await import("./import-preview-time")).预演放宽(await 原()));
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -54,6 +56,11 @@ function 列(t: 读出的表, 头: string) {
   return t.行.map((r) => String(r[i] ?? "").trim());
 }
 const 合计 = (报告: typeof 报告1) => (k: "新建" | "更新" | "没变" | "并入" | "待写") => 实体顺序.reduce((a, e) => a + 报告.按类[e][k], 0);
+/**
+ * 整份样例从头试跑 + 写一遍 / 撤回两批的几条：空闲时 1–3 秒，满载（只拿到 15% 的 CPU）时 20 秒上下，
+ * 超过默认的 20 秒用例限时（11-16 实测）。要对的是数，给足时间；真卡死照样超时
+ */
+const 慢 = 120_000;
 const 数字 = (s: string) => s.replace(/\D/g, "").replace(/^86(?=1\d{10}$)/, "");
 
 let 表们: 读出的表[] = [];
@@ -136,7 +143,7 @@ describe("裁判 · 对账", () => {
     expect(写1.跳过).toBe(报告1.合计.跳过 + 合("并入") + 合("没变"));
     expect(合("没变")).toBe(0);
     // 报告上先演一遍的数 = 写完的数，五项一项不差
-    expect(报告1.预演?.合计).toEqual({ 新建: 写1.新建, 更新: 写1.更新, 跳过: 写1.跳过, 冲突: 写1.冲突, 失败: 写1.失败 });
+    expect(报告1.预演?.合计, 报告1.提醒.join("\n")).toEqual({ 新建: 写1.新建, 更新: 写1.更新, 跳过: 写1.跳过, 冲突: 写1.冲突, 失败: 写1.失败 });
     // 同电话的三对并成三家；和测试机上那家已有客户同号的整条跳过（M-导入-29），不连上、不另建
     expect(报告1.按类.customer).toMatchObject({ 并入: 3, 更新: 0 });
   });
@@ -274,7 +281,7 @@ describe("裁判 · 幂等", () => {
   it("同一批再导一次：报告零新建，写入零新建零更新，库里一格不变", async () => {
     const 试 = await 带默认试跑(表们);
     批2 = 试.批次Id;
-    expect(试.报告.预演?.合计).toMatchObject({ 新建: 0, 更新: 0, 冲突: 0, 失败: 0 });
+    expect(试.报告.预演?.合计, 试.报告.提醒.join("\n")).toMatchObject({ 新建: 0, 更新: 0, 冲突: 0, 失败: 0 });
     for (const e of 实体顺序) {
       const c = 试.报告.按类[e];
       expect([e, c.新建, c.更新, c.没变 + c.并入]).toEqual([e, 0, 0, c.待写]);
@@ -284,7 +291,7 @@ describe("裁判 · 幂等", () => {
     expect(r.跳过).toBe(试.报告.合计.跳过 + 合计(试.报告)("并入") + 合计(试.报告)("没变"));
     const 再 = await 拍();
     for (const k of Object.keys(导入后)) expect(再[k], k).toEqual(导入后[k]);
-  });
+  }, 慢);
 });
 
 describe("裁判 · 来回", () => {
@@ -297,7 +304,7 @@ describe("裁判 · 来回", () => {
     // 撤回把值退回去了，但 Prisma 的 @updatedAt 会跟着动（被同步更新过的行）：只这一项不比
     const 去时间 = (行们: string[] = []) => 行们.map((r) => r.replace(/"updatedAt":"[^"]*"/, "")).sort();
     for (const k of Object.keys(导入前)) expect(去时间(撤后[k]), k).toEqual(去时间(导入前[k]));
-  });
+  }, 慢);
 });
 
 /**
@@ -310,7 +317,7 @@ describe("裁判 · 冲突 / 没变 / 更新的对账", () => {
     // 先照原样导一遍
     const 首 = await 带默认试跑(表们);
     const 首写 = await 写一批(首.批次Id, 我);
-    expect(首.报告.预演?.合计).toEqual({ 新建: 首写.新建, 更新: 首写.更新, 跳过: 首写.跳过, 冲突: 首写.冲突, 失败: 首写.失败 });
+    expect(首.报告.预演?.合计, 首.报告.提醒.join("\n")).toEqual({ 新建: 首写.新建, 更新: 首写.更新, 跳过: 首写.跳过, 冲突: 首写.冲突, 失败: 首写.失败 });
 
     // 挑三家只在源表出现一次、也不和别家同号的客户：A 两边都改名（冲突），B 只原系统改名（更新），C 只我们这边改名（没变 → 跳过）
     const 新表们: 读出的表[] = structuredClone(表们);
@@ -377,5 +384,5 @@ describe("裁判 · 冲突 / 没变 / 更新的对账", () => {
     const 名 = async (id: string) => (await prisma.customer.findUnique({ where: { id } }))!.name;
     expect([await 名(aId), await 名(bId), await 名(cId)]).toEqual(["我们这边改的A", "原系统改的B", "我们这边改的C"]);
     expect((await prisma.customer.findFirst({ where: { name: "对账新建测试有限公司" } }))!.salesOwnerId).toBe(默认负责人);
-  });
+  }, 慢);
 });
