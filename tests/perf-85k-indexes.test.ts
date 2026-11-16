@@ -20,6 +20,7 @@ import { 加上限定, 看全部 } from "@/lib/team-scope";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 客户筛选条件 } from "@/app/(app)/customers/query";
+import { 等日志齐 } from "./query-log";
 
 const 迁移 = fs.readFileSync(new URL("../migrations/137-perf-85k-indexes.sql", import.meta.url), "utf8");
 const 迁移138 = fs.readFileSync(new URL("../migrations/138-perf-85k-indexes-2.sql", import.meta.url), "utf8");
@@ -109,8 +110,11 @@ describe("查询计划：Prisma 实际发出的语句", () => {
   async function 真计划(谁: string, 表: "Customer" | "FollowUp", fn: () => Promise<unknown>): Promise<{ sql: string; 计划: string }> {
     process.env.CRM_ENTERPRISE = "1";
     忘掉企业版范围();
+    // query 日志可能比结果晚到（见 tests/query-log.ts）：清之前先等前面的到齐、跑完再等齐了才找，不然取到的是空的或上一段的
+    await 等日志齐(截, 句们);
     句们.length = 0;
     await 以谁的身份(谁, fn);
+    await 等日志齐(截, 句们);
     const 主 = 句们.filter((q) => q.query.startsWith("SELECT") && q.query.includes(`FROM \`main\`.\`${表}\``)).at(-1);
     expect(主, `没截到查 ${表} 的句子`).toBeTruthy();
     return { sql: 主!.query, 计划: await 计划(主!.query, ...JSON.parse(主!.params)) };
@@ -219,6 +223,32 @@ describe("查询计划：Prisma 实际发出的语句", () => {
     expect(直推.sql).toContain("`referrerCustomerId` IS NULL");
     expect(直推.计划).toContain("Customer_deletedAt_createdAt_id_idx");
   });
+
+  /*
+    员工反馈 1I（11-16）：「超过 N 天没跟进」筛选不加索引——默认按建档时间翻页时照旧顺原来那两条索引走、边走边挑，不整表排序；
+    国家（addrCountry）筛选同理。点「最近跟进」表头排序才整段排一次（TEMP B-TREE）：lastFollowAt 不建索引，
+    原因见迁移 138 末尾（试过的索引会把「我的」那几句带歪）。打印出来的计划在 PERF_PLAN_DUMP 指的文件里
+  */
+  it("超过 N 天没跟进 / 国家筛选：默认翻页照旧走 (deletedAt, createdAt, id) / 负责人打头的，不整表排序；按最近跟进排才排一次", async () => {
+    await 备名下客户();
+    const 记: string[] = [];
+    const 页序 = (sp: Record<string, string>, orderBy: object[]) => async () => 限.customer.findMany({ where: await 客户筛选条件(sp), orderBy, skip: 0, take: 20, select: { id: true } });
+    try { for (const 谁 of [总管理, 业务员]) {
+      for (const sp of [{ idleDays: "30" }, { country: "阿联酋" }] as Record<string, string>[]) {
+        const r = await 真计划(谁, "Customer", 客户页(sp));
+        记.push(`${谁} ${JSON.stringify(sp)}\n${r.sql}\n${r.计划}`);
+        expect(r.计划, JSON.stringify(sp)).toContain(谁 === 总管理 ? "Customer_deletedAt_createdAt_id_idx" : "Customer_salesOwnerId_deletedAt_createdAt_id_idx");
+        expect(r.计划, JSON.stringify(sp)).not.toContain("TEMP B-TREE");
+      }
+      const 排 = await 真计划(谁, "Customer", 页序({ idleDays: "30" }, [{ lastFollowAt: { sort: "asc", nulls: "first" } }, { createdAt: "asc" }, { id: "asc" }]));
+      记.push(`${谁} follow-asc\n${排.sql}\n${排.计划}`);
+      // 从没跟进过的最前：Prisma 写成 CASE WHEN lastFollowAt IS NULL 打头再按 lastFollowAt 正序
+      expect(排.sql).toMatch(/ORDER BY CASE WHEN `main`\.`Customer`\.`lastFollowAt` IS NULL THEN 0 ELSE 1 END, `main`\.`Customer`\.`lastFollowAt` ASC/);
+      expect(排.计划).toContain("TEMP B-TREE");
+      // 业务员只排自己名下那些（负责人打头的索引取行，再排）
+      if (谁 === 业务员) expect(排.计划).toContain("Customer_salesOwnerId");
+    } } finally { if (process.env.PERF_PLAN_DUMP) fs.writeFileSync(process.env.PERF_PLAN_DUMP, 记.join("\n\n")); }
+  });
 });
 
 describe("查询计划：第三轮（11-14）客户详情时间线、跟进数", () => {
@@ -234,8 +264,10 @@ describe("查询计划：第三轮（11-14）客户详情时间线、跟进数",
   async function 跟进计划(fn: () => Promise<unknown>): Promise<{ sql: string; 计划: string }> {
     process.env.CRM_ENTERPRISE = "1";
     忘掉企业版范围();
+    await 等日志齐(截, 句们);
     句们.length = 0;
     await 看全部(fn);
+    await 等日志齐(截, 句们);
     const 主 = 句们.filter((q) => q.query.startsWith("SELECT") && q.query.includes("FROM `main`.`FollowUp`")).at(-1)!;
     return { sql: 主.query, 计划: await 计划(主.query, ...JSON.parse(主.params)) };
   }

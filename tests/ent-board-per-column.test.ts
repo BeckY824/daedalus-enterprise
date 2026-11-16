@@ -18,13 +18,19 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {}
 vi.mock("next/navigation", () => ({ redirect: (u: string) => { throw new Error(`REDIRECT:${u}`); }, notFound: () => { throw new Error("NOT_FOUND"); } }));
 vi.mock("@/app/(app)/projects/ProjectsView", () => ({ default: () => null }));
 // 数 SQL（同 tests/ent-customer-list-queries.test.ts）：生成的 PrismaClient 换成带 query 事件的子类
-const 记 = vi.hoisted(() => ({ 开: false, 句: [] as string[], 滤: null as null | ((a: { include?: unknown }, r: { id: string }[]) => unknown) }));
+const 记 = vi.hoisted(() => ({ 开: false, 句: [] as string[], 们: new Set<{ $queryRawUnsafe: (sql: string) => Promise<unknown> }>(), 滤: null as null | ((a: { include?: unknown }, r: { id: string }[]) => unknown) }));
 vi.mock("@/generated/prisma", async (原) => {
   const m = await 原<typeof import("@/generated/prisma")>();
   class 记数Client extends m.PrismaClient {
+    async $disconnect() {
+      记.们.delete(this as never);
+      return super.$disconnect();
+    }
     constructor(o: ConstructorParameters<typeof m.PrismaClient>[0] = {}) {
       super({ ...o, log: [{ emit: "event", level: "query" }, ...((o?.log as never[]) ?? [])] } as never);
       (this as unknown as { $on: (e: string, f: (x: { query: string }) => void) => void }).$on("query", (e) => { if (记.开) 记.句.push(e.query); });
+      // 量的时候每个客户端都要等日志齐（tests/query-log.ts 都等齐）；断开的不再算
+      记.们.add(this as never);
       // 记.滤：测「两句之间项目离开了范围」时改写 project.findMany 的返回
       return (this as unknown as { $extends: (x: unknown) => 记数Client }).$extends({
         query: { project: { async findMany({ args, query }: { args: { include?: unknown }; query: (a: unknown) => Promise<{ id: string }[]> }) { const r = await query(args); return 记.滤 ? 记.滤(args, r) : r; } } },
@@ -34,13 +40,14 @@ vi.mock("@/generated/prisma", async (原) => {
   return { ...m, PrismaClient: 记数Client };
 });
 async function 数句<T>(fn: () => Promise<T>): Promise<{ 句: string[]; r: T }> {
-  记.句 = []; 记.开 = true;
-  try { const r = await fn(); return { 句: 记.句, r }; } finally { 记.开 = false; }
+  记.句 = []; 记.开 = true; await 都等齐(记.们, 记.句); 记.句 = [];
+  try { const r = await fn(); await 都等齐(记.们, 记.句); return { 句: 记.句, r }; } finally { 记.开 = false; }
 }
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user, getCurrentUser: async () => mocks.user }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
+import { 都等齐 } from "./query-log";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 读项目列表, 读看板一列, 每列条数 } from "@/lib/project/list";
