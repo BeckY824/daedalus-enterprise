@@ -48,6 +48,9 @@ const 可写: Record<string, string[]> = {
   EntBlockerReason: ["name", "status"],
   // 记项目沟通填的下一步时间（projects/actions.ts 记项目沟通Action）
   EntFollowUpMeta: ["nextAt"],
+  // 企业版教练主题（11-17）：发起时填主题、内容，回复时填内容（customers/[id]/coach-topic-actions.ts）；发出后都不能改
+  EntCoachTopic: ["title", "body"],
+  EntCoachReply: ["body"],
   // 企业版沟通标记（2026-10-26）：记项目沟通 / 建档向导一起写，沟通弹窗里选阶段、选客户是否明确回复
   EntFollowUpMark: ["phase", "replied"],
   // 企业版提成（2026-10-26）：projects/commission-actions.ts 的 存项目底价 / 存提成分配
@@ -526,6 +529,13 @@ const 派生: Record<string, Record<string, string>> = {
     dedupeKey: "同一事件不重复发的键，系统生成", readAt: "铃铛里点已读 / 全部已读时系统写",
     feishuStatus: "推飞书的结果，系统写", feishuError: "没推 / 失败的原因，系统写", feishuAt: "推飞书的时刻，系统写",
   },
+  // 企业版教练主题（2026-11-17，迁移 143）：lib/enterprise/coach-topic-db.ts 系统写
+  EntCoachTopic: {
+    projectId: "发在哪个项目，发起时定", node: "发起那一刻项目在哪个节点，系统写", authorId: "填写人，当前登录账号（不能代别人发）",
+    status: "待回复 / 已回复 / 已关闭：负责人回复、发起人追问、关闭、项目进公海时系统改", closedById: "谁关的，当前登录账号；进公海自动关的留空",
+    closedAt: "关闭的时刻，系统写", deletedAt: "系统管理员删除时系统写（只打记号）",
+  },
+  EntCoachReply: { topicId: "回在哪个主题下，系统定", userId: "回复人，当前登录账号" },
   // 企业版撞号台账（2026-11-10，迁移 115）：lib/enterprise/dupe-ledger.ts 系统写，用户只能点「申请挂靠」
   EntDupeHit: {
     userId: "查询人，当前登录账号", keyType: "撞的是哪种键（手机号 / 客户名……），查重时系统定", keyValue: "撞的值，查重时系统写",

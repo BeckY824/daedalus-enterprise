@@ -656,3 +656,26 @@ export async function 改负责人通知(me: 人, 换了: readonly { customerId:
     }
   });
 }
+
+/* ───────────────────────── 教练主题（11-17） ───────────────────────── */
+
+export type 主题事件 = "发起" | "回复" | "追问" | "关闭";
+/**
+ * 教练主题的通知（coach-topic-db.ts 调，收件人按 coach-topic.ts 发起通知谁 / 回复通知谁 / 关闭通知谁）。站内铃铛 + 飞书（只推已绑定的）。
+ * 飞书会推标题和正文：正文只放一句「去哪看」，**不放主题内容和回复内容**（点评是给销售本人的，11-17 评估）。
+ * 键带回复编号：EntNotice 按「人 + 键」去重，同一主题第二次追问、第二次回复各算一条
+ */
+export async function 主题通知(me: 人, 事件: 主题事件, t: { id: string; title: string; projectId: string; 项目名: string }, 收件人: readonly string[], 回复id?: string): Promise<void> {
+  await 稳("主题通知", async () => {
+    const 们 = 收件人.filter((x) => x && x !== me.id);
+    if (!们.length) return;
+    const 话 = 事件 === "发起" ? "发起了主题" : 事件 === "关闭" ? "关闭了主题" : 事件 === "追问" ? "追问了主题" : "回复了主题";
+    await notify(们, {
+      kind: "主题",
+      title: `${me.name} 在项目「${t.项目名}」${话}「${t.title}」`,
+      body: "到项目详情「沟通记录」卡顶上看",
+      link: `/projects/${t.projectId}`,
+      key: `coach-topic:${t.id}:${事件}${回复id ? `:${回复id}` : ""}`,
+    });
+  });
+}

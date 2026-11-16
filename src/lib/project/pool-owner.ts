@@ -12,6 +12,7 @@ import { 看全部 } from "@/lib/team-scope";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看全部, 只读按线, type 谁 } from "@/lib/enterprise/permissions";
 import { 在推项目条件 } from "./active";
+import { 进公海自动关 } from "@/lib/enterprise/coach-topic";
 
 /** 项目在公海里时 ownerId 写这个 */
 export const 公海无负责人 = "";
@@ -52,6 +53,28 @@ export async function 进公海清组员(tx: Pick<Prisma.TransactionClient, "pro
       summary: `项目进公海，清掉 ${组员.length} 位组员`, detail: JSON.stringify(组员),
     })) });
     await 看全部(() => tx.projectMember.deleteMany({ where: { projectId: { in: 这批 } } }));
+  }
+}
+
+/** 进公海自动关主题时 AuditLog 的 action（entity = EntCoachTopic，一个主题一行） */
+export const 进公海关主题动作 = "pool-close";
+
+/**
+ * 项目进线索公海时，没关的教练主题自动关闭（11-17 评估，开关 coach-topic.ts 进公海自动关）：领走的新负责人不背给前任的待回复。
+ * closedById 留空 = 系统关的；一个主题一行 AuditLog 留痕。和 进公海清组员 并排：放回、超时回收、客户整体进公海连带、离职放进公海四处同一笔事务里调。
+ * 撤销放进公海不重开（关了就关了，发起人要接着说就再发一条）。不是企业版不动
+ */
+export async function 进公海关主题(tx: Pick<Prisma.TransactionClient, "entCoachTopic" | "auditLog" | "user">, projectIds: string[], 操作人: string, at: Date = new Date()): Promise<void> {
+  if (!企业版() || !进公海自动关 || !projectIds.length) return;
+  for (let i = 0; i < projectIds.length; i += 一批id数) {
+    const 这批 = projectIds.slice(i, i + 一批id数);
+    const 们 = await tx.entCoachTopic.findMany({ where: { projectId: { in: 这批 }, status: { not: "已关闭" }, deletedAt: null }, select: { id: true, title: true } });
+    if (!们.length) continue;
+    await tx.entCoachTopic.updateMany({ where: { id: { in: 们.map((t) => t.id) }, status: { not: "已关闭" } }, data: { status: "已关闭", closedById: null, closedAt: at } });
+    const 名 = (await tx.user.findUnique({ where: { id: 操作人 }, select: { name: true } }))?.name ?? "系统";
+    await tx.auditLog.createMany({ data: 们.map((t) => ({
+      userId: 操作人, userName: 名, action: 进公海关主题动作, entity: "EntCoachTopic", entityId: t.id, summary: `项目进公海，主题「${t.title}」自动关闭`,
+    })) });
   }
 }
 

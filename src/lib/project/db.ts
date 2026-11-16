@@ -46,7 +46,7 @@ import { 客户状态自动, 跟着项目重算, 项目变了重算 } from "@/li
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { notify } from "@/lib/enterprise/notify";
 import { 项目业务线, 认业务线, 业务线不认得, 业务线必填, type 成员线查 } from "@/lib/enterprise/assign-line";
-import { 进公海后负责人, 历史负责人, 进公海关待办, 一批id数, 进公海清组员 } from "./pool-owner";
+import { 进公海后负责人, 历史负责人, 进公海关待办, 一批id数, 进公海清组员, 进公海关主题 } from "./pool-owner";
 import { 卡点随项目换人, 公海领走接手理由, 转让接手理由, 移出组员接手理由 } from "./blocker";
 import { 换负责人待办, 待办痕 } from "./carry-tasks";
 import { 换负责人 } from "@/lib/project/owner-write";
@@ -874,6 +874,7 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
     await tx.project.update({ where: { id: p.id }, data: { ...换负责人(进公海后负责人(p.ownerId)), pooledAt: 现在, nextStepAt: null, nextStepText: null } });
     await 进公海清组员(tx, [p.id], me.id);
     await 进公海清验证(tx, [p.id], me.id);
+    await 进公海关主题(tx, [p.id], me.id, 现在);
     await 记转让(tx, p, me.id, p.ownerId, null, "pool-release", reason, 现在);
     // 企业版项目退回只进线索公海，客户不动（M-公海-02；开关 单项目客户跟着进公海 关着，pool-link.ts）；p 是改之前查的，ownerId 还是原负责人
     if (await 单项目客户跟进公海(tx, p, me.id, 现在, reason)) 客户也进了 = p.customerId;
@@ -1197,6 +1198,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
       await tx.project.update({ where: { id: p.id }, data: { ...换负责人(进公海后负责人(p.ownerId)), pooledAt: 今, nextStepAt: null, nextStepText: null } });
       await 进公海清组员(tx, [p.id], 系统.id);
       await 进公海清验证(tx, [p.id], 系统.id);
+      await 进公海关主题(tx, [p.id], 系统.id, 今);
       // 是系统收的，不记在谁碰巧打开了页面的名下（QA #16）
       await 记转让(tx, p, 系统.id, p.ownerId, null, "pool-release", 超时理由, 今);
       if (await 单项目客户跟进公海(tx, p, null, 今)) 客户也进了.add(p.customerId);
