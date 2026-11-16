@@ -226,7 +226,8 @@ describe("导出客户", () => {
     expect(附件个数说法(null)).toBe("");
     const t = 客户导出表([{ ...行, 附件数: { 联系人: 2 } }, 行], DEFAULT_BUSINESS);
     const i = t.head.indexOf("图片张数");
-    expect(t.head.slice(i)).toEqual(["图片张数", "备注"]);
+    // 11-17 PR-1：备注后面是系统发的「客户编号」
+    expect(t.head.slice(i)).toEqual(["图片张数", "备注", "客户编号"]);
     expect(t.body[0][i]).toBe("联系人 2 张");
     expect(t.body[1][i]).toBe("");
     expect(t.body[0][i + 1]).toBe("老客户");

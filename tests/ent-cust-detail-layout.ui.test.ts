@@ -46,7 +46,7 @@ beforeAll(async () => {
     const 关联们=[{id:'l1',otherId:'b',otherName:'关联的另一位客户',看得到:true,note:'同一集团',createdAt:'2026-10-01T00:00:00.000Z'}];
     const 项目={跟进去处:[{id:'p1',名:'项目一',主:true,结束:false,说明:null,下一步:'2026-11-03T02:00:00.000Z',下一步文字:'寄样品'}],待办计划:[],followUps};
     const 名单=<aside className='pane pane-roster'><div className='pane-h'><span className='pane-t'>客户</span></div><div className='pane-rows'>{Array.from({length:40},(_,i)=><div key={i} style={{height:40}}>客户{i}</div>)}</div></aside>;
-    window.__render=(ai)=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><div className='shell'><nav className='rail' aria-label='主导航'/>{名单}<main className='main app-content' style={{padding:'22px 26px'}}><div><Record customer={{id:'a',extra:null,name:'客户A',phone:'13800138000',school:'某某学校',grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z'}} contacts={contacts} contracts={[]} opportunities={[]} tasks={tasks} plan={null} users={[]} channels={[]} aiEnabled={ai} followUpsHasMore={false} 项目们={项目们} 参与项目们={参与项目们} 关联们={关联们} 旺旺们={[]} {...项目}/></div></main></div></BusinessProvider></App></ConfigProvider>);
+    window.__render=(ai)=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><div className='shell'><nav className='rail' aria-label='主导航'/>{名单}<main className='main app-content' style={{padding:'22px 26px'}}><div><Record customer={{id:'a',extra:null,name:'客户A'+'某某超长贸易进出口有限公司'.repeat(5),shortName:'超长的简称'.repeat(8),customerNo:123456,phone:'13800138000',school:'某某学校',grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z'}} contacts={contacts} contracts={[]} opportunities={[]} tasks={tasks} plan={null} users={[]} channels={[]} aiEnabled={ai} followUpsHasMore={false} 项目们={项目们} 参与项目们={参与项目们} 关联们={关联们} 旺旺们={[]} {...项目}/></div></main></div></BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
@@ -194,6 +194,28 @@ it("1024 / 1280 / 1366：不横滚、卡不出栏、模块互不重叠", async (
         const 列 = 有.filter(m => m.栏 === 栏).sort((a, c) => a.上 - c.上);
         for (let i = 1; i < 列.length; i++) expect(列[i].上 - 列[i - 1].下, `${w} ${列[i - 1].名} → ${列[i].名}`).toBeGreaterThanOrEqual(10);
       }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+// 客户编号（11-17 客户抬头 PR-1）：页头副标题最前面写编号，超长客户名、超长简称时副标题一行省略、编号照样看得全，页面不横滚
+it("1024 / 1280 / 1366：页头副标题编号打头、一行；超长名字和简称不把编号挤掉、不横滚", async () => {
+  for (const w of 宽们) {
+    const { page, errors } = await open(w);
+    try {
+      const 副 = await page.evaluate(() => {
+        const el = document.querySelector(".rec-head-sub") as HTMLElement;
+        const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+        // 编号那几个字的右边界：在副标题框里
+        const t = el.firstChild as Text, rg = document.createRange(); rg.setStart(t, 0); rg.setEnd(t, "NO.123456".length);
+        return { 字: el.innerText, 高: r.height, 行高: parseFloat(cs.lineHeight) || 20, 省略: cs.textOverflow, 号右: rg.getBoundingClientRect().right, 框右: r.right };
+      });
+      expect(副.字.startsWith("NO.123456 · 超长的简称"), `${w}`).toBe(true);
+      expect(副.高, `${w} 一行`).toBeLessThanOrEqual(副.行高 * 1.5);
+      expect(副.省略, `${w}`).toBe("ellipsis");
+      expect(副.号右, `${w} 编号看得全`).toBeLessThanOrEqual(副.框右 + 0.5);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), `${w}`).toBeLessThanOrEqual(0);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }

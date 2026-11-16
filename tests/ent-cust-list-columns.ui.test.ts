@@ -44,7 +44,7 @@ beforeAll(async () => {
     const 假看板=()=>{const 位=React.useContext(看板工具位);const [有,set有]=React.useState(!!window.__看板工具);React.useEffect(()=>{window.__切工具=set有},[]);return <div className='fake-board'>项目看板{window.__卡&&['c1','c2','c3'].map(k=><div key={k} className='pipe-card' data-morph-key={k}>{k}</div>)}{有&&位&&createPortal(<><button type='button' className='ant-btn ant-btn-default'><span>分配</span></button><button type='button' className='ant-btn ant-btn-default'><span>我分出去的</span></button></>,位)}</div>};
     const 长='某某超长贸易进出口有限公司'.repeat(6);
     const users=[{id:'me',name:'小王',email:'s1',role:'SALES',active:true},{id:'u2',name:'一个名字特别特别长的同事',email:'s2',role:'SALES',active:true}];
-    const 行=(id,owner)=>({id,name:长+id,phone:'1380000000'+id.slice(1),school:null,grade:null,major:null,followStatus:'待跟进',decisionStatus:'了解中',custStatus:'跟进中',salesOwnerId:owner,salesOwnerName:owner==='me'?'小王':'一个名字特别特别长的同事',createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',lastFollowAt:'2026-11-01T00:00:00.000Z',signedAmount:0,referrerCustomerId:null,referrerName:null,channelId:null,channelName:null,expectedSignAt:null,remark:null,addrCountry:window.__无国家?null:'阿拉伯联合酋长国',extra:{level:'A'}});
+    const 行=(id,owner)=>({id,name:长+id,phone:'1380000000'+id.slice(1),school:null,grade:null,major:null,followStatus:'待跟进',decisionStatus:'了解中',custStatus:'跟进中',salesOwnerId:owner,salesOwnerName:owner==='me'?'小王':'一个名字特别特别长的同事',createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',lastFollowAt:'2026-11-01T00:00:00.000Z',signedAmount:0,referrerCustomerId:null,referrerName:null,channelId:null,channelName:null,expectedSignAt:null,remark:null,addrCountry:window.__无国家?null:'阿拉伯联合酋长国',extra:{level:'A'},customerNo:id==='c1'?12:id==='c2'?123456:null});
     const rows=[行('c1','me'),行('c2','u2'),行('c3','me')].map(r=>window.__公海?{...r,pool:{reason:'超时回收'}}:r);
     const 项目概况={c1:{项目数:12,当前节点:'异常 · 某个后台改得特别特别长的节点名字',当前阶段:'订单'},c2:{项目数:1,当前节点:'方案敲定',当前阶段:'商机'}};
     const 根=()=>{const [板,set板]=React.useState(!!window.__看板);window.__设板=set板;return 树里(板)};
@@ -75,7 +75,14 @@ it("两列紧跟客户名；节点标签一行省略、—、0；三种宽度每
       await page.locator("tr.ant-table-row").first().waitFor();
       const 头 = await page.locator("thead th").allInnerTexts();
       const 名位 = 头.findIndex((t) => t.trim() === "客户");
-      expect(头.slice(名位, 名位 + 3).map((t) => t.trim()), `宽 ${w}`).toEqual(["客户", "当前节点", "项目数"]);
+      expect(头.slice(名位, 名位 + 4).map((t) => t.trim()), `宽 ${w}`).toEqual(["客户", "编号", "当前节点", "项目数"]);
+      // 客户编号（11-17 客户抬头 PR-1）：常驻一列紧跟客户名；NO. + 5 位、过了 99999 的 6 位都一行放全不截；还没编号的写短号
+      const 号 = await page.evaluate((列) => [...document.querySelectorAll("tr.ant-table-row")].map((tr) => {
+        const td = tr.children[列] as HTMLElement, cs = getComputedStyle(td);
+        const r = document.createRange(); r.selectNodeContents(td);
+        return { 字: td.innerText.trim(), 放全: r.getBoundingClientRect().width <= td.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) + 0.5 };
+      }), 头.findIndex((t) => t.trim() === "编号"));
+      expect(号, `宽 ${w}`).toEqual([{ 字: "NO.00012", 放全: true }, { 字: "NO.123456", 放全: true }, { 字: "#C3", 放全: true }]);
       const 格 = await page.evaluate(() => {
         const 行们 = [...document.querySelectorAll("tr.ant-table-row")] as HTMLElement[];
         const 列 = [...document.querySelectorAll("thead th")].findIndex((th) => (th as HTMLElement).innerText.trim() === "当前节点");
@@ -125,7 +132,12 @@ it("三态开着：回收状态列在项目数后面、和客户状态两列；1
       await page.locator("tr.ant-table-row").first().waitFor();
       const 头 = (await page.locator("thead th").allInnerTexts()).map((t) => t.trim());
       const 名位 = 头.indexOf("客户");
-      expect(头.slice(名位, 名位 + 5), `宽 ${w}`).toEqual(["客户", "当前节点", "项目数", "回收状态", "客户状态"]);
+      expect(头.slice(名位, 名位 + 6), `宽 ${w}`).toEqual(["客户", "编号", "当前节点", "项目数", "回收状态", "客户状态"]);
+      // 三态开着列收窄了，编号照样一行放全（含 6 位的 NO.123456）
+      expect(await page.evaluate((列) => [...document.querySelectorAll("tr.ant-table-row")].every((tr) => {
+        const td = tr.children[列] as HTMLElement, cs = getComputedStyle(td), r = document.createRange(); r.selectNodeContents(td);
+        return r.getBoundingClientRect().width <= td.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) + 0.5;
+      }), 头.indexOf("编号")), `宽 ${w} 编号放全`).toBe(true);
       const 列 = 头.indexOf("回收状态");
       const 格 = await page.evaluate((列) => [...document.querySelectorAll("tr.ant-table-row")].map((tr) => { const td = tr.children[列] as HTMLElement; return { 字: td.innerText.trim(), 高: tr.getBoundingClientRect().height }; }), 列);
       expect(格.map((g) => g.字), `宽 ${w}`).toEqual(["即将回收 · 12 天后进公海", "暂缓待收", "不计时"]);
@@ -142,7 +154,7 @@ it("三态开着：回收状态列在项目数后面、和客户状态两列；1
   }
 });
 /*
-  三态开着，默认列（客户、当前节点、项目数、回收状态、客户状态、预计签约、级别、国家、负责人、最近跟进 + 勾选 + 操作）：
+  三态开着，默认列（客户、编号、当前节点、项目数、回收状态、客户状态、级别、国家、负责人、最近跟进 + 勾选 + 操作；11-17 起预计签约默认收进「列」、加了编号）：
   量法：左栏 220 + 正文左右各 26 内边距，表格框 = .ant-table-content 的 clientWidth（1280 → 1008，1366 → 1094，1024 → 752）；
   1280 / 1366 框里的 scrollWidth 不超过 clientWidth（不出内部横向滚动），最后一个数据列（最近跟进）右边界不越过固定的操作列左边界；
   1024 允许内部横滚：滚到最右时最后一个数据列不被操作列盖住，滚到最左时第一个数据列不被勾选列盖住。
@@ -178,7 +190,8 @@ it("三态开着：默认列在 1280 / 1366 不横向滚、最后一列看得全
       const 右 = await 量("右");
       expect(右.截了的头, `宽 ${w} 表头不截`).toEqual([]);
       expect(右.末右, `宽 ${w} 最后一列不被操作列盖住`).toBeLessThanOrEqual(右.操作左 + 0.5);
-      if (三) expect(右.头, `宽 ${w}`).toEqual(["客户", "当前节点", "项目数", "回收状态", "客户状态", "预计签约", "级别", "国家", "负责人", "最近跟进"]);
+      // 11-17 PR-1：多了常驻的「编号」；「预计签约」三态开着默认收进「列」（腾位置给编号，1280 照旧不横滚）
+      if (三) expect(右.头, `宽 ${w}`).toEqual(["客户", "编号", "当前节点", "项目数", "回收状态", "客户状态", "级别", "国家", "负责人", "最近跟进"]);
       if (三 && w >= 1280) expect(右.内宽, `宽 ${w} 不出表格内部横向滚动`).toBeLessThanOrEqual(右.框宽);
       if (w === 1366) {
         // 大一号的表头字（换皮肤 / 系统字体更宽时）：「项目数」三个字照样放得下
@@ -189,7 +202,7 @@ it("三态开着：默认列在 1280 / 1366 不横向滚、最后一列看得全
         const 左 = await 量("左");
         expect(左.首左, `宽 ${w} 第一列不被勾选列盖住`).toBeGreaterThanOrEqual(左.勾右 - 0.5);
         // 1024 宽表格本来就横滚，列宽 = 设的宽：三态关着照旧（项目数 64 → 72），开着按收过的
-        expect(左.宽们, `宽 ${w} 三态${三 ? "开" : "关"}`).toEqual(三 ? [136, 80, 72, 136, 76, 100, 60, 68, 92, 92] : [200, 112, 72, 110, 116, 76, 96, 140, 180]);
+        expect(左.宽们, `宽 ${w} 三态${三 ? "开" : "关"}`).toEqual(三 ? [136, 104, 80, 72, 136, 76, 60, 68, 92, 92] : [200, 104, 112, 72, 110, 116, 76, 96, 140, 180]);
       }
       expect(errors).toEqual([]);
     } finally { await page.close(); }

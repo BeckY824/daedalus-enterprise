@@ -27,6 +27,7 @@
 import { 自动理由 } from "@/lib/pool";
 import { 阶段们, 企业版字典, 阶段与进程 } from "@/lib/project/stage-dict";
 import { 回收原因前缀 } from "@/lib/project/timeout";
+import { 看成客户编号 } from "@/lib/customer-no";
 
 export const 公海属性们 = ["线索池", "商机池", "订单池", "客户池"] as const;
 export type 公海属性 = (typeof 公海属性们)[number];
@@ -216,6 +217,8 @@ export type 公海行 = {
   客户名: string | null;
   /** 客户简称：只给关键词搜（11-17 客户抬头 PR-0），页面不画；没有简称、客户不露时不带这一格 */
   客户简称?: string;
+  /** 客户编号（11-17 PR-1）：关键词像编号时精确比；没有编号、客户不露时不带这一格 */
+  客户编号?: number;
   /** 名下项目的名字，多个用「、」连；一个都没有为空 */
   项目名: string | null;
   /** 当前进程：定状态那个项目的「阶段-节点」，有结局再带「 · 结局」（进程格）；没有项目为空 */
@@ -285,6 +288,7 @@ export function 并客户池(子们: readonly 公海行[]): 公海行 {
     projectId: null,
     客户名: 序.find((x) => x.客户名)?.客户名 ?? null,
     ...(序.find((x) => x.客户简称)?.客户简称 ? { 客户简称: 序.find((x) => x.客户简称)!.客户简称 } : {}),
+    ...(序.find((x) => x.客户编号)?.客户编号 ? { 客户编号: 序.find((x) => x.客户编号)!.客户编号 } : {}),
     进程明细: 序.map((x) => `${x.项目名 ?? "项目"}：${x.进程 ?? 没原因}`).join("；"),
     创建时间: 序.reduce((m, x) => (时(x.创建时间) > 时(m) ? x.创建时间 : m), 新.创建时间),
     原负责人是我: 序.every((x) => x.原负责人是我),
@@ -313,7 +317,9 @@ function 并项目行(行: readonly 公海行[]): 公海行[] {
 export function 筛排(全部: readonly 公海行[], sp: 公海筛选, 选: { 按项目?: boolean } = {}): { 行: 公海行[]; 快捷数: Record<快捷, number>; 属性数: Record<公海属性 | "全部", number> } {
   const 并 = 选.按项目 ? (x: 公海行[]) => x : 并项目行;
   const 词 = (sp.keyword ?? "").trim().toLowerCase();
-  const 搜到 = 词 ? 全部.filter((r) => (r.客户名 ?? "").toLowerCase().includes(词) || (r.客户简称 ?? "").toLowerCase().includes(词) || (r.项目名 ?? "").toLowerCase().includes(词)) : [...全部];
+  // 编号精确比（同库里那条路 客户编号SQL）：「NO.00012」「12」都认成 12 号
+  const 号 = 词 ? 看成客户编号(词) : null;
+  const 搜到 = 词 ? 全部.filter((r) => (r.客户名 ?? "").toLowerCase().includes(词) || (r.客户简称 ?? "").toLowerCase().includes(词) || (号 !== null && r.客户编号 === 号) || (r.项目名 ?? "").toLowerCase().includes(词)) : [...全部];
   // 客户来源和关键词一样算在所有计数前面：属性、入池方式后面的数都是「这个来源里的」
   const 按来源 = sp.来源 ? 搜到.filter((r) => r.来源id === sp.来源) : 搜到;
   // 号码不全（T10）同来源，算在所有计数前面；按客户认（打了标的客户下的项目子行一起留着，并完再看）

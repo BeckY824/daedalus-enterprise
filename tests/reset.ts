@@ -62,6 +62,8 @@ async function 清空() {
     data: { referrerCustomerId: null, attributionCustomerId: null },
   });
   await prisma.customer.deleteMany();
+  // 客户编号计数（迁移 147）：客户清空后跟着清，下一位客户的编号重新从 1 起
+  await prisma.customerNoSeq.deleteMany();
   // 项目、组员、节点变更随客户级联；组员角色、异常类别字典不挂客户，单独清（2026-10-23）
   await prisma.projectRole.deleteMany();
   await prisma.projectExceptionCategory.deleteMany();

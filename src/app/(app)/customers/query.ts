@@ -238,6 +238,8 @@ export const 客户行字段 = {
   custStatus: true,
   // 企业版客户改版（定稿 P5，迁移 072）：简称、地址、分配方式。别的版本这几格都是空
   shortName: true,
+  // 客户编号（迁移 146，11-17 客户抬头 PR-1）：列表固定一列
+  customerNo: true,
   addrCountry: true,
   addrProvince: true,
   addrCity: true,
@@ -385,6 +387,7 @@ export function 成客户行(r: 取到的行, 号: (p: string) => string) {
     decisionStatus: r.decisionStatus,
     custStatus: r.custStatus,
     shortName: r.shortName,
+    customerNo: r.customerNo,
     addrCountry: r.addrCountry,
     addrProvince: r.addrProvince,
     addrCity: r.addrCity,

@@ -78,7 +78,8 @@ const 样例们: 样例[] = [
 ];
 
 /* 日志 / 回收区本来就会多出来，不算在「来回」里；其余每张表都比 */
-const 不比 = new Set(["AuditLog", "EntImportBatch", "EntImportRow", "EntTrash", "EntSnapshot"]);
+// CustomerNoSeq：客户编号计数（11-17 PR-1）只往上走，撤回不退号（号不复用），不拿来比
+const 不比 = new Set(["AuditLog", "EntImportBatch", "EntImportRow", "EntTrash", "EntSnapshot", "CustomerNoSeq"]);
 type 快照 = Record<string, string[]>;
 async function 拍(): Promise<快照> {
   const 照: 快照 = {};

@@ -78,7 +78,8 @@ type 业务 = Pick<BusinessConfig, "template" | "stageLabels" | "statusLabels"> 
 const 通用ID = ["记录ID", "ID", "编号", "数据ID", "唯一ID"];
 export const 别名: Record<实体, Record<string, string[]>> = {
   customer: {
-    id: ["客户ID", "客户编号", ...通用ID],
+    // 「系统 ID」= 我们自己导出的客户表最后一列（库里的 id，11-17 前叫「客户编号」）；同一张表里的「客户编号」那时是我们发的号，不当原系统 ID（规则猜列）
+    id: ["系统ID", "客户ID", "客户编号", ...通用ID],
     name: ["客户名称", "公司名称", "企业名称", "客户名", "客户全称", "客户", "公司", "名称", "account name", "company"],
     phone: ["电话", "手机", "手机号", "手机号码", "联系电话", "公司电话", "联系方式", "全部电话", "phone", "mobile", "tel"],
     owner: ["负责人", "客户负责人", "归属人", "所属销售", "销售负责人", "销售", "拥有者", "owner"],
@@ -193,7 +194,10 @@ export function 规则猜列(e: 实体, 表头: readonly string[]): 列映射 {
   }
   const 用掉 = new Set<string>();
   const 列: 列映射 = {};
+  // 我们自己导出的客户表（带「系统 ID」一列，11-17 客户抬头 PR-1）：「客户编号」是系统发的号（NO.00012），不用——不当原系统 ID、也不进备注
+  const 自家导出 = e === "customer" && 表头.some((h) => 规整表头(h) === 规整表头("系统ID"));
   for (const h of 表头) {
+    if (自家导出 && 规整表头(h) === 规整表头("客户编号")) { 列[h] = ""; continue; }
     const hit = 索引.get(规整表头(h));
     if (hit && !用掉.has(hit)) {
       用掉.add(hit);

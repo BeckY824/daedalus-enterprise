@@ -47,6 +47,8 @@ export const 同步表 = [
 /** 明确不同步的表（和上面合起来要覆盖 schema 里的全部模型，守卫用例据此判「新加的表没人管」） */
 export const 不同步表 = [
   "AiConversation", "AiMessage", "AiProject", "ImportBatch", "ImportRow", "WorkspaceAccount",
+  // 客户编号计数（11-17 客户抬头 PR-1，迁移 147）：企业版一台服务器上发号，不走团队同步
+  "CustomerNoSeq",
   // 团队版项目模式 1a（2026-10-23）先只在本机；1b 接同步时挪进 同步表，路由按 Project.ownerId + customerId
   "Project", "ProjectMember", "ProjectRole", "ProjectExceptionCategory", "ProjectNodeLog", "FollowUpProject", "CustomerCreator",
   // 客户换负责人的记录（2026-10-24 企业版 D-36）：同项目模式一起先只在本机
@@ -106,7 +108,8 @@ export const 不同步表 = [
  *   同步的话谁都能在自己电脑上把自己改成老板，再同步给全队（2026-10-04 两档权限）。别人的账号同步进来默认业务员
  */
 export const 不同步列: Record<string, string[]> = {
-  Customer: ["lastFollowAt"],
+  // customerNo：客户编号（11-17 PR-1）企业版服务器上发号、唯一索引，不随团队同步带到别的机器
+  Customer: ["lastFollowAt", "customerNo"],
   User: ["password", "role"],
 };
 

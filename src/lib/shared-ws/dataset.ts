@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@/generated/prisma";
+import { 带客户编号 } from "@/lib/customer-no";
 
 /**
  * 网页那个共享工作区的演示数据。**通用销售口径**（公司 / 职位 / 行业），
@@ -117,7 +118,7 @@ export async function 灌演示数据(db: PrismaClient, ownerUserId: string): Pr
     const 建于 = 前(分布.length - i + rnd(5));
 
     const c = await db.customer.create({
-      data: {
+      data: await 带客户编号(db, {
         name: 取名(i),
         phone: `138${String(20000000 + i * 137).slice(0, 8)}`,
         school: 公司[rnd(公司.length)],
@@ -133,7 +134,7 @@ export async function 灌演示数据(db: PrismaClient, ownerUserId: string): Pr
         expectedSignAt: 状态 === "意向较高" ? 后(rnd(20) + 3) : null,
         lastFollowAt: 状态 === "待跟进" ? null : 前(rnd(12)),
         createdAt: 建于,
-      },
+      }),
     });
     客户.push({ id: c.id, 状态, 销售: s.id });
   }

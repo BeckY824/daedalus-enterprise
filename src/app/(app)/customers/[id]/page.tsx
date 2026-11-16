@@ -294,6 +294,7 @@ export default async function CustomerDetailPage({
         // 项目模式自动算：库里还没算过的（种子 / 导入的老数据）按名下项目现算一个显示，别和下面「项目（n）」对不上（11-03 C1-4）
         custStatus: 只项目 ? await 显示用客户状态(customer.id, customer.custStatus) : customer.custStatus,
         shortName: customer.shortName,
+        customerNo: customer.customerNo,
         addrCountry: customer.addrCountry,
         addrProvince: customer.addrProvince,
         addrCity: customer.addrCity,

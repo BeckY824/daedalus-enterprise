@@ -9,7 +9,7 @@
  * 口径逐条对着 unified-pool.ts，那边改了这边要跟（tests/ent-unified-pool-paging.test.ts 拿改前的内存写法逐个身份、逐个筛选组合、逐页对拍）：
  *   - 属性：按名下全部项目算（归池），只有名下有项目的客户才可能不是线索池——这几位在内存里用 客户公海属性 算好，名单进 SQL
  *   - 快捷：客户入池类 + 标无效 + 第几次 → 归到快捷，写成一句 CASE（自动理由、离职理由、多次退回起 都从 unified-pool.ts 取，不另写）
- *   - 关键词：客户名、简称在库里比（GLOB，单个字符的大小写等价，同客户列表搜索）；项目名（各人看得到的项目，「、」连起来）在内存里比，对上的客户 id 进 SQL
+ *   - 关键词：客户名、简称在库里比、像编号的按客户编号精确比（GLOB，单个字符的大小写等价，同客户列表搜索）；项目名（各人看得到的项目，「、」连起来）在内存里比，对上的客户 id 进 SQL
  *   - 排序：入池时间 / 最后跟进 / 创建时间倒序，空的排最后，同一刻按行 id（c:客户 id）正序——和 筛排 的 取 + 比id 一样
  *   - 可见范围：公海客户人人看得到（team-scope 可见客户 第三条），只差原负责人回避（P-公海-04）；回避掉的那几位由带限定的客户端认出来，按 id 排掉
  */
@@ -58,7 +58,9 @@ export type 客户行筛 = {
    * 有就从「名字对上的 ∪ 项目对上的」名单出发（同 从名单），不再顺着 6.7 万位公海表逐位 GLOB；结果一样。
    * 简称（11-17 客户抬头 PR-0）用同一个 名 式子比：GLOB 那条路比本行那一格，名单那条路按迁移 145 的部分索引扫有简称的几位（search-keyword 简称SQL）
    */
-  词?: { 名: string; 项目对上: readonly string[]; 索引式?: string | null };
+  词?: { 名: string; 项目对上: readonly string[]; 索引式?: string | null;
+    /** 关键词像客户编号时的号（search-keyword 客户编号）：按唯一索引精确比，两条路都带 */
+    编号?: number | null };
   来源?: string;
   号码不全?: boolean;
 };
@@ -77,8 +79,9 @@ function 底(筛: 客户行筛, 从名单?: "名单" | "两个名单"): { sql: s
   }
   const 词名单 = !从名单 && !!筛.词?.索引式;
   if (筛.词 && !词名单) {
-    段.push(`(c."name" GLOB ? OR c."shortName" GLOB ? OR c.id IN (SELECT value FROM json_each(?)))`);
-    值.push(筛.词.名, 筛.词.名, JSON.stringify(筛.词.项目对上));
+    const 号 = 筛.词.编号 ?? null;
+    段.push(`(c."name" GLOB ? OR c."shortName" GLOB ?${号 !== null ? ` OR c."customerNo" = ?` : ""} OR c.id IN (SELECT value FROM json_each(?)))`);
+    值.push(筛.词.名, 筛.词.名, ...(号 !== null ? [号] : []), JSON.stringify(筛.词.项目对上));
   }
   if (筛.来源) {
     段.push(`c."channelId" = ?`);
@@ -88,10 +91,11 @@ function 底(筛: 客户行筛, 从名单?: "名单" | "两个名单"): { sql: s
   // CROSS JOIN 定死从公海表出发：没有统计信息时 SQLite 以为 deletedAt IS NULL 很能筛，会从客户表的 deletedAt 索引出发、8.5 万位逐个回公海表找，
   // 按入池时间取一页也得整表排（32 ms）；从公海表的 (at DESC, customerId) 索引顺着取，一页 0.1 ms
   if (词名单) {
-    // 名字对上的（三字索引）∪ 简称对上的（部分索引）∪ 项目名对上的，UNION 去重；名单的 ? 排在最前
-    值.unshift(筛.词!.索引式!, 筛.词!.名, JSON.stringify(筛.词!.项目对上));
+    // 名字对上的（三字索引）∪ 简称对上的（部分索引）∪ 编号对上的（唯一索引）∪ 项目名对上的，UNION 去重；名单的 ? 排在最前
+    const 号 = 筛.词!.编号 ?? null;
+    值.unshift(筛.词!.索引式!, 筛.词!.名, ...(号 !== null ? [号] : []), JSON.stringify(筛.词!.项目对上));
     段.unshift(`p."customerId" = j.id`);
-    const j = `(SELECT s.cid AS id FROM "CustomerSearch" s WHERE "CustomerSearch" MATCH ? UNION SELECT x.id FROM "Customer" x WHERE x."shortName" IS NOT NULL AND x."shortName" GLOB ? UNION SELECT value FROM json_each(?))`;
+    const j = `(SELECT s.cid AS id FROM "CustomerSearch" s WHERE "CustomerSearch" MATCH ? UNION SELECT x.id FROM "Customer" x WHERE x."shortName" IS NOT NULL AND x."shortName" GLOB ?${号 !== null ? ` UNION SELECT x.id FROM "Customer" x WHERE x."customerNo" = ?` : ""} UNION SELECT value FROM json_each(?))`;
     return { sql: `FROM ${j} j CROSS JOIN "CustomerPool" p CROSS JOIN "Customer" c WHERE ${段.join(" AND ")}`, 值 };
   }
   if (从名单) {

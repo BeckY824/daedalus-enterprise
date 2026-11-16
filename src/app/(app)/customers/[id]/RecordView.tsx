@@ -88,6 +88,7 @@ import { 少动, 滚法 } from "@/lib/reduced-motion";
 import { 放进公海, 领取, 撤销公海, 退回原因选项 } from "../pool-actions";
 import { useDeleteCustomers } from "../useDeleteCustomers";
 import { 释义下拉宽 } from "@/components/DictNote";
+import { 客户编号显示 } from "@/lib/customer-no";
 
 /**
  * 记录页（v0.4）：三栏。
@@ -1081,8 +1082,10 @@ export default function RecordView({
           </div>
           {/* 副标题是这个人的三个定位：年级 · 专业 · 谁在跟。没填的那项不占位 */}
           <div className="rec-head-sub">
-            {/* 企业版项目模式：年级 / 专业那两格不摆了（定稿 P5 第 22 条），换成简称 */}
-            {(摆法.旧字段 ? [customer.grade, customer.major] : [customer.shortName])
+            {/* 企业版项目模式：年级 / 专业那两格不摆了（定稿 P5 第 22 条），换成简称。
+                企业版最前面是客户编号（11-17 客户抬头 PR-1：抬头可以重名，靠编号认人；回填前没有编号的写短号） */}
+            {(企业 ? [客户编号显示(customer)] : ([] as (string | null | undefined)[]))
+              .concat(摆法.旧字段 ? [customer.grade, customer.major] : [customer.shortName])
               .concat(!独自一人(users, customer.salesOwnerId) ? [customer.salesOwnerName] : [])
               .filter(Boolean)
               .join(" · ")}

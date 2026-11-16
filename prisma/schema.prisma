@@ -189,6 +189,10 @@ model Customer {
   /// ---------- 企业版客户改版（迁移 072，2026-10-29 定稿 P5 第 23 条）：别的版本一直是空 ----------
   /// 客户简称（客户全称还是 name）
   shortName    String?
+  /// 客户编号（迁移 146，2026-11-17 客户抬头 PR-1）：页面写成「NO.」+ 5 位（lib/customer-no.ts 客户编号文字）。
+  /// 建档时从计数表 CustomerNoSeq 取号（取客户编号），号不改、不复用；撤销导入建回的客户带回原号。
+  /// 存量客户由 scripts/customer-no-backfill.mjs 按建档时间从 1 起补；补之前是空的，页面显示短号
+  customerNo   Int?    @unique
   /// 客户地址：国家 → 省 → 市 → 区县。国内选到区县；国外只记国家和城市（省、区县存空）。lib/enterprise/customer-v2.ts 的 拼地址
   addrCountry  String?
   addrProvince String?
@@ -527,6 +531,14 @@ model QuoteLine {
 /// 公海（2026-10-03，0.46.15 第 6 块，迁移 018）：有这一行 = 这位客户在公海里，谁都能领。
 /// 原负责人（Customer.salesOwnerId）不清空——列表上显示「公海（原 X）」，领取时才换成领的人。
 /// 只在多人时有入口（一个人用的库里公海没有意义）。自动掉公海见 lib/pool-db.ts
+/// 客户编号计数（迁移 147，2026-11-17 客户抬头 PR-1）：只有一行 id = 1，n = 最近发出去的号。
+/// 取号一句 UPDATE … SET n = n + 1 RETURNING n（lib/customer-no.ts 取客户编号），多进程下也不会发重；不用 max + 1（彻底删掉的号会被复用）。
+/// 这一行在存量库上由回填脚本建（scripts/customer-no-backfill.mjs，补完存量推到最大号）；库里一位客户都没有时第一次取号自己建
+model CustomerNoSeq {
+  id Int @id
+  n  Int
+}
+
 model CustomerPool {
   customerId String   @id
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)

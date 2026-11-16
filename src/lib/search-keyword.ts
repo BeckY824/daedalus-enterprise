@@ -11,6 +11,7 @@ import { 号键SQL } from "./phone-dedupe";
 import { prisma } from "./prisma";
 import type { Prisma } from "@/generated/prisma";
 import { 全角数字转半角 } from "./fullwidth";
+import { 看成客户编号 } from "./customer-no";
 
 /** 去掉前后空白（含全角空格 U+3000，String.trim 本就认）。不是字符串的当没搜 */
 export function 搜索词(v: unknown): string {
@@ -88,27 +89,16 @@ export function 包含模式(k: string): string {
   不另建一张 FTS 表（那要再登记一条迁移例外、再挂一组触发器、每次启动回填），改用迁移 145 的部分索引：只收有简称的行。
   简称几乎都空（正式库 11-17：8.6 万位里 0 位有值），按这条索引逐个 GLOB 只扫有简称的那几位，两个字的简称也一样走它；
   比法和名字那几列一样（包含模式：包含即中、单个字符大小写等价、通配符转义）。全称就是 name，原来就在搜。
-  客户编号（NO. + 5 位）是 PR-1 才加的列：这里先留挂点（客户编号 解析、客户编号SQL），编号精确比走唯一索引、不进三字索引。
+  客户编号（NO. + 5 位，迁移 146 的 customerNo）：关键词像编号时按唯一索引精确比（客户编号SQL），不进三字索引。
 */
 
 /** 只比简称、按迁移 145 的部分索引扫（rowid 子查询只读索引；索引没建上的老库照样对，只是退回整表扫） */
 const 简称SQL = () => `c.rowid IN (SELECT x.rowid FROM "Customer" x WHERE x."shortName" IS NOT NULL AND x."shortName" GLOB ?)`;
 
-/**
- * 关键词像一个客户编号（「NO.00123」「no 123」「00123」「123」，全角也认）时给出编号数字，不像返回 null。
- * 纯数字也算：输编号的人常常只敲数字；和号码片段并行（都进 OR），编号是精确比，不会多搜出一片
- */
-export function 客户编号(k: string): number | null {
-  // 全角的字母、数字、点（「ＮＯ．００１２」）先转半角
-  const m = /^(?:no\.?\s*)?(\d{1,9})$/i.exec(k.replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).trim());
-  if (!m) return null;
-  const n = Number(m[1]);
-  return n > 0 ? n : null;
-}
-
-/** 客户编号精确比的那一段（客户表别名 c）。挂点：编号列 PR-1 才有，先返回 null（不比） */
-export function 客户编号SQL(_k: string): { sql: string; values: string[] } | null {
-  return null;
+/** 客户编号精确比的那一段（客户表别名 c，走 Customer_customerNo_key 唯一索引）；关键词不像编号返回 null（不比） */
+export function 客户编号SQL(k: string): { sql: string; values: string[] } | null {
+  const n = 看成客户编号(k);
+  return n === null ? null : { sql: `c."customerNo" = CAST(? AS INTEGER)`, values: [String(n)] };
 }
 
 /** 两张索引表都在。在了就记住（表只加不删）；不在每次再看一眼，迁移跑完不用重启就用上。托管版各库不同，不记 */
