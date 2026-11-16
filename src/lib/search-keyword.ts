@@ -83,6 +83,34 @@ export function 包含模式(k: string): string {
   其余照旧走 GLOB。联系人、联系人号码子表两句不在索引里，原样不动。索引表不在（没跑迁移的库）也照旧走 GLOB
 */
 
+/* ---------------- 简称、客户编号（11-17 客户抬头 PR-0） ----------------
+  简称（Customer.shortName）原来不在任何搜索里：三字索引（141）建表时没带这一列，FTS5 表也加不了列。
+  不另建一张 FTS 表（那要再登记一条迁移例外、再挂一组触发器、每次启动回填），改用迁移 145 的部分索引：只收有简称的行。
+  简称几乎都空（正式库 11-17：8.6 万位里 0 位有值），按这条索引逐个 GLOB 只扫有简称的那几位，两个字的简称也一样走它；
+  比法和名字那几列一样（包含模式：包含即中、单个字符大小写等价、通配符转义）。全称就是 name，原来就在搜。
+  客户编号（NO. + 5 位）是 PR-1 才加的列：这里先留挂点（客户编号 解析、客户编号SQL），编号精确比走唯一索引、不进三字索引。
+*/
+
+/** 只比简称、按迁移 145 的部分索引扫（rowid 子查询只读索引；索引没建上的老库照样对，只是退回整表扫） */
+const 简称SQL = () => `c.rowid IN (SELECT x.rowid FROM "Customer" x WHERE x."shortName" IS NOT NULL AND x."shortName" GLOB ?)`;
+
+/**
+ * 关键词像一个客户编号（「NO.00123」「no 123」「00123」「123」，全角也认）时给出编号数字，不像返回 null。
+ * 纯数字也算：输编号的人常常只敲数字；和号码片段并行（都进 OR），编号是精确比，不会多搜出一片
+ */
+export function 客户编号(k: string): number | null {
+  // 全角的字母、数字、点（「ＮＯ．００１２」）先转半角
+  const m = /^(?:no\.?\s*)?(\d{1,9})$/i.exec(k.replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).trim());
+  if (!m) return null;
+  const n = Number(m[1]);
+  return n > 0 ? n : null;
+}
+
+/** 客户编号精确比的那一段（客户表别名 c）。挂点：编号列 PR-1 才有，先返回 null（不比） */
+export function 客户编号SQL(_k: string): { sql: string; values: string[] } | null {
+  return null;
+}
+
 /** 两张索引表都在。在了就记住（表只加不删）；不在每次再看一眼，迁移跑完不用重启就用上。托管版各库不同，不记 */
 let 三字索引在过 = false;
 /** 用例用：强制走 / 不走三字索引（undefined = 按库里有没有） */
@@ -232,7 +260,7 @@ export async function 客户号码条件(raw: unknown, userId?: string): Promise
 /**
  * 关键词拼成一段 WHERE（客户表别名 c），只有内置列名进 SQL，值全部参数绑定；没关键词返回 null。
  * 客户关键词条件和列表页的 关键词分页（customers/query.ts）共用这一份，号码藏着（Y27）、Unicode 大小写规则都在这里。
- * 走索引 = 这一段全是 c.id IN (…)（三字索引）：调用方另带的 deletedAt IS NULL 要写成 +c."deletedAt"，不然 SQLite 顺 deletedAt 索引扫 8.6 万位、逐位查名单，
+ * 走索引 = 这一段全是能按索引取的 c.id IN (…) / c.rowid IN (…)（三字索引、简称的部分索引；PR-1 起还有编号唯一索引）：调用方另带的 deletedAt IS NULL 要写成 +c."deletedAt"，不然 SQLite 顺 deletedAt 索引扫 8.6 万位、逐位查名单，
  * 写成 + 才会从名单出发逐个按主键取（MULTI-INDEX OR，名字 11 → 1 ms）
  */
 export async function 客户关键词SQL(raw: unknown, onlyPicker = false, userId?: string): Promise<{ sql: string; values: string[]; 走索引?: true } | null> {
@@ -242,7 +270,9 @@ export async function 客户关键词SQL(raw: unknown, onlyPicker = false, userI
   const phone = 号码片段(k);
   const 站 = 网址域名(k) ?? k;
   const pattern = 包含模式(k), phonePattern = 包含模式(phone ?? k), sitePattern = 包含模式(站);
+  // 三字索引里的列；简称不在索引里，两条路各自另比（简称SQL / 本行那一格），选客户弹窗、全局搜索（onlyPicker）也比
   const fields = onlyPicker ? ["name", "school"] : ["name", "school", "major", "grade", "remark"];
+  const 编号 = 客户编号SQL(k);
   // 三字索引（迁移 141）：用到的每一串都比得了才换，客户本表、扩展资料两句换成索引，联系人两句照旧；逐列和下面的 GLOB 一一对应
   if (三字可比(k) && 三字可比(phone ?? k) && (onlyPicker || 三字可比(站)) && (await 三字索引可用())) {
     const 本表: [readonly string[], string][] = [[fields, k]];
@@ -250,8 +280,9 @@ export async function 客户关键词SQL(raw: unknown, onlyPicker = false, userI
       本表.push([["phone"], phone ?? k]);
       if (phone) 本表.push([["phoneKey"], phone]);
     }
-    const parts = [`c.id IN (SELECT s.cid FROM "CustomerSearch" s WHERE "CustomerSearch" MATCH ?)`];
-    const values = [匹配式(本表)];
+    const parts = [`c.id IN (SELECT s.cid FROM "CustomerSearch" s WHERE "CustomerSearch" MATCH ?)`, 简称SQL()];
+    const values = [匹配式(本表), pattern];
+    if (编号) { parts.push(编号.sql); values.push(...编号.values); }
     if (!onlyPicker) {
       const 扩展: [readonly string[], string][] = [[["email", "wechat", "country", "alibabaId"], k], [["website"], 站]];
       if (!藏号) {
@@ -268,8 +299,10 @@ export async function 客户关键词SQL(raw: unknown, onlyPicker = false, userI
     }
     return { sql: `(${parts.join(" OR ")})`, values, 走索引: true };
   }
-  const parts = fields.map(c => `c."${c}" GLOB ?`);
-  const values = fields.map(() => pattern);
+  // 简称在 GLOB 这条路上直接比本行那一格：反正整表在扫，多比一格几乎不花时间（简称多半是空的）
+  const parts = [...fields, "shortName"].map(c => `c."${c}" GLOB ?`);
+  const values = parts.map(() => pattern);
+  if (编号) { parts.push(编号.sql); values.push(...编号.values); }
   if (!藏号) {
     parts.push('c."phone" GLOB ?'); values.push(phonePattern);
     if (phone) { parts.push(客户号键SQL()); values.push(phonePattern); }

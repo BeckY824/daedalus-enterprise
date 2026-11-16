@@ -79,6 +79,8 @@ beforeAll(async () => {
         name: `${i % 4 === 0 ? "甲" : "乙"}客户${i}`,
         phone: `1${i % 2 ? "38" : "59"}0000${String(i).padStart(4, "0")}`,
         grade: i % 3 === 0 ? "高一" : "高二",
+        // 简称（11-17 PR-0）：两个字的走整表 GLOB、三个字以上的走部分索引，范围照样要对
+        ...(i % 8 === 1 ? { shortName: `恒信达${i}` } : i % 8 === 5 ? { shortName: "恒信" } : {}),
         followStatus: i % 6 === 0 ? "跟进中" : "待跟进",
         salesOwnerId: 负责人[i % 负责人.length],
         ...(i % 7 === 0 ? { channelOwnerId: 经理 } : {}),
@@ -110,7 +112,7 @@ async function 老路(sp: 客户条件, 请求页: number, pageSize: number) {
   return { total, page, ids };
 }
 
-const 关键词 = ["甲", "138", "kwmail", "联系人丙", "客户1", "没有这个人"];
+const 关键词 = ["甲", "138", "kwmail", "联系人丙", "客户1", "没有这个人", "恒信", "恒信达"];
 const 筛选: 客户条件[] = [{}, { grade: "高一" }, { followStatus: "跟进中" }, { salesOwnerId: 小王 }, { channelOwnerId: 经理 }];
 
 describe("关键词分页 = 老路", () => {
@@ -142,6 +144,28 @@ describe("关键词分页 = 老路", () => {
     expect((await 以谁的身份("ghost", () => 关键词分页({ keyword: "客户" }, 1, 100)))!.total).toBe(0);
     expect((await 以谁的身份("ghost", () => 关键词分页({ keyword: "客户", pool: "1" }, 1, 100)))!.total).toBe(20);
     expect((await 以谁的身份(老板, () => 关键词分页({ keyword: "客户" }, 1, 100)))!.total).toBe(80);
+  });
+
+  it("简称（11-17 PR-0）只在看得到的范围里搜得到：外人只出自己的和公海的，没认出的人「客户」页签为空，老板全出", async () => {
+    const 全部有简称 = await raw.customer.findMany({ where: { shortName: { startsWith: "恒信" } }, select: { id: true, salesOwnerId: true, pool: { select: { customerId: true } } } });
+    expect(全部有简称.length).toBe(25);
+    for (const keyword of ["恒信", "恒信达"]) {
+      const 老板看 = (await 以谁的身份(老板, () => 关键词分页({ keyword }, 1, 100)))!;
+      const 外人看 = (await 以谁的身份(外人, () => 关键词分页({ keyword }, 1, 100)))!;
+      const 外人公海 = (await 以谁的身份(外人, () => 关键词分页({ keyword, pool: "1" }, 1, 100)))!;
+      const 应 = (f: (c: (typeof 全部有简称)[number]) => boolean) => 全部有简称.filter(f).map((c) => c.id).sort();
+      // 「恒信」两种简称都中，「恒信达」只中三个字以上那一种
+      const 中 = new Set((await raw.customer.findMany({ where: { shortName: { contains: keyword } }, select: { id: true } })).map((c) => c.id));
+      const 在中 = (c: (typeof 全部有简称)[number]) => 中.has(c.id);
+      expect(老板看.ids.slice().sort()).toEqual(应((c) => 在中(c) && !c.pool));
+      expect(外人看.ids.slice().sort()).toEqual(应((c) => 在中(c) && !c.pool && c.salesOwnerId === 外人));
+      expect(外人看.total).toBeGreaterThan(0);
+      expect(外人看.total).toBeLessThan(老板看.total);
+      // 公海页签：在公海的都算，原负责人是外人的那几位回避掉（11-03）
+      expect(外人公海.ids.slice().sort()).toEqual(应((c) => 在中(c) && !!c.pool && c.salesOwnerId !== 外人));
+      expect(应((c) => 在中(c) && !!c.pool && c.salesOwnerId === 外人).length).toBeGreaterThan(0);
+      expect((await 以谁的身份("ghost", () => 关键词分页({ keyword }, 1, 100)))!.total).toBe(0);
+    }
   });
 
   it("按序取客户行：顺序和给的 id 一样，看不到的不给", async () => {
