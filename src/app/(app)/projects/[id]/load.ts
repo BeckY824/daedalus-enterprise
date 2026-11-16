@@ -18,6 +18,7 @@ import type { 附件 } from "@/lib/attachment-rules";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 负责人可推 } from "@/lib/project/org-rules";
 import { 读项目提成 } from "@/lib/project/commission-db";
+import { 读项目主题 } from "@/lib/enterprise/coach-topic-db";
 import { 超时回收日, 超时起点, 超时理由, 系统, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
 import { 停用项目进公海理由 } from "@/lib/offboard-db";
 import { 拦原负责人, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示, 拦客户公海里的项目, 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
@@ -216,6 +217,9 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   const 有效沟通差 = 企业 && p.phase === "线索" && !p.result ? 有效沟通还差(await 读必填数据(prisma, p, 规则)).map(必填叫法) : [];
   // 企业版提成卡：只给组长、已进组的组员、管理员、主管和负责人的上级（lib/project/commission-db.ts 能看提成）；不是企业版不查
   const 提成 = 企业 ? await 读项目提成(me, p, p.members.filter((m) => m.inviteStatus === "JOINED").map((m) => m.userId), org, (uid) => 叫(uid)!, prisma) : null;
+  // 企业版教练主题（11-17，lib/enterprise/coach-topic-db.ts）：看得到的才给；没有、也发不了就不给这一块
+  const 主题们 = 企业 ? await 读项目主题(me, p.id) : null;
+  const 教练主题 = 主题们 && (主题们.能发 || 主题们.们.length) ? 主题们 : null;
 
   // 企业版卡点（lib/project/blocker.ts）：沟通编号、卡点列表、发卡点的默认值和阻碍原因下拉；别的版本一样不查
   const [编号, 卡点们, 能发, 卡点默认, 卡点原因们] = 企业
@@ -339,6 +343,6 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   };
   return {
     种: "有", customerId: p.customerId, 露, 客户入口,
-    props: { 卡点, p: 详情, 能改, 候选, 在职, 联系人们, 角色们: 角色们.map((r) => ({ id: r.id, name: r.name, active: r.active })), 类别们: 类别们.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name })) },
+    props: { 卡点, 教练主题, p: 详情, 能改, 候选, 在职, 联系人们, 角色们: 角色们.map((r) => ({ id: r.id, name: r.name, active: r.active })), 类别们: 类别们.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name })) },
   };
 }

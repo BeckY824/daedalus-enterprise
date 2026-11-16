@@ -8,6 +8,8 @@ import { chromium, type Browser } from "playwright";
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
+  // 教练主题（11-17）的动作：服务端那串（prisma、通知）进不了浏览器包
+  stub(/coach-topic-actions$/, "const f=async()=>({ok:true});export const 发主题动作=f,回复主题动作=f,关闭主题动作=f,删主题动作=f;");
   stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
   const 空跑 = "async()=>({ok:true})";
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
@@ -59,6 +61,8 @@ beforeAll(async () => {
     /* 10-31 画像十二项（后七项新加）、空的写灰字（11-04 起「—」）；单选、多选下拉第一项「—」。和 P17 关联一起摆，看关联里空的角色 / 立场 */
     const 画像={项们:项目画像项.map(x=>({键:x.键,名:字典定义[x.种类].名,多选:x.多选,选项:[...字典定义[x.种类].默认]})),
       值:{budgetLevel:'预算充足',priceSense:null,decisionChain:null,demandStatus:null,productNeeds:[],purchaseCycle:'半年',productFit:null,valueFit:null,decisionReach:null,competitor:'无竞品·我方独家',deployFit:null,siteStatus:null}};
+    const 主题条=(id,status)=>({id,node:'线索验证',title:'主题'+串,body:'内容'+串,status,createdAt:'2026-11-17T02:00:00.000Z',closedAt:null,作者:{id:'c1',name:'教练'+串,身份:'销售教练'},关的人:null,回复们:[],能回:true,能关:true,能删:false});
+    window.__主题=()=>root.render(包(<ProjectDetail {...详情(true).props} 教练主题={{们:[主题条('t1','待回复')],能发:true,填写人:{id:'c1',name:'教练',身份:'销售教练'},负责人:{id:'u1',name:'负责人'},项目名:'项目',当前节点:'线索验证',待回复数:1,冻结:false}}/>));
     window.__画像=(能改)=>root.render(包(<ProjectDetail p={{...详情(true).props.p,关联,画像}} 能改={能改} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={{们:[],能发:true,默认:{默认类型:'中度卡点',默认影响:'短期不影响'},原因们:['价格']}}/>));
     /* 三栏：照 AppShell 桌面那套 .shell > nav.rail + 中栏 + main.main.app-content > 换页那层 div。名单故意按 订单 → 线索 → 空 → 商机 给，组头得照三大阶段排 */
     const 行=(id,name,阶段,进程,x)=>({id,name,阶段,进程,结局:null,pooled:false,customerName:'超长客户名'+串,lastType:'PHONE',lastAt:'2026-10-20T00:00:00.000Z',lastNote:'最近一句'+串,nextAt:null,...x});
@@ -1730,4 +1734,35 @@ it("dt.fold：点过收起 / 展开才放高度过渡（首屏不动）；收着
     expect(await 壳.locator(":scope > .ant-card > .ant-card-body").evaluate((el) => getComputedStyle(el).transitionDuration.split(",").every((x) => parseFloat(x) < 0.02))).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
+});
+
+it("教练主题（11-17）：没关的钉在沟通卡身最上面、在沟通记录前；卡头有「发起主题」；1024 / 1280 / 1366 卡头不横滚、按钮点得中", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    const { page, errors } = await open(true, w);
+    try {
+      await page.evaluate(() => (window as unknown as { __主题: () => void }).__主题());
+      await page.getByTestId("coach-topics").waitFor();
+      // 主题块在沟通卡身里、排在第一条沟通前面
+      const 序 = await page.locator("#project-follow-body").evaluate((body) => {
+        const 主题 = body.querySelector("[data-testid=coach-topics]");
+        const 沟通 = body.querySelector(".proj-follow-row");
+        return { 在里面: !!主题, 在前: !!主题 && !!沟通 && !!(主题.compareDocumentPosition(沟通) & Node.DOCUMENT_POSITION_FOLLOWING) };
+      });
+      expect(序).toEqual({ 在里面: true, 在前: true });
+      const 钮 = page.getByTestId("coach-topic-new");
+      expect(await 钮.count()).toBe(1);
+      const 卡头 = await 钮.evaluate((el) => {
+        const head = el.closest(".ant-card-head") as HTMLElement;
+        const r = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return { 横滚: head.scrollWidth > head.clientWidth + 1, 点得中: !!hit && (hit === el || el.contains(hit)) };
+      });
+      expect([w, 卡头]).toEqual([w, { 横滚: false, 点得中: true }]);
+      const 条 = await page.locator(".cth-item").evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+      expect([w, 条]).toEqual([w, true]);
+      expect(errors).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  }
 });
