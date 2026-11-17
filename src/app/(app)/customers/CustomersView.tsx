@@ -238,6 +238,8 @@ type Props = {
   三态标?: Record<string, 三态标>;
   /** 这一页每位客户的「项目数」「当前节点」（企业版项目模式，11-12 第 3 批；只算我能看的项目）。不给 = 不摆这两列 */
   项目概况?: Record<string, 客户项目概况>;
+  /** 「最近跟进」后面那一句（员工反馈 2I，企业版）：客户 id → 最近跟进那一条的内容；没有 / 看不到那一条的不在里面，只摆时间 */
+  最近一句?: Record<string, string>;
   /**
    * 「仅项目」一小块（只负责项目的人，第 1 页、没筛别的才有，page.tsx 给）：和 rows 分开，不进 total、不能勾、没有行菜单。
    * 其他角色不给。看板（服务端的、本地的）都不摆
@@ -313,7 +315,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 创建排序 = "", 跟进排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 建档要取 = false, 待交接 = null, 项目概况, 仅项目行 = [], 仅项目超了 = false, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false, 阶段太多 = false,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 创建排序 = "", 跟进排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 建档要取 = false, 待交接 = null, 项目概况, 最近一句, 仅项目行 = [], 仅项目超了 = false, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false, 阶段太多 = false,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -1004,9 +1006,15 @@ export default function CustomersView({
       ...(企业 ? { sorter: true, sortOrder: 跟进排序 === "follow-asc" ? "ascend" as const : 跟进排序 === "follow-desc" ? "descend" as const : null } : {}),
       // 冷热在前：扫一眼这一列就知道谁凉了，日期留着给要细看的人
       // 企业版不摆冷热：它按跟进状态算，企业版不用跟进状态（10-28 去遗留 A1）
-      render: (v, r) => (
+      // 企业版时间后面接最近那一条的一句（员工反馈 2I，11-17）：和时间一起一行，放不下省略号、悬停看全文（TruncTip）；列宽不动，1280 照旧不横滚
+      render: (v, r) => 企业 ? (
+        <span className="clamp-1 follow-cell">
+          <span className="muted">{smartTime(v)}</span>
+          {最近一句?.[r.id] ? <span className="follow-note"> · {最近一句[r.id]}</span> : null}
+        </span>
+      ) : (
         <span className="heat-cell">
-          {!企业 && <Heat at={v} status={r.followStatus} />}
+          <Heat at={v} status={r.followStatus} />
           <span className="muted nowrap">{smartTime(v)}</span>
         </span>
       ),

@@ -49,7 +49,7 @@ beforeAll(async () => {
     const 项目概况={c1:{项目数:12,当前节点:'异常 · 某个后台改得特别特别长的节点名字',当前阶段:'订单'},c2:{项目数:1,当前节点:'方案敲定',当前阶段:'商机'}};
     const 根=()=>{const [板,set板]=React.useState(!!window.__看板);window.__设板=set板;return 树里(板)};
     const 树里=(板)=>(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'me',name:'小王'}}>
-      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:window.__阶段||'',node:'',...(window.__三态?{triState:''}:{})}} 三态标={window.__三态?{c1:{态:'待回收',几天后进公海:12},c2:{态:'暂缓回收中'},c3:{态:'不计时'}}:undefined} 客户数={3} 企业版 项目概况={项目概况} 项目看板={!window.__非项目} 能新建和领取={!window.__不能新建} 待交接={window.__交接??null} 看板体={板?<假看板/>:undefined} 市场视图={!!window.__市场} 仅项目行={window.__仅项目?[{id:'x1',name:'仅项目的'+长,shortName:null,school:null,customerNo:123456,customerType:'某个特别长的客户类型名字',customerAttr:null,地区:'浙江省 杭州市 西湖区',当前节点:'某个后台改得特别特别长的节点名字',当前阶段:'商机',项目数:2,仅项目:true}]:undefined} 仅项目超了={!!window.__超了}/>
+      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:window.__阶段||'',node:'',...(window.__三态?{triState:''}:{})}} 三态标={window.__三态?{c1:{态:'待回收',几天后进公海:12},c2:{态:'暂缓回收中'},c3:{态:'不计时'}}:undefined} 客户数={3} 企业版 项目概况={项目概况} 最近一句={window.__一句} 项目看板={!window.__非项目} 能新建和领取={!window.__不能新建} 待交接={window.__交接??null} 看板体={板?<假看板/>:undefined} 市场视图={!!window.__市场} 仅项目行={window.__仅项目?[{id:'x1',name:'仅项目的'+长,shortName:null,school:null,customerNo:123456,customerType:'某个特别长的客户类型名字',customerAttr:null,地区:'浙江省 杭州市 西湖区',当前节点:'某个后台改得特别特别长的节点名字',当前阶段:'商机',项目数:2,仅项目:true}]:undefined} 仅项目超了={!!window.__超了}/>
     </我Provider></BusinessProvider></App></ConfigProvider>);
     const 树=<根/>;
     const el=document.getElementById('root');
@@ -204,6 +204,66 @@ it("三态开着：默认列在 1280 / 1366 不横向滚、最后一列看得全
         // 1024 宽表格本来就横滚，列宽 = 设的宽：三态关着照旧（项目数 64 → 72），开着按收过的
         expect(左.宽们, `宽 ${w} 三态${三 ? "开" : "关"}`).toEqual(三 ? [136, 104, 80, 72, 136, 76, 60, 68, 92, 92] : [200, 104, 112, 72, 110, 116, 76, 96, 140, 180]);
       }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+/*
+  「最近跟进」带一句（员工反馈 2I，11-17）：时间在前、「 · 一句」接在后面，和时间同一行；放不下省略号（悬停看全文靠全站 TruncTip，量的是整格），
+  没有一句的只摆时间。列宽不动：1024 / 1280 / 1366、三态开关、超长客户名，每格一行、行高不变，三态开着 1280 / 1366 不出表格内部横滚，页面不横向撑出
+*/
+it("最近跟进带一句：时间在前、一句接后面一行省略；没有的只摆时间；行高不变、1280 / 1366 不横滚", async () => {
+  for (const [w, 三] of [[1024, true], [1280, true], [1366, true], [1024, false], [1280, false], [1366, false]] as const) {
+    const page = await browser.newPage({ viewport: { width: w, height: 900 } }); page.setDefaultTimeout(5000);
+    const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+    try {
+      await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") });
+      await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
+      await page.evaluate((三) => {
+        const x = window as unknown as { __三态: boolean; __一句: Record<string, string> };
+        x.__三态 = 三;
+        x.__一句 = { c1: "客户说下周三之前要看到改过的报价单，另外样品寄到深圳仓库，联系人换成采购部的新同事".repeat(2), c2: "已发" };
+      }, 三);
+      await page.addScriptTag({ content: 包 });
+      await page.locator("tr.ant-table-row").first().waitFor();
+      const 量 = await page.evaluate(() => {
+        const 框 = document.querySelector(".ant-table-content") as HTMLElement;
+        框.scrollLeft = 框.scrollWidth;
+        const ths = [...document.querySelectorAll("thead th")] as HTMLElement[];
+        const 列 = ths.findIndex((t) => t.innerText.trim() === "最近跟进");
+        const 行们 = [...document.querySelectorAll("tr.ant-table-row")] as HTMLElement[];
+        return {
+          格: 行们.map((tr) => {
+            const td = tr.children[列] as HTMLElement;
+            const 格 = td.querySelector(".follow-cell") as HTMLElement;
+            const 时间 = 格.firstElementChild as HTMLElement;
+            const cs = getComputedStyle(td);
+            const 内右 = td.getBoundingClientRect().right - parseFloat(cs.paddingRight) + 0.5;
+            return {
+              字: 格.innerText.trim(), 有句: !!格.querySelector(".follow-note"),
+              截了: 格.scrollWidth > 格.clientWidth && getComputedStyle(格).textOverflow === "ellipsis",
+              格在格里: 格.getBoundingClientRect().right <= 内右,
+              时间在前: 时间.classList.contains("muted") && 时间.getBoundingClientRect().left <= 格.getBoundingClientRect().left + 0.5,
+              一行: 格.getBoundingClientRect().height < 时间.getBoundingClientRect().height * 1.5 && getComputedStyle(格).whiteSpace === "nowrap",
+              高: tr.getBoundingClientRect().height,
+            };
+          }),
+          框宽: 框.clientWidth, 内宽: 框.scrollWidth, 页宽: document.documentElement.scrollWidth,
+        };
+      });
+      const [一, 二, 三行] = 量.格;
+      expect([一.有句, 二.有句, 三行.有句], `宽 ${w}`).toEqual([true, true, false]);
+      expect(一.字, `宽 ${w}`).toMatch(/ · 客户说下周三之前要看到改过的报价单/);
+      expect(二.字, `宽 ${w}`).toMatch(/ · 已发$/);
+      expect(三行.字, `宽 ${w}`).not.toContain("·");
+      expect(一.截了, `宽 ${w} 长的一句省略`).toBe(true);
+      for (const g of 量.格) expect([g.格在格里, g.时间在前, g.一行], `宽 ${w}`).toEqual([true, true, true]);
+      expect(Math.max(...量.格.map((g) => g.高)) - Math.min(...量.格.map((g) => g.高)), `宽 ${w} 行高不变`).toBeLessThanOrEqual(1);
+      expect(一.高, `宽 ${w}`).toBeLessThanOrEqual(60);
+      if (三 && w >= 1280) expect(量.内宽, `宽 ${w} 不出表格内部横向滚动`).toBeLessThanOrEqual(量.框宽);
+      expect(量.页宽, `宽 ${w} 页面不横向撑出`).toBeLessThanOrEqual(w);
+      摆法.push(`一句 ${w}${三 ? " 三态" : ""}: 框 ${量.框宽} 内 ${量.内宽} 页 ${量.页宽} 行高 ${一.高}`);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }

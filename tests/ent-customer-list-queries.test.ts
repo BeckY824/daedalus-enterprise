@@ -172,6 +172,34 @@ describe("客户列表一次打开的查询条数", () => {
     }
     expect(句.length).toBeLessThanOrEqual(客户列表查询上限);
   });
+
+  /*
+    「最近跟进」带一句（员工反馈 2I，11-17）：这一页的跟进一句取回（Prisma 挂项目那一格另一句）；最近那条挂着项目时，项目可见再一句；
+    有看不到的项目才查删了的、主客户不在这一页才另判可见、有公海项目才读回避名单。和这一页几位客户、各挂几条无关：多加 6 位都有跟进的客户，条数不变
+  */
+  it("最近跟进带一句：这一页有跟进（有的挂着项目）比没有最多多 4 条（常见 3 条：跟进、挂的项目、项目）；客户再多一倍条数不变", async () => {
+    const 没有 = (await 量()).句.length;
+    const 记跟进 = async () => {
+      for (const c of await prisma.customer.findMany({ where: { followUps: { none: {} } }, select: { id: true, salesOwnerId: true, projects: { select: { id: true }, take: 1 } } })) {
+        for (let d = 3; d >= 1; d--) {
+          const f = await prisma.followUp.create({ data: { type: "PHONE", title: "", content: `第${d}天`, customerId: c.id, ownerId: c.salesOwnerId, occurredAt: new Date(Date.now() - d * 86400_000) } });
+          if (d === 1 && c.projects[0]) await prisma.followUpProject.create({ data: { followUpId: f.id, projectId: c.projects[0].id, node: "方案敲定" } });
+        }
+        await prisma.customer.update({ where: { id: c.id }, data: { lastFollowAt: new Date(Date.now() - 86400_000) } });
+      }
+    };
+    await 记跟进();
+    const 有 = await 量();
+    expect(有.句.length - 没有).toBeGreaterThanOrEqual(1);
+    expect(有.句.length - 没有).toBeLessThanOrEqual(4);
+    expect(Object.keys((有.el as { props: { 最近一句?: object } }).props.最近一句 ?? {}).length).toBeGreaterThan(0);
+    for (let i = 6; i < 12; i++) {
+      const c = await prisma.customer.create({ data: { name: `列表客户${i}`, phone: `139000001${String(i).padStart(2, "0")}`, salesOwnerId: 甲.id } });
+      await prisma.project.create({ data: { name: `项目${i}`, customerId: c.id, ownerId: 甲.id, creatorId: 甲.id, phase: "商机", node: "方案敲定" } });
+    }
+    await 记跟进();
+    expect((await 量()).句.length).toBe(有.句.length);
+  });
 });
 
 type 视图参数 = { rows: { id: string; name: string }[]; 项目概况?: Record<string, { 项目数: number; 当前节点: string | null }>; filters: Record<string, string> };

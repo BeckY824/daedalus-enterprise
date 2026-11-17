@@ -21,6 +21,7 @@ import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibil
 import { 规则 } from "@/lib/enterprise/rules";
 import { 客户筛选条件 } from "@/app/(app)/customers/query";
 import { 等日志齐 } from "./query-log";
+import { 最近一句取法 } from "@/lib/enterprise/customer-follow-feed";
 
 const 迁移 = fs.readFileSync(new URL("../migrations/137-perf-85k-indexes.sql", import.meta.url), "utf8");
 const 迁移138 = fs.readFileSync(new URL("../migrations/138-perf-85k-indexes-2.sql", import.meta.url), "utf8");
@@ -200,6 +201,39 @@ describe("查询计划：Prisma 实际发出的语句", () => {
     expect(按id(新行)).toEqual(按id(旧行));
     const 全 = await prisma.followUp.findMany({ where: { customerId: { in: 客户们 } }, select: { customerId: true, content: true, occurredAt: true } });
     for (const id of 客户们) expect(按id(新行)[id]).toBe(全.filter((f) => f.customerId === id).sort((a, b) => +b.occurredAt - +a.occurredAt)[0].content);
+  });
+
+  it("客户列表「最近跟进」那一句（员工反馈 2I，customer-follow-feed.ts 最近一句取法）：一页一句、走 (customerId, occurredAt)，不顺 (deletedAt, occurredAt) 扫全部跟进；挑出来的是各位最晚那条", async () => {
+    const 客户们 = await 备名下客户();
+    if (!(await prisma.followUp.count({ where: { customerId: { in: 客户们 } } }))) {
+      for (const [i, id] of 客户们.entries()) {
+        for (const d of [3, 20 - i, 9]) await prisma.followUp.create({ data: { customerId: id, type: "VISIT", ownerId: 业务员, title: `第${d}天`, content: `第${d}天`, occurredAt: new Date(Date.UTC(2026, 9, d)) } });
+      }
+    }
+    // 跟着各位真正的最近跟进写 lastFollowAt（下界取这一页最早的那位）
+    for (const id of 客户们) {
+      const f = await prisma.followUp.findFirst({ where: { customerId: id }, orderBy: { occurredAt: "desc" }, select: { occurredAt: true } });
+      await prisma.customer.update({ where: { id }, data: { lastFollowAt: f!.occurredAt } });
+    }
+    const 行们 = await prisma.customer.findMany({ where: { id: { in: 客户们 } }, select: { id: true, lastFollowAt: true } });
+    const 取法 = 最近一句取法([...行们, { id: "从没跟进", lastFollowAt: null }])!;
+    expect(取法.where.customerId.in).toEqual(行们.map((r) => r.id));
+    // 真代码在 看全部 里跑（不加限定）；看全部的总管理发出去的句子同样不带限定，业务员那句带着限定也照走 (customerId, …)
+    for (const 谁 of [总管理, 业务员]) {
+      const 新 = await 真计划(谁, "FollowUp", () => 限.followUp.findMany(取法));
+      expect(新.sql).toMatch(/`customerId` IN \(/);
+      expect(新.计划).toMatch(/FollowUp_customerId_/);
+      expect(新.计划).not.toContain("FollowUp_deletedAt_occurredAt_idx");
+    }
+    // 带上 occurredAt 上下界的写法会被 (deletedAt, occurredAt) 抢走、再整段排序（所以取法里不带，读回来再滤「不晚于现在」）：这条红了说明 SQLite 选法变了，可以重看
+    const 带时间 = await 真计划(总管理, "FollowUp", () => 限.followUp.findMany({ ...取法, where: { ...取法.where, occurredAt: { gte: new Date(Date.UTC(2026, 9, 1)), lte: new Date() } } }));
+    expect(带时间.计划).toContain("FollowUp_deletedAt_occurredAt_idx");
+    const 读回 = await 看全部(() => 限.followUp.findMany(取法));
+    const 首条 = new Map<string, string>();
+    for (const f of 读回) if (!首条.has(f.customerId)) 首条.set(f.customerId, f.content);
+    const 全 = await prisma.followUp.findMany({ where: { customerId: { in: 客户们 } }, select: { customerId: true, content: true, occurredAt: true } });
+    for (const id of 客户们) expect(首条.get(id)).toBe(全.filter((f) => f.customerId === id).sort((a, b) => +b.occurredAt - +a.occurredAt)[0].content);
+    expect(最近一句取法([{ id: "x", lastFollowAt: null }])).toBeNull();
   });
 
   it("客户详情「他推荐来的人」（迁移 138）：referrerCustomerId IN (?) ORDER BY createdAt 走 (referrerCustomerId, deletedAt, createdAt)，不顺 (deletedAt, createdAt, id) 扫；客户列表翻页、按负责人筛照旧", async () => {
