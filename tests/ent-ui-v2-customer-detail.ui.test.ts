@@ -17,7 +17,7 @@ import { chromium, type Browser } from "playwright";
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "customer-ui-v2", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
-  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
+  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;");
   stub(/(^|\/)useTransferConfirm$/, "export const useTransferConfirm=()=>({先问转走的项目:async()=>true});");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>\"/customers/x\";");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");

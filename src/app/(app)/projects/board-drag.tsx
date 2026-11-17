@@ -9,6 +9,7 @@ import type { 看板一列, 看板卡片 } from "@/lib/project/board";
 import type { 草稿们 } from "@/lib/project/required-fill";
 import { 改项目节点, 看板推进预检, 看板补必填料 } from "./actions";
 import { ProjectFillRequired } from "./[id]/ProjectFillRequired";
+import { 动作出错话 } from "@/lib/stale-deploy";
 /** 推进节点的撤销窗口（原型 6 秒） */
 const 撤销毫秒 = 6000;
 
@@ -111,8 +112,8 @@ export function useBoardDrag({ 看板, 开, 名of, 去补齐, 刷新, 框 }: {
         },
       });
       刷新();
-    } catch {
-      弹回去(r.id, "没推成，请稍后再试");
+    } catch (出错) {
+      弹回去(r.id, 动作出错话(出错, "没推成，请稍后再试"));
     }
   }
 
@@ -133,8 +134,8 @@ export function useBoardDrag({ 看板, 开, 名of, 去补齐, 刷新, 框 }: {
         const 用料 = 料?.ok && 料.p.必填?.还差?.length ? 料 : undefined;
         return set补({ id: r.id, 卡名: 名of(r), 到, 还差: 预.还差, 能留空推: 预.能留空推, 锚, 原: r, 从名: 看板.find((x) => x.列 === 从列)?.名 ?? "", 料: 用料 });
       }
-    } catch {
-      return 弹回去(r.id, "没推成，请稍后再试");
+    } catch (出错) {
+      return 弹回去(r.id, 动作出错话(出错, "没推成，请稍后再试"));
     }
     await 真推(r, 到);
   }

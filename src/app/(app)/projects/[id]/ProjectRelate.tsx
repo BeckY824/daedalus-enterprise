@@ -20,6 +20,7 @@ import {
   加关联联系人Action, 改联系人角色立场Action, 解除关联联系人Action,
   搜项目联系人, type 可挑联系人,
 } from "../relate-actions";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 type 结果 = { ok: true } | { ok: false; error: string };
 /** 没填的身份 / 角色 / 立场写灰字「—」（10-31 改成「暂未确认」，11-04 用户又统一回「—」），只是显示，库里还是空 */
@@ -47,8 +48,8 @@ function useRelateRun() {
       }
       router.refresh();
       return true;
-    } catch {
-      set错("没存上，请稍后再试");
+    } catch (出错) {
+      set错(动作出错话(出错, "没存上，请稍后再试"));
       回退?.();
       return false;
     } finally {

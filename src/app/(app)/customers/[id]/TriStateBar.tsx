@@ -9,6 +9,7 @@ import type { 三态条, 三态条按钮 } from "@/lib/enterprise/tri-state-deta
 import { fmtDateTime } from "@/lib/utils";
 import { 三态继续持有, 三态暂缓回收, 三态让同事结束项目 } from "../tri-state-actions";
 import { 三态显示名 } from "@/lib/enterprise/tri-state-label";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 const 标签色 = { 沉睡: "sleep", 待回收: "pend", 暂缓回收中: "hold" } as const;
 
@@ -48,8 +49,8 @@ export default function TriStateBar({ 条, customerId, 开客户转让 }: { 条:
       set成话(框.动作 === "继续持有" ? `已顺延${r.剩次数 != null ? `，还可用 ${r.剩次数} 次` : ""}` : 框.动作 === "暂缓回收" ? "已暂缓回收" : `已通知${r.通知了 ? ` ${r.通知了} 位` : ""}同事`);
       router.refresh();
       return { ok: true };
-    } catch {
-      return { ok: false, error: "没办成，请刷新后重试" };
+    } catch (出错) {
+      return { ok: false, error: 动作出错话(出错, "没办成，请刷新后重试") };
     } finally {
       set忙(false);
     }

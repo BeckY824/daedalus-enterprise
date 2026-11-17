@@ -10,6 +10,7 @@ import { Alert, Button, Input, Space } from "antd";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import { 同号协同录入 } from "@/app/(app)/customers/same-number-actions";
 import type { 协同情况 } from "@/lib/enterprise/same-number-collab";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 function 说法(情况: 协同情况 | undefined): { 话: string; 按钮: string } {
   // 待分配的线索（X-87）：还没有负责人，不提负责人、不提邀请
@@ -35,8 +36,8 @@ export default function SameNumberEntry({ 类型, 值, 渠道们, 默认渠道, 
       const r = await 同号协同录入(类型 ?? "", 值, { 渠道id: 渠道, 内容 });
       if (r.ok) set反馈(r.反馈);
       else set错(r.error);
-    } catch {
-      set错("没写进去，请稍后再试");
+    } catch (出错) {
+      set错(动作出错话(出错, "没写进去，请稍后再试"));
     } finally {
       set忙(false);
     }

@@ -90,6 +90,7 @@ import { 放进公海, 领取, 撤销公海, 退回原因选项 } from "../pool-
 import { useDeleteCustomers } from "../useDeleteCustomers";
 import { 释义下拉宽 } from "@/components/DictNote";
 import { 客户编号显示 } from "@/lib/customer-no";
+import { 动作出错话, 出错原话 } from "@/lib/stale-deploy";
 
 /**
  * 记录页（v0.4）：三栏。
@@ -952,7 +953,7 @@ export default function RecordView({
                 问="删除这条？"
                 做={async () => {
                   // 被挡（权限）回 ok:false：不提示成功、条目留着（PR10a），原因就地写在这一行；删成了这一行收起，不再弹提示
-                  const r = await deleteTask(t.id).catch(() => ({ ok: false as const, error: "没删掉，请重试" }));
+                  const r = await deleteTask(t.id).catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "没删掉，请重试") }));
                   if (!r.ok) {
                     报待办错(t.id, r.error || "没删掉，请重试");
                     router.refresh();
@@ -1065,7 +1066,7 @@ export default function RecordView({
       </AnimatePresence>
       {filter !== "CONTRACT" && history.hasMore && (
         <div style={{ padding: 16, textAlign: "center" }}>
-          <Button loading={history.loading} onClick={() => { set加载错(null); void history.loadMore().catch(error => set加载错(error instanceof Error ? error.message : "历史跟进加载失败，请重试")); }}>{摆法.沟通汇总 ? "加载更多" : "加载更早的跟进"}</Button>
+          <Button loading={history.loading} onClick={() => { set加载错(null); void history.loadMore().catch(error => set加载错(出错原话(error, "历史跟进加载失败，请重试"))); }}>{摆法.沟通汇总 ? "加载更多" : "加载更早的跟进"}</Button>
           {加载错 && <div role="alert" className="cd-task-err">{加载错}</div>}
           <div className="muted" style={{ marginTop: 8 }}>已加载 {history.rows.length} 条{摆法.沟通汇总 ? "" : "跟进"} · 筛选作用于已加载记录</div>
         </div>
@@ -1688,7 +1689,7 @@ export default function RecordView({
             毫秒: 6000,
             撤销: async () => {
               const u = await 撤销记一笔({ customerId: p.customerId, 跟进id: r.跟进id, 计划id: p.id, 下次计划id: r.下次计划id })
-                .catch(() => ({ ok: false as const, error: "没撤销成，请稍后重试" }));
+                .catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "没撤销成，请稍后重试") }));
               if (u.ok) { set计划话(null); set刚完成(null); }
               void window.desktopReminders?.刷新();
               router.refresh();

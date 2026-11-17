@@ -10,6 +10,9 @@ import { dayjs, fmtDateTime } from "@/lib/utils";
 import type { 卡点卡 } from "@/lib/project/blocker";
 import { 卡点类型们, 影响等级们, 动作叫法, 描述上限, 标题上限, 原因最多, 原因名上限, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 发布卡点Action, 认领卡点Action, 完成卡点Action, 删卡点Action } from "./blocker-actions";
+import { useFormDraft } from "@/components/FormDraft";
+import { 有字 } from "@/lib/form-draft";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 export type { 卡点卡 };
 
@@ -28,8 +31,8 @@ function useRun() {
       const r = await f();
       if (r.ok) router.refresh();
       return r.ok ? r : { ...r, error: r.error ?? "没改成，请稍后再试" };
-    } catch {
-      return { ok: false, error: "没改成，请稍后再试" };
+    } catch (出错) {
+      return { ok: false, error: 动作出错话(出错, "没改成，请稍后再试") };
     } finally {
       set忙(false);
     }
@@ -101,18 +104,38 @@ export function PublishBlockerModal({ followUpId, 默认, 原因们, 沟通们, 
   const [reasons, setReasons] = useState<string[]>([]);
   const [description, setDescription] = useState("");
   const [resourceRequest, setResourceRequest] = useState("");
+  // 打了没发的留草稿（11-17，components/FormDraft.tsx）：按挂的那条沟通分；发出去了、点了取消就删
+  const 稿 = useFormDraft({
+    键: `新建卡点:${followUpId}`,
+    值: { 挂在, type, impact, title, reasons, description, resourceRequest },
+    带回: (v) => {
+      if (typeof v.挂在 === "string" && (!沟通们 || 沟通们.some((f) => f.id === v.挂在))) set挂在(v.挂在);
+      if (typeof v.type === "string") setType(v.type);
+      if (typeof v.impact === "string") setImpact(v.impact);
+      if (typeof v.title === "string") setTitle(v.title);
+      if (Array.isArray(v.reasons)) setReasons(v.reasons);
+      if (typeof v.description === "string") setDescription(v.description);
+      if (typeof v.resourceRequest === "string") setResourceRequest(v.resourceRequest);
+    },
+    算填过: (改) => 有字([改.title, 改.description, 改.resourceRequest, 改.reasons]),
+  });
+  const 不要了 = () => {
+    稿.丢掉();
+    onClose();
+  };
   const 差 = !reasons.length ? "选一个阻碍原因" : !description.trim() ? "写一句卡在哪" : "";
   return (
     <Modal
       open
       title="新建卡点"
-      onCancel={onClose}
+      onCancel={不要了}
       // 原型 dt.blocker「改后」：发布键里转圈 →「已发布」放完再关框，新卡点出现在列表里；没发出去原因浮在键上方、框不关（不弹顶部提示）
       footer={<Space>
-        <Button onClick={onClose}>取消</Button>
-        <SaveButton disabled={!!差} 已保存="已发布" 没保存="没发出去" 做={() => 跑(() => 发布卡点Action(挂在, { type, impact, title, reasons, description, resourceRequest }))} 成了={onClose}>发布</SaveButton>
+        <Button onClick={不要了}>取消</Button>
+        <SaveButton disabled={!!差} 已保存="已发布" 没保存="没发出去" 做={() => 跑(() => 发布卡点Action(挂在, { type, impact, title, reasons, description, resourceRequest }))} 成了={() => { 稿.存好了(); onClose(); }}>发布</SaveButton>
       </Space>}
     >
+      {稿.提示}
       <Space direction="vertical" style={{ width: "100%" }}>
         {/* 挂在哪条沟通（dt.blocker）：默认最近那条，可换 */}
         <div className="pd-blk-on">

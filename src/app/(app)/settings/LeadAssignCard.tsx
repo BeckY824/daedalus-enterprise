@@ -8,6 +8,7 @@ import { Button, Card, InputNumber, Segmented, Tag } from "antd";
 import { 设配额, 设自动分配参与, type 分配情况 } from "../leads/assign-actions";
 // lead-assign 那边连着库，这里只拿类型
 import type { 参与状态 } from "@/lib/enterprise/lead-assign";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 const 参与选项: 参与状态[] = ["允许", "暂停", "禁止"];
 
@@ -44,8 +45,8 @@ export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分�
       ok = r.ok;
       if (!r.ok) 就地.error(r.error ?? "没改成，请稍后再试");
       else 就地.success(成了);
-    } catch {
-      就地.error("没改成，请稍后再试");
+    } catch (出错) {
+      就地.error(动作出错话(出错, "没改成，请稍后再试"));
     } finally {
       set忙(null);
       // 成了：草稿和新数据同一个过渡里换，新数据到了才一起显示；没成：马上退回页面上的值

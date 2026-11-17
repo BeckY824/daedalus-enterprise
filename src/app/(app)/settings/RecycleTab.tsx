@@ -20,6 +20,7 @@ import { useConsequence } from "@/components/ConsequenceDialog";
 import { showUndo } from "@/components/UndoBar";
 import { useDirtyMark } from "@/lib/settings-dirty";
 import { useSettingsNote } from "./InlineNote";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 export type 客户回收设置 = {
   三态: 三态规则;
@@ -80,9 +81,9 @@ export default function RecycleTab({ value }: { value: 客户回收设置 }) {
       }
       router.refresh();
       return { ok: true };
-    } catch {
-      if (!框里) set错("没改成，请稍后再试");
-      return { ok: false, error: "没改成，请稍后再试" };
+    } catch (出错) {
+      if (!框里) set错(动作出错话(出错, "没改成，请稍后再试"));
+      return { ok: false, error: 动作出错话(出错, "没改成，请稍后再试") };
     } finally {
       set忙(false);
     }
@@ -228,9 +229,9 @@ function WordsCard({ 词们 }: { 词们: string[] | null }) {
       set表(r.词们);
       router.refresh();
       return { ok: true };
-    } catch {
-      set提示("没改成，请稍后再试");
-      return { ok: false, error: "没改成，请稍后再试" };
+    } catch (出错) {
+      set提示(动作出错话(出错, "没改成，请稍后再试"));
+      return { ok: false, error: 动作出错话(出错, "没改成，请稍后再试") };
     } finally {
       set忙(false);
     }

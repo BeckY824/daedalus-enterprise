@@ -97,7 +97,7 @@ it("填了一半按 Esc：先问；「继续填」留在原地；「留着草稿
   await page.keyboard.press("Escape");
   await 问框(page).waitFor();
   // 刚打开就填（动画还没走完）：不能把自己刚填的当草稿「恢复」一遍
-  expect(await page.getByText("接着上次没填完的继续填").count()).toBe(0);
+  expect(await page.getByText("已带回上次没提交的内容").count()).toBe(0);
   // 焦点在「继续填」上：顺手按回车不会把填的扔掉
   await expect.poll(() => page.evaluate(() => document.activeElement?.textContent)).toBe("继续填");
   if (process.env.FB_SHOT) {
@@ -118,7 +118,7 @@ it("填了一半按 Esc：先问；「继续填」留在原地；「留着草稿
   await 框(page).waitFor();
   await expect.poll(() => 框(page).getByLabel("客户姓名").inputValue()).toBe("Wang Wei");
   expect(await 框(page).getByLabel(/^微信/).inputValue()).toBe("wangwei_88");
-  await page.getByText("接着上次没填完的继续填").waitFor();
+  await 框(page).getByText("已带回上次没提交的内容").waitFor();
 
   // 只填了微信：能存（四样填一样就行）
   await 框(page).getByRole("button", { name: /^保\s*存$/ }).click();
@@ -167,7 +167,7 @@ it("外贸新建：四格（电话 / WhatsApp / 邮箱 / 微信）旁边同一�
   expect(errors).toEqual([]);
 });
 
-it("编辑：改了按 Esc 也问，但不给「留着草稿」（编辑不存草稿）；按微信认的那位，微信不能清空", async () => {
+it("编辑：改了按 Esc 也问（11-17 起编辑也能留草稿）；「放弃」= 草稿清掉；按微信认的那位，微信不能清空", async () => {
   const { page, errors, 调用们 } = await 开();
   await page.getByRole("button", { name: "开编辑" }).click();
   const 编辑框 = page.getByRole("dialog", { name: "编辑客户" });
@@ -181,16 +181,15 @@ it("编辑：改了按 Esc 也问，但不给「留着草稿」（编辑不存�
 
   await page.keyboard.press("Escape");
   await 问框(page).waitFor();
-  expect(await page.getByRole("button", { name: "留着草稿，先关掉" }).count()).toBe(0);
+  expect(await page.getByRole("button", { name: "留着草稿，先关掉" }).count()).toBe(1);
   await page.getByRole("button", { name: /^放\s*弃$/ }).click();
   await expect.poll(() => 状态(page)).toBe("关着");
   expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("daedalus:草稿:")))).toEqual([]);
   expect(errors).toEqual([]);
 });
 
-it("草稿接着填：不弹顶部提示，底部撤销条说一句；点「撤销」= 不要草稿（填的放回原样、草稿扔掉）", async () => {
+it("草稿接着填：不弹顶部提示，框里一行「已带回上次没提交的内容 · 清空」；点「清空」= 不要草稿（填的放回原样、草稿扔掉）", async () => {
   const { page, errors } = await 开();
-  // 真样式：撤销条要压在弹窗上面（z-index 在 globals.css），点得到
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.getByRole("button", { name: "开新建" }).click();
   await 框(page).waitFor();
@@ -201,14 +200,41 @@ it("草稿接着填：不弹顶部提示，底部撤销条说一句；点「撤�
   await page.getByRole("button", { name: "开新建" }).click();
   await 框(page).waitFor();
   await expect.poll(() => 框(page).getByLabel("客户姓名").inputValue()).toBe("Li Lei");
-  await page.getByText("接着上次没填完的继续填").waitFor();
+  await 框(page).getByRole("status").filter({ hasText: "已带回上次没提交的内容" }).waitFor();
   expect(await page.locator(".ant-message-notice").count()).toBe(0);
-  await page.getByRole("button", { name: "撤销" }).click();
+  await 框(page).getByRole("button", { name: "清空" }).click();
   await expect.poll(() => 框(page).getByLabel("客户姓名").inputValue()).toBe("");
   expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("daedalus:草稿:")))).toEqual([]);
   // 放回原样之后没填过：直接关，不再问
   await page.keyboard.press("Escape");
   await expect.poll(() => 状态(page)).toBe("关着");
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
+it("编辑老客户（11-17）：改了没存就刷新，再点「编辑」带回改过的那一格，没动的格子照库里的；存上了草稿清掉", async () => {
+  const { page, errors } = await 开();
+  await page.getByRole("button", { name: "开编辑" }).click();
+  const 编辑框 = page.getByRole("dialog", { name: "编辑客户" });
+  await 编辑框.waitFor();
+  await page.waitForTimeout(400);
+  await 编辑框.getByLabel("客户姓名").fill("Old Li 改名");
+  // 刷新：页面整个重来（localStorage 在、内存没了）
+  await page.waitForTimeout(100);
+  await page.reload();
+  await page.addScriptTag({ content: bundle });
+  await page.getByRole("button", { name: "开编辑" }).click();
+  await 编辑框.waitFor();
+  await expect.poll(() => 编辑框.getByLabel("客户姓名").inputValue()).toBe("Old Li 改名");
+  // 没动的格子不在草稿里：照库里那份
+  expect(await 编辑框.getByLabel(/^微信/).inputValue()).toBe("old_li_wx");
+  await 编辑框.getByText("已带回上次没提交的内容").waitFor();
+  const 键们 = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("daedalus:草稿:")));
+  expect(键们).toEqual(["daedalus:草稿:-:编辑客户:c0"]);
+  expect(Object.keys(JSON.parse((await page.evaluate((k) => localStorage.getItem(k), 键们[0]))!).v)).toEqual(["name"]);
+  await 编辑框.getByRole("button", { name: /^保\s*存$/ }).click();
+  await expect.poll(() => 状态(page), { timeout: 4000 }).toBe("关着");
+  expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("daedalus:草稿:")))).toEqual([]);
   expect(errors).toEqual([]);
   await page.close();
 });

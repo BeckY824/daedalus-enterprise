@@ -12,6 +12,7 @@ import { FileSearchOutlined } from "@ant-design/icons";
 import { 查号码, type 查号码结果 } from "../customers/number-actions";
 import RescueKey from "../customers/RescueKey";
 import { 向导能选类型, 号码类型叫法, type 号码类型 } from "@/lib/enterprise/contact-format";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 /** 不跟着「正在回答」变灰：查号码不碰这一轮对话，边等回答边查是常事 */
 export default function DedupeKey({ 宽, 藏键 = false, 开: 开ref }: {
@@ -34,9 +35,9 @@ export default function DedupeKey({ 宽, 藏键 = false, 开: 开ref }: {
     set查中(true);
     try {
       set结果(await 查号码(类型, 值));
-    } catch {
+    } catch (出错) {
       // g.save：没查成就写在框里结果那一格，不弹顶部提示
-      set结果({ ok: false, 状态: "没查成", 提示: "查重没查成，请稍后再试" });
+      set结果({ ok: false, 状态: "没查成", 提示: 动作出错话(出错, "查重没查成，请稍后再试") });
     } finally {
       set查中(false);
     }

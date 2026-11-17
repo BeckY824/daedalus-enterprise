@@ -21,6 +21,7 @@ import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
 import InlineConfirm from "@/components/InlineConfirm";
 import { 跑出原因, type 做的结果 } from "@/lib/confirm-result";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 /*
   与客户的关系。取值有限却不封闭（教培里有姑姑、哥哥，公司里有「副总」），
@@ -93,7 +94,8 @@ export default function ContactForm({
   const 守 = useFormGuard({
     open,
     form,
-    草稿键: record ? null : `新建联系人:${customerId ?? "挑人"}`,
+    草稿键: record ? `编辑联系人:${record.id}` : `新建联系人:${customerId ?? "挑人"}`,
+    编辑: !!record,
     关: onClose,
     afterOpenChange: 聚焦首项,
     不存: customerId ? [] : ["customerId"],
@@ -131,7 +133,7 @@ export default function ContactForm({
     set存着(true);
     try {
       set就地错(null);
-      const r = await 挂到客户(contactId, customerId).catch(() => ({ ok: false as const, error: "没挂上，请重试" }));
+      const r = await 挂到客户(contactId, customerId).catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "没挂上，请重试") }));
       if (!r.ok) return void set就地错(r.error);
       守.存好了();
       onSaved(contactId);
@@ -312,6 +314,7 @@ export default function ContactForm({
           }
         />
       )}
+      {守.提示}
       <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={() => { 守.改了(); 查序.current++; if (撞号) set撞号(null); }}>
         <Row gutter={16}>
           {/* 从联系人列表进来时先选人：联系人挂在某一位学员下面，没有归属的联系人没有意义 */}

@@ -6,6 +6,7 @@ import { smartTime } from "@/lib/utils";
 import { useBusiness } from "@/lib/business-client";
 import { 最近批次, 撤销批次, type 批次 } from "@/app/(app)/customers/import-actions";
 import { useSettingsNote } from "./InlineNote";
+import { 出错原话 } from "@/lib/stale-deploy";
 
 /**
  * 设置页的「导入记录」栏：最近几批导入，每批一颗撤销。
@@ -45,7 +46,7 @@ export default function ImportsTab() {
   async function 撤(b: 批次) {
     set忙(b.id);
     try {
-      const r = await 撤销批次(b.id).catch((e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : "撤销没能完成，请重试" }));
+      const r = await 撤销批次(b.id).catch((e: unknown) => ({ ok: false as const, error: 出错原话(e, "撤销没能完成，请重试") }));
       if (!r.ok) return void 就地.error(r.error);
       const 尾 = r.没动.length
         ? `。有 ${r.没动.length} 位没动：${r.没动.slice(0, 5).map((x) => `${x.name}（${x.原因}）`).join("、")}${r.没动.length > 5 ? " 等" : ""}`

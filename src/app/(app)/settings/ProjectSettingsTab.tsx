@@ -33,6 +33,7 @@ import { 改提成比例, 改按人提成比例 } from "@/app/(app)/projects/com
 import {
   三套提成比例问题, 提成范围们, 按人提成比例问题, type 三套提成比例, type 提成范围, type 按人提成比例, type 按人提成提交,
 } from "@/lib/project/commission";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 type 字典项 = { id: string; name: string; active: boolean; 用的人: number };
 type 结果 = Promise<{ ok: boolean; error?: string }>;
@@ -102,8 +103,8 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
         router.refresh();
       }
       return r.ok;
-    } catch {
-      就地.error("没改成，请稍后再试");
+    } catch (出错) {
+      就地.error(动作出错话(出错, "没改成，请稍后再试"));
       return false;
     } finally {
       记忙(键, -1);
@@ -118,8 +119,8 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
       const r = await f();
       if (r.ok) router.refresh();
       return r;
-    } catch {
-      return { ok: false, error: "没改成，请稍后再试" };
+    } catch (出错) {
+      return { ok: false, error: 动作出错话(出错, "没改成，请稍后再试") };
     } finally {
       记忙(键, -1);
     }
