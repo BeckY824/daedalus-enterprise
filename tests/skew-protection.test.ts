@@ -12,7 +12,6 @@ import os from "node:os";
 import path from "node:path";
 import { PHASE_DEVELOPMENT_SERVER, PHASE_PRODUCTION_BUILD, PHASE_PRODUCTION_SERVER } from "next/constants";
 import config, { nextConfig, 部署号 } from "../next.config";
-// @ts-expect-error 部署工具是纯 .mjs，没有类型
 import { 切语句, 判一句, 新加的, 判断 } from "../deploy/enterprise/tools/skew-check.mjs";
 
 const 临时: string[] = [];
