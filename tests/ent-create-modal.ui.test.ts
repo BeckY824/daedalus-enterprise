@@ -9,6 +9,7 @@
  *   Windows 1024 / 1280 / 1366 + 超长客户名：弹窗里不横向溢出，「建好」在可视区点得中
  *   市场成员选自动分配（P-转-26，用户 11-17）：业务线那格换成只读「按客户区域自动定」，不交业务线；三档宽度不溢出
  *   首条沟通的方式按个人习惯默认（11-18）；带回了草稿的以草稿为准
+ *   项目开关关着也摆「指定回复时间」，填了就自动打开「有项目」（字段挂在项目上）；「分配时间」照旧只在指定 / 自动分配时出现（11-18）
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -420,5 +421,47 @@ it("带回了草稿（草稿里选过方式）：以草稿为准，个人习惯�
     await page.waitForTimeout(300);
     const 方式 = 框.getByLabel("沟通方式", { exact: true }).locator("xpath=ancestor::div[contains(@class,'ant-select')][1]");
     expect(await 方式.innerText()).toContain("邮件沟通");
+  } finally { await page.close(); }
+});
+
+it.each([1024, 1280, 1366])("Windows %ipx 项目开关关着：也摆「指定回复时间」、不摆「分配时间」；填了自动打开「有项目」，值带过去、建好交在项目上；不溢出", async (w) => {
+  const page = await 开(w);
+  try {
+    const 框 = page.getByRole("dialog");
+    const 开关 = 框.getByRole("switch", { name: "有项目" });
+    expect(await 开关.getAttribute("aria-checked")).toBe("false");
+    expect(await 框.getByLabel("指定回复时间开始").count()).toBe(1);
+    expect(await 框.getByLabel("项目名称").count()).toBe(0);
+    expect(await 框.locator("[data-ge='分配时间']").count()).toBe(0);
+    const 量 = () => page.evaluate(() => {
+      const s = document.querySelector(".cr-sheet") as HTMLElement;
+      const body = document.querySelector(".ant-modal-body") as HTMLElement;
+      return { 表: s.scrollWidth - s.clientWidth, 体: body.scrollWidth - body.clientWidth, 页: document.documentElement.scrollWidth - window.innerWidth };
+    });
+    expect(await 量(), `${w} 关着`).toEqual({ 表: 0, 体: 0, 页: 0 });
+    const 开始 = 框.getByLabel("指定回复时间开始");
+    await 开始.click();
+    await 开始.fill("2026-11-20 15:00");
+    await 开始.press("Enter");
+    await expect.poll(() => 开关.getAttribute("aria-checked")).toBe("true");
+    await 框.getByLabel("项目名称").waitFor();
+    // 打开以后只剩项目块里那一格，值还在
+    expect(await 框.getByLabel("指定回复时间开始").count()).toBe(1);
+    expect(await 框.getByLabel("指定回复时间开始").inputValue()).toBe("2026-11-20 15:00");
+    // 分配时间：指定分配（默认）才出现，照旧
+    expect(await 框.locator("[data-ge='分配时间']").count()).toBe(1);
+    expect(await 量(), `${w} 打开后`).toEqual({ 表: 0, 体: 0, 页: 0 });
+    if (w !== 1280) return;
+    await 框.getByLabel("号码", { exact: true }).fill("13905712266");
+    await 框.getByLabel("客户名称").fill("华东展具");
+    await 框.getByLabel("联系人姓名").fill("王总");
+    await 选(page, "渠道触点", "公司资源");
+    await 框.getByLabel("项目名称").fill("展台项目");
+    await 选(page, "业务线", "内贸");
+    await 框.getByLabel("沟通内容").fill("客户要求周四下午回电");
+    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档向导")).toBeTruthy();
+    const 交 = (await 调(page)).find((x) => x[0] === "建档向导")![1] as { 项目: Record<string, unknown> };
+    expect(交.项目).toMatchObject({ 指定回复开始: "2026-11-20 15:00", 指定回复结束: null });
   } finally { await page.close(); }
 });

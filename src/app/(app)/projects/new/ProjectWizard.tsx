@@ -648,6 +648,17 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
       {g && 错(g) ? <span className="cr-err" role="alert">{错(g)}</span> : 注 ? <span className="cr-note">{注}</span> : null}
     </label>
   );
+  const 有回复时间 = !!(d.项目.指定回复开始 || d.项目.指定回复结束);
+  const 回复格 = 企业 && 一格(null, "指定回复时间", (
+    <ReplyWindowInput
+      value={{ 开始: d.项目.指定回复开始 ?? null, 结束: d.项目.指定回复结束 ?? null }}
+      onChange={(v) => {
+        改("项目", { 指定回复开始: v.开始, 指定回复结束: v.结束 });
+        // 回复时间记在项目上：没开项目时填了就打开（11-18）
+        if (!带项目 && (v.开始 || v.结束)) set带项目(true);
+      }}
+    />
+  ), false, true, 带项目 ? "选填，按北京时间：指定什么时候回复客户" : 有回复时间 ? "回复时间记在项目上：没开项目不存，填了会打开「有项目」" : "选填，按北京时间；记在项目上，填了会打开「有项目」");
   // 市场成员选自动分配（P-转-26）：业务线换成只读说明，按客户区域定；老客户有地址看客户的，否则看项目所在地
   const 区域线 = 老客户 && 老客户区域?.id === 老客户.id ? 老客户区域.线 : 区域线of(null, d.项目.所在地 ?? null);
   const 业务线格 = 企业 && (区域定线中(d, 带项目, 企业) ? 一格("业务线", "业务线", (
@@ -901,6 +912,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
           <Switch size="small" aria-label="有项目" checked={带项目} disabled={锁 || !!老客户} onChange={(v) => set带项目(v)} />
           <span className="cr-hint">{老客户 ? `给已有${b.customer}新增项目` : 锁 ? "新线索建好就是一个线索阶段的项目" : 带项目 ? "下面填项目信息；关掉就不建项目" : "有项目就打开，下面填项目信息"}</span>
         </div>
+        {/* 项目开关关着也摆「指定回复时间」（11-18 员工反馈）：字段挂在项目上，填了就打开「有项目」（先有项目的规矩不变）；分配时间照旧只在项目里、选了指定 / 自动分配才有 */}
+        {企业 && !带项目 && <div className="cr-grid">{回复格}</div>}
         {带项目 && (
           <div className="cr-grid cr-rise">
             {一格("项目名", "项目名称", <Input aria-label="项目名称" status={红("项目名")} value={d.项目.name} maxLength={项目名上限} showCount onChange={(e) => 改("项目", { name: e.target.value })} />, true)}
@@ -959,12 +972,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
               />
             ), false, true)}
             {/* 指定回复时间（11-17，选填）：客户要求联系的时间点 / 时间段，按北京时间；只填开始 = 那个时间前后，只填结束 = 那之前 */}
-            {企业 && 一格(null, "指定回复时间", (
-              <ReplyWindowInput
-                value={{ 开始: d.项目.指定回复开始 ?? null, 结束: d.项目.指定回复结束 ?? null }}
-                onChange={(v) => 改("项目", { 指定回复开始: v.开始, 指定回复结束: v.结束 })}
-              />
-            ), false, true, "选填，按北京时间：指定什么时候回复客户")}
+            {回复格}
             {回复警 && <Alert type="warning" showIcon className="cr-wide" data-testid="wizard-reply-warn" title={回复警} />}
             {分配警 && <Alert type="warning" showIcon className="cr-wide" data-testid="wizard-schedule-warn" title={分配警} />}
             {!企业 && 一格(null, "金额", (
