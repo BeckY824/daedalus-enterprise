@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
  * 意图直连（intents.ts）命中的问题跳过挑工具这一步。
  * 最终回答用流式文本（Markdown），逐 token 推给浏览器；句末 [n] 引用工具读到的记录。
  *
- * 边界：工具只读，要写的只拟建议卡（proposals.ts），人点确认才落库；最多 6 步；
+ * 边界：工具只读，要写的只拟建议卡（proposals.ts），人点确认才落库；最多 8 步（MAX_STEPS）；
  * 每步与最终回答都有超时；用户按 Esc 时 signal 中断。
  * 过程通过 emit 推出去：每次工具调用一条 step（running → done + summary）。
  */
