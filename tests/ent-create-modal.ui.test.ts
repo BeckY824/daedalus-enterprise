@@ -543,9 +543,10 @@ it("截图没传上：建好照旧，底栏写清几个没传上、点「知道�
     await 框.getByTestId("wizard-attachments").locator("input[type=file]").setInputFiles({ name: "需求.png", mimeType: "image/png", buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]) });
     await 填好新客户(page, true);
     await 框.getByRole("button", { name: /^建\s*好$/ }).click();
-    const 话 = 框.getByRole("status").filter({ hasText: /截图/ });
+    // 先出「正在传」再变失败提示；等最终那句，负载高时不会读到中间态
+    const 话 = 框.getByRole("status").filter({ hasText: /只有项目负责人能传附件/ });
     await 话.waitFor();
-    expect(await 话.innerText()).toContain("只有项目负责人能传附件");
+    expect(await 话.innerText()).toContain("截图");
     await 框.getByRole("button", { name: "知道了" }).waitFor();
   } finally { await page.close(); }
   const 二 = await 开(1280, { __开关: "锁开", __标题: "新线索" });
