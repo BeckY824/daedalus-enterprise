@@ -9,7 +9,8 @@
  *   Windows 1024 / 1280 / 1366 + 超长客户名：弹窗里不横向溢出，「建好」在可视区点得中
  *   市场成员选自动分配（P-转-26，用户 11-17）：业务线那格换成只读「按客户区域自动定」，不交业务线；三档宽度不溢出
  *   首条沟通的方式按个人习惯默认（11-18）；带回了草稿的以草稿为准
- *   首条沟通下选填「截图 / 附件」（11-18）：选文件、粘贴截图都行；建档交 要传附件，建好凭回来的票逐个传、挂在首条沟通上（票走请求头）；没开项目不摆挑选
+ *   首条沟通下选填「截图 / 附件」（11-18）：选文件、粘贴截图都行；建档交 要传附件，建好凭回来的票逐个传、挂在首条沟通上（票走请求头）；
+ *   没开项目（只建客户）同样摆挑选：首条沟通挂在潜客培育项目上，附件挂同一条沟通（只建客户也交 要传附件、凭票传）
  *   项目开关关着也摆「指定回复时间」，填了就自动打开「有项目」（字段挂在项目上）；「分配时间」照旧只在指定 / 自动分配时出现（11-18）
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -25,7 +26,7 @@ const plugin: Plugin = { name: "ent-create-modal", setup(b) {
   stub(/^next\/link$/, "export default function L({href,children,prefetch,...p}){return <a href={href} {...p}>{children}</a>}");
   stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
   // 建档两个 server action：记下交了什么，回成功
-  stub(/^\.\.\/actions$/, "export const 建档向导=async(x)=>{(window.__调||=[]).push(['建档向导',x]);return window.__回??{ok:true,customerId:'c1',projectId:'p1'}};export const 建档只建客户=async(x)=>{(window.__调||=[]).push(['建档只建客户',x]);return {ok:true,customerId:'c2',projectId:null}};");
+  stub(/^\.\.\/actions$/, "export const 建档向导=async(x)=>{(window.__调||=[]).push(['建档向导',x]);return window.__回??{ok:true,customerId:'c1',projectId:'p1'}};export const 建档只建客户=async(x)=>{(window.__调||=[]).push(['建档只建客户',x]);return window.__回只客户??{ok:true,customerId:'c2',projectId:null}};");
   stub(/customers\/actions$/, "export const checkDuplicate=async()=>null;export const 推荐人候选=async()=>[];");
   stub(/(^|\/)number-actions$/, "export const 查号码=async(t,v)=>{(window.__调||=[]).push(['查号码',t,v]);return {ok:true,状态:'首次录入',提示:'首次录入',值:v,归属地:null}};export const 查客户名=async(n)=>{(window.__调||=[]).push(['查客户名',n]);return {ok:true,撞:null}};export const 申请挂靠=async()=>({ok:true});export const 从回收站捞回=async()=>({ok:true});");
   // 老客户新增项目（cr.old）：搜得到一位老客户；给客户建项目记下交了什么
@@ -561,12 +562,32 @@ it("截图没传上：建好照旧，底栏写清几个没传上、点「知道�
   } finally { await 二.close(); }
 });
 
-it("没开项目：不摆挑选，只说开了项目才能挂", async () => {
-  const page = await 开(1280);
+it.each([1024, 1280, 1366])("Windows %ipx 没开项目（只建客户）：照样摆「截图 / 附件」，长文件名不横撑；建好交 要传附件，凭票传到首条沟通", async (w) => {
+  const page = await 开(w, { __回只客户: { ok: true, customerId: "c2", projectId: null, 附件票: { followUpId: "f2", 票: "ticket-2" } } });
   try {
-    const 区 = page.getByRole("dialog").getByTestId("wizard-attachments");
+    const 收到 = await 接上传(page);
+    const 框 = page.getByRole("dialog");
+    const 区 = 框.getByTestId("wizard-attachments");
     await 区.waitFor();
-    expect(await 区.locator("input[type=file]").count()).toBe(0);
-    expect(await 区.innerText()).toContain("有项目");
+    expect(await 区.innerText()).not.toContain("才能加");
+    const 长名 = `${"只建客户时客户发来的需求截图".repeat(6)}.png`;
+    await 区.locator("input[type=file]").setInputFiles({ name: 长名, mimeType: "image/png", buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]) });
+    await 区.getByText(长名).waitFor();
+    const 量 = await page.evaluate(() => {
+      const s = document.querySelector(".cr-sheet") as HTMLElement;
+      const body = document.querySelector(".ant-modal-body") as HTMLElement;
+      const 区 = document.querySelector("[data-testid='wizard-attachments']") as HTMLElement;
+      const 框 = 区.getBoundingClientRect();
+      const 出格 = [...区.querySelectorAll(".follow-att-file > *")].filter((e) => { const r = e.getBoundingClientRect(); return r.right > 框.right + 0.5; }).length;
+      return { 表: s.scrollWidth - s.clientWidth, 体: body.scrollWidth - body.clientWidth, 页: document.documentElement.scrollWidth - window.innerWidth, 出格 };
+    });
+    expect(量, `${w}`).toEqual({ 表: 0, 体: 0, 页: 0, 出格: 0 });
+    if (w !== 1280) return;
+    await 填好新客户(page, false);
+    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
+    expect(((await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 要传附件?: boolean }).要传附件).toBe(true);
+    await expect.poll(() => 收到.length).toBe(1);
+    expect(收到.every((x) => x.url.includes("followUpId=f2") && x.票 === "ticket-2")).toBe(true);
   } finally { await page.close(); }
 });
