@@ -96,21 +96,6 @@ export function 记样式(签: string, 正文: string): string {
   return 号;
 }
 
-/** Accept-Encoding 里有 gzip（或 *）且 q 不是 0 */
-export function 要gzip(头: string | null): boolean {
-  let gzip: number | null = null;
-  let 星: number | null = null;
-  for (const 段 of (头 ?? "").split(",")) {
-    const [名, ...参] = 段.trim().toLowerCase().split(";");
-    const q = 参.map((x) => x.trim()).find((x) => x.startsWith("q="));
-    const 值 = q ? Number(q.slice(2)) : 1;
-    const 权 = Number.isFinite(值) ? 值 : 0;
-    if (名 === "gzip") gzip = 权;
-    else if (名 === "*") 星 = 权;
-  }
-  return (gzip ?? 星 ?? 0) > 0;
-}
-
 /** instrumentation.ts 启动时装上落盘（lib/antd-css-disk.ts） */
 export function 装落盘(钩子: 落盘钩子): void {
   全局.__crmAntdCssDisk = 钩子;
