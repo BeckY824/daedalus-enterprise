@@ -519,8 +519,11 @@ test("计划页「改」：框开着时这条在另一个窗口被改了，保�
 test("项目看板：列头写着这一阶段压着多少钱", async ({ page }) => {
   await 登录(page);
   await page.goto("/projects");
-  await page.waitForSelector(".pipe-col");
-  const 合计 = await page.locator(".pipe-sum").allInnerTexts();
+  // 生产构建下进页后看板偶尔还会再换一次（短暂换回骨架、或多一份藏着的同页；main 的 CI 也撞到过，11-17）：
+  // 等摆着的列头合计出来再读，不在 .pipe-col 一出现就读
+  const 合计格 = page.locator(".pipe .pipe-sum").filter({ visible: true });
+  await expect(合计格.first()).toBeVisible();
+  const 合计 = await 合计格.allInnerTexts();
   expect(合计.length).toBeGreaterThan(0);
   for (const x of 合计) expect(x).toMatch(/¥|￥|\d/);
 });
@@ -531,20 +534,23 @@ test("1024 下项目看板在框里横滑、列不压窄，页面不横滚", asy
   await page.setViewportSize({ width: 1024, height: 800 });
   await 登录(page);
   await page.goto("/projects");
-  await page.waitForSelector(".pipe-col");
 
-  const r = await page.evaluate(() => {
+  // 等到摆着的看板框和它的列都在再量，一次量完：生产构建下进页后看板偶尔还会再换一次（短暂换回骨架，.pipe 不在；
+  // 或多一份藏着的同页，那份的列宽是 0），原来 .pipe-col 一出现就量，正赶上换的那一下就拿到 null（11-17 CI，main 上同一处也撞到过）
+  const r = await (await page.waitForFunction(() => {
     const d = document.documentElement;
-    const pipe = document.querySelector(".pipe")!;
-    // 只量摆着的列：生产构建下 DOM 里偶尔多一份藏着的同页，那份的列宽是 0（本机 E2E_PROD 实测）
-    const 列宽 = [...document.querySelectorAll(".pipe-col")].filter((c) => c.getClientRects().length > 0).map((c) => c.getBoundingClientRect().width);
+    const pipe = [...document.querySelectorAll(".pipe")].find((p) => p.getClientRects().length > 0);
+    if (!pipe) return null;
+    const 列宽 = [...pipe.querySelectorAll(".pipe-col")].filter((c) => c.getClientRects().length > 0).map((c) => c.getBoundingClientRect().width);
+    if (!列宽.length) return null;
     return {
       页面溢出: d.scrollWidth > d.clientWidth + 1,
       管道能横滑: getComputedStyle(pipe).overflowX === "auto",
       列数: 列宽.length,
       最窄列: Math.min(...列宽),
     };
-  });
+  })).jsonValue();
+  if (!r) throw new Error("看板没摆出来");
   expect(r.页面溢出, "整页被看板撑出了横向滚动条").toBe(false);
   expect(r.管道能横滑, "列放不下时应在看板框里左右滑").toBe(true);
   expect(r.列数, "0 个项目的列也照常摆（企业版按进程分列，比五列多）").toBeGreaterThan(5);
@@ -597,7 +603,8 @@ test("数据页只剩面板那一个输入框，正文里不再有第二个", as
   // 首页那个是整页的同一块，不受影响（首页不画面板）
   await page.goto("/dashboard");
   await expect(page.locator("aside.dock")).toHaveCount(0);
-  const 首页框 = page.getByPlaceholder(/^问一位/);
+  // 只认摆着的那个：生产构建下偶尔多一份藏着的同页（同上面看板那两条）
+  const 首页框 = page.getByPlaceholder(/^问一位/).filter({ visible: true });
   await expect(首页框).toBeVisible();
   await expect(首页框.locator("xpath=ancestor::*[contains(@class,'cli-input')]")).toHaveCount(1);
 });
