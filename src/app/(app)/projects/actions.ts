@@ -51,6 +51,7 @@ import { 只读客户, 只读话 } from "@/lib/team-scope";
 import { scheduleValue } from "@/lib/schedule-date";
 import { 定分配方式, 建好再分 } from "@/lib/project/after-create-assign";
 import { 认业务线, 业务线必填 } from "@/lib/enterprise/assign-line";
+import { 区域线of, 按区域分配of } from "@/lib/enterprise/customer-region";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 import { 字典定义, 项目画像项, 认跟进方式, 选的原因 } from "@/lib/enterprise/dict";
 import { 改项目画像, type 画像改动, type 画像字段 } from "@/lib/project/profile";
@@ -113,6 +114,8 @@ export async function 建档向导(输入: 建档向导输入) {
     const 带方式 = 认 ? { ...input, 跟进: 认 } : input;
     const 好 = 规整向导(me, 要下一步 || 企业版() || !带方式.跟进 ? 带方式 : { ...带方式, 跟进: { ...带方式.跟进, 下一步时间: null } }, new Date(), 要下一步, 企业版());
     if ("error" in 好) return { ok: false as const, error: 好.error };
+    /** 市场成员选自动分配：业务线按客户区域定（下面企业版那段算） */
+    let 区域定线 = false;
     // 企业版新建线索要选渠道或渠道触点（10-26：直接选渠道，不是来源类型；P-渠道-08 起触点也算）
     if (企业版()) {
       if (是占位值(String(input.客户.name ?? ""))) return { ok: false as const, error: 占位名提示("客户名称") };
@@ -135,12 +138,19 @@ export async function 建档向导(输入: 建档向导输入) {
         好.企业.项目来源 = 来源;
         // 分配方式记在项目上（11-01 迁移 106）
         if (分配) 好.企业.分配方式名 = 分配.名;
-        // 业务线（11-01 清单 A1，16:1x 拍板三选一）：手动选；没选 = 跟客户上选的。企业版新建必填，不填不让建
-        if (!好.企业.业务线) {
-          const 客线 = 认业务线(input.客户.企业资料?.bizLine);
-          if (客线) 好.企业.业务线 = 客线;
+        // 市场成员（按岗位）选自动分配（P-转-26 自动分配这一半，用户 11-17）：业务线不用选、交了也不认，按客户区域定——
+        // 大陆 内贸、非大陆（含港澳台）外贸；客户地址空看项目所在地；都空 = 项目不记线（null，分完按负责人的线），自动分配两条线都算
+        区域定线 = 分配?.i === 1 && 按区域分配of(await 读组织(), me.id);
+        if (区域定线) {
+          好.企业.业务线 = 区域线of(input.客户.企业资料 ?? null, 好.企业.所在地 ?? null);
+        } else {
+          // 业务线（11-01 清单 A1，16:1x 拍板三选一）：手动选；没选 = 跟客户上选的。企业版新建必填，不填不让建
+          if (!好.企业.业务线) {
+            const 客线 = 认业务线(input.客户.企业资料?.bizLine);
+            if (客线) 好.企业.业务线 = 客线;
+          }
+          if (!好.企业.业务线) return { ok: false as const, error: 业务线必填 };
         }
-        if (!好.企业.业务线) return { ok: false as const, error: 业务线必填 };
       }
     }
     const 负责人 = await prisma.user.findUnique({ where: { id: 好.项目.ownerId }, select: { name: true, active: true } });
@@ -216,9 +226,11 @@ export async function 建档向导(输入: 建档向导输入) {
     if (号码行?.有) 记联系人带号(接着);
     let r: Awaited<ReturnType<typeof saveCustomer>>;
     try {
-      // 新客户的业务线跟项目走（客户那一步没另选时；交了个空的也算没选，M-必填-13）
-      const 客户线 = 企 && 好.企业?.业务线 && 认业务线(input.客户.企业资料?.bizLine) === null
-        ? { 企业资料: { ...(input.客户.企业资料 ?? {}), bizLine: 好.企业.业务线 } }
+      // 新客户的业务线跟项目走（客户那一步没另选时；交了个空的也算没选，M-必填-13）。
+      // 按客户区域定、区域又没填的（项目不记线）：客户记「暂不分配」（客户业务线必填，同导入没选线时）
+      const 跟的线 = 好.企业?.业务线 ?? (区域定线 ? "暂不分配" : null);
+      const 客户线 = 企 && 跟的线 && 认业务线(input.客户.企业资料?.bizLine) === null
+        ? { 企业资料: { ...(input.客户.企业资料 ?? {}), bizLine: 跟的线 } }
         : {};
       // 企业版指定给别人：项目归接手人，客户不跟着改（P-转-03，三处同一条）。总管理不走 新建只给自己，这里统一落到建的人
       const 客户负责人 = 企 && 好.项目.ownerId !== me.id ? { salesOwnerId: me.id } : {};

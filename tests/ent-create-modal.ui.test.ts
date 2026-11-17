@@ -7,6 +7,7 @@
  *   没开项目：走「只建客户」（客户沟通、客户业务线），不交项目
  *   销售选自动分配：就地黄条 + 按钮「建好并分出去」，不叠确认框
  *   Windows 1024 / 1280 / 1366 + 超长客户名：弹窗里不横向溢出，「建好」在可视区点得中
+ *   市场成员选自动分配（P-转-26，用户 11-17）：业务线那格换成只读「按客户区域自动定」，不交业务线；三档宽度不溢出
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -25,7 +26,7 @@ const plugin: Plugin = { name: "ent-create-modal", setup(b) {
   stub(/(^|\/)number-actions$/, "export const 查号码=async(t,v)=>{(window.__调||=[]).push(['查号码',t,v]);return {ok:true,状态:'首次录入',提示:'首次录入',值:v,归属地:null}};export const 查客户名=async(n)=>{(window.__调||=[]).push(['查客户名',n]);return {ok:true,撞:null}};export const 申请挂靠=async()=>({ok:true});export const 从回收站捞回=async()=>({ok:true});");
   // 老客户新增项目（cr.old）：搜得到一位老客户；给客户建项目记下交了什么
   stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async(w)=>{(window.__调||=[]).push(['搜客户',w]);return [{id:'c9',name:'华东展具',附注:'138****5678'}]};");
-  stub(/customers\/\[id\]\/project-actions$/, "export const 给客户建项目=async(x)=>{(window.__调||=[]).push(['给客户建项目',x]);return {ok:true,projectId:'np9'}};export const 新项目分配数据=async()=>({分配方式们:[],默认分配方式:0,是销售:false,客户业务线:'外贸'});export const 建项目带走的项目=async()=>({项目数:0,项目:[]});");
+  stub(/customers\/\[id\]\/project-actions$/, "export const 给客户建项目=async(x)=>{(window.__调||=[]).push(['给客户建项目',x]);return {ok:true,projectId:'np9'}};export const 新项目分配数据=async()=>({分配方式们:[],默认分配方式:0,是销售:false,客户业务线:'外贸',客户区域线:window.__区域线??null,客户有地址:!!window.__区域线});export const 建项目带走的项目=async()=>({项目数:0,项目:[]});");
   stub(/same-number-actions$/, "export const 同号协同录入=async()=>({ok:true});");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
@@ -34,7 +35,7 @@ beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import {建档弹窗} from '@/app/(app)/projects/new/ProjectWizard';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {我Provider} from '@/lib/me-client';
-    const 数据={users:[{id:'u1',name:'我自己',email:'a'},{id:'u2',name:'同事乙',email:'b'}],要下一步:false,企业:{渠道们:[],节点们:['潜客培育','线索验证','线索推进'],分配方式们:[{i:0,名:'指定分配'},{i:1,名:'自动分配'}],默认分配方式:0,是销售:true,客户只给自己:false}};
+    const 数据={users:[{id:'u1',name:'我自己',email:'a'},{id:'u2',name:'同事乙',email:'b'}],要下一步:false,企业:{渠道们:[],节点们:['潜客培育','线索验证','线索推进'],分配方式们:[{i:0,名:'指定分配'},{i:1,名:'自动分配'}],默认分配方式:0,是销售:!window.__市场,按区域:!!window.__市场,客户只给自己:false}};
     function 页(){const [开,set开]=React.useState(true);return <建档弹窗 open={开} 标题={window.__标题||'新增客户'} 项目={window.__开关||'关'} 数据={数据} onClose={()=>set开(false)}/>;}
     createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'u1',name:'我自己'}}><页/></我Provider></BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"', "process.env.CRM_ENTERPRISE": '"1"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
@@ -275,5 +276,67 @@ it.each([1024, 1280, 1366])("Windows %ipx + 多个超长号码：弹窗里不横
       return { 表: s.scrollWidth - s.clientWidth, 体: body.scrollWidth - body.clientWidth, 页: document.documentElement.scrollWidth - window.innerWidth, 出格 };
     });
     expect(量, `${w}`).toEqual({ 表: 0, 体: 0, 页: 0, 出格: 0 });
+  } finally { await page.close(); }
+});
+
+it.each([1024, 1280, 1366])("Windows %ipx 市场成员选自动分配：业务线换成只读「按客户区域自动定」、没有下拉，不溢出", async (w) => {
+  const page = await 开(w, { __开关: "锁开", __标题: "新线索", __市场: true });
+  try {
+    const 框 = page.getByRole("dialog");
+    expect(await 框.getByTestId("wizard-bizline").count()).toBe(1);
+    await 选(page, "分配方式", "自动分配");
+    const 只读 = 框.getByTestId("wizard-bizline-auto");
+    await 只读.waitFor();
+    expect(await 只读.innerText()).toContain("客户没填区域，按全部销售分配，建议补区域");
+    expect(await 框.getByTestId("wizard-bizline").count()).toBe(0);
+    // 市场不是销售：没有「分出去后看不到」黄条
+    expect(await 框.getByTestId("wizard-auto-warn").count()).toBe(0);
+    await 框.getByLabel("客户名称").fill("某某超长名字的智能制造装备与工业自动化系统集成有限公司华东区域采购中心第二分部");
+    const 量 = await page.evaluate(() => {
+      const s = document.querySelector(".cr-sheet") as HTMLElement;
+      const body = document.querySelector(".ant-modal-body") as HTMLElement;
+      const 格 = document.querySelector("[data-testid='wizard-bizline-auto']") as HTMLElement;
+      return { 表: s.scrollWidth - s.clientWidth, 体: body.scrollWidth - body.clientWidth, 页: document.documentElement.scrollWidth - window.innerWidth, 格: 格.scrollWidth - 格.clientWidth };
+    });
+    expect(量).toEqual({ 表: 0, 体: 0, 页: 0, 格: 0 });
+    // 换回指定分配：业务线下拉回来
+    await 选(page, "分配方式", "指定分配");
+    await 框.getByTestId("wizard-bizline").waitFor();
+  } finally { await page.close(); }
+});
+
+it("市场成员选自动分配：没选业务线也能建，交的业务线是 null（服务端按客户区域定）", async () => {
+  const page = await 开(1280, { __开关: "锁开", __标题: "新线索", __市场: true });
+  try {
+    const 框 = page.getByRole("dialog");
+    await 框.getByLabel("号码", { exact: true }).fill("13905712266");
+    await 框.getByLabel("客户名称").fill("华东展具");
+    await 框.getByLabel("联系人姓名").fill("王总");
+    await 选(page, "渠道触点", "公司资源");
+    await 框.getByLabel("项目名称").fill("华东展具-一期");
+    await 选(page, "分配方式", "自动分配");
+    await 框.getByLabel("沟通内容").fill("客户要报价");
+    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档向导")).toBeTruthy();
+    const 交 = (await 调(page)).find((x) => x[0] === "建档向导")![1] as { 项目: Record<string, unknown> };
+    expect(交.项目).toMatchObject({ 分配方式: 1, 业务线: null });
+  } finally { await page.close(); }
+});
+
+it("市场成员给有地址的老客户新增项目、选自动分配：只读显示客户区域定的线，交的业务线是 null", async () => {
+  const page = await 开(1280, { __开关: "开", __标题: "新增项目", __市场: true, __区域线: "内贸" });
+  try {
+    const 框 = page.getByRole("dialog");
+    await 框.getByLabel("客户名称").fill("华东");
+    await page.locator(".ant-select-dropdown:visible").getByText("华东展具", { exact: false }).first().click();
+    await 框.getByTestId("wizard-old-customer").waitFor();
+    await 选(page, "分配方式", "自动分配");
+    await expect.poll(() => 框.getByTestId("wizard-bizline-auto").innerText()).toContain("按客户区域自动定：内贸");
+    await 框.getByLabel("项目名称").fill("华东展具-二期");
+    await 框.getByLabel("沟通内容").fill("老客户要加一套");
+    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await expect.poll(async () => (await 调(page)).find((x) => x[0] === "给客户建项目")).toBeTruthy();
+    const 交 = (await 调(page)).find((x) => x[0] === "给客户建项目")![1] as { 项目: Record<string, unknown> };
+    expect(交.项目).toMatchObject({ 分配方式: 1, 业务线: null });
   } finally { await page.close(); }
 });
