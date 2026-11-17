@@ -150,7 +150,7 @@ export function ProjectAttachmentsCard({ projectId, 起始个数, 只读, 沟通
   return (
     <Card title={`项目附件（${合计}）`} className="proj-att-card" data-testid="project-attachments">
       {附件格们.map(([k, 名]) => (
-        <section key={k} className="proj-att-sec" aria-label={名}>
+        <section key={k} className="proj-att-sec" aria-label={名} data-paste-scope="">
           <div className="proj-att-h">{名}（{个数[k]}）</div>
           <AttachmentsPanel 归属={{ projectId }} 分类={k} 只读={只读} on个数={记个数[k]} 紧凑 on变了={() => router.refresh()} />
         </section>
