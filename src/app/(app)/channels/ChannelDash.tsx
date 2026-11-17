@@ -44,6 +44,8 @@ export default function ChannelDash({
   渠道们,
   底数,
   段 = null,
+  期: 外期,
+  改期,
   公海 = null,
   筛了负责人,
   能录,
@@ -53,6 +55,9 @@ export default function ChannelDash({
   底数: 看板底数;
   /** 地址栏带着「自定义」时服务端读好的那一段；null = 没选自定义 */
   段?: 日期段 | null;
+  /** 当前档由外面管（2D：渠道列表的统计跟看板同一档）；不给就自己管（老用法、单测） */
+  期?: 档;
+  改期?: (v: 档) => void;
   /** 进公海那段（只给市场成员 / 市场管理）；null 不摆 */
   公海?: 看板公海 | null;
   筛了负责人: boolean;
@@ -63,7 +68,9 @@ export default function ChannelDash({
   const 路径 = usePathname();
   const 参数 = useSearchParams();
   const [换着, start] = useTransition();
-  const [期, set期] = useState<档>(段 ? 自定义 : "全部");
+  const [内期, set内期] = useState<档>(段 ? 自定义 : "全部");
+  const 期 = 外期 ?? 内期;
+  const set期 = 改期 ?? set内期;
   // 刚点「自定义」、那一份还在路上：先摆本月 1 号到今天（同服务端默认），数先空着、看板压暗
   const 显段 = 段 ?? 读日期段();
   const 期底 = useMemo(() => (期 === 自定义 ? 底数.自定义 ?? {} : 底数[期]), [期, 底数]);

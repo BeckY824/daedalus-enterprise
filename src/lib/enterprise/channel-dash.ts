@@ -24,7 +24,8 @@
  */
 import type { 币种合计 } from "../currency";
 import { beijingDay } from "../business-clock";
-import { 合计, 算产出比, 算成交 } from "./channel-stats";
+import { 合计, 算产出比, 算成交, 算渠道统计, type 渠道统计, type 统计用渠道, type 统计用项目, type 统计用投入 } from "./channel-stats";
+import { 字典of, type 阶段字典 } from "../project/stage-dict";
 
 export const 周期们 = ["本月", "本季", "全部"] as const;
 export type 周期 = (typeof 周期们)[number];
@@ -118,6 +119,24 @@ const 合 = (份: 币种合计[][]) => 合计(份.flat().map((x) => ({ amount: x
 export function 看板各档(今: Date, 区间?: 看板区间 | null): [档, number, number][] {
   const 预设 = 周期们.map((期): [档, number, number] => [期, 周期起点(期, 今)?.getTime() ?? -Infinity, Infinity]);
   return 区间 ? [...预设, [自定义, 区间.from.getTime(), 区间.to.getTime()]] : 预设;
+}
+
+/**
+ * 渠道列表统计跟看板时间段（员工反馈第 2 批 2D）：列表那一排数按看板同一档再算一份，界面切档直接换、不回服务端（自定义除外，同看板）。
+ * - 项目：创建时间落在这一档的（同看板「总线索」），再照 算渠道统计 的口径数眼下在哪个阶段、成交、转化——
+ *   所以列表的关联项目 = 看板同一档的总线索；「全部」不限，和原来的列表一模一样。
+ * - 投入：投入日期落在这一档的；产出比 = 这一档的成交 ÷ 这一档的投入。
+ * - 累计运营天数不分档（渠道自己的创建到结束）。
+ * - 没给创建时间 / 投入日期的（单测、老调用）只进「全部」。
+ */
+export type 分期统计 = Record<周期, Record<string, 渠道统计>> & { 自定义?: Record<string, 渠道统计> };
+export function 算分期统计(渠道们: 统计用渠道[], 项目们: 统计用项目[], 投入们: 统计用投入[], 今: Date = new Date(), 字典: 阶段字典 = 字典of(true), 区间?: 看板区间 | null): 分期统计 {
+  const out = {} as 分期统计;
+  for (const [期, 起, 止] of 看板各档(今, 区间)) {
+    const 在 = (t: Date | undefined) => (起 === -Infinity && 止 === Infinity) || (t !== undefined && t.getTime() >= 起 && t.getTime() <= 止);
+    out[期] = 算渠道统计(渠道们, 项目们.filter((p) => 在(p.createdAt)), 投入们.filter((x) => 在(x.date)), 今, 字典);
+  }
+  return out;
 }
 
 /** 每个渠道 × 每个周期的底数，一次算好交给界面；界面按筛选结果再合。带了区间多算一份 自定义 */

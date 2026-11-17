@@ -2727,6 +2727,11 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .chan-dash { container-type: inline-size; display: flex; flex-direction: column; gap: var(--s3); margin-bottom: var(--s4); min-width: 0; }
 .chan-dash-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; }
 .chan-dash-hint { min-width: 0; font-size: var(--fs-note); color: var(--text-muted); }
+/* 列表统计跟看板时间段（2D，ChannelsView.tsx）：看板下、表格上一行写明列表按哪一段算；窄屏折行，长日期不撑宽 */
+.chan-period-note { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px var(--s3); margin: calc(-1 * var(--s2)) 0 var(--s3); min-width: 0; font-size: var(--fs-note); }
+.chan-period-label { color: var(--ink); font-weight: 500; overflow-wrap: anywhere; }
+.chan-period-hint { min-width: 0; color: var(--text-muted); overflow-wrap: anywhere; }
+.chan-period-title { font-weight: 400; margin-left: 4px; }
 .chan-dash-kpi { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); overflow: hidden; }
 .chan-dash-k { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: var(--s3) var(--s4); border-left: 1px solid var(--line-soft); }
 .chan-dash-k:first-child { border-left: 0; }

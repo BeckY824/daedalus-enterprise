@@ -21,7 +21,7 @@ import { 合计文字 } from "@/lib/currency";
 import { isFormValidationError } from "@/lib/form-validation";
 import { dayjs, fmtDate } from "@/lib/utils";
 import Link from "next/link";
-import { 拆来源, 数字链接, 名单段, type 名单键, type 渠道统计, type 产出比分布, type 转化 } from "@/lib/enterprise/channel-stats";
+import { 拆来源, 数字链接, 名单段, type 名单键, type 名单时段, type 渠道统计, type 产出比分布, type 转化 } from "@/lib/enterprise/channel-stats";
 import { 子渠道名 } from "@/lib/enterprise/channel-main-core";
 import { 转化率字 } from "../overview/funnel";
 import { addChannelInvest, deleteChannelInvest, listChannelInvests, type 投入行 } from "./actions";
@@ -35,8 +35,11 @@ const 无 = <span className="muted">—</span>;
  * 同名分布：同一个渠道名称下各来源的产出比平均值 / 最高值 / 最低值（列表那三列算好的，传进来跟着「投入产出比」摆）；
  * undefined = 开关关着不摆，null = 开着但一个来源都算不了
  */
-export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 = false, onClose, onEdit }: {
+export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 = false, 时段, 时段名, onClose, onEdit }: {
   row: 渠道行;
+  /** 列表统计跟看板时间段（2D）：row.统计 已是这一档的；数字点进去带同一段创建时间，统计标题写明哪一段。全部 = 不给 */
+  时段?: 名单时段;
+  时段名?: string | null;
   /** 从列表行上「录投入」打开：一开就展开录入表单（不能录的照旧不摆，见 能录） */
   先录?: boolean;
   同名分布?: ReturnType<typeof 产出比分布>;
@@ -141,8 +144,8 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
     const 去公海 = 名单.列表 === 0 && 名单.公海 > 0;
     return (
       <span>
-        <Link href={数字链接(row.id, 键, 名单)} className="chan-num" title={去公海 ? `这 ${n} 条都在公海，到公海页看` : `在项目列表里看这 ${n} 条，能按创建时间、负责人再筛`}>{n}</Link>
-        {名单段(n, 名单) && <span className="muted chan-num-note"><RosterNote 总数={n} 名单={名单} channelId={row.id} 键={键} /></span>}
+        <Link href={数字链接(row.id, 键, 名单, 时段)} className="chan-num" title={去公海 ? `这 ${n} 条都在公海，到公海页看` : `在项目列表里看这 ${n} 条，能按创建时间、负责人再筛`}>{n}</Link>
+        {名单段(n, 名单) && <span className="muted chan-num-note"><RosterNote 总数={n} 名单={名单} channelId={row.id} 键={键} 时段={时段} /></span>}
       </span>
     );
   };
@@ -190,7 +193,7 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
       </section>
 
       <section className="chan-block" aria-label="统计">
-      <div className="section-title">统计</div>
+      <div className="section-title">统计{时段名 && <span className="muted chan-period-title">（{时段名}）</span>}</div>
       <Descriptions
         className="chan-desc"
         size="small"

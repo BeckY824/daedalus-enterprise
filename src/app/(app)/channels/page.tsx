@@ -6,7 +6,7 @@ import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { 可选项, 字典定义 } from "@/lib/enterprise/dict";
-import { 读渠道统计 } from "@/lib/enterprise/channel-stats-db";
+import { 读渠道分期统计 } from "@/lib/enterprise/channel-stats-db";
 import { 读看板底数, 读公海底数 } from "@/lib/enterprise/channel-dash-db";
 import { 读市场身份 } from "@/lib/enterprise/market-view-db";
 import { 读日期段, 日期段界 } from "@/lib/custom-date-range";
@@ -65,7 +65,8 @@ export default async function ChannelsPage({ searchParams }: { searchParams?: Pr
   const 渠道ids = channels.map((c) => c.id);
   const [统计, 看板底数, 创建人们, 属性选项, 挂客户, 投入笔数, 挂项目, 能录, 能管, 公海底数, 圈里的人, 主渠道们, 策略选项] = await Promise.all([
     // 带上是谁在看：每个数点进项目列表能看到几条（名单），对不上的抽屉里写一句
-    读渠道统计(channels, new Date(), me),
+    // 列表统计跟看板时间段（2D）：同一趟取数按 本月 / 本季 / 全部（带了自定义再加那一段）各算一份，界面跟看板的档换
+    读渠道分期统计(channels, new Date(), 区间, me),
     // 总览看板（11-03）：每个渠道 × 本月 / 本季 / 全部（带了「自定义」再加那一段）的底数，界面按列表的筛选结果再合，口径见 channel-dash.ts；
     // 带上是谁在看：TOP5 每行拆「项目列表里 N 条、另 M 条在公海」（11-11）
     企业版() ? 读看板底数(渠道ids, new Date(), 区间, me) : Promise.resolve(null),
@@ -133,7 +134,9 @@ export default async function ChannelsPage({ searchParams }: { searchParams?: Pr
         createdByName: c.createdById ? 创建人.get(c.createdById) ?? null : null,
         channelOwnerId: c.channelOwnerId,
         channelOwnerName: c.channelOwner.name,
-        统计: 统计[c.id],
+        统计: 统计.全部[c.id],
+        // 看板才有时间段（企业版）；全部那一份就是上面的 统计，不重复带
+        ...(看板底数 ? { 期统计: { 本月: 统计.本月[c.id], 本季: 统计.本季[c.id], ...(统计.自定义 ? { 自定义: 统计.自定义[c.id] } : {}) } } : {}),
         客户数: 客户数.get(c.id) ?? 0,
         投入数: 投入数.get(c.id) ?? 0,
         项目数: 项目数.get(c.id) ?? 0,

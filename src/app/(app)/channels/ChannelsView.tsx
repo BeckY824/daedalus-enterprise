@@ -31,8 +31,8 @@ import ChannelDrawer from "./ChannelDrawer";
 import ChannelDash from "./ChannelDash";
 import SaveButton from "@/components/SaveButton";
 import InlineConfirm from "@/components/InlineConfirm";
-import { 筛渠道, type 看板底数, type 看板公海 } from "@/lib/enterprise/channel-dash";
-import type { 日期段 } from "@/lib/custom-date-range";
+import { 筛渠道, 看板时段, 自定义, type 档, type 看板底数, type 看板公海 } from "@/lib/enterprise/channel-dash";
+import { 读日期段, type 日期段 } from "@/lib/custom-date-range";
 
 export type 渠道行 = {
   id: string;
@@ -58,6 +58,11 @@ export type 渠道行 = {
   channelOwnerId: string;
   channelOwnerName: string;
   统计?: 渠道统计;
+  /**
+   * 看板其余几档的统计（2D：列表统计跟看板时间段）：本月 / 本季，地址栏带了自定义再加那一段；「全部」就是 统计。
+   * 只有企业版（有看板）才带；切到哪一档列表、抽屉就用哪一份，自定义那一段还在路上时是空的（显示「—」）
+   */
+  期统计?: Partial<Record<档, 渠道统计>>;
   /** 名下客户数（来源或归属落在这个渠道），删除项变不变灰看它；口径同 deleteChannel */
   客户数?: number;
   /** 录过几笔投入，同上 */
@@ -125,8 +130,14 @@ function FullNamePreview({ 原名, 两层 }: { 原名: string | null; 两层: bo
   );
 }
 
+/** 列表和看板说同一段时间：本月 · 11-01 起 / 自定义 · 10-01 至 10-31 / 全部 */
+function 时段字(期: 档, 时段: { createdFrom: string; createdTo?: string } | null): string {
+  if (!时段) return 期;
+  return 时段.createdTo ? `${期} · ${时段.createdFrom} 至 ${时段.createdTo}` : `${期} · ${时段.createdFrom} 起`;
+}
+
 export default function ChannelsView({
-  rows: 全部行,
+  rows: 原行,
   users,
   属性选项 = [],
   能录 = false,
@@ -175,6 +186,15 @@ export default function ChannelsView({
     行错计时.current = setTimeout(() => set行错(null), 5000);
   }
   const b = useBusiness();
+  /*
+    列表统计跟看板时间段（员工反馈第 2 批 2D）：档放这里、看板和列表共用一个，看板上切，列表、抽屉、按主渠道合计跟着换。
+    默认同看板：地址栏带着自定义就是自定义，不然「全部」（= 原来的列表）。没有看板（不是企业版）就一直是全部
+  */
+  const [期, set期] = useState<档>(看板段 ? 自定义 : "全部");
+  const 有期 = Boolean(看板底数) && 期 !== "全部";
+  const 全部行 = useMemo(() => (有期 ? 原行.map((r) => ({ ...r, 统计: r.期统计 ? r.期统计[期] : r.统计 })) : 原行), [原行, 有期, 期]);
+  /** 点数字进项目列表带的同一段创建时间（北京日）；全部 = null 不带 */
+  const 时段 = 有期 ? 看板时段(期, new Date(), 看板段 ?? 读日期段()) : null;
   /* 筛选条件都在本地：行已经全在手上了 */
   const [kw, setKw] = useState("");
   const [attr, setAttr] = useState("");
@@ -307,9 +327,9 @@ export default function ChannelsView({
       const id = (r as { id?: string }).id;
       if (!名单 || !id) return <span className="chan-num">{n}</span>;
       // 差额说明放进悬停提示，两段各自能点（项目列表 / 公海页渠道名单）；全在公海的数字直接去公海页
-      const 链 = <Link href={数字链接(id, 键, 名单[键])} className="chan-num">{n}</Link>;
+      const 链 = <Link href={数字链接(id, 键, 名单[键], 时段)} className="chan-num">{n}</Link>;
       return 名单段(n, 名单[键])
-        ? <Tooltip title={<RosterNote 总数={n} 名单={名单[键]} channelId={id} 键={键} />}>{链}</Tooltip>
+        ? <Tooltip title={<RosterNote 总数={n} 名单={名单[键]} channelId={id} 键={键} 时段={时段} />}>{链}</Tooltip>
         : <Tooltip title={`在项目列表里看这 ${n} 条`}>{链}</Tooltip>;
     },
   });
@@ -600,6 +620,17 @@ export default function ChannelsView({
         ? `主渠道「${填的主}」已停用，换一个或先到「主渠道」里启用`
         : undefined;
 
+  /* 看板 + 下面一行写明列表按哪一段算（2D）：看板可能很高，滚到列表时看不到看板上的档，这一行贴着表格说 */
+  const 看板块 = 看板底数 && rows.length > 0 ? (
+    <>
+      <ChannelDash 渠道们={rows} 底数={看板底数} 段={看板段} 期={期} 改期={set期} 公海={公海} 筛了负责人={Boolean(ownerId)} 能录={能录} 看详情={看详情} />
+      <div className="chan-period-note" data-testid="chan-period-note">
+        <span className="chan-period-label">列表统计：{时段字(期, 时段)}</span>
+        <span className="chan-period-hint">{有期 ? "按这段时间新建的项目、这段时间的投入算，累计运营天数不分时段；在上方看板切换" : "全部时间；在上方看板切换时段"}</span>
+      </div>
+    </>
+  ) : undefined;
+
   /* 渠道页一次就把行全拿下来了（没有服务端分页），所以筛在本地做；按主渠道看时筛的还是子渠道，筛完再并 */
   const 筛选条 = (
     <Space wrap size={[10, 10]}>
@@ -656,7 +687,7 @@ export default function ChannelsView({
           列={主列表}
           行={主行们}
           行类={(r) => (r.active ? undefined : "row-off")}
-          汇总={看板底数 && rows.length > 0 ? <ChannelDash 渠道们={rows} 底数={看板底数} 段={看板段} 公海={公海} 筛了负责人={Boolean(ownerId)} 能录={能录} 看详情={看详情} /> : undefined}
+          汇总={看板块}
           空态={{ title: "还没有渠道", hint: "先建主渠道和子渠道，这里按主渠道把各子渠道的数加起来。" }}
           筛选={筛选条}
         />
@@ -668,7 +699,7 @@ export default function ChannelsView({
         行={rows}
         亮={亮行}
         行类={(r) => (r.active ? undefined : "row-off")}
-        汇总={看板底数 && rows.length > 0 ? <ChannelDash 渠道们={rows} 底数={看板底数} 段={看板段} 公海={公海} 筛了负责人={Boolean(ownerId)} 能录={能录} 看详情={看详情} /> : undefined}
+        汇总={看板块}
         空态={{
           title: "还没有渠道",
           hint: `渠道是${b.customer}从哪来的：按「渠道属性 → 渠道名称 → 来源」建一条，新建${b.customer}时从清单里选；在渠道详情里录投入，这里就算得出投入产出比。不再用的渠道停用即可。`,
@@ -683,7 +714,7 @@ export default function ChannelsView({
 
       {改主 && <MainChannelEdit key={改主.id ?? "新"} 编辑={改主} users={users} 属性选项={属性选项} 子渠道数={改主.id ? 子渠道数.get(改主.id) ?? 0 : 0} onClose={() => set改主(null)} />}
 
-      {详情 && <ChannelDrawer key={详情.id} row={详情} 先录={先录} 同名分布={显示产出比分布 ? (分布.get(详情.platform ?? 详情.name) ?? null) : undefined} 不问归属={不问归属} onClose={() => set详情id(null)} onEdit={能管 ? () => openForm(详情) : undefined} />}
+      {详情 && <ChannelDrawer key={详情.id} row={详情} 时段={时段} 时段名={有期 ? 时段字(期, 时段) : null} 先录={先录} 同名分布={显示产出比分布 ? (分布.get(详情.platform ?? 详情.name) ?? null) : undefined} 不问归属={不问归属} onClose={() => set详情id(null)} onEdit={能管 ? () => openForm(详情) : undefined} />}
 
       {open && (
         <Modal
