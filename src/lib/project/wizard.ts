@@ -17,6 +17,7 @@ import { 记沟通编号 } from "./followup-meta";
 import { 下一步文字上限 } from "./project-fields";
 import { 是占位值 } from "./required";
 import { 新项目默认值 } from "./proj-fields";
+import { 补潜客培育 } from "./nurture";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 认业务线, 业务线不认得, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 新项目所在地, type 新项目所在地输入 } from "./profile-rules";
@@ -248,12 +249,13 @@ export function 向导接着建(me: { id: string }, 好: 规整好的, 出参: P
 }
 
 /**
- * 只建客户（P-界面-36，11-15）：新建弹窗没开「项目」开关——建客户、主要联系人（团队版连同首条沟通）。
+ * 只建客户（P-界面-36，11-15）：新建弹窗没开「项目」开关——建客户、主要联系人和首条沟通。
  * 团队版（用户 11-15「没有开项目，就只能算客户沟通」）：首条沟通只挂客户、不挂项目，不写项目节点、沟通编号；
  * 下一步时间不跟超时回收（那是项目的钟），填了就记成客户上的一条跟进计划（和客户页记沟通「下次计划」同一张表）。
- * 企业版（11-17 客户定「沟通必须挂项目」，到处一样）：不记首条沟通、也不记跟进计划，交上来的 跟进 一律不认 —— 跟进 = null
+ * 企业版（11-17 客户定「沟通必须挂项目」）：新客户本来就带一个潜客培育项目（M-公海-14），首条沟通挂在它上面，
+ * 下一步时间 / 下一步计划记成这个项目的下一步（同建档带项目），不另记客户上的跟进计划 —— 潜客培育 = true
  */
-export type 规整好的只建客户 = { 联系人: 规整好的["联系人"]; 跟进: 规整好的沟通 | null };
+export type 规整好的只建客户 = { 联系人: 规整好的["联系人"]; 跟进: 规整好的沟通; 潜客培育?: true };
 
 export function 规整只建客户(
   input: { 联系人?: 向导联系人; 跟进?: 向导跟进 },
@@ -261,41 +263,54 @@ export function 规整只建客户(
   企业 = false,
 ): 规整好的只建客户 | { error: string } {
   const c = input.联系人, f = input.跟进;
-  if (!c || (!f && !企业)) return { error: "建档信息不完整，请从头再走一遍" };
+  if (!c || !f) return { error: "建档信息不完整，请从头再走一遍" };
   const 联系人 = 规整联系人(c, 企业);
   if ("error" in 联系人) return 联系人;
-  if (企业 || !f) return { 联系人, 跟进: null };
   const 跟进 = 规整沟通(f, { 要下一步: false, now, 叫法: "首条" });
   if ("error" in 跟进) return 跟进;
-  return { 联系人, 跟进 };
+  return { 联系人, 跟进, ...(企业 ? { 潜客培育: true as const } : {}) };
 }
 
 /** 下一步计划没写时跟进计划的主题 */
 export const 只建客户计划主题 = "下一步跟进";
 
-export type 建好的客户 = { contactId: string; followUpId: string | null; planId: string | null };
+export type 建好的客户 = { contactId: string; followUpId: string; planId: string | null; projectId: string | null };
 
-/** 给 saveCustomer 的「接着建」（只建客户）：主要联系人、建档人；团队版再记首条沟通（不挂项目）、有下一步时间就记一条跟进计划 */
+/**
+ * 给 saveCustomer 的「接着建」（只建客户）：主要联系人、建档人、首条沟通。
+ * 团队版沟通不挂项目、有下一步时间就记一条跟进计划；企业版先把潜客培育项目建了（saveCustomer 后面那次补就不再建），沟通挂上去
+ */
 export function 只建客户接着建(me: { id: string }, 好: 规整好的只建客户, 出参: Partial<建好的客户>): 接着建 {
   return 登记接着建(async (tx: Prisma.TransactionClient, customerId: string) => {
     const 联系人 = await tx.contact.create({ data: { ...好.联系人, isPrimary: true, customerId } });
     await tx.customerCreator.create({ data: { customerId, userId: me.id } });
-    const 沟 = 好.跟进;
-    // 企业版没有首条沟通（沟通必须挂项目，11-17）：只建客户和联系人
-    if (!沟) return void Object.assign(出参, { contactId: 联系人.id, followUpId: null, planId: null });
     const 跟进 = await tx.followUp.create({
-      data: { type: 沟.type, method: 沟.method, initiator: 沟.initiator, content: 沟.content, occurredAt: 沟.occurredAt, title: "", status: "已完成", customerId, contactId: 联系人.id, ownerId: me.id },
+      data: { type: 好.跟进.type, method: 好.跟进.method, initiator: 好.跟进.initiator, content: 好.跟进.content, occurredAt: 好.跟进.occurredAt, title: "", status: "已完成", customerId, contactId: 联系人.id, ownerId: me.id },
     });
+    if (好.潜客培育) {
+      // 潜客培育项目（M-公海-14）：名字、负责人同 saveCustomer 补的那个（客户名、客户负责人），落在第一个节点
+      const 客 = await tx.customer.findUniqueOrThrow({ where: { id: customerId }, select: { name: true, salesOwnerId: true } });
+      const projectId = await 补潜客培育(tx, { customerId, 客户名: 客.name, ownerId: 客.salesOwnerId, creatorId: me.id });
+      if (!projectId) throw new Error("新客户已经有项目了，潜客培育项目没建");
+      if (好.跟进.nextStepAt || 好.跟进.nextStepText) {
+        await tx.project.update({ where: { id: projectId }, data: { nextStepAt: 好.跟进.nextStepAt, nextStepText: 好.跟进.nextStepText } });
+      }
+      await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId, node: 第一个节点.node } });
+      await 记沟通编号(tx, 跟进.id, projectId, 好.跟进.nextStepAt);
+      await 记沟通标记(tx, 跟进.id, projectId, 第一个节点.phase, false);
+      await tx.customer.update({ where: { id: customerId }, data: { lastFollowAt: 好.跟进.occurredAt } });
+      return void Object.assign(出参, { contactId: 联系人.id, followUpId: 跟进.id, planId: null, projectId });
+    }
     let planId: string | null = null;
-    if (沟.nextStepAt) {
+    if (好.跟进.nextStepAt) {
       planId = (await tx.followPlan.create({
         data: {
-          subject: 沟.nextStepText ?? 只建客户计划主题, plannedAt: 沟.nextStepAt, plannedOn: dayjs(沟.nextStepAt).format("YYYY-MM-DD"), plannedHasTime: false,
-          ...(沟.method ? { method: 沟.method } : {}), customerId, ownerId: me.id,
+          subject: 好.跟进.nextStepText ?? 只建客户计划主题, plannedAt: 好.跟进.nextStepAt, plannedOn: dayjs(好.跟进.nextStepAt).format("YYYY-MM-DD"), plannedHasTime: false,
+          ...(好.跟进.method ? { method: 好.跟进.method } : {}), customerId, ownerId: me.id,
         },
       })).id;
     }
-    await tx.customer.update({ where: { id: customerId }, data: { lastFollowAt: 沟.occurredAt } });
-    Object.assign(出参, { contactId: 联系人.id, followUpId: 跟进.id, planId });
+    await tx.customer.update({ where: { id: customerId }, data: { lastFollowAt: 好.跟进.occurredAt } });
+    Object.assign(出参, { contactId: 联系人.id, followUpId: 跟进.id, planId, projectId: null });
   });
 }
