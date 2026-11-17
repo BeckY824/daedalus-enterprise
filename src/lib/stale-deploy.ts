@@ -11,7 +11,7 @@
  * 服务端回 409（编号格式不对是 400）+ 响应头 `x-nextjs-action-not-found: 1`，客户端据此
  * `throw new UnrecognizedActionError('Server Action "<id>" was not found on the server. \nRead more: …')`，
  * 它 `this.name = 'UnrecognizedActionError'`（写死的字符串，压缩后照样在）。tests/stale-deploy.test.ts 拿 Next 自己的类对拍，
- * e2e-ent/stale-deploy.spec.ts 在真服务器上把动作编号改成不存在的再交一次。
+ * tests/stale-deploy.ui.test.ts 在浏览器里让动作抛这个类，看框里的话和横幅。
  *
  * 这个文件不带 "use client"：纯函数，服务端组件、单测都能引；碰 window 的几个在服务端调到是空操作。
  */
