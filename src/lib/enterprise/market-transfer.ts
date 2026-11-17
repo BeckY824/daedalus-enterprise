@@ -6,6 +6,8 @@ import type { 留下的活, 同事待分配条 } from "./notice-sources";
 import type { 组织 } from "./org-core";
 import { 是市场角色, 是销售角色 } from "./permissions";
 import { 企业版 } from "./switch";
+import { 补客户分配, 还补的客户分配 } from "./customer-assign-way";
+import { 客户分配序号 } from "./dict";
 
 /**
  * 市场首次分给销售 = 转客户（X-18）。分配线索、自动分配、客户页新建项目、新客户向导、首页 AI 录入（走向导）都走这一份：
@@ -69,7 +71,8 @@ export async function 公海项目市场转(
  * 要在事务里、放开范围调（市场转走后就看不到这位客户了）；老签约要在事务外先钉住（钉住老签约 用全局连接），刚建的客户没有签约不用钉。
  * 调用前客户要已经归 接手人：这里不写客户负责人。项目入口由 转客户给销售 在同一笔事务里写；
  * 客户层是外层先改好，带走并记下 进事务后核对还归接手人才调（中间被人改走的，写在这里就把人家的改动盖掉了）。
- * 回带走了什么，连同清掉的待分配、补上的分配方式：客户层撤销按它原样还（还待分配状态）
+ * 回带走了什么，连同清掉的待分配、补上的分配方式：客户层撤销按它原样还（还待分配状态）。
+ * 客户档案上的「客户分配」空着就补「非自持」（市场交给销售，11-17），补了的记在 补分配，撤销还成空；已有值的不改
  */
 export async function 市场转一位(tx: Prisma.TransactionClient, customerId: string, 原: string, 接手人: string, 操作人: string, way: string) {
   const 带走 = await 带走一位(tx, customerId, 原, 接手人, 操作人, "assign", true, { 留下待办计划: true, 项目痕: 随客户痕, 记录种类: "market-assign" });
@@ -80,7 +83,8 @@ export async function 市场转一位(tx: Prisma.TransactionClient, customerId: 
   const 带走的项目 = [...带走.项目, ...带走.公海项目];
   const 补方式 = 带走的项目.length ? (await tx.project.findMany({ where: { id: { in: 带走的项目 }, phase: "线索", assignMode: null }, select: { id: true } })).map((p) => p.id) : [];
   if (补方式.length) await tx.project.updateMany({ where: { id: { in: 补方式 } }, data: { assignMode: way } });
-  return { ...带走, 清待分配: [...带走.清待分配, ...待分配.map((p) => ({ id: p.id, at: p.awaitAssignAt!.toISOString() }))], 补方式 };
+  const 补分配 = (await 补客户分配(tx, customerId, 客户分配序号.非自持)) ? [customerId] : [];
+  return { ...带走, 清待分配: [...带走.清待分配, ...待分配.map((p) => ({ id: p.id, at: p.awaitAssignAt!.toISOString() }))], 补方式, 补分配 };
 }
 
 /**
@@ -91,12 +95,12 @@ export async function 转客户给销售(tx: Prisma.TransactionClient, customerI
   await tx.customer.update({ where: { id: customerId }, data: { salesOwnerId: 接手人 } });
   const 带走 = await 市场转一位(tx, customerId, 原, 接手人, 操作人, way);
   // 带过来：撤销自动分配（auto-assign-undo.ts）整批还原用，同客户层撤销的 带过来
-  const { 计划, 待办, 商机, 项目, 公海项目, 清待分配, 补方式 } = 带走;
-  return { 留下: { customerId, 原 }, 同事待分配: 带走.同事待分配, 带过来: { 计划, 待办, 商机, 项目, 公海项目, 清待分配, 补方式 } };
+  const { 计划, 待办, 商机, 项目, 公海项目, 清待分配, 补方式, 补分配 } = 带走;
+  return { 留下: { customerId, 原 }, 同事待分配: 带走.同事待分配, 带过来: { 计划, 待办, 商机, 项目, 公海项目, 清待分配, 补方式, 补分配 } };
 }
 
 /**
- * 撤销客户层转让时还 市场转一位 动过的两格（P-撤销-01 按原样回滚）。要在 还项目 之前调：
+ * 撤销客户层转让时还 市场转一位 动过的几格（P-撤销-01 按原样回滚）：待分配时刻、项目分配方式、客户分配。要在 还项目 之前调：
  * 只还「现在还归接手人」的，撤销之前被人分走、推进了的不动。时刻是前端传回来的，不是合法时间的跳过。
  * 一批客户一起还：同一个时刻的一次改（一批转出去的多半是同一刻进的待分配）
  */
@@ -109,4 +113,5 @@ export async function 还待分配状态(tx: Prisma.TransactionClient, 带过来
   }
   for (const [t, ids] of 按时刻) await tx.project.updateMany({ where: { id: { in: ids }, ...还归他, result: null, pooledAt: null, awaitAssignAt: null }, data: { awaitAssignAt: new Date(t) } });
   if (带过来.补方式?.length) await tx.project.updateMany({ where: { id: { in: 带过来.补方式 }, ...还归他, assignMode: 客户层分配方式 }, data: { assignMode: null } });
+  await 还补的客户分配(tx, 带过来.补分配, 还归他.customerId.in);
 }

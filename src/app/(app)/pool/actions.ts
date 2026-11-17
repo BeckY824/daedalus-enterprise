@@ -164,7 +164,11 @@ function 规整整包(x: unknown): 整包撤销 | null {
   const o = x as Record<string, unknown>;
   const 原 = Array.isArray(o.原)
     ? o.原.filter((r): r is { id: string; 值: string } => !!r && typeof r === "object" && typeof (r as { id?: unknown }).id === "string" && typeof (r as { 值?: unknown }).值 === "string")
-        .map((r) => ({ id: r.id, 值: r.值 })).slice(0, 500)
+        // 分 = 出公海前的客户分配（customer-assign-way.ts）：空或字符串才留，认不认得撤销时再核
+        .map((r) => {
+          const 分 = (r as { 分?: unknown }).分;
+          return { id: r.id, 值: r.值, ...(分 === null || typeof 分 === "string" ? { 分 } : {}) };
+        }).slice(0, 500)
     : [];
   if (!原.length) return null;
   const 带 = (o.带过来 ?? {}) as Record<string, unknown>;

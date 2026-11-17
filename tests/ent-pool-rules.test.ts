@@ -756,10 +756,13 @@ describe("默认：线索公海的项目能单独领，客户不动（11-09，M-
     expect(r).toMatchObject({ ok: true, 分到: [p] });
     if (!r.ok) throw new Error("没分到");
     expect(await 负责人(c)).toBe(丙.id);
-    expect(r.整包?.原).toEqual([{ id: c, 值: 前.负责人 }]);
+    // 分 = 出公海前的客户分配（空），出公海时记成公海领取，撤销按它还（11-17）
+    expect(r.整包?.原).toEqual([{ id: c, 值: 前.负责人, 分: null }]);
     expect(r.整包?.公海项目).toEqual([p2]);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).assignWay).toBe("公海领取");
 
     expect(await 撤销公海项目("分配", r.分到, 丙.id, r.整包)).toMatchObject({ ok: true, updated: 1 });
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).assignWay).toBeNull();
     // 客户回客户公海、负责人原样，领取记录没了
     expect(await 在客户公海(c)).toBe(true);
     expect(await 负责人(c)).toBe(前.负责人);
