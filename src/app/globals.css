@@ -5096,6 +5096,7 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 /* 首页待办「待回复主题」（overview 之外的首页，dashboard/CoachTopicTodo.tsx）：一行，窄了折行，长主题省略 */
 .home-cth-todo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px var(--s3); margin-bottom: 16px; padding: var(--s2) var(--s3); border: 1px solid var(--line-soft); border-radius: var(--r-card); background: var(--panel); min-width: 0; }
 .home-cth-todo-t { font-weight: 600; color: var(--ink); white-space: nowrap; }
+.home-cth-todo-warn { color: var(--warning-text); }
 .home-cth-todo-s { flex: 1 1 200px; min-width: 0; color: var(--text-muted); font-size: var(--fs-note); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-cth-todo-a { white-space: nowrap; margin-inline-start: auto; }
 @keyframes pd-band-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }

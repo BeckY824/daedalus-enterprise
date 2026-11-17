@@ -16,7 +16,9 @@ import { beijingDay } from "@/lib/business-clock";
 import { 换负责人归零, type 换负责人记录, type 换负责人方式 } from "./tri-state";
 import { 企业版 } from "./switch";
 
-export const 换人方式: Readonly<Record<string, 换负责人方式>> = { assign: "转让", deactivate: "离职交接", claim: "公海捞取", "pool-assign": "公海指派", "market-assign": "市场首次分配" };
+export const 换人方式: Readonly<Record<string, 换负责人方式>> = { assign: "转让", deactivate: "离职交接", claim: "公海捞取", "pool-assign": "公海指派", "market-assign": "市场首次分配",
+  // 超时未跟进自动转、客户随线索走（11-17，reply-overdue.ts）：是系统分配不是转客户，三态按市场首次分配那样算（不计次、归零）
+  "overdue-assign": "市场首次分配" };
 
 /**
  * 换负责人记录（按时间正序）→ 算三态要的记录。转让 / 离职交接：存过归不归零（clockReset）的照存的；没存过的按先后、拿现在的规则算一次，

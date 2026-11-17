@@ -53,7 +53,7 @@ import { 级别星 } from "@/lib/enterprise/level-stars";
 import ReplyWindowInput, { type 回复两格 } from "@/components/ReplyWindowInput";
 import { 定时时刻格 } from "@/components/ScheduleAssignInput";
 import { 改定时分配, 取消定时分配, 定时分配现在分 } from "../../leads/schedule-actions";
-import { 指定回复文字, 北京墙钟转时刻, 回复晚于回收, 短时刻 } from "@/lib/project/time-fields";
+import { 指定回复文字, 北京墙钟转时刻, 回复晚于回收, 短时刻, 客户在谁名下话 } from "@/lib/project/time-fields";
 import { 成交需求上限, 详细地址上限, 详细地址提示, 项目区域, type 项目成交钱 } from "@/lib/project/profile-rules";
 import { 合同状态们, 痛点标注上限, type 合同状态 } from "@/lib/project/proj-fields";
 import { 备注上限 } from "@/lib/project/wizard";
@@ -151,6 +151,8 @@ export type 项目详情 = {
   指定回复?: 回复两格;
   /** 指定分配时间（企业版，11-17 PR3）：还没到点的定时；时间 = 北京墙钟，给谁 = 指定分配的接手人（自动分配 null），能动 = 录入人 / 能分配的人 */
   定时分配?: { 时间: string; 给谁: string | null; 能动: boolean };
+  /** 超时未跟进自动转过来、客户还在别人名下（11-17，lib/enterprise/reply-overdue.ts 规则 3 的例外）：那人的名字，只给负责人本人；没有 = 不提示 */
+  客户在谁名下?: string;
   /** 沟通的「…」菜单（改 / 删，10-29）：能记沟通、看得到客户，且不是同事 / 虚线下属的客户；企业版改 = 身为负责人的管理（M-权限-09 原口径 11-09，管理以下含负责人本人不能改删） */
   可改沟通?: boolean;
   /** 沟通能删：系统管理员或身为负责人的管理（M-权限-09 原口径 11-09，和 可改沟通 分开） */
@@ -219,6 +221,8 @@ export type 项目详情 = {
 
 /** 项目卡「线索验证」结果的颜色（11-01 六个叫法） */
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "center", marginBottom: 8, minWidth: 0 };
+/** 详情页顶上提示条和下面隔开（行内样式闸门：新加的提示条用模块常量） */
+const 提示条下距: React.CSSProperties = { marginBottom: 16 };
 /** 指定分配时间那一行（11-17）：窄宽度折行；写在组件外，行内样式只减不增（tests/inline-style-cap.test.ts） */
 const 定时行样: React.CSSProperties = { ...行样, flexWrap: "wrap", rowGap: 4 };
 const 可折行样: React.CSSProperties = { whiteSpace: "normal", overflowWrap: "anywhere" };
@@ -1798,6 +1802,10 @@ export default function ProjectDetail({
         <Alert type="info" showIcon style={{ marginBottom: 16 }} title="这个项目在线索公海里" description={p.能领取 ? "领取了你就是负责人，可以接着推进程" : p.领取不给 === 项目不能单独领提示 || p.领取不给 === 客户在公海项目不单领提示 ? p.领取不给 : p.领取不给 ? `你是原负责人，${p.领取不给}，等同事领取` : "是你放回去的，等同事领取"} />
       )}
 
+      {p.客户在谁名下 && (
+        <Alert type="warning" showIcon style={提示条下距} data-testid="proj-customer-held" title={客户在谁名下话(p.客户在谁名下)} description={`这条线索是超时未跟进自动转给你的，客户不在你名下；跟进前先和 ${p.客户在谁名下} 通个气，别两个人同时跟同一位客户`} />
+      )}
+
       {异常 && (
         <Alert
           type="error" showIcon style={{ marginBottom: 16 }}
@@ -1828,7 +1836,7 @@ export default function ProjectDetail({
       <section className="rec-zone" aria-label={`项目：${p.name}`} data-project={p.id}>
         <div className="cd-zb">
           {嵌入.提醒 && <div className="cd-alert">{嵌入.提醒}</div>}
-          {(p.pooled || 异常) && <div className="cd-notice">{告示}</div>}
+          {(p.pooled || 异常 || p.客户在谁名下) && <div className="cd-notice">{告示}</div>}
           <div className="cd-mid">
             {节点卡}
             {/* 「这位客户全部」是客户页那条时间线，不归这个搜索框管：切过去时清掉词（审查 #6）；搜索框原地变淡、点不了，不再藏起来让下面的卡往上跳（dt.scope） */}
