@@ -118,7 +118,8 @@ function 统一分机(s: string): string {
 
 /** 规整时有没有丢掉号码以外的字（「微信同号」这种）：导入据此把原文并进备注，一个字都不丢 */
 export function 号码带着字(v: string): boolean {
-  const 去 = 统一分机(v.replace(/[０-９]/g, "0").replace(/^'/, "").replace(/\.0+$/, "")).replace(/[\s\-()（）.－—–‐‑‒―]/g, "");
+  // 全角加号和 + 一个意思（规整手机号 同样换），不算丢了的字（11-17：「＋８６ １３８…」原来被当成带字）
+  const 去 = 统一分机(v.replace(/[０-９]/g, "0").replace(/＋/g, "+").replace(/^'/, "").replace(/\.0+$/, "")).replace(/[\s\-()（）.－—–‐‑‒―]/g, "");
   if (去.includes("*") || /\d[A-Za-z]+\d/.test(去)) return false;
   const 规 = 规整手机号(v);
   // 原文写了分机、规整出来没有（大陆手机号后面写「ext 8」）：分机算丢了的字，原文进备注（第四轮 C4）
@@ -171,6 +172,33 @@ export function 查电话(v: string | null | undefined, opts: { 必填: boolean;
   const phone = 规整手机号(原);
   if (!像手机号(phone)) return { ok: false, error: "电话看不出是个号码（6–20 位数字，可以带 +）" };
   return { ok: true, phone };
+}
+
+/**
+ * 号码和英文字母（或下划线）连着写（「sqin17548955941」「wxid_a13800001111」「13800001111abc」）：像微信号、账号，不是电话。
+ * 规整手机号 会把里面的 11 位数字截出来当电话（11-17 复盘第 4 类：销售把微信号贴进电话格，字母被去掉存成了手机号），
+ * 录入、导入在规整之前先用它拦。英文分机写法（「… ext 12」「… x12」）先统一成「转」，不算
+ */
+export function 号码粘着字母(v: string): boolean {
+  return /[A-Za-z_]\d|\d[A-Za-z_]/.test(统一分机(全角数字转半角(v).trim()));
+}
+
+/** 录入电话 拦下时的两句话（线索、渠道表单和 AI 卡上看到的就是这句） */
+export const 电话夹字母话 = "电话里夹着字母，像微信号或账号，本次没保存：电话格只填号码，微信号写进备注";
+export const 电话带字话 = "电话里除了号码还有别的字（或不止一个号），本次没保存：电话格只填一个号码，说明和另一个号写进备注";
+
+/**
+ * 表单录入的电话（线索、渠道，11-17 复盘第 4 类「输入被悄悄改写」）：号码规矩和 查电话 一样宽（座机、分机、国外号都收，
+ * 分隔符、+86 照旧规整掉），但**不许悄悄丢字**——规整时会被去掉的字母、汉字说明、第二个号，整格拦下、说清为什么，
+ * 不再截出号码存下、把原文悄悄塞进备注。客户电话另走更严的 验客户电话（lib/enterprise/contact-format）
+ */
+export function 录入电话(v: string | null | undefined, opts: { 必填: boolean; 放过占位?: boolean }): { ok: true; phone: string } | { ok: false; error: string } {
+  const 原 = (v ?? "").trim();
+  const r = 查电话(原, opts);
+  if (!r.ok || !r.phone) return r;
+  if (号码粘着字母(原)) return { ok: false, error: 电话夹字母话 };
+  if (号码带着字(原)) return { ok: false, error: 电话带字话 };
+  return r;
 }
 
 /**

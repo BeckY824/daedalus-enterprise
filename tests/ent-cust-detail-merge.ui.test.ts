@@ -55,7 +55,7 @@ beforeAll(async () => {
     const root=createRoot(document.getElementById('root'));
     const 人=(id,name,isPrimary)=>({id,name,position:'采购',phone:'138000000'+id.slice(1),email:null,wechat:null,isPrimary,remark:null,updatedAt:'2026-01-01T00:00:00.000Z'});
     const contacts=[人('c1','王总',true),人('c2','李工',false),人('c3','陈经理',false)];
-    const 客户沟通=Array.from({length:5},(_,i)=>({id:'cf'+i,type:'PHONE',title:'',content:'客户全部里的沟通'+i,status:'已完成',duration:null,occurredAt:'2026-10-2'+i+'T02:00:00.000Z',dueAt:null,participants:null,sourceText:null,ownerName:'QA',contactName:null,contactPosition:null,contactId:null,opportunityId:null,updatedAt:'2026-10-20T02:00:00.000Z',项目:{id:i%2?'p2':'p1',名:i%2?'项目二':'项目一'}}));
+    const 客户沟通=Array.from({length:5},(_,i)=>({id:'cf'+i,type:i===0?'OTHER':'PHONE',method:null,title:'',content:'客户全部里的沟通'+i,status:'已完成',duration:null,occurredAt:'2026-10-2'+i+'T02:00:00.000Z',dueAt:null,participants:null,sourceText:null,ownerName:'QA',contactName:null,contactPosition:null,contactId:null,opportunityId:null,updatedAt:'2026-10-20T02:00:00.000Z',项目:{id:i%2?'p2':'p1',名:i%2?'项目二':'项目一'}}));
     const 关联=(主,本)=>({客户们:[],联系人们:本.map(([id,角色,立场])=>({contactId:id,名:id,姓名:id,customerId:'a',角色,立场,主:id===主,看得到:true})),选项:{身份:[],角色:[],立场:[]},上限:30});
     const 项目=(id,name,主,本,x={})=>({id,name,remark:null,amount:860000,currency:'CNY',customer:{id:'a',name:'客户A',school:null},contact:主?{id:主,name:主,position:null}:null,
       来源线索:null,原因选项:{回收:[],无效:[]},ownerId:'qa',ownerName:'QA',creatorName:'QA',createdAt:'2026-10-01T00:00:00.000Z',historyOwners:[],
@@ -102,8 +102,8 @@ beforeAll(async () => {
       flushSync(()=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><div className='shell rail-mini'>{innerWidth>=768&&<nav className='rail' aria-label='主导航'/>}<main className='main app-content' style={{padding:'22px 26px'}}><div>
         <RestrictedCustomerDetail 数据={{客户:{id:'a',name:o.公司名||'客户A'},
           卡:{客户:{name:o.公司名||'客户A',shortName:'A',school:null,customerType:null,customerAttr:null,地区:'',addrDetail:null,website:null},联系人:[{name:'王总',position:'采购',给联系方式:true,phone:'138****0001',email:null,wechat:null,号码们:[]},{name:'李工',position:null,给联系方式:false,phone:null,email:null,wechat:null,号码们:[]}]},
-          可改联系人:[],项目区:{customerId:'a',页签们:o.两个?页签们:[页签们[0]],锁数:0,当前},
-          沟通:[{id:'rf1',type:'PHONE',method:null,content:'我项目上的沟通',occurredAt:'2026-10-03T02:00:00.000Z',who:'QA',项目:{id:'p1',名:'项目一'}}],
+          可改联系人:[],项目区:{customerId:'a',页签们:o.空?[]:o.两个?页签们:[页签们[0]],锁数:0,当前:o.空?null:当前},
+          沟通:[{id:'rf1',type:'PHONE',method:null,content:'我项目上的沟通',occurredAt:'2026-10-03T02:00:00.000Z',who:'QA',项目:{id:'p1',名:'项目一'}},{id:'rf2',type:'OTHER',method:null,content:'没填方式的沟通',occurredAt:'2026-10-02T02:00:00.000Z',who:'QA',项目:{id:'p1',名:'项目一'}}],
           待办:{任务:[],计划:[]},号码种类:[],职务选项:[]}}/>
       </div></main></div></BusinessProvider></App></ConfigProvider>));
     };
@@ -191,6 +191,9 @@ it("没有项目可选：项目区空状态 +「＋ 新建项目」；关键联�
     const 沟通 = page.locator(".rec-zone .cd-comm");
     expect(await 沟通.getByText(/客户全部里的沟通/).count()).toBe(5);
     expect(await 沟通.getByRole("button", { name: /新建沟通/ }).count()).toBe(0);
+    // 没填沟通方式的（11-17：c2 上「未注明」清成空）显示「—」，不显示「其他记录」
+    expect(await 沟通.locator(".rec-tl-type, .rec-sum-type").allInnerTexts()).toEqual(["电话沟通", "电话沟通", "电话沟通", "电话沟通", "—"]);
+    expect(await 沟通.getByText("其他记录").count()).toBe(0);
     expect(await page.locator(".rec-zone").getByText("周五带合同上门").count()).toBe(1);
     // 页头不再有「新开项目」
     expect(await page.getByRole("button", { name: /新开项目/ }).count()).toBe(0);
@@ -653,7 +656,7 @@ it("受限客户详情（只负责项目的人）：页头「仅项目」+ 只�
   try {
     await page.route("http://cust-merge.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
     await page.goto("http://cust-merge.test/customers/a"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
-    const 画R = async (o: { 删?: boolean; 公司名?: string } = {}) => {
+    const 画R = async (o: { 删?: boolean; 公司名?: string; 空?: boolean } = {}) => {
       await page.evaluate(a => (window as unknown as { __renderR: (o: object) => void }).__renderR(a), o as object);
       await page.getByTestId("restricted-customer-detail").waitFor();
       await page.locator(".cd-comm").waitFor();
@@ -668,6 +671,11 @@ it("受限客户详情（只负责项目的人）：页头「仅项目」+ 只�
     expect(await 卡.getByText(/挂在项目一.*上的沟通/).count()).toBe(1);
     // 左栏只读卡：叫「客户资料（只读）」，没给号码的那位写原因
     expect(await page.locator(".rec-rail .rec-sec-t").first().innerText()).toMatch(/^客户资料（只读）/);
+    // 没有项目时摆这位的全部沟通：没填沟通方式的显示「—」，不显示「其他记录」（11-17）
+    await 画R({ 空: true });
+    const 全部 = page.getByTestId("restricted-follow-all");
+    expect(await 全部.locator(".rcd-follow-meta > span:nth-child(2)").allInnerTexts()).toEqual(["电话沟通", "—"]);
+    expect(await 全部.getByText("其他记录").count()).toBe(0);
     for (const w of [1024, 1280, 1366]) {
       await page.setViewportSize({ width: w, height: 800 });
       await 画R({ 公司名: "超长公司名字".repeat(10) });

@@ -41,6 +41,14 @@ export function 类型对方式(type: string): string | null {
 }
 
 /**
+ * 没选方式时按 type 补的那个方式（编辑框预选、服务端补）：「其他」类不补（11-17）——没填就是空，
+ * 不自动填成「其他方式」（那是人选了才算的一种方式）；任务、提醒没有方式
+ */
+export function 补的方式(type: string): string | null {
+  return type === "OTHER" ? null : 类型对方式(type);
+}
+
+/**
  * 筛选下拉上的叫法。筛选按 type 走，OTHER 这一档既有选了「其他方式」的，也有导入时没写方式的（method = 未注明），
  * 叫「其他方式」后者对不上。只改筛选的叫法：类型对方式 还要拿去给老记录补方式，不能动；行内显示记录自己的方式（跟进方式名）
  */
@@ -48,9 +56,15 @@ export function 筛选方式名(type: string): string {
   return type === "OTHER" ? "其他 / 未注明" : 类型对方式(type) ?? type;
 }
 
-/** 列表、时间线上显示的叫法：企业版有方式显示方式，没有（个人版、团队版、任务提醒）显示类型名 */
-export function 跟进方式名(f: { type: string; method?: string | null }): string {
-  return f.method || FOLLOW_TYPE_MAP[f.type]?.label || f.type;
+/**
+ * 列表、时间线上显示的叫法：有方式显示方式；没填方式的「其他」类（11-17：c2 上导入时的「未注明」已清成空）显示「—」，
+ * 不再显示成「其他记录」（看着像填了一种方式）；任务、提醒和只存了类型的老记录显示类型名。
+ * 空 = 没填时显示什么：列表、时间线「—」（全站空值口径）；拼在一行里的（项目名单那行小字、导出表格）传 "" 省掉
+ */
+export function 跟进方式名(f: { type: string; method?: string | null }, 空 = "—"): string {
+  if (f.method) return f.method;
+  if (f.type === "OTHER") return 空;
+  return FOLLOW_TYPE_MAP[f.type]?.label || f.type;
 }
 
 /** 表单上的方式还对得上类型才交（AI 解析、默认 WhatsApp 这些只改了类型）；对不上交 undefined，服务端按类型补 */

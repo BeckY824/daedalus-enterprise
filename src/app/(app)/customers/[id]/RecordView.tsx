@@ -33,6 +33,7 @@ import { useConsequence } from "@/components/ConsequenceDialog";
 import TransferBox, { type 转让结果 } from "./TransferBox";
 import { showUndo } from "@/components/UndoBar";
 import { 跟进类型们, FOLLOW_TYPE_MAP, FOLLOW_STATUSES, DECISION_STATUSES, FOLLOW_RECORD_STATUS_COLOR } from "@/lib/constants";
+import { 跟进方式名, 筛选方式名 } from "@/lib/follow-method";
 import { 成员选项, dayjs, duration, fmtDate, fmtDateTime, initial, avatarColor, AVATAR_TEXT, 独自一人 } from "@/lib/utils";
 import { RowLink, FollowStatusTag, DecisionStatusTag, FOLLOW_TYPE_ICON } from "@/components/ui";
 import { useBusiness } from "@/lib/business-client";
@@ -1025,7 +1026,8 @@ export default function RecordView({
   const 筛选条 = (
     <div className="rec-filters">
       {["全部", ...跟进类型们(外贸).map((t) => t.value), ...(摆法.沟通汇总 ? [] : ["CONTRACT"])].map((k) => {
-        const label = k === "全部" ? "全部" : k === "CONTRACT" ? 叫 : FOLLOW_TYPE_MAP[k]?.label ?? k;
+        // 「其他」这一档既有选了其他方式的、也有没填方式的（显示「—」）：和看板筛选同一个叫法，不叫「其他记录」（11-17）
+        const label = k === "全部" ? "全部" : k === "CONTRACT" ? 叫 : k === "OTHER" ? 筛选方式名(k) : FOLLOW_TYPE_MAP[k]?.label ?? k;
         return (
           <button type="button" key={k} className={`rec-chip${filter === k ? " rec-chip-on" : ""}`} aria-pressed={filter === k} onClick={() => setFilter(k)}>
             {label}
@@ -1944,7 +1946,7 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
     <motion.div id={`fu-${f.id}`} className="rec-tl-item rec-sum-item" layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ delay: Math.min(index, 8) * 间隔, duration: 时长.base, ease: 曲线.ease }}>
       <div className="rec-tl-body">
         <div className="rec-tl-head">
-          <span className="rec-sum-type">{f.method || meta.label}</span>
+          <span className="rec-sum-type">{跟进方式名(f)}</span>
           {时间}
           {f.status !== "已完成" && (
             <Tag color={FOLLOW_RECORD_STATUS_COLOR[f.status] ?? "default"} style={{ margin: 0 }}>
@@ -1973,7 +1975,7 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
       </div>
       <div className="rec-tl-body">
         <div className="rec-tl-head">
-          <span className="rec-tl-type">{f.method || meta.label}</span>
+          <span className="rec-tl-type">{跟进方式名(f)}</span>
           {f.title?.trim() && <span className="rec-tl-title" title={f.title}>· {f.title}</span>}
           {/* 商机页 10-28 删了（/opportunities 只剩转项目的跳转）：只标出是哪个商机，不再做成链接 */}
           {f.opportunity && !不挂商机 && <span className="rec-tl-order" title={`关联商机：${f.opportunity.name}`}>关联商机：{f.opportunity.name}</span>}

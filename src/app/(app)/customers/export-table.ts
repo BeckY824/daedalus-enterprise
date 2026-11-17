@@ -130,7 +130,7 @@ export function 跟进导出表(rows: 跟进导出行[], b: BusinessConfig): { h
   return {
     head: [`${b.customer}姓名`, "联系电话", "时间", "方式", "标题", "内容", "状态", "记录人", 编号列(b)],
     body: rows.map((f) => [
-      f.customerName, f.phone, fmtDateTime(f.occurredAt), 跟进方式名(f), f.title, f.content, f.status,
+      f.customerName, f.phone, fmtDateTime(f.occurredAt), 跟进方式名(f, ""), f.title, f.content, f.status,
       f.ownerName,
       客户编号文字(f.customerNo) ?? "",
     ]),

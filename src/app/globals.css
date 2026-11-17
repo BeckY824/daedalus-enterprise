@@ -2411,6 +2411,9 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .prop-f-arrow { color: var(--text-faint); text-decoration: none; display: inline-block; margin-left: 2px; }
 .prop-err { margin-top: 8px; color: var(--danger-text); font-size: var(--fs-note); }
 .prop-err-inline { margin: 0; }
+/* AI 卡金额框（AmountTextInput）：框 + 认不出时框下一句 */
+.amount-text { display: inline-flex; flex-direction: column; gap: 2px; }
+.amount-text-box { width: 140px; }
 /* 确认之后会发生、人要先知道的事（自动分配：分出去自己就看不到了）：整句写在页脚，不只放悬停 */
 .prop-consequence { flex: 1 1 100%; min-width: 0; font-size: var(--fs-note); color: var(--warning-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /*

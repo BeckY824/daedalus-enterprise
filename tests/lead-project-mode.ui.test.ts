@@ -9,6 +9,7 @@ import { beforeAll, afterAll, it, expect } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser } from "playwright";
+import { 电话夹字母话, 电话带字话 } from "@/lib/phone";
 let browser: Browser; let bundle: string;
 const plugin: Plugin = { name: "leads-ui", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "stub", pluginData: code }));
@@ -16,7 +17,7 @@ const plugin: Plugin = { name: "leads-ui", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({push(u){window.__去.push(u)},refresh(){},replace(){}});");
   stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;");
   stub(/components\/DataList$/, "export default function D(p){const 动=p.列.find(c=>c.key==='act');return <div data-testid='rows'>{p.行.map(r=><div key={r.id}>{动.render(null,r)}</div>)}</div>}");
-  stub(/^\.\/actions$/, "export const saveLead=async()=>({ok:true});export const deleteLeads=async()=>({ok:true});export const mergeLeadInto=async()=>{window.__并=(window.__并||0)+1;return {ok:true}};export const convertLead=async()=>window.__转;");
+  stub(/^\.\/actions$/, "export const saveLead=async(x)=>{(window.__存||=[]).push(x);return {ok:true}};export const deleteLeads=async()=>({ok:true});export const mergeLeadInto=async()=>{window.__并=(window.__并||0)+1;return {ok:true}};export const convertLead=async()=>window.__转;");
   stub(/^\.\/assign-actions$/, "export const 分配带走的项目=async()=>({项目数:0,项目:[]});export const 自动分配线索=async()=>({});export const 撤销自动分配=async()=>({ok:true});export const 批量自动分配=async()=>({});export const 分配线索=async()=>({});export const 本月分配情况=async()=>[];export const 我分出去的线索=async()=>[];export const 关满额提醒=async()=>({ok:true});export const 项目分配线=async()=>({线:null});");
   // 建档向导那条路（projects/NewProjectFlow.tsx）：记下开了什么标题、什么项目开关（向导本身另有测试）
   stub(/projects\/NewProjectFlow$/, "export function useNewProjectFlow(){return {开选客户(){},取档中:false,弹框:null,开建档:async(t,k)=>{(window.__建档||=[]).push([t,k])}}}");
@@ -124,4 +125,24 @@ it("撞上的客户在客户公海里（P-公海-08）：只说先领取，不�
     expect(await page.evaluate(() => (window as unknown as { __并?: number }).__并 ?? 0)).toBe(0);
     expect(errors).toEqual([]); await page.close();
   }
+});
+
+it("新建线索的电话格：号码以外的字不悄悄截掉——夹字母、带说明的就在格子下面说为什么存不了、不交；纯号码照交（11-17 复盘第 4 类）", async () => {
+  const { page, errors } = await 打开(true);
+  await page.getByRole("button", { name: /新建线索/ }).click();
+  const 框 = page.locator(".ant-modal").filter({ hasText: "新建线索" });
+  await 框.locator("#name").fill("甲公司");
+  const 电话格 = 框.locator(".ant-form-item").filter({ has: page.locator("#phone") });
+  const 存了 = () => page.evaluate(() => ((window as unknown as { __存?: unknown[] }).__存 ?? []).length);
+  for (const [填, 话] of [["sqin17548955941", 电话夹字母话], ["13800001111（微信同号）", 电话带字话]] as const) {
+    await 框.locator("#phone").fill(填);
+    await 框.getByRole("button", { name: /保\s*存/ }).click();
+    await expect.poll(() => 电话格.locator(".ant-form-item-explain-error").innerText()).toBe(话);
+    expect(await 存了()).toBe(0);
+  }
+  await 框.locator("#phone").fill("138 0000 1111");
+  await 框.getByRole("button", { name: /保\s*存/ }).click();
+  await expect.poll(存了).toBe(1);
+  expect(await page.evaluate(() => (window as unknown as { __存: { phone: string }[] }).__存[0].phone)).toBe("138 0000 1111");
+  expect(errors).toEqual([]); await page.close();
 });

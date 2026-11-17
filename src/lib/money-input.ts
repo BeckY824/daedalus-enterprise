@@ -1,3 +1,5 @@
+import { 全角数字和点转半角 } from "./fullwidth";
+
 /**
  * 金额输入框（antd InputNumber）的 formatter。商机、签约、赢单顺手登记签约三处共用。
  * **敲的时候不加 ¥ 也不加千分位，失焦后再格式化**；¥ 放在框外（InputNumber 的 prefix）。
@@ -15,3 +17,22 @@ export function 金额格式(v: number | string | undefined, info: { userTyping:
   return 整.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (小 !== undefined ? `.${小}` : "");
 }
 
+/**
+ * 金额：去掉货币符号、千分位、「元 / 元整 / 整」，「k / 千 / 万 / 亿」乘上去，全角数字也认。认不出返回 null。
+ * 导入（enterprise-import/clean）和 AI 卡上的金额框（AmountTextInput）共用：负数、「约5万」「面议」这类认不出，不悄悄去掉符号存成别的数
+ */
+export function 认金额(v: string): number | null {
+  let s = 全角数字和点转半角(v.trim())
+    .replace(/[,，\s]/g, "")
+    .replace(/^(¥|￥|\$|US\$|RMB|CNY|USD)/i, "")
+    .replace(/(元整|整|元|人民币|rmb|cny|usd)$/i, "");
+  let 倍 = 1;
+  const 单位 = /(k|千|万|亿)$/i.exec(s);
+  if (单位) {
+    倍 = { k: 1000, 千: 1000, 万: 10000, 亿: 100000000 }[单位[1].toLowerCase() as "k"] ?? 1;
+    s = s.slice(0, -1);
+  }
+  if (!/^-?\d+(\.\d+)?$/.test(s)) return null;
+  const n = Number(s) * 倍;
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null;
+}
