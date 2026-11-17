@@ -58,6 +58,7 @@ async function 取项目(渠道ids: string[], 看的人?: { id: string }): Promi
     // 没有建项目那条日志的（很老的数据）当从线索起
     起步阶段: p.logs.find((l) => l.fromPhase === null)?.toPhase ?? "线索",
     到过阶段们: p.logs.map((l) => l.toPhase),
+    节点们: p.logs.map((l) => ({ toPhase: l.toPhase, at: l.at })),
     ...(落点 ? { 在列表: 落点.列表里.has(p.id), 在公海: 落点.公海里.has(p.id) } : {}),
   }));
 }

@@ -96,14 +96,17 @@ const 空期: 渠道期数 = { 线索: 0, 已判定: 0, 有效: 0, 商机: 0, �
 
 const 早 = (ts: Date[]) => (ts.length ? new Date(Math.min(...ts.map((t) => t.getTime()))) : null);
 
+/** 算到达时间只要这三样（看板项目、列表的 统计用项目 都能给） */
+type 到达用 = Pick<看板项目, "phase" | "createdAt" | "节点们">;
+
 /** 头一回到商机（或直接到订单）的时间；没到过 = null */
-export function 商机时间(p: 看板项目): Date | null {
+export function 商机时间(p: 到达用): Date | null {
   const t = 早(p.节点们.filter((l) => l.toPhase === "商机" || l.toPhase === "订单").map((l) => l.at));
   return t ?? (p.phase === "商机" || p.phase === "订单" ? p.createdAt : null);
 }
 
 /** 头一回进订单的时间；没进过 = null */
-export function 订单时间(p: 看板项目): Date | null {
+export function 订单时间(p: 到达用): Date | null {
   return 早(p.节点们.filter((l) => l.toPhase === "订单").map((l) => l.at)) ?? (p.phase === "订单" ? p.createdAt : null);
 }
 
@@ -123,18 +126,48 @@ export function 看板各档(今: Date, 区间?: 看板区间 | null): [档, num
 
 /**
  * 渠道列表统计跟看板时间段（员工反馈第 2 批 2D）：列表那一排数按看板同一档再算一份，界面切档直接换、不回服务端（自定义除外，同看板）。
- * - 项目：创建时间落在这一档的（同看板「总线索」），再照 算渠道统计 的口径数眼下在哪个阶段、成交、转化——
- *   所以列表的关联项目 = 看板同一档的总线索；「全部」不限，和原来的列表一模一样。
- * - 投入：投入日期落在这一档的；产出比 = 这一档的成交 ÷ 这一档的投入。
+ * 列表各同名列合起来 = 看板同一档的数（本月 / 本季 / 自定义）：
+ * - 关联项目：创建时间落在这一档的 = 看板「总线索」；关联线索、有效线索、两个转化率也按这批（这一档新建的）算。
+ * - 关联商机 / 关联订单 / 累计成交：和看板同一个算法——头一回到商机（或直接到订单）/ 头一回进订单的时间落在这一档（商机时间 / 订单时间），
+ *   成交 = 其中 算成交 的金额。不看是不是这一档新建的、也不看眼下停在哪。
+ * - 投入：投入日期落在这一档的；产出比 = 这一档的成交 ÷ 这一档的投入（同看板 ROI）。
  * - 累计运营天数不分档（渠道自己的创建到结束）。
+ * - 「全部」不动：就是原来的列表（关联商机 / 订单 = 眼下在这个阶段的），和看板「全部」的商机 / 订单（到过的）本来就是两个口径。
  * - 没给创建时间 / 投入日期的（单测、老调用）只进「全部」。
  */
 export type 分期统计 = Record<周期, Record<string, 渠道统计>> & { 自定义?: Record<string, 渠道统计> };
 export function 算分期统计(渠道们: 统计用渠道[], 项目们: 统计用项目[], 投入们: 统计用投入[], 今: Date = new Date(), 字典: 阶段字典 = 字典of(true), 区间?: 看板区间 | null): 分期统计 {
   const out = {} as 分期统计;
   for (const [期, 起, 止] of 看板各档(今, 区间)) {
-    const 在 = (t: Date | undefined) => (起 === -Infinity && 止 === Infinity) || (t !== undefined && t.getTime() >= 起 && t.getTime() <= 止);
-    out[期] = 算渠道统计(渠道们, 项目们.filter((p) => 在(p.createdAt)), 投入们.filter((x) => 在(x.date)), 今, 字典);
+    if (期 === "全部") {
+      out[期] = 算渠道统计(渠道们, 项目们, 投入们, 今, 字典);
+      continue;
+    }
+    const 在 = (t: Date | null | undefined) => t != null && t.getTime() >= 起 && t.getTime() <= 止;
+    const 表 = 算渠道统计(渠道们, 项目们.filter((p) => 在(p.createdAt)), 投入们.filter((x) => 在(x.date)), 今, 字典);
+    // 商机、订单、成交按到达时间（同看板）重数；没有创建时间的项目算不了时间，不进
+    const 到 = new Map<string, { 商机: 统计用项目[]; 订单: 统计用项目[] }>();
+    for (const p of 项目们) {
+      if (!p.channelId || !表[p.channelId] || !p.createdAt) continue;
+      const 板 = { phase: p.phase, createdAt: p.createdAt, 节点们: p.节点们 ?? [] };
+      const 格 = 到.get(p.channelId) ?? 到.set(p.channelId, { 商机: [], 订单: [] }).get(p.channelId)!;
+      if (在(商机时间(板))) 格.商机.push(p);
+      if (在(订单时间(板))) 格.订单.push(p);
+    }
+    for (const c of 渠道们) {
+      const s = 表[c.id];
+      const 格 = 到.get(c.id) ?? { 商机: [], 订单: [] };
+      s.关联商机 = 格.商机.length;
+      s.关联订单 = 格.订单.length;
+      s.累计成交 = 合计(格.订单.filter(算成交));
+      Object.assign(s, 算产出比(s.累计成交, s.当前投入));
+      if (s.名单) {
+        const 名单of = (们: 统计用项目[]) => ({ 列表: 们.filter((p) => p.在列表).length, 公海: 们.filter((p) => !p.在列表 && p.在公海).length });
+        s.名单.关联商机 = 名单of(格.商机);
+        s.名单.关联订单 = 名单of(格.订单);
+      }
+    }
+    out[期] = 表;
   }
   return out;
 }

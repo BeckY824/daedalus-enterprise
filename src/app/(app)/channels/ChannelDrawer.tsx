@@ -21,7 +21,7 @@ import { 合计文字 } from "@/lib/currency";
 import { isFormValidationError } from "@/lib/form-validation";
 import { dayjs, fmtDate } from "@/lib/utils";
 import Link from "next/link";
-import { 拆来源, 数字链接, 名单段, type 名单键, type 名单时段, type 渠道统计, type 产出比分布, type 转化 } from "@/lib/enterprise/channel-stats";
+import { 拆来源, 数字链接, 名单段, 到达口径键, type 名单键, type 名单时段, type 渠道统计, type 产出比分布, type 转化 } from "@/lib/enterprise/channel-stats";
 import { 子渠道名 } from "@/lib/enterprise/channel-main-core";
 import { 转化率字 } from "../overview/funnel";
 import { addChannelInvest, deleteChannelInvest, listChannelInvests, type 投入行 } from "./actions";
@@ -140,6 +140,11 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
     const n = st?.[键] ?? 0;
     if (!st?.名单 || n === 0) return n;
     const 名单 = st.名单[键];
+    // 选了时间段的商机、订单按到达时间数（同看板）：点开不带时间段、看全部时间的，不出差额说明
+    if (时段 && 到达口径键.includes(键)) {
+      const 阶 = 键 === "关联商机" ? "商机" : "订单";
+      return <Link href={数字链接(row.id, 键, 名单)} className="chan-num" title={`这段时间到${阶}的 ${n} 个（同看板）；点开是这个渠道全部时间的${阶}，项目列表不按到达时间筛`}>{n}</Link>;
+    }
     // 项目列表里一条没有、全在公海的：数字直接去公海页的渠道名单，不先落到空的项目列表
     const 去公海 = 名单.列表 === 0 && 名单.公海 > 0;
     return (

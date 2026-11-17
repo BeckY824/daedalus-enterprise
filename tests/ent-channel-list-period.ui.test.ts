@@ -39,21 +39,23 @@ beforeAll(async () => {
     const 空期={线索:0,已判定:0,有效:0,商机:0,订单:0,成交:[],投入:[],起线索:0,起有效:0,起转商机:0};
     const 份=(k)=>Object.fromEntries(rows.map((r)=>[r.id,{...空期,线索:r[k]}]));
     const 底数={本月:Object.fromEntries(rows.map((r)=>[r.id,{...空期,线索:r.期统计.本月.关联项目}])),本季:Object.fromEntries(rows.map((r)=>[r.id,{...空期,线索:r.统计.关联项目}])),全部:Object.fromEntries(rows.map((r)=>[r.id,{...空期,线索:r.统计.关联项目}]))};
+    // 地址栏带着自定义、那一段的数还没到（期统计里没有 自定义）：表格出骨架
+    const 段=location.hash==='#custom'?{from:'2026-10-01',to:'2026-10-31'}:null;
     createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><我Provider value={{id:'me',name:'小王'}}>
-      <ChannelsView rows={rows} users={users} 属性选项={['公域引流']} 能管 能录 看板底数={底数} 主渠道们={[{id:'m1',name:长名,allowSub:true,selfDev:false,category:'三方平台',active:true,sort:1}]} 两层/>
+      <ChannelsView rows={rows} users={users} 属性选项={['公域引流']} 能管 能录 看板底数={段?{...底数,自定义:底数.本月}:底数} 看板段={段} 主渠道们={[{id:'m1',name:长名,allowSub:true,selfDev:false,category:'三方平台',active:true,sort:1}]} 两层/>
     </我Provider></BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function open(width: number) {
+async function open(width: number, hash = "") {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   const 主栏 = width - 220 - 48;
   await page.route("http://period.test/**", (r) => r.fulfill({ contentType: "text/html", body: `<meta charset='utf-8'><div id='root' style='width:${主栏}px;padding:0 24px;margin-left:220px'></div>` }));
-  await page.goto("http://period.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
-  await page.locator(".ant-table-tbody tr.ant-table-row").first().waitFor();
+  await page.goto("http://period.test/" + hash); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
+  await page.locator(".ant-table-tbody tr").first().waitFor();
   return { page, errors, 右界: 220 + 24 + 主栏 };
 }
 /** 「线索」那一列每行的字（列表按创建时间倒序，顺序同 rows） */
@@ -79,6 +81,11 @@ for (const width of [1024, 1280, 1366]) {
       await expect.poll(() => 线索列(page)).toEqual(["7", "—", "2"]);
       expect(await 说明(page).locator(".chan-period-label").innerText()).toMatch(/^列表统计：本月 · \d{4}-\d{2}-01 起$/);
       expect(await 首链.getAttribute("href")).toMatch(/[?&]createdFrom=\d{4}-\d{2}-01(&|$)/);
+      // 商机按到达时间数（同看板），点开不带创建时间段；说明行写明
+      const 商机链 = page.locator(".chan-list .ant-table-tbody tr.ant-table-row").first().locator("a.chan-num").nth(1);
+      expect(await 商机链.getAttribute("href")).toMatch(/phase=%E5%95%86%E6%9C%BA/);
+      expect(await 商机链.getAttribute("href")).not.toContain("createdFrom");
+      expect(await 说明(page).locator(".chan-period-hint").innerText()).toContain("商机、订单、成交按到达该阶段的时间算");
       // 累计成交本月没有 → 「—」
       const 表头 = await page.locator(".chan-list .ant-table-thead th").allInnerTexts();
       const 成交列 = 表头.findIndex((t) => t.trim() === "累计成交");
@@ -116,6 +123,20 @@ it("按主渠道合计也跟档：本月合成一行 = 7 + 0 + 2", async () => {
     await expect.poll(() => page.locator(".chan-list .ant-table-thead th").allInnerTexts()).toContain("子渠道数");
     await expect.poll(() => 线索列(page)).toEqual(["9"]);
     expect(await 说明(page).locator(".chan-period-label").innerText()).toMatch(/^列表统计：本月/);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("自定义那一段的数还没到：表格出骨架、不拿「—」冒充，和看板一样", async () => {
+  const { page, errors } = await open(1280, "#custom");
+  try {
+    expect(await 说明(page).locator(".chan-period-label").innerText()).toBe("列表统计：自定义 · 2026-10-01 至 2026-10-31");
+    expect(await page.locator(".chan-list .list-skel-on").count()).toBe(1);
+    expect(await page.locator(".chan-list [aria-busy=true]").count()).toBeGreaterThan(0);
+    // 切回预设，骨架收起、数回来
+    await 档(page, "全部").click();
+    await expect.poll(() => page.locator(".chan-list .list-skel-on").count()).toBe(0);
+    await expect.poll(() => 线索列(page)).toEqual(["41", "23", "5"]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
