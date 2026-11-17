@@ -879,6 +879,8 @@ html.glass .roster-row.on { background: color-mix(in srgb, var(--panel) 85%, tra
 /* 11-01 用户图 4/5：网页版没有桌面端顶上那条空的拖动区，首页收起对话列表后 fixed 的这颗压在问候「早上好」上。
    网页版改成摆在问答区上面、单占一行，不跟问候抢位置 */
 .shell:not(.shell-desktop) .cli > .pane-toggle-float { position: static; align-self: flex-start; margin: -4px 0 8px -4px; }
+/* 手机（≤767px，AppShell 小屏）没有中栏，这颗开不出东西；还按 --rail-w 定在顶栏上，压着通知铃（11-17 手机排版闸门 2H） */
+@media (max-width: 767px) { .pane-toggle-float { display: none; } }
 /* 往窄拖过最窄值再拖一段：松手就收起。拖到这一步先让那一栏淡下去，告诉人「再松手它就收了」 */
 body.rail-resizing-collapse .pane-chat { opacity: .45; }
 @media (prefers-reduced-motion: reduce) {
@@ -3974,6 +3976,8 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 /* 列表行尾的按钮（row-act）：手指点的设备上点击区至少 44px，桌面上照原样小 */
 @media (pointer: coarse), (max-width: 767px) {
   .ant-btn.row-act { min-width: 44px; min-height: 44px; }
+  /* 列表行尾只有一颗按钮的那列（DataList 的 .dl-act，客户列表 56 宽）：两边内边距收到 6，44 的按钮放得下，不伸出格子（11-17 手机排版闸门 2H） */
+  .ant-table-wrapper .ant-table .ant-table-tbody > tr > td.ant-table-cell.dl-act { padding-inline: 6px; }
 }
 
 /* 列表筛出 0 条时那一句（DataList）。不是空库引导，安安静静一行 */
