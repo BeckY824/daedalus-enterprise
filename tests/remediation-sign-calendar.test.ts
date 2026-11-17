@@ -31,7 +31,7 @@ it("保存/列表/导出跨时区保留原日历日，旧客户端ISO未变继�
   const table = 客户导出表([row], DEFAULT_BUSINESS); expect(table.body[0][table.head.indexOf("预计签约")]).toBe("2026-10-08");
   expect(await saveCustomer({ ...input(c.expectedSignAt), id: c.id, updatedAt: c.updatedAt.toISOString(), remark: "旧端原样交回" })).toMatchObject({ ok: true });
   expect((await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).expectedSignOn).toBe("2026-10-08");
-  expect(await patchCustomer(c.id, "expectedSignAt", null)).toEqual({ ok: true });
+  expect(await patchCustomer(c.id, "expectedSignAt", null)).toEqual({ ok: true, 值: null });
   expect(await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).toMatchObject({ expectedSignAt: null, expectedSignOn: null });
 });
 it("跨时区只改备注自动合并别人的新日期，双方改日期则冲突且日期与元数据不拆开", async () => {

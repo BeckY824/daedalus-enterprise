@@ -117,9 +117,13 @@ describe("建档向导：第一行下面多加的号码", () => {
     expect(await 行数()).toEqual({ customer: 0, contact: 0, project: 0 });
   });
 
-  it("八种类型都能加（同 AI 新线索卡）：座机、WhatsApp 只验格式不查重，同事客户有同一个座机也照建", async () => {
+  it("八种类型都能加（同 AI 新线索卡）；座机、WhatsApp 也全公司查重（11-17）：同事客户有同一个座机不建", async () => {
     const 乙客户 = await prisma.customer.create({ data: { name: "乙的客户", phone: "13900000177", followStatus: "待跟进", decisionStatus: "了解中", salesOwnerId: 乙 } });
-    await prisma.contactMethod.create({ data: { customerId: 乙客户.id, kind: "landline", value: "021-12345678", numberKey: "02112345678", formatStatus: "ok" } });
+    const 撞的 = await prisma.contactMethod.create({ data: { customerId: 乙客户.id, kind: "landline", value: "021-12345678", numberKey: "02112345678", formatStatus: "ok" } });
+    const 前 = await 行数();
+    expect(await 建档向导(输入([{ kind: "landline", value: "021-12345678" }]))).toMatchObject({ ok: false });
+    expect(await 行数()).toEqual(前);
+    await prisma.contactMethod.delete({ where: { id: 撞的.id } });
     const r = await 建档向导(输入([{ kind: "landline", value: "021-12345678" }, { kind: "whatsapp", value: "+44 7700 900123" }, { kind: "email", value: "Buyer@Example.com" }]));
     expect(r).toMatchObject({ ok: true });
     if (!r.ok) return;

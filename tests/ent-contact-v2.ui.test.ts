@@ -72,7 +72,7 @@ it("号码撞了：黄条列出撞到的人（可点、可挂到本客户）、�
     await page.getByRole("button", { name: /^保\s?存$/ }).click();
     const 条 = page.locator(".ant-alert-warning");
     await 条.waitFor();
-    expect(await 条.innerText()).toContain("这些号码已经记在别的联系人身上，本次没保存");
+    expect(await 条.innerText()).toContain("这些号码已经记在别的联系人或客户身上，本次没保存");
     expect(await 条.getByRole("link", { name: /张三/ }).getAttribute("href")).toBe("/customers/k1");
     expect(await 条.innerText()).toContain("销售B名下的一位联系人（不在你的范围，可与他核实）");
     // 超长客户名不把弹框撑宽
@@ -125,7 +125,7 @@ it("dt.contact：号码一失焦就查，撞了不等点保存就摆黄条（挂
     await page.getByLabel("姓名").click();
     const 条 = page.locator(".ant-alert-warning");
     await 条.waitFor();
-    expect(await 条.innerText()).toContain("这个号码已经记在别的联系人身上，先核对一下");
+    expect(await 条.innerText()).toContain("这个号码已经记在别的联系人或客户身上，先核对一下");
     expect(await page.evaluate(() => (window as unknown as { __存?: unknown[] }).__存 ?? [])).toEqual([]);
     await 条.getByRole("button", { name: /挂到本/ }).waitFor();
     await 条.getByRole("button", { name: "仍然新建" }).waitFor();

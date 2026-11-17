@@ -235,6 +235,23 @@ it("E① 入口是文字：有名字没链接，也没有按钮", async () => {
   } finally { await page.close(); }
 });
 
+it("超时未跟进自动转过来、客户还在原负责人名下（11-17 规则 3 的例外）：页顶黄条「该客户在 XXX 名下」；没有这一格不摆", async () => {
+  const { page, errors } = await open(true, 1280);
+  try {
+    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ 客户在谁名下: "原负责人老张" }));
+    const 条 = page.getByTestId("proj-customer-held");
+    await 条.waitFor();
+    expect(await 条.getByText("该客户在 原负责人老张 名下", { exact: true }).isVisible()).toBe(true);
+    expect(await 条.innerText()).toContain("别两个人同时跟同一位客户");
+    // 不横出页面
+    expect(await 条.evaluate((el) => el.getBoundingClientRect().right <= document.documentElement.clientWidth + 1)).toBe(true);
+    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({}));
+    await page.getByText("超长客户名", { exact: false }).first().waitFor();
+    expect(await page.getByTestId("proj-customer-held").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it("P17 只读：关联卡只列文字，没有下拉、没有关联 / 解除按钮", async () => {
   const { page } = await open(true, 1280);
   try {

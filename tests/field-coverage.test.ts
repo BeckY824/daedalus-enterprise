@@ -576,6 +576,11 @@ const 派生: Record<string, Record<string, string>> = {
   EntFollowUpFirstValid: {
     followUpId: "哪条沟通，存的时候无效、后来改成有效时系统建（迁移 132）", at: "改成有效的那一刻，系统写、之后不改",
   },
+  EntReplyOverdue: {
+    projectId: "哪个项目，超时未跟进那条链起头时系统建（迁移 150）", anchorAt: "起链时的超时基准，系统按指定回复时间写", holderId: "链上眼下这一位，系统写",
+    since: "这一位的计时起点，系统写", overdueAt: "超时提醒发出的那一刻，钟上系统写", tried: "这一轮超时过的人，自动转时系统写",
+    transfers: "自动转了几次，系统加", stoppedAt: "记了有效沟通或出了范围、链停下的那一刻，系统写",
+  },
 };
 
 /** 已知缺口：有字段、没写入路径。留在这里是为了让它一直显眼 */

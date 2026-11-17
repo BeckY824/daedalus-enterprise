@@ -33,7 +33,7 @@ import { 是逾期 } from "@/lib/overdue";
 import { parseDateInput } from "@/lib/date-input";
 import { 联系人电话, 规整, 规整企业联系人, type 联系人字段, type 企业联系人资料 } from "./contact-input";
 export type { 企业联系人资料 } from "./contact-input";
-import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类表 } from "@/lib/enterprise/customer-v2-db";
+import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类表, 联系人号码们 } from "@/lib/enterprise/customer-v2-db";
 import { 联系人姓名问题 } from "@/lib/enterprise/customer-v2";
 import { 联系人查重, 联系人撞号话, type 撞到的联系人 } from "@/lib/enterprise/contact-dedupe";
 import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
@@ -638,7 +638,7 @@ function 刷新联系人(customerId?: string | null) {
  * 号码不合规的不在这里说（保存时照旧说），查不了也不挡——保存那一步还会再查一遍。
  * 除了 = 编辑时排除这位自己
  */
-export async function 联系人号码先查(号码们: { kind: string; value: string }[], 除了?: string | null): Promise<{ ok: true; 撞了: 撞到的联系人[] } | { ok: false; error: string }> {
+export async function 联系人号码先查(号码们: { kind: string; value: string }[], 除了?: string | null, 客户?: string | null): Promise<{ ok: true; 撞了: 撞到的联系人[] } | { ok: false; error: string }> {
   // 认人放在 try 外：没登录照常抛（按未登录处理），不被下面「号码没查成」那句盖住
   await requireUser();
   try {
@@ -647,7 +647,7 @@ export async function 联系人号码先查(号码们: { kind: string; value: st
     if (!行们.length) return { ok: true, 撞了: [] };
     const 号 = await 验联系人号码们(行们, []);
     if (!号.ok) return { ok: true, 撞了: [] };
-    const 撞了 = 号.行们.length ? await 联系人查重(defaultClient, 号.行们, await 读的我(defaultClient), 除了 ?? undefined) : [];
+    const 撞了 = 号.行们.length ? await 联系人查重(defaultClient, 号.行们, await 读的我(defaultClient), 除了 ?? undefined, 客户 ?? undefined) : [];
     return { ok: true, 撞了 };
   } catch {
     return { ok: false, error: "号码没查成，保存时会再查一遍" };
@@ -699,7 +699,8 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
           ? { ...r, value: 原号们.find((o) => o.kind === r.kind && 认回打码号(r.value, o.value) === o.value)?.value ?? r.value }
           : r))
       : null;
-    const 号 = 交的号们 ? await 验联系人号码们(交的号们, 原?.contactMethods.map((x) => x.kind) ?? []) : null;
+    // 只验新加的、改过的行（11-17）：原来就有、一字没动的老号（导入进来的、改规矩之前存的）照原样留着，不挡改别的格
+    const 号 = 交的号们 ? await 验联系人号码们(交的号们, 原?.contactMethods.map((x) => x.kind) ?? [], 原 ? (原.contactMethods.length ? 原.contactMethods : 联系人号码们(原, [])) : []) : null;
     if (号 && !号.ok) return 号;
     const 电话 = 号 ? ({ ok: true, phone: null } as const) : 联系人电话(input.phone, 原?.phone);
     if (!电话.ok) return 电话;
@@ -723,7 +724,7 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
         if (键) 原有.add(`${kind}|${键}`);
       }
       const 新的 = 查的行们.filter((x) => !原有.has(`${x.kind}|${x.numberKey}`));
-      const 撞了 = 新的.length ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), input.id) : [];
+      const 撞了 = 新的.length ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), input.id, 主客户) : [];
       if (撞了.length) {
         const 表 = await 号码种类表();
         return { ok: false as const, error: 联系人撞号话(撞了, (k) => 种类叫法(表, k), 主客户), 撞了 };

@@ -20,6 +20,7 @@ import { useBusiness } from "@/lib/business-client";
 import { statusLabel, 外贸精简 } from "@/lib/business-config";
 import { 国家候选, 改过的档案, 客户等级, 客户等级说明, 规整官网, type 外贸档案 } from "@/lib/customer-extra";
 import { 查电话 } from "@/lib/phone";
+import { 验客户电话 } from "@/lib/enterprise/contact-format";
 import { 推荐方式 } from "@/lib/referrer-kind";
 import { 带走说法 } from "@/lib/carry-over";
 import { 聚焦首项 } from "@/lib/modal-focus";
@@ -541,6 +542,12 @@ function CustomerFormInner({
                     if (外贸档 && !v?.trim() && 电话必填) return Promise.reject(new Error(四选一说法));
                     // 共享试用区里号码是打了码给人看的：没动它就放行，服务端会认回原号（排查 A2）
                     if (editing && v && v.includes("*") && v === editing.phone) return Promise.resolve();
+                    // 企业版（11-17）：和建档向导、联系人表单同一套手机号规矩（带字母汉字整格拒、国内 1[3-9] 开头 11 位）；编辑时清空交给服务端看还有没有别的联系方式
+                    if (企业) {
+                      if (!v?.trim()) return !editing && 电话必填 ? Promise.reject(new Error("请输入联系电话")) : Promise.resolve();
+                      const 企 = 验客户电话(v);
+                      return 企.ok ? Promise.resolve() : Promise.reject(new Error(企.error));
+                    }
                     const r = 查电话(v, { 必填: 电话必填 });
                     return r.ok ? Promise.resolve() : Promise.reject(new Error(r.error));
                   },

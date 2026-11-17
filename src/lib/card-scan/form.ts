@@ -16,6 +16,8 @@ import type { AI附加 } from "./ai";
 export type 名片表单 = {
   name: string; phone: string; school: string; grade: string; major: string;
   whatsapp: string; email: string; wechat: string; website: string; country: string; remark: string;
+  /** 国内座机（+86 后面不是手机号的，11-17）：进新线索卡的「座机」那一行，不当电话（手机） */
+  landline: string;
 };
 export type 名片填法 = {
   填: 名片表单;
@@ -29,7 +31,10 @@ export type 名片填法 = {
   whatsapp建议: string | null;
 };
 
-export const 空名片表单 = (): 名片表单 => ({ name: "", phone: "", school: "", grade: "", major: "", whatsapp: "", email: "", wechat: "", website: "", country: "", remark: "" });
+export const 空名片表单 = (): 名片表单 => ({ name: "", phone: "", school: "", grade: "", major: "", whatsapp: "", email: "", wechat: "", website: "", country: "", remark: "", landline: "" });
+
+/** 国内座机：+86 开头、后面不是大陆手机号（名片上没标手机的，号段认成座机 / 不确定的都算） */
+export const 是国内座机 = (p: { e164: string; 类: string }): boolean => p.类 !== "手机" && p.类 !== "WhatsApp" && /^\+86\d/.test(p.e164) && !/^\+861[3-9]\d{9}$/.test(p.e164);
 
 /** 名片上认出的国家（ISO 两位）→ 表单里的叫法（和 lib/customer-extra 国家候选一致；没列的退回浏览器的中文名） */
 const 国家叫法: Record<string, string> = {
@@ -141,14 +146,16 @@ export function 名片转表单(f: 字段, 外贸: boolean, ai?: AI附加 | null
   const 名字候选 = [...new Set([...f.nameAlt, ...(人 ? [] : [f.name建议 ?? ""])].map((x) => x?.trim()).filter((x): x is string => Boolean(x) && x !== 人 && x !== 填.name))].slice(0, 3);
   const 公司候选 = [...new Set(f.companyAlt.map((x) => x?.trim()).filter((x): x is string => Boolean(x) && x !== 公司))].slice(0, 3);
 
-  // 电话：手机优先；明写了 WhatsApp 的进 WhatsApp；剩下的（座机、传真、第二个手机）进备注
+  // 电话：手机优先；明写了 WhatsApp 的进 WhatsApp；国内座机（第一个）进座机，不当电话（11-17）；剩下的（传真、第二个手机、别的座机）进备注
   const 号们 = f.phones.filter((p) => p.类 !== "WhatsApp");
-  const 主 = 号们.find((p) => p.类 === "手机") ?? 号们.find((p) => p.类 !== "传真") ?? null;
+  const 主 = 号们.find((p) => p.类 === "手机") ?? 号们.find((p) => p.类 !== "传真" && !是国内座机(p)) ?? null;
   if (主) { 填.phone = 主.e164; if (!主.核实 || f.待核.includes("phones")) 黄.add("phone"); }
+  const 座机 = 号们.find((p) => p !== 主 && p.类 !== "传真" && 是国内座机(p)) ?? null;
+  if (座机) 填.landline = 座机.e164;
   const wa = f.whatsapp ?? f.phones.find((p) => p.类 === "WhatsApp")?.e164 ?? null;
   if (外贸 && wa) 填.whatsapp = wa;
   for (const p of f.phones) {
-    if (p === 主 || p.e164 === 主?.e164 || (外贸 && p.e164 === wa)) continue;
+    if (p === 主 || p === 座机 || p.e164 === 主?.e164 || (外贸 && p.e164 === wa)) continue;
     备注.push(`${p.类 === "不确定" ? "电话" : p.类}：${p.e164}`);
   }
   // 通用模版没有 WhatsApp / 邮箱 / 微信 / 官网 / 国家几格：都进备注
