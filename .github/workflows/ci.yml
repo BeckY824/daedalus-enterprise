@@ -39,52 +39,103 @@ jobs:
       - run: npx tsc --noEmit
       - run: npx eslint .
 
+  # 测试影响分析（11-17，简化版）：PR 只跑改动牵连到的单测，推 main 照跑全套兜底。选法见 scripts/ci/related-tests.mjs：
+  # 依赖图（顺着 import 反查，比 vitest related 宽）∪ 按路径读源码的用例 ∪ 静态守门；改到 prisma/、依赖、vitest / vite / tsconfig /
+  # eslint 配置、.github/、hooks/ 等自动退回全套。只管单元测试；类型 / 代码检查、E2E、排版闸门、速度闸门照跑
+  select:
+    name: 单测范围
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.pick.outputs.mode }}
+      shards: ${{ steps.pick.outputs.shards }}
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        if: github.event_name == 'pull_request'
+        with:
+          node-version: 22
+      - id: pick
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "${{ github.event_name }}" != pull_request ]; then
+            echo "mode=full" >> "$GITHUB_OUTPUT"; echo "推送：全套"; exit 0
+          fi
+          git fetch -q origin "$BASE_REF"
+          node scripts/ci/related-tests.mjs select --base "$(git merge-base FETCH_HEAD HEAD)" --shards 8
+
   unit:
-    name: 单元测试 ${{ matrix.shard }}/4
+    # 11-17：4 片各 10–14 分钟，是 CI 关键路径；仓库公开、runner 免费，拆成 8 片
+    # PR 相关模式下每片只跑分给它的那几个用例，分不到的直接通过（job 名不变，聚合 job 照旧看 needs.unit.result）
+    name: 单元测试 ${{ matrix.shard }}/8
+    needs: select
     # 钉 24.04：ubuntu-latest 2026-10-28 起逐步换成 26.04，Playwright 1.56 在上面装不了 chromium，整片挂
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
+      - id: scope
+        name: 这片跑什么
+        env:
+          MODE: ${{ needs.select.outputs.mode }}
+          SHARDS: ${{ needs.select.outputs.shards }}
+        run: |
+          if [ "$MODE" != related ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "args=--shard=${{ matrix.shard }}/8" >> "$GITHUB_OUTPUT"; echo "全套：--shard=${{ matrix.shard }}/8"; exit 0
+          fi
+          files=$(echo "$SHARDS" | jq -r '.[${{ matrix.shard }} - 1][]?' | tr '\n' ' ')
+          if [ -z "$files" ]; then echo "run=false" >> "$GITHUB_OUTPUT"; echo "相关模式：这片没分到用例，直接通过"; exit 0; fi
+          echo "run=true" >> "$GITHUB_OUTPUT"; echo "args=$files" >> "$GITHUB_OUTPUT"; echo "相关模式：$files"
       - uses: actions/checkout@v4
+        if: steps.scope.outputs.run == 'true'
       - uses: actions/setup-node@v4
+        if: steps.scope.outputs.run == 'true'
         with:
           node-version: 22
           cache: npm
       # 装依赖断网（Prisma 引擎下载 ECONNRESET，10-28 #47 后 main 红过）重试 2 次，别整轮重跑
-      - run: for i in 1 2 3; do npm ci && break; [ $i = 3 ] && exit 1; echo "npm ci 第 $i 次失败，15 秒后重试"; sleep 15; done
-      - run: npx prisma generate
-      - run: npx prisma generate --schema=prisma/control.prisma
+      - if: steps.scope.outputs.run == 'true'
+        run: for i in 1 2 3; do npm ci && break; [ $i = 3 ] && exit 1; echo "npm ci 第 $i 次失败，15 秒后重试"; sleep 15; done
+      - if: steps.scope.outputs.run == 'true'
+        run: npx prisma generate
+      - if: steps.scope.outputs.run == 'true'
+        run: npx prisma generate --schema=prisma/control.prisma
         env:
           CONTROL_DATABASE_URL: file:/tmp/control-ci.db
       # 浏览器按 Playwright 版本缓存：命中了下面那步只补系统依赖，不再每次下载 Chromium（10-24 提速）
       - name: 缓存 Playwright 浏览器
+        if: steps.scope.outputs.run == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
         # 有几份单测在真 Chromium 里点组件（ai-settings-ui、import-ai-columns-ui、r6-review-otp、r7-review-auth-ui），
         # 没装浏览器整份起不来（2026-10-05 main 上第一次撞到）
-      - run: npx playwright install --with-deps chromium
+      - if: steps.scope.outputs.run == 'true'
+        run: npx playwright install --with-deps chromium
         # 与生产（Dockerfile 的 ENV TZ=Asia/Shanghai）一致。
         # vitest.config.ts 里也钉了一道，这里再写一次是为了让人看 workflow 就知道。
         # 每片在自己的机器上跑，测试库 prisma/test.db 各建各的，互不干扰
         # 多挂一个 json 报告只为留逐文件耗时（dot 不带），过不过仍由 vitest 退出码定
-      - run: npx vitest run --shard=${{ matrix.shard }}/4 --reporter=dot --reporter=json --outputFile.json=test-results/vitest-timing-${{ matrix.shard }}.json
+      - if: steps.scope.outputs.run == 'true'
+        run: npx vitest run ${{ steps.scope.outputs.args }} --passWithNoTests --reporter=dot --reporter=json --outputFile.json=test-results/vitest-timing-${{ matrix.shard }}.json
         env:
           TZ: Asia/Shanghai
       # 下面两步只看耗时，自己出错不许把这一片变红
       - name: 最慢的 20 个测试文件
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.scope.outputs.run == 'true' }}
         continue-on-error: true
         run: |
           jq -r '[.testResults[] | {s: ((.endTime - .startTime) / 1000), f: (.name | sub("^.*/tests/"; "tests/"))}]
             | sort_by(-.s) | .[:20][] | "\(.s * 10 | round / 10)s\t\(.f)"' \
             test-results/vitest-timing-${{ matrix.shard }}.json
       - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.scope.outputs.run == 'true' }}
         continue-on-error: true
         with:
           name: vitest-timing-${{ matrix.shard }}
@@ -238,10 +289,16 @@ jobs:
   # 顺带量登录 / 首页 / 客户列表首屏 JS（HTML 里全部 script 逐个 gzip -6 求和），
   # 超上限或比 scripts/perf/first-js-baseline.json 涨 > 10% 就红。本机 1 倍 p95 ~50 ms，CI 机慢 2–3 倍也还有余量
   # 11-01 起每轮连压 3 次、各页取 3 次 p95 的中位数再比 300 ms：CI 机时快时慢，同一个提交重跑过一绿一红
+  # 11-17：A、B 两轮原来串在一个 job 里共 11 分钟，拆成两片并行；B 片自己造库（--prepare-only）、org-seed 后再压。
+  # needs.perf.result 是两片合起来的结果，下面 E2E 聚合不用改；job 名仍以「速度闸门」开头（merge-now.sh 按前缀认）
   perf:
-    name: 速度闸门
+    name: 速度闸门 ${{ matrix.part }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [A, B]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -262,7 +319,8 @@ jobs:
         env:
           CONTROL_DATABASE_URL: file:/tmp/control-ci.db
       - name: A：全员看全部 + 首屏 JS
-        # 红了也把这轮的表留下（B 会覆盖 result.md），Summary 里两轮都看得到
+        if: matrix.part == 'A'
+        # 红了也把这轮的表留下，Summary 里看得到
         run: |
           rc=0; node scripts/perf/enterprise-p95.mjs --out /tmp/perf --scale 1 --duration 60 --rounds 3 --extra --limit 300 --first-js || rc=$?
           cp /tmp/perf/result.md /tmp/perf/A.md 2>/dev/null || true
@@ -270,19 +328,22 @@ jobs:
         env:
           GATE: "1"
       - name: B：按组织看
+        if: matrix.part == 'B'
         # 线 400（11-02 用户放宽）：同一份代码 CI 上 114～367 ms，300 太贴机器波动；A 还是 300
+        # 和 A 同样的库（--scale 1 --extra）先造好，org-seed 后再构建、压
         run: |
+          node scripts/perf/enterprise-p95.mjs --out /tmp/perf --scale 1 --extra --prepare-only
           DATABASE_URL=file:/tmp/perf/crm.db SEED=/tmp/perf/seed.json NODE_ENV=development npx tsx scripts/perf/enterprise-org-seed.ts
-          node scripts/perf/enterprise-p95.mjs --out /tmp/perf --scale 1 --duration 60 --rounds 3 --extra --limit 400 --reuse-db --skip-build
+          node scripts/perf/enterprise-p95.mjs --out /tmp/perf --scale 1 --duration 60 --rounds 3 --extra --limit 400 --reuse-db
         env:
           GATE: "1"
       - name: 结果写进 Summary
         if: always()
-        run: cat /tmp/perf/A.md /tmp/perf/result.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+        run: cat /tmp/perf/result.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: perf-gate
+          name: perf-gate-${{ matrix.part }}
           path: |
             /tmp/perf/*.md
             /tmp/perf/*.json

@@ -34,7 +34,8 @@ import { 恢复 } from "@/lib/enterprise/soft-delete";
 import { 无负责人占位邮箱, 无负责人占位名 } from "@/lib/pool";
 import { 首页卡条件 } from "@/lib/project/home-cards";
 import { 项目一段 } from "@/app/(app)/overview/project-stats";
-import { 补建创建人 } from "@/lib/project/system-created";
+import { 补建创建人, 历史分析来源 } from "@/lib/project/system-created";
+import { 领取公海项目 } from "@/lib/project/db";
 import { 算分期统计, 算看板底数, type 看板项目 } from "@/lib/enterprise/channel-dash";
 import type { 统计用项目 } from "@/lib/enterprise/channel-stats";
 
@@ -443,5 +444,74 @@ describe("统计：补建的项目（creatorId = system）不算新建；暂未�
     const 列 = 算分期统计([{ id: "ch", createdAt: new Date("2026-01-01T00:00:00Z"), endDate: null }], [列行(false), 列行(true)], [], 现在);
     expect(列.本月.ch.关联项目).toBe(1);
     expect(列.全部.ch.关联项目).toBe(2);
+  });
+});
+
+describe("历史分析回填（11-18，M-公海-14「领走补一个能推进的项目」；已结束的照 M-公海-02 / P-公海-02 随客户走）", () => {
+  const 回填 = (customerId: string, extra: Record<string, unknown>) =>
+    项目(customerId, "", { source: 历史分析来源, creatorId: 补建创建人, pooledAt: new Date(), ...extra });
+
+  it("名下只有已结束的历史分析项目：领走时已结束的随客户一起出公海归丙，另补 1 个潜客培育；撤销时补的删掉、已结束的回公海", async () => {
+    const c = await 零项目公海客户();
+    const 流 = await 回填(c, { phase: "线索", node: "潜客培育", result: "线索流失", closedAt: new Date("2023-01-01") });
+    const 丢 = await 回填(c, { phase: "商机", node: "共识方案", result: "丢单", closedAt: new Date("2024-01-01") });
+    当(丙);
+    const r = await 领取([c]);
+    if (!r.ok) throw new Error(r.error);
+    const 们 = await 名下项目(c);
+    expect(们).toHaveLength(3);
+    const 新 = 们.find((p) => ![流, 丢].includes(p.id))!;
+    expect(新).toMatchObject({ ownerId: 丙.id, creatorId: 丙.id, phase: 第一个节点.phase, node: 第一个节点.node, result: null, pooledAt: null, source: null });
+    // 已结束的不是单独领的：随客户整包出公海（带走公海项目），结局不动
+    for (const id of [流, 丢]) expect(们.find((p) => p.id === id)).toMatchObject({ ownerId: 丙.id, pooledAt: null, source: 历史分析来源 });
+    expect(们.find((p) => p.id === 流)?.result).toBe("线索流失");
+    expect(r.带过来?.培育).toEqual([新.id]);
+    // 持有数只算补的这 1 个（已结束的不算）
+    expect(await 持有数(prisma, 丙.id)).toBe(1);
+    expect(await 撤销公海("领取", r.原负责人!, r.带过来, undefined, r.公海项目)).toMatchObject({ ok: true, updated: 1 });
+    expect((await 名下项目(c)).map((p) => p.id).sort()).toEqual([流, 丢].sort());
+    expect(await prisma.customerPool.count({ where: { customerId: c } })).toBe(1);
+  });
+
+  it("名下有还在推的历史分析项目（没结局）：领走它就是能推进的，不补", async () => {
+    const c = await 零项目公海客户();
+    await 回填(c, { phase: "线索", node: "潜客培育", result: "线索流失" });
+    await 回填(c, { phase: "商机", node: "明确需求" });
+    当(丙);
+    const r = await 领取([c]);
+    if (!r.ok) throw new Error(r.error);
+    expect(await prisma.project.count({ where: { customerId: c } })).toBe(2);
+    expect(r.带过来?.培育).toBeUndefined();
+  });
+
+  it("名下有正常建的已结束项目：照旧算有项目、不补（只对历史分析回填的放宽）", async () => {
+    const c = await 零项目公海客户();
+    await 项目(c, 甲.id, { result: "线索流失", pooledAt: new Date() });
+    await 回填(c, { phase: "线索", node: "潜客培育", result: "线索流失" });
+    当(丙);
+    const r = await 领取([c]);
+    if (!r.ok) throw new Error(r.error);
+    expect(await prisma.project.count({ where: { customerId: c } })).toBe(2);
+    expect(r.带过来?.培育).toBeUndefined();
+  });
+
+  it("已结束的历史分析项目不能单独领（P-公海-02 / X-70），要领走客户整包", async () => {
+    const c = await 零项目公海客户();
+    const 流 = await 回填(c, { phase: "线索", node: "潜客培育", result: "线索流失" });
+    当(丙);
+    const r = await 领取公海项目(丙, 流);
+    expect(r.ok).toBe(false);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 流 } })).pooledAt).not.toBeNull();
+  });
+
+  it("分配公海同样补（总管把只有已结束历史分析项目的客户分给丙）", async () => {
+    const c = await 零项目公海客户();
+    await 回填(c, { phase: "商机", node: "共识方案", result: "丢单" });
+    当(总管);
+    const r = await 分配公海([c], 丙.id);
+    if (!r.ok) throw new Error(r.error);
+    const 们 = await 名下项目(c);
+    expect(们).toHaveLength(2);
+    expect(们.filter((p) => !p.result)).toEqual([expect.objectContaining({ ownerId: 丙.id, creatorId: 总管.id, node: 第一个节点.node, source: null })]);
   });
 });

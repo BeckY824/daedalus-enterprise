@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Select } from "antd";
 import { 沟通方式选项, 发起主体选项, 我常用的沟通方式 } from "@/app/(app)/follow-method-actions";
 import type { 一条方式 } from "@/lib/follow-habit";
-import { 方式对类型, 类型对方式, 对得上的方式 } from "@/lib/follow-method";
+import { 方式对类型, 补的方式, 对得上的方式 } from "@/lib/follow-method";
 
 // 一页只取一次：几张表单共用，管理员改了字典刷新页面就是新的；取失败下次再取
 let 取着: Promise<string[] | null> | null = null;
@@ -34,6 +34,25 @@ export function useFollowHabit(要: boolean = true): 一条方式 | null | undef
     return () => { 作废 = true; };
   }, [要]);
   return 习惯;
+}
+
+/**
+ * 新记一条沟通的默认方式按个人习惯（11-18 再接 5 处：首页待办「记一条沟通」、建档向导首条沟通、线索转项目、完成计划、AI 卡在服务端另接）。
+ * 要 = 这次该问（新记的；带回了草稿、计划自己写了方式的不问）。习惯问到了、人还没在下拉里改过，才 填 一次；
+ * 返回 人改了：下拉 onChange 里调，之后晚到的习惯不再盖人选的。没有记录（null）不填，照各处原来的默认
+ */
+export function useHabitDefault(要: boolean, 填: (x: 一条方式) => void): () => void {
+  const 习惯 = useFollowHabit(要);
+  const 改过 = useRef(false);
+  const 填过 = useRef(false);
+  const 填的 = useRef(填);
+  useEffect(() => { 填的.current = 填; });
+  useEffect(() => {
+    if (!要 || !习惯 || 改过.current || 填过.current) return;
+    填过.current = true;
+    填的.current(习惯);
+  }, [要, 习惯]);
+  return useCallback(() => { 改过.current = true; }, []);
 }
 
 // 发起主体同上，一页取一次
@@ -87,16 +106,18 @@ export default function FollowMethodSelect({ type, method, 类型们, onChange, 
     return <Select aria-label={ariaLabel} style={style} value={type} options={类型们.map((t) => ({ value: t.value, label: t.label }))} onChange={(t: string) => onChange({ type: t, method: null })} />;
   }
   const 待办类 = 类型们.filter((t) => t.value === "TASK" || t.value === "REMIND");
-  // 方式和类型对不上（AI 解析、默认 WhatsApp 只改了类型）就按类型摆
-  const 现方式 = 待办类.some((t) => t.value === type) ? null : 对得上的方式(type, method) ?? 类型对方式(type);
+  // 方式和类型对不上（AI 解析、默认 WhatsApp 只改了类型）就按类型摆；没填方式的「其他」类留空（11-17：不自动填成「其他方式」，留空就是空）
+  const 待办 = 待办类.some((t) => t.value === type);
+  const 现方式 = 待办 ? null : 对得上的方式(type, method) ?? 补的方式(type);
   const 方式们 = 现方式 && !们.includes(现方式) ? [...们, 现方式] : 们;
-  const 值 = 现方式 ? `m:${现方式}` : `t:${type}`;
+  const 值 = 现方式 ? `m:${现方式}` : 待办 ? `t:${type}` : undefined;
   return (
     <Select
       aria-label={ariaLabel}
       style={style}
       showSearch
       optionFilterProp="label"
+      placeholder="—"
       value={值}
       options={[...方式们.map((m) => ({ value: `m:${m}`, label: m })), ...待办类.map((t) => ({ value: `t:${t.value}`, label: t.label }))]}
       onChange={(v: string) => onChange(v.startsWith("m:") ? { type: 方式对类型(v.slice(2)), method: v.slice(2) } : { type: v.slice(2), method: null })}

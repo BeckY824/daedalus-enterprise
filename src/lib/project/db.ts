@@ -2,6 +2,7 @@
  * 团队版项目模式 1a 的读写（2026-10-23，D-31）。取值规矩在 lib/project/nodes.ts，界面的写在 app/(app)/projects/actions.ts。
  * 这里不管登录、不管开关，只管「谁能改」和「改了留什么痕」，方便单测直接调。
  */
+import { 能往项目记沟通, 沟通项目在公海话, 沟通项目已结束话, 沟通不是组员话 } from "./follow-needs-project";
 import { 项目退回前查联系方式, 退回号码种类表 } from "@/lib/enterprise/return-contact-check";
 import { Prisma, type Project } from "@/generated/prisma";
 import { prisma, defaultClient } from "../prisma";
@@ -1308,37 +1309,48 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
-    if (p.pooledAt) return { ok: false as const, error: "这个项目在公海里，先领取再记" };
-    // 企业版（11-01）：沟通是项目内容，只有负责人记；被邀请进组的只能看（规则 6）
-    if (企业版() && !能管项目(me, p, org)) return { ok: false as const, error: "只有项目负责人或系统管理员能记沟通，项目组成员只能看" };
-    if (!能管项目(me, p, org)) {
+    if (p.pooledAt) return { ok: false as const, error: 企业版() ? 沟通项目在公海话 : "这个项目在公海里，先领取再记" };
+    // 沟通必须挂在推项目（11-17 客户定）：已结束的项目不再记沟通
+    if (企业版() && p.result) return { ok: false as const, error: 沟通项目已结束话 };
+    const 能管 = 能管项目(me, p, org);
+    if (!能管) {
       const 组员 = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
+      // 企业版（11-17 客户定，改 11-01 规则 6）：已进组的项目组员也能把沟通记到别人名下的项目上，记录上是谁记的就是谁，负责人不变
+      if (企业版() && !能往项目记沟通(me, p, org, 组员?.inviteStatus)) return { ok: false as const, error: 沟通不是组员话 };
       if (组员?.inviteStatus !== "JOINED") return { ok: false as const, error: "只有项目负责人、项目组成员、老板或主管能记沟通" };
     }
-    const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
-    const 好 = 规整沟通(input, { 要下一步, now, 要下一步文字: opt.要下一步文字 });
-    if ("error" in 好) return { ok: false as const, error: 好.error };
-    const 阶段问题 = 记沟通阶段问题(input, p);
-    if (阶段问题) return { ok: false as const, error: 阶段问题 };
-    const 额外 = await 认沟通额外(tx, input.额外, p.customerId);
-    if ("error" in 额外) return { ok: false as const, error: 额外.error };
-    const 跟进 = await tx.followUp.create({
-      data: { type: 好.type, method: 好.method, initiator: 好.initiator, content: 好.content, occurredAt: 好.occurredAt, title: 额外.title, status: 额外.status, duration: 额外.duration, participants: 额外.participants, customerId: p.customerId, contactId: 额外.contactId === undefined ? p.contactId : 额外.contactId, ownerId: me.id },
+    /*
+      企业版组员（11-17 客户定）：上面核过「已进组、在推、有业务角色」，这条沟通该记。组员看客户是连带只读的（P-看-08，限定层把这位客户
+      记在「只能看」里，在下面新建沟通会被拦），这一笔按全部写：只写这条沟通和它连带的几样（挂项目、编号、标记、项目下一步、客户最近跟进和跟着算的状态），
+      客户资料、项目负责人不动
+    */
+    const 写 = 企业版() && !能管 ? <T,>(f: () => Promise<T>) => 看全部(f) : <T,>(f: () => Promise<T>) => f();
+    return 写(async () => {
+      const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
+      const 好 = 规整沟通(input, { 要下一步, now, 要下一步文字: opt.要下一步文字 });
+      if ("error" in 好) return { ok: false as const, error: 好.error };
+      const 阶段问题 = 记沟通阶段问题(input, p);
+      if (阶段问题) return { ok: false as const, error: 阶段问题 };
+      const 额外 = await 认沟通额外(tx, input.额外, p.customerId);
+      if ("error" in 额外) return { ok: false as const, error: 额外.error };
+      const 跟进 = await tx.followUp.create({
+        data: { type: 好.type, method: 好.method, initiator: 好.initiator, content: 好.content, occurredAt: 好.occurredAt, title: 额外.title, status: 额外.status, duration: 额外.duration, participants: 额外.participants, customerId: p.customerId, contactId: 额外.contactId === undefined ? p.contactId : 额外.contactId, ownerId: me.id },
+      });
+      // 挂的节点写新名（库里存着旧名的企业版项目按 本套名 对上）
+      await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId: p.id, node: 本套名(p.node, 字典of(企业版())) } });
+      await 记沟通编号(tx, 跟进.id, p.id, 好.nextStepAt, now);
+      await 记沟通标记(tx, 跟进.id, p.id, p.phase, false);
+      // 企业版组员不一定看得到这位客户（客户是负责人的）：最近跟进时间只是跟着记一笔，不按范围拦
+      const c = await 看全部(() => tx.customer.findUnique({ where: { id: p.customerId }, select: { lastFollowAt: true } }));
+      if (!c?.lastFollowAt || c.lastFollowAt < 好.occurredAt) await 看全部(() => tx.customer.update({ where: { id: p.customerId }, data: { lastFollowAt: 好.occurredAt } }));
+      // 下一步：写了文字就文字 + 时间一起换（时间可空，空就清掉上一次的时间）；老入口只给时间，照旧只改时间、文字不动
+      if (好.nextStepText) await tx.project.update({ where: { id: p.id }, data: { nextStepText: 好.nextStepText, nextStepAt: 好.nextStepAt } });
+      else if (好.nextStepAt) await tx.project.update({ where: { id: p.id }, data: { nextStepAt: 好.nextStepAt } });
+      const 推进 = await 按必填推进(tx, 规则, me, p.id);
+      if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
+      await 勾掉将回收提醒(tx, 规则, p, now);
+      return { ok: true as const, followUpId: 跟进.id, ...带推进(推进) };
     });
-    // 挂的节点写新名（库里存着旧名的企业版项目按 本套名 对上）
-    await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId: p.id, node: 本套名(p.node, 字典of(企业版())) } });
-    await 记沟通编号(tx, 跟进.id, p.id, 好.nextStepAt, now);
-    await 记沟通标记(tx, 跟进.id, p.id, p.phase, false);
-    // 企业版组员不一定看得到这位客户（客户是负责人的）：最近跟进时间只是跟着记一笔，不按范围拦
-    const c = await 看全部(() => tx.customer.findUnique({ where: { id: p.customerId }, select: { lastFollowAt: true } }));
-    if (!c?.lastFollowAt || c.lastFollowAt < 好.occurredAt) await 看全部(() => tx.customer.update({ where: { id: p.customerId }, data: { lastFollowAt: 好.occurredAt } }));
-    // 下一步：写了文字就文字 + 时间一起换（时间可空，空就清掉上一次的时间）；老入口只给时间，照旧只改时间、文字不动
-    if (好.nextStepText) await tx.project.update({ where: { id: p.id }, data: { nextStepText: 好.nextStepText, nextStepAt: 好.nextStepAt } });
-    else if (好.nextStepAt) await tx.project.update({ where: { id: p.id }, data: { nextStepAt: 好.nextStepAt } });
-    const 推进 = await 按必填推进(tx, 规则, me, p.id);
-    if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
-    await 勾掉将回收提醒(tx, 规则, p, now);
-    return { ok: true as const, followUpId: 跟进.id, ...带推进(推进) };
   });
 }
 

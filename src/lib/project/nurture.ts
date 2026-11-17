@@ -14,18 +14,28 @@ import { 项目名上限 } from "./wizard";
 import { 新项目默认值 } from "./proj-fields";
 import { 看全部 } from "../team-scope";
 import { 看已删 } from "../enterprise/soft-delete-core";
+import { 历史分析来源 } from "./system-created";
 
 /** 要不要补：企业版且开了项目模式才补（纯判断，方便单测钉住「没开项目模式时不建」） */
 export function 要补潜客培育(企业: boolean, 项目模式: boolean | undefined): boolean {
   return 企业 && 项目模式 === true;
 }
 
-/** 这位客户一个项目都没有就建一个潜客培育项目，返回新项目 id；已经有项目（向导刚建的）返回 null */
+/**
+ * 算「有项目」的项目：已结束的历史分析回填项目不算（11-18，M-公海-14「领走补一个能推进的项目」）——
+ * 公海客户名下只挂着回填的线索流失 / 丢单，领走后没有一个能推进的，照零项目客户补一个潜客培育。
+ * 历史分析的还在推（没结局）、正常建的（有没有结局都算，同原来）照旧算有
+ */
+export const 算有项目 = {
+  OR: [{ source: null }, { source: { not: 历史分析来源 } }, { result: null }],
+} satisfies Prisma.ProjectWhereInput;
+
+/** 这位客户一个项目都没有（已结束的历史分析项目不算，见 算有项目）就建一个潜客培育项目，返回新项目 id；已经有项目（向导刚建的）返回 null */
 export async function 补潜客培育(
   tx: Pick<Prisma.TransactionClient, "contact" | "project" | "projectNodeLog">,
   a: { customerId: string; 客户名: string; ownerId: string; creatorId: string },
 ): Promise<string | null> {
-  if (await tx.project.count({ where: { customerId: a.customerId } })) return null;
+  if (await tx.project.count({ where: { customerId: a.customerId, ...算有项目 } })) return null;
   const 联系人 = await tx.contact.findFirst({ where: { customerId: a.customerId, isPrimary: true }, select: { id: true } });
   const 项目 = await tx.project.create({
     data: {
@@ -46,7 +56,8 @@ export async function 补潜客培育(
  *   - 导入 / 同步 / 冲突处理把无主客户换上负责人出公海（enterprise-import/apply.ts 改）
  *   - 回收站恢复客户、查重捞回（enterprise/soft-delete.ts 恢复一条）
  * 客户整包出公海（pool-link.ts）不用：它是领 / 分名下一个项目带出来的，客户本来就有项目。
- * 只补：客户还在、没删、不在客户公海、名下一个项目都没有（回收站里的项目也算有，不补）。负责人 = 客户现在的负责人（调用方先换好），
+ * 只补：客户还在、没删、不在客户公海、名下一个项目都没有（回收站里的项目也算有，不补；已结束的历史分析回填项目不算有，见 算有项目——
+ * 领到「名下只有回填的线索流失 / 丢单」的公海客户时，这些已结束的随客户一起出公海（M-公海-02 / P-公海-02：客户整体进公海时连带进去的，跟着客户走），另补 1 个能推进的）。负责人 = 客户现在的负责人（调用方先换好），
  * 创建人 = 操作人（空的话记负责人），时间 = 现在。返回 客户 id → 新项目 id（撤销领取 / 分配时按它删，见 潜客培育没动过）。
  * 调用方判断开关（要补潜客培育）：不是企业版、没开项目模式时别调
  */
@@ -63,7 +74,7 @@ export async function 零项目客户补潜客培育(
     const 有项目 = new Set<string>();
     for (let i = 0; i < 们.length; i += 500) {
       const 这批 = 们.slice(i, i + 500);
-      for (const g of await 看已删(() => tx.project.groupBy({ by: ["customerId"], where: { customerId: { in: 这批 } } }))) 有项目.add(g.customerId);
+      for (const g of await 看已删(() => tx.project.groupBy({ by: ["customerId"], where: { customerId: { in: 这批 }, ...算有项目 } }))) 有项目.add(g.customerId);
     }
     const 没项目 = 们.filter((id) => !有项目.has(id));
     for (let i = 0; i < 没项目.length; i += 500) {

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
+import { 补全动作桩 } from "./helpers/action-stubs";
 /* 11-12 客户详情合并第 2 批（定稿 UI 客户详情-定稿UI-20261112.html）：客户和项目合成一页。
    真 CustomerDetail（RecordView + ProjectZone + 嵌入版 ProjectDetail）+ globals.css，只桩掉服务端动作。钉的是：
    页签切换后左栏「关键」跟着换；项目各动作收进右上角「项目操作 ▾」、客户的进「客户操作 ▾」（11-12 用户）；页签行一行不换行（1024 / 1280 / 1366，超长项目名、超长公司名）；提醒条在中栏进程卡正上方；
@@ -12,7 +13,7 @@ const plugin: Plugin = { name: "cust-detail-merge", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   // 教练主题（11-17）的动作：服务端那串（prisma、通知）进不了浏览器包
   stub(/coach-topic-actions$/, "const f=async()=>({ok:true});export const 发主题动作=f,回复主题动作=f,关闭主题动作=f,删主题动作=f;");
-  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;");
+  stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
   stub(/(^|\/)InlineField$/, "export default function Inline(p){return <div className='rec-field' data-field={p.field}>{p.label}: {p.value}</div>}");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(u){window.__去=u},replace(u){window.__换=u},prefetch(){}});export const usePathname=()=>\"/customers/a\";export const useSearchParams=()=>new URLSearchParams(window.__sp||'');");
   stub(/^next\/link$/, "export default function L({prefetch,scroll,replace,...p}){return <a {...p}/>}");
@@ -33,14 +34,14 @@ const plugin: Plugin = { name: "cust-detail-merge", setup(b) {
     export const 编辑项目=f,改项目沟通=f,改项目节点=f,终止项目进程=f,勾项目交付=f,删除项目=f,放回项目公海=(...a)=>window.__挂起?new Promise(()=>{}):f(...a),领取项目=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,改项目画像Action=f,删项目沟通=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
   stub(/^\.\/actions$/, `
     export const 客户删除预检=async()=>({ok:true}),删除前清点=async()=>({}),deleteCustomers=async()=>({ok:false});
-    export const toggleTask=async()=>({ok:true}),deleteTask=toggleTask,completePlan=toggleTask,撤销记一笔=toggleTask,saveFollowUp=toggleTask,deleteFollowUp=toggleTask;
+    export const toggleTask=async()=>({ok:true}),deleteTask=toggleTask,completePlan=toggleTask,撤销记一笔=toggleTask,沟通可选项目=async()=>({ok:true,项目们:null,能建项目:true}),saveFollowUp=toggleTask,deleteFollowUp=toggleTask;
     export const 转走项目预览of=async()=>({项目数:0,项目:[]});
     export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'p1'});`);
   stub(/^\.\.\/commission-actions$/, `const f=${空跑};export const 存项目底价=f,存提成分配=f,更正实际提成=f;`);
   // 定时分配（11-17）改 / 取消 / 现在分：服务端那串（prisma、通知）进不了浏览器包
-  stub(/(^|\/)schedule-actions$/, `const f=${空跑};export const 改定时分配=f,取消定时分配=f,定时分配现在分=f;`);
+  stub(/(^|\/)schedule-actions$/, 补全动作桩("src/app/(app)/leads/schedule-actions.ts", `const f=${空跑};export const 改定时分配=f,取消定时分配=f,定时分配现在分=f;`));
   stub(/^\.\.\/payment-actions$/, `const f=${空跑};export const 记回款=f,删回款=f;`);
-  stub(/readonly-card-actions$/, "export const 打开客户只读卡Action=async()=>({ok:false,error:'桩'});");
+  stub(/readonly-card-actions$/, 补全动作桩("src/app/(app)/projects/[id]/readonly-card-actions.ts", "export const 打开客户只读卡Action=async()=>({ok:false,error:'桩'});"));
   stub(/^\.\/blocker-actions$/, `const f=${空跑};export const 发布卡点Action=f,认领卡点Action=f,完成卡点Action=f,删卡点Action=f,存卡点默认Action=f,存卡点角色开关Action=f,新增原因Action=f,改原因名Action=f,改原因状态Action=f,删原因Action=f,合并原因Action=f,我的卡点Action=async()=>[];`);
   stub(/^\.\.\/relate-actions$/, `const f=${空跑};export const 加关联客户Action=f,改客户身份Action=f,解除关联客户Action=f,加关联联系人Action=f,改联系人角色立场Action=f,解除关联联系人Action=f,搜项目联系人=async()=>[];`);
   stub(/project-only-contact-actions$/, `const f=${空跑};export const 新增仅项目联系人Action=f,改仅项目联系人Action=f;`);
@@ -55,7 +56,7 @@ beforeAll(async () => {
     const root=createRoot(document.getElementById('root'));
     const 人=(id,name,isPrimary)=>({id,name,position:'采购',phone:'138000000'+id.slice(1),email:null,wechat:null,isPrimary,remark:null,updatedAt:'2026-01-01T00:00:00.000Z'});
     const contacts=[人('c1','王总',true),人('c2','李工',false),人('c3','陈经理',false)];
-    const 客户沟通=Array.from({length:5},(_,i)=>({id:'cf'+i,type:'PHONE',title:'',content:'客户全部里的沟通'+i,status:'已完成',duration:null,occurredAt:'2026-10-2'+i+'T02:00:00.000Z',dueAt:null,participants:null,sourceText:null,ownerName:'QA',contactName:null,contactPosition:null,contactId:null,opportunityId:null,updatedAt:'2026-10-20T02:00:00.000Z',项目:{id:i%2?'p2':'p1',名:i%2?'项目二':'项目一'}}));
+    const 客户沟通=Array.from({length:5},(_,i)=>({id:'cf'+i,type:i===0?'OTHER':'PHONE',method:null,title:'',content:'客户全部里的沟通'+i,status:'已完成',duration:null,occurredAt:'2026-10-2'+i+'T02:00:00.000Z',dueAt:null,participants:null,sourceText:null,ownerName:'QA',contactName:null,contactPosition:null,contactId:null,opportunityId:null,updatedAt:'2026-10-20T02:00:00.000Z',项目:{id:i%2?'p2':'p1',名:i%2?'项目二':'项目一'}}));
     const 关联=(主,本)=>({客户们:[],联系人们:本.map(([id,角色,立场])=>({contactId:id,名:id,姓名:id,customerId:'a',角色,立场,主:id===主,看得到:true})),选项:{身份:[],角色:[],立场:[]},上限:30});
     const 项目=(id,name,主,本,x={})=>({id,name,remark:null,amount:860000,currency:'CNY',customer:{id:'a',name:'客户A',school:null},contact:主?{id:主,name:主,position:null}:null,
       来源线索:null,原因选项:{回收:[],无效:[]},ownerId:'qa',ownerName:'QA',creatorName:'QA',createdAt:'2026-10-01T00:00:00.000Z',historyOwners:[],
@@ -102,8 +103,8 @@ beforeAll(async () => {
       flushSync(()=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><div className='shell rail-mini'>{innerWidth>=768&&<nav className='rail' aria-label='主导航'/>}<main className='main app-content' style={{padding:'22px 26px'}}><div>
         <RestrictedCustomerDetail 数据={{客户:{id:'a',name:o.公司名||'客户A'},
           卡:{客户:{name:o.公司名||'客户A',shortName:'A',school:null,customerType:null,customerAttr:null,地区:'',addrDetail:null,website:null},联系人:[{name:'王总',position:'采购',给联系方式:true,phone:'138****0001',email:null,wechat:null,号码们:[]},{name:'李工',position:null,给联系方式:false,phone:null,email:null,wechat:null,号码们:[]}]},
-          可改联系人:[],项目区:{customerId:'a',页签们:o.两个?页签们:[页签们[0]],锁数:0,当前},
-          沟通:[{id:'rf1',type:'PHONE',method:null,content:'我项目上的沟通',occurredAt:'2026-10-03T02:00:00.000Z',who:'QA',项目:{id:'p1',名:'项目一'}}],
+          可改联系人:[],项目区:{customerId:'a',页签们:o.空?[]:o.两个?页签们:[页签们[0]],锁数:0,当前:o.空?null:当前},
+          沟通:[{id:'rf1',type:'PHONE',method:null,content:'我项目上的沟通',occurredAt:'2026-10-03T02:00:00.000Z',who:'QA',项目:{id:'p1',名:'项目一'}},{id:'rf2',type:'OTHER',method:null,content:'没填方式的沟通',occurredAt:'2026-10-02T02:00:00.000Z',who:'QA',项目:{id:'p1',名:'项目一'}}],
           待办:{任务:[],计划:[]},号码种类:[],职务选项:[]}}/>
       </div></main></div></BusinessProvider></App></ConfigProvider>));
     };
@@ -191,6 +192,9 @@ it("没有项目可选：项目区空状态 +「＋ 新建项目」；关键联�
     const 沟通 = page.locator(".rec-zone .cd-comm");
     expect(await 沟通.getByText(/客户全部里的沟通/).count()).toBe(5);
     expect(await 沟通.getByRole("button", { name: /新建沟通/ }).count()).toBe(0);
+    // 没填沟通方式的（11-17：c2 上「未注明」清成空）显示「—」，不显示「其他记录」
+    expect(await 沟通.locator(".rec-tl-type, .rec-sum-type").allInnerTexts()).toEqual(["电话沟通", "电话沟通", "电话沟通", "电话沟通", "—"]);
+    expect(await 沟通.getByText("其他记录").count()).toBe(0);
     expect(await page.locator(".rec-zone").getByText("周五带合同上门").count()).toBe(1);
     // 页头不再有「新开项目」
     expect(await page.getByRole("button", { name: /新开项目/ }).count()).toBe(0);
@@ -653,7 +657,7 @@ it("受限客户详情（只负责项目的人）：页头「仅项目」+ 只�
   try {
     await page.route("http://cust-merge.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
     await page.goto("http://cust-merge.test/customers/a"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
-    const 画R = async (o: { 删?: boolean; 公司名?: string } = {}) => {
+    const 画R = async (o: { 删?: boolean; 公司名?: string; 空?: boolean } = {}) => {
       await page.evaluate(a => (window as unknown as { __renderR: (o: object) => void }).__renderR(a), o as object);
       await page.getByTestId("restricted-customer-detail").waitFor();
       await page.locator(".cd-comm").waitFor();
@@ -668,6 +672,11 @@ it("受限客户详情（只负责项目的人）：页头「仅项目」+ 只�
     expect(await 卡.getByText(/挂在项目一.*上的沟通/).count()).toBe(1);
     // 左栏只读卡：叫「客户资料（只读）」，没给号码的那位写原因
     expect(await page.locator(".rec-rail .rec-sec-t").first().innerText()).toMatch(/^客户资料（只读）/);
+    // 没有项目时摆这位的全部沟通：没填沟通方式的显示「—」，不显示「其他记录」（11-17）
+    await 画R({ 空: true });
+    const 全部 = page.getByTestId("restricted-follow-all");
+    expect(await 全部.locator(".rcd-follow-meta > span:nth-child(2)").allInnerTexts()).toEqual(["电话沟通", "—"]);
+    expect(await 全部.getByText("其他记录").count()).toBe(0);
     for (const w of [1024, 1280, 1366]) {
       await page.setViewportSize({ width: w, height: 800 });
       await 画R({ 公司名: "超长公司名字".repeat(10) });

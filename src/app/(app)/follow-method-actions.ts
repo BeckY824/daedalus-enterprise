@@ -3,8 +3,8 @@
 import { requireUser } from "@/lib/auth";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选项 } from "@/lib/enterprise/dict";
-import { prisma } from "@/lib/prisma";
-import { 挑常用方式, 看最近几条, type 一条方式 } from "@/lib/follow-habit";
+import type { 一条方式 } from "@/lib/follow-habit";
+import { 常用沟通方式of } from "@/lib/follow-habit-db";
 
 /** 企业版沟通方式的启用项（10-31，字典 followMethod）：记沟通的几张表单打开时取；别的版本给 null，表单照旧用类型下拉 */
 export async function 沟通方式选项(): Promise<string[] | null> {
@@ -29,13 +29,5 @@ export async function 发起主体选项(): Promise<string[] | null> {
  */
 export async function 我常用的沟通方式(): Promise<一条方式 | null> {
   const me = await requireUser();
-  const 们 = await prisma.followUp.findMany({
-    where: { ownerId: me.id, deletedAt: null, type: { notIn: ["TASK", "REMIND"] } },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take: 看最近几条,
-    select: { type: true, method: true },
-  });
-  if (!企业版()) return 挑常用方式(们);
-  const 启用 = new Set(await 可选项("followMethod"));
-  return 挑常用方式(们, (x) => !!x.method && 启用.has(x.method));
+  return 常用沟通方式of(me.id);
 }

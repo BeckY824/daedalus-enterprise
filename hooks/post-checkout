@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+# 切分支（git checkout / git switch）之后：两头的 prisma/schema.prisma 或 prisma/control.prisma 不一样，
+# 就自动重跑两条 prisma generate，理由同 post-merge。参数：<之前的 HEAD> <现在的 HEAD> <1 = 切分支，0 = 只检出文件>
+# 只检出文件不管；git worktree add 新开副本时之前的 HEAD 是全 0、还没装依赖，也不管（开副本后按 crm-code-copy 手动跑那两条）。
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE GIT_PREFIX
+[ "$3" = 1 ] || exit 0
+case "$1" in 0000000000000000000000000000000000000000|"") exit 0 ;; esac
+[ "$1" = "$2" ] && exit 0
+cd "$(git rev-parse --show-toplevel)" || exit 0
+exec sh hooks/prisma-regen.sh "$1" "$2" 切分支

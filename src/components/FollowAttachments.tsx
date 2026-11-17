@@ -164,11 +164,11 @@ function PickFollowAttachments({ 文件们, on改 }: { 文件们: File[]; on改:
 
 export { PickFollowAttachments as 选沟通附件 };
 
-/** 记下之后传：返回没传上的那几句 */
-export async function 传沟通附件(followUpId: string, 文件们: File[]): Promise<string[]> {
+/** 记下之后传：返回没传上的那几句。票：建档时首条沟通的附件票（11-18），建好就分走了也传得上 */
+export async function 传沟通附件(followUpId: string, 文件们: File[], 票?: string | null): Promise<string[]> {
   const 错: string[] = [];
   for (const f of 文件们) {
-    const r = await 传附件({ followUpId }, f);
+    const r = await 传附件({ followUpId }, f, null, 票);
     if (!r.ok) 错.push(r.error);
   }
   return 错;

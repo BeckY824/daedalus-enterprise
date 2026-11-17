@@ -2,6 +2,7 @@
 
 import DatePicker from "@/components/BusinessDatePicker";
 import { Select, Input } from "antd";
+import AmountTextInput from "@/components/AmountTextInput";
 import { FOLLOW_TYPES } from "@/lib/constants";
 import { 币种符号 } from "@/lib/currency";
 import { dayjs } from "@/lib/utils";
@@ -120,7 +121,7 @@ export default function ProjectProposalFields({ draft, setDraft }: { draft: 项�
       {draft.kind === "payment_add" && (
         <>
           <F label="金额">
-            <Input size="small" style={{ width: 140 }} prefix={币种符号(draft.currency)} value={draft.amount || ""} onChange={(e) => 设({ amount: Number(e.target.value.replace(/[^\d.]/g, "")) || 0 })} />
+            <AmountTextInput aria-label="金额" prefix={币种符号(draft.currency)} value={draft.amount} onChange={(n) => 设({ amount: n })} />
           </F>
           <F label="回款时间">
             <DatePicker size="small" format="YYYY-MM-DD" value={日(draft.paidAt)} onChange={(d) => 设({ paidAt: d ? d.format("YYYY-MM-DD") : "" })} />

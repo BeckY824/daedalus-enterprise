@@ -26,7 +26,7 @@ import { 渠道筛选选项 } from "@/lib/enterprise/channel-options";
 import { 企业级别 } from "@/lib/enterprise/customer-v2";
 import { 未分级 } from "@/app/(app)/customers/query-shared";
 import { 创建时间段, 是日期 } from "@/lib/custom-date-range";
-import { 不算补建 } from "./system-created";
+import { 不算补建, 不算历史分析 } from "./system-created";
 import { 指定回复文字, 短时刻 } from "./time-fields";
 
 /** 判了无效的三个叫法：列表上叫法后面跟原因摘要（客户 11-05（X-09）：「初验无效 · 原因」） */
@@ -687,7 +687,8 @@ export type 公海名单筛 = { channelId?: string; phase?: string; createdFrom?
 export function 公海名单候选(f: 公海名单筛): Prisma.ProjectWhereInput | null {
   const 建于 = 创建时间段(f.createdFrom, f.createdTo);
   const 并: Prisma.ProjectWhereInput[] = [
-    ...(f.channelId ? [{ OR: [{ channelId: f.channelId }, { channelId: null, customer: { channelId: f.channelId } }] }] : []),
+    // 渠道名单不列历史分析回填的（渠道页数的 渠道项目条件 不算它们，点进来条数要对得上）
+    ...(f.channelId ? [{ OR: [{ channelId: f.channelId }, { channelId: null, customer: { channelId: f.channelId } }], ...不算历史分析 }] : []),
     ...(建于 ? [{ createdAt: 建于, ...(f.onlyNew === "1" ? 不算补建 : {}) }] : []),
   ];
   if (!并.length) return null;

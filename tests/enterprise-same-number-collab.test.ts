@@ -246,15 +246,21 @@ describe("同号再次录入", () => {
     expect(r.数据.客户.phone).toBe(号码);
   });
 
-  it("组员直接在级联看到的客户下记沟通：拦下、说只能看，不说客户不在了（11-03 B5-6，V3.5.1）", async () => {
+  it("组员在级联看到的客户下：沟通记得上、挂在进组的项目上（11-17 客户定组员能记）；待办照旧拦下说只能看，不说客户不在了（11-03 B5-6）", async () => {
     const x = await 现场();
     await prisma.projectMember.create({ data: { projectId: x.项目!.id, userId: x.市场.id, inviteStatus: "JOINED", invitedById: x.负责人.id } });
-    const r = await 作为(x.市场, () => saveFollowUp({ customerId: x.客户.id, type: "PHONE", content: "组员想记一条", status: "已完成", occurredAt: new Date().toISOString() }));
-    expect(r.ok).toBe(false);
-    if (r.ok) return;
-    expect(r.error).not.toContain("不在了");
-    expect(r.error).toContain("只能看");
+    const 待办 = await 作为(x.市场, () => saveFollowUp({ customerId: x.客户.id, type: "TASK", content: "组员想记个待办", status: "待处理", occurredAt: new Date().toISOString() }));
+    expect(待办.ok).toBe(false);
+    if (待办.ok) return;
+    expect(待办.error).not.toContain("不在了");
+    expect(待办.error).toContain("只能看");
     expect(await prisma.followUp.count({ where: { customerId: x.客户.id } })).toBe(0);
+    const r = await 作为(x.市场, () => saveFollowUp({ customerId: x.客户.id, type: "PHONE", content: "组员想记一条", status: "已完成", occurredAt: new Date().toISOString() }));
+    expect(r).toMatchObject({ ok: true });
+    const f = await prisma.followUp.findFirstOrThrow({ where: { customerId: x.客户.id }, include: { projectNode: true } });
+    expect(f.ownerId).toBe(x.市场.id);
+    expect(f.projectNode?.projectId).toBe(x.项目!.id);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: x.项目!.id } })).ownerId).toBe(x.项目!.ownerId);
     const 没了 = await 作为(x.市场, () => saveFollowUp({ customerId: "没有这个客户", type: "PHONE", content: "x", status: "已完成", occurredAt: new Date().toISOString() }));
     expect(!没了.ok && 没了.error).toContain("不在了");
   });

@@ -15,7 +15,7 @@
  *                          项目标签字典里的「A 重点推进」就是项目级别 A；S 比 A 高一档，也算重点。不看客户级别
  *   no-follow  暂未跟进   在推的项目里，一条沟通都还没挂上的（FollowUpProject 没有行）。
  *                          例外（11-17）：补建的项目（老客户补的潜客培育）客户身上有过沟通就不算——导入的老客户沟通记在客户上、没挂项目，
- *                          补了项目不等于没人跟过。别的项目照旧只看挂在项目上的沟通（客户名下另一个项目的沟通不算这个项目跟进过）
+ *                          补了项目不等于没人跟过。历史分析回填的（被人领走后还在推的）同样例外。别的项目照旧只看挂在项目上的沟通（客户名下另一个项目的沟通不算这个项目跟进过）
  *   due-soon   3 天内回公海（原叫即将逾期）  在推的线索 / 商机项目里，超时回收日在 即将逾期天数（3 天）以内的；
  *                          回收日和项目页「即将回收」标签同一套算法（timeout.ts 的 超时回收日），只是提前量从 1 天放到 3 天。
  *                          组织规则里「超时回收」没开 = 没有回收日 = 恒为 0
@@ -31,7 +31,9 @@ import { dayjs } from "@/lib/utils";
 import type { 组织规则 } from "./org-rules";
 import { 节点超时天数 } from "./timeout";
 import { 同名们, type 阶段字典 } from "./stage-dict";
-import { 不算补建, 补建创建人 } from "./system-created";
+import { 不算补建, 补建创建人, 历史分析的 } from "./system-created";
+
+const 有过沟通 = { followUps: { some: { deletedAt: null } } } satisfies Prisma.CustomerWhereInput;
 
 /** 能当项目页筛选（/projects?f=…）的卡 */
 export const 项目卡键们 = ["month-new", "key", "no-follow", "due-soon", "month-won"] as const;
@@ -197,7 +199,8 @@ export function 首页卡条件(键: 项目卡键, 规则: 组织规则, 字典:
     case "key":
       return { ...在推, level: { in: [...重点级别] } };
     case "no-follow":
-      return { ...在推, followUps: { none: {} }, NOT: { creatorId: 补建创建人, customer: { followUps: { some: { deletedAt: null } } } } };
+      // 补建的、历史分析回填的（客户身上就是那批旧沟通）：客户有过沟通就不算没跟进。分两条 NOT 写，历史分析的 用 null 安全的写法
+      return { ...在推, followUps: { none: {} }, NOT: [{ creatorId: 补建创建人, customer: 有过沟通 }, { ...历史分析的, customer: 有过沟通 }] };
     case "due-soon":
       return 即将逾期粗筛(规则, 字典, 今) ?? { id: { in: [] } };
     case "month-won": {

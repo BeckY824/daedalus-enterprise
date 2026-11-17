@@ -19,7 +19,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 试跑, 重新试跑 } from "@/lib/enterprise-import/report";
-import { 写一批 as 只写一批, 定这批业务线 } from "@/lib/enterprise-import/apply";
+import { 写一批 as 只写一批, 定这批业务线, 沟通没对上项目话 } from "@/lib/enterprise-import/apply";
 import { 撤回一批, 恢复一批 } from "@/lib/enterprise-import/revert";
 import type { 读出的表 } from "@/lib/enterprise-import/excel";
 import type { 实体 } from "@/lib/enterprise-import/types";
@@ -176,6 +176,17 @@ describe("项目模式", () => {
     // 恢复后还能再撤
     expect((await 撤回一批(批次Id, 我)).留下数).toBe(0);
     expect(await prisma.project.count()).toBe(0);
+  });
+
+  // 11-17 客户定沟通必须挂项目：没对上项目的沟通行不导入，结果的「没写进去」名单里列出、写明原因；对上的照导
+  it("沟通没对上项目的行（F2 没挂商机）不导入，结果里列出原因；挂上项目的 F1 照导", async () => {
+    const { 批次Id } = await 导([客户表(), 商机表([["O1", "C1", "服务器采购", "解决方案", "", "", "", ""]]), 跟进表()]);
+    expect(await prisma.followUp.findFirst({ where: { content: "上门看样" } })).toBeNull();
+    expect(await prisma.followUp.count({ where: { content: "聊了方案" } })).toBe(1);
+    const 批 = await prisma.entImportBatch.findUniqueOrThrow({ where: { id: 批次Id } });
+    expect(批.failed).toBe(1);
+    const 没写进 = JSON.parse(批.note ?? "[]") as { 实体: string; 外部ID: string; 原因: string }[];
+    expect(没写进).toEqual([expect.objectContaining({ 实体: "followup", 外部ID: "F2", 原因: 沟通没对上项目话 })]);
   });
 
   it("导入后项目被人接着用了（拉了成员）：项目留下，原因记下来；挂在上面的那条跟进照撤", async () => {

@@ -8,6 +8,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
+import { 补全动作桩 } from "./helpers/action-stubs";
 
 let browser: Browser, bundle: string;
 const 老版本错 = `throw new 老版本类('Server Action "7f00aa11bb22cc33dd44ee55ff6677889900aabbcc" was not found on the server. \\nRead more: https://nextjs.org/docs/messages/failed-to-find-server-action')`;
@@ -15,14 +16,14 @@ const plugin: Plugin = { name: "follow-habit-ui", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   const 空跑 = "async()=>({ok:true})";
   stub(/coach-topic-actions$/, "const f=async()=>({ok:true});export const 发主题动作=f,回复主题动作=f,关闭主题动作=f,删主题动作=f;");
-  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>window.__方式们??null;export const 发起主体选项=async()=>window.__主体们??null;export const 我常用的沟通方式=async()=>window.__习惯??null;");
+  stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>window.__方式们??null;export const 发起主体选项=async()=>window.__主体们??null;export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
-  stub(/^\.\.\/actions$/, `import {UnrecognizedActionError as 老版本类} from 'next/dist/client/components/unrecognized-action-error';const f=${空跑};export const 改项目节点=f,终止项目进程=f,勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=async(...a)=>{(window.__记||=[]).push(a);if(window.__老版本){${老版本错}}return{ok:true,followUpId:'f9'}},判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);if(window.__老版本){${老版本错}}return{ok:true}},改项目画像Action=f,改项目沟通=f,删项目沟通=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
+  stub(/^\.\.\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", `import {UnrecognizedActionError as 老版本类} from 'next/dist/client/components/unrecognized-action-error';const f=${空跑};export const 改项目节点=f,终止项目进程=f,勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=async(...a)=>{(window.__记||=[]).push(a);if(window.__老版本){${老版本错}}return{ok:true,followUpId:'f9'}},判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);if(window.__老版本){${老版本错}}return{ok:true}},改项目画像Action=f,改项目沟通=f,删项目沟通=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`));
   stub(/^\.\.\/commission-actions$/, `const f=${空跑};export const 存项目底价=f,存提成分配=f,更正实际提成=f;`);
-  stub(/(^|\/)schedule-actions$/, `const f=${空跑};export const 改定时分配=f,取消定时分配=f,定时分配现在分=f;`);
+  stub(/(^|\/)schedule-actions$/, 补全动作桩("src/app/(app)/leads/schedule-actions.ts", `const f=${空跑};export const 改定时分配=f,取消定时分配=f,定时分配现在分=f;`));
   stub(/^\.\.\/payment-actions$/, `const f=${空跑};export const 记回款=f,删回款=f;`);
-  stub(/readonly-card-actions$/, "export const 打开客户只读卡Action=async()=>({ok:false,error:'打不开'});");
+  stub(/readonly-card-actions$/, 补全动作桩("src/app/(app)/projects/[id]/readonly-card-actions.ts", "export const 打开客户只读卡Action=async()=>({ok:false,error:'打不开'});"));
   stub(/^\.\/blocker-actions$/, `const f=${空跑};export const 发布卡点Action=f,认领卡点Action=f,完成卡点Action=f,删卡点Action=f,存卡点默认Action=f,存卡点角色开关Action=f,新增原因Action=f,改原因名Action=f,改原因状态Action=f,删原因Action=f,合并原因Action=f,我的卡点Action=async()=>[];`);
   stub(/customers\/\[id\]\/ai$/, `export const parseFollowUpDraft=async()=>window.__解析??({ok:false,error:"未启用"});`);
   stub(/^\.\.\/relate-actions$/, `const f=${空跑};export const 加关联客户Action=f,改客户身份Action=f,解除关联客户Action=f,加关联联系人Action=f,改联系人角色立场Action=f,解除关联联系人Action=f,搜项目联系人=async()=>[];`);

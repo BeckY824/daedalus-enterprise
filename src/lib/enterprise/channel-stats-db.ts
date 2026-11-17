@@ -18,11 +18,15 @@ import { 企业版 } from "./switch";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 列表里的项目, 公海名单条件 } from "@/lib/project/list";
 import { 算分期统计, type 分期统计, type 看板区间 } from "./channel-dash";
-import { 是补建 } from "@/lib/project/system-created";
+import { 是补建, 不算历史分析 } from "@/lib/project/system-created";
 
-/** 归到这批渠道的项目（两种来源都捞，见文件头）；渠道看板 channel-dash-db.ts 也用这一个 */
+/**
+ * 归到这批渠道的项目（两种来源都捞，见文件头）；渠道看板 channel-dash-db.ts 也用这一个。
+ * 历史分析回填的项目不算（system-created.ts）：挂在有来源的老客户名下时会按客户来源落进渠道，把「全部」和各档撑大
+ */
 export const 渠道项目条件 = (渠道ids: string[]) => ({
   OR: [{ channelId: { in: 渠道ids } }, { channelId: null, customer: { channelId: { in: 渠道ids } } }],
+  ...不算历史分析,
 });
 
 /**

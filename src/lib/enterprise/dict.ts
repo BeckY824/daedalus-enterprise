@@ -19,7 +19,7 @@ import { 读组织 } from "./org";
 import { 没设业务角色, 没业务角色不能新建话 } from "./permissions";
 import { 规则开着 } from "./rules";
 import { 规则 } from "./rules-table";
-import { 方式对类型, 类型对方式 } from "@/lib/follow-method";
+import { 方式对类型, 补的方式 } from "@/lib/follow-method";
 
 export * from "./dict-kinds";
 export * from "./assign-use";
@@ -519,7 +519,8 @@ export async function 定沟通方式(method: unknown, type: string, 原方式?:
   if (!n) {
     // 改已有的、没带方式（旧入口）：type 没变就留着原来的方式，不把 Telegram 冲成「其他方式」
     if (原方式 && 方式对类型(原方式) === type) return { ok: true, method: 原方式, type };
-    return { ok: true, method: 类型对方式(type), type };
+    // 「其他」类没选方式：留空（11-17，显示「—」），不自动填成「其他方式」；别的类型按类型补
+    return { ok: true, method: 补的方式(type), type };
   }
   if (n !== 原方式) {
     const 查 = await 选的原因("followMethod", n);

@@ -6,6 +6,8 @@ import { 看全部 } from "@/lib/team-scope";
 import { 列附件, 存附件, 清孤儿 } from "@/lib/attachments";
 import { 附件上限字节, 每条最多, 超限说明, 规整文件名, 读大小, 不收说明, 收所有文件, 猜音频类型 } from "@/lib/attachment-rules";
 import { 读归属, 认父记录 } from "./access";
+import { 凭票认首条沟通 } from "@/lib/enterprise/first-follow-ticket";
+import { 首条附件票头 } from "@/lib/attachment-rules";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 正在切换视图, 视图拒绝响应 } from "@/lib/enterprise/view-as";
 import { 是附件分类, 是项目附件分类, 算必填的项目附件分类 } from "@/lib/enterprise/customer-v2";
@@ -100,7 +102,9 @@ export async function POST(req: Request) {
   const 量词 = 叫个[0];
   if (不收) return NextResponse.json({ error: 不收 }, { status: 415 });
 
-  const 父 = await 认父记录(挂在, true);
+  // 建档时首条沟通的附件（11-18）：带着建档那一下签的票、是录入人本人，就认；票不对照原规矩（access.ts 不放宽）
+  const 凭票 = "followUpId" in 挂在 ? await 凭票认首条沟通(req.headers.get(首条附件票头), 我.id, String(挂在.followUpId)) : null;
+  const 父 = 凭票 ?? await 认父记录(挂在, true);
   if ("错" in 父) return NextResponse.json({ error: 父.错 }, { status: 父.状态 });
   if (await prisma.attachment.count({ where: 挂在 }) >= 每条最多) {
     return NextResponse.json({ error: `一条最多挂 ${每条最多} ${叫个}，先删掉几${量词}不要的` }, { status: 400 });

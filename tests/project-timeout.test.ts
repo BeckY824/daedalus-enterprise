@@ -6,6 +6,7 @@
  *   - 记沟通：开了超时回收的线索 / 商机阶段要下一步时间；谁能记；跟进推后起点
  *   - 不是企业版（CRM_ENTERPRISE 不设）：Setting 里开着也不扫、记沟通不要下一步时间
  */
+import { 沟通不是组员话, 沟通项目在公海话 } from "@/lib/project/follow-needs-project";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ 团队: false }));
@@ -288,17 +289,17 @@ describe("扫库收回", () => {
       expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).nextStepAt).toBeNull();
     });
 
-    it("谁能记：负责人、系统管理员；别人、进了组的成员、在公海里的都不行", async () => {
-      // V3.5.1：沟通是项目内容，负责人本人和系统管理员（老板）能记；组员只能看
-      const 拒 = { ok: false, error: "只有项目负责人或系统管理员能记沟通，项目组成员只能看" };
+    it("谁能记：负责人、系统管理员、进了组的组员（11-17）；别人、在公海里的都不行", async () => {
+      // V3.5.1：负责人本人和系统管理员（老板）能记；11-17 客户定：已进组的组员也能记，别人不行
+      const 拒 = { ok: false, error: 沟通不是组员话 };
       const p = await 项目(乙.id);
       expect(await 记项目沟通(丙, p.id, 沟通())).toEqual(拒);
       await prisma.projectMember.create({ data: { projectId: p.id, userId: 丙.id, inviteStatus: "JOINED", invitedById: 乙.id } });
-      expect(await 记项目沟通(丙, p.id, 沟通())).toEqual(拒);
+      expect((await 记项目沟通(丙, p.id, 沟通())).ok).toBe(true);
       expect((await 记项目沟通(老板, p.id, 沟通())).ok).toBe(true);
       expect((await 记项目沟通(乙, p.id, 沟通())).ok).toBe(true);
       await prisma.project.update({ where: { id: p.id }, data: { pooledAt: new Date() } });
-      expect(await 记项目沟通(乙, p.id, 沟通())).toEqual({ ok: false, error: "这个项目在公海里，先领取再记" });
+      expect(await 记项目沟通(乙, p.id, 沟通())).toEqual({ ok: false, error: 沟通项目在公海话 });
       expect(await 记项目沟通(乙, "没这个", 沟通())).toMatchObject({ ok: false, error: expect.stringContaining("不在了") });
     });
   });

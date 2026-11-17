@@ -14,6 +14,7 @@
  * 业务线（A1，11-01 16:1x）：内贸 / 外贸 / 暂不分配三选一，带了分配方式（企业版新弹窗）就必填；没传分配方式的老调用不要求
  * 项目所在地（11-02）：选填，四格 + 详细地址，规整同编辑项目；弹窗按所在地给业务线建议，人确认（提交即确认），服务端不按地址改线
  */
+import { 签首条附件票 } from "@/lib/enterprise/first-follow-ticket";
 import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 不能当负责人 } from "@/lib/owners";
@@ -56,9 +57,11 @@ export type 给客户建项目输入 = {
   跟进: 向导跟进;
   /** 项目挂哪位联系人；不给 = 这位客户的主要联系人（没有就不挂） */
   联系人Id?: string | null;
+  /** 弹窗里给首条沟通挑了截图 / 附件（11-18）：交了 true 才回附件票，同 建档向导 */
+  要传附件?: boolean;
 };
 
-type 结果 = { ok: true; projectId: string; 提示?: string; 转走?: boolean; 看不到客户了?: boolean } | { ok: false; error: string };
+type 结果 = { ok: true; projectId: string; 提示?: string; 转走?: boolean; 看不到客户了?: boolean; 附件票?: { followUpId: string; 票: string } } | { ok: false; error: string };
 
 /** 跟进节点（和 规整向导 企业版那段同一套口径；11-05 去掉明确回复） */
 function 认节点和回复(f: 向导跟进): { 节点: string } | { error: string } {
@@ -242,10 +245,10 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
       const 留下: 留下的活 | undefined = 转?.留下;
       // 企业版客户状态跟着项目算：多了一个项目（没项目的客户从空变潜在）
       await 看全部(() => 跟着项目重算(tx, 状态开, [customerId]));
-      return { projectId: p.id, 留下, 同事待分配: 转?.同事待分配 ?? [] };
+      return { projectId: p.id, followUpId: f.id, 留下, 同事待分配: 转?.同事待分配 ?? [] };
     }));
     if (!建.ok) return { ok: false, error: 建.超 };
-    const { projectId, 留下, 同事待分配 } = 建.值;
+    const { projectId, followUpId, 留下, 同事待分配 } = 建.值;
 
     await recordAudit({
       user: me, action: "create", entity: "Project", entityId: projectId,
@@ -267,7 +270,9 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     const 去向 = { ...(分了 ?? {}), ...(留下 ? { 提示: `已指派给 ${负责人.name}`, 转走: true } : {}) };
     // 分走之后这位客户我可能看不到了（市场转给销售）：弹窗据此离开客户页，留着刷新就是 404
     const 还看得到 = !去向.转走 || !!(await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } }));
-    return { ok: true, projectId, ...去向, ...(还看得到 ? {} : { 看不到客户了: true }) };
+    // 首条沟通的截图 / 附件（11-18）：同 建档向导，建好这一刻签票给录入人
+    const 附件票 = 输入.要传附件 === true ? { followUpId, 票: await 签首条附件票(me.id, followUpId) } : null;
+    return { ok: true, projectId, ...去向, ...(还看得到 ? {} : { 看不到客户了: true }), ...(附件票 ? { 附件票 } : {}) };
   } catch (e) {
     return 不在了(e);
   }

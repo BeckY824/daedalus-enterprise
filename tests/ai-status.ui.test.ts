@@ -12,6 +12,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
+import { 补全动作桩 } from "./helpers/action-stubs";
 
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "ai-status-boundaries", setup(b) {
@@ -19,6 +20,7 @@ const plugin: Plugin = { name: "ai-status-boundaries", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
   stub(/^next\/link$/, "export default function L({children,...p}){return <a {...p}>{children}</a>}");
   stub(/^next\/dynamic$/, "export default ()=>()=>null;");
+  stub(/customers\/\[id\]\/actions$/, 补全动作桩("src/app/(app)/customers/[id]/actions.ts", "export const 沟通可选项目=async()=>(window.__可选??{ok:true,项目们:null,能建项目:true});"));
   stub(/dashboard\/apply$/, "export const applyProposal=async p=>{if(window.__抛===p.id)throw new Error('断网');(window.__交||=[]).push(p);return{ok:true,撤销:{kind:'add_followup',customerId:'c',id:p.id}}};export const undoProposal=async u=>{if(window.__抛===u.id)throw new Error('断网');(window.__撤||=[]).push(u.id);return{ok:true}};");
   stub(/card-scan\/originals$/, "export const 取走名片原图=()=>null,记下刚建的=()=>{},忘掉刚建的=()=>{};");
   stub(/attachment-upload$/, "export const 传附件=async()=>({ok:true});");

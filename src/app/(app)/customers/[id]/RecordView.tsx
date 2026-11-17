@@ -33,6 +33,7 @@ import { useConsequence } from "@/components/ConsequenceDialog";
 import TransferBox, { type 转让结果 } from "./TransferBox";
 import { showUndo } from "@/components/UndoBar";
 import { 跟进类型们, FOLLOW_TYPE_MAP, FOLLOW_STATUSES, DECISION_STATUSES, FOLLOW_RECORD_STATUS_COLOR } from "@/lib/constants";
+import { 跟进方式名, 筛选方式名 } from "@/lib/follow-method";
 import { 成员选项, dayjs, duration, fmtDate, fmtDateTime, initial, avatarColor, AVATAR_TEXT, 独自一人 } from "@/lib/utils";
 import { RowLink, FollowStatusTag, DecisionStatusTag, FOLLOW_TYPE_ICON } from "@/components/ui";
 import { useBusiness } from "@/lib/business-client";
@@ -58,6 +59,7 @@ import { 打开AI浮窗, 登记智能总结 } from "@/lib/ai-float";
 import LinkedCustomers from "./LinkedCustomers";
 import { FoldSplit, ProjectFold, 模块钮色, type 连体主钮, type 连体色 } from "../../projects/[id]/ProjectFold";
 import { 客户详情左栏, 客户详情待办 } from "../../projects/[id]/card-names";
+import { 沟通都不能记话 } from "@/lib/project/follow-needs-project-text";
 import NewProjectEntry from "./NewProjectEntry";
 import { 两行, 项目忙说法 } from "../../projects/[id]/project-menu";
 import { 客户页摆法, 级别选项, 企业级别, 拼地址, 地址叫法, 简称上限 } from "@/lib/enterprise/customer-v2";
@@ -197,6 +199,7 @@ export default function RecordView({
   客户属性选项 = [],
   字典释义,
   新建项目 = null,
+  能新建项目 = true,
   跟进去处 = null,
   转让原因,
   待办计划 = [],
@@ -602,32 +605,54 @@ export default function RecordView({
     });
   }
 
+  /**
+   * 组员能记（11-17 客户定，限本项目的组员）：只能看的客户上有我已进组的在推项目，就照样开记沟通框——
+   * 只新记沟通（框里不给待办 / 提醒、不顺带待办 / 计划，只读 = true），关联项目只列这几个；改、删已有的照旧不给
+   */
+  const 组员可记 = 全只读 && !管理员只读 && 去项目跟进 && (跟进去处 ?? []).some((p) => !p.结束 && p.能记 === true);
   function openFollow(record: FollowUpRow | null, aiText?: string) {
-    if (全只读) return void 说就地(管理员只读 ? "管理员只能看，不能改任何数据" : 全只读话);
+    if (全只读 && !(组员可记 && !record?.id)) return void 说就地(管理员只读 ? "管理员只能看，不能改任何数据" : 全只读话);
     setFollowInit({ record, aiText });
     setFollowOpen(true);
   }
 
-  const 能建项目 = !!(摆法.新建项目 && 新建项目 && !只读);
+  const 能建项目 = !!(摆法.新建项目 && 新建项目 && !只读 && 能新建项目);
   /** 公海里的客户先领取再建项目（11-05）：按钮照摆，点了说先领取，服务端也拦 */
   function 开建项目() {
     if (customer.pool) return void 说就地(公海客户先领取话);
     set建项目开着(true);
   }
   /**
+   * 沟通必须挂项目（11-17）：首页 AI 记沟通卡上「去建项目」带 ?建项目=1 进来——能建项目就直接打开新建项目，参数用完去掉（刷新不再弹）。
+   * 不用 useSearchParams：这页的界面测试桩里没有它
+   */
+  useEffect(() => {
+    let q: URLSearchParams;
+    try { q = new URLSearchParams(window.location.search); } catch { return; }
+    if (q.get("建项目") !== "1") return;
+    // 等首屏画完再去参数、开表（不在 effect 里同步改状态；开发模式 effect 跑两遍时第一遍的定时器被清掉，参数还在）
+    const t = window.setTimeout(() => {
+      q.delete("建项目");
+      window.history.replaceState(window.history.state, "", `${window.location.pathname}${q.size ? `?${q}` : ""}${window.location.hash}`);
+      if (能建项目) 开建项目();
+    }, 0);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在进页面时看一次
+  }, []);
+  /**
    * 「新建沟通」（11-01 会议 §5：客户详情也不跳转，弹窗填）：企业版只用项目时，这位客户有没结束的项目（主客户的 + 关联进来的）
    * 就开记跟进的弹窗，「关联项目」默认选最近动过的那个，保存走项目那条（记项目沟通Action，同项目详情）；
    * 一个在推的项目都没有就开新开项目弹窗（自动带上这位）。别的版本照旧就地记一笔
    */
   const 记沟通项目 = 去项目跟进
-    // X-143：只列我能记的（和项目详情记沟通同一条「能管项目」；组员不列）。老数据 / 夹具没这一项的照旧列
-    ? (跟进去处 ?? []).filter((p) => !p.结束 && p.能记 !== false).map((p) => ({ id: p.id, name: p.主 ? p.名 : `${p.名}（关联）` }))
+    // X-143：只列我能记的（和项目详情记沟通同一条判断：负责人、11-17 起加已进组的组员）。老数据 / 夹具没这一项的照旧列；只读客户上只认明说能记的
+    ? (跟进去处 ?? []).filter((p) => !p.结束 && (组员可记 ? p.能记 === true : p.能记 !== false)).map((p) => ({ id: p.id, name: p.主 ? p.名 : `${p.名}（关联）` }))
     : 在推项目;
   const 跟进按钮字 = "记一条沟通";
   function 点跟进() {
     // 只读的客户（虚线下属、市场成员相关）：先说只能看，别说「还没有在推的项目」——项目可能有，只是他看不到（11-03 D3-3）
-    if (全只读) return void 说就地(全只读话);
-    // P-界面-35（dt.follownp）：没有能记的在推项目也照常打开，这条记为客户沟通（弹框里写明）；不自动建项目，项目一定手动新建
+    if (全只读 && !组员可记) return void 说就地(全只读话);
+    // 沟通必须挂项目（11-17，取代 P-界面-35）：没有能记的在推项目也打开，弹框里说先建项目、给「新建项目」（不自动建项目）；写好的内容留在框里
     openFollow(null);
   }
 
@@ -760,7 +785,8 @@ export default function RecordView({
       content: text,
       status: "已完成",
       occurredAt: new Date().toISOString(),
-      projectId: 在推项目?.[0]?.id ?? null,
+      // 沟通必须挂项目（11-17）：不替人挑，服务端按「能记的在推项目只有一个就挂它，几个要选、没有就拦」定；拦下时原文留在速记框里
+      projectId: 在推项目?.length === 1 ? 在推项目[0].id : null,
     });
     setQuickSaving(false);
     if (!res.ok) return void set速记话({ 话: res.error, 错: true });
@@ -1025,7 +1051,8 @@ export default function RecordView({
   const 筛选条 = (
     <div className="rec-filters">
       {["全部", ...跟进类型们(外贸).map((t) => t.value), ...(摆法.沟通汇总 ? [] : ["CONTRACT"])].map((k) => {
-        const label = k === "全部" ? "全部" : k === "CONTRACT" ? 叫 : FOLLOW_TYPE_MAP[k]?.label ?? k;
+        // 「其他」这一档既有选了其他方式的、也有没填方式的（显示「—」）：和看板筛选同一个叫法，不叫「其他记录」（11-17）
+        const label = k === "全部" ? "全部" : k === "CONTRACT" ? 叫 : k === "OTHER" ? 筛选方式名(k) : FOLLOW_TYPE_MAP[k]?.label ?? k;
         return (
           <button type="button" key={k} className={`rec-chip${filter === k ? " rec-chip-on" : ""}`} aria-pressed={filter === k} onClick={() => setFilter(k)}>
             {label}
@@ -1672,6 +1699,8 @@ export default function RecordView({
         contacts={contacts}
         opportunities={[]}
         projects={记沟通项目}
+        新建项目={去项目跟进 ? (能建项目 ? 开建项目 : null) : undefined}
+        没项目说法={去项目跟进 && (跟进去处 ?? []).some((p) => p.主 && !p.结束) ? 沟通都不能记话 : undefined}
         aiEnabled={aiEnabled}
         只读={只读}
       />
@@ -1944,7 +1973,7 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
     <motion.div id={`fu-${f.id}`} className="rec-tl-item rec-sum-item" layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ delay: Math.min(index, 8) * 间隔, duration: 时长.base, ease: 曲线.ease }}>
       <div className="rec-tl-body">
         <div className="rec-tl-head">
-          <span className="rec-sum-type">{f.method || meta.label}</span>
+          <span className="rec-sum-type">{跟进方式名(f)}</span>
           {时间}
           {f.status !== "已完成" && (
             <Tag color={FOLLOW_RECORD_STATUS_COLOR[f.status] ?? "default"} style={{ margin: 0 }}>
@@ -1973,7 +2002,7 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
       </div>
       <div className="rec-tl-body">
         <div className="rec-tl-head">
-          <span className="rec-tl-type">{f.method || meta.label}</span>
+          <span className="rec-tl-type">{跟进方式名(f)}</span>
           {f.title?.trim() && <span className="rec-tl-title" title={f.title}>· {f.title}</span>}
           {/* 商机页 10-28 删了（/opportunities 只剩转项目的跳转）：只标出是哪个商机，不再做成链接 */}
           {f.opportunity && !不挂商机 && <span className="rec-tl-order" title={`关联商机：${f.opportunity.name}`}>关联商机：{f.opportunity.name}</span>}

@@ -5,7 +5,7 @@ import { hasVisibleText } from "@/lib/form-validation";
 import { 版本冲突, 版本条件 } from "@/lib/edit-version";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { 认回打码号, 查电话, 号码带着字 } from "@/lib/phone";
+import { 认回打码号, 录入电话 } from "@/lib/phone";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { 唯一负责人, 负责人候选 } from "@/lib/owners";
@@ -145,14 +145,15 @@ export async function saveChannel(input: {
   const 原号 = input.id ? (await prisma.channel.findUnique({ where: { id: input.id }, select: { phone: true } }))?.phone : null;
   const 号 = 认回打码号(input.phone?.trim() || null, 原号);
   if (号 && 号.includes("*")) return { ok: false as const, error: "电话里不能有 *" };
-  // 未改的历史号码与准确打码返回保持原文；只规范新填写/更改的号码。
-  const 电话 = 号 === 原号 ? { ok: true as const, phone: 号 ?? "" } : 查电话(号, { 必填: false });
+  /*
+    未改的历史号码与准确打码返回保持原文；只规范新填写/更改的号码。
+    号码以外的字不再截掉、原文悄悄塞进备注（11-17 复盘第 4 类）：整格拦下，说清为什么（录入电话）
+  */
+  const 电话 = 号 === 原号 ? { ok: true as const, phone: 号 ?? "" } : 录入电话(号, { 必填: false });
   if (!电话.ok) return { ok: false as const, error: 电话.error };
-  const 原文 = 号 && 号 !== 原号 && 号码带着字(号) ? `原始电话：${号}` : "";
   // 主渠道还没有的，到这儿（名字、电话都查过了）才建，免得校验没过留下一个空主渠道
   if (企业列 && !企业列.mainId) 企业列.mainId = (await 找或建主渠道(企业列.platform)).id;
-  const 备注 = input.remark?.trim() || "";
-  const remark = 原文 && !备注.includes(原文) ? [备注, 原文].filter(Boolean).join("\n") : 备注;
+  const remark = input.remark?.trim() || "";
   const data = {
     name,
     phone: 电话.phone || null,

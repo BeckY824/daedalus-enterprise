@@ -150,6 +150,41 @@ describe("规则开关", () => {
     expect(await 规则开着("按组织看客户")).toBe(false);
   });
 
+  it("「超时未跟进自动转」：没拨过算开；只有能管设置的系统管理员（业务角色）能拨，销售、管理员（只读）、账号 ADMIN 没业务角色、勾了「不管设置」的都拦，一行不写", async () => {
+    expect(await 规则开着("超时自动转")).toBe(true);
+    const 没角色的ADMIN = (await prisma.user.create({ data: { email: "a3", name: "账号管理员", title: "", role: "ADMIN", password: "x" } })).id;
+    await 设不管设置(总管, true);
+    const 前 = await 记录();
+    for (const [谁, 账号] of [[销售, "SALES"], [主管, "MANAGER"], [管员, "ADMIN"], [没角色的ADMIN, "ADMIN"], [总管, "SALES"]] as const) {
+      当(谁, 账号);
+      expect(await 设规则(false, "超时自动转")).toMatchObject({ ok: false, error: "只有总管理能改组织架构" });
+    }
+    expect(await prisma.setting.count({ where: { key: 规则.超时自动转.key } })).toBe(0);
+    expect(await 规则开着("超时自动转")).toBe(true);
+    expect(await 记录()).toEqual(前);
+    当(老板, "ADMIN");
+    expect(await 设规则(false, "超时自动转")).toEqual({ ok: true });
+    expect(await 规则开着("超时自动转")).toBe(false);
+    expect((await 记录()).at(-1)).toEqual({ entity: "Setting", summary: "关掉规则「超时未跟进自动转」" });
+  });
+
+  it("「超时未跟进自动转」从关拨到开：还在走的链从现在重新计时，留痕写几条；本来开着再拨开不动链", async () => {
+    const c = await prisma.customer.create({ data: { name: "某客户", phone: "13900001234", salesOwnerId: 销售 } });
+    const p = await prisma.project.create({ data: { name: "某线索", customerId: c.id, ownerId: 销售, creatorId: 销售, phase: "线索", node: "潜客培育" } });
+    const 旧 = new Date(Date.now() - 3 * 3_600_000);
+    await prisma.entReplyOverdue.create({ data: { projectId: p.id, anchorAt: 旧, holderId: 销售, since: 旧, overdueAt: 旧 } });
+    // 本来开着（没拨过）再拨开：不动链
+    expect(await 设规则(true, "超时自动转")).toEqual({ ok: true });
+    expect(await prisma.entReplyOverdue.findUniqueOrThrow({ where: { projectId: p.id } })).toMatchObject({ since: 旧, overdueAt: 旧 });
+    expect((await 记录()).at(-1)!.summary).toBe("打开规则「超时未跟进自动转」");
+    expect(await 设规则(false, "超时自动转")).toEqual({ ok: true });
+    expect(await 设规则(true, "超时自动转")).toEqual({ ok: true });
+    const 链 = await prisma.entReplyOverdue.findUniqueOrThrow({ where: { projectId: p.id } });
+    expect(链.overdueAt).toBeNull();
+    expect(链.since.getTime()).toBeGreaterThan(旧.getTime());
+    expect((await 记录()).at(-1)!.summary).toBe("打开规则「超时未跟进自动转」，1 条在计时的线索从现在重新计时");
+  });
+
   it("接口直调传别的东西拦掉", async () => {
     expect(await 设规则("yes" as unknown as boolean)).toMatchObject({ ok: false });
     expect(await prisma.setting.count({ where: { key: 规则.按组织看客户.key } })).toBe(0);

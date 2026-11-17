@@ -4,22 +4,26 @@
  *   一个表单分三段（客户 / 项目 / 首条沟通），没有「下一步」；项目是开关：客户页「新建客户」默认关，新线索开着并锁住
  *   默认值：项目负责人 = 我（P-界面-33）；下一步时间 = 3 天后（P-界面-34）
  *   号码、客户名离开输入框自动查重；按钮不变灰，点了就地标红缺的格、写「还差 N 项」
- *   没开项目：走「只建客户」（客户沟通、客户业务线），不交项目
+ *   没开项目：走「只建客户」（客户业务线），不交项目；企业版首条沟通记在新客户自带的潜客培育项目上（11-17）
  *   销售选自动分配：就地黄条 + 按钮「建好并分出去」，不叠确认框
  *   Windows 1024 / 1280 / 1366 + 超长客户名：弹窗里不横向溢出，「建好」在可视区点得中
  *   市场成员选自动分配（P-转-26，用户 11-17）：业务线那格换成只读「按客户区域自动定」，不交业务线；三档宽度不溢出
+ *   首条沟通的方式按个人习惯默认（11-18）；带回了草稿的以草稿为准
+ *   首条沟通下选填「截图 / 附件」（11-18）：选文件、粘贴截图都行；建档交 要传附件，建好凭回来的票逐个传、挂在首条沟通上（票走请求头）；没开项目不摆挑选
+ *   项目开关关着也摆「指定回复时间」，填了就自动打开「有项目」（字段挂在项目上）；「分配时间」照旧只在指定 / 自动分配时出现（11-18）
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
+import { 补全动作桩 } from "./helpers/action-stubs";
 
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "ent-create-modal", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__刷新=(window.__刷新??0)+1},push(u){(window.__跳=window.__跳??[]).push(u)},replace(){}});export const usePathname=()=>'/customers';");
   stub(/^next\/link$/, "export default function L({href,children,prefetch,...p}){return <a href={href} {...p}>{children}</a>}");
-  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;");
+  stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
   // 建档两个 server action：记下交了什么，回成功
   stub(/^\.\.\/actions$/, "export const 建档向导=async(x)=>{(window.__调||=[]).push(['建档向导',x]);return window.__回??{ok:true,customerId:'c1',projectId:'p1'}};export const 建档只建客户=async(x)=>{(window.__调||=[]).push(['建档只建客户',x]);return {ok:true,customerId:'c2',projectId:null}};");
   stub(/customers\/actions$/, "export const checkDuplicate=async()=>null;export const 推荐人候选=async()=>[];");
@@ -43,12 +47,12 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function 开(w: number, 设: Record<string, unknown> = {}): Promise<Page> {
+async function 开(w: number, 设: Record<string, unknown> = {}, 预存: Record<string, string> = {}): Promise<Page> {
   const page = await browser.newPage({ viewport: { width: w, height: 800 } }); page.setDefaultTimeout(5000);
   await page.route("http://npm.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://npm.test");
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
-  await page.evaluate((s) => { localStorage.clear(); Object.assign(window, s); }, 设);
+  await page.evaluate(([s, 存]) => { localStorage.clear(); for (const [k, v] of Object.entries(存)) localStorage.setItem(k, v); Object.assign(window, s); }, [设, 预存] as const);
   await page.addScriptTag({ content: bundle });
   await page.getByRole("dialog").getByText("首条沟通").first().waitFor();
   return page;
@@ -60,7 +64,7 @@ const 选 = async (page: Page, 标签: string, 项: string) => {
 };
 const 三天后 = () => { const d = new Date(Date.now() + 3 * 864e5); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
-it("新建客户：一个表单、没有「下一步」；项目开关默认关、没有项目那几格；首条沟通标明算客户沟通；下一步时间默认 3 天后", async () => {
+it("新建客户：一个表单、没有「下一步」；项目开关默认关、没有项目那几格；首条沟通标明记在潜客培育项目上；下一步时间默认 3 天后", async () => {
   const page = await 开(1280);
   try {
     const 框 = page.getByRole("dialog");
@@ -69,7 +73,8 @@ it("新建客户：一个表单、没有「下一步」；项目开关默认关�
     expect(await 开关.getAttribute("aria-checked")).toBe("false");
     expect(await 开关.isDisabled()).toBe(false);
     expect(await 框.getByLabel("项目名称").count()).toBe(0);
-    await 框.getByText("没开项目，记成客户沟通").waitFor();
+    // 企业版沟通必须挂项目（11-17）：没开项目时首条沟通记在新客户自带的潜客培育项目上（M-公海-14）
+    expect(await 框.getByTestId("wizard-follow-where").innerText()).toBe("没开项目，记在自动建的「潜客培育」项目上");
     expect(await 框.getByLabel("下一步时间").inputValue()).toBe(三天后());
     // 打开开关：项目那几格就地展开；项目负责人默认我（P-界面-33）
     await 开关.click();
@@ -387,5 +392,181 @@ it("企业版联系人姓名选填：空名 + 只有多加的号码也能交", a
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
     const 交 = (await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 联系人: Record<string, unknown> };
     expect(交.联系人).toMatchObject({ name: "", 号码们: [{ kind: "wechat", value: "wx_buyer01" }] });
+  } finally { await page.close(); }
+});
+
+it("首条沟通的方式按个人习惯默认（11-18），建好交的就是它；填默认不算打字、不留草稿", async () => {
+  const page = await 开(1280, { __习惯: { type: "WECHAT", method: "微信沟通" } });
+  try {
+    const 框 = page.getByRole("dialog");
+    const 方式 = 框.getByLabel("沟通方式", { exact: true }).locator("xpath=ancestor::div[contains(@class,'ant-select')][1]");
+    await expect.poll(() => 方式.innerText()).toContain("微信沟通");
+    expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.includes("项目建档向导")).length)).toBe(0);
+    await 框.getByLabel("号码", { exact: true }).fill("13905712266");
+    await 框.getByLabel("客户名称").fill("华东展具");
+    await 框.getByLabel("联系人姓名").fill("王总");
+    await 选(page, "渠道触点", "公司资源");
+    await 选(page, "业务线", "内贸");
+    await 框.getByLabel("沟通内容").fill("微信上要了报价");
+    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
+    const 交 = (await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 跟进: Record<string, unknown> };
+    expect(交.跟进).toMatchObject({ type: "WECHAT", content: "微信上要了报价" });
+  } finally { await page.close(); }
+});
+
+it("带回了草稿（草稿里选过方式）：以草稿为准，个人习惯不盖它", async () => {
+  const 稿 = { 稿: { phone: "", 号码类型: "手机号", 联系人: { name: "", position: "", phone: "", email: "", wechat: "" }, 客户: { name: "上次没建完", school: "", remark: "" }, 项目: { name: "", ownerId: "u1", amount: null, currency: "CNY", remark: "" }, 跟进: { type: "EMAIL", content: "", occurredAt: "2026-11-17 10:00" } } };
+  const page = await 开(1280, { __习惯: { type: "WECHAT", method: "微信沟通" } }, { "daedalus:草稿:u1:项目建档向导": JSON.stringify({ at: Date.now(), v: 稿 }) });
+  try {
+    const 框 = page.getByRole("dialog");
+    await expect.poll(() => 框.getByLabel("客户名称").inputValue()).toBe("上次没建完");
+    await page.waitForTimeout(300);
+    const 方式 = 框.getByLabel("沟通方式", { exact: true }).locator("xpath=ancestor::div[contains(@class,'ant-select')][1]");
+    expect(await 方式.innerText()).toContain("邮件沟通");
+  } finally { await page.close(); }
+});
+
+it.each([1024, 1280, 1366])("Windows %ipx 项目开关关着：也摆「指定回复时间」、不摆「分配时间」；填了自动打开「有项目」，值带过去、建好交在项目上；不溢出", async (w) => {
+  const page = await 开(w);
+  try {
+    const 框 = page.getByRole("dialog");
+    const 开关 = 框.getByRole("switch", { name: "有项目" });
+    expect(await 开关.getAttribute("aria-checked")).toBe("false");
+    expect(await 框.getByLabel("指定回复时间开始").count()).toBe(1);
+    expect(await 框.getByLabel("项目名称").count()).toBe(0);
+    expect(await 框.locator("[data-ge='分配时间']").count()).toBe(0);
+    const 量 = () => page.evaluate(() => {
+      const s = document.querySelector(".cr-sheet") as HTMLElement;
+      const body = document.querySelector(".ant-modal-body") as HTMLElement;
+      return { 表: s.scrollWidth - s.clientWidth, 体: body.scrollWidth - body.clientWidth, 页: document.documentElement.scrollWidth - window.innerWidth };
+    });
+    expect(await 量(), `${w} 关着`).toEqual({ 表: 0, 体: 0, 页: 0 });
+    const 开始 = 框.getByLabel("指定回复时间开始");
+    await 开始.click();
+    await 开始.fill("2026-11-20 15:00");
+    await 开始.press("Enter");
+    await expect.poll(() => 开关.getAttribute("aria-checked")).toBe("true");
+    await 框.getByLabel("项目名称").waitFor();
+    // 打开以后只剩项目块里那一格，值还在
+    expect(await 框.getByLabel("指定回复时间开始").count()).toBe(1);
+    expect(await 框.getByLabel("指定回复时间开始").inputValue()).toBe("2026-11-20 15:00");
+    // 分配时间：指定分配（默认）才出现，照旧
+    expect(await 框.locator("[data-ge='分配时间']").count()).toBe(1);
+    expect(await 量(), `${w} 打开后`).toEqual({ 表: 0, 体: 0, 页: 0 });
+    if (w !== 1280) return;
+    await 框.getByLabel("号码", { exact: true }).fill("13905712266");
+    await 框.getByLabel("客户名称").fill("华东展具");
+    await 框.getByLabel("联系人姓名").fill("王总");
+    await 选(page, "渠道触点", "公司资源");
+    await 框.getByLabel("项目名称").fill("展台项目");
+    await 选(page, "业务线", "内贸");
+    await 框.getByLabel("沟通内容").fill("客户要求周四下午回电");
+    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档向导")).toBeTruthy();
+    const 交 = (await 调(page)).find((x) => x[0] === "建档向导")![1] as { 项目: Record<string, unknown> };
+    expect(交.项目).toMatchObject({ 指定回复开始: "2026-11-20 15:00", 指定回复结束: null });
+  } finally { await page.close(); }
+});
+
+/** 拦下 /api/attachments 的上传：记下网址和请求头，按 __传回 回 */
+async function 接上传(page: Page, 回: (n: number) => { status: number; body: unknown } = () => ({ status: 200, body: { 附件: { id: "a1" } } })) {
+  const 收到: { url: string; 票: string | null; 类型: string | null }[] = [];
+  await page.route((u) => u.pathname.startsWith("/api/attachments"), async (r) => {
+    const 头 = r.request().headers();
+    收到.push({ url: r.request().url(), 票: 头["x-first-follow-ticket"] ?? null, 类型: 头["content-type"] ?? null });
+    const x = 回(收到.length);
+    await r.fulfill({ status: x.status, contentType: "application/json", body: JSON.stringify(x.body) });
+  });
+  return 收到;
+}
+const 填好新客户 = async (page: Page, 带项目: boolean) => {
+  const 框 = page.getByRole("dialog");
+  await 框.getByLabel("号码", { exact: true }).fill("13905712266");
+  await 框.getByLabel("客户名称").fill("华东展具");
+  await 框.getByLabel("联系人姓名").fill("王总");
+  await 选(page, "渠道触点", "公司资源");
+  if (带项目) await 框.getByLabel("项目名称").fill("展台项目");
+  await 选(page, "业务线", "内贸");
+  await 框.getByLabel("沟通内容").fill("客户发来需求截图");
+};
+
+it.each([1024, 1280, 1366])("Windows %ipx 首条沟通下「截图 / 附件」：选文件 + 粘贴截图都挑上，长文件名不横撑；建好交 要传附件，凭票逐个传到首条沟通", async (w) => {
+  const page = await 开(w, { __开关: "锁开", __标题: "新线索", __回: { ok: true, customerId: "c1", projectId: "p1", 附件票: { followUpId: "f1", 票: "ticket-1" } } });
+  try {
+    const 收到 = await 接上传(page);
+    const 框 = page.getByRole("dialog");
+    const 区 = 框.getByTestId("wizard-attachments");
+    await 区.waitFor();
+    expect(await 区.innerText()).toContain("截图 / 附件");
+    const 长名 = `${"客户发来的需求说明截图".repeat(6)}.png`;
+    await 区.locator("input[type=file]").setInputFiles({ name: 长名, mimeType: "image/png", buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]) });
+    await 区.getByText(长名).waitFor();
+    // Ctrl/⌘V 粘截图：焦点在弹窗里（不在输入框里），剪贴板里只有图
+    await 区.click({ position: { x: 2, y: 2 } });
+    const 拦了 = await page.evaluate(() => {
+      const dt = new DataTransfer();
+      dt.items.add(new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "image.png", { type: "image/png" }));
+      const ev = new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true });
+      (document.activeElement ?? document.body).dispatchEvent(ev);
+      return ev.defaultPrevented;
+    });
+    expect(拦了).toBe(true);
+    await expect.poll(() => 区.locator(".follow-att-file").count()).toBe(2);
+    expect(await 区.innerText()).toMatch(/截图-\d{8}-\d{6}\.png/);
+    const 量 = await page.evaluate(() => {
+      const s = document.querySelector(".cr-sheet") as HTMLElement;
+      const body = document.querySelector(".ant-modal-body") as HTMLElement;
+      const 区 = document.querySelector("[data-testid='wizard-attachments']") as HTMLElement;
+      const 框 = 区.getBoundingClientRect();
+      const 出格 = [...区.querySelectorAll(".follow-att-file > *")].filter((e) => { const r = e.getBoundingClientRect(); return r.right > 框.right + 0.5; }).length;
+      return { 表: s.scrollWidth - s.clientWidth, 体: body.scrollWidth - body.clientWidth, 页: document.documentElement.scrollWidth - window.innerWidth, 出格 };
+    });
+    expect(量, `${w}`).toEqual({ 表: 0, 体: 0, 页: 0, 出格: 0 });
+    if (w !== 1280) return;
+    await 填好新客户(page, true);
+    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档向导")).toBeTruthy();
+    const 交 = (await 调(page)).find((x) => x[0] === "建档向导")![1] as { 要传附件?: boolean };
+    expect(交.要传附件).toBe(true);
+    await expect.poll(() => 收到.length).toBe(2);
+    expect(收到.every((x) => x.url.includes("followUpId=f1") && x.票 === "ticket-1")).toBe(true);
+    expect(收到.some((x) => x.url.includes("x-first-follow-ticket") || x.url.includes("票"))).toBe(false);
+  } finally { await page.close(); }
+});
+
+it("截图没传上：建好照旧，底栏写清几个没传上、点「知道了」再走；没挑附件不交 要传附件、不传", async () => {
+  const page = await 开(1280, { __开关: "锁开", __标题: "新线索", __回: { ok: true, customerId: "c1", projectId: "p1", 附件票: { followUpId: "f1", 票: "ticket-1" } } });
+  try {
+    await 接上传(page, () => ({ status: 403, body: { error: "只有项目负责人能传附件，项目组成员只能看" } }));
+    const 框 = page.getByRole("dialog");
+    await 框.getByTestId("wizard-attachments").locator("input[type=file]").setInputFiles({ name: "需求.png", mimeType: "image/png", buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]) });
+    await 填好新客户(page, true);
+    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    // 先出「正在传」再变失败提示；等最终那句，负载高时不会读到中间态
+    const 话 = 框.getByRole("status").filter({ hasText: /只有项目负责人能传附件/ });
+    await 话.waitFor();
+    expect(await 话.innerText()).toContain("截图");
+    await 框.getByRole("button", { name: "知道了" }).waitFor();
+  } finally { await page.close(); }
+  const 二 = await 开(1280, { __开关: "锁开", __标题: "新线索" });
+  try {
+    const 收到 = await 接上传(二);
+    await 填好新客户(二, true);
+    await 二.getByRole("dialog").getByRole("button", { name: /^建\s*好$/ }).click();
+    await expect.poll(async () => (await 调(二)).find((x) => x[0] === "建档向导")).toBeTruthy();
+    expect(((await 调(二)).find((x) => x[0] === "建档向导")![1] as { 要传附件?: boolean }).要传附件).toBeFalsy();
+    await 二.waitForTimeout(300);
+    expect(收到.length).toBe(0);
+  } finally { await 二.close(); }
+});
+
+it("没开项目：不摆挑选，只说开了项目才能挂", async () => {
+  const page = await 开(1280);
+  try {
+    const 区 = page.getByRole("dialog").getByTestId("wizard-attachments");
+    await 区.waitFor();
+    expect(await 区.locator("input[type=file]").count()).toBe(0);
+    expect(await 区.innerText()).toContain("有项目");
   } finally { await page.close(); }
 });

@@ -2,15 +2,16 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import {build,type Plugin} from "esbuild";
 import path from "node:path";
 import {chromium,type Browser} from "playwright";
+import { 补全动作桩 } from "./helpers/action-stubs";
 let bundle:string,browser:Browser;
 const plugin:Plugin={name:"solo-page-boundaries",setup(b){
  const stub=(filter:RegExp,code:string)=>b.onResolve({filter},a=>({path:a.path,namespace:"fixture",pluginData:code}));
  stub(/^next\/navigation$/,"export const useRouter=()=>({push(){},refresh(){}})");
- stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;");
+ stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
  stub(/^next\/link$/,"export default function Link(p){return <a {...p}/>}");
  stub(/(^|\/)demo-data$/,"export const 查演示数据状态=async()=>null,灌一套演示数据=async()=>({ok:false}),清除演示数据=灌一套演示数据;");
  stub(/(^|\/)(TaskForm|PlanForm|OpportunityForm|ContractForm)$/,"export default function Form(){return null}");
- stub(/(^|\/)actions$/,"export const moveStage=async()=>({ok:true}),toggleTask=moveStage,completePlan=moveStage,deletePlan=moveStage,deleteTask=moveStage,saveFollowUp=moveStage,撤销记一笔=moveStage;");
+ stub(/(^|\/)actions$/,"export const moveStage=async()=>({ok:true}),toggleTask=moveStage,completePlan=moveStage,deletePlan=moveStage,deleteTask=moveStage,saveFollowUp=moveStage,撤销记一笔=moveStage,沟通可选项目=async()=>({ok:true,项目们:null,能建项目:true});");
  b.onLoad({filter:/.*/,namespace:"fixture"},a=>({contents:a.pluginData,loader:"jsx",resolveDir:process.cwd()}));
 }};
 beforeAll(async()=>{

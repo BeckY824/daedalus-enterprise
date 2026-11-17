@@ -4,6 +4,7 @@ import DatePicker from "@/components/BusinessDatePicker";
 import OptionInput from "@/components/OptionInput";
 import Shortcut from "./Shortcut";
 
+import AmountTextInput from "@/components/AmountTextInput";
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -31,6 +32,8 @@ import { 有效线索节点 } from "@/lib/project/stage-gates";
 import { 是项目卡, 不可撤销, type 项目卡 } from "@/lib/agent/project-proposals";
 import dynamic from "next/dynamic";
 import RescueKey from "@/app/(app)/customers/RescueKey";
+import { 沟通可选项目 } from "@/app/(app)/customers/[id]/actions";
+import { 沟通没项目话, 请负责人建项目话, 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
 import ReplyWindowInput from "@/components/ReplyWindowInput";
 import ScheduleAssignInput from "@/components/ScheduleAssignInput";
 
@@ -171,12 +174,34 @@ export default function ProposalCard({
   const [勾了, set勾了] = useState<number[]>(() => (proposal.kind === "update_customer" ? proposal.changes.map((_, i) => i) : [0]));
   const 逐项 = draft.kind === "update_customer" && draft.changes.length > 1;
 
+  /**
+   * 记沟通卡（企业版沟通必须挂项目，11-17）：这位客户我能挂沟通的在推项目。undefined = 还在问；null = 不是企业版、不用挂。
+   * 几个要人在卡上选（不猜）；一个就挂它（服务端自己挂）；没有就说先建项目、不能确认
+   */
+  const [跟进项目们, set跟进项目们] = useState<{ id: string; name: string }[] | null | undefined>(undefined);
+  /** 没项目时我能不能新建项目：能 = 卡上给「去建项目」（客户页直接打开新建项目），不能 = 请负责人先建 */
+  const [跟进能建项目, set跟进能建项目] = useState(false);
+  const 跟进客户 = draft.kind === "add_followup" && state !== "done" && state !== "denied" ? draft.customerId : null;
+  useEffect(() => {
+    if (!跟进客户) return;
+    let 作废 = false;
+    沟通可选项目(跟进客户).then(
+      (r) => { if (!作废) { set跟进项目们(r.ok ? r.项目们 : null); set跟进能建项目(r.ok && r.能建项目); } },
+      () => { if (!作废) set跟进项目们(null); },
+    );
+    return () => { 作废 = true; };
+  }, [跟进客户]);
+  const 要挂项目 = draft.kind === "add_followup" && 要挂项目的类型(draft.type) && Array.isArray(跟进项目们);
+  const 跟进没项目 = 要挂项目 && 跟进项目们!.length === 0;
+  const 跟进要选 = 要挂项目 && 跟进项目们!.length > 1 && !(draft.kind === "add_followup" && draft.projectId && 跟进项目们!.some((x) => x.id === draft.projectId));
+
   /** 真正要提交的那张卡：逐项时只带勾上的那几项 */
   const 要提交的 = useMemo<Proposal>(() => 只留选中的改动(draft, 勾了), [draft, 勾了]);
   // 模型不知道的字段留空，人在卡片上补齐才能确认
   // 企业版卡上那一格叫「渠道」（术语表），提示里跟着叫；lib 里那句「来源（渠道）」AI 的提示词也在用，不动
   const missing = missingFields(要提交的, b, 渠道名们 ? { 只用项目: true, 要下一步, ...(企 ? { 企业: { 有分配方式: 企.分配方式们.length > 0, 节点们: 线索节点们 } } : {}) } : undefined)
-    .map((m) => (渠道名们 && m === "来源（渠道）" ? "渠道" : m));
+    .map((m) => (渠道名们 && m === "来源（渠道）" ? "渠道" : m))
+    .concat(跟进没项目 || 跟进要选 ? ["关联项目"] : []);
   const 停用卡 = draft.kind === "add_opportunity";
   const 能确认 = state !== "saving" && !停用卡 && missing.length === 0 && 勾了.length > 0;
 
@@ -447,7 +472,7 @@ export default function ProposalCard({
         {draft.kind === "add_contract" && (
           <>
             <Field label={签约叫(b) === "订单" ? "订单金额" : "签约金额"}>
-              <Input size="small" style={{ width: 140 }} prefix={币种符号(draft.currency || b.currency)} value={draft.amount || ""} onChange={(e) => setDraft({ ...draft, amount: Number(e.target.value.replace(/[^\d.]/g, "")) || 0 })} />
+              <AmountTextInput aria-label="金额" prefix={币种符号(draft.currency || b.currency)} value={draft.amount} onChange={(n) => setDraft({ ...draft, amount: n })} />
             </Field>
             <Field label={签约叫(b) === "订单" ? "订单确认时间" : "签约日期"}>
               <DatePicker size="small" format="YYYY-MM-DD" allowClear={false} value={draft.signedAt ? dayjs(draft.signedAt) : null} onChange={(d) => d && setDraft({ ...draft, signedAt: d.toISOString() })} />
@@ -506,6 +531,28 @@ export default function ProposalCard({
                 onChange={(e) => setDraft({ ...draft, content: e.target.value })}
               />
             </Field>
+            {要挂项目 && 跟进项目们!.length > 1 && (
+              <Field label="关联项目">
+                <Select
+                  size="small"
+                  className="prop-proj-pick"
+                  aria-label="关联项目"
+                  placeholder="选一个在推项目"
+                  value={draft.projectId && 跟进项目们!.some((x) => x.id === draft.projectId) ? draft.projectId : undefined}
+                  options={跟进项目们!.map((x) => ({ value: x.id, label: x.name }))}
+                  onChange={(v: string) => setDraft({ ...draft, projectId: v })}
+                />
+              </Field>
+            )}
+            {要挂项目 && 跟进项目们!.length === 1 && <Field label="关联项目"><span className="prop-proj-one">{跟进项目们![0].name}</span></Field>}
+            {跟进没项目 && draft.kind === "add_followup" && (
+              <div role="note" className="prop-err prop-f-block">
+                {沟通没项目话}
+                {跟进能建项目
+                  ? <>{" "}<Link href={`/customers/${draft.customerId}?建项目=1`}>去建项目</Link></>
+                  : `（${请负责人建项目话}）`}
+              </div>
+            )}
           </>
         )}
 

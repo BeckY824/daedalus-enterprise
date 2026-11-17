@@ -36,6 +36,7 @@ import { 成交钱键 as 项目成交钱列 } from "../project/profile-rules";
 import { 来源名, type 来源, type 实体, type 映射, type 待写 } from "./types";
 import { 读项目, 建项目, 改项目, 是项目, 无主入池理由, 无主项目进公海 } from "./project-target";
 import { 规, 写不进, type 值表, type 标量 } from "./values";
+import { 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
 import { 无负责人占位邮箱 } from "../pool";
 import { 无负责人占位Id } from "../no-owner-db";
 import { 同号标题, 同号只记备注 } from "../enterprise/same-number-collab";
@@ -55,6 +56,9 @@ import { 带客户编号 } from "@/lib/customer-no";
 
 type Tx = Prisma.TransactionClient;
 type 结果 = "新建" | "更新" | "跳过" | "冲突";
+
+/** 导入的沟通没对上项目（原系统没挂商机，或挂的商机没建成这位客户的项目）：这一行不导 */
+export const 沟通没对上项目话 = "沟通记录没对上项目，没导入（沟通必须挂项目：先在原系统把它挂到商机 / 项目上，或导入后到项目里补记）";
 
 /** 每类拿来比对、记进对照表的格子（落库的列名；客户的外贸几格、商机的结单日期在附表里） */
 export const 比对字段: Record<实体, readonly string[]> = {
@@ -408,6 +412,8 @@ export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?:
     if (status !== "OPEN") await tx.opportunityClose.create({ data: { opportunityId: o.id, closedAt: 日(v.closedAt) ?? new Date(现在) } });
     return o.id;
   }
+  // 企业版沟通必须挂项目（11-17 客户定）：只用项目时，没对上项目的沟通行不导入，记进「没写进去」名单、写明原因（待办 / 提醒照导）
+  if (项目 && !v.projectId && 要挂项目的类型(String(v.type))) throw new 写不进(沟通没对上项目话);
   const f = await tx.followUp.create({
     data: {
       type: String(v.type),
