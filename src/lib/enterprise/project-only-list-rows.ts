@@ -1,6 +1,6 @@
 /**
  * 客户列表第 1 页顶上那一小块「仅项目」（只负责项目的人，project-only-customers.ts）：他看不到、但名下有自己项目的客户。
- * 绕开限定层读（看全部），所以 select 只写白名单：名字、简称、公司、客户类型、客户属性、地区，再加我自己项目的当前节点和个数。
+ * 绕开限定层读（看全部），所以 select 只写白名单：名字、简称、公司、客户编号、客户类型、客户属性、地区，再加我自己项目的当前节点和个数。
  * 电话、负责人、备注、级别、状态、最近跟进这些一概不取（客户行 客户行字段 那份带着它们，不复用）。
  * 不进总数、不进导出、不能勾；筛选只认 仅项目安全条件 给的白名单条件（null = 这一块不摆）
  */
@@ -18,6 +18,8 @@ export type 仅项目列表行 = {
   name: string;
   shortName: string | null;
   school: string | null;
+  /** 客户编号（迁移 146，11-17 客户抬头 PR-1b）：块里紧跟客户名一列，和下面客户表格的「编号」同一写法 */
+  customerNo: number | null;
   customerType: string | null;
   customerAttr: string | null;
   地区: string;
@@ -38,7 +40,7 @@ export async function 仅项目列表行们(me: { id: string; role?: string | nu
   if (!表.size) return 空;
   const 客户们 = await 看全部(() => prisma.customer.findMany({
     where: { AND: [{ id: { in: [...表.keys()] }, deletedAt: null, pool: { is: null } }, 条件] },
-    select: { id: true, name: true, shortName: true, school: true, customerType: true, customerAttr: true, addrCountry: true, addrProvince: true, addrCity: true, addrDistrict: true },
+    select: { id: true, name: true, shortName: true, school: true, customerNo: true, customerType: true, customerAttr: true, addrCountry: true, addrProvince: true, addrCity: true, addrDistrict: true },
   }));
   if (!客户们.length) return 空;
   const 项目ids = 客户们.flatMap((c) => 表.get(c.id) ?? []);
@@ -54,7 +56,7 @@ export async function 仅项目列表行们(me: { id: string; role?: string | nu
     const d = 最近有动静的(ps)!;
     const 位 = 本套位置({ phase: d.phase, node: d.node, result: d.result }, 企业版字典);
     const 行: 仅项目列表行 = {
-      id: c.id, name: c.name, shortName: c.shortName, school: c.school, customerType: c.customerType, customerAttr: c.customerAttr,
+      id: c.id, name: c.name, shortName: c.shortName, school: c.school, customerNo: c.customerNo, customerType: c.customerType, customerAttr: c.customerAttr,
       地区: 拼地址(c),
       当前节点: 位 ? 节点字(位) : null, 当前阶段: 位?.phase ?? null, 项目数: ps.length, 仅项目: true,
     };

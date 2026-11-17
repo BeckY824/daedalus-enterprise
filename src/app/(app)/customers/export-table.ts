@@ -114,6 +114,8 @@ export type 跟进导出行 = {
   content: string;
   status: string;
   ownerName: string;
+  /** 这条跟进所属客户的编号（11-17 客户抬头 PR-1b）：和客户表那列同一写法，没编号留空 */
+  customerNo?: number | null;
 };
 
 /**
@@ -121,11 +123,16 @@ export type 跟进导出行 = {
  * 一条跟进一行，按客户、再按时间先后排，带上客户姓名和电话——在 Excel 里按客户筛就是这位的全部往来
  */
 export function 跟进导出表(rows: 跟进导出行[], b: BusinessConfig): { head: string[]; body: string[][] } {
+  /*
+    客户编号一列（11-17 客户抬头 PR-1b）：位置和客户表一样——内容列最后、export.worker.ts 补的「客户系统 ID」「跟进系统 ID」前面；
+    表头跟叫法走，没编号的客户（存量回填前）留空，不写短号
+  */
   return {
-    head: [`${b.customer}姓名`, "联系电话", "时间", "方式", "标题", "内容", "状态", "记录人"],
+    head: [`${b.customer}姓名`, "联系电话", "时间", "方式", "标题", "内容", "状态", "记录人", 编号列(b)],
     body: rows.map((f) => [
       f.customerName, f.phone, fmtDateTime(f.occurredAt), 跟进方式名(f), f.title, f.content, f.status,
       f.ownerName,
+      客户编号文字(f.customerNo) ?? "",
     ]),
   };
 }
