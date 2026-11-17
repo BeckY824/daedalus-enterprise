@@ -8,6 +8,7 @@
  *   确认后：每一行按类型记进联系人的联系方式子表（和手工加联系人一样的 kind / numberKey），手机 / 邮箱 / 微信 / 阿里国际站ID 照旧全公司查重；
  *          只有座机也能建（客户电话空着）；节点必填「联系方式」认联系人的座机
  *   老卡：只有 phone 那几格的照常确认，电话当手机
+ *   联系人姓名没填：存空串（显示「—」）；节点必填「主联系人」看挂没挂 + 这位有没有至少一条联系方式，不看名字
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -133,11 +134,11 @@ describe("必填：联系人姓名选填，联系方式任一类型", () => {
 });
 
 describe("确认后：按类型落库", () => {
-  it("只给微信号、不填联系人：建成，微信记进联系人的联系方式，客户企业号码是这个微信；联系人姓名用客户名称", async () => {
+  it("只给微信号、不填联系人：建成，微信记进联系人的联系方式，客户企业号码是这个微信；联系人姓名存空串（不拿客户名称顶、不写占位）", async () => {
     当(甲);
     expect(await applyProposal(卡({ 联系方式: [{ kind: "wechat", value: "wx_test06" }] }) as never)).toMatchObject({ ok: true });
     const { c, 行们 } = await 联系人号();
-    expect(c).toMatchObject({ name: "测试科技", phone: null, wechat: "wx_test06" });
+    expect(c).toMatchObject({ name: "", phone: null, wechat: "wx_test06" });
     expect(行们).toEqual([["wechat", "wx_test06", "wx_test06"]]);
     const 客 = await prisma.customer.findFirstOrThrow();
     expect(客.phone).toBe("");
@@ -172,6 +173,11 @@ describe("确认后：按类型落库", () => {
     const p = await prisma.project.findFirstOrThrow();
     expect((await prisma.customer.findFirstOrThrow()).phone).toBe("");
     const 数据 = await prisma.$transaction((tx) => 读必填数据(tx, p as never));
+    // 主联系人：姓名空着也算挂好了（有座机）；同一位一个号都没有就不算
+    expect((await prisma.contact.findFirstOrThrow()).name).toBe("");
+    const 只要主联系人 = { 节点推进: { 开: true, 必填: { [p.node]: ["主联系人"] } } } as unknown as Parameters<typeof 还差>[0];
+    expect(还差(只要主联系人, 数据)).toEqual([]);
+    expect(还差(只要主联系人, { ...数据, 联系人们: 数据.联系人们.map((c) => ({ ...c, phone: null, email: null, wechat: null, contactMethods: [] })) })).toEqual(["主联系人"]);
     const 只要联系方式 = { 节点推进: { 开: true, 必填: { [p.node]: ["联系方式"] } } } as unknown as Parameters<typeof 还差>[0];
     expect(还差(只要联系方式, 数据)).toEqual([]);
     // 对照：联系人一个号都没有就差

@@ -1,5 +1,6 @@
 "use client";
 
+import { 空显 } from "@/lib/empty-value";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Space, Avatar, Tag, Select, Tooltip } from "antd";
@@ -84,7 +85,7 @@ export default function ContactsView({
     set在改(null);
     router.refresh();
     showUndo({
-      话: `已删除「${r.name}」`,
+      话: `已删除「${空显(r.name)}」`,
       撤销: async () => {
         const u = await restoreContact(res.快照);
         if (u.ok) router.refresh();
@@ -135,8 +136,9 @@ export default function ContactsView({
       title: "联系人", key: "name", dataIndex: "name", width: 200, 常驻: true,
       render: (v, r) => (
         <Space size={8}>
-          <Avatar size={24} style={{ background: avatarColor(v), color: AVATAR_TEXT, fontSize: 12 }}>{initial(v)}</Avatar>
-          <span style={{ fontWeight: 500 }}>{v}</span>
+          <Avatar size={24} style={{ background: avatarColor(v), color: AVATAR_TEXT, fontSize: 12 }}>{initial(空显(v))}</Avatar>
+          {/* 姓名可以空（11-17）：没填显示「—」 */}
+          <span style={{ fontWeight: 500 }}>{空显(v)}</span>
           {r.isPrimary && (
             <Tag className="tag-key" style={{ margin: 0 }}>
               关键

@@ -336,8 +336,8 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
       // 国家、城市进客户地址（和新建客户同一格）；城市不带国家会被当成国内，所以没国家就不交城市
       ...(进客户 ? { 企业资料: { addrCountry: 国家, addrCity: 城市 || null } } : {}),
     },
-    // 联系人姓名 11-17 起选填：没填用客户名称，都没有记「未留名」（联系人表里姓名不能空）
-    联系人: { name: p.contact.trim() || p.name.trim() || 未留名, ...老三格(行们), 号码们: 行们.map((r) => ({ kind: r.kind, value: r.value })), ...(联系人地址 ? { address: 联系人地址 } : {}) },
+    // 联系人姓名 11-17 起选填：没填存空串（显示「—」），不拿客户名称顶、不写占位（P-抬头-13、没填的都显示「—」）
+    联系人: { name: p.contact.trim(), ...老三格(行们), 号码们: 行们.map((r) => ({ kind: r.kind, value: r.value })), ...(联系人地址 ? { address: 联系人地址 } : {}) },
     /*
       11-04 起卡上和新建项目同一套格：分配方式（指定 / 自动 / 暂不分配…）、指定时的负责人、业务线、节点（只到线索验证）、下一步（11-05 去掉明确回复）。
       分配和负责人的规矩全在 建档向导 里（定分配方式 / 建好再分）：不是指定分配一律先建在我名下，自动分配建好再转、暂不分配留在我名下（潜客培育，P-转-03）。
@@ -367,9 +367,6 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
   if (r.error === 要下一步时间) return { ok: false, error: "开了超时回收，新线索要填「下一步」时间" };
   return { ok: false, error: r.error };
 }
-
-/** 新线索卡没填联系人姓名、也没填客户名称时，联系人记成这个 */
-const 未留名 = "未留名";
 
 const 卡上来源 = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 60) : "");
 

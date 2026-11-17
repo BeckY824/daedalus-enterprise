@@ -184,8 +184,15 @@ function 齐了(项: 必填项, d: 必填数据): boolean {
     case "来源": return 有(x?.source) || 有(d.客户.touchpoint);
     case "国家": return 有(x?.country);
     case "客户等级": return 有(x?.level);
-    // 挂着的那位姓名是「未知」这类占位不算（11-03 A2-2）；没读姓名的照旧只看挂没挂
-    case "主联系人": return !!d.项目.contactId && !d.联系人们.some((c) => c.id === d.项目.contactId && c.name != null && 是占位值(c.name));
+    // 挂着的那位姓名是「未知」这类占位不算（11-03 A2-2）；没读姓名的照旧只看挂没挂。
+    // 11-17 起联系人姓名可以空（AI 新线索卡）：不看名字填没填，看这位有没有至少一条联系方式（读了号码的才看；挂靠来的别家联系人不在名单里，照旧只看挂没挂）
+    case "主联系人": {
+      if (!d.项目.contactId) return false;
+      const c = d.联系人们.find((x) => x.id === d.项目.contactId);
+      if (!c) return true;
+      if (c.name != null && 是占位值(c.name)) return false;
+      return c.contactMethods === undefined || 有(c.phone) || 有(c.email) || 有(c.wechat) || c.contactMethods.some((m) => 有(m.value));
+    }
     // 10-31 客户定：需求 = 需求状态选了表面触达 / 方向明晰 / 明确需求 / 共识痛点（字典可改名，按「选了」认，占位值不算），备注不再算；
     // 11-09 起「暂未确认」不在字典里了（M-必填-03），没选显示「—」
     case "需求": return 有(d.项目.demandStatus);

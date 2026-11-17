@@ -241,7 +241,7 @@ export async function 建档向导(输入: 建档向导输入) {
     if (!r.ok) return r;
     await recordAudit({
       user: me, action: "create", entity: "Project", entityId: 建了.projectId,
-      summary: `建档：新建项目「${好.项目.name}」（负责人 ${负责人.name}${分配 ? `，分配方式「${分配.名}」` : ""}），连同主要联系人「${好.联系人.name}」和首条跟进`,
+      summary: `建档：新建项目「${好.项目.name}」（负责人 ${负责人.name}${分配 ? `，分配方式「${分配.名}」` : ""}），连同主要联系人「${好.联系人.name || "—"}」和首条跟进`,
       detail: { 项目: 好.项目.name, 负责人: 负责人.name, 金额: 好.项目.amount, 币种: 好.项目.currency, 联系人: 好.联系人.name, ...(分配 ? { 分配方式: 分配.名 } : {}) },
     });
     // 首条跟进记在潜客培育上：配的必填建档时就齐了的，接着往前推。

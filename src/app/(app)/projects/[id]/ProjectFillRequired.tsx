@@ -1,5 +1,6 @@
 "use client";
 
+import { 空显 } from "@/lib/empty-value";
 import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -189,7 +190,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
       case "合同状态":
         return <Select aria-label={名} style={满宽} allowClear value={字 || undefined} placeholder={未选占位} options={[不填项, ...合同状态们.map((x) => ({ value: x, label: x }))]} onChange={(x?: string) => 改(k, 去不填(x))} />;
       case "联系人":
-        return <Select aria-label={名} style={满宽} allowClear placeholder="选联系人" value={字 || undefined} options={联系人们.map((c) => ({ value: c.id, label: c.position ? `${c.name} · ${c.position}` : c.name }))} onChange={(x?: string) => 改(k, x ?? null)} />;
+        return <Select aria-label={名} style={满宽} allowClear placeholder="选联系人" value={字 || undefined} options={联系人们.map((c) => ({ value: c.id, label: c.position ? `${空显(c.name)} · ${c.position}` : 空显(c.name) }))} onChange={(x?: string) => 改(k, x ?? null)} />;
       case "渠道":
         return <ChannelPicker aria-label={名} style={满宽} channels={p.渠道们 ?? []} value={字 || null} onChange={(x) => 改(k, x)} allowClear placeholder="选渠道" />;
       case "地址":

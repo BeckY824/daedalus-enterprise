@@ -147,7 +147,8 @@ export function 规整沟通(
 
 /** 主要联系人那几格规整一遍：建档（带项目）和只建客户共用。企业版占位名（11-03 A2-2）不算填了 */
 function 规整联系人(c: 向导联系人, 企业: boolean): 规整好的["联系人"] | { error: string } {
-  if (!hasVisibleText(c.name)) return { error: "请填写联系人姓名" };
+  // 联系人姓名：带着号码行的（首页 AI 新线索卡，11-17 姓名选填）可以空，存空串、显示「—」；别的入口照旧必填
+  if (!hasVisibleText(c.name) && !c.号码们?.some((x) => typeof x?.value === "string" && x.value.trim())) return { error: "请填写联系人姓名" };
   if (企业 && 是占位值(c.name)) return { error: 占位名提示("联系人姓名") };
   const 电话 = 可空(c.phone);
   if (电话?.includes("*")) return { error: "联系人电话里不能有 *" };
