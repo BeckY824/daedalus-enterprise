@@ -465,9 +465,9 @@ export default function ChannelsView({
       title: "渠道属性", key: "attr", dataIndex: "attr", width: 属性列宽,
       render: (v: string, r) => (v || !启用着(r) ? (
         <span className="chan-tags">
-          {v && <Tag style={{ margin: 0 }}>{v}</Tag>}
+          {v && <Tag>{v}</Tag>}
           {/* 自己开着、主渠道停了：也写已停用，悬停说是主渠道停的（和「主渠道」里那一行对得上） */}
-          {!启用着(r) && (r.active ? <Tooltip title={`主渠道「${主名(r)}」已停用，下面的渠道一起选不到`}><Tag style={{ margin: 0 }}>已停用</Tag></Tooltip> : <Tag style={{ margin: 0 }}>已停用</Tag>)}
+          {!启用着(r) && (r.active ? <Tooltip title={`主渠道「${主名(r)}」已停用，下面的渠道一起选不到`}><Tag>已停用</Tag></Tooltip> : <Tag>已停用</Tag>)}
         </span>
       ) : 无),
     },
@@ -524,7 +524,7 @@ export default function ChannelsView({
                 label: (
                   <div>
                     <div>启用</div>
-                    <div className="muted" style={{ fontSize: 12, lineHeight: "16px", whiteSpace: "normal", maxWidth: 220 }}>主渠道「{主名(r)}」已停用，先到「主渠道」里启用</div>
+                    <div className="muted chan-menu-note">主渠道「{主名(r)}」已停用，先到「主渠道」里启用</div>
                   </div>
                 ),
               }
@@ -539,7 +539,7 @@ export default function ChannelsView({
             label: 删因 ? (
               <div>
                 <div>删除</div>
-                <div className="muted" style={{ fontSize: 12, lineHeight: "16px", whiteSpace: "normal", maxWidth: 220 }}>{删因}</div>
+                <div className="muted chan-menu-note">{删因}</div>
               </div>
             ) : "删除",
             onClick: () => set问着({ id: r.id, 事: "删除" }),

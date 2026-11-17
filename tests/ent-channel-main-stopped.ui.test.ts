@@ -105,10 +105,13 @@ it("删同名的单一入口子渠道：确认那句写明只删子渠道、同�
     await 列表行(page, "门店甲").getByRole("button", { name: "更多操作 门店甲" }).click();
     await page.locator(".ant-dropdown:visible .ant-dropdown-menu-item", { hasText: "删除" }).click();
     await expect.poll(() => 列表行(page, "门店甲").locator(".ch-act-ask").innerText()).toContain("只删这个子渠道，同名主渠道留着");
-    await page.keyboard.press("Escape");
+    // 点「取消」收起上一行的确认（Esc 收不掉它），下拉放完收起动画再开下一行：
+    // 原来确认开着就去点下一行的「⋯」，CI 慢机上点到正在收的下拉、点不着
+    await 列表行(page, "门店甲").locator(".ch-act-ask").getByRole("button", { name: "取消" }).click();
+    await expect.poll(() => page.locator(".ch-act-ask").count()).toBe(0);
+    await expect.poll(() => page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").count()).toBe(0);
     await 列表行(page, "抖音|官方号").getByRole("button", { name: "更多操作 抖音|官方号" }).click();
-    // 上一行的下拉收起要放完动画，取最后弹出的那个
-    await page.locator(".ant-dropdown:visible .ant-dropdown-menu-item", { hasText: "删除" }).last().click();
+    await page.getByRole("menuitem", { name: "删除", exact: true }).click();
     await expect.poll(() => 列表行(page, "抖音|官方号").locator(".ch-act-ask").innerText()).toContain("删除这个渠道？");
     expect(errors).toEqual([]);
   } finally { await page.close(); }

@@ -71,6 +71,7 @@
     "动作 app/(app)/channels/actions.ts#addChannelInvest": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},
     "动作 app/(app)/channels/actions.ts#deleteChannel": {"未登录":"401","销售":"403","市场":"允许","经理":"403","老板":"允许"},
     "动作 app/(app)/channels/actions.ts#deleteChannelInvest": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},
+    "动作 app/(app)/channels/actions.ts#deleteMainChannel": {"未登录":"401","销售":"403","市场":"允许","经理":"403","老板":"允许"},
     "动作 app/(app)/channels/actions.ts#listChannelInvests": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},
     "动作 app/(app)/channels/actions.ts#saveChannel": {"未登录":"401","销售":"403","市场":"允许","经理":"403","老板":"允许"},
     "动作 app/(app)/channels/actions.ts#saveMainChannel": {"未登录":"401","销售":"403","市场":"允许","经理":"403","老板":"允许"},
