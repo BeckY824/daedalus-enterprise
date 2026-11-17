@@ -83,7 +83,7 @@ const 没改过宽限毫秒 = 2000;
 
 /**
  * 撤销领取 / 分配时，出公海那一刻补的潜客培育项目还能不能整条删掉（P-撤销-01 按原样回滚）：
- *   没动过：没删、还归 负责人、还是 创建人 建的、不在公海、没结局、没在待分配、还在第一个节点；
+ *   没动过：没删、还归 负责人、还是 创建人 建的（不给创建人就不核这一条）、不在公海、没结局、没在待分配、还在第一个节点；
  *           节点留痕只有建的那一行（没换过节点、没换过负责人、没进出过公海）；没挂过沟通、组员、附件、卡点、回款、关联客户 / 联系人、线索验证；
  *           项目本身没编辑过（updatedAt 没往前走）→ 调用方真删
  *   动过：上面哪条不成立 → 调用方不删、这一位客户不撤（不然客户回了公海、名下挂着同事在推的项目，M-公海-02 例外二）
@@ -92,7 +92,7 @@ const 没改过宽限毫秒 = 2000;
 export async function 潜客培育动没动(
   tx: Pick<Prisma.TransactionClient, "project" | "attachment">,
   projectId: string,
-  a: { customerId: string; 负责人: string; 创建人: string },
+  a: { customerId: string; 负责人: string; 创建人?: string },
 ): Promise<"没动过" | "动过" | "不在了"> {
   const p = await 看全部(() => 看已删(() => tx.project.findUnique({
     where: { id: projectId },
@@ -103,7 +103,7 @@ export async function 潜客培育动没动(
     },
   })));
   if (!p || p.deletedAt) return "不在了";
-  if (p.customerId !== a.customerId || p.ownerId !== a.负责人 || p.creatorId !== a.创建人) return "动过";
+  if (p.customerId !== a.customerId || p.ownerId !== a.负责人 || (a.创建人 !== undefined && p.creatorId !== a.创建人)) return "动过";
   if (p.pooledAt || p.result || p.awaitAssignAt || p.entLeadVerify) return "动过";
   if (p.phase !== 第一个节点.phase || p.node !== 第一个节点.node) return "动过";
   const n = p._count;

@@ -3,7 +3,8 @@
  *   - 领取 / 分配公海（公海客户出手）：同一个事务补，负责人 = 领到 / 分到的人、创建人 = 操作人；回收站里有项目的不补；不是企业版不补
  *   - 持有上限：补的这 1 个算进去（核上限之前建），超了整批不领、也不补
  *   - 撤销领取 / 分配（P-撤销-01）：补的项目没动过就整条删、客户回到零项目；动过（记了沟通、编辑过）这一位不撤
- *   - 导入把无主客户换上负责人出公海（enterprise-import/apply.ts 改）：同样补；没真出公海、已有项目的不补
+ *   - 导入把无主客户换上负责人出公海（enterprise-import/apply.ts 改）：先记待补、整批处理完再补（同批商机行建了项目就不补）；没真出公海、已有项目的不补；
+ *     同一批改回占位账号（整批撤回 / 恢复）：补的没动过就删，动过的留下、列进撤回结果
  *   - 回收站恢复客户 / 查重捞回（soft-delete.ts 恢复一条）：回到客户名单、零项目的补；原负责人停用、恢复后进了公海的不补
  * 统计（补零项目客户的脚本建的项目 creatorId = system、createdAt = 客户建档时间）：
  *   - 「新建」类不算它：首页卡本月新增、数据页 新建（走势、按人、本段漏斗）、渠道分档的总线索 / 关联项目（「全部」照算）
@@ -26,7 +27,8 @@ import { 第一个节点 } from "@/lib/project/nodes";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 领取, 分配公海, 撤销公海 } from "@/app/(app)/customers/pool-actions";
 import { 零项目客户补潜客培育, 潜客培育动没动 } from "@/lib/project/nurture";
-import { 改, 读现值, 开现场 } from "@/lib/enterprise-import/apply";
+import { 改, 读现值, 开现场, type 改的批 } from "@/lib/enterprise-import/apply";
+import { 补待补的, 培育行 } from "@/lib/enterprise-import/nurture-rows";
 import { 无主入池理由 } from "@/lib/enterprise-import/project-target";
 import { 恢复 } from "@/lib/enterprise/soft-delete";
 import { 无负责人占位邮箱, 无负责人占位名 } from "@/lib/pool";
@@ -241,41 +243,82 @@ describe("撤销领取 / 分配：补的潜客培育没动过就删", () => {
   });
 });
 
-describe("导入把无主客户换上负责人出公海（apply.ts 改）", () => {
+describe("导入把无主客户换上负责人出公海（apply.ts 改 + nurture-rows.ts）", () => {
   let 占位: string;
+  let 批次: string;
   const 无主客户 = async () => {
     const c = await 客户(占位);
     await prisma.customerPool.create({ data: { customerId: c, userId: 占位, reason: 无主入池理由 } });
     return c;
   };
-  const 换负责人 = (c: string, 补培育?: { 操作人: string }) =>
-    prisma.$transaction(async (tx) => 改(tx, "customer", c, { salesOwnerId: 甲.id }, (await 读现值(tx, "customer", c))!, new Date().toISOString(), 补培育));
+  const 换 = (c: string, 给: string, 批?: 改的批) =>
+    prisma.$transaction(async (tx) => 改(tx, "customer", c, { salesOwnerId: 给 }, (await 读现值(tx, "customer", c))!, new Date().toISOString(), 批));
+  const 补完 = () => prisma.$transaction((tx) => 补待补的(tx, 批次, 总管.id));
   beforeEach(async () => {
     占位 = (await prisma.user.create({ data: { email: 无负责人占位邮箱, name: 无负责人占位名, title: "", role: "SALES", password: "x", active: false } })).id;
+    批次 = (await prisma.entImportBatch.create({ data: { source: "excel", status: "applying", userId: 总管.id } })).id;
   });
 
-  it("出了公海、零项目：补 1 个，负责人 = 新负责人、创建人 = 导入的人", async () => {
+  it("出了公海、零项目：先记待补、不马上建；补待补的 时补 1 个（负责人 = 新负责人、创建人 = 导入的人），那行改成 create 指着新项目", async () => {
     const c = await 无主客户();
-    await 换负责人(c, { 操作人: 总管.id });
+    await 换(c, 甲.id, { 批次Id: 批次, 补培育: true });
     expect(await prisma.customerPool.count({ where: { customerId: c } })).toBe(0);
+    expect(await prisma.project.count({ where: { customerId: c } })).toBe(0);
+    expect(await 补完()).toBe(1);
     const 们 = await 名下项目(c);
     expect(们).toHaveLength(1);
     expect(们[0]).toMatchObject({ ownerId: 甲.id, creatorId: 总管.id, node: 第一个节点.node });
+    expect(await prisma.entImportRow.findFirstOrThrow({ where: { batchId: 批次, entity: 培育行 } })).toMatchObject({ kind: "create", externalId: c, targetId: 们[0].id });
   });
 
-  it("没带 补培育（没开项目模式）、名下已有项目、别的原因进的公海（没出来）：都不补", async () => {
+  it("同一批后面给这位建了项目（商机行）：补待补的 时不再补，待补那行删掉", async () => {
+    const c = await 无主客户();
+    await 换(c, 甲.id, { 批次Id: 批次, 补培育: true });
+    await 项目(c, 甲.id);
+    expect(await 补完()).toBe(0);
+    expect(await prisma.project.count({ where: { customerId: c } })).toBe(1);
+    expect(await prisma.entImportRow.count({ where: { batchId: 批次, entity: 培育行 } })).toBe(0);
+  });
+
+  it("不带补培育（不是项目模式）、名下已有项目、别的原因进的公海（没出来）：都不补", async () => {
     const 没开 = await 无主客户();
-    await 换负责人(没开);
-    expect(await prisma.project.count({ where: { customerId: 没开 } })).toBe(0);
+    await 换(没开, 甲.id, { 批次Id: 批次, 补培育: false });
     const 有 = await 无主客户();
     await 项目(有, 占位, { pooledAt: new Date() });
-    await 换负责人(有, { 操作人: 总管.id });
-    expect(await prisma.project.count({ where: { customerId: 有 } })).toBe(1);
+    await 换(有, 甲.id, { 批次Id: 批次, 补培育: true });
     const 手动 = await 客户(占位);
     await prisma.customerPool.create({ data: { customerId: 手动, userId: 甲.id, reason: "手动" } });
-    await 换负责人(手动, { 操作人: 总管.id });
+    await 换(手动, 甲.id, { 批次Id: 批次, 补培育: true });
+    await 补完();
+    expect(await prisma.project.count({ where: { customerId: 没开 } })).toBe(0);
+    expect(await prisma.project.count({ where: { customerId: 有 } })).toBe(1);
     expect(await prisma.customerPool.count({ where: { customerId: 手动 } })).toBe(1);
     expect(await prisma.project.count({ where: { customerId: 手动 } })).toBe(0);
+  });
+
+  it("同一批改回占位账号（撤回 / 恢复回公海）：补的没动过就删、那行也删；动过的留在原负责人名下、名字回在 留下培育", async () => {
+    const 没动 = await 无主客户();
+    const 动了 = await 无主客户();
+    for (const c of [没动, 动了]) await 换(c, 甲.id, { 批次Id: 批次, 补培育: true });
+    await 补完();
+    const 动了的 = (await 名下项目(动了))[0];
+    await prisma.projectNodeLog.create({ data: { projectId: 动了的.id, userId: 甲.id, fromPhase: 第一个节点.phase, fromNode: 第一个节点.node, toPhase: 第一个节点.phase, toNode: "线索验证" } });
+    const 批: 改的批 = { 批次Id: 批次, 补培育: true };
+    for (const c of [没动, 动了]) await 换(c, 占位, 批);
+    expect(await prisma.customerPool.count({ where: { customerId: { in: [没动, 动了] } } })).toBe(2);
+    expect(await prisma.project.count({ where: { customerId: 没动 } })).toBe(0);
+    expect(await prisma.project.findUniqueOrThrow({ where: { id: 动了的.id } })).toMatchObject({ ownerId: 甲.id });
+    expect(批.留下培育).toEqual([动了的.name]);
+    expect(await prisma.entImportRow.findMany({ where: { batchId: 批次, entity: 培育行 }, select: { externalId: true, undo: true } })).toEqual([{ externalId: 动了, undo: "留下" }]);
+  });
+
+  it("别的批补的不归这一批收：换回占位时不动", async () => {
+    const c = await 无主客户();
+    await 换(c, 甲.id, { 批次Id: 批次, 补培育: true });
+    await 补完();
+    const 别批 = (await prisma.entImportBatch.create({ data: { source: "excel", status: "applying" } })).id;
+    await 换(c, 占位, { 批次Id: 别批, 补培育: true });
+    expect(await prisma.project.count({ where: { customerId: c } })).toBe(1);
   });
 
   it("开现场：企业版（项目模式）才带 补培育", async () => {

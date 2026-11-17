@@ -26,6 +26,7 @@ import { 渠道筛选选项 } from "@/lib/enterprise/channel-options";
 import { 企业级别 } from "@/lib/enterprise/customer-v2";
 import { 未分级 } from "@/app/(app)/customers/query-shared";
 import { 创建时间段, 是日期 } from "@/lib/custom-date-range";
+import { 不算补建 } from "./system-created";
 
 /** 判了无效的三个叫法：列表上叫法后面跟原因摘要（客户 11-05（X-09）：「初验无效 · 原因」） */
 const 带原因的叫法: ReadonlySet<验证结果叫法> = new Set<验证结果叫法>(["初验无效", "终验无效", "无效线索"]);
@@ -69,6 +70,11 @@ export async function 读验证痕们(projectIds: string[]): Promise<Map<string,
 export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string; phase?: string; node?: string; creator?: string; channelId?: string; level?: string;
   /** 创建时间（11-11，渠道页点数字进来要按时间分）：两个日历日，两头都算，北京日界线（custom-date-range.ts 创建时间段） */
   createdFrom?: string; createdTo?: string;
+  /**
+   * onlyNew=1：从「新建」类的数点进来的（渠道看板 / 渠道列表分档，channel-stats.ts 带时段）：按创建时间筛时排掉补建的项目（project/system-created.ts），
+   * 条数和卡上一致。自己在「更多筛选」里选创建时间的不带它，照旧不排
+   */
+  onlyNew?: string;
   /** 「手机号」筛选（11-11）：项目的客户号码对得上的（同客户列表，lib/search-keyword.ts 客户号码SQL）；客户不露的不算 */
   phone?: string;
   /**
@@ -196,7 +202,7 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
   // 企业版「收回次数」：从留痕里数；按次数筛只在企业版的项目公海里生效
   const 收回筛 = 企 && sp.pool === "1" ? 收回次数筛(sp.recycled) : "";
   const 并且: Prisma.ProjectWhereInput[] = [
-    ...(建于 ? [{ createdAt: 建于 }] : []),
+    ...(建于 ? [{ createdAt: 建于, ...(sp.onlyNew === "1" ? 不算补建 : {}) }] : []),
     /*
       按号码筛中的是客户：只算「客户看得到」的（11-12 堵口子）。原来按「露客户」算——自己负责的项目、客户不归我也算中，
       只负责项目的人（project-only-customers.ts）输个号码看自己的项目留不留，就试得出看不到的客户的电话、联系人电话。
@@ -668,7 +674,7 @@ export async function 公海名单条件(me: { id: string }, 候选: Prisma.Proj
 }
 
 /** 公海页按项目一条一行时的筛选（地址栏 projChannel / phase / createdFrom / createdTo）；空的那项不筛 */
-export type 公海名单筛 = { channelId?: string; phase?: string; createdFrom?: string; createdTo?: string };
+export type 公海名单筛 = { channelId?: string; phase?: string; createdFrom?: string; createdTo?: string; /** 同 项目筛选.onlyNew */ onlyNew?: string };
 
 /**
  * 公海页渠道名单的候选：这个渠道（项目来源优先，没填跟客户来源）+ 同口径的阶段（阶段进程条件）+ 项目创建时间段
@@ -678,7 +684,7 @@ export function 公海名单候选(f: 公海名单筛): Prisma.ProjectWhereInput
   const 建于 = 创建时间段(f.createdFrom, f.createdTo);
   const 并: Prisma.ProjectWhereInput[] = [
     ...(f.channelId ? [{ OR: [{ channelId: f.channelId }, { channelId: null, customer: { channelId: f.channelId } }] }] : []),
-    ...(建于 ? [{ createdAt: 建于 }] : []),
+    ...(建于 ? [{ createdAt: 建于, ...(f.onlyNew === "1" ? 不算补建 : {}) }] : []),
   ];
   if (!并.length) return null;
   return { AND: [...并, ...(f.phase ? 阶段进程条件({ phase: f.phase }, 字典of(企业版())).where : [])] };

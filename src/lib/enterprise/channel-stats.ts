@@ -130,9 +130,11 @@ export const 到达口径键: readonly 名单键[] = ["关联商机", "关联订
  * 全部 = null 不带
  */
 export type 名单时段 = { createdFrom?: string; createdTo?: string } | null | undefined;
+/** 分档的数是「这段时间新建的」，不含补建的项目（project/system-created.ts）：带了时段就再带 onlyNew=1，列表、公海页同样排掉，点进去条数对得上 */
 const 带时段 = (q: URLSearchParams, 时段: 名单时段) => {
   if (时段?.createdFrom) q.set("createdFrom", 时段.createdFrom);
   if (时段?.createdTo) q.set("createdTo", 时段.createdTo);
+  if (时段?.createdFrom || 时段?.createdTo) q.set("onlyNew", "1");
   return q;
 };
 
