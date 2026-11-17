@@ -14,6 +14,19 @@
 import { 验号码, type 号码类型 } from "./contact-format";
 import { 号键 } from "../phone";
 import { 是占位号, 占位号提示 } from "../placeholder-phone";
+import { hasVisibleText } from "../form-validation";
+
+/** 企业版联系人姓名选填（11-17 员工反馈「联系人姓名不一定知道」）：姓名、联系方式至少一项 */
+export const 姓名号码至少一项 = "联系人姓名和联系方式至少填一项";
+/**
+ * 联系人姓名这一格的问题（没问题 = null）。企业版：姓名没填、但至少有一条联系方式就放行（存空串、显示「—」）；全空拦。
+ * 非企业版照旧必填。号们 = 交上来的号码几行的值、老三格，空的不算
+ */
+export function 联系人姓名问题(企业: boolean, name: unknown, 号们: readonly unknown[]): string | null {
+  if (hasVisibleText(name)) return null;
+  if (!企业) return "请填写联系人姓名";
+  return 号们.some((v) => typeof v === "string" && v.trim()) ? null : 姓名号码至少一项;
+}
 
 // ---------- 客户级别 ----------
 

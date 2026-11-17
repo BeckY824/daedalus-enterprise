@@ -10,7 +10,7 @@ import SaveButton from "@/components/SaveButton";
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import DatePicker from "@/components/BusinessDatePicker";
 import { dayjs } from "@/lib/utils";
-import { 性别们, 爱好上限, 联系人地址上限, 号码上限, 每人最多号码 } from "@/lib/enterprise/customer-v2";
+import { 性别们, 爱好上限, 联系人地址上限, 号码上限, 每人最多号码, 联系人姓名问题, 姓名号码至少一项 } from "@/lib/enterprise/customer-v2";
 import { saveContact, saveUnassignedContact, 联系人号码先查 } from "./actions";
 import { 挂到客户 } from "./contact-link-actions";
 import type { 撞到的联系人 } from "@/lib/enterprise/contact-dedupe";
@@ -229,7 +229,7 @@ export default function ContactForm({
           号码们: (号码们 ?? []).filter((x) => x && x.value && x.value.trim()).map((x) => ({ kind: x.kind ?? "", value: x.value ?? "" })),
         }
       : null;
-    const r = await (存法 ?? saveContact)({ id: record?.id, 版本: record?.updatedAt, ...(企业 ? 其余 : v), isPrimary: Boolean(v.isPrimary), customerId: 归属, ...(企业资料 ? { 企业: 企业资料 } : {}), ...(照存 ? { 照存: true } : {}) } as Parameters<typeof saveContact>[0]);
+    const r = await (存法 ?? saveContact)({ id: record?.id, 版本: record?.updatedAt, ...(企业 ? { ...其余, name: typeof 其余.name === "string" ? 其余.name : "" } : v), isPrimary: Boolean(v.isPrimary), customerId: 归属, ...(企业资料 ? { 企业: 企业资料 } : {}), ...(照存 ? { 照存: true } : {}) } as Parameters<typeof saveContact>[0]);
     // 原来不看返回值：联系人刚被别人移出、或电话不收时，弹框卡在那儿什么也不说（排查 D8）
     if (!r.ok) {
       if ("撞了" in r && r.撞了?.length) { set先查的(false); set撞号(r.撞了); return { ok: false, error: "号码撞了，看框顶上" }; }
@@ -336,7 +336,13 @@ export default function ContactForm({
             </Col>
           )}
           <Col span={12}>
-            <Form.Item name="name" label="姓名" rules={[requiredText("请填写姓名")]}>
+            {/* 企业版姓名选填（11-17 员工反馈）：姓名和联系方式至少一项，空着存空串、显示「—」；别的版本照旧必填 */}
+            <Form.Item
+              name="name"
+              label="姓名"
+              dependencies={企业 ? ["号码们"] : undefined}
+              rules={企业 ? [{ validator: (_: unknown, v: unknown) => (联系人姓名问题(true, v, ((form.getFieldValue("号码们") ?? []) as { value?: string }[]).map((x) => x?.value)) ? Promise.reject(new Error(姓名号码至少一项)) : Promise.resolve()) }] : [requiredText("请填写姓名")]}
+            >
               <Input placeholder="张伟" />
             </Form.Item>
           </Col>
@@ -435,7 +441,7 @@ export default function ContactForm({
       </Form>
     </>
   );
-  const 题 = record ? `编辑联系人 · ${record.name}` : "添加联系人";
+  const 题 = record ? `编辑联系人 · ${record.name || "—"}` : "添加联系人";
 
   return (
     <Modal

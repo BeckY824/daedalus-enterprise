@@ -26,7 +26,12 @@ export const 项目名上限 = 60;
 export const 备注上限 = 500;
 
 /** address：联系人所在区域 / 地址（一格文字，11-04 首页录入把国家城市放这）；向导界面不传 = 不存 */
-export type 向导联系人 = { name: string; position?: string | null; phone?: string | null; email?: string | null; wechat?: string | null; address?: string | null };
+export type 向导联系人 = { name: string; position?: string | null; phone?: string | null; email?: string | null; wechat?: string | null; address?: string | null;
+  /**
+   * 联系方式几行（类型 + 号码，企业版，11-17）：首页 AI 新线索卡交的，建档向导验过记进这位联系人的联系方式子表（和联系人表单同一套）。
+   * 向导界面不传 = 照旧只有上面三格
+   */
+  号码们?: readonly { kind: string; value: string }[] | null };
 export const 联系人地址上限 = 100;
 /** 分配方式：企业版才有，默认五项的序号（lib/enterprise/dict.ts 分配方式序号），只在 projects/actions.ts 建档向导里认 */
 export type 向导项目 = { name: string; ownerId?: string | null; amount?: number | null; currency?: string | null; remark?: string | null; 分配方式?: number | null;
@@ -142,7 +147,8 @@ export function 规整沟通(
 
 /** 主要联系人那几格规整一遍：建档（带项目）和只建客户共用。企业版占位名（11-03 A2-2）不算填了 */
 function 规整联系人(c: 向导联系人, 企业: boolean): 规整好的["联系人"] | { error: string } {
-  if (!hasVisibleText(c.name)) return { error: "请填写联系人姓名" };
+  // 联系人姓名：带着号码行的（首页 AI 新线索卡，11-17 姓名选填）可以空，存空串、显示「—」；别的入口照旧必填
+  if (!hasVisibleText(c.name) && !c.号码们?.some((x) => typeof x?.value === "string" && x.value.trim())) return { error: "请填写联系人姓名" };
   if (企业 && 是占位值(c.name)) return { error: 占位名提示("联系人姓名") };
   const 电话 = 可空(c.phone);
   if (电话?.includes("*")) return { error: "联系人电话里不能有 *" };
