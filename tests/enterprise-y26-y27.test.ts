@@ -265,8 +265,11 @@ describe("Y27 电话藏着：按号码搜不出来", () => {
       { 表: "客户", 条件: [{ 字段: "电话", 运算: "包含", 值: 客户号.slice(-4) }] },
       { 表: "客户", 条件: [], 排序: { 字段: "电话", 降序: true } },
       { 表: "客户", 条件: [], 分组: "电话" },
-      { 表: "线索", 条件: [{ 字段: "电话", 运算: "包含", 值: 线索号.slice(-4) }] },
     ];
+    // 只用项目没有单独的线索表（批次 20b）：查线索表直接挡回、指去项目表，一个号码都不比
+    const 线索 = await MCP(普通销售, "query_records", { 表: "线索", 条件: [{ 字段: "电话", 运算: "包含", 值: 线索号.slice(-4) }] });
+    expect(线索.summary).toBe("查询写得不对");
+    expect(JSON.stringify(线索.data)).not.toContain(线索号);
     for (const 规格 of 规格们) {
       const r = await MCP(普通销售, "query_records", 规格);
       expect(r.summary, JSON.stringify(规格)).toBe("电话对你不可见");

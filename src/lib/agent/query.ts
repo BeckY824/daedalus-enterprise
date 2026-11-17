@@ -473,20 +473,68 @@ class 查询错 extends Error {}
 /** 给人看的中文错误。模型拿到它会重试，人在过程条上也看得懂为什么没查成 */
 const 错 = (s: string) => new 查询错(s);
 
-function 认表(v: unknown): 表名 {
-  const s = typeof v === "string" ? v.trim() : "";
-  if (Object.hasOwn(表们, s)) return s as 表名;
-  throw 错(`没有「${s || "(空)"}」这张表。能查的：${Object.keys(表们).join("、")}`);
+/** 企业版只用项目时没有的三张老表：线索、商机、订单都是项目的阶段（批次 20b：模型照旧查「线索」表，查出 0 条） */
+export const 只用项目没有的表: readonly 表名[] = ["线索", "商机", "签约"];
+/** 这一家能查的表。只用项目时去掉三张老表 */
+export function 能查的表(只用项目 = false): 表名[] {
+  return (Object.keys(表们) as 表名[]).filter((t) => !(只用项目 && 只用项目没有的表.includes(t)));
 }
+
+/** 表名的常见别称（批次 20b）。只收不会认错的 */
+const 表别名: Record<string, 表名> = {
+  沟通记录: "跟进记录", 沟通: "跟进记录", 跟进: "跟进记录", 跟进计划表: "跟进计划", 计划: "跟进计划",
+  回款: "项目回款", 回款记录: "项目回款", 公海客户: "公海", 卡点记录: "卡点", 节点: "节点记录",
+  客户联系人: "联系人", 组织架构: "部门", 订单: "签约", 合同: "签约",
+};
+
+function 认表(v: unknown, 只用项目 = false): 表名 {
+  const 原 = typeof v === "string" ? v.trim() : "";
+  const 去尾 = 原.replace(/表$/, "");
+  const s = Object.hasOwn(表们, 原) ? 原 : Object.hasOwn(表们, 去尾) ? 去尾 : 表别名[原] ?? 表别名[去尾] ?? 原;
+  const 能查 = 能查的表(只用项目);
+  if (只用项目 && 只用项目没有的表.includes(s as 表名))
+    throw 错(`这一家只用项目：没有单独的「${原}」表，线索、商机、订单都是项目的阶段。改查「项目」表，条件写 {"字段":"阶段","运算":"等于","值":"线索"}（商机、订单同理）`);
+  if (Object.hasOwn(表们, s)) return s as 表名;
+  throw 错(`没有「${原 || "(空)"}」这张表。能查的只有这几张，「表」只能填其中之一：${能查.join("、")}`);
+}
+
+/**
+ * 字段名的同义写法（批次 20b）。同一组里的词指同一件事：模型写了组里任何一个，就在这张表上找组里有的那一个。
+ * 只在这张表上**正好一个**字段对得上时才认，对上几个就报错列出来，不猜
+ */
+const 字段同义组: readonly (readonly string[])[] = [
+  ["建档时间", "创建时间", "新建时间", "录入时间", "创建日期", "建档日期", "添加时间", "加入时间", "登记时间"],
+  ["销售负责人", "负责人", "负责销售", "跟进人", "归属人", "所属销售", "销售", "所有人", "owner"],
+  ["姓名", "名称", "名字", "客户名称", "客户名", "公司名称", "公司名", "公司", "项目名称", "线索名称", "商机名称", "渠道名称", "name"],
+  ["电话", "手机", "手机号", "联系电话", "电话号码", "phone"],
+  ["最近跟进时间", "最近跟进", "最后跟进时间", "上次跟进时间", "上次跟进"],
+  ["发生时间", "跟进时间", "沟通时间"],
+  ["回款日期", "回款时间"],
+];
 
 export function 认字段(表: 表名, v: unknown, b?: BusinessConfig): 字段 {
   const s = typeof v === "string" ? v.trim() : "";
   const 表定义 = 查询表(表, b);
-  const f = Object.hasOwn(表定义.字段, s) ? 表定义.字段[s] : Object.values(表定义.字段).find(f => f.名 === s);
-  if (!f) {
-    throw 错(`「${表定义.名}」上没有「${s || "(空)"}」这个字段。能用的：${Object.values(表定义.字段).map(f => f.名).join("、")}`);
-  }
-  return f;
+  const 全部 = Object.entries(表定义.字段);
+  const 精确 = Object.hasOwn(表定义.字段, s) ? 表定义.字段[s] : Object.values(表定义.字段).find(f => f.名 === s);
+  if (精确) return 精确;
+  const 对得上 = (词们: readonly string[]) => {
+    const 中 = new Set(全部.filter(([k, f]) => 词们.includes(k) || 词们.includes(f.名)).map(([, f]) => f));
+    return 中.size === 1 ? [...中][0] : null;
+  };
+  const 组 = 字段同义组.find((g) => g.some((w) => w.toLowerCase() === s.toLowerCase()));
+  const 同义 = 组 ? 对得上(组) : null;
+  if (同义) return 同义;
+  // 写多了或写少了几个字（「跟进状态值」「预计签约」）：包含关系正好对上一个才认
+  const 近 = s.length >= 2 ? 全部.filter(([k, f]) => f.名.includes(s) || k.includes(s) || (k.length >= 2 && s.includes(k))) : [];
+  const 近字段 = [...new Set(近.map(([, f]) => f))];
+  if (近字段.length === 1) return 近字段[0];
+  const 列 = Object.values(表定义.字段).map(f => `${f.名}（${f.型}）`).join("、");
+  throw 错(
+    `「${表定义.名}」上没有「${s || "(空)"}」这个字段。` +
+      (近字段.length > 1 ? `相近的有：${近字段.map(f => f.名).join("、")}，挑一个。` : "") +
+      `「字段」只能填这些（括号里是类型）：${列}`,
+  );
 }
 
 function 认日期(v: unknown, 字段名: string): Date {
@@ -495,34 +543,87 @@ function 认日期(v: unknown, 字段名: string): Date {
   return d.toDate();
 }
 
+/** 运算的常见别写（批次 20b）。和字段类型无关、意思唯一的才放这里；「>=」「之后」这类按字段类型另认（认运算） */
+const 运算别名: Record<string, 运算> = {
+  "=": "等于", "==": "等于", "===": "等于", 是: "等于", 为: "等于", eq: "等于", equals: "等于", is: "等于", 精确: "等于",
+  "!=": "不等于", "<>": "不等于", 不是: "不等于", ne: "不等于", 不为: "不等于", "not": "不等于",
+  contains: "包含", like: "包含", 模糊: "包含", 包括: "包含", 含: "包含", 含有: "包含", 模糊匹配: "包含",
+  in: "属于", 在: "属于", 之一: "属于", 属于其中: "属于", 任一: "属于", 其中之一: "属于", 在其中: "属于",
+  最近: "最近天数", 近: "最近天数", 近几天: "最近天数", 最近几天: "最近天数", within: "最近天数",
+  空: "为空", null: "为空", "is null": "为空", isnull: "为空", 未填: "为空", 没填: "为空",
+  不为空: "非空", "not null": "非空", "is not null": "非空", notnull: "非空", 有值: "非空", 已填: "非空", 不空: "非空",
+};
+const 日期往后 = new Set([">", ">=", "≥", "gt", "gte", "大于", "大于等于", "之后", "以后", "晚于", "after", "since", "从", "起"]);
+const 日期往前 = new Set(["<", "<=", "≤", "lt", "lte", "小于", "小于等于", "之前", "以前", "早于", "before", "until", "截至", "到", "止"]);
+
+/** 把模型写的运算认成表里的那几个（按字段类型认「>=」「之后」这类），认不出返回 null */
+function 认运算(v: unknown, f: 字段): 运算 | null {
+  const s = typeof v === "string" ? v.trim() : "";
+  const k = s.toLowerCase();
+  // 日期先认方向：「大于 2026-11-01」就是不早于（差一个当天，人这么问时本来就含当天）
+  if (f.型 === "日期") {
+    if (日期往后.has(k)) return "不早于";
+    if (日期往前.has(k)) return "不晚于";
+  }
+  if (Object.hasOwn(运算符, s)) return s as 运算;
+  if (f.型 === "数字") {
+    if (k === "gt" || k === "超过" || k === "多于" || k === "高于") return "大于";
+    if (k === "lt" || k === "少于" || k === "低于" || k === "不到") return "小于";
+  }
+  return 运算别名[k] ?? 运算别名[s] ?? null;
+}
+
+/** 某类字段能用的运算 */
+const 能用运算 = (型: 字段型) => Object.entries(运算符).filter(([, v]) => (v.适用 as readonly 字段型[]).includes(型)).map(([k]) => k);
+
+/** 运算和字段类型对不上时的那一句：常见的几种直接说怎么改（批次 20b） */
+function 类型不对话(f: 字段, op: 运算): string {
+  const 能用 = 能用运算(f.型).join("、");
+  if (f.型 === "日期" && (op === "等于" || op === "不等于" || op === "包含"))
+    return `「${f.名}」是日期，不能用「${op}」。要某一天就写两条条件：不早于 YYYY-MM-DD、不晚于 YYYY-MM-DD；要最近 N 天用「最近天数」，值给天数。它能用：${能用}`;
+  if (f.型 === "日期" && (op === "大于" || op === "小于"))
+    return `「${f.名}」是日期，用「${op === "大于" ? "不早于" : "不晚于"}」，值写 YYYY-MM-DD。它能用：${能用}`;
+  if (f.型 === "枚举" && op === "包含")
+    return `「${f.名}」是固定取值，不能用「包含」，用「等于」或「属于」，值只能是：${f.取值?.join(" / ")}`;
+  if ((f.型 === "人" || f.型 === "部门") && op === "包含")
+    return `「${f.名}」直接写${f.型 === "人" ? "姓名" : "部门名"}，用「等于」（几位用「属于」，值给数组）。它能用：${能用}`;
+  if (f.型 === "数字" && (op === "不早于" || op === "不晚于"))
+    return `「${f.名}」是数字，用「大于」或「小于」（不含等于：要「至少 5」写 大于 4）。它能用：${能用}`;
+  return `「${f.名}」是${f.型}，不能用「${运算符[op].名}」。它能用：${能用}`;
+}
+
 function 认条件(表: 表名, raw: unknown, b?: BusinessConfig): 条件 {
   const r = (raw ?? {}) as Record<string, unknown>;
   const f = 认字段(表, r.字段, b);
   const 字段键 = Object.entries(查询表(表, b).字段).find(([, v]) => v.列 === f.列)![0];
-  const op = typeof r.运算 === "string" ? (r.运算.trim() as 运算) : ("" as 运算);
-  if (!Object.hasOwn(运算符, op)) {
-    throw 错(`不认识的运算「${String(r.运算)}」。能用的：${Object.keys(运算符).join("、")}`);
+  let op = 认运算(r.运算, f);
+  if (!op) {
+    throw 错(`不认识的运算「${String(r.运算 ?? "(空)")}」（字段「${f.名}」）。「运算」只能填这些之一：${Object.keys(运算符).join("、")}；「${f.名}」是${f.型}，能用：${能用运算(f.型).join("、")}`);
   }
+  // 等于给了一串值：就是「属于」（批次 20b：原来当成一个值整串比，查出 0 条）
+  if (op === "等于" && Array.isArray(r.值) && (运算符.属于.适用 as readonly 字段型[]).includes(f.型)) op = "属于";
   const 适用 = 运算符[op].适用 as readonly 字段型[];
-  if (!适用.includes(f.型)) {
-    throw 错(`「${f.名}」是${f.型}，不能用「${运算符[op].名}」。它能用：${Object.entries(运算符).filter(([, v]) => (v.适用 as readonly 字段型[]).includes(f.型)).map(([k]) => k).join("、")}`);
-  }
+  if (!适用.includes(f.型)) throw 错(类型不对话(f, op));
 
   // 为空 / 非空不带值；其余必须带
   if (op === "为空" || op === "非空") return { 字段: 字段键, 运算: op };
-  if (r.值 == null || r.值 === "") throw 错(`「${f.名} ${运算符[op].名}」少了一个值`);
+  if (r.值 == null || r.值 === "") throw 错(`「${f.名} ${运算符[op].名}」少了一个值（只有「为空」「非空」不填值）`);
 
   const 原值 = (value: string) => b && (f.列 === "followStatus" || f.列 === "decisionStatus")
     ? f.取值?.find(v => statusLabel(b, v) === value) ?? value : value;
   if (op === "属于") {
-    const xs = (Array.isArray(r.值) ? r.值.map((x) => String(x).trim()).filter(Boolean) : [String(r.值).trim()]).map(原值);
+    // 固定取值、人、部门给成一句「A、B」「A,B」时拆开（文本不拆：值里本来可能有逗号）
+    const 拆 = f.型 === "枚举" || f.型 === "人" || f.型 === "部门";
+    const 单 = (v: unknown) => (拆 ? String(v).split(/[,，、/]/) : [String(v)]);
+    const xs = (Array.isArray(r.值) ? r.值.flatMap(单) : 单(r.值)).map((x) => x.trim()).filter(Boolean).map(原值);
     if (!xs.length) throw 错(`「${f.名} 属于」要至少一个值`);
     if (f.取值) for (const x of xs) 校枚举(f, x);
     return { 字段: 字段键, 运算: op, 值: xs };
   }
   if (op === "最近天数") {
-    const n = Number(r.值);
-    if (!Number.isFinite(n) || n <= 0 || n > 3650) throw 错(`「最近多少天」要 1~3650 之间的数，给的是「${String(r.值)}」`);
+    // 「30天」「30 days」：取那个数
+    const n = typeof r.值 === "number" ? r.值 : Number(String(r.值).match(/\d+(\.\d+)?/)?.[0] ?? NaN);
+    if (!Number.isFinite(n) || n <= 0 || n > 3650) throw 错(`「最近天数」的值要 1~3650 之间的天数（比如 30），给的是「${String(r.值)}」`);
     return { 字段: 字段键, 运算: op, 值: Math.round(n) };
   }
   if (f.型 === "数字") {
@@ -555,9 +656,73 @@ function 校枚举(f: 字段, v: string) {
   }
 }
 
-export function 校验规格(raw: unknown, b?: BusinessConfig): 查询规格 {
-  const r = (raw ?? {}) as Record<string, unknown>;
-  const 表 = 认表(r.表);
+/* ---------- 入参规整（批次 20b） ----------
+  c1 上 query_records 79 次里 26 次「查询写得不对」。能确定意思的写法先在这里规整，不让它白跑一趟：
+  英文键名、条件给成一个对象或 JSON 字符串、条件写成 {"字段名": 值}、排序只给一个字段名。
+  意思不唯一的（字段对上好几个、运算看不出方向）照旧报错，错误里写清能填什么。
+*/
+const 顶层键别名: Record<string, string> = {
+  table: "表", 表名: "表", conditions: "条件", filters: "条件", filter: "条件", where: "条件", 筛选: "条件", 过滤: "条件",
+  join: "关联", relation: "关联", 跨表: "关联", sort: "排序", orderBy: "排序", order: "排序",
+  limit: "取", take: "取", 条数: "取", 数量: "取", count: "只计数", countOnly: "只计数", 计数: "只计数", groupBy: "分组", group: "分组", 分组字段: "分组",
+};
+const 条件键别名: Record<string, string> = {
+  field: "字段", 列: "字段", 字段名: "字段", op: "运算", operator: "运算", 操作: "运算", 运算符: "运算", 比较: "运算",
+  value: "值", values: "值", 取值: "值", path: "路径", conditions: "条件", desc: "降序", 倒序: "降序",
+};
+function 换键(o: Record<string, unknown>, 表: Record<string, string>): Record<string, unknown> {
+  const 出: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(o)) {
+    const 新 = 表[k] ?? k;
+    if (!(新 in 出) || k === 新) 出[新] = v;
+  }
+  return 出;
+}
+function 解JSON(v: unknown): unknown {
+  if (typeof v !== "string") return v;
+  const t = v.trim();
+  if (!/^[[{]/.test(t)) return v;
+  try { return JSON.parse(t); } catch { return v; }
+}
+function 规整条件们(v: unknown): unknown[] {
+  const x = 解JSON(v);
+  if (x == null || x === "") return [];
+  if (Array.isArray(x)) return x.map((c) => (c && typeof c === "object" && !Array.isArray(c) ? 换键(c as Record<string, unknown>, 条件键别名) : c));
+  if (typeof x === "object") {
+    const o = 换键(x as Record<string, unknown>, 条件键别名);
+    // 一条条件给成了对象
+    if ("字段" in o) return [o];
+    // {"跟进状态": "意向较高", "城市": "杭州"}：每一项是「等于」（给的是数组就是「属于」）
+    return Object.entries(x as Record<string, unknown>).map(([k, val]) => ({ 字段: k, 运算: Array.isArray(val) ? "属于" : "等于", 值: val }));
+  }
+  throw 错(`「条件」要一个数组，每一项形如 {"字段":"跟进状态","运算":"等于","值":"意向较高"}；给的是「${String(x).slice(0, 40)}」`);
+}
+export function 规整入参(raw: unknown): Record<string, unknown> {
+  const r = 换键((解JSON(raw) ?? {}) as Record<string, unknown>, 顶层键别名);
+  if (r.条件 !== undefined) r.条件 = 规整条件们(r.条件);
+  const 关 = 解JSON(r.关联);
+  if (关 && typeof 关 === "object" && !Array.isArray(关)) {
+    const a = 换键(关 as Record<string, unknown>, 条件键别名);
+    r.关联 = { ...a, 条件: 规整条件们(a.条件) };
+  }
+  const 排 = 解JSON(r.排序);
+  if (typeof 排 === "string" && 排.trim()) {
+    // 「建档时间」「建档时间 升序」「-建档时间」
+    const t = 排.trim();
+    const 升 = /(\s|^)(升序|asc)$/i.test(t);
+    r.排序 = { 字段: t.replace(/^[-+]/, "").replace(/\s*(升序|降序|asc|desc)$/i, "").trim(), 降序: !升 };
+  } else if (排 && typeof 排 === "object" && !Array.isArray(排)) {
+    const o = 换键(排 as Record<string, unknown>, 条件键别名);
+    if (typeof o.降序 === "string") o.降序 = !/^(false|否|升序|asc)$/i.test(o.降序);
+    r.排序 = o;
+  }
+  if (typeof r.只计数 === "string") r.只计数 = /^(true|是|1)$/i.test(r.只计数);
+  return r;
+}
+
+export function 校验规格(raw: unknown, b?: BusinessConfig, 选项: { 只用项目?: boolean } = {}): 查询规格 {
+  const r = 规整入参(raw);
+  const 表 = 认表(r.表, 选项.只用项目);
 
   const 条件 = (Array.isArray(r.条件) ? r.条件 : []).slice(0, 8).map((c) => 认条件(表, c, b));
 
@@ -574,7 +739,7 @@ export function 校验规格(raw: unknown, b?: BusinessConfig): 查询规格 {
           : `「${表们[表].名}」没有可以跨的表，去掉「关联」再查`,
       );
     }
-    if (定义.从 !== 表) throw 错(`「${路径}」是从「${定义.从}」出发的，不是「${表}」`);
+    if (定义.从 !== 表) throw 错(`「${路径}」是从「${定义.从}」出发的，不是「${表}」。从「${表}」能走的：${Object.keys(关联们).filter((k) => 关联们[k].从 === 表).join("、") || "（没有，去掉「关联」）"}`);
     const 子条件 = (Array.isArray(a.条件) ? a.条件 : []).slice(0, 4).map((c) => 认条件(定义.到, c, b));
     if (!子条件.length) throw 错(`走了「${路径}」却没给任何条件——那跟不跨表是一回事`);
     关联 = { 路径, 条件: 子条件 };

@@ -356,7 +356,8 @@ describe("切换视图拦不经过库的动作", () => {
       expect((拒 as Response).status).toBe(403);
 
       await 登录成(人.甲);
-      expect(await 认()).toEqual({ accountId: 人.甲 });
+      // 名字给 ai_use 留痕用（批次 20d）
+    expect(await 认()).toMatchObject({ accountId: 人.甲 });
     });
   });
 

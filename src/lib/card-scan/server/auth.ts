@@ -29,14 +29,15 @@ async function 是团队版(accountId: string): Promise<boolean> {
  * 企业版（私有部署，2026-10-26 定名片识别放服务器）：没有手机伴侣和团队中转，认网页登录的人，按人限次。
  * 别的自部署就当没有这个接口，手机自己认、自己拆
  */
-export async function 认扫名片的人(req: Request): Promise<{ accountId: string } | NextResponse> {
+export async function 认扫名片的人(req: Request): Promise<{ accountId: string; 名字?: string } | NextResponse> {
   if (!multiTenant()) {
     if (!企业版()) return new NextResponse("Not Found", { status: 404 });
     const 我 = await getCurrentUser();
     if (!我) return NextResponse.json({ error: "登录已失效，请重新登录" }, { status: 401 });
     // 切换视图（只读预览）不把名片送去认字、整理。浏览器收到 403 退回本机规则，退出视图是整页重载，不会一直停用
     if (await 正在切换视图()) return NextResponse.json({ error: 视图外部话 }, { status: 403 });
-    return { accountId: 我.id };
+    // 名字给留痕用（企业版 accountId 就是用户 id，ai_use 记在他名下，批次 20d）
+    return { accountId: 我.id, 名字: 我.name };
   }
   const t = await 认领(取Bearer(req));
   if (!t) return NextResponse.json({ error: "登录已失效，请重新登录" }, { status: 401 });

@@ -10,12 +10,12 @@ import { randomUUID } from "node:crypto";
  * 意图直连（intents.ts）命中的问题跳过挑工具这一步。
  * 最终回答用流式文本（Markdown），逐 token 推给浏览器；句末 [n] 引用工具读到的记录。
  *
- * 边界：工具只读，要写的只拟建议卡（proposals.ts），人点确认才落库；最多 6 步；
+ * 边界：工具只读，要写的只拟建议卡（proposals.ts），人点确认才落库；最多 8 步（MAX_STEPS）；
  * 每步与最终回答都有超时；用户按 Esc 时 signal 中断。
  * 过程通过 emit 推出去：每次工具调用一条 step（running → done + summary）。
  */
 import { chatMessagesJSON, chatTextStream, buildSystemPrompt, chatTools, type ToolMessage } from "../llm";
-import { TOOLS as 全部工具, TOOL_MAP as 全部工具表, proposalVocab, type ToolContext } from "./tools";
+import { TOOLS as 全部工具, TOOL_MAP as 全部工具表, proposalVocab, query_records说明, query_records参数, type ToolContext } from "./tools";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 项目写工具名 } from "./project-tools";
 import { 验证步们, 每步能判, 联系人可改 } from "./project-proposals";
@@ -36,18 +36,37 @@ export const 只用项目不给 = ["list_leads", "propose_contract", "list_contr
  *   企业版只用项目（10-26 用户：「线索，商机，订单都放到项目里，是三大阶段」）时去掉线索表、商机表的工具，
  *   propose_lead 换个说法：确认后建的是客户 + 一个在线索阶段的项目（apply.ts 的 add_lead）。
  */
-export function 这一家的工具(b: Pick<BusinessConfig, "projectMode">, 只用项目: boolean) {
+export function 这一家的工具(b: Pick<BusinessConfig, "projectMode">, 只用项目: boolean, 写不了 = false) {
   const TOOLS = 全部工具
+    // 只读的人（只读管理员、销售教练、只看某人、没设业务角色）不给任何出卡工具：给了它照样出卡，人点确认才报错（批次 20c）
+    .filter((t) => !(写不了 && t.name.startsWith("propose_")))
     .filter((t) => (t.name === "list_projects" ? b.projectMode === true : true))
     .filter((t) => !(只用项目 && 只用项目不给.includes(t.name)))
     // 项目类建议卡（推进节点、卡点、回款、验证、联系人、删客户）只在只用项目的企业版给：别处没有这些表
     .filter((t) => 只用项目 || !项目写工具名.has(t.name))
+    // query_records 的说明按这一家能查的表写：只用项目时不列线索、商机、签约（批次 20b）
+    .map((t) => (只用项目 && t.name === "query_records" ? { ...t, description: query_records说明(true), args: query_records参数(true) } : t))
     .map((t) =>
       只用项目 && t.name === "propose_lead"
         ? { ...t, description: "建议新建一条新线索：确认后建一位客户和一个在「线索」阶段的项目。只知道名字也要提，留空的字段人会在卡片上补。人说了「分给谁」就把姓名原样放 assignTo，说了来源（平台、展会、渠道）就原样放 source——卡上认得出会预选，人确认；没说就不给，别猜。" }
         : t,
     );
   return { TOOLS, TOOL_MAP: new Map(TOOLS.map((t) => [t.name, t])) as typeof 全部工具表 };
+}
+
+/**
+ * 这个人能不能让 AI 出写入卡（批次 20c；P-全局-04「只读管理员能问 AI，不能让 AI 写」）。能 = null；不能 = 给人看的那句话。
+ * 权限只认业务角色（11-01）：只读角色（管理员 admin、销售教练 coach，不兼总管理）、设了「只看某人」的、没设业务角色的，一律写不了——
+ * 和限定层（visibility.ts）、各写入口的判法同一套。不是企业版一律能（老规矩在各 action 里）
+ */
+export async function AI写不了(userId: string): Promise<string | null> {
+  if (!企业版()) return null;
+  const org = await 权限组织();
+  const me = { id: userId };
+  if (没设业务角色(org, userId)) return "你还没设业务角色，不能改数据，请找总管理设置";
+  if (只读角色(me, org)) return 只读话of(me, org);
+  if (只看的人(org, userId)) return 只看某人话;
+  return null;
 }
 
 /** 直连和页面范围里写死的老表工具，在只用项目的企业版换成按阶段查项目 */
@@ -71,6 +90,8 @@ import type { BriefRecord } from "../ai-draft";
 import type { BusinessConfig } from "../business-config";
 import { dayjs, 现在带周几 } from "../utils";
 import { 号码脱敏器 } from "../enterprise/phone-mask";
+import { 权限组织 } from "../enterprise/org";
+import { 只读角色, 只读话of, 只看的人, 只看某人话, 没设业务角色 } from "../enterprise/permissions";
 
 export type AgentEvents = {
   emit?: Emit;
@@ -92,6 +113,8 @@ export type AgentResult = {
   /** 写入提议：渲染成卡片，人点确认才落库 */
   proposals: Proposal[];
   steps: number;
+  /** 这个人写不了时那句话（批次 20c）：调用方据此不摆别的来路的卡（名片识别的卡） */
+  写不了?: string;
 };
 
 const MAX_STEPS = 8;
@@ -354,6 +377,17 @@ export function 开头清洗器(emit: (s: string) => void) {
   };
 }
 
+/** 能写的人那几条出卡规矩（原样从提示词里搬出来，内容没改） */
+const 出卡规则 = `- 你不能修改任何数据。propose_* 工具只是生成一张建议卡，人在界面上点确认才真的写进去；提完在回答里说一句"已经给出建议，你确认一下"，不要说"我已经改好了"
+- 只在人明确要求做某件事时才提议（"帮我记一笔""把他改成已签约""约下周三""新建一条线索"）；人只是问情况时不要提议
+- **信息不全也要提**：建议卡本身就是表单，你不知道的字段留空，人会在卡片上补。绝对不要在回答里列一张"姓名：__ 电话：__"让人照格式打字，也不要因为"信息不够"就拒绝——那是把本该一次点完的事变成打一屏字
+- 提了建议卡之后，回答里只说一句要点和还差什么，不要把卡片里已有的字段再抄一遍
+- 记一笔（propose_followup）的时间是**这次沟通已经发生的时间**，不给就算刚刚；人说了下次什么时候再谈（"下周三再约"），另提一张 propose_plan 把那个时间写进去，不要把下次的时间塞进记一笔里，也不要在回答里让人"去卡片上补时间"`;
+
+/** 只读的人：没有出卡工具，提示词里也不教出卡（批次 20c）。人要改数据时照实说这个账号只能看 */
+const 只读规则 = (话: string) => `- **这个账号只能看、不能改任何数据**（${话}）。你没有任何 propose_* 工具，也不会有建议卡：
+  人要记跟进、建线索、改资料、推进项目、删东西时，直接告诉他这个账号是只读的、要改请找负责的同事；不要说"已经给出建议""你确认一下"，也不要提卡片`;
+
 export async function runAgent(
   input: {
     question: string; user: { id: string; name: string }; b: BusinessConfig; history?: HistoryTurn[]; 页面上下文?: string; 页面范围?: 页面范围;
@@ -374,7 +408,8 @@ export async function runAgent(
    */
   const 问题id = randomUUID();
   const 只用项目 = 企业版() && b.projectMode === true;
-  const { TOOLS, TOOL_MAP } = 这一家的工具(b, 只用项目);
+  const 写不了 = await AI写不了(user.id);
+  const { TOOLS, TOOL_MAP } = 这一家的工具(b, 只用项目, !!写不了);
   const 页面上下文 = 只用项目 && input.页面上下文 ? 页面说法换成项目(input.页面上下文) : input.页面上下文;
   const toolDoc = TOOLS.map((t) => `- ${t.name}：${t.description}\n  参数：${t.args}`).join("\n");
 
@@ -402,17 +437,14 @@ ${日期对照()}
 ${页面范围?.筛选 && Object.keys(页面范围.筛选).length ? "当前客户页的筛选已在search_customers、query_records及query_metric中自动叠加。要回答这个子集，使用这三个工具；其他清单工具不代表本页范围。" : ""}
 query_records 的客户字段使用当前业务叫法：${Object.values(查询表("客户", b).字段).map(f => f.名).join("、")}。旧字段名学校/年级/专业也兼容；职位等档案字段可以查询已有自由文本。
 ${原生 ? "" : `你能调用的工具：\n${toolDoc}\n`}
-取值表（propose_* 的参数只能用这里的词）：
+${写不了 ? "" : `取值表（propose_* 的参数只能用这里的词）：
 ${proposalVocab(b)}
-
+`}
 ${工作方式}
 规则：
-- 你不能修改任何数据。propose_* 工具只是生成一张建议卡，人在界面上点确认才真的写进去；提完在回答里说一句"已经给出建议，你确认一下"，不要说"我已经改好了"
-- 只在人明确要求做某件事时才提议（"帮我记一笔""把他改成已签约""约下周三""新建一条线索"）；人只是问情况时不要提议
-- **信息不全也要提**：建议卡本身就是表单，你不知道的字段留空，人会在卡片上补。绝对不要在回答里列一张"姓名：__ 电话：__"让人照格式打字，也不要因为"信息不够"就拒绝——那是把本该一次点完的事变成打一屏字
-- 提了建议卡之后，回答里只说一句要点和还差什么，不要把卡片里已有的字段再抄一遍
-- 记一笔（propose_followup）的时间是**这次沟通已经发生的时间**，不给就算刚刚；人说了下次什么时候再谈（"下周三再约"），另提一张 propose_plan 把那个时间写进去，不要把下次的时间塞进记一笔里，也不要在回答里让人"去卡片上补时间"
+${写不了 ? 只读规则(写不了) : 出卡规则}
 - **问到某个人（他是谁、他的电话、他的联系方式）：用 find_person，名字原样传。** 它把客户、渠道、联系人、线索、同事五张表一起找——人不知道也不该关心这个人在系统里被登记成了哪一种。**不要自己截短名字**（「李老师」就传「李老师」）。他的名字出现在「当前所在页面」名单里时，用那一页指定的工具更快，但 find_person 永远是安全的那条路
+- **只给了一个号码，或问某个号码 / 某个人 / 某家公司在不在系统里、归谁在跟（查重、查归属）：也用 find_person，原样传**（空格、横杠、+86 不用去，给一段也行）。它会比联系人和联系人的其他号码，找不到时自己退一步模糊找；回话写着怎么找到的，模糊找到的要列出来让用户认
 - 确定是客户、还要看他的跟进时间线时，用 find_person 给的 id 调 get_customer；同名多位时不要猜，直接 final 并在回答里说清楚有哪几位
 - 按条件筛一批客户（某个学校 / 状态 / 我负责的）才用 search_customers——那是「找一批」，不是「找一个人」
 - 问某一类人（某个学校 / 专业 / 跟进状态 / 我负责的，"有多少、分别是谁"）：search_customers 用那个关键词或过滤条件，它返回总数和名单，直接据此回答，不用逐个 get_customer
@@ -427,7 +459,7 @@ ${工作方式}
     只用项目
       ? `
 - **这一家只用项目**：线索、商机、订单是同一个项目的三个阶段（新线索 → 商机 → 订单），没有单独的线索表和商机表。
-  问线索、商机、订单都用 list_projects（phase 选阶段）；页面说明里要是写着 list_leads，也一样换成 list_projects
+  问线索、商机、订单都用 list_projects（phase 选阶段）；页面说明里要是写着 list_leads，也一样换成 list_projects${写不了 ? "" : `
 - **建档（名片、聊天记录）**：只按已有的字段填，不新造字段；对不上任何字段的写进备注，邮箱、微信、阿里国际站ID（旺旺号、阿里买家 ID 都算这个）各写一行「邮箱：…」「微信：…」「阿里国际站ID：…」。
   回答分「事实」「推断」「建议」三段，能列成表格的用表格；联系方式查重由系统做，撞了会直接告诉你原负责人，你照原话转告即可
 - **改项目、卡点、回款、验证、联系人，或删除东西：只在人明确要求时才用对应的 propose_* 工具**（propose_project_node 推进节点 / 定结局，
@@ -435,7 +467,7 @@ ${工作方式}
   propose_lead_verify 线索验证，propose_contact_update 改联系人，propose_customer_delete 删客户）。人只是问情况时不要提。
   这些工具按名字找项目；找到不止一个时卡上会列出来让人挑，你不要替人选，也不要说"已经改好"。项目不能删，人要删项目就说企业版不支持删项目
   取值：卡点类型 ${卡点类型们.filter((t) => t !== "暂无卡点").join(" / ")}；影响等级 ${影响等级们.join(" / ")}；
-  线索验证每步能判：${验证步们.map((步) => `${步} ${每步能判[步].join("/")}`).join("；")}；联系人能改的：${Object.values(联系人可改).join("、")}（电话、邮箱、微信不经 AI 改）`
+  线索验证每步能判：${验证步们.map((步) => `${步} ${每步能判[步].join("/")}`).join("；")}；联系人能改的：${Object.values(联系人可改).join("、")}（电话、邮箱、微信不经 AI 改）`}`
       : ""
   }
 - 问题前面可能附着我们之前的对话。它只用来解开指代（"他""这位""那个学校""再约一下"）；
@@ -506,6 +538,8 @@ ${工作方式}
   /** 已经真正跑过几个工具。为 0 时模型要作答，说明它手上一条数据都没有 */
   let 查过的工具 = 0;
   const 查询命中们: (number | null)[] = [];
+  /** find_person 搜空时它写好的那段话（查过哪些、下一步怎么确认）。全搜空时用它替掉通用那句（批次 20a） */
+  const 空查询话们: string[] = [];
   /** 空手作答只顶一次，免得来回拉锯 */
   let 顶过 = false;
   /** 这一轮调过哪些「工具 + 参数」，值是当时的结果摘要。用来拦原地打转 */
@@ -523,6 +557,8 @@ ${工作方式}
       if (!tool.name.startsWith("propose_")) {
         const n = 查询命中数(tool.name, result.data);
         if (n !== undefined) 查询命中们.push(n);
+        const 话 = n === 0 && tool.name === "find_person" ? (result.data as { 结论?: unknown }).结论 : undefined;
+        if (typeof 话 === "string" && !空查询话们.includes(话)) 空查询话们.push(话);
       }
     } catch (e) {
       查询命中们.push(null);
@@ -794,10 +830,11 @@ ${工作方式}
   const 推回答 = (value: string) => { if (!只有空查询()) ev.onToken?.(value); };
   // 空查询时先缓冲，不能把“不是权限问题、客户不存在”等无依据断言流到用户面前。
   let text = await 组织回答(finalPrompt, 零工具 || 只有空查询());
+  const 空查询话 = () => (空查询话们.length ? 空查询话们.join("\n\n") : 可见范围未找到);
   if (只有空查询() && !有DSML(text) && !不是答案(text, 工具名单)) {
-    ev.onToken?.(可见范围未找到);
+    ev.onToken?.(空查询话());
     ev.emit?.({ id: "answer", label: "组织回答", status: "done" });
-    return { text: 可见范围未找到, records, customers: [...customers.values()], proposals: ctx.proposals, steps };
+    return { text: 空查询话(), records, customers: [...customers.values()], proposals: ctx.proposals, steps, ...(写不了 ? { 写不了 } : {}) };
   }
   /*
     **回答里吐的是一个认得出来的工具调用**：它还想查（或者想提一张卡），只是这一步手上没有工具，
@@ -922,10 +959,10 @@ ${工作方式}
     else if (声称已写入(text)) text = 摘掉已写入(text, ctx.proposals.length);
     推回答(text);
   }
-  if (只有空查询()) { text = 可见范围未找到; ev.onToken?.(text); }
+  if (只有空查询()) { text = 空查询话(); ev.onToken?.(text); }
   ev.emit?.({ id: "answer", label: "组织回答", status: "done" });
   for (const r of mentioned.values()) if (!customers.has(r.id) && customers.size < 5 && text.includes(r.name)) customers.set(r.id, r);
-  return { text, records, customers: [...customers.values()], proposals: ctx.proposals, steps };
+  return { text, records, customers: [...customers.values()], proposals: ctx.proposals, steps, ...(写不了 ? { 写不了 } : {}) };
 }
 
 /** 从工具结果里捞出「id + 姓名」的行（搜索名单、盯盘、计划的形状各不同，只认字段名） */
