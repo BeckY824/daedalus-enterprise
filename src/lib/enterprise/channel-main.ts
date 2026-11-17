@@ -53,8 +53,9 @@ export async function 补主渠道(db: 库 = prisma): Promise<number> {
  * 能选给 null，不能选给报错。停用那句由调用处给（各处原来的话不一样），这里只回「停用」两个字让它认
  */
 export async function 新数据渠道不行(id: string, db: 库 = prisma): Promise<"停用" | string | null> {
-  const c = await db.channel.findUnique({ where: { id }, select: { name: true, active: true, main: { select: { category: true } } } });
-  if (!c?.active) return "停用";
+  const c = await db.channel.findUnique({ where: { id }, select: { name: true, active: true, main: { select: { category: true, active: true } } } });
+  // 主渠道停用，下面的子渠道一起算停用（P-渠道-13，同 可选渠道条件）
+  if (!c?.active || c.main?.active === false) return "停用";
   return 是历史渠道(c.main?.category) ? 历史渠道报错(c.name) : null;
 }
 
