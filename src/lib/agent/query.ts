@@ -34,6 +34,7 @@ import {
 } from "../constants";
 import { 同名们 } from "../project/stage-dict";
 import { 项目画像项, 字典定义 } from "../enterprise/dict-kinds";
+import { 不算补建 } from "../project/system-created";
 
 /* ---------- 字段白名单 ---------- */
 
@@ -794,6 +795,7 @@ export function 说人话(s: 查询规格, b?: BusinessConfig): string {
   const 段: string[] = [`在${表定义.名}里`];
   if (s.条件.length) 段.push(`找 ${s.条件.map((c) => 条件成话(s.表, c, b)).join("、且 ")}`);
   else 段.push("找全部");
+  if (按新建数项目(s, b)) 段.push("不含补建和历史回填的项目（同数据页「新建」口径）");
   if (s.关联) {
     const 定义 = 关联们[s.关联.路径];
     段.push(`并且${定义.名} ${s.关联.条件.map((c) => 条件成话(定义.到, c, b)).join("、且 ")}`);
@@ -875,8 +877,18 @@ function 条件成where(表: 表名, c: 条件, b?: BusinessConfig, 映射?: 名
   }
 }
 
+/**
+ * 项目表按「创建时间」筛 = 问的是「新建了多少」（11-17 复盘第 9 类）：补零项目客户补建的潜客培育项目
+ * （creatorId = 补建创建人，createdAt 记客户建档时间）、历史沟通分析回填的（source = 历史分析来源）不是这段时间新建的，
+ * 同数据页 / 首页卡「本月新增」一样排掉（lib/project/system-created.ts 的 不算补建）。不带创建时间的（现在一共多少）照旧全算
+ */
+export function 按新建数项目(s: 查询规格, b?: BusinessConfig): boolean {
+  return s.表 === "项目" && s.条件.some((c) => 认字段(s.表, c.字段, b).列 === "createdAt");
+}
+
 export function 编译(s: 查询规格, b?: BusinessConfig, 映射?: 名映射): { where: Record<string, unknown>; orderBy?: Record<string, "asc" | "desc">; take: number } {
   const and = s.条件.map((c) => 条件成where(s.表, c, b, 映射));
+  if (按新建数项目(s, b)) and.push(不算补建);
   if (s.关联) {
     const 定义 = 关联们[s.关联.路径];
     const 子 = { AND: s.关联.条件.map((c) => 条件成where(定义.到, c, b, 映射)) };
