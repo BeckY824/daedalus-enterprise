@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { 认扫名片的人, 建限次 } from "@/lib/card-scan/server/auth";
 import { AI整理名片, 用哪个模型整理 } from "@/lib/card-scan/server/ai-call";
 import type { 名片行 } from "@/lib/card-scan/ai";
+import { recordAiUse } from "@/lib/ai-usage";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -66,5 +67,10 @@ export async function POST(req: Request) {
     : [];
   if (!记一次(人.accountId)) return NextResponse.json({ error: "扫得太快了" }, { status: 429 });
   const 答 = await AI整理名片(行们, 行业们, { cfg });
+  /*
+    留痕（批次 20d）：和别的 AI 功能一样记一条 ai_use（设置页本月用量、操作日志都数得到）。只记行数和成没成，名片文字不进日志。
+    企业版才记：那里 accountId 就是这台服务器上的用户；托管版的 accountId 是云端账号，不在这个库里
+  */
+  if (人.名字 !== undefined) await recordAiUse({ id: 人.accountId, name: 人.名字 }, "card", `名片整理：${行们.length} 行文字${答 ? "" : "（AI 没给出可用结果，用规则拆的）"}`);
   return NextResponse.json({ 答 }, { headers: { "Cache-Control": "no-store" } });
 }

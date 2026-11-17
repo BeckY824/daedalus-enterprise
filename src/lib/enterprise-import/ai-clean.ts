@@ -225,17 +225,27 @@ export async function 选清洗器(传入?: 清洗器 | null): Promise<{ 清洗�
  * 清洗前问一次 AI，把补认的落进映射（就地改 m）。返回给报告的提醒。没东西可问、没 AI 都不出声（猜映射那步已经说过没配 Key）。
  * 映射里已有的（人改过的、上次问过的）不再问，所以人改的不会被盖掉
  */
-export async function AI补清洗(记录: readonly 原始记录[], m: 映射, 传入?: 清洗器 | null): Promise<{ 提醒: string[]; 补了: number }> {
+/**
+ * @param 谁 导入的人。给了、且这次真调了模型（AI清洗，不是模拟 / 调用方自带的清洗器）就记一条 ai_use（批次 20d：原来不记，用量里看不到）
+ */
+export async function AI补清洗(记录: readonly 原始记录[], m: 映射, 传入?: 清洗器 | null, 谁?: { id: string; name: string }): Promise<{ 提醒: string[]; 补了: number }> {
   const 输入 = 找要问的(记录, m);
   const 有要问 = Object.values(输入.格式).some((x) => x?.length) || 输入.同一家.length;
   if (!有要问) return { 提醒: [], 补了: 0 };
   const 选 = await 选清洗器(传入);
   if (!选.清洗器) return { 提醒: [], 补了: 0 };
+  const 问了几格 = Object.values(输入.格式).reduce((n, x) => n + (x?.length ?? 0), 0) + 输入.同一家.length;
+  // 只记格数，不记格子里的原值（客户名、金额）：操作日志全员可读
+  const 记 = async (话: string) => {
+    if (谁 && 选.清洗器 === AI清洗) await (await import("../ai-usage")).recordAiUse(谁, "importClean", `导入清洗：问了 ${问了几格} 格，${话}`);
+  };
   try {
     const out = await 选.清洗器(输入);
     const n = 收清洗建议(m, out, 输入);
+    await 记(`补认 ${n} 格`);
     return { 提醒: n ? [`AI 清洗补认了 ${n} 格（金额 / 日期 / 国家 / 来源 / 同一家），报告里「AI 清洗」一节可以逐项改或整块不采用`] : [], 补了: n };
   } catch (e) {
+    await 记("没成功");
     return { 提醒: [`AI 清洗这一步没成功（${e instanceof Error ? e.message.slice(0, 80) : "未知错误"}），认不出的格子照规则放进备注`], 补了: 0 };
   }
 }

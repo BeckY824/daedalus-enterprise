@@ -261,7 +261,8 @@ export async function 试跑(p: 试跑参数): Promise<试跑结果> {
 
   // 3) 清洗：规则认不出的格子先问一次 AI（补认的落进 m.格式 / m.同一家，按规则再认一遍才用），再按映射洗
   // 没说用哪个清洗器、又明说了不用 AI 猜映射（每小时增量同步、测试）：也不问 AI 清洗
-  const 补 = await AI补清洗(记录, m, p.清洗器 !== undefined ? p.清洗器 : p.建议器 === null ? null : undefined);
+  const 导入的人 = await prisma.user.findUnique({ where: { id: p.用户Id }, select: { id: true, name: true } });
+  const 补 = await AI补清洗(记录, m, p.清洗器 !== undefined ? p.清洗器 : p.建议器 === null ? null : undefined, 导入的人 ?? undefined);
   提醒.push(...补.提醒);
   const 结果 = 清洗(记录, m, await 读本地索引(p.来源));
 

@@ -17,6 +17,10 @@ export const AI_FEATURES = {
   invite: "转介绍邀请",
   paste: "粘成表格",
   research: "联网背调",
+  // 批次 20d：这三处原来不记 ai_use，用量和留痕里看不到
+  card: "名片整理",
+  mcp: "MCP 查询",
+  importClean: "导入清洗",
 } as const;
 export type AiFeature = keyof typeof AI_FEATURES;
 
