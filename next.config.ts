@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
+import { PHASE_PRODUCTION_BUILD, PHASE_PRODUCTION_SERVER } from "next/constants";
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 /**
@@ -44,7 +45,7 @@ const 安全头 = [
  */
 const 静态资源前缀 = process.env.ASSET_PREFIX?.trim() || undefined;
 
-const nextConfig: NextConfig = {
+export const nextConfig: NextConfig = {
   // 容器部署：产出自带最小 node_modules 的独立 server.js
   output: "standalone",
   // Prisma 生成的客户端里有动态路径，Turbopack 会把整个项目追进 standalone（含 public/）；Dockerfile 另外再拷一遍 public，
@@ -140,4 +141,65 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+/**
+ * 部署号（deploymentId，11-17 无感更新）：一版构建一个号，取这次构建的 commit（前 12 位）。
+ *
+ * 设了它 Next 会（16.4.6，node_modules/next/dist 里核过）：
+ *   - 页面 <html data-dpl-id> 带上这个号，浏览器端记下（shared/lib/deployment-id.js）
+ *   - 浏览器发 server action、RSC 导航请求都带 `x-deployment-id: <号>` 头
+ *     （client/components/router-reducer/reducers/server-action-reducer.js、fetch-server-response.js 的 createFetch）
+ *   - 服务器回 RSC 时带 `x-nextjs-deployment-id`；浏览器发现和自己的号不同就整页跳转（doMpaNavigation），不再报错
+ *   - /_next/static 的地址后面带 `?dpl=<号>`
+ * 部署时 nginx 按这个头把「上一版标签页发来的 server action」转给留着的上一版进程（见 deploy/enterprise/tools/skew-check.mjs
+ * 和 02-开发与发版/无感更新-草案/），上一版标签页不刷新也能保存。
+ *
+ * 号从哪来（先到先用）：
+ *   1. 构建时的环境变量 CRM_DEPLOYMENT_ID（off = 不设部署号，和以前一样）
+ *   2. deploy/enterprise/COMMIT：git archive 导出的目录（3702 的 rebuild.sh 就是这样建的，没有 .git）里被 export-subst 换成 commit
+ *   3. git rev-parse HEAD
+ *   都拿不到就不设（等于没有无感更新，其余照旧）。
+ * next start（3702）启动时会再读一遍本文件：这时不重新算，用构建产物 required-server-files.json 里记的号，
+ * 免得构建后 HEAD 动过、页面里的号和服务器回的号对不上（对不上 = 每次点链接都整页刷新）。
+ * next dev 不设。
+ */
+export function 部署号(
+  phase: string,
+  opts: { env?: Record<string, string | undefined>; cwd?: string } = {},
+): string | undefined {
+  const env = opts.env ?? process.env;
+  const cwd = opts.cwd ?? process.cwd();
+  const 合法 = (v: string | undefined) => (v && /^[A-Za-z0-9_-]{1,64}$/.test(v) ? v : undefined);
+  if (phase === PHASE_PRODUCTION_SERVER) {
+    try {
+      const f = path.join(cwd, env.NEXT_DIST_DIR || ".next", "required-server-files.json");
+      return 合法(JSON.parse(readFileSync(f, "utf8"))?.config?.deploymentId);
+    } catch {
+      return undefined;
+    }
+  }
+  if (phase !== PHASE_PRODUCTION_BUILD) return undefined;
+  const 指定 = env.CRM_DEPLOYMENT_ID?.trim();
+  if (指定 === "off") return undefined;
+  if (指定) {
+    if (!合法(指定)) throw new Error(`CRM_DEPLOYMENT_ID 只许字母、数字、- 和 _（最长 64）：${指定}`);
+    return 指定;
+  }
+  try {
+    const 导出的 = readFileSync(path.join(cwd, "deploy/enterprise/COMMIT"), "utf8").trim();
+    if (/^[0-9a-f]{40}$/.test(导出的)) return 导出的.slice(0, 12);
+  } catch {
+    // 没这个文件：往下用 git
+  }
+  try {
+    const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd, stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+    if (/^[0-9a-f]{40}$/.test(sha)) return sha.slice(0, 12);
+  } catch {
+    // 不是 git 目录、没装 git
+  }
+  return undefined;
+}
+
+export default function config(phase: string): NextConfig {
+  const id = 部署号(phase);
+  return id ? { ...nextConfig, deploymentId: id } : nextConfig;
+}

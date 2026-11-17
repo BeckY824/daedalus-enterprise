@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { config, proxy } from "../src/proxy";
-import nextConfig from "../next.config";
+import { nextConfig } from "../next.config";
 import { proxy缓冲上限, 视图票名 } from "@/lib/enterprise/view-as-gate";
 import { 视图票 } from "@/lib/enterprise/view-as";
 import { 附件上限字节 } from "@/lib/attachment-rules";
