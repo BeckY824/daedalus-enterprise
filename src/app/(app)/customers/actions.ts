@@ -55,7 +55,8 @@ import { 补潜客培育, 要补潜客培育 } from "@/lib/project/nurture";
 import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
 import { 算市场转客户 } from "@/lib/enterprise/market-transfer";
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
-import { 选的原因, 可选项 } from "@/lib/enterprise/dict";
+import { 选的原因, 可选项, 客户分配序号 } from "@/lib/enterprise/dict";
+import { 建档记自持, 补客户分配 } from "@/lib/enterprise/customer-assign-way";
 import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 企业号码查重, 全公司查号, 撞号结论, 记号码 } from "@/lib/enterprise/contact-dedupe";
 import { 号码撞上, 客户名查重, 名撞说法, type 名撞结论 } from "@/lib/enterprise/dupe-ledger";
@@ -686,6 +687,8 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       看全部：团队版业务员录到同事已有的号码也要挡，和线索转客户同一条（上面那次查重只看得到自己的）
     */
     const 起 = await 分机留存起();
+    // 销售自己建档、记在自己名下：客户分配空着就记「自持」（11-17，customer-assign-way.ts）；表单里选了的不改
+    const 记自持 = await 建档记自持(me, salesOwnerId);
     const 建了 = await 查完再写(async (tx) => {
       if (phone) {
         const dup = await 看全部(async () => tx.customer.findFirst({ where: await 同号条件(tx, phone, 起), select: 撞到的字段 }));
@@ -701,6 +704,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       }
       // 客户编号（11-17 PR-1）：同一个事务里取号，建不成号跟着回滚
       const created = await tx.customer.create({ data: await 带客户编号(tx, data) });
+      if (记自持) await 补客户分配(tx, created.id, 客户分配序号.自持);
       await 写外贸档案(tx, created.id, { ...档案.data, ...(企号?.类型 === "邮箱" ? { email: 企号.值 } : 企号?.类型 === "微信" ? { wechat: 企号.值 } : {}) }, false);
       if (企号) await 记号码(tx, { 刚建的: created.id }, null, 企号);
       if (认得(接着)) await 接着(tx, created.id);
