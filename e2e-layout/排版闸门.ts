@@ -165,6 +165,116 @@ async function 滚到(page: Page, 比例: number) {
   await page.waitForTimeout(200);
 }
 
+/**
+ * 手机宽度（员工反馈第 2 批 2H，11-17）：客户在飞书里直接打开手机网页用（P-界面-14：登录、首页、客户、项目、线索、跟进、设置、拍名片）。
+ * 宽度按项目的手机断点（≤767px，AppShell 的 小屏）取两档常见的：375（iPhone SE / mini 一档）和 390（iPhone 12–16 一档）；
+ * 高度取飞书内置浏览器去掉顶栏后剩的（375 × 667、390 × 844 各减飞书标题栏 44）。UA 带 Lark/，触屏 + isMobile，同 e2e-ent/main-flow 那条手机用例。
+ * 手机上没有左栏、AI 栏常驻这两种摆法，只有一种；另外量两个点开的弹层：顶上「打开导航菜单」、首页「更多入口」（拍名片在里面）。
+ * 量法和桌面三档同一套（e2e/layout-audit.ts：整页横滚、撑出、被裁、出界、被盖住〔elementFromPoint〕、压字、折行），数据同一份长名客户。
+ * 已知例外照桌面的现存问题清单（现存问题.json），在哪几组写「375 手机」「390 手机」；清单外新冒出来的判红。为之后 2G「手机客户详情一屏」防回退
+ */
+export const 手机宽们 = [375, 390] as const;
+const 手机高: Record<(typeof 手机宽们)[number], number> = { 375: 623, 390: 800 };
+/**
+ * 点开：点开一个弹层再量，返回弹层的选择器。只量弹层里面（菜单项出界、被裁、被盖住、折行）：
+ * 弹层盖住底下页面的按钮是设计如此，页面本身在「手机-首页」那一屏已经量过
+ */
+type 手机页 = { 名: string; 址: string; 存?: Record<string, string>; 饼?: Record<string, string>; 点开?: (page: Page) => Promise<string> };
+const 开着的下拉 = ".ant-dropdown:not(.ant-dropdown-hidden)";
+const 手机页们 = (种子 = 企业版种子()): 手机页[] => [
+  { 名: "手机-首页", 址: "/dashboard" },
+  {
+    名: "手机-导航菜单", 址: "/dashboard",
+    点开: async (page) => {
+      await page.getByRole("button", { name: "打开导航菜单" }).click();
+      await expect(page.locator(`${开着的下拉} .ant-dropdown-menu`)).toBeVisible();
+      return 开着的下拉;
+    },
+  },
+  {
+    // 拍名片入口：首页输入框「+」（更多入口）里的拍名片 / 查重 / 背调；手机上相机键另在输入框里（capture=environment）
+    名: "手机-首页更多入口", 址: "/dashboard",
+    点开: async (page) => {
+      await page.getByRole("button", { name: "更多入口" }).click();
+      await expect(page.locator(开着的下拉).getByText("拍名片", { exact: true })).toBeVisible();
+      return 开着的下拉;
+    },
+  },
+  { 名: "手机-客户列表", 址: "/customers", 饼: { "customers-view": "list" } },
+  { 名: "手机-客户看板", 址: "/customers", 饼: { "customers-view": "board" } },
+  { 名: "手机-客户记录页", 址: "/customers/gate-scandi" },
+  { 名: "手机-客户记录页-长英文名", 址: "/customers/gate-long-uk" },
+  { 名: "手机-客户记录页-无空格名", 址: "/customers/gate-nospace" },
+  { 名: "手机-客户详情-项目区", 址: `/customers/gate-scandi?project=${种子.项目}` },
+  { 名: "手机-项目看板", 址: "/projects", 存: { "projects-view": JSON.stringify("看板") } },
+  { 名: "手机-项目列表", 址: "/projects", 存: { "projects-view": JSON.stringify("列表") } },
+  { 名: "手机-项目公海", 址: "/projects?pool=1", 存: { "projects-view": JSON.stringify("看板") } },
+  { 名: "手机-新线索", 址: "/leads", 存: { "projects-view": JSON.stringify("看板") } },
+  { 名: "手机-跟进计划", 址: "/follow-ups/plans" },
+  { 名: "手机-设置", 址: "/settings" },
+  { 名: "手机-设置-团队成员", 址: "/settings?tab=members" },
+  { 名: "手机-设置-业务配置", 址: "/settings?tab=business" },
+];
+
+/** 手机宽度一组（登录页 + 手机页们 + 两个弹层）；在 spec 文件顶层调用，一个宽度一份 spec，好摊到不同分片 */
+export function 手机排版闸门(宽: (typeof 手机宽们)[number]) {
+  test.describe.configure({ mode: "serial" });
+  test.use({
+    viewport: { width: 宽, height: 手机高[宽] },
+    isMobile: true,
+    hasTouch: true,
+    deviceScaleFactor: 2,
+    userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Lark/7.20.0 LarkLocale/zh_CN",
+  });
+  const 组 = `${宽} 手机`;
+  const 记录: { 宽: number; 摆法: string; 屏: string; 问题: 排版问题[] }[] = [];
+  const 见过的已知 = new Set<string>();
+
+  test.afterAll(async () => {
+    const 好了 = 现存问题.filter((x) => x.在哪几组.includes(组) && !见过的已知.has(x.键)).map((x) => x.键);
+    if (好了.length) console.log(`\n排版闸门 ${组}：现存问题清单里这 ${好了.length} 条这一轮没再出现，确认修好后从 e2e-layout/现存问题.json 删掉（或删掉「${组}」这一组）：\n${好了.map((k) => `  - ${k}`).join("\n")}`);
+    if (出处) { mkdirSync(出处, { recursive: true }); writeFileSync(path.join(出处, `闸门排版问题-手机${宽}.json`), JSON.stringify(记录, null, 2)); }
+  });
+
+  test(`${宽} 手机（飞书里打开）：登录、首页、客户、项目、线索、跟进、设置、拍名片不横滚、不撑破、按钮点得到`, async ({ page }) => {
+    test.setTimeout(10 * 60_000);
+    const 这一组: string[] = [];
+    const 量 = async (名: string, 段: string, 范围?: string) => {
+      const 问题 = await 查排版(page, { 忽略, 范围 });
+      if (!问题.length) return;
+      const 屏 = `${名}-${段}`;
+      记录.push({ 宽, 摆法: "手机", 屏, 问题 });
+      for (const x of 问题) if (已知.has(键(名, x))) 见过的已知.add(键(名, x));
+      const 新的 = 问题.filter((x) => !已知.has(键(名, x)));
+      if (新的.length) 这一组.push(`「${屏}」\n${说问题(新的)}`);
+      if (出处) { mkdirSync(出处, { recursive: true }); await page.screenshot({ path: path.join(出处, `${宽}-手机-${屏}.png`) }); }
+    };
+
+    // 登录页：没登录时量（飞书里点链接进来第一眼）
+    await page.goto("/login?next=/customers");
+    await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    await 量("手机-登录", "顶");
+
+    await 企业版进门(page);
+    for (const p of 手机页们()) {
+      await 去(page, p.址, "默认", p.存, p.饼);
+      if (p.点开) {
+        const 弹层 = await p.点开(page);
+        await page.waitForTimeout(300);
+        await 量(p.名, "顶", 弹层);
+        await page.keyboard.press("Escape");
+        continue;
+      }
+      for (const [比例, 段] of [[0, "顶"], [1, "底"]] as const) {
+        await 滚到(page, 比例);
+        await 量(p.名, 段);
+      }
+    }
+    if (!只记) expect(这一组, `${组}：\n${这一组.join("\n\n")}`).toEqual([]);
+  });
+}
+
 /** 一个宽度的三组（默认 / AI栏常驻 / 左栏最宽）连同收尾；在 spec 文件顶层调用 */
 export function 排版闸门(宽: (typeof 宽们)[number]) {
   test.describe.configure({ mode: "serial" });
