@@ -52,21 +52,25 @@ describe("常量", () => {
 });
 
 describe("现在", () => {
-  it("历史分析的进行中 / 流失 / 丢单都不进 结局、公海、漏斗、线索瀑布、线索转商机", async () => {
+  it("历史分析的进行中 / 流失 / 丢单都不进 结局、公海、漏斗、线索瀑布、线索转商机；被领走还在推的只进在跟", async () => {
     await 建({ name: "a", ownerId: 王.id, phase: "线索", node: "潜客培育" });
     await 建({ name: "b", ownerId: 李.id, phase: "商机", node: "共识方案", amount: 100 });
     await 建({ name: "c", ownerId: 李.id, phase: "商机", node: "明确需求", pooledAt: new Date() });
     await 建({ name: "d", ownerId: 王.id, phase: "线索", node: "潜客培育", result: "线索流失", closedAt: new Date() });
     const 改前 = await 项目现在("CNY");
 
-    // 回填：公海里进行中的线索 / 商机，带结局的线索流失、丢单；还有一个已被领走、有人在跟的（还是历史分析，也不算）
+    // 回填：公海里进行中的线索 / 商机，带结局的线索流失、丢单
     for (let i = 0; i < 5; i++) await 回填({ phase: "线索", node: "潜客培育" });
     for (let i = 0; i < 3; i++) await 回填({ phase: "商机", node: "明确需求" });
     for (let i = 0; i < 4; i++) await 回填({ phase: "线索", node: "潜客培育", result: "线索流失", closedAt: new Date("2023-05-01") });
     for (let i = 0; i < 2; i++) await 回填({ phase: "商机", node: "共识方案", result: "丢单", closedAt: new Date("2024-02-01") });
+    // 已被王领走、还在推的一个（领客户时一起带走的）
     await 回填({ phase: "商机", node: "共识方案", pooledAt: undefined, ownerId: 王.id });
     const 改后 = await 项目现在("CNY");
-    expect(改后).toEqual(改前);
+    // 领走还在推的那个（王手上的商机）只进阶段 / 节点 / 按人，别的都和回填前一样
+    expect(改后.阶段.find((x) => x.phase === "商机")?.count).toBe(改前.阶段.find((x) => x.phase === "商机")!.count + 1);
+    expect(改后.按人.find((r) => r.name === "王")?.商机).toBe(1);
+    expect({ ...改后, 阶段: 改前.阶段, 节点: 改前.节点, 按人: 改前.按人 }).toEqual(改前);
     expect(改后.公海).toBe(1);
     expect(改后.结局.find((r) => r.result === "线索流失")?.count).toBe(1);
     expect(改后.结局.find((r) => r.result === "丢单")?.count).toBe(0);

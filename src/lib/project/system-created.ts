@@ -14,7 +14,10 @@
  *   - 新建类：并进 不算补建（凡是排补建的地方一并排掉它）
  *   - 现在类（project-stats 项目现在）：阶段、节点、结局、公海、漏斗、线索瀑布、线索转商机
  *   - 一段类（project-stats 项目一段）：结局按 closedAt 落段、转商机 / 转订单（节点变更）
- *   - 首页卡、渠道看板 / 渠道列表、销售持有数（这些本来就只数有负责人或新建的，见各处注释）
+ *   - 渠道看板 / 渠道列表（channel-stats-db.ts 渠道项目条件）、公海页渠道名单（list.ts 公海名单候选），两边条数对得上
+ *   - 首页卡：本月新增走 不算补建；重点 / 暂未跟进 / 3 天内回公海只数在推的（公海里的本来不算）；暂未跟进对它同补建的例外（客户身上有过沟通就不算）
+ * 例外：被人领走、还在推的（领客户时随客户带出公海的进行中项目，carry-over-db.ts 带走公海项目）是这个人手上真在跟的，
+ *   持有数（project/db.ts 算持有）、复盘「在跟」、数据页的阶段 / 节点 / 按人照算；结局、漏斗、线索瀑布、转商机仍不算
  * 公海页照常列出它们（客户池 / 线索池 / 商机池归池见 enterprise/unified-pool-db.ts 的注释），项目详情显示来源标签「历史分析」，导出带来源列。
  *
  * 回填写库约定（脚本照这个写，统计按这个排）：
@@ -46,6 +49,12 @@ export function 来源字(source: string | null | undefined): string {
 export const 不算历史分析 = {
   AND: [{ OR: [{ source: null }, { source: { not: 历史分析来源 } }] }],
 } satisfies Prisma.ProjectWhereInput;
+
+/**
+ * 「是历史分析的」条件，放进 NOT 里也安全：带上 source IS NOT NULL，source 空的那几行算出 FALSE 而不是 NULL
+ * （NOT (source = 'x' AND …) 遇到 NULL 会整行丢掉）
+ */
+export const 历史分析的 = { source: { not: null, equals: 历史分析来源 } } satisfies Prisma.ProjectWhereInput;
 
 /** 节点变更（ProjectNodeLog）的统计用：留痕人不是 历史分析留痕人、项目也不是历史分析的 */
 export const 留痕不算历史分析 = {

@@ -6,7 +6,7 @@ import { 公海里历史负责人是 } from "@/lib/project/pool-owner";
 import type { Prisma } from "@/generated/prisma";
 import { bucketOf, 刻度们, type 粒度 } from "./data";
 import { 项目漏斗of, type 漏斗格 } from "./funnel";
-import { 不算补建, 不算历史分析, 留痕不算历史分析, 并条件 } from "@/lib/project/system-created";
+import { 不算补建, 不算历史分析, 历史分析来源, 留痕不算历史分析, 并条件 } from "@/lib/project/system-created";
 
 /**
  * 企业版只用项目时「数据」页的数（10-26 用户：「「数据」页改成按项目统计」，线索 / 商机 / 订单是项目的三大阶段）。
@@ -92,16 +92,21 @@ type 现在组 = { phase: string; node: string; result: string | null; currency:
  */
 export async function 项目现在(本位币: string, 只看?: 只看谁): Promise<项目现在> {
   const 字典 = 字典of(企业版());
-  const 范围 = 并条件(只看 === undefined ? undefined : await 这些人的(只看), 不算历史分析);
+  const 谁的 = 只看 === undefined ? undefined : await 这些人的(只看);
+  const 范围 = 并条件(谁的, 不算历史分析);
+  // 历史分析的项目被人领走、还在推的（领客户时一起带走的进行中项目）：是这个人手上真在跟的，只进阶段 / 节点 / 按人 / 外币（同 持有数、复盘「在跟」），
+  // 结局、公海、漏斗、线索瀑布、线索转商机照样不算
+  const 在跟条件 = 并条件(谁的, { result: null, pooledAt: null });
   const 键 = ["phase", "node", "result", "currency", "ownerId"] as const;
-  const [不在公海, 在公海, 判无效组, 没判无效组, 外币] = await Promise.all([
+  const [不在公海, 在公海, 判无效组, 没判无效组, 外币, 领走的历史] = await Promise.all([
     prisma.project.groupBy({ by: [...键], where: 并条件(范围, { pooledAt: null }), _count: { _all: true }, _sum: { amount: true } }),
     prisma.project.groupBy({ by: [...键], where: 并条件(范围, { pooledAt: { not: null } }), _count: { _all: true }, _sum: { amount: true } }),
     // 线索瀑布拆「判无效」：有结局的、线索验证终判无效线索的（同 判无效了）
     prisma.project.groupBy({ by: ["phase", "node", "result"], where: 并条件(范围, { result: { not: null }, entLeadVerify: { is: { finalResult: 无效线索 } } }), _count: { _all: true } }),
     prisma.project.groupBy({ by: ["phase", "node", "result"], where: 并条件(范围, { result: { not: null }, NOT: { entLeadVerify: { is: { finalResult: 无效线索 } } } }), _count: { _all: true } }),
     // 外币：在跟的、不是本位币、金额大于 0 的个数（分组的金额是合计，看不出哪几个是 0，单数）
-    prisma.project.count({ where: 并条件(范围, { result: null, pooledAt: null, currency: { not: 本位币 }, amount: { gt: 0 } }) }),
+    prisma.project.count({ where: 并条件(在跟条件, { currency: { not: 本位币 }, amount: { gt: 0 } }) }),
+    prisma.project.groupBy({ by: [...键], where: 并条件(在跟条件, { source: 历史分析来源 }), _count: { _all: true }, _sum: { amount: true } }),
   ]);
   const 组们 = (gs: typeof 不在公海, 公海: boolean): 现在组[] =>
     gs.map((g) => 本套位置({ phase: g.phase, node: g.node, result: g.result, currency: g.currency, ownerId: g.ownerId, pooledAt: 公海 ? new Date(0) : null, amount: g._sum.amount ?? 0, n: g._count._all }, 字典));
@@ -110,7 +115,7 @@ export async function 项目现在(本位币: string, 只看?: 只看谁): Promi
   const rows = 只看 === undefined ? 全部行 : 全部行.filter((p) => !p.pooledAt);
   const 进行中 = rows.filter((p) => !p.result);
   // 阶段、节点只数有人跟的：公海里的单独数在「公海」（11-02 验收：客户数和项目数要趋同，公海的两边都不算）
-  const 在跟 = 进行中.filter((p) => !p.pooledAt);
+  const 在跟 = [...进行中.filter((p) => !p.pooledAt), ...组们(领走的历史, false)];
   const 钱 = (p: { amount: number; currency: string }) => (p.currency === 本位币 ? p.amount : 0);
 
   const 节点 = 阶段们.flatMap((phase) =>
