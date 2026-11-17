@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
+import { PHASE_PRODUCTION_BUILD, PHASE_PRODUCTION_SERVER } from "next/constants";
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 
 /**
@@ -44,7 +45,7 @@ const 安全头 = [
  */
 const 静态资源前缀 = process.env.ASSET_PREFIX?.trim() || undefined;
 
-const nextConfig: NextConfig = {
+export const nextConfig: NextConfig = {
   // 容器部署：产出自带最小 node_modules 的独立 server.js
   output: "standalone",
   // Prisma 生成的客户端里有动态路径，Turbopack 会把整个项目追进 standalone（含 public/）；Dockerfile 另外再拷一遍 public，
@@ -140,4 +141,99 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+/**
+ * 部署号（deploymentId，11-17 无感更新）：一版构建一个号，取这次构建的 commit（前 12 位）。
+ *
+ * 设了它 Next 会（16.4.6，node_modules/next/dist 里核过）：
+ *   - 页面 <html data-dpl-id> 带上这个号，浏览器端记下（shared/lib/deployment-id.js）
+ *   - 浏览器发 server action、RSC 导航请求都带 `x-deployment-id: <号>` 头
+ *     （client/components/router-reducer/reducers/server-action-reducer.js、fetch-server-response.js 的 createFetch）
+ *   - 服务器回 RSC 时带 `x-nextjs-deployment-id`；浏览器发现和自己的号不同就整页跳转（doMpaNavigation），不再报错
+ *   - /_next/static 的地址后面带 `?dpl=<号>`
+ * 部署时 nginx 按这个头把「上一版标签页发来的 server action」转给留着的上一版进程（见 deploy/enterprise/tools/skew-check.mjs
+ * 和 02-开发与发版/无感更新-草案/），上一版标签页不刷新也能保存。
+ *
+ * 号从哪来（先到先用）：
+ *   1. 构建时的环境变量 CRM_DEPLOYMENT_ID（off = 不设部署号，和以前一样）
+ *   2. deploy/enterprise/COMMIT：git archive 导出的目录（3702 的 rebuild.sh 就是这样建的，没有 .git）里被 export-subst 换成 commit
+ *   3. git：cwd 本身是仓库根目录时的 HEAD（不认父进程带的 GIT_DIR，也不认外层仓库，见 本目录的commit）
+ *   都拿不到就不设（等于没有无感更新，其余照旧）。
+ * next start（3702）启动时会再读一遍本文件：这时不重新算，用构建产物 required-server-files.json 里记的号，
+ * 免得构建后 HEAD 动过、页面里的号和服务器回的号对不上（对不上 = 每次点链接都整页刷新）。
+ * next dev 不设。
+ */
+export function 部署号(
+  phase: string,
+  opts: { env?: Record<string, string | undefined>; cwd?: string } = {},
+): string | undefined {
+  const env = opts.env ?? process.env;
+  const cwd = opts.cwd ?? process.cwd();
+  const 合法 = (v: string | undefined) => (v && /^[A-Za-z0-9_-]{1,64}$/.test(v) ? v : undefined);
+  if (phase === PHASE_PRODUCTION_SERVER) {
+    try {
+      const f = path.join(cwd, env.NEXT_DIST_DIR || ".next", "required-server-files.json");
+      return 合法(JSON.parse(readFileSync(f, "utf8"))?.config?.deploymentId);
+    } catch {
+      return undefined;
+    }
+  }
+  if (phase !== PHASE_PRODUCTION_BUILD) return undefined;
+  const 指定 = env.CRM_DEPLOYMENT_ID?.trim();
+  if (指定 === "off") return undefined;
+  if (指定) {
+    if (!合法(指定)) throw new Error(`CRM_DEPLOYMENT_ID 只许字母、数字、- 和 _（最长 64）：${指定}`);
+    return 指定;
+  }
+  try {
+    const 导出的 = readFileSync(path.join(cwd, "deploy/enterprise/COMMIT"), "utf8").trim();
+    if (/^[0-9a-f]{40}$/.test(导出的)) return 导出的.slice(0, 12);
+  } catch {
+    // 没这个文件：往下用 git
+  }
+  return 本目录的commit(cwd);
+}
+
+/**
+ * cwd 自己是 git 仓库（或 worktree）根目录时取它的 HEAD，否则 undefined。
+ * 两处不能信 git 默认找仓库的办法（11-17 pre-push 里测试挂过）：
+ *   - 父进程带着 GIT_DIR / GIT_WORK_TREE 等（git 钩子里跑、别的工具套着跑）：git 不看 cwd，直接报那个仓库的 HEAD。
+ *     所以子进程把这些定位仓库的变量去掉
+ *   - cwd 不是仓库、但在别的仓库里面（导出目录放在某个仓库下面）：git 往上找到外层仓库，报的是外层的 commit。
+ *     所以要求仓库根目录就是 cwd
+ */
+const 定位仓库的变量 = [
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_COMMON_DIR",
+  "GIT_INDEX_FILE",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_NAMESPACE",
+  "GIT_PREFIX",
+  "GIT_CEILING_DIRECTORIES",
+  "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+];
+function 本目录的commit(cwd: string): string | undefined {
+  const env = { ...process.env };
+  for (const k of 定位仓库的变量) delete env[k];
+  try {
+    const [根, sha] = execFileSync("git", ["rev-parse", "--show-toplevel", "HEAD"], {
+      cwd,
+      env,
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .toString()
+      .trim()
+      .split("\n");
+    if (!根 || realpathSync(根) !== realpathSync(cwd)) return undefined;
+    if (sha && /^[0-9a-f]{40}$/.test(sha)) return sha.slice(0, 12);
+  } catch {
+    // 不是 git 目录、没装 git、HEAD 还没有提交
+  }
+  return undefined;
+}
+
+export default function config(phase: string): NextConfig {
+  const id = 部署号(phase);
+  return id ? { ...nextConfig, deploymentId: id } : nextConfig;
+}

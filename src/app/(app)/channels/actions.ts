@@ -209,6 +209,11 @@ export async function toggleChannel(id: string, active: boolean): Promise<{ ok: 
     另一个窗口已经删了这个渠道：原来 update 直接抛 P2025，界面上点了没反应（2026-10-04 第 2 期 2a，r2-data 那条【下一版】）。
     说一句「已经不在了」
   */
+  // 主渠道停用时不让单开子渠道（P-渠道-13）：开了也选不到，列表上照样是「已停用」，等于点了没反应
+  if (active) {
+    const 主 = (await prisma.channel.findUnique({ where: { id }, select: { main: { select: { name: true, active: true } } } }))?.main;
+    if (主 && !主.active) return { ok: false, error: `主渠道「${主.name}」已停用，先到「主渠道」里启用` };
+  }
   let c: { name: string };
   try {
     c = await prisma.channel.update({ where: { id }, data: { active } });
@@ -372,6 +377,29 @@ export async function toggleMainChannel(id: string, active: boolean): Promise<{ 
     return 不在了(e);
   }
   await recordAudit({ user: me, action: "update", entity: "EntChannelMain", entityId: id, summary: `${active ? "启用" : "停用"}主渠道「${m.name}」` });
+  revalidatePath("/channels");
+  return { ok: true };
+}
+
+/**
+ * 删主渠道（11-17）：只删下面一个渠道都没挂的。渠道列表里删的是子渠道——单一入口的子渠道和主渠道同名，
+ * 删了子渠道、主渠道还在「主渠道」里，人以为没删掉；主渠道要在主渠道管理里另删。
+ * 下面还挂着渠道的不删（客户、项目、投入都挂在子渠道上，外键 SetNull 会让它们悄悄脱离主渠道），先删或改挂子渠道
+ */
+export async function deleteMainChannel(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const me = await requireUser();
+  const 挡 = await 挡管(me);
+  if (挡) return { ok: false, error: 挡 };
+  if (!企业版()) return { ok: false, error: "主渠道只在企业版里用" };
+  const m = await prisma.entChannelMain.findUnique({ where: { id }, select: { name: true, _count: { select: { channels: true } } } });
+  if (!m) return { ok: false, error: "这个主渠道已经不在了（可能在别处删了），刷新看看" };
+  if (m._count.channels > 0) return { ok: false, error: `下面还挂着 ${m._count.channels} 个渠道，不能删；不用了就停用` };
+  try {
+    await prisma.entChannelMain.delete({ where: { id } });
+  } catch (e) {
+    return 不在了(e);
+  }
+  await recordAudit({ user: me, action: "delete", entity: "EntChannelMain", entityId: id, summary: `删除主渠道「${m.name}」` });
   revalidatePath("/channels");
   return { ok: true };
 }

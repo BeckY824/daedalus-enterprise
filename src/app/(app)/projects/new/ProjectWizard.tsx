@@ -45,6 +45,9 @@ import AddressInput, { 空地址 } from "@/components/AddressInput";
 import { 详细地址上限, 详细地址提示 } from "@/lib/project/profile-rules";
 import type { 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 没业务角色不能新建话 } from "@/lib/enterprise/permissions";
+import ReplyWindowInput from "@/components/ReplyWindowInput";
+import { 回复晚于回收, 北京墙钟转时刻, 认定时分配, 分配晚于回复 } from "@/lib/project/time-fields";
+import ScheduleAssignInput from "@/components/ScheduleAssignInput";
 
 const 草稿键 = "项目建档向导";
 const 时间格式 = "YYYY-MM-DD HH:mm";
@@ -78,6 +81,10 @@ type 稿 = {
   项目: {
     name: string; ownerId: string; amount: number | null; currency: string; remark: string; 分配方式?: number; 渠道?: string | null; 业务线?: string | null;
     所在地?: 客户地址 & { location?: string | null }; 业务线手选?: boolean;
+    /** 指定回复时间（企业版，11-17，选填）：北京墙钟「YYYY-MM-DD HH:mm」，开始 / 结束填一个也行；老草稿里没有 */
+    指定回复开始?: string | null; 指定回复结束?: string | null;
+    /** 指定分配时间（企业版，11-17 PR3）：null / 没有 = 现在分配；字符串 = 指定时间（北京墙钟，"" = 还没选时刻）。只在指定分配、自动分配时认 */
+    定时分配?: string | null;
   };
   /** 下一步时间（YYYY-MM-DD）：开了超时回收时才有这格、必填；老草稿里没有这格 */
   /** 节点：企业版首条沟通必选（跟进节点 = 项目落在线索阶段哪一步，最多到线索验证）；下一步 = 下一步计划（文字，企业版；开了超时回收时必填，11-05）；团队版没有 */
@@ -113,6 +120,9 @@ const 几天后 = (天: number) => dayjs().add(天, "day").format("YYYY-MM-DD");
 /** 销售选自动分配的后果（A9）：就地黄条一句，原型 cr.revised 去掉「也收不回来」 */
 const 销售自动分后果 = "分出去后你将看不到这个项目";
 
+/** 企业版：这次选了「指定时间」分配（PR3）的那个值；现在分配 / 分配方式不是指定、自动 = null */
+const 定时值 = (d: 稿, 企业: 企业建档): string | null =>
+  企业 && (d.项目.分配方式 === 0 || d.项目.分配方式 === 1) && typeof d.项目.定时分配 === "string" ? d.项目.定时分配 : null;
 /** 市场成员选了自动分配（P-转-26，用户 11-17）：业务线不用选、不交，服务端按客户区域定内贸 / 外贸 */
 const 区域定线中 = (d: 稿, 带项目: boolean, 企业: 企业建档) => 带项目 && !!企业?.按区域 && d.项目.分配方式 === 1;
 
@@ -132,7 +142,7 @@ function 空稿(ownerId: string, currency: string, 首类型: string): 稿 {
 const 查过键 = (d: 稿, 企: boolean) => (企 ? `${d.号码类型 ?? ""}|${d.phone.trim()}` : d.phone.trim());
 
 /** 一张表上的格子（P-界面-36）：校验出错时按它就地标红、滚过去 */
-type 格 = "号码类型" | "号码" | "更多号码" | "联系人" | "客户名" | "来源" | "业务线" | "项目名" | "分配方式" | "负责人" | "内容" | "节点" | "下一步时间" | "下一步计划";
+type 格 = "号码类型" | "号码" | "更多号码" | "联系人" | "客户名" | "来源" | "业务线" | "项目名" | "分配方式" | "负责人" | "分配时间" | "内容" | "节点" | "下一步时间" | "下一步计划";
 type 差项 = { 格: 格; 话: string };
 
 /**
@@ -175,6 +185,11 @@ function 项目沟通还差(d: 稿, 带项目: boolean, 要下一步: boolean, �
     else if (d.项目.name.trim().length > 项目名上限) 记("项目名", `项目名称请控制在 ${项目名上限} 字以内`);
     if (企业 && 企业.分配方式们.length && d.项目.分配方式 === undefined) 记("分配方式", "请选分配方式");
     if (要选负责人(d, 企业) && !d.项目.ownerId) 记("负责人", "请选项目负责人");
+    const 定时 = 定时值(d, 企业);
+    if (定时 !== null) {
+      const 认 = 认定时分配(定时);
+      if (!认.ok) 记("分配时间", 认.error);
+    }
   }
   if (!d.跟进.content.trim()) 记("内容", "请填写这次沟通的内容");
   if (带项目 && 企业) {
@@ -475,13 +490,17 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     const 负责人 = 企业 && !要选负责人(d, 企业) ? 我?.id ?? "" : d.项目.ownerId;
     try {
       const 这次 = { 分配方式: d.项目.分配方式 ?? null, 业务线: 区域定线中(d, 带项目, 企业) ? null : d.项目.业务线 ?? null };
-      if (!(await 问一起转(() => 建项目带走的项目(客.id, { ownerId: 负责人 || null, ...这次 })))) return void set交错("没建：一起转的项目还没确认");
+      // 指定时间分配（PR3）：现在不转，到点才分，这会儿不问一起转
+      const 定时 = 定时值(d, 企业);
+      if (定时 === null && !(await 问一起转(() => 建项目带走的项目(客.id, { ownerId: 负责人 || null, ...这次 })))) return void set交错("没建：一起转的项目还没确认");
       const r = await 给客户建项目({
         customerId: 客.id,
         ...(联系人Id ? { 联系人Id } : {}),
         项目: {
           name: d.项目.name, ownerId: 负责人 || null, 分配方式: d.项目.分配方式 ?? null, 业务线: 这次.业务线,
           ...(d.项目.所在地 ? { 所在地: d.项目.所在地 } : {}),
+          指定回复开始: d.项目.指定回复开始 ?? null, 指定回复结束: d.项目.指定回复结束 ?? null,
+          ...(定时 ? { 定时分配: 定时 } : {}),
         },
         跟进: { ...d.跟进, method: 对得上的方式(d.跟进.type, d.跟进.method) },
       });
@@ -541,7 +560,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
           客户,
           联系人,
           项目: {
-            ...项目稿, amount: 稿面.项目.amount ?? 0, ownerId: 负责人 || null, 分配方式: 企业 ? 稿面.项目.分配方式 ?? null : undefined,
+            ...项目稿, 定时分配: 定时值(稿面, 企业), amount: 稿面.项目.amount ?? 0, ownerId: 负责人 || null, 分配方式: 企业 ? 稿面.项目.分配方式 ?? null : undefined,
             // 业务线（11-01 清单 A1，手动选）：企业版总是传（没选 = null）；团队版不传
             // 市场成员选自动分配：不交，服务端按客户区域定（P-转-26）
             业务线: 企业 ? (区域定线中(稿面, 带项目, 企业) ? null : 稿面.项目.业务线 ?? null) : undefined,
@@ -612,6 +631,13 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
 
   // 所在地给的业务线建议（11-02）：只提示，提交 = 人确认了
   const 线提示 = 企业 && 带项目 ? 所在地提示(建议业务线(d.项目.所在地), d.项目.业务线) : null;
+  // 指定回复时间晚于预计回收日（开了超时回收：下一步那天过完就回收）：黄条提示，不拦
+  const 回复警 = 企业 && 带项目 && 要下一步 && d.跟进.下一步时间
+    ? 回复晚于回收(北京墙钟转时刻(d.项目.指定回复开始), 北京墙钟转时刻(d.项目.指定回复结束), dayjs(d.跟进.下一步时间).add(1, "day").format("YYYY-MM-DD"))
+    : null;
+  // 指定分配时间晚于指定回复时间（PR3）：黄条提示，不拦
+  const 定时 = 带项目 ? 定时值(d, 企业) : null;
+  const 分配警 = 定时 ? 分配晚于回复(北京墙钟转时刻(定时), 北京墙钟转时刻(d.项目.指定回复开始), 北京墙钟转时刻(d.项目.指定回复结束)) : null;
   const 一格 = (g: 格 | null, label: string, el: React.ReactNode, 必填 = false, 宽 = false, 注?: React.ReactNode) => (
     <label className={宽 ? "cr-field cr-wide" : "cr-field"} data-ge={g ?? undefined}>
       <span className="cr-label">{必填 && <span className="cr-req">* </span>}{label}</span>
@@ -900,6 +926,10 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
             {(企业 ? 要选负责人(d, 企业) : !独自一人(users, d.项目.ownerId)) && 一格("负责人", "项目负责人", (
               <Select className="cr-full" aria-label="项目负责人" status={红("负责人")} value={d.项目.ownerId || undefined} placeholder="选项目负责人" options={负责人选项} onChange={(v) => 改("项目", { ownerId: v })} showSearch optionFilterProp="label" />
             ), !!企业)}
+            {/* 指定分配时间（11-17 PR3）：指定分配、自动分配才有；选了指定时间 = 到点前留在新线索待分配，到点后台分 */}
+            {企业 && (d.项目.分配方式 === 0 || d.项目.分配方式 === 1) && 一格("分配时间", "分配时间", (
+              <ScheduleAssignInput status={红("分配时间")} value={d.项目.定时分配 ?? null} onChange={(v) => 改("项目", { 定时分配: v })} />
+            ), false, false, typeof d.项目.定时分配 === "string" ? "按北京时间，最远 30 天；到点前留在新线索待分配" : undefined)}
             {联系人们.length > 0 && 一格(null, "联系人", (
               <Select className="cr-full" aria-label="联系人" value={联系人Id} options={联系人们.map((c) => ({ value: c.id, label: c.isPrimary ? `${c.name}（主要）` : c.name }))} onChange={(v) => set联系人Id(v)} />
             ), false, false, "首条沟通记在这位联系人上")}
@@ -924,6 +954,15 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
                 onChange={(e) => 改("项目", { 所在地: { ...(d.项目.所在地 ?? 空地址), location: e.target.value } })}
               />
             ), false, true)}
+            {/* 指定回复时间（11-17，选填）：客户要求联系的时间点 / 时间段，按北京时间；只填开始 = 那个时间前后，只填结束 = 那之前 */}
+            {企业 && 一格(null, "指定回复时间", (
+              <ReplyWindowInput
+                value={{ 开始: d.项目.指定回复开始 ?? null, 结束: d.项目.指定回复结束 ?? null }}
+                onChange={(v) => 改("项目", { 指定回复开始: v.开始, 指定回复结束: v.结束 })}
+              />
+            ), false, true, "选填，按北京时间：指定什么时候回复客户")}
+            {回复警 && <Alert type="warning" showIcon className="cr-wide" data-testid="wizard-reply-warn" title={回复警} />}
+            {分配警 && <Alert type="warning" showIcon className="cr-wide" data-testid="wizard-schedule-warn" title={分配警} />}
             {!企业 && 一格(null, "金额", (
               <Space.Compact className="cr-full">
                 <Select className="cr-cur" aria-label="币种" value={d.项目.currency} options={币种选项()} onChange={(v) => 改("项目", { currency: v })} showSearch optionFilterProp="label" />
