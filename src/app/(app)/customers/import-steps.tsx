@@ -452,7 +452,8 @@ export function 复核({
         <Table
           size="small"
           tableLayout="fixed"
-          pagination={{ pageSize: 8, size: "small" }}
+          // 超过 50 行 antd 自己摆出「条/页」：写 pageSize 是受控值、换了不生效，只给默认值（11-17 同渠道页那条）
+          pagination={{ defaultPageSize: 8, size: "small" }}
           rowKey={(r) => `${r.列}|${r.原值}`}
           dataSource={看.待复核}
           columns={[

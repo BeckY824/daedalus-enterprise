@@ -124,6 +124,9 @@ type Props<T> = {
   展开?: TableProps<T>["expandable"];
 };
 
+/** 浏览器里分页时每页默认几条（底部「条/页」能换，见 本地页） */
+const 默认每页 = 20;
+
 const 列键 = <T,>(c: 列<T>) => String(c.key ?? c.dataIndex);
 
 /**
@@ -211,6 +214,14 @@ export default function DataList<T extends { id: string }>({
     const t = setTimeout(() => set新来的([]), 2000);
     return () => clearTimeout(t);
   }, [行]);
+
+  /*
+    浏览器里分页（不给 分页）时第几页、每页几条记在这里（11-17 渠道页报上来：底部「条/页」换了没反应）。
+    原来分页对象里写死 pageSize: 20，antd 把它当受控值，换了每页条数下一轮又被 20 盖回去。
+    换每页条数回第一页：停在第 5 页换成 100 条/页，人要看的是从头开始的那一屏
+  */
+  const [本地页, set本地页] = useState({ 当前: 1, 每页: 默认每页 });
+  const 换页 = (旧每页: number, 翻: (页: number, 每页: number) => void) => (页: number, 每页: number) => 翻(每页 !== 旧每页 ? 1 : 页, 每页);
 
   const [列单开着, set列单开着] = useState(false);
   const 可选的 = useMemo(() => 全部列.filter((c) => !c.常驻), [全部列]);
@@ -437,10 +448,12 @@ export default function DataList<T extends { id: string }>({
                   total: 分页.总数,
                   showTotal: (t) => <>共 {总数(t)} 条</>,
                   showSizeChanger: true,
-                  onChange: 分页.翻页,
+                  onChange: 换页(分页.每页, 分页.翻页),
                 }
               : {
-                  pageSize: 20,
+                  current: 本地页.当前,
+                  pageSize: 本地页.每页,
+                  onChange: 换页(本地页.每页, (当前, 每页) => set本地页({ 当前, 每页 })),
                   // 截断时 `t` 是取回来的行数，不是库里的总数——别让它冒充总数
                   showTotal: (t) => (真截断 ? <>这里 {总数(t)} 条</> : <>共 {总数(t)} 条</>),
                   showSizeChanger: true,

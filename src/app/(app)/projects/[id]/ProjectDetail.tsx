@@ -50,6 +50,10 @@ import AddressInput from "@/components/AddressInput";
 import { 三种业务线, 建议业务线, 所在地提示 } from "@/lib/enterprise/assign-line";
 import { 拼地址, 企业级别, 企业客户级别, 企业级别说明, type 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 级别星 } from "@/lib/enterprise/level-stars";
+import ReplyWindowInput, { type 回复两格 } from "@/components/ReplyWindowInput";
+import { 定时时刻格 } from "@/components/ScheduleAssignInput";
+import { 改定时分配, 取消定时分配, 定时分配现在分 } from "../../leads/schedule-actions";
+import { 指定回复文字, 北京墙钟转时刻, 回复晚于回收, 短时刻 } from "@/lib/project/time-fields";
 import { 成交需求上限, 详细地址上限, 详细地址提示, 项目区域, type 项目成交钱 } from "@/lib/project/profile-rules";
 import { 合同状态们, 痛点标注上限, type 合同状态 } from "@/lib/project/proj-fields";
 import { 备注上限 } from "@/lib/project/wizard";
@@ -143,6 +147,10 @@ export type 项目详情 = {
   回收预演?: 回收预演底子 | null;
   /** 企业版预计成交日期（10-27 从客户挪到项目，服务端排好的 YYYY-MM-DD）；不是企业版不传 */
   expectedDealAt?: string | null; 要下一步: boolean; 能记沟通: boolean;
+  /** 企业版指定回复时间（11-17）：北京墙钟「YYYY-MM-DD HH:mm」，没填 null；不是企业版不传 */
+  指定回复?: 回复两格;
+  /** 指定分配时间（企业版，11-17 PR3）：还没到点的定时；时间 = 北京墙钟，给谁 = 指定分配的接手人（自动分配 null），能动 = 录入人 / 能分配的人 */
+  定时分配?: { 时间: string; 给谁: string | null; 能动: boolean };
   /** 沟通的「…」菜单（改 / 删，10-29）：能记沟通、看得到客户，且不是同事 / 虚线下属的客户；企业版改 = 身为负责人的管理（M-权限-09 原口径 11-09，管理以下含负责人本人不能改删） */
   可改沟通?: boolean;
   /** 沟通能删：系统管理员或身为负责人的管理（M-权限-09 原口径 11-09，和 可改沟通 分开） */
@@ -211,6 +219,9 @@ export type 项目详情 = {
 
 /** 项目卡「线索验证」结果的颜色（11-01 六个叫法） */
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "center", marginBottom: 8, minWidth: 0 };
+/** 指定分配时间那一行（11-17）：窄宽度折行；写在组件外，行内样式只减不增（tests/inline-style-cap.test.ts） */
+const 定时行样: React.CSSProperties = { ...行样, flexWrap: "wrap", rowGap: 4 };
+const 可折行样: React.CSSProperties = { whiteSpace: "normal", overflowWrap: "anywhere" };
 // 四个字的键（来源线索 / 预计成交）在 14px 下要 ~56px，48px 会折成两行（10-27）
 const 键样: React.CSSProperties = { color: "var(--text-muted)", fontSize: "var(--dt-label)", flex: "0 0 4.3em", whiteSpace: "nowrap" }; // 字段名 13（16a 同客户详情）
 // 多行的格子（需求描述、痛点、备注；前两个 11-04 起平时一行）：键和第一行对齐，不居中到一大段字的中间
@@ -1142,6 +1153,53 @@ export default function ProjectDetail({
               <DatePicker aria-label="预计成交" autoFocus disabled={忙} style={{ width: "100%" }} value={草稿 ? dayjs(草稿) : null} onChange={(d) => 提交(d ? d.format("YYYY-MM-DD") : null)} />
             )}
           />
+        </div>
+      )}
+      {/* 指定回复时间（11-17）：客户要求的联系时间点 / 时间段，两格选填；没填「—」 */}
+      {p.指定回复 && (
+        <div style={行样}>
+          <span style={键样}>指定回复</span>
+          <ProjectInlineField<回复两格>
+            名="指定回复"
+            值={p.指定回复}
+            能改={字段能改("指定回复时间")}
+            显示={(v) => {
+              if (!v.开始 && !v.结束) return 待填("指定回复时间");
+              const 警 = 回复晚于回收(北京墙钟转时刻(v.开始), 北京墙钟转时刻(v.结束), p.回收日);
+              return <span className="proj-one" data-tip={警 ?? undefined} style={警 ? { color: "var(--warning-text)" } : undefined}>{指定回复文字(北京墙钟转时刻(v.开始), 北京墙钟转时刻(v.结束))}{警 ? " ⚠" : ""}</span>;
+            }}
+            存={(v) => 存项目项({ 指定回复开始: v.开始, 指定回复结束: v.结束 })}
+            编辑器={({ 草稿, set草稿, 忙 }) => <ReplyWindowInput autoFocus disabled={忙} value={草稿} onChange={set草稿} />}
+          />
+        </div>
+      )}
+      {/* 指定分配时间（11-17 PR3）：还在待分配、到点由后台分；录入人和能分配的人能改时间、改成现在分配、取消定时 */}
+      {p.定时分配 && (
+        <div style={定时行样} data-testid="project-schedule-row">
+          <span style={键样}>定时分配</span>
+          <ProjectInlineField<string>
+            名="定时分配"
+            值={p.定时分配.时间}
+            能改={p.定时分配.能动 && !忙}
+            显示={(v) => {
+              // 卡窄（右栏约 210px）：时间、分给谁可以折行，不截断
+              const 话 = `${短时刻(北京墙钟转时刻(v)) ?? v} ${p.定时分配?.给谁 ? `分给 ${p.定时分配.给谁}` : "自动分配"}`;
+              return <span title={`${话}（北京时间）`} style={可折行样}>{话}</span>;
+            }}
+            存={async (v) => {
+              const r = await 改定时分配(p.id, { 时间: v });
+              if (!r.ok) return r.error;
+              router.refresh();
+              return null;
+            }}
+            编辑器={({ 草稿, 提交 }) => <定时时刻格 autoFocus value={草稿} onChange={(v) => { if (v) 提交(v); }} />}
+          />
+          {p.定时分配.能动 && (
+            <Space size={4}>
+              <Button size="small" type="link" disabled={忙} onClick={() => void 跑(() => 定时分配现在分(p.id), "已分配")}>现在分配</Button>
+              <Button size="small" type="link" disabled={忙} onClick={() => void 跑(() => 取消定时分配(p.id), "已取消定时，留在新线索待分配")}>取消定时</Button>
+            </Space>
+          )}
         </div>
       )}
       {/* 嵌在客户页没有项目页头（审查 #2）：页头副标题里的负责人、创建人、创建时间挪到这张卡上 */}

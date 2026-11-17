@@ -31,6 +31,8 @@ import { 企业级别 } from "@/lib/enterprise/customer-v2";
 import { 未分级 } from "@/app/(app)/customers/query-shared";
 import { 创建时间段, 是日期 } from "@/lib/custom-date-range";
 import { 阶段进程条件, 读验证痕们, 验证摘要, type 项目筛选 } from "@/lib/project/list";
+// 指定回复时间（11-17）：新列表加了这一格，旧实现照样带上，逐格比对口径不变
+import { 指定回复文字 } from "@/lib/project/time-fields";
 const 项目上限 = 500;
 
 /**
@@ -151,7 +153,7 @@ export async function 旧读项目列表(me: Parameters<typeof 公海超时收�
     pooled: !!p.pooledAt,
     ...(企 && p.customer.pool ? { 客户在公海: true } : {}),
     ...(企 && p.awaitAssignAt && !p.pooledAt ? { 待分配: true } : {}),
-    ...(企 ? { 即将回收: 将收(p), 回收日: 规则 && !p.pooledAt ? 项目回收日(规则, p, 超时线们) : null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null } : {}),
+    ...(企 ? { 即将回收: 将收(p), 回收日: 规则 && !p.pooledAt ? 项目回收日(规则, p, 超时线们) : null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null, 指定回复: p.replyStartAt || p.replyEndAt ? 指定回复文字(p.replyStartAt, p.replyEndAt, 今) : null } : {}),
     // 项目来源和渠道统计同一条规则：项目自己选的优先，没选跟客户来源（lib/enterprise/channel-stats.ts 项目算哪个渠道）；客户不露时不拿客户的来源
     ...(企 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null, 已立项天数: 已立项天数(p.createdAt, 今), 项目来源: p.channel?.name ?? (可见.has(p.customerId) ? p.customer.channel?.name : null) ?? null, level: p.level } : {}),
     ...(收回 ? { 收回次数: 收回.get(p.id) ?? 0 } : {}),

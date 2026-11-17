@@ -37,7 +37,8 @@ import { 持有上限起点, 写前核上限, 整批或不做 } from "@/lib/proj
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
-import { 定分配方式, 建好再分, 新建分配方式数据 } from "@/lib/project/after-create-assign";
+import { 定分配方式, 建好再分, 新建分配方式数据, 认新建定时 } from "@/lib/project/after-create-assign";
+import { 接手问题 } from "@/lib/enterprise/lead-assign";
 import { 项目分给你通知, 同事待分配随客户通知, type 留下的活 } from "@/lib/enterprise/notice-sources";
 import { 客户在市场手里, 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
 import { 分配带走的同事项目, 数进手的持有项目 } from "@/lib/carry-over-db";
@@ -47,6 +48,7 @@ import { 认业务线, 业务线不认得, 业务线必填, 是项目线, type �
 import { 区域线of, 按区域分配of } from "@/lib/enterprise/customer-region";
 import type { 线 } from "@/lib/enterprise/lead-assign";
 import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
+import { 规整指定回复 } from "@/lib/project/time-fields";
 
 export type 给客户建项目输入 = {
   customerId: string;
@@ -147,14 +149,27 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
       if ("error" in 指定) return { ok: false, error: 指定.error };
       指定分配名 = 指定.名;
     }
-    // 指定分配以外：先建在我名下，建好再按分配方式走
-    const 项目输入 = !分配 || 分配.i === 0 ? 输入.项目 : { ...输入.项目, ownerId: me.id };
+    // 指定分配时间（11-17 PR3）：选了「指定时间」= 先建在我名下待分配（定时），到点再分
+    const 定时 = 分配 ? 认新建定时(分配, 输入.项目.定时分配, 输入.项目.ownerId) : null;
+    if (定时 && "error" in 定时) return { ok: false, error: 定时.error };
+    if (定时?.接手人) {
+      const 接 = await prisma.user.findUnique({ where: { id: 定时.接手人 }, select: { active: true } });
+      if (!接?.active) return { ok: false, error: "项目负责人不存在或已停用，请选一位在职成员" };
+      const 问题 = (await 不能当负责人(定时.接手人)) ?? 接手问题(org, 定时.接手人, null);
+      if (问题) return { ok: false, error: 问题 };
+      指定分配名 = null;
+    }
+    // 指定分配以外（和定时的指定分配）：先建在我名下，建好再按分配方式走
+    const 项目输入 = !分配 || (分配.i === 0 && !定时) ? 输入.项目 : { ...输入.项目, ownerId: me.id };
     if (!项目输入.ownerId) return { ok: false, error: "请选项目负责人" };
     const 项目 = 规整项目(项目输入, me.id);
     if ("error" in 项目) return { ok: false, error: 项目.error };
     // 项目所在地（11-02，选填）：和编辑项目同一套规整；没填五格都是 null
     const 地 = 新项目所在地(输入.项目.所在地);
     if (!地.ok) return { ok: false, error: 地.error };
+    // 指定回复时间（11-17，选填）：和建档向导同一份规整（lib/project/time-fields.ts）
+    const 回复 = 规整指定回复(输入.项目.指定回复开始, 输入.项目.指定回复结束);
+    if (!回复.ok) return { ok: false, error: 回复.error };
     // 业务线：企业版新弹窗（带了分配方式）必填三选一。
     // 市场成员（按岗位）选自动分配（P-转-26，用户 11-17）：不用选、交了也不认，按客户区域定（客户地址空看项目所在地）；都空 = 项目不记线，自动分配两条线都算
     let 业务线: 项目线 | null | undefined;
@@ -205,7 +220,7 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
       }
       const p = await tx.project.create({
         data: {
-          ...项目, ...(分配 ? { assignMode: 分配.名 } : {}), ...(业务线 ? { bizLine: 业务线 } : {}), ...地.值, customerId, contactId: 联系人?.id ?? null, creatorId: me.id, phase: "线索", node: 落.节点,
+          ...项目, ...(分配 ? { assignMode: 分配.名 } : {}), ...(业务线 ? { bizLine: 业务线 } : {}), ...地.值, ...回复.值, customerId, contactId: 联系人?.id ?? null, creatorId: me.id, phase: "线索", node: 落.节点,
           nextStepAt: 跟进.nextStepAt, nextStepText: 跟进.nextStepText, ...新项目默认值(true),
         },
       });
@@ -245,7 +260,7 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     revalidatePath("/projects");
     revalidatePath(`/projects/${projectId}`);
     revalidatePath(`/customers/${customerId}`);
-    const 分了 = 分配 ? await 建好再分(me, 分配, projectId, 项目.name, 业务线) : null;
+    const 分了 = 分配 ? await 建好再分(me, 分配, projectId, 项目.name, 业务线, 定时) : null;
     // 自动 / 公海 / 暂不分配 建好再分 自己管（返回对象）；指定别人走这里，自己留着函数里不发
     if (!分了) await 项目分给你通知(me, 项目.ownerId, projectId, 项目.name, customerId, 留下);
     if (同事待分配.length) await 同事待分配随客户通知(me.id, 项目.ownerId, 同事待分配);

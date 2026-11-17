@@ -365,7 +365,8 @@ export function AssignedOutButton() {
           rowKey={(r) => r.projectId ?? r.leadId ?? ""}
           loading={行 === null}
           dataSource={行 ?? []}
-          pagination={{ pageSize: 10, hideOnSinglePage: true }}
+          // 超过 50 条 antd 自己摆出「条/页」：写 pageSize 是受控值、换了不生效，只给默认值（11-17 同渠道页那条）
+          pagination={{ defaultPageSize: 10, hideOnSinglePage: true }}
           locale={{ emptyText: "还没有分出去的线索" }}
           scroll={{ x: 680 }}
           columns={[

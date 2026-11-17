@@ -70,6 +70,11 @@ export type 渠道行 = {
   投入数?: number;
   /** 项目来源是这个渠道的项目数，同上（11-03 A1-1） */
   项目数?: number;
+  /**
+   * 挂着的主渠道停用了（P-渠道-13，界面上算出来、不进库）。主渠道停用，下面的子渠道在来源选择里一起选不到，
+   * 列表、筛选、详情也一起算「已停用」——原来只看子渠道自己的开关，同一个渠道列表写启用、「主渠道」里写已停用（11-17 客户报）
+   */
+  主停用?: boolean;
 };
 type Row = 渠道行;
 
@@ -78,6 +83,8 @@ const 空统计: 渠道统计 = { 关联线索: 0, 有效线索: 0, 关联商机
 type 有统计 = { 统计?: 渠道统计 };
 const 统计 = (r: 有统计) => r.统计 ?? 空统计;
 const 无 = <span className="muted">—</span>;
+/** 眼下算不算启用：自己启用、且主渠道没停用（来源选择 可选渠道条件 同一个口径） */
+const 启用着 = (r: Row) => r.active && !r.主停用;
 /** 渠道名那一列最宽多少（再长省略、悬停看全称）：这一列钉在左边，1024 宽也得给后面的数留地方 */
 const 名字最宽 = 480;
 /** 估一个渠道名一行要多宽，按 16px 的字宽估（宁宽勿窄，省得刚好差一点被省略）：中文、全角字 16，其余 9，两边留白 24 */
@@ -193,7 +200,16 @@ export default function ChannelsView({
   */
   const [期, set期] = useState<档>(看板段 ? 自定义 : "全部");
   const 有期 = Boolean(看板底数) && 期 !== "全部";
-  const 全部行 = useMemo(() => (有期 ? 原行.map((r) => ({ ...r, 统计: r.期统计 ? r.期统计[期] : r.统计 })) : 原行), [原行, 有期, 期]);
+  /** 停用了的主渠道：下面的子渠道一起算停用（主停用） */
+  const 停用的主 = useMemo(() => new Set(主渠道们.filter((m) => !m.active).map((m) => m.id)), [主渠道们]);
+  const 全部行 = useMemo(
+    () => 原行.map((r) => ({
+      ...r,
+      ...(有期 ? { 统计: r.期统计 ? r.期统计[期] : r.统计 } : {}),
+      ...(r.mainId && 停用的主.has(r.mainId) ? { 主停用: true } : {}),
+    })),
+    [原行, 有期, 期, 停用的主],
+  );
   /** 点数字进项目列表带的同一段创建时间（北京日）；全部 = null 不带 */
   const 时段 = 有期 ? 看板时段(期, new Date(), 看板段 ?? 读日期段()) : null;
   /* 自定义那一段在路上（看板在换、或这一段的数还没到）：表格出骨架，同看板，不拿「—」冒充没数 */
@@ -231,6 +247,8 @@ export default function ChannelsView({
   /** 从「按主渠道」那张表打开的主渠道编辑弹窗（能管渠道的人才有） */
   const [改主, set改主] = useState<主渠道编辑中 | null>(null);
   const 按id找主 = useMemo(() => new Map(主渠道们.map((m) => [m.id, m])), [主渠道们]);
+  /** 这个渠道挂的主渠道叫什么（还没补挂的按渠道名称） */
+  const 主名 = (r: Row) => (r.mainId ? 按id找主.get(r.mainId)?.name : null) ?? r.platform ?? r.name;
   const 开改主 = (id: string) => { const m = 按id找主.get(id); if (m) set改主(主渠道编辑初值(m)); };
   const 按名找主 = useMemo(() => new Map(主渠道们.map((m) => [m.name, m])), [主渠道们]);
   const [开主渠道, set开主渠道] = useState(false);
@@ -402,7 +420,7 @@ export default function ChannelsView({
   /** 渠道名一列的宽：按最长的名字估（名字宽），最窄 120、最宽 名字最宽 */
   const 名列宽 = Math.min(名字最宽, Math.max(120, ...全部行.map((r) => 名字宽(r.name))));
   /** 属性列：有停用的要并排放「属性 + 已停用」两个标签 */
-  const 属性列宽 = 全部行.some((r) => !r.active) ? 156 : 108;
+  const 属性列宽 = 全部行.some((r) => !启用着(r)) ? 156 : 108;
 
   /** 行上「⋯ → 删除」变灰的原因（交互规则 A）：有关联数据的删不了，口径同 deleteChannel */
   function 删不了(r: Row): string | null {
@@ -446,10 +464,11 @@ export default function ChannelsView({
     },
     {
       title: "渠道属性", key: "attr", dataIndex: "attr", width: 属性列宽,
-      render: (v: string, r) => (v || !r.active ? (
+      render: (v: string, r) => (v || !启用着(r) ? (
         <span className="chan-tags">
-          {v && <Tag style={{ margin: 0 }}>{v}</Tag>}
-          {!r.active && <Tag style={{ margin: 0 }}>已停用</Tag>}
+          {v && <Tag>{v}</Tag>}
+          {/* 自己开着、主渠道停了：也写已停用，悬停说是主渠道停的（和「主渠道」里那一行对得上） */}
+          {!启用着(r) && (r.active ? <Tooltip title={`主渠道「${主名(r)}」已停用，下面的渠道一起选不到`}><Tag>已停用</Tag></Tooltip> : <Tag>已停用</Tag>)}
         </span>
       ) : 无),
     },
@@ -498,18 +517,30 @@ export default function ChannelsView({
         const 删因 = 删不了(r);
         const 菜单: NonNullable<MenuProps["items"]> = [
           { key: "edit", label: "编辑", onClick: () => openForm(r) },
-          {
-            key: "toggle",
-            label: r.active ? "停用" : "启用",
-            onClick: () => (r.active ? set问着({ id: r.id, 事: "停用" }) : void 切停用(r)),
-          },
+          r.主停用
+            // 主渠道停了：这里开关不管用（开了也选不到），灰掉、写去哪里启用
+            ? {
+                key: "toggle",
+                disabled: true,
+                label: (
+                  <div>
+                    <div>启用</div>
+                    <div className="muted chan-menu-note">主渠道「{主名(r)}」已停用，先到「主渠道」里启用</div>
+                  </div>
+                ),
+              }
+            : {
+                key: "toggle",
+                label: r.active ? "停用" : "启用",
+                onClick: () => (r.active ? set问着({ id: r.id, 事: "停用" }) : void 切停用(r)),
+              },
           {
             key: "delete",
             disabled: Boolean(删因),
             label: 删因 ? (
               <div>
                 <div>删除</div>
-                <div className="muted" style={{ fontSize: 12, lineHeight: "16px", whiteSpace: "normal", maxWidth: 220 }}>{删因}</div>
+                <div className="muted chan-menu-note">{删因}</div>
               </div>
             ) : "删除",
             onClick: () => set问着({ id: r.id, 事: "删除" }),
@@ -536,7 +567,7 @@ export default function ChannelsView({
               <InlineConfirm
                 开
                 set开={(v) => { if (!v) set问着(null); }}
-                问={问这行 === "停用" ? "停用后新线索里选不到" : "删除这个渠道？"}
+                问={问这行 === "停用" ? "停用后新线索里选不到" : 两层 && r.mainId && r.name === 主名(r) ? "只删这个子渠道，同名主渠道留着" : "删除这个渠道？"}
                 是={问这行}
                 中性={问这行 === "停用"}
                 做={() => (问这行 === "停用" ? 切停用(r) : 删渠道(r))}
@@ -708,7 +739,7 @@ export default function ChannelsView({
         列={列表}
         行={rows}
         亮={亮行}
-        行类={(r) => (r.active ? undefined : "row-off")}
+        行类={(r) => (启用着(r) ? undefined : "row-off")}
         汇总={看板块}
         加载中={等自定义}
         空态={{
@@ -775,7 +806,7 @@ export default function ChannelsView({
                 </Form.Item>
               </Col>
               <Col span={24}>
-                <Form.Item label="渠道状态" name="active">
+                <Form.Item label="渠道状态" name="active" extra={editing?.主停用 ? `主渠道「${主名(editing)}」已停用：这里开着也选不到，要用先到「主渠道」里启用` : undefined}>
                   <Radio.Group optionType="button" options={[{ value: true, label: "启用" }, { value: false, label: "停用" }]} />
                 </Form.Item>
               </Col>
