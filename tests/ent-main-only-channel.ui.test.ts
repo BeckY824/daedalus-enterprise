@@ -24,7 +24,7 @@ const plugin: Plugin = { name: "main-only-boundaries", setup(b) {
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
   stub(/^\.\/ChannelDrawer$/, "export default function D(){return null}");
   stub(/^\.\/actions$/, `const 记=(名)=>async x=>{(window.__存=window.__存||[]).push([名,x]);return{ok:true,id:'x'}};
-    export const saveChannel=记('saveChannel'),toggleChannel=记('toggleChannel'),deleteChannel=记('deleteChannel'),saveMainChannel=记('saveMainChannel'),toggleMainChannel=记('toggleMainChannel');`);
+    export const saveChannel=记('saveChannel'),toggleChannel=记('toggleChannel'),deleteChannel=记('deleteChannel'),saveMainChannel=记('saveMainChannel'),toggleMainChannel=记('toggleMainChannel'),deleteMainChannel=记('deleteMainChannel');`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, (a) => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 

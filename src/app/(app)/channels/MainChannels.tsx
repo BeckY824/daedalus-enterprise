@@ -7,13 +7,16 @@
  * 改名时下面子渠道的全称一起改（saveMainChannel 一个事务）；停用后新建渠道选不到，已挂的照旧
  * 负责人、渠道属性（= 获客方式）（11-10，迁移 118，P-渠道-10 / P-渠道-11）：主渠道自己记一份，一个子渠道都没有的也能填；
  * 表里两列只显示，在「编辑」弹窗里改。改负责人只改主渠道这一行，下面的子渠道、已有客户不跟着换
+ * 删除（11-17）：只有下面一个渠道都没挂的才摆。渠道列表里删的是子渠道，单一入口的子渠道和主渠道同名，
+ * 删完主渠道还在这里——人以为没删掉（客户报「删了义乌门店，上面还有」），主渠道要在这里另删
  */
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Form, Input, Modal, Select, Space, Switch, Table, Tag, Tooltip } from "antd";
 import { PlusOutlined, SearchOutlined } from "@ant-design/icons";
-import { saveMainChannel, toggleMainChannel } from "./actions";
+import { saveMainChannel, toggleMainChannel, deleteMainChannel } from "./actions";
 import SaveButton from "@/components/SaveButton";
+import InlineConfirm from "@/components/InlineConfirm";
 import { isFormValidationError } from "@/lib/form-validation";
 import { 主渠道名上限, 分类文字, type 主渠道行 } from "@/lib/enterprise/channel-main-core";
 import { 成员选项, type 可选成员 } from "@/lib/utils";
@@ -127,6 +130,16 @@ export default function MainChannels({ 主渠道们, 子渠道数, users = [], �
       set忙(null);
     }
   }
+  async function 删主(m: 主渠道行) {
+    const res = await deleteMainChannel(m.id);
+    if (!res.ok) {
+      说行错(m.id, res.error);
+      return res;
+    }
+    set行错(null);
+    router.refresh();
+    return { ok: true as const };
+  }
   async function 切启用(m: 主渠道行) {
     if (忙) return;
     set忙(m.id);
@@ -148,6 +161,7 @@ export default function MainChannels({ 主渠道们, 子渠道数, users = [], �
     <Modal open title="主渠道" onCancel={onClose} footer={null} width={960} destroyOnHidden>
       <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
         每个渠道挂在一个主渠道下。「可设子渠道」关掉的主渠道只能当单一入口用，子渠道留空；「支持自拓」标出业务员自己能拓客的主渠道，和前一项互不相关。
+        主渠道停用后，下面的渠道在列表里一起算停用、新线索里选不到。渠道列表里删的是子渠道；主渠道下一个渠道都没有了，才能在这里删。
       </div>
       <Space style={{ marginBottom: 12, width: "100%", justifyContent: "space-between" }} wrap>
         <Input style={{ width: 240, maxWidth: "100%" }} placeholder="搜索主渠道" allowClear prefix={<SearchOutlined style={{ color: "var(--text-muted)" }} />} value={kw} onChange={(e) => setKw(e.target.value)} />
@@ -197,7 +211,7 @@ export default function MainChannels({ 主渠道们, 子渠道数, users = [], �
             render: (_, m) => <span className="chan-num">{子渠道数.get(m.id) ?? 0}</span>,
           },
           {
-            title: "", key: "act", width: 116,
+            title: "", key: "act", width: 156,
             render: (_, m) => (
               <span className="ch-act">
                 <Space size={2}>
@@ -205,6 +219,11 @@ export default function MainChannels({ 主渠道们, 子渠道数, users = [], �
                   <span key={刚存?.startsWith(`${m.id}:active:`) ? 刚存 : "a"} className={刚存?.startsWith(`${m.id}:active:`) ? "chan-main-saved" : undefined}>
                     <Button type="link" size="small" disabled={Boolean(忙)} onClick={() => 切启用(m)}>{m.active ? "停用" : "启用"}</Button>
                   </span>
+                  {!子渠道数.get(m.id) && (
+                    <InlineConfirm 问="删除这个主渠道？" 做={() => 删主(m)}>
+                      <Button type="link" size="small" disabled={Boolean(忙)}>删除</Button>
+                    </InlineConfirm>
+                  )}
                 </Space>
                 {行错?.id === m.id && <span className="ch-act-err" role="alert" title={行错.话}>{行错.话}</span>}
               </span>

@@ -217,7 +217,8 @@ export function 算看板底数(渠道ids: string[], 项目们: 看板项目[], 
 }
 
 export type 渠道筛选 = { kw: string; attr: string; ownerId: string; active: string; creator?: string };
-type 可筛 = { name: string; platform: string | null; attr: string | null; remark: string | null; channelOwnerId: string; active: boolean; createdByName?: string | null };
+/** 主停用：挂着的主渠道停用了（P-渠道-13）。状态筛选按「眼下算不算启用」= 自己启用且主渠道没停用，和列表上的「已停用」同一个口径 */
+type 可筛 = { name: string; platform: string | null; attr: string | null; remark: string | null; channelOwnerId: string; active: boolean; 主停用?: boolean; createdByName?: string | null };
 
 /** 渠道列表的筛选（列表和看板都用它，所以两边一定是同一批渠道）：关键词搜全称、名称、属性、备注；属性、负责人精确；状态 on / off */
 export function 筛渠道<T extends 可筛>(行: T[], f: 渠道筛选): T[] {
@@ -228,7 +229,7 @@ export function 筛渠道<T extends 可筛>(行: T[], f: 渠道筛选): T[] {
       (!f.attr || r.attr === f.attr) &&
       (!f.ownerId || r.channelOwnerId === f.ownerId) &&
       (!f.creator || r.createdByName === f.creator) &&
-      (!f.active || (f.active === "on") === r.active),
+      (!f.active || (f.active === "on") === (r.active && !r.主停用)),
   );
 }
 
