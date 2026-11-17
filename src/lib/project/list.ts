@@ -1,5 +1,5 @@
 import { prisma, defaultClient } from "@/lib/prisma";
-import { 搜索词, 客户号码条件, 号码藏着 } from "@/lib/search-keyword";
+import { 搜索词, 拆搜索词, 全半角写法, 客户号码条件, 号码藏着 } from "@/lib/search-keyword";
 import { 负责人候选 } from "@/lib/owners";
 import { 看板落列, 看板列键们, type 项目行, type 看板合计组, type 看板卡片 } from "./board";
 import type { 阶段 } from "./nodes";
@@ -215,7 +215,12 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
     ...(客户 ? [按客户(客户)] : []),
     ...(市场 ? [市场项目条件(me.id, 市场.圈, 创建人)] : []),
     // 公海里同事客户的项目：不露客户名；按客户名搜也不该搜出它（否则等于拿名字试出来）。搜索词的 OR 放进 AND 里，不和别的 OR 打架
-    ...(词 ? [{ OR: [{ name: { contains: 词 } }, 并露({ customer: { name: { contains: 词 } } })] }] : []),
+    // 关键词拆词（23D，同客户列表 2F：拆搜索词）：全角空格、多个空格归一，按空格、括号、逗号、顿号拆开，每个词都要中，
+    // 各词可以一个中项目名、一个中客户名；像号码、客户编号、网址的整串不拆。全半角写法：库里存全角字母、人也敲全角的照旧中
+    ...拆搜索词(词).map((w): Prisma.ProjectWhereInput => {
+      const 名 = 全半角写法(w).map((x) => ({ name: { contains: x } }));
+      return { OR: [...名, 并露({ customer: 名.length === 1 ? 名[0] : { OR: 名 } })] };
+    }),
   ];
   // 企业版 C-01：公海里我是历史负责人的项目我看不到（总管理 / 管理员不算，lib/project/pool-owner.ts 回避豁免）
   const 回避 = (await 回避豁免(me)) ? [] : await 我回避的公海项目(prisma, me.id);

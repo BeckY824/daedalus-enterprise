@@ -17,8 +17,7 @@
  */
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 看全部, 现在的公海回避 } from "@/lib/team-scope";
-import { 包含模式, 客户名索引式 } from "@/lib/search-keyword";
-import { 看成客户编号 } from "@/lib/customer-no";
+import { 包含模式, 客户名索引式, 含词 } from "@/lib/search-keyword";
 import { 分组数SQL, 取一段SQL, 键毫秒, 按快捷分组数SQL, 非线索分组数SQL, 排掉分组数SQL, 合分组, 减分组, type 客户行筛 } from "./unified-pool-sql";
 import { 缓存分组数 } from "./pool-count-cache";
 import { 按主键取没删的 } from "./soft-delete-core";
@@ -34,7 +33,7 @@ import type { Prisma } from "@/generated/prisma";
 import { 公海名单条件, 公海名单候选, type 公海名单筛 } from "@/lib/project/list";
 import {
   客户定状态, 客户公海属性, 进程显示项目, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排, 并客户池, 没项目进程, 项目行属性,
-  规整公海属性, 是快捷, 规整排序,
+  规整公海属性, 是快捷, 规整排序, 公海词们,
   type 公海行, type 公海筛选, type 入池类, type 公海属性, type 快捷,
 } from "./unified-pool";
 
@@ -380,7 +379,9 @@ export async function 拆开数分组(筛: 客户行筛): Promise<分组行[]> {
  *     第 i 位客户行在合起来的第 i + 排在它前面的项目行数 位，所以要切 [起, 起+页大小) 只用取客户行第 起−项目行数 位到 起+页大小 位
  */
 async function 读公海页_库里分页(me: { id: string; name: string; role?: string }, sp: 公海筛选, page: number, pageSize: number, 选: { 数号码不全?: boolean }) {
-  const 词 = (sp.keyword ?? "").trim().toLowerCase();
+  // 关键词拆成词（23D，同 筛排 的 公海词们）：每个词都要中，各词可中在客户名、简称、编号、项目名不同的格
+  const 词们 = 公海词们(sp.keyword);
+  const 词 = 词们.length > 0;
   // 项目行（和骨架同一套取法，只是不取客户行；自动回收也在这里先跑）
   const 骨 = await 读公海骨架(me, { 客户的项目: false, 客户可见: !!词 || !!sp.来源, 不取客户: true });
   const 项目筛 = 筛排(骨.行, sp);
@@ -390,8 +391,11 @@ async function 读公海页_库里分页(me: { id: string; name: string; role?: 
   const [定属性, 排掉, 项目名对上] = await Promise.all([
     定属性的项目(框客户).then(按客户分),
     回避掉的公海客户(),
-    // 关键词还比项目名：各人看得到的项目、按创建先后用「、」连起来（同 客户项目格 的 项目名）
-    词 ? 查客户的项目(框客户).then((们) => [...按客户分(们)].filter(([, ps]) => ps.map((p) => p.name).join("、").toLowerCase().includes(词)).map(([id]) => id)) : [],
+    // 关键词还比项目名：各人看得到的项目、按创建先后用「、」连起来（同 客户项目格 的 项目名）；每个词各一份对上的客户
+    词 ? 查客户的项目(框客户).then((们) => {
+      const 名们 = [...按客户分(们)].map(([id, ps]) => [id, ps.map((p) => p.name).join("、")] as const);
+      return 词们.map((w) => 名们.filter(([, 名]) => 含词(名, w.词)).map(([id]) => id));
+    }) : [],
   ]);
   const 商机: string[] = [], 订单: string[] = [];
   for (const [id, ps] of 定属性) {
@@ -399,7 +403,7 @@ async function 读公海页_库里分页(me: { id: string; name: string; role?: 
     if (属 === "商机池") 商机.push(id);
     else if (属 === "订单池") 订单.push(id);
   }
-  const 筛: 客户行筛 = { 商机, 订单, 排掉, ...(词 ? { 词: { 名: 包含模式(词), 项目对上: 项目名对上, 索引式: await 客户名索引式(词), 编号: 看成客户编号(词) } } : {}), ...(sp.来源 ? { 来源: sp.来源 } : {}), ...(sp.号码不全 === "1" ? { 号码不全: true } : {}) };
+  const 筛: 客户行筛 = { 商机, 订单, 排掉, ...(词 ? { 词: await Promise.all(词们.map(async (w, i) => ({ 名: 包含模式(w.词, true), 项目对上: 项目名对上[i], 索引式: await 客户名索引式(w.词), 编号: w.号 }))) } : {}), ...(sp.来源 ? { 来源: sp.来源 } : {}), ...(sp.号码不全 === "1" ? { 号码不全: true } : {}) };
   const 组 = (await (词 ? 现数分组(筛) : 拆开数分组(筛))).map((r) => ({ 属性: r.属性 as 公海属性, 快捷: (r.快捷 as 快捷 | null) ?? null, 不全: Number(r.不全 ?? 0) === 1, n: Number(r.n) }));
   const 属性 = 规整公海属性(sp.属性);
   const 快捷 = 是快捷(sp.快捷) ? sp.快捷 : null;

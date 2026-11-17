@@ -9,7 +9,8 @@ const plugin: Plugin = { name: "record-left-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/(^|\/)tri-state-actions$/, "export const 三态继续持有=async()=>({ok:false,error:\"\"}),三态暂缓回收=三态继续持有,三态让同事结束项目=三态继续持有;");
   stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
-  stub(/(^|\/)InlineField$/, "export default function Inline(p){return <div className='rec-field' data-field={p.field}>{p.label}: {p.显示&&p.value?p.显示(p.value):p.value}</div>}");
+  // 全称那格用真的 InlineField（员工反馈：负责人要能就地改全称），别的格照旧用假的。路径带 .tsx，不撞上面这条 filter
+  stub(/(^|\/)InlineField$/, "import Real from '@/app/(app)/customers/[id]/InlineField.tsx';export default function Inline(p){return p.field==='name'?<Real {...p}/>:<div className='rec-field' data-field={p.field}>{p.label}: {p.显示&&p.value?p.显示(p.value):p.value}</div>}");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>\"/customers/x\";");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
   stub(/(^|\/)ContactForm$/, "export default function F(p){return p.open?<div role='dialog' aria-label={p.record?'编辑联系人':'新增联系人'}>联系人表单</div>:null}");
@@ -17,7 +18,7 @@ const plugin: Plugin = { name: "record-left-boundaries", setup(b) {
   stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({});export const ContactRemoveInline=()=>null;");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
   stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海,退回原因选项=async()=>[];");
-  stub(/^\.\.\/actions$/, "export const 转走项目预览of=async()=>(window.__预览??{项目数:0,项目:[]});export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=async()=>({ok:true});");
+  stub(/^\.\.\/actions$/, "export const 转走项目预览of=async()=>(window.__预览??{项目数:0,项目:[]});export const patchCustomer=async(...a)=>{(window.__改??=[]).push(a);return{ok:true}};export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=async()=>({ok:true});");
   stub(/^\.\/useCustomerResearch$/, "export function CustomerResearchCard(){return null} export function CustomerResearchTag(){return null}");
   stub(/^\.\/follow-history-actions$/, "export const loadFollowHistory=async()=>({ok:true,rows:[],hasMore:false}),readFollowHistoryRow=async()=>({ok:true,row:null}),loadCustomerFeed=async()=>({ok:true,rows:[],hasMore:false});");
   stub(/projects\/actions$/, "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};");
@@ -102,6 +103,14 @@ it("企业版：空字段收起、「展开更多」能展开；没有签约、�
     expect(await page.locator("[data-field='school']").count()).toBe(0);
     expect(await page.locator("aside .rec-field").evaluateAll((els) => els.slice(0, 2).map((e) => (e as HTMLElement).dataset.field))).toEqual(["name", "shortName"]);
     expect(await page.locator("[data-field='name']").innerText()).toMatch(/全称\s*客户A/);
+    // 全称点着就地改（员工反馈：负责人改不了全称）：点格 → 输入框 → 回车交 patchCustomer(id, "name", 新名)，格里马上显示新名
+    await page.getByRole("button", { name: "编辑全称" }).click();
+    const 名框 = page.locator("[data-field='name'] input");
+    await 名框.fill("  客户A新名  ");
+    await 名框.press("Enter");
+    await page.waitForFunction(() => (window as unknown as { __改?: unknown[] }).__改?.length === 1);
+    expect(await page.evaluate(() => (window as unknown as { __改: unknown[] }).__改)).toEqual([["a", "name", "客户A新名"]]);
+    expect(await page.locator("[data-field='name']").innerText()).toMatch(/全称\s*客户A新名/);
     const more = page.getByRole("button", { name: /展开更多 \d+ 项/ });
     await more.click();
     expect(await page.locator("[data-field='remark']").count()).toBe(1);

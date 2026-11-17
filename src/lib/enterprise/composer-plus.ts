@@ -9,7 +9,7 @@ export type 加号项 = "附件" | "名片" | "查重" | "背调";
 
 export function 加号菜单项(o: { 摆附件: boolean; 拍照: boolean; 摆背调: boolean }): { key: 加号项; label: string; 说明: string }[] {
   return [
-    ...(o.摆附件 ? [{ key: "附件" as const, label: "附件", 说明: "带一个文本文件问（txt / md / csv …），只随这一问发出" }] : []),
+    ...(o.摆附件 ? [{ key: "附件" as const, label: "附件", 说明: "带一个文本文件（txt / md / csv …）或一张截图问，只随这一问发出" }] : []),
     { key: "名片" as const, label: o.拍照 ? "拍名片" : "名片", 说明: o.拍照 ? "拍一张名片，认出来建新线索" : "选名片照片，认出来建新线索" },
     { key: "查重" as const, label: "查重", 说明: "查一个号码全公司有没有人录过" },
     ...(o.摆背调 ? [{ key: "背调" as const, label: "背调", 说明: "输入公司名或一句需求，上网背调" }] : []),

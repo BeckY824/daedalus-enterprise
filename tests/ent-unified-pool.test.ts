@@ -501,6 +501,10 @@ describe("关键词搜简称（11-17 客户抬头 PR-0）", () => {
     // 乙自己放进公海的（P-公海-04 回避）：简称搜也不出
     expect(await 搜(乙, "恒信")).toEqual([]);
     expect(await 搜(老板, "恒信达")).toEqual([b]);
+    // 拆词（23D）：简称里的两段、词序反、全角空格都中；回避的照样搜不到
+    expect(await 搜(丙, "贸易　恒信")).toEqual([b]);
+    expect(await 搜(丙, `恒信 ${名}`)).toEqual([]);
+    expect(await 搜(乙, "贸易 恒信")).toEqual([]);
   });
 
   it("项目行：看得到客户的人按简称搜得到；客户名对他不露的，简称也不露、搜不到", async () => {
@@ -518,6 +522,9 @@ describe("关键词搜简称（11-17 客户抬头 PR-0）", () => {
     const 丙搜 = (await 以谁的身份(丙.id, () => 读公海页(丙, { keyword: "远航科技" }, 1, 20))).行.map((r) => r.projectId);
     // 丙看不看得到这位客户，按公海项目的露客户规则；简称跟着客户名一起露
     expect(丙搜).toEqual(丙全.客户名 === null ? [] : [p]);
+    // 拆词（23D）：简称的词 + 项目名的词，客户名不露的照样只靠项目名不够
+    const 丙拆 = (await 以谁的身份(丙.id, () => 读公海页(丙, { keyword: `科技  ${丙全.项目名}` }, 1, 20))).行.map((r) => r.projectId);
+    expect(丙拆).toEqual(丙全.客户名 === null ? [] : [p]);
     if (丙全.客户名 === null) expect(丙全.客户简称).toBeUndefined();
   });
 });

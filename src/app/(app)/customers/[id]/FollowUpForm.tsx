@@ -815,7 +815,7 @@ export default function FollowUpForm({
               </Form.Item>
             </Col>
             <Col span={24}>
-              <Form.Item label="截图 / 录音" extra="可不传，保存后挂在这条沟通上">
+              <Form.Item label="截图 / 录音" extra="可不传，保存后挂在这条沟通上；也可以直接粘贴截图">
                 <选沟通附件 文件们={附件们} on改={(x) => { set附件们(x); 守.改了(); }} />
               </Form.Item>
             </Col>

@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { 登记页内占用 } from "@/lib/roster";
 import { ArrowUpOutlined } from "@ant-design/icons";
+import { 粘的图 } from "@/lib/ask-image";
 
 /**
  * 问一句的那个输入框。**首页和「数据」页用的是同一个。**
@@ -33,6 +34,7 @@ export default function AskBox({
   栏右,
   引用,
   on拖文件,
+  on粘图,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -64,6 +66,11 @@ export default function AskBox({
    * 不给 = 这个入口不收附件，拖进来不亮、浏览器照默认处理
    */
   on拖文件?: (f: File) => void;
+  /**
+   * 框里 Ctrl+V / ⌘V 粘进一张截图（剪贴板里只有图、没有字）：给了才收，交给它（首页：认出图里的字当附件）。
+   * 剪贴板里有字的照旧走 onPaste、字照常进框——从 Excel、网页复制的常常字和图都有，人要的是字
+   */
+  on粘图?: (f: File) => void;
 }) {
   const 自己的 = useRef<HTMLTextAreaElement>(null);
   const ta = 引用 ?? 自己的;
@@ -121,7 +128,15 @@ export default function AskBox({
           placeholder={placeholder}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
-          onPaste={onPaste}
+          onPaste={(e) => {
+            const 图 = on粘图 ? 粘的图(e.clipboardData) : null;
+            if (图 && on粘图) {
+              e.preventDefault();
+              on粘图(图);
+              return;
+            }
+            onPaste?.(e);
+          }}
           onKeyDown={(e) => {
             onKeyDown?.(e);
             if (e.defaultPrevented) return;

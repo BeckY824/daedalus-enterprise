@@ -6,6 +6,7 @@ import InlineConfirm from "@/components/InlineConfirm";
 import { DeleteOutlined, FileOutlined, InboxOutlined, UploadOutlined } from "@ant-design/icons";
 import { 附件上限字节, 图片长边, 是图片, 每条最多, 读大小, 只收图片, 收的类型, 收所有文件, type 附件, type 归属 } from "@/lib/attachment-rules";
 import { 传附件, 归属查询 } from "@/lib/attachment-upload";
+import { usePasteUpload, 粘贴标记 } from "@/lib/paste-upload";
 import { useViewAs } from "@/components/ViewAsContext";
 import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 
@@ -27,6 +28,7 @@ declare global {
  *
  * 企业版项目附件（P11，10-29）：归属 = 项目，什么文件都收（收所有文件），说法从「图片」换成「附件」
  * 紧凑（F-项目-18，项目附件合成一块后每格用）：大拖放框换成一颗小「上传」按钮，上限、提示一样
+ * 粘贴截图（11-17）：焦点在这块或它所在的弹窗 / 格里时 Ctrl+V / ⌘V，走和点选同一个 传一个（lib/paste-upload.ts）
  */
 export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = false, 说明, on个数, 分类, 紧凑 = false, on变了 }: { 归属: 归属; 只读?: boolean; 说明?: string; on个数?: (n: number) => void; 分类?: string | null; 紧凑?: boolean; on变了?: () => void }) {
   /**
@@ -170,9 +172,13 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = f
   const 满了 = (列表?.length ?? 0) >= 每条最多;
   // 传着时灰掉：重复点不会多传一遍；同一次选的多个文件照样都传
   const 灰 = 满了 || 传着 > 0;
+  // 粘贴截图：能传、没灰的时候才接（和上传按钮同一个条件），交给同一个 传一个
+  const 根 = useRef<HTMLDivElement>(null);
+  usePasteUpload(根, !只读 && !灰, (们) => { for (const f of 们) void 传一个(f); });
+  const 粘贴话 = "也可以直接粘贴截图";
 
   return (
-    <div className="att-panel" data-testid="attachments-panel">
+    <div className="att-panel" data-testid="attachments-panel" ref={根} {...(只读 ? {} : { [粘贴标记]: "" })}>
       {!只读 && 紧凑 && <div data-testid="attachment-upload" className="att-compact">
         <Upload
           multiple
@@ -186,7 +192,7 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = f
         >
           <Button size="small" icon={<UploadOutlined />} disabled={灰}>上传</Button>
         </Upload>
-        <span className="muted">{满了 ? `已经 ${每条最多} 个了，先删掉几个不要的` : `单个最多 ${读大小(附件上限字节)}`}</span>
+        <span className="muted">{满了 ? `已经 ${每条最多} 个了，先删掉几个不要的` : `单个最多 ${读大小(附件上限字节)}；${粘贴话}`}</span>
       </div>}
       {!只读 && !紧凑 && <div data-testid="attachment-upload">
       <Upload.Dragger
@@ -202,8 +208,8 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = f
         <p className="ant-upload-drag-icon"><InboxOutlined /></p>
         <p className="ant-upload-text">{满了 ? (只图 ? `已经 ${每条最多} 张了，先删掉几张不要的` : `已经 ${每条最多} 个了，先删掉几个不要的`) : 说明 ?? (只图 ? "把产品图片拖到这里，或点一下选图片" : "把文件拖到这里，或点一下选文件")}</p>
         <p className="ant-upload-hint">{只图
-          ? <>JPG、PNG、GIF、WebP、BMP 都行；单张最多 {读大小(附件上限字节)}，会先压到长边 {图片长边} 像素再存</>
-          : <>合同、方案、表格、图片都行；单个最多 {读大小(附件上限字节)}，图片会先压到长边 {图片长边} 像素再存</>}</p>
+          ? <>JPG、PNG、GIF、WebP、BMP 都行；单张最多 {读大小(附件上限字节)}，会先压到长边 {图片长边} 像素再存；{粘贴话}</>
+          : <>合同、方案、表格、图片都行；单个最多 {读大小(附件上限字节)}，图片会先压到长边 {图片长边} 像素再存；{粘贴话}</>}</p>
       </Upload.Dragger>
       </div>}
 
