@@ -148,7 +148,7 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
 
         if (c.localDeleted) {
           if (选 === "保留我们") continue; // 删了就是删了：不建、对照行不动，原系统再改时还会问
-          const 新id = await 建(tx, e, v!, 现.现在, 现.项目, 现.业务线, 现.操作人);
+          const 新id = await 建(tx, e, v!, 现.现在, 现.项目, 现.业务线, 现.操作人, w.原始);
           if (e === "customer") await 无主客户进公海(tx, 现, 新id, v!);
           await tx.entExternalRef.update({ where: { id: ref.id }, data: { targetId: 新id, written: J(v), batchId: 批.id } });
           await tx.entImportRow.create({ data: { batchId: 批.id, entity: e, externalId: c.externalId, targetId: 新id, kind: "create", written: J(v), refBefore: J(ref) } });
@@ -170,7 +170,7 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
           }
         }
         if (Object.keys(改动).length) {
-          await 改(tx, e, c.targetId, 改动, 现值!, 现.现在, { 批次Id: 批.id, 补培育: !!现.补培育 });
+          await 改(tx, e, c.targetId, 改动, 现值!, 现.现在, { 批次Id: 批.id, 补培育: !!现.补培育, 操作人: 现.操作人 });
           改了++;
           if (e === "followup") {
             碰过.add(String(现值!.customerId));

@@ -41,7 +41,7 @@ import { 查电话, 规整手机号, 认回打码号 } from "@/lib/phone";
 import { 同号条件, 分机留存起 } from "@/lib/phone-dedupe";
 import { 同邮箱条件, 同微信条件, 同阿里条件, 邮箱键 } from "@/lib/email-dedupe";
 import type { 带走数, 转走项目预览 } from "@/lib/carry-over";
-import { 带走并记下, 带走并记下在事务里, 还项目, 带过来对不上, 数转走的项目, 数进手的持有项目, type 带走的 } from "@/lib/carry-over-db";
+import { 带走并记下在事务里, 还项目, 带过来对不上, 数转走的项目, 数进手的持有项目, type 带走的 } from "@/lib/carry-over-db";
 import { 还待分配状态 } from "@/lib/enterprise/market-transfer";
 import { 记换负责人, 是我刚换的, 删被撤的换负责人记录 } from "@/lib/owner-log-db";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
@@ -788,22 +788,31 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   // 留痕要对比前后值；改前 在上面算归属时已经取过一份
   // 企业版电话换了 / 清了：子表里客户本身那行跟着换（和主表同一笔事务）
   const 换电话 = 企业版() && !!改前 && (改前.phone ?? "") !== (phone ?? "");
-  const 写主表 = async (where: Prisma.CustomerWhereInput & { id: string }, 改: Record<string, unknown>) =>
-    换电话 && "phone" in 改
-      ? prisma.$transaction(async (tx) => {
-          const r = await tx.customer.updateMany({ where, data: 改 });
-          if (r.count === 1) await 同步电话子表(tx, where.id, 改前!.phone, phone);
-          return r;
-        })
-      : prisma.customer.updateMany({ where, data: 改 });
-  const first = await 写主表({ id: input.id, updatedAt: expected }, { ...data, updatedAt: bump(expected) });
+  // 换负责人的记录、名下的活跟着走，和改负责人写在同一个事务里（11-18 复盘第 5 类：原来改完另开事务带活，中间断了就有负责人换了、记录没写的）。
+  // 市场转客户要的组织在事务外读（事务里读组织会等到超时）
+  const 换人org = 换人 && !交接给 && 企业版() ? await 权限组织() : null;
+  const 写主表 = async (where: Prisma.CustomerWhereInput & { id: string }, 改: Record<string, unknown>, 旧负责人: string | null) => {
+    const 换负责人 = 旧负责人 !== null && "salesOwnerId" in 改 && 改.salesOwnerId !== 旧负责人;
+    if (!换负责人 && !(换电话 && "phone" in 改)) return { count: (await prisma.customer.updateMany({ where, data: 改 })).count, 带: undefined };
+    return 查完再写(async (tx) => {
+      const r = await tx.customer.updateMany({ where, data: 改 });
+      if (r.count !== 1) return { count: r.count, 带: undefined };
+      if (换电话 && "phone" in 改) await 同步电话子表(tx, where.id, 改前!.phone, phone);
+      const 带 = 换负责人 && 旧负责人 !== null ? await 带走并记下在事务里(tx, [{ customerId: where.id, 旧: 旧负责人 }], String(改.salesOwnerId), me.id, "assign", 换人org) : undefined;
+      return { count: r.count, 带 };
+    }, { timeout: 30_000 });
+  };
+  /** 事务提交了才发：随客户带走了同事的项目，告诉那位同事（P-转-19，同批量转让） */
+  const 带走后通知 = async (带: { 同事待分配: Parameters<typeof 同事待分配随客户通知>[2] } | undefined) => {
+    if (带?.同事待分配.length) await 同事待分配随客户通知(me.id, data.salesOwnerId, 带.同事待分配);
+  };
+  const first = await 写主表({ id: input.id, updatedAt: expected }, { ...data, updatedAt: bump(expected) }, 改前?.salesOwnerId ?? null);
   if (first.count === 1) {
     const 改前行 = 改前 as unknown as Record<string, unknown>;
     await 记一笔(diffKeys(改前行, data as Record<string, unknown>), 改前行);
     await 改外贸档案(me, input.id, data.name, 档案.data, b.customer);
-    const 带 = 改前 && 改前.salesOwnerId !== data.salesOwnerId
-      ? await 带走并记下([{ customerId: input.id, 旧: 改前.salesOwnerId }], data.salesOwnerId, me.id)
-      : undefined;
+    const 带 = first.带;
+    await 带走后通知(带);
     const 带走 = 带?.数;
     if (改前 && 改前.salesOwnerId !== data.salesOwnerId && !带走?.没转成) await 分给你通知(me, data.salesOwnerId, [input.id], undefined, 带?.留下);
     revalidateCustomer(input.id);
@@ -880,13 +889,12 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     // 单独订正的渠道负责人不在 base 快照里，diffKeys 看不见它，要显式带上
     if (input.channelOwnerId !== undefined) patch.channelOwnerId = data.channelOwnerId;
 
-    const merged = await 写主表({ id: input.id, updatedAt: current.updatedAt }, { ...patch, updatedAt: bump(current.updatedAt) });
+    const merged = await 写主表({ id: input.id, updatedAt: current.updatedAt }, { ...patch, updatedAt: bump(current.updatedAt) }, mine.includes("salesOwnerId") ? current.salesOwnerId : null);
     if (merged.count === 1) {
       await 记一笔(mine, currentRow, true);
       await 改外贸档案(me, input.id, data.name, 档案.data, b.customer);
-      const 带 = mine.includes("salesOwnerId")
-        ? await 带走并记下([{ customerId: input.id, 旧: current.salesOwnerId }], data.salesOwnerId, me.id)
-        : undefined;
+      const 带 = merged.带;
+      await 带走后通知(带);
       const 带走 = 带?.数;
       if (mine.includes("salesOwnerId") && current.salesOwnerId !== data.salesOwnerId && !带走?.没转成) await 分给你通知(me, data.salesOwnerId, [input.id], undefined, 带?.留下);
       revalidateCustomer(input.id);
@@ -2106,13 +2114,21 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
 
   const before = await prisma.customer.findUnique({ where: { id }, select: { name: true, expectedSignOn: true, [key]: true } as never });
   if (!before) return { ok: false, error: `这条${b.customer}已被删除` };
+  let 带了: Awaited<ReturnType<typeof 带走并记下在事务里>> | undefined;
   if (key === "salesOwnerId" && 进来时负责人 !== undefined) {
     /*
       两个人同时把同一位改给不同的人：原来无条件写，后到的盖先到的，两位接手人都收到「分给你」。
       按「负责人还是进来时那位」条件写；0 行 = 检查的这会儿被别人改走了：不写、不留痕、不带走活、不通知
     */
     if ((before as { salesOwnerId?: string }).salesOwnerId !== 进来时负责人) return { ok: false, error: 负责人刚被改过 };
-    const 改 = await prisma.customer.updateMany({ where: { id, salesOwnerId: 进来时负责人 }, data });
+    // 换负责人的记录、名下的活跟着走，和改负责人同一个事务（11-18 复盘第 5 类：原来改完另开事务带活）；组织事务外读
+    const 换人org = 企业版() ? await 权限组织() : null;
+    const 改 = await 查完再写(async (tx) => {
+      const r = await tx.customer.updateMany({ where: { id, salesOwnerId: 进来时负责人 }, data });
+      if (!r.count || 进来时负责人 === data.salesOwnerId) return { count: r.count, 带: undefined };
+      return { count: r.count, 带: await 带走并记下在事务里(tx, [{ customerId: id, 旧: 进来时负责人 }], data.salesOwnerId as string, me.id, "assign", 换人org) };
+    }, { timeout: 30_000 });
+    带了 = 改.带;
     if (!改.count) {
       const 现 = await 看全部(() => prisma.customer.findUnique({ where: { id }, select: { salesOwnerId: true } }));
       if (!现) return { ok: false, error: `这条${b.customer}已被删除` };
@@ -2134,11 +2150,10 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
     summary: `修改${b.customer}「${(before as { name: string }).name}」：${labels[key] ?? key}`,
     detail: describeCustomerChanges([key], before as Record<string, unknown>, data, labels),
   });
-  // 换了销售负责人：原负责人在他身上没做完的活跟着走（排查 B3）
+  // 换了销售负责人：原负责人在他身上没做完的活跟着走（排查 B3），已在上面改负责人的同一个事务里做完；提交了才通知被带走项目的同事（P-转-19）
   const 原负责人 = (before as { salesOwnerId?: string }).salesOwnerId;
-  const 带 = key === "salesOwnerId" && 原负责人 && 原负责人 !== data.salesOwnerId
-    ? await 带走并记下([{ customerId: id, 旧: 原负责人 }], data.salesOwnerId as string, me.id)
-    : undefined;
+  const 带 = 带了;
+  if (带?.同事待分配.length) await 同事待分配随客户通知(me.id, data.salesOwnerId as string, 带.同事待分配);
   const 带走 = 带?.数;
   if (key === "salesOwnerId" && 原负责人 && 原负责人 !== data.salesOwnerId && !带走?.没转成) await 分给你通知(me, data.salesOwnerId as string, [id], undefined, 带?.留下);
   revalidatePath(`/customers/${id}`);

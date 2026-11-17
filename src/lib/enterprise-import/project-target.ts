@@ -17,6 +17,7 @@ import { 将回收提醒跟着换人 } from "../project/db";
 import { 规, 写不进, type 值表, type 标量 } from "./values";
 import { 节点所在阶段 } from "./project-values";
 import { 换负责人 } from "@/lib/project/owner-write";
+import { 新项目默认值 } from "@/lib/project/proj-fields";
 
 type Tx = Prisma.TransactionClient;
 
@@ -117,9 +118,11 @@ export async function 无主项目进公海(tx: Tx, id: string, 操作人: strin
 
 /**
  * 新建项目 + 一条起点日志；创建人记成负责人（导入的人不一定是负责人，项目页「我创建的」按它算）。
- * 没负责人（11-02，apply.ts 落值）：创建人和日志记导入的人（操作人），项目直接进公海
+ * 没负责人（11-02，apply.ts 落值）：创建人和日志记导入的人（操作人），项目直接进公海。
+ * 默认值（11-18 复盘第 5 类）：合同状态落「起草中」（原表没有这一列）；分配方式按原表那一行定（M-导入-01，调用方算好传）；
+ * 项目来源不写：原表的来源挂在客户上，渠道统计回落客户来源
  */
-export async function 建项目(tx: Tx, v: 值表, 现在: string, 业务线?: string, 操作人?: string): Promise<string> {
+export async function 建项目(tx: Tx, v: 值表, 现在: string, 业务线?: string, 操作人?: string, 分配方式: string | null = null): Promise<string> {
   const 位 = 位置(v);
   const 负责人 = 串(v.ownerId ?? null);
   const ownerId = 负责人 || 公海无负责人;
@@ -143,6 +146,8 @@ export async function 建项目(tx: Tx, v: 值表, 现在: string, 业务线?: s
       depositAmount: 数(v.depositAmount ?? null),
       depositCurrency: 串(v.depositCurrency ?? null),
       ...(业务线 ? { bizLine: 业务线 } : {}),
+      // 导入只有企业版
+      ...新项目默认值(true, { 分配方式, 项目来源: null }),
     },
     select: { id: true },
   });
