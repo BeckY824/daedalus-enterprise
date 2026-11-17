@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
+import { 补全动作桩 } from "./helpers/action-stubs";
 /* 11-12 客户详情合并第 2 批（定稿 UI 客户详情-定稿UI-20261112.html）：客户和项目合成一页。
    真 CustomerDetail（RecordView + ProjectZone + 嵌入版 ProjectDetail）+ globals.css，只桩掉服务端动作。钉的是：
    页签切换后左栏「关键」跟着换；项目各动作收进右上角「项目操作 ▾」、客户的进「客户操作 ▾」（11-12 用户）；页签行一行不换行（1024 / 1280 / 1366，超长项目名、超长公司名）；提醒条在中栏进程卡正上方；
@@ -12,7 +13,7 @@ const plugin: Plugin = { name: "cust-detail-merge", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   // 教练主题（11-17）的动作：服务端那串（prisma、通知）进不了浏览器包
   stub(/coach-topic-actions$/, "const f=async()=>({ok:true});export const 发主题动作=f,回复主题动作=f,关闭主题动作=f,删主题动作=f;");
-  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;");
+  stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
   stub(/(^|\/)InlineField$/, "export default function Inline(p){return <div className='rec-field' data-field={p.field}>{p.label}: {p.value}</div>}");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(u){window.__去=u},replace(u){window.__换=u},prefetch(){}});export const usePathname=()=>\"/customers/a\";export const useSearchParams=()=>new URLSearchParams(window.__sp||'');");
   stub(/^next\/link$/, "export default function L({prefetch,scroll,replace,...p}){return <a {...p}/>}");
@@ -38,9 +39,9 @@ const plugin: Plugin = { name: "cust-detail-merge", setup(b) {
     export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'p1'});`);
   stub(/^\.\.\/commission-actions$/, `const f=${空跑};export const 存项目底价=f,存提成分配=f,更正实际提成=f;`);
   // 定时分配（11-17）改 / 取消 / 现在分：服务端那串（prisma、通知）进不了浏览器包
-  stub(/(^|\/)schedule-actions$/, `const f=${空跑};export const 改定时分配=f,取消定时分配=f,定时分配现在分=f;`);
+  stub(/(^|\/)schedule-actions$/, 补全动作桩("src/app/(app)/leads/schedule-actions.ts", `const f=${空跑};export const 改定时分配=f,取消定时分配=f,定时分配现在分=f;`));
   stub(/^\.\.\/payment-actions$/, `const f=${空跑};export const 记回款=f,删回款=f;`);
-  stub(/readonly-card-actions$/, "export const 打开客户只读卡Action=async()=>({ok:false,error:'桩'});");
+  stub(/readonly-card-actions$/, 补全动作桩("src/app/(app)/projects/[id]/readonly-card-actions.ts", "export const 打开客户只读卡Action=async()=>({ok:false,error:'桩'});"));
   stub(/^\.\/blocker-actions$/, `const f=${空跑};export const 发布卡点Action=f,认领卡点Action=f,完成卡点Action=f,删卡点Action=f,存卡点默认Action=f,存卡点角色开关Action=f,新增原因Action=f,改原因名Action=f,改原因状态Action=f,删原因Action=f,合并原因Action=f,我的卡点Action=async()=>[];`);
   stub(/^\.\.\/relate-actions$/, `const f=${空跑};export const 加关联客户Action=f,改客户身份Action=f,解除关联客户Action=f,加关联联系人Action=f,改联系人角色立场Action=f,解除关联联系人Action=f,搜项目联系人=async()=>[];`);
   stub(/project-only-contact-actions$/, `const f=${空跑};export const 新增仅项目联系人Action=f,改仅项目联系人Action=f;`);

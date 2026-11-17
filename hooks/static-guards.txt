@@ -1,0 +1,24 @@
+# 不连库、不 import 业务代码、扫全库的守门用例：推送前钩子功能分支档固定跑，CI 的 PR 相关单测模式也固定带上（scripts/ci/related-tests.mjs）。
+# 新加这类用例记得补进来；文件改名了钩子会直接报错
+tests/audit-labels.test.ts
+tests/click-buttons.test.ts
+tests/compose-env.test.ts
+tests/design-tokens.test.ts
+tests/docker-context.test.ts
+tests/field-coverage.test.ts
+tests/font-size-tokens.test.ts
+tests/inline-style-cap.test.ts
+tests/llm-thinking.test.ts
+tests/migration-files-guard.test.ts
+tests/modal-double-submit.test.ts
+tests/motion-tokens.test.ts
+tests/no-array-transaction.test.ts
+tests/owner-write-guard.test.ts
+tests/pane-slots.test.ts
+tests/permissions-table-keys.test.ts
+tests/privacy-copy.test.ts
+tests/radius-tokens.test.ts
+tests/reduced-motion.test.ts
+tests/release-guards.test.ts
+tests/use-server-exports.test.ts
+tests/utc-date-cap.test.ts

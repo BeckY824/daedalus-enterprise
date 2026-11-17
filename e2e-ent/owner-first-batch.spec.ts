@@ -147,12 +147,38 @@ async function 能点(page: Page, loc: ReturnType<Page["locator"]>, 标签: stri
   await loc.click({ trial: true, timeout: 5_000 });
 }
 
-/** 每页上指向客户详情的链接：页、href、文字 */
+/**
+ * 等地址停下来：隔 1.2 秒连着两次读到同一个地址才算。
+ * 为什么要等（11-18，A2 在 PR 和 main 上各红过一次「Execution context was destroyed」）：
+ * (app)/loading.tsx 让页面先流出骨架，页面里再 redirect()（如只负责项目的人进 /projects/<id> → 客户详情）就不是 307，
+ * 而是 200 + `<meta http-equiv="refresh" content="1;url=…">`，客户端看到这个标记也走整页跳转。
+ * goto 在第一份文档 load 时就回来，networkidle 可能赶在这次整页跳转之前，紧接着取链接就撞上导航。1.2 秒 > meta 的 1 秒
+ */
+async function 等地址稳(page: Page) {
+  let 上次 = "";
+  await expect.poll(async () => {
+    await page.waitForLoadState("networkidle").catch(() => {});
+    const 现在 = page.url();
+    const 稳 = 现在 === 上次;
+    上次 = 现在;
+    return 稳;
+  }, { message: "地址一直在变", intervals: [1_200], timeout: 20_000 }).toBe(true);
+}
+
+/** 每页上指向客户详情的链接：页、href、文字。取链接时撞上导航（上面那种整页跳转晚到）就等地址再稳一次重取，最多重试 2 次 */
 async function 客户链接(page: Page, 路径: string) {
   await page.goto(路径);
-  await page.waitForLoadState("networkidle").catch(() => {});
-  return (await page.locator('main a[href^="/customers/c"]').evaluateAll((们) =>
-    们.map((a) => ({ href: a.getAttribute("href") ?? "", 字: (a.textContent ?? "").slice(0, 24) })))).map((x) => ({ 页: 路径, ...x }));
+  await 等地址稳(page);
+  for (let 次 = 0; ; 次++) {
+    try {
+      return (await page.locator('main a[href^="/customers/c"]').evaluateAll((们) =>
+        们.map((a) => ({ href: a.getAttribute("href") ?? "", 字: (a.textContent ?? "").slice(0, 24) })))).map((x) => ({ 页: 路径, ...x }));
+    } catch (e) {
+      if (次 >= 2 || !/Execution context was destroyed|because of a navigation/.test(String(e))) throw e;
+      console.log(`客户链接 ${路径}：取链接时页面在跳转（${page.url()}），等地址稳了重取（第 ${次 + 1} 次）`);
+      await 等地址稳(page);
+    }
+  }
 }
 
 /** 只负责项目的人（11-12 起）：进 /projects/<id> 跳到客户详情 ?project=<id>，是受限客户详情 */
@@ -199,6 +225,7 @@ test("A1 只负责项目的人：从项目进客户详情是受限详情（仅�
 });
 
 test("A2 只负责项目的人：各入口没有点了就 404 的客户链接", async ({ page }) => {
+  test.setTimeout(180_000);   // 9 个入口每个多等约 1.2 秒地址稳，再挨个点链接：默认 90 秒偏紧
   await 登录(page, 丙.email);
   const 正文 = page.getByRole("main");
   const 全部 = [];
