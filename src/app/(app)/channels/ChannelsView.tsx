@@ -25,7 +25,7 @@ import { RosterNote } from "./RosterNote";
 import { 拼全称, 拆来源, 全称上限, 显示产出比分布, 产出比分布, 数字链接, 名单段, 到达口径键, type 渠道统计, type 转化 } from "@/lib/enterprise/channel-stats";
 import { 转化率字 } from "../overview/funnel";
 import OptionInput from "@/components/OptionInput";
-import { 子渠道名, 子渠道提示, 主渠道名上限, 按主渠道汇总, 只有主渠道的, type 主渠道行, type 主渠道汇总 } from "@/lib/enterprise/channel-main-core";
+import { 子渠道名, 子渠道提示, 主渠道名上限, 按主渠道汇总, 只有主渠道的, 渠道启用, type 主渠道行, type 主渠道汇总 } from "@/lib/enterprise/channel-main-core";
 import MainChannels, { MainChannelEdit, 主渠道编辑初值, type 主渠道编辑中 } from "./MainChannels";
 import ChannelDrawer from "./ChannelDrawer";
 import ChannelDash from "./ChannelDash";
@@ -47,7 +47,7 @@ export type 渠道行 = {
   attr: string | null;
   /** 渠道名称（企业版两层后 = 主渠道名）；老渠道可能没有 */
   platform: string | null;
-  /** 挂在哪个主渠道下（企业版渠道两层，11-08）；还没补挂的是 null */
+  /** 挂在哪个主渠道下（企业版渠道两层，11-08）；11-17 前建、没挂上的老渠道是 null */
   mainId?: string | null;
   /** 运营策略（字典 channelStrategy 多选） */
   strategies?: string[];
@@ -83,8 +83,8 @@ const 空统计: 渠道统计 = { 关联线索: 0, 有效线索: 0, 关联商机
 type 有统计 = { 统计?: 渠道统计 };
 const 统计 = (r: 有统计) => r.统计 ?? 空统计;
 const 无 = <span className="muted">—</span>;
-/** 眼下算不算启用：自己启用、且主渠道没停用（来源选择 可选渠道条件 同一个口径） */
-const 启用着 = (r: Row) => r.active && !r.主停用;
+/** 眼下算不算启用：渠道启用（channel-main-core.ts）一个口径，列表、筛选、详情、来源下拉、服务端都调它 */
+const 启用着 = (r: Row) => 渠道启用(r);
 /** 渠道名那一列最宽多少（再长省略、悬停看全称）：这一列钉在左边，1024 宽也得给后面的数留地方 */
 const 名字最宽 = 480;
 /** 估一个渠道名一行要多宽，按 16px 的字宽估（宁宽勿窄，省得刚好差一点被省略）：中文、全角字 16，其余 9，两边留白 24 */

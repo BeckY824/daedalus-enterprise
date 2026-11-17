@@ -1,6 +1,6 @@
 /**
  * 企业版渠道两层（2026-11-08）：主渠道 + 子渠道。
- * - 补主渠道：没挂主渠道的老渠道按名字补挂，可重复跑。
+ * - 建渠道就挂好主渠道：客户表单就地建（不带 attr）也按名字当场挂，同名主渠道没有就建（11-17 复盘第 7 类，原来等渠道页打开时补）。
  * - saveChannel：子渠道可留空；不设子渠道的主渠道拒收子渠道；停用的主渠道拒收（老渠道主渠道没换的照收）；
  *   主渠道名不能有「|」；运营策略新选的要在字典里，老渠道上已有的照收。
  * - saveMainChannel：改名时子渠道全称一起改，撞名、带「|」报错；toggleMainChannel 停用 / 启用。
@@ -17,7 +17,6 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { saveChannel, saveMainChannel, toggleMainChannel } from "@/app/(app)/channels/actions";
-import { 补主渠道 } from "@/lib/enterprise/channel-main";
 import { 拆主子, 子渠道名, 读策略, 写策略 } from "@/lib/enterprise/channel-main-core";
 
 let 老板: string;
@@ -61,20 +60,28 @@ describe("纯函数", () => {
   });
 });
 
-describe("补主渠道", () => {
-  it("按渠道名称 / 全称前段补挂，第二遍 0 条", async () => {
-    const a = (await prisma.channel.create({ data: { name: "抖音|官方号", platform: "抖音", channelOwnerId: 负责人 } })).id;
-    const b = (await prisma.channel.create({ data: { name: "抖音|小号", platform: "抖音", channelOwnerId: 负责人 } })).id;
-    const c = (await prisma.channel.create({ data: { name: "Facebook｜个人账号", channelOwnerId: 负责人 } })).id;
-    const d = (await prisma.channel.create({ data: { name: "LinkedIn", channelOwnerId: 负责人 } })).id;
-    expect(await 补主渠道()).toBe(4);
-    expect(await 补主渠道()).toBe(0);
-    const 抖音 = await 主("抖音");
-    expect((await 取(a)).mainId).toBe(抖音.id);
-    expect((await 取(b)).mainId).toBe(抖音.id);
-    expect(await 取(c)).toMatchObject({ mainId: (await 主("Facebook")).id, platform: "Facebook", name: "Facebook｜个人账号" });
-    expect(await 取(d)).toMatchObject({ mainId: (await 主("LinkedIn")).id, platform: "LinkedIn" });
+describe("就地建渠道（不带 attr）当场挂主渠道", () => {
+  const 就地 = (name: string) => saveChannel({ name, phone: null, remark: null, channelOwnerId: 负责人 });
+  it("有「|」挂已有主渠道；没有的建同名主渠道；platform 跟着填；不留 mainId 空的", async () => {
+    const 抖音 = (await 交({ platform: "抖音", source: "官方号" })) as { id: string };
+    expect(抖音.id).toBeTruthy();
+    const a = (await 就地("抖音|小号")) as { ok: true; id: string };
+    const b = (await 就地("Facebook｜个人账号")) as { ok: true; id: string };
+    const c = (await 就地("LinkedIn")) as { ok: true; id: string };
+    expect(await 取(a.id)).toMatchObject({ mainId: (await 主("抖音")).id, platform: "抖音" });
+    expect(await 取(b.id)).toMatchObject({ mainId: (await 主("Facebook")).id, platform: "Facebook", name: "Facebook｜个人账号" });
+    expect(await 取(c.id)).toMatchObject({ mainId: (await 主("LinkedIn")).id, platform: "LinkedIn" });
+    expect(await prisma.channel.count({ where: { mainId: null } })).toBe(0);
     expect(await prisma.entChannelMain.count()).toBe(3);
+  });
+  it("校验没过（重名）不留下空主渠道", async () => {
+    await 就地("小红书店");
+    expect(await 就地("小红书店")).toMatchObject({ ok: false });
+    await prisma.channel.deleteMany({});
+    await prisma.entChannelMain.deleteMany({});
+    await prisma.channel.create({ data: { name: "重名渠道", channelOwnerId: 负责人 } });
+    expect(await 就地("重名渠道")).toMatchObject({ ok: false });
+    expect(await prisma.entChannelMain.count()).toBe(0);
   });
 });
 

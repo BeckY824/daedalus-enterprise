@@ -16,7 +16,7 @@ import { 选的原因 } from "@/lib/enterprise/dict";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 拼全称, 全称上限, 能录投入, 不能录投入, 能管渠道, 不能管渠道 } from "@/lib/enterprise/channel-stats";
 import { 看全部 } from "@/lib/team-scope";
-import { 找或建主渠道 } from "@/lib/enterprise/channel-main";
+import { 找或建主渠道, 建渠道挂主 } from "@/lib/enterprise/channel-main";
 import { 主渠道名上限, 写策略, 读策略, 子渠道名, 拆主子 } from "@/lib/enterprise/channel-main-core";
 import { parseDateInput } from "@/lib/date-input";
 import { 规整币种, 是币种 } from "@/lib/currency";
@@ -47,7 +47,8 @@ export async function saveChannel(input: {
    * 企业版渠道表单（2026-10-29）交这几样：渠道属性、主渠道（platform，存主渠道名）必填，子渠道（source）选填，
    * name（渠道全称）一律拼成「主渠道|子渠道」，子渠道空着全称就是主渠道名；交来的 name 不看（P16：全称不让手填，界面上只给预览）。
    * 主渠道按名字找（channel-main.ts），没有就建一个；主渠道不设子渠道的，子渠道必须留空（11-08 渠道两层）。
-   * 不交 attr（客户表单里就地建渠道、首页 AI 建渠道、老测试）照原来只要 name，这几列不动，主渠道等渠道页打开时补挂
+   * 不交 attr（客户表单里就地建渠道、首页 AI 改渠道、老测试）照原来只要 name，属性这几列不动；企业版新建时主渠道当场按名字挂好
+   * （建渠道挂主：全称「|」前那段，没有就建同名主渠道），不再等渠道页打开时补（11-17 复盘第 7 类：读页面不写库）
    */
   attr?: string | null;
   platform?: string | null;
@@ -118,8 +119,9 @@ export async function saveChannel(input: {
   }
   // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）
   if (!hasVisibleText(input.name)) return { ok: false, error: "请填写渠道名称" };
-  // 企业版里不走渠道表单新建的（客户表单就地建、AI 建）：名字按「主|子」拆开，主渠道停用、不设子渠道的照样挡（11-08 渠道两层）
-  if (企业版() && !企业表单 && !input.id) {
+  // 企业版里不走渠道表单新建的（客户表单就地建）：名字按「主|子」拆开，主渠道停用、不设子渠道的照样挡（11-08 渠道两层）
+  const 就地建 = 企业版() && !企业表单 && !input.id;
+  if (就地建) {
     const { 主, 子 } = 拆主子(input.name.trim());
     const 有主 = 主 ? await prisma.entChannelMain.findUnique({ where: { name: 主 }, select: { active: true, allowSub: true, ownerId: true } }) : null;
     if (有主 && !有主.active) return { ok: false, error: `主渠道「${主}」已停用，请换一个` };
@@ -153,6 +155,8 @@ export async function saveChannel(input: {
   if (!电话.ok) return { ok: false as const, error: 电话.error };
   // 主渠道还没有的，到这儿（名字、电话都查过了）才建，免得校验没过留下一个空主渠道
   if (企业列 && !企业列.mainId) 企业列.mainId = (await 找或建主渠道(企业列.platform)).id;
+  // 就地建的也在这儿当场挂好主渠道（同名主渠道没有就建），不留 mainId 空的渠道等别处补
+  const 就地挂 = 就地建 ? await 建渠道挂主(name, null) : null;
   const remark = input.remark?.trim() || "";
   const data = {
     name,
@@ -160,6 +164,7 @@ export async function saveChannel(input: {
     remark: remark || null,
     channelOwnerId,
     ...(企业列 ?? {}),
+    ...(就地挂 ?? {}),
     ...(typeof input.active === "boolean" ? { active: input.active } : {}),
   };
 

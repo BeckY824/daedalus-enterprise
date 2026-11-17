@@ -152,7 +152,9 @@ async function 删多出的旧默认(kind: 字典种类, db: Prisma.TransactionC
 /**
  * 默认项后来往末尾加过（10-30：号码类型加传真、Telegram，客户类型加专业运营商、一般客户）：之前建好的库里缺哪个默认 id 就建哪个，
  * 排在序号位置上；原来排在这些位置及以后的（自己加的项）整体往后让，还在新默认后面。名字已经被别的项占了的跳过（不和人加的重名）。
- * 记号存的是补到第几号（最大的默认号 + 1，一般 = 项数），以后默认再往后加还会补；默认停用的建出来就停着。几个人同时补时自己加的会多让几格，相对顺序不变
+ * 记号存的是补到第几号（最大的默认号 + 1，一般 = 项数），以后默认再往后加还会补；默认停用的建出来就停着。几个人同时补时自己加的会多让几格，相对顺序不变。
+ * 只补记号之后新加的号（11-17 复盘第 7 类「读路径写库」核对）：记号以前的默认项已经补过一遍，后来被删掉的（服务器上备份后用脚本删的）
+ * 不因为默认又往后加了几项就被一起补回来；没有记号（从没补过）的才按全部默认补
  */
 const 补新记号 = (kind: 字典种类) => `entDict.defaultAdded.${kind}`;
 const 补到 = (kind: 字典种类) => Math.max(...字典定义[kind].默认.map((_, i) => 默认号of(kind, i) + 1));
@@ -164,8 +166,9 @@ async function 补新默认(kind: 字典种类, 停用: readonly string[], db: P
   const { 默认 } = 字典定义[kind];
   const 记 = await db.setting.findUnique({ where: { key: 补新记号(kind) } });
   if (记 && Number(记.value) >= 补到(kind)) return;
+  const 补过到 = 记 ? Number(记.value) || 0 : 0;
   const 现有 = await db.entDictItem.findMany({ where: { kind }, select: { id: true, name: true } });
-  const 缺 = 默认.flatMap((name, i) => (现有.some((x) => x.id === 默认id(kind, i)) || 现有.some((x) => x.name === name) ? [] : [{ name, i }]));
+  const 缺 = 默认.flatMap((name, i) => (默认号of(kind, i) < 补过到 || 现有.some((x) => x.id === 默认id(kind, i)) || 现有.some((x) => x.name === name) ? [] : [{ name, i }]));
   if (缺.length) {
     await db.entDictItem.updateMany({ where: { kind, sort: { gte: 缺[0].i } }, data: { sort: { increment: 缺.length } } });
     for (const { name, i } of 缺) await 建了就算(db.entDictItem.create({ data: { id: 默认id(kind, i), kind, name, sort: i, active: !停用.includes(name) } }));

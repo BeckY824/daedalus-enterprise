@@ -70,6 +70,19 @@ describe("企业版选项字典", () => {
     }
   });
 
+  it("默认往后加了项：只补记号之后的新号，之前补过、后来删掉的默认项不补回来（11-17 复盘第 7 类）", async () => {
+    const n = 字典定义.contactKind.默认.length;
+    await 企业字典("contactKind");
+    // 模拟：上一版默认少最后一项（记号停在 n-1），服务器上删掉了第 0 项（手机）
+    await prisma.entDictItem.deleteMany({ where: { id: { in: ["dict-contactKind-0", `dict-contactKind-${n - 1}`] } } });
+    await prisma.setting.update({ where: { key: "entDict.defaultAdded.contactKind" }, data: { value: String(n - 1) } });
+    const 名 = (await 企业字典("contactKind")).map((x) => x.name);
+    expect(名).not.toContain(字典定义.contactKind.默认[0]);
+    expect(名).toContain(字典定义.contactKind.默认[n - 1]);
+    expect(名).toHaveLength(n - 1);
+    expect((await 企业字典("contactKind")).map((x) => x.name)).toEqual(名);
+  });
+
   it("加：排最后、同名回错、停用过的同名重新启用、空 / 太长 / 没有的种类回错", async () => {
     const r = await 加字典项(老板, "recycle", "  客户搬迁 ");
     expect(r.ok).toBe(true);

@@ -147,7 +147,7 @@ const 派生: Record<string, Record<string, string>> = {
   EntLeadQuota: { setById: "最后改配额的人，当前登录账号" },
   Channel: {
     createdById: "新建时打上当前登录账号；批量导入时按表里「创建人」对上的员工，对不上留空",
-    mainId: "按选的主渠道（platform）找到的那一行，表单里不直接交 id；老渠道由渠道页打开时补挂（channel-main.ts 补主渠道）",
+    mainId: "按选的主渠道（platform）找到的那一行，表单里不直接交 id；客户表单就地建的按名字当场挂（channel-main.ts 建渠道挂主）",
   },
   EntChannelMain: { sort: "新建时排在最后，系统打的；清单顺序由落库脚本定，界面不改" },
   EntChannelInvest: { channelId: "哪个渠道，在那个渠道的详情里录，不改", userId: "录的那个人，当前登录账号" },

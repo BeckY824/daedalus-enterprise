@@ -1,6 +1,6 @@
 /**
- * 只读管理员（业务角色 admin）打开渠道页（2026-11-08 渠道两层）：页面加载时 补主渠道 是系统补数据，
- * 包在 系统写 里——只读的人打开也补得上、不整页崩；不包就被 只读拦 拒（CRM_READONLY）。
+ * 只读管理员（业务角色 admin）打开渠道页（2026-11-08 渠道两层）：页面照常出来、不整页崩。
+ * 11-17 复盘第 7 类：打开页面不再补挂主渠道（读页面不写库），没挂主渠道的老渠道原样留着、按名字归组显示，一个主渠道都不建。
  * 走真 加上限定 + 真会话票（同 ent-notice-readonly），用拷出来的一份库、单连接，不碰共用测试库。
  */
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
@@ -33,9 +33,7 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {}
 import { SignJWT } from "jose";
 import { defaultClient as raw } from "@/lib/prisma";
 import { readSecret } from "@/lib/secret";
-import { 只读错误 } from "@/lib/team-scope";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import { 补主渠道 } from "@/lib/enterprise/channel-main";
 
 const 只读 = "p_ro";
 
@@ -72,17 +70,11 @@ afterAll(async () => {
 });
 
 describe("只读管理员打开渠道页", () => {
-  it("页面照常出来，没挂主渠道的渠道补挂上", async () => {
+  it("页面照常出来；不写库：没挂主渠道的渠道原样不动，不建主渠道", async () => {
+    const 前 = await raw.channel.findMany({ orderBy: { name: "asc" } });
     await expect(作为(只读, () => import("@/app/(app)/channels/page").then((m) => m.default()))).resolves.toBeTruthy();
-    const 渠道们 = await raw.channel.findMany({ select: { name: true, platform: true, main: { select: { name: true } } }, orderBy: { name: "asc" } });
-    expect(渠道们.map((c) => [c.name, c.platform, c.main?.name])).toEqual([
-      ["老渠道｜子乙", "老渠道", "老渠道"],
-      ["阿里国际站|店铺甲", "阿里国际站", "阿里国际站"],
-    ]);
-  });
-
-  it("不包 系统写 时只读拦会拒（守住页面里那层包装是必要的）", async () => {
-    await expect(作为(只读, () => 补主渠道())).rejects.toBeInstanceOf(只读错误);
-    expect(await raw.channel.count({ where: { mainId: { not: null } } })).toBe(0);
+    expect(await raw.channel.findMany({ orderBy: { name: "asc" } })).toEqual(前);
+    expect(await raw.entChannelMain.count()).toBe(0);
+    expect(前.every((c) => c.mainId === null)).toBe(true);
   });
 });

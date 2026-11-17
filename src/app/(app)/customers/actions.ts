@@ -47,7 +47,7 @@ import { 记换负责人, 是我刚换的, 删被撤的换负责人记录 } from
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 落到渠道 } from "@/lib/enterprise/channel-main";
-import { 是主渠道入口 } from "@/lib/enterprise/channel-main-core";
+import { 是主渠道入口, 渠道启用 } from "@/lib/enterprise/channel-main-core";
 import { 能转让客户, 能改客户, 没设业务角色, 只读角色, 只读话of, 是系统管理员, 转自己客户要申请 } from "@/lib/enterprise/permissions";
 import { 有同事在推的客户, 同事在推不能删话 } from "@/lib/enterprise/colleague-projects";
 import { 权限组织 } from "@/lib/enterprise/org";
@@ -559,8 +559,9 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     return { ok: false, error: "客户来源记的是第一次带来的渠道，建好之后不能改" };
   }
   if (企业版() && input.channelId && input.channelId !== 改前?.channelId) {
-    const 渠道 = await prisma.channel.findUnique({ where: { id: input.channelId }, select: { active: true } });
-    if (!渠道?.active) return { ok: false, error: "这个渠道不存在或已停用，请换一个" };
+    // 停用按 渠道启用（P-渠道-13）：主渠道停了的子渠道同样不收，和来源下拉不列它一个口径
+    const 渠道 = await prisma.channel.findUnique({ where: { id: input.channelId }, select: { active: true, main: { select: { active: true } } } });
+    if (!渠道 || !渠道启用(渠道)) return { ok: false, error: "这个渠道不存在或已停用，请换一个" };
   }
   /*
     共享试用区里 WhatsApp 和电话一样是打了码给人看的：交回来还带着 * 就是没动它，不碰这一格（同电话的 认回打码号）

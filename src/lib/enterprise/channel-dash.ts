@@ -26,6 +26,7 @@ import type { 币种合计 } from "../currency";
 import { beijingDay } from "../business-clock";
 import { 合计, 算产出比, 算成交, 算渠道统计, type 渠道统计, type 统计用渠道, type 统计用项目, type 统计用投入 } from "./channel-stats";
 import { 字典of, type 阶段字典 } from "../project/stage-dict";
+import { 渠道启用 } from "./channel-main-core";
 
 export const 周期们 = ["本月", "本季", "全部"] as const;
 export type 周期 = (typeof 周期们)[number];
@@ -221,7 +222,7 @@ export function 算看板底数(渠道ids: string[], 项目们: 看板项目[], 
 }
 
 export type 渠道筛选 = { kw: string; attr: string; ownerId: string; active: string; creator?: string };
-/** 主停用：挂着的主渠道停用了（P-渠道-13）。状态筛选按「眼下算不算启用」= 自己启用且主渠道没停用，和列表上的「已停用」同一个口径 */
+/** 主停用：挂着的主渠道停用了（P-渠道-13）。状态筛选按 渠道启用（channel-main-core.ts），和列表、详情上的「已停用」同一个函数 */
 type 可筛 = { name: string; platform: string | null; attr: string | null; remark: string | null; channelOwnerId: string; active: boolean; 主停用?: boolean; createdByName?: string | null };
 
 /** 渠道列表的筛选（列表和看板都用它，所以两边一定是同一批渠道）：关键词搜全称、名称、属性、备注；属性、负责人精确；状态 on / off */
@@ -233,7 +234,7 @@ export function 筛渠道<T extends 可筛>(行: T[], f: 渠道筛选): T[] {
       (!f.attr || r.attr === f.attr) &&
       (!f.ownerId || r.channelOwnerId === f.ownerId) &&
       (!f.creator || r.createdByName === f.creator) &&
-      (!f.active || (f.active === "on") === (r.active && !r.主停用)),
+      (!f.active || (f.active === "on") === 渠道启用(r)),
   );
 }
 

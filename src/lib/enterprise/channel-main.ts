@@ -3,7 +3,7 @@
  */
 import type { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
-import { 拆主子, 历史渠道分类, 是历史渠道, 历史渠道报错, 主渠道入口前缀, 是主渠道入口, type 主渠道行 } from "@/lib/enterprise/channel-main-core";
+import { 拆主子, 历史渠道分类, 是历史渠道, 历史渠道报错, 主渠道入口前缀, 是主渠道入口, 渠道启用, type 主渠道行 } from "@/lib/enterprise/channel-main-core";
 import { 负责人候选, 唯一负责人 } from "@/lib/owners";
 import { recordAudit } from "@/lib/audit";
 
@@ -34,18 +34,16 @@ export async function 找或建主渠道(name: string, db: 库 = prisma): Promis
 }
 
 /**
- * 没挂主渠道的渠道补挂（渠道页每次打开时跑；可重复跑，挂好了就 0 条）：
- * 主渠道名 = 渠道名称（platform），没有就按全称第一个「|」/「｜」前那段，再没有就整个全称。
- * platform 空着的顺手补上主渠道名。客户、项目都挂在 Channel 上，不动
+ * 新建渠道时挂哪个主渠道（11-17 复盘第 7 类：原来渠道页每次打开时给没挂的补建同名主渠道，读页面写库、删了子渠道影子主渠道还留着）。
+ * 现在只在「建渠道」那一刻挂好：渠道表单按选的主渠道（saveChannel），客户表单就地建渠道按名字（saveChannel 不带 attr 那条），
+ * 迁移脚本按渠道名称（scripts/import-channels.ts），选来源落占位（落到渠道）本来就挂着。
+ * 主渠道名 = 渠道名称（platform），没有就按全称第一个「|」/「｜」前那段，再没有就整个全称；没有这个主渠道就建一个（找或建主渠道）。
+ * 只给写路径调：页面、读取函数里不许调它（tests/ent-channel-read-no-write.test.ts 静态守门）
  */
-export async function 补主渠道(db: 库 = prisma): Promise<number> {
-  const 没挂 = await db.channel.findMany({ where: { mainId: null }, select: { id: true, name: true, platform: true } });
-  for (const c of 没挂) {
-    const 主名 = c.platform?.trim() || 拆主子(c.name).主 || c.name;
-    const 主 = await 找或建主渠道(主名, db);
-    await db.channel.update({ where: { id: c.id }, data: { mainId: 主.id, ...(c.platform?.trim() ? {} : { platform: 主.name }) } });
-  }
-  return 没挂.length;
+export async function 建渠道挂主(全称: string, platform: string | null | undefined, db: 库 = prisma): Promise<{ mainId: string; platform: string }> {
+  const 主名 = platform?.trim() || 拆主子(全称).主 || 全称.trim();
+  const 主 = await 找或建主渠道(主名, db);
+  return { mainId: 主.id, platform: 主.name };
 }
 
 /**
@@ -54,8 +52,8 @@ export async function 补主渠道(db: 库 = prisma): Promise<number> {
  */
 export async function 新数据渠道不行(id: string, db: 库 = prisma): Promise<"停用" | string | null> {
   const c = await db.channel.findUnique({ where: { id }, select: { name: true, active: true, main: { select: { category: true, active: true } } } });
-  // 主渠道停用，下面的子渠道一起算停用（P-渠道-13，同 可选渠道条件）
-  if (!c?.active || c.main?.active === false) return "停用";
+  // 主渠道停用，下面的子渠道一起算停用（P-渠道-13，渠道启用 一个口径）
+  if (!c || !渠道启用(c)) return "停用";
   return 是历史渠道(c.main?.category) ? 历史渠道报错(c.name) : null;
 }
 
@@ -65,26 +63,34 @@ export const 在售渠道条件 = {
 } satisfies Prisma.ChannelWhereInput;
 
 /**
- * 来源选择里能列的渠道（P-渠道-13）：自己启用、不是历史渠道、主渠道也启用（主渠道停用，下面的子渠道一起不列；没挂主渠道的照列）。
+ * 库里查询版的 渠道启用（channel-main-core.ts）：自己启用、且没挂主渠道或主渠道启用。两边口径对拍见 tests/ent-channel-derived.test.ts
+ */
+export const 启用渠道条件 = {
+  active: true,
+  OR: [{ mainId: null }, { main: { is: { active: true } } }],
+} satisfies Prisma.ChannelWhereInput;
+
+/**
+ * 来源选择里能列的渠道（P-渠道-13）：眼下启用（启用渠道条件：主渠道停用，下面的子渠道一起不列；没挂主渠道的照列）、不是历史渠道。
  * 只管选择器的候选；导入按名字认渠道、老客户已挂着的不受影响
  */
 export const 可选渠道条件 = {
-  active: true,
-  AND: [在售渠道条件, { OR: [{ mainId: null }, { main: { is: { active: true } } }] }],
+  AND: [启用渠道条件, 在售渠道条件],
 } satisfies Prisma.ChannelWhereInput;
 
 /** 来源选择里的一行（components/ChannelPicker.tsx 的 可选渠道 同一个形状；这里不从客户端组件 import） */
 export type 来源选项 = { id: string; name: string; attr: string | null; platform: string | null; active: boolean };
 
-/** 来源选择的清单要读的列：自己的几格 + 主渠道的属性（给 带主属性 用） */
-export const 来源选项列 = { id: true, name: true, attr: true, platform: true, active: true, main: { select: { attr: true } } } as const;
+/** 来源选择的清单要读的列：自己的几格 + 主渠道的属性、启用（给 带主属性 用） */
+export const 来源选项列 = { id: true, name: true, attr: true, platform: true, active: true, main: { select: { attr: true, active: true } } } as const;
 
 /**
- * 来源选择器的属性沿用（迁移 118，P-渠道-11）：子渠道自己没填属性的，清单里带主渠道的（和渠道页 沿用主渠道属性 一个口径）。
- * 只是读的时候带出来，不回写库；自己填了的不动，主渠道也没填、没挂主渠道的还是原样
+ * 来源选择器的一行带上主渠道的两样（只是读的时候带出来，不回写库）：
+ * - 属性沿用（迁移 118，P-渠道-11）：子渠道自己没填属性的带主渠道的（和渠道页 沿用主渠道属性 一个口径）；自己填了的不动，主渠道也没填、没挂主渠道的还是原样
+ * - active 换成 渠道启用（P-渠道-13）：主渠道停用的，「现在选着的那个」在下拉里也标「（已停用）」，和渠道页对得上
  */
-export function 带主属性(行们: readonly (来源选项 & { main: { attr: string | null } | null })[]): 来源选项[] {
-  return 行们.map(({ main, ...c }) => (c.attr?.trim() ? c : { ...c, attr: main?.attr?.trim() || c.attr }));
+export function 带主属性(行们: readonly (来源选项 & { main: { attr: string | null; active: boolean } | null })[]): 来源选项[] {
+  return 行们.map(({ main, ...c }) => ({ ...c, active: 渠道启用({ active: c.active, main }), ...(c.attr?.trim() ? {} : { attr: main?.attr?.trim() || c.attr }) }));
 }
 
 /**
