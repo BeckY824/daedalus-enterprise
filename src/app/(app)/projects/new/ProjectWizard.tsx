@@ -12,7 +12,7 @@ import { useBusiness } from "@/lib/business-client";
 import { useMe, 默认负责人 } from "@/lib/me-client";
 import { 草稿全名, 读草稿, 存草稿, 清草稿, 有内容, 带回话 } from "@/lib/form-draft";
 import { 跟进类型们 } from "@/lib/constants";
-import FollowMethodSelect from "@/components/FollowMethodSelect";
+import FollowMethodSelect, { useHabitDefault } from "@/components/FollowMethodSelect";
 import { 对得上的方式 } from "@/lib/follow-method";
 import { 币种选项, 默认币种 } from "@/lib/currency";
 import { 金额格式 } from "@/lib/money-input";
@@ -304,6 +304,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   const [带项目, set带项目] = useState(开关 !== "关");
   // 上次没填完的接着填
   const [d, setD] = useState<稿>(() => (旧 ? { ...新稿(), ...旧 } : 新稿()));
+  // 首条沟通的方式按个人习惯默认（11-18，同记沟通框）：带回了草稿的以草稿为准，人改过的不盖；填默认不算打字，不存草稿
+  const 人改了方式 = useHabitDefault(!旧, (x) => setD((o) => ({ ...o, 跟进: { ...o.跟进, type: x.type, method: x.method } })));
   const [已查, set已查] = useState<string | null>(null);
   const [撞, set撞] = useState<DuplicateHit>(null);
   // 企业版「查重」回来的那句（格式不对 / 首次录入 / 撞了哪种）
@@ -984,7 +986,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         </div>
         <div className="cr-grid">
           {一格(null, "沟通方式", (
-            <FollowMethodSelect style={满宽} aria-label="沟通方式" type={d.跟进.type} method={d.跟进.method} 类型们={能选类型} onChange={(v) => 改("跟进", v)} />
+            <FollowMethodSelect style={满宽} aria-label="沟通方式" type={d.跟进.type} method={d.跟进.method} 类型们={能选类型} onChange={(v) => { 人改了方式(); 改("跟进", v); }} />
           ), true)}
           {一格(null, "时间", (
             <DatePicker

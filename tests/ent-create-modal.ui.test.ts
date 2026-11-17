@@ -8,6 +8,7 @@
  *   销售选自动分配：就地黄条 + 按钮「建好并分出去」，不叠确认框
  *   Windows 1024 / 1280 / 1366 + 超长客户名：弹窗里不横向溢出，「建好」在可视区点得中
  *   市场成员选自动分配（P-转-26，用户 11-17）：业务线那格换成只读「按客户区域自动定」，不交业务线；三档宽度不溢出
+ *   首条沟通的方式按个人习惯默认（11-18）；带回了草稿的以草稿为准
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -43,12 +44,12 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function 开(w: number, 设: Record<string, unknown> = {}): Promise<Page> {
+async function 开(w: number, 设: Record<string, unknown> = {}, 预存: Record<string, string> = {}): Promise<Page> {
   const page = await browser.newPage({ viewport: { width: w, height: 800 } }); page.setDefaultTimeout(5000);
   await page.route("http://npm.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://npm.test");
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
-  await page.evaluate((s) => { localStorage.clear(); Object.assign(window, s); }, 设);
+  await page.evaluate(([s, 存]) => { localStorage.clear(); for (const [k, v] of Object.entries(存)) localStorage.setItem(k, v); Object.assign(window, s); }, [设, 预存] as const);
   await page.addScriptTag({ content: bundle });
   await page.getByRole("dialog").getByText("首条沟通").first().waitFor();
   return page;
@@ -387,5 +388,37 @@ it("企业版联系人姓名选填：空名 + 只有多加的号码也能交", a
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
     const 交 = (await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 联系人: Record<string, unknown> };
     expect(交.联系人).toMatchObject({ name: "", 号码们: [{ kind: "wechat", value: "wx_buyer01" }] });
+  } finally { await page.close(); }
+});
+
+it("首条沟通的方式按个人习惯默认（11-18），建好交的就是它；填默认不算打字、不留草稿", async () => {
+  const page = await 开(1280, { __习惯: { type: "WECHAT", method: "微信沟通" } });
+  try {
+    const 框 = page.getByRole("dialog");
+    const 方式 = 框.getByLabel("沟通方式", { exact: true }).locator("xpath=ancestor::div[contains(@class,'ant-select')][1]");
+    await expect.poll(() => 方式.innerText()).toContain("微信沟通");
+    expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.includes("项目建档向导")).length)).toBe(0);
+    await 框.getByLabel("号码", { exact: true }).fill("13905712266");
+    await 框.getByLabel("客户名称").fill("华东展具");
+    await 框.getByLabel("联系人姓名").fill("王总");
+    await 选(page, "渠道触点", "公司资源");
+    await 选(page, "业务线", "内贸");
+    await 框.getByLabel("沟通内容").fill("微信上要了报价");
+    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
+    const 交 = (await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 跟进: Record<string, unknown> };
+    expect(交.跟进).toMatchObject({ type: "WECHAT", content: "微信上要了报价" });
+  } finally { await page.close(); }
+});
+
+it("带回了草稿（草稿里选过方式）：以草稿为准，个人习惯不盖它", async () => {
+  const 稿 = { 稿: { phone: "", 号码类型: "手机号", 联系人: { name: "", position: "", phone: "", email: "", wechat: "" }, 客户: { name: "上次没建完", school: "", remark: "" }, 项目: { name: "", ownerId: "u1", amount: null, currency: "CNY", remark: "" }, 跟进: { type: "EMAIL", content: "", occurredAt: "2026-11-17 10:00" } } };
+  const page = await 开(1280, { __习惯: { type: "WECHAT", method: "微信沟通" } }, { "daedalus:草稿:u1:项目建档向导": JSON.stringify({ at: Date.now(), v: 稿 }) });
+  try {
+    const 框 = page.getByRole("dialog");
+    await expect.poll(() => 框.getByLabel("客户名称").inputValue()).toBe("上次没建完");
+    await page.waitForTimeout(300);
+    const 方式 = 框.getByLabel("沟通方式", { exact: true }).locator("xpath=ancestor::div[contains(@class,'ant-select')][1]");
+    expect(await 方式.innerText()).toContain("邮件沟通");
   } finally { await page.close(); }
 });

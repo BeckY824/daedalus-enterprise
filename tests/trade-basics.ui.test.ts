@@ -43,7 +43,7 @@ beforeAll(async () => {
     import CompletePlanModal,{提示记完了} from '@/app/(app)/customers/[id]/CompletePlanModal';import {completePlan} from '@/app/(app)/customers/[id]/actions';
     const 计划=(id,subject,method,有WhatsApp)=>({id,subject,method,有WhatsApp,plannedAt:'2026-10-16T01:00:00Z',updatedAt:'2026-10-16T01:00:00Z',customerId:'c-'+id,customerName:'Acme '+id,ownerId:'u',ownerName:'我'});
     // 2026-11 PR5b（原型 ls.pl.done）：计划页点 ✓ 直接完成，小框只留在客户详情的记录里；小框本身在这里单独挂一个壳点开
-    function 小框壳(){const {message}=App.useApp();const [在,set在]=React.useState(null);const 们=[计划('p1','发新报价','WhatsApp'),计划('p2','问样品','电话沟通'),计划('p3','回访','邮件沟通'),计划('p4','催定金','电话沟通',true),计划('p5','寄目录','邮件沟通',true)];
+    function 小框壳(){const {message}=App.useApp();const [在,set在]=React.useState(null);const 们=[计划('p1','发新报价','WhatsApp'),计划('p2','问样品','电话沟通'),计划('p3','回访','邮件沟通'),计划('p4','催定金','电话沟通',true),计划('p5','寄目录','邮件沟通',true),计划('p6','随访','')];
       return <>{们.map(x=><button key={x.id} aria-label={'完成 '+x.subject} onClick={()=>set在({id:x.id,subject:x.subject,method:x.method,customerId:x.customerId,customerName:x.customerName,有WhatsApp:x.有WhatsApp})}>✓</button>)}
         <CompletePlanModal plan={在} onClose={()=>set在(null)} onDone={async(r)=>{const x=在;set在(null);if(r.kind==='saved')return 提示记完了(x,r,()=>{});await completePlan(x.id);message.success('「'+x.subject+'」已完成');}}/></>}
     function Test(){if(decodeURIComponent(location.search).includes('m=框'))return <小框壳/>;return <>
@@ -200,6 +200,27 @@ it("有 WhatsApp 号：计划写的是老默认「电话沟通」时小框默认
   await page.getByRole("button", { name: "完成 寄目录" }).click();
   await 框.waitFor();
   await expect.poll(() => 框.getByLabel("跟进方式").locator("..").innerText()).toContain("邮件沟通");
+  await page.close();
+});
+
+it("小框按个人习惯（11-18）：计划自己写了方式以计划为准；计划没写方式才用习惯", async () => {
+  const { page, 调用们 } = await 开("框");
+  await page.evaluate(() => { (window as unknown as { __习惯: unknown }).__习惯 = { type: "EMAIL", method: "邮件沟通" }; });
+  await page.getByRole("button", { name: "完成 问样品" }).click();
+  const 框 = page.getByTestId("complete-plan-modal");
+  await 框.waitFor();
+  await page.waitForTimeout(300);
+  expect(await 框.getByLabel("跟进方式").locator("..").innerText()).toContain("电话沟通");
+  await page.getByRole("button", { name: "跳过，直接完成" }).click();
+  await page.getByText("「问样品」已完成").waitFor();
+  await page.getByRole("button", { name: "完成 随访" }).click();
+  await 框.waitFor();
+  await expect.poll(() => 框.getByLabel("跟进方式").locator("..").innerText()).toContain("邮件沟通");
+  await 框.getByLabel("这次聊了什么").fill("发了邮件问近况");
+  await page.getByRole("button", { name: "保存并完成" }).click();
+  await page.getByText(/已记一笔，「随访」完成/).waitFor({ timeout: 15_000 });
+  const [c] = (await 调用们()).filter((x) => x.名 === "saveFollowUp");
+  expect(c.参).toMatchObject({ type: "EMAIL", 附带: { 完成计划: "p6" } });
   await page.close();
 });
 

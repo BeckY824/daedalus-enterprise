@@ -46,6 +46,7 @@ import { 读组织 } from "../enterprise/org";
 import { buildProposal, describeProposal, missingFields, 可改字段表, 可改字段名单, type Proposal, type ProposalKind } from "./proposals";
 import { FOLLOW_TYPES, FOLLOW_METHODS, FOLLOW_STATUSES, DECISION_STATUSES, LEAD_STATUSES } from "../constants";
 import { 项目写工具 } from "./project-tools";
+import { 常用沟通方式of } from "../follow-habit-db";
 
 export type ToolContext = {
   userId: string;
@@ -1286,6 +1287,11 @@ function proposeTool(name: string, description: string, args: string, kind: Prop
       // 同一个对象同一类提议只留一张，模型重复调用不会刷出一摞卡
       if (ctx.proposals.some((p) => p.kind === kind && p.customerId === c.id && (needsCustomer || p.customerName === c.name))) {
         return { summary: "已经提过了", data: { note: "这张建议卡已经给出，不要重复提" } };
+      }
+      // 记沟通卡：AI 没给类型时按这个人的习惯方式默认（11-18，同记沟通框 lib/follow-habit.ts）；没有记录照旧电话
+      if (kind === "add_followup" && !str(a.type, 20)) {
+        const 习惯 = await 常用沟通方式of(ctx.userId).catch(() => null);
+        if (习惯) a = { ...a, type: 习惯.type, ...(习惯.method ? { method: 习惯.method } : {}) };
       }
       const r = buildProposal(`${kind}-${ctx.proposals.length}-${c.id || c.name}`, kind, c, a, ctx.b);
       if (!r.ok) return { summary: `建议不合法：${r.error}`, data: { error: r.error } };

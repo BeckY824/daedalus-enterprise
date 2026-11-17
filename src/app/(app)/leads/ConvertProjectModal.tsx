@@ -5,7 +5,7 @@ import { Button, Input, Modal } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import { useBusiness } from "@/lib/business-client";
 import { 跟进类型们 } from "@/lib/constants";
-import FollowMethodSelect from "@/components/FollowMethodSelect";
+import FollowMethodSelect, { useHabitDefault } from "@/components/FollowMethodSelect";
 import { 外贸精简 } from "@/lib/business-config";
 import { dayjs } from "@/lib/utils";
 import type { 向导跟进 } from "@/lib/project/wizard";
@@ -62,6 +62,8 @@ function Body({
   交: (跟进: 向导跟进) => Promise<void>;
 }) {
   const [f, setF] = useState<向导跟进>({ type: 能选类型[0]?.value ?? "PHONE", content: "", occurredAt: dayjs().format(时间格式), 下一步时间: null });
+  // 沟通方式按个人习惯默认（11-18，同记沟通框）；人改过的不盖
+  const 人改了方式 = useHabitDefault(true, (x) => setF((o) => ({ ...o, type: x.type, method: x.method })));
   const [交中, set交中] = useState(false);
   const 差 = !f.content.trim() ? "请填写首条跟进的沟通内容" : 要下一步 && !f.下一步时间 ? "请填下一步时间：到那天还没跟进，项目会自动回到线索公海" : "";
   const 行 = (label: string, el: React.ReactNode, 必填 = false) => (
@@ -75,7 +77,7 @@ function Body({
       <p className="muted" style={{ marginTop: 0 }}>{说明}</p>
       <p style={{ fontWeight: 500 }}>首条跟进：这次和对方聊了什么</p>
       {行("沟通方式", (
-        <FollowMethodSelect style={{ width: "100%" }} aria-label="沟通方式" type={f.type} method={f.method} 类型们={能选类型} onChange={(v) => setF({ ...f, ...v })} />
+        <FollowMethodSelect style={{ width: "100%" }} aria-label="沟通方式" type={f.type} method={f.method} 类型们={能选类型} onChange={(v) => { 人改了方式(); setF({ ...f, ...v }); }} />
       ), true)}
       {行("时间", (
         <DatePicker
