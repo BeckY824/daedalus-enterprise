@@ -5,6 +5,7 @@ import AntdConfig from "@/components/AntdConfig";
 import MotionTheme from "@/components/MotionTheme";
 import ModeFollow from "@/components/ModeFollow";
 import { 外观预设脚本, 默认外观 } from "@/lib/appearance";
+import { 旧浏览器提示脚本 } from "@/lib/old-browser";
 import "./globals.css";
 import { 自定产品名 } from "@/lib/enterprise/brand";
 /* 主题（设置 → 外观 → 主题）。每套只在 <html data-skin="x"> 时生效，现状下这几份一条都不命中。
@@ -41,6 +42,8 @@ export default function RootLayout({
        <head> 里那段在第一次绘制前换成这台电脑存的——所以 html 上这几个属性和服务端对不上是预期的 */
     <html lang="zh-CN" data-paper={默认外观.paper} data-skin={默认外观.skin} data-mode={默认外观.mode} suppressHydrationWarning>
       <head>
+        {/* 浏览器低于 Next 16 下限（Safari 16.4 等）时整页盖一块提示；新浏览器上什么也不做（lib/old-browser.ts） */}
+        <script dangerouslySetInnerHTML={{ __html: 旧浏览器提示脚本 }} />
         <script dangerouslySetInnerHTML={{ __html: 外观预设脚本 }} />
       </head>
       <body>
