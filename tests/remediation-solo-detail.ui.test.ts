@@ -10,7 +10,7 @@ const plugin:Plugin={name:"solo-page-boundaries",setup(b){
  stub(/^next\/link$/,"export default function Link(p){return <a {...p}/>}");
  stub(/(^|\/)demo-data$/,"export const 查演示数据状态=async()=>null,灌一套演示数据=async()=>({ok:false}),清除演示数据=灌一套演示数据;");
  stub(/(^|\/)(TaskForm|PlanForm|OpportunityForm|ContractForm)$/,"export default function Form(){return null}");
- stub(/(^|\/)actions$/,"export const moveStage=async()=>({ok:true}),toggleTask=moveStage,completePlan=moveStage,deletePlan=moveStage,deleteTask=moveStage,saveFollowUp=moveStage,撤销记一笔=moveStage;");
+ stub(/(^|\/)actions$/,"export const moveStage=async()=>({ok:true}),toggleTask=moveStage,completePlan=moveStage,deletePlan=moveStage,deleteTask=moveStage,saveFollowUp=moveStage,撤销记一笔=moveStage,沟通可选项目=async()=>({ok:true,项目们:null,能建项目:true});");
  b.onLoad({filter:/.*/,namespace:"fixture"},a=>({contents:a.pluginData,loader:"jsx",resolveDir:process.cwd()}));
 }};
 beforeAll(async()=>{

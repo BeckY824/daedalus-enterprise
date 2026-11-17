@@ -263,6 +263,7 @@ export default async function CustomerDetailPage({
       只能看的格={await 只能看的格P}
       管理员只读={企 && 只读角色(me, await 权限组织())}
       能领={!企 || 能新建和领取(me, await 权限组织())}
+      能新建项目={!企 || 能新建和领取(me, await 权限组织())}
       能改沟通={可改沟通}
       能删沟通={可删沟通}
       客户状态选项={客户状态选项}

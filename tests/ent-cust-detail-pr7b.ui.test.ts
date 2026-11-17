@@ -3,7 +3,8 @@
  *   dt.pool：企业版「客户退回公海」一个后果框——后果分条、原因点选（P-界面-42），不选原因确认键点不了；
  *     取消 = 不生效（不调服务端）；服务端挡了 = 原因写在框里、不跳走、不出撤销条（被挡不提示成功）；
  *     成了回客户列表，底部撤销条跟着（showUndo 挂在 body 上，换页还在）
- *   dt.follownp（P-界面-35）：没有能记的在推项目也照常打开「记一条沟通」，弹框写明记为客户沟通，不弹新建项目
+ *   沟通必须挂项目（11-17，取代 P-界面-35）：没有能记的在推项目也打开「记一条沟通」，弹框写明先建项目、给「新建项目」；
+ *     保存拦下不发请求、写好的内容留着；点「新建项目」叠开新建项目表，记沟通的框和内容还在
  *   X-143：「关联项目」下拉只列能记的（跟进去处.能记 = false 的不列）
  *   Windows 1024 / 1280 / 1366 + 超长客户名：后果框不撑出页面、确认键点得到
  */
@@ -34,7 +35,7 @@ const 桩: Plugin = { name: "pr7b-detail", setup(b) {
   stub(/projects\/actions$/, "export const 项目沟通须知=async()=>({ok:true,能记:false}),记项目沟通Action=async()=>({ok:true,followUpId:'f1'});");
   stub(/^\.\/actions$/, `
     export const 客户删除预检=async()=>({ok:true}),删除前清点=async()=>({}),deleteCustomers=async()=>({ok:false});
-    export const toggleTask=async()=>({ok:true}),deleteTask=toggleTask,completePlan=toggleTask,撤销记一笔=toggleTask,deleteFollowUp=toggleTask;
+    export const toggleTask=async()=>({ok:true}),deleteTask=toggleTask,completePlan=toggleTask,撤销记一笔=toggleTask,沟通可选项目=async()=>({ok:true,项目们:null,能建项目:true}),deleteFollowUp=toggleTask;
     export const saveFollowUp=async x=>{window.__存=x;return{ok:true,id:'f1'}};
     export const 转走项目预览of=async()=>({项目数:0,项目:[]});
     export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'p1'});`);
@@ -165,22 +166,28 @@ it("dt.pool：1024 / 1280 / 1366 + 超长客户名，后果框不撑出、标题
   }
 });
 
-it("dt.follownp（P-界面-35）：没有在推项目，「新建沟通」照常打开记沟通，写明记为客户沟通，不弹新建项目", async () => {
+it("沟通必须挂项目（11-17）：没有在推项目，「新建沟通」打开后写明先建项目；保存拦下、内容留着；「新建项目」叠开新建表", async () => {
   const { page, errors } = await 开([]);
   try {
     await page.getByRole("button", { name: /新建沟通/ }).first().click();
-    const 说明 = page.getByRole("note").filter({ hasText: "这条记为客户沟通" });
+    const 说明 = page.getByRole("note").filter({ hasText: "这位客户还没有项目，先建一个项目再记沟通" });
     await 说明.waitFor();
     expect(await page.getByTestId("new-project-modal").count()).toBe(0);
     await page.locator("#content").fill("电话聊了下");
     await page.getByRole("dialog").getByRole("button", { name: /保\s*存|记\s*下/ }).last().click();
-    await expect.poll(() => 取(page, "__存")).not.toBeNull();
-    expect(((await 取(page, "__存")) as { projectId: unknown }).projectId ?? null).toBeNull();
+    await expect.poll(() => page.getByText("这位客户还没有项目，先建一个项目再记沟通").count()).toBeGreaterThan(1);
+    expect(await 取(page, "__存")).toBeNull();
+    expect(await page.locator("#content").inputValue()).toBe("电话聊了下");
+    await 说明.getByRole("button", { name: "新建项目" }).click();
+    // 桩是个空 div（没有尺寸）：等它挂上即可
+    await page.getByTestId("new-project-modal").waitFor({ state: "attached" });
+    // 记沟通的框没关，写好的还在
+    expect(await page.locator("#content").inputValue()).toBe("电话聊了下");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
 
-it("X-143：只是组员的项目（能记 = false）不进「关联项目」下拉；只剩它时按没项目记客户沟通", async () => {
+it("X-143：记不了的项目（能记 = false）不进「关联项目」下拉；只剩它时说找负责人拉进组或新建项目", async () => {
   const { page, errors } = await 开([项("p1", "我的项目"), 项("p2", "同事的项目", false)]);
   try {
     await page.getByRole("button", { name: /新建沟通/ }).first().click();
@@ -194,7 +201,7 @@ it("X-143：只是组员的项目（能记 = false）不进「关联项目」下
   const 二 = await 开([项("p2", "同事的项目", false)]);
   try {
     await 二.page.getByRole("button", { name: /新建沟通/ }).first().click();
-    await 二.page.getByRole("note").filter({ hasText: "这条记为客户沟通" }).waitFor();
+    await 二.page.getByRole("note").filter({ hasText: "你都不是负责人或组员" }).waitFor();
     expect(二.errors).toEqual([]);
   } finally { await 二.page.close(); }
 });

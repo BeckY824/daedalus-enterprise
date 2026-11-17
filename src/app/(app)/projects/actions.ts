@@ -4,6 +4,7 @@
  * 团队版项目模式 1a 的写（2026-10-23，D-31）。开关关着时每个动作都直接拦，一行不写。
  * 规矩在 lib/project/nodes.ts、读写在 lib/project/db.ts、建档向导在 lib/project/wizard.ts，这里只管登录、开关、操作日志和刷新。
  */
+import { 能往项目记沟通 } from "@/lib/project/follow-needs-project";
 import { revalidatePath } from "next/cache";
 import { 读项目详情 } from "./[id]/load";
 import type { 项目详情Props } from "./[id]/ProjectDetail";
@@ -23,7 +24,7 @@ import { 登记接着建, 记联系人带号 } from "@/lib/project/hook";
 import { 规整向导, 向导接着建, 规整只建客户, 只建客户接着建, 项目来源默认, 占位名提示, type 建好的, type 建好的客户, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
-import { 读必填数据, 能改节点, 上级只推, 直属才推, 只有负责人改进程, 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 能管项目, 能进公海的阶段, 超时成员线, 超时线, type 交付项 } from "@/lib/project/db";
+import { 读必填数据, 能改节点, 上级只推, 直属才推, 只有负责人改进程, 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 能进公海的阶段, 超时成员线, 超时线, type 交付项 } from "@/lib/project/db";
 import { 合上改动, 是不限, 三态改动摘要, type 规则改动 } from "@/lib/project/org-rules";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -980,9 +981,11 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
     const me = await requireUser();
     if (!(await 开着()) || !企业版() || typeof projectId !== "string" || !projectId) return { ok: true, 能记: false };
     const p = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, phase: true, node: true, result: true, nextStepAt: true, createdAt: true, customerId: true, contactId: true, bizLine: true, logs: { orderBy: { at: "desc" }, take: 1, select: { at: true } } } });
-    if (!p || p.pooledAt) return { ok: true, 能记: false };
-    // 11-01：企业版沟通只有负责人记，组员只能看（和 lib/project/db.ts 记项目沟通 同一个判断）
-    if (!能管项目(me, p, await 权限组织())) return { ok: true, 能记: false };
+    // 已结束 / 在公海的不走项目那条（11-17 沟通必须挂在推项目：落到 saveFollowUp 也会拦下、说清楚）
+    if (!p || p.pooledAt || p.result) return { ok: true, 能记: false };
+    // 11-17：负责人或已进组的组员能记（和 lib/project/db.ts 记项目沟通 同一个判断）
+    const 组员 = await prisma.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
+    if (!能往项目记沟通(me, p, await 权限组织(), 组员?.inviteStatus)) return { ok: true, 能记: false };
     const 规则 = await 生效组织规则();
     const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
     let 回收预演: 回收预演底子 | null = null;

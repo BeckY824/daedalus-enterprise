@@ -1,7 +1,7 @@
 /**
  * 企业版只用项目时，AI 记跟进卡确认后挂项目（10-28，dashboard/apply.ts 的 add_followup）。
- * 钉的是：这位客户看得到的在推项目（lib/project/active.ts 在推项目条件：没结局、不在公海）只有一个 → 挂上；
- * 好几个 → 不挂（卡片上挑项目是后续的事）；已结束 / 在公海的不算数；不是企业版 → 照旧不挂。
+ * 钉的是（11-17 沟通必须挂项目）：我能记的在推项目（没结局、不在公海；负责人或已进组的组员）只有一个 → 挂上；
+ * 好几个 → 卡上没选就拦下要选（不猜）；已结束 / 在公海的不算数；不是企业版 → 照旧不挂。
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -20,6 +20,7 @@ import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { dayjs } from "@/lib/utils";
 import { applyProposal } from "@/app/(app)/dashboard/apply";
+import { 沟通要选项目话 } from "@/lib/project/follow-needs-project";
 
 let 销售: string, 客户: string;
 let 序 = 0;
@@ -57,22 +58,20 @@ describe("AI 记跟进卡挂项目", () => {
     expect(await 挂的项目()).toBe(p.id);
   });
 
-  it("两个在推项目：不挂，跟进照样记在客户下", async () => {
+  it("两个在推项目、卡上没选：拦下要选，一条不记", async () => {
     await 项目();
     await 项目();
-    expect(await 确认跟进卡()).toMatchObject({ ok: true });
-    expect(await 挂的项目()).toBeNull();
-    expect(await prisma.followUp.count({ where: { customerId: 客户 } })).toBe(1);
+    expect(await 确认跟进卡()).toMatchObject({ ok: false, error: 沟通要选项目话 });
+    expect(await prisma.followUp.count({ where: { customerId: 客户 } })).toBe(0);
   });
 
-  it("唯一在推的项目是同事负责、我只是组员（X-143）：不挂，跟进照样记在客户下，不整张拒", async () => {
+  it("唯一在推的项目是同事负责、我已进组（11-17 组员可记）：挂上", async () => {
     const 同事 = (await prisma.user.create({ data: { email: "s2", name: "小李", title: "", role: "SALES", password: "x" } })).id;
     await prisma.entMember.create({ data: { userId: 同事, bizRole: "sales" } });
     const p = await 项目({ ownerId: 同事, creatorId: 同事 });
     await prisma.projectMember.create({ data: { projectId: p.id, userId: 销售, inviteStatus: "JOINED" } });
     expect(await 确认跟进卡()).toMatchObject({ ok: true });
-    expect(await 挂的项目()).toBeNull();
-    expect(await prisma.followUp.count({ where: { customerId: 客户 } })).toBe(1);
+    expect(await 挂的项目()).toBe(p.id);
   });
 
   // 企业版里项目模式是锁死开着的（business-config 企业版锁定），所以「关」只有不是企业版这一种

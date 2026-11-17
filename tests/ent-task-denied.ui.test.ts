@@ -26,7 +26,7 @@ const plugin: Plugin = { name: "task-denied-boundaries", setup(b) {
     export const toggleTask=async(id,v)=>{(window.__calls??=[]).push(['toggleTask',id,v]);return window.__toggle??{ok:true}};
     export const deleteTask=async(id)=>{(window.__calls??=[]).push(['deleteTask',id]);return window.__delete??{ok:true}};
     export const completePlan=async(id,v)=>{(window.__calls??=[]).push(['completePlan',id,v]);return (v===false?window.__planUndo:window.__planDone)??{ok:true}};
-    export const 撤销记一笔=async()=>({ok:true}),saveFollowUp=撤销记一笔,deleteFollowUp=撤销记一笔;
+    export const 撤销记一笔=async()=>({ok:true}),沟通可选项目=async()=>({ok:true,项目们:null,能建项目:true}),saveFollowUp=撤销记一笔,deleteFollowUp=撤销记一笔;
     export const 转走项目预览of=async()=>({项目数:0,项目:[]});
     export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'p1'});`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));

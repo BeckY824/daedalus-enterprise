@@ -8,6 +8,7 @@
  *   - 规则「按组织看客户」关着（别人都不限定）：照样回避
  *   - 没设业务角色：公海客户、公海项目、记跟进自动领都拦，账号 ADMIN 不算；别人分给 ta 也拦（11-03 完成度 C3-1：没业务角色不能当负责人）
  */
+import { 沟通客户在公海话 } from "@/lib/project/follow-needs-project";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -441,13 +442,12 @@ describe("没设业务角色不能领", () => {
     expect(await raw.customerPool.count({ where: { customerId: c } })).toBe(1);
   });
 
-  it("设了业务角色的给公海客户记跟进：顺手领过来，回包说领取了，跟进记上，公海行没了", async () => {
+  it("设了业务角色的给公海客户记跟进（11-17 沟通必须挂项目）：项目也在公海、没有在推项目——说先领取，不顺手领走、不记", async () => {
     const { c } = await 导入的(乙.id, "丙记跟进领");
     当(丙);
-    expect(await 以谁的身份(丙.id, () => 记(c))).toMatchObject({ ok: true, 领取了: true });
-    expect((await raw.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(丙.id);
-    expect(await raw.customerPool.count({ where: { customerId: c } })).toBe(0);
-    expect(await raw.followUp.count({ where: { customerId: c } })).toBe(1);
+    expect(await 以谁的身份(丙.id, () => 记(c))).toMatchObject({ ok: false, error: 沟通客户在公海话 });
+    expect(await raw.customerPool.count({ where: { customerId: c } })).toBe(1);
+    expect(await raw.followUp.count({ where: { customerId: c } })).toBe(0);
   });
 
   it("设了业务角色的正常领；别人分给没业务角色的也拦", async () => {

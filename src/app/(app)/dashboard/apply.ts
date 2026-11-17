@@ -22,9 +22,6 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 卡片刚记的能撤, 卡片撤销放行, 卡片撤销过时话 } from "@/lib/enterprise/follow-perm";
 import { 是业务线 } from "@/lib/enterprise/assign-line";
 import { 要下一步时间, 联系人地址上限 } from "@/lib/project/wizard";
-import { 客户在推项目 } from "@/lib/project/active";
-import { 能管项目 } from "@/lib/project/db";
-import { 权限组织 } from "@/lib/enterprise/org";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版字典 } from "@/lib/project/stage-dict";
 import { 号码库类型, 库类型到号码类型 } from "@/lib/enterprise/contact-dedupe";
@@ -470,15 +467,11 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
     if (done.ok && 原) 撤销 = { kind: "set_status", customerId: p.customerId, field: p.field, to: 原[p.field], 改成: p.to };
   } else if (p.kind === "add_followup") {
     /*
-      企业版只用项目（10-28）：手动记跟进有在推项目时必挂项目；AI 卡上没地方选，这位看得到的在推项目只有一个就挂它，
-      有好几个先不挂（照旧只记在客户下）——卡片上让人挑一个是后续的事，这里不猜。挂的时候 saveFollowUp 里的 挂项目 再核一遍
+      企业版沟通必须挂项目（11-17 客户定，同客户页记沟通）：卡上选了项目就挂它；没选时我能记的在推项目只有一个就挂它，
+      几个就让人在卡上选（不猜），一个都没有就拦下、说先建项目。规矩全在 saveFollowUp（lib/project/follow-needs-project.ts），这里只把卡上选的交过去
     */
-    const 在推 = 只用项目 ? await 客户在推项目(p.customerId, 2) : [];
-    // X-143：只有一个在推的、但我管不了（只是组员）就不挂，照旧记在客户下——saveFollowUp 对管不了的项目会整条拒
-    const 唯一 = 在推.length === 1 ? await prisma.project.findUnique({ where: { id: 在推[0].id }, select: { id: true, ownerId: true, pooledAt: true } }) : null;
-    const 挂它 = 唯一 && 能管项目(me, 唯一, await 权限组织()) ? 唯一.id : null;
     const r = await saveFollowUp({
-      ...(挂它 ? { projectId: 挂它 } : {}),
+      ...(只用项目 && p.projectId ? { projectId: p.projectId } : {}),
       customerId: p.customerId,
       type: p.type,
       title: p.title || null,

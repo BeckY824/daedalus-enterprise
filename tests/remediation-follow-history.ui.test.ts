@@ -27,7 +27,7 @@ const plugin: Plugin = { name: "history-server-boundaries", setup(b) {
   stub(/projects\/actions$/, "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};");
   stub(/^\.\/actions$/, `
     export const 客户删除预检=async()=>({ok:true}),删除前清点=async()=>({跟进:0,商机:0,计划和待办:0,签约:0,签约金额:[],联系人:0,线索:0}),deleteCustomers=async()=>({ok:false});
-    export const toggleTask=async()=>({ok:true}),deleteTask=toggleTask,completePlan=toggleTask,撤销记一笔=toggleTask;
+    export const toggleTask=async()=>({ok:true}),deleteTask=toggleTask,completePlan=toggleTask,撤销记一笔=toggleTask,沟通可选项目=async()=>({ok:true,项目们:null,能建项目:true});
     export const 转走项目预览of=async()=>({项目数:0,项目:[]});
     export async function saveFollowUp(x){window.__saved=x;const row=window.__rows[x.customerId].find(r=>r.id===x.id);Object.assign(row,x,{updatedAt:'2026-10-08T12:00:00.000Z'});return {ok:true,id:x.id}}
     export async function deleteFollowUp(id,customerId){const rows=window.__rows[customerId],i=rows.findIndex(r=>r.id===id);rows.splice(i,1);return {ok:true}}

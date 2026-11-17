@@ -26,7 +26,7 @@ const plugin: Plugin = { name: "trade-basics-ui", setup(b) {
   stub(/projects\/actions$/, "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};");
   stub(/(customers\/\[id\]\/|^\.\/)actions$/, `
     const 记=(名,参)=>{(window.__calls??=[]).push({名,参});return {ok:true,id:'f1'}};
-    export const 撤销记一笔=async(x)=>记('撤销记一笔',x);
+    export const 撤销记一笔=async(x)=>记('撤销记一笔',x),沟通可选项目=async()=>({ok:true,项目们:null,能建项目:true});
     export const saveFollowUp=async(x)=>({...记('saveFollowUp',x),...(x.附带?.plan?{下次计划id:'n1'}:{})}),completePlan=async(id,完成=true)=>记('completePlan',{id,完成}),toggleTask=async(id,v)=>记('toggleTask',{id,v}),deletePlan=async()=>({ok:true}),deleteTask=deletePlan;
     export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'p1'});`);
   stub(/customers\/\[id\]\/TaskForm$/, "export default function C(){return null}");

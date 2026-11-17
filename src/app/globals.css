@@ -1214,6 +1214,8 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .done-plan-row > :not(.done-plan-k) { flex: 1; min-width: 0; }
 .done-plan-row .ant-select { flex: 0 0 auto; }
 .done-plan-tip { margin-left: 60px; color: var(--text-muted); font-size: var(--fs-note); }
+.done-plan-note { color: var(--brand-deep); font-size: var(--fs-note); line-height: 1.6; }
+.done-plan-proj { line-height: 32px; overflow-wrap: anywhere; }
 .country-cell { display: inline-flex; flex-direction: column; line-height: 1.3; }
 .country-cell-t { font-size: var(--fs-min); font-variant-numeric: tabular-nums; }
 .cust-level-B { border-color: var(--warning-line); color: var(--warning-text); background: var(--warning-bg); }
@@ -4695,6 +4697,9 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 @keyframes cd-pj-flash-in { from { opacity: 0; } }
 /* 没有能记的在推项目时记沟通（P-界面-35）：弹框里写明这条记为客户沟通 */
 .fu-np-note { color: var(--brand-deep); }
+.fu-np { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 32px; }
+.fu-np-note { overflow-wrap: anywhere; }
+.fu-np-ask { color: var(--text-muted); font-size: var(--fs-note); }
 /* 客户转让一个框（dt.transfer）：选人、一起转、原因三行 */
 .cd-transfer-body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .cd-transfer-row { display: flex; gap: 10px; align-items: flex-start; min-width: 0; }

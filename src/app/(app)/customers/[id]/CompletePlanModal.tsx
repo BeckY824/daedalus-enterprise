@@ -2,8 +2,8 @@
 
 import DatePicker from "@/components/BusinessDatePicker";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
-import { useRef, useState } from "react";
-import { Modal, Input, Segmented, Button, Space, Typography } from "antd";
+import { useEffect, useRef, useState } from "react";
+import { Modal, Input, Segmented, Button, Space, Typography, Select } from "antd";
 import SaveButton from "@/components/SaveButton";
 import { showUndo } from "@/components/UndoBar";
 import type { Dayjs } from "dayjs";
@@ -14,7 +14,7 @@ import { 对得上的方式 } from "@/lib/follow-method";
 import { useBusiness } from "@/lib/business-client";
 import { 外贸精简 } from "@/lib/business-config";
 import { hasVisibleText } from "@/lib/form-validation";
-import { saveFollowUp, 撤销记一笔 } from "./actions";
+import { saveFollowUp, 撤销记一笔, 沟通可选项目 } from "./actions";
 import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
 
@@ -25,6 +25,8 @@ import { useFormGuard } from "@/lib/form-guard";
  * 多半就没记；下一次什么时候也常常没排。现在三件事一个框做完：
  *   保存并完成 = 记一条已完成的跟进 + 完成这条计划 + （选了的话）排下一次，一个事务（saveFollowUp 的「附带」）
  *   跳过，直接完成 = 交回页面，和原来一样只把计划勾掉
+ * 企业版沟通必须挂项目（11-17）：客户有我能记的在推项目就照常顺带记一笔（一个自动挂、几个要选）；
+ * 没有就只把计划标为完成、不另记沟通（框里写明，「完成计划」= 跳过那条路）
  */
 
 export type 要完成的计划 = {
@@ -123,8 +125,24 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
   // 点外面不关；写了那一句再按 Esc / X 先问一句（2026-10-19 客户反馈，lib/form-guard.tsx）。挂着一条计划，不算新建弹窗，不存草稿
   const 守 = useFormGuard({ open: true, 关: onClose, 填过: () => hasVisibleText(字), 忙, afterOpenChange: 聚焦首项 });
 
+  /** 企业版这位客户我能挂沟通的在推项目：undefined = 还在问；null = 不是企业版（照旧不挂） */
+  const [项目们, set项目们] = useState<{ id: string; name: string }[] | null | undefined>(undefined);
+  const [项目, set项目] = useState<string | null>(null);
+  useEffect(() => {
+    let 作废 = false;
+    沟通可选项目(plan.customerId).then(
+      (r) => { if (!作废) set项目们(r.ok ? r.项目们 : null); },
+      () => { if (!作废) set项目们(null); },
+    );
+    return () => { 作废 = true; };
+  }, [plan.customerId]);
+  /** 没有能挂的在推项目：只标完成，不另记沟通 */
+  const 只完成 = Array.isArray(项目们) && 项目们.length === 0;
+  const 挂的项目 = 项目们 && 项目们.length === 1 ? 项目们[0].id : 项目;
+  const 要选项目 = !!项目们 && 项目们.length > 1;
+
   const 下次日 = 下次 === "none" ? null : 下次 === "pick" ? 日子?.format("YYYY-MM-DD") ?? null : dayjs().add(Number(下次), "day").format("YYYY-MM-DD");
-  const 可存 = hasVisibleText(字) && (下次 !== "pick" || !!日子);
+  const 可存 = 只完成 || (项目们 !== undefined && hasVisibleText(字) && (下次 !== "pick" || !!日子) && (!要选项目 || !!项目));
 
   /** 这笔不算有效沟通（C12）：框里就地说一句（role=status），对勾放完再关框 */
   const [短话, set短话] = useState<string | null>(null);
@@ -144,6 +162,13 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
    */
   async function 保存(): Promise<{ ok: boolean; error?: string }> {
     if (忙) return { ok: false, error: "正在保存，请稍等" };
+    if (只完成) {
+      // 没有能挂的项目：不记沟通，走「跳过，直接完成」那条路（页面只把计划勾掉）
+      存好后.current = () => onDone({ kind: "skip" });
+      set已存(true);
+      return { ok: true };
+    }
+    if (要选项目 && !项目) return { ok: false, error: "请选一个关联项目" };
     if (!可存) return { ok: false, error: "先写一句这次聊了什么" };
     set忙(true);
     try {
@@ -156,6 +181,7 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
         content: 内容,
         status: "已完成",
         occurredAt: new Date().toISOString(),
+        ...(挂的项目 ? { projectId: 挂的项目 } : {}),
         附带: {
           tasks: [],
           ...(下次日 ? { plan: { subject: 下次主题(内容), plannedAt: 下次日, method: 对得上的方式(类型, 方式) ?? FOLLOW_TYPE_MAP[类型]?.label ?? "电话沟通" } } : {}),
@@ -190,12 +216,14 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
       width={480}
       footer={
         <Space>
-          <Button onClick={跳过} disabled={忙 || 已存}>
-            跳过，直接完成
-          </Button>
+          {!只完成 && (
+            <Button onClick={跳过} disabled={忙 || 已存}>
+              跳过，直接完成
+            </Button>
+          )}
           <span ref={保存键}>
             <SaveButton 做={保存} disabled={!可存} 已保存="已完成" 成了={交出去}>
-              保存并完成
+              {只完成 ? "完成计划" : "保存并完成"}
             </SaveButton>
           </span>
         </Space>
@@ -204,8 +232,21 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
       {(
         <div className="done-plan" data-testid="complete-plan-modal">
           <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-            {plan.customerName ? `${plan.customerName} · ` : ""}「{plan.subject}」做完了，顺手记一笔。
+            {plan.customerName ? `${plan.customerName} · ` : ""}「{plan.subject}」做完了，{只完成 ? "标为完成。" : "顺手记一笔。"}
           </Typography.Paragraph>
+          {只完成 ? (
+            <div role="note" className="done-plan-note">这位客户还没有在推的项目：只把计划标为完成，不另记沟通</div>
+          ) : <>
+          {项目们 && 项目们.length > 0 && (
+            <div className="done-plan-row">
+              <span className="done-plan-k">项目</span>
+              {要选项目 ? (
+                <Select aria-label="关联项目" style={{ width: 240 }} placeholder="选择关联项目" value={项目 ?? undefined} onChange={(v: string) => set项目(v)} options={项目们.map((x) => ({ value: x.id, label: x.name }))} />
+              ) : (
+                <span className="done-plan-proj">{项目们[0].name}</span>
+              )}
+            </div>
+          )}
           <div className="done-plan-row">
             <span className="done-plan-k">方式</span>
             <FollowMethodSelect
@@ -251,6 +292,7 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
           </div>
           {短话 && <div role="status" className="rec-plan-said">{短话}</div>}
           {下次日 && <div className="done-plan-tip">{`会排一条 ${dayjs(下次日).format("M 月 D 日")}的计划：${下次主题(字)}`}</div>}
+          </>}
         </div>
       )}
     </Modal>

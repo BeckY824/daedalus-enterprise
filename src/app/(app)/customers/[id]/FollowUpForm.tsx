@@ -35,6 +35,7 @@ import { useFormGuard } from "@/lib/form-guard";
 import { 卡点类型们, 影响等级们, 描述上限, 标题上限, 原因最多, 原因名上限, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 选沟通附件, 传沟通附件 } from "@/components/FollowAttachments";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
+import { 沟通没项目话, 请负责人建项目话, 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
 
 /** 记沟通时顺手标的卡点（F-跟进-08）：类型「暂无卡点」= 不生成，描述写了也不生成（11-01 答复 #5；服务端 沟通卡点 同一条规则） */
 type 卡点值 = { type: string; impact: string | null; title: string; reasons: string[]; description: string };
@@ -74,10 +75,6 @@ const 字段名: Record<string, string> = {
 };
 
 /** 项目模式主区上的格子：校验没过的不在这里头，才去展开「更多」 */
-/** P-界面-35：没有能记的在推项目时照常记，记为客户沟通，弹框里写明 */
-export const 没项目话 = "没有你能记的在推项目，这条记为客户沟通";
-/** X-144：选的项目没挂上（已结束 / 在公海 / 关联进来的），照存成客户沟通 */
-export const 没挂上项目话 = "没挂上项目，已记为客户沟通";
 
 /** 当前毫秒。放在组件外：解析计时在事件里用、逾期判断按每次渲染的此刻算（原来就是这样），不当成纯值缓存 */
 const 此刻 = () => Date.now();
@@ -126,6 +123,8 @@ export default function FollowUpForm({
   contacts: 给定联系人,
   opportunities: 给定商机,
   projects = null,
+  新建项目,
+  没项目说法 = 沟通没项目话,
   aiEnabled,
   initialAiText,
   待收口计划 = null,
@@ -149,6 +148,13 @@ export default function FollowUpForm({
    * 新建默认选第一个（10-27 会议：「默认自动关联当前项目」）；编辑不改挂哪个项目，这一格不摆
    */
   projects?: { id: string; name: string }[] | null;
+  /**
+   * 企业版沟通必须挂项目（11-17）：一个能记的在推项目都没有时，弹框里「新建项目」按钮开客户页那张新建项目表（框不关、写好的内容留着）；
+   * null = 我不能新建项目，改说「请联系负责人先建项目」；不给（undefined）= 不摆这一块（别的版本）
+   */
+  新建项目?: (() => void) | null;
+  /** 没项目时那一句：默认「这位客户还没有项目，先建一个项目再记沟通」；有在推项目、只是我都记不了时页面换一句 */
+  没项目说法?: string;
   aiEnabled: boolean;
   /** 记录页顶部的速记框直接带过来的原文：打开即解析，少点一次 */
   initialAiText?: string;
@@ -241,8 +247,10 @@ export default function FollowUpForm({
   const contacts = 给定联系人 ?? 近况?.contacts ?? [];
   const opportunities = 给定商机 ?? 近况?.opportunities ?? [];
   // 外贸「关联商机 / 订单」里订单那一组（跟进挂订单）2026-10-29 随订单表一起删了，只挂商机
-  /** 新建默认挂的项目：页面按最近动过排，第一个就是当前在推的 */
-  const 默认项目 = projects?.[0]?.id;
+  /** 新建默认挂的项目：只有一个能记的在推项目才自动挂它；几个要人选，不猜（11-17 沟通必须挂项目） */
+  const 默认项目 = projects?.length === 1 ? projects[0].id : undefined;
+  /** 企业版：一个能记的在推项目都没有，沟通（待办、提醒除外）记不了，先建项目 */
+  const 没项目 = !!projects && projects.length === 0 && !record?.id;
   /** 挑人时的「到期计划」和记录页同一个口径：最早那条没做完的，今天或更早到期 */
   const 收口计划 = 挑人
     ? 近况?.未完成计划 && !dayjs(近况.未完成计划.plannedAt).isAfter(dayjs().endOf("day")) ? 近况.未完成计划 : null
@@ -439,11 +447,11 @@ export default function FollowUpForm({
   const [存着, set存着] = useState(false);
   /**
    * 存上之后框里就地说的几句（原型 g.save / g.notice：不弹顶部提示）：领取了、加进了待办、不算有效沟通、卡点生成了、自动推进了……
-   * 错 = 存上了但有一块没成（没挂上项目、附件 / 待办没存上、卡点没生成）：框不自己关，停下来让人看完点「知道了」
+   * 错 = 存上了但有一块没成（附件 / 待办没存上、卡点没生成）：框不自己关，停下来让人看完点「知道了」
    */
   const [存后, set存后] = useState<{ 话: string; 错?: boolean }[] | null>(null);
   const [停下看, set停下看] = useState(false);
-  /** 保存键对勾时的字（没挂上项目时不说「已记下」） */
+  /** 保存键对勾时的字（改的说「已保存」，新记的「已记下」） */
   const [成了字, set成了字] = useState("已记下");
   /** 存上之后、对勾放完才做的事（交给页面 onSaved、完成计划、列表页的撤销条）。SaveButton 的 成了 调它 */
   const 收尾 = useRef<(() => void) | null>(null);
@@ -493,6 +501,8 @@ export default function FollowUpForm({
     const 谁 = 给定客户 ?? (v.customerId as string);
     const 名 = 近况?.name;
     const 要收口 = !record?.id && 收口计划 && 收口 ? 收口计划 : null;
+    // 沟通必须挂项目（11-17）：没项目先不发，服务端也拦；框不关、写好的内容留着
+    if (没项目 && 要挂项目的类型(v.type)) return { ok: false, error: 没项目说法 };
     if (项目模式 && 须知 && v.projectId) return 记到项目(v, 谁, 要收口);
     const res = await saveFollowUp({
       id: record?.id,
@@ -530,9 +540,6 @@ export default function FollowUpForm({
     resetAi();
     守.存好了();
     const 话们: { 话: string; 错?: boolean }[] = [];
-    // X-144（11-15 用户定）：选的项目刚结束 / 进了公海 / 是关联进来的，服务端照存成客户沟通，这里说一句，不再静默
-    const 没挂上 = "没挂上项目" in res && !!res.没挂上项目;
-    if (没挂上) 话们.push({ 话: 没挂上项目话, 错: true });
     // 客户三态（C12）：新记的这条不算有效沟通，另给一句轻提示（照常保存，不拦）
     const 短 = 短沟通话of(res);
     if (短) 话们.push({ 话: 短 });
@@ -567,7 +574,7 @@ export default function FollowUpForm({
         });
       };
     }
-    存后说(话们, 没挂上 ? "记为客户沟通" : record?.id ? "已保存" : "已记下");
+    存后说(话们, record?.id ? "已保存" : "已记下");
     return { ok: true };
   }
 
@@ -649,6 +656,23 @@ export default function FollowUpForm({
     extras?.followStatusSuggestion ? `跟进状态 → ${statusLabel(b, extras.followStatusSuggestion)}` : null,
     extras?.decisionStatusSuggestion ? `决策状态 → ${statusLabel(b, extras.decisionStatusSuggestion)}` : null,
   ].filter(Boolean);
+
+  /**
+   * 没有能记的在推项目（11-17 沟通必须挂项目）：「关联项目」那一格换成一句提示 + 「新建项目」（我不能建就说找负责人）。
+   * 记待办 / 提醒不用挂项目，照常能存
+   */
+  const 没项目块 = (
+    <Form.Item label="关联项目">
+      <div className="fu-np" role="note">
+        <span className="fu-np-note">{没项目说法}</span>
+        {新建项目 ? (
+          <Button size="small" type="primary" ghost onClick={新建项目}>新建项目</Button>
+        ) : 新建项目 === null && 没项目说法 === 沟通没项目话 ? (
+          <span className="fu-np-ask">{请负责人建项目话}</span>
+        ) : null}
+      </div>
+    </Form.Item>
+  );
 
   /** 沟通方式：企业版列字典里的沟通方式，类型跟着推（FollowMethodSelect）；别的版本就是类型下拉 */
   const 方式格 = (
@@ -741,18 +765,14 @@ export default function FollowUpForm({
             {projects ? !record?.id && (
               <Col span={24}>
                 {/*
-                  10-26 白板：「沟通跟进记录必须选项目当前阶段」。有在推项目就必选、不能清空；
-                  一个能记的在推项目都没有时照常能记，记为客户沟通（projectId 存空），弹框里写明（P-界面-35，不自动建项目）
+                  10-26 白板：「沟通跟进记录必须选项目当前阶段」。有在推项目就必选、不能清空；几个时不预选（11-17 不猜）；
+                  一个能记的在推项目都没有：沟通记不了，说先建项目、给「新建项目」（11-17 沟通必须挂项目，取代 P-界面-35）
                 */}
                 {projects.length > 0 ? (
                   <Form.Item name="projectId" label="关联项目" rules={[{ required: true, message: "请选择关联项目" }]}>
-                    <Select placeholder="选择项目" options={projects.map((p) => ({ value: p.id, label: p.name }))} />
+                    <Select placeholder={projects.length > 1 ? "有几个在推项目，选一个" : "选择项目"} options={projects.map((p) => ({ value: p.id, label: p.name }))} />
                   </Form.Item>
-                ) : (
-                  <Form.Item name="projectId" label="关联项目" extra={<span role="note" className="fu-np-note">{没项目话}</span>}>
-                    <Select disabled placeholder="—（客户沟通）" options={[]} />
-                  </Form.Item>
-                )}
+                ) : 没项目块}
               </Col>
             ) : <Col span={24}>
               <Form.Item name="opportunityId" label="关联商机">
@@ -934,20 +954,16 @@ export default function FollowUpForm({
               </Form.Item>
             </Col>
             {projects ? !record?.id && (
-              <Col span={12}>
+              <Col span={没项目 ? 24 : 12}>
                 {/*
-                  10-26 白板：「沟通跟进记录必须选项目当前阶段」。有在推项目就必选、不能清空；
-                  一个能记的在推项目都没有时照常能记，记为客户沟通（projectId 存空），弹框里写明（P-界面-35，不自动建项目）
+                  10-26 白板：「沟通跟进记录必须选项目当前阶段」。有在推项目就必选、不能清空；几个时不预选（11-17 不猜）；
+                  一个能记的在推项目都没有：沟通记不了，说先建项目、给「新建项目」（11-17 沟通必须挂项目，取代 P-界面-35）
                 */}
                 {projects.length > 0 ? (
                   <Form.Item name="projectId" label="关联项目" rules={[{ required: true, message: "请选择关联项目" }]}>
-                    <Select placeholder="选择项目" options={projects.map((p) => ({ value: p.id, label: p.name }))} />
+                    <Select placeholder={projects.length > 1 ? "有几个在推项目，选一个" : "选择项目"} options={projects.map((p) => ({ value: p.id, label: p.name }))} />
                   </Form.Item>
-                ) : (
-                  <Form.Item name="projectId" label="关联项目" extra={<span role="note" className="fu-np-note">{没项目话}</span>}>
-                    <Select disabled placeholder="—（客户沟通）" options={[]} />
-                  </Form.Item>
-                )}
+                ) : 没项目块}
               </Col>
             ) : <Col span={12}>
               <Form.Item name="opportunityId" label="关联商机">

@@ -57,6 +57,7 @@ import { 打开AI浮窗, 登记智能总结 } from "@/lib/ai-float";
 import LinkedCustomers from "./LinkedCustomers";
 import { FoldSplit, ProjectFold, 模块钮色, type 连体主钮, type 连体色 } from "../../projects/[id]/ProjectFold";
 import { 客户详情左栏, 客户详情待办 } from "../../projects/[id]/card-names";
+import { 沟通都不能记话 } from "@/lib/project/follow-needs-project-text";
 import NewProjectEntry from "./NewProjectEntry";
 import { 两行, 项目忙说法 } from "../../projects/[id]/project-menu";
 import { 客户页摆法, 级别选项, 企业级别, 拼地址, 地址叫法, 简称上限 } from "@/lib/enterprise/customer-v2";
@@ -193,6 +194,7 @@ export default function RecordView({
   客户属性选项 = [],
   字典释义,
   新建项目 = null,
+  能新建项目 = true,
   跟进去处 = null,
   转让原因,
   待办计划 = [],
@@ -604,7 +606,7 @@ export default function RecordView({
     setFollowOpen(true);
   }
 
-  const 能建项目 = !!(摆法.新建项目 && 新建项目 && !只读);
+  const 能建项目 = !!(摆法.新建项目 && 新建项目 && !只读 && 能新建项目);
   /** 公海里的客户先领取再建项目（11-05）：按钮照摆，点了说先领取，服务端也拦 */
   function 开建项目() {
     if (customer.pool) return void 说就地(公海客户先领取话);
@@ -623,7 +625,7 @@ export default function RecordView({
   function 点跟进() {
     // 只读的客户（虚线下属、市场成员相关）：先说只能看，别说「还没有在推的项目」——项目可能有，只是他看不到（11-03 D3-3）
     if (全只读) return void 说就地(全只读话);
-    // P-界面-35（dt.follownp）：没有能记的在推项目也照常打开，这条记为客户沟通（弹框里写明）；不自动建项目，项目一定手动新建
+    // 沟通必须挂项目（11-17，取代 P-界面-35）：没有能记的在推项目也打开，弹框里说先建项目、给「新建项目」（不自动建项目）；写好的内容留在框里
     openFollow(null);
   }
 
@@ -742,7 +744,8 @@ export default function RecordView({
       content: text,
       status: "已完成",
       occurredAt: new Date().toISOString(),
-      projectId: 在推项目?.[0]?.id ?? null,
+      // 沟通必须挂项目（11-17）：不替人挑，服务端按「能记的在推项目只有一个就挂它，几个要选、没有就拦」定；拦下时原文留在速记框里
+      projectId: 在推项目?.length === 1 ? 在推项目[0].id : null,
     });
     setQuickSaving(false);
     if (!res.ok) return void set速记话({ 话: res.error, 错: true });
@@ -1650,6 +1653,8 @@ export default function RecordView({
         contacts={contacts}
         opportunities={[]}
         projects={记沟通项目}
+        新建项目={去项目跟进 ? (能建项目 ? 开建项目 : null) : undefined}
+        没项目说法={去项目跟进 && (跟进去处 ?? []).some((p) => p.主 && !p.结束) ? 沟通都不能记话 : undefined}
         aiEnabled={aiEnabled}
         只读={只读}
       />

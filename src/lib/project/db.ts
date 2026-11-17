@@ -2,6 +2,7 @@
  * 团队版项目模式 1a 的读写（2026-10-23，D-31）。取值规矩在 lib/project/nodes.ts，界面的写在 app/(app)/projects/actions.ts。
  * 这里不管登录、不管开关，只管「谁能改」和「改了留什么痕」，方便单测直接调。
  */
+import { 能往项目记沟通, 沟通项目在公海话, 沟通项目已结束话, 沟通不是组员话 } from "./follow-needs-project";
 import { 项目退回前查联系方式, 退回号码种类表 } from "@/lib/enterprise/return-contact-check";
 import { Prisma, type Project } from "@/generated/prisma";
 import { prisma, defaultClient } from "../prisma";
@@ -1297,11 +1298,13 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
-    if (p.pooledAt) return { ok: false as const, error: "这个项目在公海里，先领取再记" };
-    // 企业版（11-01）：沟通是项目内容，只有负责人记；被邀请进组的只能看（规则 6）
-    if (企业版() && !能管项目(me, p, org)) return { ok: false as const, error: "只有项目负责人或系统管理员能记沟通，项目组成员只能看" };
+    if (p.pooledAt) return { ok: false as const, error: 企业版() ? 沟通项目在公海话 : "这个项目在公海里，先领取再记" };
+    // 沟通必须挂在推项目（11-17 客户定）：已结束的项目不再记沟通
+    if (企业版() && p.result) return { ok: false as const, error: 沟通项目已结束话 };
     if (!能管项目(me, p, org)) {
       const 组员 = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
+      // 企业版（11-17 客户定，改 11-01 规则 6）：已进组的项目组员也能把沟通记到别人名下的项目上，记录上是谁记的就是谁，负责人不变
+      if (企业版() && !能往项目记沟通(me, p, org, 组员?.inviteStatus)) return { ok: false as const, error: 沟通不是组员话 };
       if (组员?.inviteStatus !== "JOINED") return { ok: false as const, error: "只有项目负责人、项目组成员、老板或主管能记沟通" };
     }
     const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
