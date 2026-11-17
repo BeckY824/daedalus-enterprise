@@ -109,6 +109,11 @@ export type RecordProps = {
   能转让客户?: boolean;
   /** 负责人本人转自己的走申请移交（X4）：页头按钮、框标题统一叫「客户转让」（11-12），框里写明要接手人确认、7 天不确认作废 */
   转让要申请?: boolean;
+  /**
+   * 客户转让框里摆「指定分配 / 自动分配」的选择：操作人是市场成员、客户是「暂不分配」的才给（客户 11-17，lib/enterprise/cust-auto-assign.ts）。
+   * 页面（服务端）判好了把服务端动作 客户自动分配 递进来；不给 = 不摆，框和原来一样
+   */
+  自动分配?: (customerId: string, 原因: string | null) => Promise<import("../../leads/assign-actions").客户自动分配结果>;
   /** 企业版：在公海里、我是原负责人——领取按钮灰着，悬停说「原负责人不能领回」（lib/enterprise/pool-rules.ts） */
   原负责人领不回?: boolean;
   /** 换负责人记录（企业版 D-36），时间正序；左栏「历史负责人」用，没有就不摆 */

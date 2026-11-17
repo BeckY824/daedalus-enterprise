@@ -172,6 +172,7 @@ export default function RecordView({
   能放公海 = false,
   能转让客户 = true,
   转让要申请 = false,
+  自动分配,
   原负责人领不回 = false,
   只读: 只读档 = false,
   只读话: 全只读话 = "这是虚线下属的客户：只能看，不能改、不能转",
@@ -694,6 +695,20 @@ export default function RecordView({
     return { ok: true };
   }
   const 取转走预览 = useCallback((接手人: string) => 转走项目预览of([customer.id], 接手人), [customer.id]);
+  /**
+   * 客户转让框选「自动分配」（客户 11-17：市场成员给暂不分配的客户）：服务端挑人、整客户给挑中的销售，只通知接手人；
+   * 成了框里原地说分给了谁（「已自动分配给 X」），没挑到人原因写在框里、什么都没动。
+   * 页面判了能用才递 自动分配 进来；没递 = 框里不摆选择。取预览：还没挑人，接手人传空串，按「还没挑」数会一起转走的项目（同批量自动分配）
+   */
+  const 转让框自动 = useMemo(() => 自动分配 ? {
+    做: async (原因: string | null): Promise<转让结果> => {
+      const r = await 自动分配(customer.id, 原因);
+      router.refresh();
+      if (!r.ok) return { ok: false, error: r.error };
+      return { ok: true, 话: `已自动分配给 ${r.接手人}${r.为什么 ? `（${r.为什么}）` : ""}` };
+    },
+    取预览: () => 转走项目预览of([customer.id], ""),
+  } : undefined, [自动分配, customer.id, router]);
   /** 转给谁：在职成员里去掉现任 */
   const 转让候选 = 成员选项(users).filter((o) => o.value !== customer.salesOwnerId);
   const 能转让 = 去项目跟进 && !只读 && 能转让客户 && !customer.pool && 转让候选.length > 0;
@@ -1727,7 +1742,7 @@ export default function RecordView({
           if (saved) router.refresh();
         }}
       />
-      <TransferBox open={转让开} 客户名={customer.name} 候选={转让候选} 要申请={转让要申请} 作废天数={移交作废天数} 原因选项={转让原因?.选项 ?? []} 取预览={取转走预览} 做={发转让} onClose={() => set转让开(false)} />
+      <TransferBox open={转让开} 客户名={customer.name} 候选={转让候选} 要申请={转让要申请} 作废天数={移交作废天数} 原因选项={转让原因?.选项 ?? []} 取预览={取转走预览} 做={发转让} 自动={转让框自动} onClose={() => set转让开(false)} />
       {头部框 && (
         <Modal open title={`${头部框 === "关联客户" && 去项目跟进 ? 客户详情左栏.关联 : 客户头部框叫法[头部框]} · ${customer.name}`} footer={null} width={头部框 === "转让" ? 480 : 640} onCancel={() => set头部框(null)}>
           {头部框 === "管理联系人" && (

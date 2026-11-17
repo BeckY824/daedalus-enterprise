@@ -384,6 +384,26 @@ export async function 分配方式叫法(i: 分配方式序号): Promise<string>
   return 有?.name ?? 字典定义.assign.默认[i];
 }
 
+/** 客户分配（custAssign）默认三项的序号：0 自持、1 非自持、2 公海领取（默认id("custAssign", i)） */
+export const 客户分配序号 = { 自持: 0, 非自持: 1, 公海领取: 2 } as const;
+export type 客户分配序号 = (typeof 客户分配序号)[keyof typeof 客户分配序号];
+
+/**
+ * 系统自动写客户「客户分配」时用的叫法：按默认项 id 取字典里这一项现在的叫法（改过名跟着改）；
+ * 这一类还没建过 = 默认叫法；被停用了 = null（不写）。只读、不建默认项，事务里也能调（传 tx）
+ */
+export async function 客户分配叫法(i: 客户分配序号, db: Pick<Prisma.TransactionClient, "entDictItem"> = prisma): Promise<string | null> {
+  const 有 = await db.entDictItem.findUnique({ where: { id: 默认id("custAssign", i) }, select: { name: true, active: true } });
+  if (!有) return 字典定义.custAssign.默认[i];
+  return 有.active ? 有.name : null;
+}
+
+/** 客户分配这一格的值是不是字典「客户分配」里的一项（停用的也算；撤销时还回原值前核一下，原值是浏览器带回来的） */
+export async function 是客户分配项(v: string, db: Pick<Prisma.TransactionClient, "entDictItem"> = prisma): Promise<boolean> {
+  if ((字典定义.custAssign.默认 as readonly string[]).includes(v)) return true;
+  return !!(await db.entDictItem.findFirst({ where: { kind: "custAssign", name: v }, select: { id: true } }));
+}
+
 /** 分配方式谁能用（assign-use.ts）：没存 = 默认；不是企业版 = 空 */
 export async function 读分配谁能用(): Promise<分配谁能用配置> {
   if (!企业版()) return {};
