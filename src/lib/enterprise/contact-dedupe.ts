@@ -29,7 +29,8 @@ import { 同邮箱条件, 同微信条件 } from "@/lib/email-dedupe";
 import { 看全部, 看得到, 限定的我, 只读错误, 现在的公海回避, type 谁 } from "@/lib/team-scope";
 import { 公海客户原负责人是 } from "@/lib/owner-log-db";
 import { 问同事 } from "@/lib/sync/dedupe-client";
-import { 查重提示, 验号码, type 号码类型 } from "./contact-format";
+import { 查重提示, 验号码, 向导能选类型, 号码类型叫法, type 号码类型 } from "./contact-format";
+import { 每人最多号码 } from "./customer-v2";
 import { 号码归属地 } from "./phone-region";
 import { 拦原负责人 } from "./pool-rules";
 import { 离职负责人找谁 } from "./departed-owner";
@@ -265,16 +266,35 @@ const 联系人格 = [["phone", "手机号", "联系人电话"], ["email", "邮�
 export type 联系人的号 = 验好的号 & { 格: string; 同第一步: boolean };
 
 /**
- * 建档向导联系人那一步填的号（企业版，QA #3「邮箱不去重」）：按类型验格式，空着的不管。格式不对返回一句带格名的提示
+ * 建档向导联系人那一步填的号（企业版，QA #3「邮箱不去重」）：按类型验格式，空着的不管。格式不对返回一句带格名的提示。
+ *
+ * 更多：向导第一行号码下面加的几行（员工反馈「客户会留多个电话或者微信号」）——类型 + 号码，和第一行同一套类型（向导能选类型）、
+ * 同一套验格式和全公司查重（调用方对不是 同第一步 的逐个 企业号码查重、事务里 全公司查号），都记在主要联系人身上。
+ * 连第一行一共最多 每人最多号码 个（同联系人表单）；空行不算；和前面重了的（同类型同规整值）只记一次
  */
-export function 验联系人号码(联系人: { phone?: string | null; email?: string | null; wechat?: string | null }, 已查?: 验好的号 | null): 联系人的号[] | { error: string } {
+export function 验联系人号码(联系人: { phone?: string | null; email?: string | null; wechat?: string | null }, 已查?: 验好的号 | null, 更多?: unknown): 联系人的号[] | { error: string } {
   const 们: 联系人的号[] = [];
+  const 同第一步 = (r: 验好的号) => !!已查 && 已查.类型 === r.类型 && 已查.键 === r.键;
   for (const [列, 类型, 格] of 联系人格) {
     const 原 = 联系人[列];
     if (!原 || !原.trim()) continue;
     const r = 验号码(类型, 原);
     if (!r.ok) return { error: `${格}：${r.提示}` };
-    们.push({ 类型: r.类型, 值: r.值, 键: r.键, 格, 同第一步: !!已查 && 已查.类型 === r.类型 && 已查.键 === r.键 });
+    们.push({ 类型: r.类型, 值: r.值, 键: r.键, 格, 同第一步: 同第一步(r) });
+  }
+  if (更多 == null) return 们;
+  if (!Array.isArray(更多)) return { error: "号码格式不对，请刷新后重填" };
+  const 行们 = 更多.map((x) => (x && typeof x === "object" ? x as { 类型?: unknown; 值?: unknown } : {}))
+    .map((x, i) => ({ 类型: x.类型, 值: typeof x.值 === "string" ? x.值 : "", 第: i + 2 }))
+    .filter((x) => x.值.trim());
+  if (更多.length + 1 > 每人最多号码) return { error: `一位联系人最多记 ${每人最多号码} 个号码` };
+  for (const 行 of 行们) {
+    const 格 = `第 ${行.第} 个号码`;
+    if (!(向导能选类型 as readonly unknown[]).includes(行.类型)) return { error: `${格}：只能选 ${向导能选类型.map(号码类型叫法).join(" / ")}` };
+    const r = 验号码(行.类型, 行.值);
+    if (!r.ok) return { error: `${格}：${r.提示}` };
+    if (们.some((x) => x.类型 === r.类型 && x.键 === r.键)) continue;
+    们.push({ 类型: r.类型, 值: r.值, 键: r.键, 格, 同第一步: 同第一步(r) });
   }
   return 们;
 }

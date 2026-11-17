@@ -26,7 +26,9 @@ export const 项目名上限 = 60;
 export const 备注上限 = 500;
 
 /** address：联系人所在区域 / 地址（一格文字，11-04 首页录入把国家城市放这）；向导界面不传 = 不存 */
-export type 向导联系人 = { name: string; position?: string | null; phone?: string | null; email?: string | null; wechat?: string | null; address?: string | null };
+export type 向导联系人 = { name: string; position?: string | null; phone?: string | null; email?: string | null; wechat?: string | null; address?: string | null;
+  /** 企业版建档向导第一行号码下面多加的几行（类型 + 号码）：只在 projects/actions.ts 里交给 验联系人号码，记进联系方式子表；不进 规整联系人、不写联系人主表 */
+  号码们?: { 类型: string; 值: string }[] };
 export const 联系人地址上限 = 100;
 /** 分配方式：企业版才有，默认五项的序号（lib/enterprise/dict.ts 分配方式序号），只在 projects/actions.ts 建档向导里认 */
 export type 向导项目 = { name: string; ownerId?: string | null; amount?: number | null; currency?: string | null; remark?: string | null; 分配方式?: number | null;

@@ -4523,6 +4523,8 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .cr-gap { margin-top: 8px; }
 .cr-full { width: 100%; min-width: 0; }
 .cr-type { width: 132px; flex: none; }
+/* 建档向导第一行号码下面多加的几行（企业版）：一行一个「类型 + 号码 + 去掉」，最后一颗「加一个号码」 */
+.cr-more-nums { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .cr-cur { width: 120px; flex: none; }
 .cr-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .cr-rise { animation: cr-rise var(--t-morph) var(--ease-morph); }

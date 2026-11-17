@@ -166,7 +166,8 @@ export async function 建档向导(输入: 建档向导输入) {
     */
     const 企 = 企业版();
     const 第一步 = 企 && input.客户.企业号码 ? 验号码(input.客户.企业号码.类型, input.客户.企业号码.值) : null;
-    const 联号 = 企 ? 验联系人号码(好.联系人, 第一步?.ok ? 第一步 : null) : [];
+    // 第一行下面多加的号码（联系人.号码们）一起验、一起查重，记在主要联系人身上
+    const 联号 = 企 ? 验联系人号码(好.联系人, 第一步?.ok ? 第一步 : null, input.联系人?.号码们) : [];
     if ("error" in 联号) return { ok: false as const, error: 联号.error };
     // 撞到有人在跟的客户：这次录的写进现有项目（同号再次录入），不建；公海、占位、停用的照原来的提示拦
     const 同号录入 = { 入口: "手工建档", 渠道id: input.客户.channelId, 内容: 好.跟进.content };
@@ -291,7 +292,7 @@ async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输�
 
   // 号码：第一步那个号、联系人的号按类型验格式、全公司查重（同建档）；撞到有人在跟的走同号再次录入，不建
   const 第一步 = 企 && 客户.企业号码 ? 验号码(客户.企业号码.类型, 客户.企业号码.值) : null;
-  const 联号 = 企 ? 验联系人号码(好.联系人, 第一步?.ok ? 第一步 : null) : [];
+  const 联号 = 企 ? 验联系人号码(好.联系人, 第一步?.ok ? 第一步 : null, 输入.联系人?.号码们) : [];
   if ("error" in 联号) return { ok: false as const, error: 联号.error };
   const 同号录入 = { 入口: "手工建档", 渠道id: 客户.channelId, 内容: 好.跟进.content };
   if (第一步?.ok) {
