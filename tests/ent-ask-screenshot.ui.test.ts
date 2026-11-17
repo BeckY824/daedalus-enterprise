@@ -14,7 +14,7 @@ const plugin: Plugin = { name: "ent-ask-screenshot", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "stub", pluginData: code }));
   stub(/lib\/card-scan\/cloud$/, "export const 走网页登录=()=>{};export const 服务器预热=async()=>true;");
   // 认字等一个放行信号，好看到识别中的状态
-  stub(/lib\/card-scan\/ocr$/, `export const 认图里的字=async(f,进)=>{进('正在认图里的字…');await new Promise(r=>{window.__放行=r});
+  stub(/lib\/card-scan\/ocr$/, `export const 切成块=async(f)=>({块们:[f],截了:false});export const 认图里的字=async(f,进)=>{进('正在认图里的字…');await new Promise(r=>{window.__放行=r});
     if(window.__认不出)return [];return [{text:'下周三再约',score:.9,side:0,cx:10,cy:10,w:50,h:20}]};`);
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };

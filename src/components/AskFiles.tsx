@@ -27,11 +27,11 @@ const 可读后缀 = [".txt", ".md", ".csv", ".tsv", ".json", ".log"];
 export const 不认的话 = `只认文本文件（${可读后缀.join(" ")}）和图片（${图片后缀.join(" ")}）。Excel 请另存成 csv 再来`;
 
 /** 读一个文件：文本照读；图先认出里面的字（进 = 识别中的进度话）。名 = 给它起的名字（粘的截图），不给用文件自己的 */
-export async function 读一个(f: File, 设: { 进?: (话: string) => void; 名?: string } = {}): Promise<{ 附件: 附件 } | { 错: string }> {
+export async function 读一个(f: File, 设: { 进?: (话: string) => void; 名?: string } = {}): Promise<{ 附件: 附件; 提示?: string } | { 错: string }> {
   const name = 设.名 ?? f.name;
   if (是图片文件(f)) {
     const r = await 认图成文本(f, 设.进 ?? (() => undefined));
-    return "错" in r ? r : { 附件: { name, text: r.text, size: f.size, 图: true } };
+    return "错" in r ? r : { 附件: { name, text: r.text, size: f.size, 图: true }, ...(r.提示 ? { 提示: r.提示 } : {}) };
   }
   const 后缀 = f.name.slice(f.name.lastIndexOf(".")).toLowerCase();
   if (!可读后缀.includes(后缀)) return { 错: 不认的话 };
@@ -50,9 +50,9 @@ export const 并进 = (files: 附件[], a: 附件): 附件[] => [...files.filter
  * 把一个文件读成附件、并进已带的那几个里。
  * 回形针选文件、拖进输入框（首页 home.ask）、框里粘截图走的是这同一个，后缀、大小的规矩只写一份
  */
-export async function 读成附件(f: File, files: 附件[], 设: { 进?: (话: string) => void; 名?: string } = {}): Promise<{ files: 附件[] } | { 错: string }> {
+export async function 读成附件(f: File, files: 附件[], 设: { 进?: (话: string) => void; 名?: string } = {}): Promise<{ files: 附件[]; 提示?: string } | { 错: string }> {
   const r = await 读一个(f, 设);
-  return "错" in r ? r : { files: 并进(files, r.附件) };
+  return "错" in r ? r : { files: 并进(files, r.附件), ...(r.提示 ? { 提示: r.提示 } : {}) };
 }
 
 export default function AskFiles({
@@ -76,6 +76,8 @@ export default function AskFiles({
   const [读取中, set读取中] = useState(false);
   /** 认图里的字时的进度话（role=status，摆在文件签那一排）；读文本文件一下就好，不出 */
   const [进度, set进度] = useState<string | null>(null);
+  /** 认成了但要说一句的（长图只认了前一部分）：一枚普通小签，✕ 收 */
+  const [提示, set提示] = useState("");
   /** 选的文件读不了（太大、不是文本）：原因作为一枚红色小签摆在文件签那一排，点 ✕ 收；不弹顶部提示（原型 g.notice） */
   const [错, set错] = useState("");
   useImperativeHandle(开, () => ({ 打开: () => { if (!disabled && !读取中) input.current?.click(); } }), [disabled, 读取中]);
@@ -85,9 +87,13 @@ export default function AskFiles({
     set读取中(true);
     try {
       set错("");
+      set提示("");
       const r = await 读成附件(list[0], files, { 进: set进度 });
       if ("错" in r) set错(r.错);
-      else onChange(r.files);
+      else {
+        onChange(r.files);
+        if (r.提示) set提示(r.提示);
+      }
     } finally {
       set进度(null);
       set读取中(false);
@@ -119,6 +125,14 @@ export default function AskFiles({
         <span className="cli-file" role="status">
           <LoadingOutlined aria-hidden />
           <span className="cli-file-n" title={进度}>{进度}</span>
+        </span>
+      )}
+      {提示 && (
+        <span className="cli-file" role="note">
+          <span className="cli-file-n" title={提示}>{提示}</span>
+          <button type="button" aria-label="知道了" onClick={() => set提示("")}>
+            <CloseOutlined />
+          </button>
         </span>
       )}
       {错 && (

@@ -15,6 +15,7 @@ import { 下载齐, 下载中断, type 要下的 } from "./download";
 import { 服务器认, 服务器预热, 服务器不认, 服务器整理, 能用服务器, 等预热 } from "./cloud";
 import { 名片行们, 验AI回答, 合AI, type AI附加 } from "./ai";
 import { 名片语言们, 语言表, type 名片语言 } from "./langs";
+import { 切块方案 } from "@/lib/ask-image";
 export { 名片语言们, type 名片语言 };
 
 /** 百分 = 下载进度 0–100，只有在下识别文件时给 */
@@ -305,6 +306,28 @@ export async function 认图里的字(file: Blob, 进: 进度): Promise<框[]> {
   const 引擎 = await 等引擎("中英", 进, (MB) => (下过() ? "正在准备识别…" : 第一次下载的话(MB)));
   进(认着);
   return 引擎.认(await 缩图(file));
+}
+
+/**
+ * 长截图切块（首页对话框带图问，lib/ask-image.ts 切块方案）：高/宽 ≤ 2 原样回一块；
+ * 再高的按方案切成几块（宽 ≤ 1600、块高约 1.5×宽、相邻重叠约 10%、最多 12 块），每块交给 认图里的字
+ */
+export async function 切成块(file: Blob): Promise<{ 块们: Blob[]; 截了: boolean }> {
+  const { 图, 宽, 高, 关 } = await 读图(file);
+  try {
+    const 方案 = 切块方案(宽, 高);
+    if (方案.块们.length <= 1) return { 块们: [file], 截了: false };
+    const 块们: Blob[] = [];
+    for (const b of 方案.块们) {
+      const cv = document.createElement("canvas");
+      cv.width = 方案.宽; cv.height = b.h;
+      cv.getContext("2d")!.drawImage(图, 0, b.y / 方案.k, 宽, b.h / 方案.k, 0, 0, 方案.宽, b.h);
+      块们.push(await new Promise<Blob>((ok, no) => cv.toBlob((x) => (x ? ok(x) : no(new Error("图读不出来"))), "image/jpeg", 0.92)));
+    }
+    return { 块们, 截了: 方案.截了 };
+  } finally {
+    关();
+  }
 }
 
 /**

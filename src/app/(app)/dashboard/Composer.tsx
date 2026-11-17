@@ -219,6 +219,8 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
   const [拖错, set拖错] = useState("");
   /** 拖进来 / 粘进来的图正在认字：进度话写在同一处（role=status），认完收 */
   const [认图, set认图] = useState<string | null>(null);
+  /** 认成了但要说一句的（长图只认了前一部分）：写在输入框下面，下一次带文件时收 */
+  const [认图提示, set认图提示] = useState("");
   const 动效 = useMotionTheme();
   const 少动 = useReducedMotion();
   useComposerHeight(composerRef);
@@ -373,13 +375,17 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
   const 拖进来 = async (f: File, 名?: string) => {
     if (认图 != null) return;
     set拖错("");
+    set认图提示("");
     if (是图片文件(f)) set认图("正在认图里的字…");
     try {
       // 认图要几秒：这期间又带了别的文件，并进当时的那份，别把它冲掉
       const r = await 读一个(f, { 名, 进: set认图 });
       // 读不了的文件：原因就地写在输入框下面（原型 g.notice：不弹顶部提示），下一次拖成了就收
       if ("错" in r) set拖错(r.错);
-      else setFiles((cur) => 并进(cur, r.附件));
+      else {
+        setFiles((cur) => 并进(cur, r.附件));
+        if (r.提示) set认图提示(r.提示);
+      }
     } finally {
       set认图(null);
     }
@@ -476,6 +482,11 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
           <div className="cli-file-note" role="status">
             <LoadingOutlined aria-hidden />
             {认图}
+          </div>
+        )}
+        {认图提示 && !认图 && (
+          <div className="cli-file-note" role="note">
+            {认图提示}
           </div>
         )}
         {拖错 && (

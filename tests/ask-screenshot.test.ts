@@ -16,11 +16,25 @@ const 假 = vi.hoisted(() => ({
   进过: [] as string[],
   人: null as null | { accountId: string; 名字?: string },
   认过: 0,
+  块们: null as null | { text: string; score: number; side: number; cx: number; cy: number; w: number; h: number }[][],
+  截了: false,
+  第几块: 0,
+  在认: 0,
+  最多同时: 0,
 }));
 vi.mock("@/lib/card-scan/ocr", () => ({
+  /** 块们 = null：不切（一块就是原图）；给了：每块认出的框 */
+  切成块: async (f: Blob) => (假.块们 ? { 块们: 假.块们.map(() => f), 截了: 假.截了 } : { 块们: [f], 截了: false }),
   认图里的字: async (_f: Blob, 进: (话: string, 百分?: number) => void) => {
     进("正在认图里的字…");
     if (假.坏) throw 假.坏;
+    if (假.块们) {
+      假.在认++;
+      假.最多同时 = Math.max(假.最多同时, 假.在认);
+      await new Promise((r) => setTimeout(r, 5));
+      假.在认--;
+      return 假.块们[假.第几块++];
+    }
     return 假.框们;
   },
 }));
@@ -38,7 +52,7 @@ vi.mock("@/lib/card-scan/server/pool", async (原) => ({
 }));
 
 import { 读成附件, 读一个, 不认的话 } from "@/components/AskFiles";
-import { 框们成文字, 截图名, 粘的图, 图转附件文本, 图里提示, 没认出字的话, 图片上限 } from "@/lib/ask-image";
+import { 框们成文字, 截图名, 粘的图, 图转附件文本, 图里提示, 没认出字的话, 图片上限, 切块方案, 拼块文字, 最多块, 太长的话 } from "@/lib/ask-image";
 import { 拼文件, 收文件, 文件字数上限 } from "@/lib/ask-files";
 import { 加号菜单项 } from "@/lib/enterprise/composer-plus";
 import { prisma } from "@/lib/prisma";
@@ -52,6 +66,10 @@ beforeEach(() => {
   假.框们 = [框("客户说", 50, 10), 框("下周三再约", 160, 12), 框("报价 12 万", 60, 40)];
   假.坏 = null;
   假.进过 = [];
+  假.块们 = null;
+  假.截了 = false;
+  假.第几块 = 0;
+  假.最多同时 = 0;
 });
 
 describe("图里认出的字排成一段", () => {
@@ -132,6 +150,50 @@ describe("认不出 / 出错 / 不收：一句能懂的话", () => {
     expect(不认的话).toMatch(/图片/);
     expect(不认的话).toContain(".png");
     expect(加号菜单项({ 摆附件: true, 拍照: false, 摆背调: false })[0].说明).toMatch(/截图/);
+  });
+});
+
+describe("长截图切块", () => {
+  it("高宽比 1.2：不切，一块就是整张（宽超 1600 先等比缩）", () => {
+    expect(切块方案(1000, 1200)).toMatchObject({ 宽: 1000, 块们: [{ y: 0, h: 1200 }], 截了: false });
+    expect(切块方案(3200, 3840)).toMatchObject({ 宽: 1600, k: 0.5, 块们: [{ y: 0, h: 1920 }], 截了: false });
+    expect(切块方案(1000, 2000).块们).toHaveLength(1);
+  });
+  it("高宽比 5：块高约 1.5×宽、相邻重叠约 10%，从头盖到尾", () => {
+    const 方 = 切块方案(1000, 5000);
+    expect(方.块们).toEqual([{ y: 0, h: 1500 }, { y: 1350, h: 1500 }, { y: 2700, h: 1500 }, { y: 4050, h: 950 }]);
+    for (const [i, b] of 方.块们.entries()) if (i) expect(方.块们[i - 1].y + 方.块们[i - 1].h - b.y).toBe(150);
+    expect(方.截了).toBe(false);
+    // 手机长截图：1170 宽先不缩；宽 3000 的缩到 1600 再切
+    expect(切块方案(3000, 15000)).toMatchObject({ 宽: 1600 });
+    expect(切块方案(3000, 15000).块们[0]).toEqual({ y: 0, h: 2400 });
+  });
+  it("超 12 块：只切前 12 块，说截了", () => {
+    const 方 = 切块方案(1000, 30000);
+    expect(方.块们).toHaveLength(最多块);
+    expect(方.截了).toBe(true);
+    expect(切块方案(1000, 1500 + 1350 * 11).截了).toBe(false);
+  });
+  it("重叠处相邻块首尾完全相同的行去一份；不同的照留", () => {
+    expect(拼块文字(["A\nB\nC", "B\nC\nD", "D\nE"])).toBe("A\nB\nC\nD\nE");
+    expect(拼块文字(["A\nB", "C\nB"])).toBe("A\nB\nC\nB");
+    expect(拼块文字(["", "A", ""])).toBe("A");
+  });
+  it("逐块串行认、进度报「识别中 n/总」，拼好去重；超 12 块文本末尾和提示都说只认了前一部分", async () => {
+    假.块们 = [[框("客户：在吗", 10, 10), 框("报价多少", 10, 40)], [框("报价多少", 10, 10), 框("我们：12 万", 10, 40)], [框("好的下周三", 10, 10)]];
+    假.截了 = true;
+    const r = await 读一个(图("长截图.png"), { 进: (x) => 假.进过.push(x) });
+    expect("附件" in r).toBe(true);
+    if (!("附件" in r)) return;
+    expect(r.附件.text).toBe(`${图里提示}\n客户：在吗\n报价多少\n我们：12 万\n好的下周三\n（${太长的话}）`);
+    expect(r.提示).toBe(太长的话);
+    expect(假.进过).toEqual(["识别中 1/3", "识别中 1/3", "识别中 2/3", "识别中 2/3", "识别中 3/3", "识别中 3/3"]);
+    expect(假.最多同时).toBe(1);
+  });
+  it("没截的长图不出提示", async () => {
+    假.块们 = [[框("A", 0, 0)], [框("B", 0, 0)]];
+    const r = await 读一个(图());
+    expect("附件" in r && r.提示).toBeFalsy();
   });
 });
 
