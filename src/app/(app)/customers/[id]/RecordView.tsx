@@ -789,7 +789,7 @@ export default function RecordView({
   // 挂来的联系人（企业版 P13）：资料归主客户，主客户那头我能改才给编辑；删除不给，拿掉走卡上的「解除挂靠」
   const 联系人操作 = (c: ContactRow) => !只读 && (!c.挂靠 || c.挂靠.能改) && (
     <span className="rec-mini-acts">
-      <Button type="text" size="small" icon={<EditOutlined />} aria-label={`编辑联系人 ${c.name}`} onClick={() => { setEditingContact(c); setContactOpen(true); }} />
+      <Button type="text" size="small" icon={<EditOutlined />} aria-label={`编辑联系人 ${空显(c.name)}`} onClick={() => { setEditingContact(c); setContactOpen(true); }} />
       {/* 企业版项目模式去掉「管理联系人」后，删联系人不再给入口（U-客户-03）；编辑照旧给有权限的人 */}
       {/* 只移出 / 彻底删 各自原地确认（P-界面-40；2026-10-01 用户反馈：删完联系人页里也没了） */}
       {!c.挂靠 && !去项目跟进 && <ContactRemoveInline c={c} />}
@@ -799,8 +799,9 @@ export default function RecordView({
   /** 企业版联系人卡头：头像、名字、关键 / 挂靠、职位、号码保护 */
   const 联系人头 = (c: ContactRow) => (
     <div className="rec-contact-h">
-      <Avatar size={26} style={{ background: avatarColor(c.name), color: AVATAR_TEXT, fontSize: 12, flex: "none" }}>{initial(c.name)}</Avatar>
-      <span className="rec-contact-n">{c.name}</span>
+      <Avatar size={26} style={{ background: avatarColor(c.name), color: AVATAR_TEXT, fontSize: 12, flex: "none" }}>{initial(空显(c.name))}</Avatar>
+      {/* 姓名可以空（11-17 AI 新线索卡联系人姓名选填）：没填显示「—」 */}
+      <span className="rec-contact-n">{空显(c.name)}</span>
       {是关键(c) && <Tag className="tag-key" style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>关键</Tag>}
       {c.挂靠 && <Tag style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>挂靠</Tag>}
       {c.position && <span className="rec-contact-p">{c.position}</span>}
@@ -875,7 +876,7 @@ export default function RecordView({
                 {c.id === 其他起点 && <div className="rec-contact-sub">这位客户的其他联系人</div>}
                 <div className={`rec-contact rec-contact-fold${开 ? " is-open" : ""}${c.id === 刚加的联系人 ? " rec-tl-item-flash" : ""}`}>
                   {联系人头(c)}
-                  <button type="button" className="rec-contact-tog" aria-expanded={开} aria-controls={开 ? 身id : undefined} aria-label={`${开 ? "收起" : "展开"}联系人 ${c.name}`} onClick={() => 切联系人(c.id)}>
+                  <button type="button" className="rec-contact-tog" aria-expanded={开} aria-controls={开 ? 身id : undefined} aria-label={`${开 ? "收起" : "展开"}联系人 ${空显(c.name)}`} onClick={() => 切联系人(c.id)}>
                     <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden focusable="false"><path d="M4 6.5 8 10.5 12 6.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   </button>
                   {开 && <div id={身id}>{联系人身(c)}</div>}
@@ -1937,7 +1938,7 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
         <div className="rec-tl-meta">
           {f.ownerName && <span>{f.ownerName}</span>}
           {f.duration ? <span>时长 {duration(f.duration)}</span> : null}
-          {f.contactName && <span>{f.contactName}{f.contactPosition ? `（${f.contactPosition}）` : ""}</span>}
+          {(f.contactName || f.contactId) && <span>{空显(f.contactName)}{f.contactPosition ? `（${f.contactPosition}）` : ""}</span>}
           {f.participants && <span>参与人：{f.participants}</span>}
           {f.dueAt && <span>截止 {fmtDateTime(f.dueAt)}</span>}
         </div>
@@ -1980,7 +1981,7 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
         {原文}
         <div className="rec-tl-meta">
           {f.duration ? <span>时长 {duration(f.duration)}</span> : null}
-          {f.contactName && <span>{f.contactName}{f.contactPosition ? `（${f.contactPosition}）` : ""}</span>}
+          {(f.contactName || f.contactId) && <span>{空显(f.contactName)}{f.contactPosition ? `（${f.contactPosition}）` : ""}</span>}
           {f.participants && <span>参与人：{f.participants}</span>}
           {f.dueAt && <span>截止 {fmtDateTime(f.dueAt)}</span>}
           {showOwner && <span style={{ marginLeft: "auto" }}>{f.ownerName}</span>}

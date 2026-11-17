@@ -164,7 +164,7 @@ describe("确认新线索卡", () => {
     expect(await applyProposal(线索卡({ source: "展会认识的" }) as never)).toMatchObject({ ok: true });
     await prisma.channel.update({ where: { id: 展会 }, data: { active: false } });
     for (const source of ["展会", "其他"]) {
-      expect(await applyProposal(线索卡({ id: `p-${source}`, name: `星河${source}`, phone: "", source }) as never)).toEqual({
+      expect(await applyProposal(线索卡({ id: `p-${source}`, name: `星河${source}`, phone: source === "展会" ? "13700009901" : "13700009902", source }) as never)).toEqual({
         ok: false, error: `卡上的渠道「${source}」对不上启用中的渠道：请在卡上重新选渠道`,
       });
     }
@@ -198,7 +198,7 @@ describe("确认新线索卡", () => {
     expect(await applyProposal(线索卡({ id: "p-tt", name: "星河甲", phone: "13700005678", source: "tiktok" }) as never)).toMatchObject({ ok: true });
     const 跟进 = await prisma.followUp.findFirstOrThrow({ where: { customer: { name: "星河甲" } } });
     expect(跟进.content).toBe("在首页对话里新建的线索，渠道：TikTok｜示例号");
-    expect(await applyProposal(线索卡({ id: "p-fb", name: "星河乙", phone: "", source: "Facebook" }) as never)).toEqual({
+    expect(await applyProposal(线索卡({ id: "p-fb", name: "星河乙", phone: "13700009903", source: "Facebook" }) as never)).toEqual({
       ok: false, error: "卡上的渠道「Facebook」对上了好几个渠道（Facebook｜品牌A、Facebook｜品牌a）：请在卡上重新选渠道",
     });
     expect(await prisma.project.count()).toBe(1);

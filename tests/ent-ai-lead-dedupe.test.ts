@@ -5,7 +5,7 @@
  *   撞手机 / 撞邮箱 / 撞微信（后两样从备注认出来）：不建，回「〈原负责人〉已有该客户信息，请及时核对」；
  *     原负责人收到一条待办「〈触发人〉疑似与您负责的〈客户名〉重复，请及时核对」，挂在原客户上；同一张卡点两次只建一条
  *   公海待捞：照原提示拦，不给谁加待办
- *   不撞：创建人 = 负责人 = 录入人；邮箱、微信进联系人原有两格，备注里那几行拿掉；有电话时旺旺留在备注；没电话时按邮箱 → 微信 → 旺旺取第一个当企业号码
+ *   不撞：创建人 = 负责人 = 录入人；邮箱、微信进联系人原有两格，备注里那几行拿掉；旺旺（11-17 起）也记进联系人的联系方式、不再写回备注；没电话时按邮箱 → 微信 → 旺旺取第一个当企业号码
  *   开关关：不查、不加待办，照旧写线索表
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -162,13 +162,14 @@ describe("撞了：不建、提醒原负责人", () => {
 });
 
 describe("不撞：建成", () => {
-  it("负责人都是我；邮箱、微信进联系人，备注里那几行拿掉；有电话时阿里国际站ID留在备注（按新叫法写回）", async () => {
+  it("负责人都是我；邮箱、微信进联系人，备注里那几行拿掉；有电话时阿里国际站ID记进联系人的联系方式（11-17 起不写回备注）", async () => {
     当(乙);
     const r = await applyProposal(卡({ phone: "13700001234", remark: "要样品\n邮箱：zhou@star.com\n微信：zhou_jl88\n旺旺：xinghe_shop" }) as never);
     expect(r).toMatchObject({ ok: true });
     const p = await prisma.project.findFirstOrThrow({ include: { customer: true } });
     expect(p.ownerId).toBe(乙.id);
-    expect(p.customer).toMatchObject({ salesOwnerId: 乙.id, remark: "要样品\n阿里国际站ID：xinghe_shop" });
+    expect(p.customer).toMatchObject({ salesOwnerId: 乙.id, remark: "要样品" });
+    expect(await prisma.contactMethod.findFirst({ where: { kind: "wangwang" }, select: { value: true, contactId: true } })).toMatchObject({ value: "xinghe_shop", contactId: expect.any(String) });
     expect(await prisma.contact.findFirstOrThrow({ where: { customerId: p.customerId } })).toMatchObject({
       name: "周经理", phone: "13700001234", email: "zhou@star.com", wechat: "zhou_jl88",
     });
@@ -186,12 +187,13 @@ describe("不撞：建成", () => {
 });
 
 describe("认图出的卡：微信、邮箱、国家有自己的格（2026-11-01）", () => {
-  it("微信、邮箱格进联系人和查重，国家城市进客户地址，WhatsApp 写进备注", async () => {
+  it("微信、邮箱格进联系人和查重，国家城市进客户地址，WhatsApp 记进联系人的联系方式（11-17 起不写进备注）", async () => {
     当(乙);
     const r = await applyProposal(卡({ id: "card-t1", wechat: "Zhou_JL88", email: "zhou@star.com", whatsapp: "+1 416 555 0100", country: "加拿大", city: "多伦多", 区域去处: ["客户"], remark: "职位：采购" }) as never);
     expect(r).toMatchObject({ ok: true });
     const c = await prisma.customer.findFirstOrThrow({ include: { contacts: true } });
-    expect(c).toMatchObject({ addrCountry: "加拿大", addrCity: "多伦多", remark: "职位：采购\nWhatsApp：+1 416 555 0100" });
+    expect(c).toMatchObject({ addrCountry: "加拿大", addrCity: "多伦多", remark: "职位：采购" });
+    expect(await prisma.contactMethod.findFirst({ where: { kind: "whatsapp" }, select: { value: true, contactId: true } })).toEqual({ value: "+1 416 555 0100", contactId: c.contacts[0].id });
     expect(c.contacts[0]).toMatchObject({ email: "zhou@star.com", wechat: "Zhou_JL88" });
     当(甲);
     expect(await applyProposal(卡({ id: "card-t2", name: "别家", wechat: "zhou_jl88" }) as never)).toEqual({ ok: false, error: 查重提示.AI建档重复("小乙") });

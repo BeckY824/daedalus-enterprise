@@ -1,5 +1,6 @@
 "use client";
 
+import { 空显 } from "@/lib/empty-value";
 import DatePicker from "@/components/BusinessDatePicker";
 
 import { isCalendarDate } from "@/lib/schedule-date";
@@ -877,7 +878,7 @@ export default function FollowUpForm({
                         placeholder="选择联系人"
                         options={contacts.map((c) => ({
                           value: c.id,
-                          label: c.position ? `${c.name}（${c.position}）` : c.name,
+                          label: c.position ? `${空显(c.name)}（${c.position}）` : 空显(c.name),
                         }))}
                       />
                     </Form.Item>
@@ -949,7 +950,7 @@ export default function FollowUpForm({
                   placeholder="选择联系人"
                   options={contacts.map((c) => ({
                     value: c.id,
-                    label: c.position ? `${c.name}（${c.position}）` : c.name,
+                    label: c.position ? `${空显(c.name)}（${c.position}）` : 空显(c.name),
                   }))}
                 />
               </Form.Item>

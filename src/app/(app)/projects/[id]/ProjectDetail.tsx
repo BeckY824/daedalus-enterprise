@@ -13,7 +13,7 @@ import { 少动 } from "@/lib/reduced-motion";
 import { useConsequence } from "@/components/ConsequenceDialog";
 import { showUndo } from "@/components/UndoBar";
 import { 其他没写好, 不填项, 去不填, 未选占位 } from "@/lib/enterprise/dict-kinds";
-import { 有值, 空值符 } from "@/lib/empty-value";
+import { 有值, 空值符, 空显 } from "@/lib/empty-value";
 import { 项目不能单独领提示, 客户在公海项目不单领提示, 公海规则 } from "@/lib/enterprise/pool-rules";
 import { 必填叫法, type 必填项 } from "@/lib/project/required";
 import { PageHead, CustomerLink, FollowTypeCell } from "@/components/ui";
@@ -1015,16 +1015,16 @@ export default function ProjectDetail({
             能改
             显示={(id) => {
               const c = id === (p.contact?.id ?? null) ? p.contact : 联系人们.find((x) => x.id === id) ?? null;
-              return c ? <span className="proj-one">{c.name}{c.position ? ` · ${c.position}` : ""}</span> : 待填("联系人");
+              return c ? <span className="proj-one">{空显(c.name)}{c.position ? ` · ${c.position}` : ""}</span> : 待填("联系人");
             }}
             存={(v) => 存项目项({ contactId: v })}
             编辑器={({ 草稿, 提交, 忙 }) => (
-              <Select aria-label="联系人" autoFocus defaultOpen allowClear disabled={忙} placeholder="选联系人" style={{ width: "100%" }} value={草稿 ?? undefined} options={[不填项, ...联系人们.map((c) => ({ value: c.id, label: c.position ? `${c.name} · ${c.position}` : c.name }))]} onChange={(v?: string) => 提交(去不填(v))} />
+              <Select aria-label="联系人" autoFocus defaultOpen allowClear disabled={忙} placeholder="选联系人" style={{ width: "100%" }} value={草稿 ?? undefined} options={[不填项, ...联系人们.map((c) => ({ value: c.id, label: c.position ? `${空显(c.name)} · ${c.position}` : 空显(c.name) }))]} onChange={(v?: string) => 提交(去不填(v))} />
             )}
           />
         </div>
       ) : (
-        p.contact && <div style={行样}><span style={键样}>联系人</span><span className="proj-one">{p.contact.name}{p.contact.position ? ` · ${p.contact.position}` : ""}</span></div>
+        p.contact && <div style={行样}><span style={键样}>联系人</span><span className="proj-one">{空显(p.contact.name)}{p.contact.position ? ` · ${p.contact.position}` : ""}</span></div>
       )}
       {p.contact && p.联系人附件 && <div style={行样}><span style={键样}>附件</span><ContactAttachmentsButton contactId={p.contact.id} 名字={p.contact.name} 起始个数={p.联系人附件.个数} 只读={p.联系人附件.只读} /></div>}
       {p.企业版 && p.level !== undefined && (
