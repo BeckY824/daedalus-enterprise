@@ -74,20 +74,22 @@ export async function 等预热(): Promise<void> {
 
 /**
  * 认一遍。排队时每变一次位置调 排队(前面还有几张)，轮到了调 排队(0)。
+ * 用途 = "ask"：首页对话框带图问时认的（ocr.ts 认图里的字），服务器多记一笔 ai_use；认名片不给
  * 整个过程超过 总毫秒（默认 45 秒：上传 + 排队最多 20 秒 + 认）就算服务器不行
  */
 export async function 服务器认(
   图: Blob,
   语言: 名片语言,
   排队: (前面: number) => void,
-  设: { 抓?: typeof fetch; 总毫秒?: number } = {},
+  设: { 抓?: typeof fetch; 总毫秒?: number; 用途?: "ask" } = {},
 ): Promise<服务器识别项[]> {
-  const { 抓 = fetch, 总毫秒 = 45_000 } = 设;
+  const { 抓 = fetch, 总毫秒 = 45_000, 用途 } = 设;
   if (!能用服务器()) throw new 服务器不认("没开");
   let r: Response;
   const 停 = AbortSignal.timeout(总毫秒);
   try {
-    r = await 抓(`/api/mobile/scan?lang=${encodeURIComponent(语言)}`, {
+    // 用途=ask：首页对话框带图问（认图里的字），服务器据此记一笔 ai_use；认名片不带，照旧
+    r = await 抓(`/api/mobile/scan?lang=${encodeURIComponent(语言)}${用途 ? `&use=${用途}` : ""}`, {
       method: "POST",
       headers: { ...认证头(), "Content-Type": 图.type || "image/jpeg" },
       body: 图,

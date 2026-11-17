@@ -53,16 +53,24 @@ export type 客户行筛 = {
   /** 回避掉、这个人看不到的公海客户 */
   排掉: readonly string[];
   /**
-   * 关键词：客户名比的 GLOB 式子（search-keyword 包含模式）+ 项目名对上的客户 id；没关键词不带。
+   * 关键词拆成的词（23D，unified-pool.ts 公海词们），每个词都要中（AND），一个词里客户名、简称、编号、项目名哪格中都算（OR）；没关键词不带（或空数组）。
+   * 每个词：客户名比的 GLOB 式子（search-keyword 包含模式）+ 项目名对上的客户 id。
    * 索引式：同一个词在三字索引里比客户名的 MATCH 式（search-keyword 客户名索引式，迁移 141；词短于 3 字、带大小写的字、没跑迁移时是 null）。
-   * 有就从「名字对上的 ∪ 项目对上的」名单出发（同 从名单），不再顺着 6.7 万位公海表逐位 GLOB；结果一样。
+   * 有索引式的词挑一个（最长的）从「名字对上的 ∪ 项目对上的」名单出发（同 从名单），不再顺着 6.7 万位公海表逐位 GLOB；别的词在名单上的几位里逐位比。结果一样。
    * 简称（11-17 客户抬头 PR-0）用同一个 名 式子比：GLOB 那条路比本行那一格，名单那条路按迁移 145 的部分索引扫有简称的几位（search-keyword 简称SQL）
    */
-  词?: { 名: string; 项目对上: readonly string[]; 索引式?: string | null;
-    /** 关键词像客户编号时的号（search-keyword 客户编号）：按唯一索引精确比，两条路都带 */
-    编号?: number | null };
+  词?: readonly 一个词[];
   来源?: string;
   号码不全?: boolean;
+};
+
+/** 客户行筛 里的一个词 */
+export type 一个词 = {
+  名: string;
+  项目对上: readonly string[];
+  索引式?: string | null;
+  /** 这个词像客户编号时的号（search-keyword 客户编号）：按唯一索引精确比，两条路都带 */
+  编号?: number | null;
 };
 
 /**
@@ -77,11 +85,14 @@ function 底(筛: 客户行筛, 从名单?: "名单" | "两个名单"): { sql: s
     段.push(`c.id NOT IN (SELECT value FROM json_each(?))`);
     值.push(JSON.stringify(筛.排掉));
   }
-  const 词名单 = !从名单 && !!筛.词?.索引式;
-  if (筛.词 && !词名单) {
-    const 号 = 筛.词.编号 ?? null;
+  const 词们 = 筛.词 ?? [];
+  // 从哪个词的名单出发：有索引式的词里挑最长的（三字索引上越长越窄）；从名单数（拆开数）时不挑
+  const 名单词 = 从名单 ? undefined : 词们.filter((w) => w.索引式).sort((a, b) => b.索引式!.length - a.索引式!.length)[0];
+  for (const w of 词们) {
+    if (w === 名单词) continue;
+    const 号 = w.编号 ?? null;
     段.push(`(c."name" GLOB ? OR c."shortName" GLOB ?${号 !== null ? ` OR c."customerNo" = ?` : ""} OR c.id IN (SELECT value FROM json_each(?)))`);
-    值.push(筛.词.名, 筛.词.名, ...(号 !== null ? [号] : []), JSON.stringify(筛.词.项目对上));
+    值.push(w.名, w.名, ...(号 !== null ? [号] : []), JSON.stringify(w.项目对上));
   }
   if (筛.来源) {
     段.push(`c."channelId" = ?`);
@@ -90,10 +101,10 @@ function 底(筛: 客户行筛, 从名单?: "名单" | "两个名单"): { sql: s
   if (筛.号码不全) 段.push(`p."phoneIncomplete" = 1`);
   // CROSS JOIN 定死从公海表出发：没有统计信息时 SQLite 以为 deletedAt IS NULL 很能筛，会从客户表的 deletedAt 索引出发、8.5 万位逐个回公海表找，
   // 按入池时间取一页也得整表排（32 ms）；从公海表的 (at DESC, customerId) 索引顺着取，一页 0.1 ms
-  if (词名单) {
+  if (名单词) {
     // 名字对上的（三字索引）∪ 简称对上的（部分索引）∪ 编号对上的（唯一索引）∪ 项目名对上的，UNION 去重；名单的 ? 排在最前
-    const 号 = 筛.词!.编号 ?? null;
-    值.unshift(筛.词!.索引式!, 筛.词!.名, ...(号 !== null ? [号] : []), JSON.stringify(筛.词!.项目对上));
+    const 号 = 名单词.编号 ?? null;
+    值.unshift(名单词.索引式!, 名单词.名, ...(号 !== null ? [号] : []), JSON.stringify(名单词.项目对上));
     段.unshift(`p."customerId" = j.id`);
     const j = `(SELECT s.cid AS id FROM "CustomerSearch" s WHERE "CustomerSearch" MATCH ? UNION SELECT x.id FROM "Customer" x WHERE x."shortName" IS NOT NULL AND x."shortName" GLOB ?${号 !== null ? ` UNION SELECT x.id FROM "Customer" x WHERE x."customerNo" = ?` : ""} UNION SELECT value FROM json_each(?))`;
     return { sql: `FROM ${j} j CROSS JOIN "CustomerPool" p CROSS JOIN "Customer" c WHERE ${段.join(" AND ")}`, 值 };
