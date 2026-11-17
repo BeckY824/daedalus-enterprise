@@ -310,7 +310,8 @@ export default function RecordView({
             ...(!外贸 ? [customer.expectedSignAt] : []),
             customer.remark,
           ]
-        : [customer.phone, customer.shortName, customer.school, 级别值, customer.customerType, customer.customerAttr, 地址文字, 档?.website, customer.assignWay, customer.remark]
+        // 简称固定摆第二行、「公司」格不摆（11-17 客户抬头 PR-1b），都不算进「展开更多」
+        : [customer.phone, 级别值, customer.customerType, customer.customerAttr, 地址文字, 档?.website, customer.assignWay, customer.remark]
       ).filter((v) => 是空值(v)).length
     : 0;
   /** 右栏「背调」查谁（lib/research/subject.ts）：公司那一栏 + 国家 / 官网 / 电话 / WhatsApp */
@@ -1263,6 +1264,15 @@ export default function RecordView({
               11-04 用户：所有字段点了直接改，不再摆「编辑全部」。电话也就地改：查重、打码号认回都在服务端；
               点号码右边的小键复制，点别处才进编辑 */}
           {节(去项目跟进 ? 客户详情左栏.资料 : "基本资料", undefined, undefined, <>
+            {/* 企业版项目模式（11-17 客户抬头 PR-1b）：第一行全称、第二行简称，没填简称写「—」；原来的「公司」格不摆（库里照留）。
+                全称这里只看：改名照旧走完整表单（PATCHABLE 不收 name，要查重）；一行放不下省略号、悬停看全（TruncTip） */}
+            {摆法.新字段 && (
+              <div className="rec-field is-ro" data-field="name">
+                <div className="rec-field-k">全称</div>
+                <div className="rec-field-v is-line">{customer.name}</div>
+              </div>
+            )}
+            {摆法.新字段 && <InlineField 空时横线={企业} customerId={customer.id} field="shortName" label="简称" value={customer.shortName ?? null} placeholder={`最多 ${简称上限} 个字`} 可清空 />}
             {摆(customer.phone) && (
               <InlineField 空时横线={企业} customerId={customer.id} field="phone" label="电话" value={customer.phone}
                 显示={企业 ? (v) => <CopyValue 叫法="电话" value={v} /> : undefined} />
@@ -1274,10 +1284,9 @@ export default function RecordView({
                 <div style={{color:"var(--text-muted)",fontSize:12}}>编号 {sourceLead.id} · 转化时间 {sourceLead.convertedAt ? fmtDateTime(sourceLead.convertedAt) : "未记录"}</div>
               </div>
             </div>}
-            {/* 企业版项目模式（定稿 P5 第 22、23、29、30 条）：简称、公司、级别 S/A/B/C、地址、官网、分配方式；
+            {/* 企业版项目模式（定稿 P5 第 22、23、29、30 条）：级别 S/A/B/C、地址、官网、分配方式（简称挪到第二行、公司不摆：11-17 PR-1b）；
                 行业、职位、国家、WhatsApp、邮箱、微信、阿里 ID、旧等级、预计签约不摆（库里照留）。地址分省市区，就地一起改 */}
-            {摆法.新字段 && 摆(customer.shortName) && <InlineField 空时横线={企业} customerId={customer.id} field="shortName" label="简称" value={customer.shortName ?? null} placeholder={`最多 ${简称上限} 个字`} 可清空 />}
-            {摆(customer.school) && <InlineField 空时横线={企业} customerId={customer.id} field="school" label={b.fields.school} value={customer.school} />}
+            {!摆法.新字段 && 摆(customer.school) && <InlineField 空时横线={企业} customerId={customer.id} field="school" label={b.fields.school} value={customer.school} />}
             {摆法.旧字段 && 摆(customer.major) && <InlineField 空时横线={企业} customerId={customer.id} field="major" label={b.fields.major} value={customer.major} />}
             {摆法.旧字段 && 摆(customer.grade) && <InlineField 空时横线={企业} customerId={customer.id} field="grade" label={b.fields.grade} value={customer.grade} kind="combo" options={b.grades.map((g) => ({ value: g, label: g }))} />}
             {摆法.新字段 && (

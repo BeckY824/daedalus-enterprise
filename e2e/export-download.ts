@@ -61,6 +61,15 @@ export function 读取完整导出(bytes: Uint8Array) {
     const customerIndex = tables.跟进[0].indexOf("客户系统 ID");
     expect(customerIndex).toBeGreaterThanOrEqual(0);
     for (const row of tables.跟进.slice(1)) expect(ids.客户.has(row[customerIndex])).toBe(true);
+    /*
+      跟进表的客户编号一列（11-17 客户抬头 PR-1b）：和客户表同一个位置规矩——「记录人」后、「客户系统 ID」前，表头跟叫法走；
+      每条的号和客户表里同一位客户（按系统 ID 对）那格一模一样，客户没编号这里也留空
+    */
+    const fNo = customerIndex - 1;
+    expect(tables.跟进[0].slice(fNo - 1, customerIndex + 1)).toEqual(["记录人", expect.stringMatching(/编号$/), "客户系统 ID"]);
+    const 客头 = tables.客户[0] ?? [];
+    const 客号 = new Map(tables.客户.slice(1).map((r) => [r[客头.indexOf("系统 ID")], r[客头.indexOf("系统 ID") - 1] ?? ""]));
+    for (const row of tables.跟进.slice(1)) expect(row[fNo] ?? "", `跟进 ${row.at(-1)} 的客户编号`).toBe(客号.get(row[customerIndex]) ?? "");
   }
   return { 清单, 客户: tables.客户, 跟进: tables.跟进, 客户XML: xml.客户.join("\n"), 跟进XML: xml.跟进.join("\n"), 工作簿XML, 工作表XML };
 }

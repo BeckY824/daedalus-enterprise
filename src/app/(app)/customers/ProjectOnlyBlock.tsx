@@ -3,6 +3,7 @@
 import { Tag } from "antd";
 import { RowLink } from "@/components/ui";
 import { 有值 } from "@/lib/empty-value";
+import { 客户编号显示 } from "@/lib/customer-no";
 import type { 仅项目列表行 } from "@/lib/enterprise/project-only-list-rows";
 
 /** 一格：一行、放不下省略号、悬停看全文 */
@@ -11,7 +12,8 @@ const 格 = (t: string | number | null | undefined) => {
   return <span className="cust-ponly-c" role="cell" title={有值(字) ? 字! : undefined}>{有值(字) ? 字 : null}</span>;
 };
 /** 列头：和下面的格同一套网格列（globals.css .cust-ponly-r） */
-const 列头 = ["客户", "客户类型", "地区", "当前节点", "项目数", "负责人", "级别", "客户状态", "最近跟进"];
+// 「编号」紧跟客户名（11-17 客户抬头 PR-1b）：和下面客户表格的常驻编号列一样，抬头可以重名、靠编号认人
+const 列头 = ["客户", "编号", "客户类型", "地区", "当前节点", "项目数", "负责人", "级别", "客户状态", "最近跟进"];
 
 /**
  * 客户列表第 1 页顶上的「仅项目」一小块（只负责项目的人：客户不归他、名下有他自己的项目；lib/enterprise/project-only-list-rows.ts）。
@@ -41,6 +43,8 @@ export default function ProjectOnlyBlock({ 行们, 超了 = false }: { 行们: �
               <Tag className="cust-ponly-tag" title="这位客户不归你，你只负责其中的项目：客户资料只能看">仅项目</Tag>
               <RowLink href={`/customers/${r.id}`} className="link-strong" title={r.name}>{r.name}</RowLink>
             </span>
+            {/* 编号一行放全不省略（列宽在 globals.css 按「NO.123456」给）；存量回填前没有编号的写短号，同客户表格 */}
+            <span className="cust-ponly-c cust-no" role="cell">{客户编号显示(r)}</span>
             {格(r.customerType)}
             {格(r.地区)}
             <span className="cust-ponly-c" role="cell">

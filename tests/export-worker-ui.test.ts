@@ -106,6 +106,6 @@ it("真实Worker单人完整导出各分片省略负责人，编号、备注和�
  const pending=page.waitForEvent("download");await page.getByRole("button",{name:"完整导出",exact:true}).click();const file=await pending;
  const files=unzipSync(readFileSync((await file.path())!));const manifest=JSON.parse(strFromU8(files["导出清单.json"]));expect(manifest.隐藏负责人).toBe(true);
  for(const name of ["客户-001.xlsx","客户-002.xlsx"]){const sheet=unzipSync(files[name]);const xml=strFromU8(sheet["xl/worksheets/sheet1.xml"]);expect(xml).not.toContain("销售负责人");expect(xml).not.toContain("渠道负责人");expect(xml).toContain("客户编号");expect(xml).toContain("备注");expect(xml).toContain("=文本")}
- expect(strFromU8(unzipSync(files["跟进-001.xlsx"])["xl/worksheets/sheet1.xml"])).toContain("记录人");expect(strFromU8(files["阅读说明.txt"])).toContain("省略销售负责人和渠道负责人列");
+ const 跟表=strFromU8(unzipSync(files["跟进-001.xlsx"])["xl/worksheets/sheet1.xml"]);expect(跟表).toContain("记录人");expect(跟表).toContain("客户编号");expect(strFromU8(files["阅读说明.txt"])).toContain("省略销售负责人和渠道负责人列");
  }finally{await page.close()}
 });

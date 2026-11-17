@@ -325,8 +325,8 @@ describe("客户列表「仅项目」一小块（收尾 7）", () => {
     expect(d.rows.map((r) => r.id)).toEqual([乙自己]);
     expect(d.total).toBe(1);
     const 块 = d.仅项目行![0];
-    expect(Object.keys(块).sort()).toEqual(["customerAttr", "customerType", "id", "name", "school", "shortName", "仅项目", "地区", "当前节点", "当前阶段", "项目数"].sort());
-    expect(块).toMatchObject({ name: 行.name, 仅项目: true, 项目数: 1, 地区: "浙江省 杭州市" });
+    expect(Object.keys(块).sort()).toEqual(["customerAttr", "customerNo", "customerType", "id", "name", "school", "shortName", "仅项目", "地区", "当前节点", "当前阶段", "项目数"].sort());
+    expect(块).toMatchObject({ name: 行.name, customerNo: 行.customerNo, 仅项目: true, 项目数: 1, 地区: "浙江省 杭州市" });
     const 字 = JSON.stringify(d.仅项目行);
     for (const 不该有 of [行.phone!, "13744445555", "块特征备注", "块特征状态", 甲.name, 甲.id]) expect(字, 不该有).not.toContain(不该有);
     for (const keyword of [行.name, "块简称", "块公司"]) expect(块ids(await 页(乙, { keyword })), keyword).toEqual([c]);

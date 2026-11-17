@@ -221,6 +221,33 @@ it("1024 / 1280 / 1366：页头副标题编号打头、一行；超长名字和�
   }
 });
 
+// 资料卡（11-17 客户抬头 PR-1b）：第一行全称、第二行简称，「公司」格不摆；超长全称一行省略（悬停看全是全站 TruncTip），左栏不横滚
+it("1024 / 1280 / 1366：资料卡第一行全称、第二行简称、没有公司格；超长全称一行省略、不出格", async () => {
+  for (const w of 宽们) {
+    const { page, errors } = await open(w);
+    try {
+      const 卡 = await page.evaluate(() => {
+        const 栏 = document.querySelector("aside.rec-rail") as HTMLElement;
+        const 格们 = [...栏.querySelectorAll<HTMLElement>(".rec-field")];
+        const 名 = 格们[0], 名值 = 名.querySelector<HTMLElement>(".rec-field-v")!;
+        return {
+          前两格: 格们.slice(0, 2).map((x) => x.dataset.field), 名键: 名.querySelector(".rec-field-k")!.textContent, 名字: 名值.textContent,
+          省略: getComputedStyle(名值).textOverflow, 一行: getComputedStyle(名值).whiteSpace, 截了: 名值.scrollWidth > 名值.clientWidth,
+          格不出栏: 名.getBoundingClientRect().right <= 栏.getBoundingClientRect().right + 0.5, 栏不横滚: 栏.scrollWidth <= 栏.clientWidth + 1,
+          有公司: !!栏.querySelector("[data-field=school]"),
+        };
+      });
+      expect(卡.前两格, `${w}`).toEqual(["name", "shortName"]);
+      expect(卡.名键).toBe("全称");
+      expect(卡.名字).toMatch(/^客户A某某超长贸易进出口有限公司/);
+      expect({ 省略: 卡.省略, 一行: 卡.一行, 截了: 卡.截了, 格不出栏: 卡.格不出栏, 栏不横滚: 卡.栏不横滚, 有公司: 卡.有公司 }, `${w}`)
+        .toEqual({ 省略: "ellipsis", 一行: "nowrap", 截了: true, 格不出栏: true, 栏不横滚: true, 有公司: false });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), `${w}`).toBeLessThanOrEqual(0);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
 it("开了 AI：客户背调也是一张能收的卡，状态标签在卡里", async () => {
   const { page, errors } = await open(1366, 800, true);
   try {

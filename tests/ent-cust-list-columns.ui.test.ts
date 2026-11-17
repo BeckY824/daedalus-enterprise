@@ -49,7 +49,7 @@ beforeAll(async () => {
     const 项目概况={c1:{项目数:12,当前节点:'异常 · 某个后台改得特别特别长的节点名字',当前阶段:'订单'},c2:{项目数:1,当前节点:'方案敲定',当前阶段:'商机'}};
     const 根=()=>{const [板,set板]=React.useState(!!window.__看板);window.__设板=set板;return 树里(板)};
     const 树里=(板)=>(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'me',name:'小王'}}>
-      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:window.__阶段||'',node:'',...(window.__三态?{triState:''}:{})}} 三态标={window.__三态?{c1:{态:'待回收',几天后进公海:12},c2:{态:'暂缓回收中'},c3:{态:'不计时'}}:undefined} 客户数={3} 企业版 项目概况={项目概况} 项目看板={!window.__非项目} 能新建和领取={!window.__不能新建} 待交接={window.__交接??null} 看板体={板?<假看板/>:undefined} 市场视图={!!window.__市场} 仅项目行={window.__仅项目?[{id:'x1',name:'仅项目的'+长,shortName:null,school:null,customerType:'某个特别长的客户类型名字',customerAttr:null,地区:'浙江省 杭州市 西湖区',当前节点:'某个后台改得特别特别长的节点名字',当前阶段:'商机',项目数:2,仅项目:true}]:undefined} 仅项目超了={!!window.__超了}/>
+      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:window.__阶段||'',node:'',...(window.__三态?{triState:''}:{})}} 三态标={window.__三态?{c1:{态:'待回收',几天后进公海:12},c2:{态:'暂缓回收中'},c3:{态:'不计时'}}:undefined} 客户数={3} 企业版 项目概况={项目概况} 项目看板={!window.__非项目} 能新建和领取={!window.__不能新建} 待交接={window.__交接??null} 看板体={板?<假看板/>:undefined} 市场视图={!!window.__市场} 仅项目行={window.__仅项目?[{id:'x1',name:'仅项目的'+长,shortName:null,school:null,customerNo:123456,customerType:'某个特别长的客户类型名字',customerAttr:null,地区:'浙江省 杭州市 西湖区',当前节点:'某个后台改得特别特别长的节点名字',当前阶段:'商机',项目数:2,仅项目:true}]:undefined} 仅项目超了={!!window.__超了}/>
     </我Provider></BusinessProvider></App></ConfigProvider>);
     const 树=<根/>;
     const el=document.getElementById('root');
@@ -710,11 +710,15 @@ it("「仅项目」一小块（只负责项目的人）：在客户表格上面�
         // 列头和格同一套网格列：每格左边和对应列头左边对齐
         const 对齐 = tds.every((td, i) => Math.abs(td.getBoundingClientRect().left - 头格[i].getBoundingClientRect().left) <= 1);
         const 不出格 = tds.every((td) => td.scrollWidth <= td.clientWidth + 1 || getComputedStyle(td).textOverflow === "ellipsis");
-        return { 头: 头格.map((h) => h.innerText.trim()), 字: tds.map((td) => td.innerText.trim()), 对齐, 不出格, 名截: 名.scrollWidth > 名.clientWidth && getComputedStyle(名).textOverflow === "ellipsis", 名悬停: 名.title, 高: tr.getBoundingClientRect().height };
+        // 编号那格（11-17 客户抬头 PR-1b）：一行放全，不靠省略号
+        const 号格 = tds[1];
+        return { 号全: 号格.scrollWidth <= 号格.clientWidth, 头: 头格.map((h) => h.innerText.trim()), 字: tds.map((td) => td.innerText.trim()), 对齐, 不出格, 名截: 名.scrollWidth > 名.clientWidth && getComputedStyle(名).textOverflow === "ellipsis", 名悬停: 名.title, 高: tr.getBoundingClientRect().height };
       });
       expect(格.对齐 && 格.不出格, `宽 ${w}`).toBe(true);
-      expect(格.头).toEqual(["客户", "客户类型", "地区", "当前节点", "项目数", "负责人", "级别", "客户状态", "最近跟进"]);
-      expect(格.字.slice(4)).toEqual(["2", "", "", "", ""]);
+      expect(格.头).toEqual(["客户", "编号", "客户类型", "地区", "当前节点", "项目数", "负责人", "级别", "客户状态", "最近跟进"]);
+      expect(格.字[1]).toBe("NO.123456");
+      expect(格.号全, `宽 ${w} 编号一行放全`).toBe(true);
+      expect(格.字.slice(5)).toEqual(["2", "", "", "", ""]);
       expect(格.名截, `宽 ${w}`).toBe(true);
       expect(格.名悬停).toMatch(/^仅项目的/);
       expect(格.高, `宽 ${w}`).toBeLessThanOrEqual(48);

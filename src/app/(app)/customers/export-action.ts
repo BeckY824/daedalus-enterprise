@@ -79,6 +79,7 @@ export async function 导出客户(条件: 客户条件): Promise<
       content: f.content,
       status: f.status,
       ownerName: f.owner.name,
+      customerNo: 人.get(f.customerId)?.customerNo ?? null,
     }));
   const 附件 = await 客户附件个数(prisma, rows.map((r) => r.id), 企业版());
   await 记导出(条件, rows.length, 跟进.length);
@@ -213,11 +214,11 @@ async function 读一批(条件: 客户条件, 截止: Date, 类别: "客户" | 
   const all = await prisma.followUp.findMany({
     where: { customer: where, ...截止前有(截止), ...(游标 ? { id: { gt: 游标 } } : {}) },
     orderBy: { id: "asc" }, take: 跟进每批 + 1,
-    select: { id: true, customerId: true, customer: { select: { name: true, phone: true } }, occurredAt: true, type: true, method: true, title: true, content: true, status: true, owner: { select: { name: true } } },
+    select: { id: true, customerId: true, customer: { select: { name: true, phone: true, customerNo: true } }, occurredAt: true, type: true, method: true, title: true, content: true, status: true, owner: { select: { name: true } } },
   });
   const rows = all.slice(0, 跟进每批);
   await 让一让();
-  const values = await 分段映射(rows, (f) => ({ id: f.id, customerId: f.customerId, customerName: f.customer.name, phone: 号(f.customer.phone), occurredAt: f.occurredAt.toISOString(), type: f.type, method: f.method, title: f.title, content: f.content, status: f.status, ownerName: f.owner.name }));
+  const values = await 分段映射(rows, (f) => ({ id: f.id, customerId: f.customerId, customerName: f.customer.name, phone: 号(f.customer.phone), customerNo: f.customer.customerNo, occurredAt: f.occurredAt.toISOString(), type: f.type, method: f.method, title: f.title, content: f.content, status: f.status, ownerName: f.owner.name }));
   return { 类别: "跟进" as const, rows: values, 指纹: await 分段指纹(values), 游标: all.length > 跟进每批 ? rows.at(-1)!.id : null };
 }
 
