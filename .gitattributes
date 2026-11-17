@@ -1,2 +1,5 @@
 # 脚本一律 LF：Windows 上 core.autocrlf=true 会把它们检成 CRLF，容器里 shebang 认不出（GitHub issue #1）
 *.sh text eol=lf
+
+# 部署号（next.config.ts 的 部署号）：git archive 导出时换成 commit
+deploy/enterprise/COMMIT export-subst

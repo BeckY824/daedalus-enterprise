@@ -18,7 +18,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { NextRequest } from "next/server";
 import { SignJWT } from "jose";
-import nextConfig from "../next.config";
+import { nextConfig } from "../next.config";
 import { proxy } from "../src/proxy";
 
 const 根 = path.resolve(__dirname, "..");
