@@ -1265,13 +1265,9 @@ export default function RecordView({
               点号码右边的小键复制，点别处才进编辑 */}
           {节(去项目跟进 ? 客户详情左栏.资料 : "基本资料", undefined, undefined, <>
             {/* 企业版项目模式（11-17 客户抬头 PR-1b）：第一行全称、第二行简称，没填简称写「—」；原来的「公司」格不摆（库里照留）。
-                全称这里只看：改名照旧走完整表单（PATCHABLE 不收 name，要查重）；一行放不下省略号、悬停看全（TruncTip） */}
-            {摆法.新字段 && (
-              <div className="rec-field is-ro" data-field="name">
-                <div className="rec-field-k">全称</div>
-                <div className="rec-field-v is-line">{customer.name}</div>
-              </div>
-            )}
+                全称也点着就地改（员工反馈：负责人改不了全称——企业版页头没有「编辑客户资料」，完整表单进不去）：
+                不许清空、不按名字查重（同完整表单编辑，见 patchCustomer）；PR-7 合并时这里跟随全称可空。一行放不下省略号、悬停看全（TruncTip） */}
+            {摆法.新字段 && <InlineField 空时横线={企业} customerId={customer.id} field="name" label="全称" value={customer.name} />}
             {摆法.新字段 && <InlineField 空时横线={企业} customerId={customer.id} field="shortName" label="简称" value={customer.shortName ?? null} placeholder={`最多 ${简称上限} 个字`} 可清空 />}
             {摆(customer.phone) && (
               <InlineField 空时横线={企业} customerId={customer.id} field="phone" label="电话" value={customer.phone}
