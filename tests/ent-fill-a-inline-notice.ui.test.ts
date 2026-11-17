@@ -80,7 +80,8 @@ it("收藏星没存上：星退回去，原因浮在星上方（alert），不�
 it("选的文件读不了：红签写原因、✕ 收掉；读成了出文件签", async () => {
   const { page, errors } = await 打开();
   const 选 = page.locator("input[type=file]");
-  await 选.setInputFiles({ name: "照片.png", mimeType: "image/png", buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]) });
+  // 图现在也收（认出图里的字，tests/ask-screenshot.test.ts）；读不了的拿 Excel 试
+  await 选.setInputFiles({ name: "报价.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from([0x50, 0x4b, 0x03, 0x04]) });
   const 红签 = page.locator(".cli-file-bad[role=alert]");
   await 红签.waitFor();
   expect((await 红签.innerText()).length).toBeGreaterThan(0);

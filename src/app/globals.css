@@ -4973,6 +4973,8 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 /* 问答框：读不了的附件，原因作为一枚红签摆在文件签那一排 / 拖进来读不了的写在输入框下面 */
 .cli-file.cli-file-bad { border-color: var(--danger); color: var(--danger-text); max-width: 320px; }
 .cli-file-err { margin: 6px 4px 0; font-size: var(--fs-note); color: var(--danger-text); }
+/* 拖进 / 粘进来的图正在认字（首页对话框带截图问） */
+.cli-file-note { display: flex; align-items: center; gap: 6px; margin: 6px 4px 0; font-size: var(--fs-note); color: var(--text-faint); }
 /* 建议卡：撤销没成 / 名片原图没存全，写在回执那一行下面，占满一行 */
 .prop-done > .prop-err-inline { flex-basis: 100%; }
 /* 通知（g.notice「改后」）：浮起的面板——离窗口边 8px、四角圆，不压暗页面；点页面别处照样收（遮罩还在，只是透明） */
