@@ -28,6 +28,7 @@ import { 自动理由 } from "@/lib/pool";
 import { 阶段们, 企业版字典, 阶段与进程 } from "@/lib/project/stage-dict";
 import { 回收原因前缀 } from "@/lib/project/timeout";
 import { 看成客户编号 } from "@/lib/customer-no";
+import { 拆搜索词, 含词 } from "@/lib/search-terms";
 
 export const 公海属性们 = ["线索池", "商机池", "订单池", "客户池"] as const;
 export type 公海属性 = (typeof 公海属性们)[number];
@@ -310,16 +311,27 @@ function 并项目行(行: readonly 公海行[]): 公海行[] {
 }
 
 /**
+ * 公海搜索框的关键词拆成的词（23D，同客户列表 2F：search-terms.ts 拆搜索词）：全角空格、多个空格归一，按空格、括号、逗号、顿号拆开，
+ * 每个词都要中，各词可以中在不同的格（客户名、简称、编号、项目名）；像号码、客户编号、网址的整串不拆。没搜是空数组。
+ * 库里那条路（unified-pool-db.ts 读公海页_库里分页）用同一份词、同一个比法，两边对拍（tests/ent-unified-pool-paging.test.ts）
+ */
+export const 公海词们 = (keyword: unknown): { 词: string; 号: number | null }[] =>
+  // 编号精确比（同库里那条路 客户编号SQL）：「NO.00012」「12」都认成 12 号
+  拆搜索词(keyword).map((词) => ({ 词, 号: 看成客户编号(词) }));
+
+/** 这一行中不中这一个词：客户名、简称、项目名（多个用「、」连着）里包含（字母全角半角、大小写都认），或编号对上 */
+const 行中词 = (r: 公海行, w: { 词: string; 号: number | null }) =>
+  含词(r.客户名, w.词) || 含词(r.客户简称, w.词) || (w.号 !== null && r.客户编号 === w.号) || 含词(r.项目名, w.词);
+
+/**
  * 筛、数、排：关键词、客户来源 → 属性 → （数快捷）→ 快捷 → 并客户池 → 排序。同一刻的按 id 定序，翻页不跳。
  * 关键词、来源、快捷都按项目行逐个筛（并出来的那行只留对上的项目），数按并完的行数：客户池一位客户算一个。
  * 按项目（渠道名单、按创建时间筛，一条一行和渠道页对数）：不并
  */
 export function 筛排(全部: readonly 公海行[], sp: 公海筛选, 选: { 按项目?: boolean } = {}): { 行: 公海行[]; 快捷数: Record<快捷, number>; 属性数: Record<公海属性 | "全部", number> } {
   const 并 = 选.按项目 ? (x: 公海行[]) => x : 并项目行;
-  const 词 = (sp.keyword ?? "").trim().toLowerCase();
-  // 编号精确比（同库里那条路 客户编号SQL）：「NO.00012」「12」都认成 12 号
-  const 号 = 词 ? 看成客户编号(词) : null;
-  const 搜到 = 词 ? 全部.filter((r) => (r.客户名 ?? "").toLowerCase().includes(词) || (r.客户简称 ?? "").toLowerCase().includes(词) || (号 !== null && r.客户编号 === 号) || (r.项目名 ?? "").toLowerCase().includes(词)) : [...全部];
+  const 词们 = 公海词们(sp.keyword);
+  const 搜到 = 词们.length ? 全部.filter((r) => 词们.every((w) => 行中词(r, w))) : [...全部];
   // 客户来源和关键词一样算在所有计数前面：属性、入池方式后面的数都是「这个来源里的」
   const 按来源 = sp.来源 ? 搜到.filter((r) => r.来源id === sp.来源) : 搜到;
   // 号码不全（T10）同来源，算在所有计数前面；按客户认（打了标的客户下的项目子行一起留着，并完再看）
