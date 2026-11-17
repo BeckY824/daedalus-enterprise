@@ -4,7 +4,7 @@
  *   - 沟通挂潜客培育：原来要挂的项目找不到时挂哪（在推的潜客培育 → 零项目补一个 → 别的不猜）
  *   - 导入撤回后恢复：沟通原来挂的项目不在了，改挂潜客培育（原来照样建回、不挂项目）
  *   - 导入建项目写合同状态「起草中」、分配方式按 M-导入-01
- *   - 导入改客户负责人：留换人记录，名下项目和待办跟着走
+ *   - 导入改客户负责人：留换人记录，名下项目和待办跟着走；撤回只带回导入那一步带走的，接手人原本就有的不动
  *   - 编辑页、就地改换负责人：换人记录和改写在同一个事务里（带活那一段出错，负责人也不换）
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -33,7 +33,7 @@ import { 第一个节点 } from "@/lib/project/nodes";
 import { patchCustomer } from "@/app/(app)/customers/actions";
 import { 试跑, 重新试跑 } from "@/lib/enterprise-import/report";
 import { 写一批, 定这批业务线 } from "@/lib/enterprise-import/apply";
-import { 撤回一批, 恢复一批 } from "@/lib/enterprise-import/revert";
+import { 撤回一批, 恢复一批, 带走对不上话 } from "@/lib/enterprise-import/revert";
 import type { 读出的表 } from "@/lib/enterprise-import/excel";
 import type { 实体 } from "@/lib/enterprise-import/types";
 
@@ -143,6 +143,46 @@ describe("导入", () => {
     expect(await prisma.customerOwnerLog.findMany({ where: { customerId: c.id } })).toEqual([expect.objectContaining({ fromOwnerId: 甲, toOwnerId: 乙, kind: "assign", userId: 我.id })]);
     expect((await prisma.project.findFirstOrThrow({ where: { customerId: c.id } })).ownerId).toBe(乙);
     expect((await prisma.task.findUniqueOrThrow({ where: { id: 待办.id } })).ownerId).toBe(乙);
+  });
+
+  it("撤回改负责人的那一批：只带回导入时带走的，接手人原本就有的项目、待办仍归接手人；换人记录删掉；恢复再带一次、再撤照样精确", async () => {
+    await 导([客户表("甲"), 商机表([["O1", "C1", "甲的单子", "需求确认", ""]])], 甲);
+    const c = await prisma.customer.findFirstOrThrow({ where: { name: "示例导入客户" } });
+    const 甲待办 = await prisma.task.create({ data: { title: "甲的待办", customerId: c.id, ownerId: 甲 } });
+    const 乙项目 = await 建项目(c.id, 乙, { name: "乙原有的单子" });
+    const 乙待办 = await prisma.task.create({ data: { title: "乙的待办", customerId: c.id, ownerId: 乙 } });
+    const 二 = await 导([客户表("乙")]);
+    const 甲项目 = await prisma.project.findFirstOrThrow({ where: { name: "甲的单子" } });
+    expect(甲项目.ownerId).toBe(乙);
+    const 行 = await prisma.entImportRow.findFirstOrThrow({ where: { batchId: 二, entity: "customer", kind: "update" } });
+    expect(JSON.parse(JSON.parse(行.before!)["@换人带走"])).toMatchObject({ 从: 甲, 到: 乙, 带走: { 项目: [甲项目.id], 待办: [甲待办.id] } });
+
+    const 查 = async () => ({
+      客户: (await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).salesOwnerId,
+      甲项目: (await prisma.project.findUniqueOrThrow({ where: { id: 甲项目.id } })).ownerId,
+      乙项目: (await prisma.project.findUniqueOrThrow({ where: { id: 乙项目.id } })).ownerId,
+      甲待办: (await prisma.task.findUniqueOrThrow({ where: { id: 甲待办.id } })).ownerId,
+      乙待办: (await prisma.task.findUniqueOrThrow({ where: { id: 乙待办.id } })).ownerId,
+      记录: await prisma.customerOwnerLog.count({ where: { customerId: c.id } }),
+    });
+    await 撤回一批(二, 我);
+    expect(await 查()).toEqual({ 客户: 甲, 甲项目: 甲, 乙项目: 乙, 甲待办: 甲, 乙待办: 乙, 记录: 0 });
+    await 恢复一批(二, 我);
+    expect(await 查()).toEqual({ 客户: 乙, 甲项目: 乙, 乙项目: 乙, 甲待办: 乙, 乙待办: 乙, 记录: 1 });
+    await 撤回一批(二, 我);
+    expect(await 查()).toEqual({ 客户: 甲, 甲项目: 甲, 乙项目: 乙, 甲待办: 甲, 乙待办: 乙, 记录: 0 });
+  });
+
+  it("撤回改负责人时，导入带过去的待办已经做完了：这一位整条不撤，原因写清", async () => {
+    await 导([客户表("甲"), 商机表([["O1", "C1", "甲的单子", "需求确认", ""]])], 甲);
+    const c = await prisma.customer.findFirstOrThrow({ where: { name: "示例导入客户" } });
+    const 甲待办 = await prisma.task.create({ data: { title: "甲的待办", customerId: c.id, ownerId: 甲 } });
+    const 二 = await 导([客户表("乙")]);
+    await prisma.task.update({ where: { id: 甲待办.id }, data: { done: true } });
+    const r = await 撤回一批(二, 我);
+    expect(r.留下).toEqual([expect.objectContaining({ 实体: "customer", 原因: 带走对不上话 })]);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).salesOwnerId).toBe(乙);
+    expect((await prisma.project.findFirstOrThrow({ where: { name: "甲的单子" } })).ownerId).toBe(乙);
   });
 
   it("撤回后恢复，沟通原来挂的项目已经不在了：改挂这位客户的潜客培育项目，不再建成不挂项目的沟通", async () => {

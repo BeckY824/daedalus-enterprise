@@ -12,7 +12,7 @@ import { prisma } from "../prisma";
 import { recordAudit, type Actor } from "../audit";
 import { 查完再写 } from "../check-then-write";
 import { 看全部 } from "../team-scope";
-import { 开现场, 落值, 建, 改, 读现值, 引用键, 无主客户进公海, type 现场 } from "./apply";
+import { 开现场, 落值, 建, 改, 读现值, 引用键, 无主客户进公海, 换人带走键, type 现场, type 改的批 } from "./apply";
 import { 写不进, 规, type 值表 } from "./values";
 import { 别的在写, 重算最近跟进, type 定的一笔 } from "./revert";
 import { 来源名, 实体名, type 来源, type 实体, type 映射, type 待写 } from "./types";
@@ -170,7 +170,10 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
           }
         }
         if (Object.keys(改动).length) {
-          await 改(tx, e, c.targetId, 改动, 现值!, 现.现在, { 批次Id: 批.id, 补培育: !!现.补培育, 操作人: 现.操作人 });
+          const 这批: 改的批 = { 批次Id: 批.id, 补培育: !!现.补培育, 操作人: 现.操作人 };
+          await 改(tx, e, c.targetId, 改动, 现值!, 现.现在, 这批);
+          // 换了客户负责人带走了哪些：记进这一行的 before，撤回按它原样带回
+          if (这批.换人带走) before[换人带走键] = J(这批.换人带走);
           改了++;
           if (e === "followup") {
             碰过.add(String(现值!.customerId));

@@ -22,7 +22,8 @@ import { recordAudit, type Actor } from "../audit";
 import { 查完再写 } from "../check-then-write";
 import { 看全部 } from "../team-scope";
 import { 外贸键 } from "../customer-extra";
-import { 读现值, 改, 引用键, 摘联系人号, 记客户号, 记联系人号, 沟通没对上项目话, type 改的批 } from "./apply";
+import { 读现值, 改, 引用键, 摘联系人号, 记客户号, 记联系人号, 沟通没对上项目话, 读换人带走, 换人带走键, type 改的批 } from "./apply";
+import { 带过来对不上 } from "../carry-over-db";
 import { 规, type 值表 } from "./values";
 import { 来源名, 实体名, 实体顺序, type 来源, type 实体 } from "./types";
 import { 建回项目, 是项目, 项目快照, 项目挂件 } from "./project-target";
@@ -56,6 +57,9 @@ export const 培育留下话 = "这一批补的潜客培育项目已经有人动
 class 让位 extends Error {}
 /** 这一条不动（给人看的原因） */
 class 不动 extends Error {}
+
+/** 撤回改客户负责人时，导入那一步随客户带过去的活已经被人动过：整条不撤（不半撤，P-撤销-01） */
+export const 带走对不上话 = "导入时随客户带过去的计划、待办或项目之后又被改过（换了人、做完了或删了）";
 
 const J = (v: unknown) => JSON.stringify(v);
 function 解<T>(s: string | null | undefined, 缺: T): T {
@@ -326,7 +330,15 @@ async function 撤一行(tx: Tx, 源: 来源, 批次Id: string, row: 记的行, 
   const 还原了 = !!现值;
   if (现值) {
     if (!一致(现值, 写过)) throw new 不动("导入之后又改过");
-    await 改(tx, e, row.targetId, 拣(原, 键), 现值, new Date().toISOString(), 批);
+    // 改回客户负责人：只带回导入那一步带走的（导入记录里记着），接手人原本就有的不动；带走的那些被人动过就整条不撤（写之前核）
+    const 回 = 拣(原, 键);
+    const 这批: 改的批 = 批 ?? { 批次Id, 补培育: false };
+    if (e === "customer" && "salesOwnerId" in 回 && 回.salesOwnerId !== 现值.salesOwnerId) {
+      const 记录 = 读换人带走(原);
+      if (记录 && (await 带过来对不上(tx, 记录.带走, [row.targetId], String(现值.salesOwnerId)))) throw new 不动(带走对不上话);
+      这批.撤回 = { 带走: 记录 };
+    }
+    await 改(tx, e, row.targetId, 回, 现值, new Date().toISOString(), 这批);
     if (e === "customer") await 删空档案(tx, row.targetId);
     if (e === "followup") {
       碰过.add(String(现值.customerId));
@@ -381,7 +393,10 @@ async function 恢复一条(tx: Tx, t: 回收行, row: 记的行 | null, 碰过:
     const 现值 = await 读现值(tx, e, t.targetId);
     if (现值) {
       if (!一致(现值, 改回)) throw new 不动("撤回之后又改过");
-      await 改(tx, e, t.targetId, 拣(解<值表>(row.written, {}), 键), 现值, new Date().toISOString(), 批);
+      const 这批: 改的批 = 批 ?? { 批次Id: row.batchId, 补培育: false };
+      await 改(tx, e, t.targetId, 拣(解<值表>(row.written, {}), 键), 现值, new Date().toISOString(), 这批);
+      // 又换了一次客户负责人：这次带走了哪些重记进导入记录，下回撤回按它带回
+      if (这批.换人带走) await tx.entImportRow.update({ where: { id: row.id }, data: { before: J({ ...解<值表>(row.before, {}), [换人带走键]: J(这批.换人带走) }) } });
       if (e === "followup") 碰过.add(String(现值.customerId));
       if (e === "opportunity") {
         const 写的 = 解<值表>(row.written, {}).customerId;
