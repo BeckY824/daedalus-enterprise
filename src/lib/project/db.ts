@@ -1547,7 +1547,7 @@ export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项
       where: { id: p.customerId },
       select: { phone: true, assignWay: true, touchpoint: true, extra: { select: { country: true, whatsapp: true, wechat: true, email: true, source: true, level: true, alibabaId: true } } },
     })),
-    看全部(() => tx.contact.findMany({ where: { customerId: p.customerId }, select: { id: true, name: true, phone: true, email: true, wechat: true } })),
+    看全部(() => tx.contact.findMany({ where: { customerId: p.customerId }, select: { id: true, name: true, phone: true, email: true, wechat: true, contactMethods: { select: { kind: true, value: true } } } })),
     tx.followUpProject.findMany({ where: { projectId: p.id, followUp: { deletedAt: null } }, select: { node: true, followUp: { select: { initiator: true, content: true, method: true } } } }),
     tx.attachment.count({ where: { projectId: p.id, tag: "合同" } }),
     tx.entProjectPayment.count({ where: { projectId: p.id } }),

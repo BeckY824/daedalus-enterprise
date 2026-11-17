@@ -74,7 +74,8 @@ export function 名片成新线索卡(
  * 昵称拆过（「Babs | Canada」→ Babs）名称待确认、原昵称记进备注；国家没写或只是从昵称猜的也待确认
  */
 export function 微信成新线索卡(w: 微信资料, b: 叫法, 渠道名们: readonly string[], id = "card", 今 = new Date()): 出卡 {
-  const 名 = w.名字 || w.微信号;
+  // 没名字时名称空着、待确认（11-17 P-抬头-13：微信号不当客户名称，原来拿微信号顶上）
+  const 名 = w.名字;
   const 待: 线索待确认格[] = [];
   if (!w.名字 || w.名字拆过) 待.push("name");
   if (!w.国家 || w.国家靠猜) 待.push("country");

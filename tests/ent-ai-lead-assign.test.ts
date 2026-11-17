@@ -151,7 +151,9 @@ describe("新线索卡：和新建项目同一套必填", () => {
   const 缺 = (补: Record<string, unknown>) => missingFields(卡({ 分配方式: 4, ...补 }) as never, undefined, 企);
 
   it("齐了不缺", () => expect(缺({})).toEqual([]));
-  it("客户名称、联系人姓名", () => expect(缺({ name: " ", contact: "" })).toEqual(["客户名称", "联系人姓名"]));
+  // 11-17 员工反馈：联系人姓名不一定知道，改选填；联系方式全空才拦（M-必填-01）
+  it("客户名称；联系人姓名选填", () => expect(缺({ name: " ", contact: "" })).toEqual(["客户名称"]));
+  it("联系方式全空", () => expect(缺({ phone: "" })).toEqual(["联系方式"]));
   it("分配方式", () => expect(缺({ 分配方式: undefined })).toEqual(["分配方式"]));
   it("指定分配没选负责人", () => expect(缺({ 分配方式: 0 })).toEqual(["项目负责人"]));
   it("业务线、进程（11-05 起不问明确回复）", () => expect(缺({ 业务线: undefined, 节点: "不存在的节点", 明确回复: undefined })).toEqual(["业务线", "当前进程"]));

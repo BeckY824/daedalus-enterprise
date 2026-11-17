@@ -127,7 +127,7 @@ export default function RestrictedCustomerDetail({ 数据 }: { 数据: 受限客
               没给的说法="不在你的项目上，联系方式不显示"
               操作={(x) => {
                 const 行 = x.id ? 可改.get(x.id) : undefined;
-                return 行 ? <Button type="link" size="small" className="rcd-link-btn" aria-label={`改联系人 ${x.name}`} onClick={() => set框(行)}>改</Button> : null;
+                return 行 ? <Button type="link" size="small" className="rcd-link-btn" aria-label={`改联系人 ${x.name || "—"}`} onClick={() => set框(行)}>改</Button> : null;
               }}
             />
           </div>

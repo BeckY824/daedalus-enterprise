@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Alert, AutoComplete, Button, Input, InputNumber, Modal, Select, Space, Switch, Tag } from "antd";
-import { CheckOutlined } from "@ant-design/icons";
+import { CheckOutlined, MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import CopyValue from "@/components/CopyValue";
 import DatePicker from "@/components/BusinessDatePicker";
 import { PageHead } from "@/components/ui";
@@ -29,6 +29,8 @@ import type { 名撞结论 } from "@/lib/enterprise/dupe-ledger";
 import AttachEntry, { 负责人说法, 我名下入口 } from "./AttachEntry";
 import RescueKey from "../../customers/RescueKey";
 import { 向导能选类型, 带进联系人, 号码类型叫法, type 联系人三格 } from "@/lib/enterprise/contact-format";
+import { 每人最多号码, 内置号码种类, 号码上限, 联系人姓名问题 } from "@/lib/enterprise/customer-v2";
+import { 线索号码种类 } from "@/lib/agent/proposals";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import SameNumberEntry from "./SameNumberEntry";
 import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
@@ -37,6 +39,8 @@ import { 搜客户, type 可挑客户 } from "../../customers/[id]/pick";
 import { 给客户建项目, 建项目带走的项目, 新项目分配数据 } from "../../customers/[id]/project-actions";
 import { useCarryConfirm } from "../../customers/useCarryConfirm";
 import { 三种业务线, 分配说明, 业务线必填, 客户业务线必填, 建议业务线, 所在地预填, 所在地提示 } from "@/lib/enterprise/assign-line";
+import { 区域线of, 区域定线说明, 区域分配说明 } from "@/lib/enterprise/customer-region";
+import type { 线 } from "@/lib/enterprise/lead-assign";
 import AddressInput, { 空地址 } from "@/components/AddressInput";
 import { 详细地址上限, 详细地址提示 } from "@/lib/project/profile-rules";
 import type { 客户地址 } from "@/lib/enterprise/customer-v2";
@@ -48,11 +52,21 @@ import ScheduleAssignInput from "@/components/ScheduleAssignInput";
 const 草稿键 = "项目建档向导";
 const 时间格式 = "YYYY-MM-DD HH:mm";
 
+/** 向导第一行下面多加的一行号码：kind = ContactMethod.kind（customer-v2.ts 内置号码种类） */
+type 多的号 = { kind?: string; value: string };
+/** 第一行号码类型 → 多加一行默认的 kind（跟第一行同类） */
+const 第一行的kind = (t?: string) => 内置号码种类.find((x) => x.验 && x.验 === t)?.kind;
 type 稿 = {
   /** 第一步那个号码。企业版下是选的那种号码（手机号 / 邮箱 / 微信 / 阿里国际站ID，类型值还是「旺旺ID」），不一定是电话 */
   phone: string;
   /** 企业版第一步选的号码类型（lib/enterprise/contact-format.ts）；开关关着没有这格 */
   号码类型?: string;
+  /**
+   * 企业版：第一行下面多加的号码（员工反馈「客户会留多个电话或者微信号」），类型 + 号码，连第一行最多 每人最多号码 行。
+   * 类型和 AI 新线索卡、联系人表单同一套（号码类型字典默认八种，kind 存库写法）。第一行照旧是客户的号（查重、主号）；
+   * 这几行当 联系人.号码们 交给服务端记在主要联系人身上：手机、邮箱、微信、阿里国际站ID 同第一行全公司查重，其余只验格式。老草稿里没有
+   */
+  更多号码?: 多的号[];
   联系人: { name: string; position: string; phone: string; email: string; wechat: string };
   /** 企业版：上一次查重带进联系人那几格的值（人没动过的，再查一个号时跟着换）；开关关着没有这格 */
   带过?: Partial<联系人三格>;
@@ -81,6 +95,8 @@ type 稿 = {
 /** 分配方式们：这个人能用、还启用着的分配方式（10-27 A7：五种都生效，只有「指定分配」要选负责人） */
 /** 默认分配方式：按业务角色（11-01 会议 §1 / §3：市场 → 自动分配，销售 → 个人自持，其他 → 暂不分配）；是销售：选自动分配要再确认（A9） */
 export type 企业建档 = { 渠道们: 可选渠道[]; 节点们: readonly string[]; 分配方式们: { i: number; 名: string }[]; 默认分配方式?: number | null; 是销售?: boolean; 没角色?: boolean;
+  /** 市场成员（按岗位：市场管理、渠道运营）：选自动分配时业务线不用选，按客户区域定（P-转-26，after-create-assign 新建分配方式数据） */
+  按区域?: boolean;
   /** 企业版普通销售（10-27 会议）：新建客户负责人只能是自己，没开项目时「客户负责人」不摆（wizard-data.ts） */
   客户只给自己?: boolean } | null;
 /** 向导要的服务端数据（wizard-data.ts 建档向导数据）：页面和弹窗共用 */
@@ -107,6 +123,9 @@ const 销售自动分后果 = "分出去后你将看不到这个项目";
 /** 企业版：这次选了「指定时间」分配（PR3）的那个值；现在分配 / 分配方式不是指定、自动 = null */
 const 定时值 = (d: 稿, 企业: 企业建档): string | null =>
   企业 && (d.项目.分配方式 === 0 || d.项目.分配方式 === 1) && typeof d.项目.定时分配 === "string" ? d.项目.定时分配 : null;
+/** 市场成员选了自动分配（P-转-26，用户 11-17）：业务线不用选、不交，服务端按客户区域定内贸 / 外贸 */
+const 区域定线中 = (d: 稿, 带项目: boolean, 企业: 企业建档) => 带项目 && !!企业?.按区域 && d.项目.分配方式 === 1;
+
 /** 企业版：这次要不要选负责人。只有「指定分配」要；没有可选的分配方式（老配置）照旧选负责人 */
 const 要选负责人 = (d: 稿, 企业: 企业建档) => !!企业 && (!企业.分配方式们.length || d.项目.分配方式 === 0);
 function 空稿(ownerId: string, currency: string, 首类型: string): 稿 {
@@ -123,7 +142,7 @@ function 空稿(ownerId: string, currency: string, 首类型: string): 稿 {
 const 查过键 = (d: 稿, 企: boolean) => (企 ? `${d.号码类型 ?? ""}|${d.phone.trim()}` : d.phone.trim());
 
 /** 一张表上的格子（P-界面-36）：校验出错时按它就地标红、滚过去 */
-type 格 = "号码类型" | "号码" | "联系人" | "客户名" | "来源" | "业务线" | "项目名" | "分配方式" | "负责人" | "分配时间" | "内容" | "节点" | "下一步时间" | "下一步计划";
+type 格 = "号码类型" | "号码" | "更多号码" | "联系人" | "客户名" | "来源" | "业务线" | "项目名" | "分配方式" | "负责人" | "分配时间" | "内容" | "节点" | "下一步时间" | "下一步计划";
 type 差项 = { 格: 格; 话: string };
 
 /**
@@ -135,7 +154,7 @@ function 还差们(d: 稿, 带项目: boolean, 要下一步: boolean, 企业: �
   const 记 = (格: 格, 话: string) => void 差.push({ 格, 话 });
   // 挑了老客户（原型 cr.old）：客户那几格不用填，只看项目和首条沟通
   if (!老) 客户还差(d, 企业, 记);
-  if (企业 && !d.项目.业务线) 记("业务线", 带项目 ? 业务线必填 : 客户业务线必填);
+  if (企业 && !d.项目.业务线 && !区域定线中(d, 带项目, 企业)) 记("业务线", 带项目 ? 业务线必填 : 客户业务线必填);
   项目沟通还差(d, 带项目, 要下一步, 企业, 记);
   return 差;
 }
@@ -144,10 +163,15 @@ function 客户还差(d: 稿, 企业: 企业建档, 记: (格: 格, 话: string)
   const 企 = !!企业;
   if (企 && !d.号码类型) 记("号码类型", "请选择号码类型");
   if (!d.phone.trim()) 记("号码", 企 ? "请填号码" : "请填电话");
+  // 多加的号码：填了号没选类型的就地说是第几个（空行不管，交的时候丢掉）
+  const 没类型 = 企 ? (d.更多号码 ?? []).findIndex((x) => x.value.trim() && !x.kind) : -1;
+  if (没类型 >= 0) 记("更多号码", `第 ${没类型 + 2} 个号码请选择号码类型`);
   // 企业版：「未知」「待定」「暂未确认」这类占位不算填了（11-03 A2-2，服务端同一句）
   if (!d.客户.name.trim()) 记("客户名", "请填写名称");
   else if (企 && 是占位值(d.客户.name)) 记("客户名", 占位名提示("客户名称"));
-  if (!d.联系人.name.trim()) 记("联系人", "请填写联系人姓名");
+  // 联系人姓名：企业版选填（11-17「联系人姓名不一定知道」），和联系方式至少一项（联系人电话 / 第一行带进的号 / 多加的号码，同服务端 联系人姓名问题）
+  const 姓名问题 = 联系人姓名问题(企, d.联系人.name, [d.联系人.phone, d.联系人.email, d.联系人.wechat, ...(企 ? (d.更多号码 ?? []).map((x) => x.value) : [])]);
+  if (姓名问题) 记("联系人", 姓名问题);
   else if (企 && 是占位值(d.联系人.name)) 记("联系人", 占位名提示("联系人姓名"));
   const 来源 = 企业 ? 新建来源还差(d.客户.渠道, d.客户.触点) : "";
   if (来源) 记("来源", 来源);
@@ -404,8 +428,13 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     return () => { 作废 = true; clearTimeout(t); };
   }, [搜词]);
   // 业务线默认带这位客户的（A1，和客户页「新增项目」同一个取数）；看不到 / 没开 = null 不带
+  // 老客户的区域（P-转-26）：市场成员选自动分配时业务线那格只读显示按区域定的线；客户没填地址 = null，看项目所在地
+  const [老客户区域, set老客户区域] = useState<{ id: string; 线: 线 | null } | null>(null);
   const 带客户业务线 = (c: 可挑客户) => {
-    新项目分配数据(c.id).then((r) => { if (r?.客户业务线 && !d.项目.业务线) 改("项目", { 业务线: r.客户业务线 }); }, () => {});
+    新项目分配数据(c.id).then((r) => {
+      if (r?.客户业务线 && !d.项目.业务线) 改("项目", { 业务线: r.客户业务线 });
+      set老客户区域(r?.客户有地址 ? { id: c.id, 线: r.客户区域线 } : null);
+    }, () => {});
   };
   const 挑老 = (id: string) => {
     const c = 候选.find((x) => x.id === id);
@@ -460,7 +489,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     set交错("");
     const 负责人 = 企业 && !要选负责人(d, 企业) ? 我?.id ?? "" : d.项目.ownerId;
     try {
-      const 这次 = { 分配方式: d.项目.分配方式 ?? null, 业务线: d.项目.业务线 ?? null };
+      const 这次 = { 分配方式: d.项目.分配方式 ?? null, 业务线: 区域定线中(d, 带项目, 企业) ? null : d.项目.业务线 ?? null };
       // 指定时间分配（PR3）：现在不转，到点才分，这会儿不问一起转
       const 定时 = 定时值(d, 企业);
       if (定时 === null && !(await 问一起转(() => 建项目带走的项目(客.id, { ownerId: 负责人 || null, ...这次 })))) return void set交错("没建：一起转的项目还没确认");
@@ -468,7 +497,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         customerId: 客.id,
         ...(联系人Id ? { 联系人Id } : {}),
         项目: {
-          name: d.项目.name, ownerId: 负责人 || null, 分配方式: d.项目.分配方式 ?? null, 业务线: d.项目.业务线 ?? null,
+          name: d.项目.name, ownerId: 负责人 || null, 分配方式: d.项目.分配方式 ?? null, 业务线: 这次.业务线,
           ...(d.项目.所在地 ? { 所在地: d.项目.所在地 } : {}),
           要求回复开始: d.项目.要求回复开始 ?? null, 要求回复结束: d.项目.要求回复结束 ?? null,
           ...(定时 ? { 定时分配: 定时 } : {}),
@@ -522,21 +551,25 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     const 跟进 = 企业
       ? { ...稿面.跟进, method: 对得上的方式(稿面.跟进.type, 稿面.跟进.method), ...(带项目 ? {} : { 节点: undefined }) }
       : { type: 稿面.跟进.type, content: 稿面.跟进.content, occurredAt: 稿面.跟进.occurredAt, 下一步时间: 能填下一步 ? 稿面.跟进.下一步时间 : null };
+    // 企业版：第一行下面多加的号码跟着主要联系人交（空行丢掉）；没加就不带这一格，和原来一样
+    const 更多 = 企业版 ? (稿面.更多号码 ?? []).filter((x) => x.value.trim()).map((x) => ({ kind: x.kind ?? "", value: x.value })) : [];
+    const 联系人 = 更多.length ? { ...稿面.联系人, 号码们: 更多 } : 稿面.联系人;
     try {
       const r = 带项目
         ? await 建档向导({
           客户,
-          联系人: 稿面.联系人,
+          联系人,
           项目: {
             ...项目稿, 定时分配: 定时值(稿面, 企业), amount: 稿面.项目.amount ?? 0, ownerId: 负责人 || null, 分配方式: 企业 ? 稿面.项目.分配方式 ?? null : undefined,
             // 业务线（11-01 清单 A1，手动选）：企业版总是传（没选 = null）；团队版不传
-            业务线: 企业 ? 稿面.项目.业务线 ?? null : undefined,
+            // 市场成员选自动分配：不交，服务端按客户区域定（P-转-26）
+            业务线: 企业 ? (区域定线中(稿面, 带项目, 企业) ? null : 稿面.项目.业务线 ?? null) : undefined,
             // 项目来源：没另选就跟客户的渠道（服务端 项目来源默认 同一个规矩）；团队版不传
             ...(企业 ? { channelId: 项目渠道 || 稿面.客户.渠道 || null } : {}),
           },
           跟进,
         })
-        : await 建档只建客户({ 客户, 联系人: 稿面.联系人, 跟进 });
+        : await 建档只建客户({ 客户, 联系人, 跟进 });
       if (!r.ok && "同号协同" in r) {
         // 同号再次录入：没新建，记录已写进现有项目（查重之后才有人录同号时走到这）。那句写在底栏上面，点「知道了」再关框
         清草稿(全名);
@@ -612,7 +645,11 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
       {g && 错(g) ? <span className="cr-err" role="alert">{错(g)}</span> : 注 ? <span className="cr-note">{注}</span> : null}
     </label>
   );
-  const 业务线格 = 企业 && 一格("业务线", "业务线", (
+  // 市场成员选自动分配（P-转-26）：业务线换成只读说明，按客户区域定；老客户有地址看客户的，否则看项目所在地
+  const 区域线 = 老客户 && 老客户区域?.id === 老客户.id ? 老客户区域.线 : 区域线of(null, d.项目.所在地 ?? null);
+  const 业务线格 = 企业 && (区域定线中(d, 带项目, 企业) ? 一格("业务线", "业务线", (
+    <div className="cr-auto-line" data-testid="wizard-bizline-auto" aria-label="业务线" aria-readonly="true">{区域定线说明(区域线)}</div>
+  ), false, false, "市场成员自动分配不用选内贸 / 外贸：中国大陆客户分给内贸销售，其余（含港澳台）分给外贸销售；客户和项目都没填区域时按全部销售分") : 一格("业务线", "业务线", (
     <Select
       className="cr-full"
       aria-label="业务线"
@@ -625,8 +662,54 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     />
   ), true, false, 带项目
     ? <>{线提示 && <span data-testid="wizard-bizline-hint" className={线提示.同 ? undefined : "cr-warn"}>{线提示.话}；</span>}自动分配只分给这条线的销售；暂不分配 = 留在新线索等人指派。客户没另选时也记成这条线</>
-    : `${b.customer}的业务线；以后开项目时默认带上`);
+    : `${b.customer}的业务线；以后开项目时默认带上`));
   const 未完 = 显错 && 差们.length > 0;
+  /*
+    企业版：第一行号码下面能再加几行（类型 + 号码，照联系人表单「加一个联系方式」，连第一行最多 每人最多号码 行）。
+    类型同 AI 新线索卡（号码类型字典默认八种）。这几行不在这里查重：交的时候服务端按联系人表单那套验格式，
+    手机、邮箱、微信、阿里国际站ID 和第一行同一套全公司查重，其余只验格式，都记在主要联系人身上
+  */
+  const 更多号码 = d.更多号码 ?? [];
+  // 不走 改：它把对象格合并进去，数组会被摊成对象
+  const 改更多 = (变: (们: 多的号[]) => 多的号[]) => {
+    setD((o) => {
+      const n = { ...o, 更多号码: 变(o.更多号码 ?? []) };
+      存草稿(全名, { 稿: n });
+      return n;
+    });
+    set已存(true);
+  };
+  const 更多号码格 = (
+    <div className="cr-wide cr-more-nums" data-ge="更多号码" data-testid="wizard-more-numbers">
+      {更多号码.map((x, i) => (
+        <Space.Compact key={i} className="cr-full">
+          <Select
+            className="cr-type"
+            aria-label={`第 ${i + 2} 个号码类型`}
+            placeholder="号码类型"
+            status={错("更多号码") && x.value.trim() && !x.kind ? "error" : undefined}
+            value={x.kind}
+            options={线索号码种类.map((k) => ({ value: k.kind, label: k.名 }))}
+            onChange={(v) => 改更多((们) => 们.map((y, j) => (j === i ? { ...y, kind: v } : y)))}
+          />
+          <Input
+            aria-label={`第 ${i + 2} 个号码`}
+            value={x.value}
+            placeholder="号码或账号"
+            maxLength={号码上限}
+            onChange={(e) => { const value = e.target.value; 改更多((们) => 们.map((y, j) => (j === i ? { ...y, value } : y))); }}
+          />
+          <Button icon={<MinusCircleOutlined />} aria-label={`去掉第 ${i + 2} 个号码`} onClick={() => 改更多((们) => 们.filter((_, j) => j !== i))} />
+        </Space.Compact>
+      ))}
+      {更多号码.length + 1 < 每人最多号码 && (
+        <Button type="dashed" block icon={<PlusOutlined />} onClick={() => 改更多((们) => (们.length + 1 < 每人最多号码 ? [...们, { kind: 第一行的kind(d.号码类型), value: "" }] : 们))}>
+          加一个号码
+        </Button>
+      )}
+      {错("更多号码") && <span className="cr-err" role="alert">{错("更多号码")}</span>}
+    </div>
+  );
 
   return (
     <div className="cr-sheet">
@@ -729,6 +812,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
               ) : <Alert type="success" showIcon title="没人录过这个号码" />}
             </div>
           )}
+          {企业版 && 更多号码格}
           {一格("客户名", `${b.customer}名称`, 能挑老客户 ? (
             <AutoComplete
               className="cr-full"
@@ -764,7 +848,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
               description={"我名下" in 名查.撞 ? <div className="cr-gap"><我名下入口 客户id={名查.撞.我名下.客户id} /></div> : <AttachEntry key={名查.撞.撞.撞号id ?? 名查.名} 露出={名查.撞.撞} />}
             />
           )}
-          {一格("联系人", "联系人姓名", <Input aria-label="联系人姓名" status={红("联系人")} value={d.联系人.name} onChange={(e) => 改("联系人", { name: e.target.value })} />, true)}
+          {一格("联系人", "联系人姓名", <Input aria-label="联系人姓名" status={红("联系人")} value={d.联系人.name} onChange={(e) => 改("联系人", { name: e.target.value })} />, !企业)}
           {一格(null, "联系人电话", <Input aria-label="联系人电话" value={d.联系人.phone} onChange={(e) => 改("联系人", { phone: e.target.value })} />)}
           {!企业 && 一格(null, "职位", <Input aria-label="职位" value={d.联系人.position} onChange={(e) => 改("联系人", { position: e.target.value })} />)}
           {!企业 && 一格(null, "邮箱", <Input aria-label="邮箱" value={d.联系人.email} onChange={(e) => 改("联系人", { email: e.target.value })} />)}
@@ -838,7 +922,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
                 options={企业.分配方式们.map((x) => ({ value: x.i, label: x.名 }))}
                 onChange={(v) => 改("项目", { 分配方式: v })}
               />
-            ), true, false, d.项目.分配方式 !== undefined && !自动分出去 ? 分配说明[d.项目.分配方式] || undefined : undefined)}
+            ), true, false, d.项目.分配方式 !== undefined && !自动分出去 ? (区域定线中(d, 带项目, 企业) ? 区域分配说明 : 分配说明[d.项目.分配方式] || undefined) : undefined)}
             {(企业 ? 要选负责人(d, 企业) : !独自一人(users, d.项目.ownerId)) && 一格("负责人", "项目负责人", (
               <Select className="cr-full" aria-label="项目负责人" status={红("负责人")} value={d.项目.ownerId || undefined} placeholder="选项目负责人" options={负责人选项} onChange={(v) => 改("项目", { ownerId: v })} showSearch optionFilterProp="label" />
             ), !!企业)}
