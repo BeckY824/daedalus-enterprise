@@ -14,6 +14,8 @@ import { useTransferConfirm } from "../useTransferConfirm";
 import Shortcut from "@/components/Shortcut";
 import { 释义下拉 } from "@/components/DictNote";
 import { 不填项, 去不填 } from "@/lib/enterprise/dict-kinds";
+import { useFormDraft } from "@/components/FormDraft";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 type Option = { value: string; label: string };
 
@@ -91,6 +93,20 @@ export default function InlineField({
   const 放弃了 = useRef(false);
   /** combo 那一格眼下的值。回车 / 失焦晚一拍提交时读它，不读闭包里那个旧的 draft */
   const 最新 = useRef<string>(value ?? "");
+  /*
+    打字的两种格（text / textarea）留草稿（11-17，components/FormDraft.tsx）：没存上（发版后老页面、没权限……）、刷新了，
+    再点开这一格带回打过的字。存上了 / Esc 放弃就删
+  */
+  const 打字格 = kind === "text" || kind === "textarea";
+  const 稿 = useFormDraft({
+    键: 打字格 ? `客户:${customerId}:就地:${field}` : null,
+    开: editing,
+    值: { v: draft },
+    带回: (x) => {
+      if (typeof x.v === "string") setDraft(x.v);
+    },
+    紧凑: true,
+  });
 
   function 开始() {
     放弃了.current = false;
@@ -101,6 +117,7 @@ export default function InlineField({
   }
   function 放弃() {
     放弃了.current = true;
+    稿.丢掉();
     setDraft(value);
     setEditing(false);
   }
@@ -112,7 +129,7 @@ export default function InlineField({
     交过了.current = true;
     setEditing(false);
     const normalized = next?.trim() ? next.trim() : null;
-    if ((normalized ?? null) === (value ?? null)) return;
+    if ((normalized ?? null) === (value ?? null)) return void 稿.丢掉();
     // 换销售负责人：客户名下的项目跟着走（企业版同事负责的留下，P-转-07），先列出来问一句（D-36）；取消 = 不改
     if (field === "salesOwnerId" && normalized && !(await 先问转走的项目([customerId], normalized))) {
       setDraft(value);
@@ -120,14 +137,17 @@ export default function InlineField({
     }
     if (field !== "salesOwnerId") set待显({ 值: normalized, 基准: value });
     setSaving(true);
-    const res = await patchCustomer(customerId, field, normalized).catch(() => ({ ok: false as const, error: "没存上，请稍后再试" }));
+    const res = await patchCustomer(customerId, field, normalized).catch((e) => ({ ok: false as const, error: 动作出错话(e, "没存上，请稍后再试") }));
     setSaving(false);
     if (!res.ok) {
+      // 打的字还在草稿里：再点开这一格会带回来
+      if (打字格 && 有值(next)) 说({ 话: `${res.error}（打的字还留着，再点开这一格接着改）`, 错: true });
+      else 说({ 话: res.error, 错: true });
       set待显(null);
-      说({ 话: res.error, 错: true });
       setDraft(value);
       return;
     }
+    稿.存好了();
     /*
       服务端回了最后存下的样子（规整过的、或没动的库里现值）：按它摆，不按人敲的那串（11-17 员工反馈：电话格敲了带字母的串，
       服务端没写，格子却一直摆着那串，刷新才变回去）。和原来一样的就不再先摆
@@ -282,6 +302,7 @@ export default function InlineField({
           }}
         />
       )}
+      {稿.提示}
     </div>
   );
 }

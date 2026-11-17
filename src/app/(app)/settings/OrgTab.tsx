@@ -19,6 +19,7 @@ import { 设不设配额, type 分配情况 } from "../leads/assign-actions";
 import LeadAssignCard from "./LeadAssignCard";
 import LineDeptCard from "./LineDeptCard";
 import OrgSyncCard from "./OrgSyncCard";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 export type 组织架构 = {
   部门: 组织部门[];
@@ -152,8 +153,8 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
         刷新(键);
       }
       return r.ok;
-    } catch {
-      就地.error("没改成，请稍后再试");
+    } catch (出错) {
+      就地.error(动作出错话(出错, "没改成，请稍后再试"));
       return false;
     } finally {
       占(键, false);
@@ -174,8 +175,8 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
         刷新(键);
       }
       return r;
-    } catch {
-      return { ok: false, error: "没改成，请稍后再试" };
+    } catch (出错) {
+      return { ok: false, error: 动作出错话(出错, "没改成，请稍后再试") };
     } finally {
       占(键, false);
     }

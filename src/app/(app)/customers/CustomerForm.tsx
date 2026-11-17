@@ -33,6 +33,7 @@ import { 三种业务线, 客户业务线必填 } from "@/lib/enterprise/assign-
 import { 释义下拉, type 客户字典释义 } from "@/components/DictNote";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import { 渠道触点们, 客户介绍触点 } from "@/lib/enterprise/touchpoint";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 export type CustomerRow = {
   id: string;
@@ -197,7 +198,7 @@ function CustomerFormInner({
   const { 先问转走的项目 } = useTransferConfirm();
   const [saving, setSaving] = useState(false);
   // 点外面不关、关前问一句、新建的草稿留在本机（2026-10-19 客户反馈，lib/form-guard.tsx）
-  const 守 = useFormGuard({ open, form, 草稿键: editing ? null : "新建客户", 关: () => onClose(false), 忙: saving, afterOpenChange: 聚焦首项 });
+  const 守 = useFormGuard({ open, form, 草稿键: editing ? `编辑客户:${editing.id}` : "新建客户", 编辑: !!editing, 关: () => onClose(false), 忙: saving, afterOpenChange: 聚焦首项 });
   const [dup, setDup] = useState<DuplicateHit | null>(null);
   /** 保存时发现别人已经改过这条记录 */
   const [conflict, setConflict] = useState<SaveConflict | null>(null);
@@ -415,8 +416,8 @@ function CustomerFormInner({
       守.存好了();
       存上了.current = true;
       return { ok: true };
-    } catch {
-      return { ok: false, error: "保存失败，请刷新确认结果后重试" };
+    } catch (出错) {
+      return { ok: false, error: 动作出错话(出错, "保存失败，请刷新确认结果后重试") };
     } finally {
       setSaving(false);
     }
@@ -437,6 +438,7 @@ function CustomerFormInner({
       destroyOnHidden
     >
       {成话 && <div className={成话.错 ? "csq-err" : "rec-plan-said"} role={成话.错 ? "alert" : "status"}>{成话.话}</div>}
+      {守.提示}
       <Form
         form={form}
         layout="vertical"
@@ -1071,8 +1073,8 @@ function QuickChannelModal({
       }
       建好.current = { id: res.id, name: v.name.trim() };
       return { ok: true };
-    } catch {
-      return { ok: false, error: "没建上，请重试" };
+    } catch (出错) {
+      return { ok: false, error: 动作出错话(出错, "没建上，请重试") };
     } finally {
       setSaving(false);
     }

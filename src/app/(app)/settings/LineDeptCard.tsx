@@ -14,6 +14,7 @@ import { 两条线, 线部门们, type 线部门 } from "@/lib/enterprise/assign
 import type { 组织部门 } from "@/lib/enterprise/org-tree";
 import { 读线部门设置, 设线部门, type 线部门设置 } from "../leads/assign-actions";
 import SaveButton from "@/components/SaveButton";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 const 销售 = (bizRole: string) => 拆角色(bizRole).some((r) => r === "sales" || r === "sales_mgr");
 
@@ -60,8 +61,8 @@ export default function LineDeptCard({
       set草稿(null);
       router.refresh();
       return { ok: true };
-    } catch {
-      return { ok: false, error: "没改成，请稍后再试" };
+    } catch (出错) {
+      return { ok: false, error: 动作出错话(出错, "没改成，请稍后再试") };
     } finally {
       set忙(false);
     }

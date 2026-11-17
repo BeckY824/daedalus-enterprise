@@ -6,6 +6,7 @@ import { Button, Card, Space, Tag } from "antd";
 import { fmtDate } from "@/lib/utils";
 import { 回项目邀请 } from "./actions";
 import { showUndo } from "@/components/UndoBar";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 export type 邀请行 = { id: string; projectId: string; 项目: string; 负责人: string; 邀请人: string; 角色: string | null; createdAt: string };
 
@@ -32,8 +33,8 @@ export default function InviteInbox({ 邀请们 }: { 邀请们: 邀请行[] }) {
       // 同意了直接打开项目，项目页本身就是「已加入」的回执，不再弹顶部提示
       if (!x.ok) 记错(r.id, x.error ?? "没回成，请稍后再试");
       else router.push(`/projects/${r.projectId}`);
-    } catch {
-      记错(r.id, "没回成，请稍后再试");
+    } catch (出错) {
+      记错(r.id, 动作出错话(出错, "没回成，请稍后再试"));
     } finally {
       set忙(null);
     }

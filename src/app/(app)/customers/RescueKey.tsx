@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { Button, Popconfirm } from "antd";
 import { 从回收站捞回, type 查号码结果 } from "./number-actions";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 export default function RescueKey({ 类型, 值, 捞回了 }: { 类型: string; 值: string; 捞回了: (查: 查号码结果) => void }) {
   const [忙, set忙] = useState(false);
@@ -20,8 +21,8 @@ export default function RescueKey({ 类型, 值, 捞回了 }: { 类型: string; 
       if (!r.ok) { set话({ 话: r.error, 级: "错" }); return; }
       set话({ 话: r.提示, 级: r.已不在 ? "警" : "常" }); // 没捞成，不用成功样式
       捞回了(r.查);
-    } catch {
-      set话({ 话: "没捞成，请稍后再试", 级: "错" });
+    } catch (出错) {
+      set话({ 话: 动作出错话(出错, "没捞成，请稍后再试"), 级: "错" });
     } finally {
       set忙(false);
     }

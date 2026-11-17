@@ -54,6 +54,7 @@ import { useBoardDrag } from "./board-drag";
 import { showUndo } from "@/components/UndoBar";
 import NewMenuButton from "@/components/NewMenuButton";
 import { 看板工具位 } from "../customers/board-slot";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 
 /** 看板列的颜色：三个阶段沿用商机管道的蓝绿黄（企业版进程列跟所在阶段），成功交付（企业版叫 交付结清）粉、没成（流失 / 丢单）灰 */
@@ -306,8 +307,8 @@ export default function ProjectsView({
         const 总 = 新.length ? r.总 : 这列.length;
         return { 源, 代, 们: { ...基.们, [c.列]: { 行: [...(基.们[c.列]?.行 ?? []), ...新], 总 } }, 点: { ...基.点, ...("三态点" in r ? r.三态点 ?? {} : {}) } };
       });
-    } catch {
-      if (最新.current.看板 === 源) set再看错((m) => ({ ...m, [c.列]: "没取到，请重试" }));
+    } catch (出错) {
+      if (最新.current.看板 === 源) set再看错((m) => ({ ...m, [c.列]: 动作出错话(出错, "没取到，请重试") }));
     } finally {
       set取中((m) => (m.源 === 源 ? { 源, 列: { ...m.列, [c.列]: false } } : m));
     }
@@ -393,8 +394,8 @@ export default function ProjectsView({
         });
       }
       router.refresh();
-    } catch {
-      记果({ [r.id]: { ok: false, error: "没分成，请稍后再试" } });
+    } catch (出错) {
+      记果({ [r.id]: { ok: false, error: 动作出错话(出错, "没分成，请稍后再试") } });
     }
   }
 

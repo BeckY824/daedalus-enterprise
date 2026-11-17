@@ -7,6 +7,7 @@ import { 拼地址, type 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 有值, 空值符 } from "@/lib/empty-value";
 import { 只读上下文, 只能看的格上下文 } from "./read-only";
 import { patchCustomerRegion } from "../actions";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 const 同 = (a: 客户地址, b: 客户地址) => 拼地址(a) === 拼地址(b) && (a.addrCountry ?? "") === (b.addrCountry ?? "");
 
@@ -54,7 +55,7 @@ export default function RegionInlineField({ customerId, value, 空时横线 = fa
     if (同(next, value)) return;
     set待显({ 值: next, 基准: value });
     setSaving(true);
-    const res = await patchCustomerRegion(customerId, next).catch(() => ({ ok: false as const, error: "没存上，请稍后再试" }));
+    const res = await patchCustomerRegion(customerId, next).catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "没存上，请稍后再试") }));
     setSaving(false);
     if (!res.ok) {
       set待显(null);

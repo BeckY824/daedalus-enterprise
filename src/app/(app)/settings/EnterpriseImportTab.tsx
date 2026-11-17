@@ -29,6 +29,7 @@ import EnterpriseImportReport from "./EnterpriseImportReport";
 import { useViewAs } from "@/components/ViewAsContext";
 import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 import { useSettingsNote } from "./InlineNote";
+import { 出错原话 } from "@/lib/stale-deploy";
 
 /**
  * 设置 → 企业版导入（只有 CRM_ENTERPRISE=1、管理员、不在共享试用区时才摆出来）。
@@ -49,7 +50,7 @@ const 状态说法: Record<string, { 话: string; 色: string }> = {
 
 const 结果色: Record<string, string> = { 成功: "green", 没变化: "default", 没接: "gold", 出错: "red", 跳过: "default" };
 
-const 错话 = (e: unknown) => (e instanceof Error ? e.message : "没成功，请重试");
+const 错话 = (e: unknown) => 出错原话(e, "没成功，请重试");
 
 type 冲突页 = Awaited<ReturnType<typeof 冲突列表>>;
 
