@@ -10,7 +10,7 @@ import SaveButton from "@/components/SaveButton";
 import { 角色名, 业务角色, 部门最多层数, 角色组合问题 } from "@/lib/sync/dept-policy";
 import { 部门树, type 组织部门 } from "@/lib/enterprise/org-tree";
 import { 拆角色, 合角色 } from "@/lib/enterprise/org-core";
-import { 规则, 规则名们, type 规则名 } from "@/lib/enterprise/rules-table";
+import { 规则, 规则名们, 默认开的规则, 关掉后果, type 规则名 } from "@/lib/enterprise/rules-table";
 import { 字段, 字段名们, 字段级别of, 推荐字段配置, 教练字段级别, type 字段配置, type 字段名 } from "@/lib/enterprise/field-perm-table";
 import { 设置项, 设置项们, 谁能改, type 改权限配置, type 能改的人, type 设置项名 } from "@/lib/enterprise/edit-perm-table";
 import { 市场部门们 } from "@/lib/enterprise/market";
@@ -30,7 +30,7 @@ export type 组织架构 = {
   是老板: boolean;
   /** 本人是总管理但被勾了「不管设置」：只看，提示换一句 */
   不管设置?: boolean;
-  /** 每条组织规则的开关：除了「市场复核」默认开，别的默认都关 */
+  /** 每条组织规则的开关：除了 默认开的规则（市场复核、超时自动转）默认开，别的默认都关 */
   规则开着: Record<规则名, boolean>;
   /** 「角色 × 字段」表，只有和默认（能改）不一样的格 */
   字段权限: 字段配置;
@@ -56,7 +56,7 @@ type 结果 = Promise<{ ok: boolean; error?: string; 提示?: string; 要确认?
 /** 只有系统管理员能给、能改的角色：总管理、管理员、销售教练（看全部的那几个） */
 const 总管级 = (r: string) => r === "director" || r === "admin" || r === "coach";
 /** 开关的 data-testid：第一条沿用老名字，E2E 在用 */
-const 规则testid: Record<规则名, string> = { 按组织看客户: "org-rule-scope", 线索分配: "org-rule-lead-assign", 字段权限: "org-rule-field-perm", 市场复核: "org-rule-market-review" };
+const 规则testid: Record<规则名, string> = { 按组织看客户: "org-rule-scope", 线索分配: "org-rule-lead-assign", 字段权限: "org-rule-field-perm", 市场复核: "org-rule-market-review", 超时自动转: "org-rule-reply-overdue" };
 const 级别名 = { 改: "能改", 看: "只能看", 藏: "看不到" } as const;
 /**
  * 角色下拉每项下面那行「能做什么」（10-30）：只写代码里按角色写死的那几样——总管理员看全部（lib/enterprise/visibility.ts）、
@@ -225,7 +225,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
     const 成了 = await 问后果({
       题: `${v ? "打开" : "关掉"}「${规则[名].名}」？`,
       后果: [
-        { 标: "全员", 级: "警", 话: v ? 规则[名].说明 : `关掉以后不再按「${规则[名].名}」管，所有人回到没开时的样子` },
+        { 标: "全员", 级: "警", 话: v ? 规则[名].说明 : 关掉后果[名] ?? `关掉以后不再按「${规则[名].名}」管，所有人回到没开时的样子` },
         { 标: "能改回", 话: "随时可以再拨回来，已有的客户、项目、记录不会删" },
       ],
       是: v ? "确认打开" : "确认关掉",
@@ -273,7 +273,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
       {后果框}
       {提示条}
       <Card title="组织规则" extra={只看} data-testid="org-rules">
-        <p className="muted">每条规则单独开关，除了「{规则.市场复核.名}」都默认关着：关着时按原来的方式看客户。先把下面的部门和上级填好再打开。</p>
+        <p className="muted">每条规则单独开关，除了{默认开的规则.map((n) => `「${规则[n].名}」`).join("")}都默认关着：关着时按原来的方式看客户。先把下面的部门和上级填好再打开。</p>
         <div style={{ display: "grid", gap: 12 }}>
           {规则名们.map((名) => (
             <Space align="start" key={名}>

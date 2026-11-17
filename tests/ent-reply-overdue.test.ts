@@ -18,11 +18,11 @@ import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 自动分配不参与key } from "@/lib/enterprise/lead-assign";
-import { 规则 } from "@/lib/enterprise/rules";
+import { 规则, 规则开着 } from "@/lib/enterprise/rules";
 import { 待回复客户of } from "@/lib/enterprise/reply-notice";
 import {
   超时转扫一遍, 在夜里, 顺延到白天, 超时提醒到期, 超时转出到期, 该做, 本轮排除, 读试过, 客户怎么办, 客户在谁名下, 超时基准,
-  收回话, 超时转理由, 超时通知种类,
+  收回话, 超时转理由, 超时通知种类, 超时转重新起算, 我超时未跟进的,
 } from "@/lib/enterprise/reply-overdue";
 import { 客户在谁名下话 } from "@/lib/project/time-fields";
 
@@ -328,6 +328,73 @@ describe("钟上走一遍（到点提醒、自动转）", () => {
     expect(await 超时转扫一遍(京("2026-11-24 11:00"))).toMatchObject({ 提醒: 1 });
     expect(await 超时转扫一遍(京("2026-11-24 11:30"))).toMatchObject({ 转出: 1 });
     expect((await 项目(c.id)).ownerId).not.toBe(甲.id);
+  });
+});
+
+describe("管理员开关：组织规则「超时未跟进自动转」（默认开）", () => {
+  const 拨 = async (开: boolean) => { await setSetting(规则.超时自动转.key, 开); invalidateSettingsCache(); };
+
+  it("没拨过算开着（保持上线时的行为）；拨成关就关", async () => {
+    expect(await prisma.setting.count({ where: { key: 规则.超时自动转.key } })).toBe(0);
+    expect(await 规则开着("超时自动转")).toBe(true);
+    await 拨(false);
+    expect(await 规则开着("超时自动转")).toBe(false);
+  });
+
+  it("关着：到点不发超时提醒、不自动转，首页待办不标超时；30 分钟前那条提醒不归这个开关管", async () => {
+    await 拨(false);
+    const { id } = await 建线索(甲, { replyEndAt: 京("2026-11-20 15:00") });
+    for (const t of ["2026-11-20 16:00", "2026-11-20 16:30", "2026-11-20 18:00"]) {
+      expect(await 超时转扫一遍(京(t))).toEqual({ 提醒: 0, 转出: 0, 没转成: 0, 停: 0 });
+    }
+    expect((await 项目(id)).ownerId).toBe(甲.id);
+    expect(await 超时通知(甲.id)).toHaveLength(0);
+    expect(await prisma.entReplyOverdue.count()).toBe(0);
+    expect(await 我超时未跟进的(甲.id)).toEqual([]);
+    expect((await 待回复客户of(甲.id, 京("2026-11-20 16:31")))?.超时).toBeUndefined();
+  });
+
+  it("开着照转；转出去以后关掉：已转的不回滚，接手人不再提醒、不再转", async () => {
+    const { id } = await 建线索(甲, { replyEndAt: 京("2026-11-20 15:00") });
+    await 超时转扫一遍(京("2026-11-20 16:00"));
+    expect(await 超时转扫一遍(京("2026-11-20 16:30"))).toMatchObject({ 转出: 1 });
+    expect((await 项目(id)).ownerId).toBe(乙.id);
+    await 拨(false);
+    for (const t of ["2026-11-20 17:30", "2026-11-20 18:00", "2026-11-20 20:00"]) {
+      expect(await 超时转扫一遍(京(t))).toEqual({ 提醒: 0, 转出: 0, 没转成: 0, 停: 0 });
+    }
+    expect((await 项目(id)).ownerId).toBe(乙.id);
+    expect(await 超时通知(乙.id)).toHaveLength(0);
+    // 链停在原处，没被清
+    expect(await prisma.entReplyOverdue.findUniqueOrThrow({ where: { projectId: id }, select: { holderId: true, transfers: true, stoppedAt: true } }))
+      .toEqual({ holderId: 乙.id, transfers: 1, stoppedAt: null });
+  });
+
+  it("提醒发了、没转就关掉，过一阵再打开：从打开那刻重新计时、重发提醒，不一打开就转", async () => {
+    const { id } = await 建线索(甲, { replyEndAt: 京("2026-11-20 15:00") });
+    expect(await 超时转扫一遍(京("2026-11-20 16:00"))).toMatchObject({ 提醒: 1 });
+    await 拨(false);
+    expect(await 超时转扫一遍(京("2026-11-20 16:30"))).toMatchObject({ 转出: 0 });
+    // 17:00 打开（设规则 从关拨到开时调 超时转重新起算）
+    await 拨(true);
+    expect(await 超时转重新起算(京("2026-11-20 17:00"))).toBe(1);
+    expect(await 超时转扫一遍(京("2026-11-20 17:00"))).toMatchObject({ 提醒: 0, 转出: 0 });
+    expect(await 超时转扫一遍(京("2026-11-20 17:59"))).toMatchObject({ 提醒: 0, 转出: 0 });
+    expect(await 超时转扫一遍(京("2026-11-20 18:00"))).toMatchObject({ 提醒: 1 });
+    expect(await 超时通知(甲.id)).toHaveLength(2);
+    expect((await 项目(id)).ownerId).toBe(甲.id);
+    expect(await 超时转扫一遍(京("2026-11-20 18:30"))).toMatchObject({ 转出: 1 });
+    expect((await 项目(id)).ownerId).toBe(乙.id);
+  });
+
+  it("重新起算只动还在走的链：停了的（记过沟通）不动", async () => {
+    const a = await 建线索(甲, { replyEndAt: 京("2026-11-20 15:00") });
+    await 记沟通(a.id, "打了电话，客户说下周来看样品", 京("2026-11-20 15:20"));
+    await 超时转扫一遍(京("2026-11-20 16:00"));
+    const 前 = await prisma.entReplyOverdue.findUniqueOrThrow({ where: { projectId: a.id } });
+    expect(前.stoppedAt).not.toBeNull();
+    expect(await 超时转重新起算(京("2026-11-20 17:00"))).toBe(0);
+    expect(await prisma.entReplyOverdue.findUniqueOrThrow({ where: { projectId: a.id } })).toEqual(前);
   });
 });
 

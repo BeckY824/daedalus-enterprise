@@ -43,9 +43,14 @@ import { 视图中跳过 } from "./view-as";
 import { 已回复的 } from "./reply-notice";
 import { 系统操作人 } from "./scheduled-assign";
 import { 超时转令牌 } from "./scheduled-assign-token";
+import { 规则开着 } from "./rules";
 
-/** 总开关：false = 只留 30 分钟前那条提醒，不做超时提醒和自动转 */
-export const 超时自动转开 = true;
+/**
+ * 总开关 = 组织规则「超时未跟进自动转」（rules-table.ts，设置 → 组织架构里系统管理员拨，默认开）。
+ * 关着 = 只留 30 分钟前那条提醒，不做超时提醒和自动转、首页待办不标超时；已经转出去的不回滚，链停在原处不动。
+ * 再打开时在计时的链从打开那刻重新起算（超时转重新起算），不会一打开就把关着期间早该转的一口气转走
+ */
+export const 超时自动转开着 = (): Promise<boolean> => 规则开着("超时自动转");
 /** 计时起点（指定回复时间 / 接手）往后多少分钟发超时提醒 */
 export const 超时提醒分钟 = 60;
 /** 超时提醒实际发出后再过多少分钟自动转 */
@@ -201,8 +206,9 @@ function 记没转成(projectId: string, 为什么: string) {
 /** 扫一遍，回各做了几样。从不抛 */
 export async function 超时转扫一遍(现在: Date = new Date()): Promise<超时转明细> {
   const 明细: 超时转明细 = { 提醒: 0, 转出: 0, 没转成: 0, 停: 0 };
-  if (!企业版() || !超时自动转开 || 在夜里(现在)) return 明细;
+  if (!企业版() || 在夜里(现在)) return 明细;
   try {
+    if (!(await 超时自动转开着())) return 明细;
     if (await 视图中跳过()) return 明细;
     await 看全部(async () => {
       await 停掉出圈的(现在);
@@ -226,6 +232,20 @@ export async function 超时转扫一遍(现在: Date = new Date()): Promise<超
 
 /** 钟上调的（每分钟一遍）：同上 */
 export const 钟上超时自动转 = 超时转扫一遍;
+
+/**
+ * 开关从关拨到开时调（settings/org-actions.ts 设规则）：还在走的链（没停、没转成的那一位）从现在重新计时、超时提醒清掉重发。
+ * 关着期间钟不走，不重算的话打开那一分钟就会把早该转的一口气转走，负责人连句新提醒都没有。
+ * 只动链的计时，不动项目、负责人；回改了几条。出错只记日志、回 0，不挡开关本身
+ */
+export async function 超时转重新起算(现在: Date = new Date()): Promise<number> {
+  try {
+    return (await 看全部(() => prisma.entReplyOverdue.updateMany({ where: { stoppedAt: null }, data: { since: 现在, overdueAt: null } }))).count;
+  } catch (e) {
+    console.error("[超时自动转] 重新打开时没重新计时", e);
+    return 0;
+  }
+}
 
 async function 走一步(p: 链项目, 回了: boolean, 现在: Date, 明细: 超时转明细): Promise<void> {
   const 基 = 超时基准(p);
@@ -354,7 +374,7 @@ export async function 客户在谁名下(p: { id: string; ownerId: string; custo
 
 /** 首页待办：我手上发过超时提醒、还没记有效沟通的（链还在走） */
 export async function 我超时未跟进的(userId: string): Promise<{ id: string; name: string; replyStartAt: Date | null; replyEndAt: Date | null }[]> {
-  if (!企业版() || !超时自动转开) return [];
+  if (!企业版() || !(await 超时自动转开着())) return [];
   const 们 = await prisma.project.findMany({
     where: {
       ownerId: userId, phase: "线索", result: null, pooledAt: null, awaitAssignAt: null, customer: { pool: null },
