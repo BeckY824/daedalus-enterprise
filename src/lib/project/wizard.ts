@@ -28,8 +28,9 @@ export const 备注上限 = 500;
 /** address：联系人所在区域 / 地址（一格文字，11-04 首页录入把国家城市放这）；向导界面不传 = 不存 */
 export type 向导联系人 = { name: string; position?: string | null; phone?: string | null; email?: string | null; wechat?: string | null; address?: string | null;
   /**
-   * 联系方式几行（类型 + 号码，企业版，11-17）：首页 AI 新线索卡交的，建档向导验过记进这位联系人的联系方式子表（和联系人表单同一套）。
-   * 向导界面不传 = 照旧只有上面三格
+   * 联系方式几行（类型 + 号码，企业版，11-17）：首页 AI 新线索卡交的、建档向导第一行号码下面多加的几行，
+   * 建档向导 / 只建客户验过（联系人表单同一套：号码类型字典、格式、全公司查重）记进这位联系人的联系方式子表；不写联系人主表那三格。
+   * 向导界面不加行 = 不传，照旧只有上面三格
    */
   号码们?: readonly { kind: string; value: string }[] | null };
 export const 联系人地址上限 = 100;

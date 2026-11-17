@@ -15,8 +15,9 @@ import { 不在了 } from "@/lib/not-there";
 import { getBusiness } from "@/lib/business";
 import { 读的我 } from "@/lib/team-scope";
 import { 验号码, 号码类型叫法 } from "@/lib/enterprise/contact-format";
-import { 验联系人号码, 企业号码查重, 全公司查号, 撞号结论, 记号码, 联系人号码撞了, 库类型到号码类型 } from "@/lib/enterprise/contact-dedupe";
-import { 验联系人号码们 } from "@/lib/enterprise/customer-v2-db";
+import { 验联系人号码, 企业号码查重, 全公司查号, 撞号结论, 记号码, 联系人号码撞了, 库类型到号码类型, type 联系人的号, type 验好的号 } from "@/lib/enterprise/contact-dedupe";
+import { 验联系人号码们, type 验好的行 } from "@/lib/enterprise/customer-v2-db";
+import type { Prisma } from "@/generated/prisma";
 import { 登记接着建, 记联系人带号 } from "@/lib/project/hook";
 import { 规整向导, 向导接着建, 规整只建客户, 只建客户接着建, 项目来源默认, 占位名提示, type 建好的, type 建好的客户, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
@@ -169,19 +170,10 @@ export async function 建档向导(输入: 建档向导输入) {
     const 第一步 = 企 && input.客户.企业号码 ? 验号码(input.客户.企业号码.类型, input.客户.企业号码.值) : null;
     const 联号 = 企 ? 验联系人号码(好.联系人, 第一步?.ok ? 第一步 : null) : [];
     if ("error" in 联号) return { ok: false as const, error: 联号.error };
-    /*
-      联系方式几行（首页 AI 新线索卡交的 联系人.号码们，11-17）：按联系人表单同一套验（字典、格式、占位号）。
-      手机 / 邮箱 / 微信 / 阿里国际站ID 并进上面那串，一样全公司查重、记子表；座机、WhatsApp 这些别的类型事务里记到这位联系人名下
-    */
-    const 号码行 = 企 && input.联系人?.号码们?.length ? await 验联系人号码们(input.联系人.号码们) : null;
-    if (号码行 && !号码行.ok) return { ok: false as const, error: 号码行.error };
-    const 别的号行 = 号码行?.ok ? 号码行.行们.filter((行) => !库类型到号码类型[行.kind]) : [];
-    for (const 行 of 号码行?.ok ? 号码行.行们 : []) {
-      const 类型 = 库类型到号码类型[行.kind];
-      if (!类型 || 联号.some((h) => h.类型 === 类型 && h.键 === 行.numberKey)) continue;
-      const 同第一步 = !!第一步?.ok && 第一步.类型 === 类型 && 第一步.键 === 行.numberKey;
-      联号.push({ 类型, 值: 行.value, 键: 行.numberKey, 格: `联系人${号码类型叫法(类型)}`, 同第一步 });
-    }
+    // 联系方式几行（AI 新线索卡交的、向导第一行下面多加的 联系人.号码们）：四类并进 联号 一起查重，别的类型事务里记
+    const 号码行 = 企 ? await 并号码行(input.联系人?.号码们, 联号, 第一步?.ok ? 第一步 : null) : null;
+    if (号码行 && "error" in 号码行) return { ok: false as const, error: 号码行.error };
+    const 别的号行 = 号码行?.别的 ?? [];
     // 撞到有人在跟的客户：这次录的写进现有项目（同号再次录入），不建；公海、占位、停用的照原来的提示拦
     const 同号录入 = { 入口: "手工建档", 渠道id: input.客户.channelId, 内容: 好.跟进.content };
     if (第一步?.ok) {
@@ -217,13 +209,11 @@ export async function 建档向导(输入: 建档向导输入) {
       // 客户先落在我名下（下面 saveCustomer 那一格）；市场指定给销售才转过去
       if (转客户) await 转客户给销售(tx, customerId, me.id, 好.项目.ownerId, me.id, 分配?.名 ?? "指定分配");
       for (const 号 of 联号) await 记号码(tx, { 刚建的: customerId }, 建了.contactId ?? null, 号);
-      for (const 行 of 别的号行) {
-        await tx.contactMethod.create({ data: { customerId, contactId: 建了.contactId ?? null, kind: 行.kind, value: 行.value, numberKey: 行.numberKey, formatStatus: "ok", region: 行.region } });
-      }
+      await 记别的号行(tx, customerId, 建了.contactId ?? null, 别的号行);
       await 跟着项目重算(tx, 状态开, [customerId]);
     }));
     // 联系人带着号：客户本身可以没有电话（M-必填-01 任一联系方式；只有座机这类占不了企业号码的号也能建）
-    if (号码行?.ok && 号码行.行们.length) 记联系人带号(接着);
+    if (号码行?.有) 记联系人带号(接着);
     let r: Awaited<ReturnType<typeof saveCustomer>>;
     try {
       // 新客户的业务线跟项目走（客户那一步没另选时；交了个空的也算没选，M-必填-13）
@@ -288,6 +278,30 @@ async function 建档前挡(me: Awaited<ReturnType<typeof requireUser>>, 输入:
   return 新建挡 ? { ok: false as const, error: 新建挡 } : null;
 }
 
+/*
+  联系方式几行（联系人.号码们，企业版 11-17）：首页 AI 新线索卡交的、建档向导第一行号码下面多加的，都按联系人表单同一套验
+  （号码类型字典 V-号码类型 八种、格式、占位号，最多 每人最多号码 个）。手机 / 邮箱 / 微信 / 阿里国际站ID 并进 联号，和第一行、
+  联系人那几格一样全公司查重、记子表（同类同号只记一次）；座机、WhatsApp 这些别的类型只验格式，返回给调用方事务里记到主要联系人名下。
+  有 = 交了至少一个号（联系人带号，客户本身可以没有电话）
+*/
+async function 并号码行(行们: 向导联系人["号码们"], 联号: 联系人的号[], 第一步: 验好的号 | null): Promise<{ 别的: 验好的行[]; 有: boolean } | { error: string }> {
+  if (!行们?.length) return { 别的: [], 有: false };
+  const 验 = await 验联系人号码们(行们);
+  if (!验.ok) return { error: 验.error };
+  for (const 行 of 验.行们) {
+    const 类型 = 库类型到号码类型[行.kind];
+    if (!类型 || 联号.some((h) => h.类型 === 类型 && h.键 === 行.numberKey)) continue;
+    const 同第一步 = !!第一步 && 第一步.类型 === 类型 && 第一步.键 === 行.numberKey;
+    联号.push({ 类型, 值: 行.value, 键: 行.numberKey, 格: `联系人${号码类型叫法(类型)}`, 同第一步 });
+  }
+  return { 别的: 验.行们.filter((行) => !库类型到号码类型[行.kind]), 有: 验.行们.length > 0 };
+}
+async function 记别的号行(tx: Prisma.TransactionClient, customerId: string, contactId: string | null, 行们: readonly 验好的行[]) {
+  for (const 行 of 行们) {
+    await tx.contactMethod.create({ data: { customerId, contactId, kind: 行.kind, value: 行.value, numberKey: 行.numberKey, formatStatus: "ok", region: 行.region } });
+  }
+}
+
 async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输入: 只建客户输入) {
   const 企 = 企业版();
   let 客户 = 输入.客户;
@@ -312,6 +326,9 @@ async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输�
   const 第一步 = 企 && 客户.企业号码 ? 验号码(客户.企业号码.类型, 客户.企业号码.值) : null;
   const 联号 = 企 ? 验联系人号码(好.联系人, 第一步?.ok ? 第一步 : null) : [];
   if ("error" in 联号) return { ok: false as const, error: 联号.error };
+  const 号码行 = 企 ? await 并号码行(输入.联系人?.号码们, 联号, 第一步?.ok ? 第一步 : null) : null;
+  if (号码行 && "error" in 号码行) return { ok: false as const, error: 号码行.error };
+  const 别的号行 = 号码行?.别的 ?? [];
   const 同号录入 = { 入口: "手工建档", 渠道id: 客户.channelId, 内容: 好.跟进.content };
   if (第一步?.ok) {
     const 结论 = await 企业号码查重(prisma, 第一步, me.id, await 读的我(defaultClient));
@@ -338,7 +355,9 @@ async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输�
     }
     await 建(tx, customerId);
     for (const 号 of 联号) await 记号码(tx, { 刚建的: customerId }, 建了.contactId ?? null, 号);
+    await 记别的号行(tx, customerId, 建了.contactId ?? null, 别的号行);
   }));
+  if (号码行?.有) 记联系人带号(接着);
   let r: Awaited<ReturnType<typeof saveCustomer>>;
   try {
     r = await saveCustomer({ ...客户, id: undefined, updatedAt: null, base: null }, 接着);

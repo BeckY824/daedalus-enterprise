@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Alert, AutoComplete, Button, Input, InputNumber, Modal, Select, Space, Switch, Tag } from "antd";
-import { CheckOutlined } from "@ant-design/icons";
+import { CheckOutlined, MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import CopyValue from "@/components/CopyValue";
 import DatePicker from "@/components/BusinessDatePicker";
 import { PageHead } from "@/components/ui";
@@ -29,6 +29,8 @@ import type { 名撞结论 } from "@/lib/enterprise/dupe-ledger";
 import AttachEntry, { 负责人说法, 我名下入口 } from "./AttachEntry";
 import RescueKey from "../../customers/RescueKey";
 import { 向导能选类型, 带进联系人, 号码类型叫法, type 联系人三格 } from "@/lib/enterprise/contact-format";
+import { 每人最多号码, 内置号码种类, 号码上限 } from "@/lib/enterprise/customer-v2";
+import { 线索号码种类 } from "@/lib/agent/proposals";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import SameNumberEntry from "./SameNumberEntry";
 import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
@@ -45,11 +47,21 @@ import { 没业务角色不能新建话 } from "@/lib/enterprise/permissions";
 const 草稿键 = "项目建档向导";
 const 时间格式 = "YYYY-MM-DD HH:mm";
 
+/** 向导第一行下面多加的一行号码：kind = ContactMethod.kind（customer-v2.ts 内置号码种类） */
+type 多的号 = { kind?: string; value: string };
+/** 第一行号码类型 → 多加一行默认的 kind（跟第一行同类） */
+const 第一行的kind = (t?: string) => 内置号码种类.find((x) => x.验 && x.验 === t)?.kind;
 type 稿 = {
   /** 第一步那个号码。企业版下是选的那种号码（手机号 / 邮箱 / 微信 / 阿里国际站ID，类型值还是「旺旺ID」），不一定是电话 */
   phone: string;
   /** 企业版第一步选的号码类型（lib/enterprise/contact-format.ts）；开关关着没有这格 */
   号码类型?: string;
+  /**
+   * 企业版：第一行下面多加的号码（员工反馈「客户会留多个电话或者微信号」），类型 + 号码，连第一行最多 每人最多号码 行。
+   * 类型和 AI 新线索卡、联系人表单同一套（号码类型字典默认八种，kind 存库写法）。第一行照旧是客户的号（查重、主号）；
+   * 这几行当 联系人.号码们 交给服务端记在主要联系人身上：手机、邮箱、微信、阿里国际站ID 同第一行全公司查重，其余只验格式。老草稿里没有
+   */
+  更多号码?: 多的号[];
   联系人: { name: string; position: string; phone: string; email: string; wechat: string };
   /** 企业版：上一次查重带进联系人那几格的值（人没动过的，再查一个号时跟着换）；开关关着没有这格 */
   带过?: Partial<联系人三格>;
@@ -113,7 +125,7 @@ function 空稿(ownerId: string, currency: string, 首类型: string): 稿 {
 const 查过键 = (d: 稿, 企: boolean) => (企 ? `${d.号码类型 ?? ""}|${d.phone.trim()}` : d.phone.trim());
 
 /** 一张表上的格子（P-界面-36）：校验出错时按它就地标红、滚过去 */
-type 格 = "号码类型" | "号码" | "联系人" | "客户名" | "来源" | "业务线" | "项目名" | "分配方式" | "负责人" | "内容" | "节点" | "下一步时间" | "下一步计划";
+type 格 = "号码类型" | "号码" | "更多号码" | "联系人" | "客户名" | "来源" | "业务线" | "项目名" | "分配方式" | "负责人" | "内容" | "节点" | "下一步时间" | "下一步计划";
 type 差项 = { 格: 格; 话: string };
 
 /**
@@ -134,6 +146,9 @@ function 客户还差(d: 稿, 企业: 企业建档, 记: (格: 格, 话: string)
   const 企 = !!企业;
   if (企 && !d.号码类型) 记("号码类型", "请选择号码类型");
   if (!d.phone.trim()) 记("号码", 企 ? "请填号码" : "请填电话");
+  // 多加的号码：填了号没选类型的就地说是第几个（空行不管，交的时候丢掉）
+  const 没类型 = 企 ? (d.更多号码 ?? []).findIndex((x) => x.value.trim() && !x.kind) : -1;
+  if (没类型 >= 0) 记("更多号码", `第 ${没类型 + 2} 个号码请选择号码类型`);
   // 企业版：「未知」「待定」「暂未确认」这类占位不算填了（11-03 A2-2，服务端同一句）
   if (!d.客户.name.trim()) 记("客户名", "请填写名称");
   else if (企 && 是占位值(d.客户.name)) 记("客户名", 占位名提示("客户名称"));
@@ -503,11 +518,14 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     const 跟进 = 企业
       ? { ...稿面.跟进, method: 对得上的方式(稿面.跟进.type, 稿面.跟进.method), ...(带项目 ? {} : { 节点: undefined }) }
       : { type: 稿面.跟进.type, content: 稿面.跟进.content, occurredAt: 稿面.跟进.occurredAt, 下一步时间: 能填下一步 ? 稿面.跟进.下一步时间 : null };
+    // 企业版：第一行下面多加的号码跟着主要联系人交（空行丢掉）；没加就不带这一格，和原来一样
+    const 更多 = 企业版 ? (稿面.更多号码 ?? []).filter((x) => x.value.trim()).map((x) => ({ kind: x.kind ?? "", value: x.value })) : [];
+    const 联系人 = 更多.length ? { ...稿面.联系人, 号码们: 更多 } : 稿面.联系人;
     try {
       const r = 带项目
         ? await 建档向导({
           客户,
-          联系人: 稿面.联系人,
+          联系人,
           项目: {
             ...项目稿, amount: 稿面.项目.amount ?? 0, ownerId: 负责人 || null, 分配方式: 企业 ? 稿面.项目.分配方式 ?? null : undefined,
             // 业务线（11-01 清单 A1，手动选）：企业版总是传（没选 = null）；团队版不传
@@ -517,7 +535,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
           },
           跟进,
         })
-        : await 建档只建客户({ 客户, 联系人: 稿面.联系人, 跟进 });
+        : await 建档只建客户({ 客户, 联系人, 跟进 });
       if (!r.ok && "同号协同" in r) {
         // 同号再次录入：没新建，记录已写进现有项目（查重之后才有人录同号时走到这）。那句写在底栏上面，点「知道了」再关框
         清草稿(全名);
@@ -601,6 +619,52 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     ? <>{线提示 && <span data-testid="wizard-bizline-hint" className={线提示.同 ? undefined : "cr-warn"}>{线提示.话}；</span>}自动分配只分给这条线的销售；暂不分配 = 留在新线索等人指派。客户没另选时也记成这条线</>
     : `${b.customer}的业务线；以后开项目时默认带上`);
   const 未完 = 显错 && 差们.length > 0;
+  /*
+    企业版：第一行号码下面能再加几行（类型 + 号码，照联系人表单「加一个联系方式」，连第一行最多 每人最多号码 行）。
+    类型同 AI 新线索卡（号码类型字典默认八种）。这几行不在这里查重：交的时候服务端按联系人表单那套验格式，
+    手机、邮箱、微信、阿里国际站ID 和第一行同一套全公司查重，其余只验格式，都记在主要联系人身上
+  */
+  const 更多号码 = d.更多号码 ?? [];
+  // 不走 改：它把对象格合并进去，数组会被摊成对象
+  const 改更多 = (变: (们: 多的号[]) => 多的号[]) => {
+    setD((o) => {
+      const n = { ...o, 更多号码: 变(o.更多号码 ?? []) };
+      存草稿(全名, { 稿: n });
+      return n;
+    });
+    set已存(true);
+  };
+  const 更多号码格 = (
+    <div className="cr-wide cr-more-nums" data-ge="更多号码" data-testid="wizard-more-numbers">
+      {更多号码.map((x, i) => (
+        <Space.Compact key={i} className="cr-full">
+          <Select
+            className="cr-type"
+            aria-label={`第 ${i + 2} 个号码类型`}
+            placeholder="号码类型"
+            status={错("更多号码") && x.value.trim() && !x.kind ? "error" : undefined}
+            value={x.kind}
+            options={线索号码种类.map((k) => ({ value: k.kind, label: k.名 }))}
+            onChange={(v) => 改更多((们) => 们.map((y, j) => (j === i ? { ...y, kind: v } : y)))}
+          />
+          <Input
+            aria-label={`第 ${i + 2} 个号码`}
+            value={x.value}
+            placeholder="号码或账号"
+            maxLength={号码上限}
+            onChange={(e) => { const value = e.target.value; 改更多((们) => 们.map((y, j) => (j === i ? { ...y, value } : y))); }}
+          />
+          <Button icon={<MinusCircleOutlined />} aria-label={`去掉第 ${i + 2} 个号码`} onClick={() => 改更多((们) => 们.filter((_, j) => j !== i))} />
+        </Space.Compact>
+      ))}
+      {更多号码.length + 1 < 每人最多号码 && (
+        <Button type="dashed" block icon={<PlusOutlined />} onClick={() => 改更多((们) => (们.length + 1 < 每人最多号码 ? [...们, { kind: 第一行的kind(d.号码类型), value: "" }] : 们))}>
+          加一个号码
+        </Button>
+      )}
+      {错("更多号码") && <span className="cr-err" role="alert">{错("更多号码")}</span>}
+    </div>
+  );
 
   return (
     <div className="cr-sheet">
@@ -703,6 +767,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
               ) : <Alert type="success" showIcon title="没人录过这个号码" />}
             </div>
           )}
+          {企业版 && 更多号码格}
           {一格("客户名", `${b.customer}名称`, 能挑老客户 ? (
             <AutoComplete
               className="cr-full"

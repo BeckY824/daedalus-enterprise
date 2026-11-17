@@ -198,3 +198,82 @@ it.each([1024, 1280, 1366])("Windows %ipx + 超长客户名：弹窗里不横向
     expect(量).toEqual({ 表: 0, 体: 0, 页: 0, 点得中: true, 右: true });
   } finally { await page.close(); }
 });
+
+// 多个号码（员工反馈「客户会留多个电话或者微信号，需要可以新增多个添加框」）：第一行下面「加一个号码」，类型 + 号码 + 去掉；
+// 新行类型默认跟第一行；连第一行最多 20 行；交的时候空行丢掉、跟着主要联系人交（联系人.号码们），第一行照旧是 企业号码
+it("多个号码：加一行类型默认跟第一行、能改类型、能去掉；空行不交；只填第一行不带 号码们", async () => {
+  const page = await 开(1280);
+  try {
+    const 框 = page.getByRole("dialog");
+    await 框.getByLabel("号码", { exact: true }).fill("13905712266");
+    const 第一行类型 = await 框.locator("[data-ge='号码'] .ant-select").first().innerText();
+    const 加 = 框.getByRole("button", { name: "加一个号码" });
+    await 加.click();
+    expect(await 框.locator("[data-testid='wizard-more-numbers'] .ant-select").first().innerText()).toBe(第一行类型);
+    await 框.getByLabel("第 2 个号码", { exact: true }).fill("13905712267");
+    await 加.click();
+    await 选(page, "第 3 个号码类型", "微信");
+    await 框.getByLabel("第 3 个号码", { exact: true }).fill("wx_buyer01");
+    await 加.click();
+    await 加.click();
+    // 第 5 行填了再去掉，第 4 行空着
+    await 框.getByLabel("第 5 个号码", { exact: true }).fill("要去掉的");
+    await 框.getByRole("button", { name: "去掉第 5 个号码" }).click();
+    expect(await 框.getByLabel("第 5 个号码", { exact: true }).count()).toBe(0);
+    await 框.getByLabel("客户名称").fill("华东展具");
+    await 框.getByLabel("联系人姓名").fill("王总");
+    await 选(page, "渠道触点", "公司资源");
+    await 选(page, "业务线", "内贸");
+    await 框.getByLabel("沟通内容").fill("客户留了两个手机一个微信");
+    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
+    const 交 = (await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 客户: Record<string, unknown>; 联系人: Record<string, unknown> };
+    // 第一行照旧是 企业号码（默认手机号）；多加的跟着联系人交，空行、去掉的不在里面
+    expect(第一行类型).toBe("手机号");
+    expect(交.客户.企业号码).toEqual({ 类型: "手机号", 值: "13905712266" });
+    expect(交.联系人.号码们).toEqual([{ 类型: "手机号", 值: "13905712267" }, { 类型: "微信", 值: "wx_buyer01" }]);
+  } finally { await page.close(); }
+});
+
+it("多个号码：只填第一行时不带 号码们；连第一行 20 行后「加一个号码」不再摆", async () => {
+  const page = await 开(1280);
+  try {
+    const 框 = page.getByRole("dialog");
+    const 加 = 框.getByRole("button", { name: "加一个号码" });
+    for (let i = 0; i < 19; i++) await 加.click();
+    expect(await 框.getByLabel("第 20 个号码", { exact: true }).count()).toBe(1);
+    expect(await 加.count()).toBe(0);
+    await 框.getByRole("button", { name: "去掉第 20 个号码" }).click();
+    await 加.waitFor();
+    // 空行全不交：只填第一行的照旧没有 号码们
+    await 框.getByLabel("号码", { exact: true }).fill("13905712266");
+    await 框.getByLabel("客户名称").fill("华东展具");
+    await 框.getByLabel("联系人姓名").fill("王总");
+    await 选(page, "渠道触点", "公司资源");
+    await 选(page, "业务线", "内贸");
+    await 框.getByLabel("沟通内容").fill("只留了一个号");
+    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
+    const 交 = (await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 联系人: Record<string, unknown> };
+    expect("号码们" in 交.联系人).toBe(false);
+  } finally { await page.close(); }
+});
+
+it.each([1024, 1280, 1366])("Windows %ipx + 多个超长号码：弹窗里不横向溢出，每行类型、号码、去掉都在框里", async (w) => {
+  const page = await 开(w, { __开关: "开" });
+  try {
+    const 框 = page.getByRole("dialog");
+    const 加 = 框.getByRole("button", { name: "加一个号码" });
+    for (let i = 0; i < 3; i++) await 加.click();
+    for (let i = 2; i <= 4; i++) await 框.getByLabel(`第 ${i} 个号码`, { exact: true }).fill("very.long.purchasing.mailbox.name@example-supplier-company-with-long-name.com");
+    const 量 = await page.evaluate(() => {
+      const s = document.querySelector(".cr-sheet") as HTMLElement;
+      const body = document.querySelector(".ant-modal-body") as HTMLElement;
+      const 块 = document.querySelector("[data-testid='wizard-more-numbers']") as HTMLElement;
+      const 块框 = 块.getBoundingClientRect();
+      const 出格 = [...块.querySelectorAll(".ant-space-compact > *")].filter((e) => { const r = e.getBoundingClientRect(); return r.right > 块框.right + 0.5 || r.left < 块框.left - 0.5; }).length;
+      return { 表: s.scrollWidth - s.clientWidth, 体: body.scrollWidth - body.clientWidth, 页: document.documentElement.scrollWidth - window.innerWidth, 出格 };
+    });
+    expect(量, `${w}`).toEqual({ 表: 0, 体: 0, 页: 0, 出格: 0 });
+  } finally { await page.close(); }
+});
