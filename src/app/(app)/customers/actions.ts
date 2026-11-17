@@ -1860,13 +1860,13 @@ export async function deleteContract(
 const 负责人刚被改过 = "负责人刚被别人改过，这次没有改，刷新后再看";
 
 /**
- * 记录页里能直接点着改的字段。姓名、推荐关系（要重算归属）仍走完整表单。
+ * 记录页里能直接点着改的字段。推荐关系（要重算归属）仍走完整表单；姓名只有企业版的全称（资料卡第一行）能点着改，桌面端照旧走完整表单。
  * 电话、客户地址 11-04 起也能直接改（用户：改成直接可编辑，不用再点按钮）：电话照完整表单那套查重（见下面 phone 那段），
  * 所在地区四格一起交，走 patchCustomerRegion
  */
-const PATCHABLE = ["school", "major", "grade", "remark", "expectedSignAt", "followStatus", "decisionStatus", "custStatus", "salesOwnerId", "channelOwnerId", "shortName", "assignWay", "customerType", "customerAttr", "phone", "addrDetail", ...外贸键] as const;
+const PATCHABLE = ["name", "school", "major", "grade", "remark", "expectedSignAt", "followStatus", "decisionStatus", "custStatus", "salesOwnerId", "channelOwnerId", "shortName", "assignWay", "customerType", "customerAttr", "phone", "addrDetail", ...外贸键] as const;
 /** 只有企业版能点着改的几格（迁移 072）：开关关着不收 */
-const 企业版才有的格: readonly string[] = ["shortName", "assignWay", "customerType", "customerAttr", "addrDetail"];
+const 企业版才有的格: readonly string[] = ["name", "shortName", "assignWay", "customerType", "customerAttr", "addrDetail"];
 export type PatchableKey = (typeof PATCHABLE)[number];
 
 /**
@@ -1969,6 +1969,20 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
       if (!cur) return { ok: false, error: `这条${b.customer}已被删除` };
       data.channelOwnerId = (await resolveAttribution(cur)).channelOwnerId;
     }
+  } else if (key === "name") {
+    /*
+      企业版全称就地改（员工反馈：负责人改不了全称；P-判定-02 负责人能编辑、P-抬头-03 全称排资料卡第一行）。
+      规矩同 saveCustomer 编辑：不许清空、长度按 企业版客户太长、编辑不按名字查重（改名不算新建）。
+      PR-7 合并时这里跟随全称可空（企业版全称选填）
+    */
+    if (!hasVisibleText(v)) return { ok: false, error: `请填写${b.customer}全称` };
+    const 原 = await prisma.customer.findUnique({ where: { id }, select: { name: true, remark: true } });
+    if (!原) return { ok: false, error: `这条${b.customer}已被删除` };
+    const 名 = (v as string).trim();
+    if (名 === 原.name) return { ok: true };
+    const 太长 = 企业版客户太长(b.customer, { name: 名 }, 原);
+    if (太长) return { ok: false, error: 太长 };
+    data.name = 名;
   } else if (key === "shortName") {
     const 简 = (v ?? "").replace(/\s+/g, " ") || null;
     if (简 && 简.length > 简称上限) return { ok: false, error: `客户简称最多 ${简称上限} 个字` };
