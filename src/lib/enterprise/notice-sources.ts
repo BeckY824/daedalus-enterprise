@@ -73,7 +73,7 @@ async function 客户也转给你(们: readonly 分配条[]): Promise<string | n
  * 线索分出去了：按接手人合并成一条（批量自动分配 10 条给同一个人 = 他收一条「自动分配给你 10 条新线索」）。
  * 自动 = 自动分配 / 批量自动分配 / 建档向导的自动分配；手动 = 指定分配
  */
-export async function 分配通知(谁点的: 人, 条们: readonly 分配条[], 自动: boolean): Promise<void> {
+export async function 分配通知(谁点的: 人, 条们: readonly 分配条[], 自动: boolean, 另附?: string): Promise<void> {
   await 稳("分配通知", async () => {
     const 按人 = new Map<string, 分配条[]>();
     for (const c of 条们) if (c.toUserId && c.toUserId !== 谁点的.id) 按人.set(c.toUserId, [...(按人.get(c.toUserId) ?? []), c]);
@@ -94,7 +94,8 @@ export async function 分配通知(谁点的: 人, 条们: readonly 分配条[],
       await notify([toUserId], {
         kind: 自动 ? "自动分配" : "分配",
         title: n === 1 ? `${头}一条新线索：${名们[0]}` : `${头} ${n} 条新线索`,
-        body: 接一句(接一句(n === 1 ? (自动 ? `${谁点的.name} 点的自动分配，轮到了你。` : "") : 名单(名们), await 客户也转给你(们)), await 客户上还留着(们)),
+        // 另附（11-17 PR3）：定时分配到点时写「按定时分配，原定 HH:mm」；系统到点自动分的不说「谁点的」
+        body: 接一句(接一句(接一句(n === 1 ? (自动 ? (谁点的.id === "system" ? "" : `${谁点的.name} 点的自动分配，轮到了你。`) : "") : 名单(名们), await 客户也转给你(们)), await 客户上还留着(们)), 另附 ?? null),
         link: 只一条项目 ? `/projects/${们[0].projectId}` : "/leads",
         key: `assign:${自动 ? "auto" : "manual"}:${们.map((c) => c.projectId ?? c.leadId).sort().join(",").slice(0, 400)}:${分钟()}`,
       });

@@ -30,6 +30,7 @@ import { 是项目卡, 不可撤销, type 项目卡 } from "@/lib/agent/project-
 import dynamic from "next/dynamic";
 import RescueKey from "@/app/(app)/customers/RescueKey";
 import ReplyWindowInput from "@/components/ReplyWindowInput";
+import ScheduleAssignInput from "@/components/ScheduleAssignInput";
 
 // 项目类卡的格子（11-01 速度闸门）：AI 面板每一页都在，这块只有项目卡用到，出卡时才去拿，不进每页首屏
 const ProjectProposalFields = dynamic(() => import("@/components/ProjectProposalFields"), { ssr: false });
@@ -629,6 +630,12 @@ export default function ProposalCard({
                 {(企.分配方式们.length === 0 || draft.分配方式 === 0) && (
                   <Field label="项目负责人">
                     <Select size="small" style={{ width: 160 }} showSearch optionFilterProp="label" placeholder="选一位" value={draft.ownerId || undefined} options={负责人选项} onChange={(v) => setDraft({ ...draft, ownerId: v })} />
+                  </Field>
+                )}
+                {/* 指定分配时间（11-17 PR3）：指定分配、自动分配才有，和新建项目同一格（components/ScheduleAssignInput.tsx） */}
+                {(draft.分配方式 === 0 || draft.分配方式 === 1) && (
+                  <Field label="分配时间" block>
+                    <ScheduleAssignInput size="small" value={draft.定时分配 ?? null} onChange={(v) => setDraft({ ...draft, 定时分配: v ?? undefined })} />
                   </Field>
                 )}
                 <Field label="业务线">

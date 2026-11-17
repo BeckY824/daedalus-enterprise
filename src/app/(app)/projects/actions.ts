@@ -47,7 +47,7 @@ import { saveCustomer, type CustomerInput } from "../customers/actions";
 import { saveFollowUp, deleteFollowUp } from "../customers/[id]/actions";
 import { 只读客户, 只读话 } from "@/lib/team-scope";
 import { scheduleValue } from "@/lib/schedule-date";
-import { 定分配方式, 建好再分 } from "@/lib/project/after-create-assign";
+import { 定分配方式, 建好再分, 认新建定时 } from "@/lib/project/after-create-assign";
 import { 认业务线, 业务线必填 } from "@/lib/enterprise/assign-line";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 import { 字典定义, 项目画像项, 认跟进方式, 选的原因 } from "@/lib/enterprise/dict";
@@ -89,7 +89,16 @@ export async function 建档向导(输入: 建档向导输入) {
     // 指定分配 = 负责人是选的那位；另外四种都先建在我名下，自动分配建好后按自动分配转出去、公海捞取建好后放进项目公海
     const 分配 = 企业版() ? await 定分配方式(me, 输入.项目) : null;
     if (分配 && "error" in 分配) return { ok: false as const, error: 分配.error };
-    let input = 分配 && 分配.i !== 0
+    // 指定分配时间（11-17 PR3）：选了「指定时间」= 先建在我名下待分配（定时），到点再分；指定分配的接手人就是选的负责人
+    const 定时 = 分配 && 输入.项目 ? 认新建定时(分配, 输入.项目.定时分配, 输入.项目.ownerId) : null;
+    if (定时 && "error" in 定时) return { ok: false as const, error: 定时.error };
+    if (定时?.接手人) {
+      const 接 = await prisma.user.findUnique({ where: { id: 定时.接手人 }, select: { active: true } });
+      if (!接?.active) return { ok: false as const, error: "项目负责人不存在或已停用，请选一位在职成员" };
+      const 问题 = (await 不能当负责人(定时.接手人)) ?? 接手问题(await 读组织(), 定时.接手人, null);
+      if (问题) return { ok: false as const, error: 问题 };
+    }
+    let input = 分配 && (分配.i !== 0 || 定时)
       ? { ...输入, 客户: { ...输入.客户, salesOwnerId: me.id }, 项目: { ...输入.项目, ownerId: me.id } }
       : 输入;
     // 来源选的是「只有主渠道」的占位（没有子渠道的主渠道）：先落成子渠道名留空的那条渠道，后面一律按真的渠道 id 走（channel-main.ts 落到渠道）
@@ -232,7 +241,7 @@ export async function 建档向导(输入: 建档向导输入) {
     await 存沟通后重算三态(r.id);
     刷新项目(建了.projectId, r.id);
     // 指定给了别人：项目不在我名下，跳详情页会是「不存在或无权查看」（11-03 A2-1），和自动分配一样回线索列表
-    const 再分 = 分配 ? await 建好再分(me, 分配, 建了.projectId!, 好.项目.name, 好.企业?.业务线 ?? null) : null;
+    const 再分 = 分配 ? await 建好再分(me, 分配, 建了.projectId!, 好.项目.name, 好.企业?.业务线 ?? null, 定时) : null;
     // 指定给了别人：告诉接手人。客户转过去了链客户详情（看得到联系方式）；客户没转就是项目分给他，链项目详情。自动分配、进公海走 建好再分 里自己的通知，这里不重复
     if (!再分 && 好.项目.ownerId !== me.id) {
       if (转客户 || !企) await 分给你通知(me, 好.项目.ownerId, [r.id], 好.项目.name);

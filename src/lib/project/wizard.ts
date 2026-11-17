@@ -48,7 +48,12 @@ export type 向导项目 = { name: string; ownerId?: string | null; amount?: num
    * 三处新建（建档向导、客户页新增项目、首页 AI 新线索卡）同一份；团队版不传、不认
    */
   要求回复开始?: string | null;
-  要求回复结束?: string | null };
+  要求回复结束?: string | null;
+  /**
+   * 指定分配时间（企业版，11-17 PR3）：分配方式选指定分配 / 自动分配时可选「指定时间」，北京墙钟「YYYY-MM-DD HH:mm」；
+   * 空 / 不传 = 现在分配（照旧）。晚于现在、最远 30 天（time-fields.ts 认定时分配），建档向导 / 给客户建项目里认，到点见 lib/enterprise/scheduled-assign.ts
+   */
+  定时分配?: string | null };
 /** 下一步时间：企业版开了超时回收时线索、商机阶段必填（lib/project/timeout.ts），没开可不填 */
 /**
  * 阶段：企业版记沟通必选（lib/project/stage-gates.ts 的 记沟通阶段问题），团队版不传、不看。

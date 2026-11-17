@@ -1034,6 +1034,11 @@ model Project {
   /// 规整、显示见 lib/project/time-fields.ts；不写进下一步时间、不动超时回收
   replyStartAt         DateTime?
   replyEndAt           DateTime?
+  /// 指定分配时间（企业版，迁移 149，11-17）：新建时选「指定时间」= 到点由后台定时任务分出去（lib/enterprise/scheduled-assign.ts）。
+  /// 有值 = 还没到点、还在待分配（awaitAssignAt 同时有值）；到点执行、取消、清了待分配标记、进回收站都清空。
+  /// scheduledAssignTo = 指定分配到点分给谁；空 = 到点自动分配（不建外键，人停用了到点按「分不出去」办）
+  scheduledAssignAt    DateTime?
+  scheduledAssignTo    String?
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
   /// 企业版软删（2026-10-29，P9）：空 = 没删；有值 = 进了回收站，30 天后清掉。读的时候 lib/enterprise/soft-delete.ts 统一滤掉
@@ -1072,6 +1077,8 @@ model Project {
   /// 要求回复时间到点提醒按时刻扫（迁移 148）
   @@index([replyStartAt])
   @@index([replyEndAt])
+  /// 定时分配到点按时刻扫（迁移 149）
+  @@index([scheduledAssignAt])
   /// 渠道统计按项目来源取数（迁移 077）
   @@index([channelId])
   /// 企业版新线索页按阶段筛、按最近更新倒序取前 500（迁移 065）

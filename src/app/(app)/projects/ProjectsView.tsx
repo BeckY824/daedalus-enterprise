@@ -88,6 +88,12 @@ function 节点文字(r: 项目行, 字典: 阶段字典) {
  * 阶段 = "线索"：企业版「新线索」页（/leads）。只列线索阶段的项目、只有列表，
  * 新建照样走项目向导（落在潜客培育）；转商机之后它就只在「项目」页里了（10-26 用户定的三大阶段）。
  */
+/** 负责人格的「待分配」（PR3：定时的写「定时 11-20 15:00」，悬停看到点分给谁） */
+function 待分配格({ r }: { r: 项目行 }) {
+  if (r.定时分配) return <Tag color="orange" style={{ whiteSpace: "normal", marginInlineEnd: 0 }} title={`${r.ownerName} 建的，${r.定时分配.时} 到点${r.定时分配.给谁 ? `分给 ${r.定时分配.给谁}` : "自动分配"}（北京时间）`}>定时 {r.定时分配.时}</Tag>;
+  return <Tag color="orange" title={`${r.ownerName} 建的，等总管理员、市场管理或销售管理分`}>待分配</Tag>;
+}
+
 export default function ProjectsView({
   行, 列: 看板, 总数, 页, 每页, 要的页, 排序 = "", users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 能分公海客户项目 = false, 满额提醒: 提醒们 = [], 能按号码筛 = false, 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [], 客户页 = false, 基址 = "/projects", 标题, 换回客户列表 = false, 能新建客户 = false, 三态点, 每列,
 }: {
@@ -423,7 +429,7 @@ export default function ProjectsView({
       { title: "创建时间", key: "createdAt", width: 104, 默认: false, sorter: true, sortOrder: 序of("createdAt"), render: (_: unknown, r: 项目行) => (r.createdAt ? <span className="nowrap">{fmtDate(r.createdAt)}</span> : 无) },
     ] : []),
     ...(企业版 && filters.pool === "1" ? [{ title: "收回次数", key: "recycled", width: 90, 默认: false, align: "right" as const, render: (_: unknown, r: 项目行) => r.收回次数 ?? 0 }] : []),
-    ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, sorter: true, sortOrder: 序of("owner"), render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>在公海</Tag> : r.待分配 ? <Tag color="orange" title={`${r.ownerName} 建的，等总管理员、市场管理或销售管理分`}>待分配</Tag> : <UserCell name={r.ownerName} />) }]),
+    ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, sorter: true, sortOrder: 序of("owner"), render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>在公海</Tag> : r.待分配 ? <待分配格 r={r} /> : <UserCell name={r.ownerName} />) }]),
     // 回公海日：明天（或今天）就回的直接写「明天回公海（11-06）」，再往后只写日期；不会收的（已结束、在订单阶段、在公海）是 —
     ...(企业版 ? [{ title: "回公海日", key: "recycleAt", width: 150, render: (_: unknown, r: 项目行) => (r.即将回收 ? <将收标 日={r.即将回收} /> : r.回收日 ? dayjs(r.回收日).format("MM-DD") : 无) }] : []),
     { title: "最近更新", key: "updatedAt", width: 100, ...收起, render: (_, r) => fmtDate(r.updatedAt) },
@@ -451,7 +457,7 @@ export default function ProjectsView({
   const 市场锁定 = new Set(["name", "phase", "node", "verify", "owner"]);
   // 判无效的写「叫法 · 原因」一行放不下就省略，悬停看每一步谁、哪天、判了什么（客户 11-05（X-09），lib/project/list.ts 读验证痕们）
   const 验证列: 列<项目行> = { title: "验证结果", key: "verify", width: 120, render: (_, r) => (有值(r.验证结果) ? <span className="fulltext" title={r.验证全文 || r.验证结果}>{r.验证结果}</span> : 无) };
-  const 负责人列: 列<项目行> = { title: "负责人", key: "owner", width: 110, sorter: true, sortOrder: 序of("owner"), render: (_, r) => (r.待分配 ? <Tag color="orange" title={`${r.ownerName} 建的，等总管理员、市场管理或销售管理分`}>待分配</Tag> : <UserCell name={r.ownerName} />) };
+  const 负责人列: 列<项目行> = { title: "负责人", key: "owner", width: 110, sorter: true, sortOrder: 序of("owner"), render: (_, r) => (r.待分配 ? <待分配格 r={r} /> : <UserCell name={r.ownerName} />) };
   const 列表: 列<项目行>[] = 市场列
     ? [
         ...市场默认.map((k) => (k === "verify" ? 验证列 : k === "owner" ? 负责人列 : 找列(k))).filter((c): c is 列<项目行> => !!c),

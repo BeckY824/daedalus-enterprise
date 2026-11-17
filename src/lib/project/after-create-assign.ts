@@ -12,6 +12,9 @@ import { 标待分配 } from "@/lib/enterprise/await-assign";
 import { 读市场成员们 } from "@/lib/enterprise/market-db";
 import { 默认分配方式, 是销售角色, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 向导自动分配 } from "@/app/(app)/leads/assign-actions";
+import { 标定时分配 } from "@/lib/enterprise/scheduled-assign";
+import { 认定时分配, 短时刻 } from "@/lib/project/time-fields";
+import { prisma } from "@/lib/prisma";
 
 /** 新线索能手动分配 / 点自动分配的（A7）：和 lead-assign.ts 能分配 同一组业务角色 */
 const 能分配的人 = "市场管理、销售管理、总管理员";
@@ -54,11 +57,18 @@ export async function 定分配方式(me: 我, 项目: { 分配方式?: number |
  * - 个人自持、指定分配：建好就在负责人名下，不用再动
  * 建档本身算成了，没成的回一句提示。转走 = 项目已不在我名下
  */
-export async function 建好再分(me: 我, 分配: 定好的分配, projectId: string, 项目名: string, 业务线?: 项目线 | null): Promise<{ 提示: string; 转走: boolean } | null> {
+export async function 建好再分(me: 我, 分配: 定好的分配, projectId: string, 项目名: string, 业务线?: 项目线 | null, 定时?: 定时分配 | null): Promise<{ 提示: string; 转走: boolean } | null> {
   if (分配.i === 1 && 业务线 === "暂不分配") {
     await 标待分配(projectId, null);
     刷新(projectId);
     return { 提示: `业务线是「暂不分配」，不自动分：已留在新线索待分配，等${能分配的人}分`, 转走: false };
+  }
+  // 指定分配时间（11-17 PR3）：选了「指定时间」= 先留在我名下待分配（定时），不发催分提醒，到点由后台分（scheduled-assign.ts）
+  if (定时 && (分配.i === 0 || 分配.i === 1)) {
+    await 标定时分配(projectId, 定时.at, 定时.接手人);
+    刷新(projectId);
+    const 给谁 = 定时.接手人 ? `分给 ${(await prisma.user.findUnique({ where: { id: 定时.接手人 }, select: { name: true } }))?.name ?? "选的那位"}` : "按自动分配分出去";
+    return { 提示: `已定时：${短时刻(定时.at)} ${给谁}；到点前留在新线索待分配`, 转走: false };
   }
   if (分配.i === 1) {
     const r = await 向导自动分配(projectId);
@@ -77,6 +87,22 @@ export async function 建好再分(me: 我, 分配: 定好的分配, projectId: 
     return { 提示: "已放进线索公海，等人捞取", 转走: true };
   }
   return null;
+}
+
+/** 新建时选了「指定时间」（PR3）：到点的时刻；指定分配时到点分给谁（自动分配 = null） */
+export type 定时分配 = { at: Date; 接手人: string | null };
+
+/**
+ * 新建时交上来的「指定分配时间」认一遍（PR3）：只认指定分配、自动分配两种（别的分配方式不出这一格，交了也不认）；
+ * 空 = 现在分配（null）。认不出 / 早于现在 / 超过 30 天回 error。指定分配要带接手人（就是选的负责人）
+ */
+export function 认新建定时(分配: 定好的分配, 值: unknown, 接手人: string | null | undefined, 现在 = new Date()): 定时分配 | null | { error: string } {
+  if (分配.i !== 0 && 分配.i !== 1) return null;
+  if (值 === undefined || 值 === null || (typeof 值 === "string" && !值.trim())) return null;
+  const r = 认定时分配(值, 现在);
+  if (!r.ok) return { error: r.error };
+  if (分配.i === 0 && !接手人) return { error: "请选项目负责人（到点分给谁）" };
+  return { at: r.at, 接手人: 分配.i === 0 ? 接手人! : null };
 }
 
 /**

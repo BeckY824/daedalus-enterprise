@@ -466,6 +466,8 @@ const 派生: Record<string, Record<string, string>> = {
   Project: {
     customerId: "建档向导里和客户一起建，不改（改了等于另一单生意）",
     creatorId: "实际建档的人，向导保存那一刻打上，不改",
+    scheduledAssignAt: "新建时选「指定时间」分配那一刻定下（迁移 149）；到点前在项目详情「定时分配」那行改 / 取消（leads/schedule-actions.ts），到点执行、清了待分配、进回收站由后台清空（lib/enterprise/scheduled-assign.ts）",
+    scheduledAssignTo: "同 scheduledAssignAt：指定分配的定时到点分给谁，新建时就是选的负责人，到点前能改（leads/schedule-actions.ts 改定时分配）",
     balanceSettledById: "勾尾款结清的那个人，系统打上",
     balanceSettledAt: "勾尾款结清的那一刻，系统打上",
     acceptancePassedById: "勾验收通过的那个人，系统打上",

@@ -345,6 +345,8 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
       ...(进项目 ? { 所在地: { addrCountry: 国家, addrCity: 城市 || null } } : {}),
       // 要求回复时间（11-17，卡上选填）：照建档向导同一份规整
       要求回复开始: p.要求回复开始 ?? null, 要求回复结束: p.要求回复结束 ?? null,
+      // 指定分配时间（11-17 PR3，卡上选填）：建档向导里认，选了 = 先留在我名下待分配、到点再分
+      ...(p.定时分配 ? { 定时分配: p.定时分配 } : {}),
     },
     跟进: {
       type: "OTHER", content: 渠道 ? `在首页对话里新建的线索，渠道：${渠道.name}` : `在首页对话里新建的线索，渠道触点：${触点}`, occurredAt: new Date().toISOString(),

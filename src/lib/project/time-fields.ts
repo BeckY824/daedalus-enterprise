@@ -91,3 +91,25 @@ export function 回复晚于回收(始: Date | null | undefined, 终: Date | nul
   const 日 = 时刻转北京墙钟(先)!.slice(0, 10);
   return 日 >= 回收日 ? `这条会在 ${回收日} 先回收（要求回复时间不顺延回收），记得在那之前跟进一次` : null;
 }
+
+/* ───────────── 指定分配时间（PR3） ───────────── */
+
+/** 指定分配时间最远几天（11-17 用户定 30 天）：现行超时回收比这长，定时线索不会在到点前先被回收 */
+export const 指定分配最远天数 = 30;
+
+/** 交上来的「指定时间」（北京墙钟）认一遍：要晚于现在、最远 指定分配最远天数 天内 */
+export function 认定时分配(s: unknown, 现在 = new Date()): { ok: true; at: Date } | { ok: false; error: string } {
+  if (s === undefined || s === null || (typeof s === "string" && !s.trim())) return { ok: false, error: "请选指定分配时间（日期和时刻）" };
+  const at = 北京墙钟转时刻(s);
+  if (!at) return { ok: false, error: "指定分配时间格式不对，请选日期和时刻" };
+  if (at.getTime() <= 现在.getTime()) return { ok: false, error: "指定分配时间要晚于现在；要现在分就选「现在分配」" };
+  if (at.getTime() > 现在.getTime() + 指定分配最远天数 * 86_400_000) return { ok: false, error: `指定分配时间最远 ${指定分配最远天数} 天内` };
+  return { ok: true, at };
+}
+
+/** 指定分配时间晚于要求回复时间的开始（没填开始看结束）：录入时黄条提示，不拦 */
+export function 分配晚于回复(定时: Date | null | undefined, 始: Date | null | undefined, 终: Date | null | undefined): string | null {
+  const 先 = 始 ?? 终;
+  if (!定时 || !先 || 定时.getTime() <= 先.getTime()) return null;
+  return "分配晚于客户要求的联系时间，接手人可能来不及";
+}
