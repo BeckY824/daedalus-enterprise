@@ -11,8 +11,47 @@
 #     就退回全套。全套交给 CI，CI 照旧一条不少地跑并加上 E2E 与密钥扫描。
 #   想在功能分支上也跑全套：PREPUSH_FULL=1 git push …
 #
+#   不管哪一档，功能分支都固定加跑一组不连库、扫全库的静态守门（STATIC_GUARDS，约 4 秒，11-17 复盘第 10 类）：
+#     它们不 import 业务文件，「相关用例」永远选不中，以前只在 CI 里红。
+#
 # 启用：git config core.hooksPath hooks
 set -e
+
+# 11-17：git 跑钩子时会带 GIT_DIR 等变量，外面也可能漏进来；子进程里的 git（含测试里调的 git）只认它们、
+# 不看当前目录，读到了别的副本。先全清掉，再要求仓库根就是当前目录。
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE GIT_PREFIX
+TOP=$(git rev-parse --show-toplevel 2>/dev/null || true)
+HERE=$(pwd -P)
+if [ -z "$TOP" ] || [ "$(cd "$TOP" && pwd -P)" != "$HERE" ]; then
+  echo "✗ 预推送：仓库根（${TOP:-读不出}）不是当前目录（$HERE），不往下跑，免得查到别的副本" >&2
+  exit 1
+fi
+
+# 不连库、不 import 业务代码、扫全库的守门用例。新加这类用例记得补进来；文件改名了这里会直接报错
+STATIC_GUARDS="
+tests/audit-labels.test.ts
+tests/click-buttons.test.ts
+tests/compose-env.test.ts
+tests/design-tokens.test.ts
+tests/docker-context.test.ts
+tests/field-coverage.test.ts
+tests/font-size-tokens.test.ts
+tests/inline-style-cap.test.ts
+tests/llm-thinking.test.ts
+tests/migration-files-guard.test.ts
+tests/modal-double-submit.test.ts
+tests/motion-tokens.test.ts
+tests/no-array-transaction.test.ts
+tests/owner-write-guard.test.ts
+tests/pane-slots.test.ts
+tests/permissions-table-keys.test.ts
+tests/privacy-copy.test.ts
+tests/radius-tokens.test.ts
+tests/reduced-motion.test.ts
+tests/release-guards.test.ts
+tests/use-server-exports.test.ts
+tests/utc-date-cap.test.ts
+"
 
 FULL=${PREPUSH_FULL:-}
 # 别继承环境变量里的同名值
@@ -116,6 +155,12 @@ if [ -n "$MIGRATION" ]; then
   echo "  · 改到 prisma/ 或依赖：相关用例之外加跑迁移一致性用例"
 fi
 sort -u -o "$TESTS" "$TESTS"
+# 静态守门：固定跑，不管改了什么
+for t in $STATIC_GUARDS; do
+  [ -f "$t" ] || { echo "  ✗ 静态守门清单里的 $t 不存在（改名或删了？改 hooks/pre-push 的 STATIC_GUARDS）"; exit 1; }
+done
+step "静态守门（$(printf '%s\n' $STATIC_GUARDS | wc -l | tr -d ' ') 个）" sh -c 'printf "%s\n" "$1" | grep . | tr "\n" "\0" | xargs -0 npx vitest run --maxWorkers=1 --reporter=dot' _ "$STATIC_GUARDS"
+
 # vitest related 顺着 import 找到其余相关用例；传进去的用例文件自己也会跑
 if [ -s "$CHANGED" ]; then
   step 单元测试（相关用例） sh -c 'cat "$1" "$2" | sort -u | tr "\n" "\0" | xargs -0 npx vitest related --run --passWithNoTests --reporter=dot' _ "$CHANGED" "$TESTS"
