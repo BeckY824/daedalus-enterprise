@@ -209,7 +209,11 @@ it("多个号码：加一行类型默认跟第一行、能改类型、能去掉�
     await 框.getByLabel("号码", { exact: true }).fill("13905712266");
     const 第一行类型 = await 框.locator("[data-ge='号码'] .ant-select").first().innerText();
     const 加 = 框.getByRole("button", { name: "加一个号码" });
-    await 加.click();
+    // 刚填完第一行号码会再渲染一次（查重提示），紧跟着的一下点击可能落空：点到第 2 行出来为止
+    await expect.poll(async () => {
+      if ((await 框.getByLabel("第 2 个号码", { exact: true }).count()) === 0) await 加.click();
+      return 框.getByLabel("第 2 个号码", { exact: true }).count();
+    }).toBe(1);
     // 多加的行用号码类型字典的叫法（同 AI 新线索卡）：第一行「手机号」→ 新行「手机」
     expect(await 框.locator("[data-testid='wizard-more-numbers'] .ant-select").first().innerText()).toBe("手机");
     await 框.getByLabel("第 2 个号码", { exact: true }).fill("13905712267");
