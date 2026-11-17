@@ -468,7 +468,7 @@ it.each([1024, 1280, 1366])("Windows %ipx 项目开关关着：也摆「指定�
 });
 
 /** 拦下 /api/attachments 的上传：记下网址和请求头，按 __传回 回 */
-async function 接上传(page: Page, 回 = (_n: number) => ({ status: 200, body: { 附件: { id: "a1" } } })) {
+async function 接上传(page: Page, 回: (n: number) => { status: number; body: unknown } = () => ({ status: 200, body: { 附件: { id: "a1" } } })) {
   const 收到: { url: string; 票: string | null; 类型: string | null }[] = [];
   await page.route((u) => u.pathname.startsWith("/api/attachments"), async (r) => {
     const 头 = r.request().headers();
