@@ -372,6 +372,12 @@ body:has(.view-as-bar) .update-bar { top: 40px; }
 .update-bar-go:focus-visible, .update-bar-x:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 /* 手机：一行放不下就折行，不省略（这句话得读全） */
 @media (max-width: 767px) { .update-bar { white-space: normal; border-radius: 12px; } .update-bar-text { overflow: visible; } }
+/* 录入草稿带回来了（components/FormDraft.tsx、lib/form-guard.tsx）：框里一行小字 + 「清空」 */
+.draft-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 8px; padding: 4px 10px; border-radius: 6px; background: var(--brand-bg); color: var(--brand-deep); font-size: var(--fs-min); line-height: 20px; }
+.draft-hint.is-compact { margin: 4px 0 0; padding: 0; background: none; }
+.draft-hint-t { min-width: 0; overflow-wrap: anywhere; }
+.draft-hint-clear { flex: none; padding: 0; border: 0; background: none; color: var(--brand); font: inherit; text-decoration: underline; cursor: pointer; }
+.draft-hint-clear:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 /* 「以某人的视角查看」挑人框（components/ViewAsPicker.tsx）：下拉占满框宽 */
 .view-as-pick { width: 100%; }
 

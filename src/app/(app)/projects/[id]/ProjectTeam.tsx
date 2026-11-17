@@ -20,6 +20,7 @@ import { 不填项, 去不填, 未选占位 } from "@/lib/enterprise/dict-kinds"
 import { 编辑项目, 加项目组员, 换项目组员角色, 移出项目组员 } from "../actions";
 import SaveButton from "@/components/SaveButton";
 import { 跑给按钮, type 跑法 } from "./detail-note";
+import { useFormDraft } from "@/components/FormDraft";
 import { 动作出错话 } from "@/lib/stale-deploy";
 
 export type 组员 = { id: string; userId: string; name: string; roleId: string | null; inviteStatus: string };
@@ -85,6 +86,29 @@ export function ProjectEditModal({
   const [合同, set合同] = useState<合同状态 | null>(新?.contractStatus ?? null);
   const 改 = (x: Partial<typeof d>) => setD((o) => ({ ...o, ...x }));
   const 改钱 = (x: Partial<NonNullable<typeof 钱>>) => set钱((o) => (o ? { ...o, ...x } : o));
+  /*
+    改了没交的留草稿（11-17，components/FormDraft.tsx）：只存改过的那几格，刷新、发版后重开「编辑项目」带回来；
+    存上了、点了取消就删。d 摊平了比：改了名称不会把整份 d 的旧值都存进去
+  */
+  const 稿 = useFormDraft({
+    键: open ? `编辑项目:${p.id}` : null,
+    值: { ...d, 级别, 地址, 详细, 线, 钱, 痛点, 合同 },
+    带回: (v) => {
+      const { 级别: 级, 地址: 址, 详细: 细, 线: 线2, 钱: 钱2, 痛点: 痛, 合同: 合, ...其余 } = v;
+      if ("级别" in v) set级别(级 ?? null);
+      if (址 && typeof 址 === "object") set地址(址);
+      if (typeof 细 === "string") set详细(细);
+      if ("线" in v) set线(线2 ?? null);
+      if (钱2 && typeof 钱2 === "object") set钱(钱2);
+      if (typeof 痛 === "string") set痛点(痛);
+      if ("合同" in v) set合同(合 ?? null);
+      if (Object.keys(其余).length) 改(其余 as Partial<typeof d>);
+    },
+  });
+  const 不要了 = () => {
+    稿.丢掉();
+    onClose();
+  };
   // 没传的不交：服务端按「没传 = 不动」处理（项目级别和地址改成）
   const 附带 = {
     ...(p.level !== undefined ? { level: 级别 } : {}),
@@ -104,15 +128,16 @@ export function ProjectEditModal({
     <Modal
       open={open}
       title="编辑项目"
-      onCancel={onClose}
+      onCancel={不要了}
       // 保存反馈在按钮里（原型 g.save）：转圈 → 「已保存」✓ 后关框；没存上原因浮在按钮上方、框不关，不弹顶部提示
       footer={(
         <Space>
-          <Button onClick={onClose}>取消</Button>
-          <SaveButton disabled={!d.name.trim()} 做={() => 跑给按钮(跑, () => 编辑项目(p.id, { ...d, amount: d.amount ?? 0, ...附带 }))} 成了={onClose}>保存</SaveButton>
+          <Button onClick={不要了}>取消</Button>
+          <SaveButton disabled={!d.name.trim()} 做={() => 跑给按钮(跑, () => 编辑项目(p.id, { ...d, amount: d.amount ?? 0, ...附带 }))} 成了={() => { 稿.存好了(); onClose(); }}>保存</SaveButton>
         </Space>
       )}
     >
+      {稿.提示}
       {行("项目名称", <Input value={d.name} maxLength={项目名上限} showCount onChange={(e) => 改({ name: e.target.value })} />)}
       {p.level !== undefined && 行("项目级别", (
         <Select

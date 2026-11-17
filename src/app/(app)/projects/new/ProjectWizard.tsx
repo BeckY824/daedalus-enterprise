@@ -10,7 +10,7 @@ import DatePicker from "@/components/BusinessDatePicker";
 import { PageHead } from "@/components/ui";
 import { useBusiness } from "@/lib/business-client";
 import { useMe, 默认负责人 } from "@/lib/me-client";
-import { 草稿全名, 读草稿, 存草稿, 清草稿, 有内容 } from "@/lib/form-guard";
+import { 草稿全名, 读草稿, 存草稿, 清草稿, 有内容, 带回话 } from "@/lib/form-draft";
 import { 跟进类型们 } from "@/lib/constants";
 import FollowMethodSelect from "@/components/FollowMethodSelect";
 import { 对得上的方式 } from "@/lib/follow-method";
@@ -612,7 +612,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         />
       )}
       {接着填 && (
-        <Alert type="info" showIcon className="cr-alert" title="接着上次没填完的" action={<Button size="small" onClick={重来}>清空重来</Button>} />
+        // 全站同一句（lib/form-draft.ts 带回话）：已带回 + 清空
+        <Alert type="info" showIcon className="cr-alert" title={带回话(0)} action={<Button size="small" onClick={重来}>清空</Button>} />
       )}
       {企业?.没角色 && <Alert type="warning" showIcon className="cr-alert" title={没业务角色不能新建话} data-testid="wizard-no-role" />}
 

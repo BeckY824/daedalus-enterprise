@@ -75,7 +75,9 @@ import { ProjectAttachmentsCard, ProjectPaymentsCard, ProjectProfileCard, type �
 import { 词们, 对得上, 沟通字段, 卡点字段, 沟通来源, 能隐藏接手前 } from "@/lib/project/detail-search";
 import type { 回款 } from "@/lib/project/payment-db";
 import ProjectRelate from "./ProjectRelate";
-import { 动作出错话, 出错原话 } from "@/lib/stale-deploy";
+import { useFormDraft, 草稿范围 } from "@/components/FormDraft";
+import { 有字 } from "@/lib/form-draft";
+import { 动作出错话, 出错原话, 刷新再提交话 } from "@/lib/stale-deploy";
 import type { 项目关联 } from "@/lib/project/relate";
 
 export type 项目详情 = {
@@ -1870,7 +1872,8 @@ export default function ProjectDetail({
       {弹窗们}
     </div>
   );
-  return 正文;
+  // 就地改的格子（ProjectInlineField）打了没存的字按这个项目留草稿（components/FormDraft.tsx）
+  return <草稿范围 value={`项目:${p.id}`}>{正文}</草稿范围>;
 }
 
 /**
@@ -1897,15 +1900,31 @@ function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
   const [交中, set交中] = useState(false);
   /** 没存上的原因（版本冲突、没权限……）：写在框里、框不关，不弹顶部提示 */
   const [交错, set交错] = useState<string | null>(null);
+  // 改了没交的留草稿（components/FormDraft.tsx）：刷新、发版后重开这条接着改；只存改过的格子
+  const 稿 = useFormDraft({
+    键: `改项目沟通:${f.id}`,
+    值: { type, method, 发起, occurredAt, content },
+    带回: (v) => {
+      if (typeof v.type === "string") setType(v.type);
+      if (v.method !== undefined) setMethod(v.method ?? null);
+      if (v.发起 !== undefined) set发起(v.发起 ?? null);
+      if (typeof v.occurredAt === "string") setOccurredAt(v.occurredAt);
+      if (typeof v.content === "string") setContent(v.content);
+    },
+  });
   const 差 = !content.trim() ? "请填写这次沟通的内容" : 主体们 && f.initiator && !发起 ? "请选发起主体" : "";
   const 交 = async () => {
     set交中(true);
-    const ok = await 跑(() => 改项目沟通(projectId, f.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 版本: f.版本 }), "已保存修改", { 报错: set交错 });
+    const ok = await 跑(() => 改项目沟通(projectId, f.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 版本: f.版本 }), "已保存修改", { 报错: (话) => set交错(话 === 刷新再提交话 ? `${话}（改的字刷新后还在）` : 话) });
     set交中(false);
-    if (ok) onClose();
+    if (ok) {
+      稿.存好了();
+      onClose();
+    }
   };
   return (
-    <Modal open title="修改这条沟通" okText="保存" mask={{ closable: false }} okButtonProps={{ disabled: !!差, loading: 交中, title: 差 || undefined }} onCancel={onClose} onOk={() => void 交()}>
+    <Modal open title="修改这条沟通" okText="保存" mask={{ closable: false }} okButtonProps={{ disabled: !!差, loading: 交中, title: 差 || undefined }} onCancel={() => { 稿.丢掉(); onClose(); }} onOk={() => void 交()}>
+      {稿.提示}
       <div style={{ display: "grid", gap: 12 }}>
         <div className="follow-pick-row">
           <FollowMethodSelect aria-label="沟通方式" type={type} method={method} 类型们={类型们} onChange={(v) => { setType(v.type); setMethod(v.method); }} />
@@ -2042,6 +2061,32 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
     const 摘要 = [填.type && "方式", 填.occurredAt && "时间", 填.content && "内容", 填.下一步 && "下一步", 填.下一步时间 && "下一步时间"].filter(Boolean);
     set解析({ 起, 结果: 摘要.length ? `已预填：${摘要.join(" · ")}，核对无误再记下` : "没认出能填的，手动填吧" });
   };
+  /*
+    打了没交的留草稿（11-17，components/FormDraft.tsx）：刷新、发版后重开「记一条沟通」接着填；截图录音存不进来，带回时说要重选。
+    记上了、点了取消就删
+  */
+  const 稿 = useFormDraft({
+    键: `项目沟通:${p.id}`,
+    值: { type, method, 发起: 选的发起, occurredAt, content, 下一步文字, 下一步时间, 卡点类型, 卡点影响, 卡点描述, 卡点标题, 卡点原因, 原话 },
+    附件数: 附件们.length,
+    // 只认打的字：沟通方式的默认值是晚一步才到的（字典读回来才设），光它变了不算填过
+    算填过: (改) => 有字([改.content, 改.下一步文字, 改.卡点描述, 改.卡点标题, 改.原话]),
+    带回: (v) => {
+      if (typeof v.type === "string") { setType(v.type); 人改过方式.current = true; }
+      if (v.method !== undefined) setMethod(v.method ?? null);
+      if (v.发起 !== undefined) set发起(v.发起 ?? null);
+      if (typeof v.occurredAt === "string") setOccurredAt(v.occurredAt);
+      if (typeof v.content === "string") setContent(v.content);
+      if (typeof v.下一步文字 === "string") set下一步文字(v.下一步文字);
+      if (v.下一步时间 !== undefined) set下一步时间(v.下一步时间 ?? null);
+      if (typeof v.卡点类型 === "string") set卡点类型(v.卡点类型);
+      if (v.卡点影响 !== undefined) set卡点影响(v.卡点影响 ?? null);
+      if (typeof v.卡点描述 === "string") set卡点描述(v.卡点描述);
+      if (typeof v.卡点标题 === "string") set卡点标题(v.卡点标题);
+      if (Array.isArray(v.卡点原因)) set卡点原因(v.卡点原因);
+      if (typeof v.原话 === "string") set原话(v.原话);
+    },
+  });
   const 差 = !content.trim() ? "请填写这次沟通的内容" : 主体们 && !发起 ? "请选发起主体"
     : !下一步文字.trim() ? "请写下一步计划" : p.要下一步 && !下一步时间 ? "请填下一步时间" : "";
   // 选了下一步时间就预演回收日（10-30 P0-2）：和服务端同一个算法，算不准（没底子）就不写
@@ -2052,9 +2097,12 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
     const 回: { r: Awaited<ReturnType<typeof 记项目沟通Action>> | null } = { r: null };
     const 卡点 = 卡点默认 ? { type: 卡点类型, impact: 卡点影响, title: 卡点标题, reasons: 卡点原因, description: 卡点描述 } : undefined;
     // 没记上的原因写在框里、框不关（g.save，不弹顶部提示）
-    const ok = await 跑(async () => (回.r = await 记项目沟通Action(p.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 下一步: 下一步文字, 下一步时间, ...(p.企业版 ? { 阶段: p.phase } : {}) }, 卡点)), undefined, { 报错: set交错 });
+    // 发版后老页面交的（lib/stale-deploy.ts）：填的字一直在存草稿，刷新后点开接着填；截图录音存不进来，说一句
+    const 报错 = (话: string | null) => set交错(话 === 刷新再提交话 ? `${话}（${附件们.length ? "填的字刷新后还在，截图 / 录音要重新选" : "填的内容刷新后还在"}）` : 话);
+    const ok = await 跑(async () => (回.r = await 记项目沟通Action(p.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 下一步: 下一步文字, 下一步时间, ...(p.企业版 ? { 阶段: p.phase } : {}) }, 卡点)), undefined, { 报错 });
     const r = 回.r;
     if (ok && r?.ok) {
+      稿.存好了();
       // 本人撤销沟通去掉了（P-沟通-01，11-09），回执里不摆「撤销」。框关了，回执合成一句写在详情底部（一条盖一条，所以合起来说）：
       // 客户三态（C12）这条不算有效沟通时换成一句轻提示（照常保存，不拦）；卡点生成 / 没生成；附件没传上的（出错，role=alert）
       const 短 = 短沟通话of(r);
@@ -2089,9 +2137,11 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
       )}
       // 写了字就别让点到框外把草稿关掉（10-29 实点：点日历时手一偏，整段没了）
       mask={{ closable: !content.trim() && !下一步文字.trim() && !原话.trim() && !卡点描述.trim() && !附件们.length }}
-      onCancel={关}
+      // 点了取消 / Esc / X：人明说不要了，草稿一起删
+      onCancel={() => { 稿.丢掉(); 关(); }}
       onOk={() => void 交()}
     >
+      {稿.提示}
       <div style={{ display: "grid", gap: 12 }}>
         {给AI && (
           <div className="follow-mode">

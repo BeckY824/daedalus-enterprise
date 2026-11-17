@@ -5,6 +5,7 @@
  * 从 HomeChat 里拆出来（2026-10-24）：输入框里的字、命令单选到第几条这些状态，
  * 原来和整列对话放在同一个组件里，打一个字整屏都跟着重渲。现在它们只让这一块重渲。
  */
+import { useFormDraft } from "@/components/FormDraft";
 import { useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -210,6 +211,20 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
     是本应用 ⌘K 交过来的，下面那个 effect 会直接发出去（submit 会把框清空）
   */
   const [q, setQ] = useState(() => 地址栏.get("q") ?? "");
+  /*
+    打了没发的问题留草稿（11-17，components/FormDraft.tsx）：刷新、发版后回到首页接着问；发出去（框清空）草稿跟着删。
+    地址上带着问题进来的不带回（那是外面交过来的一问）；带的文件存不进来，提示里说一句
+  */
+  const [外面带了问题] = useState(() => !!地址栏.get("q"));
+  const 稿 = useFormDraft({
+    键: 外面带了问题 ? null : `首页问答:${scope}`,
+    值: { q },
+    带回: (v) => {
+      if (typeof v.q === "string") setQ(v.q);
+    },
+    附件数: files.length,
+    紧凑: true,
+  });
   const [cmdIdx, setCmdIdx] = useState(0);
   /** 输入框空着时，↑↓ 在下面那排建议问题里选，回车就发。-1 = 没选 */
   const [suggIdx, setSuggIdx] = useState(-1);
@@ -394,6 +409,7 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
   return (
     <>
       <div ref={composerRef} className={`cli-composer${empty ? "" : " cli-composer-sticky"}`}>
+        {稿.提示}
         <AskBox
           引用={taRef}
           value={q}

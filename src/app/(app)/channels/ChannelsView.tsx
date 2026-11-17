@@ -249,7 +249,7 @@ export default function ChannelsView({
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   // 点外面不关、关前问一句、新建的草稿留在本机（2026-10-19 客户反馈，lib/form-guard.tsx）
-  const 守 = useFormGuard({ open, form, 草稿键: editing ? null : "新建渠道", 关: () => { setOpen(false); setEditing(null); }, 忙: saving, afterOpenChange: 聚焦首项 });
+  const 守 = useFormGuard({ open, form, 草稿键: editing ? `编辑渠道:${editing.id}` : "新建渠道", 编辑: !!editing, 关: () => { setOpen(false); setEditing(null); }, 忙: saving, afterOpenChange: 聚焦首项 });
   /** 只有一个人：渠道负责人那一列和筛选都不摆（审查 D2 / M3） */
   const 不问归属 = !ownerId && 列表不问归属(users, 全部行.map((r) => r.channelOwnerName));
   const 创建人们 = useMemo(() => [...new Set(全部行.map((r) => r.createdByName).filter((x): x is string => Boolean(x)))], [全部行]);
@@ -743,6 +743,7 @@ export default function ChannelsView({
           destroyOnHidden
           width={600}
         >
+          {守.提示}
           <Form
             form={form}
             layout="vertical"

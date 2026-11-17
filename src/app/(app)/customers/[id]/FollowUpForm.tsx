@@ -298,13 +298,24 @@ export default function FollowUpForm({
   const 守 = useFormGuard({
     open,
     form,
-    草稿键: record?.id || initialAiText ? null : `新建跟进:${给定客户 ?? "挑人"}:${record?.type ?? ""}`,
+    // 11-17 起改老记录也留草稿（只存改过的格子，键带记录编号）；速记框带原文打开的照旧不存
+    草稿键: initialAiText ? null : record?.id ? `编辑跟进:${record.id}` : `新建跟进:${给定客户 ?? "挑人"}:${record?.type ?? ""}`,
+    编辑: !!record?.id,
     关: () => {
       resetAi();
       onClose();
     },
     填过: () => aiText.trim() !== "" || 卡点.description.trim() !== "" || 附件们.length > 0,
     不存: 给定客户 ? ["projectId"] : ["customerId", "contactId", "opportunityId", "projectId"],
+    // 表单外头也是人打的字：AI 速记框、卡点那一块；截图录音存不进来，带回时说要重选
+    额外: {
+      取: () => ({ aiText, 卡点 }),
+      放: (x) => {
+        if (typeof x.aiText === "string") setAiText(x.aiText);
+        if (x.卡点 && typeof x.卡点 === "object") set卡点({ ...空卡点, ...(x.卡点 as Partial<卡点值>) });
+      },
+    },
+    附件数: () => 附件们.length,
   });
 
   async function onAiParse() {
@@ -685,7 +696,7 @@ export default function FollowUpForm({
   >
     <Input.TextArea
       value={aiText}
-      onChange={(e) => setAiText(e.target.value)}
+      onChange={(e) => { setAiText(e.target.value); 守.改了(); }}
       autoSize={{ minRows: 2, maxRows: 6 }}
       maxLength={5000}
       placeholder={'跟进速记：把沟通过程随手倒出来，或直接粘贴微信聊天记录，AI 帮你填表。\n如："刚和周总通了 20 分钟电话，他担心交期，想先小批量试一单，下周三再约他聊报价"'}
@@ -728,6 +739,7 @@ export default function FollowUpForm({
       destroyOnHidden
     >
       {/* AI 速记块放在 Form 里面（它不是字段）：挑人那一格是 Form.Item，得在它上面、仍是第一格 */}
+      {守.提示}
       <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={(changed) => { if ("type" in changed) 人改过类型.current = true; 守.改了(); }}>
         {挑人 && <CustomerPick 预选={预选客户} 近况={近况} on近况={换人} 不提计划={Boolean(收口计划)} />}
         {!收起 && AI块}
