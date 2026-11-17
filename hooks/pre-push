@@ -28,31 +28,8 @@ if [ -z "$TOP" ] || [ "$(cd "$TOP" && pwd -P)" != "$HERE" ]; then
   exit 1
 fi
 
-# 不连库、不 import 业务代码、扫全库的守门用例。新加这类用例记得补进来；文件改名了这里会直接报错
-STATIC_GUARDS="
-tests/audit-labels.test.ts
-tests/click-buttons.test.ts
-tests/compose-env.test.ts
-tests/design-tokens.test.ts
-tests/docker-context.test.ts
-tests/field-coverage.test.ts
-tests/font-size-tokens.test.ts
-tests/inline-style-cap.test.ts
-tests/llm-thinking.test.ts
-tests/migration-files-guard.test.ts
-tests/modal-double-submit.test.ts
-tests/motion-tokens.test.ts
-tests/no-array-transaction.test.ts
-tests/owner-write-guard.test.ts
-tests/pane-slots.test.ts
-tests/permissions-table-keys.test.ts
-tests/privacy-copy.test.ts
-tests/radius-tokens.test.ts
-tests/reduced-motion.test.ts
-tests/release-guards.test.ts
-tests/use-server-exports.test.ts
-tests/utc-date-cap.test.ts
-"
+# 不连库、不 import 业务代码、扫全库的守门用例，清单在 hooks/static-guards.txt（CI 的 PR 相关单测也读它）
+STATIC_GUARDS=$(grep -vE '^[[:space:]]*(#|$)' hooks/static-guards.txt)
 
 FULL=${PREPUSH_FULL:-}
 # 别继承环境变量里的同名值
@@ -158,7 +135,7 @@ fi
 sort -u -o "$TESTS" "$TESTS"
 # 静态守门：固定跑，不管改了什么
 for t in $STATIC_GUARDS; do
-  [ -f "$t" ] || { echo "  ✗ 静态守门清单里的 $t 不存在（改名或删了？改 hooks/pre-push 的 STATIC_GUARDS）"; exit 1; }
+  [ -f "$t" ] || { echo "  ✗ 静态守门清单里的 $t 不存在（改名或删了？改 hooks/static-guards.txt）"; exit 1; }
 done
 step "静态守门（$(printf '%s\n' $STATIC_GUARDS | wc -l | tr -d ' ') 个）" sh -c 'printf "%s\n" "$1" | grep . | tr "\n" "\0" | xargs -0 npx vitest run --maxWorkers=1 --reporter=dot' _ "$STATIC_GUARDS"
 
