@@ -60,14 +60,34 @@ describe("普通导入（③ lib/import/plan）", () => {
     const { 表头, 数据 } = 成表(解析CSV(csv));
     return 摊开({ 表头, 数据, 映射: 猜列(表头, 表), 字段表: 表 });
   };
-  it("号码和字母连着写：不截数字当电话，拦这一行、预览里说像微信号；带说明的照旧号码取出、原文并进备注", () => {
+  it("号码和字母连着写：不截数字当电话，这格挪到微信、原文进备注，这行照常导入（同企业导入 M-导入-56/57）；带说明的照旧号码取出、原文并进备注", () => {
     const [甲, 乙] = 排("姓名,手机号\n张三,sqin17548955941\n李四,13800000002（微信同号）");
     expect(甲.值.phone).toBeUndefined();
-    expect(甲.问题.find((q) => q.字段 === "phone")).toMatchObject({ 严重: "拦行", 说法: expect.stringContaining("像微信号") });
-    expect(甲.进不了).toContain("像微信号");
+    expect(甲.值.wechat).toBe("sqin17548955941");
+    expect(甲.值.remark).toContain("手机号：sqin17548955941");
+    expect(甲.问题.find((q) => q.字段 === "phone")).toMatchObject({ 严重: "照收", 说法: expect.stringContaining("像微信号") });
+    expect(甲.进不了).toBeUndefined();
     expect(乙.值.phone).toBe("13800000002");
     expect(乙.问题.find((q) => q.字段 === "phone")).toMatchObject({ 严重: "照收", 说法: expect.stringContaining("原文并进备注") });
     expect(乙.值.remark).toContain("13800000002（微信同号）");
+  });
+
+  it("号码格夹字母的几种写法：带「微信：」前缀取后半段；号码和微信两段的号当电话、那段进微信；表里另有微信列的不覆盖", () => {
+    const [甲, 乙, 丙] = 排("姓名,手机号\n张三,微信：sqin17548955941\n李四,13800000003 / wxid_a13800001111\n王五,138O0001111");
+    expect(甲).toMatchObject({ 值: { wechat: "sqin17548955941" } });
+    expect(甲.进不了).toBeUndefined();
+    expect(甲.值.remark).toContain("手机号：微信：sqin17548955941");
+    expect(乙.值).toMatchObject({ phone: "13800000003", wechat: "wxid_a13800001111" });
+    expect(乙.进不了).toBeUndefined();
+    expect(乙.值.remark).toContain("手机号：13800000003 / wxid_a13800001111");
+    expect(丙.值.wechat).toBe("138O0001111");
+    expect(丙.进不了).toBeUndefined();
+    const 外贸 = 字段表({ ...DEFAULT_BUSINESS, template: "trade" });
+    const { 表头, 数据 } = 成表(解析CSV("姓名,电话,微信\n赵六,sqin17548955941,zhao6"));
+    const [丁] = 摊开({ 表头, 数据, 映射: 猜列(表头, 外贸), 字段表: 外贸 });
+    expect(丁.值.wechat).toBe("zhao6");
+    expect(丁.值.remark).toContain("sqin17548955941");
+    expect(丁.进不了).toBeUndefined();
   });
 });
 

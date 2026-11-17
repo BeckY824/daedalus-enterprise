@@ -183,6 +183,23 @@ export function 号码粘着字母(v: string): boolean {
   return /[A-Za-z_]\d|\d[A-Za-z_]/.test(统一分机(全角数字转半角(v).trim()));
 }
 
+/**
+ * 号码和字母连着写的电话格，按企业导入（enterprise-import/clean 认电话，M-导入-34 / 56 / 57）的分法挪到微信：
+ * 「微信：xxx」前缀取后半段；按「 / 」逗号顿号拆成几段、其余段都是号的，第一个号当电话、第一段粘字母的当微信；
+ * 其余整格当微信。不截里面的数字当电话。原文由调用方并进备注
+ */
+export function 粘字母电话挪微信(v: string): { phone?: string; wechat: string } {
+  const 去前缀 = (x: string) => /^(微信|weixin|wechat|wx|vx)号?\s*[:：\s]\s*(\S.*)$/i.exec(x)?.[2].trim() ?? x;
+  const t = v.trim();
+  const 段 = t.split(/[,，;；/／、\n]+/).map((x) => x.trim()).filter(Boolean);
+  if (段.length > 1) {
+    const 粘段 = 段.filter((x) => 号码粘着字母(x));
+    const 号们 = 段.filter((x) => !号码粘着字母(x)).map(规整手机号);
+    if (粘段.length && 号们.length && 号们.every(像手机号)) return { phone: 号们[0], wechat: 去前缀(粘段[0]) };
+  }
+  return { wechat: 去前缀(t) };
+}
+
 /** 录入电话 拦下时的两句话（线索、渠道表单和 AI 卡上看到的就是这句） */
 export const 电话夹字母话 = "电话里夹着字母，像微信号或账号，本次没保存：电话格只填号码，微信号写进备注";
 export const 电话带字话 = "电话里除了号码还有别的字（或不止一个号），本次没保存：电话格只填一个号码，说明和另一个号写进备注";
