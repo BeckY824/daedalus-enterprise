@@ -77,6 +77,8 @@ const 白名单: { 文件: string; 片段: string; 为什么: string }[] = [
   { 文件: "lib/enterprise-import/project-target.ts", 片段: "data", 为什么: "导入改项目：ownerId 只经 Object.assign(data, 换负责人(...)) 写" },
   { 文件: "lib/project/db.ts", 片段: "...谁勾", 为什么: "勾交付：只写交付项和勾的人、时间" },
   { 文件: "lib/project/db.ts", 片段: "...清掉的下一步", 为什么: "按必填推进：只写阶段、节点、下一步" },
+  { 文件: "lib/enterprise/scheduled-assign.ts", 片段: "清定时", 为什么: "清定时分配两列（scheduledAssignAt、scheduledAssignTo，常量在同文件），负责人到点由 分给 / 自动分给 经 换负责人 改" },
+  { 文件: "app/(app)/leads/schedule-actions.ts", 片段: "清定时", 为什么: "取消定时：只清定时分配两列（scheduled-assign.ts 的常量），负责人不动、留在待分配" },
 ];
 const 经助手 = (d: string) => /(换负责人|还负责人)\(/.test(d);
 const 白 = (w: 写处) => 白名单.find((x) => x.文件 === w.文件 && w.data !== null && w.data.includes(x.片段));

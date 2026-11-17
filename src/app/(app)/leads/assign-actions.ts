@@ -652,7 +652,7 @@ async function 自动分给(
  * 自动分配（接手人空）：那时再挑人（当时的候选、参与状态）。成了照常发「分给你」，多一句 附。分不出去原样回原因，项目不动（还在待分配）
  */
 export async function 定时分出去(令牌: unknown, 谁: SessionUser, projectId: string, 接手人: string | null, 附: string): Promise<{ ok: true; 接手人: string } | { ok: false; error: string }> {
-  if (令牌 !== 定时分配令牌) return { ok: false, error: "只给后台定时任务用" };
+  if (令牌 !== 定时分配令牌) return { ok: false, error: "不对外：只给后台定时任务用" };
   const org = await 读组织();
   const 哪条 = { projectId };
   if (接手人) {
