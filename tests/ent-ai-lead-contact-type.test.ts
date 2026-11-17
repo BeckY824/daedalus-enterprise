@@ -192,12 +192,13 @@ describe("确认后：按类型落库", () => {
     expect(await prisma.customer.count()).toBe(0);
   });
 
-  it("手机 / 微信照旧全公司查重：第二位录同一个微信被拦；座机不拦", async () => {
+  it("手机 / 微信照旧全公司查重：第二位录同一个微信被拦；座机 11-17 起也全公司查重、同一个座机被拦", async () => {
     当(甲);
     expect(await applyProposal(卡({ name: "老客户", 联系方式: [{ kind: "wechat", value: "wx_test07" }, { kind: "landline", value: "021-5555 0107" }] }) as never)).toMatchObject({ ok: true });
     当(乙);
     expect(await applyProposal(卡({ 联系方式: [{ kind: "wechat", value: "WX_test07" }] }) as never)).toEqual({ ok: false, error: 查重提示.AI建档重复("小甲") });
-    expect(await applyProposal(卡({ name: "另一家", 联系方式: [{ kind: "landline", value: "021-5555 0107" }] }) as never)).toMatchObject({ ok: true });
+    expect(await applyProposal(卡({ name: "另一家", 联系方式: [{ kind: "landline", value: "021-5555 0107" }] }) as never)).toMatchObject({ ok: false });
+    expect(await applyProposal(卡({ name: "另一家", 联系方式: [{ kind: "landline", value: "021-5555 0199" }] }) as never)).toMatchObject({ ok: true });
   });
 });
 
