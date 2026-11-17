@@ -44,6 +44,8 @@ import { 分配带走的同事项目, 数进手的持有项目 } from "@/lib/car
 import type { 转走项目预览 } from "@/lib/carry-over";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 认业务线, 业务线不认得, 业务线必填, 是项目线, type 项目线 } from "@/lib/enterprise/assign-line";
+import { 区域线of, 按区域分配of } from "@/lib/enterprise/customer-region";
+import type { 线 } from "@/lib/enterprise/lead-assign";
 import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
 
 export type 给客户建项目输入 = {
@@ -64,16 +66,21 @@ function 认节点和回复(f: 向导跟进): { 节点: string } | { error: stri
   return { 节点 };
 }
 
-export type 新项目分配数据 = Awaited<ReturnType<typeof 新建分配方式数据>> & { 客户业务线: 项目线 | null };
+/** 客户区域线：这位客户的地址认出的线（大陆 内贸 / 非大陆 外贸，没填 = null）；市场成员选自动分配时界面只读显示，项目所在地另填了界面再看 */
+export type 新项目分配数据 = Awaited<ReturnType<typeof 新建分配方式数据>> & { 客户业务线: 项目线 | null; 客户区域线: 线 | null; 客户有地址: boolean };
 
 /** 客户页「新增项目」弹窗打开时取：能用的分配方式、按业务角色的默认值、是不是销售（A6 / A9），业务线默认带客户的（A1）。看不到的客户 / 没开 = null */
 export async function 新项目分配数据(customerId: string): Promise<新项目分配数据 | null> {
   try {
     const me = await requireUser();
     if (!企业版() || (await getBusiness()).projectMode !== true) return null;
-    const 客户 = await prisma.customer.findUnique({ where: { id: String(customerId ?? "") }, select: { bizLine: true } });
+    const 客户 = await prisma.customer.findUnique({ where: { id: String(customerId ?? "") }, select: { bizLine: true, addrCountry: true, addrProvince: true, addrCity: true, addrDistrict: true } });
     if (!客户) return null;
-    return { ...(await 新建分配方式数据(me)), 客户业务线: 是项目线(客户.bizLine) ? 客户.bizLine : null };
+    const 区域线 = 区域线of(客户);
+    return {
+      ...(await 新建分配方式数据(me)), 客户业务线: 是项目线(客户.bizLine) ? 客户.bizLine : null,
+      客户区域线: 区域线, 客户有地址: !!(客户.addrCountry || 客户.addrProvince || 客户.addrCity || 客户.addrDistrict),
+    };
   } catch {
     return null;
   }
@@ -95,8 +102,8 @@ export async function 建项目带走的项目(customerId: string, 项目: { 分
     // 没带分配方式、负责人又不是自己 = 指定给别人（同 给客户建项目）
     const 分配 = await 定分配方式(me, { 分配方式: 项目.分配方式 ?? 0, ownerId: 接手人 });
     if ("error" in 分配) return 不弹;
-    // 自动分配还没挑人（挑的都是销售）；业务线暂不分配的不自动分（建好再分）
-    const 自动 = 分配.i === 1 && 项目.业务线 !== "暂不分配";
+    // 自动分配还没挑人（挑的都是销售）；业务线暂不分配的不自动分（建好再分）；市场成员按客户区域定，不看业务线（P-转-26）
+    const 自动 = 分配.i === 1 && (项目.业务线 !== "暂不分配" || 按区域分配of(org, me.id));
     const 指定给别人 = 分配.i === 0 && !!接手人 && 接手人 !== me.id;
     if (!自动 && !指定给别人) return 不弹;
     return await 看全部(async () => {
@@ -145,13 +152,20 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     if (!项目输入.ownerId) return { ok: false, error: "请选项目负责人" };
     const 项目 = 规整项目(项目输入, me.id);
     if ("error" in 项目) return { ok: false, error: 项目.error };
-    // 业务线：企业版新弹窗（带了分配方式）必填三选一
-    const 业务线 = 认业务线(输入.项目.业务线);
-    if (业务线 === undefined) return { ok: false, error: 业务线不认得 };
-    if (分配 && !业务线) return { ok: false, error: 业务线必填 };
     // 项目所在地（11-02，选填）：和编辑项目同一套规整；没填五格都是 null
     const 地 = 新项目所在地(输入.项目.所在地);
     if (!地.ok) return { ok: false, error: 地.error };
+    // 业务线：企业版新弹窗（带了分配方式）必填三选一。
+    // 市场成员（按岗位）选自动分配（P-转-26，用户 11-17）：不用选、交了也不认，按客户区域定（客户地址空看项目所在地）；都空 = 项目不记线，自动分配两条线都算
+    let 业务线: 项目线 | null | undefined;
+    if (分配?.i === 1 && 按区域分配of(org, me.id)) {
+      const 址 = await prisma.customer.findUnique({ where: { id: customerId }, select: { addrCountry: true, addrProvince: true, addrCity: true, addrDistrict: true } });
+      业务线 = 区域线of(址, 地.值);
+    } else {
+      业务线 = 认业务线(输入.项目.业务线);
+      if (业务线 === undefined) return { ok: false, error: 业务线不认得 };
+      if (分配 && !业务线) return { ok: false, error: 业务线必填 };
+    }
     const 规则 = await 生效组织规则();
     const 认 = await 认跟进方式(输入.跟进);
     if ("error" in 认) return { ok: false, error: 认.error };

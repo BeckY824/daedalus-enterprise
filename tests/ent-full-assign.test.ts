@@ -18,7 +18,8 @@ vi.mock("@/lib/enterprise/switch", () => ({ 企业版: () => true }));
 import { prisma } from "@/lib/prisma";
 import { setSetting } from "@/lib/settings";
 import { resetDb } from "./reset";
-import { 分配线索, 自动分配线索, 批量自动分配, 项目分配线, 设线部门 } from "@/app/(app)/leads/assign-actions";
+import { 分配线索, 自动分配线索, 批量自动分配, 项目分配线, 设线部门, 向导自动分配 } from "@/app/(app)/leads/assign-actions";
+import { 区域未填提示 } from "@/lib/enterprise/customer-region";
 import { 自动分配不参与key, 不设配额key } from "@/lib/enterprise/lead-assign";
 import { 规则 } from "@/lib/enterprise/rules";
 
@@ -30,10 +31,13 @@ let 内一: string, 内二: string;
 let 客户号 = 0;
 let 外贸部: string, 外贸一组: string, 外贸一组下: string, 外贸二组: string, 档口: string, 内贸部: string, 内贸组: string, 内贸小组: string;
 
-// 一条线索一位客户：市场分给销售算转客户（11-09 第五节问题 1），同一位客户的别的项目会一起过去，那种情况不是这里钉的公平轮询
-const 建项目 = async (name: string, bizLine: string | null) => {
-  const 客户 = (await prisma.customer.create({ data: { name: `客户${++客户号}`, phone: `1390000${String(客户号).padStart(4, "0")}`, salesOwnerId: 市场 } })).id;
-  return (await prisma.project.create({ data: { name, customerId: 客户, ownerId: 市场, creatorId: 市场, bizLine } })).id;
+// 一条线索一位客户：市场分给销售算转客户（11-09 第五节问题 1），同一位客户的别的项目会一起过去，那种情况不是这里钉的公平轮询。
+// 市场成员点自动分配按客户区域定线（P-转-26）：客户地址默认跟项目业务线对上（外贸 → 美国，内贸 → 中国），按区域那组另传 址
+type 址 = { addrCountry?: string | null; addrProvince?: string | null; addrCity?: string | null };
+const 跟线的址 = (bizLine: string | null): 址 => (bizLine === "外贸" ? { addrCountry: "美国" } : bizLine === "内贸" ? { addrCountry: "中国", addrProvince: "浙江省" } : {});
+const 建项目 = async (name: string, bizLine: string | null, 地址: 址 = 跟线的址(bizLine), 项目址: 址 = {}) => {
+  const 客户 = (await prisma.customer.create({ data: { name: `客户${++客户号}`, phone: `1390000${String(客户号).padStart(4, "0")}`, salesOwnerId: 市场, ...地址 } })).id;
+  return (await prisma.project.create({ data: { name, customerId: 客户, ownerId: 市场, creatorId: 市场, bizLine, ...项目址 } })).id;
 };
 const 负责人 = async (id: string) => (await prisma.project.findUniqueOrThrow({ where: { id } })).ownerId;
 
@@ -229,12 +233,14 @@ describe("挑不到人", () => {
     expect(r).toMatchObject({ ok: false, 待分配: true });
   });
 
-  it("暂不分配的项目：不自动分，回暂不分配", async () => {
+  it("暂不分配的项目（不是市场成员点的）：不自动分，回暂不分配", async () => {
+    当(老板, "老板");
     const r = await 自动分配线索(await 建项目("暂不", "暂不分配"), { 项目: true });
     expect(r).toMatchObject({ ok: false, 暂不分配: true });
   });
 
-  it("批量里混着挑不到的：能分的照分，挑不到的单列失败，不整批失败", async () => {
+  it("批量里混着挑不到的（不是市场成员点的）：能分的照分，挑不到的单列失败，不整批失败", async () => {
+    当(老板, "老板");
     const 好 = await 建项目("好的", "内贸");
     const 坏 = await 建项目("暂不的", "暂不分配");
     const r = await 批量自动分配([好, 坏], { 项目: true });
@@ -243,5 +249,98 @@ describe("挑不到人", () => {
     expect(r.结果.find((x) => x.leadId === 坏)?.ok).toBe(false);
     expect([内一, 内二]).toContain(await 负责人(好));
     expect(await 负责人(坏)).toBe(市场);
+  });
+});
+
+describe("市场成员自动分配按客户区域定事业部（P-转-26 自动分配这一半，X-141）", () => {
+  const 连分 = async (n: number, 前缀: string, 地址: 址, bizLine: string | null = null) => {
+    const 拿到: string[] = [];
+    for (let i = 0; i < n; i++) {
+      const r = await 自动分配线索(await 建项目(`${前缀}${i}`, bizLine, 地址), { 项目: true });
+      if (!r.ok) throw new Error(r.error);
+      拿到.push(r.toUserId);
+    }
+    return 拿到;
+  };
+
+  it("客户在中国大陆 → 只给内贸销售；项目业务线写的外贸不算（市场不用选线）", async () => {
+    const 拿到 = await 连分(4, "大陆", { addrCountry: "中国", addrProvince: "广东省" }, "外贸");
+    expect(new Set(拿到)).toEqual(new Set([内一, 内二]));
+  });
+
+  it("港澳台 → 外贸销售（国家写中国香港、或国家中国省写台湾省都算）；内贸的一条拿不到", async () => {
+    const 拿到 = [
+      ...(await 连分(3, "港", { addrCountry: "中国香港" }, "内贸")),
+      ...(await 连分(3, "台", { addrCountry: "中国", addrProvince: "台湾省" }, "内贸")),
+    ];
+    expect(new Set(拿到)).toEqual(new Set([外一, 外二, 外三]));
+  });
+
+  it("国家空、只有省市 → 算中国大陆，给内贸", async () => {
+    const 拿到 = await 连分(2, "省", { addrProvince: "浙江省", addrCity: "义乌市" });
+    expect(new Set(拿到)).toEqual(new Set([内一, 内二]));
+  });
+
+  it("客户四格全空、项目所在地也空 → 不限事业部，两条线的销售都进候选，结果带「补区域」提示；业务线暂不分配也照分", async () => {
+    const 拿到: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const r = await 自动分配线索(await 建项目(`空${i}`, "暂不分配", {}), { 项目: true });
+      if (!r.ok) throw new Error(r.error);
+      expect(r.区域未填).toBe(true);
+      expect(r.为什么).toContain(区域未填提示);
+      拿到.push(r.toUserId);
+    }
+    // 五人各一条（不设配额按本月已分最少轮）：内外贸都有，销售管理 / 档口（没勾部门）/ 渠运不在
+    expect(new Set(拿到)).toEqual(new Set([外一, 外二, 外三, 内一, 内二]));
+  });
+
+  it("客户地址空、项目所在地有 → 看项目所在地", async () => {
+    const r = await 自动分配线索(await 建项目("项目址", null, {}, { addrCountry: "印度" }), { 项目: true });
+    expect(r.ok && [外一, 外二, 外三].includes(r.toUserId)).toBe(true);
+    expect(r.ok && r.区域未填).toBeFalsy();
+  });
+
+  it("外贸 / 内贸的销售管理都不进自动候选，兼着销售的销售管理也不进", async () => {
+    await setSetting(自动分配不参与key, {});
+    const 内组长 = (await prisma.user.create({ data: { email: "nl", name: "内贸组长", title: "", role: "SALES", password: "x", createdAt: new Date(2025, 0, 1) } })).id;
+    await prisma.entMember.create({ data: { userId: 内组长, bizRole: "sales,sales_mgr", deptId: 内贸组, line: null } });
+    const 内 = await 连分(6, "内管", { addrCountry: "中国" });
+    const 外 = await 连分(6, "外管", { addrCountry: "美国" });
+    expect(内).not.toContain(内组长);
+    expect(外).not.toContain(外组长);
+    expect(new Set(内)).toEqual(new Set([内一, 内二]));
+  });
+
+  it("不是市场成员发起（总管理）：照项目业务线分，不按客户区域（P-转-08 不限）；兼着销售的销售管理照旧参与", async () => {
+    当(老板, "老板");
+    const 内组长 = (await prisma.user.create({ data: { email: "nl2", name: "内贸组长", title: "", role: "SALES", password: "x", createdAt: new Date(2025, 0, 1) } })).id;
+    await prisma.entMember.create({ data: { userId: 内组长, bizRole: "sales,sales_mgr", deptId: 内贸组, line: null } });
+    const r = await 自动分配线索(await 建项目("老板分", "外贸", { addrCountry: "中国" }), { 项目: true });
+    expect(r.ok && [外一, 外二, 外三].includes(r.toUserId)).toBe(true);
+    const 内: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const x = await 自动分配线索(await 建项目(`老板内${i}`, "内贸", { addrCountry: "美国" }), { 项目: true });
+      if (!x.ok) throw new Error(x.error);
+      内.push(x.toUserId);
+    }
+    expect(内).toContain(内组长);
+  });
+
+  it("渠道运营建档选自动分配（向导）：同样按客户区域", async () => {
+    当(外客服, "外贸客服");
+    const 客户 = (await prisma.customer.create({ data: { name: "渠运客户", phone: "13900009999", salesOwnerId: 外客服, addrCountry: "中国", addrProvince: "江苏省" } })).id;
+    const P = (await prisma.project.create({ data: { name: "渠运建", customerId: 客户, ownerId: 外客服, creatorId: 外客服, bizLine: null } })).id;
+    const r = await 向导自动分配(P);
+    expect(r.ok && [内一, 内二].includes(r.toUserId)).toBe(true);
+  });
+
+  it("批量自动分配一样按区域：大陆的给内贸、海外的给外贸；档口（没勾部门）一条拿不到", async () => {
+    const 大 = await 建项目("批大陆", "外贸", { addrCountry: "中国" });
+    const 外 = await 建项目("批海外", "内贸", { addrCountry: "土耳其" });
+    const r = await 批量自动分配([大, 外], { 项目: true });
+    if (!r.ok) throw new Error(r.error);
+    expect([内一, 内二]).toContain(await 负责人(大));
+    expect([外一, 外二, 外三]).toContain(await 负责人(外));
+    expect([await 负责人(大), await 负责人(外)]).not.toContain(档口销售);
   });
 });

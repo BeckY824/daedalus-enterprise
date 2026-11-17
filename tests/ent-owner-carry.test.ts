@@ -827,13 +827,15 @@ describe("客户页新建项目之前列出会一起转走的项目（P-转-07�
     expect((await 项目of(同事的)).ownerId).toBe(甲.id);
   });
 
-  it("这次不会转客户的不弹：公海捞取、暂不分配、自动但业务线暂不分配、没指定别人", async () => {
+  it("这次不会转客户的不弹：公海捞取、暂不分配、自动但业务线暂不分配（非市场成员）、没指定别人", async () => {
     await 开项目模式();
     const c = await 客户(市场.id);
     await 项目(c, 乙.id);
     expect((await 看(市场, c, 2, null)).项目数).toBe(0);
     expect((await 看(市场, c, 3, null)).项目数).toBe(0);
-    expect((await 看(市场, c, 1, null, "暂不分配")).项目数).toBe(0);
+    expect((await 看(总管, c, 1, null, "暂不分配")).项目数).toBe(0);
+    // 市场成员选自动分配不看业务线、按客户区域定（P-转-26）：业务线写暂不分配也会分，要问
+    expect((await 看(市场, c, 1, null, "暂不分配")).项目数).toBe(1);
     expect((await 看(市场, c, 0, 市场.id)).项目数).toBe(0);
     expect((await 看(市场, c, 0, null)).项目数).toBe(0);
   });
@@ -915,7 +917,7 @@ describe("分配前列出会一起转走的项目（P-转-07，只在 X-18 且�
     expect((await 以(市场, () => 分配带走的项目([同事的选中], 甲.id))).项目数).toBe(0);
   });
 
-  it("批量（接手人还没挑）：只算会走 X-18 的客户，暂不分配的不算；同客户的几条只列没选中的", async () => {
+  it("批量（接手人还没挑）：只算会走 X-18 的客户，暂不分配的不算（非市场成员）；同客户的几条只列没选中的", async () => {
     const C = await 客户(市场.id);
     const [L1, L2] = [await 项目(C, 市场.id), await 项目(C, 市场.id)];
     const 同事的 = await 项目(C, 乙.id);
@@ -928,7 +930,9 @@ describe("分配前列出会一起转走的项目（P-转-07，只在 X-18 且�
     const 暂不 = await 客户(市场.id);
     const L4 = await 项目(暂不, 市场.id, { bizLine: "暂不分配" });
     await 项目(暂不, 乙.id);
-    expect(await 以(市场, () => 分配带走的项目([L4]))).toEqual({ 项目数: 0, 项目: [] });
+    expect(await 以(总管, () => 分配带走的项目([L4]))).toEqual({ 项目数: 0, 项目: [] });
+    // 市场成员点自动分配按客户区域定（P-转-26），暂不分配的也会分：要问
+    expect((await 以(市场, () => 分配带走的项目([L4]))).同事?.项目数).toBe(1);
     // 同一条，手动指派能分：要问
     expect((await 以(市场, () => 分配带走的项目([L4], 甲.id))).同事?.项目数).toBe(1);
   });

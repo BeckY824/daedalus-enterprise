@@ -37,6 +37,8 @@ import { 搜客户, type 可挑客户 } from "../../customers/[id]/pick";
 import { 给客户建项目, 建项目带走的项目, 新项目分配数据 } from "../../customers/[id]/project-actions";
 import { useCarryConfirm } from "../../customers/useCarryConfirm";
 import { 三种业务线, 分配说明, 业务线必填, 客户业务线必填, 建议业务线, 所在地预填, 所在地提示 } from "@/lib/enterprise/assign-line";
+import { 区域线of, 区域定线说明, 区域分配说明 } from "@/lib/enterprise/customer-region";
+import type { 线 } from "@/lib/enterprise/lead-assign";
 import AddressInput, { 空地址 } from "@/components/AddressInput";
 import { 详细地址上限, 详细地址提示 } from "@/lib/project/profile-rules";
 import type { 客户地址 } from "@/lib/enterprise/customer-v2";
@@ -74,6 +76,8 @@ type 稿 = {
 /** 分配方式们：这个人能用、还启用着的分配方式（10-27 A7：五种都生效，只有「指定分配」要选负责人） */
 /** 默认分配方式：按业务角色（11-01 会议 §1 / §3：市场 → 自动分配，销售 → 个人自持，其他 → 暂不分配）；是销售：选自动分配要再确认（A9） */
 export type 企业建档 = { 渠道们: 可选渠道[]; 节点们: readonly string[]; 分配方式们: { i: number; 名: string }[]; 默认分配方式?: number | null; 是销售?: boolean; 没角色?: boolean;
+  /** 市场成员（按岗位：市场管理、渠道运营）：选自动分配时业务线不用选，按客户区域定（P-转-26，after-create-assign 新建分配方式数据） */
+  按区域?: boolean;
   /** 企业版普通销售（10-27 会议）：新建客户负责人只能是自己，没开项目时「客户负责人」不摆（wizard-data.ts） */
   客户只给自己?: boolean } | null;
 /** 向导要的服务端数据（wizard-data.ts 建档向导数据）：页面和弹窗共用 */
@@ -96,6 +100,9 @@ const 几天后 = (天: number) => dayjs().add(天, "day").format("YYYY-MM-DD");
 
 /** 销售选自动分配的后果（A9）：就地黄条一句，原型 cr.revised 去掉「也收不回来」 */
 const 销售自动分后果 = "分出去后你将看不到这个项目";
+
+/** 市场成员选了自动分配（P-转-26，用户 11-17）：业务线不用选、不交，服务端按客户区域定内贸 / 外贸 */
+const 区域定线中 = (d: 稿, 带项目: boolean, 企业: 企业建档) => 带项目 && !!企业?.按区域 && d.项目.分配方式 === 1;
 
 /** 企业版：这次要不要选负责人。只有「指定分配」要；没有可选的分配方式（老配置）照旧选负责人 */
 const 要选负责人 = (d: 稿, 企业: 企业建档) => !!企业 && (!企业.分配方式们.length || d.项目.分配方式 === 0);
@@ -125,7 +132,7 @@ function 还差们(d: 稿, 带项目: boolean, 要下一步: boolean, 企业: �
   const 记 = (格: 格, 话: string) => void 差.push({ 格, 话 });
   // 挑了老客户（原型 cr.old）：客户那几格不用填，只看项目和首条沟通
   if (!老) 客户还差(d, 企业, 记);
-  if (企业 && !d.项目.业务线) 记("业务线", 带项目 ? 业务线必填 : 客户业务线必填);
+  if (企业 && !d.项目.业务线 && !区域定线中(d, 带项目, 企业)) 记("业务线", 带项目 ? 业务线必填 : 客户业务线必填);
   项目沟通还差(d, 带项目, 要下一步, 企业, 记);
   return 差;
 }
@@ -389,8 +396,13 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     return () => { 作废 = true; clearTimeout(t); };
   }, [搜词]);
   // 业务线默认带这位客户的（A1，和客户页「新增项目」同一个取数）；看不到 / 没开 = null 不带
+  // 老客户的区域（P-转-26）：市场成员选自动分配时业务线那格只读显示按区域定的线；客户没填地址 = null，看项目所在地
+  const [老客户区域, set老客户区域] = useState<{ id: string; 线: 线 | null } | null>(null);
   const 带客户业务线 = (c: 可挑客户) => {
-    新项目分配数据(c.id).then((r) => { if (r?.客户业务线 && !d.项目.业务线) 改("项目", { 业务线: r.客户业务线 }); }, () => {});
+    新项目分配数据(c.id).then((r) => {
+      if (r?.客户业务线 && !d.项目.业务线) 改("项目", { 业务线: r.客户业务线 });
+      set老客户区域(r?.客户有地址 ? { id: c.id, 线: r.客户区域线 } : null);
+    }, () => {});
   };
   const 挑老 = (id: string) => {
     const c = 候选.find((x) => x.id === id);
@@ -445,13 +457,13 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     set交错("");
     const 负责人 = 企业 && !要选负责人(d, 企业) ? 我?.id ?? "" : d.项目.ownerId;
     try {
-      const 这次 = { 分配方式: d.项目.分配方式 ?? null, 业务线: d.项目.业务线 ?? null };
+      const 这次 = { 分配方式: d.项目.分配方式 ?? null, 业务线: 区域定线中(d, 带项目, 企业) ? null : d.项目.业务线 ?? null };
       if (!(await 问一起转(() => 建项目带走的项目(客.id, { ownerId: 负责人 || null, ...这次 })))) return void set交错("没建：一起转的项目还没确认");
       const r = await 给客户建项目({
         customerId: 客.id,
         ...(联系人Id ? { 联系人Id } : {}),
         项目: {
-          name: d.项目.name, ownerId: 负责人 || null, 分配方式: d.项目.分配方式 ?? null, 业务线: d.项目.业务线 ?? null,
+          name: d.项目.name, ownerId: 负责人 || null, 分配方式: d.项目.分配方式 ?? null, 业务线: 这次.业务线,
           ...(d.项目.所在地 ? { 所在地: d.项目.所在地 } : {}),
         },
         跟进: { ...d.跟进, method: 对得上的方式(d.跟进.type, d.跟进.method) },
@@ -511,7 +523,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
           项目: {
             ...项目稿, amount: 稿面.项目.amount ?? 0, ownerId: 负责人 || null, 分配方式: 企业 ? 稿面.项目.分配方式 ?? null : undefined,
             // 业务线（11-01 清单 A1，手动选）：企业版总是传（没选 = null）；团队版不传
-            业务线: 企业 ? 稿面.项目.业务线 ?? null : undefined,
+            // 市场成员选自动分配：不交，服务端按客户区域定（P-转-26）
+            业务线: 企业 ? (区域定线中(稿面, 带项目, 企业) ? null : 稿面.项目.业务线 ?? null) : undefined,
             // 项目来源：没另选就跟客户的渠道（服务端 项目来源默认 同一个规矩）；团队版不传
             ...(企业 ? { channelId: 项目渠道 || 稿面.客户.渠道 || null } : {}),
           },
@@ -586,7 +599,11 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
       {g && 错(g) ? <span className="cr-err" role="alert">{错(g)}</span> : 注 ? <span className="cr-note">{注}</span> : null}
     </label>
   );
-  const 业务线格 = 企业 && 一格("业务线", "业务线", (
+  // 市场成员选自动分配（P-转-26）：业务线换成只读说明，按客户区域定；老客户有地址看客户的，否则看项目所在地
+  const 区域线 = 老客户 && 老客户区域?.id === 老客户.id ? 老客户区域.线 : 区域线of(null, d.项目.所在地 ?? null);
+  const 业务线格 = 企业 && (区域定线中(d, 带项目, 企业) ? 一格("业务线", "业务线", (
+    <div className="cr-auto-line" data-testid="wizard-bizline-auto" aria-label="业务线" aria-readonly="true">{区域定线说明(区域线)}</div>
+  ), false, false, "市场成员自动分配不用选内贸 / 外贸：中国大陆客户分给内贸销售，其余（含港澳台）分给外贸销售；客户和项目都没填区域时按全部销售分") : 一格("业务线", "业务线", (
     <Select
       className="cr-full"
       aria-label="业务线"
@@ -599,7 +616,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     />
   ), true, false, 带项目
     ? <>{线提示 && <span data-testid="wizard-bizline-hint" className={线提示.同 ? undefined : "cr-warn"}>{线提示.话}；</span>}自动分配只分给这条线的销售；暂不分配 = 留在新线索等人指派。客户没另选时也记成这条线</>
-    : `${b.customer}的业务线；以后开项目时默认带上`);
+    : `${b.customer}的业务线；以后开项目时默认带上`));
   const 未完 = 显错 && 差们.length > 0;
 
   return (
@@ -812,7 +829,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
                 options={企业.分配方式们.map((x) => ({ value: x.i, label: x.名 }))}
                 onChange={(v) => 改("项目", { 分配方式: v })}
               />
-            ), true, false, d.项目.分配方式 !== undefined && !自动分出去 ? 分配说明[d.项目.分配方式] || undefined : undefined)}
+            ), true, false, d.项目.分配方式 !== undefined && !自动分出去 ? (区域定线中(d, 带项目, 企业) ? 区域分配说明 : 分配说明[d.项目.分配方式] || undefined) : undefined)}
             {(企业 ? 要选负责人(d, 企业) : !独自一人(users, d.项目.ownerId)) && 一格("负责人", "项目负责人", (
               <Select className="cr-full" aria-label="项目负责人" status={红("负责人")} value={d.项目.ownerId || undefined} placeholder="选项目负责人" options={负责人选项} onChange={(v) => 改("项目", { ownerId: v })} showSearch optionFilterProp="label" />
             ), !!企业)}

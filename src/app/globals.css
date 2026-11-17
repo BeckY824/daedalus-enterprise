@@ -4522,6 +4522,8 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .cr-wrap { overflow-wrap: anywhere; }
 .cr-gap { margin-top: 8px; }
 .cr-full { width: 100%; min-width: 0; }
+/* 市场成员选自动分配时业务线那一格（P-转-26）：只读说明「按客户区域自动定：内贸 / 外贸」，高度同输入框、长了折行 */
+.cr-auto-line { min-height: 32px; padding: 4px 11px; border: 1px dashed var(--line); border-radius: 6px; color: var(--text-muted); overflow-wrap: anywhere; min-width: 0; }
 .cr-type { width: 132px; flex: none; }
 .cr-cur { width: 120px; flex: none; }
 .cr-chips { display: flex; flex-wrap: wrap; gap: 4px; }

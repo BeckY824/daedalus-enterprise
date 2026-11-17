@@ -961,7 +961,8 @@ describe("不设配额（人人参与、不限额，10-30）", () => {
     if ("error" in 规则们) throw new Error(规则们.error);
     await 存组织规则(规则们);
     expect(await 分配线索({ projectId: await 建项目("R"), toUserId: 外贸 })).toMatchObject({ ok: false, error: expect.stringContaining("持有上限") });
-    // 自动分配：内贸项目只在内贸这条线挑（内贸、两边都 0 条，内贸进池早），不看持有上限
+    // 自动分配：内贸项目只在内贸这条线挑（内贸、两边都 0 条，内贸进池早），不看持有上限。按项目业务线挑是非市场成员发起的口径（P-转-26）
+    当(总管, "SALES");
     expect(await 自动分配线索(await 建项目("S", "内贸"), { 项目: true })).toMatchObject({ ok: true, toUserId: 内贸, 配额: null });
     // 外贸项目：只在外贸这条线挑（外贸、没标线的两边），不会给内贸；两边禁止后只剩外贸，他到了持有上限照样分（自动分配不看持有上限）
     await setSetting(自动分配不参与key, { [销售经理]: "禁止", [虚线经理]: "禁止", [两边]: "禁止" });
@@ -1086,6 +1087,8 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
   });
 
   it("QA #5 自动分配按项目业务线挑人：内贸项目只给内贸线的人，外贸项目只给外贸线的人", async () => {
+    // 按项目业务线挑人是非市场成员发起的口径；市场成员（市场管理、渠运）发起按客户区域定（P-转-26，ent-full-assign 那组）
+    当(总管, "SALES");
     const 内们 = new Set<string>(), 外们 = new Set<string>();
     for (let i = 0; i < 4; i++) {
       const r1 = await 自动分配线索(await 建项目(`内${i}`, { bizLine: "内贸" }), { 项目: true });
@@ -1102,6 +1105,8 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
   });
 
   it("QA #5「暂不分配」的项目不进自动分配，负责人不动；批量也一样", async () => {
+    // 按项目业务线挑人是非市场成员发起的口径；市场成员（市场管理、渠运）发起按客户区域定（P-转-26，ent-full-assign 那组）
+    当(总管, "SALES");
     const P = await 建项目("暂不", { bizLine: "暂不分配", awaitAssignAt: new Date() });
     expect(await 自动分配线索(P, { 项目: true })).toMatchObject({ ok: false, 暂不分配: true, error: expect.stringContaining("暂不分配") });
     const r = await 批量自动分配([P], { 项目: true });
@@ -1111,6 +1116,8 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
   });
 
   it("QA #5 这条线没人能接：不抛错，回 待分配，留在新线索（待分配的仍待分配）", async () => {
+    // 按项目业务线挑人是非市场成员发起的口径；市场成员（市场管理、渠运）发起按客户区域定（P-转-26，ent-full-assign 那组）
+    当(总管, "SALES");
     await setSetting(自动分配不参与key, { [销售经理]: "禁止", [虚线经理]: "禁止", [外贸]: "暂停", [两边]: "禁止" });
     const 待 = await 建项目("待分配的", { bizLine: "外贸", awaitAssignAt: new Date() });
     const r = await 自动分配线索(待, { 项目: true });
@@ -1135,6 +1142,8 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
   });
 
   it("X-85 批量：挑不到人的几条都标成待分配，合成一条待分配提醒；已待分配的不重复提醒，也不另发满额", async () => {
+    // 按项目业务线挑人是非市场成员发起的口径；市场成员（市场管理、渠运）发起按客户区域定（P-转-26，ent-full-assign 那组）
+    当(总管, "SALES");
     await setSetting(自动分配不参与key, { [销售经理]: "禁止", [虚线经理]: "禁止", [外贸]: "暂停", [两边]: "禁止" });
     const 甲 = await 建项目("甲", { bizLine: "外贸" });
     const 乙 = await 建项目("乙", { bizLine: "外贸" });
@@ -1149,6 +1158,8 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
   });
 
   it("老项目没填业务线：按负责人的线（负责人没设 = 内贸）", async () => {
+    // 按项目业务线挑人是非市场成员发起的口径；市场成员（市场管理、渠运）发起按客户区域定（P-转-26，ent-full-assign 那组）
+    当(总管, "SALES");
     const 外的 = await 建项目("外贸人建的", { ownerId: 外贸, bizLine: null });
     const r = await 自动分配线索(外的, { 项目: true });
     // 外贸自己是现负责人跳过 → 只剩两边
