@@ -52,13 +52,13 @@ export default function CustomerNumbers({ customerId, 号码们, 号码种类 }:
 
   if (!编辑) {
     const 行属性 = 只读
-      ? { style: { cursor: "default" } }
-      : { onClick: 开始, role: "button", tabIndex: 0, onKeyDown: (e: React.KeyboardEvent) => e.key === "Enter" && 开始(), "aria-label": "编辑号码" };
+      ? { className: "rec-field cn-ro" }
+      : { className: "rec-field", onClick: 开始, role: "button", tabIndex: 0, onKeyDown: (e: React.KeyboardEvent) => e.key === "Enter" && 开始(), "aria-label": "编辑号码" };
     return (
       <div data-testid="customer-numbers">
         {号码们.length ? (
           号码们.map((m, i) => (
-            <div key={`${m.kind}-${i}`} className="rec-field" data-field="numbers" {...行属性}>
+            <div key={`${m.kind}-${i}`} data-field="numbers" {...行属性}>
               <div className="rec-field-k">{叫法(m.kind)}</div>
               {/* 号码、邮箱是文字 + 复制键（同电话那格，省略号打在文字自己身上）；别的直接一行省略 */}
               <div className="rec-field-v is-line">
@@ -71,7 +71,7 @@ export default function CustomerNumbers({ customerId, 号码们, 号码种类 }:
             </div>
           ))
         ) : (
-          <div className="rec-field" data-field="numbers" {...行属性}>
+          <div data-field="numbers" {...行属性}>
             <div className="rec-field-k">号码</div>
             <div className="rec-field-v rec-field-empty is-line" title={只读 ? undefined : "点击添加座机、WhatsApp 等号码"}>{空值符}</div>
           </div>
@@ -84,17 +84,17 @@ export default function CustomerNumbers({ customerId, 号码们, 号码种类 }:
   return (
     <div className="rec-field rec-field-editing" data-field="numbers" data-testid="customer-numbers">
       <div className="rec-field-k">号码</div>
-      <div style={{ minWidth: 0 }}>
+      <div className="cn-edit">
         {草稿.map((r, i) => (
-          <Space.Compact key={i} style={{ display: "flex", marginBottom: 6 }}>
-            <Select size="middle" style={{ width: 92, flex: "none" }} popupMatchSelectWidth={false} options={类型选项} value={r.kind} onChange={(v: string) => 改(i, { kind: v })} aria-label="号码类型" />
-            <Input size="middle" style={{ minWidth: 0 }} maxLength={号码上限} value={r.value} placeholder="号码或账号" aria-label="号码"
+          <Space.Compact key={i} className="cn-row">
+            <Select size="middle" className="cn-kind" popupMatchSelectWidth={false} options={类型选项} value={r.kind} onChange={(v: string) => 改(i, { kind: v })} aria-label="号码类型" />
+            <Input size="middle" className="cn-val" maxLength={号码上限} value={r.value} placeholder="号码或账号" aria-label="号码"
               onChange={(e) => 改(i, { value: e.target.value })} onPressEnter={() => void 保存()} onKeyDown={(e) => e.key === "Escape" && set编辑(false)} />
             <Button icon={<MinusCircleOutlined />} onClick={() => set草稿((们) => 们.filter((_, j) => j !== i))} aria-label="去掉这一行" />
           </Space.Compact>
         ))}
         {草稿.length < 每人最多号码 && (
-          <Button type="dashed" size="small" block icon={<PlusOutlined />} onClick={() => set草稿((们) => [...们, { kind: 默认种类, value: "" }])} style={{ marginBottom: 6 }}>
+          <Button type="dashed" size="small" block icon={<PlusOutlined />} className="cn-add" onClick={() => set草稿((们) => [...们, { kind: 默认种类, value: "" }])}>
             加一个号码
           </Button>
         )}

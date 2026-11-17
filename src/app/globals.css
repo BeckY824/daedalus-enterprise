@@ -1235,6 +1235,13 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 }
 .rec-field:hover { background: var(--row-hover); }
 .rec-field-editing { background: var(--row-hover); cursor: default; }
+/* 客户资料卡上客户本身的号码（CustomerNumbers，11-17）：只读不给手型；编辑时「类型 + 号码」一行一行 */
+.rec-field.cn-ro { cursor: default; }
+.cn-edit { min-width: 0; }
+.cn-row { display: flex; margin-bottom: 6px; }
+.cn-row .cn-kind { width: 92px; flex: none; }
+.cn-row .cn-val { min-width: 0; }
+.cn-add { margin-bottom: 6px; }
 .rec-field-k { font-size: var(--fs-note); color: var(--text-muted); line-height: 22px; overflow-wrap: anywhere; } /* 不再 nowrap：自定义的长字段名在 66px 里折行，不压到右边的值上；内置最长的「渠道负责人」65px 照旧一行 */
 .rec-field-v { font-size: var(--fs-body); color: var(--ink); line-height: 22px; word-break: break-word; }
 .rec-field-empty { color: var(--text-faint); }

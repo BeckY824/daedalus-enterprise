@@ -73,7 +73,7 @@ async function 准备(input: 交来的, 原: 原联系人 | null, 跳过的联�
       const 头 = 撞了[0];
       return {
         ok: false as const,
-        error: `${种类叫法(表, 头.kind)} ${头.value} 已经记在别的联系人身上，本次没保存。确认是另一个人（比如共用的总机）可以「仍然保存」`,
+        error: `${种类叫法(表, 头.kind)} ${头.value} 已经记在别的联系人或客户身上，本次没保存。确认是另一个人（比如共用的总机）可以「仍然保存」`,
         // 不说撞了谁、在哪位客户下（这家客户他本来就看不到）
         撞了: 撞了.map((x) => ({ contactId: null, name: null, customerId: null, customerName: null, 同事: "同事", kind: x.kind, value: x.value })),
       };
