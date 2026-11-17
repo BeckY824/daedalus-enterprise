@@ -33,7 +33,7 @@ import { dayjs } from "@/lib/utils";
 import { parseScheduleDate } from "@/lib/schedule-date";
 import { 是逾期 } from "@/lib/overdue";
 import { parseDateInput } from "@/lib/date-input";
-import { 联系人电话, 规整, 规整企业联系人, type 联系人字段, type 企业联系人资料 } from "./contact-input";
+import { 联系人电话, 未归属联系人电话, 规整, 规整企业联系人, type 联系人字段, type 企业联系人资料 } from "./contact-input";
 export type { 企业联系人资料 } from "./contact-input";
 import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类表, 联系人号码们 } from "@/lib/enterprise/customer-v2-db";
 import { 联系人姓名问题 } from "@/lib/enterprise/customer-v2";
@@ -927,7 +927,8 @@ export async function saveUnassignedContact(input: 联系人字段 & { id: strin
     if (!u) return { ok: false as const, error: "这位联系人已经不在了，刷新看看" };
     // 版本闸门（排查 D3）：打开编辑框之后有人改过（或已经被别人挂走），不盖掉
     if (input.版本 && 版本条件(input.版本).updatedAt?.getTime() !== u.updatedAt.getTime()) return { ok: false as const, error: 版本冲突 };
-    const 电话 = 联系人电话(input.phone, u.phone);
+    // 企业版：和联系人卡号码几行同一套规矩（11-18，22A）；原样没动的老号照存
+    const 电话 = 未归属联系人电话(input.phone, u.phone, 企业版());
     if (!电话.ok) return 电话;
     const data = { ...规整(input), phone: 电话.phone };
     if (input.customerId) {

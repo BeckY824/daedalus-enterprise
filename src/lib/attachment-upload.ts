@@ -4,15 +4,18 @@
  * 把一张图片（企业版项目附件什么文件都行）传成附件（浏览器里用）：先在这台电脑上压、去 EXIF，超了上限当场说，再 POST /api/attachments。
  * 附件区（components/AttachmentsPanel.tsx）和名片建档（首页名片识别，企业版联系人附件）共用这一份，压法、说法一样
  */
-import { 图片长边, 可以压, 要重画, 换成jpg, 规整文件名, 超限说明, 不收说明, 归属键, type 附件, type 归属 } from "./attachment-rules";
+import { 图片长边, 可以压, 要重画, 换成jpg, 规整文件名, 超限说明, 不收说明, 归属键, 首条附件票头, type 附件, type 归属 } from "./attachment-rules";
 
 export function 归属查询(挂在: 归属): string {
   const [k, v] = 归属键(挂在);
   return `${k}=${encodeURIComponent(v)}`;
 }
 
-/** 分类：企业版联系人附件的 名片 / 相册（api/attachments 只在挂联系人时认） */
-export async function 传附件(挂在: 归属, f: File, 分类?: string | null): Promise<{ ok: true; 附件?: 附件; 自动推到?: string[] } | { ok: false; error: string }> {
+/**
+ * 分类：企业版联系人附件的 名片 / 相册（api/attachments 只在挂联系人时认）。
+ * 票：建档时首条沟通的附件票（11-18，lib/enterprise/first-follow-ticket.ts），走请求头
+ */
+export async function 传附件(挂在: 归属, f: File, 分类?: string | null, 票?: string | null): Promise<{ ok: true; 附件?: 附件; 自动推到?: string[] } | { ok: false; error: string }> {
   const 名 = 规整文件名(f.name);
   const 不收 = 不收说明(名, f.type, 挂在);
   if (不收) return { ok: false, error: 不收 };
@@ -26,7 +29,7 @@ export async function 传附件(挂在: 归属, f: File, 分类?: string | null)
     const r = await fetch(`/api/attachments?${归属查询(挂在)}&${q}`, {
       method: "POST",
       body: 好.体,
-      headers: { "Content-Type": 好.体.type || "application/octet-stream" },
+      headers: { "Content-Type": 好.体.type || "application/octet-stream", ...(票 ? { [首条附件票头]: 票 } : {}) },
     });
     const j = (await r.json().catch(() => ({}))) as { error?: string; 附件?: 附件; 自动推到?: string[] };
     if (!r.ok) return { ok: false, error: j.error ?? `「${名}」没传上去（${r.status}）` };

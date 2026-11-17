@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Select } from "antd";
 import { 沟通方式选项, 发起主体选项, 我常用的沟通方式 } from "@/app/(app)/follow-method-actions";
 import type { 一条方式 } from "@/lib/follow-habit";
@@ -34,6 +34,25 @@ export function useFollowHabit(要: boolean = true): 一条方式 | null | undef
     return () => { 作废 = true; };
   }, [要]);
   return 习惯;
+}
+
+/**
+ * 新记一条沟通的默认方式按个人习惯（11-18 再接 5 处：首页待办「记一条沟通」、建档向导首条沟通、线索转项目、完成计划、AI 卡在服务端另接）。
+ * 要 = 这次该问（新记的；带回了草稿、计划自己写了方式的不问）。习惯问到了、人还没在下拉里改过，才 填 一次；
+ * 返回 人改了：下拉 onChange 里调，之后晚到的习惯不再盖人选的。没有记录（null）不填，照各处原来的默认
+ */
+export function useHabitDefault(要: boolean, 填: (x: 一条方式) => void): () => void {
+  const 习惯 = useFollowHabit(要);
+  const 改过 = useRef(false);
+  const 填过 = useRef(false);
+  const 填的 = useRef(填);
+  useEffect(() => { 填的.current = 填; });
+  useEffect(() => {
+    if (!要 || !习惯 || 改过.current || 填过.current) return;
+    填过.current = true;
+    填的.current(习惯);
+  }, [要, 习惯]);
+  return useCallback(() => { 改过.current = true; }, []);
 }
 
 // 发起主体同上，一页取一次

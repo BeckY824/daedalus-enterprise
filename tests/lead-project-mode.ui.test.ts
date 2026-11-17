@@ -18,7 +18,7 @@ const plugin: Plugin = { name: "leads-ui", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({push(u){window.__去.push(u)},refresh(){},replace(){}});");
   stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
   stub(/components\/DataList$/, "export default function D(p){const 动=p.列.find(c=>c.key==='act');return <div data-testid='rows'>{p.行.map(r=><div key={r.id}>{动.render(null,r)}</div>)}</div>}");
-  stub(/^\.\/actions$/, "export const saveLead=async(x)=>{(window.__存||=[]).push(x);return {ok:true}};export const deleteLeads=async()=>({ok:true});export const mergeLeadInto=async()=>{window.__并=(window.__并||0)+1;return {ok:true}};export const convertLead=async()=>window.__转;");
+  stub(/^\.\/actions$/, "export const saveLead=async(x)=>{(window.__存||=[]).push(x);return {ok:true}};export const deleteLeads=async()=>({ok:true});export const mergeLeadInto=async()=>{window.__并=(window.__并||0)+1;return {ok:true}};export const convertLead=async(...a)=>{(window.__转参||=[]).push(a);return window.__转};");
   stub(/^\.\/assign-actions$/, "export const 分配带走的项目=async()=>({项目数:0,项目:[]});export const 自动分配线索=async()=>({});export const 撤销自动分配=async()=>({ok:true});export const 批量自动分配=async()=>({});export const 分配线索=async()=>({});export const 本月分配情况=async()=>[];export const 我分出去的线索=async()=>[];export const 关满额提醒=async()=>({ok:true});export const 项目分配线=async()=>({线:null});");
   // 建档向导那条路（projects/NewProjectFlow.tsx）：记下开了什么标题、什么项目开关（向导本身另有测试）
   stub(/projects\/NewProjectFlow$/, "export function useNewProjectFlow(){return {开选客户(){},取档中:false,弹框:null,开建档:async(t,k)=>{(window.__建档||=[]).push([t,k])}}}");
@@ -79,6 +79,20 @@ it("企业版项目模式：行上是「转项目」，转好去项目页（F6�
   await page.getByLabel("沟通内容").fill("电话聊了需求");
   await 转.click();
   await expect.poll(去了).toEqual(["/projects/p1"]);
+  expect(errors).toEqual([]); await page.close();
+});
+
+it("转项目的首条跟进：沟通方式按个人习惯默认（11-18），交上去带着它", async () => {
+  const { page, errors, 去了 } = await 打开(true);
+  await page.evaluate(() => { const w = window as unknown as { __转: unknown; __习惯: unknown }; w.__转 = { ok: true, customerId: "c1", projectId: "p1" }; w.__习惯 = { type: "WECHAT", method: "微信沟通" }; });
+  await page.getByTestId("rows").getByRole("button", { name: /转项目/ }).click();
+  const 框 = page.getByTestId("lead-convert-follow");
+  await expect.poll(() => 框.locator(".ant-select").first().innerText()).toContain("微信沟通");
+  await page.getByLabel("沟通内容").fill("微信上聊了需求");
+  await 框.getByRole("button", { name: "转为项目" }).click();
+  await expect.poll(去了).toEqual(["/projects/p1"]);
+  const 参 = await page.evaluate(() => (window as unknown as { __转参: unknown[][] }).__转参);
+  expect(参[0][1]).toMatchObject({ type: "WECHAT", method: "微信沟通", content: "微信上聊了需求" });
   expect(errors).toEqual([]); await page.close();
 });
 

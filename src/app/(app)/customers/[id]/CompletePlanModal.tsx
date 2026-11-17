@@ -9,7 +9,7 @@ import { showUndo } from "@/components/UndoBar";
 import type { Dayjs } from "dayjs";
 import { dayjs } from "@/lib/utils";
 import { 跟进类型们, FOLLOW_TYPE_MAP } from "@/lib/constants";
-import FollowMethodSelect from "@/components/FollowMethodSelect";
+import FollowMethodSelect, { useHabitDefault } from "@/components/FollowMethodSelect";
 import { 对得上的方式 } from "@/lib/follow-method";
 import { useBusiness } from "@/lib/business-client";
 import { 外贸精简 } from "@/lib/business-config";
@@ -119,6 +119,8 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
   const [类型, set类型] = useState(() => 默认完成类型(plan.method, 外贸, plan.有WhatsApp));
   // 企业版沟通方式（10-31）：计划上写的正好是字典里的一种、又对得上类型就先选它
   const [方式, set方式] = useState<string | null>(() => 对得上的方式(类型, plan.method) ?? null);
+  // 计划自己没写方式：按个人习惯默认（11-18，同记沟通框）；计划写了方式的以计划为准，人改过的不盖
+  const 人改了方式 = useHabitDefault(!String(plan.method ?? "").trim(), (x) => { set类型(x.type); set方式(x.method); });
   const [字, set字] = useState("");
   const [下次, set下次] = useState<下次>("7");
   const [日子, set日子] = useState<Dayjs | null>(() => dayjs().add(7, "day"));
@@ -256,7 +258,7 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
               type={类型}
               method={方式}
               类型们={跟进类型们(外贸).filter((t) => t.value !== "TASK" && t.value !== "REMIND")}
-              onChange={(v) => { set类型(v.type); set方式(v.method); }}
+              onChange={(v) => { 人改了方式(); set类型(v.type); set方式(v.method); }}
             />
           </div>
           <div className="done-plan-row">

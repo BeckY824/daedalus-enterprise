@@ -478,6 +478,7 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
       ...(只用项目 && p.projectId ? { projectId: p.projectId } : {}),
       customerId: p.customerId,
       type: p.type,
+      ...(p.method ? { method: p.method } : {}),
       title: p.title || null,
       content: p.content,
       status: "已完成",

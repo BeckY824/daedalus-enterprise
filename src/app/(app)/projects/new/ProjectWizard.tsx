@@ -12,7 +12,7 @@ import { useBusiness } from "@/lib/business-client";
 import { useMe, 默认负责人 } from "@/lib/me-client";
 import { 草稿全名, 读草稿, 存草稿, 清草稿, 有内容, 带回话 } from "@/lib/form-draft";
 import { 跟进类型们 } from "@/lib/constants";
-import FollowMethodSelect from "@/components/FollowMethodSelect";
+import FollowMethodSelect, { useHabitDefault } from "@/components/FollowMethodSelect";
 import { 对得上的方式 } from "@/lib/follow-method";
 import { 币种选项, 默认币种 } from "@/lib/currency";
 import { 金额格式 } from "@/lib/money-input";
@@ -49,6 +49,7 @@ import { 动作出错话 } from "@/lib/stale-deploy";
 import ReplyWindowInput from "@/components/ReplyWindowInput";
 import { 回复晚于回收, 北京墙钟转时刻, 认定时分配, 分配晚于回复 } from "@/lib/project/time-fields";
 import ScheduleAssignInput from "@/components/ScheduleAssignInput";
+import { 选沟通附件, 传沟通附件 } from "@/components/FollowAttachments";
 
 const 草稿键 = "项目建档向导";
 const 时间格式 = "YYYY-MM-DD HH:mm";
@@ -304,6 +305,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   const [带项目, set带项目] = useState(开关 !== "关");
   // 上次没填完的接着填
   const [d, setD] = useState<稿>(() => (旧 ? { ...新稿(), ...旧 } : 新稿()));
+  // 首条沟通的方式按个人习惯默认（11-18，同记沟通框）：带回了草稿的以草稿为准，人改过的不盖；填默认不算打字，不存草稿
+  const 人改了方式 = useHabitDefault(!旧, (x) => setD((o) => ({ ...o, 跟进: { ...o.跟进, type: x.type, method: x.method } })));
   const [已查, set已查] = useState<string | null>(null);
   const [撞, set撞] = useState<DuplicateHit>(null);
   // 企业版「查重」回来的那句（格式不对 / 首次录入 / 撞了哪种）
@@ -349,7 +352,24 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     await new Promise((ok) => setTimeout(ok, 读一句停留));
     走();
   };
+  /** 建好之后凭票传首条沟通的附件：全传上回 null，有没传上的回一句（建好照旧，读完点「知道了」再走） */
+  const 传首条附件 = async (r: object): Promise<string | null> => {
+    if (!附件们.length) return null;
+    const 票 = "附件票" in r ? (r as { 附件票?: { followUpId: string; 票: string } }).附件票 : undefined;
+    if (!票) return "建好了，截图 / 附件没传上：没拿到上传凭据，到这条沟通上补传";
+    set建后话({ 话: `建好了，正在传 ${附件们.length} 个截图 / 附件…`, 警: false });
+    const 错 = await 传沟通附件(票.followUpId, 附件们, 票.票);
+    if (!错.length) return null;
+    return 错.length === 附件们.length
+      ? `建好了，截图 / 附件没传上（${错[0]}），到这条沟通上补传`
+      : `建好了，${附件们.length} 个截图 / 附件传上 ${附件们.length - 错.length} 个，${错.length} 个没传上（${错[0]}），到这条沟通上补传`;
+  };
   const [显错, set显错] = useState(false);
+  /**
+   * 首条沟通的截图 / 附件（11-18，选填）：和记沟通框同一个挑选块，先挑好；建档交 要传附件，建好凭回来的票逐个传，挂在这条首条沟通上
+   * （lib/enterprise/first-follow-ticket.ts：建好就分走了也传得上）。文件进不了本机草稿，关掉弹窗就没了（同记沟通框）
+   */
+  const [附件们, set附件们] = useState<File[]>([]);
   const [已存, set已存] = useState(!!旧);
   const [接着填, set接着填] = useState(!!旧);
 
@@ -504,12 +524,15 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
           ...(定时 ? { 定时分配: 定时 } : {}),
         },
         跟进: { ...d.跟进, method: 对得上的方式(d.跟进.type, d.跟进.method) },
+        ...(附件们.length ? { 要传附件: true } : {}),
       });
       if (!r.ok) return void set交错(r.error);
       清草稿(全名);
       set建好了(true);
       const 看不到 = !!r.看不到客户了;
-      await 读完再走(看不到 ? r.提示 ?? `${b.customer}已转出` : r.提示, !!r.转走, () => {
+      const 附件话 = await 传首条附件(r);
+      const 话 = [看不到 ? r.提示 ?? `${b.customer}已转出` : r.提示, 附件话].filter(Boolean).join("；") || null;
+      await 读完再走(话, !!r.转走 && !附件话, () => {
         弹窗?.关();
         // 客户转给了销售、我看不到了：回客户列表（留着刷新就是 404）；项目分走了：留在原页刷新；
         // 不然落到这位客户、停在新项目（landed：新项目卡亮 2 秒，原型 cr.submit）；本来就在这位客户页上的换地址不加历史
@@ -569,6 +592,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
             ...(企业 ? { channelId: 项目渠道 || 稿面.客户.渠道 || null } : {}),
           },
           跟进,
+          ...(附件们.length ? { 要传附件: true } : {}),
         })
         : await 建档只建客户({ 客户, 联系人, 跟进 });
       if (!r.ok && "同号协同" in r) {
@@ -596,7 +620,10 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
       清草稿(全名);
       set建好了(true);
       const 转走 = "转走" in r && !!r.转走;
-      await 读完再走("提示" in r ? r.提示 : null, 转走, () => {
+      // 首条沟通的截图 / 附件：只有带项目建的才挂得上（客户沟通不挂项目）
+      const 附件话 = 带项目 ? await 传首条附件(r) : null;
+      const 话 = ["提示" in r ? r.提示 : null, 附件话].filter(Boolean).join("；") || null;
+      await 读完再走(话, 转走 && !附件话, () => {
         弹窗?.关();
         // 分走了 / 进了公海，项目不在我名下：回线索列表（弹窗里建的：留在原页刷新）
         if (转走) return void (弹窗 ? router.refresh() : router.push(新线索 ? "/leads" : "/projects"));
@@ -646,6 +673,17 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
       {g && 错(g) ? <span className="cr-err" role="alert">{错(g)}</span> : 注 ? <span className="cr-note">{注}</span> : null}
     </label>
   );
+  const 有回复时间 = !!(d.项目.指定回复开始 || d.项目.指定回复结束);
+  const 回复格 = 企业 && 一格(null, "指定回复时间", (
+    <ReplyWindowInput
+      value={{ 开始: d.项目.指定回复开始 ?? null, 结束: d.项目.指定回复结束 ?? null }}
+      onChange={(v) => {
+        改("项目", { 指定回复开始: v.开始, 指定回复结束: v.结束 });
+        // 回复时间记在项目上：没开项目时填了就打开（11-18）
+        if (!带项目 && (v.开始 || v.结束)) set带项目(true);
+      }}
+    />
+  ), false, true, 带项目 ? "选填，按北京时间：指定什么时候回复客户" : 有回复时间 ? "回复时间记在项目上：没开项目不存，填了会打开「有项目」" : "选填，按北京时间；记在项目上，填了会打开「有项目」");
   // 市场成员选自动分配（P-转-26）：业务线换成只读说明，按客户区域定；老客户有地址看客户的，否则看项目所在地
   const 区域线 = 老客户 && 老客户区域?.id === 老客户.id ? 老客户区域.线 : 区域线of(null, d.项目.所在地 ?? null);
   const 业务线格 = 企业 && (区域定线中(d, 带项目, 企业) ? 一格("业务线", "业务线", (
@@ -899,6 +937,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
           <Switch size="small" aria-label="有项目" checked={带项目} disabled={锁 || !!老客户} onChange={(v) => set带项目(v)} />
           <span className="cr-hint">{老客户 ? `给已有${b.customer}新增项目` : 锁 ? "新线索建好就是一个线索阶段的项目" : 带项目 ? "下面填项目信息；关掉就不建项目" : "有项目就打开，下面填项目信息"}</span>
         </div>
+        {/* 项目开关关着也摆「指定回复时间」（11-18 员工反馈）：字段挂在项目上，填了就打开「有项目」（先有项目的规矩不变）；分配时间照旧只在项目里、选了指定 / 自动分配才有 */}
+        {企业 && !带项目 && <div className="cr-grid">{回复格}</div>}
         {带项目 && (
           <div className="cr-grid cr-rise">
             {一格("项目名", "项目名称", <Input aria-label="项目名称" status={红("项目名")} value={d.项目.name} maxLength={项目名上限} showCount onChange={(e) => 改("项目", { name: e.target.value })} />, true)}
@@ -957,12 +997,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
               />
             ), false, true)}
             {/* 指定回复时间（11-17，选填）：客户要求联系的时间点 / 时间段，按北京时间；只填开始 = 那个时间前后，只填结束 = 那之前 */}
-            {企业 && 一格(null, "指定回复时间", (
-              <ReplyWindowInput
-                value={{ 开始: d.项目.指定回复开始 ?? null, 结束: d.项目.指定回复结束 ?? null }}
-                onChange={(v) => 改("项目", { 指定回复开始: v.开始, 指定回复结束: v.结束 })}
-              />
-            ), false, true, "选填，按北京时间：指定什么时候回复客户")}
+            {回复格}
             {回复警 && <Alert type="warning" showIcon className="cr-wide" data-testid="wizard-reply-warn" title={回复警} />}
             {分配警 && <Alert type="warning" showIcon className="cr-wide" data-testid="wizard-schedule-warn" title={分配警} />}
             {!企业 && 一格(null, "金额", (
@@ -984,7 +1019,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         </div>
         <div className="cr-grid">
           {一格(null, "沟通方式", (
-            <FollowMethodSelect style={满宽} aria-label="沟通方式" type={d.跟进.type} method={d.跟进.method} 类型们={能选类型} onChange={(v) => 改("跟进", v)} />
+            <FollowMethodSelect style={满宽} aria-label="沟通方式" type={d.跟进.type} method={d.跟进.method} 类型们={能选类型} onChange={(v) => { 人改了方式(); 改("跟进", v); }} />
           ), true)}
           {一格(null, "时间", (
             <DatePicker
@@ -1031,6 +1066,17 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
               onChange={(e) => 改("跟进", { 下一步: e.target.value })}
             />
           ), 带项目 && 要下一步)}
+          {/*
+            截图 / 附件（11-18，选填）：和记沟通框同一个挑选块（选文件、Ctrl/⌘V 粘贴截图，类型、大小照沟通附件）；建好凭票挂到这条首条沟通上。
+            不用 一格 的 <label>：点文件名会把文件选择框也点开。没开项目 = 客户沟通，不挂项目，挂不了附件
+          */}
+          {企业 && (
+            <div className="cr-field cr-wide" data-testid="wizard-attachments">
+              <span className="cr-label">截图 / 附件</span>
+              {带项目 ? <选沟通附件 文件们={附件们} on改={set附件们} /> : null}
+              <span className="cr-note">{带项目 ? "选填，截图、录音都行；建好后挂在这条首条沟通上，也可以直接粘贴截图" : "截图 / 附件挂在项目的沟通上：打开「有项目」才能加"}</span>
+            </div>
+          )}
         </div>
       </section>
 

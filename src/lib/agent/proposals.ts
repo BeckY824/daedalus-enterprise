@@ -19,6 +19,7 @@ import { 是项目卡, buildProjectProposal, 项目卡缺, 描述项目卡, type
 import { 内置号码种类, 每人最多号码, 号码上限 } from "../enterprise/customer-v2";
 import { 字典定义 } from "../enterprise/dict-kinds";
 import { 认出备注里的号码 } from "../enterprise/remark-numbers";
+import { 对得上的方式 } from "../follow-method";
 
 export type ProposalKind = "set_status" | "add_followup" | "add_plan" | "add_lead" | "update_customer" | "add_opportunity" | "add_contract" | "update_channel"
   /** 全页面 AI 写入的项目类卡（企业版只用项目，见 project-proposals.ts） */
@@ -90,8 +91,11 @@ type Base = {
 
 export type Proposal =
   | (Base & { kind: "set_status"; field: "followStatus" | "decisionStatus"; to: string })
-  /** projectId：企业版卡上选的关联项目（11-17 沟通必须挂项目，几个在推项目时人在卡上选）；模型不给 */
-  | (Base & { kind: "add_followup"; type: string; title: string; content: string; occurredAt: string; projectId?: string })
+  /**
+   * projectId：企业版卡上选的关联项目（11-17 沟通必须挂项目，几个在推项目时人在卡上选）；模型不给。
+   * method：企业版沟通方式（11-18：AI 没给类型时按个人习惯带上，和类型对得上才留）
+   */
+  | (Base & { kind: "add_followup"; type: string; title: string; content: string; occurredAt: string; projectId?: string; method?: string })
   | (Base & { kind: "add_plan"; subject: string; plannedAt: string; method: string })
   | (Base & { kind: "add_lead"; name: string; contact: string; phone: string; source: string; status: string; remark: string;
       /** 下一步时间（企业版建成项目用，开了超时回收必填，YYYY-MM-DD）；别的版本不看（10-27） */ nextAt?: string;
@@ -314,11 +318,15 @@ export function buildProposal(
     if (args.type && !type) return { ok: false, error: `type 必须是这几种之一：${FOLLOW_TYPES.map((t) => t.label).join("/")}` };
     const when = parseWhen(args.occurredAt);
     if (!when.ok) return { ok: false, error: "occurredAt 解析不了，用 YYYY-MM-DD HH:mm" };
+    // 方式（企业版）：和类型对得上才留（卡上人换了类型，原来带的方式就不作数）。AI 没给类型时，提议工具先按个人习惯填了类型和方式（tools.ts）
+    const 定类型 = type || "PHONE";
+    const method = 对得上的方式(定类型, str(args.method, 20));
     return {
       ok: true,
       // 不给时间就算刚刚发生的——补录一次沟通，默认"现在"几乎总是对的
       proposal: {
-        ...base, kind, type: type || "PHONE", title: str(args.title, 60), content: str(args.content, 2000), occurredAt: when.at || dayjs().toISOString(),
+        ...base, kind, type: 定类型, title: str(args.title, 60), content: str(args.content, 2000), occurredAt: when.at || dayjs().toISOString(),
+        ...(method ? { method } : {}),
         ...(typeof args.projectId === "string" && args.projectId ? { projectId: args.projectId.slice(0, 64) } : {}),
       },
     };

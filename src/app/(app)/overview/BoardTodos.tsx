@@ -8,7 +8,7 @@ import { showUndo } from "@/components/UndoBar";
 import SaveButton from "@/components/SaveButton";
 import BusinessDatePicker from "@/components/BusinessDatePicker";
 import { 记项目沟通Action } from "../projects/actions";
-import FollowMethodSelect from "@/components/FollowMethodSelect";
+import FollowMethodSelect, { useHabitDefault } from "@/components/FollowMethodSelect";
 import { 跟进类型们 } from "@/lib/constants";
 import type { 预警行 } from "@/lib/project/review-extras";
 import { dayjs, fmtDateTime } from "@/lib/utils";
@@ -421,9 +421,10 @@ function RecycleProjectRow({ p }: { p: 预警行 }) {
   const [内容, set内容] = useState("");
   const [下一步, set下一步] = useState("");
   const [下一步时间, set下一步时间] = useState(() => dayjs().add(3, "day"));
-  /** 沟通方式由人选（同项目详情 / 完成计划小框那一套），不替人写死 */
+  /** 沟通方式由人选（同项目详情 / 完成计划小框那一套），不替人写死；打开时按个人习惯默认（11-18），人改过的不盖 */
   const [类型, set类型] = useState("PHONE");
   const [方式, set方式] = useState<string | null>(null);
+  const 人改了方式 = useHabitDefault(记, (x) => { set类型(x.type); set方式(x.method); });
   const 剩 = Math.max(0, dayjs(p.回收日).startOf("day").diff(dayjs().startOf("day"), "day"));
   async function 存() {
     if (!内容.trim()) return { ok: false, error: "先写几句沟通内容" };
@@ -451,7 +452,7 @@ function RecycleProjectRow({ p }: { p: 预警行 }) {
             type={类型}
             method={方式}
             类型们={跟进类型们(false).filter((t) => t.value !== "TASK" && t.value !== "REMIND")}
-            onChange={(v) => { set类型(v.type); set方式(v.method); }}
+            onChange={(v) => { 人改了方式(); set类型(v.type); set方式(v.method); }}
           />
           <Input.TextArea aria-label={`和「${p.名}」沟通了什么`} placeholder="沟通了什么" autoSize={{ minRows: 2, maxRows: 5 }} maxLength={2000} value={内容} onChange={(e) => set内容(e.target.value)} />
           <div className="ov-rc-next">

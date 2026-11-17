@@ -4,6 +4,7 @@
  *   复盘回收提醒：点节点一条原地展开快到期的项目（还剩几天），「记一条沟通」原地长出小表单；
  *     被挡（ok:false）：保存键里写原因，不提示成功、表单还在；成了：调了 记项目沟通Action（带项目、阶段、下一步时间）
  *   1024 宽 + 超长项目名：不横滚
+ *   沟通方式按个人习惯默认（11-18）：有习惯就选好它；习惯晚到、人先改过的不盖
  * 认元素用 role / 文字；.ant-message 只用来断言「没有」。
  */
 import { beforeAll, afterAll, expect, it } from "vitest";
@@ -19,9 +20,9 @@ const plugin: Plugin = { name: "pr5b-kpi-recycle", setup(b) {
   stub(/^next\/link$/, "import React from 'react';export default function L({href,prefetch,...p}){return <a href={href} {...p} onClick={(e)=>{e.preventDefault();(window.__去||(window.__去=[])).push(href)}}/>}");
   stub(/^next\/navigation$/, "export const useRouter=()=>({push(u){(window.__去||(window.__去=[])).push(u)},refresh(){},replace(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可用:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
-  stub(/customers\/\[id\]\/actions$/, "export const toggleTask=async()=>({ok:true}),completePlan=async()=>({ok:true});");
+  stub(/customers\/\[id\]\/actions$/, 补全动作桩("src/app/(app)/customers/[id]/actions.ts", "export const toggleTask=async()=>({ok:true}),completePlan=async()=>({ok:true}),沟通可选项目=async()=>({ok:true,项目们:null,能建项目:true});"));
   stub(/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 记项目沟通Action=async(id,v)=>{(window.__调||(window.__调=[])).push({id,...v});return window.__挡?{ok:false,error:window.__挡}:{ok:true}};"));
-  stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
+  stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>{if(window.__习惯慢)await new Promise(r=>setTimeout(r,window.__习惯慢));return window.__习惯??null};", "async()=>null"));
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 const 长 = "某某超长名字的智能制造装备与工业自动化系统集成有限公司华东区域销售中心二期产线改造项目";
@@ -121,5 +122,42 @@ it("ov.recycle：记成了，表单收起；超长项目名 1024 宽单行省略
   await page.getByRole("button", { name: /^记\s*下$/ }).click();
   await expect.poll(async () => page.getByRole("textbox", { name: /沟通了什么/ }).count(), { timeout: 6000 }).toBe(0);
   expect((await 调了(page)).length).toBe(1);
+  await page.close();
+});
+
+const 设习惯 = (page: Page, 习惯: { type: string; method: string | null } | null, 慢 = 0) =>
+  page.evaluate(([x, m]) => { const w = window as unknown as { __习惯: unknown; __习惯慢: number }; w.__习惯 = x; w.__习惯慢 = m as number; }, [习惯, 慢] as const);
+
+it("ov.recycle：沟通方式按个人习惯默认（11-18），交上去带着它", async () => {
+  const page = await 打开("todos", 1024);
+  await 设习惯(page, { type: "WECHAT", method: "微信沟通" });
+  await page.getByRole("button", { name: /潜客培育 · 7 天没跟进收回/ }).click();
+  await page.getByRole("button", { name: "记一条沟通" }).first().click();
+  const 方式 = page.locator(".ov-rc-form .ant-select").first();
+  await expect.poll(() => 方式.innerText()).toContain("微信沟通");
+  await page.getByRole("textbox", { name: /沟通了什么/ }).fill("微信上聊了");
+  await page.getByRole("textbox", { name: "下一步计划" }).fill("下周回访");
+  await page.getByRole("button", { name: /^记\s*下$/ }).click();
+  await expect.poll(async () => (await 调了(page)).length).toBe(1);
+  expect((await 调了(page))[0]).toMatchObject({ type: "WECHAT", method: "微信沟通" });
+  expect(await 横滚(page)).toBeLessThanOrEqual(0);
+  await page.close();
+});
+
+it("ov.recycle：习惯晚到、人先改过方式 → 不盖人选的", async () => {
+  const page = await 打开("todos", 1024);
+  await 设习惯(page, { type: "WECHAT", method: "微信沟通" }, 800);
+  await page.getByRole("button", { name: /潜客培育 · 7 天没跟进收回/ }).click();
+  await page.getByRole("button", { name: "记一条沟通" }).first().click();
+  const 方式 = page.locator(".ov-rc-form .ant-select").first();
+  await 方式.click();
+  await page.locator(".ant-select-item-option", { hasText: "上门拜访" }).click();
+  await page.waitForTimeout(1200);
+  expect(await 方式.innerText()).toContain("上门拜访");
+  await page.getByRole("textbox", { name: /沟通了什么/ }).fill("见面聊了");
+  await page.getByRole("textbox", { name: "下一步计划" }).fill("下周回访");
+  await page.getByRole("button", { name: /^记\s*下$/ }).click();
+  await expect.poll(async () => (await 调了(page)).length).toBe(1);
+  expect((await 调了(page))[0]).toMatchObject({ type: "VISIT" });
   await page.close();
 });
