@@ -1,4 +1,5 @@
 import { prisma, defaultClient } from "@/lib/prisma";
+import { 能往项目记沟通 } from "@/lib/project/follow-needs-project";
 import { 只读客户 } from "@/lib/team-scope";
 import type { SessionUser } from "@/lib/auth";
 import { 项目收藏了吗 } from "@/lib/favorites";
@@ -198,8 +199,8 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   const 回收日 = 超时回收日(规则, p, 回收起点, 字典, 回收线);
   // 验证中（等复核 / 等销售……）的线索不参与超时回收（X-78 → M-线索-02，和 lib/project/db.ts 验证中不收 同一个条件）：不写回收日，写「验证中，不回收」，记沟通也不预演
   const 验证不收 = 企业 && !!回收日 && !!(await prisma.entLeadVerify.findUnique({ where: { projectId: p.id }, select: { pending: true } }))?.pending;
-  // 11-01：企业版组员只能看，沟通只有负责人记（和 lib/project/db.ts 记项目沟通 同一个判断）
-  const 能记沟通 = 企业 && !公海 && 能改;
+  // 11-17：负责人或已进组的组员能记，已结束的不再记（和 lib/project/db.ts 记项目沟通 同一个判断）
+  const 能记沟通 = 企业 && !公海 && !p.result && 能往项目记沟通(me, p, org, 已加入.includes(me.id) ? "JOINED" : null);
   // 沟通的「…」菜单（改 / 删，10-29）：不在公海、客户看得到，且不是同事 / 虚线下属的客户（和客户页不摆编辑删除同一条，服务端 改项目沟通 / 删项目沟通 再挡一遍）。
   // M-权限-09（11-09 原口径）：管理（销售管理 / 市场管理 / 总管理）以下的人，负责人本人也算，不能改、不能删。
   // 改 = 身为负责人（项目或客户的）的管理，删 = 系统管理员或身为负责人的管理（V3.5.1），两样分开给，和服务端同一套（lib/enterprise/follow-perm.ts）

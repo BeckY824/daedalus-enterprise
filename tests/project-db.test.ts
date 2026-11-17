@@ -575,10 +575,10 @@ describe("企业版项目组：邀请 → 同意 / 拒绝（10-26）", () => {
     await 回邀请(丙, m.id, true);
     expect(await 看到的()).toEqual([p.id]);
     expect(await prisma.projectMember.count({ where: 限定条件("ProjectMember", 丙.id) as never })).toBe(1);
-    // 11-01：组员（JOINED）能看不能改，沟通也记不了；负责人记的组员看得到
-    expect(await 记项目沟通(丙, p.id, { type: "PHONE", content: "聊了", occurredAt: dayjs().format("YYYY-MM-DD HH:mm"), 阶段: p.phase, 明确回复: true })).toMatchObject({ ok: false });
+    // 11-01：组员（JOINED）能看不能改；11-17 客户定沟通组员可记（记录是组员记的、负责人不变）；负责人记的组员看得到
+    expect(await 记项目沟通(丙, p.id, { type: "PHONE", content: "聊了", occurredAt: dayjs().format("YYYY-MM-DD HH:mm"), 阶段: p.phase, 明确回复: true })).toMatchObject({ ok: true });
     expect(await 记项目沟通(乙, p.id, { type: "PHONE", content: "聊了", occurredAt: dayjs().format("YYYY-MM-DD HH:mm"), 阶段: p.phase, 明确回复: true })).toMatchObject({ ok: true });
-    expect(await prisma.followUpProject.count({ where: 限定条件("FollowUpProject", 丙.id) as never })).toBe(1);
+    expect(await prisma.followUpProject.count({ where: 限定条件("FollowUpProject", 丙.id) as never })).toBe(2);
     // 丁不是组员，照旧看不到
     const 丁 = await 人("ding", "SALES");
     await prisma.entMember.create({ data: { userId: 丁.id, bizRole: "sales" } });

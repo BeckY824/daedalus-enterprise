@@ -4,7 +4,7 @@
  *   一个表单分三段（客户 / 项目 / 首条沟通），没有「下一步」；项目是开关：客户页「新建客户」默认关，新线索开着并锁住
  *   默认值：项目负责人 = 我（P-界面-33）；下一步时间 = 3 天后（P-界面-34）
  *   号码、客户名离开输入框自动查重；按钮不变灰，点了就地标红缺的格、写「还差 N 项」
- *   没开项目：走「只建客户」（客户沟通、客户业务线），不交项目
+ *   没开项目：走「只建客户」（客户业务线），不交项目；企业版首条沟通记在新客户自带的潜客培育项目上（11-17）
  *   销售选自动分配：就地黄条 + 按钮「建好并分出去」，不叠确认框
  *   Windows 1024 / 1280 / 1366 + 超长客户名：弹窗里不横向溢出，「建好」在可视区点得中
  *   市场成员选自动分配（P-转-26，用户 11-17）：业务线那格换成只读「按客户区域自动定」，不交业务线；三档宽度不溢出
@@ -61,7 +61,7 @@ const 选 = async (page: Page, 标签: string, 项: string) => {
 };
 const 三天后 = () => { const d = new Date(Date.now() + 3 * 864e5); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
-it("新建客户：一个表单、没有「下一步」；项目开关默认关、没有项目那几格；首条沟通标明算客户沟通；下一步时间默认 3 天后", async () => {
+it("新建客户：一个表单、没有「下一步」；项目开关默认关、没有项目那几格；首条沟通标明记在潜客培育项目上；下一步时间默认 3 天后", async () => {
   const page = await 开(1280);
   try {
     const 框 = page.getByRole("dialog");
@@ -70,7 +70,8 @@ it("新建客户：一个表单、没有「下一步」；项目开关默认关�
     expect(await 开关.getAttribute("aria-checked")).toBe("false");
     expect(await 开关.isDisabled()).toBe(false);
     expect(await 框.getByLabel("项目名称").count()).toBe(0);
-    await 框.getByText("没开项目，记成客户沟通").waitFor();
+    // 企业版沟通必须挂项目（11-17）：没开项目时首条沟通记在新客户自带的潜客培育项目上（M-公海-14）
+    expect(await 框.getByTestId("wizard-follow-where").innerText()).toBe("没开项目，记在自动建的「潜客培育」项目上");
     expect(await 框.getByLabel("下一步时间").inputValue()).toBe(三天后());
     // 打开开关：项目那几格就地展开；项目负责人默认我（P-界面-33）
     await 开关.click();

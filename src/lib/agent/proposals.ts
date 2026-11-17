@@ -90,7 +90,8 @@ type Base = {
 
 export type Proposal =
   | (Base & { kind: "set_status"; field: "followStatus" | "decisionStatus"; to: string })
-  | (Base & { kind: "add_followup"; type: string; title: string; content: string; occurredAt: string })
+  /** projectId：企业版卡上选的关联项目（11-17 沟通必须挂项目，几个在推项目时人在卡上选）；模型不给 */
+  | (Base & { kind: "add_followup"; type: string; title: string; content: string; occurredAt: string; projectId?: string })
   | (Base & { kind: "add_plan"; subject: string; plannedAt: string; method: string })
   | (Base & { kind: "add_lead"; name: string; contact: string; phone: string; source: string; status: string; remark: string;
       /** 下一步时间（企业版建成项目用，开了超时回收必填，YYYY-MM-DD）；别的版本不看（10-27） */ nextAt?: string;
@@ -316,7 +317,10 @@ export function buildProposal(
     return {
       ok: true,
       // 不给时间就算刚刚发生的——补录一次沟通，默认"现在"几乎总是对的
-      proposal: { ...base, kind, type: type || "PHONE", title: str(args.title, 60), content: str(args.content, 2000), occurredAt: when.at || dayjs().toISOString() },
+      proposal: {
+        ...base, kind, type: type || "PHONE", title: str(args.title, 60), content: str(args.content, 2000), occurredAt: when.at || dayjs().toISOString(),
+        ...(typeof args.projectId === "string" && args.projectId ? { projectId: args.projectId.slice(0, 64) } : {}),
+      },
     };
   }
 

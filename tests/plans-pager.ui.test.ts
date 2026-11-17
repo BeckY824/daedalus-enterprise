@@ -23,7 +23,7 @@ const plugin: Plugin = { name: "plans-pager-ui", setup(b) {
   stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
-  stub(/(customers\/\[id\]\/|^\.\/)actions$/, "export const toggleTask=async()=>({ok:true}),completePlan=toggleTask,deletePlan=toggleTask,deleteTask=toggleTask,saveFollowUp=toggleTask,撤销记一笔=toggleTask;");
+  stub(/(customers\/\[id\]\/|^\.\/)actions$/, "export const toggleTask=async()=>({ok:true}),completePlan=toggleTask,deletePlan=toggleTask,deleteTask=toggleTask,saveFollowUp=toggleTask,撤销记一笔=toggleTask,沟通可选项目=async()=>({ok:true,项目们:null,能建项目:true});");
   stub(/customers\/\[id\]\/(PlanForm|TaskForm)$/, "export default function C(){return null}");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };

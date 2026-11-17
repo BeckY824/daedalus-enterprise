@@ -979,8 +979,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
       <section className="cr-sec" aria-label="首条沟通">
         <div className="cr-sec-head">
           <b>首条沟通</b>
-          {/* 用户 11-15「没有开项目，就只能算客户沟通」 */}
-          {!带项目 && <span className="cr-hint">没开项目，记成{b.customer}沟通</span>}
+          {/* 团队版（用户 11-15「没有开项目，就只能算客户沟通」）；企业版沟通必须挂项目（11-17）：记在新客户自带的潜客培育项目上（M-公海-14） */}
+          {!带项目 && <span className="cr-hint" data-testid="wizard-follow-where">{企业 ? `没开项目，记在自动建的「潜客培育」项目上` : `没开项目，记成${b.customer}沟通`}</span>}
         </div>
         <div className="cr-grid">
           {一格(null, "沟通方式", (
@@ -1019,7 +1019,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
                 ))}
               </span>
             </>
-          ), 带项目 && 要下一步, false, !带项目 ? `记成${b.customer}的一条跟进计划` : 要下一步 ? "过了那天还没有新的沟通，或在当前这步停满规定天数，项目都会自动回到公海" : undefined)}
+          ), 带项目 && 要下一步, false, !带项目 ? (企业 ? `记成「潜客培育」项目的下一步` : `记成${b.customer}的一条跟进计划`) : 要下一步 ? "过了那天还没有新的沟通，或在当前这步停满规定天数，项目都会自动回到公海" : undefined)}
           {企业 && 能填下一步 && 一格("下一步计划", "下一步计划", (
             <Input
               aria-label="下一步计划"
