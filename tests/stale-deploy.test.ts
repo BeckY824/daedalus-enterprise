@@ -3,7 +3,7 @@
  *   1. 认得出 Next 16 客户端真抛的那个错（拿 Next 自己的 UnrecognizedActionError 类、照它的原话造），别的错不认
  *   2. 换话：老版本动作 → 「系统刚更新了，请刷新页面后再提交」，顺手发一声点亮横幅；别的照原话
  *   3. 版本比对：两边都是认得出的编号、不一样才算换了版本；空的、坏的、502 页都不算
- *   4. /api/version 只回 id、不缓存；开发模式固定 "dev"，生产读 <distDir>/BUILD_ID，读不到回 null
+ *   4. /api/version 只回 id、不缓存；开发模式固定 "dev"；生产按 deploymentId（构建清单）> NEXT_DEPLOYMENT_ID > BUILD_ID，读不到回 null
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
@@ -100,6 +100,7 @@ describe("/api/version 与构建号", () => {
     process.chdir(目录);
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("NEXT_DIST_DIR", "");
+    vi.stubEnv("NEXT_DEPLOYMENT_ID", "");
     重读构建号();
     expect(本次构建号()).toBe("Abc_123-x");
     // 文件换了（下一次发版），这个进程跑的还是老代码：照旧报老编号
@@ -111,5 +112,40 @@ describe("/api/version 与构建号", () => {
     fs.rmSync(path.join(目录, ".next", "BUILD_ID"));
     重读构建号();
     expect(本次构建号()).toBeNull();
+  });
+
+  it("编号先后：构建清单里的 deploymentId > 环境变量 NEXT_DEPLOYMENT_ID > BUILD_ID（配了 deploymentId 时 BUILD_ID 每次都一样）", async () => {
+    const { 本次构建号, 重读构建号 } = await import("@/lib/build-id");
+    const 目录 = fs.mkdtempSync(path.join(os.tmpdir(), "crm-build-id-"));
+    const 写 = (名: string, 内容: string) => fs.writeFileSync(path.join(目录, ".next", 名), 内容);
+    const 清单 = (deploymentId: unknown) => 写("required-server-files.json", JSON.stringify({ version: 1, config: { deploymentId }, files: [] }));
+    const 读 = () => { 重读构建号(); return 本次构建号(); };
+    fs.mkdirSync(path.join(目录, ".next"));
+    process.chdir(目录);
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("NEXT_DIST_DIR", "");
+    // Next 16.4 配了 deploymentId 时写死的那串
+    写("BUILD_ID", "build-TfctsWXpff2fKS");
+    vi.stubEnv("NEXT_DEPLOYMENT_ID", "env-dpl-1");
+    清单("a1b2c3d4e5f6");
+    expect(读()).toBe("a1b2c3d4e5f6");
+    // 进程里只读一次：清单换了照旧报老的
+    清单("ffff0000");
+    expect(本次构建号()).toBe("a1b2c3d4e5f6");
+    // 清单里是空串（没配 deploymentId）、没这个键、清单坏了、没有清单：都退到环境变量
+    for (const 换 of [() => 清单(""), () => 清单(undefined), () => 写("required-server-files.json", "{坏的"), () => fs.rmSync(path.join(目录, ".next", "required-server-files.json"))]) {
+      换();
+      expect(读()).toBe("env-dpl-1");
+    }
+    // 环境变量也没有：退到 BUILD_ID
+    vi.stubEnv("NEXT_DEPLOYMENT_ID", "");
+    expect(读()).toBe("build-TfctsWXpff2fKS");
+    // 清单里的 deploymentId 不像编号：不往下乱找，回 null（横幅不问）
+    清单("<html>");
+    expect(读()).toBeNull();
+    // 开发模式照旧 dev，不读文件
+    vi.stubEnv("NODE_ENV", "development");
+    清单("a1b2c3d4e5f6");
+    expect(读()).toBe("dev");
   });
 });
