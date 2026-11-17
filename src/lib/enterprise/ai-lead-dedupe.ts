@@ -12,46 +12,14 @@ import { prisma, defaultClient } from "@/lib/prisma";
 import { 读的我, 看全部 } from "@/lib/team-scope";
 import { parseScheduleDate, calendarDay } from "@/lib/schedule-date";
 import { recordAudit } from "@/lib/audit";
-import { 验号码, 查重提示, type 号码类型 } from "./contact-format";
+import { 查重提示 } from "./contact-format";
 import { 全公司查号, 撞号结论, 首条撞的, 问同事撞没撞, 回收站撞没撞 } from "./contact-dedupe";
 import { notify } from "./notify";
 import { 同号再次录入, type 录入信息 } from "./same-number-collab";
 
-export type 认出的号 = { 类型: 号码类型; 值: string; 键: string };
-
-/** 行头去掉空格、小写以后查。「阿里国际站ID」是 10-29 的新叫法，旧的「旺旺 / 旺旺ID」、简称「阿里ID / 国际站ID」都认 */
-const 行名: Record<string, 号码类型> = {
-  邮箱: "邮箱", 微信: "微信",
-  阿里国际站id: "旺旺ID", 阿里国际站: "旺旺ID", 阿里id: "旺旺ID", 国际站id: "旺旺ID", 旺旺: "旺旺ID", 旺旺id: "旺旺ID",
-};
-const 号码行 = /^\s*(邮箱|微信|阿里国际站\s*(?:id)?|阿里\s*id|国际站\s*id|旺旺\s*(?:id)?)\s*[：:]\s*(.+?)\s*$/i;
-const 裸邮箱 = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/;
-
-/**
- * 备注里认号码：「邮箱：x」「微信：x」「阿里国际站ID：x」（旧的「旺旺：x / 旺旺ID：x」也认）这样的行，验得过才认、整行拿掉；每种只认第一个，再有的留在备注。
- * 没有邮箱行时，正文里夹着的一个邮箱也认（只认不删，句子不拆）
- */
-export function 认出备注里的号码(备注: string): { 号们: 认出的号[]; 剩: string } {
-  const 号们: 认出的号[] = [];
-  const 有 = (t: 号码类型) => 号们.some((h) => h.类型 === t);
-  const 剩行 = 备注.split(/\r?\n/).filter((行) => {
-    const m = 号码行.exec(行);
-    if (!m) return true;
-    const 类型 = 行名[m[1].replace(/\s+/g, "").toLowerCase()];
-    if (有(类型)) return true;
-    const r = 验号码(类型, m[2]);
-    if (!r.ok) return true;
-    号们.push({ 类型, 值: r.值, 键: r.键 });
-    return false;
-  });
-  const 剩 = 剩行.join("\n").trim();
-  if (!有("邮箱")) {
-    const m = 裸邮箱.exec(剩);
-    const r = m && 验号码("邮箱", m[0]);
-    if (r && r.ok) 号们.push({ 类型: "邮箱", 值: r.值, 键: r.键 });
-  }
-  return { 号们, 剩 };
-}
+// 认备注里的号码是纯函数，11-17 搬到 remark-numbers.ts（新线索卡的必填在浏览器里也要用）；这里照旧导出
+export { 认出备注里的号码, type 认出的号 } from "./remark-numbers";
+import type { 认出的号 } from "./remark-numbers";
 
 /** 挨个查，撞了回给录入的人看的话（不建档）；都没撞回 null */
 export async function AI建档查重(号们: 认出的号[], 我: { id: string; name: string }, 录入?: 录入信息): Promise<string | null> {

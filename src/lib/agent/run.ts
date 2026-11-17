@@ -48,7 +48,7 @@ export function 这一家的工具(b: Pick<BusinessConfig, "projectMode">, 只�
     .map((t) => (只用项目 && t.name === "query_records" ? { ...t, description: query_records说明(true), args: query_records参数(true) } : t))
     .map((t) =>
       只用项目 && t.name === "propose_lead"
-        ? { ...t, description: "建议新建一条新线索：确认后建一位客户和一个在「线索」阶段的项目。只知道名字也要提，留空的字段人会在卡片上补。人说了「分给谁」就把姓名原样放 assignTo，说了来源（平台、展会、渠道）就原样放 source——卡上认得出会预选，人确认；没说就不给，别猜。" }
+        ? { ...t, description: "建议新建一条新线索：确认后建一位客户和一个在「线索」阶段的项目。只知道名字也要提，留空的字段人会在卡片上补。人说了「分给谁」就把姓名原样放 assignTo，说了来源（平台、展会、渠道）就原样放 source——卡上认得出会预选，人确认；没说就不给，别猜。" + 线索号码说明 + "。" }
         : t,
     );
   return { TOOLS, TOOL_MAP: new Map(TOOLS.map((t) => [t.name, t])) as typeof 全部工具表 };
@@ -84,7 +84,7 @@ import { SCHEMAS } from "./schemas";
 import { 查询表 } from "./query";
 import { 有DSML, 解析DSML } from "@/lib/llm-dsml";
 import { 认意图, type 命中结果, type 页面范围 } from "./intents";
-import type { Proposal } from "./proposals";
+import { 线索号码说明, type Proposal } from "./proposals";
 import type { Emit } from "../ai-steps";
 import type { BriefRecord } from "../ai-draft";
 import type { BusinessConfig } from "../business-config";

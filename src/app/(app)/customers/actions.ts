@@ -60,7 +60,7 @@ import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 企业号码查重, 全公司查号, 撞号结论, 记号码 } from "@/lib/enterprise/contact-dedupe";
 import { 号码撞上, 客户名查重, 名撞说法, type 名撞结论 } from "@/lib/enterprise/dupe-ledger";
 import { setOppStatus } from "../opportunities/actions";
-import { 认得 } from "@/lib/project/hook";
+import { 认得, 联系人带号 } from "@/lib/project/hook";
 import { 客户的项目数, 持有上限起点, 写前核上限, 整批或不做 } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import type { 组织规则 } from "@/lib/project/org-rules";
@@ -391,7 +391,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   const 按邮箱认 = 外贸 && !原号 && Boolean(交的邮箱);
   const 按微信认 = 外贸 && !原号 && !交的邮箱 && Boolean(交的微信);
   const 按阿里认 = 外贸 && !原号 && !交的邮箱 && !交的微信 && Boolean(交的阿里);
-  const 电话 = 改前 && 原号 === 改前.phone ? { ok: true as const, phone: 改前.phone } : 查电话(原号, { 必填: 改前 ? Boolean(改前.phone) : !按邮箱认 && !按微信认 && !按阿里认 && !企号别的 });
+  const 电话 = 改前 && 原号 === 改前.phone ? { ok: true as const, phone: 改前.phone } : 查电话(原号, { 必填: 改前 ? Boolean(改前.phone) : !按邮箱认 && !按微信认 && !按阿里认 && !企号别的 && !联系人带号(接着) });
   if (!电话.ok) return { ok: false, error: 外贸 && !改前 && !原号 ? 外贸至少一种 : 电话.error };
   const phone = 电话.phone;
   // 按邮箱 / 微信认的那位（没有电话）把两样都清空，就再也认不出是谁了：不许，和「原来有号码的不许清空」同一条

@@ -30,7 +30,7 @@ export function 联系人电话(交回: string | null | undefined, 原: string |
 
 export function 规整(input: 联系人字段) {
   return {
-    name: input.name.trim(),
+    name: (input.name ?? "").trim(),
     position: input.position || null,
     phone: input.phone || null,
     email: input.email || null,

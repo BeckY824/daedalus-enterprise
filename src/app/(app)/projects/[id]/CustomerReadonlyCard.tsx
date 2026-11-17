@@ -4,7 +4,7 @@ import { Alert, Button, Modal, Skeleton } from "antd";
 import { CustomerLink } from "@/components/ui";
 import type { 客户只读卡, 只读卡联系人 } from "@/lib/enterprise/customer-readonly-card";
 import { 打开客户只读卡Action } from "./readonly-card-actions";
-import { 有值 } from "@/lib/empty-value";
+import { 有值, 空显 } from "@/lib/empty-value";
 
 const 灰字 = { color: "var(--text-muted)" } as const;
 
@@ -37,7 +37,7 @@ export function 卡内容({ 卡, 没给的说法 = "不在这位负责人的项�
       {卡.联系人.map((x, i) => (
         <div key={i} style={{ padding: "6px 0", borderTop: "1px solid var(--line)", minWidth: 0 }}>
           <div className="ro-card-who">
-            <span className="ro-card-who-n">{x.name}{x.position && <span style={{ ...灰字, marginInlineStart: 8 }}>{x.position}</span>}</span>
+            <span className="ro-card-who-n">{空显(x.name)}{x.position && <span style={{ ...灰字, marginInlineStart: 8 }}>{x.position}</span>}</span>
             {操作?.(x)}
           </div>
           {x.号码们.map((m, j) => <行 key={j} 名={m.叫法} 值={m.value} />)}

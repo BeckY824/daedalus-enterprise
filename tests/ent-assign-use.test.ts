@@ -37,6 +37,7 @@ import { 存分配谁能用 } from "@/app/(app)/settings/ent-dict-actions";
 import { 公海规则, 公海客户先领取话 } from "@/lib/enterprise/pool-rules";
 import { 自动分配不参与key } from "@/lib/enterprise/lead-assign";
 import { 新建分配方式数据, 暂不分配提示 } from "@/lib/project/after-create-assign";
+import { 区域未填提示 } from "@/lib/enterprise/customer-region";
 import { 改项目 } from "@/lib/project/db";
 import { 没业务角色不能新建话, 只读角色话 } from "@/lib/enterprise/permissions";
 import { saveCustomer, patchCustomer } from "@/app/(app)/customers/actions";
@@ -506,41 +507,68 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     });
   });
 
-  it("自动分配：按选的业务线（内贸）分给一位内贸销售，客户跟着走、项目不待分配；地址不参与", async () => {
+  it("自动分配（非市场成员）：按选的业务线（内贸）分给一位内贸销售，项目不待分配；地址不参与", async () => {
     await prisma.entMember.updateMany({ where: { userId: { in: [销售, 另一销售] } }, data: { line: "内贸" } });
     await setSetting(自动分配不参与key, { [销售经理]: "禁止" });
-    当(市场);
-    // 地址填的是外国，也照选的业务线（内贸）分
+    当(项运);
+    // 地址填的是外国，也照选的业务线（内贸）分（项目组员不是市场成员，不按区域）
     const r = await 向导({ 分配方式: 1, 业务线: "内贸", 地址: { addrCountry: "美国", addrProvince: "", addrCity: "", addrDistrict: "" } });
     expect(r).toMatchObject({ ok: true, 转走: true });
     if (!r.ok) return;
     const p = await 项目of(r.projectId);
     expect([销售, 另一销售]).toContain(p.ownerId);
-    expect(p.customer.salesOwnerId).toBe(p.ownerId);
-    expect([p.assignMode, p.awaitAssignAt, p.bizLine, p.creatorId]).toEqual(["自动分配", null, "内贸", 市场]);
+    // 建的人不是市场：客户不跟着走（P-转-03，只有市场首次分给销售才转客户，X-18）
+    expect(p.customer.salesOwnerId).toBe(项运);
+    expect([p.assignMode, p.awaitAssignAt, p.bizLine, p.creatorId]).toEqual(["自动分配", null, "内贸", 项运]);
     // A8：建的人留着，「我分出去的线索」查得到
-    expect(await prisma.entLeadAssign.count({ where: { projectId: r.projectId, toUserId: p.ownerId, byUserId: 市场 } })).toBe(1);
+    expect(await prisma.entLeadAssign.count({ where: { projectId: r.projectId, toUserId: p.ownerId, byUserId: 项运 } })).toBe(1);
   });
 
-  it("自动分配 + 业务线「暂不分配」：不自动分，留在新线索待分配，不发提醒（A7）", async () => {
+  it("市场成员自动分配（P-转-26）：业务线交了也不认，按客户区域定——客户在中国大陆 → 内贸，项目、客户都记内贸", async () => {
     await prisma.entMember.updateMany({ where: { userId: { in: [销售, 另一销售] } }, data: { line: "内贸" } });
+    await setSetting(自动分配不参与key, { [销售经理]: "禁止" });
     当(市场);
+    const r = await 向导({ 分配方式: 1, 业务线: "外贸", 地址: { addrCountry: "中国", addrProvince: "浙江省", addrCity: "", addrDistrict: "" } });
+    expect(r).toMatchObject({ ok: true, 转走: true });
+    if (!r.ok) return;
+    const p = await 项目of(r.projectId);
+    expect([销售, 另一销售]).toContain(p.ownerId);
+    expect(p.bizLine).toBe("内贸");
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: r.customerId } })).bizLine).toBe("内贸");
+  });
+
+  it("市场成员自动分配、客户和项目都没填区域：业务线不用选（交 null 也能建），按全部销售分、提示补区域；项目不记线、客户记暂不分配", async () => {
+    await setSetting(自动分配不参与key, { [销售经理]: "禁止" });
+    当(市场);
+    const r = await 向导({ 分配方式: 1, 业务线: null });
+    expect(r).toMatchObject({ ok: true, 转走: true });
+    if (!r.ok) return;
+    expect(r.提示).toContain(区域未填提示);
+    const p = await 项目of(r.projectId);
+    expect([销售, 另一销售]).toContain(p.ownerId);
+    expect(p.bizLine).toBeNull();
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: r.customerId } })).bizLine).toBe("暂不分配");
+  });
+
+  it("自动分配 + 业务线「暂不分配」（非市场成员）：不自动分，留在新线索待分配，不发提醒（A7）", async () => {
+    await prisma.entMember.updateMany({ where: { userId: { in: [销售, 另一销售] } }, data: { line: "内贸" } });
+    当(销售经理);
     const r = await 向导({ 分配方式: 1, 业务线: "暂不分配" });
     expect(r).toMatchObject({ ok: true, 转走: false });
     if (!r.ok) return;
     expect(r.提示).toMatch("业务线是「暂不分配」，不自动分");
     const p = await 项目of(r.projectId);
-    expect([p.ownerId, p.assignMode, p.bizLine, p.awaitAssignAt === null]).toEqual([市场, "自动分配", "暂不分配", false]);
+    expect([p.ownerId, p.assignMode, p.bizLine, p.awaitAssignAt === null]).toEqual([销售经理, "自动分配", "暂不分配", false]);
     expect(await prisma.entLeadAssign.count()).toBe(0);
     expect(await prisma.setting.count({ where: { key: { startsWith: "entLeadFullNotice:" } } })).toBe(0);
   });
 
   it("自动分配没人可分（这条线没人）：留在新线索待分配，提醒市场管理、销售管理、总管理员；之后手动分出去清掉待分配", async () => {
-    // 两个销售都只做内贸、销售经理禁止自动分配：外贸这条线没人
+    // 两个销售都只做内贸、销售经理禁止自动分配：外贸这条线没人（市场成员按客户区域定：客户在美国 → 外贸）
     await prisma.entMember.updateMany({ where: { userId: { in: [销售, 另一销售] } }, data: { line: "内贸" } });
     await setSetting(自动分配不参与key, { [销售经理]: "禁止" });
     当(市场);
-    const r = await 向导({ 分配方式: 1, 业务线: "外贸" });
+    const r = await 向导({ 分配方式: 1, 业务线: null, 地址: { addrCountry: "美国", addrProvince: "", addrCity: "", addrDistrict: "" } });
     expect(r).toMatchObject({ ok: true, 转走: false });
     if (!r.ok) return;
     expect(r.提示).toMatch("已提醒市场管理、销售管理、总管理员");

@@ -35,6 +35,8 @@ import type { 转走项目预览 } from "@/lib/carry-over";
 import { 看全部 } from "@/lib/team-scope";
 import { 项目业务线, 线部门key, 规整线部门, 线勾了部门, 按部门候选, 只留销售, 两条线, 是业务线, type 线部门, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 历史负责人 } from "@/lib/project/pool-owner";
+import { 区域线of, 按区域分配of, 去掉销售管理, 区域分配理由 } from "@/lib/enterprise/customer-region";
+import type { 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 换负责人待办, 待办痕, 接上待办痕, 带待办勾 } from "@/lib/project/carry-tasks";
 import { 规整还原单, 撤回自动分配, 自动分配撤销对不上, type 自动分配还原 } from "@/lib/enterprise/auto-assign-undo";
 import {
@@ -330,11 +332,12 @@ function 公海客户拦的话(分法?: 公海客户分法): string {
  */
 async function 分前看(
   哪条: 目标, org?: 组织, 公海客户?: 公海客户分法,
-): Promise<{ ok: true; ownerId: string | null; 实际负责人: string | null; 待分配: boolean; 名: string; 线: 项目线 | null } | { ok: false; error: string }> {
+): Promise<{ ok: true; ownerId: string | null; 实际负责人: string | null; 待分配: boolean; 名: string; 线: 项目线 | null; 区域?: { 客户: 客户地址; 项目: 客户地址 } } | { ok: false; error: string }> {
   if (哪条.projectId !== undefined) {
+    const 址 = { addrCountry: true, addrProvince: true, addrCity: true, addrDistrict: true } as const;
     const p = await prisma.project.findFirst({
       where: { id: 哪条.projectId },
-      select: { ownerId: true, pooledAt: true, awaitAssignAt: true, phase: true, result: true, name: true, bizLine: true, customer: { select: { pool: { select: { customerId: true } } } } },
+      select: { ownerId: true, pooledAt: true, awaitAssignAt: true, phase: true, result: true, name: true, bizLine: true, ...址, customer: { select: { ...址, pool: { select: { customerId: true } } } } },
     });
     if (!p) return { ok: false, error: 项目不在 };
     // 客户公海里的项目跟客户走，不单独分（M-公海-06、X-13）；线索公海（客户不在公海）照分
@@ -348,6 +351,10 @@ async function 分前看(
     return {
       ok: true, ownerId: p.pooledAt || p.awaitAssignAt ? null : p.ownerId || null, 实际负责人: p.ownerId || null,
       待分配: !p.pooledAt && !!p.awaitAssignAt, 名: p.name, 线: 项目业务线(p, org?.成员),
+      区域: {
+        客户: { addrCountry: p.customer.addrCountry, addrProvince: p.customer.addrProvince, addrCity: p.customer.addrCity, addrDistrict: p.customer.addrDistrict },
+        项目: { addrCountry: p.addrCountry, addrProvince: p.addrProvince, addrCity: p.addrCity, addrDistrict: p.addrDistrict },
+      },
     };
   }
   const lead = await prisma.lead.findFirst({ where: { id: 哪条.leadId }, select: { ownerId: true, status: true, name: true } });
@@ -392,9 +399,11 @@ export async function 分配带走的项目(projectIds: string[], 接手人?: st
     const org = await 读组织();
     if (!能分配(org, me)) return 不弹;
     const 能分的: string[] = [];
+    // 市场成员（按岗位）点自动分配不看项目业务线、按客户区域定（P-转-26），「暂不分配」的也会分
+    const 按区域 = 按区域分配of(org, me.id);
     for (const id of ids) {
       const 看 = await 分前看({ projectId: id }, org);
-      if (看.ok && (接手人 !== undefined || 是业务线(看.线))) 能分的.push(id);
+      if (看.ok && (接手人 !== undefined || 按区域 || 是业务线(看.线))) 能分的.push(id);
     }
     return await 看全部(async () => {
       const 行 = await prisma.project.findMany({ where: { id: { in: 能分的 } }, select: { customer: { select: { id: true, salesOwnerId: true, pool: { select: { customerId: true } } } } } });
@@ -408,7 +417,7 @@ export async function 分配带走的项目(projectIds: string[], 接手人?: st
 }
 
 export type 自动分配结果 =
-  | { ok: true; toUserId: string; 接手人: string; 已分: number; 配额: number | null; 为什么: string; 随客户?: true; 还原?: 自动分配还原 }
+  | { ok: true; toUserId: string; 接手人: string; 已分: number; 配额: number | null; 为什么: string; 随客户?: true; 还原?: 自动分配还原; 区域未填?: true }
   | { ok: false; error: string; 都满额?: true; 暂不分配?: true; 已被分配?: true; 待分配?: true };
 /**
  * 服务端自己用：多带 留下（分配通知要）、要标（挑不到人、还没待分配的新线索：调用方标待分配、发提醒，X-85），不给浏览器
@@ -559,9 +568,26 @@ async function 自动分给(
 
   // 新线索（项目）：线看项目业务线（A1，三选一；老项目按负责人的线、再没有按内贸），不认弹窗传来的；
   // 「暂不分配」不自动分。勾了部门的线按部门挑人（A4），没勾退回按成员标记
+  // 例外（P-转-26 自动分配这一半，X-141）：市场成员（按岗位：市场管理、渠道运营）发起的，不看项目业务线，按客户区域定事业部——
+  // 大陆 → 内贸、非大陆（含港澳台）→ 外贸，客户地址全空看项目所在地，再空 = 两条线都算、结果里提示补区域；候选都去掉销售管理。
+  // 指定分配的事业部限制（P-转-26 另一半）还没做，见 X-141
   let 人们: string[];
   let 查线: 线 | null | undefined;
-  if (哪条.projectId !== undefined) {
+  const 按区域 = 哪条.projectId !== undefined && 按区域分配of(org, me.id);
+  let 区域未填 = false;
+  if (按区域) {
+    line = 看.区域 ? 区域线of(看.区域.客户, 看.区域.项目) : null;
+    const 设 = await 读线部门();
+    if (line) {
+      人们 = 按部门候选(org, 看.ownerId, line, 设, 自动候选人们);
+      查线 = 查哪条线(org, 设, line);
+    } else {
+      区域未填 = true;
+      人们 = [...new Set(两条线.flatMap((l) => 按部门候选(org, 看.ownerId, l, 设, 自动候选人们)))];
+      查线 = null;
+    }
+    人们 = 去掉销售管理(org, 人们);
+  } else if (哪条.projectId !== undefined) {
     if (!是业务线(看.线)) return { ok: false, 暂不分配: true, error: 暂不分配不自动 };
     line = 看.线;
     const 设 = await 读线部门();
@@ -605,10 +631,10 @@ async function 自动分给(
           : "没有能接的人：都不参与自动分配，或者业务线对不上",
       );
     }
-    const 为什么 = 挑的理由(候选, 跳过, 查满, 谁, 不限额);
+    const 为什么 = 按区域 ? `${挑的理由(候选, 跳过, 查满, 谁, 不限额)}；${区域分配理由(line)}` : 挑的理由(候选, 跳过, 查满, 谁, 不限额);
     const r = await 分给(me, org, { ...哪条, toUserId: 谁, line, 查线, kind, 自动: true, 原负责人: 比谁 });
     if (r.ok) {
-      return { ok: true, toUserId: 谁, 接手人: 建号.find((u) => u.id === 谁)?.name ?? 谁, 已分: await 本月已分(谁, 月), 配额: 不限额 ? null : (额.get(谁) ?? null), 为什么, ...留下字段(r.留下), ...(r.还原 ? { 还原: r.还原 } : {}) };
+      return { ok: true, toUserId: 谁, 接手人: 建号.find((u) => u.id === 谁)?.name ?? 谁, 已分: await 本月已分(谁, 月), 配额: 不限额 ? null : (额.get(谁) ?? null), 为什么, ...留下字段(r.留下), ...(r.还原 ? { 还原: r.还原 } : {}), ...(区域未填 ? { 区域未填: true as const } : {}) };
     }
     if (r.已被分配) return 已被分配;
     if (!r.满) return { ok: false, error: r.error };
