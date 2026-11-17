@@ -162,6 +162,8 @@ export type 项目详情 = {
    * 渠道们 = 能改时编辑框里选项目来源用的；aiEnabled = 「记一条沟通」里给不给 AI 解析（没配模型不给）。不是企业版都不传
    */
   项目来源?: { name: string; 跟客户: boolean } | null; channelId?: string | null; 已立项天数?: number; 渠道们?: 可选渠道[]; aiEnabled?: boolean;
+  /** 数据来源（迁移 151）：历史沟通分析回填的项目是「历史分析」，显示成标签；正常建的不传、不摆这一行 */
+  数据来源?: string;
   /**
    * 企业版（P11 定稿 -2 版，迁移 093）：项目级别 S / A / B / C（null = 没分级），显示成星；
    * 所在地 = 地址四格 + 详细地址，跟客户资料一样公海里同事客户的项目没领之前是 null（不摆）。不是企业版都不传
@@ -1214,6 +1216,7 @@ export default function ProjectDetail({
           <div style={行样} data-testid="project-created-row"><span style={键样}>创建于</span><span className="proj-one">{fmtDateTime(p.createdAt)}</span></div>
         </>
       )}
+      {p.企业版 && p.数据来源 && <div style={行样} data-testid="project-data-source-row"><span style={键样}>数据来源</span><span className="proj-one"><Tag bordered={false} color="purple">{p.数据来源}</Tag></span></div>}
       {p.企业版 && p.已立项天数 !== undefined && <div style={行样}><span style={键样}>已立项</span>{p.已立项天数 === 0 ? "今天立项" : `${p.已立项天数} 天`}</div>}
       {p.企业版 && p.项目来源 !== undefined && (
         <div style={行样}>
