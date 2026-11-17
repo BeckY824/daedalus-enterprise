@@ -34,7 +34,7 @@ import { recapRange } from "./recap-range";
 import { METRICS, VALID_GROUPS, sanitizeQuerySpec, 指标显示, 维度显示 } from "../report-query";
 import { loadWatchlistPage } from "../sentinel-data";
 import { statusLabel, 外贸精简 } from "../business-config";
-import { 名字在别处, 别处说法, 别处附件, 找人 } from "./find-name";
+import { 名字在别处, 别处说法, 别处附件, 找人详, 没找到话 } from "./find-name";
 import type { BusinessConfig } from "../business-config";
 import type { BriefRecord } from "../ai-draft";
 import { 扩同义词 } from "./synonyms";
@@ -263,22 +263,46 @@ export const TOOLS: Tool[] = [
   {
     name: "find_person",
     description:
-      "**按名字找一个人**：客户、渠道、联系人、线索、同事五张表一起找，返回每一条的电话和身份。" +
-      "问「某某的电话」「某某是谁」「某某的联系方式」先用它；是客户、还要看跟进时间线时，再用它给的 id 调 get_customer。" +
-      "名字原样传（「李老师」就传「李老师」，不要传「李」）。",
-    args: '{"name": "人名，原样传"}',
+      "**按名字或号码找一个人 / 一家公司**：客户、联系人（含联系人的号码）、渠道、线索、同事几张表一起找，返回每一条的电话和身份；联系人带所属客户的 id。" +
+      "问「某某的电话」「某某是谁」「某某的联系方式」「这个号码是谁的」「这个号 / 这家有没有人在跟（查重、查归属）」都先用它；是客户、还要看跟进时间线时，再用它给的 id 调 get_customer。" +
+      "名字原样传（「李老师」就传「李老师」，不要传「李」）；号码原样传，空格、横杠、+86 不用去，给一段（后四位、中间几位）也能找。" +
+      "原样找不到时它会自己退一步模糊找（去掉称呼、公司后缀），回话里写着是怎么找到的。",
+    args: '{"name": "人名、公司名或号码，原样传"}',
     async run(args, ctx) {
-      const name = str(args.name, 20);
+      const name = str(args.name, 40);
       if (!name) return { summary: "没给名字", data: { error: "name 必填" } };
-      const 命中 = await 找人(name, 脱敏(ctx), (v) => statusLabel(ctx.b, v), ctx.userId);
-      if (!命中.length) return { summary: `当前可访问范围内未找到「${name}」`, data: { 找到: 0, error: `当前可访问范围内未找到「${name}」；无法据此判断记录不存在还是无权访问` } };
-      const 条 = 命中.reduce((n, h) => n + h.条数, 0);
+      const r = await 找人详(name, 脱敏(ctx), (v) => statusLabel(ctx.b, v), ctx.userId);
+      const 找的 = r.号码 ? `号码「${r.号码}」` : `「${name}」`;
+      if (r.号码藏着)
+        return {
+          summary: "电话对你不可见，没按号码找",
+          data: { error: `你的字段权限里电话是隐藏的，不能按号码找人或查重。请用户给名字或公司名再找；号码查重在新建线索 / 客户时系统会自动做。` },
+        };
+      if (!r.命中.length) {
+        const 话 = 没找到话(找的, !!r.号码);
+        return {
+          summary: `当前可访问范围内没找到${找的}`,
+          data: {
+            找到: 0,
+            结论: 话,
+            该怎么办: `照「结论」那段话告诉用户（查过哪些、下一步怎么确认）。不要说库里没有，也不要只回一句「无法据此区分」。`,
+          },
+        };
+      }
+      const 条 = r.命中.reduce((n, h) => n + h.条数, 0);
+      const 模糊话 = r.模糊
+        ? `没有正好叫「${name}」的；下面是按「${r.模糊.用的词}」${r.模糊.开头 ? "开头" : ""}模糊找到的，不一定是同一个人——列出来让用户认，别替他认定。`
+        : "";
       return {
-        summary: `「${name}」：${命中.map((h) => `${h.表} ${h.条数} 条`).join("、")}`,
+        summary: `${找的}${r.模糊 ? `（按「${r.模糊.用的词}」模糊）` : ""}：${r.命中.map((h) => `${h.表} ${h.条数} 条`).join("、")}`,
         data: {
           找到: 条,
-          结果: 命中,
-          该怎么办: `上面就是「${name}」在这个库里的全部身份。电话、状态都在记录里，直接据此回答；不要说「没找到」，也不要反过来让用户给更完整的姓名。`,
+          ...(r.号码 ? { 按号码: r.号码 } : {}),
+          ...(r.模糊 ? { 模糊: 模糊话 } : {}),
+          结果: r.命中,
+          该怎么办: r.模糊
+            ? 模糊话
+            : `上面就是${找的}在这个库里的全部身份。电话、状态都在记录里，直接据此回答；不要说「没找到」，也不要反过来让用户给更完整的姓名。`,
         },
       };
     },

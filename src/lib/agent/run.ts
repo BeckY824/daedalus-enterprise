@@ -413,6 +413,7 @@ ${工作方式}
 - 提了建议卡之后，回答里只说一句要点和还差什么，不要把卡片里已有的字段再抄一遍
 - 记一笔（propose_followup）的时间是**这次沟通已经发生的时间**，不给就算刚刚；人说了下次什么时候再谈（"下周三再约"），另提一张 propose_plan 把那个时间写进去，不要把下次的时间塞进记一笔里，也不要在回答里让人"去卡片上补时间"
 - **问到某个人（他是谁、他的电话、他的联系方式）：用 find_person，名字原样传。** 它把客户、渠道、联系人、线索、同事五张表一起找——人不知道也不该关心这个人在系统里被登记成了哪一种。**不要自己截短名字**（「李老师」就传「李老师」）。他的名字出现在「当前所在页面」名单里时，用那一页指定的工具更快，但 find_person 永远是安全的那条路
+- **只给了一个号码，或问某个号码 / 某个人 / 某家公司在不在系统里、归谁在跟（查重、查归属）：也用 find_person，原样传**（空格、横杠、+86 不用去，给一段也行）。它会比联系人和联系人的其他号码，找不到时自己退一步模糊找；回话写着怎么找到的，模糊找到的要列出来让用户认
 - 确定是客户、还要看他的跟进时间线时，用 find_person 给的 id 调 get_customer；同名多位时不要猜，直接 final 并在回答里说清楚有哪几位
 - 按条件筛一批客户（某个学校 / 状态 / 我负责的）才用 search_customers——那是「找一批」，不是「找一个人」
 - 问某一类人（某个学校 / 专业 / 跟进状态 / 我负责的，"有多少、分别是谁"）：search_customers 用那个关键词或过滤条件，它返回总数和名单，直接据此回答，不用逐个 get_customer
@@ -506,6 +507,8 @@ ${工作方式}
   /** 已经真正跑过几个工具。为 0 时模型要作答，说明它手上一条数据都没有 */
   let 查过的工具 = 0;
   const 查询命中们: (number | null)[] = [];
+  /** find_person 搜空时它写好的那段话（查过哪些、下一步怎么确认）。全搜空时用它替掉通用那句（批次 20a） */
+  const 空查询话们: string[] = [];
   /** 空手作答只顶一次，免得来回拉锯 */
   let 顶过 = false;
   /** 这一轮调过哪些「工具 + 参数」，值是当时的结果摘要。用来拦原地打转 */
@@ -523,6 +526,8 @@ ${工作方式}
       if (!tool.name.startsWith("propose_")) {
         const n = 查询命中数(tool.name, result.data);
         if (n !== undefined) 查询命中们.push(n);
+        const 话 = n === 0 && tool.name === "find_person" ? (result.data as { 结论?: unknown }).结论 : undefined;
+        if (typeof 话 === "string" && !空查询话们.includes(话)) 空查询话们.push(话);
       }
     } catch (e) {
       查询命中们.push(null);
@@ -794,10 +799,11 @@ ${工作方式}
   const 推回答 = (value: string) => { if (!只有空查询()) ev.onToken?.(value); };
   // 空查询时先缓冲，不能把“不是权限问题、客户不存在”等无依据断言流到用户面前。
   let text = await 组织回答(finalPrompt, 零工具 || 只有空查询());
+  const 空查询话 = () => (空查询话们.length ? 空查询话们.join("\n\n") : 可见范围未找到);
   if (只有空查询() && !有DSML(text) && !不是答案(text, 工具名单)) {
-    ev.onToken?.(可见范围未找到);
+    ev.onToken?.(空查询话());
     ev.emit?.({ id: "answer", label: "组织回答", status: "done" });
-    return { text: 可见范围未找到, records, customers: [...customers.values()], proposals: ctx.proposals, steps };
+    return { text: 空查询话(), records, customers: [...customers.values()], proposals: ctx.proposals, steps };
   }
   /*
     **回答里吐的是一个认得出来的工具调用**：它还想查（或者想提一张卡），只是这一步手上没有工具，
@@ -922,7 +928,7 @@ ${工作方式}
     else if (声称已写入(text)) text = 摘掉已写入(text, ctx.proposals.length);
     推回答(text);
   }
-  if (只有空查询()) { text = 可见范围未找到; ev.onToken?.(text); }
+  if (只有空查询()) { text = 空查询话(); ev.onToken?.(text); }
   ev.emit?.({ id: "answer", label: "组织回答", status: "done" });
   for (const r of mentioned.values()) if (!customers.has(r.id) && customers.size < 5 && text.includes(r.name)) customers.set(r.id, r);
   return { text, records, customers: [...customers.values()], proposals: ctx.proposals, steps };
