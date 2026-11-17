@@ -11,7 +11,7 @@ import { 认渠道触点 } from "@/lib/enterprise/touchpoint";
 import { requireUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
 import { recordAudit } from "@/lib/audit";
-import { buildProposal, missingFields, summarizeApplied, 可改字段表, type Proposal, type 一处改动 } from "@/lib/agent/proposals";
+import { buildProposal, missingFields, summarizeApplied, 可改字段表, 线索号码行, type Proposal, type 一处改动 } from "@/lib/agent/proposals";
 import { statusLabel, type BusinessConfig } from "@/lib/business-config";
 import { patchCustomer, saveCustomer, saveContract } from "../customers/actions";
 import { saveFollowUp, savePlan, deleteFollowUp } from "../customers/[id]/actions";
@@ -27,7 +27,9 @@ import { 能管项目 } from "@/lib/project/db";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版字典 } from "@/lib/project/stage-dict";
-import { 验号码, 号码类型叫法 } from "@/lib/enterprise/contact-format";
+import { 号码库类型, 库类型到号码类型 } from "@/lib/enterprise/contact-dedupe";
+import { 验联系人号码们 } from "@/lib/enterprise/customer-v2-db";
+import { 老三格 } from "@/lib/enterprise/customer-v2";
 import { 认出备注里的号码, AI建档查重详 } from "@/lib/enterprise/ai-lead-dedupe";
 import { saveChannel } from "../channels/actions";
 import { 按名字找负责人 } from "@/lib/owners";
@@ -269,27 +271,30 @@ export async function applyProposal(input: Proposal): Promise<ApplyResult> {
  */
 async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id: string; name: string }): Promise<{ ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string } }> {
   const meId = me.id;
-  const 号 = p.phone.trim();
   const { 号们: 备注号们, 剩 } = 认出备注里的号码(p.remark || "");
-  // 2026-11-01 起卡上有邮箱、微信自己的格（认图出的卡）：和备注里认出的一起查重，卡上那格优先
-  const 格号们 = ([["邮箱", p.email], ["微信", p.wechat]] as const)
-    .map(([类型, v]) => (v?.trim() ? 验号码(类型, v.trim()) : null))
-    .filter((h): h is Extract<ReturnType<typeof 验号码>, { ok: true }> => Boolean(h?.ok));
-  const 号们 = [...格号们, ...备注号们.filter((h) => !格号们.some((g) => g.类型 === h.类型 && g.值 === h.值))];
-  const 手机 = 号 ? 验号码("手机号", 号) : null;
-  const 撞了 = await AI建档查重详([...(手机?.ok ? [手机] : []), ...号们], me, { 入口: "AI建档", 来源: p.source, 内容: 剩 });
+  /*
+    联系方式（11-17 员工反馈「只能填电话」）：卡上「类型 + 号码」几行（老卡按电话 / 微信 / 邮箱 / WhatsApp 几格算，电话当手机），
+    备注里认出的邮箱 / 微信 / 阿里国际站ID 并在后面（同类同号只留一行）。按联系人表单同一套验（号码类型字典、格式、占位号）
+  */
+  const 验 = await 验联系人号码们([
+    ...线索号码行(p),
+    ...备注号们.map((h) => ({ kind: 号码库类型[h.类型 as keyof typeof 号码库类型] ?? "", value: h.值 })),
+  ]);
+  if (!验.ok) return { ok: false, error: 验.error };
+  const 行们 = 验.行们;
+  // 手机 / 邮箱 / 微信 / 阿里国际站ID 全公司查重（和建档同一套，ai-lead-dedupe.ts）；座机、WhatsApp 这些只记进联系人
+  const 建档号 = (r: (typeof 行们)[number]) => {
+    const 类型 = 库类型到号码类型[r.kind];
+    return 类型 ? { 类型, 值: r.value, 键: r.numberKey } : null;
+  };
+  const 号们 = 行们.map(建档号).filter((h) => h !== null);
+  const 撞了 = await AI建档查重详(号们, me, { 入口: "AI建档", 来源: p.source, 内容: 剩 });
   if (撞了) return { ok: false, error: 撞了.话, ...(撞了.回收站 ? { 回收站号: { 类型: 撞了.回收站.类型, 值: 撞了.回收站.值 } } : {}) };
-  const 邮箱 = 号们.find((h) => h.类型 === "邮箱")?.值 ?? null;
-  const 微信 = 号们.find((h) => h.类型 === "微信")?.值 ?? null;
-  // 客户只有一格企业号码：有电话放电话；没电话按邮箱 → 微信 → 阿里国际站ID（类型值还叫旺旺ID）放第一个认出的（新建客户企业号码不是手机号才免填电话）。
-  // 邮箱、微信另有联系人那格；阿里国际站ID没占企业号码的话那行留回备注（按新叫法写回）。WhatsApp 不是号码类型，写进备注
-  const 旺旺 = 号们.find((h) => h.类型 === "旺旺ID");
-  const 企业号 = 号 ? { 类型: "手机号", 值: 号 } : (["邮箱", "微信", "旺旺ID"] as const).map((t) => 号们.find((h) => h.类型 === t)).find(Boolean);
-  const 备注 = [
-    剩,
-    旺旺 && 企业号?.类型 !== "旺旺ID" ? `${号码类型叫法("旺旺ID")}：${旺旺.值}` : "",
-    p.whatsapp?.trim() && p.whatsapp.trim() !== 号 ? `WhatsApp：${p.whatsapp.trim()}` : "",
-  ].filter(Boolean).join("\n");
+  // 客户只有一格企业号码：有手机放手机；没手机按邮箱 → 微信 → 阿里国际站ID（类型值还叫旺旺ID）放第一个（新建客户企业号码不是手机号才免填电话）。
+  // 全部几行都记进联系人的联系方式（建档向导 联系人.号码们）；一个都占不了企业号码的（只有座机、WhatsApp…）客户电话空着，联系人带着号
+  const 企业号 = (["phone", "email", "wechat", "wangwang"] as const).map((k) => 行们.find((r) => r.kind === k)).map((r) => r && 建档号(r)).find(Boolean) ?? null;
+  const 号 = 企业号?.类型 === "手机号" ? 企业号.值 : "";
+  const 备注 = 剩;
   const 国家 = p.country?.trim() || "";
   const 城市 = p.city?.trim() || "";
   /*
@@ -331,7 +336,8 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
       // 国家、城市进客户地址（和新建客户同一格）；城市不带国家会被当成国内，所以没国家就不交城市
       ...(进客户 ? { 企业资料: { addrCountry: 国家, addrCity: 城市 || null } } : {}),
     },
-    联系人: { name: p.contact.trim() || p.name, phone: 号 || null, email: 邮箱, wechat: 微信, ...(联系人地址 ? { address: 联系人地址 } : {}) },
+    // 联系人姓名 11-17 起选填：没填用客户名称，都没有记「未留名」（联系人表里姓名不能空）
+    联系人: { name: p.contact.trim() || p.name.trim() || 未留名, ...老三格(行们), 号码们: 行们.map((r) => ({ kind: r.kind, value: r.value })), ...(联系人地址 ? { address: 联系人地址 } : {}) },
     /*
       11-04 起卡上和新建项目同一套格：分配方式（指定 / 自动 / 暂不分配…）、指定时的负责人、业务线、节点（只到线索验证）、下一步（11-05 去掉明确回复）。
       分配和负责人的规矩全在 建档向导 里（定分配方式 / 建好再分）：不是指定分配一律先建在我名下，自动分配建好再转、暂不分配留在我名下（潜客培育，P-转-03）。
@@ -361,6 +367,9 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
   if (r.error === 要下一步时间) return { ok: false, error: "开了超时回收，新线索要填「下一步」时间" };
   return { ok: false, error: r.error };
 }
+
+/** 新线索卡没填联系人姓名、也没填客户名称时，联系人记成这个 */
+const 未留名 = "未留名";
 
 const 卡上来源 = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 60) : "");
 

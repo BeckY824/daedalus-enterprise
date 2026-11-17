@@ -18,7 +18,7 @@ import type { 组织规则 } from "./org-rules";
 import { 生效的合同状态 } from "./proj-fields";
 
 export const 必填项们 = [
-  { key: "联系方式", 说明: "电话、WhatsApp、微信、邮箱、阿里国际站 ID 任一（客户或联系人上的都算）" },
+  { key: "联系方式", 说明: "电话、座机、WhatsApp、微信、邮箱、阿里国际站 ID 等任一（客户或联系人上的都算）" },
   { key: "来源", 说明: "客户来源或渠道触点（P-渠道-08：公司资源 / 客户介绍的客户主渠道留空、由触点承载）" },
   { key: "国家", 说明: "国家 / 地区" },
   { key: "客户等级", 说明: "A / B / C / D" },
@@ -127,7 +127,9 @@ export type 必填数据 = {
   /** 客户还在（所属客户）；没读 = 不在 */
   有客户?: boolean;
   /** 客户下的联系人；id、name 读了才看主联系人姓名是不是占位（11-03 A2-2） */
-  联系人们: { id?: string; name?: string | null; phone?: string | null; email?: string | null; wechat?: string | null }[];
+  联系人们: { id?: string; name?: string | null; phone?: string | null; email?: string | null; wechat?: string | null;
+    /** 联系人的联系方式几行（座机、WhatsApp…也在这；11-17 起 AI 新线索卡能只记这些）。没读 = 只看老三格 */
+    contactMethods?: { kind: string; value: string }[] }[];
   /** 挂在项目上的沟通各在哪个节点记的 */
   沟通节点们: string[];
   /** 挂在项目上的每条沟通：哪个节点记的、发起主体、内容、方式（沟通三项用） */
@@ -178,7 +180,7 @@ function 齐了(项: 必填项, d: 必填数据): boolean {
   switch (项) {
     case "联系方式":
       return 有(d.客户.phone) || 有(x?.whatsapp) || 有(x?.wechat) || 有(x?.email) || 有(x?.alibabaId)
-        || d.联系人们.some((c) => 有(c.phone) || 有(c.email) || 有(c.wechat));
+        || d.联系人们.some((c) => 有(c.phone) || 有(c.email) || 有(c.wechat) || !!c.contactMethods?.some((m) => 有(m.value)));
     case "来源": return 有(x?.source) || 有(d.客户.touchpoint);
     case "国家": return 有(x?.country);
     case "客户等级": return 有(x?.level);

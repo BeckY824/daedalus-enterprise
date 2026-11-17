@@ -2374,6 +2374,12 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 /* 认图没把握的格：黄标，点掉 = 核对过 */
 .prop-f-wait { flex: none; font-size: var(--fs-min); color: var(--warning-text); background: var(--warning-bg); border: 1px solid var(--warning-line); border-radius: var(--r-ctl); padding: 0 6px; cursor: pointer; }
 .prop-f-wait:hover { border-color: var(--warning); }
+/* AI 新线索卡的联系方式几行（11-17）：类型 + 号码，一行一条；窄屏号码那格先让 */
+.prop-nums { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+.prop-num { display: flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; }
+.prop-num-kind { flex: none; width: 120px; }
+.prop-num-val { flex: 0 1 180px; width: 180px; min-width: 0; }
+.prop-num-add { padding-inline: 0; }
 /* 逐项勾选：没勾上的整项压暗，但仍然读得出来——藏起来人就不知道它否掉了什么 */
 .prop-f-pick { padding: 3px 0; }
 .prop-f-off { opacity: 0.45; }

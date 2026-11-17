@@ -70,9 +70,9 @@ describe("微信成新线索卡", () => {
     expect(r.ok && r.proposal.待确认).toBeUndefined();
     expect(r.ok && missingFields(r.proposal)).toEqual([]);
   });
-  it("没名字：用微信号当名称，名称待确认", () => {
+  it("没名字：名称空着、待确认（11-17 起微信号不当名称，P-抬头-13）", () => {
     const r = 微信成新线索卡(资料({ 名字: "" }), DEFAULT_BUSINESS, []);
-    expect(r.ok && r.proposal).toMatchObject({ name: "wxid_test0001", 待确认: ["name", "country"] });
+    expect(r.ok && r.proposal).toMatchObject({ name: "", wechat: "wxid_test0001", 待确认: ["name", "country"] });
   });
 });
 

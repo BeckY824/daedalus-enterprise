@@ -37,6 +37,8 @@ import { 看已删, 在看已删 } from "./soft-delete-core";
 
 /** ContactMethod.kind：号码类型 → 库里的写法。二维码没有号，不进子表 */
 export const 号码库类型 = { 手机号: "phone", 邮箱: "email", 微信: "wechat", 旺旺ID: "wangwang" } as const satisfies Partial<Record<号码类型, string>>;
+/** 反过来：ContactMethod.kind → 号码类型（只有这四类走建档查重、能当客户的企业号码；座机、WhatsApp 这些没有） */
+export const 库类型到号码类型: Readonly<Record<string, 号码类型 | undefined>> = Object.fromEntries(Object.entries(号码库类型).map(([t, k]) => [k, t as 号码类型]));
 type 进子表的类型 = keyof typeof 号码库类型;
 const 进子表 = (类型: 号码类型): 类型 is 进子表的类型 => 类型 in 号码库类型;
 

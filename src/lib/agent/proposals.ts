@@ -16,6 +16,9 @@ import { dayjs } from "../utils";
 import { 是币种, 金额 } from "../currency";
 import { 有效线索节点, 建档不能过线索验证 } from "../project/stage-gates";
 import { 是项目卡, buildProjectProposal, 项目卡缺, 描述项目卡, type 项目卡, type 项目卡Kind } from "./project-proposals";
+import { 内置号码种类, 每人最多号码, 号码上限 } from "../enterprise/customer-v2";
+import { 字典定义 } from "../enterprise/dict-kinds";
+import { 认出备注里的号码 } from "../enterprise/remark-numbers";
 
 export type ProposalKind = "set_status" | "add_followup" | "add_plan" | "add_lead" | "update_customer" | "add_opportunity" | "add_contract" | "update_channel"
   /** 全页面 AI 写入的项目类卡（企业版只用项目，见 project-proposals.ts） */
@@ -90,7 +93,9 @@ export type Proposal =
   | (Base & { kind: "add_followup"; type: string; title: string; content: string; occurredAt: string })
   | (Base & { kind: "add_plan"; subject: string; plannedAt: string; method: string })
   | (Base & { kind: "add_lead"; name: string; contact: string; phone: string; source: string; status: string; remark: string;
-      /** 下一步时间（企业版建成项目用，开了超时回收必填，YYYY-MM-DD）；别的版本不看（10-27） */ nextAt?: string }
+      /** 下一步时间（企业版建成项目用，开了超时回收必填，YYYY-MM-DD）；别的版本不看（10-27） */ nextAt?: string;
+      /** 联系方式几行（类型 + 号码，企业版，11-17 员工反馈「只能填电话」）；没有 = 老卡，按 phone / 微信 / 邮箱 / WhatsApp 几格算（线索号码行） */
+      联系方式?: 线索联系方式[] }
       & 线索卡多的格 & 线索建档格)
   | (Base & { kind: "update_customer"; changes: 一处改动[] })
   /** 老对话存档里的商机卡：建议工具 propose_opportunity 2026-11-11 已删，不再生成；卡片只认出来、显示成不可用（dashboard/apply.ts 也拦） */
@@ -105,7 +110,7 @@ export type Proposal =
  * 待确认 = 认得没把握、要人在卡上点一下或改一下的格子；还有就不能确认（missingFields）
  */
 export type 线索卡多的格 = { country?: string; city?: string; wechat?: string; email?: string; whatsapp?: string; 待确认?: 线索待确认格[] };
-export const 线索待确认叫法 = { name: "名称", contact: "联系人", phone: "电话", country: "国家", city: "城市", wechat: "微信", email: "邮箱", whatsapp: "WhatsApp" } as const;
+export const 线索待确认叫法 = { name: "名称", contact: "联系人", phone: "电话", country: "国家", city: "城市", wechat: "微信", email: "邮箱", whatsapp: "WhatsApp", 联系方式: "联系方式" } as const;
 export type 线索待确认格 = keyof typeof 线索待确认叫法;
 const 线索多格上限 = { country: 40, city: 40, wechat: 60, email: 100, whatsapp: 30 } as const;
 
@@ -118,6 +123,81 @@ function 收线索多的格(args: Record<string, unknown>): 线索卡多的格 {
   const 待 = Array.isArray(args.待确认) ? [...new Set(args.待确认.filter((k): k is 线索待确认格 => typeof k === "string" && Object.hasOwn(线索待确认叫法, k)))] : [];
   if (待.length) 出.待确认 = 待;
   return 出;
+}
+
+/**
+ * 新线索卡的联系方式（11-17 员工反馈：「只能填电话，无法添加其他类型的联系方式」）：和联系人表单同一套「类型 + 号码」，
+ * kind = ContactMethod.kind（customer-v2.ts 内置号码种类），顺序、叫法照号码类型字典的默认八项（V-号码类型）。
+ * 确认后按类型记进联系人的联系方式子表（dashboard/apply.ts 建成项目 → 建档向导），和手工加联系人存的一样
+ */
+export type 线索联系方式 = { kind: string; value: string };
+export const 线索号码种类: readonly { kind: string; 名: string }[] = 内置号码种类.map((x, i) => ({ kind: x.kind, 名: 字典定义.contactKind.默认[i] }));
+export const 线索号码上限 = 每人最多号码;
+/**
+ * 给模型的那句（工具参数说明、系统提示里都用这一句）：类型按格式判断，判断不了就问；号码不进名称 / 联系人姓名（P-抬头-13）
+ */
+export const 线索号码说明 =
+  "联系方式，可多条。用户只给了号码时按格式判断类型：含 @ 的是邮箱；纯数字长串多为手机（+ 开头的国外号、人提到 WhatsApp 的算 WhatsApp）；" +
+  "字母开头、字母数字混合的多为微信号；判断不了就先问人。号码、微信号、邮箱只放这里，不要填进 name（客户名称）或 contact（联系人姓名）——不知道名字就留空";
+/** 模型给的类型认法：kind 本身、字典叫法，再加几个常见说法 */
+const 号码类型别名: Record<string, string> = {
+  手机号: "phone", 电话: "phone", 移动电话: "phone", mobile: "phone", 固话: "landline", 固定电话: "landline", 座机号: "landline",
+  微信号: "wechat", email: "email", 电子邮箱: "email", 邮件: "email", 旺旺: "wangwang", 旺旺id: "wangwang", 阿里id: "wangwang", 阿里旺旺: "wangwang", 阿里国际站: "wangwang",
+  传真号: "fax", tg: "telegram",
+};
+export function 认号码种类名(v: unknown): string | null {
+  const s = typeof v === "string" ? v.trim() : "";
+  if (!s) return null;
+  const 小 = s.toLowerCase().replace(/\s+/g, "");
+  const 有 = 线索号码种类.find((x) => x.kind === 小 || x.名.toLowerCase().replace(/\s+/g, "") === 小);
+  return 有?.kind ?? 号码类型别名[小] ?? null;
+}
+
+/**
+ * 这张卡的联系方式几行（空号去掉）。新卡用「联系方式」；老卡（11-17 之前生成的、名片认出来的）没有这格，
+ * 按老格子算：电话当手机，微信、邮箱、WhatsApp 各自那一类
+ */
+export function 线索号码行(p: { 联系方式?: 线索联系方式[]; phone?: string; wechat?: string; email?: string; whatsapp?: string }): 线索联系方式[] {
+  if (Array.isArray(p.联系方式)) return p.联系方式.filter((x) => x.value.trim());
+  return ([["phone", p.phone], ["wechat", p.wechat], ["email", p.email], ["whatsapp", p.whatsapp]] as const)
+    .flatMap(([kind, v]) => (v?.trim() ? [{ kind, value: v.trim() }] : []));
+}
+
+/** 模型给 numbers: [{type, value}]，卡片回传 联系方式: [{kind, value}]；类型认不出当场拒（让模型重说），空号丢掉 */
+function 收联系方式(args: Record<string, unknown>): { ok: true; 行们?: 线索联系方式[] } | { ok: false; error: string } {
+  const 原 = args.联系方式 ?? args.numbers;
+  if (原 === undefined || 原 === null) return { ok: true };
+  if (!Array.isArray(原)) return { ok: false, error: "numbers 要是数组：[{\"type\": \"微信\", \"value\": \"号码\"}]" };
+  const 行们: 线索联系方式[] = [];
+  for (const x of 原) {
+    const o = (x ?? {}) as Record<string, unknown>;
+    const value = str(o.value ?? o.号码, 号码上限);
+    const 类 = o.kind ?? o.type ?? o.类型;
+    const kind = 认号码种类名(类);
+    if (!kind) {
+      if (!value && !类) continue;
+      return { ok: false, error: `号码类型「${String(类 ?? "")}」不认得，只能是：${线索号码种类.map((k) => k.名).join("/")}` };
+    }
+    if (value) 行们.push({ kind, value });
+  }
+  if (行们.length > 线索号码上限) return { ok: false, error: `联系方式最多 ${线索号码上限} 个` };
+  return { ok: true, 行们 };
+}
+
+/** 邮箱、或一串号码的样子（P-抬头-13：号码、微信号、邮箱不当客户名 / 联系人姓名） */
+const 像邮箱 = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const 像号码 = /^[+＋]?[\d\s\-()（）]{6,}$/;
+const 号比较键 = (s: string) => s.trim().toLowerCase().replace(/^[@+＋]/, "").replace(/[\s\-()（）]/g, "");
+/**
+ * 名称 / 联系人填的是不是一个号（11-17 员工反馈：只给了微信号，AI 把它同时填进客户名称和电话）：
+ * 和这张卡上任一个号一样（不分大小写、不看分隔符），或者本身就是邮箱、一串数字。是就当没填，让人在卡上补
+ */
+export function 是号码当名字(名: string, 号们: readonly 线索联系方式[]): boolean {
+  const s = 名.trim();
+  if (!s) return false;
+  if (像邮箱.test(s) || 像号码.test(s)) return true;
+  const 键 = 号比较键(s);
+  return !!键 && 号们.some((x) => 号比较键(x.value) === 键);
 }
 
 /**
@@ -321,19 +401,29 @@ export function buildProposal(
   if (!st.ok) return { ok: false, error: `status 必须是：${LEAD_STATUSES.join("/")}` };
   const 下一步 = parseWhen(args.nextAt, true);
   if (!下一步.ok) return { ok: false, error: "nextAt 解析不了，用 YYYY-MM-DD" };
+  const 号 = 收联系方式(args);
+  if (!号.ok) return 号;
+  const 多的格 = 收线索多的格(args);
+  // 号码、微信号、邮箱不当名字（P-抬头-13）：和卡上的号一样、或本身像个号的，名称 / 联系人当没填
+  // 新格和老格（电话 / 微信 / 邮箱 / WhatsApp）一起给了：老格里多出来的并进联系方式，不丢。卡片回传前已把老格清掉（ProposalCard）
+  const 老号们 = 线索号码行({ phone: str(args.phone, 30), ...多的格 });
+  const 新号们 = 号.行们 && [...号.行们, ...老号们.filter((o) => !号.行们!.some((x) => x.kind === o.kind && x.value.trim() === o.value))];
+  const 号们 = 新号们 ?? 老号们;
+  const 名 = str(args.name, 60), 联系人 = str(args.contact, 40);
   return {
     ok: true,
     proposal: {
       ...base,
       kind: "add_lead",
-      name: str(args.name, 60),
-      contact: str(args.contact, 40),
+      name: 是号码当名字(名, 号们) ? "" : 名,
+      contact: 是号码当名字(联系人, 号们) ? "" : 联系人,
       phone: str(args.phone, 30),
+      ...(新号们 ? { 联系方式: 新号们 } : {}),
       source: src.value,
       status: st.value,
       remark: str(args.remark, 500),
       ...(下一步.at ? { nextAt: 下一步.at } : {}),
-      ...收线索多的格(args),
+      ...多的格,
       ...收线索建档格(args),
     },
   };
@@ -371,7 +461,12 @@ export function missingFields(p: Proposal, b?: 叫法, 建档?: 建档必填): s
     // 企业版和新建项目同叫法：客户名称（组织 / 公司）、联系人姓名都必填（11-04）
     const 企格 = 建档?.只用项目 ? 建档.企业 : undefined;
     if (!p.name.trim()) miss.push(企格 ? "客户名称" : "名称");
-    if (企格 && !p.contact.trim()) miss.push("联系人姓名");
+    // 联系人姓名 11-17 起选填（员工反馈：市场录入时常常不知道）；联系方式任一类型必填（M-必填-01），全空才拦
+    // 备注里认得出的邮箱 / 微信 / 阿里国际站ID 也算（落库时 dashboard/apply.ts 同样认出来记进联系人）
+    if (企格 && !线索号码行(p).length && !认出备注里的号码(p.remark || "").号们.length) miss.push("联系方式");
+    // 人在卡上把号填进名称 / 联系人（P-抬头-13）：卡上先拦住；服务端 buildProposal 收的时候当没填
+    if (企格 && 是号码当名字(p.name, 线索号码行(p))) miss.push("客户名称（不能填号码）");
+    if (企格 && 是号码当名字(p.contact, 线索号码行(p))) miss.push("联系人姓名（不能填号码）");
     if (建档?.只用项目 && !p.source.trim()) miss.push("来源（渠道）");
     if (建档?.只用项目 && 建档.要下一步 && !p.nextAt) miss.push("下一步时间");
     // 开了超时回收下一步计划也必填（11-05，和 建档向导 的 要下一步文字 同口径）
