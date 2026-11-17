@@ -17,6 +17,7 @@ import { 算渠道统计, 项目算哪个渠道, type 统计用渠道, type 统�
 import { 企业版 } from "./switch";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 列表里的项目, 公海名单条件 } from "@/lib/project/list";
+import { 算分期统计, type 分期统计, type 看板区间 } from "./channel-dash";
 
 /** 归到这批渠道的项目（两种来源都捞，见文件头）；渠道看板 channel-dash-db.ts 也用这一个 */
 export const 渠道项目条件 = (渠道ids: string[]) => ({
@@ -42,7 +43,7 @@ async function 取项目(渠道ids: string[], 看的人?: { id: string }): Promi
   const [行, 落点] = await Promise.all([prisma.project.findMany({
     where: 渠道项目条件(渠道ids),
     select: {
-      id: true, pooledAt: true,
+      id: true, pooledAt: true, createdAt: true,
       channelId: true, phase: true, result: true, amount: true, currency: true,
       customer: { select: { channelId: true } },
       // 不在这里 orderBy：Prisma 6.16 父行过千时嵌套关系带 orderBy 会让查询引擎崩（record.rs「no entry found for key」），取回来再排
@@ -53,20 +54,35 @@ async function 取项目(渠道ids: string[], 看的人?: { id: string }): Promi
   名单落点(渠道ids, 看的人)]);
   for (const p of 行) p.logs.sort((a, b) => a.at.getTime() - b.at.getTime());
   return 行.map((p) => ({
-    channelId: 项目算哪个渠道(p.channelId, p.customer.channelId), phase: p.phase, result: p.result, amount: p.amount, currency: p.currency,
+    channelId: 项目算哪个渠道(p.channelId, p.customer.channelId), phase: p.phase, result: p.result, amount: p.amount, currency: p.currency, createdAt: p.createdAt,
     // 没有建项目那条日志的（很老的数据）当从线索起
     起步阶段: p.logs.find((l) => l.fromPhase === null)?.toPhase ?? "线索",
     到过阶段们: p.logs.map((l) => l.toPhase),
+    节点们: p.logs.map((l) => ({ toPhase: l.toPhase, at: l.at })),
     ...(落点 ? { 在列表: 落点.列表里.has(p.id), 在公海: 落点.公海里.has(p.id) } : {}),
   }));
 }
 
+/** 项目、投入各一趟（不按渠道一条条查）；投入带日期，按时间段算时用 */
+async function 取底(渠道们: 统计用渠道[], 看的人?: { id: string }) {
+  const ids = 渠道们.map((c) => c.id);
+  return Promise.all([
+    取项目(ids, 看的人),
+    ids.length ? prisma.entChannelInvest.findMany({ where: { channelId: { in: ids } }, select: { channelId: true, amount: true, currency: true, date: true } }) : [],
+  ]);
+}
+
 /** 看的人：给了（渠道页传当前登录的人）才算 渠道统计.名单；单测、别处不给就和原来一样 */
 export async function 读渠道统计(渠道们: 统计用渠道[], 今天: Date = new Date(), 看的人?: { id: string }): Promise<Record<string, 渠道统计>> {
-  const ids = 渠道们.map((c) => c.id);
-  const [项目们, 投入们] = await Promise.all([
-    取项目(ids, 看的人),
-    ids.length ? prisma.entChannelInvest.findMany({ where: { channelId: { in: ids } }, select: { channelId: true, amount: true, currency: true } }) : [],
-  ]);
+  const [项目们, 投入们] = await 取底(渠道们, 看的人);
   return 算渠道统计(渠道们, 项目们, 投入们, 今天, 字典of(企业版()));
+}
+
+/**
+ * 渠道列表统计跟看板时间段（2D）：同一趟取数，按 本月 / 本季 / 全部（带了区间再加 自定义）各算一份，口径见 channel-dash.ts 算分期统计。
+ * 全部 = 读渠道统计 的结果；区间 = 地址栏「自定义」那一段（日期段界() 算好的），同看板
+ */
+export async function 读渠道分期统计(渠道们: 统计用渠道[], 今天: Date = new Date(), 区间?: 看板区间 | null, 看的人?: { id: string }): Promise<分期统计> {
+  const [项目们, 投入们] = await 取底(渠道们, 看的人);
+  return 算分期统计(渠道们, 项目们, 投入们, 今天, 字典of(企业版()), 区间);
 }

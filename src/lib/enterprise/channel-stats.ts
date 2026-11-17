@@ -72,10 +72,14 @@ export type 统计用项目 = {
   result: string | null;
   amount: number;
   currency: string;
+  /** 项目创建时间：按时间段（本月 / 本季 / 自定义）算列表统计时用（2D），不给只进「全部」 */
+  createdAt?: Date;
   /** 建项目时落在哪个阶段（建项目那条节点日志的 toPhase）；不给当「线索」——手动建、线索转项目、向导都从线索起 */
   起步阶段?: string;
   /** 节点日志里到过的阶段（每条 toPhase）；不给就只看眼下的 phase */
   到过阶段们?: string[];
+  /** 节点日志的到哪、何时（2D）：按时间段算商机、订单、成交时取「头一回到」的时间，同看板 channel-dash.ts 商机时间 / 订单时间 */
+  节点们?: { toPhase: string; at: Date }[];
   /**
    * 读库时给（企业版、带了是谁在看）：这个项目在不在这个人的项目列表里（list.ts 列表里的项目）、
    * 在不在公海页「渠道名单」里（list.ts 公海名单条件：在公海、按同一条归属规则这个人看得到）。不给就不算 名单
@@ -83,7 +87,8 @@ export type 统计用项目 = {
   在列表?: boolean;
   在公海?: boolean;
 };
-export type 统计用投入 = { channelId: string; amount: number; currency: string };
+/** date = 投入日期：按时间段算时用（2D），不给只进「全部」 */
+export type 统计用投入 = { channelId: string; amount: number; currency: string; date?: Date };
 export type 统计用渠道 = { id: string; createdAt: Date; endDate: Date | null };
 
 export type 渠道统计 = {
@@ -112,22 +117,38 @@ export type 渠道统计 = {
 /** 能点开看名单的那几个数 → 落到项目列表筛哪个阶段（项目 = 不筛阶段）。有效线索现在和关联线索一样（是有效线索 全算有效） */
 export const 名单键们 = { 关联线索: "线索", 有效线索: "线索", 关联商机: "商机", 关联订单: "订单", 关联项目: "" } as const;
 export type 名单键 = keyof typeof 名单键们;
+/**
+ * 选了时间段（本月 / 本季 / 自定义）时按「到达该阶段的时间」数的两个（2D，同看板，channel-dash.ts 算分期统计）：
+ * 项目列表没有按到达时间筛，点开不带时间段、看这个渠道全部的，界面上写明；别的数带创建时间段，条数对得上
+ */
+export const 到达口径键: readonly 名单键[] = ["关联商机", "关联订单"];
+
+/**
+ * 列表统计跟看板时间段（2D）：点数字带同一段项目创建时间（北京日，channel-dash.ts 看板时段），落地条数 = 这一段的数；
+ * 全部 = null 不带
+ */
+export type 名单时段 = { createdFrom?: string; createdTo?: string } | null | undefined;
+const 带时段 = (q: URLSearchParams, 时段: 名单时段) => {
+  if (时段?.createdFrom) q.set("createdFrom", 时段.createdFrom);
+  if (时段?.createdTo) q.set("createdTo", 时段.createdTo);
+  return q;
+};
 
 /** 点数字去的项目列表：这个渠道 + 同口径的阶段（项目列表按渠道筛和这里同一条归属规则：项目来源优先，没填跟客户来源） */
-export function 名单链接(channelId: string, 键: 名单键): string {
+export function 名单链接(channelId: string, 键: 名单键, 时段?: 名单时段): string {
   const q = new URLSearchParams({ channelId });
   if (名单键们[键]) q.set("phase", 名单键们[键]);
-  return `/projects?${q}`;
+  return `/projects?${带时段(q, 时段)}`;
 }
 
 /**
  * 点「另 M 条在公海」去的公海页（11-11）：公海页的渠道名单，筛好这个渠道 + 同口径的阶段（P-看-03 公海只在公海页出现，不放进项目列表）。
  * 公海页按项目一条一行列（客户在客户公海的，领的是整位客户），条数 = 名单.公海
  */
-export function 公海名单链接(channelId: string, 键: 名单键): string {
+export function 公海名单链接(channelId: string, 键: 名单键, 时段?: 名单时段): string {
   const q = new URLSearchParams({ projChannel: channelId });
   if (名单键们[键]) q.set("phase", 名单键们[键]);
-  return `/pool?${q}`;
+  return `/pool?${带时段(q, 时段)}`;
 }
 
 /** 数字旁边那句拆成几段（界面上前两段各自能点）：项目列表里 N 条、另 M 条在公海、其余只能数到的；对得上给 null */
@@ -139,8 +160,8 @@ export function 名单段(总数: number, 名单: { 列表: number; 公海: numb
 }
 
 /** 点这个数先去哪：项目列表里一条都没有、全在公海的，直接去公海页（不先落到空的项目列表）；两边都没有就还去项目列表 */
-export function 数字链接(channelId: string, 键: 名单键, 名单: { 列表: number; 公海: number } | undefined): string {
-  return 名单 && 名单.列表 === 0 && 名单.公海 > 0 ? 公海名单链接(channelId, 键) : 名单链接(channelId, 键);
+export function 数字链接(channelId: string, 键: 名单键, 名单: { 列表: number; 公海: number } | undefined, 时段?: 名单时段): string {
+  return 名单 && 名单.列表 === 0 && 名单.公海 > 0 ? 公海名单链接(channelId, 键, 时段) : 名单链接(channelId, 键, 时段);
 }
 
 /** 数字旁边那句（纯文字，悬停提示用）：列表里比这个数少几条、为什么；对得上给 null */

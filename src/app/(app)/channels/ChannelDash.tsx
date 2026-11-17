@@ -7,7 +7,7 @@
  * 服务端按那一段多算一份。市场成员 / 市场管理多一段「进公海」（P-界面-09），只读、不跳公海。
  * 颜色都取主题变量；字一律正文色 / 次要色，不拿系列色写字。
  */
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Segmented, Select, Tooltip } from "antd";
 import { 合计文字 } from "@/lib/currency";
@@ -44,6 +44,9 @@ export default function ChannelDash({
   渠道们,
   底数,
   段 = null,
+  期: 外期,
+  改期,
+  改忙,
   公海 = null,
   筛了负责人,
   能录,
@@ -53,6 +56,11 @@ export default function ChannelDash({
   底数: 看板底数;
   /** 地址栏带着「自定义」时服务端读好的那一段；null = 没选自定义 */
   段?: 日期段 | null;
+  /** 当前档由外面管（2D：渠道列表的统计跟看板同一档）；不给就自己管（老用法、单测） */
+  期?: 档;
+  改期?: (v: 档) => void;
+  /** 地址栏在换（自定义那一段服务端现算）时告诉外面，列表一起出骨架（2D） */
+  改忙?: (忙: boolean) => void;
   /** 进公海那段（只给市场成员 / 市场管理）；null 不摆 */
   公海?: 看板公海 | null;
   筛了负责人: boolean;
@@ -63,7 +71,10 @@ export default function ChannelDash({
   const 路径 = usePathname();
   const 参数 = useSearchParams();
   const [换着, start] = useTransition();
-  const [期, set期] = useState<档>(段 ? 自定义 : "全部");
+  useEffect(() => { 改忙?.(换着); }, [换着, 改忙]);
+  const [内期, set内期] = useState<档>(段 ? 自定义 : "全部");
+  const 期 = 外期 ?? 内期;
+  const set期 = 改期 ?? set内期;
   // 刚点「自定义」、那一份还在路上：先摆本月 1 号到今天（同服务端默认），数先空着、看板压暗
   const 显段 = 段 ?? 读日期段();
   const 期底 = useMemo(() => (期 === 自定义 ? 底数.自定义 ?? {} : 底数[期]), [期, 底数]);
