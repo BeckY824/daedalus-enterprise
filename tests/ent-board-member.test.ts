@@ -228,7 +228,7 @@ describe("库里取数和权限", () => {
     for (const u of 用户) await prisma.user.create({ data: { ...u, email: `${u.id}@t`, password: "x", title: "" } });
     let i = 0;
     for (const u of 用户) {
-      客户[u.id] = (await prisma.customer.create({ data: { name: `${u.name}的客户`, phone: `1390000000${i++}`, salesOwnerId: u.id } })).id;
+      客户[u.id] = (await prisma.customer.create({ data: { name: `${u.name}的客户`, phone: `1391200000${i++}`, salesOwnerId: u.id } })).id;
       // 一条逾期计划 + 一条没时间的待办
       await prisma.followPlan.create({ data: { subject: `${u.name}回访`, plannedAt: dayjs().subtract(2, "day").toDate(), customerId: 客户[u.id], ownerId: u.id } });
       await prisma.task.create({ data: { title: `${u.name}发资料`, dueAt: null, customerId: 客户[u.id], ownerId: u.id } });

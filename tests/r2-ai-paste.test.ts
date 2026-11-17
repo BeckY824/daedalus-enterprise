@@ -87,8 +87,8 @@ describe("关联与遗漏复核", () => {
 });
 
 describe("超长名单", () => {
-  const 长原文 = Array.from({ length: 250 }, (_, i) => `学员${i} 139${String(i).padStart(8, "0")}`).join("\n");
-  const 长表 = { 表头: ["姓名", "手机号"], 数据: Array.from({ length: 250 }, (_, i) => [`学员${i}`, `139${String(i).padStart(8, "0")}`]) };
+  const 长原文 = Array.from({ length: 250 }, (_, i) => `学员${i} 13912${String(i).padStart(6, "0")}`).join("\n");
+  const 长表 = { 表头: ["姓名", "手机号"], 数据: Array.from({ length: 250 }, (_, i) => [`学员${i}`, `13912${String(i).padStart(6, "0")}`]) };
 
   it("模型给了 250 行：收 200 行，说清被截了多少；被截掉那 50 个号码也报进「漏掉」", () => {
     const r = 核对(长表, 长原文);
@@ -108,7 +108,7 @@ describe("超长名单", () => {
   });
 
   it("按完整原文行分批，无遗漏且每批不超预算；同一行过长明确拒绝", () => {
-    const 文 = Array.from({ length: 150 }, (_, i) => `学员${i} 139${String(i).padStart(8, "0")} 某某公司第${i}分部`).join("\n");
+    const 文 = Array.from({ length: 150 }, (_, i) => `学员${i} 13912${String(i).padStart(6, "0")} 某某公司第${i}分部`).join("\n");
     const 批 = 分批粘贴(文);
     expect(批.length).toBeGreaterThan(1);
     expect(批.join("\n")).toBe(文);
@@ -143,7 +143,7 @@ describe("桌面端整条线：粘成表格 → 网关 → 假上游", () => {
     拆桌面端(目录);
   });
   const 粘 = async (s: string) => (await import("@/app/(app)/customers/ai")).粘成表格(s);
-  const 长名单 = Array.from({ length: 150 }, (_, i) => `学员${i} 139${String(i).padStart(8, "0")} 某某公司第${i}分部`).join("\n");
+  const 长名单 = Array.from({ length: 150 }, (_, i) => `学员${i} 13912${String(i).padStart(6, "0")} 某某公司第${i}分部`).join("\n");
   const 按原文回应 = (body: Record<string, unknown>, 加编造 = false) => {
     const messages = body.messages as { content: string }[];
     const source = messages.at(-1)!.content.match(/原文：\n"""\n([\s\S]*?)\n"""/)![1];
@@ -169,7 +169,7 @@ describe("桌面端整条线：粘成表格 → 网关 → 假上游", () => {
   it("第二批中断保留第一批且退回计次；重试只处理剩余批次并合并150人", async () => {
     let 失败 = true;
     const line = 接线({ 上游: ({ body }) => {
-      const first = String((body.messages as { content: string }[]).at(-1)!.content).includes("学员0 13900000000");
+      const first = String((body.messages as { content: string }[]).at(-1)!.content).includes("学员0 13912000000");
       return !first && 失败 ? 回JSON({ error: { message: "upstream unavailable" } }, 503) : 按原文回应(body, first);
     } });
     const r = await 粘(长名单);
@@ -186,7 +186,7 @@ describe("桌面端整条线：粘成表格 → 网关 → 假上游", () => {
     expect(result.数据).toHaveLength(150);
     expect(result.漏掉).toEqual([]);
     expect(result.编造.map((x) => x.值)).toContain("13999999999");
-    expect(JSON.stringify(line.上游.slice(前).map((x) => x.body.messages))).not.toContain("学员0 13900000000");
+    expect(JSON.stringify(line.上游.slice(前).map((x) => x.body.messages))).not.toContain("学员0 13912000000");
     expect(await 用掉(账号.acc.id)).toBe(1);
     // 改过原文绝不复用旧批次。
     const changed = await (await import("@/app/(app)/customers/ai")).粘成表格("新人 13800009999 新公司", r.续作);
@@ -213,7 +213,7 @@ describe("桌面端整条线：粘成表格 → 网关 → 假上游", () => {
           usage: { completion_tokens: 8000, completion_tokens_details: { reasoning_tokens: 2400 } },
         }),
     });
-    const 长 = Array.from({ length: 150 }, (_, i) => `学员${i} 139${String(i).padStart(8, "0")} 某某公司第${i}分部`).join("\n").slice(0, 粘贴字数上限);
+    const 长 = Array.from({ length: 150 }, (_, i) => `学员${i} 13912${String(i).padStart(6, "0")} 某某公司第${i}分部`).join("\n").slice(0, 粘贴字数上限);
     const r = await 粘(长);
     expect(r.ok).toBe(false);
     const msg = r.ok ? "" : r.error;

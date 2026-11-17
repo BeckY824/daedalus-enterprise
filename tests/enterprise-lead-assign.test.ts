@@ -552,7 +552,7 @@ describe("配额", () => {
     await 设配额(外贸, 5);
     当(市场);
     // 企业版项目模式锁开（10-28），持有数的是线索阶段的项目
-    const 客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13800000000", salesOwnerId: 市场 } })).id;
+    const 客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13812000000", salesOwnerId: 市场 } })).id;
     const 项目 = async (name: string, data: Partial<{ ownerId: string; phase: string; node: string; result: string | null; pooledAt: Date | null; bizLine: string }> = {}) =>
       (await prisma.project.create({ data: { name, customerId: 客户, ownerId: 市场, creatorId: 市场, ...data } })).id;
     // 手动指派按项目业务线过滤（11-01）：外贸项目才能指给外贸
@@ -676,7 +676,7 @@ describe("企业版「新线索」= 项目的线索阶段：分配、自动分�
 
   beforeEach(async () => {
     await 开();
-    客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13800000000", salesOwnerId: 市场 } })).id;
+    客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13812000000", salesOwnerId: 市场 } })).id;
     for (const [i, id] of [销售经理, 虚线经理, 内贸, 外贸, 两边].entries()) await prisma.user.update({ where: { id }, data: { createdAt: new Date(2026, 0, i + 1) } });
     await setSetting(自动分配不参与key, [销售经理, 虚线经理]);
     for (const id of [销售经理, 虚线经理, 内贸, 外贸, 两边]) await 配(id, 10);
@@ -950,7 +950,7 @@ describe("不设配额（人人参与、不限额，10-30）", () => {
   });
 
   it("项目（新线索）也一样：开着时手动分不查满额、持有上限照样管", async () => {
-    const 客户 = (await prisma.customer.create({ data: { name: "客户乙", phone: "13900000000", salesOwnerId: 市场 } })).id;
+    const 客户 = (await prisma.customer.create({ data: { name: "客户乙", phone: "13912000000", salesOwnerId: 市场 } })).id;
     const 建项目 = async (name: string, bizLine: string | null = "外贸") => (await prisma.project.create({ data: { name, customerId: 客户, ownerId: 市场, creatorId: 市场, bizLine } })).id;
     await 配(外贸, 0);
     当(市场);
@@ -978,7 +978,7 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
 
   beforeEach(async () => {
     await 开();
-    客户 = (await prisma.customer.create({ data: { name: "客户乙", phone: "13900000000", salesOwnerId: 市场 } })).id;
+    客户 = (await prisma.customer.create({ data: { name: "客户乙", phone: "13912000000", salesOwnerId: 市场 } })).id;
     for (const [i, id] of [销售经理, 虚线经理, 内贸, 外贸, 两边].entries()) await prisma.user.update({ where: { id }, data: { createdAt: new Date(2026, 0, i + 1) } });
     await setSetting(自动分配不参与key, [销售经理, 虚线经理]);
     // 这一组按默认的不设配额（不限额）走

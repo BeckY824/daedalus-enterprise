@@ -355,7 +355,7 @@ describe("统一公海：公海过 2000 位，更早入池的照样搜得到、�
     // 进公海那一行倒着建：同一刻的谁先谁后不能靠插入顺序
     await raw.customerPool.createMany({ data: 批.map((c, i) => ({ customerId: c.id, userId: i % 2 ? 组.同事.id : null, reason: i % 2 ? "回收原因：同刻" : "项目超时", at: 时刻(10), phoneIncomplete: i % 3 === 0 })).reverse() });
     // 最早入池的那一位：全公海排最后
-    await raw.customer.create({ data: { id: "t-earliest", name: "最早入池的客户", phone: "16600000000", salesOwnerId: 占位.id } });
+    await raw.customer.create({ data: { id: "t-earliest", name: "最早入池的客户", phone: "16612000000", salesOwnerId: 占位.id } });
     await raw.customerPool.create({ data: { customerId: "t-earliest", reason: "手动", userId: 组.同事.id, at: 时刻(-100000) } });
     忘掉企业版范围();
   }, 120_000);

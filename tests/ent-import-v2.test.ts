@@ -297,7 +297,7 @@ describe("新列三方比对", () => {
 
   it("撞了我们早有的同号客户：整条跳过，新几格不补、渠道不挂，老客户一格不动（M-导入-29）", async () => {
     const 甲老 = await prisma.customer.create({ data: { name: "甲（老档）", phone: "13800000001", salesOwnerId: 张伟, followStatus: "跟进中", addrCity: "我们填的城市" } });
-    const 推荐人 = await prisma.customer.create({ data: { name: "虚构推荐人", phone: "13900000000", salesOwnerId: 张伟, followStatus: "跟进中" } });
+    const 推荐人 = await prisma.customer.create({ data: { name: "虚构推荐人", phone: "13912000000", salesOwnerId: 张伟, followStatus: "跟进中" } });
     const 乙老 = await prisma.customer.create({ data: { name: "乙（老档）", phone: "13800000002", salesOwnerId: 李娜, followStatus: "跟进中", referrerCustomerId: 推荐人.id } });
     const 乙改 = [...乙行];
     乙改[7] = "虚构渠道甲";

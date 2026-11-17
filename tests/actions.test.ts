@@ -160,7 +160,7 @@ describe("并发写入", () => {
     const c = await mkCustomer("被抢改的", "13800000050");
     // A 改手机号，B 改院校，两人都基于同一份旧数据提交全字段
     await Promise.all([
-      prisma.customer.update({ where: { id: c.id }, data: { phone: "13900000000", school: null } }),
+      prisma.customer.update({ where: { id: c.id }, data: { phone: "13912000000", school: null } }),
       prisma.customer.update({ where: { id: c.id }, data: { phone: "13800000050", school: "北京大学" } }),
     ]);
     const after = await prisma.customer.findUnique({ where: { id: c.id } });
@@ -174,7 +174,7 @@ describe("并发写入", () => {
     const results = await Promise.allSettled(
       Array.from({ length: 5 }, (_, i) =>
         prisma.customer.create({
-          data: { name: "并发" + i, phone: "1381000000" + i, salesOwnerId: sales.id },
+          data: { name: "并发" + i, phone: "1381200000" + i, salesOwnerId: sales.id },
         }),
       ),
     );

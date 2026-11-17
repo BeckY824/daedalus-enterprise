@@ -147,7 +147,7 @@ const 窗 = (page: Page) => ({
   抛: (id: string | null) => page.evaluate((id) => { (window as unknown as 窗).__抛 = id; }, id),
 });
 const 企销售 = { 成员: [{ value: "u1", label: "乙" }], 分配方式们: [{ i: 1, 名: "自动分配" }], 默认分配方式: 1, 是销售: true };
-const 线索 = (id: string) => ({ id, kind: "add_lead", customerId: "", customerName: "", reason: "x", name: `某公司${id}`, contact: "周经理", phone: "13800000000", source: "展会", status: "待跟进", remark: "", 业务线: "内贸", 节点: undefined });
+const 线索 = (id: string) => ({ id, kind: "add_lead", customerId: "", customerName: "", reason: "x", name: `某公司${id}`, contact: "周经理", phone: "13812000000", source: "展会", status: "待跟进", remark: "", 业务线: "内贸", 节点: undefined });
 
 it("≥2 张卡合并确认：只写勾上的；没勾的仍待确认、还能再确认；撤销只撤已写入的", async () => {
   const { page, errors } = await open();

@@ -72,7 +72,7 @@ describe("老线索转项目", () => {
   });
 
   it("客户：连着的用它；唯一同号的挂它（不新建联系人，挂主要联系人）；同号两位就新建", async () => {
-    const 连着 = await prisma.customer.create({ data: { name: "老客户", phone: "13900000000", salesOwnerId: 张伟 } });
+    const 连着 = await prisma.customer.create({ data: { name: "老客户", phone: "13912000000", salesOwnerId: 张伟 } });
     const 同号 = await prisma.customer.create({ data: { name: "同号客户", phone: "13800000002", salesOwnerId: 张伟 } });
     const 主联 = await prisma.contact.create({ data: { name: "主联系人", isPrimary: true, customerId: 同号.id } });
     await prisma.customer.create({ data: { name: "重号一", phone: "13800000003", salesOwnerId: 张伟 } });
