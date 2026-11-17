@@ -46,9 +46,11 @@ export type 守卫选项 = {
   额外?: { 取: () => Record<string, unknown>; 放: (v: Record<string, unknown>) => void };
   /** 挂着几个附件：存不进来，带回时提示要重选 */
   附件数?: () => number;
+  /** 草稿带回之后调（带回的那几格）：表单自己的「人改过」记号跟着设上，免得晚到的默认值盖掉草稿 */
+  on带回?: (v: Record<string, unknown>) => void;
 };
 
-export function useFormGuard({ open, 关, form, 草稿键 = null, 编辑 = false, 填过, 忙 = false, afterOpenChange, 不存, 额外, 附件数 }: 守卫选项) {
+export function useFormGuard({ open, 关, form, 草稿键 = null, 编辑 = false, 填过, 忙 = false, afterOpenChange, 不存, 额外, 附件数, on带回 }: 守卫选项) {
   const { modal } = App.useApp();
   const 我 = useMe();
   const 全名 = 草稿键 ? 草稿全名(我?.id, 草稿键) : null;
@@ -59,9 +61,9 @@ export function useFormGuard({ open, 关, form, 草稿键 = null, 编辑 = false
   const 起始 = useRef<Record<string, unknown> | null>(null);
   const 起始额外 = useRef<Record<string, unknown> | null>(null);
   const [带回了, set带回了] = useState<{ 附件: number } | null>(null);
-  const 外 = useRef({ 额外, 附件数 });
+  const 外 = useRef({ 额外, 附件数, on带回 });
   useLayoutEffect(() => {
-    外.current = { 额外, 附件数 };
+    外.current = { 额外, 附件数, on带回 };
   });
   const 取值 = useCallback(() => {
     const v = { ...(form?.getFieldsValue(true) as Record<string, unknown> | undefined) };
@@ -135,7 +137,10 @@ export function useFormGuard({ open, 关, form, 草稿键 = null, 编辑 = false
       }
       // 动画没走完人已经动手填了：以人填的为准，不拿草稿盖
       if (开了 && 全名 && 稿 && !改过.current && (有内容(稿.v) || 有内容(稿.额外))) {
-        if (form && 有内容(稿.v)) form.setFieldsValue(稿.v);
+        if (form && 有内容(稿.v)) {
+          form.setFieldsValue(稿.v);
+          外.current.on带回?.(稿.v);
+        }
         if (稿.额外 && typeof 稿.额外 === "object") 外.current.额外?.放(稿.额外 as Record<string, unknown>);
         改过.current = true;
         // 不弹顶部提示、不用撤销条：框里一行「已带回上次没提交的内容 · 清空」（守.提示）

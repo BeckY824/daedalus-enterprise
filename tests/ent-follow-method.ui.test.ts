@@ -9,7 +9,7 @@ import { chromium, type Browser } from "playwright";
 let browser: Browser; let bundle: string;
 const plugin: Plugin = { name: "actions", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "stub", pluginData: code }));
-  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>window.__方式们;export const 发起主体选项=async()=>window.__主体们??null;");
+  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>window.__方式们;export const 发起主体选项=async()=>window.__主体们??null;export const 我常用的沟通方式=async()=>window.__习惯??null;");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
   stub(/projects\/actions$/, "export const 项目沟通须知=async()=>({ok:true,能记:false}),记项目沟通Action=async()=>({ok:true});");
   stub(/^\.\/actions$/, "export const saveFollowUp=async x=>{window.__calls.push(x);return {ok:true,id:'f1'}}; export const completePlan=async()=>({ok:true});export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'n1'});");

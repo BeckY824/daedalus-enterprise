@@ -28,7 +28,7 @@ import { clearJob, runJob } from "@/lib/ai-jobs";
 import { statusLabel } from "@/lib/business-config";
 import { 只填没动过的, 跳过说明 } from "@/lib/fill-untouched";
 import CustomerPick, { type 客户近况 } from "./CustomerPick";
-import FollowMethodSelect, { InitiatorSelect, useFollowInitiators, useFollowMethods, 默认沟通方式, 默认发起主体 } from "@/components/FollowMethodSelect";
+import FollowMethodSelect, { InitiatorSelect, useFollowHabit, useFollowInitiators, useFollowMethods, 默认沟通方式, 默认发起主体 } from "@/components/FollowMethodSelect";
 import { 对得上的方式, 方式对类型 } from "@/lib/follow-method";
 import { useFormGuard } from "@/lib/form-guard";
 import { 卡点类型们, 影响等级们, 描述上限, 标题上限, 原因最多, 原因名上限, type 卡点默认 } from "@/lib/project/blocker-rules";
@@ -230,13 +230,17 @@ export default function FollowUpForm({
   /** 企业版字典里的沟通方式 / 发起主体；别的版本是 null（不摆发起主体，类型照旧） */
   const 方式们 = useFollowMethods();
   const 主体们 = useFollowInitiators();
+  /** 这个人的习惯方式（11-17 客户答复「建议记录个人使用习惯」，lib/follow-habit.ts）：只在新记一条时问 */
+  const 习惯 = useFollowHabit(open && !record?.id);
   /**
-   * 新记一条的默认沟通方式：企业版字典里有「微信沟通」就默认它（11-01 客户答复 #2），
-   * 否则照旧跟着这一位有没有 WhatsApp 号走
+   * 新记一条的默认沟通方式：先按个人习惯（最近 20 条里用得最多、现在还能选的）；
+   * 没有记录才照原来的：企业版字典里有「微信沟通」就默认它（11-01 客户答复 #2），否则跟着这一位有没有 WhatsApp 号走
    */
-  const 默认方式 = (有号: boolean | undefined) => 方式们?.includes(默认沟通方式)
-    ? { type: 方式对类型(默认沟通方式), method: 默认沟通方式 }
-    : { type: 有号 ? "WHATSAPP" : "PHONE", method: null };
+  const 默认方式 = (有号: boolean | undefined) => 习惯 && (方式们 ? !!习惯.method && 方式们.includes(习惯.method) : true)
+    ? { type: 习惯.type, method: 习惯.method }
+    : 方式们?.includes(默认沟通方式)
+      ? { type: 方式对类型(默认沟通方式), method: 默认沟通方式 }
+      : { type: 有号 ? "WHATSAPP" : "PHONE", method: null };
   const customerId = 给定客户 ?? 近况?.id;
   const contacts = 给定联系人 ?? 近况?.contacts ?? [];
   const opportunities = 给定商机 ?? 近况?.opportunities ?? [];
@@ -316,6 +320,10 @@ export default function FollowUpForm({
       },
     },
     附件数: () => 附件们.length,
+    // 带回的草稿里有方式：以草稿为准，个人习惯晚到也不盖它
+    on带回: (v) => {
+      if ("type" in v || "method" in v) 人改过类型.current = true;
+    },
   });
 
   async function onAiParse() {
@@ -357,7 +365,8 @@ export default function FollowUpForm({
     */
     const { 填, 跳过 } = 只填没动过的(
       {
-        type: d.followUp.type,
+        // AI 认不出方式（回 OTHER）：类型不填，留着现在的（个人习惯 / 默认，lib/follow-habit.ts），同项目详情的 AI 录入
+        ...(d.followUp.type !== "OTHER" ? { type: d.followUp.type } : {}),
         status: d.followUp.status,
         title: d.followUp.title || undefined,
         content: d.followUp.content,
@@ -377,7 +386,7 @@ export default function FollowUpForm({
     });
     // 做完留一行摘要在原地，替掉原来那条一闪就走的提示：人一眼看到 AI 认出了什么，再去核对下面的表
     const 摘要 = [
-      FOLLOW_TYPES.find((t) => t.value === d.followUp.type)?.label,
+      d.followUp.type !== "OTHER" ? FOLLOW_TYPES.find((t) => t.value === d.followUp.type)?.label : null,
       d.followUp.status,
       d.plan?.plannedAt ? `下次 ${dayjs(d.plan.plannedAt).format("M 月 D 日")}` : null,
       d.tasks.length ? `${d.tasks.length} 条待办` : null,
@@ -441,7 +450,7 @@ export default function FollowUpForm({
     }
   // 只在开关面板、换记录时重置：runParse、initialAiText 这些每次渲染都变，放进来会把填到一半的表单清掉
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, record, form, 有WhatsApp, 默认项目, 方式们, 主体们]);
+  }, [open, record, form, 有WhatsApp, 默认项目, 方式们, 主体们, 习惯]);
 
   /*
     保存中：网慢时连点两下会建出两条一样的记录（跟进带的 AI 待办和计划也各建两份，2026-10-02 排查）。

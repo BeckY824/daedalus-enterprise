@@ -21,7 +21,7 @@ import { useBusiness } from "@/lib/business-client";
 import { dayjs, fmtDateTime, 成员选项 } from "@/lib/utils";
 import { 回公海文案, 回公海颜色, 预演回收日, type 回收预演底子 } from "@/lib/enterprise/recycle-text";
 import { 跟进类型们 } from "@/lib/constants";
-import FollowMethodSelect, { InitiatorSelect, useFollowInitiators, useFollowMethods, 默认沟通方式, 默认发起主体 } from "@/components/FollowMethodSelect";
+import FollowMethodSelect, { InitiatorSelect, useFollowHabit, useFollowInitiators, useFollowMethods, 默认沟通方式, 默认发起主体 } from "@/components/FollowMethodSelect";
 import { 对得上的方式, 方式对类型 } from "@/lib/follow-method";
 import { 外贸精简 } from "@/lib/business-config";
 import { 币种选项, 金额, 合计文字, 按币种合计, 默认币种 } from "@/lib/currency";
@@ -1988,11 +1988,26 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
   const 人改过方式 = useRef(false);
   const [选的发起, set发起] = useState<string | null>(null);
   const 发起 = 选的发起 ?? (主体们?.includes(默认发起主体) ? 默认发起主体 : null);
+  /*
+    11-17 客户答复「建议记录个人使用习惯」：先按这个人最近 20 条沟通里用得最多的方式（lib/follow-habit.ts）；没有记录才照上面的默认。
+    人改过 / 带回了草稿（草稿里有方式）就不动。等习惯问回来再定，免得先闪一下微信再跳
+  */
+  const 习惯 = useFollowHabit();
   useEffect(() => {
-    if (人改过方式.current || !方式们?.includes(默认沟通方式)) return;
+    if (人改过方式.current || 习惯 === undefined) return;
+    const 能用习惯 = 习惯 && (方式们 ? !!习惯.method && 方式们.includes(习惯.method) : 能选类型.some((t) => t.value === 习惯.type));
+    if (习惯 && 能用习惯) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- 习惯是问服务端回来的，回来了才定默认；人改过 / 带回了草稿就不动
+      setType(习惯.type);
+      setMethod(习惯.method);
+      return;
+    }
+    if (!方式们?.includes(默认沟通方式)) return;
     setType(方式对类型(默认沟通方式));
     setMethod(默认沟通方式);
-  }, [方式们]);
+    // 能选类型 每次渲染新算，内容只跟 外贸 走
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [方式们, 习惯]);
   const [occurredAt, setOccurredAt] = useState(() => dayjs().format(沟通时间格式));
   const [content, setContent] = useState("");
   const [下一步文字, set下一步文字] = useState("");
@@ -2053,7 +2068,8 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
       return;
     }
     const 填 = 项目沟通预填(r.draft, 能选类型.map((t) => t.value));
-    if (填.type) { setType(填.type); setMethod(null); 人改过方式.current = true; }
+    // AI 认不出方式（回 OTHER）：留着现在的（个人习惯 / 默认），不改成「其他」
+    if (填.type && 填.type !== "OTHER") { setType(填.type); setMethod(null); 人改过方式.current = true; }
     if (填.content) setContent(填.content);
     if (填.occurredAt) setOccurredAt(填.occurredAt);
     if (填.下一步) set下一步文字(填.下一步);
