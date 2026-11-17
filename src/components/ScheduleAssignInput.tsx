@@ -6,11 +6,15 @@
  * 建档向导、首页 AI 新线索卡、项目详情改定时共用。窄宽度自动折行，不横滚
  */
 import { Segmented } from "antd";
+import type { CSSProperties } from "react";
 import DatePicker from "@/components/BusinessDatePicker";
 import { dayjs } from "@/lib/utils";
 import { 录入时区叫法, 指定分配最远天数 } from "@/lib/project/time-fields";
 
 const 式 = "YYYY-MM-DD HH:mm";
+/** 行内样式写在组件外（tests/inline-style-cap.test.ts 只减不增）：窄宽度自动折行 */
+const 时刻格样: CSSProperties = { flex: "1 1 160px", minWidth: 0, maxWidth: 200 };
+const 一行样: CSSProperties = { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, minWidth: 0, maxWidth: "100%" };
 
 /** 日历上能选的日子：今天起、最远 30 天（时刻早于现在的服务端再挡一次） */
 export const 定时能选日 = (d: ReturnType<typeof dayjs>) => d.isBefore(dayjs().startOf("day")) || d.isAfter(dayjs().add(指定分配最远天数, "day").endOf("day"));
@@ -28,7 +32,7 @@ export function 定时时刻格({ value, onChange, size, autoFocus, status }: {
       size={size}
       placeholder="选日期和时刻"
       disabledDate={定时能选日}
-      style={{ flex: "1 1 160px", minWidth: 0, maxWidth: 200 }}
+      style={时刻格样}
       value={value ? dayjs(value) : null}
       onChange={(d) => onChange(d ? d.format(式) : "")}
     />
@@ -43,7 +47,7 @@ export default function ScheduleAssignInput({ value, onChange, size, status }: {
 }) {
   const 定时 = typeof value === "string";
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, minWidth: 0, maxWidth: "100%" }} title={`按${录入时区叫法}；到点前留在新线索待分配，最远 ${指定分配最远天数} 天`}>
+    <div style={一行样} title={`按${录入时区叫法}；到点前留在新线索待分配，最远 ${指定分配最远天数} 天`}>
       <Segmented
         size={size === "small" ? "small" : undefined}
         aria-label="分配时间"

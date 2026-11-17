@@ -18,6 +18,8 @@ const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
   stub(/^\.\.\/actions$/, `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return{ok:true}},终止项目进程=async(...a)=>{(window.__终止||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return window.__编辑回||{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=f,删项目沟通=async(...a)=>{(window.__删沟通||=[]).push(a);return{ok:true}},加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
   stub(/^\.\.\/commission-actions$/, `const f=${空跑};export const 存项目底价=f,存提成分配=f,更正实际提成=f;`);
+  // 定时分配（11-17）改 / 取消 / 现在分：服务端那串（prisma、通知）进不了浏览器包
+  stub(/(^|\/)schedule-actions$/, `const f=${空跑};export const 改定时分配=f,取消定时分配=f,定时分配现在分=f;`);
   stub(/^\.\.\/payment-actions$/, `const f=${空跑};export const 记回款=async(...a)=>{(window.__记回款||=[]).push(a);return window.__记回款回??{ok:true}},删回款=async(...a)=>{(window.__删回款||=[]).push(a);return window.__删回款回??{ok:true}};`);
   stub(/readonly-card-actions$/, "export const 打开客户只读卡Action=async(...a)=>{(window.__开卡||=[]).push(a);return window.__卡结果??{ok:false,error:'打不开'}};");
   stub(/^\.\/blocker-actions$/, `const f=${空跑};export const 发布卡点Action=f,认领卡点Action=f,完成卡点Action=f,删卡点Action=f,存卡点默认Action=f,存卡点角色开关Action=f,新增原因Action=f,改原因名Action=f,改原因状态Action=f,删原因Action=f,合并原因Action=f,我的卡点Action=async()=>[];`);

@@ -88,9 +88,11 @@ function 节点文字(r: 项目行, 字典: 阶段字典) {
  * 阶段 = "线索"：企业版「新线索」页（/leads）。只列线索阶段的项目、只有列表，
  * 新建照样走项目向导（落在潜客培育）；转商机之后它就只在「项目」页里了（10-26 用户定的三大阶段）。
  */
+/** 定时那枚签能折行（写在组件外，行内样式只减不增：tests/inline-style-cap.test.ts） */
+const 定时签样: CSSProperties = { whiteSpace: "normal", marginInlineEnd: 0 };
 /** 负责人格的「待分配」（PR3：定时的写「定时 11-20 15:00」，悬停看到点分给谁） */
 function 待分配格({ r }: { r: 项目行 }) {
-  if (r.定时分配) return <Tag color="orange" style={{ whiteSpace: "normal", marginInlineEnd: 0 }} title={`${r.ownerName} 建的，${r.定时分配.时} 到点${r.定时分配.给谁 ? `分给 ${r.定时分配.给谁}` : "自动分配"}（北京时间）`}>定时 {r.定时分配.时}</Tag>;
+  if (r.定时分配) return <Tag color="orange" style={定时签样} title={`${r.ownerName} 建的，${r.定时分配.时} 到点${r.定时分配.给谁 ? `分给 ${r.定时分配.给谁}` : "自动分配"}（北京时间）`}>定时 {r.定时分配.时}</Tag>;
   return <Tag color="orange" title={`${r.ownerName} 建的，等总管理员、市场管理或销售管理分`}>待分配</Tag>;
 }
 

@@ -10,12 +10,13 @@ import { 公海项目市场转, 转客户给销售 } from "@/lib/enterprise/mark
 import type { 带走的 } from "@/lib/carry-over-db";
 import { 换负责人 } from "@/lib/project/owner-write";
 import { 验证中不能改派 } from "@/lib/project/lead-verify-guard";
+import type { 出公海原值 } from "@/lib/enterprise/customer-assign-way";
 
 /**
  * 分配时客户在客户公海里、整包出公海的那几位（P-公海-10）：撤销条原样带回 撤销公海项目，整包退回。
  * 形状同客户公海分配的撤销条（原 = 客户 id + 出公海前的负责人、带过来、公海项目），撤销时照 撤销公海 认，前端传的不信
  */
-export type 整包撤销 = { 原: { id: string; 值: string }[]; 带过来: 带走的; 公海项目: string[] };
+export type 整包撤销 = { 原: 出公海原值[]; 带过来: 带走的; 公海项目: string[] };
 
 /** 分公海项目事务外先备好的：组织（市场转客户要认角色）、分配方式叫法、带不带待办（C-06） */
 export type 分项目上下文 = { org: 组织 | null; way: string; 带: boolean | undefined };
@@ -83,7 +84,7 @@ export async function 在事务里分公海项目们(
     if (带来) {
       出.连客户 += 1;
       出.跟来 += 带来.公海项目.length;
-      出.整包.原.push({ id: 带来.customerId, 值: 带来.旧 });
+      出.整包.原.push({ id: 带来.customerId, 值: 带来.旧, ...(带来.分 !== undefined ? { 分: 带来.分 } : {}) });
       出.整包.公海项目.push(...带来.公海项目);
       for (const k of ["计划", "待办", "商机", "项目"] as const) 出.整包.带过来[k]!.push(...(带来.带过来[k] ?? []));
     }
