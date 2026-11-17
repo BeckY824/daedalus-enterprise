@@ -7,13 +7,15 @@ import Shortcut from "./Shortcut";
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Select, Input, Checkbox } from "antd";
-import { CheckOutlined, CloseOutlined, RightOutlined } from "@ant-design/icons";
+import { Select, Input, Checkbox, Button } from "antd";
+import { CheckOutlined, CloseOutlined, RightOutlined, MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import { motion } from "motion/react";
 import { applyProposal, undoProposal, type 撤销凭据, type 附件去处 } from "@/app/(app)/dashboard/apply";
 import { 取走名片原图, 记下刚建的, 忘掉刚建的 } from "@/lib/card-scan/originals";
 import { 传附件 } from "@/lib/attachment-upload";
 import { describeProposal, missingFields, 只留选中的改动, 可改字段表, 区域去处叫法, type Proposal, type 线索待确认格, type 区域去处 } from "@/lib/agent/proposals";
+import { 线索号码种类, 线索号码上限, 线索号码行, type 线索联系方式 } from "@/lib/agent/proposals";
+import { 号码上限 } from "@/lib/enterprise/customer-v2";
 import { 三种业务线, 分配说明, 建议业务线, 认分给 } from "@/lib/enterprise/assign-line";
 import { 认渠道 } from "@/lib/enterprise/channel-match";
 import { useBusiness } from "@/lib/business-client";
@@ -134,6 +136,7 @@ export default function ProposalCard({
     const 给 = proposal.分配方式 === undefined && !proposal.ownerId ? 认分给(proposal.分给, 企.成员, 企.分配方式们.map((x) => x.i)) : null;
     return {
       ...预选,
+      ...企卡号码(proposal),
       ...(给 ? { ownerId: 给.ownerId } : {}),
       分配方式: 给?.分配方式 ?? proposal.分配方式 ?? 分,
       节点: proposal.节点 && 线索节点们.includes(proposal.节点) ? proposal.节点 : 线索节点们[0],
@@ -541,8 +544,9 @@ export default function ProposalCard({
           const 认图卡 = draft.id.startsWith("card-");
           // 企业版卡上国家、城市总摆着（和新建向导一样能填），别的版本照旧有值才出
           const 企卡 = !!(企 && 渠道名们);
+          // 企业版的微信 / 邮箱 / WhatsApp 并进了「联系方式」几行（企卡号码），这里只剩国家、城市
           const 多格 = ([["country", "国家", 110], ["city", "城市", 110], ["wechat", "微信", 160], ["email", "邮箱", 200], ["whatsapp", "WhatsApp", 150]] as const)
-            .filter(([k]) => 认图卡 || draft[k] || 待.has(k) || (企卡 && (k === "country" || k === "city")));
+            .filter(([k]) => (企卡 ? k === "country" || k === "city" : 认图卡 || draft[k] || 待.has(k)));
           const 有区域 = !!(draft.country?.trim() || draft.city?.trim());
           const 负责人选项 = 企?.成员 ?? [];
           return (
@@ -551,11 +555,18 @@ export default function ProposalCard({
               <Input size="small" style={{ width: 企卡 ? 200 : 160 }} placeholder={企卡 ? "组织或公司名" : "姓名或公司名"} value={draft.name} onChange={(e) => 改("name", e.target.value)} />
             </Field>
             <Field label={企卡 ? "联系人姓名" : "联系人"} 待={待.has("contact") ? 点掉("contact") : undefined}>
-              <Input size="small" style={{ width: 140 }} placeholder={企卡 ? undefined : "可留空"} value={draft.contact} onChange={(e) => 改("contact", e.target.value)} />
+              <Input size="small" style={{ width: 140 }} placeholder="可留空" value={draft.contact} onChange={(e) => 改("contact", e.target.value)} />
             </Field>
-            <Field label="电话" 待={待.has("phone") ? 点掉("phone") : undefined}>
-              <Input size="small" style={{ width: 150 }} placeholder="可留空" value={draft.phone} onChange={(e) => 改("phone", e.target.value)} />
-            </Field>
+            {/* 企业版：联系方式 = 类型 + 号码几行（11-17 员工反馈「只能填电话」），和联系人表单同一套类型；别的版本照旧一格电话 */}
+            {企卡 ? (
+              <Field label="联系方式" block 待={待.has("联系方式") ? 点掉("联系方式") : undefined}>
+                <联系方式格 行们={draft.联系方式 ?? []} 改={(行们) => { const 剩 = (draft.待确认 ?? []).filter((x) => x !== "联系方式"); setDraft({ ...draft, 联系方式: 行们, 待确认: 剩.length ? 剩 : undefined }); }} />
+              </Field>
+            ) : (
+              <Field label="电话" 待={待.has("phone") ? 点掉("phone") : undefined}>
+                <Input size="small" className="prop-num-val" placeholder="可留空" value={draft.phone} onChange={(e) => 改("phone", e.target.value)} />
+              </Field>
+            )}
             {多格.map(([k, 叫, 宽]) => (
               <Field key={k} label={叫} 待={待.has(k) ? 点掉(k) : undefined}>
                 <Input size="small" style={{ width: 宽 }} placeholder="可留空" value={draft[k] ?? ""} onChange={(e) => 改(k, e.target.value)} />
@@ -717,6 +728,53 @@ export default function ProposalCard({
       </div>
       )}
     </motion.div>
+  );
+}
+
+/**
+ * 企业版新线索卡的联系方式（11-17）：老卡的电话 / 微信 / 邮箱 / WhatsApp 几格并成「类型 + 号码」几行（电话当手机），
+ * 老格清掉（不然确认时 buildProposal 又把它们并回来，人删掉的行会复活）；那几格的「待确认」并成一个。一行都没有给一行空的手机
+ */
+function 企卡号码(p: Proposal): Partial<Extract<Proposal, { kind: "add_lead" }>> {
+  if (p.kind !== "add_lead") return {};
+  const 行们 = 线索号码行(p);
+  const 老格 = new Set<线索待确认格>(["phone", "wechat", "email", "whatsapp"]);
+  const 待 = p.待确认 ? [...new Set(p.待确认.map((k) => (老格.has(k) ? "联系方式" as const : k)))] : undefined;
+  return {
+    联系方式: 行们.length ? 行们 : [{ kind: 线索号码种类[0].kind, value: "" }],
+    phone: "", wechat: undefined, email: undefined, whatsapp: undefined,
+    待确认: 待?.length ? 待 : undefined,
+  };
+}
+
+/** 联系方式几行：类型下拉（号码类型字典默认八项，顺序同取值表）+ 号码；至少一行，最多 线索号码上限 行（同联系人表单） */
+function 联系方式格({ 行们, 改 }: { 行们: 线索联系方式[]; 改: (行们: 线索联系方式[]) => void }) {
+  const 显示 = 行们.length ? 行们 : [{ kind: 线索号码种类[0].kind, value: "" }];
+  const 换 = (i: number, 补: Partial<线索联系方式>) => 改(显示.map((x, j) => (j === i ? { ...x, ...补 } : x)));
+  return (
+    <div className="prop-nums" data-testid="lead-numbers">
+      {显示.map((行, i) => (
+        <div className="prop-num" key={i}>
+          <Select
+            size="small"
+            className="prop-num-kind"
+            aria-label="号码类型"
+            value={行.kind}
+            options={线索号码种类.map((k) => ({ value: k.kind, label: k.名 }))}
+            onChange={(v: string) => 换(i, { kind: v })}
+          />
+          <Input size="small" className="prop-num-val" aria-label="号码" placeholder="号码或账号" maxLength={号码上限} value={行.value} onChange={(e) => 换(i, { value: e.target.value })} />
+          {显示.length > 1 && (
+            <Button size="small" type="text" icon={<MinusCircleOutlined />} aria-label="去掉这一行" onClick={() => 改(显示.filter((_, j) => j !== i))} />
+          )}
+        </div>
+      ))}
+      {显示.length < 线索号码上限 && (
+        <Button size="small" type="link" className="prop-num-add" icon={<PlusOutlined />} onClick={() => 改([...显示, { kind: 线索号码种类[0].kind, value: "" }])}>
+          加一个联系方式
+        </Button>
+      )}
+    </div>
   );
 }
 

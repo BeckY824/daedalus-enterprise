@@ -13,7 +13,7 @@ import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { 看全部, 读的我 } from "@/lib/team-scope";
 import { 不在了 } from "@/lib/not-there";
-import { hasVisibleText } from "@/lib/form-validation";
+import { 联系人姓名问题 } from "@/lib/enterprise/customer-v2";
 import { 认回打码号, 号键 } from "@/lib/phone";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 客户事项挡 } from "@/lib/enterprise/follow-perm";
@@ -38,7 +38,9 @@ type 原联系人 = { phone: string | null; email: string | null; wechat: string
 
 /** 校验 + 规整 + 查重（同 saveContact 的口径），撞了只说号码撞了、不说撞了谁 */
 async function 准备(input: 交来的, 原: 原联系人 | null, 跳过的联系人?: string) {
-  if (!hasVisibleText(input.name)) return { ok: false as const, error: "请填写联系人姓名" };
+  // 只在企业版走（入口都先判 企业版()）：姓名和联系方式至少一项（11-17）
+  const 名问题 = 联系人姓名问题(true, input.name, [...(input.企业?.号码们 ?? []).map((r) => r?.value), input.phone, input.email, input.wechat]);
+  if (名问题) return { ok: false as const, error: 名问题 };
   const 企 = 规整企业联系人(input.企业 ?? {});
   if (!企.ok) return 企;
   const 原号们 = [...(原?.contactMethods ?? []), ...(原?.phone ? [{ kind: "phone", value: 原.phone }] : [])];

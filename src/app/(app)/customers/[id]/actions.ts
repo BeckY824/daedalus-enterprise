@@ -34,6 +34,7 @@ import { parseDateInput } from "@/lib/date-input";
 import { 联系人电话, 规整, 规整企业联系人, type 联系人字段, type 企业联系人资料 } from "./contact-input";
 export type { 企业联系人资料 } from "./contact-input";
 import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类表 } from "@/lib/enterprise/customer-v2-db";
+import { 联系人姓名问题 } from "@/lib/enterprise/customer-v2";
 import { 联系人查重, 联系人撞号话, type 撞到的联系人 } from "@/lib/enterprise/contact-dedupe";
 import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
 import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
@@ -656,8 +657,9 @@ export async function 联系人号码先查(号码们: { kind: string; value: st
 export async function saveContact(input: 联系人字段 & { id?: string; customerId: string; isPrimary: boolean; 版本?: string | null; 企业?: 企业联系人资料 | null; 照存?: boolean }) {
   try {
     const me = await requireUser();
-  // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）
-  if (!hasVisibleText(input.name)) return { ok: false as const, error: "请填写联系人姓名" };
+  // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）；企业版 11-17 起姓名和联系方式至少一项（联系人姓名问题）
+  const 名问题 = 联系人姓名问题(企业版(), input.name, [...(input.企业?.号码们 ?? []).map((r) => r?.value), input.phone, input.email, input.wechat]);
+  if (名问题) return { ok: false as const, error: 名问题 };
     const 原 = input.id
       ? await prisma.contact.findUnique({
           where: { id: input.id },
@@ -874,7 +876,8 @@ export async function saveUnassignedContact(input: 联系人字段 & { id: strin
     // 企业版：挂到哪位客户下面就按那位的负责人挡；只改资料（不挂）只挡没业务角色、管理员
     const 挡 = await 客户事项挡(me, input.customerId);
     if (挡) return { ok: false as const, error: 挡 };
-    if (!hasVisibleText(input.name)) return { ok: false as const, error: "请填写联系人姓名" };
+    const 名问题 = 联系人姓名问题(企业版(), input.name, [input.phone, input.email, input.wechat]);
+    if (名问题) return { ok: false as const, error: 名问题 };
     if (input.isPrimary != null && typeof input.isPrimary !== "boolean") return { ok: false as const, error: "关键联系人选项格式不正确" };
     const u = await prisma.unassignedContact.findUnique({ where: { id: input.id } });
     if (!u) return { ok: false as const, error: "这位联系人已经不在了，刷新看看" };

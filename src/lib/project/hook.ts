@@ -18,3 +18,16 @@ export function 登记接着建(fn: 接着建): 接着建 {
 export function 认得(fn: unknown): fn is 接着建 {
   return typeof fn === "function" && 登记过的.has(fn as 接着建);
 }
+
+/**
+ * 建档向导的联系人带着号（联系方式子表那几行，11-17 AI 新线索卡）：客户本身可以没有电话（M-必填-01 要的是任一联系方式，
+ * 只有座机、WhatsApp 这类占不了企业号码的号也算）。同样只认这里登记过的，浏览器塞不进来
+ */
+const 带号的 = new WeakSet<接着建>();
+export function 记联系人带号(fn: 接着建): 接着建 {
+  带号的.add(fn);
+  return fn;
+}
+export function 联系人带号(fn: unknown): boolean {
+  return 认得(fn) && 带号的.has(fn);
+}

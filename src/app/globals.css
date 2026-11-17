@@ -2372,6 +2372,12 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 /* 认图没把握的格：黄标，点掉 = 核对过 */
 .prop-f-wait { flex: none; font-size: var(--fs-min); color: var(--warning-text); background: var(--warning-bg); border: 1px solid var(--warning-line); border-radius: var(--r-ctl); padding: 0 6px; cursor: pointer; }
 .prop-f-wait:hover { border-color: var(--warning); }
+/* AI 新线索卡的联系方式几行（11-17）：类型 + 号码，一行一条；窄屏号码那格先让 */
+.prop-nums { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+.prop-num { display: flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; }
+.prop-num-kind { flex: none; width: 120px; }
+.prop-num-val { flex: 0 1 180px; width: 180px; min-width: 0; }
+.prop-num-add { padding-inline: 0; }
 /* 逐项勾选：没勾上的整项压暗，但仍然读得出来——藏起来人就不知道它否掉了什么 */
 .prop-f-pick { padding: 3px 0; }
 .prop-f-off { opacity: 0.45; }
@@ -4521,7 +4527,11 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .cr-wrap { overflow-wrap: anywhere; }
 .cr-gap { margin-top: 8px; }
 .cr-full { width: 100%; min-width: 0; }
+/* 市场成员选自动分配时业务线那一格（P-转-26）：只读说明「按客户区域自动定：内贸 / 外贸」，高度同输入框、长了折行 */
+.cr-auto-line { min-height: 32px; padding: 4px 11px; border: 1px dashed var(--line); border-radius: var(--r-ctl); color: var(--text-muted); overflow-wrap: anywhere; min-width: 0; }
 .cr-type { width: 132px; flex: none; }
+/* 建档向导第一行号码下面多加的几行（企业版）：一行一个「类型 + 号码 + 去掉」，最后一颗「加一个号码」 */
+.cr-more-nums { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .cr-cur { width: 120px; flex: none; }
 .cr-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .cr-rise { animation: cr-rise var(--t-morph) var(--ease-morph); }
