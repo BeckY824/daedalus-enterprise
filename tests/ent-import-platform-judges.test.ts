@@ -53,10 +53,11 @@ const 样例们: 样例[] = [
       ["客户管理.xlsx·商机", "opportunity", 25],
       ["客户管理.xlsx·跟进记录", "followup", 61],
     ],
+    // 客户缺名称那 1 条：P-抬头-16 起照导、只记「没有全称」提醒，不再跳过
     该跳过: {
-      customer: { 缺必填: 1 },
-      contact: { 找不到客户: 1, 客户不唯一: 2 },
-      opportunity: { 找不到客户: 1 },
+      // 只按客户名称关联、名称对不上的：P-抬头-16 起单独一类「按名称挂不上」（原来叫找不到客户）
+      contact: { 按名称挂不上: 1, 客户不唯一: 2 },
+      opportunity: { 按名称挂不上: 1 },
       followup: { 客户不唯一: 1 },
     },
     负责人填: { 王芳: "wangfang.hz@sample.invalid", 李强: "liqiang.hz@sample.invalid" },
@@ -70,10 +71,10 @@ const 样例们: 样例[] = [
       ["商机.xlsx", "opportunity", 23],
       ["跟进记录.xlsx", "followup", 51],
     ],
+    // 客户缺名称那 1 条：P-抬头-16 起照导、只记「没有全称」提醒，不再跳过
     该跳过: {
-      customer: { 缺必填: 1 },
       opportunity: { 客户不唯一: 1 },
-      followup: { 找不到客户: 1 },
+      followup: { 按名称挂不上: 1 },
     },
     负责人填: { 李强: "liqiang.sh@sample.invalid" },
   },

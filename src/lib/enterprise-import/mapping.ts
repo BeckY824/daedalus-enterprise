@@ -601,7 +601,9 @@ export async function 猜映射(p: 猜映射参数): Promise<猜映射结果> {
   for (const t of p.表) {
     const 列 = m.列[t.实体] ?? {};
     const 有 = new Set(Object.values(列));
-    if (!有.has("name") && t.实体 !== "followup") 提醒.push(`${实体名[t.实体]}表没认出「名称」列，请在映射里指一列`);
+    // 客户全称可以空（P-抬头-16）：没认出也照导，只提醒这批客户的联系人、商机、跟进只能按所属客户 ID 挂
+    if (!有.has("name") && t.实体 === "customer") 提醒.push(`客户表没认出「客户全称」列：客户照导、全称留空；这批客户的联系人、${m.项目 ? "项目" : "商机"}、跟进只能按「所属客户 ID」挂。表里有全称列请在映射里指一列`);
+    else if (!有.has("name") && t.实体 !== "followup") 提醒.push(`${实体名[t.实体]}表没认出「名称」列，请在映射里指一列`);
     if (t.实体 === "followup" && !有.has("content") && !有.has("title")) 提醒.push("跟进记录表没认出「内容」列，请在映射里指一列");
     if (["contact", "opportunity", "followup"].includes(t.实体) && !有.has("customerRef") && !有.has("customerName")) {
       提醒.push(`${实体名[t.实体]}表没认出「所属客户」列，挂不到客户下面，请在映射里指一列`);

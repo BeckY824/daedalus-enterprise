@@ -30,7 +30,8 @@ const 表名: Record<实体, string> = { customer: "customer", contact: "contact
 
 /** 说明.md 里放的、该跳过的脏数据（类别 → 条数） */
 const 该跳过: Partial<Record<实体, Record<string, number>>> = {
-  customer: { 缺必填: 1, "ID 重复": 1, 重名: 1 }, // 重名：和测试机上那家已有客户同号，整条不导（M-导入-29）
+  // 重名：和测试机上那家已有客户同号，整条不导（M-导入-29）；缺名称那 1 条 P-抬头-16 起照导（只记「没有全称」提醒）
+  customer: { "ID 重复": 1, 重名: 1 },
   contact: { 客户不唯一: 2, 找不到客户: 2, 缺必填: 1 },
   opportunity: { 找不到客户: 1 },
   followup: { 找不到客户: 1 },
