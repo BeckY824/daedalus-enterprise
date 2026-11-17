@@ -638,7 +638,7 @@ function 刷新联系人(customerId?: string | null) {
  * 号码不合规的不在这里说（保存时照旧说），查不了也不挡——保存那一步还会再查一遍。
  * 除了 = 编辑时排除这位自己
  */
-export async function 联系人号码先查(号码们: { kind: string; value: string }[], 除了?: string | null): Promise<{ ok: true; 撞了: 撞到的联系人[] } | { ok: false; error: string }> {
+export async function 联系人号码先查(号码们: { kind: string; value: string }[], 除了?: string | null, 客户?: string | null): Promise<{ ok: true; 撞了: 撞到的联系人[] } | { ok: false; error: string }> {
   // 认人放在 try 外：没登录照常抛（按未登录处理），不被下面「号码没查成」那句盖住
   await requireUser();
   try {
@@ -647,7 +647,7 @@ export async function 联系人号码先查(号码们: { kind: string; value: st
     if (!行们.length) return { ok: true, 撞了: [] };
     const 号 = await 验联系人号码们(行们, []);
     if (!号.ok) return { ok: true, 撞了: [] };
-    const 撞了 = 号.行们.length ? await 联系人查重(defaultClient, 号.行们, await 读的我(defaultClient), 除了 ?? undefined) : [];
+    const 撞了 = 号.行们.length ? await 联系人查重(defaultClient, 号.行们, await 读的我(defaultClient), 除了 ?? undefined, 客户 ?? undefined) : [];
     return { ok: true, 撞了 };
   } catch {
     return { ok: false, error: "号码没查成，保存时会再查一遍" };
@@ -723,7 +723,7 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
         if (键) 原有.add(`${kind}|${键}`);
       }
       const 新的 = 查的行们.filter((x) => !原有.has(`${x.kind}|${x.numberKey}`));
-      const 撞了 = 新的.length ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), input.id) : [];
+      const 撞了 = 新的.length ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), input.id, 主客户) : [];
       if (撞了.length) {
         const 表 = await 号码种类表();
         return { ok: false as const, error: 联系人撞号话(撞了, (k) => 种类叫法(表, k), 主客户), 撞了 };

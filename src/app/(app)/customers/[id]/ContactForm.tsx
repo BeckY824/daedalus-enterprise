@@ -163,7 +163,7 @@ export default function ContactForm({
       .map((x) => ({ kind: x.kind!, value: x.value!.trim() }));
     const 序 = ++查序.current;
     if (!们.length) return;
-    const r = await 联系人号码先查(们, record?.id ?? null).catch(() => null);
+    const r = await 联系人号码先查(们, record?.id ?? null, customerId ?? null).catch(() => null);
     if (序 !== 查序.current || !r?.ok) return;
     if (r.撞了.length) { set撞号(r.撞了); set先查的(true); }
   }
@@ -279,13 +279,17 @@ export default function ContactForm({
           type="warning"
           showIcon
           style={{ marginTop: 8 }}
-          message={先查的 ? "这个号码已经记在别的联系人身上，先核对一下" : "这些号码已经记在别的联系人身上，本次没保存"}
+          message={先查的 ? "这个号码已经记在别的联系人或客户身上，先核对一下" : "这些号码已经记在别的联系人或客户身上，本次没保存"}
           description={
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {撞号.map((x, i) => (
                 <div key={`${x.kind}-${x.value}-${i}`} style={{ overflowWrap: "anywhere" }}>
                   {叫法(x.kind)} {x.value}：
-                  {x.contactId && x.customerId ? (
+                  {x.客户本身 ? (
+                    x.customerId ? (
+                      <Link href={`/customers/${encodeURIComponent(x.customerId)}`} target="_blank">{b.customer}「{x.customerName}」本身的号码</Link>
+                    ) : `${x.同事}名下的一位${b.customer}（不在你的范围，可与他核实）`
+                  ) : x.contactId && x.customerId ? (
                     <>
                       <Link href={`/customers/${encodeURIComponent(x.customerId)}`} target="_blank">
                         {x.name}（{x.customerName}）

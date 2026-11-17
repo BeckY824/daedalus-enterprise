@@ -15,8 +15,8 @@ import { 不在了 } from "@/lib/not-there";
 import { getBusiness } from "@/lib/business";
 import { 读的我 } from "@/lib/team-scope";
 import { 验号码, 号码类型叫法 } from "@/lib/enterprise/contact-format";
-import { 验联系人号码, 企业号码查重, 全公司查号, 撞号结论, 记号码, 联系人号码撞了, 库类型到号码类型, type 联系人的号, type 验好的号 } from "@/lib/enterprise/contact-dedupe";
-import { 验联系人号码们, type 验好的行 } from "@/lib/enterprise/customer-v2-db";
+import { 验联系人号码, 企业号码查重, 全公司查号, 撞号结论, 记号码, 联系人号码撞了, 库类型到号码类型, 一行号全公司查, type 联系人的号, type 验好的号 } from "@/lib/enterprise/contact-dedupe";
+import { 验联系人号码们, 号码种类表, 种类叫法, type 验好的行 } from "@/lib/enterprise/customer-v2-db";
 import { 每人最多号码 } from "@/lib/enterprise/customer-v2";
 import type { Prisma } from "@/generated/prisma";
 import { 登记接着建, 记联系人带号 } from "@/lib/project/hook";
@@ -185,6 +185,8 @@ export async function 建档向导(输入: 建档向导输入) {
     const 号码行 = 企 ? await 并号码行(input.联系人?.号码们, 联号, 第一步?.ok ? 第一步 : null) : null;
     if (号码行 && "error" in 号码行) return { ok: false as const, error: 号码行.error };
     const 别的号行 = 号码行?.别的 ?? [];
+    const 别撞 = await 别的号撞了(别的号行, me.id);
+    if (别撞) return { ok: false as const, error: 别撞 };
     // 撞到有人在跟的客户：这次录的写进现有项目（同号再次录入），不建；公海、占位、停用的照原来的提示拦
     const 同号录入 = { 入口: "手工建档", 渠道id: input.客户.channelId, 内容: 好.跟进.content };
     if (第一步?.ok) {
@@ -312,6 +314,20 @@ async function 并号码行(行们: 向导联系人["号码们"], 联号: 联系
   if (联号.length + 别的.length > 每人最多号码) return { error: `一位联系人最多记 ${每人最多号码} 个号码` };
   return { 别的, 有: 验.行们.length > 0 };
 }
+/**
+ * 别的类型的号（座机、WhatsApp、传真、Telegram、自定的）也全公司查重（11-17）：座机、WhatsApp 和手机共用号键，
+ * 撞了客户电话、联系人、子表里的同号都算；在用的撞了说首条那位（同第一行号码的提示）。没撞回 null
+ */
+async function 别的号撞了(行们: readonly 验好的行[], 我: string): Promise<string | null> {
+  if (!行们.length) return null;
+  const 表 = await 号码种类表();
+  for (const 行 of 行们) {
+    const ids = await 一行号全公司查(prisma, 行);
+    const 论 = ids.length ? await 撞号结论(prisma, ids, 我, await 读的我(defaultClient)) : null;
+    if (论 && 论.状态 !== "首次录入") return `联系人${种类叫法(表, 行.kind)}：${论.提示}`;
+  }
+  return null;
+}
 async function 记别的号行(tx: Prisma.TransactionClient, customerId: string, contactId: string | null, 行们: readonly 验好的行[]) {
   for (const 行 of 行们) {
     await tx.contactMethod.create({ data: { customerId, contactId, kind: 行.kind, value: 行.value, numberKey: 行.numberKey, formatStatus: "ok", region: 行.region } });
@@ -345,6 +361,8 @@ async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输�
   const 号码行 = 企 ? await 并号码行(输入.联系人?.号码们, 联号, 第一步?.ok ? 第一步 : null) : null;
   if (号码行 && "error" in 号码行) return { ok: false as const, error: 号码行.error };
   const 别的号行 = 号码行?.别的 ?? [];
+  const 别撞 = await 别的号撞了(别的号行, me.id);
+  if (别撞) return { ok: false as const, error: 别撞 };
   const 同号录入 = { 入口: "手工建档", 渠道id: 客户.channelId, 内容: 好.跟进.content };
   if (第一步?.ok) {
     const 结论 = await 企业号码查重(prisma, 第一步, me.id, await 读的我(defaultClient));

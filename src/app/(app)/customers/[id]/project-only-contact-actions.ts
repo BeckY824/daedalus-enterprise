@@ -37,7 +37,7 @@ function 是对象(v: unknown): v is 交来的 {
 type 原联系人 = { phone: string | null; email: string | null; wechat: string | null; contactMethods: { kind: string; value: string; numberKey: string | null }[] };
 
 /** 校验 + 规整 + 查重（同 saveContact 的口径），撞了只说号码撞了、不说撞了谁 */
-async function 准备(input: 交来的, 原: 原联系人 | null, 跳过的联系人?: string) {
+async function 准备(input: 交来的, 原: 原联系人 | null, 跳过的联系人: string | undefined, 客户: string) {
   // 只在企业版走（入口都先判 企业版()）：姓名和联系方式至少一项（11-17）
   const 名问题 = 联系人姓名问题(true, input.name, [...(input.企业?.号码们 ?? []).map((r) => r?.value), input.phone, input.email, input.wechat]);
   if (名问题) return { ok: false as const, error: 名问题 };
@@ -66,7 +66,7 @@ async function 准备(input: 交来的, 原: 原联系人 | null, 跳过的联�
       if (键) 原有.add(`${kind}|${键}`);
     }
     const 新的 = 查的行们.filter((x) => !原有.has(`${x.kind}|${x.numberKey}`));
-    const 撞了 = 新的.length ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), 跳过的联系人) : [];
+    const 撞了 = 新的.length ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), 跳过的联系人, 客户) : [];
     if (撞了.length) {
       const 表 = await 号码种类表();
       const 头 = 撞了[0];
@@ -92,7 +92,7 @@ export async function 新增仅项目联系人Action(customerId: unknown, projec
     if (挡) return { ok: false, error: 挡 };
     const 我的 = await 仅项目可见(me, customerId);
     if (!我的?.includes(projectId)) return 不是你的;
-    const 备 = await 准备(input, null);
+    const 备 = await 准备(input, null, undefined, customerId);
     if (!备.ok) return 备;
     const { data, 号 } = 备;
     const id = await 看全部(() => prisma.$transaction(async (tx) => {
@@ -134,7 +134,7 @@ export async function 改仅项目联系人Action(contactId: unknown, input: unk
       where: { id: { in: 我的 }, OR: [{ contactId }, { contactLinks: { some: { contactId } } }] },
     }));
     if (!在我项目上) return 不是你的;
-    const 备 = await 准备(input, 原, contactId);
+    const 备 = await 准备(input, 原, contactId, 原.customerId);
     if (!备.ok) return 备;
     const { data, 号 } = 备;
     const 写了 = await 看全部(() => prisma.$transaction(async (tx) => {
