@@ -11,6 +11,7 @@ import { 看全部 } from "@/lib/team-scope";
 import { 看已删 } from "./soft-delete-core";
 import { 离职理由们, 系统操作人, 拆退回原因 } from "./unified-pool";
 import { 无主入池理由 } from "@/lib/enterprise-import/project-target";
+import { 是补建 } from "@/lib/project/system-created";
 
 /**
  * 区间 = 地址栏「自定义」那一段（日期段界() 算好的两个瞬间）；不带就只算三个预设档。
@@ -22,7 +23,7 @@ export async function 读看板底数(渠道ids: string[], 今: Date = new Date(
     prisma.project.findMany({
       where: 渠道项目条件(渠道ids),
       select: {
-        id: true, channelId: true, phase: true, result: true, amount: true, currency: true, createdAt: true,
+        id: true, channelId: true, phase: true, result: true, amount: true, currency: true, createdAt: true, creatorId: true,
         customer: { select: { channelId: true } },
         entLeadVerify: { select: { verdict: true } },
         // 不 orderBy（父行过千会让 Prisma 6.16 崩，见 channel-stats-db.ts）；起步要按时间排了取头一条（同列表），别的取最早一条
@@ -37,6 +38,7 @@ export async function 读看板底数(渠道ids: string[], 今: Date = new Date(
     项目们.map((p) => ({
       channelId: 项目算哪个渠道(p.channelId, p.customer.channelId),
       phase: p.phase, result: p.result, amount: p.amount, currency: p.currency, createdAt: p.createdAt,
+      ...(是补建(p) ? { 补建: true } : {}),
       判定: p.entLeadVerify?.verdict ?? null,
       起步: [...p.logs].sort((x, y) => x.at.getTime() - y.at.getTime()).find((l) => l.fromPhase === null)?.toPhase ?? "线索",
       节点们: p.logs.map((l) => ({ toPhase: l.toPhase, at: l.at })),

@@ -169,7 +169,7 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
           }
         }
         if (Object.keys(改动).length) {
-          await 改(tx, e, c.targetId, 改动, 现值!, 现.现在);
+          await 改(tx, e, c.targetId, 改动, 现值!, 现.现在, 现.补培育 ? { 操作人: 现.操作人 } : undefined);
           改了++;
           if (e === "followup") {
             碰过.add(String(现值!.customerId));

@@ -26,6 +26,7 @@ import { 忘掉企业版范围 } from "./visibility";
 import { 回收站里查号, 回收站里带号的联系人, type 验好的号 } from "./contact-dedupe";
 import { 换负责人 } from "@/lib/project/owner-write";
 import { 验证中不能改派 } from "@/lib/project/lead-verify-guard";
+import { 企业版只用项目 } from "./project-only";
 
 export { 看已删, 回收站保留天数, 软删表, type 软删表名 } from "./soft-delete-core";
 
@@ -128,6 +129,12 @@ async function 恢复一条(t: 软删表名, id: string, 操作人 = ""): Promis
     const { 恢复后停用负责人去向 } = await import("./restore-inactive-owner");
     停用负责人 = await 恢复后停用负责人去向(id, 操作人);
     if (停用负责人?.进了公海) 忘掉企业版范围();
+    // M-公海-14：回到客户名单（不在客户公海）、名下一个项目都没有（回收站里的也算有）的，补一个潜客培育项目。
+    // 查重捞回也走这里。负责人去向办完再补：进了公海的不补；项目负责人认客户现在的负责人
+    if (await 企业版只用项目()) {
+      const { 零项目客户补潜客培育 } = await import("../project/nurture");
+      await prisma.$transaction((tx) => 零项目客户补潜客培育(tx, [id], 操作人));
+    }
   }
   // 客户三态：恢复了沟通（单条、或随客户连带回来）或项目（建档、换节点又算动静），等负责人去向办完再马上重算这位的钟。
   // tri-state-db 引着 pool-link → project/db → 本文件，按需取；三态关着不查库，出错不影响恢复
