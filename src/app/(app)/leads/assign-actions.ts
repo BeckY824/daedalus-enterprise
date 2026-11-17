@@ -549,10 +549,11 @@ export async function 向导自动分配(projectId: string): Promise<自动分�
 
 /**
  * 自动分配线索()、批量自动分配()、向导自动分配() 共用：进门、能不能分已经查过。
- * 原负责人 = 点按钮时界面上看到的负责人（乐观锁，QA #4）；没交 = 按这里刚读到的比。被别人先分走了直接回「已被分配」，不再换人分
+ * 原负责人 = 点按钮时界面上看到的负责人（乐观锁，QA #4）；没交 = 按这里刚读到的比。被别人先分走了直接回「已被分配」，不再换人分。
+ * 发起人 = 按区域定事业部（P-转-26）看谁发起的；没交 = me。定时分配到点是系统在分，发起人是建线索的人
  */
 async function 自动分给(
-  me: SessionUser, org: 组织, 哪条: 目标, line: 线 | null, kind: 线索种类, 原负责人?: string | null, 备注?: string,
+  me: SessionUser, org: 组织, 哪条: 目标, line: 线 | null, kind: 线索种类, 原负责人?: string | null, 备注?: string, 发起人?: string,
 ): Promise<内部自动结果> {
   const 看 = await 分前看(哪条, org);
   if (!看.ok) return 看;
@@ -575,7 +576,7 @@ async function 自动分给(
   // 指定分配的事业部限制（P-转-26 另一半）还没做，见 X-141
   let 人们: string[];
   let 查线: 线 | null | undefined;
-  const 按区域 = 哪条.projectId !== undefined && 按区域分配of(org, me.id);
+  const 按区域 = 哪条.projectId !== undefined && 按区域分配of(org, 发起人 ?? me.id);
   let 区域未填 = false;
   if (按区域) {
     line = 看.区域 ? 区域线of(看.区域.客户, 看.区域.项目) : null;
@@ -664,7 +665,9 @@ export async function 定时分出去(令牌: unknown, 谁: SessionUser, project
     await 分配通知(谁, [{ ...哪条, toUserId: 接手人, ...留下字段(r.留下) }], false, 附);
     return { ok: true, 接手人: (await prisma.user.findUnique({ where: { id: 接手人 }, select: { name: true } }))?.name ?? 接手人 };
   }
-  const r = await 自动分给(谁, org, 哪条, null, "营销", undefined, 附);
+  // 按区域定事业部（P-转-26）看建线索的人：市场成员建的自动分配，到点照样按客户区域分（区域没填 = 两条线都算），不退回按内贸
+  const 建的人 = (await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { creatorId: true } })))?.creatorId;
+  const r = await 自动分给(谁, org, 哪条, null, "营销", undefined, 附, 建的人);
   if (!r.ok) return { ok: false, error: r.error };
   await 分配通知(谁, [{ ...哪条, toUserId: r.toUserId, ...留下字段(r.留下) }], true, 附);
   return { ok: true, 接手人: r.接手人 };
