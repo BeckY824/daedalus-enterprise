@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Select } from "antd";
 import { 沟通方式选项, 发起主体选项, 我常用的沟通方式 } from "@/app/(app)/follow-method-actions";
 import type { 一条方式 } from "@/lib/follow-habit";
-import { 方式对类型, 类型对方式, 对得上的方式 } from "@/lib/follow-method";
+import { 方式对类型, 补的方式, 对得上的方式 } from "@/lib/follow-method";
 
 // 一页只取一次：几张表单共用，管理员改了字典刷新页面就是新的；取失败下次再取
 let 取着: Promise<string[] | null> | null = null;
@@ -87,16 +87,18 @@ export default function FollowMethodSelect({ type, method, 类型们, onChange, 
     return <Select aria-label={ariaLabel} style={style} value={type} options={类型们.map((t) => ({ value: t.value, label: t.label }))} onChange={(t: string) => onChange({ type: t, method: null })} />;
   }
   const 待办类 = 类型们.filter((t) => t.value === "TASK" || t.value === "REMIND");
-  // 方式和类型对不上（AI 解析、默认 WhatsApp 只改了类型）就按类型摆
-  const 现方式 = 待办类.some((t) => t.value === type) ? null : 对得上的方式(type, method) ?? 类型对方式(type);
+  // 方式和类型对不上（AI 解析、默认 WhatsApp 只改了类型）就按类型摆；没填方式的「其他」类留空（11-17：不自动填成「其他方式」，留空就是空）
+  const 待办 = 待办类.some((t) => t.value === type);
+  const 现方式 = 待办 ? null : 对得上的方式(type, method) ?? 补的方式(type);
   const 方式们 = 现方式 && !们.includes(现方式) ? [...们, 现方式] : 们;
-  const 值 = 现方式 ? `m:${现方式}` : `t:${type}`;
+  const 值 = 现方式 ? `m:${现方式}` : 待办 ? `t:${type}` : undefined;
   return (
     <Select
       aria-label={ariaLabel}
       style={style}
       showSearch
       optionFilterProp="label"
+      placeholder="—"
       value={值}
       options={[...方式们.map((m) => ({ value: `m:${m}`, label: m })), ...待办类.map((t) => ({ value: `t:${t.value}`, label: t.label }))]}
       onChange={(v: string) => onChange(v.startsWith("m:") ? { type: 方式对类型(v.slice(2)), method: v.slice(2) } : { type: v.slice(2), method: null })}

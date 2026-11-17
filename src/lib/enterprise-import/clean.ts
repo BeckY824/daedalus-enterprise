@@ -35,7 +35,7 @@ import { 联系人号查重键 } from "../enterprise/customer-v2";
 import { businessDayjs } from "../business-clock";
 import { parseDateInput } from "../date-input";
 import { 认日期 } from "../import/plan";
-import { 查电话, 号键 } from "../phone";
+import { 查电话, 号键, 号码带着字, 号码粘着字母 } from "../phone";
 import { 是占位号 } from "../placeholder-phone";
 import { 无负责人占位名 } from "../pool";
 import { 拆多人, 进备注, 输单, 对客户类型, 客户类型留空, 客户类型未定, 客户类型等级, 值说法 } from "./mapping";
@@ -46,7 +46,8 @@ import { 默认币种, 认币种 } from "../currency";
 import { 认归档档位 } from "../enterprise/archive-tier";
 import { 成交需求上限 } from "../project/profile-rules";
 import { 实体顺序, 必填, 字段中文, type 原始记录, type 实体, type 映射, type 问题, type 待写, type 格式类 } from "./types";
-import { 全角数字和点转半角, 全角转半角 } from "../fullwidth";
+import { 全角转半角 } from "../fullwidth";
+import { 认金额 } from "../money-input";
 
 /** 我们这边已有的东西，调用方从库里查好传进来。键都已规整过（见下面的 名键 / 号键） */
 export type 本地索引 = {
@@ -246,22 +247,8 @@ function 认是否(v: string): boolean {
   return /^(是|y|yes|true|1|√|✓|主|主要|关键)$/i.test(v.trim());
 }
 
-/** 金额：去掉货币符号、千分位、「元 / 元整 / 整」，「k / 千 / 万 / 亿」乘上去，全角数字也认。认不出返回 null */
-export function 认金额(v: string): number | null {
-  let s = 全角数字和点转半角(v.trim())
-    .replace(/[,，\s]/g, "")
-    .replace(/^(¥|￥|\$|US\$|RMB|CNY|USD)/i, "")
-    .replace(/(元整|整|元|人民币|rmb|cny|usd)$/i, "");
-  let 倍 = 1;
-  const 单位 = /(k|千|万|亿)$/i.exec(s);
-  if (单位) {
-    倍 = { k: 1000, 千: 1000, 万: 10000, 亿: 100000000 }[单位[1].toLowerCase() as "k"] ?? 1;
-    s = s.slice(0, -1);
-  }
-  if (!/^-?\d+(\.\d+)?$/.test(s)) return null;
-  const n = Number(s) * 倍;
-  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null;
-}
+/** 金额：搬到 lib/money-input（11-17：AI 卡金额框也用它，浏览器端要能 import），这里照旧导出给导入和老用例 */
+export { 认金额 };
 
 /** 赢率：「60%」「60」「0.6」都认成 60。认不出返回 null */
 export function 认赢率(v: string): number | null {
@@ -403,6 +390,12 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
     出问题(r, "提醒", "格式不对", `电话「${v}」是表格改成科学计数法的号，后几位已经丢了，没当号码，原样放进了备注待核对`);
   };
 
+  /** 号码带着说明（「13800001111（微信同号）」）：号码照收，原文进备注「电话原文」、报告里说一句（11-17 复盘第 4 类：说明不再悄悄丢） */
+  const 带字原文 = (r: 原始记录, v: string, 号: string, 附加: string[]) => {
+    附加.push(`电话原文：${v}`);
+    出问题(r, "提醒", "格式不对", `电话「${v}」按 ${号} 导入，号码以外的字连同原文放进了备注`);
+  };
+
   /** 占位假号（M-导入-36）：是就记一笔提醒、返回 true，调用方丢掉这个号 */
   const 丢占位 = (r: 原始记录, v: string | undefined, 标签: string): boolean => {
     if (!v || !是占位号(v)) return false;
@@ -450,6 +443,8 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
         const p = 查电话(x, { 必填: false });
         if (p.ok && p.phone) {
           号们.push(p.phone);
+          // 「13800001111（微信同号）」这类：号码取出来，原文进备注、报告里说一句（11-17 复盘第 4 类：原来说明悄悄丢了）
+          if (号码带着字(x)) 带字原文(r, x, p.phone, 附加);
           continue;
         }
       }
@@ -497,17 +492,42 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
     const 段 = 全段.filter((x) => !丢占位(r, x, "电话"));
     if (!段.length) return { phone: "", 另: [] };
     if (段.length > 1) {
-      const 号们 = 段.map((x) => 查电话(x, { 必填: false }));
-      if (号们.every((x) => x.ok)) {
+      /*
+        号码和字母连着写的那段（「138… / sqin175…」）：整段当微信、不截里面的数字当电话（同 拆全部电话，11-17 复盘第 4 类）；
+        别的段都是号才这样拆，不然交给下面整格认
+      */
+      const 粘段 = 段.filter((x) => 号码粘着字母(x));
+      const 号段 = 段.filter((x) => !号码粘着字母(x));
+      const 号们 = 号段.map((x) => 查电话(x, { 必填: false }));
+      if (号段.length && 号们.every((x) => x.ok)) {
         const [首, ...余] = 号们.map((x) => (x.ok ? x.phone : ""));
-        出问题(r, "提醒", "格式不对", `电话格里有 ${段.length} 个号，第一个当电话，其余放进了备注`);
-        return { phone: 首, 另: 余 };
+        const [微信, ...余微信] = 粘段;
+        附加.push(...余微信.map((x) => `另一个微信：${x}`));
+        出问题(r, "提醒", "格式不对", 粘段.length
+          ? `电话格里有 ${号段.length} 个号、${粘段.length} 段号码和字母连着写（像微信号）：第一个号当电话、第一段放进了微信，其余放进了备注，没截里面的数字当电话`
+          : `电话格里有 ${段.length} 个号，第一个当电话，其余放进了备注`);
+        // 哪一段带着说明（「微信同号」）：整格原文也进备注，说明不丢（11-17 复盘第 4 类）
+        if (号段.some((x) => 号码带着字(x))) 附加.push(`电话原文：${t}`);
+        return { phone: 首, 另: 余, ...(微信 ? { wechat: 微信 } : {}) };
       }
     }
     // 去掉了占位号的，剩下的那一个号单独认
     if (段.length < 全段.length) v = 段.join(" / ");
+    /*
+      号码和字母连着写、前后还带着别的字的（「微信 sqin175…」「Tel138…」）：不截里面的数字当电话（11-17 复盘第 4 类），
+      原样进备注、报告里说清
+    */
+    if (号码粘着字母(v)) {
+      附加.unshift(`电话：${v}`);
+      出问题(r, "提醒", "格式不对", `电话「${v}」号码和字母连着写，像微信号或账号，没截里面的数字当电话，原样放进了备注`);
+      return { phone: "", 另: [] };
+    }
     const p = 查电话(v, { 必填: false });
-    if (p.ok) return { phone: p.phone, 另: [] };
+    if (p.ok) {
+      // 号码带着说明（「13800001111（微信同号）」「手机：138…」）或写了两个号：号码取出来，原文进备注、报告里说一句（原来说明悄悄丢了）
+      if (p.phone && 号码带着字(v)) 带字原文(r, v, p.phone, 附加);
+      return { phone: p.phone, 另: [] };
+    }
     附加.unshift(`电话：${v}`);
     出问题(r, "提醒", "格式不对", `电话「${v}」看不出是个号码，原样放进了备注`);
     return { phone: "", 另: [] };

@@ -4,6 +4,7 @@ import DatePicker from "@/components/BusinessDatePicker";
 import OptionInput from "@/components/OptionInput";
 import Shortcut from "./Shortcut";
 
+import AmountTextInput from "@/components/AmountTextInput";
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -447,7 +448,7 @@ export default function ProposalCard({
         {draft.kind === "add_contract" && (
           <>
             <Field label={签约叫(b) === "订单" ? "订单金额" : "签约金额"}>
-              <Input size="small" style={{ width: 140 }} prefix={币种符号(draft.currency || b.currency)} value={draft.amount || ""} onChange={(e) => setDraft({ ...draft, amount: Number(e.target.value.replace(/[^\d.]/g, "")) || 0 })} />
+              <AmountTextInput aria-label="金额" prefix={币种符号(draft.currency || b.currency)} value={draft.amount} onChange={(n) => setDraft({ ...draft, amount: n })} />
             </Field>
             <Field label={签约叫(b) === "订单" ? "订单确认时间" : "签约日期"}>
               <DatePicker size="small" format="YYYY-MM-DD" allowClear={false} value={draft.signedAt ? dayjs(draft.signedAt) : null} onChange={(d) => d && setDraft({ ...draft, signedAt: d.toISOString() })} />

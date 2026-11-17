@@ -2,7 +2,7 @@
 
 import CopyValue from "@/components/CopyValue";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
-import { requiredText } from "@/lib/form-validation";
+import { requiredText, 电话格验 } from "@/lib/form-validation";
 
 import { 签约叫 } from "@/lib/business-config";
 import OptionInput from "@/components/OptionInput";
@@ -168,6 +168,7 @@ export default function LeadsView({
       return;
     }
     if (!res.ok) {
+      if ("字段" in res && res.字段 === "phone") form.setFields([{ name: "phone", errors: [res.error] }]);
       说(res.error, true);
       return;
     }
@@ -457,7 +458,10 @@ export default function LeadsView({
               <Form.Item name="contact" label="联系人"><Input placeholder="张伟" /></Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="phone" label="联系电话"><Input placeholder="13800002211" /></Form.Item>
+              {/* 号码以外的字不悄悄截掉（11-17 复盘第 4 类）：和服务端同一个 录入电话，填的时候就在格子下面说为什么存不了；没改的老号不验 */}
+              <Form.Item name="phone" label="联系电话" rules={[{ validator: (_, v?: string | null) => 电话格验(v, editing?.phone) }]}>
+                <Input placeholder="13800002211" />
+              </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="email" label="邮箱"><Input /></Form.Item>

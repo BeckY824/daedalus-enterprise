@@ -3,7 +3,7 @@
 import DatePicker from "@/components/BusinessDatePicker";
 
 import { isCalendarDate } from "@/lib/schedule-date";
-import { requiredText } from "@/lib/form-validation";
+import { requiredText, 电话格验 } from "@/lib/form-validation";
 
 import OptionInput from "@/components/OptionInput";
 import { useEffect, useRef, useState } from "react";
@@ -1101,7 +1101,8 @@ function QuickChannelModal({
         <Form.Item label="渠道姓名" name="name" rules={[requiredText("请输入渠道姓名")]}>
           <Input placeholder="如：小红" />
         </Form.Item>
-        <Form.Item label="联系电话" name="phone">
+        {/* 号码以外的字不悄悄截掉（11-17 复盘第 4 类）：和 saveChannel 同一个 录入电话，格子下面说为什么存不了 */}
+        <Form.Item label="联系电话" name="phone" rules={[{ validator: (_, v?: string | null) => 电话格验(v) }]}>
           <Input placeholder="选填" />
         </Form.Item>
         {/* 一个人用时不问：不传，服务端填成那唯一的人（saveChannel 的 唯一负责人） */}

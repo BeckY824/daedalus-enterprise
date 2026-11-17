@@ -22,6 +22,7 @@ import Link from "next/link";
 import type { ComponentProps } from "react";
 import { avatarColor, companyInitial, initial, AVATAR_TEXT } from "@/lib/utils";
 import { FOLLOW_STATUS_COLOR, DECISION_STATUS_COLOR, OPP_STAGE_COLOR, FOLLOW_TYPE_MAP } from "@/lib/constants";
+import { 跟进方式名 } from "@/lib/follow-method";
 import { useBusiness } from "@/lib/business-client";
 import { statusLabel, stageLabel } from "@/lib/business-config";
 
@@ -289,7 +290,7 @@ export const FOLLOW_TYPE_ICON: Record<string, React.ReactNode> = {
  * 这一页每行都有一个类型，八种类型八种颜色的话，整张表会变成一列跑马灯，
  * 而真正要读的「内容」那一列反而退到后面。颜色只留给图标，文字照常。
  */
-/** method：企业版沟通方式（10-31），有就叫它（图标仍按类型） */
+/** method：企业版沟通方式（10-31），有就叫它（图标仍按类型）；没填的「其他」类显示「—」（跟进方式名，11-17） */
 export function FollowTypeCell({ type, method }: { type: string; method?: string | null }) {
   const m = FOLLOW_TYPE_MAP[type] ?? FOLLOW_TYPE_MAP.OTHER;
   return (
@@ -297,7 +298,7 @@ export function FollowTypeCell({ type, method }: { type: string; method?: string
       <span className="ftype-i" style={{ color: m.color }}>
         {FOLLOW_TYPE_ICON[type] ?? FOLLOW_TYPE_ICON.OTHER}
       </span>
-      {method || m.label}
+      {跟进方式名({ type, method })}
     </span>
   );
 }

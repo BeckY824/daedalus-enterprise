@@ -150,11 +150,19 @@ const 名旁 = /(手机号码|手机号|手机|电话|座机|邮箱|邮件|tel|m
  * 按「；;、换行」分人，每人取出电话、邮箱，剩下的是名字。逗号、斜杠不分（公司名、英文名里常有）。
  * 认不出电话邮箱、只有一个人的，原样一个
  */
-export function 拆人格(格: string): { 名: string; 电话: string[]; 邮箱: string[] }[] {
+export function 拆人格(格: string): { 名: string; 电话: string[]; 邮箱: string[]; 粘字母?: true }[] {
   const 段们 = 格.split(/[；;、\n]+/).map((x) => x.trim()).filter(Boolean);
-  const 人们 = 段们.map((段) => {
+  const 人们 = 段们.map((段): { 名: string; 电话: string[]; 邮箱: string[]; 粘字母?: true } => {
     const 邮箱: string[] = [...(段.match(邮箱式) ?? [])];
     let 剩 = 段.replace(邮箱式, " ");
+    /*
+      号码和字母连着写（「张三 wx:sqin17548955941」）：像微信号、账号，不截里面的数字当电话、剩下的字母并进名字（11-17 复盘第 4 类）。
+      这一段不拆，原样当名字，拆联系人 在提醒里说一句
+    */
+    const 粘 = [...剩.matchAll(电话式)].some(
+      (m) => m[0].replace(/\D/g, "").length >= 7 && (/[A-Za-z_]/.test(剩[m.index - 1] ?? "") || /[A-Za-z_]/.test(剩[m.index + m[0].length] ?? "")),
+    );
+    if (粘) return { 名: 段, 电话: [], 邮箱: [], 粘字母: true };
     const 电话 = (剩.match(电话式) ?? []).filter((x) => x.replace(/\D/g, "").length >= 7).map((x) => x.replace(/[\s-]/g, ""));
     for (const x of 剩.match(电话式) ?? []) if (x.replace(/\D/g, "").length >= 7) 剩 = 剩.replace(x, " ");
     const 名 = 剩
@@ -216,6 +224,7 @@ export function 拆联系人(t: 读出的表): 读出的表[] {
   const 见过客户 = new Set<string>();
   let 重复客户 = 0;
   let 分开的格 = 0;
+  let 粘字母的格 = 0;
   const 前缀行: string[][] = [];
   t.行.forEach((r, k) => {
     const 留 = r.filter((_, i) => !人列.includes(i));
@@ -229,6 +238,7 @@ export function 拆联系人(t: 读出的表): 读出的表[] {
     const 原人 = 人列.map((i) => r[i] ?? "");
     if (原人.every((v) => !v.trim())) return;
     const 拆 = 拆人格(原人[名位]);
+    if (拆.some((x) => x.粘字母)) 粘字母的格++;
     const 分了 = 拆.length > 1 || 拆.some((x) => x.电话.length || x.邮箱.length);
     if (分了) 分开的格++;
     const 人们: string[][] = !分了
@@ -268,6 +278,7 @@ export function 拆联系人(t: 读出的表): 读出的表[] {
   联系人.行 = 联系人.行.map((人, n) => [...前缀行[n], ...人头.map((_, j) => 人[j] ?? "")]);
   客户.提醒.push(`这张表里有联系人的几列（${人列.map((i) => t.表头[i]).join("、")}），已拆成「${联系人.名}」单独导`);
   if (重复客户) 客户.提醒.push(`同一家客户因为有几个联系人重复出现了 ${重复客户} 行，客户只留一行`);
+  if (粘字母的格) 联系人.提醒.push(`「${t.表头[人列[名位]]}」有 ${粘字母的格} 格号码和字母连着写（像微信号），没截数字当电话，原样留在了名字里，请核对`);
   if (分开的格) 联系人.提醒.push(`「${t.表头[人列[名位]]}」有 ${分开的格} 格写了几个人或带着电话 / 邮箱，已分成名字、电话、邮箱`);
   return 联系人.行.length ? [客户, 联系人] : [客户];
 }
