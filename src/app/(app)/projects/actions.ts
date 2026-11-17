@@ -20,6 +20,7 @@ import { 验联系人号码们, 号码种类表, 种类叫法, type 验好的行
 import { 每人最多号码 } from "@/lib/enterprise/customer-v2";
 import type { Prisma } from "@/generated/prisma";
 import { 登记接着建, 记联系人带号 } from "@/lib/project/hook";
+import { 签首条附件票 } from "@/lib/enterprise/first-follow-ticket";
 import { 规整向导, 向导接着建, 规整只建客户, 只建客户接着建, 项目来源默认, 占位名提示, type 建好的, type 建好的客户, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
@@ -73,9 +74,10 @@ function 刷新项目(projectId?: string, customerId?: string) {
   if (customerId) revalidatePath(`/customers/${customerId}`);
 }
 
-export type 建档向导输入 = { 客户: CustomerInput; 联系人: 向导联系人; 项目: 向导项目; 跟进: 向导跟进 };
-/** 新建弹窗没开「项目」开关（P-界面-36，11-15）：只建客户、主要联系人和首条沟通（算客户沟通） */
-export type 只建客户输入 = Omit<建档向导输入, "项目">;
+/** 要传附件：弹窗里给首条沟通挑了截图 / 附件（11-18）。交了 true 才回一张附件票（lib/enterprise/first-follow-ticket.ts），建好由浏览器凭票接着传 */
+export type 建档向导输入 = { 客户: CustomerInput; 联系人: 向导联系人; 项目: 向导项目; 跟进: 向导跟进; 要传附件?: boolean };
+/** 新建弹窗没开「项目」开关（P-界面-36，11-15）：只建客户、主要联系人和首条沟通（算客户沟通）。客户沟通不挂项目，挂不了附件，不收 要传附件 */
+export type 只建客户输入 = Omit<建档向导输入, "项目" | "要传附件">;
 
 /** 建档时指派给别人超了持有上限：「超了上限，」后面那半句 */
 const 建档超上限尾 = "客户和项目都没有建；先推进或放回一些，或者换一位负责人";
@@ -273,7 +275,9 @@ export async function 建档向导(输入: 建档向导输入) {
     }
     const 分了 = 分配 ? 再分 ?? (好.项目.ownerId !== me.id ? { 提示: `已指派给 ${负责人.name}`, 转走: true } : null) : null;
     // contactId：名片原图存到这位联系人的附件上（企业版才有联系人附件；开关关着返回和原来逐字段一样）
-    return { ok: true as const, customerId: r.id, projectId: 建了.projectId!, ...(企业版() ? { contactId: 建了.contactId ?? null } : {}), ...(分了 ?? {}) };
+    // 首条沟通的截图 / 附件（11-18）：建好这一刻签票给录入人，浏览器凭票接着传（建好就分走了也传得上）
+    const 附件票 = 企业版() && 输入.要传附件 === true && 建了.followUpId ? { followUpId: 建了.followUpId, 票: await 签首条附件票(me.id, 建了.followUpId) } : null;
+    return { ok: true as const, customerId: r.id, projectId: 建了.projectId!, ...(企业版() ? { contactId: 建了.contactId ?? null } : {}), ...(分了 ?? {}), ...(附件票 ? { 附件票 } : {}) };
   } catch (e) { return 不在了(e); }
 }
 

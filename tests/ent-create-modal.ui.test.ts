@@ -9,6 +9,7 @@
  *   Windows 1024 / 1280 / 1366 + 超长客户名：弹窗里不横向溢出，「建好」在可视区点得中
  *   市场成员选自动分配（P-转-26，用户 11-17）：业务线那格换成只读「按客户区域自动定」，不交业务线；三档宽度不溢出
  *   首条沟通的方式按个人习惯默认（11-18）；带回了草稿的以草稿为准
+ *   首条沟通下选填「截图 / 附件」（11-18）：选文件、粘贴截图都行；建档交 要传附件，建好凭回来的票逐个传、挂在首条沟通上（票走请求头）；没开项目不摆挑选
  *   项目开关关着也摆「指定回复时间」，填了就自动打开「有项目」（字段挂在项目上）；「分配时间」照旧只在指定 / 自动分配时出现（11-18）
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -463,5 +464,106 @@ it.each([1024, 1280, 1366])("Windows %ipx 项目开关关着：也摆「指定�
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档向导")).toBeTruthy();
     const 交 = (await 调(page)).find((x) => x[0] === "建档向导")![1] as { 项目: Record<string, unknown> };
     expect(交.项目).toMatchObject({ 指定回复开始: "2026-11-20 15:00", 指定回复结束: null });
+  } finally { await page.close(); }
+});
+
+/** 拦下 /api/attachments 的上传：记下网址和请求头，按 __传回 回 */
+async function 接上传(page: Page, 回 = (_n: number) => ({ status: 200, body: { 附件: { id: "a1" } } })) {
+  const 收到: { url: string; 票: string | null; 类型: string | null }[] = [];
+  await page.route((u) => u.pathname.startsWith("/api/attachments"), async (r) => {
+    const 头 = r.request().headers();
+    收到.push({ url: r.request().url(), 票: 头["x-first-follow-ticket"] ?? null, 类型: 头["content-type"] ?? null });
+    const x = 回(收到.length);
+    await r.fulfill({ status: x.status, contentType: "application/json", body: JSON.stringify(x.body) });
+  });
+  return 收到;
+}
+const 填好新客户 = async (page: Page, 带项目: boolean) => {
+  const 框 = page.getByRole("dialog");
+  await 框.getByLabel("号码", { exact: true }).fill("13905712266");
+  await 框.getByLabel("客户名称").fill("华东展具");
+  await 框.getByLabel("联系人姓名").fill("王总");
+  await 选(page, "渠道触点", "公司资源");
+  if (带项目) await 框.getByLabel("项目名称").fill("展台项目");
+  await 选(page, "业务线", "内贸");
+  await 框.getByLabel("沟通内容").fill("客户发来需求截图");
+};
+
+it.each([1024, 1280, 1366])("Windows %ipx 首条沟通下「截图 / 附件」：选文件 + 粘贴截图都挑上，长文件名不横撑；建好交 要传附件，凭票逐个传到首条沟通", async (w) => {
+  const page = await 开(w, { __开关: "锁开", __标题: "新线索", __回: { ok: true, customerId: "c1", projectId: "p1", 附件票: { followUpId: "f1", 票: "ticket-1" } } });
+  try {
+    const 收到 = await 接上传(page);
+    const 框 = page.getByRole("dialog");
+    const 区 = 框.getByTestId("wizard-attachments");
+    await 区.waitFor();
+    expect(await 区.innerText()).toContain("截图 / 附件");
+    const 长名 = `${"客户发来的需求说明截图".repeat(6)}.png`;
+    await 区.locator("input[type=file]").setInputFiles({ name: 长名, mimeType: "image/png", buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]) });
+    await 区.getByText(长名).waitFor();
+    // Ctrl/⌘V 粘截图：焦点在弹窗里（不在输入框里），剪贴板里只有图
+    await 区.click({ position: { x: 2, y: 2 } });
+    const 拦了 = await page.evaluate(() => {
+      const dt = new DataTransfer();
+      dt.items.add(new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "image.png", { type: "image/png" }));
+      const ev = new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true });
+      (document.activeElement ?? document.body).dispatchEvent(ev);
+      return ev.defaultPrevented;
+    });
+    expect(拦了).toBe(true);
+    await expect.poll(() => 区.locator(".follow-att-file").count()).toBe(2);
+    expect(await 区.innerText()).toMatch(/截图-\d{8}-\d{6}\.png/);
+    const 量 = await page.evaluate(() => {
+      const s = document.querySelector(".cr-sheet") as HTMLElement;
+      const body = document.querySelector(".ant-modal-body") as HTMLElement;
+      const 区 = document.querySelector("[data-testid='wizard-attachments']") as HTMLElement;
+      const 框 = 区.getBoundingClientRect();
+      const 出格 = [...区.querySelectorAll(".follow-att-file > *")].filter((e) => { const r = e.getBoundingClientRect(); return r.right > 框.right + 0.5; }).length;
+      return { 表: s.scrollWidth - s.clientWidth, 体: body.scrollWidth - body.clientWidth, 页: document.documentElement.scrollWidth - window.innerWidth, 出格 };
+    });
+    expect(量, `${w}`).toEqual({ 表: 0, 体: 0, 页: 0, 出格: 0 });
+    if (w !== 1280) return;
+    await 填好新客户(page, true);
+    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档向导")).toBeTruthy();
+    const 交 = (await 调(page)).find((x) => x[0] === "建档向导")![1] as { 要传附件?: boolean };
+    expect(交.要传附件).toBe(true);
+    await expect.poll(() => 收到.length).toBe(2);
+    expect(收到.every((x) => x.url.includes("followUpId=f1") && x.票 === "ticket-1")).toBe(true);
+    expect(收到.some((x) => x.url.includes("x-first-follow-ticket") || x.url.includes("票"))).toBe(false);
+  } finally { await page.close(); }
+});
+
+it("截图没传上：建好照旧，底栏写清几个没传上、点「知道了」再走；没挑附件不交 要传附件、不传", async () => {
+  const page = await 开(1280, { __开关: "锁开", __标题: "新线索", __回: { ok: true, customerId: "c1", projectId: "p1", 附件票: { followUpId: "f1", 票: "ticket-1" } } });
+  try {
+    await 接上传(page, () => ({ status: 403, body: { error: "只有项目负责人能传附件，项目组成员只能看" } }));
+    const 框 = page.getByRole("dialog");
+    await 框.getByTestId("wizard-attachments").locator("input[type=file]").setInputFiles({ name: "需求.png", mimeType: "image/png", buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]) });
+    await 填好新客户(page, true);
+    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    const 话 = 框.getByRole("status").filter({ hasText: /截图/ });
+    await 话.waitFor();
+    expect(await 话.innerText()).toContain("只有项目负责人能传附件");
+    await 框.getByRole("button", { name: "知道了" }).waitFor();
+  } finally { await page.close(); }
+  const 二 = await 开(1280, { __开关: "锁开", __标题: "新线索" });
+  try {
+    const 收到 = await 接上传(二);
+    await 填好新客户(二, true);
+    await 二.getByRole("dialog").getByRole("button", { name: /^建\s*好$/ }).click();
+    await expect.poll(async () => (await 调(二)).find((x) => x[0] === "建档向导")).toBeTruthy();
+    expect(((await 调(二)).find((x) => x[0] === "建档向导")![1] as { 要传附件?: boolean }).要传附件).toBeFalsy();
+    await 二.waitForTimeout(300);
+    expect(收到.length).toBe(0);
+  } finally { await 二.close(); }
+});
+
+it("没开项目：不摆挑选，只说开了项目才能挂", async () => {
+  const page = await 开(1280);
+  try {
+    const 区 = page.getByRole("dialog").getByTestId("wizard-attachments");
+    await 区.waitFor();
+    expect(await 区.locator("input[type=file]").count()).toBe(0);
+    expect(await 区.innerText()).toContain("有项目");
   } finally { await page.close(); }
 });

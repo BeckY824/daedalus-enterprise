@@ -49,6 +49,7 @@ import { 动作出错话 } from "@/lib/stale-deploy";
 import ReplyWindowInput from "@/components/ReplyWindowInput";
 import { 回复晚于回收, 北京墙钟转时刻, 认定时分配, 分配晚于回复 } from "@/lib/project/time-fields";
 import ScheduleAssignInput from "@/components/ScheduleAssignInput";
+import { 选沟通附件, 传沟通附件 } from "@/components/FollowAttachments";
 
 const 草稿键 = "项目建档向导";
 const 时间格式 = "YYYY-MM-DD HH:mm";
@@ -351,7 +352,24 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     await new Promise((ok) => setTimeout(ok, 读一句停留));
     走();
   };
+  /** 建好之后凭票传首条沟通的附件：全传上回 null，有没传上的回一句（建好照旧，读完点「知道了」再走） */
+  const 传首条附件 = async (r: object): Promise<string | null> => {
+    if (!附件们.length) return null;
+    const 票 = "附件票" in r ? (r as { 附件票?: { followUpId: string; 票: string } }).附件票 : undefined;
+    if (!票) return "建好了，截图 / 附件没传上：没拿到上传凭据，到这条沟通上补传";
+    set建后话({ 话: `建好了，正在传 ${附件们.length} 个截图 / 附件…`, 警: false });
+    const 错 = await 传沟通附件(票.followUpId, 附件们, 票.票);
+    if (!错.length) return null;
+    return 错.length === 附件们.length
+      ? `建好了，截图 / 附件没传上（${错[0]}），到这条沟通上补传`
+      : `建好了，${附件们.length} 个截图 / 附件传上 ${附件们.length - 错.length} 个，${错.length} 个没传上（${错[0]}），到这条沟通上补传`;
+  };
   const [显错, set显错] = useState(false);
+  /**
+   * 首条沟通的截图 / 附件（11-18，选填）：和记沟通框同一个挑选块，先挑好；建档交 要传附件，建好凭回来的票逐个传，挂在这条首条沟通上
+   * （lib/enterprise/first-follow-ticket.ts：建好就分走了也传得上）。文件进不了本机草稿，关掉弹窗就没了（同记沟通框）
+   */
+  const [附件们, set附件们] = useState<File[]>([]);
   const [已存, set已存] = useState(!!旧);
   const [接着填, set接着填] = useState(!!旧);
 
@@ -506,12 +524,15 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
           ...(定时 ? { 定时分配: 定时 } : {}),
         },
         跟进: { ...d.跟进, method: 对得上的方式(d.跟进.type, d.跟进.method) },
+        ...(附件们.length ? { 要传附件: true } : {}),
       });
       if (!r.ok) return void set交错(r.error);
       清草稿(全名);
       set建好了(true);
       const 看不到 = !!r.看不到客户了;
-      await 读完再走(看不到 ? r.提示 ?? `${b.customer}已转出` : r.提示, !!r.转走, () => {
+      const 附件话 = await 传首条附件(r);
+      const 话 = [看不到 ? r.提示 ?? `${b.customer}已转出` : r.提示, 附件话].filter(Boolean).join("；") || null;
+      await 读完再走(话, !!r.转走 && !附件话, () => {
         弹窗?.关();
         // 客户转给了销售、我看不到了：回客户列表（留着刷新就是 404）；项目分走了：留在原页刷新；
         // 不然落到这位客户、停在新项目（landed：新项目卡亮 2 秒，原型 cr.submit）；本来就在这位客户页上的换地址不加历史
@@ -571,6 +592,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
             ...(企业 ? { channelId: 项目渠道 || 稿面.客户.渠道 || null } : {}),
           },
           跟进,
+          ...(附件们.length ? { 要传附件: true } : {}),
         })
         : await 建档只建客户({ 客户, 联系人, 跟进 });
       if (!r.ok && "同号协同" in r) {
@@ -598,7 +620,10 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
       清草稿(全名);
       set建好了(true);
       const 转走 = "转走" in r && !!r.转走;
-      await 读完再走("提示" in r ? r.提示 : null, 转走, () => {
+      // 首条沟通的截图 / 附件：只有带项目建的才挂得上（客户沟通不挂项目）
+      const 附件话 = 带项目 ? await 传首条附件(r) : null;
+      const 话 = ["提示" in r ? r.提示 : null, 附件话].filter(Boolean).join("；") || null;
+      await 读完再走(话, 转走 && !附件话, () => {
         弹窗?.关();
         // 分走了 / 进了公海，项目不在我名下：回线索列表（弹窗里建的：留在原页刷新）
         if (转走) return void (弹窗 ? router.refresh() : router.push(新线索 ? "/leads" : "/projects"));
@@ -1041,6 +1066,17 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
               onChange={(e) => 改("跟进", { 下一步: e.target.value })}
             />
           ), 带项目 && 要下一步)}
+          {/*
+            截图 / 附件（11-18，选填）：和记沟通框同一个挑选块（选文件、Ctrl/⌘V 粘贴截图，类型、大小照沟通附件）；建好凭票挂到这条首条沟通上。
+            不用 一格 的 <label>：点文件名会把文件选择框也点开。没开项目 = 客户沟通，不挂项目，挂不了附件
+          */}
+          {企业 && (
+            <div className="cr-field cr-wide" data-testid="wizard-attachments">
+              <span className="cr-label">截图 / 附件</span>
+              {带项目 ? <选沟通附件 文件们={附件们} on改={set附件们} /> : null}
+              <span className="cr-note">{带项目 ? "选填，截图、录音都行；建好后挂在这条首条沟通上，也可以直接粘贴截图" : "截图 / 附件挂在项目的沟通上：打开「有项目」才能加"}</span>
+            </div>
+          )}
         </div>
       </section>
 

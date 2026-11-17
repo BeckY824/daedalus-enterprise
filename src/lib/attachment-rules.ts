@@ -7,6 +7,9 @@
  */
 export const 附件上限字节 = 20 * 1024 * 1024;
 
+/** 建档时首条沟通附件的票走这个请求头（lib/enterprise/first-follow-ticket.ts，11-18） */
+export const 首条附件票头 = "x-first-follow-ticket";
+
 /** 图片在本机压到长边这么多像素再存（用户 10-22：「压到长边约 2000 像素」） */
 export const 图片长边 = 2000;
 
