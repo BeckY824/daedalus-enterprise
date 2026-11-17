@@ -1317,7 +1317,8 @@ export default function CustomersView({
               </Tag>
             )}
             <ListSearch
-              placeholder={外贸 ? `姓名 / 电话 / ${b.fields.school} / 联系人 / 邮箱 / 官网` : `姓名 / 电话 / ${b.fields.school} / ${b.fields.major} / 备注`}
+              // 项目模式也搜我能看的项目名（2F，query.ts 项目名另比）；多个词用空格隔开、都要对上
+              placeholder={(外贸 ? `姓名 / 电话 / ${b.fields.school} / 联系人 / 邮箱 / 官网` : `姓名 / 电话 / ${b.fields.school} / ${b.fields.major} / 备注`) + (统一公海 ? " / 项目名" : "")}
               value={f.keyword}
               onChange={(v) => setF({ ...f, keyword: v })}
               onSearch={(v) => apply({ keyword: v })}

@@ -18,6 +18,40 @@ export function 搜索词(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
+/* ---------------- 查询侧规整、拆词（员工反馈第 2 批 2F，11-17） ----------------
+  原来整串当一段「连续包含」比：全角空格、两个空格、词序、全角半角括号、全角字母都要和库里一模一样才中（员工反馈「按名字没找到」）。
+  只动查询这一侧，库里的写法、三字索引都不动（库侧归一是第 3 批 3H）：
+    - 规整：各种空白（含全角空格 U+3000）归成一个半角空格；全角字母、数字转半角（字母比的时候全角半角都认，见 包含模式 的 认全角字母）；
+    - 拆词：按空格和常见的括号、逗号、顿号、分号拆开，每个词都要中（可以中在不同的列），每个词照旧走三字索引 / GLOB 那两条路；
+      拆开后的结果包含原来整串能中的（整串在哪一列，拆出来的每个词就都在那一列），所以只会多中；
+      唯一少中的：库里存的是全角数字、人也照样敲全角数字（输入转了半角，数字不像字母那样两种都认——数字要走三字索引），留给库侧归一；
+    - 整串像号码（「138 0000」）、像客户编号（「NO. 112」）、像网址的不拆，原样当一个词。
+*/
+
+/** 拆词的分隔：空白，以及全角 / 半角的圆括号、方头括号、逗号、顿号、分号（「某某(集团)」也能中「某某（集团）」） */
+const 分隔 = /[\s()（）【】,，、;；]+/u;
+/** 一次最多比几个词：多出来的不比（只会多出结果），SQL 不至于拼得太长 */
+export const 最多几个词 = 6;
+
+/** 查询侧规整：去头尾、空白归一成一个半角空格、全角字母数字转半角。不是字符串的当没搜 */
+export function 规整搜索词(v: unknown): string {
+  return 搜索词(v).replace(/[Ａ-Ｚａ-ｚ０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/\s+/gu, " ");
+}
+
+/**
+ * 关键词拆成要都中的几个词（已规整）。没搜返回空数组。
+ * 被别的词包含的词去掉（「华东 华东测试」只比「华东测试」，结果一样）
+ */
+export function 拆搜索词(v: unknown): string[] {
+  const k = 规整搜索词(v);
+  if (!k) return [];
+  if (号码片段(k) || 看成客户编号(k) !== null || 网址域名(k)) return [k];
+  const 词们 = [...new Set(k.split(分隔).filter(Boolean))];
+  if (!词们.length) return [k];
+  const 小 = 词们.map((w) => w.toLowerCase());
+  return 词们.filter((w, i) => !小.some((o, j) => j !== i && o.includes(小[i]) && (o !== 小[i] || j < i))).slice(0, 最多几个词);
+}
+
 /**
  * 关键词像一段号码（只有数字、空格、横杠、括号、+，至少 3 位数字）时，给出拿去搜电话列的纯数字；不像返回 null。
  * 全角数字也认。库里电话是规整后的纯数字，所以只能拿纯数字去比
@@ -65,10 +99,18 @@ function 大小写等价组() {
   return groups;
 }
 
-export function 包含模式(k: string): string {
+/** ASCII 字母 → 它的全角写法（ａ-ｚ、Ａ-Ｚ） */
+const 全角了 = (c: string) => String.fromCharCode(c.charCodeAt(0) + 0xfee0);
+
+/**
+ * 认全角字母 = 字母那一组再带上全角写法（客户搜索 2F：输入已转半角，库里的「ＡＢＣ」也要中）。
+ * 只动字母：字母本来就有大小写组、从不走三字索引，多几个字不改走哪条路；数字、标点照旧原样比（数字要走三字索引）
+ */
+export function 包含模式(k: string, 认全角字母 = false): string {
   const groups = 大小写等价组();
   return "*" + [...k].map(c => {
     const variants = groups.get(c);
+    if (variants && 认全角字母 && /^[A-Za-z]$/.test(c)) return `[${[...variants].join("")}${[...variants].filter((v) => /^[A-Za-z]$/.test(v)).map(全角了).join("")}]`;
     if (variants) return `[${[...variants].join("")}]`;
     return c === "[" ? "[[]" : c === "]" ? "[]]" : c === "*" ? "[*]" : c === "?" ? "[?]" : c;
   }).join("") + "*";
@@ -252,14 +294,36 @@ export async function 客户号码条件(raw: unknown, userId?: string): Promise
  * 客户关键词条件和列表页的 关键词分页（customers/query.ts）共用这一份，号码藏着（Y27）、Unicode 大小写规则都在这里。
  * 走索引 = 这一段全是能按索引取的 c.id IN (…) / c.rowid IN (…)（三字索引、简称的部分索引；PR-1 起还有编号唯一索引）：调用方另带的 deletedAt IS NULL 要写成 +c."deletedAt"，不然 SQLite 顺 deletedAt 索引扫 8.6 万位、逐位查名单，
  * 写成 + 才会从名单出发逐个按主键取（MULTI-INDEX OR，名字 11 → 1 ms）
+ * 关键词先规整、拆词（拆搜索词，2F）：每个词各拼一段、AND 起来；一个词时和原来同一段 SQL。
  */
-export async function 客户关键词SQL(raw: unknown, onlyPicker = false, userId?: string): Promise<{ sql: string; values: string[]; 走索引?: true } | null> {
-  const k = 搜索词(raw);
-  if (!k) return null;
+export async function 客户关键词SQL(raw: unknown, onlyPicker = false, userId?: string, 另比?: 另比一词): Promise<关键词段 | null> {
+  const 词们 = 拆搜索词(raw);
+  if (!词们.length) return null;
   const 藏号 = await 号码藏着(userId);
+  const 段们: 关键词段[] = [];
+  for (const k of 词们) {
+    const w = await 一个词SQL(k, onlyPicker, 藏号);
+    const 另 = 另比 ? await 另比(k) : null;
+    // 另比的那一段也是 c.id IN (…)，接在 OR 里不改走不走索引
+    段们.push(另 ? { sql: `(${w.sql} OR ${另.sql})`, values: [...w.values, ...另.values], ...(w.走索引 ? { 走索引: true as const } : {}) } : w);
+  }
+  if (段们.length === 1) return 段们[0];
+  // 每个词都要中。都走索引才算走索引（调用方据此写 +deletedAt）
+  return { sql: `(${段们.map((s) => s.sql).join(" AND ")})`, values: 段们.flatMap((s) => s.values), ...(段们.every((s) => s.走索引) ? { 走索引: true as const } : {}) };
+}
+
+/** 关键词拼出来的一段 WHERE（客户表别名 c）和它的绑定值；走索引 见 客户关键词SQL */
+export type 关键词段 = { sql: string; values: string[]; 走索引?: true };
+/**
+ * 每个词另外再比的一段（客户列表比项目名，lib/project/customer-list-projects.ts 项目名另比）：给一段 c.id IN (…)，这个词在客户本身那几列没中、这段中了也算；null = 不另比
+ */
+export type 另比一词 = (词: string) => Promise<{ sql: string; values: string[] } | null>;
+
+/** 一个已规整、不再拆的词 */
+async function 一个词SQL(k: string, onlyPicker: boolean, 藏号: boolean): Promise<关键词段> {
   const phone = 号码片段(k);
   const 站 = 网址域名(k) ?? k;
-  const pattern = 包含模式(k), phonePattern = 包含模式(phone ?? k), sitePattern = 包含模式(站);
+  const pattern = 包含模式(k, true), phonePattern = 包含模式(phone ?? k), sitePattern = 包含模式(站, true);
   // 三字索引里的列；简称不在索引里，两条路各自另比（简称SQL / 本行那一格），选客户弹窗、全局搜索（onlyPicker）也比
   const fields = onlyPicker ? ["name", "school"] : ["name", "school", "major", "grade", "remark"];
   const 编号 = 客户编号SQL(k);
@@ -317,8 +381,8 @@ export async function 客户关键词SQL(raw: unknown, onlyPicker = false, userI
 }
 
 /** 仅内置列名参与SQL；值全部参数绑定。最终模型查询继续经过租户/业务员限定。 */
-export async function 客户关键词条件(raw: unknown, onlyPicker = false, userId?: string): Promise<Prisma.CustomerWhereInput> {
-  const w = await 客户关键词SQL(raw, onlyPicker, userId);
+export async function 客户关键词条件(raw: unknown, onlyPicker = false, userId?: string, 另比?: 另比一词): Promise<Prisma.CustomerWhereInput> {
+  const w = await 客户关键词SQL(raw, onlyPicker, userId, 另比);
   if (!w) return {};
   const rows = await prisma.$queryRawUnsafe<{id:string}[]>(`SELECT c.id FROM "Customer" c WHERE ${w.sql}`, ...w.values);
   // 避免Prisma把一个超长in拆成多条各自skip的查询，导致后页静默变空。

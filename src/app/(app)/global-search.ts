@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 客户关键词条件, 搜索词, 号码片段, 号码藏着 } from "@/lib/search-keyword";
+import { 客户关键词条件, 搜索词, 拆搜索词, 号码片段, 号码藏着 } from "@/lib/search-keyword";
 import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 读市场身份, 市场进不了详情的 } from "@/lib/enterprise/market-view-db";
 import { 项目链接们 } from "@/lib/project/customer-detail-direct";
@@ -30,7 +30,10 @@ export async function 全局搜索(关键词: string): Promise<全局搜索结�
   const 词 = 搜索词(关键词.trim().slice(0, 50));
   if (!词 || 词.length < 2) return 空;
   const [客户条件, 藏号, 号, 市场] = await Promise.all([客户关键词条件(词, true, me.id), 号码藏着(me.id), 号码脱敏器(me.id), 读市场身份(me.id)]);
-  const 号码条件 = 藏号 ? [] : [{ phone: { contains: 号码片段(词) ?? 词 } }];
+  // 项目、联系人两组也按拆开的词比，每个词都要中（2F，同客户那一组 客户关键词条件）
+  const 词们 = 拆搜索词(词);
+  const 项目条件 = 词们.map((w) => ({ OR: [{ name: { contains: w } }, { customer: { name: { contains: w } } }] }));
+  const 联系人条件 = 词们.map((w) => ({ OR: [{ name: { contains: w } }, ...(藏号 ? [] : [{ phone: { contains: 号码片段(w) ?? w } }]), { wechat: { contains: w } }] }));
 
   const [客户们, 项目们, 联系人们] = await Promise.all([
     prisma.customer.findMany({
@@ -40,14 +43,14 @@ export async function 全局搜索(关键词: string): Promise<全局搜索结�
       select: { id: true, name: true, school: true, phone: true },
     }),
     prisma.project.findMany({
-      where: { OR: [{ name: { contains: 词 } }, { customer: { name: { contains: 词 } } }] },
+      where: { AND: 项目条件 },
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
       // 市场角色多取几条：已分给圈外的人的那几条下面要去掉（点进去是 404）
       take: 市场 ? 每组上限 * 4 : 每组上限,
       select: { id: true, name: true, phase: true, node: true, customer: { select: { name: true } } },
     }),
     prisma.contact.findMany({
-      where: { OR: [{ name: { contains: 词 } }, ...号码条件, { wechat: { contains: 词 } }] },
+      where: { AND: 联系人条件 },
       orderBy: [{ isPrimary: "desc" }, { updatedAt: "desc" }, { id: "desc" }],
       take: 每组上限,
       select: { id: true, name: true, position: true, phone: true, customerId: true, customer: { select: { name: true } } },
