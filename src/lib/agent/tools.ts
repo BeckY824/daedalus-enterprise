@@ -22,7 +22,7 @@ import { 合计文字 } from "../currency";
 import { 客户来源线索 } from "../customer-lead-origin";
 import { 阶段们, 结局们, 是阶段, 是结局, 同名们, 本套位置, 字典of } from "../project/nodes";
 import { 看得到的客户, 露客户 } from "../project/db";
-import { 不算历史分析, 历史分析的, 是历史分析, 来源字, 并条件 } from "../project/system-created";
+import { 不算历史分析, 历史分析的, 是历史分析, 来源字, 并条件, 人名显示 } from "../project/system-created";
 import { 企业版 } from "../enterprise/switch";
 import { 启用渠道条件 } from "../enterprise/channel-main";
 import { 渠道启用 } from "../enterprise/channel-main-core";
@@ -1233,7 +1233,8 @@ async function 名字表(rows: Record<string, unknown>[], 字段们: { 列: stri
   const 部门名 = new Map(部门.map((d) => [d.id, d.name]));
   return (列, v) => {
     if (typeof v !== "string") return undefined;
-    if (人列.has(列)) return 人名.get(v) ?? "（已删除的账号）";
+    // system 不是真账号：创建人列是补建的（系统补建），别的人名列是「系统」（超时回收等），共用 人名显示（25E）
+    if (人列.has(列)) return 人名显示(v, 人名, { 创建人: 列 === "creatorId", 不在: "（已删除的账号）" });
     if (部门列.has(列)) return 部门名.get(v) ?? "（已删除的部门）";
     return undefined;
   };
