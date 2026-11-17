@@ -41,6 +41,7 @@ import AddressInput, { 空地址 } from "@/components/AddressInput";
 import { 详细地址上限, 详细地址提示 } from "@/lib/project/profile-rules";
 import type { 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 没业务角色不能新建话 } from "@/lib/enterprise/permissions";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 const 草稿键 = "项目建档向导";
 const 时间格式 = "YYYY-MM-DD HH:mm";
@@ -348,8 +349,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
       const n = 稿面.联系人.phone ? 稿面 : { ...稿面, 联系人: { ...稿面.联系人, phone: 号 } };
       if (n !== 稿面) { setD(n); 存草稿(全名, { 稿: n }); }
       return n;
-    } catch {
-      set查错("查重没查成，请稍后再试");
+    } catch (出错) {
+      set查错(动作出错话(出错, "查重没查成，请稍后再试"));
       return null;
     } finally {
       set查中(false);
@@ -367,8 +368,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
       if (!r.ok) { set查错(r.error); return false; }
       set名查({ 名, 撞: r.撞 ?? null, 提示: r.撞 ? r.提示 : "" });
       return !r.撞;
-    } catch {
-      set查错("查重没查成，请稍后再试");
+    } catch (出错) {
+      set查错(动作出错话(出错, "查重没查成，请稍后再试"));
       return false;
     } finally {
       set名查中(false);
@@ -470,8 +471,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         if (锁客户) router.replace(去, { scroll: false });
         else router.push(去);
       }, 看不到 ? `回${b.customer}列表` : undefined);
-    } catch {
-      set交错("没建成，请稍后再试；填过的还在");
+    } catch (出错) {
+      set交错(动作出错话(出错, "没建成，请稍后再试；填过的还在"));
     } finally {
       set交中(false);
     }
@@ -551,8 +552,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         if (!r.projectId) return void router.push(`/customers/${r.customerId}`);
         router.push(弹窗 && 企业版 ? `/customers/${r.customerId}?project=${r.projectId}` : `/projects/${r.projectId}`);
       });
-    } catch {
-      set交错("没建成，请稍后再试；填过的还在");
+    } catch (出错) {
+      set交错(动作出错话(出错, "没建成，请稍后再试；填过的还在"));
     } finally {
       set交中(false);
     }

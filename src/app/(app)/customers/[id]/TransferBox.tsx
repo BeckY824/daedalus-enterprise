@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Input, Modal, Select } from "antd";
 import { 其他项, 其他补充上限, 合其他 } from "@/lib/enterprise/dict-kinds";
 import { 转走项目说法, type 转走项目预览 } from "@/lib/carry-over";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 export type 转让结果 = { ok: false; error: string } | { ok: true; 话?: string };
 
@@ -70,8 +71,8 @@ export default function TransferBox({
     let r: 转让结果;
     try {
       r = await 做(o, 原因选项.length ? 合其他(选, 写) : null);
-    } catch {
-      r = { ok: false, error: "没转成，请稍后再试" };
+    } catch (出错) {
+      r = { ok: false, error: 动作出错话(出错, "没转成，请稍后再试") };
     }
     set忙(false);
     if (!r.ok) return void set错(r.error);

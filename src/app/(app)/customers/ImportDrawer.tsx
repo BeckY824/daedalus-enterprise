@@ -12,6 +12,7 @@ import { 粘成表格, 猜列建议, 导入认列状态 } from "./ai";
 import { 外贸精简, type BusinessConfig } from "@/lib/business-config";
 import { 页脚, 粘贴面板, 对列, 复核, 确认, 按处置, 回收站提示, 撞已有清单 } from "./import-steps";
 import { clearJob, runJob } from "@/lib/ai-jobs";
+import { 出错原话, 是旧版本动作错, 动作出错话 } from "@/lib/stale-deploy";
 
 /**
  * 一块送多少字给服务端暂存（2026-10-21）。server action 一次最多收 1 MB；汉字在 JSON 里一个占 3 字节，
@@ -21,6 +22,8 @@ const 每块字数 = 150_000;
 
 /** 导入途中出的错说成人话。server action 断网时抛的是浏览器的英文（Failed to fetch），服务端出错是 React 的一串编号 */
 export function 说人话(e: unknown): string {
+  // 发版后老页面交的（lib/stale-deploy.ts）
+  if (是旧版本动作错(e)) return 动作出错话(e, "");
   const m = e instanceof Error ? e.message : String(e ?? "");
   if (/failed to fetch|networkerror|load failed|network|fetch failed|econn/i.test(m)) return "连不上软件的后台服务（网断了，或者软件正好在重启）";
   if (/body exceeded|413|too large/i.test(m)) return "这一段数据太大，没送过去";
@@ -390,7 +393,7 @@ export default function ImportDrawer({
       收表(`粘贴的文本（${r.数据.length} 条）`, r.表头, r.数据, r.截断了);
     } catch (e) {
       if (轮 !== 这一次.current) return;
-      set整理({ 起, 出错: e instanceof Error ? e.message : "整理失败，请重试" });
+      set整理({ 起, 出错: 出错原话(e, "整理失败，请重试") });
     } finally {
       // 不管这一轮还算不算数都要放开：关掉再打开时按钮不能还灰着
       set忙(false);
@@ -509,7 +512,7 @@ export default function ImportDrawer({
       重来();
       说(`已撤销这一批：删掉 ${r.删掉} 条，还原 ${r.还原} 条${尾}`, r.没动.length ? "警" : "常", null);
     } catch (e) {
-      说(e instanceof Error ? e.message : "撤销没能完成，请重试");
+      说(出错原话(e, "撤销没能完成，请重试"));
     } finally {
       set忙(false);
     }

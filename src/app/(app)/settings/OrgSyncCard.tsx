@@ -11,6 +11,7 @@ import FeishuPushSwitch from "./FeishuPushSwitch";
 import { useViewAs } from "@/components/ViewAsContext";
 import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 import { useSettingsNote } from "./InlineNote";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 /**
  * 设置 → 组织架构 →「通讯录同步」（企业版 F1，10-26）：飞书 / 钉钉的部门、成员、直属上级、职务每小时（可改每半小时）拉一次，写进组织架构。
@@ -58,8 +59,8 @@ export default function OrgSyncCard() {
       await 读();
       if (r.ok) 开始刷新(() => router.refresh());
       return r.ok;
-    } catch {
-      就地.error("没改成，请稍后再试");
+    } catch (出错) {
+      就地.error(动作出错话(出错, "没改成，请稍后再试"));
       return false;
     } finally {
       set忙(null);

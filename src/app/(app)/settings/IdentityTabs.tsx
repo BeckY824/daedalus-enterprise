@@ -9,6 +9,7 @@ import { useState } from "react";
 import { Button, Tag } from "antd";
 import { 锁着的规则, type 能做项 } from "@/lib/enterprise/settings-scope";
 import { 找总管理开通 } from "./actions";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 export function PermTab({ 身份名, 项们 }: { 身份名: string; 项们: 能做项[] }) {
   return (
@@ -51,8 +52,8 @@ function LockRow({ k, 名, 说明, 现在 }: { k: string; 名: string; 说明: s
     try {
       const r = await 找总管理开通(k);
       set态(r.ok ? { 发给: r.发给 } : { 错: r.error });
-    } catch {
-      set态({ 错: "没发出去，请稍后再试" });
+    } catch (出错) {
+      set态({ 错: 动作出错话(出错, "没发出去，请稍后再试") });
     }
   };
   return (

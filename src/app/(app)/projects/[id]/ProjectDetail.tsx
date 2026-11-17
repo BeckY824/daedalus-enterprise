@@ -75,6 +75,7 @@ import { ProjectAttachmentsCard, ProjectPaymentsCard, ProjectProfileCard, type �
 import { 词们, 对得上, 沟通字段, 卡点字段, 沟通来源, 能隐藏接手前 } from "@/lib/project/detail-search";
 import type { 回款 } from "@/lib/project/payment-db";
 import ProjectRelate from "./ProjectRelate";
+import { 动作出错话, 出错原话 } from "@/lib/stale-deploy";
 import type { 项目关联 } from "@/lib/project/relate";
 
 export type 项目详情 = {
@@ -590,8 +591,9 @@ export default function ProjectDetail({
         router.refresh();
       }
       return r.ok;
-    } catch {
-      报("没改成，请稍后再试");
+    } catch (e) {
+      // 发版后老页面交的（lib/stale-deploy.ts）：换成「系统刚更新了，请刷新页面后再提交」
+      报(动作出错话(e, "没改成，请稍后再试"));
       return false;
     } finally {
       set忙(false);
@@ -608,8 +610,8 @@ export default function ProjectDetail({
     let r: Awaited<ReturnType<typeof 删项目沟通>>;
     try {
       r = await 删项目沟通(p.id, id);
-    } catch {
-      r = { ok: false, error: "没删成，请稍后再试" };
+    } catch (e) {
+      r = { ok: false, error: 动作出错话(e, "没删成，请稍后再试") };
     } finally {
       set忙(false);
     }
@@ -2024,7 +2026,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
     try {
       r = await 请求;
     } catch (e) {
-      r = { ok: false, error: e instanceof Error ? e.message : "解析失败，请重试" };
+      r = { ok: false, error: 出错原话(e, "解析失败，请重试") };
     }
     if (轮 !== 这一次.current) return;
     if (!r.ok) {

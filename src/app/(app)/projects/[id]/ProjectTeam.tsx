@@ -20,6 +20,7 @@ import { 不填项, 去不填, 未选占位 } from "@/lib/enterprise/dict-kinds"
 import { 编辑项目, 加项目组员, 换项目组员角色, 移出项目组员 } from "../actions";
 import SaveButton from "@/components/SaveButton";
 import { 跑给按钮, type 跑法 } from "./detail-note";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 export type 组员 = { id: string; userId: string; name: string; roleId: string | null; inviteStatus: string };
 export type 角色 = { id: string; name: string; active: boolean };
@@ -249,9 +250,9 @@ export function ProjectTeamCard({
       if (!r.ok) set话({ 行, 话: r.error ?? "没改成，请稍后再试" });
       else router.refresh();
       return r;
-    } catch {
-      set话({ 行, 话: "没改成，请稍后再试" });
-      return { ok: false, error: "没改成，请稍后再试" };
+    } catch (出错) {
+      set话({ 行, 话: 动作出错话(出错, "没改成，请稍后再试") });
+      return { ok: false, error: 动作出错话(出错, "没改成，请稍后再试") };
     } finally {
       set我忙(false);
     }

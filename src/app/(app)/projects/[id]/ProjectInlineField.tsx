@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { EditOutlined } from "@ant-design/icons";
 import Shortcut from "@/components/Shortcut";
 import { useViewAs } from "@/components/ViewAsContext";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 /** 编辑器拿到的：草稿、改草稿、提交（下拉、日期选了就存，传选中的值，不等 setState）、在不在存 */
 export type 编辑器参数<T> = { 草稿: T; set草稿: (v: T) => void; 提交: (v?: T) => void; 忙: boolean };
@@ -116,9 +117,9 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
       set乐观({ 基准: 键, 值: v });
       set刚存((n) => n + 1);
       关(!失焦);
-    } catch {
+    } catch (e) {
       失败的.current = JSON.stringify(输入);
-      set错("没存上，请稍后再试");
+      set错(动作出错话(e, "没存上，请稍后再试"));
     } finally {
       在存.current = false;
       set忙(false);

@@ -10,6 +10,7 @@ import { dayjs, fmtDateTime } from "@/lib/utils";
 import type { 卡点卡 } from "@/lib/project/blocker";
 import { 卡点类型们, 影响等级们, 动作叫法, 描述上限, 标题上限, 原因最多, 原因名上限, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 发布卡点Action, 认领卡点Action, 完成卡点Action, 删卡点Action } from "./blocker-actions";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 export type { 卡点卡 };
 
@@ -28,8 +29,8 @@ function useRun() {
       const r = await f();
       if (r.ok) router.refresh();
       return r.ok ? r : { ...r, error: r.error ?? "没改成，请稍后再试" };
-    } catch {
-      return { ok: false, error: "没改成，请稍后再试" };
+    } catch (出错) {
+      return { ok: false, error: 动作出错话(出错, "没改成，请稍后再试") };
     } finally {
       set忙(false);
     }

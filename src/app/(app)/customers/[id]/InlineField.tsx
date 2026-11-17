@@ -14,6 +14,7 @@ import { useTransferConfirm } from "../useTransferConfirm";
 import Shortcut from "@/components/Shortcut";
 import { 释义下拉 } from "@/components/DictNote";
 import { 不填项, 去不填 } from "@/lib/enterprise/dict-kinds";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 type Option = { value: string; label: string };
 
@@ -120,7 +121,7 @@ export default function InlineField({
     }
     if (field !== "salesOwnerId") set待显({ 值: normalized, 基准: value });
     setSaving(true);
-    const res = await patchCustomer(customerId, field, normalized).catch(() => ({ ok: false as const, error: "没存上，请稍后再试" }));
+    const res = await patchCustomer(customerId, field, normalized).catch((e) => ({ ok: false as const, error: 动作出错话(e, "没存上，请稍后再试") }));
     setSaving(false);
     if (!res.ok) {
       set待显(null);

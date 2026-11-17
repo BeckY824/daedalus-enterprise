@@ -76,6 +76,7 @@ import NewMenuButton from "@/components/NewMenuButton";
 import { 取客户页表单料, type 客户页表单料 } from "./form-data-action";
 import { 看板工具位 } from "./board-slot";
 import { 客户编号显示 } from "@/lib/customer-no";
+import { 出错原话 } from "@/lib/stale-deploy";
 
 /** 「新增客户」弹窗（10-31 P5，整套建档向导）：点了才要，单拆一包，不压客户列表首屏 JS（速度闸门 850 KB） */
 // 客户看板（U-客户-06）只在切到「看板」时用，连同分页条单独一块，别压在客户列表首屏（速度闸门）
@@ -1221,7 +1222,7 @@ export default function CustomersView({
                     const r = await 完整导出(filters, b, set导出进度, controller.signal);
                     set导出话({ 话: `已完整导出 ${r.客户} 位${b.customer}、${r.跟进} 条跟进，ZIP内附分批Excel和核对清单` });
                   } catch (error) {
-                    if (!controller.signal.aborted) set导出话({ 话: error instanceof Error ? error.message : "导出失败，请重试", 错: true });
+                    if (!controller.signal.aborted) set导出话({ 话: 出错原话(error, "导出失败，请重试"), 错: true });
                   } finally {
                     导出取消.current = null;
                     set导出中(false);

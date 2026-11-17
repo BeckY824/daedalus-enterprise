@@ -16,6 +16,7 @@ import { 存项目底价, 存提成分配, 更正实际提成 } from "../commiss
 import SaveButton from "@/components/SaveButton";
 import CountUp from "@/components/CountUp";
 import { 跑给按钮, 框里原因, type 跑法 } from "./detail-note";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "baseline", marginBottom: 8, minWidth: 0, flexWrap: "wrap" };
@@ -109,7 +110,7 @@ export function SplitModal({ projectId, t, onClose }: { projectId: string; t: �
   const 问题 = 分配问题(Object.fromEntries(Object.entries(分).filter(([, v]) => v != null)));
   // 原型 dt.team：保存在按钮里转圈 →「已保存 ✓」放完再关框、卡上的分配条跟着变；没存上原因浮在按钮上方，框不关（SaveButton / g.save）
   const 存 = async () => {
-    const r = await 存提成分配(projectId, 分).catch(() => ({ ok: false as const, error: "没存上，请稍后再试" }));
+    const r = await 存提成分配(projectId, 分).catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "没存上，请稍后再试") }));
     if (!r.ok) return { ok: false, error: r.error ?? "没存上，请稍后再试" };
     router.refresh();
   };

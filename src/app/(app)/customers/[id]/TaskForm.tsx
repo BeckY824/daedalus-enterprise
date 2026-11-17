@@ -13,6 +13,7 @@ import { dayjs } from "@/lib/utils";
 import { saveTask } from "./actions";
 import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 export default function TaskForm({
   open,
@@ -88,8 +89,8 @@ export default function TaskForm({
       守.存好了();
       存上了.current = true;
       return { ok: true };
-    } catch {
-      return { ok: false, error: "没存上，请重试" };
+    } catch (出错) {
+      return { ok: false, error: 动作出错话(出错, "没存上，请重试") };
     } finally {
       set存着(false);
     }

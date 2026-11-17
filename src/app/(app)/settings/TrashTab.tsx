@@ -9,6 +9,7 @@ import { 撤回验证Action } from "@/app/(app)/projects/actions";
 import type { 回收站条目 } from "@/lib/enterprise/soft-delete";
 import { useConsequence } from "@/components/ConsequenceDialog";
 import { useSettingsNote } from "./InlineNote";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 /**
  * 设置 → 回收站（企业版，P9 2026-10-29）：近 30 天删的客户、项目、联系人、沟通记录。
@@ -91,7 +92,7 @@ export default function TrashTab() {
       做: async () => {
         set忙(r.id);
         try {
-          const x = await 彻底删除回收站(r.表, r.id).catch(() => ({ ok: false as const, error: "没能删掉，请重试" }));
+          const x = await 彻底删除回收站(r.表, r.id).catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "没能删掉，请重试") }));
           if (!x.ok) return x;
           就地.success(`已彻底删除${叫(r.表)}「${r.名称}」`);
           await 拉();

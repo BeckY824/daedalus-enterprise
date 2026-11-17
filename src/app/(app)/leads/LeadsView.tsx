@@ -39,6 +39,7 @@ import { useNewProjectFlow } from "../projects/NewProjectFlow";
 import type { 向导跟进 } from "@/lib/project/wizard";
 import { 公海线索先领取话 } from "@/lib/enterprise/pool-rules";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 type Row = {
   id: string;
@@ -268,8 +269,8 @@ export default function LeadsView({
       if (!res.ok) return void 说(res.error, true);
       说(`「${r.name}」${分给了(res)}：${res.为什么}`);
       router.refresh();
-    } catch {
-      说("没分成，请稍后再试", true);
+    } catch (出错) {
+      说(动作出错话(出错, "没分成，请稍后再试"), true);
     }
   }
 

@@ -34,6 +34,7 @@ import { useFormGuard } from "@/lib/form-guard";
 import { 卡点类型们, 影响等级们, 描述上限, 标题上限, 原因最多, 原因名上限, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 选沟通附件, 传沟通附件 } from "@/components/FollowAttachments";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
+import { 动作出错话, 出错原话 } from "@/lib/stale-deploy";
 
 /** 记沟通时顺手标的卡点（F-跟进-08）：类型「暂无卡点」= 不生成，描述写了也不生成（11-01 答复 #5；服务端 沟通卡点 同一条规则） */
 type 卡点值 = { type: string; impact: string | null; title: string; reasons: string[]; description: string };
@@ -331,7 +332,7 @@ export default function FollowUpForm({
     try {
       res = await 请求;
     } catch (e) {
-      res = { ok: false, error: e instanceof Error ? e.message : "解析失败，请重试" };
+      res = { ok: false, error: 出错原话(e, "解析失败，请重试") };
     }
     if (轮 !== 这一次.current) return;
     if (!res.ok) {
@@ -478,7 +479,7 @@ export default function FollowUpForm({
     try {
       return await onOk();
     } catch (error) {
-      if (!error || typeof error !== "object" || !("errorFields" in error)) return { ok: false, error: "保存失败，请刷新确认结果后重试" };
+      if (!error || typeof error !== "object" || !("errorFields" in error)) return { ok: false, error: 动作出错话(error, "保存失败，请刷新确认结果后重试") };
       // 收起来的「更多」里有格子没过（比如发生时间）：展开让人看到
       if (收起 && (error as { errorFields: { name: (string | number)[] }[] }).errorFields.some((e) => !主区格.has(String(e.name[0])))) set更多开(true);
       return { ok: false, error: "有几项没填好，看标红的" };
@@ -557,7 +558,7 @@ export default function FollowUpForm({
           话: `沟通已记下，计划「${要收口.subject}」一并完成`,
           毫秒: 6000,
           撤销: async () => {
-            const u = await completePlan(要收口.id, false).catch(() => ({ ok: false as const, error: "没撤销成，请稍后重试" }));
+            const u = await completePlan(要收口.id, false).catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "没撤销成，请稍后重试") }));
             void window.desktopReminders?.刷新();
             router.refresh();
             return u;
