@@ -18,12 +18,14 @@ export const 漏斗段们 = ["线索", "商机", "订单", "交付"] as const;
 export type 漏斗段 = (typeof 漏斗段们)[number];
 export type 漏斗格 = { 段: 漏斗段; count: number; 转化率: number | null };
 
-export function 项目漏斗of(rows: readonly { phase: string; result: string | null }[]): 漏斗格[] {
+/** rows 可以是逐个项目，也可以是库里分组数出来的组（n = 这组几个，不给算 1 个） */
+export function 项目漏斗of(rows: readonly { phase: string; result: string | null; n?: number }[]): 漏斗格[] {
+  const 几个 = (xs: typeof rows) => xs.reduce((s, p) => s + (p.n ?? 1), 0);
   const 数 = [
-    rows.length,
-    rows.filter((p) => p.phase === "商机" || p.phase === "订单").length,
-    rows.filter((p) => p.phase === "订单").length,
-    rows.filter((p) => 是交付(p.result)).length,
+    几个(rows),
+    几个(rows.filter((p) => p.phase === "商机" || p.phase === "订单")),
+    几个(rows.filter((p) => p.phase === "订单")),
+    几个(rows.filter((p) => 是交付(p.result))),
   ];
   return 漏斗段们.map((段, i) => ({ 段, count: 数[i], 转化率: i === 0 || 数[i - 1] === 0 ? null : 数[i] / 数[i - 1] }));
 }
