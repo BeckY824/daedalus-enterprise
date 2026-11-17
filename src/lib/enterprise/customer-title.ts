@@ -43,22 +43,44 @@ function 值(v: string | null | undefined): string {
   return 去空(v)?.replace(/\s+/g, " ") ?? "";
 }
 
-/** 区域段：区县 → 市 → 省 → 国家，取最小那一级，原值不去后缀；都没填给 "" */
-export function 区域段(c: Pick<抬头料, "addrCountry" | "addrProvince" | "addrCity" | "addrDistrict">): string {
-  return 值(c.addrDistrict) || 值(c.addrCity) || 值(c.addrProvince) || 值(c.addrCountry);
+/**
+ * 存量名字的临时显示规则（用户 11-17 定「只改抬头现算规则、不动数据」）：旧导入按「姓名｜国家」「暂无名称｜…」补过名字
+ * （M-导入-54，全角「｜」），直接当全称会在抬头里把国家写两遍。S-6 清理完数据后这段就用不上了，到时连同 补区域 一起删。
+ * 只管抬头显示：不改库，查重、搜索、客户显名都不走这里。
+ *   - 全称是「暂无名称」或以「暂无名称｜」开头 → 当没有全称（主体段往下取类型 → 节点）；「暂无名称｜X」的 X 留给区域段，
+ *     客户没有城市时用它（X 往往比国家细，国家中国、X 香港 → 「香港|…」）
+ *   - 全称末尾是「｜X」、X（去首尾空白）和这位客户的国家或城市一样 → 去掉这段「｜X」；不一样原样留。只认全角「｜」
+ */
+const 暂无名称 = "暂无名称";
+export function 显示全称(c: Pick<抬头料, "name" | "addrCountry" | "addrCity">): { 全称: string; 补区域: string } {
+  const 名 = 值(c.name);
+  if (名 === 暂无名称) return { 全称: "", 补区域: "" };
+  if (名.startsWith(`${暂无名称}｜`)) return { 全称: "", 补区域: 值(名.slice(暂无名称.length + 1)) };
+  const 位 = 名.lastIndexOf("｜");
+  if (位 >= 0) {
+    const 尾 = 名.slice(位 + 1).trim();
+    if (尾 && (尾 === 值(c.addrCountry) || 尾 === 值(c.addrCity))) return { 全称: 名.slice(0, 位).trim(), 补区域: "" };
+  }
+  return { 全称: 名, 补区域: "" };
 }
 
-/** 简称、全称、类型都空：主体段要落到当前节点，只有这些客户要查节点 */
-export function 要查节点(c: Pick<抬头料, "name" | "shortName" | "customerType">): boolean {
-  return !值(c.shortName) && !值(c.name) && !值(c.customerType);
+/** 区域段：区县 → 市 →（「暂无名称｜X」的 X，见 显示全称）→ 省 → 国家，取最小那一级，原值不去后缀；都没填给 "" */
+export function 区域段(c: Pick<抬头料, "addrCountry" | "addrProvince" | "addrCity" | "addrDistrict">, 补区域 = ""): string {
+  return 值(c.addrDistrict) || 值(c.addrCity) || 补区域 || 值(c.addrProvince) || 值(c.addrCountry);
+}
+
+/** 简称、全称（按 显示全称 认）、类型都空：主体段要落到当前节点，只有这些客户要查节点 */
+export function 要查节点(c: Pick<抬头料, "name" | "shortName" | "customerType" | "addrCountry" | "addrCity">): boolean {
+  return !值(c.shortName) && !显示全称(c).全称 && !值(c.customerType);
 }
 
 /**
  * 抬头。节点 = 抬头节点们 给这位客户的那一格（没查、没项目都传 null / 不传）
  */
 export function 客户抬头(c: 抬头料, 节点?: string | null): string {
-  const 区 = 区域段(c);
-  const 主 = 值(c.shortName) || 值(c.name) || 值(c.customerType);
+  const { 全称, 补区域 } = 显示全称(c);
+  const 区 = 区域段(c, 补区域);
+  const 主 = 值(c.shortName) || 全称 || 值(c.customerType);
   const 节 = 值(节点);
   if (!区 && !主) return [客户编号显示(c), 节].filter(Boolean).join(抬头分隔);
   return [区, 主 || 节].filter(Boolean).join(抬头分隔);

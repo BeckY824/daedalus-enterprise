@@ -82,11 +82,26 @@ describe("拼接与没填", () => {
     expect(要查节点({ name: "", shortName: "某某" })).toBe(false);
     expect(要查节点({ name: "", customerType: "终端客户" })).toBe(false);
   });
-  /* 存量名字（M-导入-54 补的「姓名｜国家」、「暂无名称｜…」）S-6 清理前原样当全称：抬头会把国家写两遍（全角「｜」是名字里的、半角「|」是分隔），
-     怎么显示待用户定（批次 23 待用户定），这里先钉住现在的样子，改口径时一起改 */
-  it("存量「某某｜国家」「暂无名称｜…」名字：现在原样当全称", () => {
-    expect(客户抬头(客({ addrCountry: "美国", name: "暂无名称｜美国" }))).toBe("美国|暂无名称｜美国");
-    expect(客户抬头(客({ addrCountry: "美国", addrCity: "洛杉矶", name: "某某｜美国" }))).toBe("洛杉矶|某某｜美国");
+  /* 存量名字（M-导入-54 补的「姓名｜国家」、「暂无名称｜…」）的临时显示规则（用户 11-17：只改抬头现算、不动数据，S-6 清理后删） */
+  it("「暂无名称」「暂无名称｜X」当没有全称；X 在没有城市时做区域段", () => {
+    expect(客户抬头(客({ addrCountry: "印度", name: "暂无名称｜印度", customerType: "终端客户" }))).toBe("印度|终端客户");
+    expect(客户抬头(客({ addrCountry: "印度", name: "暂无名称｜印度" }), "痛点挖掘")).toBe("印度|痛点挖掘");
+    expect(客户抬头(客({ addrCountry: "中国", name: "暂无名称｜香港", customerType: "终端客户" }))).toBe("香港|终端客户");
+    expect(客户抬头(客({ addrCountry: "阿拉伯联合酋长国", addrCity: "迪拜", name: "暂无名称｜阿联酋" }), "痛点挖掘")).toBe("迪拜|痛点挖掘");
+    // 只有「暂无名称」：当空，全空 → 编号|节点 / 只写编号
+    expect(客户抬头(客({ name: "暂无名称" }), "痛点挖掘")).toBe("NO.01237|痛点挖掘");
+    expect(客户抬头(客({ name: " 暂无名称 " }))).toBe("NO.01237");
+    // 简称照旧优先
+    expect(客户抬头(客({ addrCountry: "印度", name: "暂无名称｜印度", shortName: "某某" }))).toBe("印度|某某");
+    expect(要查节点({ name: "暂无名称｜印度" })).toBe(true);
+    expect(要查节点({ name: "暂无名称" })).toBe(true);
+  });
+  it("全称末尾「｜X」和国家或城市一样 → 去掉；不一样、半角竖线 → 原样", () => {
+    expect(客户抬头(客({ addrCountry: "美国", addrCity: "洛杉矶", name: "某某公司｜美国" }))).toBe("洛杉矶|某某公司");
+    expect(客户抬头(客({ addrCountry: "美国", addrCity: "洛杉矶", name: "某某公司｜ 洛杉矶 " }))).toBe("洛杉矶|某某公司");
+    expect(客户抬头(客({ addrCountry: "法国", name: "某某｜德国" }))).toBe("法国|某某｜德国");
+    expect(客户抬头(客({ addrCountry: "美国", name: "某某公司|美国" }))).toBe("美国|某某公司|美国");
+    expect(要查节点({ name: "某某公司｜美国", addrCountry: "美国" })).toBe(false);
   });
 });
 
