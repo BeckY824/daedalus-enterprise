@@ -105,12 +105,18 @@ export function useFormGuard({ open, 关, form, 草稿键 = null, 编辑 = false
 
   /** 「清空」：带回的那几格放回打开时的样子、草稿扔掉 */
   const 清空 = useCallback(() => {
-    if (form && 起始.current) form.setFieldsValue(起始.current);
+    if (form && 起始.current) {
+      // 打开时空着的格子 getFieldsValue(true) 里没有这个键：只 set 起始 的话带回来的字还在，这几格要显式放回空
+      const 原 = 起始.current;
+      const 不存们 = new Set(不存键 ? 不存键.split("|") : []);
+      const 空着的 = Object.keys(form.getFieldsValue(true) as Record<string, unknown>).filter((k) => !(k in 原) && !不存们.has(k));
+      form.setFieldsValue({ ...Object.fromEntries(空着的.map((k) => [k, undefined])), ...原 });
+    }
     if (起始额外.current) 外.current.额外?.放(起始额外.current);
     改过.current = false;
     if (全名) 清草稿(全名);
     set带回了(null);
-  }, [form, 全名]);
+  }, [form, 全名, 不存键]);
 
   const 开好了 = useCallback(
     (开了: boolean) => {
