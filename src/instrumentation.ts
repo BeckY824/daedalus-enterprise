@@ -37,3 +37,22 @@ async function 跑后台任务() {
   // 钟照常每分钟一遍；起钟那遍补跑等老数据活做完（最多等一分钟），不和它们抢写锁
   启动夜扫(60_000, 老数据活);
 }
+
+/**
+ * 服务器动作报错记服务端日志（25C，复盘第 1 类）：Next 每个请求出错都会调这里（渲染、路由、动作）；只记动作那一种，
+ * 一行带路由、动作编号、digest（浏览器那头兜底提示里给人看的编号）、原文，不带 cookie 等请求头（lib/action-error.ts）。
+ * 浏览器那头给人看的是一句中文（components/UpdateBanner.tsx 接没人接住的、各处 catch 用 给人看的错）
+ */
+export async function onRequestError(
+  err: unknown,
+  request: { path: string; method: string; headers: Record<string, string | string[] | undefined> },
+  context: { routeType: string; routePath: string; routerKind?: string; revalidateReason?: string },
+) {
+  try {
+    const { 动作出错日志行 } = await import("./lib/action-error");
+    const 行 = 动作出错日志行(err, request, context);
+    if (行) console.error(行, err instanceof Error && err.stack ? `\n${err.stack.split("\n").slice(1, 6).join("\n")}` : "");
+  } catch {
+    /* 记日志自己出错不能再往外抛 */
+  }
+}

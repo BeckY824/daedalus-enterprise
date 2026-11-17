@@ -97,7 +97,15 @@ export function useFormDraft<T extends Record<string, unknown>>({ 键, 开 = tru
     串 = "";
   }
   useEffect(() => {
-    if (!开 || !全名 || !起.current || 停.current) return;
+    if (!开 || !全名 || !起.current) return;
+    // 存好了之后一直开着的框（主题回复、就地问答这种交完清空接着用的）：字清空了就从这一刻重新算，下一回打的字照样留草稿
+    if (停.current) {
+      if (!有字(现值.current)) {
+        起.current = 现值.current;
+        停.current = false;
+      }
+      return;
+    }
     const 改过 = 改过的格(起.current, 现值.current) as Partial<T>;
     const 填过 = 手.current.算填过 ? 手.current.算填过(改过, 现值.current) : 有字(改过);
     if (Object.keys(改过).length && 填过) 存草稿(全名, 改过, { 附件: 附件数 });

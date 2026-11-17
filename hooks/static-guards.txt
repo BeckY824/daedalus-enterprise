@@ -8,6 +8,7 @@ tests/design-tokens.test.ts
 tests/docker-context.test.ts
 tests/field-coverage.test.ts
 tests/followup-write-guard.test.ts
+tests/form-draft-guard.test.ts
 tests/font-size-tokens.test.ts
 tests/inline-style-cap.test.ts
 tests/llm-thinking.test.ts

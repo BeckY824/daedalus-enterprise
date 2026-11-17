@@ -370,6 +370,8 @@ body:has(.view-as-bar) .update-bar { top: 40px; }
 .update-bar-x { flex: none; width: 22px; padding: 0; border: 0; border-radius: 999px; background: transparent; color: var(--text-muted); font: inherit; font-size: var(--fs-body); line-height: 22px; cursor: pointer; }
 .update-bar-x:hover { background: var(--line-soft); }
 .update-bar-go:focus-visible, .update-bar-x:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+/* 服务器动作报错没人接住时的兜底那条（同一个位置，25C，lib/action-error.ts）：红一档，8 秒后自己收 */
+.update-bar.is-error { border-color: var(--danger-line); background: var(--danger-bg); color: var(--danger-text); padding-left: 14px; }
 /* 手机：一行放不下就折行，不省略（这句话得读全） */
 @media (max-width: 767px) { .update-bar { white-space: normal; border-radius: var(--r-pop); } .update-bar-text { overflow: visible; } }
 /* 录入草稿带回来了（components/FormDraft.tsx、lib/form-guard.tsx）：框里一行小字 + 「清空」 */

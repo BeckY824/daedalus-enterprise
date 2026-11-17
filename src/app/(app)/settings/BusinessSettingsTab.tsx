@@ -10,6 +10,8 @@ import { FOLLOW_STATUSES, DECISION_STATUSES, OPP_STAGES } from "@/lib/constants"
 import { saveBusinessSettings } from "./actions";
 import { DemoDataSection } from "@/components/EmptyState";
 import { useSettingsNote } from "./InlineNote";
+import { useFormDraft } from "@/components/FormDraft";
+import { 动作出错话 } from "@/lib/stale-deploy";
 import SaveButton from "@/components/SaveButton";
 
 /**
@@ -39,6 +41,9 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
    * 界面上看不出「这些改动还没生效」。现在就在预设那一行说，保存 / 放弃也在那一行
    */
   const [套了, set套了] = useState<string | null>(null);
+  // 业务简介（一段话、500 字）打了没存的留草稿（复盘第 1 类：刷新、发版后带回）；别的格子是短名字，不留
+  const brief = Form.useWatch("brief", form) ?? value.brief ?? "";
+  const 稿 = useFormDraft({ 键: "业务设置:简介", 值: { brief }, 带回: (v) => { if (v.brief !== undefined) form.setFieldsValue({ brief: v.brief }); } });
 
   /**
    * 保存（原型 g.save）：成没成显示在保存键里（SaveButton：转圈 → ✓ 已保存 / 没保存上 + 原因浮在键上），不再写一句「已保存，全站措辞已更新」；
@@ -67,12 +72,13 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
           : { ...v, poolDays: 表单公海天数(v.poolDays, 多人, value.poolDays), projectMode: 多人 ? v.projectMode === true : value.projectMode },
       );
       if (!res.ok) return res;
+      稿.存好了();
       set套了(null);
       if (res.补了来源) 就地.success(`${res.补了来源} 位${v.customer ?? "客户"}的来源从渠道 / 线索补了过来`);
       router.refresh();
       return { ok: true };
-    } catch {
-      return { ok: false, error: "保存失败，请刷新核对后重试；当前填写内容仍保留" };
+    } catch (出错) {
+      return { ok: false, error: 动作出错话(出错, "保存失败，请刷新核对后重试；当前填写内容仍保留") };
     }
   }
 
@@ -168,6 +174,8 @@ export default function BusinessSettingsTab({ value, 多人 = false, 企业版 =
             <Switch />
           </Form.Item>
         )}
+        {/* 带回了草稿：那一行摆在业务简介上面（Form.Item 带 name 只能包一个输入框） */}
+        {稿.提示}
         <Form.Item
           name="brief"
           label="业务简介"

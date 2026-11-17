@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import StatePage from "@/components/StatePage";
 import { 决定错误展示 } from "@/lib/error-display";
+import { 存好再刷新 } from "@/lib/stale-deploy";
 
 /**
  * 应用内错误页。判断逻辑在 @/lib/error-display 里，这里只负责渲染——
@@ -29,6 +30,16 @@ export default function AppError({
         标题="登录已过期"
         说明="这一页要登录才能看，而你这次的登录状态已经过期了——重新登录一次就能接着用，数据不受影响。"
         动作={{ label: "重新登录", href: "/login" }}
+      />
+    );
+  }
+
+  if (展示.类型 === "旧版本") {
+    return (
+      <StatePage
+        标题="系统刚更新了"
+        说明="这一页是更新前打开的，刚才那一下没交上去。刷新一下就能接着用；打了没交的字留在这台电脑上，重新打开同一个框会带回来。"
+        动作={{ label: "刷新", onClick: 存好再刷新 }}
       />
     );
   }

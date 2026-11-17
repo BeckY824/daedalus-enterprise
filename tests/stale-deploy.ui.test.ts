@@ -164,6 +164,37 @@ it.each([1024, 1280, 1366])("横幅 %ipx：不出屏、不撑横向滚动、「�
   } finally { await page.close(); }
 });
 
+it.each([1024, 1280, 1366])("没人接住的动作报错 %ipx（25C 全局兜底）：顶上一条中文、不露英文、带编号，不出屏；认不出的错不管", async (w) => {
+  const { page, errors } = await 开(w);
+  try {
+    await 装(page, "横幅");
+    // 生产构建里服务端动作抛错，Next 客户端拿到的就是这句 + digest；没人 catch
+    await page.evaluate(() => { void Promise.reject(Object.assign(new Error("An error occurred in the Server Components render. The specific message is omitted in production builds to avoid leaking sensitive details."), { digest: "1234567890" })); });
+    const 条 = page.getByTestId("action-error-bar");
+    await 条.waitFor();
+    const 字 = await 条.innerText();
+    expect(字).toContain("刚才的操作没成功");
+    expect(字).toContain("1234567890");
+    expect(字).not.toMatch(/Server Components|error occurred/i);
+    const 框 = (await 条.boundingBox())!;
+    expect(框.x).toBeGreaterThanOrEqual(0);
+    expect(框.x + 框.width).toBeLessThanOrEqual(w);
+    expect(框.height).toBeLessThanOrEqual(40);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(await page.locator("[data-testid=action-error-bar] .update-bar-text").evaluate(e => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+    // 断网：换成网络那句
+    await page.evaluate(() => { void Promise.reject(new TypeError("Failed to fetch")); });
+    await expect.poll(() => 条.innerText()).toContain("网络断了一下");
+    await page.getByRole("button", { name: "收起" }).click();
+    expect(await 条.count()).toBe(0);
+    // 认不出的（代码自己的错）不管：不出条
+    await page.evaluate(() => { void Promise.reject(new Error("x is not a function")); });
+    await page.waitForTimeout(200);
+    expect(await 条.count()).toBe(0);
+    expect(errors.filter((e) => !/x is not a function/.test(e))).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it("记一条沟通：撞上老版本动作 → 框里说刷新、横幅亮；刷新后再点开，打过的字都带回来；记上了草稿清掉", async () => {
   const { page, errors } = await 开(1366);
   try {

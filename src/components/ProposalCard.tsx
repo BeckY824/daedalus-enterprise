@@ -36,6 +36,8 @@ import { 沟通可选项目 } from "@/app/(app)/customers/[id]/actions";
 import { 沟通没项目话, 请负责人建项目话, 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
 import ReplyWindowInput from "@/components/ReplyWindowInput";
 import ScheduleAssignInput from "@/components/ScheduleAssignInput";
+import { 给人看的错 } from "@/lib/action-error";
+import { useFormDraft } from "@/components/FormDraft";
 
 // 项目类卡的格子（11-01 速度闸门）：AI 面板每一页都在，这块只有项目卡用到，出卡时才去拿，不进每页首屏
 const ProjectProposalFields = dynamic(() => import("@/components/ProjectProposalFields"), { ssr: false });
@@ -149,8 +151,21 @@ export default function ProposalCard({
     };
   });
   const [state, set状态] = useState<"idle" | "saving" | "done" | "denied">(() => (记号 && 建议结果(记号)) || "idle");
+  /*
+    人在卡上改了没确认的（备注、沟通内容、计划…，含 ProjectProposalFields 那几格）留草稿（复盘第 1 类，25C）：按这张卡分，
+    对话还在、刷新 / 发版后卡重新画出来时带回；确认了、忽略了就删。卡上改的都是人的决定，下拉改了也算。
+    键用 记号（「任务 key:卡片 id」，带着这一问的编号）：卡片 id 只是「种类-序号-客户」，换一问会撞上，不能单用；没给记号的卡不留
+  */
+  const 稿 = useFormDraft({
+    键: !记号 || state === "done" || state === "denied" ? null : `AI卡:${记号}`,
+    值: draft as unknown as Record<string, unknown>,
+    带回: (v) => setDraft((d) => ({ ...d, ...v }) as Proposal),
+    算填过: (改过) => Object.keys(改过).length > 0,
+    紧凑: true,
+  });
   const setState = (s: "idle" | "saving" | "done" | "denied") => {
     set状态(s);
+    if (s === "done" || s === "denied") 稿.存好了();
     if (记号 && (s === "done" || s === "denied")) 记下建议结果(记号, s);
   };
   const [err, setErr] = useState("");
@@ -227,7 +242,8 @@ export default function ProposalCard({
       r = await applyProposal(要提交的);
     } catch (e) {
       setState("idle");
-      setErr(`没写进去：${e instanceof Error && e.message ? e.message : "网络或服务出错"}，可以再点一次`);
+      // 报错不直出英文（25C）：老版本动作说刷新、断网说网络；别的英文原文进日志，卡上一句中文
+      setErr(给人看的错(e, "没写进去：网络或服务出错，可以再点一次", "AI 卡"));
       return false;
     }
     if (r.ok) {
@@ -257,7 +273,7 @@ export default function ProposalCard({
       return true;
     }
     setState("idle");
-    setErr(r.error);
+    setErr(给人看的错(r.error, "没写进去，可以再点一次", "AI 卡"));
     set回收站号(r.回收站号 ?? null);
     return false;
   }
@@ -291,13 +307,13 @@ export default function ProposalCard({
     try {
       r = await undoProposal(落印.撤销);
     } catch (e) {
-      set撤错(`没撤销成功：${e instanceof Error && e.message ? e.message : "网络或服务出错"}，可以再点一次`);
+      set撤错(给人看的错(e, "没撤销成功：网络或服务出错，可以再点一次", "AI 卡"));
       return false;
     } finally {
       set撤销中(false);
     }
     if (!r.ok) {
-      set撤错(r.error);
+      set撤错(给人看的错(r.error, "没撤销成功，可以再点一次", "AI 卡"));
       return false;
     }
     if (建出的去处.current) 忘掉刚建的(建出的去处.current);
@@ -404,6 +420,7 @@ export default function ProposalCard({
         <span className="prop-t">{describeProposal(draft, b.customer, 字段表, b)}</span>
       </div>
       <div className="prop-why">{draft.reason}</div>
+      {稿.提示}
 
       <div className="prop-body">
         {是项目卡(draft.kind) && <ProjectProposalFields draft={draft as 项目卡} setDraft={(p) => setDraft(p)} />}

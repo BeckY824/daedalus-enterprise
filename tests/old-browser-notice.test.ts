@@ -82,6 +82,12 @@ describe("旧浏览器提示脚本", () => {
     expect(字).toContain("https://crm.example.test");
   });
 
+  it("提示说清两条路：升级 Safari、或换 Chrome / 飞书（25C）", () => {
+    expect(旧浏览器提示文案 + 旧浏览器提示小字).toMatch(/升级/);
+    expect(旧浏览器提示文案 + 旧浏览器提示小字).toMatch(/Chrome/);
+    expect(旧浏览器提示文案).toMatch(/飞书/);
+  });
+
   it("缺 findLast 或 structuredClone 也判为太旧", () => {
     const a = 造环境();
     跑(a, { Array: { prototype: {} } });
