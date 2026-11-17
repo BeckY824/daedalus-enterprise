@@ -93,7 +93,7 @@ beforeAll(async () => {
   mocks.user = { ...mocks.user, id: 老板 };
   忘掉企业版范围();
   // 客户最近跟进挂在客户上：每种跟进时间一位客户，外加一位在客户公海里的
-  await raw.customer.createMany({ data: 跟进们.map((t, i) => ({ id: `c${i}`, name: `客户${i}`, phone: `1390000000${i}`, salesOwnerId: 老板, lastFollowAt: t })) });
+  await raw.customer.createMany({ data: 跟进们.map((t, i) => ({ id: `c${i}`, name: `客户${i}`, phone: `1391200000${i}`, salesOwnerId: 老板, lastFollowAt: t })) });
   await raw.customer.create({ data: { id: "c-pool", name: "公海客户", phone: "13900000099", salesOwnerId: 老板, lastFollowAt: 刻(30), pool: { create: { reason: "手动" } } } });
   const 项目: Record<string, unknown>[] = [];
   const 留痕: Record<string, unknown>[] = [];

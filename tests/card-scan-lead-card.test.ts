@@ -13,12 +13,12 @@ const 表 = (补: Partial<名片表单>): 名片表单 => ({ ...空名片表单(
 describe("名片成新线索卡", () => {
   it("有公司：名称放公司、联系人放人名；邮箱微信国家进自己的格，职位官网拼进备注", () => {
     const r = 名片成新线索卡(表({
-      name: "王五", school: "远航贸易", phone: "13800000000", grade: "采购经理", email: "w@x.com",
+      name: "王五", school: "远航贸易", phone: "13812000000", grade: "采购经理", email: "w@x.com",
       wechat: "ww", website: "x.com", country: "德国", remark: "展会认识",
     }), DEFAULT_BUSINESS, ["展会", "官网"]);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.proposal).toMatchObject({ kind: "add_lead", name: "远航贸易", contact: "王五", phone: "13800000000", status: "待跟进", reason: 名片卡理由, email: "w@x.com", wechat: "ww", country: "德国" });
+    expect(r.proposal).toMatchObject({ kind: "add_lead", name: "远航贸易", contact: "王五", phone: "13812000000", status: "待跟进", reason: 名片卡理由, email: "w@x.com", wechat: "ww", country: "德国" });
     expect(r.proposal.remark.split("\n")).toEqual(["职位：采购经理", "官网：x.com", "展会认识"]);
     expect(r.proposal.待确认).toBeUndefined();
     // 好几个渠道：来源留空等人选，不猜
@@ -50,7 +50,7 @@ describe("名片成新线索卡", () => {
   });
 
   it("姓名公司都没认出：不出卡，说清楚", () => {
-    expect(名片成新线索卡(表({ phone: "13800000000" }), DEFAULT_BUSINESS, ["展会"])).toEqual({ ok: false, error: expect.stringContaining("没认出姓名或公司") });
+    expect(名片成新线索卡(表({ phone: "13812000000" }), DEFAULT_BUSINESS, ["展会"])).toEqual({ ok: false, error: expect.stringContaining("没认出姓名或公司") });
   });
 });
 

@@ -188,7 +188,7 @@ describe("客户等级 / 官网落库、筛选、排序", () => {
 
   it("老数据零影响：没填等级、官网的客户（含没有档案行的）照常读写", async () => {
     await 外贸();
-    const 老 = await prisma.customer.create({ data: { name: "Old", phone: "13800000000", salesOwnerId: jia.id } });
+    const 老 = await prisma.customer.create({ data: { name: "Old", phone: "13812000000", salesOwnerId: jia.id } });
     const 有档 = await prisma.customer.create({ data: { name: "Old2", phone: "13800000001", salesOwnerId: jia.id, extra: { create: { country: "日本" } } } });
     expect(await prisma.customerExtra.findUniqueOrThrow({ where: { customerId: 有档.id } })).toMatchObject({ country: "日本", level: null, website: null });
     expect(await patchCustomer(老.id, "country", "日本")).toMatchObject({ ok: true });
@@ -201,7 +201,7 @@ describe("客户等级 / 官网落库、筛选、排序", () => {
     const a2 = await 建客户("A2", { level: "A", country: "日本" });
     await 建客户("B1", { level: "B" });
     const 空 = await 建客户("N1", { country: "美国" });
-    const 没行 = (await prisma.customer.create({ data: { name: "N2", phone: "13900000000", salesOwnerId: jia.id } })).id;
+    const 没行 = (await prisma.customer.create({ data: { name: "N2", phone: "13912000000", salesOwnerId: jia.id } })).id;
     const 找 = async (sp: Parameters<typeof 客户筛选条件>[0]) => (await prisma.customer.findMany({ where: await 客户筛选条件(sp), select: { id: true } })).map((x) => x.id).sort();
     expect(await 找({ level: "A" })).toEqual([a, a2].sort());
     expect(await 找({ level: "A", country: "美国" })).toEqual([a]);

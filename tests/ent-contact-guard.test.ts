@@ -11,14 +11,14 @@ import { 有电话, 号码保护of } from "@/lib/enterprise/contact-guard";
 
 describe("有电话", () => {
   it("号码行里有手机或座机才算；值是空白不算", () => {
-    expect(有电话({ 号码们: [{ kind: "phone", value: "13800000000" }] })).toBe(true);
+    expect(有电话({ 号码们: [{ kind: "phone", value: "13812000000" }] })).toBe(true);
     expect(有电话({ 号码们: [{ kind: "landline", value: "021-12345678" }] })).toBe(true);
     expect(有电话({ 号码们: [{ kind: "phone", value: "  " }] })).toBe(false);
     expect(有电话({ 号码们: [{ kind: "email", value: "a@b.c" }, { kind: "wechat", value: "wx" }] })).toBe(false);
   });
 
   it("老的 phone 格不空也算；都没有不算", () => {
-    expect(有电话({ phone: "13800000000" })).toBe(true);
+    expect(有电话({ phone: "13812000000" })).toBe(true);
     expect(有电话({ phone: " ", 号码们: [] })).toBe(false);
     expect(有电话({})).toBe(false);
     expect(有电话({ phone: null, 号码们: null })).toBe(false);
@@ -26,7 +26,7 @@ describe("有电话", () => {
 });
 
 describe("号码保护of", () => {
-  const 有号 = { phone: "13800000000" };
+  const 有号 = { phone: "13812000000" };
   it("有电话、客户有负责人、不在公海 → 已开启", () => {
     expect(号码保护of(有号, { salesOwnerId: "u1", pool: null })).toEqual({ 状态: "已开启", 原因: "有电话、客户有负责人" });
   });

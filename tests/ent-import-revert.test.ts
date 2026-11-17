@@ -256,16 +256,16 @@ describe("和之后的同步", () => {
     await 导([客户表()]);
     const 二 = await 导([改过的()]);
     await 撤回一批(二, 我);
-    await prisma.customer.updateMany({ where: { name: "杭州云帆科技有限公司" }, data: { phone: "13900000000" } });
+    await prisma.customer.updateMany({ where: { name: "杭州云帆科技有限公司" }, data: { phone: "13912000000" } });
     const r = await 恢复一批(二, 我);
     expect(r).toMatchObject({ 状态: "done", 恢复: 0, 留下数: 1 });
     expect(r.留下[0].原因).toBe("撤回之后又改过");
-    expect((await 客户("杭州云帆科技有限公司"))!.phone).toBe("13900000000");
+    expect((await 客户("杭州云帆科技有限公司"))!.phone).toBe("13912000000");
   });
 });
 
 describe("分段和并发", () => {
-  const 六十 = () => 客户表(Array.from({ length: 60 }, (_, i) => [`C${i}`, `公司${i}`, `1380000${String(i).padStart(4, "0")}`, "张伟", "", ""]));
+  const 六十 = () => 客户表(Array.from({ length: 60 }, (_, i) => [`C${i}`, `公司${i}`, `1381200${String(i).padStart(4, "0")}`, "张伟", "", ""]));
 
   it("分段：时间到就停，再调接着撤；恢复也一样", async () => {
     const id = await 导([六十()]);

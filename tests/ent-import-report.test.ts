@@ -102,7 +102,7 @@ describe("试跑", () => {
 
   it("认出我们这边已有的：对照表里有的走对照；没导过但撞了同号客户的整条跳过、说撞了哪个号（M-导入-29）", async () => {
     const 老 = await prisma.customer.create({ data: { name: "苏州老客户（本地）", phone: "13900000009", salesOwnerId: 张伟 } });
-    const 导过 = await prisma.customer.create({ data: { name: "宁波海川", phone: "13500000000", salesOwnerId: 李娜 } });
+    const 导过 = await prisma.customer.create({ data: { name: "宁波海川", phone: "13512000000", salesOwnerId: 李娜 } });
     await prisma.entExternalRef.create({
       data: { source: "excel", entity: "customer", externalId: "C2", targetId: 导过.id, fingerprint: "x", written: "{}", raw: "{}" },
     });
@@ -197,7 +197,7 @@ describe("重新试跑", () => {
     const 接口批 = await 试跑({
       来源: "feishu",
       用户Id: "tester-id",
-      记录: [{ 实体: "customer", 外部ID: "fs1", 字段: { 客户名称: "飞书客户", 电话: "13600000000" } }],
+      记录: [{ 实体: "customer", 外部ID: "fs1", 字段: { 客户名称: "飞书客户", 电话: "13612000000" } }],
       建议器: null,
     });
     // 接口来的首次导入存了原始记录：能改映射重新试跑（和 Excel 一样，不再问 AI）

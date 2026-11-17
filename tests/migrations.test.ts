@@ -233,7 +233,7 @@ describe("迁移文件", () => {
       expect(列().find((c) => c.name === "followUpId")?.notnull, "前提：老库 followUpId 是 NOT NULL").toBe(1);
       expect(列().map((c) => c.name)).not.toContain("title");
 
-      db.exec(`INSERT INTO "Customer" ("id","phone") VALUES ('c1','13800000000');
+      db.exec(`INSERT INTO "Customer" ("id","phone") VALUES ('c1','13812000000');
         INSERT INTO "Project" ("id","name","customerId","ownerId","creatorId","updatedAt") VALUES ('p1','测试项目一','c1','u1','u1','2026-10-20'), ('p2','测试项目二','c1','u1','u1','2026-10-20');
         INSERT INTO "FollowUp" ("id") VALUES ('f1'), ('f2');
         INSERT INTO "EntBlocker" ("id","code","projectId","followUpId","customerId","phase","type","impact","obstacle","description","dueDays","dueAt","status","creatorId","updatedAt")
