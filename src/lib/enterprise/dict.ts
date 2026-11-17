@@ -61,6 +61,7 @@ async function 企业字典本体(kind: 字典种类, db: Prisma.TransactionClie
     await 补换默认(kind, db);
     await 删多出的旧默认(kind, db);
   }
+  if (kind === "custType") await 并入客户属性(db);
   if ((await db.entDictItem.count({ where: { kind } })) === 0) {
     for (const [i, name] of 字典定义[kind].默认.entries()) {
       await 建了就算(db.entDictItem.upsert({ where: { kind_name: { kind, name } }, update: {}, create: { id: 默认id(kind, i), kind, name, sort: 默认位置(kind, i), active: !停用.includes(name) } }));
@@ -170,6 +171,60 @@ async function 补新默认(kind: 字典种类, 停用: readonly string[], db: P
     for (const { name, i } of 缺) await 建了就算(db.entDictItem.create({ data: { id: 默认id(kind, i), kind, name, sort: i, active: !停用.includes(name) } }));
   }
   await 记下补新过(kind, db);
+}
+
+/**
+ * 客户属性并进客户类型（11-17 客户抬头 PR-2，P-抬头-01）：第一次读客户类型时，把库里客户属性字典的每一项（按它的排序，
+ * 停用的也并、并过来仍停用）建进客户类型；客户类型里已有同名的跳过（不管那一项启用没有、是谁加的，都按客户类型原样）。
+ * 对得上客户类型默认的（同名，或改过名但还占着属性默认 id 的那一项）用那个默认的固定 id、排在默认的位置，
+ * 原来排在这个位置及以后的往后让；对不上的（旧的停用值、自己加的）接在最后。客户身上存的值不碰。
+ * 只做一次、记一笔（之后客户属性再加的不跟过来）；随后 补新默认 只补属性里本来就没有的默认项。
+ * 客户属性一行都没有（没读过）就只记一笔，10 项靠 补新默认 / 新库建默认补上
+ */
+const 并属性记号 = "entDict.mergedFrom.custAttr.custType";
+async function 并入客户属性(db: Prisma.TransactionClient) {
+  if (await db.setting.findUnique({ where: { key: 并属性记号 } })) return;
+  const 属性 = await db.entDictItem.findMany({ where: { kind: "custAttr" }, orderBy: [{ sort: "asc" }, { createdAt: "asc" }] });
+  if (属性.length) {
+    const 现有 = await db.entDictItem.findMany({ where: { kind: "custType" }, select: { id: true, name: true, sort: true } });
+    const 占着名 = new Set(现有.map((x) => x.name));
+    const 占着id = new Set(现有.map((x) => x.id));
+    const 属性默认 = 字典定义.custAttr.默认;
+    const 属性名们 = new Set(属性.map((x) => x.name));
+    /** 这一项对上客户类型第几个默认：同名；或 id 还是 dict-custAttr-k、第 k 个属性默认的名字已经没了（= 管理员改过名的那一项） */
+    const 对默认 = (行: { id: string; name: string }) => {
+      const i = 字典定义.custType.默认.indexOf(行.name);
+      if (i >= 0) return i;
+      const m = /^dict-custAttr-(\d+)$/.exec(行.id);
+      const 原名 = m ? 属性默认[Number(m[1])] : undefined;
+      return 原名 && !属性名们.has(原名) ? 字典定义.custType.默认.indexOf(原名) : -1;
+    };
+    const 对上: { i: number; 行: (typeof 属性)[number] }[] = [];
+    const 接后: (typeof 属性)[number][] = [];
+    for (const 行 of 属性) {
+      if (占着名.has(行.name)) continue;
+      占着名.add(行.name);
+      const i = 对默认(行);
+      if (i >= 0 && !占着id.has(默认id("custType", i)) && !对上.some((x) => x.i === i)) 对上.push({ i, 行 });
+      else 接后.push(行);
+    }
+    对上.sort((a, b) => 默认位置("custType", a.i) - 默认位置("custType", b.i));
+    if (对上.length) {
+      const 起 = 默认位置("custType", 对上[0].i);
+      const 让 = 默认位置("custType", 对上[对上.length - 1].i) - 起 + 1;
+      await db.entDictItem.updateMany({ where: { kind: "custType", sort: { gte: 起 } }, data: { sort: { increment: 让 } } });
+      for (const { i, 行 } of 对上) {
+        await 建了就算(db.entDictItem.create({ data: { id: 默认id("custType", i), kind: "custType", name: 行.name, sort: 默认位置("custType", i), active: 行.active } }));
+      }
+    }
+    if (接后.length) {
+      const 最后 = (await db.entDictItem.aggregate({ where: { kind: "custType" }, _max: { sort: true } }))._max.sort ?? -1;
+      for (const [j, 行] of 接后.entries()) {
+        await 建了就算(db.entDictItem.create({ data: { kind: "custType", name: 行.name, sort: 最后 + 1 + j, active: 行.active } }));
+      }
+    }
+  }
+  await 记下(并属性记号, db);
 }
 
 /** 第 i 个默认项排第几：有 默认顺序 按它，没有就是 i */
