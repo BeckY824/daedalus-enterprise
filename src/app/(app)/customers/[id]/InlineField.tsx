@@ -128,6 +128,15 @@ export default function InlineField({
       setDraft(value);
       return;
     }
+    /*
+      服务端回了最后存下的样子（规整过的、或没动的库里现值）：按它摆，不按人敲的那串（11-17 员工反馈：电话格敲了带字母的串，
+      服务端没写，格子却一直摆着那串，刷新才变回去）。和原来一样的就不再先摆
+    */
+    if ("值" in res && res.值 !== undefined && field !== "salesOwnerId") {
+      const 终 = typeof res.值 === "string" && res.值.trim() ? res.值 : null;
+      set待显(终 === (value ?? null) ? null : { 值: 终, 基准: value });
+      setDraft(终);
+    }
     // 换了销售负责人，原负责人没做完的活一起转过去了：说一声，不然人不知道计划和待办换了主（排查 B3）
     const 带走 = 带走说法(res.带走);
     // 企业版「交接中」（11-09）：同转让，负责人还没换，等接手人确认

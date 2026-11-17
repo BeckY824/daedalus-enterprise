@@ -1897,7 +1897,11 @@ export type PatchableKey = (typeof PATCHABLE)[number];
  * 只改一个字段。和 saveCustomer 的整表提交不同，单字段写入天然不会覆盖别人改的其它字段，
  * 所以不需要快照比对；留痕照记。
  */
-export async function patchCustomer(id: string, key: PatchableKey, value: string | null): Promise<{ ok: true; 带走?: 带走数; 交接中?: number; 交接已在路上?: number; 申请移交?: boolean } | { ok: false; error: string }> {
+/**
+ * 就地改一格。ok 时带回 值 = 服务端最后存下的样子（规整过的；没动 = 库里现值）：格子按它显示，不按人敲的那串（11-17 员工反馈：
+ * 电话格敲了带字母的串，原来显示到刷新才变回去）。不是一串字的格（日期、负责人）不带
+ */
+export async function patchCustomer(id: string, key: PatchableKey, value: string | null): Promise<{ ok: true; 值?: string | null; 带走?: 带走数; 交接中?: number; 交接已在路上?: number; 申请移交?: boolean } | { ok: false; error: string }> {
   const me = await requireUser();
   const b = await getBusiness();
   if (!PATCHABLE.includes(key) || (企业版才有的格.includes(key) && !企业版())) return { ok: false, error: "这个字段不能在这里改" };
@@ -1932,7 +1936,7 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
     const 人 = await prisma.customer.findUnique({ where: { id }, select: { name: true, extra: true } });
     if (!人) return { ok: false, error: `这条${b.customer}已被删除` };
     const 原 = 人.extra?.[k] ?? null;
-    if (原 === r.v) return { ok: true };
+    if (原 === r.v) return { ok: true, 值: 原 };
     await 写外贸档案(prisma, id, { [k]: r.v });
     await recordAudit({
       user: me, action: "update", entity: "Customer", entityId: id,
@@ -1942,7 +1946,7 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
     revalidatePath(`/customers/${id}`);
     revalidatePath("/customers");
     await 客户存了推项目(me, id);
-    return { ok: true };
+    return { ok: true, 值: r.v };
   }
   const data: Record<string, unknown> = {};
   if (key === "followStatus") {
@@ -2003,7 +2007,7 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
     const 原 = await prisma.customer.findUnique({ where: { id }, select: { name: true, remark: true } });
     if (!原) return { ok: false, error: `这条${b.customer}已被删除` };
     const 名 = (v as string).trim();
-    if (名 === 原.name) return { ok: true };
+    if (名 === 原.name) return { ok: true, 值: 原.name };
     const 太长 = 企业版客户太长(b.customer, { name: 名 }, 原);
     if (太长) return { ok: false, error: 太长 };
     data.name = 名;
@@ -2034,7 +2038,7 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
     const 原 = await prisma.customer.findUnique({ where: { id }, select: { phone: true } });
     if (!原) return { ok: false, error: `这条${b.customer}已被删除` };
     const 号 = String(认回打码号(v, 原.phone) ?? "").trim();
-    if (号 === (原.phone ?? "")) return { ok: true };
+    if (号 === (原.phone ?? "")) return { ok: true, 值: 原.phone };
     /*
       企业版（11-17 员工反馈）：和建档向导、联系人表单同一套手机号规矩（验客户电话）——带字母、汉字的整格拒（不截数字），
       国内 1[3-9] 开头 11 位、国外 + 开头 8–15 位；清空看还有没有别的联系方式（M-必填-01）；全公司查重（排除自己）；子表那行跟着换
@@ -2042,7 +2046,7 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
     if (企业版()) {
       const 验 = 验客户电话(号);
       if (!验.ok) return { ok: false, error: 验.error };
-      if (验.值 === 原.phone) return { ok: true };
+      if (验.值 === 原.phone) return { ok: true, 值: 原.phone };
       if (!验.值 && !(await 客户还有别的联系方式(prisma, id))) return { ok: false, error: 清空电话拦话 };
       if (验.值) {
         const 撞 = await 客户电话撞号(prisma, id, 验, me.id, await 读的我(defaultClient));
@@ -2054,7 +2058,7 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
     } else {
     const 电话 = 查电话(号, { 必填: Boolean(原.phone) });
     if (!电话.ok) return { ok: false, error: 电话.error };
-    if (电话.phone === 原.phone) return { ok: true };
+    if (电话.phone === 原.phone) return { ok: true, 值: 原.phone };
     if (电话.phone) {
       const dup = await 看全部(async () => prisma.customer.findFirst({
         where: { AND: [await 同号条件(prisma, 电话.phone, await 分机留存起()), { id: { not: id } }] },
@@ -2120,7 +2124,8 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
   revalidatePath(`/customers/${id}`);
   revalidatePath("/customers");
   await 客户存了推项目(me, id);
-  return { ok: true, 带走 };
+  const 存的 = data[key];
+  return { ok: true, 带走, ...(key !== "salesOwnerId" && (typeof 存的 === "string" || 存的 === null) ? { 值: 存的 } : {}) };
 }
 
 /**
