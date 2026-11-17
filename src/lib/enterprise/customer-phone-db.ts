@@ -83,7 +83,9 @@ export async function 同步电话子表(tx: Prisma.TransactionClient, customerI
 export async function 客户电话撞号(db: 库, customerId: string | undefined, 号: { 值: string; 键: string }, 我: string, 读的我: 谁 | null): Promise<string | null> {
   if (!号.值 || !号.键) return null;
   const ids = await 全公司查号(db, "手机号", 号.值, 号.键, customerId);
-  if (ids.length) return `手机号 ${号.值}：${(await 撞号结论(db, ids, 我, 读的我)).提示}`;
+  // 子表里挂在回收站客户上的行也会查出 id，首条认不出（看不到删了的）= 在用的没撞，往下看回收站
+  const 论 = ids.length ? await 撞号结论(db, ids, 我, 读的我) : null;
+  if (论 && 论.状态 !== "首次录入") return `手机号 ${号.值}：${论.提示}`;
   if ((await 回收站里查号(db, "手机号", 号.值, 号.键, customerId)).length) return `手机号 ${号.值}：${回收站里有提示}`;
   return null;
 }

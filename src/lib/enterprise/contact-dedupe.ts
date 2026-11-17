@@ -92,6 +92,19 @@ export async function 全公司查号(db: 库, 类型: 号码类型, 值: string
 }
 
 /**
+ * 一行号码（联系方式子表的 kind + 规整值）全公司撞到的客户 id（11-17：客户本身的号码几行）。
+ * 手机 / 邮箱 / 微信 / 阿里国际站ID 走 全公司查号；别的类型（座机、WhatsApp、传真、Telegram、自定的）比子表里同类同键的行。除了 = 排除这位客户
+ */
+export async function 一行号全公司查(db: 库, 行: { kind: string; value: string; numberKey: string }, 除了?: string): Promise<string[]> {
+  if (!行.numberKey) return [];
+  const 类型 = 库类型到号码类型[行.kind];
+  if (类型) return 全公司查号(db, 类型, 行.value, 行.numberKey, 除了);
+  const ids = new Set((await db.contactMethod.findMany({ where: { kind: 行.kind, numberKey: 行.numberKey }, select: { customerId: true } })).map((r) => r.customerId));
+  if (除了) ids.delete(除了);
+  return [...ids];
+}
+
+/**
  * 号码只在回收站里撞到的客户 id（客户 11-05（X-10））：连回收站一起查一遍，去掉在用的那些。
  * 剩下的 = 删了的客户；或客户还在、带这个号的联系人删了。回收站过了 30 天清掉的就不再算
  */

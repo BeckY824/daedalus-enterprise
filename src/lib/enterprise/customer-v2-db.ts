@@ -15,7 +15,7 @@ import { getSetting, setSetting } from "@/lib/settings";
 import { 企业版 } from "./switch";
 import { 企业字典, 页面字典 } from "./dict";
 import { 号码归属地 } from "./phone-region";
-import { 认号码种类, 验一行号码, 老三格, 内置号码种类, 自定种类前缀, 每人最多号码, 另一头, type 号码种类 } from "./customer-v2";
+import { 认号码种类, 验一行号码, 老三格, 内置号码种类, 自定种类前缀, 每人最多号码, 另一头, 联系人号查重键, type 号码种类 } from "./customer-v2";
 import { 字典定义 } from "./dict-kinds";
 
 // ---------- 级别 D → C ----------
@@ -96,14 +96,26 @@ export type 验好的行 = { kind: string; value: string; numberKey: string; reg
 
 /**
  * 联系人表单交上来的几行号码（事务外调：要读字典）。kind 必须是字典里的一类（停用的也认：老号原样交回来），
- * 或者这位联系人原来就有的那一类（字典里那项被改名 / 自定的被删）。同类同号的只留一行；空行跳过
+ * 或者这位联系人原来就有的那一类（字典里那项被改名 / 自定的被删）。同类同号的只留一行；空行跳过。
+ * 原有行 = 库里原来就有的那几行（类型 + 原样的号）：交回来一字不差的不再验格式、原样留着（11-17 员工反馈：导入进来的老号
+ * 按现在的规矩验不过，改别的格也存不了）。只验新加的、改过的
  */
-export async function 验联系人号码们(行们: readonly 交上来的号[] | null | undefined, 原有种类: readonly string[] = []): Promise<{ ok: true; 行们: 验好的行[] } | { ok: false; error: string }> {
+export async function 验联系人号码们(
+  行们: readonly 交上来的号[] | null | undefined,
+  原有种类: readonly string[] = [],
+  原有行: readonly { kind: string; value: string; numberKey?: string | null }[] = [],
+): Promise<{ ok: true; 行们: 验好的行[] } | { ok: false; error: string }> {
   const 表 = await 号码种类表();
   const 们: 验好的行[] = [];
   for (const 行 of 行们 ?? []) {
     if (!行 || typeof 行.value !== "string" || !行.value.trim()) continue;
     const kind = typeof 行.kind === "string" ? 行.kind : "";
+    const 老 = 原有行.find((o) => o.kind === kind && o.value.trim() === 行.value.trim());
+    if (老) {
+      const numberKey = 老.numberKey || 联系人号查重键(kind, 老.value);
+      if (!们.some((x) => x.kind === kind && x.numberKey === numberKey)) 们.push({ kind, value: 老.value, numberKey, region: kind === "phone" ? 号码归属地("手机号", 老.value)?.文字 ?? null : null });
+      continue;
+    }
     const 种 = 表.find((x) => x.kind === kind) ?? (原有种类.includes(kind) ? { 名: 种类叫法(表, kind), kind } : null);
     if (!种) return { ok: false, error: "号码类型不对（可能刚被改过），刷新后再选" };
     const r = 验一行号码(种, 行.value);

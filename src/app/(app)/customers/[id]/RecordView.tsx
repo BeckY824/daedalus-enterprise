@@ -51,6 +51,7 @@ import ContactLinks from "./ContactLinks";
 import ContractForm, { type ContractRow } from "./ContractForm";
 import CustomerForm from "../CustomerForm";
 import InlineField from "./InlineField";
+import CustomerNumbers from "./CustomerNumbers";
 import RegionInlineField from "./RegionInlineField";
 import AiPanel from "./AiPanel";
 import { 打开AI浮窗, 登记智能总结 } from "@/lib/ai-float";
@@ -187,6 +188,7 @@ export default function RecordView({
   联系人分类附件数 = null,
   关联们 = null,
   号码种类,
+  客户号码们,
   职务选项,
   分配方式选项 = [],
   客户类型选项 = [],
@@ -1273,6 +1275,10 @@ export default function RecordView({
             {摆(customer.phone) && (
               <InlineField 空时横线={企业} customerId={customer.id} field="phone" label="电话" value={customer.phone}
                 显示={企业 ? (v) => <CopyValue 叫法="电话" value={v} /> : undefined} />
+            )}
+            {/* 客户本身的号码（11-17）：导入、建档时记在客户身上的座机、WhatsApp、第二个手机……一类一行，点了按「类型 + 号码」改；电话照旧是上面那格 */}
+            {企业 && 号码种类 && 客户号码们 && (客户号码们.length > 0 || 摆(null)) && (
+              <CustomerNumbers customerId={customer.id} 号码们={客户号码们} 号码种类={号码种类} />
             )}
             {sourceLead && <div className="rec-field" style={{cursor:"default"}} data-testid="customer-lead-origin">
               <div className="rec-field-k">来源线索</div>
