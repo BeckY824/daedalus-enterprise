@@ -1039,6 +1039,12 @@ model Project {
   /// scheduledAssignTo = 指定分配到点分给谁；空 = 到点自动分配（不建外键，人停用了到点按「分不出去」办）
   scheduledAssignAt    DateTime?
   scheduledAssignTo    String?
+  /// 项目来源（企业版，迁移 151，11-18）：空 = 系统里正常建的；"history-analysis" = 「历史沟通分析」一次性回填的项目
+  /// （挂在公海客户名下，节点按分析，部分带结局）。取值常量和统计怎么排它见 lib/project/system-created.ts 历史分析来源。
+  /// 写库时定下、之后不改；和渠道来源 channelId 不是一回事
+  source               String?
+  /// 回填批次号（企业版，迁移 151）：同一次回填写同一个值，便于按批核对、撤回；正常建的为空
+  importBatch          String?
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
   /// 企业版软删（2026-10-29，P9）：空 = 没删；有值 = 进了回收站，30 天后清掉。读的时候 lib/enterprise/soft-delete.ts 统一滤掉
@@ -1090,6 +1096,8 @@ model Project {
   @@index([deletedAt])
   /// 项目列表按创建时间排、按创建时间段筛（11-11 服务端分页，迁移 120）
   @@index([createdAt])
+  /// 历史分析回填项目按来源 + 是否在公海数（迁移 151）
+  @@index([source, pooledAt])
 }
 
 /// 项目组成员，多对多。1a 负责人直接加人写 JOINED；1b 的进组邀请用 INVITED / DECLINED 和 invitedById
