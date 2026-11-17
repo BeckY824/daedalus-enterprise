@@ -137,7 +137,8 @@ export async function POST(req: Request) {
                 "ask",
                 `AI 对话：「${question.trim().slice(0, 60)}」（${r.steps} 次工具调用${model ? `，${model}` : ""}${files ? `，带了 ${files.map((f) => f.name).join("、")}` : ""}）`,
               );
-              return { ok: true as const, answer: { text: r.text, records: r.records, customers: r.customers, proposals: 名片 ?? r.proposals } };
+              // 只读的人（批次 20c）：名片识别的卡也不摆——摆出来点确认只会报错
+              return { ok: true as const, answer: { text: r.text, records: r.records, customers: r.customers, proposals: r.写不了 ? [] : (名片 ?? r.proposals) } };
             },
             { 中断: req.signal },
           );
