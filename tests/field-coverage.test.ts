@@ -108,6 +108,8 @@ const 可写: Record<string, string[]> = {
   // 外贸订单 / 供应商整套 7 张表 2026-10-29 删了（迁移 066），这里和 派生 里都不再列
   // 团队版项目模式 1a（2026-10-23）：建档向导、项目详情（编辑项目 / 改节点 / 勾交付 / 项目组）、设置里的「项目模式」一栏
   Project: ["name", "contactId", "ownerId", "phase", "node", "result", "exceptionCategoryId", "exceptionReason", "balanceSettled", "acceptancePassed", "amount", "currency", "remark", "expectedDealAt", "channelId",
+    // 指定回复时间（企业版 11-17，迁移 148）：新建时填、详情「指定回复」就地改（lib/project/db.ts 改项目）
+    "replyStartAt", "replyEndAt",
     // 企业版项目画像（P11，迁移 087）：详情页「项目画像」卡改一项存一项（projects/actions.ts 改项目画像Action → lib/project/profile.ts）
     "budgetLevel", "priceSense", "decisionChain", "demandStatus", "productNeeds",
     // 企业版项目画像加 7 项单选（迁移 102）：同一张「项目画像」卡，同一条路径
@@ -464,6 +466,8 @@ const 派生: Record<string, Record<string, string>> = {
   Project: {
     customerId: "建档向导里和客户一起建，不改（改了等于另一单生意）",
     creatorId: "实际建档的人，向导保存那一刻打上，不改",
+    scheduledAssignAt: "新建时选「指定时间」分配那一刻定下（迁移 149）；到点前在项目详情「定时分配」那行改 / 取消（leads/schedule-actions.ts），到点执行、清了待分配、进回收站由后台清空（lib/enterprise/scheduled-assign.ts）",
+    scheduledAssignTo: "同 scheduledAssignAt：指定分配的定时到点分给谁，新建时就是选的负责人，到点前能改（leads/schedule-actions.ts 改定时分配）",
     balanceSettledById: "勾尾款结清的那个人，系统打上",
     balanceSettledAt: "勾尾款结清的那一刻，系统打上",
     acceptancePassedById: "勾验收通过的那个人，系统打上",
@@ -571,6 +575,11 @@ const 派生: Record<string, Record<string, string>> = {
   },
   EntFollowUpFirstValid: {
     followUpId: "哪条沟通，存的时候无效、后来改成有效时系统建（迁移 132）", at: "改成有效的那一刻，系统写、之后不改",
+  },
+  EntReplyOverdue: {
+    projectId: "哪个项目，超时未跟进那条链起头时系统建（迁移 150）", anchorAt: "起链时的超时基准，系统按指定回复时间写", holderId: "链上眼下这一位，系统写",
+    since: "这一位的计时起点，系统写", overdueAt: "超时提醒发出的那一刻，钟上系统写", tried: "这一轮超时过的人，自动转时系统写",
+    transfers: "自动转了几次，系统加", stoppedAt: "记了有效沟通或出了范围、链停下的那一刻，系统写",
   },
 };
 

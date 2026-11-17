@@ -39,6 +39,7 @@ import { useNewProjectFlow } from "../projects/NewProjectFlow";
 import type { 向导跟进 } from "@/lib/project/wizard";
 import { 公海线索先领取话 } from "@/lib/enterprise/pool-rules";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 type Row = {
   id: string;
@@ -145,7 +146,7 @@ export default function LeadsView({
   // 保存中不再收第二下：网慢、连着团队时连点几下会建出几条一样的（10-07 Sam 实测建出三条重复商机）
   const [存着, set存着] = useState(false);
   // 点外面不关、关前问一句、新建的草稿留在本机（2026-10-19 客户反馈，lib/form-guard.tsx）
-  const 守 = useFormGuard({ open, form, 草稿键: editing ? null : "新建线索", 关: () => setOpen(false), 忙: 存着, afterOpenChange: 聚焦首项 });
+  const 守 = useFormGuard({ open, form, 草稿键: editing ? `编辑线索:${editing.id}` : "新建线索", 编辑: !!editing, 关: () => setOpen(false), 忙: 存着, afterOpenChange: 聚焦首项 });
   async function onOk() {
     if (存着) return;
     set存着(true);
@@ -268,8 +269,8 @@ export default function LeadsView({
       if (!res.ok) return void 说(res.error, true);
       说(`「${r.name}」${分给了(res)}：${res.为什么}`);
       router.refresh();
-    } catch {
-      说("没分成，请稍后再试", true);
+    } catch (出错) {
+      说(动作出错话(出错, "没分成，请稍后再试"), true);
     }
   }
 
@@ -444,6 +445,7 @@ export default function LeadsView({
         width={600}
         destroyOnHidden
       >
+        {守.提示}
         <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={守.改了}>
           <Row gutter={16}>
             <Col span={24}>

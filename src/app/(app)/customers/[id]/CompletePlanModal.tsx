@@ -17,6 +17,7 @@ import { hasVisibleText } from "@/lib/form-validation";
 import { saveFollowUp, 撤销记一笔, 沟通可选项目 } from "./actions";
 import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 /**
  * 完成一条跟进计划时弹的小框（2026-10-16 外贸基础，总控：「方式 + 一句话 + 下次时间（默认 7 天后），保留『跳过，直接完成』。不做节奏标签」）。
@@ -88,7 +89,7 @@ export function 提示记完了(
     毫秒: 6000,
     撤销: async () => {
       const u = await 撤销记一笔({ customerId: plan.customerId, 跟进id: r.跟进id, 计划id: plan.id, 下次计划id: r.下次计划id })
-        .catch(() => ({ ok: false as const, error: "没撤销成，请稍后重试" }));
+        .catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "没撤销成，请稍后重试") }));
       if (u.ok) 撤销完了();
       return u;
     },
@@ -187,7 +188,7 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
           ...(下次日 ? { plan: { subject: 下次主题(内容), plannedAt: 下次日, method: 对得上的方式(类型, 方式) ?? FOLLOW_TYPE_MAP[类型]?.label ?? "电话沟通" } } : {}),
           完成计划: plan.id,
         },
-      }).catch(() => ({ ok: false as const, error: "没保存上，请稍后重试" }));
+      }).catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "没保存上，请稍后重试") }));
       if (!r.ok) return { ok: false, error: "error" in r && r.error ? r.error : "没保存上，请稍后重试" };
       // 客户三态（C12）：这条不算有效沟通时给一句轻提示（照常保存，不拦）
       const 短 = 短沟通话of(r) ?? undefined;

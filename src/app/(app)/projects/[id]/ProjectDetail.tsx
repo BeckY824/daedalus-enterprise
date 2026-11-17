@@ -21,7 +21,7 @@ import { useBusiness } from "@/lib/business-client";
 import { dayjs, fmtDateTime, 成员选项 } from "@/lib/utils";
 import { 回公海文案, 回公海颜色, 预演回收日, type 回收预演底子 } from "@/lib/enterprise/recycle-text";
 import { 跟进类型们 } from "@/lib/constants";
-import FollowMethodSelect, { InitiatorSelect, useFollowInitiators, useFollowMethods, 默认沟通方式, 默认发起主体 } from "@/components/FollowMethodSelect";
+import FollowMethodSelect, { InitiatorSelect, useFollowHabit, useFollowInitiators, useFollowMethods, 默认沟通方式, 默认发起主体 } from "@/components/FollowMethodSelect";
 import { 对得上的方式, 方式对类型 } from "@/lib/follow-method";
 import { 外贸精简 } from "@/lib/business-config";
 import { 币种选项, 金额, 合计文字, 按币种合计, 默认币种 } from "@/lib/currency";
@@ -50,6 +50,10 @@ import AddressInput from "@/components/AddressInput";
 import { 三种业务线, 建议业务线, 所在地提示 } from "@/lib/enterprise/assign-line";
 import { 拼地址, 企业级别, 企业客户级别, 企业级别说明, type 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 级别星 } from "@/lib/enterprise/level-stars";
+import ReplyWindowInput, { type 回复两格 } from "@/components/ReplyWindowInput";
+import { 定时时刻格 } from "@/components/ScheduleAssignInput";
+import { 改定时分配, 取消定时分配, 定时分配现在分 } from "../../leads/schedule-actions";
+import { 指定回复文字, 北京墙钟转时刻, 回复晚于回收, 短时刻, 客户在谁名下话 } from "@/lib/project/time-fields";
 import { 成交需求上限, 详细地址上限, 详细地址提示, 项目区域, type 项目成交钱 } from "@/lib/project/profile-rules";
 import { 合同状态们, 痛点标注上限, type 合同状态 } from "@/lib/project/proj-fields";
 import { 备注上限 } from "@/lib/project/wizard";
@@ -75,6 +79,9 @@ import { ProjectAttachmentsCard, ProjectPaymentsCard, ProjectProfileCard, type �
 import { 词们, 对得上, 沟通字段, 卡点字段, 沟通来源, 能隐藏接手前 } from "@/lib/project/detail-search";
 import type { 回款 } from "@/lib/project/payment-db";
 import ProjectRelate from "./ProjectRelate";
+import { useFormDraft, 草稿范围 } from "@/components/FormDraft";
+import { 有字 } from "@/lib/form-draft";
+import { 动作出错话, 出错原话, 刷新再提交话 } from "@/lib/stale-deploy";
 import type { 项目关联 } from "@/lib/project/relate";
 
 export type 项目详情 = {
@@ -140,6 +147,12 @@ export type 项目详情 = {
   回收预演?: 回收预演底子 | null;
   /** 企业版预计成交日期（10-27 从客户挪到项目，服务端排好的 YYYY-MM-DD）；不是企业版不传 */
   expectedDealAt?: string | null; 要下一步: boolean; 能记沟通: boolean;
+  /** 企业版指定回复时间（11-17）：北京墙钟「YYYY-MM-DD HH:mm」，没填 null；不是企业版不传 */
+  指定回复?: 回复两格;
+  /** 指定分配时间（企业版，11-17 PR3）：还没到点的定时；时间 = 北京墙钟，给谁 = 指定分配的接手人（自动分配 null），能动 = 录入人 / 能分配的人 */
+  定时分配?: { 时间: string; 给谁: string | null; 能动: boolean };
+  /** 超时未跟进自动转过来、客户还在别人名下（11-17，lib/enterprise/reply-overdue.ts 规则 3 的例外）：那人的名字，只给负责人本人；没有 = 不提示 */
+  客户在谁名下?: string;
   /** 沟通的「…」菜单（改 / 删，10-29）：能记沟通、看得到客户，且不是同事 / 虚线下属的客户；企业版改 = 身为负责人的管理（M-权限-09 原口径 11-09，管理以下含负责人本人不能改删） */
   可改沟通?: boolean;
   /** 沟通能删：系统管理员或身为负责人的管理（M-权限-09 原口径 11-09，和 可改沟通 分开） */
@@ -208,6 +221,11 @@ export type 项目详情 = {
 
 /** 项目卡「线索验证」结果的颜色（11-01 六个叫法） */
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "center", marginBottom: 8, minWidth: 0 };
+/** 详情页顶上提示条和下面隔开（行内样式闸门：新加的提示条用模块常量） */
+const 提示条下距: React.CSSProperties = { marginBottom: 16 };
+/** 指定分配时间那一行（11-17）：窄宽度折行；写在组件外，行内样式只减不增（tests/inline-style-cap.test.ts） */
+const 定时行样: React.CSSProperties = { ...行样, flexWrap: "wrap", rowGap: 4 };
+const 可折行样: React.CSSProperties = { whiteSpace: "normal", overflowWrap: "anywhere" };
 // 四个字的键（来源线索 / 预计成交）在 14px 下要 ~56px，48px 会折成两行（10-27）
 const 键样: React.CSSProperties = { color: "var(--text-muted)", fontSize: "var(--dt-label)", flex: "0 0 4.3em", whiteSpace: "nowrap" }; // 字段名 13（16a 同客户详情）
 // 多行的格子（需求描述、痛点、备注；前两个 11-04 起平时一行）：键和第一行对齐，不居中到一大段字的中间
@@ -590,8 +608,9 @@ export default function ProjectDetail({
         router.refresh();
       }
       return r.ok;
-    } catch {
-      报("没改成，请稍后再试");
+    } catch (e) {
+      // 发版后老页面交的（lib/stale-deploy.ts）：换成「系统刚更新了，请刷新页面后再提交」
+      报(动作出错话(e, "没改成，请稍后再试"));
       return false;
     } finally {
       set忙(false);
@@ -608,8 +627,8 @@ export default function ProjectDetail({
     let r: Awaited<ReturnType<typeof 删项目沟通>>;
     try {
       r = await 删项目沟通(p.id, id);
-    } catch {
-      r = { ok: false, error: "没删成，请稍后再试" };
+    } catch (e) {
+      r = { ok: false, error: 动作出错话(e, "没删成，请稍后再试") };
     } finally {
       set忙(false);
     }
@@ -1138,6 +1157,53 @@ export default function ProjectDetail({
               <DatePicker aria-label="预计成交" autoFocus disabled={忙} style={{ width: "100%" }} value={草稿 ? dayjs(草稿) : null} onChange={(d) => 提交(d ? d.format("YYYY-MM-DD") : null)} />
             )}
           />
+        </div>
+      )}
+      {/* 指定回复时间（11-17）：客户要求的联系时间点 / 时间段，两格选填；没填「—」 */}
+      {p.指定回复 && (
+        <div style={行样}>
+          <span style={键样}>指定回复</span>
+          <ProjectInlineField<回复两格>
+            名="指定回复"
+            值={p.指定回复}
+            能改={字段能改("指定回复时间")}
+            显示={(v) => {
+              if (!v.开始 && !v.结束) return 待填("指定回复时间");
+              const 警 = 回复晚于回收(北京墙钟转时刻(v.开始), 北京墙钟转时刻(v.结束), p.回收日);
+              return <span className="proj-one" data-tip={警 ?? undefined} style={警 ? { color: "var(--warning-text)" } : undefined}>{指定回复文字(北京墙钟转时刻(v.开始), 北京墙钟转时刻(v.结束))}{警 ? " ⚠" : ""}</span>;
+            }}
+            存={(v) => 存项目项({ 指定回复开始: v.开始, 指定回复结束: v.结束 })}
+            编辑器={({ 草稿, set草稿, 忙 }) => <ReplyWindowInput autoFocus disabled={忙} value={草稿} onChange={set草稿} />}
+          />
+        </div>
+      )}
+      {/* 指定分配时间（11-17 PR3）：还在待分配、到点由后台分；录入人和能分配的人能改时间、改成现在分配、取消定时 */}
+      {p.定时分配 && (
+        <div style={定时行样} data-testid="project-schedule-row">
+          <span style={键样}>定时分配</span>
+          <ProjectInlineField<string>
+            名="定时分配"
+            值={p.定时分配.时间}
+            能改={p.定时分配.能动 && !忙}
+            显示={(v) => {
+              // 卡窄（右栏约 210px）：时间、分给谁可以折行，不截断
+              const 话 = `${短时刻(北京墙钟转时刻(v)) ?? v} ${p.定时分配?.给谁 ? `分给 ${p.定时分配.给谁}` : "自动分配"}`;
+              return <span title={`${话}（北京时间）`} style={可折行样}>{话}</span>;
+            }}
+            存={async (v) => {
+              const r = await 改定时分配(p.id, { 时间: v });
+              if (!r.ok) return r.error;
+              router.refresh();
+              return null;
+            }}
+            编辑器={({ 草稿, 提交 }) => <定时时刻格 autoFocus value={草稿} onChange={(v) => { if (v) 提交(v); }} />}
+          />
+          {p.定时分配.能动 && (
+            <Space size={4}>
+              <Button size="small" type="link" disabled={忙} onClick={() => void 跑(() => 定时分配现在分(p.id), "已分配")}>现在分配</Button>
+              <Button size="small" type="link" disabled={忙} onClick={() => void 跑(() => 取消定时分配(p.id), "已取消定时，留在新线索待分配")}>取消定时</Button>
+            </Space>
+          )}
         </div>
       )}
       {/* 嵌在客户页没有项目页头（审查 #2）：页头副标题里的负责人、创建人、创建时间挪到这张卡上 */}
@@ -1736,6 +1802,10 @@ export default function ProjectDetail({
         <Alert type="info" showIcon style={{ marginBottom: 16 }} title="这个项目在线索公海里" description={p.能领取 ? "领取了你就是负责人，可以接着推进程" : p.领取不给 === 项目不能单独领提示 || p.领取不给 === 客户在公海项目不单领提示 ? p.领取不给 : p.领取不给 ? `你是原负责人，${p.领取不给}，等同事领取` : "是你放回去的，等同事领取"} />
       )}
 
+      {p.客户在谁名下 && (
+        <Alert type="warning" showIcon style={提示条下距} data-testid="proj-customer-held" title={客户在谁名下话(p.客户在谁名下)} description={`这条线索是超时未跟进自动转给你的，客户不在你名下；跟进前先和 ${p.客户在谁名下} 通个气，别两个人同时跟同一位客户`} />
+      )}
+
       {异常 && (
         <Alert
           type="error" showIcon style={{ marginBottom: 16 }}
@@ -1766,7 +1836,7 @@ export default function ProjectDetail({
       <section className="rec-zone" aria-label={`项目：${p.name}`} data-project={p.id}>
         <div className="cd-zb">
           {嵌入.提醒 && <div className="cd-alert">{嵌入.提醒}</div>}
-          {(p.pooled || 异常) && <div className="cd-notice">{告示}</div>}
+          {(p.pooled || 异常 || p.客户在谁名下) && <div className="cd-notice">{告示}</div>}
           <div className="cd-mid">
             {节点卡}
             {/* 「这位客户全部」是客户页那条时间线，不归这个搜索框管：切过去时清掉词（审查 #6）；搜索框原地变淡、点不了，不再藏起来让下面的卡往上跳（dt.scope） */}
@@ -1868,7 +1938,8 @@ export default function ProjectDetail({
       {弹窗们}
     </div>
   );
-  return 正文;
+  // 就地改的格子（ProjectInlineField）打了没存的字按这个项目留草稿（components/FormDraft.tsx）
+  return <草稿范围 value={`项目:${p.id}`}>{正文}</草稿范围>;
 }
 
 /**
@@ -1895,15 +1966,31 @@ function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
   const [交中, set交中] = useState(false);
   /** 没存上的原因（版本冲突、没权限……）：写在框里、框不关，不弹顶部提示 */
   const [交错, set交错] = useState<string | null>(null);
+  // 改了没交的留草稿（components/FormDraft.tsx）：刷新、发版后重开这条接着改；只存改过的格子
+  const 稿 = useFormDraft({
+    键: `改项目沟通:${f.id}`,
+    值: { type, method, 发起, occurredAt, content },
+    带回: (v) => {
+      if (typeof v.type === "string") setType(v.type);
+      if (v.method !== undefined) setMethod(v.method ?? null);
+      if (v.发起 !== undefined) set发起(v.发起 ?? null);
+      if (typeof v.occurredAt === "string") setOccurredAt(v.occurredAt);
+      if (typeof v.content === "string") setContent(v.content);
+    },
+  });
   const 差 = !content.trim() ? "请填写这次沟通的内容" : 主体们 && f.initiator && !发起 ? "请选发起主体" : "";
   const 交 = async () => {
     set交中(true);
-    const ok = await 跑(() => 改项目沟通(projectId, f.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 版本: f.版本 }), "已保存修改", { 报错: set交错 });
+    const ok = await 跑(() => 改项目沟通(projectId, f.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 版本: f.版本 }), "已保存修改", { 报错: (话) => set交错(话 === 刷新再提交话 ? `${话}（改的字刷新后还在）` : 话) });
     set交中(false);
-    if (ok) onClose();
+    if (ok) {
+      稿.存好了();
+      onClose();
+    }
   };
   return (
-    <Modal open title="修改这条沟通" okText="保存" mask={{ closable: false }} okButtonProps={{ disabled: !!差, loading: 交中, title: 差 || undefined }} onCancel={onClose} onOk={() => void 交()}>
+    <Modal open title="修改这条沟通" okText="保存" mask={{ closable: false }} okButtonProps={{ disabled: !!差, loading: 交中, title: 差 || undefined }} onCancel={() => { 稿.丢掉(); onClose(); }} onOk={() => void 交()}>
+      {稿.提示}
       <div style={{ display: "grid", gap: 12 }}>
         <div className="follow-pick-row">
           <FollowMethodSelect aria-label="沟通方式" type={type} method={method} 类型们={类型们} onChange={(v) => { setType(v.type); setMethod(v.method); }} />
@@ -1967,11 +2054,26 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
   const 人改过方式 = useRef(false);
   const [选的发起, set发起] = useState<string | null>(null);
   const 发起 = 选的发起 ?? (主体们?.includes(默认发起主体) ? 默认发起主体 : null);
+  /*
+    11-17 客户答复「建议记录个人使用习惯」：先按这个人最近 20 条沟通里用得最多的方式（lib/follow-habit.ts）；没有记录才照上面的默认。
+    人改过 / 带回了草稿（草稿里有方式）就不动。等习惯问回来再定，免得先闪一下微信再跳
+  */
+  const 习惯 = useFollowHabit();
   useEffect(() => {
-    if (人改过方式.current || !方式们?.includes(默认沟通方式)) return;
+    if (人改过方式.current || 习惯 === undefined) return;
+    const 能用习惯 = 习惯 && (方式们 ? !!习惯.method && 方式们.includes(习惯.method) : 能选类型.some((t) => t.value === 习惯.type));
+    if (习惯 && 能用习惯) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- 习惯是问服务端回来的，回来了才定默认；人改过 / 带回了草稿就不动
+      setType(习惯.type);
+      setMethod(习惯.method);
+      return;
+    }
+    if (!方式们?.includes(默认沟通方式)) return;
     setType(方式对类型(默认沟通方式));
     setMethod(默认沟通方式);
-  }, [方式们]);
+    // 能选类型 每次渲染新算，内容只跟 外贸 走
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [方式们, 习惯]);
   const [occurredAt, setOccurredAt] = useState(() => dayjs().format(沟通时间格式));
   const [content, setContent] = useState("");
   const [下一步文字, set下一步文字] = useState("");
@@ -2024,7 +2126,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
     try {
       r = await 请求;
     } catch (e) {
-      r = { ok: false, error: e instanceof Error ? e.message : "解析失败，请重试" };
+      r = { ok: false, error: 出错原话(e, "解析失败，请重试") };
     }
     if (轮 !== 这一次.current) return;
     if (!r.ok) {
@@ -2032,7 +2134,8 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
       return;
     }
     const 填 = 项目沟通预填(r.draft, 能选类型.map((t) => t.value));
-    if (填.type) { setType(填.type); setMethod(null); 人改过方式.current = true; }
+    // AI 认不出方式（回 OTHER）：留着现在的（个人习惯 / 默认），不改成「其他」
+    if (填.type && 填.type !== "OTHER") { setType(填.type); setMethod(null); 人改过方式.current = true; }
     if (填.content) setContent(填.content);
     if (填.occurredAt) setOccurredAt(填.occurredAt);
     if (填.下一步) set下一步文字(填.下一步);
@@ -2040,6 +2143,32 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
     const 摘要 = [填.type && "方式", 填.occurredAt && "时间", 填.content && "内容", 填.下一步 && "下一步", 填.下一步时间 && "下一步时间"].filter(Boolean);
     set解析({ 起, 结果: 摘要.length ? `已预填：${摘要.join(" · ")}，核对无误再记下` : "没认出能填的，手动填吧" });
   };
+  /*
+    打了没交的留草稿（11-17，components/FormDraft.tsx）：刷新、发版后重开「记一条沟通」接着填；截图录音存不进来，带回时说要重选。
+    记上了、点了取消就删
+  */
+  const 稿 = useFormDraft({
+    键: `项目沟通:${p.id}`,
+    值: { type, method, 发起: 选的发起, occurredAt, content, 下一步文字, 下一步时间, 卡点类型, 卡点影响, 卡点描述, 卡点标题, 卡点原因, 原话 },
+    附件数: 附件们.length,
+    // 只认打的字：沟通方式的默认值是晚一步才到的（字典读回来才设），光它变了不算填过
+    算填过: (改) => 有字([改.content, 改.下一步文字, 改.卡点描述, 改.卡点标题, 改.原话]),
+    带回: (v) => {
+      if (typeof v.type === "string") { setType(v.type); 人改过方式.current = true; }
+      if (v.method !== undefined) setMethod(v.method ?? null);
+      if (v.发起 !== undefined) set发起(v.发起 ?? null);
+      if (typeof v.occurredAt === "string") setOccurredAt(v.occurredAt);
+      if (typeof v.content === "string") setContent(v.content);
+      if (typeof v.下一步文字 === "string") set下一步文字(v.下一步文字);
+      if (v.下一步时间 !== undefined) set下一步时间(v.下一步时间 ?? null);
+      if (typeof v.卡点类型 === "string") set卡点类型(v.卡点类型);
+      if (v.卡点影响 !== undefined) set卡点影响(v.卡点影响 ?? null);
+      if (typeof v.卡点描述 === "string") set卡点描述(v.卡点描述);
+      if (typeof v.卡点标题 === "string") set卡点标题(v.卡点标题);
+      if (Array.isArray(v.卡点原因)) set卡点原因(v.卡点原因);
+      if (typeof v.原话 === "string") set原话(v.原话);
+    },
+  });
   const 差 = !content.trim() ? "请填写这次沟通的内容" : 主体们 && !发起 ? "请选发起主体"
     : !下一步文字.trim() ? "请写下一步计划" : p.要下一步 && !下一步时间 ? "请填下一步时间" : "";
   // 选了下一步时间就预演回收日（10-30 P0-2）：和服务端同一个算法，算不准（没底子）就不写
@@ -2050,9 +2179,12 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
     const 回: { r: Awaited<ReturnType<typeof 记项目沟通Action>> | null } = { r: null };
     const 卡点 = 卡点默认 ? { type: 卡点类型, impact: 卡点影响, title: 卡点标题, reasons: 卡点原因, description: 卡点描述 } : undefined;
     // 没记上的原因写在框里、框不关（g.save，不弹顶部提示）
-    const ok = await 跑(async () => (回.r = await 记项目沟通Action(p.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 下一步: 下一步文字, 下一步时间, ...(p.企业版 ? { 阶段: p.phase } : {}) }, 卡点)), undefined, { 报错: set交错 });
+    // 发版后老页面交的（lib/stale-deploy.ts）：填的字一直在存草稿，刷新后点开接着填；截图录音存不进来，说一句
+    const 报错 = (话: string | null) => set交错(话 === 刷新再提交话 ? `${话}（${附件们.length ? "填的字刷新后还在，截图 / 录音要重新选" : "填的内容刷新后还在"}）` : 话);
+    const ok = await 跑(async () => (回.r = await 记项目沟通Action(p.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 下一步: 下一步文字, 下一步时间, ...(p.企业版 ? { 阶段: p.phase } : {}) }, 卡点)), undefined, { 报错 });
     const r = 回.r;
     if (ok && r?.ok) {
+      稿.存好了();
       // 本人撤销沟通去掉了（P-沟通-01，11-09），回执里不摆「撤销」。框关了，回执合成一句写在详情底部（一条盖一条，所以合起来说）：
       // 客户三态（C12）这条不算有效沟通时换成一句轻提示（照常保存，不拦）；卡点生成 / 没生成；附件没传上的（出错，role=alert）
       const 短 = 短沟通话of(r);
@@ -2087,9 +2219,11 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
       )}
       // 写了字就别让点到框外把草稿关掉（10-29 实点：点日历时手一偏，整段没了）
       mask={{ closable: !content.trim() && !下一步文字.trim() && !原话.trim() && !卡点描述.trim() && !附件们.length }}
-      onCancel={关}
+      // 点了取消 / Esc / X：人明说不要了，草稿一起删
+      onCancel={() => { 稿.丢掉(); 关(); }}
       onOk={() => void 交()}
     >
+      {稿.提示}
       <div style={{ display: "grid", gap: 12 }}>
         {给AI && (
           <div className="follow-mode">

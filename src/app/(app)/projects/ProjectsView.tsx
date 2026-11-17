@@ -54,6 +54,7 @@ import { useBoardDrag } from "./board-drag";
 import { showUndo } from "@/components/UndoBar";
 import NewMenuButton from "@/components/NewMenuButton";
 import { 看板工具位 } from "../customers/board-slot";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 
 /** 看板列的颜色：三个阶段沿用商机管道的蓝绿黄（企业版进程列跟所在阶段），成功交付（企业版叫 交付结清）粉、没成（流失 / 丢单）灰 */
@@ -88,6 +89,14 @@ function 节点文字(r: 项目行, 字典: 阶段字典) {
  * 阶段 = "线索"：企业版「新线索」页（/leads）。只列线索阶段的项目、只有列表，
  * 新建照样走项目向导（落在潜客培育）；转商机之后它就只在「项目」页里了（10-26 用户定的三大阶段）。
  */
+/** 定时那枚签能折行（写在组件外，行内样式只减不增：tests/inline-style-cap.test.ts） */
+const 定时签样: CSSProperties = { whiteSpace: "normal", marginInlineEnd: 0 };
+/** 负责人格的「待分配」（PR3：定时的写「定时 11-20 15:00」，悬停看到点分给谁） */
+function 待分配格({ r }: { r: 项目行 }) {
+  if (r.定时分配) return <Tag color="orange" style={定时签样} title={`${r.ownerName} 建的，${r.定时分配.时} 到点${r.定时分配.给谁 ? `分给 ${r.定时分配.给谁}` : "自动分配"}（北京时间）`}>定时 {r.定时分配.时}</Tag>;
+  return <Tag color="orange" title={`${r.ownerName} 建的，等总管理员、市场管理或销售管理分`}>待分配</Tag>;
+}
+
 export default function ProjectsView({
   行, 列: 看板, 总数, 页, 每页, 要的页, 排序 = "", users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 能分公海客户项目 = false, 满额提醒: 提醒们 = [], 能按号码筛 = false, 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [], 客户页 = false, 基址 = "/projects", 标题, 换回客户列表 = false, 能新建客户 = false, 三态点, 每列,
 }: {
@@ -298,8 +307,8 @@ export default function ProjectsView({
         const 总 = 新.length ? r.总 : 这列.length;
         return { 源, 代, 们: { ...基.们, [c.列]: { 行: [...(基.们[c.列]?.行 ?? []), ...新], 总 } }, 点: { ...基.点, ...("三态点" in r ? r.三态点 ?? {} : {}) } };
       });
-    } catch {
-      if (最新.current.看板 === 源) set再看错((m) => ({ ...m, [c.列]: "没取到，请重试" }));
+    } catch (出错) {
+      if (最新.current.看板 === 源) set再看错((m) => ({ ...m, [c.列]: 动作出错话(出错, "没取到，请重试") }));
     } finally {
       set取中((m) => (m.源 === 源 ? { 源, 列: { ...m.列, [c.列]: false } } : m));
     }
@@ -385,8 +394,8 @@ export default function ProjectsView({
         });
       }
       router.refresh();
-    } catch {
-      记果({ [r.id]: { ok: false, error: "没分成，请稍后再试" } });
+    } catch (出错) {
+      记果({ [r.id]: { ok: false, error: 动作出错话(出错, "没分成，请稍后再试") } });
     }
   }
 
@@ -414,6 +423,8 @@ export default function ProjectsView({
     // P11 定稿 -2 版：项目级别显示成实心星（S 4 颗 … C 1 颗），悬停看档名；没分级的是 —
     ...(企业版 ? [
       { title: "级别", key: "level", width: 72, 默认: false, render: (_: unknown, r: 项目行) => { const 档 = 企业级别(r.level); return 档 ? <span title={企业级别说明[档]} aria-label={企业级别说明[档]} style={{ color: "var(--warning-text)", whiteSpace: "nowrap" }}>{级别星(档, false)}</span> : 无; } },
+      // 指定回复时间（11-17）：默认收在「列」里（1366 宽不横滚），新线索页、项目页都能勾出来；服务端排好的北京时间
+      { title: "指定回复", key: "replyAt", width: 150, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.指定回复) ? <span className="nowrap" title={r.指定回复!}>{r.指定回复}</span> : 无) },
       { title: "预计成交", key: "expectedDealAt", width: 110, 默认: false, sorter: true, sortOrder: 序of("expectedDealAt"), render: (_: unknown, r: 项目行) => (有值(r.expectedDealAt) ? r.expectedDealAt : 无) },
       { title: "已立项", key: "age", width: 80, 默认: false, align: "right" as const, render: (_: unknown, r: 项目行) => (r.已立项天数 === undefined ? null : `${r.已立项天数} 天`) },
       { title: "渠道", key: "source", width: 130, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.项目来源) ? <span className="fulltext" title={渠道显示名(r.项目来源)}>{主渠道显示名(r.项目来源)}</span> : 无) },
@@ -421,7 +432,7 @@ export default function ProjectsView({
       { title: "创建时间", key: "createdAt", width: 104, 默认: false, sorter: true, sortOrder: 序of("createdAt"), render: (_: unknown, r: 项目行) => (r.createdAt ? <span className="nowrap">{fmtDate(r.createdAt)}</span> : 无) },
     ] : []),
     ...(企业版 && filters.pool === "1" ? [{ title: "收回次数", key: "recycled", width: 90, 默认: false, align: "right" as const, render: (_: unknown, r: 项目行) => r.收回次数 ?? 0 }] : []),
-    ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, sorter: true, sortOrder: 序of("owner"), render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>在公海</Tag> : r.待分配 ? <Tag color="orange" title={`${r.ownerName} 建的，等总管理员、市场管理或销售管理分`}>待分配</Tag> : <UserCell name={r.ownerName} />) }]),
+    ...(不问归属 ? [] : [{ title: "负责人", key: "owner", width: 110, sorter: true, sortOrder: 序of("owner"), render: (_: unknown, r: 项目行) => (r.pooled ? <Tag title={`原负责人 ${r.ownerName}`}>在公海</Tag> : r.待分配 ? <待分配格 r={r} /> : <UserCell name={r.ownerName} />) }]),
     // 回公海日：明天（或今天）就回的直接写「明天回公海（11-06）」，再往后只写日期；不会收的（已结束、在订单阶段、在公海）是 —
     ...(企业版 ? [{ title: "回公海日", key: "recycleAt", width: 150, render: (_: unknown, r: 项目行) => (r.即将回收 ? <将收标 日={r.即将回收} /> : r.回收日 ? dayjs(r.回收日).format("MM-DD") : 无) }] : []),
     { title: "最近更新", key: "updatedAt", width: 100, ...收起, render: (_, r) => fmtDate(r.updatedAt) },
@@ -449,7 +460,7 @@ export default function ProjectsView({
   const 市场锁定 = new Set(["name", "phase", "node", "verify", "owner"]);
   // 判无效的写「叫法 · 原因」一行放不下就省略，悬停看每一步谁、哪天、判了什么（客户 11-05（X-09），lib/project/list.ts 读验证痕们）
   const 验证列: 列<项目行> = { title: "验证结果", key: "verify", width: 120, render: (_, r) => (有值(r.验证结果) ? <span className="fulltext" title={r.验证全文 || r.验证结果}>{r.验证结果}</span> : 无) };
-  const 负责人列: 列<项目行> = { title: "负责人", key: "owner", width: 110, sorter: true, sortOrder: 序of("owner"), render: (_, r) => (r.待分配 ? <Tag color="orange" title={`${r.ownerName} 建的，等总管理员、市场管理或销售管理分`}>待分配</Tag> : <UserCell name={r.ownerName} />) };
+  const 负责人列: 列<项目行> = { title: "负责人", key: "owner", width: 110, sorter: true, sortOrder: 序of("owner"), render: (_, r) => (r.待分配 ? <待分配格 r={r} /> : <UserCell name={r.ownerName} />) };
   const 列表: 列<项目行>[] = 市场列
     ? [
         ...市场默认.map((k) => (k === "verify" ? 验证列 : k === "owner" ? 负责人列 : 找列(k))).filter((c): c is 列<项目行> => !!c),

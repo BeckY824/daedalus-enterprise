@@ -51,6 +51,7 @@ import ContactLinks from "./ContactLinks";
 import ContractForm, { type ContractRow } from "./ContractForm";
 import CustomerForm from "../CustomerForm";
 import InlineField from "./InlineField";
+import CustomerNumbers from "./CustomerNumbers";
 import RegionInlineField from "./RegionInlineField";
 import AiPanel from "./AiPanel";
 import { 打开AI浮窗, 登记智能总结 } from "@/lib/ai-float";
@@ -91,6 +92,7 @@ import { 放进公海, 领取, 撤销公海, 退回原因选项 } from "../pool-
 import { useDeleteCustomers } from "../useDeleteCustomers";
 import { 释义下拉宽 } from "@/components/DictNote";
 import { 客户编号显示 } from "@/lib/customer-no";
+import { 动作出错话, 出错原话 } from "@/lib/stale-deploy";
 
 /**
  * 记录页（v0.4）：三栏。
@@ -172,6 +174,7 @@ export default function RecordView({
   能放公海 = false,
   能转让客户 = true,
   转让要申请 = false,
+  自动分配,
   原负责人领不回 = false,
   只读: 只读档 = false,
   只读话: 全只读话 = "这是虚线下属的客户：只能看，不能改、不能转",
@@ -188,6 +191,7 @@ export default function RecordView({
   联系人分类附件数 = null,
   关联们 = null,
   号码种类,
+  客户号码们,
   职务选项,
   分配方式选项 = [],
   客户类型选项 = [],
@@ -694,6 +698,20 @@ export default function RecordView({
     return { ok: true };
   }
   const 取转走预览 = useCallback((接手人: string) => 转走项目预览of([customer.id], 接手人), [customer.id]);
+  /**
+   * 客户转让框选「自动分配」（客户 11-17：市场成员给暂不分配的客户）：服务端挑人、整客户给挑中的销售，只通知接手人；
+   * 成了框里原地说分给了谁（「已自动分配给 X」），没挑到人原因写在框里、什么都没动。
+   * 页面判了能用才递 自动分配 进来；没递 = 框里不摆选择。取预览：还没挑人，接手人传空串，按「还没挑」数会一起转走的项目（同批量自动分配）
+   */
+  const 转让框自动 = useMemo(() => 自动分配 ? {
+    做: async (原因: string | null): Promise<转让结果> => {
+      const r = await 自动分配(customer.id, 原因);
+      router.refresh();
+      if (!r.ok) return { ok: false, error: r.error };
+      return { ok: true, 话: `已自动分配给 ${r.接手人}${r.为什么 ? `（${r.为什么}）` : ""}` };
+    },
+    取预览: () => 转走项目预览of([customer.id], ""),
+  } : undefined, [自动分配, customer.id, router]);
   /** 转给谁：在职成员里去掉现任 */
   const 转让候选 = 成员选项(users).filter((o) => o.value !== customer.salesOwnerId);
   const 能转让 = 去项目跟进 && !只读 && 能转让客户 && !customer.pool && 转让候选.length > 0;
@@ -940,7 +958,7 @@ export default function RecordView({
                 问="删除这条？"
                 做={async () => {
                   // 被挡（权限）回 ok:false：不提示成功、条目留着（PR10a），原因就地写在这一行；删成了这一行收起，不再弹提示
-                  const r = await deleteTask(t.id).catch(() => ({ ok: false as const, error: "没删掉，请重试" }));
+                  const r = await deleteTask(t.id).catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "没删掉，请重试") }));
                   if (!r.ok) {
                     报待办错(t.id, r.error || "没删掉，请重试");
                     router.refresh();
@@ -1053,7 +1071,7 @@ export default function RecordView({
       </AnimatePresence>
       {filter !== "CONTRACT" && history.hasMore && (
         <div style={{ padding: 16, textAlign: "center" }}>
-          <Button loading={history.loading} onClick={() => { set加载错(null); void history.loadMore().catch(error => set加载错(error instanceof Error ? error.message : "历史跟进加载失败，请重试")); }}>{摆法.沟通汇总 ? "加载更多" : "加载更早的跟进"}</Button>
+          <Button loading={history.loading} onClick={() => { set加载错(null); void history.loadMore().catch(error => set加载错(出错原话(error, "历史跟进加载失败，请重试"))); }}>{摆法.沟通汇总 ? "加载更多" : "加载更早的跟进"}</Button>
           {加载错 && <div role="alert" className="cd-task-err">{加载错}</div>}
           <div className="muted" style={{ marginTop: 8 }}>已加载 {history.rows.length} 条{摆法.沟通汇总 ? "" : "跟进"} · 筛选作用于已加载记录</div>
         </div>
@@ -1276,6 +1294,10 @@ export default function RecordView({
             {摆(customer.phone) && (
               <InlineField 空时横线={企业} customerId={customer.id} field="phone" label="电话" value={customer.phone}
                 显示={企业 ? (v) => <CopyValue 叫法="电话" value={v} /> : undefined} />
+            )}
+            {/* 客户本身的号码（11-17）：导入、建档时记在客户身上的座机、WhatsApp、第二个手机……一类一行，点了按「类型 + 号码」改；电话照旧是上面那格 */}
+            {企业 && 号码种类 && 客户号码们 && (客户号码们.length > 0 || 摆(null)) && (
+              <CustomerNumbers customerId={customer.id} 号码们={客户号码们} 号码种类={号码种类} />
             )}
             {sourceLead && <div className="rec-field" style={{cursor:"default"}} data-testid="customer-lead-origin">
               <div className="rec-field-k">来源线索</div>
@@ -1678,7 +1700,7 @@ export default function RecordView({
             毫秒: 6000,
             撤销: async () => {
               const u = await 撤销记一笔({ customerId: p.customerId, 跟进id: r.跟进id, 计划id: p.id, 下次计划id: r.下次计划id })
-                .catch(() => ({ ok: false as const, error: "没撤销成，请稍后重试" }));
+                .catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "没撤销成，请稍后重试") }));
               if (u.ok) { set计划话(null); set刚完成(null); }
               void window.desktopReminders?.刷新();
               router.refresh();
@@ -1726,7 +1748,7 @@ export default function RecordView({
           if (saved) router.refresh();
         }}
       />
-      <TransferBox open={转让开} 客户名={customer.name} 候选={转让候选} 要申请={转让要申请} 作废天数={移交作废天数} 原因选项={转让原因?.选项 ?? []} 取预览={取转走预览} 做={发转让} onClose={() => set转让开(false)} />
+      <TransferBox open={转让开} 客户名={customer.name} 候选={转让候选} 要申请={转让要申请} 作废天数={移交作废天数} 原因选项={转让原因?.选项 ?? []} 取预览={取转走预览} 做={发转让} 自动={转让框自动} onClose={() => set转让开(false)} />
       {头部框 && (
         <Modal open title={`${头部框 === "关联客户" && 去项目跟进 ? 客户详情左栏.关联 : 客户头部框叫法[头部框]} · ${customer.name}`} footer={null} width={头部框 === "转让" ? 480 : 640} onCancel={() => set头部框(null)}>
           {头部框 === "管理联系人" && (

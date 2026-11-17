@@ -7,6 +7,7 @@ import { 测试飞书连接动作, 飞书表概况, 设飞书表 } from "./org-a
 import type { 主表槽, 测试结果, 数据表 } from "@/lib/enterprise/feishu-connect";
 import { useViewAs } from "@/components/ViewAsContext";
 import { 视图外部话 } from "@/lib/enterprise/view-as-words";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 /**
  * 设置 → 组织架构 →「飞书连接」（企业版，10-26）：填 App ID / Secret → 测试连接 → 贴多维表格链接、对表。
@@ -93,8 +94,8 @@ export default function FeishuConnectCard({ 草稿, 初始 }: { 草稿: Record<s
         就地.success("多维表格对照已保存，导入和同步按这个拉");
         set改过表(false);
       }
-    } catch {
-      就地.error("没存成，请稍后再试");
+    } catch (出错) {
+      就地.error(动作出错话(出错, "没存成，请稍后再试"));
     } finally {
       set忙(null);
     }

@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { EditOutlined } from "@ant-design/icons";
 import Shortcut from "@/components/Shortcut";
 import { useViewAs } from "@/components/ViewAsContext";
+import { useFormDraft, useDraftScope } from "@/components/FormDraft";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 /** 编辑器拿到的：草稿、改草稿、提交（下拉、日期选了就存，传选中的值，不等 setState）、在不在存 */
 export type 编辑器参数<T> = { 草稿: T; set草稿: (v: T) => void; 提交: (v?: T) => void; 忙: boolean };
@@ -60,6 +62,20 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
   const 键 = JSON.stringify(值);
   if (乐观 && 乐观.基准 !== 键) set乐观(null);
   const 现 = 乐观 && 乐观.基准 === 键 ? 乐观.值 : 值;
+  /*
+    打了没存上的字留草稿（11-17，components/FormDraft.tsx）：存失败、刷新、发版后重开这一格接着改。
+    键 = 外面包的记录（项目详情给 `项目:<id>`）+ 这一格的名字；没包就不存。存上了 / Esc 还原就删
+  */
+  const 范围 = useDraftScope();
+  const 稿 = useFormDraft({
+    键: 范围 ? `${范围}:就地:${名}` : null,
+    开: 开着,
+    值: { v: 草稿 as unknown },
+    带回: (x) => {
+      if (x.v !== undefined) set草稿(x.v as T);
+    },
+    紧凑: true,
+  });
 
   // 收起后焦点回到这一格的笔上（键盘用户不用从头 Tab）
   useEffect(() => {
@@ -113,12 +129,13 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
         失败的.current = JSON.stringify(输入);
         return set错(话);
       }
+      稿.存好了();
       set乐观({ 基准: 键, 值: v });
       set刚存((n) => n + 1);
       关(!失焦);
-    } catch {
+    } catch (e) {
       失败的.current = JSON.stringify(输入);
-      set错("没存上，请稍后再试");
+      set错(动作出错话(e, "没存上，请稍后再试"));
     } finally {
       在存.current = false;
       set忙(false);
@@ -159,6 +176,7 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
     if (e.nativeEvent.isComposing) return;
     if (e.key === "Escape") {
       e.stopPropagation();
+      稿.丢掉();
       return 关(true);
     }
     if (e.key !== "Enter") return;
@@ -189,6 +207,7 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
     >
       <编辑区 编辑器={编辑器} 草稿={草稿} set草稿={set草稿} 提交={(v) => void 提交(v)} 忙={忙} />
       {错 && <div className="proj-inline-err" role="alert">{错}</div>}
+      {稿.提示}
       <div className="proj-inline-acts" ref={按钮排}>
         <span className="proj-inline-hint" role={忙 ? "status" : undefined}>
           {忙 ? "存着…" : 多行 ? <><Shortcut>⌘↵</Shortcut> 或点别处保存 · Esc 还原</> : 回车存 ? "回车或点别处保存 · Esc 还原" : "点别处保存 · Esc 还原"}

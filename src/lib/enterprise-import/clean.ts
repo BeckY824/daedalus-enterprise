@@ -94,6 +94,9 @@ export function 归档号键(v: string | null | undefined): string {
   return /^\d{10,}$/.test(k) ? k : "";
 }
 
+/** Excel 把长号存成数字后显示的科学计数法（「8.61391E+12」「1.3912E+10」） */
+export const 是科学计数 = (v: string): boolean => /^[+＋]?\d+(?:\.\d+)?[Ee]\+?\d{1,2}$/.test(v.trim());
+
 /** 名字比较用的键：去空白、全角转半角、小写 */
 export function 名键(s: string): string {
   return 全角转半角(s)
@@ -394,6 +397,12 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
    * 电话格：是号码就规整；写的是邮箱 / 「微信：xx」/「WhatsApp：xx」的放进对应的格子；
    * 一格几个号（逗号、斜杠、顿号隔开）第一个当电话，其余的放进「另」；都不是就原样进备注
    */
+  /** 科学计数法的号：记一笔提醒、原文进备注「电话（待核对）」 */
+  const 科学计数待核对 = (r: 原始记录, v: string, 附加: string[]) => {
+    附加.unshift(`电话（待核对）：${v}`);
+    出问题(r, "提醒", "格式不对", `电话「${v}」是表格改成科学计数法的号，后几位已经丢了，没当号码，原样放进了备注待核对`);
+  };
+
   /** 占位假号（M-导入-36）：是就记一笔提醒、返回 true，调用方丢掉这个号 */
   const 丢占位 = (r: 原始记录, v: string | undefined, 标签: string): boolean => {
     if (!v || !是占位号(v)) return false;
@@ -423,6 +432,11 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
           if (!whatsapp) whatsapp = 前缀[2].trim();
           else 附加.push(`另一个 WhatsApp：${前缀[2].trim()}`);
         }
+        continue;
+      }
+      // 科学计数法（「8.61391E+12」）：表格把长号存成了数字，后几位已经丢了，不当号也不当微信，原样进备注待核对（11-17）
+      if (是科学计数(x)) {
+        科学计数待核对(r, x, 附加);
         continue;
       }
       // 带字母的：英文分机写法（「… ext 12」「… x12」）还是号，其余整段当微信
@@ -466,6 +480,19 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
       return 微信 ? { phone: "", wechat: 前缀[2].trim(), 另: [] } : { phone: "", whatsapp: 前缀[2].trim(), 另: [] };
     }
     if (全部电话) return 拆全部电话(r, t, 附加);
+    // 科学计数法（「8.61391E+12」）：表格把长号存成了数字，后几位已经丢了，不当号，原样进备注待核对（11-17）
+    if (是科学计数(t)) {
+      科学计数待核对(r, t, 附加);
+      return { phone: "", 另: [] };
+    }
+    /*
+      字母数字混写的一整串（「sqin17548955941」「wxid_abc175…」）：整段按微信，不截里面的数字当电话（M-导入-34，11-17 员工反馈：
+      原来截出 17548955941 存成了电话）。英文分机写法（「… ext 12」）照旧是号；带冒号、空格这些的（「Tel: 138…」）照旧往下认
+    */
+    if (/[A-Za-z]/.test(t) && /^[A-Za-z0-9_\-.]+$/.test(t) && !/^\+?[\d\s\-()（）.]+(?:ext\.?|x)\s*\d{1,6}$/i.test(t)) {
+      出问题(r, "提醒", "格式不对", `电话格里写的「${t}」字母数字混写，整段按微信号放进了微信，没截里面的数字当电话`);
+      return { phone: "", wechat: t, 另: [] };
+    }
     const 全段 = t.split(/[,，;；/、\n]+/).map((x) => x.trim()).filter(Boolean);
     const 段 = 全段.filter((x) => !丢占位(r, x, "电话"));
     if (!段.length) return { phone: "", 另: [] };

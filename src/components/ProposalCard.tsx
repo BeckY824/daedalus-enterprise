@@ -33,6 +33,8 @@ import dynamic from "next/dynamic";
 import RescueKey from "@/app/(app)/customers/RescueKey";
 import { 沟通可选项目 } from "@/app/(app)/customers/[id]/actions";
 import { 沟通没项目话, 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
+import ReplyWindowInput from "@/components/ReplyWindowInput";
+import ScheduleAssignInput from "@/components/ScheduleAssignInput";
 
 // 项目类卡的格子（11-01 速度闸门）：AI 面板每一页都在，这块只有项目卡用到，出卡时才去拿，不进每页首屏
 const ProjectProposalFields = dynamic(() => import("@/components/ProjectProposalFields"), { ssr: false });
@@ -678,11 +680,21 @@ export default function ProposalCard({
                     <Select size="small" style={{ width: 160 }} showSearch optionFilterProp="label" placeholder="选一位" value={draft.ownerId || undefined} options={负责人选项} onChange={(v) => setDraft({ ...draft, ownerId: v })} />
                   </Field>
                 )}
+                {/* 指定分配时间（11-17 PR3）：指定分配、自动分配才有，和新建项目同一格（components/ScheduleAssignInput.tsx） */}
+                {(draft.分配方式 === 0 || draft.分配方式 === 1) && (
+                  <Field label="分配时间" block>
+                    <ScheduleAssignInput size="small" value={draft.定时分配 ?? null} onChange={(v) => setDraft({ ...draft, 定时分配: v ?? undefined })} />
+                  </Field>
+                )}
                 <Field label="业务线">
                   <Select size="small" style={{ width: 110 }} placeholder="选一条" value={draft.业务线} options={三种业务线.map((v) => ({ value: v, label: v }))} onChange={(v) => setDraft({ ...draft, 业务线: v })} />
                 </Field>
                 <Field label="当前进程">
                   <Select size="small" style={{ width: 150 }} value={draft.节点} options={线索节点们.map((v) => ({ value: v, label: v }))} onChange={(v) => setDraft({ ...draft, 节点: v })} />
+                </Field>
+                {/* 指定回复时间（11-17，选填）：和新建项目同两格（components/ReplyWindowInput.tsx） */}
+                <Field label="指定回复" block>
+                  <ReplyWindowInput size="small" value={{ 开始: draft.指定回复开始 ?? null, 结束: draft.指定回复结束 ?? null }} onChange={(v) => setDraft({ ...draft, 指定回复开始: v.开始 ?? undefined, 指定回复结束: v.结束 ?? undefined })} />
                 </Field>
               </>
             ) : 渠道名们 ? (

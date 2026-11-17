@@ -22,13 +22,15 @@ import { recordAudit, type Actor } from "../audit";
 import { 查完再写 } from "../check-then-write";
 import { 看全部 } from "../team-scope";
 import { 外贸键 } from "../customer-extra";
-import { 读现值, 改, 引用键, 摘联系人号, 记客户号, 记联系人号 } from "./apply";
+import { 读现值, 改, 引用键, 摘联系人号, 记客户号, 记联系人号, type 改的批 } from "./apply";
 import { 规, type 值表 } from "./values";
 import { 来源名, 实体名, 实体顺序, type 来源, type 实体 } from "./types";
 import { 建回项目, 是项目, 项目快照, 项目挂件 } from "./project-target";
 import { 客户状态自动, 跟着项目重算 } from "../enterprise/cust-status-auto-db";
 import { 卡点脱离沟通 } from "../project/blocker";
 import { 带客户编号 } from "@/lib/customer-no";
+import { 企业版只用项目 } from "../enterprise/project-only";
+import { 补待补的 } from "./nurture-rows";
 
 type Tx = Prisma.TransactionClient;
 type 引用行 = Prisma.EntExternalRefGetPayload<object>;
@@ -43,6 +45,9 @@ export type 留下明细 = { 实体: 实体; 外部ID: string; 名称: string; �
 /** 存在批次 revertNote 里的账 */
 type 账 = { 动作: "撤回" | "恢复"; 删掉: number; 还原: number; 恢复: number; 留下数: number; 留下: 留下明细[] };
 export type 撤回结果 = { 状态: string; 完了: boolean } & Omit<账, "动作">;
+
+/** 撤回 / 恢复让客户回公海时，这一批补过的潜客培育项目已经有人动过：项目留在原负责人名下，列进留下（P-撤销-01） */
+export const 培育留下话 = "这一批补的潜客培育项目已经有人动过，客户回了公海、项目留在原负责人名下";
 
 /** 别的地方正在处理这一行 / 这一批 */
 class 让位 extends Error {}
@@ -272,7 +277,7 @@ const 叫法 = (kind: string) => (kind === "sync" ? "同步" : kind === "resolve
 type 一行结果 = "删掉" | "还原" | "无";
 
 /** 项目碰过：这一趟删掉 / 改回的项目挂的客户（改了客户的，改前改后两位都记），企业版客户状态跟着重算 */
-async function 撤一行(tx: Tx, 源: 来源, 批次Id: string, row: 记的行, 碰过: Set<string>, 项目碰过: Set<string>): Promise<一行结果> {
+async function 撤一行(tx: Tx, 源: 来源, 批次Id: string, row: 记的行, 碰过: Set<string>, 项目碰过: Set<string>, 批?: 改的批): Promise<一行结果> {
   const e = row.entity as 实体;
   const ref = await tx.entExternalRef.findUnique({ where: 引用键(源, e, row.externalId) });
   const 写过 = 解<值表>(row.written, {});
@@ -308,7 +313,7 @@ async function 撤一行(tx: Tx, 源: 来源, 批次Id: string, row: 记的行, 
   const 还原了 = !!现值;
   if (现值) {
     if (!一致(现值, 写过)) throw new 不动("导入之后又改过");
-    await 改(tx, e, row.targetId, 拣(原, 键), 现值, new Date().toISOString());
+    await 改(tx, e, row.targetId, 拣(原, 键), 现值, new Date().toISOString(), 批);
     if (e === "customer") await 删空档案(tx, row.targetId);
     if (e === "followup") {
       碰过.add(String(现值.customerId));
@@ -330,7 +335,7 @@ async function 撤一行(tx: Tx, 源: 来源, 批次Id: string, row: 记的行, 
 
 type 回收行 = Prisma.EntTrashGetPayload<object>;
 
-async function 恢复一条(tx: Tx, t: 回收行, row: 记的行 | null, 碰过: Set<string>, 项目碰过: Set<string>): Promise<boolean> {
+async function 恢复一条(tx: Tx, t: 回收行, row: 记的行 | null, 碰过: Set<string>, 项目碰过: Set<string>, 批?: 改的批): Promise<boolean> {
   if (!row) throw new 不动("对应的导入记录不在了");
   const e = t.entity as 实体;
   const 存的对照 = 解<引用行 | null>(t.ref, null);
@@ -363,7 +368,7 @@ async function 恢复一条(tx: Tx, t: 回收行, row: 记的行 | null, 碰过:
     const 现值 = await 读现值(tx, e, t.targetId);
     if (现值) {
       if (!一致(现值, 改回)) throw new 不动("撤回之后又改过");
-      await 改(tx, e, t.targetId, 拣(解<值表>(row.written, {}), 键), 现值, new Date().toISOString());
+      await 改(tx, e, t.targetId, 拣(解<值表>(row.written, {}), 键), 现值, new Date().toISOString(), 批);
       if (e === "followup") 碰过.add(String(现值.customerId));
       if (e === "opportunity") {
         const 写的 = 解<值表>(row.written, {}).customerId;
@@ -459,6 +464,8 @@ export async function 撤回一批(批次Id: string, 用户: Actor, opts: { 段�
   const 截止 = 开始 + (opts.段长毫秒 ?? 段长());
   // 企业版客户状态跟着项目算：开关事务外读
   const 状态开 = await 客户状态自动();
+  // 无主客户出公海补潜客培育（M-公海-14）：开关事务外读
+  const 补培育 = await 企业版只用项目();
 
   const 一趟 = (段: 记的行[]) =>
     查完再写((tx) =>
@@ -472,8 +479,10 @@ export async function 撤回一批(批次Id: string, 用户: Actor, opts: { 段�
           const n = await tx.entImportRow.updateMany({ where: { id: row.id, undo: null }, data: { undo: "撤了" } });
           if (n.count !== 1) throw new 让位();
           try {
-            const r = await 撤一行(tx, 源, 批次Id, row, 碰过, 项目碰过);
+            const 批: 改的批 = { 批次Id, 补培育 };
+            const r = await 撤一行(tx, 源, 批次Id, row, 碰过, 项目碰过, 批);
             if (r !== "无") 加[r]++;
+            for (const 名 of 批.留下培育 ?? []) 留.push({ 实体: "customer", 外部ID: row.externalId, 名称: 名, 原因: 培育留下话 });
           } catch (e) {
             if (!(e instanceof 不动)) throw e;
             await tx.entImportRow.update({ where: { id: row.id }, data: { undo: "留下" } });
@@ -512,6 +521,8 @@ export async function 撤回一批(批次Id: string, 用户: Actor, opts: { 段�
   const n = await prisma.$transaction(async (tx) => {
     const n = await tx.entImportBatch.updateMany({ where: { id: 批次Id, status: "reverting" }, data: { status: "reverted", revertedAt: new Date() } });
     if (n.count !== 1) return n;
+    // 撤回 / 恢复让无主客户出了公海的：整批行都处理完、同一个事务末尾再补潜客培育（nurture-rows.ts）
+    await 补待补的(tx, 批次Id, 用户.id);
     await tx.entConflict.updateMany({ where: { batchId: 批次Id, status: "待定" }, data: { status: "已撤回" } });
     if (批.kind === "resolve") await 定的冲突回待定(tx, 批次Id);
     return n;
@@ -546,6 +557,8 @@ export async function 恢复一批(批次Id: string, 用户: Actor, opts: { 段�
   else if (批.status !== "restoring") throw new Error("这一批没有撤回，不用恢复");
   const 截止 = 开始 + (opts.段长毫秒 ?? 段长());
   const 状态开 = await 客户状态自动();
+  // 无主客户出公海补潜客培育（M-公海-14）：开关事务外读
+  const 补培育 = await 企业版只用项目();
 
   const 一趟 = (段: 回收行[]) =>
     查完再写((tx) =>
@@ -559,7 +572,9 @@ export async function 恢复一批(批次Id: string, 用户: Actor, opts: { 段�
           if (n.count !== 1) throw new 让位();
           const row = t.rowId ? await tx.entImportRow.findUnique({ where: { id: t.rowId } }) : null;
           try {
-            if (await 恢复一条(tx, t, row, 碰过, 项目碰过)) 恢复++;
+            const 批: 改的批 = { 批次Id, 补培育 };
+            if (await 恢复一条(tx, t, row, 碰过, 项目碰过, 批)) 恢复++;
+            for (const 名 of 批.留下培育 ?? []) 留.push({ 实体: "customer", 外部ID: row?.externalId ?? "", 名称: 名, 原因: 培育留下话 });
             if (row) await tx.entImportRow.update({ where: { id: row.id }, data: { undo: null } });
           } catch (e) {
             if (!(e instanceof 不动)) throw e;
@@ -594,6 +609,8 @@ export async function 恢复一批(批次Id: string, 用户: Actor, opts: { 段�
   const n = await prisma.$transaction(async (tx) => {
     const n = await tx.entImportBatch.updateMany({ where: { id: 批次Id, status: "restoring" }, data: { status: "done", revertedAt: null } });
     if (n.count !== 1) return n;
+    // 撤回 / 恢复让无主客户出了公海的：整批行都处理完、同一个事务末尾再补潜客培育（nurture-rows.ts）
+    await 补待补的(tx, 批次Id, 用户.id);
     // 撤回时留下没动的那几行：恢复完又是这一批的了，下次撤回照常处理
     await tx.entImportRow.updateMany({ where: { batchId: 批次Id, undo: "留下" }, data: { undo: null } });
     // 冲突回到待定；同一条原系统记录之后又有一笔待定的，就不再翻出这一笔

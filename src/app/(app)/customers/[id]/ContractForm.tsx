@@ -97,7 +97,8 @@ function Inner({
   const 守 = useFormGuard({
     open: true,
     form,
-    草稿键: editing ? null : `${订单 ? "新建订单" : "登记签约"}:${customerId}:${赢这一单?.id ?? ""}`,
+    草稿键: editing ? `编辑签约:${editing.id}` : `${订单 ? "新建订单" : "登记签约"}:${customerId}:${赢这一单?.id ?? ""}`,
+    编辑: !!editing,
     关: () => onClose(false),
     忙: saving,
     afterOpenChange: 聚焦首项,
@@ -241,6 +242,7 @@ function Inner({
       {后果框}
       {联动错 && <div className="csq-err" role="alert">{联动错}</div>}
       {成话 && <div className="rec-plan-said" role="status">{成话}</div>}
+      {守.提示}
       <Form
         form={form}
         layout="vertical"

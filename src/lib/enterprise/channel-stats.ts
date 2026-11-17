@@ -74,6 +74,8 @@ export type 统计用项目 = {
   currency: string;
   /** 项目创建时间：按时间段（本月 / 本季 / 自定义）算列表统计时用（2D），不给只进「全部」 */
   createdAt?: Date;
+  /** 补建的（老客户补的潜客培育，project/system-created.ts）：不是这段时间新建的，分档的「关联项目」不算它，「全部」照算 */
+  补建?: boolean;
   /** 建项目时落在哪个阶段（建项目那条节点日志的 toPhase）；不给当「线索」——手动建、线索转项目、向导都从线索起 */
   起步阶段?: string;
   /** 节点日志里到过的阶段（每条 toPhase）；不给就只看眼下的 phase */
@@ -128,9 +130,11 @@ export const 到达口径键: readonly 名单键[] = ["关联商机", "关联订
  * 全部 = null 不带
  */
 export type 名单时段 = { createdFrom?: string; createdTo?: string } | null | undefined;
+/** 分档的数是「这段时间新建的」，不含补建的项目（project/system-created.ts）：带了时段就再带 onlyNew=1，列表、公海页同样排掉，点进去条数对得上 */
 const 带时段 = (q: URLSearchParams, 时段: 名单时段) => {
   if (时段?.createdFrom) q.set("createdFrom", 时段.createdFrom);
   if (时段?.createdTo) q.set("createdTo", 时段.createdTo);
+  if (时段?.createdFrom || 时段?.createdTo) q.set("onlyNew", "1");
   return q;
 };
 

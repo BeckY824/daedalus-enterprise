@@ -20,6 +20,7 @@ import { useBusiness } from "@/lib/business-client";
 import { statusLabel, 外贸精简 } from "@/lib/business-config";
 import { 国家候选, 改过的档案, 客户等级, 客户等级说明, 规整官网, type 外贸档案 } from "@/lib/customer-extra";
 import { 查电话 } from "@/lib/phone";
+import { 验客户电话 } from "@/lib/enterprise/contact-format";
 import { 推荐方式 } from "@/lib/referrer-kind";
 import { 带走说法 } from "@/lib/carry-over";
 import { 聚焦首项 } from "@/lib/modal-focus";
@@ -32,6 +33,7 @@ import { 三种业务线, 客户业务线必填 } from "@/lib/enterprise/assign-
 import { 释义下拉, type 客户字典释义 } from "@/components/DictNote";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import { 渠道触点们, 客户介绍触点 } from "@/lib/enterprise/touchpoint";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 export type CustomerRow = {
   id: string;
@@ -196,7 +198,7 @@ function CustomerFormInner({
   const { 先问转走的项目 } = useTransferConfirm();
   const [saving, setSaving] = useState(false);
   // 点外面不关、关前问一句、新建的草稿留在本机（2026-10-19 客户反馈，lib/form-guard.tsx）
-  const 守 = useFormGuard({ open, form, 草稿键: editing ? null : "新建客户", 关: () => onClose(false), 忙: saving, afterOpenChange: 聚焦首项 });
+  const 守 = useFormGuard({ open, form, 草稿键: editing ? `编辑客户:${editing.id}` : "新建客户", 编辑: !!editing, 关: () => onClose(false), 忙: saving, afterOpenChange: 聚焦首项 });
   const [dup, setDup] = useState<DuplicateHit | null>(null);
   /** 保存时发现别人已经改过这条记录 */
   const [conflict, setConflict] = useState<SaveConflict | null>(null);
@@ -414,8 +416,8 @@ function CustomerFormInner({
       守.存好了();
       存上了.current = true;
       return { ok: true };
-    } catch {
-      return { ok: false, error: "保存失败，请刷新确认结果后重试" };
+    } catch (出错) {
+      return { ok: false, error: 动作出错话(出错, "保存失败，请刷新确认结果后重试") };
     } finally {
       setSaving(false);
     }
@@ -436,6 +438,7 @@ function CustomerFormInner({
       destroyOnHidden
     >
       {成话 && <div className={成话.错 ? "csq-err" : "rec-plan-said"} role={成话.错 ? "alert" : "status"}>{成话.话}</div>}
+      {守.提示}
       <Form
         form={form}
         layout="vertical"
@@ -539,6 +542,12 @@ function CustomerFormInner({
                     if (外贸档 && !v?.trim() && 电话必填) return Promise.reject(new Error(四选一说法));
                     // 共享试用区里号码是打了码给人看的：没动它就放行，服务端会认回原号（排查 A2）
                     if (editing && v && v.includes("*") && v === editing.phone) return Promise.resolve();
+                    // 企业版（11-17）：和建档向导、联系人表单同一套手机号规矩（带字母汉字整格拒、国内 1[3-9] 开头 11 位）；编辑时清空交给服务端看还有没有别的联系方式
+                    if (企业) {
+                      if (!v?.trim()) return !editing && 电话必填 ? Promise.reject(new Error("请输入联系电话")) : Promise.resolve();
+                      const 企 = 验客户电话(v);
+                      return 企.ok ? Promise.resolve() : Promise.reject(new Error(企.error));
+                    }
                     const r = 查电话(v, { 必填: 电话必填 });
                     return r.ok ? Promise.resolve() : Promise.reject(new Error(r.error));
                   },
@@ -1064,8 +1073,8 @@ function QuickChannelModal({
       }
       建好.current = { id: res.id, name: v.name.trim() };
       return { ok: true };
-    } catch {
-      return { ok: false, error: "没建上，请重试" };
+    } catch (出错) {
+      return { ok: false, error: 动作出错话(出错, "没建上，请重试") };
     } finally {
       setSaving(false);
     }

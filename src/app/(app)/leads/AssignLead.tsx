@@ -20,6 +20,7 @@ import type { 项目线 } from "@/lib/enterprise/assign-line";
 import type { 分出去的线索 } from "@/lib/enterprise/lead-assign";
 import { 公海规则 } from "@/lib/enterprise/pool-rules";
 import { 转走项目说法 } from "@/lib/carry-over";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 /** 「分配」框的接手人默认上次选的（原型 pr.assign）：只记在这台电脑上，不在这次可选名单里就不带 */
 const 上次接手人键 = "assign-last-to";
@@ -121,8 +122,8 @@ export function useBatchAutoAssign(
       set批错(null);
       try {
         res = await 批量自动分配(ids, { ...传给服务端, 原负责人们 });
-      } catch {
-        return void set批错("没分成，请稍后再试");
+      } catch (出错) {
+        return void set批错(动作出错话(出错, "没分成，请稍后再试"));
       }
       if (!res.ok) return void set批错(res.error);
     }
@@ -364,7 +365,8 @@ export function AssignedOutButton() {
           rowKey={(r) => r.projectId ?? r.leadId ?? ""}
           loading={行 === null}
           dataSource={行 ?? []}
-          pagination={{ pageSize: 10, hideOnSinglePage: true }}
+          // 超过 50 条 antd 自己摆出「条/页」：写 pageSize 是受控值、换了不生效，只给默认值（11-17 同渠道页那条）
+          pagination={{ defaultPageSize: 10, hideOnSinglePage: true }}
           locale={{ emptyText: "还没有分出去的线索" }}
           scroll={{ x: 680 }}
           columns={[

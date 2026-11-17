@@ -13,6 +13,12 @@
  *   - 客户三态（M-公海-16 起，lib/enterprise/tri-state-db.ts）：00:05 那一遍按客户算状态、写钟和留痕，待回收期满的自动进客户公海；
  *     组织规则里三态关着这一段完全不跑。三态开着时项目超时回收不再跑（db.ts 按规则收回 直接返回）
  *   - 同一个钟顺带发三态提醒（lib/enterprise/tri-state-notice.ts）：北京 08:00 起一天一遍，一人一天一条汇总；停机只补当天这一条
+ *   - 同一个钟顺带发「指定回复时间」提醒（lib/enterprise/reply-notice.ts，11-17）：每分钟一遍，客户要求的联系时间前 30 分钟提醒负责人；
+ *     停机按状态补（截止没到的照常提醒、过了截止的不补），不用水位
+ *   - 同一个钟顺带执行定时分配（lib/enterprise/scheduled-assign.ts，11-17）：每分钟一遍，先作废状态不对的定时，再执行到点的；
+ *     停机按状态补（开机那遍把过了点、还没执行的全部执行，通知写晚了多久），不用水位
+ *   - 同一个钟顺带做超时未跟进自动转（lib/enterprise/reply-overdue.ts，11-17）：指定回复时间过 1 小时没记有效沟通提醒，再 30 分钟自动转下一位；
+ *     北京 22:00–08:00 不执行；停机按状态补，一遍只走一步（补发超时提醒后再等 30 分钟才转），链走到哪记在 EntReplyOverdue
  *
  * 服务停过怎么补（10c，2026-11-10）：这些活都挂在本进程的钟上，服务停着就不跑。
  *   - 起钟时马上跑一遍（不等第一分钟），各自的时点照旧（00:05 / 09:00 没到的那几样等到点）
@@ -32,6 +38,9 @@ import { 挂起移交作废 } from "@/lib/enterprise/handover-expire";
 import { 挂靠超时转上级 } from "@/lib/enterprise/attach-approval";
 import { 三态夜扫, type 三态夜扫明细 } from "@/lib/enterprise/tri-state-db";
 import { 钟上三态提醒 } from "@/lib/enterprise/tri-state-notice";
+import { 钟上指定回复提醒 } from "@/lib/enterprise/reply-notice";
+import { 钟上定时分配, type 定时分配明细 } from "@/lib/enterprise/scheduled-assign";
+import { 钟上超时自动转, type 超时转明细 } from "@/lib/enterprise/reply-overdue";
 import { dayjs } from "../utils";
 
 export const 夜扫时刻 = { 时: 0, 分: 5 } as const;
@@ -54,7 +63,7 @@ async function 夜里扫超时明细(现在: Date): Promise<超时收回明细 |
 }
 
 /** 钟上一遍各样活各做了多少（出错的那样是 null，下一遍再试）。申请移交、挂靠审批那两段不在这里记数 */
-export type 一遍明细 = { 超时: 超时收回明细 | null; 回收站: number | null; 到期: 到期提醒明细 | null; 三态?: 三态夜扫明细 | null };
+export type 一遍明细 = { 超时: 超时收回明细 | null; 回收站: number | null; 到期: 到期提醒明细 | null; 三态?: 三态夜扫明细 | null; 回复提醒?: number; 定时分配?: 定时分配明细; 超时转?: 超时转明细 };
 
 /** 三态那一段：到了 00:05 才跑；三态没开 / 不是企业版 = null */
 export async function 夜里扫三态(现在: Date): Promise<三态夜扫明细 | null> {
@@ -79,6 +88,9 @@ export function 补跑日志行(r: 一遍明细, 启动: boolean): string {
     `将回收提醒 ${数(超时?.将回收提醒, "条")}、` +
     `到期提醒 ${数(到期?.到期, "条")}、逾期提醒 ${数(到期 ? 到期.逾期 + 到期.补逾期 : null, "条")}${到期?.补自 ? `（从 ${到期.补自} 补起，补了 ${到期.补逾期} 条）` : ""}、` +
     `回收站清理 ${数(r.回收站, "条")}` +
+    (r.回复提醒 ? `、指定回复提醒 ${r.回复提醒} 条` : "") +
+    (r.定时分配?.执行 || r.定时分配?.没分出去 ? `、定时分配执行 ${r.定时分配.执行} 条（没分出去 ${r.定时分配.没分出去}）` : "") +
+    (r.超时转?.提醒 || r.超时转?.转出 ? `、超时未跟进提醒 ${r.超时转.提醒} 条、自动转 ${r.超时转.转出} 条` : "") +
     (r.三态 ? `、客户三态算了 ${r.三态.算了} 位（换状态 ${r.三态.换状态}、自动进公海 ${r.三态.进公海.length}）` : "")
   );
 }
@@ -118,6 +130,18 @@ export function 启动夜扫(间隔毫秒 = 60_000, 先等?: Promise<unknown>): 
       .then(() => 钟上到期提醒明细(现在))
       .then((x) => { r.到期 = x; })
       .then(() => undefined, (e) => console.error("[到期提醒] 出错，下一遍再试", e))
+      // 定时分配（11-17）：到点的分出去，排在指定回复提醒前面（分出去了提醒就给接手人）；自己不抛，这里再兜一道
+      .then(() => 钟上定时分配(现在))
+      .then((x) => { r.定时分配 = x; })
+      .then(() => undefined, (e) => console.error("[定时分配] 出错，下一遍再试", e))
+      // 指定回复时间提醒（11-17）：到分钟，自己不抛，这里再兜一道
+      .then(() => 钟上指定回复提醒(现在))
+      .then((n) => { r.回复提醒 = n; })
+      .then(() => undefined, (e) => console.error("[指定回复提醒] 出错，下一遍再试", e))
+      // 超时未跟进自动转（11-17）：排在指定回复提醒后面；夜里（北京 22:00–08:00）自己不跑；自己不抛，这里再兜一道
+      .then(() => 钟上超时自动转(现在))
+      .then((x) => { r.超时转 = x; })
+      .then(() => undefined, (e) => console.error("[超时自动转] 出错，下一遍再试", e))
       .then(() => 挂起移交作废(现在))
       .then(() => undefined, (e) => console.error("[移交作废] 出错，下一遍再试", e))
       // 挂靠申请 24 小时没人处理往上转一级，到总管理为止（P-挂靠-02）：自己不抛，这里再兜一道

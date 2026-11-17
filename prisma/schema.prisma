@@ -1029,6 +1029,16 @@ model Project {
   /// 业务线（企业版，迁移 106，清单 A1，11-01 拍板手动填）：内贸 / 外贸 / 暂不分配；企业版新建必填，空 = 老数据。自动分配只在这条线勾的部门里挑人，
   /// 暂不分配不进自动分配；超时回收按它分内外贸时长（C7）。读它用 lib/enterprise/assign-line.ts 的 项目业务线（空 → 负责人的线 → 内贸）
   bizLine              String?
+  /// 指定回复时间（企业版，迁移 148，11-17）：客户要求什么时候联系，开始 / 结束两个时刻，填一个也行，精确到分钟；
+  /// 按北京时间录入和显示、存 UTC 时刻，不存时区（待客户方确认：问题 3）。都可空 = 没填（界面「—」）。
+  /// 规整、显示见 lib/project/time-fields.ts；不写进下一步时间、不动超时回收
+  replyStartAt         DateTime?
+  replyEndAt           DateTime?
+  /// 指定分配时间（企业版，迁移 149，11-17）：新建时选「指定时间」= 到点由后台定时任务分出去（lib/enterprise/scheduled-assign.ts）。
+  /// 有值 = 还没到点、还在待分配（awaitAssignAt 同时有值）；到点执行、取消、清了待分配标记、进回收站都清空。
+  /// scheduledAssignTo = 指定分配到点分给谁；空 = 到点自动分配（不建外键，人停用了到点按「分不出去」办）
+  scheduledAssignAt    DateTime?
+  scheduledAssignTo    String?
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
   /// 企业版软删（2026-10-29，P9）：空 = 没删；有值 = 进了回收站，30 天后清掉。读的时候 lib/enterprise/soft-delete.ts 统一滤掉
@@ -1051,6 +1061,8 @@ model Project {
   entLeadVerifyLogs EntLeadVerifyLog[]
   /// 企业版冷项目（迁移 123）：有这一行 = 现在是冷的。见 EntProjectCold
   entCold           EntProjectCold?
+  /// 企业版超时未跟进自动转（迁移 150，11-17）：指定回复时间过了没人跟进的那条链，一个项目一行。见 EntReplyOverdue
+  replyOverdue      EntReplyOverdue?
   /// 企业版教练主题（迁移 144，11-17）。见 EntCoachTopic
   coachTopics       EntCoachTopic[]
   /// 企业版项目关联客户 / 联系人（2026-10-29 P17，迁移 094 / 095）。见 ProjectCustomer / ProjectContact
@@ -1064,6 +1076,11 @@ model Project {
   @@index([sourceLeadId])
   @@index([pooledAt])
   @@index([awaitAssignAt])
+  /// 指定回复时间到点提醒按时刻扫（迁移 148）
+  @@index([replyStartAt])
+  @@index([replyEndAt])
+  /// 定时分配到点按时刻扫（迁移 149）
+  @@index([scheduledAssignAt])
   /// 渠道统计按项目来源取数（迁移 077）
   @@index([channelId])
   /// 企业版新线索页按阶段筛、按最近更新倒序取前 500（迁移 065）
@@ -1918,6 +1935,32 @@ model EntProjectCold {
   /// 提醒到第几级：0 = 只标了冷，1 = 已抄直属上级，2 = 已给负责人三选一，3 = 已推条线总管理
   level     Int      @default(0)
   updatedAt DateTime @updatedAt
+}
+
+/// 企业版「超时未跟进自动转」（2026-11-17，迁移 150，lib/enterprise/reply-overdue.ts）：线索阶段、填了指定回复时间的项目，
+/// 负责人到点 + 1 小时还没记有效沟通 → 超时提醒；再过 30 分钟还没记 → 自动收回、分给下一位销售，接手人同样计时，不限次数。
+/// 一个项目一行，记眼下这一位走到哪一步；记了有效沟通 = 这条链停了（stoppedAt）。改了指定回复时间整行重来。项目删了随项目级联
+model EntReplyOverdue {
+  projectId String    @id
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// 起链时的超时基准（指定回复时间的结束，没填结束用开始）；和项目上现在的对不上 = 改过时间，整行重来
+  anchorAt  DateTime
+  /// 眼下这一位（链上的负责人）；和项目负责人对不上 = 别人手动换了人，按新负责人重新计时
+  holderId  String
+  /// 这一位的计时起点：第一位 = 超时基准（接手更晚按接手时刻），后来的 = 接手那一刻
+  since     DateTime
+  /// 超时提醒实际发出的那一刻；空 = 还没到 / 还没发。自动转出按它 + 30 分钟算
+  overdueAt DateTime?
+  /// 这一轮已经超时过的人（JSON 数组）；人人都轮过一遍了就开新一轮
+  tried     String    @default("[]")
+  /// 自动转了几次（只记数，不限次数）
+  transfers Int       @default(0)
+  /// 记了有效沟通、链停下的那一刻；空 = 还在走
+  stoppedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([holderId])
 }
 
 /// 企业版客户三态 · 沟通第一次被判为有效的时刻（2026-11-12，迁移 132，额度重置判「实时」用，tri-state-quota.ts 额度沟通日of）。

@@ -9,6 +9,7 @@ import { useViewAs } from "@/components/ViewAsContext";
 import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 import { 无负责人占位名 } from "@/lib/pool";
 import { useSettingsNote } from "./InlineNote";
+import { 出错原话 } from "@/lib/stale-deploy";
 
 /**
  * 企业版导入的试跑报告：看清这次会写多少、哪些跳过、映射认得对不对；改了映射重新试跑；确认后正式导入。
@@ -23,7 +24,7 @@ const 进备注 = "+remark";
 
 const 说明色: Record<string, string> = { 规则: "default", AI: "purple", 手动: "blue" };
 
-const 错话 = (e: unknown) => (e instanceof Error ? e.message : "没成功，请重试");
+const 错话 = (e: unknown) => 出错原话(e, "没成功，请重试");
 
 export default function EnterpriseImportReport({
   批次Id,

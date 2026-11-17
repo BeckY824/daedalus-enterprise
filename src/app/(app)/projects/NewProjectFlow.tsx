@@ -9,6 +9,7 @@ import type { 可选成员 } from "@/lib/utils";
 import { 取建档数据 } from "./new/wizard-actions";
 import type { 建档数据, 项目开关 } from "./new/ProjectWizard";
 import { 搜客户, type 可挑客户 } from "../customers/[id]/pick";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 /** 「新增项目」→「新客户」的建档向导框：点了才加载，不压首屏 JS（同客户页「新增客户」） */
 const 建档弹窗 = dynamic(() => import("./new/ProjectWizard").then((m) => m.建档弹窗), { ssr: false });
@@ -107,8 +108,8 @@ export function useNewProjectFlow({ 建档: 给的 = null, 起手开着 = false 
       set标题(t);
       set开关(项目);
       set建档开着(true);
-    } catch {
-      报开档错(t, "没打开，请重试");
+    } catch (出错) {
+      报开档错(t, 动作出错话(出错, "没打开，请重试"));
     } finally {
       set取档中(false);
     }

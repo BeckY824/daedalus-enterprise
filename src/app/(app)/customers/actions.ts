@@ -55,9 +55,12 @@ import { 补潜客培育, 要补潜客培育 } from "@/lib/project/nurture";
 import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
 import { 算市场转客户 } from "@/lib/enterprise/market-transfer";
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
-import { 选的原因, 可选项 } from "@/lib/enterprise/dict";
-import { 验号码 } from "@/lib/enterprise/contact-format";
-import { 企业号码查重, 全公司查号, 撞号结论, 记号码 } from "@/lib/enterprise/contact-dedupe";
+import { 选的原因, 可选项, 客户分配序号 } from "@/lib/enterprise/dict";
+import { 建档记自持, 补客户分配 } from "@/lib/enterprise/customer-assign-way";
+import { 验号码, 验客户电话 } from "@/lib/enterprise/contact-format";
+import { 客户还有别的联系方式, 同步电话子表, 客户电话撞号, 清空电话拦话, 删光号码拦话, 电话子表键们 } from "@/lib/enterprise/customer-phone-db";
+import { 企业号码查重, 全公司查号, 撞号结论, 记号码, 一行号全公司查, 回收站里查号, 回收站里有提示, 库类型到号码类型 } from "@/lib/enterprise/contact-dedupe";
+import { 验联系人号码们, 号码种类表, 种类叫法 } from "@/lib/enterprise/customer-v2-db";
 import { 号码撞上, 客户名查重, 名撞说法, type 名撞结论 } from "@/lib/enterprise/dupe-ledger";
 import { setOppStatus } from "../opportunities/actions";
 import { 认得, 联系人带号 } from "@/lib/project/hook";
@@ -391,9 +394,29 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   const 按邮箱认 = 外贸 && !原号 && Boolean(交的邮箱);
   const 按微信认 = 外贸 && !原号 && !交的邮箱 && Boolean(交的微信);
   const 按阿里认 = 外贸 && !原号 && !交的邮箱 && !交的微信 && Boolean(交的阿里);
-  const 电话 = 改前 && 原号 === 改前.phone ? { ok: true as const, phone: 改前.phone } : 查电话(原号, { 必填: 改前 ? Boolean(改前.phone) : !按邮箱认 && !按微信认 && !按阿里认 && !企号别的 && !联系人带号(接着) });
+  const 电话必填 = 改前 ? Boolean(改前.phone) : !按邮箱认 && !按微信认 && !按阿里认 && !企号别的 && !联系人带号(接着);
+  /*
+    企业版（11-17 员工反馈）：电话和建档向导、联系人表单同一套手机号规矩（验客户电话：带字母汉字整格拒、国内 1[3-9] 开头 11 位、国外 + 8–15 位）。
+    编辑时清空电话不再一律拦：这位还有别的对的联系方式（联系人的号、客户本身的号）就放（M-必填-01）
+  */
+  const 企电话 = 企业版() && !(改前 && 原号 === 改前.phone) ? 验客户电话(原号) : null;
+  const 电话 = 改前 && 原号 === 改前.phone
+    ? { ok: true as const, phone: 改前.phone }
+    : 企电话
+      ? 企电话.ok
+        ? 企电话.值 || !电话必填 || 改前 ? { ok: true as const, phone: 企电话.值 } : { ok: false as const, error: "请输入联系电话" }
+        : { ok: false as const, error: 企电话.error }
+      : 查电话(原号, { 必填: 电话必填 });
   if (!电话.ok) return { ok: false, error: 外贸 && !改前 && !原号 ? 外贸至少一种 : 电话.error };
-  const phone = 电话.phone;
+  // 企业版清空电话：客户本身还有别的手机（号码几行里的）就升成电话（电话 = 第一个手机）；没有就看还有没有别的对的联系方式（M-必填-01）
+  const 升上来 = 企电话 && 改前 && 改前.phone && !电话.phone
+    ? await prisma.contactMethod.findFirst({
+        where: { customerId: 改前.id, contactId: null, kind: "phone", numberKey: { notIn: 电话子表键们(改前.phone) } },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { value: true },
+      })
+    : null;
+  if (企电话 && 改前 && 改前.phone && !电话.phone && !升上来 && !(await 客户还有别的联系方式(prisma, 改前.id))) return { ok: false, error: 清空电话拦话 };
+  const phone = 升上来?.value ?? 电话.phone;
   // 按邮箱 / 微信认的那位（没有电话）把两样都清空，就再也认不出是谁了：不许，和「原来有号码的不许清空」同一条
   if (外贸 && 改前 && !phone && (改前邮箱 || 改前微信 || 改前阿里) && !交的邮箱 && !交的微信 && !交的阿里) {
     return { ok: false, error: 改前邮箱
@@ -430,6 +453,10 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   if (phone && !(改前 && phone === 改前.phone)) {
     const 撞 = await 撞别人(async () => 同号条件(prisma, phone, await 分机留存起()), `手机号 ${phone}`);
     if (撞) return { ok: false, error: 撞 };
+    // 企业版：再全公司比一遍联系人、号码子表、回收站（同建档向导；排除这位自己）
+    const 企验 = 企电话?.ok ? 企电话 : null;
+    const 企撞 = 企验 ? await 客户电话撞号(prisma, input.id, 企验, me.id, await 读的我(defaultClient)) : null;
+    if (企撞) return { ok: false, error: 企撞 };
   }
   // 按邮箱认的：邮箱没动的不查（同上面号码没动不查）。有电话的不拿邮箱挡——同一公司几位联系人共用 info@ 常见
   const 查邮箱 = 按邮箱认 && !phone && !(改前 && 邮箱键(交的邮箱) === 邮箱键(改前邮箱));
@@ -686,6 +713,8 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       看全部：团队版业务员录到同事已有的号码也要挡，和线索转客户同一条（上面那次查重只看得到自己的）
     */
     const 起 = await 分机留存起();
+    // 销售自己建档、记在自己名下：客户分配空着就记「自持」（11-17，customer-assign-way.ts）；表单里选了的不改
+    const 记自持 = await 建档记自持(me, salesOwnerId);
     const 建了 = await 查完再写(async (tx) => {
       if (phone) {
         const dup = await 看全部(async () => tx.customer.findFirst({ where: await 同号条件(tx, phone, 起), select: 撞到的字段 }));
@@ -701,8 +730,11 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       }
       // 客户编号（11-17 PR-1）：同一个事务里取号，建不成号跟着回滚
       const created = await tx.customer.create({ data: await 带客户编号(tx, data) });
+      if (记自持) await 补客户分配(tx, created.id, 客户分配序号.自持);
       await 写外贸档案(tx, created.id, { ...档案.data, ...(企号?.类型 === "邮箱" ? { email: 企号.值 } : 企号?.类型 === "微信" ? { wechat: 企号.值 } : {}) }, false);
       if (企号) await 记号码(tx, { 刚建的: created.id }, null, 企号);
+      // 企业版没选号码类型、填了电话的：电话也记进子表（客户本身的号，带归属地）；和企号同号的 记号码 自己跳过
+      else if (企电话?.ok && 企电话.值) await 记号码(tx, { 刚建的: created.id }, null, { 类型: "手机号", 值: 企电话.值, 键: 企电话.键 });
       if (认得(接着)) await 接着(tx, created.id);
       // M-公海-14：企业版项目模式下新客户至少带 1 个潜客培育项目（向导已建了项目的不补；老数据不补）
       if (要补潜客培育(企业版(), b.projectMode)) await 补潜客培育(tx, { customerId: created.id, 客户名: created.name, ownerId: created.salesOwnerId, creatorId: me.id });
@@ -754,10 +786,17 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   const bump = (from: Date) => new Date(Math.max(Date.now(), from.getTime() + 1));
 
   // 留痕要对比前后值；改前 在上面算归属时已经取过一份
-  const first = await prisma.customer.updateMany({
-    where: { id: input.id, updatedAt: expected },
-    data: { ...data, updatedAt: bump(expected) },
-  });
+  // 企业版电话换了 / 清了：子表里客户本身那行跟着换（和主表同一笔事务）
+  const 换电话 = 企业版() && !!改前 && (改前.phone ?? "") !== (phone ?? "");
+  const 写主表 = async (where: Prisma.CustomerWhereInput & { id: string }, 改: Record<string, unknown>) =>
+    换电话 && "phone" in 改
+      ? prisma.$transaction(async (tx) => {
+          const r = await tx.customer.updateMany({ where, data: 改 });
+          if (r.count === 1) await 同步电话子表(tx, where.id, 改前!.phone, phone);
+          return r;
+        })
+      : prisma.customer.updateMany({ where, data: 改 });
+  const first = await 写主表({ id: input.id, updatedAt: expected }, { ...data, updatedAt: bump(expected) });
   if (first.count === 1) {
     const 改前行 = 改前 as unknown as Record<string, unknown>;
     await 记一笔(diffKeys(改前行, data as Record<string, unknown>), 改前行);
@@ -841,10 +880,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     // 单独订正的渠道负责人不在 base 快照里，diffKeys 看不见它，要显式带上
     if (input.channelOwnerId !== undefined) patch.channelOwnerId = data.channelOwnerId;
 
-    const merged = await prisma.customer.updateMany({
-      where: { id: input.id, updatedAt: current.updatedAt },
-      data: { ...patch, updatedAt: bump(current.updatedAt) },
-    });
+    const merged = await 写主表({ id: input.id, updatedAt: current.updatedAt }, { ...patch, updatedAt: bump(current.updatedAt) });
     if (merged.count === 1) {
       await 记一笔(mine, currentRow, true);
       await 改外贸档案(me, input.id, data.name, 档案.data, b.customer);
@@ -1160,12 +1196,13 @@ export type BulkResult =
 export async function 转走项目预览of(ids: string[], 新负责人?: string): Promise<转走项目预览> {
   const me = await requireUser();
   if (!企业版()) return { 项目数: 0, 项目: [] };
-  // 不传 = 转给自己（公海领取）
+  // 不传 = 转给自己（公海领取）；空串 = 还没挑人（客户转让框的自动分配）
   const 新 = 新负责人 ?? me.id;
-  if (!Array.isArray(ids) || typeof 新 !== "string" || !新) return { 项目数: 0, 项目: [] };
+  if (!Array.isArray(ids) || typeof 新 !== "string") return { 项目数: 0, 项目: [] };
   const 们 = ids.filter((x) => typeof x === "string");
-  // 顺带说转给这位要不要接手人确认：和真转时（assignSalesOwner）同一个判定，转让框照它写「生效」那一条（P-转-16）
-  const [预览, 走法] = await Promise.all([数转走的项目(们, 新), 转让走交接(me, 新, 们)]);
+  // 顺带说转给这位要不要接手人确认：和真转时（assignSalesOwner）同一个判定，转让框照它写「生效」那一条（P-转-16）。
+  // 空串 = 客户转让框选了自动分配、还没挑人：只数会一起走的项目（同批量自动分配）；自动分配是市场转销售，不走确认（P-转-17）
+  const [预览, 走法] = await Promise.all([数转走的项目(们, 新), 新 ? 转让走交接(me, 新, 们) : null]);
   return { ...预览, 要确认: 走法 === "申请" };
 }
 
@@ -1873,7 +1910,11 @@ export type PatchableKey = (typeof PATCHABLE)[number];
  * 只改一个字段。和 saveCustomer 的整表提交不同，单字段写入天然不会覆盖别人改的其它字段，
  * 所以不需要快照比对；留痕照记。
  */
-export async function patchCustomer(id: string, key: PatchableKey, value: string | null): Promise<{ ok: true; 带走?: 带走数; 交接中?: number; 交接已在路上?: number; 申请移交?: boolean } | { ok: false; error: string }> {
+/**
+ * 就地改一格。ok 时带回 值 = 服务端最后存下的样子（规整过的；没动 = 库里现值）：格子按它显示，不按人敲的那串（11-17 员工反馈：
+ * 电话格敲了带字母的串，原来显示到刷新才变回去）。不是一串字的格（日期、负责人）不带
+ */
+export async function patchCustomer(id: string, key: PatchableKey, value: string | null): Promise<{ ok: true; 值?: string | null; 带走?: 带走数; 交接中?: number; 交接已在路上?: number; 申请移交?: boolean } | { ok: false; error: string }> {
   const me = await requireUser();
   const b = await getBusiness();
   if (!PATCHABLE.includes(key) || (企业版才有的格.includes(key) && !企业版())) return { ok: false, error: "这个字段不能在这里改" };
@@ -1908,7 +1949,7 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
     const 人 = await prisma.customer.findUnique({ where: { id }, select: { name: true, extra: true } });
     if (!人) return { ok: false, error: `这条${b.customer}已被删除` };
     const 原 = 人.extra?.[k] ?? null;
-    if (原 === r.v) return { ok: true };
+    if (原 === r.v) return { ok: true, 值: 原 };
     await 写外贸档案(prisma, id, { [k]: r.v });
     await recordAudit({
       user: me, action: "update", entity: "Customer", entityId: id,
@@ -1918,7 +1959,7 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
     revalidatePath(`/customers/${id}`);
     revalidatePath("/customers");
     await 客户存了推项目(me, id);
-    return { ok: true };
+    return { ok: true, 值: r.v };
   }
   const data: Record<string, unknown> = {};
   if (key === "followStatus") {
@@ -1979,7 +2020,7 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
     const 原 = await prisma.customer.findUnique({ where: { id }, select: { name: true, remark: true } });
     if (!原) return { ok: false, error: `这条${b.customer}已被删除` };
     const 名 = (v as string).trim();
-    if (名 === 原.name) return { ok: true };
+    if (名 === 原.name) return { ok: true, 值: 原.name };
     const 太长 = 企业版客户太长(b.customer, { name: 名 }, 原);
     if (太长) return { ok: false, error: 太长 };
     data.name = 名;
@@ -2010,10 +2051,34 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
     const 原 = await prisma.customer.findUnique({ where: { id }, select: { phone: true } });
     if (!原) return { ok: false, error: `这条${b.customer}已被删除` };
     const 号 = String(认回打码号(v, 原.phone) ?? "").trim();
-    if (号 === (原.phone ?? "")) return { ok: true };
+    if (号 === (原.phone ?? "")) return { ok: true, 值: 原.phone };
+    /*
+      企业版（11-17 员工反馈）：和建档向导、联系人表单同一套手机号规矩（验客户电话）——带字母、汉字的整格拒（不截数字），
+      国内 1[3-9] 开头 11 位、国外 + 开头 8–15 位；清空看还有没有别的联系方式（M-必填-01）；全公司查重（排除自己）；子表那行跟着换
+    */
+    if (企业版()) {
+      const 验 = 验客户电话(号);
+      if (!验.ok) return { ok: false, error: 验.error };
+      if (验.值 === 原.phone) return { ok: true, 值: 原.phone };
+      if (验.值) {
+        const 撞 = await 客户电话撞号(prisma, id, 验, me.id, await 读的我(defaultClient));
+        if (撞) return { ok: false, error: 撞 };
+        const 同事撞 = await 问同事("phone", 验.值, id);
+        if (同事撞) return { ok: false, error: 同事撞号说法(`手机号 ${验.值}`, 同事撞.同事, 同事撞.客户名, b.customer) };
+        data.phone = 验.值;
+      } else {
+        // 清空：客户本身还有别的手机（号码几行里的）就升成电话（电话 = 第一个手机）；没有就看还有没有别的对的联系方式（M-必填-01）
+        const 下一个 = await prisma.contactMethod.findFirst({
+          where: { customerId: id, contactId: null, kind: "phone", numberKey: { notIn: 电话子表键们(原.phone) } },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { value: true },
+        });
+        if (!下一个 && !(await 客户还有别的联系方式(prisma, id))) return { ok: false, error: 清空电话拦话 };
+        data.phone = 下一个?.value ?? "";
+      }
+    } else {
     const 电话 = 查电话(号, { 必填: Boolean(原.phone) });
     if (!电话.ok) return { ok: false, error: 电话.error };
-    if (电话.phone === 原.phone) return { ok: true };
+    if (电话.phone === 原.phone) return { ok: true, 值: 原.phone };
     if (电话.phone) {
       const dup = await 看全部(async () => prisma.customer.findFirst({
         where: { AND: [await 同号条件(prisma, 电话.phone, await 分机留存起()), { id: { not: id } }] },
@@ -2024,6 +2089,7 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
       if (撞) return { ok: false, error: 同事撞号说法(`手机号 ${电话.phone}`, 撞.同事, 撞.客户名, b.customer) };
     }
     data.phone = 电话.phone;
+    }
   } else if (key === "addrDetail") {
     const 详 = 规整详细地址(v);
     if (!详.ok) return { ok: false, error: 详.error };
@@ -2054,6 +2120,13 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
       // 负责人没变却改不到：限定层挡的（只读的客户），原来单条 update 在这里抛，照旧说只读
       return { ok: false, error: await 只读话(defaultClient) };
     }
+  } else if (key === "phone" && 企业版()) {
+    // 电话换了 / 清了：子表里客户本身那行跟着换（同一笔事务，同导入 apply.ts）
+    const 旧 = (before as { phone?: string }).phone ?? "";
+    await prisma.$transaction(async (tx) => {
+      await tx.customer.update({ where: { id }, data });
+      await 同步电话子表(tx, id, 旧, data.phone as string);
+    });
   } else await prisma.customer.update({ where: { id }, data });
   const labels = customerFieldLabels(b);
   await recordAudit({
@@ -2071,7 +2144,8 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
   revalidatePath(`/customers/${id}`);
   revalidatePath("/customers");
   await 客户存了推项目(me, id);
-  return { ok: true, 带走 };
+  const 存的 = data[key];
+  return { ok: true, 带走, ...(key !== "salesOwnerId" && (typeof 存的 === "string" || 存的 === null) ? { 值: 存的 } : {}) };
 }
 
 /**
@@ -2102,6 +2176,76 @@ export async function patchCustomerRegion(id: string, 址: Partial<客户地址>
   revalidatePath("/customers");
   await 客户存了推项目(me, id);
   return { ok: true };
+}
+
+/**
+ * 客户本身的号码几行（11-17，客户页资料卡「号码」）：联系方式子表里 contactId 空的那几行，按「类型 + 号码」整组换（同联系人卡）。
+ * 电话那一格（第一个手机）不在这几行里，照旧就地改；电话空着时这几行里的第一个手机升成电话。
+ * 规矩同联系人表单：号码类型字典、格式（验一行号码）、占位号；只验新出现 / 改过的行（导入进来的老号验不过，不挡改别的行）；
+ * 新出现的号全公司查重（排除这位自己），在用的没撞再看回收站；删光了、又没有别的对的联系方式（电话、联系人的号）就拦（M-必填-01）
+ */
+export async function saveCustomerNumbers(id: string, 交的: { kind: string; value: string }[]): Promise<{ ok: true; 电话?: string } | { ok: false; error: string }> {
+  const me = await requireUser();
+  const b = await getBusiness();
+  if (!企业版()) return { ok: false, error: "这个字段不能在这里改" };
+  if (!Array.isArray(交的)) return { ok: false, error: "号码交上来的样子不对，刷新再试" };
+  if (await 同事的客户(defaultClient, id)) return { ok: false, error: await 只读话(defaultClient) };
+  const 改挡 = await 改客户挡(me, id);
+  if (改挡) return { ok: false, error: 改挡 };
+  const 字段挡 = await 挡字段(me.id, ["电话"]);
+  if (字段挡) return { ok: false, error: 字段挡 };
+  const c = await prisma.customer.findUnique({
+    where: { id },
+    select: { name: true, phone: true, contactMethods: { where: { contactId: null }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, kind: true, value: true, numberKey: true } } },
+  });
+  if (!c) return { ok: false, error: `这条${b.customer}已被删除` };
+  const 电话键 = new Set(电话子表键们(c.phone));
+  const 是电话行 = (r: { kind: string; numberKey: string }) => r.kind === "phone" && 电话键.has(r.numberKey);
+  const 原行们 = c.contactMethods.filter((r) => !是电话行(r));
+  // 打了码给人看的号（字段权限电话「看不到」）原样交回来：认回原号
+  const 行们 = 交的
+    .filter((r) => r && typeof r.kind === "string" && typeof r.value === "string" && r.value.trim())
+    .map((r) => (r.value.includes("*") ? { ...r, value: 原行们.find((o) => o.kind === r.kind && 认回打码号(r.value, o.value) === o.value)?.value ?? r.value } : r));
+  const 验 = await 验联系人号码们(行们, c.contactMethods.map((x) => x.kind), 原行们);
+  if (!验.ok) return 验;
+  const 新们 = 验.行们.filter((r) => !是电话行(r));
+  const 原有键 = new Set(原行们.map((r) => `${r.kind}|${r.numberKey}`));
+  const 新出现 = 新们.filter((r) => !原有键.has(`${r.kind}|${r.numberKey}`));
+  const 表 = await 号码种类表();
+  const 读的 = await 读的我(defaultClient);
+  for (const r of 新出现) {
+    const ids = await 一行号全公司查(prisma, r, id);
+    const 论 = ids.length ? await 撞号结论(prisma, ids, me.id, 读的) : null;
+    if (论 && 论.状态 !== "首次录入") return { ok: false, error: `${种类叫法(表, r.kind)} ${r.value}：${论.提示}` };
+    if (库类型到号码类型[r.kind] && (await 回收站里查号(prisma, 库类型到号码类型[r.kind]!, r.value, r.numberKey, id)).length) {
+      return { ok: false, error: `${种类叫法(表, r.kind)} ${r.value}：${回收站里有提示}` };
+    }
+  }
+  // 删光了：电话也空着、联系人也没有对的号 → 拦（原来就一个都没有的不算，这次没删掉什么）
+  if (!新们.length && 原行们.length && !c.phone.trim() && !(await 客户还有别的联系方式(prisma, id, 原行们))) return { ok: false, error: 删光号码拦话 };
+  // 电话空着：第一个手机升成电话（电话 = 第一个手机）
+  const 升 = !c.phone.trim() ? 新们.find((r) => r.kind === "phone") : undefined;
+  if (升) {
+    const 撞 = await 问同事("phone", 升.value, id);
+    if (撞) return { ok: false, error: 同事撞号说法(`手机号 ${升.value}`, 撞.同事, 撞.客户名, b.customer) };
+  }
+  const 变了 = 新们.length !== 原行们.length || 新们.some((r, i) => r.kind !== 原行们[i].kind || r.value !== 原行们[i].value);
+  if (!变了) return { ok: true };
+  await prisma.$transaction(async (tx) => {
+    await tx.contactMethod.deleteMany({ where: { id: { in: 原行们.map((r) => r.id) } } });
+    for (const r of 新们) await tx.contactMethod.create({ data: { customerId: id, contactId: null, kind: r.kind, value: r.value, numberKey: r.numberKey, formatStatus: "ok", region: r.region } });
+    if (升) await tx.customer.update({ where: { id }, data: { phone: 升.value } });
+  });
+  const 说 = (们: readonly { kind: string; value: string }[]) => 们.map((r) => `${种类叫法(表, r.kind)} ${r.value}`).join("；") || "（空）";
+  await recordAudit({
+    user: me, action: "update", entity: "Customer", entityId: id,
+    summary: `修改${b.customer}「${c.name}」：号码`,
+    detail: [{ 字段: "号码", 原值: 说(原行们), 新值: 说(新们) }, ...(升 ? [{ 字段: "电话", 原值: "（空）", 新值: 升.value }] : [])],
+  });
+  revalidatePath(`/customers/${id}`);
+  revalidatePath("/customers");
+  await 客户存了推项目(me, id);
+  return { ok: true, ...(升 ? { 电话: 升.value } : {}) };
 }
 
 /**

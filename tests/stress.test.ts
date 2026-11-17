@@ -55,8 +55,9 @@ describe("五人同时在线", () => {
         try {
           const 建档 = await saveCustomer({
             name: `压测${idx}-${r}`,
-            // idx 从 1 起：idx=0、r=0 拼出 1370000000，按 P-全局-06「连续 0」算占位假号会被拦
-            phone: `137${String(idx + 1)}${String(r).padStart(2, "0")}0000`.slice(0, 11),
+            // 11 位真样子的手机号：原来拼出来只有 10 位（1371000000），企业版客户电话按手机号规矩验（11-17）就拦了。
+            // 末位 1：不拼成「前缀 + 一串 0」的占位假号（P-全局-06）
+            phone: `137${String(idx + 1)}${String(r).padStart(2, "0")}00001`,
             school: null, grade: null, major: null,
             followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null,
             remark: null, salesOwnerId: 销售[idx].id, channelId: null, referrerCustomerId: null,

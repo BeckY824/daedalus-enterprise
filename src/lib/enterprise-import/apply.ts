@@ -42,6 +42,8 @@ import { 无负责人占位Id } from "../no-owner-db";
 import { 同号标题, 同号只记备注 } from "../enterprise/same-number-collab";
 import { 公海无负责人 } from "../project/pool-owner";
 import { 线索建项目 } from "../project/from-lead";
+import { 记出公海待补, 回公海收回培育, 补待补的 } from "./nurture-rows";
+import { 企业版只用项目 } from "../enterprise/project-only";
 import { 是项目线 } from "../enterprise/assign-line";
 import { 公海客户要先领取, 公海客户先领取说 } from "../enterprise/pool-customer-guard";
 import { 负责人口径 } from "../owners";
@@ -108,6 +110,8 @@ export type 现场 = {
   项目?: boolean;
   /** 企业版新建的客户、项目落哪条业务线（映射.业务线；同步用的老映射没选过 = 暂不分配）。非企业版 = undefined，不写 */
   业务线?: string;
+  /** 企业版项目模式：无主客户换上负责人出公海时，名下零项目的补一个潜客培育项目（M-公海-14，见 改）。事务外读好 */
+  补培育?: boolean;
 };
 
 const J = (v: unknown) => JSON.stringify(v);
@@ -434,11 +438,20 @@ async function 挂项目(tx: Tx, followUpId: string, projectId: string): Promise
   if (p) await tx.followUpProject.create({ data: { followUpId, projectId, node: 本套名(p.node, 企业版字典) } });
 }
 
-/** 改已有记录的这几格。现值 = 改之前读到的（商机结单要看原来的状态） */
-export async function 改(tx: Tx, e: 实体, id: string, 改动: 值表, 现值: 值表, 现在: string): Promise<void> {
+/**
+ * 批：这一笔改动记在哪一批（导入 / 同步 / 冲突处理那一批，整批撤回 / 恢复时是被撤的那一批），无主客户出入公海时的潜客培育项目跟着它（nurture-rows.ts）：
+ *   - 出公海（占位账号换成真负责人、公海那行真删了）且 补培育（企业版项目模式，调用方事务外判好）：记一行待补，
+ *     整批行都处理完调用方再 补待补的（同一批的商机行建了项目就不再多补，M-公海-14）
+ *   - 回公海（改回占位账号）：这一批补过的潜客培育没动过就删，动过的留下、名字放进 批.留下培育（调用方列进撤回结果，P-撤销-01）
+ */
+export type 改的批 = { 批次Id: string; 补培育: boolean; 留下培育?: string[] };
+
+/** 改已有记录的这几格。现值 = 改之前读到的（商机结单要看原来的状态）。批 见 改的批 */
+export async function 改(tx: Tx, e: 实体, id: string, 改动: 值表, 现值: 值表, 现在: string, 批?: 改的批): Promise<void> {
   const 有 = (k: string) => k in 改动;
   if (e === "customer") {
     const data: Prisma.CustomerUncheckedUpdateInput = {};
+    let 出了公海 = false;
     if (有("name")) data.name = String(改动.name);
     if (有("phone")) data.phone = 串(改动.phone) ?? "";
     if (有("salesOwnerId")) {
@@ -446,7 +459,12 @@ export async function 改(tx: Tx, e: 实体, id: string, 改动: 值表, 现值:
       // 无主客户后来有了负责人（指定默认负责人后再导）就出公海；撤回、采用原系统改回占位账号就回公海。别的原因进公海的不碰
       if (await 是占位账号(tx, data.salesOwnerId)) {
         await tx.customerPool.upsert({ where: { customerId: id }, update: {}, create: 无主客户入池(data.salesOwnerId, id, 现在) });
-      } else await tx.customerPool.deleteMany({ where: { customerId: id, reason: 无主入池理由 } });
+        // 回公海：这一批补过的潜客培育按原样收回（负责人还没改，认改之前那位）
+        if (批 && 现值.salesOwnerId && !(await 是占位账号(tx, String(现值.salesOwnerId)))) {
+          const 留 = await 回公海收回培育(tx, 批.批次Id, id, String(现值.salesOwnerId));
+          if (留.length) (批.留下培育 ??= []).push(...留);
+        }
+      } else 出了公海 = (await tx.customerPool.deleteMany({ where: { customerId: id, reason: 无主入池理由 } })).count > 0;
     }
     if (有("followStatus")) data.followStatus = 串(改动.followStatus) ?? "待跟进";
     if (有("custStatus")) data.custStatus = 串(改动.custStatus);
@@ -456,6 +474,8 @@ export async function 改(tx: Tx, e: 实体, id: string, 改动: 值表, 现值:
     if (有("channelId")) Object.assign(data, await 渠道格(tx, 串(改动.channelId)));
     const 主改 = Object.keys(data).length > 0;
     if (主改) await tx.customer.update({ where: { id }, data });
+    // 出公海：先记待补，整批处理完再补（补的时候项目负责人认客户那时的负责人）
+    if (出了公海 && 批?.补培育) await 记出公海待补(tx, 批.批次Id, id);
     if (有("phone") && 串(改动.phone) !== 串(现值.phone ?? null)) {
       // 换了号：子表里客户本人的旧号删掉（联系人也挂着的那行留给联系人），新号记上
       const 旧 = 验成("手机号", 现值.phone);
@@ -751,7 +771,7 @@ async function 对照(tx: Tx, 现: 现场, w: 待写, ref: 引用行): Promise<�
     } else if (同(c, n)) 新上次[k] = n; // 两边改成一样的了
     else 冲[k] = { 原系统: n, 我们: c, 上次: l };
   }
-  if (Object.keys(改动).length) await 改(tx, w.实体, ref.targetId, 改动, 现值, 现.现在);
+  if (Object.keys(改动).length) await 改(tx, w.实体, ref.targetId, 改动, 现值, 现.现在, { 批次Id: 现.批次Id, 补培育: !!现.补培育 });
   const 有冲突 = Object.keys(冲).length > 0;
   if (有冲突) await 记冲突(tx, 现, w, ref.targetId, 冲, false);
   await 记对照(新上次);
@@ -785,6 +805,7 @@ export async function 开现场(批次Id: string, 源: 来源, m: 映射, 用户
     现在: new Date().toISOString(),
     项目: !!m.项目,
     业务线: m.项目 ? (m.业务线 ?? "暂不分配") : undefined,
+    补培育: await 企业版只用项目(),
   };
 }
 
@@ -967,8 +988,10 @@ function 原因(e: unknown): string {
   return `写库出错：${msg.trim().split("\n").pop()?.slice(0, 200) ?? ""}`;
 }
 
-/** 写完：给碰过的客户补「最近跟进」，项目动过的客户重算客户状态，批次记 done，记操作日志 */
+/** 写完：出了公海的零项目客户补潜客培育，给碰过的客户补「最近跟进」，项目动过的客户重算客户状态，批次记 done，记操作日志 */
 async function 收尾(批次Id: string, 用户: Actor): Promise<void> {
+  // 整批行都处理完再补（nurture-rows.ts）：同一批的商机行已经建了项目的不再补；没待补的行就是空跑一句。别处已经收过尾 = 待补行已经清掉
+  await 查完再写((tx) => 看全部(() => 补待补的(tx, 批次Id, 用户.id)));
   await 项目客户重算状态(批次Id);
   const 跟进 = await prisma.entImportRow.findMany({ where: { batchId: 批次Id, entity: "followup" }, select: { targetId: true } });
   const ids = [...new Set(跟进.map((r) => r.targetId))];
