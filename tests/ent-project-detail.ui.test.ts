@@ -10,6 +10,8 @@ const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   // 教练主题（11-17）的动作：服务端那串（prisma、通知）进不了浏览器包
   stub(/coach-topic-actions$/, "const f=async()=>({ok:true});export const 发主题动作=f,回复主题动作=f,关闭主题动作=f,删主题动作=f;");
+  // 指定分配时间（11-17 PR3）的动作：同上，服务端那串进不了浏览器包
+  stub(/leads\/schedule-actions$/, "const f=async()=>({ok:true});export const 改定时分配=f,取消定时分配=f,定时分配现在分=f;");
   stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
   const 空跑 = "async()=>({ok:true})";
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
@@ -230,6 +232,23 @@ it("E① 入口是文字：有名字没链接，也没有按钮", async () => {
     await page.getByText("只露名字客户").first().waitFor();
     expect(await page.locator('a[href="/customers/c9"]').count()).toBe(0);
     expect(await page.getByRole("button", { name: "只露名字客户" }).count()).toBe(0);
+  } finally { await page.close(); }
+});
+
+it("超时未跟进自动转过来、客户还在原负责人名下（11-17 规则 3 的例外）：页顶黄条「该客户在 XXX 名下」；没有这一格不摆", async () => {
+  const { page, errors } = await open(true, 1280);
+  try {
+    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ 客户在谁名下: "原负责人老张" }));
+    const 条 = page.getByTestId("proj-customer-held");
+    await 条.waitFor();
+    expect(await 条.getByText("该客户在 原负责人老张 名下", { exact: true }).isVisible()).toBe(true);
+    expect(await 条.innerText()).toContain("别两个人同时跟同一位客户");
+    // 不横出页面
+    expect(await 条.evaluate((el) => el.getBoundingClientRect().right <= document.documentElement.clientWidth + 1)).toBe(true);
+    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({}));
+    await page.getByText("超长客户名", { exact: false }).first().waitFor();
+    expect(await page.getByTestId("proj-customer-held").count()).toBe(0);
+    expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
 

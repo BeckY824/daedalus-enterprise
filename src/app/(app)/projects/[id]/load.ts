@@ -48,6 +48,13 @@ import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
 import { 页面看得到的客户 } from "@/lib/project/visible-customers";
 import { 时刻转北京墙钟 } from "@/lib/project/time-fields";
 import { 能动定时 } from "@/lib/enterprise/scheduled-assign";
+import { 客户在谁名下 } from "@/lib/enterprise/reply-overdue";
+
+/** 「该客户在 XXX 名下」那一格（超时未跟进自动转，11-17）：不用提示就不带这一格 */
+async function 客户名下提示(p: { id: string; ownerId: string; customer: { salesOwnerId: string; pool: unknown } }): Promise<{ 客户在谁名下?: string }> {
+  const 名 = await 客户在谁名下(p);
+  return 名 ? { 客户在谁名下: 名 } : {};
+}
 
 
 /**
@@ -300,6 +307,8 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     ...(企业 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null } : {}), ...企业项目字段,
     // 指定回复时间（11-17）：北京墙钟「YYYY-MM-DD HH:mm」，没填 null（lib/project/time-fields.ts）
     ...(企业 ? { 指定回复: { 开始: 时刻转北京墙钟(p.replyStartAt), 结束: 时刻转北京墙钟(p.replyEndAt) } } : {}),
+    // 超时未跟进自动转过、客户留在别人名下（11-17，规则 3 的例外）：负责人本人看到「该客户在 XXX 名下」
+    ...(企业 && !公海 && p.ownerId === me.id ? await 客户名下提示(p) : {}),
     // 指定分配时间（PR3）：还没到点的定时，详情上写时间和分给谁；录入人、能分配的人能改 / 取消 / 改成现在分配
     ...(企业 && p.scheduledAssignAt && p.awaitAssignAt && !p.pooledAt ? { 定时分配: {
       时间: 时刻转北京墙钟(p.scheduledAssignAt)!, 给谁: p.scheduledAssignTo ? 叫(p.scheduledAssignTo) ?? "已不在的成员" : null, 能动: !!org && 能动定时(me, p, org),

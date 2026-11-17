@@ -45,7 +45,7 @@ import {
   type 分出去的线索, type 线,
 } from "@/lib/enterprise/lead-assign";
 import { 换负责人 } from "@/lib/project/owner-write";
-import { 定时分配令牌 } from "@/lib/enterprise/scheduled-assign-token";
+import { 定时分配令牌, 超时转令牌 } from "@/lib/enterprise/scheduled-assign-token";
 import { 刷新页面 } from "@/lib/revalidate-safe";
 
 type 结果 = { ok: true } | { ok: false; error: string };
@@ -550,10 +550,11 @@ export async function 向导自动分配(projectId: string): Promise<自动分�
 /**
  * 自动分配线索()、批量自动分配()、向导自动分配() 共用：进门、能不能分已经查过。
  * 原负责人 = 点按钮时界面上看到的负责人（乐观锁，QA #4）；没交 = 按这里刚读到的比。被别人先分走了直接回「已被分配」，不再换人分。
- * 发起人 = 按区域定事业部（P-转-26）看谁发起的；没交 = me。定时分配到点是系统在分，发起人是建线索的人
+ * 发起人 = 按区域定事业部（P-转-26）看谁发起的；没交 = me。定时分配到点是系统在分，发起人是建线索的人。
+ * 排除 = 这些人不挑（超时未跟进自动转：这一轮已经超时过的人，lib/enterprise/reply-overdue.ts）；没交 = 只排除现负责人（照旧）
  */
 async function 自动分给(
-  me: SessionUser, org: 组织, 哪条: 目标, line: 线 | null, kind: 线索种类, 原负责人?: string | null, 备注?: string, 发起人?: string,
+  me: SessionUser, org: 组织, 哪条: 目标, line: 线 | null, kind: 线索种类, 原负责人?: string | null, 备注?: string, 发起人?: string, 排除?: readonly string[],
 ): Promise<内部自动结果> {
   const 看 = await 分前看(哪条, org);
   if (!看.ok) return 看;
@@ -600,6 +601,7 @@ async function 自动分给(
     人们 = 自动候选人们(org, 看.ownerId, line);
   }
   人们 = 只留销售(org, 人们);
+  if (排除?.length) 人们 = 人们.filter((id) => !排除.includes(id));
   const 月 = 月份();
   const [计数, 配额, 加额, 建号, 不参与, 企划算数, 不限额] = await Promise.all([
     prisma.entLeadAssign.groupBy({ by: ["toUserId"], where: { month: 月, counted: true, toUserId: { in: 人们 } }, _count: { _all: true } }),
@@ -671,6 +673,24 @@ export async function 定时分出去(令牌: unknown, 谁: SessionUser, project
   if (!r.ok) return { ok: false, error: r.error };
   await 分配通知(谁, [{ ...哪条, toUserId: r.toUserId, ...留下字段(r.留下) }], true, 附);
   return { ok: true, 接手人: r.接手人 };
+}
+
+/**
+ * 超时未跟进自动转（11-17，lib/enterprise/reply-overdue.ts 调；钟上到点）：不是给浏览器的 action，带服务端令牌（同 定时分出去）。
+ * 按自动分配挑下一位（同一套候选：项目业务线 / 市场成员建的按客户区域、参与状态、本月分得最少、并列最早进池；配额照查，不看持有上限），
+ * 排除 = 现负责人 + 这一轮超时过的人。乐观锁：负责人还得是 原。不发通知（调用方把客户怎么办定好了再发，通知里要写客户在谁名下）。
+ * 挑不到 = 挑不到人（排除之后没人能接），调用方据此开新一轮；别的不成（验证中、规则关着、被人先分走）原样回原因，项目不动
+ */
+export async function 超时转出(
+  令牌: unknown, 谁: SessionUser, projectId: string, 原: string, 排除: readonly string[], 附: string,
+): Promise<{ ok: true; 接手人Id: string; 接手人: string; 留下?: 留下的活 } | { ok: false; error: string; 挑不到?: true }> {
+  if (令牌 !== 超时转令牌) return { ok: false, error: "只给后台定时任务用" };
+  if (!(await 规则开着("线索分配"))) return { ok: false, error: "规则「线索分配」关着" };
+  const org = await 读组织();
+  const 建的人 = (await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { creatorId: true } })))?.creatorId;
+  const r = await 自动分给(谁, org, { projectId }, null, "营销", 原, 附, 建的人, 排除);
+  if (!r.ok) return { ok: false, error: r.error, ...(r.待分配 ? { 挑不到: true as const } : {}) };
+  return { ok: true, 接手人Id: r.toUserId, 接手人: r.接手人, ...留下字段(r.留下) };
 }
 
 export type 批量自动分配结果 = { leadId: string; name: string } & 自动分配结果;

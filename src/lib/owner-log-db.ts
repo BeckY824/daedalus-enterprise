@@ -13,8 +13,9 @@ import { 当下归零, 记撤销转让 } from "@/lib/enterprise/tri-state-transf
  * 挂靠申请的审批人也在这里跟着换（挂靠审批跟着换，P-挂靠-02）；进公海（pool-release）那次不跟，直接关掉（挂靠申请进公海关）。
  * 放在换负责人的同一个事务里写：负责人改了、记录没写上的情况不会有
  */
-/** market-assign = 客户第一次从市场成员分给销售（P-转-03、P-公海-11）：算分配、不算转客户，只是记录分得出 */
-export type 换负责人种类 = "assign" | "market-assign" | "claim" | "pool-assign" | "deactivate" | "undo" | "pool-release";
+/** market-assign = 客户第一次从市场成员分给销售（P-转-03、P-公海-11）：算分配、不算转客户，只是记录分得出。
+ *  overdue-assign = 超时未跟进自动转时客户随线索给了接手人（lib/enterprise/reply-overdue.ts，11-17）：同样算分配、不算转客户 */
+export type 换负责人种类 = "assign" | "market-assign" | "claim" | "pool-assign" | "deactivate" | "undo" | "pool-release" | "overdue-assign";
 
 /**
  * 挂靠审批人跟着客户负责人走（P-挂靠-02，企业版 11-10）：客户换了负责人，还待处理、还没转过上级的挂靠申请，审批人换成新负责人。
