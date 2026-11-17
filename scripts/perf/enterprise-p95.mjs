@@ -2,12 +2,13 @@
 /**
  * 企业版压测（10-24 结果：30 人 × 10 倍数据，主要页面 p95 < 200 ms）。
  *
- *   node scripts/perf/enterprise-p95.mjs --out <输出目录> [--scale 10] [--duration 180] [--port 3570] [--skip-build] [--reuse-db] [--extra] [--limit 200] [--first-js] [--rounds 1]
+ *   node scripts/perf/enterprise-p95.mjs --out <输出目录> [--scale 10] [--duration 180] [--port 3570] [--skip-build] [--reuse-db] [--extra] [--limit 200] [--first-js] [--rounds 1] [--prepare-only]
  *   GATE=1 …   任何一页 p95 ≥ --limit（默认 200 ms）或有请求出错就以 1 退出
  *   --first-js  再量登录 / 首页 / 客户列表的首屏 JS（HTML 里全部 script 逐个 gzip -6 求和，10-28 P4 的量法），
  *               超 first-js-baseline.json 的上限、或比里面的基线涨 > 10% 也算红。CI 速度闸门用（10-29，测试规划 S12）
  *   --rounds 3  压测那步连压 3 轮（同一个服务、每轮 --duration 秒），每页取 3 轮 p95 的中位数再和 --limit 比；出错数照全部轮加总。
  *               CI 机时快时慢，单轮会偶发超线（11-01 同一个提交重跑一绿一红），CI 速度闸门用 3 轮（11-01）
+ *   --prepare-only  只做第 1 步（建库造数据）就退出，不构建、不压。CI 速度闸门 B 片用：先造库，再 org-seed，再 --reuse-db 压（11-17）
  *
  * 流程：
  *   1. <输出目录>/crm.db 新建一份空库（prisma db push），enterprise-seed.ts 造 30 人 + SCALE 倍数据；
@@ -83,6 +84,10 @@ if (!!种子.extra !== 加一组) throw new Error(`${库} 是${种子.extra ? "�
 结果.seed = 种子;
 结果.dbMB = +(fs.statSync(库).size / 1048576).toFixed(1);
 const 名单 = JSON.parse(fs.readFileSync(名单文件, "utf8"));
+if (参数["prepare-only"]) {
+  console.log(`库已造好：${库}（${结果.dbMB} MB）`);
+  process.exit(0);
+}
 
 /* ---------- 2. 生产构建 + 启动 ---------- */
 if (!参数["skip-build"]) {

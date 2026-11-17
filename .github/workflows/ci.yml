@@ -40,13 +40,14 @@ jobs:
       - run: npx eslint .
 
   unit:
-    name: 单元测试 ${{ matrix.shard }}/4
+    # 11-17：4 片各 10–14 分钟，是 CI 关键路径；仓库公开、runner 免费，拆成 8 片
+    name: 单元测试 ${{ matrix.shard }}/8
     # 钉 24.04：ubuntu-latest 2026-10-28 起逐步换成 26.04，Playwright 1.56 在上面装不了 chromium，整片挂
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -72,7 +73,7 @@ jobs:
         # vitest.config.ts 里也钉了一道，这里再写一次是为了让人看 workflow 就知道。
         # 每片在自己的机器上跑，测试库 prisma/test.db 各建各的，互不干扰
         # 多挂一个 json 报告只为留逐文件耗时（dot 不带），过不过仍由 vitest 退出码定
-      - run: npx vitest run --shard=${{ matrix.shard }}/4 --reporter=dot --reporter=json --outputFile.json=test-results/vitest-timing-${{ matrix.shard }}.json
+      - run: npx vitest run --shard=${{ matrix.shard }}/8 --reporter=dot --reporter=json --outputFile.json=test-results/vitest-timing-${{ matrix.shard }}.json
         env:
           TZ: Asia/Shanghai
       # 下面两步只看耗时，自己出错不许把这一片变红
@@ -238,10 +239,16 @@ jobs:
   # 顺带量登录 / 首页 / 客户列表首屏 JS（HTML 里全部 script 逐个 gzip -6 求和），
   # 超上限或比 scripts/perf/first-js-baseline.json 涨 > 10% 就红。本机 1 倍 p95 ~50 ms，CI 机慢 2–3 倍也还有余量
   # 11-01 起每轮连压 3 次、各页取 3 次 p95 的中位数再比 300 ms：CI 机时快时慢，同一个提交重跑过一绿一红
+  # 11-17：A、B 两轮原来串在一个 job 里共 11 分钟，拆成两片并行；B 片自己造库（--prepare-only）、org-seed 后再压。
+  # needs.perf.result 是两片合起来的结果，下面 E2E 聚合不用改；job 名仍以「速度闸门」开头（merge-now.sh 按前缀认）
   perf:
-    name: 速度闸门
+    name: 速度闸门 ${{ matrix.part }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [A, B]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -262,7 +269,8 @@ jobs:
         env:
           CONTROL_DATABASE_URL: file:/tmp/control-ci.db
       - name: A：全员看全部 + 首屏 JS
-        # 红了也把这轮的表留下（B 会覆盖 result.md），Summary 里两轮都看得到
+        if: matrix.part == 'A'
+        # 红了也把这轮的表留下，Summary 里看得到
         run: |
           rc=0; node scripts/perf/enterprise-p95.mjs --out /tmp/perf --scale 1 --duration 60 --rounds 3 --extra --limit 300 --first-js || rc=$?
           cp /tmp/perf/result.md /tmp/perf/A.md 2>/dev/null || true
@@ -270,19 +278,22 @@ jobs:
         env:
           GATE: "1"
       - name: B：按组织看
+        if: matrix.part == 'B'
         # 线 400（11-02 用户放宽）：同一份代码 CI 上 114～367 ms，300 太贴机器波动；A 还是 300
+        # 和 A 同样的库（--scale 1 --extra）先造好，org-seed 后再构建、压
         run: |
+          node scripts/perf/enterprise-p95.mjs --out /tmp/perf --scale 1 --extra --prepare-only
           DATABASE_URL=file:/tmp/perf/crm.db SEED=/tmp/perf/seed.json NODE_ENV=development npx tsx scripts/perf/enterprise-org-seed.ts
-          node scripts/perf/enterprise-p95.mjs --out /tmp/perf --scale 1 --duration 60 --rounds 3 --extra --limit 400 --reuse-db --skip-build
+          node scripts/perf/enterprise-p95.mjs --out /tmp/perf --scale 1 --duration 60 --rounds 3 --extra --limit 400 --reuse-db
         env:
           GATE: "1"
       - name: 结果写进 Summary
         if: always()
-        run: cat /tmp/perf/A.md /tmp/perf/result.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+        run: cat /tmp/perf/result.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: perf-gate
+          name: perf-gate-${{ matrix.part }}
           path: |
             /tmp/perf/*.md
             /tmp/perf/*.json
