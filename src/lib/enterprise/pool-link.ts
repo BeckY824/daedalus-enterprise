@@ -26,6 +26,7 @@ import { 记换负责人, type 换负责人种类 } from "@/lib/owner-log-db";
 import { 无负责人占位Id } from "@/lib/no-owner-db";
 import { 交接中的客户 } from "./handover-db";
 import { 换负责人 } from "@/lib/project/owner-write";
+import { 写公海领取 } from "./customer-assign-way";
 
 /**
  * 客户刚进了客户公海（手动放进公海、离职公海方式），同一笔事务里：负责人清空（M-公海-03）。
@@ -190,16 +191,18 @@ export async function 客户整包出公海(
     if (c.salesOwnerId !== 新) await tx.customer.update({ where: { id: customerId }, data: { salesOwnerId: 新 } });
     await tx.customerClaim.upsert({ where: { customerId }, update: { userId: 新, at: new Date() }, create: { customerId, userId: 新 } });
     await tx.customerPool.deleteMany({ where: { customerId } });
+    // 出客户公海归销售：客户分配记「公海领取」（customer-assign-way.ts），撤销整包退回时按 分 还
+    const 分 = await 写公海领取(tx, customerId);
     const 带 = c.salesOwnerId !== 新 ? await 带走一位(tx, customerId, c.salesOwnerId, 新, kind === "claim" ? 新 : 操作人, kind) : null;
     const 公海项目 = 公海规则.领客户带走公海里的项目 ? await 带走公海项目(tx, [customerId], 新, 操作人, 带待办) : [];
     // 撤销整包退回（P-公海-10）只还这次带过来的活，同客户公海分配的 带过来
     const 带过来: 带走的 = { 计划: 带?.计划 ?? [], 待办: 带?.待办 ?? [], 商机: 带?.商机 ?? [], 项目: 带?.项目 ?? [] };
-    return { customerId, 旧: c.salesOwnerId, 公海项目, 带过来 };
+    return { customerId, 旧: c.salesOwnerId, 公海项目, 带过来, ...(分 ? { 分: 分.原 } : {}) };
   });
 }
 
 /** 客户整包出公海带走了什么：旧 = 出公海前的负责人（一般是无负责人占位账号），撤销整包退回时按它还 */
-export type 整包出公海 = { customerId: string; 旧: string; 公海项目: string[]; 带过来: 带走的 };
+export type 整包出公海 = { customerId: string; 旧: string; 公海项目: string[]; 带过来: 带走的; 分?: string | null };
 
 /**
  * 客户公海里的客户刚被领走 / 分走（已经归 新）：名下放在项目公海里的项目一起归 新，每个记一行 pool-claim。
