@@ -32,7 +32,7 @@ import { 是项目卡, 不可撤销, type 项目卡 } from "@/lib/agent/project-
 import dynamic from "next/dynamic";
 import RescueKey from "@/app/(app)/customers/RescueKey";
 import { 沟通可选项目 } from "@/app/(app)/customers/[id]/actions";
-import { 沟通没项目话, 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
+import { 沟通没项目话, 请负责人建项目话, 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
 import ReplyWindowInput from "@/components/ReplyWindowInput";
 import ScheduleAssignInput from "@/components/ScheduleAssignInput";
 
@@ -178,12 +178,14 @@ export default function ProposalCard({
    * 几个要人在卡上选（不猜）；一个就挂它（服务端自己挂）；没有就说先建项目、不能确认
    */
   const [跟进项目们, set跟进项目们] = useState<{ id: string; name: string }[] | null | undefined>(undefined);
+  /** 没项目时我能不能新建项目：能 = 卡上给「去建项目」（客户页直接打开新建项目），不能 = 请负责人先建 */
+  const [跟进能建项目, set跟进能建项目] = useState(false);
   const 跟进客户 = draft.kind === "add_followup" && state !== "done" && state !== "denied" ? draft.customerId : null;
   useEffect(() => {
     if (!跟进客户) return;
     let 作废 = false;
     沟通可选项目(跟进客户).then(
-      (r) => { if (!作废) set跟进项目们(r.ok ? r.项目们 : null); },
+      (r) => { if (!作废) { set跟进项目们(r.ok ? r.项目们 : null); set跟进能建项目(r.ok && r.能建项目); } },
       () => { if (!作废) set跟进项目们(null); },
     );
     return () => { 作废 = true; };
@@ -532,7 +534,7 @@ export default function ProposalCard({
               <Field label="关联项目">
                 <Select
                   size="small"
-                  style={{ width: 200 }}
+                  className="prop-proj-pick"
                   aria-label="关联项目"
                   placeholder="选一个在推项目"
                   value={draft.projectId && 跟进项目们!.some((x) => x.id === draft.projectId) ? draft.projectId : undefined}
@@ -541,8 +543,15 @@ export default function ProposalCard({
                 />
               </Field>
             )}
-            {要挂项目 && 跟进项目们!.length === 1 && <Field label="关联项目"><span style={{ overflowWrap: "anywhere" }}>{跟进项目们![0].name}</span></Field>}
-            {跟进没项目 && <div role="note" className="prop-err prop-f-block">{沟通没项目话}</div>}
+            {要挂项目 && 跟进项目们!.length === 1 && <Field label="关联项目"><span className="prop-proj-one">{跟进项目们![0].name}</span></Field>}
+            {跟进没项目 && draft.kind === "add_followup" && (
+              <div role="note" className="prop-err prop-f-block">
+                {沟通没项目话}
+                {跟进能建项目
+                  ? <>{" "}<Link href={`/customers/${draft.customerId}?建项目=1`}>去建项目</Link></>
+                  : `（${请负责人建项目话}）`}
+              </div>
+            )}
           </>
         )}
 

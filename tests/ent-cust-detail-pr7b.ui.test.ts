@@ -6,6 +6,9 @@
  *   沟通必须挂项目（11-17，取代 P-界面-35）：没有能记的在推项目也打开「记一条沟通」，弹框写明先建项目、给「新建项目」；
  *     保存拦下不发请求、写好的内容留着；点「新建项目」叠开新建项目表，记沟通的框和内容还在
  *   X-143：「关联项目」下拉只列能记的（跟进去处.能记 = false 的不列）
+ *   首页 AI 记沟通卡「去建项目」（?建项目=1）：进客户页直接开新建项目
+ *   组员能记（11-17 客户定）：只能看的客户（只因进了项目组）上有我已进组的在推项目，「新建沟通」照样打开、只列这几个项目、
+ *     不给待办 / 提醒；一个能记的都没有就照旧说只能看
  *   Windows 1024 / 1280 / 1366 + 超长客户名：后果框不撑出页面、确认键点得到
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -50,10 +53,10 @@ beforeAll(async () => {
     const 长='某某超长贸易进出口有限公司'.repeat(6);
     window.__长=长;
     const users=[{id:'qa',name:'小王',email:'s1',role:'SALES',active:true},{id:'u2',name:'小张',email:'s2',role:'SALES',active:true}];
-    window.__render=({去处,申请})=>{
+    window.__render=({去处,申请,只读})=>{
       const 项目们=去处.map(p=>({id:p.id,name:p.名,phase:'商机',node:'报价',result:null,pooledAt:null,amount:0,currency:'CNY'}));
       root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><div className='shell'><nav className='rail' aria-label='主导航'/><main className='main app-content' style={{padding:'22px 26px'}}><div>
-      <Record customer={{id:'a',extra:null,name:长,phone:'13800138000',school:长,grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'小王',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z'}} contacts={[]} contracts={[]} opportunities={[]} tasks={[]} plan={null} users={users} channels={[]} aiEnabled={false} followUpsHasMore={false} 项目们={项目们} 参与项目们={[]} 关联们={[]} 旺旺们={[]} 企业版 能放公海 能转让客户 转让要申请={!!申请} 转让原因={{选项:['客户迁移','岗位调整','其他'],自己:'qa'}}
+      <Record customer={{id:'a',extra:null,name:长,phone:'13800138000',school:长,grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'小王',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z'}} contacts={[]} contracts={[]} opportunities={[]} tasks={[]} plan={null} users={users} channels={[]} aiEnabled={false} followUpsHasMore={false} 项目们={项目们} 参与项目们={[]} 关联们={[]} 旺旺们={[]} 企业版 能放公海 能转让客户 转让要申请={!!申请} 只读={只读?'全':false} 只读话={只读||undefined} 转让原因={{选项:['客户迁移','岗位调整','其他'],自己:'qa'}}
         跟进去处={去处} 待办计划={[]} followUps={[]} 新建项目={{节点们:['线索验证'],要下一步:false}}/>
     </div></main></div></BusinessProvider></App></ConfigProvider>);
     };
@@ -65,16 +68,16 @@ afterAll(async () => { await browser?.close(); });
 type 去处 = { id: string; 名: string; 主: boolean; 结束: boolean; 说明: null; 下一步: null; 下一步文字: null; 能记?: boolean };
 const 项 = (id: string, 名: string, 能记 = true): 去处 => ({ id, 名, 主: true, 结束: false, 说明: null, 下一步: null, 下一步文字: null, 能记 });
 
-async function 开(去处: 去处[], width = 1280, 放回?: unknown, 额外: { 申请?: boolean; 转回?: unknown; 预览?: unknown } = {}) {
+async function 开(去处: 去处[], width = 1280, 放回?: unknown, 额外: { 申请?: boolean; 转回?: unknown; 预览?: unknown; 只读?: string; 网址?: string } = {}) {
   const page = await browser.newPage({ viewport: { width, height: 860 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://pr7b.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
-  await page.goto("http://pr7b.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: 包 });
+  await page.goto(`http://pr7b.test/${额外.网址 ?? ""}`); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: 包 });
   await page.evaluate(x => {
     if (x.放回) Reflect.set(window, "__放回", x.放回);
     if (x.额外.转回) Reflect.set(window, "__转回", x.额外.转回);
     if (x.额外.预览) Reflect.set(window, "__预览", x.额外.预览);
-    (window as unknown as { __render: (x: object) => void }).__render({ 去处: x.去处, 申请: x.额外.申请 });
+    (window as unknown as { __render: (x: object) => void }).__render({ 去处: x.去处, 申请: x.额外.申请, 只读: x.额外.只读 });
   }, { 去处, 放回, 额外 });
   await page.locator(".rec-head").first().waitFor();
   return { page, errors };
@@ -202,6 +205,48 @@ it("X-143：记不了的项目（能记 = false）不进「关联项目」下拉
   try {
     await 二.page.getByRole("button", { name: /新建沟通/ }).first().click();
     await 二.page.getByRole("note").filter({ hasText: "你都不是负责人或组员" }).waitFor();
+    expect(二.errors).toEqual([]);
+  } finally { await 二.page.close(); }
+});
+
+it("组员能记（11-17）：只能看的客户上有我进组的在推项目——「新建沟通」照样打开，只列能记的项目、不给待办 / 提醒；一个都没有照旧说只能看", async () => {
+  const 组员话 = "这是你加入的项目挂着的客户：只能看，不能改；沟通只能记在你已加入的在推项目上；被指定为负责人才能改";
+  const { page, errors } = await 开([项("p1", "我进组的项目"), 项("p2", "没进组的项目", false)], 1280, undefined, { 只读: 组员话 });
+  try {
+    await page.getByRole("button", { name: /新建沟通/ }).first().click();
+    const 框 = page.getByRole("dialog");
+    const 格 = 框.locator(".ant-form-item").filter({ has: page.locator('label:text-is("关联项目")') });
+    await 格.waitFor();
+    // 只有一个能记的：默认选它
+    expect(await 格.innerText()).toContain("我进组的项目");
+    await 格.locator(".ant-select").click();
+    await page.locator(".ant-select-item-option").first().waitFor();
+    expect(await page.locator(".ant-select-item-option").allInnerTexts()).toEqual(["我进组的项目"]);
+    await page.keyboard.press("Escape");
+    expect(await 框.innerText()).not.toMatch(/待办|提醒/);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+  const 二 = await 开([项("p2", "没进组的项目", false)], 1280, undefined, { 只读: 组员话 });
+  try {
+    const 前 = await 二.page.getByText(组员话).count();
+    await 二.page.getByRole("button", { name: /新建沟通/ }).first().click();
+    await expect.poll(() => 二.page.getByText(组员话).count()).toBeGreaterThan(前);
+    expect(await 二.page.getByRole("dialog").count()).toBe(0);
+    expect(二.errors).toEqual([]);
+  } finally { await 二.page.close(); }
+});
+
+it("首页 AI 记沟通卡「去建项目」带 ?建项目=1 进来：直接打开新建项目，参数用完去掉；只读的不开", async () => {
+  const { page, errors } = await 开([], 1280, undefined, { 网址: "customers/a?建项目=1" });
+  try {
+    await page.getByTestId("new-project-modal").waitFor({ state: "attached" });
+    expect(new URL(page.url()).search).toBe("");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+  const 二 = await 开([], 1280, undefined, { 网址: "customers/a?建项目=1", 只读: "这是虚线下属的客户：只能看，不能改、不能转" });
+  try {
+    await 二.page.waitForTimeout(300);
+    expect(await 二.page.getByTestId("new-project-modal").count()).toBe(0);
     expect(二.errors).toEqual([]);
   } finally { await 二.page.close(); }
 });

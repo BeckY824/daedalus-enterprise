@@ -242,7 +242,7 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
             <div className="done-plan-row">
               <span className="done-plan-k">项目</span>
               {要选项目 ? (
-                <Select aria-label="关联项目" style={{ width: 240 }} placeholder="选择关联项目" value={项目 ?? undefined} onChange={(v: string) => set项目(v)} options={项目们.map((x) => ({ value: x.id, label: x.name }))} />
+                <Select aria-label="关联项目" className="done-plan-pick" placeholder="选择关联项目" value={项目 ?? undefined} onChange={(v: string) => set项目(v)} options={项目们.map((x) => ({ value: x.id, label: x.name }))} />
               ) : (
                 <span className="done-plan-proj">{项目们[0].name}</span>
               )}

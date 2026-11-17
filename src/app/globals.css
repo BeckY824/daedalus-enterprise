@@ -1235,6 +1235,7 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .done-plan-tip { margin-left: 60px; color: var(--text-muted); font-size: var(--fs-note); }
 .done-plan-note { color: var(--brand-deep); font-size: var(--fs-note); line-height: 1.6; }
 .done-plan-proj { line-height: 32px; overflow-wrap: anywhere; }
+.done-plan-pick { width: 240px; max-width: 100%; }
 .country-cell { display: inline-flex; flex-direction: column; line-height: 1.3; }
 .country-cell-t { font-size: var(--fs-min); font-variant-numeric: tabular-nums; }
 .cust-level-B { border-color: var(--warning-line); color: var(--warning-text); background: var(--warning-bg); }
@@ -2396,6 +2397,9 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .prop-f { display: flex; align-items: center; gap: 8px; }
 .prop-f-block { flex-basis: 100%; align-items: flex-start; }
 .prop-f-block > *:last-child { flex: 1; }
+/* AI 记沟通卡「关联项目」（11-17 沟通必须挂项目）：下拉定宽、只一个时项目名长了折行 */
+.prop-proj-pick { width: 200px; max-width: 100%; }
+.prop-proj-one { overflow-wrap: anywhere; }
 .prop-f-l { flex: none; font-size: var(--fs-note); color: var(--text-muted); }
 /* 认图没把握的格：黄标，点掉 = 核对过 */
 .prop-f-wait { flex: none; font-size: var(--fs-min); color: var(--warning-text); background: var(--warning-bg); border: 1px solid var(--warning-line); border-radius: var(--r-ctl); padding: 0 6px; cursor: pointer; }

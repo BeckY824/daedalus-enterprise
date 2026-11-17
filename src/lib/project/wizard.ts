@@ -17,7 +17,7 @@ import { 记沟通编号 } from "./followup-meta";
 import { 下一步文字上限 } from "./project-fields";
 import { 是占位值 } from "./required";
 import { 新项目默认值 } from "./proj-fields";
-import { 补潜客培育 } from "./nurture";
+import type { 补潜客培育 } from "./nurture";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 认业务线, 业务线不认得, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 新项目所在地, type 新项目所在地输入 } from "./profile-rules";
@@ -299,7 +299,11 @@ export type 建好的客户 = { contactId: string; followUpId: string; planId: s
  * 给 saveCustomer 的「接着建」（只建客户）：主要联系人、建档人、首条沟通。
  * 团队版沟通不挂项目、有下一步时间就记一条跟进计划；企业版先把潜客培育项目建了（saveCustomer 后面那次补就不再建），沟通挂上去
  */
-export function 只建客户接着建(me: { id: string }, 好: 规整好的只建客户, 出参: Partial<建好的客户>): 接着建 {
+/**
+ * 建潜客培育 由服务端调用方传进来（lib/project/nurture.ts 的 补潜客培育）：这个文件新建弹窗（浏览器）也引，
+ * 直接引 nurture 会把 team-scope、同步那一串服务端代码拖进前端包
+ */
+export function 只建客户接着建(me: { id: string }, 好: 规整好的只建客户, 出参: Partial<建好的客户>, 建潜客培育?: typeof 补潜客培育): 接着建 {
   return 登记接着建(async (tx: Prisma.TransactionClient, customerId: string) => {
     const 联系人 = await tx.contact.create({ data: { ...好.联系人, isPrimary: true, customerId } });
     await tx.customerCreator.create({ data: { customerId, userId: me.id } });
@@ -309,7 +313,8 @@ export function 只建客户接着建(me: { id: string }, 好: 规整好的只�
     if (好.潜客培育) {
       // 潜客培育项目（M-公海-14）：名字、负责人同 saveCustomer 补的那个（客户名、客户负责人），落在第一个节点
       const 客 = await tx.customer.findUniqueOrThrow({ where: { id: customerId }, select: { name: true, salesOwnerId: true } });
-      const projectId = await 补潜客培育(tx, { customerId, 客户名: 客.name, ownerId: 客.salesOwnerId, creatorId: me.id });
+      if (!建潜客培育) throw new Error("企业版只建客户要带上建潜客培育");
+      const projectId = await 建潜客培育(tx, { customerId, 客户名: 客.name, ownerId: 客.salesOwnerId, creatorId: me.id });
       if (!projectId) throw new Error("新客户已经有项目了，潜客培育项目没建");
       if (好.跟进.nextStepAt || 好.跟进.nextStepText) {
         await tx.project.update({ where: { id: projectId }, data: { nextStepAt: 好.跟进.nextStepAt, nextStepText: 好.跟进.nextStepText } });

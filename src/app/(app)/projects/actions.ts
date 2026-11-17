@@ -22,6 +22,7 @@ import { 每人最多号码 } from "@/lib/enterprise/customer-v2";
 import type { Prisma } from "@/generated/prisma";
 import { 登记接着建, 记联系人带号 } from "@/lib/project/hook";
 import { 规整向导, 向导接着建, 规整只建客户, 只建客户接着建, 项目来源默认, 占位名提示, type 建好的, type 建好的客户, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
+import { 补潜客培育 } from "@/lib/project/nurture";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
 import { 读必填数据, 能改节点, 上级只推, 直属才推, 只有负责人改进程, 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 能进公海的阶段, 超时成员线, 超时线, type 交付项 } from "@/lib/project/db";
@@ -390,7 +391,7 @@ async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输�
   }
 
   const 建了: Partial<建好的客户> = {};
-  const 建 = 只建客户接着建(me, 好, 建了);
+  const 建 = 只建客户接着建(me, 好, 建了, 补潜客培育);
   // 只写刚建的这个客户和它名下的东西，放开范围（同建档：负责人不是我时客户一建好在我这儿可能是只读的）
   const 接着 = 登记接着建((tx, customerId) => 看全部(async () => {
     for (const 号 of 要查) {
