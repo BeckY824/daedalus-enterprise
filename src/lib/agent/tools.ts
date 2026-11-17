@@ -22,6 +22,7 @@ import { 合计文字 } from "../currency";
 import { 客户来源线索 } from "../customer-lead-origin";
 import { 阶段们, 结局们, 是阶段, 是结局, 同名们, 本套位置, 字典of } from "../project/nodes";
 import { 看得到的客户, 露客户 } from "../project/db";
+import { 不算历史分析, 历史分析的, 是历史分析, 来源字, 并条件, 人名显示 } from "../project/system-created";
 import { 企业版 } from "../enterprise/switch";
 import { 启用渠道条件 } from "../enterprise/channel-main";
 import { 渠道启用 } from "../enterprise/channel-main-core";
@@ -414,7 +415,7 @@ export const TOOLS: Tool[] = [
             where: { customerId: c.id },
             orderBy: { updatedAt: "desc" },
             take: 项目最多 + 1,
-            select: { id: true, name: true, phase: true, node: true, result: true, nextStepAt: true, nextStepText: true, ownerId: true, pooledAt: true },
+            select: { id: true, name: true, phase: true, node: true, result: true, nextStepAt: true, nextStepText: true, ownerId: true, pooledAt: true, source: true },
           })
         : [];
       const 项目负责人 = 项目行.length
@@ -429,7 +430,10 @@ export const TOOLS: Tool[] = [
         结局: p.result ?? "进行中",
         下一步: p.nextStepText ?? null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null,
         负责人: p.pooledAt ? "在公海" : (项目负责人.get(p.ownerId) ?? "已不在的成员"),
+        // 历史分析回填的照列、标来源，不计入个数（system-created.ts，25E）
+        ...(是历史分析(p) ? { 数据来源: `${来源字(p.source)}（旧沟通还原的，不计入个数和统计）` } : {}),
       }));
+      const 回填个 = 项目行.slice(0, 项目最多).filter(是历史分析).length;
       const data = {
         id: c.id,
         name: c.name,
@@ -450,7 +454,7 @@ export const TOOLS: Tool[] = [
         timeline: timeline || "（从未跟进过）",
         ...(只用项目 ? { 项目, ...(项目行.length > 项目最多 ? { 项目说明: `只列最近动过的 ${项目最多} 个，更早的用 list_projects 按客户名查` } : {}) } : {}),
       };
-      return { summary: `${c.name}：${c.followUps.length} 条跟进${sources ? `、${sources} 段原文` : ""}${项目.length ? `、${项目行.length > 项目最多 ? `${项目最多}+` : 项目.length} 个项目` : ""}${c.plans[0] ? "、1 条计划" : ""}`, data, records };
+      return { summary: `${c.name}：${c.followUps.length} 条跟进${sources ? `、${sources} 段原文` : ""}${项目.length ? `、${项目行.length > 项目最多 ? `${项目最多}+` : 项目.length - 回填个} 个项目${项目行.length <= 项目最多 && 回填个 ? `（另有 ${回填个} 个历史分析回填的，不计入）` : ""}` : ""}${c.plans[0] ? "、1 条计划" : ""}`, data, records };
     },
   },
   {
@@ -754,13 +758,19 @@ export const TOOLS: Tool[] = [
         // 公海里的项目只在问公海时列（P-看-03；企业版项目列表默认也不列公海项目，lib/project/list.ts 列表条件）。团队版照旧混着、行上写「在公海」
         ...(args.pooled === true ? { pooledAt: { not: null } } : 企业版() ? { pooledAt: null } : {}),
       };
-      const [total, 各阶段, rows] = await Promise.all([
-        prisma.project.count({ where }),
-        prisma.project.groupBy({ by: ["phase"], where, _count: { _all: true } }),
+      /*
+        历史沟通分析回填的项目（system-created.ts「所有统计都不算」，25E）：总数、各阶段个数不算它；
+        明细照旧列出（同项目列表 / 公海页），行上标「数据来源」、写明不计入，另报有几个
+      */
+      const 计数where = 并条件(where, 不算历史分析);
+      const [total, 各阶段, 回填数, rows] = await Promise.all([
+        prisma.project.count({ where: 计数where }),
+        prisma.project.groupBy({ by: ["phase"], where: 计数where, _count: { _all: true } }),
+        prisma.project.count({ where: 并条件(where, 历史分析的) }),
         prisma.project.findMany({
           where, orderBy: { updatedAt: "desc" }, take: 30,
           select: {
-            id: true, name: true, customerId: true, ownerId: true, phase: true, node: true, result: true, amount: true, currency: true,
+            id: true, name: true, customerId: true, ownerId: true, phase: true, node: true, result: true, amount: true, currency: true, source: true,
             nextStepAt: true, nextStepText: true, updatedAt: true, pooledAt: true, customer: { select: { name: true } }, exceptionCategory: { select: { name: true } },
           },
         }),
@@ -774,11 +784,13 @@ export const TOOLS: Tool[] = [
       // 公海里同事客户的项目不露客户名（和项目页一个规矩，见 lib/project/db.ts 的 露客户）；按客户名搜到的也剔掉，免得拿名字试出来
       const 字典 = 字典of(企业版());
       const 列 = rows.filter((p) => !词 || p.name.includes(词) || 露客户(me, p, 可见)).map((p) => 本套位置(p, 字典));
-      // 带关键词时总数也按剔过的算（最多 30 个），不然「1 个项目、列出 0 个」一样露了底
-      const 数 = 词 ? 列.length : total;
-      const 个数 = (ph: string) => (词 ? 列.filter((p) => p.phase === ph).length : (各阶段.find((g) => g.phase === ph)?._count._all ?? 0));
+      // 带关键词时总数也按剔过的算（最多 30 个），不然「1 个项目、列出 0 个」一样露了底；历史回填的照样不算
+      const 计入 = 列.filter((p) => !是历史分析(p));
+      const 数 = 词 ? 计入.length : total;
+      const 个数 = (ph: string) => (词 ? 计入.filter((p) => p.phase === ph).length : (各阶段.find((g) => g.phase === ph)?._count._all ?? 0));
+      const 回填 = 词 ? 列.length - 计入.length : 回填数;
       return {
-        summary: `${数} 个项目（${阶段们.map((ph) => `${ph} ${个数(ph)}`).join("、")}）${数 > 列.length ? `，列出最近改过的 ${列.length} 个` : ""}`,
+        summary: `${数} 个项目（${阶段们.map((ph) => `${ph} ${个数(ph)}`).join("、")}）${数 + 回填 > 列.length ? `，列出最近改过的 ${列.length} 个` : ""}${回填 ? `；另有 ${回填} 个历史分析回填的项目（旧沟通还原的，照列、不计入个数）` : ""}`,
         data: {
           总数: 数,
           各阶段: Object.fromEntries(阶段们.map((ph) => [ph, 个数(ph)])),
@@ -796,6 +808,7 @@ export const TOOLS: Tool[] = [
             归属: p.pooledAt ? 归属叫法.公海 : p.ownerId === ctx.userId ? 归属叫法.我 : 归属叫法.别人,
             下一步: p.nextStepText ?? null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null,
             多久没动: `${dayjs().diff(p.updatedAt, "day")} 天`,
+            ...(是历史分析(p) ? { 数据来源: `${来源字(p.source)}（旧沟通还原的，不计入个数和统计）` } : {}),
           })),
         },
       };
@@ -1220,7 +1233,8 @@ async function 名字表(rows: Record<string, unknown>[], 字段们: { 列: stri
   const 部门名 = new Map(部门.map((d) => [d.id, d.name]));
   return (列, v) => {
     if (typeof v !== "string") return undefined;
-    if (人列.has(列)) return 人名.get(v) ?? "（已删除的账号）";
+    // system 不是真账号：创建人列是补建的（系统补建），别的人名列是「系统」（超时回收等），共用 人名显示（25E）
+    if (人列.has(列)) return 人名显示(v, 人名, { 创建人: 列 === "creatorId", 不在: "（已删除的账号）" });
     if (部门列.has(列)) return 部门名.get(v) ?? "（已删除的部门）";
     return undefined;
   };

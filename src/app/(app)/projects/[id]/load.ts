@@ -10,7 +10,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import { llmEnabled } from "@/lib/llm";
 import { 已立项天数 } from "@/lib/project/project-fields";
-import { 来源字 } from "@/lib/project/system-created";
+import { 来源字, 人名显示 } from "@/lib/project/system-created";
 import { 页面可选项, 预读页面字典, type 字典种类 } from "@/lib/enterprise/dict";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看项目, 能转让项目, 是经理, 能删除, 能新建和领取 } from "@/lib/enterprise/permissions";
@@ -21,7 +21,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 负责人可推 } from "@/lib/project/org-rules";
 import { 读项目提成 } from "@/lib/project/commission-db";
 import { 读项目主题 } from "@/lib/enterprise/coach-topic-db";
-import { 超时回收日, 超时起点, 超时理由, 系统, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
+import { 超时回收日, 超时起点, 超时理由, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
 import { 停用项目进公海理由 } from "@/lib/offboard-db";
 import { 拦原负责人, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示, 拦客户公海里的项目, 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
 import { 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
@@ -184,7 +184,8 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   const 人 = await prisma.user.findMany({ where: { id: { in: [...人id] } }, select: { id: true, name: true } });
   const 名 = new Map(人.map((u) => [u.id, u.name]));
   // 超时回收记在「系统」名下（timeout.ts 系统，QA #16），不是真成员
-  const 叫 = (uid: string | null) => (uid ? (uid === 系统.id ? 系统.name : 名.get(uid) ?? "已不在的成员") : null);
+  // system 不是真账号，按「系统」显示（创建人那一格按 系统补建，见下面 creatorName），共用 人名显示
+  const 叫 = (uid: string | null) => (uid ? 人名显示(uid, 名, { 不在: "已不在的成员" }) : null);
   // 怎么进的公海：超时系统收的 / 办停用时放的（操作人是办的那位管理员，不是离职的人）/ 有人手动放回（QA #14）
   const 认放回 = (reason: string | null): 放回方式 => (reason === 超时理由 ? "超时" : reason === 停用项目进公海理由 ? "停用" : "手动");
   const 最近放回 = 公海 ? p.logs.find((l) => l.kind === "pool-release") : undefined;
@@ -300,7 +301,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     customer: 露 ? { id: p.customer.id, name: p.customer.name, school: p.customer.school } : null, contact: 露 ? p.contact : null,
     客户入口, 客户卡名: 客户入口 === "只读卡" ? { name: p.customer.name, school: p.customer.school } : null,
     // 在公海里 ownerName 给原负责人（界面写「原负责人 X」），企业版库里负责人已经清空，从留痕取；没这个人就是空串，界面写「暂无」
-    ownerId: p.ownerId, ownerName: (公海 ? 叫(上一任) : 叫(p.ownerId)) ?? "", historyOwners: 历史负责人.map((x) => 叫(x)!), creatorName: 叫(p.creatorId)!, createdAt: p.createdAt.toISOString(),
+    ownerId: p.ownerId, ownerName: (公海 ? 叫(上一任) : 叫(p.ownerId)) ?? "", historyOwners: 历史负责人.map((x) => 叫(x)!), creatorName: 人名显示(p.creatorId, 名, { 创建人: true, 不在: "已不在的成员" }), createdAt: p.createdAt.toISOString(),
     phase: 现.phase, node: 现.node, result: 现.result, exceptionReason: p.exceptionReason, exceptionCategory: p.exceptionCategory?.name ?? null,
     pooled: 公海, 我是负责人: p.ownerId === me.id, 企业版: 企业, 出口叫法: 企业 ? 规则.阶段.出口叫法 : {}, 有效沟通差, 来源线索, ...(线索验证 ? { 线索验证, 线索验证必填 } : {}),
     原因选项: { 回收: 回收原因们, 无效: 无效原因们 },

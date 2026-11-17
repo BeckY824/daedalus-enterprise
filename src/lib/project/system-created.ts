@@ -27,9 +27,23 @@
  *   3. 已结束的（有结局的）照 P-公海-02 / M-公海-02：算「客户整体进公海时连带进去的」，pooledAt 跟客户进公海一起写，不是单独放回
  */
 import type { Prisma } from "@/generated/prisma";
+import { 系统 } from "./timeout";
 
 /** 补建项目的 creatorId（不是哪位成员；同超时回收留痕里的 系统操作人 一个值） */
 export const 补建创建人 = "system";
+
+/** 「创建人」那一格碰上补建创建人时的叫法（不是哪位成员，也不是删掉的账号；25E） */
+export const 补建创建人名 = "系统补建";
+
+/**
+ * 人名 id → 显示名，界面和 AI 共用（项目详情的创建人、AI 查询结果的人名列）。
+ * system 不是真账号：在「创建人」列上是补建的（系统补建）；别的列（超时回收、定时分配的操作人）是「系统」（timeout.ts 系统）。
+ * 名单里查不到的用调用方给的说法（页面「已不在的成员」、AI「（已删除的账号）」）
+ */
+export function 人名显示(id: string, 名: ReadonlyMap<string, string>, o: { 创建人?: boolean; 不在: string }): string {
+  if (id === 补建创建人) return o.创建人 ? 补建创建人名 : 系统.name;
+  return 名.get(id) ?? o.不在;
+}
 
 /** Project.source：「历史沟通分析」回填的项目 */
 export const 历史分析来源 = "history-analysis";
