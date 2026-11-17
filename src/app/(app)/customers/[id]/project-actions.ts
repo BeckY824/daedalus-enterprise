@@ -45,6 +45,7 @@ import type { 转走项目预览 } from "@/lib/carry-over";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 认业务线, 业务线不认得, 业务线必填, 是项目线, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
+import { 规整要求回复 } from "@/lib/project/time-fields";
 
 export type 给客户建项目输入 = {
   customerId: string;
@@ -152,6 +153,9 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     // 项目所在地（11-02，选填）：和编辑项目同一套规整；没填五格都是 null
     const 地 = 新项目所在地(输入.项目.所在地);
     if (!地.ok) return { ok: false, error: 地.error };
+    // 要求回复时间（11-17，选填）：和建档向导同一份规整（lib/project/time-fields.ts）
+    const 回复 = 规整要求回复(输入.项目.要求回复开始, 输入.项目.要求回复结束);
+    if (!回复.ok) return { ok: false, error: 回复.error };
     const 规则 = await 生效组织规则();
     const 认 = await 认跟进方式(输入.跟进);
     if ("error" in 认) return { ok: false, error: 认.error };
@@ -191,7 +195,7 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
       }
       const p = await tx.project.create({
         data: {
-          ...项目, ...(分配 ? { assignMode: 分配.名 } : {}), ...(业务线 ? { bizLine: 业务线 } : {}), ...地.值, customerId, contactId: 联系人?.id ?? null, creatorId: me.id, phase: "线索", node: 落.节点,
+          ...项目, ...(分配 ? { assignMode: 分配.名 } : {}), ...(业务线 ? { bizLine: 业务线 } : {}), ...地.值, ...回复.值, customerId, contactId: 联系人?.id ?? null, creatorId: me.id, phase: "线索", node: 落.节点,
           nextStepAt: 跟进.nextStepAt, nextStepText: 跟进.nextStepText, ...新项目默认值(true),
         },
       });

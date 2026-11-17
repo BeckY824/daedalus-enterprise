@@ -128,7 +128,9 @@ export type 区域去处 = "客户" | "联系人" | "项目";
 export const 区域去处叫法: Record<区域去处, string> = { 客户: "客户所在区域", 联系人: "联系人所在区域", 项目: "项目所在地" };
 export type 线索建档格 = { 分配方式?: number; ownerId?: string; 业务线?: string; 节点?: string; 下一步?: string; 区域去处?: 区域去处[];
   /** 原话里说的「分给谁」（模型原样给的名字，1E）：卡上按负责人候选认出唯一一位才预选指定分配 + 那一位（assign-line.ts 认分给），落库只认 分配方式 / ownerId */
-  分给?: string };
+  分给?: string;
+  /** 要求回复时间（11-17，选填）：卡上人选的两格，北京墙钟「YYYY-MM-DD HH:mm」（lib/project/time-fields.ts） */
+  要求回复开始?: string; 要求回复结束?: string };
 const 是区域去处 = (x: unknown): x is 区域去处 => typeof x === "string" && Object.hasOwn(区域去处叫法, x);
 
 /** 模型给 bizLine / nextStep / regionTo；卡片回传的是收好的中文键（业务线 / 下一步 / 区域去处 + 人选的四格），两种都认，再校验一遍 */
@@ -148,12 +150,17 @@ function 收线索建档格(args: Record<string, unknown>): 线索建档格 {
   if (节) 出.节点 = 节;
   const 给 = str(args.分给 ?? args.assignTo, 30);
   if (给) 出.分给 = 给;
+  // 要求回复时间：认得出的才收（北京墙钟），认不出的丢掉、让人在卡上重选
+  const 回始 = str(args.要求回复开始, 20), 回终 = str(args.要求回复结束, 20);
+  if (北京墙钟转时刻(回始)) 出.要求回复开始 = 回始;
+  if (北京墙钟转时刻(回终)) 出.要求回复结束 = 回终;
   return 出;
 }
 
 export type ProposalResult = { ok: true; proposal: Proposal } | { ok: false; error: string };
 
 import { parseDateInput } from "@/lib/date-input";
+import { 北京墙钟转时刻 } from "@/lib/project/time-fields";
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 

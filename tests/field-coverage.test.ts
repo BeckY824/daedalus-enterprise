@@ -108,6 +108,8 @@ const 可写: Record<string, string[]> = {
   // 外贸订单 / 供应商整套 7 张表 2026-10-29 删了（迁移 066），这里和 派生 里都不再列
   // 团队版项目模式 1a（2026-10-23）：建档向导、项目详情（编辑项目 / 改节点 / 勾交付 / 项目组）、设置里的「项目模式」一栏
   Project: ["name", "contactId", "ownerId", "phase", "node", "result", "exceptionCategoryId", "exceptionReason", "balanceSettled", "acceptancePassed", "amount", "currency", "remark", "expectedDealAt", "channelId",
+    // 要求回复时间（企业版 11-17，迁移 148）：新建时填、详情「要求回复」就地改（lib/project/db.ts 改项目）
+    "replyStartAt", "replyEndAt",
     // 企业版项目画像（P11，迁移 087）：详情页「项目画像」卡改一项存一项（projects/actions.ts 改项目画像Action → lib/project/profile.ts）
     "budgetLevel", "priceSense", "decisionChain", "demandStatus", "productNeeds",
     // 企业版项目画像加 7 项单选（迁移 102）：同一张「项目画像」卡，同一条路径

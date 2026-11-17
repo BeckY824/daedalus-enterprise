@@ -343,6 +343,8 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
       ...(p.分配方式 !== undefined ? { 分配方式: p.分配方式 } : {}),
       业务线: p.业务线 ?? (是业务线(我的线) ? 我的线 : "暂不分配"),
       ...(进项目 ? { 所在地: { addrCountry: 国家, addrCity: 城市 || null } } : {}),
+      // 要求回复时间（11-17，卡上选填）：照建档向导同一份规整
+      要求回复开始: p.要求回复开始 ?? null, 要求回复结束: p.要求回复结束 ?? null,
     },
     跟进: {
       type: "OTHER", content: 渠道 ? `在首页对话里新建的线索，渠道：${渠道.name}` : `在首页对话里新建的线索，渠道触点：${触点}`, occurredAt: new Date().toISOString(),

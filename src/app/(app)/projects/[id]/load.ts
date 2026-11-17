@@ -46,6 +46,7 @@ import type { 项目详情, 项目卡点, 放回方式, 项目详情Props } from
 import { 去空, 有值 } from "@/lib/empty-value";
 import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
 import { 页面看得到的客户 } from "@/lib/project/visible-customers";
+import { 时刻转北京墙钟 } from "@/lib/project/time-fields";
 
 
 /**
@@ -295,7 +296,9 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     ...(企业 ? { 字数上限: { 培育计划: 规则.阶段.培育计划上限, 无效原因: 规则.阶段.无效原因上限 } } : {}),
     // 下一步时间只有日子：在服务端按业务日排成 YYYY-MM-DD，和回收日同一个钟，浏览器在别的时区也不差一天
     nextStepAt: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null, nextStepText: p.nextStepText ?? null, 回收日, 验证不收, 回收预演,
-    ...(企业 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null } : {}), ...企业项目字段, 要下一步, 能记沟通, 可改沟通, 可删沟通, 必填, 不给推, 能改节点: 节点能改, 能转让: 能转,
+    ...(企业 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null } : {}), ...企业项目字段,
+    // 要求回复时间（11-17）：北京墙钟「YYYY-MM-DD HH:mm」，没填 null（lib/project/time-fields.ts）
+    ...(企业 ? { 要求回复: { 开始: 时刻转北京墙钟(p.replyStartAt), 结束: 时刻转北京墙钟(p.replyEndAt) } } : {}), 要下一步, 能记沟通, 可改沟通, 可删沟通, 必填, 不给推, 能改节点: 节点能改, 能转让: 能转,
     // 转给谁以后自己还看得到（11-03 A5-3）：总管理、上级转给下属照样能看，提示不说「看不到」，转完也不跳回列表
     ...(企业版() && 能转 ? { 转后还能看: 候选.filter((c) => 能看项目(me, { ...p, ownerId: c.id, 已加入 }, org)).map((c) => c.id) } : {}),
     能放公海: !公海 && 能放回公海(me, p, org) && (能进公海的阶段 as readonly string[]).includes(p.phase) && !(企业 && p.result), // 已结束的不能单独放回（X-70）

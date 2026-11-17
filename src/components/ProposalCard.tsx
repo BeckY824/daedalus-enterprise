@@ -29,6 +29,7 @@ import { 有效线索节点 } from "@/lib/project/stage-gates";
 import { 是项目卡, 不可撤销, type 项目卡 } from "@/lib/agent/project-proposals";
 import dynamic from "next/dynamic";
 import RescueKey from "@/app/(app)/customers/RescueKey";
+import ReplyWindowInput from "@/components/ReplyWindowInput";
 
 // 项目类卡的格子（11-01 速度闸门）：AI 面板每一页都在，这块只有项目卡用到，出卡时才去拿，不进每页首屏
 const ProjectProposalFields = dynamic(() => import("@/components/ProjectProposalFields"), { ssr: false });
@@ -635,6 +636,10 @@ export default function ProposalCard({
                 </Field>
                 <Field label="当前进程">
                   <Select size="small" style={{ width: 150 }} value={draft.节点} options={线索节点们.map((v) => ({ value: v, label: v }))} onChange={(v) => setDraft({ ...draft, 节点: v })} />
+                </Field>
+                {/* 要求回复时间（11-17，选填）：和新建项目同两格（components/ReplyWindowInput.tsx） */}
+                <Field label="要求回复" block>
+                  <ReplyWindowInput size="small" value={{ 开始: draft.要求回复开始 ?? null, 结束: draft.要求回复结束 ?? null }} onChange={(v) => setDraft({ ...draft, 要求回复开始: v.开始 ?? undefined, 要求回复结束: v.结束 ?? undefined })} />
                 </Field>
               </>
             ) : 渠道名们 ? (

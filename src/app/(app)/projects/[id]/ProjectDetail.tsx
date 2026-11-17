@@ -50,6 +50,8 @@ import AddressInput from "@/components/AddressInput";
 import { 三种业务线, 建议业务线, 所在地提示 } from "@/lib/enterprise/assign-line";
 import { 拼地址, 企业级别, 企业客户级别, 企业级别说明, type 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 级别星 } from "@/lib/enterprise/level-stars";
+import ReplyWindowInput, { type 回复两格 } from "@/components/ReplyWindowInput";
+import { 要求回复文字, 北京墙钟转时刻, 回复晚于回收 } from "@/lib/project/time-fields";
 import { 成交需求上限, 详细地址上限, 详细地址提示, 项目区域, type 项目成交钱 } from "@/lib/project/profile-rules";
 import { 合同状态们, 痛点标注上限, type 合同状态 } from "@/lib/project/proj-fields";
 import { 备注上限 } from "@/lib/project/wizard";
@@ -140,6 +142,8 @@ export type 项目详情 = {
   回收预演?: 回收预演底子 | null;
   /** 企业版预计成交日期（10-27 从客户挪到项目，服务端排好的 YYYY-MM-DD）；不是企业版不传 */
   expectedDealAt?: string | null; 要下一步: boolean; 能记沟通: boolean;
+  /** 企业版要求回复时间（11-17）：北京墙钟「YYYY-MM-DD HH:mm」，没填 null；不是企业版不传 */
+  要求回复?: 回复两格;
   /** 沟通的「…」菜单（改 / 删，10-29）：能记沟通、看得到客户，且不是同事 / 虚线下属的客户；企业版改 = 身为负责人的管理（M-权限-09 原口径 11-09，管理以下含负责人本人不能改删） */
   可改沟通?: boolean;
   /** 沟通能删：系统管理员或身为负责人的管理（M-权限-09 原口径 11-09，和 可改沟通 分开） */
@@ -1137,6 +1141,24 @@ export default function ProjectDetail({
             编辑器={({ 草稿, 提交, 忙 }) => (
               <DatePicker aria-label="预计成交" autoFocus disabled={忙} style={{ width: "100%" }} value={草稿 ? dayjs(草稿) : null} onChange={(d) => 提交(d ? d.format("YYYY-MM-DD") : null)} />
             )}
+          />
+        </div>
+      )}
+      {/* 要求回复时间（11-17）：客户要求的联系时间点 / 时间段，两格选填；没填「—」 */}
+      {p.要求回复 && (
+        <div style={行样}>
+          <span style={键样}>要求回复</span>
+          <ProjectInlineField<回复两格>
+            名="要求回复"
+            值={p.要求回复}
+            能改={字段能改("要求回复时间")}
+            显示={(v) => {
+              if (!v.开始 && !v.结束) return 待填("要求回复时间");
+              const 警 = 回复晚于回收(北京墙钟转时刻(v.开始), 北京墙钟转时刻(v.结束), p.回收日);
+              return <span className="proj-one" data-tip={警 ?? undefined} style={警 ? { color: "var(--warning-text)" } : undefined}>{要求回复文字(北京墙钟转时刻(v.开始), 北京墙钟转时刻(v.结束))}{警 ? " ⚠" : ""}</span>;
+            }}
+            存={(v) => 存项目项({ 要求回复开始: v.开始, 要求回复结束: v.结束 })}
+            编辑器={({ 草稿, set草稿, 忙 }) => <ReplyWindowInput autoFocus disabled={忙} value={草稿} onChange={set草稿} />}
           />
         </div>
       )}

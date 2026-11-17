@@ -1029,6 +1029,11 @@ model Project {
   /// 业务线（企业版，迁移 106，清单 A1，11-01 拍板手动填）：内贸 / 外贸 / 暂不分配；企业版新建必填，空 = 老数据。自动分配只在这条线勾的部门里挑人，
   /// 暂不分配不进自动分配；超时回收按它分内外贸时长（C7）。读它用 lib/enterprise/assign-line.ts 的 项目业务线（空 → 负责人的线 → 内贸）
   bizLine              String?
+  /// 要求回复时间（企业版，迁移 148，11-17）：客户要求什么时候联系，开始 / 结束两个时刻，填一个也行，精确到分钟；
+  /// 按北京时间录入和显示、存 UTC 时刻，不存时区（待客户方确认：问题 3）。都可空 = 没填（界面「—」）。
+  /// 规整、显示见 lib/project/time-fields.ts；不写进下一步时间、不动超时回收
+  replyStartAt         DateTime?
+  replyEndAt           DateTime?
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
   /// 企业版软删（2026-10-29，P9）：空 = 没删；有值 = 进了回收站，30 天后清掉。读的时候 lib/enterprise/soft-delete.ts 统一滤掉
@@ -1064,6 +1069,9 @@ model Project {
   @@index([sourceLeadId])
   @@index([pooledAt])
   @@index([awaitAssignAt])
+  /// 要求回复时间到点提醒按时刻扫（迁移 148）
+  @@index([replyStartAt])
+  @@index([replyEndAt])
   /// 渠道统计按项目来源取数（迁移 077）
   @@index([channelId])
   /// 企业版新线索页按阶段筛、按最近更新倒序取前 500（迁移 065）
