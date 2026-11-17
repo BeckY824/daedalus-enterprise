@@ -15,7 +15,7 @@ import { randomUUID } from "node:crypto";
  * 过程通过 emit 推出去：每次工具调用一条 step（running → done + summary）。
  */
 import { chatMessagesJSON, chatTextStream, buildSystemPrompt, chatTools, type ToolMessage } from "../llm";
-import { TOOLS as 全部工具, TOOL_MAP as 全部工具表, proposalVocab, type ToolContext } from "./tools";
+import { TOOLS as 全部工具, TOOL_MAP as 全部工具表, proposalVocab, query_records说明, query_records参数, type ToolContext } from "./tools";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 项目写工具名 } from "./project-tools";
 import { 验证步们, 每步能判, 联系人可改 } from "./project-proposals";
@@ -42,6 +42,8 @@ export function 这一家的工具(b: Pick<BusinessConfig, "projectMode">, 只�
     .filter((t) => !(只用项目 && 只用项目不给.includes(t.name)))
     // 项目类建议卡（推进节点、卡点、回款、验证、联系人、删客户）只在只用项目的企业版给：别处没有这些表
     .filter((t) => 只用项目 || !项目写工具名.has(t.name))
+    // query_records 的说明按这一家能查的表写：只用项目时不列线索、商机、签约（批次 20b）
+    .map((t) => (只用项目 && t.name === "query_records" ? { ...t, description: query_records说明(true), args: query_records参数(true) } : t))
     .map((t) =>
       只用项目 && t.name === "propose_lead"
         ? { ...t, description: "建议新建一条新线索：确认后建一位客户和一个在「线索」阶段的项目。只知道名字也要提，留空的字段人会在卡片上补。人说了「分给谁」就把姓名原样放 assignTo，说了来源（平台、展会、渠道）就原样放 source——卡上认得出会预选，人确认；没说就不给，别猜。" }
