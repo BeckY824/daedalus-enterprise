@@ -128,6 +128,71 @@ export async function 客户页沟通两样(me: { id: string; role?: string }, c
   return Promise.all([汇总一页(customerId, 项目名表(们), undefined), 排去处(me, 们.filter((x) => !x.只挂过), org)]);
 }
 
+/** 客户列表「最近跟进」那一句最多给多少字（列里一行省略，悬停看全文） */
+export const 一句字数 = 120;
+
+/**
+ * 客户列表这一页取「最近跟进那一条」的查询（员工反馈 2I）：一页一句，不随行数加查询。
+ * 只按 customerId 筛、先按 customerId 排，走 (customerId, occurredAt) 索引（同记录页窄名单，tests/perf-85k-indexes.test.ts 钉着）；
+ * 不在句子里给 occurredAt 加上下界：带着时间范围 SQLite（没统计信息）改挑 (deletedAt, occurredAt) 把这段时间的跟进全扫一遍再排（试过、计划里钉着）。
+ * 「不晚于现在」（同 customers/[id]/actions.ts 重算 lastFollowAt 的口径）在读回来以后滤。这一页没有跟进过的客户不查；都没有 = null
+ */
+export function 最近一句取法(行们: readonly { id: string; lastFollowAt: Date | null }[]) {
+  const 有 = 行们.filter((r) => r.lastFollowAt);
+  if (!有.length) return null;
+  return {
+    where: { customerId: { in: 有.map((r) => r.id) } },
+    orderBy: [{ customerId: "asc" as const }, { occurredAt: "desc" as const }, { id: "desc" as const }],
+    select: { customerId: true, occurredAt: true, content: true, title: true, projectNode: { select: { projectId: true } } },
+  } satisfies Prisma.FollowUpFindManyArgs;
+}
+
+/**
+ * 客户列表「最近跟进」后面那一句（员工反馈 2I，11-17：「最近跟进（时间 + 一句）」）：客户 id → 一句。
+ * 时间就是 Customer.lastFollowAt（#307 筛选、排序同一个字段，全量），一句 = 它背后那一条（没删、不晚于现在里最晚的）的内容，空白收拢、截到 一句字数。
+ * 内容的可见范围同客户页「沟通记录」（上面 看得到的项目们 / 汇总一页）：按项目滤开着时，那一条挂在我看不到的项目上（不在限定层给的项目里、
+ * 露客户 不过、公海里我回避的）就不给这一句——不退回去给更早那条，时间和一句要对得上；挂在这位客户名下删了的项目上照给（客户页也照摆）。
+ * 行们只能是这个人看得到的客户（列表这一页）：跟进那句用 看全部，挂项目那一格不让限定层滤成空（滤成空会被当成「没挂项目」露出来）
+ */
+export async function 列表最近一句们(me: { id: string; role?: string }, 行们: readonly { id: string; lastFollowAt: Date | null }[], 按项目滤: boolean, 可见: 可见法 = 看得到的客户): Promise<Record<string, string>> {
+  const 取法 = 最近一句取法(行们);
+  if (!取法) return {};
+  const 今 = Date.now();
+  const 全 = await 看全部(() => prisma.followUp.findMany(取法));
+  const 最近 = new Map<string, (typeof 全)[number]>();
+  for (const f of 全) if (f.occurredAt.getTime() <= 今 && !最近.has(f.customerId)) 最近.set(f.customerId, f);
+  const pids = 按项目滤 ? [...new Set([...最近.values()].flatMap((f) => (f.projectNode ? [f.projectNode.projectId] : [])))] : [];
+  const 能看 = new Set<string>();
+  const 删了的 = new Map<string, string>();
+  if (pids.length) {
+    // 限定层给的项目（没删的）；常见情形到这一句就够了，下面三样只在用得上时才查（一页最多多这几句，和行数无关）
+    const ps = await prisma.project.findMany({ where: { id: { in: pids } }, select: { id: true, customerId: true, ownerId: true, pooledAt: true } });
+    // 这一页的客户本来就是我看得到的（列表那句走的限定层）：主客户是别家的才另判
+    const 本页 = new Set(行们.map((r) => r.id));
+    const 别家 = [...new Set(ps.map((p) => p.customerId).filter((c) => !本页.has(c)))];
+    const 给了 = new Set(ps.map((p) => p.id));
+    const 没给 = pids.filter((id) => !给了.has(id));
+    const [看得到别家, 回避, 删] = await Promise.all([
+      别家.length ? 可见(别家) : Promise.resolve(new Set<string>()),
+      // 回避只管公海里的项目（我回避的公海项目）：这几个都不在公海就不读回避名单
+      ps.some((p) => p.pooledAt) ? 回避豁免(me).then((免) => (免 ? ([] as string[]) : 我回避的公海项目(prisma, me.id))) : Promise.resolve([] as string[]),
+      // 没给的里面可能是删了的项目（客户页照摆挂在这位名下删了的项目上的沟通）
+      没给.length ? 看全部(() => 看已删(() => prisma.project.findMany({ where: { id: { in: 没给 }, deletedAt: { not: null } }, select: { id: true, customerId: true } }))) : Promise.resolve([]),
+    ]);
+    const 看得到 = new Set([...本页, ...看得到别家]);
+    for (const p of ps) if (露客户(me, p, 看得到) && !回避.includes(p.id)) 能看.add(p.id);
+    for (const p of 删) 删了的.set(p.id, p.customerId);
+  }
+  const 结果: Record<string, string> = {};
+  for (const [cid, f] of 最近) {
+    const pid = 按项目滤 ? f.projectNode?.projectId : undefined;
+    if (pid && !能看.has(pid) && 删了的.get(pid) !== cid) continue;
+    const 句 = (f.content || f.title).replace(/\s+/g, " ").trim().slice(0, 一句字数);
+    if (句) 结果[cid] = 句;
+  }
+  return 结果;
+}
+
 async function 汇总一页(customerId: string, 项目们: Map<string, string>, before?: 沟通游标): Promise<{ rows: FollowUpRow[]; hasMore: boolean }> {
   const ids = [...项目们.keys()];
   /*
