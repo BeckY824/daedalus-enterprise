@@ -4,7 +4,7 @@ import LandingNote from "@/components/LandingNote";
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
 import CopyValue from "@/components/CopyValue";
 import Heat from "@/components/Heat";
-import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore, useRef, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore, useRef, type CSSProperties, type ReactNode } from "react";
 import { 少动 } from "@/lib/reduced-motion";
 import { useMotionTheme } from "@/components/MotionTheme";
 import { 量变形起点, 放变形 } from "../projects/view-morph";
@@ -63,6 +63,8 @@ import CurrencySelect from "@/components/CurrencySelect";
 import { 释义下拉, type 客户字典释义 } from "@/components/DictNote";
 import dynamic from "next/dynamic";
 import type { 建档数据 } from "../projects/new/ProjectWizard";
+import type { 批量客户预看, 批量客户自动分配行 } from "../leads/assign-actions";
+import type { 自动结果 } from "./TransferDialog";
 import { useViewAs } from "@/components/ViewAsContext";
 import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 import { 归档档位们 } from "@/lib/enterprise/archive-tier";
@@ -278,6 +280,13 @@ type Props = {
   /** 企业版批量转给别人时可选的转让原因（字典「转让原因」）；选项空 = 不问（别的版本） */
   转让原因?: { 选项: string[]; 自己: string };
   /**
+   * 批量转让框里的「指定分配 / 自动分配」（客户 11-17，同客户详情的单个转让框）：页面判了是市场成员（市场管理、渠道运营）、
+   * 规则「线索分配」开着、自动分配他能用，才递这两个服务端动作进来；不递 = 框和原来一样。
+   * 摆不摆还要看勾的里有没有「暂不分配」的客户：框打开时 预看 问一次，判定同单个那份（lib/enterprise/cust-auto-assign.ts）
+   */
+  自动分配预看?: (customerIds: string[]) => Promise<批量客户预看>;
+  批量自动分配客户?: (customerIds: string[], 原因: string | null) => Promise<{ ok: true; 结果: 批量客户自动分配行[] } | { ok: false; error: string }>;
+  /**
    * 企业版（10-28 去遗留）：跟进状态、决策状态、冷热、签约金额、院校·专业、推荐人、渠道归属、渠道负责人都不摆，
    * 换成「客户状态」一列一个筛选（字典 custStatus）。别的版本 false，列和筛选一格不变
    */
@@ -316,7 +325,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 创建排序 = "", 跟进排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 建档要取 = false, 待交接 = null, 项目概况, 最近一句, 仅项目行 = [], 仅项目超了 = false, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false, 阶段太多 = false,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 自动分配预看, 批量自动分配客户, 金额排序 = "", 等级排序 = "", 创建排序 = "", 跟进排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 建档要取 = false, 待交接 = null, 项目概况, 最近一句, 仅项目行 = [], 仅项目超了 = false, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false, 阶段太多 = false,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -362,6 +371,32 @@ export default function CustomersView({
   /** 转让框是懒块：第一次开才挂，挂上以后不卸（关的动画照放） */
   const [转让框挂过, set转让框挂过] = useState(false);
   const 取转走 = useCallback((人id: string) => 转走项目预览of(转让框?.ids ?? [], 人id), [转让框]);
+  /**
+   * 批量转让框的自动分配（客户 11-17）：页面递了两个动作才有。预看 = 勾的里几位能自动分、别的为什么不行；
+   * 做 = 一位一位自动分，结果框里原地列（分给了谁、几位没分成）。分出去了就清勾选、刷新列表；没有撤销条（同单个转让框的自动分配）。
+   * 跟着 转让框 记住：框开着这段 自动 不变，免得框里反复去预看
+   */
+  const 转让框自动 = useMemo(() => {
+    if (!转让框 || !自动分配预看 || !批量自动分配客户) return undefined;
+    const { ids, 清空: 清 } = 转让框;
+    return {
+      预看: async () => {
+        const r = await 自动分配预看(ids);
+        return r.ok ? { 可: r.可.length, 不可: r.不可.map((x) => ({ name: x.name, error: x.error })) } : null;
+      },
+      做: async (原因: string | null): Promise<自动结果> => {
+        const r = await 批量自动分配客户(ids, 原因);
+        if (!r.ok) return r;
+        const 分成 = r.结果.flatMap((x) => (x.ok ? [{ name: x.name, 接手人: x.接手人 }] : []));
+        const 没成 = r.结果.flatMap((x) => (x.ok ? [] : [{ name: x.name, error: x.error }]));
+        if (分成.length) {
+          清();
+          router.refresh();
+        }
+        return { ok: true, 分成, 没成 };
+      },
+    };
+  }, [转让框, 自动分配预看, 批量自动分配客户, router]);
 
   /**
    * 批量改完给一次撤销（排查 D1）。原来点一下就写库、没有退路，选错一页就是一批数据改错。
@@ -1158,6 +1193,7 @@ export default function CustomersView({
         // 要不要接手人确认（P-转-16）：不在这里猜，看 取转走 回来的「要确认」（服务端 转让走交接 同一个判定）
         原因选项={转让原因?.选项}
         自己={转让原因?.自己}
+        自动={转让框自动}
         做={async (人id, 原因) => {
           if (!转让框) return;
           const ids = 转让框.ids;

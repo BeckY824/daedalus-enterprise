@@ -13,11 +13,12 @@ import { Button, Input, Modal, Select } from "antd";
 import { 其他项, 其他补充上限, 合其他 } from "@/lib/enterprise/dict-kinds";
 import { 转走项目说法, type 转走项目预览 } from "@/lib/carry-over";
 import { 动作出错话 } from "@/lib/stale-deploy";
+import { 自动分配说明, 自动分配生效话 } from "@/lib/enterprise/cust-auto-assign-words";
 
 export type 转让结果 = { ok: false; error: string } | { ok: true; 话?: string };
 type 方式 = "指定" | "自动";
-/** 选了自动分配时「转给」那一格的说明（P-转-26 市场成员按客户区域定事业部；P-转-17 只通知接手人） */
-export const 自动分配说明 = "系统挑：按客户区域定事业部（中国大陆 → 内贸，其余含港澳台 → 外贸），挑这条线本月分得最少的销售，不分给销售管理；挑不到人就不转";
+/** 「转给」那一格的说明、生效那句：和客户列表批量转让框同一套话 */
+export { 自动分配说明 } from "@/lib/enterprise/cust-auto-assign-words";
 
 export default function TransferBox({
   open,
@@ -196,7 +197,7 @@ export default function TransferBox({
           )}
           <div className="cd-transfer-cq">
             {自动中
-              ? "分出去马上换负责人，名下联系人、项目一起给他；只通知接手人，不用对方确认"
+              ? 自动分配生效话
               : 要申请 ? `接手人确认后生效，之前仍在你名下；${作废天数} 天不确认自动作废` : "转了马上换负责人，几秒内可以撤销"}
           </div>
           {错 && <div className="csq-err" role="alert">{错}</div>}

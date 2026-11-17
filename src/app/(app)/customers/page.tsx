@@ -46,6 +46,8 @@ import { 阶段筛选太多 } from "@/lib/project/customer-list-projects";
 import { 读市场身份 } from "@/lib/enterprise/market-view-db";
 import type { SessionUser } from "@/lib/auth";
 import { 三态标们 } from "@/lib/enterprise/tri-state-list";
+import { 批量可自动分配 } from "@/lib/enterprise/cust-auto-assign";
+import { 批量客户自动分配预看, 批量客户自动分配 } from "../leads/assign-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -405,6 +407,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       原负责人领不回ids={拦原负责人() ? await 我放出去的公海客户(rows.map((r) => ({ id: r.id, 在公海: !!r.pool, salesOwnerId: r.salesOwnerId })), me.id) : []}
       // 企业版批量转给别人时可选的转让原因（字典「转让原因」，10-27）；别的版本空 = 不问
       转让原因={{ 选项: 转让选项, 自己: me.id }}
+      // 批量转让框里「指定分配 / 自动分配」（客户 11-17）：市场成员、规则开着、自动分配他能用才递；勾的里有没有暂不分配的，框打开时再问
+      {...(await 批量可自动分配(me) ? { 自动分配预看: 批量客户自动分配预看, 批量自动分配客户: 批量客户自动分配 } : {})}
       本月新增={sp.createdWithin === "本月"}
       直接推荐={直接推荐}
       本批={sp.batch ? { 几位: total } : null}
