@@ -8,6 +8,7 @@ import { fmtDate } from "@/lib/utils";
 import { 原因上限 } from "@/lib/project/nodes";
 import { 市场复核Action, 总管理终判Action } from "./actions";
 import { showUndo } from "@/components/UndoBar";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 export type 待复核行 = {
   projectId: string; 项目: string; 负责人: string; 步: "市场复核" | "销售终验" | "总管理终判" | "销售认领";
@@ -65,10 +66,10 @@ export default function VerifyInbox({ 们 }: { 们: 待复核行[] }) {
           摆回(id);
           记错(id, x.error ?? "没判成，请稍后再试");
           return x;
-        } catch {
+        } catch (出错) {
           摆回(id);
-          记错(id, "没判成，请稍后再试");
-          return { ok: false, error: "没判成，请稍后再试" };
+          记错(id, 动作出错话(出错, "没判成，请稍后再试"));
+          return { ok: false, error: 动作出错话(出错, "没判成，请稍后再试") };
         }
       }),
       // 补一句：这一次不交，开原来那个说明框（判有效），写完点确定才带着说明交
@@ -90,8 +91,8 @@ export default function VerifyInbox({ 们 }: { 们: 待复核行[] }) {
         set框(null);
         router.refresh();
       }
-    } catch {
-      set框错("没判成，请稍后再试");
+    } catch (出错) {
+      set框错(动作出错话(出错, "没判成，请稍后再试"));
     } finally {
       set忙(false);
     }

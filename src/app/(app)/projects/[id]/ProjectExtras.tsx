@@ -18,6 +18,7 @@ import type { 回款 } from "@/lib/project/payment-db";
 import { 还应收, 回款少于应收, type 应收依据 } from "@/lib/project/payment-hint";
 import { 改项目画像Action } from "../actions";
 import { 记回款, 删回款 } from "../payment-actions";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 /** 项目画像（企业版 P11）：各项字典（10-31 起十二项，见 项目画像项）（所在地、级别在编辑项目框里改）。选项 = 启用着的 + 这个项目已经存着、后来停用的（不然下拉里显示不出来） */
 export type 项目画像 = {
@@ -57,8 +58,8 @@ export function ProjectProfileCard({ projectId, 画像, 能改 }: { projectId: s
         if ("自动推到" in r && r.自动推到?.length) set话({ 错: false, 字: `必填齐了，自动推进到 ${r.自动推到.join(" → ")}` });
         router.refresh();
       }
-    } catch {
-      set话({ 错: true, 字: "没存上，请稍后再试" });
+    } catch (出错) {
+      set话({ 错: true, 字: 动作出错话(出错, "没存上，请稍后再试") });
       回退();
     } finally {
       set忙(false);

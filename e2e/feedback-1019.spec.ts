@@ -118,7 +118,7 @@ test("新建客户：点外面不关；填了按 Esc 先问；留着草稿下次
   await expect(框).toBeVisible();
   await expect(框.getByLabel("客户姓名")).toHaveValue(只有微信);
   await expect(框.getByLabel(/^微信/)).toHaveValue(微信号);
-  await expect(page.getByText("接着上次没填完的继续填")).toBeVisible();
+  await expect(page.getByText("已带回上次没提交的内容")).toBeVisible();
   await 截图(page, "3-草稿恢复");
 
   // 管理员不能当销售负责人，挑一位

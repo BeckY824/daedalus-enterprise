@@ -30,6 +30,8 @@ import { 背调有入口 } from "@/lib/research/channel";
 import { ResearchEntryProvider } from "@/components/research/ResearchEntry";
 import TruncTip from "@/components/TruncTip";
 import { 读预热设置 } from "@/lib/nav-prewarm";
+import UpdateBanner from "@/components/UpdateBanner";
+import { 本次构建号 } from "@/lib/build-id";
 
 export default async function AppLayout({
   children,
@@ -153,6 +155,8 @@ export default async function AppLayout({
       </AppShell>
       {modal}
       <TruncTip />
+      {/* 发过版了、这一页还是老的：顶上提示刷新（lib/stale-deploy.ts）。编号是这一次渲染时的，客户端只认第一次拿到的 */}
+      <UpdateBanner 载入时={本次构建号()} />
       </ResearchEntryProvider>
       </AiMeterProvider>
     </BusinessProvider>

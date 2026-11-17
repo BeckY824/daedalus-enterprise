@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Select } from "antd";
-import { 沟通方式选项, 发起主体选项 } from "@/app/(app)/follow-method-actions";
+import { 沟通方式选项, 发起主体选项, 我常用的沟通方式 } from "@/app/(app)/follow-method-actions";
+import type { 一条方式 } from "@/lib/follow-habit";
 import { 方式对类型, 类型对方式, 对得上的方式 } from "@/lib/follow-method";
 
 // 一页只取一次：几张表单共用，管理员改了字典刷新页面就是新的；取失败下次再取
@@ -18,6 +19,21 @@ export function useFollowMethods(): string[] | null {
     return () => { 作废 = true; };
   }, []);
   return 们;
+}
+
+/**
+ * 这个人的习惯方式（11-17，lib/follow-habit.ts）：记沟通的框每次打开问一次（刚记完一条，下次就算上了）。
+ * undefined = 还在问；null = 没有记录 / 没问到（照原来的默认）
+ */
+export function useFollowHabit(要: boolean = true): 一条方式 | null | undefined {
+  const [习惯, set习惯] = useState<一条方式 | null | undefined>(要 ? undefined : null);
+  useEffect(() => {
+    if (!要) return;
+    let 作废 = false;
+    我常用的沟通方式().then((r) => { if (!作废) set习惯(r); }, () => { if (!作废) set习惯(null); });
+    return () => { 作废 = true; };
+  }, [要]);
+  return 习惯;
 }
 
 // 发起主体同上，一页取一次

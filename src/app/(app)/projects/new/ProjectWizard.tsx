@@ -10,7 +10,7 @@ import DatePicker from "@/components/BusinessDatePicker";
 import { PageHead } from "@/components/ui";
 import { useBusiness } from "@/lib/business-client";
 import { useMe, 默认负责人 } from "@/lib/me-client";
-import { 草稿全名, 读草稿, 存草稿, 清草稿, 有内容 } from "@/lib/form-guard";
+import { 草稿全名, 读草稿, 存草稿, 清草稿, 有内容, 带回话 } from "@/lib/form-draft";
 import { 跟进类型们 } from "@/lib/constants";
 import FollowMethodSelect from "@/components/FollowMethodSelect";
 import { 对得上的方式 } from "@/lib/follow-method";
@@ -45,6 +45,7 @@ import AddressInput, { 空地址 } from "@/components/AddressInput";
 import { 详细地址上限, 详细地址提示 } from "@/lib/project/profile-rules";
 import type { 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 没业务角色不能新建话 } from "@/lib/enterprise/permissions";
+import { 动作出错话 } from "@/lib/stale-deploy";
 import ReplyWindowInput from "@/components/ReplyWindowInput";
 import { 回复晚于回收, 北京墙钟转时刻, 认定时分配, 分配晚于回复 } from "@/lib/project/time-fields";
 import ScheduleAssignInput from "@/components/ScheduleAssignInput";
@@ -387,8 +388,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
       const n = 稿面.联系人.phone ? 稿面 : { ...稿面, 联系人: { ...稿面.联系人, phone: 号 } };
       if (n !== 稿面) { setD(n); 存草稿(全名, { 稿: n }); }
       return n;
-    } catch {
-      set查错("查重没查成，请稍后再试");
+    } catch (出错) {
+      set查错(动作出错话(出错, "查重没查成，请稍后再试"));
       return null;
     } finally {
       set查中(false);
@@ -406,8 +407,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
       if (!r.ok) { set查错(r.error); return false; }
       set名查({ 名, 撞: r.撞 ?? null, 提示: r.撞 ? r.提示 : "" });
       return !r.撞;
-    } catch {
-      set查错("查重没查成，请稍后再试");
+    } catch (出错) {
+      set查错(动作出错话(出错, "查重没查成，请稍后再试"));
       return false;
     } finally {
       set名查中(false);
@@ -518,8 +519,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         if (锁客户) router.replace(去, { scroll: false });
         else router.push(去);
       }, 看不到 ? `回${b.customer}列表` : undefined);
-    } catch {
-      set交错("没建成，请稍后再试；填过的还在");
+    } catch (出错) {
+      set交错(动作出错话(出错, "没建成，请稍后再试；填过的还在"));
     } finally {
       set交中(false);
     }
@@ -603,8 +604,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         if (!r.projectId) return void router.push(`/customers/${r.customerId}`);
         router.push(弹窗 && 企业版 ? `/customers/${r.customerId}?project=${r.projectId}` : `/projects/${r.projectId}`);
       });
-    } catch {
-      set交错("没建成，请稍后再试；填过的还在");
+    } catch (出错) {
+      set交错(动作出错话(出错, "没建成，请稍后再试；填过的还在"));
     } finally {
       set交中(false);
     }
@@ -720,7 +721,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         />
       )}
       {接着填 && (
-        <Alert type="info" showIcon className="cr-alert" title="接着上次没填完的" action={<Button size="small" onClick={重来}>清空重来</Button>} />
+        // 全站同一句（lib/form-draft.ts 带回话）：已带回 + 清空
+        <Alert type="info" showIcon className="cr-alert" title={带回话(0)} action={<Button size="small" onClick={重来}>清空</Button>} />
       )}
       {企业?.没角色 && <Alert type="warning" showIcon className="cr-alert" title={没业务角色不能新建话} data-testid="wizard-no-role" />}
 
