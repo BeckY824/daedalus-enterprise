@@ -23,6 +23,7 @@ const plugin: Plugin = { name: "stale-deploy-ui", setup(b) {
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
   stub(/^\.\.\/actions$/, `import {UnrecognizedActionError as 老版本类} from 'next/dist/client/components/unrecognized-action-error';const f=${空跑};export const 改项目节点=f,终止项目进程=f,勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=async(...a)=>{(window.__记||=[]).push(a);if(window.__老版本){${老版本错}}return{ok:true,followUpId:'f9'}},判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);if(window.__老版本){${老版本错}}return{ok:true}},改项目画像Action=f,改项目沟通=f,删项目沟通=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
   stub(/^\.\.\/commission-actions$/, `const f=${空跑};export const 存项目底价=f,存提成分配=f,更正实际提成=f;`);
+  stub(/(^|\/)schedule-actions$/, `const f=${空跑};export const 改定时分配=f,取消定时分配=f,定时分配现在分=f;`);
   stub(/^\.\.\/payment-actions$/, `const f=${空跑};export const 记回款=f,删回款=f;`);
   stub(/readonly-card-actions$/, "export const 打开客户只读卡Action=async()=>({ok:false,error:'打不开'});");
   stub(/^\.\/blocker-actions$/, `const f=${空跑};export const 发布卡点Action=f,认领卡点Action=f,完成卡点Action=f,删卡点Action=f,存卡点默认Action=f,存卡点角色开关Action=f,新增原因Action=f,改原因名Action=f,改原因状态Action=f,删原因Action=f,合并原因Action=f,我的卡点Action=async()=>[];`);
