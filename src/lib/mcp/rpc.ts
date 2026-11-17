@@ -1,4 +1,5 @@
 import { 列工具, 跑工具, 只用项目 } from "./tools";
+import { recordAiUse } from "@/lib/ai-usage";
 
 /**
  * MCP 的 JSON-RPC 处理。传输那一层（HTTP）在 api/mcp/route.ts，这里只管消息。
@@ -52,8 +53,14 @@ export async function 处理(req: 请求, who: { id: string; name: string }, 版
       const p = (req.params ?? {}) as { name?: unknown; arguments?: unknown };
       const name = typeof p.name === "string" ? p.name : "";
       const args = (p.arguments ?? {}) as Record<string, unknown>;
+      /*
+        留痕（批次 20d）：外部 agent 每调一次工具记一条 ai_use，记在令牌那个人名下。原来只记令牌生成和关闭，
+        谁用 MCP 读了什么在操作日志里看不到。只记工具名和成没成，参数（可能带客户名、号码）不进日志——那张表全员可读
+      */
+      const 记 = (成: boolean) => recordAiUse(who, "mcp", `MCP 调用：${name.slice(0, 40) || "(没给工具名)"}${成 ? "" : "（出错）"}`);
       try {
         const r = await 跑工具(name, args, who);
+        await 记(true);
         return 结果(req.id, {
           content: [{ type: "text", text: JSON.stringify(r, null, 1) }],
           structuredContent: r,
@@ -65,6 +72,7 @@ export async function 处理(req: 请求, who: { id: string; name: string }, 版
           协议里那个 error 表示「这条消息没法处理」，而「客户不存在」是一个
           模型应该看见并据此改口的答案。回成协议错误的话，对面只会说「工具坏了」。
         */
+        await 记(false);
         return 结果(req.id, {
           content: [{ type: "text", text: e instanceof Error ? e.message : "调用失败" }],
           isError: true,

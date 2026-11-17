@@ -98,7 +98,10 @@ it("企业版：空字段收起、「展开更多」能展开；没有签约、�
   const page = await open(true, 1024);
   try {
     expect(await page.locator("[data-field='remark']").count()).toBe(0);
-    expect(await page.locator("[data-field='school']").count()).toBe(1);
+    // 资料卡（11-17 客户抬头 PR-1b）：第一行全称、第二行简称（没填也摆）；「公司」格不摆了，填了也不摆
+    expect(await page.locator("[data-field='school']").count()).toBe(0);
+    expect(await page.locator("aside .rec-field").evaluateAll((els) => els.slice(0, 2).map((e) => (e as HTMLElement).dataset.field))).toEqual(["name", "shortName"]);
+    expect(await page.locator("[data-field='name']").innerText()).toMatch(/全称\s*客户A/);
     const more = page.getByRole("button", { name: /展开更多 \d+ 项/ });
     await more.click();
     expect(await page.locator("[data-field='remark']").count()).toBe(1);

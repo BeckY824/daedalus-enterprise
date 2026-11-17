@@ -1233,6 +1233,8 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 }
 .rec-field:hover { background: var(--row-hover); }
 .rec-field-editing { background: var(--row-hover); cursor: default; }
+/* 只看不改的一格（11-17 客户抬头 PR-1b 资料卡「全称」：改名走完整表单）：不给文字光标 */
+.rec-field.is-ro { cursor: default; }
 .rec-field-k { font-size: var(--fs-note); color: var(--text-muted); line-height: 22px; overflow-wrap: anywhere; } /* 不再 nowrap：自定义的长字段名在 66px 里折行，不压到右边的值上；内置最长的「渠道负责人」65px 照旧一行 */
 .rec-field-v { font-size: var(--fs-body); color: var(--ink); line-height: 22px; word-break: break-word; }
 .rec-field-empty { color: var(--text-faint); }
@@ -4456,7 +4458,8 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .cust-ponly-h .muted { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; font-size: var(--fs-note); }
 .cust-ponly-list { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); overflow: hidden; min-width: 0; }
 /* 列宽按百分比，客户名吃剩下的：哪种宽度都不横滚 */
-.cust-ponly-r { display: grid; grid-template-columns: minmax(0, 1fr) 11% 12% 12% 8% 9% 7% 10% 10%; align-items: center; min-width: 0; }
+/* 第二列「编号」（11-17 客户抬头 PR-1b）定宽 96px：「NO.123456」加左右留白一行放全；后面几列各让出一两个百分点，客户名那列照旧拿剩下的 */
+.cust-ponly-r { display: grid; grid-template-columns: minmax(0, 1fr) 96px 10% 11% 11% 8% 8% 6% 9% 9%; align-items: center; min-width: 0; }
 .cust-ponly-head { color: var(--text-muted); font-size: var(--fs-note); font-weight: 600; }
 .cust-ponly-row { position: relative; border-top: 1px solid var(--line); cursor: pointer; }
 .cust-ponly-row .cust-ponly-name > a::after { content: ""; position: absolute; inset: 0; }

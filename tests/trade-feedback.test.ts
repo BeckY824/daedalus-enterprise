@@ -226,7 +226,8 @@ describe("导出：xlsx 两张表，带跟进记录", () => {
     const a = await 客户("A");
     const b2 = await 客户("B");
     // 两位同一毫秒建出来时列表顺序不定：把 A 的建档时间往前挪，列表（新的在前）就是 B、A
-    await prisma.customer.update({ where: { id: a.id }, data: { createdAt: new Date(2026, 0, 1) } });
+    // A 有客户编号、B 没有（直接插库、回填前那种）：跟进表编号一列 A 的两条写 NO.00012，B 的留空
+    await prisma.customer.update({ where: { id: a.id }, data: { createdAt: new Date(2026, 0, 1), customerNo: 12 } });
     await saveFollowUp({ customerId: a.id, type: "PHONE", content: "第二次", status: "已完成", occurredAt: new Date(2026, 9, 2).toISOString() });
     await saveFollowUp({ customerId: a.id, type: "PHONE", content: "第一次", status: "已完成", occurredAt: new Date(2026, 9, 1).toISOString() });
     await saveFollowUp({ customerId: b2.id, type: "EMAIL", content: "B 的", status: "已完成", occurredAt: new Date(2026, 8, 1).toISOString() });
@@ -242,7 +243,10 @@ describe("导出：xlsx 两张表，带跟进记录", () => {
     const 跟 = 跟进导出表(出.跟进, b);
     // 客户顺序同列表（新建的在前：B、A），每位里按时间先后
     expect(跟.body.map((x) => x[5])).toEqual(["B 的", "第一次", "第二次"]);
-    expect(跟.head.slice(1)).toEqual(["联系电话", "时间", "方式", "标题", "内容", "状态", "记录人"]);
+    // 末列客户编号（11-17 客户抬头 PR-1b）：表头跟叫法走，和客户表那格同一写法，没编号留空
+    expect(跟.head.slice(1)).toEqual(["联系电话", "时间", "方式", "标题", "内容", "状态", "记录人", `${b.customer}编号`]);
+    expect(跟.body.map((x) => x.at(-1))).toEqual(["", "NO.00012", "NO.00012"]);
+    expect(客.body.find((x) => x[0] === "A")?.at(-1)).toBe("NO.00012");
   });
 
   it("外贸导出的第一张表原样导回来：国家、WhatsApp、邮箱、来源各落各的格，不进备注", async () => {

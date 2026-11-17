@@ -13,6 +13,8 @@
  * 是 schema 表达不了的口语，而 schema 里的类型又是样例说不清的——留两份，各自完整。
  */
 
+import { 表们, 运算符, 关联们 } from "./query";
+
 export type Schema = {
   type: "object";
   properties: Record<string, unknown>;
@@ -130,16 +132,17 @@ export const 只读SCHEMAS: Record<string, Schema> = {
   query_records: {
     type: "object",
     properties: {
-      表: 串("查哪张表：客户 / 线索 / 商机 / 签约 / 联系人 / 跟进记录 / 跟进计划 / 任务 / 渠道"),
+      // 批次 20b：表、运算改成枚举（原来是自由文本，说明里还漏了项目、卡点等十几张表）。只用项目时线索 / 商机 / 签约由校验挡回并指路
+      表: { type: "string", enum: Object.keys(表们), description: "查哪张表，只能是这几个之一（只用项目的家没有线索 / 商机 / 签约，查项目按阶段筛）" },
       条件: {
         type: "array",
         description: "彼此是「且」",
         items: {
           type: "object",
           properties: {
-            字段: 串("中文字段名，如 跟进状态"),
-            运算: 串("包含 / 等于 / 不等于 / 属于 / 大于 / 小于 / 不早于 / 不晚于 / 最近天数 / 为空 / 非空"),
-            值: { description: "运算为 为空/非空 时不填；属于 时给数组；最近天数 时给天数" },
+            字段: 串("中文字段名，如 跟进状态；能用的见工具说明，填错会返回可用字段"),
+            运算: { type: "string", enum: Object.keys(运算符), description: "日期只能用 不早于/不晚于/最近天数/为空/非空；固定取值和人用 等于/属于" },
+            值: { description: "运算为 为空/非空 时不填；属于 时给数组；最近天数 时给天数；日期写 YYYY-MM-DD" },
           },
           required: ["字段", "运算"],
         },
@@ -148,7 +151,7 @@ export const 只读SCHEMAS: Record<string, Schema> = {
         type: "object",
         description: "跨一张表筛选（只能跨一张）",
         properties: {
-          路径: 串("如 客户.来源渠道 / 商机.客户 / 签约.客户 / 联系人.客户 / 跟进记录.客户 / 跟进计划.客户 / 任务.客户"),
+          路径: { type: "string", enum: Object.keys(关联们), description: "从「表」出发的那一跳，如 项目.客户 / 联系人.客户 / 跟进记录.客户" },
           条件: { type: "array", description: "形状同上", items: { type: "object" } },
         },
         required: ["路径", "条件"],
