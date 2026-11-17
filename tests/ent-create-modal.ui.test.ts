@@ -341,3 +341,47 @@ it("市场成员给有地址的老客户新增项目、选自动分配：只读�
     expect(交.项目).toMatchObject({ 分配方式: 1, 业务线: null });
   } finally { await page.close(); }
 });
+
+// 联系人姓名企业版选填（11-17「联系人姓名不一定知道」，同服务端 联系人姓名问题）：姓名和联系方式至少一项
+it("企业版联系人姓名选填：空名 + 联系人电话能交（姓名交空串）；姓名和联系人号码全空就地拦「联系人姓名和联系方式至少填一项」", async () => {
+  const page = await 开(1280);
+  try {
+    const 框 = page.getByRole("dialog");
+    await 框.getByLabel("号码", { exact: true }).fill("13905712266");
+    await 框.getByLabel("客户名称").fill("华东展具");
+    await 选(page, "渠道触点", "公司资源");
+    await 选(page, "业务线", "内贸");
+    await 框.getByLabel("沟通内容").fill("只知道电话");
+    // 全空：联系人电话清掉、姓名不填，点建好就地标红那句，不交
+    await 框.getByLabel("联系人电话").fill("");
+    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await 框.getByText("联系人姓名和联系方式至少填一项").first().waitFor();
+    expect((await 调(page)).find((x) => x[0] === "建档只建客户")).toBeUndefined();
+    // 填上联系人电话、姓名还空着：能交，姓名是空串
+    await 框.getByLabel("联系人电话").fill("13905712266");
+    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
+    const 交 = (await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 联系人: Record<string, unknown> };
+    expect(交.联系人).toMatchObject({ name: "", phone: "13905712266" });
+  } finally { await page.close(); }
+});
+
+it("企业版联系人姓名选填：空名 + 只有多加的号码也能交", async () => {
+  const page = await 开(1280);
+  try {
+    const 框 = page.getByRole("dialog");
+    await 框.getByLabel("号码", { exact: true }).fill("13905712266");
+    await 框.getByLabel("客户名称").fill("华东展具");
+    await 选(page, "渠道触点", "公司资源");
+    await 选(page, "业务线", "内贸");
+    await 框.getByLabel("沟通内容").fill("只留了微信");
+    await 框.getByLabel("联系人电话").fill("");
+    await 框.getByRole("button", { name: "加一个号码" }).click();
+    await 选(page, "第 2 个号码类型", "微信");
+    await 框.getByLabel("第 2 个号码", { exact: true }).fill("wx_buyer01");
+    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
+    const 交 = (await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 联系人: Record<string, unknown> };
+    expect(交.联系人).toMatchObject({ name: "", 号码们: [{ kind: "wechat", value: "wx_buyer01" }] });
+  } finally { await page.close(); }
+});

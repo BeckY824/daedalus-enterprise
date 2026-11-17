@@ -20,7 +20,7 @@ import { 新项目默认值 } from "./proj-fields";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 认业务线, 业务线不认得, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 新项目所在地, type 新项目所在地输入 } from "./profile-rules";
-import type { 客户地址 } from "@/lib/enterprise/customer-v2";
+import { 联系人姓名问题, type 客户地址 } from "@/lib/enterprise/customer-v2";
 
 export const 项目名上限 = 60;
 export const 备注上限 = 500;
@@ -148,8 +148,11 @@ export function 规整沟通(
 
 /** 主要联系人那几格规整一遍：建档（带项目）和只建客户共用。企业版占位名（11-03 A2-2）不算填了 */
 function 规整联系人(c: 向导联系人, 企业: boolean): 规整好的["联系人"] | { error: string } {
-  // 联系人姓名：带着号码行的（首页 AI 新线索卡，11-17 姓名选填）可以空，存空串、显示「—」；别的入口照旧必填
-  if (!hasVisibleText(c.name) && !c.号码们?.some((x) => typeof x?.value === "string" && x.value.trim())) return { error: "请填写联系人姓名" };
+  // 联系人姓名（11-17 姓名选填）：企业版姓名和联系方式至少一项（联系人那几格、号码行都算），空名存空串、显示「—」；
+  // 别的版本照旧必填（带着号码行的 AI 新线索卡除外）
+  const 号们 = [c.phone, c.email, c.wechat, ...(c.号码们 ?? []).map((x) => x?.value)];
+  const 姓名问题 = 企业 ? 联系人姓名问题(true, c.name, 号们) : !hasVisibleText(c.name) && !c.号码们?.some((x) => typeof x?.value === "string" && x.value.trim()) ? "请填写联系人姓名" : null;
+  if (姓名问题) return { error: 姓名问题 };
   if (企业 && 是占位值(c.name)) return { error: 占位名提示("联系人姓名") };
   const 电话 = 可空(c.phone);
   if (电话?.includes("*")) return { error: "联系人电话里不能有 *" };

@@ -138,6 +138,26 @@ describe("建档向导：第一行下面多加的号码", () => {
   });
 });
 
+describe("企业版联系人姓名选填（姓名和联系方式至少一项）", () => {
+  it("空名 + 联系人电话能建，存空串；空名 + 只有多加的号码也能建；全空拦", async () => {
+    const 基 = 输入();
+    const r = await 建档向导({ ...基, 联系人: { ...基.联系人, name: "" } });
+    expect(r).toMatchObject({ ok: true });
+    if (!r.ok) return;
+    expect((await prisma.contact.findFirstOrThrow({ where: { customerId: r.customerId } })).name).toBe("");
+    await resetDb();
+    甲 = (await prisma.user.create({ data: { email: "jia", name: "甲", title: "", role: "ADMIN", password: "x" } })).id;
+    await prisma.entMember.create({ data: { userId: 甲, bizRole: "director" } });
+    mocks.user = { ...mocks.user, id: 甲 };
+    const 基2 = 输入([{ kind: "wechat", value: "wx_noname01" }]);
+    expect(await 建档向导({ ...基2, 联系人: { ...基2.联系人, name: " ", phone: "" } })).toMatchObject({ ok: true });
+    const 前 = await 行数();
+    const 基3 = 输入(undefined, "13900000109");
+    expect(await 建档向导({ ...基3, 联系人: { ...基3.联系人, name: "", phone: "" } })).toMatchObject({ ok: false, error: "联系人姓名和联系方式至少填一项" });
+    expect(await 行数()).toEqual(前);
+  });
+});
+
 describe("只建客户（没开项目）也认多加的号码", () => {
   it("多行写进主要联系人；只填第一行不变", async () => {
     const { 项目: _p, ...只建 } = 输入([{ kind: "wechat", value: "wx_only01" }]);

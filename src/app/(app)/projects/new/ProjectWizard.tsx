@@ -29,7 +29,7 @@ import type { 名撞结论 } from "@/lib/enterprise/dupe-ledger";
 import AttachEntry, { 负责人说法, 我名下入口 } from "./AttachEntry";
 import RescueKey from "../../customers/RescueKey";
 import { 向导能选类型, 带进联系人, 号码类型叫法, type 联系人三格 } from "@/lib/enterprise/contact-format";
-import { 每人最多号码, 内置号码种类, 号码上限 } from "@/lib/enterprise/customer-v2";
+import { 每人最多号码, 内置号码种类, 号码上限, 联系人姓名问题 } from "@/lib/enterprise/customer-v2";
 import { 线索号码种类 } from "@/lib/agent/proposals";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import SameNumberEntry from "./SameNumberEntry";
@@ -159,7 +159,9 @@ function 客户还差(d: 稿, 企业: 企业建档, 记: (格: 格, 话: string)
   // 企业版：「未知」「待定」「暂未确认」这类占位不算填了（11-03 A2-2，服务端同一句）
   if (!d.客户.name.trim()) 记("客户名", "请填写名称");
   else if (企 && 是占位值(d.客户.name)) 记("客户名", 占位名提示("客户名称"));
-  if (!d.联系人.name.trim()) 记("联系人", "请填写联系人姓名");
+  // 联系人姓名：企业版选填（11-17「联系人姓名不一定知道」），和联系方式至少一项（联系人电话 / 第一行带进的号 / 多加的号码，同服务端 联系人姓名问题）
+  const 姓名问题 = 联系人姓名问题(企, d.联系人.name, [d.联系人.phone, d.联系人.email, d.联系人.wechat, ...(企 ? (d.更多号码 ?? []).map((x) => x.value) : [])]);
+  if (姓名问题) 记("联系人", 姓名问题);
   else if (企 && 是占位值(d.联系人.name)) 记("联系人", 占位名提示("联系人姓名"));
   const 来源 = 企业 ? 新建来源还差(d.客户.渠道, d.客户.触点) : "";
   if (来源) 记("来源", 来源);
@@ -820,7 +822,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
               description={"我名下" in 名查.撞 ? <div className="cr-gap"><我名下入口 客户id={名查.撞.我名下.客户id} /></div> : <AttachEntry key={名查.撞.撞.撞号id ?? 名查.名} 露出={名查.撞.撞} />}
             />
           )}
-          {一格("联系人", "联系人姓名", <Input aria-label="联系人姓名" status={红("联系人")} value={d.联系人.name} onChange={(e) => 改("联系人", { name: e.target.value })} />, true)}
+          {一格("联系人", "联系人姓名", <Input aria-label="联系人姓名" status={红("联系人")} value={d.联系人.name} onChange={(e) => 改("联系人", { name: e.target.value })} />, !企业)}
           {一格(null, "联系人电话", <Input aria-label="联系人电话" value={d.联系人.phone} onChange={(e) => 改("联系人", { phone: e.target.value })} />)}
           {!企业 && 一格(null, "职位", <Input aria-label="职位" value={d.联系人.position} onChange={(e) => 改("联系人", { position: e.target.value })} />)}
           {!企业 && 一格(null, "邮箱", <Input aria-label="邮箱" value={d.联系人.email} onChange={(e) => 改("联系人", { email: e.target.value })} />)}
