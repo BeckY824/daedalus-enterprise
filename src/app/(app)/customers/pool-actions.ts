@@ -42,6 +42,7 @@ import { Prisma } from "@/generated/prisma";
 import { 客户退回前查联系方式, 退回号码种类表 } from "@/lib/enterprise/return-contact-check";
 import { 还负责人 } from "@/lib/project/owner-write";
 import { 要补潜客培育, 零项目客户补潜客培育, 撤回补的潜客培育 } from "@/lib/project/nurture";
+import { 写公海领取, 还公海领取前的客户分配, type 出公海原值 } from "@/lib/enterprise/customer-assign-way";
 
 export type 公海结果 =
   | {
@@ -67,7 +68,7 @@ export type 公海结果 =
       /** 领取时跟着过来的没做完的活 */
       带走?: 带走数;
       /** 领取前各归谁：撤销领取时还给他、放回公海 */
-      原负责人?: { id: string; 值: string }[];
+      原负责人?: 出公海原值[];
       /** 领取时带过来的是哪几条活：撤销只还这几条 */
       带过来?: 带走的;
       /** 老板分配：分给了谁（id、名字），撤销时按他认「还归他」 */
@@ -355,7 +356,7 @@ async function 公海客户出手(
       他在业务员眼里「不见了」——限定着读会读不到。能不能领只看事务里还在公海，不用再限定
     */
     const 客户部分 = await 看全部(async () => {
-      const 到: { id: string; 值: string }[] = [];
+      const 到: 出公海原值[] = [];
       for (const id of ids) {
         if (!(await tx.customerPool.findUnique({ where: { customerId: id }, select: { customerId: true } }))) continue;
         const c = await tx.customer.findUnique({ where: { id }, select: { salesOwnerId: true, poolInvalidAt: true } });
@@ -365,7 +366,9 @@ async function 公海客户出手(
         if (c.salesOwnerId !== 给) await tx.customer.update({ where: { id }, data: { salesOwnerId: 给 } });
         await tx.customerClaim.upsert({ where: { customerId: id }, update: { userId: 给, at: new Date() }, create: { customerId: id, userId: 给 } });
         await tx.customerPool.deleteMany({ where: { customerId: id } });
-        到.push({ id, 值: c.salesOwnerId });
+        // 出客户公海归 给：客户分配记「公海领取」（领取、分配公海都是，customer-assign-way.ts）；盖掉的原值带回去，撤销按它还
+        const 分 = await 写公海领取(tx, id);
+        到.push({ id, 值: c.salesOwnerId, ...(分 ? { 分: 分.原 } : {}) });
       }
       const { 数, 记下 } = await 带走并记下在事务里(tx, 到.map((x) => ({ customerId: x.id, 旧: x.值 })), 给, 操作人, kind);
       // 企业版：名下放在项目公海里的项目一起归他（领客户即领项目，pool-link.ts）
@@ -485,7 +488,7 @@ const 培育项目动过 = "刚补的潜客培育项目已经有人动过（记�
  * 出公海时给零项目客户补的潜客培育项目（带过来.培育，M-公海-14）：没动过的整条删掉，客户按原样回到零项目；动过的这一位不撤（不然客户回了公海、
  * 名下挂着同事在推的项目，M-公海-02 例外二）
  */
-export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: { id: string; 值: string }[], 带过来?: 带走的, 给谁?: string, 公海项目?: string[]): Promise<公海结果> {
+export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 出公海原值[], 带过来?: 带走的, 给谁?: string, 公海项目?: string[]): Promise<公海结果> {
   const me = await requireUser();
   const ids = 原.map((x) => x.id);
   if (!ids.length) return { ok: true, updated: 0, unchanged: 0, 没权限: 0 };
@@ -558,6 +561,8 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
       else await 记换负责人(tx, [{ customerId: x.id, from: 现, to: x.值 }], me.id, "undo");
       const 还 = await tx.customer.updateMany({ where: { id: x.id, salesOwnerId: 现 }, data: { salesOwnerId: x.值 } });
       if (!还.count) throw new Error(负责人被改过);
+      // 出公海时盖成「公海领取」的客户分配还回原值（P-撤销-01）
+      await 还公海领取前的客户分配(tx, x.id, x.分);
       await tx.customerClaim.deleteMany({ where: { customerId: x.id, userId: 现 } });
       // 领取 / 分配时带过来的活还回去：还挂在领到的人名下、还没做完的才还。
       // 还给谁：x.值 是占位账号时活本来挂在进公海前的负责人名下，按 pool-release 认；客户本身回占位账号

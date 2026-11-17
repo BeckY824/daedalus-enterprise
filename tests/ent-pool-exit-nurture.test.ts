@@ -243,6 +243,35 @@ describe("撤销领取 / 分配：补的潜客培育没动过就删", () => {
   });
 });
 
+describe("出公海同时写「客户分配」和补潜客培育（合 #337 后两样都要）", () => {
+  const 分配of = async (c: string) => (await prisma.customer.findUniqueOrThrow({ where: { id: c }, select: { assignWay: true } })).assignWay;
+
+  it("两位零项目客户领取：都记公海领取、各补 1 个；撤销时一位的培育项目动过 → 这位整笔不撤（客户分配也留公海领取），另一位客户分配还回原值、补的删掉", async () => {
+    const a = await 零项目公海客户();
+    const b = await 零项目公海客户();
+    await prisma.customer.update({ where: { id: a }, data: { assignWay: "非自持" } });
+    await prisma.customer.update({ where: { id: b }, data: { assignWay: "自持" } });
+    当(丙);
+    const r = await 领取([a, b]);
+    if (!r.ok) throw new Error(r.error);
+    expect(await 分配of(a)).toBe("公海领取");
+    expect(await 分配of(b)).toBe("公海领取");
+    expect(r.原负责人).toEqual([{ id: a, 值: 甲.id, 分: "非自持" }, { id: b, 值: 甲.id, 分: "自持" }]);
+    expect(r.带过来?.培育).toHaveLength(2);
+    const b的 = (await 名下项目(b))[0].id;
+    await prisma.project.update({ where: { id: b的 }, data: { remark: "改过", updatedAt: new Date(Date.now() + 10_000) } });
+    // 浏览器带回来的（过一遍 JSON）
+    const u = await 撤销公海("领取", JSON.parse(JSON.stringify(r.原负责人)), JSON.parse(JSON.stringify(r.带过来)), undefined, r.公海项目);
+    expect(u).toMatchObject({ ok: true, updated: 1 });
+    expect(await prisma.customer.findUniqueOrThrow({ where: { id: a } })).toMatchObject({ salesOwnerId: 甲.id, assignWay: "非自持" });
+    expect(await prisma.customerPool.count({ where: { customerId: a } })).toBe(1);
+    expect(await prisma.project.count({ where: { customerId: a } })).toBe(0);
+    expect(await prisma.customer.findUniqueOrThrow({ where: { id: b } })).toMatchObject({ salesOwnerId: 丙.id, assignWay: "公海领取" });
+    expect(await prisma.customerPool.count({ where: { customerId: b } })).toBe(0);
+    expect(await prisma.project.count({ where: { customerId: b } })).toBe(1);
+  });
+});
+
 describe("导入把无主客户换上负责人出公海（apply.ts 改 + nurture-rows.ts）", () => {
   let 占位: string;
   let 批次: string;
