@@ -201,7 +201,7 @@ it.each([1024, 1280, 1366])("Windows %ipx + 超长客户名：弹窗里不横向
 });
 
 // 多个号码（员工反馈「客户会留多个电话或者微信号，需要可以新增多个添加框」）：第一行下面「加一个号码」，类型 + 号码 + 去掉；
-// 新行类型默认跟第一行；连第一行最多 20 行；交的时候空行丢掉、跟着主要联系人交（联系人.号码们），第一行照旧是 企业号码
+// 新行类型默认跟第一行（类型表同 AI 新线索卡，号码类型字典八种）；连第一行最多 20 行；交的时候空行丢掉、跟着主要联系人交（联系人.号码们），第一行照旧是 企业号码
 it("多个号码：加一行类型默认跟第一行、能改类型、能去掉；空行不交；只填第一行不带 号码们", async () => {
   const page = await 开(1280);
   try {
@@ -210,7 +210,8 @@ it("多个号码：加一行类型默认跟第一行、能改类型、能去掉�
     const 第一行类型 = await 框.locator("[data-ge='号码'] .ant-select").first().innerText();
     const 加 = 框.getByRole("button", { name: "加一个号码" });
     await 加.click();
-    expect(await 框.locator("[data-testid='wizard-more-numbers'] .ant-select").first().innerText()).toBe(第一行类型);
+    // 多加的行用号码类型字典的叫法（同 AI 新线索卡）：第一行「手机号」→ 新行「手机」
+    expect(await 框.locator("[data-testid='wizard-more-numbers'] .ant-select").first().innerText()).toBe("手机");
     await 框.getByLabel("第 2 个号码", { exact: true }).fill("13905712267");
     await 加.click();
     await 选(page, "第 3 个号码类型", "微信");
@@ -232,7 +233,7 @@ it("多个号码：加一行类型默认跟第一行、能改类型、能去掉�
     // 第一行照旧是 企业号码（默认手机号）；多加的跟着联系人交，空行、去掉的不在里面
     expect(第一行类型).toBe("手机号");
     expect(交.客户.企业号码).toEqual({ 类型: "手机号", 值: "13905712266" });
-    expect(交.联系人.号码们).toEqual([{ 类型: "手机号", 值: "13905712267" }, { 类型: "微信", 值: "wx_buyer01" }]);
+    expect(交.联系人.号码们).toEqual([{ kind: "phone", value: "13905712267" }, { kind: "wechat", value: "wx_buyer01" }]);
   } finally { await page.close(); }
 });
 

@@ -17,6 +17,7 @@ import { 读的我 } from "@/lib/team-scope";
 import { 验号码, 号码类型叫法 } from "@/lib/enterprise/contact-format";
 import { 验联系人号码, 企业号码查重, 全公司查号, 撞号结论, 记号码, 联系人号码撞了, 库类型到号码类型, type 联系人的号, type 验好的号 } from "@/lib/enterprise/contact-dedupe";
 import { 验联系人号码们, type 验好的行 } from "@/lib/enterprise/customer-v2-db";
+import { 每人最多号码 } from "@/lib/enterprise/customer-v2";
 import type { Prisma } from "@/generated/prisma";
 import { 登记接着建, 记联系人带号 } from "@/lib/project/hook";
 import { 规整向导, 向导接着建, 规整只建客户, 只建客户接着建, 项目来源默认, 占位名提示, type 建好的, type 建好的客户, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
@@ -306,7 +307,10 @@ async function 并号码行(行们: 向导联系人["号码们"], 联号: 联系
     const 同第一步 = !!第一步 && 第一步.类型 === 类型 && 第一步.键 === 行.numberKey;
     联号.push({ 类型, 值: 行.value, 键: 行.numberKey, 格: `联系人${号码类型叫法(类型)}`, 同第一步 });
   }
-  return { 别的: 验.行们.filter((行) => !库类型到号码类型[行.kind]), 有: 验.行们.length > 0 };
+  const 别的 = 验.行们.filter((行) => !库类型到号码类型[行.kind]);
+  // 连联系人那几格（向导第一行带进联系人电话）一共最多 每人最多号码 个，同联系人表单
+  if (联号.length + 别的.length > 每人最多号码) return { error: `一位联系人最多记 ${每人最多号码} 个号码` };
+  return { 别的, 有: 验.行们.length > 0 };
 }
 async function 记别的号行(tx: Prisma.TransactionClient, customerId: string, contactId: string | null, 行们: readonly 验好的行[]) {
   for (const 行 of 行们) {
