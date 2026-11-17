@@ -18,7 +18,7 @@ import { 认回打码号, 号键 } from "@/lib/phone";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 客户事项挡 } from "@/lib/enterprise/follow-perm";
 import { 仅项目可见 } from "@/lib/enterprise/project-only-customers";
-import { 验联系人号码们, 存联系人号码, 号码种类表, 种类叫法 } from "@/lib/enterprise/customer-v2-db";
+import { 验联系人号码们, 存联系人号码, 号码种类表, 种类叫法, 联系人号码们 } from "@/lib/enterprise/customer-v2-db";
 import { 联系人查重, type 撞到的联系人 } from "@/lib/enterprise/contact-dedupe";
 import { 版本冲突, 版本条件 } from "@/lib/edit-version";
 import { 联系人电话, 规整, 规整企业联系人, type 联系人字段, type 企业联系人资料 } from "./contact-input";
@@ -49,7 +49,8 @@ async function 准备(input: 交来的, 原: 原联系人 | null, 跳过的联�
         ? { ...r, value: 原号们.find((o) => o.kind === r.kind && 认回打码号(r.value, o.value) === o.value)?.value ?? r.value }
         : r))
     : null;
-  const 号 = 交的号们 ? await 验联系人号码们(交的号们, 原?.contactMethods.map((x) => x.kind) ?? []) : null;
+  // 只验新加的、改过的行（11-17，同 saveContact）
+  const 号 = 交的号们 ? await 验联系人号码们(交的号们, 原?.contactMethods.map((x) => x.kind) ?? [], 原 ? (原.contactMethods.length ? 原.contactMethods : 联系人号码们(原, [])) : []) : null;
   if (号 && !号.ok) return 号;
   const 电话 = 号 ? ({ ok: true, phone: null } as const) : 联系人电话(input.phone, 原?.phone);
   if (!电话.ok) return 电话;

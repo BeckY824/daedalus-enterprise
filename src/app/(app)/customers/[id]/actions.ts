@@ -33,7 +33,7 @@ import { 是逾期 } from "@/lib/overdue";
 import { parseDateInput } from "@/lib/date-input";
 import { 联系人电话, 规整, 规整企业联系人, type 联系人字段, type 企业联系人资料 } from "./contact-input";
 export type { 企业联系人资料 } from "./contact-input";
-import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类表 } from "@/lib/enterprise/customer-v2-db";
+import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类表, 联系人号码们 } from "@/lib/enterprise/customer-v2-db";
 import { 联系人姓名问题 } from "@/lib/enterprise/customer-v2";
 import { 联系人查重, 联系人撞号话, type 撞到的联系人 } from "@/lib/enterprise/contact-dedupe";
 import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
@@ -699,7 +699,8 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
           ? { ...r, value: 原号们.find((o) => o.kind === r.kind && 认回打码号(r.value, o.value) === o.value)?.value ?? r.value }
           : r))
       : null;
-    const 号 = 交的号们 ? await 验联系人号码们(交的号们, 原?.contactMethods.map((x) => x.kind) ?? []) : null;
+    // 只验新加的、改过的行（11-17）：原来就有、一字没动的老号（导入进来的、改规矩之前存的）照原样留着，不挡改别的格
+    const 号 = 交的号们 ? await 验联系人号码们(交的号们, 原?.contactMethods.map((x) => x.kind) ?? [], 原 ? (原.contactMethods.length ? 原.contactMethods : 联系人号码们(原, [])) : []) : null;
     if (号 && !号.ok) return 号;
     const 电话 = 号 ? ({ ok: true, phone: null } as const) : 联系人电话(input.phone, 原?.phone);
     if (!电话.ok) return 电话;
