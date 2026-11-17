@@ -1,0 +1,195 @@
+/**
+ * 客户转让可选自动分配（客户 11-17：「市场成员对暂不分配的客户进行分配时可选自动和指定」）：
+ *   - 市场成员（市场管理、渠道运营，只认业务角色）+ 暂不分配的客户：按新线索的自动分配挑人（本月分得最少、并列给最早建号的；
+ *     按客户区域定内贸 / 外贸，P-转-26），客户连名下项目、联系人给挑中的销售，算一次分配（分配记录 + 换负责人记 market-assign），
+ *     清待分配（P-转-21），只通知接手人（P-转-17）
+ *   - 别的角色（总管理、销售管理、账号是 ADMIN 但业务角色不是市场的）不能用；不是暂不分配的客户不能用
+ *   - 一个能接的人都没有：什么都不动、不标待分配，回原因
+ *   - 页面摆不摆（页面可自动分配）和服务端同一个判定
+ */
+import { describe, it, expect, beforeEach, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  user: { id: "", name: "市场", email: "a@x", role: "SALES", title: "", avatar: null },
+}));
+vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
+vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
+vi.mock("@/lib/enterprise/switch", () => ({ 企业版: () => true }));
+
+import { prisma } from "@/lib/prisma";
+import { setSetting } from "@/lib/settings";
+import { resetDb } from "./reset";
+import { 客户自动分配, 设线部门 } from "@/app/(app)/leads/assign-actions";
+import { 页面可自动分配, 不是市场话, 不是暂不分配话 } from "@/lib/enterprise/cust-auto-assign";
+import { 自动分配不参与key, 不设配额key, 月份 } from "@/lib/enterprise/lead-assign";
+import { 规则 } from "@/lib/enterprise/rules";
+
+const 当 = (id: string, name: string, role = "SALES") => { mocks.user = { ...mocks.user, id, name, role }; };
+
+let 老板: string, 市场管: string, 渠运: string, 外组长: string, 内组长: string;
+let 外一: string, 外二: string, 内一: string, 内二: string;
+let 号 = 0;
+
+type 址 = { addrCountry?: string | null; addrProvince?: string | null; addrCity?: string | null };
+const 大陆: 址 = { addrCountry: "中国", addrProvince: "浙江省", addrCity: "杭州市" };
+const 美国: 址 = { addrCountry: "美国" };
+
+/** 市场成员名下一位客户 + 一条项目（默认分配方式「暂不分配」、业务线内贸）+ 一位联系人 */
+async function 建客户(o: { 负责人?: string; 地址?: 址; 方式?: string | null; 项目线?: string | null; 客户线?: string | null; 待分配?: boolean } = {}) {
+  const 负责人 = o.负责人 ?? 市场管;
+  号++;
+  const c = await prisma.customer.create({
+    data: { name: `客户${号}`, phone: `1390000${String(号).padStart(4, "0")}`, salesOwnerId: 负责人, bizLine: o.客户线 ?? "内贸", ...(o.地址 ?? 大陆) },
+  });
+  const p = await prisma.project.create({
+    data: {
+      name: `项目${号}`, customerId: c.id, ownerId: 负责人, creatorId: 负责人, bizLine: o.项目线 === undefined ? "内贸" : o.项目线,
+      assignMode: o.方式 === undefined ? "暂不分配" : o.方式, ...(o.待分配 ? { awaitAssignAt: new Date() } : {}),
+    },
+  });
+  const ct = await prisma.contact.create({ data: { customerId: c.id, name: `联系人${号}`, phone: `1380000${String(号).padStart(4, "0")}` } });
+  return { c: c.id, p: p.id, ct: ct.id };
+}
+const 客户负责人 = async (id: string) => (await prisma.customer.findUniqueOrThrow({ where: { id } })).salesOwnerId;
+const 项目 = (id: string) => prisma.project.findUniqueOrThrow({ where: { id } });
+
+beforeEach(async () => {
+  await resetDb();
+  const 部 = async (name: string, parentId: string | null = null) => (await prisma.entDept.create({ data: { name, parentId } })).id;
+  const 外贸部 = await 部("外贸事业部");
+  const 内贸部 = await 部("内贸事业部");
+  const 市场部 = await 部("市场运营部", 内贸部);
+  let 第几 = 0;
+  const 人 = async (email: string, name: string, bizRole: string, deptId: string | null, role = "SALES", managerId: string | null = null) => {
+    第几++;
+    const id = (await prisma.user.create({ data: { email, name, title: "", role, password: "x", createdAt: new Date(2026, 0, 第几) } })).id;
+    await prisma.entMember.create({ data: { userId: id, bizRole, deptId, managerId } });
+    return id;
+  };
+  老板 = await 人("boss", "老板", "director", null, "ADMIN");
+  市场管 = await 人("mkt", "市场管理", "marketing_mgr", 市场部);
+  渠运 = await 人("ch", "渠运", "channel_ops", 市场部, "SALES", 市场管);
+  外一 = await 人("w1", "外贸一", "sales", 外贸部);
+  外二 = await 人("w2", "外贸二", "sales", 外贸部);
+  外组长 = await 人("wl", "外贸组长", "sales_mgr", 外贸部, "ADMIN");
+  内一 = await 人("n1", "内贸一", "sales", 内贸部);
+  内二 = await 人("n2", "内贸二", "sales", 内贸部);
+  内组长 = await 人("nl", "内贸组长", "sales_mgr", 内贸部, "MANAGER");
+
+  for (const k of [规则.按组织看客户.key, 规则.线索分配.key]) await setSetting(k, true);
+  await setSetting(不设配额key, true);
+  当(老板, "老板", "ADMIN");
+  expect(await 设线部门({ 内贸: [内贸部], 外贸: [外贸部] })).toEqual({ ok: true });
+  当(市场管, "市场管理");
+});
+
+describe("市场成员 + 暂不分配的客户：自动分配", () => {
+  it("大陆客户：挑本月分得最少的内贸销售；客户、名下项目、联系人一起给他，算一次分配、清待分配、只通知接手人", async () => {
+    // 内一本月已分过 1 条：该轮到内二
+    await prisma.entLeadAssign.create({ data: { toUserId: 内一, byUserId: 市场管, month: 月份(), counted: true, kind: "营销" } });
+    const { c, p, ct } = await 建客户({ 待分配: true });
+    // 同一位客户名下另一条市场自己的项目：随客户一起走
+    const 另一 = (await prisma.project.create({ data: { name: "另一条", customerId: c, ownerId: 市场管, creatorId: 市场管, bizLine: "内贸", assignMode: "暂不分配" } })).id;
+    expect(await 页面可自动分配(mocks.user, { id: c, salesOwnerId: 市场管, bizLine: "内贸", pool: null })).toBe(true);
+
+    const r = await 客户自动分配(c, null);
+    expect(r).toMatchObject({ ok: true, toUserId: 内二, 接手人: "内贸二" });
+    if (r.ok) expect(r.为什么).toContain("按客户区域定内贸");
+    expect(await 客户负责人(c)).toBe(内二);
+    expect((await 项目(p)).ownerId).toBe(内二);
+    expect((await 项目(p)).awaitAssignAt).toBeNull();
+    expect((await 项目(另一)).ownerId).toBe(内二);
+    expect((await prisma.contact.findUniqueOrThrow({ where: { id: ct } })).customerId).toBe(c);
+    // 算分配：一条分配记录（算数），换负责人记成 market-assign（分配，不算转客户）
+    const 记录 = await prisma.entLeadAssign.findMany({ where: { projectId: p } });
+    expect(记录).toHaveLength(1);
+    expect(记录[0]).toMatchObject({ toUserId: 内二, fromUserId: 市场管, byUserId: 市场管, counted: true });
+    expect(await prisma.customerOwnerLog.findMany({ where: { customerId: c }, select: { kind: true, fromOwnerId: true, toOwnerId: true } }))
+      .toEqual([{ kind: "market-assign", fromOwnerId: 市场管, toOwnerId: 内二 }]);
+    // 只通知接手人（P-转-17）：没有交接待确认，旁人没有铃铛
+    const 铃 = await prisma.entNotice.findMany();
+    expect(铃.map((n) => n.userId)).toEqual([内二]);
+    expect(铃[0].kind).toBe("自动分配");
+    expect(await prisma.entHandover.count()).toBe(0);
+  });
+
+  it("并列（本月都 0 条）给最早建号的；非大陆客户只挑外贸销售，不给销售管理", async () => {
+    const 一 = await 建客户();
+    expect(await 客户自动分配(一.c, null)).toMatchObject({ ok: true, toUserId: 内一 });
+    const 二 = await 建客户({ 地址: 美国, 项目线: "外贸" });
+    expect(await 客户自动分配(二.c, null)).toMatchObject({ ok: true, toUserId: 外一 });
+    const 三 = await 建客户({ 地址: 美国 });
+    expect(await 客户自动分配(三.c, null)).toMatchObject({ ok: true, toUserId: 外二 });
+    for (const x of [一, 二, 三]) expect([外组长, 内组长]).not.toContain(await 客户负责人(x.c));
+  });
+
+  it("渠道运营转自己的暂不分配客户也能自动分配；记一条操作日志", async () => {
+    当(渠运, "渠运");
+    const { c } = await 建客户({ 负责人: 渠运 });
+    const r = await 客户自动分配(c, null);
+    expect(r).toMatchObject({ ok: true, toUserId: 内一 });
+    expect(await 客户负责人(c)).toBe(内一);
+    const 日志 = await prisma.auditLog.findFirst({ where: { entity: "Customer", entityId: c } });
+    expect(日志?.summary).toContain("自动分配");
+  });
+
+  it("项目分配方式不是暂不分配、但客户业务线标签是「暂不分配」：也算，能自动分", async () => {
+    const { c } = await 建客户({ 方式: "个人自持", 客户线: "暂不分配" });
+    expect(await 客户自动分配(c, null)).toMatchObject({ ok: true, toUserId: 内一 });
+  });
+
+  it("项目业务线是「暂不分配」也算；客户地址全空看项目所在地、再空两条线都算", async () => {
+    const { c } = await 建客户({ 方式: "自动分配", 项目线: "暂不分配", 地址: { addrCountry: null } });
+    const r = await 客户自动分配(c, null);
+    expect(r).toMatchObject({ ok: true, 区域未填: true });
+    if (r.ok) expect([内一, 内二, 外一, 外二]).toContain(r.toUserId);
+  });
+});
+
+describe("不能用自动分配的：服务端拦，什么都不动", () => {
+  it("总管理、销售管理（账号 ADMIN / MANAGER）不是市场成员：拦；页面也不摆", async () => {
+    const { c, p } = await 建客户();
+    for (const [id, name, role] of [[老板, "老板", "ADMIN"], [外组长, "外贸组长", "ADMIN"], [内组长, "内贸组长", "MANAGER"]] as const) {
+      当(id, name, role);
+      expect(await 客户自动分配(c, null)).toEqual({ ok: false, error: 不是市场话 });
+      expect(await 页面可自动分配(mocks.user, { id: c, salesOwnerId: 市场管, bizLine: "内贸", pool: null })).toBe(false);
+    }
+    expect(await 客户负责人(c)).toBe(市场管);
+    expect((await 项目(p)).ownerId).toBe(市场管);
+    expect(await prisma.entLeadAssign.count()).toBe(0);
+  });
+
+  it("不是暂不分配的客户（项目自动分配 / 个人自持、业务线内贸）：拦，页面不摆", async () => {
+    const { c } = await 建客户({ 方式: "个人自持" });
+    expect(await 客户自动分配(c, null)).toEqual({ ok: false, error: 不是暂不分配话 });
+    expect(await 页面可自动分配(mocks.user, { id: c, salesOwnerId: 市场管, bizLine: "内贸", pool: null })).toBe(false);
+    expect(await 客户负责人(c)).toBe(市场管);
+  });
+
+  it("暂不分配的项目已转商机 / 已结束：不算暂不分配", async () => {
+    const { c, p } = await 建客户();
+    await prisma.project.update({ where: { id: p }, data: { phase: "商机" } });
+    expect(await 客户自动分配(c, null)).toEqual({ ok: false, error: 不是暂不分配话 });
+  });
+
+  it("规则「线索分配」关着：拦，页面不摆", async () => {
+    await setSetting(规则.线索分配.key, false);
+    const { c } = await 建客户();
+    expect(await 客户自动分配(c, null)).toMatchObject({ ok: false });
+    expect(await 页面可自动分配(mocks.user, { id: c, salesOwnerId: 市场管, bizLine: "内贸", pool: null })).toBe(false);
+    expect(await 客户负责人(c)).toBe(市场管);
+  });
+
+  it("一个能接的人都没有：不转、不标待分配、不写分配记录、不发铃铛，回原因", async () => {
+    await setSetting(自动分配不参与key, { [内一]: "暂停", [内二]: "禁止" });
+    const { c, p } = await 建客户();
+    const r = await 客户自动分配(c, null);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/^没有自动分出去：没有能接的人.*客户还在原负责人名下，没转；可以改用指定分配$/);
+    expect(await 客户负责人(c)).toBe(市场管);
+    expect((await 项目(p)).ownerId).toBe(市场管);
+    expect((await 项目(p)).awaitAssignAt).toBeNull();
+    expect(await prisma.entLeadAssign.count()).toBe(0);
+    expect(await prisma.entNotice.count()).toBe(0);
+  });
+});
