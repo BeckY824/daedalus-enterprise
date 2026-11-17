@@ -76,6 +76,7 @@ import NewMenuButton from "@/components/NewMenuButton";
 import { 取客户页表单料, type 客户页表单料 } from "./form-data-action";
 import { 看板工具位 } from "./board-slot";
 import { 客户编号显示 } from "@/lib/customer-no";
+import { 客户抬头 } from "@/lib/enterprise/customer-title";
 
 /** 「新增客户」弹窗（10-31 P5，整套建档向导）：点了才要，单拆一包，不压客户列表首屏 JS（速度闸门 850 KB） */
 // 客户看板（U-客户-06）只在切到「看板」时用，连同分页条单独一块，别压在客户列表首屏（速度闸门）
@@ -241,6 +242,11 @@ type Props = {
   /** 「最近跟进」后面那一句（员工反馈 2I，企业版）：客户 id → 最近跟进那一条的内容；没有 / 看不到那一条的不在里面，只摆时间 */
   最近一句?: Record<string, string>;
   /**
+   * 抬头里的当前节点（企业版，11-17 客户抬头 PR-5，lib/enterprise/customer-title.ts 抬头节点们）：只有简称、全称、类型都空的客户才有，
+   * 名下最近有动静的项目（含公海、不按看的人算）；不给 / 不在里面 = 没有这一段
+   */
+  抬头节点?: Record<string, string>;
+  /**
    * 「仅项目」一小块（只负责项目的人，第 1 页、没筛别的才有，page.tsx 给）：和 rows 分开，不进 total、不能勾、没有行菜单。
    * 其他角色不给。看板（服务端的、本地的）都不摆
    */
@@ -315,7 +321,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 创建排序 = "", 跟进排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 建档要取 = false, 待交接 = null, 项目概况, 最近一句, 仅项目行 = [], 仅项目超了 = false, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false, 阶段太多 = false,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 创建排序 = "", 跟进排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 建档要取 = false, 待交接 = null, 项目概况, 最近一句, 抬头节点, 仅项目行 = [], 仅项目超了 = false, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false, 阶段太多 = false,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -914,12 +920,17 @@ export default function CustomersView({
       title: b.customer,
       key: "name",
       dataIndex: "name",
-      // 企业版公司名常常很长：原来一行截断、悬停看全（P13）；10-30 用户要「显示完整」，改成整段折行，列放宽到 200 少折几行
+      /*
+        企业版显示抬头（11-17 客户抬头 PR-5，出口 1）：区域|简称 / 全称 / 类型 / 当前节点，全空写编号|节点（lib/enterprise/customer-title.ts）。
+        一行、放不下省略号，悬停看全文（P-抬头-11，同 11-04 全站一行省略，.fulltext 现在就是一行；TruncTip 量到截了才出，title 兜底）
+      */
       width: 企业 ? 宽(200, 136) : 160,
       常驻: true,
-      render: (v, r) => 企业
-        ? <RowLink href={`/customers/${r.id}`} className="link-strong fulltext" style={{ display: "block" }} title={v}>{v}</RowLink>
-        : <RowLink href={`/customers/${r.id}`} className="link-strong">{v}</RowLink>,
+      render: (v, r) => {
+        if (!企业) return <RowLink href={`/customers/${r.id}`} className="link-strong">{v}</RowLink>;
+        const 抬头 = 客户抬头(r, 抬头节点?.[r.id]);
+        return <RowLink href={`/customers/${r.id}`} className="link-strong fulltext cust-title" style={{ display: "block" }} title={抬头}>{抬头}</RowLink>;
+      },
     },
     /*
       客户编号（11-17 客户抬头 PR-1）：以后列表上显示的抬头可以重名，唯一性只靠编号，所以企业版常驻一列、紧跟客户名，不进「列」的可选项。

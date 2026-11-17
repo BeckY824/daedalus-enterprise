@@ -174,6 +174,8 @@ export type RecordProps = {
   项目联系人?: 项目联系人 | null;
   /** 项目区页签上的项目 id（CustomerDetail 给）：时间线上点这些项目直接切页签 */
   项目页签们?: readonly string[] | null;
+  /** 页头抬头里的当前节点（企业版，11-17 客户抬头 PR-5，lib/enterprise/customer-title.ts 抬头节点们）：简称、全称、类型都空才给；null / 不给 = 没有这一段 */
+  抬头节点?: string | null;
   customer: CustomerRow;
   contacts: ContactRow[];
   contracts: ContractRow[];
