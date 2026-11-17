@@ -33,6 +33,8 @@ export default async function PoolPage({
     projChannel?: string; phase?: string;
     /** 项目创建时间（渠道看板 TOP5 点进来带时间段，11-11）：两个日历日，北京日，和项目列表同名同读法；带了也按项目一条一行 */
     createdFrom?: string; createdTo?: string;
+    /** =1：渠道分档点进来的，按创建时间筛时排掉补建的项目（同项目列表 onlyNew） */
+    onlyNew?: string;
     /** 号码不全（三态 T10）：=1 只看三态自动收回时打了「号码不全」的客户 */
     phoneIncomplete?: string }>;
 }) {
@@ -65,7 +67,7 @@ export default async function PoolPage({
   // 组织规则在设置缓存里读：客户三态关着时「号码不全」的标签、筛选都不出（P-界面-19 ⑦），地址栏带了也当没筛
   const 规则P = 生效组织规则();
   const [d, users, 规则, 有, 渠道筛选项, 无效原因选项] = await Promise.all([
-    规则P.then((r) => 读公海页(me, { 属性: 筛.attr, 快捷: 筛.quick, 排序: 筛.sort, keyword: 筛.keyword, 来源: 筛.channelId, 号码不全: r.三态.开 ? 筛.phoneIncomplete : "" }, 正整数(sp.page, 1), pageSize, 按名单 ? { channelId: 筛.projChannel, phase: 筛.phase, createdFrom: 筛.createdFrom, createdTo: 筛.createdTo } : undefined, { 数号码不全: r.三态.开 })),
+    规则P.then((r) => 读公海页(me, { 属性: 筛.attr, 快捷: 筛.quick, 排序: 筛.sort, keyword: 筛.keyword, 来源: 筛.channelId, 号码不全: r.三态.开 ? 筛.phoneIncomplete : "" }, 正整数(sp.page, 1), pageSize, 按名单 ? { channelId: 筛.projChannel, phase: 筛.phase, createdFrom: 筛.createdFrom, createdTo: 筛.createdTo, onlyNew: sp.onlyNew === "1" ? "1" : "" } : undefined, { 数号码不全: r.三态.开 })),
     // 分配给谁：老板、主管才用得上；只列能当负责人的，不限业务线（P-转-08）
     能分配 ? 公海分配候选(me) : Promise.resolve([]),
     规则P,

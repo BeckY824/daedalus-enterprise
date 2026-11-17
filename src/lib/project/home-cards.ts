@@ -9,10 +9,13 @@
  * 这一圈和复盘页「全部」是同一个（board-member.ts 的 看板的人 的 谁），卡上的数和项目页 ?f=… 都按它筛负责人。
  *
  * 卡（URL 参数 f 的值 → 卡名 → 口径）：
- *   month-new  本月新增   这个月（北京时间自然月，1 号 0 点起）新建的项目，不管现在是否还在推、有没有结局
+ *   month-new  本月新增   这个月（北京时间自然月，1 号 0 点起）新建的项目，不管现在是否还在推、有没有结局；
+ *                          补零项目客户的脚本补建的（creatorId = 补建创建人，createdAt = 客户建档时间）不算新建（system-created.ts）
  *   key        重点项目   在推的项目里，项目自己的级别（Project.level，迁移 093，界面显示成星级）是 重点级别（S / A）的。
  *                          项目标签字典里的「A 重点推进」就是项目级别 A；S 比 A 高一档，也算重点。不看客户级别
- *   no-follow  暂未跟进   在推的项目里，一条沟通都还没挂上的（FollowUpProject 没有行）
+ *   no-follow  暂未跟进   在推的项目里，一条沟通都还没挂上的（FollowUpProject 没有行）。
+ *                          例外（11-17）：补建的项目（老客户补的潜客培育）客户身上有过沟通就不算——导入的老客户沟通记在客户上、没挂项目，
+ *                          补了项目不等于没人跟过。别的项目照旧只看挂在项目上的沟通（客户名下另一个项目的沟通不算这个项目跟进过）
  *   due-soon   3 天内回公海（原叫即将逾期）  在推的线索 / 商机项目里，超时回收日在 即将逾期天数（3 天）以内的；
  *                          回收日和项目页「即将回收」标签同一套算法（timeout.ts 的 超时回收日），只是提前量从 1 天放到 3 天。
  *                          组织规则里「超时回收」没开 = 没有回收日 = 恒为 0
@@ -28,6 +31,7 @@ import { dayjs } from "@/lib/utils";
 import type { 组织规则 } from "./org-rules";
 import { 节点超时天数 } from "./timeout";
 import { 同名们, type 阶段字典 } from "./stage-dict";
+import { 不算补建, 补建创建人 } from "./system-created";
 
 /** 能当项目页筛选（/projects?f=…）的卡 */
 export const 项目卡键们 = ["month-new", "key", "no-follow", "due-soon", "month-won"] as const;
@@ -188,12 +192,12 @@ export function 首页卡条件(键: 项目卡键, 规则: 组织规则, 字典:
   switch (键) {
     case "month-new": {
       const { 起, 止 } = 本月起止(今);
-      return { createdAt: { gte: 起, lt: 止 } };
+      return { createdAt: { gte: 起, lt: 止 }, ...不算补建 };
     }
     case "key":
       return { ...在推, level: { in: [...重点级别] } };
     case "no-follow":
-      return { ...在推, followUps: { none: {} } };
+      return { ...在推, followUps: { none: {} }, NOT: { creatorId: 补建创建人, customer: { followUps: { some: { deletedAt: null } } } } };
     case "due-soon":
       return 即将逾期粗筛(规则, 字典, 今) ?? { id: { in: [] } };
     case "month-won": {
