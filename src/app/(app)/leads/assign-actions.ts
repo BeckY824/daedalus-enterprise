@@ -18,10 +18,12 @@ import { 能改后台设置, 是市场角色, 是销售角色, 能管公海 } fr
 import { 查完再写 } from "@/lib/check-then-write";
 import { 读改权限, 谁能改的话 } from "@/lib/enterprise/edit-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 分配方式叫法, 挡分配方式 } from "@/lib/enterprise/dict";
+import { 分配方式叫法, 挡分配方式, 选的原因 } from "@/lib/enterprise/dict";
+import { 能自动分配客户 } from "@/lib/enterprise/cust-auto-assign";
+import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 发满额提醒, 发待分配提醒, 读满额提醒, 关掉满额提醒, type 满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 标待分配 } from "@/lib/enterprise/await-assign";
-import { 验证中不能改派 } from "@/lib/project/lead-verify-guard";
+import { 验证中不能改派, 客户有验证中线索 } from "@/lib/project/lead-verify-guard";
 import { 分配通知, 同事待分配随客户通知, type 分配条, type 留下的活, type 同事待分配条 } from "@/lib/enterprise/notice-sources";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -422,10 +424,10 @@ export type 自动分配结果 =
 /**
  * 服务端自己用：多带 留下（分配通知要）、要标（挑不到人、还没待分配的新线索：调用方标待分配、发提醒，X-85），不给浏览器
  */
-type 内部自动结果 = 自动分配结果 & { 留下?: 留下的活; 要标?: { 名: string; 为什么: string } };
+type 内部自动结果 = 自动分配结果 & { 留下?: 留下的活; 要标?: { 名: string; 为什么: string }; 挑不到?: string };
 
 function 对外(r: 内部自动结果): 自动分配结果 {
-  const { 留下: _留下, 要标: _要标, ...外 } = r;
+  const { 留下: _留下, 要标: _要标, 挑不到: _挑不到, ...外 } = r;
   return 外;
 }
 
@@ -561,7 +563,7 @@ async function 自动分给(
   const 挑不到 = (为什么: string, 都满额?: true): 内部自动结果 =>
     哪条.projectId !== undefined
       ? {
-        ok: false, 待分配: true, ...(都满额 ? { 都满额 } : {}), error: `${为什么}。${看.待分配 ? "已留在新线索待分配" : "这条新线索留在原处"}，可以手动指派`,
+        ok: false, 待分配: true, ...(都满额 ? { 都满额 } : {}), error: `${为什么}。${看.待分配 ? "已留在新线索待分配" : "这条新线索留在原处"}，可以手动指派`, 挑不到: 为什么,
         ...(看.待分配 ? {} : { 要标: { 名: 看.名, 为什么 } }),
       }
       : { ok: false, ...(都满额 ? { 都满额 } : {}), error: 为什么 };
@@ -639,6 +641,50 @@ async function 自动分给(
     if (r.已被分配) return 已被分配;
     if (!r.满) return { ok: false, error: r.error };
     跳过.add(谁);
+  }
+}
+
+export type 客户自动分配结果 = { ok: true; toUserId: string; 接手人: string; 为什么: string; 区域未填?: true } | { ok: false; error: string };
+
+/**
+ * 客户转让框里选「自动分配」（客户 11-17：市场成员给暂不分配的客户分配时可选自动和指定；lib/enterprise/cust-auto-assign.ts 说谁能用、什么算暂不分配）。
+ * 拿客户名下那条暂不分配的项目走新线索的自动分配（自动分给：本月分得最少的优先、配额照算，市场成员按客户区域定内贸 / 外贸，P-转-26），
+ * 分项目给 里市场转销售那段把客户连名下项目、联系人一起给挑中的销售（P-转-03 例外：算分配、写分配记录，不计转客户次数），清待分配（P-转-21），
+ * 只通知接手人、不走接手人确认（P-转-17）。挑不到人：什么都不动、不标待分配，回原因（框里写，可以改用指定分配）。
+ * 转让原因（可不选）同指定转让，记进操作日志
+ */
+export async function 客户自动分配(customerId: string, 原因?: string | null): Promise<客户自动分配结果> {
+  const me = await 进门();
+  if (!me) return 没开;
+  if (typeof customerId !== "string" || !customerId) return { ok: false, error: "要分哪一位客户？刷新看看" };
+  try {
+    const 选 = await 选的原因("transfer", 原因);
+    if (!选.ok) return 选;
+    const org = await 读组织();
+    // 按「我」限定着读：看不到的当不在
+    const c = await prisma.customer.findFirst({ where: { id: customerId }, select: { id: true, name: true, salesOwnerId: true, bizLine: true, pool: { select: { customerId: true } } } });
+    if (!c) return { ok: false, error: "这位客户已经不在了（或者你看不到它），刷新看看" };
+    const 能 = await 能自动分配客户(me, org, c);
+    if (!能.ok) return 能;
+    // 同指定转让（assignSalesOwner）：正在移交的不能再转，名下有验证中的线索不能改派
+    if ((await 交接中的客户([c.id])).size) return { ok: false, error: "这位客户正在移交（等接手人确认），不能再转；要换人先撤回，或等对方拒收" };
+    const 验证中 = await 客户有验证中线索(prisma, [c.id]);
+    if (验证中) return { ok: false, error: 验证中 };
+    const r = await 自动分给(me, org, { projectId: 能.projectId }, null, "营销", c.salesOwnerId);
+    if (!r.ok) {
+      if (r.已被分配) return { ok: false, error: "这位客户刚被别人分走了，刷新看看现在在谁名下" };
+      return { ok: false, error: r.挑不到 ? `没有自动分出去：${r.挑不到}。客户还在原负责人名下，没转；可以改用指定分配` : r.error };
+    }
+    await 分配通知(me, [{ projectId: 能.projectId, toUserId: r.toUserId, ...留下字段(r.留下) }], true);
+    await recordAudit({
+      user: me, action: "assign", entity: "Customer", entityId: c.id,
+      summary: `客户转让（自动分配）：把「${c.name}」分给「${r.接手人}」${选.值 ? `（${选.值}）` : ""}`,
+      detail: { 自动分配: true, 原负责人: c.salesOwnerId, salesOwnerId: r.toUserId, projectId: 能.projectId, 为什么: r.为什么, ...(选.值 ? { 转让原因: 选.值 } : {}) },
+    });
+    revalidatePath("/customers");
+    return { ok: true, toUserId: r.toUserId, 接手人: r.接手人, 为什么: r.为什么, ...(r.区域未填 ? { 区域未填: true as const } : {}) };
+  } catch (e) {
+    return 不在了(e);
   }
 }
 

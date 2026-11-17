@@ -1160,12 +1160,13 @@ export type BulkResult =
 export async function 转走项目预览of(ids: string[], 新负责人?: string): Promise<转走项目预览> {
   const me = await requireUser();
   if (!企业版()) return { 项目数: 0, 项目: [] };
-  // 不传 = 转给自己（公海领取）
+  // 不传 = 转给自己（公海领取）；空串 = 还没挑人（客户转让框的自动分配）
   const 新 = 新负责人 ?? me.id;
-  if (!Array.isArray(ids) || typeof 新 !== "string" || !新) return { 项目数: 0, 项目: [] };
+  if (!Array.isArray(ids) || typeof 新 !== "string") return { 项目数: 0, 项目: [] };
   const 们 = ids.filter((x) => typeof x === "string");
-  // 顺带说转给这位要不要接手人确认：和真转时（assignSalesOwner）同一个判定，转让框照它写「生效」那一条（P-转-16）
-  const [预览, 走法] = await Promise.all([数转走的项目(们, 新), 转让走交接(me, 新, 们)]);
+  // 顺带说转给这位要不要接手人确认：和真转时（assignSalesOwner）同一个判定，转让框照它写「生效」那一条（P-转-16）。
+  // 空串 = 客户转让框选了自动分配、还没挑人：只数会一起走的项目（同批量自动分配）；自动分配是市场转销售，不走确认（P-转-17）
+  const [预览, 走法] = await Promise.all([数转走的项目(们, 新), 新 ? 转让走交接(me, 新, 们) : null]);
   return { ...预览, 要确认: 走法 === "申请" };
 }
 
