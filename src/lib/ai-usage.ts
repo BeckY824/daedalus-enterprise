@@ -21,6 +21,8 @@ export const AI_FEATURES = {
   card: "名片整理",
   mcp: "MCP 查询",
   importClean: "导入清洗",
+  // 2026-11-17：首页对话框带截图问，图里的字在服务器上认（app/api/mobile/scan?use=ask）
+  shot: "截图识字",
 } as const;
 export type AiFeature = keyof typeof AI_FEATURES;
 

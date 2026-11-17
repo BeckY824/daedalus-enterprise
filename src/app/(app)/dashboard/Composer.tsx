@@ -9,7 +9,9 @@ import { useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import ModelPicker from "@/components/ModelPicker";
-import { 读成附件, type 附件 } from "@/components/AskFiles";
+import { 读一个, 并进, type 附件 } from "@/components/AskFiles";
+import { 截图名, 是图片文件 } from "@/lib/ask-image";
+import { LoadingOutlined } from "@ant-design/icons";
 import { useReducedMotion } from "motion/react";
 import { useMotionTheme } from "@/components/MotionTheme";
 import { 飞进去 } from "./home-look";
@@ -215,6 +217,8 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
   const composerRef = useRef<HTMLDivElement>(null);
   /** 拖进来的文件读不了的原因：写在输入框下面，不弹顶部提示 */
   const [拖错, set拖错] = useState("");
+  /** 拖进来 / 粘进来的图正在认字：进度话写在同一处（role=status），认完收 */
+  const [认图, set认图] = useState<string | null>(null);
   const 动效 = useMotionTheme();
   const 少动 = useReducedMotion();
   useComposerHeight(composerRef);
@@ -366,13 +370,18 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
   const 手机 = useNarrow("(max-width: 767px)");
   /** 拖文件进框（home.ask）：只在这一刻摆着加文件键的时候收——背调模式没有附件，手机上企业版的「附件」换成了拍照 */
   const 收附件 = !背调模式 && !(渠道名们 && 手机) && running == null;
-  const 拖进来 = async (f: File) => {
-    const r = await 读成附件(f, files);
-    // 读不了的文件：原因就地写在输入框下面（原型 g.notice：不弹顶部提示），下一次拖成了就收
-    if ("错" in r) set拖错(r.错);
-    else {
-      set拖错("");
-      setFiles(r.files);
+  const 拖进来 = async (f: File, 名?: string) => {
+    if (认图 != null) return;
+    set拖错("");
+    if (是图片文件(f)) set认图("正在认图里的字…");
+    try {
+      // 认图要几秒：这期间又带了别的文件，并进当时的那份，别把它冲掉
+      const r = await 读一个(f, { 名, 进: set认图 });
+      // 读不了的文件：原因就地写在输入框下面（原型 g.notice：不弹顶部提示），下一次拖成了就收
+      if ("错" in r) set拖错(r.错);
+      else setFiles((cur) => 并进(cur, r.附件));
+    } finally {
+      set认图(null);
     }
   };
 
@@ -388,7 +397,8 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
           }}
           onSubmit={() => submit(cmdMatches.length ? cmdMatches[cmdIdx].cmd : q)}
           onPaste={认一下粘的是什么}
-          on拖文件={收附件 ? 拖进来 : undefined}
+          on拖文件={收附件 ? (f) => 拖进来(f) : undefined}
+          on粘图={收附件 ? (f) => 拖进来(f, 截图名()) : undefined}
           placeholder={
             背调模式
               ? "输入公司名、官网或一句需求，比如：帮我查 Rexel 适不适合我们"
@@ -462,6 +472,12 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
           }
         />
 
+        {认图 != null && (
+          <div className="cli-file-note" role="status">
+            <LoadingOutlined aria-hidden />
+            {认图}
+          </div>
+        )}
         {拖错 && (
           <div className="cli-file-err" role="alert">
             {拖错}

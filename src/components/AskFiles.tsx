@@ -1,7 +1,8 @@
 "use client";
 
 import { useImperativeHandle, useRef, useState } from "react";
-import { PaperClipOutlined, CloseOutlined } from "@ant-design/icons";
+import { PaperClipOutlined, CloseOutlined, LoadingOutlined } from "@ant-design/icons";
+import { 图片后缀, 是图片文件, 认图成文本 } from "@/lib/ask-image";
 
 /**
  * 问一句的时候带上一个文件。
@@ -10,30 +11,48 @@ import { PaperClipOutlined, CloseOutlined } from "@ant-design/icons";
  * 跟着这一问发出去，不落库、不写磁盘、不进操作日志——所以「我的数据在我自己机器上」
  * 这句话在带文件提问时仍然成立。关掉这一问，内容就没了。
  *
- * 只收**文本**：txt / md / csv / tsv / json / log。Excel 和 PDF 不收——
+ * 收**文本**：txt / md / csv / tsv / json / log。Excel 和 PDF 不收——
  * 它们要在客户端拖一个解析库进来，而解析出来的东西未必是人以为的那份
  * （合并单元格、多工作表、扫描件），不如让人自己另存成 csv，至少他知道发出去的是什么。
+ *
+ * 也收**图**（png / jpg / webp / bmp，2026-11-17 员工反馈「附件不支持截图」）：模型只收文字，
+ * 所以图先过名片识别那套 OCR（lib/ask-image.ts），认出的字当这份附件的文本。图只在识别时传到自己的服务器，认完就丢
  */
-export type 附件 = { name: string; text: string; size: number };
+export type 附件 = { name: string; text: string; size: number; 图?: boolean };
 
 /** 单个文件的文本上限。再大就不是「带一份名单问一句」，而是拿模型当数据库用 */
 const 单文件上限 = 100 * 1024;
 const 可读后缀 = [".txt", ".md", ".csv", ".tsv", ".json", ".log"];
 
-/**
- * 把一个文件读成附件、并进已带的那几个里（同名的换掉，不叠加：重选一次多半是因为选错了）。
- * 回形针选文件和拖进输入框（首页 home.ask）走的是这同一个，后缀、大小的规矩只写一份
- */
-export async function 读成附件(f: File, files: 附件[]): Promise<{ files: 附件[] } | { 错: string }> {
+export const 不认的话 = `只认文本文件（${可读后缀.join(" ")}）和图片（${图片后缀.join(" ")}）。Excel 请另存成 csv 再来`;
+
+/** 读一个文件：文本照读；图先认出里面的字（进 = 识别中的进度话）。名 = 给它起的名字（粘的截图），不给用文件自己的 */
+export async function 读一个(f: File, 设: { 进?: (话: string) => void; 名?: string } = {}): Promise<{ 附件: 附件 } | { 错: string }> {
+  const name = 设.名 ?? f.name;
+  if (是图片文件(f)) {
+    const r = await 认图成文本(f, 设.进 ?? (() => undefined));
+    return "错" in r ? r : { 附件: { name, text: r.text, size: f.size, 图: true } };
+  }
   const 后缀 = f.name.slice(f.name.lastIndexOf(".")).toLowerCase();
-  if (!可读后缀.includes(后缀)) return { 错: `只认文本文件（${可读后缀.join(" ")}）。Excel 请另存成 csv 再来` };
+  if (!可读后缀.includes(后缀)) return { 错: 不认的话 };
   if (f.size > 单文件上限) return { 错: `文件太大（${Math.round(f.size / 1024)} KB），上限 ${单文件上限 / 1024} KB` };
   try {
-    const text = await f.text();
-    return { files: [...files.filter((x) => x.name !== f.name), { name: f.name, text, size: f.size }] };
+    return { 附件: { name, text: await f.text(), size: f.size } };
   } catch {
     return { 错: "这个文件读不出来" };
   }
+}
+
+/** 并进已带的那几个里（同名的换掉，不叠加：重选一次多半是因为选错了） */
+export const 并进 = (files: 附件[], a: 附件): 附件[] => [...files.filter((x) => x.name !== a.name), a];
+
+/**
+ * 把一个文件读成附件、并进已带的那几个里。
+ * 回形针选文件、拖进输入框（首页 home.ask）、框里粘截图走的是这同一个，后缀、大小的规矩只写一份
+ */
+export async function 读成附件(f: File, files: 附件[], 设: { 进?: (话: string) => void; 名?: string } = {}): Promise<{ files: 附件[] } | { 错: string }> {
+  const r = await 读一个(f, 设);
+  return "错" in r ? r : { files: 并进(files, r.附件) };
 }
 
 export default function AskFiles({
@@ -55,6 +74,8 @@ export default function AskFiles({
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [读取中, set读取中] = useState(false);
+  /** 认图里的字时的进度话（role=status，摆在文件签那一排）；读文本文件一下就好，不出 */
+  const [进度, set进度] = useState<string | null>(null);
   /** 选的文件读不了（太大、不是文本）：原因作为一枚红色小签摆在文件签那一排，点 ✕ 收；不弹顶部提示（原型 g.notice） */
   const [错, set错] = useState("");
   useImperativeHandle(开, () => ({ 打开: () => { if (!disabled && !读取中) input.current?.click(); } }), [disabled, 读取中]);
@@ -63,13 +84,12 @@ export default function AskFiles({
     if (!list?.length) return;
     set读取中(true);
     try {
-      const r = await 读成附件(list[0], files);
+      set错("");
+      const r = await 读成附件(list[0], files, { 进: set进度 });
       if ("错" in r) set错(r.错);
-      else {
-        set错("");
-        onChange(r.files);
-      }
+      else onChange(r.files);
     } finally {
+      set进度(null);
       set读取中(false);
       if (input.current) input.current.value = "";
     }
@@ -80,7 +100,7 @@ export default function AskFiles({
       <input
         ref={input}
         type="file"
-        accept={可读后缀.join(",")}
+        accept={[...可读后缀, ...图片后缀].join(",")}
         style={{ display: "none" }}
         onChange={(e) => 选好了(e.target.files)}
       />
@@ -89,12 +109,18 @@ export default function AskFiles({
         className={`cli-tool${字 ? " cli-tool-t" : ""}`}
         disabled={disabled || 读取中}
         onClick={() => input.current?.click()}
-        title="带一个文本文件问（txt / md / csv / tsv / json / log）。内容只随这一问发给模型，不会存下来"
+        title="带一个文本文件（txt / md / csv / tsv / json / log）或一张截图问。图里的字认出来随这一问发给模型，内容不会存下来"
         aria-label="添加文件"
       >
         <PaperClipOutlined />
         {字 && <span>{字}</span>}
       </button>}
+      {进度 && (
+        <span className="cli-file" role="status">
+          <LoadingOutlined aria-hidden />
+          <span className="cli-file-n" title={进度}>{进度}</span>
+        </span>
+      )}
       {错 && (
         <span className="cli-file cli-file-bad" role="alert">
           <span className="cli-file-n" title={错}>{错}</span>
@@ -104,7 +130,7 @@ export default function AskFiles({
         </span>
       )}
       {files.map((f) => (
-        <span key={f.name} className="cli-file" title={`${f.name} · ${Math.round(f.size / 1024) || 1} KB · 只随这一问发出，不会存下来`}>
+        <span key={f.name} className="cli-file" title={`${f.name} · ${Math.round(f.size / 1024) || 1} KB · ${f.图 ? "图里认出的字只随这一问发出，图和字都不会存下来" : "只随这一问发出，不会存下来"}`}>
           <span className="cli-file-n">{f.name}</span>
           <button type="button" aria-label={`移除 ${f.name}`} onClick={() => onChange(files.filter((x) => x.name !== f.name))}>
             <CloseOutlined />
