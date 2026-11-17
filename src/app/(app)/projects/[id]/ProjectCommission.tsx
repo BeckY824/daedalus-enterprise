@@ -17,6 +17,7 @@ import SaveButton from "@/components/SaveButton";
 import CountUp from "@/components/CountUp";
 import { 跑给按钮, 框里原因, type 跑法 } from "./detail-note";
 import { 动作出错话 } from "@/lib/stale-deploy";
+import { useFormDraft } from "@/components/FormDraft";
 
 
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "baseline", marginBottom: 8, minWidth: 0, flexWrap: "wrap" };
@@ -150,17 +151,23 @@ function FixModal({ projectId, 现在, 钱, 跑, onClose }: { projectId: string;
   /** 没更正成的原因：写在框里、框不关（不弹顶部提示） */
   const [错, set错] = useState<string | null>(null);
   const 问题 = 更正问题(金额, 原因);
+  // 更正原因打了没交的字留草稿（复盘第 1 类）；更正成了、点取消就删。金额不进草稿（隔几天再带回旧数不妥，重填一下）
+  const 稿 = useFormDraft({ 键: `更正提成:${projectId}`, 值: { 原因 }, 带回: (v) => { if (v.原因 !== undefined) set原因(v.原因); } });
   return (
     <Modal
-      open title="更正已固定提成" okText="更正" cancelText="取消" onCancel={onClose}
+      open title="更正已固定提成" okText="更正" cancelText="取消" onCancel={() => { 稿.丢掉(); onClose(); }}
       okButtonProps={{ disabled: !!问题 || 金额 === 现在 || 忙, loading: 忙 }}
       onOk={async () => {
         set忙(true);
         const ok = await 跑(() => 更正实际提成(projectId, 金额, 原因), "已更正实际提成", { 报错: set错 });
         set忙(false);
-        if (ok) onClose();
+        if (ok) {
+          稿.存好了();
+          onClose();
+        }
       }}
     >
+      {稿.提示}
       <div style={{ ...淡, marginBottom: 12 }}>现在的实际提成 {钱(现在)}。更正后组员按原来的比例分新金额，操作记录里留更正前后的金额和原因</div>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
         <span style={{ flex: "0 0 auto" }}>更正为</span>

@@ -78,9 +78,15 @@ export const 最短间隔毫秒 = 30_000;
 export const 定时毫秒 = 5 * 60_000;
 
 /**
- * 原来写 `e instanceof Error ? e.message : 默认` 的地方：Next 那句英文不能直接给人看，老版本动作换成刷新那句，其余照旧
+ * 原来写 `e instanceof Error ? e.message : 默认` 的地方：Next 那句英文不能直接给人看，老版本动作换成刷新那句；
+ * 自己写的中文 message 照给；英文（生产构建里服务端出错那句、断网的 Failed to fetch…）换成 默认，原文进日志（25C）。
+ * 断网 / 超时分开说的完整版见 lib/action-error.ts 给人看的错（那边引这边，这边不反引）
  */
 export function 出错原话(e: unknown, 默认: string): string {
   if (是旧版本动作错(e)) return 动作出错话(e, 默认);
-  return e instanceof Error ? e.message : 默认;
+  const 话 = e instanceof Error ? e.message.trim() : "";
+  const 有编号 = !!e && typeof e === "object" && typeof (e as { digest?: unknown }).digest === "string";
+  if (话 && /[\u4e00-\u9fff]/.test(话) && !有编号) return 话;
+  if (e) console.error("[出错] 换成中文给人看，原文：", e);
+  return 默认;
 }

@@ -14,6 +14,7 @@ import { 教练发起标签, 主题标题上限, 主题内容上限, 回复上�
 import type { 项目主题们, 主题给界面 } from "@/lib/enterprise/coach-topic-db";
 import { 发主题动作, 回复主题动作, 关闭主题动作, 删主题动作 } from "../../customers/[id]/coach-topic-actions";
 import { 动作出错话 } from "@/lib/stale-deploy";
+import { useFormDraft } from "@/components/FormDraft";
 
 const 状态色: Record<string, string> = { 待回复: "orange", 已回复: "blue", 已关闭: "default" };
 
@@ -35,12 +36,16 @@ function NewTopicModal({ 数据, projectId, 关 }: { 数据: 项目主题们; pr
   const [body, setBody] = useState("");
   const [忙, set忙] = useState(false);
   const [错, set错] = useState<string | null>(null);
+  // 打了没发的字留草稿（复盘第 1 类：刷新、发版后重开带回）；发出去了、点取消就删
+  const 稿 = useFormDraft({ 键: `教练主题:${projectId}`, 值: { title, body }, 带回: (v) => { if (v.title !== undefined) setTitle(v.title); if (v.body !== undefined) setBody(v.body); } });
+  const 不要了 = () => { 稿.丢掉(); 关(); };
   const 发 = async () => {
     set忙(true);
     set错(null);
     const r = await 发主题动作(projectId, { title, body }).catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "没发出去，请重试") }));
     set忙(false);
     if (!r.ok) return set错(r.error);
+    稿.存好了();
     关();
     router.refresh();
   };
@@ -48,11 +53,12 @@ function NewTopicModal({ 数据, projectId, 关 }: { 数据: 项目主题们; pr
     <div className="cth-form-row"><span className="cth-form-k">{名}</span><span className="cth-form-v">{值}</span></div>
   );
   return (
-    <Modal open title="发起主题" onCancel={关} destroyOnHidden width={520}
+    <Modal open title="发起主题" onCancel={不要了} destroyOnHidden width={520}
       footer={[
-        <Button key="c" onClick={关} disabled={忙}>取消</Button>,
+        <Button key="c" onClick={不要了} disabled={忙}>取消</Button>,
         <Button key="ok" type="primary" loading={忙} disabled={!title.trim() || !body.trim()} onClick={() => void 发()} data-testid="coach-topic-send">发出</Button>,
       ]}>
+      {稿.提示}
       <div className="cth-form">
         {行("关联项目", <span className="cth-ellipsis" title={数据.项目名}>{数据.项目名}（当前项目）</span>)}
         {行("关联节点", <span>{数据.当前节点 || "—"}（当前节点）</span>)}
@@ -95,12 +101,15 @@ function TopicItem({ t }: { t: 主题给界面 }) {
   const [忙, set忙] = useState(false);
   const [错, set错] = useState<string | null>(null);
   const [问, set问] = useState<"关" | "删" | null>(null);
+  // 回复打了没交的字留草稿（复盘第 1 类，教练主题回复）；回出去了就删
+  const 稿 = useFormDraft({ 键: t.能回 ? `主题回复:${t.id}` : null, 值: { 回 }, 带回: (v) => { if (v.回 !== undefined) set回(v.回); }, 紧凑: true });
   const 跑 = async (f: () => Promise<{ ok: boolean; error?: string }>) => {
     set忙(true);
     set错(null);
     const r = await f().catch((出错) => ({ ok: false, error: 动作出错话(出错, "没成，请重试") }));
     set忙(false);
     if (!r.ok) return set错(r.error ?? "没成，请重试");
+    稿.存好了();
     set回("");
     set问(null);
     router.refresh();
@@ -128,6 +137,7 @@ function TopicItem({ t }: { t: 主题给界面 }) {
       )}
       {(t.能回 || t.能关 || t.能删) && (
         <div className="cth-acts">
+          {t.能回 && 稿.提示}
           {t.能回 && (
             <Input.TextArea aria-label="回复这个主题" className="cth-reply-input" maxLength={回复上限} autoSize={{ minRows: 1, maxRows: 6 }} placeholder="回复…" value={回} disabled={忙} onChange={(e) => set回(e.target.value)} />
           )}

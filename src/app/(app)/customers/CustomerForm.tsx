@@ -1047,7 +1047,8 @@ function QuickChannelModal({
   const b = useBusiness();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
-  const 守 = useFormGuard({ open, form, 关: () => onClose(null), 忙: saving, afterOpenChange: 聚焦首项 });
+  // 草稿（复盘第 1 类，25C）：和渠道页「新建渠道」不是同一个框，键分开
+  const 守 = useFormGuard({ open, form, 草稿键: "就地新建渠道", 关: () => onClose(null), 忙: saving, afterOpenChange: 聚焦首项 });
 
   /** 建好的渠道：对勾放完（SaveButton 的 成了）才交回去关框（原型 g.save，不弹顶部提示） */
   const 建好 = useRef<{ id: string; name: string } | null>(null);
@@ -1072,6 +1073,7 @@ function QuickChannelModal({
         return { ok: false, error: res.error };
       }
       建好.current = { id: res.id, name: v.name.trim() };
+      守.存好了();
       return { ok: true };
     } catch (出错) {
       return { ok: false, error: 动作出错话(出错, "没建上，请重试") };
@@ -1097,6 +1099,7 @@ function QuickChannelModal({
     >
       {/* name 前缀不能省：这个表单和「新建学员」同时在 DOM 里，
           字段名又都叫 name/phone/remark，不加前缀 label 会绑到学员那几个框上 */}
+      {守.提示}
       <Form form={form} name="quickChannel" layout="vertical" style={{ marginTop: 8 }} onValuesChange={守.改了}>
         <Form.Item label="渠道姓名" name="name" rules={[requiredText("请输入渠道姓名")]}>
           <Input placeholder="如：小红" />

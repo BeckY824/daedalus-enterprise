@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Checkbox, Input, Segmented, Table, Tooltip } from "antd";
 import { showUndo } from "@/components/UndoBar";
 import SaveButton from "@/components/SaveButton";
+import { useFormDraft } from "@/components/FormDraft";
 import BusinessDatePicker from "@/components/BusinessDatePicker";
 import { 记项目沟通Action } from "../projects/actions";
 import FollowMethodSelect, { useHabitDefault } from "@/components/FollowMethodSelect";
@@ -425,6 +426,8 @@ function RecycleProjectRow({ p }: { p: 预警行 }) {
   const [类型, set类型] = useState("PHONE");
   const [方式, set方式] = useState<string | null>(null);
   const 人改了方式 = useHabitDefault(记, (x) => { set类型(x.type); set方式(x.method); });
+  // 打了没记的字留草稿（复盘第 1 类：刷新、发版后再点「记一条沟通」带回）；记上了、点取消就删。方式、日期不进草稿
+  const 稿 = useFormDraft({ 键: `回收预警沟通:${p.id}`, 开: 记, 值: { 内容, 下一步 }, 带回: (v) => { if (v.内容 !== undefined) set内容(v.内容); if (v.下一步 !== undefined) set下一步(v.下一步); } });
   const 剩 = Math.max(0, dayjs(p.回收日).startOf("day").diff(dayjs().startOf("day"), "day"));
   async function 存() {
     if (!内容.trim()) return { ok: false, error: "先写几句沟通内容" };
@@ -447,6 +450,7 @@ function RecycleProjectRow({ p }: { p: 预警行 }) {
       </div>
       {记 && (
         <div className="ov-rc-form">
+          {稿.提示}
           <FollowMethodSelect
             aria-label="沟通方式"
             type={类型}
@@ -460,8 +464,8 @@ function RecycleProjectRow({ p }: { p: 预警行 }) {
             <BusinessDatePicker aria-label="下一步时间" value={下一步时间} onChange={(v) => v && set下一步时间(v)} allowClear={false} />
           </div>
           <div className="ov-rc-act">
-            <SaveButton 做={存} 成了={() => { set记(false); set内容(""); set下一步(""); router.refresh(); }}>记下</SaveButton>
-            <button type="button" className="ov-rc-cancel" onClick={() => set记(false)}>取消</button>
+            <SaveButton 做={存} 成了={() => { 稿.存好了(); set记(false); set内容(""); set下一步(""); router.refresh(); }}>记下</SaveButton>
+            <button type="button" className="ov-rc-cancel" onClick={() => { 稿.丢掉(); set记(false); }}>取消</button>
           </div>
         </div>
       )}

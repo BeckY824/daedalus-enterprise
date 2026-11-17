@@ -12,6 +12,7 @@
  * 只活在这个页面进程里；整页刷新后清空，和"AI 只起草不落库"一致。
  */
 import { useSyncExternalStore } from "react";
+import { 给人看的错, AI没答上来话 } from "@/lib/action-error";
 
 export type JobState<T> = {
   status: "loading" | "done" | "error";
@@ -62,11 +63,12 @@ export function runJob<T>(key: string, fn: () => Promise<Result<T>>, meta?: stri
   void fn()
     .then((r) => {
       if (!还算数()) return;
-      jobs.set(key, r.ok ? { status: "done", value: r.value, meta, startedAt: 起, 标签 } : { status: "error", error: r.error, value: r.value, meta, startedAt: 起, 标签 });
+      // AI 卡上的报错不直出英文（25C）：服务端回的中文照给；上游原文（fetch failed、Internal Server Error…）换成中文，原文进日志
+      jobs.set(key, r.ok ? { status: "done", value: r.value, meta, startedAt: 起, 标签 } : { status: "error", error: 给人看的错(r.error, AI没答上来话, "AI 任务"), value: r.value, meta, startedAt: 起, 标签 });
     })
     .catch((e: unknown) => {
       if (!还算数()) return;
-      jobs.set(key, { status: "error", error: e instanceof Error ? e.message : "调用失败", meta, startedAt: 起, 标签 });
+      jobs.set(key, { status: "error", error: 给人看的错(e, AI没答上来话, "AI 任务"), meta, startedAt: 起, 标签 });
     })
     .finally(notify);
 }

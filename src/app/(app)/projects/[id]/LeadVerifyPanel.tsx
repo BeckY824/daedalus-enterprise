@@ -13,6 +13,7 @@ import { 线索验证依据 } from "@/lib/project/lead-verify-basis";
 import type { 必填项 } from "@/lib/project/required";
 import { 线索初判Action, 市场复核Action, 销售终验Action, 总管理终判Action, 销售认领Action, 撤回验证Action } from "../actions";
 import { 框里原因, type 跑法 } from "./detail-note";
+import { useFormDraft } from "@/components/FormDraft";
 
 
 // 11-01：显示客户定的六个叫法（v.叫法），颜色和项目卡那一行一样
@@ -75,6 +76,19 @@ export default function LeadVerifyPanel({
    */
   const [错, set错] = useState<string | null>(null);
   const 跑这: 跑法 = (f, 成了) => 跑(f, 成了, { 报错: set错 });
+  // 判定框里打了没交的字留草稿（复盘第 1 类）：按项目 + 哪个框分；判成了、点取消就删。无效原因、日期跟着字一起带回
+  const 稿 = useFormDraft({
+    键: 框 ? `线索验证:${projectId}:${框}` : null,
+    开: !!框,
+    值: { 无效原因, 说明, 培育日, 培育计划 },
+    带回: (x) => {
+      if (x.无效原因 !== undefined) set无效原因(x.无效原因);
+      if (x.说明 !== undefined) set说明(x.说明);
+      if (x.培育日 !== undefined) set培育日(x.培育日);
+      if (x.培育计划 !== undefined) set培育计划(x.培育计划);
+    },
+    算填过: (改过) => !!(改过.说明?.trim() || 改过.培育计划?.trim() || 改过.无效原因?.trim()),
+  });
 
   const 开 = (k: NonNullable<typeof 框>) => {
     set无效原因(null);
@@ -284,12 +298,16 @@ export default function LeadVerifyPanel({
         title={弹框?.title}
         okText="确定"
         okButtonProps={{ disabled: !弹框?.ok, loading: 忙, danger: !!弹框?.danger || 框 === "无效" }}
-        onCancel={() => { set框(null); set错(null); }}
+        onCancel={() => { 稿.丢掉(); set框(null); set错(null); }}
         onOk={async () => {
           if (!弹框?.ok) return;
-          if (await 弹框.做()) set框(null);
+          if (await 弹框.做()) {
+            稿.存好了();
+            set框(null);
+          }
         }}
       >
+        {稿.提示}
         {弹框?.身}
         {!!弹框 && <框里原因 话={错} />}
       </Modal>

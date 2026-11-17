@@ -30,8 +30,12 @@ export type 守卫选项 = {
   关: () => void;
   /** antd 表单。没有表单的（完成计划小框这种 useState 的）不给，用 填过 自己说 */
   form?: FormInstance;
-  /** 给了才存草稿：同一个键就是「同一个弹窗」。新建按来源分（`新建待办:<客户>`），编辑带记录编号（`编辑客户:<id>`）；null = 不存 */
-  草稿键?: string | null;
+  /**
+   * 草稿是录入弹窗的默认行为（25C，复盘第 1 类）：必须写，同一个键就是「同一个弹窗」。
+   * 新建按来源分（`新建待办:<客户>`），编辑带记录编号（`编辑客户:<id>`）；明确不存才写 null（旁边写为什么）。
+   * 长文本框没接草稿的，tests/form-draft-guard.test.ts 会拦
+   */
+  草稿键: string | null;
   /** 编辑老记录：草稿只存改过的格子 */
   编辑?: boolean;
   /** 没有 antd 表单的弹窗自己说填没填过 */
@@ -50,7 +54,7 @@ export type 守卫选项 = {
   on带回?: (v: Record<string, unknown>) => void;
 };
 
-export function useFormGuard({ open, 关, form, 草稿键 = null, 编辑 = false, 填过, 忙 = false, afterOpenChange, 不存, 额外, 附件数, on带回 }: 守卫选项) {
+export function useFormGuard({ open, 关, form, 草稿键, 编辑 = false, 填过, 忙 = false, afterOpenChange, 不存, 额外, 附件数, on带回 }: 守卫选项) {
   const { modal } = App.useApp();
   const 我 = useMe();
   const 全名 = 草稿键 ? 草稿全名(我?.id, 草稿键) : null;

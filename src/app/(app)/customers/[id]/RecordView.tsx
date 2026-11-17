@@ -94,6 +94,7 @@ import { useDeleteCustomers } from "../useDeleteCustomers";
 import { 释义下拉宽 } from "@/components/DictNote";
 import { 客户编号显示 } from "@/lib/customer-no";
 import { 动作出错话, 出错原话 } from "@/lib/stale-deploy";
+import { useFormDraft } from "@/components/FormDraft";
 
 /**
  * 记录页（v0.4）：三栏。
@@ -339,6 +340,8 @@ export default function RecordView({
   const [filter, setFilter] = useState<string>("全部");
   const [memo, setMemo] = useState("");
   const [quickSaving, setQuickSaving] = useState(false);
+  // 速记框打了没记的字留草稿（复盘第 1 类，25C）：按客户分，刷新、发版后带回；记上了（直接记、AI 解析后存上）就删
+  const 速记稿 = useFormDraft({ 键: `客户速记:${customer.id}`, 值: { memo }, 带回: (v) => { if (v.memo !== undefined) setMemo(v.memo); } });
 
   const [followOpen, setFollowOpen] = useState(false);
   const [followInit, setFollowInit] = useState<{ record: FollowUpRow | null; aiText?: string }>({ record: null });
@@ -790,6 +793,7 @@ export default function RecordView({
     });
     setQuickSaving(false);
     if (!res.ok) return void set速记话({ 话: res.error, 错: true });
+    速记稿.存好了();
     setMemo("");
     // 记上了：领取了 / 不算有效沟通（客户三态 C12，照常保存不拦）写在速记框下面一行，不弹顶部提示
     const 领了 = "领取了" in res && res.领取了 ? "已领取并记下跟进，这位现在归你跟进" : "";
@@ -1549,6 +1553,7 @@ export default function RecordView({
           {/* 虚线下属的客户：跟进也记不了，速记框不摆，免得写完才被拦（10-25 实测 F4）。顶上那条黄条已说清只能看 */}
           {/* 企业版项目模式：记录输入挪到项目页（定稿 P5 待定 14 黄框），客户页只看时间线 */}
           {!全只读 && 摆法.记录输入 && <div className="rec-composer">
+            {速记稿.提示}
             <Input.TextArea
               value={memo}
               onChange={(e) => setMemo(e.target.value)}
@@ -1685,6 +1690,7 @@ export default function RecordView({
         onClose={() => setFollowOpen(false)}
         onSaved={() => {
           setFollowOpen(false);
+          速记稿.存好了();
           setMemo("");
           if (followInit.record?.id) void history.refreshRow(followInit.record.id).catch(() => 说就地("跟进已保存，请刷新页面核对最新内容"));
           router.refresh();
