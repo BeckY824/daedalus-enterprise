@@ -371,6 +371,8 @@ test.describe("面板里的回答和建议卡", () => {
     const p = 连库();
     const 销售 = await p.user.findFirstOrThrow({ where: { email: 账号.用户名 } });
     const c = await p.customer.create({ data: { name: "卡片撤销", phone: "13900007777", salesOwnerId: 销售.id } });
+    // 11-17 起沟通必须挂项目：名下没项目时卡片不让确认（只给建项目入口），这里先给一个项目，服务端自己挂上
+    await p.project.create({ data: { name: "卡片撤销项目", customerId: c.id, ownerId: 销售.id, creatorId: 销售.id } });
     try {
       await 假回答(page, {
         text: "已经给出建议，你确认一下。",
@@ -405,6 +407,7 @@ test.describe("面板里的回答和建议卡", () => {
       await expect(page.locator("aside.dock .prop .prop-ok").first()).toBeVisible();
     } finally {
       await p.followUp.deleteMany({ where: { customerId: c.id } });
+      await p.project.deleteMany({ where: { customerId: c.id } });
       await p.customer.delete({ where: { id: c.id } });
       await p.$disconnect();
     }
