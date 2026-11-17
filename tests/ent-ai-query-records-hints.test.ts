@@ -78,7 +78,7 @@ describe("写错时说清哪一处错、能填什么（20b）", () => {
 
   it("运算认不出：列出全部运算和这个字段能用的", () => {
     const s = 错话({ 表: "客户", 条件: [{ 字段: "城市", 运算: "约等于", 值: "杭州" }] });
-    expect(s).toContain("运算「约等于」认不出");
+    expect(s).toContain("不认识的运算「约等于」");
     expect(s).toContain("能用：包含、等于");
   });
 
@@ -95,7 +95,7 @@ describe("写错时说清哪一处错、能填什么（20b）", () => {
   });
 
   it("表名不对：列出能查的表", () => {
-    expect(错话({ 表: "客户档案" })).toContain("「表」只能填这几个之一");
+    expect(错话({ 表: "客户档案" })).toContain("「表」只能填其中之一");
   });
 
   it("只用项目：查线索 / 商机 / 签约表挡回，指去项目表按阶段筛", () => {
@@ -134,11 +134,16 @@ describe("工具这一层（20b）", () => {
     const { TOOL_MAP } = 这一家的工具({ projectMode: true }, true);
     const d = TOOL_MAP.get("query_records")!.description;
     expect(d).toBe(query_records说明(true));
-    expect(d).not.toMatch(/只能填 [^。]*线索/);
+    // 「线索验证」表照列；单独的线索 / 商机 / 签约不列
+    const 表段 = (x: string) => x.match(/「表」只能填 ([^；]*) 之一/)![1].split("、");
+    expect(表段(d)).not.toContain("线索");
+    expect(表段(d)).not.toContain("商机");
+    expect(表段(d)).not.toContain("签约");
+    expect(表段(d)).toContain("线索验证");
     expect(d).toContain("日期字段只能用 不早于 / 不晚于 / 最近天数");
     expect(d).toContain('"表":"项目"');
     // 不是只用项目：照列
-    expect(这一家的工具({ projectMode: false }, false).TOOL_MAP.get("query_records")!.description).toMatch(/只能填 [^。]*线索/);
+    expect(表段(这一家的工具({ projectMode: false }, false).TOOL_MAP.get("query_records")!.description)).toContain("线索");
   });
 
   it("原生调用的参数表：表、运算是枚举", () => {
