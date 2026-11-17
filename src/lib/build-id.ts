@@ -3,9 +3,12 @@ import path from "node:path";
 
 /**
  * 这一份服务端是哪一次发版（发版提示用，lib/stale-deploy.ts）。按顺序取第一个有的：
- *   1. <distDir>/required-server-files.json 里的 config.deploymentId（构建时写进去的 Next deploymentId）
- *   2. 环境变量 NEXT_DEPLOYMENT_ID
- *   3. <distDir>/BUILD_ID
+ *   1. <distDir>/required-server-files.json 里的 config.deploymentId（构建时写进去的 Next deploymentId；
+ *      构建时设的环境变量 NEXT_DEPLOYMENT_ID 也是落到这里）
+ *   2. <distDir>/BUILD_ID
+ * **运行时不读环境变量 NEXT_DEPLOYMENT_ID**：Next 构建时把读它的那个表达式原样替换成常量（next/dist/build/define-env.js，
+ * 没配 deploymentId 时替换成 `false`），读出来再 `.trim()` 编出来是 `false.trim()`，
+ * 布局一渲染就抛错、整站打不开（11-17 CI 全部 E2E 红过一次）。要的值清单里本来就有。
  * 为什么 deploymentId 在前：配了 deploymentId（版本偏差保护）时，Next 16.4 的 BUILD_ID 是写死的同一串
  * （node_modules/next/dist/build/index.js getBuildId：`build-TfctsWXpff2fKS`），每次发版都一样，拿它比横幅永远不亮；
  * 没配时 deploymentId 是空串，退回 BUILD_ID（每次构建都不同）。
@@ -40,10 +43,7 @@ function 读一遍(): string | null {
       /* 坏了：往下找 */
     }
   }
-  // 2. 运行时给的
-  const 环境 = process.env.NEXT_DEPLOYMENT_ID?.trim();
-  if (环境) return 像编号(环境) ? 环境 : null;
-  // 3. 构建号
+  // 2. 构建号
   const 原 = 读文件("BUILD_ID")?.trim();
   return 像编号(原) ? 原 : null;
 }
