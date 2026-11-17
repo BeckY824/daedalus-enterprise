@@ -4015,7 +4015,8 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .follow-att-file { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
 .follow-att-name { flex: 1 1 120px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-note); }
 .follow-att-file audio { height: 32px; max-width: 100%; flex: 1 1 200px; min-width: 0; }
-.follow-att-add { display: flex; align-items: center; gap: 8px; }
+.follow-att-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.follow-att-tip { font-size: var(--fs-note, 12px); }
 /* 记沟通弹窗（F-跟进-06/08）：卡点两格并排，窄了折成上下；「更多」里的格子和主区同样间距 */
 .follow-blocker-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
 .follow-blocker-row .ant-select { width: 100%; min-width: 0; }

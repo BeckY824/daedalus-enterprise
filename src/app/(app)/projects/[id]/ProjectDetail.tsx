@@ -1330,7 +1330,8 @@ export default function ProjectDetail({
         {搜着 && p.followUps.length > 0 && 列沟通.length === 0 && <div style={{ color: "var(--text-muted)" }}>没有对得上「{搜.trim()}」的沟通</div>}
         {!搜着 && 隐藏中 && 列沟通.length === 0 && <div style={{ color: "var(--text-muted)" }}>接手后还没有沟通；接手前的 {p.followUps.length} 条已隐藏</div>}
         {列沟通.map((f) => (
-          <div key={f.id} id={`follow-${f.id}`} className={`proj-follow-row${删走 === f.id ? " pd-follow-leave" : ""}`} style={{ marginBottom: 12 }}>
+          // data-paste-scope：焦点在这条沟通里（含改沟通内容的文本框）粘截图，落进这条的附件（FollowAttachments）
+          <div key={f.id} id={`follow-${f.id}`} data-paste-scope="" className={`proj-follow-row${删走 === f.id ? " pd-follow-leave" : ""}`} style={{ marginBottom: 12 }}>
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <FollowTypeCell type={f.type} method={f.method} />
               {f.initiator && <Tag bordered={false}>{f.initiator}</Tag>}
@@ -2193,7 +2194,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
         </div>
         {p.企业版 && (
           <div>
-            <div style={{ marginBottom: 4 }}>截图 / 录音<span style={{ color: "var(--text-muted)" }}>（可不传，记下后挂在这条沟通上）</span></div>
+            <div style={{ marginBottom: 4 }}>截图 / 录音<span style={{ color: "var(--text-muted)" }}>（可不传，记下后挂在这条沟通上；也可以直接粘贴截图）</span></div>
             <选沟通附件框 文件们={附件们} on改={set附件们} />
           </div>
         )}
