@@ -67,6 +67,8 @@ export type 看板项目 = {
   amount: number;
   currency: string;
   createdAt: Date;
+  /** 补建的（老客户补的潜客培育，project/system-created.ts）：不是这段时间新建的，分档（本月 / 本季 / 自定义）的「总线索」不算它，「全部」照算 */
+  补建?: boolean;
   /** EntLeadVerify.verdict；没有那一行 = null（当没判） */
   判定: string | null;
   /** 起步阶段：建项目那条节点日志（fromPhase 空）的 toPhase；没有 = 线索（同列表） */
@@ -134,6 +136,7 @@ export function 看板各档(今: Date, 区间?: 看板区间 | null): [档, num
  * - 累计运营天数不分档（渠道自己的创建到结束）。
  * - 「全部」不动：就是原来的列表（关联商机 / 订单 = 眼下在这个阶段的），和看板「全部」的商机 / 订单（到过的）本来就是两个口径。
  * - 没给创建时间 / 投入日期的（单测、老调用）只进「全部」。
+ * - 补建的项目（老客户补的潜客培育）不算哪一档新建的：分档的关联项目不带它，「全部」照算；商机 / 订单按到达时间照算。
  */
 export type 分期统计 = Record<周期, Record<string, 渠道统计>> & { 自定义?: Record<string, 渠道统计> };
 export function 算分期统计(渠道们: 统计用渠道[], 项目们: 统计用项目[], 投入们: 统计用投入[], 今: Date = new Date(), 字典: 阶段字典 = 字典of(true), 区间?: 看板区间 | null): 分期统计 {
@@ -144,7 +147,7 @@ export function 算分期统计(渠道们: 统计用渠道[], 项目们: 统计�
       continue;
     }
     const 在 = (t: Date | null | undefined) => t != null && t.getTime() >= 起 && t.getTime() <= 止;
-    const 表 = 算渠道统计(渠道们, 项目们.filter((p) => 在(p.createdAt)), 投入们.filter((x) => 在(x.date)), 今, 字典);
+    const 表 = 算渠道统计(渠道们, 项目们.filter((p) => !p.补建 && 在(p.createdAt)), 投入们.filter((x) => 在(x.date)), 今, 字典);
     // 商机、订单、成交按到达时间（同看板）重数；没有创建时间的项目算不了时间，不进
     const 到 = new Map<string, { 商机: 统计用项目[]; 订单: 统计用项目[] }>();
     for (const p of 项目们) {
@@ -185,7 +188,8 @@ export function 算看板底数(渠道ids: string[], 项目们: 看板项目[], 
       const 格 = p.channelId ? 表[p.channelId] : undefined;
       if (!格) continue;
       const 线索起步 = (p.起步 ?? "线索") === "线索";
-      if (在(p.createdAt)) {
+      // 补建的不算哪一档新建的（「全部」= 关联项目总数，照算）
+      if ((期 === "全部" || !p.补建) && 在(p.createdAt)) {
         格.线索++;
         if (格.名单 && p.名单) 格.名单[p.名单]++;
         if (已判定(p.判定)) 格.已判定++;
