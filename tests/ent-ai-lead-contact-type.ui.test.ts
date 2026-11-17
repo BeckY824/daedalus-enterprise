@@ -73,9 +73,9 @@ it("类型下拉八种、可改；可加多条、可删；联系人不填也能�
       expect(await 行(page).count()).toBe(1);
       // AI 判错了类型（把微信号当手机）：人在卡上改
       await 行(page).nth(0).locator(".ant-select").click();
-      await page.locator(".ant-select-dropdown:visible .ant-select-item-option").first().waitFor();
-      const 选项 = await page.locator(".ant-select-dropdown:visible .ant-select-item-option").allInnerTexts();
-      expect(选项).toEqual(["手机", "座机", "微信", "邮箱", "WhatsApp", "阿里国际站ID", "传真", "Telegram"]);
+      // 下拉在展开动画里那几帧 :visible 时有时无（一次性读会读到空）：等它稳下来
+      await expect.poll(() => page.locator(".ant-select-dropdown:visible .ant-select-item-option").allInnerTexts())
+        .toEqual(["手机", "座机", "微信", "邮箱", "WhatsApp", "阿里国际站ID", "传真", "Telegram"]);
       await page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter({ hasText: /^微信$/ }).click();
       // 加两条：座机 + 超长邮箱
       await page.getByRole("button", { name: "加一个联系方式" }).click();
