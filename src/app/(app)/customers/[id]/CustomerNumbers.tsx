@@ -11,6 +11,8 @@ import { saveCustomerNumbers } from "../actions";
 import { 只读上下文, 只能看的格上下文 } from "./read-only";
 
 type 一行 = { kind: string; value: string };
+/** 号码类的几种给复制键（同联系人卡：手机、座机；客户本身的号还常有 WhatsApp、传真） */
+const 带复制键 = new Set(["phone", "landline", "whatsapp", "fax"]);
 type 种类 = { 名: string; kind: string; active: boolean };
 
 /**
@@ -58,10 +60,13 @@ export default function CustomerNumbers({ customerId, 号码们, 号码种类 }:
           号码们.map((m, i) => (
             <div key={`${m.kind}-${i}`} className="rec-field" data-field="numbers" {...行属性}>
               <div className="rec-field-k">{叫法(m.kind)}</div>
+              {/* 号码、邮箱是文字 + 复制键（同电话那格，省略号打在文字自己身上）；别的直接一行省略 */}
               <div className="rec-field-v is-line">
-                <span className="rec-field-link">
-                  {m.kind === "email" ? <CopyValue 种类="邮箱" 叫法={叫法(m.kind)} value={m.value} /> : ["phone", "landline", "whatsapp", "fax"].includes(m.kind) ? <CopyValue 叫法={叫法(m.kind)} value={m.value} /> : m.value}
-                </span>
+                {m.kind === "email" || 带复制键.has(m.kind) ? (
+                  <span className="rec-field-link">
+                    {m.kind === "email" ? <CopyValue 种类="邮箱" 叫法={叫法(m.kind)} value={m.value} /> : <CopyValue 叫法={叫法(m.kind)} value={m.value} />}
+                  </span>
+                ) : m.value}
               </div>
             </div>
           ))
