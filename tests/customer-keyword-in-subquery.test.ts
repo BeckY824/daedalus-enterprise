@@ -6,7 +6,7 @@
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { defaultClient as db, prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 客户关键词条件, 设三字索引 } from "@/lib/search-keyword";
+import { 客户关键词条件, 设三字索引, 拆搜索词 } from "@/lib/search-keyword";
 import { 号键SQL } from "@/lib/phone-dedupe";
 
 const 原来 = [
@@ -83,8 +83,9 @@ async function 两边(k: string) {
     for (const 对 of 原来) {
       // 像号码的关键词（11-11）：两张子表里多一句按号键比（号键比），换成同样多一句的 EXISTS；联系人号码子表那句本来就是 IN，原样留着
       const [现, 旧] = sql.includes(对[0]) ? 对 : 加号键(对);
-      expect(旧sql.split(现).length - 1).toBe(1);
-      旧sql = 旧sql.replace(现, 旧);
+      // 关键词拆成几个词（2F）就有几段，每段各换一遍
+      expect(旧sql.split(现).length - 1).toBe(拆搜索词(k).length);
+      旧sql = 旧sql.split(现).join(旧);
     }
     const 旧 = (await db.$queryRawUnsafe<{ id: string }[]>(旧sql, ...values)).map((r) => r.id).sort();
     return { 新, 旧 };

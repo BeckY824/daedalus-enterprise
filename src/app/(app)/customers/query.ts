@@ -7,7 +7,7 @@ import { 带币种, 签约金额, 签约合计, 签约币种 } from "@/lib/money
 import { 客户关键词条件, 客户关键词SQL, 客户id集合, 客户号码条件, 搜索词 } from "@/lib/search-keyword";
 import { 读的我, 有市场只读, 现在的公海回避, 看全部 } from "@/lib/team-scope";
 import { requireUser } from "@/lib/auth";
-import { 项目阶段客户条件 } from "@/lib/project/customer-list-projects";
+import { 项目阶段客户条件, 项目名另比 } from "@/lib/project/customer-list-projects";
 import { 取档案 } from "@/lib/customer-extra-db";
 import { 未分级 } from "./query-shared";
 import { 读团队 } from "@/lib/sync/client";
@@ -164,11 +164,16 @@ export function 只按页签(where: Prisma.CustomerWhereInput): "非公海" | "�
 /** 阶段 / 进程筛选：按谁能看哪些项目算。给了 userId（AI 助手经 MCP）按那个人；不给 = 当前登录的人 */
 async function 项目筛选条件(sp: 客户条件, userId?: string): Promise<Prisma.CustomerWhereInput | null> {
   if (!企业版() || (!sp.phase && !sp.node)) return null;
-  const me = userId
-    ? await 看全部(() => prisma.user.findUnique({ where: { id: userId }, select: { id: true, role: true } }))
-    : await requireUser();
+  const me = await 按谁算项目(userId);
   if (!me) return { id: { in: [] } };
   return 项目阶段客户条件(me, sp);
+}
+
+/** 按谁算「我能看的项目」：给了 userId（AI 助手经 MCP）按那个人；不给 = 当前登录的人 */
+async function 按谁算项目(userId?: string) {
+  return userId
+    ? await 看全部(() => prisma.user.findUnique({ where: { id: userId }, select: { id: true, role: true } }))
+    : await requireUser();
 }
 
 export async function 客户筛选条件(
@@ -184,7 +189,8 @@ export async function 客户筛选条件(
       })
     : null;
 
-  const keyword = await 客户关键词条件(sp.keyword, false, userId);
+  // 关键词还比我能看的项目的名字（2F，lib/project/customer-list-projects.ts 项目名另比）
+  const keyword = await 客户关键词条件(sp.keyword, false, userId, 项目名另比(() => 按谁算项目(userId)));
 
   const 等级 = 等级条件(sp.level);
   const 部门 = 部门条件(sp.dept);
@@ -315,7 +321,8 @@ export async function 关键词分页(sp: 客户条件, 请求页: number, pageS
   // 回收状态筛选只在三态开着、值认得出时才算数（关着地址栏带了 triState 照样走这条快路，11-12）
   if (sp.triState && 是三态筛选值(sp.triState) && (await 三态界面开着())) return null;
   if (sp.phase || sp.node || sp.batch || sp.level || sp.dept || sp.createdWithin || sp.directOf || sp.country || sp.source || 创建时间段(sp.createdFrom, sp.createdTo) || 搜索词(sp.phone) || 久未跟进天数(sp.idleDays)) return null;
-  const kw = await 客户关键词SQL(sp.keyword);
+  // 项目名另比同老路（客户筛选条件）：只比我能看的项目
+  const kw = await 客户关键词SQL(sp.keyword, false, undefined, 项目名另比(() => 按谁算项目()));
   if (!kw) return null;
   const 公海 = sp.pool === "1";
   const 谁 = await 读的我(defaultClient);

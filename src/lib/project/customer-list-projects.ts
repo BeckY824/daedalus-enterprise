@@ -6,7 +6,8 @@ import { 权限组织 } from "@/lib/enterprise/org";
 import { 本套位置, 节点序号 } from "./nodes";
 import { 企业版字典, 字典of } from "./stage-dict";
 import { 阶段进程条件 } from "./list";
-import { 客户id集合 } from "@/lib/search-keyword";
+import { 客户id集合, 包含模式, type 另比一词 } from "@/lib/search-keyword";
+import { 企业版 } from "@/lib/enterprise/switch";
 
 /** 页签、列表「当前节点」上写的节点：有结局写结局，异常写「异常 · 节点」（同客户详情项目区页签） */
 export const 节点字 = (p: { node: string; result: string | null }) => (p.result === "异常状态" ? `异常 · ${p.node}` : p.result ?? p.node);
@@ -109,3 +110,48 @@ const 阶段客户 = cache(async (id: string, role: string, phase: string, node:
   // 小 in 拼成一个 OR（search-keyword.ts 客户id集合）：命中上千位客户时 Prisma 不会把这句拆成几条查，翻页、导出的全局排序和总数照旧在一句里算
   return 客户id集合(ids);
 });
+
+/** 项目名另比：候选先取这么多行；超了（宽词）看全部的改用子查询、别的人再取全。测试里可以调小（设项目名候选先取） */
+let 候选先取 = 2000;
+export function 设项目名候选先取(n: number) { 候选先取 = n; }
+
+/**
+ * 客户列表搜索也比项目名（员工反馈第 2 批 2F，11-17）：给 客户关键词SQL 的「另比」，每个词一段 c.id IN (…)。
+ * 只算**我能看的、不在公海的项目**（同「项目数」「当前节点」两列和阶段 / 进程筛选，我能看的项目们 = 限定层 ∧ 能看项目）：看不到的项目叫什么名字，搜不出来、也试不出来；
+ * 客户本身照旧经列表的可见范围（快路径的范围 SQL、老路的限定层），看不到的客户不会因为项目名对上就出来。
+ * 量（8.6 万客户 + 8.6 万项目的一次性库）：项目表没有名字索引（库侧不动，3H），每个词多一遍项目名 GLOB（约 15 ms）；Prisma 按 id 取几百行也要二三十 ms，所以：
+ *   一句裸 SQL 取候选（名字对上、没删、不在公海，连带 能看项目 要的几列；一个都没中就不问我是谁）；
+ *   看全部的直接用候选的客户（宽词改成子查询，不把上万行搬进内存）；
+ *   别的人先在内存里按 能看项目 筛，剩下的再经限定层核一遍（同 我能看的项目们）——核的只是自己能看的那几个。
+ * 只有企业版有项目；别的版本返回 undefined（不另比）。取我：给了 userId（AI 助手经 MCP）按那个人，不给 = 当前登录的人
+ */
+export function 项目名另比(取我: () => Promise<谁 | null>): 另比一词 | undefined {
+  if (!企业版()) return undefined;
+  let 我: Promise<谁 | null> | undefined;
+  const 候选SQL = `SELECT p.id, p."customerId", p."ownerId", p."creatorId", p."bizLine" FROM "Project" p WHERE p.name GLOB ? AND p."deletedAt" IS NULL AND p."pooledAt" IS NULL`;
+  type 候选行 = { id: string; customerId: string; ownerId: string; creatorId: string | null; bizLine: string | null };
+  // 一个参数带整份名单（json_each），不受绑定参数个数上限管，也能进只读通道
+  const 名单 = (ids: readonly string[]) => ({ sql: `c.id IN (SELECT value FROM json_each(?))`, values: [JSON.stringify([...new Set(ids)])] });
+  return async (词) => {
+    const 名 = 包含模式(词, true);
+    let 候选 = await prisma.$queryRawUnsafe<候选行[]>(`${候选SQL} LIMIT ${候选先取 + 1}`, 名);
+    if (!候选.length) return null;
+    const me = await (我 ??= 取我());
+    if (!me) return null;
+    const org = await 权限组织();
+    if (org && !只看的人(org, me.id) && !没设业务角色(org, me.id) && 能看全部(me, org)) {
+      // 看全部的（同 阶段客户）：不用逐个判可见
+      if (候选.length <= 候选先取) return 名单(候选.map((p) => p.customerId));
+      return { sql: `c.id IN (SELECT p."customerId" FROM "Project" p WHERE p.name GLOB ? AND p."deletedAt" IS NULL AND p."pooledAt" IS NULL)`, values: [名] };
+    }
+    if (候选.length > 候选先取) 候选 = await prisma.$queryRawUnsafe<候选行[]>(候选SQL, 名);
+    const 加入了 = new Set((await prisma.$queryRawUnsafe<{ projectId: string }[]>(
+      `SELECT m."projectId" FROM "ProjectMember" m WHERE m."userId" = ? AND m."inviteStatus" = 'JOINED'`, me.id,
+    )).map((m) => m.projectId));
+    const 能看 = 候选.filter((p) => 能看项目(me, { ...p, pooledAt: null, 已加入: 加入了.has(p.id) ? [me.id] : [] }, org));
+    if (!能看.length) return null;
+    // 再经限定层核一遍（同 我能看的项目们）：只核内存里筛剩下的那几个
+    const 核过 = await prisma.project.findMany({ where: { id: { in: 能看.map((p) => p.id) }, pooledAt: null }, select: { customerId: true } });
+    return 核过.length ? 名单(核过.map((p) => p.customerId)) : null;
+  };
+}
