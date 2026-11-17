@@ -209,6 +209,11 @@ export async function toggleChannel(id: string, active: boolean): Promise<{ ok: 
     另一个窗口已经删了这个渠道：原来 update 直接抛 P2025，界面上点了没反应（2026-10-04 第 2 期 2a，r2-data 那条【下一版】）。
     说一句「已经不在了」
   */
+  // 主渠道停用时不让单开子渠道（P-渠道-13）：开了也选不到，列表上照样是「已停用」，等于点了没反应
+  if (active) {
+    const 主 = (await prisma.channel.findUnique({ where: { id }, select: { main: { select: { name: true, active: true } } } }))?.main;
+    if (主 && !主.active) return { ok: false, error: `主渠道「${主.name}」已停用，先到「主渠道」里启用` };
+  }
   let c: { name: string };
   try {
     c = await prisma.channel.update({ where: { id }, data: { active } });
