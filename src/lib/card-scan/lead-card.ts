@@ -63,6 +63,8 @@ export function 名片成新线索卡(
     email: 填.email,
     wechat: 填.wechat,
     whatsapp: 填.whatsapp !== 电话 ? 填.whatsapp : "",
+    // 国内座机进「座机」那一行，不当手机（11-17）；老格里的电话、微信……建卡时并在后面
+    ...(填.landline ? { 联系方式: [...(电话 ? [{ kind: "phone", value: 电话 }] : []), { kind: "landline", value: 填.landline }] } : {}),
     country: 填.country,
     remark: 备注,
     待确认: [...待],

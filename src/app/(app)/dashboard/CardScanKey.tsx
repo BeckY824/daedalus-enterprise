@@ -37,7 +37,7 @@ type 一个人 = { 类: "名片"; 法: 名片填法; 图们: File[] } | { 类: "
 
 /** 有联系方式，或姓名、公司都有，才算一张名片；只认出几个字的（照片上的挂绳、背面标志）当照片 */
 function 像名片(填: 名片表单): boolean {
-  return Boolean(填.phone || 填.email || 填.wechat || 填.whatsapp || 填.website || (填.name && 填.school));
+  return Boolean(填.phone || 填.landline || 填.email || 填.wechat || 填.whatsapp || 填.website || (填.name && 填.school));
 }
 
 function 同一人(甲: 名片表单, 乙: 名片表单): boolean {
