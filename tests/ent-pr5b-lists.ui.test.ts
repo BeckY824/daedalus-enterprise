@@ -12,6 +12,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
+import { 补全动作桩 } from "./helpers/action-stubs";
 
 let browser: Browser;
 const 包: Record<string, string> = {};
@@ -25,7 +26,7 @@ const plugin: Plugin = { name: "pr5b-lists", setup(b) {
   stub(/settings\/actions$/, "export const deactivateUser=async()=>({ok:true});");
   // 交接、挂靠两页的 ./actions 合在一份假的里
   stub(/^\.\/actions$/, `${记}export const 交接客户=记('交接客户'),交接项目=记('交接项目'),交接全部=记('交接全部'),批准挂靠=记('批准挂靠'),拒绝挂靠=记('拒绝挂靠'),打开挂靠只读卡=记('打开挂靠只读卡',{ok:false,error:'x'}),saveContact=记('saveContact'),saveUnassignedContact=记('saveUnassignedContact'),联系人号码先查=async()=>({ok:true,撞了:[]});`);
-  stub(/readonly-card-actions$/, "export const 打开客户只读卡Action=async()=>({ok:false,error:'x'});");
+  stub(/readonly-card-actions$/, 补全动作桩("src/app/(app)/projects/[id]/readonly-card-actions.ts", "export const 打开客户只读卡Action=async()=>({ok:false,error:'x'});"));
   stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[],取客户选项=async()=>[];");
   stub(/contact-link-actions$/, "export const 挂到客户=async()=>({ok:true});");
   stub(/handover-actions$/, `${记}export const 撤回交接=记('撤回交接'),改接手人=记('改接手人');`);

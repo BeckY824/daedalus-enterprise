@@ -12,6 +12,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
+import { 补全动作桩 } from "./helpers/action-stubs";
 
 let browser: Browser, bundle: string;
 type W = { __调: Record<string, unknown[][]>; __挡?: boolean; __render: (o?: { 持有?: { 有: number; 上限: number } | null; 候选信息?: unknown; 无效原因选项?: string[]; 能恢复?: boolean; 多人?: number }) => void };
@@ -25,7 +26,7 @@ beforeAll(async () => {
     stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},replace(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
     stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
     stub(/customers\/pool-actions$/, `export const 领取=${记("领取", 公海成, "{ok:false,error:'只有销售、销售管理、总管理能领'}")},分配公海=${记("分配公海", 公海成, "{ok:false,error:'只有总管理和销售管理能分配'}")},撤销公海=async()=>({ok:true,updated:1});`);
-    stub(/\/projects\/actions$/, "export const 领取项目=async()=>({ok:true,updated:0});");
+    stub(/\/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 领取项目=async()=>({ok:true,updated:0});"));
     stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
     stub(/^\.\/actions$/, `export const 标无效客户=${记("标无效", "{ok:true,updated:1,unchanged:0}", "{ok:false,error:'只有总管理和销售管理能标无效客户'}")},恢复有效客户=${记("恢复", "{ok:true,updated:1,unchanged:0}", "{ok:false,error:'只有系统管理员或回收站副手能恢复无效客户'}")},分配公海项目=${记("分配公海项目", "{ok:true,分到:a[0],没分到:[],给谁:{id:'u1',name:'同事'}}", "{ok:false,error:'没权限'}")},撤销公海项目=async()=>({ok:true,updated:1});`);
     b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));

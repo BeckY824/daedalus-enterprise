@@ -13,17 +13,18 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
+import { 补全动作桩 } from "./helpers/action-stubs";
 
 let browser: Browser;
 let bundle: string;
 let 表单包: string;
 const plugin: Plugin = { name: "trade-basics-ui", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, (a) => ({ path: a.path, namespace: "stub", pluginData: code }));
-  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
+  stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;", "async()=>null"));
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>'/follow-ups/plans';");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
   stub(/(^|\/)demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
-  stub(/projects\/actions$/, "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};");
+  stub(/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};"));
   stub(/(customers\/\[id\]\/|^\.\/)actions$/, `
     const 记=(名,参)=>{(window.__calls??=[]).push({名,参});return {ok:true,id:'f1'}};
     export const 撤销记一笔=async(x)=>记('撤销记一笔',x);
@@ -60,9 +61,9 @@ beforeAll(async () => {
   // 记录跟进 / 新建计划两张表单：真组件，服务端动作和挑人那一格换成假的；挑人那一格点一下就挑中一位有 WhatsApp 号的
   const 表单插件: Plugin = { name: "trade-basics-forms", setup(b) {
     const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, (a) => ({ path: a.path, namespace: "stub", pluginData: code }));
-    stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
+    stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;", "async()=>null"));
     stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
-    stub(/projects\/actions$/, "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};");
+    stub(/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};"));
     stub(/^\.\/actions$/, "export const saveFollowUp=async()=>({ok:true,id:'f1'}),completePlan=saveFollowUp,savePlan=saveFollowUp,deletePlan=saveFollowUp;export const saveTask=async()=>({ok:true,id:'t1'});");
     stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no'});");
     stub(/^\.\/CustomerPick$/, `const 人=(id,name,有WhatsApp)=>({id,name,上次跟进:null,未完成计划:null,未完成计划数:0,contacts:[],opportunities:[],orders:[],有WhatsApp});

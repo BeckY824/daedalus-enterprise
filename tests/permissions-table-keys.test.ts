@@ -14,6 +14,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { 导出名 } from "./helpers/action-stubs";
 
 const 源根 = path.resolve(__dirname, "../src");
 const 表 = JSON.parse(fs.readFileSync(path.resolve(__dirname, "permissions/expected.json"), "utf8")) as { 接口: Record<string, unknown> };
@@ -21,26 +22,6 @@ const 表 = JSON.parse(fs.readFileSync(path.resolve(__dirname, "permissions/expe
 const 走 = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? 走(path.join(d, e.name)) : [path.join(d, e.name)]));
 const 全部文件 = 走(源根).filter((f) => !f.includes(`${path.sep}generated${path.sep}`));
 const 方法们 = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
-
-/** 去掉注释，免得注释里的 export 被当真 */
-const 去注释 = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/[^\n]*/g, "$1");
-
-/** 源码里导出的名字：export [async] function X / export const|let X / export { a, b as c }；export default 记作 default。类型导出不算 */
-function 导出名(源: string): string[] {
-  const s = 去注释(源);
-  const 名 = new Set<string>();
-  for (const m of s.matchAll(/^\s*export\s+(?:async\s+)?function\s*\*?\s*([\p{L}_$][\p{L}\p{N}_$]*)/gmu)) 名.add(m[1]);
-  for (const m of s.matchAll(/^\s*export\s+(?:const|let|var)\s+([\p{L}_$][\p{L}\p{N}_$]*)/gmu)) 名.add(m[1]);
-  for (const m of s.matchAll(/^\s*export\s*\{([^}]*)\}(?!\s*from)/gm)) {
-    for (const 项 of m[1].split(",")) {
-      const t = 项.trim();
-      if (!t || t.startsWith("type ")) continue;
-      名.add((t.split(/\s+as\s+/)[1] ?? t).trim());
-    }
-  }
-  if (/^\s*export\s+default\s+(?:async\s+)?function/m.test(s)) 名.add("default");
-  return [...名];
-}
 
 const 是动作文件 = (f: string) => /\.tsx?$/.test(f) && /^(\s|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)*["']use server["']/.test(fs.readFileSync(f, "utf8"));
 const 网址of = (f: string) => "/" + path.relative(path.join(源根, "app"), path.dirname(f)).split(path.sep).filter((s) => !/^\(.*\)$/.test(s)).join("/");

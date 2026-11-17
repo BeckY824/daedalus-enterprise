@@ -2,15 +2,16 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
+import { 补全动作桩 } from "./helpers/action-stubs";
 /* 11-03 「完成节点」框一窗填完：真浏览器量 1024 / 1280 / 1366 不溢出、超高能滚；部分失败留窗且已填的不丢；存齐才推进；服务端自动推过不再手动推 */
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "fill-required-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__刷新&&window.__刷新()},push(){},prefetch(){}});");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
-  stub(/^\.\.\/actions$/, `
+  stub(/^\.\.\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", `
     const 记=(名,项,改)=>{(window.__存||=[]).push([名,改]);const 错=(window.__错||{})[项];if(错)return{ok:false,error:错};return{ok:true,...(window.__自动推到?{自动推到:window.__自动推到}:{})}};
-    export const 编辑项目=async(id,改)=>记('项目',Object.keys(改)[0],改),改项目画像Action=async(id,改)=>记('画像',Object.keys(改)[0],改),勾项目交付=async(id,项)=>记('交付',项,项);`);
+    export const 编辑项目=async(id,改)=>记('项目',Object.keys(改)[0],改),改项目画像Action=async(id,改)=>记('画像',Object.keys(改)[0],改),勾项目交付=async(id,项)=>记('交付',项,项);`));
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
