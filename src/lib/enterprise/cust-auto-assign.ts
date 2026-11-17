@@ -13,6 +13,7 @@
  * 谁能用：按岗位认的市场成员（业务角色有市场管理或渠道运营；只认业务角色，不看账号 ADMIN / MANAGER），规则「线索分配」开着（同新建页，X-79），
  *   分配方式字典「自动分配」他能用，并且他能转让这位客户（能转让客户：本人、实线直属上级、系统管理员……）。
  * 页面（page.tsx 摆不摆）和服务端动作（客户自动分配）用同一份判定。这里读库，别在客户端 import
+ * 客户列表批量转让（11-17）同一份：勾的几位一位一位按 能自动分配客户 判，不满足的那几位不自动分、回原因（批量客户自动分配）
  */
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
@@ -68,6 +69,18 @@ export async function 能自动分配客户(me: 我, org: 组织, c: 要看的�
   const 挡 = await 挡分配方式(me, 1);
   if (挡) return { ok: false, error: 挡 };
   return { ok: true, projectId };
+}
+
+/**
+ * 客户列表：批量转让框递不递自动分配那两个动作（客户 11-17）。只看人：企业版、市场成员、规则「线索分配」开着、分配方式「自动分配」他能用；
+ * 勾的客户是不是暂不分配，框打开时再按 能自动分配客户 一位一位判（批量客户自动分配预看）。不是市场成员先回 false，不多查库
+ */
+export async function 批量可自动分配(me: 我): Promise<boolean> {
+  if (!企业版()) return false;
+  const org = await 读组织();
+  if (!按区域分配of(org, me.id)) return false;
+  if (!(await 规则开着("线索分配"))) return false;
+  return !(await 挡分配方式(me, 1));
 }
 
 /** 客户详情页：客户转让框里摆不摆「指定分配 / 自动分配」的选择。不是市场成员先回 false，不多查库 */

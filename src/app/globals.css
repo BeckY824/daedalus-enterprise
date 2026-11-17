@@ -4779,6 +4779,9 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .cu-tr-who .ant-select { flex: 1; min-width: 0; }
 .cu-tr-hint { flex: none; font-size: var(--fs-note); color: var(--text-muted); }
 .cu-tr-skel { color: var(--text-muted); }
+/* 批量转让框的「指定分配 / 自动分配」（客户 11-17）和自动分配的名单：名单折行不截断（原因要看全），多了限高滚动 */
+.cu-tr-way { margin-bottom: 14px; }
+.cu-tr-names { margin: 6px 0 0; padding-inline-start: 18px; max-height: 180px; overflow-y: auto; font-size: var(--fs-note); color: var(--ink-soft); overflow-wrap: anywhere; }
 .cu-carry-list { margin: 6px 0 0; padding-inline-start: 18px; max-height: 180px; overflow-y: auto; font-size: var(--fs-note); color: var(--ink-soft); }
 .cu-carry-list li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cu-carry-more { margin-top: 4px; font-size: var(--fs-note); color: var(--text-muted); }
