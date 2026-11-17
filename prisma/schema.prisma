@@ -1061,6 +1061,8 @@ model Project {
   entLeadVerifyLogs EntLeadVerifyLog[]
   /// 企业版冷项目（迁移 123）：有这一行 = 现在是冷的。见 EntProjectCold
   entCold           EntProjectCold?
+  /// 企业版超时未跟进自动转（迁移 150，11-17）：指定回复时间过了没人跟进的那条链，一个项目一行。见 EntReplyOverdue
+  replyOverdue      EntReplyOverdue?
   /// 企业版教练主题（迁移 144，11-17）。见 EntCoachTopic
   coachTopics       EntCoachTopic[]
   /// 企业版项目关联客户 / 联系人（2026-10-29 P17，迁移 094 / 095）。见 ProjectCustomer / ProjectContact
@@ -1933,6 +1935,32 @@ model EntProjectCold {
   /// 提醒到第几级：0 = 只标了冷，1 = 已抄直属上级，2 = 已给负责人三选一，3 = 已推条线总管理
   level     Int      @default(0)
   updatedAt DateTime @updatedAt
+}
+
+/// 企业版「超时未跟进自动转」（2026-11-17，迁移 150，lib/enterprise/reply-overdue.ts）：线索阶段、填了指定回复时间的项目，
+/// 负责人到点 + 1 小时还没记有效沟通 → 超时提醒；再过 30 分钟还没记 → 自动收回、分给下一位销售，接手人同样计时，不限次数。
+/// 一个项目一行，记眼下这一位走到哪一步；记了有效沟通 = 这条链停了（stoppedAt）。改了指定回复时间整行重来。项目删了随项目级联
+model EntReplyOverdue {
+  projectId String    @id
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// 起链时的超时基准（指定回复时间的结束，没填结束用开始）；和项目上现在的对不上 = 改过时间，整行重来
+  anchorAt  DateTime
+  /// 眼下这一位（链上的负责人）；和项目负责人对不上 = 别人手动换了人，按新负责人重新计时
+  holderId  String
+  /// 这一位的计时起点：第一位 = 超时基准（接手更晚按接手时刻），后来的 = 接手那一刻
+  since     DateTime
+  /// 超时提醒实际发出的那一刻；空 = 还没到 / 还没发。自动转出按它 + 30 分钟算
+  overdueAt DateTime?
+  /// 这一轮已经超时过的人（JSON 数组）；人人都轮过一遍了就开新一轮
+  tried     String    @default("[]")
+  /// 自动转了几次（只记数，不限次数）
+  transfers Int       @default(0)
+  /// 记了有效沟通、链停下的那一刻；空 = 还在走
+  stoppedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([holderId])
 }
 
 /// 企业版客户三态 · 沟通第一次被判为有效的时刻（2026-11-12，迁移 132，额度重置判「实时」用，tri-state-quota.ts 额度沟通日of）。

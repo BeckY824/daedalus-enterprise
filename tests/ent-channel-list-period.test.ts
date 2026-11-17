@@ -24,6 +24,7 @@ import { 读看板底数 } from "@/lib/enterprise/channel-dash-db";
 import { 名单链接, 名单键们, 到达口径键, type 名单键 } from "@/lib/enterprise/channel-stats";
 import { 算分期统计, 看板时段 } from "@/lib/enterprise/channel-dash";
 import { 读项目列表 } from "@/lib/project/list";
+import { 补建创建人 } from "@/lib/project/system-created";
 
 type 人 = { id: string; name: string; role: string };
 let 老板: 人;
@@ -127,8 +128,27 @@ describe("渠道列表统计跟看板时间段", () => {
         expect(分[期][渠道][键], `${期} ${键}`).toBe(d.总数);
       }
     }
-    expect(名单链接(渠道, "关联项目", { createdFrom: "2026-11-01" })).toBe(`/projects?channelId=${渠道}&createdFrom=2026-11-01`);
+    // 带了时段 = 这段时间新建的：再带 onlyNew=1，列表排掉补建的项目（同分档的数，project/system-created.ts）
+    expect(名单链接(渠道, "关联项目", { createdFrom: "2026-11-01" })).toBe(`/projects?channelId=${渠道}&createdFrom=2026-11-01&onlyNew=1`);
     expect(名单链接(渠道, "关联项目", null)).toBe(名单链接(渠道, "关联项目"));
+  });
+});
+
+describe("补建的项目（老客户补的潜客培育，creatorId = system）", () => {
+  it("分档的关联项目不算它，点数字进列表也排掉、条数对得上；「全部」照算；自己按创建时间筛的列表照旧列它", async () => {
+    const c = (await prisma.customer.findFirstOrThrow({ where: { name: "客户一" } })).id;
+    await prisma.project.create({ data: { name: "补建培育", customerId: c, ownerId: 老板.id, creatorId: 补建创建人, phase: "线索", node: "潜客培育", createdAt: new Date("2026-11-11T02:00:00Z") } });
+    const 分 = await 以谁的身份(老板.id, () => 读渠道分期统计(渠道们(), 今, null, 老板));
+    const 板 = await 以谁的身份(老板.id, () => 读看板底数([渠道], 今, null, 老板));
+    expect(分.本月[渠道].关联项目).toBe(3);
+    expect(板.本月[渠道].线索).toBe(3);
+    expect(分.全部[渠道].关联项目).toBe(8);
+    const 时段 = 看板时段("本月", 今, null);
+    const sp = Object.fromEntries(new URL(名单链接(渠道, "关联项目", 时段), "http://x").searchParams);
+    mocks.user = { ...mocks.user, id: 老板.id, role: 老板.role };
+    expect((await 以谁的身份(老板.id, () => 读项目列表(老板, sp))).总数).toBe(3);
+    const { onlyNew: _不要, ...自己筛 } = sp;
+    expect((await 以谁的身份(老板.id, () => 读项目列表(老板, 自己筛))).总数).toBe(4);
   });
 });
 

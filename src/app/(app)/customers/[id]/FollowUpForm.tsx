@@ -29,12 +29,13 @@ import { clearJob, runJob } from "@/lib/ai-jobs";
 import { statusLabel } from "@/lib/business-config";
 import { 只填没动过的, 跳过说明 } from "@/lib/fill-untouched";
 import CustomerPick, { type 客户近况 } from "./CustomerPick";
-import FollowMethodSelect, { InitiatorSelect, useFollowInitiators, useFollowMethods, 默认沟通方式, 默认发起主体 } from "@/components/FollowMethodSelect";
+import FollowMethodSelect, { InitiatorSelect, useFollowHabit, useFollowInitiators, useFollowMethods, 默认沟通方式, 默认发起主体 } from "@/components/FollowMethodSelect";
 import { 对得上的方式, 方式对类型 } from "@/lib/follow-method";
 import { useFormGuard } from "@/lib/form-guard";
 import { 卡点类型们, 影响等级们, 描述上限, 标题上限, 原因最多, 原因名上限, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 选沟通附件, 传沟通附件 } from "@/components/FollowAttachments";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
+import { 动作出错话, 出错原话 } from "@/lib/stale-deploy";
 
 /** 记沟通时顺手标的卡点（F-跟进-08）：类型「暂无卡点」= 不生成，描述写了也不生成（11-01 答复 #5；服务端 沟通卡点 同一条规则） */
 type 卡点值 = { type: string; impact: string | null; title: string; reasons: string[]; description: string };
@@ -230,13 +231,17 @@ export default function FollowUpForm({
   /** 企业版字典里的沟通方式 / 发起主体；别的版本是 null（不摆发起主体，类型照旧） */
   const 方式们 = useFollowMethods();
   const 主体们 = useFollowInitiators();
+  /** 这个人的习惯方式（11-17 客户答复「建议记录个人使用习惯」，lib/follow-habit.ts）：只在新记一条时问 */
+  const 习惯 = useFollowHabit(open && !record?.id);
   /**
-   * 新记一条的默认沟通方式：企业版字典里有「微信沟通」就默认它（11-01 客户答复 #2），
-   * 否则照旧跟着这一位有没有 WhatsApp 号走
+   * 新记一条的默认沟通方式：先按个人习惯（最近 20 条里用得最多、现在还能选的）；
+   * 没有记录才照原来的：企业版字典里有「微信沟通」就默认它（11-01 客户答复 #2），否则跟着这一位有没有 WhatsApp 号走
    */
-  const 默认方式 = (有号: boolean | undefined) => 方式们?.includes(默认沟通方式)
-    ? { type: 方式对类型(默认沟通方式), method: 默认沟通方式 }
-    : { type: 有号 ? "WHATSAPP" : "PHONE", method: null };
+  const 默认方式 = (有号: boolean | undefined) => 习惯 && (方式们 ? !!习惯.method && 方式们.includes(习惯.method) : true)
+    ? { type: 习惯.type, method: 习惯.method }
+    : 方式们?.includes(默认沟通方式)
+      ? { type: 方式对类型(默认沟通方式), method: 默认沟通方式 }
+      : { type: 有号 ? "WHATSAPP" : "PHONE", method: null };
   const customerId = 给定客户 ?? 近况?.id;
   const contacts = 给定联系人 ?? 近况?.contacts ?? [];
   const opportunities = 给定商机 ?? 近况?.opportunities ?? [];
@@ -298,13 +303,28 @@ export default function FollowUpForm({
   const 守 = useFormGuard({
     open,
     form,
-    草稿键: record?.id || initialAiText ? null : `新建跟进:${给定客户 ?? "挑人"}:${record?.type ?? ""}`,
+    // 11-17 起改老记录也留草稿（只存改过的格子，键带记录编号）；速记框带原文打开的照旧不存
+    草稿键: initialAiText ? null : record?.id ? `编辑跟进:${record.id}` : `新建跟进:${给定客户 ?? "挑人"}:${record?.type ?? ""}`,
+    编辑: !!record?.id,
     关: () => {
       resetAi();
       onClose();
     },
     填过: () => aiText.trim() !== "" || 卡点.description.trim() !== "" || 附件们.length > 0,
     不存: 给定客户 ? ["projectId"] : ["customerId", "contactId", "opportunityId", "projectId"],
+    // 表单外头也是人打的字：AI 速记框、卡点那一块；截图录音存不进来，带回时说要重选
+    额外: {
+      取: () => ({ aiText, 卡点 }),
+      放: (x) => {
+        if (typeof x.aiText === "string") setAiText(x.aiText);
+        if (x.卡点 && typeof x.卡点 === "object") set卡点({ ...空卡点, ...(x.卡点 as Partial<卡点值>) });
+      },
+    },
+    附件数: () => 附件们.length,
+    // 带回的草稿里有方式：以草稿为准，个人习惯晚到也不盖它
+    on带回: (v) => {
+      if ("type" in v || "method" in v) 人改过类型.current = true;
+    },
   });
 
   async function onAiParse() {
@@ -332,7 +352,7 @@ export default function FollowUpForm({
     try {
       res = await 请求;
     } catch (e) {
-      res = { ok: false, error: e instanceof Error ? e.message : "解析失败，请重试" };
+      res = { ok: false, error: 出错原话(e, "解析失败，请重试") };
     }
     if (轮 !== 这一次.current) return;
     if (!res.ok) {
@@ -346,7 +366,8 @@ export default function FollowUpForm({
     */
     const { 填, 跳过 } = 只填没动过的(
       {
-        type: d.followUp.type,
+        // AI 认不出方式（回 OTHER）：类型不填，留着现在的（个人习惯 / 默认，lib/follow-habit.ts），同项目详情的 AI 录入
+        ...(d.followUp.type !== "OTHER" ? { type: d.followUp.type } : {}),
         status: d.followUp.status,
         title: d.followUp.title || undefined,
         content: d.followUp.content,
@@ -366,7 +387,7 @@ export default function FollowUpForm({
     });
     // 做完留一行摘要在原地，替掉原来那条一闪就走的提示：人一眼看到 AI 认出了什么，再去核对下面的表
     const 摘要 = [
-      FOLLOW_TYPES.find((t) => t.value === d.followUp.type)?.label,
+      d.followUp.type !== "OTHER" ? FOLLOW_TYPES.find((t) => t.value === d.followUp.type)?.label : null,
       d.followUp.status,
       d.plan?.plannedAt ? `下次 ${dayjs(d.plan.plannedAt).format("M 月 D 日")}` : null,
       d.tasks.length ? `${d.tasks.length} 条待办` : null,
@@ -430,7 +451,7 @@ export default function FollowUpForm({
     }
   // 只在开关面板、换记录时重置：runParse、initialAiText 这些每次渲染都变，放进来会把填到一半的表单清掉
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, record, form, 有WhatsApp, 默认项目, 方式们, 主体们]);
+  }, [open, record, form, 有WhatsApp, 默认项目, 方式们, 主体们, 习惯]);
 
   /*
     保存中：网慢时连点两下会建出两条一样的记录（跟进带的 AI 待办和计划也各建两份，2026-10-02 排查）。
@@ -479,7 +500,7 @@ export default function FollowUpForm({
     try {
       return await onOk();
     } catch (error) {
-      if (!error || typeof error !== "object" || !("errorFields" in error)) return { ok: false, error: "保存失败，请刷新确认结果后重试" };
+      if (!error || typeof error !== "object" || !("errorFields" in error)) return { ok: false, error: 动作出错话(error, "保存失败，请刷新确认结果后重试") };
       // 收起来的「更多」里有格子没过（比如发生时间）：展开让人看到
       if (收起 && (error as { errorFields: { name: (string | number)[] }[] }).errorFields.some((e) => !主区格.has(String(e.name[0])))) set更多开(true);
       return { ok: false, error: "有几项没填好，看标红的" };
@@ -558,7 +579,7 @@ export default function FollowUpForm({
           话: `沟通已记下，计划「${要收口.subject}」一并完成`,
           毫秒: 6000,
           撤销: async () => {
-            const u = await completePlan(要收口.id, false).catch(() => ({ ok: false as const, error: "没撤销成，请稍后重试" }));
+            const u = await completePlan(要收口.id, false).catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "没撤销成，请稍后重试") }));
             void window.desktopReminders?.刷新();
             router.refresh();
             return u;
@@ -685,7 +706,7 @@ export default function FollowUpForm({
   >
     <Input.TextArea
       value={aiText}
-      onChange={(e) => setAiText(e.target.value)}
+      onChange={(e) => { setAiText(e.target.value); 守.改了(); }}
       autoSize={{ minRows: 2, maxRows: 6 }}
       maxLength={5000}
       placeholder={'跟进速记：把沟通过程随手倒出来，或直接粘贴微信聊天记录，AI 帮你填表。\n如："刚和周总通了 20 分钟电话，他担心交期，想先小批量试一单，下周三再约他聊报价"'}
@@ -728,6 +749,7 @@ export default function FollowUpForm({
       destroyOnHidden
     >
       {/* AI 速记块放在 Form 里面（它不是字段）：挑人那一格是 Form.Item，得在它上面、仍是第一格 */}
+      {守.提示}
       <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={(changed) => { if ("type" in changed) 人改过类型.current = true; 守.改了(); }}>
         {挑人 && <CustomerPick 预选={预选客户} 近况={近况} on近况={换人} 不提计划={Boolean(收口计划)} />}
         {!收起 && AI块}

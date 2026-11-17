@@ -98,6 +98,8 @@ export const 不同步表 = [
   "EntCustomerClock", "EntCustomerStateLog", "EntProjectCold",
   // 企业版客户三态：沟通第一次有效的时刻（2026-11-12，migrations/132）：同上
   "EntFollowUpFirstValid",
+  // 企业版超时未跟进自动转（2026-11-17，migrations/150）：同上
+  "EntReplyOverdue",
 ] as const;
 
 /**

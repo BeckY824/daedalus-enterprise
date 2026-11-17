@@ -113,3 +113,6 @@ export function 分配晚于回复(定时: Date | null | undefined, 始: Date | 
   if (!定时 || !先 || 定时.getTime() <= 先.getTime()) return null;
   return "分配晚于指定回复时间，接手人可能来不及";
 }
+
+/** 超时未跟进自动转（lib/enterprise/reply-overdue.ts 规则 3 的例外）：客户留在别人名下时项目页那句提示；纯文字，浏览器也用 */
+export const 客户在谁名下话 = (名: string) => `该客户在 ${名} 名下`;

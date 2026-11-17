@@ -33,6 +33,7 @@ import SaveButton from "@/components/SaveButton";
 import InlineConfirm from "@/components/InlineConfirm";
 import { 筛渠道, 看板时段, 自定义, type 档, type 看板底数, type 看板公海 } from "@/lib/enterprise/channel-dash";
 import { 读日期段, type 日期段 } from "@/lib/custom-date-range";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 export type 渠道行 = {
   id: string;
@@ -266,7 +267,7 @@ export default function ChannelsView({
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   // 点外面不关、关前问一句、新建的草稿留在本机（2026-10-19 客户反馈，lib/form-guard.tsx）
-  const 守 = useFormGuard({ open, form, 草稿键: editing ? null : "新建渠道", 关: () => { setOpen(false); setEditing(null); }, 忙: saving, afterOpenChange: 聚焦首项 });
+  const 守 = useFormGuard({ open, form, 草稿键: editing ? `编辑渠道:${editing.id}` : "新建渠道", 编辑: !!editing, 关: () => { setOpen(false); setEditing(null); }, 忙: saving, afterOpenChange: 聚焦首项 });
   /** 只有一个人：渠道负责人那一列和筛选都不摆（审查 D2 / M3） */
   const 不问归属 = !ownerId && 列表不问归属(users, 全部行.map((r) => r.channelOwnerName));
   const 创建人们 = useMemo(() => [...new Set(全部行.map((r) => r.createdByName).filter((x): x is string => Boolean(x)))], [全部行]);
@@ -325,7 +326,7 @@ export default function ChannelsView({
         ...(两层 ? { strategies: (v.strategies as string[] | undefined) ?? [] } : {}),
         endDate: v.endDate ? (v.endDate as Dayjs).format("YYYY-MM-DD") : null,
         active: v.active !== false,
-      }).catch(() => ({ ok: false as const, error: "保存失败，请刷新确认结果后重试" }));
+      }).catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "保存失败，请刷新确认结果后重试") }));
       if (!res.ok) return res;
       守.存好了();
       router.refresh();
@@ -773,6 +774,7 @@ export default function ChannelsView({
           destroyOnHidden
           width={600}
         >
+          {守.提示}
           <Form
             form={form}
             layout="vertical"

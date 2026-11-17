@@ -138,6 +138,8 @@ export type RecordProps = {
   关联们?: import("@/lib/enterprise/customer-v2-db").关联一行[] | null;
   /** 企业版联系人号码类型（字典 contactKind，停用的也在：老号要显示叫法） */
   号码种类?: { 名: string; kind: string; active: boolean }[];
+  /** 企业版客户本身的号码（联系方式子表里 contactId 空的那几行，不含电话那一行，11-17）：资料卡「电话」下面一类一行，点了按「类型 + 号码」改 */
+  客户号码们?: { kind: string; value: string }[];
   /** 企业版联系人「职务」下拉的候选（字典 contactTitle 启用中的，10-31）；也能手填 */
   职务选项?: string[];
   /** 企业版客户分配方式的可选项（字典 custAssign 启用中的） */

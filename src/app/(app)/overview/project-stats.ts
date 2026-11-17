@@ -6,6 +6,7 @@ import { 公海里历史负责人是 } from "@/lib/project/pool-owner";
 import type { Prisma } from "@/generated/prisma";
 import { bucketOf, 刻度们, type 粒度 } from "./data";
 import { 项目漏斗of, type 漏斗格 } from "./funnel";
+import { 不算补建 } from "@/lib/project/system-created";
 
 /**
  * 企业版只用项目时「数据」页的数（10-26 用户：「「数据」页改成按项目统计」，线索 / 商机 / 订单是项目的三大阶段）。
@@ -153,7 +154,7 @@ export type 项目一段 = {
 
 /**
  * 一段时间里发生了什么。
- *   新建：项目建在这一段（createdAt）
+ *   新建：项目建在这一段（createdAt）；补建的（老客户补的潜客培育，system-created.ts）不算，漏斗、线索瀑布、线索转商机这批也不带它
  *   转商机 / 转订单：这一段里有一次从线索进商机 / 从商机进订单的节点变更（一个项目只数一次，来回改不重复算）
  *   成功交付 / 线索流失 / 丢单 / 异常状态：现在是这个结局、结束在这一段（closedAt）——后来又恢复了的不算
  *     「成功交付」这一格 = 订单走成的（企业版叫 交付结清，库里旧名也认，见 是交付），键名不改
@@ -167,7 +168,7 @@ export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币:
   const 谁 = 只看 === undefined ? {} : { ownerId: 负责人是(只看), pooledAt: null };
   const [新全, 变, 结] = await Promise.all([
     prisma.project.findMany({
-      where: { createdAt: 段, ...负责 },
+      where: { createdAt: 段, ...负责, ...不算补建 },
       select: { id: true, ownerId: true, createdAt: true, phase: true, node: true, result: true, pooledAt: true, entLeadVerify: { select: { finalResult: true } } },
     }),
     prisma.projectNodeLog.findMany({

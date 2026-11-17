@@ -13,6 +13,7 @@ import { fmtDateTime } from "@/lib/utils";
 import { 教练发起标签, 主题标题上限, 主题内容上限, 回复上限 } from "@/lib/enterprise/coach-topic";
 import type { 项目主题们, 主题给界面 } from "@/lib/enterprise/coach-topic-db";
 import { 发主题动作, 回复主题动作, 关闭主题动作, 删主题动作 } from "../../customers/[id]/coach-topic-actions";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 const 状态色: Record<string, string> = { 待回复: "orange", 已回复: "blue", 已关闭: "default" };
 
@@ -37,7 +38,7 @@ function NewTopicModal({ 数据, projectId, 关 }: { 数据: 项目主题们; pr
   const 发 = async () => {
     set忙(true);
     set错(null);
-    const r = await 发主题动作(projectId, { title, body }).catch(() => ({ ok: false as const, error: "没发出去，请重试" }));
+    const r = await 发主题动作(projectId, { title, body }).catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "没发出去，请重试") }));
     set忙(false);
     if (!r.ok) return set错(r.error);
     关();
@@ -97,7 +98,7 @@ function TopicItem({ t }: { t: 主题给界面 }) {
   const 跑 = async (f: () => Promise<{ ok: boolean; error?: string }>) => {
     set忙(true);
     set错(null);
-    const r = await f().catch(() => ({ ok: false, error: "没成，请重试" }));
+    const r = await f().catch((出错) => ({ ok: false, error: 动作出错话(出错, "没成，请重试") }));
     set忙(false);
     if (!r.ok) return set错(r.error ?? "没成，请重试");
     set回("");

@@ -20,7 +20,7 @@ import { 补全动作桩 } from "./helpers/action-stubs";
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "followup-project-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
-  stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;", "async()=>null"));
+  stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
   stub(/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x,卡点)=>{window.__项目存={id,...x};window.__卡点=卡点;return{ok:true,followUpId:'f1',自动推到:window.__推到}};"));
   stub(/^\.\/actions$/, "export const saveFollowUp=async x=>{window.__存=x;return{ok:true,id:'f1',...(window.__存回??{})}},completePlan=async()=>({ok:true});export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'n1'});");

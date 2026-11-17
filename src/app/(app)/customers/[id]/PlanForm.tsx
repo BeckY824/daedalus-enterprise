@@ -94,7 +94,8 @@ export default function PlanForm({
   const 守 = useFormGuard({
     open,
     form,
-    草稿键: record ? null : `新建计划:${customerId ?? "挑人"}`,
+    草稿键: record ? `编辑计划:${record.id}` : `新建计划:${customerId ?? "挑人"}`,
+    编辑: !!record,
     关,
     afterOpenChange: 聚焦首项,
     不存: customerId ? [] : ["customerId"],
@@ -181,6 +182,7 @@ export default function PlanForm({
       ]}
       destroyOnHidden
     >
+      {守.提示}
       <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={(changed) => { if ("method" in changed) 人改过方式.current = true; 守.改了(); }}>
         {挑人 && <CustomerPick 预选={预选客户} 近况={近况} on近况={换人} 给计划 />}
         <Form.Item name="subject" label="跟进主题" rules={[requiredText("请填写跟进主题")]}>

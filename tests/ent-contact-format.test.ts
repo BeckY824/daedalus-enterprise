@@ -3,7 +3,7 @@
  * 旺旺 ID 带子账号，+86 / 0086 写法当国内号。纯函数，不碰库
  */
 import { describe, it, expect } from "vitest";
-import { 验号码, 号码提示, 带进联系人, 号码类型叫法 } from "@/lib/enterprise/contact-format";
+import { 验号码, 号码提示, 带进联系人, 号码类型叫法, 像微信号提示 } from "@/lib/enterprise/contact-format";
 
 const 过 = (类型: string, 值: string) => {
   const r = 验号码(类型, 值);
@@ -34,8 +34,12 @@ describe("手机号（B1 / B2）", () => {
     expect(过("手机号", "+13572468")).toMatchObject({ 国外: true });
   });
   it("格式错误：位数不对、+86 后不是 11 位、夹字母、国外超长", () => {
-    for (const s of ["1390000010", "139000001011", "+86 1390000010", "139abc00101", "+1234567", "+1234567890123456", "139-0000-01x1"]) {
+    for (const s of ["1390000010", "139000001011", "+86 1390000010", "+1234567", "+1234567890123456"]) {
       expect(验号码("手机号", s)).toMatchObject({ ok: false, 状态: "格式错误", 提示: 号码提示.格式错误.手机号 });
+    }
+    // 11-17 起夹字母、汉字的整格拒，叫人去选微信类型（不再说笼统的格式错误）
+    for (const s of ["139abc00101", "139-0000-01x1"]) {
+      expect(验号码("手机号", s)).toMatchObject({ ok: false, 状态: "格式错误", 提示: 像微信号提示 });
     }
   });
   it("无法识别：空、全是符号、打了码的", () => {
@@ -49,7 +53,7 @@ describe("邮箱（B3）", () => {
     expect(过("邮箱", "a_b-c@mail.co.uk").ok).toBe(true);
   });
   it("格式错误：没 @、两个 @、@ 开头、点挨着 @、连着两个点、全角句点、后缀不对、中间空格", () => {
-    for (const s of ["abc.com", "a@b@c.com", "@abc.com", "a@.abc.com", "a..b@abc.com", "a@abc。com", "a@abc.c", "a@abc.c0m", "a@abc.comcomc", "a b@abc.com", "a@abc"]) {
+    for (const s of ["abc.com", "a@b@c.com", "@abc.com", "a@.abc.com", "a..b@abc.com", "a@abc。com", "a@abc.c", "a@abc.c0m", "a@abc." + "c".repeat(25), "a b@abc.com", "a@abc"]) {
       expect(验号码("邮箱", s)).toMatchObject({ ok: false, 状态: "格式错误", 提示: 号码提示.格式错误.邮箱 });
     }
   });
@@ -83,7 +87,8 @@ describe("阿里国际站ID 叫法（10-29）", () => {
 
 describe("旺旺 ID（B5）", () => {
   it("去掉空格和符号；4–30 位；键小写", () => {
-    expect(过("旺旺ID", " tb-Shop 88 ")).toMatchObject({ 值: "tbShop88", 键: "tbshop88" });
+    // 11-17 起横杠留着（阿里国际站ID 常带「-」），空格照旧去掉
+    expect(过("旺旺ID", " tb-Shop 88 ")).toMatchObject({ 值: "tb-Shop88", 键: "tb-shop88" });
     expect(过("旺旺ID", "ab_c").ok).toBe(true);
     expect(过("旺旺ID", "a".repeat(30)).ok).toBe(true);
   });

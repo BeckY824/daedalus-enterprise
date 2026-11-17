@@ -21,6 +21,7 @@ import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
 import InlineConfirm from "@/components/InlineConfirm";
 import { 跑出原因, type 做的结果 } from "@/lib/confirm-result";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 /*
   与客户的关系。取值有限却不封闭（教培里有姑姑、哥哥，公司里有「副总」），
@@ -93,7 +94,8 @@ export default function ContactForm({
   const 守 = useFormGuard({
     open,
     form,
-    草稿键: record ? null : `新建联系人:${customerId ?? "挑人"}`,
+    草稿键: record ? `编辑联系人:${record.id}` : `新建联系人:${customerId ?? "挑人"}`,
+    编辑: !!record,
     关: onClose,
     afterOpenChange: 聚焦首项,
     不存: customerId ? [] : ["customerId"],
@@ -131,7 +133,7 @@ export default function ContactForm({
     set存着(true);
     try {
       set就地错(null);
-      const r = await 挂到客户(contactId, customerId).catch(() => ({ ok: false as const, error: "没挂上，请重试" }));
+      const r = await 挂到客户(contactId, customerId).catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "没挂上，请重试") }));
       if (!r.ok) return void set就地错(r.error);
       守.存好了();
       onSaved(contactId);
@@ -163,7 +165,7 @@ export default function ContactForm({
       .map((x) => ({ kind: x.kind!, value: x.value!.trim() }));
     const 序 = ++查序.current;
     if (!们.length) return;
-    const r = await 联系人号码先查(们, record?.id ?? null).catch(() => null);
+    const r = await 联系人号码先查(们, record?.id ?? null, customerId ?? null).catch(() => null);
     if (序 !== 查序.current || !r?.ok) return;
     if (r.撞了.length) { set撞号(r.撞了); set先查的(true); }
   }
@@ -279,13 +281,17 @@ export default function ContactForm({
           type="warning"
           showIcon
           style={{ marginTop: 8 }}
-          message={先查的 ? "这个号码已经记在别的联系人身上，先核对一下" : "这些号码已经记在别的联系人身上，本次没保存"}
+          message={先查的 ? "这个号码已经记在别的联系人或客户身上，先核对一下" : "这些号码已经记在别的联系人或客户身上，本次没保存"}
           description={
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {撞号.map((x, i) => (
                 <div key={`${x.kind}-${x.value}-${i}`} style={{ overflowWrap: "anywhere" }}>
                   {叫法(x.kind)} {x.value}：
-                  {x.contactId && x.customerId ? (
+                  {x.客户本身 ? (
+                    x.customerId ? (
+                      <Link href={`/customers/${encodeURIComponent(x.customerId)}`} target="_blank">{b.customer}「{x.customerName}」本身的号码</Link>
+                    ) : `${x.同事}名下的一位${b.customer}（不在你的范围，可与他核实）`
+                  ) : x.contactId && x.customerId ? (
                     <>
                       <Link href={`/customers/${encodeURIComponent(x.customerId)}`} target="_blank">
                         {x.name}（{x.customerName}）
@@ -312,6 +318,7 @@ export default function ContactForm({
           }
         />
       )}
+      {守.提示}
       <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={() => { 守.改了(); 查序.current++; if (撞号) set撞号(null); }}>
         <Row gutter={16}>
           {/* 从联系人列表进来时先选人：联系人挂在某一位学员下面，没有归属的联系人没有意义 */}

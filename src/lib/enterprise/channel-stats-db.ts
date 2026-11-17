@@ -18,6 +18,7 @@ import { 企业版 } from "./switch";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 列表里的项目, 公海名单条件 } from "@/lib/project/list";
 import { 算分期统计, type 分期统计, type 看板区间 } from "./channel-dash";
+import { 是补建 } from "@/lib/project/system-created";
 
 /** 归到这批渠道的项目（两种来源都捞，见文件头）；渠道看板 channel-dash-db.ts 也用这一个 */
 export const 渠道项目条件 = (渠道ids: string[]) => ({
@@ -43,7 +44,7 @@ async function 取项目(渠道ids: string[], 看的人?: { id: string }): Promi
   const [行, 落点] = await Promise.all([prisma.project.findMany({
     where: 渠道项目条件(渠道ids),
     select: {
-      id: true, pooledAt: true, createdAt: true,
+      id: true, pooledAt: true, createdAt: true, creatorId: true,
       channelId: true, phase: true, result: true, amount: true, currency: true,
       customer: { select: { channelId: true } },
       // 不在这里 orderBy：Prisma 6.16 父行过千时嵌套关系带 orderBy 会让查询引擎崩（record.rs「no entry found for key」），取回来再排
@@ -55,6 +56,7 @@ async function 取项目(渠道ids: string[], 看的人?: { id: string }): Promi
   for (const p of 行) p.logs.sort((a, b) => a.at.getTime() - b.at.getTime());
   return 行.map((p) => ({
     channelId: 项目算哪个渠道(p.channelId, p.customer.channelId), phase: p.phase, result: p.result, amount: p.amount, currency: p.currency, createdAt: p.createdAt,
+    ...(是补建(p) ? { 补建: true } : {}),
     // 没有建项目那条日志的（很老的数据）当从线索起
     起步阶段: p.logs.find((l) => l.fromPhase === null)?.toPhase ?? "线索",
     到过阶段们: p.logs.map((l) => l.toPhase),

@@ -17,6 +17,7 @@ import { 写不进, 规, type 值表 } from "./values";
 import { 别的在写, 重算最近跟进, type 定的一笔 } from "./revert";
 import { 来源名, 实体名, type 来源, type 实体, type 映射, type 待写 } from "./types";
 import { 企业版只用项目 } from "../enterprise/project-only";
+import { 补待补的 } from "./nurture-rows";
 
 export const 一次最多 = 200;
 
@@ -169,7 +170,7 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
           }
         }
         if (Object.keys(改动).length) {
-          await 改(tx, e, c.targetId, 改动, 现值!, 现.现在);
+          await 改(tx, e, c.targetId, 改动, 现值!, 现.现在, { 批次Id: 批.id, 补培育: !!现.补培育 });
           改了++;
           if (e === "followup") {
             碰过.add(String(现值!.customerId));
@@ -187,6 +188,8 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
         return { ...结果, 批次Id: null };
       }
       await 重算最近跟进(tx, 碰过);
+      // 采用原系统让无主客户出了公海的：这一笔全部定完、同一个事务末尾再补潜客培育（nurture-rows.ts）
+      await 补待补的(tx, 批.id, 用户.id);
       await tx.entImportBatch.update({
         where: { id: 批.id },
         data: { status: "done", finishedAt: new Date(), plan: J(计划), total: 结果.定了, cursor: 结果.定了, created: 建了, updated: 改了, skipped: 结果.定了 - 建了 - 改了 },
