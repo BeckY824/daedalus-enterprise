@@ -18,7 +18,7 @@ const plugin: Plugin = { name: "stale-deploy-ui", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   const 空跑 = "async()=>({ok:true})";
   stub(/coach-topic-actions$/, "const f=async()=>({ok:true});export const 发主题动作=f,回复主题动作=f,关闭主题动作=f,删主题动作=f;");
-  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
+  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
   stub(/^\.\.\/actions$/, `import {UnrecognizedActionError as 老版本类} from 'next/dist/client/components/unrecognized-action-error';const f=${空跑};export const 改项目节点=f,终止项目进程=f,勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=async(...a)=>{(window.__记||=[]).push(a);if(window.__老版本){${老版本错}}return{ok:true,followUpId:'f9'}},判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);if(window.__老版本){${老版本错}}return{ok:true}},改项目画像Action=f,改项目沟通=f,删项目沟通=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
@@ -78,6 +78,8 @@ async function 装(page: Page, 怎么: "全" | "横幅" = "全", id: string | nu
     await page.evaluate(() => (window as unknown as 窗).__render());
     await page.getByTestId("follow-card-new").waitFor();
   } else await page.evaluate(x => (window as unknown as 窗).__banner(x), id);
+  // 等横幅的 effect 跑完（记下「上次问」的时刻）再往前拨钟：不然拨钟早于 effect，计时起点也跟着拨过去了
+  await page.evaluate(() => new Promise(r => requestAnimationFrame(() => setTimeout(r, 50))));
 }
 /** 切走再切回这个窗口：浏览器发 visibilitychange + focus */
 const 切回来 = (page: Page) => page.evaluate(() => { document.dispatchEvent(new Event("visibilitychange")); window.dispatchEvent(new Event("focus")); });
