@@ -323,7 +323,8 @@ describe("切换视图里调遍所有写入口，库一行不差", () => {
         if (!/(视图中跳过|正在切换视图|当前视图)\(\)/.test(段)) 漏的.push(`${path.relative(".", f)}:${i + 1}`);
       });
     }
-    expect(处数).toBeGreaterThanOrEqual(5);
+    // 11-17 渠道页补主渠道拿掉了（读页面不写库），少一处
+    expect(处数).toBeGreaterThanOrEqual(4);
     expect(漏的, 漏的.join("\n")).toEqual([]);
   });
 

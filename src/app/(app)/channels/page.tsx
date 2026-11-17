@@ -4,7 +4,6 @@ import { requireUser } from "@/lib/auth";
 import ChannelsView from "./ChannelsView";
 import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { 可选项, 字典定义 } from "@/lib/enterprise/dict";
 import { 读渠道分期统计 } from "@/lib/enterprise/channel-stats-db";
 import { 读看板底数, 读公海底数 } from "@/lib/enterprise/channel-dash-db";
@@ -12,9 +11,9 @@ import { 读市场身份 } from "@/lib/enterprise/market-view-db";
 import { 读日期段, 日期段界 } from "@/lib/custom-date-range";
 import { 自定义 } from "@/lib/enterprise/channel-dash";
 import { 能录投入, 能管渠道 } from "@/lib/enterprise/channel-stats";
-import { 看全部, 系统写 } from "@/lib/team-scope";
+import { 看全部 } from "@/lib/team-scope";
 import { 读组织 } from "@/lib/enterprise/org";
-import { 补主渠道, 读主渠道们 } from "@/lib/enterprise/channel-main";
+import { 读主渠道们 } from "@/lib/enterprise/channel-main";
 import { 读策略, 沿用主渠道属性 } from "@/lib/enterprise/channel-main-core";
 
 export const dynamic = "force-dynamic";
@@ -27,10 +26,8 @@ export default async function ChannelsPage({ searchParams }: { searchParams?: Pr
   const 段 = sp.view === 自定义 ? 读日期段(sp.from, sp.to) : null;
   const 区间 = 段 ? 日期段界(段) : null;
   const 市场 = 企业版() ? await 读市场身份(me.id) : null;
-  // 渠道两层（11-08）：还没挂主渠道的渠道（老数据、导入、别处新建的）先按名字补挂上，补过的不再动。
-  // 是系统补数据不是用户改：只读管理员打开也要能补，不然整页被只读拦挡掉
-  // 切换视图（只读预览）不补：一笔不写，没挂主渠道的照原样显示
-  if (企业版() && !(await 视图中跳过())) await 系统写(() => 补主渠道());
+  // 打开页面不写库（11-17 复盘第 7 类）：原来这里给没挂主渠道的渠道补建同名主渠道，删了子渠道影子主渠道还留着。
+  // 主渠道改在建渠道那一刻挂好（channel-main.ts 建渠道挂主）；万一还有没挂的老渠道，列表按名字归组照常显示，不补
 
   const [channels, users] = await Promise.all([
     prisma.channel.findMany({

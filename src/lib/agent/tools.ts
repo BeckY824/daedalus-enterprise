@@ -23,6 +23,8 @@ import { 客户来源线索 } from "../customer-lead-origin";
 import { 阶段们, 结局们, 是阶段, 是结局, 同名们, 本套位置, 字典of } from "../project/nodes";
 import { 看得到的客户, 露客户 } from "../project/db";
 import { 企业版 } from "../enterprise/switch";
+import { 启用渠道条件 } from "../enterprise/channel-main";
+import { 渠道启用 } from "../enterprise/channel-main-core";
 import { 无负责人占位邮箱 } from "../pool";
 import { 现值选取, 现值表 } from "./current-values";
 import { prisma } from "../prisma";
@@ -654,12 +656,13 @@ export const TOOLS: Tool[] = [
       const rows = await prisma.channel.findMany({
         where: {
           ...(q ? { name: { contains: q } } : {}),
-          ...(args.includeInactive === true ? {} : { active: true }),
+          // 停用按 渠道启用（P-渠道-13）：主渠道停了的子渠道也算停用，和渠道页一个口径
+          ...(args.includeInactive === true ? {} : 启用渠道条件),
         },
         orderBy: { createdAt: "desc" },
         take: 50,
         select: {
-          id: true, name: true, phone: true, active: true, remark: true,
+          id: true, name: true, phone: true, active: true, remark: true, main: { select: { active: true } },
           channelOwner: { select: { name: true } },
           // 这个关系名叫 directCustomers，其实是 channelId 命中的整条链（转介绍来的也继承链顶渠道）
           directCustomers: { select: { referrerCustomerId: true, contracts: { select: { amount: true, ...带币种.签约 } } } },
@@ -683,7 +686,7 @@ export const TOOLS: Tool[] = [
           // 按币种写（不换汇）：「US$ 3,200 · ¥ 19,800」
           这条链的签约额: 汇总[c.id].chainMoney.length ? 合计文字(汇总[c.id].chainMoney) : 0,
           电话: 号(c.phone ?? null),
-          状态: c.active ? "在用" : "已停用",
+          状态: 渠道启用(c) ? "在用" : "已停用",
           备注: c.remark ?? null,
         })),
       };

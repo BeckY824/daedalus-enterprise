@@ -16,7 +16,7 @@ import { 企业版推进关, 记沟通阶段问题, 记沟通标记, 有效线�
 import { 等复核拦, 复核判死拦, 验证中不能改派, 进公海清验证 } from "./lead-verify-guard";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 落到渠道 } from "@/lib/enterprise/channel-main";
-import { 是主渠道入口 } from "@/lib/enterprise/channel-main-core";
+import { 是主渠道入口, 渠道启用 } from "@/lib/enterprise/channel-main-core";
 import { parseDateInput } from "@/lib/date-input";
 import { 直属上级of, 权限组织, 读组织, 负责人和上级, type 组织 } from "@/lib/enterprise/org";
 import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除, 能删一些, 没设业务角色, 没业务角色不能领话, 不能领公海话, 能领公海, 只读角色, 只读话of, 有业务角色, 是系统管理员 } from "@/lib/enterprise/permissions";
@@ -601,8 +601,9 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     // 项目来源有值就锁住（P-删-03，和客户来源同一条）：不给换、不给清空；空着的可以补一次。界面锁住只是辅助，这里是防线
     if (p.channelId && 来源 !== p.channelId) return { ok: false as const, error: 来源 ? 项目来源不能改 : 项目来源不能清空 };
     if (来源 !== p.channelId && 来源) {
-      const 渠道 = await tx.channel.findUnique({ where: { id: 来源 }, select: { active: true } });
-      if (!渠道?.active) return { ok: false as const, error: "项目来源这个渠道不存在或已停用，换一个" };
+      // 停用按 渠道启用（P-渠道-13）：主渠道停了的子渠道同样不收
+      const 渠道 = await tx.channel.findUnique({ where: { id: 来源 }, select: { active: true, main: { select: { active: true } } } });
+      if (!渠道 || !渠道启用(渠道)) return { ok: false as const, error: "项目来源这个渠道不存在或已停用，换一个" };
     }
     const 位置 = 企业版() ? 项目级别和地址改成(patch, p) : null;
     if (位置 && !位置.ok) return { ok: false as const, error: 位置.error };
