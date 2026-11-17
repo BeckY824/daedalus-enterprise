@@ -51,7 +51,7 @@ import { 卡点随项目换人, 公海领走接手理由, 转让接手理由, �
 import { 换负责人待办, 待办痕 } from "./carry-tasks";
 import { 换负责人 } from "@/lib/project/owner-write";
 import { 待分配占位, 待分配不能动 } from "@/lib/enterprise/await-assign";
-import { 规整要求回复, 时刻转北京墙钟, 回复键们 } from "./time-fields";
+import { 规整指定回复, 时刻转北京墙钟, 回复键们 } from "./time-fields";
 
 type 谁 = { id: string; role: string };
 type 结果 = { ok: true } | { ok: false; error: string };
@@ -577,7 +577,7 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
     const 能改 = 能管项目(me, p, org);
     const 能转 = 能转让项目(me, p, org);
-    // 要求回复时间（11-17）：定时 / 待分配期间录入人也能改（方案「谁能改」；市场管理当负责人也不能编辑 P-判定-02 不因此放开别的格）
+    // 指定回复时间（11-17）：定时 / 待分配期间录入人也能改（方案「谁能改」；市场管理当负责人也不能编辑 P-判定-02 不因此放开别的格）
     const 录入人改回复 = 企业版() && !!p.awaitAssignAt && !p.pooledAt && p.creatorId === me.id;
     if (!能改 && !能转 && !录入人改回复) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人能改" };
     // 只校验、只写这次传了的格子（11-02 就地改）：老项目名称、备注超长或带首尾空白，改别的格子不报错，也不被顺手规整掉
@@ -614,10 +614,10 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     const 线 = 改线 ? 认业务线(patch.业务线) : null;
     if (改线 && 线 === undefined) return { ok: false as const, error: 业务线不认得 };
     if (改线 && !线) return { ok: false as const, error: 业务线必填 };
-    // 要求回复时间（11-17，企业版）：传了哪格改哪格，没传的照库里的；两格一起校验（结束不早于开始）
-    const 改回复 = 企业版() && (patch.要求回复开始 !== undefined || patch.要求回复结束 !== undefined);
+    // 指定回复时间（11-17，企业版）：传了哪格改哪格，没传的照库里的；两格一起校验（结束不早于开始）
+    const 改回复 = 企业版() && (patch.指定回复开始 !== undefined || patch.指定回复结束 !== undefined);
     const 回复 = 改回复
-      ? 规整要求回复(patch.要求回复开始 !== undefined ? patch.要求回复开始 : 时刻转北京墙钟(p.replyStartAt), patch.要求回复结束 !== undefined ? patch.要求回复结束 : 时刻转北京墙钟(p.replyEndAt))
+      ? 规整指定回复(patch.指定回复开始 !== undefined ? patch.指定回复开始 : 时刻转北京墙钟(p.replyStartAt), patch.指定回复结束 !== undefined ? patch.指定回复结束 : 时刻转北京墙钟(p.replyEndAt))
       : null;
     if (回复 && !回复.ok) return { ok: false as const, error: 回复.error };
     const 回复改了 = 回复?.ok ? 回复键们.filter((k) => (回复.值[k]?.getTime() ?? null) !== (p[k]?.getTime() ?? null)) : [];

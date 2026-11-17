@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * 「要求回复时间」两格（企业版，11-17）：开始、结束，各是日期 + 时刻（到分钟），填一个也行。
+ * 「指定回复时间」两格（企业版，11-17）：开始、结束，各是日期 + 时刻（到分钟），填一个也行。
  * 建档向导、客户页新增项目（同一张向导）、首页 AI 新线索卡、项目资料卡就地改共用。
  * 值是北京墙钟「YYYY-MM-DD HH:mm」（lib/project/time-fields.ts；待客户方确认：问题 3 时区）。窄宽度两格自动折成两行，不横滚
  */
@@ -21,7 +21,7 @@ export default function ReplyWindowInput({ value, onChange, disabled, size, auto
 }) {
   const 格 = (键: keyof 回复两格, 叫: string, 先?: boolean) => (
     <DatePicker
-      aria-label={`要求回复时间${叫}`}
+      aria-label={`指定回复时间${叫}`}
       autoFocus={先 && autoFocus}
       showTime={{ format: "HH:mm", minuteStep: 5 }}
       format={式}

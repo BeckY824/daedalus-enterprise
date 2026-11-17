@@ -1,5 +1,5 @@
 /**
- * 企业版「要求回复时间」到点提醒（11-17，两字段方案 PR2）：客户要求的联系时间快到了，提醒这条项目当时的负责人。
+ * 企业版「指定回复时间」到点提醒（11-17，两字段方案 PR2）：客户要求的联系时间快到了，提醒这条项目当时的负责人。
  *
  * 待客户方确认：问题 1（提醒做到哪档）。现在按建议答案 B 做：只提醒、不标超时、不通知上级——
  *   - 开始前 回复提前分钟 分钟（只填结束 = 结束前），站内铃铛 + 飞书（notify 顺带推，只到已绑飞书的账号）+ 首页待办「待回复客户 N」
@@ -26,7 +26,7 @@ import { 视图中跳过 } from "./view-as";
 import { 能分配的人们 } from "./await-assign";
 import { 有内容的沟通 } from "./tri-state-quota";
 import { 读占位词 } from "./tri-state-db";
-import { 北京墙钟转时刻, 时刻转北京墙钟, 要求回复文字 } from "@/lib/project/time-fields";
+import { 北京墙钟转时刻, 时刻转北京墙钟, 指定回复文字 } from "@/lib/project/time-fields";
 
 /** 待客户方确认：问题 1。true = 到点提醒（建议答案 B）；客户选 A（只存不提醒）改 false */
 export const 回复提醒开 = true;
@@ -94,7 +94,7 @@ async function 已回复的(们: 行[]): Promise<Set<string>> {
 }
 
 /** 扫一遍，回新记了几条通知。从不抛 */
-export async function 要求回复提醒扫一遍(现在: Date = new Date()): Promise<number> {
+export async function 指定回复提醒扫一遍(现在: Date = new Date()): Promise<number> {
   if (!企业版() || !回复提醒开) return 0;
   try {
     if (await 视图中跳过()) return 0;
@@ -118,11 +118,11 @@ export async function 要求回复提醒扫一遍(现在: Date = new Date()): Pr
       for (const { p, 人们, key } of 条们) {
         const 发给 = 人们.filter((u) => 在职.has(u) && !记过.has(`${u}\n${key}`));
         if (!发给.length) continue;
-        const 时 = 要求回复文字(p.replyStartAt, p.replyEndAt, 现在);
+        const 时 = 指定回复文字(p.replyStartAt, p.replyEndAt, 现在);
         数 += await notify(发给, {
-          kind: "要求回复",
-          title: `客户要求 ${时} 联系：${p.name}`,
-          body: p.awaitAssignAt ? `这条新线索还在待分配，客户要求 ${时} 联系：先分给负责人，或者先联系一次` : `客户要求的联系时间快到了（${时}），联系后在项目上记一条沟通`,
+          kind: "指定回复",
+          title: `指定回复时间 ${时}：${p.name}`,
+          body: p.awaitAssignAt ? `这条新线索还在待分配，指定回复时间 ${时}：先分给负责人，或者先联系一次` : `指定回复时间快到了（${时}），联系后在项目上记一条沟通`,
           link: `/projects/${encodeURIComponent(p.id)}`,
           key,
         });
@@ -130,13 +130,13 @@ export async function 要求回复提醒扫一遍(现在: Date = new Date()): Pr
       return 数;
     });
   } catch (e) {
-    console.error("[要求回复提醒] 这一遍没扫成，下一遍再试", e);
+    console.error("[指定回复提醒] 这一遍没扫成，下一遍再试", e);
     return 0;
   }
 }
 
 /** 钟上调的（每分钟一遍）：同上 */
-export const 钟上要求回复提醒 = 要求回复提醒扫一遍;
+export const 钟上指定回复提醒 = 指定回复提醒扫一遍;
 
 /** 首页待办「待回复客户 N」：我负责的（不在待分配）、在提醒窗口里、还没回复的；最早截止的那条给链接。一条都没有 = null */
 export type 待回复客户数 = { 条数: number; 最早: { projectId: string; name: string; 时: string } | null };
@@ -149,9 +149,9 @@ export async function 待回复客户of(userId: string, 现在: Date = new Date(
     const 剩 = 们.filter((p) => !回了.has(p.id)).sort((a, b) => 回复截止(a)!.getTime() - 回复截止(b)!.getTime());
     if (!剩.length) return null;
     const 头 = 剩[0];
-    return { 条数: 剩.length, 最早: { projectId: 头.id, name: 头.name, 时: 要求回复文字(头.replyStartAt, 头.replyEndAt, 现在) } };
+    return { 条数: 剩.length, 最早: { projectId: 头.id, name: 头.name, 时: 指定回复文字(头.replyStartAt, 头.replyEndAt, 现在) } };
   } catch (e) {
-    console.error("[要求回复提醒] 首页待办没取到", e);
+    console.error("[指定回复提醒] 首页待办没取到", e);
     return null;
   }
 }

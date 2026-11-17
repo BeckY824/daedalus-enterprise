@@ -298,8 +298,8 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     // 下一步时间只有日子：在服务端按业务日排成 YYYY-MM-DD，和回收日同一个钟，浏览器在别的时区也不差一天
     nextStepAt: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null, nextStepText: p.nextStepText ?? null, 回收日, 验证不收, 回收预演,
     ...(企业 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null } : {}), ...企业项目字段,
-    // 要求回复时间（11-17）：北京墙钟「YYYY-MM-DD HH:mm」，没填 null（lib/project/time-fields.ts）
-    ...(企业 ? { 要求回复: { 开始: 时刻转北京墙钟(p.replyStartAt), 结束: 时刻转北京墙钟(p.replyEndAt) } } : {}),
+    // 指定回复时间（11-17）：北京墙钟「YYYY-MM-DD HH:mm」，没填 null（lib/project/time-fields.ts）
+    ...(企业 ? { 指定回复: { 开始: 时刻转北京墙钟(p.replyStartAt), 结束: 时刻转北京墙钟(p.replyEndAt) } } : {}),
     // 指定分配时间（PR3）：还没到点的定时，详情上写时间和分给谁；录入人、能分配的人能改 / 取消 / 改成现在分配
     ...(企业 && p.scheduledAssignAt && p.awaitAssignAt && !p.pooledAt ? { 定时分配: {
       时间: 时刻转北京墙钟(p.scheduledAssignAt)!, 给谁: p.scheduledAssignTo ? 叫(p.scheduledAssignTo) ?? "已不在的成员" : null, 能动: !!org && 能动定时(me, p, org),

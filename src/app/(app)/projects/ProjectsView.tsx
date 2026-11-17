@@ -420,8 +420,8 @@ export default function ProjectsView({
     // P11 定稿 -2 版：项目级别显示成实心星（S 4 颗 … C 1 颗），悬停看档名；没分级的是 —
     ...(企业版 ? [
       { title: "级别", key: "level", width: 72, 默认: false, render: (_: unknown, r: 项目行) => { const 档 = 企业级别(r.level); return 档 ? <span title={企业级别说明[档]} aria-label={企业级别说明[档]} style={{ color: "var(--warning-text)", whiteSpace: "nowrap" }}>{级别星(档, false)}</span> : 无; } },
-      // 要求回复时间（11-17）：默认收在「列」里（1366 宽不横滚），新线索页、项目页都能勾出来；服务端排好的北京时间
-      { title: "要求回复", key: "replyAt", width: 150, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.要求回复) ? <span className="nowrap" title={r.要求回复!}>{r.要求回复}</span> : 无) },
+      // 指定回复时间（11-17）：默认收在「列」里（1366 宽不横滚），新线索页、项目页都能勾出来；服务端排好的北京时间
+      { title: "指定回复", key: "replyAt", width: 150, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.指定回复) ? <span className="nowrap" title={r.指定回复!}>{r.指定回复}</span> : 无) },
       { title: "预计成交", key: "expectedDealAt", width: 110, 默认: false, sorter: true, sortOrder: 序of("expectedDealAt"), render: (_: unknown, r: 项目行) => (有值(r.expectedDealAt) ? r.expectedDealAt : 无) },
       { title: "已立项", key: "age", width: 80, 默认: false, align: "right" as const, render: (_: unknown, r: 项目行) => (r.已立项天数 === undefined ? null : `${r.已立项天数} 天`) },
       { title: "渠道", key: "source", width: 130, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.项目来源) ? <span className="fulltext" title={渠道显示名(r.项目来源)}>{主渠道显示名(r.项目来源)}</span> : 无) },

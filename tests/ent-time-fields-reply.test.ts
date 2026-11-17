@@ -1,5 +1,5 @@
 /**
- * 企业版「要求回复时间」字段 + 表单（11-17，两字段方案 PR1）：
+ * 企业版「指定回复时间」字段 + 表单（11-17，两字段方案 PR1）：
  * 北京墙钟 ↔ 时刻、两格规整（选填、结束不早于开始）、显示「—」；建档向导 / 客户页新增项目三处同一份规整；
  * 项目资料卡就地改（编辑项目），待分配期间录入人也能改。
  */
@@ -17,7 +17,7 @@ import { resetDb } from "./reset";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 改项目 } from "@/lib/project/db";
 import { 规整向导 } from "@/lib/project/wizard";
-import { 北京墙钟转时刻, 时刻转北京墙钟, 规整要求回复, 要求回复文字, 回复晚于回收 } from "@/lib/project/time-fields";
+import { 北京墙钟转时刻, 时刻转北京墙钟, 规整指定回复, 指定回复文字, 回复晚于回收 } from "@/lib/project/time-fields";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 
 describe("北京墙钟（待客户方确认：问题 3，按北京时间）", () => {
@@ -36,30 +36,30 @@ describe("北京墙钟（待客户方确认：问题 3，按北京时间）", ()
 
 describe("两格规整", () => {
   it("都空 = 没填；只填一格也行", () => {
-    expect(规整要求回复(null, "")).toEqual({ ok: true, 值: { replyStartAt: null, replyEndAt: null } });
-    const 只始 = 规整要求回复("2026-11-20 15:00", null);
+    expect(规整指定回复(null, "")).toEqual({ ok: true, 值: { replyStartAt: null, replyEndAt: null } });
+    const 只始 = 规整指定回复("2026-11-20 15:00", null);
     expect(只始.ok && 只始.值.replyStartAt?.toISOString()).toBe("2026-11-20T07:00:00.000Z");
-    const 只终 = 规整要求回复(undefined, "2026-11-20 17:00");
+    const 只终 = 规整指定回复(undefined, "2026-11-20 17:00");
     expect(只终.ok && 只终.值.replyEndAt?.toISOString()).toBe("2026-11-20T09:00:00.000Z");
   });
   it("结束早于开始、格式不对拦下；相等放行", () => {
-    expect(规整要求回复("2026-11-20 17:00", "2026-11-20 15:00")).toEqual({ ok: false, error: "要求回复时间的结束不能早于开始" });
-    expect(规整要求回复("下午", null).ok).toBe(false);
-    expect(规整要求回复("2026-11-20 15:00", "2026-11-20 15:00").ok).toBe(true);
+    expect(规整指定回复("2026-11-20 17:00", "2026-11-20 15:00")).toEqual({ ok: false, error: "指定回复时间的结束不能早于开始" });
+    expect(规整指定回复("下午", null).ok).toBe(false);
+    expect(规整指定回复("2026-11-20 15:00", "2026-11-20 15:00").ok).toBe(true);
   });
   it("显示：没填「—」；时间段同天只写一次日期；只填开始「前后」、只填结束「前」；别的年份写全", () => {
     const 今 = new Date("2026-11-17T01:00:00Z");
     const 时 = (s: string) => 北京墙钟转时刻(s);
-    expect(要求回复文字(null, null, 今)).toBe("—");
-    expect(要求回复文字(时("2026-11-20 15:00"), 时("2026-11-20 17:00"), 今)).toBe("11-20 15:00 – 17:00");
-    expect(要求回复文字(时("2026-11-20 15:00"), 时("2026-11-21 09:00"), 今)).toBe("11-20 15:00 – 11-21 09:00");
-    expect(要求回复文字(时("2026-11-20 15:00"), null, 今)).toBe("11-20 15:00 前后");
-    expect(要求回复文字(null, 时("2026-11-20 17:00"), 今)).toBe("11-20 17:00 前");
-    expect(要求回复文字(时("2027-01-05 10:00"), null, 今)).toBe("2027-01-05 10:00 前后");
+    expect(指定回复文字(null, null, 今)).toBe("—");
+    expect(指定回复文字(时("2026-11-20 15:00"), 时("2026-11-20 17:00"), 今)).toBe("11-20 15:00 – 17:00");
+    expect(指定回复文字(时("2026-11-20 15:00"), 时("2026-11-21 09:00"), 今)).toBe("11-20 15:00 – 11-21 09:00");
+    expect(指定回复文字(时("2026-11-20 15:00"), null, 今)).toBe("11-20 15:00 前后");
+    expect(指定回复文字(null, 时("2026-11-20 17:00"), 今)).toBe("11-20 17:00 前");
+    expect(指定回复文字(时("2027-01-05 10:00"), null, 今)).toBe("2027-01-05 10:00 前后");
   });
 });
 
-describe("要求回复时间晚于预计回收日：黄条提示（不顺延回收）", () => {
+describe("指定回复时间晚于预计回收日：黄条提示（不顺延回收）", () => {
   const 时 = (x: string) => 北京墙钟转时刻(x);
   it("开始（没填用结束）在回收日当天或以后才提示；没回收日 / 没填不提示", () => {
     expect(回复晚于回收(时("2026-11-20 15:00"), null, "2026-11-20")).toContain("2026-11-20 先回收");
@@ -76,19 +76,19 @@ describe("建档向导规整（三处新建共用）", () => {
     项目: { name: "项目甲", ownerId: "u1", 业务线: "内贸" },
     跟进: { type: "PHONE", content: "聊了", occurredAt: "2026-11-17T01:00:00.000Z", 节点: "潜客培育" },
   };
-  it("企业版：两格进 企业.要求回复；没填都是 null；结束早于开始整笔拦", () => {
-    const 好 = 规整向导({ id: "u1" }, { ...底, 项目: { ...底.项目, 要求回复开始: "2026-11-20 15:00", 要求回复结束: "2026-11-20 17:00" } }, new Date("2026-11-17T02:00:00Z"), false, true);
+  it("企业版：两格进 企业.指定回复；没填都是 null；结束早于开始整笔拦", () => {
+    const 好 = 规整向导({ id: "u1" }, { ...底, 项目: { ...底.项目, 指定回复开始: "2026-11-20 15:00", 指定回复结束: "2026-11-20 17:00" } }, new Date("2026-11-17T02:00:00Z"), false, true);
     expect("error" in 好).toBe(false);
     if ("error" in 好) return;
-    expect(好.企业?.要求回复?.replyStartAt?.toISOString()).toBe("2026-11-20T07:00:00.000Z");
-    expect(好.企业?.要求回复?.replyEndAt?.toISOString()).toBe("2026-11-20T09:00:00.000Z");
+    expect(好.企业?.指定回复?.replyStartAt?.toISOString()).toBe("2026-11-20T07:00:00.000Z");
+    expect(好.企业?.指定回复?.replyEndAt?.toISOString()).toBe("2026-11-20T09:00:00.000Z");
     const 空 = 规整向导({ id: "u1" }, 底, new Date("2026-11-17T02:00:00Z"), false, true);
-    expect("error" in 空 ? null : 空.企业?.要求回复).toEqual({ replyStartAt: null, replyEndAt: null });
-    const 坏 = 规整向导({ id: "u1" }, { ...底, 项目: { ...底.项目, 要求回复开始: "2026-11-20 17:00", 要求回复结束: "2026-11-20 15:00" } }, new Date("2026-11-17T02:00:00Z"), false, true);
-    expect(坏).toEqual({ error: "要求回复时间的结束不能早于开始" });
+    expect("error" in 空 ? null : 空.企业?.指定回复).toEqual({ replyStartAt: null, replyEndAt: null });
+    const 坏 = 规整向导({ id: "u1" }, { ...底, 项目: { ...底.项目, 指定回复开始: "2026-11-20 17:00", 指定回复结束: "2026-11-20 15:00" } }, new Date("2026-11-17T02:00:00Z"), false, true);
+    expect(坏).toEqual({ error: "指定回复时间的结束不能早于开始" });
   });
   it("团队版不认（不进 企业）", () => {
-    const 好 = 规整向导({ id: "u1" }, { ...底, 项目: { ...底.项目, 要求回复开始: "2026-11-20 15:00" } }, new Date("2026-11-17T02:00:00Z"), false, false);
+    const 好 = 规整向导({ id: "u1" }, { ...底, 项目: { ...底.项目, 指定回复开始: "2026-11-20 15:00" } }, new Date("2026-11-17T02:00:00Z"), false, false);
     expect("error" in 好 ? null : 好.企业).toBeUndefined();
   });
 });
@@ -122,35 +122,35 @@ describe("项目资料卡就地改（编辑项目）", () => {
   it("负责人改一格只动那一格、留痕叫法；清空 = null；结束早于开始拦下不动", async () => {
     const id = await 项目(销售.id);
     当(销售);
-    const r = await 改项目(mocks.user, id, { 要求回复开始: "2026-11-20 15:00" });
+    const r = await 改项目(mocks.user, id, { 指定回复开始: "2026-11-20 15:00" });
     expect(r).toMatchObject({ ok: true, 变了: ["replyStartAt"] });
     expect((await 项(id)).replyStartAt?.toISOString()).toBe("2026-11-20T07:00:00.000Z");
     expect((await 项(id)).replyEndAt).toBeNull();
     // 只交结束：开始照库里的一起校验
-    expect(await 改项目(mocks.user, id, { 要求回复结束: "2026-11-20 14:00" })).toEqual({ ok: false, error: "要求回复时间的结束不能早于开始" });
+    expect(await 改项目(mocks.user, id, { 指定回复结束: "2026-11-20 14:00" })).toEqual({ ok: false, error: "指定回复时间的结束不能早于开始" });
     expect((await 项(id)).replyEndAt).toBeNull();
-    expect(await 改项目(mocks.user, id, { 要求回复开始: null, 要求回复结束: null })).toMatchObject({ ok: true, 变了: ["replyStartAt"] });
+    expect(await 改项目(mocks.user, id, { 指定回复开始: null, 指定回复结束: null })).toMatchObject({ ok: true, 变了: ["replyStartAt"] });
     expect((await 项(id)).replyStartAt).toBeNull();
     // 没变 = 不留痕
-    expect(await 改项目(mocks.user, id, { 要求回复开始: null })).toMatchObject({ ok: true, 变了: [] });
+    expect(await 改项目(mocks.user, id, { 指定回复开始: null })).toMatchObject({ ok: true, 变了: [] });
   });
 
   it("别人（不能管这个项目）改不了", async () => {
     const id = await 项目(销售.id);
     当(别人);
-    const r = await 改项目(mocks.user, id, { 要求回复开始: "2026-11-20 15:00" });
+    const r = await 改项目(mocks.user, id, { 指定回复开始: "2026-11-20 15:00" });
     expect(r.ok).toBe(false);
     expect((await 项(id)).replyStartAt).toBeNull();
   });
 
-  it("待分配期间录入人也能改要求回复时间（市场管理当负责人别的格照旧不能改，P-判定-02）", async () => {
+  it("待分配期间录入人也能改指定回复时间（市场管理当负责人别的格照旧不能改，P-判定-02）", async () => {
     const id = await 项目(市场管.id, { awaitAssignAt: new Date() });
     当(市场管);
-    expect(await 改项目(mocks.user, id, { 要求回复结束: "2026-11-20 17:00" })).toMatchObject({ ok: true });
+    expect(await 改项目(mocks.user, id, { 指定回复结束: "2026-11-20 17:00" })).toMatchObject({ ok: true });
     expect((await 项(id)).replyEndAt?.toISOString()).toBe("2026-11-20T09:00:00.000Z");
     // 分出去以后（不在待分配）就照现行编辑权限
     await prisma.project.update({ where: { id }, data: { awaitAssignAt: null } });
-    expect((await 改项目(mocks.user, id, { 要求回复结束: "2026-11-21 17:00" })).ok).toBe(false);
+    expect((await 改项目(mocks.user, id, { 指定回复结束: "2026-11-21 17:00" })).ok).toBe(false);
     expect((await 项(id)).replyEndAt?.toISOString()).toBe("2026-11-20T09:00:00.000Z");
     // 待分配期间也只放开这两格：别的格照旧拦
     await prisma.project.update({ where: { id }, data: { awaitAssignAt: new Date() } });

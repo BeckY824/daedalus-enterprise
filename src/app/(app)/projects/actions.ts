@@ -650,7 +650,7 @@ const 项目字段名: Record<string, string> = {
   level: "项目级别", addrCountry: "所在地", addrProvince: "所在地", addrCity: "所在地", addrDistrict: "所在地", location: "详细地址",
   dealDemand: "需求描述", contractAmount: "合同金额", contractCurrency: "合同金额", depositAmount: "定金金额", depositCurrency: "定金金额",
   painPoints: "痛点标注", contractStatus: "合同状态", bizLine: "业务线",
-  replyStartAt: "要求回复时间", replyEndAt: "要求回复时间",
+  replyStartAt: "指定回复时间", replyEndAt: "指定回复时间",
 };
 
 /** 编辑项目：名称、负责人、金额、币种、备注、主联系人；企业版还有预计成交日期、项目来源、项目级别、所在地、需求描述、合同金额、定金金额、痛点标注、合同状态、业务线（改了不重新自动分配） */

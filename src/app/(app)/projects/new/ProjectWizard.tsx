@@ -81,8 +81,8 @@ type 稿 = {
   项目: {
     name: string; ownerId: string; amount: number | null; currency: string; remark: string; 分配方式?: number; 渠道?: string | null; 业务线?: string | null;
     所在地?: 客户地址 & { location?: string | null }; 业务线手选?: boolean;
-    /** 要求回复时间（企业版，11-17，选填）：北京墙钟「YYYY-MM-DD HH:mm」，开始 / 结束填一个也行；老草稿里没有 */
-    要求回复开始?: string | null; 要求回复结束?: string | null;
+    /** 指定回复时间（企业版，11-17，选填）：北京墙钟「YYYY-MM-DD HH:mm」，开始 / 结束填一个也行；老草稿里没有 */
+    指定回复开始?: string | null; 指定回复结束?: string | null;
     /** 指定分配时间（企业版，11-17 PR3）：null / 没有 = 现在分配；字符串 = 指定时间（北京墙钟，"" = 还没选时刻）。只在指定分配、自动分配时认 */
     定时分配?: string | null;
   };
@@ -499,7 +499,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         项目: {
           name: d.项目.name, ownerId: 负责人 || null, 分配方式: d.项目.分配方式 ?? null, 业务线: 这次.业务线,
           ...(d.项目.所在地 ? { 所在地: d.项目.所在地 } : {}),
-          要求回复开始: d.项目.要求回复开始 ?? null, 要求回复结束: d.项目.要求回复结束 ?? null,
+          指定回复开始: d.项目.指定回复开始 ?? null, 指定回复结束: d.项目.指定回复结束 ?? null,
           ...(定时 ? { 定时分配: 定时 } : {}),
         },
         跟进: { ...d.跟进, method: 对得上的方式(d.跟进.type, d.跟进.method) },
@@ -631,13 +631,13 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
 
   // 所在地给的业务线建议（11-02）：只提示，提交 = 人确认了
   const 线提示 = 企业 && 带项目 ? 所在地提示(建议业务线(d.项目.所在地), d.项目.业务线) : null;
-  // 要求回复时间晚于预计回收日（开了超时回收：下一步那天过完就回收）：黄条提示，不拦
+  // 指定回复时间晚于预计回收日（开了超时回收：下一步那天过完就回收）：黄条提示，不拦
   const 回复警 = 企业 && 带项目 && 要下一步 && d.跟进.下一步时间
-    ? 回复晚于回收(北京墙钟转时刻(d.项目.要求回复开始), 北京墙钟转时刻(d.项目.要求回复结束), dayjs(d.跟进.下一步时间).add(1, "day").format("YYYY-MM-DD"))
+    ? 回复晚于回收(北京墙钟转时刻(d.项目.指定回复开始), 北京墙钟转时刻(d.项目.指定回复结束), dayjs(d.跟进.下一步时间).add(1, "day").format("YYYY-MM-DD"))
     : null;
-  // 指定分配时间晚于要求回复时间（PR3）：黄条提示，不拦
+  // 指定分配时间晚于指定回复时间（PR3）：黄条提示，不拦
   const 定时 = 带项目 ? 定时值(d, 企业) : null;
-  const 分配警 = 定时 ? 分配晚于回复(北京墙钟转时刻(定时), 北京墙钟转时刻(d.项目.要求回复开始), 北京墙钟转时刻(d.项目.要求回复结束)) : null;
+  const 分配警 = 定时 ? 分配晚于回复(北京墙钟转时刻(定时), 北京墙钟转时刻(d.项目.指定回复开始), 北京墙钟转时刻(d.项目.指定回复结束)) : null;
   const 一格 = (g: 格 | null, label: string, el: React.ReactNode, 必填 = false, 宽 = false, 注?: React.ReactNode) => (
     <label className={宽 ? "cr-field cr-wide" : "cr-field"} data-ge={g ?? undefined}>
       <span className="cr-label">{必填 && <span className="cr-req">* </span>}{label}</span>
@@ -954,13 +954,13 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
                 onChange={(e) => 改("项目", { 所在地: { ...(d.项目.所在地 ?? 空地址), location: e.target.value } })}
               />
             ), false, true)}
-            {/* 要求回复时间（11-17，选填）：客户要求联系的时间点 / 时间段，按北京时间；只填开始 = 那个时间前后，只填结束 = 那之前 */}
-            {企业 && 一格(null, "要求回复时间", (
+            {/* 指定回复时间（11-17，选填）：客户要求联系的时间点 / 时间段，按北京时间；只填开始 = 那个时间前后，只填结束 = 那之前 */}
+            {企业 && 一格(null, "指定回复时间", (
               <ReplyWindowInput
-                value={{ 开始: d.项目.要求回复开始 ?? null, 结束: d.项目.要求回复结束 ?? null }}
-                onChange={(v) => 改("项目", { 要求回复开始: v.开始, 要求回复结束: v.结束 })}
+                value={{ 开始: d.项目.指定回复开始 ?? null, 结束: d.项目.指定回复结束 ?? null }}
+                onChange={(v) => 改("项目", { 指定回复开始: v.开始, 指定回复结束: v.结束 })}
               />
-            ), false, true, "选填，按北京时间：客户要求什么时候联系")}
+            ), false, true, "选填，按北京时间：指定什么时候回复客户")}
             {回复警 && <Alert type="warning" showIcon className="cr-wide" data-testid="wizard-reply-warn" title={回复警} />}
             {分配警 && <Alert type="warning" showIcon className="cr-wide" data-testid="wizard-schedule-warn" title={分配警} />}
             {!企业 && 一格(null, "金额", (

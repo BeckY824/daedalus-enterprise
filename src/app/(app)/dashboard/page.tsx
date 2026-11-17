@@ -72,7 +72,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const 满额提醒们 = 企业版() ? await 读满额提醒(user.id) : [];
   // 企业版首页待办「待回复主题」（11-17，教练主题）：我负责的项目上等我回的
   const 待回复主题 = 企业版() ? await 待回复主题of(user.id) : null;
-  // 企业版首页待办「待回复客户」（11-17，要求回复时间）：客户要求的联系时间快到了、还没记沟通的
+  // 企业版首页待办「待回复客户」（11-17，指定回复时间）：客户要求的联系时间快到了、还没记沟通的
   const 待回复客户 = 企业版() ? await 待回复客户of(user.id) : null;
   // 企业版项目：首页是对话 + 右侧四张指标卡（10-29 首页改版），其余数据在「复盘」页
   const 只用项目 = await 企业版只用项目();

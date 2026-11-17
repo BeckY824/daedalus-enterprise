@@ -48,7 +48,7 @@ import { 认业务线, 业务线不认得, 业务线必填, 是项目线, type �
 import { 区域线of, 按区域分配of } from "@/lib/enterprise/customer-region";
 import type { 线 } from "@/lib/enterprise/lead-assign";
 import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
-import { 规整要求回复 } from "@/lib/project/time-fields";
+import { 规整指定回复 } from "@/lib/project/time-fields";
 
 export type 给客户建项目输入 = {
   customerId: string;
@@ -167,8 +167,8 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     // 项目所在地（11-02，选填）：和编辑项目同一套规整；没填五格都是 null
     const 地 = 新项目所在地(输入.项目.所在地);
     if (!地.ok) return { ok: false, error: 地.error };
-    // 要求回复时间（11-17，选填）：和建档向导同一份规整（lib/project/time-fields.ts）
-    const 回复 = 规整要求回复(输入.项目.要求回复开始, 输入.项目.要求回复结束);
+    // 指定回复时间（11-17，选填）：和建档向导同一份规整（lib/project/time-fields.ts）
+    const 回复 = 规整指定回复(输入.项目.指定回复开始, 输入.项目.指定回复结束);
     if (!回复.ok) return { ok: false, error: 回复.error };
     // 业务线：企业版新弹窗（带了分配方式）必填三选一。
     // 市场成员（按岗位）选自动分配（P-转-26，用户 11-17）：不用选、交了也不认，按客户区域定（客户地址空看项目所在地）；都空 = 项目不记线，自动分配两条线都算
