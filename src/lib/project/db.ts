@@ -51,6 +51,7 @@ import { 卡点随项目换人, 公海领走接手理由, 转让接手理由, �
 import { 换负责人待办, 待办痕 } from "./carry-tasks";
 import { 换负责人 } from "@/lib/project/owner-write";
 import { 待分配占位, 待分配不能动 } from "@/lib/enterprise/await-assign";
+import { 规整指定回复, 时刻转北京墙钟, 回复键们 } from "./time-fields";
 
 type 谁 = { id: string; role: string };
 type 结果 = { ok: true } | { ok: false; error: string };
@@ -576,7 +577,9 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
     const 能改 = 能管项目(me, p, org);
     const 能转 = 能转让项目(me, p, org);
-    if (!能改 && !能转) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人能改" };
+    // 指定回复时间（11-17）：定时 / 待分配期间录入人也能改（方案「谁能改」；市场管理当负责人也不能编辑 P-判定-02 不因此放开别的格）
+    const 录入人改回复 = 企业版() && !!p.awaitAssignAt && !p.pooledAt && p.creatorId === me.id;
+    if (!能改 && !能转 && !录入人改回复) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人能改" };
     // 只校验、只写这次传了的格子（11-02 就地改）：老项目名称、备注超长或带首尾空白，改别的格子不报错，也不被顺手规整掉
     const 传 = 传了的(patch);
     const 好 = 规整项目({ ...项目现值(p), name: "未传", remark: null, ...传 }, p.ownerId);
@@ -611,14 +614,22 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     const 线 = 改线 ? 认业务线(patch.业务线) : null;
     if (改线 && 线 === undefined) return { ok: false as const, error: 业务线不认得 };
     if (改线 && !线) return { ok: false as const, error: 业务线必填 };
+    // 指定回复时间（11-17，企业版）：传了哪格改哪格，没传的照库里的；两格一起校验（结束不早于开始）
+    const 改回复 = 企业版() && (patch.指定回复开始 !== undefined || patch.指定回复结束 !== undefined);
+    const 回复 = 改回复
+      ? 规整指定回复(patch.指定回复开始 !== undefined ? patch.指定回复开始 : 时刻转北京墙钟(p.replyStartAt), patch.指定回复结束 !== undefined ? patch.指定回复结束 : 时刻转北京墙钟(p.replyEndAt))
+      : null;
+    if (回复 && !回复.ok) return { ok: false as const, error: 回复.error };
+    const 回复改了 = 回复?.ok ? 回复键们.filter((k) => (回复.值[k]?.getTime() ?? null) !== (p[k]?.getTime() ?? null)) : [];
     const 新 = { ...好, ...(传.name === undefined ? { name: p.name } : {}), ...(传.remark === undefined ? { remark: p.remark } : {}), contactId, channelId: 来源, ...(位置?.ok ? 位置.值 : {}), ...(钱?.ok ? 钱.值 : {}), ...(新字段?.ok ? 新字段.值 : {}), ...(改线 && 线 ? { bizLine: 线 } : {}) };
     const 变了: string[] = (Object.keys(新) as (keyof typeof 新)[]).filter((k) => 新[k] !== p[k]);
     const 日变了 = (日?.getTime() ?? null) !== (p.expectedDealAt?.getTime() ?? null);
     if (日变了) 变了.push("expectedDealAt");
+    变了.push(...回复改了);
     if (!变了.length) return { ok: true as const, 变了 };
     // 改负责人 = 转让，要 能转让项目；别的字段 = 编辑内容，要 能管项目（11-01：总管理、上级能转不能改；11-02：负责人本人能改，也能把自己的转出去）
     if (变了.includes("ownerId") && !能转) return { ok: false as const, error: "只有负责人本人、直属上级、条线总管理或系统管理员能转让这个项目" };
-    if (变了.some((k) => k !== "ownerId") && !能改) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只能转让负责人，项目内容只有负责人能改" };
+    if (变了.some((k) => k !== "ownerId" && !(录入人改回复 && (回复键们 as readonly string[]).includes(k))) && !能改) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只能转让负责人，项目内容只有负责人能改" };
     // 企业版字段权限：动了「只能看」的金额（含合同金额、定金金额、成交需求）/ 负责人 / 预计成交日期 / 痛点标注 / 合同状态就拒（名称、备注、联系人不在表里，照旧能改）
     const 挡 = 改不了的话(级别, 变了.flatMap((k) => (项目列字段[k] ? [项目列字段[k]] : [])));
     if (挡) return { ok: false as const, error: 挡 };
@@ -644,7 +655,7 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     }
     // 换了人：企业版下一步（时间 + 文字）跟着项目走、不清（11-03 A2-3）；超时回收照样从接手那天重新算（转让留痕），
     // 上一位填的、早于接手那天的下一步时间不会把回收日往前拉（超时回收日 只认起点以后的）。不是企业版照旧清掉
-    await tx.project.update({ where: { id: p.id }, data: { ...新, ...(日变了 ? { expectedDealAt: 日 } : {}), ...(换人 && !企业版() ? { nextStepAt: null, nextStepText: null } : {}), ...(换人 && p.pooledAt ? { pooledAt: null } : {}), ...(换人 ? 换负责人(新.ownerId) : {}) } });
+    await tx.project.update({ where: { id: p.id }, data: { ...新, ...(日变了 ? { expectedDealAt: 日 } : {}), ...(回复改了.length && 回复?.ok ? 回复.值 : {}), ...(换人 && !企业版() ? { nextStepAt: null, nextStepText: null } : {}), ...(换人 && p.pooledAt ? { pooledAt: null } : {}), ...(换人 ? 换负责人(新.ownerId) : {}) } });
     // 公海里的项目 ownerId 是空的（企业版进公海清负责人）：从谁 记留痕里的历史负责人
     if (换人) {
       const 原 = p.pooledAt ? (await 历史负责人(tx, p.id)) ?? (p.ownerId || null) : p.ownerId;
