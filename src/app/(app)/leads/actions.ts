@@ -30,6 +30,7 @@ import { 公海客户要先领取 } from "@/lib/enterprise/pool-customer-guard";
 import { 真删挡 } from "@/lib/enterprise/soft-delete";
 import { 认跟进方式 } from "@/lib/enterprise/dict";
 import { 线索建项目 } from "@/lib/project/from-lead";
+import { 建给谁的分配方式 } from "@/lib/project/proj-fields";
 import { 规整沟通, type 向导跟进, type 规整好的沟通 } from "@/lib/project/wizard";
 import { 超上限 } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -330,7 +331,7 @@ export async function convertLead(id: string, 跟进?: 向导跟进): Promise<
       await 写外贸档案(tx, customer.id, 规.ok ? 规.data : { source: 规整外贸档案({ source: 档案.档案.source }).ok ? 档案.档案.source : null }, false);
     }
     await tx.lead.update({ where: { id }, data: { customerId: customer.id } });
-    const projectId = 项目 ? await 线索建项目(tx, { 线索名: lead.name, leadId: id, customerId: customer.id, ownerId: lead.ownerId ?? user.id, creatorId: user.id, 跟进: 项目.跟进 }) : undefined;
+    const projectId = 项目 ? await 线索建项目(tx, { 线索名: lead.name, leadId: id, customerId: customer.id, ownerId: lead.ownerId ?? user.id, creatorId: user.id, 跟进: 项目.跟进, 分配方式: 建给谁的分配方式(lead.ownerId ?? user.id, user.id) }) : undefined;
     return { ok: true as const, customerId: customer.id, projectId };
   });
 
@@ -395,7 +396,7 @@ export async function mergeLeadInto(leadId: string, customerId: string, 跟进?:
         ?? await tx.contact.findFirst({ where: { customerId }, orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }], select: { id: true } });
       if (人) await 线索附件转给联系人(tx, leadId, 人.id);
     }
-    return { projectId: 项目 ? await 线索建项目(tx, { 线索名: lead.name, leadId, customerId, ownerId: lead.ownerId ?? user.id, creatorId: user.id, 跟进: 项目.跟进 }) : undefined };
+    return { projectId: 项目 ? await 线索建项目(tx, { 线索名: lead.name, leadId, customerId, ownerId: lead.ownerId ?? user.id, creatorId: user.id, 跟进: 项目.跟进, 分配方式: 建给谁的分配方式(lead.ownerId ?? user.id, user.id) }) : undefined };
   });
   if (!结果) return { ok: false, error: "这条线索刚刚已经转化过了，刷新看看" };
 

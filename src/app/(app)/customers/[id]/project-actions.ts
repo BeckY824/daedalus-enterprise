@@ -133,7 +133,7 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     }
     const customerId = 输入.customerId;
     // 限定层：看不到的客户查不到；同事的 / 虚线下属的客户只读，不给建
-    const 客户 = await prisma.customer.findUnique({ where: { id: customerId }, select: { name: true } });
+    const 客户 = await prisma.customer.findUnique({ where: { id: customerId }, select: { name: true, channelId: true } });
     if (!客户) return { ok: false, error: "这位客户已经不在了（或你看不到），刷新看看" };
     if (await 同事的客户(defaultClient, customerId)) return { ok: false, error: await 只读话(defaultClient) };
     // 11-05：公海里的客户不能直接建项目，先领取（建了项目客户还挂在公海、负责人还是空，见 V3.5.1 P-公海-08）
@@ -223,8 +223,10 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
       }
       const p = await tx.project.create({
         data: {
-          ...项目, ...(分配 ? { assignMode: 分配.名 } : {}), ...(业务线 ? { bizLine: 业务线 } : {}), ...地.值, ...回复.值, customerId, contactId: 联系人?.id ?? null, creatorId: me.id, phase: "线索", node: 落.节点,
-          nextStepAt: 跟进.nextStepAt, nextStepText: 跟进.nextStepText, ...新项目默认值(true),
+          ...项目, ...(业务线 ? { bizLine: 业务线 } : {}), ...地.值, ...回复.值, customerId, contactId: 联系人?.id ?? null, creatorId: me.id, phase: "线索", node: 落.节点,
+          nextStepAt: 跟进.nextStepAt, nextStepText: 跟进.nextStepText,
+          // 分配方式：选了的那一项；没选、指定给别人的记「指定分配」。项目来源默认带客户来源（新建项目时默认带客户来源，11-18 复盘第 5 类：原来不带）
+          ...新项目默认值(true, { 分配方式: 分配?.名 ?? 指定分配名, 项目来源: 客户.channelId }),
         },
       });
       await tx.projectNodeLog.create({ data: { projectId: p.id, userId: me.id, toPhase: "线索", toNode: 落.节点 } });

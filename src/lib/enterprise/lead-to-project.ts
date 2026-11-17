@@ -16,6 +16,7 @@ import { prisma } from "../prisma";
 import { getSetting, setSetting } from "../settings";
 import { 分机留存起, 同号条件 } from "../phone-dedupe";
 import { 线索建项目 } from "../project/from-lead";
+import { 建给谁的分配方式 } from "@/lib/project/proj-fields";
 import { 企业版只用项目 } from "./project-only";
 import { 重算客户状态 } from "./cust-status-auto-db";
 import { 公海客户要先领取, 公海客户先领取说 } from "./pool-customer-guard";
@@ -78,7 +79,8 @@ export async function 老线索转项目(): Promise<转项目计数 | null> {
           }
         }
         // 挂老客户时 联系人Id 不给：照转化那样挂客户的主要联系人
-        await 线索建项目(tx, { 线索名: l.name, leadId: l.id, customerId, ownerId: 负责人, creatorId: 负责人, 联系人Id });
+        // 分配方式：老线索在负责人自己手里转成项目，按谁建给谁算（= 个人自持，建给谁的分配方式）
+        await 线索建项目(tx, { 线索名: l.name, leadId: l.id, customerId, ownerId: 负责人, creatorId: 负责人, 联系人Id, 分配方式: 建给谁的分配方式(负责人, 负责人) });
         挂了项目的客户.add(customerId);
         计.项目++;
       }
