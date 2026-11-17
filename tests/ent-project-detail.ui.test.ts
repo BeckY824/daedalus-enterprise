@@ -1786,3 +1786,23 @@ it("教练主题（11-17）：没关的钉在沟通卡身最上面、在沟通�
     }
   }
 });
+
+/* 11-18 历史沟通分析回填的项目：项目卡多一行「数据来源」标签「历史分析」；正常建的不摆这一行。三种 Windows 宽度不横撑 */
+it("数据来源：历史分析的项目摆标签、正常的不摆；1024 / 1280 / 1366 都不横撑", async () => {
+  for (const width of [1024, 1280, 1366]) {
+    const { page, errors } = await open(true, width, undefined, true);
+    try {
+      expect(await page.getByTestId("project-data-source-row").count()).toBe(0);
+      await page.evaluate(() => (window as unknown as { __shell: (fab: boolean, x: object) => void }).__shell(false, { 数据来源: "历史分析" }));
+      const 行 = page.getByTestId("project-data-source-row");
+      await 行.waitFor();
+      expect((await 行.innerText()).replace(/\s/g, "")).toBe("数据来源历史分析");
+      const 量 = await 行.evaluate((el) => ({ 行宽: el.scrollWidth, 框宽: el.clientWidth, 页宽: document.documentElement.scrollWidth, 窗: window.innerWidth }));
+      expect(量.行宽).toBeLessThanOrEqual(量.框宽);
+      expect(量.页宽).toBeLessThanOrEqual(量.窗);
+      expect(errors).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  }
+});

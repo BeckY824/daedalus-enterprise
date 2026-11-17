@@ -467,6 +467,8 @@ const 派生: Record<string, Record<string, string>> = {
     customerId: "建档向导里和客户一起建，不改（改了等于另一单生意）",
     creatorId: "实际建档的人，向导保存那一刻打上，不改",
     scheduledAssignAt: "新建时选「指定时间」分配那一刻定下（迁移 149）；到点前在项目详情「定时分配」那行改 / 取消（leads/schedule-actions.ts），到点执行、清了待分配、进回收站由后台清空（lib/enterprise/scheduled-assign.ts）",
+    source: "项目来源（迁移 151）：一次性回填脚本写库时定下（「历史沟通分析」= history-analysis，lib/project/system-created.ts 历史分析来源），建好不改；项目详情只读显示「数据来源：历史分析」标签",
+    importBatch: "回填批次号（迁移 151）：一次性回填脚本写库时打上，按批核对、撤回用，界面不改",
     scheduledAssignTo: "同 scheduledAssignAt：指定分配的定时到点分给谁，新建时就是选的负责人，到点前能改（leads/schedule-actions.ts 改定时分配）",
     balanceSettledById: "勾尾款结清的那个人，系统打上",
     balanceSettledAt: "勾尾款结清的那一刻，系统打上",
