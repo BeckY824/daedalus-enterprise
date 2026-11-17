@@ -2720,6 +2720,9 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 @keyframes chan-row-in { from { opacity: 0; } }
 .chan-name { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .chan-tags { display: inline-flex; gap: 4px; flex-wrap: nowrap; }
+.chan-tags .ant-tag { margin: 0; }
+/* 渠道列表行尾「⋯」菜单里灰掉那一项下面的小字（删不了的原因、主渠道停用时去哪里启用） */
+.chan-menu-note { font-size: var(--fs-min); line-height: 16px; white-space: normal; max-width: 220px; }
 /* 按主渠道那张表：名字在 flex 里要能缩（配 .chan-name 的省略）；属性标签一行省略、不撑出格子 */
 .chan-shrink { min-width: 0; }
 .chan-attr.ant-tag { margin: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }

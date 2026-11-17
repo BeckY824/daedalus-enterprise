@@ -21,6 +21,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 认业务线, 业务线不认得, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 新项目所在地, type 新项目所在地输入 } from "./profile-rules";
 import { 联系人姓名问题, type 客户地址 } from "@/lib/enterprise/customer-v2";
+import { 规整指定回复, type 指定回复 } from "./time-fields";
 
 export const 项目名上限 = 60;
 export const 备注上限 = 500;
@@ -47,7 +48,18 @@ export type 向导项目 = { name: string; ownerId?: string | null; amount?: num
    * 项目所在地（企业版，11-02）：新建时可选填四格 + 详细地址，规整同编辑项目（profile-rules.ts 新项目所在地）；
    * 不填 = 照旧不存。界面上按它给业务线建议（assign-line.ts 所在地预填），人确认了才算。团队版不传、不认
    */
-  所在地?: 新项目所在地输入 | null };
+  所在地?: 新项目所在地输入 | null;
+  /**
+   * 指定回复时间（企业版，11-17）：客户要求联系的开始 / 结束，北京墙钟「YYYY-MM-DD HH:mm」，都选填、填一个也行（lib/project/time-fields.ts）。
+   * 三处新建（建档向导、客户页新增项目、首页 AI 新线索卡）同一份；团队版不传、不认
+   */
+  指定回复开始?: string | null;
+  指定回复结束?: string | null;
+  /**
+   * 指定分配时间（企业版，11-17 PR3）：分配方式选指定分配 / 自动分配时可选「指定时间」，北京墙钟「YYYY-MM-DD HH:mm」；
+   * 空 / 不传 = 现在分配（照旧）。晚于现在、最远 30 天（time-fields.ts 认定时分配），建档向导 / 给客户建项目里认，到点见 lib/enterprise/scheduled-assign.ts
+   */
+  定时分配?: string | null };
 /** 下一步时间：企业版开了超时回收时线索、商机阶段必填（lib/project/timeout.ts），没开可不填 */
 /**
  * 阶段：企业版记沟通必选（lib/project/stage-gates.ts 的 记沟通阶段问题），团队版不传、不看。
@@ -82,6 +94,8 @@ export type 规整好的 = {
     所在地?: 客户地址 & { location: string | null };
     /** 分配方式的叫法（11-01 迁移 106，存 Project.assignMode）；调用方定好分配方式后填 */
     分配方式名?: string;
+    /** 指定回复时间（11-17，迁移 148）：规整好的两个时刻，没填都是 null */
+    指定回复?: 指定回复;
   };
 };
 
@@ -198,6 +212,9 @@ export function 规整向导(
     const 地 = 新项目所在地(p.所在地);
     if (!地.ok) return { error: 地.error };
     企业档.所在地 = 地.值;
+    const 回复 = 规整指定回复(p.指定回复开始, p.指定回复结束);
+    if (!回复.ok) return { error: 回复.error };
+    企业档.指定回复 = 回复.值;
   }
 
   return {
@@ -231,6 +248,8 @@ export function 向导接着建(me: { id: string }, 好: 规整好的, 出参: P
         // 项目所在地（11-02）：企业版建档填了才有值，没填五格都是 null
         ...(好.企业?.所在地 ?? {}),
         ...(好.企业?.分配方式名 ? { assignMode: 好.企业.分配方式名 } : {}),
+        // 指定回复时间（11-17）：企业版建档填了才有值
+        ...(好.企业?.指定回复 ?? {}),
         // 合同状态（迁移 101）：企业版新项目落「起草中」
         ...新项目默认值(企业版()),
       },

@@ -20,7 +20,7 @@ const plugin: Plugin = { name: "chan-period-boundaries", setup(b) {
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
   // 抽屉换成一块牌子：只看它拿到的是哪一档的数、标题写哪一段
   stub(/^\.\/ChannelDrawer$/, "export default function D(p){return <div data-testid='drawer-stub'>{(p.时段名??'全部')+'|'+String(p.row.统计?.关联线索??'空')}</div>}");
-  stub(/^(\.\/|\.\.\/)actions$/, `const f=${空跑};export const saveChannel=f,toggleChannel=f,deleteChannel=f,saveMainChannel=f,toggleMainChannel=f;`);
+  stub(/^(\.\/|\.\.\/)actions$/, `const f=${空跑};export const saveChannel=f,toggleChannel=f,deleteChannel=f,saveMainChannel=f,toggleMainChannel=f,deleteMainChannel=f;`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, (a) => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 

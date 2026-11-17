@@ -208,7 +208,11 @@ export type 区域去处 = "客户" | "联系人" | "项目";
 export const 区域去处叫法: Record<区域去处, string> = { 客户: "客户所在区域", 联系人: "联系人所在区域", 项目: "项目所在地" };
 export type 线索建档格 = { 分配方式?: number; ownerId?: string; 业务线?: string; 节点?: string; 下一步?: string; 区域去处?: 区域去处[];
   /** 原话里说的「分给谁」（模型原样给的名字，1E）：卡上按负责人候选认出唯一一位才预选指定分配 + 那一位（assign-line.ts 认分给），落库只认 分配方式 / ownerId */
-  分给?: string };
+  分给?: string;
+  /** 指定回复时间（11-17，选填）：卡上人选的两格，北京墙钟「YYYY-MM-DD HH:mm」（lib/project/time-fields.ts） */
+  指定回复开始?: string; 指定回复结束?: string;
+  /** 指定分配时间（11-17 PR3，选填）：卡上选「指定时间」时的北京墙钟；空 = 现在分配 */
+  定时分配?: string };
 const 是区域去处 = (x: unknown): x is 区域去处 => typeof x === "string" && Object.hasOwn(区域去处叫法, x);
 
 /** 模型给 bizLine / nextStep / regionTo；卡片回传的是收好的中文键（业务线 / 下一步 / 区域去处 + 人选的四格），两种都认，再校验一遍 */
@@ -228,12 +232,19 @@ function 收线索建档格(args: Record<string, unknown>): 线索建档格 {
   if (节) 出.节点 = 节;
   const 给 = str(args.分给 ?? args.assignTo, 30);
   if (给) 出.分给 = 给;
+  // 指定回复时间：认得出的才收（北京墙钟），认不出的丢掉、让人在卡上重选
+  const 回始 = str(args.指定回复开始, 20), 回终 = str(args.指定回复结束, 20);
+  if (北京墙钟转时刻(回始)) 出.指定回复开始 = 回始;
+  if (北京墙钟转时刻(回终)) 出.指定回复结束 = 回终;
+  const 定时 = str(args.定时分配, 20);
+  if (北京墙钟转时刻(定时)) 出.定时分配 = 定时;
   return 出;
 }
 
 export type ProposalResult = { ok: true; proposal: Proposal } | { ok: false; error: string };
 
 import { parseDateInput } from "@/lib/date-input";
+import { 北京墙钟转时刻 } from "@/lib/project/time-fields";
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
@@ -475,6 +486,8 @@ export function missingFields(p: Proposal, b?: 叫法, 建档?: 建档必填): s
     if (企) {
       if (企.有分配方式 && typeof p.分配方式 !== "number") miss.push("分配方式");
       if ((!企.有分配方式 || p.分配方式 === 0) && !p.ownerId) miss.push("项目负责人");
+      // 指定分配时间（PR3）：卡上切到「指定时间」（"" = 还没选时刻）就得选上
+      if ((p.分配方式 === 0 || p.分配方式 === 1) && typeof p.定时分配 === "string" && !北京墙钟转时刻(p.定时分配)) miss.push("分配时间");
       if (!p.业务线) miss.push("业务线");
       if (!p.节点 || !企.节点们.includes(p.节点)) miss.push("当前进程");
       if (p.节点 && 企.节点们.indexOf(p.节点) > 企.节点们.indexOf(有效线索节点)) miss.push(建档不能过线索验证);
