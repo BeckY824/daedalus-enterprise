@@ -218,6 +218,8 @@ export type 项目详情 = {
 
 /** 项目卡「线索验证」结果的颜色（11-01 六个叫法） */
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "center", marginBottom: 8, minWidth: 0 };
+/** 详情页顶上提示条和下面隔开（行内样式闸门：新加的提示条用模块常量） */
+const 提示条下距: React.CSSProperties = { marginBottom: 16 };
 /** 指定分配时间那一行（11-17）：窄宽度折行；写在组件外，行内样式只减不增（tests/inline-style-cap.test.ts） */
 const 定时行样: React.CSSProperties = { ...行样, flexWrap: "wrap", rowGap: 4 };
 const 可折行样: React.CSSProperties = { whiteSpace: "normal", overflowWrap: "anywhere" };
@@ -1797,7 +1799,7 @@ export default function ProjectDetail({
       )}
 
       {p.客户在谁名下 && (
-        <Alert type="warning" showIcon style={{ marginBottom: 16 }} data-testid="proj-customer-held" title={客户在谁名下话(p.客户在谁名下)} description={`这条线索是超时未跟进自动转给你的，客户不在你名下；跟进前先和 ${p.客户在谁名下} 通个气，别两个人同时跟同一位客户`} />
+        <Alert type="warning" showIcon style={提示条下距} data-testid="proj-customer-held" title={客户在谁名下话(p.客户在谁名下)} description={`这条线索是超时未跟进自动转给你的，客户不在你名下；跟进前先和 ${p.客户在谁名下} 通个气，别两个人同时跟同一位客户`} />
       )}
 
       {异常 && (

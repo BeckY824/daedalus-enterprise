@@ -12,7 +12,7 @@ export default function ReplyDueTodo({ 数据 }: { 数据: 待回复客户数 | 
   if (!数据?.条数 || !数据.最早) return null;
   return (
     <div className="home-cth-todo" role="status" data-testid="home-reply-due">
-      <span className="home-cth-todo-t">待回复客户 {数据.条数}{数据.超时 ? <span data-testid="home-reply-overdue" style={{ color: "var(--warning-text)" }}>（超时 {数据.超时}）</span> : null}</span>
+      <span className="home-cth-todo-t">待回复客户 {数据.条数}{数据.超时 ? <span data-testid="home-reply-overdue" className="home-cth-todo-warn">（超时 {数据.超时}）</span> : null}</span>
       <span className="home-cth-todo-s" title={`${数据.最早.name} · 指定回复 ${数据.最早.时}${数据.最早.超时 ? " · 超时未跟进" : ""}`}>{数据.最早.name} · 指定回复 {数据.最早.时}{数据.最早.超时 ? " · 超时未跟进" : ""}</span>
       <Link className="link-strong home-cth-todo-a" href={`/projects/${encodeURIComponent(数据.最早.projectId)}`}>去联系 ›</Link>
     </div>

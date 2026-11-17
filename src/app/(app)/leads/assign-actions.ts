@@ -686,7 +686,7 @@ export async function 定时分出去(令牌: unknown, 谁: SessionUser, project
 export async function 超时转出(
   令牌: unknown, 谁: SessionUser, projectId: string, 原: string, 排除: readonly string[], 附: string,
 ): Promise<{ ok: true; 接手人Id: string; 接手人: string; 留下?: 留下的活 } | { ok: false; error: string; 挑不到?: true }> {
-  if (令牌 !== 超时转令牌) return { ok: false, error: "只给后台定时任务用" };
+  if (令牌 !== 超时转令牌) return { ok: false, error: "不对外：只给后台定时任务用" };
   if (!(await 规则开着("线索分配"))) return { ok: false, error: "规则「线索分配」关着" };
   const org = await 读组织();
   const 建的人 = (await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { creatorId: true } })))?.creatorId;
