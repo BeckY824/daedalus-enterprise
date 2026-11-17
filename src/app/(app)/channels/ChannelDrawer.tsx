@@ -160,7 +160,7 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
     <Drawer
       open
       onClose={onClose}
-      title={<span className="chan-full" title={row.name}><span>{row.name}</span>{!row.active && <Tag style={{ margin: 0, flex: "none" }}>已停用</Tag>}</span>}
+      title={<span className="chan-full" title={row.name}><span>{row.name}</span>{(!row.active || row.主停用) && <Tag style={{ margin: 0, flex: "none" }}>已停用</Tag>}</span>}
       styles={{ wrapper: { width: "min(560px, 100vw)" } }}
       extra={onEdit && <Button size="small" icon={<EditOutlined />} onClick={onEdit}>编辑</Button>}
       destroyOnHidden
@@ -185,7 +185,8 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
                 { key: "platform", label: "渠道名称", children: row.platform ?? 无 },
                 { key: "source", label: "来源", children: row.platform ? 拆来源(row.name, row.platform) : 无 },
               ]),
-          { key: "active", label: "渠道状态", children: row.active ? "启用" : "停用" },
+          // 主渠道停了：下面的子渠道一起算停用（P-渠道-13），写明是主渠道停的
+          { key: "active", label: "渠道状态", children: !row.active ? "停用" : row.主停用 ? "停用（主渠道已停用）" : "启用" },
           { key: "createdAt", label: "创建日期", children: fmtDate(row.createdAt) },
           { key: "endDate", label: "结束日期", children: row.endDate ? fmtDate(row.endDate) : 无 },
           { key: "days", label: "累计运营天数", children: `${s?.累计运营天数 ?? 0} 天` },

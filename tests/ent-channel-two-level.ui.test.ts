@@ -36,7 +36,7 @@ const plugin: Plugin = { name: "two-level-boundaries", setup(b) {
   stub(/^(\.\/|\.\.\/)actions$/, `const f=${空跑};
     export const saveCustomer=f,checkDuplicate=async()=>null,推荐人候选=async()=>[],patchCustomer=f,assignSalesOwner=f,bulkFollowStatus=f,撤销改负责人=f,deleteCustomers=f,
     删除前清点=async()=>({}),客户删除预检=async()=>({ok:true}),转走项目预览of=async()=>({项目数:0,项目:[]}),供应商候选=async()=>[],
-    saveChannel=f,toggleChannel=f,deleteChannel=f,saveMainChannel=f,toggleMainChannel=f;`);
+    saveChannel=f,toggleChannel=f,deleteChannel=f,saveMainChannel=f,toggleMainChannel=f,deleteMainChannel=f;`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, (a) => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 
