@@ -75,8 +75,8 @@ function 刷新项目(projectId?: string, customerId?: string) {
 }
 
 export type 建档向导输入 = { 客户: CustomerInput; 联系人: 向导联系人; 项目: 向导项目; 跟进: 向导跟进 };
-/** 新建弹窗没开「项目」开关（P-界面-36，11-15）：只建客户、主要联系人和首条沟通（算客户沟通） */
-export type 只建客户输入 = Omit<建档向导输入, "项目">;
+/** 新建弹窗没开「项目」开关（P-界面-36，11-15）：只建客户、主要联系人；团队版连同首条沟通（算客户沟通），企业版不记沟通（沟通必须挂项目，11-17） */
+export type 只建客户输入 = Omit<建档向导输入, "项目" | "跟进"> & { 跟进?: 向导跟进 | null };
 
 /** 建档时指派给别人超了持有上限：「超了上限，」后面那半句 */
 const 建档超上限尾 = "客户和项目都没有建；先推进或放回一些，或者换一位负责人";
@@ -334,7 +334,8 @@ async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输�
     const 渠道不行 = 客户.channelId ? await 新数据渠道不行(String(客户.channelId)) : null;
     if (渠道不行) return { ok: false as const, error: 渠道不行 === "停用" ? "这个渠道不存在或已停用，换一个" : 渠道不行 };
   }
-  const 认 = 输入.跟进 ? await 认跟进方式(输入.跟进) : 输入.跟进;
+  // 企业版沟通必须挂项目（11-17）：没开项目就不记首条沟通，交上来的 跟进 不认（规整只建客户 里也丢掉）
+  const 认 = 企 ? undefined : 输入.跟进 ? await 认跟进方式(输入.跟进) : 输入.跟进;
   if (认 && "error" in 认) return { ok: false as const, error: 认.error };
   const 好 = 规整只建客户({ 联系人: 输入.联系人, 跟进: 认 ?? undefined }, new Date(), 企);
   if ("error" in 好) return { ok: false as const, error: 好.error };
@@ -346,7 +347,7 @@ async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输�
   const 号码行 = 企 ? await 并号码行(输入.联系人?.号码们, 联号, 第一步?.ok ? 第一步 : null) : null;
   if (号码行 && "error" in 号码行) return { ok: false as const, error: 号码行.error };
   const 别的号行 = 号码行?.别的 ?? [];
-  const 同号录入 = { 入口: "手工建档", 渠道id: 客户.channelId, 内容: 好.跟进.content };
+  const 同号录入 = { 入口: "手工建档", 渠道id: 客户.channelId, 内容: 好.跟进?.content ?? null };
   if (第一步?.ok) {
     const 结论 = await 企业号码查重(prisma, 第一步, me.id, await 读的我(defaultClient));
     const 协同 = 结论.状态 !== "首次录入" ? await 同号再次录入(me, 第一步, 同号录入) : null;
@@ -385,8 +386,8 @@ async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输�
   if (!r.ok) return r;
   await recordAudit({
     user: me, action: "create", entity: "Customer", entityId: r.id,
-    summary: `新建客户「${String(客户.name ?? "").trim()}」，连同主要联系人「${好.联系人.name || "—"}」和首条沟通（没建项目）`,
-    detail: { 联系人: 好.联系人.name, 下一步时间: 好.跟进.nextStepAt ? 好.跟进.nextStepAt.toISOString().slice(0, 10) : null },
+    summary: `新建客户「${String(客户.name ?? "").trim()}」，连同主要联系人「${好.联系人.name || "—"}」${好.跟进 ? "和首条沟通" : ""}（没建项目）`,
+    detail: { 联系人: 好.联系人.name, 下一步时间: 好.跟进?.nextStepAt ? 好.跟进.nextStepAt.toISOString().slice(0, 10) : null },
   });
   await 存沟通后重算三态(r.id);
   刷新项目(undefined, r.id);

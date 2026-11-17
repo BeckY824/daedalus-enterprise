@@ -304,6 +304,24 @@ describe("只建客户（新建弹窗没开「项目」开关，P-界面-36）",
     expect(await 各表行数()).toEqual(全空);
   });
 
+  it("企业版沟通必须挂项目（11-17）：只建客户不记首条沟通、不记跟进计划，交上来的沟通（含下一步时间）一律不认", async () => {
+    vi.stubEnv("CRM_ENTERPRISE", "1");
+    const 渠道 = await prisma.channel.create({ data: { name: "小红", channelOwnerId: 甲 } });
+    const 客 = { ...输入().客户, channelId: 渠道.id, 企业资料: { bizLine: "内贸" } };
+    const r = await 建档只建客户(不带项目({ 客户: 客, 跟进: { type: "PHONE", content: "聊了", occurredAt: "2026-10-20 10:00", 下一步时间: "2099-01-03", 下一步: "发报价" } }));
+    expect(r).toMatchObject({ ok: true, projectId: null });
+    if (!r.ok) return;
+    // 项目 1 个 = 企业版新客户自带的潜客培育项目（M-公海-14，saveCustomer 补的）；沟通、挂项目、计划一条都没有
+    expect(await 各表行数()).toEqual({ customer: 1, contact: 1, project: 1, log: 1, followUp: 0, link: 0, creator: 1 });
+    expect(await 计划数()).toBe(0);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: r.customerId } })).lastFollowAt).toBeNull();
+    // 不带沟通也能建（弹窗没开项目时不交这一段）
+    const { 跟进: _f, ...没沟通 } = 不带项目({ 客户: { ...客, name: "第二家", phone: "13900000077" }, 联系人: { ...输入().联系人, phone: "13900000078" } });
+    void _f;
+    expect(await 建档只建客户(没沟通)).toMatchObject({ ok: true });
+    expect(await prisma.followUp.count()).toBe(0);
+  });
+
   it("客户撞号：saveCustomer 拦下，联系人、沟通都不建", async () => {
     await prisma.customer.create({ data: { name: "老客户", phone: "13900000001", salesOwnerId: 甲 } });
     expect(await 建档只建客户(不带项目())).toMatchObject({ ok: false });

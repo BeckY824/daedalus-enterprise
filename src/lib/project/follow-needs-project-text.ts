@@ -18,3 +18,6 @@ export const 待办改沟通话 = "待办 / 提醒不能改成沟通记录（沟
 export function 要挂项目的类型(type: string | null | undefined): boolean {
   return type !== "TASK" && type !== "REMIND";
 }
+
+/** 新建客户弹窗没开「项目」开关（只建客户）：企业版首条沟通那段收起，换成这句 */
+export const 沟通要开项目话 = "要记沟通请打开「项目」，沟通记在项目上";

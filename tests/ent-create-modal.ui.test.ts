@@ -4,7 +4,7 @@
  *   一个表单分三段（客户 / 项目 / 首条沟通），没有「下一步」；项目是开关：客户页「新建客户」默认关，新线索开着并锁住
  *   默认值：项目负责人 = 我（P-界面-33）；下一步时间 = 3 天后（P-界面-34）
  *   号码、客户名离开输入框自动查重；按钮不变灰，点了就地标红缺的格、写「还差 N 项」
- *   没开项目：走「只建客户」（客户沟通、客户业务线），不交项目
+ *   没开项目：走「只建客户」（客户业务线），不交项目；企业版沟通必须挂项目（11-17）：首条沟通那段收起、换成「要记沟通请打开「项目」」，不交沟通，写了的留着
  *   销售选自动分配：就地黄条 + 按钮「建好并分出去」，不叠确认框
  *   Windows 1024 / 1280 / 1366 + 超长客户名：弹窗里不横向溢出，「建好」在可视区点得中
  *   市场成员选自动分配（P-转-26，用户 11-17）：业务线那格换成只读「按客户区域自动定」，不交业务线；三档宽度不溢出
@@ -60,7 +60,7 @@ const 选 = async (page: Page, 标签: string, 项: string) => {
 };
 const 三天后 = () => { const d = new Date(Date.now() + 3 * 864e5); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
-it("新建客户：一个表单、没有「下一步」；项目开关默认关、没有项目那几格；首条沟通标明算客户沟通；下一步时间默认 3 天后", async () => {
+it("新建客户：一个表单、没有「下一步」；项目开关默认关、没有项目那几格；首条沟通收起、说要记沟通请打开项目；打开后下一步时间默认 3 天后", async () => {
   const page = await 开(1280);
   try {
     const 框 = page.getByRole("dialog");
@@ -69,12 +69,49 @@ it("新建客户：一个表单、没有「下一步」；项目开关默认关�
     expect(await 开关.getAttribute("aria-checked")).toBe("false");
     expect(await 开关.isDisabled()).toBe(false);
     expect(await 框.getByLabel("项目名称").count()).toBe(0);
-    await 框.getByText("没开项目，记成客户沟通").waitFor();
-    expect(await 框.getByLabel("下一步时间").inputValue()).toBe(三天后());
-    // 打开开关：项目那几格就地展开；项目负责人默认我（P-界面-33）
+    expect(await 框.getByTestId("wizard-follow-needs-project").innerText()).toBe("要记沟通请打开「项目」，沟通记在项目上");
+    expect(await 框.getByLabel("沟通内容").count()).toBe(0);
+    expect(await 框.getByLabel("下一步时间").count()).toBe(0);
+    // 打开开关：项目那几格就地展开；项目负责人默认我（P-界面-33）；首条沟通那段回来
     await 开关.click();
     await 框.getByLabel("项目名称").waitFor();
+    expect(await 框.getByTestId("wizard-follow-needs-project").count()).toBe(0);
+    expect(await 框.getByLabel("下一步时间").inputValue()).toBe(三天后());
     expect(await 框.locator("[data-ge='负责人']").innerText()).toContain("我自己");
+  } finally { await page.close(); }
+});
+
+// 沟通必须挂项目（11-17 客户定，到处一样）：开着项目写了首条沟通、又关掉项目 —— 写的留在表里（再打开还在），这次不交；那句提示一行、在框里
+it.each([1024, 1280, 1366])("Windows %ipx 写了沟通再关项目：首条沟通收起、提示一行在框里；建好只建客户、不交沟通；再打开写的还在", async (w) => {
+  const page = await 开(w);
+  try {
+    const 框 = page.getByRole("dialog");
+    const 开关 = 框.getByRole("switch", { name: "有项目" });
+    await 开关.click();
+    await 框.getByLabel("沟通内容").fill("客户要 3 套方案报价");
+    await 开关.click();
+    const 提示 = 框.getByTestId("wizard-follow-needs-project");
+    await 提示.waitFor();
+    expect(await 框.getByLabel("沟通内容").count()).toBe(0);
+    const 量 = await 提示.evaluate((e) => {
+      const r = e.getBoundingClientRect(), 框r = (e.closest(".cr-sheet") as HTMLElement).getBoundingClientRect();
+      const 行高 = parseFloat(getComputedStyle(e).lineHeight) || 20;
+      return { 一行: r.height <= 行高 * 1.5, 在框里: r.left >= 框r.left && r.right <= 框r.right, 页: document.documentElement.scrollWidth - window.innerWidth };
+    });
+    expect(量, `${w}`).toEqual({ 一行: true, 在框里: true, 页: 0 });
+    // 再打开：写的还在；再关上去建
+    await 开关.click();
+    expect(await 框.getByLabel("沟通内容").inputValue()).toBe("客户要 3 套方案报价");
+    await 开关.click();
+    await 框.getByLabel("号码", { exact: true }).fill("13905712266");
+    await 框.getByLabel("客户名称").fill("华东展具");
+    await 框.getByLabel("联系人姓名").fill("王总");
+    await 选(page, "渠道触点", "公司资源");
+    await 选(page, "业务线", "内贸");
+    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
+    const 交 = (await 调(page)).find((x) => x[0] === "建档只建客户")![1] as Record<string, unknown>;
+    expect("跟进" in 交).toBe(false);
   } finally { await page.close(); }
 });
 
@@ -93,7 +130,7 @@ it("按钮不变灰：空着点「建好」就地标红、写「还差 N 项」�
   } finally { await page.close(); }
 });
 
-it("没开项目：号码、客户名离开输入框自动查重；建好走「只建客户」，带客户业务线、下一步时间，不带项目；落到新客户页", async () => {
+it("没开项目：号码、客户名离开输入框自动查重；建好走「只建客户」，带客户业务线，不带项目、不带沟通（11-17）；落到新客户页", async () => {
   const page = await 开(1280);
   try {
     const 框 = page.getByRole("dialog");
@@ -107,14 +144,12 @@ it("没开项目：号码、客户名离开输入框自动查重；建好走「�
     await 框.getByLabel("联系人姓名").fill("王总");
     await 选(page, "渠道触点", "公司资源");
     await 选(page, "业务线", "内贸");
-    await 框.getByLabel("沟通内容").fill("客户要 3 套方案报价");
     await 框.getByRole("button", { name: /^建\s*好$/ }).click();
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
-    const 交 = (await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 客户: Record<string, unknown>; 跟进: Record<string, unknown>; 项目?: unknown };
+    const 交 = (await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 客户: Record<string, unknown>; 跟进?: unknown; 项目?: unknown };
     expect(交.项目).toBeUndefined();
     expect(交.客户).toMatchObject({ name: "华东展具", touchpoint: "公司资源", salesOwnerId: "u1", 企业资料: { bizLine: "内贸" } });
-    expect(交.跟进).toMatchObject({ content: "客户要 3 套方案报价", 下一步时间: 三天后() });
-    expect(交.跟进.节点).toBeUndefined();
+    expect("跟进" in 交).toBe(false);
     expect((await 调(page)).some((x) => x[0] === "建档向导")).toBe(false);
     await expect.poll(() => page.evaluate(() => (window as unknown as { __跳?: string[] }).__跳 ?? [])).toEqual(["/customers/c2"]);
   } finally { await page.close(); }
@@ -230,7 +265,6 @@ it("多个号码：加一行类型默认跟第一行、能改类型、能去掉�
     await 框.getByLabel("联系人姓名").fill("王总");
     await 选(page, "渠道触点", "公司资源");
     await 选(page, "业务线", "内贸");
-    await 框.getByLabel("沟通内容").fill("客户留了两个手机一个微信");
     await 框.getByRole("button", { name: /^建\s*好$/ }).click();
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
     const 交 = (await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 客户: Record<string, unknown>; 联系人: Record<string, unknown> };
@@ -257,7 +291,6 @@ it("多个号码：只填第一行时不带 号码们；连第一行 20 行后�
     await 框.getByLabel("联系人姓名").fill("王总");
     await 选(page, "渠道触点", "公司资源");
     await 选(page, "业务线", "内贸");
-    await 框.getByLabel("沟通内容").fill("只留了一个号");
     await 框.getByRole("button", { name: /^建\s*好$/ }).click();
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
     const 交 = (await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 联系人: Record<string, unknown> };
@@ -355,7 +388,6 @@ it("企业版联系人姓名选填：空名 + 联系人电话能交（姓名交�
     await 框.getByLabel("客户名称").fill("华东展具");
     await 选(page, "渠道触点", "公司资源");
     await 选(page, "业务线", "内贸");
-    await 框.getByLabel("沟通内容").fill("只知道电话");
     // 全空：联系人电话清掉、姓名不填，点建好就地标红那句，不交
     await 框.getByLabel("联系人电话").fill("");
     await 框.getByRole("button", { name: /^建\s*好$/ }).click();
@@ -378,7 +410,6 @@ it("企业版联系人姓名选填：空名 + 只有多加的号码也能交", a
     await 框.getByLabel("客户名称").fill("华东展具");
     await 选(page, "渠道触点", "公司资源");
     await 选(page, "业务线", "内贸");
-    await 框.getByLabel("沟通内容").fill("只留了微信");
     await 框.getByLabel("联系人电话").fill("");
     await 框.getByRole("button", { name: "加一个号码" }).click();
     await 选(page, "第 2 个号码类型", "微信");

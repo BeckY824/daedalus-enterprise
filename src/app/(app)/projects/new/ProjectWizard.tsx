@@ -35,6 +35,7 @@ import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import SameNumberEntry from "./SameNumberEntry";
 import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 建档向导, 建档只建客户 } from "../actions";
+import { 沟通要开项目话 } from "@/lib/project/follow-needs-project-text";
 import { 搜客户, type 可挑客户 } from "../../customers/[id]/pick";
 import { 给客户建项目, 建项目带走的项目, 新项目分配数据 } from "../../customers/[id]/project-actions";
 import { useCarryConfirm } from "../../customers/useCarryConfirm";
@@ -176,7 +177,8 @@ function 项目沟通还差(d: 稿, 带项目: boolean, 要下一步: boolean, �
     if (企业 && 企业.分配方式们.length && d.项目.分配方式 === undefined) 记("分配方式", "请选分配方式");
     if (要选负责人(d, 企业) && !d.项目.ownerId) 记("负责人", "请选项目负责人");
   }
-  if (!d.跟进.content.trim()) 记("内容", "请填写这次沟通的内容");
+  // 企业版没开项目不记首条沟通（沟通必须挂项目，11-17）：写了的留在表里、不交，也不查
+  if ((带项目 || !企) && !d.跟进.content.trim()) 记("内容", "请填写这次沟通的内容");
   if (带项目 && 企业) {
     if (!d.跟进.节点 || !企业.节点们.includes(d.跟进.节点)) 记("节点", "请选当前进程（线索阶段的哪一步）");
     else if (企业.节点们.indexOf(d.跟进.节点) > 企业.节点们.indexOf(有效线索节点)) 记("节点", 建档不能过线索验证);
@@ -550,7 +552,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
           },
           跟进,
         })
-        : await 建档只建客户({ 客户, 联系人, 跟进 });
+        // 企业版没开项目：首条沟通那段写了的留在表里（再打开项目还在），不交（沟通必须挂项目，11-17）
+        : await 建档只建客户({ 客户, 联系人, ...(企业 ? {} : { 跟进 }) });
       if (!r.ok && "同号协同" in r) {
         // 同号再次录入：没新建，记录已写进现有项目（查重之后才有人录同号时走到这）。那句写在底栏上面，点「知道了」再关框
         清草稿(全名);
@@ -938,10 +941,12 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
       <section className="cr-sec" aria-label="首条沟通">
         <div className="cr-sec-head">
           <b>首条沟通</b>
-          {/* 用户 11-15「没有开项目，就只能算客户沟通」 */}
-          {!带项目 && <span className="cr-hint">没开项目，记成{b.customer}沟通</span>}
+          {/* 团队版（用户 11-15「没有开项目，就只能算客户沟通」）；企业版沟通必须挂项目（11-17）：没开项目这段收起、不交，写了的留着 */}
+          {!带项目 && (企业
+            ? <span className="cr-hint" role="note" data-testid="wizard-follow-needs-project">{沟通要开项目话}</span>
+            : <span className="cr-hint">没开项目，记成{b.customer}沟通</span>)}
         </div>
-        <div className="cr-grid">
+        {(带项目 || !企业) && <div className="cr-grid">
           {一格(null, "沟通方式", (
             <FollowMethodSelect style={满宽} aria-label="沟通方式" type={d.跟进.type} method={d.跟进.method} 类型们={能选类型} onChange={(v) => 改("跟进", v)} />
           ), true)}
@@ -990,7 +995,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
               onChange={(e) => 改("跟进", { 下一步: e.target.value })}
             />
           ), 带项目 && 要下一步)}
-        </div>
+        </div>}
       </section>
 
       {交错 && <div role="alert" className="csq-err">{交错}</div>}
