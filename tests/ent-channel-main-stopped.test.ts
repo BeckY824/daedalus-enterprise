@@ -1,7 +1,9 @@
 /**
- * 主渠道停用和子渠道对得上（11-17 客户报）：
+ * 主渠道停用 / 删除和子渠道对得上（11-17 客户报的两条）：
  * - 列表里写启用、「主渠道」里写已停用：主渠道停用后，下面的子渠道一律算停用（P-渠道-13）。
  *   服务端：主渠道停着时不让单开子渠道；新数据渠道不行 把「子渠道自己开着、主渠道停了」也认作停用
+ * - 删了「义乌门店」上面还有：渠道列表删的是子渠道（单一入口，和主渠道同名），主渠道是另一条记录。
+ *   deleteMainChannel 只删下面一个渠道都没挂的主渠道，挂着的报数、什么都不动
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
@@ -14,7 +16,7 @@ vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
-import { toggleChannel, toggleMainChannel } from "@/app/(app)/channels/actions";
+import { deleteChannel, deleteMainChannel, toggleChannel, toggleMainChannel } from "@/app/(app)/channels/actions";
 import { 新数据渠道不行 } from "@/lib/enterprise/channel-main";
 import { 筛渠道 } from "@/lib/enterprise/channel-dash";
 
@@ -69,5 +71,38 @@ describe("主渠道停用，子渠道一起算停用", () => {
     expect(筛("on")).toEqual(["自己开主渠道开"]);
     expect(筛("off")).toEqual(["自己开主渠道停", "自己停"]);
     expect(筛("")).toHaveLength(3);
+  });
+});
+
+describe("删主渠道", () => {
+  it("同名的单一入口：删子渠道后主渠道还在；主渠道要另删，删完就没了", async () => {
+    const { 主id, 子id } = await 单一入口("门店丁", false, false);
+    expect(await deleteChannel(子id)).toEqual({ ok: true });
+    // 渠道列表删的是子渠道：主渠道是另一条，还在
+    expect(await prisma.entChannelMain.findUnique({ where: { id: 主id } })).not.toBeNull();
+    expect(await deleteMainChannel(主id)).toEqual({ ok: true });
+    expect(await prisma.entChannelMain.findUnique({ where: { id: 主id } })).toBeNull();
+    const 留痕 = await prisma.auditLog.findFirst({ where: { entity: "EntChannelMain", entityId: 主id } });
+    expect(留痕?.summary).toBe("删除主渠道「门店丁」");
+  });
+
+  it("下面还挂着渠道：不删、报数，主渠道和子渠道都不动", async () => {
+    const { 主id, 子id } = await 单一入口("门店戊", true, true);
+    expect(await deleteMainChannel(主id)).toEqual({ ok: false, error: "下面还挂着 1 个渠道，不能删；不用了就停用" });
+    expect(await prisma.entChannelMain.count({ where: { id: 主id } })).toBe(1);
+    expect(await prisma.channel.count({ where: { id: 子id, mainId: 主id } })).toBe(1);
+  });
+
+  it("不在了、不能管渠道的人、不是企业版：都不删", async () => {
+    const m = await prisma.entChannelMain.create({ data: { name: "空主渠道" } });
+    expect(await deleteMainChannel("没有这个")).toMatchObject({ ok: false });
+    const 销售 = (await prisma.user.create({ data: { email: "s1", name: "小王", title: "", role: "SALES", password: "x" } })).id;
+    await prisma.entMember.create({ data: { userId: 销售, bizRole: "sales" } });
+    mocks.user = { ...mocks.user, id: 销售, role: "SALES" };
+    expect(await deleteMainChannel(m.id)).toMatchObject({ ok: false });
+    mocks.user = { ...mocks.user, id: 老板, role: "ADMIN" };
+    vi.stubEnv("CRM_ENTERPRISE", "");
+    expect(await deleteMainChannel(m.id)).toEqual({ ok: false, error: "主渠道只在企业版里用" });
+    expect(await prisma.entChannelMain.count({ where: { id: m.id } })).toBe(1);
   });
 });

@@ -1,8 +1,10 @@
 /**
- * 渠道页：主渠道停用的界面（11-17 客户报，服务端见 ent-channel-main-stopped.test.ts）
+ * 渠道页：主渠道停用 / 同名主子渠道删除的界面（11-17 客户报的两条，服务端见 ent-channel-main-stopped.test.ts）
  *
  *   按子渠道：子渠道自己开着、主渠道停了 → 渠道属性那格写「已停用」、整行压淡（和「主渠道」弹窗里那一行对得上），
  *     「⋯」里的启用灰掉、写去「主渠道」里启用；状态筛「已启用」不出它、筛「已停用」出它；详情写「停用（主渠道已停用）」
+ *   删同名的单一入口子渠道：确认那句写明只删子渠道、同名主渠道留着
+ *   「主渠道」弹窗：下面一个渠道都没挂的主渠道才有「删除」，就地确认后调 deleteMainChannel；挂着渠道的没有
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -93,6 +95,38 @@ it("主渠道停了、子渠道自己开着：列表写已停用、压淡；⋯ 
     await 抽屉.waitFor();
     expect(await 抽屉.locator(".ant-drawer-title").innerText()).toContain("已停用");
     expect(await 抽屉.locator(".ant-descriptions-item", { hasText: "渠道状态" }).innerText()).toContain("停用（主渠道已停用）");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("删同名的单一入口子渠道：确认那句写明只删子渠道、同名主渠道留着；别的渠道照旧问「删除这个渠道？」", async () => {
+  const { page, errors } = await open();
+  try {
+    await 列表行(page, "门店甲").getByRole("button", { name: "更多操作 门店甲" }).click();
+    await page.locator(".ant-dropdown:visible .ant-dropdown-menu-item", { hasText: "删除" }).click();
+    await expect.poll(() => 列表行(page, "门店甲").locator(".ch-act-ask").innerText()).toContain("只删这个子渠道，同名主渠道留着");
+    await page.keyboard.press("Escape");
+    await 列表行(page, "抖音|官方号").getByRole("button", { name: "更多操作 抖音|官方号" }).click();
+    // 上一行的下拉收起要放完动画，取最后弹出的那个
+    await page.locator(".ant-dropdown:visible .ant-dropdown-menu-item", { hasText: "删除" }).last().click();
+    await expect.poll(() => 列表行(page, "抖音|官方号").locator(".ch-act-ask").innerText()).toContain("删除这个渠道？");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("「主渠道」弹窗：只有一个渠道都没挂的主渠道有「删除」，确认后调 deleteMainChannel", async () => {
+  const { page, errors } = await open();
+  try {
+    await page.getByRole("button", { name: "主渠道", exact: true }).click();
+    const 弹窗 = page.locator(".ant-modal").filter({ hasText: "主渠道停用后" });
+    await 弹窗.waitFor();
+    const 主行 = (名: string) => 弹窗.locator(".ant-table-tbody tr.ant-table-row", { hasText: 名 }).first();
+    expect(await 主行("门店甲").getByRole("button", { name: "删除" }).count()).toBe(0);
+    expect(await 主行("抖音").getByRole("button", { name: "删除" }).count()).toBe(0);
+    await 主行("空主渠道").getByRole("button", { name: "删除" }).click();
+    await 主行("空主渠道").getByText("删除这个主渠道？").waitFor();
+    await 主行("空主渠道").locator(".inlc-yes").click();
+    await expect.poll(() => 存了(page)).toEqual([["deleteMainChannel", "m3"]]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

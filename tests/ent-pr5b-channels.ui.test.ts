@@ -18,7 +18,7 @@ const plugin: Plugin = { name: "pr5b-ch-boundaries", setup(b) {
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
   stub(/^\.\/actions$/, `const 记=(名)=>async (...x)=>{(window.__存=window.__存||[]).push([名,x]);return window.__挡?{ok:false,error:'没有权限改这个渠道'}:{ok:true,id:'x'}};
-    export const saveChannel=记('saveChannel'),toggleChannel=记('toggleChannel'),deleteChannel=记('deleteChannel'),saveMainChannel=记('saveMainChannel'),toggleMainChannel=记('toggleMainChannel'),addChannelInvest=记('addChannelInvest'),deleteChannelInvest=记('deleteChannelInvest');
+    export const saveChannel=记('saveChannel'),toggleChannel=记('toggleChannel'),deleteChannel=记('deleteChannel'),saveMainChannel=记('saveMainChannel'),toggleMainChannel=记('toggleMainChannel'),deleteMainChannel=记('deleteMainChannel'),addChannelInvest=记('addChannelInvest'),deleteChannelInvest=记('deleteChannelInvest');
     export const listChannelInvests=async()=>({ok:true,能录:true,rows:[{id:'i1',amount:1200,currency:'CNY',date:'2026-11-01',remark:'十月投流',userName:'小王',createdAt:'2026-11-01T00:00:00Z'},{id:'i2',amount:300,currency:'CNY',date:'2026-11-02',remark:null,userName:'小王',createdAt:'2026-11-02T00:00:00Z'}]});`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, (a) => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };

@@ -381,6 +381,29 @@ export async function toggleMainChannel(id: string, active: boolean): Promise<{ 
   return { ok: true };
 }
 
+/**
+ * 删主渠道（11-17）：只删下面一个渠道都没挂的。渠道列表里删的是子渠道——单一入口的子渠道和主渠道同名，
+ * 删了子渠道、主渠道还在「主渠道」里，人以为没删掉；主渠道要在主渠道管理里另删。
+ * 下面还挂着渠道的不删（客户、项目、投入都挂在子渠道上，外键 SetNull 会让它们悄悄脱离主渠道），先删或改挂子渠道
+ */
+export async function deleteMainChannel(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const me = await requireUser();
+  const 挡 = await 挡管(me);
+  if (挡) return { ok: false, error: 挡 };
+  if (!企业版()) return { ok: false, error: "主渠道只在企业版里用" };
+  const m = await prisma.entChannelMain.findUnique({ where: { id }, select: { name: true, _count: { select: { channels: true } } } });
+  if (!m) return { ok: false, error: "这个主渠道已经不在了（可能在别处删了），刷新看看" };
+  if (m._count.channels > 0) return { ok: false, error: `下面还挂着 ${m._count.channels} 个渠道，不能删；不用了就停用` };
+  try {
+    await prisma.entChannelMain.delete({ where: { id } });
+  } catch (e) {
+    return 不在了(e);
+  }
+  await recordAudit({ user: me, action: "delete", entity: "EntChannelMain", entityId: id, summary: `删除主渠道「${m.name}」` });
+  revalidatePath("/channels");
+  return { ok: true };
+}
+
 /* ───────────── 企业版渠道投入（2026-10-29） ───────────── */
 
 export type 投入行 = { id: string; amount: number; currency: string; date: string; remark: string | null; userName: string | null; createdAt: string };
