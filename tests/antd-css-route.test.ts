@@ -1,9 +1,8 @@
 /**
  * antd 样式外链路由（11-15，app/api/antd-css/[id]/route.ts）和落盘兜底（lib/antd-css-disk.ts）：
- * 记过的号回正文、长期缓存；要 gzip 就压（q=0 不压）；进程里没有就读盘（重启 / 部署后旧页面）；号不合法不读盘；没有的 404
+ * 记过的号回正文、长期缓存；不自己压（压缩交 Next / 反代，16.4.5 起路由自带的 Content-Encoding 会被删）；进程里没有就读盘（重启 / 部署后旧页面）；号不合法不读盘；没有的 404
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { gunzipSync } from "node:zlib";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -22,7 +21,7 @@ afterAll(() => {
   fs.rmSync(目录, { recursive: true, force: true });
 });
 
-it("记过的号：回正文、text/css、immutable；带 gzip 就压，解开和正文一样；gzip;q=0 不压", async () => {
+it("记过的号：回正文、text/css、immutable；带 gzip 也回原文、不带 Content-Encoding（压缩交 Next / 反代）", async () => {
   const 正文 = ".a{color:red}".repeat(500);
   const 号 = 记样式("签名一", 正文);
   const 原 = await 取(号);
@@ -31,14 +30,9 @@ it("记过的号：回正文、text/css、immutable；带 gzip 就压，解开�
   expect(原.headers.get("cache-control")).toContain("immutable");
   expect(原.headers.get("content-encoding")).toBeNull();
   expect(await 原.text()).toBe(正文);
-  const 压 = await 取(号, "gzip, deflate, br");
-  expect(压.headers.get("content-encoding")).toBe("gzip");
-  const 字节 = Buffer.from(await 压.arrayBuffer());
-  expect(字节.length).toBeLessThan(正文.length / 10);
-  expect(gunzipSync(字节).toString("utf8")).toBe(正文);
-  const 不要 = await 取(号, "gzip;q=0, identity");
-  expect(不要.headers.get("content-encoding")).toBeNull();
-  expect(await 不要.text()).toBe(正文);
+  const 带 = await 取(号, "gzip, deflate, br");
+  expect(带.headers.get("content-encoding")).toBeNull();
+  expect(await 带.text()).toBe(正文);
 });
 
 it("装了落盘：登记时落一份；进程里没有的号从盘上读回（模拟重启 / 部署后旧页面）", async () => {

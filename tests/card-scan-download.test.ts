@@ -1,7 +1,7 @@
 /**
  * 扫名片识别文件下载（2026-10-20 用户在伦敦：「识别模型没下载下来」）：
  *   - lib/card-scan/download.ts 下载齐：进度按线上大小算、断了 / 卡住自动重试、页面在后台时断了报「下载被中断」、4xx 不重试
- *   - app/ocr-files 出文件：按 Accept-Encoding 给预压缩的 .br / .gz、带长度和 ETag、认 Range、不许跳出 public/ocr
+ *   - app/ocr-files 出文件：只给原文件（有 .br / .gz 也不挑、不带 Content-Encoding）、带长度和 ETag、认 Range、不许跳出 public/ocr
  * 真下载（限速、掐断）在 e2e/card-scan.spec.ts 和模拟器上测
  */
 import fs from "node:fs";
@@ -156,25 +156,18 @@ describe("app/ocr-files 出识别文件", () => {
   const 取 = (段们: string[], 头: Record<string, string> = {}) =>
     路由.GET(new Request("http://x/ocr/" + 段们.join("/"), { headers: 头 }), { params: Promise.resolve({ path: 段们 }) });
 
-  it("浏览器要 br 就给预压缩的 br：带长度、编码、ETag、一年缓存", async () => {
-    const r = await 取(["v1", "paddle.js"], { "accept-encoding": "gzip, deflate, br, zstd" });
-    expect(r.status).toBe(200);
-    expect(r.headers.get("content-encoding")).toBe("br");
-    const 体 = Buffer.from(await r.arrayBuffer());
-    expect(Number(r.headers.get("content-length"))).toBe(体.length);
-    expect(zlib.brotliDecompressSync(体).equals(原)).toBe(true);
-    expect(r.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
-    expect(r.headers.get("content-type")).toContain("javascript");
-    expect(r.headers.get("accept-ranges")).toBe("bytes");
-    expect(r.headers.get("vary")).toBe("Accept-Encoding");
-  });
-
-  it("只认 gzip 给 gz；什么都不认（或 br;q=0）给原文件", async () => {
-    expect((await 取(["v1", "paddle.js"], { "accept-encoding": "gzip" })).headers.get("content-encoding")).toBe("gzip");
-    expect((await 取(["v1", "paddle.js"], { "accept-encoding": "br;q=0, gzip" })).headers.get("content-encoding")).toBe("gzip");
-    const r = await 取(["v1", "paddle.js"]);
-    expect(r.headers.get("content-encoding")).toBeNull();
-    expect(Buffer.from(await r.arrayBuffer()).equals(原)).toBe(true);
+  it("浏览器要 br / gzip 也只给原文件：不带编码，带长度、ETag、一年缓存（16.4.5 起 Next 会删路由的 Content-Encoding）", async () => {
+    for (const enc of ["gzip, deflate, br, zstd", "gzip", undefined]) {
+      const r = await 取(["v1", "paddle.js"], enc ? { "accept-encoding": enc } : {});
+      expect(r.status).toBe(200);
+      expect(r.headers.get("content-encoding")).toBeNull();
+      const 体 = Buffer.from(await r.arrayBuffer());
+      expect(体.equals(原)).toBe(true);
+      expect(Number(r.headers.get("content-length"))).toBe(原.length);
+      expect(r.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+      expect(r.headers.get("content-type")).toContain("javascript");
+      expect(r.headers.get("accept-ranges")).toBe("bytes");
+    }
   });
 
   it("没有预压缩版的文件给原文件；wasm 的类型对", async () => {
@@ -188,20 +181,21 @@ describe("app/ocr-files 出识别文件", () => {
     const 整 = await 取(["v1", "paddle.js"], { "accept-encoding": "br" });
     const etag = 整.headers.get("etag")!;
     const 总 = Number(整.headers.get("content-length"));
+    expect(总).toBe(原.length);
     const 段 = await 取(["v1", "paddle.js"], { "accept-encoding": "br", range: "bytes=10-19", "if-range": etag });
     expect(段.status).toBe(206);
     expect(段.headers.get("content-range")).toBe(`bytes 10-19/${总}`);
-    expect((await 段.arrayBuffer()).byteLength).toBe(10);
+    expect(Buffer.from(await 段.arrayBuffer()).equals(原.subarray(10, 20))).toBe(true);
     const 换过 = await 取(["v1", "paddle.js"], { "accept-encoding": "br", range: "bytes=10-19", "if-range": '"other"' });
     expect(换过.status).toBe(200);
     const 超 = await 取(["v1", "paddle.js"], { "accept-encoding": "br", range: `bytes=${总 + 5}-` });
     expect(超.status).toBe(416);
   });
 
-  it("If-None-Match 对上回 304；br 和 gzip 的 ETag 不一样", async () => {
+  it("If-None-Match 对上回 304；不管要不要压，ETag 都是原文件那一个", async () => {
     const br = await 取(["v1", "paddle.js"], { "accept-encoding": "br" });
-    const gz = await 取(["v1", "paddle.js"], { "accept-encoding": "gzip" });
-    expect(br.headers.get("etag")).not.toBe(gz.headers.get("etag"));
+    const 无 = await 取(["v1", "paddle.js"]);
+    expect(br.headers.get("etag")).toBe(无.headers.get("etag"));
     const 再 = await 取(["v1", "paddle.js"], { "accept-encoding": "br", "if-none-match": br.headers.get("etag")! });
     expect(再.status).toBe(304);
   });

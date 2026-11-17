@@ -6,7 +6,7 @@ import { Button, Card, ConfigProvider, Input, Select, Table, Tag } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import { themeConfig } from "@/lib/theme";
 import { 本次请求缓存, 抽一批, type 一批 } from "@/components/AntdRegistry";
-import { 取样式, 记样式, 记多少批, 正文号, 号的样子, 查签名, 要gzip } from "@/lib/antd-css-store";
+import { 取样式, 记样式, 记多少批, 正文号, 号的样子, 查签名 } from "@/lib/antd-css-store";
 
 type Entity = ReturnType<typeof createCache>;
 
@@ -83,16 +83,4 @@ it("外链样式：店里最多记 记多少批，超了丢最早的；签名同
   expect(查签名("没记过")).toBeUndefined();
   expect(记样式("空批", "")).toBe("");
   expect(查签名("空批")).toBe("");
-});
-
-it("Accept-Encoding：gzip / * 且 q 不为 0 才压", () => {
-  expect(要gzip("gzip, deflate, br")).toBe(true);
-  expect(要gzip("br;q=1.0, gzip;q=0.8")).toBe(true);
-  expect(要gzip("gzip;q=0")).toBe(false);
-  expect(要gzip("gzip;q=0.0, br")).toBe(false);
-  expect(要gzip("*")).toBe(true);
-  expect(要gzip("*;q=0")).toBe(false);
-  expect(要gzip("identity")).toBe(false);
-  expect(要gzip(null)).toBe(false);
-  expect(要gzip("x-gzip")).toBe(false);
 });
