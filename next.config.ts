@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 import { PHASE_PRODUCTION_BUILD, PHASE_PRODUCTION_SERVER } from "next/constants";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 
 /**
@@ -156,7 +156,7 @@ export const nextConfig: NextConfig = {
  * 号从哪来（先到先用）：
  *   1. 构建时的环境变量 CRM_DEPLOYMENT_ID（off = 不设部署号，和以前一样）
  *   2. deploy/enterprise/COMMIT：git archive 导出的目录（3702 的 rebuild.sh 就是这样建的，没有 .git）里被 export-subst 换成 commit
- *   3. git rev-parse HEAD
+ *   3. git：cwd 本身是仓库根目录时的 HEAD（不认父进程带的 GIT_DIR，也不认外层仓库，见 本目录的commit）
  *   都拿不到就不设（等于没有无感更新，其余照旧）。
  * next start（3702）启动时会再读一遍本文件：这时不重新算，用构建产物 required-server-files.json 里记的号，
  * 免得构建后 HEAD 动过、页面里的号和服务器回的号对不上（对不上 = 每次点链接都整页刷新）。
@@ -190,11 +190,45 @@ export function 部署号(
   } catch {
     // 没这个文件：往下用 git
   }
+  return 本目录的commit(cwd);
+}
+
+/**
+ * cwd 自己是 git 仓库（或 worktree）根目录时取它的 HEAD，否则 undefined。
+ * 两处不能信 git 默认找仓库的办法（11-17 pre-push 里测试挂过）：
+ *   - 父进程带着 GIT_DIR / GIT_WORK_TREE 等（git 钩子里跑、别的工具套着跑）：git 不看 cwd，直接报那个仓库的 HEAD。
+ *     所以子进程把这些定位仓库的变量去掉
+ *   - cwd 不是仓库、但在别的仓库里面（导出目录放在某个仓库下面）：git 往上找到外层仓库，报的是外层的 commit。
+ *     所以要求仓库根目录就是 cwd
+ */
+const 定位仓库的变量 = [
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_COMMON_DIR",
+  "GIT_INDEX_FILE",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_NAMESPACE",
+  "GIT_PREFIX",
+  "GIT_CEILING_DIRECTORIES",
+  "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+];
+function 本目录的commit(cwd: string): string | undefined {
+  const env = { ...process.env };
+  for (const k of 定位仓库的变量) delete env[k];
   try {
-    const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd, stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
-    if (/^[0-9a-f]{40}$/.test(sha)) return sha.slice(0, 12);
+    const [根, sha] = execFileSync("git", ["rev-parse", "--show-toplevel", "HEAD"], {
+      cwd,
+      env,
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .toString()
+      .trim()
+      .split("\n");
+    if (!根 || realpathSync(根) !== realpathSync(cwd)) return undefined;
+    if (sha && /^[0-9a-f]{40}$/.test(sha)) return sha.slice(0, 12);
   } catch {
-    // 不是 git 目录、没装 git
+    // 不是 git 目录、没装 git、HEAD 还没有提交
   }
   return undefined;
 }

@@ -7,6 +7,7 @@
  *   - deploy/enterprise/tools/skew-check.mjs：部署时判断这次迁移是不是「只加」，只加才留上一版接老标签页的 server action
  */
 import { describe, it, expect, afterEach } from "vitest";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -23,6 +24,31 @@ function 目录() {
 afterEach(() => {
   for (const d of 临时.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 });
+
+/** 建一个有一次提交的 git 仓库，返回完整 commit（子进程不带外面的 GIT_*，免得写进别的仓库） */
+function 建仓库(d: string): string {
+  const env = { ...process.env };
+  for (const k of Object.keys(env)) if (k.startsWith("GIT_")) delete env[k];
+  const git = (...a: string[]) => execFileSync("git", a, { cwd: d, env, stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+  git("init", "-q");
+  fs.writeFileSync(path.join(d, "a.txt"), "a");
+  git("add", "a.txt");
+  git("-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "x");
+  return git("rev-parse", "HEAD");
+}
+
+/** 模拟 git 钩子里跑（pre-push 会带着 GIT_DIR）：临时设上，跑完还原 */
+function 带GIT_DIR<T>(gitDir: string, f: () => T): T {
+  const 原 = process.env.GIT_DIR;
+  process.env.GIT_DIR = gitDir;
+  try {
+    return f();
+  } finally {
+    if (原 === undefined) delete process.env.GIT_DIR;
+    else process.env.GIT_DIR = 原;
+  }
+}
+const 本仓库GIT_DIR = execFileSync("git", ["rev-parse", "--absolute-git-dir"]).toString().trim();
 
 describe("next.config 部署号", () => {
   it("构建时：环境变量优先；off = 不设；不合法直接报错", () => {
@@ -44,6 +70,18 @@ describe("next.config 部署号", () => {
     fs.mkdirSync(path.join(cwd, "deploy/enterprise"), { recursive: true });
     fs.writeFileSync(path.join(cwd, "deploy/enterprise/COMMIT"), "$Format:%H$\n");
     expect(部署号(PHASE_PRODUCTION_BUILD, { env: {}, cwd })).toBeUndefined();
+    // git 钩子里（父进程带 GIT_DIR 指着本仓库）也不能把本仓库的 commit 当成这个目录的（11-17 pre-push 挂在这）
+    expect(带GIT_DIR(本仓库GIT_DIR, () => 部署号(PHASE_PRODUCTION_BUILD, { env: {}, cwd }))).toBeUndefined();
+  });
+
+  it("构建时：cwd 是仓库根目录 → 用它自己的 HEAD，父进程带的 GIT_DIR 不算；在别的仓库里面的子目录 → 不设", () => {
+    const cwd = 目录();
+    const sha = 建仓库(cwd);
+    expect(部署号(PHASE_PRODUCTION_BUILD, { env: {}, cwd })).toBe(sha.slice(0, 12));
+    expect(带GIT_DIR(本仓库GIT_DIR, () => 部署号(PHASE_PRODUCTION_BUILD, { env: {}, cwd }))).toBe(sha.slice(0, 12));
+    const 子目录 = path.join(cwd, "export");
+    fs.mkdirSync(子目录);
+    expect(部署号(PHASE_PRODUCTION_BUILD, { env: {}, cwd: 子目录 })).toBeUndefined();
   });
 
   it("仓库里那份 COMMIT 是 export-subst 占位，.gitattributes 登记了", () => {
