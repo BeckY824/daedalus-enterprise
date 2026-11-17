@@ -30,7 +30,7 @@ const 暂不分配 = "暂不分配";
 export type 要看的客户 = { id: string; salesOwnerId: string; bizLine: string | null; pool: { customerId: string } | null };
 type 我 = { id: string; role: string };
 
-export const 不是市场话 = "只有市场成员（市场管理、渠道运营）给暂不分配的客户转让时才能选自动分配";
+export const 不是市场话 = "只有市场成员（市场管理、渠道运营）才能给暂不分配的客户选自动分配";
 export const 不是暂不分配话 = "这位客户不是「暂不分配」的（名下没有暂不分配、还在线索阶段的项目），请用指定分配";
 export const 不在市场手里话 = "这位客户不在市场成员名下，不能自动分配，请用指定分配";
 export const 公海里话 = "公海里的客户先领取或分配，不走客户转让";

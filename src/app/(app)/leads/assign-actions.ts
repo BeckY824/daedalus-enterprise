@@ -19,7 +19,7 @@ import { 查完再写 } from "@/lib/check-then-write";
 import { 读改权限, 谁能改的话 } from "@/lib/enterprise/edit-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 分配方式叫法, 挡分配方式, 选的原因 } from "@/lib/enterprise/dict";
-import { 能自动分配客户 } from "@/lib/enterprise/cust-auto-assign";
+import { 能自动分配客户, 不是市场话 } from "@/lib/enterprise/cust-auto-assign";
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 发满额提醒, 发待分配提醒, 读满额提醒, 关掉满额提醒, type 满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 标待分配 } from "@/lib/enterprise/await-assign";
@@ -656,11 +656,13 @@ export type 客户自动分配结果 = { ok: true; toUserId: string; 接手人: 
 export async function 客户自动分配(customerId: string, 原因?: string | null): Promise<客户自动分配结果> {
   const me = await 进门();
   if (!me) return 没开;
-  if (typeof customerId !== "string" || !customerId) return { ok: false, error: "要分哪一位客户？刷新看看" };
   try {
+    const org = await 读组织();
+    // 先认人再看参数：不是市场成员的直接拒（权限表按这一格记 403）
+    if (!按区域分配of(org, me.id)) return { ok: false, error: 不是市场话 };
+    if (typeof customerId !== "string" || !customerId) return { ok: false, error: "要分哪一位客户？刷新看看" };
     const 选 = await 选的原因("transfer", 原因);
     if (!选.ok) return 选;
-    const org = await 读组织();
     // 按「我」限定着读：看不到的当不在
     const c = await prisma.customer.findFirst({ where: { id: customerId }, select: { id: true, name: true, salesOwnerId: true, bizLine: true, pool: { select: { customerId: true } } } });
     if (!c) return { ok: false, error: "这位客户已经不在了（或者你看不到它），刷新看看" };
