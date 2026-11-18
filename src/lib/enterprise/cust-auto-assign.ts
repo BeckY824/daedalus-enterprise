@@ -25,6 +25,7 @@ import { 能转让客户 } from "./permissions";
 import { 客户在市场手里 } from "./market-transfer";
 import { 按区域分配of } from "./customer-region";
 import { 分配方式叫法, 挡分配方式 } from "./dict";
+import { 指定问题 } from "./assign-eta";
 
 const 暂不分配 = "暂不分配";
 
@@ -81,6 +82,23 @@ export async function 批量可自动分配(me: 我): Promise<boolean> {
   if (!按区域分配of(org, me.id)) return false;
   if (!(await 规则开着("线索分配"))) return false;
   return !(await 挡分配方式(me, 1));
+}
+
+/**
+ * 市场分配里的「指定」（审核 11-18 追加，用户定）：客户转让框（单个、批量）摆了「指定分配 / 自动分配」那组——市场成员把暂不分配的客户交给销售——
+ * 选指定时只能给参与状态正常的人（同 指定问题 / 可指定的人）。服务端按库判这次是不是市场分配（转的人、客户，同 页面可自动分配 / 批量预看 的判定），
+ * 不信前端传的模式：勾的里有一位算市场分配就照这条查接手人。普通转让（框里没那组的：不是市场成员、客户不是暂不分配、销售管理之间改派……）不管。
+ * 转给自己不管。null = 放行
+ */
+export async function 市场分配指定挡(me: 我, ids: readonly string[], 接手人: string): Promise<string | null> {
+  if (!企业版() || 接手人 === me.id || !ids.length) return null;
+  const org = await 读组织();
+  if (!按区域分配of(org, me.id) || !(await 规则开着("线索分配")) || (await 挡分配方式(me, 1))) return null;
+  const 们 = await 看全部(() => prisma.customer.findMany({ where: { id: { in: [...ids] } }, select: { id: true, salesOwnerId: true, bizLine: true, pool: { select: { customerId: true } } } }));
+  for (const c of 们) {
+    if ((await 能自动分配客户(me, org, c)).ok) return 指定问题(org, 接手人);
+  }
+  return null;
 }
 
 /** 客户详情页：客户转让框里摆不摆「指定分配 / 自动分配」的选择。不是市场成员先回 false，不多查库 */

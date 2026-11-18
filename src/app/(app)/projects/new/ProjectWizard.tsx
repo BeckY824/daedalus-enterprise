@@ -39,6 +39,7 @@ import { 建档向导, 建档只建客户 } from "../actions";
 import { 搜客户, type 可挑客户 } from "../../customers/[id]/pick";
 import { 给客户建项目, 建项目带走的项目, 新项目分配数据 } from "../../customers/[id]/project-actions";
 import { useCarryConfirm } from "../../customers/useCarryConfirm";
+import { 指定选项 } from "@/lib/enterprise/designate-options";
 import { 三种业务线, 两条线, 分配说明, 业务线必填, 客户业务线必填, 建议业务线, 所在地预填, 所在地提示, 新客户分配方式们, 新客户默认分配方式 } from "@/lib/enterprise/assign-line";
 import { 区域分配说明, 默认分配方向, 方向来源说明 } from "@/lib/enterprise/customer-region";
 import type { 线 } from "@/lib/enterprise/lead-assign";
@@ -115,6 +116,8 @@ export type 企业建档 = { 渠道们: 可选渠道[]; 节点们: readonly stri
   客户只给自己?: boolean;
   /** 市场成员（市场管理、渠运、按部门 / 逐人认的，X-93）：没开项目时摆「项目分配方式」（11-18，new-cust-assign.ts） */
   是市场?: boolean;
+  /** 指定分配的负责人下拉只列这些人（审核 11-18 追加，after-create-assign 新建分配方式数据 → assign-eta 可指定的人）；没给 = 不筛 */
+  可指定?: string[];
   /** 新建项目的回收日预估（wizard-data.ts 回收预估）：起点日 + 各进程天数（内贸 / 外贸）；超时回收关着 = null */
   回收预估?: { 起点日: string; 内贸: Record<string, number>; 外贸: Record<string, number> } | null } | null;
 /** 向导要的服务端数据（wizard-data.ts 建档向导数据）：页面和弹窗共用 */
@@ -1036,7 +1039,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
           {只建分配格}
           {/* 客户负责人默认自己、可改（P-界面-33）；企业版普通销售只能是自己，不摆。市场成员摆了项目分配方式的：只在指定分配时选（选的就是客户负责人） */}
           {(只建摆 ? 只建方式 === 0 : !带项目 && !企业?.客户只给自己 && !独自一人(users, d.客户负责人)) && 一格(null, `${b.customer}负责人`, (
-            <Select aria-label={`${b.customer}负责人`} className="cr-full" value={d.客户负责人 || 我?.id} options={负责人选项} onChange={(v) => 改("客户负责人", v)} showSearch optionFilterProp="label" />
+            <Select aria-label={`${b.customer}负责人`} className="cr-full" value={d.客户负责人 || 我?.id} options={只建摆 && 只建方式 === 0 ? 指定选项(负责人选项, 企业?.可指定, 我?.id, d.客户负责人) : 负责人选项} onChange={(v) => 改("客户负责人", v)} showSearch optionFilterProp="label" />
           ), 只建摆, false, 只建摆 ? `${b.customer}和自动建的潜客培育项目一起给他` : undefined)}
           {只建方向格}
           {!企业 && 一格(null, b.fields.school, <Input aria-label={b.fields.school} value={d.客户.school} onChange={(e) => 改("客户", { school: e.target.value })} />)}
@@ -1080,7 +1083,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
               />
             ), true, false, d.项目.分配方式 !== undefined && !自动分出去 ? (区域定线中(d, 带项目, 企业) ? 区域分配说明 : 分配说明[d.项目.分配方式] || undefined) : undefined)}
             {(企业 ? 要选负责人(d, 企业) : !独自一人(users, d.项目.ownerId)) && 一格("负责人", "项目负责人", (
-              <Select className="cr-full" aria-label="项目负责人" status={红("负责人")} value={d.项目.ownerId || undefined} placeholder="选项目负责人" options={负责人选项} onChange={(v) => 改("项目", { ownerId: v })} showSearch optionFilterProp="label" />
+              <Select className="cr-full" aria-label="项目负责人" status={红("负责人")} value={d.项目.ownerId || undefined} placeholder="选项目负责人" options={企业 && d.项目.分配方式 === 0 ? 指定选项(负责人选项, 企业.可指定, 我?.id, d.项目.ownerId) : 负责人选项} onChange={(v) => 改("项目", { ownerId: v })} showSearch optionFilterProp="label" />
             ), !!企业)}
             {/* 指定分配时间（11-17 PR3）：指定分配、自动分配才有；选了指定时间 = 到点前留在新线索待分配，到点后台分 */}
             {企业 && (d.项目.分配方式 === 0 || d.项目.分配方式 === 1) && 一格("分配时间", "分配时间", (

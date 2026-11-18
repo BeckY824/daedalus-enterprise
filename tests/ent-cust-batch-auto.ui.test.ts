@@ -57,7 +57,7 @@ beforeAll(async () => {
     window.__不是话=不是话;
     // 预看：c3 不是暂不分配；window.__全不行 = 一位都不行
     const 预看=async(ids)=>{(window.__调??=[]).push(['预看',ids]);if(window.__全不行)return{ok:true,可:[],不可:ids.map(id=>({customerId:id,name:名(id),error:不是话}))};
-      return{ok:true,可:ids.filter(id=>id!=='c3'),不可:ids.filter(id=>id==='c3').map(id=>({customerId:id,name:名(id),error:不是话}))}};
+      return{ok:true,...(window.__可指定?{可指定:window.__可指定}:{}),可:ids.filter(id=>id!=='c3'),不可:ids.filter(id=>id==='c3').map(id=>({customerId:id,name:名(id),error:不是话}))}};
     const 自动分=async(ids,因)=>{(window.__调??=[]).push(['自动',ids,因]);if(window.__自回)return window.__自回;
       const 给=['小张','小李'];let i=0;
       return{ok:true,结果:ids.map(id=>id==='c3'?{customerId:id,name:名(id),ok:false,error:不是话}:{customerId:id,name:名(id),ok:true,toUserId:'u',接手人:给[i++%2],为什么:'本月已分最少'})}};
@@ -192,5 +192,25 @@ it("1024 / 1280 / 1366 + 超长客户名：指定、自动、分完三种样子�
       expect(await 框量(page, /知道了/), `宽 ${w} 分完`).toEqual(好);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
+  }
+});
+
+// 11-18 定：分配模式下的「指定」只列正常参与的人（预看带回 可指定）；页面没递（普通转让）照列全部
+it("分配模式的指定分配：下拉只列可指定的人；普通转让照列全部（1024 / 1280 / 1366）", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    for (const [递, 期] of [[true, ["小李"]], [false, ["小张", "小李"]]] as const) {
+      const { page, errors } = await 开(w, 递, { __可指定: ["u3", "me"] });
+      try {
+        await 开框(page, ["c1", "c2"]);
+        if (递) await expect.poll(() => 方式(page).count()).toBe(1);
+        await 框(page).getByRole("combobox", { name: "转给谁" }).click();
+        const 单 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
+        await 单.first().waitFor();
+        expect((await 单.allInnerTexts()).filter((x) => x !== "小王"), `宽 ${w} 递=${递}`).toEqual([...期]);
+        await page.keyboard.press("Escape");
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `宽 ${w}`).toBe(true);
+        expect(errors).toEqual([]);
+      } finally { await page.close(); }
+    }
   }
 });

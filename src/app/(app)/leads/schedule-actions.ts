@@ -11,7 +11,7 @@ import { 不在了 } from "@/lib/not-there";
 import { 看全部 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织 } from "@/lib/enterprise/org";
-import { 接手问题 } from "@/lib/enterprise/lead-assign";
+import { 指定问题 } from "@/lib/enterprise/assign-eta";
 import { 发待分配提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 执行一条定时, 清定时, 能动定时 as 能动 } from "@/lib/enterprise/scheduled-assign";
 import { 认定时分配, 短时刻 } from "@/lib/project/time-fields";
@@ -49,7 +49,7 @@ export async function 改定时分配(projectId: string, 输入: { 时间?: stri
     let 接手人 = p.scheduledAssignTo;
     if (p.scheduledAssignTo && 输入?.接手人 !== undefined && 输入.接手人 !== p.scheduledAssignTo) {
       if (!输入.接手人) return { ok: false, error: "请选到点分给谁" };
-      const 问题 = 接手问题(org, 输入.接手人, null);
+      const 问题 = await 指定问题(org, 输入.接手人);
       if (问题) return { ok: false, error: 问题 };
       if (!(await prisma.user.findUnique({ where: { id: 输入.接手人 }, select: { active: true } }))?.active) return { ok: false, error: "接手人不存在或已停用" };
       接手人 = 输入.接手人;

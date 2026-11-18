@@ -9,6 +9,7 @@
  *     自动 = 不选人，服务端按新线索的自动分配挑销售（按客户区域定内贸 / 外贸、本月分得最少的优先），成了框里原地说分给了谁，没挑到人原因写在框里
  *   - 同一种客户（给了 定向，P-转-26 11-18）：「指定」也先定方向——摆方向格（默认同自动那份顺序、可改），下拉只列这个方向能接的人
  */
+import { 指定选项 } from "@/lib/enterprise/designate-options";
 import { useEffect, useRef, useState } from "react";
 import { Button, Input, Modal, Select } from "antd";
 import { 其他项, 其他补充上限, 合其他 } from "@/lib/enterprise/dict-kinds";
@@ -53,6 +54,8 @@ export default function TransferBox({
     做: (原因: string | null, 方向?: 线) => Promise<转让结果>; 取预览: () => Promise<转走项目预览 | null | undefined>;
     /** 分配方向的默认值和来源（11-18）：框里摆成可改的「内贸 / 外贸」，改了才交；没有 = 不摆这一格 */
     默认方向?: 分配方向 | null;
+    /** 选「指定分配」时接手人下拉只列这些人（参与状态正常，审核 11-18 追加；服务端 市场分配指定挡 同口径）；没给 = 不筛 */
+    可指定?: string[];
   };
   onClose: () => void;
 }) {
@@ -77,11 +80,13 @@ export default function TransferBox({
     if (open) { set谁(undefined); set预览(null); set选(null); set写(""); set忙(false); set错(""); set发出(null); set法("指定"); set自动预览(null); set向(null); }
   }
   const 自动中 = !!自动 && 法 === "自动";
+  /** 市场分配（摆了「指定 / 自动」）选指定：只列能被指定的；普通转让照旧 */
+  const 列的人 = 自动 ? 指定选项(候选, 自动.可指定, null, 谁) : 候选;
   /** 指定分配也定方向（P-转-26）：这次按哪条线挑人；判不出 = null（两条线都列） */
   const 定向中 = !自动中 && !!定向;
   const 指定线 = 定向中 ? 向 ?? 定向!.默认方向.线 : null;
   const 可挑 = 定向中 ? new Set(按方向挑(定向!.候选表, 指定线)) : null;
-  const 列的候选 = 可挑 ? 候选.filter((o) => 可挑.has(o.value)) : 候选;
+  const 列的候选 = 可挑 ? 列的人.filter((o) => 可挑.has(o.value)) : 列的人;
 
   useEffect(() => {
     if (!谁) return;

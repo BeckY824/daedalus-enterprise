@@ -24,7 +24,7 @@
  */
 import type { 币种合计 } from "../currency";
 import { beijingDay } from "../business-clock";
-import { 合计, 算产出比, 算成交, 算渠道统计, type 渠道统计, type 统计用渠道, type 统计用项目, type 统计用投入 } from "./channel-stats";
+import { 合计, 判定落定, 算产出比, 算成交, 算渠道统计, type 渠道统计, type 统计用渠道, type 统计用项目, type 统计用投入 } from "./channel-stats";
 import { 字典of, type 阶段字典 } from "../project/stage-dict";
 import { 渠道启用 } from "./channel-main-core";
 
@@ -113,10 +113,8 @@ export function 订单时间(p: 到达用): Date | null {
   return 早(p.节点们.filter((l) => l.toPhase === "订单").map((l) => l.at)) ?? (p.phase === "订单" ? p.createdAt : null);
 }
 
-/** 落定了的判定才算「已判定」 */
-export function 已判定(判定: string | null): boolean {
-  return 判定 === "有效线索" || 判定 === "无效线索";
-}
+/** 落定了的判定才算「已判定」（列表、详情同一个，channel-stats.ts 判定落定） */
+export const 已判定 = 判定落定;
 
 /** 几份按币种的合计再加起来（同列表的累计成交、当前投入一个算法） */
 const 合 = (份: 币种合计[][]) => 合计(份.flat().map((x) => ({ amount: x.合计, currency: x.币种 })));

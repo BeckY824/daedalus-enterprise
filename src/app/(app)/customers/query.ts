@@ -17,6 +17,8 @@ import { 创建时间段 } from "@/lib/custom-date-range";
 import { 三态筛选条件, 三态界面开着 } from "@/lib/enterprise/tri-state-list";
 import { 是三态筛选值 } from "@/lib/enterprise/tri-state-label";
 import { 按主键取没删的 } from "@/lib/enterprise/soft-delete-core";
+import { 是客户范围 } from "@/lib/enterprise/customer-scope";
+import { 组员客户编号 } from "@/lib/enterprise/visibility";
 
 /**
  * 客户列表的查询条件、取哪些字段、怎么变成一行——列表页和「导出」共用这一份（2026-10-02 排查）。
@@ -68,7 +70,23 @@ export type 客户条件 = {
   triState?: string;
   /** 「超过 N 天没跟进」（员工反馈 1I，11-16，提醒的临时替代）：正整数天数，口径见 久未跟进条件 */
   idleDays?: string;
+  /**
+   * 「范围」（客户 11-18 第 12 题，lib/enterprise/customer-scope.ts）：mine 我负责的 / joined 我参与的 / visible 我可见的（= 不收窄）。
+   * 这里只认地址上写明的值、不补默认——默认看角色，客户页（page.tsx）、看板列底（board-actions.ts）先补好再传；企业版才认
+   */
+  scope?: string;
 };
+
+/**
+ * 「范围」那一层条件：mine = 负责人是我；joined = 我是名下某个项目的组员（点了同意、项目没进回收站，同 visibility.ts 组员客户编号）、负责人不是我；
+ * visible / 没带 = 不收窄（可见范围照旧由限定层管）
+ */
+export async function 客户范围条件(scope: string | undefined, userId?: string): Promise<Prisma.CustomerWhereInput | null> {
+  if (!企业版() || !是客户范围(scope) || scope === "visible") return null;
+  const me = userId ?? (await requireUser()).id;
+  if (scope === "mine") return { salesOwnerId: me };
+  return { salesOwnerId: { not: me }, id: { in: await 组员客户编号(defaultClient, [me]) } };
+}
 
 /** 「超过 N 天没跟进」认的天数：1–3650 的整数；别的（地址栏手改的、0、小数）当没筛 */
 export function 久未跟进天数(raw: string | undefined): number | null {
@@ -202,10 +220,11 @@ export async function 客户筛选条件(
   const 三态 = sp.triState ? await 三态筛选条件(sp.triState) : null;
   const 久未跟进 = 久未跟进条件(sp.idleDays);
   const 国家 = 国家条件(sp.country);
+  const 范围 = await 客户范围条件(sp.scope, userId);
   // 企业版国家走 addrCountry（上面 国家条件），外贸档案那一层只剩来源
   const 档案国家 = 国家 ? undefined : sp.country;
   return {
-    AND: [keyword, ...(久未跟进 ? [久未跟进] : []), ...(国家 ? [国家] : []), ...(按项目 ? [按项目] : []), ...(三态 ? [三态] : []), ...(本批 ? [客户id集合(本批.map(r => r.customerId))] : []), ...(等级 ? [等级] : []), ...(部门 ? [部门] : []), ...(建于 ? [{ createdAt: 建于 }] : []), ...(号码 ? [号码] : []), ...(sp.channelId && 企业版() ? [{ channelId: sp.channelId }] : [])],
+    AND: [keyword, ...(范围 ? [范围] : []), ...(久未跟进 ? [久未跟进] : []), ...(国家 ? [国家] : []), ...(按项目 ? [按项目] : []), ...(三态 ? [三态] : []), ...(本批 ? [客户id集合(本批.map(r => r.customerId))] : []), ...(等级 ? [等级] : []), ...(部门 ? [部门] : []), ...(建于 ? [{ createdAt: 建于 }] : []), ...(号码 ? [号码] : []), ...(sp.channelId && 企业版() ? [{ channelId: sp.channelId }] : [])],
     ...(sp.grade ? { grade: sp.grade } : {}),
     ...(sp.followStatus ? { followStatus: sp.followStatus } : {}),
     ...(sp.decisionStatus ? { decisionStatus: sp.decisionStatus } : {}),
@@ -320,6 +339,8 @@ const 企业版才筛: readonly string[] = ["custStatus", "customerType", "archi
 export async function 关键词分页(sp: 客户条件, 请求页: number, pageSize: number): Promise<{ total: number; page: number; ids: string[] } | null> {
   // 回收状态筛选只在三态开着、值认得出时才算数（关着地址栏带了 triState 照样走这条快路，11-12）
   if (sp.triState && 是三态筛选值(sp.triState) && (await 三态界面开着())) return null;
+  // 「我参与的」要按项目组员挑客户，裸 SQL 不另写一份，走老路
+  if (sp.scope === "joined" && 企业版()) return null;
   if (sp.phase || sp.node || sp.batch || sp.level || sp.dept || sp.createdWithin || sp.directOf || sp.country || sp.source || 创建时间段(sp.createdFrom, sp.createdTo) || 搜索词(sp.phone) || 久未跟进天数(sp.idleDays)) return null;
   // 项目名另比同老路（客户筛选条件）：只比我能看的项目
   const kw = await 客户关键词SQL(sp.keyword, false, undefined, 项目名另比(() => 按谁算项目()));
@@ -356,6 +377,8 @@ export async function 关键词分页(sp: 客户条件, 请求页: number, pageS
     段.push('NOT EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id)');
   }
   for (const col of 等值列) if (sp[col] && (!企业版才筛.includes(col) || 企业版())) { 段.push(`c."${col}" = ?`); 值.push(sp[col]); }
+  // 「我负责的」（同 客户范围条件 的 mine）
+  if (sp.scope === "mine" && 企业版()) { 段.push('c."salesOwnerId" = ?'); 值.push((await requireUser()).id); }
   // a 放每页条数和请求页，下面的 ? 按出现顺序绑定；页码钳在 SQL 里做（越界页回最后一页，0 条回第 1 页），和 page.tsx 原来的公式一样。
   // m 必须 MATERIALIZED：不然 SQLite 会把它内联两次，扫两遍；关键词命中一次扫完记下来，数和排序都在 m 上做
   const rows = await prisma.$queryRawUnsafe<{ total: number | bigint; id: string | null }[]>(

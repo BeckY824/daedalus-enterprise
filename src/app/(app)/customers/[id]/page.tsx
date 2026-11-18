@@ -34,6 +34,7 @@ import { 页面可自动分配, 暂不分配项目of } from "@/lib/enterprise/cu
 import { 客户默认分配方向 } from "@/lib/enterprise/assign-direction-db";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 要按方向指定, 指定方向候选表 } from "@/lib/enterprise/assign-direction-pick";
+import { 可指定的人 } from "@/lib/enterprise/assign-eta";
 import { 客户自动分配 } from "../../leads/assign-actions";
 import { 附件个数, 联系人分类附件数 } from "@/lib/attachments";
 import { 关联客户们, 页面号码种类表, 联系人号码们, 客户的联系人们, 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
@@ -266,6 +267,7 @@ export default async function CustomerDetailPage({
       自动分配={能自动分 ? 客户自动分配 : undefined}
       指定定向={指定定向}
       // 分配方向的默认值（11-18）：客户区域 → 那条暂不分配项目的所在地 → 客户的号 → 我的事业部；框里可以改
+      自动指定候选={能自动分 ? await 可指定的人(await 读组织()) : undefined}
       自动分配方向={能自动分 ? await 客户默认分配方向(await 读组织(), customer.id, me.id, await 暂不分配项目of({ id: customer.id, salesOwnerId: customer.salesOwnerId!, bizLine: customer.bizLine })) : undefined}
       原负责人领不回={!!customer.pool && 拦原负责人() && (await 我放出去的公海客户([{ id: customer.id, 在公海: true, salesOwnerId: customer.salesOwnerId }], me.id)).length > 0}
       换负责人记录={换负责人记录}

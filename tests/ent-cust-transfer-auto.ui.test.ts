@@ -47,12 +47,11 @@ beforeAll(async () => {
     const root=createRoot(document.getElementById('root'));
     const 长='某某超长贸易进出口有限公司'.repeat(6);
     window.__长=长;
-    const users=[{id:'qa',name:'小王',email:'s1',role:'SALES',active:true},{id:'u2',name:'小张',email:'s2',role:'SALES',active:true}];
-    window.__render=({去处,申请,自动,方向,定向})=>{
-      const 人们=定向?[...users,{id:'u3',name:'小李',email:'s3',role:'SALES',active:true}]:users;
+    const users=[{id:'qa',name:'小王',email:'s1',role:'SALES',active:true},{id:'u2',name:'小张',email:'s2',role:'SALES',active:true},{id:'u3',name:'小李',email:'s3',role:'SALES',active:true}];
+    window.__render=({去处,申请,自动,方向,可指定,定向})=>{
       const 项目们=去处.map(p=>({id:p.id,name:p.名,phase:'商机',node:'报价',result:null,pooledAt:null,amount:0,currency:'CNY'}));
       root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><div className='shell'><nav className='rail' aria-label='主导航'/><main className='main app-content' style={{padding:'22px 26px'}}><div>
-      <Record customer={{id:'a',extra:null,name:长,phone:'13800138000',school:长,grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'小王',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z'}} contacts={[]} contracts={[]} opportunities={[]} tasks={[]} plan={null} users={人们} 指定定向={定向??undefined} channels={[]} aiEnabled={false} followUpsHasMore={false} 项目们={项目们} 参与项目们={[]} 关联们={[]} 旺旺们={[]} 企业版 能放公海 能转让客户 转让要申请={!!申请} 自动分配方向={方向??undefined} 自动分配={自动?async(id,因,向)=>{window.__自={id,因,...(向?{向}:{})};return window.__自回??{ok:true,toUserId:'u2',接手人:'小张',为什么:'本月已分最少（0 条）；按客户区域定内贸'}}:undefined} 转让原因={{选项:['客户迁移','岗位调整','其他'],自己:'qa'}}
+      <Record customer={{id:'a',extra:null,name:长,phone:'13800138000',school:长,grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'小王',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z'}} contacts={[]} contracts={[]} opportunities={[]} tasks={[]} plan={null} users={users} 指定定向={定向??undefined} channels={[]} aiEnabled={false} followUpsHasMore={false} 项目们={项目们} 参与项目们={[]} 关联们={[]} 旺旺们={[]} 企业版 能放公海 能转让客户 转让要申请={!!申请} 自动分配方向={方向??undefined} 自动指定候选={可指定??undefined} 自动分配={自动?async(id,因,向)=>{window.__自={id,因,...(向?{向}:{})};return window.__自回??{ok:true,toUserId:'u2',接手人:'小张',为什么:'本月已分最少（0 条）；按客户区域定内贸'}}:undefined} 转让原因={{选项:['客户迁移','岗位调整','其他'],自己:'qa'}}
         跟进去处={去处} 待办计划={[]} followUps={[]} 新建项目={{节点们:['线索验证'],要下一步:false}}/>
     </div></main></div></BusinessProvider></App></ConfigProvider>);
     };
@@ -64,7 +63,7 @@ afterAll(async () => { await browser?.close(); });
 type 去处 = { id: string; 名: string; 主: boolean; 结束: boolean; 说明: null; 下一步: null; 下一步文字: null; 能记?: boolean };
 const 项 = (id: string, 名: string): 去处 => ({ id, 名, 主: true, 结束: false, 说明: null, 下一步: null, 下一步文字: null, 能记: true });
 
-async function 开(width = 1280, 额外: { 自动?: boolean; 自回?: unknown; 预览?: unknown; 方向?: unknown; 定向?: unknown } = {}) {
+async function 开(width = 1280, 额外: { 自动?: boolean; 自回?: unknown; 预览?: unknown; 方向?: unknown; 可指定?: string[]; 定向?: unknown } = {}) {
   const page = await browser.newPage({ viewport: { width, height: 860 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://cust-auto.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
@@ -72,8 +71,8 @@ async function 开(width = 1280, 额外: { 自动?: boolean; 自回?: unknown; �
   await page.evaluate(x => {
     if (x.自回) Reflect.set(window, "__自回", x.自回);
     if (x.预览) Reflect.set(window, "__预览", x.预览);
-    (window as unknown as { __render: (x: object) => void }).__render({ 去处: x.去处, 自动: x.自动, 方向: x.方向, 定向: x.定向 });
-  }, { 去处: [项("p1", "项目一")], 自动: 额外.自动 ?? true, 自回: 额外.自回, 预览: 额外.预览, 方向: 额外.方向 ?? null, 定向: 额外.定向 ?? null });
+    (window as unknown as { __render: (x: object) => void }).__render({ 去处: x.去处, 自动: x.自动, 方向: x.方向, 可指定: x.可指定, 定向: x.定向 });
+  }, { 去处: [项("p1", "项目一")], 自动: 额外.自动 ?? true, 自回: 额外.自回, 预览: 额外.预览, 方向: 额外.方向 ?? null, 可指定: 额外.可指定 ?? null, 定向: 额外.定向 ?? null });
   await page.locator(".rec-head").first().waitFor();
   return { page, errors };
 }
@@ -252,7 +251,31 @@ it("对照：没给定向（不是市场成员转暂不分配的客户）——�
     await 框.getByLabel("转给谁").waitFor();
     expect(await 框.getByTestId("transfer-direction").count()).toBe(0);
     await 框.getByLabel("转给谁").click();
-    await expect.poll(async () => (await page.locator(".ant-select-dropdown:visible .ant-select-item-option").allInnerTexts()).map(x => x.trim())).toEqual(["小张"]);
+    await expect.poll(async () => (await page.locator(".ant-select-dropdown:visible .ant-select-item-option").allInnerTexts()).map(x => x.trim())).toEqual(["小张", "小李"]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
+});
+
+// 11-18 定：分配模式下的「指定」只列正常参与的人（同 可指定的人）；普通转让（没有方式那组）照列全部
+it("分配模式的指定分配：下拉只列可指定的人；普通转让照列全部（1024 / 1280 / 1366）", async () => {
+  const 列 = async (page: Page, 框: ReturnType<Page["getByRole"]>) => {
+    await 框.getByRole("combobox", { name: "转给谁" }).click();
+    const 单 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
+    await 单.first().waitFor();
+    const 字 = await 单.allInnerTexts();
+    await page.keyboard.press("Escape");
+    return 字;
+  };
+  for (const w of [1024, 1280, 1366]) {
+    for (const [自动, 期] of [[true, ["小李"]], [false, ["小张", "小李"]]] as const) {
+      const { page, errors } = await 开(w, { 自动, 可指定: ["u3", "qa"] });
+      try {
+        const 框 = await 点转让(page);
+        const 字 = await 列(page, 框);
+        expect(字.filter((x) => x !== "小王"), `宽 ${w} 自动=${自动}`).toEqual([...期]);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `宽 ${w}`).toBe(true);
+        expect(errors).toEqual([]);
+      } finally { await page.close(); }
+    }
+  }
 });

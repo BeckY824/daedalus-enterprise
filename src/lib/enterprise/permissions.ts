@@ -8,7 +8,8 @@
  * 四权（看 / 编 / 转 / 删）：
  *   - 系统管理员（director，没设业务线或带「系统管理员」标记，P-判定-06）：全部；软删、真删、回收站；切换视角、后台设置、导入导出、成员管理只给他。
  *     带标记又设了业务线的两个身份并存：全局权限照系统管理员，同时也是那条线的条线总管理（不被线收窄）
- *   - 条线总管理（director 又设了业务线）：看本线人员名下全部；条线内别人负责的只看，本人负责的能编（X-07）；条线内能转让；不能删（line-viewer.ts 条线范围of）
+ *   - 条线总管理（director 又设了业务线）：看本线人员名下全部；条线内别人负责的只看，本人负责的能编（X-07）；条线内能转让；不能删（line-viewer.ts 条线范围of），
+ *     兼了销管 / 销售 / 渠运的按那一角色删自己负责的（11-18 第 11 题）
  *   - 销管（sales_mgr）：看实线下属整条链 + 自己 + 公海；只编辑自己负责的；转让直属一级（同业务线）；自己负责的能软删
  *   - 销售（sales）：自己 + 公海；编辑、转让、软删自己负责的
  *   - 市管（marketing_mgr）：看本人 + 直属下级创建的项目（线索，不管什么状态，11-05 客户定）+ 直属市场成员相关的 + 公海；不编辑；转让直属一级；不删。
@@ -344,20 +345,22 @@ export function 能管公海(me: 谁, org: 组织 | null): boolean {
 /**
  * 软删（客户、联系人、项目、线索、沟通记录进回收站）：系统管理员；销售、销管、渠运删自己负责的（V3.5.1）。
  * 条线总管理、市管、项目组员、管理员只读、只看某人的不能删。负责人 = 这一行的负责人（客户 salesOwnerId、项目 ownerId）；
- * 跟进、附件这类挂在项目 / 客户下的，传它所属那一行的负责人
+ * 跟进、附件这类挂在项目 / 客户下的，传它所属那一行的负责人。
+ * 一人多个角色按任一角色放行（P-判定-01，客户 11-18 第 11 题选 A）：条线总管理兼销管 / 销售 / 渠运的，自己负责的能删，
+ * 别人负责的照旧不能删；条线身份不再一票否决
  */
 export function 能删除(me: 谁, org: 组织 | null, 负责人: string | null | undefined): boolean {
   if (老()) return 老板(me);
   if (!org || 只读角色(me, org) || 只看的人(org, me.id)) return false;
   if (是系统管理员(me, org)) return true;
-  return !!负责人 && 负责人 === me.id && 有(org, me.id, 负责人角色) && !条线范围of(org, me.id);
+  return !!负责人 && 负责人 === me.id && 有(org, me.id, 负责人角色);
 }
 
 /** 列表上摆不摆删除按钮（批量删）：有可能删得了任何一行的人。每行删不删得了，服务端再按 能删除 逐行判 */
 export function 能删一些(me: 谁, org: 组织 | null): boolean {
   if (老()) return 老板(me);
   if (!org || 只读角色(me, org) || 只看的人(org, me.id)) return false;
-  return 是系统管理员(me, org) || (有(org, me.id, 负责人角色) && !条线范围of(org, me.id));
+  return 是系统管理员(me, org) || 有(org, me.id, 负责人角色);
 }
 
 /** 真删（回收站里彻底删除、清空回收站）：只有系统管理员 */
@@ -416,6 +419,16 @@ export function 能改后台设置(me: 谁, org: 组织 | null): boolean {
 export function 是经理(me: 谁, org: 组织 | null): boolean {
   if (老()) return 老管(me);
   return !!org && 有(org, me.id, ["director", "sales_mgr"]);
+}
+
+/**
+ * 客户页「范围」筛选里有没有「我可见的」、默认是不是它（客户 11-18 第 12 题，lib/enterprise/customer-scope.ts）：
+ * 能看到的比「我负责的 + 我参与的」多的人——管理层（含手下有人的）、能看全部 / 只读管理员和教练、市场角色（能看自己建的）、设了只看某人的。
+ * 只是销售的没有这一项，默认「我负责的」
+ */
+export function 有管理范围(me: 谁, org: 组织 | null): boolean {
+  if (!org) return false;
+  return 是管理层(me, org) || 能看全部(me, org) || 只读角色(me, org) || 有(org, me.id, 市场角色) || !!只看的人(org, me.id) || !!按线范围of(org, me.id);
 }
 
 /**

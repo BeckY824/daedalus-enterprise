@@ -37,7 +37,7 @@ import { 读组织, 权限组织 } from "@/lib/enterprise/org";
 import { 新数据渠道不行, 落到渠道 } from "@/lib/enterprise/channel-main";
 import { 是主渠道入口 } from "@/lib/enterprise/channel-main-core";
 import { 认渠道触点, 渠道触点们, 新建来源还差 } from "@/lib/enterprise/touchpoint";
-import { 接手问题 } from "@/lib/enterprise/lead-assign";
+import { 指定问题 } from "@/lib/enterprise/assign-eta";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 记新建指定分配 } from "@/lib/enterprise/direct-assign";
 import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知, 项目被删通知, 项目放回公海通知 } from "@/lib/enterprise/notice-sources";
@@ -121,7 +121,7 @@ export async function 建档向导(输入: 建档向导输入) {
     if (定时?.接手人) {
       const 接 = await prisma.user.findUnique({ where: { id: 定时.接手人 }, select: { active: true } });
       if (!接?.active) return { ok: false as const, error: "项目负责人不存在或已停用，请选一位在职成员" };
-      const 问题 = (await 不能当负责人(定时.接手人)) ?? 接手问题(await 读组织(), 定时.接手人, null);
+      const 问题 = (await 不能当负责人(定时.接手人)) ?? (await 指定问题(await 读组织(), 定时.接手人));
       if (问题) return { ok: false as const, error: 问题 };
     }
     let input = 分配 && (分配.i !== 0 || 定时)
@@ -203,10 +203,11 @@ export async function 建档向导(输入: 建档向导输入) {
     // 负责人选了别人 = 指派，开了持有上限的要算；自己建给自己不拦（lib/project/db.ts 超上限）
     let 转客户 = false;
     if (好.项目.ownerId !== me.id) {
-      // 企业版指定分配给别人：和分配线索同一条（11-03 A2-1）——只能给销售 / 销售管理；业务线这里不比
+      // 企业版指定分配给别人：和分配线索同一条（11-03 A2-1）——只能给销售 / 销售管理；业务线这里不比；
+      // 参与状态要「正常」（11-18 第 8 题 B，和新线索列表「分配」一致：暂停、禁止的不能被指定）
       if (企业版()) {
         const org = await 读组织();
-        const 问题 = 接手问题(org, 好.项目.ownerId, null);
+        const 问题 = await 指定问题(org, 好.项目.ownerId);
         if (问题) return { ok: false as const, error: 问题 };
         // 市场指定给销售 = 市场首次分配，算转客户（X-18，和自动分配同一条）；其余角色指定给别人，客户留在建的人名下（P-转-03）
         转客户 = 算市场转客户(org, { salesOwnerId: me.id, pool: null }, 好.项目.ownerId);

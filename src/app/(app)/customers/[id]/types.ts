@@ -121,6 +121,8 @@ export type RecordProps = {
    * 下拉只列这个方向能接的人；不给 = 照原来（服务端 assignSalesOwner 另核）
    */
   指定定向?: { 候选表: import("@/lib/enterprise/assign-direction-pick-core").指定候选表; 默认方向: import("@/lib/enterprise/customer-region").分配方向 };
+  /** 转让框摆了「指定 / 自动」时，选指定的接手人只列这些人（参与状态正常，审核 11-18 追加，assign-eta 可指定的人）；没给 = 不筛 */
+  自动指定候选?: string[];
   /** 企业版：在公海里、我是原负责人——领取按钮灰着，悬停说「原负责人不能领回」（lib/enterprise/pool-rules.ts） */
   原负责人领不回?: boolean;
   /** 换负责人记录（企业版 D-36），时间正序；左栏「历史负责人」用，没有就不摆 */
