@@ -30,6 +30,7 @@ import { 规则 } from "@/lib/enterprise/rules";
 import { 自动分配不参与key } from "@/lib/enterprise/lead-assign";
 import { 市场分配进验证理由 } from "@/lib/enterprise/market-assign-node";
 import { saveCustomer } from "@/app/(app)/customers/actions";
+import { 建档只建客户 } from "@/app/(app)/projects/actions";
 
 afterAll(() => prisma.$disconnect());
 
@@ -105,5 +106,28 @@ describe("市场成员新建客户：项目分配方式 × 市场分给销售进
     expect([p.ownerId, p.customer.salesOwnerId, p.phase, p.node, p.assignMode, p.awaitAssignAt]).toEqual([市场, 市场, "线索", "潜客培育", "暂不分配", null]);
     expect(await 进验证痕(p.id)).toHaveLength(0);
     expect(await prisma.entLeadAssign.count()).toBe(0);
+  });
+
+  it("新建弹窗没开项目（建档只建客户，潜客培育由 接着 建）：指定 / 自动进线索验证，暂不分配留潜客培育", async () => {
+    const 只建 = (负责人: string, 项目分配: unknown) => {
+      号++;
+      return 建档只建客户({
+        客户: {
+          name: `弹窗客户${号}`, phone: `1360000${String(号).padStart(4, "0")}`, school: null, grade: null, major: null,
+          followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null, remark: null,
+          salesOwnerId: 负责人, channelId: null, referrerCustomerId: null, touchpoint: "公司资源", 企业资料: { bizLine: "内贸" }, 项目分配,
+        },
+        联系人: { name: "王经理", position: "采购", phone: "" },
+        跟进: { type: "PHONE", content: "电话聊了需求", occurredAt: "2026-10-20 10:00" },
+      } as never);
+    };
+    const 节点of = async (r: Awaited<ReturnType<typeof 只建>>) => {
+      if (!r.ok) throw new Error((r as { error: string }).error);
+      const p = await 唯一项目(r.customerId);
+      return [p.ownerId, p.node];
+    };
+    expect(await 节点of(await 只建(乙, { 分配方式: 0 }))).toEqual([乙, "线索验证"]);
+    expect(await 节点of(await 只建(市场, { 分配方式: 1 }))).toEqual([乙, "线索验证"]);
+    expect(await 节点of(await 只建(乙, { 分配方式: 3 }))).toEqual([市场, "潜客培育"]);
   });
 });
