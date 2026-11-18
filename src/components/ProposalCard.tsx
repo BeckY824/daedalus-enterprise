@@ -5,7 +5,7 @@ import OptionInput from "@/components/OptionInput";
 import Shortcut from "./Shortcut";
 
 import AmountTextInput from "@/components/AmountTextInput";
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Select, Input, Checkbox, Button } from "antd";
@@ -113,9 +113,15 @@ export default function ProposalCard({
   记号,
   报,
   批,
+  对话截图,
 }: {
   proposal: Proposal;
   记号?: string;
+  /**
+   * 这一问在对话框里带的截图原件（11-18 员工反馈「录入的时候还是添加不了截图」，lib/card-scan/originals.ts 对话截图）。
+   * 企业版新线索卡上摆缩略图和「存成这条线索的附件」（默认勾上），确认建好后凭首条附件票传到新线索的首条沟通上
+   */
+  对话截图?: File[];
   /** 状态变了就报一声（见 卡况） */
   报?: (id: string, 况: 卡况) => void;
   /** 在合并确认清单里：不画自己的确认 / 忽略按钮，⌘↵ 交给清单；把 卡句柄 交出去 */
@@ -188,6 +194,10 @@ export default function ProposalCard({
   /** 改档案时逐项勾选。默认全勾上——建议是它提的，人只需要否掉不想要的那几项 */
   const [勾了, set勾了] = useState<number[]>(() => (proposal.kind === "update_customer" ? proposal.changes.map((_, i) => i) : [0]));
   const 逐项 = draft.kind === "update_customer" && draft.changes.length > 1;
+  /* 对话里带的截图：只有企业版只用项目的新线索卡收（建成项目才有首条沟通、才签得出首条附件票）；没带图不摆这一块 */
+  const 截图们 = proposal.kind === "add_lead" && 渠道名们 && 对话截图?.length ? 对话截图 : null;
+  const [存截图, set存截图] = useState(true);
+  const 要存截图 = !!截图们 && 存截图;
 
   /**
    * 记沟通卡（企业版沟通必须挂项目，11-17）：这位客户我能挂沟通的在推项目。undefined = 还在问；null = 不是企业版、不用挂。
@@ -239,7 +249,7 @@ export default function ProposalCard({
     /* 断网 / 服务端抛错：卡片回到能再点一次的样子，原因写在卡上（不然一直「写入中…」，合并清单也跟着锁死） */
     let r: Awaited<ReturnType<typeof applyProposal>>;
     try {
-      r = await applyProposal(要提交的);
+      r = await applyProposal(要提交的, 要存截图 ? { 首条附件: true } : undefined);
     } catch (e) {
       setState("idle");
       // 报错不直出英文（25C）：老版本动作说刷新、断网说网络；别的英文原文进日志，卡上一句中文
@@ -258,6 +268,8 @@ export default function ProposalCard({
       if (焦点在卡里) requestAnimationFrame(() => 对话框?.focus());
       // 名片建的线索：选的几张原图存成它（或建出来的主要联系人）的附件。存完再刷一次，附件数跟着出来
       if (r.附件去处) void 存名片原图(r.附件去处);
+      // 对话里带的截图（勾了的）：凭首条附件票传到新线索的首条沟通上
+      if (要存截图 && 截图们) void 存对话截图(截图们, r.首条附件票);
       // 记下刚建的那位：接着单发的客户照片问一句要不要存到他名下（lib/card-scan/originals.ts）
       if (r.附件去处 && 要提交的.kind === "add_lead") {
         建出的去处.current = r.附件去处;
@@ -297,6 +309,27 @@ export default function ProposalCard({
     // 写在回执下面（原型 g.notice：不弹顶部提示），人看得见、也知道到哪补
     if (错.length === 图们.length) set图错(`名片照片没存上：${错[0]}。${到哪补}`);
     else if (错.length) set图错(`${图们.length} 张名片照片存了 ${图们.length - 错.length} 张，${错.length} 张没存上（${错[0]}）。${到哪补}`);
+    router.refresh();
+  }
+
+  /**
+   * 对话里带的截图存成新线索首条沟通的附件（11-18）：凭建线索那一下签给我的首条附件票传（建好多半已分给别人，我不是负责人，
+   * 不凭票传不上——一般规矩不放宽）。逐张传，线索已经建好了，没传上的不回滚，写在回执下面、说清找谁补
+   */
+  async function 存对话截图(图们: File[], 票: { followUpId: string; 票: string } | undefined) {
+    const 到哪补 = "可请项目负责人在这条线索的首条沟通上补传";
+    if (!票) {
+      set图错(`截图没存上：没拿到上传凭证。${到哪补}`);
+      return;
+    }
+    const 错: string[] = [];
+    for (const f of 图们) {
+      const r = await 传附件({ followUpId: 票.followUpId }, f, null, 票.票);
+      if (!r.ok) 错.push(r.error);
+    }
+    const 存了 = 图们.length - 错.length;
+    if (!存了) set图错(`截图没存上：${错[0]}。${到哪补}`);
+    else if (错.length) set图错(`${图们.length} 张截图存了 ${存了} 张，${错.length} 张没存上（${错[0]}）。${到哪补}`);
     router.refresh();
   }
 
@@ -745,6 +778,17 @@ export default function ProposalCard({
             <Field label="备注" block>
               <Input.TextArea size="small" autoSize={{ minRows: 1, maxRows: 5 }} placeholder="可留空" value={draft.remark} onChange={(e) => setDraft({ ...draft, remark: e.target.value })} />
             </Field>
+            {/* 对话里带的截图（11-18）：缩略图 + 勾选，默认勾上；确认建好后存成这条线索首条沟通的附件，负责人能看到 */}
+            {截图们 && (
+              <Field label="截图" block>
+                <div className="prop-shots">
+                  {截图们.map((f, i) => <ShotThumb key={i} f={f} />)}
+                  <Checkbox checked={存截图} onChange={(e) => set存截图(e.target.checked)}>
+                    存成这条线索的附件（{截图们.length} 张，负责人能看到）
+                  </Checkbox>
+                </div>
+              </Field>
+            )}
           </>
           );
         })()}
@@ -863,6 +907,22 @@ function 联系方式格({ 行们, 改 }: { 行们: 线索联系方式[]; 改: (
  * 有「现在是什么」就写成「现在 → 改成」——不写的话，卡片上一行「跟进状态：已签约」
  * 人无从判断这是在改还是本来就是。逐项勾选时前面还有一个勾。
  */
+/**
+ * 对话里带的一张截图的缩略图：本机原件，不经服务器。地址在挂上时建、卸下时收（ref 的清理函数，React 19），不留在内存里。
+ * 原件只在这台电脑上，next/image 的优化用不上
+ */
+function ShotThumb({ f }: { f: File }) {
+  // 同一个原件只建一次地址：ref 回调跟着 f 走，卡片别的格重画时不重建、不闪
+  const 挂 = useCallback((el: HTMLImageElement | null) => {
+    if (!el || typeof URL.createObjectURL !== "function") return;
+    const 址 = URL.createObjectURL(f);
+    el.src = 址;
+    return () => URL.revokeObjectURL(址);
+  }, [f]);
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img className="prop-shot" alt={f.name} title={f.name} ref={挂} />;
+}
+
 function Field({
   label, children, block, 现值, 勾, 待,
 }: {

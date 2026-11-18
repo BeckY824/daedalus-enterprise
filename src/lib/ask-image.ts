@@ -13,7 +13,7 @@ import { 文件字数上限 } from "@/lib/ask-files";
 import { 附件上限字节 } from "@/lib/attachment-rules";
 
 export const 图片后缀 = [".png", ".jpg", ".jpeg", ".webp", ".bmp"];
-const 图片类型 = ["image/png", "image/jpeg", "image/webp", "image/bmp"];
+export const 图片类型 = ["image/png", "image/jpeg", "image/webp", "image/bmp"];
 /** 图的大小上限沿用附件的规矩（lib/attachment-rules.ts）：传给识别前会先缩到长边 1600 */
 export const 图片上限 = 附件上限字节;
 

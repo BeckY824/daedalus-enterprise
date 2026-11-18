@@ -365,5 +365,7 @@ describe("首页「+」摆哪几项（lib/enterprise/composer-plus.ts）", () =>
     const { 加号菜单项 } = await import("@/lib/enterprise/composer-plus");
     expect(加号菜单项({ 摆附件: true, 拍照: false, 摆背调: true }).map((x) => x.label)).toEqual(["附件", "名片", "查重", "背调"]);
     expect(加号菜单项({ 摆附件: false, 拍照: true, 摆背调: false }).map((x) => x.label)).toEqual(["拍名片", "查重"]);
+    // 手机（11-18）：附件那项叫「截图 / 图片」，从相册选图
+    expect(加号菜单项({ 摆附件: true, 拍照: true, 摆背调: false }).map((x) => x.label)).toEqual(["截图 / 图片", "拍名片", "查重"]);
   });
 });

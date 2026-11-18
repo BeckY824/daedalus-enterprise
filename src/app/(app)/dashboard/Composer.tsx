@@ -22,7 +22,7 @@ import { clearJob, setJobValue } from "@/lib/ai-jobs";
 import type { StreamJob } from "@/lib/ai-stream";
 import type { AgentAnswer } from "@/lib/thread-history";
 import type { Proposal } from "@/lib/agent/proposals";
-import type { 刚建的人 } from "@/lib/card-scan/originals";
+import { 记下对话截图, type 刚建的人 } from "@/lib/card-scan/originals";
 import { cancelStream } from "@/lib/ai-stream";
 import { addTurn, clearThread, type Turn } from "@/lib/home-thread";
 import { 是刚交过来的 } from "@/lib/home-ask";
@@ -301,6 +301,8 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
       queued: shouldQueue,
       files: files.length ? files.map((f) => ({ name: f.name, text: f.text })) : undefined,
     });
+    // 带的截图原件按这一问记在内存里（不发给模型）：出了新线索卡，卡上可以勾选存成这条线索的附件（11-18）
+    记下对话截图(turn.id, files.flatMap((f) => (f.原件 ? [f.原件] : [])));
     if (!shouldQueue) start(turn);
     发完(turn.id);
   }

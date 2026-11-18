@@ -58,7 +58,13 @@ export type 附件去处 = { contactId: string } | { leadId: string };
 
 /** 项目：企业版新线索卡建成的项目 id，卡上「查看」直接打开它（10-30 交互审核） */
 /** 回收站号：只在回收站里撞上的号码（客户 11-05），卡上给「从回收站捞回」（customers/number-actions.ts 从回收站捞回） */
-export type ApplyResult = { ok: true; message: string; 撤销?: 撤销凭据; 附件去处?: 附件去处; 项目?: string } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string } };
+/**
+ * 首条附件票（11-18 员工反馈「录入的时候添加不了截图」）：新线索卡上勾了把对话里带的截图存成附件，确认时交 首条附件，
+ * 建成项目照建档向导同一套签一张首条附件票给录入人（lib/enterprise/first-follow-ticket.ts），浏览器凭票把截图传到这条首条沟通上
+ */
+export type 首条附件票 = { followUpId: string; 票: string };
+export type 确认选项 = { 首条附件?: boolean };
+export type ApplyResult = { ok: true; message: string; 撤销?: 撤销凭据; 附件去处?: 附件去处; 项目?: string; 首条附件票?: 首条附件票 } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string } };
 
 /**
  * 确认一张 AI 建议卡，把它真的写进去。
@@ -236,7 +242,7 @@ function 放掉凭据(userId: string, u: unknown) {
   }
 }
 
-export async function applyProposal(input: Proposal): Promise<ApplyResult> {
+export async function applyProposal(input: Proposal, 选项?: 确认选项): Promise<ApplyResult> {
   const me = await requireUser();
   /*
     同一张卡确认第二次：不再做一遍（第二轮 AI）。原来只靠前端按钮变灰，网慢时连点、或者刷新后又点一次，
@@ -249,7 +255,7 @@ export async function applyProposal(input: Proposal): Promise<ApplyResult> {
   记下确认过(卡键);
   let r: ApplyResult | undefined;
   try {
-    r = await 做这张卡(input, me);
+    r = await 做这张卡(input, me, 选项?.首条附件 === true);
     return r;
   } finally {
     if (!r?.ok) 确认过的卡.delete(卡键);
@@ -266,7 +272,7 @@ export async function applyProposal(input: Proposal): Promise<ApplyResult> {
  * 建之前按全部联系方式查重（10-27 会议，ai-lead-dedupe.ts）：电话加备注里认得出的邮箱 / 微信 / 阿里国际站ID，撞了不建、提醒原负责人。
  * 不撞：创建人 = 录入人；负责人按分配方式（指定 → 那位销售，客户跟着走；自动 → 建在我名下再按业务线分；暂不分配 / 个人自持 → 自己）
  */
-async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id: string; name: string }): Promise<{ ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string } }> {
+async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id: string; name: string }, 要传附件 = false): Promise<{ ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string; 首条附件票?: 首条附件票 } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string } }> {
   const meId = me.id;
   const { 号们: 备注号们, 剩 } = 认出备注里的号码(p.remark || "");
   /*
@@ -357,12 +363,15 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
       ...(p.下一步?.trim() ? { 下一步: p.下一步.trim() } : {}),
       节点: p.节点 ?? 企业版字典.节点们.线索[0],
     },
+    // 卡上勾了把对话里的截图存成附件：建档向导签首条附件票给录入人（只认他 + 这条首条沟通，15 分钟；附件的一般规矩不放宽）
+    ...(要传附件 ? { 要传附件: true } : {}),
   });
   // 分给了别人（指定 / 自动分配转走）：项目不在我名下，不给「打开项目」，提示条说清分给了谁
   if (r.ok) {
     const 走了 = "转走" in r && r.转走 === true;
     const 提示 = "提示" in r && typeof r.提示 === "string" ? r.提示 : undefined;
-    return { ok: true, ...(走了 ? {} : { 项目: r.projectId }), ...(提示 ? { 提示 } : {}), ...(r.contactId ? { 附件去处: { contactId: r.contactId } } : {}) };
+    const 票 = "附件票" in r && r.附件票 ? r.附件票 : null;
+    return { ok: true, ...(走了 ? {} : { 项目: r.projectId }), ...(提示 ? { 提示 } : {}), ...(r.contactId ? { 附件去处: { contactId: r.contactId } } : {}), ...(票 ? { 首条附件票: 票 } : {}) };
   }
   // 开了超时回收：首条跟进要填下一步时间（卡上「下一步」那格）
   if (r.error === 要下一步时间) return { ok: false, error: "开了超时回收，新线索要填「下一步」时间" };
@@ -371,7 +380,7 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
 
 const 卡上来源 = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 60) : "");
 
-async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requireUser>>): Promise<ApplyResult> {
+async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requireUser>>, 要传附件 = false): Promise<ApplyResult> {
   const b = await getBusiness();
   // 全页面 AI 的项目类卡（推进节点、卡点、回款、验证、联系人、删客户）：在 lib/agent/apply-project.ts，同样只转给页面上的 server action
   if (是项目卡(input?.kind)) {
@@ -447,10 +456,10 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
   if (p.kind === "add_opportunity") return { ok: false, error: "这里商机是项目的一个阶段：请到项目页把它推到商机阶段" };
   if (只用项目 && p.kind === "add_contract") return { ok: false, error: "这里成交记在项目上：请到项目页把它推到成交" };
 
-  let done: { ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string } };
+  let done: { ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string; 首条附件票?: 首条附件票 } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string } };
   let 撤销: 撤销凭据 | undefined;
   if (只用项目 && p.kind === "add_lead") {
-    done = await 建成项目(p, me);
+    done = await 建成项目(p, me, 要传附件);
   } else if (p.kind === "update_customer") {
     done = await 改档案(p.customerId, p.changes);
   } else if (p.kind === "add_contract") {
@@ -501,7 +510,7 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
   const summary = summarizeApplied(p, b.customer, b);
   await recordAudit({ user: me, action: "ai_apply", entity: "Ai", entityId: p.kind, summary, detail: { 对象: c.name || p.customerName, 理由: p.reason } });
   const 话 = summary.replace("确认 AI 建议：", "已") + (done.提示 ? `；${done.提示}` : "");
-  return { ok: true, message: 话, 撤销, ...(done.附件去处 ? { 附件去处: done.附件去处 } : {}), ...(done.项目 ? { 项目: done.项目 } : {}) };
+  return { ok: true, message: 话, 撤销, ...(done.附件去处 ? { 附件去处: done.附件去处 } : {}), ...(done.项目 ? { 项目: done.项目 } : {}), ...(done.首条附件票 ? { 首条附件票: done.首条附件票 } : {}) };
 }
 
 /**
