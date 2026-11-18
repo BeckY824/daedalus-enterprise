@@ -3,6 +3,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 新建分配方式数据 } from "@/lib/project/after-create-assign";
 import { 企业版字典 } from "@/lib/project/nodes";
+import { 计时起点, 节点超时天数 } from "@/lib/project/timeout";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import type { 建档数据 } from "./ProjectWizard";
 import type { SessionUser } from "@/lib/auth";
@@ -26,6 +27,16 @@ export async function 建档向导数据(me: SessionUser): Promise<建档数据>
     企 ? 新建只给自己(me) : false,
   ]);
   // 客户只给自己（10-27 会议）：新建弹窗没开项目时「客户负责人」不给选（服务端 saveCustomer 同样落到自己）
-  const 企业 = 企 ? { 渠道们: 渠道们!, 节点们: 企业版字典.节点们.线索, ...分配方式们!, 客户只给自己: 只给自己 } : null;
+  const 企业 = 企 ? { 渠道们: 渠道们!, 节点们: 企业版字典.节点们.线索, ...分配方式们!, 客户只给自己: 只给自己, 回收预估: 回收预估(规则) } : null;
   return { users, 要下一步: 规则.超时回收.开, 企业 };
+}
+
+/**
+ * 新建的项目哪天会被超时回收（指定回复时间晚于它就黄条提示）：起点日 + 所选进程的天数，外贸按外贸那套（timeout.ts 超时回收日 同一个算法）。
+ * 11-18 起下一步时间只提醒、不收回，回收日不看下一步时间。超时回收关着 = null（不提示）
+ */
+function 回收预估(规则: Awaited<ReturnType<typeof 生效组织规则>>) {
+  if (!规则.超时回收.开) return null;
+  const 们 = (线: string) => Object.fromEntries(企业版字典.节点们.线索.map((n) => [n, 节点超时天数(规则, n, 企业版字典, 线) ?? 0]));
+  return { 起点日: 计时起点(规则, new Date()).format("YYYY-MM-DD"), 内贸: 们("内贸"), 外贸: 们("外贸") };
 }

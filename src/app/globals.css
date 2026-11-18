@@ -5116,6 +5116,9 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 .home-cth-todo-warn { color: var(--warning-text); }
 .home-cth-todo-s { flex: 1 1 200px; min-width: 0; color: var(--text-muted); font-size: var(--fs-note); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-cth-todo-a { white-space: nowrap; margin-inline-start: auto; }
+/* 首页「自动分配：前面约 N 条轮到你」（11-18，AssignEtaLine）：主句和估算说明都折行、不省略——说明是客户要求旁注的，不能被截掉 */
+.home-eta-t { white-space: normal; min-width: 0; overflow-wrap: anywhere; }
+.home-eta-note { white-space: normal; overflow-wrap: anywhere; }
 @keyframes pd-band-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .pd-follow-leave { animation: pd-follow-leave var(--t) var(--ease) forwards; overflow: hidden; pointer-events: none; }
 @keyframes pd-follow-leave { to { opacity: 0; transform: translateX(8px); } }

@@ -98,7 +98,7 @@ describe("口径（纯函数）", () => {
   it("外贸单设的时长更短（C7）：粗筛按两套里最短的算，外贸项目不会被漏掉", () => {
     const 字典 = 字典of(true);
     const 今 = new Date(2026, 10, 10, 9);
-    const 起 = (w: ReturnType<typeof 即将逾期粗筛>) => ((w?.OR as { createdAt?: { lt: Date } }[])[0].createdAt!.lt);
+    const 起 = (w: ReturnType<typeof 即将逾期粗筛>) => (w?.createdAt as { lt: Date }).lt;
     const 只内贸 = 即将逾期粗筛({ ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 10 } } }, 字典, 今);
     const 带外贸 = 即将逾期粗筛({ ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 10 }, 外贸节点天数: { 潜客培育: 2 } } }, 字典, 今);
     // 最短：只内贸 = min(10, 默认 7) = 7；带外贸 = 2 → 建得更晚的也要捞出来
@@ -193,21 +193,22 @@ describe("取数和项目页筛选", () => {
 
   it("开了超时回收：回收日 3 天以内的才算即将逾期", async () => {
     await 存组织规则(开超时);
-    // 默认 7 天：5 天前建的还剩 2 天；下一步明天的 = 后天回收；今天建的还剩 7 天
+    // 默认 7 天：5 天前建的还剩 2 天；今天建的还剩 7 天。下一步时间明天的只提醒、不收回（11-18），不算即将逾期
     await prisma.project.update({ where: { id: 项["重点新"] }, data: { createdAt: dayjs().subtract(5, "day").toDate() } });
-    await prisma.project.update({ where: { id: 项["业务员的"] }, data: { nextStepAt: dayjs().add(1, "day").toDate() } });
+    await prisma.project.update({ where: { id: 项["业务员的"] }, data: { createdAt: new Date(), nextStepAt: dayjs().add(1, "day").toDate() } });
     // 「重点跟过」上月建的会被先收走，挪到今天，留一个回收日还远的
     await prisma.project.update({ where: { id: 项["重点跟过"] }, data: { createdAt: new Date() } });
     const 数 = await 数首页卡(老板, new Date(), 老四张);
-    expect(数["due-soon"]).toBe(2);
-    expect(await 列("due-soon")).toEqual(["业务员的", "重点新"]);
+    expect(数["due-soon"]).toBe(1);
+    expect(await 列("due-soon")).toEqual(["重点新"]);
   });
 
   it("X-78 验证中（等复核）的线索不收回，也不算即将逾期", async () => {
     await 存组织规则(开超时);
     await prisma.project.update({ where: { id: 项["重点新"] }, data: { createdAt: dayjs().subtract(5, "day").toDate() } });
-    await prisma.project.update({ where: { id: 项["业务员的"] }, data: { nextStepAt: dayjs().add(1, "day").toDate() } });
+    await prisma.project.update({ where: { id: 项["业务员的"] }, data: { createdAt: dayjs().subtract(6, "day").toDate() } });
     await prisma.project.update({ where: { id: 项["重点跟过"] }, data: { createdAt: new Date() } });
+    expect((await 数首页卡(老板, new Date(), 老四张))["due-soon"]).toBe(2);
     await prisma.entLeadVerify.create({ data: { projectId: 项["业务员的"], verdict: "初验无效", pending: "市场复核" } });
     expect((await 数首页卡(老板, new Date(), 老四张))["due-soon"]).toBe(1);
     expect(await 列("due-soon")).toEqual(["重点新"]);

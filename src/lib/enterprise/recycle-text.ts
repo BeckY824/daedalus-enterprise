@@ -4,6 +4,7 @@
  *   - 回公海文案：把回收日写成具体日子 + 天数（术语表：「11-06 回公海 · 还剩 7 天」「明天回公海（11-06）」），
  *     3 天内 = 「近」（橙），当天 = 「当天」（红），已过 = 「已过」（红）
  *   - 预演回收日：记沟通时选了下一步时间，回收日会变成哪天。和 超时回收日 同一个算法，只是起点换成「记完这条以后」的起点
+ *     （11-18 起下一步时间只提醒、不收回：回收日只看这条沟通把起点推到哪天）
  * 项目列表（看板 / 列表）的「即将回收」标签也用 回公海文案 的 短文字
  */
 import { dayjs } from "@/lib/utils";
@@ -39,9 +40,8 @@ export const 回公海颜色: Record<回公海级别, string | undefined> = {
 export type 回收预演底子 = { 起点日: string; 天数: number };
 
 /**
- * 记完这条沟通，回收日会变成哪天（YYYY-MM-DD）。没选下一步时间、日子不对 = null（界面就不显示这句）。
- * 和 timeout.ts 超时回收日 同一个算法：起点 = max(原起点, 这条沟通的日子)；起点 + 天数；
- * 下一步那天不早于起点 → 下一步那天过完也收，取早的
+ * 记完这条沟通，回收日会变成哪天（YYYY-MM-DD）。没选下一步时间、日子不对 = null（界面就不显示这句，这句挂在下一步时间那格下面）。
+ * 和 timeout.ts 超时回收日 同一个算法：起点 = max(原起点, 这条沟通的日子)；起点 + 天数。下一步时间只提醒、不提前收（11-18）
  */
 export function 预演回收日(底子: 回收预演底子 | null | undefined, 沟通日: string | null | undefined, 下一步日: string | null | undefined): string | null {
   if (!底子 || !(底子.天数 > 0) || !下一步日) return null;
@@ -50,11 +50,5 @@ export function 预演回收日(底子: 回收预演底子 | null | undefined, �
   const 下 = dayjs(下一步日);
   if (!原.isValid() || !下.isValid() || (沟 && !沟.isValid())) return null;
   const 起 = (沟 && 沟.isAfter(原) ? 沟 : 原).startOf("day");
-  let 日 = 起.add(底子.天数, "day");
-  const 下一步 = 下.startOf("day");
-  if (!下一步.isBefore(起)) {
-    const 过完 = 下一步.add(1, "day");
-    if (过完.isBefore(日)) 日 = 过完;
-  }
-  return 日.format("YYYY-MM-DD");
+  return 起.add(底子.天数, "day").format("YYYY-MM-DD");
 }

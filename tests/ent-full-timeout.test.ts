@@ -1,6 +1,6 @@
 /**
  * 上线前全面测试 · 超时回收（11-02）：按 c1 现在的配置（9 个线索 / 商机节点内贸、外贸都 60 天，起算日 2026-11-01）
- *   - 纯算：11-01 建的 12-31 收；老数据（9 月建的）从 11-01 起算；下一步时间提前收；订单阶段不收
+ *   - 纯算：11-01 建的 12-31 收；老数据（9 月建的）从 11-01 起算；下一步时间只提醒、不提前收（11-18 客户定）；订单阶段不收
  *   - 真库扫：第 59 天不收、第 60 天收（上海时区零点前后）；外贸一样；有结局 / 已在公海 / 订单阶段不收
  *   - 收了：负责人清空（C-01）、留痕记系统、原负责人一条待办 + 一条「回收」铃铛；同一天扫两遍不重复
  */
@@ -48,8 +48,8 @@ describe("c1 60 天：回收日纯算", () => {
     expect(超时回收日(规则, 线索, 沪("2026-11-05T15:00:00"), 企业版字典, "外贸")).toBe("2027-01-04");
   });
 
-  it("下一步时间 11-10：那天过完就收（11-11），比 60 天早", () => {
-    expect(超时回收日(规则, { ...线索, nextStepAt: 沪("2026-11-10T09:00:00") }, 沪("2026-11-01T10:00:00"), 企业版字典, "内贸")).toBe("2026-11-11");
+  it("下一步时间 11-10：只提醒、不提前收，还是满 60 天那天（12-31）收（11-18 客户定）", () => {
+    expect(超时回收日(规则, { ...线索, nextStepAt: 沪("2026-11-10T09:00:00") }, 沪("2026-11-01T10:00:00"), 企业版字典, "内贸")).toBe("2026-12-31");
   });
 
   it("下一步时间在 60 天之后：不延长，还是 12-31", () => {
@@ -125,18 +125,30 @@ describe("c1 60 天：真库扫", () => {
     expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).pooledAt).not.toBeNull();
   });
 
+  it("下一步时间过了、没满 60 天：不收；满 60 天照收（11-18 客户定：下一步时间只提醒）", async () => {
+    const p = await 项目(销售甲.id, "过期项目", { nextStepText: "约演示", nextStepAt: 沪("2026-11-10T09:00:00") });
+    expect(await 超时预览(规则, 沪("2026-11-11T08:00:00"))).toBe(0);
+    expect(await 扫(沪("2026-11-11T08:00:00"))).toBe(0);
+    expect(await 扫(沪("2026-12-30T09:00:00"))).toBe(0);
+    const 没收 = await prisma.projectNodeLog.count({ where: { projectId: p.id, kind: "pool-release" } });
+    expect(没收).toBe(0);
+    expect(await 扫(沪("2026-12-31T00:01:00"))).toBe(1);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).pooledAt).not.toBeNull();
+  });
+
   it("收了：留痕记系统 + 超时理由、原负责人一条待办 + 一条「回收」铃铛；同一天再扫一遍不重复", async () => {
     const p = await 项目(销售甲.id, "一号项目", { nextStepText: "约演示", nextStepAt: 沪("2026-11-10T09:00:00") });
-    expect(await 扫(沪("2026-11-10T20:00:00"))).toBe(0); // 下一步那天还没过完
-    expect(await 扫(沪("2026-11-11T08:00:00"))).toBe(1);
-    expect(await 扫(沪("2026-11-11T18:00:00"))).toBe(0);
+    expect(await 扫(沪("2026-11-11T08:00:00"))).toBe(0); // 下一步时间过了也不收
+    expect(await 扫(沪("2026-12-30T20:00:00"))).toBe(0); // 第 59 天还没满
+    expect(await 扫(沪("2026-12-31T08:00:00"))).toBe(1);
+    expect(await 扫(沪("2026-12-31T18:00:00"))).toBe(0);
     const 痕 = await prisma.projectNodeLog.findMany({ where: { projectId: p.id, kind: "pool-release" } });
     expect(痕).toHaveLength(1);
     expect(痕[0]).toMatchObject({ fromOwnerId: 销售甲.id, toOwnerId: null, reason: 超时理由, userId: "system" });
-    // 前一天（11-10）扫的时候先发了一条「明天会收」的提醒；收的那天再一条「已收回」
+    // 前一天（12-30）扫的时候先发了一条「明天会收」的提醒；收的那天再一条「已收回」
     const 待办 = await prisma.task.findMany({ where: { ownerId: 销售甲.id }, orderBy: { createdAt: "asc" } });
     expect(待办.map((t) => t.title)).toEqual([
-      expect.stringContaining("2026-11-11 会自动回到线索公海"),
+      expect.stringContaining("2026-12-31 会自动回到线索公海"),
       expect.stringContaining("「一号项目」在「潜客培育」超过处理时长"),
     ]);
     const 铃 = await prisma.entNotice.findMany({ where: { userId: 销售甲.id, kind: "回收" } });
