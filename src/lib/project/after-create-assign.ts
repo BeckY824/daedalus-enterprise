@@ -10,8 +10,7 @@ import { 读组织 } from "@/lib/enterprise/org";
 import { 没设业务角色 } from "@/lib/enterprise/permissions";
 import { 标待分配 } from "@/lib/enterprise/await-assign";
 import { 读市场成员们 } from "@/lib/enterprise/market-db";
-import { 默认分配方式, 是销售角色, type 项目线 } from "@/lib/enterprise/assign-line";
-import { 新建算市场成员of } from "@/lib/enterprise/org-core";
+import { 默认分配方式, 是销售角色, 算市场, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 向导自动分配 } from "@/app/(app)/leads/assign-actions";
 import { 标定时分配 } from "@/lib/enterprise/scheduled-assign";
 import { 认定时分配, 短时刻 } from "@/lib/project/time-fields";
@@ -122,7 +121,7 @@ export function 认新建定时(分配: 定好的分配, 值: unknown, 接手人
  * 业务角色只认 EntMember（组织里的 角色们），账号角色不算
  */
 export async function 新建分配方式数据(me: 我): Promise<{ 分配方式们: 定好的分配[]; 默认分配方式: number | null; 是销售: boolean; 没角色: boolean; 按区域: boolean;
-  /** 市场成员（市场管理、渠运、按部门 / 逐人认的，X-93；兼销售 / 销售管理的不算，新建算市场成员of）：新建客户没开项目时摆「项目分配方式」（11-18，new-cust-assign.ts） */
+  /** 算市场（市场管理、渠运、按部门 / 逐人认的市场成员，X-93）：新建客户没开项目时摆「项目分配方式」（11-18，new-cust-assign.ts） */
   是市场: boolean;
   /** 本人事业部（11-18 分配方向第三步：区域、电话都判不出时的默认）；不是按区域分配的人不算，给 null */
   本人线: 线 | null;
@@ -136,5 +135,5 @@ export async function 新建分配方式数据(me: 我): Promise<{ 分配方式�
   // 没角色：向导一进来就提示、不让往下填，免得填完五步才被服务端拦（D3-6）
   // 按区域：市场成员（按岗位：市场管理、渠道运营，X-141 ②）选自动分配时业务线不用选，按客户区域定（P-转-26）
   const 按区域 = 按区域分配(角色们);
-  return { 分配方式们: 能用, 默认分配方式: 默认 ?? null, 是销售: 是销售角色(角色们, 部门市场), 是市场: 新建算市场成员of(org, me.id, 部门市场), 没角色: 没设业务角色(org, me.id), 按区域, 本人线: 按区域 ? await 本人线of(org, me.id) : null, 可指定: await 可指定的人(org) };
+  return { 分配方式们: 能用, 默认分配方式: 默认 ?? null, 是销售: 是销售角色(角色们, 部门市场), 是市场: 算市场(角色们, 部门市场), 没角色: 没设业务角色(org, me.id), 按区域, 本人线: 按区域 ? await 本人线of(org, me.id) : null, 可指定: await 可指定的人(org) };
 }

@@ -5,8 +5,7 @@
  * 以前这种分法只发「分给你」通知、不写 EntLeadAssign，接手人本月已分一直是 0，自动分配顺序只剩开号先后，「快轮到我」的数也不对。
  *
  * - 谁算市场成员：业务角色有市场管理（marketing_mgr）或渠道运营（channel_ops），只认 EntMember 业务角色，不看账号 ADMIN / MANAGER；
- *   按部门认的市场成员（X-93）不算（客户原话说的是这两种岗位）；兼销售 / 销售管理的不算（org-core 是市场成员of，11-18 用户「按之前的口径」：
- *   兼管理角色的人新建时把负责人选成别人是普通指定，不按市场成员记）
+ *   按部门认的市场成员（X-93）不算（客户原话说的是这两种岗位，和 按区域分配 同一组）
  * - 只记「新建」：新建客户页（客户自带的潜客培育项目）、建档向导 / 新线索 / 首页 AI 新线索卡（走建档向导）、建档只建客户、客户页新增项目。
  *   改负责人、转让、公海分配、导入都不是新建，不记
  * - 以项目为单位：企业版只用项目（新线索 = 线索阶段的项目），一个新建动作落一个项目，一条记录挂 projectId；
@@ -22,8 +21,8 @@ import { getSetting } from "@/lib/settings";
 import { 看全部 } from "@/lib/team-scope";
 import { 企业版 } from "./switch";
 import { 读组织 } from "./org";
-import { 是市场成员of, type 组织 } from "./org-core";
-import { 默认分配方向, 本人事业部, type 定线号 } from "./customer-region";
+import type { 组织 } from "./org-core";
+import { 按区域分配of, 默认分配方向, 本人事业部, type 定线号 } from "./customer-region";
 import type { 客户地址 } from "./customer-v2";
 import { 分配方式叫法 } from "./dict";
 import { 读线部门 } from "./assign-eta";
@@ -31,9 +30,9 @@ import { 客户号们 } from "./assign-direction-db";
 import { 企划线索计数key, 月份, 计不计数, type 线 } from "./lead-assign";
 import { 分配后估算推送 } from "./notice-sources";
 
-/** 这次新建算不算市场成员的指定分配：建的人是市场成员（是市场成员of：按业务角色、不兼销售 / 销售管理）、负责人是另一个人 */
-export function 新建算指定分配(org: 组织, 建的人: string, 负责人: string | null | undefined): boolean {
-  return !!负责人 && 负责人 !== 建的人 && 是市场成员of(org, 建的人);
+/** 这次新建算不算市场成员的指定分配：建的人是市场成员（按业务角色）、负责人是另一个人 */
+export function 新建算指定分配(org: Pick<组织, "成员">, 建的人: string, 负责人: string | null | undefined): boolean {
+  return !!负责人 && 负责人 !== 建的人 && 按区域分配of(org, 建的人);
 }
 
 /**

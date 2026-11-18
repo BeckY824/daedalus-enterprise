@@ -166,36 +166,24 @@ describe("2. 市场分配指定挡：兼管理角色不走，接手人按普通�
   });
 });
 
-describe("3. 新建时负责人选成别人：兼管理角色不记指定分配", () => {
-  it("兼管 → 不算；纯市场管理 / 渠道运营 → 算", async () => {
+describe("3–5. 新建计数、只建客户的「项目分配方式」、补建建给自己：兼管理角色照 main（不是今天新加的限制，不动）", () => {
+  it("3. 新建选别人记指定分配：兼管、纯市场管理、渠道运营都算（接手人本月已分 +1，自动分配顺序不变）", async () => {
     const org = await 读组织();
-    expect(新建算指定分配(org, 兼管, 外一)).toBe(false);
-    expect(新建算指定分配(org, 市场管, 外一)).toBe(true);
-    expect(新建算指定分配(org, 渠运, 外一)).toBe(true);
+    for (const id of [兼管, 市场管, 渠运]) expect(新建算指定分配(org, id, 外一)).toBe(true);
   });
-});
 
-describe("4. 只建客户的「项目分配方式」：只给市场成员", () => {
-  it("兼管：不算市场（不摆这一格），交了服务端拒、什么都不建", async () => {
-    expect((await 新建分配方式数据({ ...mocks.user, id: 兼管 })).是市场).toBe(false);
+  it("4. 只建客户的「项目分配方式」：兼管照旧摆这一格；市场管理、渠道运营照旧默认自动分配", async () => {
+    expect((await 新建分配方式数据({ ...mocks.user, id: 兼管 })).是市场).toBe(true);
     当(兼管, "MANAGER");
-    expect(await 建档只建客户(只建(兼管, { 分配方式: 3 }))).toMatchObject({ ok: false, error: "只有市场成员新建客户时能选项目分配方式" });
-    expect(await prisma.customer.count()).toBe(0);
-  });
-
-  it("对照：市场管理、渠道运营照旧算市场、默认自动分配", async () => {
+    expect(await 建档只建客户(只建(兼管, { 分配方式: 3 }))).toMatchObject({ ok: true });
     for (const id of [市场管, 渠运]) {
       const 数 = await 新建分配方式数据({ ...mocks.user, id });
       expect([数.是市场, 数.默认分配方式]).toEqual([true, 1]);
     }
   });
-});
 
-describe("5. 系统补建建给自己：兼管理角色记个人自持", () => {
-  it("兼管 → 个人自持；纯市场管理 / 渠道运营 → 暂不分配", async () => {
-    expect(await 系统建项目分配方式(prisma, 兼管, 兼管)).toBe("个人自持");
-    expect(await 系统建项目分配方式(prisma, 市场管, 市场管)).toBe("暂不分配");
-    expect(await 系统建项目分配方式(prisma, 渠运, 渠运)).toBe("暂不分配");
+  it("5. 系统补建建给自己：兼管、纯市场管理、渠道运营都记暂不分配", async () => {
+    for (const id of [兼管, 市场管, 渠运]) expect(await 系统建项目分配方式(prisma, id, id)).toBe("暂不分配");
   });
 });
 

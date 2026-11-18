@@ -2,7 +2,7 @@
  * 新建客户（没开项目：只建客户，客户自带一个潜客培育项目，M-公海-14）时，市场成员选的「项目分配方式」（11-18 用户）：
  * 「新建客户页给市场成员加一格项目分配方式，可选指定分配 / 自动分配 / 暂不分配，行为和建档向导一样；市场成员默认自动分配」。
  *
- * - 谁能用：企业版、市场成员（业务角色市场管理 / 渠道运营，或按部门 / 逐人认定的；兼销售 / 销售管理的不算，org-core 新建算市场成员of）；
+ * - 谁能用：企业版、市场成员（业务角色市场管理 / 渠道运营，或按部门 / 逐人认定的，同 assign-line.ts 算市场）；
  *   能选哪几种 = 新客户分配可选 ∩ 我能用的分配方式（谁能用照 assign-use.ts、自动分配要「线索分配」规则开着）。别人交了服务端拒
  * - 指定分配：负责人 = 选的那位，客户和潜客培育一起给他。市场首次分给销售（算市场转客户）= 先建在自己名下，
  *   同一笔事务里走 转客户给销售（市场转一位：换负责人记录、客户分配补「非自持」），先核接手人的持有上限（同建档向导）；
@@ -21,8 +21,7 @@ import { 不能当负责人 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 读市场成员们 } from "@/lib/enterprise/market-db";
-import { 新客户分配可选, 是项目线, type 项目线 } from "@/lib/enterprise/assign-line";
-import { 新建算市场成员of } from "@/lib/enterprise/org-core";
+import { 算市场, 新客户分配可选, 是项目线, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 是分配方式序号 } from "@/lib/enterprise/dict";
 import { 按区域分配of, 认分配方向, type 分配方向 } from "@/lib/enterprise/customer-region";
 import { 客户默认分配方向 } from "@/lib/enterprise/assign-direction-db";
@@ -54,7 +53,7 @@ export type 认好的新客户分配 = {
 export async function 认新客户分配(me: 我, 交: unknown, 选的负责人: string | null | undefined): Promise<认好的新客户分配 | { error: string }> {
   if (!企业版()) return { error: "企业版才有项目分配方式" };
   const org = await 读组织();
-  if (!新建算市场成员of(org, me.id, (await 读市场成员们(org)).has(me.id))) return { error: "只有市场成员新建客户时能选项目分配方式" };
+  if (!算市场(org.成员.get(me.id)?.角色们 ?? [], (await 读市场成员们(org)).has(me.id))) return { error: "只有市场成员新建客户时能选项目分配方式" };
   const 序 = 交 && typeof 交 === "object" ? (交 as 新客户分配交).分配方式 : undefined;
   if (!是分配方式序号(序) || !新客户分配可选.includes(序)) return { error: "新建客户的项目分配方式只能选指定分配、自动分配或暂不分配" };
   const 负责人 = 序 === 0 ? String(选的负责人 ?? "") : me.id;
