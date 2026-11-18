@@ -41,6 +41,7 @@ import { 钟上三态提醒 } from "@/lib/enterprise/tri-state-notice";
 import { 钟上指定回复提醒 } from "@/lib/enterprise/reply-notice";
 import { 钟上定时分配, type 定时分配明细 } from "@/lib/enterprise/scheduled-assign";
 import { 钟上超时自动转, type 超时转明细 } from "@/lib/enterprise/reply-overdue";
+import { 收拾卡住的推送 } from "@/lib/enterprise/feishu-push";
 import { dayjs } from "../utils";
 
 export const 夜扫时刻 = { 时: 0, 分: 5 } as const;
@@ -147,6 +148,9 @@ export function 启动夜扫(间隔毫秒 = 60_000, 先等?: Promise<unknown>): 
       // 挂靠申请 24 小时没人处理往上转一级，到总管理为止（P-挂靠-02）：自己不抛，这里再兜一道
       .then(() => 挂靠超时转上级(现在))
       .then(() => undefined, (e) => console.error("[挂靠审批] 出错，下一遍再试", e))
+      // 飞书推送卡在「待推 / 推送中」的（进程重启、批次出错）记成失败，不重推（M-公海-33）；每 10 分钟最多一次
+      .then(() => 收拾卡住的推送(现在))
+      .then(() => undefined, (e) => console.error("[飞书推送] 收拾卡住的行出错，下一遍再试", e))
       .then(() => { if (启动 || 补了停机的(r)) console.log(补跑日志行(r, 启动)); });
   };
   const 等 = 先等 ? Promise.race([先等.catch(() => null), new Promise((r) => setTimeout(r, 间隔毫秒).unref?.())]) : null;

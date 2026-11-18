@@ -183,11 +183,18 @@ export function 直属上级of(org: 组织, userId: string): string | null {
 
 /**
  * 这件事要告诉谁（通知用）：负责人 + 他的直属上级。只留在职的（org.成员 只有在职的）、去重、去掉操作者。
- * 负责人停用了 = 直属上级of 也找不到人，这条谁都不发
+ * 负责人停用了：改发他停用前手填的直属上级（还在职才算），同三态 T12（审核 11-18 通知 P2-7：原来谁都不发，挂着没交接的没人知道）
  */
 export function 负责人和上级(org: 组织, ownerId: string, 排除?: string): string[] {
-  const 们 = [ownerId, 直属上级of(org, ownerId)].filter((id): id is string => !!id && org.成员.has(id) && id !== 排除);
+  const 们 = [ownerId, 直属上级of(org, ownerId) ?? 离职直属上级(org, ownerId)].filter((id): id is string => !!id && org.成员.has(id) && id !== 排除);
   return [...new Set(们)];
+}
+
+/** 只该发给负责人本人的通知：他在职就是他；停用了改发停用前的直属上级（在职才算），都没有 = 空 */
+export function 在职负责人或上级(org: 组织, ownerId: string): string[] {
+  if (org.成员.has(ownerId)) return [ownerId];
+  const 上 = 离职直属上级(org, ownerId);
+  return 上 ? [上] : [];
 }
 
 /** 虚线上级：只认显式指定的，停用了 = 没有 */

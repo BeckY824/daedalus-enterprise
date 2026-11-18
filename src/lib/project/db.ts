@@ -1197,7 +1197,13 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
     if (!提醒过 && 漏扫天数 > 0) {
       const 明天 = dayjs(今天).add(1, "day").format("YYYY-MM-DD");
       const title = `${将回收提醒(p.name, 节点名, 明天)}${补提醒说明}`;
-      await prisma.task.create({ data: { title, dueAt: 今, dueOn: 今天, dueHasTime: false, customerId: p.customerId, ownerId: p.ownerId } });
+      // 查和建放进同一笔写事务：页面打开也会触发这一遍，几个进程同时扫时只建一条（审核 11-18 通知 P2-5）
+      const 建了 = await 查完再写(async (tx) => {
+        if (await tx.task.findFirst({ where: { ownerId: p.ownerId, title, dueOn: 今天 }, select: { id: true } })) return false;
+        await tx.task.create({ data: { title, dueAt: 今, dueOn: 今天, dueHasTime: false, customerId: p.customerId, ownerId: p.ownerId } });
+        return true;
+      });
+      if (!建了) continue;
       const 发给 = await 查收件人(p.ownerId);
       await notify(发给.人们, { kind: "将回收", title, body: 发给.说明, link: `/projects/${p.id}`, key: `due-soon:${p.id}:${今天}` });
       补提醒++;
@@ -1283,10 +1289,14 @@ async function 提醒明天收(规则: 组织规则, 今: Date, 成员: 成员�
     const 日 = 项目回收日(规则, p, 成员);
     if (!日 || 已超时(日, 今) || !即将回收(日, 今)) continue;
     const title = 将回收提醒(p.name, 本套名(p.node, 字典of(企业版())), 日);
-    if (await prisma.task.findFirst({ where: { ownerId: p.ownerId, title, dueOn: 今天 }, select: { id: true } })) continue;
-    await prisma.task.create({
-      data: { title, dueAt: 今, dueOn: 今天, dueHasTime: false, customerId: p.customerId, ownerId: p.ownerId },
+    // 查和建在同一笔写事务里（审核 11-18 通知 P2-5）：「今天扫过」的记号整遍扫完才写，首页、项目列表、公海页在几个进程里同时触发时，
+    // 原来先查再建会各建一条
+    const 建了 = await 查完再写(async (tx) => {
+      if (await tx.task.findFirst({ where: { ownerId: p.ownerId, title, dueOn: 今天 }, select: { id: true } })) return false;
+      await tx.task.create({ data: { title, dueAt: 今, dueOn: 今天, dueHasTime: false, customerId: p.customerId, ownerId: p.ownerId } });
+      return true;
     });
+    if (!建了) continue;
     const 发给 = await 查收件人(p.ownerId);
     await notify(发给.人们, { kind: "将回收", title, body: 发给.说明, link: `/projects/${p.id}`, key: `due-soon:${p.id}:${今天}` });
     发了++;

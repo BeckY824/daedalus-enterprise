@@ -236,7 +236,8 @@ export async function 同号再次录入(我: 人, 号: 验好的号, 录入: �
   if (!记.已记过) {
     // 待分配（X-87）：链到那条待分配线索，能分配的人从那里分；建的人只是占位，不发
     const 链接 = 待分配 ? `/projects/${待分配.id}` : 项目 ? `/projects/${项目.id}` : `/customers/${首条.id}`;
-    const 收 = 待分配 ? 能分配的人们(await 读组织()) : [项目?.ownerId, 首条.salesOwnerId];
+    // 待分配：能分配的人，销售管理只发本线的（审核 11-18 通知 P2-2）
+    const 收 = 待分配 ? 能分配的人们(await 读组织(), 待分配.bizLine) : [项目?.ownerId, 首条.salesOwnerId];
     // 推到飞书的不带号码、不带录入的沟通原文（P-转-12 提醒里不带手机号，审核 11-18 P1-2）：只说谁、从哪录的，原文去沟通记录看。
     // 客户名就是号码的换成客户编号
     const 编号 = 名字是号码(首条.name) ? (await 看全部(() => prisma.customer.findUnique({ where: { id: 首条.id }, select: { customerNo: true } })))?.customerNo : null;
