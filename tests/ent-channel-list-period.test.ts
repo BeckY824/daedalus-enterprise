@@ -21,7 +21,7 @@ import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibil
 import { 规则 } from "@/lib/enterprise/rules";
 import { 读渠道统计, 读渠道分期统计, 取渠道底 } from "@/lib/enterprise/channel-stats-db";
 import { 读看板底数 } from "@/lib/enterprise/channel-dash-db";
-import { 名单链接, 名单键们, 到达口径键, type 名单键 } from "@/lib/enterprise/channel-stats";
+import { 名单链接, 名单键们, 到达口径键, 不点开键, type 名单键 } from "@/lib/enterprise/channel-stats";
 import { 算分期统计, 看板时段 } from "@/lib/enterprise/channel-dash";
 import { 读项目列表 } from "@/lib/project/list";
 import { 补建创建人 } from "@/lib/project/system-created";
@@ -32,7 +32,7 @@ let 渠道: string;
 // 北京 11-17；本月从北京 11-01 00:00（UTC 10-31 16:00）起，本季从北京 10-01 00:00（UTC 09-30 16:00）起
 const 今 = new Date("2026-11-17T04:00:00Z");
 const 渠道们 = () => [{ id: 渠道, createdAt: new Date("2026-01-01T00:00:00Z"), endDate: null }];
-const 键们 = Object.keys(名单键们) as 名单键[];
+const 键们 = (Object.keys(名单键们) as 名单键[]).filter((k) => !不点开键.includes(k));
 
 beforeEach(async () => {
   vi.stubEnv("CRM_ENTERPRISE", "1");

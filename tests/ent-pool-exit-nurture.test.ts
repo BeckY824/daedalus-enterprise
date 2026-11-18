@@ -428,7 +428,7 @@ describe("统计：补建的项目（creatorId = system）不算新建；暂未�
     const 普通挂了沟通 = await 项目(挂了, 甲.id);
     const f = await prisma.followUp.create({ data: { customerId: 挂了, ownerId: 甲.id, type: "PHONE", title: "挂项目", content: "x" } });
     await prisma.followUpProject.create({ data: { followUpId: f.id, projectId: 普通挂了沟通, node: 第一个节点.node } });
-    const 列 = (await prisma.project.findMany({ where: 首页卡条件("no-follow", 默认组织规则, 字典, 今), select: { id: true } })).map((p) => p.id).sort();
+    const 列 = (await prisma.project.findMany({ where: 首页卡条件("no-follow", 默认组织规则, 字典, 今, [甲.id]), select: { id: true } })).map((p) => p.id).sort();
     expect(列).toEqual([普通客户沟通, 补建没沟通, 补建沟通删了].sort());
     expect(列).not.toContain(补建有沟通);
   });

@@ -22,7 +22,7 @@ import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
 import Link from "next/link";
 import { RosterNote } from "./RosterNote";
-import { 拼全称, 拆来源, 全称上限, 显示产出比分布, 产出比分布, 数字链接, 名单段, 到达口径键, type 渠道统计, type 转化 } from "@/lib/enterprise/channel-stats";
+import { 拼全称, 拆来源, 全称上限, 显示产出比分布, 产出比分布, 数字链接, 名单段, 到达口径键, 不点开键, type 渠道统计, type 转化 } from "@/lib/enterprise/channel-stats";
 import { 转化率字 } from "../overview/funnel";
 import OptionInput from "@/components/OptionInput";
 import { 子渠道名, 子渠道提示, 主渠道名上限, 按主渠道汇总, 只有主渠道的, 渠道启用, type 主渠道行, type 主渠道汇总 } from "@/lib/enterprise/channel-main-core";
@@ -348,6 +348,8 @@ export default function ChannelsView({
       const 名单 = 统计(r).名单;
       const id = (r as { id?: string }).id;
       if (!名单 || !id) return <span className="chan-num">{n}</span>;
+      // 有效线索按线索验证的判定数（同看板），项目列表筛不出来：只给数
+      if (不点开键.includes(键)) return <span className="chan-num">{n}</span>;
       // 选了时间段的商机、订单按到达时间数（同看板）：项目列表不按到达时间筛，点开看全部时间的，不出差额说明（对不上是口径不同，不是少了）
       if (有期 && 到达口径键.includes(键)) {
         const 阶 = 键 === "关联商机" ? "商机" : "订单";
@@ -413,9 +415,11 @@ export default function ChannelsView({
       }))
     : [];
 
-  /** 每一行关联线索、有效线索都一样（现在还没有判无效的记号）：合成一列，差别写在表头的悬停里 */
+  /** 每一行关联线索、有效线索都一样：合成一列，差别写在表头的悬停里 */
   const 线索一样 = 全部行.every((r) => 统计(r).关联线索 === 统计(r).有效线索);
-  const 线索说明 = `这个渠道的${b.customer}名下，眼下还在线索阶段的项目`;
+  const 线索说明 = `这个渠道的${b.customer}名下，眼下还在线索阶段的项目（没结局的；线索流失等已结束的不算）`;
+  /** 有效线索：同看板「有效线索」（审核 11-18 统计 P1-3） */
+  const 有效说明 = "这批项目里线索验证判了「有效线索」的，和上面看板的「有效线索」同一个数；没判过、判无效的不算";
 
   /** 渠道名一列的宽：按最长的名字估（名字宽），最窄 120、最宽 名字最宽 */
   const 名列宽 = Math.min(名字最宽, Math.max(120, ...全部行.map((r) => 名字宽(r.name))));
@@ -473,8 +477,8 @@ export default function ChannelsView({
       ) : 无),
     },
     ...(线索一样
-      ? [数列<Row>("关联线索", `${线索说明}。有效线索是其中有效的那些，现在还没有判无效的记号、两个数一样，合成这一列`, "线索")]
-      : [数列<Row>("关联线索", 线索说明), 数列<Row>("有效线索", "关联线索里有效的那些")]),
+      ? [数列<Row>("关联线索", `${线索说明}。有效线索（${有效说明}）每一行都和它一样，合成这一列`, "线索")]
+      : [数列<Row>("关联线索", 线索说明), 数列<Row>("有效线索", 有效说明)]),
     数列<Row>("关联商机", "眼下在商机阶段的项目"),
     数列<Row>("关联订单", "眼下在订单阶段的项目"),
     转化列<Row>("线索转商机", "线索→商机", "从线索起步的项目里，后来到过商机（含已进订单）的占几成；退回去的也算到过。导入时直接落在商机、订单的不算在里面"),
@@ -613,7 +617,7 @@ export default function ChannelsView({
     { title: "子渠道数", key: "子渠道数", dataIndex: "子渠道数", width: 96, align: "right", sorter: (a, b2) => a.子渠道数 - b2.子渠道数, render: (v: number) => <span className="chan-num">{v}</span> },
     ...(线索一样
       ? [数列<主渠道汇总>("关联线索", `${线索说明}，这个主渠道下各子渠道加起来`, "线索")]
-      : [数列<主渠道汇总>("关联线索", 线索说明), 数列<主渠道汇总>("有效线索", "关联线索里有效的那些")]),
+      : [数列<主渠道汇总>("关联线索", 线索说明), 数列<主渠道汇总>("有效线索", 有效说明)]),
     数列<主渠道汇总>("关联商机", "眼下在商机阶段的项目"),
     数列<主渠道汇总>("关联订单", "眼下在订单阶段的项目"),
     转化列<主渠道汇总>("线索转商机", "线索→商机", "各子渠道的分子、分母分别加起来再算，不是把比例平均"),

@@ -15,7 +15,7 @@ import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 忘掉企业版范围, 以谁的身份 } from "@/lib/enterprise/visibility";
 import { 等通知推完 } from "@/lib/enterprise/notify";
-import { 客户名查重, 名撞说法, 撞号预警, 负责人一行 } from "@/lib/enterprise/dupe-ledger";
+import { 客户名查重, 名撞说法, 撞号预警, 负责人一行, 撞上客户, 申请挂靠 as 记申请挂靠 } from "@/lib/enterprise/dupe-ledger";
 import { 查号码, 查客户名, 申请挂靠 } from "@/app/(app)/customers/number-actions";
 import { saveCustomer } from "@/app/(app)/customers/actions";
 
@@ -262,5 +262,27 @@ describe("申请挂靠", () => {
     await 等通知推完();
     expect(await prisma.entDupeHit.findUnique({ where: { id } })).toMatchObject({ status: "待处理", approverId: x.负责人.id });
     expect(await 通知们(x.主管.id, "挂靠")).toHaveLength(0);
+  });
+});
+
+describe("通知不带号码（审核 11-18 P1-2，P-转-12「提醒里不带手机号」）", () => {
+  it("按手机号撞上：撞号预警 1 档、挂靠申请的标题和正文都不出现原号（号码打码）；客户名就是号码的换成客户编号", async () => {
+    const x = await 现场();
+    await prisma.customer.update({ where: { id: x.客户.id }, data: { name: "13800138000", customerNo: 12 } });
+    let 撞号id = "";
+    for (let i = 0; i < 3; i++) {
+      const r = await 作为(x.乙, () => 撞上客户(x.乙.id, null, "手机号", "13800138000", x.客户.id));
+      撞号id = r?.撞号id ?? 撞号id;
+      await 挪旧();
+    }
+    expect(await 作为(x.乙, () => 记申请挂靠(x.乙, 撞号id))).toMatchObject({ ok: true });
+    await 等通知推完();
+    const 发 = await prisma.entNotice.findMany({ where: { userId: x.负责人.id } });
+    expect(发.map((n) => n.kind).sort()).toEqual(["挂靠", "撞号预警"]);
+    for (const n of 发) {
+      expect(`${n.title}\n${n.body}`).not.toMatch(/13800138000|0013/);
+      expect(n.title).toContain("客户 NO.00012");
+      expect(n.body).toContain("按手机号 138****8000 撞上");
+    }
   });
 });

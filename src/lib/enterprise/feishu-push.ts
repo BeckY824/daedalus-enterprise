@@ -12,12 +12,14 @@
  * - 每条通知先把 feishuStatus 从「待推」抢成「推送中」再发，抢不到就不发：同一条不会推两遍；
  *   请求体再带 uuid = 通知 id，飞书那边一小时内同 uuid 也只发一次
  * - 推不出去只记在那一行（feishuStatus / feishuError），从不往外抛
+ * - 发出去之前标题、正文再过一遍号码打码（notice-mask.ts）：notify 写库时已经打过，这里防着别处直接写进表的行
  */
 import { prisma } from "@/lib/prisma";
 import { getSetting } from "@/lib/settings";
 import { multiTenant } from "@/lib/tenant/context";
 import { 读连接配置 } from "@/lib/enterprise-import/adapter";
 import { 正在切换视图 } from "./view-as";
+import { 通知文字打码 } from "./notice-mask";
 
 export const 飞书推送开关键 = "entFeishuPush";
 const 默认基址 = "https://open.feishu.cn";
@@ -151,7 +153,7 @@ export async function 推通知们(ids: readonly string[]): Promise<void> {
       const 抢 = await prisma.entNotice.updateMany({ where: { id: r.id, feishuStatus: "待推" }, data: { feishuStatus: "推送中" } });
       if (抢.count !== 1) continue;
       try {
-        await 发(c, 收, { 标题: r.title, 正文: r.body, 链接: 完整链接(r.link), uuid: r.id });
+        await 发(c, 收, { 标题: 通知文字打码(r.title), 正文: 通知文字打码(r.body), 链接: 完整链接(r.link), uuid: r.id });
         await prisma.entNotice.update({ where: { id: r.id }, data: { feishuStatus: "已推", feishuError: null, feishuAt: new Date() } });
       } catch (e) {
         const 原因 = e instanceof 推送出错 ? e.message : `发消息失败：${e instanceof Error ? e.message : String(e)}`;

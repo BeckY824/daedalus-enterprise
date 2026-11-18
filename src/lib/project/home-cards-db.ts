@@ -15,7 +15,7 @@ import { 字典of } from "./stage-dict";
 import type { 组织规则 } from "./org-rules";
 import { 看板的人 } from "./board-member";
 import type { Prisma } from "@/generated/prisma";
-import { 首页卡条件, 即将逾期, 即将逾期紧筛, 首页摆的卡, type 首页卡键, type 首页卡数 } from "./home-cards";
+import { 首页卡条件, 即将逾期, 即将逾期紧筛, 首页摆的卡, 在推, type 首页卡键, type 首页卡数 } from "./home-cards";
 
 /** 卡和项目页按哪一圈负责人筛：undefined = 不另筛（老板 / 总管理员、或不是企业版） */
 export async function 首页卡的人(user: { id: string; role: string }): Promise<readonly string[] | undefined> {
@@ -32,6 +32,15 @@ export async function 首页卡范围(user: { id: string; role: string }): Promi
   return { ownerId: { in: [...谁] } };
 }
 
+/**
+ * 暂未跟进按负责人一路一路数（home-cards.ts 现负责人没记过沟通）：圈里的人就是这一圈；
+ * 不另筛（总管理 / 管理员，圈 = undefined）时取在推项目的全部负责人（走带限定的 prisma，看得到的才算）
+ */
+export async function 暂未跟进负责人们(圈的人: readonly string[] | undefined): Promise<string[]> {
+  if (圈的人) return [...圈的人];
+  return (await prisma.project.findMany({ where: 在推, distinct: ["ownerId"], select: { ownerId: true } })).map((p) => p.ownerId);
+}
+
 /** 库里先筛（即将逾期紧筛）出来的项目里，回收日真在 即将逾期天数 以内的 id（项目页 f=due-soon 也用它）；圈 = 首页卡范围（undefined = 不另筛） */
 export async function 即将逾期的项目(规则: 组织规则, 今: Date = new Date(), 圈?: Prisma.ProjectWhereInput): Promise<string[]> {
   const 粗 = 即将逾期紧筛(规则, 字典of(企业版()), 今);
@@ -42,12 +51,14 @@ export async function 即将逾期的项目(规则: 组织规则, 今: Date = ne
 
 /** user = 当前登录的人（按他能看的那一圈数）；摆的 默认就是首页那一列，单测可以传别的 */
 export async function 数首页卡(user: { id: string; role: string }, 今: Date = new Date(), 摆的: readonly 首页卡键[] = 首页摆的卡): Promise<首页卡数> {
-  const [规则, 圈] = await Promise.all([生效组织规则(), 首页卡范围(user)]);
+  const [规则, 谁] = await Promise.all([生效组织规则(), 首页卡的人(user)]);
+  const 圈: Prisma.ProjectWhereInput | undefined = 谁 ? { ownerId: { in: [...谁] } } : undefined;
   const 字典 = 字典of(企业版());
   const 数 = async (键: 首页卡键): Promise<number> => {
     if (键 === "due-soon") return (await 即将逾期的项目(规则, 今, 圈)).length;
+    const 负责人们 = 键 === "no-follow" ? await 暂未跟进负责人们(谁) : undefined;
     // 卡的条件和圈里都可能有 OR，放进 AND 不打架
-    return prisma.project.count({ where: { AND: [首页卡条件(键, 规则, 字典, 今), ...(圈 ? [圈] : [])] } });
+    return prisma.project.count({ where: { AND: [首页卡条件(键, 规则, 字典, 今, 负责人们), ...(圈 ? [圈] : [])] } });
   };
   const 数们 = await Promise.all(摆的.map(数));
   return Object.fromEntries(摆的.map((键, i) => [键, 数们[i]]));
