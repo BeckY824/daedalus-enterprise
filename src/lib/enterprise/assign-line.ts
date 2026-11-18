@@ -178,7 +178,7 @@ export const 分配方式序号 = { 指定分配: 0, 自动分配: 1, 公海捞�
  * 按部门认的由调用方读库算好传 部门市场成员。兼着市场和销售的按市场算。
  * 默认的那个这人用不了（后台按角色关掉了）时退到他能用的第一个；都用不了 = undefined
  */
-const 算市场 = (角色们: readonly string[], 部门市场成员: boolean) => 部门市场成员 || 角色们.includes("marketing_mgr") || 角色们.includes("channel_ops");
+export const 算市场 = (角色们: readonly string[], 部门市场成员: boolean): boolean => 部门市场成员 || 角色们.includes("marketing_mgr") || 角色们.includes("channel_ops");
 
 export function 默认分配方式(角色们: readonly string[], 能用: readonly number[], 部门市场成员 = false): number | undefined {
   const 想 = 算市场(角色们, 部门市场成员)

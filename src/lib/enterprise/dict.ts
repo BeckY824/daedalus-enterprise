@@ -381,9 +381,9 @@ export async function 选的原因(kind: 字典种类, v: unknown): Promise<{ ok
 export type 分配方式序号 = 0 | 1 | 2 | 3 | 4;
 export const 是分配方式序号 = (x: unknown): x is 分配方式序号 => x === 0 || x === 1 || x === 2 || x === 3 || x === 4;
 
-/** 分配记录上的「分配方式」：取字典里这一项现在的叫法（改过名跟着改）；事务外调 */
-export async function 分配方式叫法(i: 分配方式序号): Promise<string> {
-  const 有 = (await 企业字典("assign")).find((x) => x.id === 默认id("assign", i));
+/** 分配记录上的「分配方式」：取字典里这一项现在的叫法（改过名跟着改）；事务外调，事务里传 tx */
+export async function 分配方式叫法(i: 分配方式序号, db: Prisma.TransactionClient = prisma): Promise<string> {
+  const 有 = (await 企业字典("assign", db)).find((x) => x.id === 默认id("assign", i));
   return 有?.name ?? 字典定义.assign.默认[i];
 }
 
