@@ -3,7 +3,7 @@ import { 看全部 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { dayjs } from "@/lib/utils";
 import { 生效组织规则 } from "./org-rules-store";
-import { 项目回收日, 算超时要的, 超时成员线 } from "./db";
+import { 项目回收日, 算超时要的, 超时成员线, 补回收起点留痕 } from "./db";
 import { 字典of } from "./stage-dict";
 import { 首页卡条件, 即将逾期, 即将逾期紧筛 } from "./home-cards";
 import { 暂未跟进负责人们 } from "./home-cards-db";
@@ -42,7 +42,7 @@ export async function 将回公海of(范围: 范围, 今: Date = new Date()): Pr
   if (!粗) return { 提醒: 回收条们(规则, 字典, new Map()), 预警: [] };
   const 人 = 负责人条件(范围);
   // 没填业务线的按负责人的线算天数（同首页卡、项目列表；审核 11-18 统计 P2-1）
-  const [查到, 成员] = await Promise.all([prisma.project.findMany({ where: { AND: [粗, ...(人 ? [人] : [])] }, select: 算超时要的 }), 超时成员线(规则)]);
+  const [查到, 成员] = await Promise.all([prisma.project.findMany({ where: { AND: [粗, ...(人 ? [人] : [])] }, select: 算超时要的 }).then((x) => 补回收起点留痕(x)), 超时成员线(规则)]);
   const 们 = 查到
     .map((p) => ({ p, 日: 项目回收日(规则, p, 成员) }))
     .filter((x): x is { p: typeof x.p; 日: string } => !!x.日 && 即将逾期(x.日, 今))

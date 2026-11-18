@@ -28,7 +28,7 @@ import { 规则开着 } from "@/lib/enterprise/rules";
 import { 挡改设置 } from "@/lib/enterprise/edit-perm";
 import { 选的原因, 认跟进方式 } from "@/lib/enterprise/dict";
 import { 生效组织规则 } from "./org-rules-store";
-import { 超时回收日, 已超时, 即将回收, 将回收提醒, 将回收提醒头, 超时理由, 超时起点, 系统, 回收原因前缀 } from "./timeout";
+import { 超时回收日, 已超时, 即将回收, 将回收提醒, 将回收提醒头, 超时理由, 超时起点, 系统, 回收原因前缀, 算回收起点的留痕 } from "./timeout";
 import { getSetting, setSetting } from "../settings";
 import { recordAudit } from "../audit";
 import { 读团队 } from "../sync/client";
@@ -1050,12 +1050,36 @@ export async function 领一个公海项目(
 /** 本机记的「今天按这份规则扫过了」：值 = 日期 + 规则，老板改了时长当天再扫一遍 */
 const 超时扫过键 = "projectTimeoutSweptOn";
 
+/** 算回收日要的项目列。最近一条留痕不在这里取：用 补回收起点留痕 另取（见下） */
 export const 算超时要的 = {
   id: true, name: true, phase: true, node: true, result: true, pooledAt: true, nextStepAt: true, ownerId: true, customerId: true, createdAt: true, bizLine: true,
   customer: { select: { lastFollowAt: true, pool: { select: { customerId: true } } } },
-  logs: { select: { at: true }, orderBy: { at: "desc" as const }, take: 1 },
 } satisfies Prisma.ProjectSelect;
-type 待查项目 = Prisma.ProjectGetPayload<{ select: typeof 算超时要的 }>;
+/** 算回收起点认的最近一条留痕（最近一条在前，只要时间；没有 = 空） */
+export type 回收起点留痕 = { logs: { at: Date }[] };
+type 待查项目 = Prisma.ProjectGetPayload<{ select: typeof 算超时要的 }> & 回收起点留痕;
+
+/** 补回收起点留痕 一句查几个项目：IN 里的参数加上条件里的几个，压在 SQLite 一句参数上限（999）以下 */
+const 留痕每批 = 500;
+
+/**
+ * 一批项目各自算回收起点认的最近一条留痕：超时自动转那行不算（Even 11-19 第 14 题 B，timeout.ts 算回收起点的留痕），
+ * 一句 groupBy（projectId, MAX(at)）走 (projectId, at) 索引，每个项目只回一行。
+ * 不写成 select 里 logs 的 where：条件里有「不等于 / 不含」（否定条件），项目一多 Prisma 要把 IN 拆成几句时会直接报错
+ * （Query parameter limit exceeded … negation filters … prevent the query from being split），所以这里自己按 留痕每批 拆。
+ * 传进来的项目都已按范围取过，取留痕不再套「谁在看」；db 传 tx 时在事务里读
+ */
+export async function 补回收起点留痕<T extends { id: string }>(rows: T[], db: Pick<Prisma.TransactionClient, "projectNodeLog"> = prisma): Promise<(T & 回收起点留痕)[]> {
+  if (!rows.length) return [];
+  const ids = [...new Set(rows.map((r) => r.id))];
+  const 最近 = new Map<string, Date | null>();
+  for (let i = 0; i < ids.length; i += 留痕每批) {
+    const 批 = ids.slice(i, i + 留痕每批);
+    const 们 = await 看全部(() => db.projectNodeLog.groupBy({ by: ["projectId"], where: { projectId: { in: 批 }, ...算回收起点的留痕 }, _max: { at: true } }));
+    for (const g of 们) 最近.set(g.projectId, g._max.at);
+  }
+  return rows.map((r) => { const at = 最近.get(r.id); return { ...r, logs: at ? [{ at }] : [] }; });
+}
 
 /**
  * 超时按项目业务线分两套天数（企业版 11-01 清单 C7）要的成员业务线：老项目没填业务线时按负责人的线（assign-line.ts 项目业务线）。
@@ -1073,7 +1097,7 @@ export function 超时线(p: { bizLine?: string | null; ownerId?: string | null 
 }
 
 /**
- * 起点 = 最近一次有人管：建项目、最后一行节点变更 / 转让 / 领取、客户上最后一次跟进，取最晚的（timeout.ts）。
+ * 起点 = 最近一次有人管：建项目、最后一行节点变更 / 转让 / 领取（超时自动转那行不算）、客户上最后一次跟进，取最晚的（timeout.ts）。
  * 客户在客户公海里的不收（企业版第四节）：项目跟着客户，谁领客户谁带走；先收进项目公海就和客户拆开了。
  * 成员 = 超时成员线(规则) 读的（老项目没填业务线按负责人的线）；不传 = 没填的按内贸
  */
@@ -1101,13 +1125,13 @@ async function 会收的项目(规则: 组织规则, 成员: 成员线查 | null
   const 节点 = [...new Set([...Object.keys(规则.超时回收.节点天数), ...Object.keys(规则.超时回收.外贸节点天数 ?? {})])];
   const 有默认 = !!字典of(企业版()).默认超时天数;
   if (!规则.超时回收.开 || (!节点.length && !有默认)) return [];
-  const 们 = await prisma.project.findMany({
+  const 们 = await 补回收起点留痕(await prisma.project.findMany({
     where: {
       pooledAt: null, result: null, phase: { in: [...能进公海的阶段] }, ...(有默认 ? {} : { node: { in: 节点 } }), customer: { pool: { is: null } }, ...(ownerId ? { ownerId } : {}),
       ...验证中不收(),
     },
     select: 算超时要的,
-  });
+  }));
   // 客户在申请移交 / 转让交接里、还没确认的：名下项目不收（X-38 → P-转-05，挂到对方确认为止），也不发「明天收回」提醒
   const 中 = 企业版() && 们.length ? await 交接中的客户([...new Set(们.map((p) => p.customerId))]) : new Set<string>();
   return 们.filter((p) => !中.has(p.customerId) && !!项目回收日(规则, p, 成员));
@@ -1211,7 +1235,8 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
     }
     // 逐个一笔事务：查出来到写下去之间有人刚推了节点、领了、记了沟通，就不收
     const 收 = await 查完再写(async (tx) => {
-      const 现 = await tx.project.findUnique({ where: { id: p.id }, select: 算超时要的 });
+      const 现0 = await tx.project.findUnique({ where: { id: p.id }, select: 算超时要的 });
+      const 现 = 现0 && (await 补回收起点留痕([现0], tx))[0];
       if (!现 || 现.ownerId !== p.ownerId || !超时了(规则, 现, 今, 成员)) return false;
       if (企业版() && (await 交接中的客户([p.customerId], tx)).size) return false;
       if (await 验证中不能改派(tx, p.id)) return false; // 查完到写之间刚提交了验证（X-78）
@@ -1412,7 +1437,8 @@ export async function 客户跟进后勾掉将回收提醒(customerId: string, n
  */
 export async function 勾掉将回收提醒(tx: Prisma.TransactionClient, 规则: 组织规则, p: { id: string; name: string; node: string; ownerId: string; customerId: string }, now: Date): Promise<void> {
   if (!企业版()) return;
-  const 现 = await 看全部(() => tx.project.findUnique({ where: { id: p.id }, select: 算超时要的 }));
+  const 现0 = await 看全部(() => tx.project.findUnique({ where: { id: p.id }, select: 算超时要的 }));
+  const 现 = 现0 && (await 补回收起点留痕([现0], tx))[0];
   // 没填业务线的按负责人的线算天数（同 超时成员线；外贸没单设天数时不查。事务里用 tx 读，审核 11-18 统计 P2-1）
   const 成员: 成员线查 | null = 现 && Object.keys(规则.超时回收.外贸节点天数 ?? {}).length
     ? new Map([[现.ownerId, { line: (await tx.entMember.findUnique({ where: { userId: 现.ownerId }, select: { line: true } }))?.line ?? null }]])

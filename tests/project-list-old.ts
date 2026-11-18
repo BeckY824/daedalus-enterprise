@@ -8,7 +8,7 @@ import { 搜索词, 客户号码条件, 号码藏着 } from "@/lib/search-keywor
 import { 负责人候选 } from "@/lib/owners";
 import type { 项目行 } from "@/lib/project/board";
 import type { 阶段 } from "@/lib/project/nodes";
-import { 看得到的客户, 露客户, 公海超时收回, 待我回的邀请, 项目回收日, 算超时要的, 超时成员线 } from "@/lib/project/db";
+import { 看得到的客户, 露客户, 公海超时收回, 待我回的邀请, 项目回收日, 超时成员线 } from "@/lib/project/db";
 import { 即将回收 } from "@/lib/project/timeout";
 import { 仅项目客户们 } from "@/lib/enterprise/project-only-customers";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -91,7 +91,8 @@ export async function 旧读项目列表(me: Parameters<typeof 公海超时收�
       customer: { select: { name: true, lastFollowAt: true, channelId: true, pool: { select: { customerId: true } }, channel: { select: { name: true } } } },
       exceptionCategory: { select: { name: true } },
       channel: { select: { name: true } },
-      logs: 算超时要的.logs,
+      // 改分页前取最近一条留痕的写法（那时 算超时要的 里带着 logs）；对拍用例里没有超时自动转留痕，和现在一样
+      logs: { select: { at: true }, orderBy: { at: "desc" }, take: 1 },
       ...(市场 ? {
         entLeadVerify: { select: { verdict: true, pending: true, salesAck: true, invalidReason: true } },
         members: { where: { userId: me.id, inviteStatus: "JOINED" }, select: { userId: true } },

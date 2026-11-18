@@ -26,7 +26,7 @@ import { 规整向导, 向导接着建, 规整只建客户, 只建客户接着�
 import { 补潜客培育 } from "@/lib/project/nurture";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
-import { 读必填数据, 能改节点, 上级只推, 直属才推, 只有负责人改进程, 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 能进公海的阶段, 超时成员线, 超时线, type 交付项 } from "@/lib/project/db";
+import { 读必填数据, 能改节点, 上级只推, 直属才推, 只有负责人改进程, 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 能进公海的阶段, 超时成员线, 超时线, 补回收起点留痕, type 交付项 } from "@/lib/project/db";
 import { 合上改动, 是不限, 三态改动摘要, type 规则改动 } from "@/lib/project/org-rules";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -1054,7 +1054,7 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
   try {
     const me = await requireUser();
     if (!(await 开着()) || !企业版() || typeof projectId !== "string" || !projectId) return { ok: true, 能记: false };
-    const p = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, phase: true, node: true, result: true, nextStepAt: true, createdAt: true, customerId: true, contactId: true, bizLine: true, logs: { orderBy: { at: "desc" }, take: 1, select: { at: true } } } });
+    const p = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, phase: true, node: true, result: true, nextStepAt: true, createdAt: true, customerId: true, contactId: true, bizLine: true } });
     // 已结束 / 在公海的不走项目那条（11-17 沟通必须挂在推项目：落到 saveFollowUp 也会拦下、说清楚）
     if (!p || p.pooledAt || p.result) return { ok: true, 能记: false };
     // 11-17：负责人或已进组的组员能记（和 lib/project/db.ts 记项目沟通 同一个判断）
@@ -1068,7 +1068,9 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
     if (要下一步 && !按必填走(规则, p.node) && !验证中) {
       const 字典 = 字典of(true, 规则.阶段.出口叫法);
       const c = await 看全部(() => prisma.customer.findUnique({ where: { id: p.customerId }, select: { lastFollowAt: true } }));
-      const 起点 = 超时起点(p.createdAt, p.logs[0]?.at, c?.lastFollowAt);
+      // 最近一条留痕：超时自动转那行不算（Even 11-19 第 14 题 B，同 lib/project/db.ts 项目回收日）
+      const [留] = await 补回收起点留痕([p]);
+      const 起点 = 超时起点(p.createdAt, 留.logs[0]?.at, c?.lastFollowAt);
       const 线 = 超时线(p, await 超时成员线(规则));  // 按项目业务线分内外贸天数（C7）
       const 天数 = 超时回收日(规则, p, 起点, 字典, 线) ? 节点超时天数(规则, p.node, 字典, 线) : null;
       if (天数) 回收预演 = { 起点日: 计时起点(规则, 起点).format("YYYY-MM-DD"), 天数 };  // 起算日之前不算（10-31）

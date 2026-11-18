@@ -19,6 +19,9 @@
  *     配额照查），排除现负责人和这一轮超时过的人；人人都轮过一遍 → 开新一轮（仍不给现负责人）。挑不到 = 不转、留在现负责人手上，
  *     只记日志，下一分钟再试（不通知上级）
  *   - 转出算接手人的一次分配（占本月分配数）、清待分配、接手人照常收「分给你」；项目留痕记一行转让，原因「超时未跟进自动转」，操作人「系统」
+ *   - 自动轮转不重置超时回收日（Even 11-19 第 14 题 B）：项目超时回收的起点不认上面那行（timeout.ts 是超时自动转痕），
+ *     客户跟着转的那行（overdue-assign）三态钟也不归零（tri-state-transfer.ts 换人方式 不收它）；手动转让、领取照旧归零。
+ *     本文件的接手时刻照旧认那行（接手人的 1.5 小时从轮转那刻算）
  *   - 只管：线索阶段、没结局、不在公海（项目和客户都不在）、不在回收站、不在待分配、填了指定回复时间的
  *   - 只转「分出去」的线索（11-18 客户定第 1 题 B）：负责人是别人分给他的（负责人不是建的人，或有一行把它分给现负责人的分配记录）才转；
  *     自留的（市场成员建了暂不分配、负责人就是自己）、销售「个人自持」的（自己建给自己）到点只发超时提醒给本人、首页待办标超时，不自动转。
@@ -36,7 +39,7 @@ import { 看全部 } from "@/lib/team-scope";
 import { 看已删 } from "./soft-delete-core";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 带走一位 } from "@/lib/carry-over-db";
-import { 系统 } from "@/lib/project/timeout";
+import { 系统, 超时自动转理由 } from "@/lib/project/timeout";
 import { 指定回复文字, 短时刻, 客户在谁名下话 } from "@/lib/project/time-fields";
 import { 超时转出 } from "@/app/(app)/leads/assign-actions";
 import { notify } from "./notify";
@@ -64,8 +67,11 @@ export const 夜里 = { 起: 22, 止: 8 } as const;
 export const 起链往回看天 = 3;
 /** 给原负责人的那句（客户原话） */
 export const 收回话 = "超时未跟进已自动收回并分配给其他成员";
-/** 项目留痕、分配通知里的原因 */
-export const 超时转理由 = "超时未跟进自动转";
+/**
+ * 项目留痕、分配通知里的原因。留痕那行（操作人 系统）不重置项目超时回收日（Even 11-19 第 14 题 B）：
+ * 回收起点靠这几个字认出它（timeout.ts 是超时自动转痕），改字要一起改那边
+ */
+export const 超时转理由 = 超时自动转理由;
 /** 通知种类（铃铛里的来源） */
 export const 超时通知种类 = "超时未跟进";
 
@@ -362,7 +368,7 @@ async function 转出去(p: 链项目, 基: Date, 试过: string[], transfers: n
 
 /**
  * 规则 3：客户跟着线索给接手人；原负责人手上还有这位客户别的进行中项目（没结局、不在公海、不在待分配）就留给原负责人。
- * 跟着走时原负责人在这位客户上没做完的计划、待办一起给接手人，记一行换负责人（overdue-assign，算分配、不算转客户）。
+ * 跟着走时原负责人在这位客户上没做完的计划、待办一起给接手人，记一行换负责人（overdue-assign，算分配、不算转客户、三态钟不归零）。
  * 回去向和客户现在在谁名下
  */
 export async function 客户随线索(projectId: string, customerId: string, 原: string, 新: string): Promise<{ 去向: 客户去向; 在谁名下: string | null }> {
