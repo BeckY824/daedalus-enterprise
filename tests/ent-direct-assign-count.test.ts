@@ -139,6 +139,20 @@ describe("市场成员新建、负责人选成销售：记 1 条指定分配、�
     expect(await 记录们()).toMatchObject([{ projectId: p.id, toUserId: 另一销售, byUserId: 市场, counted: true }]);
   });
 
+  it("客户页新增项目直接指定给参与状态不正常的销售：拒（和建档向导、新线索列表同一条，审核追加）", async () => {
+    await setSetting(自动分配不参与key, { [销售]: "暂停" });
+    invalidateSettingsCache();
+    const c = await prisma.customer.create({ data: { name: "老客户乙", phone: "13900000012", salesOwnerId: 市场, addrCountry: "美国" } });
+    const r = await 给客户建项目({
+      customerId: c.id,
+      项目: { name: "三期", amount: 0, currency: "CNY", ownerId: 销售, 分配方式: 0, 业务线: "内贸" } as never,
+      跟进: { type: "PHONE", content: "电话聊了三期", occurredAt: "2026-10-20 10:00", 节点: "潜客培育", 明确回复: false } as never,
+    });
+    expect(r).toMatchObject({ ok: false });
+    if (!r.ok) expect(r.error).toContain("暂停");
+    expect(await prisma.project.count({ where: { customerId: c.id } })).toBe(0);
+  });
+
   it("客户页新增项目", async () => {
     const c = await prisma.customer.create({ data: { name: "老客户", phone: "13900000011", salesOwnerId: 市场, addrCountry: "美国" } });
     const r = await 给客户建项目({

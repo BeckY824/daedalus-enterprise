@@ -125,6 +125,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           是销售: 分配.是销售,
           按区域: 分配.按区域,
           本人线: 分配.本人线,
+          // 指定给自己 = 记在自己名下（服务端不查参与状态），也列
+          可指定: [...分配.可指定, user.id],
         }
       : undefined;
     return (

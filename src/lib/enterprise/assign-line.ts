@@ -150,13 +150,13 @@ export const 只留销售 = (org: Pick<组织, "成员">, 人们: readonly strin
 
 /**
  * 自动分配能接的人（11-18 客户定第 9 题 B：内贸的销售管理要参与，外贸的销售管理不参与）：
- * 有销售管理角色的（兼着销售的也算）只在内贸线上接；其余要有「销售」业务角色。参与状态（正常 / 暂停 / 禁止）照旧由 挑接手人 再筛，
- * 销售管理和销售同一套。线没定（null）= 不给销售管理
+ * 一人多角色任一放行（审核追加）：有「销售」业务角色的照常接（兼着销售管理的，作为销售两条线都接）；
+ * 纯销售管理（没有销售角色）只在内贸线上接。参与状态（正常 / 暂停 / 禁止）照旧由 挑接手人 再筛，销售管理和销售同一套。线没定（null）= 不给纯销售管理
  */
 export const 自动可接 = (org: Pick<组织, "成员">, 人们: readonly string[], line: 线 | null): string[] =>
   人们.filter((id) => {
     const 角色们 = org.成员.get(id)?.角色们 ?? [];
-    return 角色们.includes("sales_mgr") ? line === "内贸" : 角色们.includes("sales");
+    return 角色们.includes("sales") || (角色们.includes("sales_mgr") && line === "内贸");
   });
 
 /**

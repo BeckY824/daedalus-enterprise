@@ -28,6 +28,7 @@ import { 跟进类型们, FOLLOW_METHODS, FOLLOW_STATUSES, DECISION_STATUSES, LE
 import { dayjs } from "@/lib/utils";
 import { isCalendarDate } from "@/lib/schedule-date";
 import { useMotionTheme } from "@/components/MotionTheme";
+import { 指定选项 } from "@/lib/enterprise/designate-options";
 import { 企业版字典 } from "@/lib/project/stage-dict";
 import { 有效线索节点 } from "@/lib/project/stage-gates";
 import { 是项目卡, 不可撤销, type 项目卡 } from "@/lib/agent/project-proposals";
@@ -80,7 +81,9 @@ export type 新线索企业格 = { 成员: { value: string; label: string }[]; �
   /** 市场成员（按岗位，P-转-26）：选自动分配时业务线换成可改的「分配方向」，默认按客户区域 → 电话 → 本人事业部（和建档向导一样，11-18） */
   按区域?: boolean;
   /** 本人事业部（分配方向第三步的默认） */
-  本人线?: "内贸" | "外贸" | null };
+  本人线?: "内贸" | "外贸" | null;
+  /** 指定分配的负责人下拉只列这些人（审核 11-18 追加，同建档向导；没给 = 不筛） */
+  可指定?: string[] };
 export const 新线索企业 = createContext<新线索企业格 | null>(null);
 /** 新建只能落在线索验证及之前（11-05：过了线索验证要看它的必填项，新建时填不了；lib/project/wizard.ts 同口径） */
 const 线索节点们 = 企业版字典.节点们.线索.slice(0, 企业版字典.节点们.线索.indexOf(有效线索节点) + 1 || undefined);
@@ -661,7 +664,8 @@ export default function ProposalCard({
           // 市场成员选自动分配（P-转-26）：业务线那格换成只读说明，按落库时同一套（线索卡地址）算出的客户区域定线；没落进客户 / 项目 = 未填提示
           const 区域定线中 = !!企?.按区域 && draft.分配方式 === 1;
           const 卡上地址 = 线索卡地址(draft);
-          const 负责人选项 = 企?.成员 ?? [];
+          // 指定分配：负责人下拉只列能被指定的（参与状态正常的销售 / 销售管理，加我自己），不等服务端拒
+          const 负责人选项 = draft.分配方式 === 0 ? 指定选项(企?.成员 ?? [], 企?.可指定, null, draft.ownerId) : 企?.成员 ?? [];
           return (
           <>
             <Field label={企卡 ? "客户名称（组织 / 公司）" : "名称"} 待={待.has("name") ? 点掉("name") : undefined}>

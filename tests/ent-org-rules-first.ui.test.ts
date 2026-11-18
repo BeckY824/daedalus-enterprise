@@ -6,6 +6,7 @@
  *   Windows 1024 / 1280 / 1366：不横向撑出
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { 补全动作桩 } from "./helpers/action-stubs";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser } from "playwright";
@@ -18,9 +19,9 @@ const plugin: Plugin = { name: "org-rules-first", setup(b) {
   stub(/^\.\/LeadAssignCard$/, "export default function C(){return <div data-testid='lead-assign-card'/>}");
   stub(/^\.\/FeishuConnectCard$/, "export default function F(){return null}");
   stub(/^\.\/FeishuPushSwitch$/, "export default function P(){return null}");
-  stub(/^\.\/org-actions$/, `const f=${空跑};export const 建部门=f,改部门=f,删部门=f,设规则=f,设字段权限=f,设改权限=f,设市场部门=f,设只看某人=f,设回收站副手=f,设成员=async()=>{if(window.__慢)await new Promise(r=>{window.__放=r});return{ok:true}},
+  stub(/^\.\/org-actions$/, 补全动作桩("src/app/(app)/settings/org-actions.ts", `const f=${空跑};export const 建部门=f,改部门=f,删部门=f,设规则=f,设字段权限=f,设改权限=f,设市场部门=f,设只看某人=f,设回收站副手=f,设成员=async()=>{if(window.__慢)await new Promise(r=>{window.__放=r});return{ok:true}},
     设通讯录同步=f,立即同步通讯录=f,设职务对照=f,设通讯录凭据=f,设通讯录间隔=f,飞书表概况=async()=>({ok:false,error:'没接'}),
-    通讯录概况=async()=>({ok:true,角色们:[],来源们:[{源:'feishu',名:'飞书',开:false,上次:null,角色对照:{},职务们:[],间隔分钟:60,凭据:{齐了:false,字段:[]}}]});`);
+    通讯录概况=async()=>({ok:true,角色们:[],来源们:[{源:'feishu',名:'飞书',开:false,上次:null,角色对照:{},职务们:[],间隔分钟:60,凭据:{齐了:false,字段:[]}}]});`));
   stub(/^\.\.\/leads\/assign-actions$/, `export const 设不设配额=${空跑};export const 读线部门设置=async()=>({设的:{内贸:[],外贸:[]},还没勾:[],能改:true});export const 设线部门=${空跑};`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };

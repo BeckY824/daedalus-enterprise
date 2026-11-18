@@ -41,7 +41,7 @@ import { 名字在别处, 别处说法, 别处附件, 找人详, 没找到话 } 
 import type { BusinessConfig } from "../business-config";
 import type { BriefRecord } from "../ai-draft";
 import { 扩同义词 } from "./synonyms";
-import { 校验规格, 说人话, 编译, 能查的表, 查询表, 分组上限, 关联们, 用到的名字, 认字段, type 名映射, type 查询规格, type 表名 } from "./query";
+import { 校验规格, 说人话, 编译, 能查的表, 查询表, 分组上限, 关联们, 用到的名字, 认字段, 节点记录类型叫法, type 名映射, type 查询规格, type 表名 } from "./query";
 import { 限定的我 } from "../team-scope";
 import { 字段权限of } from "../enterprise/field-perm";
 import { 能看提成 } from "../project/commission-db";
@@ -175,6 +175,8 @@ export function query_records说明(只用项目: boolean): string {
     "它接的是：联系人（没有专门工具）、要排序（「哪个项目最久没动」）、要跨一张表、" +
     "以及项目、卡点、节点记录、回款、线索验证、提成、公海、组织架构、同事这些没有专门工具的表。" +
     "「客户」表不含公海里的客户，问公海查「公海」表。" +
+    "「节点记录」里记录类型不是改节点（node）的行——换负责人（transfer）、放回公海、公海领取——原节点 / 新节点只是照抄当时的节点，不是节点变化；" +
+    "问项目节点怎么走的，加条件 记录类型 等于 node。" +
     (只用项目 ? "这一家只用项目：线索、商机、订单是项目的阶段，查「项目」表、按「阶段」筛，没有单独的线索 / 商机 / 签约表。" : "") +
     "规则：「表」只能填 " + 表.join("、") + " 之一；「字段」填中文字段名；" +
     "「运算」只能填 包含 / 等于 / 不等于 / 属于 / 大于 / 小于 / 不早于 / 不晚于 / 最近天数 / 为空 / 非空 之一。" +
@@ -1136,7 +1138,9 @@ export const TOOLS: Tool[] = [
         设置里改成了「已演示」，别处都显示「已演示」，AI 分组出来却是「已试听」。
       */
       const 显示 = (列: string, v: unknown) =>
-        (列 === "followStatus" || 列 === "decisionStatus") && typeof v === "string" ? statusLabel(ctx.b, v) : v;
+        (列 === "followStatus" || 列 === "decisionStatus") && typeof v === "string" ? statusLabel(ctx.b, v)
+          : 规格.表 === "节点记录" && 列 === "kind" && typeof v === "string" ? 节点记录类型叫法[v] ?? v
+          : v;
 
       if (规格.分组) {
         const 列 = (表定义.字段 as Record<string, { 列: string; 名: string; 型: string }>)[规格.分组];

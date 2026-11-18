@@ -21,7 +21,7 @@ import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { resetDb } from "./reset";
 import { 分配线索, 自动分配线索, 设线部门, 设自动分配参与 } from "@/app/(app)/leads/assign-actions";
 import { 不设配额key, 起算补, 挑接手人, 前面几条, 月份, 本月已分, 自动分配不参与key, type 候选人, type 分配行 } from "@/lib/enterprise/lead-assign";
-import { 估算轮到, 自动分配池, 读线部门, 指定问题 } from "@/lib/enterprise/assign-eta";
+import { 估算轮到, 自动分配池, 读线部门, 指定问题, 可指定的人 } from "@/lib/enterprise/assign-eta";
 import { 本人事业部 } from "@/lib/enterprise/customer-region";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 规则 } from "@/lib/enterprise/rules";
@@ -244,5 +244,28 @@ describe("参与状态变了推一次「快轮到」", () => {
     expect(await prisma.entNotice.count({ where: { userId: 外二, kind: "快轮到" } })).toBe(0);
     expect(await 设自动分配参与(外二, "允许")).toEqual({ ok: true });
     expect(await prisma.entNotice.count({ where: { userId: 外二, kind: "快轮到" } })).toBe(1);
+  });
+});
+
+describe("审核追加：一人多角色任一放行 / 指定下拉只列能指定的", () => {
+  it("外贸兼「销售 + 销售管理」的：作为销售照常进外贸自动分配池；纯外贸销售管理不进", async () => {
+    const 外兼 = await 人("外贸兼管", "sales,sales_mgr", MVP);
+    const org = await 读组织();
+    const 池 = 自动分配池(org, null, "外贸", await 读线部门());
+    expect(池).toContain(外兼);
+    expect(池).not.toContain(外管);
+    // 自动分配真能分到他（外一外二各先有一条）
+    for (const 谁 of [外一, 外二]) await prisma.entLeadAssign.create({ data: { toUserId: 谁, byUserId: 市场, month: 月份(), counted: true, kind: "营销" } });
+    const r = await 自动分配线索(await 建项目("兼管能接"), { 项目: true, 原负责人: 市场 });
+    expect(r).toMatchObject({ ok: true, toUserId: 外兼 });
+  });
+
+  it("可指定的人 = 指定问题放行的：在职销售 / 销售管理、参与正常；暂停、禁止、市场、总管理都不在", async () => {
+    await setSetting(自动分配不参与key, { [外二]: "暂停", [内二]: "禁止" });
+    invalidateSettingsCache();
+    const org = await 读组织();
+    const 们 = await 可指定的人(org);
+    expect(new Set(们)).toEqual(new Set([内一, 内管, 外一, 外管, 档口销售]));
+    for (const id of [...org.成员.keys()]) expect(们.includes(id), id).toBe((await 指定问题(org, id)) === null);
   });
 });
