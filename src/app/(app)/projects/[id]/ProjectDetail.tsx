@@ -2019,7 +2019,7 @@ function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
 
 /**
  * 在项目上记一条沟通：方式、时间、内容，加下一步做什么（必填一句话，10-29）和下一步时间（开了超时回收、线索 / 商机阶段必填，别的时候可空）。
- * 记了会挂在客户上（客户页也看得到）和项目当时的节点上；填的下一步时间决定这个项目哪天没跟进会回公海
+ * 记了会挂在客户上（客户页也看得到）和项目当时的节点上；下一步时间只提醒、不改回收日（11-18），回收日只按节点天数从这条沟通起算
  *
  * F-跟进-06：主区只摆 沟通方式、发起主体（11-01 答复 #2 挪出来、必填）、沟通内容、（卡点）、下一步、下一步时间；沟通时间、项目阶段、AI 预填收进默认折叠的「更多」，
  * 字段和校验一个不少。11-05 客户确认去掉「客户明确回复了吗」（线索验证改看必填项）。
@@ -2326,7 +2326,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
             })}
           </Space>
           {预演 ? (
-            <div style={{ marginTop: 4, fontSize: "var(--dt-aux, 12px)", color: 回公海颜色[回公海文案(预演).级别] ?? "var(--text-muted)" }}>选这天 → 回收日变为 {dayjs(预演).format("MM-DD")}</div>
+            <div style={{ marginTop: 4, fontSize: "var(--dt-aux, 12px)", color: 回公海颜色[回公海文案(预演).级别] ?? "var(--text-muted)" }}>记完这条 → 回收日变为 {dayjs(预演).format("MM-DD")}</div>
           ) : p.要下一步 && <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>到那天还没人跟进，项目会自动回到线索公海</div>}
         </div>
         {p.企业版 && (

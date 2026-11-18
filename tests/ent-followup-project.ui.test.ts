@@ -10,7 +10,7 @@
  *   Windows 1024 / 1280 / 1366：超长项目名不横向撑出，「保存」点得中
  *   选了项目且项目能记（2026-10-30 P0-3）：多出「下一步计划」「下一步时间」，走项目详情同一个 记项目沟通Action；
  *     11-05 起不再问「客户明确回复了吗」，下一步计划必填；
- *     选下一步时间时预演回收日（选这天 → 回收日变为 MM-DD）；下一步时间默认 3 天后（P-界面-34），可改
+ *     选下一步时间时预演回收日（记完这条 → 回收日变为 MM-DD，11-18 起下一步时间不改回收日）；下一步时间默认 3 天后（P-界面-34），可改
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -227,8 +227,9 @@ it("项目能记：不再问客户明确回复了吗，下一步计划必填，�
     expect(await 时.getByRole("button", { name: "3 天后" }).getAttribute("class")).toContain("ant-btn-primary");
     await 时.getByRole("button", { name: /明\s*天/ }).click();
     const 明 = new Date(Date.parse(今天() + "T00:00:00Z") + 86400_000).toISOString().slice(0, 10);
-    const 后 = new Date(Date.parse(今天() + "T00:00:00Z") + 2 * 86400_000).toISOString().slice(5, 10);
-    await expect.poll(() => 时.innerText()).toContain(`选这天 → 回收日变为 ${后}`);
+    // 下一步时间只提醒、不改回收日（11-18）：回收日 = 起点（今天）+ 7 天，不是明天过完
+    const 后 = new Date(Date.parse(今天() + "T00:00:00Z") + 7 * 86400_000).toISOString().slice(5, 10);
+    await expect.poll(() => 时.innerText()).toContain(`记完这条 → 回收日变为 ${后}`);
     await page.getByRole("button", { name: /保\s*存/ }).click();
     await page.waitForFunction(() => Reflect.get(window, "__项目存"));
     const 交 = await page.evaluate(() => Reflect.get(window, "__项目存") as Record<string, unknown>);
