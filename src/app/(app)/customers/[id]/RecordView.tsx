@@ -93,6 +93,7 @@ import { 放进公海, 领取, 撤销公海, 退回原因选项 } from "../pool-
 import { useDeleteCustomers } from "../useDeleteCustomers";
 import { 释义下拉宽 } from "@/components/DictNote";
 import { 客户编号显示 } from "@/lib/customer-no";
+import { 客户抬头 } from "@/lib/enterprise/customer-title";
 import { 动作出错话, 出错原话 } from "@/lib/stale-deploy";
 import { useFormDraft } from "@/components/FormDraft";
 
@@ -211,6 +212,7 @@ export default function RecordView({
   项目区 = null,
   项目联系人 = null,
   项目页签们 = null,
+  抬头节点 = null,
   三态条 = null,
   三态留痕 = null,
   留痕放左栏 = false,
@@ -240,6 +242,7 @@ export default function RecordView({
     推荐关系、签约不摆（纪要：「客户页仅保留 基础信息、联系人、关联项目 三类核心内容」；数据都还在，个人版、团队版不变）
   */
   const 企业 = 项目们 !== null;
+  const 页头名 = 企业 ? 客户抬头(customer, 抬头节点) : customer.name;
   /** 客户页留哪几块（定稿 P5 待定 14）：企业版项目模式下记录输入、待办移到项目，转让、背调、下次跟进不放，旧字段不摆 */
   const 摆法 = 客户页摆法(企业);
   const [建项目开着, set建项目开着] = useState(false);
@@ -1136,7 +1139,8 @@ export default function RecordView({
         </span>
         <div className="rec-head-id">
           <div className="rec-head-line">
-            <h1 className="rec-head-name" style={{ margin: 0 }} title={customer.name}>{customer.name}</h1>
+            {/* 企业版页头显示抬头（11-17 客户抬头 PR-5，出口 2，lib/enterprise/customer-title.ts）：和客户列表第一列同一个算法；一行、放不下省略号、悬停看全文 */}
+            <h1 className="rec-head-name" style={{ margin: 0 }} title={页头名}>{页头名}</h1>
             <StarButton customerId={customer.id} 初值={已收藏} />
           </div>
           {/* 副标题是这个人的三个定位：年级 · 专业 · 谁在跟。没填的那项不占位 */}
