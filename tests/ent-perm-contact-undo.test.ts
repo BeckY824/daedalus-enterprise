@@ -6,7 +6,7 @@
  * 这里没有请求上下文，限定层不限定——正好只看动作自己那道判定。
  *   - saveContact：过 客户事项挡（同 detachContact；核心是 能改客户）
  *   - 联系人挂靠：挂到客户、换主客户两头都要能改；解除 / 改说明看挂的那一位
- *   - 关联客户：两头都要能改（改客户挡）
+ *   - 关联客户：发起的这一头要能改（改客户挡），另一头照原设计只要看得到
  *   - 撤销记一笔：客户要能改（同 deletePlan），跟进必须是这位客户名下、本人 10 分钟内记的
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -238,7 +238,7 @@ describe("联系人挂靠要能改，不只是看得到（P0-2）", () => {
   });
 });
 
-describe("关联客户两头都要能改（P1-3）", () => {
+describe("关联客户发起的这一头要能改，另一头看得到就行（P1-3）", () => {
   it("销管在下属客户上建客户关联：拒", async () => {
     const a = await 客户(下属);
     const b = await 客户(经理);
@@ -247,24 +247,34 @@ describe("关联客户两头都要能改（P1-3）", () => {
     expect(await prisma.entCustomerLink.count()).toBe(0);
   });
 
-  it("销售把自己客户关联到公海客户：拒（另一头不能改）", async () => {
-    const a = await 客户(下属);
-    const b = await 客户(销售, true);
+  it("从公海客户这一头发起关联：拒（公海里的先领）", async () => {
+    const a = await 客户(销售, true);
+    const b = await 客户(下属);
     当(下属);
-    expect(await 关联客户(a, b)).toMatchObject({ ok: false });
+    expect(await 关联客户(a, b)).toMatchObject({ ok: false, error: expect.stringContaining("公海") });
     expect(await prisma.entCustomerLink.count()).toBe(0);
   });
 
-  it("销管改、取消下属客户和自己客户之间的关联：拒", async () => {
+  it("销管从下属客户那一头改、取消关联：拒", async () => {
     const a = await 客户(下属);
     const b = await 客户(经理);
     当(系管);
     expect(await 关联客户(a, b, "原说明")).toEqual({ ok: true });
     const 行 = await prisma.entCustomerLink.findFirstOrThrow();
     当(经理);
-    expect(await 改关联说明(行.id, b, "经理改")).toMatchObject({ ok: false });
-    expect(await 取消关联(行.id, b)).toMatchObject({ ok: false });
+    expect(await 改关联说明(行.id, a, "经理改")).toMatchObject({ ok: false });
+    expect(await 取消关联(行.id, a)).toMatchObject({ ok: false });
     expect(await prisma.entCustomerLink.findUniqueOrThrow({ where: { id: 行.id } })).toMatchObject({ note: "原说明" });
+  });
+
+  it("对照：把自己的客户关联到同事的客户照常（另一头只要看得到）", async () => {
+    const a = await 客户(下属);
+    const b = await 客户(销售);
+    当(下属);
+    expect(await 关联客户(a, b, "同一集团")).toEqual({ ok: true });
+    const 行 = await prisma.entCustomerLink.findFirstOrThrow();
+    expect(await 改关联说明(行.id, a, "子公司")).toEqual({ ok: true });
+    expect(await 取消关联(行.id, a)).toEqual({ ok: true });
   });
 
   it("对照：负责人本人在自己两位客户之间建、改、取消关联照常", async () => {

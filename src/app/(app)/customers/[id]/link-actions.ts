@@ -5,8 +5,9 @@
  * 手动挑一位 + 一句说明，两边客户页都看得到同一行（一对只记一行：小 id 在 customerId，见 关联对）。不做关系图。
  * 读列表在 lib/enterprise/customer-v2-db.ts 的 关联客户们（页面服务端组件直接调）
  *
- * 权限（11-18 审核 P1-3 收紧）：建、改说明、取消，两头的客户都要「能改」（改客户挡：负责人本人或系统管理员，公海里的先领），
- * 不只是看得到。原来只判看得到、不是只读：限定层的写范围含下属和公海，销管能动下属客户的关联，谁都能动公海客户的
+ * 权限（11-18 审核 P1-3 收紧）：发起的这一头（当前操作的那位客户）要「能改」（改客户挡：负责人本人或系统管理员，公海里的先领），
+ * 不只是看得到；另一头照原设计只要看得到。原来发起这头也只判看得到、不是只读：限定层的写范围含下属和公海，
+ * 销管能动下属客户的关联，谁都能动公海客户的
  */
 import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
@@ -31,15 +32,15 @@ function 刷新(...ids: string[]) {
 }
 
 /**
- * 能不能在这位客户身上动关联：看得到（限定层查得到）、不是只读的同事客户 / 虚线下属客户，且过 改客户挡。
- * 关联是两头的，两头都要过（11-18 前另一头只要看得到）
+ * 能不能在这位客户身上动关联：看得到（限定层查得到）、不是只读的同事客户 / 虚线下属客户，且过 改客户挡（11-18）。
+ * 关联是两头的，发起的那一头（我正在看的这位）要能改；另一头只要看得到就行——挑的时候下拉里也只列看得到的
  */
-async function 能改(me: Awaited<ReturnType<typeof requireUser>>, id: string, 不在话 = "这位客户已经不在了（或你看不到），刷新看看"): Promise<{ ok: true; name: string } | { ok: false; error: string }> {
+async function 能改(me: Awaited<ReturnType<typeof requireUser>>, id: string): Promise<{ ok: true; name: string } | { ok: false; error: string }> {
   const c = await prisma.customer.findUnique({ where: { id }, select: { name: true } });
-  if (!c) return { ok: false, error: 不在话 };
+  if (!c) return { ok: false, error: "这位客户已经不在了（或你看不到），刷新看看" };
   if (await 同事的客户(defaultClient, id)) return { ok: false, error: await 只读话(defaultClient) };
   const 挡 = await 改客户挡(me, id);
-  if (挡) return { ok: false, error: `「${c.name}」：${挡}` };
+  if (挡) return { ok: false, error: 挡 };
   return { ok: true, name: c.name };
 }
 
@@ -54,8 +55,8 @@ export async function 关联客户(customerId: string, otherId: string, note?: s
     if (!说.ok) return 说;
     const 这位 = await 能改(me, customerId);
     if (!这位.ok) return 这位;
-    const 那位 = await 能改(me, otherId, "要关联的那位客户已经不在了（或你看不到），换一位");
-    if (!那位.ok) return 那位;
+    const 那位 = await prisma.customer.findUnique({ where: { id: otherId }, select: { name: true } });
+    if (!那位) return { ok: false, error: "要关联的那位客户已经不在了（或你看不到），换一位" };
     // 唯一键兜底：两个人同时点关联同一对，后到的那次落到这里
     const 有 = await 看全部(() => prisma.entCustomerLink.findUnique({ where: { customerId_otherId: 对 } }));
     if (有) return { ok: false, error: `「${这位.name}」和「${那位.name}」已经关联过了` };
@@ -86,11 +87,6 @@ async function 取一行(me: Awaited<ReturnType<typeof requireUser>>, linkId: st
   if (!这位.ok) return 这位;
   const 另 = 行.customerId === 从 ? 行.otherId : 行.customerId;
   const 那位 = await 看全部(() => prisma.customer.findUnique({ where: { id: 另 }, select: { name: true } }));
-  // 另一头也要能改（已经删了的那头不算，关联照常能改、能取消）
-  if (那位) {
-    const 另挡 = await 改客户挡(me, 另);
-    if (另挡) return { ok: false as const, error: `「${那位.name}」：${另挡}` };
-  }
   return { ok: true as const, 行, 这位: 这位.name, 那位: 那位?.name ?? "（已删除）", 另 };
 }
 
