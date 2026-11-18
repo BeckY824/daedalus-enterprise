@@ -25,7 +25,7 @@ import { 看板分列, type 项目行 } from "@/lib/project/board";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 按预计成交排 } from "@/lib/project/project-fields";
 import { 读渠道统计 } from "@/lib/enterprise/channel-stats-db";
-import { 名单链接, 名单键们, type 名单键 } from "@/lib/enterprise/channel-stats";
+import { 名单链接, 名单键们, 不点开键, type 名单键 } from "@/lib/enterprise/channel-stats";
 import { 存组织规则 } from "@/lib/project/org-rules-store";
 import { 默认组织规则 } from "@/lib/project/org-rules";
 import { dayjs } from "@/lib/utils";
@@ -322,7 +322,7 @@ describe("关键词拆词、空格归一（23D，同客户列表 2F）", () => {
 });
 
 describe("渠道页数字 = 点进去的项目列表总数（超过 500 也对得上）", () => {
-  const 键们 = Object.keys(名单键们) as 名单键[];
+  const 键们 = (Object.keys(名单键们) as 名单键[]).filter((k) => !不点开键.includes(k));
   it("总管理（渠道 A 超过 500 条）、销管、销售乙、市场成员", async () => {
     for (const 谁 of ["总管理", "销管", "销售乙", "市场成员"]) {
       const u = 人们[谁];

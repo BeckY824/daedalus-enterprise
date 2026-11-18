@@ -548,3 +548,22 @@ describe("撞到待分配项目（X-87，P-挂靠-01）：按没有负责人处�
     expect((await 通知们(x.市管.id)).filter((n) => n.kind === "撞号")).toHaveLength(0);
   });
 });
+
+describe("同号再次录入的通知不带号码、不带沟通原文（审核 11-18 P1-2）", () => {
+  it("标题、正文没有号码和录入原文，只说去沟通记录看；客户名就是号码的换成客户编号；沟通记录本身照旧留全文", async () => {
+    const x = await 现场();
+    await prisma.customer.update({ where: { id: x.客户.id }, data: { name: "138 0013 8000", customerNo: 7 } });
+    const r = await 作为(x.市场, () => 同号再次录入(x.市场, 好号(), { 入口: "手工建档", 渠道id: x.渠道新.id, 内容: "客户另一个号 13912345678，聊了报价" }));
+    await 等通知推完();
+    expect(r.走).toBe(true);
+    const n = (await 通知们(x.负责人.id)).find((n) => n.kind === "撞号")!;
+    const 文 = `${n.title}\n${n.body}`;
+    expect(文).not.toMatch(/13800138000|0013|13912345678|聊了报价/);
+    expect(n.title).toBe("小丙 再次录入了同一号码（来源不同）：客户 NO.00007");
+    expect(n.body).toContain("来源：转介绍");
+    expect(n.body).toContain("现有来源：展会");
+    expect(n.body).toContain("录入的内容已写进项目沟通记录");
+    const f = await prisma.followUp.findFirst({ where: { customerId: x.客户.id } });
+    expect(f?.content).toContain("聊了报价");
+  });
+});

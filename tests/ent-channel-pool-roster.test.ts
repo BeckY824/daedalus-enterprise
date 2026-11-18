@@ -21,7 +21,7 @@ import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibil
 import { 规则 } from "@/lib/enterprise/rules";
 import { 市场成员key } from "@/lib/enterprise/market";
 import { 读渠道统计 } from "@/lib/enterprise/channel-stats-db";
-import { 名单链接, 公海名单链接, 数字链接, 名单段, 名单键们, type 名单键 } from "@/lib/enterprise/channel-stats";
+import { 名单链接, 公海名单链接, 数字链接, 名单段, 名单键们, 不点开键, type 名单键 } from "@/lib/enterprise/channel-stats";
 import { 读项目列表 } from "@/lib/project/list";
 import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
 import { 读看板底数 } from "@/lib/enterprise/channel-dash-db";
@@ -31,7 +31,7 @@ import { 日期段界 } from "@/lib/custom-date-range";
 type 人 = { id: string; name: string; role: string };
 let 老板: 人, 销售: 人, 销售乙: 人, 市场: 人;
 let 甲渠道: string, 全公海: string;
-const 键们 = Object.keys(名单键们) as 名单键[];
+const 键们 = (Object.keys(名单键们) as 名单键[]).filter((k) => !不点开键.includes(k));
 
 const 设 = (谁: 人) => { mocks.user = { ...mocks.user, id: 谁.id, name: 谁.name, role: 谁.role }; };
 const 统计of = (谁: 人) => { 设(谁); return 以谁的身份(谁.id, () => 读渠道统计([甲渠道, 全公海].map((id) => ({ id, createdAt: new Date("2026-01-01T00:00:00Z"), endDate: null })), new Date(), 谁)); };
@@ -42,7 +42,7 @@ const 公海页 = async (谁: 人, 链: string) => {
   设(谁);
   const q = spof(链);
   expect(new URL(链, "http://x").pathname).toBe("/pool");
-  return 以谁的身份(谁.id, () => 读公海页(谁, {}, 1, 100, { channelId: q.projChannel, phase: q.phase ?? "", createdFrom: q.createdFrom, createdTo: q.createdTo }));
+  return 以谁的身份(谁.id, () => 读公海页(谁, {}, 1, 100, { channelId: q.projChannel, phase: q.phase ?? "", createdFrom: q.createdFrom, createdTo: q.createdTo, open: q.open }));
 };
 
 beforeEach(async () => {
@@ -120,12 +120,12 @@ describe("渠道「另 M 条在公海」点到公海页，落地条数 = M", () 
     }
   });
 
-  it("老板：甲渠道线索 = 一线索 + 四条公海（拆行的客户两行、自选、跟客户来源）；公海页行名、拆出的 id 不撞", async () => {
+  it("老板：甲渠道线索 = 一线索 + 三条公海（拆行的客户两行、自选、跟客户来源；线索流失已结束不算，审核 11-18 P1-3）；公海页行名、拆出的 id 不撞", async () => {
     const 统 = await 统计of(老板);
-    expect(统[甲渠道].名单!.关联线索).toEqual({ 列表: 1, 公海: 4 });
+    expect(统[甲渠道].名单!.关联线索).toEqual({ 列表: 1, 公海: 3 });
     const d = await 公海页(老板, 公海名单链接(甲渠道, "关联线索"));
-    expect(d.行.map((r) => r.项目名).sort()).toEqual(["乙公海线索", "乙公海自选", "公海客户一", "公海客户流失"].sort());
-    expect(new Set(d.行.map((r) => r.id)).size).toBe(4);
+    expect(d.行.map((r) => r.项目名).sort()).toEqual(["乙公海线索", "乙公海自选", "公海客户一"].sort());
+    expect(new Set(d.行.map((r) => r.id)).size).toBe(3);
     // 拆出来的客户行：领取仍按客户
     expect(d.行.filter((r) => r.种 === "客户").every((r) => r.customerId === d.行.find((x) => x.项目名 === "公海客户一")!.customerId)).toBe(true);
     // 整个公海页不带名单时客户只一行
@@ -137,8 +137,8 @@ describe("渠道「另 M 条在公海」点到公海页，落地条数 = M", () 
   it("销售甲：跟客户来源、客户不露的不算；自己放回的回避，不算；两边一致", async () => {
     const 统 = await 统计of(销售);
     const 线索 = (await 公海页(销售, 公海名单链接(甲渠道, "关联线索"))).行.map((r) => r.项目名).sort();
-    expect(线索).toEqual(["乙公海自选", "公海客户一", "公海客户流失"].sort());
-    expect(统[甲渠道].名单!.关联线索.公海).toBe(3);
+    expect(线索).toEqual(["乙公海自选", "公海客户一"].sort());
+    expect(统[甲渠道].名单!.关联线索.公海).toBe(2);
     expect((await 公海页(销售, 公海名单链接(甲渠道, "关联商机"))).行.map((r) => r.项目名)).toEqual(["公海客户二"]);
     // 老板商机里有「甲放回的」，销售甲没有
     expect((await 公海页(老板, 公海名单链接(甲渠道, "关联商机"))).行.map((r) => r.项目名).sort()).toEqual(["公海客户二", "甲放回的"].sort());
@@ -169,7 +169,7 @@ describe("渠道「另 M 条在公海」点到公海页，落地条数 = M", () 
   });
 
   it("名单段、公海名单链接", () => {
-    expect(公海名单链接("c1", "关联线索")).toBe("/pool?projChannel=c1&phase=%E7%BA%BF%E7%B4%A2");
+    expect(公海名单链接("c1", "关联线索")).toBe("/pool?projChannel=c1&phase=%E7%BA%BF%E7%B4%A2&open=1");
     expect(公海名单链接("c1", "关联项目")).toBe("/pool?projChannel=c1");
     expect(名单段(5, { 列表: 2, 公海: 1 })).toEqual({ 列表: 2, 公海: 1, 其余: 2 });
     expect(名单段(3, { 列表: 3, 公海: 0 })).toBeNull();

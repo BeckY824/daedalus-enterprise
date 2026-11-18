@@ -21,7 +21,7 @@ import { 合计文字 } from "@/lib/currency";
 import { isFormValidationError } from "@/lib/form-validation";
 import { dayjs, fmtDate } from "@/lib/utils";
 import Link from "next/link";
-import { 拆来源, 数字链接, 名单段, 到达口径键, type 名单键, type 名单时段, type 渠道统计, type 产出比分布, type 转化 } from "@/lib/enterprise/channel-stats";
+import { 拆来源, 数字链接, 名单段, 到达口径键, 不点开键, type 名单键, type 名单时段, type 渠道统计, type 产出比分布, type 转化 } from "@/lib/enterprise/channel-stats";
 import { 子渠道名, 渠道启用, 渠道状态文字 } from "@/lib/enterprise/channel-main-core";
 import { 转化率字 } from "../overview/funnel";
 import { addChannelInvest, deleteChannelInvest, listChannelInvests, type 投入行 } from "./actions";
@@ -138,7 +138,8 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
    */
   const 数 = (st: 渠道统计 | undefined, 键: 名单键) => {
     const n = st?.[键] ?? 0;
-    if (!st?.名单 || n === 0) return n;
+    // 有效线索按线索验证的判定数（同看板「有效线索」），项目列表筛不出来：只给数
+    if (!st?.名单 || n === 0 || 不点开键.includes(键)) return n;
     const 名单 = st.名单[键];
     // 选了时间段的商机、订单按到达时间数（同看板）：点开不带时间段、看全部时间的，不出差额说明
     if (时段 && 到达口径键.includes(键)) {

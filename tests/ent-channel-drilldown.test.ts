@@ -20,14 +20,15 @@ import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 读渠道统计 } from "@/lib/enterprise/channel-stats-db";
-import { 名单链接, 名单差话, 名单键们, type 名单键 } from "@/lib/enterprise/channel-stats";
+import { 名单链接, 名单差话, 名单键们, 不点开键, type 名单键 } from "@/lib/enterprise/channel-stats";
 import { 读项目列表 } from "@/lib/project/list";
 
 type 人 = { id: string; name: string; role: string };
 let 老板: 人, 销售: 人, 销售乙: 人;
 let 子渠道: string, 只主: string;
 
-const 键们 = Object.keys(名单键们) as 名单键[];
+// 有效线索按线索验证的判定数、界面上不点开（审核 11-18 P1-3），不对拍项目列表
+const 键们 = (Object.keys(名单键们) as 名单键[]).filter((k) => !不点开键.includes(k));
 const 统计of = (谁: 人) =>
   以谁的身份(谁.id, () => 读渠道统计([子渠道, 只主].map((id) => ({ id, createdAt: new Date("2026-01-01T00:00:00Z"), endDate: null })), new Date("2026-11-11T00:00:00Z"), 谁));
 /** 照名单链接的地址栏参数去读项目列表：这一页的行，带上服务端总数（11-11 起分页，渠道数字对的是总数） */
@@ -90,7 +91,8 @@ afterAll(() => prisma.$disconnect());
 describe("渠道数字 = 点进去的项目列表条数", () => {
   it("老板：子渠道、只主两条来源，每个数都对得上；差的只有公海那一条", async () => {
     const 统 = await 统计of(老板);
-    expect(统[子渠道]).toMatchObject({ 关联线索: 4, 有效线索: 4, 关联商机: 1, 关联订单: 1, 关联项目: 6 });
+    // 关联线索 = 眼下还在线索阶段（没结局）：一流失不算；有效线索只认判了有效的，这里一条都没判
+    expect(统[子渠道]).toMatchObject({ 关联线索: 3, 有效线索: 0, 关联商机: 1, 关联订单: 1, 关联项目: 6 });
     expect(统[只主]).toMatchObject({ 关联线索: 1, 关联商机: 2, 关联订单: 0, 关联项目: 3 });
     for (const ch of [子渠道, 只主]) {
       for (const 键 of 键们) {
@@ -100,8 +102,8 @@ describe("渠道数字 = 点进去的项目列表条数", () => {
         expect(统[ch][键] - 名单.列表, `${ch} ${键}`).toBe(名单.公海);
       }
     }
-    expect(统[子渠道].名单!.关联线索).toEqual({ 列表: 3, 公海: 1 });
-    expect(名单差话(4, 统[子渠道].名单!.关联线索)).toBe("项目列表里 3 条（另 1 条在公海，到公海页看）");
+    expect(统[子渠道].名单!.关联线索).toEqual({ 列表: 2, 公海: 1 });
+    expect(名单差话(3, 统[子渠道].名单!.关联线索)).toBe("项目列表里 2 条（另 1 条在公海，到公海页看）");
     expect(名单差话(1, 统[子渠道].名单!.关联商机)).toBeNull();
     expect((await 点进去(老板, 只主, "关联商机")).map((r) => r.name).sort()).toEqual(["三丢单", "二改道"]);
   });
@@ -118,14 +120,14 @@ describe("渠道数字 = 点进去的项目列表条数", () => {
       }
     }
     const 甲 = await 统计of(销售);
-    expect(甲[子渠道]).toMatchObject({ 关联线索: 3, 关联商机: 1, 关联项目: 5 });
-    expect(甲[子渠道].名单!.关联线索).toEqual({ 列表: 2, 公海: 1 });
+    expect(甲[子渠道]).toMatchObject({ 关联线索: 2, 关联商机: 1, 关联项目: 5 });
+    expect(甲[子渠道].名单!.关联线索).toEqual({ 列表: 1, 公海: 1 });
     expect((await 统计of(销售乙))[子渠道]).toMatchObject({ 关联线索: 2, 关联商机: 0 });
   });
 
-  it("名单链接：线索 / 有效线索带 phase=线索，关联项目不带阶段", () => {
-    expect(名单链接("c1", "关联线索")).toBe("/projects?channelId=c1&phase=%E7%BA%BF%E7%B4%A2");
-    expect(名单链接("c1", "有效线索")).toBe(名单链接("c1", "关联线索"));
+  it("名单链接：关联线索带 phase=线索 + open=1（只看没结局的），关联项目不带阶段", () => {
+    expect(名单链接("c1", "关联线索")).toBe("/projects?channelId=c1&phase=%E7%BA%BF%E7%B4%A2&open=1");
+    expect(名单链接("c1", "有效线索")).toBe("/projects?channelId=c1&phase=%E7%BA%BF%E7%B4%A2");
     expect(名单链接("c1", "关联项目")).toBe("/projects?channelId=c1");
   });
 

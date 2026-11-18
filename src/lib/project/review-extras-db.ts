@@ -6,6 +6,7 @@ import { 生效组织规则 } from "./org-rules-store";
 import { 项目回收日, 算超时要的 } from "./db";
 import { 字典of } from "./stage-dict";
 import { 首页卡条件, 即将逾期, 即将逾期紧筛 } from "./home-cards";
+import { 暂未跟进负责人们 } from "./home-cards-db";
 import { 卡点看板范围 } from "./blocker";
 import { 复盘待办计数 } from "./board-todos-db";
 
@@ -56,7 +57,9 @@ export async function 将回公海of(范围: 范围, 今: Date = new Date()): Pr
 export async function 缺沟通of(范围: 范围): Promise<缺沟通> {
   const 规则 = await 生效组织规则();
   const 人 = 负责人条件(范围);
-  const where = { AND: [首页卡条件("no-follow", 规则, 字典of(企业版())), ...(人 ? [人] : [])] };
+  // 只认现负责人记的沟通（同首页卡，home-cards.ts 现负责人没记过沟通）：这一圈负责人；不限 = 在推项目的全部负责人
+  const 负责人们 = await 暂未跟进负责人们(范围 === undefined ? undefined : typeof 范围 === "string" ? [范围] : 范围);
+  const where = { AND: [首页卡条件("no-follow", 规则, 字典of(企业版()), new Date(), 负责人们), ...(人 ? [人] : [])] };
   const [总数, 们] = await Promise.all([
     prisma.project.count({ where }),
     prisma.project.findMany({

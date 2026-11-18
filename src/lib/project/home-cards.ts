@@ -13,7 +13,10 @@
  *                          补零项目客户的脚本补建的（creatorId = 补建创建人，createdAt = 客户建档时间）不算新建（system-created.ts）
  *   key        重点项目   在推的项目里，项目自己的级别（Project.level，迁移 093，界面显示成星级）是 重点级别（S / A）的。
  *                          项目标签字典里的「A 重点推进」就是项目级别 A；S 比 A 高一档，也算重点。不看客户级别
- *   no-follow  暂未跟进   在推的项目里，一条沟通都还没挂上的（FollowUpProject 没有行）。
+ *   no-follow  暂未跟进   在推的项目里，现负责人还没在这个项目上记过一条沟通的（挂在项目上、记录人是现负责人、没删的沟通一条都没有）。
+ *                          11-18 审核 P1-1：建档的人（市场）向导里记的首条、换人之前原负责人记的，都不算现负责人跟进过——
+ *                          卡按负责人数，员工读它是「我手上还没联系过的」。Prisma 比不了两张表的列，所以按负责人一路一路写（现负责人没记过沟通），
+ *                          调用方要把这一圈负责人传进来（home-cards-db.ts 暂未跟进负责人们）。
  *                          例外（11-17）：补建的项目（老客户补的潜客培育）客户身上有过沟通就不算——导入的老客户沟通记在客户上、没挂项目，
  *                          补了项目不等于没人跟过。历史分析回填的（被人领走后还在推的）同样例外。别的项目照旧只看挂在项目上的沟通（客户名下另一个项目的沟通不算这个项目跟进过）
  *   due-soon   3 天内回公海（原叫即将逾期）  在推的线索 / 商机项目里，超时回收日在 即将逾期天数（3 天）以内的；
@@ -68,7 +71,7 @@ export const 即将逾期天数 = 3;
 export const 首页卡口径: Record<首页卡键, { 名: string; 说明: string }> = {
   "month-new": { 名: "本月新增", 说明: "这个月新建的项目，含已结束" },
   key: { 名: "重点项目", 说明: `在推的项目里，项目级别是 ${重点级别.join(" / ")} 的` },
-  "no-follow": { 名: "暂未跟进", 说明: "在推的项目里，还没有记过一条沟通的" },
+  "no-follow": { 名: "暂未跟进", 说明: "在推的项目里，负责人自己还没在项目上记过一条沟通的" },
   "due-soon": { 名: `${即将逾期天数} 天内回公海`, 说明: `在推的线索、商机项目里，${即将逾期天数} 天内会因为没沟通回公海的` },
   "month-won": { 名: "本月赢单", 说明: "这个月从商机转成订单的项目" },
 };
@@ -89,7 +92,7 @@ export function 本月起止(今: Date | string = new Date()): { 起: Date; 止:
   return { 起: 月初.toDate(), 止: 月初.add(1, "month").toDate() };
 }
 
-const 在推 = { result: null, pooledAt: null } satisfies Prisma.ProjectWhereInput;
+export const 在推 = { result: null, pooledAt: null } satisfies Prisma.ProjectWhereInput;
 
 /**
  * 「即将逾期」库里先粗筛：回收日 = 起点 + 节点天数（下一步时间只提醒、不收回，11-18），起点不早于建项目那天，
@@ -189,7 +192,21 @@ export function 即将逾期(回收日: string | null, 今: Date | string = new 
  * 每张卡在库里的条件。即将逾期给的是粗筛（还要再用 即将逾期 过一遍）；
  * 超时回收没开时给一个查不出东西的条件，卡上是 0、项目页是空列表
  */
-export function 首页卡条件(键: 项目卡键, 规则: 组织规则, 字典: 阶段字典, 今: Date | string = new Date()): Prisma.ProjectWhereInput {
+/**
+ * 现负责人没在项目上记过沟通（暂未跟进的主体）：负责人们 = 要数的那一圈负责人，每人一路 ownerId = 他 且项目上没有他记的、没删的沟通。
+ * 一个人都没有 = 查不出东西
+ */
+export function 现负责人没记过沟通(负责人们: readonly string[]): Prisma.ProjectWhereInput {
+  const 们 = [...new Set(负责人们)];
+  if (!们.length) return { id: { in: [] } };
+  return { OR: 们.map((o) => ({ ownerId: o, followUps: { none: { followUp: { ownerId: o, deletedAt: null } } } })) };
+}
+
+/**
+ * 负责人们：只有 no-follow 用（现负责人没记过沟通），不传就抛——这张卡不知道数谁就数不对。
+ * 别的卡不看它
+ */
+export function 首页卡条件(键: 项目卡键, 规则: 组织规则, 字典: 阶段字典, 今: Date | string = new Date(), 负责人们?: readonly string[]): Prisma.ProjectWhereInput {
   switch (键) {
     case "month-new": {
       const { 起, 止 } = 本月起止(今);
@@ -199,7 +216,8 @@ export function 首页卡条件(键: 项目卡键, 规则: 组织规则, 字典:
       return { ...在推, level: { in: [...重点级别] } };
     case "no-follow":
       // 补建的、历史分析回填的（客户身上就是那批旧沟通）：客户有过沟通就不算没跟进。分两条 NOT 写，历史分析的 用 null 安全的写法
-      return { ...在推, followUps: { none: {} }, NOT: [{ creatorId: 补建创建人, customer: 有过沟通 }, { ...历史分析的, customer: 有过沟通 }] };
+      if (!负责人们) throw new Error("暂未跟进要传这一圈负责人（首页卡条件 第 5 个参数）");
+      return { ...在推, AND: [现负责人没记过沟通(负责人们)], NOT: [{ creatorId: 补建创建人, customer: 有过沟通 }, { ...历史分析的, customer: 有过沟通 }] };
     case "due-soon":
       return 即将逾期粗筛(规则, 字典, 今) ?? { id: { in: [] } };
     case "month-won": {

@@ -19,6 +19,7 @@ import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 拆角色, 直属上级of } from "./org-core";
 import { 读组织 } from "./org";
 import { notify } from "./notify";
+import { 通知里的客户名, 撞的写法 } from "./notice-mask";
 import { 挂靠超时小时, 挂靠页 } from "./attach-approval";
 import { 挂靠进公海状态 } from "@/lib/owner-log-db";
 import { 离职负责人找谁 } from "./departed-owner";
@@ -118,10 +119,10 @@ async function 看预警(行id: string, d: 台账行): Promise<void> {
   const 不同组 = { customerId: d.customerId, sameGroup: false, createdAt: { gte: 起 } };
   const [org, 客户, 查的人] = await Promise.all([
     读组织(),
-    看全部(() => prisma.customer.findUnique({ where: { id: d.customerId }, select: { name: true } })),
+    看全部(() => prisma.customer.findUnique({ where: { id: d.customerId }, select: { id: true, name: true, customerNo: true } })),
     prisma.user.findUnique({ where: { id: d.userId }, select: { name: true } }),
   ]);
-  const 客户名 = 客户?.name ?? "";
+  const 客户名 = 客户 ? 通知里的客户名(客户) : "";
   const link = `/customers/${d.customerId}`;
   let 位 = 0;
 
@@ -132,7 +133,8 @@ async function 看预警(行id: string, d: 台账行): Promise<void> {
       const n = await notify([d.ownerId], {
         kind: "撞号预警",
         title: `撞号预警：${查的人?.name ?? "同事"} ${撞号预警.天数} 天内第 ${我查几次} 次撞上你负责的客户「${客户名}」`,
-        body: `新建客户时按${d.keyType}撞上（${d.keyValue}）。第一档预警：同一人 ${撞号预警.天数} 天内撞同一位客户 ${撞号预警.第一档次数} 次`,
+        // 撞上的号码打码（P-转-12 提醒里不带手机号，审核 11-18 P1-2）
+        body: `新建客户时按${撞的写法(d.keyType, d.keyValue)} 撞上。第一档预警：同一人 ${撞号预警.天数} 天内撞同一位客户 ${撞号预警.第一档次数} 次`,
         link, key: `撞号预警1:${行id}`,
       });
       if (n) 位 |= 1;
@@ -298,14 +300,14 @@ export async function 申请挂靠(我: { id: string; name: string }, 撞号id: 
   }
 
   // 审批人 = 客户现在的负责人（P-挂靠-02；之后客户换负责人，审批人跟着换，见 owner-log-db.ts）。离职了也还是他、不另找人，24 小时后转他的实线上级
-  const 客户 = await 看全部(() => prisma.customer.findUnique({ where: { id: 行.customerId }, select: { name: true, salesOwnerId: true } }));
+  const 客户 = await 看全部(() => prisma.customer.findUnique({ where: { id: 行.customerId }, select: { id: true, name: true, customerNo: true, salesOwnerId: true } }));
   const 收 = 客户?.salesOwnerId ?? null;
   await prisma.entDupeHit.update({ where: { id: 行.id }, data: { action: "申请挂靠", actionAt: new Date(), status: "待处理", approverId: 收 } });
   const org = await 读组织();
   const n = 收 && org.成员.has(收) ? await notify([收], {
     kind: "挂靠",
-    title: `${我.name} 申请挂靠你负责的客户「${客户?.name ?? ""}」`,
-    body: `新建客户时按${行.keyType}撞上（${行.keyValue}），申请一起跟这位客户。到「挂靠申请」里批准或拒绝；批准后客户负责人不变，对方只拿到这家客户的只读卡。`
+    title: `${我.name} 申请挂靠你负责的客户「${客户 ? 通知里的客户名(客户) : ""}」`,
+    body: `新建客户时按${撞的写法(行.keyType, 行.keyValue)} 撞上，申请一起跟这位客户。到「挂靠申请」里批准或拒绝；批准后客户负责人不变，对方只拿到这家客户的只读卡。`
       + `${挂靠超时小时} 小时没处理会转给你的直属上级`,
     link: 挂靠页,
     key: `挂靠:${行.id}`,
