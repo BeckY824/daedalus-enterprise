@@ -15,7 +15,7 @@ import { 向导自动分配 } from "@/app/(app)/leads/assign-actions";
 import { 标定时分配 } from "@/lib/enterprise/scheduled-assign";
 import { 认定时分配, 短时刻 } from "@/lib/project/time-fields";
 import { prisma } from "@/lib/prisma";
-import { 按区域分配, 区域未填提示 } from "@/lib/enterprise/customer-region";
+import { 按区域分配, 区域未填提示, type 分配方向 } from "@/lib/enterprise/customer-region";
 import { 本人线of } from "@/lib/enterprise/assign-direction-db";
 import type { 线 } from "@/lib/enterprise/lead-assign";
 
@@ -61,8 +61,11 @@ export async function 定分配方式(me: 我, 项目: { 分配方式?: number |
  * 建档本身算成了，没成的回一句提示。转走 = 项目已不在我名下
  */
 export async function 建好再分(me: 我, 分配: 定好的分配, projectId: string, 项目名: string, 业务线?: 项目线 | null, 定时?: 定时分配 | null,
-  /** 分配方向（11-18）：市场成员在界面上手动选的；没选 = undefined，向导自动分配 按 区域 → 电话 → 本人事业部 现算（和建档时记的业务线同一顺序） */
-  方向?: 线): Promise<{ 提示: string; 转走: boolean } | null> {
+  /**
+   * 分配方向（11-18）：市场成员选自动分配时建档那一刻算好的（手动改的 = 来源「手动」，没改 = 默认算的），和记进项目业务线的是同一个结果，
+   * 原样交给 向导自动分配，不再按库里的号重算一遍（审核 11-18 P2-4）；别的角色不传
+   */
+  方向?: 分配方向): Promise<{ 提示: string; 转走: boolean } | null> {
   if (分配.i === 1 && 业务线 === "暂不分配") {
     await 标待分配(projectId, null);
     刷新(projectId);
@@ -76,7 +79,7 @@ export async function 建好再分(me: 我, 分配: 定好的分配, projectId: 
     return { 提示: `已定时：${短时刻(定时.at)} ${给谁}；到点前留在新线索待分配`, 转走: false };
   }
   if (分配.i === 1) {
-    // 分配方向（11-18）：市场成员手动选了就按选的；没选按默认顺序现算。别的角色 向导自动分配 不看这一格
+    // 分配方向（11-18）：市场成员建档时算好的那个（手动 / 默认）原样交过去。别的角色 向导自动分配 不看这一格
     const r = await 向导自动分配(projectId, 方向);
     // 市场成员按客户区域分（P-转-26）、客户没填区域时两条线都算：提示里说一句，建议补区域
     if (r.ok) return { 提示: `已按「${分配.名}」分给 ${r.接手人}${r.区域未填 ? `（${区域未填提示}）` : ""}`, 转走: true };

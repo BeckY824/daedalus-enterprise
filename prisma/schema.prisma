@@ -1045,6 +1045,10 @@ model Project {
   source               String?
   /// 回填批次号（企业版，迁移 151）：同一次回填写同一个值，便于按批核对、撤回；正常建的为空
   importBatch          String?
+  /// 手动选的分配方向（企业版，迁移 152，11-18 审核 P0-1）：市场成员建档选自动分配时，人把「分配方向」手动改成的内贸 / 外贸；
+  /// 空 = 没改过，按 区域 → 电话 → 本人事业部 现算（lib/enterprise/customer-region.ts 默认分配方向）。
+  /// 之后每一次自动分配（定时到点、超时自动转、列表 / 批量自动分配）都先认它（assign-actions.ts 自动分给）；建好之后不改
+  assignDir            String?
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
   /// 企业版软删（2026-10-29，P9）：空 = 没删；有值 = 进了回收站，30 天后清掉。读的时候 lib/enterprise/soft-delete.ts 统一滤掉

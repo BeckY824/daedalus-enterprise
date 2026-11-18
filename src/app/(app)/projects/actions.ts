@@ -55,7 +55,7 @@ import { 只读客户, 只读话 } from "@/lib/team-scope";
 import { scheduleValue } from "@/lib/schedule-date";
 import { 定分配方式, 建好再分, 认新建定时 } from "@/lib/project/after-create-assign";
 import { 认业务线, 业务线必填 } from "@/lib/enterprise/assign-line";
-import { 按区域分配of, 默认分配方向, 认分配方向 } from "@/lib/enterprise/customer-region";
+import { 按区域分配of, 默认分配方向, 认分配方向, type 分配方向 } from "@/lib/enterprise/customer-region";
 import { 本人线of } from "@/lib/enterprise/assign-direction-db";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 import { 字典定义, 项目画像项, 认跟进方式, 选的原因 } from "@/lib/enterprise/dict";
@@ -142,7 +142,8 @@ export async function 建档向导(输入: 建档向导输入) {
     if ("error" in 好) return { ok: false as const, error: 好.error };
     /** 市场成员选自动分配：业务线按客户区域定（下面企业版那段算） */
     let 区域定线 = false;
-    let 手选方向: "内贸" | "外贸" | undefined;
+    /** 市场成员自动分配的分配方向（11-18）：建档时算一次，记业务线、建好再分 都用这一个（审核 11-18 P2-4） */
+    let 建档方向: 分配方向 | undefined;
     // 企业版新建线索要选渠道或渠道触点（10-26：直接选渠道，不是来源类型；P-渠道-08 起触点也算）
     if (企业版()) {
       if (是占位值(String(input.客户.name ?? ""))) return { ok: false as const, error: 占位名提示("客户名称") };
@@ -173,10 +174,12 @@ export async function 建档向导(输入: 建档向导输入) {
           // 分配方向（11-18）：人在界面上改过就按改的（只认内贸 / 外贸）；没改按 客户区域 → 项目所在地 → 电话 → 本人事业部；都判不出 = 不记线、两条线都算
           const 向 = 认分配方向(input.项目?.分配方向);
           if (!向.ok) return { ok: false as const, error: 向.error };
-          手选方向 = 向.线;
-          好.企业.业务线 = 向.线 ?? 默认分配方向({
+          建档方向 = 向.线 ? { 线: 向.线, 来源: "手动" } : 默认分配方向({
             客户: input.客户.企业资料 ?? null, 项目: 好.企业.所在地 ?? null, 号们: 向导号们(input), 本人线: await 本人线of(组织, me.id),
-          }).线;
+          });
+          好.企业.业务线 = 建档方向.线;
+          // 手动改的存在项目上（Project.assignDir），之后定时到点、超时自动转、列表 / 批量自动分配都认它（审核 11-18 P0-1）
+          if (向.线) 好.企业.手选方向 = 向.线;
         } else {
           // 业务线（11-01 清单 A1，16:1x 拍板三选一）：手动选；没选 = 跟客户上选的。企业版新建必填，不填不让建
           if (!好.企业.业务线) {
@@ -289,7 +292,7 @@ export async function 建档向导(输入: 建档向导输入) {
     await 存沟通后重算三态(r.id);
     刷新项目(建了.projectId, r.id);
     // 指定给了别人：项目不在我名下，跳详情页会是「不存在或无权查看」（11-03 A2-1），和自动分配一样回线索列表
-    const 再分 = 分配 ? await 建好再分(me, 分配, 建了.projectId!, 好.项目.name, 好.企业?.业务线 ?? null, 定时, 区域定线 ? 手选方向 : undefined) : null;
+    const 再分 = 分配 ? await 建好再分(me, 分配, 建了.projectId!, 好.项目.name, 好.企业?.业务线 ?? null, 定时, 区域定线 ? 建档方向 : undefined) : null;
     // 指定给了别人：告诉接手人。客户转过去了链客户详情（看得到联系方式）；客户没转就是项目分给他，链项目详情。自动分配、进公海走 建好再分 里自己的通知，这里不重复
     if (!再分 && 好.项目.ownerId !== me.id) {
       if (转客户 || !企) await 分给你通知(me, 好.项目.ownerId, [r.id], 好.项目.name);

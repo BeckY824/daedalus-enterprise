@@ -23,6 +23,9 @@ import { missingFields } from "@/lib/agent/proposals";
 import { 企业版字典 } from "@/lib/project/stage-dict";
 import { 建档不能过线索验证 } from "@/lib/project/stage-gates";
 import { 区域未填提示 } from "@/lib/enterprise/customer-region";
+import { 超时转出, 自动分配线索, 批量自动分配, 定时分出去 } from "@/app/(app)/leads/assign-actions";
+import { 超时转令牌, 定时分配令牌 } from "@/lib/enterprise/scheduled-assign-token";
+import { 系统操作人 } from "@/lib/enterprise/scheduled-assign";
 
 type 人 = { id: string; name: string };
 let 老板: 人, 市场: 人, 乙: 人, 丙: 人;
@@ -252,6 +255,73 @@ describe("新线索卡：市场自动分配的分配方向", () => {
     当(乙);
     expect(await applyProposal(卡({ 分配方式: 4, 分配方向: "外贸" }) as never)).toMatchObject({ ok: true });
     expect((await prisma.project.findFirstOrThrow()).bizLine).toBe("内贸");
+  });
+});
+
+// 审核 11-18 P0-1 / P2-3 / P2-4：人改过的方向存在项目上（Project.assignDir），之后每一次自动分配都先认它，不按区域重算
+describe("新线索卡：手动改的分配方向存在项目上，之后每次自动分配都认", () => {
+  let 丁: 人;
+  beforeEach(async () => {
+    丁 = await 造人("ding", "丁");
+    await prisma.entMember.create({ data: { userId: 丁.id, bizRole: "sales", line: "外贸" } });
+  });
+  const 外贸两位 = () => [丙.id, 丁.id];
+  const 义乌 = (补: Record<string, unknown> = {}) => applyProposal(卡({ 分配方式: 1, 业务线: undefined, province: "浙江", city: "义乌", 区域去处: ["客户"], ...补 }) as never);
+  const 现负责人 = async (id: string) => (await prisma.project.findUniqueOrThrow({ where: { id } })).ownerId;
+
+  it("手动改成外贸的义乌线索：超时自动转以后仍分到外贸（另一位外贸销售），不按区域改去内贸", async () => {
+    当(市场);
+    expect(await 义乌({ 分配方向: "外贸" })).toMatchObject({ ok: true });
+    const p = await prisma.project.findFirstOrThrow();
+    expect([p.bizLine, p.assignDir]).toEqual(["外贸", "外贸"]);
+    expect(外贸两位()).toContain(p.ownerId);
+    const r = await 超时转出(超时转令牌, 系统操作人, p.id, p.ownerId, [p.ownerId], "超时未跟进自动转");
+    expect(r).toMatchObject({ ok: true });
+    expect(await 现负责人(p.id)).toBe(外贸两位().find((x) => x !== p.ownerId));
+  });
+
+  it("列表里再点自动分配、批量自动分配：仍在外贸里挑，理由写「按选的分配方向」", async () => {
+    当(市场);
+    expect(await 义乌({ 分配方向: "外贸" })).toMatchObject({ ok: true });
+    const p = await prisma.project.findFirstOrThrow();
+    const a = await 自动分配线索(p.id, { 项目: true });
+    expect(a).toMatchObject({ ok: true });
+    if (!a.ok) return;
+    expect(外贸两位()).toContain(a.toUserId);
+    expect(a.为什么).toContain("按选的分配方向：外贸");
+    const b = await 批量自动分配([p.id], { 项目: true });
+    expect(b).toMatchObject({ ok: true, 结果: [{ ok: true }] });
+    expect(外贸两位()).toContain(await 现负责人(p.id));
+  });
+
+  it("定时分配到点：认手动改的外贸（审核 11-18 P2-3：默认算的不存、不当成手动）", async () => {
+    当(市场);
+    const 明天 = new Date(Date.now() + 24 * 3600_000).toLocaleString("sv-SE", { timeZone: "Asia/Shanghai" }).slice(0, 16);
+    expect(await 义乌({ 分配方向: "外贸", 定时分配: 明天 })).toMatchObject({ ok: true });
+    const p = await prisma.project.findFirstOrThrow();
+    expect([p.ownerId, p.assignDir]).toEqual([市场.id, "外贸"]);
+    expect(await 定时分出去(定时分配令牌, 系统操作人, p.id, null, "到点分配")).toMatchObject({ ok: true });
+    expect(外贸两位()).toContain(await 现负责人(p.id));
+  });
+
+  it("没改方向：义乌按区域定内贸，记下的业务线和实际分的线一致；超时没有别的内贸销售可接 = 不改去外贸", async () => {
+    当(市场);
+    expect(await 义乌()).toMatchObject({ ok: true });
+    const p = await prisma.project.findFirstOrThrow();
+    // 默认算的：业务线记内贸、不存手选方向；记下的线 = 实际分的线（审核 11-18 P2-4）
+    expect([p.ownerId, p.bizLine, p.assignDir]).toEqual([乙.id, "内贸", null]);
+    expect((await prisma.entLeadAssign.findFirstOrThrow()).line).toBe("内贸");
+    const r = await 超时转出(超时转令牌, 系统操作人, p.id, 乙.id, [乙.id], "超时未跟进自动转");
+    expect(r).toMatchObject({ ok: false, 挑不到: true });
+    expect(await 现负责人(p.id)).toBe(乙.id);
+  });
+
+  it("只写外国城市（胡志明市）+ 越南号：不落地址、不补「中国」，按电话分外贸（审核 11-18 P0-2）", async () => {
+    当(市场);
+    expect(await applyProposal(卡({ 分配方式: 1, 业务线: undefined, city: "胡志明市", 区域去处: ["客户"], phone: "", 联系方式: [{ kind: "phone", value: "+84901234567" }] }) as never)).toMatchObject({ ok: true });
+    const p = await 唯一项目();
+    expect([p.customer.addrCountry, p.customer.addrCity]).toEqual([null, null]);
+    expect([p.bizLine, 外贸两位().includes(p.ownerId)]).toEqual(["外贸", true]);
   });
 });
 

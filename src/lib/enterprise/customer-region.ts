@@ -2,7 +2,7 @@
  * 市场成员自动分配按客户区域定事业部（P-转-26 自动分配这一半，X-141 我方建议；用户 11-17：「无需选择内贸还是外贸……客户中国大陆或非中国大陆识别自动对应到内贸还是外贸」）。
  * 纯函数，界面（建档向导）和服务端（assign-actions 自动分给）共用，别 import prisma。
  *
- * - 区域（X-141 ①）：按客户国家判；国家空但有省 / 市 / 区县的算中国大陆（规整地址 也这么存）；港澳台算非大陆；四格全空 = 未知。
+ * - 区域（X-141 ①）：按客户国家判；国家空但有省 / 市 / 区县的算中国大陆（规整地址 也这么存）；港澳台算非大陆（省 / 市 / 区县任一格是港澳台地名也算）；四格全空 = 未知。
  *   客户地址全空时退到项目所在地（建档向导新建的客户没有地址格，只填了项目所在地）
  * - 去向：大陆 → 内贸；非大陆 → 外贸；未知 → 不限事业部（两条线的销售都进候选），提示「客户没填区域……」
  * - 谁受这条管（X-141 ②④）：按岗位认的市场成员 = 业务角色有市场管理或渠道运营的人；别的角色发起照 P-转-08 不限
@@ -11,6 +11,7 @@
  */
 import { 是国内, type 客户地址 } from "./customer-v2";
 import { 验客户电话 } from "./contact-format";
+import { 港澳台地名 } from "./cn-place";
 import { 线部门们, type 线部门 } from "./assign-line";
 import type { 组织 } from "./org-core";
 import type { 线 } from "./lead-assign";
@@ -18,8 +19,12 @@ import type { 线 } from "./lead-assign";
 export type 客户区域 = "大陆" | "非大陆" | "未知";
 
 const 格 = (x: string | null | undefined) => String(x ?? "").trim();
-/** 港澳台：国家那格写成「中国香港」「香港」「Hong Kong」「台湾省」……，或国家是中国、省那格是港澳台 */
-const 港澳台 = /^(中国|中國)?\s*(香港|澳门|澳門|台湾|臺灣)|^(hong\s*kong|macau|macao|taiwan)\b|^(hk|mo|tw)$/i;
+/**
+ * 港澳台：国家那格写成「中国香港」「香港」「Hong Kong」「台湾省」……，或国家是中国 / 空、省 / 市 / 区县那格是港澳台——
+ * 中文名单（含「台北市」「高雄」「湾仔区」「九龙」这类只写了市、区的，审核 11-18 P1-4）和 AI 卡落地址共用 cn-place.ts 港澳台地名，这里只补英文写法
+ */
+const 港澳台英文 = /^(hong\s*kong|macau|macao|taiwan|taipei|kowloon)\b|^(hk|mo|tw)$/i;
+const 港澳台 = { test: (x: string): boolean => 港澳台英文.test(x) || !!港澳台地名(x) };
 
 /** 是国内 以外、也当「中国」的写法（繁体、全称、英文全称）；港澳台再看省 / 市那一格 */
 const 也算中国 = /^(中國|中國大陸|中华人民共和国|中華人民共和國|大陆|people'?s\s+republic\s+of\s+china|mainland\s+china)$/i;
@@ -28,7 +33,7 @@ const 也算中国 = /^(中國|中國大陸|中华人民共和国|中華人民�
 export function 客户区域of(a: Partial<客户地址> | null | undefined): 客户区域 {
   const 国 = 格(a?.addrCountry), 省 = 格(a?.addrProvince), 市 = 格(a?.addrCity), 区 = 格(a?.addrDistrict);
   if (!国 && !省 && !市 && !区) return "未知";
-  if (!国 || 是国内(国) || 也算中国.test(国)) return 港澳台.test(省) || 港澳台.test(市) ? "非大陆" : "大陆";
+  if (!国 || 是国内(国) || 也算中国.test(国)) return 港澳台.test(省) || 港澳台.test(市) || 港澳台.test(区) ? "非大陆" : "大陆";
   return "非大陆";
 }
 
@@ -72,7 +77,10 @@ export const 区域分配说明 = "建好后按下面的分配方向自动分（
   ① 客户区域（区域of：客户地址，空了看项目所在地）→ 大陆内贸、非大陆外贸；
   ② 区域未知看电话：大陆手机号（含 +86 / 0086）→ 内贸，带别的国际区号（含港澳台）→ 外贸，座机 / 认不出 → 下一步；
   ③ 还判不出 → 录入人本人的事业部（本人事业部）；本人也没有 = 不限（两条线都算，提示补区域）。
-  人手动改了就按手动的；界面只在人改过时交「分配方向」，没交服务端按同一顺序现算（不信界面算的默认）
+  人手动改了就按手动的；界面只在人改过时交「分配方向」，没交服务端按同一顺序现算（不信界面算的默认）。
+  人手动改的那条存在项目上（Project.assignDir，迁移 152）；之后每一次自动分配（定时到点、超时自动转、列表里点自动分配、批量）
+  都先认它（来源「手动」），没改过才按默认顺序现算（审核 11-18 P0-1：人改过的方向不能被区域重算掉；P2-3：默认算的不当成手动的）。
+  项目业务线不当分配方向读：别的角色建的项目、市场成员建的暂不分配项目，业务线是人另选的，市场自动分配照旧不看它（X-141）
 */
 export type 方向来源 = "区域" | "电话" | "本人" | "手动" | "不限";
 export type 分配方向 = { 线: 线 | null; 来源: 方向来源 };
@@ -106,6 +114,21 @@ export function 认分配方向(x: unknown): { ok: true; 线: 线 | undefined } 
   if (x === undefined || x === null || x === "") return { ok: true, 线: undefined };
   if (x === "内贸" || x === "外贸") return { ok: true, 线: x };
   return { ok: false, error: "分配方向只能选内贸或外贸" };
+}
+
+const 方向来源们: readonly 方向来源[] = ["区域", "电话", "本人", "手动", "不限"];
+/**
+ * 建好再分 交给 向导自动分配 的分配方向（建档时算好的 { 线, 来源 }，审核 11-18 P2-4）；也认老写法：只交「内贸 / 外贸」= 手动。
+ * 没交 = undefined（按项目上存的手选方向 / 默认顺序）；对不上 = error
+ */
+export function 认交来的方向(x: unknown): { ok: true; 向: 分配方向 | undefined } | { ok: false; error: string } {
+  if (x && typeof x === "object" && !Array.isArray(x)) {
+    const { 线: l, 来源: 源 } = x as Record<string, unknown>;
+    if ((l === "内贸" || l === "外贸" || (l === null && 源 === "不限")) && 方向来源们.includes(源 as 方向来源)) return { ok: true, 向: { 线: l, 来源: 源 as 方向来源 } };
+    return { ok: false, error: "分配方向只能选内贸或外贸" };
+  }
+  const r = 认分配方向(x);
+  return r.ok ? { ok: true, 向: r.线 ? { 线: r.线, 来源: "手动" } : undefined } : r;
 }
 
 /** 界面上分配方向底下那句：默认值从哪来 */

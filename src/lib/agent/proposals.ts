@@ -19,7 +19,7 @@ import { 是项目卡, buildProjectProposal, 项目卡缺, 描述项目卡, type
 import { 内置号码种类, 每人最多号码, 号码上限 } from "../enterprise/customer-v2";
 import { 字典定义 } from "../enterprise/dict-kinds";
 import { 认出备注里的号码 } from "../enterprise/remark-numbers";
-import { 像国内地名 } from "../enterprise/cn-place";
+import { 像国内地名, 港澳台地名 } from "../enterprise/cn-place";
 import { 对得上的方式 } from "../follow-method";
 
 export type ProposalKind = "set_status" | "add_followup" | "add_plan" | "add_lead" | "update_customer" | "add_opportunity" | "add_contract" | "update_channel"
@@ -226,9 +226,10 @@ const 是区域去处 = (x: unknown): x is 区域去处 => typeof x === "string"
 /**
  * 卡上的国家 / 省 / 城市落到哪（dashboard/apply.ts 落库、卡上显示「按客户区域自动定」共用，11-18 加急）：
  * 勾了哪几格填哪几格；老卡没这格（区域去处 undefined）有区域就只进客户地址。
- * 只写了省 / 城市没写国家的：认得出是国内地名（cn-place.ts，「杭州」「浙江省」「义乌市」）就照填，规整地址 按国内补「中国」——
- * 原来没国家一律不填，写了城市哪都没落，市场自动分配成了「区域未知」两条线都算；认不出的（「多伦多」）照旧不填，免得国外城市被当成国内，
- * 卡上显示「客户没填区域」，人补上国家再确认。联系人地址是一格文字，照原样拼
+ * 只写了省 / 城市没写国家的：认得出是大陆地名（cn-place.ts 像国内地名：省、地级市、名单里的县级市，「杭州」「浙江省」「义乌市」）
+ * 或港澳台地名（「台北市」「湾仔区」「九龙」）就照填，规整地址 补「中国」，客户区域再按港澳台判非大陆（customer-region.ts）——
+ * 原来没国家一律不填，写了城市哪都没落，市场自动分配成了「区域未知」两条线都算；认不出的（「多伦多」「胡志明市」「大阪市」，审核 11-18 P0-2）
+ * 不填，免得国外城市被当成国内，分配方向退到电话 → 本人事业部，卡上显示怎么定的，人补上国家再确认。联系人地址是一格文字，照原样拼
  */
 type 卡上四格 = { addrCountry: string | null; addrProvince: string | null; addrCity: string | null; addrDistrict: string | null };
 export function 线索卡地址(p: 线索卡多的格 & Pick<线索建档格, "区域去处">): {
@@ -239,7 +240,7 @@ export function 线索卡地址(p: 线索卡多的格 & Pick<线索建档格, "�
   const 国 = p.country?.trim() || "", 省 = p.province?.trim() || "", 市 = p.city?.trim() || "", 区 = p.district?.trim() || "", 详 = p.address?.trim() || "";
   if (!国 && !省 && !市 && !区 && !详) return { 客户: null, 项目: null, 联系人: "" };
   const 去处 = p.区域去处 ?? ["客户"];
-  const 认得 = !!国 || 像国内地名(省) || 像国内地名(市) || 像国内地名(区);
+  const 认得 = !!国 || [省, 市, 区].some((x) => 像国内地名(x) || !!港澳台地名(x));
   const 四格: 卡上四格 = 认得 ? { addrCountry: 国 || null, addrProvince: 省 || null, addrCity: 市 || null, addrDistrict: 区 || null } : { addrCountry: null, addrProvince: null, addrCity: null, addrDistrict: null };
   // 详细地址（客户地址 addrDetail / 项目 location）是自由文字，区域认不出也照存；四格和详细地址都没有 = 不动
   const 有 = 认得 || !!详;

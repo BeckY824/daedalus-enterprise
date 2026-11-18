@@ -3,7 +3,7 @@
  * 服务端（建档向导、AI 新线索卡、客户转让）见 ent-assign-use / ent-ai-lead-assign / ent-cust-transfer-auto；界面见各自 .ui 测试
  */
 import { describe, it, expect } from "vitest";
-import { 默认分配方向, 电话定线, 认分配方向, 方向来源说明, 方向分配理由, 本人事业部, 区域未填提示 } from "@/lib/enterprise/customer-region";
+import { 默认分配方向, 电话定线, 认分配方向, 认交来的方向, 方向来源说明, 方向分配理由, 本人事业部, 区域未填提示 } from "@/lib/enterprise/customer-region";
 import { 建组织 } from "@/lib/enterprise/org-core";
 
 describe("电话定线", () => {
@@ -44,6 +44,15 @@ describe("认分配方向 / 说明", () => {
     expect(认分配方向("外贸")).toEqual({ ok: true, 线: "外贸" });
     for (const x of [undefined, null, ""]) expect(认分配方向(x)).toEqual({ ok: true, 线: undefined });
     for (const x of ["暂不分配", "东南亚", 1, {}]) expect(认分配方向(x)).toEqual({ ok: false, error: "分配方向只能选内贸或外贸" });
+  });
+  it("认交来的方向（建好再分 交建档时算好的，审核 11-18 P2-4）：对象原样收；只交内贸 / 外贸 = 手动；没交 = undefined；对不上拦", () => {
+    expect(认交来的方向({ 线: "外贸", 来源: "电话" })).toEqual({ ok: true, 向: { 线: "外贸", 来源: "电话" } });
+    expect(认交来的方向({ 线: null, 来源: "不限" })).toEqual({ ok: true, 向: { 线: null, 来源: "不限" } });
+    expect(认交来的方向("内贸")).toEqual({ ok: true, 向: { 线: "内贸", 来源: "手动" } });
+    for (const x of [undefined, null, ""]) expect(认交来的方向(x)).toEqual({ ok: true, 向: undefined });
+    for (const x of [{ 线: "东南亚", 来源: "区域" }, { 线: "内贸", 来源: "瞎写" }, { 线: null, 来源: "区域" }, "东南亚", []]) {
+      expect(认交来的方向(x)).toEqual({ ok: false, error: "分配方向只能选内贸或外贸" });
+    }
   });
   it("来源一句话", () => {
     expect(方向来源说明({ 线: "内贸", 来源: "区域" })).toBe("按客户区域：内贸");

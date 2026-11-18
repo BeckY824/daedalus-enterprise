@@ -31,7 +31,7 @@ import {
   分配默认谁能用, 分配方式id, 分配谁能用key, 规整分配谁能用, 谁能用, 能用分配方式, 谁能用的话,
   挡分配方式, 改分配谁能用, 读分配谁能用, 我能用的分配方式,
 } from "@/lib/enterprise/dict";
-import { 分配线索, 自动分配线索 } from "@/app/(app)/leads/assign-actions";
+import { 分配线索, 自动分配线索, 向导自动分配 } from "@/app/(app)/leads/assign-actions";
 import { 领取项目, 建档向导, type 建档向导输入 } from "@/app/(app)/projects/actions";
 import { 存分配谁能用 } from "@/app/(app)/settings/ent-dict-actions";
 import { 公海规则, 公海客户先领取话 } from "@/lib/enterprise/pool-rules";
@@ -574,6 +574,47 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     const 前 = await prisma.project.count();
     expect(await 向导({ 分配方式: 1, 业务线: null, 分配方向: "东南亚" })).toMatchObject({ ok: false, error: "分配方向只能选内贸或外贸" });
     expect(await prisma.project.count()).toBe(前);
+  });
+
+  it("分配方向（审核 11-18 P2-4）：建档时算的方向、记进业务线的线、实际分的线是同一个（不按库里的号顺序重算）；默认算的不存手选方向", async () => {
+    await setSetting(自动分配不参与key, { [销售经理]: "禁止" });
+    await prisma.entMember.updateMany({ where: { userId: 销售 }, data: { line: "内贸" } });
+    await prisma.entMember.updateMany({ where: { userId: 另一销售 }, data: { line: "外贸" } });
+    当(市场);
+    const 渠 = (await prisma.channel.findFirst()) ?? (await prisma.channel.create({ data: { name: "小红", channelOwnerId: 老板 } }));
+    // 客户电话空；联系人电话是国外号，另一个号是大陆手机：按界面上的顺序先看到国外号 → 外贸，记进业务线，建好再分 原样用这一个
+    const r = await 建档向导({
+      客户: {
+        name: "号序客户", phone: "", school: null, grade: null, major: null, followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null, remark: null,
+        salesOwnerId: 市场, channelId: 渠.id, referrerCustomerId: null,
+      },
+      联系人: { name: "王经理", position: "采购", phone: "+14155550123", 号码们: [{ kind: "phone", value: "13912345678" }] },
+      项目: { name: "号序项目", amount: 0, currency: "CNY", ownerId: 市场, 业务线: null, 分配方式: 1 },
+      跟进: { type: "PHONE", content: "聊了需求", occurredAt: "2026-10-20 10:00", 节点: "潜客培育", 明确回复: false },
+    });
+    expect(r).toMatchObject({ ok: true, 转走: true });
+    if (!r.ok) return;
+    const p = await 项目of(r.projectId);
+    expect([p.bizLine, p.assignDir, p.ownerId]).toEqual(["外贸", null, 另一销售]);
+    expect((await prisma.entLeadAssign.findFirstOrThrow({ where: { projectId: r.projectId } })).line).toBe("外贸");
+  });
+
+  it("分配方向（审核 11-18 P2-4）：建好再分 交来的建档方向原样用，不按库里的号重算；理由照来源写，不当成手动", async () => {
+    await setSetting(自动分配不参与key, { [销售经理]: "禁止" });
+    await prisma.entMember.updateMany({ where: { userId: 销售 }, data: { line: "内贸" } });
+    await prisma.entMember.updateMany({ where: { userId: 另一销售 }, data: { line: "外贸" } });
+    当(市场);
+    // 暂不分配先留在我名下；客户电话是大陆手机（库里重算会是内贸）
+    const a = await 向导({ 分配方式: 3, 业务线: "暂不分配" });
+    expect(a).toMatchObject({ ok: true });
+    if (!a.ok) return;
+    const r = await 向导自动分配(a.projectId, { 线: "外贸", 来源: "电话" });
+    expect(r).toMatchObject({ ok: true, toUserId: 另一销售 });
+    if (r.ok) {
+      expect(r.为什么).toContain("按电话（国外号码）：外贸");
+      expect(r.为什么).not.toContain("按选的");
+    }
+    expect(await 向导自动分配(a.projectId, { 线: "东南亚", 来源: "电话" })).toMatchObject({ ok: false, error: "分配方向只能选内贸或外贸" });
   });
 
   it("自动分配 + 业务线「暂不分配」（非市场成员）：不自动分，留在新线索待分配，不发提醒（A7）", async () => {
