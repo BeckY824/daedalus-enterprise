@@ -94,7 +94,8 @@ it("指定分配的项目负责人下拉只列能被指定的（参与正常）+
       await 框.getByLabel("项目负责人", { exact: true }).click();
       const 下拉 = page.locator(".ant-select-dropdown:visible");
       await 下拉.getByTitle("同事乙", { exact: true }).waitFor();
-      expect(await 下拉.getByTitle("我自己", { exact: true }).count()).toBe(1);
+      // 可指定名单随「新建分配方式数据」异步到，下拉会重排一次：等稳定后再数
+      await expect.poll(() => 下拉.locator(".ant-select-item-option").allInnerTexts(), { timeout: 5000 }).toEqual(expect.arrayContaining(["我自己", "同事乙"]));
       expect(await 下拉.getByTitle("暂停的丙", { exact: true }).count()).toBe(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     } finally { await page.close(); }
