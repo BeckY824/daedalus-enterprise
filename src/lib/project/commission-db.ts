@@ -14,7 +14,7 @@ import { 查完再写 } from "../check-then-write";
 import { getSetting, invalidateSettingsCache } from "../settings";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织, 直属上级of, 虚线上级of, type 组织 } from "@/lib/enterprise/org";
-import { 只读按线, 是总管理, 是教练, 能看全部 } from "@/lib/enterprise/permissions";
+import { 只读按线, 是总管理, 是系统管理员, 是教练, 能看全部, 能编辑项目 } from "@/lib/enterprise/permissions";
 import {
   提成比例键, 提成范围们, 规整三套提成比例, 三套提成比例问题, 两位, 算提成, 底价问题, 分配问题, 分到每人, 更正问题,
   按人提成比例键, 规整按人提成比例, 按人提成比例问题, 取提成比例,
@@ -34,17 +34,19 @@ export function 能改提成比例(me: 谁, org: 组织 | null): boolean {
 /** 更正已固定的实际提成：只有业务角色是总管理（director）的人；管理员（admin）、销售管理都不行（10-27 定）。
  *  没设业务角色的 = 不能改（11-01 起不按账号角色推） */
 export function 能更正提成(me: 谁, org: 组织 | null): boolean {
-  return !!org && !!org.成员.get(me.id)?.角色们.includes("director");
+  // V3.5.1：总管理分成系统管理员和条线总管理，更正同 能改提成比例 只给系统管理员（审核 11-18 权限 P1-7）
+  return !!org && 是系统管理员(me, org);
 }
 
 /** 填 / 改项目底价：只有项目负责人（不在公海），老板、总管理员也不代填（10-26 定） */
-export function 能填底价(me: 谁, p: { ownerId: string; pooledAt?: Date | null }): boolean {
-  return !p.pooledAt && me.id === p.ownerId;
+export function 能填底价(me: 谁, p: { ownerId: string; pooledAt?: Date | null }, org: 组织 | null): boolean {
+  // 负责人本人、且按角色能编辑这个项目（P-判定-02 例外：市场管理当负责人也不能编辑；只读、只看某人也不行。审核 11-18 权限 P1-8）
+  return !p.pooledAt && me.id === p.ownerId && 能编辑项目(me, p, org);
 }
 
 /** 改分配：组长（不在公海）、总管理（业务角色）。销售管理、管理员能看不能改 */
 export function 能改提成(me: 谁, p: { ownerId: string; pooledAt?: Date | null }, org: 组织 | null): boolean {
-  return (!p.pooledAt && me.id === p.ownerId) || 能改提成比例(me, org);
+  return 能填底价(me, p, org) || 能改提成比例(me, org);
 }
 
 /** 销售教练看不看得到提成（11-17 评估定：默认藏）。提成卡、AI 查提成表都走 能看提成，要放开只改这一处 */
@@ -161,10 +163,12 @@ const 项目字段 = { id: true, name: true, ownerId: true, pooledAt: true, phas
  */
 export async function 存项目底价(me: 谁, projectId: string, 底价: number | null): Promise<错 | { ok: true; 变了: boolean; 前?: number | null; 后?: number | null; 固定了?: boolean; name?: string; customerId?: string }> {
   if (!企业版()) return 没开企业版;
+  // 组织在事务外读好（事务里再用全局连接读，单连接时会等到事务超时）
+  const org = await 读组织();
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") }, select: 项目字段 });
     if (!p) return 项目不在;
-    if (!能填底价(me, p)) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "项目底价由项目负责人填" };
+    if (!能填底价(me, p, org)) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "项目底价由项目负责人填" };
     const 问题 = 底价问题(底价);
     if (问题) return { ok: false as const, error: 问题 };
     const 值 = 底价 == null ? null : 两位(底价);
@@ -302,7 +306,7 @@ export async function 读项目提成(
   return {
     币种: p.currency, 成交金额: p.amount, 项目底价: c?.basePrice ?? null, 比例, 范围, 单设, 预估, 实际, 每人,
     能改: 能改提成(me, p, org),
-    能填底价: 能填底价(me, p),
+    能填底价: 能填底价(me, p, org),
     能更正: !!实际 && 能更正提成(me, org),
     组员: [...在组].filter((uid) => uid !== p.ownerId).map((uid) => ({ userId: uid, name: 叫(uid) })),
     分配: Object.fromEntries(分.filter((s) => 在组.has(s.userId)).map((s) => [s.userId, s.percent])),

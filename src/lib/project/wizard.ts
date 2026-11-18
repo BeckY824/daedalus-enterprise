@@ -6,6 +6,7 @@
  */
 import type { Prisma } from "@/generated/prisma";
 import { hasVisibleText } from "../form-validation";
+import { 规整手机号 } from "../phone";
 import { parseDateInput } from "../date-input";
 import { FOLLOW_TYPES } from "../constants";
 import { 是币种, 默认币种 } from "../currency";
@@ -176,8 +177,10 @@ function 规整联系人(c: 向导联系人, 企业: boolean): 规整好的["联
   const 姓名问题 = 企业 ? 联系人姓名问题(true, c.name, 号们) : !hasVisibleText(c.name) && !c.号码们?.some((x) => typeof x?.value === "string" && x.value.trim()) ? "请填写联系人姓名" : null;
   if (姓名问题) return { error: 姓名问题 };
   if (企业 && 是占位值(c.name)) return { error: 占位名提示("联系人姓名") };
-  const 电话 = 可空(c.phone);
-  if (电话?.includes("*")) return { error: "联系人电话里不能有 *" };
+  const 原电话 = 可空(c.phone);
+  if (原电话?.includes("*")) return { error: "联系人电话里不能有 *" };
+  // 企业版存规整值（+86、空格横杠去掉），同 AI 新线索卡、联系人表单号码几行（审核 11-18 新建入口 P2-1）；规整完空了（全是符号）照原样
+  const 电话 = 企业 && 原电话 ? 规整手机号(原电话) || 原电话 : 原电话;
   const 联系人地址 = 可空(c.address);
   if (联系人地址 && 联系人地址.length > 联系人地址上限) return { error: `联系人地址最多 ${联系人地址上限} 个字` };
   return { name: 文字(c.name), position: 可空(c.position), phone: 电话, email: 可空(c.email), wechat: 可空(c.wechat), ...(联系人地址 ? { address: 联系人地址 } : {}) };

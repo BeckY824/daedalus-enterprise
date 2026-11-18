@@ -17,6 +17,7 @@ import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 露客户, 看得到的客户 } from "@/lib/project/db";
 import { 能往项目记沟通 } from "@/lib/project/follow-needs-project";
 import { 权限组织 } from "@/lib/enterprise/org";
+import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 
 /** 判客户看不看得到用哪个：服务端动作（翻页）现读 看得到的客户；客户页渲染传请求内缓存的 页面看得到的客户（lib/project/visible-customers.ts） */
 export type 可见法 = (ids: string[]) => Promise<Set<string>>;
@@ -192,6 +193,21 @@ export async function 列表最近一句们(me: { id: string; role?: string }, �
     if (句) 结果[cid] = 句;
   }
   return 结果;
+}
+
+/**
+ * 这位客户名下的跟进、当前这位能看的那些（审核 11-18 权限 P1-5，P-看-12）：给按客户直接读跟进的老接口（翻页、重读一条、挑客户近况、临战简报）用，
+ * 同 汇总一页 这位客户那一句——不挂项目的 + 挂在我看得到的项目上的 + 挂在这位名下删了的项目上的。
+ * 不是企业版只用项目 = null（不滤，照原样）
+ */
+export async function 客户跟进可见条件(me: { id: string; role?: string }, customerId: string, 可见: 可见法 = 看得到的客户): Promise<Prisma.FollowUpWhereInput | null> {
+  if (!(await 企业版只用项目())) return null;
+  const [项目们, 删了的] = await Promise.all([
+    汇总的项目(me, customerId, 可见),
+    看全部(() => 看已删(() => prisma.project.findMany({ where: { customerId, deletedAt: { not: null } }, select: { id: true }, take: 项目上限 }))),
+  ]);
+  const 这位的项目 = [...项目们.keys(), ...删了的.map((p) => p.id)];
+  return 这位的项目.length ? { OR: [{ projectNode: null }, { projectNode: { projectId: { in: 这位的项目 } } }] } : { projectNode: null };
 }
 
 async function 汇总一页(customerId: string, 项目们: Map<string, string>, before?: 沟通游标): Promise<{ rows: FollowUpRow[]; hasMore: boolean }> {

@@ -792,6 +792,8 @@ function 读批次(batchId: string) {
  */
 export async function 撤销批次(batchId: string): Promise<撤销结果> {
   const me = await requireUser();
+  // 撤销会真删客户：同导入只给能导入导出的（企业版 = 系统管理员）。以前当过总管理、后来改了角色的，自己当年导的那批也撤不了（审核 11-18 权限 P2-5）
+  if (!(await 能导入导出(me))) return { ok: false, error: 不能导入导出 };
   const b = await getBusiness();
   const batch = await 读批次(batchId);
   if (!batch) return { ok: false, error: "这一批导入记录已经不在了" };

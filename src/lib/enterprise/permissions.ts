@@ -337,7 +337,8 @@ export function 能分配线索(me: 谁, org: 组织 | null): boolean {
  */
 export function 能管公海(me: 谁, org: 组织 | null): boolean {
   if (老()) return 老管(me);
-  return !!org && !只读角色(me, org) && 有(org, me.id, ["director", "sales_mgr"]);
+  // 设了「只看某人」的什么都不能改（P-看-09），兼销管也不管公海（审核 11-18 权限 P2-2）
+  return !!org && !只读角色(me, org) && !只看的人(org, me.id) && 有(org, me.id, ["director", "sales_mgr"]);
 }
 
 /**

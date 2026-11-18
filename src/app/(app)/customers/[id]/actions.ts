@@ -211,6 +211,29 @@ export async function saveFollowUp(input: FollowUpInput) {
       if (extra?.tasks?.length || extra?.plan || extra?.完成计划 || ((input.type === "TASK" || input.type === "REMIND") && !!input.dueAt && input.status !== "已完成"))
         return { ok: false as const, error: "这是同事的客户：只能记沟通，待办、提醒和下一步计划请找负责人安排" };
     }
+    /*
+      企业版（审核 11-18 权限 P1-4）：顺手建待办 / 计划、带提醒时间的待办 / 提醒，同 saveTask / savePlan 过 客户事项挡（负责人本人）；
+      顺手完成计划同 勾完成 走 本人勾完成挡。公海客户新记 = 先领再记（下面），领了就是自己的，不在这里挡
+    */
+    if (企业版() && 目标 && !目标.pool) {
+      const 建事项 = !!(extra?.tasks?.length || extra?.plan) || (!input.id && (input.type === "TASK" || input.type === "REMIND") && !!input.dueAt && input.status !== "已完成");
+      const 挡 = 建事项 ? await 客户事项挡(user, input.customerId) : null;
+      if (挡) return { ok: false as const, error: 挡 };
+      if (extra?.完成计划) {
+        const 要完成 = await prisma.followPlan.findFirst({ where: { id: extra.完成计划, customerId: input.customerId }, select: { ownerId: true } });
+        const 完成挡 = 要完成 ? await 本人勾完成挡(user, input.customerId, 要完成.ownerId) : null;
+        if (完成挡) return { ok: false as const, error: 完成挡 };
+      }
+    }
+    // 挂的联系人、商机要是这位客户名下的（审核 11-18 权限 P2-7）：别的客户的联系人挂不上来；企业版挂靠到这位客户的联系人也算
+    if (input.contactId && typeof input.contactId === "string") {
+      const 联系人在 = await prisma.contact.count({ where: { id: input.contactId, OR: [{ customerId: input.customerId }, ...(企业版() ? [{ customerLinks: { some: { customerId: input.customerId } } }] : [])] } });
+      if (!联系人在) return { ok: false as const, error: "选的联系人不是这位客户的，请重新选择" };
+    }
+    if (input.opportunityId && typeof input.opportunityId === "string") {
+      const 商机在 = await prisma.opportunity.count({ where: { id: input.opportunityId, customerId: input.customerId } });
+      if (!商机在) return { ok: false as const, error: "选的商机不是这位客户的，请重新选择" };
+    }
     // 企业版沟通方式（10-31）：选的方式对出 type；改已有的、方式没变的不查停用
     const 原 = input.id ? await prisma.followUp.findUnique({ where: { id: input.id }, select: { method: true, initiator: true, type: true, projectNode: { select: { projectId: true } } } }) : null;
     const 方式 = await 定沟通方式(input.method, input.type, 原?.method);
@@ -350,6 +373,8 @@ export async function deleteFollowUp(id: string, customerId: string) {
     // 删之前先取内容：审计要记类型和内容。删了不给本人撤回（11-09 删 restoreFollowUp），要找回只能总管理去回收站恢复
     const 待删 = await prisma.followUp.findUnique({ where: { id } });
     if (!待删) return { ok: false as const, error: "这条跟进已经不在了，刷新看看" };
+    // 后面重算最近跟进、撤待办、审计都按库里这条的客户，不信传来的（审核 11-18 权限 P2-7）
+    customerId = 待删.customerId;
     // 企业版：系统管理员或身为负责人的管理能删沟通（软删进回收站，M-权限-09 原口径 11-09，销售负责人本人也删不了）。本人刚记的不再例外（P-沟通-01），只有 AI 卡片撤销那一条放行
     if (!(在卡片撤销里(id) && 卡片刚记的能撤(me, 待删)) && !(await 能删沟通(me, { customerId: 待删.customerId, id }))) return { ok: false as const, error: 不能删沟通话 };
     // 企业版（P9）：只记 deletedAt，进回收站；顺带的待办照旧删（回收站恢复时按跟进补回来）

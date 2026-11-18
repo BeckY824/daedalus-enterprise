@@ -509,7 +509,8 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
   if (!done.ok) return done;
 
   const summary = summarizeApplied(p, b.customer, b);
-  await recordAudit({ user: me, action: "ai_apply", entity: "Ai", entityId: p.kind, summary, detail: { 对象: c.name || p.customerName, 理由: p.reason } });
+  // 记跟进卡：把建出来的那条跟进 id 记进留痕，撤销时凭它认「这条是 AI 卡建的」（凭据是前端带回来的，多进程下内存里那张表也认不全）
+  await recordAudit({ user: me, action: "ai_apply", entity: "Ai", entityId: p.kind, summary, detail: { 对象: c.name || p.customerName, 理由: p.reason, ...(撤销?.kind === "add_followup" ? { 跟进: 撤销.id } : {}) } });
   const 话 = summary.replace("确认 AI 建议：", "已") + (done.提示 ? `；${done.提示}` : "");
   return { ok: true, message: 话, 撤销, ...(done.附件去处 ? { 附件去处: done.附件去处 } : {}), ...(done.项目 ? { 项目: done.项目 } : {}), ...(done.首条附件票 ? { 首条附件票: done.首条附件票 } : {}) };
 }
@@ -518,6 +519,15 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
  * 撤回刚确认的那张卡。凭据是前端带回来的，和卡片一样不可信：
  * 只认上面两种形状，而且照样走原有的删除 / 改状态动作——权限、留痕、「最近跟进」重算都在那里面。
  */
+/** 这条跟进是不是这个人确认 AI 记跟进卡时建的：认 ai_apply 留痕里记下的跟进 id（时间只往建它之后一会儿找，走 at 索引） */
+async function AI卡建的跟进(userId: string, f: { id: string; createdAt: Date }): Promise<boolean> {
+  const 有 = await prisma.auditLog.findFirst({
+    where: { action: "ai_apply", entity: "Ai", entityId: "add_followup", userId, at: { gte: new Date(f.createdAt.getTime() - 60_000) }, detail: { contains: `"跟进":${JSON.stringify(f.id)}` } },
+    select: { id: true },
+  });
+  return !!有;
+}
+
 export async function undoProposal(u: 撤销凭据): Promise<{ ok: true } | { ok: false; error: string }> {
   const me = await requireUser();
   if (u?.kind === "payment_add") {
@@ -539,6 +549,8 @@ export async function undoProposal(u: 撤销凭据): Promise<{ ok: true } | { ok
     if (!f) return { ok: false, error: "那条跟进已经不在了，可能已被删掉" };
     // 企业版 P-沟通-01（11-09）：本人撤销沟通去掉了，AI 卡片撤销单独判定——本人记的、10 分钟内；放行只给这一条
     if (企业版() && !卡片刚记的能撤(me, f)) return { ok: false, error: 卡片撤销过时话 };
+    // 企业版：只撤 AI 卡确认时建的那条（审核 11-18 权限 P2-8）。凭据里的 id 换成自己 10 分钟内手记的那条，绕不过 P-沟通-01「删沟通只给管理」
+    if (企业版() && !(await AI卡建的跟进(me.id, f))) return { ok: false, error: "这条跟进不是 AI 卡片记的，撤不了；要删请找管理" };
     // 企业版（P9）删跟进是软删、进回收站（10-29 起撤销也一样，不再真删）：点错了撤销，30 天内老板还能在回收站恢复
     const 删 = await 卡片撤销放行(f.id, () => deleteFollowUp(f.id, u.customerId));
     if (!删.ok) return 删;
