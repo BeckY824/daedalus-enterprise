@@ -5,7 +5,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { 项目算哪个渠道 } from "./channel-stats";
-import { 渠道项目条件, 名单落点 } from "./channel-stats-db";
+import { 渠道项目条件, 取渠道底, type 渠道底 } from "./channel-stats-db";
 import { 算看板底数, 算公海底数, type 看板底数, type 看板区间, type 看板入池, type 公海底数, type 入池方式 } from "./channel-dash";
 import { 看全部 } from "@/lib/team-scope";
 import { 看已删 } from "./soft-delete-core";
@@ -17,30 +17,19 @@ import { 是补建 } from "@/lib/project/system-created";
  * 区间 = 地址栏「自定义」那一段（日期段界() 算好的两个瞬间）；不带就只算三个预设档。
  * 看的人（11-11）：带了再分每条项目点进去在项目列表 / 公海页 / 两边都不列（名单落点，同渠道列表），TOP5 拆「列表里 N 条、另 M 条在公海」
  */
-export async function 读看板底数(渠道ids: string[], 今: Date = new Date(), 区间?: 看板区间 | null, 看的人?: { id: string }): Promise<看板底数> {
+export async function 读看板底数(渠道ids: string[], 今: Date = new Date(), 区间?: 看板区间 | null, 看的人?: { id: string }, 底?: Promise<渠道底>): Promise<看板底数> {
   if (渠道ids.length === 0) return 算看板底数([], [], [], 今, 区间);
-  const [项目们, 投入们, 落点] = await Promise.all([
-    prisma.project.findMany({
-      where: 渠道项目条件(渠道ids),
-      select: {
-        id: true, channelId: true, phase: true, result: true, amount: true, currency: true, createdAt: true, creatorId: true,
-        customer: { select: { channelId: true } },
-        entLeadVerify: { select: { verdict: true } },
-        // 不 orderBy（父行过千会让 Prisma 6.16 崩，见 channel-stats-db.ts）；起步要按时间排了取头一条（同列表），别的取最早一条
-        logs: { where: { kind: "node" }, select: { fromPhase: true, toPhase: true, at: true } },
-      },
-    }),
-    prisma.entChannelInvest.findMany({ where: { channelId: { in: 渠道ids } }, select: { channelId: true, amount: true, currency: true, date: true } }),
-    名单落点(渠道ids, 看的人),
-  ]);
+  // 底：渠道页和列表统计共用的那一份（channel-stats-db.ts 取渠道底，11-18 提速），给了就不再读库；渠道要是同一批
+  const { 行, 落点, 投入们 } = await (底 ?? 取渠道底(渠道ids, 看的人));
   return 算看板底数(
     渠道ids,
-    项目们.map((p) => ({
+    行.map((p) => ({
       channelId: 项目算哪个渠道(p.channelId, p.customer.channelId),
       phase: p.phase, result: p.result, amount: p.amount, currency: p.currency, createdAt: p.createdAt,
       ...(是补建(p) ? { 补建: true } : {}),
       判定: p.entLeadVerify?.verdict ?? null,
-      起步: [...p.logs].sort((x, y) => x.at.getTime() - y.at.getTime()).find((l) => l.fromPhase === null)?.toPhase ?? "线索",
+      // 节点日志 取渠道底 已按时间排好：起步取头一条建项目的（同列表）
+      起步: p.logs.find((l) => l.fromPhase === null)?.toPhase ?? "线索",
       节点们: p.logs.map((l) => ({ toPhase: l.toPhase, at: l.at })),
       ...(落点 ? { 名单: 落点.列表里.has(p.id) ? ("列表" as const) : 落点.公海里.has(p.id) ? ("公海" as const) : null } : {}),
     })),

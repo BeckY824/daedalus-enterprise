@@ -353,10 +353,17 @@ async function 公海回避of(db: PrismaClient, id: string): Promise<公海回�
   const 放回的 = await 公海里历史负责人是(db, [id]);
   const 放走的 = [...(await 公海客户原负责人是(db, [id])).keys()];
   const 他公海客户 = { salesOwnerId: id, pool: { isNot: null }, deletedAt: null };
-  const [有客户, 挂着的] = await Promise.all([
-    db.customer.findFirst({ where: 他公海客户, select: { id: true } }),
-    db.project.findMany({ where: { deletedAt: null, customer: 他公海客户 }, select: { id: true }, take: 回避名单上限 + 1 }),
-  ]);
+  // 先按负责人取他名下的公海客户（走 Customer 负责人索引），再按客户编号取下面的项目（11-18 渠道页提速）。
+  // 原来一句 project where customer: 他公海客户 + take：库里没有统计信息时 SQLite 走 Project_deletedAt_idx 把全部项目扫一遍再连客户，
+  // 6 万多项目约 120ms，名下一个公海客户都没有也照扫；每个人的范围缓存 10 秒，过期后头一个页面都吃这一下。
+  // 结果同原来：有没有这样的客户；这些客户下面没删的项目，最多取 回避名单上限 + 1 条（只用来判过没过上限，过了不用名单）
+  const 他的公海客户 = (await db.customer.findMany({ where: 他公海客户, select: { id: true } })).map((c) => c.id);
+  const 有客户 = 他的公海客户.length > 0;
+  const 挂着的: { id: string }[] = [];
+  for (let i = 0; i < 他的公海客户.length && 挂着的.length <= 回避名单上限; i += 一批id数) {
+    const 行 = await db.project.findMany({ where: { deletedAt: null, customerId: { in: 他的公海客户.slice(i, i + 一批id数) } }, select: { id: true }, take: 回避名单上限 + 1 - 挂着的.length });
+    挂着的.push(...行);
+  }
   // 他退的项目挂着的公海客户里，负责人不是他的（负责人是他的 回避客户条件 一句带上了）
   const 客户们 = new Set<string>();
   for (let i = 0; i < 放回的.length; i += 一批id数) {
