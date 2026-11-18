@@ -11,6 +11,15 @@ concurrency:
   group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.head_ref) || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# PR 全套（11-18，加急修复用）：PR 带标签 full-ci，或分支名以 hotfix/ 开头，这一轮就和推 main 跑得一模一样——
+# 单测不做牵连筛选、E2E / 排版闸门不加 --max-failures=2（其余任务 PR 和推送本来就一样）。
+# 部署脚本（ent-lib.zsh ci_main_ok）认「单测范围」任务日志里的「CI范围=全套 测试代码树=<tree>」：main 上同样代码的 CI 还在跑时，
+# PR 全套绿 + 测试代码树等于构建 tree 也放行。
+# 标签只看触发这一轮时的快照：要「先加标签再推」（或开 PR 时就带上）；已经跑过的，加标签后点 Re-run 不生效
+# （重跑沿用原事件的标签），要再推一个提交（git commit --allow-empty 也行）才会按全套跑。hotfix/ 分支没有这个问题
+env:
+  ENT_CI_FULL: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci') || startsWith(github.head_ref, 'hotfix/') }}
+
 # 10-26 分仓库：企业版仓库不跑托管版 E2E、网页对桌面端截图（桌面端在 daedalus-crm 那边测）。
 # 10-24 提速：单测、E2E、排版闸门都拆成几片并行跑，用例和闸门规则一条不动，只改怎么跑。
 # 10-28 瘦身：这个仓库只发企业版（部署都开 CRM_ENTERPRISE=1），只验开关关着的两组任务
@@ -60,12 +69,22 @@ jobs:
       - id: pick
         env:
           BASE_REF: ${{ github.base_ref }}
+        # 最后一行打范围标记（部署脚本认）：全套 = 这一轮和推 main 完全一样；牵连 = 单测只跑牵连的；
+        # 单测全套 = related-tests 自己退回了全套，但 E2E 仍按 PR 设置（--max-failures=2），部署脚本不认它。
+        # 标记用 ${scope} 拼出来，日志里回显的脚本原文就不会被认成标记；测试代码树 = 这一轮实际测的代码（PR 是和 base 的合并结果）
         run: |
           if [ "${{ github.event_name }}" != pull_request ]; then
-            echo "mode=full" >> "$GITHUB_OUTPUT"; echo "推送：全套"; exit 0
+            echo "mode=full" >> "$GITHUB_OUTPUT"; echo "推送：全套"; scope=全套; echo "CI范围=${scope}"; exit 0
+          fi
+          tree=$(git rev-parse 'HEAD^{tree}')
+          if [ "$ENT_CI_FULL" = true ]; then
+            echo "mode=full" >> "$GITHUB_OUTPUT"; echo "PR 全套（标签 full-ci 或 hotfix/ 分支）：单测不筛、E2E 不提前停，和推 main 一样"
+            scope=全套; echo "CI范围=${scope} 测试代码树=${tree}"; exit 0
           fi
           git fetch -q origin "$BASE_REF"
           node scripts/ci/related-tests.mjs select --base "$(git merge-base FETCH_HEAD HEAD)" --shards 8
+          if grep -q '^mode=full$' "$GITHUB_OUTPUT"; then scope=单测全套; else scope=牵连; fi
+          echo "CI范围=${scope} 测试代码树=${tree}"
 
   unit:
     # 11-17：4 片各 10–14 分钟，是 CI 关键路径；仓库公开、runner 免费，拆成 8 片
@@ -190,11 +209,11 @@ jobs:
       # 网页用例在开着企业版开关的服务器上跑（2026-10-27）：桌面端 / 团队版攒下的流程就是企业版的回归标准。
       # 开关关着那遍 10-28 删了：这个仓库只发企业版。
       # 设计上就不一样的按文件跳过，名单和理由在 e2e-ent/网页用例企业版跳过.json
-      # PR 上同一片挂满 2 条（重试后仍红才算）就停，别把剩下的跑完白等；推 main 照样全跑完，红几条看全（10-28）
+      # PR 上同一片挂满 2 条（重试后仍红才算）就停，别把剩下的跑完白等；推 main 和 PR 全套（ENT_CI_FULL）照样全跑完，红几条看全（10-28）
       # 6 片（10-28，原 5 片）：按 main 绿跑各文件实测耗时模拟 playwright 的按条数切法，
       # 5 片最慢一片用例 ~188 秒、6 片 ~150 秒、7 片 ~128 秒；第 7 片再省 20 秒不值一台机器的固定开销（装依赖 + 构建 ~3–4 分钟）。
       # 最大的文件（workbench ~67 秒）远小于每片 ~105 秒的均值，不用拆文件
-      - run: npx playwright test --shard=${{ matrix.shard }}/6 ${{ github.event_name == 'pull_request' && '--max-failures=2' || '' }}
+      - run: npx playwright test --shard=${{ matrix.shard }}/6 ${{ env.ENT_CI_FULL != 'true' && '--max-failures=2' || '' }}
         env:
           CRM_ENTERPRISE: "1"
           E2E_PROD: "1"
@@ -228,7 +247,7 @@ jobs:
           CONTROL_DATABASE_URL: file:/tmp/control-ci.db
       # 只有企业版才有的流程（2026-10-27）：四类账号、导入导出权限、跳转、组织设置、项目公海整体转让。
       # 自己的库和种子（e2e-ent/global-setup.ts），测试密码每轮随机、不进仓库
-      - run: npm run test:ent -- ${{ github.event_name == 'pull_request' && '--max-failures=2' || '' }}
+      - run: npm run test:ent -- ${{ env.ENT_CI_FULL != 'true' && '--max-failures=2' || '' }}
         env:
           HOME: /root
           TZ: Asia/Shanghai
@@ -271,7 +290,7 @@ jobs:
       # 发版前排版闸门（10-19）：企业版服务（e2e-layout/企业版.ts 建库灌数据，10-28 起）+ 像真客户的数据，1024/1280/1366 × AI 栏常驻 / 左栏最宽量主要页面越界、被盖住。
       # 这几天的显示 bug 都是客户先发现的，以后让它在这里先红。规则见 e2e/layout-audit.ts，不许为了变绿放宽
       # 不用 --shard：它按用例条数切、不看耗时。哪片跑哪几份写在 playwright.layout.config.ts 的分片表里，按实测秒数排（10-28）
-      - run: npx playwright test -c playwright.layout.config.ts ${{ github.event_name == 'pull_request' && '--max-failures=2' || '' }}
+      - run: npx playwright test -c playwright.layout.config.ts ${{ env.ENT_CI_FULL != 'true' && '--max-failures=2' || '' }}
         env:
           LAYOUT_SHARD: ${{ matrix.shard }}
           E2E_PROD: "1"
