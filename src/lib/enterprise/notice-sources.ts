@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { notify } from "./notify";
 import { 离职段 } from "./handover-db";
-import { 读组织, 负责人和上级, 在职负责人或上级, 市场复核人们, 市场复核要读的, 是系统管理员of, 管理员类别们of } from "./org";
+import { 读组织, 负责人和上级, 在职负责人或上级, 市场复核人们, 市场复核要读的, 是系统管理员of, 管理员类别们of, 拆角色 } from "./org";
 import { 企业版 } from "./switch";
 import { 公海入口 } from "./nav";
 import { 能改后台设置, 只读角色, 是销售角色 } from "./permissions";
@@ -118,6 +118,8 @@ export type 改分条 = { 原: string | null | undefined; 新: string; projectId
  * - 只在原负责人是另一位在职的销售（销售 / 销售管理，兼市场的按销售算，同 是销售角色）时发：占位账号、公海、待分配、市场名下的（X-18 首次分配）不发；
  *   调用方只在「分之前真在他名下」时交 原
  * - 收件人照 负责人和上级（直属上级只认手填、停用的不算，同 main）：去掉操作人本人、去掉接手人（他收的是分给你那条）；直属上级没填就只发原负责人
+ * - 原负责人已停用（P-转-40，Even 11-19 复核第 30 题）：他停用前是销售 / 销售管理才算改分；不发他本人，改发他停用前手填的直属上级（还在职才算），
+ *   上级也停用或没填就推系统管理员——就是 负责人和上级 对停用的人的现成找法（同三态 T12、验证待办 审核 11-18 通知 P2-7）；标题里他的名字后注「（已停用）」
  * - 别的角色改负责人、超时轮转（系统操作人）不走这里。几条按收件人合成一条；号码打码在 notify 里
  */
 export async function 市场改分通知(谁点的: 人, 条们: readonly 改分条[], opt: { 原负责人另有通知?: boolean } = {}): Promise<void> {
@@ -125,7 +127,13 @@ export async function 市场改分通知(谁点的: 人, 条们: readonly 改分
     if (!条们.length) return;
     const org = await 读组织();
     if (!管理员类别们of(org, 谁点的.id).has("市场管理")) return;
-    const 算的 = 条们.filter((c): c is 改分条 & { 原: string } => !!c.原 && c.原 !== 谁点的.id && c.原 !== c.新 && 是销售角色(org, c.原));
+    // 停用的人不在 org.成员 里，是销售角色 认不出：按他停用前的业务角色（EntMember 行还留着）认
+    const 停用的原 = [...new Set(条们.flatMap((c) => (c.原 && org.停用的?.has(c.原) ? [c.原] : [])))];
+    const 停用前销售 = new Set(停用的原.length
+      ? (await 看全部(() => prisma.entMember.findMany({ where: { userId: { in: 停用的原 } }, select: { userId: true, bizRole: true } })))
+        .filter((m) => 拆角色(m.bizRole).some((r) => r === "sales" || r === "sales_mgr")).map((m) => m.userId)
+      : []);
+    const 算的 = 条们.filter((c): c is 改分条 & { 原: string } => !!c.原 && c.原 !== 谁点的.id && c.原 !== c.新 && (是销售角色(org, c.原) || 停用前销售.has(c.原)));
     if (!算的.length) return;
     const pIds = 算的.flatMap((c) => (c.projectId ? [c.projectId] : []));
     const lIds = 算的.flatMap((c) => (c.leadId ? [c.leadId] : []));
@@ -142,7 +150,8 @@ export async function 市场改分通知(谁点的: 人, 条们: readonly 改分
     const 一句 = (c: 改分条 & { 原: string }) => {
       const 是客户 = !c.projectId && !c.leadId;
       const 啥 = 是客户 ? "客户" : "线索";
-      return { 啥, 名: 名.get(c.projectId ?? c.leadId ?? c.customerId ?? "") ?? `（一条${啥}）`, 原名: 叫.get(c.原) ?? "原负责人", 新名: 叫.get(c.新) ?? "另一位同事" };
+      const 原名 = `${叫.get(c.原) ?? "原负责人"}${停用前销售.has(c.原) ? "（已停用）" : ""}`;
+      return { 啥, 名: 名.get(c.projectId ?? c.leadId ?? c.customerId ?? "") ?? `（一条${啥}）`, 原名, 新名: 叫.get(c.新) ?? "另一位同事" };
     };
     const 按人 = new Map<string, (改分条 & { 原: string })[]>();
     for (const c of 算的) {
@@ -159,7 +168,10 @@ export async function 市场改分通知(谁点的: 人, 条们: readonly 改分
           ? `${谁点的.name} 把你名下的${x.啥}「${x.名}」改分给了 ${x.新名}`
           : `${谁点的.name} 把 ${x.原名} 名下的${x.啥}「${x.名}」改分给了 ${x.新名}`;
       } else {
-        title = 们.every((c) => c.原 === 收) ? `${谁点的.name} 把你名下的 ${们.length} 条改分给了别人` : `${谁点的.name} 把下属名下的 ${们.length} 条改分给了别人`;
+        title = 们.every((c) => c.原 === 收) ? `${谁点的.name} 把你名下的 ${们.length} 条改分给了别人`
+          // 原负责人都停用了：收的可能是兜底的系统管理员，不说「下属」
+          : 们.every((c) => 停用前销售.has(c.原)) ? `${谁点的.name} 把已停用同事名下的 ${们.length} 条改分给了别人`
+          : `${谁点的.name} 把下属名下的 ${们.length} 条改分给了别人`;
       }
       await notify([收], {
         kind: "分配",
