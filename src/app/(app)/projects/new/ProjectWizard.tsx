@@ -38,7 +38,7 @@ import { 建档向导, 建档只建客户 } from "../actions";
 import { 搜客户, type 可挑客户 } from "../../customers/[id]/pick";
 import { 给客户建项目, 建项目带走的项目, 新项目分配数据 } from "../../customers/[id]/project-actions";
 import { useCarryConfirm } from "../../customers/useCarryConfirm";
-import { 三种业务线, 两条线, 分配说明, 业务线必填, 客户业务线必填, 建议业务线, 所在地预填, 所在地提示 } from "@/lib/enterprise/assign-line";
+import { 三种业务线, 两条线, 分配说明, 业务线必填, 客户业务线必填, 建议业务线, 所在地预填, 所在地提示, 新客户分配方式们, 新客户默认分配方式 } from "@/lib/enterprise/assign-line";
 import { 区域分配说明, 默认分配方向, 方向来源说明 } from "@/lib/enterprise/customer-region";
 import type { 线 } from "@/lib/enterprise/lead-assign";
 import AddressInput, { 空地址 } from "@/components/AddressInput";
@@ -74,6 +74,11 @@ type 稿 = {
   带过?: Partial<联系人三格>;
   /** 客户负责人：没开项目时才用（P-界面-33 默认自己、可改）；开了项目客户归谁由服务端定（P-转-03） */
   客户负责人?: string;
+  /**
+   * 没开项目（只建客户）时市场成员选的「项目分配方式」（11-18）：客户自带的潜客培育项目怎么分，0 指定 / 1 自动 / 3 暂不分配；
+   * 方向 = 按区域的市场成员选自动分配时人改的内贸 / 外贸（没改 = 不交，服务端按默认算）。和带项目时的 项目.分配方式 分开记；老草稿里没有
+   */
+  只建分配?: { 方式?: number; 方向?: 线 | null };
   /** 渠道 / 触点：企业版新建线索至少选一个（P-渠道-08，老草稿里没有）；介绍人：触点 = 客户介绍时挂的已有客户（P-渠道-09） */
   客户: { name: string; school: string; remark: string; 渠道?: string; 触点?: string; 介绍人?: string };
   /** 分配方式：企业版才有（默认五项的序号，0 指定 / 1 自动 / 2 公海捞取 / 3 暂不分配 / 4 个人自持）；老草稿里没有 */
@@ -105,6 +110,8 @@ export type 企业建档 = { 渠道们: 可选渠道[]; 节点们: readonly stri
   本人线?: 线 | null;
   /** 企业版普通销售（10-27 会议）：新建客户负责人只能是自己，没开项目时「客户负责人」不摆（wizard-data.ts） */
   客户只给自己?: boolean;
+  /** 市场成员（市场管理、渠运、按部门 / 逐人认的，X-93）：没开项目时摆「项目分配方式」（11-18，new-cust-assign.ts） */
+  是市场?: boolean;
   /** 新建项目的回收日预估（wizard-data.ts 回收预估）：起点日 + 各进程天数（内贸 / 外贸）；超时回收关着 = null */
   回收预估?: { 起点日: string; 内贸: Record<string, number>; 外贸: Record<string, number> } | null } | null;
 /** 向导要的服务端数据（wizard-data.ts 建档向导数据）：页面和弹窗共用 */
@@ -136,6 +143,13 @@ const 区域定线中 = (d: 稿, 带项目: boolean, 企业: 企业建档) => �
 
 /** 企业版：这次要不要选负责人。只有「指定分配」要；没有可选的分配方式（老配置）照旧选负责人 */
 const 要选负责人 = (d: 稿, 企业: 企业建档) => !!企业 && (!企业.分配方式们.length || d.项目.分配方式 === 0);
+/**
+ * 没开项目（只建客户）时给市场成员摆的「项目分配方式」能选哪几种（11-18）：指定 / 自动 / 暂不分配 ∩ 他能用的；
+ * 不是市场成员、一样都用不了 = 空（不摆这一格，照原来客户负责人默认自己、可改）
+ */
+const 只建分配们 = (企业: 企业建档) => (企业?.是市场 ? 新客户分配方式们(企业.分配方式们) : []);
+/** 这次只建客户交不交项目分配方式：没开项目、摆了这一格 */
+const 摆只建分配 = (带项目: boolean, 企业: 企业建档) => !带项目 && 只建分配们(企业).length > 0;
 function 空稿(ownerId: string, currency: string, 首类型: string): 稿 {
   return {
     phone: "",
@@ -150,7 +164,7 @@ function 空稿(ownerId: string, currency: string, 首类型: string): 稿 {
 const 查过键 = (d: 稿, 企: boolean) => (企 ? `${d.号码类型 ?? ""}|${d.phone.trim()}` : d.phone.trim());
 
 /** 一张表上的格子（P-界面-36）：校验出错时按它就地标红、滚过去 */
-type 格 = "号码类型" | "号码" | "更多号码" | "联系人" | "客户名" | "来源" | "业务线" | "项目名" | "分配方式" | "负责人" | "分配时间" | "内容" | "节点" | "下一步时间" | "下一步计划";
+type 格 = "号码类型" | "号码" | "更多号码" | "联系人" | "客户名" | "来源" | "业务线" | "项目分配" | "项目名" | "分配方式" | "负责人" | "分配时间" | "内容" | "节点" | "下一步时间" | "下一步计划";
 type 差项 = { 格: 格; 话: string };
 
 /**
@@ -163,6 +177,7 @@ function 还差们(d: 稿, 带项目: boolean, 要下一步: boolean, 企业: �
   // 挑了老客户（原型 cr.old）：客户那几格不用填，只看项目和首条沟通
   if (!老) 客户还差(d, 企业, 记);
   if (企业 && !d.项目.业务线 && !区域定线中(d, 带项目, 企业)) 记("业务线", 带项目 ? 业务线必填 : 客户业务线必填);
+  if (!老 && 摆只建分配(带项目, 企业) && d.只建分配?.方式 === undefined) 记("项目分配", "请选项目分配方式");
   项目沟通还差(d, 带项目, 要下一步, 企业, 记);
   return 差;
 }
@@ -304,7 +319,12 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     const 起名 = 老起手 ? (预选?.项目名 || 老起手.name).slice(0, 项目名上限) : "";
     const 起负责 = 预选?.默认负责人 && users.some((u) => u.id === 预选.默认负责人) ? 预选.默认负责人 : null;
     const 项目 = { ...n.项目, ...(起名 ? { name: 起名 } : {}), ...(起负责 ? { ownerId: 起负责 } : {}) };
-    return 企业 ? { ...n, 号码类型: "手机号", 客户负责人: 我?.id, 项目: { ...项目, 分配方式: 分 }, 跟进: { ...跟进, 节点: 企业.节点们[0] } } : { ...n, 客户负责人: 我?.id, 项目, 跟进 };
+    // 没开项目时的项目分配方式（市场成员，11-18）：默认自动分配，用不了退回暂不分配（原来建给自己记的）
+    const 只建 = 只建分配们(企业);
+    const 只建默认 = 只建.length ? 新客户默认分配方式(只建.map((x) => x.i)) : undefined;
+    return 企业
+      ? { ...n, 号码类型: "手机号", 客户负责人: 我?.id, 项目: { ...项目, 分配方式: 分 }, 跟进: { ...跟进, 节点: 企业.节点们[0] }, ...(只建默认 !== undefined ? { 只建分配: { 方式: 只建默认 } } : {}) }
+      : { ...n, 客户负责人: 我?.id, 项目, 跟进 };
   };
 
   const 锁 = 开关 === "锁开";
@@ -562,6 +582,11 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     // 企业版不是「指定分配」的：先建在我名下（服务端也这么改），建好再按分配方式转走
     const 负责人 = 企业 && !要选负责人(稿面, 企业) ? 我?.id ?? "" : 稿面.项目.ownerId;
     const { 渠道: 项目渠道, 业务线手选: _手选, ...项目稿 } = 稿面.项目;
+    // 只建客户 + 市场成员：项目分配方式；分配方向人改过才交（只在按区域的自动分配），没改服务端按同一顺序算
+    const 只建方式 = 稿面.只建分配?.方式;
+    const 只建交 = 企业 && 摆只建分配(带项目, 企业) && 只建方式 !== undefined
+      ? { 分配方式: 只建方式, ...(只建方式 === 1 && 企业.按区域 && 稿面.只建分配?.方向 ? { 分配方向: 稿面.只建分配.方向 } : {}) }
+      : null;
     void _手选;
     const 客户 = {
       // 企业版：选的不是手机号的，电话空着，号码按 企业号码 交（saveCustomer 按类型存、再查一次重）
@@ -571,7 +596,9 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
       followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null, remark: 稿面.客户.remark || null,
       // 带项目：团队版客户记在项目负责人名下，企业版客户归谁由 建档向导 定（P-转-03、X-18）；
       // 只建客户：客户负责人默认自己、可改（P-界面-33），企业版普通销售只能是自己（saveCustomer 同样落到自己）
-      salesOwnerId: 带项目 ? 负责人 || null : 稿面.客户负责人 || 我?.id || null,
+      // 市场成员选了项目分配方式（11-18）：指定分配 = 客户负责人那一格选的那位，自动 / 暂不分配 = 自己（服务端同样落到自己）
+      salesOwnerId: 带项目 ? 负责人 || null : 只建交 && 只建交.分配方式 !== 0 ? 我?.id || null : 稿面.客户负责人 || 我?.id || null,
+      ...(只建交 ? { 项目分配: 只建交 } : {}),
       channelId: 企业 ? 稿面.客户.渠道 || null : null,
       // 渠道触点（P-渠道-08）：选了客户介绍才带介绍人（P-渠道-09）
       referrerCustomerId: 企业 && 稿面.客户.触点 === 客户介绍触点 ? 稿面.客户.介绍人 || null : null,
@@ -702,6 +729,43 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     号们: 老客户 ? [] : [d.号码类型 === "手机号" || !d.号码类型 ? d.phone : null, d.联系人.phone, ...(d.更多号码 ?? []).filter((x) => x.kind === "phone").map((x) => x.value)],
     本人线: 企业?.本人线 ?? null,
   });
+  /*
+    没开项目（只建客户）+ 市场成员：「项目分配方式」（11-18）——客户自带的潜客培育项目怎么分，和客户档案上的「客户分配」不是一回事。
+    指定分配 = 下面客户负责人选谁给谁；自动分配 = 建好按分配方向（按岗位的市场成员）/ 客户业务线分出去；暂不分配 = 记在自己名下
+  */
+  const 只建摆 = 摆只建分配(带项目, 企业);
+  const 只建方式 = 只建摆 ? d.只建分配?.方式 : undefined;
+  const 只建说明 = 只建方式 === 0 ? `${b.customer}和潜客培育项目一起给下面选的负责人`
+    : 只建方式 === 1 ? (企业?.按区域 ? 区域分配说明 : 分配说明[1]) : 只建方式 !== undefined ? 分配说明[只建方式] : "自动建的潜客培育项目怎么分";
+  const 只建分配格 = 只建摆 && 一格("项目分配", "项目分配方式", (
+    <Select
+      className="cr-full"
+      aria-label="项目分配方式"
+      data-testid="cust-assign-mode"
+      status={红("项目分配")}
+      value={只建方式}
+      placeholder="选分配方式"
+      options={只建分配们(企业).map((x) => ({ value: x.i, label: x.名 }))}
+      onChange={(v: number) => 改("只建分配", { 方式: v })}
+    />
+  ), true, false, 只建说明);
+  // 分配方向（同建档向导）：没开项目没有项目所在地，客户也不填地址，默认按这一屏填的号 → 本人事业部；人改过就按改的
+  const 只建方向默认 = 默认分配方向({
+    号们: [d.号码类型 === "手机号" || !d.号码类型 ? d.phone : null, d.联系人.phone, ...(d.更多号码 ?? []).filter((x) => x.kind === "phone").map((x) => x.value)],
+    本人线: 企业?.本人线 ?? null,
+  });
+  const 只建手选 = d.只建分配?.方向 ?? null;
+  const 只建方向格 = 只建摆 && 只建方式 === 1 && !!企业?.按区域 && 一格(null, "分配方向", (
+    <Select
+      className="cr-full"
+      aria-label="分配方向"
+      data-testid="cust-assign-direction"
+      value={只建手选 ?? 只建方向默认.线 ?? undefined}
+      placeholder="内贸 / 外贸"
+      options={两条线.map((x) => ({ value: x, label: x }))}
+      onChange={(v) => 改("只建分配", { 方向: v ?? null })}
+    />
+  ), false, false, <span data-testid="cust-assign-direction-why" className={只建手选 || 只建方向默认.线 ? undefined : "cr-warn"}>{只建手选 && 只建手选 !== 只建方向默认.线 ? `你改成了${只建手选}（默认${只建方向默认.线 ? 方向来源说明(只建方向默认) : "不限"}）` : 方向来源说明(只建方向默认)}；中国大陆 → 内贸销售，其余（含港澳台）→ 外贸销售，可以改</span>);
   const 业务线格 = 企业 && (区域定线中(d, 带项目, 企业) ? 一格("业务线", "分配方向", (
     <Select
       className="cr-full"
@@ -946,10 +1010,12 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
             <ReferrerPicker value={d.客户.介绍人} 叫法={b.customer} onChange={(v) => 改("客户", { 介绍人: v })} />
           ))}
           {!带项目 && 业务线格}
-          {/* 客户负责人默认自己、可改（P-界面-33）；企业版普通销售只能是自己，不摆 */}
-          {!带项目 && !企业?.客户只给自己 && !独自一人(users, d.客户负责人) && 一格(null, `${b.customer}负责人`, (
+          {只建分配格}
+          {/* 客户负责人默认自己、可改（P-界面-33）；企业版普通销售只能是自己，不摆。市场成员摆了项目分配方式的：只在指定分配时选（选的就是客户负责人） */}
+          {(只建摆 ? 只建方式 === 0 : !带项目 && !企业?.客户只给自己 && !独自一人(users, d.客户负责人)) && 一格(null, `${b.customer}负责人`, (
             <Select aria-label={`${b.customer}负责人`} className="cr-full" value={d.客户负责人 || 我?.id} options={负责人选项} onChange={(v) => 改("客户负责人", v)} showSearch optionFilterProp="label" />
-          ))}
+          ), 只建摆, false, 只建摆 ? `${b.customer}和自动建的潜客培育项目一起给他` : undefined)}
+          {只建方向格}
           {!企业 && 一格(null, b.fields.school, <Input aria-label={b.fields.school} value={d.客户.school} onChange={(e) => 改("客户", { school: e.target.value })} />)}
           {!企业 && 一格(null, "备注", <Input.TextArea aria-label={`${b.customer}备注`} rows={2} value={d.客户.remark} onChange={(e) => 改("客户", { remark: e.target.value })} />, false, true)}
         </div>}

@@ -277,7 +277,8 @@ export async function 建档向导(输入: 建档向导输入) {
         : {};
       // 企业版指定给别人：项目归接手人，客户不跟着改（P-转-03，三处同一条）。总管理不走 新建只给自己，这里统一落到建的人
       const 客户负责人 = 企 && 好.项目.ownerId !== me.id ? { salesOwnerId: me.id } : {};
-      r = await saveCustomer({ ...input.客户, ...客户线, ...客户负责人, id: undefined, updatedAt: null, base: null }, 接着);
+      // 项目分配（新建客户给市场成员的那一格，11-18）只给只建客户用：带项目的分配方式在 项目.分配方式，这里不认客户上交的
+      r = await saveCustomer({ ...input.客户, ...客户线, ...客户负责人, 项目分配: undefined, id: undefined, updatedAt: null, base: null }, 接着);
     } catch (e) {
       if (e instanceof 整批超上限) return { ok: false as const, error: e.话 };
       if (!(e instanceof 联系人号码撞了)) throw e;
@@ -456,7 +457,9 @@ async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输�
   revalidatePath("/customers");
   // 首条沟通的截图 / 附件：挂在潜客培育项目上的这条首条沟通，同建档签票给录入人（凭票认首条沟通 要它挂着项目）
   const 附件票 = 企 && 输入.要传附件 === true && 建了.followUpId && 建了.projectId ? { followUpId: 建了.followUpId, 票: await 签首条附件票(me.id, 建了.followUpId) } : null;
-  return { ok: true as const, customerId: r.id, projectId: null, ...(企 ? { contactId: 建了.contactId ?? null } : {}), ...(附件票 ? { 附件票 } : {}) };
+  // 市场成员选了项目分配方式（11-18）：自动分配分给谁 / 已指派给谁 / 暂不分配那句；转走 = 客户已不在我名下，弹窗不跳客户页
+  const 去向 = { ...(r.提示 ? { 提示: r.提示 } : {}), ...(r.转走 ? { 转走: true } : {}) };
+  return { ok: true as const, customerId: r.id, projectId: null, ...(企 ? { contactId: 建了.contactId ?? null } : {}), ...去向, ...(附件票 ? { 附件票 } : {}) };
 }
 
 /** 改节点。进异常状态时带上异常类别（必选）和备注（可空）；企业版点线索流失、丢单时 备注 = 原因（必填） */
