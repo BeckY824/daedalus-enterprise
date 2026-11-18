@@ -41,6 +41,7 @@ import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-st
 import { 定分配方式, 建好再分, 新建分配方式数据, 认新建定时 } from "@/lib/project/after-create-assign";
 import { 接手问题 } from "@/lib/enterprise/lead-assign";
 import { 项目分给你通知, 同事待分配随客户通知, type 留下的活 } from "@/lib/enterprise/notice-sources";
+import { 记新建指定分配 } from "@/lib/enterprise/direct-assign";
 import { 客户在市场手里, 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
 import { 分配带走的同事项目, 数进手的持有项目 } from "@/lib/carry-over-db";
 import type { 转走项目预览 } from "@/lib/carry-over";
@@ -280,6 +281,8 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     const 分了 = 分配 ? await 建好再分(me, 分配, projectId, 项目.name, 业务线, 定时, 建档方向) : null;
     // 自动 / 公海 / 暂不分配 建好再分 自己管（返回对象）；指定别人走这里，自己留着函数里不发
     if (!分了) await 项目分给你通知(me, 项目.ownerId, projectId, 项目.name, customerId, 留下);
+    // 市场成员新建项目当场指定给销售 = 指定分配，记进分配数（11-18，direct-assign.ts）；建好再分 那几种走分配线索自己记
+    if (!分了 && 项目.ownerId !== me.id) await 记新建指定分配(me, projectId);
     if (同事待分配.length) await 同事待分配随客户通知(me.id, 项目.ownerId, 同事待分配);
     const 去向 = { ...(分了 ?? {}), ...(留下 ? { 提示: `已指派给 ${负责人.name}`, 转走: true } : {}) };
     // 分走之后这位客户我可能看不到了（市场转给销售）：弹窗据此离开客户页，留着刷新就是 404

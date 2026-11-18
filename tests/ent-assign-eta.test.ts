@@ -20,7 +20,7 @@ import { setSetting } from "@/lib/settings";
 import { resetDb } from "./reset";
 import { 分配线索, 自动分配线索, 本月分配情况, 设线部门 } from "@/app/(app)/leads/assign-actions";
 import { 前面几条, 自动分配不参与key, 不设配额key, type 候选人 } from "@/lib/enterprise/lead-assign";
-import { 估算轮到, 我的轮到, 能看轮到, 快轮到kind, 轮到话 } from "@/lib/enterprise/assign-eta";
+import { 估算轮到, 我的轮到, 能看轮到, 快轮到kind, 轮到话, 快轮到提醒 } from "@/lib/enterprise/assign-eta";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 规则 } from "@/lib/enterprise/rules";
 
@@ -240,6 +240,23 @@ describe("推送（边沿触发）", () => {
     // 恢复：前面又是 4 条；再分一条给 内[2] → 前面 3 条，还是同一轮，不重复
     await setSetting(自动分配不参与key, {});
     expect(await 自动分一条()).toBe(内[2]);
+    expect((await 快轮到们(内[0])).length).toBe(1);
+  });
+
+  it("换月清零后重新排：上个月推过的同一轮（总收到条数没变）这个月照样推（去重键带月份，11-18 通知审核）", async () => {
+    expect(await 自动分一条()).toBe(内[0]);
+    expect((await 快轮到们(内[1])).length).toBe(1);
+    // 拨到下个月（北京时间）1 号上午：本月已分全是 0，按开号先后 内[0] 前面 0、内[1] 前面 1……
+    const 现在 = new Date();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date(Date.UTC(现在.getUTCFullYear(), 现在.getUTCMonth() + 1, 1, 2)));
+      expect(await 快轮到提醒(await 读组织())).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
+    // 内[1] 这一个月里没被分到（总收到 0 条，和上个月推的时候一样），照样又推一次
+    expect((await 快轮到们(内[1])).length).toBe(2);
     expect((await 快轮到们(内[0])).length).toBe(1);
   });
 

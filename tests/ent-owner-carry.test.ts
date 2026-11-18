@@ -978,9 +978,9 @@ describe("新建时指定给销售走同一条 X-18（客户页、新客户向�
       expect(await 项目of(公海的)).toMatchObject({ ownerId: 甲.id, pooledAt: null });
       await 活还在(t, pl, 市场.id);
       expect(await prisma.customerOwnerLog.findMany({ where: { customerId: c }, select: { fromOwnerId: true, toOwnerId: true } })).toEqual([{ fromOwnerId: 市场.id, toOwnerId: 甲.id }]);
-      // 随客户走的不写分配记录；指定建的这条本来也不写（自动分配占额度那条才写一行）
+      // 随客户走的不写分配记录；新建的这条指定、自动都写一行（11-18 起市场成员新建时指定给销售也计数，direct-assign.ts）
       expect(await prisma.entLeadAssign.count({ where: { projectId: { in: [老项目, 待分配的, 公海的] } } })).toBe(0);
-      expect(await prisma.entLeadAssign.count({ where: { projectId: r.projectId } })).toBe(口 === "指定" ? 0 : 1);
+      expect(await prisma.entLeadAssign.findMany({ where: { projectId: r.projectId }, select: { way: true, counted: true } })).toEqual([{ way: `${口}分配`, counted: true }]);
     });
   }
 
@@ -1021,7 +1021,8 @@ describe("新建时指定给销售走同一条 X-18（客户页、新客户向�
     if (!r市.ok) return;
     expect(await 客户负责人(r市.customerId)).toBe(甲.id);
     expect(await prisma.customerOwnerLog.findMany({ where: { customerId: r市.customerId }, select: { fromOwnerId: true, toOwnerId: true } })).toEqual([{ fromOwnerId: 市场.id, toOwnerId: 甲.id }]);
-    expect(await prisma.entLeadAssign.count({ where: { projectId: r市.projectId } })).toBe(0);
+    // 市场成员新建时指定给销售 = 指定分配，记一行、算数（11-18，direct-assign.ts）
+    expect(await prisma.entLeadAssign.findMany({ where: { projectId: r市.projectId }, select: { way: true, counted: true } })).toEqual([{ way: "指定分配", counted: true }]);
 
     for (const [谁, 给] of [[甲, 乙], [总管, 乙]] as const) {
       const r = await 以(谁, () => 向导({ 分配方式: 0, ownerId: 给.id }));
@@ -1029,6 +1030,8 @@ describe("新建时指定给销售走同一条 X-18（客户页、新客户向�
       if (!r.ok) return;
       expect(await 客户负责人(r.customerId)).toBe(谁.id);
       expect((await 项目of(r.projectId)).ownerId).toBe(给.id);
+      // 不是市场成员新建：不记分配
+      expect(await prisma.entLeadAssign.count({ where: { projectId: r.projectId } })).toBe(0);
     }
   });
 });
