@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports -- 服务器上直接用 node 跑的 CommonJS 脚本（node:sqlite），不进打包 */
 /**
  * 补记 2026-11（北京时间）市场成员新建时直接指定给别人的分配记录（11-18 加急，规则同 src/lib/enterprise/direct-assign.ts）。
  *
