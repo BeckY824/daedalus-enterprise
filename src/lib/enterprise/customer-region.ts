@@ -86,12 +86,18 @@ export type 分配方向 = { 线: 线 | null; 来源: 方向来源 };
 /** 电话定线收的号：字符串 = 电话 / 手机；{ whatsapp } = WhatsApp 号（客户 WhatsApp、号码几行里 kind=whatsapp 的） */
 export type 定线号 = string | { whatsapp: string };
 
+/** 全角转半角、去掉空格横杠括号点 */
+const 去符号 = (号: string): string => 全角数字转半角(号).trim().replace(/[\s\-()（）.－—–]/g, "");
+
 /** 去掉空格横杠括号后是「1 开头、11 位、前面没有 + / 00 / 86」的裸号 */
-const 裸11位 = (号: string): boolean => /^1\d{10}$/.test(全角数字转半角(号).trim().replace(/[\s\-()（）.－—–]/g, ""));
+const 裸11位 = (号: string): boolean => /^1\d{10}$/.test(去符号(号));
+
+/** 去掉符号后形如大陆手机：11 位、1[3-9] 开头、前面没有 + / 00 / 86 */
+const 裸大陆手机 = (号: string): boolean => /^1[3-9]\d{9}$/.test(去符号(号));
 
 /** WhatsApp 号按国际号读（审核 11-18 P1-6）：没带 + 的补上 +（00 开头的 00 换成 +），再按手机号认：+86 大陆手机 = 大陆，别的 = 国外 */
 const 按国际号 = (号: string): string => {
-  const s = 全角数字转半角(号).trim().replace(/[\s\-()（）.－—–]/g, "");
+  const s = 去符号(号);
   return s.startsWith("+") ? s : `+${s.replace(/^00/, "")}`;
 };
 
@@ -99,7 +105,8 @@ const 按国际号 = (号: string): string => {
  * 电话定线（分配方向第二步）：第一个认得出的号说了算（大陆手机 内贸、国外号 外贸）；座机、格式不对、空的跳过。
  * 审核 11-18 P1-6 补两条：
  *   - 国家（客户地址的国家，没有看项目所在地的）是国外时，不带 + 的 11 位号（「14155550132」这类导入时丢了 + 的美国号）不按大陆手机判，跳过；
- *   - 电话都判不出时看 WhatsApp，按国际号读（「8613800001111」= 大陆，「14155550132」= 国外 → 外贸）。只留了 WhatsApp 的客户这一步不再落空
+ *   - 电话都判不出时看 WhatsApp，按国际号读（「8613800001111」= 大陆，「+14155550132」= 国外 → 外贸）。只留了 WhatsApp 的客户这一步不再落空；
+ *     不带 + 的 WhatsApp 形如大陆手机（1[3-9] 开头 11 位）、国家不是国外（没填 / 国内）的按大陆手机判内贸，国家是国外的才补 + 按国际号读
  */
 export function 电话定线(号们: readonly (定线号 | null | undefined)[], 选项: { 国家?: string | null } = {}): 线 | null {
   const 国 = 格(选项.国家);
@@ -116,7 +123,8 @@ export function 电话定线(号们: readonly (定线号 | null | undefined)[], 
   }
   for (const 号 of 号们) {
     if (!号 || typeof 号 === "string" || !号.whatsapp?.trim()) continue;
-    const l = 认(按国际号(号.whatsapp));
+    // 不带 + 的、形如大陆手机（1[3-9] 开头 11 位），国家又不是国外：按大陆手机判（补 + 会读成 +1 北美号）；国家是国外的照旧按国际号
+    const l = !国外 && 裸大陆手机(号.whatsapp) ? 认(去符号(号.whatsapp)) : 认(按国际号(号.whatsapp));
     if (l) return l;
   }
   return null;
