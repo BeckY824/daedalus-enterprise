@@ -4,7 +4,7 @@
  * 老线索转线索阶段的项目（enterprise/lead-to-project.ts）、预计成交日期回填（project/expected-deal.ts）、客户级别 D 改 C（enterprise/customer-v2-db.ts）、卡点 11-01 改版的老数据（project/blocker-migrate.ts）；
  * 最后补联系人主客户的挂靠行（同一文件，每次启动都跑、只补没有的）。
  * 桌面端、团队版服务器不设 CRM_ENTERPRISE，这里什么都不做，也不加载这些代码。
- * 另：CRM_REQ_LOG=1 时先开慢请求日志（lib/request-log.ts）。
+ * 另：CRM_REQ_LOG=1 时先开慢请求日志（lib/request-log.ts）；企业版常开运行记录（慢请求、服务端出错落盘，lib/telemetry/）。
  * 多进程部署（11-16）：上面的钟和老数据活只在 CRM_JOBS 开着、并且占到「jobs」跨进程锁的那个进程跑（lib/jobs.ts）；样式落盘和慢请求日志每个进程都开。
  */
 export async function register() {
@@ -13,6 +13,8 @@ export async function register() {
   (await import("./lib/antd-css-disk")).装样式落盘();
   // 慢请求日志（CRM_REQ_LOG=1 才开，见 lib/request-log.ts）：不看企业版开关，开着就记
   if (process.env.CRM_REQ_LOG === "1") await (await import("./lib/request-log")).开请求日志();
+  // 企业版运行记录（28-⑤，lib/telemetry/server.ts）：超过 500 ms 的请求按路由落盘，每个进程都开；不是企业版、CRM_TELEMETRY=0 不开
+  if (process.env.CRM_ENTERPRISE === "1" && process.env.CRM_TELEMETRY !== "0") await (await import("./lib/telemetry/server")).开慢请求记录();
   if (process.env.CRM_ENTERPRISE !== "1") return;
   // 多进程（11-16）：钟和老数据活只许一个进程跑。CRM_JOBS=0 的不跑；开着的先占「jobs」跨进程锁，占不到也不跑（lib/jobs.ts）
   const { 起后台任务 } = await import("./lib/jobs");
@@ -54,5 +56,12 @@ export async function onRequestError(
     if (行) console.error(行, err instanceof Error && err.stack ? `\n${err.stack.split("\n").slice(1, 6).join("\n")}` : "");
   } catch {
     /* 记日志自己出错不能再往外抛 */
+  }
+  // 企业版运行记录（28-⑤）：渲染、路由、动作出错都落一行（只记路由模式、错误名、脱敏首行、digest、角色，lib/telemetry/server.ts）
+  if (process.env.CRM_ENTERPRISE !== "1" || process.env.CRM_TELEMETRY === "0") return;
+  try {
+    await (await import("./lib/telemetry/server")).记服务端出错(err, request, context);
+  } catch {
+    /* 同上 */
   }
 }
