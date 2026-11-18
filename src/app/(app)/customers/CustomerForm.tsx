@@ -3,7 +3,7 @@
 import DatePicker from "@/components/BusinessDatePicker";
 
 import { isCalendarDate } from "@/lib/schedule-date";
-import { requiredText } from "@/lib/form-validation";
+import { requiredText, 电话格验 } from "@/lib/form-validation";
 
 import OptionInput from "@/components/OptionInput";
 import { useEffect, useRef, useState } from "react";
@@ -20,6 +20,7 @@ import { useBusiness } from "@/lib/business-client";
 import { statusLabel, 外贸精简 } from "@/lib/business-config";
 import { 国家候选, 改过的档案, 客户等级, 客户等级说明, 规整官网, type 外贸档案 } from "@/lib/customer-extra";
 import { 查电话 } from "@/lib/phone";
+import { 验客户电话 } from "@/lib/enterprise/contact-format";
 import { 推荐方式 } from "@/lib/referrer-kind";
 import { 带走说法 } from "@/lib/carry-over";
 import { 聚焦首项 } from "@/lib/modal-focus";
@@ -32,6 +33,7 @@ import { 三种业务线, 客户业务线必填 } from "@/lib/enterprise/assign-
 import { 释义下拉, type 客户字典释义 } from "@/components/DictNote";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import { 渠道触点们, 客户介绍触点 } from "@/lib/enterprise/touchpoint";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 export type CustomerRow = {
   id: string;
@@ -196,7 +198,7 @@ function CustomerFormInner({
   const { 先问转走的项目 } = useTransferConfirm();
   const [saving, setSaving] = useState(false);
   // 点外面不关、关前问一句、新建的草稿留在本机（2026-10-19 客户反馈，lib/form-guard.tsx）
-  const 守 = useFormGuard({ open, form, 草稿键: editing ? null : "新建客户", 关: () => onClose(false), 忙: saving, afterOpenChange: 聚焦首项 });
+  const 守 = useFormGuard({ open, form, 草稿键: editing ? `编辑客户:${editing.id}` : "新建客户", 编辑: !!editing, 关: () => onClose(false), 忙: saving, afterOpenChange: 聚焦首项 });
   const [dup, setDup] = useState<DuplicateHit | null>(null);
   /** 保存时发现别人已经改过这条记录 */
   const [conflict, setConflict] = useState<SaveConflict | null>(null);
@@ -414,8 +416,8 @@ function CustomerFormInner({
       守.存好了();
       存上了.current = true;
       return { ok: true };
-    } catch {
-      return { ok: false, error: "保存失败，请刷新确认结果后重试" };
+    } catch (出错) {
+      return { ok: false, error: 动作出错话(出错, "保存失败，请刷新确认结果后重试") };
     } finally {
       setSaving(false);
     }
@@ -436,6 +438,7 @@ function CustomerFormInner({
       destroyOnHidden
     >
       {成话 && <div className={成话.错 ? "csq-err" : "rec-plan-said"} role={成话.错 ? "alert" : "status"}>{成话.话}</div>}
+      {守.提示}
       <Form
         form={form}
         layout="vertical"
@@ -539,6 +542,12 @@ function CustomerFormInner({
                     if (外贸档 && !v?.trim() && 电话必填) return Promise.reject(new Error(四选一说法));
                     // 共享试用区里号码是打了码给人看的：没动它就放行，服务端会认回原号（排查 A2）
                     if (editing && v && v.includes("*") && v === editing.phone) return Promise.resolve();
+                    // 企业版（11-17）：和建档向导、联系人表单同一套手机号规矩（带字母汉字整格拒、国内 1[3-9] 开头 11 位）；编辑时清空交给服务端看还有没有别的联系方式
+                    if (企业) {
+                      if (!v?.trim()) return !editing && 电话必填 ? Promise.reject(new Error("请输入联系电话")) : Promise.resolve();
+                      const 企 = 验客户电话(v);
+                      return 企.ok ? Promise.resolve() : Promise.reject(new Error(企.error));
+                    }
                     const r = 查电话(v, { 必填: 电话必填 });
                     return r.ok ? Promise.resolve() : Promise.reject(new Error(r.error));
                   },
@@ -1038,7 +1047,8 @@ function QuickChannelModal({
   const b = useBusiness();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
-  const 守 = useFormGuard({ open, form, 关: () => onClose(null), 忙: saving, afterOpenChange: 聚焦首项 });
+  // 草稿（复盘第 1 类，25C）：和渠道页「新建渠道」不是同一个框，键分开
+  const 守 = useFormGuard({ open, form, 草稿键: "就地新建渠道", 关: () => onClose(null), 忙: saving, afterOpenChange: 聚焦首项 });
 
   /** 建好的渠道：对勾放完（SaveButton 的 成了）才交回去关框（原型 g.save，不弹顶部提示） */
   const 建好 = useRef<{ id: string; name: string } | null>(null);
@@ -1063,9 +1073,10 @@ function QuickChannelModal({
         return { ok: false, error: res.error };
       }
       建好.current = { id: res.id, name: v.name.trim() };
+      守.存好了();
       return { ok: true };
-    } catch {
-      return { ok: false, error: "没建上，请重试" };
+    } catch (出错) {
+      return { ok: false, error: 动作出错话(出错, "没建上，请重试") };
     } finally {
       setSaving(false);
     }
@@ -1088,11 +1099,13 @@ function QuickChannelModal({
     >
       {/* name 前缀不能省：这个表单和「新建学员」同时在 DOM 里，
           字段名又都叫 name/phone/remark，不加前缀 label 会绑到学员那几个框上 */}
+      {守.提示}
       <Form form={form} name="quickChannel" layout="vertical" style={{ marginTop: 8 }} onValuesChange={守.改了}>
         <Form.Item label="渠道姓名" name="name" rules={[requiredText("请输入渠道姓名")]}>
           <Input placeholder="如：小红" />
         </Form.Item>
-        <Form.Item label="联系电话" name="phone">
+        {/* 号码以外的字不悄悄截掉（11-17 复盘第 4 类）：和 saveChannel 同一个 录入电话，格子下面说为什么存不了 */}
+        <Form.Item label="联系电话" name="phone" rules={[{ validator: (_, v?: string | null) => 电话格验(v) }]}>
           <Input placeholder="选填" />
         </Form.Item>
         {/* 一个人用时不问：不传，服务端填成那唯一的人（saveChannel 的 唯一负责人） */}

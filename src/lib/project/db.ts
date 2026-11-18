@@ -2,6 +2,7 @@
  * 团队版项目模式 1a 的读写（2026-10-23，D-31）。取值规矩在 lib/project/nodes.ts，界面的写在 app/(app)/projects/actions.ts。
  * 这里不管登录、不管开关，只管「谁能改」和「改了留什么痕」，方便单测直接调。
  */
+import { 能往项目记沟通, 沟通项目在公海话, 沟通项目已结束话, 沟通不是组员话 } from "./follow-needs-project";
 import { 项目退回前查联系方式, 退回号码种类表 } from "@/lib/enterprise/return-contact-check";
 import { Prisma, type Project } from "@/generated/prisma";
 import { prisma, defaultClient } from "../prisma";
@@ -15,7 +16,7 @@ import { 企业版推进关, 记沟通阶段问题, 记沟通标记, 有效线�
 import { 等复核拦, 复核判死拦, 验证中不能改派, 进公海清验证 } from "./lead-verify-guard";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 落到渠道 } from "@/lib/enterprise/channel-main";
-import { 是主渠道入口 } from "@/lib/enterprise/channel-main-core";
+import { 是主渠道入口, 渠道启用 } from "@/lib/enterprise/channel-main-core";
 import { parseDateInput } from "@/lib/date-input";
 import { 直属上级of, 权限组织, 读组织, 负责人和上级, type 组织 } from "@/lib/enterprise/org";
 import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除, 能删一些, 没设业务角色, 没业务角色不能领话, 不能领公海话, 能领公海, 只读角色, 只读话of, 有业务角色, 是系统管理员 } from "@/lib/enterprise/permissions";
@@ -51,6 +52,7 @@ import { 卡点随项目换人, 公海领走接手理由, 转让接手理由, �
 import { 换负责人待办, 待办痕 } from "./carry-tasks";
 import { 换负责人 } from "@/lib/project/owner-write";
 import { 待分配占位, 待分配不能动 } from "@/lib/enterprise/await-assign";
+import { 规整指定回复, 时刻转北京墙钟, 回复键们 } from "./time-fields";
 
 type 谁 = { id: string; role: string };
 type 结果 = { ok: true } | { ok: false; error: string };
@@ -576,7 +578,9 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
     const 能改 = 能管项目(me, p, org);
     const 能转 = 能转让项目(me, p, org);
-    if (!能改 && !能转) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人能改" };
+    // 指定回复时间（11-17）：定时 / 待分配期间录入人也能改（方案「谁能改」；市场管理当负责人也不能编辑 P-判定-02 不因此放开别的格）
+    const 录入人改回复 = 企业版() && !!p.awaitAssignAt && !p.pooledAt && p.creatorId === me.id;
+    if (!能改 && !能转 && !录入人改回复) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人能改" };
     // 只校验、只写这次传了的格子（11-02 就地改）：老项目名称、备注超长或带首尾空白，改别的格子不报错，也不被顺手规整掉
     const 传 = 传了的(patch);
     const 好 = 规整项目({ ...项目现值(p), name: "未传", remark: null, ...传 }, p.ownerId);
@@ -597,8 +601,9 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     // 项目来源有值就锁住（P-删-03，和客户来源同一条）：不给换、不给清空；空着的可以补一次。界面锁住只是辅助，这里是防线
     if (p.channelId && 来源 !== p.channelId) return { ok: false as const, error: 来源 ? 项目来源不能改 : 项目来源不能清空 };
     if (来源 !== p.channelId && 来源) {
-      const 渠道 = await tx.channel.findUnique({ where: { id: 来源 }, select: { active: true } });
-      if (!渠道?.active) return { ok: false as const, error: "项目来源这个渠道不存在或已停用，换一个" };
+      // 停用按 渠道启用（P-渠道-13）：主渠道停了的子渠道同样不收
+      const 渠道 = await tx.channel.findUnique({ where: { id: 来源 }, select: { active: true, main: { select: { active: true } } } });
+      if (!渠道 || !渠道启用(渠道)) return { ok: false as const, error: "项目来源这个渠道不存在或已停用，换一个" };
     }
     const 位置 = 企业版() ? 项目级别和地址改成(patch, p) : null;
     if (位置 && !位置.ok) return { ok: false as const, error: 位置.error };
@@ -611,14 +616,22 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     const 线 = 改线 ? 认业务线(patch.业务线) : null;
     if (改线 && 线 === undefined) return { ok: false as const, error: 业务线不认得 };
     if (改线 && !线) return { ok: false as const, error: 业务线必填 };
+    // 指定回复时间（11-17，企业版）：传了哪格改哪格，没传的照库里的；两格一起校验（结束不早于开始）
+    const 改回复 = 企业版() && (patch.指定回复开始 !== undefined || patch.指定回复结束 !== undefined);
+    const 回复 = 改回复
+      ? 规整指定回复(patch.指定回复开始 !== undefined ? patch.指定回复开始 : 时刻转北京墙钟(p.replyStartAt), patch.指定回复结束 !== undefined ? patch.指定回复结束 : 时刻转北京墙钟(p.replyEndAt))
+      : null;
+    if (回复 && !回复.ok) return { ok: false as const, error: 回复.error };
+    const 回复改了 = 回复?.ok ? 回复键们.filter((k) => (回复.值[k]?.getTime() ?? null) !== (p[k]?.getTime() ?? null)) : [];
     const 新 = { ...好, ...(传.name === undefined ? { name: p.name } : {}), ...(传.remark === undefined ? { remark: p.remark } : {}), contactId, channelId: 来源, ...(位置?.ok ? 位置.值 : {}), ...(钱?.ok ? 钱.值 : {}), ...(新字段?.ok ? 新字段.值 : {}), ...(改线 && 线 ? { bizLine: 线 } : {}) };
     const 变了: string[] = (Object.keys(新) as (keyof typeof 新)[]).filter((k) => 新[k] !== p[k]);
     const 日变了 = (日?.getTime() ?? null) !== (p.expectedDealAt?.getTime() ?? null);
     if (日变了) 变了.push("expectedDealAt");
+    变了.push(...回复改了);
     if (!变了.length) return { ok: true as const, 变了 };
     // 改负责人 = 转让，要 能转让项目；别的字段 = 编辑内容，要 能管项目（11-01：总管理、上级能转不能改；11-02：负责人本人能改，也能把自己的转出去）
     if (变了.includes("ownerId") && !能转) return { ok: false as const, error: "只有负责人本人、直属上级、条线总管理或系统管理员能转让这个项目" };
-    if (变了.some((k) => k !== "ownerId") && !能改) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只能转让负责人，项目内容只有负责人能改" };
+    if (变了.some((k) => k !== "ownerId" && !(录入人改回复 && (回复键们 as readonly string[]).includes(k))) && !能改) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只能转让负责人，项目内容只有负责人能改" };
     // 企业版字段权限：动了「只能看」的金额（含合同金额、定金金额、成交需求）/ 负责人 / 预计成交日期 / 痛点标注 / 合同状态就拒（名称、备注、联系人不在表里，照旧能改）
     const 挡 = 改不了的话(级别, 变了.flatMap((k) => (项目列字段[k] ? [项目列字段[k]] : [])));
     if (挡) return { ok: false as const, error: 挡 };
@@ -643,8 +656,8 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
       if (超) return { ok: false as const, error: 超 };
     }
     // 换了人：企业版下一步（时间 + 文字）跟着项目走、不清（11-03 A2-3）；超时回收照样从接手那天重新算（转让留痕），
-    // 上一位填的、早于接手那天的下一步时间不会把回收日往前拉（超时回收日 只认起点以后的）。不是企业版照旧清掉
-    await tx.project.update({ where: { id: p.id }, data: { ...新, ...(日变了 ? { expectedDealAt: 日 } : {}), ...(换人 && !企业版() ? { nextStepAt: null, nextStepText: null } : {}), ...(换人 && p.pooledAt ? { pooledAt: null } : {}), ...(换人 ? 换负责人(新.ownerId) : {}) } });
+    // 下一步时间不影响回收日（11-18 起只提醒、不收回）。不是企业版照旧清掉
+    await tx.project.update({ where: { id: p.id }, data: { ...新, ...(日变了 ? { expectedDealAt: 日 } : {}), ...(回复改了.length && 回复?.ok ? 回复.值 : {}), ...(换人 && !企业版() ? { nextStepAt: null, nextStepText: null } : {}), ...(换人 && p.pooledAt ? { pooledAt: null } : {}), ...(换人 ? 换负责人(新.ownerId) : {}) } });
     // 公海里的项目 ownerId 是空的（企业版进公海清负责人）：从谁 记留痕里的历史负责人
     if (换人) {
       const 原 = p.pooledAt ? (await 历史负责人(tx, p.id)) ?? (p.ownerId || null) : p.ownerId;
@@ -1029,7 +1042,8 @@ export async function 领一个公海项目(
   // 企业版线索公海的项目单独领，客户负责人不变（M-公海-06；开关 领项目带走单项目客户 关着，pool-link.ts）
   await 单项目客户跟着领(tx, p.customerId, me.id, me.id, 带);
   // 例外：客户创建人、负责人都是市场 → 客户整体给领的销售，记「分配」不算转客户（P-公海-11、X-60）
-  const 同事待分配 = 转 && 市场 ? (await 看全部(() => 市场.转客户给销售(tx, p.customerId, 转.原, me.id, me.id, way))).同事待分配 : [];
+  // 推节点 false：销售自己领，不是市场分配，带过来的不推进线索验证（审核 11-18）
+  const 同事待分配 = 转 && 市场 ? (await 看全部(() => 市场.转客户给销售(tx, p.customerId, 转.原, me.id, me.id, way, false))).同事待分配 : [];
   return { ok: true as const, 同事待分配 };
 }
 
@@ -1183,7 +1197,13 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
     if (!提醒过 && 漏扫天数 > 0) {
       const 明天 = dayjs(今天).add(1, "day").format("YYYY-MM-DD");
       const title = `${将回收提醒(p.name, 节点名, 明天)}${补提醒说明}`;
-      await prisma.task.create({ data: { title, dueAt: 今, dueOn: 今天, dueHasTime: false, customerId: p.customerId, ownerId: p.ownerId } });
+      // 查和建放进同一笔写事务：页面打开也会触发这一遍，几个进程同时扫时只建一条（审核 11-18 通知 P2-5）
+      const 建了 = await 查完再写(async (tx) => {
+        if (await tx.task.findFirst({ where: { ownerId: p.ownerId, title, dueOn: 今天 }, select: { id: true } })) return false;
+        await tx.task.create({ data: { title, dueAt: 今, dueOn: 今天, dueHasTime: false, customerId: p.customerId, ownerId: p.ownerId } });
+        return true;
+      });
+      if (!建了) continue;
       const 发给 = await 查收件人(p.ownerId);
       await notify(发给.人们, { kind: "将回收", title, body: 发给.说明, link: `/projects/${p.id}`, key: `due-soon:${p.id}:${今天}` });
       补提醒++;
@@ -1269,10 +1289,14 @@ async function 提醒明天收(规则: 组织规则, 今: Date, 成员: 成员�
     const 日 = 项目回收日(规则, p, 成员);
     if (!日 || 已超时(日, 今) || !即将回收(日, 今)) continue;
     const title = 将回收提醒(p.name, 本套名(p.node, 字典of(企业版())), 日);
-    if (await prisma.task.findFirst({ where: { ownerId: p.ownerId, title, dueOn: 今天 }, select: { id: true } })) continue;
-    await prisma.task.create({
-      data: { title, dueAt: 今, dueOn: 今天, dueHasTime: false, customerId: p.customerId, ownerId: p.ownerId },
+    // 查和建在同一笔写事务里（审核 11-18 通知 P2-5）：「今天扫过」的记号整遍扫完才写，首页、项目列表、公海页在几个进程里同时触发时，
+    // 原来先查再建会各建一条
+    const 建了 = await 查完再写(async (tx) => {
+      if (await tx.task.findFirst({ where: { ownerId: p.ownerId, title, dueOn: 今天 }, select: { id: true } })) return false;
+      await tx.task.create({ data: { title, dueAt: 今, dueOn: 今天, dueHasTime: false, customerId: p.customerId, ownerId: p.ownerId } });
+      return true;
     });
+    if (!建了) continue;
     const 发给 = await 查收件人(p.ownerId);
     await notify(发给.人们, { kind: "将回收", title, body: 发给.说明, link: `/projects/${p.id}`, key: `due-soon:${p.id}:${今天}` });
     发了++;
@@ -1297,37 +1321,48 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
-    if (p.pooledAt) return { ok: false as const, error: "这个项目在公海里，先领取再记" };
-    // 企业版（11-01）：沟通是项目内容，只有负责人记；被邀请进组的只能看（规则 6）
-    if (企业版() && !能管项目(me, p, org)) return { ok: false as const, error: "只有项目负责人或系统管理员能记沟通，项目组成员只能看" };
-    if (!能管项目(me, p, org)) {
+    if (p.pooledAt) return { ok: false as const, error: 企业版() ? 沟通项目在公海话 : "这个项目在公海里，先领取再记" };
+    // 沟通必须挂在推项目（11-17 客户定）：已结束的项目不再记沟通
+    if (企业版() && p.result) return { ok: false as const, error: 沟通项目已结束话 };
+    const 能管 = 能管项目(me, p, org);
+    if (!能管) {
       const 组员 = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
+      // 企业版（11-17 客户定，改 11-01 规则 6）：已进组的项目组员也能把沟通记到别人名下的项目上，记录上是谁记的就是谁，负责人不变
+      if (企业版() && !能往项目记沟通(me, p, org, 组员?.inviteStatus)) return { ok: false as const, error: 沟通不是组员话 };
       if (组员?.inviteStatus !== "JOINED") return { ok: false as const, error: "只有项目负责人、项目组成员、老板或主管能记沟通" };
     }
-    const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
-    const 好 = 规整沟通(input, { 要下一步, now, 要下一步文字: opt.要下一步文字 });
-    if ("error" in 好) return { ok: false as const, error: 好.error };
-    const 阶段问题 = 记沟通阶段问题(input, p);
-    if (阶段问题) return { ok: false as const, error: 阶段问题 };
-    const 额外 = await 认沟通额外(tx, input.额外, p.customerId);
-    if ("error" in 额外) return { ok: false as const, error: 额外.error };
-    const 跟进 = await tx.followUp.create({
-      data: { type: 好.type, method: 好.method, initiator: 好.initiator, content: 好.content, occurredAt: 好.occurredAt, title: 额外.title, status: 额外.status, duration: 额外.duration, participants: 额外.participants, customerId: p.customerId, contactId: 额外.contactId === undefined ? p.contactId : 额外.contactId, ownerId: me.id },
+    /*
+      企业版组员（11-17 客户定）：上面核过「已进组、在推、有业务角色」，这条沟通该记。组员看客户是连带只读的（P-看-08，限定层把这位客户
+      记在「只能看」里，在下面新建沟通会被拦），这一笔按全部写：只写这条沟通和它连带的几样（挂项目、编号、标记、项目下一步、客户最近跟进和跟着算的状态），
+      客户资料、项目负责人不动
+    */
+    const 写 = 企业版() && !能管 ? <T,>(f: () => Promise<T>) => 看全部(f) : <T,>(f: () => Promise<T>) => f();
+    return 写(async () => {
+      const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
+      const 好 = 规整沟通(input, { 要下一步, now, 要下一步文字: opt.要下一步文字 });
+      if ("error" in 好) return { ok: false as const, error: 好.error };
+      const 阶段问题 = 记沟通阶段问题(input, p);
+      if (阶段问题) return { ok: false as const, error: 阶段问题 };
+      const 额外 = await 认沟通额外(tx, input.额外, p.customerId);
+      if ("error" in 额外) return { ok: false as const, error: 额外.error };
+      const 跟进 = await tx.followUp.create({
+        data: { type: 好.type, method: 好.method, initiator: 好.initiator, content: 好.content, occurredAt: 好.occurredAt, title: 额外.title, status: 额外.status, duration: 额外.duration, participants: 额外.participants, customerId: p.customerId, contactId: 额外.contactId === undefined ? p.contactId : 额外.contactId, ownerId: me.id },
+      });
+      // 挂的节点写新名（库里存着旧名的企业版项目按 本套名 对上）
+      await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId: p.id, node: 本套名(p.node, 字典of(企业版())) } });
+      await 记沟通编号(tx, 跟进.id, p.id, 好.nextStepAt, now);
+      await 记沟通标记(tx, 跟进.id, p.id, p.phase, false);
+      // 企业版组员不一定看得到这位客户（客户是负责人的）：最近跟进时间只是跟着记一笔，不按范围拦
+      const c = await 看全部(() => tx.customer.findUnique({ where: { id: p.customerId }, select: { lastFollowAt: true } }));
+      if (!c?.lastFollowAt || c.lastFollowAt < 好.occurredAt) await 看全部(() => tx.customer.update({ where: { id: p.customerId }, data: { lastFollowAt: 好.occurredAt } }));
+      // 下一步：写了文字就文字 + 时间一起换（时间可空，空就清掉上一次的时间）；老入口只给时间，照旧只改时间、文字不动
+      if (好.nextStepText) await tx.project.update({ where: { id: p.id }, data: { nextStepText: 好.nextStepText, nextStepAt: 好.nextStepAt } });
+      else if (好.nextStepAt) await tx.project.update({ where: { id: p.id }, data: { nextStepAt: 好.nextStepAt } });
+      const 推进 = await 按必填推进(tx, 规则, me, p.id);
+      if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
+      await 勾掉将回收提醒(tx, 规则, p, now);
+      return { ok: true as const, followUpId: 跟进.id, ...带推进(推进) };
     });
-    // 挂的节点写新名（库里存着旧名的企业版项目按 本套名 对上）
-    await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId: p.id, node: 本套名(p.node, 字典of(企业版())) } });
-    await 记沟通编号(tx, 跟进.id, p.id, 好.nextStepAt, now);
-    await 记沟通标记(tx, 跟进.id, p.id, p.phase, false);
-    // 企业版组员不一定看得到这位客户（客户是负责人的）：最近跟进时间只是跟着记一笔，不按范围拦
-    const c = await 看全部(() => tx.customer.findUnique({ where: { id: p.customerId }, select: { lastFollowAt: true } }));
-    if (!c?.lastFollowAt || c.lastFollowAt < 好.occurredAt) await 看全部(() => tx.customer.update({ where: { id: p.customerId }, data: { lastFollowAt: 好.occurredAt } }));
-    // 下一步：写了文字就文字 + 时间一起换（时间可空，空就清掉上一次的时间）；老入口只给时间，照旧只改时间、文字不动
-    if (好.nextStepText) await tx.project.update({ where: { id: p.id }, data: { nextStepText: 好.nextStepText, nextStepAt: 好.nextStepAt } });
-    else if (好.nextStepAt) await tx.project.update({ where: { id: p.id }, data: { nextStepAt: 好.nextStepAt } });
-    const 推进 = await 按必填推进(tx, 规则, me, p.id);
-    if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
-    await 勾掉将回收提醒(tx, 规则, p, now);
-    return { ok: true as const, followUpId: 跟进.id, ...带推进(推进) };
   });
 }
 
@@ -1372,13 +1407,17 @@ export async function 客户跟进后勾掉将回收提醒(customerId: string, n
 
 /**
  * 企业版（10-27）：记了沟通，回收日往后推了、不再是明天以内，负责人那条「再不跟进」的提醒跟着勾掉。
- * 下一步时间填的今天（回收日还是明天）就不勾：明天那条提醒照样作数。按记沟通前的项目名 + 节点找（自动推进可能换了节点）。
+ * 回收日还在明天以内（如补记一条比起点早的沟通）就不勾：明天那条提醒照样作数；下一步时间不影响回收日（11-18）。按记沟通前的项目名 + 节点找（自动推进可能换了节点）。
  * 换负责人（11-03 A2-3）也调：将回收提醒跟着换人 把提醒交给新负责人、记完转让痕以后按新负责人再算一遍
  */
 export async function 勾掉将回收提醒(tx: Prisma.TransactionClient, 规则: 组织规则, p: { id: string; name: string; node: string; ownerId: string; customerId: string }, now: Date): Promise<void> {
   if (!企业版()) return;
   const 现 = await 看全部(() => tx.project.findUnique({ where: { id: p.id }, select: 算超时要的 }));
-  const 日 = 现 && 项目回收日(规则, 现);
+  // 没填业务线的按负责人的线算天数（同 超时成员线；外贸没单设天数时不查。事务里用 tx 读，审核 11-18 统计 P2-1）
+  const 成员: 成员线查 | null = 现 && Object.keys(规则.超时回收.外贸节点天数 ?? {}).length
+    ? new Map([[现.ownerId, { line: (await tx.entMember.findUnique({ where: { userId: 现.ownerId }, select: { line: true } }))?.line ?? null }]])
+    : null;
+  const 日 = 现 && 项目回收日(规则, 现, 成员);
   if (日 && 即将回收(日, now)) return;
   await 看全部(() => tx.task.updateMany({
     where: { ownerId: p.ownerId, customerId: p.customerId, done: false, OR: 同名们(p.node).map((n) => ({ title: { startsWith: 将回收提醒头(p.name, n) } })) },
@@ -1534,9 +1573,14 @@ export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项
     // 只用来判必填齐没齐、不回给页面：绕开可见范围读，组员看不到客户时也不误报「所属客户」（11-03 B6-1）
     看全部(() => tx.customer.findUnique({
       where: { id: p.customerId },
-      select: { phone: true, assignWay: true, touchpoint: true, extra: { select: { country: true, whatsapp: true, wechat: true, email: true, source: true, level: true, alibabaId: true } } },
+      select: {
+        phone: true, assignWay: true, touchpoint: true, addrCountry: true, channelId: true,
+        // 客户本身的号（联系方式子表里没挂联系人的那几行，企业版客户页「号码」几行写这里；审核 11-18 P1-5）
+        contactMethods: { where: { contactId: null }, select: { kind: true, value: true } },
+        extra: { select: { country: true, whatsapp: true, wechat: true, email: true, source: true, level: true, alibabaId: true } },
+      },
     })),
-    看全部(() => tx.contact.findMany({ where: { customerId: p.customerId }, select: { id: true, name: true, phone: true, email: true, wechat: true } })),
+    看全部(() => tx.contact.findMany({ where: { customerId: p.customerId }, select: { id: true, name: true, phone: true, email: true, wechat: true, contactMethods: { select: { kind: true, value: true } } } })),
     tx.followUpProject.findMany({ where: { projectId: p.id, followUp: { deletedAt: null } }, select: { node: true, followUp: { select: { initiator: true, content: true, method: true } } } }),
     tx.attachment.count({ where: { projectId: p.id, tag: "合同" } }),
     tx.entProjectPayment.count({ where: { projectId: p.id } }),
@@ -1554,7 +1598,10 @@ export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项
       budgetLevel: p.budgetLevel, priceSense: p.priceSense, decisionChain: p.decisionChain, purchaseCycle: p.purchaseCycle, productFit: p.productFit,
       valueFit: p.valueFit, decisionReach: p.decisionReach, competitor: p.competitor, deployFit: p.deployFit, siteStatus: p.siteStatus,
     },
-    客户: { phone: c?.phone ?? null, extra: c?.extra ?? null, assignWay: c?.assignWay ?? null, touchpoint: c?.touchpoint ?? null },
+    客户: {
+      phone: c?.phone ?? null, extra: c?.extra ?? null, assignWay: c?.assignWay ?? null, touchpoint: c?.touchpoint ?? null,
+      addrCountry: c?.addrCountry ?? null, channelId: c?.channelId ?? null, contactMethods: c?.contactMethods ?? [],
+    },
     有客户: !!c,
     联系人们,
     沟通节点们: [...new Set(沟通.map((x) => x.node))],

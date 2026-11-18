@@ -15,6 +15,7 @@ import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibil
 import { 规则 } from "@/lib/enterprise/rules";
 import { TOOLS } from "@/lib/agent/tools";
 import { DEFAULT_BUSINESS } from "@/lib/business-config";
+import { 历史分析来源 } from "@/lib/project/system-created";
 
 type 人 = { id: string; name: string };
 let 老板: 人, 经理: 人, 乙: 人, 丙: 人;
@@ -80,6 +81,18 @@ describe("get_customer 带项目", () => {
     expect(列.map((p) => p.id)).toEqual(建的.slice(2).reverse());
     expect((r.data as Record<string, unknown>).项目说明).toContain("list_projects");
     expect(r.summary).toContain("10+ 个项目");
+  });
+
+  it("历史分析回填的项目照列、标数据来源，摘要里的项目个数不算它（system-created.ts，25E）", async () => {
+    const c = await 客户(乙.id);
+    const 真 = await 项目(乙.id, c, { updatedAt: dayjs().subtract(2, "minute").toDate() });
+    const 回填 = await 项目(乙.id, c, { source: 历史分析来源, importBatch: "b1", phase: "线索", node: "潜客培育", result: "线索流失", updatedAt: dayjs().subtract(1, "minute").toDate() });
+    const r = await 读客户(c, 老板);
+    const 列 = 项目们(r)! as (行 & { 数据来源?: string })[];
+    expect(列.map((p) => p.id)).toEqual([回填.id, 真.id]);
+    expect(列[0].数据来源).toMatch(/历史分析.*不计入/);
+    expect(列[1].数据来源).toBeUndefined();
+    expect(r.summary).toContain("1 个项目（另有 1 个历史分析回填的，不计入）");
   });
 
   it("没有项目：项目是空数组，摘要里不提", async () => {

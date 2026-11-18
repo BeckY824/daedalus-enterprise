@@ -3,9 +3,10 @@ import { 看全部 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { dayjs } from "@/lib/utils";
 import { 生效组织规则 } from "./org-rules-store";
-import { 项目回收日, 算超时要的 } from "./db";
+import { 项目回收日, 算超时要的, 超时成员线 } from "./db";
 import { 字典of } from "./stage-dict";
 import { 首页卡条件, 即将逾期, 即将逾期紧筛 } from "./home-cards";
+import { 暂未跟进负责人们 } from "./home-cards-db";
 import { 卡点看板范围 } from "./blocker";
 import { 复盘待办计数 } from "./board-todos-db";
 
@@ -40,8 +41,10 @@ export async function 将回公海of(范围: 范围, 今: Date = new Date()): Pr
   const 粗 = 即将逾期紧筛(规则, 字典, 今);
   if (!粗) return { 提醒: 回收条们(规则, 字典, new Map()), 预警: [] };
   const 人 = 负责人条件(范围);
-  const 们 = (await prisma.project.findMany({ where: { AND: [粗, ...(人 ? [人] : [])] }, select: 算超时要的 }))
-    .map((p) => ({ p, 日: 项目回收日(规则, p) }))
+  // 没填业务线的按负责人的线算天数（同首页卡、项目列表；审核 11-18 统计 P2-1）
+  const [查到, 成员] = await Promise.all([prisma.project.findMany({ where: { AND: [粗, ...(人 ? [人] : [])] }, select: 算超时要的 }), 超时成员线(规则)]);
+  const 们 = 查到
+    .map((p) => ({ p, 日: 项目回收日(规则, p, 成员) }))
     .filter((x): x is { p: typeof x.p; 日: string } => !!x.日 && 即将逾期(x.日, 今))
     .sort((a, b) => a.日.localeCompare(b.日) || a.p.name.localeCompare(b.p.name, "zh"));
   const 前几 = 们.slice(0, 预警最多);
@@ -56,7 +59,9 @@ export async function 将回公海of(范围: 范围, 今: Date = new Date()): Pr
 export async function 缺沟通of(范围: 范围): Promise<缺沟通> {
   const 规则 = await 生效组织规则();
   const 人 = 负责人条件(范围);
-  const where = { AND: [首页卡条件("no-follow", 规则, 字典of(企业版())), ...(人 ? [人] : [])] };
+  // 只认现负责人记的沟通（同首页卡，home-cards.ts 现负责人没记过沟通）：这一圈负责人；不限 = 在推项目的全部负责人
+  const 负责人们 = await 暂未跟进负责人们(范围 === undefined ? undefined : typeof 范围 === "string" ? [范围] : 范围);
+  const where = { AND: [首页卡条件("no-follow", 规则, 字典of(企业版()), new Date(), 负责人们), ...(人 ? [人] : [])] };
   const [总数, 们] = await Promise.all([
     prisma.project.count({ where }),
     prisma.project.findMany({

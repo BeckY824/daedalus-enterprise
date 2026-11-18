@@ -9,6 +9,7 @@
  * - 分配方式默认值（A6）：市场 → 自动分配，销售 → 个人自持，其他 → 暂不分配；用户能改。
  */
 import { 是国内, type 客户地址 } from "./customer-v2";
+import { 港澳台地名 } from "./cn-place";
 import type { 组织 } from "./org-core";
 import type { 组织部门 } from "./org-tree";
 import type { 线 } from "./lead-assign";
@@ -66,7 +67,7 @@ const 格 = (x: string | null | undefined) => String(x ?? "").trim();
 
 /**
  * 按地址给业务线的建议（只在界面上用：新建项目没手动选过时预填、旁边提示请确认，见 所在地预填 / 所在地提示；不参与自动分配）：
- * - 国家是中国（或没填国家、只填了省市区县）：省这一格是香港 / 澳门 → 外贸，台湾 → 台湾算，其余 → 内贸
+ * - 国家是中国（或没填国家、只填了省市区县）：省 / 市 / 区县是香港 / 澳门的地名 → 外贸，台湾的 → 台湾算，其余 → 内贸
  * - 国家填的是别的：「中国台湾」「台湾」→ 台湾算；其余（含「中国香港」「中国澳门」、任何外国）→ 外贸
  * - 四格全空 → null（没建议）
  */
@@ -74,8 +75,10 @@ export function 建议业务线(a: Partial<客户地址> | null | undefined): �
   const 国 = 格(a?.addrCountry), 省 = 格(a?.addrProvince), 市 = 格(a?.addrCity), 区 = 格(a?.addrDistrict);
   if (!国 && !省 && !市 && !区) return null;
   if (!国 || 是国内(国)) {
-    if (台湾.test(省)) return 台湾算;
-    if (港澳.test(省)) return "外贸";
+    // 省 / 市 / 区县任一格是港澳台地名（「台北市」「湾仔区」「九龙」，cn-place.ts，审核 11-18 P1-4）
+    const 哪 = [省, 市, 区].map(港澳台地名).find(Boolean);
+    if (哪 === "台湾" || 台湾.test(省)) return 台湾算;
+    if (哪 || 港澳.test(省)) return "外贸";
     return "内贸";
   }
   if (台湾.test(国)) return 台湾算;
@@ -146,6 +149,33 @@ export const 只留销售 = (org: Pick<组织, "成员">, 人们: readonly strin
   人们.filter((id) => !!org.成员.get(id)?.角色们.includes("sales"));
 
 /**
+ * 自动分配能接的人（11-18 客户定第 9 题 B：内贸的销售管理要参与，外贸的销售管理不参与）：
+ * 一人多角色任一放行（审核追加）：有「销售」业务角色的照常接（兼着销售管理的，作为销售两条线都接）；
+ * 纯销售管理（没有销售角色）只在内贸线上接。参与状态（正常 / 暂停 / 禁止）照旧由 挑接手人 再筛，销售管理和销售同一套。线没定（null）= 不给纯销售管理
+ */
+export const 自动可接 = (org: Pick<组织, "成员">, 人们: readonly string[], line: 线 | null): string[] =>
+  人们.filter((id) => {
+    const 角色们 = org.成员.get(id)?.角色们 ?? [];
+    return 角色们.includes("sales") || (角色们.includes("sales_mgr") && line === "内贸");
+  });
+
+/**
+ * 整组不进自动分配的部门（11-18 客户定第 8 题 B：义乌档口整组按部门排除，人工指定照常可以）：部门或上级部门名带这几个字的人不进自动分配池
+ */
+export const 不进自动分配部门名: readonly string[] = ["义乌档口"];
+
+/** 这个人所在部门（连上级）是不是整组不进自动分配的 */
+export function 在不进自动分配部门(org: Pick<组织, "成员" | "部门">, userId: string): boolean {
+  const 走过 = new Set<string>();
+  for (let id: string | null = org.成员.get(userId)?.deptId ?? null; id && !走过.has(id); id = org.部门.get(id)?.parentId ?? null) {
+    走过.add(id);
+    const 名 = org.部门.get(id)?.name ?? "";
+    if (不进自动分配部门名.some((k) => 名.includes(k))) return true;
+  }
+  return false;
+}
+
+/**
  * 按部门挑自动分配的候选人（参与状态、配额由 挑接手人 再筛）：
  * 这条线勾了部门 → 部门（连下级）在里面、有销售业务角色的在职成员（组织里只有在职的人），去掉现负责人；
  * 没勾 → 退回 按成员标记(org, 现负责人, line)（就是 lead-assign 的 自动候选人们）
@@ -175,7 +205,7 @@ export const 分配方式序号 = { 指定分配: 0, 自动分配: 1, 公海捞�
  * 按部门认的由调用方读库算好传 部门市场成员。兼着市场和销售的按市场算。
  * 默认的那个这人用不了（后台按角色关掉了）时退到他能用的第一个；都用不了 = undefined
  */
-const 算市场 = (角色们: readonly string[], 部门市场成员: boolean) => 部门市场成员 || 角色们.includes("marketing_mgr") || 角色们.includes("channel_ops");
+export const 算市场 = (角色们: readonly string[], 部门市场成员: boolean): boolean => 部门市场成员 || 角色们.includes("marketing_mgr") || 角色们.includes("channel_ops");
 
 export function 默认分配方式(角色们: readonly string[], 能用: readonly number[], 部门市场成员 = false): number | undefined {
   const 想 = 算市场(角色们, 部门市场成员)
@@ -184,6 +214,19 @@ export function 默认分配方式(角色们: readonly string[], 能用: readonl
       ? 分配方式序号.个人自持
       : 分配方式序号.暂不分配;
   return 能用.includes(想) ? 想 : 能用[0];
+}
+
+/**
+ * 新建客户（没开项目，只建客户 + 自带的潜客培育项目）给市场成员的「项目分配方式」（11-18 用户）：
+ * 只给指定分配 / 自动分配 / 暂不分配三种，再和这人能用的分配方式取交集（谁能用照 assign-use.ts）
+ */
+export const 新客户分配可选: readonly number[] = [分配方式序号.指定分配, 分配方式序号.自动分配, 分配方式序号.暂不分配];
+export const 新客户分配方式们 = <T extends { i: number }>(能用: readonly T[]): T[] => 能用.filter((x) => 新客户分配可选.includes(x.i));
+
+/** 这一格的默认值：自动分配；用不了（规则没开 / 后台关了）退回暂不分配（原来建给自己记的）；都用不了退到能用的第一个 */
+export function 新客户默认分配方式(能用: readonly number[]): number | undefined {
+  const 可 = 能用.filter((i) => 新客户分配可选.includes(i));
+  return 可.includes(分配方式序号.自动分配) ? 分配方式序号.自动分配 : 可.includes(分配方式序号.暂不分配) ? 分配方式序号.暂不分配 : 可[0];
 }
 
 /** 选自动分配要不要再确认（A9）：有销售业务角色、又不算市场的（市场建的分出去后还能看，销售分出去就看不到了；市场口径同上，X-93） */

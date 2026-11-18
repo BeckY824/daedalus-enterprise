@@ -1,4 +1,5 @@
 import { prisma, defaultClient } from "@/lib/prisma";
+import { 能往项目记沟通 } from "@/lib/project/follow-needs-project";
 import { 只读客户 } from "@/lib/team-scope";
 import type { SessionUser } from "@/lib/auth";
 import { 项目收藏了吗 } from "@/lib/favorites";
@@ -9,6 +10,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import { llmEnabled } from "@/lib/llm";
 import { 已立项天数 } from "@/lib/project/project-fields";
+import { 来源字, 人名显示 } from "@/lib/project/system-created";
 import { 页面可选项, 预读页面字典, type 字典种类 } from "@/lib/enterprise/dict";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看项目, 能转让项目, 是经理, 能删除, 能新建和领取 } from "@/lib/enterprise/permissions";
@@ -19,7 +21,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 负责人可推 } from "@/lib/project/org-rules";
 import { 读项目提成 } from "@/lib/project/commission-db";
 import { 读项目主题 } from "@/lib/enterprise/coach-topic-db";
-import { 超时回收日, 超时起点, 超时理由, 系统, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
+import { 超时回收日, 超时起点, 超时理由, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
 import { 停用项目进公海理由 } from "@/lib/offboard-db";
 import { 拦原负责人, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示, 拦客户公海里的项目, 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
 import { 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
@@ -46,6 +48,15 @@ import type { 项目详情, 项目卡点, 放回方式, 项目详情Props } from
 import { 去空, 有值 } from "@/lib/empty-value";
 import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
 import { 页面看得到的客户 } from "@/lib/project/visible-customers";
+import { 时刻转北京墙钟 } from "@/lib/project/time-fields";
+import { 能动定时 } from "@/lib/enterprise/scheduled-assign";
+import { 客户在谁名下 } from "@/lib/enterprise/reply-overdue";
+
+/** 「该客户在 XXX 名下」那一格（超时未跟进自动转，11-17）：不用提示就不带这一格 */
+async function 客户名下提示(p: { id: string; ownerId: string; customer: { salesOwnerId: string; pool: unknown } }): Promise<{ 客户在谁名下?: string }> {
+  const 名 = await 客户在谁名下(p);
+  return 名 ? { 客户在谁名下: 名 } : {};
+}
 
 
 /**
@@ -168,12 +179,13 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   if (公海 && 原负责人回避() && me.id === 上一任 && !(await 回避豁免(me))) return { 种: "无" };
 
   const 历史负责人 = [...new Set(放回过.map((l) => l.fromOwnerId).filter((x): x is string => !!x))];
-  const 人id = new Set<string>([...历史负责人, ...(上一任 ? [上一任] : []), p.ownerId, p.creatorId, ...p.members.map((m) => m.userId), ...p.logs.flatMap((l) => [l.userId, l.fromOwnerId, l.toOwnerId].filter((x): x is string => !!x)), ...(露沟通 ? p.followUps.map((f) => f.followUp.ownerId) : [])]);
+  const 人id = new Set<string>([...历史负责人, ...(上一任 ? [上一任] : []), p.ownerId, p.creatorId, ...(p.scheduledAssignTo ? [p.scheduledAssignTo] : []), ...p.members.map((m) => m.userId), ...p.logs.flatMap((l) => [l.userId, l.fromOwnerId, l.toOwnerId].filter((x): x is string => !!x)), ...(露沟通 ? p.followUps.map((f) => f.followUp.ownerId) : [])]);
   for (const x of [p.balanceSettledById, p.acceptancePassedById]) if (x) 人id.add(x);
   const 人 = await prisma.user.findMany({ where: { id: { in: [...人id] } }, select: { id: true, name: true } });
   const 名 = new Map(人.map((u) => [u.id, u.name]));
   // 超时回收记在「系统」名下（timeout.ts 系统，QA #16），不是真成员
-  const 叫 = (uid: string | null) => (uid ? (uid === 系统.id ? 系统.name : 名.get(uid) ?? "已不在的成员") : null);
+  // system 不是真账号，按「系统」显示（创建人那一格按 系统补建，见下面 creatorName），共用 人名显示
+  const 叫 = (uid: string | null) => (uid ? 人名显示(uid, 名, { 不在: "已不在的成员" }) : null);
   // 怎么进的公海：超时系统收的 / 办停用时放的（操作人是办的那位管理员，不是离职的人）/ 有人手动放回（QA #14）
   const 认放回 = (reason: string | null): 放回方式 => (reason === 超时理由 ? "超时" : reason === 停用项目进公海理由 ? "停用" : "手动");
   const 最近放回 = 公海 ? p.logs.find((l) => l.kind === "pool-release") : undefined;
@@ -189,8 +201,8 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   const 回收日 = 超时回收日(规则, p, 回收起点, 字典, 回收线);
   // 验证中（等复核 / 等销售……）的线索不参与超时回收（X-78 → M-线索-02，和 lib/project/db.ts 验证中不收 同一个条件）：不写回收日，写「验证中，不回收」，记沟通也不预演
   const 验证不收 = 企业 && !!回收日 && !!(await prisma.entLeadVerify.findUnique({ where: { projectId: p.id }, select: { pending: true } }))?.pending;
-  // 11-01：企业版组员只能看，沟通只有负责人记（和 lib/project/db.ts 记项目沟通 同一个判断）
-  const 能记沟通 = 企业 && !公海 && 能改;
+  // 11-17：负责人或已进组的组员能记，已结束的不再记（和 lib/project/db.ts 记项目沟通 同一个判断）
+  const 能记沟通 = 企业 && !公海 && !p.result && 能往项目记沟通(me, p, org, 已加入.includes(me.id) ? "JOINED" : null);
   // 沟通的「…」菜单（改 / 删，10-29）：不在公海、客户看得到，且不是同事 / 虚线下属的客户（和客户页不摆编辑删除同一条，服务端 改项目沟通 / 删项目沟通 再挡一遍）。
   // M-权限-09（11-09 原口径）：管理（销售管理 / 市场管理 / 总管理）以下的人，负责人本人也算，不能改、不能删。
   // 改 = 身为负责人（项目或客户的）的管理，删 = 系统管理员或身为负责人的管理（V3.5.1），两样分开给，和服务端同一套（lib/enterprise/follow-perm.ts）
@@ -237,6 +249,8 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     // 跟客户来源的那一半只给客户看得到的（11-12 审查）：只负责项目的人、实线上级看不到客户，不露客户从哪个渠道来
     项目来源: p.channel ? { name: p.channel.name, 跟客户: false } : 看得到客户.has(p.customerId) && p.customer.channel ? { name: p.customer.channel.name, 跟客户: true } : null,
     channelId: p.channelId,
+    // 数据来源（迁移 151）：历史沟通分析回填的项目写「历史分析」；系统里正常建的不给（界面不摆那一行）
+    ...(p.source ? { 数据来源: 来源字(p.source) } : {}),
     已立项天数: 已立项天数(p.createdAt),
     ...(能改 ? { 渠道们: await 可选渠道们(p.channelId) } : {}),
     aiEnabled: 能记沟通 && 露 ? await llmEnabled() : false,
@@ -287,7 +301,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     customer: 露 ? { id: p.customer.id, name: p.customer.name, school: p.customer.school } : null, contact: 露 ? p.contact : null,
     客户入口, 客户卡名: 客户入口 === "只读卡" ? { name: p.customer.name, school: p.customer.school } : null,
     // 在公海里 ownerName 给原负责人（界面写「原负责人 X」），企业版库里负责人已经清空，从留痕取；没这个人就是空串，界面写「暂无」
-    ownerId: p.ownerId, ownerName: (公海 ? 叫(上一任) : 叫(p.ownerId)) ?? "", historyOwners: 历史负责人.map((x) => 叫(x)!), creatorName: 叫(p.creatorId)!, createdAt: p.createdAt.toISOString(),
+    ownerId: p.ownerId, ownerName: (公海 ? 叫(上一任) : 叫(p.ownerId)) ?? "", historyOwners: 历史负责人.map((x) => 叫(x)!), creatorName: 人名显示(p.creatorId, 名, { 创建人: true, 不在: "已不在的成员" }), createdAt: p.createdAt.toISOString(),
     phase: 现.phase, node: 现.node, result: 现.result, exceptionReason: p.exceptionReason, exceptionCategory: p.exceptionCategory?.name ?? null,
     pooled: 公海, 我是负责人: p.ownerId === me.id, 企业版: 企业, 出口叫法: 企业 ? 规则.阶段.出口叫法 : {}, 有效沟通差, 来源线索, ...(线索验证 ? { 线索验证, 线索验证必填 } : {}),
     原因选项: { 回收: 回收原因们, 无效: 无效原因们 },
@@ -295,7 +309,15 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     ...(企业 ? { 字数上限: { 培育计划: 规则.阶段.培育计划上限, 无效原因: 规则.阶段.无效原因上限 } } : {}),
     // 下一步时间只有日子：在服务端按业务日排成 YYYY-MM-DD，和回收日同一个钟，浏览器在别的时区也不差一天
     nextStepAt: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null, nextStepText: p.nextStepText ?? null, 回收日, 验证不收, 回收预演,
-    ...(企业 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null } : {}), ...企业项目字段, 要下一步, 能记沟通, 可改沟通, 可删沟通, 必填, 不给推, 能改节点: 节点能改, 能转让: 能转,
+    ...(企业 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null } : {}), ...企业项目字段,
+    // 指定回复时间（11-17）：北京墙钟「YYYY-MM-DD HH:mm」，没填 null（lib/project/time-fields.ts）
+    ...(企业 ? { 指定回复: { 开始: 时刻转北京墙钟(p.replyStartAt), 结束: 时刻转北京墙钟(p.replyEndAt) } } : {}),
+    // 超时未跟进自动转过、客户留在别人名下（11-17，规则 3 的例外）：负责人本人看到「该客户在 XXX 名下」
+    ...(企业 && !公海 && p.ownerId === me.id ? await 客户名下提示(p) : {}),
+    // 指定分配时间（PR3）：还没到点的定时，详情上写时间和分给谁；录入人、能分配的人能改 / 取消 / 改成现在分配
+    ...(企业 && p.scheduledAssignAt && p.awaitAssignAt && !p.pooledAt ? { 定时分配: {
+      时间: 时刻转北京墙钟(p.scheduledAssignAt)!, 给谁: p.scheduledAssignTo ? 叫(p.scheduledAssignTo) ?? "已不在的成员" : null, 能动: !!org && 能动定时(me, p, org),
+    } } : {}), 要下一步, 能记沟通, 可改沟通, 可删沟通, 必填, 不给推, 能改节点: 节点能改, 能转让: 能转,
     // 转给谁以后自己还看得到（11-03 A5-3）：总管理、上级转给下属照样能看，提示不说「看不到」，转完也不跳回列表
     ...(企业版() && 能转 ? { 转后还能看: 候选.filter((c) => 能看项目(me, { ...p, ownerId: c.id, 已加入 }, org)).map((c) => c.id) } : {}),
     能放公海: !公海 && 能放回公海(me, p, org) && (能进公海的阶段 as readonly string[]).includes(p.phase) && !(企业 && p.result), // 已结束的不能单独放回（X-70）

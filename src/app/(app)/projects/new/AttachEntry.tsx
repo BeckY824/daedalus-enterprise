@@ -10,6 +10,7 @@ import Link from "next/link";
 import { Button, Space } from "antd";
 import { 申请挂靠 } from "@/app/(app)/customers/number-actions";
 import type { 撞号露出, 负责人露出 } from "@/lib/enterprise/dupe-ledger";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 /** 姓名 · 级别 · 状态（和服务端 负责人一行 同一个写法；那个文件连着数据库，客户端不引） */
 export const 负责人说法 = (r: 负责人露出) => [r.姓名, r.级别, r.状态].filter(Boolean).join(" · ") + (r.离职找 ? `（请联系 ${r.离职找}）` : "");
@@ -40,8 +41,8 @@ export default function AttachEntry({ 露出, 不给打开 = false }: { 露出: 
       if (!r.ok) return void set话({ 错: true, 字: r.error });
       set已申请(true);
       set话({ 错: false, 字: r.提示 });
-    } catch {
-      set话({ 错: true, 字: "没申请成，请稍后再试" });
+    } catch (出错) {
+      set话({ 错: true, 字: 动作出错话(出错, "没申请成，请稍后再试") });
     } finally {
       set忙(false);
     }

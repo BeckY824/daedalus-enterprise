@@ -138,7 +138,7 @@ export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口�
           <StatCard icon={<ShoppingOutlined />} color={阶段色.订单} label="订单阶段" value={段.订单?.count ?? 0} note={`进行中的 · ${money(段.订单?.amount ?? 0)}`} href="/projects" />
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <StatCard icon={<WarningOutlined />} color={categorical.orange} label="异常状态" value={异常} note={数.公海 ? `公海里还有 ${数.公海} 个进行中的` : "订单阶段停住的"} href="/projects" />
+          <StatCard icon={<WarningOutlined />} color={categorical.orange} label="异常状态" value={异常} note={数.公海 ? `公海里还有 ${数.公海} 个进行中的项目` : "订单阶段停住的"} href="/projects" noteHref={数.公海 ? "/pool" : undefined} />
         </Col>
       </Row>
 

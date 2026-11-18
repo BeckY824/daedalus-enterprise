@@ -36,11 +36,22 @@ import { 成交钱键 as 项目成交钱列 } from "../project/profile-rules";
 import { 来源名, type 来源, type 实体, type 映射, type 待写 } from "./types";
 import { 读项目, 建项目, 改项目, 是项目, 无主入池理由, 无主项目进公海 } from "./project-target";
 import { 规, 写不进, type 值表, type 标量 } from "./values";
+import { 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
 import { 无负责人占位邮箱 } from "../pool";
 import { 无负责人占位Id } from "../no-owner-db";
 import { 同号标题, 同号只记备注 } from "../enterprise/same-number-collab";
 import { 公海无负责人 } from "../project/pool-owner";
 import { 线索建项目 } from "../project/from-lead";
+import { 记出公海待补, 回公海收回培育, 补待补的 } from "./nurture-rows";
+import { 沟通挂潜客培育 } from "../project/nurture";
+import { 带走并记下在事务里, 还项目, type 带走的 } from "../carry-over-db";
+import { 记换负责人, 删被撤的换负责人记录, 公海前负责人 } from "../owner-log-db";
+import { 还待分配状态 } from "../enterprise/market-transfer";
+import { 撤回项目公海 } from "../enterprise/pool-undo";
+import { 系统 } from "../project/timeout";
+import { 导入分配方式 } from "../project/proj-fields";
+import { 企业版只用项目 } from "../enterprise/project-only";
+import { 企业版 } from "../enterprise/switch";
 import { 是项目线 } from "../enterprise/assign-line";
 import { 公海客户要先领取, 公海客户先领取说 } from "../enterprise/pool-customer-guard";
 import { 负责人口径 } from "../owners";
@@ -53,6 +64,9 @@ import { 带客户编号 } from "@/lib/customer-no";
 
 type Tx = Prisma.TransactionClient;
 type 结果 = "新建" | "更新" | "跳过" | "冲突";
+
+/** 导入的沟通没对上项目（原系统没挂商机，或挂的商机没建成这位客户的项目）：这一行不导 */
+export const 沟通没对上项目话 = "沟通记录没对上项目，没导入（沟通必须挂项目：先在原系统把它挂到商机 / 项目上，或导入后到项目里补记）";
 
 /** 每类拿来比对、记进对照表的格子（落库的列名；客户的外贸几格、商机的结单日期在附表里） */
 export const 比对字段: Record<实体, readonly string[]> = {
@@ -104,6 +118,8 @@ export type 现场 = {
   项目?: boolean;
   /** 企业版新建的客户、项目落哪条业务线（映射.业务线；同步用的老映射没选过 = 暂不分配）。非企业版 = undefined，不写 */
   业务线?: string;
+  /** 企业版项目模式：无主客户换上负责人出公海时，名下零项目的补一个潜客培育项目（M-公海-14，见 改）。事务外读好 */
+  补培育?: boolean;
 };
 
 const J = (v: unknown) => JSON.stringify(v);
@@ -266,13 +282,6 @@ function 验成(类型: 号格, 原: unknown): 验好的号 | null {
   return r.ok && r.键 ? { 类型: r.类型, 值: r.值, 键: r.键 } : null;
 }
 
-/** 客户本人的号（主表 phone，导入只认手机号）：这一行是不是它 */
-async function 是本人号(tx: Tx, customerId: string, kind: string, 键: string): Promise<boolean> {
-  if (kind !== 号码库类型.手机号) return false;
-  const c = await tx.customer.findUnique({ where: { id: customerId }, select: { phone: true } });
-  return !!c && 验成("手机号", c.phone)?.键 === 键;
-}
-
 /** 客户的号记进子表（建档 / 建回时）：同 P5 建档，挂在客户本人上（contactId 空） */
 export async function 记客户号(tx: Tx, customerId: string, phone: unknown): Promise<void> {
   const 号 = 验成("手机号", phone);
@@ -288,6 +297,13 @@ export async function 记联系人号(tx: Tx, customerId: string, contactId: str
   }
 }
 
+/** 客户本人的号（主表 phone，导入只认手机号）：这一行是不是它 */
+async function 是本人号(tx: Tx, customerId: string, kind: string, 键: string): Promise<boolean> {
+  if (kind !== 号码库类型.手机号) return false;
+  const c = await tx.customer.findUnique({ where: { id: customerId }, select: { phone: true } });
+  return !!c && 验成("手机号", c.phone)?.键 === 键;
+}
+
 /** 联系人名下这一类的旧号摘掉：和客户本人号是同一行的只摘掉联系人，别的整行删 */
 async function 摘号(tx: Tx, customerId: string, contactId: string, kind: string, 键: string): Promise<void> {
   const 行 = await tx.contactMethod.findFirst({ where: { customerId, contactId, kind, numberKey: 键 }, select: { id: true } });
@@ -296,11 +312,8 @@ async function 摘号(tx: Tx, customerId: string, contactId: string, kind: strin
   else await tx.contactMethod.delete({ where: { id: 行.id } });
 }
 
-/** 联系人要删之前（撤回）：名下的号全摘掉，不在客户上留一行没人认的号 */
-export async function 摘联系人号(tx: Tx, contactId: string): Promise<void> {
-  const 们 = await tx.contactMethod.findMany({ where: { contactId }, select: { customerId: true, kind: true, numberKey: true } });
-  for (const m of 们) await 摘号(tx, m.customerId, contactId, m.kind, m.numberKey);
-}
+/** 联系人要删之前（撤回）：名下的号全摘掉，不在客户上留一行没人认的号（和回收站清理、彻底删除、移出同一份，lib/enterprise/contact-number-detach.ts） */
+export { 摘联系人号 } from "../enterprise/contact-number-detach";
 
 /**
  * 没有负责人时挂的占位账号（11-02，常量和说明在 lib/pool.ts，取 id 在 lib/no-owner-db.ts）：停用、不能登录，
@@ -323,8 +336,11 @@ export async function 无主客户进公海(tx: Tx, 现: 现场, customerId: str
   if (!现.可任.has(负责人)) await tx.customerPool.create({ data: 无主客户入池(负责人, customerId, 现.现在) });
 }
 
-/** 新建一条，返回 id。值已经过 落值（负责人认过、父记录换成我们的 id、日期是 ISO）。项目 = 商机行建成项目；操作人 = 无主项目记的那个人 */
-export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?: boolean, 业务线?: string, 操作人?: string): Promise<string> {
+/**
+ * 新建一条，返回 id。值已经过 落值（负责人认过、父记录换成我们的 id、日期是 ISO）。项目 = 商机行建成项目；操作人 = 无主项目记的那个人；
+ * 原始行 = 原系统那一行（商机行建成项目时按它定分配方式，M-导入-01，proj-fields.ts 导入分配方式）
+ */
+export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?: boolean, 业务线?: string, 操作人?: string, 原始行?: unknown): Promise<string> {
   if (e === "customer") {
     const c = await tx.customer.create({
       data: await 带客户编号(tx, {
@@ -382,7 +398,7 @@ export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?:
     await 记联系人号(tx, String(v.customerId), c.id, v);
     return c.id;
   }
-  if (e === "opportunity" && 项目) return 建项目(tx, v, 现在, 业务线, 操作人);
+  if (e === "opportunity" && 项目) return 建项目(tx, v, 现在, 业务线, 操作人, 导入分配方式(原始行));
   if (e === "opportunity") {
     const status = 串(v.status) ?? "OPEN";
     const o = await tx.opportunity.create({
@@ -404,6 +420,16 @@ export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?:
     if (status !== "OPEN") await tx.opportunityClose.create({ data: { opportunityId: o.id, closedAt: 日(v.closedAt) ?? new Date(现在) } });
     return o.id;
   }
+  // 企业版沟通必须挂项目（11-17 客户定）：只用项目时，没对上项目的沟通行不导入，记进「没写进去」名单、写明原因（待办 / 提醒照导）
+  if (项目 && !v.projectId && 要挂项目的类型(String(v.type))) throw new 写不进(沟通没对上项目话);
+  // 给了项目、写的这一刻项目却找不到（11-18 复盘第 5 类漏网：原来照存成不挂项目的沟通）：挂这位客户的潜客培育项目
+  // （nurture.ts 沟通挂潜客培育，同 21D 新客户自带的那个）；挂不上照「没对上项目」不导。挂到的项目写回 v，导入记录、撤回比对认它
+  let 挂到 = v.projectId ? await 项目节点(tx, String(v.projectId)) : null;
+  if (v.projectId && !挂到 && 项目 && 要挂项目的类型(String(v.type))) {
+    挂到 = await 沟通挂潜客培育(tx, String(v.customerId), 操作人);
+    if (!挂到) throw new 写不进(沟通没对上项目话);
+    v.projectId = 挂到.projectId;
+  }
   const f = await tx.followUp.create({
     data: {
       type: String(v.type),
@@ -417,22 +443,112 @@ export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?:
     },
     select: { id: true },
   });
-  if (v.projectId) await 挂项目(tx, f.id, String(v.projectId));
+  if (挂到) await 挂上(tx, f.id, 挂到);
   return f.id;
 }
 
-/** 跟进挂到项目当前所在的节点上（同项目页「记一笔沟通」） */
-async function 挂项目(tx: Tx, followUpId: string, projectId: string): Promise<void> {
+/** 项目在不在、现在停在哪个节点 */
+async function 项目节点(tx: Tx, projectId: string): Promise<{ projectId: string; node: string } | null> {
   const p = await tx.project.findUnique({ where: { id: projectId }, select: { node: true } });
-  // 库里存着旧节点名的按企业版的新名记（10-31 改名，写入一律新名）
-  if (p) await tx.followUpProject.create({ data: { followUpId, projectId, node: 本套名(p.node, 企业版字典) } });
+  return p ? { projectId, node: p.node } : null;
 }
 
-/** 改已有记录的这几格。现值 = 改之前读到的（商机结单要看原来的状态） */
-export async function 改(tx: Tx, e: 实体, id: string, 改动: 值表, 现值: 值表, 现在: string): Promise<void> {
+/** 跟进挂到项目当前所在的节点上（同项目页「记一笔沟通」）；库里存着旧节点名的按企业版的新名记（10-31 改名，写入一律新名） */
+async function 挂上(tx: Tx, followUpId: string, 到: { projectId: string; node: string }): Promise<void> {
+  await tx.followUpProject.create({ data: { followUpId, projectId: 到.projectId, node: 本套名(到.node, 企业版字典) } });
+}
+
+/** 改已有跟进挂的项目：项目还在才挂（改的是已有的那条，项目不在了照原来的规矩不挂） */
+async function 挂项目(tx: Tx, followUpId: string, projectId: string): Promise<void> {
+  const 到 = await 项目节点(tx, projectId);
+  if (到) await 挂上(tx, followUpId, 到);
+}
+
+/**
+ * 批：这一笔改动记在哪一批（导入 / 同步 / 冲突处理那一批，整批撤回 / 恢复时是被撤的那一批），无主客户出入公海时的潜客培育项目跟着它（nurture-rows.ts）：
+ *   - 出公海（占位账号换成真负责人、公海那行真删了）且 补培育（企业版项目模式，调用方事务外判好）：记一行待补，
+ *     整批行都处理完调用方再 补待补的（同一批的商机行建了项目就不再多补，M-公海-14）
+ *   - 回公海（改回占位账号）：这一批补过的潜客培育没动过就删，动过的留下、名字放进 批.留下培育（调用方列进撤回结果，P-撤销-01）
+ */
+export type 改的批 = {
+  批次Id: string; 补培育: boolean; 留下培育?: string[];
+  /** 谁导的 / 谁撤的：客户换负责人记录、补的潜客培育记他；没给记系统 */
+  操作人?: string;
+  /** 回填：这一笔改了客户负责人时带走了哪些（改 写进来），调用方记进导入记录的 before（换人带走键），撤回按它原样带回 */
+  换人带走?: 换人带走;
+  /**
+   * 这一笔是撤回导入时把负责人改回去：带走 = 导入那一步记下的（null = 老记录没记，只改负责人、删掉那条换人记录，活一样不搬——
+   * 那时的导入本来就没带活）。不给 = 正常导入 / 同步 / 恢复，照转让带活
+   */
+  撤回?: { 带走: 换人带走 | null };
+};
+
+/**
+ * 导入改客户负责人时带走了什么（导入记录 before 里 换人带走键 那一格，JSON）：从 = 活原来在谁名下（公海客户是进公海前那位），
+ * 到 = 新负责人；带走 = 带走并记下在事务里 记下的那几条（回公海那种只记换人、不带活的是空的）
+ */
+export type 换人带走 = { 从: string; 到: string; 带走: 带走的 };
+/** 导入记录 before 里存 换人带走 的键（带 @ 的不是字段：撤回的 拣 只拣写过的字段，不会把它写回客户） */
+export const 换人带走键 = "@换人带走";
+export function 读换人带走(before: 值表): 换人带走 | null {
+  const v = before[换人带走键];
+  if (typeof v !== "string") return null;
+  try {
+    return JSON.parse(v) as 换人带走;
+  } catch {
+    return null;
+  }
+}
+const 空带走 = (): 带走的 => ({ 计划: [], 待办: [], 商机: [], 项目: [], 公海项目: [] });
+
+/**
+ * 导入 / 同步 / 冲突处理 / 撤回改了客户负责人（客户已经改成 新）：
+ *   - 换到占位账号 = 回客户公海：只记一行进公海（pool-release，同 pool-link.ts 客户进公海清负责人），活留在原负责人名下（M-公海-03）；
+ *   - 别的：带走并记下在事务里（carry-over-db.ts，同批量转让、公海领取）——记换负责人、名下没做完的计划待办和项目跟着走；
+ *     从占位账号出公海的记 pool-assign，真人换真人记 assign。市场转销售那一支（org）导入不走：原系统里定的负责人，不另算转客户。
+ * 不发通知（导入一批几千条，事务里也不能发）。操作人没给记系统
+ */
+async function 导入换客户负责人(tx: Tx, customerId: string, 旧: string, 新: string, 批?: 改的批): Promise<void> {
+  const 谁 = 批?.操作人 || 系统.id;
+  if (批?.撤回) return 撤回导入换的负责人(tx, customerId, 旧, 新, 批.撤回.带走, 谁);
+  if (await 是占位账号(tx, 新)) {
+    await 记换负责人(tx, [{ customerId, from: 旧, to: 新 }], 谁, "pool-release");
+    if (批) 批.换人带走 = { 从: 旧, 到: 新, 带走: 空带走() };
+    return;
+  }
+  // 活原来在谁名下：公海客户挂占位账号，活在进公海前那位名下（带走一位 同样这么认），撤回按它还
+  const 从 = 企业版() ? await 公海前负责人(tx, customerId, 旧) : 旧;
+  const { 记下 } = await 带走并记下在事务里(tx, [{ customerId, 旧 }], 新, 谁, (await 是占位账号(tx, 旧)) ? "pool-assign" : "assign");
+  if (批) 批.换人带走 = { 从, 到: 新, 带走: 记下 };
+}
+
+/**
+ * 撤回导入时把客户负责人从 现（导入换上的）改回 原（客户已经改好）：只带回导入那一步带走的（记录.带走），
+ * 接手人原本就有的项目、待办不动（11-18）。撤回方先核过带走的那些都还是带过去时的样子（带过来对不上），对不上整条不撤。
+ *   - 那条换人记录删掉、不另记（同客户页撤销转让，P-撤销-01）；导入那一步是回公海的（pool-release）同样删那条
+ *   - 计划、待办：还在 现 名下、没做完的还给 从；待分配状态、项目按 还待分配状态 / 还项目 还；一起从线索公海带来的放回公海（放不回的留下）
+ *   - 没有记录（这次改动之前的老导入）：只删换人记录，活一样不搬
+ */
+async function 撤回导入换的负责人(tx: Tx, customerId: string, 现: string, 原: string, 记录: 换人带走 | null, 谁: string): Promise<void> {
+  const 那条 = await tx.customerOwnerLog.findFirst({ where: { customerId, fromOwnerId: 原, toOwnerId: 现 }, orderBy: [{ at: "desc" }, { id: "desc" }], select: { id: true, kind: true } });
+  if (那条?.kind === "pool-release") await tx.customerOwnerLog.delete({ where: { id: 那条.id } });
+  else if (那条) await 删被撤的换负责人记录(tx, customerId, 原, 现, 谁);
+  const 带 = 记录?.带走;
+  if (!带) return;
+  const 还给 = 记录.从;
+  if (带.计划.length) await tx.followPlan.updateMany({ where: { id: { in: 带.计划 }, customerId, ownerId: 现, done: false }, data: { ownerId: 还给 } });
+  if (带.待办.length) await tx.task.updateMany({ where: { id: { in: 带.待办 }, customerId, ownerId: 现, done: false }, data: { ownerId: 还给 } });
+  await 还待分配状态(tx, 带, customerId, 现);
+  await 还项目(tx, 带.项目, customerId, 现, 还给, 谁);
+  for (const id of 带.公海项目 ?? []) await 撤回项目公海(tx, id, 现, 谁);
+}
+
+/** 改已有记录的这几格。现值 = 改之前读到的（商机结单要看原来的状态）。批 见 改的批 */
+export async function 改(tx: Tx, e: 实体, id: string, 改动: 值表, 现值: 值表, 现在: string, 批?: 改的批): Promise<void> {
   const 有 = (k: string) => k in 改动;
   if (e === "customer") {
     const data: Prisma.CustomerUncheckedUpdateInput = {};
+    let 出了公海 = false;
     if (有("name")) data.name = String(改动.name);
     if (有("phone")) data.phone = 串(改动.phone) ?? "";
     if (有("salesOwnerId")) {
@@ -440,7 +556,12 @@ export async function 改(tx: Tx, e: 实体, id: string, 改动: 值表, 现值:
       // 无主客户后来有了负责人（指定默认负责人后再导）就出公海；撤回、采用原系统改回占位账号就回公海。别的原因进公海的不碰
       if (await 是占位账号(tx, data.salesOwnerId)) {
         await tx.customerPool.upsert({ where: { customerId: id }, update: {}, create: 无主客户入池(data.salesOwnerId, id, 现在) });
-      } else await tx.customerPool.deleteMany({ where: { customerId: id, reason: 无主入池理由 } });
+        // 回公海：这一批补过的潜客培育按原样收回（负责人还没改，认改之前那位）
+        if (批 && 现值.salesOwnerId && !(await 是占位账号(tx, String(现值.salesOwnerId)))) {
+          const 留 = await 回公海收回培育(tx, 批.批次Id, id, String(现值.salesOwnerId));
+          if (留.length) (批.留下培育 ??= []).push(...留);
+        }
+      } else 出了公海 = (await tx.customerPool.deleteMany({ where: { customerId: id, reason: 无主入池理由 } })).count > 0;
     }
     if (有("followStatus")) data.followStatus = 串(改动.followStatus) ?? "待跟进";
     if (有("custStatus")) data.custStatus = 串(改动.custStatus);
@@ -450,6 +571,11 @@ export async function 改(tx: Tx, e: 实体, id: string, 改动: 值表, 现值:
     if (有("channelId")) Object.assign(data, await 渠道格(tx, 串(改动.channelId)));
     const 主改 = Object.keys(data).length > 0;
     if (主改) await tx.customer.update({ where: { id }, data });
+    // 换了负责人：走共用的换负责人（11-18 复盘第 5 类：原来只改这一格，不留换人记录、名下项目和待办不跟着走），和改写同一个事务
+    const 旧负责人 = 串(现值.salesOwnerId ?? null);
+    if (data.salesOwnerId && 旧负责人 && data.salesOwnerId !== 旧负责人) await 导入换客户负责人(tx, id, 旧负责人, String(data.salesOwnerId), 批);
+    // 出公海：先记待补，整批处理完再补（补的时候项目负责人认客户那时的负责人）
+    if (出了公海 && 批?.补培育) await 记出公海待补(tx, 批.批次Id, id);
     if (有("phone") && 串(改动.phone) !== 串(现值.phone ?? null)) {
       // 换了号：子表里客户本人的旧号删掉（联系人也挂着的那行留给联系人），新号记上
       const 旧 = 验成("手机号", 现值.phone);
@@ -612,7 +738,7 @@ async function 再认同号(tx: Tx, 现: 现场, phone: string): Promise<string 
 
 async function 新建(tx: Tx, 现: 现场, w: 待写): Promise<结果> {
   const v = await 落值(tx, 现, w, null, null);
-  const id = await 建(tx, w.实体, v, 现.现在, 现.项目, 现.业务线, 现.操作人);
+  const id = await 建(tx, w.实体, v, 现.现在, 现.项目, 现.业务线, 现.操作人, w.原始);
   await tx.entExternalRef.create({
     data: { source: 现.源, entity: w.实体, externalId: w.外部ID, targetId: id, fingerprint: w.指纹, written: J(v), raw: J(w.原始), batchId: 现.批次Id },
   });
@@ -660,7 +786,7 @@ async function 线索落项目(tx: Tx, 现: 现场, w: 待写, leadId: string, v
       await 记("contact", 联系人Id);
     }
   }
-  const 项目Id = await 线索建项目(tx, { 线索名: String(v.name), leadId, customerId, ownerId: 负责人 ?? 公海无负责人, creatorId: 负责人 ?? 现.操作人, 联系人Id });
+  const 项目Id = await 线索建项目(tx, { 线索名: String(v.name), leadId, customerId, ownerId: 负责人 ?? 公海无负责人, creatorId: 负责人 ?? 现.操作人, 联系人Id, 分配方式: 导入分配方式(w.原始) });
   if (!负责人) await 无主项目进公海(tx, 项目Id, 现.操作人, 现.现在);
   if (现.业务线) await tx.project.update({ where: { id: 项目Id }, data: { bizLine: 现.业务线 } });
   await 记("opportunity", 项目Id);
@@ -745,7 +871,10 @@ async function 对照(tx: Tx, 现: 现场, w: 待写, ref: 引用行): Promise<�
     } else if (同(c, n)) 新上次[k] = n; // 两边改成一样的了
     else 冲[k] = { 原系统: n, 我们: c, 上次: l };
   }
-  if (Object.keys(改动).length) await 改(tx, w.实体, ref.targetId, 改动, 现值, 现.现在);
+  const 批: 改的批 = { 批次Id: 现.批次Id, 补培育: !!现.补培育, 操作人: 现.操作人 };
+  if (Object.keys(改动).length) await 改(tx, w.实体, ref.targetId, 改动, 现值, 现.现在, 批);
+  // 换了客户负责人带走了哪些：记进这一行的 before，撤回按它原样带回（不碰接手人原本就有的）
+  if (批.换人带走) before[换人带走键] = J(批.换人带走);
   const 有冲突 = Object.keys(冲).length > 0;
   if (有冲突) await 记冲突(tx, 现, w, ref.targetId, 冲, false);
   await 记对照(新上次);
@@ -779,6 +908,7 @@ export async function 开现场(批次Id: string, 源: 来源, m: 映射, 用户
     现在: new Date().toISOString(),
     项目: !!m.项目,
     业务线: m.项目 ? (m.业务线 ?? "暂不分配") : undefined,
+    补培育: await 企业版只用项目(),
   };
 }
 
@@ -961,8 +1091,10 @@ function 原因(e: unknown): string {
   return `写库出错：${msg.trim().split("\n").pop()?.slice(0, 200) ?? ""}`;
 }
 
-/** 写完：给碰过的客户补「最近跟进」，项目动过的客户重算客户状态，批次记 done，记操作日志 */
+/** 写完：出了公海的零项目客户补潜客培育，给碰过的客户补「最近跟进」，项目动过的客户重算客户状态，批次记 done，记操作日志 */
 async function 收尾(批次Id: string, 用户: Actor): Promise<void> {
+  // 整批行都处理完再补（nurture-rows.ts）：同一批的商机行已经建了项目的不再补；没待补的行就是空跑一句。别处已经收过尾 = 待补行已经清掉
+  await 查完再写((tx) => 看全部(() => 补待补的(tx, 批次Id, 用户.id)));
   await 项目客户重算状态(批次Id);
   const 跟进 = await prisma.entImportRow.findMany({ where: { batchId: 批次Id, entity: "followup" }, select: { targetId: true } });
   const ids = [...new Set(跟进.map((r) => r.targetId))];

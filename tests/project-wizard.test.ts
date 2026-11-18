@@ -304,6 +304,27 @@ describe("只建客户（新建弹窗没开「项目」开关，P-界面-36）",
     expect(await 各表行数()).toEqual(全空);
   });
 
+  it("企业版沟通必须挂项目（11-17）：只建客户的首条沟通挂在新客户自带的潜客培育项目上，下一步记成项目的下一步，不另记客户跟进计划；潜客培育只建一个", async () => {
+    vi.stubEnv("CRM_ENTERPRISE", "1");
+    const 渠道 = await prisma.channel.create({ data: { name: "小红", channelOwnerId: 甲 } });
+    const 客 = { ...输入().客户, channelId: 渠道.id, 企业资料: { bizLine: "内贸" } };
+    const r = await 建档只建客户(不带项目({ 客户: 客, 跟进: { type: "PHONE", content: "聊了", occurredAt: "2026-10-20 10:00", 下一步时间: "2099-01-03", 下一步: "发报价" } }));
+    expect(r).toMatchObject({ ok: true, projectId: null });
+    if (!r.ok) return;
+    expect(await 各表行数()).toEqual({ customer: 1, contact: 1, project: 1, log: 1, followUp: 1, link: 1, creator: 1 });
+    expect(await 计划数()).toBe(0);
+    const p = await prisma.project.findFirstOrThrow();
+    expect(p).toMatchObject({ customerId: r.customerId, name: "向导客户", ownerId: 甲, phase: "线索", node: "潜客培育", result: null, pooledAt: null, nextStepText: "发报价" });
+    expect(p.nextStepAt).not.toBeNull();
+    const f = await prisma.followUp.findFirstOrThrow({ include: { projectNode: true } });
+    expect(f).toMatchObject({ content: "聊了", ownerId: 甲 });
+    expect(f.projectNode).toMatchObject({ projectId: p.id, node: "潜客培育" });
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: r.customerId } })).lastFollowAt).toEqual(f.occurredAt);
+    // 潜客培育项目算在推项目：之后在客户页记沟通自动挂上它
+    const { 定沟通挂哪个项目 } = await import("@/lib/project/follow-needs-project");
+    expect(await 定沟通挂哪个项目(mocks.user as never, r.customerId, null)).toEqual({ ok: true, projectId: p.id });
+  });
+
   it("客户撞号：saveCustomer 拦下，联系人、沟通都不建", async () => {
     await prisma.customer.create({ data: { name: "老客户", phone: "13900000001", salesOwnerId: 甲 } });
     expect(await 建档只建客户(不带项目())).toMatchObject({ ok: false });

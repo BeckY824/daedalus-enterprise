@@ -5,84 +5,24 @@
  *
  * 1. 点遮罩不关。antd 弹窗默认点外面就关，填了一半的东西一下全没了
  * 2. Esc / 右上角 X / 「取消」关的时候，人填过东西就先问一句「放弃填的内容？」
- * 3. 新建弹窗没保存就关的，草稿留在这台电脑上（localStorage），下次打开同一个新建弹窗接着填；保存成功就清掉
+ * 3. 没保存就关的、刷新 / 发版后重开的，草稿留在这台电脑上（localStorage，存取见 lib/form-draft.ts），下次打开同一个弹窗接着填；保存成功就清掉
  *
  * 「填过」只认人亲手改的（Form 的 onValuesChange 只在人操作时触发，程序 setFieldsValue 不算）——
  * 打开时程序填进去的默认值（负责人、跟进类型……）不算填过，没动就关不用问（同 PlanForm 人改过方式 那条坑）。
  *
- * 草稿只存这台电脑、只按人分（换个账号登录看不到上一个人的草稿），放 7 天，过了当没有。
- * 编辑弹窗不存草稿：那条记录本来就在库里，草稿和库里的新值一比反而说不清该信谁。
+ * 草稿只存这台电脑、只按人分（换个账号登录看不到上一个人的草稿），放 3 天，过了当没有。
+ * 编辑弹窗（11-17 起也存，键里带记录编号）：只存人改过的那几格（和打开那一刻比），带回时不拿旧值盖掉没动的格子。
+ * 带回不再用底部撤销条：框里一行「已带回上次没提交的内容 · 清空」（守.提示，各弹窗摆在表单顶上）。
  */
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { App, Button, Space } from "antd";
 import type { FormInstance } from "antd";
-import { dayjs } from "@/lib/utils";
 import { useMe } from "@/lib/me-client";
-import { showUndo } from "@/components/UndoBar";
+import { DraftHint } from "@/components/FormDraft";
+import { 草稿全名, 读一份, 存草稿, 清草稿, 有内容, 改过的格 } from "@/lib/form-draft";
 
-const 前缀 = "daedalus:草稿:";
-const 放几天 = 7;
-
-type 存的 = { at: number; v: unknown };
-
-/** dayjs 存成 { $d: ISO }，读回来再变回 dayjs——日期格（预计签约、下次跟进）存进 JSON 会变成字符串，DatePicker 认不得 */
-function 写成串(v: unknown): string {
-  return JSON.stringify({ at: Date.now(), v }, function (this: Record<string, unknown>, k, x) {
-    const 原 = this[k];
-    return dayjs.isDayjs(原) ? { $d: 原.toISOString() } : x;
-  });
-}
-
-function 读回来(raw: string): 存的 | null {
-  try {
-    const r = JSON.parse(raw, (_k, x) => (x && typeof x === "object" && !Array.isArray(x) && Object.keys(x).length === 1 && typeof x.$d === "string" ? dayjs(x.$d) : x)) as 存的;
-    return r && typeof r.at === "number" ? r : null;
-  } catch {
-    return null;
-  }
-}
-
-export function 草稿全名(我: string | null | undefined, 键: string): string {
-  return `${前缀}${我 ?? "-"}:${键}`;
-}
-
-export function 读草稿(全名: string): Record<string, unknown> | null {
-  let raw: string | null = null;
-  try {
-    raw = localStorage.getItem(全名);
-  } catch {
-    return null;
-  }
-  const r = raw ? 读回来(raw) : null;
-  if (!r || Date.now() - r.at > 放几天 * 86400_000 || !r.v || typeof r.v !== "object") return null;
-  return r.v as Record<string, unknown>;
-}
-
-export function 存草稿(全名: string, v: unknown): void {
-  try {
-    localStorage.setItem(全名, 写成串(v));
-  } catch {
-    /* 隐私模式、配额满：存不下就算了，规矩 1、2 照样管用 */
-  }
-}
-
-export function 清草稿(全名: string): void {
-  try {
-    localStorage.removeItem(全名);
-  } catch {
-    /* 同上 */
-  }
-}
-
-/** 有没有一格是人真填了东西的：空串、空数组、null 不算。只拿来判断要不要存草稿 */
-export function 有内容(v: unknown): boolean {
-  if (v == null) return false;
-  if (typeof v === "string") return v.trim() !== "";
-  if (Array.isArray(v)) return v.some(有内容);
-  if (dayjs.isDayjs(v)) return true;
-  if (typeof v === "object") return Object.values(v as Record<string, unknown>).some(有内容);
-  return true;
-}
+/** 存取挪到 lib/form-draft.ts（11-17 全站一份）；老地方照样能引 */
+export { 草稿全名, 读草稿, 存草稿, 清草稿, 有内容 } from "@/lib/form-draft";
 
 export type 守卫选项 = {
   open: boolean;
@@ -90,8 +30,14 @@ export type 守卫选项 = {
   关: () => void;
   /** antd 表单。没有表单的（完成计划小框这种 useState 的）不给，用 填过 自己说 */
   form?: FormInstance;
-  /** 新建弹窗才给：同一个键就是「同一个新建弹窗」。编辑给 null，不存草稿 */
-  草稿键?: string | null;
+  /**
+   * 草稿是录入弹窗的默认行为（25C，复盘第 1 类）：必须写，同一个键就是「同一个弹窗」。
+   * 新建按来源分（`新建待办:<客户>`），编辑带记录编号（`编辑客户:<id>`）；明确不存才写 null（旁边写为什么）。
+   * 长文本框没接草稿的，tests/form-draft-guard.test.ts 会拦
+   */
+  草稿键: string | null;
+  /** 编辑老记录：草稿只存改过的格子 */
+  编辑?: boolean;
   /** 没有 antd 表单的弹窗自己说填没填过 */
   填过?: () => boolean;
   /** 正在保存的时候不让关（原来有的照旧） */
@@ -100,68 +46,113 @@ export type 守卫选项 = {
   afterOpenChange?: (开了: boolean) => void;
   /** 不进草稿的格子：跟着挑中那位客户走的（客户、联系人、商机），下次打开重新挑 */
   不存?: readonly string[];
+  /** 表单外头、也是人打的字（AI 速记框、卡点那一块）：取 / 放 */
+  额外?: { 取: () => Record<string, unknown>; 放: (v: Record<string, unknown>) => void };
+  /** 挂着几个附件：存不进来，带回时提示要重选 */
+  附件数?: () => number;
+  /** 草稿带回之后调（带回的那几格）：表单自己的「人改过」记号跟着设上，免得晚到的默认值盖掉草稿 */
+  on带回?: (v: Record<string, unknown>) => void;
 };
 
-export function useFormGuard({ open, 关, form, 草稿键 = null, 填过, 忙 = false, afterOpenChange, 不存 }: 守卫选项) {
+export function useFormGuard({ open, 关, form, 草稿键, 编辑 = false, 填过, 忙 = false, afterOpenChange, 不存, 额外, 附件数, on带回 }: 守卫选项) {
   const { modal } = App.useApp();
   const 我 = useMe();
   const 全名 = 草稿键 ? 草稿全名(我?.id, 草稿键) : null;
   const 改过 = useRef(false);
   const 问着 = useRef(false);
   const 不存键 = (不存 ?? []).join("|");
+  /** 打开（动画走完、各弹窗填好初值）那一刻的值：编辑时草稿只存和它不一样的格子；「清空」放回它 */
+  const 起始 = useRef<Record<string, unknown> | null>(null);
+  const 起始额外 = useRef<Record<string, unknown> | null>(null);
+  const [带回了, set带回了] = useState<{ 附件: number } | null>(null);
+  const 外 = useRef({ 额外, 附件数, on带回 });
+  useLayoutEffect(() => {
+    外.current = { 额外, 附件数, on带回 };
+  });
   const 取值 = useCallback(() => {
     const v = { ...(form?.getFieldsValue(true) as Record<string, unknown> | undefined) };
     for (const k of 不存键 ? 不存键.split("|") : []) delete v[k];
+    if (编辑) return 起始.current ? 改过的格(起始.current, v) : {};
     return v;
-  }, [form, 不存键]);
+  }, [form, 不存键, 编辑]);
+  const 存 = useCallback(() => {
+    if (!全名) return;
+    const v = 取值();
+    const 外头 = 外.current.额外?.取();
+    const 外头改了 = 外头 && 起始额外.current ? 改过的格(起始额外.current, 外头) : 外头;
+    if (有内容(v) || 有内容(外头改了)) 存草稿(全名, v, { 附件: 外.current.附件数?.() ?? 0, 额外: 外头 });
+  }, [全名, 取值]);
 
   // 草稿在打开那一刻就读好：等动画走完再读的话，人手快、动画没走完就开始填，读到的是自己刚填的这几个字
-  const 待恢复 = useRef<Record<string, unknown> | null>(null);
+  const 待恢复 = useRef<ReturnType<typeof 读一份>>(null);
   // 每次打开从头算：上一次改过没保存的，这一次没动就不该问
   useEffect(() => {
     if (!open) return;
     改过.current = false;
-    待恢复.current = 全名 && form ? 读草稿(全名) : null;
-  }, [open, 全名, form]);
+    起始.current = null;
+    起始额外.current = null;
+    待恢复.current = 全名 ? 读一份(全名) : null;
+  }, [open, 全名]);
 
   const 改了 = useCallback(() => {
     改过.current = true;
-    if (!全名 || !form) return;
-    const v = 取值();
-    if (有内容(v)) 存草稿(全名, v);
-  }, [全名, form, 取值]);
+    // 等这一下的 setState 画完再存：表单外头那几样（额外.取）读的是渲染后的值，同步存会慢一个字。存好了 之后不再存
+    window.setTimeout(() => {
+      if (改过.current) 存();
+    }, 0);
+  }, [存]);
 
   /** 保存成功以后调：草稿清掉，关的时候不再问 */
   const 存好了 = useCallback(() => {
     改过.current = false;
     if (全名) 清草稿(全名);
+    set带回了(null);
   }, [全名]);
+
+  /** 「清空」：带回的那几格放回打开时的样子、草稿扔掉 */
+  const 清空 = useCallback(() => {
+    if (form && 起始.current) {
+      // 打开时空着的格子 getFieldsValue(true) 里没有这个键：只 set 起始 的话带回来的字还在，这几格要显式放回空
+      const 原 = 起始.current;
+      const 不存们 = new Set(不存键 ? 不存键.split("|") : []);
+      const 空着的 = Object.keys(form.getFieldsValue(true) as Record<string, unknown>).filter((k) => !(k in 原) && !不存们.has(k));
+      form.setFieldsValue({ ...Object.fromEntries(空着的.map((k) => [k, undefined])), ...原 });
+    }
+    if (起始额外.current) 外.current.额外?.放(起始额外.current);
+    改过.current = false;
+    if (全名) 清草稿(全名);
+    set带回了(null);
+  }, [form, 全名, 不存键]);
 
   const 开好了 = useCallback(
     (开了: boolean) => {
       // 动画走完、各弹窗自己的 useEffect 都填过初值了，这时再把草稿盖上去，才不会被它们冲掉
       const 稿 = 待恢复.current;
       待恢复.current = null;
+      // 关上了：那一行收起，下次打开从头算
+      if (!开了) set带回了(null);
+      if (开了) {
+        if (form) {
+          const v = { ...(form.getFieldsValue(true) as Record<string, unknown>) };
+          for (const k of 不存键 ? 不存键.split("|") : []) delete v[k];
+          起始.current = v;
+        }
+        起始额外.current = 外.current.额外?.取() ?? null;
+      }
       // 动画没走完人已经动手填了：以人填的为准，不拿草稿盖
-      if (开了 && 全名 && form && 稿 && !改过.current) {
-        // 盖草稿之前先记下这几格原来的值：撤销 = 放回去、草稿也扔掉（不动草稿里没有的那些格，程序填的默认值还在）
-        const 原来: Record<string, unknown> = {};
-        for (const k of Object.keys(稿)) 原来[k] = form.getFieldValue(k);
-        form.setFieldsValue(稿);
+      if (开了 && 全名 && 稿 && !改过.current && (有内容(稿.v) || 有内容(稿.额外))) {
+        if (form && 有内容(稿.v)) {
+          form.setFieldsValue(稿.v);
+          外.current.on带回?.(稿.v);
+        }
+        if (稿.额外 && typeof 稿.额外 === "object") 外.current.额外?.放(稿.额外 as Record<string, unknown>);
         改过.current = true;
-        // 原型 g.undo / g.notice：不弹顶部提示，底部撤销条说一句、给一个「不要草稿」的退路
-        showUndo({
-          话: "接着上次没填完的继续填",
-          撤销: () => {
-            form.setFieldsValue(原来);
-            改过.current = false;
-            清草稿(全名);
-          },
-        });
+        // 不弹顶部提示、不用撤销条：框里一行「已带回上次没提交的内容 · 清空」（守.提示）
+        set带回了({ 附件: 稿.附件 });
       }
       afterOpenChange?.(开了);
     },
-    [全名, form, afterOpenChange],
+    [全名, form, afterOpenChange, 不存键],
   );
 
   const 要关 = useCallback(() => {
@@ -175,7 +166,7 @@ export function useFormGuard({ open, 关, form, 草稿键 = null, 填过, 忙 = 
     问着.current = true;
     const 框 = modal.confirm({
       title: "放弃填的内容？",
-      content: 全名 ? "还没保存。留着草稿的话，下次在这台电脑上打开同一个新建弹窗能接着填。" : "改的还没保存。",
+      content: 全名 ? "还没保存。留着草稿的话，下次在这台电脑上打开同一个弹窗能接着填。" : "改的还没保存。",
       // 焦点落在「继续填」（就是 OK 那颗）：顺手按回车不会把填的扔掉
       okText: "继续填",
       focusable: { autoFocusButton: "ok" },
@@ -200,7 +191,7 @@ export function useFormGuard({ open, 关, form, 草稿键 = null, 填过, 忙 = 
           {全名 && (
             <Button
               onClick={() => {
-                if (form) 存草稿(全名, 取值());
+                存();
                 框.destroy();
                 关();
               }}
@@ -212,14 +203,19 @@ export function useFormGuard({ open, 关, form, 草稿键 = null, 填过, 忙 = 
         </Space>
       ),
     });
-  }, [忙, 填过, 全名, 关, modal, form, 取值]);
+  }, [忙, 填过, 全名, 关, modal, 存]);
+
+  const 提示: ReactNode = 带回了 ? <DraftHint 附件={带回了.附件} on清空={清空} /> : null;
 
   return {
     /** 摊到 <Modal> 上：点遮罩不关；Esc / X / 取消 都走 要关 */
     弹窗: { mask: { closable: false }, onCancel: 要关, afterOpenChange: 开好了 },
-    /** 接到 <Form onValuesChange> 上（已有的 onValuesChange 里也调一下） */
+    /** 接到 <Form onValuesChange> 上（已有的 onValuesChange 里也调一下）；表单外头的字（额外）变了也调 */
     改了,
     存好了,
     要关,
+    /** 带回了草稿时框里那一行（摆在表单顶上）；没带回是 null */
+    提示,
+    清空,
   };
 }

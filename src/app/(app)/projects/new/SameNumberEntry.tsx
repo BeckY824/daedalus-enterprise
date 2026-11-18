@@ -10,6 +10,8 @@ import { Alert, Button, Input, Space } from "antd";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import { 同号协同录入 } from "@/app/(app)/customers/same-number-actions";
 import type { 协同情况 } from "@/lib/enterprise/same-number-collab";
+import { 动作出错话 } from "@/lib/stale-deploy";
+import { useFormDraft } from "@/components/FormDraft";
 
 function 说法(情况: 协同情况 | undefined): { 话: string; 按钮: string } {
   // 待分配的线索（X-87）：还没有负责人，不提负责人、不提邀请
@@ -27,16 +29,21 @@ export default function SameNumberEntry({ 类型, 值, 渠道们, 默认渠道, 
   const [反馈, set反馈] = useState("");
   // 没写进去的原因写在按钮下面（role=alert），不弹顶部提示；写进去了整块换成成功那句（反馈）
   const [错, set错] = useState("");
+  // 「这次的情况」打了没交的字留草稿（复盘第 1 类：刷新、发版后再查到同一个号带回）；写进去了就删
+  const 稿 = useFormDraft({ 键: 值 ? `同号再录:${类型 ?? ""}:${值}` : null, 值: { 内容 }, 带回: (v) => { if (v.内容 !== undefined) set内容(v.内容); } });
 
   async function 交() {
     set忙(true);
     set错("");
     try {
       const r = await 同号协同录入(类型 ?? "", 值, { 渠道id: 渠道, 内容 });
-      if (r.ok) set反馈(r.反馈);
+      if (r.ok) {
+        稿.存好了();
+        set反馈(r.反馈);
+      }
       else set错(r.error);
-    } catch {
-      set错("没写进去，请稍后再试");
+    } catch (出错) {
+      set错(动作出错话(出错, "没写进去，请稍后再试"));
     } finally {
       set忙(false);
     }
@@ -48,6 +55,7 @@ export default function SameNumberEntry({ 类型, 值, 渠道们, 默认渠道, 
     <Space direction="vertical" size={6} style={{ marginTop: 8, width: "100%" }}>
       <div>{说.话}</div>
       <ChannelPicker aria-label="这次的来源" 层级="两级" channels={渠道们} value={渠道} allowClear={false} placeholder="这次的来源（渠道）" onChange={(v) => set渠道(v ?? null)} />
+      {稿.提示}
       <Input.TextArea aria-label="这次的情况" rows={2} maxLength={2000} value={内容} onChange={(e) => set内容(e.target.value)} placeholder="这次沟通了什么（选填）" />
       <Button size="small" type="primary" loading={忙} onClick={交}>{说.按钮}</Button>
       {错 && <div role="alert" className="cd-task-err">{错}</div>}

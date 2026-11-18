@@ -88,7 +88,8 @@ export default function ProjectRoster({ data }: { data: ProjectRosterData }) {
         : { cls: "ok", 说: "最近沟通过" };
   const 一行 = (r: 名单项目, 带阶段: boolean) => {
     const d = 点(r);
-    const 方式 = r.lastType ? 跟进方式名({ type: r.lastType, method: r.lastMethod }) : null;
+    // 没填方式的「其他」类不写（拼在一行小字里，不放「—」）
+    const 方式 = r.lastType ? 跟进方式名({ type: r.lastType, method: r.lastMethod }, "") : null;
     const 进程 = r.结局 ?? r.进程;
     return (
       <RowLink key={r.id} href={`/projects/${r.id}`} className={`roster-row${activeId === r.id ? " on" : ""}`} onClick={() => 抽屉开着 && 关名单()}>

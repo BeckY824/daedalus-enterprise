@@ -4,6 +4,8 @@
  * 各处的 server action 回的是 `{ ok: true } | { ok: false, error }`，也有直接 throw 的、什么都不回的。
  * 组件只关心一件事：成了，还是没成、为什么没成。这里把三种写法收成一个判断。
  */
+import { 给人看的错 } from "@/lib/action-error";
+
 export type 做的结果 = void | undefined | { ok: boolean; error?: string | null };
 
 /** 没成的话，给人看的那句原因 */
@@ -16,7 +18,8 @@ export async function 跑出原因(fn: () => 做的结果 | Promise<做的结果
     if (r && typeof r === "object" && "ok" in r && !r.ok) return r.error?.trim() || 没说原因;
     return null;
   } catch (e) {
-    const 话 = e instanceof Error ? e.message : typeof e === "string" ? e : "";
-    return 话.trim() || 没说原因;
+    // 发版后老页面交的动作（lib/stale-deploy.ts）：Next 抛的是英文，换成「系统刚更新了，请刷新页面后再提交」；
+    // 别的英文原文（生产构建里服务端出错那句、断网）也不给人看，换成中文、原文进日志（lib/action-error.ts，25C）
+    return 给人看的错(e, 没说原因, "保存");
   }
 }

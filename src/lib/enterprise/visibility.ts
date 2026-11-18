@@ -28,7 +28,7 @@ import type { PrismaClient } from "@/generated/prisma";
 import { readSecret } from "@/lib/secret";
 import { 看得到, type 限定, type 公海回避 } from "@/lib/team-scope";
 import { 回收站副手键, 只看某人键, 系统管理员标记键, 填组织设置, 建组织, 实线下属, 虚线下属, 管理员类别们of, type 组织 } from "./org-core";
-import { 按线范围of, 按线项目, 按线客户 } from "./line-viewer";
+import { 按线范围of, 按线项目, 按线客户, 条线范围of } from "./line-viewer";
 import { 规则 } from "./rules";
 import { 市场部门key, 市场成员key, 市场成员们, 市场相关客户, 市场只读话, 规整市场部门 } from "./market";
 import { 视图票, 验视图票, 会话时刻, 切换视图开着 } from "./view-as";
@@ -40,8 +40,8 @@ import { 读通道不限定 } from "@/lib/read-pool";
 const 会话票 = "crm_session";
 export const 虚线只读话 = "这是虚线下属的客户：只能看，不能改、不能转";
 /** 虚线下属和市场成员相关（10-31）两样都有时：挡下那一句不说死是哪一样 */
-/** 只因为进了项目组看得到的客户（V3.5.1） */
-export const 组员只读话 = "这是你加入的项目挂着的客户：只能看，不能改、不能记沟通；被指定为负责人才能改";
+/** 只因为进了项目组看得到的客户（V3.5.1；11-17 客户定组员能在本项目记沟通） */
+export const 组员只读话 = "这是你加入的项目挂着的客户：只能看，不能改；沟通只能记在你已加入的在推项目上；被指定为负责人才能改";
 export const 虚线或市场只读话 = "这是虚线下属或市场成员相关的客户：只能看，不能改、不能转";
 /** 没认出人：只看公海（谁的 id 都不会是这个） */
 const 只看公海: 限定 = { 我: ["__无"], 互看: false, 别人的: new Set() };
@@ -63,6 +63,13 @@ export function 组织范围of(org: 组织, _账号角色: string | null, 我: s
   const 读 = new Set(写);
   // 虚线下属（D-39 只读）是专门跨线配的，不按业务线滤
   for (const d of 虚线下属(org, 我)) for (const x of [d, ...实线下属(org, d)]) 读.add(x);
+  // 条线总管理（P-角色-01，审核 11-18 权限 P1-1）：看本线成员和实线 / 虚线下属名下的全部（含别线的下属），同详情 能看项目 的 条线范围of；
+  // 改照旧只有上面那一圈（本人负责的能编、线内能转让另由各 action 判）
+  const 条线 = 条线范围of(org, 我);
+  if (条线) for (const x of 条线.人们) 读.add(x);
+  // 停用的人留在他停用前上级的链里（审核 11-18 权限 P1-12 · 统计 P2-6，M-公海-50）：停用前直属上级是我或我管的人，他名下的我看得到、数得到；
+  // 只看——接手走离职交接（P-转-14）。分配候选、接手人、下拉照旧只认在职的（org.成员）
+  for (const [离职, 上] of org.离职上级 ?? []) if (写.has(上)) 读.add(离职);
   return 读.size > 写.size ? { 写: [...写], 读: [...读] } : { 写: [...写] };
 }
 
@@ -251,7 +258,7 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
   const 市场 = 市场的人(org, id, 类别.has("市场管理"), 设的市场部门?.value, 设的市场人?.value);
   // 市场管理（11-05 客户定）：本人 + 直属下级建的项目（线索）不管什么状态都看得到，只读；直属下级不论是不是市场成员
   const 带市场全看 = 类别.has("市场管理") ? { 市场全看: [id, ...实线下属(org, id, 1)] } : {};
-  // 项目组员（V3.5.1）：加入的项目挂的客户级联看得到、只能看（不记沟通、不改）。自己（含实线下属）负责的、公海的不降；
+  // 项目组员（V3.5.1）：加入的项目挂的客户级联看得到、只能看（不改；11-17 起沟通能记在自己已进组的在推项目上，见 lib/project/follow-needs-project.ts）。自己（含实线下属）负责的、公海的不降；
   // 自己负责的项目挂着的也不算只读（被指定为负责人才能编辑，在项目下记沟通）
   const 写 = 范围.写;
   const 组员只读 = new Set<string>();
@@ -353,10 +360,17 @@ async function 公海回避of(db: PrismaClient, id: string): Promise<公海回�
   const 放回的 = await 公海里历史负责人是(db, [id]);
   const 放走的 = [...(await 公海客户原负责人是(db, [id])).keys()];
   const 他公海客户 = { salesOwnerId: id, pool: { isNot: null }, deletedAt: null };
-  const [有客户, 挂着的] = await Promise.all([
-    db.customer.findFirst({ where: 他公海客户, select: { id: true } }),
-    db.project.findMany({ where: { deletedAt: null, customer: 他公海客户 }, select: { id: true }, take: 回避名单上限 + 1 }),
-  ]);
+  // 先按负责人取他名下的公海客户（走 Customer 负责人索引），再按客户编号取下面的项目（11-18 渠道页提速）。
+  // 原来一句 project where customer: 他公海客户 + take：库里没有统计信息时 SQLite 走 Project_deletedAt_idx 把全部项目扫一遍再连客户，
+  // 6 万多项目约 120ms，名下一个公海客户都没有也照扫；每个人的范围缓存 10 秒，过期后头一个页面都吃这一下。
+  // 结果同原来：有没有这样的客户；这些客户下面没删的项目，最多取 回避名单上限 + 1 条（只用来判过没过上限，过了不用名单）
+  const 他的公海客户 = (await db.customer.findMany({ where: 他公海客户, select: { id: true } })).map((c) => c.id);
+  const 有客户 = 他的公海客户.length > 0;
+  const 挂着的: { id: string }[] = [];
+  for (let i = 0; i < 他的公海客户.length && 挂着的.length <= 回避名单上限; i += 一批id数) {
+    const 行 = await db.project.findMany({ where: { deletedAt: null, customerId: { in: 他的公海客户.slice(i, i + 一批id数) } }, select: { id: true }, take: 回避名单上限 + 1 - 挂着的.length });
+    挂着的.push(...行);
+  }
   // 他退的项目挂着的公海客户里，负责人不是他的（负责人是他的 回避客户条件 一句带上了）
   const 客户们 = new Set<string>();
   for (let i = 0; i < 放回的.length; i += 一批id数) {

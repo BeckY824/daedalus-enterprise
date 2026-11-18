@@ -4,6 +4,7 @@
  * 团队版项目模式 1a 的写（2026-10-23，D-31）。开关关着时每个动作都直接拦，一行不写。
  * 规矩在 lib/project/nodes.ts、读写在 lib/project/db.ts、建档向导在 lib/project/wizard.ts，这里只管登录、开关、操作日志和刷新。
  */
+import { 能往项目记沟通 } from "@/lib/project/follow-needs-project";
 import { revalidatePath } from "next/cache";
 import { 读项目详情 } from "./[id]/load";
 import type { 项目详情Props } from "./[id]/ProjectDetail";
@@ -14,13 +15,18 @@ import { recordAudit } from "@/lib/audit";
 import { 不在了 } from "@/lib/not-there";
 import { getBusiness } from "@/lib/business";
 import { 读的我 } from "@/lib/team-scope";
-import { 验号码 } from "@/lib/enterprise/contact-format";
-import { 验联系人号码, 企业号码查重, 全公司查号, 撞号结论, 记号码, 联系人号码撞了 } from "@/lib/enterprise/contact-dedupe";
-import { 登记接着建 } from "@/lib/project/hook";
+import { 验号码, 号码类型叫法 } from "@/lib/enterprise/contact-format";
+import { 验联系人号码, 企业号码查重, 全公司查号, 撞号结论, 记号码, 联系人号码撞了, 库类型到号码类型, 一行号全公司查, type 联系人的号, type 验好的号 } from "@/lib/enterprise/contact-dedupe";
+import { 验联系人号码们, 号码种类表, 种类叫法, type 验好的行 } from "@/lib/enterprise/customer-v2-db";
+import { 每人最多号码 } from "@/lib/enterprise/customer-v2";
+import type { Prisma } from "@/generated/prisma";
+import { 登记接着建, 记联系人带号 } from "@/lib/project/hook";
+import { 签首条附件票 } from "@/lib/enterprise/first-follow-ticket";
 import { 规整向导, 向导接着建, 规整只建客户, 只建客户接着建, 项目来源默认, 占位名提示, type 建好的, type 建好的客户, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
+import { 补潜客培育 } from "@/lib/project/nurture";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
-import { 读必填数据, 能改节点, 上级只推, 直属才推, 只有负责人改进程, 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 能管项目, 能进公海的阶段, 超时成员线, 超时线, type 交付项 } from "@/lib/project/db";
+import { 读必填数据, 能改节点, 上级只推, 直属才推, 只有负责人改进程, 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 能进公海的阶段, 超时成员线, 超时线, type 交付项 } from "@/lib/project/db";
 import { 合上改动, 是不限, 三态改动摘要, type 规则改动 } from "@/lib/project/org-rules";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -31,10 +37,12 @@ import { 读组织, 权限组织 } from "@/lib/enterprise/org";
 import { 新数据渠道不行, 落到渠道 } from "@/lib/enterprise/channel-main";
 import { 是主渠道入口 } from "@/lib/enterprise/channel-main-core";
 import { 认渠道触点, 渠道触点们, 新建来源还差 } from "@/lib/enterprise/touchpoint";
-import { 接手问题 } from "@/lib/enterprise/lead-assign";
+import { 指定问题 } from "@/lib/enterprise/assign-eta";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
+import { 记新建指定分配 } from "@/lib/enterprise/direct-assign";
 import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知, 项目被删通知, 项目放回公海通知 } from "@/lib/enterprise/notice-sources";
 import { 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
+import { 市场分配进线索验证 } from "@/lib/enterprise/market-assign-node";
 import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
 import { 按必填走, 是占位值, 还差 as 必填还差, 必填叫法 } from "@/lib/project/required";
 import { 字典of } from "@/lib/project/stage-dict";
@@ -47,8 +55,10 @@ import { saveCustomer, type CustomerInput } from "../customers/actions";
 import { saveFollowUp, deleteFollowUp } from "../customers/[id]/actions";
 import { 只读客户, 只读话 } from "@/lib/team-scope";
 import { scheduleValue } from "@/lib/schedule-date";
-import { 定分配方式, 建好再分 } from "@/lib/project/after-create-assign";
+import { 定分配方式, 建好再分, 认新建定时 } from "@/lib/project/after-create-assign";
 import { 认业务线, 业务线必填 } from "@/lib/enterprise/assign-line";
+import { 按区域分配of, 默认分配方向, 认分配方向, type 分配方向, type 定线号 } from "@/lib/enterprise/customer-region";
+import { 本人线of } from "@/lib/enterprise/assign-direction-db";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 import { 字典定义, 项目画像项, 认跟进方式, 选的原因 } from "@/lib/enterprise/dict";
 import { 改项目画像, type 画像改动, type 画像字段 } from "@/lib/project/profile";
@@ -69,8 +79,24 @@ function 刷新项目(projectId?: string, customerId?: string) {
   if (customerId) revalidatePath(`/customers/${customerId}`);
 }
 
-export type 建档向导输入 = { 客户: CustomerInput; 联系人: 向导联系人; 项目: 向导项目; 跟进: 向导跟进 };
-/** 新建弹窗没开「项目」开关（P-界面-36，11-15）：只建客户、主要联系人和首条沟通（算客户沟通） */
+/** 要传附件：弹窗里给首条沟通挑了截图 / 附件（11-18）。交了 true 才回一张附件票（lib/enterprise/first-follow-ticket.ts），建好由浏览器凭票接着传 */
+export type 建档向导输入 = { 客户: CustomerInput; 联系人: 向导联系人; 项目: 向导项目; 跟进: 向导跟进; 要传附件?: boolean };
+
+/** 分配方向按电话判时看的号（11-18）：客户电话、企业号码（手机号）、联系人电话、联系人号码里的手机，按这个顺序 */
+function 向导号们(input: Pick<建档向导输入, "客户" | "联系人">): 定线号[] {
+  const 企号 = input.客户.企业号码?.类型 === "手机号" ? input.客户.企业号码.值 : null;
+  const 行们 = Array.isArray(input.联系人?.号码们) ? input.联系人.号码们 : [];
+  const 手机行 = 行们.filter((r) => r?.kind === "phone").map((r) => r.value);
+  // WhatsApp（号码几行里 kind=whatsapp 的、客户 WhatsApp）排在电话后面，电话都判不出才看，按国际号读（审核 11-18 P1-6）
+  const WA = [input.客户.extra?.whatsapp, ...行们.filter((r) => r?.kind === "whatsapp").map((r) => r.value)]
+    .filter((x): x is string => typeof x === "string" && !!x.trim()).map((whatsapp) => ({ whatsapp }));
+  return [...[input.客户.phone, 企号, input.联系人?.phone, ...手机行].filter((x): x is string => typeof x === "string" && !!x.trim()), ...WA];
+}
+/**
+ * 新建弹窗没开「项目」开关（P-界面-36，11-15）：只建客户、主要联系人和首条沟通（团队版算客户沟通；企业版挂在新客户自带的潜客培育项目上，11-17）。
+ * 首条沟通的截图 / 附件：企业版首条沟通挂在潜客培育项目上，交了 要传附件 同样签一张附件票、挂到这条首条沟通上（11-18 起）；
+ * 团队版没建项目、首条沟通不挂项目，不签票
+ */
 export type 只建客户输入 = Omit<建档向导输入, "项目">;
 
 /** 建档时指派给别人超了持有上限：「超了上限，」后面那半句 */
@@ -89,7 +115,16 @@ export async function 建档向导(输入: 建档向导输入) {
     // 指定分配 = 负责人是选的那位；另外四种都先建在我名下，自动分配建好后按自动分配转出去、公海捞取建好后放进项目公海
     const 分配 = 企业版() ? await 定分配方式(me, 输入.项目) : null;
     if (分配 && "error" in 分配) return { ok: false as const, error: 分配.error };
-    let input = 分配 && 分配.i !== 0
+    // 指定分配时间（11-17 PR3）：选了「指定时间」= 先建在我名下待分配（定时），到点再分；指定分配的接手人就是选的负责人
+    const 定时 = 分配 && 输入.项目 ? 认新建定时(分配, 输入.项目.定时分配, 输入.项目.ownerId) : null;
+    if (定时 && "error" in 定时) return { ok: false as const, error: 定时.error };
+    if (定时?.接手人) {
+      const 接 = await prisma.user.findUnique({ where: { id: 定时.接手人 }, select: { active: true } });
+      if (!接?.active) return { ok: false as const, error: "项目负责人不存在或已停用，请选一位在职成员" };
+      const 问题 = (await 不能当负责人(定时.接手人)) ?? (await 指定问题(await 读组织(), 定时.接手人));
+      if (问题) return { ok: false as const, error: 问题 };
+    }
+    let input = 分配 && (分配.i !== 0 || 定时)
       ? { ...输入, 客户: { ...输入.客户, salesOwnerId: me.id }, 项目: { ...输入.项目, ownerId: me.id } }
       : 输入;
     // 来源选的是「只有主渠道」的占位（没有子渠道的主渠道）：先落成子渠道名留空的那条渠道，后面一律按真的渠道 id 走（channel-main.ts 落到渠道）
@@ -111,6 +146,10 @@ export async function 建档向导(输入: 建档向导输入) {
     const 带方式 = 认 ? { ...input, 跟进: 认 } : input;
     const 好 = 规整向导(me, 要下一步 || 企业版() || !带方式.跟进 ? 带方式 : { ...带方式, 跟进: { ...带方式.跟进, 下一步时间: null } }, new Date(), 要下一步, 企业版());
     if ("error" in 好) return { ok: false as const, error: 好.error };
+    /** 市场成员选自动分配：业务线按客户区域定（下面企业版那段算） */
+    let 区域定线 = false;
+    /** 市场成员自动分配的分配方向（11-18）：建档时算一次，记业务线、建好再分 都用这一个（审核 11-18 P2-4） */
+    let 建档方向: 分配方向 | undefined;
     // 企业版新建线索要选渠道或渠道触点（10-26：直接选渠道，不是来源类型；P-渠道-08 起触点也算）
     if (企业版()) {
       if (是占位值(String(input.客户.name ?? ""))) return { ok: false as const, error: 占位名提示("客户名称") };
@@ -133,12 +172,28 @@ export async function 建档向导(输入: 建档向导输入) {
         好.企业.项目来源 = 来源;
         // 分配方式记在项目上（11-01 迁移 106）
         if (分配) 好.企业.分配方式名 = 分配.名;
-        // 业务线（11-01 清单 A1，16:1x 拍板三选一）：手动选；没选 = 跟客户上选的。企业版新建必填，不填不让建
-        if (!好.企业.业务线) {
-          const 客线 = 认业务线(input.客户.企业资料?.bizLine);
-          if (客线) 好.企业.业务线 = 客线;
+        // 市场成员（按岗位）选自动分配（P-转-26 自动分配这一半，用户 11-17）：业务线不用选、交了也不认，按客户区域定——
+        // 大陆 内贸、非大陆（含港澳台）外贸；客户地址空看项目所在地；都空 = 项目不记线（null，分完按负责人的线），自动分配两条线都算
+        const 组织 = await 读组织();
+        区域定线 = 分配?.i === 1 && 按区域分配of(组织, me.id);
+        if (区域定线) {
+          // 分配方向（11-18）：人在界面上改过就按改的（只认内贸 / 外贸）；没改按 客户区域 → 项目所在地 → 电话 → 本人事业部；都判不出 = 不记线、两条线都算
+          const 向 = 认分配方向(input.项目?.分配方向);
+          if (!向.ok) return { ok: false as const, error: 向.error };
+          建档方向 = 向.线 ? { 线: 向.线, 来源: "手动" } : 默认分配方向({
+            客户: input.客户.企业资料 ?? null, 项目: 好.企业.所在地 ?? null, 号们: 向导号们(input), 本人线: await 本人线of(组织, me.id),
+          });
+          好.企业.业务线 = 建档方向.线;
+          // 手动改的存在项目上（Project.assignDir），之后定时到点、超时自动转、列表 / 批量自动分配都认它（审核 11-18 P0-1）
+          if (向.线) 好.企业.手选方向 = 向.线;
+        } else {
+          // 业务线（11-01 清单 A1，16:1x 拍板三选一）：手动选；没选 = 跟客户上选的。企业版新建必填，不填不让建
+          if (!好.企业.业务线) {
+            const 客线 = 认业务线(input.客户.企业资料?.bizLine);
+            if (客线) 好.企业.业务线 = 客线;
+          }
+          if (!好.企业.业务线) return { ok: false as const, error: 业务线必填 };
         }
-        if (!好.企业.业务线) return { ok: false as const, error: 业务线必填 };
       }
     }
     const 负责人 = await prisma.user.findUnique({ where: { id: 好.项目.ownerId }, select: { name: true, active: true } });
@@ -148,10 +203,11 @@ export async function 建档向导(输入: 建档向导输入) {
     // 负责人选了别人 = 指派，开了持有上限的要算；自己建给自己不拦（lib/project/db.ts 超上限）
     let 转客户 = false;
     if (好.项目.ownerId !== me.id) {
-      // 企业版指定分配给别人：和分配线索同一条（11-03 A2-1）——只能给销售 / 销售管理；业务线这里不比
+      // 企业版指定分配给别人：和分配线索同一条（11-03 A2-1）——只能给销售 / 销售管理；业务线这里不比；
+      // 参与状态要「正常」（11-18 第 8 题 B，和新线索列表「分配」一致：暂停、禁止的不能被指定）
       if (企业版()) {
         const org = await 读组织();
-        const 问题 = 接手问题(org, 好.项目.ownerId, null);
+        const 问题 = await 指定问题(org, 好.项目.ownerId);
         if (问题) return { ok: false as const, error: 问题 };
         // 市场指定给销售 = 市场首次分配，算转客户（X-18，和自动分配同一条）；其余角色指定给别人，客户留在建的人名下（P-转-03）
         转客户 = 算市场转客户(org, { salesOwnerId: me.id, pool: null }, 好.项目.ownerId);
@@ -168,6 +224,12 @@ export async function 建档向导(输入: 建档向导输入) {
     const 第一步 = 企 && input.客户.企业号码 ? 验号码(input.客户.企业号码.类型, input.客户.企业号码.值) : null;
     const 联号 = 企 ? 验联系人号码(好.联系人, 第一步?.ok ? 第一步 : null) : [];
     if ("error" in 联号) return { ok: false as const, error: 联号.error };
+    // 联系方式几行（AI 新线索卡交的、向导第一行下面多加的 联系人.号码们）：四类并进 联号 一起查重，别的类型事务里记
+    const 号码行 = 企 ? await 并号码行(input.联系人?.号码们, 联号, 第一步?.ok ? 第一步 : null) : null;
+    if (号码行 && "error" in 号码行) return { ok: false as const, error: 号码行.error };
+    const 别的号行 = 号码行?.别的 ?? [];
+    const 别撞 = await 别的号撞了(别的号行, me.id);
+    if (别撞) return { ok: false as const, error: 别撞 };
     // 撞到有人在跟的客户：这次录的写进现有项目（同号再次录入），不建；公海、占位、停用的照原来的提示拦
     const 同号录入 = { 入口: "手工建档", 渠道id: input.客户.channelId, 内容: 好.跟进.content };
     if (第一步?.ok) {
@@ -202,18 +264,26 @@ export async function 建档向导(输入: 建档向导输入) {
       await 向导(tx, customerId);
       // 客户先落在我名下（下面 saveCustomer 那一格）；市场指定给销售才转过去
       if (转客户) await 转客户给销售(tx, customerId, me.id, 好.项目.ownerId, me.id, 分配?.名 ?? "指定分配");
+      // 市场指定给销售：刚建的项目停在潜客培育的进线索验证（审核 11-18，market-assign-node.ts）
+      if (转客户) await 市场分配进线索验证(tx, [建了.projectId], 好.项目.ownerId, me.id);
       for (const 号 of 联号) await 记号码(tx, { 刚建的: customerId }, 建了.contactId ?? null, 号);
+      await 记别的号行(tx, customerId, 建了.contactId ?? null, 别的号行);
       await 跟着项目重算(tx, 状态开, [customerId]);
     }));
+    // 联系人带着号：客户本身可以没有电话（M-必填-01 任一联系方式；只有座机这类占不了企业号码的号也能建）
+    if (号码行?.有) 记联系人带号(接着);
     let r: Awaited<ReturnType<typeof saveCustomer>>;
     try {
-      // 新客户的业务线跟项目走（客户那一步没另选时；交了个空的也算没选，M-必填-13）
-      const 客户线 = 企 && 好.企业?.业务线 && 认业务线(input.客户.企业资料?.bizLine) === null
-        ? { 企业资料: { ...(input.客户.企业资料 ?? {}), bizLine: 好.企业.业务线 } }
+      // 新客户的业务线跟项目走（客户那一步没另选时；交了个空的也算没选，M-必填-13）。
+      // 按客户区域定、区域又没填的（项目不记线）：客户记「暂不分配」（客户业务线必填，同导入没选线时）
+      const 跟的线 = 好.企业?.业务线 ?? (区域定线 ? "暂不分配" : null);
+      const 客户线 = 企 && 跟的线 && 认业务线(input.客户.企业资料?.bizLine) === null
+        ? { 企业资料: { ...(input.客户.企业资料 ?? {}), bizLine: 跟的线 } }
         : {};
       // 企业版指定给别人：项目归接手人，客户不跟着改（P-转-03，三处同一条）。总管理不走 新建只给自己，这里统一落到建的人
       const 客户负责人 = 企 && 好.项目.ownerId !== me.id ? { salesOwnerId: me.id } : {};
-      r = await saveCustomer({ ...input.客户, ...客户线, ...客户负责人, id: undefined, updatedAt: null, base: null }, 接着);
+      // 项目分配（新建客户给市场成员的那一格，11-18）只给只建客户用：带项目的分配方式在 项目.分配方式，这里不认客户上交的
+      r = await saveCustomer({ ...input.客户, ...客户线, ...客户负责人, 项目分配: undefined, id: undefined, updatedAt: null, base: null }, 接着);
     } catch (e) {
       if (e instanceof 整批超上限) return { ok: false as const, error: e.话 };
       if (!(e instanceof 联系人号码撞了)) throw e;
@@ -222,7 +292,7 @@ export async function 建档向导(输入: 建档向导输入) {
     if (!r.ok) return r;
     await recordAudit({
       user: me, action: "create", entity: "Project", entityId: 建了.projectId,
-      summary: `建档：新建项目「${好.项目.name}」（负责人 ${负责人.name}${分配 ? `，分配方式「${分配.名}」` : ""}），连同主要联系人「${好.联系人.name}」和首条跟进`,
+      summary: `建档：新建项目「${好.项目.name}」（负责人 ${负责人.name}${分配 ? `，分配方式「${分配.名}」` : ""}），连同主要联系人「${好.联系人.name || "—"}」和首条跟进`,
       detail: { 项目: 好.项目.name, 负责人: 负责人.name, 金额: 好.项目.amount, 币种: 好.项目.currency, 联系人: 好.联系人.name, ...(分配 ? { 分配方式: 分配.名 } : {}) },
     });
     // 首条跟进记在潜客培育上：配的必填建档时就齐了的，接着往前推。
@@ -232,15 +302,19 @@ export async function 建档向导(输入: 建档向导输入) {
     await 存沟通后重算三态(r.id);
     刷新项目(建了.projectId, r.id);
     // 指定给了别人：项目不在我名下，跳详情页会是「不存在或无权查看」（11-03 A2-1），和自动分配一样回线索列表
-    const 再分 = 分配 ? await 建好再分(me, 分配, 建了.projectId!, 好.项目.name, 好.企业?.业务线 ?? null) : null;
+    const 再分 = 分配 ? await 建好再分(me, 分配, 建了.projectId!, 好.项目.name, 好.企业?.业务线 ?? null, 定时, 区域定线 ? 建档方向 : undefined) : null;
     // 指定给了别人：告诉接手人。客户转过去了链客户详情（看得到联系方式）；客户没转就是项目分给他，链项目详情。自动分配、进公海走 建好再分 里自己的通知，这里不重复
     if (!再分 && 好.项目.ownerId !== me.id) {
       if (转客户 || !企) await 分给你通知(me, 好.项目.ownerId, [r.id], 好.项目.name);
       else await 项目分给你通知(me, 好.项目.ownerId, 建了.projectId!, 好.项目.name, r.id);
+      // 市场成员当场指定给销售 = 指定分配，记进分配数（11-18，direct-assign.ts）。自动分配、定时、进公海走 建好再分（分配线索写记录），这里不重复
+      if (企) await 记新建指定分配(me, 建了.projectId);
     }
     const 分了 = 分配 ? 再分 ?? (好.项目.ownerId !== me.id ? { 提示: `已指派给 ${负责人.name}`, 转走: true } : null) : null;
     // contactId：名片原图存到这位联系人的附件上（企业版才有联系人附件；开关关着返回和原来逐字段一样）
-    return { ok: true as const, customerId: r.id, projectId: 建了.projectId!, ...(企业版() ? { contactId: 建了.contactId ?? null } : {}), ...(分了 ?? {}) };
+    // 首条沟通的截图 / 附件（11-18）：建好这一刻签票给录入人，浏览器凭票接着传（建好就分走了也传得上）
+    const 附件票 = 企业版() && 输入.要传附件 === true && 建了.followUpId ? { followUpId: 建了.followUpId, 票: await 签首条附件票(me.id, 建了.followUpId) } : null;
+    return { ok: true as const, customerId: r.id, projectId: 建了.projectId!, ...(企业版() ? { contactId: 建了.contactId ?? null } : {}), ...(分了 ?? {}), ...(附件票 ? { 附件票 } : {}) };
   } catch (e) { return 不在了(e); }
 }
 
@@ -269,6 +343,47 @@ async function 建档前挡(me: Awaited<ReturnType<typeof requireUser>>, 输入:
   return 新建挡 ? { ok: false as const, error: 新建挡 } : null;
 }
 
+/*
+  联系方式几行（联系人.号码们，企业版 11-17）：首页 AI 新线索卡交的、建档向导第一行号码下面多加的，都按联系人表单同一套验
+  （号码类型字典 V-号码类型 八种、格式、占位号，最多 每人最多号码 个）。手机 / 邮箱 / 微信 / 阿里国际站ID 并进 联号，和第一行、
+  联系人那几格一样全公司查重、记子表（同类同号只记一次）；座机、WhatsApp 这些别的类型只验格式，返回给调用方事务里记到主要联系人名下。
+  有 = 交了至少一个号（联系人带号，客户本身可以没有电话）
+*/
+async function 并号码行(行们: 向导联系人["号码们"], 联号: 联系人的号[], 第一步: 验好的号 | null): Promise<{ 别的: 验好的行[]; 有: boolean } | { error: string }> {
+  if (!行们?.length) return { 别的: [], 有: false };
+  const 验 = await 验联系人号码们(行们);
+  if (!验.ok) return { error: 验.error };
+  for (const 行 of 验.行们) {
+    const 类型 = 库类型到号码类型[行.kind];
+    if (!类型 || 联号.some((h) => h.类型 === 类型 && h.键 === 行.numberKey)) continue;
+    const 同第一步 = !!第一步 && 第一步.类型 === 类型 && 第一步.键 === 行.numberKey;
+    联号.push({ 类型, 值: 行.value, 键: 行.numberKey, 格: `联系人${号码类型叫法(类型)}`, 同第一步 });
+  }
+  const 别的 = 验.行们.filter((行) => !库类型到号码类型[行.kind]);
+  // 连联系人那几格（向导第一行带进联系人电话）一共最多 每人最多号码 个，同联系人表单
+  if (联号.length + 别的.length > 每人最多号码) return { error: `一位联系人最多记 ${每人最多号码} 个号码` };
+  return { 别的, 有: 验.行们.length > 0 };
+}
+/**
+ * 别的类型的号（座机、WhatsApp、传真、Telegram、自定的）也全公司查重（11-17）：座机、WhatsApp 和手机共用号键，
+ * 撞了客户电话、联系人、子表里的同号都算；在用的撞了说首条那位（同第一行号码的提示）。没撞回 null
+ */
+async function 别的号撞了(行们: readonly 验好的行[], 我: string): Promise<string | null> {
+  if (!行们.length) return null;
+  const 表 = await 号码种类表();
+  for (const 行 of 行们) {
+    const ids = await 一行号全公司查(prisma, 行);
+    const 论 = ids.length ? await 撞号结论(prisma, ids, 我, await 读的我(defaultClient)) : null;
+    if (论 && 论.状态 !== "首次录入") return `联系人${种类叫法(表, 行.kind)}：${论.提示}`;
+  }
+  return null;
+}
+async function 记别的号行(tx: Prisma.TransactionClient, customerId: string, contactId: string | null, 行们: readonly 验好的行[]) {
+  for (const 行 of 行们) {
+    await tx.contactMethod.create({ data: { customerId, contactId, kind: 行.kind, value: 行.value, numberKey: 行.numberKey, formatStatus: "ok", region: 行.region } });
+  }
+}
+
 async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输入: 只建客户输入) {
   const 企 = 企业版();
   let 客户 = 输入.客户;
@@ -293,6 +408,11 @@ async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输�
   const 第一步 = 企 && 客户.企业号码 ? 验号码(客户.企业号码.类型, 客户.企业号码.值) : null;
   const 联号 = 企 ? 验联系人号码(好.联系人, 第一步?.ok ? 第一步 : null) : [];
   if ("error" in 联号) return { ok: false as const, error: 联号.error };
+  const 号码行 = 企 ? await 并号码行(输入.联系人?.号码们, 联号, 第一步?.ok ? 第一步 : null) : null;
+  if (号码行 && "error" in 号码行) return { ok: false as const, error: 号码行.error };
+  const 别的号行 = 号码行?.别的 ?? [];
+  const 别撞 = await 别的号撞了(别的号行, me.id);
+  if (别撞) return { ok: false as const, error: 别撞 };
   const 同号录入 = { 入口: "手工建档", 渠道id: 客户.channelId, 内容: 好.跟进.content };
   if (第一步?.ok) {
     const 结论 = await 企业号码查重(prisma, 第一步, me.id, await 读的我(defaultClient));
@@ -310,7 +430,7 @@ async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输�
   }
 
   const 建了: Partial<建好的客户> = {};
-  const 建 = 只建客户接着建(me, 好, 建了);
+  const 建 = 只建客户接着建(me, 好, 建了, 补潜客培育);
   // 只写刚建的这个客户和它名下的东西，放开范围（同建档：负责人不是我时客户一建好在我这儿可能是只读的）
   const 接着 = 登记接着建((tx, customerId) => 看全部(async () => {
     for (const 号 of 要查) {
@@ -319,7 +439,9 @@ async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输�
     }
     await 建(tx, customerId);
     for (const 号 of 联号) await 记号码(tx, { 刚建的: customerId }, 建了.contactId ?? null, 号);
+    await 记别的号行(tx, customerId, 建了.contactId ?? null, 别的号行);
   }));
+  if (号码行?.有) 记联系人带号(接着);
   let r: Awaited<ReturnType<typeof saveCustomer>>;
   try {
     r = await saveCustomer({ ...客户, id: undefined, updatedAt: null, base: null }, 接着);
@@ -330,13 +452,19 @@ async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输�
   if (!r.ok) return r;
   await recordAudit({
     user: me, action: "create", entity: "Customer", entityId: r.id,
-    summary: `新建客户「${String(客户.name ?? "").trim()}」，连同主要联系人「${好.联系人.name}」和首条沟通（没建项目）`,
+    summary: `新建客户「${String(客户.name ?? "").trim()}」，连同主要联系人「${好.联系人.name || "—"}」和首条沟通（${建了.projectId ? "挂在潜客培育项目上" : "没建项目"}）`,
     detail: { 联系人: 好.联系人.name, 下一步时间: 好.跟进.nextStepAt ? 好.跟进.nextStepAt.toISOString().slice(0, 10) : null },
   });
   await 存沟通后重算三态(r.id);
-  刷新项目(undefined, r.id);
+  // 市场成员新建客户时直接选了销售当负责人 = 指定分配（11-18，direct-assign.ts）：记在刚建的潜客培育项目上；负责人是自己的不记
+  if (企) await 记新建指定分配(me, 建了.projectId);
+  刷新项目(建了.projectId ?? undefined, r.id);
   revalidatePath("/customers");
-  return { ok: true as const, customerId: r.id, projectId: null, ...(企 ? { contactId: 建了.contactId ?? null } : {}) };
+  // 首条沟通的截图 / 附件：挂在潜客培育项目上的这条首条沟通，同建档签票给录入人（凭票认首条沟通 要它挂着项目）
+  const 附件票 = 企 && 输入.要传附件 === true && 建了.followUpId && 建了.projectId ? { followUpId: 建了.followUpId, 票: await 签首条附件票(me.id, 建了.followUpId) } : null;
+  // 市场成员选了项目分配方式（11-18）：自动分配分给谁 / 已指派给谁 / 暂不分配那句；转走 = 客户已不在我名下，弹窗不跳客户页
+  const 去向 = { ...(r.提示 ? { 提示: r.提示 } : {}), ...(r.转走 ? { 转走: true } : {}) };
+  return { ok: true as const, customerId: r.id, projectId: null, ...(企 ? { contactId: 建了.contactId ?? null } : {}), ...去向, ...(附件票 ? { 附件票 } : {}) };
 }
 
 /** 改节点。进异常状态时带上异常类别（必选）和备注（可空）；企业版点线索流失、丢单时 备注 = 原因（必填） */
@@ -587,6 +715,7 @@ const 项目字段名: Record<string, string> = {
   level: "项目级别", addrCountry: "所在地", addrProvince: "所在地", addrCity: "所在地", addrDistrict: "所在地", location: "详细地址",
   dealDemand: "需求描述", contractAmount: "合同金额", contractCurrency: "合同金额", depositAmount: "定金金额", depositCurrency: "定金金额",
   painPoints: "痛点标注", contractStatus: "合同状态", bizLine: "业务线",
+  replyStartAt: "指定回复时间", replyEndAt: "指定回复时间",
 };
 
 /** 编辑项目：名称、负责人、金额、币种、备注、主联系人；企业版还有预计成交日期、项目来源、项目级别、所在地、需求描述、合同金额、定金金额、痛点标注、合同状态、业务线（改了不重新自动分配） */
@@ -926,9 +1055,11 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
     const me = await requireUser();
     if (!(await 开着()) || !企业版() || typeof projectId !== "string" || !projectId) return { ok: true, 能记: false };
     const p = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, phase: true, node: true, result: true, nextStepAt: true, createdAt: true, customerId: true, contactId: true, bizLine: true, logs: { orderBy: { at: "desc" }, take: 1, select: { at: true } } } });
-    if (!p || p.pooledAt) return { ok: true, 能记: false };
-    // 11-01：企业版沟通只有负责人记，组员只能看（和 lib/project/db.ts 记项目沟通 同一个判断）
-    if (!能管项目(me, p, await 权限组织())) return { ok: true, 能记: false };
+    // 已结束 / 在公海的不走项目那条（11-17 沟通必须挂在推项目：落到 saveFollowUp 也会拦下、说清楚）
+    if (!p || p.pooledAt || p.result) return { ok: true, 能记: false };
+    // 11-17：负责人或已进组的组员能记（和 lib/project/db.ts 记项目沟通 同一个判断）
+    const 组员 = await prisma.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
+    if (!能往项目记沟通(me, p, await 权限组织(), 组员?.inviteStatus)) return { ok: true, 能记: false };
     const 规则 = await 生效组织规则();
     const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
     let 回收预演: 回收预演底子 | null = null;

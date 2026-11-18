@@ -19,7 +19,7 @@ import { 读组织 } from "./org";
 import { 没设业务角色, 没业务角色不能新建话 } from "./permissions";
 import { 规则开着 } from "./rules";
 import { 规则 } from "./rules-table";
-import { 方式对类型, 类型对方式 } from "@/lib/follow-method";
+import { 方式对类型, 补的方式 } from "@/lib/follow-method";
 
 export * from "./dict-kinds";
 export * from "./assign-use";
@@ -61,6 +61,7 @@ async function 企业字典本体(kind: 字典种类, db: Prisma.TransactionClie
     await 补换默认(kind, db);
     await 删多出的旧默认(kind, db);
   }
+  if (kind === "custType") await 并入客户属性(db);
   if ((await db.entDictItem.count({ where: { kind } })) === 0) {
     for (const [i, name] of 字典定义[kind].默认.entries()) {
       await 建了就算(db.entDictItem.upsert({ where: { kind_name: { kind, name } }, update: {}, create: { id: 默认id(kind, i), kind, name, sort: 默认位置(kind, i), active: !停用.includes(name) } }));
@@ -151,7 +152,9 @@ async function 删多出的旧默认(kind: 字典种类, db: Prisma.TransactionC
 /**
  * 默认项后来往末尾加过（10-30：号码类型加传真、Telegram，客户类型加专业运营商、一般客户）：之前建好的库里缺哪个默认 id 就建哪个，
  * 排在序号位置上；原来排在这些位置及以后的（自己加的项）整体往后让，还在新默认后面。名字已经被别的项占了的跳过（不和人加的重名）。
- * 记号存的是补到第几号（最大的默认号 + 1，一般 = 项数），以后默认再往后加还会补；默认停用的建出来就停着。几个人同时补时自己加的会多让几格，相对顺序不变
+ * 记号存的是补到第几号（最大的默认号 + 1，一般 = 项数），以后默认再往后加还会补；默认停用的建出来就停着。几个人同时补时自己加的会多让几格，相对顺序不变。
+ * 只补记号之后新加的号（11-17 复盘第 7 类「读路径写库」核对）：记号以前的默认项已经补过一遍，后来被删掉的（服务器上备份后用脚本删的）
+ * 不因为默认又往后加了几项就被一起补回来；没有记号（从没补过）的才按全部默认补
  */
 const 补新记号 = (kind: 字典种类) => `entDict.defaultAdded.${kind}`;
 const 补到 = (kind: 字典种类) => Math.max(...字典定义[kind].默认.map((_, i) => 默认号of(kind, i) + 1));
@@ -163,13 +166,68 @@ async function 补新默认(kind: 字典种类, 停用: readonly string[], db: P
   const { 默认 } = 字典定义[kind];
   const 记 = await db.setting.findUnique({ where: { key: 补新记号(kind) } });
   if (记 && Number(记.value) >= 补到(kind)) return;
+  const 补过到 = 记 ? Number(记.value) || 0 : 0;
   const 现有 = await db.entDictItem.findMany({ where: { kind }, select: { id: true, name: true } });
-  const 缺 = 默认.flatMap((name, i) => (现有.some((x) => x.id === 默认id(kind, i)) || 现有.some((x) => x.name === name) ? [] : [{ name, i }]));
+  const 缺 = 默认.flatMap((name, i) => (默认号of(kind, i) < 补过到 || 现有.some((x) => x.id === 默认id(kind, i)) || 现有.some((x) => x.name === name) ? [] : [{ name, i }]));
   if (缺.length) {
     await db.entDictItem.updateMany({ where: { kind, sort: { gte: 缺[0].i } }, data: { sort: { increment: 缺.length } } });
     for (const { name, i } of 缺) await 建了就算(db.entDictItem.create({ data: { id: 默认id(kind, i), kind, name, sort: i, active: !停用.includes(name) } }));
   }
   await 记下补新过(kind, db);
+}
+
+/**
+ * 客户属性并进客户类型（11-17 客户抬头 PR-2，P-抬头-01）：第一次读客户类型时，把库里客户属性字典的每一项（按它的排序，
+ * 停用的也并、并过来仍停用）建进客户类型；客户类型里已有同名的跳过（不管那一项启用没有、是谁加的，都按客户类型原样）。
+ * 对得上客户类型默认的（同名，或改过名但还占着属性默认 id 的那一项）用那个默认的固定 id、排在默认的位置，
+ * 原来排在这个位置及以后的往后让；对不上的（旧的停用值、自己加的）接在最后。客户身上存的值不碰。
+ * 只做一次、记一笔（之后客户属性再加的不跟过来）；随后 补新默认 只补属性里本来就没有的默认项。
+ * 客户属性一行都没有（没读过）就只记一笔，10 项靠 补新默认 / 新库建默认补上
+ */
+const 并属性记号 = "entDict.mergedFrom.custAttr.custType";
+async function 并入客户属性(db: Prisma.TransactionClient) {
+  if (await db.setting.findUnique({ where: { key: 并属性记号 } })) return;
+  const 属性 = await db.entDictItem.findMany({ where: { kind: "custAttr" }, orderBy: [{ sort: "asc" }, { createdAt: "asc" }] });
+  if (属性.length) {
+    const 现有 = await db.entDictItem.findMany({ where: { kind: "custType" }, select: { id: true, name: true, sort: true } });
+    const 占着名 = new Set(现有.map((x) => x.name));
+    const 占着id = new Set(现有.map((x) => x.id));
+    const 属性默认 = 字典定义.custAttr.默认;
+    const 属性名们 = new Set(属性.map((x) => x.name));
+    /** 这一项对上客户类型第几个默认：同名；或 id 还是 dict-custAttr-k、第 k 个属性默认的名字已经没了（= 管理员改过名的那一项） */
+    const 对默认 = (行: { id: string; name: string }) => {
+      const i = 字典定义.custType.默认.indexOf(行.name);
+      if (i >= 0) return i;
+      const m = /^dict-custAttr-(\d+)$/.exec(行.id);
+      const 原名 = m ? 属性默认[Number(m[1])] : undefined;
+      return 原名 && !属性名们.has(原名) ? 字典定义.custType.默认.indexOf(原名) : -1;
+    };
+    const 对上: { i: number; 行: (typeof 属性)[number] }[] = [];
+    const 接后: (typeof 属性)[number][] = [];
+    for (const 行 of 属性) {
+      if (占着名.has(行.name)) continue;
+      占着名.add(行.name);
+      const i = 对默认(行);
+      if (i >= 0 && !占着id.has(默认id("custType", i)) && !对上.some((x) => x.i === i)) 对上.push({ i, 行 });
+      else 接后.push(行);
+    }
+    对上.sort((a, b) => 默认位置("custType", a.i) - 默认位置("custType", b.i));
+    if (对上.length) {
+      const 起 = 默认位置("custType", 对上[0].i);
+      const 让 = 默认位置("custType", 对上[对上.length - 1].i) - 起 + 1;
+      await db.entDictItem.updateMany({ where: { kind: "custType", sort: { gte: 起 } }, data: { sort: { increment: 让 } } });
+      for (const { i, 行 } of 对上) {
+        await 建了就算(db.entDictItem.create({ data: { id: 默认id("custType", i), kind: "custType", name: 行.name, sort: 默认位置("custType", i), active: 行.active } }));
+      }
+    }
+    if (接后.length) {
+      const 最后 = (await db.entDictItem.aggregate({ where: { kind: "custType" }, _max: { sort: true } }))._max.sort ?? -1;
+      for (const [j, 行] of 接后.entries()) {
+        await 建了就算(db.entDictItem.create({ data: { kind: "custType", name: 行.name, sort: 最后 + 1 + j, active: 行.active } }));
+      }
+    }
+  }
+  await 记下(并属性记号, db);
 }
 
 /** 第 i 个默认项排第几：有 默认顺序 按它，没有就是 i */
@@ -323,10 +381,30 @@ export async function 选的原因(kind: 字典种类, v: unknown): Promise<{ ok
 export type 分配方式序号 = 0 | 1 | 2 | 3 | 4;
 export const 是分配方式序号 = (x: unknown): x is 分配方式序号 => x === 0 || x === 1 || x === 2 || x === 3 || x === 4;
 
-/** 分配记录上的「分配方式」：取字典里这一项现在的叫法（改过名跟着改）；事务外调 */
-export async function 分配方式叫法(i: 分配方式序号): Promise<string> {
-  const 有 = (await 企业字典("assign")).find((x) => x.id === 默认id("assign", i));
+/** 分配记录上的「分配方式」：取字典里这一项现在的叫法（改过名跟着改）；事务外调，事务里传 tx */
+export async function 分配方式叫法(i: 分配方式序号, db: Prisma.TransactionClient = prisma): Promise<string> {
+  const 有 = (await 企业字典("assign", db)).find((x) => x.id === 默认id("assign", i));
   return 有?.name ?? 字典定义.assign.默认[i];
+}
+
+/** 客户分配（custAssign）默认三项的序号：0 自持、1 非自持、2 公海领取（默认id("custAssign", i)） */
+export const 客户分配序号 = { 自持: 0, 非自持: 1, 公海领取: 2 } as const;
+export type 客户分配序号 = (typeof 客户分配序号)[keyof typeof 客户分配序号];
+
+/**
+ * 系统自动写客户「客户分配」时用的叫法：按默认项 id 取字典里这一项现在的叫法（改过名跟着改）；
+ * 这一类还没建过 = 默认叫法；被停用了 = null（不写）。只读、不建默认项，事务里也能调（传 tx）
+ */
+export async function 客户分配叫法(i: 客户分配序号, db: Pick<Prisma.TransactionClient, "entDictItem"> = prisma): Promise<string | null> {
+  const 有 = await db.entDictItem.findUnique({ where: { id: 默认id("custAssign", i) }, select: { name: true, active: true } });
+  if (!有) return 字典定义.custAssign.默认[i];
+  return 有.active ? 有.name : null;
+}
+
+/** 客户分配这一格的值是不是字典「客户分配」里的一项（停用的也算；撤销时还回原值前核一下，原值是浏览器带回来的） */
+export async function 是客户分配项(v: string, db: Pick<Prisma.TransactionClient, "entDictItem"> = prisma): Promise<boolean> {
+  if ((字典定义.custAssign.默认 as readonly string[]).includes(v)) return true;
+  return !!(await db.entDictItem.findFirst({ where: { kind: "custAssign", name: v }, select: { id: true } }));
 }
 
 /** 分配方式谁能用（assign-use.ts）：没存 = 默认；不是企业版 = 空 */
@@ -444,7 +522,8 @@ export async function 定沟通方式(method: unknown, type: string, 原方式?:
   if (!n) {
     // 改已有的、没带方式（旧入口）：type 没变就留着原来的方式，不把 Telegram 冲成「其他方式」
     if (原方式 && 方式对类型(原方式) === type) return { ok: true, method: 原方式, type };
-    return { ok: true, method: 类型对方式(type), type };
+    // 「其他」类没选方式：留空（11-17，显示「—」），不自动填成「其他方式」；别的类型按类型补
+    return { ok: true, method: 补的方式(type), type };
   }
   if (n !== 原方式) {
     const 查 = await 选的原因("followMethod", n);

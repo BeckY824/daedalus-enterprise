@@ -10,6 +10,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser } from "playwright";
+import { 补全动作桩 } from "./helpers/action-stubs";
 
 let browser: Browser, bundle: string, 公海bundle: string;
 const plugin: Plugin = { name: "pool-route-boundaries", setup(b) {
@@ -37,7 +38,7 @@ beforeAll(async () => {
     stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
     // 领取记下传了什么（客户池并成一行勾选那条看）
     stub(/customers\/pool-actions$/, `const f=${好};export const 领取=async(...a)=>{(window.__调=window.__调||[]).push(a);return {ok:true,updated:0,项目:{领到:[],没领到:[]}}},分配公海=f,撤销公海=f;`);
-    stub(/\/projects\/actions$/, `export const 领取项目=${好};`);
+    stub(/\/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", `export const 领取项目=${好};`));
     stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
     stub(/^\.\/actions$/, `const f=${好};export const 标无效客户=f,恢复有效客户=f,分配公海项目=f,撤销公海项目=f;`);
     b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));

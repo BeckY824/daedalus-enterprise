@@ -18,6 +18,8 @@
  *     原负责人记在 CustomerOwnerLog 最近一条 pool-release 的 fromOwnerId（lib/owner-log-db.ts）；
  *     项目进公海 11-01 起清空负责人（见下 进公海清负责人），原负责人记在留痕里（最近一条 pool-release 的 fromOwnerId，
  *     lib/project/pool-owner.ts 历史负责人）
+ *   - 导入时直接挂占位账号进客户公海的客户（enterprise-import/apply.ts 无主客户入池）没有换负责人记录；原系统的「前负责人」
+ *     由数据脚本补记成同样一行 pool-release（操作人 = 系统，时间 = 进公海那一刻），判定不另读导入原文（tests/ent-pool-import-prev-owner.test.ts）
  */
 import { 企业版 } from "./switch";
 

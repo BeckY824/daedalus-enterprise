@@ -14,18 +14,29 @@ import {saveChannel} from "@/app/(app)/channels/actions";
 import LeadsPage from "@/app/(app)/leads/page";
 import {客户关键词条件} from "@/lib/search-keyword";
 import {maskPhone} from "@/lib/utils";
+import {电话夹字母话,电话带字话} from "@/lib/phone";
 const dir=fs.mkdtempSync(path.join(os.tmpdir(),"crm-phone-scope-"));
 beforeEach(async()=>{vi.stubEnv("DESKTOP_LOCAL","0");vi.stubEnv("MULTI_TENANT","0");state.user.role="ADMIN";忘掉限定();await resetDb();await prisma.user.create({data:{id:"acct_phone-scope",name:"QA",email:"phone@local",password:"x",role:"ADMIN"}})});
 afterEach(()=>{忘掉限定();vi.unstubAllEnvs()});
 afterAll(async()=>{await prisma.$disconnect();fs.rmSync(dir,{recursive:true,force:true})});
 const lead=(phone:string|null,id?:string,remark:string|null=null)=>saveLead({id,name:"QA线索",status:"待跟进",source:"其他",phone,remark});
 const channel=(phone:string|null,id?:string,remark:string|null=null)=>saveChannel({id,name:"QA渠道",phone,remark});
-it("线索与渠道新增电话共用客户规范：国家码、全角、海外、座机分机，原附注不丢",async()=>{
- for(const [raw,want] of [["＋８６ １３８－００００－１１１１","13800001111"],["+1 (415) 555-0132","+14155550132"],["010-12345678 ext 801","01012345678转801"],["13800001111（微信同号）","13800001111"],["13800001111 13900002222","13800001111"]]){
+it("线索与渠道新增电话共用客户规范：国家码、全角、海外、座机分机照规整",async()=>{
+ for(const [raw,want] of [["＋８６ １３８－００００－１１１１","13800001111"],["+1 (415) 555-0132","+14155550132"],["010-12345678 ext 801","01012345678转801"]]){
   await prisma.lead.deleteMany();await prisma.channel.deleteMany();expect(await lead(raw)).toMatchObject({ok:true});expect(await channel(raw)).toMatchObject({ok:true});
-  const l=await prisma.lead.findFirstOrThrow(),c=await prisma.channel.findFirstOrThrow();expect(l.phone).toBe(want);expect(c.phone).toBe(want);
-  if(raw.includes("微信")||raw.includes("1390000")){expect(l.remark).toContain(raw);expect(c.remark).toContain(raw)}
+  const l=await prisma.lead.findFirstOrThrow(),c=await prisma.channel.findFirstOrThrow();expect(l.phone).toBe(want);expect(c.phone).toBe(want);expect(l.remark).toBeNull();expect(c.remark).toBeNull();
  }
+});
+it("号码以外的字不悄悄截掉（11-17 复盘第 4 类）：夹字母、带说明、两个号整格拦下说清为什么，不截出号码存、不往备注里塞原文",async()=>{
+ for(const [raw,话] of [["sqin17548955941",电话夹字母话],["wxid_a13800001111",电话夹字母话],["13800001111（微信同号）",电话带字话],["13800001111 13900002222",电话带字话],["手机:13800001111",电话带字话]]){
+  await prisma.lead.deleteMany();await prisma.channel.deleteMany();
+  expect(await lead(raw,undefined,"原备注")).toEqual({ok:false,error:话,字段:"phone"});expect(await channel(raw,undefined,"原备注")).toEqual({ok:false,error:话});
+  expect(await prisma.lead.count()).toBe(0);expect(await prisma.channel.count()).toBe(0);
+ }
+ // 编辑：改成带字的号同样拦，原号原备注不动
+ expect(await lead("13800001111",undefined,"原备注")).toMatchObject({ok:true});const l=await prisma.lead.findFirstOrThrow();
+ expect(await lead("13800001111（微信同号）",l.id,"原备注")).toMatchObject({ok:false,error:电话带字话});
+ expect(await prisma.lead.findUniqueOrThrow({where:{id:l.id},select:{phone:true,remark:true}})).toEqual({phone:"13800001111",remark:"原备注"});
 });
 it("旧号码原样和准确打码返回可编辑，未知打码/非法新号拒绝且无写入",async()=>{
  const l=await prisma.lead.create({data:{name:"QA线索",phone:"旧号待核对",ownerId:"acct_phone-scope"}}),c=await prisma.channel.create({data:{name:"QA渠道",phone:"旧号待核对",channelOwnerId:"acct_phone-scope"}});

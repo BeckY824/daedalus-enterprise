@@ -5,7 +5,7 @@ import { hasVisibleText } from "@/lib/form-validation";
 import { 版本冲突, 版本条件 } from "@/lib/edit-version";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { 认回打码号, 查电话, 号码带着字 } from "@/lib/phone";
+import { 认回打码号, 录入电话 } from "@/lib/phone";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { 唯一负责人, 负责人候选 } from "@/lib/owners";
@@ -16,7 +16,7 @@ import { 选的原因 } from "@/lib/enterprise/dict";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 拼全称, 全称上限, 能录投入, 不能录投入, 能管渠道, 不能管渠道 } from "@/lib/enterprise/channel-stats";
 import { 看全部 } from "@/lib/team-scope";
-import { 找或建主渠道 } from "@/lib/enterprise/channel-main";
+import { 找或建主渠道, 建渠道挂主 } from "@/lib/enterprise/channel-main";
 import { 主渠道名上限, 写策略, 读策略, 子渠道名, 拆主子 } from "@/lib/enterprise/channel-main-core";
 import { parseDateInput } from "@/lib/date-input";
 import { 规整币种, 是币种 } from "@/lib/currency";
@@ -47,7 +47,8 @@ export async function saveChannel(input: {
    * 企业版渠道表单（2026-10-29）交这几样：渠道属性、主渠道（platform，存主渠道名）必填，子渠道（source）选填，
    * name（渠道全称）一律拼成「主渠道|子渠道」，子渠道空着全称就是主渠道名；交来的 name 不看（P16：全称不让手填，界面上只给预览）。
    * 主渠道按名字找（channel-main.ts），没有就建一个；主渠道不设子渠道的，子渠道必须留空（11-08 渠道两层）。
-   * 不交 attr（客户表单里就地建渠道、首页 AI 建渠道、老测试）照原来只要 name，这几列不动，主渠道等渠道页打开时补挂
+   * 不交 attr（客户表单里就地建渠道、首页 AI 改渠道、老测试）照原来只要 name，属性这几列不动；企业版新建时主渠道当场按名字挂好
+   * （建渠道挂主：全称「|」前那段，没有就建同名主渠道），不再等渠道页打开时补（11-17 复盘第 7 类：读页面不写库）
    */
   attr?: string | null;
   platform?: string | null;
@@ -118,8 +119,9 @@ export async function saveChannel(input: {
   }
   // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）
   if (!hasVisibleText(input.name)) return { ok: false, error: "请填写渠道名称" };
-  // 企业版里不走渠道表单新建的（客户表单就地建、AI 建）：名字按「主|子」拆开，主渠道停用、不设子渠道的照样挡（11-08 渠道两层）
-  if (企业版() && !企业表单 && !input.id) {
+  // 企业版里不走渠道表单新建的（客户表单就地建）：名字按「主|子」拆开，主渠道停用、不设子渠道的照样挡（11-08 渠道两层）
+  const 就地建 = 企业版() && !企业表单 && !input.id;
+  if (就地建) {
     const { 主, 子 } = 拆主子(input.name.trim());
     const 有主 = 主 ? await prisma.entChannelMain.findUnique({ where: { name: 主 }, select: { active: true, allowSub: true, ownerId: true } }) : null;
     if (有主 && !有主.active) return { ok: false, error: `主渠道「${主}」已停用，请换一个` };
@@ -145,20 +147,24 @@ export async function saveChannel(input: {
   const 原号 = input.id ? (await prisma.channel.findUnique({ where: { id: input.id }, select: { phone: true } }))?.phone : null;
   const 号 = 认回打码号(input.phone?.trim() || null, 原号);
   if (号 && 号.includes("*")) return { ok: false as const, error: "电话里不能有 *" };
-  // 未改的历史号码与准确打码返回保持原文；只规范新填写/更改的号码。
-  const 电话 = 号 === 原号 ? { ok: true as const, phone: 号 ?? "" } : 查电话(号, { 必填: false });
+  /*
+    未改的历史号码与准确打码返回保持原文；只规范新填写/更改的号码。
+    号码以外的字不再截掉、原文悄悄塞进备注（11-17 复盘第 4 类）：整格拦下，说清为什么（录入电话）
+  */
+  const 电话 = 号 === 原号 ? { ok: true as const, phone: 号 ?? "" } : 录入电话(号, { 必填: false });
   if (!电话.ok) return { ok: false as const, error: 电话.error };
-  const 原文 = 号 && 号 !== 原号 && 号码带着字(号) ? `原始电话：${号}` : "";
   // 主渠道还没有的，到这儿（名字、电话都查过了）才建，免得校验没过留下一个空主渠道
   if (企业列 && !企业列.mainId) 企业列.mainId = (await 找或建主渠道(企业列.platform)).id;
-  const 备注 = input.remark?.trim() || "";
-  const remark = 原文 && !备注.includes(原文) ? [备注, 原文].filter(Boolean).join("\n") : 备注;
+  // 就地建的也在这儿当场挂好主渠道（同名主渠道没有就建），不留 mainId 空的渠道等别处补
+  const 就地挂 = 就地建 ? await 建渠道挂主(name, null) : null;
+  const remark = input.remark?.trim() || "";
   const data = {
     name,
     phone: 电话.phone || null,
     remark: remark || null,
     channelOwnerId,
     ...(企业列 ?? {}),
+    ...(就地挂 ?? {}),
     ...(typeof input.active === "boolean" ? { active: input.active } : {}),
   };
 
@@ -209,6 +215,11 @@ export async function toggleChannel(id: string, active: boolean): Promise<{ ok: 
     另一个窗口已经删了这个渠道：原来 update 直接抛 P2025，界面上点了没反应（2026-10-04 第 2 期 2a，r2-data 那条【下一版】）。
     说一句「已经不在了」
   */
+  // 主渠道停用时不让单开子渠道（P-渠道-13）：开了也选不到，列表上照样是「已停用」，等于点了没反应
+  if (active) {
+    const 主 = (await prisma.channel.findUnique({ where: { id }, select: { main: { select: { name: true, active: true } } } }))?.main;
+    if (主 && !主.active) return { ok: false, error: `主渠道「${主.name}」已停用，先到「主渠道」里启用` };
+  }
   let c: { name: string };
   try {
     c = await prisma.channel.update({ where: { id }, data: { active } });
@@ -372,6 +383,29 @@ export async function toggleMainChannel(id: string, active: boolean): Promise<{ 
     return 不在了(e);
   }
   await recordAudit({ user: me, action: "update", entity: "EntChannelMain", entityId: id, summary: `${active ? "启用" : "停用"}主渠道「${m.name}」` });
+  revalidatePath("/channels");
+  return { ok: true };
+}
+
+/**
+ * 删主渠道（11-17）：只删下面一个渠道都没挂的。渠道列表里删的是子渠道——单一入口的子渠道和主渠道同名，
+ * 删了子渠道、主渠道还在「主渠道」里，人以为没删掉；主渠道要在主渠道管理里另删。
+ * 下面还挂着渠道的不删（客户、项目、投入都挂在子渠道上，外键 SetNull 会让它们悄悄脱离主渠道），先删或改挂子渠道
+ */
+export async function deleteMainChannel(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const me = await requireUser();
+  const 挡 = await 挡管(me);
+  if (挡) return { ok: false, error: 挡 };
+  if (!企业版()) return { ok: false, error: "主渠道只在企业版里用" };
+  const m = await prisma.entChannelMain.findUnique({ where: { id }, select: { name: true, _count: { select: { channels: true } } } });
+  if (!m) return { ok: false, error: "这个主渠道已经不在了（可能在别处删了），刷新看看" };
+  if (m._count.channels > 0) return { ok: false, error: `下面还挂着 ${m._count.channels} 个渠道，不能删；不用了就停用` };
+  try {
+    await prisma.entChannelMain.delete({ where: { id } });
+  } catch (e) {
+    return 不在了(e);
+  }
+  await recordAudit({ user: me, action: "delete", entity: "EntChannelMain", entityId: id, summary: `删除主渠道「${m.name}」` });
   revalidatePath("/channels");
   return { ok: true };
 }

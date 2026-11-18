@@ -109,6 +109,20 @@ export type RecordProps = {
   能转让客户?: boolean;
   /** 负责人本人转自己的走申请移交（X4）：页头按钮、框标题统一叫「客户转让」（11-12），框里写明要接手人确认、7 天不确认作废 */
   转让要申请?: boolean;
+  /**
+   * 客户转让框里摆「指定分配 / 自动分配」的选择：操作人是市场成员、客户是「暂不分配」的才给（客户 11-17，lib/enterprise/cust-auto-assign.ts）。
+   * 页面（服务端）判好了把服务端动作 客户自动分配 递进来；不给 = 不摆，框和原来一样
+   */
+  自动分配?: (customerId: string, 原因: string | null, 方向?: "内贸" | "外贸") => Promise<import("../../leads/assign-actions").客户自动分配结果>;
+  /** 自动分配时「分配方向」的默认值和来源（11-18，lib/enterprise/assign-direction-db.ts 客户默认分配方向）；框里可以改 */
+  自动分配方向?: import("@/lib/enterprise/customer-region").分配方向;
+  /**
+   * 市场成员指定分配暂不分配的客户也先定方向（P-转-26，11-18）：每个方向能挑的人 + 默认方向。给了转让框「指定」那边也摆方向格、
+   * 下拉只列这个方向能接的人；不给 = 照原来（服务端 assignSalesOwner 另核）
+   */
+  指定定向?: { 候选表: import("@/lib/enterprise/assign-direction-pick-core").指定候选表; 默认方向: import("@/lib/enterprise/customer-region").分配方向 };
+  /** 转让框摆了「指定 / 自动」时，选指定的接手人只列这些人（参与状态正常，审核 11-18 追加，assign-eta 可指定的人）；没给 = 不筛 */
+  自动指定候选?: string[];
   /** 企业版：在公海里、我是原负责人——领取按钮灰着，悬停说「原负责人不能领回」（lib/enterprise/pool-rules.ts） */
   原负责人领不回?: boolean;
   /** 换负责人记录（企业版 D-36），时间正序；左栏「历史负责人」用，没有就不摆 */
@@ -133,6 +147,8 @@ export type RecordProps = {
   关联们?: import("@/lib/enterprise/customer-v2-db").关联一行[] | null;
   /** 企业版联系人号码类型（字典 contactKind，停用的也在：老号要显示叫法） */
   号码种类?: { 名: string; kind: string; active: boolean }[];
+  /** 企业版客户本身的号码（联系方式子表里 contactId 空的那几行，不含电话那一行，11-17）：资料卡「电话」下面一类一行，点了按「类型 + 号码」改 */
+  客户号码们?: { kind: string; value: string }[];
   /** 企业版联系人「职务」下拉的候选（字典 contactTitle 启用中的，10-31）；也能手填 */
   职务选项?: string[];
   /** 企业版客户分配方式的可选项（字典 custAssign 启用中的） */
@@ -143,6 +159,8 @@ export type RecordProps = {
   客户属性选项?: string[];
   /** 企业版项目模式客户页「新建项目」（待定 16）：线索阶段的节点、要不要必填下一步时间。不给 = 不摆这个按钮 */
   新建项目?: { 节点们: string[]; 要下一步: boolean } | null;
+  /** 我能不能新建项目（企业版：有业务角色、不是只读，同建档向导的拦）。不能时记沟通弹框里没项目说「请联系负责人先建项目」，不摆「新建项目」 */
+  能新建项目?: boolean;
   /** 企业版客户状态的可选项（字典 custStatus 启用中的，10-28 去遗留 A1）；不给 = 别的版本，标签行照旧 */
   客户状态选项?: string[];
   /** 企业版客户状态、客户类型每项的释义（下拉里一行灰字，10-30）；不给就和原来一样 */

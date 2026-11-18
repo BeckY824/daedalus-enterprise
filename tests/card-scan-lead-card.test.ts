@@ -1,6 +1,6 @@
 /**
  * 企业版首页对话框认名片（2026-10-27）：
- *   - lib/card-scan/lead-card.ts：认出来的表单摆成一张「新建线索」卡（名称放公司、联系人放人名；邮箱微信国家进自己的格（11-01 起），职位官网拼进备注；只有一个渠道才预填来源；下一步先放明天）
+ *   - lib/card-scan/lead-card.ts：认出来的表单摆成一张「新建线索」卡（名称放公司、联系人放人名；邮箱微信国家进自己的格（11-01 起），职位进职位格（11-18 起），官网拼进备注；只有一个渠道才预填来源；下一步先放明天）
  *   - lib/card-scan/cloud.ts 走网页登录：不带令牌、靠登录 cookie 认；服务器上没配模型（404）就不整理，回 null 让调用方用规则拆的
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,15 +11,15 @@ import { 名片成新线索卡, 名片卡理由 } from "@/lib/card-scan/lead-car
 const 表 = (补: Partial<名片表单>): 名片表单 => ({ ...空名片表单(), ...补 });
 
 describe("名片成新线索卡", () => {
-  it("有公司：名称放公司、联系人放人名；邮箱微信国家进自己的格，职位官网拼进备注", () => {
+  it("有公司：名称放公司、联系人放人名；邮箱微信国家职位进自己的格（职位 11-18 起），官网拼进备注", () => {
     const r = 名片成新线索卡(表({
-      name: "王五", school: "远航贸易", phone: "13800000000", grade: "采购经理", email: "w@x.com",
+      name: "王五", school: "远航贸易", phone: "13812000000", grade: "采购经理", email: "w@x.com",
       wechat: "ww", website: "x.com", country: "德国", remark: "展会认识",
     }), DEFAULT_BUSINESS, ["展会", "官网"]);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.proposal).toMatchObject({ kind: "add_lead", name: "远航贸易", contact: "王五", phone: "13800000000", status: "待跟进", reason: 名片卡理由, email: "w@x.com", wechat: "ww", country: "德国" });
-    expect(r.proposal.remark.split("\n")).toEqual(["职位：采购经理", "官网：x.com", "展会认识"]);
+    expect(r.proposal).toMatchObject({ kind: "add_lead", name: "远航贸易", contact: "王五", phone: "13812000000", status: "待跟进", reason: 名片卡理由, email: "w@x.com", wechat: "ww", country: "德国", position: "采购经理" });
+    expect(r.proposal.remark.split("\n")).toEqual(["官网：x.com", "展会认识"]);
     expect(r.proposal.待确认).toBeUndefined();
     // 好几个渠道：来源留空等人选，不猜
     expect(r.proposal.source).toBe("");
@@ -50,7 +50,7 @@ describe("名片成新线索卡", () => {
   });
 
   it("姓名公司都没认出：不出卡，说清楚", () => {
-    expect(名片成新线索卡(表({ phone: "13800000000" }), DEFAULT_BUSINESS, ["展会"])).toEqual({ ok: false, error: expect.stringContaining("没认出姓名或公司") });
+    expect(名片成新线索卡(表({ phone: "13812000000" }), DEFAULT_BUSINESS, ["展会"])).toEqual({ ok: false, error: expect.stringContaining("没认出姓名或公司") });
   });
 });
 

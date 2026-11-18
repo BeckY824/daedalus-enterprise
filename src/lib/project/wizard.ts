@@ -6,6 +6,7 @@
  */
 import type { Prisma } from "@/generated/prisma";
 import { hasVisibleText } from "../form-validation";
+import { 规整手机号 } from "../phone";
 import { parseDateInput } from "../date-input";
 import { FOLLOW_TYPES } from "../constants";
 import { 是币种, 默认币种 } from "../currency";
@@ -17,16 +18,24 @@ import { 记沟通编号 } from "./followup-meta";
 import { 下一步文字上限 } from "./project-fields";
 import { 是占位值 } from "./required";
 import { 新项目默认值 } from "./proj-fields";
+import type { 补潜客培育 } from "./nurture";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 认业务线, 业务线不认得, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 新项目所在地, type 新项目所在地输入 } from "./profile-rules";
-import type { 客户地址 } from "@/lib/enterprise/customer-v2";
+import { 联系人姓名问题, type 客户地址 } from "@/lib/enterprise/customer-v2";
+import { 规整指定回复, type 指定回复 } from "./time-fields";
 
 export const 项目名上限 = 60;
 export const 备注上限 = 500;
 
 /** address：联系人所在区域 / 地址（一格文字，11-04 首页录入把国家城市放这）；向导界面不传 = 不存 */
-export type 向导联系人 = { name: string; position?: string | null; phone?: string | null; email?: string | null; wechat?: string | null; address?: string | null };
+export type 向导联系人 = { name: string; position?: string | null; phone?: string | null; email?: string | null; wechat?: string | null; address?: string | null;
+  /**
+   * 联系方式几行（类型 + 号码，企业版，11-17）：首页 AI 新线索卡交的、建档向导第一行号码下面多加的几行，
+   * 建档向导 / 只建客户验过（联系人表单同一套：号码类型字典、格式、全公司查重）记进这位联系人的联系方式子表；不写联系人主表那三格。
+   * 向导界面不加行 = 不传，照旧只有上面三格
+   */
+  号码们?: readonly { kind: string; value: string }[] | null };
 export const 联系人地址上限 = 100;
 /** 分配方式：企业版才有，默认五项的序号（lib/enterprise/dict.ts 分配方式序号），只在 projects/actions.ts 建档向导里认 */
 export type 向导项目 = { name: string; ownerId?: string | null; amount?: number | null; currency?: string | null; remark?: string | null; 分配方式?: number | null;
@@ -41,7 +50,23 @@ export type 向导项目 = { name: string; ownerId?: string | null; amount?: num
    * 项目所在地（企业版，11-02）：新建时可选填四格 + 详细地址，规整同编辑项目（profile-rules.ts 新项目所在地）；
    * 不填 = 照旧不存。界面上按它给业务线建议（assign-line.ts 所在地预填），人确认了才算。团队版不传、不认
    */
-  所在地?: 新项目所在地输入 | null };
+  所在地?: 新项目所在地输入 | null;
+  /**
+   * 指定回复时间（企业版，11-17）：客户要求联系的开始 / 结束，北京墙钟「YYYY-MM-DD HH:mm」，都选填、填一个也行（lib/project/time-fields.ts）。
+   * 三处新建（建档向导、客户页新增项目、首页 AI 新线索卡）同一份；团队版不传、不认
+   */
+  指定回复开始?: string | null;
+  指定回复结束?: string | null;
+  /**
+   * 指定分配时间（企业版，11-17 PR3）：分配方式选指定分配 / 自动分配时可选「指定时间」，北京墙钟「YYYY-MM-DD HH:mm」；
+   * 空 / 不传 = 现在分配（照旧）。晚于现在、最远 30 天（time-fields.ts 认定时分配），建档向导 / 给客户建项目里认，到点见 lib/enterprise/scheduled-assign.ts
+   */
+  定时分配?: string | null;
+  /**
+   * 分配方向（企业版，11-18）：市场成员选自动分配时「内贸 / 外贸」那一格，人手动改过才交；没交按 客户区域 → 电话 → 本人事业部 现算
+   * （customer-region.ts 默认分配方向）。只在 projects/actions.ts 建档向导里认
+   */
+  分配方向?: string | null };
 /** 下一步时间：企业版开了超时回收时线索、商机阶段必填（lib/project/timeout.ts），没开可不填 */
 /**
  * 阶段：企业版记沟通必选（lib/project/stage-gates.ts 的 记沟通阶段问题），团队版不传、不看。
@@ -76,6 +101,10 @@ export type 规整好的 = {
     所在地?: 客户地址 & { location: string | null };
     /** 分配方式的叫法（11-01 迁移 106，存 Project.assignMode）；调用方定好分配方式后填 */
     分配方式名?: string;
+    /** 指定回复时间（11-17，迁移 148）：规整好的两个时刻，没填都是 null */
+    指定回复?: 指定回复;
+    /** 市场成员自动分配时手动改的分配方向（11-18 审核 P0-1，迁移 152 存 Project.assignDir）；没改 = 不传。建档向导里填 */
+    手选方向?: "内贸" | "外贸";
   };
 };
 
@@ -142,10 +171,16 @@ export function 规整沟通(
 
 /** 主要联系人那几格规整一遍：建档（带项目）和只建客户共用。企业版占位名（11-03 A2-2）不算填了 */
 function 规整联系人(c: 向导联系人, 企业: boolean): 规整好的["联系人"] | { error: string } {
-  if (!hasVisibleText(c.name)) return { error: "请填写联系人姓名" };
+  // 联系人姓名（11-17 姓名选填）：企业版姓名和联系方式至少一项（联系人那几格、号码行都算），空名存空串、显示「—」；
+  // 别的版本照旧必填（带着号码行的 AI 新线索卡除外）
+  const 号们 = [c.phone, c.email, c.wechat, ...(c.号码们 ?? []).map((x) => x?.value)];
+  const 姓名问题 = 企业 ? 联系人姓名问题(true, c.name, 号们) : !hasVisibleText(c.name) && !c.号码们?.some((x) => typeof x?.value === "string" && x.value.trim()) ? "请填写联系人姓名" : null;
+  if (姓名问题) return { error: 姓名问题 };
   if (企业 && 是占位值(c.name)) return { error: 占位名提示("联系人姓名") };
-  const 电话 = 可空(c.phone);
-  if (电话?.includes("*")) return { error: "联系人电话里不能有 *" };
+  const 原电话 = 可空(c.phone);
+  if (原电话?.includes("*")) return { error: "联系人电话里不能有 *" };
+  // 企业版存规整值（+86、空格横杠去掉），同 AI 新线索卡、联系人表单号码几行（审核 11-18 新建入口 P2-1）；规整完空了（全是符号）照原样
+  const 电话 = 企业 && 原电话 ? 规整手机号(原电话) || 原电话 : 原电话;
   const 联系人地址 = 可空(c.address);
   if (联系人地址 && 联系人地址.length > 联系人地址上限) return { error: `联系人地址最多 ${联系人地址上限} 个字` };
   return { name: 文字(c.name), position: 可空(c.position), phone: 电话, email: 可空(c.email), wechat: 可空(c.wechat), ...(联系人地址 ? { address: 联系人地址 } : {}) };
@@ -188,6 +223,9 @@ export function 规整向导(
     const 地 = 新项目所在地(p.所在地);
     if (!地.ok) return { error: 地.error };
     企业档.所在地 = 地.值;
+    const 回复 = 规整指定回复(p.指定回复开始, p.指定回复结束);
+    if (!回复.ok) return { error: 回复.error };
+    企业档.指定回复 = 回复.值;
   }
 
   return {
@@ -214,15 +252,16 @@ export function 向导接着建(me: { id: string }, 好: 规整好的, 出参: P
       data: {
         ...好.项目, customerId, contactId: 联系人.id, creatorId: me.id,
         phase: 落.phase, node: 落.node, nextStepAt: 好.跟进.nextStepAt, nextStepText: 好.跟进.nextStepText,
-        // 项目来源只有企业版建档才写（建档向导里查过库）；团队版一律空，渠道统计回落到客户来源
-        ...(好.企业?.项目来源 ? { channelId: 好.企业.项目来源 } : {}),
-        // 业务线、分配方式（11-01）：只有企业版建档才写
+        // 业务线（11-01）：只有企业版建档才写
         ...(好.企业?.业务线 ? { bizLine: 好.企业.业务线 } : {}),
+        // 手动改的分配方向（11-18 审核 P0-1）：之后每一次自动分配都先认它
+        ...(好.企业?.手选方向 ? { assignDir: 好.企业.手选方向 } : {}),
         // 项目所在地（11-02）：企业版建档填了才有值，没填五格都是 null
         ...(好.企业?.所在地 ?? {}),
-        ...(好.企业?.分配方式名 ? { assignMode: 好.企业.分配方式名 } : {}),
-        // 合同状态（迁移 101）：企业版新项目落「起草中」
-        ...新项目默认值(企业版()),
+        // 指定回复时间（11-17）：企业版建档填了才有值
+        ...(好.企业?.指定回复 ?? {}),
+        // 合同状态（迁移 101）落「起草中」；分配方式（11-01）、项目来源（建档向导里查过库）只有企业版建档才写，团队版一律空，渠道统计回落到客户来源
+        ...新项目默认值(企业版(), { 分配方式: 好.企业?.分配方式名 ?? null, 项目来源: 好.企业?.项目来源 ?? null }),
       },
     });
     await tx.projectNodeLog.create({ data: { projectId: 项目.id, userId: me.id, toPhase: 落.phase, toNode: 落.node } });
@@ -239,10 +278,12 @@ export function 向导接着建(me: { id: string }, 好: 规整好的, 出参: P
 
 /**
  * 只建客户（P-界面-36，11-15）：新建弹窗没开「项目」开关——建客户、主要联系人和首条沟通。
- * 用户 11-15「没有开项目，就只能算客户沟通」：首条沟通只挂客户、不挂项目，不写项目节点、沟通编号；
- * 下一步时间不跟超时回收（那是项目的钟），填了就记成客户上的一条跟进计划（和客户页记沟通「下次计划」同一张表）
+ * 团队版（用户 11-15「没有开项目，就只能算客户沟通」）：首条沟通只挂客户、不挂项目，不写项目节点、沟通编号；
+ * 下一步时间不跟超时回收（那是项目的钟），填了就记成客户上的一条跟进计划（和客户页记沟通「下次计划」同一张表）。
+ * 企业版（11-17 客户定「沟通必须挂项目」）：新客户本来就带一个潜客培育项目（M-公海-14），首条沟通挂在它上面，
+ * 下一步时间 / 下一步计划记成这个项目的下一步（同建档带项目），不另记客户上的跟进计划 —— 潜客培育 = true
  */
-export type 规整好的只建客户 = { 联系人: 规整好的["联系人"]; 跟进: 规整好的沟通 };
+export type 规整好的只建客户 = { 联系人: 规整好的["联系人"]; 跟进: 规整好的沟通; 潜客培育?: true };
 
 export function 规整只建客户(
   input: { 联系人?: 向导联系人; 跟进?: 向导跟进 },
@@ -255,22 +296,44 @@ export function 规整只建客户(
   if ("error" in 联系人) return 联系人;
   const 跟进 = 规整沟通(f, { 要下一步: false, now, 叫法: "首条" });
   if ("error" in 跟进) return 跟进;
-  return { 联系人, 跟进 };
+  return { 联系人, 跟进, ...(企业 ? { 潜客培育: true as const } : {}) };
 }
 
 /** 下一步计划没写时跟进计划的主题 */
 export const 只建客户计划主题 = "下一步跟进";
 
-export type 建好的客户 = { contactId: string; followUpId: string; planId: string | null };
+export type 建好的客户 = { contactId: string; followUpId: string; planId: string | null; projectId: string | null };
 
-/** 给 saveCustomer 的「接着建」（只建客户）：主要联系人、建档人、首条沟通（不挂项目）、有下一步时间就记一条跟进计划 */
-export function 只建客户接着建(me: { id: string }, 好: 规整好的只建客户, 出参: Partial<建好的客户>): 接着建 {
+/**
+ * 给 saveCustomer 的「接着建」（只建客户）：主要联系人、建档人、首条沟通。
+ * 团队版沟通不挂项目、有下一步时间就记一条跟进计划；企业版先把潜客培育项目建了（saveCustomer 后面那次补就不再建），沟通挂上去
+ */
+/**
+ * 建潜客培育 由服务端调用方传进来（lib/project/nurture.ts 的 补潜客培育）：这个文件新建弹窗（浏览器）也引，
+ * 直接引 nurture 会把 team-scope、同步那一串服务端代码拖进前端包
+ */
+export function 只建客户接着建(me: { id: string }, 好: 规整好的只建客户, 出参: Partial<建好的客户>, 建潜客培育?: typeof 补潜客培育): 接着建 {
   return 登记接着建(async (tx: Prisma.TransactionClient, customerId: string) => {
     const 联系人 = await tx.contact.create({ data: { ...好.联系人, isPrimary: true, customerId } });
     await tx.customerCreator.create({ data: { customerId, userId: me.id } });
     const 跟进 = await tx.followUp.create({
       data: { type: 好.跟进.type, method: 好.跟进.method, initiator: 好.跟进.initiator, content: 好.跟进.content, occurredAt: 好.跟进.occurredAt, title: "", status: "已完成", customerId, contactId: 联系人.id, ownerId: me.id },
     });
+    if (好.潜客培育) {
+      // 潜客培育项目（M-公海-14）：名字、负责人同 saveCustomer 补的那个（客户名、客户负责人），落在第一个节点
+      const 客 = await tx.customer.findUniqueOrThrow({ where: { id: customerId }, select: { name: true, salesOwnerId: true } });
+      if (!建潜客培育) throw new Error("企业版只建客户要带上建潜客培育");
+      const projectId = await 建潜客培育(tx, { customerId, 客户名: 客.name, ownerId: 客.salesOwnerId, creatorId: me.id });
+      if (!projectId) throw new Error("新客户已经有项目了，潜客培育项目没建");
+      if (好.跟进.nextStepAt || 好.跟进.nextStepText) {
+        await tx.project.update({ where: { id: projectId }, data: { nextStepAt: 好.跟进.nextStepAt, nextStepText: 好.跟进.nextStepText } });
+      }
+      await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId, node: 第一个节点.node } });
+      await 记沟通编号(tx, 跟进.id, projectId, 好.跟进.nextStepAt);
+      await 记沟通标记(tx, 跟进.id, projectId, 第一个节点.phase, false);
+      await tx.customer.update({ where: { id: customerId }, data: { lastFollowAt: 好.跟进.occurredAt } });
+      return void Object.assign(出参, { contactId: 联系人.id, followUpId: 跟进.id, planId: null, projectId });
+    }
     let planId: string | null = null;
     if (好.跟进.nextStepAt) {
       planId = (await tx.followPlan.create({
@@ -281,6 +344,6 @@ export function 只建客户接着建(me: { id: string }, 好: 规整好的只�
       })).id;
     }
     await tx.customer.update({ where: { id: customerId }, data: { lastFollowAt: 好.跟进.occurredAt } });
-    Object.assign(出参, { contactId: 联系人.id, followUpId: 跟进.id, planId });
+    Object.assign(出参, { contactId: 联系人.id, followUpId: 跟进.id, planId, projectId: null });
   });
 }

@@ -10,6 +10,7 @@ import { beforeAll, afterAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
+import { 补全动作桩 } from "./helpers/action-stubs";
 
 let browser: Browser; let bundle: string;
 const plugin: Plugin = { name: "pr5b-home", setup(b) {
@@ -17,9 +18,9 @@ const plugin: Plugin = { name: "pr5b-home", setup(b) {
   stub(/^next\/link$/, "import React from 'react';export default function L({href,prefetch,...p}){return <a href={href} {...p}/>}");
   stub(/^next\/navigation$/, "const 记=()=>{};export const useRouter=()=>({push:记,refresh(){},replace:记});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
   stub(/^@\/app\/\(app\)\/demo-data$/, "const 记=(n)=>(window.__调||(window.__调=[])).push(n);export const 查演示数据状态=async()=>({可用:true,可灌:false,有权限:true,空库:false,已灌:true});export const 灌一套演示数据=async()=>({ok:true});export const 清除演示数据=async()=>{记('清除');return window.__挡?{ok:false,error:window.__挡}:{ok:true}};");
-  stub(/customers\/\[id\]\/actions$/, "const 记=(n,id,v)=>(window.__调||(window.__调=[])).push(n+':'+id+':'+v);const 回=()=>window.__挡?{ok:false,error:window.__挡}:{ok:true};export const toggleTask=async(id,v)=>{记('task',id,v);return 回()};export const completePlan=async(id,v=true)=>{记('plan',id,v);return 回()};");
-  stub(/projects\/actions$/, "export const 记项目沟通Action=async()=>({ok:true});");
-  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
+  stub(/customers\/\[id\]\/actions$/, 补全动作桩("src/app/(app)/customers/[id]/actions.ts", "const 记=(n,id,v)=>(window.__调||(window.__调=[])).push(n+':'+id+':'+v);const 回=()=>window.__挡?{ok:false,error:window.__挡}:{ok:true};export const toggleTask=async(id,v)=>{记('task',id,v);return 回()};export const completePlan=async(id,v=true)=>{记('plan',id,v);return 回()};export const 沟通可选项目=async()=>({ok:true,项目们:null,能建项目:true});"));
+  stub(/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 记项目沟通Action=async()=>({ok:true});"));
+  stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {

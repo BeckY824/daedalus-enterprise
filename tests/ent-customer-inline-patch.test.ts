@@ -4,6 +4,7 @@
  *   电话：没动 / 交回打码的样子都不改；换号查重（自己不算）；原来有号码不许清空；号码不对报错
  *   详细地址：企业版才收，落库、去空白
  *   所在地区：四格一起存、没变不写不留痕、变了留痕；不是负责人改不了；非企业版不收
+ *   全称（员工反馈：负责人改不了全称）：负责人能改、留一笔痕；不是负责人被 改客户挡 拦；空串、超长拒；非企业版不收
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 
@@ -126,5 +127,49 @@ describe("所在地区就地改（patchCustomerRegion）", () => {
     vi.stubEnv("CRM_ENTERPRISE", "");
     expect(await patchCustomerRegion(id, { addrCountry: "中国", addrProvince: "浙江省", addrCity: "杭州市", addrDistrict: null })).toMatchObject({ ok: false });
     expect((await 读(id)).addrCountry).toBeNull();
+  });
+});
+
+describe("全称就地改（员工反馈：负责人改不了全称）", () => {
+  it("负责人能改：去首尾空白落库、留一笔痕（原名 → 新名）；再交同样的不写不留痕", async () => {
+    const id = await 新建();
+    const 原名 = (await 读(id)).name;
+    const 前 = await 留痕数(id);
+    expect(await patchCustomer(id, "name", "  某某贸易有限公司  ")).toMatchObject({ ok: true });
+    expect((await 读(id)).name).toBe("某某贸易有限公司");
+    expect(await 留痕数(id)).toBe(前 + 1);
+    const 痕 = await prisma.auditLog.findFirstOrThrow({ where: { entityId: id, action: "update" }, orderBy: { at: "desc" } });
+    expect(痕.summary).toContain(原名);
+    expect(痕.detail ?? "").toContain("某某贸易有限公司");
+    expect(await patchCustomer(id, "name", "某某贸易有限公司")).toMatchObject({ ok: true });
+    expect(await 留痕数(id)).toBe(前 + 1);
+  });
+
+  it("不是负责人：被 改客户挡 拦下，库不变", async () => {
+    const id = await 新建();
+    const 原名 = (await 读(id)).name;
+    当(别人, "别人");
+    expect(await patchCustomer(id, "name", "别人改的名")).toMatchObject({ ok: false });
+    expect((await 读(id)).name).toBe(原名);
+  });
+
+  it("空串、只有空格、null 都拒（main 现状全称不许清空）；超长拒；库不变", async () => {
+    const id = await 新建();
+    const 原名 = (await 读(id)).name;
+    for (const 空 of ["", "   ", null]) {
+      const r = await patchCustomer(id, "name", 空);
+      expect(r).toMatchObject({ ok: false });
+      expect((r as { error: string }).error).toContain("全称");
+    }
+    const r = await patchCustomer(id, "name", "长".repeat(201));
+    expect(r).toMatchObject({ ok: false });
+    expect((r as { error: string }).error).toContain("200");
+    expect((await 读(id)).name).toBe(原名);
+  });
+
+  it("非企业版不收（桌面端改名照旧走完整表单）", async () => {
+    const id = await 新建();
+    vi.stubEnv("CRM_ENTERPRISE", "");
+    expect(await patchCustomer(id, "name", "新名")).toMatchObject({ ok: false });
   });
 });

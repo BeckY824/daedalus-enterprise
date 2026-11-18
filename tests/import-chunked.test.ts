@@ -36,7 +36,7 @@ const 表头 = ["姓名", "手机号", "学校", "备注"];
 function 造表(n: number, 重号行 = n - 7) {
   return Array.from({ length: n }, (_, i) => [
     `客户${i}`,
-    i === 3 ? "" : i === 重号行 ? "13900000000" : `139${String(i).padStart(8, "0")}`,
+    i === 3 ? "" : i === 重号行 ? "13912000000" : `13912${String(i).padStart(6, "0")}`,
     i === 重号行 ? "补进来的学校" : "",
     `第${i}位`,
   ]);
@@ -97,7 +97,7 @@ describe("暂存", () => {
 describe("分段导入", () => {
   it.each(["跳过", "补空"] as const)("分好几趟写和一趟写完结果一样（重复行：%s）", async (处置) => {
     // 库里先有一位（第 10 行那个号），让「已在库里」也走一遍
-    await prisma.customer.create({ data: { name: "老客户", phone: "13900000010", salesOwnerId: 我 } });
+    await prisma.customer.create({ data: { name: "老客户", phone: "13912000010", salesOwnerId: 我 } });
     process.env.IMPORT_SEGMENT_MS = "1";
     const { 趟们, 末 } = await 抽屉导(造表(1000), 处置);
     expect(趟们.length).toBe(5); // 一趟一片（200 行）
@@ -107,13 +107,13 @@ describe("分段导入", () => {
     await resetDb();
     我 = (await 造本人()).id;
     mocks.user = { ...mocks.user, id: 我 };
-    await prisma.customer.create({ data: { name: "老客户", phone: "13900000010", salesOwnerId: 我 } });
+    await prisma.customer.create({ data: { name: "老客户", phone: "13912000010", salesOwnerId: 我 } });
     const 一趟 = await 执行导入(方案(造表(1000), 处置), "大表.csv");
     if (!一趟.ok) throw new Error(一趟.error);
     expect(分段后.计数).toEqual({ 新建: 一趟.新建, 补空: 一趟.补空, 跳过: 一趟.跳过, 进不了: 一趟.进不了 });
     expect(分段后.客户).toEqual(await 客户们());
     // 第 0 行和倒数第 7 行同号：合成一条，学校补上了
-    expect(分段后.客户.find((c) => c.phone === "13900000000")?.school).toBe("补进来的学校");
+    expect(分段后.客户.find((c) => c.phone === "13912000000")?.school).toBe("补进来的学校");
   });
 
   it("批次上的数和最后一趟回话一致；写完记一笔操作日志", async () => {

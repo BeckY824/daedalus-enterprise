@@ -17,15 +17,14 @@
  */
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 看全部, 现在的公海回避 } from "@/lib/team-scope";
-import { 包含模式, 客户名索引式 } from "@/lib/search-keyword";
-import { 看成客户编号 } from "@/lib/customer-no";
+import { 包含模式, 客户名索引式, 含词 } from "@/lib/search-keyword";
 import { 分组数SQL, 取一段SQL, 键毫秒, 按快捷分组数SQL, 非线索分组数SQL, 排掉分组数SQL, 合分组, 减分组, type 客户行筛 } from "./unified-pool-sql";
 import { 缓存分组数 } from "./pool-count-cache";
 import { 按主键取没删的 } from "./soft-delete-core";
 import { 公海客户原负责人是 } from "@/lib/owner-log-db";
 import { 看得到的客户, 露客户, 公海超时收回 } from "@/lib/project/db";
 import { 字典of, 本套位置 } from "@/lib/project/nodes";
-import { 阶段与进程 } from "@/lib/project/stage-dict";
+import { 阶段与进程, 阶段们, 归阶段的结局, 企业版字典 } from "@/lib/project/stage-dict";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 自动掉公海 } from "@/lib/pool-db";
 import { 拦原负责人 } from "./pool-rules";
@@ -34,7 +33,7 @@ import type { Prisma } from "@/generated/prisma";
 import { 公海名单条件, 公海名单候选, type 公海名单筛 } from "@/lib/project/list";
 import {
   客户定状态, 客户公海属性, 进程显示项目, 进程格, 客户入池类, 项目入池类, 入池原因文字, 归到快捷, 筛排, 并客户池, 没项目进程, 项目行属性,
-  规整公海属性, 是快捷, 规整排序,
+  规整公海属性, 是快捷, 规整排序, 公海词们,
   type 公海行, type 公海筛选, type 入池类, type 公海属性, type 快捷,
 } from "./unified-pool";
 
@@ -132,6 +131,35 @@ type 池片 = Prisma.CustomerPoolGetPayload<{ select: typeof 池要的 }>;
 /** 定属性用的项目：名下全部项目，不过范围层（属性是客户本身的事，谁看都一样；11-02） */
 function 定属性的项目(where: Prisma.ProjectWhereInput) {
   return 看全部(() => prisma.project.findMany({ where, select: { customerId: true, phase: true, result: true } }));
+}
+
+/**
+ * 公海客户里落商机池、订单池的是哪几位（11-18，历史沟通分析回填前置）：在库里按客户聚合，只回这两池的客户 id，
+ * 不再把公海客户名下全部项目（回填后 6 万多个）读进内存再逐位 客户公海属性。口径同 归池（unified-pool.ts，M-公海-08 从低往高）：
+ *   有没结束的项目 → 取没结束里阶段最低的；都结束了 → 取结局所在阶段最低的；线索 → 线索池（不回），商机 → 商机池，订单 / 认不出的阶段 → 订单池。
+ * 结局所在阶段 按各阶段的出口结局（含旧名，归阶段的结局）拼进 CASE，认不出的结局退回看 phase（同 阶段与进程）。
+ * 名下项目不过范围层（属性是客户本身的事），回收站里的项目不算（同 定属性的项目 走软删扩展）。历史分析回填的照算：分析定的节点 / 结局就是要它落池
+ */
+async function 公海客户属性名单(): Promise<{ 商机: string[]; 订单: string[] }> {
+  const 阶段位 = (列: string) => `CASE ${列} WHEN '线索' THEN 0 WHEN '商机' THEN 1 WHEN '订单' THEN 2 ELSE 3 END`;
+  // 各阶段的结局（含库里的旧名，stage-dict.ts 归阶段的结局，同 项目所在阶段 的认法）；认不出的结局退回看 phase
+  const 分支们: string[] = [];
+  const 值: string[] = [];
+  阶段们.forEach((阶段, 位) => {
+    for (const r of 归阶段的结局(企业版字典, 阶段)) { 分支们.push(`WHEN ? THEN ${位}`); 值.push(r); }
+  });
+  const 结局位 = 分支们.length ? `CASE p."result" ${分支们.join(" ")} ELSE ${阶段位(`p."phase"`)} END` : 阶段位(`p."phase"`);
+  const 行们 = await defaultClient.$queryRawUnsafe<{ id: string; 位: number | bigint }[]>(
+    `SELECT p."customerId" AS id, COALESCE(MIN(CASE WHEN p."result" IS NULL THEN ${阶段位(`p."phase"`)} END), MIN(CASE WHEN p."result" IS NOT NULL THEN ${结局位} END)) AS 位
+     FROM "Project" p JOIN "CustomerPool" cp ON cp."customerId" = p."customerId"
+     WHERE p."deletedAt" IS NULL
+     GROUP BY p."customerId"
+     HAVING 位 >= 1`,
+    ...值,
+  );
+  const 商机: string[] = [], 订单: string[] = [];
+  for (const x of 行们) (Number(x.位) === 1 ? 商机 : 订单).push(x.id);
+  return { 商机, 订单 };
 }
 
 /** 一行客户行（骨架、库里分页两条路同一个拼法）。没全取的项目格先按「一个项目都看不到」摆，补这一页 再填 */
@@ -312,7 +340,9 @@ export async function 读公海页(me: { id: string; name: string; role?: string
   const 这页 = await 补这一页(me, 骨, 行.slice((当前页 - 1) * pageSize, 当前页 * pageSize));
   // 不数时不带这一格（和改前的返回逐字段一样）
   const 号码不全数 = !选.数号码不全 ? undefined : sp.号码不全 === "1" ? 行.length : 筛排(全部行, { ...sp, 号码不全: "1" }, { 按项目: true }).行.length;
-  return { 行: 这页, 总数: 行.length, 当前页, 快捷数, 属性数, 截断: 骨.截断, 库里有: 骨.行.length > 0, ...(号码不全数 === undefined ? {} : { 号码不全数 }) };
+  // 总数里几位客户、几个项目（审核 11-18 统计 P2-2：页脚写清单位）
+  const 分项 = { 客户: 行.filter((r) => r.种 === "客户").length, 项目: 行.filter((r) => r.种 !== "客户").length };
+  return { 行: 这页, 总数: 行.length, 分项, 当前页, 快捷数, 属性数, 截断: 骨.截断, 库里有: 骨.行.length > 0, ...(号码不全数 === undefined ? {} : { 号码不全数 }) };
 }
 
 /**
@@ -380,26 +410,27 @@ export async function 拆开数分组(筛: 客户行筛): Promise<分组行[]> {
  *     第 i 位客户行在合起来的第 i + 排在它前面的项目行数 位，所以要切 [起, 起+页大小) 只用取客户行第 起−项目行数 位到 起+页大小 位
  */
 async function 读公海页_库里分页(me: { id: string; name: string; role?: string }, sp: 公海筛选, page: number, pageSize: number, 选: { 数号码不全?: boolean }) {
-  const 词 = (sp.keyword ?? "").trim().toLowerCase();
+  // 关键词拆成词（23D，同 筛排 的 公海词们）：每个词都要中，各词可中在客户名、简称、编号、项目名不同的格
+  const 词们 = 公海词们(sp.keyword);
+  const 词 = 词们.length > 0;
   // 项目行（和骨架同一套取法，只是不取客户行；自动回收也在这里先跑）
   const 骨 = await 读公海骨架(me, { 客户的项目: false, 客户可见: !!词 || !!sp.来源, 不取客户: true });
   const 项目筛 = 筛排(骨.行, sp);
   const 项目不全数 = 0; // 号码不全只打在客户行上，项目行（客户不在客户公海）一行都不会中
   // 客户行的属性：名下全部项目（不过范围层），只有有项目的那几位可能不是线索池
   const 框客户 = { customer: { pool: { isNot: null } } } satisfies Prisma.ProjectWhereInput;
-  const [定属性, 排掉, 项目名对上] = await Promise.all([
-    定属性的项目(框客户).then(按客户分),
+  const [名单, 排掉, 项目名对上] = await Promise.all([
+    // 商机 / 订单两池的名单在库里聚合（公海客户属性名单）；这一页客户行的属性、有没有项目，切出这一页后只为这一页查
+    公海客户属性名单(),
     回避掉的公海客户(),
-    // 关键词还比项目名：各人看得到的项目、按创建先后用「、」连起来（同 客户项目格 的 项目名）
-    词 ? 查客户的项目(框客户).then((们) => [...按客户分(们)].filter(([, ps]) => ps.map((p) => p.name).join("、").toLowerCase().includes(词)).map(([id]) => id)) : [],
+    // 关键词还比项目名：各人看得到的项目、按创建先后用「、」连起来（同 客户项目格 的 项目名）；每个词各一份对上的客户
+    词 ? 查客户的项目(框客户).then((们) => {
+      const 名们 = [...按客户分(们)].map(([id, ps]) => [id, ps.map((p) => p.name).join("、")] as const);
+      return 词们.map((w) => 名们.filter(([, 名]) => 含词(名, w.词)).map(([id]) => id));
+    }) : [],
   ]);
-  const 商机: string[] = [], 订单: string[] = [];
-  for (const [id, ps] of 定属性) {
-    const 属 = 客户公海属性(ps);
-    if (属 === "商机池") 商机.push(id);
-    else if (属 === "订单池") 订单.push(id);
-  }
-  const 筛: 客户行筛 = { 商机, 订单, 排掉, ...(词 ? { 词: { 名: 包含模式(词), 项目对上: 项目名对上, 索引式: await 客户名索引式(词), 编号: 看成客户编号(词) } } : {}), ...(sp.来源 ? { 来源: sp.来源 } : {}), ...(sp.号码不全 === "1" ? { 号码不全: true } : {}) };
+  const { 商机, 订单 } = 名单;
+  const 筛: 客户行筛 = { 商机, 订单, 排掉, ...(词 ? { 词: await Promise.all(词们.map(async (w, i) => ({ 名: 包含模式(w.词, true), 项目对上: 项目名对上[i], 索引式: await 客户名索引式(w.词), 编号: w.号 }))) } : {}), ...(sp.来源 ? { 来源: sp.来源 } : {}), ...(sp.号码不全 === "1" ? { 号码不全: true } : {}) };
   const 组 = (await (词 ? 现数分组(筛) : 拆开数分组(筛))).map((r) => ({ 属性: r.属性 as 公海属性, 快捷: (r.快捷 as 快捷 | null) ?? null, 不全: Number(r.不全 ?? 0) === 1, n: Number(r.n) }));
   const 属性 = 规整公海属性(sp.属性);
   const 快捷 = 是快捷(sp.快捷) ? sp.快捷 : null;
@@ -458,6 +489,10 @@ async function 读公海页_库里分页(me: { id: string; name: string; role?: 
     for (const p of 池们) 池of.set(p.customerId, p);
   }
   const 拦 = 拦原负责人();
+  // 这一页客户的名下全部项目（定属性、没项目客户用）：按批点名，一页大过 一批id数 时也不拼过长的 IN
+  const 页项目们: { customerId: string; phase: string; result: string | null }[] = [];
+  for (let i = 0; i < 页客户ids.length; i += 一批id数) 页项目们.push(...(await 定属性的项目({ customerId: { in: 页客户ids.slice(i, i + 一批id数) } })));
+  const 定属性 = 按客户分(页项目们);
   const 骨这页 = { ...骨, 有客户的项目: false, 没项目客户: new Set(页客户ids.filter((id) => !定属性.has(id))) };
   const 页行 = 落位.flatMap((x): 公海行[] => {
     if (x.项目) return [x.项目];
@@ -470,7 +505,7 @@ async function 读公海页_库里分页(me: { id: string; name: string; role?: 
     : 按属性.filter((g) => g.不全 && (!快捷 || g.快捷 === 快捷)).reduce((a, g) => a + g.n, 0) + 项目不全数;
   // 库里有：不看筛选，公海里有没有这个人看得到的行
   const 库里有 = 骨.行.length > 0 || (!词 && !sp.来源 && sp.号码不全 !== "1" ? 组.length > 0 : await 有公海客户(排掉));
-  return { 行: 这页, 总数, 当前页, 快捷数, 属性数, 截断: false, 库里有, ...(号码不全数 === undefined ? {} : { 号码不全数 }) };
+  return { 行: 这页, 总数, 分项: { 客户: 客户总数, 项目: 项目筛.行.length }, 当前页, 快捷数, 属性数, 截断: false, 库里有, ...(号码不全数 === undefined ? {} : { 号码不全数 }) };
 }
 
 /** 公海里有没有这个人看得到的客户（不看筛选） */

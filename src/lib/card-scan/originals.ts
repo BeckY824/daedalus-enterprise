@@ -25,6 +25,23 @@ export function 取走名片原图(卡id: string): File[] {
 }
 
 /**
+ * 首页对话框这一问带的截图原件（11-18 员工反馈「录入的时候还是添加不了截图」）：按这一问（turn id）记在内存里，
+ * 这一问出了新线索卡，卡上摆缩略图和「存成这条线索的附件」，确认建好以后凭首条附件票传到新线索的首条沟通上（components/ProposalCard.tsx）。
+ * 只看不取走：卡重挂（换页回来）还在；刷新页面就没了（和名片原图一样不落 localStorage）。只留最近几问的
+ */
+const 对话图 = new Map<string, File[]>();
+
+export function 记下对话截图(问id: string, 图们: File[]) {
+  if (!图们.length) return;
+  if (对话图.size >= 20) 对话图.delete(对话图.keys().next().value!);
+  对话图.set(问id, 图们.slice(0, 名片最多张));
+}
+
+export function 对话截图(问id: string): File[] {
+  return 对话图.get(问id) ?? [];
+}
+
+/**
  * 这页刚建的那位（2026-11-01，后发的客户照片）：销售先发名片建好，再单发一张客户照片「这个是客户的照片，帮我一起录入」。
  * 照片里认不出名片和微信资料时，问一句要不要存成刚建的那位的附件（components/PhotoSaveCard.tsx），点了才传。
  * 只在内存里、只记最后一位；撤销了就忘掉；隔太久（刚建多久内算 之内）不算「刚建」，免得页面开一晚上第二天的照片挂错人

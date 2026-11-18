@@ -18,6 +18,7 @@ import { prisma } from "../prisma";
 import { 负责人显示名, 无负责人占位邮箱 } from "@/lib/pool";
 import { 包含模式, 号码片段, 号码藏着, 客户关键词条件, 客户号码条件, 线索关键词条件 } from "@/lib/search-keyword";
 import { 号键SQL } from "@/lib/phone-dedupe";
+import { 渠道启用 } from "@/lib/enterprise/channel-main-core";
 
 /** 一张表里的命中 */
 export type 别处命中 = {
@@ -88,7 +89,7 @@ export async function 名字在别处(名: string, 号: (p: string | null) => st
     prisma.channel.findMany({
       where: 号中 ? { id: { in: 号中.渠道 } } : { name: 名条件 },
       take: 每表最多,
-      select: { name: true, phone: true, active: true, remark: true, channelOwner: { select: { name: true } } },
+      select: { name: true, phone: true, active: true, remark: true, main: { select: { active: true } }, channelOwner: { select: { name: true } } },
     }),
     prisma.contact.findMany({
       where: 号中 ? { id: { in: 号中.联系人 } } : { name: 名条件 },
@@ -122,7 +123,7 @@ export async function 名字在别处(名: string, 号: (p: string | null) => st
     out.push({
       表: "渠道",
       条数: 渠道.length,
-      记录: 渠道.map((c) => ({ 名称: c.name, 电话: 号(c.phone), 渠道负责人: c.channelOwner?.name ?? "未指定", 状态: c.active ? "在用" : "已停用", 备注: c.remark ?? null })),
+      记录: 渠道.map((c) => ({ 名称: c.name, 电话: 号(c.phone), 渠道负责人: c.channelOwner?.name ?? "未指定", 状态: 渠道启用(c) ? "在用" : "已停用", 备注: c.remark ?? null })),
       怎么查: `list_channels（keyword="${q}"）`,
     });
   if (联系人.length || 散的.length)

@@ -3,6 +3,7 @@ import { 我放出去的公海客户 } from "@/lib/owner-log-db";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import CustomersView from "./CustomersView";
+import VerifyInbox from "../projects/VerifyInbox";
 import HandoverPending from "./HandoverPending";
 import { 待确认的交接 } from "./handover-actions";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -22,7 +23,8 @@ import { defaultClient } from "@/lib/prisma";
 import { 读团队 } from "@/lib/sync/client";
 import { 客户页签归属 } from "@/lib/pool";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能管公海, 能转出自己的, 能删除, 能新建和领取, 能放回客户公海 } from "@/lib/enterprise/permissions";
+import { 能管公海, 能转出自己的, 能删除, 能新建和领取, 能放回客户公海, 有管理范围 } from "@/lib/enterprise/permissions";
+import { 生效客户范围, 默认客户范围, 客户范围选项 } from "@/lib/enterprise/customer-scope";
 import { 公海别线的 } from "@/lib/enterprise/pool-line-guard";
 import { 摊平部门 } from "@/lib/sync/dept-policy";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
@@ -40,6 +42,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { cookies } from "next/headers";
 import { 客户页看法键 } from "@/lib/customers-view-pref";
 import { 项目页, type 项目页参数 } from "../projects/board-page";
+import { 待我复核的 } from "@/lib/project/lead-verify";
 import { 客户页看板条件 } from "./board-query";
 import { 仅项目安全条件, 仅项目筛选口径 } from "@/lib/enterprise/project-only-customers";
 import { 仅项目列表行们 } from "@/lib/enterprise/project-only-list-rows";
@@ -47,6 +50,8 @@ import { 阶段筛选太多 } from "@/lib/project/customer-list-projects";
 import { 读市场身份 } from "@/lib/enterprise/market-view-db";
 import type { SessionUser } from "@/lib/auth";
 import { 三态标们 } from "@/lib/enterprise/tri-state-list";
+import { 批量可自动分配 } from "@/lib/enterprise/cust-auto-assign";
+import { 批量客户自动分配预看, 批量客户自动分配 } from "../leads/assign-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -114,6 +119,8 @@ type SP = Promise<{
   /** 市场角色被挡在项目详情外转来的（P-界面-11）：q 搜项目名、hl 高亮那一行，落在「我分出去的」视图 */
   q?: string;
   hl?: string;
+  /** 「范围」（客户 11-18 第 12 题，lib/enterprise/customer-scope.ts）：mine / joined / visible；不给 = 按角色默认 */
+  scope?: string;
 }>;
 
 /** 客户页记的「列表 / 看板」（cookie）；不在请求里（测试直接调页面函数）读不到 = 没记 */
@@ -138,7 +145,7 @@ async function 看板体(me: SessionUser, sp: Awaited<SP>) {
 
 export default async function CustomersPage({ searchParams }: { searchParams: SP }) {
   const me = await requireUser();
-  const sp = await searchParams;
+  let sp = await searchParams;
   // 开了「N 天没跟进自动放进公海」的话，一天扫一次；扫出来的这一页就能看到。业务配置和它互不相干，一起读
   const [, b] = await Promise.all([自动掉公海(me), getBusiness()]);
 
@@ -177,6 +184,15 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   }
 
   /*
+    「范围」（客户 11-18 第 12 题）：我负责的 / 我参与的 / 我可见的（只给有管理范围的）。销售默认我负责的（列表总数 = 设置里他的客户数），
+    有管理范围的默认我可见的；补好的值写回 sp，列表、看板、导出（filters.scope）都按它。子集（导入这一批、本月新增、直接推荐）不按范围筛
+  */
+  const 范围组织 = 企业版() && b.projectMode ? await 权限组织() : null;
+  const 管理范围 = !!范围组织 && 有管理范围(me, 范围组织);
+  const 范围 = 范围组织 && !在看子集(sp) ? 生效客户范围(sp.scope, 管理范围) : undefined;
+  sp = { ...sp, scope: 范围 };
+
+  /*
     带关键词、只筛本表等值的（最常见的「搜一下」）：总数、页码和这一页的 id 一条 SQL 出（P2，query.ts 关键词分页）。
     接不住的组合 快 = null，下面照原来 count + findMany
   */
@@ -206,8 +222,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     负责人条件不带：换到公海页签时它会清掉（公海里的负责人是「原负责人」），数要和点过去看到的对得上
   */
   const 公海里匹配 = !子集 && sp.pool !== "1" && total === 0 && 公海总数
-    ? ((快 ? await 关键词分页({ ...sp, pool: "1", salesOwnerId: undefined }, 1, 1) : null)?.total
-      ?? await prisma.customer.count({ where: await 客户筛选条件({ ...sp, pool: "1", salesOwnerId: undefined }) }))
+    ? ((快 ? await 关键词分页({ ...sp, pool: "1", salesOwnerId: undefined, scope: undefined }, 1, 1) : null)?.total
+      ?? await prisma.customer.count({ where: await 客户筛选条件({ ...sp, pool: "1", salesOwnerId: undefined, scope: undefined }) }))
     : 0;
   const page = 快?.page ?? Math.min(正整数(sp.page, 1), Math.max(1, Math.ceil(total / pageSize)));
 
@@ -329,8 +345,11 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     ? 摊平部门(编制.部门).map(({ d, 层 }) => ({ value: d.id, label: `${"　".repeat(层 - 1)}${d.name}` }))
     : [];
 
+  // 「待我复核」（审核 11-18 节点 P2-3）：列表视图顶上摆（看板视图里的项目列表自己带）；读不出来不挡列表
+  const 待复核们 = 企 && 按项目 && !看板视图 ? (await 待我复核的(me).catch((e) => { console.error("[待我复核] 客户页没读出来", e); return []; })).map((r) => ({ ...r, 更新于: r.更新于.toISOString() })) : [];
   const 视图 = (
     <CustomersView
+      待复核={待复核们.length ? <VerifyInbox 们={待复核们} /> : undefined}
       // 公海里的直接分给同事：只给管理员（团队版的老板）。业务员那边不摆（2026-10-20）
       能分配公海={能管公海(me, await 权限组织())}
       能转出自己的={能转出自己的(me, await 权限组织())}
@@ -389,6 +408,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
         // 电话藏着的人（字段权限 Y27）不按号码筛：服务端不认，这里也不回显，页面不摆这一项
         phone: 能按号码筛 ? sp.phone ?? "" : "",
         ...(按项目 ? { phase: sp.phase ?? "", node: sp.node ?? "" } : {}),
+        // 「范围」：补过默认的值（导出、AI 读页面筛选都拿这一份）；不按范围筛时没有这一格
+        ...(范围 ? { scope: 范围 } : {}),
         // 三态开着才有「全部回收状态」这一格；关着 filters 和原来一样
         ...(三态开 && !看板视图 ? { triState: sp.triState ?? "" } : {}),
         // 企业版才有客户状态这一格（10-28）；别的版本 filters 和原来一样
@@ -411,6 +432,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       原负责人领不回ids={拦原负责人() ? await 我放出去的公海客户(rows.map((r) => ({ id: r.id, 在公海: !!r.pool, salesOwnerId: r.salesOwnerId })), me.id) : []}
       // 企业版批量转给别人时可选的转让原因（字典「转让原因」，10-27）；别的版本空 = 不问
       转让原因={{ 选项: 转让选项, 自己: me.id }}
+      // 批量转让框里「指定分配 / 自动分配」（客户 11-17）：市场成员、规则开着、自动分配他能用才递；勾的里有没有暂不分配的，框打开时再问
+      {...(await 批量可自动分配(me) ? { 自动分配预看: 批量客户自动分配预看, 批量自动分配客户: 批量客户自动分配 } : {})}
       本月新增={sp.createdWithin === "本月"}
       直接推荐={直接推荐}
       本批={sp.batch ? { 几位: total } : null}
@@ -431,6 +454,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       {...await 仅项目行P.then((x) => (x ? { 仅项目行: x.行们, 仅项目超了: x.超了 } : {}))}
       三态标={三态标}
       项目看板={按项目}
+      客户范围={范围 ? { 值: 范围, 默认: 默认客户范围(管理范围), 选项: 客户范围选项(管理范围) } : undefined}
       市场视图={市场角色}
       // 阶段 / 进程命中的客户太多、点不了名（customer-list-projects.ts 点名上限）：和筛选同一份请求内缓存，不另查
       阶段太多={按项目 && !看板视图 ? await 阶段筛选太多(me, sp) : false}

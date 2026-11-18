@@ -1,5 +1,5 @@
 import { prisma, defaultClient } from "@/lib/prisma";
-import { 搜索词, 客户号码条件, 号码藏着 } from "@/lib/search-keyword";
+import { 搜索词, 拆搜索词, 全半角写法, 客户号码条件, 号码藏着 } from "@/lib/search-keyword";
 import { 负责人候选 } from "@/lib/owners";
 import { 看板落列, 看板列键们, type 项目行, type 看板合计组, type 看板卡片 } from "./board";
 import type { 阶段 } from "./nodes";
@@ -12,7 +12,7 @@ import { 已立项天数 } from "./project-fields";
 import { 回填一次 } from "./expected-deal";
 import { 数收回次数, 合收回次数, 收回次数筛 } from "./recycle-count";
 import { 认首页卡, 首页卡条件, 即将逾期, 即将逾期紧筛 } from "./home-cards";
-import { 首页卡范围 } from "./home-cards-db";
+import { 首页卡的人, 暂未跟进负责人们 } from "./home-cards-db";
 import { 字典of, 阶段与进程, 阶段们, 结局们of, 同名们, 本套名, 归阶段的结局, type 阶段字典 } from "./stage-dict";
 import { 本套位置 } from "./nodes";
 import type { Prisma } from "@/generated/prisma";
@@ -26,6 +26,8 @@ import { 渠道筛选选项 } from "@/lib/enterprise/channel-options";
 import { 企业级别 } from "@/lib/enterprise/customer-v2";
 import { 未分级 } from "@/app/(app)/customers/query-shared";
 import { 创建时间段, 是日期 } from "@/lib/custom-date-range";
+import { 不算补建, 不算历史分析 } from "./system-created";
+import { 指定回复文字, 短时刻 } from "./time-fields";
 
 /** 判了无效的三个叫法：列表上叫法后面跟原因摘要（客户 11-05（X-09）：「初验无效 · 原因」） */
 const 带原因的叫法: ReadonlySet<验证结果叫法> = new Set<验证结果叫法>(["初验无效", "终验无效", "无效线索"]);
@@ -69,6 +71,16 @@ export async function 读验证痕们(projectIds: string[]): Promise<Map<string,
 export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string; phase?: string; node?: string; creator?: string; channelId?: string; level?: string;
   /** 创建时间（11-11，渠道页点数字进来要按时间分）：两个日历日，两头都算，北京日界线（custom-date-range.ts 创建时间段） */
   createdFrom?: string; createdTo?: string;
+  /**
+   * onlyNew=1：从「新建」类的数点进来的（渠道看板 / 渠道列表分档，channel-stats.ts 带时段）：按创建时间筛时排掉补建的项目（project/system-created.ts），
+   * 条数和卡上一致。自己在「更多筛选」里选创建时间的不带它，照旧不排
+   */
+  onlyNew?: string;
+  /**
+   * open=1：只看没结局的（审核 11-18 统计 P1-3）：渠道页「关联线索」（眼下还在线索阶段）点进来带它，和 phase 一起用，
+   * 线索流失这些已结束的不列，条数和渠道页的数一致。不进筛选栏，同 onlyNew
+   */
+  open?: string;
   /** 「手机号」筛选（11-11）：项目的客户号码对得上的（同客户列表，lib/search-keyword.ts 客户号码SQL）；客户不露的不算 */
   phone?: string;
   /**
@@ -89,7 +101,7 @@ export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; 
  * 有结局的按结局认阶段（线索流失归线索、丢单归商机…），进程选结局 = 筛这个结局，选节点 = 停在这个节点、还没结局的。
  * 认不出的值当没筛。库里存着旧节点名 / 旧结局的（企业版 10-31 改名）新旧名一起筛（同名们）。
  */
-export function 阶段进程条件(sp: { phase?: string; node?: string }, 字典: 阶段字典): { 阶段: 阶段 | ""; 进程: string; where: Prisma.ProjectWhereInput[] } {
+export function 阶段进程条件(sp: { phase?: string; node?: string; open?: string }, 字典: 阶段字典): { 阶段: 阶段 | ""; 进程: string; where: Prisma.ProjectWhereInput[] } {
   const 阶段 = (阶段们 as readonly string[]).includes(sp.phase ?? "") ? (sp.phase as 阶段) : "";
   // 传旧名（老链接、老书签）先换成这套的新名再认
   const 名 = sp.node ? 本套名(sp.node, 字典) : "";
@@ -102,6 +114,8 @@ export function 阶段进程条件(sp: { phase?: string; node?: string }, 字典
     where.push({ OR: [{ phase: 阶段, result: null }, { result: { in: 归阶段的结局(字典, 阶段) } }] });
   }
   if (进程) where.push(是结局 ? { result: { in: 同名们(进程) } } : { node: { in: 同名们(进程) }, result: null });
+  // 渠道页「关联线索」点进来（open=1）：只看没结局的
+  if (sp.open === "1") where.push({ result: null });
   return { 阶段, 进程, where };
 }
 
@@ -165,7 +179,10 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
   // 首页指标卡的筛选只在企业版认；条件和卡上 count 用的是同一份（home-cards.ts），数对得上
   const 卡 = 规则 ? 认首页卡(sp.f) : "";
   // 点卡进来的，和卡上的数同一圈（首页卡范围：按负责人，最下级只看自己，上级看自己 + 下属，总管理 / 管理员全看），数对得上
-  const 卡的圈 = 卡 ? await 首页卡范围(me) : undefined;
+  const 卡的人 = 卡 ? await 首页卡的人(me) : undefined;
+  const 卡的圈: Prisma.ProjectWhereInput | undefined = 卡的人 ? { ownerId: { in: [...卡的人] } } : undefined;
+  // 暂未跟进按负责人一路一路筛（只认现负责人记的沟通，home-cards.ts），和卡上的数同一批负责人
+  const 卡负责人们 = 卡 === "no-follow" ? await 暂未跟进负责人们(卡的人) : undefined;
   const 字典 = 字典of(企);
   const 阶进 = 阶段进程条件(sp, 字典);
   // 企业版市场视角（11-04 P-界面-05）：市场成员 = 自己负责的 ∪ 自己建的已分出去的；市场管理 = 本人 + 实线下属，可按创建人筛；公海的都不列
@@ -196,7 +213,7 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
   // 企业版「收回次数」：从留痕里数；按次数筛只在企业版的项目公海里生效
   const 收回筛 = 企 && sp.pool === "1" ? 收回次数筛(sp.recycled) : "";
   const 并且: Prisma.ProjectWhereInput[] = [
-    ...(建于 ? [{ createdAt: 建于 }] : []),
+    ...(建于 ? [{ createdAt: 建于, ...(sp.onlyNew === "1" ? 不算补建 : {}) }] : []),
     /*
       按号码筛中的是客户：只算「客户看得到」的（11-12 堵口子）。原来按「露客户」算——自己负责的项目、客户不归我也算中，
       只负责项目的人（project-only-customers.ts）输个号码看自己的项目留不留，就试得出看不到的客户的电话、联系人电话。
@@ -206,7 +223,7 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
     // 客户看不到时不拿客户的来源（同列上的「渠道」，11-12 审查起和号码一样只认「客户看得到的」，自己负责的项目也不例外）：否则筛一下就试出客户从哪来
     ...(来源 ? [{ OR: [{ channelId: 来源 }, 看得到的({ channelId: null, customer: { channelId: 来源 } })] }] : []),
     ...(级别筛 ? [{ level: 级别筛 === 未分级 ? null : 级别筛 }] : []),
-    ...(卡 && 规则 ? [首页卡条件(卡, 规则, 字典of(企), 今), ...(卡的圈 ? [卡的圈] : [])] : []),
+    ...(卡 && 规则 ? [首页卡条件(卡, 规则, 字典of(企), 今, 卡负责人们), ...(卡的圈 ? [卡的圈] : [])] : []),
     // 3 天内回公海：粗筛之外再加紧筛（同首页卡的数，tests/ent-due-soon-prefilter.test.ts 两种筛对拍），候选少取一些；剩下的取回逐个算
     ...(卡 === "due-soon" && 规则 ? [即将逾期紧筛(规则, 字典of(企), 今) ?? { id: { in: [] } }] : []),
     ...阶进.where,
@@ -214,7 +231,12 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
     ...(客户 ? [按客户(客户)] : []),
     ...(市场 ? [市场项目条件(me.id, 市场.圈, 创建人)] : []),
     // 公海里同事客户的项目：不露客户名；按客户名搜也不该搜出它（否则等于拿名字试出来）。搜索词的 OR 放进 AND 里，不和别的 OR 打架
-    ...(词 ? [{ OR: [{ name: { contains: 词 } }, 并露({ customer: { name: { contains: 词 } } })] }] : []),
+    // 关键词拆词（23D，同客户列表 2F：拆搜索词）：全角空格、多个空格归一，按空格、括号、逗号、顿号拆开，每个词都要中，
+    // 各词可以一个中项目名、一个中客户名；像号码、客户编号、网址的整串不拆。全半角写法：库里存全角字母、人也敲全角的照旧中
+    ...拆搜索词(词).map((w): Prisma.ProjectWhereInput => {
+      const 名 = 全半角写法(w).map((x) => ({ name: { contains: x } }));
+      return { OR: [...名, 并露({ customer: 名.length === 1 ? 名[0] : { OR: 名 } })] };
+    }),
   ];
   // 企业版 C-01：公海里我是历史负责人的项目我看不到（总管理 / 管理员不算，lib/project/pool-owner.ts 回避豁免）
   const 回避 = (await 回避豁免(me)) ? [] : await 我回避的公海项目(prisma, me.id);
@@ -419,7 +441,8 @@ async function 拼项目行(
   const 原负责人 = await 历史负责人们(prisma, rows.filter((r) => r.pooledAt).map((r) => r.id));
   const 负责人of = (p: 行带include) => (p.pooledAt ? 原负责人.get(p.id) ?? p.ownerId : p.ownerId);
   const [人, 可见, 收回, 待复核] = await Promise.all([
-    prisma.user.findMany({ where: { id: { in: [...new Set(rows.map(负责人of))] } }, select: { id: true, name: true } }),
+    // 定时分配的接手人（PR3）一并取名字
+    prisma.user.findMany({ where: { id: { in: [...new Set([...rows.map(负责人of), ...rows.flatMap((r) => (r.scheduledAssignTo ? [r.scheduledAssignTo] : []))])] } }, select: { id: true, name: true } }),
     看得到的客户(rows.map((r) => r.customerId)),
     企 ? 数收回次数(rows.map((r) => r.id), prisma) : Promise.resolve(null),
     c.待复核 ? Promise.resolve(c.待复核) : 企 ? 待我复核的(me) : Promise.resolve([]),
@@ -453,7 +476,9 @@ async function 拼项目行(
     pooled: !!p.pooledAt,
     ...(企 && p.customer.pool ? { 客户在公海: true } : {}),
     ...(企 && p.awaitAssignAt && !p.pooledAt ? { 待分配: true } : {}),
-    ...(企 ? { 即将回收: 将收(p), 回收日: 规则 && !p.pooledAt ? 项目回收日(规则, p, 超时线们) : null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null } : {}),
+    // 指定分配时间（PR3）：还没到点的定时，负责人那格写「定时 11-20 15:00」，悬停看分给谁
+    ...(企 && p.awaitAssignAt && !p.pooledAt && p.scheduledAssignAt ? { 定时分配: { 时: 短时刻(p.scheduledAssignAt, 今) ?? "", 给谁: p.scheduledAssignTo ? 名字.get(p.scheduledAssignTo) ?? "已不在的成员" : null } } : {}),
+    ...(企 ? { 即将回收: 将收(p), 回收日: 规则 && !p.pooledAt ? 项目回收日(规则, p, 超时线们) : null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null, 指定回复: p.replyStartAt || p.replyEndAt ? 指定回复文字(p.replyStartAt, p.replyEndAt, 今) : null } : {}),
     // 项目来源和渠道统计同一条规则：项目自己选的优先，没选跟客户来源（lib/enterprise/channel-stats.ts 项目算哪个渠道）；客户不露时不拿客户的来源
     ...(企 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null, 已立项天数: 已立项天数(p.createdAt, 今), 项目来源: p.channel?.name ?? (可见.has(p.customerId) ? p.customer.channel?.name : null) ?? null, level: p.level } : {}),
     ...(收回 ? { 收回次数: 收回.get(p.id) ?? 0 } : {}),
@@ -663,7 +688,7 @@ export async function 公海名单条件(me: { id: string }, 候选: Prisma.Proj
 }
 
 /** 公海页按项目一条一行时的筛选（地址栏 projChannel / phase / createdFrom / createdTo）；空的那项不筛 */
-export type 公海名单筛 = { channelId?: string; phase?: string; createdFrom?: string; createdTo?: string };
+export type 公海名单筛 = { channelId?: string; phase?: string; createdFrom?: string; createdTo?: string; /** 同 项目筛选.onlyNew */ onlyNew?: string; /** 同 项目筛选.open */ open?: string };
 
 /**
  * 公海页渠道名单的候选：这个渠道（项目来源优先，没填跟客户来源）+ 同口径的阶段（阶段进程条件）+ 项目创建时间段
@@ -672,11 +697,12 @@ export type 公海名单筛 = { channelId?: string; phase?: string; createdFrom?
 export function 公海名单候选(f: 公海名单筛): Prisma.ProjectWhereInput | null {
   const 建于 = 创建时间段(f.createdFrom, f.createdTo);
   const 并: Prisma.ProjectWhereInput[] = [
-    ...(f.channelId ? [{ OR: [{ channelId: f.channelId }, { channelId: null, customer: { channelId: f.channelId } }] }] : []),
-    ...(建于 ? [{ createdAt: 建于 }] : []),
+    // 渠道名单不列历史分析回填的（渠道页数的 渠道项目条件 不算它们，点进来条数要对得上）
+    ...(f.channelId ? [{ OR: [{ channelId: f.channelId }, { channelId: null, customer: { channelId: f.channelId } }], ...不算历史分析 }] : []),
+    ...(建于 ? [{ createdAt: 建于, ...(f.onlyNew === "1" ? 不算补建 : {}) }] : []),
   ];
   if (!并.length) return null;
-  return { AND: [...并, ...(f.phase ? 阶段进程条件({ phase: f.phase }, 字典of(企业版())).where : [])] };
+  return { AND: [...并, ...(f.phase || f.open ? 阶段进程条件({ phase: f.phase, open: f.open }, 字典of(企业版())).where : [])] };
 }
 
 /**

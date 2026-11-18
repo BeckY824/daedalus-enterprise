@@ -1,7 +1,8 @@
 /**
  * 企业版客户页记跟进挂项目（10-27 会议：「默认自动关联当前项目」，customers/[id]/actions.ts saveFollowUp 的 projectId）。
  * 钉的是：新建时给了 projectId 就挂上，和项目页记的沟通一样有沟通编号、阶段标记（明确回复记「否」）；
- * 已结束的、在公海的、别的客户的项目不挂；没给 / 给 null 不挂；编辑不挂；不是企业版一律不挂。
+ * 11-17 沟通必须挂项目：已结束的、在公海的、别的客户的项目不存（不再存成客户沟通）；没给时只有一个在推项目就挂它；
+ * 编辑不挂（老的客户沟通照旧能改）；不是企业版一律不挂。
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -57,29 +58,28 @@ it("给了在推的项目：挂上，记下当时节点，有沟通编号和阶�
   expect(r.标记).toMatchObject({ projectId: p.id, phase: "商机", replied: false });
 });
 
-it("已结束的、在公海的、别的客户的项目不挂；跟进照样记上", async () => {
+it("已结束的、在公海的、别的客户的、不存在的项目：整条不存（11-17 不再存成客户沟通）", async () => {
   const 结束 = await 项目(客户, { result: "丢单" });
   const 公海 = await 项目(客户, { pooledAt: new Date() });
   const 别人 = await 项目(别的客户);
   for (const projectId of [结束.id, 公海.id, 别人.id, "不存在"]) {
-    expect(await 记({ projectId })).toMatchObject({ ok: true });
-    expect(await 挂了(await 最新跟进())).toEqual({ 挂: null, 编号: null, 标记: null });
+    expect(await 记({ projectId })).toMatchObject({ ok: false });
   }
-  expect(await prisma.followUp.count({ where: { customerId: 客户 } })).toBe(4);
+  expect(await prisma.followUp.count({ where: { customerId: 客户 } })).toBe(0);
 });
 
-it("没给、给 null：不挂（订单、AI、调研这些调用方照旧）", async () => {
-  await 项目(客户);
-  for (const 补 of [{}, { projectId: null }]) {
-    await 记(补);
-    expect((await 挂了(await 最新跟进())).挂).toBeNull();
-  }
-});
-
-it("编辑时带 projectId 也不挂", async () => {
+it("没给、给 null：只有一个在推项目就挂它", async () => {
   const p = await 项目(客户);
-  await 记();
-  const id = await 最新跟进();
+  for (const 补 of [{}, { projectId: null }]) {
+    expect(await 记(补)).toMatchObject({ ok: true });
+    expect((await 挂了(await 最新跟进())).挂?.projectId).toBe(p.id);
+  }
+});
+
+it("编辑时带 projectId 也不挂（老的客户沟通照旧能改）", async () => {
+  const p = await 项目(客户);
+  // 11-17 之前记下的、没挂项目的客户沟通
+  const id = (await prisma.followUp.create({ data: { title: "", customerId: 客户, type: "PHONE", content: "老沟通", status: "已完成", occurredAt: new Date(), ownerId: 销售 } })).id;
   const 原 = await prisma.followUp.findUniqueOrThrow({ where: { id } });
   // M-权限-09 原口径（11-09）：改沟通只给身为负责人的管理；11-01 权限只认业务角色
   await prisma.entMember.upsert({ where: { userId: 销售 }, create: { userId: 销售, bizRole: "sales_mgr" }, update: { bizRole: "sales_mgr" } });

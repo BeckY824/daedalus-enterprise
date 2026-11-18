@@ -4,6 +4,7 @@ import { 补来源 } from "@/lib/customer-extra-db";
 
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { beijingDay } from "@/lib/business-clock";
 import { 进公海挂靠通知 } from "@/lib/enterprise/attach-approval";
 import { 解绑飞书 } from "@/lib/enterprise/feishu-login";
 import { 读组织, 直属上级of, 权限组织, 是系统管理员of, 能管设置of, 有人能管设置, 读组织于, 留一位系统管理员错, 留一位系统管理员话 } from "@/lib/enterprise/org";
@@ -883,7 +884,8 @@ export async function 找总管理开通(项: string): Promise<{ ok: true; 发�
   const 管们 = [...org.成员.keys()].filter((id) => id !== me.id && 是系统管理员of(org, id));
   if (!管们.length) return { ok: false, error: "现在没有在职的系统管理员，请直接联系公司负责人" };
   const { notify } = await import("@/lib/enterprise/notify");
-  const 今天 = new Date().toISOString().slice(0, 10);
+  // 一天按北京算（审核 11-18 通知 P2-1）：原来取 UTC 日，北京 00:00–08:00 和当天白天被记成两天
+  const 今天 = beijingDay(new Date());
   await notify(管们, {
     kind: "设置", title: `${me.name} 想改「${那项.名}」`,
     body: `${me.name} 在设置里点了「找总管理开通」：${那项.说明}。这一项只有系统管理员能改，要改请到 设置 里处理或和他沟通。`,

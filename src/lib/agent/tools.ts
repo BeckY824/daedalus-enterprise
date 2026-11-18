@@ -22,7 +22,10 @@ import { 合计文字 } from "../currency";
 import { 客户来源线索 } from "../customer-lead-origin";
 import { 阶段们, 结局们, 是阶段, 是结局, 同名们, 本套位置, 字典of } from "../project/nodes";
 import { 看得到的客户, 露客户 } from "../project/db";
+import { 不算历史分析, 历史分析的, 是历史分析, 来源字, 并条件, 人名显示 } from "../project/system-created";
 import { 企业版 } from "../enterprise/switch";
+import { 启用渠道条件 } from "../enterprise/channel-main";
+import { 渠道启用 } from "../enterprise/channel-main-core";
 import { 无负责人占位邮箱 } from "../pool";
 import { 现值选取, 现值表 } from "./current-values";
 import { prisma } from "../prisma";
@@ -38,14 +41,15 @@ import { 名字在别处, 别处说法, 别处附件, 找人详, 没找到话 } 
 import type { BusinessConfig } from "../business-config";
 import type { BriefRecord } from "../ai-draft";
 import { 扩同义词 } from "./synonyms";
-import { 校验规格, 说人话, 编译, 能查的表, 查询表, 分组上限, 关联们, 用到的名字, 认字段, type 名映射, type 查询规格, type 表名 } from "./query";
+import { 校验规格, 说人话, 编译, 能查的表, 查询表, 分组上限, 关联们, 用到的名字, 认字段, 节点记录类型叫法, type 名映射, type 查询规格, type 表名 } from "./query";
 import { 限定的我 } from "../team-scope";
 import { 字段权限of } from "../enterprise/field-perm";
 import { 能看提成 } from "../project/commission-db";
 import { 读组织 } from "../enterprise/org";
-import { buildProposal, describeProposal, missingFields, 可改字段表, 可改字段名单, type Proposal, type ProposalKind } from "./proposals";
+import { buildProposal, 默认填到客户, describeProposal, missingFields, 可改字段表, 可改字段名单, type Proposal, type ProposalKind } from "./proposals";
 import { FOLLOW_TYPES, FOLLOW_METHODS, FOLLOW_STATUSES, DECISION_STATUSES, LEAD_STATUSES } from "../constants";
 import { 项目写工具 } from "./project-tools";
+import { 常用沟通方式of } from "../follow-habit-db";
 
 export type ToolContext = {
   userId: string;
@@ -171,6 +175,8 @@ export function query_records说明(只用项目: boolean): string {
     "它接的是：联系人（没有专门工具）、要排序（「哪个项目最久没动」）、要跨一张表、" +
     "以及项目、卡点、节点记录、回款、线索验证、提成、公海、组织架构、同事这些没有专门工具的表。" +
     "「客户」表不含公海里的客户，问公海查「公海」表。" +
+    "「节点记录」里记录类型不是改节点（node）的行——换负责人（transfer）、放回公海、公海领取——原节点 / 新节点只是照抄当时的节点，不是节点变化；" +
+    "问项目节点怎么走的，加条件 记录类型 等于 node。" +
     (只用项目 ? "这一家只用项目：线索、商机、订单是项目的阶段，查「项目」表、按「阶段」筛，没有单独的线索 / 商机 / 签约表。" : "") +
     "规则：「表」只能填 " + 表.join("、") + " 之一；「字段」填中文字段名；" +
     "「运算」只能填 包含 / 等于 / 不等于 / 属于 / 大于 / 小于 / 不早于 / 不晚于 / 最近天数 / 为空 / 非空 之一。" +
@@ -411,7 +417,7 @@ export const TOOLS: Tool[] = [
             where: { customerId: c.id },
             orderBy: { updatedAt: "desc" },
             take: 项目最多 + 1,
-            select: { id: true, name: true, phase: true, node: true, result: true, nextStepAt: true, nextStepText: true, ownerId: true, pooledAt: true },
+            select: { id: true, name: true, phase: true, node: true, result: true, nextStepAt: true, nextStepText: true, ownerId: true, pooledAt: true, source: true },
           })
         : [];
       const 项目负责人 = 项目行.length
@@ -426,7 +432,10 @@ export const TOOLS: Tool[] = [
         结局: p.result ?? "进行中",
         下一步: p.nextStepText ?? null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null,
         负责人: p.pooledAt ? "在公海" : (项目负责人.get(p.ownerId) ?? "已不在的成员"),
+        // 历史分析回填的照列、标来源，不计入个数（system-created.ts，25E）
+        ...(是历史分析(p) ? { 数据来源: `${来源字(p.source)}（旧沟通还原的，不计入个数和统计）` } : {}),
       }));
+      const 回填个 = 项目行.slice(0, 项目最多).filter(是历史分析).length;
       const data = {
         id: c.id,
         name: c.name,
@@ -447,7 +456,7 @@ export const TOOLS: Tool[] = [
         timeline: timeline || "（从未跟进过）",
         ...(只用项目 ? { 项目, ...(项目行.length > 项目最多 ? { 项目说明: `只列最近动过的 ${项目最多} 个，更早的用 list_projects 按客户名查` } : {}) } : {}),
       };
-      return { summary: `${c.name}：${c.followUps.length} 条跟进${sources ? `、${sources} 段原文` : ""}${项目.length ? `、${项目行.length > 项目最多 ? `${项目最多}+` : 项目.length} 个项目` : ""}${c.plans[0] ? "、1 条计划" : ""}`, data, records };
+      return { summary: `${c.name}：${c.followUps.length} 条跟进${sources ? `、${sources} 段原文` : ""}${项目.length ? `、${项目行.length > 项目最多 ? `${项目最多}+` : 项目.length - 回填个} 个项目${项目行.length <= 项目最多 && 回填个 ? `（另有 ${回填个} 个历史分析回填的，不计入）` : ""}` : ""}${c.plans[0] ? "、1 条计划" : ""}`, data, records };
     },
   },
   {
@@ -653,12 +662,13 @@ export const TOOLS: Tool[] = [
       const rows = await prisma.channel.findMany({
         where: {
           ...(q ? { name: { contains: q } } : {}),
-          ...(args.includeInactive === true ? {} : { active: true }),
+          // 停用按 渠道启用（P-渠道-13）：主渠道停了的子渠道也算停用，和渠道页一个口径
+          ...(args.includeInactive === true ? {} : 启用渠道条件),
         },
         orderBy: { createdAt: "desc" },
         take: 50,
         select: {
-          id: true, name: true, phone: true, active: true, remark: true,
+          id: true, name: true, phone: true, active: true, remark: true, main: { select: { active: true } },
           channelOwner: { select: { name: true } },
           // 这个关系名叫 directCustomers，其实是 channelId 命中的整条链（转介绍来的也继承链顶渠道）
           directCustomers: { select: { referrerCustomerId: true, contracts: { select: { amount: true, ...带币种.签约 } } } },
@@ -682,7 +692,7 @@ export const TOOLS: Tool[] = [
           // 按币种写（不换汇）：「US$ 3,200 · ¥ 19,800」
           这条链的签约额: 汇总[c.id].chainMoney.length ? 合计文字(汇总[c.id].chainMoney) : 0,
           电话: 号(c.phone ?? null),
-          状态: c.active ? "在用" : "已停用",
+          状态: 渠道启用(c) ? "在用" : "已停用",
           备注: c.remark ?? null,
         })),
       };
@@ -750,13 +760,19 @@ export const TOOLS: Tool[] = [
         // 公海里的项目只在问公海时列（P-看-03；企业版项目列表默认也不列公海项目，lib/project/list.ts 列表条件）。团队版照旧混着、行上写「在公海」
         ...(args.pooled === true ? { pooledAt: { not: null } } : 企业版() ? { pooledAt: null } : {}),
       };
-      const [total, 各阶段, rows] = await Promise.all([
-        prisma.project.count({ where }),
-        prisma.project.groupBy({ by: ["phase"], where, _count: { _all: true } }),
+      /*
+        历史沟通分析回填的项目（system-created.ts「所有统计都不算」，25E）：总数、各阶段个数不算它；
+        明细照旧列出（同项目列表 / 公海页），行上标「数据来源」、写明不计入，另报有几个
+      */
+      const 计数where = 并条件(where, 不算历史分析);
+      const [total, 各阶段, 回填数, rows] = await Promise.all([
+        prisma.project.count({ where: 计数where }),
+        prisma.project.groupBy({ by: ["phase"], where: 计数where, _count: { _all: true } }),
+        prisma.project.count({ where: 并条件(where, 历史分析的) }),
         prisma.project.findMany({
           where, orderBy: { updatedAt: "desc" }, take: 30,
           select: {
-            id: true, name: true, customerId: true, ownerId: true, phase: true, node: true, result: true, amount: true, currency: true,
+            id: true, name: true, customerId: true, ownerId: true, phase: true, node: true, result: true, amount: true, currency: true, source: true,
             nextStepAt: true, nextStepText: true, updatedAt: true, pooledAt: true, customer: { select: { name: true } }, exceptionCategory: { select: { name: true } },
           },
         }),
@@ -770,11 +786,13 @@ export const TOOLS: Tool[] = [
       // 公海里同事客户的项目不露客户名（和项目页一个规矩，见 lib/project/db.ts 的 露客户）；按客户名搜到的也剔掉，免得拿名字试出来
       const 字典 = 字典of(企业版());
       const 列 = rows.filter((p) => !词 || p.name.includes(词) || 露客户(me, p, 可见)).map((p) => 本套位置(p, 字典));
-      // 带关键词时总数也按剔过的算（最多 30 个），不然「1 个项目、列出 0 个」一样露了底
-      const 数 = 词 ? 列.length : total;
-      const 个数 = (ph: string) => (词 ? 列.filter((p) => p.phase === ph).length : (各阶段.find((g) => g.phase === ph)?._count._all ?? 0));
+      // 带关键词时总数也按剔过的算（最多 30 个），不然「1 个项目、列出 0 个」一样露了底；历史回填的照样不算
+      const 计入 = 列.filter((p) => !是历史分析(p));
+      const 数 = 词 ? 计入.length : total;
+      const 个数 = (ph: string) => (词 ? 计入.filter((p) => p.phase === ph).length : (各阶段.find((g) => g.phase === ph)?._count._all ?? 0));
+      const 回填 = 词 ? 列.length - 计入.length : 回填数;
       return {
-        summary: `${数} 个项目（${阶段们.map((ph) => `${ph} ${个数(ph)}`).join("、")}）${数 > 列.length ? `，列出最近改过的 ${列.length} 个` : ""}`,
+        summary: `${数} 个项目（${阶段们.map((ph) => `${ph} ${个数(ph)}`).join("、")}）${数 + 回填 > 列.length ? `，列出最近改过的 ${列.length} 个` : ""}${回填 ? `；另有 ${回填} 个历史分析回填的项目（旧沟通还原的，照列、不计入个数）` : ""}`,
         data: {
           总数: 数,
           各阶段: Object.fromEntries(阶段们.map((ph) => [ph, 个数(ph)])),
@@ -792,6 +810,7 @@ export const TOOLS: Tool[] = [
             归属: p.pooledAt ? 归属叫法.公海 : p.ownerId === ctx.userId ? 归属叫法.我 : 归属叫法.别人,
             下一步: p.nextStepText ?? null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null,
             多久没动: `${dayjs().diff(p.updatedAt, "day")} 天`,
+            ...(是历史分析(p) ? { 数据来源: `${来源字(p.source)}（旧沟通还原的，不计入个数和统计）` } : {}),
           })),
         },
       };
@@ -971,8 +990,8 @@ export const TOOLS: Tool[] = [
   proposeTool("propose_plan", "建议排一次下次跟进计划。", '{"id": "客户 id", "subject": "下次谈什么", "plannedAt": "YYYY-MM-DD HH:mm", "method": "电话沟通/线上会议/上门拜访/邮件沟通/微信沟通", "reason": "一句话：为什么"}', "add_plan"),
   proposeTool(
     "propose_lead",
-    "建议新建一条线索。只知道名字也要提，留空的字段人会在卡片上补。",
-    '{"name": "线索名称/姓名", "contact": "联系人，可空", "phone": "电话，可空", "wechat": "微信，可空", "email": "邮箱，可空", "whatsapp": "WhatsApp，可空", "source": "来源 / 渠道，人说了就原样给，可空", "status": "状态，可空", "remark": "备注，可空；国家城市、下一步、分给谁别写进来", "assignTo": "分给谁：人说了交给哪位同事就原样给姓名，可空", "country": "国家/地区，可空", "city": "城市，可空", "nextAt": "下一步时间 YYYY-MM-DD，可空", "nextStep": "下一步计划，可空", "bizLine": "内贸/外贸/暂不分配，有把握才给", "regionTo": ["客户/联系人/项目：国家城市是谁的，说不清就不给"], "reason": "一句话：为什么"}',
+    "建议新建一条线索。只知道名字也要提，留空的字段人会在卡片上补。卡上有「分配方式」一格（指定分配 / 自动分配 / 暂不分配等，市场成员默认自动分配），还有负责人、分配方向、指定分配时间、指定回复时间：人说要自动分配、分给谁、定时分，告诉他在卡上选好再确认，不要说卡上没有对应的填写位置。",
+    '{"name": "线索名称/姓名，不知道就空着；不要填号码", "contact": "联系人，可空；不要填号码", "numbers": [{"type": "手机/座机/微信/邮箱/WhatsApp/阿里国际站ID/传真/Telegram", "value": "号码"}], "source": "来源 / 渠道，人说了就原样给，可空", "status": "状态，可空", "remark": "备注，可空；需求、预算写这里；国家城市地址、职位、下一步、分给谁别写进来", "assignTo": "分给谁：人说了交给哪位同事就原样给姓名，可空", "country": "国家/地区，可空；给了城市就给上（国内给「中国」）", "province": "省/州，可空", "city": "城市，可空", "district": "区/县，可空", "address": "详细地址，可空", "position": "联系人职位，可空", "指定回复开始": "客户要求联系的开始时间 YYYY-MM-DD HH:mm，可空", "指定回复结束": "截止时间 YYYY-MM-DD HH:mm，可空", "nextAt": "下一步时间 YYYY-MM-DD，可空", "nextStep": "下一步计划，可空", "bizLine": "内贸/外贸/暂不分配，有把握才给", "regionTo": ["客户/联系人/项目：国家城市是谁的，说不清就不给（卡上默认勾客户所在区域，人可改）"], "reason": "一句话：为什么"}',
     "add_lead",
     { needsCustomer: false },
   ),
@@ -1119,7 +1138,9 @@ export const TOOLS: Tool[] = [
         设置里改成了「已演示」，别处都显示「已演示」，AI 分组出来却是「已试听」。
       */
       const 显示 = (列: string, v: unknown) =>
-        (列 === "followStatus" || 列 === "decisionStatus") && typeof v === "string" ? statusLabel(ctx.b, v) : v;
+        (列 === "followStatus" || 列 === "decisionStatus") && typeof v === "string" ? statusLabel(ctx.b, v)
+          : 规格.表 === "节点记录" && 列 === "kind" && typeof v === "string" ? 节点记录类型叫法[v] ?? v
+          : v;
 
       if (规格.分组) {
         const 列 = (表定义.字段 as Record<string, { 列: string; 名: string; 型: string }>)[规格.分组];
@@ -1216,7 +1237,8 @@ async function 名字表(rows: Record<string, unknown>[], 字段们: { 列: stri
   const 部门名 = new Map(部门.map((d) => [d.id, d.name]));
   return (列, v) => {
     if (typeof v !== "string") return undefined;
-    if (人列.has(列)) return 人名.get(v) ?? "（已删除的账号）";
+    // system 不是真账号：创建人列是补建的（系统补建），别的人名列是「系统」（超时回收等），共用 人名显示（25E）
+    if (人列.has(列)) return 人名显示(v, 人名, { 创建人: 列 === "creatorId", 不在: "（已删除的账号）" });
     if (部门列.has(列)) return 部门名.get(v) ?? "（已删除的部门）";
     return undefined;
   };
@@ -1287,8 +1309,15 @@ function proposeTool(name: string, description: string, args: string, kind: Prop
       if (ctx.proposals.some((p) => p.kind === kind && p.customerId === c.id && (needsCustomer || p.customerName === c.name))) {
         return { summary: "已经提过了", data: { note: "这张建议卡已经给出，不要重复提" } };
       }
-      const r = buildProposal(`${kind}-${ctx.proposals.length}-${c.id || c.name}`, kind, c, a, ctx.b);
-      if (!r.ok) return { summary: `建议不合法：${r.error}`, data: { error: r.error } };
+      // 记沟通卡：AI 没给类型时按这个人的习惯方式默认（11-18，同记沟通框 lib/follow-habit.ts）；没有记录照旧电话
+      if (kind === "add_followup" && !str(a.type, 20)) {
+        const 习惯 = await 常用沟通方式of(ctx.userId).catch(() => null);
+        if (习惯) a = { ...a, type: 习惯.type, ...(习惯.method ? { method: 习惯.method } : {}) };
+      }
+      const r0 = buildProposal(`${kind}-${ctx.proposals.length}-${c.id || c.name}`, kind, c, a, ctx.b);
+      if (!r0.ok) return { summary: `建议不合法：${r0.error}`, data: { error: r0.error } };
+      // 新线索卡：有国家 / 城市、模型没说填到哪 = 默认勾客户所在区域（外国城市同中国城市，11-18）
+      const r = { ...r0, proposal: 默认填到客户(r0.proposal) };
       ctx.proposals.push(现值 ? { ...r.proposal, 现值 } : r.proposal);
       const miss = missingFields(r.proposal, ctx.b);
       return {

@@ -192,14 +192,14 @@ describe("4. 录入弹窗草稿（只存本机）", () => {
     expect(读草稿(全名)).toBeNull();
   });
 
-  it("放 7 天，过了当没有；坏的、空的当没有", () => {
+  it("放 3 天（11-17 全站草稿统一，lib/form-draft.ts），过了当没有；坏的、空的当没有", () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(new Date("2026-10-01T00:00:00Z"));
       存草稿("k", { name: "x" });
-      vi.setSystemTime(new Date("2026-10-07T23:00:00Z"));
+      vi.setSystemTime(new Date("2026-10-03T23:00:00Z"));
       expect(读草稿("k")).toEqual({ name: "x" });
-      vi.setSystemTime(new Date("2026-10-08T01:00:00Z"));
+      vi.setSystemTime(new Date("2026-10-04T01:00:00Z"));
       expect(读草稿("k")).toBeNull();
     } finally {
       vi.useRealTimers();

@@ -51,7 +51,7 @@ describe("认微信截图", () => {
     expect(认微信截图(截图([["Maria Test", 30], ["微信号：mtest88", 14]]))).toMatchObject({ 名字: "Maria Test", 国家: "", 名字拆过: false });
   });
   it("没有微信号那行、或微信号不像：不是微信截图", () => {
-    expect(认微信截图(截图([["王五", 30], ["13800000000", 14]]))).toBeNull();
+    expect(认微信截图(截图([["王五", 30], ["13812000000", 14]]))).toBeNull();
     expect(认微信截图(截图([["王五", 30], ["微信号：12345", 14]]))).toBeNull();
   });
 });
@@ -70,9 +70,9 @@ describe("微信成新线索卡", () => {
     expect(r.ok && r.proposal.待确认).toBeUndefined();
     expect(r.ok && missingFields(r.proposal)).toEqual([]);
   });
-  it("没名字：用微信号当名称，名称待确认", () => {
+  it("没名字：名称空着、待确认（11-17 起微信号不当名称，P-抬头-13）", () => {
     const r = 微信成新线索卡(资料({ 名字: "" }), DEFAULT_BUSINESS, []);
-    expect(r.ok && r.proposal).toMatchObject({ name: "wxid_test0001", 待确认: ["name", "country"] });
+    expect(r.ok && r.proposal).toMatchObject({ name: "", wechat: "wxid_test0001", 待确认: ["name", "country"] });
   });
 });
 

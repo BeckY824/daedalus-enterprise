@@ -66,7 +66,7 @@ export function 系统写<T>(fn: () => Promise<T>): Promise<T> {
 const 只读也能写 = new Set(["AuditLog", "AiConversation", "AiMessage", "AiProject", "User", "EntNotice", "EntDupeHit"]);
 /**
  * 切换视图的写拦：系统写这段**也拦**（11-12 起；原来放行，第一次读字典要建默认项）。
- * 页面渲染时顺手的种子写（字典、角色、异常类别、补主渠道）在切换视图时自己跳过、内存里给默认（dict.ts、project/db.ts、channels/page.tsx），
+ * 页面渲染时顺手的种子写（字典、角色、异常类别）在切换视图时自己跳过、内存里给默认（dict.ts、project/db.ts；渠道页补主渠道 11-17 已拿掉，改在建渠道时挂），
  * 走到这里的就是漏网的写，一律拒，库里一笔不落
  */
 async function 视图拦(动作: string): Promise<void> {

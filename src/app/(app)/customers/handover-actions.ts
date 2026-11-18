@@ -241,12 +241,13 @@ export async function 确认交接(id: string): Promise<结果> {
   const h = await 看全部(() => prisma.entHandover.findUnique({ where: { id } }));
   if (!h || h.status !== 待确认) return { ok: false, error: 已处理 };
   if (h.toUserId !== me.id) return { ok: false, error: "只有接手人自己能确认" };
-  // 离职交接：接手人此刻还得能接（发起之后被停用、摘了业务角色、改成只读的，确认不了），同看板发起时那道闸；交接留在待确认
-  if (h.kind === "离职") {
+  // 接手人此刻还得能接（发起之后被停用、摘了业务角色、改成只读的，确认不了），同看板发起时那道闸；交接留在待确认。
+  // 转让 / 申请移交同样复查（审核 11-18 权限 P2-6：原来只查离职）
+  {
     const 不行 = (await prisma.user.findUnique({ where: { id: me.id }, select: { active: true } }))?.active === false
       ? "该成员已停用"
       : 公海分不给话(me, await 权限组织(), me.id);
-    if (不行) return { ok: false, error: `你现在接不了这笔离职交接（${不行}）；交接还在等确认，请发起人改接手人或撤回` };
+    if (不行) return { ok: false, error: `你现在接不了这笔${h.kind === "离职" ? "离职" : ""}交接（${不行}）；交接还在等确认，请发起人改接手人或撤回` };
   }
   const b = await getBusiness();
   // 规则、组织在事务外读（事务占着库的唯一连接，事务里读设置会等到超时）

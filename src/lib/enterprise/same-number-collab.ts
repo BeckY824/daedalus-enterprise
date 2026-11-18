@@ -26,8 +26,10 @@ import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 企业版 } from "./switch";
 import { 全公司查号, 首条撞的, type 验好的号 } from "./contact-dedupe";
 import { notify } from "./notify";
+import { 名字是号码, 通知里的客户名 } from "./notice-mask";
 import { 主渠道入口前缀, 是主渠道入口 } from "./channel-main-core";
 import { 读组织 } from "./org";
+import { 没设业务角色, 只看的人 } from "./permissions";
 import { 待分配占着, 能分配的人们 } from "./await-assign";
 
 export const 同号标题 = "同号再次录入";
@@ -157,6 +159,14 @@ function 拼内容(号: 验好的号, 谁: string, 入口: string, 来源: strin
   return { 不同, 标题: 不同 ? 重点标题 : 同号标题, 内容: 行们.join("\n") };
 }
 
+/** 同号再次录入的通知正文：谁、来源、入口，有没有附内容；不带号码、不带原文 */
+function 通知正文(谁: string, 入口: string, 来源: string, 不同的现有来源: string[], 有内容: boolean, 有项目: boolean): string {
+  const 行们 = [`同号再次录入：${谁} 录入（来源：${来源 || "未填"}，入口：${入口}）`];
+  if (不同的现有来源.length) 行们.push(`现有来源：${不同的现有来源.join("、")}，来源不同，重点关注`);
+  行们.push(`${有内容 ? "录入的内容" : "这次录入"}已写进${有项目 ? "项目" : "客户"}沟通记录，打开去沟通记录看`);
+  return 行们.join("\n");
+}
+
 function 拼反馈(负责人名: string, 自己负责: boolean, 有项目: boolean, 邀请: 邀请结果, 客户名: string | null, 待分配 = false): string {
   const 位置 = 客户名 ? `「${客户名}」` : "";
   if (待分配) return `这个号码已在待分配的客户${位置}里（还没有负责人），已把你的记录写进客户沟通记录并通知了能分配的人`;
@@ -173,6 +183,9 @@ function 拼反馈(负责人名: string, 自己负责: boolean, 有项目: boole
 export async function 同号再次录入(我: 人, 号: 验好的号, 录入: 录入信息): Promise<协同结果> {
   if (!企业版()) return { 走: false, 原因: "没开企业版" };
   if (await 只读身份中(defaultClient)) return { 走: false, 原因: "只读身份" };
+  // 没设业务角色、设了「只看某人」的也不走（审核 11-18 权限 P2-10，P-沟通-04、P-看-09）：不记沟通、不发组员邀请，回原来的查重提示
+  const 组织 = await 读组织();
+  if (没设业务角色(组织, 我.id) || 只看的人(组织, 我.id)) return { 走: false, 原因: "没设业务角色或只看某人" };
   const 目标 = await 找目标(号);
   if (!目标.走) return { 走: false, 原因: 目标.原因 };
   const { 首条, 负责人名, 项目, 待分配 } = 目标;
@@ -228,10 +241,13 @@ export async function 同号再次录入(我: 人, 号: 验好的号, 录入: �
     // 待分配（X-87）：链到那条待分配线索，能分配的人从那里分；建的人只是占位，不发
     const 链接 = 待分配 ? `/projects/${待分配.id}` : 项目 ? `/projects/${项目.id}` : `/customers/${首条.id}`;
     const 收 = 待分配 ? 能分配的人们(await 读组织()) : [项目?.ownerId, 首条.salesOwnerId];
+    // 推到飞书的不带号码、不带录入的沟通原文（P-转-12 提醒里不带手机号，审核 11-18 P1-2）：只说谁、从哪录的，原文去沟通记录看。
+    // 客户名就是号码的换成客户编号
+    const 编号 = 名字是号码(首条.name) ? (await 看全部(() => prisma.customer.findUnique({ where: { id: 首条.id }, select: { customerNo: true } })))?.customerNo : null;
     await notify(收.filter((u) => u !== 我.id), {
       kind: "撞号",
-      title: `${我.name} 再次录入了同一号码${拼.不同 ? "（来源不同）" : ""}：${首条.name}`,
-      body: 拼.内容,
+      title: `${我.name} 再次录入了同一号码${拼.不同 ? "（来源不同）" : ""}：${通知里的客户名({ name: 首条.name, id: 首条.id, customerNo: 编号 })}`,
+      body: 通知正文(我.name, 录入.入口, 来源, 拼.不同 ? 现有 : [], !!录入.内容?.trim(), !!项目),
       link: 链接,
       key: `same-number:${记.followUpId}`,
     });

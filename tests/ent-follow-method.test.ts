@@ -19,7 +19,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 企业字典, 改字典项, 定沟通方式, 认跟进方式 } from "@/lib/enterprise/dict";
-import { 方式对类型, 类型对方式, 对得上的方式, 跟进方式名, 筛选方式名 } from "@/lib/follow-method";
+import { 方式对类型, 类型对方式, 对得上的方式, 跟进方式名, 筛选方式名, 补的方式 } from "@/lib/follow-method";
 import { 记项目沟通Action } from "@/app/(app)/projects/actions";
 import { saveFollowUp } from "@/app/(app)/customers/[id]/actions";
 
@@ -60,11 +60,22 @@ describe("纯函数", () => {
     expect(跟进方式名({ type: "OTHER", method: "Telegram" })).toBe("Telegram");
     expect(跟进方式名({ type: "PHONE" })).toBe("电话沟通");
   });
+
+  it("没填方式的「其他」类（11-17）：显示「—」不显示「其他记录」；拼在一行里的传空串省掉；补方式时不补「其他方式」", () => {
+    expect(跟进方式名({ type: "OTHER", method: null })).toBe("—");
+    expect(跟进方式名({ type: "OTHER", method: "" })).toBe("—");
+    expect(跟进方式名({ type: "OTHER" }, "")).toBe("");
+    expect(跟进方式名({ type: "OTHER", method: "其他方式" })).toBe("其他方式");
+    expect(跟进方式名({ type: "TASK" })).toBe("跟进任务");
+    expect(补的方式("OTHER")).toBeNull();
+    expect(补的方式("EMAIL")).toBe("邮件沟通");
+    expect(补的方式("REMIND")).toBeNull();
+  });
 });
 
 describe("看板沟通方式筛选的叫法", () => {
-  it("OTHER 这档含导入的「未注明」，筛选显示「其他 / 未注明」；别的档照旧", () => {
-    expect(筛选方式名("OTHER")).toBe("其他 / 未注明");
+  it("OTHER 这档含选了「其他方式」的和没填方式的，筛选显示「其他 / —」（没填一律显示「—」，11-17 第 2 题 A）；别的档照旧", () => {
+    expect(筛选方式名("OTHER")).toBe("其他 / —");
     expect(筛选方式名("PHONE")).toBe(类型对方式("PHONE"));
     expect(筛选方式名("没这档")).toBe("没这档");
   });
@@ -89,6 +100,10 @@ describe("字典与校验", () => {
     expect(await 定沟通方式(null, "PHONE", "Telegram")).toEqual({ ok: true, method: "手机通话", type: "PHONE" });
     expect(await 定沟通方式("飞鸽传书", "PHONE")).toMatchObject({ ok: false, error: expect.stringContaining("不在") });
     expect(await 定沟通方式("微信沟通", "TASK")).toEqual({ ok: true, method: null, type: "TASK" });
+    // 11-17：「其他」类没带方式不再补成「其他方式」，留空（显示「—」）；人选了「其他方式」照存
+    expect(await 定沟通方式(undefined, "OTHER")).toEqual({ ok: true, method: null, type: "OTHER" });
+    expect(await 定沟通方式(null, "OTHER", null)).toEqual({ ok: true, method: null, type: "OTHER" });
+    expect(await 定沟通方式("其他方式", "PHONE")).toEqual({ ok: true, method: "其他方式", type: "OTHER" });
   });
 
   it("停用的方式新记不认；旧记录原来就是它的照留", async () => {
@@ -124,5 +139,11 @@ describe("存进库", () => {
     // 11-02 改沟通是负责人的事：销售自己改
     expect(await saveFollowUp({ ...base, id: f.id, type: "OTHER", content: "改了内容" })).toMatchObject({ ok: true });
     expect(await prisma.followUp.findUnique({ where: { id: f.id }, select: { method: true, content: true } })).toEqual({ method: "展会面聊", content: "改了内容" });
+  });
+
+  it("没填方式的老记录（c2 11-17 把「未注明」清成空）：改内容时方式还是空，不自动填成「其他方式」", async () => {
+    const f = await prisma.followUp.create({ data: { customerId: 客户, ownerId: 销售, type: "OTHER", method: null, title: "", content: "导入的", status: "已完成", occurredAt: new Date() } });
+    expect(await saveFollowUp({ customerId: 客户, id: f.id, type: "OTHER", content: "改了内容", status: "已完成", occurredAt: new Date().toISOString() })).toMatchObject({ ok: true });
+    expect(await prisma.followUp.findUnique({ where: { id: f.id }, select: { type: true, method: true, content: true } })).toEqual({ type: "OTHER", method: null, content: "改了内容" });
   });
 });

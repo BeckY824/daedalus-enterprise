@@ -11,7 +11,7 @@ import { 认渠道触点 } from "@/lib/enterprise/touchpoint";
 import { requireUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
 import { recordAudit } from "@/lib/audit";
-import { buildProposal, missingFields, summarizeApplied, 可改字段表, type Proposal, type 一处改动 } from "@/lib/agent/proposals";
+import { buildProposal, missingFields, summarizeApplied, 可改字段表, 线索号码行, 线索卡地址, type Proposal, type 一处改动 } from "@/lib/agent/proposals";
 import { statusLabel, type BusinessConfig } from "@/lib/business-config";
 import { patchCustomer, saveCustomer, saveContract } from "../customers/actions";
 import { saveFollowUp, savePlan, deleteFollowUp } from "../customers/[id]/actions";
@@ -22,12 +22,11 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 卡片刚记的能撤, 卡片撤销放行, 卡片撤销过时话 } from "@/lib/enterprise/follow-perm";
 import { 是业务线 } from "@/lib/enterprise/assign-line";
 import { 要下一步时间, 联系人地址上限 } from "@/lib/project/wizard";
-import { 客户在推项目 } from "@/lib/project/active";
-import { 能管项目 } from "@/lib/project/db";
-import { 权限组织 } from "@/lib/enterprise/org";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版字典 } from "@/lib/project/stage-dict";
-import { 验号码, 号码类型叫法 } from "@/lib/enterprise/contact-format";
+import { 号码库类型, 库类型到号码类型 } from "@/lib/enterprise/contact-dedupe";
+import { 验联系人号码们 } from "@/lib/enterprise/customer-v2-db";
+import { 老三格 } from "@/lib/enterprise/customer-v2";
 import { 认出备注里的号码, AI建档查重详 } from "@/lib/enterprise/ai-lead-dedupe";
 import { saveChannel } from "../channels/actions";
 import { 按名字找负责人 } from "@/lib/owners";
@@ -59,7 +58,13 @@ export type 附件去处 = { contactId: string } | { leadId: string };
 
 /** 项目：企业版新线索卡建成的项目 id，卡上「查看」直接打开它（10-30 交互审核） */
 /** 回收站号：只在回收站里撞上的号码（客户 11-05），卡上给「从回收站捞回」（customers/number-actions.ts 从回收站捞回） */
-export type ApplyResult = { ok: true; message: string; 撤销?: 撤销凭据; 附件去处?: 附件去处; 项目?: string } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string } };
+/**
+ * 首条附件票（11-18 员工反馈「录入的时候添加不了截图」）：新线索卡上勾了把对话里带的截图存成附件，确认时交 首条附件，
+ * 建成项目照建档向导同一套签一张首条附件票给录入人（lib/enterprise/first-follow-ticket.ts），浏览器凭票把截图传到这条首条沟通上
+ */
+export type 首条附件票 = { followUpId: string; 票: string };
+export type 确认选项 = { 首条附件?: boolean };
+export type ApplyResult = { ok: true; message: string; 撤销?: 撤销凭据; 附件去处?: 附件去处; 项目?: string; 首条附件票?: 首条附件票 } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string } };
 
 /**
  * 确认一张 AI 建议卡，把它真的写进去。
@@ -237,7 +242,7 @@ function 放掉凭据(userId: string, u: unknown) {
   }
 }
 
-export async function applyProposal(input: Proposal): Promise<ApplyResult> {
+export async function applyProposal(input: Proposal, 选项?: 确认选项): Promise<ApplyResult> {
   const me = await requireUser();
   /*
     同一张卡确认第二次：不再做一遍（第二轮 AI）。原来只靠前端按钮变灰，网慢时连点、或者刷新后又点一次，
@@ -250,7 +255,7 @@ export async function applyProposal(input: Proposal): Promise<ApplyResult> {
   记下确认过(卡键);
   let r: ApplyResult | undefined;
   try {
-    r = await 做这张卡(input, me);
+    r = await 做这张卡(input, me, 选项?.首条附件 === true);
     return r;
   } finally {
     if (!r?.ok) 确认过的卡.delete(卡键);
@@ -267,39 +272,41 @@ export async function applyProposal(input: Proposal): Promise<ApplyResult> {
  * 建之前按全部联系方式查重（10-27 会议，ai-lead-dedupe.ts）：电话加备注里认得出的邮箱 / 微信 / 阿里国际站ID，撞了不建、提醒原负责人。
  * 不撞：创建人 = 录入人；负责人按分配方式（指定 → 那位销售，客户跟着走；自动 → 建在我名下再按业务线分；暂不分配 / 个人自持 → 自己）
  */
-async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id: string; name: string }): Promise<{ ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string } }> {
+async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id: string; name: string }, 要传附件 = false): Promise<{ ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string; 首条附件票?: 首条附件票 } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string } }> {
   const meId = me.id;
-  const 号 = p.phone.trim();
   const { 号们: 备注号们, 剩 } = 认出备注里的号码(p.remark || "");
-  // 2026-11-01 起卡上有邮箱、微信自己的格（认图出的卡）：和备注里认出的一起查重，卡上那格优先
-  const 格号们 = ([["邮箱", p.email], ["微信", p.wechat]] as const)
-    .map(([类型, v]) => (v?.trim() ? 验号码(类型, v.trim()) : null))
-    .filter((h): h is Extract<ReturnType<typeof 验号码>, { ok: true }> => Boolean(h?.ok));
-  const 号们 = [...格号们, ...备注号们.filter((h) => !格号们.some((g) => g.类型 === h.类型 && g.值 === h.值))];
-  const 手机 = 号 ? 验号码("手机号", 号) : null;
-  const 撞了 = await AI建档查重详([...(手机?.ok ? [手机] : []), ...号们], me, { 入口: "AI建档", 来源: p.source, 内容: 剩 });
-  if (撞了) return { ok: false, error: 撞了.话, ...(撞了.回收站 ? { 回收站号: { 类型: 撞了.回收站.类型, 值: 撞了.回收站.值 } } : {}) };
-  const 邮箱 = 号们.find((h) => h.类型 === "邮箱")?.值 ?? null;
-  const 微信 = 号们.find((h) => h.类型 === "微信")?.值 ?? null;
-  // 客户只有一格企业号码：有电话放电话；没电话按邮箱 → 微信 → 阿里国际站ID（类型值还叫旺旺ID）放第一个认出的（新建客户企业号码不是手机号才免填电话）。
-  // 邮箱、微信另有联系人那格；阿里国际站ID没占企业号码的话那行留回备注（按新叫法写回）。WhatsApp 不是号码类型，写进备注
-  const 旺旺 = 号们.find((h) => h.类型 === "旺旺ID");
-  const 企业号 = 号 ? { 类型: "手机号", 值: 号 } : (["邮箱", "微信", "旺旺ID"] as const).map((t) => 号们.find((h) => h.类型 === t)).find(Boolean);
-  const 备注 = [
-    剩,
-    旺旺 && 企业号?.类型 !== "旺旺ID" ? `${号码类型叫法("旺旺ID")}：${旺旺.值}` : "",
-    p.whatsapp?.trim() && p.whatsapp.trim() !== 号 ? `WhatsApp：${p.whatsapp.trim()}` : "",
-  ].filter(Boolean).join("\n");
-  const 国家 = p.country?.trim() || "";
-  const 城市 = p.city?.trim() || "";
   /*
-    国家 / 城市填到哪（11-04 用户：「摩洛哥客户」这类分不清是项目地址还是联系人地址的，交给用户判断）：卡上勾了哪几格就填哪几格；
-    老卡没这格（区域去处 undefined）照原来只进客户地址。城市不带国家会被当成国内，所以客户、项目那两格没国家就不填
+    联系方式（11-17 员工反馈「只能填电话」）：卡上「类型 + 号码」几行（老卡按电话 / 微信 / 邮箱 / WhatsApp 几格算，电话当手机），
+    备注里认出的邮箱 / 微信 / 阿里国际站ID 并在后面（同类同号只留一行）。按联系人表单同一套验（号码类型字典、格式、占位号）
   */
-  const 去处 = p.区域去处 ?? (国家 ? ["客户" as const] : []);
-  const 进客户 = 去处.includes("客户") && 国家;
-  const 进项目 = 去处.includes("项目") && 国家;
-  const 联系人地址 = 去处.includes("联系人") ? [国家, 城市].filter(Boolean).join(" ").slice(0, 联系人地址上限) : "";
+  const 验 = await 验联系人号码们([
+    ...线索号码行(p),
+    ...备注号们.map((h) => ({ kind: 号码库类型[h.类型 as keyof typeof 号码库类型] ?? "", value: h.值 })),
+  ]);
+  if (!验.ok) return { ok: false, error: 验.error };
+  const 行们 = 验.行们;
+  // 手机 / 邮箱 / 微信 / 阿里国际站ID 全公司查重（和建档同一套，ai-lead-dedupe.ts）；座机、WhatsApp 这些只记进联系人
+  const 建档号 = (r: (typeof 行们)[number]) => {
+    const 类型 = 库类型到号码类型[r.kind];
+    return 类型 ? { 类型, 值: r.value, 键: r.numberKey } : null;
+  };
+  const 号们 = 行们.map(建档号).filter((h) => h !== null);
+  const 撞了 = await AI建档查重详(号们, me, { 入口: "AI建档", 来源: p.source, 内容: 剩 });
+  if (撞了) return { ok: false, error: 撞了.话, ...(撞了.回收站 ? { 回收站号: { 类型: 撞了.回收站.类型, 值: 撞了.回收站.值 } } : {}) };
+  // 客户只有一格企业号码：有手机放手机；没手机按邮箱 → 微信 → 阿里国际站ID（类型值还叫旺旺ID）放第一个（新建客户企业号码不是手机号才免填电话）。
+  // 全部几行都记进联系人的联系方式（建档向导 联系人.号码们）；一个都占不了企业号码的（只有座机、WhatsApp…）客户电话空着，联系人带着号
+  const 企业号 = (["phone", "email", "wechat", "wangwang"] as const).map((k) => 行们.find((r) => r.kind === k)).map((r) => r && 建档号(r)).find(Boolean) ?? null;
+  const 号 = 企业号?.类型 === "手机号" ? 企业号.值 : "";
+  const 备注 = 剩;
+  /*
+    国家 / 省 / 城市填到哪（11-04 用户：「摩洛哥客户」这类分不清是项目地址还是联系人地址的，交给用户判断）：卡上勾了哪几格就填哪几格；
+    老卡没这格（区域去处 undefined）只进客户地址。只有省 / 城市没国家的也照填，按国内存（11-18 加急：原来没国家就不填，
+    写了城市哪都没落，市场自动分配按区域成了「未知」、两条线都算）。和卡上显示的「按客户区域自动定」同一个函数
+  */
+  const 地 = 线索卡地址(p);
+  const 进客户 = 地.客户;
+  const 进项目 = 地.项目;
+  const 联系人地址 = 地.联系人.slice(0, 联系人地址上限);
   // 企业版新建线索要选渠道：卡上只有来源一格，按整名 / 只含一个渠道名 / 竖线前平台前缀唯一来认（lib/enterprise/channel-match.ts，卡片预选同一个函数），对上多个不猜
   // 历史渠道（P-渠道-06）只承载历史客户、主渠道停用了的子渠道（P-渠道-13）也不能选：AI 新建线索同样不认（可选渠道条件，和新建的渠道下拉同一个）
   // 只有主渠道（没有子渠道）的也认：按主渠道名对，对上的是占位 id，建档向导里落成子渠道名留空的那条渠道（channel-main.ts 落到渠道）
@@ -328,10 +335,11 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
       name: p.name, phone: 号, 企业号码: 企业号 ? { 类型: 企业号.类型, 值: 企业号.值 } : null,
       school: null, grade: null, major: null, followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null,
       remark: 备注 || null, salesOwnerId: 项目负责人, channelId: 渠道?.id ?? null, referrerCustomerId: null, ...(触点 ? { touchpoint: 触点 } : {}),
-      // 国家、城市进客户地址（和新建客户同一格）；城市不带国家会被当成国内，所以没国家就不交城市
-      ...(进客户 ? { 企业资料: { addrCountry: 国家, addrCity: 城市 || null } } : {}),
+      // 国家、省、城市、区县、详细地址进客户地址（和新建客户同一格，规整地址：没国家的按国内）
+      ...(进客户 ? { 企业资料: 进客户 } : {}),
     },
-    联系人: { name: p.contact.trim() || p.name, phone: 号 || null, email: 邮箱, wechat: 微信, ...(联系人地址 ? { address: 联系人地址 } : {}) },
+    // 联系人姓名 11-17 起选填：没填存空串（显示「—」），不拿客户名称顶、不写占位（P-抬头-13、没填的都显示「—」）
+    联系人: { name: p.contact.trim(), ...(p.position?.trim() ? { position: p.position.trim() } : {}), ...老三格(行们), 号码们: 行们.map((r) => ({ kind: r.kind, value: r.value })), ...(联系人地址 ? { address: 联系人地址 } : {}) },
     /*
       11-04 起卡上和新建项目同一套格：分配方式（指定 / 自动 / 暂不分配…）、指定时的负责人、业务线、节点（只到线索验证）、下一步（11-05 去掉明确回复）。
       分配和负责人的规矩全在 建档向导 里（定分配方式 / 建好再分）：不是指定分配一律先建在我名下，自动分配建好再转、暂不分配留在我名下（潜客培育，P-转-03）。
@@ -342,7 +350,13 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
       ownerId: 项目负责人,
       ...(p.分配方式 !== undefined ? { 分配方式: p.分配方式 } : {}),
       业务线: p.业务线 ?? (是业务线(我的线) ? 我的线 : "暂不分配"),
-      ...(进项目 ? { 所在地: { addrCountry: 国家, addrCity: 城市 || null } } : {}),
+      ...(进项目 ? { 所在地: 进项目 } : {}),
+      // 指定回复时间（11-17，卡上选填）：照建档向导同一份规整
+      指定回复开始: p.指定回复开始 ?? null, 指定回复结束: p.指定回复结束 ?? null,
+      // 指定分配时间（11-17 PR3，卡上选填）：建档向导里认，选了 = 先留在我名下待分配、到点再分
+      ...(p.定时分配 ? { 定时分配: p.定时分配 } : {}),
+      // 分配方向（11-18）：市场成员卡上改过才有；建档向导只在市场成员选自动分配时认，没有按默认顺序算
+      ...(p.分配方向 ? { 分配方向: p.分配方向 } : {}),
     },
     跟进: {
       type: "OTHER", content: 渠道 ? `在首页对话里新建的线索，渠道：${渠道.name}` : `在首页对话里新建的线索，渠道触点：${触点}`, occurredAt: new Date().toISOString(),
@@ -350,12 +364,15 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
       ...(p.下一步?.trim() ? { 下一步: p.下一步.trim() } : {}),
       节点: p.节点 ?? 企业版字典.节点们.线索[0],
     },
+    // 卡上勾了把对话里的截图存成附件：建档向导签首条附件票给录入人（只认他 + 这条首条沟通，15 分钟；附件的一般规矩不放宽）
+    ...(要传附件 ? { 要传附件: true } : {}),
   });
   // 分给了别人（指定 / 自动分配转走）：项目不在我名下，不给「打开项目」，提示条说清分给了谁
   if (r.ok) {
     const 走了 = "转走" in r && r.转走 === true;
     const 提示 = "提示" in r && typeof r.提示 === "string" ? r.提示 : undefined;
-    return { ok: true, ...(走了 ? {} : { 项目: r.projectId }), ...(提示 ? { 提示 } : {}), ...(r.contactId ? { 附件去处: { contactId: r.contactId } } : {}) };
+    const 票 = "附件票" in r && r.附件票 ? r.附件票 : null;
+    return { ok: true, ...(走了 ? {} : { 项目: r.projectId }), ...(提示 ? { 提示 } : {}), ...(r.contactId ? { 附件去处: { contactId: r.contactId } } : {}), ...(票 ? { 首条附件票: 票 } : {}) };
   }
   // 开了超时回收：首条跟进要填下一步时间（卡上「下一步」那格）
   if (r.error === 要下一步时间) return { ok: false, error: "开了超时回收，新线索要填「下一步」时间" };
@@ -364,7 +381,7 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
 
 const 卡上来源 = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 60) : "");
 
-async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requireUser>>): Promise<ApplyResult> {
+async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requireUser>>, 要传附件 = false): Promise<ApplyResult> {
   const b = await getBusiness();
   // 全页面 AI 的项目类卡（推进节点、卡点、回款、验证、联系人、删客户）：在 lib/agent/apply-project.ts，同样只转给页面上的 server action
   if (是项目卡(input?.kind)) {
@@ -395,7 +412,7 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
 
   // 前端禁用按钮不算防线：必填项没填齐就不写
   const 建档格 = 只用项目 && p.kind === "add_lead"
-    ? { 只用项目, 要下一步: (await 生效组织规则()).超时回收.开, ...(企业版() ? { 企业: { 有分配方式: (await 新建分配方式数据(me)).分配方式们.length > 0, 节点们: 企业版字典.节点们.线索 } } : {}) }
+    ? { 只用项目, 要下一步: (await 生效组织规则()).超时回收.开, ...(企业版() ? { 企业: await (async () => { const 数 = await 新建分配方式数据(me); return { 有分配方式: 数.分配方式们.length > 0, 节点们: 企业版字典.节点们.线索, 按区域: 数.按区域 }; })() } : {}) }
     : 只用项目 ? { 只用项目, 要下一步: (await 生效组织规则()).超时回收.开 } : undefined;
   const miss = missingFields(p, b, 建档格);
   if (miss.length) return { ok: false, error: `还差${miss.join("、")}，填好再确认` };
@@ -440,10 +457,10 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
   if (p.kind === "add_opportunity") return { ok: false, error: "这里商机是项目的一个阶段：请到项目页把它推到商机阶段" };
   if (只用项目 && p.kind === "add_contract") return { ok: false, error: "这里成交记在项目上：请到项目页把它推到成交" };
 
-  let done: { ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string } };
+  let done: { ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string; 首条附件票?: 首条附件票 } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string } };
   let 撤销: 撤销凭据 | undefined;
   if (只用项目 && p.kind === "add_lead") {
-    done = await 建成项目(p, me);
+    done = await 建成项目(p, me, 要传附件);
   } else if (p.kind === "update_customer") {
     done = await 改档案(p.customerId, p.changes);
   } else if (p.kind === "add_contract") {
@@ -464,17 +481,14 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
     if (done.ok && 原) 撤销 = { kind: "set_status", customerId: p.customerId, field: p.field, to: 原[p.field], 改成: p.to };
   } else if (p.kind === "add_followup") {
     /*
-      企业版只用项目（10-28）：手动记跟进有在推项目时必挂项目；AI 卡上没地方选，这位看得到的在推项目只有一个就挂它，
-      有好几个先不挂（照旧只记在客户下）——卡片上让人挑一个是后续的事，这里不猜。挂的时候 saveFollowUp 里的 挂项目 再核一遍
+      企业版沟通必须挂项目（11-17 客户定，同客户页记沟通）：卡上选了项目就挂它；没选时我能记的在推项目只有一个就挂它，
+      几个就让人在卡上选（不猜），一个都没有就拦下、说先建项目。规矩全在 saveFollowUp（lib/project/follow-needs-project.ts），这里只把卡上选的交过去
     */
-    const 在推 = 只用项目 ? await 客户在推项目(p.customerId, 2) : [];
-    // X-143：只有一个在推的、但我管不了（只是组员）就不挂，照旧记在客户下——saveFollowUp 对管不了的项目会整条拒
-    const 唯一 = 在推.length === 1 ? await prisma.project.findUnique({ where: { id: 在推[0].id }, select: { id: true, ownerId: true, pooledAt: true } }) : null;
-    const 挂它 = 唯一 && 能管项目(me, 唯一, await 权限组织()) ? 唯一.id : null;
     const r = await saveFollowUp({
-      ...(挂它 ? { projectId: 挂它 } : {}),
+      ...(只用项目 && p.projectId ? { projectId: p.projectId } : {}),
       customerId: p.customerId,
       type: p.type,
+      ...(p.method ? { method: p.method } : {}),
       title: p.title || null,
       content: p.content,
       status: "已完成",
@@ -495,15 +509,25 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
   if (!done.ok) return done;
 
   const summary = summarizeApplied(p, b.customer, b);
-  await recordAudit({ user: me, action: "ai_apply", entity: "Ai", entityId: p.kind, summary, detail: { 对象: c.name || p.customerName, 理由: p.reason } });
+  // 记跟进卡：把建出来的那条跟进 id 记进留痕，撤销时凭它认「这条是 AI 卡建的」（凭据是前端带回来的，多进程下内存里那张表也认不全）
+  await recordAudit({ user: me, action: "ai_apply", entity: "Ai", entityId: p.kind, summary, detail: { 对象: c.name || p.customerName, 理由: p.reason, ...(撤销?.kind === "add_followup" ? { 跟进: 撤销.id } : {}) } });
   const 话 = summary.replace("确认 AI 建议：", "已") + (done.提示 ? `；${done.提示}` : "");
-  return { ok: true, message: 话, 撤销, ...(done.附件去处 ? { 附件去处: done.附件去处 } : {}), ...(done.项目 ? { 项目: done.项目 } : {}) };
+  return { ok: true, message: 话, 撤销, ...(done.附件去处 ? { 附件去处: done.附件去处 } : {}), ...(done.项目 ? { 项目: done.项目 } : {}), ...(done.首条附件票 ? { 首条附件票: done.首条附件票 } : {}) };
 }
 
 /**
  * 撤回刚确认的那张卡。凭据是前端带回来的，和卡片一样不可信：
  * 只认上面两种形状，而且照样走原有的删除 / 改状态动作——权限、留痕、「最近跟进」重算都在那里面。
  */
+/** 这条跟进是不是这个人确认 AI 记跟进卡时建的：认 ai_apply 留痕里记下的跟进 id（时间只往建它之后一会儿找，走 at 索引） */
+async function AI卡建的跟进(userId: string, f: { id: string; createdAt: Date }): Promise<boolean> {
+  const 有 = await prisma.auditLog.findFirst({
+    where: { action: "ai_apply", entity: "Ai", entityId: "add_followup", userId, at: { gte: new Date(f.createdAt.getTime() - 60_000) }, detail: { contains: `"跟进":${JSON.stringify(f.id)}` } },
+    select: { id: true },
+  });
+  return !!有;
+}
+
 export async function undoProposal(u: 撤销凭据): Promise<{ ok: true } | { ok: false; error: string }> {
   const me = await requireUser();
   if (u?.kind === "payment_add") {
@@ -525,6 +549,8 @@ export async function undoProposal(u: 撤销凭据): Promise<{ ok: true } | { ok
     if (!f) return { ok: false, error: "那条跟进已经不在了，可能已被删掉" };
     // 企业版 P-沟通-01（11-09）：本人撤销沟通去掉了，AI 卡片撤销单独判定——本人记的、10 分钟内；放行只给这一条
     if (企业版() && !卡片刚记的能撤(me, f)) return { ok: false, error: 卡片撤销过时话 };
+    // 企业版：只撤 AI 卡确认时建的那条（审核 11-18 权限 P2-8）。凭据里的 id 换成自己 10 分钟内手记的那条，绕不过 P-沟通-01「删沟通只给管理」
+    if (企业版() && !(await AI卡建的跟进(me.id, f))) return { ok: false, error: "这条跟进不是 AI 卡片记的，撤不了；要删请找管理" };
     // 企业版（P9）删跟进是软删、进回收站（10-29 起撤销也一样，不再真删）：点错了撤销，30 天内老板还能在回收站恢复
     const 删 = await 卡片撤销放行(f.id, () => deleteFollowUp(f.id, u.customerId));
     if (!删.ok) return 删;

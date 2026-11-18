@@ -2,21 +2,22 @@
 
 import DatePicker from "@/components/BusinessDatePicker";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
-import { useRef, useState } from "react";
-import { Modal, Input, Segmented, Button, Space, Typography } from "antd";
+import { useEffect, useRef, useState } from "react";
+import { Modal, Input, Segmented, Button, Space, Typography, Select } from "antd";
 import SaveButton from "@/components/SaveButton";
 import { showUndo } from "@/components/UndoBar";
 import type { Dayjs } from "dayjs";
 import { dayjs } from "@/lib/utils";
 import { 跟进类型们, FOLLOW_TYPE_MAP } from "@/lib/constants";
-import FollowMethodSelect from "@/components/FollowMethodSelect";
+import FollowMethodSelect, { useHabitDefault } from "@/components/FollowMethodSelect";
 import { 对得上的方式 } from "@/lib/follow-method";
 import { useBusiness } from "@/lib/business-client";
 import { 外贸精简 } from "@/lib/business-config";
 import { hasVisibleText } from "@/lib/form-validation";
-import { saveFollowUp, 撤销记一笔 } from "./actions";
+import { saveFollowUp, 撤销记一笔, 沟通可选项目 } from "./actions";
 import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 /**
  * 完成一条跟进计划时弹的小框（2026-10-16 外贸基础，总控：「方式 + 一句话 + 下次时间（默认 7 天后），保留『跳过，直接完成』。不做节奏标签」）。
@@ -25,6 +26,8 @@ import { useFormGuard } from "@/lib/form-guard";
  * 多半就没记；下一次什么时候也常常没排。现在三件事一个框做完：
  *   保存并完成 = 记一条已完成的跟进 + 完成这条计划 + （选了的话）排下一次，一个事务（saveFollowUp 的「附带」）
  *   跳过，直接完成 = 交回页面，和原来一样只把计划勾掉
+ * 企业版沟通必须挂项目（11-17）：客户有我能记的在推项目就照常顺带记一笔（一个自动挂、几个要选）；
+ * 没有就只把计划标为完成、不另记沟通（框里写明，「完成计划」= 跳过那条路）
  */
 
 export type 要完成的计划 = {
@@ -86,7 +89,7 @@ export function 提示记完了(
     毫秒: 6000,
     撤销: async () => {
       const u = await 撤销记一笔({ customerId: plan.customerId, 跟进id: r.跟进id, 计划id: plan.id, 下次计划id: r.下次计划id })
-        .catch(() => ({ ok: false as const, error: "没撤销成，请稍后重试" }));
+        .catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "没撤销成，请稍后重试") }));
       if (u.ok) 撤销完了();
       return u;
     },
@@ -116,15 +119,42 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
   const [类型, set类型] = useState(() => 默认完成类型(plan.method, 外贸, plan.有WhatsApp));
   // 企业版沟通方式（10-31）：计划上写的正好是字典里的一种、又对得上类型就先选它
   const [方式, set方式] = useState<string | null>(() => 对得上的方式(类型, plan.method) ?? null);
+  // 计划自己没写方式：按个人习惯默认（11-18，同记沟通框）；计划写了方式的以计划为准，人改过的不盖
+  const 人改了方式 = useHabitDefault(!String(plan.method ?? "").trim(), (x) => { set类型(x.type); set方式(x.method); });
   const [字, set字] = useState("");
   const [下次, set下次] = useState<下次>("7");
   const [日子, set日子] = useState<Dayjs | null>(() => dayjs().add(7, "day"));
   const [忙, set忙] = useState(false);
-  // 点外面不关；写了那一句再按 Esc / X 先问一句（2026-10-19 客户反馈，lib/form-guard.tsx）。挂着一条计划，不算新建弹窗，不存草稿
-  const 守 = useFormGuard({ open: true, 关: onClose, 填过: () => hasVisibleText(字), 忙, afterOpenChange: 聚焦首项 });
+  // 点外面不关；写了那一句再按 Esc / X 先问一句（2026-10-19 客户反馈，lib/form-guard.tsx）。
+  // 那一句留草稿（复盘第 1 类，25C）：按这条计划分，刷新、发版后再点「完成」带回；记上了、跳过了就删。方式、下次不进草稿
+  const 守 = useFormGuard({
+    open: true,
+    关: onClose,
+    草稿键: `完成计划:${plan.id}`,
+    额外: { 取: () => ({ 字 }), 放: (v) => { if (typeof v.字 === "string") set字(v.字); } },
+    填过: () => hasVisibleText(字),
+    忙,
+    afterOpenChange: 聚焦首项,
+  });
+
+  /** 企业版这位客户我能挂沟通的在推项目：undefined = 还在问；null = 不是企业版（照旧不挂） */
+  const [项目们, set项目们] = useState<{ id: string; name: string }[] | null | undefined>(undefined);
+  const [项目, set项目] = useState<string | null>(null);
+  useEffect(() => {
+    let 作废 = false;
+    沟通可选项目(plan.customerId).then(
+      (r) => { if (!作废) set项目们(r.ok ? r.项目们 : null); },
+      () => { if (!作废) set项目们(null); },
+    );
+    return () => { 作废 = true; };
+  }, [plan.customerId]);
+  /** 没有能挂的在推项目：只标完成，不另记沟通 */
+  const 只完成 = Array.isArray(项目们) && 项目们.length === 0;
+  const 挂的项目 = 项目们 && 项目们.length === 1 ? 项目们[0].id : 项目;
+  const 要选项目 = !!项目们 && 项目们.length > 1;
 
   const 下次日 = 下次 === "none" ? null : 下次 === "pick" ? 日子?.format("YYYY-MM-DD") ?? null : dayjs().add(Number(下次), "day").format("YYYY-MM-DD");
-  const 可存 = hasVisibleText(字) && (下次 !== "pick" || !!日子);
+  const 可存 = 只完成 || (项目们 !== undefined && hasVisibleText(字) && (下次 !== "pick" || !!日子) && (!要选项目 || !!项目));
 
   /** 这笔不算有效沟通（C12）：框里就地说一句（role=status），对勾放完再关框 */
   const [短话, set短话] = useState<string | null>(null);
@@ -144,6 +174,14 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
    */
   async function 保存(): Promise<{ ok: boolean; error?: string }> {
     if (忙) return { ok: false, error: "正在保存，请稍等" };
+    if (只完成) {
+      // 没有能挂的项目：不记沟通，走「跳过，直接完成」那条路（页面只把计划勾掉）
+      存好后.current = () => onDone({ kind: "skip" });
+      守.存好了();
+      set已存(true);
+      return { ok: true };
+    }
+    if (要选项目 && !项目) return { ok: false, error: "请选一个关联项目" };
     if (!可存) return { ok: false, error: "先写一句这次聊了什么" };
     set忙(true);
     try {
@@ -156,16 +194,18 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
         content: 内容,
         status: "已完成",
         occurredAt: new Date().toISOString(),
+        ...(挂的项目 ? { projectId: 挂的项目 } : {}),
         附带: {
           tasks: [],
           ...(下次日 ? { plan: { subject: 下次主题(内容), plannedAt: 下次日, method: 对得上的方式(类型, 方式) ?? FOLLOW_TYPE_MAP[类型]?.label ?? "电话沟通" } } : {}),
           完成计划: plan.id,
         },
-      }).catch(() => ({ ok: false as const, error: "没保存上，请稍后重试" }));
+      }).catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "没保存上，请稍后重试") }));
       if (!r.ok) return { ok: false, error: "error" in r && r.error ? r.error : "没保存上，请稍后重试" };
       // 客户三态（C12）：这条不算有效沟通时给一句轻提示（照常保存，不拦）
       const 短 = 短沟通话of(r) ?? undefined;
       if (短) set短话(短);
+      守.存好了();
       set已存(true);
       存好后.current = () => onDone({ kind: "saved", next: 下次日, 跟进id: r.id, 下次计划id: r.下次计划id ?? null, ...(短 ? { 提示: 短 } : {}) });
       return { ok: true };
@@ -176,6 +216,7 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
 
   function 跳过() {
     if (忙 || 已存) return;
+    守.存好了();
     onDone({ kind: "skip" });
   }
 
@@ -190,12 +231,14 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
       width={480}
       footer={
         <Space>
-          <Button onClick={跳过} disabled={忙 || 已存}>
-            跳过，直接完成
-          </Button>
+          {!只完成 && (
+            <Button onClick={跳过} disabled={忙 || 已存}>
+              跳过，直接完成
+            </Button>
+          )}
           <span ref={保存键}>
             <SaveButton 做={保存} disabled={!可存} 已保存="已完成" 成了={交出去}>
-              保存并完成
+              {只完成 ? "完成计划" : "保存并完成"}
             </SaveButton>
           </span>
         </Space>
@@ -203,9 +246,23 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
     >
       {(
         <div className="done-plan" data-testid="complete-plan-modal">
+          {守.提示}
           <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-            {plan.customerName ? `${plan.customerName} · ` : ""}「{plan.subject}」做完了，顺手记一笔。
+            {plan.customerName ? `${plan.customerName} · ` : ""}「{plan.subject}」做完了，{只完成 ? "标为完成。" : "顺手记一笔。"}
           </Typography.Paragraph>
+          {只完成 ? (
+            <div role="note" className="done-plan-note">这位客户还没有在推的项目：只把计划标为完成，不另记沟通</div>
+          ) : <>
+          {项目们 && 项目们.length > 0 && (
+            <div className="done-plan-row">
+              <span className="done-plan-k">项目</span>
+              {要选项目 ? (
+                <Select aria-label="关联项目" className="done-plan-pick" placeholder="选择关联项目" value={项目 ?? undefined} onChange={(v: string) => set项目(v)} options={项目们.map((x) => ({ value: x.id, label: x.name }))} />
+              ) : (
+                <span className="done-plan-proj">{项目们[0].name}</span>
+              )}
+            </div>
+          )}
           <div className="done-plan-row">
             <span className="done-plan-k">方式</span>
             <FollowMethodSelect
@@ -214,7 +271,7 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
               type={类型}
               method={方式}
               类型们={跟进类型们(外贸).filter((t) => t.value !== "TASK" && t.value !== "REMIND")}
-              onChange={(v) => { set类型(v.type); set方式(v.method); }}
+              onChange={(v) => { 人改了方式(); set类型(v.type); set方式(v.method); }}
             />
           </div>
           <div className="done-plan-row">
@@ -224,7 +281,7 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
               autoSize={{ minRows: 2, maxRows: 5 }}
               maxLength={2000}
               value={字}
-              onChange={(e) => set字(e.target.value)}
+              onChange={(e) => { set字(e.target.value); 守.改了(); }}
               onPressEnter={(e) => { if (e.metaKey || e.ctrlKey) 保存键.current?.querySelector("button")?.click(); }}
               placeholder="聊了什么、结果怎样，比如：客户要了新报价，下周回"
             />
@@ -251,6 +308,7 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
           </div>
           {短话 && <div role="status" className="rec-plan-said">{短话}</div>}
           {下次日 && <div className="done-plan-tip">{`会排一条 ${dayjs(下次日).format("M 月 D 日")}的计划：${下次主题(字)}`}</div>}
+          </>}
         </div>
       )}
     </Modal>

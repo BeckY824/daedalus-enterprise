@@ -4,7 +4,7 @@ import LandingNote from "@/components/LandingNote";
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
 import CopyValue from "@/components/CopyValue";
 import Heat from "@/components/Heat";
-import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore, useRef, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore, useRef, type CSSProperties, type ReactNode } from "react";
 import { 少动 } from "@/lib/reduced-motion";
 import { useMotionTheme } from "@/components/MotionTheme";
 import { 量变形起点, 放变形 } from "../projects/view-morph";
@@ -51,6 +51,7 @@ import LocalTime from "@/components/LocalTime";
 import { 未分级, 久未跟进天数们 } from "./query-shared";
 import IdleDaysFilter from "@/components/IdleDaysFilter";
 import { useUrlFilters } from "@/lib/url-filters";
+import { 客户范围名, 客户范围说明, type 客户范围 } from "@/lib/enterprise/customer-scope";
 import { 列表不问归属 } from "@/lib/solo";
 import { 公海标签, type 客户页签归属 } from "@/lib/pool";
 import { 放进公海, 领取, 分配公海, 撤销公海, type 公海结果 } from "./pool-actions";
@@ -63,6 +64,8 @@ import CurrencySelect from "@/components/CurrencySelect";
 import { 释义下拉, type 客户字典释义 } from "@/components/DictNote";
 import dynamic from "next/dynamic";
 import type { 建档数据 } from "../projects/new/ProjectWizard";
+import type { 批量客户预看, 批量客户自动分配行 } from "../leads/assign-actions";
+import type { 自动结果 } from "./TransferDialog";
 import { useViewAs } from "@/components/ViewAsContext";
 import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 import { 归档档位们 } from "@/lib/enterprise/archive-tier";
@@ -77,6 +80,7 @@ import { 取客户页表单料, type 客户页表单料 } from "./form-data-acti
 import { 看板工具位 } from "./board-slot";
 import { 客户编号显示 } from "@/lib/customer-no";
 import { 客户抬头 } from "@/lib/enterprise/customer-title";
+import { 出错原话 } from "@/lib/stale-deploy";
 
 /** 「新增客户」弹窗（10-31 P5，整套建档向导）：点了才要，单拆一包，不压客户列表首屏 JS（速度闸门 850 KB） */
 // 客户看板（U-客户-06）只在切到「看板」时用，连同分页条单独一块，别压在客户列表首屏（速度闸门）
@@ -234,6 +238,8 @@ type Props = {
     triState?: string;
     /** 「超过 N 天没跟进」（员工反馈 1I，企业版才有这一格）：天数 */
     idleDays?: string;
+    /** 「范围」（客户 11-18 第 12 题）：mine / joined / visible，服务端补过默认；不按范围筛时没有 */
+    scope?: string;
   };
   /** 这一页每位客户的回收状态标（客户三态开着才给，活跃的不在里面）；不给 = 不摆「状态」一列 */
   三态标?: Record<string, 三态标>;
@@ -251,6 +257,11 @@ type Props = {
    * 其他角色不给。看板（服务端的、本地的）都不摆
    */
   仅项目行?: 仅项目列表行[];
+  /**
+   * 企业版「待我复核」（审核 11-18 节点 P2-3，P-线索-02）：列表视图顶上摆，和项目列表、首页同一份；看板视图里项目列表自己带。
+   * 页面（服务端）画好 <VerifyInbox> 递进来：这里不引它，免得客户列表连带引 projects/actions
+   */
+  待复核?: ReactNode;
   /** 「仅项目」超过上限（50 位）：块上写「前 50 位」，更多去看板 */
   仅项目超了?: boolean;
   /** 进程下拉里结局的叫法（组织规则里改过的出口叫法，同项目页） */
@@ -263,6 +274,11 @@ type Props = {
   市场视图?: boolean;
   /** 阶段 / 进程筛选命中的客户太多（服务端没点名、当一位都没中）：表格上面提示再加筛选条件 */
   阶段太多?: boolean;
+  /**
+   * 「范围」筛选（客户 11-18 第 12 题，lib/enterprise/customer-scope.ts）：我负责的 / 我参与的 / 我可见的（只给有管理范围的）。
+   * 值 = 这次按哪一项筛（服务端补过默认），默认 = 这个人的默认（选它不算「筛了」），选项 = 能选哪几项。不给 = 不摆（团队版、项目模式关着、子集）
+   */
+  客户范围?: { 值: 客户范围; 默认: 客户范围; 选项: 客户范围[] };
   /** 客户来源筛选的选项（企业版）；含已停用的渠道 */
   渠道筛选项?: { value: string; label: string }[];
   /** 团队有两个以上一级部门时的部门下拉（带缩进）；空 = 不摆 */
@@ -282,6 +298,13 @@ type Props = {
   原负责人领不回ids?: string[];
   /** 企业版批量转给别人时可选的转让原因（字典「转让原因」）；选项空 = 不问（别的版本） */
   转让原因?: { 选项: string[]; 自己: string };
+  /**
+   * 批量转让框里的「指定分配 / 自动分配」（客户 11-17，同客户详情的单个转让框）：页面判了是市场成员（市场管理、渠道运营）、
+   * 规则「线索分配」开着、自动分配他能用，才递这两个服务端动作进来；不递 = 框和原来一样。
+   * 摆不摆还要看勾的里有没有「暂不分配」的客户：框打开时 预看 问一次，判定同单个那份（lib/enterprise/cust-auto-assign.ts）
+   */
+  自动分配预看?: (customerIds: string[]) => Promise<批量客户预看>;
+  批量自动分配客户?: (customerIds: string[], 原因: string | null) => Promise<{ ok: true; 结果: 批量客户自动分配行[] } | { ok: false; error: string }>;
   /**
    * 企业版（10-28 去遗留）：跟进状态、决策状态、冷热、签约金额、院校·专业、推荐人、渠道归属、渠道负责人都不摆，
    * 换成「客户状态」一列一个筛选（字典 custStatus）。别的版本 false，列和筛选一格不变
@@ -321,7 +344,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 金额排序 = "", 等级排序 = "", 创建排序 = "", 跟进排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 建档要取 = false, 待交接 = null, 项目概况, 最近一句, 抬头节点, 仅项目行 = [], 仅项目超了 = false, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false, 阶段太多 = false,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 自动分配预看, 批量自动分配客户, 金额排序 = "", 等级排序 = "", 创建排序 = "", 跟进排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 建档要取 = false, 待交接 = null, 项目概况, 最近一句, 抬头节点, 仅项目行 = [], 仅项目超了 = false, 待复核, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false, 阶段太多 = false, 客户范围,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -367,6 +390,32 @@ export default function CustomersView({
   /** 转让框是懒块：第一次开才挂，挂上以后不卸（关的动画照放） */
   const [转让框挂过, set转让框挂过] = useState(false);
   const 取转走 = useCallback((人id: string) => 转走项目预览of(转让框?.ids ?? [], 人id), [转让框]);
+  /**
+   * 批量转让框的自动分配（客户 11-17）：页面递了两个动作才有。预看 = 勾的里几位能自动分、别的为什么不行；
+   * 做 = 一位一位自动分，结果框里原地列（分给了谁、几位没分成）。分出去了就清勾选、刷新列表；没有撤销条（同单个转让框的自动分配）。
+   * 跟着 转让框 记住：框开着这段 自动 不变，免得框里反复去预看
+   */
+  const 转让框自动 = useMemo(() => {
+    if (!转让框 || !自动分配预看 || !批量自动分配客户) return undefined;
+    const { ids, 清空: 清 } = 转让框;
+    return {
+      预看: async () => {
+        const r = await 自动分配预看(ids);
+        return r.ok ? { 可: r.可.length, 不可: r.不可.map((x) => ({ name: x.name, error: x.error })), ...(r.可指定 ? { 可指定: r.可指定 } : {}), ...(r.定向 ? { 定向: r.定向 } : {}) } : null;
+      },
+      做: async (原因: string | null): Promise<自动结果> => {
+        const r = await 批量自动分配客户(ids, 原因);
+        if (!r.ok) return r;
+        const 分成 = r.结果.flatMap((x) => (x.ok ? [{ name: x.name, 接手人: x.接手人 }] : []));
+        const 没成 = r.结果.flatMap((x) => (x.ok ? [] : [{ name: x.name, error: x.error }]));
+        if (分成.length) {
+          清();
+          router.refresh();
+        }
+        return { ok: true, 分成, 没成 };
+      },
+    };
+  }, [转让框, 自动分配预看, 批量自动分配客户, router]);
 
   /**
    * 批量改完给一次撤销（排查 D1）。原来点一下就写库、没有退路，选错一页就是一批数据改错。
@@ -420,6 +469,7 @@ export default function CustomersView({
       res.交接中 && `${res.交接中} 位正在转让交接中，没放`,
       res.同事在推 && `${res.同事在推} 位名下有同事负责、还没结束的项目，没放${res.同事项目 ? `（${res.同事项目}）` : ""}`,
       res.联系方式不全 && `${res.联系方式不全} 位联系方式空着或有号码不对，没放（改好再放）`,
+      res.验证中 && `${res.验证中} 位名下有线索在验证中（等复核或等确认），没放（处理完再放）`,
     ].filter(Boolean);
     const 文案 = 动作 === "分配" ? `已把 ${res.updated} 位${名}${另.length ? `；${另.join("，")}` : ""}${带走说法(res.带走)}` : `已${名} ${res.updated} 位${另.length ? `；${另.join("，")}` : ""}${带走说法(res.带走)}`;
     const 原 = 动作 === "放进" ? ids.map((id) => ({ id, 值: "" })) : (res.原负责人 ?? []);
@@ -449,6 +499,7 @@ export default function CustomersView({
         res.交接中 && `${res.交接中} 位正在转让交接中`,
         res.同事在推 && `${res.同事在推} 位名下有同事负责、还没结束的项目`,
         res.联系方式不全 && `${res.联系方式不全} 位联系方式空着或有号码不对（改好再放）`,
+        res.验证中 && `${res.验证中} 位名下有线索在验证中（处理完再放）`,
       ].filter(Boolean).join("，") || "都已不在你名下") };
     }
     公海提示(res, "放进", ids);
@@ -479,7 +530,11 @@ export default function CustomersView({
     公海里还有人也不算空库：「客户」页签空了（比如一个人用、全被自动放进了公海），页签和筛选栏得留着，
     不然人看到的是「新建第一位」，以为客户全没了
   */
-  const 空库 = total === 0 && !公海数 && !本月新增 && !直接推荐 && !本批 && !Object.values(filters).some((v) => v);
+  /*
+    「范围」停在这个人的默认（服务端补进 filters.scope 的那一项）不算在筛，和下面「筛了」同一口径；
+    不然企业版项目模式 filters.scope 永远有值，空库永远判不出来（筛选栏、导出照摆，空态成了「没有符合条件的」）
+  */
+  const 空库 = total === 0 && !公海数 && !本月新增 && !直接推荐 && !本批 && !Object.entries(filters).some(([k, v]) => v && !(k === "scope" && v === 客户范围?.默认));
   /** 在看三种子集之一：公海里的和自己的一起列，不摆页签（query.ts 在看子集） */
   const 子集 = Boolean(本月新增 || 直接推荐 || 本批);
   /** 「公海」页签（按服务端这次查询的条件判，不按草稿） */
@@ -584,7 +639,7 @@ export default function CustomersView({
   }, []);
 
   /** 一共筛着几个。0 的时候「重置」看不见——没筛过的页面上它是个哑按钮（位置留着，见 ResetFilters）。页签不算筛选 */
-  const 筛了 = Object.entries(f).filter(([k, v]) => k !== "pool" && v).length;
+  const 筛了 = Object.entries(f).filter(([k, v]) => k !== "pool" && v && !(k === "scope" && v === 客户范围?.默认)).length;
   /** 重置留在当前页签：在「公海」里点重置，回到的是全部公海，不是跳回「客户」 */
   const 重置 = () => (f.pool && !子集 ? apply({ ...(Object.fromEntries(Object.keys(f).map((k) => [k, ""])) as typeof f), pool: "1" }) : reset());
   /**
@@ -1168,11 +1223,12 @@ export default function CustomersView({
         // 要不要接手人确认（P-转-16）：不在这里猜，看 取转走 回来的「要确认」（服务端 转让走交接 同一个判定）
         原因选项={转让原因?.选项}
         自己={转让原因?.自己}
-        做={async (人id, 原因) => {
+        自动={转让框自动}
+        做={async (人id, 原因, 方向) => {
           if (!转让框) return;
           const ids = 转让框.ids;
           const 名 = 成员选项(users).find((o) => o.value === 人id)?.label ?? "";
-          const res = await assignSalesOwner(ids, 人id, 原因);
+          const res = await assignSalesOwner(ids, 人id, 原因, 方向);
           // 权限被挡、交接中……：原因写在框里，框不关，不提示成功
           if (!res.ok) return res;
           // 企业版「交接中」（D10）：一位都没发起 = 没成，原因写在框里
@@ -1197,7 +1253,20 @@ export default function CustomersView({
           页签记在地址上（pool=1），翻页、搜索、筛选都留在这一页签里。
           一个人用、公海里也没人时不摆——那时公海就是个空抽屉；空库不摆；子集（筛选行上那三种标记）里不摆：那几个数本来就含公海
         */
-        titleAside={!统一公海 && !空库 && !子集 && (users.length > 1 || (公海数 ?? 0) > 0 || f.pool) ? (
+        titleAside={客户范围 ? (
+          /*
+            「范围」（客户 11-18 第 12 题「把客户的页签直接加一个筛选项」）：企业版项目模式没有「客户 / 公海」页签（公海在 /pool），
+            这一格就摆在原来页签的位置——标题旁边、不进筛选行（1024 宽筛选行本来就刚好一行），也不会被收进「更多筛选」。
+            没有空值：「重置」回到这个人的默认；选中项记在地址栏 scope，换一项回第一页重查
+          */
+          <Segmented<客户范围>
+            className="cust-scope"
+            aria-label="范围"
+            value={(f.scope as 客户范围 | undefined) || 客户范围.值}
+            onChange={(v) => apply({ scope: v })}
+            options={客户范围.选项.map((k) => ({ value: k, label: <span title={客户范围说明[k]}>{客户范围名[k]}</span> }))}
+          />
+        ) : !统一公海 && !空库 && !子集 && (users.length > 1 || (公海数 ?? 0) > 0 || f.pool) ? (
           <Segmented
             aria-label={`${b.customer} / 公海`}
             value={f.pool ? "公海" : "客户"}
@@ -1232,7 +1301,7 @@ export default function CustomersView({
                     const r = await 完整导出(filters, b, set导出进度, controller.signal);
                     set导出话({ 话: `已完整导出 ${r.客户} 位${b.customer}、${r.跟进} 条跟进，ZIP内附分批Excel和核对清单` });
                   } catch (error) {
-                    if (!controller.signal.aborted) set导出话({ 话: error instanceof Error ? error.message : "导出失败，请重试", 错: true });
+                    if (!controller.signal.aborted) set导出话({ 话: 出错原话(error, "导出失败，请重试"), 错: true });
                   } finally {
                     导出取消.current = null;
                     set导出中(false);
@@ -1453,7 +1522,7 @@ export default function CustomersView({
           if (key === "lastFollowAt") apply({ sort: order === "ascend" ? "follow-asc" : order === "descend" ? "follow-desc" : "" });
         }}
         替表格={看板体 !== undefined ? 看板体 : 看法 === "看板" ? <CustomerBoard 行们={rows} 字典={客户属性字典} 加载中={pending} 页={page} 每页={pageSize} 总数={total} 翻页={翻页} 去={(id) => router.push(`/customers/${id}`)} /> : undefined}
-        汇总={<>{看板体 === undefined && 看法 !== "看板" && <ProjectOnlyBlock 行们={仅项目行} 超了={仅项目超了} />}{金额排序 && <Space wrap style={{ marginBottom: 12 }}><span>金额按</span><CurrencySelect aria-label="金额排序币种" value={f.sortCurrency || b.currency} onChange={v => apply({ sortCurrency: v })}/><span>在全部筛选结果中{金额排序 === "amount-asc" ? "升序" : "降序"}排列；其他币种不相加</span></Space>}</>}
+        汇总={<>{看板体 === undefined && 看法 !== "看板" && 待复核}{看板体 === undefined && 看法 !== "看板" && <ProjectOnlyBlock 行们={仅项目行} 超了={仅项目超了} />}{金额排序 && <Space wrap style={{ marginBottom: 12 }}><span>金额按</span><CurrencySelect aria-label="金额排序币种" value={f.sortCurrency || b.currency} onChange={v => apply({ sortCurrency: v })}/><span>在全部筛选结果中{金额排序 === "amount-asc" ? "升序" : "降序"}排列；其他币种不相加</span></Space>}</>}
         分页={{
           当前页: page,
           每页: pageSize,

@@ -116,7 +116,7 @@ beforeAll(async () => {
   }
   client.设传输(桌面传);
   // 老板库里先有老客户：开通后要做范围迁移、推起点
-  for (let i = 0; i < 3; i++) await db("boss").customer.create({ data: { id: `c-old${i}`, name: `老客户${i}`, phone: `1380000000${i}`, salesOwnerId: "cmusc55660000dulko96ek8kr" } });
+  for (let i = 0; i < 3; i++) await db("boss").customer.create({ data: { id: `c-old${i}`, name: `老客户${i}`, phone: `1381200000${i}`, salesOwnerId: "cmusc55660000dulko96ek8kr" } });
   当("boss");
   const 码 = await client.建团队("重试与漏拉QA");
   if (!码.ok) throw Error(码.error);

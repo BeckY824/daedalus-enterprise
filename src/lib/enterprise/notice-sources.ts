@@ -9,13 +9,14 @@ import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { notify } from "./notify";
 import { 离职段 } from "./handover-db";
-import { 读组织, 管理员类别们of, 负责人和上级 } from "./org";
+import { 读组织, 负责人和上级, 在职负责人或上级, 市场复核人们, 市场复核要读的, 是系统管理员of } from "./org";
 import { 企业版 } from "./switch";
 import { 公海入口 } from "./nav";
 import { 能改后台设置, 只读角色 } from "./permissions";
 import { 无效交给, 实际待, type 待哪步 } from "@/lib/project/lead-verify";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 不跟着转的提醒 } from "@/lib/carry-over-db";
+import { 快轮到提醒 } from "./assign-eta";
 
 type 人 = { id: string; name: string };
 
@@ -73,7 +74,7 @@ async function 客户也转给你(们: readonly 分配条[]): Promise<string | n
  * 线索分出去了：按接手人合并成一条（批量自动分配 10 条给同一个人 = 他收一条「自动分配给你 10 条新线索」）。
  * 自动 = 自动分配 / 批量自动分配 / 建档向导的自动分配；手动 = 指定分配
  */
-export async function 分配通知(谁点的: 人, 条们: readonly 分配条[], 自动: boolean): Promise<void> {
+export async function 分配通知(谁点的: 人, 条们: readonly 分配条[], 自动: boolean, 另附?: string): Promise<void> {
   await 稳("分配通知", async () => {
     const 按人 = new Map<string, 分配条[]>();
     for (const c of 条们) if (c.toUserId && c.toUserId !== 谁点的.id) 按人.set(c.toUserId, [...(按人.get(c.toUserId) ?? []), c]);
@@ -94,12 +95,23 @@ export async function 分配通知(谁点的: 人, 条们: readonly 分配条[],
       await notify([toUserId], {
         kind: 自动 ? "自动分配" : "分配",
         title: n === 1 ? `${头}一条新线索：${名们[0]}` : `${头} ${n} 条新线索`,
-        body: 接一句(接一句(n === 1 ? (自动 ? `${谁点的.name} 点的自动分配，轮到了你。` : "") : 名单(名们), await 客户也转给你(们)), await 客户上还留着(们)),
+        // 另附（11-17 PR3）：定时分配到点时写「按定时分配，原定 HH:mm」；系统到点自动分的不说「谁点的」
+        body: 接一句(接一句(接一句(n === 1 ? (自动 ? (谁点的.id === "system" ? "" : `${谁点的.name} 点的自动分配，轮到了你。`) : "") : 名单(名们), await 客户也转给你(们)), await 客户上还留着(们)), 另附 ?? null),
         link: 只一条项目 ? `/projects/${们[0].projectId}` : "/leads",
         key: `assign:${自动 ? "auto" : "manual"}:${们.map((c) => c.projectId ?? c.leadId).sort().join(",").slice(0, 400)}:${分钟()}`,
       });
     }
   });
+  // 自动分配「快轮到我」（11-18，assign-eta.ts）：分出去一条，候选池里的销售各算一遍，进 3 条以内的推一次（自己分给自己也算分了一条）
+  if (条们.length) await 分配后估算推送();
+}
+
+/**
+ * 多了一条分配记录以后推「快轮到」（assign-eta.ts 快轮到提醒）：分配通知末尾、市场成员新建时直接指定给销售（direct-assign.ts）都调这一句。
+ * 出错吞掉，同别的通知
+ */
+export async function 分配后估算推送(): Promise<void> {
+  await 稳("快轮到提醒", async () => 快轮到提醒(await 读组织()));
 }
 
 /**
@@ -178,13 +190,14 @@ const 验证标题: Record<待哪步, (项目: string) => string> = {
 
 /**
  * 验证走了一步之后：现在等谁拍板就通知谁。
- * 市场复核 → 市场管理；总管理终判 → 总管理员（只认业务角色）；销售终验、销售认领 → 项目负责人。
+ * 市场复核 → 能拍板的那几位（org-core 市场复核人们，和拍板同一份：建的人 / 直属市场管理 → 客户创建人那条链 → 无主线索复核人 → 系统管理员；11-18）；
+ * 总管理终判 → 系统管理员（同拍板的 是总管理）；销售终验、销售认领 → 项目负责人。
  * 同一条线索同一步同一轮只通知一次（key 带上验证行的 updatedAt）
  */
 export async function 验证待办通知(me: 人, projectId: string): Promise<void> {
   await 稳("验证通知", async () => {
     const [p, v, org] = await 看全部(() => Promise.all([
-      prisma.project.findUnique({ where: { id: projectId }, select: { id: true, name: true, ownerId: true } }),
+      prisma.project.findUnique({ where: { id: projectId }, select: { id: true, name: true, ...市场复核要读的 } }),
       prisma.entLeadVerify.findUnique({ where: { projectId }, select: { pending: true, invalidReason: true, reviewNote: true, disputeNote: true, updatedAt: true } }),
       读组织(),
     ]));
@@ -192,11 +205,21 @@ export async function 验证待办通知(me: 人, projectId: string): Promise<vo
     const 步 = 实际待(v.pending, await 无效交给(org));
     if (!步) return;
     const 销售步 = 步 === "销售终验" || 步 === "销售认领";
+    // 销售那一步：负责人停用了改发他停用前的直属上级（审核 11-18 通知 P2-7）
     const 收 = 销售步
-      ? [p.ownerId]
-      : [...org.成员.keys()].filter((id) => 管理员类别们of(org, id).has(步 === "市场复核" ? "市场管理" : "总管理员"));
+      ? 在职负责人或上级(org, p.ownerId)
+      : 步 === "市场复核" ? 市场复核人们(org, p) : [...org.成员.keys()].filter((id) => 是系统管理员of(org, id));
     const 说明 = 步 === "市场复核" ? v.invalidReason : 步 === "销售终验" ? v.reviewNote : 步 === "总管理终判" ? v.disputeNote ?? v.invalidReason : null;
-    await notify(收.filter((id) => id !== me.id), {
+    /*
+      同一步只推一遍（审核 11-18 通知 P2-10）：键带验证行 updatedAt，同一步里补理由、撤回再判都会换键再推一遍（正式库 19 秒内同一批人各收 2 条）。
+      这位对这个项目这一步还有没读的那条，就不再推；读过了、或到了下一步，照常推
+    */
+    const 前缀 = `verify:${projectId}:${步}:`;
+    const 没读的 = new Set((await prisma.entNotice.findMany({
+      where: { userId: { in: 收 }, kind: "线索验证", readAt: null, dedupeKey: { startsWith: 前缀 } },
+      select: { userId: true },
+    })).map((n) => n.userId));
+    await notify(收.filter((id) => id !== me.id && !没读的.has(id)), {
       kind: "线索验证",
       title: 验证标题[步](p.name),
       body: `${me.name} 刚处理了这条线索${说明 ? `：${说明}` : "。"}`,

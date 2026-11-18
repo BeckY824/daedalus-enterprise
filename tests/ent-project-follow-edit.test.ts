@@ -147,6 +147,8 @@ describe("删项目上的一条沟通：软删进回收站", () => {
 describe("AI 记的沟通点撤销", () => {
   it("企业版也是软删：项目 / 客户上看不到，回收站里还在", async () => {
     const f = await prisma.followUp.create({ data: { customerId: 客户, ownerId: 销售, type: "PHONE", title: "", content: "AI 记的", status: "已完成", occurredAt: new Date() } });
+    // AI 卡确认时留痕记下跟进 id（审核 11-18 权限 P2-8：撤销只认 AI 卡建的那条）
+    await raw.auditLog.create({ data: { userId: 销售, userName: "销售", action: "ai_apply", entity: "Ai", entityId: "add_followup", summary: "确认 AI 建议", detail: JSON.stringify({ 跟进: f.id }) } });
     expect(await undoProposal({ kind: "add_followup", id: f.id, customerId: 客户 } as never)).toMatchObject({ ok: true });
     expect(await prisma.followUp.findUnique({ where: { id: f.id } })).toBeNull();
     expect((await raw.followUp.findUnique({ where: { id: f.id }, select: { deletedAt: true } }))?.deletedAt).toBeInstanceOf(Date);

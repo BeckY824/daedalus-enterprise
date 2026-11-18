@@ -24,7 +24,11 @@ import { 企业版 } from "@/lib/enterprise/switch";
 
 export async function 线索建项目(
   tx: Pick<Prisma.TransactionClient, "contact" | "project" | "projectNodeLog" | "followUp" | "followUpProject" | "customer">,
-  a: { 线索名: string; leadId: string; customerId: string; ownerId: string; creatorId: string; 跟进?: 规整好的沟通; 联系人Id?: string | null },
+  a: {
+    线索名: string; leadId: string; customerId: string; ownerId: string; creatorId: string; 跟进?: 规整好的沟通; 联系人Id?: string | null;
+    /** 分配方式（11-18 复盘第 5 类，潜客培育必填清单要看它）：线索转化按谁建给谁（建给谁的分配方式），导入按原表那一行（导入分配方式） */
+    分配方式: string | null;
+  },
 ): Promise<string> {
   const 联系人 =
     a.联系人Id !== undefined
@@ -35,7 +39,8 @@ export async function 线索建项目(
       name: a.线索名.trim().slice(0, 项目名上限), customerId: a.customerId, contactId: 联系人?.id ?? null,
       ownerId: a.ownerId, creatorId: a.creatorId, amount: 0, currency: 默认币种,
       phase: 第一个节点.phase, node: 第一个节点.node, nextStepAt: a.跟进?.nextStepAt ?? null, nextStepText: a.跟进?.nextStepText ?? null, sourceLeadId: a.leadId,
-      ...新项目默认值(企业版()),
+      // 项目来源不写：线索没有渠道，渠道统计回落客户来源
+      ...新项目默认值(企业版(), { 分配方式: a.分配方式, 项目来源: null }),
     },
   });
   await tx.projectNodeLog.create({ data: { projectId: 项目.id, userId: a.creatorId, toPhase: 第一个节点.phase, toNode: 第一个节点.node } });

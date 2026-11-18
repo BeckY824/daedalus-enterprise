@@ -12,6 +12,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
+import { 补全动作桩 } from "./helpers/action-stubs";
 
 let browser: Browser;
 const 包: Record<string, string> = {};
@@ -21,11 +22,13 @@ const 记 = `const 记=(名,成={ok:true})=>async(...x)=>{(window.__调=window._
 const plugin: Plugin = { name: "pr5b-lists", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, (a) => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},replace(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
+  // 联系人表单撞回收站摆「从回收站捞回」（审核 11-18 新建入口 P2-6）：RescueKey 引的服务端动作
+  stub(/^\.\/number-actions$/, "export const 从回收站捞回=async()=>({ok:false,error:'桩'});");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
   stub(/settings\/actions$/, "export const deactivateUser=async()=>({ok:true});");
   // 交接、挂靠两页的 ./actions 合在一份假的里
   stub(/^\.\/actions$/, `${记}export const 交接客户=记('交接客户'),交接项目=记('交接项目'),交接全部=记('交接全部'),批准挂靠=记('批准挂靠'),拒绝挂靠=记('拒绝挂靠'),打开挂靠只读卡=记('打开挂靠只读卡',{ok:false,error:'x'}),saveContact=记('saveContact'),saveUnassignedContact=记('saveUnassignedContact'),联系人号码先查=async()=>({ok:true,撞了:[]});`);
-  stub(/readonly-card-actions$/, "export const 打开客户只读卡Action=async()=>({ok:false,error:'x'});");
+  stub(/readonly-card-actions$/, 补全动作桩("src/app/(app)/projects/[id]/readonly-card-actions.ts", "export const 打开客户只读卡Action=async()=>({ok:false,error:'x'});"));
   stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[],取客户选项=async()=>[];");
   stub(/contact-link-actions$/, "export const 挂到客户=async()=>({ok:true});");
   stub(/handover-actions$/, `${记}export const 撤回交接=记('撤回交接'),改接手人=记('改接手人');`);
@@ -59,7 +62,7 @@ beforeAll(async () => {
   `);
   包.挂靠 = await 打包(`
     import AttachView from '@/app/(app)/projects/attach/AttachView';
-    const 待批=[{id:'x1',申请人:${JSON.stringify(长人)},客户名:${JSON.stringify(长客户)},撞的:'手机号：13800000000',负责人:${JSON.stringify(长人)},申请时间:new Date('2026-11-14T02:00:00Z'),转来的:true}];
+    const 待批=[{id:'x1',申请人:${JSON.stringify(长人)},客户名:${JSON.stringify(长客户)},撞的:'手机号：13812000000',负责人:${JSON.stringify(长人)},申请时间:new Date('2026-11-14T02:00:00Z'),转来的:true}];
     function Test(){return <AttachView 待批={待批} 我的={[]}/>}
   `);
   包.线索 = await 打包(`

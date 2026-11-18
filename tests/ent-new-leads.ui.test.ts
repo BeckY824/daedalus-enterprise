@@ -10,13 +10,14 @@ import { beforeAll, afterAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
+import { 补全动作桩 } from "./helpers/action-stubs";
 
 let browser: Browser; let bundle: string;
 const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "stub", pluginData: code }));
   stub(/^next\/link$/, "import React from 'react';export default function L({href,prefetch,...p}){return <a href={href} {...p}/>}");
   stub(/^next\/navigation$/, "export const useRouter=()=>({push(u){window.__去.push(u)},refresh(){},replace(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
-  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
+  stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
   stub(/^\.\/actions$/, "export const 回项目邀请=async()=>({ok:true}),市场复核Action=async()=>({ok:true}),总管理终判Action=async()=>({ok:true}),看板推进预检=async()=>({ok:true,还差:[],能留空推:false}),改项目节点=async()=>({ok:true}),编辑项目=async(...a)=>{(window.__调||=[]).push(['编辑项目',...a]);return {ok:true}},看板补必填料=async()=>({ok:false,error:'x'});");
   stub(/^\.\.\/actions$/, "const 好=async()=>({ok:true});export const 编辑项目=好,改项目画像Action=好,勾项目交付=好;");
@@ -570,14 +571,19 @@ it("新线索页·单条自动分配有项目一起转（P-转-07）：先列出
   await page.close();
 });
 
-it("客户公海里的项目不给「分配」「自动分配」键；线索公海（客户不在公海）的照给", async () => {
-  const { page, errors } = await 打开(true, 1280, true, true, { 公海: true });
-  await page.getByRole("button", { name: /^分配 .*5$/ }).waitFor();
-  expect(await page.getByRole("button", { name: /^自动分配 .*5$/ }).count()).toBe(1);
-  expect(await page.getByRole("button", { name: /^分配 .*4$/ }).count()).toBe(0);
-  expect(await page.getByRole("button", { name: /^自动分配 .*4$/ }).count()).toBe(0);
-  expect(errors).toEqual([]);
-  await page.close();
+it("客户公海里的项目不给「分配」「自动分配」键；线索公海（客户不在公海）的也只给能管公海的人（审核 11-18 分配 P0-3：服务端会拦的不摆）", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    const { page, errors } = await 打开(true, w, true, true, { 公海: true });
+    await page.locator(".ant-table-row").nth(1).waitFor();
+    expect(await page.locator(".ant-table-row").count()).toBe(2);
+    expect(await page.getByRole("button", { name: /^分配 .*5$/ }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: /^自动分配 .*5$/ }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: /^分配 .*4$/ }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: /^自动分配 .*4$/ }).count()).toBe(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+    await page.close();
+  }
 });
 
 it("P-公海-10：销售管理 / 总管理看客户公海里的项目有「分配」（整包），没有「自动分配」", async () => {

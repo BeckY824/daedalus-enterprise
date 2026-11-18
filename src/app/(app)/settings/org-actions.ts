@@ -15,9 +15,10 @@ import { recordAudit } from "@/lib/audit";
 import { 不在了 } from "@/lib/not-there";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 规则, type 规则名 } from "@/lib/enterprise/rules";
+import { 规则, 规则开着, type 规则名 } from "@/lib/enterprise/rules";
+import { 超时转重新起算 } from "@/lib/enterprise/reply-overdue";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import { 读组织, 建组织, 拆角色, 合角色, 部门挪动问题, 上级设置问题, 权限组织, 填组织设置, 规整只看某人, 回收站副手键, 只看某人键, 系统管理员标记键, 是系统管理员of, 能管设置of, 有人能管设置, 读组织于, 留一位系统管理员错, 留一位系统管理员话, 直属上级of, type 组织, type 组织部门 } from "@/lib/enterprise/org";
+import { 读组织, 建组织, 拆角色, 合角色, 部门挪动问题, 上级设置问题, 权限组织, 填组织设置, 规整只看某人, 回收站副手键, 只看某人键, 系统管理员标记键, 无主线索复核人键, 是系统管理员of, 能管设置of, 有人能管设置, 读组织于, 留一位系统管理员错, 留一位系统管理员话, 直属上级of, type 组织, type 组织部门 } from "@/lib/enterprise/org";
 import type { Prisma } from "@/generated/prisma";
 import { 能改后台设置 } from "@/lib/enterprise/permissions";
 import { 是业务角色, 角色名, 角色组合问题, type 业务角色 } from "@/lib/sync/dept-policy";
@@ -346,7 +347,7 @@ export async function 设系统管理员(userId: string, on: boolean, 确认 = f
   }
 }
 
-/** 拨「按组织架构看客户」规则开关（默认关） */
+/** 拨组织规则开关（rules-table.ts 规则；不传名 = 「按组织架构看客户」）。只有能管设置的系统管理员（业务角色）能拨，改了留操作记录 */
 export async function 设规则(on: boolean, 名: 规则名 = "按组织看客户"): Promise<结果> {
   const who = await 能改的人();
   if (!who) return 不能改;
@@ -354,8 +355,14 @@ export async function 设规则(on: boolean, 名: 规则名 = "按组织看客�
   if (!Object.hasOwn(规则, 名)) return { ok: false, error: "没有这条规则" };
   const r = 规则[名];
   try {
+    // 「超时未跟进自动转」从关拨到开：在计时的链从现在重新起算（关着期间钟没走，别一打开就把早该转的一口气转走）
+    const 重新起算 = 名 === "超时自动转" && on && !(await 规则开着(名));
     await setSetting(r.key, on);
-    await recordAudit({ user: who.me, action: "update", entity: "Setting", entityId: r.key, summary: `${on ? "打开" : "关掉"}规则「${r.名}」` });
+    const 重算了 = 重新起算 ? await 超时转重新起算() : 0;
+    await recordAudit({
+      user: who.me, action: "update", entity: "Setting", entityId: r.key,
+      summary: `${on ? "打开" : "关掉"}规则「${r.名}」${重算了 ? `，${重算了} 条在计时的线索从现在重新计时` : ""}`,
+    });
     改完了();
     return { ok: true };
   } catch (e) {
@@ -499,6 +506,29 @@ export async function 设回收站副手(ids: unknown): Promise<结果> {
     await setSetting(回收站副手键, 存);
     const 名 = 设.length ? (await prisma.user.findMany({ where: { id: { in: 设 } }, select: { name: true } })).map((u) => u.name).join("、") : "清空";
     await recordAudit({ user: who.me, action: "update", entity: "Setting", entityId: 回收站副手键, summary: `改回收站副手（${名}）`, detail: 存 });
+    改完了();
+    return { ok: true };
+  } catch (e) {
+    return 不在了(e);
+  }
+}
+
+/**
+ * 无主线索复核人（11-18）：线索判无效交市场复核时，项目创建人、客户创建人两条链上都找不到能复核的人（系统补建的、建的人停用了又没有直属市场管理……），
+ * 由这位复核、收通知（org-core 市场复核人们 第 3 步）；没设 = 系统管理员。只能选一位在职的人；空 = 清空
+ */
+export async function 设无主线索复核人(userId: unknown): Promise<结果> {
+  const who = await 能改的人();
+  if (!who) return 不能改;
+  try {
+    if (userId !== null && typeof userId !== "string") return { ok: false, error: "选的人不对，刷新再试" };
+    const id = typeof userId === "string" ? userId.trim() : "";
+    const org = await 读组织();
+    if (id && !org.成员.has(id)) return { ok: false, error: "选的人已经不在组织里了，刷新再选" };
+    if (id && org.只看某人?.has(id)) return { ok: false, error: "设了「只看某人」的人不做市场复核，换一位" };
+    await setSetting(无主线索复核人键, id || null);
+    const 名 = id ? (await prisma.user.findUnique({ where: { id }, select: { name: true } }))?.name ?? id : "清空（交系统管理员）";
+    await recordAudit({ user: who.me, action: "update", entity: "Setting", entityId: 无主线索复核人键, summary: `改无主线索复核人（${名}）`, detail: id || null });
     改完了();
     return { ok: true };
   } catch (e) {

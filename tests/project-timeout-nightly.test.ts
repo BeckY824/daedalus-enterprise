@@ -199,7 +199,7 @@ describe("回收前一天提醒 + 即将回收（10-27）", () => {
     ]);
   });
 
-  it("记了沟通：回收日推到明天以后 → 那条提醒勾掉；下一步填今天（明天还会收）→ 不勾", async () => {
+  it("记了沟通：回收日推到明天以后 → 那条提醒勾掉；下一步填今天也一样勾（11-18 起下一步时间不收回）", async () => {
     const p = await 项目("2026-10-23 10:00"); // 3 天 → 10-26
     expect(await 夜里扫超时(时("2026-10-25 00:05"))).toBe(0);
     const 没勾的 = async () => (await 提醒们()).filter((t) => !t.done).length;
@@ -207,9 +207,8 @@ describe("回收前一天提醒 + 即将回收（10-27）", () => {
     const 乙我 = { id: 乙, name: "乙", role: "SALES" } as never;
     const 现在 = 时("2026-10-25 10:00");
     const 沟通 = (下一步时间: string) => ({ type: "PHONE", content: "聊了", occurredAt: "2026-10-25 09:00", 下一步时间, 阶段: "线索", 明确回复: false });
-    expect(await 记项目沟通(乙我, p.id, 沟通("2026-10-25"), 现在)).toMatchObject({ ok: true }); // 下一步今天过完 → 10-26 还是收
-    expect(await 没勾的()).toBe(1);
-    expect(await 记项目沟通(乙我, p.id, 沟通("2026-10-28"), 现在)).toMatchObject({ ok: true }); // 起点推到 10-25 → 10-28
+    // 下一步填今天：下一步时间只提醒、不收回，起点推到 10-25 → 10-28，明天不收了，提醒勾掉
+    expect(await 记项目沟通(乙我, p.id, 沟通("2026-10-25"), 现在)).toMatchObject({ ok: true });
     expect(await 提醒们()).toEqual([expect.objectContaining({ done: true, doneAt: 现在 })]);
   });
 

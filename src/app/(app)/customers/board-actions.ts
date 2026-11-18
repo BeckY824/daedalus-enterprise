@@ -13,6 +13,9 @@ import { 看板三态点 } from "@/lib/project/board-tri-dots";
 import type { 三态标 } from "@/lib/enterprise/tri-state-label";
 import { 客户页看板条件, type 客户页看板地址 } from "./board-query";
 import { 在看子集 } from "./query";
+import { 权限组织 } from "@/lib/enterprise/org";
+import { 有管理范围 } from "@/lib/enterprise/permissions";
+import { 生效客户范围 } from "@/lib/enterprise/customer-scope";
 
 export type 再看结果 = { ok: true; 行: 项目行[]; 总: number; 三态点?: Record<string, 三态标> } | { ok: false; error: string };
 
@@ -33,6 +36,8 @@ export async function 再看一列(地址栏: unknown, 列: unknown, 偏移: unk
   const sp: Record<string, string> = Object.fromEntries(值);
   // 子集（导入这一批、本月新增、直接推荐）里画的是列表，没有看板
   if (在看子集(sp)) return { ok: false, error: "这里没有看板" };
+  // 「范围」没写在地址上时按角色补默认，和首屏（page.tsx）同一句
+  sp.scope = 生效客户范围(sp.scope, 有管理范围(me, await 权限组织()));
   const { 项目, 客户, 仅项目客户 } = await 客户页看板条件(sp as 客户页看板地址);
   // 看板列里恒按最近改过在前（同改动前的看板）：客户页上点的排序不带进来，只管看板临时切成的项目列表
   const r = await 读看板一列(me, { ...项目, sort: undefined, 客户, 仅项目客户 }, 列, 偏移, 条数);

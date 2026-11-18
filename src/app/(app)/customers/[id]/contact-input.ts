@@ -4,7 +4,7 @@
  */
 import { 认回打码号 } from "@/lib/phone";
 import { 是占位号, 占位号提示 } from "@/lib/placeholder-phone";
-import { 性别们, 爱好上限, 联系人地址上限, 认生日 } from "@/lib/enterprise/customer-v2";
+import { 性别们, 爱好上限, 联系人地址上限, 认生日, 验一行号码, type 号码种类 } from "@/lib/enterprise/customer-v2";
 import type { 交上来的号 } from "@/lib/enterprise/customer-v2-db";
 
 export type 联系人字段 = {
@@ -28,9 +28,27 @@ export function 联系人电话(交回: string | null | undefined, 原: string |
   return { ok: true, phone: v || null };
 }
 
+/** 未归属联系人那格「手机号」：按联系人卡号码几行里「手机」那一种验（kind phone，验法 手机号） */
+const 未归属手机: 号码种类 = { 名: "手机号", kind: "phone", 验: "手机号" };
+
+/**
+ * 未归属联系人的电话（11-18，22A）：企业版和联系人卡号码几行同一套规矩（验一行号码：像微信号、像座机、港澳号没带区号、占位假号都拦），
+ * 存规整值（+86、空格横杠去掉）。打码交回的先认回原号；原样没动的老号照存（同 验联系人号码们「只验新加、改过的」），不挡改别的格。
+ * 别的版本照旧走 联系人电话（不验格式）
+ */
+export function 未归属联系人电话(交回: string | null | undefined, 原: string | null | undefined, 企业: boolean): { ok: true; phone: string | null } | { ok: false; error: string } {
+  if (!企业) return 联系人电话(交回, 原);
+  const v = String(认回打码号(交回, 原) ?? "").trim();
+  if (!v) return { ok: true, phone: null };
+  if (v === String(原 ?? "").trim()) return { ok: true, phone: v };
+  if (v.includes("*")) return { ok: false, error: "电话里不能有 *" };
+  const r = 验一行号码(未归属手机, v);
+  return r.ok ? { ok: true, phone: r.值 } : { ok: false, error: r.error.replace("⚠️", "") };
+}
+
 export function 规整(input: 联系人字段) {
   return {
-    name: input.name.trim(),
+    name: (input.name ?? "").trim(),
     position: input.position || null,
     phone: input.phone || null,
     email: input.email || null,

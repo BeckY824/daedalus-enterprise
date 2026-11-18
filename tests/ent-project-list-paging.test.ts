@@ -25,7 +25,7 @@ import { 看板分列, type 项目行 } from "@/lib/project/board";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 按预计成交排 } from "@/lib/project/project-fields";
 import { 读渠道统计 } from "@/lib/enterprise/channel-stats-db";
-import { 名单链接, 名单键们, type 名单键 } from "@/lib/enterprise/channel-stats";
+import { 名单链接, 名单键们, 不点开键, type 名单键 } from "@/lib/enterprise/channel-stats";
 import { 存组织规则 } from "@/lib/project/org-rules-store";
 import { 默认组织规则 } from "@/lib/project/org-rules";
 import { dayjs } from "@/lib/utils";
@@ -287,8 +287,42 @@ describe("原来在内存里滤的几道，挪到服务端照样生效", () => {
 
 });
 
+describe("关键词拆词、空格归一（23D，同客户列表 2F）", () => {
+  const 名们 = async (谁: 人, keyword: string) => (await 翻到底(谁, { keyword })).行.map((r) => r.name).sort();
+
+  it("对拍：一个词的输入（含前后空格），和改前的写法逐条一样", async () => {
+    for (const 谁 of ["总管理", "销管", "销售甲", "市场成员"]) {
+      for (const keyword of ["项目5", " 乙方客户2 ", "客户", "52", "没有这个"]) await 对拍(人们[谁], { keyword });
+    }
+  }, 120_000);
+
+  it("全角空格、多个空格、词序反、括号：每个词都要中，一个中项目名、一个中客户名也算", async () => {
+    const 总 = 人们.总管理;
+    // 项目52x 都挂在乙的客户上（500–539 甲负责、乙的客户）
+    const 应 = (await 名们(总, "项目52")).filter((n) => n !== "项目52");
+    expect(应.length).toBeGreaterThan(0);
+    for (const k of ["项目52 乙方客户", "乙方客户　项目52", "乙方客户   项目52", "(乙方客户)项目52", "乙方客户，项目52"]) {
+      expect(await 名们(总, k), k).toEqual(应);
+    }
+    // 有一个词哪儿都没有就不出
+    expect(await 名们(总, "项目52 没有这个")).toEqual([]);
+    // 两个词都中项目名
+    expect(await 名们(总, "523 项目5")).toEqual(["项目523"]);
+  });
+
+  it("可见范围不变：客户不露的，客户名那个词不算中（销管看甲负责、乙的客户的项目）；自己负责的照算", async () => {
+    expect(await 名们(人们.销管, "项目52")).not.toEqual([]);
+    expect(await 名们(人们.销管, "乙方客户 项目52")).toEqual([]);
+    expect(await 名们(人们.销管, "项目52 乙方客户3")).toEqual([]);
+    expect(await 名们(人们.销售甲, "项目52 乙方客户3")).toContain("项目523");
+    // 公海里的不在默认列表里
+    expect(await 名们(人们.总管理, "项目60 乙方客户")).toEqual([]);
+  });
+
+});
+
 describe("渠道页数字 = 点进去的项目列表总数（超过 500 也对得上）", () => {
-  const 键们 = Object.keys(名单键们) as 名单键[];
+  const 键们 = (Object.keys(名单键们) as 名单键[]).filter((k) => !不点开键.includes(k));
   it("总管理（渠道 A 超过 500 条）、销管、销售乙、市场成员", async () => {
     for (const 谁 of ["总管理", "销管", "销售乙", "市场成员"]) {
       const u = 人们[谁];

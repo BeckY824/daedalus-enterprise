@@ -18,7 +18,7 @@ import type { 组织规则 } from "./org-rules";
 import { 生效的合同状态 } from "./proj-fields";
 
 export const 必填项们 = [
-  { key: "联系方式", 说明: "电话、WhatsApp、微信、邮箱、阿里国际站 ID 任一（客户或联系人上的都算）" },
+  { key: "联系方式", 说明: "电话、座机、WhatsApp、微信、邮箱、阿里国际站 ID 等任一（客户或联系人上的都算）" },
   { key: "来源", 说明: "客户来源或渠道触点（P-渠道-08：公司资源 / 客户介绍的客户主渠道留空、由触点承载）" },
   { key: "国家", 说明: "国家 / 地区" },
   { key: "客户等级", 说明: "A / B / C / D" },
@@ -123,11 +123,20 @@ export type 必填数据 = {
     assignWay?: string | null;
     /** 渠道触点 Customer.touchpoint（迁移 116，P-渠道-08）：「来源」有它也算齐 */
     touchpoint?: string | null;
+    /**
+     * 企业版客户页写的格（审核 11-18 P1-5：原来只读老外贸档案 extra，企业版页面不写那几格，填了也算没填）：
+     * 国家 / 地区 Customer.addrCountry、来源渠道 Customer.channelId、客户本身的号（联系方式子表里 contactId 空的那几行）。没读 = 只看老格
+     */
+    addrCountry?: string | null;
+    channelId?: string | null;
+    contactMethods?: { kind: string; value: string }[];
   };
   /** 客户还在（所属客户）；没读 = 不在 */
   有客户?: boolean;
   /** 客户下的联系人；id、name 读了才看主联系人姓名是不是占位（11-03 A2-2） */
-  联系人们: { id?: string; name?: string | null; phone?: string | null; email?: string | null; wechat?: string | null }[];
+  联系人们: { id?: string; name?: string | null; phone?: string | null; email?: string | null; wechat?: string | null;
+    /** 联系人的联系方式几行（座机、WhatsApp…也在这；11-17 起 AI 新线索卡能只记这些）。没读 = 只看老三格 */
+    contactMethods?: { kind: string; value: string }[] }[];
   /** 挂在项目上的沟通各在哪个节点记的 */
   沟通节点们: string[];
   /** 挂在项目上的每条沟通：哪个节点记的、发起主体、内容、方式（沟通三项用） */
@@ -176,14 +185,22 @@ const 有 = (v: string | null | undefined) => !!v && v.trim().length > 0 && !是
 function 齐了(项: 必填项, d: 必填数据): boolean {
   const x = d.客户.extra;
   switch (项) {
+    // 企业版的格在前（客户本身的号码几行、来源渠道、国家 / 地区，审核 11-18 P1-5），老外贸档案那几格照旧也算（老数据、别的版本）
     case "联系方式":
-      return 有(d.客户.phone) || 有(x?.whatsapp) || 有(x?.wechat) || 有(x?.email) || 有(x?.alibabaId)
-        || d.联系人们.some((c) => 有(c.phone) || 有(c.email) || 有(c.wechat));
-    case "来源": return 有(x?.source) || 有(d.客户.touchpoint);
-    case "国家": return 有(x?.country);
+      return 有(d.客户.phone) || !!d.客户.contactMethods?.some((m) => 有(m.value)) || 有(x?.whatsapp) || 有(x?.wechat) || 有(x?.email) || 有(x?.alibabaId)
+        || d.联系人们.some((c) => 有(c.phone) || 有(c.email) || 有(c.wechat) || !!c.contactMethods?.some((m) => 有(m.value)));
+    case "来源": return !!d.客户.channelId || 有(d.客户.touchpoint) || 有(x?.source);
+    case "国家": return 有(d.客户.addrCountry) || 有(x?.country);
     case "客户等级": return 有(x?.level);
-    // 挂着的那位姓名是「未知」这类占位不算（11-03 A2-2）；没读姓名的照旧只看挂没挂
-    case "主联系人": return !!d.项目.contactId && !d.联系人们.some((c) => c.id === d.项目.contactId && c.name != null && 是占位值(c.name));
+    // 挂着的那位姓名是「未知」这类占位不算（11-03 A2-2）；没读姓名的照旧只看挂没挂。
+    // 11-17 起联系人姓名可以空（AI 新线索卡）：不看名字填没填，看这位有没有至少一条联系方式（读了号码的才看；挂靠来的别家联系人不在名单里，照旧只看挂没挂）
+    case "主联系人": {
+      if (!d.项目.contactId) return false;
+      const c = d.联系人们.find((x) => x.id === d.项目.contactId);
+      if (!c) return true;
+      if (c.name != null && 是占位值(c.name)) return false;
+      return c.contactMethods === undefined || 有(c.phone) || 有(c.email) || 有(c.wechat) || c.contactMethods.some((m) => 有(m.value));
+    }
     // 10-31 客户定：需求 = 需求状态选了表面触达 / 方向明晰 / 明确需求 / 共识痛点（字典可改名，按「选了」认，占位值不算），备注不再算；
     // 11-09 起「暂未确认」不在字典里了（M-必填-03），没选显示「—」
     case "需求": return 有(d.项目.demandStatus);

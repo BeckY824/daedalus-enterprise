@@ -20,6 +20,7 @@ import { 企业版 } from "./switch";
 import { 读组织 } from "./org";
 import { 直属上级of, type 组织 } from "./org-core";
 import { notify } from "./notify";
+import { 通知里的客户名, 撞的写法 } from "./notice-mask";
 import { 视图中跳过 } from "./view-as";
 import { 读卡底子, 拼卡, type 客户只读卡 } from "./customer-readonly-card";
 import type { 谁 } from "./permissions";
@@ -48,11 +49,12 @@ async function 名字们(ids: readonly (string | null)[]): Promise<Map<string, s
 }
 
 /** 客户名和客户现在的负责人 */
-async function 客户们(ids: readonly string[]): Promise<Map<string, { 名: string; 负责人: string }>> {
+/** 名 = 页面上列的客户名；称呼 = 写进通知的（名字就是号码的换成客户编号，notice-mask.ts） */
+async function 客户们(ids: readonly string[]): Promise<Map<string, { 名: string; 称呼: string; 负责人: string }>> {
   const 们 = [...new Set(ids)];
   if (!们.length) return new Map();
-  const cs = await 看全部(() => prisma.customer.findMany({ where: { id: { in: 们 } }, select: { id: true, name: true, salesOwnerId: true } }));
-  return new Map(cs.map((c) => [c.id, { 名: c.name, 负责人: c.salesOwnerId }]));
+  const cs = await 看全部(() => prisma.customer.findMany({ where: { id: { in: 们 } }, select: { id: true, name: true, customerNo: true, salesOwnerId: true } }));
+  return new Map(cs.map((c) => [c.id, { 名: c.name, 称呼: 通知里的客户名(c), 负责人: c.salesOwnerId }]));
 }
 
 export type 待审批挂靠 = {
@@ -137,7 +139,7 @@ export async function 审批挂靠(me: { id: string; name: string }, 撞号id: s
   if (!r.count) return { ok: false, error: "这条挂靠申请刚被处理过了，刷新看看" };
 
   const [org, 客户, 人] = await Promise.all([读组织(), 客户们([行.customerId]), 名字们([行.userId])]);
-  const 客户名 = 客户.get(行.customerId)?.名 ?? "";
+  const 客户名 = 客户.get(行.customerId)?.称呼 ?? "";
   const 负责人 = 客户.get(行.customerId)?.负责人 ?? null;
   if (org.成员.has(行.userId)) {
     await notify([行.userId], {
@@ -164,7 +166,7 @@ export async function 审批挂靠(me: { id: string; name: string }, 撞号id: s
 /**
  * 客户进公海时关掉的挂靠申请（owner-log-db.ts 挂靠申请进公海关，P-挂靠-01 / 02）：给申请人各发一条「客户已进公海，可去公海领取」。
  * 调用方在进公海那笔事务提交后调，传这次进公海的客户；按客户找出刚关的（近 1 小时），key 按申请行，重调不重发。
- * 只发在职成员；客户名同「我的挂靠申请」：按客户名撞上的才写名字，按号码撞上的写撞的号码
+ * 只发在职成员；客户名同「我的挂靠申请」：按客户名撞上的才写名字，按号码撞上的写撞的号码（打码）
  */
 export async function 进公海挂靠通知(customerIds: readonly string[]): Promise<void> {
   if (!企业版() || !customerIds.length) return;
@@ -176,7 +178,9 @@ export async function 进公海挂靠通知(customerIds: readonly string[]): Pro
   const [org, 客户] = await Promise.all([读组织(), 客户们(关的.map((r) => r.customerId))]);
   for (const r of 关的) {
     if (!org.成员.has(r.userId)) continue;
-    const 哪家 = r.keyType === "客户名" ? `客户「${客户.get(r.customerId)?.名 ?? r.keyValue}」` : `撞到的客户（${r.keyType}：${r.keyValue}）`;
+    // 按号码撞上的：申请人没见过客户名，写撞上的号码——打码（P-转-12 提醒里不带手机号，审核 11-18 P1-2）
+    const 客 = 客户.get(r.customerId);
+    const 哪家 = r.keyType === "客户名" && 客 ? `客户「${客.称呼}」` : `撞到的客户（按${撞的写法(r.keyType, r.keyValue)}）`;
     await notify([r.userId], {
       kind: "挂靠",
       title: `挂靠申请已关闭：${哪家}已进公海`,
@@ -269,7 +273,7 @@ export async function 挂靠超时转上级(现在: Date = new Date()): Promise<
       });
       if (!r.count) continue;
       n++;
-      const 客户名 = 客户.get(行.customerId)?.名 ?? "";
+      const 客户名 = 客户.get(行.customerId)?.称呼 ?? "";
       const 负责人 = 客户.get(行.customerId)?.负责人 ?? null;
       const 原 = 行.approverId ? (人.get(行.approverId) ?? "") : "";
       const 原停用 = !!行.approverId && !org.成员.has(行.approverId);

@@ -4,17 +4,21 @@ import DatePicker from "@/components/BusinessDatePicker";
 import OptionInput from "@/components/OptionInput";
 import Shortcut from "./Shortcut";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import AmountTextInput from "@/components/AmountTextInput";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Select, Input, Checkbox } from "antd";
-import { CheckOutlined, CloseOutlined, RightOutlined } from "@ant-design/icons";
+import { Select, Input, Checkbox, Button } from "antd";
+import { CheckOutlined, CloseOutlined, RightOutlined, MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import { motion } from "motion/react";
 import { applyProposal, undoProposal, type 撤销凭据, type 附件去处 } from "@/app/(app)/dashboard/apply";
 import { 取走名片原图, 记下刚建的, 忘掉刚建的 } from "@/lib/card-scan/originals";
 import { 传附件 } from "@/lib/attachment-upload";
-import { describeProposal, missingFields, 只留选中的改动, 可改字段表, 区域去处叫法, type Proposal, type 线索待确认格, type 区域去处 } from "@/lib/agent/proposals";
+import { describeProposal, missingFields, 只留选中的改动, 可改字段表, 区域去处叫法, 线索卡地址, type Proposal, type 线索待确认格, type 区域去处 } from "@/lib/agent/proposals";
+import { 线索号码种类, 线索号码上限, 线索号码行, type 线索联系方式 } from "@/lib/agent/proposals";
+import { 号码上限 } from "@/lib/enterprise/customer-v2";
 import { 三种业务线, 分配说明, 建议业务线, 认分给 } from "@/lib/enterprise/assign-line";
+import { 默认分配方向, 方向来源说明 } from "@/lib/enterprise/customer-region";
 import { 认渠道 } from "@/lib/enterprise/channel-match";
 import { useBusiness } from "@/lib/business-client";
 import { 币种符号 } from "@/lib/currency";
@@ -24,11 +28,18 @@ import { 跟进类型们, FOLLOW_METHODS, FOLLOW_STATUSES, DECISION_STATUSES, LE
 import { dayjs } from "@/lib/utils";
 import { isCalendarDate } from "@/lib/schedule-date";
 import { useMotionTheme } from "@/components/MotionTheme";
+import { 指定选项 } from "@/lib/enterprise/designate-options";
 import { 企业版字典 } from "@/lib/project/stage-dict";
 import { 有效线索节点 } from "@/lib/project/stage-gates";
 import { 是项目卡, 不可撤销, type 项目卡 } from "@/lib/agent/project-proposals";
 import dynamic from "next/dynamic";
 import RescueKey from "@/app/(app)/customers/RescueKey";
+import { 沟通可选项目 } from "@/app/(app)/customers/[id]/actions";
+import { 沟通没项目话, 请负责人建项目话, 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
+import ReplyWindowInput from "@/components/ReplyWindowInput";
+import ScheduleAssignInput from "@/components/ScheduleAssignInput";
+import { 给人看的错 } from "@/lib/action-error";
+import { useFormDraft } from "@/components/FormDraft";
 
 // 项目类卡的格子（11-01 速度闸门）：AI 面板每一页都在，这块只有项目卡用到，出卡时才去拿，不进每页首屏
 const ProjectProposalFields = dynamic(() => import("@/components/ProjectProposalFields"), { ssr: false });
@@ -66,7 +77,13 @@ export const 新线索要下一步 = createContext(false);
  * 同一处（11-04）：新线索卡和「新建项目」向导走同一套分配 —— 分配方式（按业务角色能用的那几种）、
  * 指定分配时的负责人候选、业务线、当前进程（11-05 起只到线索验证，不再问客户明确回复）。服务端算好传进来（dashboard/page.tsx，同 wizard-data.ts）
  */
-export type 新线索企业格 = { 成员: { value: string; label: string }[]; 分配方式们: { i: number; 名: string }[]; 默认分配方式: number | null; 是销售: boolean };
+export type 新线索企业格 = { 成员: { value: string; label: string }[]; 分配方式们: { i: number; 名: string }[]; 默认分配方式: number | null; 是销售: boolean;
+  /** 市场成员（按岗位，P-转-26）：选自动分配时业务线换成可改的「分配方向」，默认按客户区域 → 电话 → 本人事业部（和建档向导一样，11-18） */
+  按区域?: boolean;
+  /** 本人事业部（分配方向第三步的默认） */
+  本人线?: "内贸" | "外贸" | null;
+  /** 指定分配的负责人下拉只列这些人（审核 11-18 追加，同建档向导；没给 = 不筛） */
+  可指定?: string[] };
 export const 新线索企业 = createContext<新线索企业格 | null>(null);
 /** 新建只能落在线索验证及之前（11-05：过了线索验证要看它的必填项，新建时填不了；lib/project/wizard.ts 同口径） */
 const 线索节点们 = 企业版字典.节点们.线索.slice(0, 企业版字典.节点们.线索.indexOf(有效线索节点) + 1 || undefined);
@@ -104,9 +121,15 @@ export default function ProposalCard({
   记号,
   报,
   批,
+  对话截图,
 }: {
   proposal: Proposal;
   记号?: string;
+  /**
+   * 这一问在对话框里带的截图原件（11-18 员工反馈「录入的时候还是添加不了截图」，lib/card-scan/originals.ts 对话截图）。
+   * 企业版新线索卡上摆缩略图和「存成这条线索的附件」（默认勾上），确认建好后凭首条附件票传到新线索的首条沟通上
+   */
+  对话截图?: File[];
   /** 状态变了就报一声（见 卡况） */
   报?: (id: string, 况: 卡况) => void;
   /** 在合并确认清单里：不画自己的确认 / 忽略按钮，⌘↵ 交给清单；把 卡句柄 交出去 */
@@ -134,6 +157,7 @@ export default function ProposalCard({
     const 给 = proposal.分配方式 === undefined && !proposal.ownerId ? 认分给(proposal.分给, 企.成员, 企.分配方式们.map((x) => x.i)) : null;
     return {
       ...预选,
+      ...企卡号码(proposal),
       ...(给 ? { ownerId: 给.ownerId } : {}),
       分配方式: 给?.分配方式 ?? proposal.分配方式 ?? 分,
       节点: proposal.节点 && 线索节点们.includes(proposal.节点) ? proposal.节点 : 线索节点们[0],
@@ -141,8 +165,21 @@ export default function ProposalCard({
     };
   });
   const [state, set状态] = useState<"idle" | "saving" | "done" | "denied">(() => (记号 && 建议结果(记号)) || "idle");
+  /*
+    人在卡上改了没确认的（备注、沟通内容、计划…，含 ProjectProposalFields 那几格）留草稿（复盘第 1 类，25C）：按这张卡分，
+    对话还在、刷新 / 发版后卡重新画出来时带回；确认了、忽略了就删。卡上改的都是人的决定，下拉改了也算。
+    键用 记号（「任务 key:卡片 id」，带着这一问的编号）：卡片 id 只是「种类-序号-客户」，换一问会撞上，不能单用；没给记号的卡不留
+  */
+  const 稿 = useFormDraft({
+    键: !记号 || state === "done" || state === "denied" ? null : `AI卡:${记号}`,
+    值: draft as unknown as Record<string, unknown>,
+    带回: (v) => setDraft((d) => ({ ...d, ...v }) as Proposal),
+    算填过: (改过) => Object.keys(改过).length > 0,
+    紧凑: true,
+  });
   const setState = (s: "idle" | "saving" | "done" | "denied") => {
     set状态(s);
+    if (s === "done" || s === "denied") 稿.存好了();
     if (记号 && (s === "done" || s === "denied")) 记下建议结果(记号, s);
   };
   const [err, setErr] = useState("");
@@ -165,13 +202,39 @@ export default function ProposalCard({
   /** 改档案时逐项勾选。默认全勾上——建议是它提的，人只需要否掉不想要的那几项 */
   const [勾了, set勾了] = useState<number[]>(() => (proposal.kind === "update_customer" ? proposal.changes.map((_, i) => i) : [0]));
   const 逐项 = draft.kind === "update_customer" && draft.changes.length > 1;
+  /* 对话里带的截图：只有企业版只用项目的新线索卡收（建成项目才有首条沟通、才签得出首条附件票）；没带图不摆这一块 */
+  const 截图们 = proposal.kind === "add_lead" && 渠道名们 && 对话截图?.length ? 对话截图 : null;
+  const [存截图, set存截图] = useState(true);
+  const 要存截图 = !!截图们 && 存截图;
+
+  /**
+   * 记沟通卡（企业版沟通必须挂项目，11-17）：这位客户我能挂沟通的在推项目。undefined = 还在问；null = 不是企业版、不用挂。
+   * 几个要人在卡上选（不猜）；一个就挂它（服务端自己挂）；没有就说先建项目、不能确认
+   */
+  const [跟进项目们, set跟进项目们] = useState<{ id: string; name: string }[] | null | undefined>(undefined);
+  /** 没项目时我能不能新建项目：能 = 卡上给「去建项目」（客户页直接打开新建项目），不能 = 请负责人先建 */
+  const [跟进能建项目, set跟进能建项目] = useState(false);
+  const 跟进客户 = draft.kind === "add_followup" && state !== "done" && state !== "denied" ? draft.customerId : null;
+  useEffect(() => {
+    if (!跟进客户) return;
+    let 作废 = false;
+    沟通可选项目(跟进客户).then(
+      (r) => { if (!作废) { set跟进项目们(r.ok ? r.项目们 : null); set跟进能建项目(r.ok && r.能建项目); } },
+      () => { if (!作废) set跟进项目们(null); },
+    );
+    return () => { 作废 = true; };
+  }, [跟进客户]);
+  const 要挂项目 = draft.kind === "add_followup" && 要挂项目的类型(draft.type) && Array.isArray(跟进项目们);
+  const 跟进没项目 = 要挂项目 && 跟进项目们!.length === 0;
+  const 跟进要选 = 要挂项目 && 跟进项目们!.length > 1 && !(draft.kind === "add_followup" && draft.projectId && 跟进项目们!.some((x) => x.id === draft.projectId));
 
   /** 真正要提交的那张卡：逐项时只带勾上的那几项 */
   const 要提交的 = useMemo<Proposal>(() => 只留选中的改动(draft, 勾了), [draft, 勾了]);
   // 模型不知道的字段留空，人在卡片上补齐才能确认
   // 企业版卡上那一格叫「渠道」（术语表），提示里跟着叫；lib 里那句「来源（渠道）」AI 的提示词也在用，不动
-  const missing = missingFields(要提交的, b, 渠道名们 ? { 只用项目: true, 要下一步, ...(企 ? { 企业: { 有分配方式: 企.分配方式们.length > 0, 节点们: 线索节点们 } } : {}) } : undefined)
-    .map((m) => (渠道名们 && m === "来源（渠道）" ? "渠道" : m));
+  const missing = missingFields(要提交的, b, 渠道名们 ? { 只用项目: true, 要下一步, ...(企 ? { 企业: { 有分配方式: 企.分配方式们.length > 0, 节点们: 线索节点们, 按区域: !!企.按区域 } } : {}) } : undefined)
+    .map((m) => (渠道名们 && m === "来源（渠道）" ? "渠道" : m))
+    .concat(跟进没项目 || 跟进要选 ? ["关联项目"] : []);
   const 停用卡 = draft.kind === "add_opportunity";
   const 能确认 = state !== "saving" && !停用卡 && missing.length === 0 && 勾了.length > 0;
 
@@ -194,10 +257,13 @@ export default function ProposalCard({
     /* 断网 / 服务端抛错：卡片回到能再点一次的样子，原因写在卡上（不然一直「写入中…」，合并清单也跟着锁死） */
     let r: Awaited<ReturnType<typeof applyProposal>>;
     try {
-      r = await applyProposal(要提交的);
+      r = await applyProposal(要提交的, 要存截图 ? { 首条附件: true } : undefined);
     } catch (e) {
       setState("idle");
-      setErr(`没写进去：${e instanceof Error && e.message ? e.message : "网络或服务出错"}，可以再点一次`);
+      // 报错不直出英文（25C）：老版本动作说刷新、断网说网络；别的英文原文进日志，卡上一句中文
+      // 卡上要先说「没写进去」，再说原因（ai-status 用例钉的样子）；原因走 25C 的中文化，英文原文进日志
+      const 因 = 给人看的错(e, "网络或服务出错", "AI 卡");
+      setErr(因.startsWith("没写进去") ? 因 : `没写进去：${因}，可以再点一次`);
       return false;
     }
     if (r.ok) {
@@ -210,6 +276,8 @@ export default function ProposalCard({
       if (焦点在卡里) requestAnimationFrame(() => 对话框?.focus());
       // 名片建的线索：选的几张原图存成它（或建出来的主要联系人）的附件。存完再刷一次，附件数跟着出来
       if (r.附件去处) void 存名片原图(r.附件去处);
+      // 对话里带的截图（勾了的）：凭首条附件票传到新线索的首条沟通上
+      if (要存截图 && 截图们) void 存对话截图(截图们, r.首条附件票);
       // 记下刚建的那位：接着单发的客户照片问一句要不要存到他名下（lib/card-scan/originals.ts）
       if (r.附件去处 && 要提交的.kind === "add_lead") {
         建出的去处.current = r.附件去处;
@@ -227,7 +295,7 @@ export default function ProposalCard({
       return true;
     }
     setState("idle");
-    setErr(r.error);
+    setErr(给人看的错(r.error, "没写进去，可以再点一次", "AI 卡"));
     set回收站号(r.回收站号 ?? null);
     return false;
   }
@@ -252,6 +320,27 @@ export default function ProposalCard({
     router.refresh();
   }
 
+  /**
+   * 对话里带的截图存成新线索首条沟通的附件（11-18）：凭建线索那一下签给我的首条附件票传（建好多半已分给别人，我不是负责人，
+   * 不凭票传不上——一般规矩不放宽）。逐张传，线索已经建好了，没传上的不回滚，写在回执下面、说清找谁补
+   */
+  async function 存对话截图(图们: File[], 票: { followUpId: string; 票: string } | undefined) {
+    const 到哪补 = "可请项目负责人在这条线索的首条沟通上补传";
+    if (!票) {
+      set图错(`截图没存上：没拿到上传凭证。${到哪补}`);
+      return;
+    }
+    const 错: string[] = [];
+    for (const f of 图们) {
+      const r = await 传附件({ followUpId: 票.followUpId }, f, null, 票.票);
+      if (!r.ok) 错.push(r.error);
+    }
+    const 存了 = 图们.length - 错.length;
+    if (!存了) set图错(`截图没存上：${错[0]}。${到哪补}`);
+    else if (错.length) set图错(`${图们.length} 张截图存了 ${存了} 张，${错.length} 张没存上（${错[0]}）。${到哪补}`);
+    router.refresh();
+  }
+
   /** 撤销成了不弹提示：卡片原地褪回「等你确认」就是回答；没撤成，原因写在回执行里（原型 g.undo / g.notice） */
   async function undo(): Promise<boolean> {
     if (!落印?.撤销) return false;
@@ -261,13 +350,14 @@ export default function ProposalCard({
     try {
       r = await undoProposal(落印.撤销);
     } catch (e) {
-      set撤错(`没撤销成功：${e instanceof Error && e.message ? e.message : "网络或服务出错"}，可以再点一次`);
+      const 因 = 给人看的错(e, "网络或服务出错", "AI 卡");
+      set撤错(因.startsWith("没撤销成功") ? 因 : `没撤销成功：${因}，可以再点一次`);
       return false;
     } finally {
       set撤销中(false);
     }
     if (!r.ok) {
-      set撤错(r.error);
+      set撤错(给人看的错(r.error, "没撤销成功，可以再点一次", "AI 卡"));
       return false;
     }
     if (建出的去处.current) 忘掉刚建的(建出的去处.current);
@@ -374,6 +464,7 @@ export default function ProposalCard({
         <span className="prop-t">{describeProposal(draft, b.customer, 字段表, b)}</span>
       </div>
       <div className="prop-why">{draft.reason}</div>
+      {稿.提示}
 
       <div className="prop-body">
         {是项目卡(draft.kind) && <ProjectProposalFields draft={draft as 项目卡} setDraft={(p) => setDraft(p)} />}
@@ -442,7 +533,7 @@ export default function ProposalCard({
         {draft.kind === "add_contract" && (
           <>
             <Field label={签约叫(b) === "订单" ? "订单金额" : "签约金额"}>
-              <Input size="small" style={{ width: 140 }} prefix={币种符号(draft.currency || b.currency)} value={draft.amount || ""} onChange={(e) => setDraft({ ...draft, amount: Number(e.target.value.replace(/[^\d.]/g, "")) || 0 })} />
+              <AmountTextInput aria-label="金额" prefix={币种符号(draft.currency || b.currency)} value={draft.amount} onChange={(n) => setDraft({ ...draft, amount: n })} />
             </Field>
             <Field label={签约叫(b) === "订单" ? "订单确认时间" : "签约日期"}>
               <DatePicker size="small" format="YYYY-MM-DD" allowClear={false} value={draft.signedAt ? dayjs(draft.signedAt) : null} onChange={(d) => d && setDraft({ ...draft, signedAt: d.toISOString() })} />
@@ -501,6 +592,28 @@ export default function ProposalCard({
                 onChange={(e) => setDraft({ ...draft, content: e.target.value })}
               />
             </Field>
+            {要挂项目 && 跟进项目们!.length > 1 && (
+              <Field label="关联项目">
+                <Select
+                  size="small"
+                  className="prop-proj-pick"
+                  aria-label="关联项目"
+                  placeholder="选一个在推项目"
+                  value={draft.projectId && 跟进项目们!.some((x) => x.id === draft.projectId) ? draft.projectId : undefined}
+                  options={跟进项目们!.map((x) => ({ value: x.id, label: x.name }))}
+                  onChange={(v: string) => setDraft({ ...draft, projectId: v })}
+                />
+              </Field>
+            )}
+            {要挂项目 && 跟进项目们!.length === 1 && <Field label="关联项目"><span className="prop-proj-one">{跟进项目们![0].name}</span></Field>}
+            {跟进没项目 && draft.kind === "add_followup" && (
+              <div role="note" className="prop-err prop-f-block">
+                {沟通没项目话}
+                {跟进能建项目
+                  ? <>{" "}<Link href={`/customers/${draft.customerId}?建项目=1`}>去建项目</Link></>
+                  : `（${请负责人建项目话}）`}
+              </div>
+            )}
           </>
         )}
 
@@ -541,21 +654,36 @@ export default function ProposalCard({
           const 认图卡 = draft.id.startsWith("card-");
           // 企业版卡上国家、城市总摆着（和新建向导一样能填），别的版本照旧有值才出
           const 企卡 = !!(企 && 渠道名们);
-          const 多格 = ([["country", "国家", 110], ["city", "城市", 110], ["wechat", "微信", 160], ["email", "邮箱", 200], ["whatsapp", "WhatsApp", 150]] as const)
-            .filter(([k]) => 认图卡 || draft[k] || 待.has(k) || (企卡 && (k === "country" || k === "city")));
-          const 有区域 = !!(draft.country?.trim() || draft.city?.trim());
-          const 负责人选项 = 企?.成员 ?? [];
+          // 企业版的微信 / 邮箱 / WhatsApp 并进了「联系方式」几行（企卡号码），这里只剩国家、城市
+          // 省、区县、详细地址、职位：模型认出来了才摆出来（11-18，原来没这几格，说了也落不进库）
+          const 新格 = (k: string) => k === "province" || k === "district" || k === "address" || k === "position";
+          const 有值才摆 = (k: string) => 新格(k) && !!draft[k as "province"];
+          const 多格 = ([["position", "职位", 110], ["country", "国家", 110], ["province", "省", 110], ["city", "城市", 110], ["district", "区县", 110], ["address", "详细地址", 200], ["wechat", "微信", 160], ["email", "邮箱", 200], ["whatsapp", "WhatsApp", 150]] as const)
+            .filter(([k]) => (企卡 ? k === "country" || k === "city" || 有值才摆(k) || 待.has(k) : !新格(k) && (认图卡 || draft[k] || 待.has(k))));
+          const 有区域 = !!(draft.country?.trim() || draft.province?.trim() || draft.city?.trim() || draft.district?.trim() || draft.address?.trim());
+          // 市场成员选自动分配（P-转-26）：业务线那格换成只读说明，按落库时同一套（线索卡地址）算出的客户区域定线；没落进客户 / 项目 = 未填提示
+          const 区域定线中 = !!企?.按区域 && draft.分配方式 === 1;
+          const 卡上地址 = 线索卡地址(draft);
+          // 指定分配：负责人下拉只列能被指定的（参与状态正常的销售 / 销售管理，加我自己），不等服务端拒
+          const 负责人选项 = draft.分配方式 === 0 ? 指定选项(企?.成员 ?? [], 企?.可指定, null, draft.ownerId) : 企?.成员 ?? [];
           return (
           <>
             <Field label={企卡 ? "客户名称（组织 / 公司）" : "名称"} 待={待.has("name") ? 点掉("name") : undefined}>
               <Input size="small" style={{ width: 企卡 ? 200 : 160 }} placeholder={企卡 ? "组织或公司名" : "姓名或公司名"} value={draft.name} onChange={(e) => 改("name", e.target.value)} />
             </Field>
             <Field label={企卡 ? "联系人姓名" : "联系人"} 待={待.has("contact") ? 点掉("contact") : undefined}>
-              <Input size="small" style={{ width: 140 }} placeholder={企卡 ? undefined : "可留空"} value={draft.contact} onChange={(e) => 改("contact", e.target.value)} />
+              <Input size="small" style={{ width: 140 }} placeholder="可留空" value={draft.contact} onChange={(e) => 改("contact", e.target.value)} />
             </Field>
-            <Field label="电话" 待={待.has("phone") ? 点掉("phone") : undefined}>
-              <Input size="small" style={{ width: 150 }} placeholder="可留空" value={draft.phone} onChange={(e) => 改("phone", e.target.value)} />
-            </Field>
+            {/* 企业版：联系方式 = 类型 + 号码几行（11-17 员工反馈「只能填电话」），和联系人表单同一套类型；别的版本照旧一格电话 */}
+            {企卡 ? (
+              <Field label="联系方式" block 待={待.has("联系方式") ? 点掉("联系方式") : undefined}>
+                <联系方式格 行们={draft.联系方式 ?? []} 改={(行们) => { const 剩 = (draft.待确认 ?? []).filter((x) => x !== "联系方式"); setDraft({ ...draft, 联系方式: 行们, 待确认: 剩.length ? 剩 : undefined }); }} />
+              </Field>
+            ) : (
+              <Field label="电话" 待={待.has("phone") ? 点掉("phone") : undefined}>
+                <Input size="small" className="prop-num-val" placeholder="可留空" value={draft.phone} onChange={(e) => 改("phone", e.target.value)} />
+              </Field>
+            )}
             {多格.map(([k, 叫, 宽]) => (
               <Field key={k} label={叫} 待={待.has(k) ? 点掉(k) : undefined}>
                 <Input size="small" style={{ width: 宽 }} placeholder="可留空" value={draft[k] ?? ""} onChange={(e) => 改(k, e.target.value)} />
@@ -630,11 +758,45 @@ export default function ProposalCard({
                     <Select size="small" style={{ width: 160 }} showSearch optionFilterProp="label" placeholder="选一位" value={draft.ownerId || undefined} options={负责人选项} onChange={(v) => setDraft({ ...draft, ownerId: v })} />
                   </Field>
                 )}
-                <Field label="业务线">
-                  <Select size="small" style={{ width: 110 }} placeholder="选一条" value={draft.业务线} options={三种业务线.map((v) => ({ value: v, label: v }))} onChange={(v) => setDraft({ ...draft, 业务线: v })} />
-                </Field>
+                {/* 指定分配时间（11-17 PR3）：指定分配、自动分配才有，和新建项目同一格（components/ScheduleAssignInput.tsx） */}
+                {(draft.分配方式 === 0 || draft.分配方式 === 1) && (
+                  <Field label="分配时间" block>
+                    <ScheduleAssignInput size="small" value={draft.定时分配 ?? null} onChange={(v) => setDraft({ ...draft, 定时分配: v ?? undefined })} />
+                  </Field>
+                )}
+                {区域定线中 ? (
+                  <Field label="分配方向" block>
+                    {(() => {
+                      // 默认：落库时同一套地址（线索卡地址）认出的区域 → 卡上手机号 → 我的事业部；人改了按改的（只交改过的，服务端同顺序算默认）
+                      const 默认 = 默认分配方向({
+                        客户: 卡上地址.客户, 项目: 卡上地址.项目, 本人线: 企?.本人线 ?? null,
+                        号们: [...(draft.联系方式 ?? []).filter((r) => r.kind === "phone").map((r) => r.value), draft.phone,
+                          // 只留了 WhatsApp 的按国际号读（审核 11-18 P1-6，服务端 向导号们 同顺序）
+                          ...[...(draft.联系方式 ?? []).filter((r) => r.kind === "whatsapp").map((r) => r.value), draft.whatsapp].filter((x): x is string => !!x?.trim()).map((whatsapp) => ({ whatsapp }))],
+                      });
+                      const 选 = draft.分配方向;
+                      return (
+                        <>
+                          <Select size="small" className="dir-select-w110" placeholder="内贸 / 外贸" data-testid="lead-card-direction" value={选 ?? 默认.线 ?? undefined}
+                            options={(["内贸", "外贸"] as const).map((v) => ({ value: v, label: v }))} onChange={(v) => setDraft({ ...draft, 分配方向: v })} />
+                          <span className={选 || 默认.线 ? "muted lead-region-line" : "prop-region-warn lead-region-line"} data-testid="lead-card-region-line">
+                            {选 && 选 !== 默认.线 ? `你改成了${选}（默认${默认.线 ? 方向来源说明(默认) : "不限"}）` : 方向来源说明(默认)}
+                          </span>
+                        </>
+                      );
+                    })()}
+                  </Field>
+                ) : (
+                  <Field label="业务线">
+                    <Select size="small" style={{ width: 110 }} placeholder="选一条" value={draft.业务线} options={三种业务线.map((v) => ({ value: v, label: v }))} onChange={(v) => setDraft({ ...draft, 业务线: v })} />
+                  </Field>
+                )}
                 <Field label="当前进程">
                   <Select size="small" style={{ width: 150 }} value={draft.节点} options={线索节点们.map((v) => ({ value: v, label: v }))} onChange={(v) => setDraft({ ...draft, 节点: v })} />
+                </Field>
+                {/* 指定回复时间（11-17，选填）：和新建项目同两格（components/ReplyWindowInput.tsx） */}
+                <Field label="指定回复" block>
+                  <ReplyWindowInput size="small" value={{ 开始: draft.指定回复开始 ?? null, 结束: draft.指定回复结束 ?? null }} onChange={(v) => setDraft({ ...draft, 指定回复开始: v.开始 ?? undefined, 指定回复结束: v.结束 ?? undefined })} />
                 </Field>
               </>
             ) : 渠道名们 ? (
@@ -655,6 +817,17 @@ export default function ProposalCard({
             <Field label="备注" block>
               <Input.TextArea size="small" autoSize={{ minRows: 1, maxRows: 5 }} placeholder="可留空" value={draft.remark} onChange={(e) => setDraft({ ...draft, remark: e.target.value })} />
             </Field>
+            {/* 对话里带的截图（11-18）：缩略图 + 勾选，默认勾上；确认建好后存成这条线索首条沟通的附件，负责人能看到 */}
+            {截图们 && (
+              <Field label="截图" block>
+                <div className="prop-shots">
+                  {截图们.map((f, i) => <ShotThumb key={i} f={f} />)}
+                  <Checkbox checked={存截图} onChange={(e) => set存截图(e.target.checked)}>
+                    存成这条线索的附件（{截图们.length} 张，负责人能看到）
+                  </Checkbox>
+                </div>
+              </Field>
+            )}
           </>
           );
         })()}
@@ -721,11 +894,74 @@ export default function ProposalCard({
 }
 
 /**
+ * 企业版新线索卡的联系方式（11-17）：老卡的电话 / 微信 / 邮箱 / WhatsApp 几格并成「类型 + 号码」几行（电话当手机），
+ * 老格清掉（不然确认时 buildProposal 又把它们并回来，人删掉的行会复活）；那几格的「待确认」并成一个。一行都没有给一行空的手机
+ */
+function 企卡号码(p: Proposal): Partial<Extract<Proposal, { kind: "add_lead" }>> {
+  if (p.kind !== "add_lead") return {};
+  const 行们 = 线索号码行(p);
+  const 老格 = new Set<线索待确认格>(["phone", "wechat", "email", "whatsapp"]);
+  const 待 = p.待确认 ? [...new Set(p.待确认.map((k) => (老格.has(k) ? "联系方式" as const : k)))] : undefined;
+  return {
+    联系方式: 行们.length ? 行们 : [{ kind: 线索号码种类[0].kind, value: "" }],
+    phone: "", wechat: undefined, email: undefined, whatsapp: undefined,
+    待确认: 待?.length ? 待 : undefined,
+  };
+}
+
+/** 联系方式几行：类型下拉（号码类型字典默认八项，顺序同取值表）+ 号码；至少一行，最多 线索号码上限 行（同联系人表单） */
+function 联系方式格({ 行们, 改 }: { 行们: 线索联系方式[]; 改: (行们: 线索联系方式[]) => void }) {
+  const 显示 = 行们.length ? 行们 : [{ kind: 线索号码种类[0].kind, value: "" }];
+  const 换 = (i: number, 补: Partial<线索联系方式>) => 改(显示.map((x, j) => (j === i ? { ...x, ...补 } : x)));
+  return (
+    <div className="prop-nums" data-testid="lead-numbers">
+      {显示.map((行, i) => (
+        <div className="prop-num" key={i}>
+          <Select
+            size="small"
+            className="prop-num-kind"
+            aria-label="号码类型"
+            value={行.kind}
+            options={线索号码种类.map((k) => ({ value: k.kind, label: k.名 }))}
+            onChange={(v: string) => 换(i, { kind: v })}
+          />
+          <Input size="small" className="prop-num-val" aria-label="号码" placeholder="号码或账号" maxLength={号码上限} value={行.value} onChange={(e) => 换(i, { value: e.target.value })} />
+          {显示.length > 1 && (
+            <Button size="small" type="text" icon={<MinusCircleOutlined />} aria-label="去掉这一行" onClick={() => 改(显示.filter((_, j) => j !== i))} />
+          )}
+        </div>
+      ))}
+      {显示.length < 线索号码上限 && (
+        <Button size="small" type="link" className="prop-num-add" icon={<PlusOutlined />} onClick={() => 改([...显示, { kind: 线索号码种类[0].kind, value: "" }])}>
+          加一个联系方式
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/**
  * 卡片上的一项。
  *
  * 有「现在是什么」就写成「现在 → 改成」——不写的话，卡片上一行「跟进状态：已签约」
  * 人无从判断这是在改还是本来就是。逐项勾选时前面还有一个勾。
  */
+/**
+ * 对话里带的一张截图的缩略图：本机原件，不经服务器。地址在挂上时建、卸下时收（ref 的清理函数，React 19），不留在内存里。
+ * 原件只在这台电脑上，next/image 的优化用不上
+ */
+function ShotThumb({ f }: { f: File }) {
+  // 同一个原件只建一次地址：ref 回调跟着 f 走，卡片别的格重画时不重建、不闪
+  const 挂 = useCallback((el: HTMLImageElement | null) => {
+    if (!el || typeof URL.createObjectURL !== "function") return;
+    const 址 = URL.createObjectURL(f);
+    el.src = 址;
+    return () => URL.revokeObjectURL(址);
+  }, [f]);
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img className="prop-shot" alt={f.name} title={f.name} ref={挂} />;
+}
+
 function Field({
   label, children, block, 现值, 勾, 待,
 }: {

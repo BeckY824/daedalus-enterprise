@@ -14,6 +14,7 @@
  */
 
 import { 表们, 运算符, 关联们 } from "./query";
+import { 线索号码种类, 线索号码说明 } from "./proposals";
 
 export type Schema = {
   type: "object";
@@ -223,20 +224,33 @@ export const 建议SCHEMAS: Record<string, Schema> = {
     properties: {
       name: 串("线索名称 / 姓名"),
       contact: 串(),
-      phone: 串(),
       source: 串("来源 / 渠道：人说了从哪来（平台、展会、渠道名）就原样给，卡上按渠道名认"),
       status: 串(),
-      remark: 串("备注；国家 / 城市 / 下一步 / 分给谁不要写进这里，用各自的格"),
+      remark: 串("备注；国家 / 城市 / 地址 / 职位 / 下一步 / 分给谁不要写进这里，用各自的格；需求、预算写这里"),
       assignTo: 串("分给谁：人说了交给哪位同事跟就原样给姓名，没说不给；卡上认出那一位才预选，人确认"),
       country: 串("国家 / 地区，人提到才给"),
-      city: 串("城市，人提到才给"),
-      wechat: 串(),
-      email: 串(),
-      whatsapp: 串(),
+      province: 串("省 / 州，人提到才给"),
+      city: 串("城市，人提到才给；给了城市就把国家也给上（国内城市给「中国」）"),
+      district: 串("区 / 县 / 县级市，人提到才给"),
+      address: 串("详细地址（街道门牌），人提到才给"),
+      position: 串("联系人职位，人提到才给"),
+      指定回复开始: 串("客户要求什么时候联系（开始），北京时间 YYYY-MM-DD HH:mm，人提到才给"),
+      指定回复结束: 串("客户要求联系的截止时间，北京时间 YYYY-MM-DD HH:mm，人提到才给"),
+      // 电话 / 微信 / 邮箱 / WhatsApp 11-17 起都放 numbers（类型 + 号码）；老卡的那几格 buildProposal 照收
+      numbers: {
+        type: "array",
+        description: 线索号码说明,
+        items: {
+          type: "object",
+          properties: { type: { type: "string", enum: 线索号码种类.map((x) => x.名) }, value: 串("号码 / 账号原样") },
+          required: ["type", "value"],
+          additionalProperties: false,
+        },
+      },
       nextAt: 串("下一步时间 YYYY-MM-DD，人提到才给"),
       nextStep: 串("下一步计划，一句话"),
       bizLine: { type: "string", enum: ["内贸", "外贸", "暂不分配"], description: "业务线，有把握才给" },
-      regionTo: { type: "array", items: { type: "string", enum: ["客户", "联系人", "项目"] }, description: "国家 / 城市是谁的：客户所在区域 / 联系人所在区域 / 项目所在地；说不清（比如只说「摩洛哥客户」）就不给，让人在卡上选" },
+      regionTo: { type: "array", items: { type: "string", enum: ["客户", "联系人", "项目"] }, description: "国家 / 省 / 城市是谁的：客户所在区域 / 联系人所在区域 / 项目所在地；说不清（比如只说「摩洛哥客户」）就不给，让人在卡上选" },
       reason: 串(理由),
     },
     required: ["name", "reason"],

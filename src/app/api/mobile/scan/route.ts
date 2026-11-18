@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { 认扫名片的人 as 认人, 建限次 } from "@/lib/card-scan/server/auth";
 import { 语言表, 是名片语言 } from "@/lib/card-scan/langs";
 import { 取识别池, 太忙 } from "@/lib/card-scan/server/pool";
+import { recordAiUse } from "@/lib/ai-usage";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -15,6 +16,9 @@ export const runtime = "nodejs";
  *
  * 只给登录了的团队版账号（和连手机同一条：在团队、团队开着、有自己连上的设备）；按账号限流，防有人拿来刷。
  * 不扣次数。照片只在内存里：读进来 → 交给识别线程 → 认完就丢，不落盘、不打日志
+ *
+ * ?use=ask：首页对话框带图问（2026-11-17，lib/ask-image.ts）——认出来的字当附件文本随问题发给模型。
+ * 企业版记一笔 ai_use（功能键 shot），和批次 20d 一样只记张数、字数、工具名，不记认出的字；认名片不带这个参数，照旧不记
  */
 
 const 最大字节 = 2 * 1024 * 1024;
@@ -55,7 +59,9 @@ async function 读图(req: Request): Promise<Uint8Array | null> {
 export async function POST(req: Request) {
   const 人 = await 认人(req);
   if (人 instanceof NextResponse) return 人;
-  const 语言 = new URL(req.url).searchParams.get("lang") ?? "中英";
+  const 参数 = new URL(req.url).searchParams;
+  const 语言 = 参数.get("lang") ?? "中英";
+  const 对话框 = 参数.get("use") === "ask";
   if (!是名片语言(语言)) return NextResponse.json({ error: "不认识的名片语言" }, { status: 400 });
   if (!记一次(人.accountId)) return NextResponse.json({ error: "扫得太快了，先在手机上认" }, { status: 429 });
   const 图 = await 读图(req);
@@ -75,6 +81,11 @@ export async function POST(req: Request) {
           进: (前面) => { if (前面 !== 上次 && (前面 > 0 || 上次 > 0)) { 上次 = 前面; 行({ 排队: 前面 }); } },
         });
         行({ 框: 项们 });
+        if (对话框 && 人.名字 !== undefined) {
+          const 字数 = 项们.reduce((n, x) => n + (typeof x.text === "string" ? x.text.replace(/\s/g, "").length : 0), 0);
+          // 留痕没记上不该让这张图算没认出来：框已经发出去了
+          await recordAiUse({ id: 人.accountId, name: 人.名字 }, "shot", `截图识字：1 张，认出 ${字数} 字（服务器 OCR，首页对话框）`).catch(() => undefined);
+        }
       } catch (e) {
         行(e instanceof 太忙 ? { 忙: true } : { 错: "服务器没认出来" });
       }

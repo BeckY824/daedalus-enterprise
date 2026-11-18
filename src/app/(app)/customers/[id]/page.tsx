@@ -30,8 +30,15 @@ import { 权限组织 } from "@/lib/enterprise/org";
 import { 字段权限of, 客户列字段 } from "@/lib/enterprise/field-perm";
 import { 能管公海, 能转出自己的, 能放回客户公海, 只读角色, 能新建和领取, 转自己客户要申请 } from "@/lib/enterprise/permissions";
 import { 客户在市场手里 } from "@/lib/enterprise/market-transfer";
+import { 页面可自动分配, 暂不分配项目of, 市场分配限指定 } from "@/lib/enterprise/cust-auto-assign";
+import { 客户默认分配方向 } from "@/lib/enterprise/assign-direction-db";
+import { 读组织 } from "@/lib/enterprise/org";
+import { 要按方向指定, 指定方向候选表 } from "@/lib/enterprise/assign-direction-pick";
+import { 可指定的人 } from "@/lib/enterprise/assign-eta";
+import { 客户自动分配 } from "../../leads/assign-actions";
 import { 附件个数, 联系人分类附件数 } from "@/lib/attachments";
 import { 关联客户们, 页面号码种类表, 联系人号码们, 客户的联系人们, 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
+import { 电话子表键们 } from "@/lib/enterprise/customer-phone-db";
 import { 页面可选项, 页面字典, 页面客户释义, 预读页面字典 } from "@/lib/enterprise/dict";
 import { 客户状态色表 } from "@/lib/enterprise/cust-status-color";
 import { 企业版字典, 本套位置 } from "@/lib/project/nodes";
@@ -85,6 +92,8 @@ export default async function CustomerDetailPage({
       },
       // 企业版联系人的号码几行（定稿 P5 第 24 条）；别的版本这张子表里没有挂联系人的行，带上也是空
       contacts: { orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }], include: { contactMethods: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { kind: true, value: true } } } },
+      // 企业版客户本身的号码（contactId 空的那几行，11-17）：资料卡「电话」下面摆，电话那一行不重复摆
+      contactMethods: { where: { contactId: null }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { kind: true, value: true, numberKey: true } },
       tasks: { orderBy: [{ done: "asc" }, { dueAt: "asc" }] },
       plans: { where: { done: false, ...(要看的计划 ? { id: 要看的计划 } : {}) }, orderBy: [{ plannedAt: "asc" }, { id: "asc" }] },
       followUps: { orderBy: followHistoryOrder, take: 只项目 ? 0 : 51, include: followHistoryInclude },
@@ -228,6 +237,15 @@ export default async function CustomerDetailPage({
       : {}),
   });
 
+  // 客户转让框里「指定分配 / 自动分配」的选择（客户 11-17）：市场成员 + 暂不分配的客户才摆，判定和服务端 客户自动分配 同一份
+  const 能自动分 = 企 && !customer.pool && !!customer.salesOwnerId && (await 页面可自动分配(me, { id: customer.id, salesOwnerId: customer.salesOwnerId, bizLine: customer.bizLine, pool: null }));
+  // 市场成员指定分配也先定方向（P-转-26，11-18）：判定同服务端 assignSalesOwner 那道（assign-direction-pick.ts）
+  const 定向项目 = 企 && !customer.pool && !!customer.salesOwnerId
+    ? await 要按方向指定(me, (await 权限组织())!, { id: customer.id, salesOwnerId: customer.salesOwnerId, bizLine: customer.bizLine, pool: null })
+    : null;
+  const 指定定向 = 定向项目
+    ? { 候选表: await 指定方向候选表(await 读组织()), 默认方向: await 客户默认分配方向(await 读组织(), customer.id, me.id, 定向项目) }
+    : undefined;
   return (
     <CustomerDetail
       key={customer.id}
@@ -250,6 +268,12 @@ export default async function CustomerDetailPage({
         企 && !customer.pool && !!customer.salesOwnerId && customer.salesOwnerId === me.id && 转自己客户要申请(me, await 权限组织())
         && !客户在市场手里((await 权限组织())!, { salesOwnerId: customer.salesOwnerId, pool: null })
       }
+      自动分配={能自动分 ? 客户自动分配 : undefined}
+      指定定向={指定定向}
+      // 分配方向的默认值（11-18）：客户区域 → 那条暂不分配项目的所在地 → 客户的号 → 我的事业部；框里可以改
+      // 兼条线总管理 / 销售管理的不限（市场分配限指定，接手人按普通转让 P-转-01）
+      自动指定候选={能自动分 && 市场分配限指定(await 读组织(), me.id) ? await 可指定的人(await 读组织()) : undefined}
+      自动分配方向={能自动分 ? await 客户默认分配方向(await 读组织(), customer.id, me.id, await 暂不分配项目of({ id: customer.id, salesOwnerId: customer.salesOwnerId!, bizLine: customer.bizLine })) : undefined}
       原负责人领不回={!!customer.pool && 拦原负责人() && (await 我放出去的公海客户([{ id: customer.id, 在公海: true, salesOwnerId: customer.salesOwnerId }], me.id)).length > 0}
       换负责人记录={换负责人记录}
       旺旺们={旺旺们}
@@ -267,6 +291,7 @@ export default async function CustomerDetailPage({
       只能看的格={await 只能看的格P}
       管理员只读={企 && 只读角色(me, await 权限组织())}
       能领={!企 || 能新建和领取(me, await 权限组织())}
+      能新建项目={!企 || 能新建和领取(me, await 权限组织())}
       能改沟通={可改沟通}
       能删沟通={可删沟通}
       客户状态选项={客户状态选项}
@@ -276,6 +301,12 @@ export default async function CustomerDetailPage({
       联系人分类附件数={联系人分类附件}
       关联们={关联们}
       号码种类={号码种类}
+      客户号码们={企 ? (() => {
+        const 电话键 = new Set(电话子表键们(customer.phone));
+        return customer.contactMethods
+          .filter((x) => !(x.kind === "phone" && 电话键.has(x.numberKey)))
+          .map((x) => ({ kind: x.kind, value: 打码种类.has(x.kind) ? 号(x.value) : x.value }));
+      })() : undefined}
       // 联系人「职务」下拉的候选（10-31，字典 contactTitle）；走请求内缓存
       职务选项={职务选项}
       分配方式选项={分配方式选项}

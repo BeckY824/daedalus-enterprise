@@ -13,7 +13,7 @@ import { resetDb } from "./reset";
 import { 客户关键词SQL, 客户号码SQL, 客户名索引式, 包含模式, 设三字索引, 三字可比, 名键必含字 } from "@/lib/search-keyword";
 import { 看成客户编号 as 客户编号 } from "@/lib/customer-no";
 import { 号键SQL } from "@/lib/phone-dedupe";
-import { 分组数SQL, 取一段SQL } from "@/lib/enterprise/unified-pool-sql";
+import { 分组数SQL, 取一段SQL, type 客户行筛 } from "@/lib/enterprise/unified-pool-sql";
 import { 名键 } from "@/lib/enterprise-import/clean";
 
 const 迁移 = (f: string) => fs.readFileSync(path.resolve(__dirname, "../migrations", f), "utf8");
@@ -202,12 +202,13 @@ describe("公海搜索：从名字对上的名单出发和整表 GLOB 一样", (
     const 式 = await 客户名索引式(词);
     设三字索引(undefined);
     expect(!!式).toBe(三字可比(词));
-    const 底筛 = { 商机: ["fts-00"], 订单: ["fts-03"], 排掉: ["fts-06"], 词: { 名: 包含模式(词), 编号: 客户编号(raw), 项目对上: ["fts-09", "fts-12"] } };
-    const 跑 = async (筛: typeof 底筛 & { 词: { 索引式?: string | null } }) => {
+    const 一词 = { 名: 包含模式(词), 编号: 客户编号(raw), 项目对上: ["fts-09", "fts-12"] };
+    const 底筛 = { 商机: ["fts-00"], 订单: ["fts-03"], 排掉: ["fts-06"], 词: [一词] };
+    const 跑 = async (筛: 客户行筛) => {
       const g = 分组数SQL(筛), q = 取一段SQL(筛, { 排序: "pooled", 跳过: 0, 取几: 50 });
       return [await db.$queryRawUnsafe(g.sql, ...g.值), await db.$queryRawUnsafe(q.sql, ...q.值)].map((r) => JSON.stringify(r, (_k, v) => (typeof v === "bigint" ? Number(v) : v)));
     };
-    const 走索引 = await 跑({ ...底筛, 词: { ...底筛.词, 索引式: 式 } });
+    const 走索引 = await 跑({ ...底筛, 词: [{ ...一词, 索引式: 式 }] });
     expect(走索引).toEqual(await 跑(底筛));
     const 一段 = 走索引[1];
     // 编号精确比：NO.00115 只中 fts-15（名字、号码里都没有 115）；不是空对空

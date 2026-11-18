@@ -22,13 +22,17 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 自定产品名 } from "@/lib/enterprise/brand";
 import { 读满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 待回复主题of } from "@/lib/enterprise/coach-topic-db";
+import { 待回复客户of } from "@/lib/enterprise/reply-notice";
+import { 我的轮到 } from "@/lib/enterprise/assign-eta";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import NoAiHome from "./NoAiHome";
+import VerifyInbox from "../projects/VerifyInbox";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 能导入导出 } from "@/lib/enterprise/import-perm";
 import { 数新线索 } from "@/lib/project/list";
 import { 数首页卡 } from "@/lib/project/home-cards-db";
-import { 权限组织 } from "@/lib/enterprise/org";
+import { 待我复核的 } from "@/lib/project/lead-verify";
+import { 权限组织, 读组织 } from "@/lib/enterprise/org";
 import { 能改后台设置, 是管理层 } from "@/lib/enterprise/permissions";
 
 export const dynamic = "force-dynamic";
@@ -71,6 +75,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const 满额提醒们 = 企业版() ? await 读满额提醒(user.id) : [];
   // 企业版首页待办「待回复主题」（11-17，教练主题）：我负责的项目上等我回的
   const 待回复主题 = 企业版() ? await 待回复主题of(user.id) : null;
+  // 企业版首页待办「待回复客户」（11-17，指定回复时间）：客户要求的联系时间快到了、还没记沟通的
+  const 待回复客户 = 企业版() ? await 待回复客户of(user.id) : null;
+  // 企业版首页一行「自动分配：前面约 N 条轮到你」（11-18）：参加自动分配的销售才有，首页加载时现算；算不出来不挡首页
+  const 轮到 = 企业版() ? await 我的轮到(await 读组织(), user.id).catch((e) => { console.error("[快轮到] 首页没算出来", e); return null; }) : null;
+  // 企业版首页待办「待我复核」（审核 11-18 节点 P2-3，P-线索-02 / 03）：和项目列表、客户页同一份数据（能拍板的人）；读不出来不挡首页
+  const 待复核们 = 企业版() ? (await 待我复核的(user).catch((e) => { console.error("[待我复核] 首页没读出来", e); return []; })).map((r) => ({ ...r, 更新于: r.更新于.toISOString() })) : [];
+  const 待复核 = 待复核们.length ? <VerifyInbox 们={待复核们} /> : undefined;
   // 企业版项目：首页是对话 + 右侧四张指标卡（10-29 首页改版），其余数据在「复盘」页
   const 只用项目 = await 企业版只用项目();
   if (!(await llmEnabled())) {
@@ -86,7 +97,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     }
     // 老的数据看板（Board / DashboardView）10-28 删了：企业版只用项目，没配 AI 的首页一律是这一屏
     // 「去设置里配 AI」那个按钮：能改后台设置的人才摆（企业版 = 总管理，11-01 只认业务角色）
-    return <NoAiHome 管理员={企业版() ? 能改后台设置(user, await 权限组织()) : user.role === "ADMIN"} 找谁={企业版() ? "总管理" : "管理员"} 满额提醒={满额提醒们} 待回复主题={待回复主题} />;
+    return <NoAiHome 管理员={企业版() ? 能改后台设置(user, await 权限组织()) : user.role === "ADMIN"} 找谁={企业版() ? "总管理" : "管理员"} 满额提醒={满额提醒们} 待回复主题={待回复主题} 待回复客户={待回复客户} 轮到={轮到} 待复核={待复核} />;
   }
 
   if (只用项目) {
@@ -117,6 +128,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           分配方式们: 分配.分配方式们,
           默认分配方式: 分配.默认分配方式,
           是销售: 分配.是销售,
+          按区域: 分配.按区域,
+          本人线: 分配.本人线,
+          // 指定给自己 = 记在自己名下（服务端不查参与状态），也列
+          可指定: [...分配.可指定, user.id],
         }
       : undefined;
     return (
@@ -132,6 +147,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         产品名={自定产品名() ?? undefined}
         满额提醒={满额提醒们}
         待回复主题={待回复主题}
+        待回复客户={待回复客户}
+        轮到={轮到}
+        待复核={待复核}
         渠道名们={[...渠道.map((c) => c.name), /* 渠道触点（P-渠道-08）也能选：主渠道留空、记触点（apply.ts） */ ...渠道触点们.filter((x) => !渠道.some((c) => c.name === x))]}
         要下一步={规则.超时回收.开}
         新线索企业={新线索企业格}

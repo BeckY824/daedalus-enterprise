@@ -13,6 +13,7 @@ import { dayjs } from "@/lib/utils";
 import { saveTask } from "./actions";
 import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 export default function TaskForm({
   open,
@@ -35,7 +36,7 @@ export default function TaskForm({
   // 保存中：网慢时连点两下会建出两条一样的待办（2026-10-02 排查）
   const [存着, set存着] = useState(false);
   // 点外面不关、关前问一句、新建的草稿留在本机（2026-10-19 客户反馈，lib/form-guard.tsx）
-  const 守 = useFormGuard({ open, form, 草稿键: record ? null : `新建待办:${customerId}`, 关: onClose, 忙: 存着, afterOpenChange: 聚焦首项 });
+  const 守 = useFormGuard({ open, form, 草稿键: record ? `编辑待办:${record.id}` : `新建待办:${customerId}`, 编辑: !!record, 关: onClose, 忙: 存着, afterOpenChange: 聚焦首项 });
 
   useEffect(() => {
     if (open) {
@@ -88,8 +89,8 @@ export default function TaskForm({
       守.存好了();
       存上了.current = true;
       return { ok: true };
-    } catch {
-      return { ok: false, error: "没存上，请重试" };
+    } catch (出错) {
+      return { ok: false, error: 动作出错话(出错, "没存上，请重试") };
     } finally {
       set存着(false);
     }
@@ -107,6 +108,7 @@ export default function TaskForm({
       ]}
       destroyOnHidden
     >
+      {守.提示}
       <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={守.改了}>
         <Form.Item name="title" label="待办内容" rules={[requiredText("请填写待办内容")]}>
           <Input placeholder="如：跟进预算审批进度" />

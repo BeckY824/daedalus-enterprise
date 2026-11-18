@@ -307,7 +307,12 @@ describe("M-权限-09 谁能改删沟通", () => {
   });
 
   it("P-沟通-01：AI 卡片撤销照常——本人 10 分钟内的能撤（软删）；别人的、过了 10 分钟的不撤", async () => {
-    const 新 = () => prisma.followUp.create({ data: { customerId: 客户, ownerId: 同事, type: "PHONE", title: "", content: "AI 记的", status: "已完成", occurredAt: new Date() } });
+    // AI 卡确认时留痕记下跟进 id（审核 11-18 权限 P2-8：撤销只认 AI 卡建的那条）
+    const 新 = async () => {
+      const f = await prisma.followUp.create({ data: { customerId: 客户, ownerId: 同事, type: "PHONE", title: "", content: "AI 记的", status: "已完成", occurredAt: new Date() } });
+      await raw.auditLog.create({ data: { userId: 同事, userName: "同事", action: "ai_apply", entity: "Ai", entityId: "add_followup", summary: "确认 AI 建议", detail: JSON.stringify({ 跟进: f.id }) } });
+      return f;
+    };
     const 软删了 = async (id: string) => (await raw.followUp.findUnique({ where: { id }, select: { deletedAt: true } }))?.deletedAt instanceof Date;
     const 一 = await 新();
     当(同事);

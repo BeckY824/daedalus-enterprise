@@ -4,17 +4,16 @@ import { requireUser } from "@/lib/auth";
 import ChannelsView from "./ChannelsView";
 import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { 可选项, 字典定义 } from "@/lib/enterprise/dict";
-import { 读渠道分期统计 } from "@/lib/enterprise/channel-stats-db";
+import { 读渠道分期统计, 取渠道底 } from "@/lib/enterprise/channel-stats-db";
 import { 读看板底数, 读公海底数 } from "@/lib/enterprise/channel-dash-db";
 import { 读市场身份 } from "@/lib/enterprise/market-view-db";
 import { 读日期段, 日期段界 } from "@/lib/custom-date-range";
 import { 自定义 } from "@/lib/enterprise/channel-dash";
 import { 能录投入, 能管渠道 } from "@/lib/enterprise/channel-stats";
-import { 看全部, 系统写 } from "@/lib/team-scope";
+import { 看全部 } from "@/lib/team-scope";
 import { 读组织 } from "@/lib/enterprise/org";
-import { 补主渠道, 读主渠道们 } from "@/lib/enterprise/channel-main";
+import { 读主渠道们 } from "@/lib/enterprise/channel-main";
 import { 读策略, 沿用主渠道属性 } from "@/lib/enterprise/channel-main-core";
 
 export const dynamic = "force-dynamic";
@@ -27,10 +26,8 @@ export default async function ChannelsPage({ searchParams }: { searchParams?: Pr
   const 段 = sp.view === 自定义 ? 读日期段(sp.from, sp.to) : null;
   const 区间 = 段 ? 日期段界(段) : null;
   const 市场 = 企业版() ? await 读市场身份(me.id) : null;
-  // 渠道两层（11-08）：还没挂主渠道的渠道（老数据、导入、别处新建的）先按名字补挂上，补过的不再动。
-  // 是系统补数据不是用户改：只读管理员打开也要能补，不然整页被只读拦挡掉
-  // 切换视图（只读预览）不补：一笔不写，没挂主渠道的照原样显示
-  if (企业版() && !(await 视图中跳过())) await 系统写(() => 补主渠道());
+  // 打开页面不写库（11-17 复盘第 7 类）：原来这里给没挂主渠道的渠道补建同名主渠道，删了子渠道影子主渠道还留着。
+  // 主渠道改在建渠道那一刻挂好（channel-main.ts 建渠道挂主）；万一还有没挂的老渠道，列表按名字归组照常显示，不补
 
   const [channels, users] = await Promise.all([
     prisma.channel.findMany({
@@ -63,13 +60,15 @@ export default async function ChannelsPage({ searchParams }: { searchParams?: Pr
     有就把删除项变灰、原因写在旁边，不等点了确认才说删不了。只读，删不删照旧由 deleteChannel 判
   */
   const 渠道ids = channels.map((c) => c.id);
+  // 项目、投入、名单落点只读一趟，列表统计和看板共用（11-18 提速：原来两边各读一遍，渠道页比别的页慢一截）
+  const 底 = 取渠道底(渠道ids, me);
   const [统计, 看板底数, 创建人们, 属性选项, 挂客户, 投入笔数, 挂项目, 能录, 能管, 公海底数, 圈里的人, 主渠道们, 策略选项] = await Promise.all([
     // 带上是谁在看：每个数点进项目列表能看到几条（名单），对不上的抽屉里写一句
     // 列表统计跟看板时间段（2D）：同一趟取数按 本月 / 本季 / 全部（带了自定义再加那一段）各算一份，界面跟看板的档换
-    读渠道分期统计(channels, new Date(), 区间, me),
+    读渠道分期统计(channels, new Date(), 区间, me, 底),
     // 总览看板（11-03）：每个渠道 × 本月 / 本季 / 全部（带了「自定义」再加那一段）的底数，界面按列表的筛选结果再合，口径见 channel-dash.ts；
     // 带上是谁在看：TOP5 每行拆「项目列表里 N 条、另 M 条在公海」（11-11）
-    企业版() ? 读看板底数(渠道ids, new Date(), 区间, me) : Promise.resolve(null),
+    企业版() ? 读看板底数(渠道ids, new Date(), 区间, me, 底) : Promise.resolve(null),
     prisma.user.findMany({
       where: { id: { in: [...new Set(channels.map((c) => c.createdById).filter((x): x is string => Boolean(x)))] } },
       select: { id: true, name: true },

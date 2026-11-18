@@ -93,7 +93,7 @@ beforeAll(async () => {
   mocks.user = { ...mocks.user, id: 老板 };
   忘掉企业版范围();
   // 客户最近跟进挂在客户上：每种跟进时间一位客户，外加一位在客户公海里的
-  await raw.customer.createMany({ data: 跟进们.map((t, i) => ({ id: `c${i}`, name: `客户${i}`, phone: `1390000000${i}`, salesOwnerId: 老板, lastFollowAt: t })) });
+  await raw.customer.createMany({ data: 跟进们.map((t, i) => ({ id: `c${i}`, name: `客户${i}`, phone: `1391200000${i}`, salesOwnerId: 老板, lastFollowAt: t })) });
   await raw.customer.create({ data: { id: "c-pool", name: "公海客户", phone: "13900000099", salesOwnerId: 老板, lastFollowAt: 刻(30), pool: { create: { reason: "手动" } } } });
   const 项目: Record<string, unknown>[] = [];
   const 留痕: Record<string, unknown>[] = [];
@@ -153,11 +153,11 @@ describe("即将逾期：紧筛和粗筛数出来的一样", () => {
     const 紧取回 = await 我(() => prisma.project.count({ where: 即将逾期紧筛(规则, 字典of(true), 此刻)! }));
     expect(紧取回).toBeLessThan(旧.取回);
     expect(旧.取回 - 紧取回).toBeGreaterThan(100);
-    // 起算日挡掉按天数到的：只剩按下一步到的，取回来的少得多
+    // 起算日挡掉按天数到的：下一步时间只提醒、不收回（11-18），一个都不剩，紧筛一条都不取
     const 挡 = 规则of({ 起算日: 日(3) });
     const 挡旧 = await 我(() => 按粗筛(挡, 此刻));
-    expect(挡旧.ids.length).toBeGreaterThan(0);
-    expect(await 我(() => prisma.project.count({ where: 即将逾期紧筛(挡, 字典of(true), 此刻)! }))).toBeLessThan(挡旧.取回 * 0.6);
+    expect(挡旧.ids).toEqual([]);
+    expect(await 我(() => prisma.project.count({ where: 即将逾期紧筛(挡, 字典of(true), 此刻)! }))).toBe(0);
     // 设了的节点全是 60 天：粗筛按最短的默认 7 天卡，几乎全取回来；紧筛按各节点自己的天数卡
     const 长 = 规则of(全六十);
     const 长旧 = await 我(() => 按粗筛(长, 此刻));
@@ -165,10 +165,10 @@ describe("即将逾期：紧筛和粗筛数出来的一样", () => {
     expect(await 我(() => prisma.project.count({ where: 即将逾期紧筛(长, 字典of(true), 此刻)! }))).toBeLessThan(长旧.取回 - 300);
   });
 
-  it("复盘「将回公海」：存下规则后数出来的和粗筛一样（那边不看成员业务线）", async () => {
+  it("复盘「将回公海」：存下规则后数出来的和粗筛一样（没填业务线的按负责人的线，同首页卡；审核 11-18 统计 P2-1）", async () => {
     for (const 规则 of [规则of(两套), 规则of({ 起算日: 日(4) })]) {
       await 存组织规则(规则);
-      const 旧 = await 我(() => 按粗筛(规则, 此刻, false));
+      const 旧 = await 我(() => 按粗筛(规则, 此刻));
       const r = await 我(() => 将回公海of(undefined, 此刻));
       expect(r.提醒.总数).toBe(旧.ids.length);
       expect(r.预警.length).toBeGreaterThan(0);

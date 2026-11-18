@@ -19,6 +19,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "../auth";
 import { prisma } from "../prisma";
 import { saveFollowUp } from "@/app/(app)/customers/[id]/actions";
+import { 不挂项目也能存 } from "@/lib/project/follow-needs-project";
 import { saveCustomer } from "@/app/(app)/customers/actions";
 import { 选通道 } from "./channel";
 import { 认背调状态 } from "./state";
@@ -50,14 +51,15 @@ export async function 存背调到客户(customerId: string, 状态原始: unkno
   const s = 认背调状态(状态原始);
   if (!s || !s.done) return { ok: false, error: "这份背调还没跑完，等它跑完再存" };
   if (typeof customerId !== "string" || !customerId) return { ok: false, error: "要存到哪位客户？" };
-  const r = await saveFollowUp({
+  // 背调结果存档不是和客户的沟通：客户定了仍可只挂客户（11-17 沟通必须挂项目的例外，lib/project/follow-needs-project.ts）
+  const r = await 不挂项目也能存(() => saveFollowUp({
     customerId,
     type: "OTHER",
     title: 背调标题(s).slice(0, 120),
     content: 报告文本(s),
     status: "已完成",
     occurredAt: new Date().toISOString(),
-  });
+  }));
   if (!r.ok) return { ok: false, error: r.error };
   revalidatePath(`/customers/${customerId}`);
   return { ok: true, id: customerId };

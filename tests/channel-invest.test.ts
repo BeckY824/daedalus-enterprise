@@ -92,10 +92,11 @@ describe("saveChannel 企业表单", () => {
     expect((await 交({ attr: "公域引流" })).ok).toBe(false);
   });
 
-  it("不交 attr 的老调用（客户表单里就地建渠道）照原来只要 name", async () => {
+  it("不交 attr 的老调用（客户表单里就地建渠道）照原来只要 name；主渠道当场按名字挂好（11-17 复盘第 7 类）", async () => {
     const r = await saveChannel({ name: "林老师", phone: null, remark: null, channelOwnerId: 负责人 });
     expect(r.ok).toBe(true);
-    expect(await prisma.channel.findFirst({ where: { name: "林老师" } })).toMatchObject({ attr: null, platform: null, createdById: 老板 });
+    const 主 = await prisma.entChannelMain.findUniqueOrThrow({ where: { name: "林老师" } });
+    expect(await prisma.channel.findFirst({ where: { name: "林老师" } })).toMatchObject({ attr: null, platform: "林老师", mainId: 主.id, createdById: 老板 });
   });
 });
 

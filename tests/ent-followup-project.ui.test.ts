@@ -1,27 +1,29 @@
 /**
  * 企业版客户页记跟进默认挂项目（10-27 会议：「默认自动关联当前项目」；服务端规则见 ent-followup-project.test.ts）。
  *
- *   给了在推项目：「关联商机」换成「关联项目」，默认选第一个（页面按最近动过排）；必选，不能清空（10-28 A2）
- *   给了空列表：这一格还在，写明「没有你能记的在推项目，这条记为客户沟通」（P-界面-35），照旧能记，交上去是 null
- *   服务端回「没挂上项目」（X-144：项目刚结束 / 进公海 / 关联进来的）：提示「没挂上项目，已记为客户沟通」，不报「沟通已记下」
+ *   给了一个在推项目：「关联商机」换成「关联项目」，默认选它；必选，不能清空（10-28 A2）
+ *   几个在推项目（11-17 沟通必须挂项目）：不预选、不猜，不选存不了，选了交上去带它
+ *   给了空列表（11-17，取代 P-界面-35）：这一格写「这位客户还没有项目，先建一个项目再记沟通」+「新建项目」（我不能建：「请联系负责人先建项目」）；
+ *     点保存拦下、不发请求，写好的内容留在框里
  *   编辑：不摆这一格，交上去不带 projectId
  *   开关关闭（页面不给 projects）：和原来一样是「关联商机」，交上去不带 projectId
  *   Windows 1024 / 1280 / 1366：超长项目名不横向撑出，「保存」点得中
  *   选了项目且项目能记（2026-10-30 P0-3）：多出「下一步计划」「下一步时间」，走项目详情同一个 记项目沟通Action；
  *     11-05 起不再问「客户明确回复了吗」，下一步计划必填；
- *     选下一步时间时预演回收日（选这天 → 回收日变为 MM-DD）；下一步时间默认 3 天后（P-界面-34），可改
+ *     选下一步时间时预演回收日（记完这条 → 回收日变为 MM-DD，11-18 起下一步时间不改回收日）；下一步时间默认 3 天后（P-界面-34），可改
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser } from "playwright";
+import { 补全动作桩 } from "./helpers/action-stubs";
 
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "followup-project-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
-  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
+  stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
-  stub(/projects\/actions$/, "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x,卡点)=>{window.__项目存={id,...x};window.__卡点=卡点;return{ok:true,followUpId:'f1',自动推到:window.__推到}};");
+  stub(/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x,卡点)=>{window.__项目存={id,...x};window.__卡点=卡点;return{ok:true,followUpId:'f1',自动推到:window.__推到}};"));
   stub(/^\.\/actions$/, "export const saveFollowUp=async x=>{window.__存=x;return{ok:true,id:'f1',...(window.__存回??{})}},completePlan=async()=>({ok:true});export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'n1'});");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no'});");
   stub(/^\.\/CustomerPick$/, "export default function C(){return null}");
@@ -34,17 +36,18 @@ beforeAll(async () => {
     import FollowUpForm from '@/app/(app)/customers/[id]/FollowUpForm';
     const root=createRoot(document.getElementById('root'));
     const 长='某某超长贸易进出口有限公司年度框架采购项目'.repeat(5);
-    window.__render=({项目,编辑})=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}>
+    window.__render=({项目,编辑,新建})=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}>
       <FollowUpForm open onClose={()=>{}} onSaved={()=>{}} customerId="c1" aiEnabled={false}
         record={编辑?{id:'f9',type:'PHONE',title:'',content:'原来的',status:'已完成',occurredAt:'2026-10-20T10:00:00.000Z',updatedAt:'2026-10-20T10:00:00.000Z'}:null}
         contacts={[]} opportunities={项目==null?[{id:'o1',name:'一个商机'}]:[]}
-        projects={项目==='有'?[{id:'p1',name:长},{id:'p2',name:'二号项目'}]:项目==='空'?[]:null}/>
+        projects={项目==='有'?[{id:'p1',name:长}]:项目==='多'?[{id:'p1',name:长},{id:'p2',name:'二号项目'}]:项目==='空'?[]:null}
+        新建项目={新建==='能'?()=>{window.__建=(window.__建||0)+1}:新建==='不能'?null:undefined}/>
     </BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-type 参数 = { 项目?: "有" | "空" | null; 编辑?: boolean; 须知?: unknown };
+type 参数 = { 项目?: "有" | "多" | "空" | null; 编辑?: boolean; 须知?: unknown; 新建?: "能" | "不能" };
 async function open(p: 参数, width = 1366, height = 900) {
   const page = await browser.newPage({ viewport: { width, height } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -62,7 +65,7 @@ async function 存(page: import("playwright").Page) {
 }
 const 格 = (page: import("playwright").Page, 名: string) => page.locator(".ant-form-item").filter({ has: page.locator(`label:text-is("${名}")`) });
 
-it("给了在推项目：「关联项目」默认选第一个，交上去带它；没有「关联商机」", async () => {
+it("只有一个在推项目：「关联项目」默认选它，交上去带它；没有「关联商机」", async () => {
   const { page, errors } = await open({ 项目: "有" });
   try {
     expect(await 格(page, "关联商机").count()).toBe(0);
@@ -83,36 +86,62 @@ it("有在推项目时「关联项目」必选：没有清除按钮", async () =
   } finally { await page.close(); }
 });
 
-it("没有在推的项目（P-界面-35）：照常能记，弹框里写明记为客户沟通，交上去是 null", async () => {
-  const { page, errors } = await open({ 项目: "空" });
+it("几个在推项目：不预选（不猜），不选存不了；选了交上去带它", async () => {
+  const { page, errors } = await open({ 项目: "多" });
   try {
-    expect(await 格(page, "关联项目").getByRole("note").innerText()).toBe("没有你能记的在推项目，这条记为客户沟通");
-    expect(await 格(page, "关联项目").innerText()).toContain("—（客户沟通）");
-    expect((await 存(page)).projectId).toBeNull();
+    const 项 = 格(page, "关联项目");
+    expect(await 项.locator(".ant-select-content-has-value").count()).toBe(0);
+    await page.locator("#content").fill("聊了报价");
+    await page.getByRole("button", { name: /保\s*存/ }).click();
+    await expect.poll(() => 项.innerText()).toContain("请选择关联项目");
+    expect(await page.evaluate(() => Reflect.get(window, "__存"))).toBeUndefined();
+    // 拦下了，写好的内容还在
+    expect(await page.locator("#content").inputValue()).toBe("聊了报价");
+    await 项.locator(".ant-select").click();
+    await page.locator(".ant-select-item-option").filter({ hasText: "二号项目" }).click();
+    await page.getByRole("button", { name: /保\s*存/ }).click();
+    await page.waitForFunction(() => Reflect.get(window, "__存"));
+    expect((await page.evaluate(() => Reflect.get(window, "__存") as Record<string, unknown>)).projectId).toBe("p2");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
 
-it("X-144：服务端回「没挂上项目」——提示「没挂上项目，已记为客户沟通」，不报「沟通已记下」", async () => {
-  const { page, errors } = await open({ 项目: "有" });
+it("没有项目（11-17）：写明先建项目、给「新建项目」；保存拦下不发请求，内容留在框里", async () => {
+  const { page, errors } = await open({ 项目: "空", 新建: "能" });
   try {
-    await page.evaluate(() => Reflect.set(window, "__存回", { 没挂上项目: true }));
-    expect((await 存(page)).projectId).toBe("p1");
-    // 框里就地一行 role=alert（不弹顶部提示），框停下来等人点「知道了」；保存键上不说「已记下」
-    await page.getByRole("alert").filter({ hasText: "没挂上项目，已记为客户沟通" }).waitFor();
-    await page.getByRole("button", { name: "知道了" }).waitFor();
+    const 项 = 格(page, "关联项目");
+    expect(await 项.getByRole("note").innerText()).toContain("这位客户还没有项目，先建一个项目再记沟通");
+    await 项.getByRole("button", { name: "新建项目" }).click();
+    expect(await page.evaluate(() => Reflect.get(window, "__建"))).toBe(1);
+    await page.locator("#content").fill("聊了报价");
+    await page.getByRole("button", { name: /保\s*存/ }).click();
+    await expect.poll(() => page.getByText("这位客户还没有项目，先建一个项目再记沟通").count()).toBeGreaterThan(1);
+    expect(await page.evaluate(() => Reflect.get(window, "__存"))).toBeUndefined();
+    expect(await page.locator("#content").inputValue()).toBe("聊了报价");
+    // 框还开着，没有「已记下」
+    expect(await page.getByRole("dialog").count()).toBe(1);
     expect(await page.getByRole("button", { name: "已记下" }).count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
 
-it("挂上了（没回「没挂上项目」）：不出那句提示", async () => {
+it("没有项目、我不能新建项目：不摆按钮，说「请联系负责人先建项目」", async () => {
+  const { page, errors } = await open({ 项目: "空", 新建: "不能" });
+  try {
+    const 项 = 格(page, "关联项目");
+    expect(await 项.getByRole("button", { name: "新建项目" }).count()).toBe(0);
+    expect(await 项.innerText()).toContain("请联系负责人先建项目");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("挂上了：保存键里说「已记下」，不出旧的「记为客户沟通」", async () => {
   const { page } = await open({ 项目: "有" });
   try {
     await 存(page);
     // 成了在保存键里说（原型 g.save）
     await page.getByRole("button", { name: "已记下" }).waitFor();
-    expect(await page.getByText("没挂上项目，已记为客户沟通").count()).toBe(0);
+    expect(await page.getByText("记为客户沟通").count()).toBe(0);
   } finally { await page.close(); }
 });
 
@@ -135,6 +164,25 @@ it("开关关闭（不给 projects）：还是「关联商机」，交上去不�
     expect(await 格(page, "关联项目").count()).toBe(0);
     expect(await 存(page)).not.toHaveProperty("projectId");
     expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it.each([1024, 1280, 1366])("Windows %ipx：没项目的提示和「新建项目」在框里不撑出、按钮点得中", async (w) => {
+  const { page } = await open({ 项目: "空", 新建: "能" }, w, 768);
+  try {
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const 框 = (await page.getByRole("dialog").boundingBox())!;
+    const 话 = (await page.locator(".fu-np-note").boundingBox())!;
+    expect(话.x).toBeGreaterThanOrEqual(框.x);
+    expect(话.x + 话.width).toBeLessThanOrEqual(框.x + 框.width);
+    // 一句话不折行（量出来只有一行高）
+    expect(await page.locator(".fu-np-note").evaluate((e) => e.getClientRects().length)).toBe(1);
+    const 钮 = page.locator(".fu-np").getByRole("button", { name: "新建项目" });
+    await 钮.scrollIntoViewIfNeeded();
+    const b = (await 钮.boundingBox())!;
+    expect(b.x + b.width).toBeLessThanOrEqual(框.x + 框.width);
+    const 点中 = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.textContent ?? "", [b.x + b.width / 2, b.y + b.height / 2]);
+    expect(点中).toBe("新建项目");
   } finally { await page.close(); }
 });
 
@@ -179,8 +227,9 @@ it("项目能记：不再问客户明确回复了吗，下一步计划必填，�
     expect(await 时.getByRole("button", { name: "3 天后" }).getAttribute("class")).toContain("ant-btn-primary");
     await 时.getByRole("button", { name: /明\s*天/ }).click();
     const 明 = new Date(Date.parse(今天() + "T00:00:00Z") + 86400_000).toISOString().slice(0, 10);
-    const 后 = new Date(Date.parse(今天() + "T00:00:00Z") + 2 * 86400_000).toISOString().slice(5, 10);
-    await expect.poll(() => 时.innerText()).toContain(`选这天 → 回收日变为 ${后}`);
+    // 下一步时间只提醒、不改回收日（11-18）：回收日 = 起点（今天）+ 7 天，不是明天过完
+    const 后 = new Date(Date.parse(今天() + "T00:00:00Z") + 7 * 86400_000).toISOString().slice(5, 10);
+    await expect.poll(() => 时.innerText()).toContain(`记完这条 → 回收日变为 ${后}`);
     await page.getByRole("button", { name: /保\s*存/ }).click();
     await page.waitForFunction(() => Reflect.get(window, "__项目存"));
     const 交 = await page.evaluate(() => Reflect.get(window, "__项目存") as Record<string, unknown>);

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
+import { 补全动作桩 } from "./helpers/action-stubs";
 /* PR10a ②：设置 →「客户回收」（客户三态）。
    原来关开关一点就存、改天数点保存就存（当晚全员按新天数重算）。现在：
    - 关开关先弹后果确认框（关掉后客户不再自动回收），不确认不存，开关还是开；
@@ -12,9 +13,9 @@ let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "recycle-confirm", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
-  stub(/projects\/actions$/, `
+  stub(/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", `
     export const 改组织规则=async(改)=>{(window.__calls??=[]).push(['改组织规则',改]);return {ok:true,收回:0}};
-    export const 预览客户回收=async(改)=>{(window.__calls??=[]).push(['预览客户回收',改]);if(window.__预览==='throw')throw new Error('x');return window.__预览};`);
+    export const 预览客户回收=async(改)=>{(window.__calls??=[]).push(['预览客户回收',改]);if(window.__预览==='throw')throw new Error('x');return window.__预览};`));
   stub(/customers\/tri-state-actions$/, "export const 三态存占位词=async(词们)=>({ok:true,词们});");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };

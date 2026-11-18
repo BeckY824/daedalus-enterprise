@@ -22,6 +22,7 @@ import Link from "next/link";
 import type { ComponentProps } from "react";
 import { avatarColor, companyInitial, initial, AVATAR_TEXT } from "@/lib/utils";
 import { FOLLOW_STATUS_COLOR, DECISION_STATUS_COLOR, OPP_STAGE_COLOR, FOLLOW_TYPE_MAP } from "@/lib/constants";
+import { 跟进方式名 } from "@/lib/follow-method";
 import { useBusiness } from "@/lib/business-client";
 import { statusLabel, stageLabel } from "@/lib/business-config";
 
@@ -86,6 +87,7 @@ export function StatCard({
   deltaLabel = "较上月",
   note,
   href,
+  noteHref,
 }: {
   icon: React.ReactNode;
   color: string;
@@ -98,10 +100,12 @@ export function StatCard({
   note?: string;
   /** 点这张卡去哪把这个数重新数一遍 */
   href?: string;
+  /** 小字说的是另一个数、另有去处（审核 11-18 统计 P2-2：异常卡上「公海里还有 N 个」去公海页）：小字单独成一个链接，不套进整张卡的链接里 */
+  noteHref?: string;
 }) {
   const up = (delta ?? 0) >= 0;
-  const 卡 = (
-    <div className={`card-soft stat-card${href ? " stat-card-go" : ""}`}>
+  const 头 = (
+    <>
       <div className="stat-label">
         <span>{label}</span>
         <span className="stat-icon" style={{ color }}>
@@ -109,6 +113,11 @@ export function StatCard({
         </span>
       </div>
       <div className="stat-value">{value}</div>
+    </>
+  );
+  const 卡 = (
+    <div className={`card-soft stat-card${href ? " stat-card-go" : ""}`}>
+      {头}
       {delta !== undefined ? (
         <div className="stat-delta">
           {deltaLabel}{" "}
@@ -125,6 +134,21 @@ export function StatCard({
       ) : null}
     </div>
   );
+  if (note && noteHref && delta === undefined) {
+    // 两个去处：卡身（标签 + 数）一个链接、小字一个链接，不嵌套 <a>
+    return (
+      <div className={`card-soft stat-card${href ? " stat-card-go" : ""}`}>
+        {href ? (
+          <Link href={href} aria-label={`${label}：${value}，查看明细`} className="stat-card-main">
+            {头}
+          </Link>
+        ) : (
+          头
+        )}
+        <Link href={noteHref} className="stat-delta stat-note-link">{note}</Link>
+      </div>
+    );
+  }
   return href ? (
     <Link href={href} aria-label={`${label}：${value}，查看明细`}>
       {卡}
@@ -289,7 +313,7 @@ export const FOLLOW_TYPE_ICON: Record<string, React.ReactNode> = {
  * 这一页每行都有一个类型，八种类型八种颜色的话，整张表会变成一列跑马灯，
  * 而真正要读的「内容」那一列反而退到后面。颜色只留给图标，文字照常。
  */
-/** method：企业版沟通方式（10-31），有就叫它（图标仍按类型） */
+/** method：企业版沟通方式（10-31），有就叫它（图标仍按类型）；没填的「其他」类显示「—」（跟进方式名，11-17） */
 export function FollowTypeCell({ type, method }: { type: string; method?: string | null }) {
   const m = FOLLOW_TYPE_MAP[type] ?? FOLLOW_TYPE_MAP.OTHER;
   return (
@@ -297,7 +321,7 @@ export function FollowTypeCell({ type, method }: { type: string; method?: string
       <span className="ftype-i" style={{ color: m.color }}>
         {FOLLOW_TYPE_ICON[type] ?? FOLLOW_TYPE_ICON.OTHER}
       </span>
-      {method || m.label}
+      {跟进方式名({ type, method })}
     </span>
   );
 }

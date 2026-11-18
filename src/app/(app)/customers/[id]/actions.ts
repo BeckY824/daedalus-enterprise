@@ -10,7 +10,7 @@ import type { Prisma } from "@/generated/prisma";
 import { requireUser } from "@/lib/auth";
 import { FOLLOW_TYPES, FOLLOW_RECORD_STATUSES } from "@/lib/constants";
 import { 客户存了推项目 } from "@/lib/project/auto-advance";
-import { 客户跟进后勾掉将回收提醒, 能管项目 } from "@/lib/project/db";
+import { 客户跟进后勾掉将回收提醒 } from "@/lib/project/db";
 import { recordAudit } from "@/lib/audit";
 import { 领取 } from "../pool-actions";
 import { 认回打码号, 号键 } from "@/lib/phone";
@@ -19,22 +19,26 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 定沟通方式, 定发起主体 } from "@/lib/enterprise/dict";
 import { 软删开着, 撤销软删, 删除挡, 看已删 } from "@/lib/enterprise/soft-delete";
 import { 查完再写 } from "@/lib/check-then-write";
-import { 能恢复, 没设业务角色, 没业务角色不能领话, 能领公海, 不能领公海话, 只读角色, 只读话of } from "@/lib/enterprise/permissions";
+import { 能恢复, 没设业务角色, 没业务角色不能领话, 能领公海, 不能领公海话, 只读角色, 只读话of, 能新建和领取 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话, 不能挂项目话, 卡片刚记的能撤, 在卡片撤销里, 卡片撤销过时话, 客户事项挡, 本人勾完成挡 } from "@/lib/enterprise/follow-perm";
+import type { 组织 } from "@/lib/enterprise/org-core";
+import { 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话, 卡片刚记的能撤, 在卡片撤销里, 卡片撤销过时话, 客户事项挡, 本人勾完成挡 } from "@/lib/enterprise/follow-perm";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 卡点脱离沟通 } from "@/lib/project/blocker";
 import { 在推项目条件 } from "@/lib/project/active";
+import { 定沟通挂哪个项目, 可记沟通项目们, 要挂项目的类型, 免挂项目中, 能往项目记沟通, 沟通客户在公海话, 沟通项目不在话, 待办改沟通话, 沟通不是组员话, 沟通都不能记话, type 可记项目 } from "@/lib/project/follow-needs-project";
 import { 记沟通标记 } from "@/lib/project/stage-gates";
 import { 版本冲突, 版本条件, 推进版本 } from "@/lib/edit-version";
 import { dayjs } from "@/lib/utils";
 import { parseScheduleDate } from "@/lib/schedule-date";
 import { 是逾期 } from "@/lib/overdue";
 import { parseDateInput } from "@/lib/date-input";
-import { 联系人电话, 规整, 规整企业联系人, type 联系人字段, type 企业联系人资料 } from "./contact-input";
+import { 联系人电话, 未归属联系人电话, 规整, 规整企业联系人, type 联系人字段, type 企业联系人资料 } from "./contact-input";
 export type { 企业联系人资料 } from "./contact-input";
-import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类表 } from "@/lib/enterprise/customer-v2-db";
-import { 联系人查重, 联系人撞号话, type 撞到的联系人 } from "@/lib/enterprise/contact-dedupe";
+import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类表, 联系人号码们 } from "@/lib/enterprise/customer-v2-db";
+import { 联系人姓名问题 } from "@/lib/enterprise/customer-v2";
+import { 摘联系人号 } from "@/lib/enterprise/contact-number-detach";
+import { 联系人查重, 联系人撞号话, 联系人回收站撞, 联系人回收站撞话, type 撞到的联系人 } from "@/lib/enterprise/contact-dedupe";
 import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
 import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
 import { 存沟通后重算三态, 记首次有效 } from "@/lib/enterprise/tri-state-db";
@@ -87,7 +91,8 @@ export type FollowUpInput = {
   opportunityId?: string | null;
   /**
    * 企业版：新建时挂到哪个项目上（10-27 会议：「默认自动关联当前项目」，表单默认选最近在推的那个）。
-   * undefined / null = 不挂；只认这位客户自己、没结束、不在公海的项目。编辑时忽略
+   * 沟通必须挂项目（11-17）：沟通类型 undefined / null = 能记的在推项目只有一个就挂它，几个要选、没有就拦；
+   * 给了就只认这位客户自己、没结束、不在公海、我是负责人或组员的项目，不对就拦（不再存成客户沟通）。编辑时忽略
    */
   projectId?: string | null;
   participants?: string | null;
@@ -142,24 +147,24 @@ async function 跟着改待办(customerId: string, 旧: 带时间的跟进, 新:
 }
 
 /**
- * 企业版新建跟进挂到项目上：和项目页记沟通（lib/project/db.ts 的 记项目沟通）一样挂当时的节点、编沟通号、记阶段标记，
- * 项目页的沟通里也看得到。不是这位客户的、已结束的、在公海的都不挂
+ * 企业版新建沟通挂到项目上：和项目页记沟通（lib/project/db.ts 的 记项目沟通）一样挂当时的节点、编沟通号、记阶段标记，
+ * 项目页的沟通里也看得到。事务外已经按「沟通必须挂项目」（lib/project/follow-needs-project.ts）定好了挂哪个，
+ * 这里在事务里再核一遍（期间项目刚结束 / 进公海 / 我被移出组）：核不过返回那一句，调用方整条回滚、不存
  */
-/**
- * 挂上了返回 true。已结束、在公海、别的客户的（含关联进来的）项目照旧不挂、存成客户沟通（X-144：调用方回「没挂上项目」）；
- * 管不了的项目（X-143）在事务外先拦了，这里再按同一条判定核一遍，核不过也只是不挂
- */
-async function 挂项目(me: { id: string; role: string }, followUpId: string, customerId: string, projectId: string, db: Prisma.TransactionClient): Promise<boolean> {
-  const p = await db.project.findFirst({ where: { id: projectId, customerId, ...在推项目条件 }, select: { id: true, node: true, phase: true, ownerId: true, pooledAt: true } });
-  if (!p) return false;
-  if (!能管项目(me, p, await 权限组织())) return false;
+async function 挂项目(me: { id: string; role: string }, followUpId: string, customerId: string, projectId: string, db: Prisma.TransactionClient, org: 组织 | null): Promise<string | null> {
+  const p = await 看全部(() => db.project.findFirst({ where: { id: projectId, customerId, ...在推项目条件 }, select: { id: true, node: true, phase: true, ownerId: true, pooledAt: true, members: { where: { userId: me.id }, select: { inviteStatus: true } } } }));
+  if (!p) return 沟通项目不在话;
+  if (!能往项目记沟通(me, p, org, p.members[0]?.inviteStatus)) return 沟通不是组员话;
   // 库里存着旧节点名的按企业版的新名记（10-31 改名，写入一律新名）
   await db.followUpProject.create({ data: { followUpId, projectId: p.id, node: 本套名(p.node, 企业版字典) } });
   await 记沟通编号(db, followUpId, p.id, null);
   await 记沟通标记(db, followUpId, p.id, p.phase, false);
   revalidatePath(`/projects/${p.id}`);
-  return true;
+  return null;
 }
+
+/** 事务里挂不上项目：抛它让整条回滚，外面接住说那一句 */
+class 挂不上项目 extends Error {}
 
 export async function saveFollowUp(input: FollowUpInput) {
   const user = await requireUser();
@@ -193,18 +198,50 @@ export async function saveFollowUp(input: FollowUpInput) {
     */
     const 目标 = await prisma.customer.findUnique({ where: { id: input.customerId }, select: { id: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } } });
     const 只读档 = 目标 ? await 只读客户(defaultClient, 目标) : false;
-    // 企业版虚线下属的、市场成员相关的（10-31）客户：跟进也不能记（限定层也会挡，这里先给一句人话）
-    if (只读档 === "全") return { ok: false as const, error: await 只读话(defaultClient) };
-    const 同事的 = !!只读档;
+    /*
+      企业版只能看的客户（虚线下属的、市场成员相关的、只因进了项目组看得到的）：照旧不能改、不能建待办 / 计划。
+      唯一例外（11-17 客户定「组员能记，限本项目的组员」）：新记一条沟通、挂到我已进组的在推项目上——下面 定沟通挂哪个项目 核
+      「已进组、在推、有业务角色」，核不过照旧说只读；记录人是我，客户和项目负责人不变
+    */
+    const 组员来记 = 只读档 === "全" && 企业版() && !input.id && 要挂项目的类型(input.type) && !免挂项目中() && !extra?.tasks?.length && !extra?.plan && !extra?.完成计划;
+    if (只读档 === "全" && !组员来记) return { ok: false as const, error: await 只读话(defaultClient) };
+    const 同事的 = 只读档 === "加跟进";
     if (同事的) {
       if (input.id) return { ok: false as const, error: "这是同事的客户：只能新加跟进，改已有的跟进请找负责人" };
       if (extra?.tasks?.length || extra?.plan || extra?.完成计划 || ((input.type === "TASK" || input.type === "REMIND") && !!input.dueAt && input.status !== "已完成"))
         return { ok: false as const, error: "这是同事的客户：只能记沟通，待办、提醒和下一步计划请找负责人安排" };
     }
+    /*
+      企业版（审核 11-18 权限 P1-4）：顺手建待办 / 计划、带提醒时间的待办 / 提醒，同 saveTask / savePlan 过 客户事项挡（负责人本人）；
+      顺手完成计划同 勾完成 走 本人勾完成挡。公海客户新记 = 先领再记（下面），领了就是自己的，不在这里挡
+    */
+    if (企业版() && 目标 && !目标.pool) {
+      const 建事项 = !!(extra?.tasks?.length || extra?.plan) || (!input.id && (input.type === "TASK" || input.type === "REMIND") && !!input.dueAt && input.status !== "已完成");
+      const 挡 = 建事项 ? await 客户事项挡(user, input.customerId) : null;
+      if (挡) return { ok: false as const, error: 挡 };
+      if (extra?.完成计划) {
+        const 要完成 = await prisma.followPlan.findFirst({ where: { id: extra.完成计划, customerId: input.customerId }, select: { ownerId: true } });
+        const 完成挡 = 要完成 ? await 本人勾完成挡(user, input.customerId, 要完成.ownerId) : null;
+        if (完成挡) return { ok: false as const, error: 完成挡 };
+      }
+    }
+    // 挂的联系人、商机要是这位客户名下的（审核 11-18 权限 P2-7）：别的客户的联系人挂不上来；企业版挂靠到这位客户的联系人也算
+    if (input.contactId && typeof input.contactId === "string") {
+      const 联系人在 = await prisma.contact.count({ where: { id: input.contactId, OR: [{ customerId: input.customerId }, ...(企业版() ? [{ customerLinks: { some: { customerId: input.customerId } } }] : [])] } });
+      if (!联系人在) return { ok: false as const, error: "选的联系人不是这位客户的，请重新选择" };
+    }
+    if (input.opportunityId && typeof input.opportunityId === "string") {
+      const 商机在 = await prisma.opportunity.count({ where: { id: input.opportunityId, customerId: input.customerId } });
+      if (!商机在) return { ok: false as const, error: "选的商机不是这位客户的，请重新选择" };
+    }
     // 企业版沟通方式（10-31）：选的方式对出 type；改已有的、方式没变的不查停用
-    const 原 = input.id ? await prisma.followUp.findUnique({ where: { id: input.id }, select: { method: true, initiator: true } }) : null;
+    const 原 = input.id ? await prisma.followUp.findUnique({ where: { id: input.id }, select: { method: true, initiator: true, type: true, projectNode: { select: { projectId: true } } } }) : null;
     const 方式 = await 定沟通方式(input.method, input.type, 原?.method);
     if (!方式.ok) return 方式;
+    // 组员来记只认沟通：选的方式对出来是待办 / 提醒的照旧只读
+    if (组员来记 && !要挂项目的类型(方式.type)) return { ok: false as const, error: await 只读话(defaultClient) };
+    // 沟通必须挂项目（11-17）：没挂项目的待办 / 提醒改成沟通 = 绕过来记了一条不挂项目的沟通，不让改（老的客户沟通照旧能改）
+    if (input.id && 企业版() && 原 && !要挂项目的类型(原.type) && 要挂项目的类型(方式.type) && !原.projectNode) return { ok: false as const, error: 待办改沟通话 };
     // 发起主体（11-01）：同上，改已有的、没变的不查停用
     const 发起 = await 定发起主体(input.initiator, 方式.type, input.id ? { 有: true, 值: 原?.initiator } : undefined);
     if (!发起.ok) return 发起;
@@ -221,20 +258,33 @@ export async function saveFollowUp(input: FollowUpInput) {
       后到的那台改负责人、领取和这条跟进都进「待核对」
     */
     /*
-      X-143（11-15 用户定）：挂项目和项目详情记沟通同一条「能管这个项目」判定——这位客户的、还在推的项目，管不了（比如只是组员）就整条不记，
-      说清楚找负责人；已结束 / 在公海 / 关联进来的照旧不挂、存成客户沟通（X-144，返回里带「没挂上项目」）
+      沟通必须挂项目（11-17 客户定，取代 P-界面-35 / X-144）：企业版新记的沟通（待办、提醒除外）要挂这位客户一个在推项目，
+      我得是负责人或已进组的组员；没给项目时能记的只有一个就挂它，几个要人选，没有就说先建项目（lib/project/follow-needs-project.ts）。
+      背调存档（不挂项目也能存）不管。待办 / 提醒给了项目照样核那一个。拦下的整条不存
     */
-    const 挂项目候选 = !input.id && 企业版() && typeof input.projectId === "string" && input.projectId
-      ? await prisma.project.findFirst({ where: { id: input.projectId, customerId: input.customerId, ...在推项目条件 }, select: { ownerId: true, pooledAt: true } })
-      : null;
-    if (挂项目候选 && !能管项目(user, 挂项目候选, await 权限组织())) return { ok: false as const, error: 不能挂项目话 };
     const 在公海 = !input.id && !!(await prisma.customerPool.findUnique({ where: { customerId: input.customerId }, select: { customerId: true } }));
     // 没设业务角色的领不了（11-03）：记了就等于没领到却留了条沟通，直接说清楚，不记
     if (在公海 && 企业版() && 没设业务角色(await 权限组织(), user.id)) return { ok: false as const, error: 没业务角色不能领话 };
     // 角色不领公海的（市管、渠运、项目组员，V3.5.1）同样不记
     if (在公海 && 企业版() && !能领公海(user, await 权限组织())) return { ok: false as const, error: 只读角色(user, await 权限组织()) ? 只读话of(user, await 权限组织()) : 不能领公海话 };
+    // 挂哪个项目放在公海两道角色拦之后（那两句更准）、领取之前：拦下的不顺手领走
+    const 给的项目 = typeof input.projectId === "string" && input.projectId ? input.projectId : null;
+    let 挂到: string | null = null;
+    // 客户不在 / 看不到（目标 = null）不在这里说，交给事务里那句「不在了 / 没权限」
+    if (!input.id && 目标 && 企业版() && !免挂项目中() && (给的项目 || 要挂项目的类型(方式.type))) {
+      const 定 = await 定沟通挂哪个项目(user, input.customerId, 给的项目);
+      // 组员来记：没有我能记的在推项目 = 这位客户我只能看，照旧说只读（不叫他去建项目）；几个要选、选的不行照说
+      if (!定.ok && 组员来记 && (定.没项目 || 定.error === 沟通都不能记话)) return { ok: false as const, error: await 只读话(defaultClient) };
+      if (!定.ok) return { ok: false as const, error: 在公海 && !给的项目 ? 沟通客户在公海话 : 定.error, ...(定.没项目 ? { 没项目: true as const } : {}) };
+      挂到 = 定.projectId;
+    }
+    if (组员来记 && !挂到) return { ok: false as const, error: await 只读话(defaultClient) };
     const 领取了 = 在公海 && await 领取([input.customerId]).then((r) => r.ok && r.updated > 0);
-    const result = await prisma.$transaction(async (tx) => {
+    // 组员来记（上面已核过）：这位客户在限定层是「只能看」，新建沟通会被拦，这一笔按全部写——只写这条沟通、挂项目、客户最近跟进
+    const 这一笔 = <T,>(f: () => Promise<T>) => (组员来记 ? 看全部(f) : f());
+    // 组织表在事务外读好：事务里再用全局连接去读，单连接时会等到事务超时
+    const 挂时组织 = 挂到 ? await 权限组织() : null;
+    const result = await 这一笔(() => prisma.$transaction(async (tx) => {
       const customer = await tx.customer.findUnique({ where: { id: input.customerId }, select: { name: true } });
       // 客户在、只是看不到（比如项目组员）：说没权限，不说「不在了」（11-03 B5-6）
       if (!customer) return { ok: false as const, error: (await 看全部(() => tx.customer.findUnique({ where: { id: input.customerId }, select: { id: true } }))) ? "你没有权限给这个客户记沟通，请找负责人" : "这个客户已经不在了，请刷新重试" };
@@ -262,7 +312,8 @@ export async function saveFollowUp(input: FollowUpInput) {
       audits.push({ user, action: input.id ? "update" : "create", entity: "FollowUp", entityId: id,
         summary: `${input.id ? "修改" : "记了"}${customer.name}的一条${"method" in data && data.method ? data.method : 类型名(data.type)}跟进（${dayjs(data.occurredAt).format("YYYY-MM-DD")}）`,
         detail: { 客户: customer.name, 类型: "method" in data && data.method ? data.method : 类型名(data.type), 状态: data.status, 内容: data.content.slice(0, 120) } });
-      const 挂上了 = !input.id && !!input.projectId && 企业版() ? await 挂项目(user, id, input.customerId, input.projectId, tx) : null;
+      const 挂不上 = 挂到 ? await 挂项目(user, id, input.customerId, 挂到, tx, 挂时组织) : null;
+      if (挂不上) throw new 挂不上项目(挂不上);
       for (const item of extra?.tasks ?? []) {
         const 时间 = parseScheduleDate(item.dueAt)!;
         const task = await tx.task.create({ data: { title: item.title.trim(), dueAt: 时间.at, dueOn: 时间.on, dueHasTime: 时间.hasTime, customerId: input.customerId, ownerId: user.id } });
@@ -283,7 +334,10 @@ export async function saveFollowUp(input: FollowUpInput) {
       // 和回放时的重算同一句（lib/sync/local.ts 重算派生），日期在库里怎么存不用这里管
       if (同事的) await tx.$executeRawUnsafe('UPDATE "Customer" SET lastFollowAt = (SELECT MAX(occurredAt) FROM "FollowUp" WHERE customerId = ? AND "deletedAt" IS NULL) WHERE id = ?', input.customerId, input.customerId);
       else await tx.customer.update({ where: { id: input.customerId }, data: { lastFollowAt: latest?.occurredAt ?? null } });
-      return { ok: true as const, id, 待办id, 下次计划id, audits, 没挂上项目: 挂上了 === false };
+      return { ok: true as const, id, 待办id, 下次计划id, audits };
+    })).catch((e: unknown) => {
+      if (e instanceof 挂不上项目) return { ok: false as const, error: e.message };
+      throw e;
     });
     if (!result.ok) return result;
     for (const audit of result.audits) await recordAudit(audit);
@@ -295,7 +349,21 @@ export async function saveFollowUp(input: FollowUpInput) {
     await 存沟通后重算三态(input.customerId);
     // 客户三态（C12）：新记的这条不算有效沟通，回原因给前端一句轻提示（不拦；三态关着不查库）
     const 短沟通 = !input.id ? await 短沟通提示(result.id).catch(() => null) : null;
-    return { ok: true as const, id: result.id, ...(短沟通 ? { 短沟通 } : {}), ...(result.待办id ? { 待办id: result.待办id } : {}), ...(result.下次计划id ? { 下次计划id: result.下次计划id } : {}), ...(领取了 ? { 领取了: true as const } : {}), ...(result.没挂上项目 ? { 没挂上项目: true as const } : {}) };
+    return { ok: true as const, id: result.id, ...(短沟通 ? { 短沟通 } : {}), ...(result.待办id ? { 待办id: result.待办id } : {}), ...(result.下次计划id ? { 下次计划id: result.下次计划id } : {}), ...(领取了 ? { 领取了: true as const } : {}) };
+  } catch (e) { return 不在了(e); }
+}
+
+/**
+ * 记沟通那几处（完成计划小框、首页 AI 记沟通卡）问：这位客户我能挂沟通的在推项目、我能不能新建项目。
+ * 不是企业版 项目们 = null（照旧不挂项目）
+ */
+export async function 沟通可选项目(customerId: string): Promise<{ ok: true; 项目们: 可记项目[] | null; 能建项目: boolean } | { ok: false; error: string }> {
+  const me = await requireUser();
+  try {
+    if (typeof customerId !== "string" || !customerId) return { ok: false, error: "要记哪位客户？" };
+    if (!企业版()) return { ok: true, 项目们: null, 能建项目: false };
+    const 们 = await 可记沟通项目们(me, customerId);
+    return { ok: true, 项目们: 们.可记, 能建项目: 能新建和领取(me, await 权限组织()) };
   } catch (e) { return 不在了(e); }
 }
 
@@ -305,6 +373,8 @@ export async function deleteFollowUp(id: string, customerId: string) {
     // 删之前先取内容：审计要记类型和内容。删了不给本人撤回（11-09 删 restoreFollowUp），要找回只能总管理去回收站恢复
     const 待删 = await prisma.followUp.findUnique({ where: { id } });
     if (!待删) return { ok: false as const, error: "这条跟进已经不在了，刷新看看" };
+    // 后面重算最近跟进、撤待办、审计都按库里这条的客户，不信传来的（审核 11-18 权限 P2-7）
+    customerId = 待删.customerId;
     // 企业版：系统管理员或身为负责人的管理能删沟通（软删进回收站，M-权限-09 原口径 11-09，销售负责人本人也删不了）。本人刚记的不再例外（P-沟通-01），只有 AI 卡片撤销那一条放行
     if (!(在卡片撤销里(id) && 卡片刚记的能撤(me, 待删)) && !(await 能删沟通(me, { customerId: 待删.customerId, id }))) return { ok: false as const, error: 不能删沟通话 };
     // 企业版（P9）：只记 deletedAt，进回收站；顺带的待办照旧删（回收站恢复时按跟进补回来）
@@ -570,6 +640,16 @@ export async function completePlan(id: string, 完成 = true) {
 export async function 撤销记一笔(input: { customerId: string; 跟进id: string; 计划id: string; 下次计划id?: string | null }) {
   try {
     const user = await requireUser();
+    /*
+      企业版（11-18 审核 P0-3）：原来只有「跟进存在」时才核本人 10 分钟，传个不存在的跟进 id 就整段跳过，
+      再真删这位客户任一条没完成的计划。现在：这位客户我得能改（同 deletePlan 的 事项挡：负责人本人、系统管理员、
+      这位客户下在推项目的负责人；公海里的不行），跟进必须是这位客户名下、本人刚记的（卡片刚记的能撤）。
+      删下一条计划和 deletePlan 同一道挡；计划没有回收站（FollowPlan 不软删，deletePlan 也是真删），照旧删掉
+    */
+    if (企业版()) {
+      const 挡 = await 事项挡(user, input.customerId);
+      if (挡) return { ok: false as const, error: 挡 };
+    }
     const result = await prisma.$transaction(async (tx) => {
       const customer = await tx.customer.findUnique({ where: { id: input.customerId }, select: { name: true } });
       if (!customer) return { ok: false as const, error: "这位客户已经不在了，撤不回来" };
@@ -577,8 +657,9 @@ export async function 撤销记一笔(input: { customerId: string; 跟进id: str
       if (!计划) return { ok: false as const, error: "这条计划已经不在了，刷新看看" };
       const audits: Parameters<typeof recordAudit>[0][] = [];
       const 跟进 = await tx.followUp.findFirst({ where: { id: input.跟进id, customerId: input.customerId }, select: { id: true, type: true, occurredAt: true, ownerId: true, createdAt: true } });
-      // 企业版：只撤自己 10 分钟内刚记的那笔，别人的、早先的去时间线（删只给总管理）
-      if (跟进 && 企业版() && !卡片刚记的能撤(user, 跟进)) return { ok: false as const, error: 卡片撤销过时话 };
+      // 企业版：只撤自己 10 分钟内刚记的那笔，别人的、早先的去时间线（删只给总管理）。
+      // 跟进找不到（不在这位客户名下、已经删了、乱填的 id）也不撤：不然这一步整个跳过，后面照删计划（11-18 审核 P0-3）
+      if (企业版() && (!跟进 || !卡片刚记的能撤(user, 跟进))) return { ok: false as const, error: 卡片撤销过时话 };
       if (跟进) {
         // 11-01 卡点 B13：这条沟通上发过卡点的，卡点脱开照旧留着；老库脱不开就不撤
         if ((await 卡点脱离沟通(tx, [跟进.id])).size) return { ok: false as const, error: "这条跟进上已经发过卡点，撤不回来了，去时间线上删" };
@@ -637,7 +718,7 @@ function 刷新联系人(customerId?: string | null) {
  * 号码不合规的不在这里说（保存时照旧说），查不了也不挡——保存那一步还会再查一遍。
  * 除了 = 编辑时排除这位自己
  */
-export async function 联系人号码先查(号码们: { kind: string; value: string }[], 除了?: string | null): Promise<{ ok: true; 撞了: 撞到的联系人[] } | { ok: false; error: string }> {
+export async function 联系人号码先查(号码们: { kind: string; value: string }[], 除了?: string | null, 客户?: string | null): Promise<{ ok: true; 撞了: 撞到的联系人[] } | { ok: false; error: string }> {
   // 认人放在 try 外：没登录照常抛（按未登录处理），不被下面「号码没查成」那句盖住
   await requireUser();
   try {
@@ -646,7 +727,7 @@ export async function 联系人号码先查(号码们: { kind: string; value: st
     if (!行们.length) return { ok: true, 撞了: [] };
     const 号 = await 验联系人号码们(行们, []);
     if (!号.ok) return { ok: true, 撞了: [] };
-    const 撞了 = 号.行们.length ? await 联系人查重(defaultClient, 号.行们, await 读的我(defaultClient), 除了 ?? undefined) : [];
+    const 撞了 = 号.行们.length ? await 联系人查重(defaultClient, 号.行们, await 读的我(defaultClient), 除了 ?? undefined, 客户 ?? undefined) : [];
     return { ok: true, 撞了 };
   } catch {
     return { ok: false, error: "号码没查成，保存时会再查一遍" };
@@ -656,8 +737,9 @@ export async function 联系人号码先查(号码们: { kind: string; value: st
 export async function saveContact(input: 联系人字段 & { id?: string; customerId: string; isPrimary: boolean; 版本?: string | null; 企业?: 企业联系人资料 | null; 照存?: boolean }) {
   try {
     const me = await requireUser();
-  // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）
-  if (!hasVisibleText(input.name)) return { ok: false as const, error: "请填写联系人姓名" };
+  // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）；企业版 11-17 起姓名和联系方式至少一项（联系人姓名问题）
+  const 名问题 = 联系人姓名问题(企业版(), input.name, [...(input.企业?.号码们 ?? []).map((r) => r?.value), input.phone, input.email, input.wechat]);
+  if (名问题) return { ok: false as const, error: 名问题 };
     const 原 = input.id
       ? await prisma.contact.findUnique({
           where: { id: input.id },
@@ -676,6 +758,13 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
         : null;
       if (!客) return { ok: false as const, error: "这位客户已经不在了（或你看不到），刷新看看" };
       if (await 只读客户(defaultClient, 客)) return { ok: false as const, error: await 只读话(defaultClient) };
+      /*
+        看得到、不只读还不够（11-18 审核 P0-1）：限定层的写范围是「自己 + 实线下属 + 公海」，销管能借它改下属客户的联系人，
+        谁都能改公海客户的联系人。和 detachContact、待办计划同一道 客户事项挡（核心是 能改客户：负责人本人或系统管理员；
+        另放这位客户下在推项目的负责人；公海里的先领）。AI 卡「改联系人」也转进这里
+      */
+      const 挡 = await 客户事项挡(me, 客.id);
+      if (挡) return { ok: false as const, error: 挡 };
     }
     /*
       企业版联系人挂多位客户（2026-10-29 P13 第 1 条）：编辑不换主客户——从挂靠的那位客户页上编辑时，交上来的 customerId 是那一位，
@@ -697,7 +786,8 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
           ? { ...r, value: 原号们.find((o) => o.kind === r.kind && 认回打码号(r.value, o.value) === o.value)?.value ?? r.value }
           : r))
       : null;
-    const 号 = 交的号们 ? await 验联系人号码们(交的号们, 原?.contactMethods.map((x) => x.kind) ?? []) : null;
+    // 只验新加的、改过的行（11-17）：原来就有、一字没动的老号（导入进来的、改规矩之前存的）照原样留着，不挡改别的格
+    const 号 = 交的号们 ? await 验联系人号码们(交的号们, 原?.contactMethods.map((x) => x.kind) ?? [], 原 ? (原.contactMethods.length ? 原.contactMethods : 联系人号码们(原, [])) : []) : null;
     if (号 && !号.ok) return 号;
     const 电话 = 号 ? ({ ok: true, phone: null } as const) : 联系人电话(input.phone, 原?.phone);
     if (!电话.ok) return 电话;
@@ -714,18 +804,21 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
             .map(([kind, v]) => ({ kind, value: (v ?? "").trim(), numberKey: 老键(kind, v) }))
             .filter((x) => x.numberKey)
         : [];
-    if (查的行们.length && !input.照存) {
+    if (查的行们.length) {
       const 原有 = new Set((原?.contactMethods ?? []).map((x) => `${x.kind}|${x.numberKey}`));
       if (原) for (const [kind, v] of [["phone", 原.phone], ["email", 原.email], ["wechat", 原.wechat]] as const) {
         const 键 = 老键(kind, v);
         if (键) 原有.add(`${kind}|${键}`);
       }
       const 新的 = 查的行们.filter((x) => !原有.has(`${x.kind}|${x.numberKey}`));
-      const 撞了 = 新的.length ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), input.id) : [];
+      const 撞了 = 新的.length && !input.照存 ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), input.id, 主客户) : [];
       if (撞了.length) {
         const 表 = await 号码种类表();
         return { ok: false as const, error: 联系人撞号话(撞了, (k) => 种类叫法(表, k), 主客户), 撞了 };
       }
+      // 在用的没撞、回收站里撞了（审核 11-18 新建入口 P2-6，P-删-08，同建档入口）：拦下给捞回，「仍然保存」也不放
+      const 回收站 = 企业版() && 新的.length ? await 联系人回收站撞(prisma, 新的) : null;
+      if (回收站) return { ok: false as const, error: 联系人回收站撞话, 回收站 };
     }
     const data = { ...规整(input), phone: 电话.phone, ...(企?.ok ? 企.data : {}), isPrimary: 主要, customerId: 主客户 };
     const 落库id = await prisma.$transaction(async (tx) => {
@@ -814,11 +907,16 @@ export async function detachContact(id: string) {
     const 挡 = await 客户事项挡(me, c.customerId);
     if (挡) return { ok: false as const, error: 挡 };
     const 跟进 = await prisma.followUp.findMany({ where: { contactId: id }, select: { id: true } });
+    // 子表里主表三格以外的号（WhatsApp、座机…）：移出后不再挂在客户上（审核 11-18 P1-4），记进未归属那行的备注，挂回来时人看得到
+    const 主三格 = new Set([c.phone, c.email, c.wechat].map((x) => (x ?? "").trim()).filter(Boolean));
+    const 别的号 = (await prisma.contactMethod.findMany({ where: { contactId: id }, select: { kind: true, value: true } })).filter((m) => !主三格.has(m.value.trim()));
+    const 种类表 = 别的号.length ? await 号码种类表() : [];
+    const 移出备注 = [c.remark, ...别的号.map((m) => `${种类叫法(种类表, m.kind)}：${m.value}`)].filter(Boolean).join("\n") || null;
     // 函数式事务：数组式在托管版的工作区代理下会抛错（见 lib/carry-over-db.ts 带走没做完的）
     await prisma.$transaction(async (tx) => {
       await tx.unassignedContact.create({
         data: {
-          id: c.id, name: c.name, position: c.position, phone: c.phone, email: c.email, wechat: c.wechat, remark: c.remark,
+          id: c.id, name: c.name, position: c.position, phone: c.phone, email: c.email, wechat: c.wechat, remark: 移出备注,
           fromCustomerId: c.customerId, fromCustomerName: c.customer.name,
           wasPrimary: c.isPrimary,
           ownerId: me.id,
@@ -826,6 +924,8 @@ export async function detachContact(id: string) {
           createdAt: c.createdAt,
         },
       });
+      // 他挂在联系方式子表里的号先摘掉：移出了就不是这位客户的号，留着会一直撞号（审核 11-18 P1-4）；多出来的几行号记进上面那行的备注
+      await 摘联系人号(tx, [id]);
       // 原来那条删掉。跟进记录上的 contactId 由外键置空，id 记在上面那行里，挂回来时接上
       await tx.contact.delete({ where: { id } });
     });
@@ -874,13 +974,15 @@ export async function saveUnassignedContact(input: 联系人字段 & { id: strin
     // 企业版：挂到哪位客户下面就按那位的负责人挡；只改资料（不挂）只挡没业务角色、管理员
     const 挡 = await 客户事项挡(me, input.customerId);
     if (挡) return { ok: false as const, error: 挡 };
-    if (!hasVisibleText(input.name)) return { ok: false as const, error: "请填写联系人姓名" };
+    const 名问题 = 联系人姓名问题(企业版(), input.name, [input.phone, input.email, input.wechat]);
+    if (名问题) return { ok: false as const, error: 名问题 };
     if (input.isPrimary != null && typeof input.isPrimary !== "boolean") return { ok: false as const, error: "关键联系人选项格式不正确" };
     const u = await prisma.unassignedContact.findUnique({ where: { id: input.id } });
     if (!u) return { ok: false as const, error: "这位联系人已经不在了，刷新看看" };
     // 版本闸门（排查 D3）：打开编辑框之后有人改过（或已经被别人挂走），不盖掉
     if (input.版本 && 版本条件(input.版本).updatedAt?.getTime() !== u.updatedAt.getTime()) return { ok: false as const, error: 版本冲突 };
-    const 电话 = 联系人电话(input.phone, u.phone);
+    // 企业版：和联系人卡号码几行同一套规矩（11-18，22A）；原样没动的老号照存
+    const 电话 = 未归属联系人电话(input.phone, u.phone, 企业版());
     if (!电话.ok) return 电话;
     const data = { ...规整(input), phone: 电话.phone };
     if (input.customerId) {

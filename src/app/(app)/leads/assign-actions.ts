@@ -18,31 +18,43 @@ import { 能改后台设置, 是市场角色, 是销售角色, 能管公海 } fr
 import { 查完再写 } from "@/lib/check-then-write";
 import { 读改权限, 谁能改的话 } from "@/lib/enterprise/edit-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 分配方式叫法, 挡分配方式 } from "@/lib/enterprise/dict";
+import { 分配方式叫法, 挡分配方式, 选的原因 } from "@/lib/enterprise/dict";
+import { 能自动分配客户, 不是市场话, 市场分配限指定 } from "@/lib/enterprise/cust-auto-assign";
+import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 发满额提醒, 发待分配提醒, 读满额提醒, 关掉满额提醒, type 满额提醒 } from "@/lib/enterprise/lead-full-notice";
+import { 读线部门, 参与状态表, 不参与名单, 不设配额开着, 自动分配池, 读挑人底子, 本月分配行, 补记销售管理起算, 指定问题, 可指定的人, 估算轮到, 能看轮到, type 轮到 } from "@/lib/enterprise/assign-eta";
 import { 标待分配 } from "@/lib/enterprise/await-assign";
-import { 验证中不能改派 } from "@/lib/project/lead-verify-guard";
-import { 分配通知, 同事待分配随客户通知, type 分配条, type 留下的活, type 同事待分配条 } from "@/lib/enterprise/notice-sources";
+import { 验证中不能改派, 客户有验证中线索 } from "@/lib/project/lead-verify-guard";
+import { 分配通知, 分配后估算推送, 同事待分配随客户通知, type 分配条, type 留下的活, type 同事待分配条 } from "@/lib/enterprise/notice-sources";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 超上限n, 记转让, 将回收提醒跟着换人, 勾掉将回收提醒 } from "@/lib/project/db";
 import { 单项目客户跟着领, 领项目连带超上限, 客户整包出公海 } from "@/lib/enterprise/pool-link";
 import { 拦客户公海里的项目, 客户在公海项目不单领提示, 客户在公海找销管提示 } from "@/lib/enterprise/pool-rules";
 import { 钉住老签约 } from "@/lib/contract-owner";
-import { 客户在市场手里, 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
+import { 客户在市场手里, 算市场转客户, 转客户给销售, 暂不分配叫法们 } from "@/lib/enterprise/market-transfer";
+import { 算市场分给销售, 市场分配进线索验证 } from "@/lib/enterprise/market-assign-node";
 import { 分配带走的同事项目, 数进手的持有项目 } from "@/lib/carry-over-db";
 import type { 转走项目预览 } from "@/lib/carry-over";
+import type { Prisma } from "@/generated/prisma";
 import { 看全部 } from "@/lib/team-scope";
-import { 项目业务线, 线部门key, 规整线部门, 线勾了部门, 按部门候选, 只留销售, 两条线, 是业务线, type 线部门, type 项目线 } from "@/lib/enterprise/assign-line";
-import { 历史负责人 } from "@/lib/project/pool-owner";
+import { 项目业务线, 线部门key, 规整线部门, 线勾了部门, 按部门候选, 自动可接, 在不进自动分配部门, 两条线, 是业务线, type 线部门, type 项目线 } from "@/lib/enterprise/assign-line";
+import { 历史负责人, 原负责人回避, 原负责人挡着 } from "@/lib/project/pool-owner";
+import { 公海按线拦 } from "@/lib/enterprise/pool-line-guard";
+import { 按区域分配of, 默认分配方向, 认分配方向, 认交来的方向, 方向分配理由, 本人事业部, type 分配方向 } from "@/lib/enterprise/customer-region";
+import { 项目号们, 客户默认分配方向 } from "@/lib/enterprise/assign-direction-db";
+import { 要按方向指定, 指定方向候选表, type 指定候选表 } from "@/lib/enterprise/assign-direction-pick";
+import type { 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 换负责人待办, 待办痕, 接上待办痕, 带待办勾 } from "@/lib/project/carry-tasks";
 import { 规整还原单, 撤回自动分配, 自动分配撤销对不上, type 自动分配还原 } from "@/lib/enterprise/auto-assign-undo";
 import {
   企划线索计数key, 我分出去的, 月份, 本月已分, 本月加额们, 生效配额, 满了, 接手问题, 能分配, 能设配额, 能改参与, 线索种类, 计不计数, 配额of, 挑接手人, 挑的理由, 自动分配不参与key,
-  认参与状态, 参与状态of, 是参与状态, type 参与状态, 不设配额key, 自动候选人们,
-  type 分出去的线索, type 线,
+  认参与状态, 参与状态of, 是参与状态, type 参与状态, 不设配额key, 自动候选人们, 起算时刻key,
+  type 分出去的线索, type 线, type 候选人,
 } from "@/lib/enterprise/lead-assign";
 import { 换负责人 } from "@/lib/project/owner-write";
+import { 定时分配令牌, 超时转令牌 } from "@/lib/enterprise/scheduled-assign-token";
+import { 刷新页面 } from "@/lib/revalidate-safe";
 
 type 结果 = { ok: true } | { ok: false; error: string };
 /** 分哪一条：老的线索表，或者企业版「新线索」= 线索阶段的项目 */
@@ -71,11 +83,6 @@ const 已被分配的话 = "这条线索已被分配：刚才有人先分走了�
  */
 const 认原负责人 = (x: unknown): string | null | undefined => (x === null || x === "" ? null : typeof x === "string" ? x : undefined);
 
-/** 后台设的「各条线参与自动分配的部门」（A4 / A5）；没设 = 两条线都没勾 */
-async function 读线部门(): Promise<线部门> {
-  return 规整线部门(await getSetting<unknown>(线部门key));
-}
-
 /**
  * 分给某条线时还查不查接手人的内贸 / 外贸标记：这条线勾了部门 = 不查（人是按部门挑的，标记可能没填）；没勾 = 照旧查
  */
@@ -85,22 +92,17 @@ function 查哪条线(org: 组织, 设: 线部门, line: 线 | null): 线 | null
 
 /**
  * 新线索（项目）手动指派时能挑的人（11-01 16:1x，A9）：当前「正常」参与自动分配的销售，按项目业务线过滤——
- * 内贸 / 外贸 = 这条线的人（勾了部门按部门，没勾按成员标记，同自动分配的候选）；暂不分配 = 全部正常参与的销售。
- * 暂停、禁止的都不列
+ * 内贸 / 外贸 = 这条线的人（勾了部门按部门，没勾按成员标记，同自动分配的候选），再加本人事业部是这条线的销售
+ * （11-18 第 8 题 B：义乌档口整组不进自动分配、部门没勾，但参与状态正常的照样能被指定；和新建线索「指定分配」同一条）；
+ * 暂不分配 = 全部正常参与的销售。暂停、禁止的都不列
  */
 async function 指派可选(org: 组织, 线: 项目线): Promise<string[]> {
   const [设, 不参与] = await Promise.all([读线部门(), 不参与名单()]);
   const 不 = new Set(不参与);
-  const 人们 = 是业务线(线) ? 按部门候选(org, null, 线, 设, 自动候选人们) : 自动候选人们(org, null, null);
+  const 人们 = 是业务线(线)
+    ? [...new Set([...按部门候选(org, null, 线, 设, 自动候选人们), ...自动候选人们(org, null, null).filter((id) => 本人事业部(org, 设, id) === 线)])]
+    : 自动候选人们(org, null, null);
   return 人们.filter((id) => !不.has(id));
-}
-
-/**
- * 规则里的「不设配额（人人参与、不限额）」开着没（10-30）：开着时配额整个不起作用。
- * 11-01 拍板（清单 A10 / A11）：默认不限额——没存过 = 开着；只有在设置里明确改回「按配额分配」（存了 false）才查配额
- */
-async function 不设配额开着(): Promise<boolean> {
-  return (await getSetting<boolean>(不设配额key)) !== false;
 }
 
 /**
@@ -158,11 +160,17 @@ export async function 分配线索(input: { leadId?: string; projectId?: string;
  * 乐观锁（QA #4）：原负责人 = 分的人看到的负责人（undefined = 不比）；事务里读到的负责人不是他、或写的时候负责人已经变了，
  * 都回 已被分配: true，不覆盖别人刚分的
  */
-type 分给结果 = { ok: true; 留下?: 留下的活; 还原?: 自动分配还原 } | { ok: false; error: string; 满?: true; 已被分配?: true };
+type 分给结果 = { ok: true; 留下?: 留下的活; 还原?: 自动分配还原 } | { ok: false; error: string; 满?: true; 已被分配?: true; 换人?: true };
+/**
+ * 自动分配在写库的事务里复核挑人（审核 11-18 P1-1：同一刻两条自动分配给了同一人）：事务是 BEGIN IMMEDIATE、多进程也排队，
+ * 进来以后按事务里重读的本月分配数再挑一遍，挑出来的不是他 = 先到的那条已经写了，回 换人 让 自动分给 重读再挑
+ */
+type 复核挑人 = (tx: Prisma.TransactionClient) => Promise<boolean>;
+const 换人: { ok: false; error: string; 换人: true } = { ok: false, error: "刚才同时有别的分配，按最新的数重挑", 换人: true };
 const 已被分配: { ok: false; error: string; 已被分配: true } = { ok: false, error: 已被分配的话, 已被分配: true };
 
 async function 分给(
-  me: SessionUser, org: 组织, input: 目标 & { toUserId: string; line: 线 | null; kind: 线索种类; 自动: boolean; 查线?: 线 | null; 原负责人?: string | null; 带待办?: boolean; 公海客户?: 公海客户分法 },
+  me: SessionUser, org: 组织, input: 目标 & { toUserId: string; line: 线 | null; kind: 线索种类; 自动: boolean; 查线?: 线 | null; 原负责人?: string | null; 带待办?: boolean; 公海客户?: 公海客户分法; 备注?: string; 复核?: 复核挑人 },
 ): Promise<分给结果> {
   // 查线：核对接手人内贸 / 外贸标记用的线；这条线勾了部门时传 null（按部门挑，不看标记）。没传 = 就用 line
   const 问题 = 接手问题(org, input.toUserId, input.查线 === undefined ? input.line : input.查线);
@@ -187,6 +195,7 @@ async function 分给(
     if (input.原负责人 !== undefined && 现在.ownerId !== input.原负责人) return 已被分配;
     if (现在.status === "已转化") return { ok: false, error: "已转化的线索不用再分" };
     if (现在.ownerId === input.toUserId) return { ok: false, error: "这条线索已经在他名下了" };
+    if (input.复核 && !(await input.复核(tx))) return 换人;
     if (查额) {
       const 已分 = await 本月已分(input.toUserId, 月, tx);
       const 配额 = await 配额of(input.toUserId, tx);
@@ -225,11 +234,36 @@ const 项目不在 = "这条新线索已经不在了（或者你看不到它）�
  */
 const 留下字段 = (留下: 留下的活 | undefined): { 留下?: 留下的活 } => (留下 ? { 留下 } : {});
 
+const 公海只给管的话 = "线索公海里的项目只有总管理和销售管理能分配：请找销售管理";
+const 自己放的回避话 = "这个项目是你放回公海的，按规矩回避：请别的管理分配";
+
+/**
+ * 线索公海里的项目（11-18 审核「分配与归属」P0-3）：项目列表上的「分配 / 自动分配」也是在分公海，
+ * 和公海页 分配公海项目 同一套判（pool/actions.ts）：
+ * - 能管公海（总管理、销售管理；市场管理不能，P-转-02、P-公海-10）
+ * - 销管、条线总管理只能动本业务线的（P-公海-07，公海按线拦）
+ * - 自己放回公海的回避（P-公海-04；系统管理员、只读管理员豁免，条线总管理照样回避）
+ * 接手人是不是原负责人不在这里管：上级指定分回原负责人照放行（X-67）；自动分配的候选里去掉他见 自动分给。
+ * 不在公海的回 null
+ */
+async function 线索公海挡(me: SessionUser, org: 组织, projectId: string): Promise<string | null> {
+  if (!企业版()) return null;
+  const p = await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { id: true, pooledAt: true } }));
+  if (!p?.pooledAt) return null;
+  if (!能管公海(me, org)) return 公海只给管的话;
+  const 别线 = await 公海按线拦(prisma, me, org, { 项目: [p.id] }, "分配");
+  if (别线) return 别线;
+  return (await 原负责人挡着(prisma, me, p)) ? 自己放的回避话 : null;
+}
+
 async function 分项目给(
-  me: SessionUser, org: 组织, input: { projectId: string; toUserId: string; line: 线 | null; kind: 线索种类; way: string; 自动?: boolean; 原负责人?: string | null; 带待办?: boolean; 公海客户?: 公海客户分法 },
+  me: SessionUser, org: 组织, input: { projectId: string; toUserId: string; line: 线 | null; kind: 线索种类; way: string; 自动?: boolean; 原负责人?: string | null; 带待办?: boolean; 公海客户?: 公海客户分法; 备注?: string; 复核?: 复核挑人 },
 ): Promise<分给结果> {
   const p0 = await prisma.project.findFirst({ where: { id: input.projectId }, select: { id: true, name: true, customerId: true } });
   if (!p0) return { ok: false, error: 项目不在 };
+  // 线索公海里的：按公海页的判定（能管公海、本线、自己放的回避），指定分配、自动分配、定时 / 超时转都走这里
+  const 公海挡 = await 线索公海挡(me, org, p0.id);
+  if (公海挡) return { ok: false, error: 公海挡 };
   // 客户负责人是市场、接手的是销售：这一下算转客户（见事务里那段），换负责人之前钉住老签约（事务外，它用全局连接）
   const 客户0 = await 看全部(() => prisma.customer.findUnique({ where: { id: p0.customerId }, select: { salesOwnerId: true } }));
   if ((客户0 && 是市场角色(org, 客户0.salesOwnerId) && 是销售角色(org, input.toUserId)) || input.公海客户 === "整包") await 钉住老签约();
@@ -239,7 +273,7 @@ async function 分项目给(
   const 查额 = counted && !(await 不设配额开着());
   const 月 = 月份();
   // 同老线索：入口查过能分配、看得到，事务里看全部（11-03 A3-4 市场管理分别人名下的假报「已被分配」）
-  const 落库 = await 看全部(() => 查完再写(async (tx): Promise<{ ok: true; fromUserId: string | null; 留下?: 留下的活; 同事待分配?: 同事待分配条[]; 还原: 自动分配还原 } | Exclude<分给结果, { ok: true }>> => {
+  const 落库 = await 看全部(() => 查完再写(async (tx): Promise<{ ok: true; fromUserId: string | null; 留下?: 留下的活; 同事待分配?: 同事待分配条[]; 还原: 自动分配还原; 算数: boolean } | Exclude<分给结果, { ok: true }>> => {
     const p = await tx.project.findUnique({ where: { id: p0.id } });
     if (!p) return { ok: false, error: 项目不在 };
     // 分前看查过一次；这里再查：弹框开着时客户可能刚被放进公海（放在乐观锁前面，说的是真原因）
@@ -255,7 +289,11 @@ async function 分项目给(
     const 验证中 = await 验证中不能改派(tx, p.id);
     if (验证中) return { ok: false, error: 验证中 };
     if (p.ownerId === input.toUserId && !p.pooledAt && !p.awaitAssignAt) return { ok: false, error: "这条新线索已经在他名下了" };
-    if (查额) {
+    if (input.复核 && !(await input.复核(tx))) return 换人;
+    // 公海分配不计名额（11-18 客户定第 2 题：「本月已分」只数市场分出去的新线索；公海页、项目列表两处都不算）：
+    // 线索公海里分出来的照记一行分配记录（我分出去的、撤销自动分配要用），counted=false、不查满额
+    const 这条算数 = counted && !p.pooledAt;
+    if (查额 && !p.pooledAt) {
       const 已分 = await 本月已分(input.toUserId, 月, tx);
       const 配额 = await 配额of(input.toUserId, tx);
       if (满了(已分, 配额)) return { ok: false, 满: true, error: `他这个月已经分了 ${已分} 条，配额 ${配额} 条，分满了：找他的上级调配额，或者分给别人` };
@@ -275,30 +313,34 @@ async function 分项目给(
     const 原 = p.pooledAt ? (await 历史负责人(tx, p.id)) ?? (p.ownerId || null) : p.ownerId;
     // 乐观锁：where 带上刚读到的负责人和公海 / 待分配状态，中间被别人分走了就一行都不动、不覆盖。
     // 下一步（时间 + 文字）跟着项目走、不清（11-03 A2-3，同 改项目 转让）
+    // 「暂不分配」的分出去：分配方式写成这次的方式（审核 11-18 第 11 项，口径表没说分出去还留暂不分配）；撤销按还原单还
+    const 改方式 = !!p.assignMode && (await 暂不分配叫法们(tx)).includes(p.assignMode);
     const 改 = await tx.project.updateMany({
       where: { id: p.id, ownerId: p.ownerId, pooledAt: p.pooledAt, awaitAssignAt: p.awaitAssignAt, phase: "线索", result: null },
-      data: { ...换负责人(input.toUserId), pooledAt: null },
+      data: { ...换负责人(input.toUserId), pooledAt: null, ...(改方式 ? { assignMode: input.way } : {}) },
     });
     if (改.count !== 1) return 已被分配;
     // 市场转客户要在动待办之前判（上面判好了）：这条路径上传来的勾不算数
     const 带待办 = 市场转客户 ? undefined : input.带待办;
     await 将回收提醒跟着换人(tx, p, 原, input.toUserId);
     const 几条 = await 换负责人待办(tx, p, 原, input.toUserId, 带待办);
-    await 记转让(tx, p, me.id, 原, input.toUserId, "transfer", 接上待办痕(`分配方式：${input.way}`, 待办痕(带待办, 几条)));
+    await 记转让(tx, p, me.id, 原, input.toUserId, "transfer", 接上待办痕(`分配方式：${input.way}${input.备注 ? `；${input.备注}` : ""}`, 待办痕(带待办, 几条)));
     await 勾掉将回收提醒(tx, 规则, { ...p, ownerId: input.toUserId }, new Date());
     // 只改项目，客户负责人不动（P-转-03、M-公海-06；开关 领项目带走单项目客户 关着）
     if (整包) await 客户整包出公海(tx, p.customerId, input.toUserId, me.id, 带待办, "pool-assign");
     else if (p.pooledAt) await 单项目客户跟着领(tx, p.customerId, input.toUserId, me.id, 带待办);
     const 转 = !整包 && 市场转客户 && 客户 ? await 转客户给销售(tx, p.customerId, 客户.salesOwnerId, input.toUserId, me.id, input.way) : undefined;
+    // 市场分给销售：这条停在潜客培育的进线索验证（审核 11-18，market-assign-node.ts）；从公海里分出来的不推
+    if (!p.pooledAt && 算市场分给销售(org, { 分配人: me.id, 原, 接手人: input.toUserId, 创建人: p.creatorId, 市场转客户: !!转 })) await 市场分配进线索验证(tx, [p.id], input.toUserId, me.id);
     await tx.entLeadAssign.create({
-      data: { projectId: p.id, toUserId: input.toUserId, fromUserId: 原, byUserId: me.id, line: input.line, kind: input.kind, counted, month: 月, way: input.way },
+      data: { projectId: p.id, toUserId: input.toUserId, fromUserId: 原, byUserId: me.id, line: input.line, kind: input.kind, counted: 这条算数, month: 月, way: input.way },
     });
     // 还原单（撤销自动分配整批还原用，auto-assign-undo.ts）：分之前的负责人、待分配 / 入池时刻、市场转销售连带过去的客户和活
     const 还原: 自动分配还原 = {
-      原, 待分配: p.awaitAssignAt?.toISOString() ?? null, 公海: p.pooledAt?.toISOString() ?? null,
+      原, 待分配: p.awaitAssignAt?.toISOString() ?? null, 公海: p.pooledAt?.toISOString() ?? null, ...(改方式 ? { 暂不分配: true } : {}),
       ...(转 && 客户 ? { 客户: { customerId: p.customerId, 原: 客户.salesOwnerId, 带过来: 转.带过来 } } : {}),
     };
-    return { ok: true, fromUserId: 原, 留下: 转?.留下, 同事待分配: 转?.同事待分配, 还原 };
+    return { ok: true, fromUserId: 原, 留下: 转?.留下, 同事待分配: 转?.同事待分配, 还原, 算数: 这条算数 };
   }));
   if (!落库.ok) return 落库;
   if (落库.同事待分配?.length) await 同事待分配随客户通知(me.id, input.toUserId, 落库.同事待分配);
@@ -307,11 +349,11 @@ async function 分项目给(
   const 接手 = await prisma.user.findUnique({ where: { id: input.toUserId }, select: { name: true } });
   await recordAudit({
     user: me, action: "update", entity: "Project", entityId: p0.id,
-    summary: `分配新线索「${p0.name}」给 ${接手?.name ?? input.toUserId}${line ? `（${line}）` : ""}${counted ? "" : "，不计数"}`,
-    detail: { toUserId: input.toUserId, fromUserId: 落库.fromUserId, line, kind: input.kind, counted, month: 月, 分配方式: input.way },
+    summary: `分配新线索「${p0.name}」给 ${接手?.name ?? input.toUserId}${line ? `（${line}）` : ""}${落库.算数 ? "" : "，不计数"}`,
+    detail: { toUserId: input.toUserId, fromUserId: 落库.fromUserId, line, kind: input.kind, counted: 落库.算数, month: 月, 分配方式: input.way, ...(input.备注 ? { 备注: input.备注 } : {}) },
   });
-  revalidatePath("/leads");
-  revalidatePath("/projects");
+  // 定时分配到点时在后台钟上跑，没有请求上下文：刷新页面缓存那一步出错不算分配失败（lib/revalidate-safe.ts）
+  刷新页面("/leads", "/projects");
   return { ok: true, ...留下字段(落库.留下), 还原: 落库.还原 };
 }
 
@@ -330,11 +372,14 @@ function 公海客户拦的话(分法?: 公海客户分法): string {
  */
 async function 分前看(
   哪条: 目标, org?: 组织, 公海客户?: 公海客户分法,
-): Promise<{ ok: true; ownerId: string | null; 实际负责人: string | null; 待分配: boolean; 名: string; 线: 项目线 | null } | { ok: false; error: string }> {
+): Promise<{ ok: true; ownerId: string | null; 实际负责人: string | null; 待分配: boolean; 名: string; 线: 项目线 | null; 公海?: boolean; 区域?: { 客户: 客户地址; 项目: 客户地址 };
+  /** 市场成员建档时手动选的分配方向（Project.assignDir，迁移 152）；没改过 = null */
+  手选方向?: 线 | null } | { ok: false; error: string }> {
   if (哪条.projectId !== undefined) {
+    const 址 = { addrCountry: true, addrProvince: true, addrCity: true, addrDistrict: true } as const;
     const p = await prisma.project.findFirst({
       where: { id: 哪条.projectId },
-      select: { ownerId: true, pooledAt: true, awaitAssignAt: true, phase: true, result: true, name: true, bizLine: true, customer: { select: { pool: { select: { customerId: true } } } } },
+      select: { ownerId: true, pooledAt: true, awaitAssignAt: true, phase: true, result: true, name: true, bizLine: true, assignDir: true, ...址, customer: { select: { ...址, pool: { select: { customerId: true } } } } },
     });
     if (!p) return { ok: false, error: 项目不在 };
     // 客户公海里的项目跟客户走，不单独分（M-公海-06、X-13）；线索公海（客户不在公海）照分
@@ -347,7 +392,11 @@ async function 分前看(
     // 公海里的、待分配的（A7 / A10，负责人那一格只是建的人占着）：原负责人也能被挑中
     return {
       ok: true, ownerId: p.pooledAt || p.awaitAssignAt ? null : p.ownerId || null, 实际负责人: p.ownerId || null,
-      待分配: !p.pooledAt && !!p.awaitAssignAt, 名: p.name, 线: 项目业务线(p, org?.成员),
+      待分配: !p.pooledAt && !!p.awaitAssignAt, 名: p.name, 线: 项目业务线(p, org?.成员), 手选方向: 是业务线(p.assignDir) ? p.assignDir : null, 公海: !!p.pooledAt,
+      区域: {
+        客户: { addrCountry: p.customer.addrCountry, addrProvince: p.customer.addrProvince, addrCity: p.customer.addrCity, addrDistrict: p.customer.addrDistrict },
+        项目: { addrCountry: p.addrCountry, addrProvince: p.addrProvince, addrCity: p.addrCity, addrDistrict: p.addrDistrict },
+      },
     };
   }
   const lead = await prisma.lead.findFirst({ where: { id: 哪条.leadId }, select: { ownerId: true, status: true, name: true } });
@@ -392,9 +441,11 @@ export async function 分配带走的项目(projectIds: string[], 接手人?: st
     const org = await 读组织();
     if (!能分配(org, me)) return 不弹;
     const 能分的: string[] = [];
+    // 市场成员（按岗位）点自动分配不看项目业务线、按客户区域定（P-转-26），「暂不分配」的也会分
+    const 按区域 = 按区域分配of(org, me.id);
     for (const id of ids) {
       const 看 = await 分前看({ projectId: id }, org);
-      if (看.ok && (接手人 !== undefined || 是业务线(看.线))) 能分的.push(id);
+      if (看.ok && (接手人 !== undefined || 按区域 || 是业务线(看.线))) 能分的.push(id);
     }
     return await 看全部(async () => {
       const 行 = await prisma.project.findMany({ where: { id: { in: 能分的 } }, select: { customer: { select: { id: true, salesOwnerId: true, pool: { select: { customerId: true } } } } } });
@@ -408,15 +459,15 @@ export async function 分配带走的项目(projectIds: string[], 接手人?: st
 }
 
 export type 自动分配结果 =
-  | { ok: true; toUserId: string; 接手人: string; 已分: number; 配额: number | null; 为什么: string; 随客户?: true; 还原?: 自动分配还原 }
+  | { ok: true; toUserId: string; 接手人: string; 已分: number; 配额: number | null; 为什么: string; 随客户?: true; 还原?: 自动分配还原; 区域未填?: true }
   | { ok: false; error: string; 都满额?: true; 暂不分配?: true; 已被分配?: true; 待分配?: true };
 /**
  * 服务端自己用：多带 留下（分配通知要）、要标（挑不到人、还没待分配的新线索：调用方标待分配、发提醒，X-85），不给浏览器
  */
-type 内部自动结果 = 自动分配结果 & { 留下?: 留下的活; 要标?: { 名: string; 为什么: string } };
+type 内部自动结果 = 自动分配结果 & { 留下?: 留下的活; 要标?: { 名: string; 为什么: string }; 挑不到?: string };
 
 function 对外(r: 内部自动结果): 自动分配结果 {
-  const { 留下: _留下, 要标: _要标, ...外 } = r;
+  const { 留下: _留下, 要标: _要标, 挑不到: _挑不到, ...外 } = r;
   return 外;
 }
 
@@ -431,15 +482,6 @@ async function 挑不到就标(projectId: string, r: 内部自动结果): Promis
   if (r.ok || !r.要标) return r;
   await 标待分配(projectId, null);
   return { ...r, error: 标了待分配话(r.要标.为什么) };
-}
-
-/** 每人参与状态（暂停 / 禁止的才在表里）；老格式 string[] 读成禁止，存坏了当人人允许 */
-async function 参与状态表() {
-  return 认参与状态(await getSetting<unknown>(自动分配不参与key));
-}
-/** 不进轮转的人：暂停、禁止都算 */
-async function 不参与名单(): Promise<string[]> {
-  return Object.keys(await 参与状态表());
 }
 
 /**
@@ -520,15 +562,19 @@ export async function 撤销自动分配(projectId: string, 还原: unknown): Pr
  * 市场建档分给销售例外，算转客户（分项目给 里那段，X-18）。
  * 只认我自己是负责人、线索阶段、没进公海的项目。不查「能分配」（总管理 / 市场管理 / 销售管理）：向导里能不能自动分只看分配方式的「谁能用」
  */
-export async function 向导自动分配(projectId: string): Promise<自动分配结果> {
+export async function 向导自动分配(projectId: string, 方向?: unknown): Promise<自动分配结果> {
   const me = await 进门();
   if (!me) return 没开;
+  // 分配方向（11-18）：建好再分 交建档时算好的那个（手动 / 默认，审核 11-18 P2-4：和记进业务线的同一个结果）；
+  // 只交「内贸 / 外贸」= 手动；没交按项目上存的手选方向 / 默认顺序现算
+  const 向 = 认交来的方向(方向);
+  if (!向.ok) return { ok: false, error: 向.error };
   try {
     const 方式挡 = await 挡分配方式(me, 1);
     if (方式挡) return { ok: false, error: 方式挡 };
     const p = await prisma.project.findFirst({ where: { id: String(projectId ?? "") }, select: { ownerId: true, phase: true, pooledAt: true } });
     if (!p || p.ownerId !== me.id || p.phase !== "线索" || p.pooledAt) return { ok: false, error: "只能自动分配自己名下、还在线索阶段的项目" };
-    const r = await 自动分给(me, await 读组织(), { projectId }, null, "营销");
+    const r = await 自动分给(me, await 读组织(), { projectId }, null, "营销", undefined, undefined, undefined, undefined, 向.向);
     if (r.ok) await 分配通知(me, [{ projectId, toUserId: r.toUserId, ...留下字段(r.留下) }], true);
     return 对外(r);
   } catch (e) {
@@ -538,56 +584,92 @@ export async function 向导自动分配(projectId: string): Promise<自动分�
 
 /**
  * 自动分配线索()、批量自动分配()、向导自动分配() 共用：进门、能不能分已经查过。
- * 原负责人 = 点按钮时界面上看到的负责人（乐观锁，QA #4）；没交 = 按这里刚读到的比。被别人先分走了直接回「已被分配」，不再换人分
+ * 原负责人 = 点按钮时界面上看到的负责人（乐观锁，QA #4）；没交 = 按这里刚读到的比。被别人先分走了直接回「已被分配」，不再换人分。
+ * 发起人 = 按区域定事业部（P-转-26）看谁发起的；没交 = me。定时分配到点是系统在分，发起人是建线索的人。
+ * 排除 = 这些人不挑（超时未跟进自动转：这一轮已经超时过的人，lib/enterprise/reply-overdue.ts）；没交 = 只排除现负责人（照旧）
  */
 async function 自动分给(
-  me: SessionUser, org: 组织, 哪条: 目标, line: 线 | null, kind: 线索种类, 原负责人?: string | null,
+  me: SessionUser, org: 组织, 哪条: 目标, line: 线 | null, kind: 线索种类, 原负责人?: string | null, 备注?: string, 发起人?: string, 排除?: readonly string[],
+  /**
+   * 分配方向（11-18，只对市场成员按区域那一支）：交了照用（人手选的 = 来源「手动」）；
+   * 没交 = 先认项目上存的手选方向（Project.assignDir，审核 11-18 P0-1），没存再按 区域 → 电话 → 本人事业部 现算
+   */
+  方向?: 分配方向,
 ): Promise<内部自动结果> {
   const 看 = await 分前看(哪条, org);
   if (!看.ok) return 看;
   const 比谁 = 原负责人 === undefined ? 看.实际负责人 : 原负责人;
   if (比谁 !== 看.实际负责人) return 已被分配;
+  // 线索公海里的：先按公海页的判定拦（在挑不到人标待分配之前，不然没权限的人也能把它改成待分配）
+  if (看.公海 && 哪条.projectId !== undefined) {
+    const 公海挡 = await 线索公海挡(me, org, 哪条.projectId);
+    if (公海挡) return { ok: false, error: 公海挡 };
+  }
   // 新线索（项目）挑不到人（QA #5）：不抛错、不动它，回 待分配: true 让界面提示「留在新线索待分配，手动指派」
   // 还没待分配的带上 要标：点自动分配的调用方标待分配、提醒（X-85）；建档向导由 建好再分 标
   const 挑不到 = (为什么: string, 都满额?: true): 内部自动结果 =>
     哪条.projectId !== undefined
       ? {
-        ok: false, 待分配: true, ...(都满额 ? { 都满额 } : {}), error: `${为什么}。${看.待分配 ? "已留在新线索待分配" : "这条新线索留在原处"}，可以手动指派`,
+        ok: false, 待分配: true, ...(都满额 ? { 都满额 } : {}), error: `${为什么}。${看.待分配 ? "已留在新线索待分配" : "这条新线索留在原处"}，可以手动指派`, 挑不到: 为什么,
         ...(看.待分配 ? {} : { 要标: { 名: 看.名, 为什么 } }),
       }
       : { ok: false, ...(都满额 ? { 都满额 } : {}), error: 为什么 };
 
   // 新线索（项目）：线看项目业务线（A1，三选一；老项目按负责人的线、再没有按内贸），不认弹窗传来的；
   // 「暂不分配」不自动分。勾了部门的线按部门挑人（A4），没勾退回按成员标记
+  // 例外（P-转-26 自动分配这一半，X-141）：市场成员（按岗位：市场管理、渠道运营）发起的，不看项目业务线，按客户区域定事业部——
+  // 大陆 → 内贸、非大陆（含港澳台）→ 外贸，客户地址全空看项目所在地，再空 = 两条线都算、结果里提示补区域。
+  // 候选都走 自动分配池：销售；内贸线另含销售管理（11-18 第 9 题 B），外贸销售管理不参与；义乌档口整组不进（第 8 题 B）。
+  // 指定分配的事业部限制（P-转-26 另一半）还没做，见 X-141
   let 人们: string[];
   let 查线: 线 | null | undefined;
-  if (哪条.projectId !== undefined) {
+  const 按区域 = 哪条.projectId !== undefined && 按区域分配of(org, 发起人 ?? me.id);
+  let 区域未填 = false;
+  let 向: 分配方向 | null = null;
+  if (按区域) {
+    // 候选池（自动分配池，assign-eta.ts「快轮到我」估算用的同一个）
+    const 设 = await 读线部门();
+    // 分配方向（11-18）：交了按交的；没交先认项目上存的手选方向（审核 11-18 P0-1：定时到点、超时自动转、列表 / 批量自动分配都认人改过的），
+    // 没改过按 客户区域 → 电话 → 发起人本人事业部，都判不出 = 两条线都算
+    向 = 方向 ?? (看.手选方向 ? { 线: 看.手选方向, 来源: "手动" } : 默认分配方向({
+      客户: 看.区域?.客户, 项目: 看.区域?.项目, 号们: 哪条.projectId ? await 项目号们(哪条.projectId) : [], 本人线: 本人事业部(org, 设, 发起人 ?? me.id),
+    }));
+    line = 向.线;
+    if (line) {
+      人们 = 自动分配池(org, 看.ownerId, line, 设);
+      查线 = 查哪条线(org, 设, line);
+    } else {
+      区域未填 = true;
+      人们 = [...new Set(两条线.flatMap((l) => 自动分配池(org, 看.ownerId, l, 设)))];
+      查线 = null;
+    }
+  } else if (哪条.projectId !== undefined) {
     if (!是业务线(看.线)) return { ok: false, 暂不分配: true, error: 暂不分配不自动 };
     line = 看.线;
     const 设 = await 读线部门();
-    人们 = 按部门候选(org, 看.ownerId, line, 设, 自动候选人们);
+    人们 = 自动分配池(org, 看.ownerId, line, 设);
     查线 = 查哪条线(org, 设, line);
   } else {
-    人们 = 自动候选人们(org, 看.ownerId, line);
+    人们 = 自动可接(org, 自动候选人们(org, 看.ownerId, line), line).filter((id) => !在不进自动分配部门(org, id));
   }
-  人们 = 只留销售(org, 人们);
+  if (排除?.length) 人们 = 人们.filter((id) => !排除.includes(id));
+  // 公海里的项目自动分配不挑把它放回公海的人（P-公海-04 回避；上级指定分回给他另说，X-67）
+  if (看.公海 && 哪条.projectId !== undefined && 原负责人回避()) {
+    const 放的人 = await 历史负责人(prisma, 哪条.projectId);
+    if (放的人) 人们 = 人们.filter((id) => id !== 放的人);
+  }
   const 月 = 月份();
-  const [计数, 配额, 加额, 建号, 不参与, 企划算数, 不限额] = await Promise.all([
-    prisma.entLeadAssign.groupBy({ by: ["toUserId"], where: { month: 月, counted: true, toUserId: { in: 人们 } }, _count: { _all: true } }),
-    prisma.entLeadQuota.findMany({ where: { userId: { in: 人们 } } }),
-    本月加额们(人们, 月),
-    prisma.user.findMany({ where: { id: { in: 人们 } }, select: { id: true, name: true, createdAt: true } }),
-    不参与名单(),
-    getSetting<boolean>(企划线索计数key),
-    不设配额开着(),
-  ]);
-  const 数 = new Map(计数.map((c) => [c.toUserId, c._count._all]));
-  // 生效配额 = 设的 + 本月加的额（线索最终判无效 +1）
-  const 额 = new Map(配额.map((q) => [q.userId, 生效配额(q.quota, 加额.get(q.userId) ?? 0)]));
-  const 候选 = 建号.map((u) => ({ userId: u.id, 已分: 数.get(u.id) ?? 0, 配额: 额.get(u.id) ?? null, 进池: u.createdAt }));
+  // 内贸销售管理第一次进池记起算时刻（11-18 第 9 题 B，上线时不从 0 追）
+  await 补记销售管理起算(org, 人们);
+  // 本月已分、生效配额、进池先后、不参与、算不算数、不限额、起算补：和「快轮到我」估算读同一份（assign-eta.ts 读挑人底子）
+  let 底 = await 读挑人底子(人们, 月);
+  const { 额, 建号, 不参与, 企划算数, 不限额 } = 底;
+  let 候选: 候选人[] = 底.排位();
   const 跳过 = new Set(不参与);
   const 查满 = 计不计数(kind, 企划算数);
-  // 每轮要么分成、要么把挑中的人加进跳过，挑接手人不会再挑他：最多轮完一遍候选
+  let 重挑 = 0;
+  // 每轮要么分成、要么把挑中的人加进跳过，挑接手人不会再挑他：最多轮完一遍候选；
+  // 事务里复核挑人对不上（同一刻别的自动分配先写了）就重读再挑，最多重挑 5 次
   for (;;) {
     const 谁 = 挑接手人(候选, 跳过, 查满, 不限额);
     if (!谁) {
@@ -605,14 +687,243 @@ async function 自动分给(
           : "没有能接的人：都不参与自动分配，或者业务线对不上",
       );
     }
-    const 为什么 = 挑的理由(候选, 跳过, 查满, 谁, 不限额);
-    const r = await 分给(me, org, { ...哪条, toUserId: 谁, line, 查线, kind, 自动: true, 原负责人: 比谁 });
+    const 为什么 = 按区域 && 向 ? `${挑的理由(候选, 跳过, 查满, 谁, 不限额)}；${方向分配理由(向)}` : 挑的理由(候选, 跳过, 查满, 谁, 不限额);
+    // 事务里按重读的本月分配数再挑一遍：还是他才写（审核 11-18 P1-1）
+    const 复核 = async (tx: Prisma.TransactionClient): Promise<boolean> =>
+      挑接手人(底.排位(undefined, await 本月分配行(人们, 月, tx)), 跳过, 查满, 不限额) === 谁;
+    const r = await 分给(me, org, { ...哪条, toUserId: 谁, line, 查线, kind, 自动: true, 原负责人: 比谁, 复核, ...(备注 ? { 备注 } : {}) });
     if (r.ok) {
-      return { ok: true, toUserId: 谁, 接手人: 建号.find((u) => u.id === 谁)?.name ?? 谁, 已分: await 本月已分(谁, 月), 配额: 不限额 ? null : (额.get(谁) ?? null), 为什么, ...留下字段(r.留下), ...(r.还原 ? { 还原: r.还原 } : {}) };
+      return { ok: true, toUserId: 谁, 接手人: 建号.find((u) => u.id === 谁)?.name ?? 谁, 已分: await 本月已分(谁, 月), 配额: 不限额 ? null : (额.get(谁) ?? null), 为什么, ...留下字段(r.留下), ...(r.还原 ? { 还原: r.还原 } : {}), ...(区域未填 ? { 区域未填: true as const } : {}) };
     }
     if (r.已被分配) return 已被分配;
+    if (r.换人) {
+      if (++重挑 > 5) return { ok: false, error: "同时分配的太多，这条没分出去，请稍后再点一次自动分配" };
+      底 = await 读挑人底子(人们, 月);
+      候选 = 底.排位();
+      continue;
+    }
     if (!r.满) return { ok: false, error: r.error };
     跳过.add(谁);
+  }
+}
+
+/**
+ * 定时分配执行（11-17 PR3，lib/enterprise/scheduled-assign.ts 调；钟上到点和「改成现在分配」）：不是给浏览器的 action——
+ * 这个文件导出的都能被浏览器调，所以带一把服务端令牌（scheduled-assign-token.ts），对不上不干活。
+ * 指定分配（接手人有值）：照建档向导的指定分配口径查接手人（接手问题，业务线不比），查持有上限；市场首次分给销售客户随行（X-18）。
+ * 自动分配（接手人空）：那时再挑人（当时的候选、参与状态）。成了照常发「分给你」，多一句 附。分不出去原样回原因，项目不动（还在待分配）
+ */
+export async function 定时分出去(令牌: unknown, 谁: SessionUser, projectId: string, 接手人: string | null, 附: string): Promise<{ ok: true; 接手人: string } | { ok: false; error: string }> {
+  if (令牌 !== 定时分配令牌) return { ok: false, error: "不对外：只给后台定时任务用" };
+  const org = await 读组织();
+  const 哪条 = { projectId };
+  if (接手人) {
+    const 看 = await 分前看(哪条, org);
+    if (!看.ok) return 看;
+    // 到点照新建「指定分配」同一条（11-18 第 8 题 B）：接手人到点时暂停 / 禁止了 = 分不出去，留待分配、提醒
+    const 问题 = await 指定问题(org, 接手人);
+    if (问题) return { ok: false, error: 问题 };
+    const r = await 分给(谁, org, { ...哪条, toUserId: 接手人, line: 是业务线(看.线) ? 看.线 : null, 查线: null, kind: "营销", 自动: false, 原负责人: 看.实际负责人, 备注: 附 });
+    if (!r.ok) return { ok: false, error: r.error };
+    await 分配通知(谁, [{ ...哪条, toUserId: 接手人, ...留下字段(r.留下) }], false, 附);
+    return { ok: true, 接手人: (await prisma.user.findUnique({ where: { id: 接手人 }, select: { name: true } }))?.name ?? 接手人 };
+  }
+  // 按区域定事业部（P-转-26）看建线索的人：市场成员建的自动分配，到点照样按客户区域分（区域没填 = 两条线都算），不退回按内贸
+  const 定 = await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { creatorId: true } }));
+  // 分配方向（11-18）：建的时候人手动改过的存在 Project.assignDir，到点 自动分给 照它分；没改过到点按默认顺序现算，
+  // 不再把项目业务线（默认算出来的）当成手选的传进去（审核 11-18 P2-3）
+  const r = await 自动分给(谁, org, 哪条, null, "营销", undefined, 附, 定?.creatorId);
+  if (!r.ok) return { ok: false, error: r.error };
+  await 分配通知(谁, [{ ...哪条, toUserId: r.toUserId, ...留下字段(r.留下) }], true, 附);
+  return { ok: true, 接手人: r.接手人 };
+}
+
+/**
+ * 超时未跟进自动转（11-17，lib/enterprise/reply-overdue.ts 调；钟上到点）：不是给浏览器的 action，带服务端令牌（同 定时分出去）。
+ * 按自动分配挑下一位（同一套候选：项目业务线 / 市场成员建的按客户区域、参与状态、本月分得最少、并列最早进池；配额照查，不看持有上限），
+ * 排除 = 现负责人 + 这一轮超时过的人。乐观锁：负责人还得是 原。不发通知（调用方把客户怎么办定好了再发，通知里要写客户在谁名下）。
+ * 挑不到 = 挑不到人（排除之后没人能接），调用方据此开新一轮；别的不成（验证中、规则关着、被人先分走）原样回原因，项目不动
+ */
+export async function 超时转出(
+  令牌: unknown, 谁: SessionUser, projectId: string, 原: string, 排除: readonly string[], 附: string,
+): Promise<{ ok: true; 接手人Id: string; 接手人: string; 留下?: 留下的活 } | { ok: false; error: string; 挑不到?: true }> {
+  if (令牌 !== 超时转令牌) return { ok: false, error: "不对外：只给后台定时任务用" };
+  if (!(await 规则开着("线索分配"))) return { ok: false, error: "规则「线索分配」关着" };
+  const org = await 读组织();
+  const 建的人 = (await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { creatorId: true } })))?.creatorId;
+  const r = await 自动分给(谁, org, { projectId }, null, "营销", 原, 附, 建的人, 排除);
+  if (!r.ok) return { ok: false, error: r.error, ...(r.待分配 ? { 挑不到: true as const } : {}) };
+  return { ok: true, 接手人Id: r.toUserId, 接手人: r.接手人, ...留下字段(r.留下) };
+}
+
+export type 客户自动分配结果 = { ok: true; toUserId: string; 接手人: string; 为什么: string; 区域未填?: true } | { ok: false; error: string };
+
+type 看的客户 = { id: string; name: string; salesOwnerId: string; bizLine: string | null; pool: { customerId: string } | null };
+const 看客户字段 = { id: true, name: true, salesOwnerId: true, bizLine: true, pool: { select: { customerId: true } } } as const;
+const 客户看不到话 = "这位客户已经不在了（或者你看不到它），刷新看看";
+
+/**
+ * 客户自动分配、批量客户自动分配 共用：一位客户从「能不能自动分」判到分出去、记操作日志。进门、认人、原因已由调用方查过。
+ * 不发通知：成了回 通知条，调用方发（批量合成一次，按接手人一人一条）。
+ * 挑人走 自动分给：本月已分数每次现读分配记录，批里前面分出去的那几家已经写进去了，下一家自然轮到别人（不另记一份）
+ */
+async function 自动分一位客户(
+  me: SessionUser, org: 组织, c: 看的客户, 原因值: string | null, 方向?: 线,
+): Promise<(Exclude<客户自动分配结果, { ok: false }> & { 通知条: 分配条 }) | { ok: false; error: string }> {
+  const 能 = await 能自动分配客户(me, org, c);
+  if (!能.ok) return 能;
+  // 同指定转让（assignSalesOwner）：正在移交的不能再转，名下有验证中的线索不能改派
+  if ((await 交接中的客户([c.id])).size) return { ok: false, error: "这位客户正在移交（等接手人确认），不能再转；要换人先撤回，或等对方拒收" };
+  const 验证中 = await 客户有验证中线索(prisma, [c.id]);
+  if (验证中) return { ok: false, error: 验证中 };
+  const r = await 自动分给(me, org, { projectId: 能.projectId }, null, "营销", c.salesOwnerId, undefined, undefined, undefined, 方向 ? { 线: 方向, 来源: "手动" } : undefined);
+  if (!r.ok) {
+    if (r.已被分配) return { ok: false, error: "这位客户刚被别人分走了，刷新看看现在在谁名下" };
+    return { ok: false, error: r.挑不到 ? `没有自动分出去：${r.挑不到}。客户还在原负责人名下，没转；可以改用指定分配` : r.error };
+  }
+  await recordAudit({
+    user: me, action: "assign", entity: "Customer", entityId: c.id,
+    summary: `客户转让（自动分配）：把「${c.name}」分给「${r.接手人}」${原因值 ? `（${原因值}）` : ""}`,
+    detail: { 自动分配: true, 原负责人: c.salesOwnerId, salesOwnerId: r.toUserId, projectId: 能.projectId, 为什么: r.为什么, ...(原因值 ? { 转让原因: 原因值 } : {}) },
+  });
+  return {
+    ok: true, toUserId: r.toUserId, 接手人: r.接手人, 为什么: r.为什么, ...(r.区域未填 ? { 区域未填: true as const } : {}),
+    通知条: { projectId: 能.projectId, toUserId: r.toUserId, ...留下字段(r.留下) },
+  };
+}
+
+/**
+ * 客户转让框里选「自动分配」（客户 11-17：市场成员给暂不分配的客户分配时可选自动和指定；lib/enterprise/cust-auto-assign.ts 说谁能用、什么算暂不分配）。
+ * 拿客户名下那条暂不分配的项目走新线索的自动分配（自动分给：本月分得最少的优先、配额照算，市场成员按客户区域定内贸 / 外贸，P-转-26），
+ * 分项目给 里市场转销售那段把客户连名下项目、联系人一起给挑中的销售（P-转-03 例外：算分配、写分配记录，不计转客户次数），清待分配（P-转-21），
+ * 只通知接手人、不走接手人确认（P-转-17）。挑不到人：什么都不动、不标待分配，回原因（框里写，可以改用指定分配）。
+ * 转让原因（可不选）同指定转让，记进操作日志
+ */
+export async function 客户自动分配(customerId: string, 原因?: string | null, 方向?: unknown): Promise<客户自动分配结果> {
+  const me = await 进门();
+  if (!me) return 没开;
+  try {
+    const org = await 读组织();
+    // 先认人再看参数：不是市场成员的直接拒（权限表按这一格记 403）
+    if (!按区域分配of(org, me.id)) return { ok: false, error: 不是市场话 };
+    if (typeof customerId !== "string" || !customerId) return { ok: false, error: "要分哪一位客户？刷新看看" };
+    const 选 = await 选的原因("transfer", 原因);
+    if (!选.ok) return 选;
+    // 分配方向（11-18）：框里改过才交，只认内贸 / 外贸；没交按默认顺序现算
+    const 向 = 认分配方向(方向);
+    if (!向.ok) return 向;
+    // 按「我」限定着读：看不到的当不在
+    const c = await prisma.customer.findFirst({ where: { id: customerId }, select: 看客户字段 });
+    if (!c) return { ok: false, error: 客户看不到话 };
+    const r = await 自动分一位客户(me, org, c, 选.值, 向.线);
+    if (!r.ok) return r;
+    const { 通知条, ...外 } = r;
+    await 分配通知(me, [通知条], true);
+    revalidatePath("/customers");
+    return 外;
+  } catch (e) {
+    return 不在了(e);
+  }
+}
+
+/** 客户列表勾几位一起转：一次最多这么多位（同批量自动分配线索） */
+const 批量客户最多 = 200;
+/** 勾的客户编号：只认字符串、去重；空 / 超上限回原因 */
+function 认勾的客户(customerIds: unknown): { ok: true; ids: string[] } | { ok: false; error: string } {
+  const ids = [...new Set(Array.isArray(customerIds) ? customerIds.filter((x): x is string => typeof x === "string" && !!x) : [])];
+  if (!ids.length) return { ok: false, error: "先勾选要分的客户" };
+  if (ids.length > 批量客户最多) return { ok: false, error: `一次最多自动分配 ${批量客户最多} 位，分几次点` };
+  return { ok: true, ids };
+}
+
+export type 批量客户预看 = { ok: true; 可: string[]; 不可: { customerId: string; name: string; error: string }[];
+  /** 勾的里有能自动分的（框里摆「指定 / 自动」）：选指定时接手人下拉只列这些人（审核 11-18 追加，同 市场分配指定挡）；兼条线总管理 / 销售管理的不给 = 不筛 */
+  可指定?: string[];
+  /**
+   * 指定分配也先定方向（P-转-26，11-18）：勾的里有要按方向指定的（市场成员、暂不分配的客户）才给。
+   * 候选表 = 每个方向能接的人；默认线 = 这几位默认方向都一样时那条线，不一样 / 判不出 = null（框里要人选）
+   */
+  定向?: { 候选表: 指定候选表; 默认线: 线 | null } } | { ok: false; error: string };
+
+/**
+ * 客户列表批量转让框：勾的这几位里哪些能选自动分配（和单个客户转让框同一个判定 能自动分配客户：市场成员、暂不分配的客户……）。
+ * 可 有人 = 框里摆「指定分配 / 自动分配」；一个都不行 = 不摆，框和原来一样。不可 = 选了自动分配时框里说这几位不会自动分、为什么。
+ * 只读不写
+ */
+export async function 批量客户自动分配预看(customerIds: string[]): Promise<批量客户预看> {
+  const me = await 进门();
+  if (!me) return 没开;
+  try {
+    const org = await 读组织();
+    if (!按区域分配of(org, me.id)) return { ok: false, error: 不是市场话 };
+    const 勾 = 认勾的客户(customerIds);
+    if (!勾.ok) return 勾;
+    const 们 = await prisma.customer.findMany({ where: { id: { in: 勾.ids } }, select: 看客户字段 });
+    const 按id = new Map(们.map((c) => [c.id, c]));
+    const 可: string[] = [];
+    const 不可: { customerId: string; name: string; error: string }[] = [];
+    const 默认线们 = new Set<线 | null>();
+    for (const id of 勾.ids) {
+      const c = 按id.get(id);
+      if (!c) { 不可.push({ customerId: id, name: "（看不到这位）", error: 客户看不到话 }); continue; }
+      const 能 = await 能自动分配客户(me, org, c);
+      if (能.ok) 可.push(id);
+      else 不可.push({ customerId: id, name: c.name, error: 能.error });
+      const 定向项目 = await 要按方向指定(me, org, c);
+      if (定向项目) 默认线们.add((await 客户默认分配方向(org, c.id, me.id, 定向项目)).线);
+    }
+    const 定向 = 默认线们.size ? { 候选表: await 指定方向候选表(org), 默认线: 默认线们.size === 1 ? [...默认线们][0] : null } : undefined;
+    // 可指定：兼条线总管理 / 销售管理的不限（市场分配限指定，同 市场分配指定挡）
+    return { ok: true, 可, 不可, ...(可.length && 市场分配限指定(org, me.id) ? { 可指定: await 可指定的人(org) } : {}), ...(定向 ? { 定向 } : {}) };
+  } catch (e) {
+    return 不在了(e);
+  }
+}
+
+export type 批量客户自动分配行 = { customerId: string; name: string } & 客户自动分配结果;
+
+/**
+ * 客户列表勾了几位、批量转让框选「自动分配」：一位一位按顺序分，每位和单个客户转让框的自动分配一模一样（自动分一位客户）。
+ * 批内均衡：每位挑人时现读本月分配记录，前面几位刚分出去的已算进去，不会全给同一个人。
+ * 混着勾了不是「暂不分配」的（或不在市场名下、别人的、公海里的……）：照单个的条件判，这几位不动、那行写原因（请用指定分配），不悄悄自动分。
+ * 一位分不出去不影响别的；通知按接手人合成一条（分配通知）。转让原因一批一个，每位记一行操作日志
+ */
+export async function 批量客户自动分配(customerIds: string[], 原因?: string | null): Promise<{ ok: true; 结果: 批量客户自动分配行[] } | { ok: false; error: string }> {
+  const me = await 进门();
+  if (!me) return 没开;
+  try {
+    const org = await 读组织();
+    // 先认人再看参数（同 客户自动分配）
+    if (!按区域分配of(org, me.id)) return { ok: false, error: 不是市场话 };
+    const 勾 = 认勾的客户(customerIds);
+    if (!勾.ok) return 勾;
+    const 选 = await 选的原因("transfer", 原因);
+    if (!选.ok) return 选;
+    const 名 = new Map((await prisma.customer.findMany({ where: { id: { in: 勾.ids } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
+    const 结果: 批量客户自动分配行[] = [];
+    const 通知条: 分配条[] = [];
+    for (const id of 勾.ids) {
+      let r: Awaited<ReturnType<typeof 自动分一位客户>>;
+      try {
+        // 每位现读：前面那位分出去时可能把这位一起带走了（同一位销售名下同事的项目随客户走），按现在的样子判
+        const c = 名.has(id) ? await prisma.customer.findFirst({ where: { id }, select: 看客户字段 }) : null;
+        r = c ? await 自动分一位客户(me, org, c, 选.值) : { ok: false, error: 客户看不到话 };
+      } catch (e) {
+        r = 不在了(e);
+      }
+      if (r.ok) {
+        const { 通知条: 条, ...外 } = r;
+        通知条.push(条);
+        结果.push({ customerId: id, name: 名.get(id) ?? "（看不到这位）", ...外 });
+      } else {
+        结果.push({ customerId: id, name: 名.get(id) ?? "（看不到这位）", ok: false, error: r.error });
+      }
+    }
+    await 分配通知(me, 通知条, true);
+    if (通知条.length) revalidatePath("/customers");
+    return { ok: true, 结果 };
+  } catch (e) {
+    return 不在了(e);
   }
 }
 
@@ -742,6 +1053,14 @@ export async function 设自动分配参与(userId: string, 状态: 参与状态
       const value = JSON.stringify(新);
       if (行 ? 行.value === value : 新状态 === "允许") return false;
       await tx.setting.upsert({ where: { key: 自动分配不参与key }, update: { value }, create: { key: 自动分配不参与key, value } });
+      // 从暂停 / 禁止回到正常：记下这一刻（11-18 第 3 题 B），排序按那一刻同池最少的本月已分起算（lead-assign 起算补）
+      if (新状态 === "允许" && 参与状态of(现在, userId) !== "允许") {
+        const 起行 = await tx.setting.findUnique({ where: { key: 起算时刻key } });
+        let 起: Record<string, unknown> = {};
+        try { const v: unknown = 起行 ? JSON.parse(起行.value) : {}; if (v && typeof v === "object" && !Array.isArray(v)) 起 = v as Record<string, unknown>; } catch { /* 坏了当空 */ }
+        const 起值 = JSON.stringify({ ...起, [userId]: new Date().toISOString() });
+        await tx.setting.upsert({ where: { key: 起算时刻key }, update: { value: 起值 }, create: { key: 起算时刻key, value: 起值 } });
+      }
       return 参与状态of(现在, userId) !== 新状态 ? "留痕" : "只换格式";
     });
     if (!变了) return { ok: true };
@@ -753,6 +1072,8 @@ export async function 设自动分配参与(userId: string, 状态: 参与状态
         summary: 状态说法[新状态](人?.name ?? userId),
         detail: { 参与: 新状态 },
       });
+      // 池里的人变了，排位跟着变：照分配以后那样推一次「快轮到」（11-18 审核：凡改变排位的都走同一套提醒）
+      await 分配后估算推送();
     }
     revalidatePath("/leads");
     revalidatePath("/settings");
@@ -892,10 +1213,15 @@ export type 分配情况 = {
   参与状态: 参与状态;
   能设配额: boolean;
   能改参与: boolean;
+  /**
+   * 自动分配「前面约几条轮到他」（11-18，assign-eta.ts）：我能看他的（本人；分配线索的人、总管理看全部；销售管理看本组）、
+   * 他又是参加自动分配的销售才有；别的 = null（界面写「—」）
+   */
+  轮到: 轮到 | null;
 }[];
 
 /**
- * 本月每个能接线索的人分了几条、配额多少、手上还有几条、参与没参与自动分配（设置 → 组织架构 →「线索分配」那一屏用）。
+ * 本月每个能接线索的人分了几条、配额多少、手上还有几条、参与没参与自动分配、前面约几条轮到他（设置 → 组织架构 →「线索分配」那一屏用）。
  * 分配的人、能改参与的人看全部；上级只看自己能设配额的那几位；都不是 = 空。规则没开返回 null
  */
 export async function 本月分配情况(): Promise<分配情况 | null> {
@@ -908,7 +1234,7 @@ export async function 本月分配情况(): Promise<分配情况 | null> {
   const 人们 = [...org.成员.values()].filter((m) => 接手问题(org, m.userId, null) === null && (全看 || 能设配额(org, me, m.userId, 改权限)));
   const ids = 人们.map((m) => m.userId);
   const 月 = 月份();
-  const [计数, 配额, 加额, 持有, 名字, 状态表, 不限额] = await Promise.all([
+  const [计数, 配额, 加额, 持有, 名字, 状态表, 不限额, 估] = await Promise.all([
     prisma.entLeadAssign.groupBy({ by: ["toUserId"], where: { month: 月, counted: true, toUserId: { in: ids } }, _count: { _all: true } }),
     prisma.entLeadQuota.findMany({ where: { userId: { in: ids } } }),
     本月加额们(ids, 月),
@@ -919,6 +1245,7 @@ export async function 本月分配情况(): Promise<分配情况 | null> {
     prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, createdAt: true } }),
     参与状态表(),
     不设配额开着(),
+    估算轮到(org),
   ]);
   const 数 = new Map(计数.map((c) => [c.toUserId, c._count._all]));
   const 额 = new Map(配额.map((q) => [q.userId, q.quota]));
@@ -936,5 +1263,6 @@ export async function 本月分配情况(): Promise<分配情况 | null> {
       加额: 额.has(m.userId) ? (加额.get(m.userId) ?? 0) : 0,
       持有: 持.get(m.userId) ?? 0,
       参与: 参与状态of(状态表, m.userId) === "允许", 参与状态: 参与状态of(状态表, m.userId), 能设配额: 能设配额(org, me, m.userId, 改权限), 能改参与: 改参与,
+      轮到: 能看轮到(org, me, m.userId) ? (估.get(m.userId) ?? null) : null,
     }));
 }

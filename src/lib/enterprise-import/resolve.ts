@@ -12,11 +12,12 @@ import { prisma } from "../prisma";
 import { recordAudit, type Actor } from "../audit";
 import { 查完再写 } from "../check-then-write";
 import { 看全部 } from "../team-scope";
-import { 开现场, 落值, 建, 改, 读现值, 引用键, 无主客户进公海, type 现场 } from "./apply";
+import { 开现场, 落值, 建, 改, 读现值, 引用键, 无主客户进公海, 换人带走键, type 现场, type 改的批 } from "./apply";
 import { 写不进, 规, type 值表 } from "./values";
 import { 别的在写, 重算最近跟进, type 定的一笔 } from "./revert";
 import { 来源名, 实体名, type 来源, type 实体, type 映射, type 待写 } from "./types";
 import { 企业版只用项目 } from "../enterprise/project-only";
+import { 补待补的 } from "./nurture-rows";
 
 export const 一次最多 = 200;
 
@@ -147,7 +148,7 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
 
         if (c.localDeleted) {
           if (选 === "保留我们") continue; // 删了就是删了：不建、对照行不动，原系统再改时还会问
-          const 新id = await 建(tx, e, v!, 现.现在, 现.项目, 现.业务线, 现.操作人);
+          const 新id = await 建(tx, e, v!, 现.现在, 现.项目, 现.业务线, 现.操作人, w.原始);
           if (e === "customer") await 无主客户进公海(tx, 现, 新id, v!);
           await tx.entExternalRef.update({ where: { id: ref.id }, data: { targetId: 新id, written: J(v), batchId: 批.id } });
           await tx.entImportRow.create({ data: { batchId: 批.id, entity: e, externalId: c.externalId, targetId: 新id, kind: "create", written: J(v), refBefore: J(ref) } });
@@ -169,7 +170,10 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
           }
         }
         if (Object.keys(改动).length) {
-          await 改(tx, e, c.targetId, 改动, 现值!, 现.现在);
+          const 这批: 改的批 = { 批次Id: 批.id, 补培育: !!现.补培育, 操作人: 现.操作人 };
+          await 改(tx, e, c.targetId, 改动, 现值!, 现.现在, 这批);
+          // 换了客户负责人带走了哪些：记进这一行的 before，撤回按它原样带回
+          if (这批.换人带走) before[换人带走键] = J(这批.换人带走);
           改了++;
           if (e === "followup") {
             碰过.add(String(现值!.customerId));
@@ -187,6 +191,8 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
         return { ...结果, 批次Id: null };
       }
       await 重算最近跟进(tx, 碰过);
+      // 采用原系统让无主客户出了公海的：这一笔全部定完、同一个事务末尾再补潜客培育（nurture-rows.ts）
+      await 补待补的(tx, 批.id, 用户.id);
       await tx.entImportBatch.update({
         where: { id: 批.id },
         data: { status: "done", finishedAt: new Date(), plan: J(计划), total: 结果.定了, cursor: 结果.定了, created: 建了, updated: 改了, skipped: 结果.定了 - 建了 - 改了 },

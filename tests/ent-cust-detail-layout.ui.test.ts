@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
+import { 补全动作桩 } from "./helpers/action-stubs";
 /* 11-01 用户：「客户详情页的整体设计要像项目详情页靠齐……客户详情页各个模块都要分开，和项目详情页一致。
    你看待办板块你就和沟通记录放一起了。另外模块的收起和新增都参考项目详情页的设计。」
    企业版项目模式客户页：每个模块一张卡、包 ProjectFold（卡头最右一颗收起钮），新增按钮摆在卡头 extra（标题 + 计数在左、按钮在右、收起钮最右）；
@@ -9,8 +10,9 @@ import { chromium, type Browser, type Page } from "playwright";
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "customer-modules", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
-  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
-  stub(/(^|\/)InlineField$/, "export default function Inline(p){return <div className='rec-field' data-field={p.field}>{p.label}: {p.value}</div>}");
+  stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
+  // 全称那格用真的 InlineField（能点着改、一行省略都是它画的），别的格照旧用假的。路径带 .tsx，不撞这条 filter
+  stub(/(^|\/)InlineField$/, "import Real from '@/app/(app)/customers/[id]/InlineField.tsx';export default function Inline(p){return p.field==='name'?<Real {...p}/>:<div className='rec-field' data-field={p.field}>{p.label}: {p.value}</div>}");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>\"/customers/x\";");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
   stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|NewProjectEntry|ContactLinks|ResearchRun|ResearchPerson)$/, "export default function Empty(){return null}");
@@ -22,12 +24,12 @@ const plugin: Plugin = { name: "customer-modules", setup(b) {
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
   stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海,退回原因选项=async()=>[];");
   stub(/(^|\/)tri-state-actions$/, "export const 三态继续持有=async()=>({ok:false,error:\"\"}),三态暂缓回收=三态继续持有,三态让同事结束项目=三态继续持有;");
-  stub(/^\.\.\/actions$/, "export const 转走项目预览of=async()=>(window.__预览??{项目数:0,项目:[]});export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=async()=>({ok:true});");
+  stub(/^\.\.\/actions$/, "export const 转走项目预览of=async()=>(window.__预览??{项目数:0,项目:[]});export const patchCustomer=async()=>({ok:true});export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=async()=>({ok:true}),saveCustomerNumbers=async()=>({ok:true});");
   stub(/^\.\/follow-history-actions$/, "export const loadFollowHistory=async()=>({ok:true,rows:[],hasMore:false}),readFollowHistoryRow=async()=>({ok:true,row:null}),loadCustomerFeed=async()=>({ok:true,rows:[],hasMore:false});");
-  stub(/projects\/actions$/, "export const 项目沟通须知=async()=>({ok:true,能记:false}),记项目沟通Action=async()=>({ok:true,followUpId:'f1'});");
+  stub(/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 项目沟通须知=async()=>({ok:true,能记:false}),记项目沟通Action=async()=>({ok:true,followUpId:'f1'});"));
   stub(/^\.\/actions$/, `
     export const 客户删除预检=async()=>({ok:true}),删除前清点=async()=>({}),deleteCustomers=async()=>({ok:false});
-    export const toggleTask=async()=>({ok:true}),deleteTask=toggleTask,completePlan=toggleTask,撤销记一笔=toggleTask,saveFollowUp=toggleTask,deleteFollowUp=toggleTask;
+    export const toggleTask=async()=>({ok:true}),deleteTask=toggleTask,completePlan=toggleTask,撤销记一笔=toggleTask,沟通可选项目=async()=>({ok:true,项目们:null,能建项目:true}),saveFollowUp=toggleTask,deleteFollowUp=toggleTask;
     export const 转走项目预览of=async()=>({项目数:0,项目:[]});
     export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'p1'});`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
@@ -221,7 +223,7 @@ it("1024 / 1280 / 1366：页头副标题编号打头、一行；超长名字和�
   }
 });
 
-// 资料卡（11-17 客户抬头 PR-1b）：第一行全称、第二行简称，「公司」格不摆；超长全称一行省略（悬停看全是全站 TruncTip），左栏不横滚
+// 资料卡（11-17 客户抬头 PR-1b）：第一行全称（能点着改）、第二行简称，「公司」格不摆；超长全称一行省略（悬停看全是全站 TruncTip），左栏不横滚
 it("1024 / 1280 / 1366：资料卡第一行全称、第二行简称、没有公司格；超长全称一行省略、不出格", async () => {
   for (const w of 宽们) {
     const { page, errors } = await open(w);
@@ -235,10 +237,13 @@ it("1024 / 1280 / 1366：资料卡第一行全称、第二行简称、没有公�
           省略: getComputedStyle(名值).textOverflow, 一行: getComputedStyle(名值).whiteSpace, 截了: 名值.scrollWidth > 名值.clientWidth,
           格不出栏: 名.getBoundingClientRect().right <= 栏.getBoundingClientRect().right + 0.5, 栏不横滚: 栏.scrollWidth <= 栏.clientWidth + 1,
           有公司: !!栏.querySelector("[data-field=school]"),
+          能点: 名.getAttribute("role") === "button" && 名.getAttribute("aria-label") === "编辑全称",
         };
       });
       expect(卡.前两格, `${w}`).toEqual(["name", "shortName"]);
       expect(卡.名键).toBe("全称");
+      // 全称就地改（员工反馈）：整格是可点的按钮，不再是只看
+      expect(卡.能点, `${w}`).toBe(true);
       expect(卡.名字).toMatch(/^客户A某某超长贸易进出口有限公司/);
       expect({ 省略: 卡.省略, 一行: 卡.一行, 截了: 卡.截了, 格不出栏: 卡.格不出栏, 栏不横滚: 卡.栏不横滚, 有公司: 卡.有公司 }, `${w}`)
         .toEqual({ 省略: "ellipsis", 一行: "nowrap", 截了: true, 格不出栏: true, 栏不横滚: true, 有公司: false });

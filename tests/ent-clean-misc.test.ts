@@ -36,17 +36,17 @@ describe("开关本身", () => {
 });
 
 describe("A2 记跟进的关联项目", () => {
-  it("有在推项目：必选、不能清空；没有：照旧能记，写明记为客户沟通（P-界面-35）", async () => {
+  it("有在推项目：必选、不能清空；没有：写明先建项目（11-17 沟通必须挂项目，取代 P-界面-35）", async () => {
     const s = await 读("src/app/(app)/customers/[id]/FollowUpForm.tsx");
     expect(s).toMatch(/projects\.length > 0 \?/);
     expect(s).toContain('rules={[{ required: true, message: "请选择关联项目" }]}');
-    expect(s).toContain('extra={<span role="note" className="fu-np-note">{没项目话}</span>}');
+    expect(s).toContain('<span className="fu-np-note">{没项目说法}</span>');
     // 关联项目那格不再能清空、不再有「不挂项目」
     expect(s).not.toContain('placeholder="不挂项目"');
-    const 段 = s.slice(s.indexOf('name="projectId"'), s.indexOf('extra={<span role="note"'));
+    const 段 = s.slice(s.indexOf('name="projectId"'), s.indexOf(") : 没项目块}"));
     expect(段).not.toContain("allowClear");
-    // 没项目时照旧存空
-    expect(s).toContain("projectId: v.projectId ?? null");
+    // 没项目、要记沟通：前端先拦，不发请求
+    expect(s).toContain("if (没项目 && 要挂项目的类型(v.type)) return { ok: false, error: 没项目说法 };");
   });
 
   it("开关关着：projects 只在企业版只用项目时才非空（记录页传 null 时不渲染这一格）", async () => {
@@ -61,8 +61,11 @@ describe("B1 渠道页（2026-10-29 渠道改版后）", () => {
     const s = await 读("src/app/(app)/channels/page.tsx");
     expect(s).not.toContain("buildReferralRadar");
     expect(s).not.toContain("radar");
-    expect(s).toContain('import { 读渠道分期统计 } from "@/lib/enterprise/channel-stats-db";');
-    expect(s).toContain("读渠道分期统计(channels, new Date(), 区间, me)");
+    expect(s).toContain('import { 读渠道分期统计, 取渠道底 } from "@/lib/enterprise/channel-stats-db";');
+    // 11-18 提速：项目、投入、名单落点只读一趟（取渠道底），列表统计和看板共用
+    expect(s).toContain("const 底 = 取渠道底(渠道ids, me);");
+    expect(s).toContain("读渠道分期统计(channels, new Date(), 区间, me, 底)");
+    expect(s).toContain("读看板底数(渠道ids, new Date(), 区间, me, 底)");
   });
 
   it("列表：推荐链三列、雷达、副标题都没了；空态只讲渠道清单和投入", async () => {

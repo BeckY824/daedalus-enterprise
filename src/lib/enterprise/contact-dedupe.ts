@@ -30,6 +30,7 @@ import { 看全部, 看得到, 限定的我, 只读错误, 现在的公海回避
 import { 公海客户原负责人是 } from "@/lib/owner-log-db";
 import { 问同事 } from "@/lib/sync/dedupe-client";
 import { 查重提示, 验号码, type 号码类型 } from "./contact-format";
+import { 通号种类, 号键变体 } from "./customer-v2";
 import { 号码归属地 } from "./phone-region";
 import { 拦原负责人 } from "./pool-rules";
 import { 离职负责人找谁 } from "./departed-owner";
@@ -37,6 +38,8 @@ import { 看已删, 在看已删 } from "./soft-delete-core";
 
 /** ContactMethod.kind：号码类型 → 库里的写法。二维码没有号，不进子表 */
 export const 号码库类型 = { 手机号: "phone", 邮箱: "email", 微信: "wechat", 旺旺ID: "wangwang" } as const satisfies Partial<Record<号码类型, string>>;
+/** 反过来：ContactMethod.kind → 号码类型（只有这四类走建档查重、能当客户的企业号码；座机、WhatsApp 这些没有） */
+export const 库类型到号码类型: Readonly<Record<string, 号码类型 | undefined>> = Object.fromEntries(Object.entries(号码库类型).map(([t, k]) => [k, t as 号码类型]));
 type 进子表的类型 = keyof typeof 号码库类型;
 const 进子表 = (类型: 号码类型): 类型 is 进子表的类型 => 类型 in 号码库类型;
 
@@ -85,9 +88,31 @@ export async function 全公司查号(db: 库, 类型: 号码类型, 值: string
   if (进子表(类型) && 键) {
     for (const r of await db.contactMethod.findMany({ where: { kind: 号码库类型[类型], numberKey: 键 }, select: { customerId: true } })) ids.add(r.customerId);
   }
+  // 座机、WhatsApp 和手机共用号键（11-17）：子表里这两类同号的也算撞（老行的键可能还带着 86，见 号键变体）
+  if (类型 === "手机号" && 键) {
+    for (const r of await db.contactMethod.findMany({ where: { kind: { in: [...通号种类] }, numberKey: { in: 号键变体(键) } }, select: { customerId: true } })) ids.add(r.customerId);
+  }
   if (除了) ids.delete(除了);
   return [...ids];
 }
+
+/**
+ * 一行号码（联系方式子表的 kind + 规整值）全公司撞到的客户 id（11-17：客户本身的号码几行）。
+ * 手机 / 邮箱 / 微信 / 阿里国际站ID 走 全公司查号；别的类型（座机、WhatsApp、传真、Telegram、自定的）比子表里同类同键的行。除了 = 排除这位客户
+ */
+export async function 一行号全公司查(db: 库, 行: { kind: string; value: string; numberKey: string }, 除了?: string): Promise<string[]> {
+  if (!行.numberKey) return [];
+  const 类型 = 库类型到号码类型[行.kind];
+  if (类型) return 全公司查号(db, 类型, 行.value, 行.numberKey, 除了);
+  // 座机、WhatsApp 和手机共用号键：按手机号那套比（客户电话、联系人电话、子表里的手机 / 座机 / WhatsApp）
+  if (通号种类.has(行.kind)) return 全公司查号(db, "手机号", 通号当电话(行.numberKey), 行.numberKey, 除了);
+  const ids = new Set((await db.contactMethod.findMany({ where: { kind: 行.kind, numberKey: { in: 号键变体(行.numberKey) } }, select: { customerId: true } })).map((r) => r.customerId));
+  if (除了) ids.delete(除了);
+  return [...ids];
+}
+
+/** 通号键 → 拿去和客户电话比的写法：大陆手机、0 开头的座机原样，别的（国外号）前面补 + */
+const 通号当电话 = (键: string): string => (/^1[3-9]\d{9}$/.test(键) || 键.startsWith("0") ? 键 : `+${键}`);
 
 /**
  * 号码只在回收站里撞到的客户 id（客户 11-05（X-10））：连回收站一起查一遍，去掉在用的那些。
@@ -126,6 +151,25 @@ export async function 回收站里带号的联系人(db: 库, 号: 验好的号,
   }
   return [...ids];
 }
+
+/**
+ * 联系人表单的号（审核 11-18 新建入口 P2-6，P-删-08）：在用的都没撞时，回收站里撞了的第一行。
+ * 只看能捞回的几类（手机 / 邮箱 / 微信 / 阿里国际站ID；座机、WhatsApp 按手机号那套比，同 一行号全公司查），
+ * 回 捞回键 要的 类型 + 值（查号码 / 从回收站捞回 认的写法）。回收站里也没有回 null
+ */
+export async function 联系人回收站撞(db: 库, 行们: readonly { kind: string; value: string; numberKey: string }[]): Promise<{ 类型: 号码类型; 值: string } | null> {
+  for (const 行 of 行们) {
+    if (!行.numberKey) continue;
+    const 本类 = 库类型到号码类型[行.kind];
+    const 类型: 号码类型 | null = 本类 ?? (通号种类.has(行.kind) ? "手机号" : null);
+    if (!类型) continue;
+    const 值 = 本类 ? 行.value : 通号当电话(行.numberKey);
+    if ((await 回收站里查号(db, 类型, 值, 行.numberKey)).length) return { 类型, 值 };
+  }
+  return null;
+}
+/** 联系人表单撞了回收站里的号：拦下（「仍然保存」也不放），提示里给「从回收站捞回」 */
+export const 联系人回收站撞话 = "这个号码在回收站里的客户上，本次没保存，可以从回收站捞回";
 
 /** 回收站里撞了的提示（客户 11-05（X-10）；11-05 客户回复「可以捞回且只有查重触发时可以捞回」，原文是我们拟的） */
 export const 回收站里有提示 = "这个号码在回收站里，本次录入已拦截，可以从回收站捞回";
@@ -297,6 +341,8 @@ export type 撞到的联系人 = {
   /** 撞的是哪一行：交上来的那行的 kind + 规整后的号 */
   kind: string;
   value: string;
+  /** 撞的是别的客户本身的号（客户电话、客户本身的号码几行，11-17），不是联系人：contactId、name 空 */
+  客户本身?: true;
 };
 
 /**
@@ -310,6 +356,8 @@ export async function 联系人查重(
   行们: readonly { kind: string; value: string; numberKey: string }[],
   读的我: 谁 | null,
   除了?: string,
+  /** 正在给哪位客户存联系人：这位客户本身的号（电话、号码几行）不算撞（同一家的人用公司的号） */
+  除了客户?: string,
 ): Promise<撞到的联系人[]> {
   const 们 = 行们.filter((x) => x.numberKey);
   if (!们.length) return [];
@@ -317,32 +365,57 @@ export async function 联系人查重(
   const 记 = (contactId: string | null | undefined, 行: { kind: string; value: string }) => {
     if (contactId && contactId !== 除了 && !撞.has(contactId)) 撞.set(contactId, { kind: 行.kind, value: 行.value });
   };
+  /*
+    同一个号键空间（11-17）：手机、座机、WhatsApp 互相比（键按 通号键，老行的键可能还带着 86，见 号键变体）；别的类型同类同键
+  */
+  const 通 = (kind: string) => kind === "phone" || 通号种类.has(kind);
+  const 比的种类 = (kind: string) => (通(kind) ? ["phone", ...通号种类] : [kind]);
   const 子表 = await db.contactMethod.findMany({
-    where: { contactId: { not: null }, OR: 们.map((x) => ({ kind: x.kind, numberKey: x.numberKey })) },
-    select: { contactId: true, kind: true, numberKey: true },
+    where: { OR: 们.map((x) => ({ kind: { in: 比的种类(x.kind) }, numberKey: { in: 号键变体(x.numberKey) } })) },
+    select: { contactId: true, customerId: true, kind: true, numberKey: true },
   });
-  for (const 行 of 们) for (const r of 子表) if (r.kind === 行.kind && r.numberKey === 行.numberKey) 记(r.contactId, 行);
+  /** 撞到的别的客户本身的号：客户 id → 撞的那行 */
+  const 客户撞 = new Map<string, { kind: string; value: string }>();
+  const 记客户 = (customerId: string, 行: { kind: string; value: string }) => {
+    if (customerId !== 除了客户 && !客户撞.has(customerId)) 客户撞.set(customerId, { kind: 行.kind, value: 行.value });
+  };
   for (const 行 of 们) {
-    if (行.kind === "phone") {
-      const 键们 = /^\d{11}$/.test(行.numberKey) ? [行.numberKey, `86${行.numberKey}`] : [行.numberKey];
+    for (const r of 子表) {
+      if (!比的种类(行.kind).includes(r.kind) || !号键变体(行.numberKey).includes(r.numberKey)) continue;
+      if (r.contactId) 记(r.contactId, 行);
+      else 记客户(r.customerId, 行);
+    }
+  }
+  for (const 行 of 们) {
+    if (通(行.kind)) {
+      const 键们 = 号键变体(行.numberKey);
       const rs = await db.$queryRawUnsafe<{ id: string }[]>(
         `SELECT "id" FROM "Contact" WHERE ${号键SQL('"phone"')} IN (${键们.map(() => "?").join(", ")})`, ...键们);
       for (const r of rs) 记(r.id, 行);
+      // 客户电话（同 全公司查号 的 同号条件：分机、带 86 的老写法都认）
+      const 起 = await 分机留存起();
+      const 当电话 = 通号当电话(行.numberKey);
+      const 条件们 = [await 同号条件(db, 当电话, 起), ...(/^\d{11}$/.test(当电话) ? [await 同号条件(db, `86${当电话}`, 起)] : [])];
+      for (const c of await 看全部(async () => db.customer.findMany({ where: { OR: 条件们 }, select: { id: true } }))) 记客户(c.id, 行);
     } else if (行.kind === "email" || 行.kind === "wechat") {
       const rs = await db.$queryRawUnsafe<{ id: string }[]>(`SELECT "id" FROM "Contact" WHERE lower(trim("${行.kind}")) = ?`, 行.numberKey);
       for (const r of rs) 记(r.id, 行);
     }
   }
-  if (!撞.size) return [];
+  // 撞到的联系人就挂在那位客户上的：说联系人就够了，不再另报客户本身
+  if (!撞.size && !客户撞.size) return [];
+  const 客户们 = 客户撞.size ? await 客户撞了(db, 客户撞, 读的我) : [];
+  if (!撞.size) return 客户们;
+  // 回收站里的联系人、挂在回收站里客户上的不算在用（db 多半是不过限定层的 defaultClient，软删不会自动滤；回收站另走 联系人回收站撞）
   const 人们 = await 看全部(async () => db.contact.findMany({
-    where: { id: { in: [...撞.keys()] } },
+    where: { id: { in: [...撞.keys()] }, deletedAt: null, customer: { deletedAt: null } },
     select: {
       id: true, name: true, createdAt: true,
       customer: { select: { id: true, name: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } } },
     },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   }));
-  return 人们.map((p) => {
+  const 联系人们 = 人们.map((p) => {
     const 见 = 看得到(p.customer, 读的我);
     const 号 = 撞.get(p.id)!;
     return {
@@ -355,6 +428,27 @@ export async function 联系人查重(
       value: 号.value,
     };
   });
+  const 有人的客户 = new Set(人们.map((p) => p.customer.id));
+  return [...联系人们, ...客户们.filter((x) => !x.customerId || !有人的客户.has(x.customerId))];
+}
+
+/** 撞到的别的客户本身的号 → 给人看的样子（看得到的给客户 id、名字；看不到的只给负责人名字）。回收站里的客户不在里面 */
+async function 客户撞了(db: 库, 客户撞: Map<string, { kind: string; value: string }>, 读的我: 谁 | null): Promise<撞到的联系人[]> {
+  const 们 = await 看全部(async () => db.customer.findMany({
+    where: { id: { in: [...客户撞.keys()] }, deletedAt: null },
+    select: { id: true, name: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  }));
+  return 们.map((c) => {
+    const 见 = 看得到(c, 读的我);
+    const 号 = 客户撞.get(c.id)!;
+    return {
+      contactId: null, name: null,
+      customerId: 见 ? c.id : null, customerName: 见 ? c.name : null,
+      同事: 负责人显示名(c.salesOwner?.name ?? "同事"),
+      kind: 号.kind, value: 号.value, 客户本身: true as const,
+    };
+  });
 }
 
 /**
@@ -363,7 +457,9 @@ export async function 联系人查重(
  */
 export function 联系人撞号话(撞: readonly 撞到的联系人[], 叫法: (kind: string) => string, 这位客户?: string): string {
   const 头 = 撞[0];
-  const 谁 = 头.name ? `「${头.name}」（${头.customerName}）` : `${头.同事}名下的一位联系人`;
+  const 谁 = 头.客户本身
+    ? (头.customerName ? `客户「${头.customerName}」本身` : `${头.同事}名下的一位客户本身`)
+    : 头.name ? `「${头.name}」（${头.customerName}）` : `${头.同事}名下的一位联系人`;
   const 同客户 = !!这位客户 && 头.customerId === 这位客户;
-  return `${叫法(头.kind)} ${头.value} 已经记在${谁}身上${撞.length > 1 ? `等 ${撞.length} 位` : ""}，本次没保存。${同客户 ? "这位客户上已经有这个号，核对后改号码，或确认是两个人共用再仍然保存" : "可以把那位挂到这位客户上，或核对后改号码"}`;
+  return `${叫法(头.kind)} ${头.value} 已经记在${谁}身上${撞.length > 1 ? `等 ${撞.length} 位` : ""}，本次没保存。${同客户 ? "这位客户上已经有这个号，核对后改号码，或确认是两个人共用再仍然保存" : 头.客户本身 ? "核对后改号码，或确认是另一个人再仍然保存" : "可以把那位挂到这位客户上，或核对后改号码"}`;
 }

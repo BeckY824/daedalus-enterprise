@@ -127,7 +127,7 @@ describe("标 / 取消测试账号", () => {
     const 运营 = await 建账号({ email: "boss@example.com" });
     const 路人 = await 建账号();
     expect(await 是测试账号(运营), "没配名单").toBe(false);
-    process.env.OPS_ACCOUNTS = "Boss@Example.com, 13900000000";
+    process.env.OPS_ACCOUNTS = "Boss@Example.com, 13912000000";
     expect(await 是测试账号(运营)).toBe(true);
     expect(await 是测试账号(路人)).toBe(false);
     expect([...(await 测试账号们()).entries()]).toEqual([[运营, "运营"]]);

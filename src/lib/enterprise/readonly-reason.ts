@@ -5,8 +5,8 @@
  * 本线 = 条线总管理（line-viewer.ts 条线的线）看本线成员的；组员 = 我以组员身份加入了挂在这位客户上的项目（team-scope.ts 组员的客户）。
  * 判不出（市场成员相关、只看某人等）就说中性的「X 负责的客户」，不另造一套权限判断。
  */
-import { 实线下属, type 组织 } from "./org-core";
-import { 条线的线 } from "./line-viewer";
+import { 实线下属, 虚线下属, type 组织 } from "./org-core";
+import { 条线的线, 按线范围of } from "./line-viewer";
 import { 组织范围of, 虚线只读话, 组员只读话 } from "./visibility";
 
 export type 只读原因 = "虚线" | "下属" | "本线" | "组员" | null;
@@ -15,12 +15,19 @@ export type 只读原因 = "虚线" | "下属" | "本线" | "组员" | null;
 export function 只读原因of(org: 组织, 我: string, ownerId: string | null, 组员: boolean): 只读原因 {
   if (ownerId) {
     const 范围 = 组织范围of(org, null, 我);
-    if (范围?.读 && 范围.读.includes(ownerId) && !范围.写.includes(ownerId)) return "虚线";
+    // 读 减 写 里后来还加了条线总管理的本线成员、停用前上级链（审核 11-18 权限 P1-1、P1-12）：那两种不是虚线，只认虚线链（按线管理员照旧）
+    if (范围?.读 && 范围.读.includes(ownerId) && !范围.写.includes(ownerId) && (按线范围of(org, 我) || 在虚线链(org, 我, ownerId))) return "虚线";
     if (实线下属(org, 我).has(ownerId)) return "下属";
     const 线 = 条线的线(org, 我);
     if (线 && org.成员.get(ownerId)?.line === 线) return "本线";
   }
   return 组员 ? "组员" : null;
+}
+
+/** 虚线下属和他们的实线下属（同 组织范围of 里虚线那一圈） */
+function 在虚线链(org: 组织, 我: string, ownerId: string): boolean {
+  for (const d of 虚线下属(org, 我)) if (d === ownerId || 实线下属(org, d).has(ownerId)) return true;
+  return false;
 }
 
 /** 中性说法：服务端那句（话）是给整个人的，说的原因和这位客户对不上时用它 */

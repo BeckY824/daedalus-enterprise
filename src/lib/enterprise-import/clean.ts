@@ -30,23 +30,25 @@
  */
 import { createHash } from "node:crypto";
 import { CUSTOMER_SOURCES, FOLLOW_TYPES, OPP_STAGES, STAGE_PROBABILITY, TRADE_SOURCES } from "../constants";
-import { 国家候选 } from "../customer-extra";
+import { 国家候选, 认国家 } from "../customer-extra";
 import { 联系人号查重键 } from "../enterprise/customer-v2";
 import { businessDayjs } from "../business-clock";
 import { parseDateInput } from "../date-input";
 import { 认日期 } from "../import/plan";
-import { 查电话, 号键 } from "../phone";
+import { 查电话, 号键, 号码带着字, 号码粘着字母 } from "../phone";
 import { 是占位号 } from "../placeholder-phone";
 import { 无负责人占位名 } from "../pool";
 import { 拆多人, 进备注, 输单, 对客户类型, 客户类型留空, 客户类型未定, 客户类型等级, 值说法 } from "./mapping";
 import { 第一个节点, 是结局 } from "../project/nodes";
 import { 结局默认节点, 节点所在阶段 } from "./project-values";
-import { 企业级别, 规整地址, 简称上限, 性别们, 爱好上限, 联系人地址上限, 认生日 } from "../enterprise/customer-v2";
+import { 企业级别, 规整地址, 简称上限, 性别们, 爱好上限, 联系人地址上限, 认生日, 是国内, 国内叫法, type 客户地址 } from "../enterprise/customer-v2";
+import { 没国家认得出, 国内地名级别 } from "../enterprise/cn-place";
 import { 默认币种, 认币种 } from "../currency";
 import { 认归档档位 } from "../enterprise/archive-tier";
 import { 成交需求上限 } from "../project/profile-rules";
 import { 实体顺序, 必填, 字段中文, type 原始记录, type 实体, type 映射, type 问题, type 待写, type 格式类 } from "./types";
-import { 全角数字和点转半角, 全角转半角 } from "../fullwidth";
+import { 全角转半角 } from "../fullwidth";
+import { 认金额 } from "../money-input";
 
 /** 我们这边已有的东西，调用方从库里查好传进来。键都已规整过（见下面的 名键 / 号键） */
 export type 本地索引 = {
@@ -75,6 +77,11 @@ export type 本地索引 = {
    * 子表里客户 / 联系人身上的手机 / 座机 / WhatsApp。没给 = 只按客户电话和客户名查
    */
   归档号?: Map<string, string[]>;
+  /**
+   * 回收站里的号（企业版，P-删-08「导入查重也算回收站里的号码（撞上的那行不导、提示去捞回）」，审核 11-18 P1-3）：
+   * 删了的客户身上的号、在用客户名下删了的联系人的号，按 归档号键 规整。在用的没撞、这里撞了 = 这一行不导。没给 = 不查
+   */
+  回收站号?: ReadonlySet<string>;
 };
 
 /** 号码撞到的我们这边那位联系人：名字 + 主客户（报告里点进主客户页） */
@@ -93,6 +100,9 @@ export function 归档号键(v: string | null | undefined): string {
   const k = 联系人号查重键("phone", v);
   return /^\d{10,}$/.test(k) ? k : "";
 }
+
+/** Excel 把长号存成数字后显示的科学计数法（「8.61391E+12」「1.3912E+10」） */
+export const 是科学计数 = (v: string): boolean => /^[+＋]?\d+(?:\.\d+)?[Ee]\+?\d{1,2}$/.test(v.trim());
 
 /** 名字比较用的键：去空白、全角转半角、小写 */
 export function 名键(s: string): string {
@@ -176,6 +186,27 @@ export function 查已有客户(本地: Pick<本地索引, "客户名" | "客户
   return { 放行: `${说名}，但两边号码都不同，不算重复，照常导入（同名不同号放行）` };
 }
 
+/** 表里「国家 / 地区」那格写的是国内泛称（大区、「国内」）：当中国，不当一个外国 */
+const 国内泛称 = /^(国内|境内|内地|华东|华南|华北|华中|西南|西北|东北)(地区)?$/;
+
+/**
+ * 表头「国家」「地区」「国家地区」（country，老外贸档案那格）在企业版也落客户地址的国家（审核 11-18 P0-1：原来只进 CustomerExtra.country，
+ * 页面不显示、区域也不读，城市却进了客户地址、被补成「中国」，国外客户成了大陆 / 内贸）。表里另有「地址国家」列的照旧用那一列。
+ *   - 中国的各种写法、国内泛称（华东、国内）→ 中国；
+ *   - 写的是国内省 / 市（「浙江」「杭州」，cn-place.ts 像国内地名）→ 中国，这一格摆进省或市（表里省 / 市那格空着才摆）；
+ *   - 别的（美国、USA、香港、Italy）→ 照写，常见英文写法认成中文（customer-extra.ts 认国家；AI 清洗认过的先用认过的）。
+ * 空 = null
+ */
+export function 国家列落地址(原: string | null | undefined, 认过?: string | null): Partial<客户地址> | null {
+  const t = String(原 ?? "").trim();
+  if (!t) return null;
+  if (是国内(t) || 国内泛称.test(t)) return { addrCountry: 国内叫法 };
+  const 级 = 国内地名级别(t);
+  if (级) return { addrCountry: 国内叫法, ...(级 === "省" ? { addrProvince: t } : { addrCity: t }) };
+  const 国 = 认过 || 认国家(t) || t;
+  return { addrCountry: 是国内(国) ? 国内叫法 : 国 };
+}
+
 /**
  * 导入查重的号索引（M-导入-24 / 29）：客户电话、客户 WhatsApp、联系人手机、子表里客户 / 联系人身上的手机 / 座机 / WhatsApp，
  * 都按 归档号键 规整 → 有这个号的客户 id 们。只算 看得见 里的客户（删了进回收站的不算撞）
@@ -191,6 +222,22 @@ export function 归档号索引(看得见: ReadonlySet<string>, 号们: Iterable
   }
   return 归档号;
 }
+
+/** 回收站撞号（P-删-08，审核 11-18 P1-3）：这一行哪个号撞上了回收站里的号（返回那个号原文）；没撞 / 没给索引 = null。占位假号、不足 10 位的不比（同 查已有客户） */
+export function 撞回收站(本地: Pick<本地索引, "回收站号">, 号们: readonly (string | null | undefined)[]): string | null {
+  if (!本地.回收站号?.size) return null;
+  for (const v of 号们) {
+    for (const 段 of String(v ?? "").split(/[,，;；/、\n]+/)) {
+      if (是占位号(段)) continue;
+      const k = 归档号键(段);
+      if (k && 本地.回收站号.has(k)) return 段.trim();
+    }
+  }
+  return null;
+}
+
+/** 回收站撞号那一行的说法 */
+export const 回收站撞号话 = (号: string) => `号码 ${号} 撞上了回收站里的客户，这一条不导；要用回那位，在「新增客户」或首页录入时填这个号查重，从回收站捞回`;
 
 /** 疑似重名用的公司名键：再去掉括号、标点和「有限公司」这类尾巴。只用来提醒，不拿来合并 */
 export function 公司名键(s: string): string {
@@ -243,22 +290,8 @@ function 认是否(v: string): boolean {
   return /^(是|y|yes|true|1|√|✓|主|主要|关键)$/i.test(v.trim());
 }
 
-/** 金额：去掉货币符号、千分位、「元 / 元整 / 整」，「k / 千 / 万 / 亿」乘上去，全角数字也认。认不出返回 null */
-export function 认金额(v: string): number | null {
-  let s = 全角数字和点转半角(v.trim())
-    .replace(/[,，\s]/g, "")
-    .replace(/^(¥|￥|\$|US\$|RMB|CNY|USD)/i, "")
-    .replace(/(元整|整|元|人民币|rmb|cny|usd)$/i, "");
-  let 倍 = 1;
-  const 单位 = /(k|千|万|亿)$/i.exec(s);
-  if (单位) {
-    倍 = { k: 1000, 千: 1000, 万: 10000, 亿: 100000000 }[单位[1].toLowerCase() as "k"] ?? 1;
-    s = s.slice(0, -1);
-  }
-  if (!/^-?\d+(\.\d+)?$/.test(s)) return null;
-  const n = Number(s) * 倍;
-  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null;
-}
+/** 金额：搬到 lib/money-input（11-17：AI 卡金额框也用它，浏览器端要能 import），这里照旧导出给导入和老用例 */
+export { 认金额 };
 
 /** 赢率：「60%」「60」「0.6」都认成 60。认不出返回 null */
 export function 认赢率(v: string): number | null {
@@ -394,6 +427,18 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
    * 电话格：是号码就规整；写的是邮箱 / 「微信：xx」/「WhatsApp：xx」的放进对应的格子；
    * 一格几个号（逗号、斜杠、顿号隔开）第一个当电话，其余的放进「另」；都不是就原样进备注
    */
+  /** 科学计数法的号：记一笔提醒、原文进备注「电话（待核对）」 */
+  const 科学计数待核对 = (r: 原始记录, v: string, 附加: string[]) => {
+    附加.unshift(`电话（待核对）：${v}`);
+    出问题(r, "提醒", "格式不对", `电话「${v}」是表格改成科学计数法的号，后几位已经丢了，没当号码，原样放进了备注待核对`);
+  };
+
+  /** 号码带着说明（「13800001111（微信同号）」）：号码照收，原文进备注「电话原文」、报告里说一句（11-17 复盘第 4 类：说明不再悄悄丢） */
+  const 带字原文 = (r: 原始记录, v: string, 号: string, 附加: string[]) => {
+    附加.push(`电话原文：${v}`);
+    出问题(r, "提醒", "格式不对", `电话「${v}」按 ${号} 导入，号码以外的字连同原文放进了备注`);
+  };
+
   /** 占位假号（M-导入-36）：是就记一笔提醒、返回 true，调用方丢掉这个号 */
   const 丢占位 = (r: 原始记录, v: string | undefined, 标签: string): boolean => {
     if (!v || !是占位号(v)) return false;
@@ -425,6 +470,11 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
         }
         continue;
       }
+      // 科学计数法（「8.61391E+12」）：表格把长号存成了数字，后几位已经丢了，不当号也不当微信，原样进备注待核对（11-17）
+      if (是科学计数(x)) {
+        科学计数待核对(r, x, 附加);
+        continue;
+      }
       // 带字母的：英文分机写法（「… ext 12」「… x12」）还是号，其余整段当微信
       const 分机号 = /^\+?[\d\s\-()（）.]+(?:ext\.?|x)\s*\d{1,6}$/i.test(x);
       if (/[A-Za-z]/.test(x) && !分机号) {
@@ -436,6 +486,8 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
         const p = 查电话(x, { 必填: false });
         if (p.ok && p.phone) {
           号们.push(p.phone);
+          // 「13800001111（微信同号）」这类：号码取出来，原文进备注、报告里说一句（11-17 复盘第 4 类：原来说明悄悄丢了）
+          if (号码带着字(x)) 带字原文(r, x, p.phone, 附加);
           continue;
         }
       }
@@ -466,21 +518,59 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
       return 微信 ? { phone: "", wechat: 前缀[2].trim(), 另: [] } : { phone: "", whatsapp: 前缀[2].trim(), 另: [] };
     }
     if (全部电话) return 拆全部电话(r, t, 附加);
+    // 科学计数法（「8.61391E+12」）：表格把长号存成了数字，后几位已经丢了，不当号，原样进备注待核对（11-17）
+    if (是科学计数(t)) {
+      科学计数待核对(r, t, 附加);
+      return { phone: "", 另: [] };
+    }
+    /*
+      字母数字混写的一整串（「sqin17548955941」「wxid_abc175…」）：整段按微信，不截里面的数字当电话（M-导入-34，11-17 员工反馈：
+      原来截出 17548955941 存成了电话）。英文分机写法（「… ext 12」）照旧是号；带冒号、空格这些的（「Tel: 138…」）照旧往下认
+    */
+    if (/[A-Za-z]/.test(t) && /^[A-Za-z0-9_\-.]+$/.test(t) && !/^\+?[\d\s\-()（）.]+(?:ext\.?|x)\s*\d{1,6}$/i.test(t)) {
+      出问题(r, "提醒", "格式不对", `电话格里写的「${t}」字母数字混写，整段按微信号放进了微信，没截里面的数字当电话`);
+      return { phone: "", wechat: t, 另: [] };
+    }
     const 全段 = t.split(/[,，;；/、\n]+/).map((x) => x.trim()).filter(Boolean);
     const 段 = 全段.filter((x) => !丢占位(r, x, "电话"));
     if (!段.length) return { phone: "", 另: [] };
     if (段.length > 1) {
-      const 号们 = 段.map((x) => 查电话(x, { 必填: false }));
-      if (号们.every((x) => x.ok)) {
+      /*
+        号码和字母连着写的那段（「138… / sqin175…」）：整段当微信、不截里面的数字当电话（同 拆全部电话，11-17 复盘第 4 类）；
+        别的段都是号才这样拆，不然交给下面整格认
+      */
+      const 粘段 = 段.filter((x) => 号码粘着字母(x));
+      const 号段 = 段.filter((x) => !号码粘着字母(x));
+      const 号们 = 号段.map((x) => 查电话(x, { 必填: false }));
+      if (号段.length && 号们.every((x) => x.ok)) {
         const [首, ...余] = 号们.map((x) => (x.ok ? x.phone : ""));
-        出问题(r, "提醒", "格式不对", `电话格里有 ${段.length} 个号，第一个当电话，其余放进了备注`);
-        return { phone: 首, 另: 余 };
+        const [微信, ...余微信] = 粘段;
+        附加.push(...余微信.map((x) => `另一个微信：${x}`));
+        出问题(r, "提醒", "格式不对", 粘段.length
+          ? `电话格里有 ${号段.length} 个号、${粘段.length} 段号码和字母连着写（像微信号）：第一个号当电话、第一段放进了微信，其余放进了备注，没截里面的数字当电话`
+          : `电话格里有 ${段.length} 个号，第一个当电话，其余放进了备注`);
+        // 哪一段带着说明（「微信同号」）：整格原文也进备注，说明不丢（11-17 复盘第 4 类）
+        if (号段.some((x) => 号码带着字(x))) 附加.push(`电话原文：${t}`);
+        return { phone: 首, 另: 余, ...(微信 ? { wechat: 微信 } : {}) };
       }
     }
     // 去掉了占位号的，剩下的那一个号单独认
     if (段.length < 全段.length) v = 段.join(" / ");
+    /*
+      号码和字母连着写、前后还带着别的字的（「微信 sqin175…」「Tel138…」）：不截里面的数字当电话（11-17 复盘第 4 类），
+      原样进备注、报告里说清
+    */
+    if (号码粘着字母(v)) {
+      附加.unshift(`电话：${v}`);
+      出问题(r, "提醒", "格式不对", `电话「${v}」号码和字母连着写，像微信号或账号，没截里面的数字当电话，原样放进了备注`);
+      return { phone: "", 另: [] };
+    }
     const p = 查电话(v, { 必填: false });
-    if (p.ok) return { phone: p.phone, 另: [] };
+    if (p.ok) {
+      // 号码带着说明（「13800001111（微信同号）」「手机：138…」）或写了两个号：号码取出来，原文进备注、报告里说一句（原来说明悄悄丢了）
+      if (p.phone && 号码带着字(v)) 带字原文(r, v, p.phone, 附加);
+      return { phone: p.phone, 另: [] };
+    }
     附加.unshift(`电话：${v}`);
     出问题(r, "提醒", "格式不对", `电话「${v}」看不出是个号码，原样放进了备注`);
     return { phone: "", 另: [] };
@@ -706,11 +796,24 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
         出问题(r, "提醒", "格式不对", `客户简称超过 ${简称上限} 个字，截到前 ${简称上限} 个字，原文放进了备注`);
       }
     }
-    const 地址原 = { addrCountry: v.addrCountry, addrProvince: v.addrProvince, addrCity: v.addrCity, addrDistrict: v.addrDistrict };
+    // 「国家 / 地区」列（country）在没有「地址国家」列时就是客户地址的国家（审核 11-18 P0-1，见 国家列落地址）；老外贸档案那格照旧另写
+    const 列国 = v.addrCountry?.trim() ? null : 国家列落地址(v.country, v.country ? 查格式("国家", v.country) : null);
+    const 地址原 = {
+      addrCountry: v.addrCountry?.trim() ? v.addrCountry : (列国?.addrCountry ?? undefined),
+      addrProvince: v.addrProvince?.trim() ? v.addrProvince : (列国?.addrProvince ?? undefined),
+      addrCity: v.addrCity?.trim() ? v.addrCity : (列国?.addrCity ?? undefined),
+      addrDistrict: v.addrDistrict,
+    };
     if (Object.values(地址原).some((x) => x?.trim())) {
-      const 地 = 规整地址(地址原);
       const 原文 = (["addrCountry", "addrProvince", "addrCity", "addrDistrict"] as const).map((k) => 地址原[k]?.trim()).filter(Boolean).join(" ");
-      if (!地.ok) {
+      // 没写国家、只写了省 / 市 / 区县：认得出是国内（含港澳台）才补「中国」落地址；认不出（「洛杉矶」「Torino」）不落、不补国家，
+      // 原样进备注（同 AI 新线索卡，cn-place.ts 没国家认得出；审核 11-18 P0-1）
+      const 没国家认不出 = !地址原.addrCountry?.trim() && !没国家认得出(地址原.addrProvince, 地址原.addrCity, 地址原.addrDistrict);
+      const 地 = 没国家认不出 ? null : 规整地址(地址原);
+      if (!地) {
+        附加.push(`地址：${原文}`);
+        出问题(r, "提醒", "值对不上", `地址「${原文}」没写国家，认不出是国内哪里，没落客户地址（不补「中国」），原样放进了备注；表里加一列「国家」再导就能落上`);
+      } else if (!地.ok) {
         附加.push(`地址：${原文}`);
         出问题(r, "提醒", "格式不对", `地址认不出（${地.error}），原样放进了备注`);
       } else {
@@ -871,6 +974,13 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
           if (论 && "撞" in 论) {
             问题们.splice(起);
             出问题(r, "跳过", "重名", `${论.撞}，这一条不导${论.依据 ? `（${论.依据}）` : ""}`);
+            continue;
+          }
+          // 在用的没撞、号码撞上回收站里的（P-删-08，同客户页旧导入抽屉 #194）：不导，提示去捞回
+          const 回收站撞 = 撞回收站(本地, [phone, ...号.另, whatsapp, 座机]);
+          if (回收站撞) {
+            问题们.splice(起);
+            出问题(r, "跳过", "号码重复", 回收站撞号话(回收站撞));
             continue;
           }
           if (论) 出问题(r, "提醒", "同名不同号放行", 论.放行);

@@ -16,9 +16,46 @@ export function 是合同状态(v: unknown): v is 合同状态 {
   return typeof v === "string" && (合同状态们 as readonly string[]).includes(v);
 }
 
-/** 新建项目时写进去的：企业版合同状态落「起草中」；别的版本不写（列留空，也不显示） */
-export function 新项目默认值(企业: boolean): { contractStatus?: 合同状态 } {
-  return 企业 ? { contractStatus: 默认合同状态 } : {};
+/**
+ * 系统替人定分配方式时写的叫法（V-分配方式 默认五项里的这几项，同 lib/enterprise/dict.ts 分配方式默认项、market-transfer.ts 客户层分配方式）。
+ * 人在弹窗里选的照存选的那一项的名字，不走这里
+ */
+export const 系统分配方式 = { 指定分配: "指定分配", 自动分配: "自动分配", 公海捞取: "公海捞取", 个人自持: "个人自持" } as const;
+
+/**
+ * 没人选分配方式、系统建项目时按「谁建给谁」定（11-18 复盘第 5 类：补潜客培育、线索转化不写分配方式）：
+ * 建给自己 = 个人自持（P-转-15 销售自建走自持）；建给别人 = 指定分配（同 客户层分配方式）。
+ * 纯函数、不分角色；系统建项目一律走 self-assign-mode.ts 系统建项目分配方式（市场成员建给自己 = 暂不分配，11-18 总控追加）
+ */
+export function 建给谁的分配方式(负责人: string, 建的人: string): string {
+  return 负责人 && 负责人 === 建的人 ? 系统分配方式.个人自持 : 系统分配方式.指定分配;
+}
+
+/**
+ * 导入建的项目的分配方式（M-导入-01）：原表整行任一格含「自拓」或「展会」→ 个人自持；都不含 → 自动分配。
+ * 原始行 = 原系统那一行（键值都看，值是对象 / 数组的展开看）
+ */
+export function 导入分配方式(原始行: unknown): string {
+  const 文字 = (v: unknown): string => (v === null || v === undefined ? "" : typeof v === "object" ? Object.values(v as object).map(文字).join(" ") : String(v));
+  return /自拓|展会/.test(文字(原始行)) ? 系统分配方式.个人自持 : 系统分配方式.自动分配;
+}
+
+/**
+ * 新建项目时写进去的默认值（企业版；别的版本什么都不写，列留空，也不显示）：
+ *   - 合同状态落「起草中」（V-合同状态 默认值）；
+ *   - 分配方式（F-项目-15）、项目来源（渠道 id，「新建项目时默认带客户来源」）每条建项目的路都要说清：给 null = 这条路不写，在调用处写明为什么。
+ * 建项目的路都得经过这里（tests/project-create-guard.test.ts 扫源码守着，11-18 复盘第 5 类：几条路默认值各缺一样）
+ */
+export function 新项目默认值(
+  企业: boolean,
+  来: { 分配方式: string | null; 项目来源: string | null },
+): { contractStatus?: 合同状态; assignMode?: string; channelId?: string } {
+  if (!企业) return {};
+  return {
+    contractStatus: 默认合同状态,
+    ...(来.分配方式 ? { assignMode: 来.分配方式 } : {}),
+    ...(来.项目来源 ? { channelId: 来.项目来源 } : {}),
+  };
 }
 
 /** 显示用：库里空的、认不出的都当没填（null，界面写「—」） */

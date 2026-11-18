@@ -1,5 +1,5 @@
 "use client";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import type { 页面范围 } from "@/lib/ai-context-page";
 import { useModel } from "@/components/ModelPicker";
@@ -16,6 +16,10 @@ import Composer, { type ComposerHandle } from "./Composer";
 import { useHomeTurns } from "./useHomeTurns";
 import LeadFullNotices from "../leads/LeadFullNotices";
 import CoachTopicTodo, { type 待回复主题数 } from "./CoachTopicTodo";
+import ReplyDueTodo from "./ReplyDueTodo";
+import AssignEtaLine from "./AssignEtaLine";
+import type { 轮到 } from "@/lib/enterprise/assign-eta";
+import type { 待回复客户数 } from "@/lib/enterprise/reply-notice";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 新线索来源, 新线索要下一步, 新线索企业, type 新线索企业格 } from "@/components/ProposalCard";
 import HomeCards from "./HomeCards";
@@ -40,7 +44,7 @@ export type 首页信号 = {
   逾期: number; 高意向: number; 本月签约: { 币种: string; 合计: number }[]; 高意向标签: string;
 };
 
-export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, context, models, 空库, 信号, 模式 = "宽", 上下文提示, 上下文范围, scope = 首页屏, 标题前缀, 自己服务器 = false, 去导入 = false, 企业版 = false, 满额提醒 = [], 待回复主题 = null, 渠道名们, 要下一步 = false, 新线索企业: 企业格, 产品名, 指标卡 }: {
+export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, context, models, 空库, 信号, 模式 = "宽", 上下文提示, 上下文范围, scope = 首页屏, 标题前缀, 自己服务器 = false, 去导入 = false, 企业版 = false, 满额提醒 = [], 待回复主题 = null, 待回复客户 = null, 轮到 = null, 待复核, 渠道名们, 要下一步 = false, 新线索企业: 企业格, 产品名, 指标卡 }: {
   /** 地址上 ?c= 指的那条对话，服务端读好传进来。null = 一屏新对话 */
   会话: { id: string; title: string; messages: 历史消息[] } | null;
   userName: string;
@@ -84,6 +88,12 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
   满额提醒?: 满额提醒[];
   /** 企业版首页待办「待回复主题」（11-17，教练主题）：项目负责人看到；没有 = null */
   待回复主题?: 待回复主题数 | null;
+  /** 企业版首页待办「待回复客户」（11-17，指定回复时间）：客户要求的联系时间快到了、还没记沟通的；没有 = null */
+  待回复客户?: 待回复客户数 | null;
+  /** 企业版首页一行「自动分配：前面约 N 条轮到你」（11-18，assign-eta.ts）：只有参加自动分配的销售有；别的 = null 不画 */
+  轮到?: 轮到 | null;
+  /** 企业版首页待办「待我复核」（审核 11-18 节点 P2-3）：线索验证轮到我拍板的；页面画好 <VerifyInbox> 递进来（这里不引 projects/actions）；没有 = 不画 */
+  待复核?: ReactNode;
   /** 首页才给：企业版只用项目时启用中的渠道名。给了就摆「名片」键，新建线索卡的来源从这里选 */
   渠道名们?: string[];
   /** 企业版开了超时回收：新线索卡的下一步时间必填 */
@@ -136,6 +146,9 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
     <div className={`cli-col${外框 ? " cli-frame" : ""}`}>
       {!窄 && <LeadFullNotices 提醒={满额提醒} />}
       {!窄 && <CoachTopicTodo 数据={待回复主题} />}
+      {!窄 && <ReplyDueTodo 数据={待回复客户} />}
+      {!窄 && 待复核}
+      {!窄 && <AssignEtaLine 轮到={轮到} />}
       {empty && 窄 ? (
         /*
           窄模式（右侧面板）的空屏：380 宽塞不下问候、信号、建议问题那一套，

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button, Card, Dropdown, Empty, Tag, type MenuProps } from "antd";
 import { DownOutlined } from "@ant-design/icons";
 import { fmtDate, fmtDateTime } from "@/lib/utils";
-import { FOLLOW_TYPE_MAP } from "@/lib/constants";
+import { 跟进方式名 } from "@/lib/follow-method";
 import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
 import { 卡内容 } from "../../projects/[id]/CustomerReadonlyCard";
 import { ProjectFold } from "../../projects/[id]/ProjectFold";
@@ -55,7 +55,7 @@ export default function RestrictedCustomerDetail({ 数据 }: { 数据: 受限客
         <div key={f.id} className="rcd-follow">
           <div className="rcd-follow-meta">
             <span>{fmtDateTime(f.occurredAt)}</span>
-            <span>{f.method || FOLLOW_TYPE_MAP[f.type]?.label || f.type}</span>
+            <span>{跟进方式名(f)}</span>
             <span>{f.who}</span>
             <Link href={客户页项目地址(客户.id, f.项目.id, "#project-follow")} scroll={false} title={f.项目.名} className="rcd-follow-proj">
               {f.项目.名}
@@ -127,7 +127,7 @@ export default function RestrictedCustomerDetail({ 数据 }: { 数据: 受限客
               没给的说法="不在你的项目上，联系方式不显示"
               操作={(x) => {
                 const 行 = x.id ? 可改.get(x.id) : undefined;
-                return 行 ? <Button type="link" size="small" className="rcd-link-btn" aria-label={`改联系人 ${x.name}`} onClick={() => set框(行)}>改</Button> : null;
+                return 行 ? <Button type="link" size="small" className="rcd-link-btn" aria-label={`改联系人 ${x.name || "—"}`} onClick={() => set框(行)}>改</Button> : null;
               }}
             />
           </div>

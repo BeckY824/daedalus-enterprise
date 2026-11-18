@@ -13,22 +13,23 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
+import { 补全动作桩 } from "./helpers/action-stubs";
 
 let browser: Browser;
 let bundle: string;
 let 表单包: string;
 const plugin: Plugin = { name: "trade-basics-ui", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, (a) => ({ path: a.path, namespace: "stub", pluginData: code }));
-  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
+  stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>'/follow-ups/plans';");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
   stub(/(^|\/)demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
-  stub(/projects\/actions$/, "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};");
-  stub(/(customers\/\[id\]\/|^\.\/)actions$/, `
+  stub(/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};"));
+  stub(/(customers\/\[id\]\/|^\.\/)actions$/, 补全动作桩("src/app/(app)/customers/[id]/actions.ts", `
     const 记=(名,参)=>{(window.__calls??=[]).push({名,参});return {ok:true,id:'f1'}};
-    export const 撤销记一笔=async(x)=>记('撤销记一笔',x);
+    export const 撤销记一笔=async(x)=>记('撤销记一笔',x),沟通可选项目=async()=>({ok:true,项目们:null,能建项目:true});
     export const saveFollowUp=async(x)=>({...记('saveFollowUp',x),...(x.附带?.plan?{下次计划id:'n1'}:{})}),completePlan=async(id,完成=true)=>记('completePlan',{id,完成}),toggleTask=async(id,v)=>记('toggleTask',{id,v}),deletePlan=async()=>({ok:true}),deleteTask=deletePlan;
-    export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'p1'});`);
+    export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'p1'});`));
   stub(/customers\/\[id\]\/TaskForm$/, "export default function C(){return null}");
   // 排下一次（撤销条上那颗键）开的新计划表单：只摆个记号，看给谁排的
   stub(/customers\/\[id\]\/PlanForm$/, "export default function C(p){return p.open&&p.record===null&&p.customerId?<div data-testid='plan-next'>{p.customerId}</div>:null}");
@@ -43,7 +44,7 @@ beforeAll(async () => {
     import CompletePlanModal,{提示记完了} from '@/app/(app)/customers/[id]/CompletePlanModal';import {completePlan} from '@/app/(app)/customers/[id]/actions';
     const 计划=(id,subject,method,有WhatsApp)=>({id,subject,method,有WhatsApp,plannedAt:'2026-10-16T01:00:00Z',updatedAt:'2026-10-16T01:00:00Z',customerId:'c-'+id,customerName:'Acme '+id,ownerId:'u',ownerName:'我'});
     // 2026-11 PR5b（原型 ls.pl.done）：计划页点 ✓ 直接完成，小框只留在客户详情的记录里；小框本身在这里单独挂一个壳点开
-    function 小框壳(){const {message}=App.useApp();const [在,set在]=React.useState(null);const 们=[计划('p1','发新报价','WhatsApp'),计划('p2','问样品','电话沟通'),计划('p3','回访','邮件沟通'),计划('p4','催定金','电话沟通',true),计划('p5','寄目录','邮件沟通',true)];
+    function 小框壳(){const {message}=App.useApp();const [在,set在]=React.useState(null);const 们=[计划('p1','发新报价','WhatsApp'),计划('p2','问样品','电话沟通'),计划('p3','回访','邮件沟通'),计划('p4','催定金','电话沟通',true),计划('p5','寄目录','邮件沟通',true),计划('p6','随访','')];
       return <>{们.map(x=><button key={x.id} aria-label={'完成 '+x.subject} onClick={()=>set在({id:x.id,subject:x.subject,method:x.method,customerId:x.customerId,customerName:x.customerName,有WhatsApp:x.有WhatsApp})}>✓</button>)}
         <CompletePlanModal plan={在} onClose={()=>set在(null)} onDone={async(r)=>{const x=在;set在(null);if(r.kind==='saved')return 提示记完了(x,r,()=>{});await completePlan(x.id);message.success('「'+x.subject+'」已完成');}}/></>}
     function Test(){if(decodeURIComponent(location.search).includes('m=框'))return <小框壳/>;return <>
@@ -60,10 +61,10 @@ beforeAll(async () => {
   // 记录跟进 / 新建计划两张表单：真组件，服务端动作和挑人那一格换成假的；挑人那一格点一下就挑中一位有 WhatsApp 号的
   const 表单插件: Plugin = { name: "trade-basics-forms", setup(b) {
     const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, (a) => ({ path: a.path, namespace: "stub", pluginData: code }));
-    stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
+    stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
     stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
-    stub(/projects\/actions$/, "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};");
-    stub(/^\.\/actions$/, "export const saveFollowUp=async()=>({ok:true,id:'f1'}),completePlan=saveFollowUp,savePlan=saveFollowUp,deletePlan=saveFollowUp;export const saveTask=async()=>({ok:true,id:'t1'});");
+    stub(/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};"));
+    stub(/^\.\/actions$/, 补全动作桩("src/app/(app)/customers/[id]/actions.ts", "export const saveFollowUp=async()=>({ok:true,id:'f1'}),completePlan=saveFollowUp,savePlan=saveFollowUp,deletePlan=saveFollowUp;export const saveTask=async()=>({ok:true,id:'t1'});export const 沟通可选项目=async()=>({ok:true,项目们:null,能建项目:true});"));
     stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no'});");
     stub(/^\.\/CustomerPick$/, `const 人=(id,name,有WhatsApp)=>({id,name,上次跟进:null,未完成计划:null,未完成计划数:0,contacts:[],opportunities:[],orders:[],有WhatsApp});
       export default function C(p){return <><button type='button' onClick={()=>p.on近况(人('c9','Zeta',true))}>挑 Zeta</button><button type='button' onClick={()=>p.on近况(人('c8','Bright',false))}>挑 Bright</button></>}`);
@@ -200,6 +201,27 @@ it("有 WhatsApp 号：计划写的是老默认「电话沟通」时小框默认
   await page.getByRole("button", { name: "完成 寄目录" }).click();
   await 框.waitFor();
   await expect.poll(() => 框.getByLabel("跟进方式").locator("..").innerText()).toContain("邮件沟通");
+  await page.close();
+});
+
+it("小框按个人习惯（11-18）：计划自己写了方式以计划为准；计划没写方式才用习惯", async () => {
+  const { page, 调用们 } = await 开("框");
+  await page.evaluate(() => { (window as unknown as { __习惯: unknown }).__习惯 = { type: "EMAIL", method: "邮件沟通" }; });
+  await page.getByRole("button", { name: "完成 问样品" }).click();
+  const 框 = page.getByTestId("complete-plan-modal");
+  await 框.waitFor();
+  await page.waitForTimeout(300);
+  expect(await 框.getByLabel("跟进方式").locator("..").innerText()).toContain("电话沟通");
+  await page.getByRole("button", { name: "跳过，直接完成" }).click();
+  await page.getByText("「问样品」已完成").waitFor();
+  await page.getByRole("button", { name: "完成 随访" }).click();
+  await 框.waitFor();
+  await expect.poll(() => 框.getByLabel("跟进方式").locator("..").innerText()).toContain("邮件沟通");
+  await 框.getByLabel("这次聊了什么").fill("发了邮件问近况");
+  await page.getByRole("button", { name: "保存并完成" }).click();
+  await page.getByText(/已记一笔，「随访」完成/).waitFor({ timeout: 15_000 });
+  const [c] = (await 调用们()).filter((x) => x.名 === "saveFollowUp");
+  expect(c.参).toMatchObject({ type: "EMAIL", 附带: { 完成计划: "p6" } });
   await page.close();
 });
 

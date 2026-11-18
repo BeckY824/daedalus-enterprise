@@ -9,10 +9,16 @@
  * 这一圈和复盘页「全部」是同一个（board-member.ts 的 看板的人 的 谁），卡上的数和项目页 ?f=… 都按它筛负责人。
  *
  * 卡（URL 参数 f 的值 → 卡名 → 口径）：
- *   month-new  本月新增   这个月（北京时间自然月，1 号 0 点起）新建的项目，不管现在是否还在推、有没有结局
+ *   month-new  本月新增   这个月（北京时间自然月，1 号 0 点起）新建的项目，不管现在是否还在推、有没有结局；
+ *                          补零项目客户的脚本补建的（creatorId = 补建创建人或 importBatch = 补建批次，createdAt = 客户建档时间）不算新建（system-created.ts）
  *   key        重点项目   在推的项目里，项目自己的级别（Project.level，迁移 093，界面显示成星级）是 重点级别（S / A）的。
  *                          项目标签字典里的「A 重点推进」就是项目级别 A；S 比 A 高一档，也算重点。不看客户级别
- *   no-follow  暂未跟进   在推的项目里，一条沟通都还没挂上的（FollowUpProject 没有行）
+ *   no-follow  暂未跟进   在推的项目里，现负责人还没在这个项目上记过一条沟通的（挂在项目上、记录人是现负责人、没删的沟通一条都没有）。
+ *                          11-18 审核 P1-1：建档的人（市场）向导里记的首条、换人之前原负责人记的，都不算现负责人跟进过——
+ *                          卡按负责人数，员工读它是「我手上还没联系过的」。Prisma 比不了两张表的列，所以按负责人一路一路写（现负责人没记过沟通），
+ *                          调用方要把这一圈负责人传进来（home-cards-db.ts 暂未跟进负责人们）。
+ *                          例外（11-17）：补建的项目（老客户补的潜客培育）客户身上有过沟通就不算——导入的老客户沟通记在客户上、没挂项目，
+ *                          补了项目不等于没人跟过。历史分析回填的（被人领走后还在推的）同样例外。别的项目照旧只看挂在项目上的沟通（客户名下另一个项目的沟通不算这个项目跟进过）
  *   due-soon   3 天内回公海（原叫即将逾期）  在推的线索 / 商机项目里，超时回收日在 即将逾期天数（3 天）以内的；
  *                          回收日和项目页「即将回收」标签同一套算法（timeout.ts 的 超时回收日），只是提前量从 1 天放到 3 天。
  *                          组织规则里「超时回收」没开 = 没有回收日 = 恒为 0
@@ -28,6 +34,9 @@ import { dayjs } from "@/lib/utils";
 import type { 组织规则 } from "./org-rules";
 import { 节点超时天数 } from "./timeout";
 import { 同名们, type 阶段字典 } from "./stage-dict";
+import { 不算补建, 补建的, 历史分析的 } from "./system-created";
+
+const 有过沟通 = { followUps: { some: { deletedAt: null } } } satisfies Prisma.CustomerWhereInput;
 
 /** 能当项目页筛选（/projects?f=…）的卡 */
 export const 项目卡键们 = ["month-new", "key", "no-follow", "due-soon", "month-won"] as const;
@@ -62,7 +71,7 @@ export const 即将逾期天数 = 3;
 export const 首页卡口径: Record<首页卡键, { 名: string; 说明: string }> = {
   "month-new": { 名: "本月新增", 说明: "这个月新建的项目，含已结束" },
   key: { 名: "重点项目", 说明: `在推的项目里，项目级别是 ${重点级别.join(" / ")} 的` },
-  "no-follow": { 名: "暂未跟进", 说明: "在推的项目里，还没有记过一条沟通的" },
+  "no-follow": { 名: "暂未跟进", 说明: "在推的项目里，负责人自己还没在项目上记过一条沟通的" },
   "due-soon": { 名: `${即将逾期天数} 天内回公海`, 说明: `在推的线索、商机项目里，${即将逾期天数} 天内会因为没沟通回公海的` },
   "month-won": { 名: "本月赢单", 说明: "这个月从商机转成订单的项目" },
 };
@@ -83,16 +92,16 @@ export function 本月起止(今: Date | string = new Date()): { 起: Date; 止:
   return { 起: 月初.toDate(), 止: 月初.add(1, "month").toDate() };
 }
 
-const 在推 = { result: null, pooledAt: null } satisfies Prisma.ProjectWhereInput;
+export const 在推 = { result: null, pooledAt: null } satisfies Prisma.ProjectWhereInput;
 
 /**
- * 「即将逾期」库里先粗筛：回收日 = min(起点 + 节点天数, 下一步那天 + 1)，起点不早于建项目那天，
- * 所以回收日落在 今 + N 天以内，必然是「建项目不晚于 今 + N − 最短节点天数」或「下一步不晚于 今 + N − 1」。
+ * 「即将逾期」库里先粗筛：回收日 = 起点 + 节点天数（下一步时间只提醒、不收回，11-18），起点不早于建项目那天，
+ * 所以回收日落在 今 + N 天以内，必然是「建项目不晚于 今 + N − 最短节点天数」。
  * 这是必要条件，不是充分条件——剩下的在 JS 里用 项目回收日 逐个算。超时回收没开 = null（一个都不会有）
  */
 export function 即将逾期粗筛(规则: 组织规则, 字典: 阶段字典, 今: Date | string = new Date()): Prisma.ProjectWhereInput | null {
   const 线 = 逾期线(规则, 字典, 今);
-  return 线 && { ...会逾期的, OR: [{ createdAt: { lt: 线.起点 } }, { nextStepAt: { lt: 线.下一步 } }] };
+  return 线 && { ...会逾期的, createdAt: { lt: 线.起点 } };
 }
 
 /** 两种筛共用的底：在推的线索 / 商机、客户不在客户公海、不在验证中 */
@@ -105,10 +114,10 @@ const 会逾期的 = {
 } satisfies Prisma.ProjectWhereInput;
 
 /**
- * 粗筛的两条线：建项目早于哪一刻才可能按天数到期（按全部节点里最短的天数）、下一步早于哪一刻才可能按下一步到期。
+ * 粗筛的线：建项目早于哪一刻才可能按天数到期（按全部节点里最短的天数）。
  * 超时回收没开、一个天数都没有 = null
  */
-function 逾期线(规则: 组织规则, 字典: 阶段字典, 今: Date | string): { 起点: Date; 下一步: Date } | null {
+function 逾期线(规则: 组织规则, 字典: 阶段字典, 今: Date | string): { 起点: Date } | null {
   if (!规则.超时回收.开) return null;
   // 外贸那套单设的天数（C7）也算进最短，不然外贸项目时长更短时会被粗筛漏掉
   const 天数们 = [
@@ -119,16 +128,15 @@ function 逾期线(规则: 组织规则, 字典: 阶段字典, 今: Date | strin
   if (!天数们.length) return null;
   const 最短 = Math.min(...天数们);
   const 今天 = dayjs(今).startOf("day");
-  return { 起点: 今天.add(即将逾期天数 - 最短 + 1, "day").toDate(), 下一步: 今天.add(即将逾期天数, "day").toDate() };
+  return { 起点: 今天.add(即将逾期天数 - 最短 + 1, "day").toDate() };
 }
 
 /**
  * 比 即将逾期粗筛 再紧一层的必要条件（11-10，代码体检 P3）：首页卡「即将逾期」、复盘「将回公海」只数不列的用。
  * 粗筛只卡建项目那天、且按所有节点里最短的天数卡，开了超时回收后几乎每个在推项目都过得去，首页每次加载都把它们连客户、最近留痕取回来算一遍。
- * 回收日 = min(起 + 节点天数, 下一步那天 + 1)，起 = max(建项目, 最近一条留痕, 客户最近跟进, 起算日)（timeout.ts 超时回收日 / 计时起点），所以回收日落在 今 + N 天以内，必然是：
- *   - 按天数到的：建项目、最近留痕、客户最近跟进三样都不晚于 今 + N − 这个节点的天数（粗筛只卡了第一样、天数用的是全部节点里最短的）；
+ * 回收日 = 起 + 节点天数（下一步时间只提醒、不收回，11-18），起 = max(建项目, 最近一条留痕, 客户最近跟进, 起算日)（timeout.ts 超时回收日 / 计时起点），所以回收日落在 今 + N 天以内，必然是：
+ *   - 建项目、最近留痕、客户最近跟进三样都不晚于 今 + N − 这个节点的天数（粗筛只卡了第一样、天数用的是全部节点里最短的）；
  *     从起算日算、按这个节点的天数都到不了 N 天以内的，这一路一个都不会有
- *   - 或按下一步到的：下一步不晚于 今 + N − 1，且不早于起算日（下一步早于起点的不算数）
  * 仍是必要条件，取回来照旧用 项目回收日 逐个算，数出来的和粗筛一样（tests/ent-due-soon-prefilter.test.ts 两种筛对拍）。
  * 项目列表 f=due-soon 仍用粗筛（首页卡条件）：那边取到 500 条为止，换筛会改它满 500 时列出来的东西
  */
@@ -152,7 +160,7 @@ export function 即将逾期紧筛(规则: 组织规则, 字典: 阶段字典, �
       logs: { none: { at: { gte: 起点早于 } } },
     });
   }
-  return { ...会逾期的, OR: [...按天数, { nextStepAt: { lt: 线.下一步, ...(起算 ? { gte: 起算.toDate() } : {}) } }] };
+  return { ...会逾期的, OR: 按天数 };
 }
 
 /**
@@ -184,16 +192,32 @@ export function 即将逾期(回收日: string | null, 今: Date | string = new 
  * 每张卡在库里的条件。即将逾期给的是粗筛（还要再用 即将逾期 过一遍）；
  * 超时回收没开时给一个查不出东西的条件，卡上是 0、项目页是空列表
  */
-export function 首页卡条件(键: 项目卡键, 规则: 组织规则, 字典: 阶段字典, 今: Date | string = new Date()): Prisma.ProjectWhereInput {
+/**
+ * 现负责人没在项目上记过沟通（暂未跟进的主体）：负责人们 = 要数的那一圈负责人，每人一路 ownerId = 他 且项目上没有他记的、没删的沟通。
+ * 一个人都没有 = 查不出东西
+ */
+export function 现负责人没记过沟通(负责人们: readonly string[]): Prisma.ProjectWhereInput {
+  const 们 = [...new Set(负责人们)];
+  if (!们.length) return { id: { in: [] } };
+  return { OR: 们.map((o) => ({ ownerId: o, followUps: { none: { followUp: { ownerId: o, deletedAt: null } } } })) };
+}
+
+/**
+ * 负责人们：只有 no-follow 用（现负责人没记过沟通），不传就抛——这张卡不知道数谁就数不对。
+ * 别的卡不看它
+ */
+export function 首页卡条件(键: 项目卡键, 规则: 组织规则, 字典: 阶段字典, 今: Date | string = new Date(), 负责人们?: readonly string[]): Prisma.ProjectWhereInput {
   switch (键) {
     case "month-new": {
       const { 起, 止 } = 本月起止(今);
-      return { createdAt: { gte: 起, lt: 止 } };
+      return { createdAt: { gte: 起, lt: 止 }, ...不算补建 };
     }
     case "key":
       return { ...在推, level: { in: [...重点级别] } };
     case "no-follow":
-      return { ...在推, followUps: { none: {} } };
+      // 补建的、历史分析回填的（客户身上就是那批旧沟通）：客户有过沟通就不算没跟进。分两条 NOT 写，历史分析的 用 null 安全的写法
+      if (!负责人们) throw new Error("暂未跟进要传这一圈负责人（首页卡条件 第 5 个参数）");
+      return { ...在推, AND: [现负责人没记过沟通(负责人们)], NOT: [{ ...补建的, customer: 有过沟通 }, { ...历史分析的, customer: 有过沟通 }] };
     case "due-soon":
       return 即将逾期粗筛(规则, 字典, 今) ?? { id: { in: [] } };
     case "month-won": {

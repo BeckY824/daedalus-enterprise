@@ -246,38 +246,37 @@ describe("同号再次录入", () => {
     expect(r.数据.客户.phone).toBe(号码);
   });
 
-  it("组员直接在级联看到的客户下记沟通：拦下、说只能看，不说客户不在了（11-03 B5-6，V3.5.1）", async () => {
+  it("组员在级联看到的客户下：沟通记得上、挂在进组的项目上（11-17 客户定组员能记）；待办照旧拦下说只能看，不说客户不在了（11-03 B5-6）", async () => {
     const x = await 现场();
     await prisma.projectMember.create({ data: { projectId: x.项目!.id, userId: x.市场.id, inviteStatus: "JOINED", invitedById: x.负责人.id } });
-    const r = await 作为(x.市场, () => saveFollowUp({ customerId: x.客户.id, type: "PHONE", content: "组员想记一条", status: "已完成", occurredAt: new Date().toISOString() }));
-    expect(r.ok).toBe(false);
-    if (r.ok) return;
-    expect(r.error).not.toContain("不在了");
-    expect(r.error).toContain("只能看");
+    const 待办 = await 作为(x.市场, () => saveFollowUp({ customerId: x.客户.id, type: "TASK", content: "组员想记个待办", status: "待处理", occurredAt: new Date().toISOString() }));
+    expect(待办.ok).toBe(false);
+    if (待办.ok) return;
+    expect(待办.error).not.toContain("不在了");
+    expect(待办.error).toContain("只能看");
     expect(await prisma.followUp.count({ where: { customerId: x.客户.id } })).toBe(0);
+    const r = await 作为(x.市场, () => saveFollowUp({ customerId: x.客户.id, type: "PHONE", content: "组员想记一条", status: "已完成", occurredAt: new Date().toISOString() }));
+    expect(r).toMatchObject({ ok: true });
+    const f = await prisma.followUp.findFirstOrThrow({ where: { customerId: x.客户.id }, include: { projectNode: true } });
+    expect(f.ownerId).toBe(x.市场.id);
+    expect(f.projectNode?.projectId).toBe(x.项目!.id);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: x.项目!.id } })).ownerId).toBe(x.项目!.ownerId);
     const 没了 = await 作为(x.市场, () => saveFollowUp({ customerId: "没有这个客户", type: "PHONE", content: "x", status: "已完成", occurredAt: new Date().toISOString() }));
     expect(!没了.ok && 没了.error).toContain("不在了");
   });
 });
 
 describe("入口", () => {
-  it("新建线索撞号：不新建线索，来源和备注写进现有项目，反馈明确", async () => {
+  // 审核 11-18 权限 P1-9：企业版老线索表入口（saveLead）一进门就拦，撞不撞号都不建、不写现有项目；同号协同由「新建线索」（项目）入口走
+  it("老线索入口（saveLead）企业版一进门就拦：撞号、没撞号都不建线索、不写跟进", async () => {
     const x = await 现场();
-    const r = await 作为(x.市场, () => saveLead({ name: "再录一次", phone: 号码, email: "", contact: "", industry: "", source: "官网表单", status: "待跟进", remark: "官网又来询价", ownerId: "" } as never));
-    expect(r).toMatchObject({ ok: false, 同号协同: true });
-    expect(await prisma.lead.count()).toBe(0);
-    const f = await prisma.followUp.findFirst({ where: { customerId: x.客户.id } });
-    expect(f?.content).toContain("来源：官网表单");
-    expect(f?.content).toContain("官网又来询价");
-    expect(f?.title).toBe("同号再次录入（来源不同）");
-  });
-
-  it("新建线索没撞号：照常建", async () => {
-    await 现场();
+    const 撞 = await 作为(x.市场, () => saveLead({ name: "再录一次", phone: 号码, email: "", contact: "", industry: "", source: "官网表单", status: "待跟进", remark: "官网又来询价", ownerId: "" } as never));
+    expect(撞).toMatchObject({ ok: false, error: expect.stringContaining("新建线索") });
     const 新人 = await 人("mkt2", "小己", "channel_ops");
-    const r = await 作为(新人, () => saveLead({ name: "新来的", phone: "13900139000", email: "", contact: "", industry: "", source: "官网表单", status: "待跟进", remark: "", ownerId: "" } as never));
-    expect(r.ok).toBe(true);
-    expect(await prisma.lead.count()).toBe(1);
+    const 没撞 = await 作为(新人, () => saveLead({ name: "新来的", phone: "13900139000", email: "", contact: "", industry: "", source: "官网表单", status: "待跟进", remark: "", ownerId: "" } as never));
+    expect(没撞).toMatchObject({ ok: false });
+    expect(await prisma.lead.count()).toBe(0);
+    expect(await prisma.followUp.count({ where: { customerId: x.客户.id } })).toBe(0);
   });
 
   const 客户输入 = (号: string, channelId: string | null, 负责人: string) => ({
@@ -540,5 +539,24 @@ describe("撞到待分配项目（X-87，P-挂靠-01）：按没有负责人处�
     expect(r.走 && r.反馈).toContain("小甲");
     expect((await 通知们(甲.id)).filter((n) => n.kind === "撞号")).toHaveLength(1);
     expect((await 通知们(x.市管.id)).filter((n) => n.kind === "撞号")).toHaveLength(0);
+  });
+});
+
+describe("同号再次录入的通知不带号码、不带沟通原文（审核 11-18 P1-2）", () => {
+  it("标题、正文没有号码和录入原文，只说去沟通记录看；客户名就是号码的换成客户编号；沟通记录本身照旧留全文", async () => {
+    const x = await 现场();
+    await prisma.customer.update({ where: { id: x.客户.id }, data: { name: "138 0013 8000", customerNo: 7 } });
+    const r = await 作为(x.市场, () => 同号再次录入(x.市场, 好号(), { 入口: "手工建档", 渠道id: x.渠道新.id, 内容: "客户另一个号 13912345678，聊了报价" }));
+    await 等通知推完();
+    expect(r.走).toBe(true);
+    const n = (await 通知们(x.负责人.id)).find((n) => n.kind === "撞号")!;
+    const 文 = `${n.title}\n${n.body}`;
+    expect(文).not.toMatch(/13800138000|0013|13912345678|聊了报价/);
+    expect(n.title).toBe("小丙 再次录入了同一号码（来源不同）：客户 NO.00007");
+    expect(n.body).toContain("来源：转介绍");
+    expect(n.body).toContain("现有来源：展会");
+    expect(n.body).toContain("录入的内容已写进项目沟通记录");
+    const f = await prisma.followUp.findFirst({ where: { customerId: x.客户.id } });
+    expect(f?.content).toContain("聊了报价");
   });
 });

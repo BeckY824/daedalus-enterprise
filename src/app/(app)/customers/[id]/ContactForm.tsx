@@ -10,9 +10,10 @@ import SaveButton from "@/components/SaveButton";
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import DatePicker from "@/components/BusinessDatePicker";
 import { dayjs } from "@/lib/utils";
-import { 性别们, 爱好上限, 联系人地址上限, 号码上限, 每人最多号码 } from "@/lib/enterprise/customer-v2";
+import { 性别们, 爱好上限, 联系人地址上限, 号码上限, 每人最多号码, 联系人姓名问题, 姓名号码至少一项 } from "@/lib/enterprise/customer-v2";
 import { saveContact, saveUnassignedContact, 联系人号码先查 } from "./actions";
 import { 挂到客户 } from "./contact-link-actions";
+import RescueKey from "../RescueKey";
 import type { 撞到的联系人 } from "@/lib/enterprise/contact-dedupe";
 import type { ContactRow } from "./types";
 import { useBusiness } from "@/lib/business-client";
@@ -21,6 +22,7 @@ import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
 import InlineConfirm from "@/components/InlineConfirm";
 import { 跑出原因, type 做的结果 } from "@/lib/confirm-result";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 /*
   与客户的关系。取值有限却不封闭（教培里有姑姑、哥哥，公司里有「副总」），
@@ -82,7 +84,7 @@ export default function ContactForm({
    * 换一个存法（默认 saveContact）：受限客户详情（只负责项目的人）走 project-only-contact-actions.ts。
    * 给了就不摆「关键联系人」开关、撞号时不摆「挂到本客户」（那边都不收）
    */
-  存法?: (x: Parameters<typeof saveContact>[0]) => Promise<{ ok: true; id: string } | { ok: false; error: string; 撞了?: 撞到的联系人[] }>;
+  存法?: (x: Parameters<typeof saveContact>[0]) => Promise<{ ok: true; id: string } | { ok: false; error: string; 撞了?: 撞到的联系人[]; 回收站?: { 类型: string; 值: string } }>;
 }) {
   const [form] = Form.useForm();
   const b = useBusiness();
@@ -93,7 +95,8 @@ export default function ContactForm({
   const 守 = useFormGuard({
     open,
     form,
-    草稿键: record ? null : `新建联系人:${customerId ?? "挑人"}`,
+    草稿键: record ? `编辑联系人:${record.id}` : `新建联系人:${customerId ?? "挑人"}`,
+    编辑: !!record,
     关: onClose,
     afterOpenChange: 聚焦首项,
     不存: customerId ? [] : ["customerId"],
@@ -131,7 +134,7 @@ export default function ContactForm({
     set存着(true);
     try {
       set就地错(null);
-      const r = await 挂到客户(contactId, customerId).catch(() => ({ ok: false as const, error: "没挂上，请重试" }));
+      const r = await 挂到客户(contactId, customerId).catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "没挂上，请重试") }));
       if (!r.ok) return void set就地错(r.error);
       守.存好了();
       onSaved(contactId);
@@ -152,6 +155,8 @@ export default function ContactForm({
    * 人核对后可以「仍然保存」（同一个号两个人用），或在客户页上直接把那位挂到这位客户上
    */
   const [撞号, set撞号] = useState<撞到的联系人[] | null>(null);
+  /** 号码在回收站里的客户上（审核 11-18 新建入口 P2-6，P-删-08）：拦下，框顶上摆「从回收站捞回」（同建档入口） */
+  const [回收站号, set回收站号] = useState<{ 类型: string; 值: string } | null>(null);
   /** 撞号是失焦先查出来的（还没点保存）：黄条标题换一句；点保存撞了的照旧 */
   const [先查的, set先查的] = useState(false);
   const 查序 = useRef(0);
@@ -163,7 +168,7 @@ export default function ContactForm({
       .map((x) => ({ kind: x.kind!, value: x.value!.trim() }));
     const 序 = ++查序.current;
     if (!们.length) return;
-    const r = await 联系人号码先查(们, record?.id ?? null).catch(() => null);
+    const r = await 联系人号码先查(们, record?.id ?? null, customerId ?? null).catch(() => null);
     if (序 !== 查序.current || !r?.ok) return;
     if (r.撞了.length) { set撞号(r.撞了); set先查的(true); }
   }
@@ -171,7 +176,7 @@ export default function ContactForm({
   const [上次开着, set上次开着] = useState(open);
   if (上次开着 !== open) {
     set上次开着(open);
-    if (open) set撞号(null);
+    if (open) { set撞号(null); set回收站号(null); }
   }
   /** 黄条里「挂到本客户」「仍然保存」没成的原因：就地写在框顶上（不弹顶部提示，原型 g.notice） */
   const [就地错, set就地错] = useState<string | null>(null);
@@ -229,10 +234,11 @@ export default function ContactForm({
           号码们: (号码们 ?? []).filter((x) => x && x.value && x.value.trim()).map((x) => ({ kind: x.kind ?? "", value: x.value ?? "" })),
         }
       : null;
-    const r = await (存法 ?? saveContact)({ id: record?.id, 版本: record?.updatedAt, ...(企业 ? 其余 : v), isPrimary: Boolean(v.isPrimary), customerId: 归属, ...(企业资料 ? { 企业: 企业资料 } : {}), ...(照存 ? { 照存: true } : {}) } as Parameters<typeof saveContact>[0]);
+    const r = await (存法 ?? saveContact)({ id: record?.id, 版本: record?.updatedAt, ...(企业 ? { ...其余, name: typeof 其余.name === "string" ? 其余.name : "" } : v), isPrimary: Boolean(v.isPrimary), customerId: 归属, ...(企业资料 ? { 企业: 企业资料 } : {}), ...(照存 ? { 照存: true } : {}) } as Parameters<typeof saveContact>[0]);
     // 原来不看返回值：联系人刚被别人移出、或电话不收时，弹框卡在那儿什么也不说（排查 D8）
     if (!r.ok) {
       if ("撞了" in r && r.撞了?.length) { set先查的(false); set撞号(r.撞了); return { ok: false, error: "号码撞了，看框顶上" }; }
+      if ("回收站" in r && r.回收站) { set回收站号(r.回收站); return { ok: false, error: "号码在回收站里，看框顶上" }; }
       return { ok: false, error: r.error };
     }
     守.存好了();
@@ -274,18 +280,32 @@ export default function ContactForm({
   const 身 = (
     <>
       {就地错 && <div className="csq-err" role="alert">{就地错}</div>}
+      {回收站号 && (
+        <Alert
+          type="warning"
+          showIcon
+          className="cf-trash-hit"
+          data-testid="contact-trash-hit"
+          message="这个号码在回收站里的客户上，本次没保存"
+          description={<RescueKey 类型={回收站号.类型} 值={回收站号.值} 捞回了={() => {}} />}
+        />
+      )}
       {撞号 && (
         <Alert
           type="warning"
           showIcon
           style={{ marginTop: 8 }}
-          message={先查的 ? "这个号码已经记在别的联系人身上，先核对一下" : "这些号码已经记在别的联系人身上，本次没保存"}
+          message={先查的 ? "这个号码已经记在别的联系人或客户身上，先核对一下" : "这些号码已经记在别的联系人或客户身上，本次没保存"}
           description={
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {撞号.map((x, i) => (
                 <div key={`${x.kind}-${x.value}-${i}`} style={{ overflowWrap: "anywhere" }}>
                   {叫法(x.kind)} {x.value}：
-                  {x.contactId && x.customerId ? (
+                  {x.客户本身 ? (
+                    x.customerId ? (
+                      <Link href={`/customers/${encodeURIComponent(x.customerId)}`} target="_blank">{b.customer}「{x.customerName}」本身的号码</Link>
+                    ) : `${x.同事}名下的一位${b.customer}（不在你的范围，可与他核实）`
+                  ) : x.contactId && x.customerId ? (
                     <>
                       <Link href={`/customers/${encodeURIComponent(x.customerId)}`} target="_blank">
                         {x.name}（{x.customerName}）
@@ -312,7 +332,8 @@ export default function ContactForm({
           }
         />
       )}
-      <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={() => { 守.改了(); 查序.current++; if (撞号) set撞号(null); }}>
+      {守.提示}
+      <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={() => { 守.改了(); 查序.current++; if (撞号) set撞号(null); if (回收站号) set回收站号(null); }}>
         <Row gutter={16}>
           {/* 从联系人列表进来时先选人：联系人挂在某一位学员下面，没有归属的联系人没有意义 */}
           {!customerId && (
@@ -336,7 +357,13 @@ export default function ContactForm({
             </Col>
           )}
           <Col span={12}>
-            <Form.Item name="name" label="姓名" rules={[requiredText("请填写姓名")]}>
+            {/* 企业版姓名选填（11-17 员工反馈）：姓名和联系方式至少一项，空着存空串、显示「—」；别的版本照旧必填 */}
+            <Form.Item
+              name="name"
+              label="姓名"
+              dependencies={企业 ? ["号码们"] : undefined}
+              rules={企业 ? [{ validator: (_: unknown, v: unknown) => (联系人姓名问题(true, v, ((form.getFieldValue("号码们") ?? []) as { value?: string }[]).map((x) => x?.value)) ? Promise.reject(new Error(姓名号码至少一项)) : Promise.resolve()) }] : [requiredText("请填写姓名")]}
+            >
               <Input placeholder="张伟" />
             </Form.Item>
           </Col>
@@ -435,7 +462,7 @@ export default function ContactForm({
       </Form>
     </>
   );
-  const 题 = record ? `编辑联系人 · ${record.name}` : "添加联系人";
+  const 题 = record ? `编辑联系人 · ${record.name || "—"}` : "添加联系人";
 
   return (
     <Modal

@@ -12,6 +12,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
+import { 补全动作桩 } from "./helpers/action-stubs";
 
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "ai-status-boundaries", setup(b) {
@@ -19,6 +20,7 @@ const plugin: Plugin = { name: "ai-status-boundaries", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
   stub(/^next\/link$/, "export default function L({children,...p}){return <a {...p}>{children}</a>}");
   stub(/^next\/dynamic$/, "export default ()=>()=>null;");
+  stub(/customers\/\[id\]\/actions$/, 补全动作桩("src/app/(app)/customers/[id]/actions.ts", "export const 沟通可选项目=async()=>(window.__可选??{ok:true,项目们:null,能建项目:true});"));
   stub(/dashboard\/apply$/, "export const applyProposal=async p=>{if(window.__抛===p.id)throw new Error('断网');(window.__交||=[]).push(p);return{ok:true,撤销:{kind:'add_followup',customerId:'c',id:p.id}}};export const undoProposal=async u=>{if(window.__抛===u.id)throw new Error('断网');(window.__撤||=[]).push(u.id);return{ok:true}};");
   stub(/card-scan\/originals$/, "export const 取走名片原图=()=>null,记下刚建的=()=>{},忘掉刚建的=()=>{};");
   stub(/attachment-upload$/, "export const 传附件=async()=>({ok:true});");
@@ -145,7 +147,7 @@ const 窗 = (page: Page) => ({
   抛: (id: string | null) => page.evaluate((id) => { (window as unknown as 窗).__抛 = id; }, id),
 });
 const 企销售 = { 成员: [{ value: "u1", label: "乙" }], 分配方式们: [{ i: 1, 名: "自动分配" }], 默认分配方式: 1, 是销售: true };
-const 线索 = (id: string) => ({ id, kind: "add_lead", customerId: "", customerName: "", reason: "x", name: `某公司${id}`, contact: "周经理", phone: "13800000000", source: "展会", status: "待跟进", remark: "", 业务线: "内贸", 节点: undefined });
+const 线索 = (id: string) => ({ id, kind: "add_lead", customerId: "", customerName: "", reason: "x", name: `某公司${id}`, contact: "周经理", phone: "13812000000", source: "展会", status: "待跟进", remark: "", 业务线: "内贸", 节点: undefined });
 
 it("≥2 张卡合并确认：只写勾上的；没勾的仍待确认、还能再确认；撤销只撤已写入的", async () => {
   const { page, errors } = await open();

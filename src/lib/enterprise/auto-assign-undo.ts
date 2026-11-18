@@ -6,6 +6,8 @@
  *   - 那条「再不跟进就回公海」的提醒、卡点认领跟着换回原负责人
  *   - 被撤的转让痕、这次的分配记录（占本月额度的那一行）删掉，不另记一条（操作日志由调用方记）
  *   - 市场第一次分给销售（X-18）连客户一起转的：客户负责人还原、一起带过去的计划 / 待办 / 项目 / 待分配状态按 带过来 还
+ *   - 市场分给销售推进线索验证的（market-assign-node.ts）：这条和一起带过去的推回潜客培育、删掉那行节点变更
+ *   - 分配方式从「暂不分配」改成自动分配的（这条、一起带过去的，审核 11-18 第 11 项）：还成暂不分配
  *
  * 只认自己刚才那一下：项目最近一条留痕得是 操作人 在撤销时限内把它从 原 转给现负责人的 transfer，项目还在线索阶段、没结局、没进公海；
  * 原负责人得还在职。前端带回来的 还原单 不可信：形状在这里规整，值全靠留痕和库里的现状核对。
@@ -19,6 +21,8 @@ import { 将回收提醒跟着换人 } from "@/lib/project/db";
 import { 卡点随项目换人, 转让接手理由 } from "@/lib/project/blocker";
 import { 带过来对不上, 还项目, type 带走的 } from "@/lib/carry-over-db";
 import { 还待分配状态 } from "@/lib/enterprise/market-transfer";
+import { 市场分配进验证理由, 推回潜客培育 } from "@/lib/enterprise/market-assign-node";
+import { 分配方式叫法 } from "@/lib/enterprise/dict";
 
 /** 自动分配成了之后回给界面的「还原单」：撤销时原样交回来 */
 export type 自动分配还原 = {
@@ -28,6 +32,8 @@ export type 自动分配还原 = {
   待分配: string | null;
   /** 分之前在公海里：入池时刻（ISO）；不在 = null */
   公海: string | null;
+  /** 分之前这条的分配方式是「暂不分配」、这一下改成了自动分配（审核 11-18 第 11 项）：撤销还成暂不分配 */
+  暂不分配?: boolean;
   /** 市场转销售连客户一起转了：客户、原客户负责人、一起带过去的 */
   客户?: { customerId: string; 原: string; 带过来: 带走的 };
 };
@@ -39,7 +45,7 @@ const 串或空 = (x: unknown): string | null => (typeof x === "string" && x ? x
 export function 规整还原单(x: unknown): 自动分配还原 | null {
   if (!x || typeof x !== "object") return null;
   const o = x as Record<string, unknown>;
-  const 单: 自动分配还原 = { 原: 串或空(o.原), 待分配: 串或空(o.待分配), 公海: 串或空(o.公海) };
+  const 单: 自动分配还原 = { 原: 串或空(o.原), 待分配: 串或空(o.待分配), 公海: 串或空(o.公海), ...(o.暂不分配 === true ? { 暂不分配: true } : {}) };
   const c = o.客户 as Record<string, unknown> | undefined;
   if (c && typeof c === "object" && typeof c.customerId === "string" && typeof c.原 === "string") {
     const 带 = (c.带过来 ?? {}) as Record<string, unknown>;
@@ -48,7 +54,7 @@ export function 规整还原单(x: unknown): 自动分配还原 | null {
       : [];
     单.客户 = {
       customerId: c.customerId, 原: c.原,
-      带过来: { 计划: ids(带.计划), 待办: ids(带.待办), 商机: ids(带.商机), 项目: ids(带.项目), 公海项目: ids(带.公海项目), 清待分配: 清, 补方式: ids(带.补方式) },
+      带过来: { 计划: ids(带.计划), 待办: ids(带.待办), 商机: ids(带.商机), 项目: ids(带.项目), 公海项目: ids(带.公海项目), 清待分配: 清, 补方式: ids(带.补方式), 转方式: ids(带.转方式), 补分配: ids(带.补分配), 推节点: ids(带.推节点) },
     };
   }
   return 单;
@@ -73,8 +79,9 @@ export async function 撤回自动分配(
   if (!p) return 撤不了("这条新线索已经不在了");
   if (p.phase !== "线索" || p.result || p.pooledAt || p.awaitAssignAt) return 撤不了("这条新线索分完之后又被推进、放回公海或改过");
   const 现 = p.ownerId;
+  // 分完紧跟着那行「市场分配进线索验证」不算「分完之后又动过」：跳过它找转让痕，下面推回时再删（reason 带 not null：空理由的节点变更照算，NOT 里遇 NULL 不丢行）
   const 痕 = await tx.projectNodeLog.findFirst({
-    where: { projectId },
+    where: { projectId, NOT: { kind: "node", userId: 操作人, reason: { not: null, equals: 市场分配进验证理由 } } },
     orderBy: [{ at: "desc" }, { id: "desc" }],
     select: { id: true, kind: true, userId: true, fromOwnerId: true, toOwnerId: true, at: true },
   });
@@ -113,6 +120,10 @@ export async function 撤回自动分配(
     data: { ...还负责人(原), awaitAssignAt: 待分配时刻 && !Number.isNaN(待分配时刻.getTime()) ? 待分配时刻 : null },
   });
   if (改.count !== 1) throw new 对不上("这条新线索刚又被改过");
+  // 这一下把「暂不分配」改成了自动分配的：还成暂不分配（还原单不可信：只认现在还是这次写的自动分配叫法的）
+  if (单.暂不分配) await tx.project.updateMany({ where: { id: p.id, ownerId: 原, assignMode: 方式 }, data: { assignMode: await 分配方式叫法(3, tx) } });
+  // 这一下推进线索验证的：推回潜客培育（只认转让痕之后、这位操作人推的那行；负责人已还给 原）
+  await 推回潜客培育(tx, [p.id], 原, { 不早于: 痕.at, 操作人 });
   await tx.projectNodeLog.delete({ where: { id: 痕.id } });
   // 这次的分配记录（占本月额度）删掉：撤了 = 没分过
   const 记 = await tx.entLeadAssign.findFirst({ where: { projectId, toUserId: 现, byUserId: 操作人, fromUserId: 原 }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true } });

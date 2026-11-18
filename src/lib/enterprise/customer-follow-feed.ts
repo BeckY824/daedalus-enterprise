@@ -14,8 +14,10 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
-import { 露客户, 看得到的客户, 能管项目 } from "@/lib/project/db";
+import { 露客户, 看得到的客户 } from "@/lib/project/db";
+import { 能往项目记沟通 } from "@/lib/project/follow-needs-project";
 import { 权限组织 } from "@/lib/enterprise/org";
+import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 
 /** 判客户看不看得到用哪个：服务端动作（翻页）现读 看得到的客户；客户页渲染传请求内缓存的 页面看得到的客户（lib/project/visible-customers.ts） */
 export type 可见法 = (ids: string[]) => Promise<Set<string>>;
@@ -28,7 +30,7 @@ export const 汇总每页 = 50;
 /** 一位客户最多汇总多少个项目（查询里 in 的上限；正常远到不了） */
 const 项目上限 = 500;
 
-type 项目行 = { id: string; name: string; customerId: string; ownerId: string; pooledAt: Date | null; result: string | null; nextStepAt: Date | null; nextStepText: string | null; updatedAt: Date };
+type 项目行 = { id: string; name: string; customerId: string; ownerId: string; pooledAt: Date | null; result: string | null; nextStepAt: Date | null; nextStepText: string | null; updatedAt: Date; members: { inviteStatus: string }[] };
 
 /**
  * 这位客户、当前这位看得到沟通内容的项目（主客户是它的 + 关联进来的；连挂过 = 再加历史上挂过这位跟进的）。
@@ -47,7 +49,7 @@ async function 看得到的项目们(me: { id: string; role?: string }, customer
   if (ids.length === 0) return [];
   const ps = await prisma.project.findMany({
     where: { id: { in: ids } },
-    select: { id: true, name: true, customerId: true, ownerId: true, pooledAt: true, result: true, nextStepAt: true, nextStepText: true, updatedAt: true },
+    select: { id: true, name: true, customerId: true, ownerId: true, pooledAt: true, result: true, nextStepAt: true, nextStepText: true, updatedAt: true, members: { where: { userId: me.id }, select: { inviteStatus: true } } },
     orderBy: { updatedAt: "desc" },
   });
   // 公海里我是历史负责人的项目：沟通入口、时间线都不出（C-01，lib/project/pool-owner.ts；总管理 / 管理员照出）
@@ -75,7 +77,7 @@ export type 跟进去处 = {
   下一步: string | null;
   /** 项目下一步做什么（10-29 起记沟通时自己写的一句话）；老数据只有时间、这里是空 */
   下一步文字: string | null;
-  /** 我能往这个项目记沟通（X-143：和项目详情记沟通同一条「能管项目」；组员、只看的上级是 false）。客户页「关联项目」下拉只列这些 */
+  /** 我能往这个项目记沟通（和项目详情记沟通同一条：负责人或已进组的组员，11-17；只看的上级是 false）。客户页「关联项目」下拉只列这些 */
   能记: boolean;
 };
 export async function 跟进去处们(me: { id: string; role?: string }, customerId: string, 可见: 可见法 = 看得到的客户): Promise<跟进去处[]> {
@@ -92,7 +94,7 @@ function 排去处(me: { id: string; role?: string }, 项目们: { 行: 项目�
     说明: 行.result ? ("已结束" as const) : 行.pooledAt ? ("在公海" as const) : null,
     下一步: 行.nextStepAt?.toISOString() ?? null,
     下一步文字: 行.nextStepText,
-    能记: 能管项目({ id: me.id, role: me.role ?? "" }, 行, org),
+    能记: 能往项目记沟通({ id: me.id, role: me.role ?? "" }, 行, org, 行.members[0]?.inviteStatus),
   }));
   return [...行们.filter((x) => !x.结束), ...行们.filter((x) => x.结束)];
 }
@@ -191,6 +193,21 @@ export async function 列表最近一句们(me: { id: string; role?: string }, �
     if (句) 结果[cid] = 句;
   }
   return 结果;
+}
+
+/**
+ * 这位客户名下的跟进、当前这位能看的那些（审核 11-18 权限 P1-5，P-看-12）：给按客户直接读跟进的老接口（翻页、重读一条、挑客户近况、临战简报）用，
+ * 同 汇总一页 这位客户那一句——不挂项目的 + 挂在我看得到的项目上的 + 挂在这位名下删了的项目上的。
+ * 不是企业版只用项目 = null（不滤，照原样）
+ */
+export async function 客户跟进可见条件(me: { id: string; role?: string }, customerId: string, 可见: 可见法 = 看得到的客户): Promise<Prisma.FollowUpWhereInput | null> {
+  if (!(await 企业版只用项目())) return null;
+  const [项目们, 删了的] = await Promise.all([
+    汇总的项目(me, customerId, 可见),
+    看全部(() => 看已删(() => prisma.project.findMany({ where: { customerId, deletedAt: { not: null } }, select: { id: true }, take: 项目上限 }))),
+  ]);
+  const 这位的项目 = [...项目们.keys(), ...删了的.map((p) => p.id)];
+  return 这位的项目.length ? { OR: [{ projectNode: null }, { projectNode: { projectId: { in: 这位的项目 } } }] } : { projectNode: null };
 }
 
 async function 汇总一页(customerId: string, 项目们: Map<string, string>, before?: 沟通游标): Promise<{ rows: FollowUpRow[]; hasMore: boolean }> {

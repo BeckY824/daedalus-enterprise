@@ -75,6 +75,8 @@ beforeEach(async () => {
   await prisma.entMember.create({ data: { userId: 乙, bizRole: "sales", line: "内贸" } });
   mocks.user = { ...mocks.user, id: 乙 };
   客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13800000001", salesOwnerId: 乙, createdAt: 那天(400) } })).id;
+  // 11-17 沟通必须挂项目：客户页记的沟通要有一个在推项目（一个就自动挂它），和客户一样是 400 天前建的
+  await prisma.project.create({ data: { name: "项目", customerId: 客户, ownerId: 乙, creatorId: 乙, phase: "商机", node: "明确需求", createdAt: 那天(400), updatedAt: 那天(400) } });
   invalidateSettingsCache();
 });
 afterEach(async () => {

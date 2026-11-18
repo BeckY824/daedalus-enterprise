@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { 客户关键词条件 } from "@/lib/search-keyword";
 import { scheduleValue, scheduleOrder, earliestScheduled } from "@/lib/schedule-date";
 import { requireUser } from "@/lib/auth";
+import { 客户跟进可见条件 } from "@/lib/enterprise/customer-follow-feed";
 import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 
 /**
@@ -61,13 +62,15 @@ export type 客户近况 = {
 
 /** 挑中一位之后取回来的东西：框里那行淡字，和跟进表单要的联系人、商机 */
 export async function 取客户近况(id: string): Promise<客户近况 | null> {
-  await requireUser();
+  const me = await requireUser();
+  // 企业版：上次跟进只取我看得到的项目上的（审核 11-18 权限 P1-5）
+  const 可见 = typeof id === "string" && id ? await 客户跟进可见条件(me, id) : null;
   const c = await prisma.customer.findUnique({
     where: { id },
     select: {
       id: true,
       name: true,
-      followUps: { orderBy: { occurredAt: "desc" }, take: 1, select: { occurredAt: true, type: true, method: true, title: true, content: true } },
+      followUps: { ...(可见 ? { where: 可见 } : {}), orderBy: { occurredAt: "desc" }, take: 1, select: { occurredAt: true, type: true, method: true, title: true, content: true } },
       plans: { where: { done: false }, orderBy: [{ plannedAt: "asc" }, { id: "asc" }], select: { id: true, subject: true, plannedAt: true, plannedOn: true, method: true } },
       _count: { select: { plans: { where: { done: false } } } },
       contacts: { orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }], select: { id: true, name: true, position: true } },

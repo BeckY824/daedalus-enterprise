@@ -107,6 +107,22 @@ export function 渠道显示名(全称: string | null | undefined): string {
   return !子 || 子 === 主 ? 主 : `${主}|${子}`;
 }
 
+/**
+ * 渠道「启用」的派生口径（P-渠道-13，11-17 复盘第 7 类）：自己开着、且挂的主渠道没停用；没挂主渠道的只看自己。
+ * 列表、详情、状态筛选、来源下拉、服务端校验（新数据渠道不行、存客户 / 项目来源）都调这一个，不各算各的。
+ * 两种行都认：库里读出来带 main（{ active }）的，和渠道页上已经算好「主停用」标的（ChannelsView 的行）。
+ * 库里查询的同口径条件是 channel-main.ts 的 启用渠道条件（tests/ent-channel-derived.test.ts 对拍）
+ */
+export type 启用依据 = { active: boolean; main?: { active: boolean } | null; 主停用?: boolean };
+export function 渠道启用(c: 启用依据): boolean {
+  return c.active && c.main?.active !== false && !c.主停用;
+}
+
+/** 详情里「渠道状态」那一格：停用写清是自己停的还是主渠道停的 */
+export function 渠道状态文字(c: 启用依据): "启用" | "停用" | "停用（主渠道已停用）" {
+  return 渠道启用(c) ? "启用" : c.active ? "停用（主渠道已停用）" : "停用";
+}
+
 /** 渠道页「按主渠道」看时的一行（P-渠道-01 附.5 统计按两层） */
 export type 主渠道汇总 = {
   /** 行键：挂了主渠道的是主渠道 id，还没补挂的老渠道按主渠道名归一组 */

@@ -14,6 +14,7 @@
  * 业务线（A1，11-01 16:1x）：内贸 / 外贸 / 暂不分配三选一，带了分配方式（企业版新弹窗）就必填；没传分配方式的老调用不要求
  * 项目所在地（11-02）：选填，四格 + 详细地址，规整同编辑项目；弹窗按所在地给业务线建议，人确认（提交即确认），服务端不按地址改线
  */
+import { 签首条附件票 } from "@/lib/enterprise/first-follow-ticket";
 import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 不能当负责人 } from "@/lib/owners";
@@ -27,7 +28,8 @@ import { 权限组织 } from "@/lib/enterprise/org";
 import { 公海客户先领取话 } from "@/lib/enterprise/pool-rules";
 import { 没设业务角色, 只读角色, 只读话of } from "@/lib/enterprise/permissions";
 import { 认跟进方式 } from "@/lib/enterprise/dict";
-import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
+import { 规整项目, 规整沟通, 项目来源默认, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
+import { 新数据渠道不行 } from "@/lib/enterprise/channel-main";
 import { 企业版字典, 节点序号 } from "@/lib/project/nodes";
 import { 有效线索节点, 建档不能过线索验证, 记沟通标记 } from "@/lib/project/stage-gates";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
@@ -37,14 +39,21 @@ import { 持有上限起点, 写前核上限, 整批或不做 } from "@/lib/proj
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
-import { 定分配方式, 建好再分, 新建分配方式数据 } from "@/lib/project/after-create-assign";
+import { 定分配方式, 建好再分, 新建分配方式数据, 认新建定时 } from "@/lib/project/after-create-assign";
+import { 指定问题 } from "@/lib/enterprise/assign-eta";
 import { 项目分给你通知, 同事待分配随客户通知, type 留下的活 } from "@/lib/enterprise/notice-sources";
+import { 记新建指定分配 } from "@/lib/enterprise/direct-assign";
 import { 客户在市场手里, 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
+import { 算市场建给销售, 市场分配进线索验证 } from "@/lib/enterprise/market-assign-node";
 import { 分配带走的同事项目, 数进手的持有项目 } from "@/lib/carry-over-db";
 import type { 转走项目预览 } from "@/lib/carry-over";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 认业务线, 业务线不认得, 业务线必填, 是项目线, type 项目线 } from "@/lib/enterprise/assign-line";
+import { 区域线of, 按区域分配of, 默认分配方向, 认分配方向, 电话定线, type 分配方向 } from "@/lib/enterprise/customer-region";
+import { 客户号们, 本人线of } from "@/lib/enterprise/assign-direction-db";
+import type { 线 } from "@/lib/enterprise/lead-assign";
 import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
+import { 规整指定回复 } from "@/lib/project/time-fields";
 
 export type 给客户建项目输入 = {
   customerId: string;
@@ -52,9 +61,11 @@ export type 给客户建项目输入 = {
   跟进: 向导跟进;
   /** 项目挂哪位联系人；不给 = 这位客户的主要联系人（没有就不挂） */
   联系人Id?: string | null;
+  /** 弹窗里给首条沟通挑了截图 / 附件（11-18）：交了 true 才回附件票，同 建档向导 */
+  要传附件?: boolean;
 };
 
-type 结果 = { ok: true; projectId: string; 提示?: string; 转走?: boolean; 看不到客户了?: boolean } | { ok: false; error: string };
+type 结果 = { ok: true; projectId: string; 提示?: string; 转走?: boolean; 看不到客户了?: boolean; 附件票?: { followUpId: string; 票: string } } | { ok: false; error: string };
 
 /** 跟进节点（和 规整向导 企业版那段同一套口径；11-05 去掉明确回复） */
 function 认节点和回复(f: 向导跟进): { 节点: string } | { error: string } {
@@ -64,16 +75,27 @@ function 认节点和回复(f: 向导跟进): { 节点: string } | { error: stri
   return { 节点 };
 }
 
-export type 新项目分配数据 = Awaited<ReturnType<typeof 新建分配方式数据>> & { 客户业务线: 项目线 | null };
+/** 客户区域线：这位客户的地址认出的线（大陆 内贸 / 非大陆 外贸，没填 = null）；市场成员选自动分配时界面只读显示，项目所在地另填了界面再看 */
+export type 新项目分配数据 = Awaited<ReturnType<typeof 新建分配方式数据>> & { 客户业务线: 项目线 | null; 客户区域线: 线 | null; 客户有地址: boolean;
+  /** 这位客户的号按电话认出的线（11-18 分配方向第二步）；认不出 = null */
+  客户电话线: 线 | null;
+  /** 客户的来源渠道：新项目的项目来源默认带它，建时可另选（P-删-03，审核 11-18 P1-1） */
+  客户渠道: string | null };
 
 /** 客户页「新增项目」弹窗打开时取：能用的分配方式、按业务角色的默认值、是不是销售（A6 / A9），业务线默认带客户的（A1）。看不到的客户 / 没开 = null */
 export async function 新项目分配数据(customerId: string): Promise<新项目分配数据 | null> {
   try {
     const me = await requireUser();
     if (!企业版() || (await getBusiness()).projectMode !== true) return null;
-    const 客户 = await prisma.customer.findUnique({ where: { id: String(customerId ?? "") }, select: { bizLine: true } });
+    const 客户 = await prisma.customer.findUnique({ where: { id: String(customerId ?? "") }, select: { bizLine: true, addrCountry: true, addrProvince: true, addrCity: true, addrDistrict: true, channelId: true } });
     if (!客户) return null;
-    return { ...(await 新建分配方式数据(me)), 客户业务线: 是项目线(客户.bizLine) ? 客户.bizLine : null };
+    const 区域线 = 区域线of(客户);
+    return {
+      ...(await 新建分配方式数据(me)), 客户业务线: 是项目线(客户.bizLine) ? 客户.bizLine : null,
+      客户区域线: 区域线, 客户有地址: !!(客户.addrCountry || 客户.addrProvince || 客户.addrCity || 客户.addrDistrict),
+      客户电话线: 电话定线(await 客户号们(String(customerId)), { 国家: 客户.addrCountry }),
+      客户渠道: 客户.channelId ?? null,
+    };
   } catch {
     return null;
   }
@@ -95,8 +117,8 @@ export async function 建项目带走的项目(customerId: string, 项目: { 分
     // 没带分配方式、负责人又不是自己 = 指定给别人（同 给客户建项目）
     const 分配 = await 定分配方式(me, { 分配方式: 项目.分配方式 ?? 0, ownerId: 接手人 });
     if ("error" in 分配) return 不弹;
-    // 自动分配还没挑人（挑的都是销售）；业务线暂不分配的不自动分（建好再分）
-    const 自动 = 分配.i === 1 && 项目.业务线 !== "暂不分配";
+    // 自动分配还没挑人（挑的都是销售）；业务线暂不分配的不自动分（建好再分）；市场成员按客户区域定，不看业务线（P-转-26）
+    const 自动 = 分配.i === 1 && (项目.业务线 !== "暂不分配" || 按区域分配of(org, me.id));
     const 指定给别人 = 分配.i === 0 && !!接手人 && 接手人 !== me.id;
     if (!自动 && !指定给别人) return 不弹;
     return await 看全部(async () => {
@@ -121,7 +143,7 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     }
     const customerId = 输入.customerId;
     // 限定层：看不到的客户查不到；同事的 / 虚线下属的客户只读，不给建
-    const 客户 = await prisma.customer.findUnique({ where: { id: customerId }, select: { name: true } });
+    const 客户 = await prisma.customer.findUnique({ where: { id: customerId }, select: { name: true, channelId: true } });
     if (!客户) return { ok: false, error: "这位客户已经不在了（或你看不到），刷新看看" };
     if (await 同事的客户(defaultClient, customerId)) return { ok: false, error: await 只读话(defaultClient) };
     // 11-05：公海里的客户不能直接建项目，先领取（建了项目客户还挂在公海、负责人还是空，见 V3.5.1 P-公海-08）
@@ -140,18 +162,53 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
       if ("error" in 指定) return { ok: false, error: 指定.error };
       指定分配名 = 指定.名;
     }
-    // 指定分配以外：先建在我名下，建好再按分配方式走
-    const 项目输入 = !分配 || 分配.i === 0 ? 输入.项目 : { ...输入.项目, ownerId: me.id };
+    // 指定分配时间（11-17 PR3）：选了「指定时间」= 先建在我名下待分配（定时），到点再分
+    const 定时 = 分配 ? 认新建定时(分配, 输入.项目.定时分配, 输入.项目.ownerId) : null;
+    if (定时 && "error" in 定时) return { ok: false, error: 定时.error };
+    if (定时?.接手人) {
+      const 接 = await prisma.user.findUnique({ where: { id: 定时.接手人 }, select: { active: true } });
+      if (!接?.active) return { ok: false, error: "项目负责人不存在或已停用，请选一位在职成员" };
+      const 问题 = (await 不能当负责人(定时.接手人)) ?? (await 指定问题(org, 定时.接手人));
+      if (问题) return { ok: false, error: 问题 };
+      指定分配名 = null;
+    }
+    // 指定分配以外（和定时的指定分配）：先建在我名下，建好再按分配方式走
+    const 项目输入 = !分配 || (分配.i === 0 && !定时) ? 输入.项目 : { ...输入.项目, ownerId: me.id };
     if (!项目输入.ownerId) return { ok: false, error: "请选项目负责人" };
     const 项目 = 规整项目(项目输入, me.id);
     if ("error" in 项目) return { ok: false, error: 项目.error };
-    // 业务线：企业版新弹窗（带了分配方式）必填三选一
-    const 业务线 = 认业务线(输入.项目.业务线);
-    if (业务线 === undefined) return { ok: false, error: 业务线不认得 };
-    if (分配 && !业务线) return { ok: false, error: 业务线必填 };
+    // 项目来源（P-删-03「新建项目默认带客户的来源，建时可选、建完锁」，审核 11-18 P1-1）：另选了就用选的（得是还启用着、不是历史渠道的，同建档向导），
+    // 没选跟客户来源
+    const 项目来源 = 项目来源默认(输入.项目.channelId, 客户.channelId);
+    if (项目来源 && 项目来源 !== 客户.channelId) {
+      const 不行 = await 新数据渠道不行(项目来源);
+      if (不行) return { ok: false, error: 不行 === "停用" ? "项目来源这个渠道不存在或已停用，换一个" : 不行 };
+    }
     // 项目所在地（11-02，选填）：和编辑项目同一套规整；没填五格都是 null
     const 地 = 新项目所在地(输入.项目.所在地);
     if (!地.ok) return { ok: false, error: 地.error };
+    // 指定回复时间（11-17，选填）：和建档向导同一份规整（lib/project/time-fields.ts）
+    const 回复 = 规整指定回复(输入.项目.指定回复开始, 输入.项目.指定回复结束);
+    if (!回复.ok) return { ok: false, error: 回复.error };
+    // 业务线：企业版新弹窗（带了分配方式）必填三选一。
+    // 市场成员（按岗位）选自动分配（P-转-26，用户 11-17）：不用选、交了也不认，按客户区域定（客户地址空看项目所在地）；都空 = 项目不记线，自动分配两条线都算
+    let 业务线: 项目线 | null | undefined;
+    /** 市场成员自动分配的分配方向（11-18）：算一次，记业务线、建好再分 都用这一个（审核 11-18 P2-4）；手动改的另存 assignDir（P0-1） */
+    let 建档方向: 分配方向 | undefined;
+    let 手选方向: 线 | undefined;
+    if (分配?.i === 1 && 按区域分配of(org, me.id)) {
+      // 分配方向（11-18）：弹窗里改过按改的（只认内贸 / 外贸）；没改按 客户区域 → 项目所在地 → 客户的号 → 本人事业部
+      const 向 = 认分配方向(输入.项目.分配方向);
+      if (!向.ok) return { ok: false, error: 向.error };
+      手选方向 = 向.线;
+      const 址 = await prisma.customer.findUnique({ where: { id: customerId }, select: { addrCountry: true, addrProvince: true, addrCity: true, addrDistrict: true } });
+      建档方向 = 向.线 ? { 线: 向.线, 来源: "手动" } : 默认分配方向({ 客户: 址, 项目: 地.值, 号们: await 客户号们(customerId), 本人线: await 本人线of(org, me.id) });
+      业务线 = 建档方向.线;
+    } else {
+      业务线 = 认业务线(输入.项目.业务线);
+      if (业务线 === undefined) return { ok: false, error: 业务线不认得 };
+      if (分配 && !业务线) return { ok: false, error: 业务线必填 };
+    }
     const 规则 = await 生效组织规则();
     const 认 = await 认跟进方式(输入.跟进);
     if ("error" in 认) return { ok: false, error: 认.error };
@@ -166,6 +223,11 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     if (不行) return { ok: false, error: 不行 };
     // 指定给别人，客户在市场手里、接手的是销售：算转客户（X-18，和自动分配同一条）
     const 指定给别人 = 指定分配名 !== null && 项目.ownerId !== me.id;
+    // 直接指定给别人：和建档向导、新线索列表同一条（11-18 第 8 题 B，审核追加）——只给参与状态正常的销售 / 销售管理
+    if (指定给别人) {
+      const 问题 = await 指定问题(org, 项目.ownerId);
+      if (问题) return { ok: false, error: 问题 };
+    }
     const 读客户 = (db: Parameters<typeof 转客户给销售>[0]) => 看全部(() => db.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } }));
     const 市场转客户 = 指定给别人 && 算市场转客户(org, await 读客户(prisma), 项目.ownerId);
 
@@ -191,8 +253,10 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
       }
       const p = await tx.project.create({
         data: {
-          ...项目, ...(分配 ? { assignMode: 分配.名 } : {}), ...(业务线 ? { bizLine: 业务线 } : {}), ...地.值, customerId, contactId: 联系人?.id ?? null, creatorId: me.id, phase: "线索", node: 落.节点,
-          nextStepAt: 跟进.nextStepAt, nextStepText: 跟进.nextStepText, ...新项目默认值(true),
+          ...项目, ...(业务线 ? { bizLine: 业务线 } : {}), ...(手选方向 ? { assignDir: 手选方向 } : {}), ...地.值, ...回复.值, customerId, contactId: 联系人?.id ?? null, creatorId: me.id, phase: "线索", node: 落.节点,
+          nextStepAt: 跟进.nextStepAt, nextStepText: 跟进.nextStepText,
+          // 分配方式：选了的那一项；没选、指定给别人的记「指定分配」。项目来源：另选的，没选带客户来源（P-删-03 建时可选，审核 11-18 P1-1）
+          ...新项目默认值(true, { 分配方式: 分配?.名 ?? 指定分配名, 项目来源 }),
         },
       });
       await tx.projectNodeLog.create({ data: { projectId: p.id, userId: me.id, toPhase: "线索", toNode: 落.节点 } });
@@ -211,12 +275,14 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
         ? await 看全部(() => 转客户给销售(tx, customerId, 现客户.salesOwnerId, 项目.ownerId, me.id, 指定分配名!))
         : undefined;
       const 留下: 留下的活 | undefined = 转?.留下;
+      // 市场指定给销售：刚建的项目选在潜客培育的进线索验证（审核 11-18，market-assign-node.ts）
+      if (指定给别人 && 算市场建给销售(org, me.id, 项目.ownerId)) await 市场分配进线索验证(tx, [p.id], 项目.ownerId, me.id);
       // 企业版客户状态跟着项目算：多了一个项目（没项目的客户从空变潜在）
       await 看全部(() => 跟着项目重算(tx, 状态开, [customerId]));
-      return { projectId: p.id, 留下, 同事待分配: 转?.同事待分配 ?? [] };
+      return { projectId: p.id, followUpId: f.id, 留下, 同事待分配: 转?.同事待分配 ?? [] };
     }));
     if (!建.ok) return { ok: false, error: 建.超 };
-    const { projectId, 留下, 同事待分配 } = 建.值;
+    const { projectId, followUpId, 留下, 同事待分配 } = 建.值;
 
     await recordAudit({
       user: me, action: "create", entity: "Project", entityId: projectId,
@@ -231,14 +297,18 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     revalidatePath("/projects");
     revalidatePath(`/projects/${projectId}`);
     revalidatePath(`/customers/${customerId}`);
-    const 分了 = 分配 ? await 建好再分(me, 分配, projectId, 项目.name, 业务线) : null;
+    const 分了 = 分配 ? await 建好再分(me, 分配, projectId, 项目.name, 业务线, 定时, 建档方向) : null;
     // 自动 / 公海 / 暂不分配 建好再分 自己管（返回对象）；指定别人走这里，自己留着函数里不发
     if (!分了) await 项目分给你通知(me, 项目.ownerId, projectId, 项目.name, customerId, 留下);
+    // 市场成员新建项目当场指定给销售 = 指定分配，记进分配数（11-18，direct-assign.ts）；建好再分 那几种走分配线索自己记
+    if (!分了 && 项目.ownerId !== me.id) await 记新建指定分配(me, projectId);
     if (同事待分配.length) await 同事待分配随客户通知(me.id, 项目.ownerId, 同事待分配);
     const 去向 = { ...(分了 ?? {}), ...(留下 ? { 提示: `已指派给 ${负责人.name}`, 转走: true } : {}) };
     // 分走之后这位客户我可能看不到了（市场转给销售）：弹窗据此离开客户页，留着刷新就是 404
     const 还看得到 = !去向.转走 || !!(await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } }));
-    return { ok: true, projectId, ...去向, ...(还看得到 ? {} : { 看不到客户了: true }) };
+    // 首条沟通的截图 / 附件（11-18）：同 建档向导，建好这一刻签票给录入人
+    const 附件票 = 输入.要传附件 === true ? { followUpId, 票: await 签首条附件票(me.id, followUpId) } : null;
+    return { ok: true, projectId, ...去向, ...(还看得到 ? {} : { 看不到客户了: true }), ...(附件票 ? { 附件票 } : {}) };
   } catch (e) {
     return 不在了(e);
   }

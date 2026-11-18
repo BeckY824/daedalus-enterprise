@@ -1,7 +1,7 @@
 "use client";
 
 import { 登记页面行 } from "@/lib/page-rows";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
 import { Table, Button, Dropdown, Checkbox, Grid } from "antd";
@@ -83,7 +83,9 @@ type Props<T> = {
    * 不给 = 在浏览器里分页（行已经一次全拿下来了，多数列表页是这样）。
    * 给了 = 服务端分页，由调用方去翻。false = 不分页。
    */
-  分页?: { 当前页: number; 每页: number; 总数: number; 翻页: (页: number, 每页: number) => void } | false;
+  分页?: { 当前页: number; 每页: number; 总数: number; 翻页: (页: number, 每页: number) => void;
+    /** 一行不一定是同一种东西时写清单位（审核 11-18 统计 P2-2，公海页：客户行、线索公海项目行）：给了就替换「共 N 条」里的「条」那句，数照旧滚 */
+    单位?: (总数: ReactNode) => ReactNode } | false;
   排序?: (key: string, order: SortOrder) => void;
   /**
    * 这一页只取了前 N 条时，库里到底有多少。
@@ -123,6 +125,9 @@ type Props<T> = {
   /** 可展开的行（antd expandable 原样传）：公海客户池一位客户多个项目，展开逐个领（11-11）。行上别用 children 字段，antd 会当成树 */
   展开?: TableProps<T>["expandable"];
 };
+
+/** 浏览器里分页时每页默认几条（底部「条/页」能换，见 本地页） */
+const 默认每页 = 20;
 
 const 列键 = <T,>(c: 列<T>) => String(c.key ?? c.dataIndex);
 
@@ -211,6 +216,14 @@ export default function DataList<T extends { id: string }>({
     const t = setTimeout(() => set新来的([]), 2000);
     return () => clearTimeout(t);
   }, [行]);
+
+  /*
+    浏览器里分页（不给 分页）时第几页、每页几条记在这里（11-17 渠道页报上来：底部「条/页」换了没反应）。
+    原来分页对象里写死 pageSize: 20，antd 把它当受控值，换了每页条数下一轮又被 20 盖回去。
+    换每页条数回第一页：停在第 5 页换成 100 条/页，人要看的是从头开始的那一屏
+  */
+  const [本地页, set本地页] = useState({ 当前: 1, 每页: 默认每页 });
+  const 换页 = (旧每页: number, 翻: (页: number, 每页: number) => void) => (页: number, 每页: number) => 翻(每页 !== 旧每页 ? 1 : 页, 每页);
 
   const [列单开着, set列单开着] = useState(false);
   const 可选的 = useMemo(() => 全部列.filter((c) => !c.常驻), [全部列]);
@@ -435,12 +448,14 @@ export default function DataList<T extends { id: string }>({
                   current: 分页.当前页,
                   pageSize: 分页.每页,
                   total: 分页.总数,
-                  showTotal: (t) => <>共 {总数(t)} 条</>,
+                  showTotal: (t) => (分页.单位 ? 分页.单位(总数(t)) : <>共 {总数(t)} 条</>),
                   showSizeChanger: true,
-                  onChange: 分页.翻页,
+                  onChange: 换页(分页.每页, 分页.翻页),
                 }
               : {
-                  pageSize: 20,
+                  current: 本地页.当前,
+                  pageSize: 本地页.每页,
+                  onChange: 换页(本地页.每页, (当前, 每页) => set本地页({ 当前, 每页 })),
                   // 截断时 `t` 是取回来的行数，不是库里的总数——别让它冒充总数
                   showTotal: (t) => (真截断 ? <>这里 {总数(t)} 条</> : <>共 {总数(t)} 条</>),
                   showSizeChanger: true,

@@ -35,6 +35,13 @@ export type 组织 = {
   系统管理员标记?: ReadonlySet<string>;
   /** 停用（离职）的人手填的直属上级：成员里不收停用的人，市场复核要找「离职创建人的直属市场管理」（客户 11-05）时查这里。建组织 填 */
   离职上级?: ReadonlyMap<string, string>;
+  /** 停用（离职）的人：通知找人时认得出「负责人停用了」，停用前上级也不在职就推系统管理员（M-公海-49）。建组织 填 */
+  停用的?: ReadonlySet<string>;
+  /**
+   * 无主线索复核人（11-18）：项目创建人、客户创建人两条链都找不到能市场复核的人时由他复核（见 市场复核人们）。
+   * Setting enterprise.orphan_lead_reviewer（userId），org.ts 读组织 填；没设、人停用了 = null，落到系统管理员
+   */
+  无主线索复核人?: string | null;
 };
 
 /** 回收站副手名单存的 Setting 键（设置页存 JSON 数组；手写的逗号串也认） */
@@ -44,6 +51,8 @@ export const 回收站副手键 = "enterprise.trash_helpers";
 export const 只看某人键 = "enterprise.watch_only";
 /** 系统管理员标记存的 Setting 键（JSON 数组 userId）：成员管理里总管理那一格的「系统管理员」开关写它 */
 export const 系统管理员标记键 = "enterprise.sysadmin_flag";
+/** 无主线索复核人存的 Setting 键（JSON 字符串 userId）：设置页「组织架构」里配，默认空（= 系统管理员） */
+export const 无主线索复核人键 = "enterprise.orphan_lead_reviewer";
 
 /** Setting 原文：JSON 解得开就解（setSetting 存的），解不开当原样字符串（库里手写的逗号串） */
 function 解码(v: string | null | undefined): unknown {
@@ -66,11 +75,19 @@ function 解名单(v: string | null | undefined, org: 组织): Set<string> {
  * 读完 Setting 后补上组织里的几份名单（org.ts 读组织、visibility.ts 算 共用）：回收站副手（逗号串）、只看某人（JSON）、系统管理员标记（JSON 数组）。
  * 标记没传（undefined）= 不动 org 上原有的，传 null = 没设
  */
-export function 填组织设置(org: 组织, 副手: string | null | undefined, 只看: string | null | undefined, 标记?: string | null): 组织 {
+export function 填组织设置(org: 组织, 副手: string | null | undefined, 只看: string | null | undefined, 标记?: string | null, 无主复核人?: string | null): 组织 {
   org.回收站副手 = 解名单(副手, org);
   org.只看某人 = 规整只看某人(只看, org);
   if (标记 !== undefined) org.系统管理员标记 = 解名单(标记, org);
+  if (无主复核人 !== undefined) org.无主线索复核人 = 解一个人(无主复核人, org);
   return org;
+}
+
+/** 单个 userId 的设置（JSON 字符串或手写原样）：在职才留，不然 null */
+function 解一个人(v: string | null, org: 组织): string | null {
+  const 解 = 解码(v);
+  const id = typeof 解 === "string" ? 解.trim() : "";
+  return id && org.成员.has(id) ? id : null;
 }
 
 /**
@@ -132,8 +149,10 @@ export function 建组织(
   const 部门 = new Map(depts.map((d) => [d.id, d]));
   const 成员 = new Map<string, 组织成员>();
   const 离职上级 = new Map<string, string>();
+  const 停用的 = new Set<string>();
   for (const u of users) {
     if (!u.active) {
+      停用的.add(u.id);
       const 上 = 行.get(u.id)?.managerId;
       if (上 && 上 !== u.id) 离职上级.set(u.id, 上);
       continue;
@@ -153,7 +172,7 @@ export function 建组织(
       不管设置: !!m?.noSettings,
     });
   }
-  return { 成员, 部门, 离职上级 };
+  return { 成员, 部门, 离职上级, 停用的 };
 }
 
 /**
@@ -168,11 +187,24 @@ export function 直属上级of(org: 组织, userId: string): string | null {
 
 /**
  * 这件事要告诉谁（通知用）：负责人 + 他的直属上级。只留在职的（org.成员 只有在职的）、去重、去掉操作者。
- * 负责人停用了 = 直属上级of 也找不到人，这条谁都不发
+ * 负责人停用了：改发他停用前手填的直属上级（还在职才算），同三态 T12（审核 11-18 通知 P2-7：原来谁都不发，挂着没交接的没人知道）
  */
 export function 负责人和上级(org: 组织, ownerId: string, 排除?: string): string[] {
-  const 们 = [ownerId, 直属上级of(org, ownerId)].filter((id): id is string => !!id && org.成员.has(id) && id !== 排除);
+  const 们 = [ownerId, 直属上级of(org, ownerId) ?? 离职直属上级(org, ownerId), ...停用没上级兜底(org, ownerId)].filter((id): id is string => !!id && org.成员.has(id) && id !== 排除);
   return [...new Set(们)];
+}
+
+/** 只该发给负责人本人的通知：他在职就是他；停用了改发停用前的直属上级（在职才算），上级也不在了推系统管理员（M-公海-49） */
+export function 在职负责人或上级(org: 组织, ownerId: string): string[] {
+  if (org.成员.has(ownerId)) return [ownerId];
+  const 上 = 离职直属上级(org, ownerId);
+  return 上 ? [上] : 停用没上级兜底(org, ownerId);
+}
+
+/** 负责人停用了、停用前的直属上级也不在职（或没填）：推系统管理员（M-公海-49，审核 11-18 通知 P2-7）。别的情况 = 空 */
+function 停用没上级兜底(org: 组织, ownerId: string): string[] {
+  if (!org.停用的?.has(ownerId) || 离职直属上级(org, ownerId)) return [];
+  return [...org.成员.keys()].filter((id) => 是系统管理员of(org, id));
 }
 
 /** 虚线上级：只认显式指定的，停用了 = 没有 */
@@ -223,24 +255,59 @@ export function 管理员类别们of(org: 组织, userId: string): Set<管理员
   }
   return 们;
 }
+/** 市场复核要看的项目：创建人、负责人，再带上客户创建人（CustomerCreator）；读库时用 市场复核要读的 一起取 */
+export type 复核看的项目 = { creatorId?: string | null; ownerId: string; customer?: { creator?: { userId: string } | null } | null };
+/** 读项目时并进 select：市场复核人们 要的那几格 */
+export const 市场复核要读的 = { creatorId: true, ownerId: true, customer: { select: { creator: { select: { userId: true } } } } } as const;
+
+/** 市场成员（只认业务角色）：有渠道运营 / 市场管理、不兼销售（兼任按销售算，同 客户在市场手里）；设了「只看某人」的不算 */
+export function 是市场成员of(org: 组织, id: string | null | undefined): boolean {
+  if (!id || org.只看某人?.has(id)) return false;
+  const 们 = org.成员.get(id)?.角色们 ?? [];
+  return 们.some((r) => r === "marketing_mgr" || r === "channel_ops") && !们.some((r) => r === "sales" || r === "sales_mgr");
+}
+
 /**
- * 「市场复核」谁能拍（11-05 客户定，同日客户回复两条兜底）：
- * - 建的人不是负责人：建的人本人，或他的直属上级且是市场管理；
- * - 建的人自己就是负责人（初判是他自己判的，不复核自己）、或已离职停用：只有他的直属上级且是市场管理（离职的人按离职前手填的那位）；
- * - 上面那位找不到（没填、不是市场管理、也停用了）：只有系统总管理（系统管理员，是系统管理员of）。
- * 不再有「任何市场管理都能拍」的兜底。虚线上级接手等虚线上级能操作以后再加（迭代备忘）
+ * 兼管理角色（条线总管理 director、销售管理 sales_mgr；系统管理员也是 director）手动指定不按市场那几道挡限人（11-18 用户「按之前的口径」）：
+ * 不按分配方向（P-转-26 末句，Even 11-18 问 1 选 A）、不走市场分配指定挡（接手人照 P-转-01）。一人多角色取并集、任一角色放行（P-判定-01）
  */
-export function 能市场复核(org: 组织, me: string, p: { creatorId?: string | null; ownerId: string }): boolean {
+export const 管理指定不限of = (org: Pick<组织, "成员">, id: string): boolean =>
+  (org.成员.get(id)?.角色们 ?? []).some((r) => r === "director" || r === "sales_mgr");
+
+/**
+ * 「市场复核」谁能拍、通知发给谁（同一份名单，收到通知的人一定拍得了）。11-05 客户定 P-线索-03，11-18 补兜底（审核 11-18 §3.5）：
+ * 1. 项目创建人这条链：创建人在职、是市场成员、不是负责人 → 他本人；他的直属上级是市场管理 → 那位（离职的人按离职前手填的那位）。
+ *    建的人自己就是负责人（初判是他判的，不复核自己）只剩直属市场管理。两个都有就两个都能拍
+ * 2. 第 1 步一个都找不到（创建人是 system 补建的、停用了又没有直属市场管理、不是市场成员比如总管理建的）：客户创建人照第 1 步再找一遍
+ * 3. 还找不到：设置里的「无主线索复核人」（在职、不是负责人）
+ * 4. 最后：系统管理员（是系统管理员of）。
+ * 别的市场管理不能复核。虚线上级接手等虚线上级能操作以后再加（迭代备忘）
+ */
+export function 市场复核人们(org: 组织, p: 复核看的项目): string[] {
   const 市管 = (id: string) => 管理员类别们of(org, id).has("市场管理");
-  const 系统总管理 = 是系统管理员of(org, me);
-  const c = p.creatorId;
-  const 在 = !!c && org.成员.has(c);
-  if (在 && me === c && c !== p.ownerId) return true;
-  const 上 = !c ? null : 在 ? 直属上级of(org, c) : 离职直属上级(org, c);
-  if (上 && 市管(上)) return me === 上;
-  // 建的人不是负责人、在职、又没有直属市场管理：他本人复核（上面已放行），不再推给总管理
-  if (在 && c !== p.ownerId) return false;
-  return 系统总管理;
+  const 一条链 = (c: string | null | undefined): string[] => {
+    if (!c) return [];
+    const 在 = org.成员.has(c);
+    const 出: string[] = [];
+    if (在 && c !== p.ownerId && 是市场成员of(org, c)) 出.push(c);
+    // 在职的不是市场成员（总管理、销售建的）：整条链不算，交下一步
+    if (在 && !是市场成员of(org, c)) return [];
+    const 上 = 在 ? 直属上级of(org, c) : 离职直属上级(org, c);
+    if (上 && 市管(上) && !出.includes(上)) 出.push(上);
+    return 出;
+  };
+  const 项目链 = 一条链(p.creatorId);
+  if (项目链.length) return 项目链;
+  const 客户链 = 一条链(p.customer?.creator?.userId);
+  if (客户链.length) return 客户链;
+  const 兜 = org.无主线索复核人;
+  if (兜 && org.成员.has(兜) && 兜 !== p.ownerId) return [兜];
+  return [...org.成员.keys()].filter((id) => 是系统管理员of(org, id));
+}
+
+/** 能不能拍「市场复核」：在 市场复核人们 里（通知、拍板、待我复核列表都走这一份） */
+export function 能市场复核(org: 组织, me: string, p: 复核看的项目): boolean {
+  return 市场复核人们(org, p).includes(me);
 }
 /** 离职（停用）的人离职前手填的直属上级，且那位还在职 */
 function 离职直属上级(org: 组织, userId: string): string | null {

@@ -1,5 +1,6 @@
 "use server";
 
+import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
 import { hasVisibleText } from "@/lib/form-validation";
 
 import { 规整外贸档案 } from "@/lib/customer-extra";
@@ -8,7 +9,7 @@ import { 写外贸档案 } from "@/lib/customer-extra-db";
 import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 看全部, 看得到, 限定的我, 读的我 } from "@/lib/team-scope";
-import { 认回打码号, 查电话, 号码带着字 } from "@/lib/phone";
+import { 认回打码号, 查电话, 录入电话 } from "@/lib/phone";
 import { 同号条件, 分机留存起 } from "@/lib/phone-dedupe";
 import { 同邮箱条件 } from "@/lib/email-dedupe";
 
@@ -30,6 +31,7 @@ import { 公海客户要先领取 } from "@/lib/enterprise/pool-customer-guard";
 import { 真删挡 } from "@/lib/enterprise/soft-delete";
 import { 认跟进方式 } from "@/lib/enterprise/dict";
 import { 线索建项目 } from "@/lib/project/from-lead";
+import { 系统建项目分配方式 } from "@/lib/project/self-assign-mode";
 import { 规整沟通, type 向导跟进, type 规整好的沟通 } from "@/lib/project/wizard";
 import { 超上限 } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -71,6 +73,9 @@ export async function saveLead(input: {
   版本?: string | null;
 }) {
   const user = await requireUser();
+  // 企业版只用项目：老线索表不再写（X-88，审核 11-18 权限 P1-9）
+  const 老入口 = await 只用项目挡老入口("线索");
+  if (老入口) return { ok: false as const, error: 老入口 };
   // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）
   if (!hasVisibleText(input.name)) return { ok: false as const, error: "请填写线索名称" };
   if (!LEAD_STATUSES.includes(input.status as (typeof LEAD_STATUSES)[number])) {
@@ -90,13 +95,13 @@ export async function saveLead(input: {
   */
   const 号 = 认回打码号(input.phone?.trim() || null, 原?.phone);
   if (号 && 号.includes("*")) return { ok: false as const, error: "电话里不能有 *" };
-  // 未改的历史号码与准确打码返回保持原文；只规范新填写/更改的号码。
-  const 电话 = 号 === 原?.phone ? { ok: true as const, phone: 号 ?? "" } : 查电话(号, { 必填: false });
-  if (!电话.ok) return { ok: false as const, error: 电话.error };
-  const 原文 = 号 && 号 !== 原?.phone && 号码带着字(号) ? `原始电话：${号}` : "";
-  const 备注 = input.remark?.trim() || "";
-  const remark = 原文 && !备注.includes(原文) ? [备注, 原文].filter(Boolean).join("\n") : 备注;
-  input = { ...input, phone: 电话.phone, remark };
+  /*
+    未改的历史号码与准确打码返回保持原文；只规范新填写/更改的号码。
+    号码以外的字（字母、「微信同号」、第二个号）不再截掉、原文悄悄塞进备注（11-17 复盘第 4 类）：整格拦下，说清为什么（录入电话）
+  */
+  const 电话 = 号 === 原?.phone ? { ok: true as const, phone: 号 ?? "" } : 录入电话(号, { 必填: false });
+  if (!电话.ok) return { ok: false as const, error: 电话.error, 字段: "phone" as const };
+  input = { ...input, phone: 电话.phone, remark: input.remark?.trim() || "" };
   /*
     来源能选也能填（2026-10-02 用户定）：不在业务配置列表里的也收——没有程序按来源的值去判断什么，
     人手上的说法（「视频号直播间」「老板朋友圈」）只让选等于逼他挑一个不对的。只限个长度
@@ -225,6 +230,8 @@ export async function convertLead(id: string, 跟进?: 向导跟进): Promise<
   { ok: true; customerId: string; projectId?: string } | { ok: false; error: string; 撞号?: 线索撞号 }
 > {
   const user = await requireUser();
+  const 老入口 = await 只用项目挡老入口("线索");
+  if (老入口) return { ok: false as const, error: 老入口 };
   const b = await getBusiness();
   const lead = await prisma.lead.findUnique({ where: { id } });
   if (!lead) return { ok: false as const, error: "线索不存在" };
@@ -330,7 +337,7 @@ export async function convertLead(id: string, 跟进?: 向导跟进): Promise<
       await 写外贸档案(tx, customer.id, 规.ok ? 规.data : { source: 规整外贸档案({ source: 档案.档案.source }).ok ? 档案.档案.source : null }, false);
     }
     await tx.lead.update({ where: { id }, data: { customerId: customer.id } });
-    const projectId = 项目 ? await 线索建项目(tx, { 线索名: lead.name, leadId: id, customerId: customer.id, ownerId: lead.ownerId ?? user.id, creatorId: user.id, 跟进: 项目.跟进 }) : undefined;
+    const projectId = 项目 ? await 线索建项目(tx, { 线索名: lead.name, leadId: id, customerId: customer.id, ownerId: lead.ownerId ?? user.id, creatorId: user.id, 跟进: 项目.跟进, 分配方式: await 系统建项目分配方式(tx, lead.ownerId ?? user.id, user.id) }) : undefined;
     return { ok: true as const, customerId: customer.id, projectId };
   });
 
@@ -360,6 +367,8 @@ export async function convertLead(id: string, 跟进?: 向导跟进): Promise<
  */
 export async function mergeLeadInto(leadId: string, customerId: string, 跟进?: 向导跟进): Promise<{ ok: true; customerId: string; projectId?: string } | { ok: false; error: string }> {
   const user = await requireUser();
+  const 老入口 = await 只用项目挡老入口("线索");
+  if (老入口) return { ok: false as const, error: 老入口 };
   const b = await getBusiness();
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!lead) return { ok: false, error: "线索不存在" };
@@ -395,7 +404,7 @@ export async function mergeLeadInto(leadId: string, customerId: string, 跟进?:
         ?? await tx.contact.findFirst({ where: { customerId }, orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }], select: { id: true } });
       if (人) await 线索附件转给联系人(tx, leadId, 人.id);
     }
-    return { projectId: 项目 ? await 线索建项目(tx, { 线索名: lead.name, leadId, customerId, ownerId: lead.ownerId ?? user.id, creatorId: user.id, 跟进: 项目.跟进 }) : undefined };
+    return { projectId: 项目 ? await 线索建项目(tx, { 线索名: lead.name, leadId, customerId, ownerId: lead.ownerId ?? user.id, creatorId: user.id, 跟进: 项目.跟进, 分配方式: await 系统建项目分配方式(tx, lead.ownerId ?? user.id, user.id) }) : undefined };
   });
   if (!结果) return { ok: false, error: "这条线索刚刚已经转化过了，刷新看看" };
 

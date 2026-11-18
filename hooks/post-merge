@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+# 合并（git merge / git pull）之后：这次合进来的改动里 prisma/schema.prisma 或 prisma/control.prisma 有变，
+# 就自动重跑两条 prisma generate（11-17：合了带 schema 改动的 main 没重跑，推送时 tsc 报 PrismaClient 上没有新字段）。
+# 只提示、不挡：post-merge 的退出码不影响合并结果。
+# 启用：git config core.hooksPath hooks（已是相对路径）
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE GIT_PREFIX
+cd "$(git rev-parse --show-toplevel)" || exit 0
+# 合并前的位置记在 ORIG_HEAD；没有（极少见）就不查
+git rev-parse -q --verify ORIG_HEAD >/dev/null || exit 0
+exec sh hooks/prisma-regen.sh ORIG_HEAD HEAD 合并

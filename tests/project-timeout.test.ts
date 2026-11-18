@@ -1,11 +1,12 @@
 /**
  * 企业版超时回收（D-34，lib/project/timeout.ts + lib/project/db.ts 公海超时收回 / 超时预览 / 记项目沟通）。
- *   - 回收日：起点 + 节点天数；下一步时间那天过完也收，但不比节点天数晚；比起点早的下一步不算
+ *   - 回收日：起点 + 节点天数；下一步时间只提醒、不收回（11-18 客户定），填没填、过没过都不改回收日
  *   - 扫库：没开不扫；订单阶段、有结局的、已在公海的不收；没设时长的节点企业版按默认 7 天（见 project-stages-enterprise.test.ts）；收了留痕（理由写超时）+ 负责人一条待办
  *   - 一天按同一份规则扫一次，规则改了当天再扫；团队模式只扫自己名下的
  *   - 记沟通：开了超时回收的线索 / 商机阶段要下一步时间；谁能记；跟进推后起点
  *   - 不是企业版（CRM_ENTERPRISE 不设）：Setting 里开着也不扫、记沟通不要下一步时间
  */
+import { 沟通不是组员话, 沟通项目在公海话 } from "@/lib/project/follow-needs-project";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ 团队: false }));
@@ -51,9 +52,9 @@ describe("超时回收日", () => {
     expect(超时回收日(规则, { phase: "线索", node: "潜客培育", pooledAt: new Date() }, 起)).toBeNull();
   });
 
-  it("下一步时间：那天过完还没动静就收；比节点天数晚的不延长；比起点早的（过时的）不算", () => {
-    expect(超时回收日(规则, { phase: "线索", node: "潜客培育", nextStepAt: "2026-10-03T15:00:00" }, 起)).toBe("2026-10-04");
-    expect(超时回收日(规则, { phase: "线索", node: "潜客培育", nextStepAt: "2026-10-01T09:00:00" }, 起)).toBe("2026-10-02");
+  it("下一步时间只提醒、不收回（11-18）：早于节点天数的不提前收；晚的不延长；比起点早的也不算", () => {
+    expect(超时回收日(规则, { phase: "线索", node: "潜客培育", nextStepAt: "2026-10-03T15:00:00" }, 起)).toBe("2026-10-08");
+    expect(超时回收日(规则, { phase: "线索", node: "潜客培育", nextStepAt: "2026-10-01T09:00:00" }, 起)).toBe("2026-10-08");
     expect(超时回收日(规则, { phase: "线索", node: "潜客培育", nextStepAt: "2026-10-20" }, 起)).toBe("2026-10-08");
     expect(超时回收日(规则, { phase: "线索", node: "潜客培育", nextStepAt: "2026-09-28" }, 起)).toBe("2026-10-08");
   });
@@ -100,9 +101,9 @@ describe("计时起算日（10-31）", () => {
     expect(已超时(回收日, "2026-11-04T00:01:00")).toBe(true);
   });
 
-  it("下一步时间早于起算日的不算；起算日之后的照常提前收", () => {
+  it("下一步时间不论早于还是晚于起算日，都不提前收（11-18）", () => {
     expect(超时回收日(带起算日("2026-11-01"), { ...线索, nextStepAt: "2026-10-20" }, "2026-10-01T10:00:00")).toBe("2026-11-04");
-    expect(超时回收日(带起算日("2026-11-01"), { ...线索, nextStepAt: "2026-11-01T15:00:00" }, "2026-10-01T10:00:00")).toBe("2026-11-02");
+    expect(超时回收日(带起算日("2026-11-01"), { ...线索, nextStepAt: "2026-11-01T15:00:00" }, "2026-10-01T10:00:00")).toBe("2026-11-04");
   });
 
   it("规则里没有起算日（老数据 / 外面拼的）：照原来的起点", () => {
@@ -183,13 +184,19 @@ describe("扫库收回", () => {
     expect(await prisma.auditLog.count({ where: { action: "pool", entity: "Project" } })).toBe(1);
   });
 
-  it("下一步时间比节点时长早：下一步那天过完就收", async () => {
+  it("填了下一步时间且已过期、没满节点天数：不收；满节点天数照收（11-18 客户定：下一步时间只提醒）", async () => {
     await setSetting("orgRules", 开着({ 潜客培育: 30 }));
-    await 项目(乙.id, { nextStepAt: 天后(2) });
-    expect(await 公海超时收回(老板, 天后(2))).toBe(0);
+    const p = await 项目(乙.id, { nextStepAt: 天后(2) });
+    expect(await 超时预览(开着({ 潜客培育: 30 }), 天后(3))).toBe(0);
+    expect(await 公海超时收回(老板, 天后(3))).toBe(0);
     invalidateSettingsCache();
     await setSetting("projectTimeoutSweptOn", null);
-    expect(await 公海超时收回(老板, 天后(3))).toBe(1);
+    expect(await 公海超时收回(老板, 天后(29))).toBe(0);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).pooledAt).toBeNull();
+    invalidateSettingsCache();
+    await setSetting("projectTimeoutSweptOn", null);
+    expect(await 公海超时收回(老板, 天后(30))).toBe(1);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).pooledAt).not.toBeNull();
   });
 
   it("客户上记了跟进、节点刚推过：起点往后挪，不收", async () => {
@@ -288,17 +295,17 @@ describe("扫库收回", () => {
       expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).nextStepAt).toBeNull();
     });
 
-    it("谁能记：负责人、系统管理员；别人、进了组的成员、在公海里的都不行", async () => {
-      // V3.5.1：沟通是项目内容，负责人本人和系统管理员（老板）能记；组员只能看
-      const 拒 = { ok: false, error: "只有项目负责人或系统管理员能记沟通，项目组成员只能看" };
+    it("谁能记：负责人、系统管理员、进了组的组员（11-17）；别人、在公海里的都不行", async () => {
+      // V3.5.1：负责人本人和系统管理员（老板）能记；11-17 客户定：已进组的组员也能记，别人不行
+      const 拒 = { ok: false, error: 沟通不是组员话 };
       const p = await 项目(乙.id);
       expect(await 记项目沟通(丙, p.id, 沟通())).toEqual(拒);
       await prisma.projectMember.create({ data: { projectId: p.id, userId: 丙.id, inviteStatus: "JOINED", invitedById: 乙.id } });
-      expect(await 记项目沟通(丙, p.id, 沟通())).toEqual(拒);
+      expect((await 记项目沟通(丙, p.id, 沟通())).ok).toBe(true);
       expect((await 记项目沟通(老板, p.id, 沟通())).ok).toBe(true);
       expect((await 记项目沟通(乙, p.id, 沟通())).ok).toBe(true);
       await prisma.project.update({ where: { id: p.id }, data: { pooledAt: new Date() } });
-      expect(await 记项目沟通(乙, p.id, 沟通())).toEqual({ ok: false, error: "这个项目在公海里，先领取再记" });
+      expect(await 记项目沟通(乙, p.id, 沟通())).toEqual({ ok: false, error: 沟通项目在公海话 });
       expect(await 记项目沟通(乙, "没这个", 沟通())).toMatchObject({ ok: false, error: expect.stringContaining("不在了") });
     });
   });

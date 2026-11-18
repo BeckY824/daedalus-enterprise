@@ -34,6 +34,7 @@ import {
 } from "../constants";
 import { 同名们 } from "../project/stage-dict";
 import { 项目画像项, 字典定义 } from "../enterprise/dict-kinds";
+import { 不算补建, 不算历史分析, 历史分析留痕人 } from "../project/system-created";
 
 /* ---------- 字段白名单 ---------- */
 
@@ -57,6 +58,17 @@ export type 字段 = {
 };
 
 const 字段们 = <T extends Record<string, 字段>>(t: T) => t;
+
+/**
+ * 节点记录的「记录类型」给人和模型看的叫法（审核 11-18 追加）：换负责人 / 放回公海 / 公海领取那几类行，原节点、新节点照抄当时的，
+ * 按新节点连起来看会像「潜客培育 > 潜客培育」。行不过滤，只把类型说明白；括号里留库里的原值，按原值筛照样能筛
+ */
+export const 节点记录类型叫法: Readonly<Record<string, string>> = {
+  node: "改节点（node）",
+  transfer: "换负责人（transfer；原 / 新节点照抄当时的，不是节点变化）",
+  "pool-release": "放回公海（pool-release；原 / 新节点照抄当时的，不是节点变化）",
+  "pool-claim": "公海领取（pool-claim；原 / 新节点照抄当时的，不是节点变化）",
+};
 
 /**
  * 每张表开放哪些字段。**不在这儿的字段查不了**，也不该靠模型自觉。
@@ -794,6 +806,8 @@ export function 说人话(s: 查询规格, b?: BusinessConfig): string {
   const 段: string[] = [`在${表定义.名}里`];
   if (s.条件.length) 段.push(`找 ${s.条件.map((c) => 条件成话(s.表, c, b)).join("、且 ")}`);
   else 段.push("找全部");
+  if (按新建数项目(s, b)) 段.push("不含补建和历史回填的项目（同数据页「新建」口径）");
+  else if (排历史回填(s.表)) 段.push(s.表 === "项目" ? "不含历史回填的项目（同数据页口径）" : "不含历史回填项目上的记录（同数据页口径）");
   if (s.关联) {
     const 定义 = 关联们[s.关联.路径];
     段.push(`并且${定义.名} ${s.关联.条件.map((c) => 条件成话(定义.到, c, b)).join("、且 ")}`);
@@ -875,8 +889,33 @@ function 条件成where(表: 表名, c: 条件, b?: BusinessConfig, 映射?: 名
   }
 }
 
+/**
+ * 项目表按「创建时间」筛 = 问的是「新建了多少」（11-17 复盘第 9 类）：补零项目客户补建的潜客培育项目
+ * （creatorId = 补建创建人，createdAt 记客户建档时间）、历史沟通分析回填的（source = 历史分析来源）不是这段时间新建的，
+ * 同数据页 / 首页卡「本月新增」一样排掉（lib/project/system-created.ts 的 不算补建）。不带创建时间的（现在一共多少）照旧全算
+ */
+export function 按新建数项目(s: 查询规格, b?: BusinessConfig): boolean {
+  return s.表 === "项目" && s.条件.some((c) => 认字段(s.表, c.字段, b).列 === "createdAt");
+}
+
+/**
+ * 历史沟通分析回填的项目（source = 历史分析来源）不进任何统计（system-created.ts「所有统计都不算」，25E 总控定）：
+ * 项目表不论按什么条件都排掉；挂在项目下的表（关联们里有「X.项目」、经 project 一跳的）只算非回填项目上的记录；
+ * 节点记录另按留痕人排（回填约定第 2 条，同数据页 留痕不算历史分析）
+ */
+function 排历史回填(表: 表名): boolean {
+  return 表 === "项目" || 关联们[`${表}.项目` as keyof typeof 关联们]?.列 === "project";
+}
+
 export function 编译(s: 查询规格, b?: BusinessConfig, 映射?: 名映射): { where: Record<string, unknown>; orderBy?: Record<string, "asc" | "desc">; take: number } {
-  const and = s.条件.map((c) => 条件成where(s.表, c, b, 映射));
+  const and: Record<string, unknown>[] = s.条件.map((c) => 条件成where(s.表, c, b, 映射));
+  // 不算补建 已含 不算历史分析
+  if (按新建数项目(s, b)) and.push(不算补建);
+  else if (s.表 === "项目") and.push(不算历史分析);
+  else if (排历史回填(s.表)) {
+    and.push({ project: { is: 不算历史分析 } });
+    if (s.表 === "节点记录") and.push({ userId: { not: 历史分析留痕人 } });
+  }
   if (s.关联) {
     const 定义 = 关联们[s.关联.路径];
     const 子 = { AND: s.关联.条件.map((c) => 条件成where(定义.到, c, b, 映射)) };

@@ -9,6 +9,8 @@ let browser: Browser; let bundle: string;
 const plugin: Plugin = { name: "form-actions", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "stub", pluginData: code }));
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},replace(){}}),usePathname=()=>\"/\",useSearchParams=()=>new URLSearchParams();");
+  // 联系人表单撞回收站摆「从回收站捞回」（审核 11-18 新建入口 P2-6）：RescueKey 引的服务端动作
+  stub(/^\.\/number-actions$/, "export const 从回收站捞回=async()=>({ok:false,error:'桩'});");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
   stub(/^\.\/CustomerPick$/, "export default function C(){return null}");
   stub(/^@\/app\/\(app\)\/customers\/\[id\]\/pick$/, "const rows=[{id:'original',name:'原客户',附注:null},{id:'new',name:'新客户',附注:null}];export const 搜客户=async()=>rows,取客户选项=async id=>rows.find(r=>r.id===id)??null;");
@@ -23,7 +25,7 @@ const plugin: Plugin = { name: "form-actions", setup(b) {
     export const saveContract=async x=>window.__duplicate&&!x.force?{duplicate:{amount:123,currency:'CNY',signedAt:new Date().toISOString()}}:save(x);
     export const listContractLinks=async()=>({商机:[],计划:[],待办:[]});
     export const 供应商候选=async()=>[];
-    export const toggleChannel=save,deleteChannel=save,saveMainChannel=save,toggleMainChannel=save;
+    export const toggleChannel=save,deleteChannel=save,saveMainChannel=save,toggleMainChannel=save,deleteMainChannel=save;
     export const listChannelInvests=async()=>({ok:true,rows:[],能录:false}),addChannelInvest=save,deleteChannelInvest=save;
     export const 转走项目预览of=async()=>({项目数:0,项目:[]});
   `);

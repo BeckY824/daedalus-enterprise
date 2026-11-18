@@ -8,6 +8,7 @@ import InlineConfirm from "@/components/InlineConfirm";
 import { showUndo } from "@/components/UndoBar";
 import { useBusiness } from "@/lib/business-client";
 import { deleteContact, deleteUnassignedContact, detachContact, restoreContact, undoDetachContact } from "./actions";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 /**
  * 拿掉一位联系人的两条路，客户详情和联系人页共用（2026-10-01 用户反馈）。
@@ -68,7 +69,7 @@ export function ContactRemoveInline({ c, 文字 = false }: { c: { id: string; na
   const [错, set错] = useState<string | null>(null);
   const 跑 = async (f: () => Promise<{ ok: boolean; error?: string | null }>) => {
     set错(null);
-    const r = await f().catch(() => ({ ok: false, error: "没做成，请刷新后重试" }));
+    const r = await f().catch((出错) => ({ ok: false, error: 动作出错话(出错, "没做成，请刷新后重试") }));
     if (!r.ok) {
       const 话 = r.error || "没做成，请刷新后重试";
       set错(话);

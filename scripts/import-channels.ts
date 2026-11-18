@@ -7,6 +7,7 @@
  * - 表头认：渠道属性 / 渠道名称 / 来源名称 / 渠道状态 / 结束日期 / 负责人 / 创建人；「累计运营天数」不读（是算出来的）。
  * - 全称（渠道名称|来源名称）和库里已有的、或文件里前面的重复：跳过，打印出来。
  * - 来源名称以「待清洗」开头的拦下不建；同一全称结束月份不同的按月份分开建（全称后加「（N月）」）。
+ * - 每个渠道建时就挂好主渠道（按渠道名称找，没有就建同名主渠道），不留没挂主渠道的。
  * - 负责人、创建人按员工姓名对；对不上留空。负责人是机器人、没填、对不上的该由管理员指定，
  *   但库里必填，先挂给 --owner 指的人（不给就第一个在职管理员），报告里写「负责人留空待管理员指定」。
  * 规矩全在 src/lib/enterprise/channel-import.ts（有单测），这个脚本只管读文件、读库、写库。
@@ -20,6 +21,7 @@ import { 读xlsx带行号 } from "@/lib/import/xlsx";
 import { 解码CSV, 解析CSV带行号 } from "@/lib/import/parse";
 import { 字典定义 } from "@/lib/enterprise/dict-kinds";
 import { 排导入, 计划报告, 认人 } from "@/lib/enterprise/channel-import";
+import { 建渠道挂主 } from "@/lib/enterprise/channel-main";
 
 function 用法(话?: string): never {
   if (话) console.error(话);
@@ -79,8 +81,10 @@ async function main() {
       // 一个事务里建完：中间哪条撞了唯一约束（比如别人刚好同时建了同名渠道）整批不落，改完重跑
       await db.$transaction(async (tx) => {
         for (const c of 计划.要建) {
+          // 建的时候就挂好主渠道（按渠道名称，没有就建同名主渠道；11-17 复盘第 7 类：不再等渠道页打开时补）
+          const 挂 = await 建渠道挂主(c.name, c.platform, tx);
           const 建 = await tx.channel.create({
-            data: { name: c.name, attr: c.attr, platform: c.platform, active: c.active, endDate: c.endDate, channelOwnerId: c.channelOwnerId, createdById: c.createdById },
+            data: { name: c.name, attr: c.attr, ...挂, active: c.active, endDate: c.endDate, channelOwnerId: c.channelOwnerId, createdById: c.createdById },
             select: { id: true },
           });
           await tx.auditLog.create({

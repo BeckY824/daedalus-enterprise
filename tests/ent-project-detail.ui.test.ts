@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser } from "playwright";
+import { 补全动作桩 } from "./helpers/action-stubs";
 /* 10-27 会议：企业版项目详情两栏——左边干活的（节点、沟通、卡点），右边资料（项目、交付、项目组、提成、节点变更）；
    「记一条沟通」是主按钮；窄于 630 的容器退一栏。开关关闭时照原来一列摆、960 宽、没有提成和「记一条沟通」主按钮。
    P11 commit #3：三个竖条——应用导航 | 中栏项目名单（ProjectRoster，照客户记录页）| 项目详情，见文末「三栏」那几条 */
@@ -10,14 +11,16 @@ const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   // 教练主题（11-17）的动作：服务端那串（prisma、通知）进不了浏览器包
   stub(/coach-topic-actions$/, "const f=async()=>({ok:true});export const 发主题动作=f,回复主题动作=f,关闭主题动作=f,删主题动作=f;");
-  stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;");
+  stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
   const 空跑 = "async()=>({ok:true})";
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
-  stub(/^\.\.\/actions$/, `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return{ok:true}},终止项目进程=async(...a)=>{(window.__终止||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return window.__编辑回||{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=f,删项目沟通=async(...a)=>{(window.__删沟通||=[]).push(a);return{ok:true}},加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
+  stub(/^\.\.\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return{ok:true}},终止项目进程=async(...a)=>{(window.__终止||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return window.__编辑回||{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=f,删项目沟通=async(...a)=>{(window.__删沟通||=[]).push(a);return{ok:true}},加项目组员=f,换项目组员角色=f,移出项目组员=f;`));
   stub(/^\.\.\/commission-actions$/, `const f=${空跑};export const 存项目底价=f,存提成分配=f,更正实际提成=f;`);
+  // 定时分配（11-17）改 / 取消 / 现在分：服务端那串（prisma、通知）进不了浏览器包
+  stub(/(^|\/)schedule-actions$/, 补全动作桩("src/app/(app)/leads/schedule-actions.ts", `const f=${空跑};export const 改定时分配=f,取消定时分配=f,定时分配现在分=f;`));
   stub(/^\.\.\/payment-actions$/, `const f=${空跑};export const 记回款=async(...a)=>{(window.__记回款||=[]).push(a);return window.__记回款回??{ok:true}},删回款=async(...a)=>{(window.__删回款||=[]).push(a);return window.__删回款回??{ok:true}};`);
-  stub(/readonly-card-actions$/, "export const 打开客户只读卡Action=async(...a)=>{(window.__开卡||=[]).push(a);return window.__卡结果??{ok:false,error:'打不开'}};");
+  stub(/readonly-card-actions$/, 补全动作桩("src/app/(app)/projects/[id]/readonly-card-actions.ts", "export const 打开客户只读卡Action=async(...a)=>{(window.__开卡||=[]).push(a);return window.__卡结果??{ok:false,error:'打不开'}};"));
   stub(/^\.\/blocker-actions$/, `const f=${空跑};export const 发布卡点Action=f,认领卡点Action=f,完成卡点Action=f,删卡点Action=f,存卡点默认Action=f,存卡点角色开关Action=f,新增原因Action=f,改原因名Action=f,改原因状态Action=f,删原因Action=f,合并原因Action=f,我的卡点Action=async()=>[];`);
   stub(/customers\/\[id\]\/ai$/, `export const parseFollowUpDraft=async()=>({ok:false,error:"未启用"});`);
   stub(/^\.\.\/relate-actions$/, `const f=${空跑};export const 加关联客户Action=f,改客户身份Action=async(...a)=>{(window.__身份存||=[]).push(a);return{ok:true}},解除关联客户Action=f,加关联联系人Action=f,改联系人角色立场Action=async(...a)=>{(window.__角色存||=[]).push(a);return{ok:true}},解除关联联系人Action=f,搜项目联系人=async()=>[];`);
@@ -230,6 +233,23 @@ it("E① 入口是文字：有名字没链接，也没有按钮", async () => {
     await page.getByText("只露名字客户").first().waitFor();
     expect(await page.locator('a[href="/customers/c9"]').count()).toBe(0);
     expect(await page.getByRole("button", { name: "只露名字客户" }).count()).toBe(0);
+  } finally { await page.close(); }
+});
+
+it("超时未跟进自动转过来、客户还在原负责人名下（11-17 规则 3 的例外）：页顶黄条「该客户在 XXX 名下」；没有这一格不摆", async () => {
+  const { page, errors } = await open(true, 1280);
+  try {
+    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ 客户在谁名下: "原负责人老张" }));
+    const 条 = page.getByTestId("proj-customer-held");
+    await 条.waitFor();
+    expect(await 条.getByText("该客户在 原负责人老张 名下", { exact: true }).isVisible()).toBe(true);
+    expect(await 条.innerText()).toContain("别两个人同时跟同一位客户");
+    // 不横出页面
+    expect(await 条.evaluate((el) => el.getBoundingClientRect().right <= document.documentElement.clientWidth + 1)).toBe(true);
+    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({}));
+    await page.getByText("超长客户名", { exact: false }).first().waitFor();
+    expect(await page.getByTestId("proj-customer-held").count()).toBe(0);
+    expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
 
@@ -1353,7 +1373,8 @@ it("U-项目-07：转让先选人、再点「确认转让」才交；框里写�
     expect(await 确认.isDisabled()).toBe(true);
     await 窗.getByRole("combobox", { name: "转给谁" }).click();
     const 下拉 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
-    expect(await 下拉.allInnerTexts()).toEqual(["接手乙"]);
+    // 下拉刚点开、展开动画中 :visible 的快照可能是空的：轮询到选项出来再比
+    await expect.poll(() => 下拉.allInnerTexts()).toEqual(["接手乙"]);
     await 下拉.first().click();
     expect(await 窗.innerText()).toContain("确认转给 接手乙？");
     expect(await 窗.innerText()).toContain("不能撤销");
@@ -1760,6 +1781,26 @@ it("教练主题（11-17）：没关的钉在沟通卡身最上面、在沟通�
       expect([w, 卡头]).toEqual([w, { 横滚: false, 点得中: true }]);
       const 条 = await page.locator(".cth-item").evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
       expect([w, 条]).toEqual([w, true]);
+      expect(errors).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  }
+});
+
+/* 11-18 历史沟通分析回填的项目：项目卡多一行「数据来源」标签「历史分析」；正常建的不摆这一行。三种 Windows 宽度不横撑 */
+it("数据来源：历史分析的项目摆标签、正常的不摆；1024 / 1280 / 1366 都不横撑", async () => {
+  for (const width of [1024, 1280, 1366]) {
+    const { page, errors } = await open(true, width, undefined, true);
+    try {
+      expect(await page.getByTestId("project-data-source-row").count()).toBe(0);
+      await page.evaluate(() => (window as unknown as { __shell: (fab: boolean, x: object) => void }).__shell(false, { 数据来源: "历史分析" }));
+      const 行 = page.getByTestId("project-data-source-row");
+      await 行.waitFor();
+      expect((await 行.innerText()).replace(/\s/g, "")).toBe("数据来源历史分析");
+      const 量 = await 行.evaluate((el) => ({ 行宽: el.scrollWidth, 框宽: el.clientWidth, 页宽: document.documentElement.scrollWidth, 窗: window.innerWidth }));
+      expect(量.行宽).toBeLessThanOrEqual(量.框宽);
+      expect(量.页宽).toBeLessThanOrEqual(量.窗);
       expect(errors).toEqual([]);
     } finally {
       await page.close();

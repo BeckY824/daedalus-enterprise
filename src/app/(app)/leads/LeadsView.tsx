@@ -2,7 +2,7 @@
 
 import CopyValue from "@/components/CopyValue";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
-import { requiredText } from "@/lib/form-validation";
+import { requiredText, 电话格验 } from "@/lib/form-validation";
 
 import { 签约叫 } from "@/lib/business-config";
 import OptionInput from "@/components/OptionInput";
@@ -39,6 +39,7 @@ import { useNewProjectFlow } from "../projects/NewProjectFlow";
 import type { 向导跟进 } from "@/lib/project/wizard";
 import { 公海线索先领取话 } from "@/lib/enterprise/pool-rules";
 import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 type Row = {
   id: string;
@@ -145,7 +146,7 @@ export default function LeadsView({
   // 保存中不再收第二下：网慢、连着团队时连点几下会建出几条一样的（10-07 Sam 实测建出三条重复商机）
   const [存着, set存着] = useState(false);
   // 点外面不关、关前问一句、新建的草稿留在本机（2026-10-19 客户反馈，lib/form-guard.tsx）
-  const 守 = useFormGuard({ open, form, 草稿键: editing ? null : "新建线索", 关: () => setOpen(false), 忙: 存着, afterOpenChange: 聚焦首项 });
+  const 守 = useFormGuard({ open, form, 草稿键: editing ? `编辑线索:${editing.id}` : "新建线索", 编辑: !!editing, 关: () => setOpen(false), 忙: 存着, afterOpenChange: 聚焦首项 });
   async function onOk() {
     if (存着) return;
     set存着(true);
@@ -167,6 +168,7 @@ export default function LeadsView({
       return;
     }
     if (!res.ok) {
+      if ("字段" in res && res.字段 === "phone") form.setFields([{ name: "phone", errors: [res.error] }]);
       说(res.error, true);
       return;
     }
@@ -268,8 +270,8 @@ export default function LeadsView({
       if (!res.ok) return void 说(res.error, true);
       说(`「${r.name}」${分给了(res)}：${res.为什么}`);
       router.refresh();
-    } catch {
-      说("没分成，请稍后再试", true);
+    } catch (出错) {
+      说(动作出错话(出错, "没分成，请稍后再试"), true);
     }
   }
 
@@ -444,6 +446,7 @@ export default function LeadsView({
         width={600}
         destroyOnHidden
       >
+        {守.提示}
         <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={守.改了}>
           <Row gutter={16}>
             <Col span={24}>
@@ -455,7 +458,10 @@ export default function LeadsView({
               <Form.Item name="contact" label="联系人"><Input placeholder="张伟" /></Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="phone" label="联系电话"><Input placeholder="13800002211" /></Form.Item>
+              {/* 号码以外的字不悄悄截掉（11-17 复盘第 4 类）：和服务端同一个 录入电话，填的时候就在格子下面说为什么存不了；没改的老号不验 */}
+              <Form.Item name="phone" label="联系电话" rules={[{ validator: (_, v?: string | null) => 电话格验(v, editing?.phone) }]}>
+                <Input placeholder="13800002211" />
+              </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="email" label="邮箱"><Input /></Form.Item>
@@ -517,10 +523,13 @@ export default function LeadsView({
             if (res.ok) {
               set转项目(null);
               router.push(res.projectId ? `/projects/${res.projectId}` : `/customers/${res.customerId}`);
-            } else if (res.撞号) {
+              return true;
+            }
+            if (res.撞号) {
               set转项目(null);
               撞号了(r, res.撞号, res.error, 跟进);
             } else 说(res.error, true);
+            return false;
           }}
         />
       )}

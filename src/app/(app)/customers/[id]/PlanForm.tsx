@@ -17,6 +17,7 @@ import { savePlan, deletePlan } from "./actions";
 import CustomerPick, { type 客户近况 } from "./CustomerPick";
 import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
+import { 给人看的错 } from "@/lib/action-error";
 
 /**
  * 跟进计划表单。两处用：记录页（给了 customerId，已经知道是谁）和计划页页头的「新建计划」
@@ -94,7 +95,8 @@ export default function PlanForm({
   const 守 = useFormGuard({
     open,
     form,
-    草稿键: record ? null : `新建计划:${customerId ?? "挑人"}`,
+    草稿键: record ? `编辑计划:${record.id}` : `新建计划:${customerId ?? "挑人"}`,
+    编辑: !!record,
     关,
     afterOpenChange: 聚焦首项,
     不存: customerId ? [] : ["customerId"],
@@ -128,7 +130,8 @@ export default function PlanForm({
       return await onOk();
     } catch (error) {
       if (isFormValidationError(error)) return { ok: false, error: "有几项没填好，看标红的" };
-      return { ok: false, error: "保存失败，请刷新确认结果后重试" };
+      // 老版本动作说刷新、断网说网络（25C）；别的照原来那句，原文进日志
+      return { ok: false, error: 给人看的错(error, "保存失败，请刷新确认结果后重试", "计划") };
     } finally {
       set存着(false);
     }
@@ -181,6 +184,7 @@ export default function PlanForm({
       ]}
       destroyOnHidden
     >
+      {守.提示}
       <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={(changed) => { if ("method" in changed) 人改过方式.current = true; 守.改了(); }}>
         {挑人 && <CustomerPick 预选={预选客户} 近况={近况} on近况={换人} 给计划 />}
         <Form.Item name="subject" label="跟进主题" rules={[requiredText("请填写跟进主题")]}>

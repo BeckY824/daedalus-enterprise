@@ -1,5 +1,6 @@
 "use client";
 
+import { 空显 } from "@/lib/empty-value";
 import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -24,6 +25,7 @@ import {
 import { 编辑项目, 改项目画像Action, 勾项目交付 } from "../actions";
 import type { 项目详情 } from "./ProjectDetail";
 import type { 联系人 } from "./ProjectTeam";
+import { useFormDraft } from "@/components/FormDraft";
 
 const 去处按钮: Record<窗外去处, string> = { 沟通: "新增沟通", 附件: "去项目附件", 回款: "去回款", 线索验证: "打开线索验证", 客户: "去客户页" };
 const 灰字: CSSProperties = { color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)", overflowWrap: "anywhere" };
@@ -76,7 +78,6 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
   /** 防连点；存完等页面刷新好（拿到新的还差）才推 */
   const 锁 = useRef(false);
   const 刷完要 = useRef<"推" | "强推" | null>(null);
-
   const 缺 = useMemo(() => {
     const 配的 = p.必填?.还差 ?? [];
     return [...配的, ...((交付还差 ?? []) as 必填项[]).filter((k) => !配的.includes(k))];
@@ -92,6 +93,24 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
     联系人数: 联系人们.length,
   };
   const 值 = (k: 必填项): 草稿值 | undefined => (k in 草稿 ? 草稿[k] : 初始草稿(k, p));
+  /*
+    关了框再回来靠 ProjectDetail 内存里那份（读草稿 / 留草稿）；刷新、发版后内存没了，打过的字靠本机草稿带回（复盘第 1 类）。
+    只存文字格（成交需求、痛点这类打的字）：下拉、金额、地址这些结构值隔几天再带回不稳，重选一下
+  */
+  const 字们: Record<string, string> = {};
+  for (const k of 缺) {
+    const x = 值(k as 必填项);
+    if (typeof x === "string") 字们[k] = x;
+  }
+  const 稿 = useFormDraft({
+    键: `完成节点:${p.id}`,
+    值: 字们,
+    带回: (v) => set草稿((o) => {
+      const 新: 草稿们 = { ...o, ...(Object.fromEntries(Object.entries(v).filter(([, x]) => typeof x === "string")) as 草稿们) };
+      留草稿(新);
+      return 新;
+    }),
+  });
   // 存上的那几行留着打「已存上」，不然部分失败时人看不出哪些成了
   const 行们 = 按目录排([...缺, ...已存]);
   const 态 = 算窗口状态(行们, 环, 值, 已存, 能推进);
@@ -152,6 +171,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
     锁.current = false;
     set存着(false);
     if (接着 === "关窗" && !失败几项) {
+      稿.存好了();
       on关();
       if (刷新) void 刷新();
       else router.refresh();
@@ -189,7 +209,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
       case "合同状态":
         return <Select aria-label={名} style={满宽} allowClear value={字 || undefined} placeholder={未选占位} options={[不填项, ...合同状态们.map((x) => ({ value: x, label: x }))]} onChange={(x?: string) => 改(k, 去不填(x))} />;
       case "联系人":
-        return <Select aria-label={名} style={满宽} allowClear placeholder="选联系人" value={字 || undefined} options={联系人们.map((c) => ({ value: c.id, label: c.position ? `${c.name} · ${c.position}` : c.name }))} onChange={(x?: string) => 改(k, x ?? null)} />;
+        return <Select aria-label={名} style={满宽} allowClear placeholder="选联系人" value={字 || undefined} options={联系人们.map((c) => ({ value: c.id, label: c.position ? `${空显(c.name)} · ${c.position}` : 空显(c.name) }))} onChange={(x?: string) => 改(k, x ?? null)} />;
       case "渠道":
         return <ChannelPicker aria-label={名} style={满宽} channels={p.渠道们 ?? []} value={字 || null} onChange={(x) => 改(k, x)} allowClear placeholder="选渠道" />;
       case "地址":
@@ -234,6 +254,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
 
   return (
     <div className="proj-modal-sec">
+      {稿.提示}
       <div><span className="proj-where-label">现在在</span> {现在在}</div>
       {缺.length ? (
         <Alert type="warning" showIcon message={只能靠填齐 ? "还差这些必填，补齐了才能完成这个节点" : "还差这些必填（你是总管理 / 销售管理，可以先推）"} />

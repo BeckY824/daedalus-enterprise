@@ -228,7 +228,7 @@ describe("库里取数和权限", () => {
     for (const u of 用户) await prisma.user.create({ data: { ...u, email: `${u.id}@t`, password: "x", title: "" } });
     let i = 0;
     for (const u of 用户) {
-      客户[u.id] = (await prisma.customer.create({ data: { name: `${u.name}的客户`, phone: `1390000000${i++}`, salesOwnerId: u.id } })).id;
+      客户[u.id] = (await prisma.customer.create({ data: { name: `${u.name}的客户`, phone: `1391200000${i++}`, salesOwnerId: u.id } })).id;
       // 一条逾期计划 + 一条没时间的待办
       await prisma.followPlan.create({ data: { subject: `${u.name}回访`, plannedAt: dayjs().subtract(2, "day").toDate(), customerId: 客户[u.id], ownerId: u.id } });
       await prisma.task.create({ data: { title: `${u.name}发资料`, dueAt: null, customerId: 客户[u.id], ownerId: u.id } });
@@ -365,5 +365,7 @@ describe("首页「+」摆哪几项（lib/enterprise/composer-plus.ts）", () =>
     const { 加号菜单项 } = await import("@/lib/enterprise/composer-plus");
     expect(加号菜单项({ 摆附件: true, 拍照: false, 摆背调: true }).map((x) => x.label)).toEqual(["附件", "名片", "查重", "背调"]);
     expect(加号菜单项({ 摆附件: false, 拍照: true, 摆背调: false }).map((x) => x.label)).toEqual(["拍名片", "查重"]);
+    // 手机（11-18）：附件那项叫「截图 / 图片」，从相册选图
+    expect(加号菜单项({ 摆附件: true, 拍照: true, 摆背调: false }).map((x) => x.label)).toEqual(["截图 / 图片", "拍名片", "查重"]);
   });
 });

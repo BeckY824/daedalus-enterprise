@@ -94,8 +94,9 @@ describe("负责人和上级", () => {
     expect(负责人和上级(await 读组织(), 独行)).toEqual([独行]);
     await prisma.user.update({ where: { id: 组长 }, data: { active: false } });
     expect(负责人和上级(await 读组织(), 甲)).toEqual([甲]);
+    // 负责人停用、停用前的上级也停用了：推系统管理员（审核 11-18 通知 P2-7，M-公海-49）
     await prisma.user.update({ where: { id: 甲 }, data: { active: false } });
-    expect(负责人和上级(await 读组织(), 甲)).toEqual([]);
+    expect(负责人和上级(await 读组织(), 甲)).toEqual([总管]);
   });
 });
 

@@ -3,7 +3,7 @@
  * 官网那边 nginx 加了，app 这边漏了。钉在这里，免得哪次重写 next.config 时又掉。
  */
 import { describe, it, expect } from "vitest";
-import nextConfig from "../next.config";
+import { nextConfig } from "../next.config";
 
 describe("安全响应头", () => {
   it("全路径都带，且不报框架名", async () => {

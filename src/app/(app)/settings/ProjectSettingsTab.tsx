@@ -33,6 +33,7 @@ import { 改提成比例, 改按人提成比例 } from "@/app/(app)/projects/com
 import {
   三套提成比例问题, 提成范围们, 按人提成比例问题, type 三套提成比例, type 提成范围, type 按人提成比例, type 按人提成提交,
 } from "@/lib/project/commission";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 type 字典项 = { id: string; name: string; active: boolean; 用的人: number };
 type 结果 = Promise<{ ok: boolean; error?: string }>;
@@ -102,8 +103,8 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
         router.refresh();
       }
       return r.ok;
-    } catch {
-      就地.error("没改成，请稍后再试");
+    } catch (出错) {
+      就地.error(动作出错话(出错, "没改成，请稍后再试"));
       return false;
     } finally {
       记忙(键, -1);
@@ -118,8 +119,8 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
       const r = await f();
       if (r.ok) router.refresh();
       return r;
-    } catch {
-      return { ok: false, error: "没改成，请稍后再试" };
+    } catch (出错) {
+      return { ok: false, error: 动作出错话(出错, "没改成，请稍后再试") };
     } finally {
       记忙(键, -1);
     }
@@ -476,7 +477,7 @@ function TimeoutCard({
       {后果框}
       {提示条}
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
-        开了以后，线索、商机阶段的项目在一个进程上超过处理时长还没跟进，自动回到线索公海，负责人会收到提醒；记沟通时填了下一步时间的，过了那天还没跟进也会回收。项目上记沟通要填下一步时间。{默认天数 ? `没填天数的进程按 ${默认天数} 天算` : "没填天数的进程不回收"}，订单阶段不回收。默认关。
+        开了以后，线索、商机阶段的项目在一个进程上超过处理时长还没跟进，自动回到线索公海，负责人会收到提醒；下一步时间到期、逾期只提醒，不会因此回收。项目上记沟通要填下一步时间。{默认天数 ? `没填天数的进程按 ${默认天数} 天算` : "没填天数的进程不回收"}，订单阶段不回收。默认关。
         内贸、外贸项目各按各的时长算（按项目的业务线）；外贸空着 = 和内贸一样。业务线选「暂不分配」的、老项目没填业务线的负责人也没设的，按内贸算。
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>

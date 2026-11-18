@@ -26,7 +26,7 @@ const 图: Record<加号项, React.ReactNode> = {
  */
 export default function ComposerPlus({ 宽, 拍照, 在跑, files, setFiles, 摆背调键, on切背调, 渠道名们, on出卡, on存照片 }: {
   宽: boolean;
-  /** 手机：名片改成调相机，文本附件不摆（同原来） */
+  /** 手机：名片改成调相机；附件那项改成「截图 / 图片」，只从相册选图（11-18） */
   拍照: boolean;
   在跑: boolean;
   files: 附件[];
@@ -40,7 +40,7 @@ export default function ComposerPlus({ 宽, 拍照, 在跑, files, setFiles, 摆
   const 文件 = useRef<开关>(null);
   const 名片 = useRef<开关>(null);
   const 查重 = useRef<开关>(null);
-  const 项 = 加号菜单项({ 摆附件: !拍照, 拍照, 摆背调: 摆背调键 });
+  const 项 = 加号菜单项({ 摆附件: true, 拍照, 摆背调: 摆背调键 });
   const 点 = (k: 加号项) => {
     // 等菜单收起这一下点击过去再开：查重的小框在同一下点击里打开，会被当成「点了外面」立刻关掉
     setTimeout(() => {
@@ -71,7 +71,7 @@ export default function ComposerPlus({ 宽, 拍照, 在跑, files, setFiles, 摆
         </button>
       </Dropdown>
       <DedupeKey 宽={宽} 藏键 开={查重} />
-      {!拍照 && <AskFiles files={files} onChange={setFiles} disabled={在跑} 藏键 开={文件} />}
+      <AskFiles files={files} onChange={setFiles} disabled={在跑} 藏键 开={文件} 只收图={拍照} />
       <CardScanKey 宽={宽} 在跑={在跑} 渠道名们={渠道名们} on出卡={on出卡} on存照片={on存照片} 拍照={拍照} 藏键 开={名片} />
     </>
   );

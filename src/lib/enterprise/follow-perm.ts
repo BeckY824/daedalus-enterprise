@@ -19,8 +19,6 @@ import { 限定的我 } from "@/lib/team-scope";
 import { 看得到的客户 } from "@/lib/project/db";
 import { 全进程上下文 } from "@/lib/process-als";
 
-/** 客户页记沟通挂项目，组员 / 看得到但管不了的人记不进同事的项目：和项目详情「记项目沟通」同一个判定（X-143） */
-export const 不能挂项目话 = "只有项目负责人或系统管理员能把沟通记到这个项目上，项目组成员只能看";
 export const 不能改沟通话 = "沟通记录只有管理（销售管理、市场管理、总管理）能改";
 export const 不能删沟通话 = "沟通记录只有管理（销售管理、市场管理、总管理）或系统管理员能删";
 
@@ -129,6 +127,26 @@ export async function 客户事项挡(me: 谁, customerId: string | null | undef
   if (能改客户(me, { salesOwnerId: c.salesOwnerId, 在公海: false }, org)) return null;
   const 项目 = await defaultClient.project.findMany({ where: { customerId, pooledAt: null }, select: { ownerId: true } });
   return 负责人能改of(me, 项目.map((x) => x.ownerId), org) ? null : 不能改客户事项话;
+}
+
+export const 只有负责人改客户话 = "只有负责人或系统管理员能改客户资料（上级、条线总管理只能看、转让）";
+export const 公海先领话 = "公海里的客户先领取或分配，再改";
+
+/**
+ * 企业版改客户资料挡（11-02，permissions.ts 能改客户；11-18 从 customers/actions.ts 挪来，关联客户也用）：
+ * 负责人本人（销售、销售管理、渠运）或系统管理员才能改；公海里的谁都不能改；没设业务角色的一律拒。
+ * 规则「按组织看客户」关着时限定层不拦，这里照样拦。新建（id 空）只挡没设业务角色的和只读角色。不是企业版 null
+ */
+export async function 改客户挡(me: 谁, id?: string | null): Promise<string | null> {
+  if (!企业版()) return null;
+  const org = await 权限组织();
+  if (!org || 没设业务角色(org, me.id)) return 没业务角色话;
+  // 只读管理员新建也拦（11-03 D3-7 ④）：改已有的下面 能改客户 就不给，限定层也拦
+  if (!id) return 只读角色(me, org) ? 只读话of(me, org) : null;
+  const c = await defaultClient.customer.findUnique({ where: { id }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
+  if (!c) return null; // 不在了：后面照原样报「已删除」
+  if (c.pool) return 公海先领话;
+  return 能改客户(me, { salesOwnerId: c.salesOwnerId, 在公海: false }, org) ? null : 只有负责人改客户话;
 }
 
 /**

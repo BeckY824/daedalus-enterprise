@@ -14,6 +14,20 @@
 import { 验号码, type 号码类型 } from "./contact-format";
 import { 号键 } from "../phone";
 import { 是占位号, 占位号提示 } from "../placeholder-phone";
+import { hasVisibleText } from "../form-validation";
+import { 全角数字转半角 } from "../fullwidth";
+
+/** 企业版联系人姓名选填（11-17 员工反馈「联系人姓名不一定知道」）：姓名、联系方式至少一项 */
+export const 姓名号码至少一项 = "联系人姓名和联系方式至少填一项";
+/**
+ * 联系人姓名这一格的问题（没问题 = null）。企业版：姓名没填、但至少有一条联系方式就放行（存空串、显示「—」）；全空拦。
+ * 非企业版照旧必填。号们 = 交上来的号码几行的值、老三格，空的不算
+ */
+export function 联系人姓名问题(企业: boolean, name: unknown, 号们: readonly unknown[]): string | null {
+  if (hasVisibleText(name)) return null;
+  if (!企业) return "请填写联系人姓名";
+  return 号们.some((v) => typeof v === "string" && v.trim()) ? null : 姓名号码至少一项;
+}
 
 // ---------- 客户级别 ----------
 
@@ -64,7 +78,15 @@ export function 级别选项(): { value: 企业客户级别; label: string }[] {
 /** 地址里算国内的国家名（待定 17：国内选到区县，国外只选国家和城市） */
 export const 国内叫法 = "中国";
 const 国内别名 = new Set(["中国", "中国大陆", "china", "cn", "prc"]);
-export const 是国内 = (country: string | null | undefined): boolean => 国内别名.has(String(country ?? "").trim().toLowerCase());
+/**
+ * 「中国」的别写法：繁体、全称、英文全称（审核 11-18 P2-2：「中國」「中华人民共和国」原来当国外存、省和区县被清掉）。
+ * 规整地址 存成「中国」，客户区域（customer-region.ts）也按这一份认大陆
+ */
+const 也算中国 = /^(中國|中國大陸|中国大陆地区|中華人民共和國|中华人民共和国|大陆|大陸|people'?s\s+republic\s+of\s+china|the\s+people'?s\s+republic\s+of\s+china|mainland\s+china)$/i;
+export const 是国内 = (country: string | null | undefined): boolean => {
+  const t = String(country ?? "").trim().replace(/\s+/g, " ");
+  return 国内别名.has(t.toLowerCase()) || 也算中国.test(t);
+};
 
 export type 客户地址 = { addrCountry: string | null; addrProvince: string | null; addrCity: string | null; addrDistrict: string | null };
 export const 地址每格上限 = 40;
@@ -210,13 +232,37 @@ export function 验一行号码(种: 号码种类, 原: unknown, 选项: { 放�
     if (!/^[\d+\-()（）\s#]+$/.test(s.replace(/[０-９]/g, "0")) || 数字.length < 5 || 数字.length > 20) return { ok: false, error: `${种.名}「${s}」格式不对：只填数字（可以带 + - 和括号）` };
     // 座机 / WhatsApp / 传真填占位假号（P-全局-06）：拦下、叫人填真实号码
     if (!选项.放过占位 && 是占位号(s)) return { ok: false, error: `${种.名}「${s}」：${占位号提示(种.名)}` };
-    return { ok: true, 值: s, 键: 数字 };
+    return { ok: true, 值: s, 键: 通号种类.has(种.kind) ? 通号键(s) : 数字 };
   }
   return { ok: true, 值: s, 键: 自定号码键(s) };
 }
 
 /** 只认数字的几类：座机、WhatsApp、传真（查重键只留数字） */
 const 数字类 = new Set(["landline", "whatsapp", "fax"]);
+/** 和手机共用一个号键空间的几类（11-17）：座机、WhatsApp 的键按 通号键 算，和手机号的键（验号码 的 键）、导入的 归档号键 对得上 */
+export const 通号种类: ReadonlySet<string> = new Set(["landline", "whatsapp"]);
+
+/**
+ * 座机 / WhatsApp 的查重键（11-17，和手机号的键同一个空间）：只留数字；00 国际前缀去掉；
+ * 带 +86 / 0086（或 86 开头的 13 位）后面是大陆手机的去掉 86（同 归档号键）；+86 后面是区号座机的换回 0 开头（「+86 10 1234 5678」= 「010-12345678」）。
+ * 国外号 = 去掉 + 的数字（和手机号国外号的键一样）
+ */
+export function 通号键(v: string): string {
+  const t = 全角数字转半角(v).replace(/＋/g, "+").trim();
+  const 国际 = /^(\+|00)/.test(t);
+  let d = t.replace(/\D/g, "").replace(/^00(?=\d)/, "");
+  if (/^861[3-9]\d{9}$/.test(d)) return d.slice(2);
+  if (国际 && /^86[1-9]\d{8,10}$/.test(d)) d = `0${d.slice(2)}`;
+  return d;
+}
+
+/** 库里老行的键可能是改口径之前记的（座机、WhatsApp 原来只留数字，带着 86）：查重时这几种都比 */
+export function 号键变体(键: string): string[] {
+  if (!键) return [];
+  if (/^1[3-9]\d{9}$/.test(键)) return [键, `86${键}`];
+  if (/^0[1-9]\d{8,10}$/.test(键)) return [键, `86${键.slice(1)}`];
+  return [键];
+}
 /** Telegram 用户名：开头可带一个 @，5–32 位字母、数字、下划线 */
 const Telegram用户名 = /^@?([A-Za-z0-9_]{5,32})$/;
 const 加号开头 = (s: string) => /^[+＋]/.test(s);
@@ -256,7 +302,7 @@ export function 联系人号查重键(kind: string, v: string | null | undefined
   if (kind === "phone") return 号键(s).replace(/\./g, "").replace(/^00(?=\d)/, "").replace(/^86(?=1\d{10}$)/, "");
   if (kind === "email" || kind === "wechat" || kind === "wangwang") return s.toLowerCase().replace(/\s+/g, "");
   if (数字类.has(kind)) {
-    const 数字 = s.replace(/\D/g, "");
+    const 数字 = 通号种类.has(kind) ? 通号键(s) : s.replace(/\D/g, "");
     return 数字.length >= 5 ? 数字 : "";
   }
   return 自定号码键(s).replace(/^[\p{P}\p{S}]+$/u, "");

@@ -5,10 +5,11 @@ import { Button, Input, Modal } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import { useBusiness } from "@/lib/business-client";
 import { 跟进类型们 } from "@/lib/constants";
-import FollowMethodSelect from "@/components/FollowMethodSelect";
+import FollowMethodSelect, { useHabitDefault } from "@/components/FollowMethodSelect";
 import { 外贸精简 } from "@/lib/business-config";
 import { dayjs } from "@/lib/utils";
 import type { 向导跟进 } from "@/lib/project/wizard";
+import { useFormDraft } from "@/components/FormDraft";
 
 const 时间格式 = "YYYY-MM-DD HH:mm";
 
@@ -29,7 +30,8 @@ export default function ConvertProjectModal({
   /** 会带过去什么、会建什么项目：和原来确认框里那句一样 */
   说明: string;
   关: () => void;
-  交: (跟进: 向导跟进) => Promise<void>;
+  /** 回 true = 转成了（草稿删掉）；没转成（撞号、出错）草稿留着 */
+  交: (跟进: 向导跟进) => Promise<boolean>;
 }) {
   const b = useBusiness();
   const 能选类型 = 跟进类型们(外贸精简(b)).filter((t) => t.value !== "TASK" && t.value !== "REMIND");
@@ -43,26 +45,37 @@ export default function ConvertProjectModal({
       destroyOnHidden
       width={520}
     >
-      {lead && <Body key={lead.id} 能选类型={能选类型} 要下一步={要下一步} 说明={说明} 关={关} 交={交} />}
+      {lead && <Body key={lead.id} leadId={lead.id} 能选类型={能选类型} 要下一步={要下一步} 说明={说明} 关={关} 交={交} />}
     </Modal>
   );
 }
 
 function Body({
+  leadId,
   能选类型,
   要下一步,
   说明,
   关,
   交,
 }: {
+  leadId: string;
   能选类型: readonly { value: string; label: string }[];
   要下一步: boolean;
   说明: string;
   关: () => void;
-  交: (跟进: 向导跟进) => Promise<void>;
+  交: (跟进: 向导跟进) => Promise<boolean>;
 }) {
   const [f, setF] = useState<向导跟进>({ type: 能选类型[0]?.value ?? "PHONE", content: "", occurredAt: dayjs().format(时间格式), 下一步时间: null });
+  // 沟通方式按个人习惯默认（11-18，同记沟通框）；人改过的不盖
+  const 人改了方式 = useHabitDefault(true, (x) => setF((o) => ({ ...o, type: x.type, method: x.method })));
   const [交中, set交中] = useState(false);
+  // 首条跟进打了没交的字留草稿（复盘第 1 类：刷新、发版后重开同一条线索带回）。沟通方式、时间跟着习惯默认走，不进草稿
+  const 稿 = useFormDraft({
+    键: `线索转项目:${leadId}`,
+    值: { content: f.content, 下一步时间: f.下一步时间 },
+    带回: (v) => setF((o) => ({ ...o, ...(v.content !== undefined ? { content: v.content } : {}), ...(v.下一步时间 !== undefined ? { 下一步时间: v.下一步时间 } : {}) })),
+    算填过: (改过) => !!改过.content?.trim(),
+  });
   const 差 = !f.content.trim() ? "请填写首条跟进的沟通内容" : 要下一步 && !f.下一步时间 ? "请填下一步时间：到那天还没跟进，项目会自动回到线索公海" : "";
   const 行 = (label: string, el: React.ReactNode, 必填 = false) => (
     <div style={{ marginBottom: 12 }}>
@@ -72,10 +85,11 @@ function Body({
   );
   return (
     <div data-testid="lead-convert-follow">
+      {稿.提示}
       <p className="muted" style={{ marginTop: 0 }}>{说明}</p>
       <p style={{ fontWeight: 500 }}>首条跟进：这次和对方聊了什么</p>
       {行("沟通方式", (
-        <FollowMethodSelect style={{ width: "100%" }} aria-label="沟通方式" type={f.type} method={f.method} 类型们={能选类型} onChange={(v) => setF({ ...f, ...v })} />
+        <FollowMethodSelect style={{ width: "100%" }} aria-label="沟通方式" type={f.type} method={f.method} 类型们={能选类型} onChange={(v) => { 人改了方式(); setF({ ...f, ...v }); }} />
       ), true)}
       {行("时间", (
         <DatePicker
@@ -102,7 +116,7 @@ function Body({
         </>
       ), 要下一步)}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
-        <Button onClick={关}>取消</Button>
+        <Button onClick={() => { 稿.丢掉(); 关(); }}>取消</Button>
         <Button
           type="primary"
           disabled={!!差}
@@ -111,7 +125,7 @@ function Body({
           onClick={async () => {
             set交中(true);
             try {
-              await 交(f);
+              if (await 交(f)) 稿.存好了();
             } finally {
               set交中(false);
             }

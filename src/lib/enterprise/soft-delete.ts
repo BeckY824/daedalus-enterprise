@@ -24,8 +24,10 @@ import { 客户状态自动, 跟着项目重算 } from "./cust-status-auto-db";
 import { 卡点脱离沟通 } from "../project/blocker";
 import { 忘掉企业版范围 } from "./visibility";
 import { 回收站里查号, 回收站里带号的联系人, type 验好的号 } from "./contact-dedupe";
+import { 摘联系人号 } from "./contact-number-detach";
 import { 换负责人 } from "@/lib/project/owner-write";
 import { 验证中不能改派 } from "@/lib/project/lead-verify-guard";
+import { 企业版只用项目 } from "./project-only";
 
 export { 看已删, 回收站保留天数, 软删表, type 软删表名 } from "./soft-delete-core";
 
@@ -128,6 +130,12 @@ async function 恢复一条(t: 软删表名, id: string, 操作人 = ""): Promis
     const { 恢复后停用负责人去向 } = await import("./restore-inactive-owner");
     停用负责人 = await 恢复后停用负责人去向(id, 操作人);
     if (停用负责人?.进了公海) 忘掉企业版范围();
+    // M-公海-14：回到客户名单（不在客户公海）、名下一个项目都没有（回收站里的也算有）的，补一个潜客培育项目。
+    // 查重捞回也走这里。负责人去向办完再补：进了公海的不补；项目负责人认客户现在的负责人
+    if (await 企业版只用项目()) {
+      const { 零项目客户补潜客培育 } = await import("../project/nurture");
+      await prisma.$transaction((tx) => 零项目客户补潜客培育(tx, [id], 操作人));
+    }
   }
   // 客户三态：恢复了沟通（单条、或随客户连带回来）或项目（建档、换节点又算动静），等负责人去向办完再马上重算这位的钟。
   // tri-state-db 引着 pool-link → project/db → 本文件，按需取；三态关着不查库，出错不影响恢复
@@ -232,6 +240,15 @@ async function 线索退回(tx: Tx, customerIds: string[]) {
   await tx.lead.updateMany({ where: { customerId: { in: customerIds } }, data: { customerId: null, status: "跟进中", convertedAt: null } });
 }
 
+/**
+ * 真删之后没外键跟着走的行（审核 11-18 新建入口 P2-8）：沟通的「有效沟通 / 客户回复」标记、撞号查询记录（命中的客户没了）。
+ * 分配记录（EntLeadAssign）不动：11-18 客户定删除不退名额，它照算本月已分
+ */
+async function 清孤儿行(tx: Tx) {
+  await tx.$executeRawUnsafe('DELETE FROM "EntFollowUpMark" WHERE "followUpId" NOT IN (SELECT id FROM "FollowUp")');
+  await tx.$executeRawUnsafe('DELETE FROM "EntDupeHit" WHERE "customerId" NOT IN (SELECT id FROM "Customer")');
+}
+
 /** 彻底删除回收站里的一条：只有系统管理员。客户连同名下的一起真删（外键级联） */
 export async function 彻底删除(me: 谁, t: 软删表名, id: string): Promise<结果<{ name: string }>> {
   if (!(await 能彻底删除(me))) return { ok: false, error: "只有系统管理员能彻底删除" };
@@ -240,10 +257,13 @@ export async function 彻底删除(me: 谁, t: 软删表名, id: string): Promis
     if (!行?.deletedAt) return { ok: false as const, error: "这一条不在回收站里了，刷新看看" };
     const name = await 叫什么(tx, t, id);
     if (t === "Customer") await 看全部(() => 线索退回(tx, [id]));
+    // 联系人真删之前先摘他的号：外键置空会把号留在客户上，之后一直撞号（审核 11-18 P1-4）。客户整个删的，号跟着客户级联删
+    if (t === "Contact") await 看全部(() => 摘联系人号(tx, [id]));
     if (t === "FollowUp" && (await 卡点脱离沟通(tx, [id])).size) {
       return { ok: false as const, error: "这条沟通上发过卡点，卡点要留着，这条先留在回收站" };
     }
     await 看全部(() => 表(tx, t).deleteMany({ where: { id } }));
+    await 清孤儿行(tx);
     return { ok: true as const, name };
   }));
 }
@@ -267,10 +287,13 @@ export async function 清过期(现在: Date = new Date()): Promise<Record<软�
     const 到期沟通 = (await tx.followUp.findMany({ where: { deletedAt: { lt: 线 } }, select: { id: true } })).map((f) => f.id);
     const 留 = await 卡点脱离沟通(tx, 到期沟通);
     数.FollowUp = (await tx.followUp.deleteMany({ where: { deletedAt: { lt: 线 }, ...(留.size ? { id: { notIn: [...留] } } : {}) } })).count;
+    // 到期的联系人先摘号（审核 11-18 P1-4，同 彻底删除）
+    await 摘联系人号(tx, (await tx.contact.findMany({ where: { deletedAt: { lt: 线 } }, select: { id: true } })).map((c) => c.id));
     for (const t of ["Contact", "Project"] as const) 数[t] = (await 表(tx, t).deleteMany({ where: { deletedAt: { lt: 线 } } })).count;
     const 客户 = (await tx.customer.findMany({ where: { deletedAt: { lt: 线 } }, select: { id: true } })).map((c) => c.id);
     await 线索退回(tx, 客户);
     if (客户.length) 数.Customer = (await tx.customer.deleteMany({ where: { id: { in: 客户 } } })).count;
+    if (数.FollowUp || 数.Project || 数.Customer) await 清孤儿行(tx);
   })));
   return 数;
 }

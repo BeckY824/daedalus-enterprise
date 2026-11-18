@@ -12,12 +12,14 @@
  * - 每条通知先把 feishuStatus 从「待推」抢成「推送中」再发，抢不到就不发：同一条不会推两遍；
  *   请求体再带 uuid = 通知 id，飞书那边一小时内同 uuid 也只发一次
  * - 推不出去只记在那一行（feishuStatus / feishuError），从不往外抛
+ * - 发出去之前标题、正文再过一遍号码打码（notice-mask.ts）：notify 写库时已经打过，这里防着别处直接写进表的行
  */
 import { prisma } from "@/lib/prisma";
 import { getSetting } from "@/lib/settings";
 import { multiTenant } from "@/lib/tenant/context";
 import { 读连接配置 } from "@/lib/enterprise-import/adapter";
 import { 正在切换视图 } from "./view-as";
+import { 通知文字打码 } from "./notice-mask";
 
 export const 飞书推送开关键 = "entFeishuPush";
 const 默认基址 = "https://open.feishu.cn";
@@ -140,18 +142,20 @@ export async function 推通知们(ids: readonly string[]): Promise<void> {
       select: { id: true, feishuOpenId: true, active: true },
     });
     const openId = new Map(人们.filter((u) => u.active && 有值(u.feishuOpenId)).map((u) => [u.id, u.feishuOpenId!]));
+    // 停用的人单说（审核 11-18 通知 P2-4：原来和没绑的混在一起记成「没绑飞书」）
+    const 停用 = new Set(人们.filter((u) => !u.active).map((u) => u.id));
 
     for (const r of 行们) {
       const 收 = openId.get(r.userId);
       if (!收) {
-        await 记没推("没绑飞书", [r.id]);
+        await 记没推(停用.has(r.userId) ? "账号已停用" : "没绑飞书", [r.id]);
         continue;
       }
       // 先抢：别的调用已经在推这条就不再推
       const 抢 = await prisma.entNotice.updateMany({ where: { id: r.id, feishuStatus: "待推" }, data: { feishuStatus: "推送中" } });
       if (抢.count !== 1) continue;
       try {
-        await 发(c, 收, { 标题: r.title, 正文: r.body, 链接: 完整链接(r.link), uuid: r.id });
+        await 发(c, 收, { 标题: 通知文字打码(r.title), 正文: 通知文字打码(r.body), 链接: 完整链接(r.link), uuid: r.id });
         await prisma.entNotice.update({ where: { id: r.id }, data: { feishuStatus: "已推", feishuError: null, feishuAt: new Date() } });
       } catch (e) {
         const 原因 = e instanceof 推送出错 ? e.message : `发消息失败：${e instanceof Error ? e.message : String(e)}`;
@@ -162,4 +166,26 @@ export async function 推通知们(ids: readonly string[]): Promise<void> {
     // 读库出错之类：整批留着「待推」，不影响主流程
     console.warn("[飞书推送] 这一批没推成：", e instanceof Error ? e.message : e);
   }
+}
+
+/* ───────────────────────── 卡住的行 ───────────────────────── */
+
+/** 「待推 / 推送中」超过这么久还没落定 = 进程在推的中途重启了、或那一批读库出错整批没推 */
+export const 推送卡住分钟 = 10;
+export const 推送卡住话 = "推送中断（服务重启或这一批出错），没推出去；不重试，站内通知照旧在";
+let 上次收拾 = 0;
+
+/**
+ * 收拾卡住的推送（审核 11-18 通知 P2-3）：部署时 4 个进程都重启，正在推的那行永远停在「推送中」；批次读库出错整批留在「待推」，
+ * 之后没有谁再推。口径 M-公海-33「飞书发失败不影响待办、不重试、不补发」：不重推，只把状态如实记成「失败」。
+ * 挂在夜扫钟上（只有跑钟的那个进程），每 10 分钟最多扫一次。返回改了几行
+ */
+export async function 收拾卡住的推送(现在: Date = new Date(), 不限频 = false): Promise<number> {
+  if (!不限频 && 现在.getTime() - 上次收拾 < 推送卡住分钟 * 60_000) return 0;
+  上次收拾 = 现在.getTime();
+  const r = await prisma.entNotice.updateMany({
+    where: { feishuStatus: { in: ["待推", "推送中"] }, createdAt: { lt: new Date(现在.getTime() - 推送卡住分钟 * 60_000) } },
+    data: { feishuStatus: "失败", feishuError: 推送卡住话, feishuAt: 现在 },
+  });
+  return r.count;
 }

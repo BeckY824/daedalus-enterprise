@@ -10,6 +10,11 @@ const mocks = vi.hoisted(() => ({
   user: { id: "", name: "老板", email: "a@x", role: "ADMIN", title: "", avatar: null },
   企业版: true,
 }));
+// 这份测的是老线索表（Lead）的规则：企业版那一道「老线索入口一进门拦」（审核 11-18 权限 P1-9）在这里放开，只测后面的逻辑
+vi.mock("@/lib/enterprise/project-only", async (原) => {
+  const m = await 原<typeof import("@/lib/enterprise/project-only")>();
+  return { ...m, 只用项目挡老入口: async (类: Parameters<typeof m.只用项目挡老入口>[0]) => (类 === "线索" ? null : m.只用项目挡老入口(类)) };
+});
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
 vi.mock("@/lib/enterprise/switch", () => ({ 企业版: () => mocks.企业版 }));
@@ -276,8 +281,9 @@ describe("自动分配线索", () => {
     expect(await 设自动分配参与(内贸, "允许")).toEqual({ ok: true });
     当(市场);
     expect(await 自动分配线索(await 建线索("M"))).toMatchObject({ toUserId: 内贸 });
-    // 外贸还是禁止：他 0 条也不挑；内贸、两边都 1/10，内贸进池早
-    expect(await 自动分配线索(await 建线索("N"))).toMatchObject({ toUserId: 内贸 });
+    // 外贸还是禁止：他 0 条也不挑。内贸暂停期间两边分了 1 条，内贸恢复时按 1 条起算（11-18 第 3 题 B）：
+    // M 给内贸（都 1，内贸进池早），N 轮到两边，不会连给内贸
+    expect(await 自动分配线索(await 建线索("N"))).toMatchObject({ toUserId: 两边 });
     // 手动分配不受参与状态影响
     expect(await 分配线索({ leadId: await 建线索("手动"), toUserId: 外贸 })).toMatchObject({ ok: true });
   });
@@ -552,7 +558,7 @@ describe("配额", () => {
     await 设配额(外贸, 5);
     当(市场);
     // 企业版项目模式锁开（10-28），持有数的是线索阶段的项目
-    const 客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13800000000", salesOwnerId: 市场 } })).id;
+    const 客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13812000000", salesOwnerId: 市场 } })).id;
     const 项目 = async (name: string, data: Partial<{ ownerId: string; phase: string; node: string; result: string | null; pooledAt: Date | null; bizLine: string }> = {}) =>
       (await prisma.project.create({ data: { name, customerId: 客户, ownerId: 市场, creatorId: 市场, ...data } })).id;
     // 手动指派按项目业务线过滤（11-01）：外贸项目才能指给外贸
@@ -676,7 +682,7 @@ describe("企业版「新线索」= 项目的线索阶段：分配、自动分�
 
   beforeEach(async () => {
     await 开();
-    客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13800000000", salesOwnerId: 市场 } })).id;
+    客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13812000000", salesOwnerId: 市场 } })).id;
     for (const [i, id] of [销售经理, 虚线经理, 内贸, 外贸, 两边].entries()) await prisma.user.update({ where: { id }, data: { createdAt: new Date(2026, 0, i + 1) } });
     await setSetting(自动分配不参与key, [销售经理, 虚线经理]);
     for (const id of [销售经理, 虚线经理, 内贸, 外贸, 两边]) await 配(id, 10);
@@ -754,6 +760,8 @@ describe("企业版「新线索」= 项目的线索阶段：分配、自动分�
 
   it("公海里的分出去：出公海、原负责人也能接", async () => {
     const P = await 建项目("公海的", { ownerId: 内贸, pooledAt: new Date() });
+    // 11-18：线索公海里的项目按公海页判（能管公海），市场管理不能分（ent-assign-lead-pool-guard），这里由销售管理分
+    当(销售经理);
     expect(await 分配线索({ projectId: P, toUserId: 内贸 })).toEqual({ ok: true });
     expect(await 项目(P)).toMatchObject({ ownerId: 内贸, pooledAt: null });
   });
@@ -950,7 +958,7 @@ describe("不设配额（人人参与、不限额，10-30）", () => {
   });
 
   it("项目（新线索）也一样：开着时手动分不查满额、持有上限照样管", async () => {
-    const 客户 = (await prisma.customer.create({ data: { name: "客户乙", phone: "13900000000", salesOwnerId: 市场 } })).id;
+    const 客户 = (await prisma.customer.create({ data: { name: "客户乙", phone: "13912000000", salesOwnerId: 市场 } })).id;
     const 建项目 = async (name: string, bizLine: string | null = "外贸") => (await prisma.project.create({ data: { name, customerId: 客户, ownerId: 市场, creatorId: 市场, bizLine } })).id;
     await 配(外贸, 0);
     当(市场);
@@ -961,7 +969,8 @@ describe("不设配额（人人参与、不限额，10-30）", () => {
     if ("error" in 规则们) throw new Error(规则们.error);
     await 存组织规则(规则们);
     expect(await 分配线索({ projectId: await 建项目("R"), toUserId: 外贸 })).toMatchObject({ ok: false, error: expect.stringContaining("持有上限") });
-    // 自动分配：内贸项目只在内贸这条线挑（内贸、两边都 0 条，内贸进池早），不看持有上限
+    // 自动分配：内贸项目只在内贸这条线挑（内贸、两边都 0 条，内贸进池早），不看持有上限。按项目业务线挑是非市场成员发起的口径（P-转-26）
+    当(总管, "SALES");
     expect(await 自动分配线索(await 建项目("S", "内贸"), { 项目: true })).toMatchObject({ ok: true, toUserId: 内贸, 配额: null });
     // 外贸项目：只在外贸这条线挑（外贸、没标线的两边），不会给内贸；两边禁止后只剩外贸，他到了持有上限照样分（自动分配不看持有上限）
     await setSetting(自动分配不参与key, { [销售经理]: "禁止", [虚线经理]: "禁止", [两边]: "禁止" });
@@ -977,7 +986,7 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
 
   beforeEach(async () => {
     await 开();
-    客户 = (await prisma.customer.create({ data: { name: "客户乙", phone: "13900000000", salesOwnerId: 市场 } })).id;
+    客户 = (await prisma.customer.create({ data: { name: "客户乙", phone: "13912000000", salesOwnerId: 市场 } })).id;
     for (const [i, id] of [销售经理, 虚线经理, 内贸, 外贸, 两边].entries()) await prisma.user.update({ where: { id }, data: { createdAt: new Date(2026, 0, i + 1) } });
     await setSetting(自动分配不参与key, [销售经理, 虚线经理]);
     // 这一组按默认的不设配额（不限额）走
@@ -1004,6 +1013,8 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
 
   it("QA #4 公海里清了负责人的（ownerId 空串，C-01）：界面交「没人」照样能分，不误报「已被分配」", async () => {
     const P = await 建项目("公海的", { bizLine: "内贸", ownerId: "", pooledAt: new Date() });
+    // 11-18：线索公海里的项目只有能管公海的人能分（市场管理不能，ent-assign-lead-pool-guard）
+    当(销售经理);
     expect(await 分配线索({ projectId: P, toUserId: 内贸, 原负责人: "" })).toEqual({ ok: true });
     expect((await 项目(P)).ownerId).toBe(内贸);
     const Q = await 建项目("公海的二", { bizLine: "外贸", ownerId: "", pooledAt: new Date() });
@@ -1063,6 +1074,7 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
     expect(await 负责人(L)).toBe(内贸);
     // 公海里清了负责人的（ownerId 空串）：交空串 = 没人，照常分
     const 丙 = await 建项目("批丙", { bizLine: "外贸", ownerId: "", pooledAt: new Date() });
+    当(销售经理); // 线索公海里的由能管公海的人分（11-18）
     const r3 = await 批量自动分配([丙], { 项目: true, 原负责人们: { [丙]: "" } });
     expect(r3.ok && r3.结果[0]).toMatchObject({ ok: true });
   });
@@ -1086,6 +1098,8 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
   });
 
   it("QA #5 自动分配按项目业务线挑人：内贸项目只给内贸线的人，外贸项目只给外贸线的人", async () => {
+    // 按项目业务线挑人是非市场成员发起的口径；市场成员（市场管理、渠运）发起按客户区域定（P-转-26，ent-full-assign 那组）
+    当(总管, "SALES");
     const 内们 = new Set<string>(), 外们 = new Set<string>();
     for (let i = 0; i < 4; i++) {
       const r1 = await 自动分配线索(await 建项目(`内${i}`, { bizLine: "内贸" }), { 项目: true });
@@ -1102,6 +1116,8 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
   });
 
   it("QA #5「暂不分配」的项目不进自动分配，负责人不动；批量也一样", async () => {
+    // 按项目业务线挑人是非市场成员发起的口径；市场成员（市场管理、渠运）发起按客户区域定（P-转-26，ent-full-assign 那组）
+    当(总管, "SALES");
     const P = await 建项目("暂不", { bizLine: "暂不分配", awaitAssignAt: new Date() });
     expect(await 自动分配线索(P, { 项目: true })).toMatchObject({ ok: false, 暂不分配: true, error: expect.stringContaining("暂不分配") });
     const r = await 批量自动分配([P], { 项目: true });
@@ -1111,6 +1127,8 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
   });
 
   it("QA #5 这条线没人能接：不抛错，回 待分配，留在新线索（待分配的仍待分配）", async () => {
+    // 按项目业务线挑人是非市场成员发起的口径；市场成员（市场管理、渠运）发起按客户区域定（P-转-26，ent-full-assign 那组）
+    当(总管, "SALES");
     await setSetting(自动分配不参与key, { [销售经理]: "禁止", [虚线经理]: "禁止", [外贸]: "暂停", [两边]: "禁止" });
     const 待 = await 建项目("待分配的", { bizLine: "外贸", awaitAssignAt: new Date() });
     const r = await 自动分配线索(待, { 项目: true });
@@ -1135,6 +1153,8 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
   });
 
   it("X-85 批量：挑不到人的几条都标成待分配，合成一条待分配提醒；已待分配的不重复提醒，也不另发满额", async () => {
+    // 按项目业务线挑人是非市场成员发起的口径；市场成员（市场管理、渠运）发起按客户区域定（P-转-26，ent-full-assign 那组）
+    当(总管, "SALES");
     await setSetting(自动分配不参与key, { [销售经理]: "禁止", [虚线经理]: "禁止", [外贸]: "暂停", [两边]: "禁止" });
     const 甲 = await 建项目("甲", { bizLine: "外贸" });
     const 乙 = await 建项目("乙", { bizLine: "外贸" });
@@ -1149,6 +1169,8 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
   });
 
   it("老项目没填业务线：按负责人的线（负责人没设 = 内贸）", async () => {
+    // 按项目业务线挑人是非市场成员发起的口径；市场成员（市场管理、渠运）发起按客户区域定（P-转-26，ent-full-assign 那组）
+    当(总管, "SALES");
     const 外的 = await 建项目("外贸人建的", { ownerId: 外贸, bizLine: null });
     const r = await 自动分配线索(外的, { 项目: true });
     // 外贸自己是现负责人跳过 → 只剩两边
@@ -1206,8 +1228,9 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
     expect(await 读线部门设置()).toEqual({ 设的: { 内贸: [一组], 外贸: [] }, 还没勾: ["外贸"], 能改: true });
 
     当(市场);
-    // 内贸线：一组连下级 = 外贸、两边；内贸本人在二组没勾，不进
-    expect([...((await 项目分配线(await 建项目("内看", { bizLine: "内贸" })))?.可选 ?? [])].sort()).toEqual([外贸, 两边].sort());
+    // 内贸线手动指派：一组连下级 = 外贸、两边；内贸本人在二组没勾，但他本人事业部（业务线标记）是内贸，也能被指定
+    // （11-18 第 8 题 B：部门没勾只是不进自动分配，正常参与的照样能指定）；自动分配仍只在勾的部门里挑（下面）
+    expect([...((await 项目分配线(await 建项目("内看", { bizLine: "内贸" })))?.可选 ?? [])].sort()).toEqual([外贸, 两边, 内贸].sort());
     const 拿到 = new Set<string>();
     for (let i = 0; i < 3; i++) {
       const r = await 自动分配线索(await 建项目(`内${i}`, { bizLine: "内贸" }), { 项目: true });

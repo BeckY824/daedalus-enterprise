@@ -6,6 +6,7 @@ import InlineConfirm from "@/components/InlineConfirm";
 import { AudioOutlined, DeleteOutlined, DownloadOutlined, PaperClipOutlined } from "@ant-design/icons";
 import { 合并附件, 是图片, 是音频, 收的沟通类型, 读大小, type 附件 } from "@/lib/attachment-rules";
 import { 传附件 } from "@/lib/attachment-upload";
+import { usePasteUpload, 粘贴标记 } from "@/lib/paste-upload";
 import { useViewAs } from "@/components/ViewAsContext";
 import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 
@@ -17,6 +18,8 @@ import { 视图外部话 } from "@/lib/enterprise/view-as-words";
  * 显示的列表 = prop 里的附件 + 自己刚传的 - 自己刚删的（合并附件，11-02）：记沟通时这一行先以空附件挂上、传完才 refresh，
  * 只在挂载时 useState 一次的话后来的 prop 进不来，要整页刷新才看得到。
  * on变了：一批传完（有传成的）或删掉一个后叫一次，外面 router.refresh，项目附件卡的沟通格和合计跟着变
+ * 粘贴截图（11-17）：焦点在这块或这条沟通里（data-paste-scope，含改沟通内容的文本框，剪贴板里没文字时）Ctrl+V / ⌘V，
+ * 走和点选同一个 传一个（lib/paste-upload.ts）
  */
 export default function FollowAttachments({ followUpId, 附件: 起始, 能传: 能传参, 能删: 能删参, on变了 }: { followUpId: string; 附件: 附件[]; 能传: boolean; 能删: boolean; on变了?: () => void }) {
   /** 就地提示（g.save）：传不上、删不掉的原因写在这一块顶上，不弹顶部提示；几秒后自己收 */
@@ -41,6 +44,7 @@ export default function FollowAttachments({ followUpId, 附件: 起始, 能传: 
   const 到了 = 新传.filter((a) => 起始.some((x) => x.id === a.id));
   if (到了.length) set新传(新传.filter((a) => !到了.includes(a)));
   const 列表 = 合并附件(起始, 新传, 删了);
+  const 根 = useRef<HTMLDivElement>(null);
 
   async function 传一个(f: File) {
     这批.current.在传++;
@@ -80,6 +84,9 @@ export default function FollowAttachments({ followUpId, 附件: 起始, 能传: 
     return { ok: false, error: 因 };
   }
 
+  // 粘贴截图：能传、不在传（和「加截图 / 录音」按钮灰掉同一个条件）才接，交给同一个 传一个
+  usePasteUpload(根, 能传 && 传着 === 0, (们) => { for (const f of 们) void 传一个(f); });
+
   if (!列表.length && !能传) return null;
   const 图们 = 列表.filter((a) => 是图片(a.mime));
   const 别的 = 列表.filter((a) => !是图片(a.mime));
@@ -92,7 +99,7 @@ export default function FollowAttachments({ followUpId, 附件: 起始, 能传: 
   );
 
   return (
-    <div className="follow-att" data-testid="follow-attachments">
+    <div className="follow-att" data-testid="follow-attachments" ref={根} {...(能传 ? { [粘贴标记]: "" } : {})}>
       {错 && <div className="att-note att-note-err" role="alert">{错}</div>}
       {图们.length > 0 && (
         <Image.PreviewGroup>
@@ -121,7 +128,7 @@ export default function FollowAttachments({ followUpId, 附件: 起始, 能传: 
           <Upload multiple disabled={传着 > 0} showUploadList={false} accept={收的沟通类型} beforeUpload={(f) => { void 传一个(f); return false; }}>
             <Button size="small" type="link" disabled={传着 > 0} icon={<PaperClipOutlined />} style={{ paddingInline: 0 }}>加截图 / 录音</Button>
           </Upload>
-          {传着 > 0 && <span className="muted"><Spin size="small" /> 正在传 {传着} 个…</span>}
+          {传着 > 0 ? <span className="muted"><Spin size="small" /> 正在传 {传着} 个…</span> : <span className="muted follow-att-tip">也可以直接粘贴截图</span>}
         </div>
       )}
     </div>
@@ -131,8 +138,11 @@ export default function FollowAttachments({ followUpId, 附件: 起始, 能传: 
 /** 记沟通时先挑好的截图、录音：记下之后拿到 followUpId 再一个个传（传不上的逐条报，沟通照样记下了） */
 function PickFollowAttachments({ 文件们, on改 }: { 文件们: File[]; on改: (x: File[]) => void }) { // 英文名：钩子规则只认大写字母开头的组件
   const 视图中 = useViewAs();
+  // 粘贴截图（11-17）：焦点在这个弹窗里（含沟通内容等文本框，剪贴板里没文字时）Ctrl+V / ⌘V，和点选一样先挑上、记下后再传
+  const 根 = useRef<HTMLDivElement>(null);
+  usePasteUpload(根, !视图中, (们) => on改([...文件们, ...们]));
   return (
-    <div>
+    <div ref={根} {...(视图中 ? {} : { [粘贴标记]: "" })}>
       <Upload multiple showUploadList={false} accept={收的沟通类型} disabled={视图中} beforeUpload={(f) => { on改([...文件们, f]); return false; }}>
         <Button size="small" icon={<PaperClipOutlined />} disabled={视图中} title={视图中 ? 视图外部话 : undefined}>加截图 / 录音</Button>
       </Upload>
@@ -154,11 +164,11 @@ function PickFollowAttachments({ 文件们, on改 }: { 文件们: File[]; on改:
 
 export { PickFollowAttachments as 选沟通附件 };
 
-/** 记下之后传：返回没传上的那几句 */
-export async function 传沟通附件(followUpId: string, 文件们: File[]): Promise<string[]> {
+/** 记下之后传：返回没传上的那几句。票：建档时首条沟通的附件票（11-18），建好就分走了也传得上 */
+export async function 传沟通附件(followUpId: string, 文件们: File[], 票?: string | null): Promise<string[]> {
   const 错: string[] = [];
   for (const f of 文件们) {
-    const r = await 传附件({ followUpId }, f);
+    const r = await 传附件({ followUpId }, f, null, 票);
     if (!r.ok) 错.push(r.error);
   }
   return 错;

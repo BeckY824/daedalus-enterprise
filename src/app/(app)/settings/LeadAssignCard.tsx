@@ -8,8 +8,13 @@ import { Button, Card, InputNumber, Segmented, Tag } from "antd";
 import { 设配额, 设自动分配参与, type 分配情况 } from "../leads/assign-actions";
 // lead-assign 那边连着库，这里只拿类型
 import type { 参与状态 } from "@/lib/enterprise/lead-assign";
+import { 动作出错话 } from "@/lib/stale-deploy";
 
 const 参与选项: 参与状态[] = ["允许", "暂停", "禁止"];
+/** 和 assign-eta.ts 估算说明 同一句（那边连着库，这里不 import 值） */
+const 估算说明 = "这是估算：指定分配、有人暂停或新同事加入都会让它变";
+/** 「前面约几条」那一格 */
+const 轮到格 = (x: 分配情况[number]["轮到"]) => (!x ? 空值符 : x === "暂无法估算" ? "暂无法估算" : x.数 === 0 ? "下一条就轮到" : `约 ${x.数} 条`);
 
 /**
  * 设置 → 组织架构 →「线索分配」（企业版 D-38，规则「线索分配和配额」开着才出现）。
@@ -18,6 +23,8 @@ const 参与选项: 参与状态[] = ["允许", "暂停", "禁止"];
  * - 参与：允许 / 暂停 / 禁止三态（10-26），老板、总管理员、销售管理能改（Q-12 默认）；暂停 = 暂时不参与、可随时恢复（一键恢复为允许），禁止 = 不参与；
  *   两种都不进自动分配轮转，手动分配照常。
  * - 不限额（10-30）：规则里选了「不设配额」，配额不起作用：配额框灰掉、不显示满额，设过的数留着，关掉照旧。
+ * - 前面约几条（11-18 客户定第 2 题 A，assign-eta.ts）：按自动分配挑人规则估的「再分几条轮到他」；分配线索的人、总管理看全部，
+ *   销售管理只看本组，别的行、不参加自动分配的人写「—」；系统里还没有分配记录写「暂无法估算」。
  */
 export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分配情况; 不限额?: boolean }) {
   const router = useRouter();
@@ -44,8 +51,8 @@ export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分�
       ok = r.ok;
       if (!r.ok) 就地.error(r.error ?? "没改成，请稍后再试");
       else 就地.success(成了);
-    } catch {
-      就地.error("没改成，请稍后再试");
+    } catch (出错) {
+      就地.error(动作出错话(出错, "没改成，请稍后再试"));
     } finally {
       set忙(null);
       // 成了：草稿和新数据同一个过渡里换，新数据到了才一起显示；没成：马上退回页面上的值
@@ -77,6 +84,7 @@ export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分�
         线索最终判成无效的，负责人本月配额多给 1 条（配额后面的 +N），也是每月清零；没填配额的人不加。
       </p>
       )}
+      <p className="muted org-lead-eta-note" data-testid="org-lead-eta-note">「前面约几条」= 按自动分配挑人的规则、按现在的数估的再分几条轮到他。{估算说明}。</p>
       <div style={{ overflowX: "auto" }}>
         <table className="org-field-perm org-lead-assign">
           <thead>
@@ -86,6 +94,7 @@ export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分�
               <th>本月已分 / 配额</th>
               <th>当前持有</th>
               <th>参与自动分配</th>
+              <th title={估算说明}>前面约几条</th>
             </tr>
           </thead>
           <tbody>
@@ -148,6 +157,7 @@ export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分�
                       <span className="muted" style={{ marginInlineStart: 8 }} data-testid={`org-lead-noquota-${r.userId}`}>没填配额，不参与自动分配</span>
                     )}
                   </td>
+                  <td className="org-lead-eta" data-testid={`org-lead-eta-${r.userId}`} title={r.轮到 ? 估算说明 : undefined}>{轮到格(r.轮到)}</td>
                 </tr>
               );
             })}

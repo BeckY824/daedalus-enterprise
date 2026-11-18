@@ -16,7 +16,7 @@ let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "main-channels-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, (a) => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},replace(){},prefetch(){}});");
-  stub(/^\.\/actions$/, "export const saveMainChannel=async x=>{(window.__存=window.__存||[]).push(x);return{ok:true}},toggleMainChannel=async()=>({ok:true});");
+  stub(/^\.\/actions$/, "export const saveMainChannel=async x=>{(window.__存=window.__存||[]).push(x);return{ok:true}},toggleMainChannel=async()=>({ok:true}),deleteMainChannel=async()=>({ok:true});");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, (a) => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 

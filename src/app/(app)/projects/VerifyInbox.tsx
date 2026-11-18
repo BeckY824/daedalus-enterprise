@@ -8,6 +8,8 @@ import { fmtDate } from "@/lib/utils";
 import { 原因上限 } from "@/lib/project/nodes";
 import { 市场复核Action, 总管理终判Action } from "./actions";
 import { showUndo } from "@/components/UndoBar";
+import { 动作出错话 } from "@/lib/stale-deploy";
+import { useFormDraft } from "@/components/FormDraft";
 
 export type 待复核行 = {
   projectId: string; 项目: string; 负责人: string; 步: "市场复核" | "销售终验" | "总管理终判" | "销售认领";
@@ -38,6 +40,8 @@ export default function VerifyInbox({ 们 }: { 们: 待复核行[] }) {
    * 所以 到点 把真交推到下一个微任务、交之前看一眼这里——补一句的这一次不交，等说明框点确定带着说明交
    */
   const 补一句的 = useRef(new Set<string>());
+  // 复核说明打了没交的字留草稿（复盘第 1 类）：按项目 + 判有效 / 无效分；判成了、点取消就删
+  const 稿 = useFormDraft({ 键: 框 ? `复核说明:${框.r.projectId}:${框.有效 ? "有效" : "无效"}` : null, 开: !!框, 值: { 说明 }, 带回: (v) => { if (v.说明 !== undefined) set说明(v.说明); } });
   const 摆着 = 们.filter((r) => !收起的.has(r.projectId));
   if (!摆着.length && !框) return null;
   const 摆回 = (id: string) => set收起的((s) => { const n = new Set(s); n.delete(id); return n; });
@@ -65,10 +69,10 @@ export default function VerifyInbox({ 们 }: { 们: 待复核行[] }) {
           摆回(id);
           记错(id, x.error ?? "没判成，请稍后再试");
           return x;
-        } catch {
+        } catch (出错) {
           摆回(id);
-          记错(id, "没判成，请稍后再试");
-          return { ok: false, error: "没判成，请稍后再试" };
+          记错(id, 动作出错话(出错, "没判成，请稍后再试"));
+          return { ok: false, error: 动作出错话(出错, "没判成，请稍后再试") };
         }
       }),
       // 补一句：这一次不交，开原来那个说明框（判有效），写完点确定才带着说明交
@@ -86,12 +90,13 @@ export default function VerifyInbox({ 们 }: { 们: 待复核行[] }) {
       else {
         // 成了：框关、这一行收起，就是回执（不弹顶部提示）
         const id = 框.r.projectId;
+        稿.存好了();
         set收起的((s) => new Set(s).add(id));
         set框(null);
         router.refresh();
       }
-    } catch {
-      set框错("没判成，请稍后再试");
+    } catch (出错) {
+      set框错(动作出错话(出错, "没判成，请稍后再试"));
     } finally {
       set忙(false);
     }
@@ -126,9 +131,10 @@ export default function VerifyInbox({ 们 }: { 们: 待复核行[] }) {
         title={框 ? `判${框.有效 ? "有效" : "无效"}` : ""}
         okText="确定"
         okButtonProps={{ loading: 忙, danger: !!框 && !框.有效 }}
-        onCancel={() => set框(null)}
+        onCancel={() => { 稿.丢掉(); set框(null); }}
         onOk={() => void 判()}
       >
+        {稿.提示}
         <div style={{ marginBottom: 8, color: "var(--text-muted)", overflowWrap: "anywhere" }}>
           「{框?.r.项目}」{框?.有效 ? "判有效会交回负责人继续推进。" : "判无效后这条线索结束（记为线索流失）；现负责人的分配占过额度的（自动、指定都算，不限哪个月），给他本月补回 1 个；随客户分到的、转来的、没分配记录的、没设配额的不补。"}
         </div>
