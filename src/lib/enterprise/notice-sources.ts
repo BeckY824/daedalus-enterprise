@@ -103,7 +103,15 @@ export async function 分配通知(谁点的: 人, 条们: readonly 分配条[],
     }
   });
   // 自动分配「快轮到我」（11-18，assign-eta.ts）：分出去一条，候选池里的销售各算一遍，进 3 条以内的推一次（自己分给自己也算分了一条）
-  if (条们.length) await 稳("快轮到提醒", async () => 快轮到提醒(await 读组织()));
+  if (条们.length) await 分配后估算推送();
+}
+
+/**
+ * 多了一条分配记录以后推「快轮到」（assign-eta.ts 快轮到提醒）：分配通知末尾、市场成员新建时直接指定给销售（direct-assign.ts）都调这一句。
+ * 出错吞掉，同别的通知
+ */
+export async function 分配后估算推送(): Promise<void> {
+  await 稳("快轮到提醒", async () => 快轮到提醒(await 读组织()));
 }
 
 /**

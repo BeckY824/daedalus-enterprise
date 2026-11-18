@@ -39,6 +39,7 @@ import { 是主渠道入口 } from "@/lib/enterprise/channel-main-core";
 import { 认渠道触点, 渠道触点们, 新建来源还差 } from "@/lib/enterprise/touchpoint";
 import { 接手问题 } from "@/lib/enterprise/lead-assign";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
+import { 记新建指定分配 } from "@/lib/enterprise/direct-assign";
 import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知, 项目被删通知, 项目放回公海通知 } from "@/lib/enterprise/notice-sources";
 import { 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
 import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
@@ -294,6 +295,8 @@ export async function 建档向导(输入: 建档向导输入) {
     if (!再分 && 好.项目.ownerId !== me.id) {
       if (转客户 || !企) await 分给你通知(me, 好.项目.ownerId, [r.id], 好.项目.name);
       else await 项目分给你通知(me, 好.项目.ownerId, 建了.projectId!, 好.项目.name, r.id);
+      // 市场成员当场指定给销售 = 指定分配，记进分配数（11-18，direct-assign.ts）。自动分配、定时、进公海走 建好再分（分配线索写记录），这里不重复
+      if (企) await 记新建指定分配(me, 建了.projectId);
     }
     const 分了 = 分配 ? 再分 ?? (好.项目.ownerId !== me.id ? { 提示: `已指派给 ${负责人.name}`, 转走: true } : null) : null;
     // contactId：名片原图存到这位联系人的附件上（企业版才有联系人附件；开关关着返回和原来逐字段一样）
@@ -441,6 +444,8 @@ async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输�
     detail: { 联系人: 好.联系人.name, 下一步时间: 好.跟进.nextStepAt ? 好.跟进.nextStepAt.toISOString().slice(0, 10) : null },
   });
   await 存沟通后重算三态(r.id);
+  // 市场成员新建客户时直接选了销售当负责人 = 指定分配（11-18，direct-assign.ts）：记在刚建的潜客培育项目上；负责人是自己的不记
+  if (企) await 记新建指定分配(me, 建了.projectId);
   刷新项目(建了.projectId ?? undefined, r.id);
   revalidatePath("/customers");
   // 首条沟通的截图 / 附件：挂在潜客培育项目上的这条首条沟通，同建档签票给录入人（凭票认首条沟通 要它挂着项目）
