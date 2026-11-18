@@ -989,7 +989,7 @@ export const TOOLS: Tool[] = [
   proposeTool(
     "propose_lead",
     "建议新建一条线索。只知道名字也要提，留空的字段人会在卡片上补。",
-    '{"name": "线索名称/姓名，不知道就空着；不要填号码", "contact": "联系人，可空；不要填号码", "numbers": [{"type": "手机/座机/微信/邮箱/WhatsApp/阿里国际站ID/传真/Telegram", "value": "号码"}], "source": "来源 / 渠道，人说了就原样给，可空", "status": "状态，可空", "remark": "备注，可空；国家城市、下一步、分给谁别写进来", "assignTo": "分给谁：人说了交给哪位同事就原样给姓名，可空", "country": "国家/地区，可空；给了城市就给上（国内给「中国」）", "province": "省/州，可空", "city": "城市，可空", "nextAt": "下一步时间 YYYY-MM-DD，可空", "nextStep": "下一步计划，可空", "bizLine": "内贸/外贸/暂不分配，有把握才给", "regionTo": ["客户/联系人/项目：国家城市是谁的，说不清就不给"], "reason": "一句话：为什么"}',
+    '{"name": "线索名称/姓名，不知道就空着；不要填号码", "contact": "联系人，可空；不要填号码", "numbers": [{"type": "手机/座机/微信/邮箱/WhatsApp/阿里国际站ID/传真/Telegram", "value": "号码"}], "source": "来源 / 渠道，人说了就原样给，可空", "status": "状态，可空", "remark": "备注，可空；需求、预算写这里；国家城市地址、职位、下一步、分给谁别写进来", "assignTo": "分给谁：人说了交给哪位同事就原样给姓名，可空", "country": "国家/地区，可空；给了城市就给上（国内给「中国」）", "province": "省/州，可空", "city": "城市，可空", "district": "区/县，可空", "address": "详细地址，可空", "position": "联系人职位，可空", "指定回复开始": "客户要求联系的开始时间 YYYY-MM-DD HH:mm，可空", "指定回复结束": "截止时间 YYYY-MM-DD HH:mm，可空", "nextAt": "下一步时间 YYYY-MM-DD，可空", "nextStep": "下一步计划，可空", "bizLine": "内贸/外贸/暂不分配，有把握才给", "regionTo": ["客户/联系人/项目：国家城市是谁的，说不清就不给"], "reason": "一句话：为什么"}',
     "add_lead",
     { needsCustomer: false },
   ),

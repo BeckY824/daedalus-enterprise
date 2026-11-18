@@ -204,6 +204,39 @@ describe("新线索卡：市场自动分配按写进地址的区域定线（P-�
   });
 });
 
+// 11-18 同类排查：区县、详细地址、职位、指定回复时间原来卡上 / schema 没有格，说了也落不进库
+describe("新线索卡：区县 / 详细地址 / 职位 / 指定回复时间落库", () => {
+  it("勾客户：区县、详细地址进客户地址；职位进联系人", async () => {
+    当(乙);
+    expect(await applyProposal(卡({ 分配方式: 4, country: "中国", province: "浙江省", city: "杭州", district: "西湖区", address: "文三路 1 号", position: "采购经理", 区域去处: ["客户"] }) as never)).toMatchObject({ ok: true });
+    const p = await 唯一项目();
+    expect([p.customer.addrProvince, p.customer.addrCity, p.customer.addrDistrict, p.customer.addrDetail]).toEqual(["浙江省", "杭州", "西湖区", "文三路 1 号"]);
+    expect((await prisma.contact.findFirstOrThrow({ where: { customerId: p.customerId } })).position).toBe("采购经理");
+  });
+  it("勾项目：详细地址进项目 location；国外的区县按规整地址丢掉", async () => {
+    当(乙);
+    expect(await applyProposal(卡({ 分配方式: 4, country: "摩洛哥", city: "卡萨布兰卡", district: "某区", address: "Rue 1", 区域去处: ["项目"] }) as never)).toMatchObject({ ok: true });
+    const p = await 唯一项目();
+    expect([p.addrCountry, p.addrCity, p.addrDistrict, p.location]).toEqual(["摩洛哥", "卡萨布兰卡", null, "Rue 1"]);
+  });
+  it("只有详细地址（区域认不出）：详细地址照存，四格空", async () => {
+    当(乙);
+    expect(await applyProposal(卡({ 分配方式: 4, address: "某某大厦 8 楼", 区域去处: ["客户"] }) as never)).toMatchObject({ ok: true });
+    const c = await prisma.customer.findFirstOrThrow();
+    expect([c.addrCountry, c.addrCity, c.addrDetail]).toEqual([null, null, "某某大厦 8 楼"]);
+  });
+  it("模型给的指定回复时间（buildProposal 收）落到项目", async () => {
+    const { buildProposal } = await import("@/lib/agent/proposals");
+    const { DEFAULT_BUSINESS } = await import("@/lib/business-config");
+    const r = buildProposal("x", "add_lead", { id: "", name: "" }, { name: "甲公司", reason: "r", 指定回复开始: "2030-01-02 10:00", 指定回复结束: "2030-01-02 12:00", district: "西湖区", position: "老板" }, DEFAULT_BUSINESS);
+    expect(r).toMatchObject({ ok: true, proposal: { 指定回复开始: "2030-01-02 10:00", 指定回复结束: "2030-01-02 12:00", district: "西湖区", position: "老板" } });
+    当(乙);
+    expect(await applyProposal(卡({ 分配方式: 4, 指定回复开始: "2030-01-02 10:00", 指定回复结束: "2030-01-02 12:00" }) as never)).toMatchObject({ ok: true });
+    const p = await 唯一项目();
+    expect([p.replyStartAt?.toISOString(), p.replyEndAt?.toISOString()]).toEqual(["2030-01-02T02:00:00.000Z", "2030-01-02T04:00:00.000Z"]);
+  });
+});
+
 describe("新线索卡：和新建项目同一套必填", () => {
   const 企 = { 只用项目: true, 要下一步: false, 企业: { 有分配方式: true, 节点们: 企业版字典.节点们.线索 } };
   const 缺 = (补: Record<string, unknown>) => missingFields(卡({ 分配方式: 4, ...补 }) as never, undefined, 企);

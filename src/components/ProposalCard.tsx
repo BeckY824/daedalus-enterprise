@@ -650,9 +650,12 @@ export default function ProposalCard({
           // 企业版卡上国家、城市总摆着（和新建向导一样能填），别的版本照旧有值才出
           const 企卡 = !!(企 && 渠道名们);
           // 企业版的微信 / 邮箱 / WhatsApp 并进了「联系方式」几行（企卡号码），这里只剩国家、城市
-          const 多格 = ([["country", "国家", 110], ["province", "省", 110], ["city", "城市", 110], ["wechat", "微信", 160], ["email", "邮箱", 200], ["whatsapp", "WhatsApp", 150]] as const)
-            .filter(([k]) => (企卡 ? k === "country" || k === "city" || (k === "province" && !!draft.province) : 认图卡 || draft[k] || 待.has(k)));
-          const 有区域 = !!(draft.country?.trim() || draft.province?.trim() || draft.city?.trim());
+          // 省、区县、详细地址、职位：模型认出来了才摆出来（11-18，原来没这几格，说了也落不进库）
+          const 新格 = (k: string) => k === "province" || k === "district" || k === "address" || k === "position";
+          const 有值才摆 = (k: string) => 新格(k) && !!draft[k as "province"];
+          const 多格 = ([["position", "职位", 110], ["country", "国家", 110], ["province", "省", 110], ["city", "城市", 110], ["district", "区县", 110], ["address", "详细地址", 200], ["wechat", "微信", 160], ["email", "邮箱", 200], ["whatsapp", "WhatsApp", 150]] as const)
+            .filter(([k]) => (企卡 ? k === "country" || k === "city" || 有值才摆(k) || 待.has(k) : !新格(k) && (认图卡 || draft[k] || 待.has(k))));
+          const 有区域 = !!(draft.country?.trim() || draft.province?.trim() || draft.city?.trim() || draft.district?.trim() || draft.address?.trim());
           // 市场成员选自动分配（P-转-26）：业务线那格换成只读说明，按落库时同一套（线索卡地址）算出的客户区域定线；没落进客户 / 项目 = 未填提示
           const 区域定线中 = !!企?.按区域 && draft.分配方式 === 1;
           const 卡上地址 = 线索卡地址(draft);

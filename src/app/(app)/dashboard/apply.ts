@@ -335,11 +335,11 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
       name: p.name, phone: 号, 企业号码: 企业号 ? { 类型: 企业号.类型, 值: 企业号.值 } : null,
       school: null, grade: null, major: null, followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null,
       remark: 备注 || null, salesOwnerId: 项目负责人, channelId: 渠道?.id ?? null, referrerCustomerId: null, ...(触点 ? { touchpoint: 触点 } : {}),
-      // 国家、省、城市进客户地址（和新建客户同一格，规整地址：没国家的按国内）
+      // 国家、省、城市、区县、详细地址进客户地址（和新建客户同一格，规整地址：没国家的按国内）
       ...(进客户 ? { 企业资料: 进客户 } : {}),
     },
     // 联系人姓名 11-17 起选填：没填存空串（显示「—」），不拿客户名称顶、不写占位（P-抬头-13、没填的都显示「—」）
-    联系人: { name: p.contact.trim(), ...老三格(行们), 号码们: 行们.map((r) => ({ kind: r.kind, value: r.value })), ...(联系人地址 ? { address: 联系人地址 } : {}) },
+    联系人: { name: p.contact.trim(), ...(p.position?.trim() ? { position: p.position.trim() } : {}), ...老三格(行们), 号码们: 行们.map((r) => ({ kind: r.kind, value: r.value })), ...(联系人地址 ? { address: 联系人地址 } : {}) },
     /*
       11-04 起卡上和新建项目同一套格：分配方式（指定 / 自动 / 暂不分配…）、指定时的负责人、业务线、节点（只到线索验证）、下一步（11-05 去掉明确回复）。
       分配和负责人的规矩全在 建档向导 里（定分配方式 / 建好再分）：不是指定分配一律先建在我名下，自动分配建好再转、暂不分配留在我名下（潜客培育，P-转-03）。

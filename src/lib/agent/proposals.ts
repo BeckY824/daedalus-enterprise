@@ -115,10 +115,10 @@ export type Proposal =
  * WhatsApp 不是企业号码的一种、写进备注（dashboard/apply.ts 建成项目）。
  * 待确认 = 认得没把握、要人在卡上点一下或改一下的格子；还有就不能确认（missingFields）
  */
-export type 线索卡多的格 = { country?: string; province?: string; city?: string; wechat?: string; email?: string; whatsapp?: string; 待确认?: 线索待确认格[] };
-export const 线索待确认叫法 = { name: "名称", contact: "联系人", phone: "电话", country: "国家", province: "省", city: "城市", wechat: "微信", email: "邮箱", whatsapp: "WhatsApp", 联系方式: "联系方式" } as const;
+export type 线索卡多的格 = { country?: string; province?: string; city?: string; district?: string; address?: string; position?: string; wechat?: string; email?: string; whatsapp?: string; 待确认?: 线索待确认格[] };
+export const 线索待确认叫法 = { name: "名称", contact: "联系人", phone: "电话", country: "国家", province: "省", city: "城市", district: "区县", address: "详细地址", position: "职位", wechat: "微信", email: "邮箱", whatsapp: "WhatsApp", 联系方式: "联系方式" } as const;
 export type 线索待确认格 = keyof typeof 线索待确认叫法;
-const 线索多格上限 = { country: 40, province: 40, city: 40, wechat: 60, email: 100, whatsapp: 30 } as const;
+const 线索多格上限 = { country: 40, province: 40, city: 40, district: 40, address: 100, position: 40, wechat: 60, email: 100, whatsapp: 30 } as const;
 
 function 收线索多的格(args: Record<string, unknown>): 线索卡多的格 {
   const 出: 线索卡多的格 = {};
@@ -228,17 +228,24 @@ const 是区域去处 = (x: unknown): x is 区域去处 => typeof x === "string"
  * 原来没国家一律不填，写了城市哪都没落，市场自动分配成了「区域未知」两条线都算；认不出的（「多伦多」）照旧不填，免得国外城市被当成国内，
  * 卡上显示「客户没填区域」，人补上国家再确认。联系人地址是一格文字，照原样拼
  */
+type 卡上四格 = { addrCountry: string | null; addrProvince: string | null; addrCity: string | null; addrDistrict: string | null };
 export function 线索卡地址(p: 线索卡多的格 & Pick<线索建档格, "区域去处">): {
-  客户: { addrCountry: string | null; addrProvince: string | null; addrCity: string | null } | null;
-  项目: { addrCountry: string | null; addrProvince: string | null; addrCity: string | null } | null;
+  客户: (卡上四格 & { addrDetail: string | null }) | null;
+  项目: (卡上四格 & { location: string | null }) | null;
   联系人: string;
 } {
-  const 国 = p.country?.trim() || "", 省 = p.province?.trim() || "", 市 = p.city?.trim() || "";
-  if (!国 && !省 && !市) return { 客户: null, 项目: null, 联系人: "" };
+  const 国 = p.country?.trim() || "", 省 = p.province?.trim() || "", 市 = p.city?.trim() || "", 区 = p.district?.trim() || "", 详 = p.address?.trim() || "";
+  if (!国 && !省 && !市 && !区 && !详) return { 客户: null, 项目: null, 联系人: "" };
   const 去处 = p.区域去处 ?? ["客户"];
-  const 认得 = !!国 || 像国内地名(省) || 像国内地名(市);
-  const 地 = 认得 ? { addrCountry: 国 || null, addrProvince: 省 || null, addrCity: 市 || null } : null;
-  return { 客户: 去处.includes("客户") ? 地 : null, 项目: 去处.includes("项目") ? 地 : null, 联系人: 去处.includes("联系人") ? [国, 省, 市].filter(Boolean).join(" ") : "" };
+  const 认得 = !!国 || 像国内地名(省) || 像国内地名(市) || 像国内地名(区);
+  const 四格: 卡上四格 = 认得 ? { addrCountry: 国 || null, addrProvince: 省 || null, addrCity: 市 || null, addrDistrict: 区 || null } : { addrCountry: null, addrProvince: null, addrCity: null, addrDistrict: null };
+  // 详细地址（客户地址 addrDetail / 项目 location）是自由文字，区域认不出也照存；四格和详细地址都没有 = 不动
+  const 有 = 认得 || !!详;
+  return {
+    客户: 有 && 去处.includes("客户") ? { ...四格, addrDetail: 详 || null } : null,
+    项目: 有 && 去处.includes("项目") ? { ...四格, location: 详 || null } : null,
+    联系人: 去处.includes("联系人") ? [国, 省, 市, 区, 详].filter(Boolean).join(" ") : "",
+  };
 }
 
 /** 模型给 bizLine / nextStep / regionTo；卡片回传的是收好的中文键（业务线 / 下一步 / 区域去处 + 人选的四格），两种都认，再校验一遍 */
@@ -526,7 +533,7 @@ export function missingFields(p: Proposal, b?: 叫法, 建档?: 建档必填): s
       if (!p.业务线 && !(企.按区域 && p.分配方式 === 1)) miss.push("业务线");
       if (!p.节点 || !企.节点们.includes(p.节点)) miss.push("当前进程");
       if (p.节点 && 企.节点们.indexOf(p.节点) > 企.节点们.indexOf(有效线索节点)) miss.push(建档不能过线索验证);
-      if ((p.country?.trim() || p.province?.trim() || p.city?.trim()) && !p.区域去处?.length) miss.push("国家 / 城市填到哪");
+      if ((p.country?.trim() || p.province?.trim() || p.city?.trim() || p.district?.trim() || p.address?.trim()) && !p.区域去处?.length) miss.push("国家 / 城市填到哪");
     }
     for (const k of p.待确认 ?? []) miss.push(`确认「${线索待确认叫法[k]}」`);
   }
