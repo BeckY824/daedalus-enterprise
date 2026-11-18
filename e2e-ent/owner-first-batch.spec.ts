@@ -181,10 +181,19 @@ async function 客户链接(page: Page, 路径: string) {
   }
 }
 
+/**
+ * 受限客户详情、只读客户卡：只在 main 里找。
+ * 整页打开（page.goto / 跳转后整页加载）时 React 流式渲染先把页面放在 body 末尾的 <div hidden id="S:1"> 里、再换进 main；
+ * dev 服务器慢的时候那份藏着的会留好一阵，页面上同时有两个 restricted-customer-detail，不限 main 严格模式直接报「解析到 2 个」
+ * （11-16 ～ 11-18 main CI「E2E 企业版主流程」A6 红 3 次、PR 上 1 次，trace 快照里一份在 BODY > DIV#S:1[hidden]，一份在 MAIN；list-return 同理已改）
+ */
+const 受限详情 = (page: Page) => page.getByRole("main").getByTestId("restricted-customer-detail");
+const 只读客户卡 = (page: Page) => page.getByRole("main").getByTestId("customer-readonly-card");
+
 /** 只负责项目的人（11-12 起）：进 /projects/<id> 跳到客户详情 ?project=<id>，是受限客户详情 */
 async function 停在受限详情(page: Page, 客户: string, 项目: string) {
   await page.waitForURL(new RegExp(`/customers/${客户}\\?project=${项目}`));
-  await expect(page.getByTestId("restricted-customer-detail")).toBeVisible();
+  await expect(受限详情(page)).toBeVisible();
 }
 
 test("A1 只负责项目的人：从项目进客户详情是受限详情（仅项目、只有自己的项目、只读客户资料、没有客户操作）；不沾边的同事开客户详情还是 404", async ({ page }) => {
@@ -201,7 +210,7 @@ test("A1 只负责项目的人：从项目进客户详情是受限详情（仅�
   await expect(正文.locator(".cd-pj-one .cd-pj-nm, .cd-pj-pill .cd-pj-nm")).toHaveCount(1);
   await expect(正文.locator(".cd-pj-one .cd-pj-nm, .cd-pj-pill .cd-pj-nm").first()).toContainText(`丙的项目${后缀}`);
   // 左栏客户资料只读：字段和联系方式符合规格
-  const 卡 = page.getByTestId("customer-readonly-card");
+  const 卡 = 只读客户卡(page);
   await expect(卡).toBeVisible();
   await expect(卡).toContainText(长公司);
   await expect(卡).toContainText(长姓名);
@@ -477,9 +486,9 @@ test("A6 项目单领后进受限客户详情：领完客户负责人不变，�
   expect((await db.customer.findUniqueOrThrow({ where: { id: 客户 } })).salesOwnerId).toBe(丁.id);
   await page.goto(`/projects/${项目}`);
   await 停在受限详情(page, 客户, 项目);
-  await expect(page.getByTestId("customer-readonly-card")).toContainText(`单领联系人${后缀}`);
+  await expect(只读客户卡(page)).toContainText(`单领联系人${后缀}`);
   await page.goto(`/customers/${客户}`);
-  await expect(page.getByTestId("restricted-customer-detail")).toBeVisible();
+  await expect(受限详情(page)).toBeVisible();
   await expect(正文.getByText("没有找到这条记录")).toHaveCount(0);
 });
 
@@ -489,7 +498,7 @@ test("B 受限客户详情排版：1024、375 宽，超长公司名、超长联�
     await page.setViewportSize({ width: 宽, height: 800 });
     await page.goto(`/projects/${项目A}`);
     await 停在受限详情(page, 客户A, 项目A);
-    await expect(page.getByTestId("customer-readonly-card")).toBeVisible();
+    await expect(只读客户卡(page)).toBeVisible();
     await 量(page, "main", `受限客户详情 ${宽}`);
     await 量(page, '[data-testid="customer-readonly-card"]', `受限详情左栏 ${宽}`);
   }
