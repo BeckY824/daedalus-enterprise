@@ -7,6 +7,7 @@
  *   - 服务端挡了：原因写在框里，框不关、不报成功
  *   - 市场成员转「暂不分配」的客户（客户 11-17，给了 自动）：先选「指定分配 / 自动分配」。指定 = 上面这套；
  *     自动 = 不选人，服务端按新线索的自动分配挑销售（按客户区域定内贸 / 外贸、本月分得最少的优先），成了框里原地说分给了谁，没挑到人原因写在框里
+ *   - 同一种客户（给了 定向，P-转-26 11-18）：「指定」也先定方向——摆方向格（默认同自动那份顺序、可改），下拉只列这个方向能接的人
  */
 import { 指定选项 } from "@/lib/enterprise/designate-options";
 import { useEffect, useRef, useState } from "react";
@@ -17,6 +18,7 @@ import { 动作出错话 } from "@/lib/stale-deploy";
 import { 自动分配说明, 自动分配生效话 } from "@/lib/enterprise/cust-auto-assign-words";
 import { 方向来源说明, 区域未填提示, type 分配方向 } from "@/lib/enterprise/customer-region";
 import type { 线 } from "@/lib/enterprise/lead-assign";
+import { 按方向挑, 指定方向话, type 指定候选表 } from "@/lib/enterprise/assign-direction-pick-core";
 
 export type 转让结果 = { ok: false; error: string } | { ok: true; 话?: string };
 type 方式 = "指定" | "自动";
@@ -27,6 +29,7 @@ export default function TransferBox({
   open,
   客户名,
   候选,
+  定向,
   要申请,
   作废天数,
   原因选项,
@@ -38,12 +41,14 @@ export default function TransferBox({
   open: boolean;
   客户名: string;
   候选: { value: string; label: string }[];
+  /** 市场成员转暂不分配的客户（P-转-26）：指定分配也按方向挑人。候选表 = 每个方向能接的人（已叠参与正常），默认方向同自动那份 */
+  定向?: { 候选表: 指定候选表; 默认方向: 分配方向 };
   要申请: boolean;
   作废天数: number;
   /** 字典「转让原因」；空 = 不问原因 */
   原因选项: readonly string[];
   取预览: (接手人: string) => Promise<转走项目预览 | null | undefined>;
-  做: (o: { value: string; label: string }, 原因: string | null) => Promise<转让结果>;
+  做: (o: { value: string; label: string }, 原因: string | null, 方向?: 线) => Promise<转让结果>;
   /** 市场成员转暂不分配的客户才给：摆「指定分配 / 自动分配」。取预览 = 还没挑人时会一起转走的项目 */
   自动?: {
     做: (原因: string | null, 方向?: 线) => Promise<转让结果>; 取预览: () => Promise<转走项目预览 | null | undefined>;
@@ -77,6 +82,11 @@ export default function TransferBox({
   const 自动中 = !!自动 && 法 === "自动";
   /** 市场分配（摆了「指定 / 自动」）选指定：只列能被指定的；普通转让照旧 */
   const 列的人 = 自动 ? 指定选项(候选, 自动.可指定, null, 谁) : 候选;
+  /** 指定分配也定方向（P-转-26）：这次按哪条线挑人；判不出 = null（两条线都列） */
+  const 定向中 = !自动中 && !!定向;
+  const 指定线 = 定向中 ? 向 ?? 定向!.默认方向.线 : null;
+  const 可挑 = 定向中 ? new Set(按方向挑(定向!.候选表, 指定线)) : null;
+  const 列的候选 = 可挑 ? 列的人.filter((o) => 可挑.has(o.value)) : 列的人;
 
   useEffect(() => {
     if (!谁) return;
@@ -99,14 +109,14 @@ export default function TransferBox({
   const 取到了 = 自动中 ? !!自动预览 : !!预览 && 预览.谁 === 谁;
 
   async function 发() {
-    const o = 候选.find((x) => x.value === 谁);
+    const o = 列的候选.find((x) => x.value === 谁);
     if (!能发 || (!自动中 && !o)) return;
     set忙(true);
     set错("");
     let r: 转让结果;
     const 因 = 原因选项.length ? 合其他(选, 写) : null;
     try {
-      r = 自动中 && 自动 ? await 自动.做(因, 向 ?? undefined) : await 做(o!, 因);
+      r = 自动中 && 自动 ? await 自动.做(因, 向 ?? undefined) : await 做(o!, 因, 定向中 ? 向 ?? undefined : undefined);
     } catch (出错) {
       r = { ok: false, error: 动作出错话(出错, "没转成，请稍后再试") };
     }
@@ -165,7 +175,7 @@ export default function TransferBox({
               showSearch
               optionFilterProp="label"
               placeholder="选接手人"
-              options={列的人}
+              options={列的候选}
               value={谁}
               onChange={(v: string) => set谁(v)}
               aria-label="转给谁"
@@ -174,6 +184,23 @@ export default function TransferBox({
             />
             )}
           </div>
+          {/* 指定分配的方向（P-转-26，11-18）：同下面自动那格，默认同一顺序、可改；换了方向，挑的人不在新方向里就清掉 */}
+          {定向中 && (() => {
+            const 默认 = 定向!.默认方向;
+            return (
+              <div className="cd-transfer-row">
+                <span className="cd-transfer-k">分配方向</span>
+                <div className="cd-transfer-v">
+                  <Select className="dir-select-w120" placeholder="内贸 / 外贸" aria-label="分配方向" data-testid="transfer-direction" disabled={忙}
+                    value={指定线 ?? undefined} options={(["内贸", "外贸"] as const).map((v) => ({ value: v, label: v }))}
+                    onChange={(v: 线) => { set向(v); if (谁 && !按方向挑(定向!.候选表, v).includes(谁)) set谁(undefined); }} />
+                  <div className={指定线 ? "cd-transfer-mut" : "cd-transfer-mut cd-transfer-warn"} data-testid="transfer-direction-why">
+                    {向 && 向 !== 默认.线 ? `你改成了${向}（默认${默认.线 ? 方向来源说明(默认) : "不限"}）` : 默认.线 ? 方向来源说明(默认) : 区域未填提示}；{指定方向话(指定线)}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
           {/* 分配方向（11-18）：默认按客户区域 → 电话 → 我的事业部，可以改；改了才交，没改服务端按同一顺序算 */}
           {自动中 && 自动?.默认方向 !== undefined && (() => {
             const 默认 = 自动.默认方向 ?? { 线: null, 来源: "不限" as const };

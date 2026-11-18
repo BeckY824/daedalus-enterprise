@@ -165,10 +165,10 @@ describe("即将逾期：紧筛和粗筛数出来的一样", () => {
     expect(await 我(() => prisma.project.count({ where: 即将逾期紧筛(长, 字典of(true), 此刻)! }))).toBeLessThan(长旧.取回 - 300);
   });
 
-  it("复盘「将回公海」：存下规则后数出来的和粗筛一样（那边不看成员业务线）", async () => {
+  it("复盘「将回公海」：存下规则后数出来的和粗筛一样（没填业务线的按负责人的线，同首页卡；审核 11-18 统计 P2-1）", async () => {
     for (const 规则 of [规则of(两套), 规则of({ 起算日: 日(4) })]) {
       await 存组织规则(规则);
-      const 旧 = await 我(() => 按粗筛(规则, 此刻, false));
+      const 旧 = await 我(() => 按粗筛(规则, 此刻));
       const r = await 我(() => 将回公海of(undefined, 此刻));
       expect(r.提醒.总数).toBe(旧.ids.length);
       expect(r.预警.length).toBeGreaterThan(0);

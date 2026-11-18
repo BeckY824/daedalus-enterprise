@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { notify } from "./notify";
 import { 离职段 } from "./handover-db";
-import { 读组织, 负责人和上级, 市场复核人们, 市场复核要读的, 是系统管理员of } from "./org";
+import { 读组织, 负责人和上级, 在职负责人或上级, 市场复核人们, 市场复核要读的, 是系统管理员of } from "./org";
 import { 企业版 } from "./switch";
 import { 公海入口 } from "./nav";
 import { 能改后台设置, 只读角色 } from "./permissions";
@@ -205,11 +205,21 @@ export async function 验证待办通知(me: 人, projectId: string): Promise<vo
     const 步 = 实际待(v.pending, await 无效交给(org));
     if (!步) return;
     const 销售步 = 步 === "销售终验" || 步 === "销售认领";
+    // 销售那一步：负责人停用了改发他停用前的直属上级（审核 11-18 通知 P2-7）
     const 收 = 销售步
-      ? [p.ownerId]
+      ? 在职负责人或上级(org, p.ownerId)
       : 步 === "市场复核" ? 市场复核人们(org, p) : [...org.成员.keys()].filter((id) => 是系统管理员of(org, id));
     const 说明 = 步 === "市场复核" ? v.invalidReason : 步 === "销售终验" ? v.reviewNote : 步 === "总管理终判" ? v.disputeNote ?? v.invalidReason : null;
-    await notify(收.filter((id) => id !== me.id), {
+    /*
+      同一步只推一遍（审核 11-18 通知 P2-10）：键带验证行 updatedAt，同一步里补理由、撤回再判都会换键再推一遍（正式库 19 秒内同一批人各收 2 条）。
+      这位对这个项目这一步还有没读的那条，就不再推；读过了、或到了下一步，照常推
+    */
+    const 前缀 = `verify:${projectId}:${步}:`;
+    const 没读的 = new Set((await prisma.entNotice.findMany({
+      where: { userId: { in: 收 }, kind: "线索验证", readAt: null, dedupeKey: { startsWith: 前缀 } },
+      select: { userId: true },
+    })).map((n) => n.userId));
+    await notify(收.filter((id) => id !== me.id && !没读的.has(id)), {
       kind: "线索验证",
       title: 验证标题[步](p.name),
       body: `${me.name} 刚处理了这条线索${说明 ? `：${说明}` : "。"}`,

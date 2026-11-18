@@ -3,6 +3,7 @@
  *
  * - Y26 导入批次：原来只查登录，业务员能在设置页列出、撤掉老板导的整批。现在按权限矩阵的客户范围：
  *   看 = 自己 + 实线下属 + 虚线下属，撤 = 自己 + 实线下属；老板、总管理员全部。
+ *   第四波（审核 11-18 权限 P2-5，P-全局-02）起企业版撤销同导入只给总管理：销售、销售管理撤哪一批都先被「导入、导出只有总管理能用」拦下。
  * - Y27 电话设成「藏」：列表上号码打了码，可拿完整号码、前 7 位、后 4 位一搜还是能把人搜出来。
  *   现在藏电话的人，客户搜索（含联系人电话、WhatsApp）、线索搜索、AI 助手（search_customers、list_leads、
  *   query_records 按电话筛）都不按号码匹配（企业版只用项目后 MCP 不再给 list_leads）；姓名照常搜得到，号码照常打码。
@@ -49,6 +50,7 @@ import { 字段权限key } from "@/lib/enterprise/field-perm";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 客户筛选条件, 关键词分页 } from "@/app/(app)/customers/query";
 import { 最近批次, 撤销批次 } from "@/app/(app)/customers/import-actions";
+import { 不能导入导出 } from "@/lib/enterprise/import-perm";
 import { 线索关键词条件, 号码藏着 } from "@/lib/search-keyword";
 import { 跑工具 } from "@/lib/mcp/tools";
 import { maskPhone } from "@/lib/utils";
@@ -136,23 +138,20 @@ describe("Y26 导入批次：按权限矩阵看、撤", () => {
   const 还在 = async (cid: string) => !!(await raw.customer.findUnique({ where: { id: cid } }));
   const 列出 = (u: 谁) => 作为(u, () => 最近批次(100));
 
-  it("普通销售：只列出自己的批次；撤老板、外人的批次当作不存在，客户一位不少", async () => {
+  it("普通销售：只列出自己的批次；撤谁的批次都拦（导入导出只给总管理），客户一位不少", async () => {
     const 老板的 = await 造批次(老板), 外人的 = await 造批次(外人), 自己的 = await 造批次(普通销售);
     const 列 = (await 列出(普通销售)).map((r) => r.id);
     expect(列).toContain(自己的.批);
     expect(列).not.toContain(老板的.批);
     expect(列).not.toContain(外人的.批);
-    for (const 别人的 of [老板的, 外人的]) {
-      expect(await 作为(普通销售, () => 撤销批次(别人的.批))).toEqual({ ok: false, error: "这一批导入记录已经不在了" });
-      expect(await 还在(别人的.客户)).toBe(true);
-      expect((await raw.importBatch.findUniqueOrThrow({ where: { id: 别人的.批 } })).revertedAt).toBeNull();
+    for (const 那批 of [老板的, 外人的, 自己的]) {
+      expect(await 作为(普通销售, () => 撤销批次(那批.批))).toEqual({ ok: false, error: 不能导入导出 });
+      expect(await 还在(那批.客户)).toBe(true);
+      expect((await raw.importBatch.findUniqueOrThrow({ where: { id: 那批.批 } })).revertedAt).toBeNull();
     }
-    // 自己的照常能撤
-    expect((await 作为(普通销售, () => 撤销批次(自己的.批))).ok).toBe(true);
-    expect(await 还在(自己的.客户)).toBe(false);
   });
 
-  it("经理：实线下属的能看能撤；虚线下属的只能看（能撤=false，撤被拦下）；老板、外人的看不到", async () => {
+  it("经理：实线下属的能看、虚线下属的只能看（能撤=false）；老板、外人的看不到；撤哪批都拦（导入导出只给总管理）", async () => {
     const 实线的 = await 造批次(普通销售), 虚线的 = await 造批次(小张), 老板的 = await 造批次(老板), 外人的 = await 造批次(外人);
     const 列 = new Map((await 列出(经理)).map((r) => [r.id, r]));
     expect(列.get(实线的.批)?.能撤).toBe(true);
@@ -160,13 +159,10 @@ describe("Y26 导入批次：按权限矩阵看、撤", () => {
     expect(列.has(老板的.批)).toBe(false);
     expect(列.has(外人的.批)).toBe(false);
 
-    expect(await 作为(经理, () => 撤销批次(虚线的.批))).toEqual({ ok: false, error: "这一批是虚线下属导入的：只能看，不能撤销" });
-    expect(await 还在(虚线的.客户)).toBe(true);
-    expect(await 作为(经理, () => 撤销批次(老板的.批))).toEqual({ ok: false, error: "这一批导入记录已经不在了" });
-    expect(await 还在(老板的.客户)).toBe(true);
-
-    expect((await 作为(经理, () => 撤销批次(实线的.批))).ok).toBe(true);
-    expect(await 还在(实线的.客户)).toBe(false);
+    for (const 那批 of [虚线的, 老板的, 实线的]) {
+      expect(await 作为(经理, () => 撤销批次(那批.批))).toEqual({ ok: false, error: 不能导入导出 });
+      expect(await 还在(那批.客户)).toBe(true);
+    }
   });
 
   it("老板：全部列出、全部能撤", async () => {

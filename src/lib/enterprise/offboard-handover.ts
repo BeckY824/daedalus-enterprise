@@ -16,7 +16,7 @@ import { 待确认, 了结, 读ids, 离职范围of, 离职盖住的客户, 离�
 
 export { 离职段 };
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能改后台设置, 只读角色, 公海分不给话, 是总管理, type 谁 } from "@/lib/enterprise/permissions";
+import { 能改后台设置, 只读角色, 公海分不给话, 是总管理, 没设业务角色, 只看的人, type 谁 } from "@/lib/enterprise/permissions";
 import { 待交接理由 } from "@/lib/enterprise/tri-state-quota";
 import { 差天, 工作日数, 交接挂起超了 } from "@/lib/enterprise/tri-state";
 import { beijingDay } from "@/lib/business-clock";
@@ -82,7 +82,7 @@ export type 离职待交接 = {
 /** 我能不能处理这位离职成员：系统管理员都能；别人只能处理手填直属上级是自己的。只读管理员一律不能 */
 export async function 能交接(me: 谁, fromId: string): Promise<boolean> {
   const org = await 权限组织();
-  if (!org || 只读角色(me, org)) return false;
+  if (!org || 不能处理离职(me, org)) return false;
   if (typeof fromId !== "string" || !fromId) return false;
   const u = await prisma.user.findUnique({ where: { id: fromId }, select: { active: true, email: true } });
   if (!u || u.active || u.email === 无负责人占位邮箱) return false;
@@ -98,8 +98,13 @@ async function 我管的离职of(me: 谁): Promise<{ ids: string[]; org: Awaited
 }
 const 我管的离职 = async (me: 谁) => (await 我管的离职of(me)).ids;
 
+/** 只读管理员、没设业务角色的、设了「只看某人」的：一律不能处理离职交接（手填直属上级是他也不行；审核 11-18 权限 P2-9） */
+function 不能处理离职(me: 谁, org: NonNullable<Awaited<ReturnType<typeof 权限组织>>>): boolean {
+  return 只读角色(me, org) || 没设业务角色(org, me.id) || !!只看的人(org, me.id);
+}
+
 async function 我管的离职于(me: 谁, org: Awaited<ReturnType<typeof 权限组织>>): Promise<string[]> {
-  if (!org || 只读角色(me, org)) return [];
+  if (!org || 不能处理离职(me, org)) return [];
   const 全部 = 能改后台设置(me, org);
   // 下属里停用了的：组织里记着（离职上级 = 停用的人手填的直属上级），不再另查一遍 EntMember（11-12 客户页页头摆入口，省查询）
   const 下属 = 全部 ? null : org.离职上级

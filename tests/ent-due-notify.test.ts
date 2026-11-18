@@ -359,12 +359,12 @@ describe("昨天逾期：负责人 + 直属上级", () => {
     expect(await 收件人()).toEqual([甲]);
   });
 
-  it("负责人停用：这条谁都不发（负责人不在组织成员里，也就找不到上级）", async () => {
+  it("负责人停用：改发他停用前的直属上级（同三态 T12，审核 11-18 通知 P2-7；原来谁都不发）", async () => {
     await 上级是(乙);
     await prisma.user.update({ where: { id: 甲 }, data: { active: false } });
     await 昨天计划();
-    expect(await 到期提醒扫一遍(今早)).toBe(0);
-    expect(await 通知们()).toEqual([]);
+    expect(await 到期提醒扫一遍(今早)).toBe(1);
+    expect(await 收件人()).toEqual([乙]);
   });
 
   it("上级就是负责人自己：不重复", async () => {

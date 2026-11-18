@@ -240,6 +240,15 @@ async function 线索退回(tx: Tx, customerIds: string[]) {
   await tx.lead.updateMany({ where: { customerId: { in: customerIds } }, data: { customerId: null, status: "跟进中", convertedAt: null } });
 }
 
+/**
+ * 真删之后没外键跟着走的行（审核 11-18 新建入口 P2-8）：沟通的「有效沟通 / 客户回复」标记、撞号查询记录（命中的客户没了）。
+ * 分配记录（EntLeadAssign）不动：11-18 客户定删除不退名额，它照算本月已分
+ */
+async function 清孤儿行(tx: Tx) {
+  await tx.$executeRawUnsafe('DELETE FROM "EntFollowUpMark" WHERE "followUpId" NOT IN (SELECT id FROM "FollowUp")');
+  await tx.$executeRawUnsafe('DELETE FROM "EntDupeHit" WHERE "customerId" NOT IN (SELECT id FROM "Customer")');
+}
+
 /** 彻底删除回收站里的一条：只有系统管理员。客户连同名下的一起真删（外键级联） */
 export async function 彻底删除(me: 谁, t: 软删表名, id: string): Promise<结果<{ name: string }>> {
   if (!(await 能彻底删除(me))) return { ok: false, error: "只有系统管理员能彻底删除" };
@@ -254,6 +263,7 @@ export async function 彻底删除(me: 谁, t: 软删表名, id: string): Promis
       return { ok: false as const, error: "这条沟通上发过卡点，卡点要留着，这条先留在回收站" };
     }
     await 看全部(() => 表(tx, t).deleteMany({ where: { id } }));
+    await 清孤儿行(tx);
     return { ok: true as const, name };
   }));
 }
@@ -283,6 +293,7 @@ export async function 清过期(现在: Date = new Date()): Promise<Record<软�
     const 客户 = (await tx.customer.findMany({ where: { deletedAt: { lt: 线 } }, select: { id: true } })).map((c) => c.id);
     await 线索退回(tx, 客户);
     if (客户.length) 数.Customer = (await tx.customer.deleteMany({ where: { id: { in: 客户 } } })).count;
+    if (数.FollowUp || 数.Project || 数.Customer) await 清孤儿行(tx);
   })));
   return 数;
 }

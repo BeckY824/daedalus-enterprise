@@ -1197,7 +1197,13 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
     if (!提醒过 && 漏扫天数 > 0) {
       const 明天 = dayjs(今天).add(1, "day").format("YYYY-MM-DD");
       const title = `${将回收提醒(p.name, 节点名, 明天)}${补提醒说明}`;
-      await prisma.task.create({ data: { title, dueAt: 今, dueOn: 今天, dueHasTime: false, customerId: p.customerId, ownerId: p.ownerId } });
+      // 查和建放进同一笔写事务：页面打开也会触发这一遍，几个进程同时扫时只建一条（审核 11-18 通知 P2-5）
+      const 建了 = await 查完再写(async (tx) => {
+        if (await tx.task.findFirst({ where: { ownerId: p.ownerId, title, dueOn: 今天 }, select: { id: true } })) return false;
+        await tx.task.create({ data: { title, dueAt: 今, dueOn: 今天, dueHasTime: false, customerId: p.customerId, ownerId: p.ownerId } });
+        return true;
+      });
+      if (!建了) continue;
       const 发给 = await 查收件人(p.ownerId);
       await notify(发给.人们, { kind: "将回收", title, body: 发给.说明, link: `/projects/${p.id}`, key: `due-soon:${p.id}:${今天}` });
       补提醒++;
@@ -1283,10 +1289,14 @@ async function 提醒明天收(规则: 组织规则, 今: Date, 成员: 成员�
     const 日 = 项目回收日(规则, p, 成员);
     if (!日 || 已超时(日, 今) || !即将回收(日, 今)) continue;
     const title = 将回收提醒(p.name, 本套名(p.node, 字典of(企业版())), 日);
-    if (await prisma.task.findFirst({ where: { ownerId: p.ownerId, title, dueOn: 今天 }, select: { id: true } })) continue;
-    await prisma.task.create({
-      data: { title, dueAt: 今, dueOn: 今天, dueHasTime: false, customerId: p.customerId, ownerId: p.ownerId },
+    // 查和建在同一笔写事务里（审核 11-18 通知 P2-5）：「今天扫过」的记号整遍扫完才写，首页、项目列表、公海页在几个进程里同时触发时，
+    // 原来先查再建会各建一条
+    const 建了 = await 查完再写(async (tx) => {
+      if (await tx.task.findFirst({ where: { ownerId: p.ownerId, title, dueOn: 今天 }, select: { id: true } })) return false;
+      await tx.task.create({ data: { title, dueAt: 今, dueOn: 今天, dueHasTime: false, customerId: p.customerId, ownerId: p.ownerId } });
+      return true;
     });
+    if (!建了) continue;
     const 发给 = await 查收件人(p.ownerId);
     await notify(发给.人们, { kind: "将回收", title, body: 发给.说明, link: `/projects/${p.id}`, key: `due-soon:${p.id}:${今天}` });
     发了++;
@@ -1403,7 +1413,11 @@ export async function 客户跟进后勾掉将回收提醒(customerId: string, n
 export async function 勾掉将回收提醒(tx: Prisma.TransactionClient, 规则: 组织规则, p: { id: string; name: string; node: string; ownerId: string; customerId: string }, now: Date): Promise<void> {
   if (!企业版()) return;
   const 现 = await 看全部(() => tx.project.findUnique({ where: { id: p.id }, select: 算超时要的 }));
-  const 日 = 现 && 项目回收日(规则, 现);
+  // 没填业务线的按负责人的线算天数（同 超时成员线；外贸没单设天数时不查。事务里用 tx 读，审核 11-18 统计 P2-1）
+  const 成员: 成员线查 | null = 现 && Object.keys(规则.超时回收.外贸节点天数 ?? {}).length
+    ? new Map([[现.ownerId, { line: (await tx.entMember.findUnique({ where: { userId: 现.ownerId }, select: { line: true } }))?.line ?? null }]])
+    : null;
+  const 日 = 现 && 项目回收日(规则, 现, 成员);
   if (日 && 即将回收(日, now)) return;
   await 看全部(() => tx.task.updateMany({
     where: { ownerId: p.ownerId, customerId: p.customerId, done: false, OR: 同名们(p.node).map((n) => ({ title: { startsWith: 将回收提醒头(p.name, n) } })) },

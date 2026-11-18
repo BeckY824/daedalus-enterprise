@@ -340,7 +340,9 @@ export async function 读公海页(me: { id: string; name: string; role?: string
   const 这页 = await 补这一页(me, 骨, 行.slice((当前页 - 1) * pageSize, 当前页 * pageSize));
   // 不数时不带这一格（和改前的返回逐字段一样）
   const 号码不全数 = !选.数号码不全 ? undefined : sp.号码不全 === "1" ? 行.length : 筛排(全部行, { ...sp, 号码不全: "1" }, { 按项目: true }).行.length;
-  return { 行: 这页, 总数: 行.length, 当前页, 快捷数, 属性数, 截断: 骨.截断, 库里有: 骨.行.length > 0, ...(号码不全数 === undefined ? {} : { 号码不全数 }) };
+  // 总数里几位客户、几个项目（审核 11-18 统计 P2-2：页脚写清单位）
+  const 分项 = { 客户: 行.filter((r) => r.种 === "客户").length, 项目: 行.filter((r) => r.种 !== "客户").length };
+  return { 行: 这页, 总数: 行.length, 分项, 当前页, 快捷数, 属性数, 截断: 骨.截断, 库里有: 骨.行.length > 0, ...(号码不全数 === undefined ? {} : { 号码不全数 }) };
 }
 
 /**
@@ -503,7 +505,7 @@ async function 读公海页_库里分页(me: { id: string; name: string; role?: 
     : 按属性.filter((g) => g.不全 && (!快捷 || g.快捷 === 快捷)).reduce((a, g) => a + g.n, 0) + 项目不全数;
   // 库里有：不看筛选，公海里有没有这个人看得到的行
   const 库里有 = 骨.行.length > 0 || (!词 && !sp.来源 && sp.号码不全 !== "1" ? 组.length > 0 : await 有公海客户(排掉));
-  return { 行: 这页, 总数, 当前页, 快捷数, 属性数, 截断: false, 库里有, ...(号码不全数 === undefined ? {} : { 号码不全数 }) };
+  return { 行: 这页, 总数, 分项: { 客户: 客户总数, 项目: 项目筛.行.length }, 当前页, 快捷数, 属性数, 截断: false, 库里有, ...(号码不全数 === undefined ? {} : { 号码不全数 }) };
 }
 
 /** 公海里有没有这个人看得到的客户（不看筛选） */

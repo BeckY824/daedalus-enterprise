@@ -24,6 +24,7 @@ const plugin: Plugin = { name: "contact-v2-boundaries", setup(b) {
         {contactId:'p1',name:'张三',customerId:'k1',customerName:'甲公司'.repeat(8),同事:'销售',kind:'phone',value:'13900000001'},
         {contactId:null,name:null,customerId:null,customerName:null,同事:'销售B',kind:'email',value:'a@x.com'}]};};
   `);
+  stub(/^\.\/number-actions$/, "export const 从回收站捞回=async(类型,值)=>{window.__捞={类型,值};return {ok:true,提示:'已捞回',已不在:false,查:{}}};");
   stub(/^\.\/contact-link-actions$/, `
     const 记=(名)=>async(...a)=>{(window.__挂=window.__挂||[]).push([名,...a]);return {ok:true}};
     export const 挂到客户=记('挂'),改挂靠说明=记('说明'),解除挂靠=记('解除'),换主客户=记('换');
@@ -45,6 +46,9 @@ beforeAll(async () => {
     const 职务=['董事长','总经理','CEO','董事长秘书','总经理助理','分管副总','部门总监','业务负责人','项目经理','项目设计负责人','采购','财务','法务','技术','国企高管','店长','店员','运营主管','场馆经理'];
     window.__职务=()=>root.render(壳(<ContactForm open onClose={()=>{}} onSaved={()=>{}} customerId='k0' record={null} 号码种类={种类} 职务选项={职务}/>));
     window.__职务老=()=>root.render(壳(<ContactForm open onClose={()=>{}} onSaved={()=>{}} customerId='k0' record={{...人,position:'字典外的老职务'}} 号码种类={种类} 职务选项={职务}/>));
+    // 审核 11-18 新建入口 P2-6：号码在回收站里的客户上——拦下，框顶上摆「从回收站捞回」
+    window.__回收站=()=>root.render(壳(<ContactForm open onClose={()=>{}} onSaved={()=>{window.__存好=1}} customerId='k0' record={null} 号码种类={种类}
+      存法={async(x)=>{(window.__存=window.__存||[]).push(x);return {ok:false,error:'这个号码在回收站里的客户上，本次没保存，可以从回收站捞回',回收站:{类型:'phone',值:'13900000009'}}}}/>));
     window.__非企业=()=>root.render(壳(<ContactForm open onClose={()=>{}} onSaved={()=>{}} customerId='k0' record={null}/>));
     window.__挂靠=()=>root.render(壳(<div style={{width:300}}>
       <div data-t='挂来的'><ContactLinks customerId='k0' 只读={false} c={{...人,挂靠:{linkId:'L1',note:'采购对接',主客户Id:'k1',主客户名:'主客户甲',主客户看得到:true,能改:false}}}/></div>
@@ -55,7 +59,7 @@ beforeAll(async () => {
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-async function open(画: "__表单" | "__挂靠" | "__职务" | "__职务老" | "__非企业", width = 1024) {
+async function open(画: "__表单" | "__挂靠" | "__职务" | "__职务老" | "__非企业" | "__回收站", width = 1024) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   await page.route("http://cv2.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://cv2.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
@@ -199,4 +203,27 @@ it("企业版「职务」：下拉给字典 19 项（打字筛）、选得上；
     expect(await p3.getByText("职务", { exact: true }).count()).toBe(0);
     expect(await p3.getByText(/^与.+关系$/).count()).toBe(1);
   } finally { await p3.close(); }
+});
+
+it("号码在回收站里的客户上（审核 11-18 新建入口 P2-6）：没保存，框顶上说清并摆「从回收站捞回」；捞回带这个号；改表单提示收起；1024 / 1280 / 1366", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    const page = await open("__回收站", w);
+    const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+    try {
+      await page.getByLabel("姓名").fill("李四");
+      await page.getByPlaceholder(/号码/).first().fill("13900000009");
+      await page.getByRole("button", { name: /^保\s?存$/ }).click();
+      const 条 = page.getByTestId("contact-trash-hit");
+      await 条.waitFor();
+      expect(await 条.innerText()).toContain("这个号码在回收站里的客户上，本次没保存");
+      expect(await page.evaluate(() => Reflect.get(window, "__存好") ?? null)).toBeNull();
+      await 条.getByTestId("rescue-from-trash").click();
+      await page.locator(".ant-popconfirm").getByRole("button", { name: /捞\s*回/ }).click();
+      await expect.poll(() => page.evaluate(() => Reflect.get(window, "__捞") ?? null)).toEqual({ 类型: "phone", 值: "13900000009" });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.getByLabel("姓名").fill("李四五");
+      await expect.poll(() => 条.count()).toBe(0);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
 });

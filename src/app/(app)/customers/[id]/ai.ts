@@ -1,5 +1,6 @@
 "use server";
 
+import { 客户跟进可见条件 } from "@/lib/enterprise/customer-follow-feed";
 import { scheduleValue, scheduleOrder, earliestScheduled } from "@/lib/schedule-date";
 import { 无负责人占位名 } from "@/lib/pool";
 import { prisma } from "@/lib/prisma";
@@ -165,6 +166,8 @@ async function 生成简报(input: {
   if (wait !== null) return { ok: false, error: `AI 调用太频繁，请 ${wait} 秒后再试` };
   stepStart(emit, "load", "读取记录");
 
+  // 企业版：挂在我看不到的项目上的沟通不进简报（同客户页沟通记录，审核 11-18 权限 P1-5）
+  const 可见跟进 = await 客户跟进可见条件(user, input.customerId);
   const customer = await prisma.customer.findUnique({
     where: { id: input.customerId },
     include: {
@@ -177,6 +180,7 @@ async function 生成简报(input: {
       tasks: { where: { done: false }, select: { title: true, dueAt: true, dueOn: true }, orderBy: { dueAt: { sort: "asc", nulls: "last" } } },
       plans: { where: { done: false }, select: { id: true, subject: true, plannedAt: true, plannedOn: true, method: true } },
       followUps: {
+        ...(可见跟进 ? { where: 可见跟进 } : {}),
         orderBy: { occurredAt: "desc" },
         take: 30,
         select: {

@@ -571,14 +571,19 @@ it("新线索页·单条自动分配有项目一起转（P-转-07）：先列出
   await page.close();
 });
 
-it("客户公海里的项目不给「分配」「自动分配」键；线索公海（客户不在公海）的照给", async () => {
-  const { page, errors } = await 打开(true, 1280, true, true, { 公海: true });
-  await page.getByRole("button", { name: /^分配 .*5$/ }).waitFor();
-  expect(await page.getByRole("button", { name: /^自动分配 .*5$/ }).count()).toBe(1);
-  expect(await page.getByRole("button", { name: /^分配 .*4$/ }).count()).toBe(0);
-  expect(await page.getByRole("button", { name: /^自动分配 .*4$/ }).count()).toBe(0);
-  expect(errors).toEqual([]);
-  await page.close();
+it("客户公海里的项目不给「分配」「自动分配」键；线索公海（客户不在公海）的也只给能管公海的人（审核 11-18 分配 P0-3：服务端会拦的不摆）", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    const { page, errors } = await 打开(true, w, true, true, { 公海: true });
+    await page.locator(".ant-table-row").nth(1).waitFor();
+    expect(await page.locator(".ant-table-row").count()).toBe(2);
+    expect(await page.getByRole("button", { name: /^分配 .*5$/ }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: /^自动分配 .*5$/ }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: /^分配 .*4$/ }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: /^自动分配 .*4$/ }).count()).toBe(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+    await page.close();
+  }
 });
 
 it("P-公海-10：销售管理 / 总管理看客户公海里的项目有「分配」（整包），没有「自动分配」", async () => {

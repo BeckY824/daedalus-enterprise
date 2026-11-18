@@ -83,6 +83,8 @@ import { 认新客户分配, 落新客户分配, 新客户建好再分, type 新
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 import { 是占位号, 占位号提示 } from "@/lib/placeholder-phone";
 import { 带客户编号 } from "@/lib/customer-no";
+import { 市场指定方向挡 } from "@/lib/enterprise/assign-direction-pick";
+import { 认分配方向 } from "@/lib/enterprise/customer-region";
 import { 市场分配指定挡 } from "@/lib/enterprise/cust-auto-assign";
 
 
@@ -1280,6 +1282,17 @@ async function 转让挡(me: Awaited<ReturnType<typeof requireUser>>, ids: strin
 }
 
 
+/** 市场成员指定分配要按方向（见 lib/enterprise/assign-direction-pick.ts）；方向交来的不认识直接拒 */
+async function 指定方向挡(me: Awaited<ReturnType<typeof requireUser>>, ids: string[], 接手人: string, 方向: unknown): Promise<string | null> {
+  if (!企业版()) return null;
+  const 认 = 认分配方向(方向);
+  if (!认.ok) return 认.error;
+  const org = await 权限组织();
+  if (!org) return null;
+  const 们 = await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, salesOwnerId: true, bizLine: true, pool: { select: { customerId: true } } } }));
+  return 市场指定方向挡(me, org, 们, 接手人, 认.线);
+}
+
 /**
  * 企业版公海里的客户不走转让（P-公海-04）：先领取或分配，不然客户有了负责人却还在公海，原负责人回避失效。
  * 一批里混着公海客户整批拒，同 虚线只读挡、转让挡
@@ -1292,7 +1305,7 @@ async function 公海挡(ids: string[]): Promise<string | null> {
 // 改客户挡（企业版改客户资料：负责人本人或系统管理员，公海里的先领）11-18 挪到 lib/enterprise/follow-perm.ts，关联客户也用
 
 /** 批量改销售负责人 */
-export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原因?: string | null): Promise<BulkResult> {
+export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原因?: string | null, 方向?: unknown): Promise<BulkResult> {
   const me = await requireUser();
   const b = await getBusiness();
   if (!ids.length) return { ok: true, updated: 0, unchanged: 0, missing: 0 };
@@ -1320,6 +1333,9 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
   // 市场分配（转让框里有「指定分配 / 自动分配」那组）的指定：只能给参与状态正常的（审核 11-18 追加，cust-auto-assign.ts 市场分配指定挡）
   const 市场指定 = await 市场分配指定挡(me, ids, salesOwnerId);
   if (市场指定) return { ok: false, error: 市场指定 };
+  // 市场成员指定分配暂不分配的客户也先定方向（P-转-26，11-18）：接手人要在这个方向能接的人里，不信前端；参与状态那句更具体，排它后面
+  const 向挡 = await 指定方向挡(me, ids, salesOwnerId, 方向);
+  if (向挡) return { ok: false, error: 向挡 };
 
   // 本来就归他的不算「改动」，分开统计才对得上操作人看到的选中条数
   const already = await prisma.customer.count({ where: { id: { in: ids }, salesOwnerId } });

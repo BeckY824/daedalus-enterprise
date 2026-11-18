@@ -1,5 +1,6 @@
 "use server";
 
+import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
 import { hasVisibleText } from "@/lib/form-validation";
 
 import { 规整外贸档案 } from "@/lib/customer-extra";
@@ -72,6 +73,9 @@ export async function saveLead(input: {
   版本?: string | null;
 }) {
   const user = await requireUser();
+  // 企业版只用项目：老线索表不再写（X-88，审核 11-18 权限 P1-9）
+  const 老入口 = await 只用项目挡老入口("线索");
+  if (老入口) return { ok: false as const, error: 老入口 };
   // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）
   if (!hasVisibleText(input.name)) return { ok: false as const, error: "请填写线索名称" };
   if (!LEAD_STATUSES.includes(input.status as (typeof LEAD_STATUSES)[number])) {
@@ -226,6 +230,8 @@ export async function convertLead(id: string, 跟进?: 向导跟进): Promise<
   { ok: true; customerId: string; projectId?: string } | { ok: false; error: string; 撞号?: 线索撞号 }
 > {
   const user = await requireUser();
+  const 老入口 = await 只用项目挡老入口("线索");
+  if (老入口) return { ok: false as const, error: 老入口 };
   const b = await getBusiness();
   const lead = await prisma.lead.findUnique({ where: { id } });
   if (!lead) return { ok: false as const, error: "线索不存在" };
@@ -361,6 +367,8 @@ export async function convertLead(id: string, 跟进?: 向导跟进): Promise<
  */
 export async function mergeLeadInto(leadId: string, customerId: string, 跟进?: 向导跟进): Promise<{ ok: true; customerId: string; projectId?: string } | { ok: false; error: string }> {
   const user = await requireUser();
+  const 老入口 = await 只用项目挡老入口("线索");
+  if (老入口) return { ok: false as const, error: 老入口 };
   const b = await getBusiness();
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!lead) return { ok: false, error: "线索不存在" };

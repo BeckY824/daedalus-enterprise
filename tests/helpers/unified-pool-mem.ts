@@ -297,7 +297,9 @@ export async function 内存读公海页(me: { id: string; name: string; role?: 
   const 这页 = await 补这一页(me, 骨, 行.slice((当前页 - 1) * pageSize, 当前页 * pageSize));
   // 不数时不带这一格（和改前的返回逐字段一样）
   const 号码不全数 = !选.数号码不全 ? undefined : sp.号码不全 === "1" ? 行.length : 筛排(全部行, { ...sp, 号码不全: "1" }, { 按项目: !!名单条件 }).行.length;
-  return { 行: 这页, 总数: 行.length, 当前页, 快捷数, 属性数, 截断: 骨.截断, 库里有: 骨.行.length > 0, ...(号码不全数 === undefined ? {} : { 号码不全数 }) };
+  // 审核 11-18 统计 P2-2：总数里几位客户、几个项目（新写法同口径，对拍一起核）
+  const 分项 = { 客户: 行.filter((r) => r.种 === "客户").length, 项目: 行.filter((r) => r.种 !== "客户").length };
+  return { 行: 这页, 总数: 行.length, 分项, 当前页, 快捷数, 属性数, 截断: 骨.截断, 库里有: 骨.行.length > 0, ...(号码不全数 === undefined ? {} : { 号码不全数 }) };
 }
 
 /**

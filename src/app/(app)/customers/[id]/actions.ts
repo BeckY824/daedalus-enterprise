@@ -38,7 +38,7 @@ export type { 企业联系人资料 } from "./contact-input";
 import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类表, 联系人号码们 } from "@/lib/enterprise/customer-v2-db";
 import { 联系人姓名问题 } from "@/lib/enterprise/customer-v2";
 import { 摘联系人号 } from "@/lib/enterprise/contact-number-detach";
-import { 联系人查重, 联系人撞号话, type 撞到的联系人 } from "@/lib/enterprise/contact-dedupe";
+import { 联系人查重, 联系人撞号话, 联系人回收站撞, 联系人回收站撞话, type 撞到的联系人 } from "@/lib/enterprise/contact-dedupe";
 import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
 import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
 import { 存沟通后重算三态, 记首次有效 } from "@/lib/enterprise/tri-state-db";
@@ -211,6 +211,29 @@ export async function saveFollowUp(input: FollowUpInput) {
       if (extra?.tasks?.length || extra?.plan || extra?.完成计划 || ((input.type === "TASK" || input.type === "REMIND") && !!input.dueAt && input.status !== "已完成"))
         return { ok: false as const, error: "这是同事的客户：只能记沟通，待办、提醒和下一步计划请找负责人安排" };
     }
+    /*
+      企业版（审核 11-18 权限 P1-4）：顺手建待办 / 计划、带提醒时间的待办 / 提醒，同 saveTask / savePlan 过 客户事项挡（负责人本人）；
+      顺手完成计划同 勾完成 走 本人勾完成挡。公海客户新记 = 先领再记（下面），领了就是自己的，不在这里挡
+    */
+    if (企业版() && 目标 && !目标.pool) {
+      const 建事项 = !!(extra?.tasks?.length || extra?.plan) || (!input.id && (input.type === "TASK" || input.type === "REMIND") && !!input.dueAt && input.status !== "已完成");
+      const 挡 = 建事项 ? await 客户事项挡(user, input.customerId) : null;
+      if (挡) return { ok: false as const, error: 挡 };
+      if (extra?.完成计划) {
+        const 要完成 = await prisma.followPlan.findFirst({ where: { id: extra.完成计划, customerId: input.customerId }, select: { ownerId: true } });
+        const 完成挡 = 要完成 ? await 本人勾完成挡(user, input.customerId, 要完成.ownerId) : null;
+        if (完成挡) return { ok: false as const, error: 完成挡 };
+      }
+    }
+    // 挂的联系人、商机要是这位客户名下的（审核 11-18 权限 P2-7）：别的客户的联系人挂不上来；企业版挂靠到这位客户的联系人也算
+    if (input.contactId && typeof input.contactId === "string") {
+      const 联系人在 = await prisma.contact.count({ where: { id: input.contactId, OR: [{ customerId: input.customerId }, ...(企业版() ? [{ customerLinks: { some: { customerId: input.customerId } } }] : [])] } });
+      if (!联系人在) return { ok: false as const, error: "选的联系人不是这位客户的，请重新选择" };
+    }
+    if (input.opportunityId && typeof input.opportunityId === "string") {
+      const 商机在 = await prisma.opportunity.count({ where: { id: input.opportunityId, customerId: input.customerId } });
+      if (!商机在) return { ok: false as const, error: "选的商机不是这位客户的，请重新选择" };
+    }
     // 企业版沟通方式（10-31）：选的方式对出 type；改已有的、方式没变的不查停用
     const 原 = input.id ? await prisma.followUp.findUnique({ where: { id: input.id }, select: { method: true, initiator: true, type: true, projectNode: { select: { projectId: true } } } }) : null;
     const 方式 = await 定沟通方式(input.method, input.type, 原?.method);
@@ -350,6 +373,8 @@ export async function deleteFollowUp(id: string, customerId: string) {
     // 删之前先取内容：审计要记类型和内容。删了不给本人撤回（11-09 删 restoreFollowUp），要找回只能总管理去回收站恢复
     const 待删 = await prisma.followUp.findUnique({ where: { id } });
     if (!待删) return { ok: false as const, error: "这条跟进已经不在了，刷新看看" };
+    // 后面重算最近跟进、撤待办、审计都按库里这条的客户，不信传来的（审核 11-18 权限 P2-7）
+    customerId = 待删.customerId;
     // 企业版：系统管理员或身为负责人的管理能删沟通（软删进回收站，M-权限-09 原口径 11-09，销售负责人本人也删不了）。本人刚记的不再例外（P-沟通-01），只有 AI 卡片撤销那一条放行
     if (!(在卡片撤销里(id) && 卡片刚记的能撤(me, 待删)) && !(await 能删沟通(me, { customerId: 待删.customerId, id }))) return { ok: false as const, error: 不能删沟通话 };
     // 企业版（P9）：只记 deletedAt，进回收站；顺带的待办照旧删（回收站恢复时按跟进补回来）
@@ -779,18 +804,21 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
             .map(([kind, v]) => ({ kind, value: (v ?? "").trim(), numberKey: 老键(kind, v) }))
             .filter((x) => x.numberKey)
         : [];
-    if (查的行们.length && !input.照存) {
+    if (查的行们.length) {
       const 原有 = new Set((原?.contactMethods ?? []).map((x) => `${x.kind}|${x.numberKey}`));
       if (原) for (const [kind, v] of [["phone", 原.phone], ["email", 原.email], ["wechat", 原.wechat]] as const) {
         const 键 = 老键(kind, v);
         if (键) 原有.add(`${kind}|${键}`);
       }
       const 新的 = 查的行们.filter((x) => !原有.has(`${x.kind}|${x.numberKey}`));
-      const 撞了 = 新的.length ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), input.id, 主客户) : [];
+      const 撞了 = 新的.length && !input.照存 ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), input.id, 主客户) : [];
       if (撞了.length) {
         const 表 = await 号码种类表();
         return { ok: false as const, error: 联系人撞号话(撞了, (k) => 种类叫法(表, k), 主客户), 撞了 };
       }
+      // 在用的没撞、回收站里撞了（审核 11-18 新建入口 P2-6，P-删-08，同建档入口）：拦下给捞回，「仍然保存」也不放
+      const 回收站 = 企业版() && 新的.length ? await 联系人回收站撞(prisma, 新的) : null;
+      if (回收站) return { ok: false as const, error: 联系人回收站撞话, 回收站 };
     }
     const data = { ...规整(input), phone: 电话.phone, ...(企?.ok ? 企.data : {}), isPrimary: 主要, customerId: 主客户 };
     const 落库id = await prisma.$transaction(async (tx) => {

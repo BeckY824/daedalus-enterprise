@@ -152,6 +152,25 @@ export async function 回收站里带号的联系人(db: 库, 号: 验好的号,
   return [...ids];
 }
 
+/**
+ * 联系人表单的号（审核 11-18 新建入口 P2-6，P-删-08）：在用的都没撞时，回收站里撞了的第一行。
+ * 只看能捞回的几类（手机 / 邮箱 / 微信 / 阿里国际站ID；座机、WhatsApp 按手机号那套比，同 一行号全公司查），
+ * 回 捞回键 要的 类型 + 值（查号码 / 从回收站捞回 认的写法）。回收站里也没有回 null
+ */
+export async function 联系人回收站撞(db: 库, 行们: readonly { kind: string; value: string; numberKey: string }[]): Promise<{ 类型: 号码类型; 值: string } | null> {
+  for (const 行 of 行们) {
+    if (!行.numberKey) continue;
+    const 本类 = 库类型到号码类型[行.kind];
+    const 类型: 号码类型 | null = 本类 ?? (通号种类.has(行.kind) ? "手机号" : null);
+    if (!类型) continue;
+    const 值 = 本类 ? 行.value : 通号当电话(行.numberKey);
+    if ((await 回收站里查号(db, 类型, 值, 行.numberKey)).length) return { 类型, 值 };
+  }
+  return null;
+}
+/** 联系人表单撞了回收站里的号：拦下（「仍然保存」也不放），提示里给「从回收站捞回」 */
+export const 联系人回收站撞话 = "这个号码在回收站里的客户上，本次没保存，可以从回收站捞回";
+
 /** 回收站里撞了的提示（客户 11-05（X-10）；11-05 客户回复「可以捞回且只有查重触发时可以捞回」，原文是我们拟的） */
 export const 回收站里有提示 = "这个号码在回收站里，本次录入已拦截，可以从回收站捞回";
 
@@ -387,8 +406,9 @@ export async function 联系人查重(
   if (!撞.size && !客户撞.size) return [];
   const 客户们 = 客户撞.size ? await 客户撞了(db, 客户撞, 读的我) : [];
   if (!撞.size) return 客户们;
+  // 回收站里的联系人、挂在回收站里客户上的不算在用（db 多半是不过限定层的 defaultClient，软删不会自动滤；回收站另走 联系人回收站撞）
   const 人们 = await 看全部(async () => db.contact.findMany({
-    where: { id: { in: [...撞.keys()] } },
+    where: { id: { in: [...撞.keys()] }, deletedAt: null, customer: { deletedAt: null } },
     select: {
       id: true, name: true, createdAt: true,
       customer: { select: { id: true, name: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } } },
@@ -415,7 +435,7 @@ export async function 联系人查重(
 /** 撞到的别的客户本身的号 → 给人看的样子（看得到的给客户 id、名字；看不到的只给负责人名字）。回收站里的客户不在里面 */
 async function 客户撞了(db: 库, 客户撞: Map<string, { kind: string; value: string }>, 读的我: 谁 | null): Promise<撞到的联系人[]> {
   const 们 = await 看全部(async () => db.customer.findMany({
-    where: { id: { in: [...客户撞.keys()] } },
+    where: { id: { in: [...客户撞.keys()] }, deletedAt: null },
     select: { id: true, name: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   }));

@@ -16,7 +16,9 @@ export async function 企业版只用项目(): Promise<boolean> {
  * 企业版只用项目时，老的商机 / 合同写入口一律拒（订单页 10-28 已整页删除）（10-28 定版前收口）：这几张表企业版没有页面，
  * 写进去的人看不见、启动清理（legacy-cleanup.ts）又会删掉，数据悄悄分叉。返回拒绝的话，放行返回 null
  */
-export async function 只用项目挡老入口(东西: "商机" | "合同"): Promise<string | null> {
+export async function 只用项目挡老入口(东西: "商机" | "合同" | "线索"): Promise<string | null> {
   if (!(await 企业版只用项目())) return null;
+  // 老线索表（X-88 可选加固，审核 11-18 权限 P1-9）：新建、转客户、并入已有客户都挡，企业版线索是项目的阶段
+  if (东西 === "线索") return "企业版用新线索（项目）建：请在「新建线索」里录";
   return `这里${东西}已并进项目：请到项目页推进或记成交`;
 }

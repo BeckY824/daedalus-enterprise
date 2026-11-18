@@ -3,6 +3,7 @@ import { 我放出去的公海客户 } from "@/lib/owner-log-db";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import CustomersView from "./CustomersView";
+import VerifyInbox from "../projects/VerifyInbox";
 import HandoverPending from "./HandoverPending";
 import { 待确认的交接 } from "./handover-actions";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -40,6 +41,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { cookies } from "next/headers";
 import { 客户页看法键 } from "@/lib/customers-view-pref";
 import { 项目页, type 项目页参数 } from "../projects/board-page";
+import { 待我复核的 } from "@/lib/project/lead-verify";
 import { 客户页看板条件 } from "./board-query";
 import { 仅项目安全条件, 仅项目筛选口径 } from "@/lib/enterprise/project-only-customers";
 import { 仅项目列表行们 } from "@/lib/enterprise/project-only-list-rows";
@@ -337,8 +339,11 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     ? 摊平部门(编制.部门).map(({ d, 层 }) => ({ value: d.id, label: `${"　".repeat(层 - 1)}${d.name}` }))
     : [];
 
+  // 「待我复核」（审核 11-18 节点 P2-3）：列表视图顶上摆（看板视图里的项目列表自己带）；读不出来不挡列表
+  const 待复核们 = 企 && 按项目 && !看板视图 ? (await 待我复核的(me).catch((e) => { console.error("[待我复核] 客户页没读出来", e); return []; })).map((r) => ({ ...r, 更新于: r.更新于.toISOString() })) : [];
   const 视图 = (
     <CustomersView
+      待复核={待复核们.length ? <VerifyInbox 们={待复核们} /> : undefined}
       // 公海里的直接分给同事：只给管理员（团队版的老板）。业务员那边不摆（2026-10-20）
       能分配公海={能管公海(me, await 权限组织())}
       能转出自己的={能转出自己的(me, await 权限组织())}

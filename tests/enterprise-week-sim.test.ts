@@ -23,6 +23,12 @@ vi.mock("@/lib/auth", async (原) => ({
   // 并发的调用（两人同时领）各算各的人：先看 AsyncLocalStorage
   requireUser: async () => (await import("./sim/身份")).当前人.getStore() ?? mocks.user,
 }));
+// 剧本按老线索表（saveLead / convertLead）走：企业版那一道「老线索入口一进门拦」（审核 11-18 权限 P1-9）在这份模拟里放开，
+// 其余规则照常断言；新线索（项目）入口的测试另有
+vi.mock("@/lib/enterprise/project-only", async (原) => {
+  const m = await 原<typeof import("@/lib/enterprise/project-only")>();
+  return { ...m, 只用项目挡老入口: async (类: Parameters<typeof m.只用项目挡老入口>[0]) => (类 === "线索" ? null : m.只用项目挡老入口(类)) };
+});
 vi.mock("@/lib/sync/dedupe-client", async (原) => ({ ...(await 原<object>()), 问同事: async () => null }));
 // 不连团队服务器：公海超时收回 扫全公司（连着时只扫自己名下）
 vi.mock("@/lib/sync/client", async (原) => ({ ...(await 原<object>()), 读团队: () => null }));

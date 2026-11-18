@@ -29,6 +29,7 @@ import { notify } from "./notify";
 import { 名字是号码, 通知里的客户名 } from "./notice-mask";
 import { 主渠道入口前缀, 是主渠道入口 } from "./channel-main-core";
 import { 读组织 } from "./org";
+import { 没设业务角色, 只看的人 } from "./permissions";
 import { 待分配占着, 能分配的人们 } from "./await-assign";
 
 export const 同号标题 = "同号再次录入";
@@ -182,6 +183,9 @@ function 拼反馈(负责人名: string, 自己负责: boolean, 有项目: boole
 export async function 同号再次录入(我: 人, 号: 验好的号, 录入: 录入信息): Promise<协同结果> {
   if (!企业版()) return { 走: false, 原因: "没开企业版" };
   if (await 只读身份中(defaultClient)) return { 走: false, 原因: "只读身份" };
+  // 没设业务角色、设了「只看某人」的也不走（审核 11-18 权限 P2-10，P-沟通-04、P-看-09）：不记沟通、不发组员邀请，回原来的查重提示
+  const 组织 = await 读组织();
+  if (没设业务角色(组织, 我.id) || 只看的人(组织, 我.id)) return { 走: false, 原因: "没设业务角色或只看某人" };
   const 目标 = await 找目标(号);
   if (!目标.走) return { 走: false, 原因: 目标.原因 };
   const { 首条, 负责人名, 项目, 待分配 } = 目标;

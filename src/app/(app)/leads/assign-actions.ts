@@ -19,7 +19,7 @@ import { 查完再写 } from "@/lib/check-then-write";
 import { 读改权限, 谁能改的话 } from "@/lib/enterprise/edit-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 分配方式叫法, 挡分配方式, 选的原因 } from "@/lib/enterprise/dict";
-import { 能自动分配客户, 不是市场话 } from "@/lib/enterprise/cust-auto-assign";
+import { 能自动分配客户, 不是市场话, 市场分配限指定 } from "@/lib/enterprise/cust-auto-assign";
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 发满额提醒, 发待分配提醒, 读满额提醒, 关掉满额提醒, type 满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 读线部门, 参与状态表, 不参与名单, 不设配额开着, 自动分配池, 读挑人底子, 本月分配行, 补记销售管理起算, 指定问题, 可指定的人, 估算轮到, 能看轮到, type 轮到 } from "@/lib/enterprise/assign-eta";
@@ -42,7 +42,8 @@ import { 项目业务线, 线部门key, 规整线部门, 线勾了部门, 按部
 import { 历史负责人, 原负责人回避, 原负责人挡着 } from "@/lib/project/pool-owner";
 import { 公海按线拦 } from "@/lib/enterprise/pool-line-guard";
 import { 按区域分配of, 默认分配方向, 认分配方向, 认交来的方向, 方向分配理由, 本人事业部, type 分配方向 } from "@/lib/enterprise/customer-region";
-import { 项目号们 } from "@/lib/enterprise/assign-direction-db";
+import { 项目号们, 客户默认分配方向 } from "@/lib/enterprise/assign-direction-db";
+import { 要按方向指定, 指定方向候选表, type 指定候选表 } from "@/lib/enterprise/assign-direction-pick";
 import type { 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 换负责人待办, 待办痕, 接上待办痕, 带待办勾 } from "@/lib/project/carry-tasks";
 import { 规整还原单, 撤回自动分配, 自动分配撤销对不上, type 自动分配还原 } from "@/lib/enterprise/auto-assign-undo";
@@ -836,8 +837,13 @@ function 认勾的客户(customerIds: unknown): { ok: true; ids: string[] } | { 
 }
 
 export type 批量客户预看 = { ok: true; 可: string[]; 不可: { customerId: string; name: string; error: string }[];
-  /** 勾的里有能自动分的（框里摆「指定 / 自动」）：选指定时接手人下拉只列这些人（审核 11-18 追加，同 市场分配指定挡） */
-  可指定?: string[] } | { ok: false; error: string };
+  /** 勾的里有能自动分的（框里摆「指定 / 自动」）：选指定时接手人下拉只列这些人（审核 11-18 追加，同 市场分配指定挡）；兼条线总管理 / 销售管理的不给 = 不筛 */
+  可指定?: string[];
+  /**
+   * 指定分配也先定方向（P-转-26，11-18）：勾的里有要按方向指定的（市场成员、暂不分配的客户）才给。
+   * 候选表 = 每个方向能接的人；默认线 = 这几位默认方向都一样时那条线，不一样 / 判不出 = null（框里要人选）
+   */
+  定向?: { 候选表: 指定候选表; 默认线: 线 | null } } | { ok: false; error: string };
 
 /**
  * 客户列表批量转让框：勾的这几位里哪些能选自动分配（和单个客户转让框同一个判定 能自动分配客户：市场成员、暂不分配的客户……）。
@@ -856,14 +862,19 @@ export async function 批量客户自动分配预看(customerIds: string[]): Pro
     const 按id = new Map(们.map((c) => [c.id, c]));
     const 可: string[] = [];
     const 不可: { customerId: string; name: string; error: string }[] = [];
+    const 默认线们 = new Set<线 | null>();
     for (const id of 勾.ids) {
       const c = 按id.get(id);
       if (!c) { 不可.push({ customerId: id, name: "（看不到这位）", error: 客户看不到话 }); continue; }
       const 能 = await 能自动分配客户(me, org, c);
       if (能.ok) 可.push(id);
       else 不可.push({ customerId: id, name: c.name, error: 能.error });
+      const 定向项目 = await 要按方向指定(me, org, c);
+      if (定向项目) 默认线们.add((await 客户默认分配方向(org, c.id, me.id, 定向项目)).线);
     }
-    return { ok: true, 可, 不可, ...(可.length ? { 可指定: await 可指定的人(org) } : {}) };
+    const 定向 = 默认线们.size ? { 候选表: await 指定方向候选表(org), 默认线: 默认线们.size === 1 ? [...默认线们][0] : null } : undefined;
+    // 可指定：兼条线总管理 / 销售管理的不限（市场分配限指定，同 市场分配指定挡）
+    return { ok: true, 可, 不可, ...(可.length && 市场分配限指定(org, me.id) ? { 可指定: await 可指定的人(org) } : {}), ...(定向 ? { 定向 } : {}) };
   } catch (e) {
     return 不在了(e);
   }

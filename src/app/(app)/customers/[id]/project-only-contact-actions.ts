@@ -19,12 +19,12 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 客户事项挡 } from "@/lib/enterprise/follow-perm";
 import { 仅项目可见 } from "@/lib/enterprise/project-only-customers";
 import { 验联系人号码们, 存联系人号码, 号码种类表, 种类叫法, 联系人号码们 } from "@/lib/enterprise/customer-v2-db";
-import { 联系人查重, type 撞到的联系人 } from "@/lib/enterprise/contact-dedupe";
+import { 联系人查重, 联系人回收站撞, 联系人回收站撞话, type 撞到的联系人 } from "@/lib/enterprise/contact-dedupe";
 import { 版本冲突, 版本条件 } from "@/lib/edit-version";
 import { 联系人电话, 规整, 规整企业联系人, type 联系人字段, type 企业联系人资料 } from "./contact-input";
 
 type 交来的 = 联系人字段 & { 版本?: string | null; 企业?: 企业联系人资料 | null; 照存?: boolean };
-type 结果 = { ok: true; id: string } | { ok: false; error: string; 撞了?: 撞到的联系人[] };
+type 结果 = { ok: true; id: string } | { ok: false; error: string; 撞了?: 撞到的联系人[]; 回收站?: { 类型: string; 值: string } };
 
 const 关着 = { ok: false as const, error: "这里不能改联系人" };
 const 不是你的 = { ok: false as const, error: "这位客户你只负责项目：只能在自己的项目上新增联系人，改自己新增的那几位" };
@@ -60,14 +60,14 @@ async function 准备(input: 交来的, 原: 原联系人 | null, 跳过的联�
     : ([["phone", 电话.phone], ["email", input.email], ["wechat", input.wechat]] as const)
         .map(([kind, v]) => ({ kind, value: (v ?? "").trim(), numberKey: 老键(kind, v) }))
         .filter((x) => x.numberKey);
-  if (查的行们.length && input.照存 !== true) {
+  if (查的行们.length) {
     const 原有 = new Set((原?.contactMethods ?? []).map((x) => `${x.kind}|${x.numberKey}`));
     if (原) for (const [kind, v] of [["phone", 原.phone], ["email", 原.email], ["wechat", 原.wechat]] as const) {
       const 键 = 老键(kind, v);
       if (键) 原有.add(`${kind}|${键}`);
     }
     const 新的 = 查的行们.filter((x) => !原有.has(`${x.kind}|${x.numberKey}`));
-    const 撞了 = 新的.length ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), 跳过的联系人, 客户) : [];
+    const 撞了 = 新的.length && input.照存 !== true ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), 跳过的联系人, 客户) : [];
     if (撞了.length) {
       const 表 = await 号码种类表();
       const 头 = 撞了[0];
@@ -78,6 +78,9 @@ async function 准备(input: 交来的, 原: 原联系人 | null, 跳过的联�
         撞了: 撞了.map((x) => ({ contactId: null, name: null, customerId: null, customerName: null, 同事: "同事", kind: x.kind, value: x.value })),
       };
     }
+    // 回收站里撞了（审核 11-18 新建入口 P2-6，同 saveContact）：拦下给捞回
+    const 回收站 = 新的.length ? await 联系人回收站撞(prisma, 新的) : null;
+    if (回收站) return { ok: false as const, error: 联系人回收站撞话, 回收站 };
   }
   const { phone: _p, ...其余 } = 规整(input);
   return { ok: true as const, data: { ...其余, phone: 电话.phone, ...企.data }, 号 };

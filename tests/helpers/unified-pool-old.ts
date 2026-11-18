@@ -174,5 +174,7 @@ export async function 旧读公海页(me: { id: string; name: string; role?: str
   const { 行, 快捷数, 属性数 } = 筛排(全部, sp);
   const 页数 = Math.max(1, Math.ceil(行.length / pageSize));
   const 当前页 = Math.min(Math.max(1, page), 页数);
-  return { 行: 行.slice((当前页 - 1) * pageSize, 当前页 * pageSize), 总数: 行.length, 当前页, 快捷数, 属性数, 截断, 库里有: 全部.length > 0 };
+  // 审核 11-18 统计 P2-2：总数里几位客户、几个项目（新写法同口径，对拍一起核）
+  const 分项 = { 客户: 行.filter((r) => r.种 === "客户").length, 项目: 行.filter((r) => r.种 !== "客户").length };
+  return { 行: 行.slice((当前页 - 1) * pageSize, 当前页 * pageSize), 总数: 行.length, 分项, 当前页, 快捷数, 属性数, 截断, 库里有: 全部.length > 0 };
 }

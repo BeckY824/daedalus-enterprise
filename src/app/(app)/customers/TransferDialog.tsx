@@ -20,12 +20,16 @@ import { 移交作废天数 } from "@/lib/enterprise/handover-expire-days";
 import { 转走项目列表 } from "./useCarryConfirm";
 import { 自动分配说明, 自动分配生效话 } from "@/lib/enterprise/cust-auto-assign-words";
 import { 动作出错话 } from "@/lib/stale-deploy";
+import { 按方向挑, 指定方向话, type 指定候选表 } from "@/lib/enterprise/assign-direction-pick-core";
+import type { 线 } from "@/lib/enterprise/lead-assign";
 
 export type 人 = { value: string; label: string };
 /** 批量自动分配预看：勾的里能自动分的有几位、不能的是谁为什么 */
 export type 自动预看 = { 可: number; 不可: { name: string; error: string }[];
   /** 摆了「指定 / 自动」时选指定，接手人下拉只列这些人（参与状态正常，审核 11-18 追加；服务端 市场分配指定挡 同口径）；没给 = 不筛 */
-  可指定?: string[] };
+  可指定?: string[];
+  /** 指定分配也先定方向（P-转-26，11-18）：勾的里有市场成员要按方向指定的才给；默认线 null = 这几位默认不一样 / 判不出，要人选 */
+  定向?: { 候选表: 指定候选表; 默认线: 线 | null } };
 /** 批量自动分配的结果：分给了谁、哪几位没分成为什么 */
 export type 自动结果 = { ok: false; error: string } | { ok: true; 分成: { name: string; 接手人: string }[]; 没成: { name: string; error: string }[] };
 type 方式 = "指定" | "自动";
@@ -87,7 +91,7 @@ export default function TransferDialog({
   自己?: string;
   /** 确认键的字；不给 = 「转给 X」 */
   是字?: string;
-  做: (人id: string, 原因: string | null) => 做的结果 | Promise<做的结果>;
+  做: (人id: string, 原因: string | null, 方向?: 线) => 做的结果 | Promise<做的结果>;
   /**
    * 市场成员批量转让才给（页面判了是市场成员、规则开着）：打开时 预看 一次，勾的里有能自动分的才摆「指定分配 / 自动分配」；
    * 预看回 null（不是市场成员、出错）= 不摆，框和原来一样
@@ -102,6 +106,8 @@ export default function TransferDialog({
   const [错, set错] = useState("");
   const [转走, set转走] = useState<{ 谁: string; 说法: ReturnType<typeof 转走项目说法>; 要确认?: boolean } | null>(null);
   const [法, set法] = useState<方式>("指定");
+  /** 指定分配的方向（P-转-26）：人改了才有；没改 = 预看给的默认线 */
+  const [向, set向] = useState<线 | null>(null);
   /** 自动分配预看：null = 还没回 / 不给自动 */
   const [预看, set预看] = useState<自动预看 | null>(null);
   /** 自动分配分完（至少分出去一位）：框里原地列结果，只剩「知道了」 */
@@ -120,25 +126,41 @@ export default function TransferDialog({
       set忙(false);
       set转走(null);
       set法("指定");
+      set向(null);
       set预看(null);
       set分完(null);
     }
   }
 
+  const 有固定人 = !!固定人;
   useEffect(() => {
     if (!open || !自动) return;
     let 还在 = true;
     // 取不到不摆选择：照原来指定分配
-    自动.预看().then((x) => 还在 && set预看(x), () => 还在 && set预看(null));
+    自动.预看().then(
+      (x) => {
+        if (!还在) return;
+        set预看(x);
+        // 默认挑的（上次转给的）不在默认方向能接的人里：清掉，别带着一个会被拒的人
+        const 定 = x?.定向;
+        if (定 && !有固定人) set谁((w) => (w && 按方向挑(定.候选表, 定.默认线).includes(w) ? w : undefined));
+      },
+      () => 还在 && set预看(null),
+    );
     return () => {
       还在 = false;
     };
-  }, [open, 自动]);
+  }, [open, 自动, 有固定人]);
   /** 摆不摆「指定分配 / 自动分配」：勾的里至少一位能自动分 */
   const 有自动 = !!自动 && !!预看 && 预看.可 > 0;
   const 自动中 = 有自动 && 法 === "自动";
   /** 市场分配（摆了「指定 / 自动」）选指定：只列能被指定的；普通批量转让照旧 */
   const 列的人 = 有自动 ? 指定选项(人们, 预看?.可指定, null, 谁) : 人们;
+  /** 指定也定方向（P-转-26）：预看给了定向才摆方向格，下拉只列这个方向能接的人；没定（默认不一样 / 判不出）= 两条线都列，服务端每位按各自默认核 */
+  const 定向 = !自动中 && !固定人 ? 预看?.定向 : undefined;
+  const 指定线 = 定向 ? 向 ?? 定向.默认线 : null;
+  const 可挑 = 定向 ? new Set(按方向挑(定向.候选表, 指定线)) : null;
+  const 列的人们 = 可挑 ? 列的人.filter((p) => 可挑.has(p.value)) : 列的人;
 
   useEffect(() => {
     if (!open || !谁 || !取转走) return;
@@ -183,7 +205,7 @@ export default function TransferDialog({
     if (!能转 || !谁) return;
     set忙(true);
     set错("");
-    const 因 = await 跑出原因(() => 做(谁, 要原因 ? 合其他(选, 写) : null));
+    const 因 = await 跑出原因(() => 做(谁, 要原因 ? 合其他(选, 写) : null, 定向 ? 向 ?? undefined : undefined));
     set忙(false);
     if (因) return set错(因);
     if (!固定人) 记上次(谁);
@@ -295,6 +317,28 @@ export default function TransferDialog({
               </li>
             </ul>
           )}
+          {定向 && (
+            <div className="cu-tr-who" data-testid="transfer-direction-row">
+              <Select
+                className="dir-select-w120"
+                aria-label="分配方向"
+                data-testid="transfer-direction"
+                placeholder="内贸 / 外贸"
+                value={指定线 ?? undefined}
+                disabled={忙}
+                options={(["内贸", "外贸"] as const).map((v) => ({ value: v, label: v }))}
+                onChange={(v: 线) => {
+                  set向(v);
+                  set错("");
+                  if (谁 && !按方向挑(定向.候选表, v).includes(谁)) set谁(undefined);
+                }}
+              />
+              <span className="cu-tr-hint" data-testid="transfer-direction-why">
+                {向 && 向 !== 定向.默认线 ? `你改成了${向}；` : 定向.默认线 ? `默认按客户区域 / 电话 / 你的事业部定${定向.默认线}；` : "这几位默认方向不一样或判不出，按各自默认核；"}
+                {指定方向话(指定线)}
+              </span>
+            </div>
+          )}
           {!固定人 && !自动中 && (
             <div className="cu-tr-who">
               <Select
@@ -304,7 +348,7 @@ export default function TransferDialog({
                 placeholder="选接手人"
                 value={谁}
                 disabled={忙}
-                options={列的人}
+                options={列的人们}
                 onChange={(v) => {
                   set谁(v);
                   set错("");

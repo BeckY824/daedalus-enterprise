@@ -43,6 +43,8 @@ import { 标无效客户, 恢复有效客户, 分配公海项目, 撤销公海�
 type Props = {
   行: 公海行[];
   总数: number;
+  /** 总数里几位客户（客户行）、几个项目（线索公海项目行）：页脚写清单位（审核 11-18 统计 P2-2）；没给照旧「共 N 条」 */
+  分项?: { 客户: number; 项目: number };
   当前页: number;
   pageSize: number;
   快捷数: Record<快捷, number>;
@@ -137,7 +139,7 @@ function ResultNote({ 文案, 没领到, 关 }: { 文案: string; 没领到: 没
   );
 }
 
-export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 属性数, 截断, 库里有, filters, 渠道筛选项, 能标无效, 能恢复, 能分配, 别线ids = [], users, 候选信息 = {}, 无效原因选项 = [], 持有, 只读 = false, 三态开 = false, 号码不全数 = null }: Props) {
+export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快捷数, 属性数, 截断, 库里有, filters, 渠道筛选项, 能标无效, 能恢复, 能分配, 别线ids = [], users, 候选信息 = {}, 无效原因选项 = [], 持有, 只读 = false, 三态开 = false, 号码不全数 = null }: Props) {
   const 别线 = new Set(别线ids);
   const router = useRouter();
   const { f, setF, apply, 翻页, reset, pending } = useUrlFilters("/pool", filters, pageSize);
@@ -778,7 +780,7 @@ export default function PoolView({ 行, 总数, 当前页, pageSize, 快捷数, 
         行点击={(r) => { if (r.子) 切展开(r.id); }}
         展开={{ expandedRowKeys: 展开的, showExpandColumn: false, rowExpandable: (r) => !!r.子, expandedRowRender: 子列表 }}
         行类={(r) => [r.类 === "无效" ? "row-off" : "", 走的[r.id] ? "pool-row-leave" : "", 回来的.includes(r.id) ? "pool-row-back" : ""].filter(Boolean).join(" ") || undefined}
-        分页={{ 当前页, 每页: pageSize, 总数, 翻页 }}
+        分页={{ 当前页, 每页: pageSize, 总数, 翻页, ...(分项 ? { 单位: (n: ReactNode) => (分项.项目 ? <>{n} 行：客户 {分项.客户} 位、项目 {分项.项目} 个</> : <>{n} 位客户</>) } : {}) }}
       />
       {后果框}
       <PoolAssignPicker

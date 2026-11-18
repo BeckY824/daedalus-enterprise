@@ -151,8 +151,9 @@ describe("设成员：多选", () => {
   it("只有总管理能设角色（能给别人加总管级、管理员）；兼管理员的、账号 ADMIN 没业务角色的都改不了", async () => {
     当(总管);
     expect(await 设成员(销售, { bizRole: ["sales", "marketing_mgr"] })).toEqual({ ok: true });
-    expect(await 设成员(双, { bizRole: ["sales", "admin"] })).toEqual({ ok: true });
-    expect((await 行(双))!.bizRole).toBe("admin,sales");
+    // 审核 11-18 权限 P2-1：设置页不再让只读管理员兼别的角色；库里早有的（老数据）照样改不了组织架构
+    expect(await 设成员(双, { bizRole: ["sales", "admin"] })).toEqual({ ok: false, error: "只读管理员不兼其他业务角色" });
+    await prisma.entMember.update({ where: { userId: 双 }, data: { bizRole: "admin,sales" } });
     当(双);
     expect(await 设成员(销售, { bizRole: ["sales"] })).toEqual({ ok: false, error: "只有总管理能改组织架构" });
     await prisma.entMember.delete({ where: { userId: 老板 } });

@@ -28,7 +28,7 @@ import type { PrismaClient } from "@/generated/prisma";
 import { readSecret } from "@/lib/secret";
 import { 看得到, type 限定, type 公海回避 } from "@/lib/team-scope";
 import { 回收站副手键, 只看某人键, 系统管理员标记键, 填组织设置, 建组织, 实线下属, 虚线下属, 管理员类别们of, type 组织 } from "./org-core";
-import { 按线范围of, 按线项目, 按线客户 } from "./line-viewer";
+import { 按线范围of, 按线项目, 按线客户, 条线范围of } from "./line-viewer";
 import { 规则 } from "./rules";
 import { 市场部门key, 市场成员key, 市场成员们, 市场相关客户, 市场只读话, 规整市场部门 } from "./market";
 import { 视图票, 验视图票, 会话时刻, 切换视图开着 } from "./view-as";
@@ -63,6 +63,13 @@ export function 组织范围of(org: 组织, _账号角色: string | null, 我: s
   const 读 = new Set(写);
   // 虚线下属（D-39 只读）是专门跨线配的，不按业务线滤
   for (const d of 虚线下属(org, 我)) for (const x of [d, ...实线下属(org, d)]) 读.add(x);
+  // 条线总管理（P-角色-01，审核 11-18 权限 P1-1）：看本线成员和实线 / 虚线下属名下的全部（含别线的下属），同详情 能看项目 的 条线范围of；
+  // 改照旧只有上面那一圈（本人负责的能编、线内能转让另由各 action 判）
+  const 条线 = 条线范围of(org, 我);
+  if (条线) for (const x of 条线.人们) 读.add(x);
+  // 停用的人留在他停用前上级的链里（审核 11-18 权限 P1-12 · 统计 P2-6，M-公海-50）：停用前直属上级是我或我管的人，他名下的我看得到、数得到；
+  // 只看——接手走离职交接（P-转-14）。分配候选、接手人、下拉照旧只认在职的（org.成员）
+  for (const [离职, 上] of org.离职上级 ?? []) if (写.has(上)) 读.add(离职);
   return 读.size > 写.size ? { 写: [...写], 读: [...读] } : { 写: [...写] };
 }
 
