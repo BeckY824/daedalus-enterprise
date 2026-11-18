@@ -64,7 +64,7 @@ import { 验联系人号码们, 号码种类表, 种类叫法 } from "@/lib/ente
 import { 号码撞上, 客户名查重, 名撞说法, type 名撞结论 } from "@/lib/enterprise/dupe-ledger";
 import { setOppStatus } from "../opportunities/actions";
 import { 认得, 联系人带号 } from "@/lib/project/hook";
-import { 客户的项目数, 持有上限起点, 写前核上限, 整批或不做 } from "@/lib/project/db";
+import { 客户的项目数, 持有上限起点, 写前核上限, 整批或不做, 整批超上限 } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import type { 组织规则 } from "@/lib/project/org-rules";
 import { 客户有验证中线索 } from "@/lib/project/lead-verify-guard";
@@ -77,6 +77,7 @@ import type { Prisma } from "@/generated/prisma";
 import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
 import { 交接通知, 分给你通知, 改负责人通知, 同事待分配随客户通知 } from "@/lib/enterprise/notice-sources";
 import { 记新建指定分配 } from "@/lib/enterprise/direct-assign";
+import { 认新客户分配, 落新客户分配, 新客户建好再分, type 新客户分配交 } from "@/lib/project/new-cust-assign";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 import { 是占位号, 占位号提示 } from "@/lib/placeholder-phone";
 import { 带客户编号 } from "@/lib/customer-no";
@@ -159,6 +160,12 @@ export type CustomerInput = {
    * 级别（S / A / B / C）和官网照旧走 extra.level / extra.website（存在 CustomerExtra），企业版下级别按 认企业级别 验
    */
   企业资料?: Partial<企业客户资料> | null;
+  /**
+   * 企业版新建客户（项目模式，客户自带潜客培育项目）时市场成员选的「项目分配方式」（11-18，lib/project/new-cust-assign.ts）：
+   * 指定分配 / 自动分配 / 暂不分配。不给 = 照原来（负责人按 salesOwnerId，潜客培育按建给谁记）；给了只认市场成员、只在新建时认，
+   * 别人交了、编辑时交了都拒。和 企业资料.assignWay（客户分配）不是一回事
+   */
+  项目分配?: 新客户分配交 | null;
 };
 
 /** 企业版客户主表上新加的几格（迁移 072；客户类型 customerType 是 2026-10-29 P13 迁移 092，取自字典 custType） */
@@ -245,7 +252,9 @@ export type SaveConflict = {
 
 export type SaveCustomerResult =
   /** 交接中 / 交接已在路上：编辑里负责人本人换负责人 = 申请移交（X-20、P-转-16，不看「交接要确认」开关），负责人先不换，等接手人确认 */
-  | { ok: true; id: string; 带走?: 带走数; 交接中?: number; 交接已在路上?: number; 申请移交?: boolean }
+  | { ok: true; id: string; 带走?: 带走数; 交接中?: number; 交接已在路上?: number; 申请移交?: boolean;
+    /** 新建时选了项目分配方式（项目分配）：建好之后那句（已按自动分配分给谁 / 已指派给谁 / 暂不分配记在你名下）；转走 = 客户已不在我名下 */
+    提示?: string; 转走?: boolean }
   /** 同号协同 = 没新建，这次录的已写进现有项目（error 是给添加人的反馈，不是出错）。
    *  撞号 = 企业版新建时客户名 / 号码撞上已有客户（P-挂靠-01）：露出负责人、台账 id，向导摆「申请挂靠」 */
   | { ok: false; error: string; conflict?: SaveConflict; 同号协同?: true; 撞号?: 名撞结论 };
@@ -316,6 +325,9 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   if (!hasVisibleText(input.name)) return { ok: false, error: "请填写姓名" };
   const b = await getBusiness();
   const labels = customerFieldLabels(b);
+  // 项目分配方式（市场成员新建客户，11-18）：只在新建、项目模式（客户自带潜客培育）时认；谁能用、选项对不对在下面 认新客户分配
+  const 交了项目分配 = input.项目分配 !== undefined && input.项目分配 !== null;
+  if (交了项目分配 && (input.id || !要补潜客培育(企业版(), b.projectMode))) return { ok: false, error: "项目分配方式只在新建客户时选" };
 
   const 改前 = input.id ? await prisma.customer.findUnique({ where: { id: input.id } }) : null;
   if (input.id && !改前) return { ok: false, error: `这条${b.customer}已经不在了（可能已删除），无法保存` };
@@ -643,8 +655,15 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     }
   }
 
+  /*
+    市场成员新建客户选的项目分配方式（11-18，new-cust-assign.ts）：只在新建、项目模式（客户自带潜客培育）时认，别人交了拒。
+    指定分配 = 客户负责人是选的那位（市场首次分给销售先建在自己名下、事务里走市场转一位）；自动 / 暂不分配 = 建在自己名下
+  */
+  const 新分配 = 交了项目分配 ? await 认新客户分配(me, input.项目分配, input.salesOwnerId) : null;
+  if (新分配 && "error" in 新分配) return { ok: false, error: 新分配.error };
   // 企业版普通销售新建的客户只能记在自己名下（10-27 会议，lib/enterprise/import-perm.ts），不看表单传来的
-  const salesOwnerId = !input.id && (await 新建只给自己(me)) ? me.id : input.salesOwnerId || (await 唯一负责人());
+  const salesOwnerId = 新分配 ? (新分配.转客户 ? me.id : 新分配.负责人)
+    : !input.id && (await 新建只给自己(me)) ? me.id : input.salesOwnerId || (await 唯一负责人());
   if (!salesOwnerId) return { ok: false, error: "请选择销售负责人" };
   // 换了负责人才查（老客户挂在没角色的人名下，改别的字段不拦）。11-03 完成度 D3-9
   if (salesOwnerId !== 改前?.salesOwnerId) {
@@ -717,6 +736,8 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     const 起 = await 分机留存起();
     // 销售自己建档、记在自己名下：客户分配空着就记「自持」（11-17，customer-assign-way.ts）；表单里选了的不改
     const 记自持 = await 建档记自持(me, salesOwnerId);
+    // 指定给销售算市场转客户：事务里核接手人的持有上限（同建档向导）
+    const 分配规则 = 新分配?.转客户 ? await 生效组织规则() : null;
     const 建了 = await 查完再写(async (tx) => {
       if (phone) {
         const dup = await 看全部(async () => tx.customer.findFirst({ where: await 同号条件(tx, phone, 起), select: 撞到的字段 }));
@@ -739,23 +760,41 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       else if (企电话?.ok && 企电话.值) await 记号码(tx, { 刚建的: created.id }, null, { 类型: "手机号", 值: 企电话.值, 键: 企电话.键 });
       if (认得(接着)) await 接着(tx, created.id);
       // M-公海-14：企业版项目模式下新客户至少带 1 个潜客培育项目（向导已建了项目的不补；老数据不补）
-      const 潜客培育 = 要补潜客培育(企业版(), b.projectMode) ? await 补潜客培育(tx, { customerId: created.id, 客户名: created.name, ownerId: created.salesOwnerId, creatorId: me.id }) : null;
+      const 补的 = 要补潜客培育(企业版(), b.projectMode) ? await 补潜客培育(tx, { customerId: created.id, 客户名: created.name, ownerId: created.salesOwnerId, creatorId: me.id }) : null;
+      // 选了项目分配方式：落在客户自带的潜客培育上（只建客户那条路是 接着 建的，这里补的是 null，按客户找回那一个）
+      const 潜客培育 = 补的 ?? (新分配 ? (await tx.project.findFirst({ where: { customerId: created.id }, orderBy: { createdAt: "asc" }, select: { id: true } }))?.id ?? null : null);
+      if (新分配) {
+        if (!潜客培育) throw new Error("新客户没有潜客培育项目，项目分配方式没处落");
+        await 落新客户分配(tx, 新分配, { me, customerId: created.id, projectId: 潜客培育, 客户线: created.bizLine ?? null, 规则: 分配规则 });
+      }
       return { created, 潜客培育 } as const;
+    }).catch((e: unknown) => {
+      // 指定给销售超了持有上限：整笔回滚，回那句话（只有选了项目分配方式才会在这里核）
+      if (新分配 && e instanceof 整批超上限) return { 超: e.话 } as const;
+      throw e;
     });
+    if ("超" in 建了) return { ok: false, error: 建了.超 };
     if ("企撞" in 建了 && 建了.企撞) return { ok: false, error: (await 撞号结论(prisma, 建了.企撞, me.id, await 读的我(defaultClient))).提示 };
     if ("撞号" in 建了 && 建了.撞号) return { ok: false, error: await 撞号说法(phone ? `手机号 ${phone}` : `邮箱 ${交的邮箱}`, 建了.撞号, await 读的我(defaultClient), b.customer) };
     const { created, 潜客培育 } = 建了;
     await recordAudit({
       user: me, action: "create", entity: "Customer", entityId: created.id,
-      summary: `新建${b.customer}「${created.name}」`,
+      summary: `新建${b.customer}「${created.name}」${新分配 ? `（潜客培育项目分配方式「${新分配.分配.名}」）` : ""}`,
     });
-    // 建好就归了别人：告诉接手人。建档向导那条路（带 接着）它自己发，带上项目名，这里不重复
-    if (!认得(接着)) await 分给你通知(me, created.salesOwnerId, [created.id]);
+    // 建好就归了别人：告诉接手人。建档向导那条路（带 接着）它自己发，带上项目名，这里不重复。
+    // 选了项目分配方式的：只建客户那条路也带 接着、不发，这里按指定的那位发（自动分配走 建好再分 里自己的通知）
+    if (新分配) { if (新分配.分配.i === 0) await 分给你通知(me, 新分配.负责人, [created.id]); }
+    else if (!认得(接着)) await 分给你通知(me, created.salesOwnerId, [created.id]);
     // 市场成员新建客户时直接选了销售当负责人 = 指定分配，记进分配数（11-18，direct-assign.ts）：记在客户自带的潜客培育项目上。
-    // 向导、只建客户自己建了项目（这里补的是 null），各自在调用方记
+    // 向导、只建客户自己建了项目（这里补的是 null），各自在调用方记；选了项目分配方式的这里找回了那一个
     await 记新建指定分配(me, 潜客培育);
+    // 自动分配 / 暂不分配：建好再分（自动分配分出去写分配记录；没分出去留待分配、提醒能分配的人）
+    const 再分 = 新分配 && 潜客培育 ? await 新客户建好再分(me, 新分配, { customerId: created.id, projectId: 潜客培育, 项目名: created.name, 客户线: created.bizLine ?? null }) : null;
+    const 指定给 = 新分配 && !再分 && 新分配.负责人 !== me.id
+      ? (await prisma.user.findUnique({ where: { id: 新分配.负责人 }, select: { name: true } }))?.name ?? "选的那位"
+      : null;
     revalidateCustomer();
-    return { ok: true, id: created.id };
+    return { ok: true, id: created.id, ...(再分 ?? {}), ...(指定给 ? { 提示: `已指派给 ${指定给}`, 转走: true } : {}) };
   }
 
   /** 记录这次改了哪几项、前后各是什么 */

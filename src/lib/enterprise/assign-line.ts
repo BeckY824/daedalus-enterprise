@@ -189,6 +189,19 @@ export function 默认分配方式(角色们: readonly string[], 能用: readonl
   return 能用.includes(想) ? 想 : 能用[0];
 }
 
+/**
+ * 新建客户（没开项目，只建客户 + 自带的潜客培育项目）给市场成员的「项目分配方式」（11-18 用户）：
+ * 只给指定分配 / 自动分配 / 暂不分配三种，再和这人能用的分配方式取交集（谁能用照 assign-use.ts）
+ */
+export const 新客户分配可选: readonly number[] = [分配方式序号.指定分配, 分配方式序号.自动分配, 分配方式序号.暂不分配];
+export const 新客户分配方式们 = <T extends { i: number }>(能用: readonly T[]): T[] => 能用.filter((x) => 新客户分配可选.includes(x.i));
+
+/** 这一格的默认值：自动分配；用不了（规则没开 / 后台关了）退回暂不分配（原来建给自己记的）；都用不了退到能用的第一个 */
+export function 新客户默认分配方式(能用: readonly number[]): number | undefined {
+  const 可 = 能用.filter((i) => 新客户分配可选.includes(i));
+  return 可.includes(分配方式序号.自动分配) ? 分配方式序号.自动分配 : 可.includes(分配方式序号.暂不分配) ? 分配方式序号.暂不分配 : 可[0];
+}
+
 /** 选自动分配要不要再确认（A9）：有销售业务角色、又不算市场的（市场建的分出去后还能看，销售分出去就看不到了；市场口径同上，X-93） */
 export const 是销售角色 = (角色们: readonly string[], 部门市场成员 = false): boolean => !算市场(角色们, 部门市场成员) && 角色们.some((r) => 销售角色.has(r));
 
