@@ -18,6 +18,7 @@ import { 名单回车去处 } from "@/lib/cmdk";
 import { useMiddlePane, usePaneShortcut } from "@/lib/middle-pane";
 import PaneToggle from "@/components/PaneToggle";
 import { useLocalPref } from "@/lib/local-pref";
+import { 名单底句 } from "@/lib/enterprise/customer-scope";
 import { RowLink } from "@/components/ui";
 import { 名单可到, 名单宽变量, 名单默认宽, 名单最窄, 夹名单宽, 存名单宽, 读名单宽 } from "@/lib/roster-width";
 
@@ -116,6 +117,7 @@ export default function CustomerRoster({ data, 默认页签 = "全部" }: { data
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [rows, 我的rows, 当前页签],
   );
+  const 底句 = 名单底句({ 页签: 当前页签, 默认页签, 全部总数: data.total, 全部条数: data.rows.length, 我负责总数: data.mineTotal, 我的条数: 我的rows?.length });
   const 分组 = !q.trim();
   // 分组规则在 lib/roster-groups.ts：预设外的单独成组、空串归「未填写」，一个人都不能消失（2026-10-04 L-072）
   const 按客户状态 = data.客户状态 ?? null;
@@ -264,18 +266,12 @@ export default function CustomerRoster({ data, 默认页签 = "全部" }: { data
               );
             })
           : 页签里.map((r) => 一行(r, true))}
-        {/* 停在「我的」：数的是我负责的（= 客户页「范围：我负责的」），链过去也落在那一项 */}
-        {当前页签 === "我的" && data.mineTotal !== undefined && 我的rows
-          ? data.mineTotal > 我的rows.length && (
-              <Link href="/customers?scope=mine" className="pane-more">
-                这里只有最近 {我的rows.length} 位，我负责的 {data.mineTotal} 位在表格里 ›
-              </Link>
-            )
-          : data.total > data.rows.length && (
-              <Link href="/customers" className="pane-more">
-                这里只有最近 {data.rows.length} 位，全部 {data.total} 位在表格里 ›
-              </Link>
-            )}
+        {/* 底下那句：数 = 点过去表格里的数（lib/enterprise/customer-scope.ts 名单底句；销售落在「我负责的」） */}
+        {底句 && (
+          <Link href={底句.href} className="pane-more">
+            这里只有最近 {底句.条} 位，{底句.名} {底句.总} 位在表格里 ›
+          </Link>
+        )}
       </div>
     </>
   );

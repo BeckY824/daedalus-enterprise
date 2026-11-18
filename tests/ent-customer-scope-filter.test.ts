@@ -41,7 +41,7 @@ import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibil
 import CustomersPage from "@/app/(app)/customers/page";
 import { 学员名单 } from "@/app/(app)/@pane/panes";
 import type { CustomerRosterData } from "@/components/CustomerRoster";
-import { 生效客户范围, 客户范围选项 } from "@/lib/enterprise/customer-scope";
+import { 生效客户范围, 客户范围选项, 名单底句 } from "@/lib/enterprise/customer-scope";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 const 造人 = async (key: string, bizRole: string, managerId: string | null = null): Promise<人> => {
@@ -153,5 +153,32 @@ describe("客户详情左侧名单：和「我负责的」对齐", () => {
     mocks.user = { ...经理 };
     const 经理的 = ((await 以谁的身份(经理.id, () => 学员名单())) as ReactElement<{ data: CustomerRosterData; 默认页签?: string }>).props;
     expect(经理的.默认页签).toBe("全部");
+  });
+});
+
+describe("左侧名单底下那句：写的数 = 点过去表格里的数", () => {
+  it("销售停在「全部」（负责 + 参与，客户页没有一项能一次显示）：链到我负责的、数写我负责的", () => {
+    expect(名单底句({ 页签: "全部", 默认页签: "我的", 全部总数: 60, 全部条数: 50, 我负责总数: 30, 我的条数: 30 })).toEqual({ href: "/customers?scope=mine", 条: 50, 名: "我负责的", 总: 30 });
+    // 名单里已经摆全了：不写
+    expect(名单底句({ 页签: "全部", 默认页签: "我的", 全部总数: 40, 全部条数: 40, 我负责总数: 30, 我的条数: 30 })).toBeNull();
+  });
+  it("销售停在「我的」：只在我负责的多于摆出来的时候写", () => {
+    expect(名单底句({ 页签: "我的", 默认页签: "我的", 全部总数: 120, 全部条数: 50, 我负责总数: 80, 我的条数: 50 })).toEqual({ href: "/customers?scope=mine", 条: 50, 名: "我负责的", 总: 80 });
+    expect(名单底句({ 页签: "我的", 默认页签: "我的", 全部总数: 120, 全部条数: 50, 我负责总数: 30, 我的条数: 30 })).toBeNull();
+  });
+  it("有管理范围：「全部」链 /customers（默认我可见的）写全部总数；「我的」链我负责的", () => {
+    expect(名单底句({ 页签: "全部", 默认页签: "全部", 全部总数: 900, 全部条数: 50, 我负责总数: 3, 我的条数: 3 })).toEqual({ href: "/customers", 条: 50, 名: "全部", 总: 900 });
+    expect(名单底句({ 页签: "我的", 默认页签: "全部", 全部总数: 900, 全部条数: 50, 我负责总数: 70, 我的条数: 50 })).toEqual({ href: "/customers?scope=mine", 条: 50, 名: "我负责的", 总: 70 });
+  });
+  it("连库对拍：销售名单「全部」那句落到的范围，客户页的总数 = 名单给的数；管理「全部」落到默认，总数 = 名单全部总数", async () => {
+    type 名单属性 = { data: CustomerRosterData; 默认页签: "全部" | "我的" };
+    for (const [谁, 页签] of [[甲, "全部"], [甲, "我的"], [经理, "全部"]] as const) {
+      mocks.user = { ...谁 };
+      const r = ((await 以谁的身份(谁.id, () => 学员名单())) as ReactElement<名单属性>).props;
+      // 摆出来的条数当 0：逼它一定写这一句，只看数和链接对不对得上
+      const 句 = 名单底句({ 页签, 默认页签: r.默认页签, 全部总数: r.data.total, 全部条数: 0, 我负责总数: r.data.mineTotal, 我的条数: 0 })!;
+      const sp = Object.fromEntries(new URLSearchParams(句.href.split("?")[1] ?? ""));
+      expect((await 打开(谁, sp)).total, `${谁.name} ${页签}`).toBe(句.总);
+    }
   });
 });

@@ -36,3 +36,28 @@ export function 生效客户范围(raw: string | null | undefined, 有管理范�
 export function 是客户范围(x: unknown): x is 客户范围 {
   return typeof x === "string" && (客户范围们 as readonly string[]).includes(x);
 }
+
+/**
+ * 客户详情左侧名单底下那句「这里只有最近 N 位，… M 位在表格里 ›」（11-18 第 12 题对齐）：M 必须等于点过去表格里的数。
+ * - 停在「我的」，或这个人默认停在「我的」（销售：没有「我可见的」，客户页默认「我负责的」）→ 链 /customers?scope=mine，M = 我负责的总数；
+ *   销售在「全部」页签也这样——他的「全部」（负责 + 参与）在客户页没有一项能一次显示，点过去落的是我负责的，数就按它写
+ * - 别的（有管理范围的停在「全部」/「本周」）→ 链 /customers（默认我可见的），M = 全部总数
+ * 名单里已经摆全了（不多于这几位）给 null，不写这句
+ */
+export function 名单底句(a: {
+  页签: "全部" | "我的" | "本周";
+  默认页签: "全部" | "我的";
+  全部总数: number;
+  全部条数: number;
+  我负责总数?: number;
+  我的条数?: number;
+}): { href: string; 条: number; 名: string; 总: number } | null {
+  const 按我负责 = a.我负责总数 !== undefined && (a.页签 === "我的" || a.默认页签 === "我的");
+  if (按我负责) {
+    const 在我的 = a.页签 === "我的";
+    const 条 = 在我的 ? (a.我的条数 ?? 0) : a.全部条数;
+    const 还有 = 在我的 ? a.我负责总数! > 条 : a.全部总数 > a.全部条数;
+    return 还有 ? { href: "/customers?scope=mine", 条, 名: "我负责的", 总: a.我负责总数! } : null;
+  }
+  return a.全部总数 > a.全部条数 ? { href: "/customers", 条: a.全部条数, 名: "全部", 总: a.全部总数 } : null;
+}
