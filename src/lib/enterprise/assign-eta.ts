@@ -1,8 +1,9 @@
 /**
  * 企业版自动分配「快轮到我」（11-18 客户定第 1、2 题，都选 A）。
  *
- * - 估算：按自动分配现行的挑人规则（市场发起时的候选池：这条线勾的部门 / 成员标记里、在职、只给销售、不含销售管理；
- *   本月分得最少优先、一样少按账号开得早；每月 1 号清零；指定分配也计数），用 lead-assign 的 挑接手人 一条条往下挑，
+ * - 估算：按自动分配现行的挑人规则（候选池 自动分配池：这条线勾的部门 / 成员标记里、在职、销售，内贸线另含销售管理（11-18 第 9 题 B），
+ *   义乌档口整组不进（第 8 题 B）；本月分得最少优先、一样少按账号开得早；中途回来 / 加入的按同池最少的数起算（第 3 题 B，起算补）；
+ *   每月 1 号清零；指定分配也计数，公海分配不计（第 2 题）），用 lead-assign 的 挑接手人 一条条往下挑，
  *   数出「前面约 N 条轮到你」（lead-assign 前面几条）。两条线都在候选里的人取小的那个。
  * - 系统里一条分配记录都还没有 = 「暂无法估算」；有了才给数。
  * - 首页一直显示一行（只对参加自动分配的销售）；设置 → 组织架构 →「线索分配」那一屏多一列「前面约几条」。
@@ -13,17 +14,18 @@
  *   同一轮里数字来回跳也只有第一次进 3 条以内那次记得上（EntNotice 的 userId + dedupeKey 唯一），所以不重复推。只推销售本人，管理只看不推。
  */
 import { prisma } from "@/lib/prisma";
-import { getSetting } from "@/lib/settings";
+import { getSetting, invalidateSettingsCache } from "@/lib/settings";
 import type { 组织 } from "./org-core";
 import { 能分配线索 } from "./permissions";
 import { 规则开着 } from "./rules";
 import { notify } from "./notify";
 import {
   月份, 本月加额们, 生效配额, 前面几条, 计不计数, 自动候选人们, 认参与状态, 企划线索计数key, 自动分配不参与key, 不设配额key,
-  type 候选人, type 线,
+  起算时刻key, 认起算时刻, 起算补, 月初of, 按行数已分, 参与状态of, 接手问题,
+  type 候选人, type 线, type 分配行,
 } from "./lead-assign";
-import { 按部门候选, 只留销售, 两条线, 规整线部门, 线部门key, 线部门们, type 线部门 } from "./assign-line";
-import { 去掉销售管理 } from "./customer-region";
+import { 按部门候选, 自动可接, 在不进自动分配部门, 两条线, 规整线部门, 线部门key, 线部门们, type 线部门 } from "./assign-line";
+import { 查完再写 } from "@/lib/check-then-write";
 
 /** 前面几条以内算「快轮到」（员工原话「还有 3 条就轮到我时提醒我」） */
 export const 快轮到条数 = 3;
@@ -52,33 +54,102 @@ export async function 不设配额开着(): Promise<boolean> {
 }
 
 /**
- * 市场成员发起自动分配时这条线的候选池（P-转-26，按客户区域定事业部）：这条线的人（勾了部门按部门，没勾按成员标记），
- * 去掉现负责人、销售管理，只留有「销售」业务角色的。assign-actions 自动分给 按区域那一支和这里的估算共用
+ * 自动分配这条线的候选池（P-转-26 按客户区域那一支、项目业务线那一支、「快轮到我」估算共用）：这条线的人（勾了部门按部门，没勾按成员标记），
+ * 去掉现负责人；只留能接的（自动可接：销售；内贸线另加销售管理，11-18 第 9 题 B，外贸销售管理不参与）；
+ * 整组不进自动分配的部门（义乌档口，11-18 第 8 题 B）去掉。参与状态、配额由 挑接手人 再筛
  */
 export function 自动分配池(org: 组织, 现负责人: string | null, line: 线, 设: 线部门): string[] {
-  return 只留销售(org, 去掉销售管理(org, 按部门候选(org, 现负责人, line, 设, 自动候选人们)));
+  return 自动可接(org, 按部门候选(org, 现负责人, line, 设, 自动候选人们), line).filter((id) => !在不进自动分配部门(org, id));
+}
+
+/** 起算时刻表（见 lead-assign 起算时刻key）；存坏了当没设 */
+export async function 起算时刻表(): Promise<Map<string, Date>> {
+  return 认起算时刻(await getSetting<unknown>(起算时刻key));
+}
+
+/** 本月算数的分配行（谁、什么时候）：本月已分和起算补都从这里数；事务里重读计数传 tx */
+export async function 本月分配行(ids: readonly string[], 月 = 月份(), db: Pick<typeof prisma, "entLeadAssign"> = prisma): Promise<分配行[]> {
+  if (!ids.length) return [];
+  const 们 = await db.entLeadAssign.findMany({ where: { month: 月, counted: true, toUserId: { in: [...ids] } }, select: { toUserId: true, createdAt: true } });
+  return 们.map((r) => ({ toUserId: r.toUserId, at: r.createdAt }));
 }
 
 /**
  * 挑人要的数（自动分给 和 估算共用一份）：这几个人本月已分（只数算数的）、生效配额、建号时间（= 进池先后），
- * 外加不参与名单、营销企划算不算数、是不是不设配额
+ * 外加不参与名单、营销企划算不算数、是不是不设配额、起算时刻和本月分配行。
+ * 排序前要过 排位(子集)：按同池（传进来的那几位）做起算补（11-18 第 3 题 B），估算时每条线各补各的
  */
 export async function 读挑人底子(人们: readonly string[], 月 = 月份()) {
   const ids = [...人们];
-  const [计数, 配额, 加额, 建号, 不参与, 企划算数, 不限额] = await Promise.all([
-    prisma.entLeadAssign.groupBy({ by: ["toUserId"], where: { month: 月, counted: true, toUserId: { in: ids } }, _count: { _all: true } }),
+  const [行们, 配额, 加额, 建号, 不参与, 企划算数, 不限额, 起算] = await Promise.all([
+    本月分配行(ids, 月),
     prisma.entLeadQuota.findMany({ where: { userId: { in: ids } } }),
     本月加额们(ids, 月),
     prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, createdAt: true } }),
     不参与名单(),
     getSetting<boolean>(企划线索计数key),
     不设配额开着(),
+    起算时刻表(),
   ]);
-  const 数 = new Map(计数.map((c) => [c.toUserId, c._count._all]));
   // 生效配额 = 设的 + 本月加的额（线索最终判无效 +1）
   const 额 = new Map(配额.map((q) => [q.userId, 生效配额(q.quota, 加额.get(q.userId) ?? 0)]));
-  const 候选: 候选人[] = 建号.map((u) => ({ userId: u.id, 已分: 数.get(u.id) ?? 0, 配额: 额.get(u.id) ?? null, 进池: u.createdAt }));
-  return { 候选, 额, 建号, 不参与, 企划算数, 不限额 };
+  const 候选: 候选人[] = 按行数已分(建号.map((u) => ({ userId: u.id, 已分: 0, 配额: 额.get(u.id) ?? null, 进池: u.createdAt })), 行们);
+  const 不参与集 = new Set(不参与);
+  const 月初 = 月初of();
+  /** 排序用的候选（起算补过）：池 = 子集（不传 = 全部）；行 = 换一份分配行（事务里重读的） */
+  const 排位 = (子集?: readonly string[], 行?: readonly 分配行[]): 候选人[] => {
+    const 池 = 子集 ? 候选.filter((c) => 子集.includes(c.userId)) : 候选;
+    const 数过 = 行 ? 按行数已分(池, 行) : 池;
+    return 起算补(数过, 起算, 行 ?? 行们, 不参与集, 月初);
+  };
+  return { 候选, 额, 建号, 不参与, 企划算数, 不限额, 排位 };
+}
+
+/**
+ * 内贸销售管理第一次进自动分配池（11-18 第 9 题 B 上线时他们本月都是 0 条）：记一笔起算时刻 = 现在，之后按起算补起算，
+ * 不会一上线就连收十几条。只记没记过的、没有「销售」角色的销售管理（兼着销售的本来就在池里）；读改写在一个事务里，别的进程先记了就不动。
+ * 出错只记日志：顶多这一次按 0 起算
+ */
+export async function 补记销售管理起算(org: 组织, 人们: readonly string[]): Promise<void> {
+  const 要记 = 人们.filter((id) => {
+    const 角色们 = org.成员.get(id)?.角色们 ?? [];
+    return 角色们.includes("sales_mgr") && !角色们.includes("sales");
+  });
+  if (!要记.length) return;
+  const 有 = await 起算时刻表();
+  const 没记 = 要记.filter((id) => !有.has(id));
+  if (!没记.length) return;
+  try {
+    const 记了 = await 查完再写(async (tx) => {
+      const 行 = await tx.setting.findUnique({ where: { key: 起算时刻key } });
+      let 原: Record<string, unknown> = {};
+      try { const v: unknown = 行 ? JSON.parse(行.value) : {}; if (v && typeof v === "object" && !Array.isArray(v)) 原 = v as Record<string, unknown>; } catch { /* 坏了当空 */ }
+      const 新 = 没记.filter((id) => !(id in 原));
+      if (!新.length) return false;
+      const 现在 = new Date().toISOString();
+      const value = JSON.stringify({ ...原, ...Object.fromEntries(新.map((id) => [id, 现在])) });
+      await tx.setting.upsert({ where: { key: 起算时刻key }, update: { value }, create: { key: 起算时刻key, value } });
+      return true;
+    });
+    if (记了) invalidateSettingsCache();
+  } catch (e) {
+    console.warn("[自动分配] 销售管理起算时刻没记上：", e instanceof Error ? e.message : e);
+  }
+}
+
+/** 指定分配（新建线索「指定分配」、定时指定、新线索列表「分配」同一条，11-18 第 8 题 B）：只给参与状态「正常」的销售 / 销售管理 */
+export const 不正常不能指定话 = (态: string) => `只能指定给参与状态「正常」的销售：他现在是「${态}」，找总管理员在 设置 → 组织架构 →「线索分配」改`;
+
+/**
+ * 能不能指定给这个人：先看是不是在职的销售 / 销售管理（接手问题，业务线不比），再看参与状态（规则「线索分配」开着才看）。
+ * null = 可以；义乌档口整组不进自动分配，但参与状态正常的照样能被指定
+ */
+export async function 指定问题(org: 组织, userId: string): Promise<string | null> {
+  const 问 = 接手问题(org, userId, null);
+  if (问) return 问;
+  if (!(await 规则开着("线索分配"))) return null;
+  const 态 = 参与状态of(await 参与状态表(), userId);
+  return 态 === "允许" ? null : 不正常不能指定话(态 === "暂停" ? "暂停" : "禁止");
 }
 
 /**
@@ -92,12 +163,14 @@ export async function 估算轮到(org: 组织): Promise<Map<string, 轮到>> {
   const 池们 = 两条线.map((l) => 自动分配池(org, null, l, 设));
   const 全部 = [...new Set(池们.flat())];
   if (!全部.length) return 出;
+  await 补记销售管理起算(org, 全部);
   const [底, 有记录] = await Promise.all([读挑人底子(全部), prisma.entLeadAssign.findFirst({ select: { id: true } })]);
   const 不参与 = new Set(底.不参与);
   // 估的是市场按区域发起的营销线索（最常见的那种）：营销线索一律算数
   const 查满 = 计不计数("营销", 底.企划算数);
   for (const 池 of 池们) {
-    const 候选 = 底.候选.filter((c) => 池.includes(c.userId));
+    // 起算补按这条线的池各补各的（同池最少的数）
+    const 候选 = 底.排位(池);
     for (const c of 候选) {
       if (不参与.has(c.userId)) continue;
       if (!有记录) { 出.set(c.userId, "暂无法估算"); continue; }

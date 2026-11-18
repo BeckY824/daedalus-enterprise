@@ -78,6 +78,8 @@ beforeEach(async () => {
 
   for (const k of [规则.按组织看客户.key, 规则.线索分配.key]) await setSetting(k, true);
   await setSetting(不设配额key, true);
+  // 11-18 第 9 题 B 起内贸销售管理也参与自动分配；这里钉的是销售之间怎么轮，先把内贸组长禁掉（参与另见 ent-wave3a-assign）
+  await setSetting(自动分配不参与key, { [内组长]: "禁止" });
   当(老板, "老板", "ADMIN");
   expect(await 设线部门({ 内贸: [内贸部], 外贸: [外贸部] })).toEqual({ ok: true });
   当(市场管, "市场管理");
@@ -199,7 +201,7 @@ describe("不能用自动分配的：服务端拦，什么都不动", () => {
   });
 
   it("一个能接的人都没有：不转、不标待分配、不写分配记录、不发铃铛，回原因", async () => {
-    await setSetting(自动分配不参与key, { [内一]: "暂停", [内二]: "禁止" });
+    await setSetting(自动分配不参与key, { [内一]: "暂停", [内二]: "禁止", [内组长]: "禁止" });
     const { c, p } = await 建客户();
     const r = await 客户自动分配(c, null);
     expect(r.ok).toBe(false);
@@ -295,7 +297,7 @@ describe("批量转让选自动分配", () => {
   it("没勾、超过 200 位：回原因；一个能接的人都没有：每位回原因，不转、不写分配记录、不发铃铛", async () => {
     expect(await 批量客户自动分配([], null)).toEqual({ ok: false, error: "先勾选要分的客户" });
     expect(await 批量客户自动分配(Array.from({ length: 201 }, (_, i) => `x${i}`), null)).toMatchObject({ ok: false, error: expect.stringContaining("200") });
-    await setSetting(自动分配不参与key, { [内一]: "暂停", [内二]: "禁止" });
+    await setSetting(自动分配不参与key, { [内一]: "暂停", [内二]: "禁止", [内组长]: "禁止" });
     const 们 = [await 建客户(), await 建客户()];
     const r = await 批量客户自动分配(们.map((x) => x.c), null);
     expect(r.ok && r.结果.every((x) => !x.ok && /^没有自动分出去：没有能接的人/.test(x.error))).toBe(true);

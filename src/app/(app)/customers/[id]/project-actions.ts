@@ -40,7 +40,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 定分配方式, 建好再分, 新建分配方式数据, 认新建定时 } from "@/lib/project/after-create-assign";
-import { 接手问题 } from "@/lib/enterprise/lead-assign";
+import { 指定问题 } from "@/lib/enterprise/assign-eta";
 import { 项目分给你通知, 同事待分配随客户通知, type 留下的活 } from "@/lib/enterprise/notice-sources";
 import { 记新建指定分配 } from "@/lib/enterprise/direct-assign";
 import { 客户在市场手里, 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
@@ -168,7 +168,7 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     if (定时?.接手人) {
       const 接 = await prisma.user.findUnique({ where: { id: 定时.接手人 }, select: { active: true } });
       if (!接?.active) return { ok: false, error: "项目负责人不存在或已停用，请选一位在职成员" };
-      const 问题 = (await 不能当负责人(定时.接手人)) ?? 接手问题(org, 定时.接手人, null);
+      const 问题 = (await 不能当负责人(定时.接手人)) ?? (await 指定问题(org, 定时.接手人));
       if (问题) return { ok: false, error: 问题 };
       指定分配名 = null;
     }

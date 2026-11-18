@@ -46,7 +46,7 @@ import { 限定的我 } from "../team-scope";
 import { 字段权限of } from "../enterprise/field-perm";
 import { 能看提成 } from "../project/commission-db";
 import { 读组织 } from "../enterprise/org";
-import { buildProposal, describeProposal, missingFields, 可改字段表, 可改字段名单, type Proposal, type ProposalKind } from "./proposals";
+import { buildProposal, 默认填到客户, describeProposal, missingFields, 可改字段表, 可改字段名单, type Proposal, type ProposalKind } from "./proposals";
 import { FOLLOW_TYPES, FOLLOW_METHODS, FOLLOW_STATUSES, DECISION_STATUSES, LEAD_STATUSES } from "../constants";
 import { 项目写工具 } from "./project-tools";
 import { 常用沟通方式of } from "../follow-habit-db";
@@ -988,8 +988,8 @@ export const TOOLS: Tool[] = [
   proposeTool("propose_plan", "建议排一次下次跟进计划。", '{"id": "客户 id", "subject": "下次谈什么", "plannedAt": "YYYY-MM-DD HH:mm", "method": "电话沟通/线上会议/上门拜访/邮件沟通/微信沟通", "reason": "一句话：为什么"}', "add_plan"),
   proposeTool(
     "propose_lead",
-    "建议新建一条线索。只知道名字也要提，留空的字段人会在卡片上补。",
-    '{"name": "线索名称/姓名，不知道就空着；不要填号码", "contact": "联系人，可空；不要填号码", "numbers": [{"type": "手机/座机/微信/邮箱/WhatsApp/阿里国际站ID/传真/Telegram", "value": "号码"}], "source": "来源 / 渠道，人说了就原样给，可空", "status": "状态，可空", "remark": "备注，可空；需求、预算写这里；国家城市地址、职位、下一步、分给谁别写进来", "assignTo": "分给谁：人说了交给哪位同事就原样给姓名，可空", "country": "国家/地区，可空；给了城市就给上（国内给「中国」）", "province": "省/州，可空", "city": "城市，可空", "district": "区/县，可空", "address": "详细地址，可空", "position": "联系人职位，可空", "指定回复开始": "客户要求联系的开始时间 YYYY-MM-DD HH:mm，可空", "指定回复结束": "截止时间 YYYY-MM-DD HH:mm，可空", "nextAt": "下一步时间 YYYY-MM-DD，可空", "nextStep": "下一步计划，可空", "bizLine": "内贸/外贸/暂不分配，有把握才给", "regionTo": ["客户/联系人/项目：国家城市是谁的，说不清就不给"], "reason": "一句话：为什么"}',
+    "建议新建一条线索。只知道名字也要提，留空的字段人会在卡片上补。卡上有「分配方式」一格（指定分配 / 自动分配 / 暂不分配等，市场成员默认自动分配），还有负责人、分配方向、指定分配时间、指定回复时间：人说要自动分配、分给谁、定时分，告诉他在卡上选好再确认，不要说卡上没有对应的填写位置。",
+    '{"name": "线索名称/姓名，不知道就空着；不要填号码", "contact": "联系人，可空；不要填号码", "numbers": [{"type": "手机/座机/微信/邮箱/WhatsApp/阿里国际站ID/传真/Telegram", "value": "号码"}], "source": "来源 / 渠道，人说了就原样给，可空", "status": "状态，可空", "remark": "备注，可空；需求、预算写这里；国家城市地址、职位、下一步、分给谁别写进来", "assignTo": "分给谁：人说了交给哪位同事就原样给姓名，可空", "country": "国家/地区，可空；给了城市就给上（国内给「中国」）", "province": "省/州，可空", "city": "城市，可空", "district": "区/县，可空", "address": "详细地址，可空", "position": "联系人职位，可空", "指定回复开始": "客户要求联系的开始时间 YYYY-MM-DD HH:mm，可空", "指定回复结束": "截止时间 YYYY-MM-DD HH:mm，可空", "nextAt": "下一步时间 YYYY-MM-DD，可空", "nextStep": "下一步计划，可空", "bizLine": "内贸/外贸/暂不分配，有把握才给", "regionTo": ["客户/联系人/项目：国家城市是谁的，说不清就不给（卡上默认勾客户所在区域，人可改）"], "reason": "一句话：为什么"}',
     "add_lead",
     { needsCustomer: false },
   ),
@@ -1310,8 +1310,10 @@ function proposeTool(name: string, description: string, args: string, kind: Prop
         const 习惯 = await 常用沟通方式of(ctx.userId).catch(() => null);
         if (习惯) a = { ...a, type: 习惯.type, ...(习惯.method ? { method: 习惯.method } : {}) };
       }
-      const r = buildProposal(`${kind}-${ctx.proposals.length}-${c.id || c.name}`, kind, c, a, ctx.b);
-      if (!r.ok) return { summary: `建议不合法：${r.error}`, data: { error: r.error } };
+      const r0 = buildProposal(`${kind}-${ctx.proposals.length}-${c.id || c.name}`, kind, c, a, ctx.b);
+      if (!r0.ok) return { summary: `建议不合法：${r0.error}`, data: { error: r0.error } };
+      // 新线索卡：有国家 / 城市、模型没说填到哪 = 默认勾客户所在区域（外国城市同中国城市，11-18）
+      const r = { ...r0, proposal: 默认填到客户(r0.proposal) };
       ctx.proposals.push(现值 ? { ...r.proposal, 现值 } : r.proposal);
       const miss = missingFields(r.proposal, ctx.b);
       return {

@@ -276,8 +276,9 @@ describe("自动分配线索", () => {
     expect(await 设自动分配参与(内贸, "允许")).toEqual({ ok: true });
     当(市场);
     expect(await 自动分配线索(await 建线索("M"))).toMatchObject({ toUserId: 内贸 });
-    // 外贸还是禁止：他 0 条也不挑；内贸、两边都 1/10，内贸进池早
-    expect(await 自动分配线索(await 建线索("N"))).toMatchObject({ toUserId: 内贸 });
+    // 外贸还是禁止：他 0 条也不挑。内贸暂停期间两边分了 1 条，内贸恢复时按 1 条起算（11-18 第 3 题 B）：
+    // M 给内贸（都 1，内贸进池早），N 轮到两边，不会连给内贸
+    expect(await 自动分配线索(await 建线索("N"))).toMatchObject({ toUserId: 两边 });
     // 手动分配不受参与状态影响
     expect(await 分配线索({ leadId: await 建线索("手动"), toUserId: 外贸 })).toMatchObject({ ok: true });
   });
@@ -1222,8 +1223,9 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
     expect(await 读线部门设置()).toEqual({ 设的: { 内贸: [一组], 外贸: [] }, 还没勾: ["外贸"], 能改: true });
 
     当(市场);
-    // 内贸线：一组连下级 = 外贸、两边；内贸本人在二组没勾，不进
-    expect([...((await 项目分配线(await 建项目("内看", { bizLine: "内贸" })))?.可选 ?? [])].sort()).toEqual([外贸, 两边].sort());
+    // 内贸线手动指派：一组连下级 = 外贸、两边；内贸本人在二组没勾，但他本人事业部（业务线标记）是内贸，也能被指定
+    // （11-18 第 8 题 B：部门没勾只是不进自动分配，正常参与的照样能指定）；自动分配仍只在勾的部门里挑（下面）
+    expect([...((await 项目分配线(await 建项目("内看", { bizLine: "内贸" })))?.可选 ?? [])].sort()).toEqual([外贸, 两边, 内贸].sort());
     const 拿到 = new Set<string>();
     for (let i = 0; i < 3; i++) {
       const r = await 自动分配线索(await 建项目(`内${i}`, { bizLine: "内贸" }), { 项目: true });

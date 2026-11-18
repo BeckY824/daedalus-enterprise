@@ -106,8 +106,19 @@ beforeEach(async () => {
   外二 = await 人("外贸销售二", "sales", 外贸部);
   for (const k of [规则.按组织看客户.key, 规则.线索分配.key]) await setSetting(k, true);
   await setSetting(不设配额key, true);
+  // 内贸销售管理 11-18 起参加自动分配（第 9 题 B）：这里的用例只看销售，先把组长设成禁止；参加时的样子见「内贸销售管理参加」
+  await setSetting(自动分配不参与key, { [组长]: "禁止" });
   当(老板, "老板");
   expect(await 设线部门({ 内贸: [内贸部], 外贸: [外贸部] })).toEqual({ ok: true });
+});
+
+describe("内贸销售管理参加（11-18 第 9 题 B）", () => {
+  it("参与状态正常的内贸销售管理在内贸估算里有一行；外贸销售管理没有", async () => {
+    await setSetting(自动分配不参与key, {});
+    const m = await 估();
+    expect(m.get(组长)).toBe("暂无法估算");
+    expect(m.has(外组长)).toBe(false);
+  });
 });
 
 describe("估算", () => {
@@ -147,7 +158,7 @@ describe("估算", () => {
 
   it("暂停的人不在表里，前面的人跳过他", async () => {
     await 自动分一条(); // 内[0]
-    await setSetting(自动分配不参与key, { [内[1]]: "暂停" });
+    await setSetting(自动分配不参与key, { [内[1]]: "暂停", [组长]: "禁止" });
     const m = await 估();
     expect(m.has(内[1])).toBe(false);
     expect(m.get(内[2])).toEqual({ 数: 0 });
@@ -234,11 +245,11 @@ describe("推送（边沿触发）", () => {
     // 内[0] 前面 4 条（内[2..5]）：没推
     expect((await 快轮到们(内[0])).length).toBe(0);
     // 内[2] 暂停：外贸那条线分一条触发重算，内[0] 前面 3 条 → 推一次
-    await setSetting(自动分配不参与key, { [内[2]]: "暂停" });
+    await setSetting(自动分配不参与key, { [内[2]]: "暂停", [组长]: "禁止" });
     await 自动分一条(true);
     expect((await 快轮到们(内[0])).length).toBe(1);
     // 恢复：前面又是 4 条；再分一条给 内[2] → 前面 3 条，还是同一轮，不重复
-    await setSetting(自动分配不参与key, {});
+    await setSetting(自动分配不参与key, { [组长]: "禁止" });
     expect(await 自动分一条()).toBe(内[2]);
     expect((await 快轮到们(内[0])).length).toBe(1);
   });
@@ -261,7 +272,7 @@ describe("推送（边沿触发）", () => {
   });
 
   it("暂停的人不推；首页加载（现算）不推，只在分配以后推", async () => {
-    await setSetting(自动分配不参与key, { [内[1]]: "暂停" });
+    await setSetting(自动分配不参与key, { [内[1]]: "暂停", [组长]: "禁止" });
     expect(await 自动分一条()).toBe(内[0]);
     expect(await 快轮到们(内[1])).toEqual([]);
     expect((await 快轮到们(内[2])).length).toBe(1);

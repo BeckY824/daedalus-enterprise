@@ -149,6 +149,33 @@ export const 只留销售 = (org: Pick<组织, "成员">, 人们: readonly strin
   人们.filter((id) => !!org.成员.get(id)?.角色们.includes("sales"));
 
 /**
+ * 自动分配能接的人（11-18 客户定第 9 题 B：内贸的销售管理要参与，外贸的销售管理不参与）：
+ * 有销售管理角色的（兼着销售的也算）只在内贸线上接；其余要有「销售」业务角色。参与状态（正常 / 暂停 / 禁止）照旧由 挑接手人 再筛，
+ * 销售管理和销售同一套。线没定（null）= 不给销售管理
+ */
+export const 自动可接 = (org: Pick<组织, "成员">, 人们: readonly string[], line: 线 | null): string[] =>
+  人们.filter((id) => {
+    const 角色们 = org.成员.get(id)?.角色们 ?? [];
+    return 角色们.includes("sales_mgr") ? line === "内贸" : 角色们.includes("sales");
+  });
+
+/**
+ * 整组不进自动分配的部门（11-18 客户定第 8 题 B：义乌档口整组按部门排除，人工指定照常可以）：部门或上级部门名带这几个字的人不进自动分配池
+ */
+export const 不进自动分配部门名: readonly string[] = ["义乌档口"];
+
+/** 这个人所在部门（连上级）是不是整组不进自动分配的 */
+export function 在不进自动分配部门(org: Pick<组织, "成员" | "部门">, userId: string): boolean {
+  const 走过 = new Set<string>();
+  for (let id: string | null = org.成员.get(userId)?.deptId ?? null; id && !走过.has(id); id = org.部门.get(id)?.parentId ?? null) {
+    走过.add(id);
+    const 名 = org.部门.get(id)?.name ?? "";
+    if (不进自动分配部门名.some((k) => 名.includes(k))) return true;
+  }
+  return false;
+}
+
+/**
  * 按部门挑自动分配的候选人（参与状态、配额由 挑接手人 再筛）：
  * 这条线勾了部门 → 部门（连下级）在里面、有销售业务角色的在职成员（组织里只有在职的人），去掉现负责人；
  * 没勾 → 退回 按成员标记(org, 现负责人, line)（就是 lead-assign 的 自动候选人们）
