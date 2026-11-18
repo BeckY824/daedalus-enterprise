@@ -19,7 +19,7 @@ import { 是项目卡, buildProjectProposal, 项目卡缺, 描述项目卡, type
 import { 内置号码种类, 每人最多号码, 号码上限 } from "../enterprise/customer-v2";
 import { 字典定义 } from "../enterprise/dict-kinds";
 import { 认出备注里的号码 } from "../enterprise/remark-numbers";
-import { 像国内地名, 港澳台地名 } from "../enterprise/cn-place";
+import { 没国家认得出 } from "../enterprise/cn-place";
 import { 对得上的方式 } from "../follow-method";
 
 export type ProposalKind = "set_status" | "add_followup" | "add_plan" | "add_lead" | "update_customer" | "add_opportunity" | "add_contract" | "update_channel"
@@ -240,7 +240,7 @@ export function 线索卡地址(p: 线索卡多的格 & Pick<线索建档格, "�
   const 国 = p.country?.trim() || "", 省 = p.province?.trim() || "", 市 = p.city?.trim() || "", 区 = p.district?.trim() || "", 详 = p.address?.trim() || "";
   if (!国 && !省 && !市 && !区 && !详) return { 客户: null, 项目: null, 联系人: "" };
   const 去处 = p.区域去处 ?? ["客户"];
-  const 认得 = !!国 || [省, 市, 区].some((x) => 像国内地名(x) || !!港澳台地名(x));
+  const 认得 = !!国 || 没国家认得出(省, 市, 区);
   const 四格: 卡上四格 = 认得 ? { addrCountry: 国 || null, addrProvince: 省 || null, addrCity: 市 || null, addrDistrict: 区 || null } : { addrCountry: null, addrProvince: null, addrCity: null, addrDistrict: null };
   // 详细地址（客户地址 addrDetail / 项目 location）是自由文字，区域认不出也照存；四格和详细地址都没有 = 不动
   const 有 = 认得 || !!详;

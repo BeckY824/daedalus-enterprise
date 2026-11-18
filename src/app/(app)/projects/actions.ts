@@ -56,7 +56,7 @@ import { 只读客户, 只读话 } from "@/lib/team-scope";
 import { scheduleValue } from "@/lib/schedule-date";
 import { 定分配方式, 建好再分, 认新建定时 } from "@/lib/project/after-create-assign";
 import { 认业务线, 业务线必填 } from "@/lib/enterprise/assign-line";
-import { 按区域分配of, 默认分配方向, 认分配方向, type 分配方向 } from "@/lib/enterprise/customer-region";
+import { 按区域分配of, 默认分配方向, 认分配方向, type 分配方向, type 定线号 } from "@/lib/enterprise/customer-region";
 import { 本人线of } from "@/lib/enterprise/assign-direction-db";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 import { 字典定义, 项目画像项, 认跟进方式, 选的原因 } from "@/lib/enterprise/dict";
@@ -82,10 +82,14 @@ function 刷新项目(projectId?: string, customerId?: string) {
 export type 建档向导输入 = { 客户: CustomerInput; 联系人: 向导联系人; 项目: 向导项目; 跟进: 向导跟进; 要传附件?: boolean };
 
 /** 分配方向按电话判时看的号（11-18）：客户电话、企业号码（手机号）、联系人电话、联系人号码里的手机，按这个顺序 */
-function 向导号们(input: Pick<建档向导输入, "客户" | "联系人">): string[] {
+function 向导号们(input: Pick<建档向导输入, "客户" | "联系人">): 定线号[] {
   const 企号 = input.客户.企业号码?.类型 === "手机号" ? input.客户.企业号码.值 : null;
-  const 行们 = Array.isArray(input.联系人?.号码们) ? input.联系人.号码们.filter((r) => r?.kind === "phone").map((r) => r.value) : [];
-  return [input.客户.phone, 企号, input.联系人?.phone, ...行们].filter((x): x is string => typeof x === "string" && !!x.trim());
+  const 行们 = Array.isArray(input.联系人?.号码们) ? input.联系人.号码们 : [];
+  const 手机行 = 行们.filter((r) => r?.kind === "phone").map((r) => r.value);
+  // WhatsApp（号码几行里 kind=whatsapp 的、客户 WhatsApp）排在电话后面，电话都判不出才看，按国际号读（审核 11-18 P1-6）
+  const WA = [input.客户.extra?.whatsapp, ...行们.filter((r) => r?.kind === "whatsapp").map((r) => r.value)]
+    .filter((x): x is string => typeof x === "string" && !!x.trim()).map((whatsapp) => ({ whatsapp }));
+  return [...[input.客户.phone, 企号, input.联系人?.phone, ...手机行].filter((x): x is string => typeof x === "string" && !!x.trim()), ...WA];
 }
 /**
  * 新建弹窗没开「项目」开关（P-界面-36，11-15）：只建客户、主要联系人和首条沟通（团队版算客户沟通；企业版挂在新客户自带的潜客培育项目上，11-17）。

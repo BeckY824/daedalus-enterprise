@@ -32,6 +32,7 @@ import { 向导能选类型, 带进联系人, 号码类型叫法, type 联系人
 import { 每人最多号码, 内置号码种类, 号码上限, 联系人姓名问题 } from "@/lib/enterprise/customer-v2";
 import { 线索号码种类 } from "@/lib/agent/proposals";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
+import WizardCustomerAddress, { 向导客户地址值, type 向导客户地址 } from "./WizardCustomerAddress";
 import SameNumberEntry from "./SameNumberEntry";
 import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 建档向导, 建档只建客户 } from "../actions";
@@ -75,7 +76,9 @@ type 稿 = {
   /** 客户负责人：没开项目时才用（P-界面-33 默认自己、可改）；开了项目客户归谁由服务端定（P-转-03） */
   客户负责人?: string;
   /** 渠道 / 触点：企业版新建线索至少选一个（P-渠道-08，老草稿里没有）；介绍人：触点 = 客户介绍时挂的已有客户（P-渠道-09） */
-  客户: { name: string; school: string; remark: string; 渠道?: string; 触点?: string; 介绍人?: string };
+  客户: { name: string; school: string; remark: string; 渠道?: string; 触点?: string; 介绍人?: string;
+    /** 客户地址三格（企业版，审核 11-18 P1-2，WizardCustomerAddress.tsx）；老草稿里没有 */
+    地址?: Partial<向导客户地址> };
   /** 分配方式：企业版才有（默认五项的序号，0 指定 / 1 自动 / 2 公海捞取 / 3 暂不分配 / 4 个人自持）；老草稿里没有 */
   /** 渠道 = 项目来源（企业版，迁移 077）：没另选（空）= 跟客户的渠道；老草稿里没有 */
   /** 业务线（企业版，11-01 A1）：内贸 / 外贸 / 暂不分配，企业版必填；老草稿里没有 = 没填 */
@@ -214,6 +217,12 @@ function 项目沟通还差(d: 稿, 带项目: boolean, 要下一步: boolean, �
  * 项目是开关：有项目就打开、下面填项目信息，没项目只建客户（首条沟通算客户沟通）；新线索进来开着并锁住。
  * 号码、客户名离开输入框自动查重，也可手动点；中途关掉不落库，填过的每格存本机草稿（一人一份），下次接着填；建好一笔落库，失败整笔不留
  */
+/** 交给 saveCustomer 的 企业资料：业务线（只建客户才交，undefined = 不交）+ 客户地址三格（填了才交）；都没有 = 不带这一格 */
+function 向导企业资料(业务线: string | null | undefined, 地址: 向导客户地址 | null): { 企业资料?: { bizLine?: string | null } & Partial<向导客户地址> } {
+  const 资料 = { ...(业务线 !== undefined ? { bizLine: 业务线 } : {}), ...(地址 ?? {}) };
+  return Object.keys(资料).length ? { 企业资料: 资料 } : {};
+}
+
 export default function ProjectWizard({ users, 要下一步, 企业 = null, 新线索 = false, 弹窗 = null, 开关 = "锁开", 老客户起手 = null, 预选 = null }: { users: 可选成员[]; 要下一步: boolean; 企业?: 企业建档; 新线索?: boolean; 弹窗?: 弹窗模式; 开关?: 项目开关; /** 「新增项目」选老客户、在选框里已经挑好的那一位（原型 pr.old）：客户段一打开就收成这一位 */ 老客户起手?: 可挑客户 | null; /** 客户页「新增项目」：老客户起手 那一位定死（原型 cr.old） */ 预选?: 预选客户 | null }) {
   // 草稿在本机 localStorage 里，服务端渲染时读不到；挂上之后再按草稿起头，免得两边对不上
   const 挂上了 = useSyncExternalStore(不订阅, () => true, () => false);
@@ -456,11 +465,12 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   }, [搜词]);
   // 业务线默认带这位客户的（A1，和客户页「新增项目」同一个取数）；看不到 / 没开 = null 不带
   // 老客户的区域（P-转-26）：市场成员选自动分配时业务线那格只读显示按区域定的线；客户没填地址 = null，看项目所在地
-  const [老客户区域, set老客户区域] = useState<{ id: string; 线: 线 | null; 电话线: 线 | null } | null>(null);
+  // 渠道 = 这位客户的来源渠道：项目渠道默认带它，建时可另选（P-删-03，审核 11-18 P1-1）
+  const [老客户区域, set老客户区域] = useState<{ id: string; 线: 线 | null; 电话线: 线 | null; 渠道: string | null } | null>(null);
   const 带客户业务线 = (c: 可挑客户) => {
     新项目分配数据(c.id).then((r) => {
       if (r?.客户业务线 && !d.项目.业务线) 改("项目", { 业务线: r.客户业务线 });
-      set老客户区域(r ? { id: c.id, 线: r.客户有地址 ? r.客户区域线 : null, 电话线: r.客户电话线 ?? null } : null);
+      set老客户区域(r ? { id: c.id, 线: r.客户有地址 ? r.客户区域线 : null, 电话线: r.客户电话线 ?? null, 渠道: r.客户渠道 ?? null } : null);
     }, () => {});
   };
   const 挑老 = (id: string) => {
@@ -525,6 +535,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         ...(联系人Id ? { 联系人Id } : {}),
         项目: {
           name: d.项目.name, ownerId: 负责人 || null, 分配方式: d.项目.分配方式 ?? null, 业务线: 这次.业务线,
+          // 项目渠道另选了才交；没选服务端带客户来源（P-删-03 建时可选）
+          ...(d.项目.渠道 ? { channelId: d.项目.渠道 } : {}),
           ...(区域定线中(d, 带项目, 企业) && d.项目.分配方向 ? { 分配方向: d.项目.分配方向 } : {}),
           ...(d.项目.所在地 ? { 所在地: d.项目.所在地 } : {}),
           指定回复开始: d.项目.指定回复开始 ?? null, 指定回复结束: d.项目.指定回复结束 ?? null,
@@ -576,8 +588,9 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
       // 渠道触点（P-渠道-08）：选了客户介绍才带介绍人（P-渠道-09）
       referrerCustomerId: 企业 && 稿面.客户.触点 === 客户介绍触点 ? 稿面.客户.介绍人 || null : null,
       ...(企业 ? { touchpoint: 稿面.客户.触点 || null } : {}),
-      // 只建客户：客户业务线必填（M-必填-13），开了项目由服务端跟项目的业务线走
-      ...(企业 && !带项目 ? { 企业资料: { bizLine: 稿面.项目.业务线 ?? null } } : {}),
+      // 只建客户：客户业务线必填（M-必填-13），开了项目由服务端跟项目的业务线走。
+      // 客户地址三格填了就交（saveCustomer 规整地址；分配方向先看它，审核 11-18 P1-2）
+      ...(企业 ? 向导企业资料(带项目 ? undefined : (稿面.项目.业务线 ?? null), 向导客户地址值(稿面.客户.地址)) : {}),
     };
     const 跟进 = 企业
       ? { ...稿面.跟进, method: 对得上的方式(稿面.跟进.type, 稿面.跟进.method), ...(带项目 ? {} : { 节点: undefined }) }
@@ -697,9 +710,17 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   // 市场成员选自动分配（P-转-26，11-18）：业务线换成可改的「分配方向」，默认按 客户区域 → 项目所在地 → 电话 → 本人事业部；
   // 老客户的区域、电话由服务端算好（新项目分配数据），新客户按这一屏填的号现算；人改过就按改的
   const 老的 = 老客户 && 老客户区域?.id === 老客户.id ? 老客户区域 : null;
+  /** 项目渠道的默认：老客户 = 这位客户的来源渠道（服务端取），新客户 = 这一屏选的渠道 */
+  const 客户渠道 = 老客户 ? (老的?.渠道 ?? null) : (d.客户.渠道 || null);
   const 方向默认 = 默认分配方向({
     客户线: 老的?.线 ?? null, 项目: d.项目.所在地 ?? null, 电话线: 老的?.电话线 ?? null,
-    号们: 老客户 ? [] : [d.号码类型 === "手机号" || !d.号码类型 ? d.phone : null, d.联系人.phone, ...(d.更多号码 ?? []).filter((x) => x.kind === "phone").map((x) => x.value)],
+    // 新客户：这一屏填的客户地址（审核 11-18 P1-2）先于项目所在地
+    客户: 老客户 ? null : 向导客户地址值(d.客户.地址),
+    号们: 老客户 ? [] : [
+      d.号码类型 === "手机号" || !d.号码类型 ? d.phone : null, d.联系人.phone, ...(d.更多号码 ?? []).filter((x) => x.kind === "phone").map((x) => x.value),
+      // 只留了 WhatsApp 的，电话那步按国际号读（审核 11-18 P1-6，服务端同一个 电话定线）
+      ...(d.更多号码 ?? []).filter((x) => x.kind === "whatsapp" && x.value?.trim()).map((x) => ({ whatsapp: x.value })),
+    ],
     本人线: 企业?.本人线 ?? null,
   });
   const 业务线格 = 企业 && (区域定线中(d, 带项目, 企业) ? 一格("业务线", "分配方向", (
@@ -945,6 +966,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
           {企业 && d.客户.触点 === 客户介绍触点 && 一格(null, `介绍人${b.customer}`, (
             <ReferrerPicker value={d.客户.介绍人} 叫法={b.customer} onChange={(v) => 改("客户", { 介绍人: v })} />
           ))}
+          {/* 客户地址三格（审核 11-18 P1-2，照新建客户页）：国家地区、省、市 */}
+          {企业 && <WizardCustomerAddress value={d.客户.地址} onChange={(v) => 改("客户", { 地址: v })} />}
           {!带项目 && 业务线格}
           {/* 客户负责人默认自己、可改（P-界面-33）；企业版普通销售只能是自己，不摆 */}
           {!带项目 && !企业?.客户只给自己 && !独自一人(users, d.客户负责人) && 一格(null, `${b.customer}负责人`, (
@@ -966,18 +989,19 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         {带项目 && (
           <div className="cr-grid cr-rise">
             {一格("项目名", "项目名称", <Input aria-label="项目名称" status={红("项目名")} value={d.项目.name} maxLength={项目名上限} showCount onChange={(e) => 改("项目", { name: e.target.value })} />, true)}
-            {/* 项目来源（迁移 077）：默认带客户的渠道；老客户这一单从别的渠道来就在这改。清掉 = 回到跟客户 */}
-            {企业 && !老客户 && 一格(null, "项目渠道", (
+            {/* 项目来源（迁移 077）：默认带客户的渠道；老客户这一单从别的渠道来就在这改。清掉 = 回到跟客户。
+                挑了老客户也摆（P-删-03「建时可选」，审核 11-18 P1-1），客户的渠道取 新项目分配数据 的 客户渠道 */}
+            {企业 && 一格(null, "项目渠道", (
               <ChannelPicker
                 aria-label="项目渠道"
                 层级="两级"
                 channels={企业.渠道们}
-                value={d.项目.渠道 || d.客户.渠道 || null}
-                allowClear={!!d.项目.渠道 && d.项目.渠道 !== d.客户.渠道}
+                value={d.项目.渠道 || 客户渠道 || null}
+                allowClear={!!d.项目.渠道 && d.项目.渠道 !== 客户渠道}
                 placeholder="这个项目从哪个渠道来"
-                onChange={(v) => 改("项目", { 渠道: v === d.客户.渠道 ? null : v })}
+                onChange={(v) => 改("项目", { 渠道: v === 客户渠道 ? null : v })}
               />
-            ), false, false, d.项目.渠道 && d.项目.渠道 !== d.客户.渠道 ? "和客户的渠道不同：渠道统计里这个项目算在这里" : d.客户.渠道 ? "默认跟客户的渠道" : "客户只选了渠道触点：项目来源可以空着")}
+            ), false, false, d.项目.渠道 && d.项目.渠道 !== 客户渠道 ? "和客户的渠道不同：渠道统计里这个项目算在这里" : 客户渠道 ? "默认跟客户的渠道" : 老客户 ? "客户没有来源渠道：项目来源可以空着" : "客户只选了渠道触点：项目来源可以空着")}
             {企业 && 企业.分配方式们.length > 0 && 一格("分配方式", "分配方式", (
               <Select
                 className="cr-full"

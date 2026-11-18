@@ -5,7 +5,9 @@
  */
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
-import { 名键, 归档号索引, type 本地索引 } from "./clean";
+import { 看已删 } from "@/lib/enterprise/soft-delete-core";
+import { 企业版 } from "@/lib/enterprise/switch";
+import { 名键, 归档号键, 归档号索引, type 本地索引 } from "./clean";
 
 export type 导入查重索引 = Pick<本地索引, "客户名" | "客户号" | "归档号">;
 
@@ -35,4 +37,31 @@ export async function 读导入查重索引(不算: ReadonlySet<string> = new Se
     ...子表号.map((x) => ({ v: x.value, customerId: x.customerId })),
   ]);
   return { 客户名, 客户号: new Map(), 归档号 };
+}
+
+/**
+ * 回收站里的号（企业版，P-删-08 导入查重也算回收站里的号码；审核 11-18 P1-3：设置 → 企业版导入原来只比在用的）：
+ * 删了的客户的电话 / WhatsApp / 名下联系人 / 子表号，加上在用客户名下删了的联系人的电话和子表号，按 归档号键 规整（同 归档号索引 的口径）。
+ * 回收站过了 30 天清掉的就不在了，自然不算。不是企业版 = 空
+ */
+export async function 读回收站号键(): Promise<Set<string>> {
+  if (!企业版()) return new Set();
+  const 删了的 = { deletedAt: { not: null } };
+  const [客户们, 客户WA, 联系人们, 子表号] = await 看已删(() => 看全部(async () =>
+    Promise.all([
+      prisma.customer.findMany({ where: 删了的, select: { phone: true } }),
+      prisma.customerExtra.findMany({ where: { whatsapp: { not: null }, customer: 删了的 }, select: { whatsapp: true } }),
+      prisma.contact.findMany({ where: { OR: [删了的, { customer: 删了的 }] }, select: { phone: true } }),
+      prisma.contactMethod.findMany({
+        where: { kind: { in: ["phone", "landline", "whatsapp"] }, OR: [{ customer: 删了的 }, { contact: 删了的 }] },
+        select: { value: true },
+      }),
+    ]),
+  ));
+  const 键们 = new Set<string>();
+  for (const v of [...客户们.map((c) => c.phone), ...客户WA.map((x) => x.whatsapp), ...联系人们.map((c) => c.phone), ...子表号.map((x) => x.value)]) {
+    const k = 归档号键(v);
+    if (k) 键们.add(k);
+  }
+  return 键们;
 }

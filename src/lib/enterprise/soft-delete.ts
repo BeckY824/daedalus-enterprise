@@ -24,6 +24,7 @@ import { 客户状态自动, 跟着项目重算 } from "./cust-status-auto-db";
 import { 卡点脱离沟通 } from "../project/blocker";
 import { 忘掉企业版范围 } from "./visibility";
 import { 回收站里查号, 回收站里带号的联系人, type 验好的号 } from "./contact-dedupe";
+import { 摘联系人号 } from "./contact-number-detach";
 import { 换负责人 } from "@/lib/project/owner-write";
 import { 验证中不能改派 } from "@/lib/project/lead-verify-guard";
 import { 企业版只用项目 } from "./project-only";
@@ -247,6 +248,8 @@ export async function 彻底删除(me: 谁, t: 软删表名, id: string): Promis
     if (!行?.deletedAt) return { ok: false as const, error: "这一条不在回收站里了，刷新看看" };
     const name = await 叫什么(tx, t, id);
     if (t === "Customer") await 看全部(() => 线索退回(tx, [id]));
+    // 联系人真删之前先摘他的号：外键置空会把号留在客户上，之后一直撞号（审核 11-18 P1-4）。客户整个删的，号跟着客户级联删
+    if (t === "Contact") await 看全部(() => 摘联系人号(tx, [id]));
     if (t === "FollowUp" && (await 卡点脱离沟通(tx, [id])).size) {
       return { ok: false as const, error: "这条沟通上发过卡点，卡点要留着，这条先留在回收站" };
     }
@@ -274,6 +277,8 @@ export async function 清过期(现在: Date = new Date()): Promise<Record<软�
     const 到期沟通 = (await tx.followUp.findMany({ where: { deletedAt: { lt: 线 } }, select: { id: true } })).map((f) => f.id);
     const 留 = await 卡点脱离沟通(tx, 到期沟通);
     数.FollowUp = (await tx.followUp.deleteMany({ where: { deletedAt: { lt: 线 }, ...(留.size ? { id: { notIn: [...留] } } : {}) } })).count;
+    // 到期的联系人先摘号（审核 11-18 P1-4，同 彻底删除）
+    await 摘联系人号(tx, (await tx.contact.findMany({ where: { deletedAt: { lt: 线 } }, select: { id: true } })).map((c) => c.id));
     for (const t of ["Contact", "Project"] as const) 数[t] = (await 表(tx, t).deleteMany({ where: { deletedAt: { lt: 线 } } })).count;
     const 客户 = (await tx.customer.findMany({ where: { deletedAt: { lt: 线 } }, select: { id: true } })).map((c) => c.id);
     await 线索退回(tx, 客户);

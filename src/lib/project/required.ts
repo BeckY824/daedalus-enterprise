@@ -123,6 +123,13 @@ export type 必填数据 = {
     assignWay?: string | null;
     /** 渠道触点 Customer.touchpoint（迁移 116，P-渠道-08）：「来源」有它也算齐 */
     touchpoint?: string | null;
+    /**
+     * 企业版客户页写的格（审核 11-18 P1-5：原来只读老外贸档案 extra，企业版页面不写那几格，填了也算没填）：
+     * 国家 / 地区 Customer.addrCountry、来源渠道 Customer.channelId、客户本身的号（联系方式子表里 contactId 空的那几行）。没读 = 只看老格
+     */
+    addrCountry?: string | null;
+    channelId?: string | null;
+    contactMethods?: { kind: string; value: string }[];
   };
   /** 客户还在（所属客户）；没读 = 不在 */
   有客户?: boolean;
@@ -178,11 +185,12 @@ const 有 = (v: string | null | undefined) => !!v && v.trim().length > 0 && !是
 function 齐了(项: 必填项, d: 必填数据): boolean {
   const x = d.客户.extra;
   switch (项) {
+    // 企业版的格在前（客户本身的号码几行、来源渠道、国家 / 地区，审核 11-18 P1-5），老外贸档案那几格照旧也算（老数据、别的版本）
     case "联系方式":
-      return 有(d.客户.phone) || 有(x?.whatsapp) || 有(x?.wechat) || 有(x?.email) || 有(x?.alibabaId)
+      return 有(d.客户.phone) || !!d.客户.contactMethods?.some((m) => 有(m.value)) || 有(x?.whatsapp) || 有(x?.wechat) || 有(x?.email) || 有(x?.alibabaId)
         || d.联系人们.some((c) => 有(c.phone) || 有(c.email) || 有(c.wechat) || !!c.contactMethods?.some((m) => 有(m.value)));
-    case "来源": return 有(x?.source) || 有(d.客户.touchpoint);
-    case "国家": return 有(x?.country);
+    case "来源": return !!d.客户.channelId || 有(d.客户.touchpoint) || 有(x?.source);
+    case "国家": return 有(d.客户.addrCountry) || 有(x?.country);
     case "客户等级": return 有(x?.level);
     // 挂着的那位姓名是「未知」这类占位不算（11-03 A2-2）；没读姓名的照旧只看挂没挂。
     // 11-17 起联系人姓名可以空（AI 新线索卡）：不看名字填没填，看这位有没有至少一条联系方式（读了号码的才看；挂靠来的别家联系人不在名单里，照旧只看挂没挂）

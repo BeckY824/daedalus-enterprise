@@ -28,7 +28,8 @@ import { 权限组织 } from "@/lib/enterprise/org";
 import { 公海客户先领取话 } from "@/lib/enterprise/pool-rules";
 import { 没设业务角色, 只读角色, 只读话of } from "@/lib/enterprise/permissions";
 import { 认跟进方式 } from "@/lib/enterprise/dict";
-import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
+import { 规整项目, 规整沟通, 项目来源默认, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
+import { 新数据渠道不行 } from "@/lib/enterprise/channel-main";
 import { 企业版字典, 节点序号 } from "@/lib/project/nodes";
 import { 有效线索节点, 建档不能过线索验证, 记沟通标记 } from "@/lib/project/stage-gates";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
@@ -76,20 +77,23 @@ function 认节点和回复(f: 向导跟进): { 节点: string } | { error: stri
 /** 客户区域线：这位客户的地址认出的线（大陆 内贸 / 非大陆 外贸，没填 = null）；市场成员选自动分配时界面只读显示，项目所在地另填了界面再看 */
 export type 新项目分配数据 = Awaited<ReturnType<typeof 新建分配方式数据>> & { 客户业务线: 项目线 | null; 客户区域线: 线 | null; 客户有地址: boolean;
   /** 这位客户的号按电话认出的线（11-18 分配方向第二步）；认不出 = null */
-  客户电话线: 线 | null };
+  客户电话线: 线 | null;
+  /** 客户的来源渠道：新项目的项目来源默认带它，建时可另选（P-删-03，审核 11-18 P1-1） */
+  客户渠道: string | null };
 
 /** 客户页「新增项目」弹窗打开时取：能用的分配方式、按业务角色的默认值、是不是销售（A6 / A9），业务线默认带客户的（A1）。看不到的客户 / 没开 = null */
 export async function 新项目分配数据(customerId: string): Promise<新项目分配数据 | null> {
   try {
     const me = await requireUser();
     if (!企业版() || (await getBusiness()).projectMode !== true) return null;
-    const 客户 = await prisma.customer.findUnique({ where: { id: String(customerId ?? "") }, select: { bizLine: true, addrCountry: true, addrProvince: true, addrCity: true, addrDistrict: true } });
+    const 客户 = await prisma.customer.findUnique({ where: { id: String(customerId ?? "") }, select: { bizLine: true, addrCountry: true, addrProvince: true, addrCity: true, addrDistrict: true, channelId: true } });
     if (!客户) return null;
     const 区域线 = 区域线of(客户);
     return {
       ...(await 新建分配方式数据(me)), 客户业务线: 是项目线(客户.bizLine) ? 客户.bizLine : null,
       客户区域线: 区域线, 客户有地址: !!(客户.addrCountry || 客户.addrProvince || 客户.addrCity || 客户.addrDistrict),
-      客户电话线: 电话定线(await 客户号们(String(customerId))),
+      客户电话线: 电话定线(await 客户号们(String(customerId)), { 国家: 客户.addrCountry }),
+      客户渠道: 客户.channelId ?? null,
     };
   } catch {
     return null;
@@ -172,6 +176,13 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     if (!项目输入.ownerId) return { ok: false, error: "请选项目负责人" };
     const 项目 = 规整项目(项目输入, me.id);
     if ("error" in 项目) return { ok: false, error: 项目.error };
+    // 项目来源（P-删-03「新建项目默认带客户的来源，建时可选、建完锁」，审核 11-18 P1-1）：另选了就用选的（得是还启用着、不是历史渠道的，同建档向导），
+    // 没选跟客户来源
+    const 项目来源 = 项目来源默认(输入.项目.channelId, 客户.channelId);
+    if (项目来源 && 项目来源 !== 客户.channelId) {
+      const 不行 = await 新数据渠道不行(项目来源);
+      if (不行) return { ok: false, error: 不行 === "停用" ? "项目来源这个渠道不存在或已停用，换一个" : 不行 };
+    }
     // 项目所在地（11-02，选填）：和编辑项目同一套规整；没填五格都是 null
     const 地 = 新项目所在地(输入.项目.所在地);
     if (!地.ok) return { ok: false, error: 地.error };
@@ -238,8 +249,8 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
         data: {
           ...项目, ...(业务线 ? { bizLine: 业务线 } : {}), ...(手选方向 ? { assignDir: 手选方向 } : {}), ...地.值, ...回复.值, customerId, contactId: 联系人?.id ?? null, creatorId: me.id, phase: "线索", node: 落.节点,
           nextStepAt: 跟进.nextStepAt, nextStepText: 跟进.nextStepText,
-          // 分配方式：选了的那一项；没选、指定给别人的记「指定分配」。项目来源默认带客户来源（新建项目时默认带客户来源，11-18 复盘第 5 类：原来不带）
-          ...新项目默认值(true, { 分配方式: 分配?.名 ?? 指定分配名, 项目来源: 客户.channelId }),
+          // 分配方式：选了的那一项；没选、指定给别人的记「指定分配」。项目来源：另选的，没选带客户来源（P-删-03 建时可选，审核 11-18 P1-1）
+          ...新项目默认值(true, { 分配方式: 分配?.名 ?? 指定分配名, 项目来源 }),
         },
       });
       await tx.projectNodeLog.create({ data: { projectId: p.id, userId: me.id, toPhase: "线索", toNode: 落.节点 } });
