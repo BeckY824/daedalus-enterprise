@@ -754,6 +754,8 @@ describe("企业版「新线索」= 项目的线索阶段：分配、自动分�
 
   it("公海里的分出去：出公海、原负责人也能接", async () => {
     const P = await 建项目("公海的", { ownerId: 内贸, pooledAt: new Date() });
+    // 11-18：线索公海里的项目按公海页判（能管公海），市场管理不能分（ent-assign-lead-pool-guard），这里由销售管理分
+    当(销售经理);
     expect(await 分配线索({ projectId: P, toUserId: 内贸 })).toEqual({ ok: true });
     expect(await 项目(P)).toMatchObject({ ownerId: 内贸, pooledAt: null });
   });
@@ -1005,6 +1007,8 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
 
   it("QA #4 公海里清了负责人的（ownerId 空串，C-01）：界面交「没人」照样能分，不误报「已被分配」", async () => {
     const P = await 建项目("公海的", { bizLine: "内贸", ownerId: "", pooledAt: new Date() });
+    // 11-18：线索公海里的项目只有能管公海的人能分（市场管理不能，ent-assign-lead-pool-guard）
+    当(销售经理);
     expect(await 分配线索({ projectId: P, toUserId: 内贸, 原负责人: "" })).toEqual({ ok: true });
     expect((await 项目(P)).ownerId).toBe(内贸);
     const Q = await 建项目("公海的二", { bizLine: "外贸", ownerId: "", pooledAt: new Date() });
@@ -1064,6 +1068,7 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
     expect(await 负责人(L)).toBe(内贸);
     // 公海里清了负责人的（ownerId 空串）：交空串 = 没人，照常分
     const 丙 = await 建项目("批丙", { bizLine: "外贸", ownerId: "", pooledAt: new Date() });
+    当(销售经理); // 线索公海里的由能管公海的人分（11-18）
     const r3 = await 批量自动分配([丙], { 项目: true, 原负责人们: { [丙]: "" } });
     expect(r3.ok && r3.结果[0]).toMatchObject({ ok: true });
   });

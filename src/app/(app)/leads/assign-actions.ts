@@ -37,7 +37,8 @@ import { 分配带走的同事项目, 数进手的持有项目 } from "@/lib/car
 import type { 转走项目预览 } from "@/lib/carry-over";
 import { 看全部 } from "@/lib/team-scope";
 import { 项目业务线, 线部门key, 规整线部门, 线勾了部门, 按部门候选, 只留销售, 两条线, 是业务线, type 线部门, type 项目线 } from "@/lib/enterprise/assign-line";
-import { 历史负责人 } from "@/lib/project/pool-owner";
+import { 历史负责人, 原负责人回避, 原负责人挡着 } from "@/lib/project/pool-owner";
+import { 公海按线拦 } from "@/lib/enterprise/pool-line-guard";
 import { 区域线of, 按区域分配of, 区域分配理由 } from "@/lib/enterprise/customer-region";
 import type { 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 换负责人待办, 待办痕, 接上待办痕, 带待办勾 } from "@/lib/project/carry-tasks";
@@ -219,11 +220,36 @@ const 项目不在 = "这条新线索已经不在了（或者你看不到它）�
  */
 const 留下字段 = (留下: 留下的活 | undefined): { 留下?: 留下的活 } => (留下 ? { 留下 } : {});
 
+const 公海只给管的话 = "线索公海里的项目只有总管理和销售管理能分配：请找销售管理";
+const 自己放的回避话 = "这个项目是你放回公海的，按规矩回避：请别的管理分配";
+
+/**
+ * 线索公海里的项目（11-18 审核「分配与归属」P0-3）：项目列表上的「分配 / 自动分配」也是在分公海，
+ * 和公海页 分配公海项目 同一套判（pool/actions.ts）：
+ * - 能管公海（总管理、销售管理；市场管理不能，P-转-02、P-公海-10）
+ * - 销管、条线总管理只能动本业务线的（P-公海-07，公海按线拦）
+ * - 自己放回公海的回避（P-公海-04；系统管理员、只读管理员豁免，条线总管理照样回避）
+ * 接手人是不是原负责人不在这里管：上级指定分回原负责人照放行（X-67）；自动分配的候选里去掉他见 自动分给。
+ * 不在公海的回 null
+ */
+async function 线索公海挡(me: SessionUser, org: 组织, projectId: string): Promise<string | null> {
+  if (!企业版()) return null;
+  const p = await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { id: true, pooledAt: true } }));
+  if (!p?.pooledAt) return null;
+  if (!能管公海(me, org)) return 公海只给管的话;
+  const 别线 = await 公海按线拦(prisma, me, org, { 项目: [p.id] }, "分配");
+  if (别线) return 别线;
+  return (await 原负责人挡着(prisma, me, p)) ? 自己放的回避话 : null;
+}
+
 async function 分项目给(
   me: SessionUser, org: 组织, input: { projectId: string; toUserId: string; line: 线 | null; kind: 线索种类; way: string; 自动?: boolean; 原负责人?: string | null; 带待办?: boolean; 公海客户?: 公海客户分法; 备注?: string },
 ): Promise<分给结果> {
   const p0 = await prisma.project.findFirst({ where: { id: input.projectId }, select: { id: true, name: true, customerId: true } });
   if (!p0) return { ok: false, error: 项目不在 };
+  // 线索公海里的：按公海页的判定（能管公海、本线、自己放的回避），指定分配、自动分配、定时 / 超时转都走这里
+  const 公海挡 = await 线索公海挡(me, org, p0.id);
+  if (公海挡) return { ok: false, error: 公海挡 };
   // 客户负责人是市场、接手的是销售：这一下算转客户（见事务里那段），换负责人之前钉住老签约（事务外，它用全局连接）
   const 客户0 = await 看全部(() => prisma.customer.findUnique({ where: { id: p0.customerId }, select: { salesOwnerId: true } }));
   if ((客户0 && 是市场角色(org, 客户0.salesOwnerId) && 是销售角色(org, input.toUserId)) || input.公海客户 === "整包") await 钉住老签约();
@@ -324,7 +350,7 @@ function 公海客户拦的话(分法?: 公海客户分法): string {
  */
 async function 分前看(
   哪条: 目标, org?: 组织, 公海客户?: 公海客户分法,
-): Promise<{ ok: true; ownerId: string | null; 实际负责人: string | null; 待分配: boolean; 名: string; 线: 项目线 | null; 区域?: { 客户: 客户地址; 项目: 客户地址 } } | { ok: false; error: string }> {
+): Promise<{ ok: true; ownerId: string | null; 实际负责人: string | null; 待分配: boolean; 名: string; 线: 项目线 | null; 公海?: boolean; 区域?: { 客户: 客户地址; 项目: 客户地址 } } | { ok: false; error: string }> {
   if (哪条.projectId !== undefined) {
     const 址 = { addrCountry: true, addrProvince: true, addrCity: true, addrDistrict: true } as const;
     const p = await prisma.project.findFirst({
@@ -342,7 +368,7 @@ async function 分前看(
     // 公海里的、待分配的（A7 / A10，负责人那一格只是建的人占着）：原负责人也能被挑中
     return {
       ok: true, ownerId: p.pooledAt || p.awaitAssignAt ? null : p.ownerId || null, 实际负责人: p.ownerId || null,
-      待分配: !p.pooledAt && !!p.awaitAssignAt, 名: p.name, 线: 项目业务线(p, org?.成员),
+      待分配: !p.pooledAt && !!p.awaitAssignAt, 名: p.name, 线: 项目业务线(p, org?.成员), 公海: !!p.pooledAt,
       区域: {
         客户: { addrCountry: p.customer.addrCountry, addrProvince: p.customer.addrProvince, addrCity: p.customer.addrCity, addrDistrict: p.customer.addrDistrict },
         项目: { addrCountry: p.addrCountry, addrProvince: p.addrProvince, addrCity: p.addrCity, addrDistrict: p.addrDistrict },
@@ -541,6 +567,11 @@ async function 自动分给(
   if (!看.ok) return 看;
   const 比谁 = 原负责人 === undefined ? 看.实际负责人 : 原负责人;
   if (比谁 !== 看.实际负责人) return 已被分配;
+  // 线索公海里的：先按公海页的判定拦（在挑不到人标待分配之前，不然没权限的人也能把它改成待分配）
+  if (看.公海 && 哪条.projectId !== undefined) {
+    const 公海挡 = await 线索公海挡(me, org, 哪条.projectId);
+    if (公海挡) return { ok: false, error: 公海挡 };
+  }
   // 新线索（项目）挑不到人（QA #5）：不抛错、不动它，回 待分配: true 让界面提示「留在新线索待分配，手动指派」
   // 还没待分配的带上 要标：点自动分配的调用方标待分配、提醒（X-85）；建档向导由 建好再分 标
   const 挑不到 = (为什么: string, 都满额?: true): 内部自动结果 =>
@@ -583,6 +614,11 @@ async function 自动分给(
   }
   人们 = 只留销售(org, 人们);
   if (排除?.length) 人们 = 人们.filter((id) => !排除.includes(id));
+  // 公海里的项目自动分配不挑把它放回公海的人（P-公海-04 回避；上级指定分回给他另说，X-67）
+  if (看.公海 && 哪条.projectId !== undefined && 原负责人回避()) {
+    const 放的人 = await 历史负责人(prisma, 哪条.projectId);
+    if (放的人) 人们 = 人们.filter((id) => id !== 放的人);
+  }
   const 月 = 月份();
   // 本月已分、生效配额、进池先后、不参与、算不算数、不限额：和「快轮到我」估算读同一份（assign-eta.ts 读挑人底子）
   const { 候选, 额, 建号, 不参与, 企划算数, 不限额 } = await 读挑人底子(人们, 月);
