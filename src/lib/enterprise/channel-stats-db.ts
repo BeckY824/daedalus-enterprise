@@ -56,7 +56,7 @@ export async function 取渠道底(渠道ids: string[], 看的人?: { id: string
     prisma.project.findMany({
       where: 渠道项目条件(渠道ids),
       select: {
-        id: true, createdAt: true, creatorId: true,
+        id: true, createdAt: true, creatorId: true, importBatch: true,
         channelId: true, phase: true, result: true, amount: true, currency: true,
         customer: { select: { channelId: true } },
         entLeadVerify: { select: { verdict: true } },

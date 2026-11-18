@@ -1042,7 +1042,8 @@ export async function 领一个公海项目(
   // 企业版线索公海的项目单独领，客户负责人不变（M-公海-06；开关 领项目带走单项目客户 关着，pool-link.ts）
   await 单项目客户跟着领(tx, p.customerId, me.id, me.id, 带);
   // 例外：客户创建人、负责人都是市场 → 客户整体给领的销售，记「分配」不算转客户（P-公海-11、X-60）
-  const 同事待分配 = 转 && 市场 ? (await 看全部(() => 市场.转客户给销售(tx, p.customerId, 转.原, me.id, me.id, way))).同事待分配 : [];
+  // 推节点 false：销售自己领，不是市场分配，带过来的不推进线索验证（审核 11-18）
+  const 同事待分配 = 转 && 市场 ? (await 看全部(() => 市场.转客户给销售(tx, p.customerId, 转.原, me.id, me.id, way, false))).同事待分配 : [];
   return { ok: true as const, 同事待分配 };
 }
 

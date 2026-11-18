@@ -41,6 +41,7 @@ import { 接手问题 } from "@/lib/enterprise/lead-assign";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知, 项目被删通知, 项目放回公海通知 } from "@/lib/enterprise/notice-sources";
 import { 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
+import { 市场分配进线索验证 } from "@/lib/enterprise/market-assign-node";
 import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
 import { 按必填走, 是占位值, 还差 as 必填还差, 必填叫法 } from "@/lib/project/required";
 import { 字典of } from "@/lib/project/stage-dict";
@@ -238,6 +239,8 @@ export async function 建档向导(输入: 建档向导输入) {
       await 向导(tx, customerId);
       // 客户先落在我名下（下面 saveCustomer 那一格）；市场指定给销售才转过去
       if (转客户) await 转客户给销售(tx, customerId, me.id, 好.项目.ownerId, me.id, 分配?.名 ?? "指定分配");
+      // 市场指定给销售：刚建的项目停在潜客培育的进线索验证（审核 11-18，market-assign-node.ts）
+      if (转客户) await 市场分配进线索验证(tx, [建了.projectId], 好.项目.ownerId, me.id);
       for (const 号 of 联号) await 记号码(tx, { 刚建的: customerId }, 建了.contactId ?? null, 号);
       await 记别的号行(tx, customerId, 建了.contactId ?? null, 别的号行);
       await 跟着项目重算(tx, 状态开, [customerId]);

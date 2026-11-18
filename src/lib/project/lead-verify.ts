@@ -15,7 +15,7 @@ import { 查完再写 } from "../check-then-write";
 import { 看全部 } from "../team-scope";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 读组织, 管理员类别们of, 能市场复核, type 组织 } from "@/lib/enterprise/org";
+import { 读组织, 管理员类别们of, 能市场复核, 市场复核要读的, type 复核看的项目, type 组织 } from "@/lib/enterprise/org";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 读市场成员们 } from "@/lib/enterprise/market-db";
 import { 可选项, 选的原因 } from "@/lib/enterprise/dict";
@@ -72,14 +72,14 @@ export function 创建人是销售(org: 组织, creatorId: string, 市场: Reado
 
 /** 这一步谁能拍板。销售两步看 能改节点（企业版只有负责人本人，C2）；市场复核给建线索的人或他的直属市场管理（11-05，能市场复核）；
  *  总管理终判给老板、总管理员。待分配期间占着负责人一格的建的人不能初判、终验、认领（P-转-21、X-68） */
-export function 能拍板(me: 谁, 步: 验证步, p: { ownerId: string; creatorId?: string | null; pooledAt?: Date | null; awaitAssignAt?: Date | null }, org: 组织): boolean {
+export function 能拍板(me: 谁, 步: 验证步, p: 复核看的项目 & { pooledAt?: Date | null; awaitAssignAt?: Date | null }, org: 组织): boolean {
   if (步 === "市场复核") return 能市场复核(org, me.id, p);
   if (步 === "总管理终判") return 是总管理(me, org);
   return 能改节点(me, p, org) && !待分配占位(me, p);
 }
 const 拍不了: Record<验证步, string> = {
   销售初判: "只有项目负责人、老板或主管能判这条线索",
-  市场复核: "只有建这条线索的人或他的直属市场管理能复核；没有直属市场管理的由系统总管理复核",
+  市场复核: "只有建这条线索的市场成员或他的直属市场管理能复核；找不到的按客户创建人、无主线索复核人、系统管理员的顺序交",
   销售终验: "只有项目负责人、老板或主管能终验",
   总管理终判: "只有老板或总管理员能终判",
   销售认领: "只有项目负责人、老板或主管能认领",
@@ -87,8 +87,10 @@ const 拍不了: Record<验证步, string> = {
 
 const 字 = (v: unknown, 上限: number) => (typeof v === "string" ? v.trim().slice(0, 上限) : "");
 
-type 项目 = { id: string; name: string; phase: string; node: string; result: string | null; ownerId: string; creatorId: string; pooledAt: Date | null; awaitAssignAt: Date | null; customerId: string };
-const 项目列 = { id: true, name: true, phase: true, node: true, result: true, ownerId: true, creatorId: true, pooledAt: true, awaitAssignAt: true, customerId: true } as const;
+type 项目基 = { id: string; name: string; phase: string; node: string; result: string | null; ownerId: string; creatorId: string; pooledAt: Date | null; awaitAssignAt: Date | null; customerId: string };
+type 项目 = 项目基 & Pick<复核看的项目, "customer">;
+// 客户创建人：市场复核找人要它（org-core 市场复核人们 第 2 步）
+const 项目列 = { id: true, name: true, phase: true, node: true, result: true, ownerId: true, creatorId: true, pooledAt: true, awaitAssignAt: true, customerId: true, customer: 市场复核要读的.customer } as const;
 const 在验证 = (p: 项目) => p.phase === "线索" && p.node === 有效线索节点 && !p.result && !p.pooledAt;
 
 /** 读项目 + 验证状态 + 现在实际等哪步（看全部：复核的人多半看不到这位销售的项目） */
@@ -361,20 +363,23 @@ export type 线索验证 = {
 };
 
 /** 详情页读：验证状态 + 时间线 + 我现在能做哪一步。不是企业版 null */
-export async function 读线索验证(me: 谁, p: 项目): Promise<线索验证 | null> {
+export async function 读线索验证(me: 谁, p: 项目基): Promise<线索验证 | null> {
   if (!企业版()) return null;
-  const [v, 痕, org] = await 看全部(() => Promise.all([
+  const [v, 痕, org, 客创] = await 看全部(() => Promise.all([
     prisma.entLeadVerify.findUnique({ where: { projectId: p.id } }),
     prisma.entLeadVerifyLog.findMany({ where: { projectId: p.id }, orderBy: { at: "asc" } }),
     读组织(),
+    // 调用方给的项目不带客户创建人：市场复核找人要它（org-core 市场复核人们 第 2 步），这里补读
+    prisma.customerCreator.findUnique({ where: { customerId: p.customerId }, select: { userId: true } }),
   ]));
+  const 带客创 = { ...p, customer: { creator: 客创 } };
   const 交给 = await 无效交给(org);
   const 待 = 实际待(v?.pending ?? null, 交给);
   const 名 = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(痕.map((l) => l.userId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
   let 我能: 线索验证["我能"] = null;
   if (在验证(p)) {
     if (!待) 我能 = 能拍板(me, "销售初判", p, org) ? "初判" : null;
-    else 我能 = 能拍板(me, 待, p, org) ? 待 : null;
+    else 我能 = 能拍板(me, 待, 带客创, org) ? 待 : null;
   }
   const 判定 = v?.verdict ?? "暂未判定";
   const 终验 = v?.salesAck ?? null;

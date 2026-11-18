@@ -8,6 +8,7 @@ import { 是市场角色, 是销售角色 } from "./permissions";
 import { 企业版 } from "./switch";
 import { 补客户分配, 还补的客户分配 } from "./customer-assign-way";
 import { 客户分配序号 } from "./dict";
+import { 市场分配进线索验证, 推回潜客培育 } from "./market-assign-node";
 
 /**
  * 市场首次分给销售 = 转客户（X-18）。分配线索、自动分配、客户页新建项目、新客户向导、首页 AI 录入（走向导）都走这一份：
@@ -72,9 +73,11 @@ export async function 公海项目市场转(
  * 调用前客户要已经归 接手人：这里不写客户负责人。项目入口由 转客户给销售 在同一笔事务里写；
  * 客户层是外层先改好，带走并记下 进事务后核对还归接手人才调（中间被人改走的，写在这里就把人家的改动盖掉了）。
  * 回带走了什么，连同清掉的待分配、补上的分配方式：客户层撤销按它原样还（还待分配状态）。
- * 客户档案上的「客户分配」空着就补「非自持」（市场交给销售，11-17），补了的记在 补分配，撤销还成空；已有值的不改
+ * 客户档案上的「客户分配」空着就补「非自持」（市场交给销售，11-17），补了的记在 补分配，撤销还成空；已有值的不改。
+ * 推节点（审核 11-18，market-assign-node.ts）：原负责人（市场）自己的、同事待分配的项目停在潜客培育的，进线索验证，记在 推节点，撤销推回；
+ * 同事在推的（P-转-07 一起带过来的，可能是销售自己建的）不推。公海领取 / 公海分配传 false，不推
  */
-export async function 市场转一位(tx: Prisma.TransactionClient, customerId: string, 原: string, 接手人: string, 操作人: string, way: string) {
+export async function 市场转一位(tx: Prisma.TransactionClient, customerId: string, 原: string, 接手人: string, 操作人: string, way: string, 推节点 = true) {
   const 带走 = await 带走一位(tx, customerId, 原, 接手人, 操作人, "assign", true, { 留下待办计划: true, 项目痕: 随客户痕, 记录种类: "market-assign" });
   // 带过来的都有负责人了：清掉待分配，不然批量里后面几条还会被当成没分的，再分给别人
   const 待分配 = await tx.project.findMany({ where: { customerId, ownerId: 接手人, awaitAssignAt: { not: null } }, select: { id: true, awaitAssignAt: true } });
@@ -84,23 +87,25 @@ export async function 市场转一位(tx: Prisma.TransactionClient, customerId: 
   const 补方式 = 带走的项目.length ? (await tx.project.findMany({ where: { id: { in: 带走的项目 }, phase: "线索", assignMode: null }, select: { id: true } })).map((p) => p.id) : [];
   if (补方式.length) await tx.project.updateMany({ where: { id: { in: 补方式 } }, data: { assignMode: way } });
   const 补分配 = (await 补客户分配(tx, customerId, 客户分配序号.非自持)) ? [customerId] : [];
-  return { ...带走, 清待分配: [...带走.清待分配, ...待分配.map((p) => ({ id: p.id, at: p.awaitAssignAt!.toISOString() }))], 补方式, 补分配 };
+  const 同事在推 = new Set(带走.同事待分配.filter((x) => x.在推).map((x) => x.id));
+  const 推了 = 推节点 ? await 市场分配进线索验证(tx, 带走.项目.filter((id) => !同事在推.has(id)), 接手人, 操作人) : [];
+  return { ...带走, 清待分配: [...带走.清待分配, ...待分配.map((p) => ({ id: p.id, at: p.awaitAssignAt!.toISOString() }))], 补方式, 补分配, 推节点: 推了 };
 }
 
 /**
  * 项目入口用：回 留下，分配通知据此告诉接手人客户上还有多少原负责人的活；
  * 同事待分配 = 随客户换了负责人的同事待分配项目，调用方事务提交后发 同事待分配随客户通知（P-转-19）
  */
-export async function 转客户给销售(tx: Prisma.TransactionClient, customerId: string, 原: string, 接手人: string, 操作人: string, way: string): Promise<{ 留下: 留下的活; 同事待分配: 同事待分配条[]; 带过来: 带走的 }> {
+export async function 转客户给销售(tx: Prisma.TransactionClient, customerId: string, 原: string, 接手人: string, 操作人: string, way: string, 推节点 = true): Promise<{ 留下: 留下的活; 同事待分配: 同事待分配条[]; 带过来: 带走的 }> {
   await tx.customer.update({ where: { id: customerId }, data: { salesOwnerId: 接手人 } });
-  const 带走 = await 市场转一位(tx, customerId, 原, 接手人, 操作人, way);
+  const 带走 = await 市场转一位(tx, customerId, 原, 接手人, 操作人, way, 推节点);
   // 带过来：撤销自动分配（auto-assign-undo.ts）整批还原用，同客户层撤销的 带过来
   const { 计划, 待办, 商机, 项目, 公海项目, 清待分配, 补方式, 补分配 } = 带走;
-  return { 留下: { customerId, 原 }, 同事待分配: 带走.同事待分配, 带过来: { 计划, 待办, 商机, 项目, 公海项目, 清待分配, 补方式, 补分配 } };
+  return { 留下: { customerId, 原 }, 同事待分配: 带走.同事待分配, 带过来: { 计划, 待办, 商机, 项目, 公海项目, 清待分配, 补方式, 补分配, 推节点: 带走.推节点 } };
 }
 
 /**
- * 撤销客户层转让时还 市场转一位 动过的几格（P-撤销-01 按原样回滚）：待分配时刻、项目分配方式、客户分配。要在 还项目 之前调：
+ * 撤销客户层转让时还 市场转一位 动过的几格（P-撤销-01 按原样回滚）：待分配时刻、项目分配方式、客户分配、推进线索验证的节点。要在 还项目 之前调：
  * 只还「现在还归接手人」的，撤销之前被人分走、推进了的不动。时刻是前端传回来的，不是合法时间的跳过。
  * 一批客户一起还：同一个时刻的一次改（一批转出去的多半是同一刻进的待分配）
  */
@@ -114,4 +119,6 @@ export async function 还待分配状态(tx: Prisma.TransactionClient, 带过来
   for (const [t, ids] of 按时刻) await tx.project.updateMany({ where: { id: { in: ids }, ...还归他, result: null, pooledAt: null, awaitAssignAt: null }, data: { awaitAssignAt: new Date(t) } });
   if (带过来.补方式?.length) await tx.project.updateMany({ where: { id: { in: 带过来.补方式 }, ...还归他, assignMode: 客户层分配方式 }, data: { assignMode: null } });
   await 还补的客户分配(tx, 带过来.补分配, 还归他.customerId.in);
+  // 推节点：只认 市场分配进线索验证 那一行还是最后一次节点变更的（推回潜客培育 自己核），撤销之前被人推过、判过的不动
+  if (带过来.推节点?.length) await 推回潜客培育(tx, 带过来.推节点, 接手人);
 }
