@@ -325,7 +325,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     // 指定分配时间（PR3）：还没到点的定时，详情上写时间和分给谁；录入人、能分配的人能改 / 取消 / 改成现在分配
     ...(企业 && p.scheduledAssignAt && p.awaitAssignAt && !p.pooledAt ? { 定时分配: {
       时间: 时刻转北京墙钟(p.scheduledAssignAt)!, 给谁: p.scheduledAssignTo ? 叫(p.scheduledAssignTo) ?? "已不在的成员" : null, 能动: !!org && 能动定时(me, p, org),
-    } } : {}), 要下一步, 能记沟通, 可改沟通, 可删沟通, 必填, 不给推, 能改节点: 节点能改, 能转让: 能转,
+    } } : {}), 要下一步, 能记沟通, 组员记沟通: 能记沟通 && !能改, 可改沟通, 可删沟通, 必填, 不给推, 能改节点: 节点能改, 能转让: 能转,
     // 转给谁以后自己还看得到（11-03 A5-3）：总管理、上级转给下属照样能看，提示不说「看不到」，转完也不跳回列表
     ...(企业版() && 能转 ? { 转后还能看: 候选.filter((c) => 能看项目(me, { ...p, ownerId: c.id, 已加入 }, org)).map((c) => c.id) } : {}),
     能放公海: !公海 && 能放回公海(me, p, org) && (能进公海的阶段 as readonly string[]).includes(p.phase) && !(企业 && p.result), // 已结束的不能单独放回（X-70）

@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  算渠道统计, 算产出比, 运营天数, 拼全称, 拆来源, 产出比分布, 是有效线索, 算成交, 全称分隔, 能录投入,
+  算渠道统计, 算产出比, 运营天数, 拼全称, 拆来源, 产出比分布, 是有效线索, 算成交, 全称分隔, 能录投入, 能管渠道,
   type 统计用项目, type 渠道统计,
 } from "@/lib/enterprise/channel-stats";
 import { 建组织 } from "@/lib/enterprise/org-core";
@@ -113,7 +113,7 @@ describe("产出比分布", () => {
   });
 });
 
-describe("能录投入（P16；11-01 只认业务角色：总管理、市场管理）", () => {
+describe("能录投入（P16；11-01 只认业务角色；11-19 客户答复：只给系统管理员、市场管理）", () => {
   const org = 建组织(
     ["boss", "dir", "adm", "mm", "sm", "ops", "s", "multi"].map((id) => ({ id, role: id === "boss" ? "ADMIN" : "SALES", active: true })),
     ([["dir", "director"], ["adm", "admin"], ["mm", "marketing_mgr"], ["sm", "sales_mgr"], ["ops", "channel_ops"], ["s", "sales"], ["multi", "sales,marketing_mgr"]] as const)
@@ -124,5 +124,19 @@ describe("能录投入（P16；11-01 只认业务角色：总管理、市场管�
     expect(能录投入(org, { id: "boss", role: "ADMIN" })).toBe(false);
     for (const id of ["dir", "mm", "multi"]) expect(能录投入(org, { id, role: "SALES" })).toBe(true);
     for (const id of ["adm", "sm", "ops", "s", "不在组织里"]) expect(能录投入(org, { id, role: "SALES" })).toBe(false);
+  });
+  it("11-19：没设线的总管理（= 系统管理员）能管、能录；条线总管理（director 设了线、没标系统管理员）只能看；标了系统管理员的条线总管理照旧能管", () => {
+    expect([能录投入(org, { id: "dir", role: "SALES" }), 能管渠道(org, { id: "dir", role: "SALES" })]).toEqual([true, true]);
+    const 条线 = 建组织(
+      ["line", "lineSys"].map((id) => ({ id, role: "SALES", active: true })),
+      ["line", "lineSys"].map((userId) => ({ userId, deptId: null, bizRole: "director", line: "内贸", managerId: null, dottedManagerId: null })),
+      [],
+    );
+    expect(能录投入(条线, { id: "line", role: "SALES" })).toBe(false);
+    expect(能管渠道(条线, { id: "line", role: "SALES" })).toBe(false);
+    const 标了 = { ...条线, 系统管理员标记: new Set(["lineSys"]) };
+    expect(能录投入(标了, { id: "lineSys", role: "SALES" })).toBe(true);
+    expect(能管渠道(标了, { id: "lineSys", role: "SALES" })).toBe(true);
+    expect(能录投入(标了, { id: "line", role: "SALES" })).toBe(false);
   });
 });
