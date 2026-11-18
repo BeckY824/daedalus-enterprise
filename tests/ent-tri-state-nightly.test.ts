@@ -218,9 +218,10 @@ describe("计时范围、成交", () => {
 });
 
 describe("换负责人们of", () => {
-  it("转让 / 离职交接按先后算归零：12 个月内第 3 次起不归零；捞取、市场首次分配总归零不计次；undo、pool-release 不算", () => {
+  it("转让 / 离职交接按先后算归零：12 个月内第 3 次起不归零；捞取、市场首次分配总归零不计次；undo、pool-release、overdue-assign 不算", () => {
     const 行 = (日: string, kind: string) => ({ at: new Date(`${日}T10:00:00+08:00`), kind });
-    const r = 换负责人们of([行("2026-11-02", "market-assign"), 行("2026-11-03", "assign"), 行("2026-11-04", "pool-release"), 行("2026-11-05", "claim"), 行("2026-11-06", "deactivate"), 行("2026-11-07", "assign"), 行("2026-11-08", "undo")], 默认三态规则);
+    // overdue-assign（超时未跟进自动转时客户随线索走）不算（Even 11-19 第 14 题 B），也不占转让次数
+    const r = 换负责人们of([行("2026-11-02", "market-assign"), 行("2026-11-03", "assign"), 行("2026-11-04", "pool-release"), 行("2026-11-04", "overdue-assign"), 行("2026-11-05", "claim"), 行("2026-11-06", "deactivate"), 行("2026-11-07", "assign"), 行("2026-11-08", "undo")], 默认三态规则);
     expect([...r]).toEqual([
       { 日: "2026-11-02", 方式: "市场首次分配" },
       { 日: "2026-11-03", 方式: "转让", 归零: true },
@@ -228,5 +229,24 @@ describe("换负责人们of", () => {
       { 日: "2026-11-06", 方式: "离职交接", 归零: true },
       { 日: "2026-11-07", 方式: "转让", 归零: false },
     ]);
+  });
+});
+
+describe("超时自动转客户随线索（Even 11-19 第 14 题 B：轮转不重置）", () => {
+  const 换人 = async (kind: string, 日: number) => {
+    await prisma.customerOwnerLog.create({ data: { customerId: 客户, userId: "system", fromOwnerId: 乙, toOwnerId: 丙, kind, at: 第(日) } });
+    await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 丙 } });
+  };
+
+  it("第 60 天超时自动转把客户给了丙（overdue-assign）：钟不归零，第 90 天照进沉睡", async () => {
+    await 换人("overdue-assign", 60);
+    await 三态夜扫(第(90));
+    expect(await 钟()).toMatchObject({ state: "沉睡", enteredDay: 加天(起, 90) });
+  });
+
+  it("对照：同一天手动转让（assign）照归零，第 90 天还活跃", async () => {
+    await 换人("assign", 60);
+    await 三态夜扫(第(90));
+    expect((await 钟())!.state).toBe("活跃");
   });
 });
