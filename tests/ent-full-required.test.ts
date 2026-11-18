@@ -22,7 +22,8 @@ const c1原样 = {
     开: true,
     必填: {
       潜客培育: ["需求类型", "需求", "分配方式", "项目名称", "所属客户", "主联系人", "项目来源", "项目所在地", "沟通三项", "下一步计划", "下一步时间"],
-      线索验证: ["需求描述", "有效沟通", "分配方式", "项目级别", "线索验证结果", "沟通三项", "下一步计划", "下一步时间"],
+      // F-项目-14（11-08 定两列各自填）：矩阵线索验证项目级别、项目标签都必填；c1 上现在只配了「项目级别」，加「项目标签」那一格合并后另做服务器数据
+      线索验证: ["需求描述", "有效沟通", "分配方式", "项目级别", "项目标签", "线索验证结果", "沟通三项", "下一步计划", "下一步时间"],
       线索推进: ["需求", "沟通三项", "下一步计划", "下一步时间"],
       明确需求: ["预算能力", "痛点标注", "沟通三项", "下一步计划", "下一步时间"],
       共识方案: ["价格感知", "采购周期", "产品匹配", "竞品信息", "项目方案", "金额", "预计成交日期", "沟通三项", "下一步计划", "下一步时间"],
@@ -97,7 +98,7 @@ function 全齐(node: string): 必填数据 {
     项目: {
       node, contactId: "c", nextStepAt: new Date("2026-11-20T10:00:00+08:00"), expectedDealAt: new Date("2026-12-20T00:00:00+08:00"), amount: 100,
       remark: null, acceptancePassed: true, demandStatus: "明确需求", assignMode: "自动分配", name: "一号项目", channelId: "ch", addrCountry: "中国",
-      level: "A", dealDemand: "要两台", nextStepText: "约演示", contractAmount: 100, depositAmount: 10, balanceSettled: true,
+      level: "A", projTag: "A 重点推进", dealDemand: "要两台", nextStepText: "约演示", contractAmount: 100, depositAmount: 10, balanceSettled: true,
       budgetLevel: "高", priceSense: "敏感", decisionChain: "清楚", purchaseCycle: "三个月", productFit: "匹配", valueFit: "认同",
       decisionReach: "已触达", competitor: "有", deployFit: "具备", siteStatus: "已平整",
     },
@@ -135,6 +136,7 @@ function 去掉(d: 必填数据, 项: 必填项): 必填数据 {
     case "需求描述": p.dealDemand = ""; break;
     case "有效沟通": p.demandStatus = null; break;
     case "项目级别": p.level = null; break;
+    case "项目标签": p.projTag = null; break;
     case "线索验证结果": x.线索验证 = { verdict: "有效线索", finalResult: null, pending: "等复核" }; break;
     case "需求": p.demandStatus = "暂未确认"; break;
     case "痛点标注": x.痛点标注 = "无"; break;

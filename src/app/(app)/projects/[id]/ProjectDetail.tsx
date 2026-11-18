@@ -169,6 +169,8 @@ export type 项目详情 = {
    * 所在地 = 地址四格 + 详细地址，跟客户资料一样公海里同事客户的项目没领之前是 null（不摆）。不是企业版都不传
    */
   level?: string | null; 所在地?: (客户地址 & { location: string | null }) | null;
+  /** 企业版项目标签（迁移 153，F-项目-14）：和级别各一列、各自填；值 = 存的选项名（null = 没填），选项 = 字典 projTag 启用着的 + 存着的那项。不是企业版不传 */
+  项目标签?: { 值: string | null; 选项: string[] };
   /** 企业版业务线（内贸 / 外贸 / 暂不分配，老项目可能是 null）：只给编辑框用；不是企业版不传 */
   bizLine?: string | null;
   /** 企业版需求描述（10-31 前叫成交需求）、合同金额 + 币种、定金金额 + 币种（迁移 097）；不是企业版不传 */
@@ -228,6 +230,7 @@ const 提示条下距: React.CSSProperties = { marginBottom: 16 };
 /** 指定分配时间那一行（11-17）：窄宽度折行；写在组件外，行内样式只减不增（tests/inline-style-cap.test.ts） */
 const 定时行样: React.CSSProperties = { ...行样, flexWrap: "wrap", rowGap: 4 };
 const 可折行样: React.CSSProperties = { whiteSpace: "normal", overflowWrap: "anywhere" };
+const 满宽: React.CSSProperties = { width: "100%" };
 // 四个字的键（来源线索 / 预计成交）在 14px 下要 ~56px，48px 会折成两行（10-27）
 const 键样: React.CSSProperties = { color: "var(--text-muted)", fontSize: "var(--dt-label)", flex: "0 0 4.3em", whiteSpace: "nowrap" }; // 字段名 13（16a 同客户详情）
 // 多行的格子（需求描述、痛点、备注；前两个 11-04 起平时一行）：键和第一行对齐，不居中到一大段字的中间
@@ -1059,6 +1062,22 @@ export default function ProjectDetail({
           />
         </div>
       )}
+      {/* 项目标签（F-项目-14）：和级别各一格、各自填，互不带动 */}
+      {p.企业版 && p.项目标签 && (
+        <div style={行样}>
+          <span style={键样}>项目标签</span>
+          <ProjectInlineField<string | null>
+            名="项目标签"
+            值={p.项目标签.值}
+            能改={能就地改}
+            显示={(v) => (有值(v) ? <span className="proj-one" title={v}>{v}</span> : p.必填?.还差.includes("项目标签") ? 占位确认("项目标签") : 待填("项目标签"))}
+            存={(v) => 存项目项({ projTag: v })}
+            编辑器={({ 草稿, 提交, 忙 }) => (
+              <Select aria-label="项目标签" autoFocus defaultOpen allowClear disabled={忙} placeholder={未选占位} style={满宽} value={草稿 ?? undefined} options={[不填项, ...p.项目标签!.选项.map((x) => ({ value: x, label: x }))]} onChange={(v?: string) => 提交(去不填(v))} />
+            )}
+          />
+        </div>
+      )}
       <div style={行样}>
         <span style={键样}>金额</span>
         <ProjectInlineField<钱格值>
@@ -1681,7 +1700,7 @@ export default function ProjectDetail({
           open
           onClose={() => set编辑开着(false)}
           跑={跑}
-          p={{ id: p.id, name: p.name, ownerId: p.ownerId, amount: p.amount, currency: p.currency, remark: p.remark, contactId: p.contact?.id ?? null, ...(p.企业版 ? { expectedDealAt: p.expectedDealAt ?? null, channelId: p.channelId ?? null, level: p.level ?? null, bizLine: p.bizLine ?? null, 所在地: p.所在地 ?? null, ...(p.成交钱 ? { 成交钱: p.成交钱 } : {}), ...(p.项目新字段 ? { 项目新字段: p.项目新字段 } : {}) } : {}) }}
+          p={{ id: p.id, name: p.name, ownerId: p.ownerId, amount: p.amount, currency: p.currency, remark: p.remark, contactId: p.contact?.id ?? null, ...(p.企业版 ? { expectedDealAt: p.expectedDealAt ?? null, channelId: p.channelId ?? null, level: p.level ?? null, ...(p.项目标签 ? { 项目标签: p.项目标签 } : {}), bizLine: p.bizLine ?? null, 所在地: p.所在地 ?? null, ...(p.成交钱 ? { 成交钱: p.成交钱 } : {}), ...(p.项目新字段 ? { 项目新字段: p.项目新字段 } : {}) } : {}) }}
           候选={候选}
           联系人们={联系人们}
           渠道们={p.企业版 ? p.渠道们 : undefined}

@@ -34,7 +34,7 @@ describe("目录", () => {
     }
     const 另外 = (n: string) => 建议必填[n].filter((x) => !["沟通三项", "下一步计划", "下一步时间"].includes(x));
     expect(另外("潜客培育")).toEqual(["需求类型", "需求", "分配方式", "项目名称", "所属客户", "主联系人", "项目来源", "项目所在地"]);
-    expect(另外("线索验证")).toEqual(["需求描述", "有效沟通", "分配方式", "项目级别", "线索验证结果"]);
+    expect(另外("线索验证")).toEqual(["需求描述", "有效沟通", "分配方式", "项目级别", "项目标签", "线索验证结果"]);
     expect(另外("线索推进")).toEqual(["需求"]);
     expect(另外("明确需求")).toEqual(["预算能力", "痛点标注"]);
     expect(另外("共识方案")).toEqual(["价格感知", "采购周期", "产品匹配", "竞品信息", "项目方案", "金额", "预计成交日期"]);
@@ -111,7 +111,7 @@ describe("还差", () => {
     };
     // 11-01 矩阵加的几样
     Object.assign(d.项目, {
-      name: "二期", channelId: "ch1", addrCountry: "德国", level: "A", dealDemand: "200 台", nextStepText: "约演示",
+      name: "二期", channelId: "ch1", addrCountry: "德国", level: "A", projTag: "A 重点推进", dealDemand: "200 台", nextStepText: "约演示",
       contractAmount: 10, depositAmount: 1, balanceSettled: true,
       budgetLevel: "充足", priceSense: "价格认可", decisionChain: "已摸清", purchaseCycle: "一个月内", productFit: "完全匹配",
       valueFit: "认同", decisionReach: "已触达", competitor: "无竞品·我方独家", deployFit: "完全符合", siteStatus: "已有场地",
@@ -229,6 +229,28 @@ describe("11-01 矩阵补的必填项", () => {
     expect(还差(r, 有项目("潜客培育", { nextStepText: "待定", dealDemand: "无", name: "-", addrCountry: "未知", level: "", channelId: null })))
       .toEqual(["下一步计划", "需求描述", "项目名称", "项目所在地", "项目级别", "项目来源"]);
     expect(还差(r, 有项目("潜客培育", { nextStepText: "下周演示", dealDemand: "200 台", name: "二期", addrCountry: "中国", level: "S", channelId: "ch" }))).toEqual([]);
+  });
+
+  // F-项目-14（11-08 定）：项目级别、项目标签两列各自填、互不关联
+  it("项目级别只看级别列、项目标签只看标签列，互不顶替；占位不算", () => {
+    const r = 规则({ 线索验证: ["项目级别", "项目标签"] });
+    expect(还差(r, 空数据("线索验证"))).toEqual(["项目级别", "项目标签"]);
+    expect(还差(r, 有项目("线索验证", { level: "A", projTag: null }))).toEqual(["项目标签"]);
+    expect(还差(r, 有项目("线索验证", { level: null, projTag: "A 重点推进" }))).toEqual(["项目级别"]);
+    expect(还差(r, 有项目("线索验证", { level: "S", projTag: "暂无" }))).toEqual(["项目标签"]);
+    expect(还差(r, 有项目("线索验证", { level: "S", projTag: "B 潜力跟进" }))).toEqual([]);
+    expect(必填叫法("项目级别")).toBe("项目级别");
+    expect(必填叫法("项目标签")).toBe("项目标签");
+    for (const x of 必填项们) expect(x.说明).not.toContain("同一项");
+  });
+
+  it("旧配置（加标签列之前存的，只有「项目级别」一项）：规整后仍是「项目级别」、仍看级别列，不会变成标签", () => {
+    const 旧 = 规整组织规则({ 节点推进: { 开: true, 必填: { 线索验证: ["需求描述", "分配方式", "项目级别", "下一步时间"] } } }, 企业版字典);
+    expect(节点必填(旧, "线索验证")).toEqual(["需求描述", "分配方式", "项目级别", "下一步时间"]);
+    expect(节点必填(旧, "线索验证")).not.toContain("项目标签");
+    const 有级别没标签 = { ...有项目("线索验证", { level: "A", projTag: null }) };
+    expect(还差(旧, 有级别没标签)).not.toContain("项目级别");
+    expect(还差(旧, 有项目("线索验证", { level: null, projTag: "A 重点推进" }))).toContain("项目级别");
   });
 
   it("需求类型：至少一项不是占位；分配方式：项目分配记录或客户分配方式任一有值；所属客户要客户还在", () => {

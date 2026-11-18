@@ -114,8 +114,14 @@ export async function 项目页去向(me: SessionUser, id: string): Promise<{ �
   return { 种: "客户页", 到: 客户页项目地址(p.customerId, p.id) };
 }
 
+/** 项目标签格：现值 + 下拉选项（「其他」要另写一句，这里一改就存，不给选） */
+async function 项目标签格(v: string | null): Promise<{ 值: string | null; 选项: string[] }> {
+  const 启用 = (await 页面可选项("projTag")).filter((x) => x !== 其他项);
+  return { 值: v, 选项: 有值(v) && !启用.includes(v) ? [...启用, v] : 启用 };
+}
+
 /** 项目详情这一屏读的字典（回收 / 无效原因、项目画像各项、关联的身份 / 角色 / 立场）：客户页项目区和项目页开头一起预读，合成两句 */
-export const 项目详情字典们: readonly 字典种类[] = ["recycle", "invalid", ...项目画像项.map((x) => x.种类), "projCustRole", "projContactRole", "projStance"];
+export const 项目详情字典们: readonly 字典种类[] = ["recycle", "invalid", ...项目画像项.map((x) => x.种类), "projTag", "projCustRole", "projContactRole", "projStance"];
 
 /** 项目详情（团队版项目模式 1a）：改节点、勾尾款 / 验收、节点变更和挂在项目上的沟通。开关关着时不存在 */
 export async function 读项目详情(me: SessionUser, id: string): Promise<项目详情载入> {
@@ -256,6 +262,8 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     aiEnabled: 能记沟通 && 露 ? await llmEnabled() : false,
     // 项目级别、所在地（P11 定稿 -2 版，迁移 093）：级别是项目自己的，都给看；所在地跟客户资料一样，公海里同事客户的项目没领之前不给
     level: p.level,
+    // 项目标签（迁移 153，F-项目-14）：和级别各一列、各自填，同样都给看。选项 = 字典里启用着的 + 这个项目存着、后来停用的那项（同项目画像）
+    项目标签: await 项目标签格(p.projTag),
     // 业务线（11-02）：编辑框里能改（改了不重新自动分配）；老项目没填是 null
     bizLine: p.bizLine,
     所在地: 露 ? { addrCountry: p.addrCountry, addrProvince: p.addrProvince, addrCity: p.addrCity, addrDistrict: p.addrDistrict, location: p.location } : null,

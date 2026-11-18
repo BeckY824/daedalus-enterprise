@@ -1,7 +1,9 @@
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 搜索词, 拆搜索词, 全半角写法, 客户号码条件, 号码藏着 } from "@/lib/search-keyword";
 import { 负责人候选 } from "@/lib/owners";
-import { 看板落列, 看板列键们, type 项目行, type 看板合计组, type 看板卡片 } from "./board";
+import { 看板落列, 看板列键们, 未填标签, type 项目行, type 看板合计组, type 看板卡片 } from "./board";
+import { 页面可选项 } from "@/lib/enterprise/dict";
+import { 其他项 } from "@/lib/enterprise/dict-kinds";
 import type { 阶段 } from "./nodes";
 import { 看得到的客户, 露客户, 公海超时收回, 待我回的邀请, 项目回收日, 算超时要的, 超时成员线 } from "./db";
 import { 即将回收 } from "./timeout";
@@ -69,6 +71,8 @@ export async function 读验证痕们(projectIds: string[]): Promise<Map<string,
 
 /** f：企业版首页四张指标卡点进来带的筛选（month-new / key / no-follow / due-soon，口径见 home-cards.ts） */
 export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string; phase?: string; node?: string; creator?: string; channelId?: string; level?: string;
+  /** 项目标签（F-项目-14）：字典项名原样比；「未填标签」= 没填的 */
+  projTag?: string;
   /** 创建时间（11-11，渠道页点数字进来要按时间分）：两个日历日，两头都算，北京日界线（custom-date-range.ts 创建时间段） */
   createdFrom?: string; createdTo?: string;
   /**
@@ -191,6 +195,7 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
   // 自定义筛选（11-06）：渠道和列表上「渠道」一列同一条规则——项目自己选的优先，没选跟客户来源（channel-stats.ts 项目算哪个渠道）
   const 来源 = 企 && typeof sp.channelId === "string" ? sp.channelId : "";
   const 级别筛 = !企 ? "" : sp.level === 未分级 ? 未分级 : (企业级别(sp.level) ?? "");
+  const 标签筛 = 企 && typeof sp.projTag === "string" ? sp.projTag.trim().slice(0, 40) : "";
   const 建于 = 创建时间段(sp.createdFrom, sp.createdTo);
   // 手机号（11-11）：先按号码找客户（电话藏着的人 = null，不筛），再取挂在这些客户上的项目，客户要露
   const 号码 = await 客户号码条件(sp.phone, me.id);
@@ -223,6 +228,7 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
     // 客户看不到时不拿客户的来源（同列上的「渠道」，11-12 审查起和号码一样只认「客户看得到的」，自己负责的项目也不例外）：否则筛一下就试出客户从哪来
     ...(来源 ? [{ OR: [{ channelId: 来源 }, 看得到的({ channelId: null, customer: { channelId: 来源 } })] }] : []),
     ...(级别筛 ? [{ level: 级别筛 === 未分级 ? null : 级别筛 }] : []),
+    ...(标签筛 ? [{ projTag: 标签筛 === 未填标签 ? null : 标签筛 }] : []),
     ...(卡 && 规则 ? [首页卡条件(卡, 规则, 字典of(企), 今, 卡负责人们), ...(卡的圈 ? [卡的圈] : [])] : []),
     // 3 天内回公海：粗筛之外再加紧筛（同首页卡的数，tests/ent-due-soon-prefilter.test.ts 两种筛对拍），候选少取一些；剩下的取回逐个算
     ...(卡 === "due-soon" && 规则 ? [即将逾期紧筛(规则, 字典of(企), 今) ?? { id: { in: [] } }] : []),
@@ -249,7 +255,7 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
     ...(sp.pool === "1" ? { pooledAt: { not: null } } : 企 && !卡 ? { pooledAt: null } : {}),
     ...(并且.length ? { AND: 并且 } : {}),
   };
-  return { where, 词, 企, 规则, 今, 卡, 阶进, 市场, 创建人, 来源, 级别筛, 号码, 收回筛 };
+  return { where, 词, 企, 规则, 今, 卡, 阶进, 市场, 创建人, 来源, 级别筛, 标签筛, 号码, 收回筛 };
 }
 
 /**
@@ -480,7 +486,7 @@ async function 拼项目行(
     ...(企 && p.awaitAssignAt && !p.pooledAt && p.scheduledAssignAt ? { 定时分配: { 时: 短时刻(p.scheduledAssignAt, 今) ?? "", 给谁: p.scheduledAssignTo ? 名字.get(p.scheduledAssignTo) ?? "已不在的成员" : null } } : {}),
     ...(企 ? { 即将回收: 将收(p), 回收日: 规则 && !p.pooledAt ? 项目回收日(规则, p, 超时线们) : null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null, 指定回复: p.replyStartAt || p.replyEndAt ? 指定回复文字(p.replyStartAt, p.replyEndAt, 今) : null } : {}),
     // 项目来源和渠道统计同一条规则：项目自己选的优先，没选跟客户来源（lib/enterprise/channel-stats.ts 项目算哪个渠道）；客户不露时不拿客户的来源
-    ...(企 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null, 已立项天数: 已立项天数(p.createdAt, 今), 项目来源: p.channel?.name ?? (可见.has(p.customerId) ? p.customer.channel?.name : null) ?? null, level: p.level } : {}),
+    ...(企 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null, 已立项天数: 已立项天数(p.createdAt, 今), 项目来源: p.channel?.name ?? (可见.has(p.customerId) ? p.customer.channel?.name : null) ?? null, level: p.level, 项目标签: p.projTag } : {}),
     ...(收回 ? { 收回次数: 收回.get(p.id) ?? 0 } : {}),
     ...市场格(p),
     amount: p.amount, currency: p.currency, updatedAt: p.updatedAt.toISOString(), createdAt: p.createdAt.toISOString(),
@@ -498,7 +504,7 @@ async function 拼项目行(
  * 首屏一屏看板约 200 张卡片，这几样占卡片 JSON 的三四成。updatedAt 留着（不带 每列 时 看板分列 按它排）
  */
 export function 看板卡片版(r: 项目行): 看板卡片 {
-  const { 回收日: _a, 下一步时间: _b, 收回次数: _c, expectedDealAt: _d, 已立项天数: _e, 项目来源: _f, level: _g, 验证结果: _h, 验证全文: _i, createdAt: _j, ...卡 } = r;
+  const { 回收日: _a, 下一步时间: _b, 收回次数: _c, expectedDealAt: _d, 已立项天数: _e, 项目来源: _f, level: _g, 项目标签: _k, 验证结果: _h, 验证全文: _i, createdAt: _j, ...卡 } = r;
   return 卡;
 }
 
@@ -518,7 +524,7 @@ export async function 读项目列表(
   await 公海超时收回(me).catch((e) => console.error("[超时回收] 扫的时候出错，这次先不收", e));
   await 回填一次();
   const 条件 = await 列表条件(me, sp, 只看阶段);
-  const { where, 词, 企, 规则, 卡, 阶进, 市场, 创建人, 来源, 级别筛, 号码, 收回筛 } = 条件;
+  const { where, 词, 企, 规则, 卡, 阶进, 市场, 创建人, 来源, 级别筛, 标签筛, 号码, 收回筛 } = 条件;
   const 排 = 认项目排序(sp.sort);
   const 每页 = 认每页(sp.pageSize);
   const 要页 = 认页码(sp.page);
@@ -648,7 +654,7 @@ export async function 读项目列表(
     邀请们: 邀请.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
     // 企业版线索验证（P12）：等我复核 / 终验 / 认领的线索
     待复核们: 待复核.map((r) => ({ ...r, 更新于: r.更新于.toISOString() })),
-    filters: { keyword: 词, ownerId: typeof sp.ownerId === "string" ? sp.ownerId : "", pool: sp.pool === "1" ? "1" : "", recycled: 收回筛, f: 卡, phase: 阶进.阶段, node: 阶进.进程, creator: 创建人, channelId: 来源, level: 级别筛,
+    filters: { keyword: 词, ownerId: typeof sp.ownerId === "string" ? sp.ownerId : "", pool: sp.pool === "1" ? "1" : "", recycled: 收回筛, f: 卡, phase: 阶进.阶段, node: 阶进.进程, creator: 创建人, channelId: 来源, level: 级别筛, projTag: 标签筛,
       // 原样回给界面（选择器回显）；写错的那头 创建时间段 当没给
       createdFrom: 是日期(sp.createdFrom) ? sp.createdFrom : "", createdTo: 是日期(sp.createdTo) ? sp.createdTo : "",
       phone: 号码 ? 搜索词(sp.phone) : "" },
@@ -656,6 +662,8 @@ export async function 读项目列表(
     能按号码筛: !(await 号码藏着(me.id)),
     // 自定义筛选「渠道」的候选；新线索页不摆
     渠道筛选项: 企 && !只看阶段 ? await 渠道筛选选项() : [],
+    // 项目标签筛选的候选（F-项目-14）：字典里启用着的；新线索页不摆（同级别）
+    标签筛选项: 企 && !只看阶段 ? (await 页面可选项("projTag")).filter((x) => x !== 其他项) : [],
     // 市场视角（null = 别的角色，界面照旧）；市场管理的「创建人」筛选候选 = 本人 + 实线下属
     市场: 市场 ? { 视角: 市场.视角, 创建人们: 市场.视角 === "市场管理" ? await prisma.user.findMany({ where: { id: { in: 市场.圈 } }, select: { id: true, name: true }, orderBy: { name: "asc" } }) : [] } : null,
   };

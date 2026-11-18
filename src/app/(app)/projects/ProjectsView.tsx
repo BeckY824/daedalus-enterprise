@@ -29,7 +29,7 @@ import { 未分级 } from "@/app/(app)/customers/query-shared";
 import { 级别星 } from "@/lib/enterprise/level-stars";
 import { 主渠道显示名, 渠道显示名 } from "@/lib/enterprise/channel-main-core";
 import { 回公海文案 } from "@/lib/enterprise/recycle-text";
-import { 卡片小字, type 项目行, type 看板一列, type 看板卡片 } from "@/lib/project/board";
+import { 卡片小字, 未填标签, type 项目行, type 看板一列, type 看板卡片 } from "@/lib/project/board";
 import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
 import { 换客户页看法, 市场视图名 } from "@/lib/customers-view-pref";
 import type { 看板列 } from "@/lib/project/nodes";
@@ -98,7 +98,7 @@ function 待分配格({ r }: { r: 项目行 }) {
 }
 
 export default function ProjectsView({
-  行, 列: 看板, 总数, 页, 每页, 要的页, 排序 = "", users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 能分公海客户项目 = false, 满额提醒: 提醒们 = [], 能按号码筛 = false, 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [], 客户页 = false, 基址 = "/projects", 标题, 换回客户列表 = false, 能新建客户 = false, 三态点, 每列,
+  行, 列: 看板, 总数, 页, 每页, 要的页, 排序 = "", users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 能分公海客户项目 = false, 满额提醒: 提醒们 = [], 能按号码筛 = false, 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [], 标签筛选项 = [], 客户页 = false, 基址 = "/projects", 标题, 换回客户列表 = false, 能新建客户 = false, 三态点, 每列,
 }: {
   行: 项目行[];
   列: 看板一列[];
@@ -113,10 +113,12 @@ export default function ProjectsView({
   排序?: string;
   users: 可选成员[];
   /** f：企业版首页指标卡点进来的筛选（lib/project/home-cards.ts），页头标出来、能清掉 */
-  filters: { keyword: string; ownerId: string; pool: string; recycled: string; f: string; phase: string; node: string; creator?: string; channelId?: string; level?: string; createdFrom?: string; createdTo?: string; phone?: string };
+  filters: { keyword: string; ownerId: string; pool: string; recycled: string; f: string; phase: string; node: string; creator?: string; channelId?: string; level?: string; projTag?: string; createdFrom?: string; createdTo?: string; phone?: string };
   /** 摆不摆「手机号」筛选（电话藏着的人不摆）；不给 = 不摆 */
   能按号码筛?: boolean;
   渠道筛选项?: { value: string; label: string }[];
+  /** 企业版「项目标签」筛选的候选（字典 projTag 启用着的，F-项目-14）；空 = 不摆这个筛选 */
+  标签筛选项?: string[];
   /** 服务端的 企业版()：结局叫法跟着字典 */
   企业版?: boolean;
   /** 企业版组织规则里改过的出口叫法 */
@@ -423,6 +425,8 @@ export default function ProjectsView({
     // P11 定稿 -2 版：项目级别显示成实心星（S 4 颗 … C 1 颗），悬停看档名；没分级的是 —
     ...(企业版 ? [
       { title: "级别", key: "level", width: 72, 默认: false, render: (_: unknown, r: 项目行) => { const 档 = 企业级别(r.level); return 档 ? <span title={企业级别说明[档]} aria-label={企业级别说明[档]} style={{ color: "var(--warning-text)", whiteSpace: "nowrap" }}>{级别星(档, false)}</span> : 无; } },
+      // 项目标签（F-项目-14）：和级别各一列、各自填；默认收在「列」里，放不下「…」悬停看全文
+      { title: "项目标签", key: "projTag", width: 110, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.项目标签) ? <span className="fulltext" title={r.项目标签!}>{r.项目标签}</span> : 无) },
       // 指定回复时间（11-17）：默认收在「列」里（1366 宽不横滚），新线索页、项目页都能勾出来；服务端排好的北京时间
       { title: "指定回复", key: "replyAt", width: 150, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.指定回复) ? <span className="nowrap" title={r.指定回复!}>{r.指定回复}</span> : 无) },
       { title: "预计成交", key: "expectedDealAt", width: 110, 默认: false, sorter: true, sortOrder: 序of("expectedDealAt"), render: (_: unknown, r: 项目行) => (有值(r.expectedDealAt) ? r.expectedDealAt : 无) },
@@ -551,6 +555,13 @@ export default function ProjectsView({
                 <Select style={style} aria-label="级别" placeholder="全部级别" allowClear value={f.level || undefined} onChange={(v?: string) => apply({ level: v ?? "" })} options={[...级别选项(), { value: 未分级, label: 未分级 }]} popupMatchSelectWidth={false} />
               ),
             },
+            ...(标签筛选项.length ? [{
+              // 项目标签（F-项目-14）：和级别各筛各的；「未填」= 标签空着的
+              键: "projTag", 名: "项目标签", 宽: 140, 默认外露: false, 有值: !!f.projTag,
+              渲染: (style: CSSProperties) => (
+                <Select style={style} aria-label="项目标签" placeholder="全部标签" allowClear value={f.projTag || undefined} onChange={(v?: string) => apply({ projTag: v ?? "" })} options={[...标签筛选项.map((x) => ({ value: x, label: x })), { value: 未填标签, label: "未填" }]} popupMatchSelectWidth={false} />
+              ),
+            }] : []),
           ]
         : []),
     ],

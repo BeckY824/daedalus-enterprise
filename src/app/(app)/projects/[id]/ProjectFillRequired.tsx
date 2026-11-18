@@ -90,6 +90,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
     渠道数: p.渠道们?.length,
     有所在地: !!p.所在地,
     有画像: !!p.画像,
+    有标签: !!p.项目标签?.选项.length,
     联系人数: 联系人们.length,
   };
   const 值 = (k: 必填项): 草稿值 | undefined => (k in 草稿 ? 草稿[k] : 初始草稿(k, p));
@@ -206,6 +207,8 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
         return <DatePicker aria-label={名} style={满宽} placeholder="选一天" value={字 ? dayjs(字) : null} onChange={(d) => 改(k, d ? d.format("YYYY-MM-DD") : null)} />;
       case "级别":
         return <Select aria-label={名} style={满宽} allowClear placeholder="选级别" value={字 || undefined} options={企业客户级别.map((x) => ({ value: x, label: 企业级别说明[x] }))} onChange={(x?: string) => 改(k, x ?? null)} />;
+      case "标签":
+        return <Select aria-label={名} style={满宽} allowClear placeholder={未选占位} value={字 || undefined} options={[不填项, ...(p.项目标签?.选项 ?? []).map((x) => ({ value: x, label: x }))]} onChange={(x?: string) => 改(k, 去不填(x))} />;
       case "合同状态":
         return <Select aria-label={名} style={满宽} allowClear value={字 || undefined} placeholder={未选占位} options={[不填项, ...合同状态们.map((x) => ({ value: x, label: x }))]} onChange={(x?: string) => 改(k, 去不填(x))} />;
       case "联系人":

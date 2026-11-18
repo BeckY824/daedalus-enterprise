@@ -46,7 +46,9 @@ export const 必填项们 = [
   { key: "所属客户", 说明: "项目挂在一位客户名下" },
   { key: "项目来源", 说明: "项目来源选了渠道" },
   { key: "项目所在地", 说明: "项目所在地的国家 / 地区选了" },
-  { key: "项目级别", 叫法: "项目级别 / 项目标签", 说明: "项目级别（项目标签）选了；两个叫法在系统里是同一项" },
+  // 11-08 定（F-项目-14）：项目级别、项目标签各一列、各自填，互不关联。存过的「项目级别」一项照旧只看级别列，不会变成标签
+  { key: "项目级别", 说明: "项目级别（S / A / B / C）选了" },
+  { key: "项目标签", 说明: "项目标签（A 重点推进 / B 潜力跟进 / C 正常培育，可在字典里改）选了" },
   { key: "有效沟通", 叫法: "线索验证机制（有效沟通）", 说明: "「线索验证」节点配的其他必填项都填了（没配就看需求状态）；11-05 起不再看「客户明确回复了」" },
   { key: "线索验证结果", 说明: "线索验证判了「有效线索」，且没在等复核 / 认领" },
   { key: "预算能力", 说明: "项目画像的「预算能力」选了" },
@@ -86,7 +88,7 @@ export const 能配必填的节点: readonly string[] = [...new Set([...去尾(�
  * 默认建议（设置页「用建议清单」一键填上，部署手册写的默认配置就是这张）：11-01 按客户「项目阶段字段配置矩阵」整张重排。
  * key 用团队版节点名，设置页按 本套节点名 对到企业版新名（明确需求 = 痛点挖掘、共识方案 = 方案敲定、签约审批 = 合同审批、首款支付 = 首款到账、验收交付 = 交付验收）。
  *   - 每个节点（尾款结算除外）都要下一步计划、下一步时间；潜客培育到首款到账九个节点还要当前进程沟通三项（发起主体、沟通内容、沟通方式）
- *   - 项目标签、项目级别在系统里是同一列，合成「项目级别」一项；「线索验证机制字段」按有效沟通认（11-05 起 = 线索验证节点配的其他必填项都齐，见 有效沟通还差）
+ *   - 项目级别、项目标签各是一项（11-08 定两列各自填，F-项目-14）：矩阵线索验证两项都必填；「线索验证机制字段」按有效沟通认（11-05 起 = 线索验证节点配的其他必填项都齐，见 有效沟通还差）
  *   - 尾款结算是最后一个节点，不能配：尾款结清、验收通过由「交付结清」结局硬拦（nodes.ts 改节点问题），它的下一步计划 / 时间配不了
  *   - 交付验收（11-08 M-必填-11）：矩阵原写「验收材料」，定为「验收报告」附件，传一份就算；不再用「验收通过」勾（那一项还在目录里，存过的配置照认）
  *   - 线索流失、商机丢单要写原因，异常状态要选类别：结局校验本来就在服务端拦（nodes.ts 改节点问题），不走这张表
@@ -95,7 +97,7 @@ const 下一步: 必填项[] = ["下一步计划", "下一步时间"];
 const 沟通下一步: 必填项[] = ["沟通三项", ...下一步];
 export const 建议必填: Record<string, 必填项[]> = {
   潜客培育: ["需求类型", "需求", "分配方式", "项目名称", "所属客户", "主联系人", "项目来源", "项目所在地", ...沟通下一步],
-  线索验证: ["需求描述", "有效沟通", "分配方式", "项目级别", "线索验证结果", ...沟通下一步],
+  线索验证: ["需求描述", "有效沟通", "分配方式", "项目级别", "项目标签", "线索验证结果", ...沟通下一步],
   线索推进: ["需求", ...沟通下一步],
   明确需求: ["预算能力", "痛点标注", ...沟通下一步],
   共识方案: ["价格感知", "采购周期", "产品匹配", "竞品信息", "项目方案", "金额", "预计成交日期", ...沟通下一步],
@@ -113,7 +115,7 @@ export const 建议必填: Record<string, 必填项[]> = {
 export type 必填数据 = {
   项目: {
     node: string; contactId: string | null; nextStepAt: Date | string | null; expectedDealAt: Date | string | null; amount: number; remark: string | null; acceptancePassed: boolean; demandStatus?: string | null; assignMode?: string | null;
-    name?: string | null; channelId?: string | null; addrCountry?: string | null; level?: string | null; dealDemand?: string | null; nextStepText?: string | null;
+    name?: string | null; channelId?: string | null; addrCountry?: string | null; level?: string | null; projTag?: string | null; dealDemand?: string | null; nextStepText?: string | null;
     contractAmount?: number | null; depositAmount?: number | null; balanceSettled?: boolean;
   } & { [列 in 画像列]?: string | null };
   客户: {
@@ -231,6 +233,7 @@ function 齐了(项: 必填项, d: 必填数据): boolean {
     case "项目来源": return !!d.项目.channelId;
     case "项目所在地": return 有(d.项目.addrCountry);
     case "项目级别": return 有(d.项目.level);
+    case "项目标签": return 有(d.项目.projTag);
     case "有效沟通": return 有效沟通还差(d).length === 0;
     // 判了有效、没在等复核 / 销售认领（总管理终判有效后 verdict 先写成有效线索、还等销售认领）
     case "线索验证结果": return !!d.线索验证 && !d.线索验证.pending && (d.线索验证.verdict === 有效线索判定 || d.线索验证.finalResult === 有效线索判定);
