@@ -430,7 +430,7 @@ export function 合上改动(现在: 组织规则, 改: 规则改动): 组织规
     const t = 改.节点推进;
     if (!t || typeof t !== "object") return { error: "要改什么？" };
     if (t.开 !== undefined) {
-      if (typeof t.开 !== "boolean") return { error: "进程推进开关只能开或关" };
+      if (typeof t.开 !== "boolean") return { error: "节点推进开关只能开或关" };
       节点推进.开 = t.开;
     }
     if (t.必填 !== undefined) {

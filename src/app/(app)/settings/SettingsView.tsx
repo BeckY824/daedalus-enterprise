@@ -3,7 +3,7 @@
 import { useBusinessTimeZone } from "@/lib/business-client";
 import { 同名带邮箱 } from "@/lib/utils";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ConfigProvider } from "antd";
 import { useSearchParams, usePathname } from "next/navigation";
 import { PageHead } from "@/components/ui";
@@ -66,7 +66,7 @@ const 搜词表: Record<string, string[]> = {
   members: ["系统管理员", "停用", "离职", "飞书", "解绑", "成员"],
   org: ["部门", "直属上级", "虚线上级", "字段权限", "线索分配", "配额", "市场部门", "只看某人", "业务角色", "后台设置谁能改"],
   business: ["叫法", "客户", "学员"],
-  project: ["持有上限", "公海", "超时回收", "进程时限", "必填", "字典", "分配方式", "回收原因", "卡点", "阻碍原因", "提成"],
+  project: ["持有上限", "公海", "超时回收", "进程时限", "节点推进", "必填", "字典", "分配方式", "回收原因", "卡点", "阻碍原因", "提成"],
   recycle: ["公海", "沉睡", "即将回收", "天数", "占位词"],
   ai: ["Key", "模型", "MCP", "令牌"],
   imports: ["导入", "撤销"],
@@ -224,6 +224,11 @@ export default function SettingsView({
    * 左边亮哪项、正文画哪栏、读屏的 aria 指向，三处都只认这一个值。
    */
   const 当前 = 目录.some((x) => x.key === tab) ? tab : 目录[0].key;
+  // 浮层两栏时右边正文自己是一个滚动区（settings.css「各滚各的」）：换一栏从顶上看起，不停在上一栏滚到的位置。整页 / 单栏时它不滚，这句什么都不做
+  const 正文 = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (正文.current) 正文.current.scrollTop = 0;
+  }, [当前]);
 
   const 词 = 搜.trim().toLowerCase();
   /** 命中的是哪一项（页签名、说明没中、具体那一项中了时写出来） */
@@ -302,7 +307,7 @@ export default function SettingsView({
             </div>
           ))}
         </div>
-        <div key={亮} className={`set-body${亮 ? " set-flash" : ""}`} role="tabpanel" id={`set-panel-${当前}`} aria-labelledby={`set-tab-${当前}`}>
+        <div ref={正文} key={亮} className={`set-body${亮 ? " set-flash" : ""}`} role="tabpanel" id={`set-panel-${当前}`} aria-labelledby={`set-tab-${当前}`}>
           {只读 && (
             <div className="set-ro" role="note">你是只读管理员：业务数据能看全部、不能改；后台设置只有系统管理员能进。</div>
           )}
