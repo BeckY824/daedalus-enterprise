@@ -82,6 +82,8 @@ export type 项目卡 =
       卡点描述: string;
       /** 开了超时回收、项目在线索 / 商机：下一步时间必填 */
       要时间?: boolean;
+      /** 确认人是项目组员、不是能管项目的人（11-19 客户答复）：卡上不摆下一步、不要求，落库也不写项目的下一步 */
+      组员记?: boolean;
     })
   /** 最后一个 = false：确认人不是最后一个完成的（还有别人没点完成），方案 / 结果不必填，result 记成自己的处理说明。
       缺省 = 按「最后一个」算（必填），落库时 完成卡点 再按当时的人数兜一次 */
@@ -183,6 +185,7 @@ export function buildProjectProposal(
         ...共, kind, type, content: str(args.content, 2000), 下一步: str(args.下一步, 100), 下一步时间: 时间,
         要卡点: args.要卡点 === true, 卡点类型, 影响等级, 卡点描述: str(args.卡点描述, 描述上限),
         ...(args.要时间 === true ? { 要时间: true } : {}),
+        ...(args.组员记 === true ? { 组员记: true } : {}),
       },
     };
   }
@@ -250,8 +253,8 @@ export function 项目卡缺(p: 项目卡): string[] {
   }
   if (p.kind === "project_followup") {
     if (!p.content.trim()) miss.push("沟通内容");
-    if (!p.下一步.trim()) miss.push("下一步计划");
-    if (p.要时间 && !p.下一步时间) miss.push("下一步时间");
+    if (!p.组员记 && !p.下一步.trim()) miss.push("下一步计划");
+    if (!p.组员记 && p.要时间 && !p.下一步时间) miss.push("下一步时间");
     if (p.要卡点 && (!p.卡点类型 || p.卡点类型 === "暂无卡点")) miss.push("卡点类型");
   }
   // 方案 / 结果只有最后一个完成的人必填（11-01 定稿）；其余人点完成只留处理说明，可空

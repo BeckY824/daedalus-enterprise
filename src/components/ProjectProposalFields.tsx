@@ -79,12 +79,17 @@ export default function ProjectProposalFields({ draft, setDraft }: { draft: 项�
           <F label="内容" block>
             <Input.TextArea size="small" autoSize={{ minRows: 2, maxRows: 8 }} value={draft.content} onChange={(e) => 设({ content: e.target.value })} />
           </F>
-          <F label="下一步计划">
-            <Input size="small" style={{ width: 240 }} value={draft.下一步} onChange={(e) => 设({ 下一步: e.target.value })} />
-          </F>
-          <F label={draft.要时间 ? "下一步时间" : "下一步时间（可不填）"}>
-            <DatePicker size="small" format="YYYY-MM-DD" value={日(draft.下一步时间)} onChange={(d) => 设({ 下一步时间: d ? d.format("YYYY-MM-DD") : "" })} />
-          </F>
+          {/* 组员记（11-19 客户答复）：下一步归负责人，组员的卡不摆这两格 */}
+          {!draft.组员记 && (
+            <>
+              <F label="下一步计划">
+                <Input size="small" style={{ width: 240 }} value={draft.下一步} onChange={(e) => 设({ 下一步: e.target.value })} />
+              </F>
+              <F label={draft.要时间 ? "下一步时间" : "下一步时间（可不填）"}>
+                <DatePicker size="small" format="YYYY-MM-DD" value={日(draft.下一步时间)} onChange={(d) => 设({ 下一步时间: d ? d.format("YYYY-MM-DD") : "" })} />
+              </F>
+            </>
+          )}
           {draft.要卡点 && (
             <>
               <F label="卡点类型">

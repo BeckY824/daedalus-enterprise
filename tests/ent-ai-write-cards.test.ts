@@ -181,6 +181,23 @@ describe("沟通 + 卡点", () => {
   });
 });
 
+describe("沟通：组员记不改项目下一步（11-19 客户答复）", () => {
+  it("组员出的卡不要求下一步、标着组员记；确认后沟通记上，项目下一步不动；负责人的卡照旧要下一步", async () => {
+    await prisma.project.update({ where: { id: 项目id }, data: { nextStepText: "乙定的下一步" } });
+    await prisma.projectMember.create({ data: { projectId: 项目id, userId: 丙.id, inviteStatus: "JOINED" } });
+    const 组员卡 = (await 出("propose_project_followup", { projectId: 项目id, content: "丙打了电话", 下一步: "丙想改", reason: "人说的" }, 丙)).卡;
+    expect(组员卡).toMatchObject({ kind: "project_followup", 组员记: true });
+    expect(missingFields({ ...组员卡!, 下一步: "" } as Proposal)).toEqual([]);
+    expect(await 确认({ ...组员卡!, 下一步: "" } as Proposal, 丙)).toMatchObject({ ok: true });
+    expect(await prisma.followUp.count({ where: { ownerId: 丙.id } })).toBe(1);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 项目id } })).nextStepText).toBe("乙定的下一步");
+
+    const 负责人卡 = (await 出("propose_project_followup", { projectId: 项目id, content: "乙打了电话", reason: "人说的" }, 乙)).卡;
+    expect(负责人卡).not.toHaveProperty("组员记");
+    expect(missingFields(负责人卡 as Proposal)).toEqual(["下一步计划"]);
+  });
+});
+
 describe("解决卡点", () => {
   async function 一个处理中的卡点(handler: string) {
     const f = await 记项目沟通({ id: 乙.id, role: "SALES" }, 项目id, { type: "PHONE", content: "聊了", occurredAt: 北京日期(), 阶段: "线索", 明确回复: true });

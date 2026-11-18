@@ -77,7 +77,7 @@ import { 认企业级别, 规整地址, 规整详细地址, 简称上限, type �
 import { 认业务线, 业务线不认得, 客户业务线必填 } from "@/lib/enterprise/assign-line";
 import type { Prisma } from "@/generated/prisma";
 import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
-import { 交接通知, 分给你通知, 改负责人通知, 同事待分配随客户通知 } from "@/lib/enterprise/notice-sources";
+import { 交接通知, 分给你通知, 改负责人通知, 同事待分配随客户通知, 市场改分通知 } from "@/lib/enterprise/notice-sources";
 import { 记新建指定分配 } from "@/lib/enterprise/direct-assign";
 import { 认新客户分配, 落新客户分配, 新客户建好再分, type 新客户分配交 } from "@/lib/project/new-cust-assign";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
@@ -867,7 +867,11 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     const 带 = first.带;
     await 带走后通知(带);
     const 带走 = 带?.数;
-    if (改前 && 改前.salesOwnerId !== data.salesOwnerId && !带走?.没转成) await 分给你通知(me, data.salesOwnerId, [input.id], undefined, 带?.留下);
+    if (改前 && 改前.salesOwnerId !== data.salesOwnerId && !带走?.没转成) {
+      await 分给你通知(me, data.salesOwnerId, [input.id], undefined, 带?.留下);
+      // 市场管理改了销售名下客户的负责人：另告诉原负责人和他的直属上级（11-19）
+      await 市场改分通知(me, [{ 原: 改前.salesOwnerId, 新: data.salesOwnerId, customerId: input.id }]);
+    }
     revalidateCustomer(input.id);
     await 客户存了推项目(me, input.id);
     return { ok: true, id: input.id, 带走, ...(await 发起交接()) };
@@ -949,7 +953,10 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       const 带 = merged.带;
       await 带走后通知(带);
       const 带走 = 带?.数;
-      if (mine.includes("salesOwnerId") && current.salesOwnerId !== data.salesOwnerId && !带走?.没转成) await 分给你通知(me, data.salesOwnerId, [input.id], undefined, 带?.留下);
+      if (mine.includes("salesOwnerId") && current.salesOwnerId !== data.salesOwnerId && !带走?.没转成) {
+        await 分给你通知(me, data.salesOwnerId, [input.id], undefined, 带?.留下);
+        await 市场改分通知(me, [{ 原: current.salesOwnerId, 新: data.salesOwnerId, customerId: input.id }]);
+      }
       revalidateCustomer(input.id);
       await 客户存了推项目(me, input.id);
       return { ok: true, id: input.id, 带走, ...(await 发起交接()) };
@@ -1357,6 +1364,8 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
   const 转成了 = 换成了.filter((c) => !没转成.includes(c.id));
   await 改负责人通知(me, 转成了.map((c) => ({ customerId: c.id, 旧: c.salesOwnerId })), salesOwnerId);
   await 分给你通知(me, salesOwnerId, 转成了.map((c) => c.id), undefined, 留下);
+  // 市场管理改分销售名下的（11-19）：原负责人上面 改负责人通知 已经说了，这里只补他的直属上级
+  await 市场改分通知(me, 转成了.map((c) => ({ 原: c.salesOwnerId, 新: salesOwnerId, customerId: c.id })), { 原负责人另有通知: true });
 
   if (res.count) {
     await recordAudit({
@@ -2209,7 +2218,10 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
   const 带 = 带了;
   if (带?.同事待分配.length) await 同事待分配随客户通知(me.id, data.salesOwnerId as string, 带.同事待分配);
   const 带走 = 带?.数;
-  if (key === "salesOwnerId" && 原负责人 && 原负责人 !== data.salesOwnerId && !带走?.没转成) await 分给你通知(me, data.salesOwnerId as string, [id], undefined, 带?.留下);
+  if (key === "salesOwnerId" && 原负责人 && 原负责人 !== data.salesOwnerId && !带走?.没转成) {
+    await 分给你通知(me, data.salesOwnerId as string, [id], undefined, 带?.留下);
+    await 市场改分通知(me, [{ 原: 原负责人, 新: data.salesOwnerId as string, customerId: id }]);
+  }
   revalidatePath(`/customers/${id}`);
   revalidatePath("/customers");
   await 客户存了推项目(me, id);

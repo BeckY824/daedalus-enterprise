@@ -9,10 +9,10 @@ import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { notify } from "./notify";
 import { 离职段 } from "./handover-db";
-import { 读组织, 负责人和上级, 在职负责人或上级, 市场复核人们, 市场复核要读的, 是系统管理员of } from "./org";
+import { 读组织, 负责人和上级, 在职负责人或上级, 市场复核人们, 市场复核要读的, 是系统管理员of, 管理员类别们of } from "./org";
 import { 企业版 } from "./switch";
 import { 公海入口 } from "./nav";
-import { 能改后台设置, 只读角色 } from "./permissions";
+import { 能改后台设置, 只读角色, 是销售角色 } from "./permissions";
 import { 无效交给, 实际待, type 待哪步 } from "@/lib/project/lead-verify";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 不跟着转的提醒 } from "@/lib/carry-over-db";
@@ -36,7 +36,8 @@ const 分钟 = () => Math.floor(Date.now() / 60_000);
 
 /** 市场首次分给销售（X-18）时留在原负责人名下的活：哪位客户、原负责人是谁（P-转-10） */
 export type 留下的活 = { customerId: string; 原: string };
-export type 分配条 = { toUserId: string; leadId?: string; projectId?: string; 留下?: 留下的活 };
+/** 原名下 = 分之前这条在谁名下（不在公海、不是待分配；assign-actions 分给 回的），市场管理改分通知（11-19）用 */
+export type 分配条 = { toUserId: string; leadId?: string; projectId?: string; 留下?: 留下的活; 原名下?: string };
 
 /**
  * 接手人要知道客户上还有多少活在原负责人手里。几位客户合起来数；都是 0 回 null。
@@ -102,8 +103,73 @@ export async function 分配通知(谁点的: 人, 条们: readonly 分配条[],
       });
     }
   });
+  // 市场管理把已在销售名下的改分给别人（11-19 客户答复）：另告诉原负责人和他的直属上级；接手人照上面收「分给你」
+  await 市场改分通知(谁点的, 条们.flatMap((c) => (c.原名下 ? [{ 原: c.原名下, 新: c.toUserId, ...(c.projectId ? { projectId: c.projectId } : {}), ...(c.leadId ? { leadId: c.leadId } : {}) }] : [])));
   // 自动分配「快轮到我」（11-18，assign-eta.ts）：分出去一条，候选池里的销售各算一遍，进 3 条以内的推一次（自己分给自己也算分了一条）
   if (条们.length) await 分配后估算推送();
+}
+
+/** 一条改分：原 = 改之前的负责人，新 = 接手人；三选一说的是哪一条（线索阶段的项目 / 老线索 / 客户） */
+export type 改分条 = { 原: string | null | undefined; 新: string; projectId?: string; leadId?: string; customerId?: string };
+
+/**
+ * 市场管理改分（11-19 客户答复）：操作人有市场管理业务角色、把已经在某位销售名下的线索 / 项目 / 客户改给另一位时，
+ * 除接手人照旧收「分给你」外，再告诉原负责人和他的直属上级：谁、哪一条、从谁改到谁。
+ * - 只在原负责人是另一位在职的销售（销售 / 销售管理，兼市场的按销售算，同 是销售角色）时发：占位账号、公海、待分配、市场名下的（X-18 首次分配）不发；
+ *   调用方只在「分之前真在他名下」时交 原
+ * - 收件人照 负责人和上级（直属上级只认手填、停用的不算，同 main）：去掉操作人本人、去掉接手人（他收的是分给你那条）；直属上级没填就只发原负责人
+ * - 别的角色改负责人、超时轮转（系统操作人）不走这里。几条按收件人合成一条；号码打码在 notify 里
+ */
+export async function 市场改分通知(谁点的: 人, 条们: readonly 改分条[], opt: { 原负责人另有通知?: boolean } = {}): Promise<void> {
+  await 稳("市场改分通知", async () => {
+    if (!条们.length) return;
+    const org = await 读组织();
+    if (!管理员类别们of(org, 谁点的.id).has("市场管理")) return;
+    const 算的 = 条们.filter((c): c is 改分条 & { 原: string } => !!c.原 && c.原 !== 谁点的.id && c.原 !== c.新 && 是销售角色(org, c.原));
+    if (!算的.length) return;
+    const pIds = 算的.flatMap((c) => (c.projectId ? [c.projectId] : []));
+    const lIds = 算的.flatMap((c) => (c.leadId ? [c.leadId] : []));
+    const cIds = 算的.flatMap((c) => (c.customerId ? [c.customerId] : []));
+    const 人ids = [...new Set(算的.flatMap((c) => [c.原, c.新]))];
+    const [项目们, 线索们, 客户们, 人们] = await 看全部(() => Promise.all([
+      pIds.length ? prisma.project.findMany({ where: { id: { in: pIds } }, select: { id: true, name: true } }) : [],
+      lIds.length ? prisma.lead.findMany({ where: { id: { in: lIds } }, select: { id: true, name: true } }) : [],
+      cIds.length ? prisma.customer.findMany({ where: { id: { in: cIds } }, select: { id: true, name: true } }) : [],
+      prisma.user.findMany({ where: { id: { in: 人ids } }, select: { id: true, name: true } }),
+    ]));
+    const 名 = new Map([...项目们, ...线索们, ...客户们].map((x) => [x.id, x.name]));
+    const 叫 = new Map(人们.map((u) => [u.id, u.name]));
+    const 一句 = (c: 改分条 & { 原: string }) => {
+      const 是客户 = !c.projectId && !c.leadId;
+      const 啥 = 是客户 ? "客户" : "线索";
+      return { 啥, 名: 名.get(c.projectId ?? c.leadId ?? c.customerId ?? "") ?? `（一条${啥}）`, 原名: 叫.get(c.原) ?? "原负责人", 新名: 叫.get(c.新) ?? "另一位同事" };
+    };
+    const 按人 = new Map<string, (改分条 & { 原: string })[]>();
+    for (const c of 算的) {
+      // 原负责人另有通知（批量改负责人已发 改负责人通知 给他，内容一样）：只补直属上级
+      for (const id of 负责人和上级(org, c.原, 谁点的.id)) if (id !== c.新 && !(opt.原负责人另有通知 && id === c.原)) 按人.set(id, [...(按人.get(id) ?? []), c]);
+    }
+    for (const [收, 们] of 按人) {
+      const 句们 = 们.map(一句);
+      const 页 = 们.every((c) => c.customerId && !c.projectId && !c.leadId) ? "/customers" : 们.every((c) => c.leadId) ? "/leads" : "/projects";
+      let title: string;
+      if (们.length === 1) {
+        const x = 句们[0];
+        title = 们[0].原 === 收
+          ? `${谁点的.name} 把你名下的${x.啥}「${x.名}」改分给了 ${x.新名}`
+          : `${谁点的.name} 把 ${x.原名} 名下的${x.啥}「${x.名}」改分给了 ${x.新名}`;
+      } else {
+        title = 们.every((c) => c.原 === 收) ? `${谁点的.name} 把你名下的 ${们.length} 条改分给了别人` : `${谁点的.name} 把下属名下的 ${们.length} 条改分给了别人`;
+      }
+      await notify([收], {
+        kind: "分配",
+        title,
+        body: 们.length === 1 ? `从 ${句们[0].原名} 改到 ${句们[0].新名}` : 名单(句们.map((x) => `${x.啥}「${x.名}」从 ${x.原名} 改到 ${x.新名}`)),
+        link: 页,
+        key: `market-reassign:${们.map((c) => c.projectId ?? c.leadId ?? c.customerId).sort().join(",").slice(0, 400)}:${收}:${分钟()}`,
+      });
+    }
+  });
 }
 
 /**

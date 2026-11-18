@@ -1338,8 +1338,13 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
     */
     const 写 = 企业版() && !能管 ? <T,>(f: () => Promise<T>) => 看全部(f) : <T,>(f: () => Promise<T>) => f();
     return 写(async () => {
-      const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
-      const 好 = 规整沟通(input, { 要下一步, now, 要下一步文字: opt.要下一步文字 });
+      /*
+        组员记（11-19 客户答复；P-沟通-04「只能新记沟通」）：下一步是项目上的格、归负责人管——组员交来的下一步不认、不要求，
+        不写项目的下一步文字 / 时间，也不跑按必填推进
+      */
+      const 组员记 = 企业版() && !能管;
+      const 要下一步 = !组员记 && 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
+      const 好 = 规整沟通(组员记 ? { ...input, 下一步: null, 下一步时间: null } : input, { 要下一步, now, 要下一步文字: !组员记 && opt.要下一步文字 });
       if ("error" in 好) return { ok: false as const, error: 好.error };
       const 阶段问题 = 记沟通阶段问题(input, p);
       if (阶段问题) return { ok: false as const, error: 阶段问题 };
@@ -1358,7 +1363,7 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
       // 下一步：写了文字就文字 + 时间一起换（时间可空，空就清掉上一次的时间）；老入口只给时间，照旧只改时间、文字不动
       if (好.nextStepText) await tx.project.update({ where: { id: p.id }, data: { nextStepText: 好.nextStepText, nextStepAt: 好.nextStepAt } });
       else if (好.nextStepAt) await tx.project.update({ where: { id: p.id }, data: { nextStepAt: 好.nextStepAt } });
-      const 推进 = await 按必填推进(tx, 规则, me, p.id);
+      const 推进 = 组员记 ? [] : await 按必填推进(tx, 规则, me, p.id);
       if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
       await 勾掉将回收提醒(tx, 规则, p, now);
       return { ok: true as const, followUpId: 跟进.id, ...带推进(推进) };
