@@ -178,6 +178,7 @@ export default function RecordView({
   转让要申请 = false,
   自动分配,
   自动分配方向,
+  指定定向,
   原负责人领不回 = false,
   只读: 只读档 = false,
   只读话: 全只读话 = "这是虚线下属的客户：只能看，不能改、不能转",
@@ -702,8 +703,8 @@ export default function RecordView({
    * 「客户转让」（dt.transfer）：选人、一起转走的项目、原因在同一个框里（TransferBox），assignSalesOwner（权限、虚线只读、交接要确认都在服务端挡）。
    * 回 ok:false = 框里写原因不关框；申请移交回一句话、框里原地说；直接转的给底部撤销条
    */
-  async function 发转让(o: { value: string; label: string }, 原因: string | null): Promise<转让结果> {
-    const res = await assignSalesOwner([customer.id], o.value, 原因);
+  async function 发转让(o: { value: string; label: string }, 原因: string | null, 方向?: "内贸" | "外贸"): Promise<转让结果> {
+    const res = await assignSalesOwner([customer.id], o.value, 原因, 方向);
     router.refresh();
     if (!res.ok) return { ok: false, error: res.error };
     // 企业版「交接中」（D10）：负责人还没换，等接手人确认，没有可撤销的——框里原地说一句
@@ -1780,7 +1781,7 @@ export default function RecordView({
           if (saved) router.refresh();
         }}
       />
-      <TransferBox open={转让开} 客户名={customer.name} 候选={转让候选} 要申请={转让要申请} 作废天数={移交作废天数} 原因选项={转让原因?.选项 ?? []} 取预览={取转走预览} 做={发转让} 自动={转让框自动} onClose={() => set转让开(false)} />
+      <TransferBox open={转让开} 客户名={customer.name} 候选={转让候选} 定向={指定定向} 要申请={转让要申请} 作废天数={移交作废天数} 原因选项={转让原因?.选项 ?? []} 取预览={取转走预览} 做={发转让} 自动={转让框自动} onClose={() => set转让开(false)} />
       {头部框 && (
         <Modal open title={`${头部框 === "关联客户" && 去项目跟进 ? 客户详情左栏.关联 : 客户头部框叫法[头部框]} · ${customer.name}`} footer={null} width={头部框 === "转让" ? 480 : 640} onCancel={() => set头部框(null)}>
           {头部框 === "管理联系人" && (

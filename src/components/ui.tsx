@@ -87,6 +87,7 @@ export function StatCard({
   deltaLabel = "较上月",
   note,
   href,
+  noteHref,
 }: {
   icon: React.ReactNode;
   color: string;
@@ -99,10 +100,12 @@ export function StatCard({
   note?: string;
   /** 点这张卡去哪把这个数重新数一遍 */
   href?: string;
+  /** 小字说的是另一个数、另有去处（审核 11-18 统计 P2-2：异常卡上「公海里还有 N 个」去公海页）：小字单独成一个链接，不套进整张卡的链接里 */
+  noteHref?: string;
 }) {
   const up = (delta ?? 0) >= 0;
-  const 卡 = (
-    <div className={`card-soft stat-card${href ? " stat-card-go" : ""}`}>
+  const 头 = (
+    <>
       <div className="stat-label">
         <span>{label}</span>
         <span className="stat-icon" style={{ color }}>
@@ -110,6 +113,11 @@ export function StatCard({
         </span>
       </div>
       <div className="stat-value">{value}</div>
+    </>
+  );
+  const 卡 = (
+    <div className={`card-soft stat-card${href ? " stat-card-go" : ""}`}>
+      {头}
       {delta !== undefined ? (
         <div className="stat-delta">
           {deltaLabel}{" "}
@@ -126,6 +134,21 @@ export function StatCard({
       ) : null}
     </div>
   );
+  if (note && noteHref && delta === undefined) {
+    // 两个去处：卡身（标签 + 数）一个链接、小字一个链接，不嵌套 <a>
+    return (
+      <div className={`card-soft stat-card${href ? " stat-card-go" : ""}`}>
+        {href ? (
+          <Link href={href} aria-label={`${label}：${value}，查看明细`} className="stat-card-main">
+            {头}
+          </Link>
+        ) : (
+          头
+        )}
+        <Link href={noteHref} className="stat-delta stat-note-link">{note}</Link>
+      </div>
+    );
+  }
   return href ? (
     <Link href={href} aria-label={`${label}：${value}，查看明细`}>
       {卡}

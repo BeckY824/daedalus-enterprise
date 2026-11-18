@@ -244,6 +244,26 @@ it("项目能记：不再问客户明确回复了吗，下一步计划必填，�
   } finally { await page.close(); }
 });
 
+it("组员记（审核 11-18 权限 P1-11）：须知说是组员——不摆下一步计划、下一步时间；不写下一步也存得上，交上去不带下一步；1024 / 1280 / 1366", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    const { page, errors } = await open({ 项目: "有", 须知: { ...须知(null), 要下一步: false, 组员记: true } }, w);
+    try {
+      await page.locator("#content").waitFor();
+      expect(await 格(page, "下一步计划").count()).toBe(0);
+      expect(await page.locator('label:text-is("下一步时间")').count()).toBe(0);
+      await page.locator("#content").fill("组员聊了报价");
+      await page.getByRole("button", { name: /保\s*存/ }).click();
+      await page.waitForFunction(() => Reflect.get(window, "__项目存"));
+      const 交 = await page.evaluate(() => Reflect.get(window, "__项目存") as Record<string, unknown>);
+      expect(交).toMatchObject({ content: "组员聊了报价" });
+      expect(交.下一步 ?? null).toBeNull();
+      expect(交.下一步时间 ?? null).toBeNull();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
 it("项目不能记（比如已结束）、规则关着：照旧走 saveFollowUp；不显示回收日预演", async () => {
   const { page, errors } = await open({ 项目: "有", 须知: { ok: true, 能记: false } });
   try {

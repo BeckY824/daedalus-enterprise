@@ -385,7 +385,8 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     }
   });
 
-  it("线索负责人不是转换人：按真身份（带限定）转客户也成，首条沟通和最近跟进记上（11-05 同类排查）", async () => {
+  // 审核 11-18 权限 P1-9：企业版老线索表转客户（convertLead）一进门就拦，谁转都不建客户、不写沟通；新线索走项目
+  it("老线索转客户（convertLead）企业版一进门就拦：哪种身份转都不建客户、不写沟通", async () => {
     await setSetting("enterprise.rule.org_scope", true);
     await setSetting(市场成员key, [市场]);
     忘掉企业版范围();
@@ -393,14 +394,10 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
       当(我, 我 === 老板 ? "ADMIN" : "SALES"); 号++;
       const lid = (await prisma.lead.create({ data: { name: `转线索${号}`, phone: `1393333${String(号).padStart(4, "0")}`, ownerId: 线索主 } })).id;
       const r = await 以谁的身份(我, () => convertLead(lid, { type: "PHONE", content: "聊了需求", occurredAt: "2026-10-20 10:00", 节点: "潜客培育", 明确回复: false }));
-      expect([我, 线索主, r]).toMatchObject([我, 线索主, { ok: true }]);
-      if (!r.ok) return;
-      const c = await prisma.customer.findUniqueOrThrow({ where: { id: r.customerId } });
-      expect(c.salesOwnerId).toBe(线索主);
-      expect(c.lastFollowAt).not.toBeNull();
-      expect(r.projectId).toBeTruthy();
-      expect(await prisma.followUpProject.count({ where: { projectId: r.projectId! } })).toBe(1);
+      expect(r).toMatchObject({ ok: false, error: expect.stringContaining("新建线索") });
     }
+    expect(await prisma.customer.count({ where: { name: { startsWith: "转线索" } } })).toBe(0);
+    expect(await prisma.followUp.count({ where: { content: "聊了需求" } })).toBe(0);
   });
 
   it("指定分配只能给销售 / 销售管理（11-03 A2-1）：指给渠道运营、市场管理拦下、一行不写", async () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { 登记页面行 } from "@/lib/page-rows";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
 import { Table, Button, Dropdown, Checkbox, Grid } from "antd";
@@ -83,7 +83,9 @@ type Props<T> = {
    * 不给 = 在浏览器里分页（行已经一次全拿下来了，多数列表页是这样）。
    * 给了 = 服务端分页，由调用方去翻。false = 不分页。
    */
-  分页?: { 当前页: number; 每页: number; 总数: number; 翻页: (页: number, 每页: number) => void } | false;
+  分页?: { 当前页: number; 每页: number; 总数: number; 翻页: (页: number, 每页: number) => void;
+    /** 一行不一定是同一种东西时写清单位（审核 11-18 统计 P2-2，公海页：客户行、线索公海项目行）：给了就替换「共 N 条」里的「条」那句，数照旧滚 */
+    单位?: (总数: ReactNode) => ReactNode } | false;
   排序?: (key: string, order: SortOrder) => void;
   /**
    * 这一页只取了前 N 条时，库里到底有多少。
@@ -446,7 +448,7 @@ export default function DataList<T extends { id: string }>({
                   current: 分页.当前页,
                   pageSize: 分页.每页,
                   total: 分页.总数,
-                  showTotal: (t) => <>共 {总数(t)} 条</>,
+                  showTotal: (t) => (分页.单位 ? 分页.单位(总数(t)) : <>共 {总数(t)} 条</>),
                   showSizeChanger: true,
                   onChange: 换页(分页.每页, 分页.翻页),
                 }

@@ -53,7 +53,8 @@ export async function 看板的人(user: { id: string; role: string }, 要看?: 
   const 只看 = 要看 && 可选.includes(要看) ? 要看 : undefined;
   const 谁 = 只看 ? [只看] : 全看 ? undefined : 可选;
   if (可选.length <= 1) return { 只看, 谁, 选项: null };
-  const users = await prisma.user.findMany({ where: { id: { in: 可选 } }, select: { id: true, name: true, email: true }, orderBy: { name: "asc" } });
+  // 停用的人（留在停用前上级的链里，算在「全部」里数）不进下拉（审核 11-18 统计 P2-6）
+  const users = await prisma.user.findMany({ where: { id: { in: 可选 }, active: true }, select: { id: true, name: true, email: true }, orderBy: { name: "asc" } });
   // 自己排第一个，管理层最常看的是自己和全部
   users.sort((a, b) => Number(b.id === user.id) - Number(a.id === user.id));
   return { 只看, 谁, 选项: 成员选项(users) };

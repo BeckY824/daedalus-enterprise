@@ -38,7 +38,7 @@ export type { 企业联系人资料 } from "./contact-input";
 import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类表, 联系人号码们 } from "@/lib/enterprise/customer-v2-db";
 import { 联系人姓名问题 } from "@/lib/enterprise/customer-v2";
 import { 摘联系人号 } from "@/lib/enterprise/contact-number-detach";
-import { 联系人查重, 联系人撞号话, type 撞到的联系人 } from "@/lib/enterprise/contact-dedupe";
+import { 联系人查重, 联系人撞号话, 联系人回收站撞, 联系人回收站撞话, type 撞到的联系人 } from "@/lib/enterprise/contact-dedupe";
 import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
 import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
 import { 存沟通后重算三态, 记首次有效 } from "@/lib/enterprise/tri-state-db";
@@ -804,18 +804,21 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
             .map(([kind, v]) => ({ kind, value: (v ?? "").trim(), numberKey: 老键(kind, v) }))
             .filter((x) => x.numberKey)
         : [];
-    if (查的行们.length && !input.照存) {
+    if (查的行们.length) {
       const 原有 = new Set((原?.contactMethods ?? []).map((x) => `${x.kind}|${x.numberKey}`));
       if (原) for (const [kind, v] of [["phone", 原.phone], ["email", 原.email], ["wechat", 原.wechat]] as const) {
         const 键 = 老键(kind, v);
         if (键) 原有.add(`${kind}|${键}`);
       }
       const 新的 = 查的行们.filter((x) => !原有.has(`${x.kind}|${x.numberKey}`));
-      const 撞了 = 新的.length ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), input.id, 主客户) : [];
+      const 撞了 = 新的.length && !input.照存 ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), input.id, 主客户) : [];
       if (撞了.length) {
         const 表 = await 号码种类表();
         return { ok: false as const, error: 联系人撞号话(撞了, (k) => 种类叫法(表, k), 主客户), 撞了 };
       }
+      // 在用的没撞、回收站里撞了（审核 11-18 新建入口 P2-6，P-删-08，同建档入口）：拦下给捞回，「仍然保存」也不放
+      const 回收站 = 企业版() && 新的.length ? await 联系人回收站撞(prisma, 新的) : null;
+      if (回收站) return { ok: false as const, error: 联系人回收站撞话, 回收站 };
     }
     const data = { ...规整(input), phone: 电话.phone, ...(企?.ok ? 企.data : {}), isPrimary: 主要, customerId: 主客户 };
     const 落库id = await prisma.$transaction(async (tx) => {

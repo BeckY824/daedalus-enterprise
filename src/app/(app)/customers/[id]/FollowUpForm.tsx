@@ -818,6 +818,8 @@ export default function FollowUpForm({
                 <卡点格 默认={须知.卡点默认} 原因们={须知.卡点原因们 ?? []} 值={卡点} on改={(x) => { set卡点(x); 守.改了(); }} />
               </Col>
             )}
+            {/* 组员记（审核 11-18 权限 P1-11）：下一步是负责人的格，不摆下一步计划、下一步时间 */}
+            {!须知.组员记 && (<>
             <Col span={24}>
               <Form.Item name="下一步" preserve={false} label="下一步计划" rules={[requiredText("请写下一步计划")]}>
                 <Input maxLength={下一步文字上限} showCount placeholder="比如：周五前发报价单给对方采购" />
@@ -857,6 +859,7 @@ export default function FollowUpForm({
                 </Space>
               </Form.Item>
             </Col>
+            </>)}
             <Col span={24}>
               <Form.Item label="截图 / 录音" extra="可不传，保存后挂在这条沟通上；也可以直接粘贴截图">
                 <选沟通附件 文件们={附件们} on改={(x) => { set附件们(x); 守.改了(); }} />

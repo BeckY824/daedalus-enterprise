@@ -13,6 +13,7 @@ import { dayjs } from "@/lib/utils";
 import { 性别们, 爱好上限, 联系人地址上限, 号码上限, 每人最多号码, 联系人姓名问题, 姓名号码至少一项 } from "@/lib/enterprise/customer-v2";
 import { saveContact, saveUnassignedContact, 联系人号码先查 } from "./actions";
 import { 挂到客户 } from "./contact-link-actions";
+import RescueKey from "../RescueKey";
 import type { 撞到的联系人 } from "@/lib/enterprise/contact-dedupe";
 import type { ContactRow } from "./types";
 import { useBusiness } from "@/lib/business-client";
@@ -83,7 +84,7 @@ export default function ContactForm({
    * 换一个存法（默认 saveContact）：受限客户详情（只负责项目的人）走 project-only-contact-actions.ts。
    * 给了就不摆「关键联系人」开关、撞号时不摆「挂到本客户」（那边都不收）
    */
-  存法?: (x: Parameters<typeof saveContact>[0]) => Promise<{ ok: true; id: string } | { ok: false; error: string; 撞了?: 撞到的联系人[] }>;
+  存法?: (x: Parameters<typeof saveContact>[0]) => Promise<{ ok: true; id: string } | { ok: false; error: string; 撞了?: 撞到的联系人[]; 回收站?: { 类型: string; 值: string } }>;
 }) {
   const [form] = Form.useForm();
   const b = useBusiness();
@@ -154,6 +155,8 @@ export default function ContactForm({
    * 人核对后可以「仍然保存」（同一个号两个人用），或在客户页上直接把那位挂到这位客户上
    */
   const [撞号, set撞号] = useState<撞到的联系人[] | null>(null);
+  /** 号码在回收站里的客户上（审核 11-18 新建入口 P2-6，P-删-08）：拦下，框顶上摆「从回收站捞回」（同建档入口） */
+  const [回收站号, set回收站号] = useState<{ 类型: string; 值: string } | null>(null);
   /** 撞号是失焦先查出来的（还没点保存）：黄条标题换一句；点保存撞了的照旧 */
   const [先查的, set先查的] = useState(false);
   const 查序 = useRef(0);
@@ -173,7 +176,7 @@ export default function ContactForm({
   const [上次开着, set上次开着] = useState(open);
   if (上次开着 !== open) {
     set上次开着(open);
-    if (open) set撞号(null);
+    if (open) { set撞号(null); set回收站号(null); }
   }
   /** 黄条里「挂到本客户」「仍然保存」没成的原因：就地写在框顶上（不弹顶部提示，原型 g.notice） */
   const [就地错, set就地错] = useState<string | null>(null);
@@ -235,6 +238,7 @@ export default function ContactForm({
     // 原来不看返回值：联系人刚被别人移出、或电话不收时，弹框卡在那儿什么也不说（排查 D8）
     if (!r.ok) {
       if ("撞了" in r && r.撞了?.length) { set先查的(false); set撞号(r.撞了); return { ok: false, error: "号码撞了，看框顶上" }; }
+      if ("回收站" in r && r.回收站) { set回收站号(r.回收站); return { ok: false, error: "号码在回收站里，看框顶上" }; }
       return { ok: false, error: r.error };
     }
     守.存好了();
@@ -276,6 +280,16 @@ export default function ContactForm({
   const 身 = (
     <>
       {就地错 && <div className="csq-err" role="alert">{就地错}</div>}
+      {回收站号 && (
+        <Alert
+          type="warning"
+          showIcon
+          className="cf-trash-hit"
+          data-testid="contact-trash-hit"
+          message="这个号码在回收站里的客户上，本次没保存"
+          description={<RescueKey 类型={回收站号.类型} 值={回收站号.值} 捞回了={() => {}} />}
+        />
+      )}
       {撞号 && (
         <Alert
           type="warning"
@@ -319,7 +333,7 @@ export default function ContactForm({
         />
       )}
       {守.提示}
-      <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={() => { 守.改了(); 查序.current++; if (撞号) set撞号(null); }}>
+      <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={() => { 守.改了(); 查序.current++; if (撞号) set撞号(null); if (回收站号) set回收站号(null); }}>
         <Row gutter={16}>
           {/* 从联系人列表进来时先选人：联系人挂在某一位学员下面，没有归属的联系人没有意义 */}
           {!customerId && (

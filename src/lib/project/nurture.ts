@@ -16,6 +16,7 @@ import { 系统建项目分配方式, type 建给自己记 } from "./self-assign
 import { 看全部 } from "../team-scope";
 import { 看已删 } from "../enterprise/soft-delete-core";
 import { 历史分析来源 } from "./system-created";
+import { 项目业务线 } from "../enterprise/assign-line";
 
 /** 要不要补：企业版且开了项目模式才补（纯判断，方便单测钉住「没开项目模式时不建」） */
 export function 要补潜客培育(企业: boolean, 项目模式: boolean | undefined): boolean {
@@ -44,10 +45,15 @@ export async function 补潜客培育(
 ): Promise<string | null> {
   if (await tx.project.count({ where: { customerId: a.customerId, ...算有项目 } })) return null;
   const 联系人 = await tx.contact.findFirst({ where: { customerId: a.customerId, isPrimary: true }, select: { id: true } });
+  /*
+    业务线（X-86 A1，用户 11-01「项目业务线永不为空」；审核 11-18 节点 P2-1）：新项目自己没有线 → 负责人的线 → 内贸，和运行时 项目业务线 读到的一样。
+    不取客户标签：A1 的顺序里没有它，取了会让标签和负责人线对不上的客户悄悄换分配候选
+  */
+  const 负责人线 = a.ownerId ? (await tx.entMember.findUnique({ where: { userId: a.ownerId }, select: { line: true } }))?.line : null;
   const 项目 = await tx.project.create({
     data: {
       name: a.客户名.trim().slice(0, 项目名上限) || "潜客培育", customerId: a.customerId, contactId: 联系人?.id ?? null,
-      ownerId: a.ownerId, creatorId: a.creatorId, amount: 0, currency: 默认币种,
+      ownerId: a.ownerId, creatorId: a.creatorId, amount: 0, currency: 默认币种, bizLine: 项目业务线({ ownerId: a.ownerId }, new Map(a.ownerId ? [[a.ownerId, { line: 负责人线 }]] : [])),
       phase: 第一个节点.phase, node: 第一个节点.node,
       ...新项目默认值(true, { 分配方式: a.分配方式 ?? (await 系统建项目分配方式(tx, a.ownerId, a.creatorId, 记)), 项目来源: null }),
     },

@@ -104,7 +104,7 @@ describe("渠道投入", () => {
   const 录 = (amount = 300, x: Partial<Parameters<typeof addChannelInvest>[0]> = {}) =>
     addChannelInvest({ channelId: 渠道, amount, currency: "CNY", date: "2026-10-20", remark: "十月投流", ...x });
 
-  it("只有总管理、市场管理能录（11-01 只认业务角色）；渠道负责人、销售管理、销售不能录但能看", async () => {
+  it("只有系统管理员（不设线的总管理）、市场管理能录（11-01 只认业务角色；审核 11-18 条线总管理不能录）；渠道负责人、销售管理、销售不能录但能看", async () => {
     expect((await 录(100)).ok).toBe(true);
     当(总管);
     expect((await 录(200)).ok).toBe(true);
@@ -112,9 +112,9 @@ describe("渠道投入", () => {
     expect((await 录(50)).ok).toBe(true);
     for (const 谁 of [负责人, 销售经理, 销售]) {
       当(谁);
-      expect(await 录(1)).toEqual({ ok: false, error: "渠道投入只有总管理、市场管理能录，别的角色只能看" });
+      expect(await 录(1)).toEqual({ ok: false, error: "只有系统管理员、市场管理能录渠道投入，别的角色只能看" });
       const 看 = await listChannelInvests(渠道);
-      expect(看).toMatchObject({ ok: true, 能录: false, 不能录因: "渠道投入只有总管理、市场管理能录，别的角色只能看" });
+      expect(看).toMatchObject({ ok: true, 能录: false, 不能录因: "只有系统管理员、市场管理能录渠道投入，别的角色只能看" });
       expect((看 as { rows: unknown[] }).rows).toHaveLength(3);
     }
     当(市场经理);

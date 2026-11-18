@@ -267,23 +267,16 @@ describe("同号再次录入", () => {
 });
 
 describe("入口", () => {
-  it("新建线索撞号：不新建线索，来源和备注写进现有项目，反馈明确", async () => {
+  // 审核 11-18 权限 P1-9：企业版老线索表入口（saveLead）一进门就拦，撞不撞号都不建、不写现有项目；同号协同由「新建线索」（项目）入口走
+  it("老线索入口（saveLead）企业版一进门就拦：撞号、没撞号都不建线索、不写跟进", async () => {
     const x = await 现场();
-    const r = await 作为(x.市场, () => saveLead({ name: "再录一次", phone: 号码, email: "", contact: "", industry: "", source: "官网表单", status: "待跟进", remark: "官网又来询价", ownerId: "" } as never));
-    expect(r).toMatchObject({ ok: false, 同号协同: true });
-    expect(await prisma.lead.count()).toBe(0);
-    const f = await prisma.followUp.findFirst({ where: { customerId: x.客户.id } });
-    expect(f?.content).toContain("来源：官网表单");
-    expect(f?.content).toContain("官网又来询价");
-    expect(f?.title).toBe("同号再次录入（来源不同）");
-  });
-
-  it("新建线索没撞号：照常建", async () => {
-    await 现场();
+    const 撞 = await 作为(x.市场, () => saveLead({ name: "再录一次", phone: 号码, email: "", contact: "", industry: "", source: "官网表单", status: "待跟进", remark: "官网又来询价", ownerId: "" } as never));
+    expect(撞).toMatchObject({ ok: false, error: expect.stringContaining("新建线索") });
     const 新人 = await 人("mkt2", "小己", "channel_ops");
-    const r = await 作为(新人, () => saveLead({ name: "新来的", phone: "13900139000", email: "", contact: "", industry: "", source: "官网表单", status: "待跟进", remark: "", ownerId: "" } as never));
-    expect(r.ok).toBe(true);
-    expect(await prisma.lead.count()).toBe(1);
+    const 没撞 = await 作为(新人, () => saveLead({ name: "新来的", phone: "13900139000", email: "", contact: "", industry: "", source: "官网表单", status: "待跟进", remark: "", ownerId: "" } as never));
+    expect(没撞).toMatchObject({ ok: false });
+    expect(await prisma.lead.count()).toBe(0);
+    expect(await prisma.followUp.count({ where: { customerId: x.客户.id } })).toBe(0);
   });
 
   const 客户输入 = (号: string, channelId: string | null, 负责人: string) => ({

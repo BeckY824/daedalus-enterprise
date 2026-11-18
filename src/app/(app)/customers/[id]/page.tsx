@@ -33,6 +33,7 @@ import { 客户在市场手里 } from "@/lib/enterprise/market-transfer";
 import { 页面可自动分配, 暂不分配项目of } from "@/lib/enterprise/cust-auto-assign";
 import { 客户默认分配方向 } from "@/lib/enterprise/assign-direction-db";
 import { 读组织 } from "@/lib/enterprise/org";
+import { 要按方向指定, 指定方向候选表 } from "@/lib/enterprise/assign-direction-pick";
 import { 客户自动分配 } from "../../leads/assign-actions";
 import { 附件个数, 联系人分类附件数 } from "@/lib/attachments";
 import { 关联客户们, 页面号码种类表, 联系人号码们, 客户的联系人们, 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
@@ -234,6 +235,13 @@ export default async function CustomerDetailPage({
 
   // 客户转让框里「指定分配 / 自动分配」的选择（客户 11-17）：市场成员 + 暂不分配的客户才摆，判定和服务端 客户自动分配 同一份
   const 能自动分 = 企 && !customer.pool && !!customer.salesOwnerId && (await 页面可自动分配(me, { id: customer.id, salesOwnerId: customer.salesOwnerId, bizLine: customer.bizLine, pool: null }));
+  // 市场成员指定分配也先定方向（P-转-26，11-18）：判定同服务端 assignSalesOwner 那道（assign-direction-pick.ts）
+  const 定向项目 = 企 && !customer.pool && !!customer.salesOwnerId
+    ? await 要按方向指定(me, (await 权限组织())!, { id: customer.id, salesOwnerId: customer.salesOwnerId, bizLine: customer.bizLine, pool: null })
+    : null;
+  const 指定定向 = 定向项目
+    ? { 候选表: await 指定方向候选表(await 读组织()), 默认方向: await 客户默认分配方向(await 读组织(), customer.id, me.id, 定向项目) }
+    : undefined;
   return (
     <CustomerDetail
       key={customer.id}
@@ -256,6 +264,7 @@ export default async function CustomerDetailPage({
         && !客户在市场手里((await 权限组织())!, { salesOwnerId: customer.salesOwnerId, pool: null })
       }
       自动分配={能自动分 ? 客户自动分配 : undefined}
+      指定定向={指定定向}
       // 分配方向的默认值（11-18）：客户区域 → 那条暂不分配项目的所在地 → 客户的号 → 我的事业部；框里可以改
       自动分配方向={能自动分 ? await 客户默认分配方向(await 读组织(), customer.id, me.id, await 暂不分配项目of({ id: customer.id, salesOwnerId: customer.salesOwnerId!, bizLine: customer.bizLine })) : undefined}
       原负责人领不回={!!customer.pool && 拦原负责人() && (await 我放出去的公海客户([{ id: customer.id, 在公海: true, salesOwnerId: customer.salesOwnerId }], me.id)).length > 0}

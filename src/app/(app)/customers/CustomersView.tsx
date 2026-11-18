@@ -248,6 +248,11 @@ type Props = {
    * 其他角色不给。看板（服务端的、本地的）都不摆
    */
   仅项目行?: 仅项目列表行[];
+  /**
+   * 企业版「待我复核」（审核 11-18 节点 P2-3，P-线索-02）：列表视图顶上摆，和项目列表、首页同一份；看板视图里项目列表自己带。
+   * 页面（服务端）画好 <VerifyInbox> 递进来：这里不引它，免得客户列表连带引 projects/actions
+   */
+  待复核?: ReactNode;
   /** 「仅项目」超过上限（50 位）：块上写「前 50 位」，更多去看板 */
   仅项目超了?: boolean;
   /** 进程下拉里结局的叫法（组织规则里改过的出口叫法，同项目页） */
@@ -325,7 +330,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 自动分配预看, 批量自动分配客户, 金额排序 = "", 等级排序 = "", 创建排序 = "", 跟进排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 建档要取 = false, 待交接 = null, 项目概况, 最近一句, 仅项目行 = [], 仅项目超了 = false, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false, 阶段太多 = false,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 自动分配预看, 批量自动分配客户, 金额排序 = "", 等级排序 = "", 创建排序 = "", 跟进排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 建档要取 = false, 待交接 = null, 项目概况, 最近一句, 仅项目行 = [], 仅项目超了 = false, 待复核, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false, 阶段太多 = false,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -382,7 +387,7 @@ export default function CustomersView({
     return {
       预看: async () => {
         const r = await 自动分配预看(ids);
-        return r.ok ? { 可: r.可.length, 不可: r.不可.map((x) => ({ name: x.name, error: x.error })) } : null;
+        return r.ok ? { 可: r.可.length, 不可: r.不可.map((x) => ({ name: x.name, error: x.error })), ...(r.定向 ? { 定向: r.定向 } : {}) } : null;
       },
       做: async (原因: string | null): Promise<自动结果> => {
         const r = await 批量自动分配客户(ids, 原因);
@@ -1196,11 +1201,11 @@ export default function CustomersView({
         原因选项={转让原因?.选项}
         自己={转让原因?.自己}
         自动={转让框自动}
-        做={async (人id, 原因) => {
+        做={async (人id, 原因, 方向) => {
           if (!转让框) return;
           const ids = 转让框.ids;
           const 名 = 成员选项(users).find((o) => o.value === 人id)?.label ?? "";
-          const res = await assignSalesOwner(ids, 人id, 原因);
+          const res = await assignSalesOwner(ids, 人id, 原因, 方向);
           // 权限被挡、交接中……：原因写在框里，框不关，不提示成功
           if (!res.ok) return res;
           // 企业版「交接中」（D10）：一位都没发起 = 没成，原因写在框里
@@ -1481,7 +1486,7 @@ export default function CustomersView({
           if (key === "lastFollowAt") apply({ sort: order === "ascend" ? "follow-asc" : order === "descend" ? "follow-desc" : "" });
         }}
         替表格={看板体 !== undefined ? 看板体 : 看法 === "看板" ? <CustomerBoard 行们={rows} 字典={客户属性字典} 加载中={pending} 页={page} 每页={pageSize} 总数={total} 翻页={翻页} 去={(id) => router.push(`/customers/${id}`)} /> : undefined}
-        汇总={<>{看板体 === undefined && 看法 !== "看板" && <ProjectOnlyBlock 行们={仅项目行} 超了={仅项目超了} />}{金额排序 && <Space wrap style={{ marginBottom: 12 }}><span>金额按</span><CurrencySelect aria-label="金额排序币种" value={f.sortCurrency || b.currency} onChange={v => apply({ sortCurrency: v })}/><span>在全部筛选结果中{金额排序 === "amount-asc" ? "升序" : "降序"}排列；其他币种不相加</span></Space>}</>}
+        汇总={<>{看板体 === undefined && 看法 !== "看板" && 待复核}{看板体 === undefined && 看法 !== "看板" && <ProjectOnlyBlock 行们={仅项目行} 超了={仅项目超了} />}{金额排序 && <Space wrap style={{ marginBottom: 12 }}><span>金额按</span><CurrencySelect aria-label="金额排序币种" value={f.sortCurrency || b.currency} onChange={v => apply({ sortCurrency: v })}/><span>在全部筛选结果中{金额排序 === "amount-asc" ? "升序" : "降序"}排列；其他币种不相加</span></Space>}</>}
         分页={{
           当前页: page,
           每页: pageSize,

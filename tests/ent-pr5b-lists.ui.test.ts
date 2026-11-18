@@ -22,6 +22,8 @@ const 记 = `const 记=(名,成={ok:true})=>async(...x)=>{(window.__调=window._
 const plugin: Plugin = { name: "pr5b-lists", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, (a) => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},replace(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
+  // 联系人表单撞回收站摆「从回收站捞回」（审核 11-18 新建入口 P2-6）：RescueKey 引的服务端动作
+  stub(/^\.\/number-actions$/, "export const 从回收站捞回=async()=>({ok:false,error:'桩'});");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
   stub(/settings\/actions$/, "export const deactivateUser=async()=>({ok:true});");
   // 交接、挂靠两页的 ./actions 合在一份假的里

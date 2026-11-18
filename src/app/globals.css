@@ -970,6 +970,10 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
   color: var(--text-muted);
   margin-top: 8px;
 }
+/* 指标卡小字另有去处（审核 11-18 统计 P2-2）：卡身一个链接、小字一个链接 */
+.stat-card-main { display: block; color: inherit; }
+.stat-note-link { display: block; color: var(--text-muted); text-decoration: underline; text-underline-offset: 2px; }
+.stat-note-link:hover { color: var(--brand); }
 
 .section-title {
   font-size: var(--fs-body);
@@ -5025,6 +5029,8 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 /* 客户列表 / 导入抽屉 / 回收站捞回：就地一行提示（不弹顶部 message，原型 g.save / g.notice）。错 = 红，警 = 橙，常 = 灰 */
 .cu-said { display: block; margin: 0 0 var(--s2); font-size: var(--fs-note); line-height: 1.6; color: var(--text-muted); overflow-wrap: anywhere; min-width: 0; animation: cd-pj-flash-in var(--t) var(--ease); }
 .cu-said-row { margin-bottom: var(--s3); }
+/* 联系人表单：号码在回收站里（审核 11-18 新建入口 P2-6），黄条里摆「从回收站捞回」 */
+.cf-trash-hit { margin-top: var(--s2); }
 .cu-said-warn { color: var(--warning-text); }
 .cu-said-err { color: var(--danger-text); }
 span.cu-said { display: inline; margin: 0 0 0 var(--s2); }

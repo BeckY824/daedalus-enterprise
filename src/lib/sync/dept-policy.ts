@@ -32,6 +32,8 @@ export const 是只读角色们 = (们: readonly string[]): boolean => 们.some(
 export const 教练不能兼的角色: readonly 业务角色[] = ["sales_mgr", "sales", "channel_ops", "marketing_mgr", "project_ops"];
 /** 这组角色能不能一起设：能 = null；不能 = 那一句（设置页下拉、服务端 设成员 共用） */
 export function 角色组合问题(们: readonly string[]): string | null {
+  // 只读管理员是这个人的身份（一票否决，P-判定-02、P-转-01）：兼别的角色会和「任一角色放行」打架，存的时候就拦（审核 11-18 权限 P2-1）
+  if (们.includes("admin") && 们.some((r) => r !== "admin")) return "只读管理员不兼其他业务角色";
   if (!们.includes("coach")) return null;
   const 撞 = 教练不能兼的角色.filter((r) => 们.includes(r));
   return 撞.length ? `销售教练不能兼${撞.map((r) => 角色名[r]).join("、")}：教练只看不改，要兼的话请分两个账号` : null;

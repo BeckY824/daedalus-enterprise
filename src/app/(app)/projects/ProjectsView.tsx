@@ -440,10 +440,11 @@ export default function ProjectsView({
     ...(可分 ? [{
       title: "", key: "act", width: 150, fixed: "right" as const,
       // 客户公海里的项目跟客户走，不单独分（线索公海的 pooled 也是真，所以不看 pooled；服务端也拦）；
-      // 例外：销售管理 / 总管理能「分配」，客户整包出公海（P-公海-10），不摆自动分配
+      // 例外：销售管理 / 总管理能「分配」，客户整包出公海（P-公海-10），不摆自动分配。
+      // 线索公海的行（客户不在公海）：服务端按「能管公海」拦（P-转-02），市场管理这类管不了公海的不摆两颗键（审核 11-18 分配 P0-3 界面余项）
       render: (_: unknown, r: 项目行) => (分配果们[r.id] ? <分配果标 果={分配果们[r.id]} /> : r.result ? null : r.客户在公海 ? (能分公海客户项目 ? (
         <Button aria-label={`分配 ${r.name}`} type="link" size="small" onClick={() => set分配中(r)}>分配</Button>
-      ) : null) : (
+      ) : null) : r.pooled && !能分公海客户项目 ? null : (
         <Space size={2}>
           <Button aria-label={`分配 ${r.name}`} type="link" size="small" onClick={() => set分配中(r)}>分配</Button>
           <Button aria-label={`自动分配 ${r.name}`} type="link" size="small" onClick={() => void 自动分(r)}>自动分配</Button>
