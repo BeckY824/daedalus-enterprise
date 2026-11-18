@@ -43,11 +43,11 @@ beforeAll(async () => {
     const 长='某某超长贸易进出口有限公司'.repeat(6);
     const users=[{id:'me',name:'小王',email:'s1',role:'SALES',active:true},{id:'u2',name:'一个名字特别特别长的同事'.repeat(2),email:'s2',role:'SALES',active:true}];
     const 行=(id,owner)=>({id,name:长+id,phone:'1380000000'+id.slice(1),school:null,grade:null,major:null,followStatus:'待跟进',decisionStatus:'了解中',custStatus:'跟进中',salesOwnerId:owner,salesOwnerName:owner==='me'?'小王':users[1].name,createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',lastFollowAt:'2026-11-01T00:00:00.000Z',signedAmount:0,referrerCustomerId:null,referrerName:null,channelId:null,channelName:null,expectedSignAt:null,remark:null,addrCountry:'阿拉伯联合酋长国',extra:{level:'A'},customerNo:12});
-    const rows=[行('c1','me'),行('c2','u2'),行('c3','me')];
+    const rows=window.__空?[]:[行('c1','me'),行('c2','u2'),行('c3','me')];
     const 管=!!window.__管理;
     const 范围={值:window.__范围||(管?'visible':'mine'),默认:管?'visible':'mine',选项:管?['mine','joined','visible']:['mine','joined']};
     createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'me',name:'小王'}}>
-      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:'',node:'',scope:范围.值}} 客户数={3} 企业版 项目看板 能新建和领取 客户范围={范围}/>
+      <CustomersView rows={rows} total={rows.length} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:'',node:'',scope:范围.值}} 客户数={3} 企业版 项目看板 能新建和领取 客户范围={范围}/>
     </我Provider></BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [列表桩], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
@@ -64,7 +64,7 @@ async function 开(w: number, 设: Record<string, unknown> = {}): Promise<{ page
   await page.addStyleTag({ content: w >= 768 ? "#root{margin-left:220px;padding:22px 26px}" : "#root{padding:12px 16px}" });
   await page.evaluate((x) => Object.assign(window, x), 设);
   await page.addScriptTag({ content: 包 });
-  await page.locator("tr.ant-table-row").first().waitFor();
+  await page.locator(设.__空 ? ".cust-scope" : "tr.ant-table-row").first().waitFor();
   return { page, errors };
 }
 const 范围格 = (page: Page) => page.locator(".cust-scope");
@@ -132,6 +132,32 @@ it("手机宽（375）：范围那格在屏内、点得中、页面不横滚，�
     expect(await 量(page)).toEqual({ 字: "我负责的", 字溢出: false, 点得中: true, 页横滚: false, 右界内: true });
     await 选(page, "我参与的");
     await expect.poll(() => 推到(page)).toMatch(/scope=joined/);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+/*
+  空库（PR #354 E2E 红：workbench「空库时不摆筛选栏」、ui-walkthrough「零数据要有空状态」）：服务端总把默认范围补进 filters.scope，
+  原来按「filters 有值 = 在筛」判，空库永远判不出——筛选栏照摆、空态成了「没有符合条件的」。停在默认那项不算筛；换了别的项筛出 0 条才是「没对上」
+*/
+for (const 管 of [false, true]) {
+  it(`空库、停在默认范围（${管 ? "有管理范围" : "销售"}）：不摆筛选栏、画空库引导，范围那格还在`, async () => {
+    const { page, errors } = await 开(1280, { __空: true, __管理: 管 });
+    try {
+      await expect.poll(() => page.locator(".empty-state").count()).toBe(1);
+      expect(await page.locator(".list-bar").count()).toBe(0);
+      expect(await 范围格(page).count()).toBe(1);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}
+
+it("换到非默认范围筛出 0 条：不算空库，筛选栏留着、写「没有符合条件的」", async () => {
+  const { page, errors } = await 开(1280, { __空: true, __范围: "joined" });
+  try {
+    await expect.poll(() => page.locator(".list-none").count()).toBe(1);
+    expect(await page.locator(".empty-state").count()).toBe(0);
+    expect(await page.locator(".list-bar").count()).toBe(1);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
