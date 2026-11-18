@@ -243,7 +243,9 @@ export default function ProposalCard({
     } catch (e) {
       setState("idle");
       // 报错不直出英文（25C）：老版本动作说刷新、断网说网络；别的英文原文进日志，卡上一句中文
-      setErr(给人看的错(e, "没写进去：网络或服务出错，可以再点一次", "AI 卡"));
+      // 卡上要先说「没写进去」，再说原因（ai-status 用例钉的样子）；原因走 25C 的中文化，英文原文进日志
+      const 因 = 给人看的错(e, "网络或服务出错", "AI 卡");
+      setErr(因.startsWith("没写进去") ? 因 : `没写进去：${因}，可以再点一次`);
       return false;
     }
     if (r.ok) {
@@ -307,7 +309,8 @@ export default function ProposalCard({
     try {
       r = await undoProposal(落印.撤销);
     } catch (e) {
-      set撤错(给人看的错(e, "没撤销成功：网络或服务出错，可以再点一次", "AI 卡"));
+      const 因 = 给人看的错(e, "网络或服务出错", "AI 卡");
+      set撤错(因.startsWith("没撤销成功") ? 因 : `没撤销成功：${因}，可以再点一次`);
       return false;
     } finally {
       set撤销中(false);
