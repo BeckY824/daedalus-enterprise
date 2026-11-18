@@ -76,6 +76,7 @@ import { 认业务线, 业务线不认得, 客户业务线必填 } from "@/lib/e
 import type { Prisma } from "@/generated/prisma";
 import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
 import { 交接通知, 分给你通知, 改负责人通知, 同事待分配随客户通知 } from "@/lib/enterprise/notice-sources";
+import { 记新建指定分配 } from "@/lib/enterprise/direct-assign";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 import { 是占位号, 占位号提示 } from "@/lib/placeholder-phone";
 import { 带客户编号 } from "@/lib/customer-no";
@@ -738,18 +739,21 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       else if (企电话?.ok && 企电话.值) await 记号码(tx, { 刚建的: created.id }, null, { 类型: "手机号", 值: 企电话.值, 键: 企电话.键 });
       if (认得(接着)) await 接着(tx, created.id);
       // M-公海-14：企业版项目模式下新客户至少带 1 个潜客培育项目（向导已建了项目的不补；老数据不补）
-      if (要补潜客培育(企业版(), b.projectMode)) await 补潜客培育(tx, { customerId: created.id, 客户名: created.name, ownerId: created.salesOwnerId, creatorId: me.id });
-      return { created } as const;
+      const 潜客培育 = 要补潜客培育(企业版(), b.projectMode) ? await 补潜客培育(tx, { customerId: created.id, 客户名: created.name, ownerId: created.salesOwnerId, creatorId: me.id }) : null;
+      return { created, 潜客培育 } as const;
     });
     if ("企撞" in 建了 && 建了.企撞) return { ok: false, error: (await 撞号结论(prisma, 建了.企撞, me.id, await 读的我(defaultClient))).提示 };
     if ("撞号" in 建了 && 建了.撞号) return { ok: false, error: await 撞号说法(phone ? `手机号 ${phone}` : `邮箱 ${交的邮箱}`, 建了.撞号, await 读的我(defaultClient), b.customer) };
-    const { created } = 建了;
+    const { created, 潜客培育 } = 建了;
     await recordAudit({
       user: me, action: "create", entity: "Customer", entityId: created.id,
       summary: `新建${b.customer}「${created.name}」`,
     });
     // 建好就归了别人：告诉接手人。建档向导那条路（带 接着）它自己发，带上项目名，这里不重复
     if (!认得(接着)) await 分给你通知(me, created.salesOwnerId, [created.id]);
+    // 市场成员新建客户时直接选了销售当负责人 = 指定分配，记进分配数（11-18，direct-assign.ts）：记在客户自带的潜客培育项目上。
+    // 向导、只建客户自己建了项目（这里补的是 null），各自在调用方记
+    await 记新建指定分配(me, 潜客培育);
     revalidateCustomer();
     return { ok: true, id: created.id };
   }

@@ -35,8 +35,8 @@ let 外贸部: string, 外贸一组: string, 外贸一组下: string, 外贸二�
 // 市场成员点自动分配按客户区域定线（P-转-26）：客户地址默认跟项目业务线对上（外贸 → 美国，内贸 → 中国），按区域那组另传 址
 type 址 = { addrCountry?: string | null; addrProvince?: string | null; addrCity?: string | null };
 const 跟线的址 = (bizLine: string | null): 址 => (bizLine === "外贸" ? { addrCountry: "美国" } : bizLine === "内贸" ? { addrCountry: "中国", addrProvince: "浙江省" } : {});
-const 建项目 = async (name: string, bizLine: string | null, 地址: 址 = 跟线的址(bizLine), 项目址: 址 = {}) => {
-  const 客户 = (await prisma.customer.create({ data: { name: `客户${++客户号}`, phone: `1390000${String(客户号).padStart(4, "0")}`, salesOwnerId: 市场, ...地址 } })).id;
+const 建项目 = async (name: string, bizLine: string | null, 地址: 址 = 跟线的址(bizLine), 项目址: 址 = {}, 电话: string | null = `1390000${String(客户号 + 1).padStart(4, "0")}`) => {
+  const 客户 = (await prisma.customer.create({ data: { name: `客户${++客户号}`, phone: 电话 ?? "", salesOwnerId: 市场, ...地址 } })).id;
   return (await prisma.project.create({ data: { name, customerId: 客户, ownerId: 市场, creatorId: 市场, bizLine, ...项目址 } })).id;
 };
 const 负责人 = async (id: string) => (await prisma.project.findUniqueOrThrow({ where: { id } })).ownerId;
@@ -287,7 +287,8 @@ describe("市场成员自动分配按客户区域定事业部（P-转-26 自动�
   it("客户四格全空、项目所在地也空 → 不限事业部，两条线的销售都进候选，结果带「补区域」提示；业务线暂不分配也照分", async () => {
     const 拿到: string[] = [];
     for (let i = 0; i < 5; i++) {
-      const r = await 自动分配线索(await 建项目(`空${i}`, "暂不分配", {}), { 项目: true });
+      // 没电话（分配方向不按电话判，11-18）、市场本人也没事业部
+      const r = await 自动分配线索(await 建项目(`空${i}`, "暂不分配", {}, {}, null), { 项目: true });
       if (!r.ok) throw new Error(r.error);
       expect(r.区域未填).toBe(true);
       expect(r.为什么).toContain(区域未填提示);

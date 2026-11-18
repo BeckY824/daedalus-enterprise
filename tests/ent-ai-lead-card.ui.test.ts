@@ -221,3 +221,86 @@ it("取消勾选：确认不交 首条附件、不传；没带图：卡上不摆
     expect(await 无.page.locator(".prop-shot").count()).toBe(0);
   } finally { await 无.page.close(); }
 });
+
+// 11-18：市场成员选自动分配，业务线换成可改的「分配方向」：默认 区域 → 手机号 → 我的事业部，写明来源；只写城市也算区域；判不出显示未填提示，确认不卡业务线
+it("市场自动分配：分配方向默认按区域 / 电话 / 本人事业部，写明来源；改了交上去（1024）", async () => {
+  const 没手机 = { phone: "", 联系方式: [{ kind: "email", value: "a@b.test" }] };
+  {
+    const { page, errors } = await open(1024, 900, { country: "", city: "杭州", 区域去处: ["客户"] }, { 按区域: true, 默认分配方式: 1 });
+    try {
+      expect(await page.getByTestId("lead-card-region-line").innerText()).toContain("按客户区域：内贸");
+      expect(await 格(page, "分配方向").innerText()).toContain("内贸");
+      expect(await 格(page, "业务线").count()).toBe(0);
+      expect(await 不横撑(page)).toEqual({ 页: true, 出界: 0 });
+      // 改成外贸：说明写明改过、默认是什么；交上去带 分配方向
+      await 选(page, "分配方向", "外贸");
+      expect(await page.getByTestId("lead-card-region-line").innerText()).toContain("你改成了外贸（默认按客户区域：内贸）");
+      await 格(page, "下一步计划").locator("input").fill("发报价单");
+      await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
+      await page.locator(".prop-ok").click();
+      await page.waitForFunction(() => Reflect.get(window, "__交"));
+      expect(await page.evaluate(() => Reflect.get(window, "__交") as Record<string, unknown>)).toMatchObject({ 分配方式: 1, 分配方向: "外贸" });
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+  {
+    // 没区域：卡上的大陆手机号 → 内贸
+    const { page } = await open(1024, 900, { country: "", city: "" }, { 按区域: true, 默认分配方式: 1 });
+    try {
+      expect(await page.getByTestId("lead-card-region-line").innerText()).toContain("按电话（大陆手机号）：内贸");
+    } finally { await page.close(); }
+  }
+  {
+    // 没区域、没手机：按我的事业部
+    const { page } = await open(1024, 900, { country: "", city: "", ...没手机 }, { 按区域: true, 默认分配方式: 1, 本人线: "外贸" });
+    try {
+      expect(await page.getByTestId("lead-card-region-line").innerText()).toContain("按你所在事业部：外贸");
+    } finally { await page.close(); }
+  }
+  {
+    const { page, errors } = await open(1024, 900, { country: "", city: "", ...没手机 }, { 按区域: true, 默认分配方式: 1 });
+    try {
+      expect(await page.getByTestId("lead-card-region-line").innerText()).toContain("客户没填区域，按全部销售分配，建议补区域");
+      await 格(page, "下一步计划").locator("input").fill("发报价单");
+      await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
+      expect(await page.locator(".prop-note").count() ? await page.locator(".prop-note").innerText() : "").not.toContain("业务线");
+      // 没改：交上去不带 分配方向（服务端按默认算）
+      await page.locator(".prop-ok").click();
+      await page.waitForFunction(() => Reflect.get(window, "__交"));
+      expect(await page.evaluate(() => Reflect.get(window, "__交") as Record<string, unknown>)).not.toHaveProperty("分配方向");
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+  {
+    // 只勾联系人：客户、项目都没落区域，没手机 → 提示
+    const { page } = await open(1024, 900, { country: "", city: "杭州", 区域去处: ["联系人"], ...没手机 }, { 按区域: true, 默认分配方式: 1 });
+    try {
+      expect(await page.getByTestId("lead-card-region-line").innerText()).toContain("建议补区域");
+    } finally { await page.close(); }
+  }
+});
+
+// 11-18 同类排查：模型认出的职位、区县、详细地址在卡上摆出来、能改，确认交上去；没认出的不多摆格
+it("职位 / 区县 / 详细地址：认出了才摆，改了交上去（1024）", async () => {
+  {
+    const { page } = await open(1024);
+    try {
+      for (const 名 of ["职位", "区县", "详细地址", "省"]) expect([名, await 格(page, 名).count()]).toEqual([名, 0]);
+    } finally { await page.close(); }
+  }
+  const { page, errors } = await open(1024, 900, { country: "中国", city: "杭州", district: "西湖区", address: "文三路 1 号", position: "采购", 区域去处: ["客户"] });
+  try {
+    for (const 名 of ["职位", "区县", "详细地址"]) expect([名, await 格(page, 名).count()]).toEqual([名, 1]);
+    await 格(page, "职位").locator("input").fill("采购经理");
+    expect(await 不横撑(page)).toEqual({ 页: true, 出界: 0 });
+    await 选(page, "分配方式", "指定分配");
+    await 选(page, "项目负责人", "乙");
+    if (await 格(page, "业务线").locator(".ant-select-selection-placeholder").count()) await 选(page, "业务线", "内贸");
+    await 格(page, "下一步计划").locator("input").fill("发报价单");
+    await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
+    await page.locator(".prop-ok").click();
+    await page.waitForFunction(() => Reflect.get(window, "__交"));
+    expect(await page.evaluate(() => Reflect.get(window, "__交") as Record<string, unknown>)).toMatchObject({ position: "采购经理", district: "西湖区", address: "文三路 1 号" });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});

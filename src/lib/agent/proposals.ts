@@ -19,6 +19,7 @@ import { 是项目卡, buildProjectProposal, 项目卡缺, 描述项目卡, type
 import { 内置号码种类, 每人最多号码, 号码上限 } from "../enterprise/customer-v2";
 import { 字典定义 } from "../enterprise/dict-kinds";
 import { 认出备注里的号码 } from "../enterprise/remark-numbers";
+import { 像国内地名, 港澳台地名 } from "../enterprise/cn-place";
 import { 对得上的方式 } from "../follow-method";
 
 export type ProposalKind = "set_status" | "add_followup" | "add_plan" | "add_lead" | "update_customer" | "add_opportunity" | "add_contract" | "update_channel"
@@ -114,10 +115,10 @@ export type Proposal =
  * WhatsApp 不是企业号码的一种、写进备注（dashboard/apply.ts 建成项目）。
  * 待确认 = 认得没把握、要人在卡上点一下或改一下的格子；还有就不能确认（missingFields）
  */
-export type 线索卡多的格 = { country?: string; city?: string; wechat?: string; email?: string; whatsapp?: string; 待确认?: 线索待确认格[] };
-export const 线索待确认叫法 = { name: "名称", contact: "联系人", phone: "电话", country: "国家", city: "城市", wechat: "微信", email: "邮箱", whatsapp: "WhatsApp", 联系方式: "联系方式" } as const;
+export type 线索卡多的格 = { country?: string; province?: string; city?: string; district?: string; address?: string; position?: string; wechat?: string; email?: string; whatsapp?: string; 待确认?: 线索待确认格[] };
+export const 线索待确认叫法 = { name: "名称", contact: "联系人", phone: "电话", country: "国家", province: "省", city: "城市", district: "区县", address: "详细地址", position: "职位", wechat: "微信", email: "邮箱", whatsapp: "WhatsApp", 联系方式: "联系方式" } as const;
 export type 线索待确认格 = keyof typeof 线索待确认叫法;
-const 线索多格上限 = { country: 40, city: 40, wechat: 60, email: 100, whatsapp: 30 } as const;
+const 线索多格上限 = { country: 40, province: 40, city: 40, district: 40, address: 100, position: 40, wechat: 60, email: 100, whatsapp: 30 } as const;
 
 function 收线索多的格(args: Record<string, unknown>): 线索卡多的格 {
   const 出: 线索卡多的格 = {};
@@ -217,8 +218,38 @@ export type 线索建档格 = { 分配方式?: number; ownerId?: string; 业务�
   /** 指定回复时间（11-17，选填）：卡上人选的两格，北京墙钟「YYYY-MM-DD HH:mm」（lib/project/time-fields.ts） */
   指定回复开始?: string; 指定回复结束?: string;
   /** 指定分配时间（11-17 PR3，选填）：卡上选「指定时间」时的北京墙钟；空 = 现在分配 */
-  定时分配?: string };
+  定时分配?: string;
+  /** 分配方向（11-18）：市场成员选自动分配时卡上人手动选的内贸 / 外贸；没选 = 服务端按 区域 → 电话 → 本人事业部 算。模型不给 */
+  分配方向?: "内贸" | "外贸" };
 const 是区域去处 = (x: unknown): x is 区域去处 => typeof x === "string" && Object.hasOwn(区域去处叫法, x);
+
+/**
+ * 卡上的国家 / 省 / 城市落到哪（dashboard/apply.ts 落库、卡上显示「按客户区域自动定」共用，11-18 加急）：
+ * 勾了哪几格填哪几格；老卡没这格（区域去处 undefined）有区域就只进客户地址。
+ * 只写了省 / 城市没写国家的：认得出是大陆地名（cn-place.ts 像国内地名：省、地级市、名单里的县级市，「杭州」「浙江省」「义乌市」）
+ * 或港澳台地名（「台北市」「湾仔区」「九龙」）就照填，规整地址 补「中国」，客户区域再按港澳台判非大陆（customer-region.ts）——
+ * 原来没国家一律不填，写了城市哪都没落，市场自动分配成了「区域未知」两条线都算；认不出的（「多伦多」「胡志明市」「大阪市」，审核 11-18 P0-2）
+ * 不填，免得国外城市被当成国内，分配方向退到电话 → 本人事业部，卡上显示怎么定的，人补上国家再确认。联系人地址是一格文字，照原样拼
+ */
+type 卡上四格 = { addrCountry: string | null; addrProvince: string | null; addrCity: string | null; addrDistrict: string | null };
+export function 线索卡地址(p: 线索卡多的格 & Pick<线索建档格, "区域去处">): {
+  客户: (卡上四格 & { addrDetail: string | null }) | null;
+  项目: (卡上四格 & { location: string | null }) | null;
+  联系人: string;
+} {
+  const 国 = p.country?.trim() || "", 省 = p.province?.trim() || "", 市 = p.city?.trim() || "", 区 = p.district?.trim() || "", 详 = p.address?.trim() || "";
+  if (!国 && !省 && !市 && !区 && !详) return { 客户: null, 项目: null, 联系人: "" };
+  const 去处 = p.区域去处 ?? ["客户"];
+  const 认得 = !!国 || [省, 市, 区].some((x) => 像国内地名(x) || !!港澳台地名(x));
+  const 四格: 卡上四格 = 认得 ? { addrCountry: 国 || null, addrProvince: 省 || null, addrCity: 市 || null, addrDistrict: 区 || null } : { addrCountry: null, addrProvince: null, addrCity: null, addrDistrict: null };
+  // 详细地址（客户地址 addrDetail / 项目 location）是自由文字，区域认不出也照存；四格和详细地址都没有 = 不动
+  const 有 = 认得 || !!详;
+  return {
+    客户: 有 && 去处.includes("客户") ? { ...四格, addrDetail: 详 || null } : null,
+    项目: 有 && 去处.includes("项目") ? { ...四格, location: 详 || null } : null,
+    联系人: 去处.includes("联系人") ? [国, 省, 市, 区, 详].filter(Boolean).join(" ") : "",
+  };
+}
 
 /** 模型给 bizLine / nextStep / regionTo；卡片回传的是收好的中文键（业务线 / 下一步 / 区域去处 + 人选的四格），两种都认，再校验一遍 */
 function 收线索建档格(args: Record<string, unknown>): 线索建档格 {
@@ -243,6 +274,7 @@ function 收线索建档格(args: Record<string, unknown>): 线索建档格 {
   if (北京墙钟转时刻(回终)) 出.指定回复结束 = 回终;
   const 定时 = str(args.定时分配, 20);
   if (北京墙钟转时刻(定时)) 出.定时分配 = 定时;
+  if (args.分配方向 === "内贸" || args.分配方向 === "外贸") 出.分配方向 = args.分配方向;
   return 出;
 }
 
@@ -468,7 +500,9 @@ export type 建档必填 = { 只用项目: boolean; 要下一步: boolean;
    * 和「新建项目」一样的那几样（11-04）：有分配方式可选就必选、选「指定分配」要选负责人、业务线、进程，
    * 进程不能过线索验证（11-05）；卡上有国家 / 城市要选填到哪。不传 = 老卡只查上面两样
    */
-  企业?: { 有分配方式: boolean; 节点们: readonly string[] } };
+  企业?: { 有分配方式: boolean; 节点们: readonly string[];
+    /** 市场成员（按岗位，P-转-26）：选自动分配时业务线不用选，按客户区域定（建档向导同口径） */
+    按区域?: boolean } };
 
 export function missingFields(p: Proposal, b?: 叫法, 建档?: 建档必填): string[] {
   if (是项目卡(p.kind)) return 项目卡缺(p as 项目卡);
@@ -500,10 +534,10 @@ export function missingFields(p: Proposal, b?: 叫法, 建档?: 建档必填): s
       if ((!企.有分配方式 || p.分配方式 === 0) && !p.ownerId) miss.push("项目负责人");
       // 指定分配时间（PR3）：卡上切到「指定时间」（"" = 还没选时刻）就得选上
       if ((p.分配方式 === 0 || p.分配方式 === 1) && typeof p.定时分配 === "string" && !北京墙钟转时刻(p.定时分配)) miss.push("分配时间");
-      if (!p.业务线) miss.push("业务线");
+      if (!p.业务线 && !(企.按区域 && p.分配方式 === 1)) miss.push("业务线");
       if (!p.节点 || !企.节点们.includes(p.节点)) miss.push("当前进程");
       if (p.节点 && 企.节点们.indexOf(p.节点) > 企.节点们.indexOf(有效线索节点)) miss.push(建档不能过线索验证);
-      if ((p.country?.trim() || p.city?.trim()) && !p.区域去处?.length) miss.push("国家 / 城市填到哪");
+      if ((p.country?.trim() || p.province?.trim() || p.city?.trim() || p.district?.trim() || p.address?.trim()) && !p.区域去处?.length) miss.push("国家 / 城市填到哪");
     }
     for (const k of p.待确认 ?? []) miss.push(`确认「${线索待确认叫法[k]}」`);
   }

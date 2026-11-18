@@ -150,7 +150,8 @@ describe("到点执行（钟上每分钟一遍）", () => {
 
   it("市场成员建的自动分配、客户没填区域：到点照样按区域分（两条线都算），不退回只看内贸（P-转-26）", async () => {
     const { 墙, at } = 后(2);
-    await applyProposal(卡({ 分配方式: 1, 定时分配: 墙 }) as never);
+    // 没手机（分配方向不按电话判，11-18）：区域、电话、本人事业部都判不出 = 不记线
+    await applyProposal(卡({ 分配方式: 1, 定时分配: 墙, phone: "", 联系方式: [{ kind: "email", value: "t@x.test" }] }) as never);
     expect((await 唯一项目()).bizLine).toBeNull();
     await setSetting(自动分配不参与key, { [老板.id]: "禁止", [乙.id]: "禁止" });
     invalidateSettingsCache();

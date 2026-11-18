@@ -123,6 +123,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           分配方式们: 分配.分配方式们,
           默认分配方式: 分配.默认分配方式,
           是销售: 分配.是销售,
+          按区域: 分配.按区域,
+          本人线: 分配.本人线,
         }
       : undefined;
     return (

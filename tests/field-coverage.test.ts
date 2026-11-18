@@ -473,6 +473,7 @@ const 派生: Record<string, Record<string, string>> = {
     creatorId: "实际建档的人，向导保存那一刻打上，不改",
     scheduledAssignAt: "新建时选「指定时间」分配那一刻定下（迁移 149）；到点前在项目详情「定时分配」那行改 / 取消（leads/schedule-actions.ts），到点执行、清了待分配、进回收站由后台清空（lib/enterprise/scheduled-assign.ts）",
     scheduledAssignTo: "同 scheduledAssignAt：指定分配的定时到点分给谁，新建时就是选的负责人，到点前能改（leads/schedule-actions.ts 改定时分配）",
+    assignDir: "市场成员建档选自动分配时手动改的分配方向（迁移 152，审核 11-18 P0-1）：建档向导 / 客户页新增项目建的那一刻记下，不改；之后每次自动分配先认它（leads/assign-actions.ts 自动分给）",
     balanceSettledById: "勾尾款结清的那个人，系统打上",
     balanceSettledAt: "勾尾款结清的那一刻，系统打上",
     acceptancePassedById: "勾验收通过的那个人，系统打上",

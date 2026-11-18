@@ -11,7 +11,8 @@ import type { Prisma } from "@/generated/prisma";
 import { 默认币种 } from "../currency";
 import { 第一个节点 } from "./nodes";
 import { 项目名上限 } from "./wizard";
-import { 新项目默认值, 建给谁的分配方式 } from "./proj-fields";
+import { 新项目默认值 } from "./proj-fields";
+import { 系统建项目分配方式, type 建给自己记 } from "./self-assign-mode";
 import { 看全部 } from "../team-scope";
 import { 看已删 } from "../enterprise/soft-delete-core";
 import { 历史分析来源 } from "./system-created";
@@ -33,11 +34,13 @@ export const 算有项目 = {
 /**
  * 这位客户一个项目都没有（已结束的历史分析项目不算，见 算有项目）就建一个潜客培育项目，返回新项目 id；已经有项目（向导刚建的）返回 null。
  * 分配方式（11-18 复盘第 5 类，潜客培育必填清单要看它）：调用方知道怎么来的就传（公海领取 = 公海捞取）；
- * 没传按谁建给谁（建的人就是负责人 = 个人自持，建给别人 = 指定分配）。项目来源不写：渠道统计回落客户来源，建好有值就锁，系统补的不替人定
+ * 没传按谁建给谁（self-assign-mode.ts 系统建项目分配方式：建给别人 = 指定分配；建给自己：市场成员 = 暂不分配，别人 = 个人自持）。
+ * 项目来源不写：渠道统计回落客户来源，建好有值就锁，系统补的不替人定。记 = 一次事务里补很多位时复用「建给自己」的判定
  */
 export async function 补潜客培育(
-  tx: Pick<Prisma.TransactionClient, "contact" | "project" | "projectNodeLog">,
+  tx: Prisma.TransactionClient,
   a: { customerId: string; 客户名: string; ownerId: string; creatorId: string; 分配方式?: string },
+  记?: 建给自己记,
 ): Promise<string | null> {
   if (await tx.project.count({ where: { customerId: a.customerId, ...算有项目 } })) return null;
   const 联系人 = await tx.contact.findFirst({ where: { customerId: a.customerId, isPrimary: true }, select: { id: true } });
@@ -46,7 +49,7 @@ export async function 补潜客培育(
       name: a.客户名.trim().slice(0, 项目名上限) || "潜客培育", customerId: a.customerId, contactId: 联系人?.id ?? null,
       ownerId: a.ownerId, creatorId: a.creatorId, amount: 0, currency: 默认币种,
       phase: 第一个节点.phase, node: 第一个节点.node,
-      ...新项目默认值(true, { 分配方式: a.分配方式 ?? 建给谁的分配方式(a.ownerId, a.creatorId), 项目来源: null }),
+      ...新项目默认值(true, { 分配方式: a.分配方式 ?? (await 系统建项目分配方式(tx, a.ownerId, a.creatorId, 记)), 项目来源: null }),
     },
   });
   await tx.projectNodeLog.create({ data: { projectId: 项目.id, userId: a.creatorId, toPhase: 第一个节点.phase, toNode: 第一个节点.node } });
@@ -66,7 +69,7 @@ export async function 补潜客培育(
  * 调用方判断开关（要补潜客培育）：不是企业版、没开项目模式时别调
  */
 export async function 零项目客户补潜客培育(
-  tx: Pick<Prisma.TransactionClient, "contact" | "project" | "projectNodeLog" | "customer">,
+  tx: Prisma.TransactionClient,
   customerIds: readonly string[],
   操作人: string,
   /** 补的项目记哪种分配方式（公海领取传 公海捞取）；不传按谁建给谁（见 补潜客培育） */
@@ -83,11 +86,12 @@ export async function 零项目客户补潜客培育(
       for (const g of await 看已删(() => tx.project.groupBy({ by: ["customerId"], where: { customerId: { in: 这批 }, ...算有项目 } }))) 有项目.add(g.customerId);
     }
     const 没项目 = 们.filter((id) => !有项目.has(id));
+    const 记: 建给自己记 = new Map();
     for (let i = 0; i < 没项目.length; i += 500) {
       // 默认读法已经滤掉回收站里的客户（软删扩展）；不在客户公海的才补
       const 客户们 = await tx.customer.findMany({ where: { id: { in: 没项目.slice(i, i + 500) }, pool: null }, select: { id: true, name: true, salesOwnerId: true } });
       for (const c of 客户们) {
-        const id = await 补潜客培育(tx, { customerId: c.id, 客户名: c.name, ownerId: c.salesOwnerId, creatorId: 操作人 || c.salesOwnerId, ...(分配方式 ? { 分配方式 } : {}) });
+        const id = await 补潜客培育(tx, { customerId: c.id, 客户名: c.name, ownerId: c.salesOwnerId, creatorId: 操作人 || c.salesOwnerId, ...(分配方式 ? { 分配方式 } : {}) }, 记);
         if (id) 出.set(c.id, id);
       }
     }
@@ -104,7 +108,7 @@ export async function 零项目客户补潜客培育(
  * 调用方判断开关和沟通类型：企业版只用项目、要挂项目的类型（待办 / 提醒不用挂）才调
  */
 export async function 沟通挂潜客培育(
-  tx: Pick<Prisma.TransactionClient, "contact" | "project" | "projectNodeLog" | "customer">,
+  tx: Prisma.TransactionClient,
   customerId: string,
   操作人?: string | null,
 ): Promise<{ projectId: string; node: string } | null> {

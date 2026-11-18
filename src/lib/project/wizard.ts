@@ -60,7 +60,12 @@ export type 向导项目 = { name: string; ownerId?: string | null; amount?: num
    * 指定分配时间（企业版，11-17 PR3）：分配方式选指定分配 / 自动分配时可选「指定时间」，北京墙钟「YYYY-MM-DD HH:mm」；
    * 空 / 不传 = 现在分配（照旧）。晚于现在、最远 30 天（time-fields.ts 认定时分配），建档向导 / 给客户建项目里认，到点见 lib/enterprise/scheduled-assign.ts
    */
-  定时分配?: string | null };
+  定时分配?: string | null;
+  /**
+   * 分配方向（企业版，11-18）：市场成员选自动分配时「内贸 / 外贸」那一格，人手动改过才交；没交按 客户区域 → 电话 → 本人事业部 现算
+   * （customer-region.ts 默认分配方向）。只在 projects/actions.ts 建档向导里认
+   */
+  分配方向?: string | null };
 /** 下一步时间：企业版开了超时回收时线索、商机阶段必填（lib/project/timeout.ts），没开可不填 */
 /**
  * 阶段：企业版记沟通必选（lib/project/stage-gates.ts 的 记沟通阶段问题），团队版不传、不看。
@@ -97,6 +102,8 @@ export type 规整好的 = {
     分配方式名?: string;
     /** 指定回复时间（11-17，迁移 148）：规整好的两个时刻，没填都是 null */
     指定回复?: 指定回复;
+    /** 市场成员自动分配时手动改的分配方向（11-18 审核 P0-1，迁移 152 存 Project.assignDir）；没改 = 不传。建档向导里填 */
+    手选方向?: "内贸" | "外贸";
   };
 };
 
@@ -244,6 +251,8 @@ export function 向导接着建(me: { id: string }, 好: 规整好的, 出参: P
         phase: 落.phase, node: 落.node, nextStepAt: 好.跟进.nextStepAt, nextStepText: 好.跟进.nextStepText,
         // 业务线（11-01）：只有企业版建档才写
         ...(好.企业?.业务线 ? { bizLine: 好.企业.业务线 } : {}),
+        // 手动改的分配方向（11-18 审核 P0-1）：之后每一次自动分配都先认它
+        ...(好.企业?.手选方向 ? { assignDir: 好.企业.手选方向 } : {}),
         // 项目所在地（11-02）：企业版建档填了才有值，没填五格都是 null
         ...(好.企业?.所在地 ?? {}),
         // 指定回复时间（11-17）：企业版建档填了才有值

@@ -16,7 +16,7 @@ import { prisma } from "../prisma";
 import { getSetting, setSetting } from "../settings";
 import { 分机留存起, 同号条件 } from "../phone-dedupe";
 import { 线索建项目 } from "../project/from-lead";
-import { 建给谁的分配方式 } from "@/lib/project/proj-fields";
+import { 系统建项目分配方式, type 建给自己记 } from "@/lib/project/self-assign-mode";
 import { 企业版只用项目 } from "./project-only";
 import { 重算客户状态 } from "./cust-status-auto-db";
 import { 公海客户要先领取, 公海客户先领取说 } from "./pool-customer-guard";
@@ -48,6 +48,7 @@ export async function 老线索转项目(): Promise<转项目计数 | null> {
       const 兜底 = await tx.user.findFirst({ where: { role: "ADMIN" }, orderBy: { createdAt: "asc" }, select: { id: true } });
       const 挂了项目的客户 = new Set<string>();
 
+      const 建给自己: 建给自己记 = new Map();
       for (const l of 线索们) {
         const 负责人 = l.ownerId ?? 兜底?.id;
         if (!负责人) continue;
@@ -79,8 +80,8 @@ export async function 老线索转项目(): Promise<转项目计数 | null> {
           }
         }
         // 挂老客户时 联系人Id 不给：照转化那样挂客户的主要联系人
-        // 分配方式：老线索在负责人自己手里转成项目，按谁建给谁算（= 个人自持，建给谁的分配方式）
-        await 线索建项目(tx, { 线索名: l.name, leadId: l.id, customerId, ownerId: 负责人, creatorId: 负责人, 联系人Id, 分配方式: 建给谁的分配方式(负责人, 负责人) });
+        // 分配方式：老线索在负责人自己手里转成项目，按谁建给谁算（建给自己：市场成员 = 暂不分配，别人 = 个人自持，self-assign-mode.ts）
+        await 线索建项目(tx, { 线索名: l.name, leadId: l.id, customerId, ownerId: 负责人, creatorId: 负责人, 联系人Id, 分配方式: await 系统建项目分配方式(tx, 负责人, 负责人, 建给自己) });
         挂了项目的客户.add(customerId);
         计.项目++;
       }

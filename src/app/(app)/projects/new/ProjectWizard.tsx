@@ -38,8 +38,8 @@ import { 建档向导, 建档只建客户 } from "../actions";
 import { 搜客户, type 可挑客户 } from "../../customers/[id]/pick";
 import { 给客户建项目, 建项目带走的项目, 新项目分配数据 } from "../../customers/[id]/project-actions";
 import { useCarryConfirm } from "../../customers/useCarryConfirm";
-import { 三种业务线, 分配说明, 业务线必填, 客户业务线必填, 建议业务线, 所在地预填, 所在地提示 } from "@/lib/enterprise/assign-line";
-import { 区域线of, 区域定线说明, 区域分配说明 } from "@/lib/enterprise/customer-region";
+import { 三种业务线, 两条线, 分配说明, 业务线必填, 客户业务线必填, 建议业务线, 所在地预填, 所在地提示 } from "@/lib/enterprise/assign-line";
+import { 区域分配说明, 默认分配方向, 方向来源说明 } from "@/lib/enterprise/customer-region";
 import type { 线 } from "@/lib/enterprise/lead-assign";
 import AddressInput, { 空地址 } from "@/components/AddressInput";
 import { 详细地址上限, 详细地址提示 } from "@/lib/project/profile-rules";
@@ -87,6 +87,8 @@ type 稿 = {
     指定回复开始?: string | null; 指定回复结束?: string | null;
     /** 指定分配时间（企业版，11-17 PR3）：null / 没有 = 现在分配；字符串 = 指定时间（北京墙钟，"" = 还没选时刻）。只在指定分配、自动分配时认 */
     定时分配?: string | null;
+    /** 分配方向（企业版，11-18）：市场成员选自动分配时人手动选的内贸 / 外贸；没选 = 按默认（不交，服务端同顺序算）。老草稿里没有 */
+    分配方向?: 线 | null;
   };
   /** 下一步时间（YYYY-MM-DD）：开了超时回收时才有这格、必填；老草稿里没有这格 */
   /** 节点：企业版首条沟通必选（跟进节点 = 项目落在线索阶段哪一步，最多到线索验证）；下一步 = 下一步计划（文字，企业版；开了超时回收时必填，11-05）；团队版没有 */
@@ -97,8 +99,10 @@ type 稿 = {
 /** 分配方式们：这个人能用、还启用着的分配方式（10-27 A7：五种都生效，只有「指定分配」要选负责人） */
 /** 默认分配方式：按业务角色（11-01 会议 §1 / §3：市场 → 自动分配，销售 → 个人自持，其他 → 暂不分配）；是销售：选自动分配要再确认（A9） */
 export type 企业建档 = { 渠道们: 可选渠道[]; 节点们: readonly string[]; 分配方式们: { i: number; 名: string }[]; 默认分配方式?: number | null; 是销售?: boolean; 没角色?: boolean;
-  /** 市场成员（按岗位：市场管理、渠道运营）：选自动分配时业务线不用选，按客户区域定（P-转-26，after-create-assign 新建分配方式数据） */
+  /** 市场成员（按岗位：市场管理、渠道运营）：选自动分配时业务线换成「分配方向」，默认按客户区域 → 电话 → 本人事业部（P-转-26，11-18） */
   按区域?: boolean;
+  /** 本人事业部（分配方向的第三步默认，after-create-assign 新建分配方式数据） */
+  本人线?: 线 | null;
   /** 企业版普通销售（10-27 会议）：新建客户负责人只能是自己，没开项目时「客户负责人」不摆（wizard-data.ts） */
   客户只给自己?: boolean;
   /** 新建项目的回收日预估（wizard-data.ts 回收预估）：起点日 + 各进程天数（内贸 / 外贸）；超时回收关着 = null */
@@ -452,11 +456,11 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   }, [搜词]);
   // 业务线默认带这位客户的（A1，和客户页「新增项目」同一个取数）；看不到 / 没开 = null 不带
   // 老客户的区域（P-转-26）：市场成员选自动分配时业务线那格只读显示按区域定的线；客户没填地址 = null，看项目所在地
-  const [老客户区域, set老客户区域] = useState<{ id: string; 线: 线 | null } | null>(null);
+  const [老客户区域, set老客户区域] = useState<{ id: string; 线: 线 | null; 电话线: 线 | null } | null>(null);
   const 带客户业务线 = (c: 可挑客户) => {
     新项目分配数据(c.id).then((r) => {
       if (r?.客户业务线 && !d.项目.业务线) 改("项目", { 业务线: r.客户业务线 });
-      set老客户区域(r?.客户有地址 ? { id: c.id, 线: r.客户区域线 } : null);
+      set老客户区域(r ? { id: c.id, 线: r.客户有地址 ? r.客户区域线 : null, 电话线: r.客户电话线 ?? null } : null);
     }, () => {});
   };
   const 挑老 = (id: string) => {
@@ -521,6 +525,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         ...(联系人Id ? { 联系人Id } : {}),
         项目: {
           name: d.项目.name, ownerId: 负责人 || null, 分配方式: d.项目.分配方式 ?? null, 业务线: 这次.业务线,
+          ...(区域定线中(d, 带项目, 企业) && d.项目.分配方向 ? { 分配方向: d.项目.分配方向 } : {}),
           ...(d.项目.所在地 ? { 所在地: d.项目.所在地 } : {}),
           指定回复开始: d.项目.指定回复开始 ?? null, 指定回复结束: d.项目.指定回复结束 ?? null,
           ...(定时 ? { 定时分配: 定时 } : {}),
@@ -590,6 +595,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
             // 业务线（11-01 清单 A1，手动选）：企业版总是传（没选 = null）；团队版不传
             // 市场成员选自动分配：不交，服务端按客户区域定（P-转-26）
             业务线: 企业 ? (区域定线中(稿面, 带项目, 企业) ? null : 稿面.项目.业务线 ?? null) : undefined,
+            // 分配方向（11-18）：人改过才交，没改服务端按同一顺序算默认
+            分配方向: 企业 && 区域定线中(稿面, 带项目, 企业) ? 稿面.项目.分配方向 ?? null : undefined,
             // 项目来源：没另选就跟客户的渠道（服务端 项目来源默认 同一个规矩）；团队版不传
             ...(企业 ? { channelId: 项目渠道 || 稿面.客户.渠道 || null } : {}),
           },
@@ -687,11 +694,25 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
       }}
     />
   ), false, true, 带项目 ? "选填，按北京时间：指定什么时候回复客户" : 有回复时间 ? "回复时间记在项目上：没开项目不存，填了会打开「有项目」" : "选填，按北京时间；记在项目上，填了会打开「有项目」");
-  // 市场成员选自动分配（P-转-26）：业务线换成只读说明，按客户区域定；老客户有地址看客户的，否则看项目所在地
-  const 区域线 = 老客户 && 老客户区域?.id === 老客户.id ? 老客户区域.线 : 区域线of(null, d.项目.所在地 ?? null);
-  const 业务线格 = 企业 && (区域定线中(d, 带项目, 企业) ? 一格("业务线", "业务线", (
-    <div className="cr-auto-line" data-testid="wizard-bizline-auto" aria-label="业务线" aria-readonly="true">{区域定线说明(区域线)}</div>
-  ), false, false, "市场成员自动分配不用选内贸 / 外贸：中国大陆客户分给内贸销售，其余（含港澳台）分给外贸销售；客户和项目都没填区域时按全部销售分") : 一格("业务线", "业务线", (
+  // 市场成员选自动分配（P-转-26，11-18）：业务线换成可改的「分配方向」，默认按 客户区域 → 项目所在地 → 电话 → 本人事业部；
+  // 老客户的区域、电话由服务端算好（新项目分配数据），新客户按这一屏填的号现算；人改过就按改的
+  const 老的 = 老客户 && 老客户区域?.id === 老客户.id ? 老客户区域 : null;
+  const 方向默认 = 默认分配方向({
+    客户线: 老的?.线 ?? null, 项目: d.项目.所在地 ?? null, 电话线: 老的?.电话线 ?? null,
+    号们: 老客户 ? [] : [d.号码类型 === "手机号" || !d.号码类型 ? d.phone : null, d.联系人.phone, ...(d.更多号码 ?? []).filter((x) => x.kind === "phone").map((x) => x.value)],
+    本人线: 企业?.本人线 ?? null,
+  });
+  const 业务线格 = 企业 && (区域定线中(d, 带项目, 企业) ? 一格("业务线", "分配方向", (
+    <Select
+      className="cr-full"
+      aria-label="分配方向"
+      data-testid="wizard-direction"
+      value={d.项目.分配方向 ?? 方向默认.线 ?? undefined}
+      placeholder="内贸 / 外贸"
+      options={两条线.map((x) => ({ value: x, label: x }))}
+      onChange={(v) => 改("项目", { 分配方向: v ?? null })}
+    />
+  ), false, false, <span data-testid="wizard-direction-why" className={d.项目.分配方向 || 方向默认.线 ? undefined : "cr-warn"}>{d.项目.分配方向 && d.项目.分配方向 !== 方向默认.线 ? `你改成了${d.项目.分配方向}（默认${方向默认.线 ? 方向来源说明(方向默认) : "不限"}）` : 方向来源说明(方向默认)}；中国大陆 → 内贸销售，其余（含港澳台）→ 外贸销售，可以改</span>) : 一格("业务线", "业务线", (
     <Select
       className="cr-full"
       aria-label="业务线"

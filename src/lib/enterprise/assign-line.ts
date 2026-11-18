@@ -9,6 +9,7 @@
  * - 分配方式默认值（A6）：市场 → 自动分配，销售 → 个人自持，其他 → 暂不分配；用户能改。
  */
 import { 是国内, type 客户地址 } from "./customer-v2";
+import { 港澳台地名 } from "./cn-place";
 import type { 组织 } from "./org-core";
 import type { 组织部门 } from "./org-tree";
 import type { 线 } from "./lead-assign";
@@ -66,7 +67,7 @@ const 格 = (x: string | null | undefined) => String(x ?? "").trim();
 
 /**
  * 按地址给业务线的建议（只在界面上用：新建项目没手动选过时预填、旁边提示请确认，见 所在地预填 / 所在地提示；不参与自动分配）：
- * - 国家是中国（或没填国家、只填了省市区县）：省这一格是香港 / 澳门 → 外贸，台湾 → 台湾算，其余 → 内贸
+ * - 国家是中国（或没填国家、只填了省市区县）：省 / 市 / 区县是香港 / 澳门的地名 → 外贸，台湾的 → 台湾算，其余 → 内贸
  * - 国家填的是别的：「中国台湾」「台湾」→ 台湾算；其余（含「中国香港」「中国澳门」、任何外国）→ 外贸
  * - 四格全空 → null（没建议）
  */
@@ -74,8 +75,10 @@ export function 建议业务线(a: Partial<客户地址> | null | undefined): �
   const 国 = 格(a?.addrCountry), 省 = 格(a?.addrProvince), 市 = 格(a?.addrCity), 区 = 格(a?.addrDistrict);
   if (!国 && !省 && !市 && !区) return null;
   if (!国 || 是国内(国)) {
-    if (台湾.test(省)) return 台湾算;
-    if (港澳.test(省)) return "外贸";
+    // 省 / 市 / 区县任一格是港澳台地名（「台北市」「湾仔区」「九龙」，cn-place.ts，审核 11-18 P1-4）
+    const 哪 = [省, 市, 区].map(港澳台地名).find(Boolean);
+    if (哪 === "台湾" || 台湾.test(省)) return 台湾算;
+    if (哪 || 港澳.test(省)) return "外贸";
     return "内贸";
   }
   if (台湾.test(国)) return 台湾算;
@@ -175,7 +178,7 @@ export const 分配方式序号 = { 指定分配: 0, 自动分配: 1, 公海捞�
  * 按部门认的由调用方读库算好传 部门市场成员。兼着市场和销售的按市场算。
  * 默认的那个这人用不了（后台按角色关掉了）时退到他能用的第一个；都用不了 = undefined
  */
-const 算市场 = (角色们: readonly string[], 部门市场成员: boolean) => 部门市场成员 || 角色们.includes("marketing_mgr") || 角色们.includes("channel_ops");
+export const 算市场 = (角色们: readonly string[], 部门市场成员: boolean): boolean => 部门市场成员 || 角色们.includes("marketing_mgr") || 角色们.includes("channel_ops");
 
 export function 默认分配方式(角色们: readonly string[], 能用: readonly number[], 部门市场成员 = false): number | undefined {
   const 想 = 算市场(角色们, 部门市场成员)

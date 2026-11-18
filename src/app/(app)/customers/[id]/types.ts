@@ -113,7 +113,9 @@ export type RecordProps = {
    * 客户转让框里摆「指定分配 / 自动分配」的选择：操作人是市场成员、客户是「暂不分配」的才给（客户 11-17，lib/enterprise/cust-auto-assign.ts）。
    * 页面（服务端）判好了把服务端动作 客户自动分配 递进来；不给 = 不摆，框和原来一样
    */
-  自动分配?: (customerId: string, 原因: string | null) => Promise<import("../../leads/assign-actions").客户自动分配结果>;
+  自动分配?: (customerId: string, 原因: string | null, 方向?: "内贸" | "外贸") => Promise<import("../../leads/assign-actions").客户自动分配结果>;
+  /** 自动分配时「分配方向」的默认值和来源（11-18，lib/enterprise/assign-direction-db.ts 客户默认分配方向）；框里可以改 */
+  自动分配方向?: import("@/lib/enterprise/customer-region").分配方向;
   /** 企业版：在公海里、我是原负责人——领取按钮灰着，悬停说「原负责人不能领回」（lib/enterprise/pool-rules.ts） */
   原负责人领不回?: boolean;
   /** 换负责人记录（企业版 D-36），时间正序；左栏「历史负责人」用，没有就不摆 */
