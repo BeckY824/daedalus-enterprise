@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { 旧浏览器提示脚本, 旧浏览器提示节点, 旧浏览器提示文案, 旧浏览器提示小字 } from "@/lib/old-browser";
+import { 旧浏览器提示脚本, 旧浏览器提示节点, 旧浏览器提示文案, 旧浏览器提示小字, 旧浏览器版本前缀 } from "@/lib/old-browser";
 
 /** 一个够用的假 document：只记 body 上挂了什么、文字是什么 */
 type 节点 = { tag: string; id?: string; textContent: string; style: { cssText: string }; kids: 节点[]; attrs: Record<string, string>;
@@ -38,8 +38,8 @@ const 后行断言会挂 = function (this: unknown, src: string) {
   return new RegExp(src);
 } as unknown as RegExpConstructor;
 
-type 额外 = { navigator?: unknown; sessionStorage?: unknown; XMLHttpRequest?: unknown; pathname?: string };
-function 跑(env: ReturnType<typeof 造环境>, g: { RegExp?: unknown; Array?: unknown; structuredClone?: unknown } = {}, 外: 额外 = {}) {
+type 额外 = { navigator?: Record<string, unknown>; sessionStorage?: unknown; XMLHttpRequest?: unknown; pathname?: string };
+function 跑(env: ReturnType<typeof 造环境>, g: { RegExp?: unknown; Array?: unknown; structuredClone?: unknown; ua?: string } = {}, 外: 额外 = {}) {
   const 参数 = {
     RegExp: "RegExp" in g ? g.RegExp : RegExp,
     Array: "Array" in g ? g.Array : Array,
@@ -47,8 +47,8 @@ function 跑(env: ReturnType<typeof 造环境>, g: { RegExp?: unknown; Array?: u
     document: env.document,
     setInterval: env.setInterval,
     location: { protocol: "https:", host: "crm.example.test", pathname: 外.pathname ?? "/login" },
-    // 上报那段（28-⑤）用到的：默认给一个什么都没有的，报不出去也不能影响提示
-    navigator: 外.navigator ?? {},
+    // userAgent 给版本行（27G）用；sendBeacon 这些给上报那段（28-⑤）用：默认什么都没有，报不出去也不能影响提示
+    navigator: { userAgent: g.ua ?? "", ...(外.navigator ?? {}) },
     sessionStorage: 外.sessionStorage,
     XMLHttpRequest: 外.XMLHttpRequest,
   };
@@ -149,5 +149,18 @@ describe("旧浏览器提示脚本", () => {
   it("根 layout 的 <head> 里挂了它（登录页也走根 layout）", () => {
     const src = readFileSync(path.join(process.cwd(), "src/app/layout.tsx"), "utf8");
     expect(src).toMatch(/<head>[\s\S]*__html: 旧浏览器提示脚本[\s\S]*<\/head>/);
+  });
+
+  it("27G：提示里写出读到的内核版本（Windows 上 86 内核的「Chrome」），读不到就不写", () => {
+    const env = 造环境();
+    跑(env, { structuredClone: undefined, ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36" });
+    expect(全文(提示(env)[0])).toContain(旧浏览器版本前缀 + "Chrome 86.0.4240.198");
+    expect(旧浏览器提示小字).toMatch(/360/);
+    const env2 = 造环境();
+    跑(env2, { RegExp: 后行断言会挂, ua: "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.6 Safari/605.1.15" });
+    expect(全文(提示(env2)[0])).toContain(旧浏览器版本前缀 + "Safari 15.6");
+    const env3 = 造环境();
+    跑(env3, { structuredClone: undefined });
+    expect(全文(提示(env3)[0])).not.toContain(旧浏览器版本前缀);
   });
 });

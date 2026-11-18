@@ -126,7 +126,9 @@ async function 公海数现数(): Promise<number> {
   const [全部, [r]] = await Promise.all([
     未删公海数(),
     prisma.$queryRawUnsafe<{ n: bigint | number }[]>(
-      `SELECT COUNT(*) AS n FROM "Customer" c WHERE c."deletedAt" IS NULL AND (c."salesOwnerId" = ?${或名单}) AND c.id IN (SELECT "customerId" FROM "CustomerPool")`,
+      /* `+c.id`：一元加号让 SQLite 不拿这条 IN 去挑索引。跑过 ANALYZE 后它会改成拿公海表 6.7 万行逐条对客户（0.2→18ms），
+         加了照旧走「负责人索引 + 主键」（27I，11-18 在 8.6 万客户库拷贝上 EXPLAIN 核过） */
+      `SELECT COUNT(*) AS n FROM "Customer" c WHERE c."deletedAt" IS NULL AND (c."salesOwnerId" = ?${或名单}) AND +c.id IN (SELECT "customerId" FROM "CustomerPool")`,
       回避.本人,
       ...名单,
     ),
