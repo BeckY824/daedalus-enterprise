@@ -78,7 +78,15 @@ export function 级别选项(): { value: 企业客户级别; label: string }[] {
 /** 地址里算国内的国家名（待定 17：国内选到区县，国外只选国家和城市） */
 export const 国内叫法 = "中国";
 const 国内别名 = new Set(["中国", "中国大陆", "china", "cn", "prc"]);
-export const 是国内 = (country: string | null | undefined): boolean => 国内别名.has(String(country ?? "").trim().toLowerCase());
+/**
+ * 「中国」的别写法：繁体、全称、英文全称（审核 11-18 P2-2：「中國」「中华人民共和国」原来当国外存、省和区县被清掉）。
+ * 规整地址 存成「中国」，客户区域（customer-region.ts）也按这一份认大陆
+ */
+const 也算中国 = /^(中國|中國大陸|中国大陆地区|中華人民共和國|中华人民共和国|大陆|大陸|people'?s\s+republic\s+of\s+china|the\s+people'?s\s+republic\s+of\s+china|mainland\s+china)$/i;
+export const 是国内 = (country: string | null | undefined): boolean => {
+  const t = String(country ?? "").trim().replace(/\s+/g, " ");
+  return 国内别名.has(t.toLowerCase()) || 也算中国.test(t);
+};
 
 export type 客户地址 = { addrCountry: string | null; addrProvince: string | null; addrCity: string | null; addrDistrict: string | null };
 export const 地址每格上限 = 40;

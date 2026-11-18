@@ -766,7 +766,9 @@ export default function ProposalCard({
                       // 默认：落库时同一套地址（线索卡地址）认出的区域 → 卡上手机号 → 我的事业部；人改了按改的（只交改过的，服务端同顺序算默认）
                       const 默认 = 默认分配方向({
                         客户: 卡上地址.客户, 项目: 卡上地址.项目, 本人线: 企?.本人线 ?? null,
-                        号们: [...(draft.联系方式 ?? []).filter((r) => r.kind === "phone").map((r) => r.value), draft.phone],
+                        号们: [...(draft.联系方式 ?? []).filter((r) => r.kind === "phone").map((r) => r.value), draft.phone,
+                          // 只留了 WhatsApp 的按国际号读（审核 11-18 P1-6，服务端 向导号们 同顺序）
+                          ...[...(draft.联系方式 ?? []).filter((r) => r.kind === "whatsapp").map((r) => r.value), draft.whatsapp].filter((x): x is string => !!x?.trim()).map((whatsapp) => ({ whatsapp }))],
                       });
                       const 选 = draft.分配方向;
                       return (

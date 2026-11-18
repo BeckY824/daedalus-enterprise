@@ -18,6 +18,7 @@ import { 不掉公海的状态, 公海截止 } from "@/lib/pool";
 import { AI补清洗, 去掉AI清洗, 格式说明键, 同一家说明键, type 清洗器 } from "./ai-clean";
 import { 预演, type 预演计数 } from "./apply";
 import { 清洗, 数一数, 名键, 联系人查重格, 归档号索引, type 本地索引, type 清洗结果, type 已有联系人 } from "./clean";
+import { 读回收站号键 } from "./dedup";
 import { 联系人号查重键 } from "@/lib/enterprise/customer-v2";
 import { 成记录, 拆联系人, 拆出的客户ID列, type 读出的表 } from "./excel";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
@@ -143,6 +144,8 @@ export async function 读本地索引(源: 来源): Promise<本地索引> {
     ...联系人们.map((c) => ({ v: c.phone, customerId: c.customerId })),
     ...归档子表号.map((x) => ({ v: x.value, customerId: x.customerId })),
   ]);
+  // 回收站里的号（P-删-08，审核 11-18 P1-3）：在用的没撞、撞上这些的那一行不导，提示去捞回
+  索引.回收站号 = await 读回收站号键();
   for (const r of 对照们) {
     索引.引用.set(`${r.entity}|${r.externalId}`, r.targetId);
     索引.指纹!.set(`${r.entity}|${r.externalId}`, r.fingerprint);
