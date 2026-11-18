@@ -614,6 +614,16 @@ export async function completePlan(id: string, 完成 = true) {
 export async function 撤销记一笔(input: { customerId: string; 跟进id: string; 计划id: string; 下次计划id?: string | null }) {
   try {
     const user = await requireUser();
+    /*
+      企业版（11-18 审核 P0-3）：原来只有「跟进存在」时才核本人 10 分钟，传个不存在的跟进 id 就整段跳过，
+      再真删这位客户任一条没完成的计划。现在：这位客户我得能改（同 deletePlan 的 事项挡：负责人本人、系统管理员、
+      这位客户下在推项目的负责人；公海里的不行），跟进必须是这位客户名下、本人刚记的（卡片刚记的能撤）。
+      删下一条计划和 deletePlan 同一道挡；计划没有回收站（FollowPlan 不软删，deletePlan 也是真删），照旧删掉
+    */
+    if (企业版()) {
+      const 挡 = await 事项挡(user, input.customerId);
+      if (挡) return { ok: false as const, error: 挡 };
+    }
     const result = await prisma.$transaction(async (tx) => {
       const customer = await tx.customer.findUnique({ where: { id: input.customerId }, select: { name: true } });
       if (!customer) return { ok: false as const, error: "这位客户已经不在了，撤不回来" };
@@ -621,8 +631,9 @@ export async function 撤销记一笔(input: { customerId: string; 跟进id: str
       if (!计划) return { ok: false as const, error: "这条计划已经不在了，刷新看看" };
       const audits: Parameters<typeof recordAudit>[0][] = [];
       const 跟进 = await tx.followUp.findFirst({ where: { id: input.跟进id, customerId: input.customerId }, select: { id: true, type: true, occurredAt: true, ownerId: true, createdAt: true } });
-      // 企业版：只撤自己 10 分钟内刚记的那笔，别人的、早先的去时间线（删只给总管理）
-      if (跟进 && 企业版() && !卡片刚记的能撤(user, 跟进)) return { ok: false as const, error: 卡片撤销过时话 };
+      // 企业版：只撤自己 10 分钟内刚记的那笔，别人的、早先的去时间线（删只给总管理）。
+      // 跟进找不到（不在这位客户名下、已经删了、乱填的 id）也不撤：不然这一步整个跳过，后面照删计划（11-18 审核 P0-3）
+      if (企业版() && (!跟进 || !卡片刚记的能撤(user, 跟进))) return { ok: false as const, error: 卡片撤销过时话 };
       if (跟进) {
         // 11-01 卡点 B13：这条沟通上发过卡点的，卡点脱开照旧留着；老库脱不开就不撤
         if ((await 卡点脱离沟通(tx, [跟进.id])).size) return { ok: false as const, error: "这条跟进上已经发过卡点，撤不回来了，去时间线上删" };
@@ -721,6 +732,13 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
         : null;
       if (!客) return { ok: false as const, error: "这位客户已经不在了（或你看不到），刷新看看" };
       if (await 只读客户(defaultClient, 客)) return { ok: false as const, error: await 只读话(defaultClient) };
+      /*
+        看得到、不只读还不够（11-18 审核 P0-1）：限定层的写范围是「自己 + 实线下属 + 公海」，销管能借它改下属客户的联系人，
+        谁都能改公海客户的联系人。和 detachContact、待办计划同一道 客户事项挡（核心是 能改客户：负责人本人或系统管理员；
+        另放这位客户下在推项目的负责人；公海里的先领）。AI 卡「改联系人」也转进这里
+      */
+      const 挡 = await 客户事项挡(me, 客.id);
+      if (挡) return { ok: false as const, error: 挡 };
     }
     /*
       企业版联系人挂多位客户（2026-10-29 P13 第 1 条）：编辑不换主客户——从挂靠的那位客户页上编辑时，交上来的 customerId 是那一位，

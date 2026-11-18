@@ -48,7 +48,8 @@ import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 落到渠道 } from "@/lib/enterprise/channel-main";
 import { 是主渠道入口, 渠道启用 } from "@/lib/enterprise/channel-main-core";
-import { 能转让客户, 能改客户, 没设业务角色, 只读角色, 只读话of, 是系统管理员, 转自己客户要申请 } from "@/lib/enterprise/permissions";
+import { 能转让客户, 是系统管理员, 转自己客户要申请 } from "@/lib/enterprise/permissions";
+import { 改客户挡, 公海先领话 } from "@/lib/enterprise/follow-perm";
 import { 有同事在推的客户, 同事在推不能删话 } from "@/lib/enterprise/colleague-projects";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 补潜客培育, 要补潜客培育 } from "@/lib/project/nurture";
@@ -1233,8 +1234,6 @@ async function 转让挡(me: Awaited<ReturnType<typeof requireUser>>, ids: strin
   return 们.every((c) => 能转让客户(me, { salesOwnerId: c.salesOwnerId, 在公海: !!c.pool }, org)) ? null : 只有管理能转让话;
 }
 
-const 只有负责人改客户话 = "只有负责人或系统管理员能改客户资料（上级、条线总管理只能看、转让）";
-const 公海先领话 = "公海里的客户先领取或分配，再改";
 
 /**
  * 企业版公海里的客户不走转让（P-公海-04）：先领取或分配，不然客户有了负责人却还在公海，原负责人回避失效。
@@ -1245,21 +1244,7 @@ async function 公海挡(ids: string[]): Promise<string | null> {
   return (await defaultClient.customerPool.count({ where: { customerId: { in: ids } } })) ? 公海先领话 : null;
 }
 
-/**
- * 企业版改客户详情挡（11-02，permissions.ts 能改客户）：负责人本人（销售、销售管理）才能改；公海里的谁都不能改；
- * 没设业务角色的一律拒。规则「按组织看客户」关着时限定层不拦，这里照样拦。新建（id 空）只挡没设业务角色的
- */
-async function 改客户挡(me: Awaited<ReturnType<typeof requireUser>>, id?: string | null): Promise<string | null> {
-  if (!企业版()) return null;
-  const org = await 权限组织();
-  if (!org || 没设业务角色(org, me.id)) return "你还没有业务角色，不能改数据，请找总管理设置";
-  // 只读管理员新建也拦（11-03 D3-7 ④）：改已有的下面 能改客户 就不给，限定层也拦
-  if (!id) return 只读角色(me, org) ? 只读话of(me, org) : null;
-  const c = await defaultClient.customer.findUnique({ where: { id }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
-  if (!c) return null; // 不在了：后面照原样报「已删除」
-  if (c.pool) return 公海先领话;
-  return 能改客户(me, { salesOwnerId: c.salesOwnerId, 在公海: false }, org) ? null : 只有负责人改客户话;
-}
+// 改客户挡（企业版改客户资料：负责人本人或系统管理员，公海里的先领）11-18 挪到 lib/enterprise/follow-perm.ts，关联客户也用
 
 /** 批量改销售负责人 */
 export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原因?: string | null): Promise<BulkResult> {

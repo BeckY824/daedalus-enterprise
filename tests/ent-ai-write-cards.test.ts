@@ -357,6 +357,19 @@ describe("联系人", () => {
     expect(联系人动作.saveContact).toHaveBeenCalledWith(expect.objectContaining({ id: 人.id, position: "采购总监", phone: "13700000001" }));
     expect(await prisma.contact.findUniqueOrThrow({ where: { id: 人.id } })).toMatchObject({ position: "采购总监", phone: "13700000001" });
   });
+
+  it("销管确认改下属客户的联系人：看得到但不能改，saveContact 拒、一行不写（11-18 审核 P0-1）", async () => {
+    const 经 = await 造人("jing", "经理", "SALES");
+    await prisma.entMember.create({ data: { userId: 经.id, bizRole: "sales_mgr" } });
+    await prisma.entMember.update({ where: { userId: 乙.id }, data: { managerId: 经.id } });
+    const 人 = await prisma.contact.create({ data: { name: "王经理", position: "采购", phone: "13700000001", customerId: 客户id } });
+    const { 卡 } = await 出("propose_contact_update", { contact: "王经理", 改: [{ field: "position", value: "采购总监" }], reason: "人说升职了" });
+    expect(卡).toMatchObject({ kind: "contact_update", targetId: 人.id });
+
+    expect(await 确认(卡!, 经)).toMatchObject({ ok: false });
+    expect((await prisma.contact.findUniqueOrThrow({ where: { id: 人.id } })).position).toBe("采购");
+    expect(await prisma.auditLog.count({ where: { action: "ai_apply" } })).toBe(0);
+  });
 });
 
 describe("删客户", () => {
