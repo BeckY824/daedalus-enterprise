@@ -61,8 +61,11 @@ describe("B1 渠道页（2026-10-29 渠道改版后）", () => {
     const s = await 读("src/app/(app)/channels/page.tsx");
     expect(s).not.toContain("buildReferralRadar");
     expect(s).not.toContain("radar");
-    expect(s).toContain('import { 读渠道分期统计 } from "@/lib/enterprise/channel-stats-db";');
-    expect(s).toContain("读渠道分期统计(channels, new Date(), 区间, me)");
+    expect(s).toContain('import { 读渠道分期统计, 取渠道底 } from "@/lib/enterprise/channel-stats-db";');
+    // 11-18 提速：项目、投入、名单落点只读一趟（取渠道底），列表统计和看板共用
+    expect(s).toContain("const 底 = 取渠道底(渠道ids, me);");
+    expect(s).toContain("读渠道分期统计(channels, new Date(), 区间, me, 底)");
+    expect(s).toContain("读看板底数(渠道ids, new Date(), 区间, me, 底)");
   });
 
   it("列表：推荐链三列、雷达、副标题都没了；空态只讲渠道清单和投入", async () => {

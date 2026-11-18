@@ -19,7 +19,7 @@ import { resetDb } from "./reset";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
-import { 读渠道统计, 读渠道分期统计 } from "@/lib/enterprise/channel-stats-db";
+import { 读渠道统计, 读渠道分期统计, 取渠道底 } from "@/lib/enterprise/channel-stats-db";
 import { 读看板底数 } from "@/lib/enterprise/channel-dash-db";
 import { 名单链接, 名单键们, 到达口径键, type 名单键 } from "@/lib/enterprise/channel-stats";
 import { 算分期统计, 看板时段 } from "@/lib/enterprise/channel-dash";
@@ -114,6 +114,22 @@ describe("渠道列表统计跟看板时间段", () => {
     }
     // 全部：关联项目 = 总线索；商机、订单是「眼下在这个阶段」（原列表口径，不动），看板全部是「到过」
     expect(分.全部[渠道].关联项目).toBe(板.全部[渠道].线索);
+  });
+
+  it("渠道页只读一趟（11-18 提速）：列表统计和看板共用 取渠道底 那一份，结果和各读各的一样；给了底就不再读库", async () => {
+    const 区间 = { from: new Date("2026-09-30T16:00:00Z"), to: new Date("2026-10-31T15:59:59.999Z") };
+    const 各读各 = await 以谁的身份(老板.id, () => Promise.all([读渠道分期统计(渠道们(), 今, 区间, 老板), 读看板底数([渠道], 今, 区间, 老板)]));
+    const 共用 = await 以谁的身份(老板.id, () => {
+      const 底 = 取渠道底([渠道], 老板);
+      return Promise.all([读渠道分期统计(渠道们(), 今, 区间, 老板, 底), 读看板底数([渠道], 今, 区间, 老板, 底)]);
+    });
+    expect(共用).toEqual(各读各);
+    expect(各读各[0].全部[渠道].关联项目).toBeGreaterThan(0);
+    // 给了一份空底：库里明明有项目，两边都按这份算（没再自己读库）
+    const 空底 = Promise.resolve({ 行: [], 落点: null, 投入们: [] });
+    const [分, 板] = await 以谁的身份(老板.id, () => Promise.all([读渠道分期统计(渠道们(), 今, null, 老板, 空底), 读看板底数([渠道], 今, null, 老板, 空底)]));
+    expect(分.全部[渠道].关联项目).toBe(0);
+    expect(板.全部[渠道]?.线索 ?? 0).toBe(0);
   });
 
   it("点数字带同一段创建时间进项目列表，条数对得上", async () => {

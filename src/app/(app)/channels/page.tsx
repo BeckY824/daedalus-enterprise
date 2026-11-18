@@ -5,7 +5,7 @@ import ChannelsView from "./ChannelsView";
 import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选项, 字典定义 } from "@/lib/enterprise/dict";
-import { 读渠道分期统计 } from "@/lib/enterprise/channel-stats-db";
+import { 读渠道分期统计, 取渠道底 } from "@/lib/enterprise/channel-stats-db";
 import { 读看板底数, 读公海底数 } from "@/lib/enterprise/channel-dash-db";
 import { 读市场身份 } from "@/lib/enterprise/market-view-db";
 import { 读日期段, 日期段界 } from "@/lib/custom-date-range";
@@ -60,13 +60,15 @@ export default async function ChannelsPage({ searchParams }: { searchParams?: Pr
     有就把删除项变灰、原因写在旁边，不等点了确认才说删不了。只读，删不删照旧由 deleteChannel 判
   */
   const 渠道ids = channels.map((c) => c.id);
+  // 项目、投入、名单落点只读一趟，列表统计和看板共用（11-18 提速：原来两边各读一遍，渠道页比别的页慢一截）
+  const 底 = 取渠道底(渠道ids, me);
   const [统计, 看板底数, 创建人们, 属性选项, 挂客户, 投入笔数, 挂项目, 能录, 能管, 公海底数, 圈里的人, 主渠道们, 策略选项] = await Promise.all([
     // 带上是谁在看：每个数点进项目列表能看到几条（名单），对不上的抽屉里写一句
     // 列表统计跟看板时间段（2D）：同一趟取数按 本月 / 本季 / 全部（带了自定义再加那一段）各算一份，界面跟看板的档换
-    读渠道分期统计(channels, new Date(), 区间, me),
+    读渠道分期统计(channels, new Date(), 区间, me, 底),
     // 总览看板（11-03）：每个渠道 × 本月 / 本季 / 全部（带了「自定义」再加那一段）的底数，界面按列表的筛选结果再合，口径见 channel-dash.ts；
     // 带上是谁在看：TOP5 每行拆「项目列表里 N 条、另 M 条在公海」（11-11）
-    企业版() ? 读看板底数(渠道ids, new Date(), 区间, me) : Promise.resolve(null),
+    企业版() ? 读看板底数(渠道ids, new Date(), 区间, me, 底) : Promise.resolve(null),
     prisma.user.findMany({
       where: { id: { in: [...new Set(channels.map((c) => c.createdById).filter((x): x is string => Boolean(x)))] } },
       select: { id: true, name: true },
