@@ -55,6 +55,7 @@ import { 权限组织 } from "@/lib/enterprise/org";
 import { 补潜客培育, 要补潜客培育 } from "@/lib/project/nurture";
 import { 只用项目挡老入口 } from "@/lib/enterprise/project-only";
 import { 算市场转客户 } from "@/lib/enterprise/market-transfer";
+import { 算市场建给销售, 新客户项目进线索验证 } from "@/lib/enterprise/market-assign-node";
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 选的原因, 可选项, 客户分配序号 } from "@/lib/enterprise/dict";
 import { 建档记自持, 补客户分配 } from "@/lib/enterprise/customer-assign-way";
@@ -718,6 +719,8 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     const 起 = await 分机留存起();
     // 销售自己建档、记在自己名下：客户分配空着就记「自持」（11-17，customer-assign-way.ts）；表单里选了的不改
     const 记自持 = await 建档记自持(me, salesOwnerId);
+    // 市场成员建档直接给销售（新建客户页、只建客户）：带的潜客培育项目进线索验证（审核 11-18）；建档向导先落在我名下、转客户时再推
+    const 建给销售 = 企业版() && salesOwnerId !== me.id && 算市场建给销售((await 权限组织())!, me.id, salesOwnerId);
     const 建了 = await 查完再写(async (tx) => {
       if (phone) {
         const dup = await 看全部(async () => tx.customer.findFirst({ where: await 同号条件(tx, phone, 起), select: 撞到的字段 }));
@@ -741,6 +744,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       if (认得(接着)) await 接着(tx, created.id);
       // M-公海-14：企业版项目模式下新客户至少带 1 个潜客培育项目（向导已建了项目的不补；老数据不补）
       const 潜客培育 = 要补潜客培育(企业版(), b.projectMode) ? await 补潜客培育(tx, { customerId: created.id, 客户名: created.name, ownerId: created.salesOwnerId, creatorId: me.id }) : null;
+      if (建给销售) await 新客户项目进线索验证(tx, created.id, created.salesOwnerId, me.id);
       return { created, 潜客培育 } as const;
     });
     if ("企撞" in 建了 && 建了.企撞) return { ok: false, error: (await 撞号结论(prisma, 建了.企撞, me.id, await 读的我(defaultClient))).提示 };

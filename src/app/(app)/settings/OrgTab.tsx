@@ -14,7 +14,7 @@ import { 规则, 规则名们, 默认开的规则, 关掉后果, type 规则名 
 import { 字段, 字段名们, 字段级别of, 推荐字段配置, 教练字段级别, type 字段配置, type 字段名 } from "@/lib/enterprise/field-perm-table";
 import { 设置项, 设置项们, 谁能改, type 改权限配置, type 能改的人, type 设置项名 } from "@/lib/enterprise/edit-perm-table";
 import { 市场部门们 } from "@/lib/enterprise/market";
-import { 建部门, 改部门, 删部门, 设成员, 设规则, 设字段权限, 设改权限, 设市场部门, 设只看某人, 设回收站副手, type 成员改动 } from "./org-actions";
+import { 建部门, 改部门, 删部门, 设成员, 设规则, 设字段权限, 设改权限, 设市场部门, 设只看某人, 设回收站副手, 设无主线索复核人, type 成员改动 } from "./org-actions";
 import { 设不设配额, type 分配情况 } from "../leads/assign-actions";
 import LeadAssignCard from "./LeadAssignCard";
 import LineDeptCard from "./LineDeptCard";
@@ -50,6 +50,8 @@ export type 组织架构 = {
   只看某人?: Record<string, string>;
   /** 回收站副手（V3.5.1）：系统管理员之外能看、能恢复回收站的人 */
   回收站副手?: string[];
+  /** 无主线索复核人（11-18）：市场复核找不到建的人、客户创建人那两条链时由他复核；null = 没设，交系统管理员 */
+  无主线索复核人?: string | null;
 };
 type 结果 = Promise<{ ok: boolean; error?: string; 提示?: string; 要确认?: string }>;
 
@@ -90,7 +92,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
   const [新名, set新名] = useState("");
   /*
     忙按项分（原型 st.switch / st.dict「不锁整页」）：一项在存、在等新数据，只灰这一项，别的照常能点。
-    键：规则-名、不设配额、字段权限、改权限、部门、市场、副手、成员-id。
+    键：规则-名、不设配额、字段权限、改权限、部门、市场、副手、无主、成员-id。
     改完到新数据回来之前这一项还算忙：router.refresh 不等它回来就放手，连着拨同一个开关时界面还是旧数据，
     第二下按旧值算、显示和库里对不上（10-25 质量：连关开关要刷新才对）
   */
@@ -263,6 +265,10 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
   const [副手草稿, set副手草稿] = useState<{ 基于: string; 人: string[] } | null>(null);
   const 副手 = 副手草稿 && 副手草稿.基于 === 页面副手 ? 副手草稿.人 : (value.回收站副手 ?? []);
   const 副手改了 = JSON.stringify(副手) !== 页面副手;
+  const 页面无主 = value.无主线索复核人 ?? null;
+  const [无主草稿, set无主草稿] = useState<{ 基于: string | null; 人: string | null } | null>(null);
+  const 无主 = 无主草稿 && 无主草稿.基于 === 页面无主 ? 无主草稿.人 : 页面无主;
+  const 无主改了 = 无主 !== 页面无主;
   const 只看 = !能改 && <span style={{ color: "var(--text-muted)" }}>{value.不管设置 ? "你被设为「不管设置」，这里只能看" : "只有总管理能改"}</span>;
 
   return (
@@ -473,6 +479,20 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
           <Space wrap style={{ marginTop: 12 }}>
             <SaveButton disabled={!副手改了 || 忙("副手")} data-testid="org-trash-helpers-save" 做={() => 存("副手", () => 设回收站副手(副手))}>保存</SaveButton>
             <Button disabled={!副手改了 || 忙("副手")} onClick={() => set副手草稿(null)}>放弃修改</Button>
+          </Space>
+        )}
+      </Card>
+
+      <Card title="无主线索复核人" extra={只看} data-testid="org-orphan-reviewer">
+        <p className="muted">线索判无效、交市场复核时，先找建这条线索的市场成员和他的直属市场管理，再找客户创建人和他的直属市场管理；都找不到（系统补建的、建的人离职了又没有直属市场管理）就交给这位复核、发通知给他。没设交系统管理员。</p>
+        <Select allowClear showSearch className="org-pick" aria-label="无主线索复核人" disabled={!能改 || 忙("无主")}
+          placeholder="没设（交系统管理员）" optionFilterProp="label"
+          value={无主 ?? undefined} onChange={(v?: string) => set无主草稿({ 基于: 页面无主, 人: v ?? null })}
+          options={人选项} />
+        {能改 && (
+          <Space wrap className="org-save-row">
+            <SaveButton disabled={!无主改了 || 忙("无主")} data-testid="org-orphan-reviewer-save" 做={() => 存("无主", () => 设无主线索复核人(无主))}>保存</SaveButton>
+            <Button disabled={!无主改了 || 忙("无主")} onClick={() => set无主草稿(null)}>放弃修改</Button>
           </Space>
         )}
       </Card>

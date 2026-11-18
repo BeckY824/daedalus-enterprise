@@ -71,7 +71,8 @@ export async function 在事务里分公海项目们(
       await 记转让(tx, p, 操作人, 原, 给, "pool-claim", 待办痕(这带, 几条));
       if (出整包) 包 = await 客户整包出公海(tx, p.customerId, 给, 操作人, 带, "pool-assign");
       else await 单项目客户跟着领(tx, p.customerId, 给, 操作人, 这带);
-      if (转) 同事待分配 = (await 转客户给销售(tx, p.customerId, 转.原, 给, 操作人, way)).同事待分配;
+      // 推节点 false：公海分配不推进线索验证（审核 11-18；这条路的撤销也不带 带过来）
+      if (转) 同事待分配 = (await 转客户给销售(tx, p.customerId, 转.原, 给, 操作人, way, false)).同事待分配;
       return null;
     })();
     if (原因) {

@@ -33,6 +33,7 @@ import { 单项目客户跟着领, 领项目连带超上限, 客户整包出公�
 import { 拦客户公海里的项目, 客户在公海项目不单领提示, 客户在公海找销管提示 } from "@/lib/enterprise/pool-rules";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 客户在市场手里, 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
+import { 算市场分给销售, 市场分配进线索验证 } from "@/lib/enterprise/market-assign-node";
 import { 分配带走的同事项目, 数进手的持有项目 } from "@/lib/carry-over-db";
 import type { 转走项目预览 } from "@/lib/carry-over";
 import { 看全部 } from "@/lib/team-scope";
@@ -311,6 +312,8 @@ async function 分项目给(
     if (整包) await 客户整包出公海(tx, p.customerId, input.toUserId, me.id, 带待办, "pool-assign");
     else if (p.pooledAt) await 单项目客户跟着领(tx, p.customerId, input.toUserId, me.id, 带待办);
     const 转 = !整包 && 市场转客户 && 客户 ? await 转客户给销售(tx, p.customerId, 客户.salesOwnerId, input.toUserId, me.id, input.way) : undefined;
+    // 市场分给销售：这条停在潜客培育的进线索验证（审核 11-18，market-assign-node.ts）；从公海里分出来的不推
+    if (!p.pooledAt && 算市场分给销售(org, { 分配人: me.id, 原, 接手人: input.toUserId, 创建人: p.creatorId, 市场转客户: !!转 })) await 市场分配进线索验证(tx, [p.id], input.toUserId, me.id);
     await tx.entLeadAssign.create({
       data: { projectId: p.id, toUserId: input.toUserId, fromUserId: 原, byUserId: me.id, line: input.line, kind: input.kind, counted, month: 月, way: input.way },
     });

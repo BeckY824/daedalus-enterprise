@@ -10,7 +10,7 @@
  *
  * 卡（URL 参数 f 的值 → 卡名 → 口径）：
  *   month-new  本月新增   这个月（北京时间自然月，1 号 0 点起）新建的项目，不管现在是否还在推、有没有结局；
- *                          补零项目客户的脚本补建的（creatorId = 补建创建人，createdAt = 客户建档时间）不算新建（system-created.ts）
+ *                          补零项目客户的脚本补建的（creatorId = 补建创建人或 importBatch = 补建批次，createdAt = 客户建档时间）不算新建（system-created.ts）
  *   key        重点项目   在推的项目里，项目自己的级别（Project.level，迁移 093，界面显示成星级）是 重点级别（S / A）的。
  *                          项目标签字典里的「A 重点推进」就是项目级别 A；S 比 A 高一档，也算重点。不看客户级别
  *   no-follow  暂未跟进   在推的项目里，现负责人还没在这个项目上记过一条沟通的（挂在项目上、记录人是现负责人、没删的沟通一条都没有）。
@@ -34,7 +34,7 @@ import { dayjs } from "@/lib/utils";
 import type { 组织规则 } from "./org-rules";
 import { 节点超时天数 } from "./timeout";
 import { 同名们, type 阶段字典 } from "./stage-dict";
-import { 不算补建, 补建创建人, 历史分析的 } from "./system-created";
+import { 不算补建, 补建的, 历史分析的 } from "./system-created";
 
 const 有过沟通 = { followUps: { some: { deletedAt: null } } } satisfies Prisma.CustomerWhereInput;
 
@@ -217,7 +217,7 @@ export function 首页卡条件(键: 项目卡键, 规则: 组织规则, 字典:
     case "no-follow":
       // 补建的、历史分析回填的（客户身上就是那批旧沟通）：客户有过沟通就不算没跟进。分两条 NOT 写，历史分析的 用 null 安全的写法
       if (!负责人们) throw new Error("暂未跟进要传这一圈负责人（首页卡条件 第 5 个参数）");
-      return { ...在推, AND: [现负责人没记过沟通(负责人们)], NOT: [{ creatorId: 补建创建人, customer: 有过沟通 }, { ...历史分析的, customer: 有过沟通 }] };
+      return { ...在推, AND: [现负责人没记过沟通(负责人们)], NOT: [{ ...补建的, customer: 有过沟通 }, { ...历史分析的, customer: 有过沟通 }] };
     case "due-soon":
       return 即将逾期粗筛(规则, 字典, 今) ?? { id: { in: [] } };
     case "month-won": {

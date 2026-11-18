@@ -43,6 +43,7 @@ import { 接手问题 } from "@/lib/enterprise/lead-assign";
 import { 项目分给你通知, 同事待分配随客户通知, type 留下的活 } from "@/lib/enterprise/notice-sources";
 import { 记新建指定分配 } from "@/lib/enterprise/direct-assign";
 import { 客户在市场手里, 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
+import { 算市场建给销售, 市场分配进线索验证 } from "@/lib/enterprise/market-assign-node";
 import { 分配带走的同事项目, 数进手的持有项目 } from "@/lib/carry-over-db";
 import type { 转走项目预览 } from "@/lib/carry-over";
 import { 钉住老签约 } from "@/lib/contract-owner";
@@ -258,6 +259,8 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
         ? await 看全部(() => 转客户给销售(tx, customerId, 现客户.salesOwnerId, 项目.ownerId, me.id, 指定分配名!))
         : undefined;
       const 留下: 留下的活 | undefined = 转?.留下;
+      // 市场指定给销售：刚建的项目选在潜客培育的进线索验证（审核 11-18，market-assign-node.ts）
+      if (指定给别人 && 算市场建给销售(org, me.id, 项目.ownerId)) await 市场分配进线索验证(tx, [p.id], 项目.ownerId, me.id);
       // 企业版客户状态跟着项目算：多了一个项目（没项目的客户从空变潜在）
       await 看全部(() => 跟着项目重算(tx, 状态开, [customerId]));
       return { projectId: p.id, followUpId: f.id, 留下, 同事待分配: 转?.同事待分配 ?? [] };

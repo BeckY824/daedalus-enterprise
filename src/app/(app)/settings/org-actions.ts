@@ -18,7 +18,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 规则, 规则开着, type 规则名 } from "@/lib/enterprise/rules";
 import { 超时转重新起算 } from "@/lib/enterprise/reply-overdue";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import { 读组织, 建组织, 拆角色, 合角色, 部门挪动问题, 上级设置问题, 权限组织, 填组织设置, 规整只看某人, 回收站副手键, 只看某人键, 系统管理员标记键, 是系统管理员of, 能管设置of, 有人能管设置, 读组织于, 留一位系统管理员错, 留一位系统管理员话, 直属上级of, type 组织, type 组织部门 } from "@/lib/enterprise/org";
+import { 读组织, 建组织, 拆角色, 合角色, 部门挪动问题, 上级设置问题, 权限组织, 填组织设置, 规整只看某人, 回收站副手键, 只看某人键, 系统管理员标记键, 无主线索复核人键, 是系统管理员of, 能管设置of, 有人能管设置, 读组织于, 留一位系统管理员错, 留一位系统管理员话, 直属上级of, type 组织, type 组织部门 } from "@/lib/enterprise/org";
 import type { Prisma } from "@/generated/prisma";
 import { 能改后台设置 } from "@/lib/enterprise/permissions";
 import { 是业务角色, 角色名, 角色组合问题, type 业务角色 } from "@/lib/sync/dept-policy";
@@ -506,6 +506,29 @@ export async function 设回收站副手(ids: unknown): Promise<结果> {
     await setSetting(回收站副手键, 存);
     const 名 = 设.length ? (await prisma.user.findMany({ where: { id: { in: 设 } }, select: { name: true } })).map((u) => u.name).join("、") : "清空";
     await recordAudit({ user: who.me, action: "update", entity: "Setting", entityId: 回收站副手键, summary: `改回收站副手（${名}）`, detail: 存 });
+    改完了();
+    return { ok: true };
+  } catch (e) {
+    return 不在了(e);
+  }
+}
+
+/**
+ * 无主线索复核人（11-18）：线索判无效交市场复核时，项目创建人、客户创建人两条链上都找不到能复核的人（系统补建的、建的人停用了又没有直属市场管理……），
+ * 由这位复核、收通知（org-core 市场复核人们 第 3 步）；没设 = 系统管理员。只能选一位在职的人；空 = 清空
+ */
+export async function 设无主线索复核人(userId: unknown): Promise<结果> {
+  const who = await 能改的人();
+  if (!who) return 不能改;
+  try {
+    if (userId !== null && typeof userId !== "string") return { ok: false, error: "选的人不对，刷新再试" };
+    const id = typeof userId === "string" ? userId.trim() : "";
+    const org = await 读组织();
+    if (id && !org.成员.has(id)) return { ok: false, error: "选的人已经不在组织里了，刷新再选" };
+    if (id && org.只看某人?.has(id)) return { ok: false, error: "设了「只看某人」的人不做市场复核，换一位" };
+    await setSetting(无主线索复核人键, id || null);
+    const 名 = id ? (await prisma.user.findUnique({ where: { id }, select: { name: true } }))?.name ?? id : "清空（交系统管理员）";
+    await recordAudit({ user: who.me, action: "update", entity: "Setting", entityId: 无主线索复核人键, summary: `改无主线索复核人（${名}）`, detail: id || null });
     改完了();
     return { ok: true };
   } catch (e) {

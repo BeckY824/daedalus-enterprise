@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { notify } from "./notify";
 import { 离职段 } from "./handover-db";
-import { 读组织, 管理员类别们of, 负责人和上级 } from "./org";
+import { 读组织, 负责人和上级, 市场复核人们, 市场复核要读的, 是系统管理员of } from "./org";
 import { 企业版 } from "./switch";
 import { 公海入口 } from "./nav";
 import { 能改后台设置, 只读角色 } from "./permissions";
@@ -190,13 +190,14 @@ const 验证标题: Record<待哪步, (项目: string) => string> = {
 
 /**
  * 验证走了一步之后：现在等谁拍板就通知谁。
- * 市场复核 → 市场管理；总管理终判 → 总管理员（只认业务角色）；销售终验、销售认领 → 项目负责人。
+ * 市场复核 → 能拍板的那几位（org-core 市场复核人们，和拍板同一份：建的人 / 直属市场管理 → 客户创建人那条链 → 无主线索复核人 → 系统管理员；11-18）；
+ * 总管理终判 → 系统管理员（同拍板的 是总管理）；销售终验、销售认领 → 项目负责人。
  * 同一条线索同一步同一轮只通知一次（key 带上验证行的 updatedAt）
  */
 export async function 验证待办通知(me: 人, projectId: string): Promise<void> {
   await 稳("验证通知", async () => {
     const [p, v, org] = await 看全部(() => Promise.all([
-      prisma.project.findUnique({ where: { id: projectId }, select: { id: true, name: true, ownerId: true } }),
+      prisma.project.findUnique({ where: { id: projectId }, select: { id: true, name: true, ...市场复核要读的 } }),
       prisma.entLeadVerify.findUnique({ where: { projectId }, select: { pending: true, invalidReason: true, reviewNote: true, disputeNote: true, updatedAt: true } }),
       读组织(),
     ]));
@@ -206,7 +207,7 @@ export async function 验证待办通知(me: 人, projectId: string): Promise<vo
     const 销售步 = 步 === "销售终验" || 步 === "销售认领";
     const 收 = 销售步
       ? [p.ownerId]
-      : [...org.成员.keys()].filter((id) => 管理员类别们of(org, id).has(步 === "市场复核" ? "市场管理" : "总管理员"));
+      : 步 === "市场复核" ? 市场复核人们(org, p) : [...org.成员.keys()].filter((id) => 是系统管理员of(org, id));
     const 说明 = 步 === "市场复核" ? v.invalidReason : 步 === "销售终验" ? v.reviewNote : 步 === "总管理终判" ? v.disputeNote ?? v.invalidReason : null;
     await notify(收.filter((id) => id !== me.id), {
       kind: "线索验证",
