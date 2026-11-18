@@ -44,6 +44,8 @@ export type CustomerRosterData = {
    * 不给就照旧从 rows 里筛 mine
    */
   mineRows?: CustomerRosterData["rows"];
+  /** 「我的」一共几位（= 客户页「范围：我负责的」那个数，企业版给）：停在「我的」时底下那句写它、链到 /customers?scope=mine */
+  mineTotal?: number;
   /**
    * 企业版：按客户状态分组（10-29）。顺序 = 字典里启用的几项按字典排，颜色按字典项给（lib/enterprise/cust-status-color.ts）。
    * 别的版本不给，照旧按跟进状态分
@@ -69,7 +71,10 @@ function 搜名单(xs: CustomerRosterData["rows"], q: string) {
  *
  * 只装最近 50 位；搜索和状态筛选在这 50 位里做，要翻全量按回车去表格。
  */
-export default function CustomerRoster({ data }: { data: CustomerRosterData }) {
+/**
+ * 默认页签：企业版里销售（没有管理范围）默认「我的」，和客户页「范围」默认「我负责的」对齐（客户 11-18 第 12 题）；不给 = 「全部」
+ */
+export default function CustomerRoster({ data, 默认页签 = "全部" }: { data: CustomerRosterData; 默认页签?: "全部" | "我的" }) {
   const b = useBusiness();
   const router = useRouter();
   const pathname = usePathname();
@@ -96,7 +101,7 @@ export default function CustomerRoster({ data }: { data: CustomerRosterData }) {
     桌面端就你一个人，「全部」和「我的」是同一张单子，摆两个一样的页签是让人找不同。
     「本周要跟」= 计划排在七天之内的，已经过期没做的也算（那更该跟）。
   */
-  const [页签, set页签] = useState<"全部" | "我的" | "本周">("全部");
+  const [页签, set页签] = useState<"全部" | "我的" | "本周">(默认页签);
   const 有别人的 = data.rows.some((r) => r.mine === false);
   const 七天后 = dayjs().add(7, "day").endOf("day");
   const 当前页签 = 页签 === "我的" && !有别人的 ? "全部" : 页签;
@@ -259,11 +264,18 @@ export default function CustomerRoster({ data }: { data: CustomerRosterData }) {
               );
             })
           : 页签里.map((r) => 一行(r, true))}
-        {data.total > data.rows.length && (
-          <Link href="/customers" className="pane-more">
-            这里只有最近 {data.rows.length} 位，全部 {data.total} 位在表格里 ›
-          </Link>
-        )}
+        {/* 停在「我的」：数的是我负责的（= 客户页「范围：我负责的」），链过去也落在那一项 */}
+        {当前页签 === "我的" && data.mineTotal !== undefined && 我的rows
+          ? data.mineTotal > 我的rows.length && (
+              <Link href="/customers?scope=mine" className="pane-more">
+                这里只有最近 {我的rows.length} 位，我负责的 {data.mineTotal} 位在表格里 ›
+              </Link>
+            )
+          : data.total > data.rows.length && (
+              <Link href="/customers" className="pane-more">
+                这里只有最近 {data.rows.length} 位，全部 {data.total} 位在表格里 ›
+              </Link>
+            )}
       </div>
     </>
   );

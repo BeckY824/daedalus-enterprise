@@ -13,7 +13,7 @@ import { 客户导出表, 拆导出渠道, type 导出行 } from "@/app/(app)/cu
 import { DEFAULT_BUSINESS, BUSINESS_PRESETS } from "@/lib/business-config";
 
 const 统 = (x: Partial<渠道统计>): 渠道统计 => ({
-  关联线索: 0, 有效线索: 0, 关联商机: 0, 关联订单: 0, 关联项目: 0, 累计成交: [], 当前投入: [], 产出比: null, 产出比说明: "还没录投入",
+  关联线索: 0, 有效线索: 0, 已判定: 0, 关联商机: 0, 关联订单: 0, 关联项目: 0, 累计成交: [], 当前投入: [], 产出比: null, 产出比说明: "还没录投入",
   累计运营天数: 0, 线索转商机: { 分子: 0, 分母: 0, 比例: null }, 商机转订单: { 分子: 0, 分母: 0, 比例: null }, ...x,
 });
 const 主 = (x: Partial<主渠道行> & { id: string; name: string }): 主渠道行 => ({ allowSub: true, selfDev: false, category: null, active: true, sort: 0, ...x });

@@ -21,6 +21,8 @@ import { 字典of } from "@/lib/project/stage-dict";
 import { 页面字典 } from "@/lib/enterprise/dict";
 import { 客户状态色表 } from "@/lib/enterprise/cust-status-color";
 import { 拼地址 } from "@/lib/enterprise/customer-v2";
+import { 权限组织 } from "@/lib/enterprise/org";
+import { 有管理范围 } from "@/lib/enterprise/permissions";
 
 /**
  * 中栏（312px）的内容。眼下**只有一种**：学员记录页的窄名单。
@@ -84,12 +86,18 @@ export async function 学员名单() {
     // 最近一条还没做的计划：「本周要跟」那个页签和右下角的圆点都看它
     plans: { where: { done: false }, orderBy: [{ plannedAt: "asc" as const }, { id: "asc" as const }], select: { plannedAt: true, plannedOn: true } },
   } satisfies Prisma.CustomerSelect;
-  const [取, 我的] = await Promise.all([
+  /*
+    和客户页「范围」对齐（客户 11-18 第 12 题）：「我的」= 我负责的。企业版里没有管理范围的（销售）默认停在「我的」，
+    「我的」那一页的总数另数一句（= 客户页「我负责的」= 设置里的客户数）；有管理范围的默认「全部」（= 我可见的）
+  */
+  const 管理 = 企业 ? 有管理范围(me, await 权限组织()) : true;
+  const [取, 我的, 我的总数] = await Promise.all([
     // 按编号取走主键（第四轮 11-14）：带着 deletedAt IS NULL 时 SQLite 放着主键不走、顺 deletedAt 索引扫 8.5 万位，见 按主键取没删的
     ids
       ? 按主键取没删的(() => prisma.customer.findMany({ where: { id: { in: ids } }, select: { ...字段, deletedAt: true } }))
       : prisma.customer.findMany({ where: 列表条件, orderBy: 排序, take: 50, select: 字段 }),
     prisma.customer.findMany({ where: { AND: [列表条件, { salesOwnerId: me.id }] }, orderBy: 排序, take: 50, select: 字段 }),
+    企业 ? prisma.customer.count({ where: { AND: [列表条件, { salesOwnerId: me.id }] } }) : undefined,
   ]);
   const 位 = new Map(ids?.map((id, i) => [id, i]));
   const rows = ids ? 取.sort((a, b) => 位.get(a.id)! - 位.get(b.id)!) : 取;
@@ -121,7 +129,9 @@ export async function 学员名单() {
         客户状态: 状态字典 ? { 顺序: 状态字典.filter((x) => x.active).map((x) => x.name), 颜色: 客户状态色表(状态字典) } : null,
         rows: 行们,
         mineRows: 同一份 ? 行们 : 我的.map(一行),
+        ...(我的总数 !== undefined ? { mineTotal: 我的总数 } : {}),
       }}
+      默认页签={管理 ? "全部" : "我的"}
     />
   );
 }

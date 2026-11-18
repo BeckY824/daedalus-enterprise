@@ -58,10 +58,11 @@ async function open(width: number, hash = "") {
   await page.locator(".ant-table-tbody tr").first().waitFor();
   return { page, errors, 右界: 220 + 24 + 主栏 };
 }
-/** 「线索」那一列每行的字（列表按创建时间倒序，顺序同 rows） */
-const 线索列 = async (page: Page) => {
+/** 「关联线索」那一列每行的字（列表按创建时间倒序，顺序同 rows）；11-18 起关联线索、有效线索各成一列，不再合成「线索」 */
+const 线索列 = (page: Page, 名 = "关联线索") => 列字(page, 名);
+const 列字 = async (page: Page, 名: string) => {
   const 表头 = await page.locator(".chan-list .ant-table-thead th").allInnerTexts();
-  const i = 表头.findIndex((t) => t.trim() === "线索");
+  const i = 表头.findIndex((t) => t.trim() === 名);
   return page.locator(".chan-list .ant-table-tbody tr.ant-table-row").evaluateAll((trs, i) => trs.map((tr) => (tr.children[i] as HTMLElement).innerText.trim()), i);
 };
 const 说明 = (page: Page) => page.getByTestId("chan-period-note");
@@ -74,6 +75,8 @@ for (const width of [1024, 1280, 1366]) {
       // 默认全部，和看板一致
       expect(await 说明(page).locator(".chan-period-label").innerText()).toBe("列表统计：全部");
       expect(await 线索列(page)).toEqual(["41", "23", "5"]);
+      // 有效线索另成一列：这批一条都没判过（没有已判定）→「—」（客户 11-18 第 10 题 A，同看板）
+      expect(await 列字(page, "有效线索")).toEqual(["—", "—", "—"]);
       const 首链 = page.locator(".chan-list .ant-table-tbody a.chan-num").first();
       expect(await 首链.getAttribute("href")).not.toContain("createdFrom");
 

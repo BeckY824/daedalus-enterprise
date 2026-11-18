@@ -162,9 +162,15 @@ describe("仅项目安全条件", () => {
   it("登记的键和客户条件对得上（客户条件新加键要在这里和 仅项目筛选口径 两边登记）", () => {
     expect(Object.keys(仅项目筛选口径).sort()).toEqual([
       "archiveTier", "batch", "channelId", "channelOwnerId", "country", "createdFrom", "createdTo", "createdWithin", "custStatus", "customerType",
-      "decisionStatus", "dept", "directOf", "followStatus", "grade", "idleDays", "keyword", "level", "node", "phase", "phone", "pool", "salesOwnerId", "source", "triState",
+      "decisionStatus", "dept", "directOf", "followStatus", "grade", "idleDays", "keyword", "level", "node", "phase", "phone", "pool", "salesOwnerId", "scope", "source", "triState",
     ].sort());
-    expect(Object.entries(仅项目筛选口径).filter(([, v]) => v === "认").map(([k]) => k).sort()).toEqual(["customerType", "keyword", "pool"]);
+    expect(Object.entries(仅项目筛选口径).filter(([, v]) => v === "认").map(([k]) => k).sort()).toEqual(["customerType", "keyword", "pool", "scope"]);
+  });
+
+  it("范围（11-18 第 12 题）：我负责的 / 我可见的照常带上仅项目行；我参与的不含（仅项目是我当负责人的项目）", () => {
+    expect(仅项目安全条件({ scope: "mine" })).toEqual({});
+    expect(仅项目安全条件({ scope: "visible" })).toEqual({});
+    expect(仅项目安全条件({ scope: "joined" })).toBeNull();
   });
 
   it("没筛 = {}；关键词只比名字、简称、公司；客户类型照认", () => {
