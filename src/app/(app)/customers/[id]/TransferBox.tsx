@@ -176,7 +176,7 @@ export default function TransferBox({
               <div className="cd-transfer-row">
                 <span className="cd-transfer-k">分配方向</span>
                 <div className="cd-transfer-v">
-                  <Select style={{ width: 120 }} placeholder="内贸 / 外贸" aria-label="分配方向" data-testid="transfer-direction" disabled={忙}
+                  <Select className="dir-select-w120" placeholder="内贸 / 外贸" aria-label="分配方向" data-testid="transfer-direction" disabled={忙}
                     value={向 ?? 默认.线 ?? undefined} options={(["内贸", "外贸"] as const).map((v) => ({ value: v, label: v }))} onChange={(v: 线) => set向(v)} />
                   <div className={向 || 默认.线 ? "cd-transfer-mut" : "cd-transfer-mut cd-transfer-warn"} data-testid="transfer-direction-why">
                     {向 && 向 !== 默认.线 ? `你改成了${向}（默认${默认.线 ? 方向来源说明(默认) : "不限"}）` : 默认.线 ? 方向来源说明(默认) : 区域未填提示}

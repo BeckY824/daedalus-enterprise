@@ -5156,3 +5156,8 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 /* 渠道看板线索榜「展开全部」（员工反馈 #5）：展开后列表自己滚，不把整行格子撑高；按钮靠左一行小字 */
 .chan-dash-top-all { max-height: 320px; overflow-y: auto; overflow-x: hidden; padding-inline-end: 4px; }
 .chan-dash-top-more { margin-top: var(--s2); font-size: var(--fs-min); color: var(--brand); }
+
+/* 分配方向下拉（转让框、AI 新线索卡）和卡上区域那一行 */
+.dir-select-w120 { width: 120px; }
+.dir-select-w110 { width: 110px; }
+.lead-region-line { font-size: 12px; }

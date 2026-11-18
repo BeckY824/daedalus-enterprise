@@ -771,9 +771,9 @@ export default function ProposalCard({
                       const 选 = draft.分配方向;
                       return (
                         <>
-                          <Select size="small" style={{ width: 110 }} placeholder="内贸 / 外贸" data-testid="lead-card-direction" value={选 ?? 默认.线 ?? undefined}
+                          <Select size="small" className="dir-select-w110" placeholder="内贸 / 外贸" data-testid="lead-card-direction" value={选 ?? 默认.线 ?? undefined}
                             options={(["内贸", "外贸"] as const).map((v) => ({ value: v, label: v }))} onChange={(v) => setDraft({ ...draft, 分配方向: v })} />
-                          <span className={选 || 默认.线 ? "muted" : "prop-region-warn"} data-testid="lead-card-region-line" style={{ fontSize: 12 }}>
+                          <span className={选 || 默认.线 ? "muted lead-region-line" : "prop-region-warn lead-region-line"} data-testid="lead-card-region-line">
                             {选 && 选 !== 默认.线 ? `你改成了${选}（默认${默认.线 ? 方向来源说明(默认) : "不限"}）` : 方向来源说明(默认)}
                           </span>
                         </>
