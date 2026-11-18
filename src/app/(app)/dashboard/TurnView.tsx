@@ -7,6 +7,7 @@ import { useCopy } from "@/lib/clipboard";
 import { CopyOutlined, ReloadOutlined, CloseOutlined, RightOutlined } from "@ant-design/icons";
 import ProposalCard, { type 卡况 } from "@/components/ProposalCard";
 import ProposalBatch from "@/components/ProposalBatch";
+import { 对话截图 } from "@/lib/card-scan/originals";
 import AiStatus, { type AiStatus态 } from "@/components/AiStatus";
 import dynamic from "next/dynamic";
 import StreamMarkdown from "@/components/StreamMarkdown";
@@ -378,9 +379,9 @@ export default function TurnView({
         <div className="prop-list">
           {/* 同一轮 ≥2 张卡并成一张「待确认 N 项」清单；只有 1 张照旧 */}
           {answer.proposals.length >= 2 ? (
-            <ProposalBatch proposals={answer.proposals} 记号前缀={`home:${turn.id}`} 报={报卡} />
+            <ProposalBatch proposals={answer.proposals} 记号前缀={`home:${turn.id}`} 报={报卡} 对话截图={对话截图(turn.id)} />
           ) : (
-            answer.proposals.map((p) => <ProposalCard key={p.id} proposal={p} 记号={`home:${turn.id}:${p.id}`} 报={报卡} />)
+            answer.proposals.map((p) => <ProposalCard key={p.id} proposal={p} 记号={`home:${turn.id}:${p.id}`} 报={报卡} 对话截图={对话截图(turn.id)} />)
           )}
         </div>
       )}

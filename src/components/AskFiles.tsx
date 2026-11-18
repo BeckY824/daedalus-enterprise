@@ -2,7 +2,7 @@
 
 import { useImperativeHandle, useRef, useState } from "react";
 import { PaperClipOutlined, CloseOutlined, LoadingOutlined } from "@ant-design/icons";
-import { 图片后缀, 是图片文件, 认图成文本 } from "@/lib/ask-image";
+import { 图片后缀, 图片类型, 是图片文件, 认图成文本 } from "@/lib/ask-image";
 
 /**
  * 问一句的时候带上一个文件。
@@ -16,9 +16,17 @@ import { 图片后缀, 是图片文件, 认图成文本 } from "@/lib/ask-image"
  * （合并单元格、多工作表、扫描件），不如让人自己另存成 csv，至少他知道发出去的是什么。
  *
  * 也收**图**（png / jpg / webp / bmp，2026-11-17 员工反馈「附件不支持截图」）：模型只收文字，
- * 所以图先过名片识别那套 OCR（lib/ask-image.ts），认出的字当这份附件的文本。图只在识别时传到自己的服务器，认完就丢
+ * 所以图先过名片识别那套 OCR（lib/ask-image.ts），认出的字当这份附件的文本。图只在识别时传到自己的服务器，服务器认完就丢；
+ * 原件留在这台电脑的内存里（附件.原件），这一问建新线索时人可以勾选存成附件（11-18）
  */
-export type 附件 = { name: string; text: string; size: number; 图?: boolean };
+export type 附件 = {
+  name: string; text: string; size: number; 图?: boolean;
+  /**
+   * 图的原件（11-18 员工反馈「录入的时候添加不了截图」）：只在这台电脑的内存里，不发给模型、不进对话记录。
+   * 这一问出了新线索卡、人在卡上勾了「存成这条线索的附件」，确认时才传成新线索首条沟通的附件（lib/card-scan/originals.ts 对话截图）
+   */
+  原件?: File;
+};
 
 /** 单个文件的文本上限。再大就不是「带一份名单问一句」，而是拿模型当数据库用 */
 const 单文件上限 = 100 * 1024;
@@ -31,7 +39,7 @@ export async function 读一个(f: File, 设: { 进?: (话: string) => void; 名
   const name = 设.名 ?? f.name;
   if (是图片文件(f)) {
     const r = await 认图成文本(f, 设.进 ?? (() => undefined));
-    return "错" in r ? r : { 附件: { name, text: r.text, size: f.size, 图: true }, ...(r.提示 ? { 提示: r.提示 } : {}) };
+    return "错" in r ? r : { 附件: { name, text: r.text, size: f.size, 图: true, 原件: name === f.name ? f : new File([f], name, { type: f.type }) }, ...(r.提示 ? { 提示: r.提示 } : {}) };
   }
   const 后缀 = f.name.slice(f.name.lastIndexOf(".")).toLowerCase();
   if (!可读后缀.includes(后缀)) return { 错: 不认的话 };
@@ -41,6 +49,14 @@ export async function 读一个(f: File, 设: { 进?: (话: string) => void; 名
   } catch {
     return { 错: "这个文件读不出来" };
   }
+}
+
+/** 「image.jpg」已经带着了：叫「image-2.jpg」，再有就 -3… */
+export function 不重名(名: string, files: 附件[]): string {
+  if (!files.some((x) => x.name === 名)) return 名;
+  const 点 = 名.lastIndexOf(".");
+  const [头, 尾] = 点 > 0 ? [名.slice(0, 点), 名.slice(点)] : [名, ""];
+  for (let i = 2; ; i++) if (!files.some((x) => x.name === `${头}-${i}${尾}`)) return `${头}-${i}${尾}`;
 }
 
 /** 并进已带的那几个里（同名的换掉，不叠加：重选一次多半是因为选错了） */
@@ -62,6 +78,7 @@ export default function AskFiles({
   字,
   藏键 = false,
   开,
+  只收图 = false,
 }: {
   files: 附件[];
   onChange: (f: 附件[]) => void;
@@ -71,6 +88,11 @@ export default function AskFiles({
   /** 不摆自己的键（企业版首页收进「+」菜单，P15）：只留选好的文件小签，由 开 去打开选文件框 */
   藏键?: boolean;
   开?: React.Ref<{ 打开: () => void }>;
+  /**
+   * 只收图、可多选（手机「+」里的「截图 / 图片」，11-18）：从相册选，不加 capture，不强制调相机。
+   * 写明具体图片类型（不写 image/*）：iPhone 相册里的 HEIC 照片会被系统转成 JPEG 再交过来，认图那边认得
+   */
+  只收图?: boolean;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [读取中, set读取中] = useState(false);
@@ -88,10 +110,14 @@ export default function AskFiles({
     try {
       set错("");
       set提示("");
-      const r = await 读成附件(list[0], files, { 进: set进度 });
-      if ("错" in r) set错(r.错);
-      else {
-        onChange(r.files);
+      // 只收图时一次可选几张：一张张认、并进同一份（认字慢，并发几张会卡手机）；电脑上照旧一次一个
+      let 现有 = files;
+      for (const f of 只收图 ? [...list] : [list[0]]) {
+        // 手机相册一次选几张，名字常常一样（image.jpg）：同名的后面补个序号，别互相顶掉
+        const r = await 读成附件(f, 现有, { 进: set进度, ...(只收图 ? { 名: 不重名(f.name, 现有) } : {}) });
+        if ("错" in r) { set错(r.错); continue; }
+        现有 = r.files;
+        onChange(现有);
         if (r.提示) set提示(r.提示);
       }
     } finally {
@@ -106,7 +132,8 @@ export default function AskFiles({
       <input
         ref={input}
         type="file"
-        accept={[...可读后缀, ...图片后缀].join(",")}
+        accept={(只收图 ? [...图片后缀, ...图片类型] : [...可读后缀, ...图片后缀]).join(",")}
+        multiple={只收图}
         style={{ display: "none" }}
         onChange={(e) => 选好了(e.target.files)}
       />
@@ -144,7 +171,7 @@ export default function AskFiles({
         </span>
       )}
       {files.map((f) => (
-        <span key={f.name} className="cli-file" title={`${f.name} · ${Math.round(f.size / 1024) || 1} KB · ${f.图 ? "图里认出的字只随这一问发出，图和字都不会存下来" : "只随这一问发出，不会存下来"}`}>
+        <span key={f.name} className="cli-file" title={`${f.name} · ${Math.round(f.size / 1024) || 1} KB · ${f.图 ? "图里认出的字只随这一问发给模型；这一问建了新线索的，可以在卡上把原图存成它的附件" : "只随这一问发出，不会存下来"}`}>
           <span className="cli-file-n">{f.name}</span>
           <button type="button" aria-label={`移除 ${f.name}`} onClick={() => onChange(files.filter((x) => x.name !== f.name))}>
             <CloseOutlined />

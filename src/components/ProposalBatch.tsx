@@ -23,13 +23,20 @@ import { useMotionTheme } from "@/components/MotionTheme";
  *
  * 卡片一直挂着（收起时只是藏起来）：草稿里改过的字段、记号恢复的状态都在卡里，卸掉就丢了。
  */
-export default function ProposalBatch({ proposals, 记号前缀, 报 }: { proposals: Proposal[]; 记号前缀: string; 报?: (id: string, 况: 卡况) => void }) {
+export default function ProposalBatch({ proposals, 记号前缀, 报, 对话截图 }: {
+  proposals: Proposal[];
+  记号前缀: string;
+  报?: (id: string, 况: 卡况) => void;
+  /** 这一问带的截图原件（11-18）：只有一张新线索卡时交给它（几张新线索卡分不清截图是谁的，不猜） */
+  对话截图?: File[];
+}) {
   const b = useBusiness();
   /** 上一次「确认」里没写进去的项数：清单头下面就地说一句 */
   const [没写, set没写] = useState(0);
   const { 曲线, 时长 } = useMotionTheme();
   const 字段表 = 可改字段表(b);
   const 记号 = useCallback((p: Proposal) => `${记号前缀}:${p.id}`, [记号前缀]);
+  const 只一张新线索 = proposals.filter((p) => p.kind === "add_lead").length === 1;
   /* 卡片报上来之前先按任务表里记着的结果画，免得重挂时清单闪一下 */
   const [况们, set况们] = useState<Record<string, 卡况>>(() =>
     Object.fromEntries(
@@ -215,7 +222,7 @@ export default function ProposalBatch({ proposals, 记号前缀, 报 }: { propos
               </div>
             )}
             <div className="pbat-card" hidden={已写 ? !看回执 : !开}>
-              <ProposalCard proposal={p} 记号={记号(p)} 报={收况} 批={批} />
+              <ProposalCard proposal={p} 记号={记号(p)} 报={收况} 批={批} {...(p.kind === "add_lead" && 只一张新线索 ? { 对话截图 } : {})} />
             </div>
           </div>
         );

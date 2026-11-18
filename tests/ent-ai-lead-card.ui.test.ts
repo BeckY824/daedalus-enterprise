@@ -20,9 +20,9 @@ const plugin: Plugin = { name: "ai-lead-card-boundaries", setup(b) {
   stub(/^next\/link$/, "export default function L({children,...p}){return <a {...p}>{children}</a>}");
   stub(/^next\/dynamic$/, "export default ()=>()=>null;");
   stub(/customers\/\[id\]\/actions$/, 补全动作桩("src/app/(app)/customers/[id]/actions.ts", "export const 沟通可选项目=async()=>(window.__可选??{ok:true,项目们:null,能建项目:true});"));
-  stub(/dashboard\/apply$/, "export const applyProposal=async p=>{window.__交=p;return{ok:true}};export const undoProposal=async()=>({ok:true});");
-  stub(/card-scan\/originals$/, "export const 取走名片原图=()=>null,记下刚建的=()=>{},忘掉刚建的=()=>{};");
-  stub(/attachment-upload$/, "export const 传附件=async()=>({ok:true});");
+  stub(/dashboard\/apply$/, "export const applyProposal=async(p,o)=>{window.__交=p;window.__选项=o;return{ok:true,...(o&&o.首条附件?{首条附件票:{followUpId:'f1',票:'t1'}}:{})}};export const undoProposal=async()=>({ok:true});");
+  stub(/card-scan\/originals$/, "export const 取走名片原图=()=>[],记下刚建的=()=>{},忘掉刚建的=()=>{};");
+  stub(/attachment-upload$/, "export const 传附件=async(挂,f,类,票)=>{(window.__传??=[]).push({挂,名:f.name,票});return{ok:true}};");
   stub(/customers\/RescueKey$/, "export default function R(){return null}");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
@@ -34,22 +34,22 @@ beforeAll(async () => {
     const root=createRoot(document.getElementById('root'));
     const 长名='某某超长国际贸易进出口集团股份有限公司华东区域分公司'.repeat(4);
     const 企={成员:[{value:'u1',label:'乙'}],分配方式们:[{i:0,名:'指定分配'},{i:1,名:'自动分配'},{i:3,名:'暂不分配'}],默认分配方式:null,是销售:false};
-    window.__render=(补={},企补={})=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}>
+    window.__render=(补={},企补={},图=0)=>{const 截图=图?Array.from({length:图},(_,i)=>new File([new Uint8Array(16)],'微信截图'+i+'.png',{type:'image/png'})):undefined;root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}>
       <新线索来源.Provider value={['展会',${JSON.stringify(长渠道)}]}><新线索企业.Provider value={{...企,...企补}}>
-        <div className="cli-col"><ProposalCard proposal={{id:'p1',kind:'add_lead',customerId:'',customerName:'',reason:'x',name:长名,contact:'周经理',phone:'13812000000',source:${JSON.stringify(长渠道)},status:'待跟进',remark:'',country:'摩洛哥',city:'卡萨布兰卡',...补}}/></div>
+        <div className="cli-col"><ProposalCard 对话截图={截图} proposal={{id:'p1',kind:'add_lead',customerId:'',customerName:'',reason:'x',name:长名,contact:'周经理',phone:'13812000000',source:${JSON.stringify(长渠道)},status:'待跟进',remark:'',country:'摩洛哥',city:'卡萨布兰卡',...补}}/></div>
       </新线索企业.Provider></新线索来源.Provider>
-    </BusinessProvider></App></ConfigProvider>);
+    </BusinessProvider></App></ConfigProvider>);};
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function open(width: number, height = 900, 补: Record<string, unknown> = {}, 企补: Record<string, unknown> = {}) {
+async function open(width: number, height = 900, 补: Record<string, unknown> = {}, 企补: Record<string, unknown> = {}, 图 = 0) {
   const page = await browser.newPage({ viewport: { width, height } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://lead.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://lead.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
-  await page.evaluate(([a, b]) => (window as unknown as { __render: (a: unknown, b: unknown) => void }).__render(a, b), [补, 企补]);
+  await page.evaluate(([a, b, c]) => (window as unknown as { __render: (a: unknown, b: unknown, c: unknown) => void }).__render(a, b, c), [补, 企补, 图] as const);
   await page.locator(".prop-ok").waitFor();
   return { page, errors };
 }
@@ -176,4 +176,48 @@ it("渠道只能选、不能手填：输入清单外的字回车后仍是原来�
     expect(显示).not.toContain("随便写的来源");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
+});
+
+// 11-18 员工反馈「录入的时候还是添加不了截图」：对话框里带的截图摆在新线索卡上，默认勾上存成附件，确认时凭首条附件票传（服务端见 ent-ai-lead-screenshot.test.ts）
+it("对话里带了截图：缩略图 + 默认勾上「存成这条线索的附件」，确认交 首条附件、凭票传到首条沟通；不横撑（1024 / 1280 / 1366）", async () => {
+  const 填齐 = { 分配方式: 0, ownerId: "u1", 业务线: "外贸", 下一步: "发报价单", 区域去处: ["客户"] };
+  for (const w of [1024, 1280, 1366]) {
+    const { page, errors } = await open(w, 900, 填齐, {}, 2);
+    try {
+      expect(await page.locator(".prop-shot").count()).toBe(2);
+      const 勾 = 格(page, "截图").locator(".ant-checkbox-wrapper");
+      expect(await 勾.innerText()).toContain("存成这条线索的附件");
+      expect(await 勾.locator("input").isChecked()).toBe(true);
+      expect(await 不横撑(page)).toEqual({ 页: true, 出界: 0 });
+      await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
+      await page.locator(".prop-ok").click();
+      await page.waitForFunction(() => (Reflect.get(window, "__传") as unknown[] | undefined)?.length === 2);
+      expect(await page.evaluate(() => Reflect.get(window, "__选项"))).toEqual({ 首条附件: true });
+      const 传了 = await page.evaluate(() => Reflect.get(window, "__传") as { 挂: unknown; 名: string; 票: string }[]);
+      expect(传了).toEqual([
+        { 挂: { followUpId: "f1" }, 名: "微信截图0.png", 票: "t1" },
+        { 挂: { followUpId: "f1" }, 名: "微信截图1.png", 票: "t1" },
+      ]);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+it("取消勾选：确认不交 首条附件、不传；没带图：卡上不摆截图这一格", async () => {
+  const 填齐 = { 分配方式: 0, ownerId: "u1", 业务线: "外贸", 下一步: "发报价单", 区域去处: ["客户"] };
+  const { page, errors } = await open(1024, 900, 填齐, {}, 1);
+  try {
+    await 格(page, "截图").locator(".ant-checkbox-wrapper").click();
+    expect(await 格(page, "截图").locator("input").isChecked()).toBe(false);
+    await page.locator(".prop-ok").click();
+    await page.waitForFunction(() => Reflect.get(window, "__交"));
+    expect(await page.evaluate(() => Reflect.get(window, "__选项"))).toBeUndefined();
+    expect(await page.evaluate(() => Reflect.get(window, "__传"))).toBeUndefined();
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+  const 无 = await open(1024, 900, 填齐);
+  try {
+    expect(await 格(无.page, "截图").count()).toBe(0);
+    expect(await 无.page.locator(".prop-shot").count()).toBe(0);
+  } finally { await 无.page.close(); }
 });
