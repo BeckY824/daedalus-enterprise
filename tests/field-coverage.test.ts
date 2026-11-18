@@ -610,8 +610,9 @@ const 系统事实: Record<string, Record<string, 系统事实项>> = {
   Project: {
     assignMode: {
       写入方: ["src/lib/project/proj-fields.ts", "src/lib/enterprise/market-transfer.ts"],
-      说明: "新建线索 / 项目时选的分配方式，建的那一刻记下，之后不改（11-01 会议 §3，lib/project/after-create-assign.ts）；市场转销售带走的线索补写",
-      漏写: "11-17 复盘第 6 类：补建（潜客培育）、线索转化、导入建的项目都不写，正式库 6,799 个项目里只有 124 个有值；潜客培育的必填清单要看它",
+      说明: "新建线索 / 项目时选的分配方式，建的那一刻记下，之后不改（11-01 会议 §3，lib/project/after-create-assign.ts）；市场转销售带走的线索补写。" +
+        "线索转化（project/from-lead.ts 按建给谁）、导入建项目（enterprise-import/apply.ts 导入分配方式，按原表那一行）也经 proj-fields.ts 新项目默认值 写（11-17 复盘第 5 类补上）",
+      漏写: "仓库里的建项目路径都写了；仓库外的潜客培育补数脚本（fill-nurture.mjs，按 nurture.ts 约定）建的项目不写，补写之前的存量也没回填：11-17 补数前正式库 6,799 个项目里只有 124 个有值",
     },
     sourceLeadId: {
       写入方: ["src/lib/project/from-lead.ts"],
