@@ -16,6 +16,7 @@ import { 能改后台设置, 只读角色 } from "./permissions";
 import { 无效交给, 实际待, type 待哪步 } from "@/lib/project/lead-verify";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 不跟着转的提醒 } from "@/lib/carry-over-db";
+import { 快轮到提醒 } from "./assign-eta";
 
 type 人 = { id: string; name: string };
 
@@ -101,6 +102,8 @@ export async function 分配通知(谁点的: 人, 条们: readonly 分配条[],
       });
     }
   });
+  // 自动分配「快轮到我」（11-18，assign-eta.ts）：分出去一条，候选池里的销售各算一遍，进 3 条以内的推一次（自己分给自己也算分了一条）
+  if (条们.length) await 稳("快轮到提醒", async () => 快轮到提醒(await 读组织()));
 }
 
 /**

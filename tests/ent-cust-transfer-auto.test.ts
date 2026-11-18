@@ -107,7 +107,7 @@ describe("市场成员 + 暂不分配的客户：自动分配", () => {
     expect(await prisma.customerOwnerLog.findMany({ where: { customerId: c }, select: { kind: true, fromOwnerId: true, toOwnerId: true } }))
       .toEqual([{ kind: "market-assign", fromOwnerId: 市场管, toOwnerId: 内二 }]);
     // 只通知接手人（P-转-17）：没有交接待确认，旁人没有铃铛
-    const 铃 = await prisma.entNotice.findMany();
+    const 铃 = await prisma.entNotice.findMany({ where: { kind: { not: "快轮到" } } }); // 快轮到（11-18）另算，见 ent-assign-eta.test.ts
     expect(铃.map((n) => n.userId)).toEqual([内二]);
     expect(铃[0].kind).toBe("自动分配");
     expect(await prisma.entHandover.count()).toBe(0);
@@ -215,7 +215,7 @@ describe("批量转让选自动分配", () => {
     const 日志 = await prisma.auditLog.findMany({ where: { entity: "Customer", entityId: { in: 们.map((x) => x.c) } } });
     expect(日志).toHaveLength(4);
     for (const l of 日志) expect(l.summary).toMatch(/自动分配.*（工作量调整）$/);
-    const 铃 = await prisma.entNotice.findMany({ orderBy: { userId: "asc" } });
+    const 铃 = await prisma.entNotice.findMany({ where: { kind: { not: "快轮到" } }, orderBy: { userId: "asc" } }); // 快轮到（11-18）另算
     expect(铃.map((n) => n.userId).sort()).toEqual([内一, 内二, 外一].sort());
     expect(铃.find((n) => n.userId === 内一)?.title).toContain("2 条");
   });

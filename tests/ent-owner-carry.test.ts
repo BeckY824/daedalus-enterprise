@@ -111,7 +111,8 @@ const 客户负责人 = async (c: string) => (await prisma.customer.findUniqueOr
 const 项目of = (p: string) => prisma.project.findUniqueOrThrow({ where: { id: p } });
 const 待办of = (id: string) => prisma.task.findUniqueOrThrow({ where: { id } });
 const 计划of = (id: string) => prisma.followPlan.findUniqueOrThrow({ where: { id } });
-const 通知们 = (userId: string) => prisma.entNotice.findMany({ where: { userId } });
+// 「快轮到」（11-18，assign-eta.ts）是分配后另发的一条，这里只看分配通知本身
+const 通知们 = (userId: string) => prisma.entNotice.findMany({ where: { userId, kind: { not: "快轮到" } } });
 
 const 只留参与 = async (...们: 人[]) => {
   const 全部 = await prisma.entMember.findMany({ select: { userId: true } });
