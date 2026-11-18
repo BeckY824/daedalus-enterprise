@@ -9,6 +9,8 @@
  * 每条：项 / 级别 / 违反数 / 前 5 个 id。
  *   级别「违规」：规则明说不许，或代码各写入口都守着的；有一条就以退出码 1 结束。
  *   级别「待核」：规则有例外、或已知有存量没清（附录 C 判「待核」「违规待修」的），只打印不判；--strict 时也算进退出码。
+ *   带「仅提示」的待核（11-18 批次 27B 补的附录 C 那 13 条）：口径还没和客户管理员定、或存量还在清，--strict 时也不算进退出码，只列出来；
+ *     哪条核实了在当前数据模型下必须为 0，再拿掉「仅提示」（或改成「违规」）。
  * 退出码：0 全过；1 有违规；2 用法错 / 打不开库。某张表或某列这个库里没有（老库）→ 这一条记「跳过」，不算过也不算不过。
  *
  * 只用 node 自带的 node:sqlite（Node ≥ 22.13；22.5–22.12 加 --experimental-sqlite），服务器上不用装别的：scp 这一个文件过去跑，跑完删掉。
@@ -33,8 +35,23 @@ const 是市场成员 = (列) => `((${有角色(列, "marketing_mgr")} OR ${有�
 const 是销售 = (列) => `(${有角色(列, "sales")} OR ${有角色(列, "sales_mgr")})`;
 
 /**
+ * 两类字典的默认选项，同 src/lib/enterprise/dict-kinds.ts 字典定义（这个脚本要能单独 scp 到服务器跑，不 import ts；
+ * tests/check-invariants.test.ts 核两边一样）。代码认字典值 = 库里这一类的行（含停用）或默认选项（dict.ts 是客户分配项）
+ */
+export const 字典默认 = {
+  custAssign: ["自持", "非自持", "公海领取"],
+  followMethod: ["手机通话", "微信沟通", "邮件沟通", "WhatsApp", "旺旺私信", "Telegram", "Skype", "LinkedIn", "Line", "线下拜访", "线上会议", "书面函件", "内部研讨", "手机短信", "客户来访", "展会面聊", "其他方式", "Facebook", "Instagram"],
+};
+const 字面们 = (们) => 们.map((x) => `'${x.replaceAll("'", "''")}'`).join(", ");
+const 字典外 = (列, kind) => `(trim(coalesce(${列}, '')) <> '' AND ${列} NOT IN (SELECT name FROM "EntDictItem" WHERE kind = '${kind}') AND ${列} NOT IN (${字面们(字典默认[kind])}))`;
+/** 大陆手机号 11 位（1[3-9] 开头），GLOB 写法 */
+const 手机11位 = "1[3-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]";
+/** 现在（毫秒）：最近跟进只算不晚于现在的沟通，同 customers/[id]/actions.ts、soft-delete.ts 重算最近跟进 */
+const 现在毫秒 = "(CAST(strftime('%s', 'now') AS INTEGER) * 1000)";
+
+/**
  * 每条的 sql 只出一列 id（违反的那一行的 id），按 id 去重计数、取前 5。
- * @type {{ 键: string; 项: string; 级别: "违规" | "待核"; 依据: string; sql: string }[]}
+ * @type {{ 键: string; 项: string; 级别: "违规" | "待核"; 仅提示?: boolean; 依据: string; sql: string }[]}
  */
 export const 不变量们 = [
   {
@@ -196,35 +213,175 @@ export const 不变量们 = [
     依据: "复盘 附录 C",
     sql: `SELECT ch.id FROM "Channel" ch JOIN "EntChannelMain" m ON m.id = ch.mainId WHERE m.active = 0 AND ch.active = 1`,
   },
+
+  // ---------- 11-18 批次 27B：附录 C 剩下的 13 条，都是「待核·仅提示」（口径待定或存量在清，--strict 也不判红） ----------
+  {
+    键: "非公海零项目客户",
+    项: "不在公海的客户，名下至少有一个没删的项目",
+    级别: "待核",
+    仅提示: true,
+    // 复盘第 8 类：总表 A-15 写着「零项目客户 0」，11-14 全量导入后实际 79,764（不在公海 14,550，11-17 已补潜客培育；公海 65,214 出公海时补）。
+    // 只查不在公海的：公海里的零项目客户按设计出公海时才补
+    依据: "复盘第 8 类、附录 C「零项目客户」；总表 A-15；fill-nurture.mjs",
+    sql: `SELECT c.id FROM "Customer" c
+          WHERE c.deletedAt IS NULL AND c.id NOT IN (SELECT customerId FROM "CustomerPool")
+            AND NOT EXISTS (SELECT 1 FROM "Project" p WHERE p.customerId = c.id AND p.deletedAt IS NULL)`,
+  },
+  {
+    键: "沟通没挂项目",
+    项: "没删的沟通（待办、提醒除外）挂在某个项目上",
+    级别: "待核",
+    仅提示: true,
+    // 附录 C 违规 276,947（待客户管理员定老沟通怎么挂）；新写入走 follow-needs-project.ts 共用守门。待办、提醒（TASK / REMIND）本来不挂
+    依据: "复盘 附录 C「沟通没挂项目」、第 5 类；follow-needs-project.ts",
+    sql: `SELECT f.id FROM "FollowUp" f
+          WHERE f.deletedAt IS NULL AND f.type NOT IN ('TASK', 'REMIND')
+            AND NOT EXISTS (SELECT 1 FROM "FollowUpProject" fp WHERE fp.followUpId = f.id)`,
+  },
+  {
+    键: "联系人缺挂靠行",
+    项: "没删的联系人，在挂靠表里有它和主客户那一行",
+    级别: "待核",
+    仅提示: true,
+    // schema.prisma ContactCustomer：「这张表记全部挂靠，主客户那一行也在」（老数据由 customer-v2-db.ts 联系人挂靠回填补）。附录 C 待核 6
+    依据: "schema.prisma ContactCustomer；customer-v2-db.ts 联系人挂靠回填；复盘 附录 C",
+    sql: `SELECT ct.id FROM "Contact" ct
+          WHERE ct.deletedAt IS NULL
+            AND NOT EXISTS (SELECT 1 FROM "ContactCustomer" x WHERE x.contactId = ct.id AND x.customerId = ct.customerId)`,
+  },
+  {
+    键: "客户分配字典外",
+    项: "客户「客户分配」是字典 custAssign 里的一项（库里的行或默认项）",
+    级别: "待核",
+    仅提示: true,
+    // schema.prisma Customer.assignWay；dict.ts 是客户分配项（默认项 + 库里这一类的行，停用的也算）。附录 C 通过 0
+    依据: "schema.prisma Customer.assignWay；dict.ts 是客户分配项；复盘 附录 C",
+    sql: `SELECT c.id FROM "Customer" c WHERE c.deletedAt IS NULL AND ${字典外("c.assignWay", "custAssign")}`,
+  },
+  {
+    键: "沟通方式字典外",
+    项: "沟通「沟通方式」是字典 followMethod 里的一项（库里的行或默认项）",
+    级别: "待核",
+    仅提示: true,
+    // schema.prisma FollowUp.method；dict.ts 定沟通方式。附录 C 待核 5,677，全是导入带进来的「未注明」（要不要清成空待客户管理员定）
+    依据: "schema.prisma FollowUp.method；dict.ts 定沟通方式；复盘 附录 C",
+    sql: `SELECT f.id FROM "FollowUp" f WHERE f.deletedAt IS NULL AND ${字典外("f.method", "followMethod")}`,
+  },
+  {
+    键: "客户电话带字母",
+    项: "客户电话里没有字母",
+    级别: "待核",
+    仅提示: true,
+    // 复盘第 4 类：电话格贴了微信号，原来截出数字存成手机号；现在客户电话走 验客户电话，带字母整格拒（contact-format.ts 像微信号提示）。附录 C 通过 0
+    依据: "复盘第 4 类、附录 C；contact-format.ts 验手机格式",
+    sql: `SELECT c.id FROM "Customer" c WHERE c.deletedAt IS NULL AND c.phone GLOB '*[A-Za-z]*'`,
+  },
+  {
+    键: "号码格式待核对",
+    项: "号码库（ContactMethod）里的号都过了格式校验（formatStatus = ok）",
+    级别: "待核",
+    仅提示: true,
+    // schema.prisma ContactMethod.formatStatus：「回填老数据时验不过的记 验号码 的状态，不挡、只标」。附录 C 待核 62
+    依据: "schema.prisma ContactMethod.formatStatus；复盘 附录 C",
+    sql: `SELECT cm.id FROM "ContactMethod" cm JOIN "Customer" c ON c.id = cm.customerId
+          WHERE c.deletedAt IS NULL AND cm.formatStatus <> 'ok'`,
+  },
+  {
+    键: "同号多客户",
+    项: "号码库里同一个号（同种类、同查重键）只挂在一位客户上（每组记一行，id 是组里最小的号码行 id）",
+    级别: "待核",
+    仅提示: true,
+    // 全公司查重按 kind + numberKey 比（contact-dedupe.ts）；存量导入时撞号的只标不挡。附录 C 待核 6 组。
+    // 只比号码库这一张表：客户电话格、联系人老三格的撞号由 phone-review 那类一次性核对查
+    依据: "schema.prisma ContactMethod；contact-dedupe.ts 全公司查号；复盘 附录 C",
+    sql: `SELECT MIN(cm.id) AS id FROM "ContactMethod" cm JOIN "Customer" c ON c.id = cm.customerId
+          WHERE c.deletedAt IS NULL AND cm.numberKey <> ''
+          GROUP BY cm.kind, cm.numberKey HAVING COUNT(DISTINCT cm.customerId) > 1`,
+  },
+  {
+    键: "客户电话不在号码库",
+    项: "客户电话那格的号在这位客户的号码库里有一行（手机 / 座机 / WhatsApp，值或查重键对得上）",
+    级别: "待核",
+    仅提示: true,
+    // customer-phone-db.ts 同步电话子表：电话换了、清了，子表里客户本身那行跟着换（导入 apply.ts 同）。附录 C 待核 159
+    依据: "customer-phone-db.ts 同步电话子表；enterprise-import/apply.ts；复盘 附录 C",
+    sql: `SELECT c.id FROM "Customer" c
+          WHERE c.deletedAt IS NULL AND trim(c.phone) <> ''
+            AND NOT EXISTS (SELECT 1 FROM "ContactMethod" cm WHERE cm.customerId = c.id AND cm.kind IN ('phone', 'landline', 'whatsapp')
+              AND (cm.value = trim(c.phone) OR cm.numberKey = trim(c.phone) OR cm.numberKey = replace(trim(c.phone), '+', '')))`,
+  },
+  {
+    键: "最近跟进对不上",
+    项: "客户「最近跟进」= 名下没删、不晚于现在的沟通里最晚的发生时间（没有沟通 = 空）",
+    级别: "待核",
+    仅提示: true,
+    // 重算口径同 customers/[id]/actions.ts、soft-delete.ts 重算最近跟进（followUp.findFirst occurredAt ≤ now 倒序，任何类型）。
+    // 精确到毫秒比；导入时「最近跟进」列直接写、后来没重算的会落在这里。附录 C 待核 477
+    依据: "schema.prisma Customer.lastFollowAt；customers/[id]/actions.ts、soft-delete.ts 重算最近跟进；复盘第 7 类、附录 C",
+    sql: `SELECT c.id FROM "Customer" c
+          LEFT JOIN (SELECT customerId, MAX(${毫秒("occurredAt")}) AS 末 FROM "FollowUp"
+                     WHERE deletedAt IS NULL AND ${毫秒("occurredAt")} <= ${现在毫秒} GROUP BY customerId) f ON f.customerId = c.id
+          WHERE c.deletedAt IS NULL AND ${毫秒("c.lastFollowAt")} IS NOT f.末`,
+  },
+  {
+    键: "渠道全称和主渠道名对不上",
+    项: "挂了主渠道的渠道，全称 = 主渠道名，或以主渠道名加半角 / 全角竖线开头",
+    级别: "待核",
+    仅提示: true,
+    // schema.prisma Channel.mainId：name 是「主渠道|子渠道」的全称，子渠道名空 = 单一入口、name 就是主渠道名；channel-main-core.ts 子渠道名 认半角、全角两种竖线。
+    // 附录 C 待核 15（多是展会「2026春季广交会」挂在「广交会」下这类没带竖线的老名）
+    依据: "schema.prisma Channel.mainId；channel-main-core.ts 子渠道名；复盘第 7 类、附录 C",
+    sql: `SELECT ch.id FROM "Channel" ch JOIN "EntChannelMain" m ON m.id = ch.mainId
+          WHERE NOT (ch.name = m.name OR substr(ch.name, 1, length(m.name) + 1) IN (m.name || '|', m.name || '｜'))`,
+  },
+  {
+    键: "主渠道下没有渠道",
+    项: "每个主渠道下面至少挂着一个渠道（单一入口的也有一行同名渠道）",
+    级别: "待核",
+    仅提示: true,
+    // schema.prisma EntChannelMain：「不可设的（单一入口），下面只有一行名字等于主渠道名的渠道」。复盘第 7 类影子记录：渠道页打开时补建过同名主渠道，
+    // 子渠道删了主渠道还在（11-17 起渠道页只读不再补建）。附录 C 待核 45（单一入口的 12 个最可疑）
+    依据: "schema.prisma EntChannelMain；复盘第 7 类、附录 C；channel-main.ts",
+    sql: `SELECT m.id FROM "EntChannelMain" m WHERE NOT EXISTS (SELECT 1 FROM "Channel" ch WHERE ch.mainId = m.id)`,
+  },
+  {
+    键: "客户名夹手机号",
+    项: "客户名里不夹 11 位手机号（含名字整个就是手机号的）",
+    级别: "待核",
+    仅提示: true,
+    // 复盘 附录 C 待核 22,511 + 名字就是电话 5,776：导入时原表姓名格带着号。随客户抬头那批一起清还是另定，待客户管理员定
+    依据: "复盘 附录 C「客户名带手机号」",
+    sql: `SELECT c.id FROM "Customer" c WHERE c.deletedAt IS NULL AND c.name GLOB '*${手机11位}*'`,
+  },
 ];
 
 /**
  * 逐条跑。库要已经打开；表或列不存在的那条记「跳过」。
  * @param {{ prepare: (sql: string) => { get: () => unknown; all: () => unknown[] } }} db
- * @returns {{ 键: string; 项: string; 级别: string; 依据: string; 违反数: number | null; 前几: string[]; 跳过?: string }[]}
+ * @returns {{ 键: string; 项: string; 级别: string; 仅提示?: boolean; 依据: string; 违反数: number | null; 前几: string[]; 跳过?: string }[]}
  */
 export function 跑不变量(db, 们 = 不变量们, 前几个 = 5) {
   return 们.map((x) => {
     try {
       const 数 = Number(db.prepare(`SELECT COUNT(DISTINCT id) AS n FROM (${x.sql})`).get().n);
       const 前几 = 数 ? db.prepare(`SELECT DISTINCT id FROM (${x.sql}) ORDER BY id LIMIT ${前几个}`).all().map((r) => String(r.id)) : [];
-      return { 键: x.键, 项: x.项, 级别: x.级别, 依据: x.依据, 违反数: 数, 前几 };
+      return { 键: x.键, 项: x.项, 级别: x.级别, ...(x.仅提示 ? { 仅提示: true } : {}), 依据: x.依据, 违反数: 数, 前几 };
     } catch (e) {
       const msg = String(e?.message ?? e);
       // 老库没有这张表 / 这一列：这条不适用；别的错（SQL 写错）照样抛出来
-      if (/no such (table|column)/i.test(msg)) return { 键: x.键, 项: x.项, 级别: x.级别, 依据: x.依据, 违反数: null, 前几: [], 跳过: msg };
+      if (/no such (table|column)/i.test(msg)) return { 键: x.键, 项: x.项, 级别: x.级别, ...(x.仅提示 ? { 仅提示: true } : {}), 依据: x.依据, 违反数: null, 前几: [], 跳过: msg };
       throw new Error(`不变量「${x.键}」查询出错：${msg}`);
     }
   });
 }
 
-/** 有没有该判不过的：违规级别非 0；strict 时待核也算 */
-export const 不过 = (结果, strict = false) => 结果.some((r) => (r.违反数 ?? 0) > 0 && (strict || r.级别 === "违规"));
+/** 有没有该判不过的：违规级别非 0；strict 时待核也算（「仅提示」的待核不算） */
+export const 不过 = (结果, strict = false) => 结果.some((r) => (r.违反数 ?? 0) > 0 && (r.级别 === "违规" || (strict && !r.仅提示)));
 
 export function 报告(结果) {
   const 行 = 结果.map((r) => {
     const 数 = r.违反数 === null ? "跳过" : String(r.违反数);
-    return `${r.违反数 ? (r.级别 === "违规" ? "✗" : "?") : r.违反数 === null ? "-" : "✓"} [${r.级别}] ${r.项} | ${数} | ${r.前几.join(", ") || "—"}`;
+    return `${r.违反数 ? (r.级别 === "违规" ? "✗" : "?") : r.违反数 === null ? "-" : "✓"} [${r.级别}${r.仅提示 ? "·仅提示" : ""}] ${r.项} | ${数} | ${r.前几.join(", ") || "—"}`;
   });
   return ["状态 [级别] 项 | 违反数 | 前 5 个 id", ...行].join("\n");
 }
