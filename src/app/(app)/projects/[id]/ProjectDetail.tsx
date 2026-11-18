@@ -147,6 +147,8 @@ export type 项目详情 = {
   回收预演?: 回收预演底子 | null;
   /** 企业版预计成交日期（10-27 从客户挪到项目，服务端排好的 YYYY-MM-DD）；不是企业版不传 */
   expectedDealAt?: string | null; 要下一步: boolean; 能记沟通: boolean;
+  /** 能记沟通的是项目组员、不是能改项目的人（11-19 客户答复）：记沟通框不摆下一步，服务端也不写项目的下一步 */
+  组员记沟通?: boolean;
   /** 企业版指定回复时间（11-17）：北京墙钟「YYYY-MM-DD HH:mm」，没填 null；不是企业版不传 */
   指定回复?: 回复两格;
   /** 指定分配时间（企业版，11-17 PR3）：还没到点的定时；时间 = 北京墙钟，给谁 = 指定分配的接手人（自动分配 null），能动 = 录入人 / 能分配的人 */
@@ -2173,7 +2175,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
     },
   });
   const 差 = !content.trim() ? "请填写这次沟通的内容" : 主体们 && !发起 ? "请选发起主体"
-    : !下一步文字.trim() ? "请写下一步计划" : p.要下一步 && !下一步时间 ? "请填下一步时间" : "";
+    : p.组员记沟通 ? "" : !下一步文字.trim() ? "请写下一步计划" : p.要下一步 && !下一步时间 ? "请填下一步时间" : "";
   // 选了下一步时间就预演回收日（10-30 P0-2）：和服务端同一个算法，算不准（没底子）就不写
   const 预演 = 预演回收日(p.回收预演, dayjs(occurredAt, 沟通时间格式).format("YYYY-MM-DD"), 下一步时间);
 
@@ -2184,7 +2186,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
     // 没记上的原因写在框里、框不关（g.save，不弹顶部提示）
     // 发版后老页面交的（lib/stale-deploy.ts）：填的字一直在存草稿，刷新后点开接着填；截图录音存不进来，说一句
     const 报错 = (话: string | null) => set交错(话 === 刷新再提交话 ? `${话}（${附件们.length ? "填的字刷新后还在，截图 / 录音要重新选" : "填的内容刷新后还在"}）` : 话);
-    const ok = await 跑(async () => (回.r = await 记项目沟通Action(p.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 下一步: 下一步文字, 下一步时间, ...(p.企业版 ? { 阶段: p.phase } : {}) }, 卡点)), undefined, { 报错 });
+    const ok = await 跑(async () => (回.r = await 记项目沟通Action(p.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, ...(p.组员记沟通 ? {} : { 下一步: 下一步文字, 下一步时间 }), ...(p.企业版 ? { 阶段: p.phase } : {}) }, 卡点)), undefined, { 报错 });
     const r = 回.r;
     if (ok && r?.ok) {
       稿.存好了();
@@ -2297,6 +2299,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
             <Input.TextArea aria-label="卡点描述" disabled={卡点类型 === "暂无卡点"} style={{ marginTop: 8 }} autoSize={{ minRows: 1, maxRows: 4 }} maxLength={描述上限} value={卡点描述} onChange={(e) => set卡点描述(e.target.value)} placeholder="卡在哪儿" />
           </div>
         )}
+        {!p.组员记沟通 && (<>
         <div>
           <div style={{ marginBottom: 4 }}>下一步计划<span style={{ color: "var(--danger-text)" }}> *</span></div>
           <Input
@@ -2329,6 +2332,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
             <div style={{ marginTop: 4, fontSize: "var(--dt-aux, 12px)", color: 回公海颜色[回公海文案(预演).级别] ?? "var(--text-muted)" }}>记完这条 → 回收日变为 {dayjs(预演).format("MM-DD")}</div>
           ) : p.要下一步 && <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>到那天还没人跟进，项目会自动回到线索公海</div>}
         </div>
+        </>)}
         {p.企业版 && (
           <div>
             <div style={{ marginBottom: 4 }}>截图 / 录音<span style={{ color: "var(--text-muted)" }}>（可不传，记下后挂在这条沟通上；也可以直接粘贴截图）</span></div>

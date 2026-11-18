@@ -1,6 +1,6 @@
 /**
  * 企业版渠道 10-30 这一批：
- * - B1 谁能管渠道：新建、编辑、停用、删除只有总管理、市场管理（11-01 只认业务角色）；管理员（只读）、销售管理、渠道运营、销售直调动作也挡，库里不动。团队版照旧不挡。
+ * - B1 谁能管渠道：新建、编辑、停用、删除只有系统管理员、市场管理（11-01 只认业务角色；11-19 条线总管理只看）；管理员（只读）、销售管理、渠道运营、销售直调动作也挡，库里不动。团队版照旧不挡。
  * - B2 渠道统计的范围：和客户列表同一套「按组织看客户」——总管理、管理员数全部，别人只数自己看得见的项目。
  * - B5 两个转化率：线索→商机、商机→订单，按「到过的最远阶段」算；导入时直接落在后面阶段的不进前一步的分母；分母 0 是 null。
  */
@@ -83,6 +83,17 @@ describe("B1 谁能新建、编辑、停用、删除渠道", () => {
     expect(不能管渠道).toMatch(/只有.{0,24}(能|可以|才|有权)/);
     expect(await prisma.channel.findMany({ select: { id: true, remark: true, active: true } })).toEqual([{ id: 渠道, remark: null, active: true }]);
     expect(await prisma.auditLog.count({ where: { entity: "Channel" } })).toBe(0);
+  });
+
+  it("11-19：条线总管理（director 设了线、没标系统管理员）只能看：新建、编辑、停用、删除都挡，库里不动", async () => {
+    const 条线总管 = (await prisma.user.create({ data: { email: "line", name: "条线总管", title: "", role: "SALES", password: "x" } })).id;
+    await prisma.entMember.create({ data: { userId: 条线总管, bizRole: "director", line: "外贸" } });
+    当(条线总管);
+    expect(await 新建("店铺")).toEqual({ ok: false, error: 不能管渠道 });
+    expect(await saveChannel({ id: 渠道, name: "", phone: null, remark: "偷改", channelOwnerId: 负责人, attr: "公域引流", platform: "抖音", source: "官方号" })).toEqual({ ok: false, error: 不能管渠道 });
+    expect(await toggleChannel(渠道, false)).toEqual({ ok: false, error: 不能管渠道 });
+    expect(await deleteChannel(渠道)).toEqual({ ok: false, error: 不能管渠道 });
+    expect(await prisma.channel.findMany({ select: { id: true, remark: true, active: true } })).toEqual([{ id: 渠道, remark: null, active: true }]);
   });
 
   it("团队版不挡：销售照旧能停用", async () => {

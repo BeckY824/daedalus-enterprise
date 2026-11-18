@@ -26,7 +26,7 @@ import { 规整向导, 向导接着建, 规整只建客户, 只建客户接着�
 import { 补潜客培育 } from "@/lib/project/nurture";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
-import { 读必填数据, 能改节点, 上级只推, 直属才推, 只有负责人改进程, 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 能进公海的阶段, 超时成员线, 超时线, type 交付项 } from "@/lib/project/db";
+import { 读必填数据, 能改节点, 上级只推, 直属才推, 只有负责人改进程, 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 能进公海的阶段, 超时成员线, 超时线, 能管项目, type 交付项 } from "@/lib/project/db";
 import { 合上改动, 是不限, 三态改动摘要, type 规则改动 } from "@/lib/project/org-rules";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -40,7 +40,7 @@ import { 认渠道触点, 渠道触点们, 新建来源还差 } from "@/lib/ente
 import { 指定问题 } from "@/lib/enterprise/assign-eta";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 记新建指定分配 } from "@/lib/enterprise/direct-assign";
-import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知, 项目被删通知, 项目放回公海通知 } from "@/lib/enterprise/notice-sources";
+import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知, 项目被删通知, 项目放回公海通知, 市场改分通知 } from "@/lib/enterprise/notice-sources";
 import { 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
 import { 市场分配进线索验证 } from "@/lib/enterprise/market-assign-node";
 import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
@@ -724,6 +724,10 @@ export async function 编辑项目(projectId: string, patch: 编辑项目改动,
     const me = await requireUser();
     if (!(await 开着())) return 没开;
     // 换了负责人时原负责人的待办（C-06，转让弹窗的勾）：没传按默认勾
+    // 换负责人之前在谁名下（不在公海、不是待分配才算）：市场管理改分要告诉原负责人和上级（11-19）
+    const 改前 = patch && typeof patch === "object" && "ownerId" in patch
+      ? await 看全部(() => prisma.project.findUnique({ where: { id: String(projectId ?? "") }, select: { ownerId: true, pooledAt: true, awaitAssignAt: true } }))
+      : null;
     const r = await 改项目(me, projectId, patch, 带待办勾(带待办));
     if (r.ok && r.变了?.length) {
       const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true } });
@@ -732,7 +736,10 @@ export async function 编辑项目(projectId: string, patch: 编辑项目改动,
         summary: `编辑项目「${p?.name ?? ""}」：改了${[...new Set(r.变了.map((k) => 项目字段名[k] ?? k))].join("、")}`,
       });
       await 记这个项目的自动推进(me, projectId, r.自动推到);
-      if (r.变了.includes("ownerId")) await 转项目通知(me, projectId);
+      if (r.变了.includes("ownerId")) {
+        await 转项目通知(me, projectId);
+        if (改前 && !改前.pooledAt && !改前.awaitAssignAt && typeof patch.ownerId === "string") await 市场改分通知(me, [{ 原: 改前.ownerId, 新: patch.ownerId, projectId }]);
+      }
       刷新项目(projectId, p?.customerId);
     }
     return r.ok ? { ok: true as const, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}) } : r;
@@ -1041,7 +1048,9 @@ export async function 记项目沟通Action(projectId: string, input: 向导跟�
 
 export type 项目沟通须知结果 =
   /** 卡点默认：能发卡点才给（F-跟进-08，表单摆卡点那一块）；null = 不摆 */
-  | { ok: true; 能记: true; phase: string; 要下一步: boolean; 回收预演: 回收预演底子 | null; contactId: string | null; 卡点默认: 卡点默认 | null; 卡点原因们: string[] }
+  | { ok: true; 能记: true; phase: string; 要下一步: boolean; 回收预演: 回收预演底子 | null; contactId: string | null; 卡点默认: 卡点默认 | null; 卡点原因们: string[];
+    /** 记的人是组员（不是能改项目的人，11-19 客户答复）：下一步是负责人的格，表单不摆下一步、服务端也不写 */
+    组员记: boolean }
   | { ok: true; 能记: false }
   | { ok: false; error: string };
 
@@ -1059,9 +1068,11 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
     if (!p || p.pooledAt || p.result) return { ok: true, 能记: false };
     // 11-17：负责人或已进组的组员能记（和 lib/project/db.ts 记项目沟通 同一个判断）
     const 组员 = await prisma.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
-    if (!能往项目记沟通(me, p, await 权限组织(), 组员?.inviteStatus)) return { ok: true, 能记: false };
+    const org = await 权限组织();
+    if (!能往项目记沟通(me, p, org, 组员?.inviteStatus)) return { ok: true, 能记: false };
+    const 组员记 = !能管项目(me, p, org);
     const 规则 = await 生效组织规则();
-    const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
+    const 要下一步 = !组员记 && 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
     let 回收预演: 回收预演底子 | null = null;
     // 验证中的线索不参与超时回收（X-78）：不预演回收日
     const 验证中 = !!(await prisma.entLeadVerify.findUnique({ where: { projectId: p.id }, select: { pending: true } }))?.pending;
@@ -1076,7 +1087,7 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
     const 能发 = await 能发卡点(me, p.id);
     const 卡点默认 = 能发 ? await 读卡点默认() : null;
     const 卡点原因们 = 能发 ? await 可选原因们() : [];
-    return { ok: true, 能记: true, phase: p.phase, 要下一步, 回收预演, contactId: p.contactId ?? null, 卡点默认, 卡点原因们 };
+    return { ok: true, 能记: true, phase: p.phase, 要下一步, 回收预演, contactId: p.contactId ?? null, 卡点默认, 卡点原因们, 组员记 };
   } catch (e) { return 不在了(e); }
 }
 

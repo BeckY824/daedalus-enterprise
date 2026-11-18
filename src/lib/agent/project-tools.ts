@@ -9,7 +9,8 @@
  */
 import type { Tool, ToolContext, ToolResult } from "./tools";
 import { prisma } from "../prisma";
-import { 露客户, 看得到的客户, 异常类别字典, 能进公海的阶段 } from "../project/db";
+import { 露客户, 看得到的客户, 异常类别字典, 能进公海的阶段, 能管项目 } from "../project/db";
+import { 权限组织 } from "../enterprise/org";
 import { 本套位置, 字典of, type 阶段字典 } from "../project/nodes";
 import { 生效组织规则 } from "../project/org-rules-store";
 import { 有效线索节点 } from "../project/stage-gates";
@@ -356,13 +357,19 @@ export const 项目写工具: Tool[] = [
   },
 ];
 
-/** 记沟通 / 加卡点 两个工具共用：下一步时间要不要必填照 项目沟通须知 同一个判断 */
+/**
+ * 记沟通 / 加卡点 两个工具共用：下一步时间要不要必填照 项目沟通须知 同一个判断。
+ * 组员记（11-19 客户答复）：确认人不是能管这个项目的人（负责人 / 系统管理员），卡上不摆、不要求下一步，落库也不写项目的下一步。
+ * 组员记 每个候选都明写 true / false：人在候选里换一个时，补 合进卡里会盖掉上一个的
+ */
 async function 沟通卡(a: Record<string, unknown>, ctx: ToolContext, 要卡点: boolean): Promise<ToolResult> {
   const 找 = await 找项目(ctx, a);
   if (!找.ok) return { summary: 找.话, data: { error: 找.话 } };
   const { 规则 } = await 字典();
-  const 要时间 = (p: 项目行) => 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
-  const 指 = 指向(找.行, 找.露, (p) => (要时间(p) ? { 要时间: true } : {}));
+  const [我, org] = await Promise.all([prisma.user.findUnique({ where: { id: ctx.userId }, select: { id: true, role: true } }), 权限组织()]);
+  const 组员记 = (p: 项目行) => !我 || !能管项目(我, p, org);
+  const 要时间 = (p: 项目行) => !组员记(p) && 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
+  const 指 = 指向(找.行, 找.露, (p) => ({ ...(要时间(p) ? { 要时间: true } : {}), 组员记: 组员记(p) }));
   const 描述 = str(a.卡点描述, 500);
   return 出卡(ctx, "project_followup", 指.客户, {
     ...指.args,

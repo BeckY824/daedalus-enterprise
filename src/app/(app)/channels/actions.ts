@@ -26,7 +26,7 @@ import { 规整币种, 是币种 } from "@/lib/currency";
  * 「新建学员」里就地建渠道后要立刻把它选中，没有 id 就选不上。
  */
 /**
- * 企业版里谁能新建、编辑、停用、删除渠道（10-30 B1）：只有老板、总管理员、市场管理（channel-stats.ts 的 能管渠道）。
+ * 企业版里谁能新建、编辑、停用、删除渠道（10-30 B1、11-19）：只有系统管理员、市场管理（channel-stats.ts 的 能管渠道）。
  * 界面上别人看不到按钮，这里再挡直调；排在校验前面，没权限的人先听到这一句。团队版照旧不挡
  */
 async function 挡管(me: { id: string; role: string }): Promise<string | null> {
@@ -415,7 +415,7 @@ export async function deleteMainChannel(id: string): Promise<{ ok: true } | { ok
 export type 投入行 = { id: string; amount: number; currency: string; date: string; remark: string | null; userName: string | null; createdAt: string };
 
 /**
- * 能不能给这个渠道录 / 删投入：只有老板、总管理员、市场管理（10-29 P16，channel-stats.ts 的 能录投入）。
+ * 能不能给这个渠道录 / 删投入：只有系统管理员、市场管理（10-29 P16、11-19，channel-stats.ts 的 能录投入）。
  * 渠道负责人也不行了；按钮藏了，这里再挡直调。不是企业版（没有业务角色）只认老板
  */
 async function 挡投入(me: { id: string; role: string }, channelId: string): Promise<{ 名: string } | { error: string; 不在?: true }> {
