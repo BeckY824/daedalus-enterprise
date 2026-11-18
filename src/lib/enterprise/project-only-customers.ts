@@ -94,6 +94,8 @@ export const 仅项目筛选口径: Record<keyof Required<客户条件>, "认" |
   triState: "挡",
   // 超过 N 天没跟进（1I）：拿跟进时间筛，能反推客户被跟进的节奏，挡
   idleDays: "挡",
+  // 「范围」（客户 11-18 第 12 题）：只看我是谁，反推不出客户的东西。我负责的 / 我可见的照常带上自己负责的项目；我参与的（项目组员）不含它（见 仅项目安全条件）
+  scope: "认",
 };
 
 /** 客户页的排序里，不按这几种排就安全（金额、级别、创建时间、最近跟进都能拿来反推） */
@@ -116,6 +118,8 @@ export function 仅项目安全条件(sp: 客户条件 & { sort?: string | null 
   }
   // 「公海」页签：这类客户不在公海
   if (sp.pool === "1") return null;
+  // 「我参与的」= 我是组员的项目；仅项目是我当负责人的项目，不算参与
+  if (sp.scope === "joined") return null;
   if (有值(sp.pool) && typeof sp.pool !== "string") return null;
   const 且: Prisma.CustomerWhereInput[] = [];
   if (有值(sp.keyword)) {

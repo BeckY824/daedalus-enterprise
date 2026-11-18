@@ -88,10 +88,10 @@ beforeEach(async () => {
 });
 
 describe("按部门挑人：谁进候选", () => {
-  it("外贸线：只有勾了的两个组（连下级）里、在职、销售角色的；档口 / 渠道运营 / 没角色 / 停用 都不进", async () => {
+  it("外贸线手动指派：勾了的两个组（连下级）里、在职、销售角色的，加上业务线标外贸的档口销售（11-18 第 8 题 B）；渠道运营 / 没角色 / 停用 都不进", async () => {
     const P = await 建项目("外看", "外贸");
     const 线 = await 项目分配线(P);
-    expect([...(线?.可选 ?? [])].sort()).toEqual([外一, 外二, 外三].sort());
+    expect([...(线?.可选 ?? [])].sort()).toEqual([外一, 外二, 外三, 档口销售].sort());
   });
 
   it("内贸线：内贸部连孙部门的人都进，不混外贸的人", async () => {
@@ -165,9 +165,9 @@ describe("公平轮流（不设配额）", () => {
 });
 
 describe("手动指派挡人", () => {
-  it("停用的、没勾部门的、渠道运营、没角色的、另一条线的：都拒，负责人不变", async () => {
+  it("停用的、渠道运营、没角色的、另一条线的：都拒，负责人不变（档口销售正常参与，11-18 第 8 题 B 起可以指定）", async () => {
     const P = await 建项目("手动", "外贸");
-    for (const 谁 of [外停用, 档口销售, 外客服, 外没角色, 内一]) {
+    for (const 谁 of [外停用, 外客服, 外没角色, 内一]) {
       const r = await 分配线索({ projectId: P, toUserId: 谁, 原负责人: 市场 });
       expect(r.ok, `分给 ${谁} 应被拒`).toBe(false);
     }
@@ -304,15 +304,15 @@ describe("市场成员自动分配按客户区域定事业部（P-转-26 自动�
     expect(r.ok && r.区域未填).toBeFalsy();
   });
 
-  it("外贸 / 内贸的销售管理都不进自动候选，兼着销售的销售管理也不进", async () => {
+  it("内贸的销售管理参与自动分配、外贸的不参与（11-18 第 9 题 B）", async () => {
     await setSetting(自动分配不参与key, {});
     const 内组长 = (await prisma.user.create({ data: { email: "nl", name: "内贸组长", title: "", role: "SALES", password: "x", createdAt: new Date(2025, 0, 1) } })).id;
     await prisma.entMember.create({ data: { userId: 内组长, bizRole: "sales,sales_mgr", deptId: 内贸组, line: null } });
     const 内 = await 连分(6, "内管", { addrCountry: "中国" });
     const 外 = await 连分(6, "外管", { addrCountry: "美国" });
-    expect(内).not.toContain(内组长);
+    expect(内).toContain(内组长);
     expect(外).not.toContain(外组长);
-    expect(new Set(内)).toEqual(new Set([内一, 内二]));
+    expect(new Set(内)).toEqual(new Set([内一, 内二, 内组长]));
   });
 
   it("不是市场成员发起（总管理）：照项目业务线分，不按客户区域（P-转-08 不限）；兼着销售的销售管理照旧参与", async () => {

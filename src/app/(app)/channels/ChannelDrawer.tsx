@@ -21,7 +21,7 @@ import { 合计文字 } from "@/lib/currency";
 import { isFormValidationError } from "@/lib/form-validation";
 import { dayjs, fmtDate } from "@/lib/utils";
 import Link from "next/link";
-import { 拆来源, 数字链接, 名单段, 到达口径键, 不点开键, type 名单键, type 名单时段, type 渠道统计, type 产出比分布, type 转化 } from "@/lib/enterprise/channel-stats";
+import { 拆来源, 数字链接, 名单段, 到达口径键, 不点开键, 有效线索显示, type 名单键, type 名单时段, type 渠道统计, type 产出比分布, type 转化 } from "@/lib/enterprise/channel-stats";
 import { 子渠道名, 渠道启用, 渠道状态文字 } from "@/lib/enterprise/channel-main-core";
 import { 转化率字 } from "../overview/funnel";
 import { addChannelInvest, deleteChannelInvest, listChannelInvests, type 投入行 } from "./actions";
@@ -206,8 +206,9 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
         size="small"
         column={1}
         items={[
+          // 关联线索 = 在线索阶段、没流失的；有效线索同看板，一条都没判过写「—」（客户 11-18 第 10 题 A）
           { key: "线索", label: "关联线索", children: 数(s, "关联线索") },
-          { key: "有效", label: "有效线索", children: 数(s, "有效线索") },
+          { key: "有效", label: "有效线索", children: 有效线索显示(s) ?? <span className="muted" title="这批线索销售还没在线索验证里判过">—</span> },
           { key: "商机", label: "关联商机", children: 数(s, "关联商机") },
           { key: "订单", label: "关联订单", children: 数(s, "关联订单") },
           { key: "项目", label: "关联项目", children: 数(s, "关联项目") },

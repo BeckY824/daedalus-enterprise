@@ -142,6 +142,21 @@ it("分给谁认不出 / 同名两位 / 这人用不了指定分配：不预填�
   }
 });
 
+it("指定分配的项目负责人下拉只列能被指定的（参与正常），暂停 / 禁止的不列（审核追加；1024 / 1280 / 1366）", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    const { page, errors } = await open(w, 900, {}, { 成员: [{ value: "u1", label: "乙" }, { value: "u2", label: "暂停的丙" }], 可指定: ["u1"] });
+    try {
+      await 选(page, "分配方式", "指定分配");
+      await 格(page, "项目负责人").locator(".ant-select").click();
+      const 项们 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
+      await 项们.filter({ hasText: "乙" }).first().waitFor();
+      expect(await 项们.filter({ hasText: "暂停的丙" }).count()).toBe(0);
+      expect(await 不横撑(page)).toEqual({ 页: true, 出界: 0 });
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
 it("渠道下拉显示全名：375（手机）和 1024 宽都不省略、不出屏", async () => {
   for (const [w, h] of [[375, 812], [1024, 768]]) {
     const { page, errors } = await open(w, h);

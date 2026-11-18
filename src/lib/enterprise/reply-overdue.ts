@@ -20,6 +20,9 @@
  *     只记日志，下一分钟再试（不通知上级）
  *   - 转出算接手人的一次分配（占本月分配数）、清待分配、接手人照常收「分给你」；项目留痕记一行转让，原因「超时未跟进自动转」，操作人「系统」
  *   - 只管：线索阶段、没结局、不在公海（项目和客户都不在）、不在回收站、不在待分配、填了指定回复时间的
+ *   - 只转「分出去」的线索（11-18 客户定第 1 题 B）：负责人是别人分给他的（负责人不是建的人，或有一行把它分给现负责人的分配记录）才转；
+ *     自留的（市场成员建了暂不分配、负责人就是自己）、销售「个人自持」的（自己建给自己）到点只发超时提醒给本人、首页待办标超时，不自动转。
+ *     以后有人把它分给别人了，按新负责人从接手那刻重新计时，到点照转
  *   - 别人手动换了负责人：按新负责人从他接手那刻重新计时（这一轮超时过的人照记）
  *   - 出了范围（进公海、有结局、转商机、客户进公海、进回收站）的链就此停下，领回来 / 恢复了也不再接着转
  *   - 起链只往回看 起链往回看天 天（老数据上线不一口气全转）；停过机的按状态补：一遍只走一步，超时提醒补发了再等 30 分钟才转，不连环转
@@ -126,12 +129,26 @@ export { 客户在谁名下话 };
 
 export type 超时转明细 = { 提醒: number; 转出: number; 没转成: number; 停: number };
 
+/**
+ * 是不是分出去的（第 1 题 B，见文件头）：负责人不是建的人 = 别人给他的（指定、自动、定时、超时转、转让）；
+ * 负责人就是建的人，但有一行把它分给他的分配记录（比如分出去又分回来）也算。都不是 = 自留 / 个人自持
+ */
+export const 是分来的 = (p: { ownerId: string; creatorId: string }, 有分给他的记录: boolean): boolean => p.ownerId !== p.creatorId || 有分给他的记录;
+
+async function 分来的of(p: { id: string; ownerId: string; creatorId: string }): Promise<boolean> {
+  if (p.ownerId !== p.creatorId) return true;
+  return 是分来的(p, !!(await prisma.entLeadAssign.findFirst({ where: { projectId: p.id, toUserId: p.ownerId }, select: { id: true } })));
+}
+
+/** 自留、自持的超时提醒那句（不说会自动收回） */
+export const 自留超时话 = "这条是你自己留着跟的，不会自动转走，请尽快联系客户并记一条有效沟通";
+
 const 链上列 = {
-  id: true, name: true, ownerId: true, customerId: true, replyStartAt: true, replyEndAt: true,
+  id: true, name: true, ownerId: true, creatorId: true, customerId: true, replyStartAt: true, replyEndAt: true,
   replyOverdue: { select: { anchorAt: true, holderId: true, since: true, overdueAt: true, tried: true, transfers: true, stoppedAt: true } },
 } as const;
 type 链项目 = {
-  id: string; name: string; ownerId: string; customerId: string; replyStartAt: Date | null; replyEndAt: Date | null;
+  id: string; name: string; ownerId: string; creatorId: string; customerId: string; replyStartAt: Date | null; replyEndAt: Date | null;
   replyOverdue: { anchorAt: Date; holderId: string; since: Date; overdueAt: Date | null; tried: string; transfers: number; stoppedAt: Date | null } | null;
 };
 
@@ -277,24 +294,27 @@ async function 走一步(p: 链项目, 回了: boolean, 现在: Date, 明细: �
     since = 行.since; overdueAt = 行.overdueAt; 试过 = 读试过(行.tried); transfers = 行.transfers;
   }
   const 步 = 该做({ since, overdueAt }, 现在);
+  if (!步) return;
+  // 自留、自持的只提醒本人、不转（第 1 题 B）：链留着（首页待办照标超时），换了负责人再按新的人算
+  const 分来 = await 分来的of(p);
   if (步 === "提醒") {
-    await 发超时提醒(p, since, since.getTime() !== 基.getTime(), 现在);
+    await 发超时提醒(p, since, since.getTime() !== 基.getTime(), 现在, 分来);
     await 记链(p.id, { anchorAt: 基, holderId: p.ownerId, since, overdueAt: 现在, tried: 试过, transfers });
     明细.提醒++;
-  } else if (步 === "转") {
+  } else if (步 === "转" && 分来) {
     if (await 转出去(p, 基, 试过, transfers, 现在)) 明细.转出++;
     else 明细.没转成++;
   }
 }
 
 /** 超时提醒（站内 + 飞书；首页待办见 reply-notice.ts 待回复客户of）。接手的 = 不是按指定回复时间起算的那一位 */
-async function 发超时提醒(p: 链项目, since: Date, 接手的: boolean, 现在: Date) {
+async function 发超时提醒(p: 链项目, since: Date, 接手的: boolean, 现在: Date, 分来 = true) {
   const 转时 = 短时刻(超时转出到期(现在), 现在);
   const 头 = 接手的 ? `接手已满 ${超时提醒分钟 / 60} 小时还没记有效沟通` : `指定回复时间 ${指定回复文字(p.replyStartAt, p.replyEndAt, 现在)} 已过，还没记有效沟通`;
   await notify([p.ownerId], {
     kind: 超时通知种类,
     title: `超时未跟进：${p.name}`,
-    body: `${头}。${转时} 前还没记，这条线索会自动收回、分给其他成员`,
+    body: 分来 ? `${头}。${转时} 前还没记，这条线索会自动收回、分给其他成员` : `${头}。${自留超时话}`,
     link: `/projects/${encodeURIComponent(p.id)}`,
     key: `reply-overdue:${p.id}:${p.ownerId}:${since.toISOString()}`,
   });

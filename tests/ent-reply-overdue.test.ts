@@ -22,7 +22,7 @@ import { 规则, 规则开着 } from "@/lib/enterprise/rules";
 import { 待回复客户of } from "@/lib/enterprise/reply-notice";
 import {
   超时转扫一遍, 在夜里, 顺延到白天, 超时提醒到期, 超时转出到期, 该做, 本轮排除, 读试过, 客户怎么办, 客户在谁名下, 超时基准,
-  收回话, 超时转理由, 超时通知种类, 超时转重新起算, 我超时未跟进的,
+  收回话, 超时转理由, 超时通知种类, 超时转重新起算, 我超时未跟进的, 自留超时话,
 } from "@/lib/enterprise/reply-overdue";
 import { 客户在谁名下话 } from "@/lib/project/time-fields";
 
@@ -40,7 +40,8 @@ let 序 = 0;
 async function 建线索(owner: 人, 补: Record<string, unknown> = {}, customerId?: string) {
   序++;
   const cid = customerId ?? (await prisma.customer.create({ data: { name: `客户${序}`, phone: `1390000${String(序).padStart(4, "0")}`, salesOwnerId: owner.id } })).id;
-  const p = await prisma.project.create({ data: { name: `线索${序}`, customerId: cid, ownerId: owner.id, creatorId: owner.id, phase: "线索", node: "潜客培育", bizLine: "内贸", ...补 } });
+  // 默认是「分出去的」线索：老板建的、分给 owner（11-18 第 1 题 B：只转分出去的）；自留 / 自持的用例另传 creatorId
+  const p = await prisma.project.create({ data: { name: `线索${序}`, customerId: cid, ownerId: owner.id, creatorId: 老板.id, phase: "线索", node: "潜客培育", bizLine: "内贸", ...补 } });
   return { id: p.id, customerId: cid };
 }
 const 项目 = (id: string) => prisma.project.findUniqueOrThrow({ where: { id }, include: { customer: true } });
@@ -329,6 +330,39 @@ describe("钟上走一遍（到点提醒、自动转）", () => {
     expect(await 超时转扫一遍(京("2026-11-24 11:00"))).toMatchObject({ 提醒: 1 });
     expect(await 超时转扫一遍(京("2026-11-24 11:30"))).toMatchObject({ 转出: 1 });
     expect((await 项目(c.id)).ownerId).not.toBe(甲.id);
+  });
+});
+
+describe("只转分出去的（11-18 客户定第 1 题 B）", () => {
+  it("自留 / 个人自持（自己建给自己、没有分给他的记录）：到点只提醒本人、不说会收回，首页待办标超时，过了 1.5 小时也不转", async () => {
+    const { id } = await 建线索(甲, { replyEndAt: 京("2026-11-20 15:00"), creatorId: 甲.id });
+    expect(await 超时转扫一遍(京("2026-11-20 16:00"))).toMatchObject({ 提醒: 1, 转出: 0 });
+    const 提 = await 超时通知(甲.id);
+    expect(提).toHaveLength(1);
+    expect(提[0].body).toContain(自留超时话);
+    expect(提[0].body).not.toContain("自动收回");
+    expect(await 超时转扫一遍(京("2026-11-20 16:30"))).toMatchObject({ 转出: 0 });
+    expect(await 超时转扫一遍(京("2026-11-20 18:30"))).toMatchObject({ 转出: 0 });
+    expect((await 项目(id)).ownerId).toBe(甲.id);
+    expect(await prisma.entLeadAssign.count({ where: { projectId: id } })).toBe(0);
+    expect(await 我超时未跟进的(甲.id)).toHaveLength(1);
+  });
+
+  it("自己建的、但有把它分给他的记录（分出去又分回来）：算分出去的，照转", async () => {
+    const { id } = await 建线索(甲, { replyEndAt: 京("2026-11-20 15:00"), creatorId: 甲.id });
+    await prisma.entLeadAssign.create({ data: { projectId: id, toUserId: 甲.id, byUserId: 老板.id, month: "2026-11", counted: true } });
+    await 超时转扫一遍(京("2026-11-20 16:00"));
+    expect(await 超时转扫一遍(京("2026-11-20 16:30"))).toMatchObject({ 转出: 1 });
+    expect((await 项目(id)).ownerId).toBe(乙.id);
+  });
+
+  it("超时转两人都算（维持）：原负责人那条分配记录照算，接手人再记一条", async () => {
+    const { id } = await 建线索(甲, { replyEndAt: 京("2026-11-20 15:00") });
+    await prisma.entLeadAssign.create({ data: { projectId: id, toUserId: 甲.id, byUserId: 老板.id, month: "2026-11", counted: true } });
+    await 超时转扫一遍(京("2026-11-20 16:00"));
+    expect(await 超时转扫一遍(京("2026-11-20 16:30"))).toMatchObject({ 转出: 1 });
+    expect(await prisma.entLeadAssign.count({ where: { month: "2026-11", counted: true, toUserId: 甲.id } })).toBe(1);
+    expect(await prisma.entLeadAssign.count({ where: { month: "2026-11", counted: true, toUserId: 乙.id } })).toBe(1);
   });
 });
 

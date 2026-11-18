@@ -18,6 +18,7 @@ import { 名单回车去处 } from "@/lib/cmdk";
 import { useMiddlePane, usePaneShortcut } from "@/lib/middle-pane";
 import PaneToggle from "@/components/PaneToggle";
 import { useLocalPref } from "@/lib/local-pref";
+import { 名单底句 } from "@/lib/enterprise/customer-scope";
 import { RowLink } from "@/components/ui";
 import { 名单可到, 名单宽变量, 名单默认宽, 名单最窄, 夹名单宽, 存名单宽, 读名单宽 } from "@/lib/roster-width";
 
@@ -44,6 +45,8 @@ export type CustomerRosterData = {
    * 不给就照旧从 rows 里筛 mine
    */
   mineRows?: CustomerRosterData["rows"];
+  /** 「我的」一共几位（= 客户页「范围：我负责的」那个数，企业版给）：停在「我的」时底下那句写它、链到 /customers?scope=mine */
+  mineTotal?: number;
   /**
    * 企业版：按客户状态分组（10-29）。顺序 = 字典里启用的几项按字典排，颜色按字典项给（lib/enterprise/cust-status-color.ts）。
    * 别的版本不给，照旧按跟进状态分
@@ -69,7 +72,10 @@ function 搜名单(xs: CustomerRosterData["rows"], q: string) {
  *
  * 只装最近 50 位；搜索和状态筛选在这 50 位里做，要翻全量按回车去表格。
  */
-export default function CustomerRoster({ data }: { data: CustomerRosterData }) {
+/**
+ * 默认页签：企业版里销售（没有管理范围）默认「我的」，和客户页「范围」默认「我负责的」对齐（客户 11-18 第 12 题）；不给 = 「全部」
+ */
+export default function CustomerRoster({ data, 默认页签 = "全部" }: { data: CustomerRosterData; 默认页签?: "全部" | "我的" }) {
   const b = useBusiness();
   const router = useRouter();
   const pathname = usePathname();
@@ -96,7 +102,7 @@ export default function CustomerRoster({ data }: { data: CustomerRosterData }) {
     桌面端就你一个人，「全部」和「我的」是同一张单子，摆两个一样的页签是让人找不同。
     「本周要跟」= 计划排在七天之内的，已经过期没做的也算（那更该跟）。
   */
-  const [页签, set页签] = useState<"全部" | "我的" | "本周">("全部");
+  const [页签, set页签] = useState<"全部" | "我的" | "本周">(默认页签);
   const 有别人的 = data.rows.some((r) => r.mine === false);
   const 七天后 = dayjs().add(7, "day").endOf("day");
   const 当前页签 = 页签 === "我的" && !有别人的 ? "全部" : 页签;
@@ -111,6 +117,7 @@ export default function CustomerRoster({ data }: { data: CustomerRosterData }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [rows, 我的rows, 当前页签],
   );
+  const 底句 = 名单底句({ 页签: 当前页签, 默认页签, 全部总数: data.total, 全部条数: data.rows.length, 我负责总数: data.mineTotal, 我的条数: 我的rows?.length });
   const 分组 = !q.trim();
   // 分组规则在 lib/roster-groups.ts：预设外的单独成组、空串归「未填写」，一个人都不能消失（2026-10-04 L-072）
   const 按客户状态 = data.客户状态 ?? null;
@@ -259,9 +266,10 @@ export default function CustomerRoster({ data }: { data: CustomerRosterData }) {
               );
             })
           : 页签里.map((r) => 一行(r, true))}
-        {data.total > data.rows.length && (
-          <Link href="/customers" className="pane-more">
-            这里只有最近 {data.rows.length} 位，全部 {data.total} 位在表格里 ›
+        {/* 底下那句：数 = 点过去表格里的数（lib/enterprise/customer-scope.ts 名单底句；销售落在「我负责的」） */}
+        {底句 && (
+          <Link href={底句.href} className="pane-more">
+            这里只有最近 {底句.条} 位，{底句.名} {底句.总} 位在表格里 ›
           </Link>
         )}
       </div>

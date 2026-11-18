@@ -13,6 +13,8 @@
  * 接手人在不在、有没有业务角色），自动分配那时再挑人（候选、参与状态照当时；市场成员建的照样按客户区域定事业部 P-转-26，看建线索的人）；
  * 照常发「分给你」的提醒（站内 + 飞书），多一句「按定时分配，原定 HH:mm」；操作人记「系统」；市场分给销售客户随行（X-18）。
  * 分不出去：不分、留在待分配，提醒能分配的人和录入人，写明原定时间和原因（「线索分配」开关关着只提醒总管理员，X-79）；不自动改分给别人。
+ * 出错（抛异常，不是分不出去，审核 11-18 通知 P1-3）：记日志，站内通知系统管理员（谁都不知道的话线索就静悄悄停在待分配），
+ * 再按分不出去提醒能分配的人和录入人；定时已清掉，不再自动重试，等人手动分。
  * 停机补跑：开机那遍把「时刻已过、还没执行」的全部执行，通知里写「服务停过，晚了 N 分钟」；按状态判，不另记水位。
  * 计时：到点前不算持有；分配生效那刻起才算接手人的（超时回收从转让痕起算、持有上限按生效时查、分配数记在生效那个月）。
  */
@@ -33,6 +35,7 @@ import type { SessionUser } from "@/lib/auth";
 import type { 组织 } from "./org";
 import { 能分配 } from "./lead-assign";
 import { 只读角色 } from "./permissions";
+import { 是系统管理员of } from "./org-core";
 
 /** 后台执行时的操作人：「系统」（同超时回收，QA #16）。不是真账号，留痕显示「系统」 */
 export const 系统操作人: SessionUser = { id: 系统.id, name: 系统.name, email: "", role: "ADMIN", title: "" };
@@ -86,11 +89,37 @@ export async function 执行一条定时(p: { id: string; name: string; creatorI
   const 占 = await prisma.project.updateMany({ where: { id: p.id, scheduledAssignAt: p.scheduledAssignAt, awaitAssignAt: { not: null } }, data: 清定时 });
   if (占.count !== 1) return { ok: false, error: "这条定时已经执行过、改过或取消了" };
   const 附 = 谁.id === 系统操作人.id ? 定时附言(p.scheduledAssignAt, 现在) : `原定 ${短时刻(p.scheduledAssignAt, 现在)} 定时分配，${谁.name} 改成现在分配`;
-  const r: 定时执行结果 = (await 规则开着("线索分配"))
-    ? await 定时分出去(定时分配令牌, 谁, p.id, p.scheduledAssignTo, 附)
-    : { ok: false, error: "规则「线索分配」关着，没人能分" };
+  let r: 定时执行结果;
+  try {
+    r = (await 规则开着("线索分配"))
+      ? await 定时分出去(定时分配令牌, 谁, p.id, p.scheduledAssignTo, 附)
+      : { ok: false, error: "规则「线索分配」关着，没人能分" };
+  } catch (e) {
+    console.error(`[定时分配] ${p.id} 执行出错，留在待分配`, e);
+    await 出错告诉管理员(p, e, 现在);
+    r = { ok: false, error: "系统出错，这次没分出去" };
+  }
   if (!r.ok) await 分不出去提醒(p, r.error, 附, 现在);
   return r;
+}
+
+/** 定时分配出错（抛异常）：站内通知系统管理员（只记站内，不推飞书），一条定时一次。从不抛 */
+export async function 出错告诉管理员(p: { id: string; name: string; scheduledAssignAt: Date }, e: unknown, 现在: Date): Promise<void> {
+  try {
+    const org = await 读组织();
+    const 管 = [...org.成员.keys()].filter((id) => 是系统管理员of(org, id));
+    const 错 = (e instanceof Error ? e.message : String(e)).replace(/\s+/g, " ").slice(0, 200);
+    await notify(管, {
+      kind: "定时分配出错",
+      title: `定时分配出错：${p.name}`,
+      body: `原定 ${短时刻(p.scheduledAssignAt, 现在)} 的定时分配执行时出错，线索留在新线索待分配，请手动分配；出错信息：${错}`,
+      link: `/projects/${encodeURIComponent(p.id)}`,
+      key: `sched-error:${p.id}:${p.scheduledAssignAt.toISOString()}`,
+      不推飞书: true,
+    });
+  } catch (e2) {
+    console.error("[定时分配] 出错通知没发出去", e2);
+  }
 }
 
 async function 分不出去提醒(p: { id: string; name: string; creatorId: string; scheduledAssignAt: Date }, 为什么: string, 附: string, 现在: Date) {
@@ -135,6 +164,7 @@ export async function 定时分配扫一遍(现在: Date = new Date()): Promise<
         } catch (e) {
           明细.没分出去++;
           console.error(`[定时分配] ${p.id} 执行出错`, e);
+          await 出错告诉管理员({ ...p, scheduledAssignAt: p.scheduledAssignAt! }, e, 现在);
         }
       }
     });

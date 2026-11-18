@@ -41,12 +41,12 @@ import { 名字在别处, 别处说法, 别处附件, 找人详, 没找到话 } 
 import type { BusinessConfig } from "../business-config";
 import type { BriefRecord } from "../ai-draft";
 import { 扩同义词 } from "./synonyms";
-import { 校验规格, 说人话, 编译, 能查的表, 查询表, 分组上限, 关联们, 用到的名字, 认字段, type 名映射, type 查询规格, type 表名 } from "./query";
+import { 校验规格, 说人话, 编译, 能查的表, 查询表, 分组上限, 关联们, 用到的名字, 认字段, 节点记录类型叫法, type 名映射, type 查询规格, type 表名 } from "./query";
 import { 限定的我 } from "../team-scope";
 import { 字段权限of } from "../enterprise/field-perm";
 import { 能看提成 } from "../project/commission-db";
 import { 读组织 } from "../enterprise/org";
-import { buildProposal, describeProposal, missingFields, 可改字段表, 可改字段名单, type Proposal, type ProposalKind } from "./proposals";
+import { buildProposal, 默认填到客户, describeProposal, missingFields, 可改字段表, 可改字段名单, type Proposal, type ProposalKind } from "./proposals";
 import { FOLLOW_TYPES, FOLLOW_METHODS, FOLLOW_STATUSES, DECISION_STATUSES, LEAD_STATUSES } from "../constants";
 import { 项目写工具 } from "./project-tools";
 import { 常用沟通方式of } from "../follow-habit-db";
@@ -175,6 +175,8 @@ export function query_records说明(只用项目: boolean): string {
     "它接的是：联系人（没有专门工具）、要排序（「哪个项目最久没动」）、要跨一张表、" +
     "以及项目、卡点、节点记录、回款、线索验证、提成、公海、组织架构、同事这些没有专门工具的表。" +
     "「客户」表不含公海里的客户，问公海查「公海」表。" +
+    "「节点记录」里记录类型不是改节点（node）的行——换负责人（transfer）、放回公海、公海领取——原节点 / 新节点只是照抄当时的节点，不是节点变化；" +
+    "问项目节点怎么走的，加条件 记录类型 等于 node。" +
     (只用项目 ? "这一家只用项目：线索、商机、订单是项目的阶段，查「项目」表、按「阶段」筛，没有单独的线索 / 商机 / 签约表。" : "") +
     "规则：「表」只能填 " + 表.join("、") + " 之一；「字段」填中文字段名；" +
     "「运算」只能填 包含 / 等于 / 不等于 / 属于 / 大于 / 小于 / 不早于 / 不晚于 / 最近天数 / 为空 / 非空 之一。" +
@@ -988,8 +990,8 @@ export const TOOLS: Tool[] = [
   proposeTool("propose_plan", "建议排一次下次跟进计划。", '{"id": "客户 id", "subject": "下次谈什么", "plannedAt": "YYYY-MM-DD HH:mm", "method": "电话沟通/线上会议/上门拜访/邮件沟通/微信沟通", "reason": "一句话：为什么"}', "add_plan"),
   proposeTool(
     "propose_lead",
-    "建议新建一条线索。只知道名字也要提，留空的字段人会在卡片上补。",
-    '{"name": "线索名称/姓名，不知道就空着；不要填号码", "contact": "联系人，可空；不要填号码", "numbers": [{"type": "手机/座机/微信/邮箱/WhatsApp/阿里国际站ID/传真/Telegram", "value": "号码"}], "source": "来源 / 渠道，人说了就原样给，可空", "status": "状态，可空", "remark": "备注，可空；需求、预算写这里；国家城市地址、职位、下一步、分给谁别写进来", "assignTo": "分给谁：人说了交给哪位同事就原样给姓名，可空", "country": "国家/地区，可空；给了城市就给上（国内给「中国」）", "province": "省/州，可空", "city": "城市，可空", "district": "区/县，可空", "address": "详细地址，可空", "position": "联系人职位，可空", "指定回复开始": "客户要求联系的开始时间 YYYY-MM-DD HH:mm，可空", "指定回复结束": "截止时间 YYYY-MM-DD HH:mm，可空", "nextAt": "下一步时间 YYYY-MM-DD，可空", "nextStep": "下一步计划，可空", "bizLine": "内贸/外贸/暂不分配，有把握才给", "regionTo": ["客户/联系人/项目：国家城市是谁的，说不清就不给"], "reason": "一句话：为什么"}',
+    "建议新建一条线索。只知道名字也要提，留空的字段人会在卡片上补。卡上有「分配方式」一格（指定分配 / 自动分配 / 暂不分配等，市场成员默认自动分配），还有负责人、分配方向、指定分配时间、指定回复时间：人说要自动分配、分给谁、定时分，告诉他在卡上选好再确认，不要说卡上没有对应的填写位置。",
+    '{"name": "线索名称/姓名，不知道就空着；不要填号码", "contact": "联系人，可空；不要填号码", "numbers": [{"type": "手机/座机/微信/邮箱/WhatsApp/阿里国际站ID/传真/Telegram", "value": "号码"}], "source": "来源 / 渠道，人说了就原样给，可空", "status": "状态，可空", "remark": "备注，可空；需求、预算写这里；国家城市地址、职位、下一步、分给谁别写进来", "assignTo": "分给谁：人说了交给哪位同事就原样给姓名，可空", "country": "国家/地区，可空；给了城市就给上（国内给「中国」）", "province": "省/州，可空", "city": "城市，可空", "district": "区/县，可空", "address": "详细地址，可空", "position": "联系人职位，可空", "指定回复开始": "客户要求联系的开始时间 YYYY-MM-DD HH:mm，可空", "指定回复结束": "截止时间 YYYY-MM-DD HH:mm，可空", "nextAt": "下一步时间 YYYY-MM-DD，可空", "nextStep": "下一步计划，可空", "bizLine": "内贸/外贸/暂不分配，有把握才给", "regionTo": ["客户/联系人/项目：国家城市是谁的，说不清就不给（卡上默认勾客户所在区域，人可改）"], "reason": "一句话：为什么"}',
     "add_lead",
     { needsCustomer: false },
   ),
@@ -1136,7 +1138,9 @@ export const TOOLS: Tool[] = [
         设置里改成了「已演示」，别处都显示「已演示」，AI 分组出来却是「已试听」。
       */
       const 显示 = (列: string, v: unknown) =>
-        (列 === "followStatus" || 列 === "decisionStatus") && typeof v === "string" ? statusLabel(ctx.b, v) : v;
+        (列 === "followStatus" || 列 === "decisionStatus") && typeof v === "string" ? statusLabel(ctx.b, v)
+          : 规格.表 === "节点记录" && 列 === "kind" && typeof v === "string" ? 节点记录类型叫法[v] ?? v
+          : v;
 
       if (规格.分组) {
         const 列 = (表定义.字段 as Record<string, { 列: string; 名: string; 型: string }>)[规格.分组];
@@ -1310,8 +1314,10 @@ function proposeTool(name: string, description: string, args: string, kind: Prop
         const 习惯 = await 常用沟通方式of(ctx.userId).catch(() => null);
         if (习惯) a = { ...a, type: 习惯.type, ...(习惯.method ? { method: 习惯.method } : {}) };
       }
-      const r = buildProposal(`${kind}-${ctx.proposals.length}-${c.id || c.name}`, kind, c, a, ctx.b);
-      if (!r.ok) return { summary: `建议不合法：${r.error}`, data: { error: r.error } };
+      const r0 = buildProposal(`${kind}-${ctx.proposals.length}-${c.id || c.name}`, kind, c, a, ctx.b);
+      if (!r0.ok) return { summary: `建议不合法：${r0.error}`, data: { error: r0.error } };
+      // 新线索卡：有国家 / 城市、模型没说填到哪 = 默认勾客户所在区域（外国城市同中国城市，11-18）
+      const r = { ...r0, proposal: 默认填到客户(r0.proposal) };
       ctx.proposals.push(现值 ? { ...r.proposal, 现值 } : r.proposal);
       const miss = missingFields(r.proposal, ctx.b);
       return {

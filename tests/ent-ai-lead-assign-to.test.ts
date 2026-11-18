@@ -5,7 +5,7 @@
  * 落库只认 分配方式 / ownerId，「分给」只是给卡片的线索。卡片上的行为见 tests/ent-ai-lead-card.ui.test.ts
  */
 import { describe, it, expect } from "vitest";
-import { buildProposal } from "@/lib/agent/proposals";
+import { buildProposal, 默认填到客户, missingFields } from "@/lib/agent/proposals";
 import { 认分给, 分配方式序号 } from "@/lib/enterprise/assign-line";
 import { DEFAULT_BUSINESS } from "@/lib/business-config";
 
@@ -42,5 +42,23 @@ describe("propose_lead 收 assignTo", () => {
   it("没说分给谁：没有 分给 这一格", () => {
     const r = 建({ name: "某公司", reason: "x" });
     expect(r.ok && r.proposal).not.toHaveProperty("分给");
+  });
+});
+
+describe("新线索卡：国家 / 城市默认填到客户所在区域（11-18）", () => {
+  const 建 = (args: Record<string, unknown>) => buildProposal("p1", "add_lead", { id: "", name: "" }, args, DEFAULT_BUSINESS);
+  const 补 = (args: Record<string, unknown>) => {
+    const r = 建(args);
+    if (!r.ok) throw new Error(r.error);
+    return 默认填到客户(r.proposal);
+  };
+  it("外国城市、模型没给 regionTo：默认勾客户所在区域，确认时不再报「还差国家 / 城市填到哪」", () => {
+    const p = 补({ name: "某公司", country: "越南", city: "胡志明市", reason: "x" });
+    expect(p).toMatchObject({ 区域去处: ["客户"] });
+    expect(missingFields(p, DEFAULT_BUSINESS, { 只用项目: true, 要下一步: false, 企业: { 有分配方式: false, 节点们: [] } })).not.toContain("国家 / 城市填到哪");
+  });
+  it("模型给了就按给的；没有国家城市不补", () => {
+    expect(补({ name: "某公司", country: "中国", city: "杭州", regionTo: ["项目"], reason: "x" })).toMatchObject({ 区域去处: ["项目"] });
+    expect(补({ name: "某公司", reason: "x" })).not.toHaveProperty("区域去处");
   });
 });
