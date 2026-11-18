@@ -28,19 +28,14 @@ const 最多留 = 20;
  * 收提醒的人：组织里的市场管理、总管理员（只认业务角色，11-01；账号管理员没设业务角色的收不到）。
  * 只给总管理员：规则「线索分配和配额」关着时的待分配——市场管理、销售管理分不了，已进待分配的由系统管理员处理（X-79 → P-转-03）
  */
-export function 满额提醒收件人(org: 组织, 原因: 提醒原因 = "满额", 只给总管理员 = false, 线?: string | null): string[] {
+export function 满额提醒收件人(org: 组织, 原因: 提醒原因 = "满额", 只给总管理员 = false): string[] {
   return [...org.成员.keys()].filter((id) => {
     const 类们 = 管理员类别们of(org, id);
     if (只给总管理员) return 类们.has("总管理员");
-    if (类们.has("市场管理") || 类们.has("总管理员")) return true;
-    // 待分配的线索销售管理也能手动分（11-01 A7），一起提醒；只发本线的（审核 11-18 通知 P2-2，P-公海-07 销管只操作本线）：
-    // 线索标了内贸 / 外贸、销管自己也设了线且不是这条线的不发。线索没标线（暂不分配、空）或销管没设线的照旧发
-    if (原因 !== "待分配" || !类们.has("销售管理")) return false;
-    const 他的线 = org.成员.get(id)?.line ?? null;
-    return !是线(线) || !他的线 || 他的线 === 线;
+    // 待分配的线索销售管理也能手动分（11-01 A7），一起提醒
+    return 类们.has("市场管理") || 类们.has("总管理员") || (原因 === "待分配" && 类们.has("销售管理"));
   });
 }
-const 是线 = (x: string | null | undefined): x is "内贸" | "外贸" => x === "内贸" || x === "外贸";
 
 /** Setting 里不是数组（没发过、被手改坏）都当没有 */
 function 认列表(v: unknown): 满额提醒[] {
@@ -59,9 +54,9 @@ export async function 读满额提醒(userId: string): Promise<满额提醒[]> {
 }
 
 /** 发一条：线索名是这一次点击里因都已满额没分出去的那几条；空的不发，不是企业版不发 */
-export async function 发满额提醒(org: 组织, 线索: string[], 谁点的: string, 今 = new Date(), 另: { 原因?: 提醒原因; 为什么?: string; 线?: string | null } = {}): Promise<void> {
+export async function 发满额提醒(org: 组织, 线索: string[], 谁点的: string, 今 = new Date(), 另: { 原因?: 提醒原因; 为什么?: string } = {}): Promise<void> {
   if (!企业版()) return;
-  const 收件人 = 满额提醒收件人(org, 另.原因, 另.原因 === "待分配" && !(await 规则开着("线索分配")), 另.线);
+  const 收件人 = 满额提醒收件人(org, 另.原因, 另.原因 === "待分配" && !(await 规则开着("线索分配")));
   if (!线索.length || !收件人.length) return;
   const 条: 满额提醒 = {
     id: `${今.getTime().toString(36)}${Math.random().toString(36).slice(2, 8)}`, at: 今.toISOString(), 条数: 线索.length, 线索, 谁点的,
@@ -93,10 +88,9 @@ export async function 发满额提醒(org: 组织, 线索: string[], 谁点的: 
   });
 }
 
-/** 新建线索选了自动分配、没分出去（这条业务线没人可分），留在新线索待分配：告诉市场管理、销售管理、总管理员（A7 / A10）；「线索分配」开关关着只告诉总管理员（X-79）。
- *  线 = 这条线索的业务线（项目 bizLine）：给了就只发本线的销售管理；没给照旧全发 */
-export async function 发待分配提醒(org: 组织, 线索: string[], 谁建的: string, 为什么: string, 今 = new Date(), 线?: string | null): Promise<void> {
-  await 发满额提醒(org, 线索, 谁建的, 今, { 原因: "待分配", 为什么, 线 });
+/** 新建线索选了自动分配、没分出去（这条业务线没人可分），留在新线索待分配：告诉市场管理、销售管理、总管理员（A7 / A10）；「线索分配」开关关着只告诉总管理员（X-79） */
+export async function 发待分配提醒(org: 组织, 线索: string[], 谁建的: string, 为什么: string, 今 = new Date()): Promise<void> {
+  await 发满额提醒(org, 线索, 谁建的, 今, { 原因: "待分配", 为什么 });
 }
 
 /** 关掉我自己的一条；不在（关过了、id 不对）当关好了 */

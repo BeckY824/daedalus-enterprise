@@ -14,7 +14,7 @@ import { 不在了 } from "@/lib/not-there";
 import { getSetting, setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 规则, 规则开着 } from "@/lib/enterprise/rules";
 import { 读组织, type 组织 } from "@/lib/enterprise/org";
-import { 能改后台设置, 是市场角色, 是销售角色, 能管公海, 能转让项目 } from "@/lib/enterprise/permissions";
+import { 能改后台设置, 是市场角色, 是销售角色, 能管公海 } from "@/lib/enterprise/permissions";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 读改权限, 谁能改的话 } from "@/lib/enterprise/edit-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -126,8 +126,6 @@ export async function 分配线索(input: { leadId?: string; projectId?: string;
     // 还要看分配方式字典的「谁能用」（assign-use.ts）：指定分配
     const 方式挡 = await 挡分配方式(me, 0);
     if (方式挡) return { ok: false, error: 方式挡 };
-    const 改派挡 = await 改派别人名下挡(me, org, 哪条);
-    if (改派挡) return { ok: false, error: 改派挡 };
     // 新线索（项目）走哪条线看项目业务线（A1：三选一，老项目按负责人的线、再没有按内贸），不认界面传来的；
     // 只能指派给正常参与、业务线对得上的销售（暂不分配 = 全部正常参与的销售）
     if (哪条.projectId !== undefined) {
@@ -257,19 +255,6 @@ async function 线索公海挡(me: SessionUser, org: 组织, projectId: string):
   if (别线) return 别线;
   return (await 原负责人挡着(prisma, me, p)) ? 自己放的回避话 : null;
 }
-
-/**
- * 改派别人名下的（审核 11-18 权限 P1-6，P-转-01）：不在公海、不是待分配、负责人又不是我时，要能转让这个项目
- * （负责人的实线直属上级只一级且同线、条线总管理本线、系统管理员；市场管理分直属市场成员名下的走 能转让名下）。
- * 隔级下属、虚线下属、别线的拒。公海里的另走 线索公海挡，待分配的（负责人那格只是建的人占着）不加判。不是项目 / 不是企业版回 null
- */
-async function 改派别人名下挡(me: SessionUser, org: 组织, 哪条: 目标): Promise<string | null> {
-  if (!企业版() || 哪条.projectId === undefined) return null;
-  const p = await 看全部(() => prisma.project.findUnique({ where: { id: 哪条.projectId }, select: { ownerId: true, creatorId: true, pooledAt: true, awaitAssignAt: true, bizLine: true } }));
-  if (!p || p.pooledAt || p.awaitAssignAt || !p.ownerId || p.ownerId === me.id) return null;
-  return 能转让项目(me, p, org) ? null : 改派别人名下的话;
-}
-const 改派别人名下的话 = "这条线索在别人名下：只有负责人的直属上级（同业务线）、条线总管理、系统管理员能改派";
 
 async function 分项目给(
   me: SessionUser, org: 组织, input: { projectId: string; toUserId: string; line: 线 | null; kind: 线索种类; way: string; 自动?: boolean; 原负责人?: string | null; 带待办?: boolean; 公海客户?: 公海客户分法; 备注?: string; 复核?: 复核挑人 },
@@ -519,8 +504,6 @@ export async function 自动分配线索(id: string, opts: { line?: 线 | null; 
     if (方式挡) return { ok: false, error: 方式挡 };
     const 哪条 = 目标of(opts.项目 ? { projectId: id } : { leadId: id });
     if (!哪条) return { ok: false, error: "要分哪一条？刷新看看" };
-    const 改派挡 = await 改派别人名下挡(me, org, 哪条);
-    if (改派挡) return { ok: false, error: 改派挡 };
     const r = 哪条.projectId !== undefined
       ? await 挑不到就标(哪条.projectId, await 自动分给(me, org, 哪条, line, kind, 认原负责人(opts.原负责人)))
       : await 自动分给(me, org, 哪条, line, kind, 认原负责人(opts.原负责人));
@@ -991,8 +974,7 @@ export async function 批量自动分配(
     for (const id of ids) {
       let r: 内部自动结果;
       try {
-        const 改派挡 = 项目 ? await 改派别人名下挡(me, org, { projectId: id }) : null;
-        r = 改派挡 ? { ok: false, error: 改派挡 } : (项目 && 名.has(id) ? await 本批已随客户走(id, 本批随客户) : null)
+        r = (项目 && 名.has(id) ? await 本批已随客户走(id, 本批随客户) : null)
           ?? (项目
             ? await 挑不到就标(id, await 自动分给(me, org, { projectId: id }, null, "营销", 原of(id)))
             : await 自动分给(me, org, { leadId: id }, null, "营销", 原of(id)));

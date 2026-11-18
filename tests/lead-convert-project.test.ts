@@ -11,6 +11,11 @@ const mocks = vi.hoisted(() => ({
   user: { id: "", name: "甲", email: "a@x", role: "ADMIN", title: "管理员", avatar: null },
   开: true,
 }));
+// 这份测的是老线索表（Lead）的规则：企业版那一道「老线索入口一进门拦」（审核 11-18 权限 P1-9）在这里放开，只测后面的逻辑
+vi.mock("@/lib/enterprise/project-only", async (原) => {
+  const m = await 原<typeof import("@/lib/enterprise/project-only")>();
+  return { ...m, 只用项目挡老入口: async (类: Parameters<typeof m.只用项目挡老入口>[0]) => (类 === "线索" ? null : m.只用项目挡老入口(类)) };
+});
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 vi.mock("@/app/(app)/leads/LeadsView", () => ({ default: function LeadsView() { return null; } }));
 vi.mock("@/app/(app)/projects/ProjectsView", () => ({ default: function ProjectsView() { return null; } }));

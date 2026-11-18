@@ -72,15 +72,11 @@ const 市场分 = (input: Parameters<typeof 分配线索>[0]) => 以谁的身份
 afterEach(() => { vi.unstubAllEnvs(); });
 
 describe("市场管理分配别人名下的线索（范围限定开着）", () => {
-  // 审核 11-18 权限 P1-6（P-转-01）：已在销售名下的，改派要能转让这个项目——市场管理不是销售的直属上级，拒；
-  // A3-4 那条只管事务里看全部、不假报「已被分配」，拒的话要说清是范围，不是「已被分配」
-  it("市场建的、已分给销售的线索改派给另一位销售：市场管理拒（P-转-01 范围），原因说清、不假报已被分配（A3-4）", async () => {
+  it("市场建的、已分给销售的线索改派给另一位销售：分得过去，不再假报已被分配（A3-4）", async () => {
     // 市场看得到自己建的；现在在小王名下
     const { p } = await 线索项目(小王, 市场, 市场);
-    const r = await 市场分({ projectId: p, toUserId: 小张 });
-    expect(r).toMatchObject({ ok: false, error: expect.stringContaining("直属上级") });
-    expect(JSON.stringify(r)).not.toContain("已被分配");
-    expect(await 项目归(p)).toBe(小王);
+    expect(await 市场分({ projectId: p, toUserId: 小张 })).toEqual({ ok: true });
+    expect(await 项目归(p)).toBe(小张);
   });
 
   it("持有数按接手人手上真有几个，市场看不到的也算（A3-1）", async () => {

@@ -1326,9 +1326,6 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
   if (不让) return { ok: false, error: 不让 };
   const 在公海 = await 公海挡(ids);
   if (在公海) return { ok: false, error: 在公海 };
-  // 市场成员指定分配暂不分配的客户也先定方向（P-转-26，11-18）：接手人要在这个方向能接的人里，不信前端
-  const 向挡 = await 指定方向挡(me, ids, salesOwnerId, 方向);
-  if (向挡) return { ok: false, error: 向挡 };
   const 验 = await 验证中挡(ids, salesOwnerId);
   if (验) return { ok: false, error: 验 };
   const 挡 = await 挡字段(me.id, ["销售负责人"]);
@@ -1336,6 +1333,9 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
   // 市场分配（转让框里有「指定分配 / 自动分配」那组）的指定：只能给参与状态正常的（审核 11-18 追加，cust-auto-assign.ts 市场分配指定挡）
   const 市场指定 = await 市场分配指定挡(me, ids, salesOwnerId);
   if (市场指定) return { ok: false, error: 市场指定 };
+  // 市场成员指定分配暂不分配的客户也先定方向（P-转-26，11-18）：接手人要在这个方向能接的人里，不信前端；参与状态那句更具体，排它后面
+  const 向挡 = await 指定方向挡(me, ids, salesOwnerId, 方向);
+  if (向挡) return { ok: false, error: 向挡 };
 
   // 本来就归他的不算「改动」，分开统计才对得上操作人看到的选中条数
   const already = await prisma.customer.count({ where: { id: { in: ids }, salesOwnerId } });

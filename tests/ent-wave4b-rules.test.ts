@@ -1,9 +1,7 @@
 /**
  * 11-18 审核第四波追加（口径核对 第四波口径核对-20261118.md）：服务端几条，修前红、修后绿。
  *   - 权限 P1-9（X-88）：企业版只用项目时，老线索表的 saveLead / convertLead / mergeLeadInto 开头就挡
- *   - 权限 P1-11（P-沟通-04）：项目组员记沟通不写项目下一步、不跑按必填推进，超时回收开着也不要求组员填下一步
  *   - 权限 P2-1：只读管理员不兼其他业务角色（设置页存角色时拦，同销售教练那条）
- *   - 权限 P2-3：渠道投入 / 管渠道只给系统管理员、市场管理，条线总管理只看
  *   - 权限 P2-10（P-沟通-04、P-看-09）：同号再次录入，没设业务角色、设了只看某人的不走协同（不记沟通、不发邀请）
  *   - 新建入口 P2-6（P-删-08）：联系人表单查重也算回收站里的号，撞了拦下、给捞回入口
  *   - 权限 P1-12 · 统计 P2-6 · 通知 P2-7（M-公海-50 / 49）：停用的人留在停用前上级的链里（看得到、数得到），下拉照旧不列；
@@ -19,13 +17,8 @@ vi.mock("@/lib/sync/dedupe-client", async (原) => ({ ...(await 原<object>()), 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
-import { dayjs } from "@/lib/utils";
 import { saveLead, convertLead, mergeLeadInto } from "@/app/(app)/leads/actions";
-import { 记项目沟通 } from "@/lib/project/db";
-import { 存组织规则 } from "@/lib/project/org-rules-store";
-import { 默认组织规则 } from "@/lib/project/org-rules";
 import { 角色组合问题 } from "@/lib/sync/dept-policy";
-import { 能录投入, 能管渠道 } from "@/lib/enterprise/channel-stats";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 只看某人键 } from "@/lib/enterprise/org-core";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
@@ -37,7 +30,7 @@ import { 负责人和上级, 在职负责人或上级 } from "@/lib/enterprise/o
 import { 复盘负责人of, 看板的人 } from "@/lib/project/board-member";
 import { 补潜客培育, 零项目客户补潜客培育 } from "@/lib/project/nurture";
 
-let 系管 = "", 外线总 = "", 销售 = "", 组员 = "", 市场管 = "", 经理 = "";
+let 系管 = "", 销售 = "", 组员 = "", 经理 = "";
 let 序 = 0;
 const 人 = async (name: string, bizRole: string | null, 补: { line?: string | null; managerId?: string | null } = {}) => {
   const u = await prisma.user.create({ data: { email: `${name}${++序}@x`, name, title: "", role: "SALES", password: "x" } });
@@ -53,11 +46,11 @@ beforeEach(async () => {
   await resetDb();
   invalidateSettingsCache();
   系管 = await 人("系管", "director");
-  外线总 = await 人("外线总", "director", { line: "外贸" });
+  await 人("外线总", "director", { line: "外贸" });
   经理 = await 人("经理", "sales_mgr");
   销售 = await 人("销售", "sales", { managerId: 经理 });
   组员 = await 人("组员", "sales");
-  市场管 = await 人("市场管", "marketing_mgr");
+  await 人("市场管", "marketing_mgr");
 });
 afterEach(() => void vi.unstubAllEnvs());
 afterAll(() => prisma.$disconnect());
@@ -79,51 +72,12 @@ describe("权限 P1-9 老线索表（X-88）", () => {
   });
 });
 
-describe("权限 P1-11 组员记沟通不碰项目下一步（P-沟通-04）", () => {
-  const 建 = async () => {
-    const c = await 客户(销售);
-    const p = await prisma.project.create({ data: { name: "在推项目", customerId: c, ownerId: 销售, creatorId: 销售, phase: "商机", node: "明确需求", nextStepText: "负责人定的", nextStepAt: dayjs().add(5, "day").startOf("day").toDate() } });
-    await prisma.projectMember.create({ data: { projectId: p.id, userId: 组员, inviteStatus: "JOINED" } });
-    return p;
-  };
-  const 沟通 = (补: Record<string, unknown> = {}) => ({ type: "PHONE", content: "组员打了电话", occurredAt: dayjs().subtract(1, "hour").toISOString(), 阶段: "商机", ...补 });
-
-  it("组员带着下一步记：沟通记上，项目下一步还是负责人定的", async () => {
-    const p = await 建();
-    const r = await 记项目沟通({ id: 组员, role: "SALES" } as never, p.id, 沟通({ 下一步: "组员想改", 下一步时间: dayjs().add(1, "day").format("YYYY-MM-DD") }) as never);
-    expect(r).toMatchObject({ ok: true });
-    const 后 = await prisma.project.findUniqueOrThrow({ where: { id: p.id } });
-    expect(后.nextStepText).toBe("负责人定的");
-    expect(dayjs(后.nextStepAt).format("YYYY-MM-DD")).toBe(dayjs().add(5, "day").format("YYYY-MM-DD"));
-    expect(await prisma.followUp.count({ where: { ownerId: 组员 } })).toBe(1);
-  });
-
-  it("超时回收开着、项目详情那条（要下一步文字）：组员不填下一步也记得上；负责人照旧要填", async () => {
-    await 存组织规则({ ...默认组织规则, 超时回收: { ...默认组织规则.超时回收, 开: true, 起算日: null, 节点天数: { 明确需求: 30 } } });
-    invalidateSettingsCache();
-    const p = await 建();
-    expect(await 记项目沟通({ id: 组员, role: "SALES" } as never, p.id, 沟通() as never, new Date(), { 要下一步文字: true })).toMatchObject({ ok: true });
-    expect(await 记项目沟通({ id: 销售, role: "SALES" } as never, p.id, 沟通() as never, new Date(), { 要下一步文字: true })).toMatchObject({ ok: false });
-  });
-});
-
 describe("权限 P2-1 只读管理员不兼其他业务角色", () => {
   it("admin + 别的角色：拦；单独 admin、别的组合照旧", () => {
     expect(角色组合问题(["admin", "sales"])).toBe("只读管理员不兼其他业务角色");
     expect(角色组合问题(["sales_mgr", "admin"])).toBe("只读管理员不兼其他业务角色");
     expect(角色组合问题(["admin"])).toBeNull();
     expect(角色组合问题(["sales", "sales_mgr"])).toBeNull();
-  });
-});
-
-describe("权限 P2-3 渠道只给系统管理员、市场管理", () => {
-  it("条线总管理只看；系统管理员、市场管理能管能录", async () => {
-    const org = await 读组织();
-    const 谁 = (id: string) => ({ id, role: "SALES" });
-    expect([能录投入(org, 谁(外线总)), 能管渠道(org, 谁(外线总))]).toEqual([false, false]);
-    expect([能录投入(org, 谁(系管)), 能管渠道(org, 谁(系管))]).toEqual([true, true]);
-    expect([能录投入(org, 谁(市场管)), 能管渠道(org, 谁(市场管))]).toEqual([true, true]);
-    expect(能录投入(org, 谁(经理))).toBe(false);
   });
 });
 

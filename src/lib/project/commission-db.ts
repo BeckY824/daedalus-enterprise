@@ -14,7 +14,7 @@ import { 查完再写 } from "../check-then-write";
 import { getSetting, invalidateSettingsCache } from "../settings";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织, 直属上级of, 虚线上级of, type 组织 } from "@/lib/enterprise/org";
-import { 只读按线, 是总管理, 是系统管理员, 是教练, 能看全部, 能编辑项目 } from "@/lib/enterprise/permissions";
+import { 只读按线, 是总管理, 是教练, 能看全部, 能编辑项目 } from "@/lib/enterprise/permissions";
 import {
   提成比例键, 提成范围们, 规整三套提成比例, 三套提成比例问题, 两位, 算提成, 底价问题, 分配问题, 分到每人, 更正问题,
   按人提成比例键, 规整按人提成比例, 按人提成比例问题, 取提成比例,
@@ -34,8 +34,7 @@ export function 能改提成比例(me: 谁, org: 组织 | null): boolean {
 /** 更正已固定的实际提成：只有业务角色是总管理（director）的人；管理员（admin）、销售管理都不行（10-27 定）。
  *  没设业务角色的 = 不能改（11-01 起不按账号角色推） */
 export function 能更正提成(me: 谁, org: 组织 | null): boolean {
-  // V3.5.1：总管理分成系统管理员和条线总管理，更正同 能改提成比例 只给系统管理员（审核 11-18 权限 P1-7）
-  return !!org && 是系统管理员(me, org);
+  return !!org && !!org.成员.get(me.id)?.角色们.includes("director");
 }
 
 /** 填 / 改项目底价：只有项目负责人（不在公海），老板、总管理员也不代填（10-26 定） */

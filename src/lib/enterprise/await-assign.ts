@@ -24,22 +24,18 @@ export async function 标待分配(
   if (!企业版()) return;
   await prisma.project.updateMany({ where: { id: projectId, phase: "线索", result: null, pooledAt: null }, data: { awaitAssignAt: 今 } });
   // 提醒没发出去不能连累已经建好的项目
-  // 只发本线的销售管理：按这条线索的业务线（审核 11-18 通知 P2-2）
-  if (提醒) {
-    const 线 = (await prisma.project.findUnique({ where: { id: projectId }, select: { bizLine: true } }).catch(() => null))?.bizLine ?? null;
-    await 发待分配提醒(提醒.org, [提醒.名], 提醒.谁建的, 提醒.为什么, 今, 线).catch((e) => console.error("[待分配提醒] 没发出去", e));
-  }
+  if (提醒) await 发待分配提醒(提醒.org, [提醒.名], 提醒.谁建的, 提醒.为什么, 今).catch((e) => console.error("[待分配提醒] 没发出去", e));
 }
 
 /**
  * 这家客户是不是被一条待分配的线索占着（X-87）：客户负责人就是那条待分配线索里占着负责人一格的建的人。
  * 是 = 这家客户其实还没有负责人，同号协同按没有负责人办（写进客户、通知能分配的人、不邀请不通知建的人）。回那条项目
  */
-export async function 待分配占着(db: Prisma.TransactionClient | typeof prisma, customerId: string, salesOwnerId: string): Promise<{ id: string; bizLine: string | null } | null> {
+export async function 待分配占着(db: Prisma.TransactionClient | typeof prisma, customerId: string, salesOwnerId: string): Promise<{ id: string } | null> {
   return db.project.findFirst({
     where: { customerId, ownerId: salesOwnerId, awaitAssignAt: { not: null }, phase: "线索", result: null, pooledAt: null, deletedAt: null },
     orderBy: { awaitAssignAt: "desc" },
-    select: { id: true, bizLine: true },
+    select: { id: true },
   });
 }
 
@@ -53,8 +49,7 @@ export function 待分配占位(me: { id: string }, p: { ownerId: string; awaitA
 }
 export const 待分配不能动 = "这条新线索在等分配，你只是先占着负责人一格：能看、能改字段，初判、推进、删除要等分给负责人以后";
 
-/** 能分配待分配线索的人：市场管理、销售管理、总管理员（同待分配提醒的收件人，A7 / A10）。只用来挑通知收件人；
- *  给了 线（这条线索的业务线）销售管理只留本线的（审核 11-18 通知 P2-2） */
-export function 能分配的人们(org: 组织, 线?: string | null): string[] {
-  return 满额提醒收件人(org, "待分配", false, 线);
+/** 能分配待分配线索的人：市场管理、销售管理、总管理员（同待分配提醒的收件人，A7 / A10） */
+export function 能分配的人们(org: 组织): string[] {
+  return 满额提醒收件人(org, "待分配");
 }

@@ -61,8 +61,8 @@ export function 在提醒窗口(p: 两格, 现在: Date): boolean {
 /** 去重键：项目 + 提醒时刻（改了时间是新的一条） */
 export const 回复提醒键 = (projectId: string, 提: Date) => `reply-due:${projectId}:${提.toISOString()}`;
 
-const 项目列 = { id: true, name: true, ownerId: true, awaitAssignAt: true, replyStartAt: true, replyEndAt: true, bizLine: true } as const;
-type 行 = { id: string; name: string; ownerId: string; awaitAssignAt: Date | null; replyStartAt: Date | null; replyEndAt: Date | null; bizLine?: string | null };
+const 项目列 = { id: true, name: true, ownerId: true, awaitAssignAt: true, replyStartAt: true, replyEndAt: true } as const;
+type 行 = { id: string; name: string; ownerId: string; awaitAssignAt: Date | null; replyStartAt: Date | null; replyEndAt: Date | null };
 
 /** 在提醒窗口里的项目（进行中、不在公海、客户不在公海、没删；软删由 prisma 限定层滤掉）。ownerId 传了 = 只看这个人负责的、不在待分配的 */
 async function 窗口里的(现在: Date, ownerId?: string): Promise<行[]> {
@@ -106,9 +106,8 @@ export async function 指定回复提醒扫一遍(现在: Date = new Date()): Pr
       const 要发 = 们.filter((p) => !回了.has(p.id));
       if (!要发.length) return 0;
       const 待分配 = 要发.some((p) => p.awaitAssignAt);
-      const org = 待分配 ? await 读组织() : null;
-      // 待分配的发能分配的人，销售管理只发本线的（审核 11-18 通知 P2-2）
-      const 条们 = 要发.map((p) => ({ p, 人们: p.awaitAssignAt && org ? 能分配的人们(org, p.bizLine) : [p.ownerId], key: 回复提醒键(p.id, 回复提醒时刻(p)!) }));
+      const 分配人 = 待分配 ? 能分配的人们(await 读组织()) : [];
+      const 条们 = 要发.map((p) => ({ p, 人们: p.awaitAssignAt ? 分配人 : [p.ownerId], key: 回复提醒键(p.id, 回复提醒时刻(p)!) }));
       const 涉及 = [...new Set(条们.flatMap((t) => t.人们))];
       const [在职们, 记过们] = await Promise.all([
         prisma.user.findMany({ where: { id: { in: 涉及 }, active: true }, select: { id: true } }),

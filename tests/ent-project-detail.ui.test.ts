@@ -849,22 +849,6 @@ it("下一步：有文字写文字、有时间跟在后面；老数据只有时�
   } finally { await page.close(); }
 });
 
-it("组员记沟通（审核 11-18 权限 P1-11）：记一条沟通框不摆下一步计划、下一步时间，不写也能交；1024 / 1280 / 1366 框不横溢", async () => {
-  for (const w of [1024, 1280, 1366]) {
-    const { page, errors } = await 覆盖(w, { 能记沟通: true, 组员记沟通: true, 要下一步: true, nextStepText: "负责人定的" });
-    try {
-      await page.getByTestId("follow-card-new").click();
-      const 窗 = page.getByRole("dialog");
-      await 窗.getByText("沟通内容").first().waitFor();
-      expect(await 窗.getByLabel("下一步计划").count()).toBe(0);
-      expect(await 窗.getByLabel("下一步时间").count()).toBe(0);
-      const 宽 = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
-      expect(宽[0]).toBeLessThanOrEqual(宽[1]);
-      expect(errors).toEqual([]);
-    } finally { await page.close(); }
-  }
-});
-
 /* 10-31 改版 R6：企业版页头把这一页能做的事摆成具名按钮，要填的进弹窗；卡上原入口照旧 */
 const 页头钮 = (page: import("playwright").Page, 类 = "") =>
   page.locator(`.page-head-a button${类}`).evaluateAll(bs => bs.map(b => b.textContent!.replace(/\s/g, "")));

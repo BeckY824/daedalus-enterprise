@@ -16,6 +16,8 @@ import { 客户在市场手里 } from "./market-transfer";
 import { 暂不分配项目of } from "./cust-auto-assign";
 import { 客户默认分配方向 } from "./assign-direction-db";
 import { 企业版 } from "./switch";
+import { 规则开着 } from "./rules";
+import { 挡分配方式 } from "./dict";
 import type { 组织 } from "./org-core";
 
 
@@ -30,9 +32,13 @@ export async function 指定方向候选表(org: 组织): Promise<指定候选�
 }
 
 
-/** 这位客户这次转让要不要按方向定人：市场成员（按岗位）、客户在市场手里、名下有暂不分配的线索项目。要 = 回那个项目 id */
-export async function 要按方向指定(me: { id: string }, org: 组织, c: { id: string; salesOwnerId: string; bizLine: string | null; pool: { customerId: string } | null }): Promise<string | null> {
+/**
+ * 这位客户这次转让要不要按方向定人：市场成员（按岗位）、客户在市场手里、名下有暂不分配的线索项目，
+ * 且是「市场分配」（规则「线索分配」开着、自动分配方式可用，同 cust-auto-assign.ts 市场分配指定挡）。要 = 回那个项目 id
+ */
+export async function 要按方向指定(me: { id: string; role: string }, org: 组织, c: { id: string; salesOwnerId: string; bizLine: string | null; pool: { customerId: string } | null }): Promise<string | null> {
   if (!企业版() || !按区域分配of(org, me.id) || !客户在市场手里(org, c)) return null;
+  if (!(await 规则开着("线索分配")) || (await 挡分配方式(me, 1))) return null;
   return 暂不分配项目of(c);
 }
 
@@ -41,7 +47,7 @@ export async function 要按方向指定(me: { id: string }, org: 组织, c: { i
  * 不在 = 回原因（整批不转）；都对得上 / 都不用按方向 = null
  */
 export async function 市场指定方向挡(
-  me: { id: string }, org: 组织,
+  me: { id: string; role: string }, org: 组织,
   客户们: readonly { id: string; name: string; salesOwnerId: string; bizLine: string | null; pool: { customerId: string } | null }[],
   接手人: string, 交来?: 线,
 ): Promise<string | null> {

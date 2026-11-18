@@ -1,7 +1,6 @@
 /**
  * 审核 11-18「通知与定时任务」剩下的几条（第四波）：
  *   P2-1 「找总管理开通」一人一项一天一次，天按北京算（原来取 UTC 日）
- *   P2-2 待分配提醒 / 能分配的人们：销售管理只发本线的（P-公海-07）；线索没标线、销管没设线的照旧
  *   P2-3 飞书推送卡在「待推 / 推送中」的（进程重启、批次出错）记成失败，不重推（M-公海-33）
  *   P2-4 停用的人推送原因写「账号已停用」，不再混成「没绑飞书」
  *   P2-5 超时回收「回收前一天」提醒：几遍扫同时跑（多进程 / 页面触发）只建一条待办
@@ -27,8 +26,6 @@ import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { resetDb } from "./reset";
 import { 找总管理开通 } from "@/app/(app)/settings/actions";
 import { 系统管理员标记键, 建组织, 负责人和上级, 在职负责人或上级 } from "@/lib/enterprise/org";
-import { 满额提醒收件人 } from "@/lib/enterprise/lead-full-notice";
-import { 能分配的人们 } from "@/lib/enterprise/await-assign";
 import { 飞书推送开关键, 清飞书推送令牌, 推通知们, 收拾卡住的推送, 推送卡住话 } from "@/lib/enterprise/feishu-push";
 import { 验证待办通知 } from "@/lib/enterprise/notice-sources";
 import { 夜里扫超时 } from "@/lib/project/nightly";
@@ -65,35 +62,6 @@ describe("P2-1 「找总管理开通」一天按北京算", () => {
     expect((await 找总管理开通("recycle")).ok).toBe(true);
     vi.useRealTimers();
     expect(await prisma.entNotice.count({ where: { userId: 老板, kind: "设置" } })).toBe(1);
-  });
-});
-
-describe("P2-2 待分配提醒：销售管理只发本线的", () => {
-  const org = 建组织(
-    ["市管", "老板", "内销管", "外销管", "无线销管", "销售"].map((id) => ({ id, role: "SALES", active: true })),
-    [
-      { userId: "市管", bizRole: "marketing_mgr", line: "内贸" },
-      { userId: "老板", bizRole: "director", line: null },
-      { userId: "内销管", bizRole: "sales_mgr", line: "内贸" },
-      { userId: "外销管", bizRole: "sales_mgr", line: "外贸" },
-      { userId: "无线销管", bizRole: "sales_mgr", line: null },
-      { userId: "销售", bizRole: "sales", line: "内贸" },
-    ].map((m) => ({ ...m, deptId: null, managerId: null, dottedManagerId: null })),
-    [],
-  );
-  const 排 = (xs: string[]) => [...xs].sort();
-  it("内贸线索：外贸的销售管理不收；市场管理、总管理、没设线的销管照收", () => {
-    expect(排(满额提醒收件人(org, "待分配", false, "内贸"))).toEqual(排(["市管", "老板", "内销管", "无线销管"]));
-    expect(排(能分配的人们(org, "外贸"))).toEqual(排(["市管", "老板", "外销管", "无线销管"]));
-  });
-  it("线索没标线（暂不分配 / 空）、不给线：照旧全发", () => {
-    const 全 = 排(["市管", "老板", "内销管", "外销管", "无线销管"]);
-    expect(排(满额提醒收件人(org, "待分配", false, "暂不分配"))).toEqual(全);
-    expect(排(满额提醒收件人(org, "待分配", false, null))).toEqual(全);
-    expect(排(能分配的人们(org))).toEqual(全);
-  });
-  it("满额提醒不发销管（不变）", () => {
-    expect(排(满额提醒收件人(org, "满额", false, "内贸"))).toEqual(排(["市管", "老板"]));
   });
 });
 
