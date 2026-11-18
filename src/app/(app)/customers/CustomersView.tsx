@@ -382,7 +382,7 @@ export default function CustomersView({
     return {
       预看: async () => {
         const r = await 自动分配预看(ids);
-        return r.ok ? { 可: r.可.length, 不可: r.不可.map((x) => ({ name: x.name, error: x.error })) } : null;
+        return r.ok ? { 可: r.可.length, 不可: r.不可.map((x) => ({ name: x.name, error: x.error })), ...(r.可指定 ? { 可指定: r.可指定 } : {}) } : null;
       },
       做: async (原因: string | null): Promise<自动结果> => {
         const r = await 批量自动分配客户(ids, 原因);

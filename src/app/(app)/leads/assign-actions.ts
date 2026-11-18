@@ -22,7 +22,7 @@ import { 分配方式叫法, 挡分配方式, 选的原因 } from "@/lib/enterpr
 import { 能自动分配客户, 不是市场话 } from "@/lib/enterprise/cust-auto-assign";
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 发满额提醒, 发待分配提醒, 读满额提醒, 关掉满额提醒, type 满额提醒 } from "@/lib/enterprise/lead-full-notice";
-import { 读线部门, 参与状态表, 不参与名单, 不设配额开着, 自动分配池, 读挑人底子, 本月分配行, 补记销售管理起算, 指定问题, 估算轮到, 能看轮到, type 轮到 } from "@/lib/enterprise/assign-eta";
+import { 读线部门, 参与状态表, 不参与名单, 不设配额开着, 自动分配池, 读挑人底子, 本月分配行, 补记销售管理起算, 指定问题, 可指定的人, 估算轮到, 能看轮到, type 轮到 } from "@/lib/enterprise/assign-eta";
 import { 标待分配 } from "@/lib/enterprise/await-assign";
 import { 验证中不能改派, 客户有验证中线索 } from "@/lib/project/lead-verify-guard";
 import { 分配通知, 分配后估算推送, 同事待分配随客户通知, type 分配条, type 留下的活, type 同事待分配条 } from "@/lib/enterprise/notice-sources";
@@ -835,7 +835,9 @@ function 认勾的客户(customerIds: unknown): { ok: true; ids: string[] } | { 
   return { ok: true, ids };
 }
 
-export type 批量客户预看 = { ok: true; 可: string[]; 不可: { customerId: string; name: string; error: string }[] } | { ok: false; error: string };
+export type 批量客户预看 = { ok: true; 可: string[]; 不可: { customerId: string; name: string; error: string }[];
+  /** 勾的里有能自动分的（框里摆「指定 / 自动」）：选指定时接手人下拉只列这些人（审核 11-18 追加，同 市场分配指定挡） */
+  可指定?: string[] } | { ok: false; error: string };
 
 /**
  * 客户列表批量转让框：勾的这几位里哪些能选自动分配（和单个客户转让框同一个判定 能自动分配客户：市场成员、暂不分配的客户……）。
@@ -861,7 +863,7 @@ export async function 批量客户自动分配预看(customerIds: string[]): Pro
       if (能.ok) 可.push(id);
       else 不可.push({ customerId: id, name: c.name, error: 能.error });
     }
-    return { ok: true, 可, 不可 };
+    return { ok: true, 可, 不可, ...(可.length ? { 可指定: await 可指定的人(org) } : {}) };
   } catch (e) {
     return 不在了(e);
   }

@@ -178,6 +178,7 @@ export default function RecordView({
   转让要申请 = false,
   自动分配,
   自动分配方向,
+  自动指定候选,
   原负责人领不回 = false,
   只读: 只读档 = false,
   只读话: 全只读话 = "这是虚线下属的客户：只能看，不能改、不能转",
@@ -732,6 +733,7 @@ export default function RecordView({
    */
   const 转让框自动 = useMemo(() => 自动分配 ? {
     默认方向: 自动分配方向 ?? null,
+    可指定: 自动指定候选,
     做: async (原因: string | null, 方向?: "内贸" | "外贸"): Promise<转让结果> => {
       const r = await 自动分配(customer.id, 原因, 方向);
       router.refresh();
@@ -739,7 +741,7 @@ export default function RecordView({
       return { ok: true, 话: `已自动分配给 ${r.接手人}${r.为什么 ? `（${r.为什么}）` : ""}` };
     },
     取预览: () => 转走项目预览of([customer.id], ""),
-  } : undefined, [自动分配, 自动分配方向, customer.id, router]);
+  } : undefined, [自动分配, 自动分配方向, 自动指定候选, customer.id, router]);
   /** 转给谁：在职成员里去掉现任 */
   const 转让候选 = 成员选项(users).filter((o) => o.value !== customer.salesOwnerId);
   const 能转让 = 去项目跟进 && !只读 && 能转让客户 && !customer.pool && 转让候选.length > 0;
