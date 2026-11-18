@@ -1200,7 +1200,10 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
   let 补提醒 = 0;
 
   const 成员 = await 超时成员线(规则);
-  const 们 = await 超时的项目(规则, 今, 成员, 只扫);
+  // 候选只取一遍，收回和「明天收」提醒共用（原来各取一遍，正式库快照上整遍 1.4 秒里一半是第二遍）：
+  // 这一遍收走的、宽限一天的都是已超时的，提醒那边本来就跳过；提醒建之前在事务里按现在的库再算一次回收日
+  const 候选 = await 会收的项目(规则, 成员, 只扫);
+  const 们 = 候选.filter((p) => 超时了(规则, p, 今, 成员));
   const 查收件人 = 回收通知收件人();
   const 收了: string[] = [];
   const 客户也进了 = new Set<string>();
@@ -1273,7 +1276,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
       detail: { ids: 收了, 节点天数: 规则.超时回收.节点天数, 外贸节点天数: 规则.超时回收.外贸节点天数 ?? {} },
     });
   }
-  const 将回收提醒数 = await 提醒明天收(规则, 今, 成员, 查收件人, 只扫);
+  const 将回收提醒数 = await 提醒明天收(规则, 今, 成员, 查收件人, 候选);
   await setSetting(键, 记号);
   return { 收回: 收了.length, 将回收提醒: 将回收提醒数, 上次扫, 漏扫天数, 补提醒 };
 }
@@ -1307,16 +1310,20 @@ function 回收通知收件人(): 回收收件人查 {
  * 回收前一天（10-27）：明天就要收回的项目，给负责人一条待办提醒（和收回那条同一个地方：首页待办、提醒），铃铛同时告诉他的直属上级。
  * 跟着超时扫走（夜里 00:05 或白天第一次打开页面），同一天同一个项目只提醒一次：老板当天改了时长再扫也不重复
  */
-async function 提醒明天收(规则: 组织规则, 今: Date, 成员: 成员线查 | null, 查收件人: 回收收件人查, 只扫?: string): Promise<number> {
+async function 提醒明天收(规则: 组织规则, 今: Date, 成员: 成员线查 | null, 查收件人: 回收收件人查, 候选: readonly 待查项目[]): Promise<number> {
   const 今天 = dayjs(今).format("YYYY-MM-DD");
   let 发了 = 0;
-  for (const p of await 会收的项目(规则, 成员, 只扫)) {
+  for (const p of 候选) {
     const 日 = 项目回收日(规则, p, 成员);
     if (!日 || 已超时(日, 今) || !即将回收(日, 今)) continue;
     const title = 将回收提醒(p.name, 本套名(p.node, 字典of(企业版())), 日);
     // 查和建在同一笔写事务里（审核 11-18 通知 P2-5）：「今天扫过」的记号整遍扫完才写，首页、项目列表、公海页在几个进程里同时触发时，
     // 原来先查再建会各建一条
     const 建了 = await 查完再写(async (tx) => {
+      // 候选是这一遍开头取的：中间被收走、领走、换了人、记了沟通（回收日变了）的不提醒
+      const 现0 = await tx.project.findUnique({ where: { id: p.id }, select: 算超时要的 });
+      const 现 = 现0 && (await 补回收起点留痕([现0], tx))[0];
+      if (!现 || 现.pooledAt || 现.result || 现.ownerId !== p.ownerId || 项目回收日(规则, 现, 成员) !== 日) return false;
       if (await tx.task.findFirst({ where: { ownerId: p.ownerId, title, dueOn: 今天 }, select: { id: true } })) return false;
       await tx.task.create({ data: { title, dueAt: 今, dueOn: 今天, dueHasTime: false, customerId: p.customerId, ownerId: p.ownerId } });
       return true;
