@@ -37,6 +37,7 @@ import { 能导入导出, 新建只给自己 } from "@/lib/enterprise/import-per
 import { 删除挡 } from "@/lib/enterprise/soft-delete";
 import { 客户项目概况们 } from "@/lib/project/customer-list-projects";
 import { 列表最近一句们 } from "@/lib/enterprise/customer-follow-feed";
+import { 抬头节点们 } from "@/lib/enterprise/customer-title";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { cookies } from "next/headers";
 import { 客户页看法键 } from "@/lib/customers-view-pref";
@@ -275,7 +276,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const [
     rows, users, channels, 用着的职位, 用着的国家,
     号, aiEnabled, 交接, 可导入导出, 只给自己, 客户状态选项, 分配方式选项, 客户类型选项, 只读ids, 转让选项, 直接推荐, 业务员,
-    建档, 客户状态字典, 状态自动, 客户属性选项, 客户属性字典, 字典释义, 待交接, 渠道筛选项, 项目概况, 组织规则, 三态标, 最近一句,
+    建档, 客户状态字典, 状态自动, 客户属性选项, 客户属性字典, 字典释义, 待交接, 渠道筛选项, 项目概况, 组织规则, 三态标, 最近一句, 抬头节点,
   ] = await Promise.all([
     行P,
     负责人候选(),
@@ -329,6 +330,11 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       内容按项目可见范围给，同客户页「沟通记录」（lib/enterprise/customer-follow-feed.ts 列表最近一句们）
     */
     企 && !看板视图 ? 行P.then((rs) => 列表最近一句们(me, rs, 按项目)) : undefined,
+    /*
+      第一列的抬头（11-17 客户抬头 PR-5，lib/enterprise/customer-title.ts）：区域、简称、全称、类型都在行上，现算；
+      只有简称、全称、类型都空的客户要当前节点，这一页一句取回（一位都没有就不查），含公海项目、不按看的人算（U9）
+    */
+    企 && !看板视图 ? 行P.then((rs) => 抬头节点们(prisma, rs)) : undefined,
   ]);
   const 三态开 = !!组织规则?.三态.开;
   // 业务配置里删掉了、库里还有人在用的职位：筛选下拉照样给（第 2 期 2b「删选项后老记录照样能筛」）
@@ -444,6 +450,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       国家们={用着的国家.filter(Boolean)}
       项目概况={项目概况}
       最近一句={最近一句}
+      抬头节点={抬头节点}
       {...await 仅项目行P.then((x) => (x ? { 仅项目行: x.行们, 仅项目超了: x.超了 } : {}))}
       三态标={三态标}
       项目看板={按项目}
