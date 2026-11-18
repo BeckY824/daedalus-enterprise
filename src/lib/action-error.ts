@@ -14,9 +14,13 @@
  *   重启途中 nginx 回 502 错页时 Next 说「An unexpected response was received from the server.」；流断了 React 说「Connection closed.」
  * 人自己取消的（AbortError）、Next 的跳转信号（digest 以 NEXT_ 开头）不算出错。
  *
+ * 4. 企业版运行记录（28-⑤）：给人看的错 认出是动作这一层的（旧版本 / 网络 / 超时 / 服务端），顺手报一条「动作失败」
+ *    （lib/telemetry/report-client.ts，只在浏览器里、装上了才真发；服务端、单测里什么都不做）。没人接住的那种由 components/ErrorReporter.tsx 报
+ *
  * 纯函数、不带 "use client"：服务端（instrumentation）、浏览器、单测（tests/action-error.test.ts）都能引
  */
 import { 是旧版本动作错, 动作出错话 } from "./stale-deploy";
+import { 报错 } from "./telemetry/report-client";
 
 export const 网络断了话 = "网络断了一下，没连上服务器，请检查网络后再试";
 export const 超时话 = "等了太久没有回应，请稍后再试";
@@ -74,6 +78,7 @@ export function 认动作错(e: unknown): 动作错类 | null {
  */
 export function 给人看的错(e: unknown, 默认: string, 场合 = "出错"): string {
   const 类 = 认动作错(e);
+  if (类) 报错("action", e, 类);
   if (类 === "旧版本") return 动作出错话(e, 默认);
   const 话 = 原话(e).trim();
   if (!类 && 话 && 含中文.test(话) && !夹英文报错.test(话) && !编号(e)) return 话;

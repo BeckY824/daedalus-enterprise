@@ -38,15 +38,19 @@ const 后行断言会挂 = function (this: unknown, src: string) {
   return new RegExp(src);
 } as unknown as RegExpConstructor;
 
-function 跑(env: ReturnType<typeof 造环境>, g: { RegExp?: unknown; Array?: unknown; structuredClone?: unknown; ua?: string } = {}) {
+type 额外 = { navigator?: Record<string, unknown>; sessionStorage?: unknown; XMLHttpRequest?: unknown; pathname?: string };
+function 跑(env: ReturnType<typeof 造环境>, g: { RegExp?: unknown; Array?: unknown; structuredClone?: unknown; ua?: string } = {}, 外: 额外 = {}) {
   const 参数 = {
     RegExp: "RegExp" in g ? g.RegExp : RegExp,
     Array: "Array" in g ? g.Array : Array,
     structuredClone: "structuredClone" in g ? g.structuredClone : structuredClone,
     document: env.document,
     setInterval: env.setInterval,
-    location: { protocol: "https:", host: "crm.example.test" },
-    navigator: { userAgent: g.ua ?? "" },
+    location: { protocol: "https:", host: "crm.example.test", pathname: 外.pathname ?? "/login" },
+    // userAgent 给版本行（27G）用；sendBeacon 这些给上报那段（28-⑤）用：默认什么都没有，报不出去也不能影响提示
+    navigator: { userAgent: g.ua ?? "", ...(外.navigator ?? {}) },
+    sessionStorage: 外.sessionStorage,
+    XMLHttpRequest: 外.XMLHttpRequest,
   };
   new Function(...Object.keys(参数), 旧浏览器提示脚本)(...Object.values(参数));
 }
@@ -109,6 +113,36 @@ describe("旧浏览器提示脚本", () => {
     expect(提示(env)).toHaveLength(1);
     env.body.kids = env.body.kids.filter((k) => k.id !== 旧浏览器提示节点); // React 整页重渲染冲掉
     env.定时[0]();
+    expect(提示(env)).toHaveLength(1);
+  });
+
+  it("提示一出就报一声（28-⑤）：只带没过的特性和页面路径；同一个标签页只报一次；新浏览器不报", () => {
+    const 发了: { u: string; b: string }[] = [];
+    const navigator = { sendBeacon: (u: string, b: string) => (发了.push({ u, b }), true) };
+    const 存 = new Map<string, string>();
+    const sessionStorage = { getItem: (k: string) => 存.get(k) ?? null, setItem: (k: string, v: string) => void 存.set(k, v) };
+    跑(造环境(), {}, { navigator, sessionStorage });
+    expect(发了).toHaveLength(0);
+    跑(造环境(), { RegExp: 后行断言会挂, structuredClone: undefined }, { navigator, sessionStorage, pathname: "/customers/abc" });
+    expect(发了).toEqual([{ u: "/api/client-report", b: JSON.stringify({ k: "old", f: "lb,sc", p: "/customers/abc" }) }]);
+    const env = 造环境();
+    跑(env, { RegExp: 后行断言会挂 }, { navigator, sessionStorage });
+    expect(发了).toHaveLength(1);
+    expect(提示(env)).toHaveLength(1);
+  });
+
+  it("没有 sendBeacon 用 XMLHttpRequest；都没有、sessionStorage 抛错也不影响提示", () => {
+    const 发了: string[] = [];
+    function XMLHttpRequest(this: Record<string, unknown>) {
+      this.open = (m: string, u: string) => 发了.push(`${m} ${u}`);
+      this.setRequestHeader = () => {};
+      this.send = (b: string) => 发了.push(b);
+    }
+    跑(造环境(), { RegExp: 后行断言会挂 }, { XMLHttpRequest });
+    expect(发了).toEqual(["POST /api/client-report", JSON.stringify({ k: "old", f: "lb", p: "/login" })]);
+    const env = 造环境();
+    const 坏存 = { getItem: () => { throw new Error("SecurityError"); }, setItem: () => {} };
+    跑(env, { RegExp: 后行断言会挂 }, { sessionStorage: 坏存 });
     expect(提示(env)).toHaveLength(1);
   });
 
