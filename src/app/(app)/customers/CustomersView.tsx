@@ -51,6 +51,7 @@ import LocalTime from "@/components/LocalTime";
 import { 未分级, 久未跟进天数们 } from "./query-shared";
 import IdleDaysFilter from "@/components/IdleDaysFilter";
 import { useUrlFilters } from "@/lib/url-filters";
+import { 客户范围名, 客户范围说明, type 客户范围 } from "@/lib/enterprise/customer-scope";
 import { 列表不问归属 } from "@/lib/solo";
 import { 公海标签, type 客户页签归属 } from "@/lib/pool";
 import { 放进公海, 领取, 分配公海, 撤销公海, type 公海结果 } from "./pool-actions";
@@ -236,6 +237,8 @@ type Props = {
     triState?: string;
     /** 「超过 N 天没跟进」（员工反馈 1I，企业版才有这一格）：天数 */
     idleDays?: string;
+    /** 「范围」（客户 11-18 第 12 题）：mine / joined / visible，服务端补过默认；不按范围筛时没有 */
+    scope?: string;
   };
   /** 这一页每位客户的回收状态标（客户三态开着才给，活跃的不在里面）；不给 = 不摆「状态」一列 */
   三态标?: Record<string, 三态标>;
@@ -260,6 +263,11 @@ type Props = {
   市场视图?: boolean;
   /** 阶段 / 进程筛选命中的客户太多（服务端没点名、当一位都没中）：表格上面提示再加筛选条件 */
   阶段太多?: boolean;
+  /**
+   * 「范围」筛选（客户 11-18 第 12 题，lib/enterprise/customer-scope.ts）：我负责的 / 我参与的 / 我可见的（只给有管理范围的）。
+   * 值 = 这次按哪一项筛（服务端补过默认），默认 = 这个人的默认（选它不算「筛了」），选项 = 能选哪几项。不给 = 不摆（团队版、项目模式关着、子集）
+   */
+  客户范围?: { 值: 客户范围; 默认: 客户范围; 选项: 客户范围[] };
   /** 客户来源筛选的选项（企业版）；含已停用的渠道 */
   渠道筛选项?: { value: string; label: string }[];
   /** 团队有两个以上一级部门时的部门下拉（带缩进）；空 = 不摆 */
@@ -325,7 +333,7 @@ type Props = {
 const 无订阅 = () => () => {};
 
 export default function CustomersView({
-  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 自动分配预看, 批量自动分配客户, 金额排序 = "", 等级排序 = "", 创建排序 = "", 跟进排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 建档要取 = false, 待交接 = null, 项目概况, 最近一句, 仅项目行 = [], 仅项目超了 = false, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false, 阶段太多 = false,
+  rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 自动分配预看, 批量自动分配客户, 金额排序 = "", 等级排序 = "", 创建排序 = "", 跟进排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 建档要取 = false, 待交接 = null, 项目概况, 最近一句, 仅项目行 = [], 仅项目超了 = false, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false, 阶段太多 = false, 客户范围,
 }: Props) {
   const router = useRouter();
   const 只读的 = new Set(只读ids);
@@ -616,7 +624,7 @@ export default function CustomersView({
   }, []);
 
   /** 一共筛着几个。0 的时候「重置」看不见——没筛过的页面上它是个哑按钮（位置留着，见 ResetFilters）。页签不算筛选 */
-  const 筛了 = Object.entries(f).filter(([k, v]) => k !== "pool" && v).length;
+  const 筛了 = Object.entries(f).filter(([k, v]) => k !== "pool" && v && !(k === "scope" && v === 客户范围?.默认)).length;
   /** 重置留在当前页签：在「公海」里点重置，回到的是全部公海，不是跳回「客户」 */
   const 重置 = () => (f.pool && !子集 ? apply({ ...(Object.fromEntries(Object.keys(f).map((k) => [k, ""])) as typeof f), pool: "1" }) : reset());
   /**
@@ -1225,7 +1233,20 @@ export default function CustomersView({
           页签记在地址上（pool=1），翻页、搜索、筛选都留在这一页签里。
           一个人用、公海里也没人时不摆——那时公海就是个空抽屉；空库不摆；子集（筛选行上那三种标记）里不摆：那几个数本来就含公海
         */
-        titleAside={!统一公海 && !空库 && !子集 && (users.length > 1 || (公海数 ?? 0) > 0 || f.pool) ? (
+        titleAside={客户范围 ? (
+          /*
+            「范围」（客户 11-18 第 12 题「把客户的页签直接加一个筛选项」）：企业版项目模式没有「客户 / 公海」页签（公海在 /pool），
+            这一格就摆在原来页签的位置——标题旁边、不进筛选行（1024 宽筛选行本来就刚好一行），也不会被收进「更多筛选」。
+            没有空值：「重置」回到这个人的默认；选中项记在地址栏 scope，换一项回第一页重查
+          */
+          <Segmented<客户范围>
+            className="cust-scope"
+            aria-label="范围"
+            value={(f.scope as 客户范围 | undefined) || 客户范围.值}
+            onChange={(v) => apply({ scope: v })}
+            options={客户范围.选项.map((k) => ({ value: k, label: <span title={客户范围说明[k]}>{客户范围名[k]}</span> }))}
+          />
+        ) : !统一公海 && !空库 && !子集 && (users.length > 1 || (公海数 ?? 0) > 0 || f.pool) ? (
           <Segmented
             aria-label={`${b.customer} / 公海`}
             value={f.pool ? "公海" : "客户"}
