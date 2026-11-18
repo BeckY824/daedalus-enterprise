@@ -11,7 +11,7 @@ import { 认渠道触点 } from "@/lib/enterprise/touchpoint";
 import { requireUser } from "@/lib/auth";
 import { getBusiness } from "@/lib/business";
 import { recordAudit } from "@/lib/audit";
-import { buildProposal, missingFields, summarizeApplied, 可改字段表, 线索号码行, type Proposal, type 一处改动 } from "@/lib/agent/proposals";
+import { buildProposal, missingFields, summarizeApplied, 可改字段表, 线索号码行, 线索卡地址, type Proposal, type 一处改动 } from "@/lib/agent/proposals";
 import { statusLabel, type BusinessConfig } from "@/lib/business-config";
 import { patchCustomer, saveCustomer, saveContract } from "../customers/actions";
 import { saveFollowUp, savePlan, deleteFollowUp } from "../customers/[id]/actions";
@@ -298,16 +298,15 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
   const 企业号 = (["phone", "email", "wechat", "wangwang"] as const).map((k) => 行们.find((r) => r.kind === k)).map((r) => r && 建档号(r)).find(Boolean) ?? null;
   const 号 = 企业号?.类型 === "手机号" ? 企业号.值 : "";
   const 备注 = 剩;
-  const 国家 = p.country?.trim() || "";
-  const 城市 = p.city?.trim() || "";
   /*
-    国家 / 城市填到哪（11-04 用户：「摩洛哥客户」这类分不清是项目地址还是联系人地址的，交给用户判断）：卡上勾了哪几格就填哪几格；
-    老卡没这格（区域去处 undefined）照原来只进客户地址。城市不带国家会被当成国内，所以客户、项目那两格没国家就不填
+    国家 / 省 / 城市填到哪（11-04 用户：「摩洛哥客户」这类分不清是项目地址还是联系人地址的，交给用户判断）：卡上勾了哪几格就填哪几格；
+    老卡没这格（区域去处 undefined）只进客户地址。只有省 / 城市没国家的也照填，按国内存（11-18 加急：原来没国家就不填，
+    写了城市哪都没落，市场自动分配按区域成了「未知」、两条线都算）。和卡上显示的「按客户区域自动定」同一个函数
   */
-  const 去处 = p.区域去处 ?? (国家 ? ["客户" as const] : []);
-  const 进客户 = 去处.includes("客户") && 国家;
-  const 进项目 = 去处.includes("项目") && 国家;
-  const 联系人地址 = 去处.includes("联系人") ? [国家, 城市].filter(Boolean).join(" ").slice(0, 联系人地址上限) : "";
+  const 地 = 线索卡地址(p);
+  const 进客户 = 地.客户;
+  const 进项目 = 地.项目;
+  const 联系人地址 = 地.联系人.slice(0, 联系人地址上限);
   // 企业版新建线索要选渠道：卡上只有来源一格，按整名 / 只含一个渠道名 / 竖线前平台前缀唯一来认（lib/enterprise/channel-match.ts，卡片预选同一个函数），对上多个不猜
   // 历史渠道（P-渠道-06）只承载历史客户、主渠道停用了的子渠道（P-渠道-13）也不能选：AI 新建线索同样不认（可选渠道条件，和新建的渠道下拉同一个）
   // 只有主渠道（没有子渠道）的也认：按主渠道名对，对上的是占位 id，建档向导里落成子渠道名留空的那条渠道（channel-main.ts 落到渠道）
@@ -336,8 +335,8 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
       name: p.name, phone: 号, 企业号码: 企业号 ? { 类型: 企业号.类型, 值: 企业号.值 } : null,
       school: null, grade: null, major: null, followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null,
       remark: 备注 || null, salesOwnerId: 项目负责人, channelId: 渠道?.id ?? null, referrerCustomerId: null, ...(触点 ? { touchpoint: 触点 } : {}),
-      // 国家、城市进客户地址（和新建客户同一格）；城市不带国家会被当成国内，所以没国家就不交城市
-      ...(进客户 ? { 企业资料: { addrCountry: 国家, addrCity: 城市 || null } } : {}),
+      // 国家、省、城市进客户地址（和新建客户同一格，规整地址：没国家的按国内）
+      ...(进客户 ? { 企业资料: 进客户 } : {}),
     },
     // 联系人姓名 11-17 起选填：没填存空串（显示「—」），不拿客户名称顶、不写占位（P-抬头-13、没填的都显示「—」）
     联系人: { name: p.contact.trim(), ...老三格(行们), 号码们: 行们.map((r) => ({ kind: r.kind, value: r.value })), ...(联系人地址 ? { address: 联系人地址 } : {}) },
@@ -351,7 +350,7 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
       ownerId: 项目负责人,
       ...(p.分配方式 !== undefined ? { 分配方式: p.分配方式 } : {}),
       业务线: p.业务线 ?? (是业务线(我的线) ? 我的线 : "暂不分配"),
-      ...(进项目 ? { 所在地: { addrCountry: 国家, addrCity: 城市 || null } } : {}),
+      ...(进项目 ? { 所在地: 进项目 } : {}),
       // 指定回复时间（11-17，卡上选填）：照建档向导同一份规整
       指定回复开始: p.指定回复开始 ?? null, 指定回复结束: p.指定回复结束 ?? null,
       // 指定分配时间（11-17 PR3，卡上选填）：建档向导里认，选了 = 先留在我名下待分配、到点再分
@@ -411,7 +410,7 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
 
   // 前端禁用按钮不算防线：必填项没填齐就不写
   const 建档格 = 只用项目 && p.kind === "add_lead"
-    ? { 只用项目, 要下一步: (await 生效组织规则()).超时回收.开, ...(企业版() ? { 企业: { 有分配方式: (await 新建分配方式数据(me)).分配方式们.length > 0, 节点们: 企业版字典.节点们.线索 } } : {}) }
+    ? { 只用项目, 要下一步: (await 生效组织规则()).超时回收.开, ...(企业版() ? { 企业: await (async () => { const 数 = await 新建分配方式数据(me); return { 有分配方式: 数.分配方式们.length > 0, 节点们: 企业版字典.节点们.线索, 按区域: 数.按区域 }; })() } : {}) }
     : 只用项目 ? { 只用项目, 要下一步: (await 生效组织规则()).超时回收.开 } : undefined;
   const miss = missingFields(p, b, 建档格);
   if (miss.length) return { ok: false, error: `还差${miss.join("、")}，填好再确认` };

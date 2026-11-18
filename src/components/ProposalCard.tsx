@@ -14,10 +14,11 @@ import { motion } from "motion/react";
 import { applyProposal, undoProposal, type 撤销凭据, type 附件去处 } from "@/app/(app)/dashboard/apply";
 import { 取走名片原图, 记下刚建的, 忘掉刚建的 } from "@/lib/card-scan/originals";
 import { 传附件 } from "@/lib/attachment-upload";
-import { describeProposal, missingFields, 只留选中的改动, 可改字段表, 区域去处叫法, type Proposal, type 线索待确认格, type 区域去处 } from "@/lib/agent/proposals";
+import { describeProposal, missingFields, 只留选中的改动, 可改字段表, 区域去处叫法, 线索卡地址, type Proposal, type 线索待确认格, type 区域去处 } from "@/lib/agent/proposals";
 import { 线索号码种类, 线索号码上限, 线索号码行, type 线索联系方式 } from "@/lib/agent/proposals";
 import { 号码上限 } from "@/lib/enterprise/customer-v2";
 import { 三种业务线, 分配说明, 建议业务线, 认分给 } from "@/lib/enterprise/assign-line";
+import { 区域线of, 区域定线说明 } from "@/lib/enterprise/customer-region";
 import { 认渠道 } from "@/lib/enterprise/channel-match";
 import { useBusiness } from "@/lib/business-client";
 import { 币种符号 } from "@/lib/currency";
@@ -75,7 +76,9 @@ export const 新线索要下一步 = createContext(false);
  * 同一处（11-04）：新线索卡和「新建项目」向导走同一套分配 —— 分配方式（按业务角色能用的那几种）、
  * 指定分配时的负责人候选、业务线、当前进程（11-05 起只到线索验证，不再问客户明确回复）。服务端算好传进来（dashboard/page.tsx，同 wizard-data.ts）
  */
-export type 新线索企业格 = { 成员: { value: string; label: string }[]; 分配方式们: { i: number; 名: string }[]; 默认分配方式: number | null; 是销售: boolean };
+export type 新线索企业格 = { 成员: { value: string; label: string }[]; 分配方式们: { i: number; 名: string }[]; 默认分配方式: number | null; 是销售: boolean;
+  /** 市场成员（按岗位，P-转-26）：选自动分配时业务线换成只读说明，按客户区域定（和建档向导一样） */
+  按区域?: boolean };
 export const 新线索企业 = createContext<新线索企业格 | null>(null);
 /** 新建只能落在线索验证及之前（11-05：过了线索验证要看它的必填项，新建时填不了；lib/project/wizard.ts 同口径） */
 const 线索节点们 = 企业版字典.节点们.线索.slice(0, 企业版字典.节点们.线索.indexOf(有效线索节点) + 1 || undefined);
@@ -224,7 +227,7 @@ export default function ProposalCard({
   const 要提交的 = useMemo<Proposal>(() => 只留选中的改动(draft, 勾了), [draft, 勾了]);
   // 模型不知道的字段留空，人在卡片上补齐才能确认
   // 企业版卡上那一格叫「渠道」（术语表），提示里跟着叫；lib 里那句「来源（渠道）」AI 的提示词也在用，不动
-  const missing = missingFields(要提交的, b, 渠道名们 ? { 只用项目: true, 要下一步, ...(企 ? { 企业: { 有分配方式: 企.分配方式们.length > 0, 节点们: 线索节点们 } } : {}) } : undefined)
+  const missing = missingFields(要提交的, b, 渠道名们 ? { 只用项目: true, 要下一步, ...(企 ? { 企业: { 有分配方式: 企.分配方式们.length > 0, 节点们: 线索节点们, 按区域: !!企.按区域 } } : {}) } : undefined)
     .map((m) => (渠道名们 && m === "来源（渠道）" ? "渠道" : m))
     .concat(跟进没项目 || 跟进要选 ? ["关联项目"] : []);
   const 停用卡 = draft.kind === "add_opportunity";
@@ -647,9 +650,12 @@ export default function ProposalCard({
           // 企业版卡上国家、城市总摆着（和新建向导一样能填），别的版本照旧有值才出
           const 企卡 = !!(企 && 渠道名们);
           // 企业版的微信 / 邮箱 / WhatsApp 并进了「联系方式」几行（企卡号码），这里只剩国家、城市
-          const 多格 = ([["country", "国家", 110], ["city", "城市", 110], ["wechat", "微信", 160], ["email", "邮箱", 200], ["whatsapp", "WhatsApp", 150]] as const)
-            .filter(([k]) => (企卡 ? k === "country" || k === "city" : 认图卡 || draft[k] || 待.has(k)));
-          const 有区域 = !!(draft.country?.trim() || draft.city?.trim());
+          const 多格 = ([["country", "国家", 110], ["province", "省", 110], ["city", "城市", 110], ["wechat", "微信", 160], ["email", "邮箱", 200], ["whatsapp", "WhatsApp", 150]] as const)
+            .filter(([k]) => (企卡 ? k === "country" || k === "city" || (k === "province" && !!draft.province) : 认图卡 || draft[k] || 待.has(k)));
+          const 有区域 = !!(draft.country?.trim() || draft.province?.trim() || draft.city?.trim());
+          // 市场成员选自动分配（P-转-26）：业务线那格换成只读说明，按落库时同一套（线索卡地址）算出的客户区域定线；没落进客户 / 项目 = 未填提示
+          const 区域定线中 = !!企?.按区域 && draft.分配方式 === 1;
+          const 卡上地址 = 线索卡地址(draft);
           const 负责人选项 = 企?.成员 ?? [];
           return (
           <>
@@ -749,9 +755,18 @@ export default function ProposalCard({
                     <ScheduleAssignInput size="small" value={draft.定时分配 ?? null} onChange={(v) => setDraft({ ...draft, 定时分配: v ?? undefined })} />
                   </Field>
                 )}
-                <Field label="业务线">
-                  <Select size="small" style={{ width: 110 }} placeholder="选一条" value={draft.业务线} options={三种业务线.map((v) => ({ value: v, label: v }))} onChange={(v) => setDraft({ ...draft, 业务线: v })} />
-                </Field>
+                {区域定线中 ? (
+                  <Field label="业务线" block>
+                    {(() => {
+                      const 线 = 区域线of(卡上地址.客户, 卡上地址.项目);
+                      return <span className={线 ? "muted" : "prop-region-warn"} data-testid="lead-card-region-line" style={{ fontSize: 12 }}>{区域定线说明(线)}</span>;
+                    })()}
+                  </Field>
+                ) : (
+                  <Field label="业务线">
+                    <Select size="small" style={{ width: 110 }} placeholder="选一条" value={draft.业务线} options={三种业务线.map((v) => ({ value: v, label: v }))} onChange={(v) => setDraft({ ...draft, 业务线: v })} />
+                  </Field>
+                )}
                 <Field label="当前进程">
                   <Select size="small" style={{ width: 150 }} value={draft.节点} options={线索节点们.map((v) => ({ value: v, label: v }))} onChange={(v) => setDraft({ ...draft, 节点: v })} />
                 </Field>

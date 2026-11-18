@@ -22,6 +22,7 @@ import { applyProposal } from "@/app/(app)/dashboard/apply";
 import { missingFields } from "@/lib/agent/proposals";
 import { 企业版字典 } from "@/lib/project/stage-dict";
 import { 建档不能过线索验证 } from "@/lib/project/stage-gates";
+import { 区域未填提示 } from "@/lib/enterprise/customer-region";
 
 type 人 = { id: string; name: string };
 let 老板: 人, 市场: 人, 乙: 人, 丙: 人;
@@ -143,6 +144,63 @@ describe("新线索卡：国家 / 城市填到哪", () => {
     const p = await 唯一项目();
     expect([p.addrCountry, p.addrCity, p.customer.addrCountry]).toEqual(["摩洛哥", "卡萨布兰卡", null]);
     expect((await prisma.contact.findFirstOrThrow({ where: { customerId: p.customerId } })).address).toBe("摩洛哥 卡萨布兰卡");
+  });
+});
+
+/*
+  11-18 加急：市场管理在首页对话里写了城市、选自动分配，结果客户 / 项目地址全空、分配记录 line = null、分到外贸。
+  原因：卡上只有城市没有国家时，apply 那两格（客户地址 / 项目所在地）不填（怕国外城市被当成国内），城市哪都没落，按区域分配就成了「未知」
+*/
+describe("新线索卡：市场自动分配按写进地址的区域定线（P-转-26）", () => {
+  const 记录线 = async () => (await prisma.entLeadAssign.findFirstOrThrow()).line;
+
+  it("只写了城市（杭州）、勾客户：落进客户地址（国家按国内补「中国」），分给内贸、记录 line = 内贸", async () => {
+    当(市场);
+    const r = await applyProposal(卡({ 分配方式: 1, city: "杭州", 区域去处: ["客户"] }) as never);
+    expect(r).toMatchObject({ ok: true });
+    const c = await prisma.customer.findFirstOrThrow();
+    expect([c.addrCountry, c.addrCity]).toEqual(["中国", "杭州"]);
+    expect((await prisma.project.findFirstOrThrow()).ownerId).toBe(乙.id);
+    expect(await 记录线()).toBe("内贸");
+  });
+
+  it("只写了城市、勾项目：落进项目所在地，客户地址空，照项目所在地分给内贸", async () => {
+    当(市场);
+    expect(await applyProposal(卡({ 分配方式: 1, city: "杭州", 区域去处: ["项目"] }) as never)).toMatchObject({ ok: true });
+    const p = await 唯一项目();
+    expect([p.addrCountry, p.addrCity, p.customer.addrCity]).toEqual(["中国", "杭州", null]);
+    expect(p.ownerId).toBe(乙.id);
+    expect(await 记录线()).toBe("内贸");
+  });
+
+  it("省 + 市：两格都进客户地址", async () => {
+    当(市场);
+    expect(await applyProposal(卡({ 分配方式: 1, 业务线: undefined, province: "浙江省", city: "杭州", 区域去处: ["客户"] }) as never)).toMatchObject({ ok: true });
+    const c = await prisma.customer.findFirstOrThrow();
+    expect([c.addrCountry, c.addrProvince, c.addrCity]).toEqual(["中国", "浙江省", "杭州"]);
+  });
+
+  it("国外国家 + 城市：分给外贸，卡上业务线写内贸也不认（市场自动分配不看业务线）", async () => {
+    当(市场);
+    expect(await applyProposal(卡({ 分配方式: 1, 业务线: "内贸", country: "摩洛哥", city: "卡萨布兰卡", 区域去处: ["客户"] }) as never)).toMatchObject({ ok: true });
+    expect((await prisma.project.findFirstOrThrow()).ownerId).toBe(丙.id);
+    expect(await 记录线()).toBe("外贸");
+  });
+
+  it("只写了国外城市（多伦多）没国家：认不出是国内，不落客户地址（免得当成国内），提示补区域", async () => {
+    当(市场);
+    const r = await applyProposal(卡({ 分配方式: 1, 业务线: undefined, city: "多伦多", 区域去处: ["客户"] }) as never);
+    expect(r).toMatchObject({ ok: true });
+    expect((await prisma.customer.findFirstOrThrow()).addrCity).toBeNull();
+    expect(JSON.stringify(r)).toContain(区域未填提示);
+  });
+
+  it("没写区域：分出去了，提示里带「客户没填区域……建议补区域」", async () => {
+    当(市场);
+    const r = await applyProposal(卡({ 分配方式: 1, 业务线: undefined }) as never);
+    expect(r).toMatchObject({ ok: true });
+    expect(JSON.stringify(r)).toContain(区域未填提示);
+    expect(await 记录线()).toBeNull();
   });
 });
 

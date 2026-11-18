@@ -229,7 +229,8 @@ export const 建议SCHEMAS: Record<string, Schema> = {
       remark: 串("备注；国家 / 城市 / 下一步 / 分给谁不要写进这里，用各自的格"),
       assignTo: 串("分给谁：人说了交给哪位同事跟就原样给姓名，没说不给；卡上认出那一位才预选，人确认"),
       country: 串("国家 / 地区，人提到才给"),
-      city: 串("城市，人提到才给"),
+      province: 串("省 / 州，人提到才给"),
+      city: 串("城市，人提到才给；给了城市就把国家也给上（国内城市给「中国」）"),
       // 电话 / 微信 / 邮箱 / WhatsApp 11-17 起都放 numbers（类型 + 号码）；老卡的那几格 buildProposal 照收
       numbers: {
         type: "array",
@@ -244,7 +245,7 @@ export const 建议SCHEMAS: Record<string, Schema> = {
       nextAt: 串("下一步时间 YYYY-MM-DD，人提到才给"),
       nextStep: 串("下一步计划，一句话"),
       bizLine: { type: "string", enum: ["内贸", "外贸", "暂不分配"], description: "业务线，有把握才给" },
-      regionTo: { type: "array", items: { type: "string", enum: ["客户", "联系人", "项目"] }, description: "国家 / 城市是谁的：客户所在区域 / 联系人所在区域 / 项目所在地；说不清（比如只说「摩洛哥客户」）就不给，让人在卡上选" },
+      regionTo: { type: "array", items: { type: "string", enum: ["客户", "联系人", "项目"] }, description: "国家 / 省 / 城市是谁的：客户所在区域 / 联系人所在区域 / 项目所在地；说不清（比如只说「摩洛哥客户」）就不给，让人在卡上选" },
       reason: 串(理由),
     },
     required: ["name", "reason"],

@@ -2412,6 +2412,8 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .prop-num-kind { flex: none; width: 120px; }
 .prop-num-val { flex: 0 1 180px; width: 180px; min-width: 0; }
 .prop-num-add { padding-inline: 0; }
+/* AI 新线索卡：市场自动分配时「按客户区域自动定」那句，没填区域用警示色（11-18） */
+.prop-region-warn { color: var(--warning-text); overflow-wrap: anywhere; }
 /* AI 新线索卡：对话里带的截图（11-18）。缩略图一排、放不下折行；勾选那句和缩略图同一格，窄屏先折行不撑宽 */
 .prop-shots { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
 .prop-shot { flex: none; width: 48px; height: 48px; object-fit: cover; border: 1px solid var(--line); border-radius: var(--r-ctl); }
