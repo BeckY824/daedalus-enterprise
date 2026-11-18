@@ -86,7 +86,7 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
   const [就地, 提示条] = useSettingsNote();
   /*
     忙按卡分（原型 st.dict / st.switch「不锁整页签」）：一张卡在存，只灰这张卡；字典卡再细到每一行（DictCard 里）。
-    例外：持有上限、超时回收、进程推进、阶段四张卡存的是同一份组织规则（改组织规则 读一份、合上改动、整份写回），
+    例外：持有上限、超时回收、节点推进、阶段四张卡存的是同一份组织规则（改组织规则 读一份、合上改动、整份写回），
     两张同时存后到的会盖掉先到的，所以共用一个键「组织规则」；提成比例、按人提成同理共用「提成」。
     记的是这一键还有几个在跑（字典卡几行同时停用 / 启用，不会一个先回来就把别的放开）
   */
@@ -560,15 +560,15 @@ function AdvanceCard({
 
   return (
     <Card
-      title="进程推进"
+      title="节点推进"
       extra={
         <Space>
           {挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}
           <Switch
-            aria-label="进程推进"
+            aria-label="节点推进"
             checked={规则.开}
             disabled={!!挡 || 忙}
-            onChange={(开) => void 跑(() => 改组织规则({ 节点推进: { 开 } }), 开 ? "已开进程推进" : "已关进程推进")}
+            onChange={(开) => void 跑(() => 改组织规则({ 节点推进: { 开 } }), 开 ? "已开节点推进" : "已关节点推进")}
           />
         </Space>
       }

@@ -6,9 +6,38 @@
   「用我们的 / 用你自己的 API Key」一字一行、长邮箱伸出卡片。这里让正文区不到 720px 时同样压成单列。
 */
 .set-box { container-type: inline-size; }
+
+/*
+  左目录和右正文各滚各的（11-18 客户：「设置窗口左侧导航栏的上下移动和右侧的向下移动需要解耦分开」）。
+  原来浮层里整层（.setm-scroll）一个滚动条：目录项一多（系统管理员十几项）比框还高，sticky 粘不住，
+  滚右边目录跟着走、滚左边正文也跟着走。现在两栏时：
+    - 浮层：框高是定的（.setm-box），页头不动，下面那一格分成两个滚动区——左目录、右正文卡片各自 overflow-y
+    - 整页 /settings：右边照旧跟窗口滚，左目录粘在视口里、比视口高时自己滚
+  overscroll-behavior: contain —— 滚到头不把滚动传给外面那层，否则滚左边滚到底就开始带着整层走
+  单栏（正文区不到 720 / 手机）照原样上下排、整层一起滚，见下面两段。
+  padding 3px + margin -3px：目录变成滚动区后会裁掉键盘焦点框（outline-offset 2px），给框留出位置、位置不变
+*/
+.set-nav { max-height: calc(100vh - 2 * var(--s4)); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 3px; margin: -3px; }
+.setm-scroll { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.setm-scroll > * { flex: none; }
+.setm-scroll > .set-box { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+.setm-scroll > .set-box > .set { flex: 1 1 0; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+.setm-scroll > .set-box > .set > .set-nav { position: static; max-height: 100%; }
+/* 正文卡片短时照旧跟内容一样高（不拉满白一大块），长了才在卡片里滚；InlineNote、保存条的 sticky 贴的就是这一格的底 */
+.setm-scroll > .set-box > .set > .set-body { max-height: 100%; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+
 @container (max-width: 720px) {
   .set { grid-template-columns: minmax(0, 1fr); }
-  .set-nav { position: static; }
+  .set-nav { position: static; max-height: none; overflow: visible; }
+  /* 单栏：两格不再各自定高，内容撑出 .set-box，由外面 .setm-scroll 整层滚（和改之前一样）；底下补上整层的留白 */
+  .setm-scroll > .set-box > .set { flex: none; grid-template-rows: none; padding-bottom: var(--s5); }
+  .setm-scroll > .set-box > .set > .set-nav, .setm-scroll > .set-box > .set > .set-body { max-height: none; overflow: visible; }
+}
+/* 手机宽（globals.css 同一断点压成单列）：整页 /settings 正文区可能还宽过 720，容器查询不起作用，这里同样放开 */
+@media (max-width: 767px) {
+  .set-nav { max-height: none; overflow: visible; }
+  .setm-scroll > .set-box > .set { flex: none; grid-template-rows: none; padding-bottom: var(--s5); }
+  .setm-scroll > .set-box > .set > .set-nav, .setm-scroll > .set-box > .set > .set-body { max-height: none; overflow: visible; }
 }
 
 /* ---- PR9 设置按身份（P-界面-46）：我能做什么、全公司规则、只读提示、搜索直达亮一下 ---- */
