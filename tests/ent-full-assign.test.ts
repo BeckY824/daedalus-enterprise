@@ -184,12 +184,15 @@ describe("手动指派挡人", () => {
   });
 });
 
+// 「快轮到」（11-18，assign-eta.ts）是分配后另发给候选销售的，这一组只看分配通知本身（快轮到见 ent-assign-eta.test.ts）
+const 分配的通知 = () => prisma.entNotice.findMany({ where: { kind: { not: "快轮到" } } });
+
 describe("分配通知只给接手人", () => {
   it("自动分配：接手人一条「自动分配」，点的人、旁人都没有", async () => {
     const P = await 建项目("通知自动", "外贸");
     const r = await 自动分配线索(P, { 项目: true });
     if (!r.ok) throw new Error(r.error);
-    const 全部 = await prisma.entNotice.findMany();
+    const 全部 = await 分配的通知();
     expect(全部).toHaveLength(1);
     expect(全部[0]).toMatchObject({ userId: r.toUserId, kind: "自动分配", link: `/projects/${P}` });
     expect(全部[0].title).toContain("通知自动");
@@ -198,7 +201,7 @@ describe("分配通知只给接手人", () => {
   it("手动指派：接手人一条「分配」，标题带点的人", async () => {
     const P = await 建项目("通知手动", "内贸");
     expect(await 分配线索({ projectId: P, toUserId: 内二, 原负责人: 市场 })).toEqual({ ok: true });
-    const 全部 = await prisma.entNotice.findMany();
+    const 全部 = await 分配的通知();
     expect(全部).toHaveLength(1);
     expect(全部[0]).toMatchObject({ userId: 内二, kind: "分配" });
     expect(全部[0].title).toContain("市场");
@@ -209,7 +212,7 @@ describe("分配通知只给接手人", () => {
     for (let i = 0; i < 3; i++) ids.push(await 建项目(`批通知${i}`, "外贸"));
     const r = await 批量自动分配(ids, { 项目: true });
     if (!r.ok) throw new Error(r.error);
-    const 全部 = await prisma.entNotice.findMany();
+    const 全部 = await 分配的通知();
     expect(全部.map((n) => n.userId).sort()).toEqual([外一, 外二, 外三].sort());
     expect(全部.every((n) => n.kind === "自动分配")).toBe(true);
   });

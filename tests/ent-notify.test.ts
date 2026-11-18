@@ -32,7 +32,8 @@ let fetchMock: ReturnType<typeof vi.fn>;
 const 环境 = { ...process.env };
 let 甲: string, 乙: string;
 const 当 = (id: string, role = "SALES", name = mocks.user.name) => { mocks.user = { ...mocks.user, id, role, name }; };
-const 行 = (userId: string) => prisma.entNotice.findMany({ where: { userId }, orderBy: { createdAt: "asc" } });
+// 「快轮到」（11-18，assign-eta.ts）是分配后另发给候选销售的，这里只看分配通知本身
+const 行 = (userId: string) => prisma.entNotice.findMany({ where: { userId, kind: { not: "快轮到" } }, orderBy: { createdAt: "asc" } });
 /** 飞书正常：令牌 tok（2 小时），发消息 code 0 */
 const 飞书正常 = () =>
   fetchMock.mockImplementation(async (url: string) =>
@@ -276,7 +277,7 @@ describe("分配成功提醒", () => {
     expect(n.title).toBe("自动分配给你一条新线索：华东一号线索");
     expect(n.body).toContain("市场小李");
     expect(await prisma.entNotice.count({ where: { userId: 市场 } })).toBe(0);
-    expect(await prisma.entNotice.count()).toBe(1);
+    expect(await prisma.entNotice.count({ where: { kind: { not: "快轮到" } } })).toBe(1);
   });
 
   it("批量自动分配：按接手人合并成一条「自动分配给你 N 条新线索」", async () => {

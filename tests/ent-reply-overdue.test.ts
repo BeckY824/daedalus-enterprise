@@ -44,7 +44,8 @@ async function 建线索(owner: 人, 补: Record<string, unknown> = {}, customer
   return { id: p.id, customerId: cid };
 }
 const 项目 = (id: string) => prisma.project.findUniqueOrThrow({ where: { id }, include: { customer: true } });
-const 通知 = (userId: string) => prisma.entNotice.findMany({ where: { userId }, orderBy: { createdAt: "asc" } });
+// 「快轮到」（11-18，assign-eta.ts）是分配后另发的一条，这里只看分配本身的通知
+const 通知 = (userId: string) => prisma.entNotice.findMany({ where: { userId, kind: { not: "快轮到" } }, orderBy: { createdAt: "asc" } });
 const 超时通知 = (userId: string) => prisma.entNotice.findMany({ where: { userId, kind: 超时通知种类 }, orderBy: { createdAt: "asc" } });
 const 记沟通 = async (projectId: string, content: string, at: Date) => {
   const p = await prisma.project.findUniqueOrThrow({ where: { id: projectId } });

@@ -83,7 +83,7 @@ export function 指定回复文字(始: Date | string | null | undefined, 终: D
 
 /**
  * 指定回复的时间（开始，没填用结束）落在这条线索预计回收那天或以后：录入时黄条提示，不拦（方案第五节「计时」：指定回复时间不写进下一步时间、
- * 不改超时回收日、不顺延）。回收日 = YYYY-MM-DD（项目详情的回收日；新建时按下一步时间那天过完估，lib/project/timeout.ts）
+ * 不改超时回收日、不顺延）。回收日 = YYYY-MM-DD（项目详情的回收日；新建时按起点日 + 所选进程天数估，projects/new/wizard-data.ts 回收预估）
  */
 export function 回复晚于回收(始: Date | null | undefined, 终: Date | null | undefined, 回收日: string | null | undefined): string | null {
   const 先 = 始 ?? 终;

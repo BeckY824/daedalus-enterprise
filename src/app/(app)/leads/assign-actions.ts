@@ -22,6 +22,7 @@ import { 分配方式叫法, 挡分配方式, 选的原因 } from "@/lib/enterpr
 import { 能自动分配客户, 不是市场话 } from "@/lib/enterprise/cust-auto-assign";
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 发满额提醒, 发待分配提醒, 读满额提醒, 关掉满额提醒, type 满额提醒 } from "@/lib/enterprise/lead-full-notice";
+import { 读线部门, 参与状态表, 不参与名单, 不设配额开着, 自动分配池, 读挑人底子, 估算轮到, 能看轮到, type 轮到 } from "@/lib/enterprise/assign-eta";
 import { 标待分配 } from "@/lib/enterprise/await-assign";
 import { 验证中不能改派, 客户有验证中线索 } from "@/lib/project/lead-verify-guard";
 import { 分配通知, 同事待分配随客户通知, type 分配条, type 留下的活, type 同事待分配条 } from "@/lib/enterprise/notice-sources";
@@ -37,7 +38,7 @@ import type { 转走项目预览 } from "@/lib/carry-over";
 import { 看全部 } from "@/lib/team-scope";
 import { 项目业务线, 线部门key, 规整线部门, 线勾了部门, 按部门候选, 只留销售, 两条线, 是业务线, type 线部门, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 历史负责人 } from "@/lib/project/pool-owner";
-import { 区域线of, 按区域分配of, 去掉销售管理, 区域分配理由 } from "@/lib/enterprise/customer-region";
+import { 区域线of, 按区域分配of, 区域分配理由 } from "@/lib/enterprise/customer-region";
 import type { 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 换负责人待办, 待办痕, 接上待办痕, 带待办勾 } from "@/lib/project/carry-tasks";
 import { 规整还原单, 撤回自动分配, 自动分配撤销对不上, type 自动分配还原 } from "@/lib/enterprise/auto-assign-undo";
@@ -77,11 +78,6 @@ const 已被分配的话 = "这条线索已被分配：刚才有人先分走了�
  */
 const 认原负责人 = (x: unknown): string | null | undefined => (x === null || x === "" ? null : typeof x === "string" ? x : undefined);
 
-/** 后台设的「各条线参与自动分配的部门」（A4 / A5）；没设 = 两条线都没勾 */
-async function 读线部门(): Promise<线部门> {
-  return 规整线部门(await getSetting<unknown>(线部门key));
-}
-
 /**
  * 分给某条线时还查不查接手人的内贸 / 外贸标记：这条线勾了部门 = 不查（人是按部门挑的，标记可能没填）；没勾 = 照旧查
  */
@@ -99,14 +95,6 @@ async function 指派可选(org: 组织, 线: 项目线): Promise<string[]> {
   const 不 = new Set(不参与);
   const 人们 = 是业务线(线) ? 按部门候选(org, null, 线, 设, 自动候选人们) : 自动候选人们(org, null, null);
   return 人们.filter((id) => !不.has(id));
-}
-
-/**
- * 规则里的「不设配额（人人参与、不限额）」开着没（10-30）：开着时配额整个不起作用。
- * 11-01 拍板（清单 A10 / A11）：默认不限额——没存过 = 开着；只有在设置里明确改回「按配额分配」（存了 false）才查配额
- */
-async function 不设配额开着(): Promise<boolean> {
-  return (await getSetting<boolean>(不设配额key)) !== false;
 }
 
 /**
@@ -446,15 +434,6 @@ async function 挑不到就标(projectId: string, r: 内部自动结果): Promis
   return { ...r, error: 标了待分配话(r.要标.为什么) };
 }
 
-/** 每人参与状态（暂停 / 禁止的才在表里）；老格式 string[] 读成禁止，存坏了当人人允许 */
-async function 参与状态表() {
-  return 认参与状态(await getSetting<unknown>(自动分配不参与key));
-}
-/** 不进轮转的人：暂停、禁止都算 */
-async function 不参与名单(): Promise<string[]> {
-  return Object.keys(await 参与状态表());
-}
-
 /**
  * 自动分配（D-38）：在职、能接这条线、参与自动分配、填了配额（不是 0）、本月没分满的人里，挑「本月已分 / 配额」比例最低的；并列给最早进池的。
  * 规则里选了「不设配额」（10-30）：不看配额，在职、能接、参与的人里挑本月已分最少的，并列同样给最早进池的。
@@ -583,16 +562,16 @@ async function 自动分给(
   let 区域未填 = false;
   if (按区域) {
     line = 看.区域 ? 区域线of(看.区域.客户, 看.区域.项目) : null;
+    // 候选池（自动分配池，assign-eta.ts「快轮到我」估算用的同一个）：这条线的人，去掉销售管理、只留销售
     const 设 = await 读线部门();
     if (line) {
-      人们 = 按部门候选(org, 看.ownerId, line, 设, 自动候选人们);
+      人们 = 自动分配池(org, 看.ownerId, line, 设);
       查线 = 查哪条线(org, 设, line);
     } else {
       区域未填 = true;
-      人们 = [...new Set(两条线.flatMap((l) => 按部门候选(org, 看.ownerId, l, 设, 自动候选人们)))];
+      人们 = [...new Set(两条线.flatMap((l) => 自动分配池(org, 看.ownerId, l, 设)))];
       查线 = null;
     }
-    人们 = 去掉销售管理(org, 人们);
   } else if (哪条.projectId !== undefined) {
     if (!是业务线(看.线)) return { ok: false, 暂不分配: true, error: 暂不分配不自动 };
     line = 看.线;
@@ -605,19 +584,8 @@ async function 自动分给(
   人们 = 只留销售(org, 人们);
   if (排除?.length) 人们 = 人们.filter((id) => !排除.includes(id));
   const 月 = 月份();
-  const [计数, 配额, 加额, 建号, 不参与, 企划算数, 不限额] = await Promise.all([
-    prisma.entLeadAssign.groupBy({ by: ["toUserId"], where: { month: 月, counted: true, toUserId: { in: 人们 } }, _count: { _all: true } }),
-    prisma.entLeadQuota.findMany({ where: { userId: { in: 人们 } } }),
-    本月加额们(人们, 月),
-    prisma.user.findMany({ where: { id: { in: 人们 } }, select: { id: true, name: true, createdAt: true } }),
-    不参与名单(),
-    getSetting<boolean>(企划线索计数key),
-    不设配额开着(),
-  ]);
-  const 数 = new Map(计数.map((c) => [c.toUserId, c._count._all]));
-  // 生效配额 = 设的 + 本月加的额（线索最终判无效 +1）
-  const 额 = new Map(配额.map((q) => [q.userId, 生效配额(q.quota, 加额.get(q.userId) ?? 0)]));
-  const 候选 = 建号.map((u) => ({ userId: u.id, 已分: 数.get(u.id) ?? 0, 配额: 额.get(u.id) ?? null, 进池: u.createdAt }));
+  // 本月已分、生效配额、进池先后、不参与、算不算数、不限额：和「快轮到我」估算读同一份（assign-eta.ts 读挑人底子）
+  const { 候选, 额, 建号, 不参与, 企划算数, 不限额 } = await 读挑人底子(人们, 月);
   const 跳过 = new Set(不参与);
   const 查满 = 计不计数(kind, 企划算数);
   // 每轮要么分成、要么把挑中的人加进跳过，挑接手人不会再挑他：最多轮完一遍候选
@@ -1127,10 +1095,15 @@ export type 分配情况 = {
   参与状态: 参与状态;
   能设配额: boolean;
   能改参与: boolean;
+  /**
+   * 自动分配「前面约几条轮到他」（11-18，assign-eta.ts）：我能看他的（本人；分配线索的人、总管理看全部；销售管理看本组）、
+   * 他又是参加自动分配的销售才有；别的 = null（界面写「—」）
+   */
+  轮到: 轮到 | null;
 }[];
 
 /**
- * 本月每个能接线索的人分了几条、配额多少、手上还有几条、参与没参与自动分配（设置 → 组织架构 →「线索分配」那一屏用）。
+ * 本月每个能接线索的人分了几条、配额多少、手上还有几条、参与没参与自动分配、前面约几条轮到他（设置 → 组织架构 →「线索分配」那一屏用）。
  * 分配的人、能改参与的人看全部；上级只看自己能设配额的那几位；都不是 = 空。规则没开返回 null
  */
 export async function 本月分配情况(): Promise<分配情况 | null> {
@@ -1143,7 +1116,7 @@ export async function 本月分配情况(): Promise<分配情况 | null> {
   const 人们 = [...org.成员.values()].filter((m) => 接手问题(org, m.userId, null) === null && (全看 || 能设配额(org, me, m.userId, 改权限)));
   const ids = 人们.map((m) => m.userId);
   const 月 = 月份();
-  const [计数, 配额, 加额, 持有, 名字, 状态表, 不限额] = await Promise.all([
+  const [计数, 配额, 加额, 持有, 名字, 状态表, 不限额, 估] = await Promise.all([
     prisma.entLeadAssign.groupBy({ by: ["toUserId"], where: { month: 月, counted: true, toUserId: { in: ids } }, _count: { _all: true } }),
     prisma.entLeadQuota.findMany({ where: { userId: { in: ids } } }),
     本月加额们(ids, 月),
@@ -1154,6 +1127,7 @@ export async function 本月分配情况(): Promise<分配情况 | null> {
     prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, createdAt: true } }),
     参与状态表(),
     不设配额开着(),
+    估算轮到(org),
   ]);
   const 数 = new Map(计数.map((c) => [c.toUserId, c._count._all]));
   const 额 = new Map(配额.map((q) => [q.userId, q.quota]));
@@ -1171,5 +1145,6 @@ export async function 本月分配情况(): Promise<分配情况 | null> {
       加额: 额.has(m.userId) ? (加额.get(m.userId) ?? 0) : 0,
       持有: 持.get(m.userId) ?? 0,
       参与: 参与状态of(状态表, m.userId) === "允许", 参与状态: 参与状态of(状态表, m.userId), 能设配额: 能设配额(org, me, m.userId, 改权限), 能改参与: 改参与,
+      轮到: 能看轮到(org, me, m.userId) ? (估.get(m.userId) ?? null) : null,
     }));
 }

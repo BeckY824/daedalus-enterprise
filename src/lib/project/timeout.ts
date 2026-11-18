@@ -9,7 +9,7 @@
  *   - 起点 = 最近一次「有人管」：建项目、换节点、接手（转让/领取）、客户上记了跟进，取最晚的
  *   - 起算日（10-31，超时回收设置里配，默认 2026-11-01）：起点早于起算日的一律从起算日算，之前的日子不计入超时
  *   - 起点 + 节点天数 那天还没新动静 → 回收（按自然日，和客户公海一样）
- *   - 记沟通时填了下一步时间：下一步那天过完还没跟进就回收，但不会比节点天数更晚（节点天数是上限）
+ *   - 下一步时间只提醒、不收回（11-18 客户定）：填没填、过没过都不改回收日，只按节点天数收；到期 / 逾期提醒照旧（lib/enterprise 下 due-notice.ts，只从夜里的钟上发）
  *   - 回收前一天（10-27）：夜扫给负责人一条待办提醒；项目看板、列表标「即将回收」
  */
 import { dayjs } from "@/lib/utils";
@@ -70,16 +70,8 @@ export function 超时回收日(规则: 组织规则, p: 超时项目, 起点: D
   if (p.result || p.pooledAt) return null;
   const 天数 = 节点超时天数(规则, p.node, 字典, 线);
   if (!天数) return null;
-  const 起 = 计时起点(规则, 起点);
-  let 日 = 起.add(天数, "day");
-  if (p.nextStepAt) {
-    const 下一步 = dayjs(p.nextStepAt).startOf("day");
-    if (!下一步.isBefore(起)) {
-      const 过完 = 下一步.add(1, "day");
-      if (过完.isBefore(日)) 日 = 过完;
-    }
-  }
-  return 日.format("YYYY-MM-DD");
+  // 下一步时间（p.nextStepAt）不参与：只提醒、不收回（11-18）
+  return 计时起点(规则, 起点).add(天数, "day").format("YYYY-MM-DD");
 }
 
 /** 到了回收日就算超时 */

@@ -153,11 +153,11 @@ describe("即将逾期：紧筛和粗筛数出来的一样", () => {
     const 紧取回 = await 我(() => prisma.project.count({ where: 即将逾期紧筛(规则, 字典of(true), 此刻)! }));
     expect(紧取回).toBeLessThan(旧.取回);
     expect(旧.取回 - 紧取回).toBeGreaterThan(100);
-    // 起算日挡掉按天数到的：只剩按下一步到的，取回来的少得多
+    // 起算日挡掉按天数到的：下一步时间只提醒、不收回（11-18），一个都不剩，紧筛一条都不取
     const 挡 = 规则of({ 起算日: 日(3) });
     const 挡旧 = await 我(() => 按粗筛(挡, 此刻));
-    expect(挡旧.ids.length).toBeGreaterThan(0);
-    expect(await 我(() => prisma.project.count({ where: 即将逾期紧筛(挡, 字典of(true), 此刻)! }))).toBeLessThan(挡旧.取回 * 0.6);
+    expect(挡旧.ids).toEqual([]);
+    expect(await 我(() => prisma.project.count({ where: 即将逾期紧筛(挡, 字典of(true), 此刻)! }))).toBe(0);
     // 设了的节点全是 60 天：粗筛按最短的默认 7 天卡，几乎全取回来；紧筛按各节点自己的天数卡
     const 长 = 规则of(全六十);
     const 长旧 = await 我(() => 按粗筛(长, 此刻));

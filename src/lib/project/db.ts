@@ -656,7 +656,7 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
       if (超) return { ok: false as const, error: 超 };
     }
     // 换了人：企业版下一步（时间 + 文字）跟着项目走、不清（11-03 A2-3）；超时回收照样从接手那天重新算（转让留痕），
-    // 上一位填的、早于接手那天的下一步时间不会把回收日往前拉（超时回收日 只认起点以后的）。不是企业版照旧清掉
+    // 下一步时间不影响回收日（11-18 起只提醒、不收回）。不是企业版照旧清掉
     await tx.project.update({ where: { id: p.id }, data: { ...新, ...(日变了 ? { expectedDealAt: 日 } : {}), ...(回复改了.length && 回复?.ok ? 回复.值 : {}), ...(换人 && !企业版() ? { nextStepAt: null, nextStepText: null } : {}), ...(换人 && p.pooledAt ? { pooledAt: null } : {}), ...(换人 ? 换负责人(新.ownerId) : {}) } });
     // 公海里的项目 ownerId 是空的（企业版进公海清负责人）：从谁 记留痕里的历史负责人
     if (换人) {
@@ -1396,7 +1396,7 @@ export async function 客户跟进后勾掉将回收提醒(customerId: string, n
 
 /**
  * 企业版（10-27）：记了沟通，回收日往后推了、不再是明天以内，负责人那条「再不跟进」的提醒跟着勾掉。
- * 下一步时间填的今天（回收日还是明天）就不勾：明天那条提醒照样作数。按记沟通前的项目名 + 节点找（自动推进可能换了节点）。
+ * 回收日还在明天以内（如补记一条比起点早的沟通）就不勾：明天那条提醒照样作数；下一步时间不影响回收日（11-18）。按记沟通前的项目名 + 节点找（自动推进可能换了节点）。
  * 换负责人（11-03 A2-3）也调：将回收提醒跟着换人 把提醒交给新负责人、记完转让痕以后按新负责人再算一遍
  */
 export async function 勾掉将回收提醒(tx: Prisma.TransactionClient, 规则: 组织规则, p: { id: string; name: string; node: string; ownerId: string; customerId: string }, now: Date): Promise<void> {

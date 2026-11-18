@@ -828,7 +828,7 @@ export default function FollowUpForm({
                 label="下一步时间"
                 required={须知.要下一步}
                 extra={预演 ? (
-                  <span style={{ color: 回公海颜色[回公海文案(预演).级别] }}>选这天 → 回收日变为 {dayjs(预演).format("MM-DD")}</span>
+                  <span style={{ color: 回公海颜色[回公海文案(预演).级别] }}>记完这条 → 回收日变为 {dayjs(预演).format("MM-DD")}</span>
                 ) : 须知.要下一步 ? "那天过完还没有新的沟通，项目会回公海" : "可不填"}
               >
                 <Form.Item name="下一步时间" preserve={false} noStyle rules={须知.要下一步 ? [{ required: true, message: "请填下一步时间" }] : []}>

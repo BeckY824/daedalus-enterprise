@@ -70,7 +70,7 @@ const 检查点: Record<string, string> = {
   "D1-组长看下属链": "组织范围 组长看到内销1–3 的项目（P1 P2 P10）",
   "D1-虚线上级能看": "D-39 外贸经理看得到虚线下属内销4 的项目 P8",
   "D1-虚线不能转客户": "D-39 外贸经理转内销4 的客户给外销1：客户仍在内销4 名下",
-  "D2-当天下一步次日收回": "D-34 P5 下一步填当天 → 次日 08:00 扫描回到公海",
+  "D2-下一步过了不收": "D-34（11-18 改：下一步时间只提醒、不收回）P5 下一步填当天 → 次日 08:00 扫描不收，还在手",
   "D2-直属上级能推": "D-37 + 11-01：「仅上级推」下内销1 本人往前推被拦，组长（直属上级）把 P1 推到线索验证成",
   "D2-记谁推的": "D-37 + 11-01：P1 往线索验证的节点记录记的是组长",
   "D2-不能跳": "D-37 内销2、组长把 P2 从潜客培育直接推到线索推进：都拦下",
@@ -81,15 +81,16 @@ const 检查点: Record<string, string> = {
   "D2-原市场人员只读看转化": "D-38 线索分出去并转化后，市渠1 在「我分出去的」里看到它已转化",
   "D2-原市场人员改不了": "D-38 市渠1 改不了已分出去的线索",
   "D3-沟通没下一步拒": "D-34 内销1 给 P1 记沟通不填下一步时间：存不了",
-  "D3-按下一步收回": "D-34 P2 下一步 1/27 → 1/28 08:00 回到公海",
-  "D3-原负责人收提醒": "D-34 P2 收回后内销2 名下有一条提醒任务",
-  "D3-进公海记历史负责人": "D-35 P2 的 pool-release 记录 fromOwner = 内销2",
+  "D3-下一步过了不收": "D-34（11-18 改）P2 下一步 1/27 → 1/28 08:00 不收（潜客培育 3 天没满）",
   "D3-原负责人领不回": "D-35（10-26 定稿：非原负责人才能领）外销2 放回 P4 再自己领：拒（11-03 起原负责人看不到；完成度 B4-3 起报「原负责人不能领回」，不再误报被人领走），外销3 领：成",
-  "D3-领取到上限拦": "D-35 外销6 上限 2、已持 2：去公海领 P5 被拦，提示「已到上限」",
   "D3-指派到上限拦": "D-35 老板建档指派给外销6：被上限拦",
   "D3-转让到上限拦": "D-35 老板把 P4 转给外销6：被上限拦",
   "D3-同日二扫为零": "D-34 同一天第二次扫描收回 0 个",
   "D4-下一步没到不收": "D-34 P3 下一步 2/5、按时长 1/30：1/29 还不收",
+  "D4-按时长收回P2P5": "D-34 P2、P5 1/26 建、潜客培育 3 天 → 1/29 08:00 回到公海（下一步时间早就过了也只按时长）",
+  "D4-原负责人收提醒": "D-34 P2 收回后内销2 名下有一条提醒任务",
+  "D4-进公海记历史负责人": "D-35 P2 的 pool-release 记录 fromOwner = 内销2",
+  "D4-领取到上限拦": "D-35 外销6 上限 2、已持 2：去公海领 P5 被拦，提示「已到上限」",
   "D4-改时长先预览": "D-34 改时长前先给「按新设置会回收几个」，预览不动数据",
   "D4-原负责人领不回P2": "D-35（10-26 定稿）内销2 去公海领回 P2：拒；内销1 领：成",
   "D4-历任负责人": "D-35 P2 记录里能看出每一任负责人和进出公海时间（内销2 → 公海 → 内销1）",
@@ -109,10 +110,10 @@ const 检查点: Record<string, string> = {
   "D6-月底仍满额": "D-38 1/31 23:59 再给内销1 分：仍分满了",
   "D7-月初清零": "D-38 2/1 00:01 配额清零：给内销1 分成功",
   "D7-持有数不清": "D-38 月初清零不动持有数（内销1 跨月前后一样）",
-  "D7-跨月收回P1": "D-34 P1 2/1 00:05 扫描回到公海",
+  "D7-下一步过了不收P1": "D-34（11-18 改）P1 下一步 1/31 已过、线索验证 5 天从 1/28 沟通起算到 2/2：2/1 00:05 扫描不收",
   "D7-自动分配": "D-38 自动分配：在职 + 允许参与 + 未满额 → 本月已分最少 → 并列给最早进池",
   "D7-两人同时领只一个": "D-35 外销2、外销3 同时领 P3：只一个领到，另一个看到「已被领走」",
-  "D7-收回都有提醒": "D-34 收回的 P1 P2 P3 P5 P6 原负责人各有一条提醒任务",
+  "D7-收回都有提醒": "D-34 收回的 P2 P3 P5 P6 原负责人各有一条提醒任务",
   "D7-订单一个没进公海": "D-34/35 订单阶段的项目一个都不在公海",
   // —— 补：一周剧本以外多查的（剧本走完 2/1 起接着跑，不碰开关关那组和金样）——
   "补-必填字段谁能改": "D-34/35 + B2 第 6 条默认：节点必填字段组长（销售管理）改被拒，总管理员、老板（总管理）能改",
@@ -386,7 +387,7 @@ async function 剧本开() {
 
   // ——— D2 周二 1/27 ———
   await 扫("2026-01-27 08:00");
-  await 查("D2-当天下一步次日收回", async () => expect(await 在公海("P5")).toBe(true));
+  await 查("D2-下一步过了不收", async () => expect(await 在公海("P5")).toBe(false));
   拨到("2026-01-27 09:00");
   // 11-01 闭环：「仅上级推」下负责人本人往前推被拦，直属上级只给往前推这一步（改内容、退回、点结局照旧只给负责人）
   await 查("D2-直属上级能推", async () => {
@@ -430,15 +431,7 @@ async function 剧本开() {
 
   // ——— D3 周三 1/28 ———
   await 扫("2026-01-28 08:00");
-  await 查("D3-按下一步收回", async () => expect(await 在公海("P2")).toBe(true));
-  await 查("D3-原负责人收提醒", async () => {
-    const t = await 作为("老板", () => prisma.task.findMany({ where: { ownerId: 公.id["内销2"], title: { contains: "P2", endsWith: 收回提醒尾 } } }));
-    expect(t.length).toBe(1);
-  });
-  await 查("D3-进公海记历史负责人", async () => {
-    const l = await 作为("老板", () => prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: 项目id["P2"], kind: "pool-release" } }));
-    expect(公.名[l.fromOwnerId ?? ""]).toBe("内销2");
-  });
+  await 查("D3-下一步过了不收", async () => expect(await 在公海("P2")).toBe(false));
   拨到("2026-01-28 09:00");
   await 查("D3-沟通没下一步拒", async () =>
     拒(await 作为("内销1", () => 记沟通(项目id["P1"], { type: "PHONE", content: "P1 跟进", occurredAt: 现在文本(), 阶段: "线索", 明确回复: true, 下一步: "回电" })), /下一步/));
@@ -451,7 +444,6 @@ async function 剧本开() {
   });
   得(await 建项目("外销6", "P11", "2026-02-20"), "建 P11");
   得(await 建项目("外销6", "P12", "2026-02-20"), "建 P12");
-  await 查("D3-领取到上限拦", async () => 拒(await 作为("外销6", () => 领取项目(项目id["P5"])), /上限/));
   await 查("D3-指派到上限拦", async () => 拒(await 建项目("老板", "P13", "2026-02-20", "外销6"), /上限/));
   await 查("D3-转让到上限拦", async () =>
     拒(await 作为("老板", () => 编辑项目(项目id["P4"], { name: "P4", amount: 10000, currency: "CNY", ownerId: 公.id["外销6"] } as Parameters<typeof 编辑项目>[1])), /上限/));
@@ -462,7 +454,17 @@ async function 剧本开() {
   // ——— D4 周四 1/29 ———
   await 扫("2026-01-29 08:00");
   await 查("D4-下一步没到不收", async () => expect(await 在公海("P3")).toBe(false));
+  await 查("D4-按时长收回P2P5", async () => expect([await 在公海("P2"), await 在公海("P5")]).toEqual([true, true]));
+  await 查("D4-原负责人收提醒", async () => {
+    const t = await 作为("老板", () => prisma.task.findMany({ where: { ownerId: 公.id["内销2"], title: { contains: "P2", endsWith: 收回提醒尾 } } }));
+    expect(t.length).toBe(1);
+  });
+  await 查("D4-进公海记历史负责人", async () => {
+    const l = await 作为("老板", () => prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: 项目id["P2"], kind: "pool-release" } }));
+    expect(公.名[l.fromOwnerId ?? ""]).toBe("内销2");
+  });
   拨到("2026-01-29 09:00");
+  await 查("D4-领取到上限拦", async () => 拒(await 作为("外销6", () => 领取项目(项目id["P5"])), /上限/));
   await 查("D4-改时长先预览", async () => {
     const 前 = await 作为("老板", () => prisma.project.count({ where: { pooledAt: { not: null } } }));
     const r = 得(await 作为("老板", () => 预览({ 超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 1, 线索验证: 5, 明确需求: 7 } } })), "预览") as { 个数: number };
@@ -476,7 +478,7 @@ async function 剧本开() {
   await 查("D4-历任负责人", async () => {
     const ls = await 作为("老板", () => prisma.projectNodeLog.findMany({ where: { projectId: 项目id["P2"], kind: { not: "node" } }, orderBy: { at: "asc" } }));
     expect(ls.map((l) => [l.kind, 公.名[l.fromOwnerId ?? ""] ?? null, 公.名[l.toOwnerId ?? ""] ?? null, 北京日(l.at)]))
-      .toEqual([["pool-release", "内销2", null, "2026-01-28"], ["pool-claim", "内销2", "内销1", "2026-01-29"]]);
+      .toEqual([["pool-release", "内销2", null, "2026-01-29"], ["pool-claim", "内销2", "内销1", "2026-01-29"]]);
   });
 
   // ——— D5 周五 1/30 ———
@@ -535,7 +537,7 @@ async function 剧本开() {
   await 查("D7-月初清零", async () => { 得(await 分给("市场经理", "L5", "内销1", "内贸"), "月初分 L5"); });
   await 查("D7-持有数不清", async () => expect(await 作为("老板", () => 持有数(prisma, 公.id["内销1"]))).toBe(月底持有));
   await 扫("2026-02-01 00:05");
-  await 查("D7-跨月收回P1", async () => expect(await 在公海("P1")).toBe(true));
+  await 查("D7-下一步过了不收P1", async () => expect(await 在公海("P1")).toBe(false));
   拨到("2026-02-01 09:00");
   await 查("D7-自动分配", async () => {
     const 自动 = await 要("app/(app)/leads/assign-actions", "自动分配线索", "D-38");
@@ -552,8 +554,8 @@ async function 剧本开() {
     expect((rs.find((r) => !r.ok) as 回).error).toMatch(/领走/);
   });
   await 查("D7-收回都有提醒", async () => {
-    // P2 收回两次：1/28 一次（提醒内销2）；内销1 1/29 领走后潜客培育 3 天，2/1 00:05 又一次（提醒内销1）
-    for (const [n, 谁, 次] of [["P1", "内销1", 1], ["P2", "内销2", 1], ["P2", "内销1", 1], ["P3", "外销1", 1], ["P5", "内销6", 1], ["P6", "内销2", 1]] as const) {
+    // P2 收回两次：1/29 一次（提醒内销2）；内销1 1/29 领走后潜客培育 3 天，2/1 00:05 又一次（提醒内销1）。P1 下一步过了不收（11-18），没有收回提醒
+    for (const [n, 谁, 次] of [["P1", "内销1", 0], ["P2", "内销2", 1], ["P2", "内销1", 1], ["P3", "外销1", 1], ["P5", "内销6", 1], ["P6", "内销2", 1]] as const) {
       const t = await 作为("老板", () => prisma.task.count({ where: { ownerId: 公.id[谁], title: { contains: `「${n}」`, endsWith: 收回提醒尾 } } }));
       expect(t, `${n} → ${谁}`).toBe(次);
     }
@@ -645,7 +647,7 @@ async function 补查() {
   await 查("补-扫描留痕带项目", async () => {
     const 们 = await 作为("老板", () => prisma.auditLog.findMany({ where: { action: "pool", entity: "Project" }, orderBy: { at: "asc" } }));
     const 带着 = 们.flatMap((a) => ((a.detail ? JSON.parse(a.detail) : {}) as { ids?: string[] }).ids ?? []);
-    expect(带着).toEqual(expect.arrayContaining([项目id["P1"], 项目id["P2"], 项目id["P5"], 项目id["P6"]]));
+    expect(带着).toEqual(expect.arrayContaining([项目id["P2"], 项目id["P5"], 项目id["P6"]]));
   });
   await 查("补-停用的人领不了", async () => 拒(await 作为("内销3", () => 领取项目(项目id["P5"])), /停用/));
 
