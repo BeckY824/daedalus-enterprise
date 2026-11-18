@@ -302,8 +302,8 @@ test("删渠道 / 删线索：有客户挂着的渠道拦下说清；没转化�
   await page.getByRole("button", { name: `更多操作 空渠道${戳}` }).click();
   await page.getByRole("menuitem", { name: "删除", exact: true }).click();
   // 11-15 起删渠道是就地确认（从「⋯」处长出问句 + 「删除」），不弹框
-  // 企业版两层：打开渠道页会给没挂主渠道的渠道补挂同名主渠道（单一入口），问句写「只删这个子渠道，同名主渠道留着」（11-17）
-  await expect(就地确认(page)).toContainText(企业版 ? "只删这个子渠道，同名主渠道留着" : "删除这个渠道？");
+  // 11-18 起渠道页只读、不再给没挂主渠道的渠道补挂同名主渠道（复盘第 7 类）；这里直接进库建的渠道没挂主渠道，两版问句一样
+  await expect(就地确认(page)).toContainText("删除这个渠道？");
   await 就地确认(page).getByRole("button", { name: "删除" }).click();
   await expect(page.locator("tr.ant-table-row", { hasText: `空渠道${戳}` })).toHaveCount(0);
 
