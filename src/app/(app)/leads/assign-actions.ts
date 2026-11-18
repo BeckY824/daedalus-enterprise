@@ -697,6 +697,40 @@ export async function 超时转出(
 
 export type 客户自动分配结果 = { ok: true; toUserId: string; 接手人: string; 为什么: string; 区域未填?: true } | { ok: false; error: string };
 
+type 看的客户 = { id: string; name: string; salesOwnerId: string; bizLine: string | null; pool: { customerId: string } | null };
+const 看客户字段 = { id: true, name: true, salesOwnerId: true, bizLine: true, pool: { select: { customerId: true } } } as const;
+const 客户看不到话 = "这位客户已经不在了（或者你看不到它），刷新看看";
+
+/**
+ * 客户自动分配、批量客户自动分配 共用：一位客户从「能不能自动分」判到分出去、记操作日志。进门、认人、原因已由调用方查过。
+ * 不发通知：成了回 通知条，调用方发（批量合成一次，按接手人一人一条）。
+ * 挑人走 自动分给：本月已分数每次现读分配记录，批里前面分出去的那几家已经写进去了，下一家自然轮到别人（不另记一份）
+ */
+async function 自动分一位客户(
+  me: SessionUser, org: 组织, c: 看的客户, 原因值: string | null,
+): Promise<(Exclude<客户自动分配结果, { ok: false }> & { 通知条: 分配条 }) | { ok: false; error: string }> {
+  const 能 = await 能自动分配客户(me, org, c);
+  if (!能.ok) return 能;
+  // 同指定转让（assignSalesOwner）：正在移交的不能再转，名下有验证中的线索不能改派
+  if ((await 交接中的客户([c.id])).size) return { ok: false, error: "这位客户正在移交（等接手人确认），不能再转；要换人先撤回，或等对方拒收" };
+  const 验证中 = await 客户有验证中线索(prisma, [c.id]);
+  if (验证中) return { ok: false, error: 验证中 };
+  const r = await 自动分给(me, org, { projectId: 能.projectId }, null, "营销", c.salesOwnerId);
+  if (!r.ok) {
+    if (r.已被分配) return { ok: false, error: "这位客户刚被别人分走了，刷新看看现在在谁名下" };
+    return { ok: false, error: r.挑不到 ? `没有自动分出去：${r.挑不到}。客户还在原负责人名下，没转；可以改用指定分配` : r.error };
+  }
+  await recordAudit({
+    user: me, action: "assign", entity: "Customer", entityId: c.id,
+    summary: `客户转让（自动分配）：把「${c.name}」分给「${r.接手人}」${原因值 ? `（${原因值}）` : ""}`,
+    detail: { 自动分配: true, 原负责人: c.salesOwnerId, salesOwnerId: r.toUserId, projectId: 能.projectId, 为什么: r.为什么, ...(原因值 ? { 转让原因: 原因值 } : {}) },
+  });
+  return {
+    ok: true, toUserId: r.toUserId, 接手人: r.接手人, 为什么: r.为什么, ...(r.区域未填 ? { 区域未填: true as const } : {}),
+    通知条: { projectId: 能.projectId, toUserId: r.toUserId, ...留下字段(r.留下) },
+  };
+}
+
 /**
  * 客户转让框里选「自动分配」（客户 11-17：市场成员给暂不分配的客户分配时可选自动和指定；lib/enterprise/cust-auto-assign.ts 说谁能用、什么算暂不分配）。
  * 拿客户名下那条暂不分配的项目走新线索的自动分配（自动分给：本月分得最少的优先、配额照算，市场成员按客户区域定内贸 / 外贸，P-转-26），
@@ -715,27 +749,103 @@ export async function 客户自动分配(customerId: string, 原因?: string | n
     const 选 = await 选的原因("transfer", 原因);
     if (!选.ok) return 选;
     // 按「我」限定着读：看不到的当不在
-    const c = await prisma.customer.findFirst({ where: { id: customerId }, select: { id: true, name: true, salesOwnerId: true, bizLine: true, pool: { select: { customerId: true } } } });
-    if (!c) return { ok: false, error: "这位客户已经不在了（或者你看不到它），刷新看看" };
-    const 能 = await 能自动分配客户(me, org, c);
-    if (!能.ok) return 能;
-    // 同指定转让（assignSalesOwner）：正在移交的不能再转，名下有验证中的线索不能改派
-    if ((await 交接中的客户([c.id])).size) return { ok: false, error: "这位客户正在移交（等接手人确认），不能再转；要换人先撤回，或等对方拒收" };
-    const 验证中 = await 客户有验证中线索(prisma, [c.id]);
-    if (验证中) return { ok: false, error: 验证中 };
-    const r = await 自动分给(me, org, { projectId: 能.projectId }, null, "营销", c.salesOwnerId);
-    if (!r.ok) {
-      if (r.已被分配) return { ok: false, error: "这位客户刚被别人分走了，刷新看看现在在谁名下" };
-      return { ok: false, error: r.挑不到 ? `没有自动分出去：${r.挑不到}。客户还在原负责人名下，没转；可以改用指定分配` : r.error };
-    }
-    await 分配通知(me, [{ projectId: 能.projectId, toUserId: r.toUserId, ...留下字段(r.留下) }], true);
-    await recordAudit({
-      user: me, action: "assign", entity: "Customer", entityId: c.id,
-      summary: `客户转让（自动分配）：把「${c.name}」分给「${r.接手人}」${选.值 ? `（${选.值}）` : ""}`,
-      detail: { 自动分配: true, 原负责人: c.salesOwnerId, salesOwnerId: r.toUserId, projectId: 能.projectId, 为什么: r.为什么, ...(选.值 ? { 转让原因: 选.值 } : {}) },
-    });
+    const c = await prisma.customer.findFirst({ where: { id: customerId }, select: 看客户字段 });
+    if (!c) return { ok: false, error: 客户看不到话 };
+    const r = await 自动分一位客户(me, org, c, 选.值);
+    if (!r.ok) return r;
+    const { 通知条, ...外 } = r;
+    await 分配通知(me, [通知条], true);
     revalidatePath("/customers");
-    return { ok: true, toUserId: r.toUserId, 接手人: r.接手人, 为什么: r.为什么, ...(r.区域未填 ? { 区域未填: true as const } : {}) };
+    return 外;
+  } catch (e) {
+    return 不在了(e);
+  }
+}
+
+/** 客户列表勾几位一起转：一次最多这么多位（同批量自动分配线索） */
+const 批量客户最多 = 200;
+/** 勾的客户编号：只认字符串、去重；空 / 超上限回原因 */
+function 认勾的客户(customerIds: unknown): { ok: true; ids: string[] } | { ok: false; error: string } {
+  const ids = [...new Set(Array.isArray(customerIds) ? customerIds.filter((x): x is string => typeof x === "string" && !!x) : [])];
+  if (!ids.length) return { ok: false, error: "先勾选要分的客户" };
+  if (ids.length > 批量客户最多) return { ok: false, error: `一次最多自动分配 ${批量客户最多} 位，分几次点` };
+  return { ok: true, ids };
+}
+
+export type 批量客户预看 = { ok: true; 可: string[]; 不可: { customerId: string; name: string; error: string }[] } | { ok: false; error: string };
+
+/**
+ * 客户列表批量转让框：勾的这几位里哪些能选自动分配（和单个客户转让框同一个判定 能自动分配客户：市场成员、暂不分配的客户……）。
+ * 可 有人 = 框里摆「指定分配 / 自动分配」；一个都不行 = 不摆，框和原来一样。不可 = 选了自动分配时框里说这几位不会自动分、为什么。
+ * 只读不写
+ */
+export async function 批量客户自动分配预看(customerIds: string[]): Promise<批量客户预看> {
+  const me = await 进门();
+  if (!me) return 没开;
+  try {
+    const org = await 读组织();
+    if (!按区域分配of(org, me.id)) return { ok: false, error: 不是市场话 };
+    const 勾 = 认勾的客户(customerIds);
+    if (!勾.ok) return 勾;
+    const 们 = await prisma.customer.findMany({ where: { id: { in: 勾.ids } }, select: 看客户字段 });
+    const 按id = new Map(们.map((c) => [c.id, c]));
+    const 可: string[] = [];
+    const 不可: { customerId: string; name: string; error: string }[] = [];
+    for (const id of 勾.ids) {
+      const c = 按id.get(id);
+      if (!c) { 不可.push({ customerId: id, name: "（看不到这位）", error: 客户看不到话 }); continue; }
+      const 能 = await 能自动分配客户(me, org, c);
+      if (能.ok) 可.push(id);
+      else 不可.push({ customerId: id, name: c.name, error: 能.error });
+    }
+    return { ok: true, 可, 不可 };
+  } catch (e) {
+    return 不在了(e);
+  }
+}
+
+export type 批量客户自动分配行 = { customerId: string; name: string } & 客户自动分配结果;
+
+/**
+ * 客户列表勾了几位、批量转让框选「自动分配」：一位一位按顺序分，每位和单个客户转让框的自动分配一模一样（自动分一位客户）。
+ * 批内均衡：每位挑人时现读本月分配记录，前面几位刚分出去的已算进去，不会全给同一个人。
+ * 混着勾了不是「暂不分配」的（或不在市场名下、别人的、公海里的……）：照单个的条件判，这几位不动、那行写原因（请用指定分配），不悄悄自动分。
+ * 一位分不出去不影响别的；通知按接手人合成一条（分配通知）。转让原因一批一个，每位记一行操作日志
+ */
+export async function 批量客户自动分配(customerIds: string[], 原因?: string | null): Promise<{ ok: true; 结果: 批量客户自动分配行[] } | { ok: false; error: string }> {
+  const me = await 进门();
+  if (!me) return 没开;
+  try {
+    const org = await 读组织();
+    // 先认人再看参数（同 客户自动分配）
+    if (!按区域分配of(org, me.id)) return { ok: false, error: 不是市场话 };
+    const 勾 = 认勾的客户(customerIds);
+    if (!勾.ok) return 勾;
+    const 选 = await 选的原因("transfer", 原因);
+    if (!选.ok) return 选;
+    const 名 = new Map((await prisma.customer.findMany({ where: { id: { in: 勾.ids } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
+    const 结果: 批量客户自动分配行[] = [];
+    const 通知条: 分配条[] = [];
+    for (const id of 勾.ids) {
+      let r: Awaited<ReturnType<typeof 自动分一位客户>>;
+      try {
+        // 每位现读：前面那位分出去时可能把这位一起带走了（同一位销售名下同事的项目随客户走），按现在的样子判
+        const c = 名.has(id) ? await prisma.customer.findFirst({ where: { id }, select: 看客户字段 }) : null;
+        r = c ? await 自动分一位客户(me, org, c, 选.值) : { ok: false, error: 客户看不到话 };
+      } catch (e) {
+        r = 不在了(e);
+      }
+      if (r.ok) {
+        const { 通知条: 条, ...外 } = r;
+        通知条.push(条);
+        结果.push({ customerId: id, name: 名.get(id) ?? "（看不到这位）", ...外 });
+      } else {
+        结果.push({ customerId: id, name: 名.get(id) ?? "（看不到这位）", ok: false, error: r.error });
+      }
+    }
+    await 分配通知(me, 通知条, true);
+    if (通知条.length) revalidatePath("/customers");
+    return { ok: true, 结果 };
   } catch (e) {
     return 不在了(e);
   }

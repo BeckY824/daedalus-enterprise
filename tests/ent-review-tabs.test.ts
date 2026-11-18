@@ -98,7 +98,7 @@ describe("库里取数和数据范围", () => {
     for (const u of 用户) await prisma.user.create({ data: { ...u, email: `${u.id}@t`, password: "x", title: "" } });
     let i = 0;
     for (const u of 用户) {
-      客户[u.id] = (await prisma.customer.create({ data: { name: `${u.name}的客户`, phone: `1380000000${i++}`, salesOwnerId: u.id } })).id;
+      客户[u.id] = (await prisma.customer.create({ data: { name: `${u.name}的客户`, phone: `1381200000${i++}`, salesOwnerId: u.id } })).id;
       项目[u.id] = (await prisma.project.create({ data: { name: `${u.name}的项目`, customerId: 客户[u.id], ownerId: u.id, creatorId: u.id } })).id;
       await 记沟通(u.id, `${u.name}聊了`, 1);
     }

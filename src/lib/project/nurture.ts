@@ -11,7 +11,7 @@ import type { Prisma } from "@/generated/prisma";
 import { 默认币种 } from "../currency";
 import { 第一个节点 } from "./nodes";
 import { 项目名上限 } from "./wizard";
-import { 新项目默认值 } from "./proj-fields";
+import { 新项目默认值, 建给谁的分配方式 } from "./proj-fields";
 import { 看全部 } from "../team-scope";
 import { 看已删 } from "../enterprise/soft-delete-core";
 import { 历史分析来源 } from "./system-created";
@@ -30,10 +30,14 @@ export const 算有项目 = {
   OR: [{ source: null }, { source: { not: 历史分析来源 } }, { result: null }],
 } satisfies Prisma.ProjectWhereInput;
 
-/** 这位客户一个项目都没有（已结束的历史分析项目不算，见 算有项目）就建一个潜客培育项目，返回新项目 id；已经有项目（向导刚建的）返回 null */
+/**
+ * 这位客户一个项目都没有（已结束的历史分析项目不算，见 算有项目）就建一个潜客培育项目，返回新项目 id；已经有项目（向导刚建的）返回 null。
+ * 分配方式（11-18 复盘第 5 类，潜客培育必填清单要看它）：调用方知道怎么来的就传（公海领取 = 公海捞取）；
+ * 没传按谁建给谁（建的人就是负责人 = 个人自持，建给别人 = 指定分配）。项目来源不写：渠道统计回落客户来源，建好有值就锁，系统补的不替人定
+ */
 export async function 补潜客培育(
   tx: Pick<Prisma.TransactionClient, "contact" | "project" | "projectNodeLog">,
-  a: { customerId: string; 客户名: string; ownerId: string; creatorId: string },
+  a: { customerId: string; 客户名: string; ownerId: string; creatorId: string; 分配方式?: string },
 ): Promise<string | null> {
   if (await tx.project.count({ where: { customerId: a.customerId, ...算有项目 } })) return null;
   const 联系人 = await tx.contact.findFirst({ where: { customerId: a.customerId, isPrimary: true }, select: { id: true } });
@@ -42,7 +46,7 @@ export async function 补潜客培育(
       name: a.客户名.trim().slice(0, 项目名上限) || "潜客培育", customerId: a.customerId, contactId: 联系人?.id ?? null,
       ownerId: a.ownerId, creatorId: a.creatorId, amount: 0, currency: 默认币种,
       phase: 第一个节点.phase, node: 第一个节点.node,
-      ...新项目默认值(true),
+      ...新项目默认值(true, { 分配方式: a.分配方式 ?? 建给谁的分配方式(a.ownerId, a.creatorId), 项目来源: null }),
     },
   });
   await tx.projectNodeLog.create({ data: { projectId: 项目.id, userId: a.creatorId, toPhase: 第一个节点.phase, toNode: 第一个节点.node } });
@@ -65,6 +69,8 @@ export async function 零项目客户补潜客培育(
   tx: Pick<Prisma.TransactionClient, "contact" | "project" | "projectNodeLog" | "customer">,
   customerIds: readonly string[],
   操作人: string,
+  /** 补的项目记哪种分配方式（公海领取传 公海捞取）；不传按谁建给谁（见 补潜客培育） */
+  分配方式?: string,
 ): Promise<Map<string, string>> {
   const 出 = new Map<string, string>();
   const 们 = [...new Set(customerIds.filter(Boolean))];
@@ -81,11 +87,38 @@ export async function 零项目客户补潜客培育(
       // 默认读法已经滤掉回收站里的客户（软删扩展）；不在客户公海的才补
       const 客户们 = await tx.customer.findMany({ where: { id: { in: 没项目.slice(i, i + 500) }, pool: null }, select: { id: true, name: true, salesOwnerId: true } });
       for (const c of 客户们) {
-        const id = await 补潜客培育(tx, { customerId: c.id, 客户名: c.name, ownerId: c.salesOwnerId, creatorId: 操作人 || c.salesOwnerId });
+        const id = await 补潜客培育(tx, { customerId: c.id, 客户名: c.name, ownerId: c.salesOwnerId, creatorId: 操作人 || c.salesOwnerId, ...(分配方式 ? { 分配方式 } : {}) });
         if (id) 出.set(c.id, id);
       }
     }
     return 出;
+  });
+}
+
+/**
+ * 沟通必须挂项目（11-17 客户定），可原来要挂的项目找不到了——导入给了项目但项目对不上、导入撤回后恢复时项目已不在（11-18 复盘第 5 类漏网两处）：
+ * 挂这位客户的潜客培育项目，不再存成不挂项目的沟通。
+ *   - 名下有在推（没结局、不在公海）、停在潜客培育的项目：挂最近动过的那个；
+ *   - 名下一个项目都没有（算有项目）：照 补潜客培育 建一个再挂（负责人 = 客户负责人，创建人 = 操作人，没给记负责人）；
+ *   - 别的（客户不在了、在客户公海里，或名下有项目但没有在推的潜客培育）：回 null，调用方按「没对上项目」办，不替人猜挂哪个。
+ * 调用方判断开关和沟通类型：企业版只用项目、要挂项目的类型（待办 / 提醒不用挂）才调
+ */
+export async function 沟通挂潜客培育(
+  tx: Pick<Prisma.TransactionClient, "contact" | "project" | "projectNodeLog" | "customer">,
+  customerId: string,
+  操作人?: string | null,
+): Promise<{ projectId: string; node: string } | null> {
+  return 看全部(async () => {
+    const c = await tx.customer.findUnique({ where: { id: customerId }, select: { name: true, salesOwnerId: true, pool: { select: { customerId: true } } } });
+    if (!c || c.pool) return null;
+    const 培育 = await tx.project.findFirst({
+      where: { customerId, result: null, pooledAt: null, phase: 第一个节点.phase, node: 第一个节点.node },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      select: { id: true, node: true },
+    });
+    if (培育) return { projectId: 培育.id, node: 培育.node };
+    const id = await 补潜客培育(tx, { customerId, 客户名: c.name, ownerId: c.salesOwnerId, creatorId: 操作人 || c.salesOwnerId });
+    return id ? { projectId: id, node: 第一个节点.node } : null;
   });
 }
 

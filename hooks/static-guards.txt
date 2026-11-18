@@ -3,9 +3,12 @@
 tests/audit-labels.test.ts
 tests/click-buttons.test.ts
 tests/compose-env.test.ts
+tests/customer-owner-write-guard.test.ts
 tests/design-tokens.test.ts
 tests/docker-context.test.ts
 tests/field-coverage.test.ts
+tests/followup-write-guard.test.ts
+tests/form-draft-guard.test.ts
 tests/font-size-tokens.test.ts
 tests/inline-style-cap.test.ts
 tests/llm-thinking.test.ts
@@ -17,8 +20,10 @@ tests/owner-write-guard.test.ts
 tests/pane-slots.test.ts
 tests/permissions-table-keys.test.ts
 tests/privacy-copy.test.ts
+tests/project-create-guard.test.ts
 tests/radius-tokens.test.ts
 tests/reduced-motion.test.ts
 tests/release-guards.test.ts
 tests/use-server-exports.test.ts
 tests/utc-date-cap.test.ts
+tests/ent-channel-read-no-write.test.ts

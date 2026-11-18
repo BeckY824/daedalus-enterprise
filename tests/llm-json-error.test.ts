@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 vi.mock("@/lib/settings", () => ({ getSetting: async () => null, setSetting: async () => {} }));
 
 const 原始fetch = globalThis.fetch;
-const 原文 = "好的，王同学的手机号 13800000000，下面是话术";
+const 原文 = "好的，王同学的手机号 13812000000，下面是话术";
 
 beforeEach(() => {
   vi.resetModules();
@@ -42,13 +42,13 @@ describe("JSON 修过一次还坏", () => {
     const { chatMessagesJSON, JSON格式不对 } = await import("@/lib/llm");
     const { e, 行 } = await 抓日志(() => chatMessagesJSON([{ role: "user", content: "x" }]));
     expect(e?.message).toBe(JSON格式不对);
-    expect(行.join("\n")).not.toContain("13800000000");
+    expect(行.join("\n")).not.toContain("13812000000");
   });
 
   it("chatJSON：同上", async () => {
     const { chatJSON, JSON格式不对 } = await import("@/lib/llm");
     const { e, 行 } = await 抓日志(() => chatJSON("x"));
     expect(e?.message).toBe(JSON格式不对);
-    expect(行.join("\n")).not.toContain("13800000000");
+    expect(行.join("\n")).not.toContain("13812000000");
   });
 });

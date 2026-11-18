@@ -125,8 +125,17 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
   const [下次, set下次] = useState<下次>("7");
   const [日子, set日子] = useState<Dayjs | null>(() => dayjs().add(7, "day"));
   const [忙, set忙] = useState(false);
-  // 点外面不关；写了那一句再按 Esc / X 先问一句（2026-10-19 客户反馈，lib/form-guard.tsx）。挂着一条计划，不算新建弹窗，不存草稿
-  const 守 = useFormGuard({ open: true, 关: onClose, 填过: () => hasVisibleText(字), 忙, afterOpenChange: 聚焦首项 });
+  // 点外面不关；写了那一句再按 Esc / X 先问一句（2026-10-19 客户反馈，lib/form-guard.tsx）。
+  // 那一句留草稿（复盘第 1 类，25C）：按这条计划分，刷新、发版后再点「完成」带回；记上了、跳过了就删。方式、下次不进草稿
+  const 守 = useFormGuard({
+    open: true,
+    关: onClose,
+    草稿键: `完成计划:${plan.id}`,
+    额外: { 取: () => ({ 字 }), 放: (v) => { if (typeof v.字 === "string") set字(v.字); } },
+    填过: () => hasVisibleText(字),
+    忙,
+    afterOpenChange: 聚焦首项,
+  });
 
   /** 企业版这位客户我能挂沟通的在推项目：undefined = 还在问；null = 不是企业版（照旧不挂） */
   const [项目们, set项目们] = useState<{ id: string; name: string }[] | null | undefined>(undefined);
@@ -168,6 +177,7 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
     if (只完成) {
       // 没有能挂的项目：不记沟通，走「跳过，直接完成」那条路（页面只把计划勾掉）
       存好后.current = () => onDone({ kind: "skip" });
+      守.存好了();
       set已存(true);
       return { ok: true };
     }
@@ -195,6 +205,7 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
       // 客户三态（C12）：这条不算有效沟通时给一句轻提示（照常保存，不拦）
       const 短 = 短沟通话of(r) ?? undefined;
       if (短) set短话(短);
+      守.存好了();
       set已存(true);
       存好后.current = () => onDone({ kind: "saved", next: 下次日, 跟进id: r.id, 下次计划id: r.下次计划id ?? null, ...(短 ? { 提示: 短 } : {}) });
       return { ok: true };
@@ -205,6 +216,7 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
 
   function 跳过() {
     if (忙 || 已存) return;
+    守.存好了();
     onDone({ kind: "skip" });
   }
 
@@ -234,6 +246,7 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
     >
       {(
         <div className="done-plan" data-testid="complete-plan-modal">
+          {守.提示}
           <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
             {plan.customerName ? `${plan.customerName} · ` : ""}「{plan.subject}」做完了，{只完成 ? "标为完成。" : "顺手记一笔。"}
           </Typography.Paragraph>
@@ -268,7 +281,7 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
               autoSize={{ minRows: 2, maxRows: 5 }}
               maxLength={2000}
               value={字}
-              onChange={(e) => set字(e.target.value)}
+              onChange={(e) => { set字(e.target.value); 守.改了(); }}
               onPressEnter={(e) => { if (e.metaKey || e.ctrlKey) 保存键.current?.querySelector("button")?.click(); }}
               placeholder="聊了什么、结果怎样，比如：客户要了新报价，下周回"
             />

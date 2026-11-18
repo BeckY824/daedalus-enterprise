@@ -25,7 +25,7 @@ vi.mock("@/lib/business", async (原) => {
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
-import { 合同状态们, 默认合同状态, 合同状态显示, 是合同状态, 新项目默认值, 项目新字段改成, 痛点标注上限, type 项目新字段 } from "@/lib/project/proj-fields";
+import { 合同状态们, 默认合同状态, 合同状态显示, 是合同状态, 新项目默认值, 建给谁的分配方式, 导入分配方式, 系统分配方式, 项目新字段改成, 痛点标注上限, type 项目新字段 } from "@/lib/project/proj-fields";
 import { 还差, 必填项名们, 建议必填, type 必填数据 } from "@/lib/project/required";
 import { 默认组织规则, type 组织规则 } from "@/lib/project/org-rules";
 import { 改项目, 读必填数据 } from "@/lib/project/db";
@@ -51,9 +51,27 @@ describe("合同状态：选项和默认", () => {
     expect(合同状态显示("我方修改中")).toBe("我方修改中");
   });
 
-  it("新建项目默认值：企业版写起草中，别的版本不写", () => {
-    expect(新项目默认值(true)).toEqual({ contractStatus: "起草中" });
-    expect(新项目默认值(false)).toEqual({});
+  it("新建项目默认值：企业版写起草中，分配方式 / 项目来源给了才写；别的版本什么都不写", () => {
+    const 空来 = { 分配方式: null, 项目来源: null };
+    expect(新项目默认值(true, 空来)).toEqual({ contractStatus: "起草中" });
+    expect(新项目默认值(true, { 分配方式: "个人自持", 项目来源: "ch-1" })).toEqual({ contractStatus: "起草中", assignMode: "个人自持", channelId: "ch-1" });
+    expect(新项目默认值(false, { 分配方式: "个人自持", 项目来源: "ch-1" })).toEqual({});
+    expect(新项目默认值(false, 空来)).toEqual({});
+  });
+
+  it("系统定分配方式：建给自己 = 个人自持，建给别人 = 指定分配（取值在 V-分配方式 里）", () => {
+    expect(建给谁的分配方式("u1", "u1")).toBe("个人自持");
+    expect(建给谁的分配方式("u2", "u1")).toBe("指定分配");
+    expect(建给谁的分配方式("", "")).toBe("指定分配");
+    for (const v of Object.values(系统分配方式)) expect(["指定分配", "自动分配", "公海捞取", "暂不分配", "个人自持"]).toContain(v);
+  });
+
+  it("导入分配方式（M-导入-01）：整行任一格含自拓 / 展会 = 个人自持，都不含 = 自动分配", () => {
+    expect(导入分配方式({ 客户名称: "甲公司", 来源: "自拓客户" })).toBe("个人自持");
+    expect(导入分配方式({ 备注: "广交会展会认识的" })).toBe("个人自持");
+    expect(导入分配方式({ 扩展: { 标签: ["展会"] } })).toBe("个人自持");
+    expect(导入分配方式({ 客户名称: "乙公司", 来源: "官网" })).toBe("自动分配");
+    expect(导入分配方式(null)).toBe("自动分配");
   });
 });
 
@@ -242,12 +260,12 @@ describe("真库：改项目 / 读必填数据 / 新建项目", () => {
     expect((await prisma.project.findUniqueOrThrow({ where: { id: 项目id } })).node).not.toBe(起);
   });
 
-  it("线索建项目：企业版写「起草中」，不是企业版留空", async () => {
-    const 建 = (名: string) => 线索建项目(prisma, { 线索名: 名, leadId: `lead-${名}`, customerId: 客户id, ownerId: 乙.id, creatorId: 乙.id, 联系人Id: null });
+  it("线索建项目：企业版写「起草中」和分配方式，不是企业版都留空", async () => {
+    const 建 = (名: string) => 线索建项目(prisma, { 线索名: 名, leadId: `lead-${名}`, customerId: 客户id, ownerId: 乙.id, creatorId: 乙.id, 联系人Id: null, 分配方式: "个人自持" });
     const 企业 = await 建("QA-企业新项目");
-    expect((await prisma.project.findUniqueOrThrow({ where: { id: 企业 } })).contractStatus).toBe("起草中");
+    expect(await prisma.project.findUniqueOrThrow({ where: { id: 企业 } })).toMatchObject({ contractStatus: "起草中", assignMode: "个人自持" });
     vi.stubEnv("CRM_ENTERPRISE", "");
     const 团队 = await 建("QA-团队新项目");
-    expect((await prisma.project.findUniqueOrThrow({ where: { id: 团队 } })).contractStatus).toBeNull();
+    expect(await prisma.project.findUniqueOrThrow({ where: { id: 团队 } })).toMatchObject({ contractStatus: null, assignMode: null });
   });
 });

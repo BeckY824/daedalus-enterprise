@@ -280,7 +280,7 @@ describe("客户页「看板」视图（11-12 第 3 批 C17 / C18：页头、筛
     // 首屏 = 1 句 include 取卡片 + 超过 20 个的列每列 1 句只取 id（list.ts 读项目列表 看板每列），所以只多这一列的 1 句，不按行查
     const 加 = async (起: number) => {
       for (let i = 起; i < 起 + 12; i++) {
-        const c = await prisma.customer.create({ data: { name: `加的客户${i}`, phone: `1390000020${String(i).padStart(2, "0")}`, salesOwnerId: 甲.id } });
+        const c = await prisma.customer.create({ data: { name: `加的客户${i}`, phone: `139120020${String(i).padStart(2, "0")}`, salesOwnerId: 甲.id } });
         for (let j = 0; j < 2; j++) await prisma.project.create({ data: { name: `加的项目${i}-${j}`, customerId: c.id, ownerId: 甲.id, creatorId: 甲.id, phase: "商机", node: "方案敲定" } });
       }
     };
@@ -301,7 +301,7 @@ describe("客户页「看板」视图（11-12 第 3 批 C17 / C18：页头、筛
     expect((await 项目页({ sort: "owner-asc" })).句.length).toBe(项目页按负责人查询数);
     const 加 = async (起: number) => {
       for (let i = 起; i < 起 + 12; i++) {
-        const c = await prisma.customer.create({ data: { name: `项目页加的${i}`, phone: `1390000060${String(i).padStart(2, "0")}`, salesOwnerId: 甲.id } });
+        const c = await prisma.customer.create({ data: { name: `项目页加的${i}`, phone: `139120060${String(i).padStart(2, "0")}`, salesOwnerId: 甲.id } });
         for (let j = 0; j < 2; j++) await prisma.project.create({ data: { name: `项目页加的${i}-${j}`, customerId: c.id, ownerId: 甲.id, creatorId: 甲.id, phase: "商机", node: "方案敲定" } });
       }
     };
@@ -504,7 +504,7 @@ describe("客户三态开着：状态列、回收状态筛选、看板色点（1
     expect(两套.句.length).toBeLessThanOrEqual(客户列表三态开着上限);
     // 多 30 位待回收的客户：条数一样
     for (let i = 0; i < 30; i++) {
-      const c = await prisma.customer.create({ data: { name: `加的待回收${i}`, phone: `1390000040${String(i).padStart(2, "0")}`, salesOwnerId: 甲.id } });
+      const c = await prisma.customer.create({ data: { name: `加的待回收${i}`, phone: `139120040${String(i).padStart(2, "0")}`, salesOwnerId: 甲.id } });
       await prisma.entCustomerClock.create({ data: { customerId: c.id, state: "待回收", enteredDay: 今天() } });
     }
     const 多 = await 量({ pageSize: "50" });

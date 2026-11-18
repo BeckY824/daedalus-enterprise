@@ -123,7 +123,7 @@ beforeAll(async () => {
   }
   client.设传输(桌面传);
   // 老板库里先有老客户：开通后要做范围迁移、推起点
-  for (let i = 0; i < 3; i++) await db("boss").customer.create({ data: { id: `c-old${i}`, name: `老客户${i}`, phone: `1380000000${i}`, salesOwnerId: "cmusc55660000dulko96ek8kr" } });
+  for (let i = 0; i < 3; i++) await db("boss").customer.create({ data: { id: `c-old${i}`, name: `老客户${i}`, phone: `1381200000${i}`, salesOwnerId: "cmusc55660000dulko96ek8kr" } });
   当("boss");
   const 码 = await client.建团队("缓存QA");
   if (!码.ok) throw Error(码.error);
@@ -185,7 +185,7 @@ describe("索引缓存：空转不拉、只拉变了的、目录只发变了的"
 
   it("开互看：业务员一轮用两个请求拉齐全队 250 位客户（原来一位一个请求），之后空转不拉", async () => {
     const 起 = await db("boss").customer.count();
-    for (let i = 0; i < 250; i++) await db("boss").customer.create({ data: { id: `c-many${i}`, name: `批量${i}`, phone: `1390000${String(i).padStart(4, "0")}`, salesOwnerId: A("boss") } });
+    for (let i = 0; i < 250; i++) await db("boss").customer.create({ data: { id: `c-many${i}`, name: `批量${i}`, phone: `1391200${String(i).padStart(4, "0")}`, salesOwnerId: A("boss") } });
     await 都轮("boss");
     await relay.设互看(账号.boss, 读配置("boss").teamId, true);
     清数();
@@ -200,7 +200,7 @@ describe("索引缓存：空转不拉、只拉变了的、目录只发变了的"
   }, 120_000); // Windows 打包机慢，逐条建 250 位客户就要 20 秒以上
 
   it("老服务端不认 pull-many：退回一个范围一个请求，照样拉齐", async () => {
-    for (let i = 0; i < 5; i++) await db("boss").customer.create({ data: { id: `c-old-srv${i}`, name: `老服务端${i}`, phone: `1370000000${i}`, salesOwnerId: A("boss") } });
+    for (let i = 0; i < 5; i++) await db("boss").customer.create({ data: { id: `c-old-srv${i}`, name: `老服务端${i}`, phone: `1371200000${i}`, salesOwnerId: A("boss") } });
     await 都轮("boss");
     插手.老服务端 = true;
     try {

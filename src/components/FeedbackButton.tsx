@@ -21,6 +21,8 @@ import { Modal, Input, Button } from "antd";
 import SaveButton from "@/components/SaveButton";
 import { useBusiness } from "@/lib/business-client";
 import { useMyFeedback, 刷新我的反馈 } from "./feedback/store";
+import { useFormDraft } from "@/components/FormDraft";
+import { 给人看的错 } from "@/lib/action-error";
 
 const ISSUES = "https://github.com/BeckY824/daedalus-crm/issues/new";
 
@@ -45,6 +47,8 @@ export default function FeedbackButton({ 去向 }: { 去向: "cloud" | "github" 
   const [open, setOpen] = useState(false);
   const [文字, set文字] = useState("");
   const [发送中, set发送中] = useState(false);
+  // 写了没发的留草稿（复盘第 1 类：刷新、发版后再点开带回）；发出去了就删
+  const 稿 = useFormDraft({ 键: "反馈", 开: open, 值: { 文字 }, 带回: (v) => { if (v.文字 !== undefined) set文字(v.文字); } });
   const pathname = usePathname();
   const router = useRouter();
   const 在我的反馈 = pathname === "/feedback";
@@ -93,7 +97,7 @@ export default function FeedbackButton({ 去向 }: { 去向: "cloud" | "github" 
       if (我的.可用) void 刷新我的反馈({ 新: true });
       return { ok: true };
     } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : "没发出去" };
+      return { ok: false, error: 给人看的错(e, "没发出去", "反馈") };
     } finally {
       set发送中(false);
     }
@@ -137,6 +141,7 @@ export default function FeedbackButton({ 去向 }: { 去向: "cloud" | "github" 
         footer={null}
         destroyOnHidden
       >
+        {稿.提示}
         <Input.TextArea
           autoFocus
           value={文字}
@@ -168,6 +173,7 @@ export default function FeedbackButton({ 去向 }: { 去向: "cloud" | "github" 
               已保存="收到了，谢谢"
               没保存="没发出去"
               成了={() => {
+                稿.存好了();
                 setOpen(false);
                 set文字("");
               }}

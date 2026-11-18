@@ -8,10 +8,36 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { execFileSync } from "node:child_process";
 
 const ROOT = path.resolve(__dirname, "..");
 const 读 = (p: string) => fs.readFileSync(path.join(ROOT, p), "utf8");
+
+/**
+ * 在 ROOT 这份副本里跑 git。11-17 复盘第 10 类：git 钩子（pre-push）会带着 GIT_DIR / GIT_WORK_TREE 等，
+ * 子进程里的 git 只认它们、不看 cwd，读到的是别的副本（next.config.ts 的 本目录的commit 挂过一次）。
+ * 所以去掉这些定位仓库的变量，并核对仓库根就是 ROOT，不是的话直接报错，别拿别的副本的文件列表去扫
+ */
+const 定位仓库的变量 = [
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_COMMON_DIR",
+  "GIT_INDEX_FILE",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_NAMESPACE",
+  "GIT_PREFIX",
+  "GIT_CEILING_DIRECTORIES",
+  "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+];
+function 本副本git(args: string[], cwd = ROOT): string {
+  const env = { ...process.env };
+  for (const k of 定位仓库的变量) delete env[k];
+  const 根 = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd, env, encoding: "utf8" }).trim();
+  if (fs.realpathSync(根) !== fs.realpathSync(cwd)) throw new Error(`git 仓库根（${根}）不是 ${cwd}`);
+  return execFileSync("git", args, { cwd, env, encoding: "utf8" });
+}
 
 /** .dockerignore 的一行转成正则（只认这里用得到的写法：普通路径、*、**\/） */
 function 忽略规则(): { 原: string; re: RegExp; 反: boolean }[] {
@@ -88,7 +114,7 @@ describe("R-026 镜像构建不烤 ASSET_PREFIX", () => {
 describe("R-042 shell 脚本里 $变量 后面不许紧跟中文", () => {
   it("仓库里每个 .sh 和 CI 工作流的 run 段：$V 后面紧跟非 ASCII 就要写成 ${V}", () => {
     // bash 在某些 locale 下会把紧跟着的多字节字符吞进变量名：$V（ → 变量「V（」，set -u 时 unbound variable（2026-09 gitcode.sh 在用户终端里就这么挂的）
-    const sh = execFileSync("git", ["ls-files", "*.sh"], { cwd: ROOT, encoding: "utf8" }).split("\n").filter(Boolean);
+    const sh = 本副本git(["ls-files", "*.sh"]).split("\n").filter(Boolean);
     const 文件们 = [...sh, ...fs.readdirSync(path.join(ROOT, ".github/workflows")).map((f) => `.github/workflows/${f}`)];
     expect(sh.length, "扫不到 .sh：git ls-files 的写法改了？").toBeGreaterThanOrEqual(3);
     const 坏的: string[] = [];
@@ -106,5 +132,36 @@ describe("R-042 shell 脚本里 $变量 后面不许紧跟中文", () => {
   it("这道守卫认得出坏写法（自检）", () => {
     expect(/\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7F]/.test('echo "版本 $V（新）"')).toBe(true);
     expect(/\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7F]/.test('echo "版本 ${V}（新）"')).toBe(false);
+  });
+});
+
+describe("测试里调的 git 不受钩子带进来的 GIT_DIR 影响（11-17 复盘第 10 类）", () => {
+  it("父进程带着别的仓库的 GIT_DIR / GIT_WORK_TREE：本副本git 照样列本副本的文件", () => {
+    const 别处 = fs.mkdtempSync(path.join(os.tmpdir(), "crm-git-env-"));
+    const 原 = { GIT_DIR: process.env.GIT_DIR, GIT_WORK_TREE: process.env.GIT_WORK_TREE };
+    try {
+      const 干净 = { ...process.env };
+      for (const k of 定位仓库的变量) delete 干净[k];
+      execFileSync("git", ["init", "-q"], { cwd: 别处, env: 干净 });
+      fs.writeFileSync(path.join(别处, "别的副本.sh"), "echo hi\n");
+      execFileSync("git", ["add", "别的副本.sh"], { cwd: 别处, env: 干净 });
+      const 应该 = 本副本git(["ls-files", "*.sh"]);
+      process.env.GIT_DIR = path.join(别处, ".git");
+      process.env.GIT_WORK_TREE = 别处;
+      // 不清变量的老写法确实会读到别的仓库：说明这里模拟的就是钩子里的情形
+      expect(execFileSync("git", ["-c", "core.quotePath=false", "ls-files", "*.sh"], { cwd: ROOT, encoding: "utf8" })).toContain("别的副本.sh");
+      expect(本副本git(["ls-files", "*.sh"])).toBe(应该);
+      expect(应该).not.toContain("别的副本.sh");
+    } finally {
+      for (const [k, v] of Object.entries(原)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+      fs.rmSync(别处, { recursive: true, force: true });
+    }
+  });
+
+  it("cwd 不是仓库根（在别的仓库里面的子目录）：报错，不拿外层仓库的结果", () => {
+    expect(() => 本副本git(["ls-files"], path.join(ROOT, "tests"))).toThrow(/仓库根/);
   });
 });

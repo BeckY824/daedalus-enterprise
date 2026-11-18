@@ -80,9 +80,10 @@ function 刷新项目(projectId?: string, customerId?: string) {
 export type 建档向导输入 = { 客户: CustomerInput; 联系人: 向导联系人; 项目: 向导项目; 跟进: 向导跟进; 要传附件?: boolean };
 /**
  * 新建弹窗没开「项目」开关（P-界面-36，11-15）：只建客户、主要联系人和首条沟通（团队版算客户沟通；企业版挂在新客户自带的潜客培育项目上，11-17）。
- * 首条沟通的截图 / 附件只在「有项目」建档时收（11-18），这条路不收 要传附件、不签附件票
+ * 首条沟通的截图 / 附件：企业版首条沟通挂在潜客培育项目上，交了 要传附件 同样签一张附件票、挂到这条首条沟通上（11-18 起）；
+ * 团队版没建项目、首条沟通不挂项目，不签票
  */
-export type 只建客户输入 = Omit<建档向导输入, "项目" | "要传附件">;
+export type 只建客户输入 = Omit<建档向导输入, "项目">;
 
 /** 建档时指派给别人超了持有上限：「超了上限，」后面那半句 */
 const 建档超上限尾 = "客户和项目都没有建；先推进或放回一些，或者换一位负责人";
@@ -426,7 +427,9 @@ async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输�
   await 存沟通后重算三态(r.id);
   刷新项目(建了.projectId ?? undefined, r.id);
   revalidatePath("/customers");
-  return { ok: true as const, customerId: r.id, projectId: null, ...(企 ? { contactId: 建了.contactId ?? null } : {}) };
+  // 首条沟通的截图 / 附件：挂在潜客培育项目上的这条首条沟通，同建档签票给录入人（凭票认首条沟通 要它挂着项目）
+  const 附件票 = 企 && 输入.要传附件 === true && 建了.followUpId && 建了.projectId ? { followUpId: 建了.followUpId, 票: await 签首条附件票(me.id, 建了.followUpId) } : null;
+  return { ok: true as const, customerId: r.id, projectId: null, ...(企 ? { contactId: 建了.contactId ?? null } : {}), ...(附件票 ? { 附件票 } : {}) };
 }
 
 /** 改节点。进异常状态时带上异常类别（必选）和备注（可空）；企业版点线索流失、丢单时 备注 = 原因（必填） */

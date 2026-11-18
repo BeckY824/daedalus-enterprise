@@ -36,7 +36,7 @@ beforeAll(async () => {
     const 企={成员:[{value:'u1',label:'乙'}],分配方式们:[{i:0,名:'指定分配'},{i:1,名:'自动分配'},{i:3,名:'暂不分配'}],默认分配方式:null,是销售:false};
     window.__render=(补={},企补={})=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}>
       <新线索来源.Provider value={['展会',${JSON.stringify(长渠道)}]}><新线索企业.Provider value={{...企,...企补}}>
-        <div className="cli-col"><ProposalCard proposal={{id:'p1',kind:'add_lead',customerId:'',customerName:'',reason:'x',name:长名,contact:'周经理',phone:'13800000000',source:${JSON.stringify(长渠道)},status:'待跟进',remark:'',country:'摩洛哥',city:'卡萨布兰卡',...补}}/></div>
+        <div className="cli-col"><ProposalCard proposal={{id:'p1',kind:'add_lead',customerId:'',customerName:'',reason:'x',name:长名,contact:'周经理',phone:'13812000000',source:${JSON.stringify(长渠道)},status:'待跟进',remark:'',country:'摩洛哥',city:'卡萨布兰卡',...补}}/></div>
       </新线索企业.Provider></新线索来源.Provider>
     </BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;

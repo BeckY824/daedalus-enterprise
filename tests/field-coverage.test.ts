@@ -4,11 +4,17 @@
  * 起因是「渠道负责人」——schema 里有、列表和详情页都显示、却没有任何地方能改，
  * AI 被问到时只好编一个不存在的入口。这种"有字段却改不了"的缺口不该靠人肉发现。
  *
- * 这条测试把每个模型的标量字段分成三类，**三类之外的字段一律让测试挂掉**：
+ * 这条测试把每个模型的标量字段分成四类，**四类之外的字段一律让测试挂掉**：
  *   可写      —— 有 server action 能写它（人和 AI 都走这条路）
  *   派生/只读 —— 由系统算出来或系统打上的，写它就是破坏一致性，逐个写明理由
+ *   系统事实  —— 记「事情是怎么发生的」（来源、导入批次、分配方式这类）：该由系统在那一刻写，不靠人填。
+ *                **必须列出写它的系统路径**（仓库里的文件），审计逐个核那个文件还在写它；一条写入方都没有的，单独报出来
  *   已知缺口  —— 明知有洞、还没补：也要写明，让它一直显眼，而不是悄悄躺着
  * 新加字段时必须归到某一类，否则这里就红。
+ *
+ * 系统事实这一类是 11-17 复盘第 6 类加的：「客户分配」能手改，审计只算它「可写」就放过了；
+ * 可它记的是「客户怎么到销售手上」，该由系统在分配时写，却没有任何系统路径写它，导入也没这一列，
+ * 正式库 8 万多位客户里只有 1 位有值。所以系统事实的字段即使也能手改（同时在 可写 里），照样要列系统写入方。
  */
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
@@ -142,12 +148,11 @@ const 派生: Record<string, Record<string, string>> = {
     counted: "算不算进当月配额，按线索种类和设置算出来",
     month: "分配那一刻的年月，按业务钟算（企业版北京时间），每月清零靠它",
     projectId: "分的是哪个项目（企业版新线索=项目的线索阶段），从被分的那条项目上来",
-    way: "分配方式（字典「分配方式」当时的叫法），按谁点的系统记：手动分=指定分配，自动分=自动分配，不让人填",
   },
   EntLeadQuota: { setById: "最后改配额的人，当前登录账号" },
   Channel: {
     createdById: "新建时打上当前登录账号；批量导入时按表里「创建人」对上的员工，对不上留空",
-    mainId: "按选的主渠道（platform）找到的那一行，表单里不直接交 id；老渠道由渠道页打开时补挂（channel-main.ts 补主渠道）",
+    mainId: "按选的主渠道（platform）找到的那一行，表单里不直接交 id；客户表单就地建的按名字当场挂（channel-main.ts 建渠道挂主）",
   },
   EntChannelMain: { sort: "新建时排在最后，系统打的；清单顺序由落库脚本定，界面不改" },
   EntChannelInvest: { channelId: "哪个渠道，在那个渠道的详情里录，不改", userId: "录的那个人，当前登录账号" },
@@ -467,8 +472,6 @@ const 派生: Record<string, Record<string, string>> = {
     customerId: "建档向导里和客户一起建，不改（改了等于另一单生意）",
     creatorId: "实际建档的人，向导保存那一刻打上，不改",
     scheduledAssignAt: "新建时选「指定时间」分配那一刻定下（迁移 149）；到点前在项目详情「定时分配」那行改 / 取消（leads/schedule-actions.ts），到点执行、清了待分配、进回收站由后台清空（lib/enterprise/scheduled-assign.ts）",
-    source: "项目来源（迁移 151）：一次性回填脚本写库时定下（「历史沟通分析」= history-analysis，lib/project/system-created.ts 历史分析来源），建好不改；项目详情只读显示「数据来源：历史分析」标签",
-    importBatch: "回填批次号（迁移 151）：一次性回填脚本写库时打上，按批核对、撤回用，界面不改",
     scheduledAssignTo: "同 scheduledAssignAt：指定分配的定时到点分给谁，新建时就是选的负责人，到点前能改（leads/schedule-actions.ts 改定时分配）",
     balanceSettledById: "勾尾款结清的那个人，系统打上",
     balanceSettledAt: "勾尾款结清的那一刻，系统打上",
@@ -476,11 +479,9 @@ const 派生: Record<string, Record<string, string>> = {
     acceptancePassedAt: "勾验收通过的那一刻，系统打上",
     closedAt: "有结局的那一刻，系统打上；回到进行中清掉",
     pooledAt: "放回公海的那一刻，系统打上；有人领取或老板重新指派时清掉",
-    sourceLeadId: "线索转项目时系统记下是哪条线索来的，之后不改",
     nextStepAt: "记沟通时填的下一步时间，跟着最近一条沟通写；企业版超时回收用",
     nextStepText: "记沟通时填的下一步做什么，跟 nextStepAt 一起写、一起清",
     deletedAt: "企业版删除时打上（进回收站），恢复时清掉；30 天后连行真删，不给改（lib/enterprise/soft-delete.ts）",
-    assignMode: "新建线索 / 项目时选的分配方式，建的那一刻记下，之后不改（11-01 会议 §3，lib/project/after-create-assign.ts）",
     bizLine: "新建线索 / 项目时必选的业务线（内贸 / 外贸 / 暂不分配），建的那一刻记下，自动分配按它分线，之后不改（11-01 清单 A1，迁移 106，lib/enterprise/assign-line.ts）",
     awaitAssignAt: "建好没分出去（暂不分配、自动分配没人可分 / 业务线是「暂不分配」）那一刻系统打上；有人分出去时清掉（lib/enterprise/await-assign.ts）",
   },
@@ -585,6 +586,68 @@ const 派生: Record<string, Record<string, string>> = {
   },
 };
 
+/**
+ * 系统事实：记「事情怎么发生的」，由系统在那一刻写。每个字段写明：
+ *   写入方 —— 仓库里写它的文件（相对仓库根）；审计核这个文件还在写这个字段（粗查：文件里有 `字段: 值` 或 `.字段 = 值`，`字段: true` 那种 select 不算）
+ *   说明   —— 什么时候写、写什么
+ *   仓库外 —— 写入方为空时必填：现在是谁在写（比如一次性回填脚本），为什么仓库里没有；这类字段审计单独报出来，清单钉死
+ *   漏写   —— 可选：已知哪些建法 / 路径不写它（复盘查出来的），留在这里显眼，补上就删
+ * 同时能手改的（客户分配、渠道负责人）照样在 可写 里，这里另外要求它有系统写入方。
+ */
+type 系统事实项 = { 写入方: string[]; 说明: string; 仓库外?: string; 漏写?: string };
+const 系统事实: Record<string, Record<string, 系统事实项>> = {
+  Customer: {
+    assignWay: {
+      写入方: ["src/lib/enterprise/customer-assign-way.ts", "src/lib/enterprise-import/clean.ts"],
+      说明: "客户分配（怎么到销售手上）：分配 / 领取 / 市场转销售时系统按字典「客户分配」当时的叫法写（customer-assign-way.ts）；导入时按「分配方式」一列写（clean.ts）；表单上也能手改",
+    },
+    channelOwnerId: {
+      写入方: ["src/lib/attribution.ts", "src/app/(app)/customers/actions.ts", "src/lib/enterprise-import/apply.ts"],
+      说明: "渠道负责人：按来源渠道当时的负责人系统带出（attribution.ts 算，保存客户 / 导入时写）；表单上也能手改",
+      漏写: "11-17 复盘第 6 类：正式库 1,658 位客户有来源渠道、渠道负责人是空的，推断是迁移脚本直接写库漏的（仓库里的路径都会写）",
+    },
+  },
+  Project: {
+    assignMode: {
+      写入方: ["src/lib/project/proj-fields.ts", "src/lib/enterprise/market-transfer.ts"],
+      说明: "新建线索 / 项目时选的分配方式，建的那一刻记下，之后不改（11-01 会议 §3，lib/project/after-create-assign.ts）；市场转销售带走的线索补写",
+      漏写: "11-17 复盘第 6 类：补建（潜客培育）、线索转化、导入建的项目都不写，正式库 6,799 个项目里只有 124 个有值；潜客培育的必填清单要看它",
+    },
+    sourceLeadId: {
+      写入方: ["src/lib/project/from-lead.ts"],
+      说明: "线索转项目时系统记下是哪条线索来的，之后不改",
+    },
+    source: {
+      写入方: [],
+      说明: "项目来源（迁移 151）：「历史沟通分析」= history-analysis（lib/project/system-created.ts 历史分析来源），建好不改；项目详情只读显示「数据来源：历史分析」标签",
+      仓库外: "只有一次性回填脚本写（客户目录里的脚本直接写库，照 system-created.ts 的回填约定），仓库里的建项目路径都不写；空 = 系统里建的",
+    },
+    importBatch: {
+      写入方: [],
+      说明: "回填批次号（迁移 151）：同一次回填同一个值，按批核对、撤回用，界面不改",
+      仓库外: "同 source：只有一次性回填脚本写，仓库里没有写入方",
+    },
+  },
+  EntLeadAssign: {
+    way: {
+      写入方: ["src/app/(app)/leads/assign-actions.ts"],
+      说明: "分配方式（字典「分配方式」当时的叫法），按谁点的系统记：手动分=指定分配，自动分=自动分配，不让人填",
+    },
+  },
+};
+
+/** 系统事实里「仓库里没有任何写入方」的字段，钉死在这里：多一个（新加的系统事实没人写）或少一个（补上了写入方）都要来改这里 */
+const 系统事实无写入方 = ["Project.importBatch", "Project.source"];
+
+/** 名字一看就是系统事实的字段（分配方式、导入批次），不管在哪个模型，都得进 系统事实 */
+const 像系统事实 = /^(assignWay|assignMode|importBatch)$/;
+
+/** 粗查：这个文件里有没有写这个字段（`字段: 值` 或 `.字段 = 值`；`字段: true` 是 select，不算） */
+function 写了(文件: string, 字段: string): boolean {
+  const t = fs.readFileSync(path.resolve(__dirname, "..", 文件), "utf8");
+  return new RegExp(`\\b${字段}\\s*:\\s*(?!true\\b)[^\\s,}]|\\.${字段}\\s*=(?!=)`).test(t);
+}
+
 /** 已知缺口：有字段、没写入路径。留在这里是为了让它一直显眼 */
 /** 已知缺口：有字段、没写入路径。留在这里是为了让它一直显眼。
  *  2026-09-14 清空：FollowUp.attachment / attachSize 是纯死字段，已从 schema 删除
@@ -608,7 +671,7 @@ describe("每个模型的每个字段都有归属", () => {
     if (不审.has(model)) continue;
     it(`${model}：${fields.length} 个字段都能改，或者说清为什么不能`, () => {
       const 没归类 = fields.filter(
-        (f) => !可写[model]?.includes(f) && !派生[model]?.[f] && !已知缺口[model]?.[f],
+        (f) => !可写[model]?.includes(f) && !派生[model]?.[f] && !系统事实[model]?.[f] && !已知缺口[model]?.[f],
       );
       expect(没归类, `${model} 里这些字段既不能改、也没说明为什么：${没归类.join("、")}`).toEqual([]);
     });
@@ -620,6 +683,48 @@ describe("每个模型的每个字段都有归属", () => {
       const 多出 = fields.filter((f) => !全部[model]?.includes(f));
       expect(多出, `${model} 的可写清单里有 schema 没有的字段：${多出.join("、")}`).toEqual([]);
     }
+  });
+
+  it("系统事实：每个字段都在 schema 里，不和 派生 重复列", () => {
+    const 全部 = 标量字段();
+    for (const [model, fs_] of Object.entries(系统事实)) {
+      for (const f of Object.keys(fs_)) {
+        expect(全部[model]?.includes(f), `系统事实里的 ${model}.${f} schema 里没有`).toBe(true);
+        expect(派生[model]?.[f], `${model}.${f} 同时列在 派生 和 系统事实 里，留一处（系统事实）`).toBeUndefined();
+      }
+    }
+  });
+
+  it("系统事实：列出的写入方文件都在、而且还在写这个字段", () => {
+    const 不对: string[] = [];
+    for (const [model, fs_] of Object.entries(系统事实)) {
+      for (const [f, 项] of Object.entries(fs_)) {
+        expect(项.说明.length, `${model}.${f} 没写说明`).toBeGreaterThan(10);
+        for (const 文件 of 项.写入方) {
+          if (!fs.existsSync(path.resolve(__dirname, "..", 文件))) 不对.push(`${model}.${f}：${文件} 不存在`);
+          else if (!写了(文件, f)) 不对.push(`${model}.${f}：${文件} 里找不到写它的地方`);
+        }
+      }
+    }
+    expect(不对, `系统事实的写入方对不上（文件搬了 / 不再写了就改清单，真没人写了就是缺口）：\n${不对.join("\n")}`).toEqual([]);
+  });
+
+  it("系统事实：没有任何写入方的字段单独报出来，清单钉死（新加的没人写 / 补上了写入方都要来改）", () => {
+    const 没写入方 = Object.entries(系统事实)
+      .flatMap(([model, fs_]) => Object.entries(fs_).filter(([, 项]) => 项.写入方.length === 0).map(([f]) => `${model}.${f}`))
+      .sort();
+    for (const k of 没写入方) {
+      const [model, f] = k.split(".");
+      expect((系统事实[model][f].仓库外 ?? "").length, `${k} 没有任何写入方，也没写现在是谁在写（仓库外）`).toBeGreaterThan(10);
+    }
+    expect(没写入方, `这些系统事实字段仓库里没有任何写入方：${没写入方.join("、")}`).toEqual(系统事实无写入方);
+  });
+
+  it("名字像系统事实的字段（分配方式 / 导入批次）都进了 系统事实，不能只算「可写」或「派生」就放过", () => {
+    const 漏 = Object.entries(标量字段())
+      .filter(([model]) => !不审.has(model))
+      .flatMap(([model, fields]) => fields.filter((f) => 像系统事实.test(f) && !系统事实[model]?.[f]).map((f) => `${model}.${f}`));
+    expect(漏, `这些字段记的是「怎么发生的」，要列系统写入方：${漏.join("、")}`).toEqual([]);
   });
 
   it("已知缺口是要还的债：每条都要有说明", () => {

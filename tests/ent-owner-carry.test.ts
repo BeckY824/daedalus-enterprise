@@ -9,8 +9,6 @@ const mocks = vi.hoisted(() => ({
   user: { id: "", name: "", email: "", role: "SALES", title: "", avatar: null as string | null },
   /** 分前看 之后、事务之前插一手（分项目给 进事务前读组织规则）：模拟这一下客户刚被放进公海 */
   插队: null as null | (() => Promise<void>),
-  /** 带走并记下 进事务前读组织时插一手（外层已改完负责人）：模拟这一下客户又被别人改走。返回 true 算插完 */
-  读组织前: null as null | (() => Promise<boolean>),
   /** 批量转过了权限闸门之后插一手：模拟另一页这时抢先把客户转走 */
   挡字段前: null as null | (() => Promise<void>),
 }));
@@ -23,16 +21,6 @@ vi.mock("@/lib/enterprise/field-perm", async (原) => {
       mocks.挡字段前 = null;
       if (手) await 手();
       return 真.挡字段(...a);
-    },
-  };
-});
-vi.mock("@/lib/enterprise/org", async (原) => {
-  const 真 = await 原<typeof import("@/lib/enterprise/org")>();
-  return {
-    ...真,
-    权限组织: async () => {
-      if (mocks.读组织前 && (await mocks.读组织前())) mocks.读组织前 = null;
-      return 真.权限组织();
     },
   };
 });
@@ -1464,58 +1452,9 @@ describe("A2：客户层把市场成员的客户转给销售", () => {
     expect((await 待办of(t)).ownerId).toBe(市场二.id);
   });
 
-  describe("外层改完负责人后，进事务前客户又被别人改走", () => {
-    /** 客户一归 接手 就被改给 丙（或放进公海），只插一次 */
-    const 被抢走 = (c: string, 接手: 人, 动作: () => Promise<unknown> = () => prisma.customer.update({ where: { id: c }, data: { salesOwnerId: 丙.id } })) => {
-      mocks.读组织前 = async () => {
-        // 操作人这时已经看不到这位客户了（负责人刚改走），放开范围查和插手
-        return 看全部(async () => {
-          if ((await 客户负责人(c)) !== 接手.id) return false;
-          await 动作();
-          return true;
-        });
-      };
-    };
-    const 都没动 = async (x: Awaited<ReturnType<typeof 市场客户>>, 主: string | null) => {
-      expect(mocks.读组织前).toBeNull();
-      if (主) expect(await 客户负责人(x.c)).toBe(主);
-      await 活还在(x.t, x.pl, 市场.id);
-      for (const p of [x.等分, x.普通]) expect(await 项目of(p)).toMatchObject({ ownerId: 市场.id, assignMode: null });
-      expect((await 项目of(x.等分)).awaitAssignAt).not.toBeNull();
-      expect(await 持有数(prisma, 甲.id)).toBe(0);
-      expect(await prisma.customerOwnerLog.count({ where: { customerId: x.c, toOwnerId: 甲.id } })).toBe(0);
-    };
-    afterEach(() => { mocks.读组织前 = null; });
-
-    // 批量转（assignSalesOwner）、确认交接：11-11 起改负责人、带活、核持有上限在同一个事务里（M-公海-18），
-    // 没有「外层改完、进事务前被改走」这个窗口了，这两条不再造；单条改负责人（客户页、编辑表单）仍是两步，照测
-
-    it("客户页改负责人：不写回、不通知", async () => {
-      const x = await 市场客户();
-      被抢走(x.c, 甲);
-      expect(await 以(市场, () => patchCustomer(x.c, "salesOwnerId", 甲.id))).toMatchObject({ ok: true, 带走: { 没转成: 1 } });
-      await 都没动(x, 丙.id);
-      expect(await 通知们(甲.id)).toHaveLength(0);
-    });
-
-    it("编辑表单改负责人：不写回、不通知", async () => {
-      const 市场成员 = await 造人("mkt4", "渠运同事", "SALES", "channel_ops");
-      const y = await 市场客户();
-      await prisma.customer.update({ where: { id: y.c }, data: { salesOwnerId: 市场成员.id } });
-      await prisma.project.updateMany({ where: { customerId: y.c }, data: { ownerId: 市场成员.id } });
-      await prisma.task.update({ where: { id: y.t }, data: { ownerId: 市场成员.id } });
-      await prisma.followPlan.update({ where: { id: y.pl }, data: { ownerId: 市场成员.id } });
-      const r = await prisma.customer.findUniqueOrThrow({ where: { id: y.c } });
-    const base = { name: r.name, phone: r.phone, school: r.school, grade: r.grade, major: r.major, followStatus: r.followStatus, decisionStatus: r.decisionStatus, expectedSignAt: r.expectedSignAt, remark: r.remark, salesOwnerId: r.salesOwnerId, channelId: r.channelId, referrerCustomerId: r.referrerCustomerId };
-      被抢走(y.c, 乙);
-      expect(await 以(市场成员, () => saveCustomer({ id: y.c, updatedAt: r.updatedAt.toISOString(), base, ...base, salesOwnerId: 乙.id } as unknown as Parameters<typeof saveCustomer>[0]))).toMatchObject({ ok: true, 带走: { 没转成: 1 } });
-      expect(mocks.读组织前).toBeNull();
-      expect(await 客户负责人(y.c)).toBe(丙.id);
-      await 活还在(y.t, y.pl, 市场成员.id);
-      expect((await 项目of(y.等分)).awaitAssignAt).not.toBeNull();
-      expect(await 通知们(乙.id)).toHaveLength(0);
-    });
-  });
+  // 「外层改完负责人后，进事务前客户又被别人改走」：批量转（assignSalesOwner）、确认交接 11-11 起改负责人、带活、核持有上限在同一个事务里；
+  // 单条改负责人（客户页就地改、编辑表单）11-18 起也并进同一个事务（复盘第 5 类：换人记录和改写要原子），这个窗口没有了，不再造。
+  // 带活那一步出错时负责人跟着回滚，见 ent-write-guards-1118.test.ts
 
   describe("接手确认框的说法（确认说明）", () => {
     const 说明 = async (from: 人, to: 人, kind: string) => {

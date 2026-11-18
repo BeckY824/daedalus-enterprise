@@ -156,15 +156,34 @@ describe("客户页新增项目：要传附件才回票", () => {
   });
 });
 
-describe("没开项目只建客户：首条沟通挂潜客培育项目（11-17），附件票照旧只在有项目建档时签", () => {
-  it("硬塞 要传附件 也不回票；首条沟通挂在这位客户自带的潜客培育项目上", async () => {
+describe("没开项目只建客户：首条沟通挂潜客培育项目（11-17），截图 / 附件也挂得上（同一条沟通，同一张附件票）", () => {
+  it("不交 要传附件：不回票；首条沟通挂在这位客户自带的潜客培育项目上", async () => {
     const { 项目: _不要, ...只客户 } = 输入(录入);
-    const r = await 建档只建客户({ ...只客户, 客户: { ...只客户.客户, 企业资料: { bizLine: "内贸" } }, 要传附件: true } as never);
+    const r = await 建档只建客户({ ...只客户, 客户: { ...只客户.客户, 企业资料: { bizLine: "内贸" } } } as never);
     expect(r.ok, r.ok ? "" : "error" in r ? String(r.error) : "").toBe(true);
     if (!r.ok) return;
     expect(r).not.toHaveProperty("附件票");
     const 首条 = await prisma.followUp.findFirstOrThrow({ where: { customerId: r.customerId, deletedAt: null }, select: { id: true } });
     const 挂 = await prisma.followUpProject.findUniqueOrThrow({ where: { followUpId: 首条.id }, select: { project: { select: { customerId: true } } } });
     expect(挂.project.customerId).toBe(r.customerId);
+  });
+
+  it("交了 要传附件：回的票配这条首条沟通，带票挂得上；类型照原来的；旁人拿着票照原规矩 403", async () => {
+    const { 项目: _不要, ...只客户 } = 输入(录入);
+    const r = await 建档只建客户({ ...只客户, 客户: { ...只客户.客户, 企业资料: { bizLine: "内贸" } }, 要传附件: true } as never);
+    expect(r.ok, r.ok ? "" : "error" in r ? String(r.error) : "").toBe(true);
+    if (!r.ok || !("附件票" in r) || !r.附件票) throw new Error("没回附件票");
+    const { followUpId, 票 } = r.附件票;
+    const 首条 = await prisma.followUp.findFirstOrThrow({ where: { customerId: r.customerId, deletedAt: null }, select: { id: true } });
+    expect(followUpId).toBe(首条.id);
+    const 挂 = await prisma.followUpProject.findUniqueOrThrow({ where: { followUpId }, select: { project: { select: { customerId: true } } } });
+    expect(挂.project.customerId).toBe(r.customerId);
+    const 成 = await 传一个(followUpId, 票);
+    expect(成.status).toBe(200);
+    const a = ((await 成.json()) as { 附件: { id: string } }).附件;
+    expect(await prisma.attachment.findUniqueOrThrow({ where: { id: a.id } })).toMatchObject({ followUpId, userId: 录入 });
+    expect((await 传一个(followUpId, 票, "合同.pdf", "application/pdf")).status).toBe(415);
+    当(旁人);
+    expect((await 传一个(followUpId, 票)).status).toBe(403);
   });
 });

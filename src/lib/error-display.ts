@@ -5,10 +5,13 @@
  * 只能靠读源码来「验证」，那种检查在逻辑被改坏时不会红。
  */
 
-export type 错误信息 = { message: string; digest?: string };
+import { 是旧版本动作错 } from "./stale-deploy";
+
+export type 错误信息 = { message: string; digest?: string; name?: string };
 
 export type 错误展示 =
   | { 类型: "未登录" }
+  | { 类型: "旧版本" }
   | { 类型: "原文"; 文本: string }
   | { 类型: "编号"; digest?: string };
 
@@ -20,6 +23,8 @@ export type 错误展示 =
  */
 export function 决定错误展示(error: 错误信息, 开发中: boolean): 错误展示 {
   if (error.message === "UNAUTHORIZED") return { 类型: "未登录" };
+  // 发版后老页面交的动作没人接住、冒到错误页（25C）：不说「这一页没能打开」，说系统刚更新、刷新就好
+  if (是旧版本动作错(error)) return { 类型: "旧版本" };
   if (开发中) return { 类型: "原文", 文本: error.message };
   return { 类型: "编号", digest: error.digest };
 }

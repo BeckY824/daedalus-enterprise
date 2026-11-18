@@ -10,6 +10,7 @@ import { fmtDateTime } from "@/lib/utils";
 import { 三态继续持有, 三态暂缓回收, 三态让同事结束项目 } from "../tri-state-actions";
 import { 三态显示名 } from "@/lib/enterprise/tri-state-label";
 import { 动作出错话 } from "@/lib/stale-deploy";
+import { useFormDraft } from "@/components/FormDraft";
 
 const 标签色 = { 沉睡: "sleep", 待回收: "pend", 暂缓回收中: "hold" } as const;
 
@@ -23,6 +24,8 @@ export default function TriStateBar({ 条, customerId, 开客户转让 }: { 条:
   const [框, set框] = useState<三态条按钮 | null>(null);
   const [理由, set理由] = useState("");
   const [忙, set忙] = useState(false);
+  // 理由打了没交的字留草稿（复盘第 1 类）：按客户 + 哪个动作分；办成了、点取消就删
+  const 稿 = useFormDraft({ 键: 框 && 框.动作 !== "让同事结束项目" ? `三态理由:${customerId}:${框.动作}` : null, 开: !!框, 值: { 理由 }, 带回: (v) => { if (v.理由 !== undefined) set理由(v.理由); } });
   // 客户转让走页头那个框；页头没给（我不能转）就不摆这颗
   const 钮们 = 条.按钮们.filter((b) => b.动作 !== "客户转让" || 开客户转让);
   const 次 = 钮们.filter((b) => !b.主);
@@ -46,6 +49,7 @@ export default function TriStateBar({ 条, customerId, 开客户转让 }: { 条:
         : 框.动作 === "暂缓回收" ? await 三态暂缓回收(customerId, 话 || null)
         : await 三态让同事结束项目(customerId);
       if (!r.ok) return { ok: false, error: r.error };
+      稿.存好了();
       set成话(框.动作 === "继续持有" ? `已顺延${r.剩次数 != null ? `，还可用 ${r.剩次数} 次` : ""}` : 框.动作 === "暂缓回收" ? "已暂缓回收" : `已通知${r.通知了 ? ` ${r.通知了} 位` : ""}同事`);
       router.refresh();
       return { ok: true };
@@ -80,14 +84,15 @@ export default function TriStateBar({ 条, customerId, 开客户转让 }: { 条:
         <Modal
           open
           title={框.字}
-          onCancel={() => { if (!忙) set框(null); }}
+          onCancel={() => { if (!忙) { 稿.丢掉(); set框(null); } }}
           width={480}
           footer={[
-            <Button key="取消" onClick={() => set框(null)} disabled={忙}>取消</Button>,
+            <Button key="取消" onClick={() => { 稿.丢掉(); set框(null); }} disabled={忙}>取消</Button>,
             <SaveButton key="是" 做={确定} 已保存={成话} 没保存="没办成" 成了={() => set框(null)}>{框.字}</SaveButton>,
           ]}
         >
           <p className="tri-dlg-note">{框.说明}</p>
+          {框.动作 !== "让同事结束项目" && 稿.提示}
           {框.动作 !== "让同事结束项目" && (
             <Input.TextArea
               value={理由}

@@ -22,7 +22,8 @@ import { recordAudit, type Actor } from "../audit";
 import { 查完再写 } from "../check-then-write";
 import { 看全部 } from "../team-scope";
 import { 外贸键 } from "../customer-extra";
-import { 读现值, 改, 引用键, 摘联系人号, 记客户号, 记联系人号, type 改的批 } from "./apply";
+import { 读现值, 改, 引用键, 摘联系人号, 记客户号, 记联系人号, 沟通没对上项目话, 读换人带走, 换人带走键, type 改的批 } from "./apply";
+import { 带过来对不上 } from "../carry-over-db";
 import { 规, type 值表 } from "./values";
 import { 来源名, 实体名, 实体顺序, type 来源, type 实体 } from "./types";
 import { 建回项目, 是项目, 项目快照, 项目挂件 } from "./project-target";
@@ -31,6 +32,9 @@ import { 卡点脱离沟通 } from "../project/blocker";
 import { 带客户编号 } from "@/lib/customer-no";
 import { 企业版只用项目 } from "../enterprise/project-only";
 import { 补待补的 } from "./nurture-rows";
+import { 沟通挂潜客培育 } from "../project/nurture";
+import { 要挂项目的类型 } from "../project/follow-needs-project-text";
+import { 企业版字典, 本套名 } from "../project/stage-dict";
 
 type Tx = Prisma.TransactionClient;
 type 引用行 = Prisma.EntExternalRefGetPayload<object>;
@@ -53,6 +57,9 @@ export const 培育留下话 = "这一批补的潜客培育项目已经有人动
 class 让位 extends Error {}
 /** 这一条不动（给人看的原因） */
 class 不动 extends Error {}
+
+/** 撤回改客户负责人时，导入那一步随客户带过去的活已经被人动过：整条不撤（不半撤，P-撤销-01） */
+export const 带走对不上话 = "导入时随客户带过去的计划、待办或项目之后又被改过（换了人、做完了或删了）";
 
 const J = (v: unknown) => JSON.stringify(v);
 function 解<T>(s: string | null | undefined, 缺: T): T {
@@ -205,8 +212,11 @@ async function 删空档案(tx: Tx, customerId: string): Promise<void> {
   if (档 && 外贸键.every((k) => 档[k] == null)) await tx.customerExtra.delete({ where: { customerId } });
 }
 
-/** 快照照原 id 建回去 */
-async function 建回(tx: Tx, e: 实体, data: Record<string, unknown>): Promise<void> {
+/**
+ * 快照照原 id 建回去。批 = 恢复的那一批（补培育 = 企业版只用项目，开关事务外读好）：沟通原来挂的项目已经不在了，
+ * 照「沟通必须挂项目」挂这位客户的潜客培育项目（11-18 复盘第 5 类漏网：原来照样建回、不挂项目）；挂不上就不建回、说清原因
+ */
+async function 建回(tx: Tx, e: 实体, data: Record<string, unknown>, 批?: 改的批): Promise<void> {
   if (e === "customer") {
     const { extra, creator, pool, customerNo: 原号, ...主 } = data;
     // 客户编号（11-17 PR-1）：快照里带着原号就原样建回（号不改、不复用，原号不会被别人占）；
@@ -227,10 +237,17 @@ async function 建回(tx: Tx, e: 实体, data: Record<string, unknown>): Promise
     await tx.opportunity.create({ data: 主 as Prisma.OpportunityUncheckedCreateInput });
     if (closed) await tx.opportunityClose.create({ data: closed as Prisma.OpportunityCloseUncheckedCreateInput });
   } else {
-    // 挂项目那条跟着建回；项目已经不在了就不挂（跟进照样回来）
-    const { projectNode, ...主 } = data as { projectNode?: Prisma.FollowUpProjectUncheckedCreateInput | null };
+    // 挂项目那条跟着建回。项目已经不在了：企业版只用项目时要挂项目的沟通改挂潜客培育（先定好挂哪，挂不上在写之前就停，不留半条）
+    const { projectNode, ...主 } = data as { projectNode?: Prisma.FollowUpProjectUncheckedCreateInput | null } & { customerId?: unknown; type?: unknown };
+    const 原项目在 = !!projectNode && (await 是项目(tx, projectNode.projectId));
+    let 改挂: { projectId: string; node: string } | null = null;
+    if (!原项目在 && 批?.补培育 && 要挂项目的类型(String(主.type ?? ""))) {
+      改挂 = await 沟通挂潜客培育(tx, String(主.customerId ?? ""), 批.操作人);
+      if (!改挂) throw new 不动(沟通没对上项目话);
+    }
     await tx.followUp.create({ data: 主 as Prisma.FollowUpUncheckedCreateInput });
-    if (projectNode && (await 是项目(tx, projectNode.projectId))) await tx.followUpProject.create({ data: projectNode });
+    if (projectNode && 原项目在) await tx.followUpProject.create({ data: projectNode });
+    else if (改挂) await tx.followUpProject.create({ data: { followUpId: String((主 as { id?: unknown }).id), projectId: 改挂.projectId, node: 本套名(改挂.node, 企业版字典) } });
   }
 }
 
@@ -313,7 +330,15 @@ async function 撤一行(tx: Tx, 源: 来源, 批次Id: string, row: 记的行, 
   const 还原了 = !!现值;
   if (现值) {
     if (!一致(现值, 写过)) throw new 不动("导入之后又改过");
-    await 改(tx, e, row.targetId, 拣(原, 键), 现值, new Date().toISOString(), 批);
+    // 改回客户负责人：只带回导入那一步带走的（导入记录里记着），接手人原本就有的不动；带走的那些被人动过就整条不撤（写之前核）
+    const 回 = 拣(原, 键);
+    const 这批: 改的批 = 批 ?? { 批次Id, 补培育: false };
+    if (e === "customer" && "salesOwnerId" in 回 && 回.salesOwnerId !== 现值.salesOwnerId) {
+      const 记录 = 读换人带走(原);
+      if (记录 && (await 带过来对不上(tx, 记录.带走, [row.targetId], String(现值.salesOwnerId)))) throw new 不动(带走对不上话);
+      这批.撤回 = { 带走: 记录 };
+    }
+    await 改(tx, e, row.targetId, 回, 现值, new Date().toISOString(), 这批);
     if (e === "customer") await 删空档案(tx, row.targetId);
     if (e === "followup") {
       碰过.add(String(现值.customerId));
@@ -349,7 +374,7 @@ async function 恢复一条(tx: Tx, t: 回收行, row: 记的行 | null, 碰过:
     if (!data) throw new 不动("回收区里这条读不出来了");
     if (e !== "customer" && e !== "lead" && !(await 还在(tx, "customer", String(data.customerId)))) throw new 不动("所属客户不在了");
     if (e === "followup" && data.opportunityId && !(await tx.opportunity.findUnique({ where: { id: String(data.opportunityId) }, select: { id: true } }))) data.opportunityId = null;
-    await 建回(tx, e, data);
+    await 建回(tx, e, data, 批);
     if (存的对照) {
       if (现对照) await tx.entExternalRef.update({ where: { id: 现对照.id }, data: 对照数据(存的对照) });
       else await tx.entExternalRef.create({ data: { source: 存的对照.source, entity: e, externalId: 存的对照.externalId, ...对照数据(存的对照) } });
@@ -368,7 +393,10 @@ async function 恢复一条(tx: Tx, t: 回收行, row: 记的行 | null, 碰过:
     const 现值 = await 读现值(tx, e, t.targetId);
     if (现值) {
       if (!一致(现值, 改回)) throw new 不动("撤回之后又改过");
-      await 改(tx, e, t.targetId, 拣(解<值表>(row.written, {}), 键), 现值, new Date().toISOString(), 批);
+      const 这批: 改的批 = 批 ?? { 批次Id: row.batchId, 补培育: false };
+      await 改(tx, e, t.targetId, 拣(解<值表>(row.written, {}), 键), 现值, new Date().toISOString(), 这批);
+      // 又换了一次客户负责人：这次带走了哪些重记进导入记录，下回撤回按它带回
+      if (这批.换人带走) await tx.entImportRow.update({ where: { id: row.id }, data: { before: J({ ...解<值表>(row.before, {}), [换人带走键]: J(这批.换人带走) }) } });
       if (e === "followup") 碰过.add(String(现值.customerId));
       if (e === "opportunity") {
         const 写的 = 解<值表>(row.written, {}).customerId;
@@ -479,7 +507,7 @@ export async function 撤回一批(批次Id: string, 用户: Actor, opts: { 段�
           const n = await tx.entImportRow.updateMany({ where: { id: row.id, undo: null }, data: { undo: "撤了" } });
           if (n.count !== 1) throw new 让位();
           try {
-            const 批: 改的批 = { 批次Id, 补培育 };
+            const 批: 改的批 = { 批次Id, 补培育, 操作人: 用户.id };
             const r = await 撤一行(tx, 源, 批次Id, row, 碰过, 项目碰过, 批);
             if (r !== "无") 加[r]++;
             for (const 名 of 批.留下培育 ?? []) 留.push({ 实体: "customer", 外部ID: row.externalId, 名称: 名, 原因: 培育留下话 });
@@ -572,7 +600,7 @@ export async function 恢复一批(批次Id: string, 用户: Actor, opts: { 段�
           if (n.count !== 1) throw new 让位();
           const row = t.rowId ? await tx.entImportRow.findUnique({ where: { id: t.rowId } }) : null;
           try {
-            const 批: 改的批 = { 批次Id, 补培育 };
+            const 批: 改的批 = { 批次Id, 补培育, 操作人: 用户.id };
             if (await 恢复一条(tx, t, row, 碰过, 项目碰过, 批)) 恢复++;
             for (const 名 of 批.留下培育 ?? []) 留.push({ 实体: "customer", 外部ID: row?.externalId ?? "", 名称: 名, 原因: 培育留下话 });
             if (row) await tx.entImportRow.update({ where: { id: row.id }, data: { undo: null } });

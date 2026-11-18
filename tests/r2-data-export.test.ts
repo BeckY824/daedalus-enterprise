@@ -41,7 +41,7 @@ async function 灌(n: number, 生成: (i: number) => Record<string, unknown> = (
     await prisma.customer.createMany({
       data: Array.from({ length: Math.min(批, n - s) }, (_, k) => {
         const i = s + k;
-        return { name: `客户${i}`, phone: `135${String(i).padStart(8, "0")}`, salesOwnerId: 我, ...生成(i) };
+        return { name: `客户${i}`, phone: `13512${String(i).padStart(6, "0")}`, salesOwnerId: 我, ...生成(i) };
       }),
     });
   }
@@ -71,7 +71,7 @@ describe("筛选后导出全部", () => {
     await 灌(1);
     const r = await 导出客户({});
     if (!r.ok) throw new Error(r.error);
-    expect(r.rows[0].phone).toBe("13500000000");
+    expect(r.rows[0].phone).toBe("13512000000");
   });
 });
 
@@ -87,7 +87,7 @@ describe("上万行", () => {
     const csv = toCsv(["姓名", "手机号"], r.rows.map((x) => [x.name, x.phone]));
     expect(csv.split("\r\n")).toHaveLength(12001);
 
-    await prisma.customer.createMany({ data: Array.from({ length: 8001 }, (_, i) => ({ name: `补${i}`, phone: `134${String(i).padStart(8, "0")}`, salesOwnerId: 我 })) });
+    await prisma.customer.createMany({ data: Array.from({ length: 8001 }, (_, i) => ({ name: `补${i}`, phone: `13412${String(i).padStart(6, "0")}`, salesOwnerId: 我 })) });
     const r2 = await 导出客户({});
     if (!r2.ok) throw new Error(r2.error);
     expect([r2.rows.length, r2.截断了]).toEqual([20000, true]);

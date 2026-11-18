@@ -22,7 +22,7 @@ import { isFormValidationError } from "@/lib/form-validation";
 import { dayjs, fmtDate } from "@/lib/utils";
 import Link from "next/link";
 import { 拆来源, 数字链接, 名单段, 到达口径键, type 名单键, type 名单时段, type 渠道统计, type 产出比分布, type 转化 } from "@/lib/enterprise/channel-stats";
-import { 子渠道名 } from "@/lib/enterprise/channel-main-core";
+import { 子渠道名, 渠道启用, 渠道状态文字 } from "@/lib/enterprise/channel-main-core";
 import { 转化率字 } from "../overview/funnel";
 import { addChannelInvest, deleteChannelInvest, listChannelInvests, type 投入行 } from "./actions";
 import type { 渠道行 } from "./ChannelsView";
@@ -160,7 +160,7 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
     <Drawer
       open
       onClose={onClose}
-      title={<span className="chan-full" title={row.name}><span>{row.name}</span>{(!row.active || row.主停用) && <Tag style={{ margin: 0, flex: "none" }}>已停用</Tag>}</span>}
+      title={<span className="chan-full" title={row.name}><span>{row.name}</span>{!渠道启用(row) && <Tag style={{ margin: 0, flex: "none" }}>已停用</Tag>}</span>}
       styles={{ wrapper: { width: "min(560px, 100vw)" } }}
       extra={onEdit && <Button size="small" icon={<EditOutlined />} onClick={onEdit}>编辑</Button>}
       destroyOnHidden
@@ -186,7 +186,7 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
                 { key: "source", label: "来源", children: row.platform ? 拆来源(row.name, row.platform) : 无 },
               ]),
           // 主渠道停了：下面的子渠道一起算停用（P-渠道-13），写明是主渠道停的
-          { key: "active", label: "渠道状态", children: !row.active ? "停用" : row.主停用 ? "停用（主渠道已停用）" : "启用" },
+          { key: "active", label: "渠道状态", children: 渠道状态文字(row) },
           { key: "createdAt", label: "创建日期", children: fmtDate(row.createdAt) },
           { key: "endDate", label: "结束日期", children: row.endDate ? fmtDate(row.endDate) : 无 },
           { key: "days", label: "累计运营天数", children: `${s?.累计运营天数 ?? 0} 天` },

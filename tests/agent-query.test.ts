@@ -12,6 +12,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { 校验规格, 说人话, 编译, 表们, 关联们, 取数上限, 用到的名字 } from "@/lib/agent/query";
+import { 不算历史分析 } from "@/lib/project/system-created";
 
 const 查 = (raw: unknown) => 校验规格(raw);
 const 挂 = (raw: unknown) => () => 校验规格(raw);
@@ -333,18 +334,19 @@ describe("全库查询：人名、旧名、跨两跳", () => {
     const 规格 = 查({ 表: "项目", 条件: [{ 字段: "负责人", 运算: "等于", 值: "张三" }] });
     expect(用到的名字(规格)).toEqual({ 人: ["张三"], 部门: [] });
     const 映射 = { 人: new Map([["张三", ["u1", "u2"]]]), 部门: new Map() };
-    expect(编译(规格, undefined, 映射).where).toEqual({ AND: [{ ownerId: { in: ["u1", "u2"] } }] });
+    // 项目表另带「不算历史分析」（历史回填的项目不进统计，25E）
+    expect(编译(规格, undefined, 映射).where).toEqual({ AND: [{ ownerId: { in: ["u1", "u2"] } }, 不算历史分析] });
   });
 
   it("名字对不上任何人：查 0 条，不能变成不筛", () => {
     const 规格 = 查({ 表: "项目", 条件: [{ 字段: "负责人", 运算: "等于", 值: "没这人" }] });
-    expect(编译(规格, undefined, { 人: new Map(), 部门: new Map() }).where).toEqual({ AND: [{ ownerId: { in: [] } }] });
+    expect(编译(规格, undefined, { 人: new Map(), 部门: new Map() }).where).toEqual({ AND: [{ ownerId: { in: [] } }, 不算历史分析] });
   });
 
   it("「不等于某人」把没负责人的也算进去", () => {
     const 规格 = 查({ 表: "项目", 条件: [{ 字段: "负责人", 运算: "不等于", 值: "张三" }] });
     const 映射 = { 人: new Map([["张三", ["u1"]]]), 部门: new Map() };
-    expect(编译(规格, undefined, 映射).where).toEqual({ AND: [{ OR: [{ ownerId: { notIn: ["u1"] } }, { ownerId: null }] }] });
+    expect(编译(规格, undefined, 映射).where).toEqual({ AND: [{ OR: [{ ownerId: { notIn: ["u1"] } }, { ownerId: null }] }, 不算历史分析] });
   });
 
   it("结局用新名查，库里存旧名的项目也算", () => {

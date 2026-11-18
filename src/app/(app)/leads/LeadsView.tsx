@@ -523,10 +523,13 @@ export default function LeadsView({
             if (res.ok) {
               set转项目(null);
               router.push(res.projectId ? `/projects/${res.projectId}` : `/customers/${res.customerId}`);
-            } else if (res.撞号) {
+              return true;
+            }
+            if (res.撞号) {
               set转项目(null);
               撞号了(r, res.撞号, res.error, 跟进);
             } else 说(res.error, true);
+            return false;
           }}
         />
       )}

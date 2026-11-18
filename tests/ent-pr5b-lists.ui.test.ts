@@ -60,7 +60,7 @@ beforeAll(async () => {
   `);
   包.挂靠 = await 打包(`
     import AttachView from '@/app/(app)/projects/attach/AttachView';
-    const 待批=[{id:'x1',申请人:${JSON.stringify(长人)},客户名:${JSON.stringify(长客户)},撞的:'手机号：13800000000',负责人:${JSON.stringify(长人)},申请时间:new Date('2026-11-14T02:00:00Z'),转来的:true}];
+    const 待批=[{id:'x1',申请人:${JSON.stringify(长人)},客户名:${JSON.stringify(长客户)},撞的:'手机号：13812000000',负责人:${JSON.stringify(长人)},申请时间:new Date('2026-11-14T02:00:00Z'),转来的:true}];
     function Test(){return <AttachView 待批={待批} 我的={[]}/>}
   `);
   包.线索 = await 打包(`

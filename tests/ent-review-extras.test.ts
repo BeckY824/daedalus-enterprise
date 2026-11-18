@@ -178,7 +178,7 @@ describe("库里取数和范围", () => {
     for (const u of 用户) await prisma.user.create({ data: { ...u, email: `${u.id}@t`, password: "x", title: "" } });
     let i = 0;
     for (const u of 用户) {
-      客户[u.id] = (await prisma.customer.create({ data: { name: `${u.name}的客户`, phone: `1390000000${i++}`, salesOwnerId: u.id } })).id;
+      客户[u.id] = (await prisma.customer.create({ data: { name: `${u.name}的客户`, phone: `1391200000${i++}`, salesOwnerId: u.id } })).id;
       // 5 天前建的线索：默认 7 天回收 → 2 天后收回，算「3 天内回公海」
       项目[u.id] = (await prisma.project.create({
         data: { name: `${u.name}的项目`, customerId: 客户[u.id], ownerId: u.id, creatorId: u.id, createdAt: dayjs().subtract(5, "day").toDate() },

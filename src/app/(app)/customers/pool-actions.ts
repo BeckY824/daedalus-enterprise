@@ -42,6 +42,7 @@ import { Prisma } from "@/generated/prisma";
 import { 客户退回前查联系方式, 退回号码种类表 } from "@/lib/enterprise/return-contact-check";
 import { 还负责人 } from "@/lib/project/owner-write";
 import { 要补潜客培育, 零项目客户补潜客培育, 撤回补的潜客培育 } from "@/lib/project/nurture";
+import { 系统分配方式 } from "@/lib/project/proj-fields";
 import { 写公海领取, 还公海领取前的客户分配, type 出公海原值 } from "@/lib/enterprise/customer-assign-way";
 
 export type 公海结果 =
@@ -381,7 +382,8 @@ async function 公海客户出手(
     // 零项目客户出公海补潜客培育（M-公海-14）：放在核上限前面，补的这个也算进持有数。
     // 名下只有已结束的历史分析回填项目的也补（11-18「领走补一个能推进的项目」，nurture.ts 算有项目）：那几个已随客户带出公海（带走公海项目）
     if (补培育 && 客户部分.到.length) {
-      const 补了 = await 零项目客户补潜客培育(tx, 客户部分.到.map((x) => x.id), 操作人);
+      // 补的项目分配方式：领取记「公海捞取」，分配公海记「指定分配」（11-18 复盘第 5 类：原来不写）
+      const 补了 = await 零项目客户补潜客培育(tx, 客户部分.到.map((x) => x.id), 操作人, kind === "claim" ? 系统分配方式.公海捞取 : 系统分配方式.指定分配);
       if (补了.size) 客户部分.记下.培育 = [...补了.values()];
     }
     await 整批核上限(tx, 起, kind === "claim" ? "领" : "接");

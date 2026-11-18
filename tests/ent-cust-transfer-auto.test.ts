@@ -19,8 +19,8 @@ vi.mock("@/lib/enterprise/switch", () => ({ 企业版: () => true }));
 import { prisma } from "@/lib/prisma";
 import { setSetting } from "@/lib/settings";
 import { resetDb } from "./reset";
-import { 客户自动分配, 设线部门 } from "@/app/(app)/leads/assign-actions";
-import { 页面可自动分配, 不是市场话, 不是暂不分配话 } from "@/lib/enterprise/cust-auto-assign";
+import { 客户自动分配, 批量客户自动分配, 批量客户自动分配预看, 设线部门 } from "@/app/(app)/leads/assign-actions";
+import { 页面可自动分配, 批量可自动分配, 不是市场话, 不是暂不分配话 } from "@/lib/enterprise/cust-auto-assign";
 import { 自动分配不参与key, 不设配额key, 月份 } from "@/lib/enterprise/lead-assign";
 import { 规则 } from "@/lib/enterprise/rules";
 
@@ -189,6 +189,99 @@ describe("不能用自动分配的：服务端拦，什么都不动", () => {
     expect(await 客户负责人(c)).toBe(市场管);
     expect((await 项目(p)).ownerId).toBe(市场管);
     expect((await 项目(p)).awaitAssignAt).toBeNull();
+    expect(await prisma.entLeadAssign.count()).toBe(0);
+    expect(await prisma.entNotice.count()).toBe(0);
+  });
+});
+
+/*
+ * 客户列表勾几位「批量转让」选自动分配（批量客户自动分配；框打开时的 批量客户自动分配预看）：
+ *   每位和单个客户的自动分配同一套（同一个挑人、同一份「暂不分配」判定）；批内前面刚分出去的算进本月数，不全给同一个人；
+ *   混着勾了不是暂不分配的：那几位不动、回原因，不悄悄自动分；只有市场成员能用
+ */
+describe("批量转让选自动分配", () => {
+  it("一批 3 位大陆 + 1 位外贸客户：按本月分得最少轮着给，批内算上前面刚分的；通知按接手人合成一条", async () => {
+    const 们 = [await 建客户(), await 建客户(), await 建客户(), await 建客户({ 地址: 美国 })];
+    const r = await 批量客户自动分配(们.map((x) => x.c), "工作量调整");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.结果.map((x) => (x.ok ? x.toUserId : x.error))).toEqual([内一, 内二, 内一, 外一]);
+    for (const [i, 谁] of [内一, 内二, 内一, 外一].entries()) {
+      expect(await 客户负责人(们[i].c)).toBe(谁);
+      expect((await 项目(们[i].p)).ownerId).toBe(谁);
+    }
+    // 每位一条算数的分配记录（下一位挑人时就是读这个），操作日志每位一行、带原因
+    expect(await prisma.entLeadAssign.count({ where: { counted: true } })).toBe(4);
+    const 日志 = await prisma.auditLog.findMany({ where: { entity: "Customer", entityId: { in: 们.map((x) => x.c) } } });
+    expect(日志).toHaveLength(4);
+    for (const l of 日志) expect(l.summary).toMatch(/自动分配.*（工作量调整）$/);
+    const 铃 = await prisma.entNotice.findMany({ orderBy: { userId: "asc" } });
+    expect(铃.map((n) => n.userId).sort()).toEqual([内一, 内二, 外一].sort());
+    expect(铃.find((n) => n.userId === 内一)?.title).toContain("2 条");
+  });
+
+  it("本月已有分配数的照算：内一已分 2 条，一批 3 位先给内二两位，再轮到内一", async () => {
+    for (let i = 0; i < 2; i++) await prisma.entLeadAssign.create({ data: { toUserId: 内一, byUserId: 市场管, month: 月份(), counted: true, kind: "营销" } });
+    const 们 = [await 建客户(), await 建客户(), await 建客户()];
+    const r = await 批量客户自动分配(们.map((x) => x.c), null);
+    // 内一 2、内二 0 → 内二（1）→ 内二（2，和内一并列、内一建号早）→ 内一
+    expect(r.ok && r.结果.map((x) => x.ok && x.toUserId)).toEqual([内二, 内二, 内一]);
+  });
+
+  it("混着勾了不是暂不分配的、销售名下的：那几位不动、回原因；暂不分配的照分；预看事先说清哪些能分", async () => {
+    const 能 = await 建客户();
+    const 自持 = await 建客户({ 方式: "个人自持" });
+    const 销售的 = await 建客户({ 负责人: 内二 });
+    const ids = [能.c, 自持.c, 销售的.c];
+
+    const 看 = await 批量客户自动分配预看(ids);
+    expect(看.ok).toBe(true);
+    if (看.ok) {
+      expect(看.可).toEqual([能.c]);
+      expect(看.不可.map((x) => x.customerId)).toEqual([自持.c, 销售的.c]);
+      expect(看.不可[0].error).toBe(不是暂不分配话);
+    }
+
+    const r = await 批量客户自动分配(ids, null);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.结果[0]).toMatchObject({ customerId: 能.c, ok: true, toUserId: 内一 });
+    expect(r.结果[1]).toEqual({ customerId: 自持.c, name: expect.any(String), ok: false, error: 不是暂不分配话 });
+    expect(r.结果[2]).toMatchObject({ customerId: 销售的.c, ok: false });
+    expect(await 客户负责人(自持.c)).toBe(市场管);
+    expect((await 项目(自持.p)).ownerId).toBe(市场管);
+    expect(await 客户负责人(销售的.c)).toBe(内二);
+    expect(await prisma.entLeadAssign.count()).toBe(1);
+  });
+
+  it("不是市场成员（总管理、销售管理）：预看和批量都拒，什么都不动", async () => {
+    const { c } = await 建客户();
+    for (const [id, name, role] of [[老板, "老板", "ADMIN"], [内组长, "内贸组长", "MANAGER"]] as const) {
+      当(id, name, role);
+      expect(await 批量客户自动分配预看([c])).toEqual({ ok: false, error: 不是市场话 });
+      expect(await 批量客户自动分配([c], null)).toEqual({ ok: false, error: 不是市场话 });
+    }
+    expect(await 客户负责人(c)).toBe(市场管);
+    expect(await prisma.entLeadAssign.count()).toBe(0);
+  });
+
+  it("页面递不递：市场成员 + 规则开着才递；总管理、规则关着不递", async () => {
+    expect(await 批量可自动分配(mocks.user)).toBe(true);
+    当(老板, "老板", "ADMIN");
+    expect(await 批量可自动分配(mocks.user)).toBe(false);
+    当(市场管, "市场管理");
+    await setSetting(规则.线索分配.key, false);
+    expect(await 批量可自动分配(mocks.user)).toBe(false);
+  });
+
+  it("没勾、超过 200 位：回原因；一个能接的人都没有：每位回原因，不转、不写分配记录、不发铃铛", async () => {
+    expect(await 批量客户自动分配([], null)).toEqual({ ok: false, error: "先勾选要分的客户" });
+    expect(await 批量客户自动分配(Array.from({ length: 201 }, (_, i) => `x${i}`), null)).toMatchObject({ ok: false, error: expect.stringContaining("200") });
+    await setSetting(自动分配不参与key, { [内一]: "暂停", [内二]: "禁止" });
+    const 们 = [await 建客户(), await 建客户()];
+    const r = await 批量客户自动分配(们.map((x) => x.c), null);
+    expect(r.ok && r.结果.every((x) => !x.ok && /^没有自动分出去：没有能接的人/.test(x.error))).toBe(true);
+    for (const x of 们) expect(await 客户负责人(x.c)).toBe(市场管);
     expect(await prisma.entLeadAssign.count()).toBe(0);
     expect(await prisma.entNotice.count()).toBe(0);
   });
