@@ -5160,4 +5160,4 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 /* 分配方向下拉（转让框、AI 新线索卡）和卡上区域那一行 */
 .dir-select-w120 { width: 120px; }
 .dir-select-w110 { width: 110px; }
-.lead-region-line { font-size: 12px; }
+.lead-region-line { font-size: var(--fs-min); }
