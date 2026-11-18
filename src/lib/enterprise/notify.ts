@@ -6,11 +6,14 @@
  * - 同一人同一 key 只记一行：重复调用（双击、重试、两处都触发）不会重复提醒，也不会重复推
  *   key 不传时按内容 + 当前这一分钟算，挡住同一刻的重复调用；按事件区分的调用方自己传 key
  * - 写库、推送出任何错都只记日志，从不往外抛：通知不能挡住分配、验证这些主流程
+ * - 标题、正文里像手机号 / 电话的数字串写库前一律打码（notice-mask.ts，P-转-12「提醒里不带手机号」，站内和飞书同一份）；
+ *   这是兜底，客户名就是号码的也靠它。各处通知自己的文案照样不放号码，别只靠这一层
  */
 import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 推通知们 } from "@/lib/enterprise/feishu-push";
+import { 通知文字打码 } from "./notice-mask";
 import { 市场进不了详情的 } from "./market-view-db";
 
 export type 通知 = {
@@ -46,11 +49,13 @@ export async function notify(userIds: readonly (string | null | undefined)[], n:
   const 们 = [...new Set(userIds.filter((u): u is string => typeof u === "string" && u !== ""))];
   if (!们.length || !n.title.trim()) return 0;
   const key = n.key ?? 默认键(n);
+  const title = 通知文字打码(n.title).slice(0, 200);
+  const body = 通知文字打码(n.body ?? "").slice(0, 2000);
   const 新的: string[] = [];
   for (const userId of 们) {
     try {
       const r = await prisma.entNotice.create({
-        data: { userId, kind: n.kind, title: n.title.slice(0, 200), body: (n.body ?? "").slice(0, 2000), link: n.link ?? null, dedupeKey: key },
+        data: { userId, kind: n.kind, title, body, link: n.link ?? null, dedupeKey: key },
         select: { id: true },
       });
       新的.push(r.id);

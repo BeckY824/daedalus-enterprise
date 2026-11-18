@@ -1042,7 +1042,8 @@ export async function 领一个公海项目(
   // 企业版线索公海的项目单独领，客户负责人不变（M-公海-06；开关 领项目带走单项目客户 关着，pool-link.ts）
   await 单项目客户跟着领(tx, p.customerId, me.id, me.id, 带);
   // 例外：客户创建人、负责人都是市场 → 客户整体给领的销售，记「分配」不算转客户（P-公海-11、X-60）
-  const 同事待分配 = 转 && 市场 ? (await 看全部(() => 市场.转客户给销售(tx, p.customerId, 转.原, me.id, me.id, way))).同事待分配 : [];
+  // 推节点 false：销售自己领，不是市场分配，带过来的不推进线索验证（审核 11-18）
+  const 同事待分配 = 转 && 市场 ? (await 看全部(() => 市场.转客户给销售(tx, p.customerId, 转.原, me.id, me.id, way, false))).同事待分配 : [];
   return { ok: true as const, 同事待分配 };
 }
 
@@ -1558,7 +1559,12 @@ export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项
     // 只用来判必填齐没齐、不回给页面：绕开可见范围读，组员看不到客户时也不误报「所属客户」（11-03 B6-1）
     看全部(() => tx.customer.findUnique({
       where: { id: p.customerId },
-      select: { phone: true, assignWay: true, touchpoint: true, extra: { select: { country: true, whatsapp: true, wechat: true, email: true, source: true, level: true, alibabaId: true } } },
+      select: {
+        phone: true, assignWay: true, touchpoint: true, addrCountry: true, channelId: true,
+        // 客户本身的号（联系方式子表里没挂联系人的那几行，企业版客户页「号码」几行写这里；审核 11-18 P1-5）
+        contactMethods: { where: { contactId: null }, select: { kind: true, value: true } },
+        extra: { select: { country: true, whatsapp: true, wechat: true, email: true, source: true, level: true, alibabaId: true } },
+      },
     })),
     看全部(() => tx.contact.findMany({ where: { customerId: p.customerId }, select: { id: true, name: true, phone: true, email: true, wechat: true, contactMethods: { select: { kind: true, value: true } } } })),
     tx.followUpProject.findMany({ where: { projectId: p.id, followUp: { deletedAt: null } }, select: { node: true, followUp: { select: { initiator: true, content: true, method: true } } } }),
@@ -1578,7 +1584,10 @@ export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项
       budgetLevel: p.budgetLevel, priceSense: p.priceSense, decisionChain: p.decisionChain, purchaseCycle: p.purchaseCycle, productFit: p.productFit,
       valueFit: p.valueFit, decisionReach: p.decisionReach, competitor: p.competitor, deployFit: p.deployFit, siteStatus: p.siteStatus,
     },
-    客户: { phone: c?.phone ?? null, extra: c?.extra ?? null, assignWay: c?.assignWay ?? null, touchpoint: c?.touchpoint ?? null },
+    客户: {
+      phone: c?.phone ?? null, extra: c?.extra ?? null, assignWay: c?.assignWay ?? null, touchpoint: c?.touchpoint ?? null,
+      addrCountry: c?.addrCountry ?? null, channelId: c?.channelId ?? null, contactMethods: c?.contactMethods ?? [],
+    },
     有客户: !!c,
     联系人们,
     沟通节点们: [...new Set(沟通.map((x) => x.node))],

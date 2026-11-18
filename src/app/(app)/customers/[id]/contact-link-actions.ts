@@ -5,8 +5,13 @@
  * 「主要联系人」都跟主客户走），另外还能挂到别的已有客户上（ContactCustomer 一行一位，带一句职位 / 关系说明）。
  * 四个动作：挂到客户、改挂靠说明、解除挂靠、换主客户。主客户那一行解不掉，只能换。
  *
- * 权限：业务员只能动自己负责的 + 公海客户（同 关联客户 的 能改）。挂的时候联系人自己要看得到（主客户看得到，或已挂在看得到的客户上）；
- * 解除 / 改说明看挂的那一位客户；换主客户新旧两位都要能改。读列表在 lib/enterprise/customer-v2-db.ts 的 客户的联系人们
+ * 权限（11-18 审核 P0-2 收紧）：要动的客户得「能改」，不只是看得到——看得到、不是只读的同事 / 虚线下属客户之外，
+ * 再过 客户事项挡（同 saveContact、detachContact：负责人本人或系统管理员，另放这位客户下在推项目的负责人；公海里的先领）。
+ * 原来只判看得到：限定层的写范围含下属和公海，销管能动下属客户的、谁都能把公海客户的联系人连号码搬到自己名下。
+ * - 挂到客户：挂到的那位、联系人的主客户，两头都要能改（主客户看不到 / 不能改的，不能把人挂过来）
+ * - 解除 / 改说明：挂的那一位客户要能改；主客户那头不用（这行挂靠记在挂的那位身上，联系人本身不动）
+ * - 换主客户：新旧两位都要能改
+ * 读列表在 lib/enterprise/customer-v2-db.ts 的 客户的联系人们
  */
 import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
@@ -16,6 +21,7 @@ import { 看全部, 同事的客户, 只读话 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 不在了 } from "@/lib/not-there";
 import { 挂靠说明上限 } from "@/lib/enterprise/customer-v2";
+import { 客户事项挡 } from "@/lib/enterprise/follow-perm";
 
 type 结果 = { ok: true } | { ok: false; error: string };
 const 关着 = { ok: false as const, error: "这个版本没有联系人挂靠" };
@@ -32,12 +38,14 @@ function 刷新(...ids: (string | null | undefined)[]) {
   revalidatePath("/contacts");
 }
 
-/** 能不能在这位客户身上挂 / 解联系人：看得到、不是只读的同事客户 / 虚线下属客户（同 link-actions.ts 的 能改） */
-async function 能改(id: string): Promise<{ ok: true; name: string } | { ok: false; error: string }> {
+/** 能不能在这位客户身上挂 / 解联系人：看得到、不是只读的同事客户 / 虚线下属客户，且过 客户事项挡（能改这位客户） */
+async function 能改(me: Awaited<ReturnType<typeof requireUser>>, id: string): Promise<{ ok: true; name: string } | { ok: false; error: string }> {
   if (typeof id !== "string" || !id) return { ok: false, error: "请选一位客户" };
   const c = await prisma.customer.findUnique({ where: { id }, select: { name: true } });
   if (!c) return { ok: false, error: "这位客户已经不在了（或你看不到），刷新看看" };
   if (await 同事的客户(defaultClient, id)) return { ok: false, error: await 只读话(defaultClient) };
+  const 挡 = await 客户事项挡(me, id);
+  if (挡) return { ok: false, error: 挡 };
   return { ok: true, name: c.name };
 }
 
@@ -59,9 +67,12 @@ export async function 挂到客户(contactId: string, customerId: string, note?:
     if (!说.ok) return 说;
     const 人 = await 看得到的人(contactId);
     if (!人) return 人不在;
-    const 这位 = await 能改(customerId);
+    const 这位 = await 能改(me, customerId);
     if (!这位.ok) return 这位;
     if (人.customerId === customerId) return { ok: false, error: `「${这位.name}」就是「${人.name}」的主客户` };
+    // 主客户那头也要能改：不然公海客户、下属客户的联系人能借挂靠挪到自己客户名下（11-18 审核 P0-2）
+    const 主 = await 能改(me, 人.customerId);
+    if (!主.ok) return 主;
     const 已挂 = { ok: false as const, error: `「${人.name}」已经挂在「${这位.name}」上了` };
     const 有 = await 看全部(() => prisma.contactCustomer.findUnique({ where: { contactId_customerId: { contactId, customerId } } }));
     if (有) return 已挂;
@@ -85,12 +96,12 @@ export async function 挂到客户(contactId: string, customerId: string, note?:
 }
 
 /** 取一行挂靠，并确认挂的那位客户我能改 */
-async function 取一行(linkId: unknown) {
+async function 取一行(me: Awaited<ReturnType<typeof requireUser>>, linkId: unknown) {
   if (typeof linkId !== "string" || !linkId) return { ok: false as const, error: "这条挂靠已经不在了，刷新看看" };
   const 行 = await 看全部(() =>
     prisma.contactCustomer.findUnique({ where: { id: linkId }, include: { contact: { select: { name: true, customerId: true } } } }));
   if (!行) return { ok: false as const, error: "这条挂靠已经不在了，刷新看看" };
-  const 这位 = await 能改(行.customerId);
+  const 这位 = await 能改(me, 行.customerId);
   if (!这位.ok) return 这位;
   return { ok: true as const, 行, 客户名: 这位.name };
 }
@@ -101,7 +112,7 @@ export async function 改挂靠说明(linkId: string, note: string | null): Prom
     if (!企业版()) return 关着;
     const 说 = 规整说明(note);
     if (!说.ok) return 说;
-    const r = await 取一行(linkId);
+    const r = await 取一行(me, linkId);
     if (!r.ok) return r;
     if ((r.行.note ?? null) === 说.值) return { ok: true };
     await 看全部(() => prisma.contactCustomer.update({ where: { id: r.行.id }, data: { note: 说.值 } }));
@@ -121,7 +132,7 @@ export async function 解除挂靠(linkId: string): Promise<结果> {
   try {
     const me = await requireUser();
     if (!企业版()) return 关着;
-    const r = await 取一行(linkId);
+    const r = await 取一行(me, linkId);
     if (!r.ok) return r;
     if (r.行.customerId === r.行.contact.customerId) return { ok: false, error: "主客户不能解除，只能换成别的客户" };
     await 看全部(() => prisma.contactCustomer.deleteMany({ where: { id: r.行.id } }));
@@ -149,9 +160,9 @@ export async function 换主客户(contactId: string, newCustomerId: string): Pr
     // 主客户那一头要能改：限定层查得到这位联系人（挂靠看得到的不算）
     const 人 = await prisma.contact.findUnique({ where: { id: contactId }, select: { id: true, name: true, customerId: true } });
     if (!人) return 人不在;
-    const 原 = await 能改(人.customerId);
+    const 原 = await 能改(me, 人.customerId);
     if (!原.ok) return 原;
-    const 新 = await 能改(newCustomerId);
+    const 新 = await 能改(me, newCustomerId);
     if (!新.ok) return 新;
     if (人.customerId === newCustomerId) return { ok: false, error: `「${新.name}」已经是主客户了` };
     await 看全部(() =>

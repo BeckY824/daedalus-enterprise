@@ -56,7 +56,7 @@ export async function 取渠道底(渠道ids: string[], 看的人?: { id: string
     prisma.project.findMany({
       where: 渠道项目条件(渠道ids),
       select: {
-        id: true, createdAt: true, creatorId: true,
+        id: true, createdAt: true, creatorId: true, importBatch: true,
         channelId: true, phase: true, result: true, amount: true, currency: true,
         customer: { select: { channelId: true } },
         entLeadVerify: { select: { verdict: true } },
@@ -76,6 +76,8 @@ function 统计项目们({ 行, 落点 }: 渠道底): 统计用项目[] {
   return 行.map((p) => ({
     channelId: 项目算哪个渠道(p.channelId, p.customer.channelId), phase: p.phase, result: p.result, amount: p.amount, currency: p.currency, createdAt: p.createdAt,
     ...(是补建(p) ? { 补建: true } : {}),
+    // 线索验证的判定：有效线索 只认「有效线索」（同看板，channel-stats.ts 是有效线索）
+    判定: p.entLeadVerify?.verdict ?? null,
     // 没有建项目那条日志的（很老的数据）当从线索起
     起步阶段: p.logs.find((l) => l.fromPhase === null)?.toPhase ?? "线索",
     到过阶段们: p.logs.map((l) => l.toPhase),

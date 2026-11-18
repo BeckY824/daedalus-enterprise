@@ -38,6 +38,7 @@ import { 换负责人待办 } from "@/lib/project/carry-tasks";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 有同事在推的客户, 同事在推不能放公海话, 同事在推项目说法, 订单项目说法 } from "@/lib/enterprise/colleague-projects";
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
+import { 客户验证中不能放公海 } from "@/lib/project/lead-verify-guard";
 import { Prisma } from "@/generated/prisma";
 import { 客户退回前查联系方式, 退回号码种类表 } from "@/lib/enterprise/return-contact-check";
 import { 还负责人 } from "@/lib/project/owner-write";
@@ -66,6 +67,8 @@ export type 公海结果 =
       同事项目?: string;
       /** 放进公海：联系方式空着或有号码不对、没放的几位（企业版，M-公海-15） */
       联系方式不全?: number;
+      /** 放进公海：名下有线索在验证中（等市场复核等）、没放的几位（企业版 X-77，审核 11-18） */
+      验证中?: number;
       /** 领取时跟着过来的没做完的活 */
       带走?: 带走数;
       /** 领取前各归谁：撤销领取时还给他、放回公海 */
@@ -158,7 +161,9 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
   const 同事在推 = 企业版() && 有权限.length ? await 有同事在推的客户(prisma, 有权限) : new Set<string>();
   // M-公海-15（11-05 用户）：客户电话、联系人、项目联系人的号码要有、而且全对才能放（谁放都一样）
   const 号码错 = 企业版() && 有权限.length ? await 看全部(async () => 客户退回前查联系方式(prisma, 有权限.map((c) => c.id), await 退回号码种类表())) : new Map<string, string>();
-  const 能放 = 有权限.filter((c) => !有订单.has(c.id) && !交接中.has(c.id) && !同事在推.has(c.id) && !号码错.has(c.id));
+  // X-77「推进和放公海都拦」（审核 11-18 P0）：名下有线索在验证中的不能放，放了验证状态被清、市场复核这一步就没了
+  const 验证中 = 企业版() && 有权限.length ? await 客户验证中不能放公海(prisma, 有权限.map((c) => c.id)) : new Map<string, string>();
+  const 能放 = 有权限.filter((c) => !有订单.has(c.id) && !交接中.has(c.id) && !同事在推.has(c.id) && !号码错.has(c.id) && !验证中.has(c.id));
   // 同事的项目平时看不到，被拦时只说个数（P-看-12 例外、Even C4），按选的先后列
   const 被同事拦 = 有权限.filter((c) => 同事在推.has(c.id)).sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
   // 别的照放时提示条只说「N 位…没放」，那就带上客户名
@@ -166,6 +171,10 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
   const 没权限 = 这些.length - 已在.length - 有权限.length;
   if (!能放.length) {
     if (有订单.size) return { ok: false, error: 有订单不能放提示(b.customer, 订单项目) };
+    if (验证中.size) {
+      const [id, 话] = [...验证中][0];
+      return { ok: false, error: 有权限.length > 1 ? 话.replace("这位客户", `「${有权限.find((c) => c.id === id)?.name ?? ""}」`) : 话 };
+    }
     if (交接中.size) return { ok: false, error: 交接中不能放提示(b.customer) };
     if (同事在推.size) return { ok: false, error: 同事在推不能放公海话(被同事拦.map((c) => c.name), b.customer, 同事项目) };
     if (号码错.size) {
@@ -201,6 +210,7 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
     ok: true, updated: 能放.length, unchanged: 已在.length, 没权限,
     ...(有订单.size ? { 有订单: 有订单.size, 订单项目 } : {}), ...(交接中.size ? { 交接中: 交接中.size } : {}), ...(同事在推.size ? { 同事在推: 同事在推.size, 同事项目 } : {}),
     ...(号码错.size ? { 联系方式不全: 号码错.size } : {}),
+    ...(验证中.size ? { 验证中: 验证中.size } : {}),
     ...(公海项目.length ? { 公海项目 } : {}),
   };
 }

@@ -1,7 +1,8 @@
 /**
  * 两类「不是这段时间里有人真做出来的」项目，统计时要分开对待。这里只有常量、不碰 prisma，界面、单测都能引。
  *
- * 一、补建（11-17）：补零项目客户的脚本建的「潜客培育」项目（M-公海-14 老数据补齐）：creatorId 记 补建创建人、createdAt 记客户的建档时间。
+ * 一、补建（11-17）：补零项目客户的脚本建的「潜客培育」项目（M-公海-14 老数据补齐）：creatorId 记 补建创建人、createdAt 记客户的建档时间；
+ *    存量改创建人时同时写 importBatch = 补建批次（11-18），之后认补建两样都看（补建的 / 不算补建 / 是补建）。
  * 它们不是谁这段时间新建的，所以「新建」类的数一律不算（不然补一次就把历史月份撑大）：
  *   - 数据页 新建（按年 / 按月走势、按人、本月 / 本年漏斗与线索瀑布那批）：overview/project-stats.ts
  *   - 首页卡「本月新增」（卡上的数和点进去的列表同一个条件）：home-cards.ts
@@ -31,6 +32,19 @@ import { 系统 } from "./timeout";
 
 /** 补建项目的 creatorId（不是哪位成员；同超时回收留痕里的 系统操作人 一个值） */
 export const 补建创建人 = "system";
+
+/**
+ * 11-17 补潜客培育那一批的批次号（Project.importBatch）。存量会把这批项目的创建人从 system 改成真人（审核 11-18 第五节），
+ * 改完 creatorId 认不出来了，「补建」靠这个标记认：判补建一律「creatorId = 补建创建人 或 importBatch = 补建批次」，只看一样会把新建数撑大
+ */
+export const 补建批次 = "fill-nurture-20261117";
+
+/**
+ * 「是补建的」条件，放进 NOT 里也安全：importBatch 可空，写成 not null + equals，空的那几行算出 FALSE 而不是 NULL（同 历史分析的）
+ */
+export const 补建的 = {
+  OR: [{ creatorId: 补建创建人 }, { importBatch: { not: null, equals: 补建批次 } }],
+} satisfies Prisma.ProjectWhereInput;
 
 /** 「创建人」那一格碰上补建创建人时的叫法（不是哪位成员，也不是删掉的账号；25E） */
 export const 补建创建人名 = "系统补建";
@@ -76,12 +90,18 @@ export const 留痕不算历史分析 = {
   project: 不算历史分析,
 } satisfies Prisma.ProjectNodeLogWhereInput;
 
-/** 「新建」类计数用：排掉补建的项目，历史分析的一并排掉（它也不是这段时间新建的） */
-export const 不算补建 = { creatorId: { not: 补建创建人 }, ...不算历史分析 } satisfies Prisma.ProjectWhereInput;
+/**
+ * 「新建」类计数用：排掉补建的项目（创建人 system，或带 11-17 补建批次标记——改了创建人的也认），历史分析的一并排掉（它也不是这段时间新建的）。
+ * importBatch 可空：写成「空 或 不是补建批次」，SQL 里 importBatch <> 'x' 会把 NULL 也排掉。都收在一个 AND 里，展开进别的 where 不撞键
+ */
+export const 不算补建 = {
+  creatorId: { not: 补建创建人 },
+  AND: [...不算历史分析.AND, { OR: [{ importBatch: null }, { importBatch: { not: 补建批次 } }] }],
+} satisfies Prisma.ProjectWhereInput;
 
-/** 这个项目是补建的吗（取回来在内存里分时用）。历史分析的在查库时就排掉了，不靠这里 */
-export function 是补建(p: { creatorId?: string | null }): boolean {
-  return p.creatorId === 补建创建人;
+/** 这个项目是补建的吗（取回来在内存里分时用，查的时候带上 creatorId、importBatch）。历史分析的在查库时就排掉了，不靠这里 */
+export function 是补建(p: { creatorId?: string | null; importBatch?: string | null }): boolean {
+  return p.creatorId === 补建创建人 || p.importBatch === 补建批次;
 }
 
 /** 这个项目是历史分析回填的吗 */

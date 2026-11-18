@@ -12,7 +12,7 @@ import { 已立项天数 } from "./project-fields";
 import { 回填一次 } from "./expected-deal";
 import { 数收回次数, 合收回次数, 收回次数筛 } from "./recycle-count";
 import { 认首页卡, 首页卡条件, 即将逾期, 即将逾期紧筛 } from "./home-cards";
-import { 首页卡范围 } from "./home-cards-db";
+import { 首页卡的人, 暂未跟进负责人们 } from "./home-cards-db";
 import { 字典of, 阶段与进程, 阶段们, 结局们of, 同名们, 本套名, 归阶段的结局, type 阶段字典 } from "./stage-dict";
 import { 本套位置 } from "./nodes";
 import type { Prisma } from "@/generated/prisma";
@@ -76,6 +76,11 @@ export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; 
    * 条数和卡上一致。自己在「更多筛选」里选创建时间的不带它，照旧不排
    */
   onlyNew?: string;
+  /**
+   * open=1：只看没结局的（审核 11-18 统计 P1-3）：渠道页「关联线索」（眼下还在线索阶段）点进来带它，和 phase 一起用，
+   * 线索流失这些已结束的不列，条数和渠道页的数一致。不进筛选栏，同 onlyNew
+   */
+  open?: string;
   /** 「手机号」筛选（11-11）：项目的客户号码对得上的（同客户列表，lib/search-keyword.ts 客户号码SQL）；客户不露的不算 */
   phone?: string;
   /**
@@ -96,7 +101,7 @@ export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; 
  * 有结局的按结局认阶段（线索流失归线索、丢单归商机…），进程选结局 = 筛这个结局，选节点 = 停在这个节点、还没结局的。
  * 认不出的值当没筛。库里存着旧节点名 / 旧结局的（企业版 10-31 改名）新旧名一起筛（同名们）。
  */
-export function 阶段进程条件(sp: { phase?: string; node?: string }, 字典: 阶段字典): { 阶段: 阶段 | ""; 进程: string; where: Prisma.ProjectWhereInput[] } {
+export function 阶段进程条件(sp: { phase?: string; node?: string; open?: string }, 字典: 阶段字典): { 阶段: 阶段 | ""; 进程: string; where: Prisma.ProjectWhereInput[] } {
   const 阶段 = (阶段们 as readonly string[]).includes(sp.phase ?? "") ? (sp.phase as 阶段) : "";
   // 传旧名（老链接、老书签）先换成这套的新名再认
   const 名 = sp.node ? 本套名(sp.node, 字典) : "";
@@ -109,6 +114,8 @@ export function 阶段进程条件(sp: { phase?: string; node?: string }, 字典
     where.push({ OR: [{ phase: 阶段, result: null }, { result: { in: 归阶段的结局(字典, 阶段) } }] });
   }
   if (进程) where.push(是结局 ? { result: { in: 同名们(进程) } } : { node: { in: 同名们(进程) }, result: null });
+  // 渠道页「关联线索」点进来（open=1）：只看没结局的
+  if (sp.open === "1") where.push({ result: null });
   return { 阶段, 进程, where };
 }
 
@@ -172,7 +179,10 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
   // 首页指标卡的筛选只在企业版认；条件和卡上 count 用的是同一份（home-cards.ts），数对得上
   const 卡 = 规则 ? 认首页卡(sp.f) : "";
   // 点卡进来的，和卡上的数同一圈（首页卡范围：按负责人，最下级只看自己，上级看自己 + 下属，总管理 / 管理员全看），数对得上
-  const 卡的圈 = 卡 ? await 首页卡范围(me) : undefined;
+  const 卡的人 = 卡 ? await 首页卡的人(me) : undefined;
+  const 卡的圈: Prisma.ProjectWhereInput | undefined = 卡的人 ? { ownerId: { in: [...卡的人] } } : undefined;
+  // 暂未跟进按负责人一路一路筛（只认现负责人记的沟通，home-cards.ts），和卡上的数同一批负责人
+  const 卡负责人们 = 卡 === "no-follow" ? await 暂未跟进负责人们(卡的人) : undefined;
   const 字典 = 字典of(企);
   const 阶进 = 阶段进程条件(sp, 字典);
   // 企业版市场视角（11-04 P-界面-05）：市场成员 = 自己负责的 ∪ 自己建的已分出去的；市场管理 = 本人 + 实线下属，可按创建人筛；公海的都不列
@@ -213,7 +223,7 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
     // 客户看不到时不拿客户的来源（同列上的「渠道」，11-12 审查起和号码一样只认「客户看得到的」，自己负责的项目也不例外）：否则筛一下就试出客户从哪来
     ...(来源 ? [{ OR: [{ channelId: 来源 }, 看得到的({ channelId: null, customer: { channelId: 来源 } })] }] : []),
     ...(级别筛 ? [{ level: 级别筛 === 未分级 ? null : 级别筛 }] : []),
-    ...(卡 && 规则 ? [首页卡条件(卡, 规则, 字典of(企), 今), ...(卡的圈 ? [卡的圈] : [])] : []),
+    ...(卡 && 规则 ? [首页卡条件(卡, 规则, 字典of(企), 今, 卡负责人们), ...(卡的圈 ? [卡的圈] : [])] : []),
     // 3 天内回公海：粗筛之外再加紧筛（同首页卡的数，tests/ent-due-soon-prefilter.test.ts 两种筛对拍），候选少取一些；剩下的取回逐个算
     ...(卡 === "due-soon" && 规则 ? [即将逾期紧筛(规则, 字典of(企), 今) ?? { id: { in: [] } }] : []),
     ...阶进.where,
@@ -678,7 +688,7 @@ export async function 公海名单条件(me: { id: string }, 候选: Prisma.Proj
 }
 
 /** 公海页按项目一条一行时的筛选（地址栏 projChannel / phase / createdFrom / createdTo）；空的那项不筛 */
-export type 公海名单筛 = { channelId?: string; phase?: string; createdFrom?: string; createdTo?: string; /** 同 项目筛选.onlyNew */ onlyNew?: string };
+export type 公海名单筛 = { channelId?: string; phase?: string; createdFrom?: string; createdTo?: string; /** 同 项目筛选.onlyNew */ onlyNew?: string; /** 同 项目筛选.open */ open?: string };
 
 /**
  * 公海页渠道名单的候选：这个渠道（项目来源优先，没填跟客户来源）+ 同口径的阶段（阶段进程条件）+ 项目创建时间段
@@ -692,7 +702,7 @@ export function 公海名单候选(f: 公海名单筛): Prisma.ProjectWhereInput
     ...(建于 ? [{ createdAt: 建于, ...(f.onlyNew === "1" ? 不算补建 : {}) }] : []),
   ];
   if (!并.length) return null;
-  return { AND: [...并, ...(f.phase ? 阶段进程条件({ phase: f.phase }, 字典of(企业版())).where : [])] };
+  return { AND: [...并, ...(f.phase || f.open ? 阶段进程条件({ phase: f.phase, open: f.open }, 字典of(企业版())).where : [])] };
 }
 
 /**

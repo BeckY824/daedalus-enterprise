@@ -11,6 +11,7 @@
  */
 import { 是国内, type 客户地址 } from "./customer-v2";
 import { 验客户电话 } from "./contact-format";
+import { 全角数字转半角 } from "../fullwidth";
 import { 港澳台地名 } from "./cn-place";
 import { 线部门们, type 线部门 } from "./assign-line";
 import type { 组织 } from "./org-core";
@@ -26,14 +27,11 @@ const 格 = (x: string | null | undefined) => String(x ?? "").trim();
 const 港澳台英文 = /^(hong\s*kong|macau|macao|taiwan|taipei|kowloon)\b|^(hk|mo|tw)$/i;
 const 港澳台 = { test: (x: string): boolean => 港澳台英文.test(x) || !!港澳台地名(x) };
 
-/** 是国内 以外、也当「中国」的写法（繁体、全称、英文全称）；港澳台再看省 / 市那一格 */
-const 也算中国 = /^(中國|中國大陸|中华人民共和国|中華人民共和國|大陆|people'?s\s+republic\s+of\s+china|mainland\s+china)$/i;
-
-/** 客户（或项目所在地）的区域：国家 → 省 → 市 → 区县四格 */
+/** 客户（或项目所在地）的区域：国家 → 省 → 市 → 区县四格。「中国」的繁体、全称、英文全称写法 是国内 都认（customer-v2.ts，审核 11-18 P2-2） */
 export function 客户区域of(a: Partial<客户地址> | null | undefined): 客户区域 {
   const 国 = 格(a?.addrCountry), 省 = 格(a?.addrProvince), 市 = 格(a?.addrCity), 区 = 格(a?.addrDistrict);
   if (!国 && !省 && !市 && !区) return "未知";
-  if (!国 || 是国内(国) || 也算中国.test(国)) return 港澳台.test(省) || 港澳台.test(市) || 港澳台.test(区) ? "非大陆" : "大陆";
+  if (!国 || 是国内(国)) return 港澳台.test(省) || 港澳台.test(市) || 港澳台.test(区) ? "非大陆" : "大陆";
   return "非大陆";
 }
 
@@ -85,25 +83,62 @@ export const 区域分配说明 = "建好后按下面的分配方向自动分（
 export type 方向来源 = "区域" | "电话" | "本人" | "手动" | "不限";
 export type 分配方向 = { 线: 线 | null; 来源: 方向来源 };
 
-/** 电话定线：按给的顺序，第一个认得出的号说了算（大陆手机 内贸、国外号 外贸）；座机、格式不对、空的跳过 */
-export function 电话定线(号们: readonly (string | null | undefined)[]): 线 | null {
+/** 电话定线收的号：字符串 = 电话 / 手机；{ whatsapp } = WhatsApp 号（客户 WhatsApp、号码几行里 kind=whatsapp 的） */
+export type 定线号 = string | { whatsapp: string };
+
+/** 全角转半角、去掉空格横杠括号点 */
+const 去符号 = (号: string): string => 全角数字转半角(号).trim().replace(/[\s\-()（）.－—–]/g, "");
+
+/** 去掉空格横杠括号后是「1 开头、11 位、前面没有 + / 00 / 86」的裸号 */
+const 裸11位 = (号: string): boolean => /^1\d{10}$/.test(去符号(号));
+
+/** 去掉符号后形如大陆手机：11 位、1[3-9] 开头、前面没有 + / 00 / 86 */
+const 裸大陆手机 = (号: string): boolean => /^1[3-9]\d{9}$/.test(去符号(号));
+
+/** WhatsApp 号按国际号读（审核 11-18 P1-6）：没带 + 的补上 +（00 开头的 00 换成 +），再按手机号认：+86 大陆手机 = 大陆，别的 = 国外 */
+const 按国际号 = (号: string): string => {
+  const s = 去符号(号);
+  return s.startsWith("+") ? s : `+${s.replace(/^00/, "")}`;
+};
+
+/**
+ * 电话定线（分配方向第二步）：第一个认得出的号说了算（大陆手机 内贸、国外号 外贸）；座机、格式不对、空的跳过。
+ * 审核 11-18 P1-6 补两条：
+ *   - 国家（客户地址的国家，没有看项目所在地的）是国外时，不带 + 的 11 位号（「14155550132」这类导入时丢了 + 的美国号）不按大陆手机判，跳过；
+ *   - 电话都判不出时看 WhatsApp，按国际号读（「8613800001111」= 大陆，「+14155550132」= 国外 → 外贸）。只留了 WhatsApp 的客户这一步不再落空；
+ *     不带 + 的 WhatsApp 形如大陆手机（1[3-9] 开头 11 位）、国家不是国外（没填 / 国内）的按大陆手机判内贸，国家是国外的才补 + 按国际号读
+ */
+export function 电话定线(号们: readonly (定线号 | null | undefined)[], 选项: { 国家?: string | null } = {}): 线 | null {
+  const 国 = 格(选项.国家);
+  const 国外 = !!国 && !是国内(国);
+  const 认 = (号: string): 线 | null => {
+    const r = 验客户电话(号, { 放过占位: false });
+    return r.ok && r.值 ? (r.国外 ? "外贸" : "内贸") : null;
+  };
   for (const 号 of 号们) {
-    if (!号 || !String(号).trim()) continue;
-    const r = 验客户电话(String(号), { 放过占位: false });
-    if (r.ok && r.值) return r.国外 ? "外贸" : "内贸";
+    if (typeof 号 !== "string" || !号.trim()) continue;
+    if (国外 && 裸11位(号)) continue;
+    const l = 认(号);
+    if (l) return l;
+  }
+  for (const 号 of 号们) {
+    if (!号 || typeof 号 === "string" || !号.whatsapp?.trim()) continue;
+    // 不带 + 的、形如大陆手机（1[3-9] 开头 11 位），国家又不是国外：按大陆手机判（补 + 会读成 +1 北美号）；国家是国外的照旧按国际号
+    const l = !国外 && 裸大陆手机(号.whatsapp) ? 认(去符号(号.whatsapp)) : 认(按国际号(号.whatsapp));
+    if (l) return l;
   }
   return null;
 }
 
 /** 默认分配方向：区域 → 电话 → 本人事业部 → 不限 */
 export function 默认分配方向(x: {
-  客户?: Partial<客户地址> | null; 项目?: Partial<客户地址> | null; 号们?: readonly (string | null | undefined)[]; 本人线?: 线 | null;
+  客户?: Partial<客户地址> | null; 项目?: Partial<客户地址> | null; 号们?: readonly (定线号 | null | undefined)[]; 本人线?: 线 | null;
   /** 界面上老客户只拿得到服务端算好的线（客户区域线 / 客户电话线）：给了非空就先用它 */
   客户线?: 线 | null; 电话线?: 线 | null;
 }): 分配方向 {
   const 区 = x.客户线 ?? 区域线of(x.客户, x.项目);
   if (区) return { 线: 区, 来源: "区域" };
-  const 电 = x.电话线 ?? 电话定线(x.号们 ?? []);
+  const 电 = x.电话线 ?? 电话定线(x.号们 ?? [], { 国家: x.客户?.addrCountry || x.项目?.addrCountry });
   if (电) return { 线: 电, 来源: "电话" };
   if (x.本人线) return { 线: x.本人线, 来源: "本人" };
   return { 线: null, 来源: "不限" };

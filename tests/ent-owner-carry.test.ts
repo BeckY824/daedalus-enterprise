@@ -583,16 +583,15 @@ describe("客户公海里的项目不能单独分配（M-公海-06、X-13）", (
     expect(await 客户负责人(别的客户)).toBe(甲.id);
   });
 
-  it("过了分前看才进公海：市场管理在事务里也拦（线索公海项目，负责人本来就空，乐观锁挡不住）", async () => {
-    const c = await 客户(甲.id);
-    const p = await 项目(c, 甲.id);
-    await 项目(c, 甲.id);
-    expect((await 以(甲, () => 放回公海({ id: 甲.id, role: 甲.role }, p))).ok).toBe(true);
+  it("过了分前看客户才进公海：市场管理在事务里也拦（客户进公海不改项目负责人，乐观锁挡不住）", async () => {
+    // 11-18：线索公海里的项目市场管理在入口就分不了（线索公海挡，ent-assign-lead-pool-guard），这里改用市场自己名下、不在公海的项目钉事务里那道
+    const c = await 客户(市场.id);
+    const p = await 项目(c, 市场.id);
+    await 项目(c, 市场.id);
     mocks.插队 = async () => { await prisma.customerPool.create({ data: { customerId: c, reason: "手动" } }); };
-    expect(await 以(市场, () => 分配线索({ projectId: p, toUserId: 乙.id, line: "内贸", 原负责人: null }))).toEqual({ ok: false, error: 客户在公海找销管提示 });
+    expect(await 以(市场, () => 分配线索({ projectId: p, toUserId: 乙.id, line: "内贸", 原负责人: 市场.id }))).toEqual({ ok: false, error: 客户在公海找销管提示 });
     expect(mocks.插队).toBeNull(); // 确实走到了分前看之后那一步
-    expect(await 项目of(p)).toMatchObject({ ownerId: "" });
-    expect((await 项目of(p)).pooledAt).not.toBeNull();
+    expect(await 项目of(p)).toMatchObject({ ownerId: 市场.id, pooledAt: null });
     expect(await prisma.entLeadAssign.count({ where: { projectId: p } })).toBe(0);
   });
 

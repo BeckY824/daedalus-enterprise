@@ -48,5 +48,23 @@ export function 像国内地名(x: string | null | undefined): boolean {
   return 省名.has(k) || 市名.has(k) || 市名.has(t) || 县级市.has(k);
 }
 
+/**
+ * 没写国家、只写了省 / 市 / 区县的那几格，认不认得出是中国（大陆或港澳台）：任一格 像国内地名 或 港澳台地名 = 认得出。
+ * 认得出的 规整地址 补「中国」，客户区域再按港澳台判非大陆；认不出的（「洛杉矶」「Torino」「胡志明市」）不落地址、不补国家。
+ * AI 新线索卡（proposals.ts 线索卡地址）和设置 → 企业版导入（enterprise-import/clean.ts，审核 11-18 P0-1）共用这一个判法
+ */
+export function 没国家认得出(省: string | null | undefined, 市: string | null | undefined, 区: string | null | undefined): boolean {
+  return [省, 市, 区].some((x) => 像国内地名(x) || !!港澳台地名(x));
+}
+
+/** 一格是省级名还是地级市 / 县级市（「浙江」「浙江省」→ 省；「杭州」「义乌市」→ 市）；认不出 = null。导入表「国家 / 地区」那格写成国内地名时摆进对的格 */
+export function 国内地名级别(x: string | null | undefined): "省" | "市" | null {
+  const t = 简(String(x ?? "").trim());
+  if (!t || 港澳台地名(t)) return null;
+  const k = 去后缀(t);
+  if (省名.has(k) && !/市$/.test(t)) return "省";
+  return 市名.has(k) || 市名.has(t) || 县级市.has(k) ? "市" : 省名.has(k) ? "省" : null;
+}
+
 /** 测试核名单用 */
 export const 国内名单 = { 省名, 市名, 县级市 };

@@ -108,7 +108,13 @@ describe("口径（纯函数）", () => {
   it("重点 / 暂未跟进只看在推的；本月新增不管在不在推", () => {
     const 字典 = 字典of(true);
     expect(首页卡条件("key", 默认组织规则, 字典)).toMatchObject({ result: null, pooledAt: null, level: { in: ["S", "A"] } });
-    expect(首页卡条件("no-follow", 默认组织规则, 字典)).toMatchObject({ result: null, pooledAt: null, followUps: { none: {} } });
+    // 暂未跟进只认现负责人记的沟通（审核 11-18 P1-1）：按负责人一路一路写，不传这一圈负责人就抛
+    expect(首页卡条件("no-follow", 默认组织规则, 字典, new Date(), ["u1"])).toMatchObject({
+      result: null, pooledAt: null,
+      AND: [{ OR: [{ ownerId: "u1", followUps: { none: { followUp: { ownerId: "u1", deletedAt: null } } } }] }],
+    });
+    expect(() => 首页卡条件("no-follow", 默认组织规则, 字典)).toThrow();
+    expect(首页卡条件("no-follow", 默认组织规则, 字典, new Date(), [])).toMatchObject({ AND: [{ id: { in: [] } }] });
     const 新 = 首页卡条件("month-new", 默认组织规则, 字典);
     expect(新).not.toHaveProperty("result");
     expect(新).not.toHaveProperty("pooledAt");

@@ -43,6 +43,30 @@ export async function 客户有验证中线索(db: Pick<Prisma.TransactionClient
 }
 
 /**
+ * 客户整位放进公海之前（X-77「推进和放公海都拦」，审核 11-18 P0）：名下有线索在验证中（pending 有值：等市场复核、总管理终判、销售终验 / 认领），
+ * 这位不能放——放了 客户名下在推项目进公海 会把验证状态清掉（进公海清验证），复核这一步就没了。项目层放回公海早就拦（db.ts 等复核拦），客户层补上。
+ * 回 客户 id → 拦的那句（说清在等什么、下一步做什么）。看全部：同事负责的也算。在公海里、回收站里的项目不算。不是企业版空
+ */
+export async function 客户验证中不能放公海(db: Pick<Prisma.TransactionClient, "entLeadVerify">, customerIds: string[]): Promise<Map<string, string>> {
+  const 出 = new Map<string, string>();
+  if (!企业版() || !customerIds.length) return 出;
+  for (let i = 0; i < customerIds.length; i += 500) {
+    const 行 = await 看全部(() => db.entLeadVerify.findMany({
+      where: { pending: { not: null }, project: { customerId: { in: customerIds.slice(i, i + 500) }, pooledAt: null, deletedAt: null } },
+      select: { pending: true, project: { select: { name: true, customerId: true } } },
+    }));
+    for (const v of 行) {
+      if (出.has(v.project.customerId) || !v.pending) continue;
+      const 等复核 = (等复核的 as readonly string[]).includes(v.pending);
+      出.set(v.project.customerId, 等复核
+        ? `这位客户有线索「${v.project.name}」在等${v.pending}，${v.pending === "市场复核" ? "复核" : "终判"}完再放公海`
+        : `这位客户有线索「${v.project.name}」复核有结果了（等${v.pending}），先在项目详情「线索验证」里处理完再放公海`);
+    }
+  }
+  return 出;
+}
+
+/**
  * 复核判死（市场复核 / 总管理终判判了无效线索）是终局（11-03 测试 A4-1）：结局改不回进行中，谁都不行，免得一人推翻别的角色的裁决。
  * 销售初判即终判（创建人是销售，自己判的）不算复核，照旧能自己改回。不是企业版 null
  */

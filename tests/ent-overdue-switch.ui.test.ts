@@ -7,6 +7,7 @@
  *   Windows 1024 / 1280 / 1366：说明不横向撑出
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { 补全动作桩 } from "./helpers/action-stubs";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
@@ -20,8 +21,8 @@ const plugin: Plugin = { name: "overdue-switch", setup(b) {
   stub(/^\.\/FeishuConnectCard$/, "export default function F(){return null}");
   stub(/^\.\/FeishuPushSwitch$/, "export default function P(){return null}");
   stub(/^\.\/OrgSyncCard$/, "export default function S(){return null}");
-  stub(/^\.\/org-actions$/, `const f=${空跑};export const 建部门=f,改部门=f,删部门=f,设字段权限=f,设改权限=f,设市场部门=f,设只看某人=f,设回收站副手=f,设成员=f;
-    export const 设规则=async(...a)=>{(window.__调用||(window.__调用=[])).push(a);return{ok:true}};`);
+  stub(/^\.\/org-actions$/, 补全动作桩("src/app/(app)/settings/org-actions.ts", `const f=${空跑};export const 建部门=f,改部门=f,删部门=f,设字段权限=f,设改权限=f,设市场部门=f,设只看某人=f,设回收站副手=f,设成员=f;
+    export const 设规则=async(...a)=>{(window.__调用||(window.__调用=[])).push(a);return{ok:true}};`));
   stub(/^\.\.\/leads\/assign-actions$/, `export const 设不设配额=${空跑};export const 读线部门设置=async()=>({设的:{内贸:[],外贸:[]},还没勾:[],能改:true});export const 设线部门=${空跑};`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };

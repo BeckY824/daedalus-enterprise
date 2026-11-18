@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import StatePage from "@/components/StatePage";
 import { 决定错误展示 } from "@/lib/error-display";
 import { 存好再刷新 } from "@/lib/stale-deploy";
+import { 报错 } from "@/lib/telemetry/report-client";
 
 /**
  * 应用内错误页。判断逻辑在 @/lib/error-display 里，这里只负责渲染——
@@ -23,6 +24,10 @@ export default function AppError({
   // 点「重试」原地转圈再换内容（原型 st.error），不先闪一下空白；重来还是错就停转、留在这页
   const [重试中, 开始] = useTransition();
   const [点过, set点过] = useState(false);
+  // 企业版运行记录（28-⑤）：错误边界接住的报一条（没装上报时攒着、不发；同一个错一页只报一次，lib/telemetry/report-client.ts）
+  useEffect(() => {
+    if (展示.类型 !== "未登录") 报错("boundary", error);
+  }, [error, 展示.类型]);
 
   if (展示.类型 === "未登录") {
     return (

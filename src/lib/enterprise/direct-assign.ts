@@ -22,7 +22,7 @@ import { 看全部 } from "@/lib/team-scope";
 import { 企业版 } from "./switch";
 import { 读组织 } from "./org";
 import type { 组织 } from "./org-core";
-import { 按区域分配of, 默认分配方向, 本人事业部 } from "./customer-region";
+import { 按区域分配of, 默认分配方向, 本人事业部, type 定线号 } from "./customer-region";
 import type { 客户地址 } from "./customer-v2";
 import { 分配方式叫法 } from "./dict";
 import { 读线部门 } from "./assign-eta";
@@ -40,7 +40,7 @@ export function 新建算指定分配(org: Pick<组织, "成员">, 建的人: st
  * 「暂不分配」、没填的往下判
  */
 export function 新建指定方向(x: {
-  业务线: string | null | undefined; 客户?: Partial<客户地址> | null; 项目?: Partial<客户地址> | null; 号们?: readonly string[]; 接手人线?: 线 | null;
+  业务线: string | null | undefined; 客户?: Partial<客户地址> | null; 项目?: Partial<客户地址> | null; 号们?: readonly 定线号[]; 接手人线?: 线 | null;
 }): 线 | null {
   if (x.业务线 === "内贸" || x.业务线 === "外贸") return x.业务线;
   return 默认分配方向({ 客户: x.客户, 项目: x.项目, 号们: x.号们 ?? [], 本人线: x.接手人线 ?? null }).线;

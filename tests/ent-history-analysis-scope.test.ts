@@ -52,7 +52,7 @@ describe("首页卡", () => {
   it("本月新增不算；被领走还在推、客户身上有过沟通的不算暂未跟进；正常项目照算", async () => {
     const 规则 = await 生效组织规则();
     const 字典 = 字典of(true);
-    const 数 = (键: "month-new" | "no-follow") => prisma.project.count({ where: 首页卡条件(键, 规则, 字典) });
+    const 数 = (键: "month-new" | "no-follow") => prisma.project.count({ where: 首页卡条件(键, 规则, 字典, new Date(), [王.id]) });
     await prisma.project.create({ data: { customerId: 客户.id, name: "真线索", phase: "线索", ownerId: 王.id, creatorId: 王.id } });
     expect(await 数("month-new")).toBe(1);
     expect(await 数("no-follow")).toBe(1);

@@ -42,6 +42,7 @@ import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/pro
 import { 记新建指定分配 } from "@/lib/enterprise/direct-assign";
 import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知, 项目被删通知, 项目放回公海通知 } from "@/lib/enterprise/notice-sources";
 import { 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
+import { 市场分配进线索验证 } from "@/lib/enterprise/market-assign-node";
 import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
 import { 按必填走, 是占位值, 还差 as 必填还差, 必填叫法 } from "@/lib/project/required";
 import { 字典of } from "@/lib/project/stage-dict";
@@ -56,7 +57,7 @@ import { 只读客户, 只读话 } from "@/lib/team-scope";
 import { scheduleValue } from "@/lib/schedule-date";
 import { 定分配方式, 建好再分, 认新建定时 } from "@/lib/project/after-create-assign";
 import { 认业务线, 业务线必填 } from "@/lib/enterprise/assign-line";
-import { 按区域分配of, 默认分配方向, 认分配方向, type 分配方向 } from "@/lib/enterprise/customer-region";
+import { 按区域分配of, 默认分配方向, 认分配方向, type 分配方向, type 定线号 } from "@/lib/enterprise/customer-region";
 import { 本人线of } from "@/lib/enterprise/assign-direction-db";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 import { 字典定义, 项目画像项, 认跟进方式, 选的原因 } from "@/lib/enterprise/dict";
@@ -82,10 +83,14 @@ function 刷新项目(projectId?: string, customerId?: string) {
 export type 建档向导输入 = { 客户: CustomerInput; 联系人: 向导联系人; 项目: 向导项目; 跟进: 向导跟进; 要传附件?: boolean };
 
 /** 分配方向按电话判时看的号（11-18）：客户电话、企业号码（手机号）、联系人电话、联系人号码里的手机，按这个顺序 */
-function 向导号们(input: Pick<建档向导输入, "客户" | "联系人">): string[] {
+function 向导号们(input: Pick<建档向导输入, "客户" | "联系人">): 定线号[] {
   const 企号 = input.客户.企业号码?.类型 === "手机号" ? input.客户.企业号码.值 : null;
-  const 行们 = Array.isArray(input.联系人?.号码们) ? input.联系人.号码们.filter((r) => r?.kind === "phone").map((r) => r.value) : [];
-  return [input.客户.phone, 企号, input.联系人?.phone, ...行们].filter((x): x is string => typeof x === "string" && !!x.trim());
+  const 行们 = Array.isArray(input.联系人?.号码们) ? input.联系人.号码们 : [];
+  const 手机行 = 行们.filter((r) => r?.kind === "phone").map((r) => r.value);
+  // WhatsApp（号码几行里 kind=whatsapp 的、客户 WhatsApp）排在电话后面，电话都判不出才看，按国际号读（审核 11-18 P1-6）
+  const WA = [input.客户.extra?.whatsapp, ...行们.filter((r) => r?.kind === "whatsapp").map((r) => r.value)]
+    .filter((x): x is string => typeof x === "string" && !!x.trim()).map((whatsapp) => ({ whatsapp }));
+  return [...[input.客户.phone, 企号, input.联系人?.phone, ...手机行].filter((x): x is string => typeof x === "string" && !!x.trim()), ...WA];
 }
 /**
  * 新建弹窗没开「项目」开关（P-界面-36，11-15）：只建客户、主要联系人和首条沟通（团队版算客户沟通；企业版挂在新客户自带的潜客培育项目上，11-17）。
@@ -258,6 +263,8 @@ export async function 建档向导(输入: 建档向导输入) {
       await 向导(tx, customerId);
       // 客户先落在我名下（下面 saveCustomer 那一格）；市场指定给销售才转过去
       if (转客户) await 转客户给销售(tx, customerId, me.id, 好.项目.ownerId, me.id, 分配?.名 ?? "指定分配");
+      // 市场指定给销售：刚建的项目停在潜客培育的进线索验证（审核 11-18，market-assign-node.ts）
+      if (转客户) await 市场分配进线索验证(tx, [建了.projectId], 好.项目.ownerId, me.id);
       for (const 号 of 联号) await 记号码(tx, { 刚建的: customerId }, 建了.contactId ?? null, 号);
       await 记别的号行(tx, customerId, 建了.contactId ?? null, 别的号行);
       await 跟着项目重算(tx, 状态开, [customerId]);
@@ -274,7 +281,8 @@ export async function 建档向导(输入: 建档向导输入) {
         : {};
       // 企业版指定给别人：项目归接手人，客户不跟着改（P-转-03，三处同一条）。总管理不走 新建只给自己，这里统一落到建的人
       const 客户负责人 = 企 && 好.项目.ownerId !== me.id ? { salesOwnerId: me.id } : {};
-      r = await saveCustomer({ ...input.客户, ...客户线, ...客户负责人, id: undefined, updatedAt: null, base: null }, 接着);
+      // 项目分配（新建客户给市场成员的那一格，11-18）只给只建客户用：带项目的分配方式在 项目.分配方式，这里不认客户上交的
+      r = await saveCustomer({ ...input.客户, ...客户线, ...客户负责人, 项目分配: undefined, id: undefined, updatedAt: null, base: null }, 接着);
     } catch (e) {
       if (e instanceof 整批超上限) return { ok: false as const, error: e.话 };
       if (!(e instanceof 联系人号码撞了)) throw e;
@@ -453,7 +461,9 @@ async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输�
   revalidatePath("/customers");
   // 首条沟通的截图 / 附件：挂在潜客培育项目上的这条首条沟通，同建档签票给录入人（凭票认首条沟通 要它挂着项目）
   const 附件票 = 企 && 输入.要传附件 === true && 建了.followUpId && 建了.projectId ? { followUpId: 建了.followUpId, 票: await 签首条附件票(me.id, 建了.followUpId) } : null;
-  return { ok: true as const, customerId: r.id, projectId: null, ...(企 ? { contactId: 建了.contactId ?? null } : {}), ...(附件票 ? { 附件票 } : {}) };
+  // 市场成员选了项目分配方式（11-18）：自动分配分给谁 / 已指派给谁 / 暂不分配那句；转走 = 客户已不在我名下，弹窗不跳客户页
+  const 去向 = { ...(r.提示 ? { 提示: r.提示 } : {}), ...(r.转走 ? { 转走: true } : {}) };
+  return { ok: true as const, customerId: r.id, projectId: null, ...(企 ? { contactId: 建了.contactId ?? null } : {}), ...去向, ...(附件票 ? { 附件票 } : {}) };
 }
 
 /** 改节点。进异常状态时带上异常类别（必选）和备注（可空）；企业版点线索流失、丢单时 备注 = 原因（必填） */

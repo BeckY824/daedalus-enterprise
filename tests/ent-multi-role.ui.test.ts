@@ -8,6 +8,7 @@
  * 组织架构这一屏只有企业版有（开关关时设置里没这个标签，见 enterprise-org-actions.test.ts 的开关关闭用例）。
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { 补全动作桩 } from "./helpers/action-stubs";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser } from "playwright";
@@ -19,7 +20,7 @@ const plugin: Plugin = { name: "multi-role-boundaries", setup(b) {
   const 空跑 = "async()=>({ok:true})";
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^\.\/OrgSyncCard$|^\.\/LeadAssignCard$/, "export default function C(){return null}");
-  stub(/^\.\/org-actions$/, `const f=${空跑};export const 建部门=f,改部门=f,删部门=f,设规则=f,设字段权限=f,设改权限=f,设市场部门=f,设只看某人=f,设回收站副手=f,设成员=async(id,改)=>{(window.__交??=[]).push([id,改]);return{ok:true}};`);
+  stub(/^\.\/org-actions$/, 补全动作桩("src/app/(app)/settings/org-actions.ts", `const f=${空跑};export const 建部门=f,改部门=f,删部门=f,设规则=f,设字段权限=f,设改权限=f,设市场部门=f,设只看某人=f,设回收站副手=f,设成员=async(id,改)=>{(window.__交??=[]).push([id,改]);return{ok:true}};`));
   // 规则「线索分配」里的「不设配额」开关（10-30）：OrgTab 直接调 设不设配额
   stub(/^\.\.\/leads\/assign-actions$/, `export const 设不设配额=${空跑};export const 读线部门设置=async()=>null;export const 设线部门=${空跑};`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));

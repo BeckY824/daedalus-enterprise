@@ -282,13 +282,6 @@ function 验成(类型: 号格, 原: unknown): 验好的号 | null {
   return r.ok && r.键 ? { 类型: r.类型, 值: r.值, 键: r.键 } : null;
 }
 
-/** 客户本人的号（主表 phone，导入只认手机号）：这一行是不是它 */
-async function 是本人号(tx: Tx, customerId: string, kind: string, 键: string): Promise<boolean> {
-  if (kind !== 号码库类型.手机号) return false;
-  const c = await tx.customer.findUnique({ where: { id: customerId }, select: { phone: true } });
-  return !!c && 验成("手机号", c.phone)?.键 === 键;
-}
-
 /** 客户的号记进子表（建档 / 建回时）：同 P5 建档，挂在客户本人上（contactId 空） */
 export async function 记客户号(tx: Tx, customerId: string, phone: unknown): Promise<void> {
   const 号 = 验成("手机号", phone);
@@ -304,6 +297,13 @@ export async function 记联系人号(tx: Tx, customerId: string, contactId: str
   }
 }
 
+/** 客户本人的号（主表 phone，导入只认手机号）：这一行是不是它 */
+async function 是本人号(tx: Tx, customerId: string, kind: string, 键: string): Promise<boolean> {
+  if (kind !== 号码库类型.手机号) return false;
+  const c = await tx.customer.findUnique({ where: { id: customerId }, select: { phone: true } });
+  return !!c && 验成("手机号", c.phone)?.键 === 键;
+}
+
 /** 联系人名下这一类的旧号摘掉：和客户本人号是同一行的只摘掉联系人，别的整行删 */
 async function 摘号(tx: Tx, customerId: string, contactId: string, kind: string, 键: string): Promise<void> {
   const 行 = await tx.contactMethod.findFirst({ where: { customerId, contactId, kind, numberKey: 键 }, select: { id: true } });
@@ -312,11 +312,8 @@ async function 摘号(tx: Tx, customerId: string, contactId: string, kind: strin
   else await tx.contactMethod.delete({ where: { id: 行.id } });
 }
 
-/** 联系人要删之前（撤回）：名下的号全摘掉，不在客户上留一行没人认的号 */
-export async function 摘联系人号(tx: Tx, contactId: string): Promise<void> {
-  const 们 = await tx.contactMethod.findMany({ where: { contactId }, select: { customerId: true, kind: true, numberKey: true } });
-  for (const m of 们) await 摘号(tx, m.customerId, contactId, m.kind, m.numberKey);
-}
+/** 联系人要删之前（撤回）：名下的号全摘掉，不在客户上留一行没人认的号（和回收站清理、彻底删除、移出同一份，lib/enterprise/contact-number-detach.ts） */
+export { 摘联系人号 } from "../enterprise/contact-number-detach";
 
 /**
  * 没有负责人时挂的占位账号（11-02，常量和说明在 lib/pool.ts，取 id 在 lib/no-owner-db.ts）：停用、不能登录，
