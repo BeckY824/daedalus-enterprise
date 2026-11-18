@@ -16,6 +16,7 @@ tests/migration-files-guard.test.ts
 tests/modal-double-submit.test.ts
 tests/motion-tokens.test.ts
 tests/no-array-transaction.test.ts
+tests/no-silent-input-rewrite.test.ts
 tests/owner-write-guard.test.ts
 tests/pane-slots.test.ts
 tests/permissions-table-keys.test.ts

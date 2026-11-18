@@ -1373,7 +1373,8 @@ it("U-项目-07：转让先选人、再点「确认转让」才交；框里写�
     expect(await 确认.isDisabled()).toBe(true);
     await 窗.getByRole("combobox", { name: "转给谁" }).click();
     const 下拉 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
-    expect(await 下拉.allInnerTexts()).toEqual(["接手乙"]);
+    // 下拉刚点开、展开动画中 :visible 的快照可能是空的：轮询到选项出来再比
+    await expect.poll(() => 下拉.allInnerTexts()).toEqual(["接手乙"]);
     await 下拉.first().click();
     expect(await 窗.innerText()).toContain("确认转给 接手乙？");
     expect(await 窗.innerText()).toContain("不能撤销");
