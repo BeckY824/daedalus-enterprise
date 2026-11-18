@@ -30,7 +30,7 @@ import { 权限组织 } from "@/lib/enterprise/org";
 import { 字段权限of, 客户列字段 } from "@/lib/enterprise/field-perm";
 import { 能管公海, 能转出自己的, 能放回客户公海, 只读角色, 能新建和领取, 转自己客户要申请 } from "@/lib/enterprise/permissions";
 import { 客户在市场手里 } from "@/lib/enterprise/market-transfer";
-import { 页面可自动分配, 暂不分配项目of } from "@/lib/enterprise/cust-auto-assign";
+import { 页面可自动分配, 暂不分配项目of, 市场分配限指定 } from "@/lib/enterprise/cust-auto-assign";
 import { 客户默认分配方向 } from "@/lib/enterprise/assign-direction-db";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 要按方向指定, 指定方向候选表 } from "@/lib/enterprise/assign-direction-pick";
@@ -267,7 +267,8 @@ export default async function CustomerDetailPage({
       自动分配={能自动分 ? 客户自动分配 : undefined}
       指定定向={指定定向}
       // 分配方向的默认值（11-18）：客户区域 → 那条暂不分配项目的所在地 → 客户的号 → 我的事业部；框里可以改
-      自动指定候选={能自动分 ? await 可指定的人(await 读组织()) : undefined}
+      // 兼条线总管理 / 销售管理的不限（市场分配限指定，接手人按普通转让 P-转-01）
+      自动指定候选={能自动分 && 市场分配限指定(await 读组织(), me.id) ? await 可指定的人(await 读组织()) : undefined}
       自动分配方向={能自动分 ? await 客户默认分配方向(await 读组织(), customer.id, me.id, await 暂不分配项目of({ id: customer.id, salesOwnerId: customer.salesOwnerId!, bizLine: customer.bizLine })) : undefined}
       原负责人领不回={!!customer.pool && 拦原负责人() && (await 我放出去的公海客户([{ id: customer.id, 在公海: true, salesOwnerId: customer.salesOwnerId }], me.id)).length > 0}
       换负责人记录={换负责人记录}
