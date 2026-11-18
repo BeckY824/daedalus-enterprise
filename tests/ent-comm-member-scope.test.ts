@@ -2,7 +2,8 @@
  * 企业版「组员能记沟通」（11-17 客户答复第 3 问选 A：「组员能记，限本项目的组员，记录上显示是谁记的，项目负责人不变」），
  * 真库、真组织架构范围（visibility.ts + 加上限定），不 mock 只读名单：
  *   组员看这位客户是连带只读（P-看-08，限定层把客户记在「只能看」里，在下面新建沟通会被拦）——
- *   - 项目上记（记项目沟通，客户页选了关联项目、项目详情、首页待办都走它）：已进组的组员记得上，记录人是组员，项目 / 客户负责人不变
+ *   - 项目上记（记项目沟通，客户页选了关联项目、项目详情、首页待办都走它）：已进组的组员记得上，记录人是组员，项目 / 客户负责人不变；
+ *     组员记不改项目的下一步文字 / 时间、也不要求填（11-19 客户答复），负责人照旧
  *   - 客户页兜底 / AI 记沟通卡（saveFollowUp）：组员新记一条沟通自动挂到他进组的在推项目上；待办、顺带计划、改已有的照旧只读
  *   - 只是被邀请（没同意，项目和客户都还看不到）、项目已结束：记不上，库里不多一条
  *   - 客户资料照旧改不了
@@ -106,6 +107,24 @@ describe("组员在只读客户上记沟通（真范围）", () => {
     const c = await raw.customer.findUniqueOrThrow({ where: { id: 客户 } });
     expect(c.salesOwnerId).toBe(负责人);
     expect(c.lastFollowAt?.getTime()).toBe(f.occurredAt.getTime());
+  });
+
+  it("组员记不改项目下一步（11-19 客户答复）：交来的下一步不认、不要求必填；负责人照旧写", async () => {
+    const 原时间 = dayjs().add(5, "day").startOf("day").toDate();
+    const p = await 建项目({ nextStepText: "负责人定的下一步", nextStepAt: 原时间 });
+    const 带下一步 = { ...向导(), 下一步: "组员想改的下一步", 下一步时间: dayjs().add(1, "day").format("YYYY-MM-DD") };
+    // 带了下一步也不写；要下一步文字（项目详情那条路）对组员也不拦
+    expect(await 作为(组员, () => 记项目沟通({ id: 组员, role: "SALES" }, p.id, 带下一步, new Date(), { 要下一步文字: true }))).toMatchObject({ ok: true });
+    expect(await 作为(组员, () => 记项目沟通({ id: 组员, role: "SALES" }, p.id, { ...向导(), 下一步: "" }, new Date(), { 要下一步文字: true }))).toMatchObject({ ok: true });
+    let 项 = await raw.project.findUniqueOrThrow({ where: { id: p.id } });
+    expect(项.nextStepText).toBe("负责人定的下一步");
+    expect(项.nextStepAt?.getTime()).toBe(原时间.getTime());
+    // 负责人：照旧要写、照旧写到项目上
+    expect(await 作为(负责人, () => 记项目沟通({ id: 负责人, role: "SALES" }, p.id, { ...向导(), 下一步: "" }, new Date(), { 要下一步文字: true }))).toMatchObject({ ok: false });
+    expect(await 作为(负责人, () => 记项目沟通({ id: 负责人, role: "SALES" }, p.id, { ...带下一步, 下一步: "负责人改的下一步" }, new Date(), { 要下一步文字: true }))).toMatchObject({ ok: true });
+    项 = await raw.project.findUniqueOrThrow({ where: { id: p.id } });
+    expect(项.nextStepText).toBe("负责人改的下一步");
+    expect(dayjs(项.nextStepAt).format("YYYY-MM-DD")).toBe(带下一步.下一步时间);
   });
 
   it("客户页兜底 / AI 记沟通卡（saveFollowUp）：组员新记一条沟通，自动挂到他进组的在推项目上", async () => {
