@@ -32,7 +32,7 @@
 import type { Prisma } from "@/generated/prisma";
 import { dayjs } from "@/lib/utils";
 import type { 组织规则 } from "./org-rules";
-import { 节点超时天数 } from "./timeout";
+import { 节点超时天数, 算回收起点的留痕 } from "./timeout";
 import { 同名们, type 阶段字典 } from "./stage-dict";
 import { 不算补建, 补建的, 历史分析的 } from "./system-created";
 
@@ -157,7 +157,8 @@ export function 即将逾期紧筛(规则: 组织规则, 字典: 阶段字典, �
       node: 节点,
       createdAt: { lt: 起点早于 },
       customer: { OR: [{ lastFollowAt: null }, { lastFollowAt: { lt: 起点早于 } }] },
-      logs: { none: { at: { gte: 起点早于 } } },
+      // 超时自动转那行不重置起点（同 db.ts 补回收起点留痕），这里也不算，不然刚被轮转的会被筛掉漏数
+      logs: { none: { at: { gte: 起点早于 }, ...算回收起点的留痕 } },
     });
   }
   return { ...会逾期的, OR: 按天数 };

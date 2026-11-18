@@ -25,6 +25,12 @@ import {
   收回话, 超时转理由, 超时通知种类, 超时转重新起算, 我超时未跟进的, 自留超时话,
 } from "@/lib/enterprise/reply-overdue";
 import { 客户在谁名下话 } from "@/lib/project/time-fields";
+import { 项目回收日, 算超时要的, 改项目, 补回收起点留痕 } from "@/lib/project/db";
+import { 默认组织规则, 默认三态规则, type 组织规则 } from "@/lib/project/org-rules";
+import { 生效组织规则 } from "@/lib/project/org-rules-store";
+import { 超时回收日, 超时自动转理由 } from "@/lib/project/timeout";
+import { 即将逾期的项目 } from "@/lib/project/home-cards-db";
+import { 换负责人们of } from "@/lib/enterprise/tri-state-transfer";
 
 /** 北京时间的一个瞬间 */
 const 京 = (s: string) => new Date(`${s.replace(" ", "T")}:00+08:00`);
@@ -454,6 +460,57 @@ describe("客户归属（规则 3，P-转-04 的例外）", () => {
     await 超时转扫一遍(京("2026-11-20 16:00"));
     await 超时转扫一遍(京("2026-11-20 16:30"));
     expect((await 项目(a.id)).customer.salesOwnerId).toBe(乙.id);
+  });
+});
+
+describe("轮转不重置超时回收日（Even 11-19 第 14 题 B）；手动转让照旧归零", () => {
+  // 潜客培育 10 天回收；项目 11-15 建 → 回收日 11-25（轮转在 11-20，要是算接手就成了 11-30）
+  const 超时开: 组织规则 = { ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 10 } } };
+  const 回收日of = async (id: string) => 项目回收日(await 生效组织规则(), (await 补回收起点留痕([await prisma.project.findUniqueOrThrow({ where: { id }, select: 算超时要的 })]))[0]);
+  beforeEach(async () => {
+    await setSetting("orgRules", 超时开);
+    invalidateSettingsCache();
+  });
+
+  it("超时转出后回收日不变，转两次也不变；首页「即将逾期」照数它；接手人的 1.5 小时照从轮转那刻算（留痕那行还在）", async () => {
+    const { id } = await 建线索(甲, { replyEndAt: 京("2026-11-20 15:00"), createdAt: 京("2026-11-15 10:00") });
+    expect(await 回收日of(id)).toBe("2026-11-25");
+    await 超时转扫一遍(京("2026-11-20 16:00"));
+    await 超时转扫一遍(京("2026-11-20 16:30"));
+    expect((await 项目(id)).ownerId).toBe(乙.id);
+    expect(await 回收日of(id)).toBe("2026-11-25");
+    // 留痕原因和回收起点认的是同一串（timeout.ts 是超时自动转痕）
+    expect(超时转理由).toBe(超时自动转理由);
+    expect(await prisma.projectNodeLog.count({ where: { projectId: id, kind: "transfer", userId: "system", reason: { contains: 超时自动转理由 } } })).toBe(1);
+    // 接手时刻照认轮转那行：乙接手满 1 小时提醒、再 30 分钟转给丙
+    expect(await 超时转扫一遍(京("2026-11-20 17:30"))).toMatchObject({ 提醒: 1 });
+    await 超时转扫一遍(京("2026-11-20 18:00"));
+    expect((await 项目(id)).ownerId).toBe(丙.id);
+    expect(await 回收日of(id)).toBe("2026-11-25");
+    // 首页卡「即将逾期」的库里紧筛不因为最近有轮转留痕把它筛掉
+    expect(await 即将逾期的项目(await 生效组织规则(), 京("2026-11-23 10:00"))).toEqual([id]);
+  });
+
+  it("手动转让仍归零：轮转之后老板手动转给丙，起点挪到手动转让那刻", async () => {
+    const { id } = await 建线索(甲, { replyEndAt: 京("2026-11-20 15:00"), createdAt: 京("2026-11-15 10:00") });
+    await 超时转扫一遍(京("2026-11-20 16:00"));
+    await 超时转扫一遍(京("2026-11-20 16:30"));
+    expect(await 回收日of(id)).toBe("2026-11-25");
+    const r = await 改项目({ id: 老板.id, role: "SALES" }, id, { ownerId: 丙.id });
+    expect(r).toMatchObject({ ok: true });
+    const 手动 = await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: id, kind: "transfer", userId: 老板.id }, select: { at: true } });
+    expect(await 回收日of(id)).toBe(超时回收日(超时开, { phase: "线索", node: "潜客培育" }, 手动.at));
+    expect(await 回收日of(id)).not.toBe("2026-11-25");
+  });
+
+  it("客户跟着转：那行换负责人记录（overdue-assign）三态不认，不归零、不计次；同一天的手动转让（assign）照归零", async () => {
+    const { customerId } = await 建线索(甲, { replyEndAt: 京("2026-11-20 15:00") });
+    await 超时转扫一遍(京("2026-11-20 16:00"));
+    await 超时转扫一遍(京("2026-11-20 16:30"));
+    const 行们 = await prisma.customerOwnerLog.findMany({ where: { customerId }, select: { id: true, at: true, kind: true, clockReset: true } });
+    expect(行们.map((x) => x.kind)).toEqual(["overdue-assign"]);
+    expect([...换负责人们of(行们, 默认三态规则)]).toEqual([]);
+    expect([...换负责人们of([...行们, { at: 京("2026-11-20 17:00"), kind: "assign" }], 默认三态规则)]).toEqual([{ 日: "2026-11-20", 方式: "转让", 归零: true }]);
   });
 });
 

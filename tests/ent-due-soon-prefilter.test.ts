@@ -19,7 +19,7 @@ import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibil
 import { 即将逾期, 即将逾期粗筛, 即将逾期紧筛 } from "@/lib/project/home-cards";
 import { 即将逾期的项目 } from "@/lib/project/home-cards-db";
 import { 将回公海of } from "@/lib/project/review-extras-db";
-import { 项目回收日, 算超时要的, 超时成员线 } from "@/lib/project/db";
+import { 项目回收日, 算超时要的, 超时成员线, 补回收起点留痕 } from "@/lib/project/db";
 import { 默认组织规则, type 组织规则 } from "@/lib/project/org-rules";
 import { 存组织规则 } from "@/lib/project/org-rules-store";
 import { 字典of } from "@/lib/project/stage-dict";
@@ -76,7 +76,7 @@ const 今们 = [此刻, 今天.add(2, "day").add(9, "hour").toDate(), 今天.sub
 async function 按粗筛(规则: 组织规则, 今: Date, 带成员线 = true): Promise<{ ids: string[]; 取回: number }> {
   const 粗 = 即将逾期粗筛(规则, 字典of(true), 今);
   if (!粗) return { ids: [], 取回: 0 };
-  const [们, 成员] = await Promise.all([prisma.project.findMany({ where: 粗, select: 算超时要的 }), 带成员线 ? 超时成员线(规则) : null]);
+  const [们, 成员] = await Promise.all([prisma.project.findMany({ where: 粗, select: 算超时要的 }).then((x) => 补回收起点留痕(x)), 带成员线 ? 超时成员线(规则) : null]);
   return { ids: 们.filter((p) => 即将逾期(项目回收日(规则, p, 成员), 今)).map((p) => p.id).sort(), 取回: 们.length };
 }
 const 我 = <T,>(fn: () => Promise<T>) => 以谁的身份(老板, fn);

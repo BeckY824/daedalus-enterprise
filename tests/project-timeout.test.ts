@@ -15,7 +15,8 @@ vi.mock("@/lib/sync/client", () => ({ 读团队: () => (mocks.团队 ? { teamId:
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 公海超时收回, 超时预览, 记项目沟通 } from "@/lib/project/db";
-import { 超时回收日, 节点超时天数, 已超时, 超时理由, 超时起点, 计时起点 } from "@/lib/project/timeout";
+import { 超时回收日, 节点超时天数, 已超时, 超时理由, 超时起点, 计时起点, 是超时自动转痕, 超时自动转理由, 系统 } from "@/lib/project/timeout";
+import { 即将逾期的项目 } from "@/lib/project/home-cards-db";
 import { 默认组织规则, type 组织规则 } from "@/lib/project/org-rules";
 import { 读组织规则 } from "@/lib/project/org-rules-store";
 import { 要下一步时间, 规整向导 } from "@/lib/project/wizard";
@@ -30,6 +31,22 @@ describe("超时起点", () => {
     expect(超时起点(早, null, 晚, undefined).getTime()).toBe(晚.getTime());
     expect(超时起点(晚, "2026-10-01T00:00:00Z").getTime()).toBe(晚.getTime());
     expect(超时起点(早).getTime()).toBe(早.getTime());
+  });
+});
+
+describe("超时自动转那行不算起点（Even 11-19 第 14 题 B）", () => {
+  const 轮转原因 = `分配方式：自动分配；${超时自动转理由}（原负责人 甲 超时没记有效沟通）`;
+  it("转让 + 操作人系统 + 原因带「超时未跟进自动转」三样都对上才算（reply-overdue.ts 超时转理由 就是这串，见 ent-reply-overdue.test.ts）", () => {
+    expect(是超时自动转痕({ kind: "transfer", userId: 系统.id, reason: 轮转原因 })).toBe(true);
+    // 手动转让（真成员）原因里碰巧有这几个字也照算接手
+    expect(是超时自动转痕({ kind: "transfer", userId: "u1", reason: 轮转原因 })).toBe(false);
+    // 系统做的别的转让：定时分配到点、没原因的
+    expect(是超时自动转痕({ kind: "transfer", userId: 系统.id, reason: "分配方式：自动分配；原定 11-20 15:00 定时分配" })).toBe(false);
+    expect(是超时自动转痕({ kind: "transfer", userId: 系统.id, reason: null })).toBe(false);
+    // 领取、节点变更、超时收回进公海
+    expect(是超时自动转痕({ kind: "pool-claim", userId: 系统.id, reason: 轮转原因 })).toBe(false);
+    expect(是超时自动转痕({ kind: "node", userId: 系统.id, reason: 轮转原因 })).toBe(false);
+    expect(是超时自动转痕({ kind: "pool-release", userId: 系统.id, reason: 超时理由 })).toBe(false);
   });
 });
 
@@ -208,6 +225,35 @@ describe("扫库收回", () => {
     await prisma.projectNodeLog.create({ data: { projectId: p.id, userId: 乙.id, at: 天后(-1), fromPhase: "线索", fromNode: "潜客培育", toPhase: "线索", toNode: "潜客培育" } });
     expect(await 超时预览(开着({ 潜客培育: 3 }))).toBe(0);
     expect(await 超时预览(开着({ 潜客培育: 1 }))).toBe(1);
+  });
+
+  it("起点过滤（Even 11-19 第 14 题 B）：超时自动转那行不推后起点；手动转让、领取、换节点、系统别的转让照推；首页紧筛同一口径", async () => {
+    await setSetting("orgRules", 开着({ 潜客培育: 3 }));
+    const p = await 项目(乙.id, { createdAt: 天后(-10) });
+    const 底 = { projectId: p.id, at: 天后(-1), fromPhase: "线索", fromNode: "潜客培育", toPhase: "线索", toNode: "潜客培育" };
+    const 轮转原因 = `分配方式：自动分配；${超时自动转理由}（原负责人 丙 超时没记有效沟通）`;
+    // 只有轮转那行：起点还是建项目那天，照收
+    await prisma.projectNodeLog.create({ data: { ...底, userId: 系统.id, kind: "transfer", fromOwnerId: 丙.id, toOwnerId: 乙.id, reason: 轮转原因 } });
+    expect(await 超时预览(开着({ 潜客培育: 3 }))).toBe(1);
+    // 再加一行照推的，就不收；每样换着试
+    const 照推: { userId: string; kind: string; fromOwnerId?: string; toOwnerId?: string; reason?: string | null }[] = [
+      { userId: 老板.id, kind: "transfer", fromOwnerId: 丙.id, toOwnerId: 乙.id, reason: 轮转原因 }, // 手动转让（原因里碰巧有这几个字）
+      { userId: 乙.id, kind: "pool-claim", fromOwnerId: 丙.id, toOwnerId: 乙.id },
+      { userId: 乙.id, kind: "node" },
+      { userId: 系统.id, kind: "transfer", fromOwnerId: 丙.id, toOwnerId: 乙.id, reason: null }, // 系统做的没原因的转让（OR 拆开那条，别被 NULL 筛掉）
+      { userId: 系统.id, kind: "transfer", fromOwnerId: 丙.id, toOwnerId: 乙.id, reason: "分配方式：自动分配；原定定时分配" },
+    ];
+    for (const 补 of 照推) {
+      const 行 = await prisma.projectNodeLog.create({ data: { ...底, at: 天后(-1), ...补 } });
+      expect(await 超时预览(开着({ 潜客培育: 3 })), JSON.stringify(补)).toBe(0);
+      await prisma.projectNodeLog.delete({ where: { id: 行.id } });
+    }
+    // 首页「即将逾期」（10 天收：建项目 8 天前 → 2 天后收）：最近只有轮转那行照数；手动转让一行就不数了
+    await prisma.project.update({ where: { id: p.id }, data: { createdAt: 天后(-8) } });
+    const 十天 = 开着({ 潜客培育: 10 });
+    expect(await 即将逾期的项目(十天)).toEqual([p.id]);
+    await prisma.projectNodeLog.create({ data: { ...底, at: new Date(), userId: 老板.id, kind: "transfer", fromOwnerId: 丙.id, toOwnerId: 乙.id } });
+    expect(await 即将逾期的项目(十天)).toEqual([]);
   });
 
   it("同一天同一份规则只扫一次；改了时长当天再扫", async () => {
