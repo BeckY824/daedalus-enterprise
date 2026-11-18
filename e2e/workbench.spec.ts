@@ -523,9 +523,11 @@ test("项目看板：列头写着这一阶段压着多少钱", async ({ page }) 
   // 等摆着的列头合计出来再读，不在 .pipe-col 一出现就读
   const 合计格 = page.locator(".pipe .pipe-sum").filter({ visible: true });
   await expect(合计格.first()).toBeVisible();
-  const 合计 = await 合计格.allInnerTexts();
-  expect(合计.length).toBeGreaterThan(0);
-  for (const x of 合计) expect(x).toMatch(/¥|￥|\d/);
+  // 看见第一格之后再取一次快照，正赶上看板又换一次就是 0 格（11-17 main CI 首跑和重试都读到 0）：轮询到摆着的格都读得到、都带金额
+  await expect.poll(async () => {
+    const 合计 = await 合计格.allInnerTexts();
+    return 合计.length > 0 && 合计.every((x) => /¥|￥|\d/.test(x)) ? "ok" : JSON.stringify(合计);
+  }, { message: "摆着的列头合计没读到或不带金额" }).toBe("ok");
 });
 
 // 11-01 起看板列宽固定（一屏约 4 列），放不下在看板框里左右滑；页面本身不横滚（globals.css .pipe）。
