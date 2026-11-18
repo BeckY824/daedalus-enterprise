@@ -48,10 +48,10 @@ beforeAll(async () => {
     const 长='某某超长贸易进出口有限公司'.repeat(6);
     window.__长=长;
     const users=[{id:'qa',name:'小王',email:'s1',role:'SALES',active:true},{id:'u2',name:'小张',email:'s2',role:'SALES',active:true}];
-    window.__render=({去处,申请,自动})=>{
+    window.__render=({去处,申请,自动,方向})=>{
       const 项目们=去处.map(p=>({id:p.id,name:p.名,phase:'商机',node:'报价',result:null,pooledAt:null,amount:0,currency:'CNY'}));
       root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><div className='shell'><nav className='rail' aria-label='主导航'/><main className='main app-content' style={{padding:'22px 26px'}}><div>
-      <Record customer={{id:'a',extra:null,name:长,phone:'13800138000',school:长,grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'小王',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z'}} contacts={[]} contracts={[]} opportunities={[]} tasks={[]} plan={null} users={users} channels={[]} aiEnabled={false} followUpsHasMore={false} 项目们={项目们} 参与项目们={[]} 关联们={[]} 旺旺们={[]} 企业版 能放公海 能转让客户 转让要申请={!!申请} 自动分配={自动?async(id,因)=>{window.__自={id,因};return window.__自回??{ok:true,toUserId:'u2',接手人:'小张',为什么:'本月已分最少（0 条）；按客户区域定内贸'}}:undefined} 转让原因={{选项:['客户迁移','岗位调整','其他'],自己:'qa'}}
+      <Record customer={{id:'a',extra:null,name:长,phone:'13800138000',school:长,grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'小王',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z'}} contacts={[]} contracts={[]} opportunities={[]} tasks={[]} plan={null} users={users} channels={[]} aiEnabled={false} followUpsHasMore={false} 项目们={项目们} 参与项目们={[]} 关联们={[]} 旺旺们={[]} 企业版 能放公海 能转让客户 转让要申请={!!申请} 自动分配方向={方向??undefined} 自动分配={自动?async(id,因,向)=>{window.__自={id,因,...(向?{向}:{})};return window.__自回??{ok:true,toUserId:'u2',接手人:'小张',为什么:'本月已分最少（0 条）；按客户区域定内贸'}}:undefined} 转让原因={{选项:['客户迁移','岗位调整','其他'],自己:'qa'}}
         跟进去处={去处} 待办计划={[]} followUps={[]} 新建项目={{节点们:['线索验证'],要下一步:false}}/>
     </div></main></div></BusinessProvider></App></ConfigProvider>);
     };
@@ -63,7 +63,7 @@ afterAll(async () => { await browser?.close(); });
 type 去处 = { id: string; 名: string; 主: boolean; 结束: boolean; 说明: null; 下一步: null; 下一步文字: null; 能记?: boolean };
 const 项 = (id: string, 名: string): 去处 => ({ id, 名, 主: true, 结束: false, 说明: null, 下一步: null, 下一步文字: null, 能记: true });
 
-async function 开(width = 1280, 额外: { 自动?: boolean; 自回?: unknown; 预览?: unknown } = {}) {
+async function 开(width = 1280, 额外: { 自动?: boolean; 自回?: unknown; 预览?: unknown; 方向?: unknown } = {}) {
   const page = await browser.newPage({ viewport: { width, height: 860 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://cust-auto.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
@@ -71,8 +71,8 @@ async function 开(width = 1280, 额外: { 自动?: boolean; 自回?: unknown; �
   await page.evaluate(x => {
     if (x.自回) Reflect.set(window, "__自回", x.自回);
     if (x.预览) Reflect.set(window, "__预览", x.预览);
-    (window as unknown as { __render: (x: object) => void }).__render({ 去处: x.去处, 自动: x.自动 });
-  }, { 去处: [项("p1", "项目一")], 自动: 额外.自动 ?? true, 自回: 额外.自回, 预览: 额外.预览 });
+    (window as unknown as { __render: (x: object) => void }).__render({ 去处: x.去处, 自动: x.自动, 方向: x.方向 });
+  }, { 去处: [项("p1", "项目一")], 自动: 额外.自动 ?? true, 自回: 额外.自回, 预览: 额外.预览, 方向: 额外.方向 ?? null });
   await page.locator(".rec-head").first().waitFor();
   return { page, errors };
 }
@@ -169,6 +169,44 @@ it("1024 / 1280 / 1366 + 超长客户名：两种方式下框都不撑出、标�
         expect(量, `宽 ${w} ${法}`).toEqual({ 题溢: false, 体溢: false, 组出框: false, 说溢: false, 盒右: 量.盒右, 点得到: true });
         expect(量.盒右, `宽 ${w}`).toBeLessThanOrEqual(w);
       }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+// 11-18 用户：分配方向默认按 区域 → 电话 → 本人事业部，框里可以改；改了才交给服务端
+it("自动分配：分配方向显示默认值和来源，可改成另一条线，交上去带改的方向（1024）", async () => {
+  const { page, errors } = await 开(1024, { 方向: { 线: "内贸", 来源: "区域" } });
+  try {
+    const 框 = await 点转让(page);
+    expect(await 框.getByTestId("transfer-direction").count()).toBe(0);
+    await 框.getByRole("radiogroup", { name: "分配方式" }).getByRole("radio", { name: "自动分配" }).click();
+    expect(await 框.getByTestId("transfer-direction-why").innerText()).toBe("按客户区域：内贸");
+    expect(await 框.getByTestId("transfer-direction").innerText()).toContain("内贸");
+    await 框.getByRole("combobox", { name: "分配方向" }).click();
+    await page.locator(".ant-select-dropdown:visible").getByTitle("外贸", { exact: true }).click();
+    expect(await 框.getByTestId("transfer-direction-why").innerText()).toBe("你改成了外贸（默认按客户区域：内贸）");
+    const 宽 = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(宽).toBe(0);
+    await 框.getByRole("button", { name: /^自动分配$/ }).click();
+    await expect.poll(() => 取(page, "__自")).toEqual({ id: "a", 因: null, 向: "外贸" });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("自动分配：没改方向不交；默认判不出时提示补区域（按电话、按事业部的来源也写明）", async () => {
+  for (const [方向, 话] of [
+    [{ 线: "外贸", 来源: "电话" }, "按电话（国外号码）：外贸"],
+    [{ 线: "内贸", 来源: "本人" }, "按你所在事业部：内贸"],
+    [null, "客户没填区域，按全部销售分配，建议补区域"],
+  ] as const) {
+    const { page, errors } = await 开(1280, { 方向 });
+    try {
+      const 框 = await 点转让(page);
+      await 框.getByRole("radiogroup", { name: "分配方式" }).getByRole("radio", { name: "自动分配" }).click();
+      expect(await 框.getByTestId("transfer-direction-why").innerText()).toBe(话);
+      await 框.getByRole("button", { name: /^自动分配$/ }).click();
+      await expect.poll(() => 取(page, "__自")).toEqual({ id: "a", 因: null });
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }

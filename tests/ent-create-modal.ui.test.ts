@@ -40,7 +40,7 @@ beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import {建档弹窗} from '@/app/(app)/projects/new/ProjectWizard';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {我Provider} from '@/lib/me-client';
-    const 数据={users:[{id:'u1',name:'我自己',email:'a'},{id:'u2',name:'同事乙',email:'b'}],要下一步:false,企业:{渠道们:[],节点们:['潜客培育','线索验证','线索推进'],分配方式们:[{i:0,名:'指定分配'},{i:1,名:'自动分配'}],默认分配方式:0,是销售:!window.__市场,按区域:!!window.__市场,客户只给自己:false}};
+    const 数据={users:[{id:'u1',name:'我自己',email:'a'},{id:'u2',name:'同事乙',email:'b'}],要下一步:false,企业:{渠道们:[],节点们:['潜客培育','线索验证','线索推进'],分配方式们:[{i:0,名:'指定分配'},{i:1,名:'自动分配'}],默认分配方式:0,是销售:!window.__市场,按区域:!!window.__市场,本人线:window.__本人线??null,客户只给自己:false}};
     function 页(){const [开,set开]=React.useState(true);return <建档弹窗 open={开} 标题={window.__标题||'新增客户'} 项目={window.__开关||'关'} 数据={数据} onClose={()=>set开(false)}/>;}
     createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'u1',name:'我自己'}}><页/></我Provider></BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"', "process.env.CRM_ENTERPRISE": '"1"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
@@ -290,23 +290,27 @@ it.each([1024, 1280, 1366])("Windows %ipx + 多个超长号码：弹窗里不横
   } finally { await page.close(); }
 });
 
-it.each([1024, 1280, 1366])("Windows %ipx 市场成员选自动分配：业务线换成只读「按客户区域自动定」、没有下拉，不溢出", async (w) => {
+it.each([1024, 1280, 1366])("Windows %ipx 市场成员选自动分配：业务线换成可改的「分配方向」，默认来源写明（区域空 → 电话），不溢出", async (w) => {
   const page = await 开(w, { __开关: "锁开", __标题: "新线索", __市场: true });
   try {
     const 框 = page.getByRole("dialog");
     expect(await 框.getByTestId("wizard-bizline").count()).toBe(1);
     await 选(page, "分配方式", "自动分配");
-    const 只读 = 框.getByTestId("wizard-bizline-auto");
-    await 只读.waitFor();
-    expect(await 只读.innerText()).toContain("客户没填区域，按全部销售分配，建议补区域");
+    const 为什么 = 框.getByTestId("wizard-direction-why");
+    await 为什么.waitFor();
+    expect(await 为什么.innerText()).toContain("客户没填区域，按全部销售分配，建议补区域");
     expect(await 框.getByTestId("wizard-bizline").count()).toBe(0);
+    // 填了大陆手机号：默认跟着变成「按电话（大陆手机号）：内贸」，下拉显示内贸
+    await 框.getByLabel("号码", { exact: true }).fill("13905712266");
+    await expect.poll(() => 为什么.innerText()).toContain("按电话（大陆手机号）：内贸");
+    expect(await 框.getByTestId("wizard-direction").innerText()).toContain("内贸");
     // 市场不是销售：没有「分出去后看不到」黄条
     expect(await 框.getByTestId("wizard-auto-warn").count()).toBe(0);
     await 框.getByLabel("客户名称").fill("某某超长名字的智能制造装备与工业自动化系统集成有限公司华东区域采购中心第二分部");
     const 量 = await page.evaluate(() => {
       const s = document.querySelector(".cr-sheet") as HTMLElement;
       const body = document.querySelector(".ant-modal-body") as HTMLElement;
-      const 格 = document.querySelector("[data-testid='wizard-bizline-auto']") as HTMLElement;
+      const 格 = document.querySelector("[data-testid='wizard-direction']") as HTMLElement;
       return { 表: s.scrollWidth - s.clientWidth, 体: body.scrollWidth - body.clientWidth, 页: document.documentElement.scrollWidth - window.innerWidth, 格: 格.scrollWidth - 格.clientWidth };
     });
     expect(量).toEqual({ 表: 0, 体: 0, 页: 0, 格: 0 });
@@ -314,6 +318,30 @@ it.each([1024, 1280, 1366])("Windows %ipx 市场成员选自动分配：业务�
     await 选(page, "分配方式", "指定分配");
     await 框.getByTestId("wizard-bizline").waitFor();
   } finally { await page.close(); }
+});
+
+it("市场成员选自动分配：没改分配方向 = 不交（服务端按默认算）；改成外贸 = 交外贸；没手机按我的事业部", async () => {
+  {
+    const page = await 开(1280, { __开关: "锁开", __标题: "新线索", __市场: true, __本人线: "外贸" });
+    try {
+      const 框 = page.getByRole("dialog");
+      await 选(page, "分配方式", "自动分配");
+      await expect.poll(() => 框.getByTestId("wizard-direction-why").innerText()).toContain("按你所在事业部：外贸");
+      await 框.getByLabel("号码", { exact: true }).fill("13905712266");
+      await expect.poll(() => 框.getByTestId("wizard-direction-why").innerText()).toContain("按电话（大陆手机号）：内贸");
+      await 选(page, "分配方向", "外贸");
+      await expect.poll(() => 框.getByTestId("wizard-direction-why").innerText()).toContain("你改成了外贸（默认按电话（大陆手机号）：内贸）");
+      await 框.getByLabel("客户名称").fill("华东展具");
+      await 框.getByLabel("联系人姓名").fill("王总");
+      await 选(page, "渠道触点", "公司资源");
+      await 框.getByLabel("项目名称").fill("华东展具-一期");
+      await 框.getByLabel("沟通内容").fill("客户要报价");
+      await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+      await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档向导")).toBeTruthy();
+      const 交 = (await 调(page)).find((x) => x[0] === "建档向导")![1] as { 项目: Record<string, unknown> };
+      expect(交.项目).toMatchObject({ 分配方式: 1, 业务线: null, 分配方向: "外贸" });
+    } finally { await page.close(); }
+  }
 });
 
 it("市场成员选自动分配：没选业务线也能建，交的业务线是 null（服务端按客户区域定）", async () => {
@@ -330,7 +358,7 @@ it("市场成员选自动分配：没选业务线也能建，交的业务线是 
     await 框.getByRole("button", { name: /^建\s*好$/ }).click();
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档向导")).toBeTruthy();
     const 交 = (await 调(page)).find((x) => x[0] === "建档向导")![1] as { 项目: Record<string, unknown> };
-    expect(交.项目).toMatchObject({ 分配方式: 1, 业务线: null });
+    expect(交.项目).toMatchObject({ 分配方式: 1, 业务线: null, 分配方向: null });
   } finally { await page.close(); }
 });
 
@@ -342,7 +370,7 @@ it("市场成员给有地址的老客户新增项目、选自动分配：只读�
     await page.locator(".ant-select-dropdown:visible").getByText("华东展具", { exact: false }).first().click();
     await 框.getByTestId("wizard-old-customer").waitFor();
     await 选(page, "分配方式", "自动分配");
-    await expect.poll(() => 框.getByTestId("wizard-bizline-auto").innerText()).toContain("按客户区域自动定：内贸");
+    await expect.poll(() => 框.getByTestId("wizard-direction-why").innerText()).toContain("按客户区域：内贸");
     await 框.getByLabel("项目名称").fill("华东展具-二期");
     await 框.getByLabel("沟通内容").fill("老客户要加一套");
     await 框.getByRole("button", { name: /^建\s*好$/ }).click();

@@ -55,7 +55,8 @@ import { 只读客户, 只读话 } from "@/lib/team-scope";
 import { scheduleValue } from "@/lib/schedule-date";
 import { 定分配方式, 建好再分, 认新建定时 } from "@/lib/project/after-create-assign";
 import { 认业务线, 业务线必填 } from "@/lib/enterprise/assign-line";
-import { 区域线of, 按区域分配of } from "@/lib/enterprise/customer-region";
+import { 按区域分配of, 默认分配方向, 认分配方向 } from "@/lib/enterprise/customer-region";
+import { 本人线of } from "@/lib/enterprise/assign-direction-db";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 import { 字典定义, 项目画像项, 认跟进方式, 选的原因 } from "@/lib/enterprise/dict";
 import { 改项目画像, type 画像改动, type 画像字段 } from "@/lib/project/profile";
@@ -78,6 +79,13 @@ function 刷新项目(projectId?: string, customerId?: string) {
 
 /** 要传附件：弹窗里给首条沟通挑了截图 / 附件（11-18）。交了 true 才回一张附件票（lib/enterprise/first-follow-ticket.ts），建好由浏览器凭票接着传 */
 export type 建档向导输入 = { 客户: CustomerInput; 联系人: 向导联系人; 项目: 向导项目; 跟进: 向导跟进; 要传附件?: boolean };
+
+/** 分配方向按电话判时看的号（11-18）：客户电话、企业号码（手机号）、联系人电话、联系人号码里的手机，按这个顺序 */
+function 向导号们(input: Pick<建档向导输入, "客户" | "联系人">): string[] {
+  const 企号 = input.客户.企业号码?.类型 === "手机号" ? input.客户.企业号码.值 : null;
+  const 行们 = Array.isArray(input.联系人?.号码们) ? input.联系人.号码们.filter((r) => r?.kind === "phone").map((r) => r.value) : [];
+  return [input.客户.phone, 企号, input.联系人?.phone, ...行们].filter((x): x is string => typeof x === "string" && !!x.trim());
+}
 /**
  * 新建弹窗没开「项目」开关（P-界面-36，11-15）：只建客户、主要联系人和首条沟通（团队版算客户沟通；企业版挂在新客户自带的潜客培育项目上，11-17）。
  * 首条沟通的截图 / 附件：企业版首条沟通挂在潜客培育项目上，交了 要传附件 同样签一张附件票、挂到这条首条沟通上（11-18 起）；
@@ -134,6 +142,7 @@ export async function 建档向导(输入: 建档向导输入) {
     if ("error" in 好) return { ok: false as const, error: 好.error };
     /** 市场成员选自动分配：业务线按客户区域定（下面企业版那段算） */
     let 区域定线 = false;
+    let 手选方向: "内贸" | "外贸" | undefined;
     // 企业版新建线索要选渠道或渠道触点（10-26：直接选渠道，不是来源类型；P-渠道-08 起触点也算）
     if (企业版()) {
       if (是占位值(String(input.客户.name ?? ""))) return { ok: false as const, error: 占位名提示("客户名称") };
@@ -158,9 +167,16 @@ export async function 建档向导(输入: 建档向导输入) {
         if (分配) 好.企业.分配方式名 = 分配.名;
         // 市场成员（按岗位）选自动分配（P-转-26 自动分配这一半，用户 11-17）：业务线不用选、交了也不认，按客户区域定——
         // 大陆 内贸、非大陆（含港澳台）外贸；客户地址空看项目所在地；都空 = 项目不记线（null，分完按负责人的线），自动分配两条线都算
-        区域定线 = 分配?.i === 1 && 按区域分配of(await 读组织(), me.id);
+        const 组织 = await 读组织();
+        区域定线 = 分配?.i === 1 && 按区域分配of(组织, me.id);
         if (区域定线) {
-          好.企业.业务线 = 区域线of(input.客户.企业资料 ?? null, 好.企业.所在地 ?? null);
+          // 分配方向（11-18）：人在界面上改过就按改的（只认内贸 / 外贸）；没改按 客户区域 → 项目所在地 → 电话 → 本人事业部；都判不出 = 不记线、两条线都算
+          const 向 = 认分配方向(input.项目?.分配方向);
+          if (!向.ok) return { ok: false as const, error: 向.error };
+          手选方向 = 向.线;
+          好.企业.业务线 = 向.线 ?? 默认分配方向({
+            客户: input.客户.企业资料 ?? null, 项目: 好.企业.所在地 ?? null, 号们: 向导号们(input), 本人线: await 本人线of(组织, me.id),
+          }).线;
         } else {
           // 业务线（11-01 清单 A1，16:1x 拍板三选一）：手动选；没选 = 跟客户上选的。企业版新建必填，不填不让建
           if (!好.企业.业务线) {
@@ -273,7 +289,7 @@ export async function 建档向导(输入: 建档向导输入) {
     await 存沟通后重算三态(r.id);
     刷新项目(建了.projectId, r.id);
     // 指定给了别人：项目不在我名下，跳详情页会是「不存在或无权查看」（11-03 A2-1），和自动分配一样回线索列表
-    const 再分 = 分配 ? await 建好再分(me, 分配, 建了.projectId!, 好.项目.name, 好.企业?.业务线 ?? null, 定时) : null;
+    const 再分 = 分配 ? await 建好再分(me, 分配, 建了.projectId!, 好.项目.name, 好.企业?.业务线 ?? null, 定时, 区域定线 ? 手选方向 : undefined) : null;
     // 指定给了别人：告诉接手人。客户转过去了链客户详情（看得到联系方式）；客户没转就是项目分给他，链项目详情。自动分配、进公海走 建好再分 里自己的通知，这里不重复
     if (!再分 && 好.项目.ownerId !== me.id) {
       if (转客户 || !企) await 分给你通知(me, 好.项目.ownerId, [r.id], 好.项目.name);

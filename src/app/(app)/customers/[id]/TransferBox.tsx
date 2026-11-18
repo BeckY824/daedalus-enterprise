@@ -14,6 +14,8 @@ import { 其他项, 其他补充上限, 合其他 } from "@/lib/enterprise/dict-
 import { 转走项目说法, type 转走项目预览 } from "@/lib/carry-over";
 import { 动作出错话 } from "@/lib/stale-deploy";
 import { 自动分配说明, 自动分配生效话 } from "@/lib/enterprise/cust-auto-assign-words";
+import { 方向来源说明, 区域未填提示, type 分配方向 } from "@/lib/enterprise/customer-region";
+import type { 线 } from "@/lib/enterprise/lead-assign";
 
 export type 转让结果 = { ok: false; error: string } | { ok: true; 话?: string };
 type 方式 = "指定" | "自动";
@@ -42,7 +44,11 @@ export default function TransferBox({
   取预览: (接手人: string) => Promise<转走项目预览 | null | undefined>;
   做: (o: { value: string; label: string }, 原因: string | null) => Promise<转让结果>;
   /** 市场成员转暂不分配的客户才给：摆「指定分配 / 自动分配」。取预览 = 还没挑人时会一起转走的项目 */
-  自动?: { 做: (原因: string | null) => Promise<转让结果>; 取预览: () => Promise<转走项目预览 | null | undefined> };
+  自动?: {
+    做: (原因: string | null, 方向?: 线) => Promise<转让结果>; 取预览: () => Promise<转走项目预览 | null | undefined>;
+    /** 分配方向的默认值和来源（11-18）：框里摆成可改的「内贸 / 外贸」，改了才交；没有 = 不摆这一格 */
+    默认方向?: 分配方向 | null;
+  };
   onClose: () => void;
 }) {
   const [谁, set谁] = useState<string | undefined>();
@@ -53,6 +59,8 @@ export default function TransferBox({
   const [错, set错] = useState("");
   const [发出, set发出] = useState<string | null>(null);
   const [法, set法] = useState<方式>("指定");
+  /** 分配方向（11-18）：人改了才有；没改 = 按默认（不交，服务端同顺序算） */
+  const [向, set向] = useState<线 | null>(null);
   /** 自动分配那份「一起转」：还没挑人，打开选了自动才取一次 */
   const [自动预览, set自动预览] = useState<{ 说: ReturnType<typeof 转走项目说法> } | null>(null);
   const 写框 = useRef<HTMLInputElement>(null);
@@ -61,7 +69,7 @@ export default function TransferBox({
   const [上次开, set上次开] = useState(open);
   if (open !== 上次开) {
     set上次开(open);
-    if (open) { set谁(undefined); set预览(null); set选(null); set写(""); set忙(false); set错(""); set发出(null); set法("指定"); set自动预览(null); }
+    if (open) { set谁(undefined); set预览(null); set选(null); set写(""); set忙(false); set错(""); set发出(null); set法("指定"); set自动预览(null); set向(null); }
   }
   const 自动中 = !!自动 && 法 === "自动";
 
@@ -93,7 +101,7 @@ export default function TransferBox({
     let r: 转让结果;
     const 因 = 原因选项.length ? 合其他(选, 写) : null;
     try {
-      r = 自动中 && 自动 ? await 自动.做(因) : await 做(o!, 因);
+      r = 自动中 && 自动 ? await 自动.做(因, 向 ?? undefined) : await 做(o!, 因);
     } catch (出错) {
       r = { ok: false, error: 动作出错话(出错, "没转成，请稍后再试") };
     }
@@ -161,6 +169,22 @@ export default function TransferBox({
             />
             )}
           </div>
+          {/* 分配方向（11-18）：默认按客户区域 → 电话 → 我的事业部，可以改；改了才交，没改服务端按同一顺序算 */}
+          {自动中 && 自动?.默认方向 !== undefined && (() => {
+            const 默认 = 自动.默认方向 ?? { 线: null, 来源: "不限" as const };
+            return (
+              <div className="cd-transfer-row">
+                <span className="cd-transfer-k">分配方向</span>
+                <div className="cd-transfer-v">
+                  <Select style={{ width: 120 }} placeholder="内贸 / 外贸" aria-label="分配方向" data-testid="transfer-direction" disabled={忙}
+                    value={向 ?? 默认.线 ?? undefined} options={(["内贸", "外贸"] as const).map((v) => ({ value: v, label: v }))} onChange={(v: 线) => set向(v)} />
+                  <div className={向 || 默认.线 ? "cd-transfer-mut" : "cd-transfer-mut cd-transfer-warn"} data-testid="transfer-direction-why">
+                    {向 && 向 !== 默认.线 ? `你改成了${向}（默认${默认.线 ? 方向来源说明(默认) : "不限"}）` : 默认.线 ? 方向来源说明(默认) : 区域未填提示}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
           <div className="cd-transfer-row">
             <span className="cd-transfer-k">一起转</span>
             <div className="cd-transfer-v" data-testid="transfer-carry">

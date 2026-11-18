@@ -35,11 +35,11 @@ const 大陆: 址 = { addrCountry: "中国", addrProvince: "浙江省", addrCity
 const 美国: 址 = { addrCountry: "美国" };
 
 /** 市场成员名下一位客户 + 一条项目（默认分配方式「暂不分配」、业务线内贸）+ 一位联系人 */
-async function 建客户(o: { 负责人?: string; 地址?: 址; 方式?: string | null; 项目线?: string | null; 客户线?: string | null; 待分配?: boolean } = {}) {
+async function 建客户(o: { 负责人?: string; 地址?: 址; 方式?: string | null; 项目线?: string | null; 客户线?: string | null; 待分配?: boolean; 号?: string | null } = {}) {
   const 负责人 = o.负责人 ?? 市场管;
   号++;
   const c = await prisma.customer.create({
-    data: { name: `客户${号}`, phone: `1390000${String(号).padStart(4, "0")}`, salesOwnerId: 负责人, bizLine: o.客户线 ?? "内贸", ...(o.地址 ?? 大陆) },
+    data: { name: `客户${号}`, phone: o.号 === undefined ? `1390000${String(号).padStart(4, "0")}` : o.号 ?? "", salesOwnerId: 负责人, bizLine: o.客户线 ?? "内贸", ...(o.地址 ?? 大陆) },
   });
   const p = await prisma.project.create({
     data: {
@@ -47,7 +47,7 @@ async function 建客户(o: { 负责人?: string; 地址?: 址; 方式?: string 
       assignMode: o.方式 === undefined ? "暂不分配" : o.方式, ...(o.待分配 ? { awaitAssignAt: new Date() } : {}),
     },
   });
-  const ct = await prisma.contact.create({ data: { customerId: c.id, name: `联系人${号}`, phone: `1380000${String(号).padStart(4, "0")}` } });
+  const ct = await prisma.contact.create({ data: { customerId: c.id, name: `联系人${号}`, phone: o.号 === undefined ? `1380000${String(号).padStart(4, "0")}` : o.号 } });
   return { c: c.id, p: p.id, ct: ct.id };
 }
 const 客户负责人 = async (id: string) => (await prisma.customer.findUniqueOrThrow({ where: { id } })).salesOwnerId;
@@ -94,7 +94,7 @@ describe("市场成员 + 暂不分配的客户：自动分配", () => {
 
     const r = await 客户自动分配(c, null);
     expect(r).toMatchObject({ ok: true, toUserId: 内二, 接手人: "内贸二" });
-    if (r.ok) expect(r.为什么).toContain("按客户区域定内贸");
+    if (r.ok) expect(r.为什么).toContain("按客户区域：内贸");
     expect(await 客户负责人(c)).toBe(内二);
     expect((await 项目(p)).ownerId).toBe(内二);
     expect((await 项目(p)).awaitAssignAt).toBeNull();
@@ -138,11 +138,29 @@ describe("市场成员 + 暂不分配的客户：自动分配", () => {
     expect(await 客户自动分配(c, null)).toMatchObject({ ok: true, toUserId: 内一 });
   });
 
-  it("项目业务线是「暂不分配」也算；客户地址全空看项目所在地、再空两条线都算", async () => {
-    const { c } = await 建客户({ 方式: "自动分配", 项目线: "暂不分配", 地址: { addrCountry: null } });
+  it("项目业务线是「暂不分配」也算；客户地址全空、号也认不出、我也没事业部：两条线都算", async () => {
+    await prisma.entMember.update({ where: { userId: 市场管 }, data: { deptId: null } });
+    const { c } = await 建客户({ 方式: "自动分配", 项目线: "暂不分配", 地址: { addrCountry: null }, 号: null });
     const r = await 客户自动分配(c, null);
     expect(r).toMatchObject({ ok: true, 区域未填: true });
     if (r.ok) expect([内一, 内二, 外一, 外二]).toContain(r.toUserId);
+  });
+
+  // 分配方向（11-18）：区域 → 电话 → 本人事业部；框里改了按改的
+  it("分配方向：区域空看电话（+44 → 外贸）；再空看我的事业部（市场运营部在内贸事业部下 → 内贸）；手动改了按改的", async () => {
+    const 甲 = await 建客户({ 地址: { addrCountry: null }, 号: "+447700900123" });
+    const r1 = await 客户自动分配(甲.c, null);
+    expect(r1).toMatchObject({ ok: true });
+    if (r1.ok) { expect([外一, 外二]).toContain(r1.toUserId); expect(r1.为什么).toContain("按电话（国外号码）：外贸"); }
+    const 乙 = await 建客户({ 地址: { addrCountry: null }, 号: null });
+    const r2 = await 客户自动分配(乙.c, null);
+    if (r2.ok) { expect([内一, 内二]).toContain(r2.toUserId); expect(r2.为什么).toContain("按你所在事业部：内贸"); }
+    expect(r2).toMatchObject({ ok: true });
+    const 丙 = await 建客户();
+    const r3 = await 客户自动分配(丙.c, null, "外贸");
+    if (r3.ok) { expect([外一, 外二]).toContain(r3.toUserId); expect(r3.为什么).toContain("按选的分配方向：外贸"); }
+    expect(r3).toMatchObject({ ok: true });
+    expect(await 客户自动分配((await 建客户()).c, null, "火星")).toMatchObject({ ok: false, error: "分配方向只能选内贸或外贸" });
   });
 });
 

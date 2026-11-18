@@ -211,12 +211,14 @@ describe("不是企业版", () => {
 
 describe("新建线索向导：五种分配方式都生效（10-27 A7）", () => {
   let 号 = 0;
-  const 向导 = async ({ 地址, ...项目 }: Partial<建档向导输入["项目"]> & { 地址?: { addrCountry: string; addrProvince: string; addrCity: string; addrDistrict: string } }) => {
+  // 没手机：客户只留一个邮箱（分配方向不按电话判，11-18）
+  const 向导 = async ({ 地址, 没手机, ...项目 }: Partial<建档向导输入["项目"]> & { 地址?: { addrCountry: string; addrProvince: string; addrCity: string; addrDistrict: string }; 没手机?: boolean }) => {
     号++;
     const 渠 = (await prisma.channel.findFirst()) ?? (await prisma.channel.create({ data: { name: "小红", channelOwnerId: 老板 } }));
     return 建档向导({
       客户: {
-        name: `向导客户${号}`, phone: `1391111${String(号).padStart(4, "0")}`, school: null, grade: null, major: null,
+        name: `向导客户${号}`, phone: 没手机 ? "" : `1391111${String(号).padStart(4, "0")}`, school: null, grade: null, major: null,
+        ...(没手机 ? { 企业号码: { 类型: "邮箱", 值: `w${号}@x.test` } } : {}),
         followStatus: "待跟进", decisionStatus: "了解中", expectedSignAt: null, remark: null,
         salesOwnerId: 项目.ownerId ?? mocks.user.id, channelId: 渠.id, referrerCustomerId: null,
         ...(地址 ? { 企业资料: 地址 } : {}),
@@ -540,7 +542,7 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
   it("市场成员自动分配、客户和项目都没填区域：业务线不用选（交 null 也能建），按全部销售分、提示补区域；项目不记线、客户记暂不分配", async () => {
     await setSetting(自动分配不参与key, { [销售经理]: "禁止" });
     当(市场);
-    const r = await 向导({ 分配方式: 1, 业务线: null });
+    const r = await 向导({ 分配方式: 1, 业务线: null, 没手机: true });
     expect(r).toMatchObject({ ok: true, 转走: true });
     if (!r.ok) return;
     expect(r.提示).toContain(区域未填提示);
@@ -548,6 +550,30 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     expect([销售, 另一销售]).toContain(p.ownerId);
     expect(p.bizLine).toBeNull();
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: r.customerId } })).bizLine).toBe("暂不分配");
+  });
+
+  it("分配方向（11-18）：没交按 区域 → 电话 → 本人事业部；交了按交的；乱交的拦下", async () => {
+    await setSetting(自动分配不参与key, { [销售经理]: "禁止" });
+    await prisma.entMember.updateMany({ where: { userId: 销售 }, data: { line: "内贸" } });
+    await prisma.entMember.updateMany({ where: { userId: 另一销售 }, data: { line: "外贸" } });
+    当(市场);
+    // 区域、地址都没有：大陆手机号 → 内贸
+    const a = await 向导({ 分配方式: 1, 业务线: null });
+    expect(a).toMatchObject({ ok: true, 转走: true });
+    if (a.ok) expect([(await 项目of(a.projectId)).ownerId, (await 项目of(a.projectId)).bizLine]).toEqual([销售, "内贸"]);
+    // 手动改成外贸：大陆手机号也按外贸
+    const b = await 向导({ 分配方式: 1, 业务线: null, 分配方向: "外贸" });
+    expect(b).toMatchObject({ ok: true, 转走: true });
+    if (b.ok) expect([(await 项目of(b.projectId)).ownerId, (await 项目of(b.projectId)).bizLine]).toEqual([另一销售, "外贸"]);
+    // 没手机、没区域：本人事业部（外贸）
+    await prisma.entMember.update({ where: { userId: 市场 }, data: { line: "外贸" } });
+    const c = await 向导({ 分配方式: 1, 业务线: null, 没手机: true });
+    if (c.ok) expect((await 项目of(c.projectId)).bizLine).toBe("外贸");
+    expect(c).toMatchObject({ ok: true });
+    // 乱交：拦下、不建
+    const 前 = await prisma.project.count();
+    expect(await 向导({ 分配方式: 1, 业务线: null, 分配方向: "东南亚" })).toMatchObject({ ok: false, error: "分配方向只能选内贸或外贸" });
+    expect(await prisma.project.count()).toBe(前);
   });
 
   it("自动分配 + 业务线「暂不分配」（非市场成员）：不自动分，留在新线索待分配，不发提醒（A7）", async () => {

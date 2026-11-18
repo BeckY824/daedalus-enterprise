@@ -222,30 +222,58 @@ it("取消勾选：确认不交 首条附件、不传；没带图：卡上不摆
   } finally { await 无.page.close(); }
 });
 
-// 11-18 加急：市场成员选自动分配，业务线换成只读「按客户区域自动定」；只写了城市也算区域；没填区域显示未填提示，确认不卡业务线
-it("市场自动分配：只写城市显示按区域定内贸；区域全空显示「客户没填区域……建议补区域」，不要求选业务线（1024）", async () => {
+// 11-18：市场成员选自动分配，业务线换成可改的「分配方向」：默认 区域 → 手机号 → 我的事业部，写明来源；只写城市也算区域；判不出显示未填提示，确认不卡业务线
+it("市场自动分配：分配方向默认按区域 / 电话 / 本人事业部，写明来源；改了交上去（1024）", async () => {
+  const 没手机 = { phone: "", 联系方式: [{ kind: "email", value: "a@b.test" }] };
   {
     const { page, errors } = await open(1024, 900, { country: "", city: "杭州", 区域去处: ["客户"] }, { 按区域: true, 默认分配方式: 1 });
     try {
-      expect(await page.getByTestId("lead-card-region-line").innerText()).toContain("按客户区域自动定：内贸");
-      expect(await 格(page, "业务线").locator(".ant-select").count()).toBe(0);
+      expect(await page.getByTestId("lead-card-region-line").innerText()).toContain("按客户区域：内贸");
+      expect(await 格(page, "分配方向").innerText()).toContain("内贸");
+      expect(await 格(page, "业务线").count()).toBe(0);
       expect(await 不横撑(page)).toEqual({ 页: true, 出界: 0 });
+      // 改成外贸：说明写明改过、默认是什么；交上去带 分配方向
+      await 选(page, "分配方向", "外贸");
+      expect(await page.getByTestId("lead-card-region-line").innerText()).toContain("你改成了外贸（默认按客户区域：内贸）");
+      await 格(page, "下一步计划").locator("input").fill("发报价单");
+      await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
+      await page.locator(".prop-ok").click();
+      await page.waitForFunction(() => Reflect.get(window, "__交"));
+      expect(await page.evaluate(() => Reflect.get(window, "__交") as Record<string, unknown>)).toMatchObject({ 分配方式: 1, 分配方向: "外贸" });
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
   {
-    const { page, errors } = await open(1024, 900, { country: "", city: "" }, { 按区域: true, 默认分配方式: 1 });
+    // 没区域：卡上的大陆手机号 → 内贸
+    const { page } = await open(1024, 900, { country: "", city: "" }, { 按区域: true, 默认分配方式: 1 });
+    try {
+      expect(await page.getByTestId("lead-card-region-line").innerText()).toContain("按电话（大陆手机号）：内贸");
+    } finally { await page.close(); }
+  }
+  {
+    // 没区域、没手机：按我的事业部
+    const { page } = await open(1024, 900, { country: "", city: "", ...没手机 }, { 按区域: true, 默认分配方式: 1, 本人线: "外贸" });
+    try {
+      expect(await page.getByTestId("lead-card-region-line").innerText()).toContain("按你所在事业部：外贸");
+    } finally { await page.close(); }
+  }
+  {
+    const { page, errors } = await open(1024, 900, { country: "", city: "", ...没手机 }, { 按区域: true, 默认分配方式: 1 });
     try {
       expect(await page.getByTestId("lead-card-region-line").innerText()).toContain("客户没填区域，按全部销售分配，建议补区域");
       await 格(page, "下一步计划").locator("input").fill("发报价单");
       await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
       expect(await page.locator(".prop-note").count() ? await page.locator(".prop-note").innerText() : "").not.toContain("业务线");
+      // 没改：交上去不带 分配方向（服务端按默认算）
+      await page.locator(".prop-ok").click();
+      await page.waitForFunction(() => Reflect.get(window, "__交"));
+      expect(await page.evaluate(() => Reflect.get(window, "__交") as Record<string, unknown>)).not.toHaveProperty("分配方向");
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
   {
-    // 只勾联系人：客户、项目都没落区域，照样提示
-    const { page } = await open(1024, 900, { country: "", city: "杭州", 区域去处: ["联系人"] }, { 按区域: true, 默认分配方式: 1 });
+    // 只勾联系人：客户、项目都没落区域，没手机 → 提示
+    const { page } = await open(1024, 900, { country: "", city: "杭州", 区域去处: ["联系人"], ...没手机 }, { 按区域: true, 默认分配方式: 1 });
     try {
       expect(await page.getByTestId("lead-card-region-line").innerText()).toContain("建议补区域");
     } finally { await page.close(); }

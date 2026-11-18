@@ -37,6 +37,8 @@ const 卡 = (补: Record<string, unknown> = {}) => ({
   name: `星河电子${序}`, contact: "周经理", phone: `1380000${String(序).padStart(4, "0")}`, source: "展会", status: "待跟进", remark: "",
   业务线: "内贸", 节点: "潜客培育", ...补,
 });
+/** 没有手机号的卡：联系方式只留一个邮箱（分配方向不按电话判） */
+const 没手机 = () => ({ phone: "", 联系方式: [{ kind: "email", value: `m${序}@x.test` }] });
 const 唯一项目 = () => prisma.project.findFirstOrThrow({ include: { customer: true } });
 
 beforeEach(async () => {
@@ -189,7 +191,7 @@ describe("新线索卡：市场自动分配按写进地址的区域定线（P-�
 
   it("只写了国外城市（多伦多）没国家：认不出是国内，不落客户地址（免得当成国内），提示补区域", async () => {
     当(市场);
-    const r = await applyProposal(卡({ 分配方式: 1, 业务线: undefined, city: "多伦多", 区域去处: ["客户"] }) as never);
+    const r = await applyProposal(卡({ 分配方式: 1, 业务线: undefined, city: "多伦多", 区域去处: ["客户"], ...没手机() }) as never);
     expect(r).toMatchObject({ ok: true });
     expect((await prisma.customer.findFirstOrThrow()).addrCity).toBeNull();
     expect(JSON.stringify(r)).toContain(区域未填提示);
@@ -197,10 +199,59 @@ describe("新线索卡：市场自动分配按写进地址的区域定线（P-�
 
   it("没写区域：分出去了，提示里带「客户没填区域……建议补区域」", async () => {
     当(市场);
-    const r = await applyProposal(卡({ 分配方式: 1, 业务线: undefined }) as never);
+    const r = await applyProposal(卡({ 分配方式: 1, 业务线: undefined, ...没手机() }) as never);
     expect(r).toMatchObject({ ok: true });
     expect(JSON.stringify(r)).toContain(区域未填提示);
     expect(await 记录线()).toBeNull();
+  });
+});
+
+/*
+  11-18 用户：市场分配时「分配方向」可改，默认按 区域 → 电话 → 本人事业部（卡上不改就不交，服务端按同一顺序算）
+*/
+describe("新线索卡：市场自动分配的分配方向", () => {
+  const 记录线 = async () => (await prisma.entLeadAssign.findFirstOrThrow()).line;
+  it("区域没填、大陆手机号 → 内贸（服务端没收到方向时自己算）", async () => {
+    当(市场);
+    const r = await applyProposal(卡({ 分配方式: 1, 业务线: undefined }) as never);
+    expect(r).toMatchObject({ ok: true });
+    expect(JSON.stringify(r)).not.toContain(区域未填提示);
+    expect((await prisma.project.findFirstOrThrow()).ownerId).toBe(乙.id);
+    expect(await 记录线()).toBe("内贸");
+  });
+  it("区域没填、国外号码（+1）→ 外贸", async () => {
+    当(市场);
+    expect(await applyProposal(卡({ 分配方式: 1, 业务线: undefined, phone: "", 联系方式: [{ kind: "phone", value: "+14155550123" }] }) as never)).toMatchObject({ ok: true });
+    expect((await prisma.project.findFirstOrThrow()).ownerId).toBe(丙.id);
+    expect(await 记录线()).toBe("外贸");
+  });
+  it("区域、手机都判不出 → 按录入人本人事业部（外贸）", async () => {
+    await prisma.entMember.update({ where: { userId: 市场.id }, data: { line: "外贸" } });
+    当(市场);
+    expect(await applyProposal(卡({ 分配方式: 1, 业务线: undefined, ...没手机() }) as never)).toMatchObject({ ok: true });
+    expect(await 记录线()).toBe("外贸");
+  });
+  it("区域优先于电话：摩洛哥 + 大陆手机号 → 外贸", async () => {
+    当(市场);
+    expect(await applyProposal(卡({ 分配方式: 1, 业务线: undefined, country: "摩洛哥", 区域去处: ["客户"] }) as never)).toMatchObject({ ok: true });
+    expect(await 记录线()).toBe("外贸");
+  });
+  it("卡上手动改成外贸：杭州客户也按外贸分，项目记外贸", async () => {
+    当(市场);
+    expect(await applyProposal(卡({ 分配方式: 1, 业务线: undefined, city: "杭州", 区域去处: ["客户"], 分配方向: "外贸" }) as never)).toMatchObject({ ok: true });
+    const p = await prisma.project.findFirstOrThrow();
+    expect([p.ownerId, p.bizLine]).toEqual([丙.id, "外贸"]);
+    expect(await 记录线()).toBe("外贸");
+  });
+  it("卡上乱填的方向不收（buildProposal 丢掉），按默认", async () => {
+    当(市场);
+    expect(await applyProposal(卡({ 分配方式: 1, 业务线: undefined, city: "杭州", 区域去处: ["客户"], 分配方向: "随便" }) as never)).toMatchObject({ ok: true });
+    expect(await 记录线()).toBe("内贸");
+  });
+  it("销售（不按区域）交了分配方向也不认：照业务线", async () => {
+    当(乙);
+    expect(await applyProposal(卡({ 分配方式: 4, 分配方向: "外贸" }) as never)).toMatchObject({ ok: true });
+    expect((await prisma.project.findFirstOrThrow()).bizLine).toBe("内贸");
   });
 });
 

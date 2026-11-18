@@ -16,6 +16,8 @@ import { 标定时分配 } from "@/lib/enterprise/scheduled-assign";
 import { 认定时分配, 短时刻 } from "@/lib/project/time-fields";
 import { prisma } from "@/lib/prisma";
 import { 按区域分配, 区域未填提示 } from "@/lib/enterprise/customer-region";
+import { 本人线of } from "@/lib/enterprise/assign-direction-db";
+import type { 线 } from "@/lib/enterprise/lead-assign";
 
 /** 新线索能手动分配 / 点自动分配的（A7）：和 lead-assign.ts 能分配 同一组业务角色 */
 const 能分配的人 = "市场管理、销售管理、总管理员";
@@ -58,7 +60,9 @@ export async function 定分配方式(me: 我, 项目: { 分配方式?: number |
  * - 个人自持、指定分配：建好就在负责人名下，不用再动
  * 建档本身算成了，没成的回一句提示。转走 = 项目已不在我名下
  */
-export async function 建好再分(me: 我, 分配: 定好的分配, projectId: string, 项目名: string, 业务线?: 项目线 | null, 定时?: 定时分配 | null): Promise<{ 提示: string; 转走: boolean } | null> {
+export async function 建好再分(me: 我, 分配: 定好的分配, projectId: string, 项目名: string, 业务线?: 项目线 | null, 定时?: 定时分配 | null,
+  /** 分配方向（11-18）：市场成员在界面上手动选的；没选 = undefined，向导自动分配 按 区域 → 电话 → 本人事业部 现算（和建档时记的业务线同一顺序） */
+  方向?: 线): Promise<{ 提示: string; 转走: boolean } | null> {
   if (分配.i === 1 && 业务线 === "暂不分配") {
     await 标待分配(projectId, null);
     刷新(projectId);
@@ -72,7 +76,8 @@ export async function 建好再分(me: 我, 分配: 定好的分配, projectId: 
     return { 提示: `已定时：${短时刻(定时.at)} ${给谁}；到点前留在新线索待分配`, 转走: false };
   }
   if (分配.i === 1) {
-    const r = await 向导自动分配(projectId);
+    // 分配方向（11-18）：市场成员手动选了就按选的；没选按默认顺序现算。别的角色 向导自动分配 不看这一格
+    const r = await 向导自动分配(projectId, 方向);
     // 市场成员按客户区域分（P-转-26）、客户没填区域时两条线都算：提示里说一句，建议补区域
     if (r.ok) return { 提示: `已按「${分配.名}」分给 ${r.接手人}${r.区域未填 ? `（${区域未填提示}）` : ""}`, 转走: true };
     await 标待分配(projectId, { org: await 读组织(), 名: 项目名, 谁建的: me.name, 为什么: r.error });
@@ -111,7 +116,9 @@ export function 认新建定时(分配: 定好的分配, 值: unknown, 接手人
  * 新建线索 / 项目页面上「分配方式」那一格要的：这人能用哪几种、默认选哪种（A6，按业务角色）、是不是销售（选自动分配要再确认，A9）。
  * 业务角色只认 EntMember（组织里的 角色们），账号角色不算
  */
-export async function 新建分配方式数据(me: 我): Promise<{ 分配方式们: 定好的分配[]; 默认分配方式: number | null; 是销售: boolean; 没角色: boolean; 按区域: boolean }> {
+export async function 新建分配方式数据(me: 我): Promise<{ 分配方式们: 定好的分配[]; 默认分配方式: number | null; 是销售: boolean; 没角色: boolean; 按区域: boolean;
+  /** 本人事业部（11-18 分配方向第三步：区域、电话都判不出时的默认）；不是按区域分配的人不算，给 null */
+  本人线: 线 | null }> {
   const [能用, org] = await Promise.all([我能用的分配方式(me), 读组织()]);
   const 角色们 = org.成员.get(me.id)?.角色们 ?? [];
   // 「市场」含按部门认的市场成员（X-93）
@@ -119,5 +126,6 @@ export async function 新建分配方式数据(me: 我): Promise<{ 分配方式�
   const 默认 = 默认分配方式(角色们, 能用.map((x) => x.i), 部门市场);
   // 没角色：向导一进来就提示、不让往下填，免得填完五步才被服务端拦（D3-6）
   // 按区域：市场成员（按岗位：市场管理、渠道运营，X-141 ②）选自动分配时业务线不用选，按客户区域定（P-转-26）
-  return { 分配方式们: 能用, 默认分配方式: 默认 ?? null, 是销售: 是销售角色(角色们, 部门市场), 没角色: 没设业务角色(org, me.id), 按区域: 按区域分配(角色们) };
+  const 按区域 = 按区域分配(角色们);
+  return { 分配方式们: 能用, 默认分配方式: 默认 ?? null, 是销售: 是销售角色(角色们, 部门市场), 没角色: 没设业务角色(org, me.id), 按区域, 本人线: 按区域 ? await 本人线of(org, me.id) : null };
 }

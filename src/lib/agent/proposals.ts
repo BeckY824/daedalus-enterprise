@@ -218,7 +218,9 @@ export type 线索建档格 = { 分配方式?: number; ownerId?: string; 业务�
   /** 指定回复时间（11-17，选填）：卡上人选的两格，北京墙钟「YYYY-MM-DD HH:mm」（lib/project/time-fields.ts） */
   指定回复开始?: string; 指定回复结束?: string;
   /** 指定分配时间（11-17 PR3，选填）：卡上选「指定时间」时的北京墙钟；空 = 现在分配 */
-  定时分配?: string };
+  定时分配?: string;
+  /** 分配方向（11-18）：市场成员选自动分配时卡上人手动选的内贸 / 外贸；没选 = 服务端按 区域 → 电话 → 本人事业部 算。模型不给 */
+  分配方向?: "内贸" | "外贸" };
 const 是区域去处 = (x: unknown): x is 区域去处 => typeof x === "string" && Object.hasOwn(区域去处叫法, x);
 
 /**
@@ -271,6 +273,7 @@ function 收线索建档格(args: Record<string, unknown>): 线索建档格 {
   if (北京墙钟转时刻(回终)) 出.指定回复结束 = 回终;
   const 定时 = str(args.定时分配, 20);
   if (北京墙钟转时刻(定时)) 出.定时分配 = 定时;
+  if (args.分配方向 === "内贸" || args.分配方向 === "外贸") 出.分配方向 = args.分配方向;
   return 出;
 }
 

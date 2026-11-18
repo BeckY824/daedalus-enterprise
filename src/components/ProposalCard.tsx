@@ -18,7 +18,7 @@ import { describeProposal, missingFields, 只留选中的改动, 可改字段表
 import { 线索号码种类, 线索号码上限, 线索号码行, type 线索联系方式 } from "@/lib/agent/proposals";
 import { 号码上限 } from "@/lib/enterprise/customer-v2";
 import { 三种业务线, 分配说明, 建议业务线, 认分给 } from "@/lib/enterprise/assign-line";
-import { 区域线of, 区域定线说明 } from "@/lib/enterprise/customer-region";
+import { 默认分配方向, 方向来源说明 } from "@/lib/enterprise/customer-region";
 import { 认渠道 } from "@/lib/enterprise/channel-match";
 import { useBusiness } from "@/lib/business-client";
 import { 币种符号 } from "@/lib/currency";
@@ -77,8 +77,10 @@ export const 新线索要下一步 = createContext(false);
  * 指定分配时的负责人候选、业务线、当前进程（11-05 起只到线索验证，不再问客户明确回复）。服务端算好传进来（dashboard/page.tsx，同 wizard-data.ts）
  */
 export type 新线索企业格 = { 成员: { value: string; label: string }[]; 分配方式们: { i: number; 名: string }[]; 默认分配方式: number | null; 是销售: boolean;
-  /** 市场成员（按岗位，P-转-26）：选自动分配时业务线换成只读说明，按客户区域定（和建档向导一样） */
-  按区域?: boolean };
+  /** 市场成员（按岗位，P-转-26）：选自动分配时业务线换成可改的「分配方向」，默认按客户区域 → 电话 → 本人事业部（和建档向导一样，11-18） */
+  按区域?: boolean;
+  /** 本人事业部（分配方向第三步的默认） */
+  本人线?: "内贸" | "外贸" | null };
 export const 新线索企业 = createContext<新线索企业格 | null>(null);
 /** 新建只能落在线索验证及之前（11-05：过了线索验证要看它的必填项，新建时填不了；lib/project/wizard.ts 同口径） */
 const 线索节点们 = 企业版字典.节点们.线索.slice(0, 企业版字典.节点们.线索.indexOf(有效线索节点) + 1 || undefined);
@@ -759,10 +761,23 @@ export default function ProposalCard({
                   </Field>
                 )}
                 {区域定线中 ? (
-                  <Field label="业务线" block>
+                  <Field label="分配方向" block>
                     {(() => {
-                      const 线 = 区域线of(卡上地址.客户, 卡上地址.项目);
-                      return <span className={线 ? "muted" : "prop-region-warn"} data-testid="lead-card-region-line" style={{ fontSize: 12 }}>{区域定线说明(线)}</span>;
+                      // 默认：落库时同一套地址（线索卡地址）认出的区域 → 卡上手机号 → 我的事业部；人改了按改的（只交改过的，服务端同顺序算默认）
+                      const 默认 = 默认分配方向({
+                        客户: 卡上地址.客户, 项目: 卡上地址.项目, 本人线: 企?.本人线 ?? null,
+                        号们: [...(draft.联系方式 ?? []).filter((r) => r.kind === "phone").map((r) => r.value), draft.phone],
+                      });
+                      const 选 = draft.分配方向;
+                      return (
+                        <>
+                          <Select size="small" style={{ width: 110 }} placeholder="内贸 / 外贸" data-testid="lead-card-direction" value={选 ?? 默认.线 ?? undefined}
+                            options={(["内贸", "外贸"] as const).map((v) => ({ value: v, label: v }))} onChange={(v) => setDraft({ ...draft, 分配方向: v })} />
+                          <span className={选 || 默认.线 ? "muted" : "prop-region-warn"} data-testid="lead-card-region-line" style={{ fontSize: 12 }}>
+                            {选 && 选 !== 默认.线 ? `你改成了${选}（默认${默认.线 ? 方向来源说明(默认) : "不限"}）` : 方向来源说明(默认)}
+                          </span>
+                        </>
+                      );
                     })()}
                   </Field>
                 ) : (
