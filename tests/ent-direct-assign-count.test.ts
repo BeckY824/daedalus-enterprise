@@ -27,7 +27,7 @@ import { 建档向导, 建档只建客户, type 建档向导输入 } from "@/app
 import { 给客户建项目 } from "@/app/(app)/customers/[id]/project-actions";
 import { saveCustomer } from "@/app/(app)/customers/actions";
 import { 记新建指定分配, 新建算指定分配, 新建指定方向 } from "@/lib/enterprise/direct-assign";
-import { 本月已分, 月份 } from "@/lib/enterprise/lead-assign";
+import { 本月已分, 月份, 自动分配不参与key } from "@/lib/enterprise/lead-assign";
 import { 估算轮到, 快轮到kind } from "@/lib/enterprise/assign-eta";
 import { 读组织 } from "@/lib/enterprise/org";
 
@@ -139,6 +139,20 @@ describe("市场成员新建、负责人选成销售：记 1 条指定分配、�
     expect(await 记录们()).toMatchObject([{ projectId: p.id, toUserId: 另一销售, byUserId: 市场, counted: true }]);
   });
 
+  it("客户页新增项目直接指定给参与状态不正常的销售：拒（和建档向导、新线索列表同一条，审核追加）", async () => {
+    await setSetting(自动分配不参与key, { [销售]: "暂停" });
+    invalidateSettingsCache();
+    const c = await prisma.customer.create({ data: { name: "老客户乙", phone: "13900000012", salesOwnerId: 市场, addrCountry: "美国" } });
+    const r = await 给客户建项目({
+      customerId: c.id,
+      项目: { name: "三期", amount: 0, currency: "CNY", ownerId: 销售, 分配方式: 0, 业务线: "内贸" } as never,
+      跟进: { type: "PHONE", content: "电话聊了三期", occurredAt: "2026-10-20 10:00", 节点: "潜客培育", 明确回复: false } as never,
+    });
+    expect(r).toMatchObject({ ok: false });
+    if (!r.ok) expect(r.error).toContain("暂停");
+    expect(await prisma.project.count({ where: { customerId: c.id } })).toBe(0);
+  });
+
   it("客户页新增项目", async () => {
     const c = await prisma.customer.create({ data: { name: "老客户", phone: "13900000011", salesOwnerId: 市场, addrCountry: "美国" } });
     const r = await 给客户建项目({
@@ -195,6 +209,8 @@ describe("不记的", () => {
 
 describe("估算跟着变、推「快轮到」", () => {
   it("两位内贸销售：没记录时暂无法估算；市场指定给销售一条后他排后、另一位下一条；再指定给另一位又换回来", async () => {
+    // 11-18 第 9 题 B 起内贸销售管理也进池；这条只钉两位销售之间，先把销管禁掉
+    await setSetting(自动分配不参与key, { [销管]: "禁止" });
     const 估 = async () => Object.fromEntries([...(await 估算轮到(await 读组织()))].filter(([id]) => id === 销售 || id === 另一销售).map(([id, x]) => [id === 销售 ? "一" : "二", x]));
     expect(await 估()).toEqual({ 一: "暂无法估算", 二: "暂无法估算" });
     const a = await 建档向导(向导输入(销售, { 分配方式: 0 }));

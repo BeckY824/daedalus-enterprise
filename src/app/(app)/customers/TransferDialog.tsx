@@ -10,6 +10,7 @@
  *   自动 = 不选人，服务端一位一位按新线索的自动分配挑销售（按客户区域定内贸 / 外贸、本月分得最少的优先，前面刚分出去的算进去）；
  *   勾到的不是暂不分配的那几位不自动分、框里先说清楚为什么，留在原处（可以改用指定分配）。分完框里原地列出分给了谁、几位没分成及原因
  */
+import { 指定选项 } from "@/lib/enterprise/designate-options";
 import { useEffect, useRef, useState } from "react";
 import { Button, Input, Modal, Select } from "antd";
 import { 其他项, 其他补充上限, 合其他 } from "@/lib/enterprise/dict-kinds";
@@ -22,7 +23,9 @@ import { 动作出错话 } from "@/lib/stale-deploy";
 
 export type 人 = { value: string; label: string };
 /** 批量自动分配预看：勾的里能自动分的有几位、不能的是谁为什么 */
-export type 自动预看 = { 可: number; 不可: { name: string; error: string }[] };
+export type 自动预看 = { 可: number; 不可: { name: string; error: string }[];
+  /** 摆了「指定 / 自动」时选指定，接手人下拉只列这些人（参与状态正常，审核 11-18 追加；服务端 市场分配指定挡 同口径）；没给 = 不筛 */
+  可指定?: string[] };
 /** 批量自动分配的结果：分给了谁、哪几位没分成为什么 */
 export type 自动结果 = { ok: false; error: string } | { ok: true; 分成: { name: string; 接手人: string }[]; 没成: { name: string; error: string }[] };
 type 方式 = "指定" | "自动";
@@ -134,6 +137,8 @@ export default function TransferDialog({
   /** 摆不摆「指定分配 / 自动分配」：勾的里至少一位能自动分 */
   const 有自动 = !!自动 && !!预看 && 预看.可 > 0;
   const 自动中 = 有自动 && 法 === "自动";
+  /** 市场分配（摆了「指定 / 自动」）选指定：只列能被指定的；普通批量转让照旧 */
+  const 列的人 = 有自动 ? 指定选项(人们, 预看?.可指定, null, 谁) : 人们;
 
   useEffect(() => {
     if (!open || !谁 || !取转走) return;
@@ -299,7 +304,7 @@ export default function TransferDialog({
                 placeholder="选接手人"
                 value={谁}
                 disabled={忙}
-                options={人们}
+                options={列的人}
                 onChange={(v) => {
                   set谁(v);
                   set错("");

@@ -68,23 +68,25 @@ describe("本人事业部", () => {
   const 部门 = [
     { id: "内", name: "内贸事业部", parentId: null, sort: 0 }, { id: "内市", name: "市场运营部", parentId: "内", sort: 0 },
     { id: "外", name: "外贸事业部", parentId: null, sort: 1 }, { id: "外市", name: "市场运营部", parentId: "外", sort: 0 },
-    { id: "企划", name: "营销企划部", parentId: null, sort: 2 },
+    { id: "企划", name: "营销企划部", parentId: null, sort: 2 }, { id: "别", name: "行政部", parentId: null, sort: 3 },
   ];
   const 行 = (userId: string, deptId: string | null, line: string | null = null) => ({ userId, deptId, bizRole: "marketing_mgr", line, managerId: null, dottedManagerId: null });
   const org = 建组织(
-    ["a", "b", "c", "d"].map((id) => ({ id, role: "SALES", active: true })),
-    [行("a", "内市"), 行("b", "外市"), 行("c", "企划"), 行("d", "企划", "外贸")],
+    ["a", "b", "c", "d", "e"].map((id) => ({ id, role: "SALES", active: true })),
+    [行("a", "内市"), 行("b", "外市"), 行("c", "企划"), 行("d", "企划", "外贸"), 行("e", "别")],
     部门,
   );
-  it("成员业务线优先；否则往上找部门名带内贸 / 外贸的；都没有 = null", () => {
+  it("成员业务线优先；否则往上找部门名带内贸 / 外贸的；营销企划部兜底内贸（11-18 第 7 题 A）；都没有 = null", () => {
     expect(本人事业部(org, null, "a")).toBe("内贸");
     expect(本人事业部(org, null, "b")).toBe("外贸");
-    expect(本人事业部(org, null, "c")).toBeNull();
+    expect(本人事业部(org, null, "c")).toBe("内贸");
+    expect(本人事业部(org, null, "e")).toBeNull();
     expect(本人事业部(org, null, "d")).toBe("外贸");
     expect(本人事业部(org, null, "不在")).toBeNull();
   });
   it("勾了参与部门：所在部门只落在一条线里就按它", () => {
     expect(本人事业部(org, { 内贸: ["企划"], 外贸: [] }, "c")).toBe("内贸");
-    expect(本人事业部(org, { 内贸: ["企划"], 外贸: ["企划"] }, "c")).toBeNull();
+    expect(本人事业部(org, { 内贸: ["别"], 外贸: ["别"] }, "e")).toBeNull();
+    expect(本人事业部(org, { 内贸: [], 外贸: ["别"] }, "e")).toBe("外贸");
   });
 });

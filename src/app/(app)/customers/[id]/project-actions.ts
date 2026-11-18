@@ -40,7 +40,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 定分配方式, 建好再分, 新建分配方式数据, 认新建定时 } from "@/lib/project/after-create-assign";
-import { 接手问题 } from "@/lib/enterprise/lead-assign";
+import { 指定问题 } from "@/lib/enterprise/assign-eta";
 import { 项目分给你通知, 同事待分配随客户通知, type 留下的活 } from "@/lib/enterprise/notice-sources";
 import { 记新建指定分配 } from "@/lib/enterprise/direct-assign";
 import { 客户在市场手里, 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
@@ -168,7 +168,7 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     if (定时?.接手人) {
       const 接 = await prisma.user.findUnique({ where: { id: 定时.接手人 }, select: { active: true } });
       if (!接?.active) return { ok: false, error: "项目负责人不存在或已停用，请选一位在职成员" };
-      const 问题 = (await 不能当负责人(定时.接手人)) ?? 接手问题(org, 定时.接手人, null);
+      const 问题 = (await 不能当负责人(定时.接手人)) ?? (await 指定问题(org, 定时.接手人));
       if (问题) return { ok: false, error: 问题 };
       指定分配名 = null;
     }
@@ -223,6 +223,11 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     if (不行) return { ok: false, error: 不行 };
     // 指定给别人，客户在市场手里、接手的是销售：算转客户（X-18，和自动分配同一条）
     const 指定给别人 = 指定分配名 !== null && 项目.ownerId !== me.id;
+    // 直接指定给别人：和建档向导、新线索列表同一条（11-18 第 8 题 B，审核追加）——只给参与状态正常的销售 / 销售管理
+    if (指定给别人) {
+      const 问题 = await 指定问题(org, 项目.ownerId);
+      if (问题) return { ok: false, error: 问题 };
+    }
     const 读客户 = (db: Parameters<typeof 转客户给销售>[0]) => 看全部(() => db.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } }));
     const 市场转客户 = 指定给别人 && 算市场转客户(org, await 读客户(prisma), 项目.ownerId);
 

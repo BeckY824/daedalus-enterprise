@@ -40,7 +40,7 @@ beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import {建档弹窗} from '@/app/(app)/projects/new/ProjectWizard';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {我Provider} from '@/lib/me-client';
-    const 数据={users:[{id:'u1',name:'我自己',email:'a'},{id:'u2',name:'同事乙',email:'b'}],要下一步:false,企业:{渠道们:[],节点们:['潜客培育','线索验证','线索推进'],分配方式们:[{i:0,名:'指定分配'},{i:1,名:'自动分配'}],默认分配方式:0,是销售:!window.__市场,按区域:!!window.__市场,本人线:window.__本人线??null,客户只给自己:false}};
+    const 数据={users:[{id:'u1',name:'我自己',email:'a'},{id:'u2',name:'同事乙',email:'b'},...(window.__多一位?[{id:'u3',name:'暂停的丙',email:'c'}]:[])],要下一步:false,企业:{渠道们:[],节点们:['潜客培育','线索验证','线索推进'],分配方式们:[{i:0,名:'指定分配'},{i:1,名:'自动分配'}],默认分配方式:0,是销售:!window.__市场,按区域:!!window.__市场,本人线:window.__本人线??null,客户只给自己:false,可指定:window.__可指定}};
     function 页(){const [开,set开]=React.useState(true);return <建档弹窗 open={开} 标题={window.__标题||'新增客户'} 项目={window.__开关||'关'} 数据={数据} onClose={()=>set开(false)}/>;}
     createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'u1',name:'我自己'}}><页/></我Provider></BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"', "process.env.CRM_ENTERPRISE": '"1"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
@@ -82,6 +82,23 @@ it("新建客户：一个表单、没有「下一步」；项目开关默认关�
     await 框.getByLabel("项目名称").waitFor();
     expect(await 框.locator("[data-ge='负责人']").innerText()).toContain("我自己");
   } finally { await page.close(); }
+});
+
+it("指定分配的项目负责人下拉只列能被指定的（参与正常）+ 我自己，暂停 / 禁止的不列（审核追加；1024 / 1280 / 1366）", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    const page = await 开(w, { __多一位: true, __可指定: ["u2"] });
+    try {
+      const 框 = page.getByRole("dialog");
+      await 框.getByRole("switch", { name: "有项目" }).click();
+      await 框.getByLabel("项目名称").waitFor();
+      await 框.getByLabel("项目负责人", { exact: true }).click();
+      const 下拉 = page.locator(".ant-select-dropdown:visible");
+      await 下拉.getByTitle("同事乙", { exact: true }).waitFor();
+      expect(await 下拉.getByTitle("我自己", { exact: true }).count()).toBe(1);
+      expect(await 下拉.getByTitle("暂停的丙", { exact: true }).count()).toBe(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    } finally { await page.close(); }
+  }
 });
 
 it("按钮不变灰：空着点「建好」就地标红、写「还差 N 项」，不交；填好一格那格的红字立刻消失", async () => {

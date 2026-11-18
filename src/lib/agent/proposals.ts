@@ -251,6 +251,16 @@ export function 线索卡地址(p: 线索卡多的格 & Pick<线索建档格, "�
   };
 }
 
+/**
+ * 模型没给「国家 / 城市填到哪」（regionTo）、卡上又有国家 / 省 / 城市 / 区县 / 详细地址的：默认勾「客户所在区域」（11-18 客户：外国城市和中国城市一样默认勾，
+ * 原来外国城市模型常不给，确认时报「还差国家 / 城市填到哪」）。人在卡上照样能改勾、全取消。只在生成卡片时补（tools.ts），卡片交回来的不补
+ */
+export function 默认填到客户(p: Proposal): Proposal {
+  if (p.kind !== "add_lead" || p.区域去处?.length) return p;
+  const 有 = [p.country, p.province, p.city, p.district, p.address].some((x) => !!x?.trim());
+  return 有 ? { ...p, 区域去处: ["客户"] } : p;
+}
+
 /** 模型给 bizLine / nextStep / regionTo；卡片回传的是收好的中文键（业务线 / 下一步 / 区域去处 + 人选的四格），两种都认，再校验一遍 */
 function 收线索建档格(args: Record<string, unknown>): 线索建档格 {
   const 出: 线索建档格 = {};

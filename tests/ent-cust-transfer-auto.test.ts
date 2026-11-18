@@ -20,6 +20,7 @@ import { prisma } from "@/lib/prisma";
 import { setSetting } from "@/lib/settings";
 import { resetDb } from "./reset";
 import { 客户自动分配, 批量客户自动分配, 批量客户自动分配预看, 设线部门 } from "@/app/(app)/leads/assign-actions";
+import { assignSalesOwner } from "@/app/(app)/customers/actions";
 import { 页面可自动分配, 批量可自动分配, 不是市场话, 不是暂不分配话 } from "@/lib/enterprise/cust-auto-assign";
 import { 自动分配不参与key, 不设配额key, 月份 } from "@/lib/enterprise/lead-assign";
 import { 规则 } from "@/lib/enterprise/rules";
@@ -78,6 +79,8 @@ beforeEach(async () => {
 
   for (const k of [规则.按组织看客户.key, 规则.线索分配.key]) await setSetting(k, true);
   await setSetting(不设配额key, true);
+  // 11-18 第 9 题 B 起内贸销售管理也参与自动分配；这里钉的是销售之间怎么轮，先把内贸组长禁掉（参与另见 ent-wave3a-assign）
+  await setSetting(自动分配不参与key, { [内组长]: "禁止" });
   当(老板, "老板", "ADMIN");
   expect(await 设线部门({ 内贸: [内贸部], 外贸: [外贸部] })).toEqual({ ok: true });
   当(市场管, "市场管理");
@@ -199,7 +202,7 @@ describe("不能用自动分配的：服务端拦，什么都不动", () => {
   });
 
   it("一个能接的人都没有：不转、不标待分配、不写分配记录、不发铃铛，回原因", async () => {
-    await setSetting(自动分配不参与key, { [内一]: "暂停", [内二]: "禁止" });
+    await setSetting(自动分配不参与key, { [内一]: "暂停", [内二]: "禁止", [内组长]: "禁止" });
     const { c, p } = await 建客户();
     const r = await 客户自动分配(c, null);
     expect(r.ok).toBe(false);
@@ -295,12 +298,63 @@ describe("批量转让选自动分配", () => {
   it("没勾、超过 200 位：回原因；一个能接的人都没有：每位回原因，不转、不写分配记录、不发铃铛", async () => {
     expect(await 批量客户自动分配([], null)).toEqual({ ok: false, error: "先勾选要分的客户" });
     expect(await 批量客户自动分配(Array.from({ length: 201 }, (_, i) => `x${i}`), null)).toMatchObject({ ok: false, error: expect.stringContaining("200") });
-    await setSetting(自动分配不参与key, { [内一]: "暂停", [内二]: "禁止" });
+    await setSetting(自动分配不参与key, { [内一]: "暂停", [内二]: "禁止", [内组长]: "禁止" });
     const 们 = [await 建客户(), await 建客户()];
     const r = await 批量客户自动分配(们.map((x) => x.c), null);
     expect(r.ok && r.结果.every((x) => !x.ok && /^没有自动分出去：没有能接的人/.test(x.error))).toBe(true);
     for (const x of 们) expect(await 客户负责人(x.c)).toBe(市场管);
     expect(await prisma.entLeadAssign.count()).toBe(0);
     expect(await prisma.entNotice.count()).toBe(0);
+  });
+});
+
+// 11-18 定：转让框在「分配」模式下（市场成员分暂不分配的客户）选「指定」，只能指定正常参与的人（同 指定问题）；
+// 服务端按「这次是不是市场分配」判，不看前端；普通转让（不是暂不分配、不是市场成员转）不变
+describe("市场分配的指定：只能指定正常参与的人", () => {
+  it("市场成员把暂不分配的客户指定给暂停 / 禁止的销售：拒，客户不动；给正常的：照转", async () => {
+    await setSetting(自动分配不参与key, { [内组长]: "禁止", [内一]: "暂停", [外一]: "禁止" });
+    const a = await 建客户();
+    for (const 谁 of [内一, 外一]) {
+      const r = await assignSalesOwner([a.c], 谁);
+      expect(r.ok, String(谁)).toBe(false);
+      if (!r.ok) expect(r.error).toMatch(/暂停|禁止/);
+    }
+    expect(await 客户负责人(a.c)).toBe(市场管);
+    expect(await assignSalesOwner([a.c], 内二)).toMatchObject({ ok: true, updated: 1 });
+    expect(await 客户负责人(a.c)).toBe(内二);
+  });
+
+  it("批量里混着一位暂不分配的：整批按市场分配判，指定给暂停的拒", async () => {
+    await setSetting(自动分配不参与key, { [内组长]: "禁止", [内一]: "暂停" });
+    const a = await 建客户(), b = await 建客户({ 方式: "个人自持" });
+    expect((await assignSalesOwner([b.c, a.c], 内一)).ok).toBe(false);
+    expect(await 客户负责人(a.c)).toBe(市场管);
+    expect(await 客户负责人(b.c)).toBe(市场管);
+  });
+
+  it("普通转让不变：不是暂不分配的客户、或总管理改派，给暂停的照转", async () => {
+    await setSetting(自动分配不参与key, { [内组长]: "禁止", [内一]: "暂停" });
+    const 自持 = await 建客户({ 方式: "个人自持" });
+    expect(await assignSalesOwner([自持.c], 内一)).toMatchObject({ ok: true, updated: 1 });
+    const a = await 建客户();
+    当(老板, "老板", "ADMIN");
+    expect(await assignSalesOwner([a.c], 内一)).toMatchObject({ ok: true, updated: 1 });
+    expect(await 客户负责人(a.c)).toBe(内一);
+  });
+
+  it("规则「线索分配」关着：不算市场分配，照转", async () => {
+    await setSetting(自动分配不参与key, { [内组长]: "禁止", [内一]: "暂停" });
+    await setSetting(规则.线索分配.key, false);
+    const a = await 建客户();
+    expect(await assignSalesOwner([a.c], 内一)).toMatchObject({ ok: true, updated: 1 });
+  });
+
+  it("批量预看带回可指定的人：只列正常参与的销售 / 销售管理", async () => {
+    await setSetting(自动分配不参与key, { [内组长]: "禁止", [内一]: "暂停" });
+    const a = await 建客户();
+    const 看 = await 批量客户自动分配预看([a.c]);
+    expect(看.ok).toBe(true);
+    if (!看.ok) return;
+    expect(new Set(看.可指定)).toEqual(new Set([内二, 外一, 外二, 外组长]));
   });
 });

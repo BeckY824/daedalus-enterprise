@@ -114,7 +114,13 @@ export const 参与状态of = (表: Record<string, 参与状态>, userId: string
  */
 export const 不设配额key = "enterprise.lead_assign.no_quota";
 
-export type 候选人 = { userId: string; 已分: number; 配额: number | null; 进池: Date };
+export type 候选人 = {
+  userId: string; 已分: number; 配额: number | null; 进池: Date;
+  /** 中途回来 / 加入时按几条起算（起算补 补过的才有；已分 已经含补的那几条），给 挑的理由 说明用 */
+  起算?: number;
+  /** 起算补 补了几条（只影响排序；按配额分时满没满按实数 = 已分 − 补） */
+  补?: number;
+};
 
 /**
  * 自动分配的候选人：组织里在职的（读组织时已去掉停用 / 离职的）、能接这条线的，去掉线索现在的负责人。
@@ -130,11 +136,71 @@ export function 自动候选人们(org: 组织, 现负责人: string | null, lin
  */
 function 可挑(候选: 候选人[], 不参与: ReadonlySet<string>, 查满: boolean, 不限额: boolean): 候选人[] {
   if (不限额) return 候选.filter((c) => !不参与.has(c.userId));
-  return 候选.filter((c) => !不参与.has(c.userId) && 有配额(c.配额) && !(查满 && 满了(c.已分, c.配额)));
+  return 候选.filter((c) => !不参与.has(c.userId) && 有配额(c.配额) && !(查满 && 满了(c.已分 - (c.补 ?? 0), c.配额)));
 }
 
 /** 本月已分 / 配额 谁的比例低：交叉相乘比，不做除法，3/9 和 1/3 判成一样。可挑的人配额都 > 0 */
 const 比例差 = (a: 候选人, b: 候选人) => a.已分 * b.配额! - b.已分 * a.配额!;
+/**
+ * 起算时刻（11-18 客户定第 3 题 B：休假回来、月中加入的人按池里当前最少的数起算，不从 0 追）：Setting 里存 { userId: ISO 时刻 }。
+ * 参与状态从暂停 / 禁止拨回正常时记（assign-actions 设自动分配参与），内贸销售管理第一次进自动分配池时记（assign-eta 补记销售管理起算，11-18 第 9 题 B）；
+ * 月中新建的账号不用记，按建号时间（= 进池）算。时刻不在本月的不起作用（每月 1 号人人从 0 起）
+ */
+export const 起算时刻key = "enterprise.lead_assign.start_at";
+
+/** 存着的值规整成 userId → 时刻；存坏了的当没设 */
+export function 认起算时刻(v: unknown): Map<string, Date> {
+  const out = new Map<string, Date>();
+  if (!v || typeof v !== "object" || Array.isArray(v)) return out;
+  for (const [id, x] of Object.entries(v as Record<string, unknown>)) {
+    const t = typeof x === "string" ? new Date(x) : null;
+    if (id && t && !Number.isNaN(t.getTime())) out.set(id, t);
+  }
+  return out;
+}
+
+/** 本月一条算数的分配：给谁、什么时候（起算补 数「那一刻之前」用） */
+export type 分配行 = { toUserId: string; at: Date };
+
+/** 按本月算数的分配行重数每人的本月已分（事务里重读计数也走这一句） */
+export function 按行数已分(候选: readonly 候选人[], 行们: readonly 分配行[]): 候选人[] {
+  const 数 = new Map<string, number>();
+  for (const r of 行们) 数.set(r.toUserId, (数.get(r.toUserId) ?? 0) + 1);
+  return 候选.map((c) => ({ ...c, 已分: 数.get(c.userId) ?? 0 }));
+}
+
+/**
+ * 起算补（第 3 题 B）：本月中途回来 / 加入的人，排序时按「那一刻同池里正常参与的其他人最少的本月已分」起算。
+ * - 起算点 = 起算时刻（回到正常 / 销售管理进池）和进池（建号）里晚的那个，只认落在本月（≥ 月初）的；没有 = 不补
+ * - 基数 = 同池（这次的候选）里、现在正常参与、那一刻已经在池里（自己的起算点不晚于他）的其他人，在那一刻之前本月已分最少的条数
+ * - 补 = max(0, 基数 − 他那一刻之前自己的本月已分)；排序用的本月已分 = 实际 + 补（补的那几条固定，之后照常一条条加）
+ * 例：池 7 人，6 人本月各 20 条，第 7 人休假回来是 0 条 → 补 20，按 20 条起算，之后和大家轮流，不会连收 20 条。
+ * 只影响排序（挑接手人 / 前面几条 / 挑的理由），分配记录、本月分配情况那一列照旧是实数
+ */
+export function 起算补(候选: readonly 候选人[], 起算: ReadonlyMap<string, Date>, 行们: readonly 分配行[], 不参与: ReadonlySet<string>, 月初: Date): 候选人[] {
+  const 起点 = (c: 候选人): Date | null => {
+    const 们 = [起算.get(c.userId), c.进池].filter((t): t is Date => !!t && t.getTime() >= 月初.getTime());
+    return 们.length ? new Date(Math.max(...们.map((t) => t.getTime()))) : null;
+  };
+  const 点 = new Map(候选.map((c) => [c.userId, 起点(c)]));
+  if (![...点.values()].some(Boolean)) return 候选.map((c) => ({ ...c }));
+  const 之前 = (userId: string, t: Date) => 行们.filter((r) => r.toUserId === userId && r.at.getTime() < t.getTime()).length;
+  return 候选.map((c) => {
+    const t = 点.get(c.userId);
+    if (!t) return { ...c };
+    const 别人 = 候选.filter((o) => o.userId !== c.userId && !不参与.has(o.userId) && (点.get(o.userId)?.getTime() ?? -Infinity) <= t.getTime());
+    if (!别人.length) return { ...c };
+    const 基数 = Math.min(...别人.map((o) => 之前(o.userId, t)));
+    const 补 = Math.max(0, 基数 - 之前(c.userId, t));
+    return 补 > 0 ? { ...c, 已分: c.已分 + 补, 起算: 基数, 补 } : { ...c };
+  });
+}
+
+/** 本月月初（北京零点）那一刻：起算补 只认本月的起算点 */
+export function 月初of(d = new Date()): Date {
+  return businessDayjs(d).startOf("month").toDate();
+}
+
 /** 不限额时比本月已分谁少 */
 const 已分差 = (a: 候选人, b: 候选人) => a.已分 - b.已分;
 
@@ -176,11 +242,12 @@ export function 挑的理由(候选: 候选人[], 不参与: ReadonlySet<string>
   const 可 = 可挑(候选, 不参与, 查满, 不限额);
   const 他 = 可.find((c) => c.userId === 谁);
   if (!他) return "";
+  const 起算话 = 他.起算 !== undefined ? `，中途回来按 ${他.起算} 条起算` : "";
   if (不限额) {
     const 并列 = 可.filter((c) => c.已分 === 他.已分).length;
     return 并列 > 1
-      ? `本月已分最少（${他.已分} 条，和 ${并列 - 1} 人并列，先给最早进分配池的）；不设配额，不限额`
-      : `本月已分最少（${他.已分} 条）；不设配额，不限额`;
+      ? `本月已分最少（${他.已分} 条${起算话}，和 ${并列 - 1} 人并列，先给最早进分配池的）；不设配额，不限额`
+      : `本月已分最少（${他.已分} 条${起算话}）；不设配额，不限额`;
   }
   const 并列 = 可.filter((c) => 比例差(c, 他) === 0).length;
   const 比 = `${他.已分}/${他.配额}`;

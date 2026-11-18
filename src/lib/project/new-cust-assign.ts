@@ -6,7 +6,7 @@
  *   能选哪几种 = 新客户分配可选 ∩ 我能用的分配方式（谁能用照 assign-use.ts、自动分配要「线索分配」规则开着）。别人交了服务端拒
  * - 指定分配：负责人 = 选的那位，客户和潜客培育一起给他。市场首次分给销售（算市场转客户）= 先建在自己名下，
  *   同一笔事务里走 转客户给销售（市场转一位：换负责人记录、客户分配补「非自持」），先核接手人的持有上限（同建档向导）；
- *   接手人只能是销售 / 销售管理（接手问题，同建档向导）；选自己 = 记在自己名下、分配方式记指定分配
+ *   接手人只能是参与状态正常的销售 / 销售管理（指定问题，同建档向导，11-18 第 8 题 B）；选自己 = 记在自己名下、分配方式记指定分配
  * - 自动分配：建在自己名下，建好走 建好再分 → 向导自动分配（分出去写分配记录）。市场成员按岗位（按区域分配）的按分配方向分：
  *   人改过就按改的（存 Project.assignDir），没改按 客户区域 → 客户的号 → 本人事业部 现算（客户默认分配方向）；
  *   按部门认的市场成员按潜客培育项目的业务线分（跟客户业务线）
@@ -25,7 +25,8 @@ import { 算市场, 新客户分配可选, 是项目线, type 项目线 } from "
 import { 是分配方式序号 } from "@/lib/enterprise/dict";
 import { 按区域分配of, 认分配方向, type 分配方向 } from "@/lib/enterprise/customer-region";
 import { 客户默认分配方向 } from "@/lib/enterprise/assign-direction-db";
-import { 接手问题, type 线 } from "@/lib/enterprise/lead-assign";
+import type { 线 } from "@/lib/enterprise/lead-assign";
+import { 指定问题 } from "@/lib/enterprise/assign-eta";
 import { 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
 import { 持有上限起点, 写前核上限 } from "./db";
 import type { 组织规则 } from "./org-rules";
@@ -61,7 +62,7 @@ export async function 认新客户分配(me: 我, 交: unknown, 选的负责人:
   const 分配 = await 定分配方式(me, { 分配方式: 序, ownerId: 负责人 });
   if ("error" in 分配) return 分配;
   if (负责人 !== me.id) {
-    const 问题 = (await 不能当负责人(负责人)) ?? 接手问题(org, 负责人, null);
+    const 问题 = (await 不能当负责人(负责人)) ?? (await 指定问题(org, 负责人));
     if (问题) return { error: 问题 };
   }
   const 按区域 = 序 === 1 && 按区域分配of(org, me.id);
