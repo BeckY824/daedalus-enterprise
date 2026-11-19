@@ -1088,7 +1088,7 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
     if (要下一步 && !项目按必填走(规则, p) && !验证中) {
       const 字典 = 字典of(true, 规则.阶段.出口叫法);
       const c = await 看全部(() => prisma.customer.findUnique({ where: { id: p.customerId }, select: { lastFollowAt: true } }));
-      // 最近一条留痕：超时自动转那行不算（Even 11-19 第 14 题 B，同 lib/project/db.ts 项目回收日）
+      // 最近一条留痕：超时自动转那行不算（客户 11-19 第 14 题 B，同 lib/project/db.ts 项目回收日）
       const [留] = await 补回收起点留痕([p]);
       const 起点 = 超时起点(p.createdAt, 留.logs[0]?.at, c?.lastFollowAt);
       const 线 = 超时线(p, await 超时成员线(规则));  // 按项目业务线分内外贸天数（C7）

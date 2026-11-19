@@ -1095,7 +1095,7 @@ type 待查项目 = Prisma.ProjectGetPayload<{ select: typeof 算超时要的 }>
 const 留痕每批 = 500;
 
 /**
- * 一批项目各自算回收起点认的最近一条留痕：超时自动转那行不算（Even 11-19 第 14 题 B，timeout.ts 算回收起点的留痕），
+ * 一批项目各自算回收起点认的最近一条留痕：超时自动转那行不算（客户 11-19 第 14 题 B，timeout.ts 算回收起点的留痕），
  * 一句 groupBy（projectId, MAX(at)）走 (projectId, at) 索引，每个项目只回一行。
  * 不写成 select 里 logs 的 where：条件里有「不等于 / 不含」（否定条件），项目一多 Prisma 要把 IN 拆成几句时会直接报错
  * （Query parameter limit exceeded … negation filters … prevent the query from being split），所以这里自己按 留痕每批 拆。

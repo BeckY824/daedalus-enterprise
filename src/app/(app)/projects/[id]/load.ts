@@ -201,7 +201,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   // 企业版超时回收：线索 / 商机阶段记沟通要填下一步时间；算出哪天会自动回公海（和 lib/project/db.ts 公海超时收回 同一个起点）
   const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
   const 字典 = 字典of(企业, 企业 ? 规则.阶段.出口叫法 : null);
-  // 最近一条留痕，超时自动转那行不算（同 lib/project/db.ts 补回收起点留痕，Even 11-19 第 14 题 B）
+  // 最近一条留痕，超时自动转那行不算（同 lib/project/db.ts 补回收起点留痕，客户 11-19 第 14 题 B）
   const 回收起点 = 超时起点(p.createdAt, p.logs.find((l) => !是超时自动转痕(l))?.at, p.customer.lastFollowAt);
   // 超时按项目业务线分内外贸天数（C7）：老项目没填业务线按负责人的线
   const 回收线 = 超时线(p, 规则.超时回收.开 ? await 超时成员线(规则) : null);
