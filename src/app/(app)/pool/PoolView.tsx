@@ -34,6 +34,7 @@ import { useCustomFilters } from "@/components/CustomFilters";
 import { PageHead, RowLink } from "@/components/ui";
 import { fmtDateTime, smartTime, 成员选项, type 可选成员 } from "@/lib/utils";
 import { useUrlFilters } from "@/lib/url-filters";
+import BatchFilterTag from "@/components/BatchFilterTag";
 import { 带走说法 } from "@/lib/carry-over";
 import { 公海规则, 原负责人不能领回提示, 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
 import { 公海属性们, 快捷们, 排序们, 默认排序, 多次退回起, 没原因, 入池类叫法, type 公海行, type 公海属性, type 快捷 } from "@/lib/enterprise/unified-pool";
@@ -57,7 +58,9 @@ type Props = {
    */
   filters: { keyword: string; attr: string; quick: string; sort: string; channelId: string; projChannel: string; phase: string; createdFrom: string; createdTo: string;
     /** 号码不全（三态 T10）：=1 只看三态自动收回时打了「号码不全」的客户；三态关着服务端不认、页面不摆 */
-    phoneIncomplete?: string };
+    phoneIncomplete?: string;
+    /** 导入批次（11-19，lib/project/import-batch.ts）：数据页点进来带的；不进筛选栏，页头挂一枚能关掉的标签 */
+    batch?: string };
   /** 自定义筛选「客户来源」的候选 */
   渠道筛选项: { value: string; label: string }[];
   /** 老板、主管 */
@@ -143,7 +146,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
   const 别线 = new Set(别线ids);
   const router = useRouter();
   const { f, setF, apply, 翻页, reset, pending } = useUrlFilters("/pool", filters, pageSize);
-  const 在筛 = !!(f.keyword || f.attr || f.quick || f.sort || f.channelId || f.projChannel || f.createdFrom || f.createdTo || (三态开 && f.phoneIncomplete));
+  const 在筛 = !!(f.keyword || f.attr || f.quick || f.sort || f.channelId || f.projChannel || f.createdFrom || f.createdTo || f.batch || (三态开 && f.phoneIncomplete));
   // 渠道名单：说清现在只看哪个渠道、哪个阶段的公海项目（一条一行，条数 = 渠道页的「另 M 条在公海」），能关掉
   const 名单渠道 = filters.projChannel ? (渠道筛选项.find((o) => o.value === filters.projChannel)?.label ?? "这个渠道") : "";
   const 名单标 = filters.projChannel ? (
@@ -151,6 +154,8 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
       渠道名单：{名单渠道}{filters.phase ? ` · ${filters.phase}` : ""}
     </Tag>
   ) : undefined;
+  // 导入批次（数据页「公海里还有 N 个」点进来）：说清只看 / 排掉了哪一批，能关掉；样子同项目列表那一枚
+  const 批标 = filters.batch ? <BatchFilterTag batch={filters.batch} 清掉={() => apply({ batch: "" })} /> : undefined;
   const 到上限 = !!持有 && 持有.有 >= 持有.上限;
   const 分给谁 = 成员选项(users);
   /** 客户池并成一行、展开着的（行 id） */
@@ -710,7 +715,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
     <>
       <PageHead
         title="公海"
-        titleAside={名单标}
+        titleAside={名单标 || 批标 ? <>{名单标}{批标}</> : undefined}
         subtitle="没人负责的客户和项目都在这里：领了就归你"
         extra={
           <Space size={12} wrap>

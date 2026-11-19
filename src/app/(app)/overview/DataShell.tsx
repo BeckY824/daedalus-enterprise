@@ -31,6 +31,7 @@ export default function DataShell({
   选人,
   页签,
   段,
+  批次,
   children,
 }: {
   view: 视图;
@@ -49,6 +50,11 @@ export default function DataShell({
    * 不给 = 没有页签（不按项目的老「数据」页），三视图切换照旧摆在最上面
    */
   页签?: 复盘页签;
+  /**
+   * 「数据」页签的导入批次（11-19，lib/project/import-batch.ts）：选项 = 全部 + 每一批的只看 / 排掉，当前 = 地址栏 batch= 的值（"" = 全部）。
+   * 不给 = 不摆（不是总管理 / 管理员，或库里没有带批次的项目）。换视图、换人、换页签都留着它
+   */
+  批次?: { 选项: { value: string; label: string }[]; 当前: string };
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -60,6 +66,7 @@ export default function DataShell({
   const [显人, set显人] = useOptimistic(选人?.当前 ?? "");
   // 点了「自定义」先亮起来、日期段先摆出来（默认本月 1 号到今天，同服务端），不等那一屏回来
   const [显视图, set显视图] = useOptimistic(view);
+  const [显批, set显批] = useOptimistic(批次?.当前 ?? "");
 
   /** 在当前地址上改几个参数：页签、人、视图都保留另外几样（看着某个人切到「数据」还是那个人，回到「待办」筛选还在） */
   const 地址 = (k: Record<string, string | undefined>) => {
@@ -85,6 +92,7 @@ export default function DataShell({
       if (k.tab) set显签(读页签(k.tab));
       if ("ownerId" in k) set显人(k.ownerId ?? "");
       if (k.view) set显视图(k.view as 视图);
+      if ("batch" in k) set显批(k.batch ?? "");
       if (换) router.replace(url, { scroll: false });
       else router.push(url, { scroll: false });
     });
@@ -97,6 +105,18 @@ export default function DataShell({
       <Segmented value={显视图} onChange={(v) => 改({ view: String(v), from: undefined, to: undefined })} options={[...视图们]} />
       {显视图 === "自定义" && (
         <CustomRangePicker 段={段 ?? 读日期段()} 改={(d) => 改({ view: "自定义", from: d.from, to: d.to })} />
+      )}
+      {批次 && (
+        <Select
+          className="data-shell-batch"
+          aria-label="导入批次"
+          value={显批}
+          onChange={(v: string) => 改({ batch: v || undefined })}
+          popupMatchSelectWidth={false}
+          // 一行放不下的省略，悬停看全（企业版一行 + 省略号 + 悬停）
+          labelRender={(o) => <span title={String(o.label ?? "")}>{o.label}</span>}
+          options={批次.选项}
+        />
       )}
       {/* 没页签时（不按项目），选人还跟在视图后面 */}
       {!页签 && 选人 && 人下拉()}

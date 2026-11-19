@@ -17,6 +17,7 @@ import LeadWaterfall from "./LeadWaterfall";
 import { 复盘概况排, 复盘提醒排, 客户分布排, type 复盘概况数 } from "./ReviewSummary";
 import type { 客户分布 } from "@/lib/project/review-extras";
 import { 字典of, 结局叫法, type 出口叫法改动 } from "@/lib/project/stage-dict";
+import { 带批次 } from "@/lib/project/import-batch";
 
 /**
  * 企业版只用项目时「数据」页的正文（10-26 用户：「「数据」页改成按项目统计」）。
@@ -70,8 +71,12 @@ function 漏斗与瀑布({ 数, 漏斗说明, 瀑布说明, 空 }: { 数: { 漏�
   );
 }
 
-/** 概况：复盘页（企业版按项目）才传——最上面一排 KPI + 下面卡点分布、超时预警（11-01 参考复盘稿融合）；不传就是原样 */
-export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口叫法 }: { 数: 项目现在; 本位币: string; 单人: boolean; 概况?: 复盘概况数; 客户?: 客户分布; 出口叫法?: 出口叫法改动 }) {
+/**
+ * 概况：复盘页（企业版按项目）才传——最上面一排 KPI + 下面卡点分布、超时预警（11-01 参考复盘稿融合）；不传就是原样。
+ * 批次：数据页在按导入批次筛（地址栏 batch= 的值，lib/project/import-batch.ts），卡片、名字点进列表都带上，列表按同一批筛
+ */
+export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口叫法, 批次 }: { 数: 项目现在; 本位币: string; 单人: boolean; 概况?: 复盘概况数; 客户?: 客户分布; 出口叫法?: 出口叫法改动; 批次?: string }) {
+  const 链 = (href: string) => 带批次(href, 批次);
   // 结局按企业版叫法（商机丢单 / 交付结清，后台改过就用改的），别露库里的「丢单」（11-03 客户：看板底部用了丢单）
   const 字典 = 字典of(true, 出口叫法);
   const money = (n: number) => 金额(n, 本位币);
@@ -114,9 +119,9 @@ export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口�
   }, [数.节点, 本位币]);
 
   const cols = [
-    名字列((id) => `/projects?ownerId=${encodeURIComponent(id)}`),
+    名字列((id) => 链(`/projects?ownerId=${encodeURIComponent(id)}`)),
     { title: "线索", dataIndex: "线索", width: 72, sorter: (a: 人行现在, b: 人行现在) => a.线索 - b.线索,
-      render: (v: number, r: 人行现在) => (v ? <Link href={`/leads?ownerId=${encodeURIComponent(r.id)}`}>{v}</Link> : 0) },
+      render: (v: number, r: 人行现在) => (v ? <Link href={链(`/leads?ownerId=${encodeURIComponent(r.id)}`)}>{v}</Link> : 0) },
     { title: "商机", dataIndex: "商机", width: 72, sorter: (a: 人行现在, b: 人行现在) => a.商机 - b.商机 },
     { title: "订单", dataIndex: "订单", width: 72, sorter: (a: 人行现在, b: 人行现在) => a.订单 - b.订单 },
     { title: "商机金额", dataIndex: "商机金额", width: 140, align: "right" as const, sorter: (a: 人行现在, b: 人行现在) => a.商机金额 - b.商机金额, render: (v: number) => <span className="nowrap">{money(v)}</span> },
@@ -129,16 +134,16 @@ export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口�
       {概况 && <复盘概况排 数={概况.概况} 本位币={本位币} 不算={`${字典.出口们.商机[1].叫法} / ${字典.出口们.线索[1].叫法}`} />}
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} xl={6}>
-          <StatCard icon={<FunnelPlotOutlined />} color={阶段色.线索} label="新线索" value={段.线索?.count ?? 0} note="线索阶段、进行中的" href="/leads" />
+          <StatCard icon={<FunnelPlotOutlined />} color={阶段色.线索} label="新线索" value={段.线索?.count ?? 0} note="线索阶段、进行中的" href={链("/leads")} />
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <StatCard icon={<ProjectOutlined />} color={阶段色.商机} label="商机阶段" value={段.商机?.count ?? 0} note={`进行中的 · ${money(段.商机?.amount ?? 0)}`} href="/projects" />
+          <StatCard icon={<ProjectOutlined />} color={阶段色.商机} label="商机阶段" value={段.商机?.count ?? 0} note={`进行中的 · ${money(段.商机?.amount ?? 0)}`} href={链("/projects")} />
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <StatCard icon={<ShoppingOutlined />} color={阶段色.订单} label="订单阶段" value={段.订单?.count ?? 0} note={`进行中的 · ${money(段.订单?.amount ?? 0)}`} href="/projects" />
+          <StatCard icon={<ShoppingOutlined />} color={阶段色.订单} label="订单阶段" value={段.订单?.count ?? 0} note={`进行中的 · ${money(段.订单?.amount ?? 0)}`} href={链("/projects")} />
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <StatCard icon={<WarningOutlined />} color={categorical.orange} label="异常状态" value={异常} note={数.公海 ? `公海里还有 ${数.公海} 个进行中的项目` : "订单阶段停住的"} href="/projects" noteHref={数.公海 ? "/pool" : undefined} />
+          <StatCard icon={<WarningOutlined />} color={categorical.orange} label="异常状态" value={异常} note={数.公海 ? `公海里还有 ${数.公海} 个进行中的项目` : "订单阶段停住的"} href={链("/projects")} noteHref={数.公海 ? (批次 ? 带批次("/pool?open=1", 批次) : "/pool") : undefined} />
         </Col>
       </Row>
 
@@ -191,7 +196,7 @@ export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口�
   );
 }
 
-export function ProjectPeriodView({ 数, 本位币, 口径, 单人, 出口叫法 }: { 数: 项目一段; 本位币: string; 口径: string; 单人: boolean; 出口叫法?: 出口叫法改动 }) {
+export function ProjectPeriodView({ 数, 本位币, 口径, 单人, 出口叫法, 批次 }: { 数: 项目一段; 本位币: string; 口径: string; 单人: boolean; 出口叫法?: 出口叫法改动; 批次?: string }) {
   const 字典 = 字典of(true, 出口叫法);
   const [流失名, 丢单名] = [字典.出口们.线索[1].叫法, 字典.出口们.商机[1].叫法];
   const money = (n: number) => 金额(n, 本位币);
@@ -219,7 +224,7 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人, 出口叫法
     title, dataIndex: k, width: 76, sorter: (a: 人行一段, b: 人行一段) => a[k] - b[k],
   });
   const cols = [
-    名字列((id) => `/projects?ownerId=${encodeURIComponent(id)}`),
+    名字列((id) => 带批次(`/projects?ownerId=${encodeURIComponent(id)}`, 批次)),
     数列("新建"), 数列("转商机", "转商机阶段"), 数列("转订单"), 数列("成功交付", "交付"),
     { title: "交付金额", dataIndex: "交付金额", width: 140, align: "right" as const, defaultSortOrder: "descend" as const,
       sorter: (a: 人行一段, b: 人行一段) => a.交付金额 - b.交付金额, render: (v: number) => <span className="nowrap" style={{ fontWeight: 500 }}>{money(v)}</span> },

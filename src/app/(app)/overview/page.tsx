@@ -8,7 +8,8 @@ import DataShell from "./DataShell";
 import { 唯一负责人 } from "@/lib/owners";
 import { getBusiness } from "@/lib/business";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
-import { 项目现在, 项目一段 } from "./project-stats";
+import { 项目现在, 项目一段, 导入批次们 } from "./project-stats";
+import { 读批次, 批次参数, 批次下拉项 } from "@/lib/project/import-batch";
 import { ProjectNowView, ProjectPeriodView } from "./ProjectStatsView";
 import BoardTodos from "./BoardTodos";
 import { 看板的人 } from "@/lib/project/board-member";
@@ -28,7 +29,7 @@ import { 读日期段, 日期段界, 日期段粒度, 日期段叫法, type 日�
 
 export const dynamic = "force-dynamic";
 
-type SP = Promise<{ view?: string; from?: string; to?: string; currency?: string; ownerId?: string; tab?: string; f?: string; kind?: string; t?: string; tf?: string; tt?: string; p?: string; lay?: string; m?: string; bm?: string; bo?: string; br?: string; bt?: string; bi?: string; bp?: string; tv?: string; tw?: string; ts?: string }>;
+type SP = Promise<{ view?: string; from?: string; to?: string; currency?: string; ownerId?: string; tab?: string; f?: string; kind?: string; t?: string; tf?: string; tt?: string; p?: string; lay?: string; m?: string; bm?: string; bo?: string; br?: string; bt?: string; bi?: string; bp?: string; tv?: string; tw?: string; ts?: string; batch?: string }>;
 
 /**
  * 「数据」——看数的唯一入口。
@@ -146,21 +147,29 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
     );
   }
 
-  const 业务 = await getBusiness();
+  const [业务, 批次们] = await Promise.all([
+    getBusiness(),
+    // 导入批次（11-19，lib/project/import-batch.ts）：看得到全部的人（总管理、管理员）才有这个下拉；地址栏 batch= 只认库里有的批次，别的当「全部」
+    人.全看 ? 导入批次们() : Promise.resolve([] as string[]),
+  ]);
   const 本位币 = 业务.currency;
+  const 要的批 = 读批次(sp.batch);
+  const 批 = 要的批 && 批次们.includes(要的批.批) ? 要的批 : null;
+  const 批次 = 批次们.length ? { 选项: 批次下拉项(批次们), 当前: 批次参数(批) } : undefined;
+  const 链批 = 批次参数(批) || undefined;
   if (view === "现在") {
-    const [数, 唯一, 概况, 规则, 客户] = await Promise.all([项目现在(本位币, 范围), 唯一负责人(), 复盘概况of(范围, user, 本位币), 生效组织规则(), 客户分布of(范围)]);
+    const [数, 唯一, 概况, 规则, 客户] = await Promise.all([项目现在(本位币, 范围, 批), 唯一负责人(), 复盘概况of(范围, user, 本位币), 生效组织规则(), 客户分布of(范围)]);
     return (
-      <DataShell view={view} 项目 选人={选人} 页签="data">
-        <ProjectNowView 数={数} 本位币={本位币} 概况={概况} 客户={客户} 出口叫法={规则.阶段.出口叫法} 单人={!!只看 || (唯一 !== null && 数.按人.every((r) => r.id === 唯一))} />
+      <DataShell view={view} 项目 选人={选人} 页签="data" 批次={批次}>
+        <ProjectNowView 数={数} 本位币={本位币} 概况={概况} 客户={客户} 出口叫法={规则.阶段.出口叫法} 批次={链批} 单人={!!只看 || (唯一 !== null && 数.按人.every((r) => r.id === 唯一))} />
       </DataShell>
     );
   }
   const 一段 = 这一段(view, sp);
-  const [数, 唯一, 规则] = await Promise.all([项目一段(一段.from, 一段.to, 一段.粒, 本位币, 范围), 唯一负责人(), 生效组织规则()]);
+  const [数, 唯一, 规则] = await Promise.all([项目一段(一段.from, 一段.to, 一段.粒, 本位币, 范围, 批), 唯一负责人(), 生效组织规则()]);
   return (
-    <DataShell view={view} 项目 选人={选人} 页签="data" 段={一段.段}>
-      <ProjectPeriodView 数={数} 本位币={本位币} 口径={一段.口径} 出口叫法={规则.阶段.出口叫法} 单人={!!只看 || (唯一 !== null && 数.按人.every((r) => r.id === 唯一))} />
+    <DataShell view={view} 项目 选人={选人} 页签="data" 段={一段.段} 批次={批次}>
+      <ProjectPeriodView 数={数} 本位币={本位币} 口径={一段.口径} 出口叫法={规则.阶段.出口叫法} 批次={链批} 单人={!!只看 || (唯一 !== null && 数.按人.every((r) => r.id === 唯一))} />
     </DataShell>
   );
 }
