@@ -16,7 +16,7 @@ import ProjectsView from "./ProjectsViewLazy";
 import { 项目页筛选 } from "./page-query";
 
 /** 项目页（看板 / 列表）认的地址栏参数 */
-export type 项目页参数 = { keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string; phase?: string; node?: string; creator?: string; channelId?: string; level?: string; createdFrom?: string; createdTo?: string; onlyNew?: string; open?: string; phone?: string; page?: string; pageSize?: string; sort?: string; q?: string; hl?: string };
+export type 项目页参数 = { keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string; phase?: string; node?: string; creator?: string; channelId?: string; level?: string; projTag?: string; createdFrom?: string; createdTo?: string; onlyNew?: string; open?: string; phone?: string; page?: string; pageSize?: string; sort?: string; q?: string; hl?: string };
 
 
 /**

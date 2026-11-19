@@ -36,7 +36,7 @@ const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   // window.__手动 时挂起，由用例按顺序 window.__挂起[i].r(结果) 放回（复现慢请求的时序）
   const 再看码 = (名: string) => `export const ${名}=async(...a)=>{(window.__调||=[]).push(['${名}',...a]);if(window.__手动)return new Promise(r=>(window.__挂起||=[]).push({a,r}));await new Promise(r=>setTimeout(r,400));return window.__再看||{ok:true,行:[],总:0}};`;
   stub(/customers\/board-actions$/, 再看码("再看一列"));
-  stub(/^\.\/board-actions$/, 再看码("再看项目页一列"));
+  stub(/^\.\/board-actions$/, `${再看码("再看项目页一列")}export const 项目标签筛选项=async()=>[];`);
   // 向导框换成一个真的 antd 弹框（标题、关掉都照真的走），里面一块写着标题的牌子
   stub(/^next\/dynamic$/, "import React from 'react';import {Modal} from 'antd';export default function d(){return function D(p){return <Modal open={!!p.open} title={p.标题} footer={null} onCancel={p.onClose} afterClose={p.afterClose}>{p.open&&<div className='wizard-stub' data-project={p.项目||''} data-old={(p.老客户&&p.老客户.id)||''}>{p.标题}</div>}</Modal>}}");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));

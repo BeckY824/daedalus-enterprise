@@ -197,7 +197,7 @@ describe("市场改分通知 本身", () => {
     expect(Object.keys(们)).toEqual([小王]);
   });
 
-  it("号码打码照现有规则；原负责人停用了、是占位 / 没负责人、操作人不是市场管理：都不发", async () => {
+  it("号码打码照现有规则；是占位 / 没负责人、操作人不是市场管理：都不发", async () => {
     const 号 = await prisma.project.create({ data: { name: "13912345678 的询盘", customerId: (await 线索项目(小王)).c, ownerId: 小王, creatorId: 小王, phase: "线索" } });
     await 市场改分通知({ id: 市场, name: "mkt" }, [{ 原: 小王, 新: 小张, projectId: 号.id }]);
     const 行 = await prisma.entNotice.findFirstOrThrow({ where: { userId: 小王 } });
@@ -206,8 +206,66 @@ describe("市场改分通知 本身", () => {
 
     await 市场改分通知({ id: 老板, name: "boss" }, [{ 原: 小王, 新: 小张, projectId: 号.id }]);
     await 市场改分通知({ id: 市场, name: "mkt" }, [{ 原: null, 新: 小张, projectId: 号.id }, { 原: "不存在的人", 新: 小张, projectId: 号.id }]);
-    await prisma.user.update({ where: { id: 小王 }, data: { active: false } });
-    await 市场改分通知({ id: 市场, name: "mkt" }, [{ 原: 小王, 新: 小张, projectId: 号.id }]);
+    expect(await prisma.entNotice.count()).toBe(0);
+  });
+});
+
+/**
+ * 原负责人已停用（P-转-40，Even 11-19 复核第 30 题）：不发他本人，改发他停用前的直属上级；
+ * 上级也停用或没填 → 推系统管理员（负责人和上级 的现成找法，同三态 T12 / 验证待办 P2-7）。停用前不是销售的照旧不发
+ */
+describe("原负责人已停用：改发他停用前的直属上级", () => {
+  const 停用 = async (id: string) => { await prisma.user.update({ where: { id }, data: { active: false } }); 忘掉企业版范围(); };
+
+  it("停用前上级在职：只发上级（标题注明已停用），不发他本人；接手人照旧", async () => {
+    const { p } = await 线索项目(小王, 市场, 市场);
+    await 停用(小王);
+    await 市场改分通知({ id: 市场, name: "mkt" }, [{ 原: 小王, 新: 小张, projectId: p }]);
+    const 们 = await 收到();
+    expect(们[小王]).toBeUndefined();
+    expect(们[经理]).toEqual(["mkt 把 s1（已停用） 名下的线索「项目1」改分给了 s2"]);
+    expect(们[老板]).toBeUndefined();
+    const 正文 = await prisma.entNotice.findFirstOrThrow({ where: { userId: 经理, kind: "分配" } });
+    expect(正文.body).toBe("从 s1（已停用） 改到 s2");
+  });
+
+  it("走分配线索整条路径：停用的人名下的线索改分，上级收、他本人不收", async () => {
+    const { p } = await 线索项目(小王, 市场, 市场);
+    await 停用(小王);
+    expect(await 分(市场, { projectId: p, toUserId: 小张 })).toEqual({ ok: true });
+    const 们 = await 收到();
+    expect(们[小王]).toBeUndefined();
+    expect(们[经理]).toEqual(["mkt 把 s1（已停用） 名下的线索「项目1」改分给了 s2"]);
+    expect(们[小张]).toEqual([expect.stringContaining("分给你")]);
+  });
+
+  it("停用前上级也停用了、或没填：推系统管理员；系统管理员就是操作人时他自己不收", async () => {
+    const a = await 线索项目(小王, 市场, 市场);
+    await 停用(经理);
+    await 停用(小王);
+    await 市场改分通知({ id: 市场, name: "mkt" }, [{ 原: 小王, 新: 小张, projectId: a.p }]);
+    let 们 = await 收到();
+    expect(Object.keys(们)).toEqual([老板]);
+    expect(们[老板]).toEqual(["mkt 把 s1（已停用） 名下的线索「项目1」改分给了 s2"]);
+
+    await prisma.entNotice.deleteMany();
+    await prisma.entMember.update({ where: { userId: 小王 }, data: { managerId: null } });
+    忘掉企业版范围();
+    const b = await 线索项目(小王, 市场, 市场);
+    await 市场改分通知({ id: 市场, name: "mkt" }, [{ 原: 小王, 新: 小张, projectId: b.p }, { 原: 小王, 新: 小张, projectId: a.p }]);
+    们 = await 收到();
+    expect(们).toEqual({ [老板]: ["mkt 把已停用同事名下的 2 条改分给了别人"] });
+  });
+
+  it("停用前不是销售（市场名下的首次分配）、操作人不是市场管理：照旧不发", async () => {
+    const 市场乙 = (await prisma.user.create({ data: { email: "mkt2", name: "mkt2", title: "", role: "SALES", password: "x" } })).id;
+    await prisma.entMember.create({ data: { userId: 市场乙, bizRole: "marketing_mgr", managerId: 经理 } });
+    const a = await 线索项目(市场乙, 市场, 市场);
+    const b = await 线索项目(小王, 市场, 市场);
+    await 停用(市场乙);
+    await 停用(小王);
+    await 市场改分通知({ id: 市场, name: "mkt" }, [{ 原: 市场乙, 新: 小张, projectId: a.p }]);
+    await 市场改分通知({ id: 老板, name: "boss" }, [{ 原: 小王, 新: 小张, projectId: b.p }]);
     expect(await prisma.entNotice.count()).toBe(0);
   });
 });

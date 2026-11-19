@@ -33,10 +33,11 @@ function 角色选项(角色们: 角色[], 现在?: string | null) {
 }
 
 const 邀请说法: Record<string, string> = { INVITED: "已邀请", DECLINED: "没接受" };
+const 满宽: React.CSSProperties = { width: "100%" };
 
 /**
  * 编辑项目：名称、负责人、金额 + 币种、备注、主联系人。规矩和建档向导第四步一样（服务端 规整项目）。
- * 企业版另有项目级别（S / A / B / C，显示成星）、所在地四格 + 详细地址（P11 定稿 -2 版）：和客户地址同一套组件和校验（AddressInput / 规整地址）；
+ * 企业版另有项目级别（S / A / B / C，显示成星）、项目标签（字典 projTag，和级别各自填，F-项目-14）、所在地四格 + 详细地址（P11 定稿 -2 版）：和客户地址同一套组件和校验（AddressInput / 规整地址）；
  * 需求描述（原成交需求）、合同金额、定金金额（迁移 097）：两个金额和上面「金额」一样，左边币种下拉、右边数字连成一格（Space.Compact）；
  * 痛点标注（多行）、合同状态（七项单选）（迁移 101）：哪一项没传（不是企业版 / 字段权限藏了）就不摆、不交；
  * 业务线（11-02）：三选一；改了所在地、按所在地看像另一条线时在所在地下面提示 +「改成 X」，点了才换，不悄悄改；改线不重新自动分配
@@ -52,6 +53,8 @@ export function ProjectEditModal({
     id: string; name: string; ownerId: string; amount: number; currency: string; remark: string | null; contactId: string | null; expectedDealAt?: string | null; channelId?: string | null;
     /** 企业版才传；不传 = 不摆、不交 */
     level?: string | null;
+    /** 企业版才传：现值 + 字典选项；不传 = 不摆、不交；没改不交 */
+    项目标签?: { 值: string | null; 选项: string[] };
     /** 企业版才传（老项目没填是 null）；不传 = 不摆、不交；没改不交 */
     bizLine?: string | null;
     /** 企业版、看得到客户资料才传（公海里同事客户的项目不给）；不传或 null = 不摆、不交 */
@@ -72,6 +75,7 @@ export function ProjectEditModal({
   const [d, setD] = useState({ name: p.name, ownerId: p.ownerId, amount: p.amount, currency: p.currency, remark: p.remark ?? "", contactId: p.contactId, expectedDealAt: p.expectedDealAt, channelId: 渠道们 ? (p.channelId ?? null) : undefined });
   const 来源锁着 = Boolean(p.channelId);
   const [级别, set级别] = useState(p.level ?? null);
+  const [标签, set标签] = useState<string | null>(p.项目标签?.值 ?? null);
   const [地址, set地址] = useState<客户地址>(p.所在地 ? { addrCountry: p.所在地.addrCountry, addrProvince: p.所在地.addrProvince, addrCity: p.所在地.addrCity, addrDistrict: p.所在地.addrDistrict } : 空地址);
   const [详细, set详细] = useState(p.所在地?.location ?? "");
   const [线, set线] = useState<string | null>(p.bizLine ?? null);
@@ -92,10 +96,11 @@ export function ProjectEditModal({
   */
   const 稿 = useFormDraft({
     键: open ? `编辑项目:${p.id}` : null,
-    值: { ...d, 级别, 地址, 详细, 线, 钱, 痛点, 合同 },
+    值: { ...d, 级别, 标签, 地址, 详细, 线, 钱, 痛点, 合同 },
     带回: (v) => {
-      const { 级别: 级, 地址: 址, 详细: 细, 线: 线2, 钱: 钱2, 痛点: 痛, 合同: 合, ...其余 } = v;
+      const { 级别: 级, 标签: 签, 地址: 址, 详细: 细, 线: 线2, 钱: 钱2, 痛点: 痛, 合同: 合, ...其余 } = v;
       if ("级别" in v) set级别(级 ?? null);
+      if ("标签" in v) set标签(签 ?? null);
       if (址 && typeof 址 === "object") set地址(址);
       if (typeof 细 === "string") set详细(细);
       if ("线" in v) set线(线2 ?? null);
@@ -112,6 +117,8 @@ export function ProjectEditModal({
   // 没传的不交：服务端按「没传 = 不动」处理（项目级别和地址改成）
   const 附带 = {
     ...(p.level !== undefined ? { level: 级别 } : {}),
+    // 项目标签没改不交：停用了还留着的那项不会被服务端拿去对字典
+    ...(p.项目标签 && 标签 !== (p.项目标签.值 ?? null) ? { projTag: 标签 } : {}),
     ...(p.bizLine !== undefined && 线 !== (p.bizLine ?? null) ? { 业务线: 线 } : {}),
     ...(p.所在地 ? { ...地址, location: 详细.trim() || null } : {}),
     ...(钱 ? { ...钱, dealDemand: 钱.dealDemand.trim() || null } : {}),
@@ -148,6 +155,17 @@ export function ProjectEditModal({
           value={级别 ?? undefined}
           options={[不填项, ...企业客户级别.map((x) => ({ value: x, label: 企业级别说明[x] }))]}
           onChange={(v?: string) => set级别(去不填(v))}
+        />
+      ))}
+      {p.项目标签 && 行("项目标签", (
+        <Select
+          style={满宽}
+          aria-label="项目标签"
+          allowClear
+          placeholder={未选占位}
+          value={标签 ?? undefined}
+          options={[不填项, ...p.项目标签.选项.map((x) => ({ value: x, label: x }))]}
+          onChange={(v?: string) => set标签(去不填(v))}
         />
       ))}
       {p.bizLine !== undefined && 行("业务线", (

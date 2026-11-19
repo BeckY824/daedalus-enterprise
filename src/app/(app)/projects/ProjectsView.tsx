@@ -29,7 +29,7 @@ import { 未分级 } from "@/app/(app)/customers/query-shared";
 import { 级别星 } from "@/lib/enterprise/level-stars";
 import { 主渠道显示名, 渠道显示名 } from "@/lib/enterprise/channel-main-core";
 import { 回公海文案 } from "@/lib/enterprise/recycle-text";
-import { 卡片小字, type 项目行, type 看板一列, type 看板卡片 } from "@/lib/project/board";
+import { 卡片小字, 未填标签, type 项目行, type 看板一列, type 看板卡片 } from "@/lib/project/board";
 import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
 import { 换客户页看法, 市场视图名 } from "@/lib/customers-view-pref";
 import type { 看板列 } from "@/lib/project/nodes";
@@ -48,7 +48,7 @@ import CountUp from "@/components/CountUp";
 import { 量变形起点, 放变形 } from "./view-morph";
 import { 看板要点, 三态标说明, type 三态标 } from "@/lib/enterprise/tri-state-label";
 import { 再看一列 } from "../customers/board-actions";
-import { 再看项目页一列 } from "./board-actions";
+import { 再看项目页一列, 项目标签筛选项 } from "./board-actions";
 import { useNewProjectFlow } from "./NewProjectFlow";
 import { useBoardDrag } from "./board-drag";
 import { showUndo } from "@/components/UndoBar";
@@ -113,7 +113,7 @@ export default function ProjectsView({
   排序?: string;
   users: 可选成员[];
   /** f：企业版首页指标卡点进来的筛选（lib/project/home-cards.ts），页头标出来、能清掉 */
-  filters: { keyword: string; ownerId: string; pool: string; recycled: string; f: string; phase: string; node: string; creator?: string; channelId?: string; level?: string; createdFrom?: string; createdTo?: string; phone?: string };
+  filters: { keyword: string; ownerId: string; pool: string; recycled: string; f: string; phase: string; node: string; creator?: string; channelId?: string; level?: string; projTag?: string; createdFrom?: string; createdTo?: string; phone?: string };
   /** 摆不摆「手机号」筛选（电话藏着的人不摆）；不给 = 不摆 */
   能按号码筛?: boolean;
   渠道筛选项?: { value: string; label: string }[];
@@ -226,6 +226,14 @@ export default function ProjectsView({
   }, [高亮]);
   // 排序跟筛选一起记在地址栏（sort），翻页、改筛选都带着；每页条数（pageSize）由 翻页 记
   const { f, setF, apply, 翻页: 按筛选翻页, reset, pending: 筛选中 } = useUrlFilters(新线索 ? "/leads" : 基址, { ...filters, sort: 排序 }, 每页);
+  // 「项目标签」筛选的候选：第一次点开下拉才取，取过不再取；没取到（出错）下次点开再试
+  const [标签项, set标签项] = useState<string[] | null>(null);
+  const [标签取中, set标签取中] = useState(false);
+  const 取标签项 = () => {
+    if (标签项 || 标签取中) return;
+    set标签取中(true);
+    项目标签筛选项().then((r) => set标签项(r), () => undefined).finally(() => set标签取中(false));
+  };
   // 客户页看板视图：筛选是客户页那一行的（地址栏上），翻页只改 page / pageSize，别的照原样带着
   const [翻页中, 开始翻页] = useTransition();
   const 翻页 = 客户页
@@ -423,6 +431,8 @@ export default function ProjectsView({
     // P11 定稿 -2 版：项目级别显示成实心星（S 4 颗 … C 1 颗），悬停看档名；没分级的是 —
     ...(企业版 ? [
       { title: "级别", key: "level", width: 72, 默认: false, render: (_: unknown, r: 项目行) => { const 档 = 企业级别(r.level); return 档 ? <span title={企业级别说明[档]} aria-label={企业级别说明[档]} style={{ color: "var(--warning-text)", whiteSpace: "nowrap" }}>{级别星(档, false)}</span> : 无; } },
+      // 项目标签（F-项目-14）：和级别各一列、各自填；默认收在「列」里，放不下「…」悬停看全文
+      { title: "项目标签", key: "projTag", width: 110, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.项目标签) ? <span className="fulltext" title={r.项目标签!}>{r.项目标签}</span> : 无) },
       // 指定回复时间（11-17）：默认收在「列」里（1366 宽不横滚），新线索页、项目页都能勾出来；服务端排好的北京时间
       { title: "指定回复", key: "replyAt", width: 150, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.指定回复) ? <span className="nowrap" title={r.指定回复!}>{r.指定回复}</span> : 无) },
       { title: "预计成交", key: "expectedDealAt", width: 110, 默认: false, sorter: true, sortOrder: 序of("expectedDealAt"), render: (_: unknown, r: 项目行) => (有值(r.expectedDealAt) ? r.expectedDealAt : 无) },
@@ -549,6 +559,15 @@ export default function ProjectsView({
               键: "level", 名: "级别", 宽: 120, 默认外露: false, 有值: !!f.level,
               渲染: (style: CSSProperties) => (
                 <Select style={style} aria-label="级别" placeholder="全部级别" allowClear value={f.level || undefined} onChange={(v?: string) => apply({ level: v ?? "" })} options={[...级别选项(), { value: 未分级, label: 未分级 }]} popupMatchSelectWidth={false} />
+              ),
+            },
+            {
+              // 项目标签（F-项目-14）：和级别各筛各的；「未填」= 标签空着的。候选点开下拉才取（首屏不多一句查询），取到之前只摆已选的那项
+              键: "projTag", 名: "项目标签", 宽: 140, 默认外露: false, 有值: !!f.projTag,
+              渲染: (style: CSSProperties) => (
+                <Select style={style} aria-label="项目标签" placeholder="全部标签" allowClear value={f.projTag || undefined} onChange={(v?: string) => apply({ projTag: v ?? "" })}
+                  loading={标签取中} onOpenChange={(开) => { if (开) 取标签项(); }}
+                  options={[...(标签项 ?? (f.projTag && f.projTag !== 未填标签 ? [f.projTag] : [])).map((x) => ({ value: x, label: x })), { value: 未填标签, label: "未填" }]} popupMatchSelectWidth={false} />
               ),
             },
           ]

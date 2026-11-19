@@ -9,7 +9,7 @@ import {
   type 补齐项目, type 草稿值, type 窗里环境,
 } from "@/lib/project/required-fill";
 
-const 环境 = (x: Partial<窗里环境> = {}): 窗里环境 => ({ 能就地改: true, 改不了话: "只有项目负责人能改，其他人只能看", 只能看字段: [], 渠道数: 2, 有所在地: true, 有画像: true, 联系人数: 1, ...x });
+const 环境 = (x: Partial<窗里环境> = {}): 窗里环境 => ({ 能就地改: true, 改不了话: "只有项目负责人能改，其他人只能看", 只能看字段: [], 渠道数: 2, 有所在地: true, 有画像: true, 有标签: true, 联系人数: 1, ...x });
 const 项目 = (x: Partial<补齐项目> = {}): 补齐项目 => ({ name: "项目甲", amount: 0, currency: "USD", acceptancePassed: false, balanceSettled: false, ...x });
 const 空数据 = (): 必填数据 => ({
   项目: { node: "潜客培育", contactId: null, nextStepAt: null, expectedDealAt: null, amount: 0, remark: null, acceptancePassed: false },
@@ -42,7 +42,7 @@ function 服务端算不算(项: 必填项, 值: 草稿值): boolean {
 const 算数的值: Partial<Record<必填项, 草稿值>> = {
   主联系人: "k1", 需求: "明确需求", 需求类型: ["产品甲"], 金额: { 数: 100, 币: "USD" }, 合同金额: { 数: 100, 币: "USD" }, 定金金额: { 数: 1, 币: "CNY" },
   预计成交日期: "2026-12-01", 需求描述: "要十台", 痛点标注: "交期紧", 合同已生效: "已生效", 项目名称: "新名字", 项目来源: "ch1",
-  项目所在地: { addrCountry: null, addrProvince: "广东省", addrCity: "深圳市", addrDistrict: null }, 项目级别: "A",
+  项目所在地: { addrCountry: null, addrProvince: "广东省", addrCity: "深圳市", addrDistrict: null }, 项目级别: "A", 项目标签: "B 潜力跟进",
   验收通过: true, 尾款结清: true, 预算能力: "预算充足", 价格感知: "敏感", 决策链路: "清楚", 采购周期: "半年", 产品匹配: "匹配", 价值认同: "认同",
   决策触达: "已触达", 竞品信息: "无竞品", 部署条件: "满足", 场地现状: "已有",
 };
@@ -63,6 +63,11 @@ describe("填法表", () => {
     expect(控件("合同已生效")).toBe("合同状态");
     expect(控件("需求")).toBe("画像单选");
     expect(控件("需求类型")).toBe("画像多选");
+    // F-项目-14：项目标签和级别各一格、各存各的列
+    expect(控件("项目级别")).toBe("级别");
+    expect(控件("项目标签")).toBe("标签");
+    expect(这项的改动("项目标签", "A 重点推进")).toEqual({ 存: "项目", 改动: { projTag: "A 重点推进" } });
+    expect(这项的改动("项目级别", "A")).toEqual({ 存: "项目", 改动: { level: "A" } });
     expect(控件("尾款结清")).toBe("勾");
   });
   it("要传文件、记沟通、走判定的不假装能填，且写清去哪", () => {
@@ -98,6 +103,8 @@ describe("这个人能不能当场填", () => {
     expect(归类("需求", 环境({ 有画像: false })).类).toBe("去");
     expect(归类("需求类型", 环境({ 有画像: false })).类).toBe("去");
     expect(归类("项目所在地", 环境({ 有所在地: false })).类).toBe("去");
+    expect(归类("项目标签", 环境({ 有标签: false })).类).toBe("去");
+    expect(归类("项目标签", 环境()).类).toBe("填");
     expect(归类("主联系人", 环境({ 联系人数: 0 }))).toMatchObject({ 类: "去", 去: "客户" });
   });
 });

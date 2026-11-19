@@ -172,3 +172,60 @@ describe("改项目：级别 + 所在地（真库）", () => {
     expect(await 读()).toEqual({ level: null, ...地(null), location: null });
   });
 });
+
+/**
+ * 项目标签（迁移 153，F-项目-14）：和项目级别是两列、各自填、互不关联（11-08 定）。
+ * 钉的是：选字典 projTag 里启用着的存得进；不在字典里的拦下；清空存 null；改标签不碰级别、改级别不碰标签；
+ * 停用了还留着的那项再交一遍不拦；不是企业版传了也不动；老项目从空开始
+ */
+describe("改项目：项目标签（真库）", () => {
+  let 乙: { id: string; role: string };
+  let 项目id: string;
+  const 读 = () => prisma.project.findUniqueOrThrow({ where: { id: 项目id }, select: { level: true, projTag: true } });
+  const 基 = { name: "QA-标签项目", amount: 0 };
+
+  beforeEach(async () => {
+    vi.stubEnv("CRM_ENTERPRISE", "1");
+    await resetDb();
+    乙 = { id: (await prisma.user.create({ data: { email: "tag-yi", name: "tag-yi", title: "", role: "SALES", password: "x" } })).id, role: "SALES" };
+    await prisma.entMember.create({ data: { userId: 乙.id, bizRole: "sales" } });
+    const 客户 = await prisma.customer.create({ data: { name: "QA-标签客户", phone: "13800001153", salesOwnerId: 乙.id } });
+    项目id = (await prisma.project.create({ data: { name: 基.name, customerId: 客户.id, ownerId: 乙.id, creatorId: 乙.id, level: "S" } })).id;
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("老项目从空开始：有级别、没标签", async () => {
+    expect(await 读()).toEqual({ level: "S", projTag: null });
+  });
+
+  it("选字典里的一项存得进；改标签不碰级别，改级别不碰标签；清空存 null", async () => {
+    expect(await 改项目(乙, 项目id, { projTag: " B 潜力跟进 " })).toMatchObject({ ok: true, 变了: ["projTag"] });
+    expect(await 读()).toEqual({ level: "S", projTag: "B 潜力跟进" });
+    expect(await 改项目(乙, 项目id, { level: "C" })).toMatchObject({ ok: true, 变了: ["level"] });
+    expect(await 读()).toEqual({ level: "C", projTag: "B 潜力跟进" });
+    expect(await 改项目(乙, 项目id, { projTag: "B 潜力跟进" })).toEqual({ ok: true, 变了: [] });
+    expect(await 改项目(乙, 项目id, { projTag: null })).toMatchObject({ ok: true, 变了: ["projTag"] });
+    expect(await 读()).toEqual({ level: "C", projTag: null });
+  });
+
+  it("不在字典里的拦下、库里不动；拿级别字母顶也不行", async () => {
+    expect(await 改项目(乙, 项目id, { projTag: "D 随便" })).toMatchObject({ ok: false, error: expect.stringContaining("项目标签") });
+    expect(await 改项目(乙, 项目id, { projTag: "S" })).toMatchObject({ ok: false });
+    expect(await 读()).toEqual({ level: "S", projTag: null });
+  });
+
+  it("停用了还留着的那项：再交一遍不拦；换成停用的那项拦下", async () => {
+    await 改项目(乙, 项目id, { projTag: "C 正常培育" });
+    await prisma.entDictItem.updateMany({ where: { kind: "projTag", name: "C 正常培育" }, data: { active: false } });
+    expect(await 改项目(乙, 项目id, { projTag: "C 正常培育", amount: 5 })).toMatchObject({ ok: true, 变了: ["amount"] });
+    await 改项目(乙, 项目id, { projTag: "A 重点推进" });
+    expect(await 改项目(乙, 项目id, { projTag: "C 正常培育" })).toMatchObject({ ok: false });
+    expect((await 读()).projTag).toBe("A 重点推进");
+  });
+
+  it("不是企业版：传了也不动", async () => {
+    vi.stubEnv("CRM_ENTERPRISE", "");
+    expect(await 改项目(乙, 项目id, { ...基, projTag: "A 重点推进" })).toEqual({ ok: true, 变了: [] });
+    expect((await 读()).projTag).toBeNull();
+  });
+});

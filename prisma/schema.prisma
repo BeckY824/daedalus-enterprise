@@ -1020,6 +1020,9 @@ model Project {
   addrDistrict         String?
   /// 项目级别（企业版，迁移 093）：S / A / B / C，可空；界面显示成星级（lib/enterprise/level-stars.ts 级别星数）
   level                String?
+  /// 项目标签（企业版，迁移 153，F-项目-14）：字典 projTag 里的一项（默认 A 重点推进 / B 潜力跟进 / C 正常培育），可空 = 没填。
+  /// 和项目级别 level 是两列、各自填、互不关联（11-08 定）；老项目一律从空开始，不从 level 推。存的是选项名，字典改名不回写
+  projTag              String?
   /// 分配方式（企业版，迁移 106，11-01 会议 §1 / §3）：建线索时选的那一项的名字（指定分配 / 自动分配 / 暂不分配 / 个人自持 …），
   /// 可空（老数据、团队版）。「潜客培育」必填清单里的「分配方式」看它（lib/project/required.ts）
   assignMode           String?

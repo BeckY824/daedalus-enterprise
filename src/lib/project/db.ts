@@ -27,6 +27,7 @@ import { 按主键取没删的 } from "@/lib/enterprise/soft-delete-core";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 挡改设置 } from "@/lib/enterprise/edit-perm";
 import { 选的原因, 认跟进方式 } from "@/lib/enterprise/dict";
+import { 去不填 } from "@/lib/enterprise/dict-kinds";
 import { 生效组织规则 } from "./org-rules-store";
 import { 超时回收日, 已超时, 即将回收, 将回收提醒, 将回收提醒头, 超时理由, 超时起点, 系统, 回收原因前缀, 算回收起点的留痕 } from "./timeout";
 import { getSetting, setSetting } from "../settings";
@@ -544,7 +545,8 @@ async function 在职(tx: Prisma.TransactionClient, userId: string) {
 }
 
 /**
- * 编辑项目：名称、负责人、金额 + 币种、备注、主联系人，企业版还有预计成交日期、项目来源、项目级别、所在地（地址四格 + 详细地址）。
+ * 编辑项目：名称、负责人、金额 + 币种、备注、主联系人，企业版还有预计成交日期、项目来源、项目级别、项目标签、所在地（地址四格 + 详细地址）。
+ * 项目标签（迁移 153，F-项目-14）和级别是两列、各自填：选字典 projTag 里启用着的一项，没换（含停用了还留着的那项）原样留，见 项目标签改成。
  * 规矩同向导第四步（规整项目）；级别和所在地见 profile-rules.ts 项目级别和地址改成，成交需求 / 合同金额 / 定金金额见 项目成交钱改成，
  * 痛点标注 / 合同状态见 proj-fields.ts 项目新字段改成，业务线（11-02）三选一、不给清空、改了不重新自动分配（都是不是企业版传了也不动）；
  * 负责人得在职，主联系人得是这位客户的。节点、交付两项不走这里。
@@ -555,7 +557,7 @@ async function 在职(tx: Prisma.TransactionClient, userId: string) {
  * 没传的 = 不动（11-02 卡片就地改一次只交一格）：名称、负责人、金额、币种、备注也按「传了才改」，
  * 别拿打开页面时的旧值把别人刚改的盖回去，也不会因为顺手带了只能看的金额被字段权限拦
  */
-export type 编辑项目改动 = Partial<向导项目> & { contactId?: string | null; expectedDealAt?: string | null } & Partial<Record<keyof 项目级别和地址, string | null>>
+export type 编辑项目改动 = Partial<向导项目> & { contactId?: string | null; expectedDealAt?: string | null; projTag?: string | null } & Partial<Record<keyof 项目级别和地址, string | null>>
   & Partial<{ [K in keyof 项目成交钱]: 项目成交钱[K] }> & Partial<项目新字段>;
 export async function 改项目(me: 谁, projectId: string, patch: 编辑项目改动, 带待办?: boolean): Promise<结果 & { 变了?: string[]; 自动推到?: string[] }> {
   if (!patch || typeof patch !== "object") return { ok: false, error: "要改什么？" };
@@ -569,6 +571,9 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     if (!落.ok) return { ok: false, error: 落.error };
     patch = { ...patch, channelId: 落.id };
   }
+  // 项目标签（企业版）：对字典要读库，放在事务外（同 改项目画像）
+  const 标签 = 企业版() && patch.projTag !== undefined ? await 项目标签改成(String(projectId ?? ""), patch.projTag) : null;
+  if (标签 && !标签.ok) return 标签;
   const 规则 = await 生效组织规则();
   const 级别 = await 字段权限of(me.id);
   const 状态开 = await 客户状态自动();
@@ -623,7 +628,7 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
       : null;
     if (回复 && !回复.ok) return { ok: false as const, error: 回复.error };
     const 回复改了 = 回复?.ok ? 回复键们.filter((k) => (回复.值[k]?.getTime() ?? null) !== (p[k]?.getTime() ?? null)) : [];
-    const 新 = { ...好, ...(传.name === undefined ? { name: p.name } : {}), ...(传.remark === undefined ? { remark: p.remark } : {}), contactId, channelId: 来源, ...(位置?.ok ? 位置.值 : {}), ...(钱?.ok ? 钱.值 : {}), ...(新字段?.ok ? 新字段.值 : {}), ...(改线 && 线 ? { bizLine: 线 } : {}) };
+    const 新 = { ...好, ...(传.name === undefined ? { name: p.name } : {}), ...(传.remark === undefined ? { remark: p.remark } : {}), contactId, channelId: 来源, ...(位置?.ok ? 位置.值 : {}), ...(钱?.ok ? 钱.值 : {}), ...(新字段?.ok ? 新字段.值 : {}), ...(标签?.ok ? { projTag: 标签.值 } : {}), ...(改线 && 线 ? { bizLine: 线 } : {}) };
     const 变了: string[] = (Object.keys(新) as (keyof typeof 新)[]).filter((k) => 新[k] !== p[k]);
     const 日变了 = (日?.getTime() ?? null) !== (p.expectedDealAt?.getTime() ?? null);
     if (日变了) 变了.push("expectedDealAt");
@@ -671,6 +676,19 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
     return { ok: true as const, 变了, ...带推进(推进) };
   });
+}
+
+/**
+ * 项目标签（企业版，迁移 153，F-项目-14）：传了才调。空 / 「—」= 清掉；和库里现在的一样（含停用了还留着的那项）原样留、不再对字典；
+ * 换成别的要是字典 projTag 里启用着的一项（选的原因，「其他：…」同别的字典）。和项目级别不相干，谁也不顶替谁
+ */
+async function 项目标签改成(id: string, v: unknown): Promise<{ ok: true; 值: string | null } | { ok: false; error: string }> {
+  if (v != null && typeof v !== "string") return { ok: false, error: "项目标签要选列表里的项" };
+  const t = 去不填(typeof v === "string" ? v.trim() : null) ?? "";
+  if (!t) return { ok: true, 值: null };
+  const 原 = await prisma.project.findUnique({ where: { id }, select: { projTag: true } });
+  if (原?.projTag === t) return { ok: true, 值: t };
+  return 选的原因("projTag", t);
 }
 
 /** 改项目 规整前的底子：没传的格子用库里现在的值 */
@@ -1597,7 +1615,7 @@ export async function 移出组员(me: 谁, memberId: string): Promise<结果> {
 /** 读必填数据 要的项目列（整行传进来就行） */
 type 必填项目行 = Pick<Project,
   "id" | "customerId" | "node" | "contactId" | "nextStepAt" | "nextStepText" | "expectedDealAt" | "amount" | "remark" | "acceptancePassed" | "balanceSettled"
-  | "painPoints" | "contractStatus" | "demandStatus" | "productNeeds" | "name" | "channelId" | "addrCountry" | "level" | "dealDemand" | "contractAmount" | "depositAmount"
+  | "painPoints" | "contractStatus" | "demandStatus" | "productNeeds" | "name" | "channelId" | "addrCountry" | "level" | "projTag" | "dealDemand" | "contractAmount" | "depositAmount"
   | "budgetLevel" | "priceSense" | "decisionChain" | "purchaseCycle" | "productFit" | "valueFit" | "decisionReach" | "competitor" | "deployFit" | "siteStatus"> & Partial<Pick<Project, "assignMode">>;
 
 /**
@@ -1631,7 +1649,7 @@ export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项
   return {
     项目: {
       node: p.node, contactId: p.contactId, nextStepAt: p.nextStepAt, expectedDealAt: p.expectedDealAt, amount: p.amount, remark: p.remark, acceptancePassed: p.acceptancePassed, demandStatus: p.demandStatus ?? null, assignMode: p.assignMode ?? null,
-      name: p.name, channelId: p.channelId, addrCountry: p.addrCountry, level: p.level, dealDemand: p.dealDemand, nextStepText: p.nextStepText,
+      name: p.name, channelId: p.channelId, addrCountry: p.addrCountry, level: p.level, projTag: p.projTag, dealDemand: p.dealDemand, nextStepText: p.nextStepText,
       contractAmount: p.contractAmount, depositAmount: p.depositAmount, balanceSettled: p.balanceSettled,
       budgetLevel: p.budgetLevel, priceSense: p.priceSense, decisionChain: p.decisionChain, purchaseCycle: p.purchaseCycle, productFit: p.productFit,
       valueFit: p.valueFit, decisionReach: p.decisionReach, competitor: p.competitor, deployFit: p.deployFit, siteStatus: p.siteStatus,

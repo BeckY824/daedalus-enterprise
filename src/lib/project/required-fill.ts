@@ -24,7 +24,7 @@ export type 窗外去处 = "沟通" | "附件" | "回款" | "线索验证" | "�
 
 type 窗里 =
   | { 控件: "钱"; 格: 钱格; 权限: 字段权限名 }
-  | { 控件: "名称" | "联系人" | "渠道" | "地址" | "级别" }
+  | { 控件: "名称" | "联系人" | "渠道" | "地址" | "级别" | "标签" }
   | { 控件: "需求描述" | "痛点"; 权限: 字段权限名 }
   | { 控件: "日期"; 权限: 字段权限名 }
   | { 控件: "合同状态"; 权限: 字段权限名 }
@@ -67,6 +67,8 @@ export const 填法表: Record<必填项, 填法> = {
   项目来源: { 控件: "渠道" },
   项目所在地: { 控件: "地址" },
   项目级别: { 控件: "级别" },
+  // 项目标签（F-项目-14）：和级别各一格，存到 projTag
+  项目标签: { 控件: "标签" },
   验收通过: { 控件: "勾", 项: "acceptancePassed" },
   尾款结清: { 控件: "勾", 项: "balanceSettled" },
   预算能力: 画像("budgetLevel"),
@@ -100,6 +102,8 @@ export type 补齐项目 = {
   expectedDealAt?: string | null;
   channelId?: string | null;
   level?: string | null;
+  /** 项目标签现值 + 字典选项（企业版才有）；没有 = 这一项只能去别处 */
+  项目标签?: { 值: string | null; 选项: string[] };
   所在地?: (客户地址 & { location: string | null }) | null;
   成交钱?: 项目成交钱;
   项目新字段?: { painPoints?: string | null; contractStatus?: string | null };
@@ -126,6 +130,8 @@ export type 窗里环境 = {
   渠道数?: number;
   有所在地: boolean;
   有画像: boolean;
+  /** 项目标签有能选的项（字典里启用着的，或这个项目已存着一项） */
+  有标签?: boolean;
   联系人数: number;
 };
 export type 行归类 =
@@ -142,6 +148,7 @@ export function 归类(项: string, 环: 窗里环境): 行归类 {
   if (法.控件 === "渠道" && !环.渠道数) return { 类: "去", 去: null, 原因: "还没有能选的渠道，请管理员先在设置里加" };
   if (法.控件 === "地址" && !环.有所在地) return { 类: "去", 去: null, 原因: "现在看不到这个项目的所在地，领取后才能填" };
   if ((法.控件 === "画像单选" || 法.控件 === "画像多选") && !环.有画像) return { 类: "去", 去: null, 原因: "现在看不到这个项目的画像，领取后才能填" };
+  if (法.控件 === "标签" && !环.有标签) return { 类: "去", 去: null, 原因: "项目标签字典里还没有能选的项，请管理员先在设置里加" };
   if (法.控件 === "联系人" && !环.联系人数) return { 类: "去", 去: "客户", 原因: "这位客户还没有联系人，先到客户页加一位" };
   return { 类: "填", 法 };
 }
@@ -158,6 +165,7 @@ function 现在的字(项: 必填项, p: 补齐项目): string | null {
     case "需求描述": return p.成交钱?.dealDemand ?? null;
     case "痛点": return p.项目新字段?.painPoints ?? null;
     case "级别": return p.level ?? null;
+    case "标签": return p.项目标签?.值 ?? null;
     case "画像单选": return 字(p.画像?.值[法.键]) || null;
     default: return null;
   }
@@ -179,7 +187,7 @@ export function 初始草稿(项: 必填项, p: 补齐项目): 草稿值 {
       const 币 = 法.格 === "金额" ? p.currency : 法.格 === "合同金额" ? 钱?.contractCurrency : 钱?.depositCurrency;
       return { 数: 数 && 数 > 0 ? 数 : null, 币: 币 || p.currency || 默认币种 };
     }
-    case "名称": case "需求描述": case "痛点": case "级别": case "画像单选": return 去占位(现在的字(项, p));
+    case "名称": case "需求描述": case "痛点": case "级别": case "标签": case "画像单选": return 去占位(现在的字(项, p));
     case "日期": return p.expectedDealAt ?? null;
     case "合同状态": return p.项目新字段?.contractStatus ?? null;
     case "联系人": return p.contact?.id ?? null;
@@ -223,7 +231,7 @@ export function 草稿问题(项: 必填项, 值: 草稿值 | undefined): string
       if (v?.数 == null || !(v.数 > 0)) return "要大于 0";
       return v.币 ? null : "请选币种";
     }
-    case "名称": case "需求描述": case "痛点": case "级别": case "画像单选": {
+    case "名称": case "需求描述": case "痛点": case "级别": case "标签": case "画像单选": {
       if (!有字(值)) return "还没填";
       return 是占位值(字(值)) ? 占位话(字(值)) : null;
     }
@@ -257,6 +265,7 @@ export function 这项的改动(项: 必填项, 值: 草稿值 | undefined): 一
     case "痛点": return { 存: "项目", 改动: { painPoints: 文字格改动(字(值)) } };
     case "日期": return { 存: "项目", 改动: { expectedDealAt: 字(值) || null } };
     case "级别": return { 存: "项目", 改动: { level: 字(值) || null } };
+    case "标签": return { 存: "项目", 改动: { projTag: 字(值) || null } };
     case "合同状态": return { 存: "项目", 改动: { contractStatus: 字(值) } };
     case "联系人": return { 存: "项目", 改动: { contactId: 字(值) || null } };
     case "渠道": return { 存: "项目", 改动: { channelId: 字(值) || null } };

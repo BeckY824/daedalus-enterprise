@@ -30,7 +30,7 @@ const plugin: Plugin = { name: "ent-board-drag", setup(b) {
   stub(/project-actions$/, "export const 给客户建项目=async()=>({ok:true});export const 新项目分配数据=async()=>null;export const 建项目带走的项目=async()=>({项目数:0,项目:[]});");
   stub(/new\/wizard-actions$/, "export const 取建档数据=async()=>null;");
   stub(/new\/ProjectWizard$/, "export const 建档弹窗=()=>null;");
-  stub(/board-actions$/, "export const 再看一列=async()=>({ok:true,行:[],总:0}),再看项目页一列=async()=>({ok:true,行:[],总:0});");
+  stub(/board-actions$/, "export const 再看一列=async()=>({ok:true,行:[],总:0}),再看项目页一列=async()=>({ok:true,行:[],总:0}),项目标签筛选项=async()=>[];");
   stub(/^next\/dynamic$/, "export default function d(){return function D(){return null}}");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
