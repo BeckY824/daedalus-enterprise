@@ -89,6 +89,12 @@ export default function MembersTab({
   const 按业务角色 = users.some((u) => u.业务角色);
   /** 企业版新增成员：当场选业务角色（编辑已有成员的角色在「组织架构」里改） */
   const 新建带角色 = 企业版 && 按业务角色 && !editing;
+  /**
+   * 新增时选了总管理：提醒一句他建好就能管设置。系统管理员 = 总管理且没设业务线（或带标记），
+   * 能管设置 = 系统管理员且没勾「不管设置」（lib/enterprise/org-core.ts 是系统管理员of / 能管设置of）；新建的人还没设业务线、不管设置默认关
+   */
+  const 选的角色 = Form.useWatch("业务角色", form) as string[] | undefined;
+  const 新建总管理 = 新建带角色 && !!选的角色?.includes("director");
   const [改不管设置中, set改不管设置中] = useState<string | null>(null);
   /** 拨「系统管理员」：只有能管设置的系统管理员（服务端 org-actions 设系统管理员 再拦、不能关掉最后一位） */
   const on系统管理员 = async (r: Row, on: boolean) => {
@@ -625,7 +631,16 @@ export default function MembersTab({
                 <Form.Item
                   name="业务角色"
                   label="业务角色"
-                  extra="能做什么只看业务角色，可多选；销售教练不兼销售类角色。部门、业务线、上级建好后在「组织架构」里设。不选 = 什么都做不了"
+                  extra={
+                    <>
+                      能做什么只看业务角色，可多选；销售教练不兼销售类角色。部门、业务线、上级建好后在「组织架构」里设。不选 = 什么都做不了
+                      {新建总管理 && (
+                        <div className="member-director-note" role="note">
+                          没设业务线的总管理就是系统管理员，能管设置。新建时还没设业务线，所以他建好就能管设置
+                        </div>
+                      )}
+                    </>
+                  }
                   rules={[{ validator: (_, v?: string[]) => { const 问题 = v?.length ? 角色组合问题(v) : null; return 问题 ? Promise.reject(new Error(问题)) : Promise.resolve(); } }]}
                 >
                   <BizRoleSelect aria-label="业务角色" placeholder="选业务角色（如销售成员、销售教练）" allowClear />

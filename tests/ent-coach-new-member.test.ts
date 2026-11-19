@@ -61,6 +61,9 @@ describe("系统管理员新增", () => {
     expect(await 角色of("coach1")).toBe("coach");
     const 审 = await prisma.auditLog.findFirst({ where: { entity: "User", action: "create" }, orderBy: { at: "desc" } });
     expect(审?.summary).toContain("业务角色：销售教练");
+    // 审计记下新人是谁：entityId = 新建出来的那条 user.id
+    const 新人 = await prisma.user.findUniqueOrThrow({ where: { email: "coach1" }, select: { id: true } });
+    expect(审?.entityId).toBe(新人.id);
   });
 
   it("教练兼只读管理员、兼总管理能建；不选业务角色照旧能建（不建 EntMember 行）", async () => {
@@ -73,6 +76,9 @@ describe("系统管理员新增", () => {
     expect(await 角色of("plain")).toBe("");
     expect(await saveUser(新("plain2"))).toMatchObject({ ok: true });
     expect(await 角色of("plain2")).toBe("");
+    // 不带业务角色的新建：审计 entityId 也记新人
+    const plain2 = await prisma.user.findUniqueOrThrow({ where: { email: "plain2" }, select: { id: true } });
+    expect((await prisma.auditLog.findFirst({ where: { entity: "User", action: "create", entityId: plain2.id } }))?.summary).toContain("新建成员「plain2」");
   });
 
   it("教练兼销售类、只读管理员兼销售、乱填的角色：拒，一行不写", async () => {

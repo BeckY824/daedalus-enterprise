@@ -3,6 +3,8 @@
  *
  *   系统管理员新增：业务角色下拉里有销售教练；选了教练，销售成员等销售类角色灰掉、那行写为什么；交上去带 业务角色
  *   先选了销售成员，销售教练灰掉
+ *   选了总管理：业务角色那栏下面提醒「没设业务线的总管理就是系统管理员，能管设置」；没选总管理不提醒
+ *   编辑已有成员：没有业务角色这一栏，保存交上去不带 业务角色（改角色只走组织架构，服务端带了会拒）
  *   不是系统管理员（isAdmin=false）：没有「新增成员」按钮
  * 选项、灰掉的规则和组织架构那一格是同一个 BizRoleSelect（组织架构那边见 ent-multi-role.ui.test.ts）
  */
@@ -79,6 +81,48 @@ it("先选了销售成员：销售教练灰掉", async () => {
     await 项(page, "销售成员").click();
     expect(await 灰(page, "销售教练")).toBe(true);
     expect(await 项(page, "销售教练").innerText()).toMatch(/销售教练不能兼销售成员/);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 慢);
+
+const 总管理提示 = /没设业务线的总管理就是系统管理员，能管设置/;
+
+it("选了总管理：提醒建好就能管设置；没选总管理不提醒", async () => {
+  const { page, errors } = await open(true);
+  try {
+    await page.getByRole("button", { name: /新增成员/ }).click();
+    const 框 = page.getByRole("dialog");
+    expect(await 框.getByText(总管理提示).count()).toBe(0);
+    // 多选下拉点一项不收起：同一次展开里先选销售成员（不提醒），再加总管理（提醒）
+    await 展开(page);
+    await 项(page, "销售成员").click();
+    await expect.poll(() => 框.locator(".ant-select-selection-item").allInnerTexts()).toContain("销售成员");
+    expect(await 框.getByText(总管理提示).count()).toBe(0);
+    await 项(page, "总管理").click();
+    await 框.getByText(总管理提示).waitFor();
+    await page.keyboard.press("Escape");
+    // 去掉总管理：提示跟着没了
+    await 框.locator(".ant-select-selection-item").filter({ hasText: "总管理" }).locator(".ant-select-selection-item-remove").click();
+    await expect.poll(() => 框.getByText(总管理提示).count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 慢);
+
+it("编辑已有成员：没有业务角色这一栏，保存不带 业务角色", async () => {
+  const { page, errors } = await open(true);
+  try {
+    await page.getByRole("button", { name: "编辑 老板" }).click();
+    const 框 = page.getByRole("dialog");
+    await 框.getByLabel("姓名").waitFor();
+    expect(await 框.getByLabel("姓名").inputValue()).toBe("老板");
+    expect(await 框.getByRole("combobox", { name: "业务角色" }).count()).toBe(0);
+    expect(await 框.getByText("业务角色", { exact: true }).count()).toBe(0);
+    expect(await 框.getByText(总管理提示).count()).toBe(0);
+    await 框.getByRole("button", { name: /保\s*存/ }).click();
+    await expect.poll(async () => (await 调用们(page)).filter(([n]) => n === "saveUser").length).toBe(1);
+    const 交 = (await 调用们(page)).find(([n]) => n === "saveUser")![1] as Record<string, unknown>[];
+    expect(交[0]).toMatchObject({ id: "boss", name: "老板" });
+    expect(交[0]).not.toHaveProperty("业务角色");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 }, 慢);

@@ -215,6 +215,8 @@ export async function saveUser(input: {
     active: input.active,
   };
 
+  /** 新建出来的那个人：审计 entityId 记他（编辑记 input.id） */
+  let 新id: string | null = null;
   if (input.id) {
     const 之前 = await prisma.user.findUnique({ where: { id: input.id }, select: { active: true } });
     if (!之前) return { ok: false, error: "这个成员已不存在，请刷新重试" };
@@ -281,6 +283,7 @@ export async function saveUser(input: {
       const t = await resolveCurrentTenant();
       if (!t) return { ok: false as const, error: "解析不到当前工作区，请刷新重试" };
       const user = await prisma.user.create({ data: { ...base, password: "!managed" } });
+      新id = user.id;
       const 配 = await 配账号({
         workspaceId: t.workspaceId,
         userId: user.id,
@@ -298,17 +301,19 @@ export async function saveUser(input: {
     } else {
       const 密码 = await 哈希密码(input.password);
       // 账号和业务角色一起落：角色没存上账号也别留（留下的是一个没角色、什么都做不了的人）
-      await prisma.$transaction(async (tx) => {
+      // 企业版库只开一条连接：默认 2 秒排队会报 P2028，等待时长照 org-actions 的 事务选项
+      新id = await prisma.$transaction(async (tx) => {
         const user = await tx.user.create({ data: { ...base, password: 密码 } });
         if (新角色们) await tx.entMember.create({ data: { userId: user.id, bizRole: 合角色(新角色们) } });
-      });
+        return user.id;
+      }, { maxWait: 15_000, timeout: 20_000 });
       // 组织一变谁看得到谁就变了：清掉可见范围缓存（同 org-actions 改完了）
       if (新角色们) 忘掉企业版范围();
     }
   }
 
   await recordAudit({
-    user: me, action: input.id ? "update" : "create", entity: "User", entityId: input.id ?? null,
+    user: me, action: input.id ? "update" : "create", entity: "User", entityId: input.id ?? 新id,
     summary: `${input.id ? "修改" : "新建"}成员「${base.name}」（${base.role}）` +
       (新角色们 ? `，业务角色：${新角色们.map((r) => 角色名[r]).join("、")}` : "") +
       (input.password ? "，并重置了密码" : "") +
