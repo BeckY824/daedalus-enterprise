@@ -516,6 +516,23 @@ it("[待客户定 A] 必填齐了、下一格换阶段：当前进程卡写「�
   } finally { await page.close(); }
 }, 60_000);
 
+it("仅上级推下负责人「完成节点」灰着（不给推）：必填齐了的说法改成「要上级点」，不叫他点；跨阶段、同阶段都一样", async () => {
+  const { page, errors } = await open(true, 1280);
+  const 上级推 = "往前推进程要由你的直属上级来推";
+  try {
+    await page.evaluate((x) => (window as unknown as { __over: (x: object) => void }).__over({ phase: "线索", node: "线索推进", 必填: { 配了: ["金额"], 还差: [] }, 不给推: x }), 上级推);
+    await page.getByText("必填齐了，进商机要上级点「完成节点」").waitFor();
+    expect(await page.getByText("必填齐了，点「完成节点」进商机").count()).toBe(0);
+    await page.evaluate((x) => (window as unknown as { __over: (x: object) => void }).__over({ phase: "商机", node: "首款到账", 必填: { 配了: ["金额"], 还差: [] }, 不给推: x }), 上级推);
+    await page.getByText("必填齐了，进订单要上级点「完成节点」").waitFor();
+    expect(await page.getByText("必填齐了，点「完成节点」进订单").count()).toBe(0);
+    await page.evaluate((x) => (window as unknown as { __over: (x: object) => void }).__over({ phase: "商机", node: "痛点挖掘", 必填: { 配了: ["金额"], 还差: [] }, 不给推: x }), 上级推);
+    await page.getByText("这个节点的必填都齐了，往前推要上级点「完成节点」").waitFor();
+    expect(await page.getByText("这个节点的必填都齐了，可以点「完成节点」往前推").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
 it("仅上级推下停在已齐的节点（存一下就推）：当前进程卡写「已经填齐：改任一项（项目资料、画像都算，值没变不算）保存、或记一条沟通，就会自动推到下一步」；别的情况照旧", async () => {
   const { page, errors } = await open(true, 1280);
   try {
