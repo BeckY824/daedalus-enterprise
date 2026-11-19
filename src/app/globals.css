@@ -5045,7 +5045,7 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 .dc-claim-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s3); }
 .dc-claim-wide { grid-column: 1 / -1; overflow-wrap: anywhere; }
 .dc-claim-who { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (max-width: 600px) { .dc-claim-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 767px) { .dc-claim-grid { grid-template-columns: minmax(0, 1fr); } }
 .dc-claim-foot { display: flex; justify-content: flex-end; gap: var(--s2); }
 .prop-err-act { margin-top: var(--s2); }
 .cu-said-warn { color: var(--warning-text); }

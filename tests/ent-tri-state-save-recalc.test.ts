@@ -443,6 +443,7 @@ describe("写沟通的调用点都接了存沟通后重算三态", () => {
     "lib/project/wizard.ts#只建客户接着建": ["app/(app)/projects/actions.ts#只建客户写"],
     "lib/project/from-lead.ts#线索建项目": ["app/(app)/leads/actions.ts#转项目之后"],
     "lib/enterprise/soft-delete.ts#表": ["lib/enterprise/soft-delete.ts#恢复一条"],
+    "lib/enterprise/dedupe-claim.ts#查重领取记沟通": ["app/(app)/customers/pool-actions.ts#查重领取"],
   };
   const 写沟通 = /\.followUp\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\b|(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+"FollowUp"|FollowUp:\s*tx\.followUp/;
   const 声明 = /^(export\s+)?(default\s+)?(async\s+)?function\s*\*?\s*([^\s(<]+)|^(export\s+)?const\s+([^\s:=]+)\s*(:[^=]+)?=\s*(cache\()?(async\s*)?(\(|function|[A-Za-z_一-鿿]+\s*=>)/;
