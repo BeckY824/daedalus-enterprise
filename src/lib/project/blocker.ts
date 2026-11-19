@@ -80,6 +80,12 @@ export async function 卡点权限(me: 谁): Promise<我的卡点权限> {
   const 全部 = 权.全部 && !(卡点只读(角色们) && 只读按线(me, await 读组织()));
   return { ...权, 全部, 能写: 权.开 && !卡点只读(角色们), 能管: 能管卡点(角色们) && (await 系统管理员(me)) };
 }
+/** 只问能不能写卡点（开着且不是只读角色，同 卡点权限 的 能写）：首页 AI 决定要不要把原因字典写进系统提示用，不查组织 */
+export async function 能写卡点(userId: string): Promise<boolean> {
+  if (!企业版()) return false;
+  const 角色们 = await 角色们of(userId);
+  return 卡点权限of(角色们, await 读卡点角色开关()).开 && !卡点只读(角色们);
+}
 
 /** 改卡点默认（默认类型 / 影响）：系统管理员 */
 export async function 存卡点默认(me: 谁, patch: unknown): Promise<结果 & { 默认?: 卡点默认 }> {
@@ -139,6 +145,17 @@ export async function 原因字典(): Promise<原因行[]> {
 /** 发卡点时下拉里的：启用的（待审核的不进下拉，前台照样能打字新加） */
 export async function 可选原因们(): Promise<string[]> {
   return (await 原因字典()).filter((r) => r.status === "启用").map((r) => r.name);
+}
+
+/**
+ * 只读、轻量的启用原因名（首页 AI 系统提示每问一次都要用）：不补种子、不数引用。
+ * 还没补过种子（谁都没打开过卡点）就给种子名单——第一次发卡点时 备好原因 补上的就是这些
+ */
+export async function 启用原因名们(): Promise<string[]> {
+  if (!企业版()) return [];
+  const 们 = await 看全部(() => prisma.entBlockerReason.findMany({ where: { status: "启用" }, select: { name: true }, orderBy: [{ sort: "asc" }, { createdAt: "asc" }] }));
+  if (!们.length && !(await getSetting<boolean>(原因种子键))) return [...原因种子们];
+  return 们.map((r) => r.name);
 }
 
 async function 管字典<T>(me: 谁, fn: (tx: Prisma.TransactionClient) => Promise<T | 错>): Promise<T | 错> {

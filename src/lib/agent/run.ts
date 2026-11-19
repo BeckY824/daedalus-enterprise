@@ -20,7 +20,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 项目写工具名 } from "./project-tools";
 import { 验证步们, 每步能判, 联系人可改 } from "./project-proposals";
 import { 卡点类型们, 影响等级们 } from "../project/blocker-rules";
-import { 可选原因们 } from "../project/blocker";
+import { 能写卡点, 启用原因名们 } from "../project/blocker";
 import { 原因名列多少 } from "./project-tools";
 
 /**
@@ -412,8 +412,10 @@ export async function runAgent(
   const 只用项目 = 企业版() && b.projectMode === true;
   const 写不了 = await AI写不了(user.id);
   const { TOOLS, TOOL_MAP } = 这一家的工具(b, 只用项目, !!写不了);
-  // 加卡点要填阻碍原因（11-19 必填）：把设置里启用的原因名告诉模型，尽量从里面选；读不到就不列（工具返回里还会再说一遍）
-  const 原因名们 = 只用项目 && !写不了 ? (await 可选原因们().catch(() => [] as string[])).slice(0, 原因名列多少) : [];
+  // 加卡点要填阻碍原因（11-19 必填）：这个人能写卡点（业务角色开着、不是只读）才把启用的原因名告诉模型，尽量从里面选；
+  // 只读轻量查询（不补种子、不数引用），读不到就不列（工具返回里还会再说一遍）
+  const 原因名们 = 只用项目 && !写不了 && (await 能写卡点(user.id).catch(() => false))
+    ? (await 启用原因名们().catch(() => [] as string[])).slice(0, 原因名列多少) : [];
   const 页面上下文 = 只用项目 && input.页面上下文 ? 页面说法换成项目(input.页面上下文) : input.页面上下文;
   const toolDoc = TOOLS.map((t) => `- ${t.name}：${t.description}\n  参数：${t.args}`).join("\n");
 

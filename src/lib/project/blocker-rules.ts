@@ -85,12 +85,13 @@ export const 未分类原因id = "__未分类";
 export const 未分类原因名 = "未分类（老数据）";
 
 /**
- * 清一个原因名：去零宽字符（\u200b–\u200d、\u2060、\ufeff，看不见、搜不到，同 lib/import/parse.ts 的 清）再去首尾空白。
+ * 清一个原因名：去零宽字符（\u200b–\u200d、\u2060、\ufeff，同 lib/import/parse.ts 的 清）、方向标记（\u200e \u200f）、软连字符（\u00ad）——
+ * 都看不见、搜不到——再去首尾空白。
  * 不清的话「\u200b」能当一个原因发出去（显示名成了「轻度卡点 · 」），「需求变更\u200b」会新建一条看着一样的待审核原因。
  * 前端（多选框）、AI 卡、服务端都用这一个
  */
 export function 清原因名(v: unknown): string {
-  return typeof v === "string" ? v.replace(/[\u200b-\u200d\u2060\ufeff]/g, "").trim() : "";
+  return typeof v === "string" ? v.replace(/[\u200b-\u200f\u00ad\u2060\ufeff]/g, "").trim() : "";
 }
 /** 多选框里的原因们：逐个清、限长、去空、去重（前端 onChange、AI 卡共用；超长截断不报错，人还能改） */
 export function 清原因们(v: readonly unknown[]): string[] {

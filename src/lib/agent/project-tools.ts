@@ -19,7 +19,7 @@ import { 可选项 } from "../enterprise/dict";
 import { buildProposal, describeProposal, missingFields } from "./proposals";
 import { 认目标, 每步能判, 联系人可改, type 候选, type 项目卡Kind, type 验证步 } from "./project-proposals";
 import { 卡点类型们, 影响等级们, 卡点显示名, 清原因们 } from "../project/blocker-rules";
-import { 可选原因们 } from "../project/blocker";
+import { 可选原因们, 能发卡点 } from "../project/blocker";
 import { dayjs } from "../utils";
 
 const str = (v: unknown, max = 60) => (typeof v === "string" ? v.trim().slice(0, max) : typeof v === "number" ? String(v) : "");
@@ -374,7 +374,20 @@ async function 沟通卡(a: Record<string, unknown>, ctx: ToolContext, 要卡点
   const [我, org] = await Promise.all([prisma.user.findUnique({ where: { id: ctx.userId }, select: { id: true, role: true } }), 权限组织()]);
   const 组员记 = (p: 项目行) => !我 || !能管项目(我, p, org);
   const 要时间 = (p: 项目行) => !组员记(p) && 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
-  const 指 = 指向(找.行, 找.露, (p) => ({ ...(要时间(p) ? { 要时间: true } : {}), 组员记: 组员记(p) }));
+  /*
+    加卡点：发不了卡点的项目（组员记、没卡点权限、在公海……同 发布卡点 的判断）不出卡——出了也是死路：卡上去不掉卡点，
+    确认时 记项目沟通Action 先查后写整条拦下，沟通也记不上。几个候选的把发不了的剔掉，全剔光了才报错、指路去只记沟通
+  */
+  let 行们 = 找.行;
+  if (要卡点) {
+    const 能发们 = 我 ? await Promise.all(行们.map(async (p) => !组员记(p) && (await 能发卡点(我, p.id)))) : 行们.map(() => false);
+    行们 = 行们.filter((_, i) => 能发们[i]);
+    if (!行们.length) {
+      const 话 = 找.行.length > 1 ? "找到的这几个项目你都不能新建卡点，只能记沟通（propose_project_followup）" : "你不能在这个项目上新建卡点，只能记沟通（propose_project_followup）";
+      return { summary: 话, data: { error: 话 } };
+    }
+  }
+  const 指 = 指向(行们, 找.露, (p) => ({ ...(要时间(p) ? { 要时间: true } : {}), 组员记: 组员记(p) }));
   // 11-19：卡点不再有标题、卡在哪儿；阻碍原因必填，卡上给设置里启用的原因当下拉（也能现打）
   const 原因可选们 = 要卡点 ? await 可选原因们() : [];
   // 不在字典里的原因：卡上标「新增·待审核」，返回里也告诉模型，让它照实说

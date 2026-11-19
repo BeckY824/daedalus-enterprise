@@ -202,6 +202,20 @@ describe("沟通 + 卡点：原因字典、旧卡（11-19）", () => {
     expect(note).not.toContain("「需求变更」不在里面");
   });
 
+  it("组员让 AI 加卡点：发不了卡点的项目不出卡（出了也是死路），直接报错指路去只记沟通；几个候选的剔掉发不了的", async () => {
+    await prisma.projectMember.create({ data: { projectId: 项目id, userId: 丙.id, inviteStatus: "JOINED" } });
+    const { r, 卡 } = await 出("propose_blocker_add", { projectId: 项目id, 卡点类型: "中度卡点", 阻碍原因: ["其他"], content: "丙聊了", 下一步: "再聊", reason: "人说的" }, 丙);
+    expect(卡).toBeUndefined();
+    expect((r.data as { error: string }).error).toBe("你不能在这个项目上新建卡点，只能记沟通（propose_project_followup）");
+    // 只记沟通照样出卡（组员记）
+    expect((await 出("propose_project_followup", { projectId: 项目id, content: "丙聊了", reason: "人说的" }, 丙)).卡).toMatchObject({ 组员记: true, 要卡点: false });
+    // 两个候选：一个是别人的（丙只是组员）、一个是丙自己的 → 只剩丙自己的那个，直接指向它
+    const 二期 = (await prisma.project.create({ data: { name: "云帆二期", customerId: 客户id, ownerId: 丙.id, creatorId: 丙.id, phase: "线索", node: "潜客培育" } })).id;
+    const 两个 = await 出("propose_blocker_add", { project: "云帆", 卡点类型: "中度卡点", 阻碍原因: ["其他"], content: "丙聊了", 下一步: "再聊", reason: "人说的" }, 丙);
+    expect(两个.卡).toMatchObject({ targetId: 二期, 要卡点: true });
+    expect(两个.卡!.候选 ?? []).toEqual([]);
+  });
+
   it("模型还传了卡点描述：并进沟通内容（已经写在内容里的不重复）", () => {
     const 有 = 收("project_followup", { targetId: 项目id, targetName: "x", content: "客户嫌贵", 下一步: "再聊", 要卡点: true, 卡点类型: "轻度卡点", 阻碍原因: ["其他"], 卡点描述: "财务卡着" });
     expect((有 as { proposal: { content: string } }).proposal.content).toBe("客户嫌贵\n卡点：财务卡着");
