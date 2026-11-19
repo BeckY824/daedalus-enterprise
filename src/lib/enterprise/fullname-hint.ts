@@ -4,6 +4,7 @@
  * - 全称像人名只提示、不拦（P-抬头-13「抬头、全称、简称三者都不得出现联系人姓名；录入时全称像人名只做软提示」）。
  * 只给表单、建档弹窗、AI 建档卡摆一行灰字用（日志里引客户名走 customer-title.ts 的 客户引），服务端不拿它拦任何东西。纯函数，不碰库。
  */
+import { hasVisibleText } from "@/lib/form-validation";
 
 /** 企业版客户名称框的占位提示（11-19 三处统一，不再说「公司或个人」「营业执照上的全称」「组织或公司名」） */
 export const 名称框提示 = "单位名称，可留空";
@@ -50,7 +51,8 @@ export function 全称像人名(全称: string | null | undefined): boolean {
 /** 全称那一格下面摆的灰字：没填 → 怎么显示；像人名 → 提醒；其余没有 */
 export function 全称提示(全称: string | null | undefined): string | null {
   const t = String(全称 ?? "").trim();
-  if (!t) return 没填全称提示;
+  // 判空和保存同一条（hasVisibleText）：只有空白 / 零宽字符的也算没填
+  if (!hasVisibleText(t)) return 没填全称提示;
   return 全称像人名(t) ? 像人名提示 : null;
 }
 

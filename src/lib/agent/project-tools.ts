@@ -341,19 +341,21 @@ export const 项目写工具: Tool[] = [
       const id = str(a.id, 40);
       const 名 = str(a.customer, 60);
       if (!id && !名) return { summary: "没说删哪位", data: { error: "给 customer（客户名）或 id" } };
-      const 选 = { id: true, name: true, _count: { select: { projects: true } } } as const;
+      // 客户名称选填（11-19）：按全称、简称、客户编号都找得到；卡上叫客户显名（落库日志在 deleteCustomers 里写全称或显名）
+      const 选 = { ...显名列, _count: { select: { projects: true } } } as const;
       let 们 = id
         ? await prisma.customer.findMany({ where: { id }, select: 选 })
         : await prisma.customer.findMany({ where: { name: 名 }, select: 选, take: 候选上限 + 1 });
-      if (!们.length && 名) 们 = await prisma.customer.findMany({ where: { name: { contains: 名 } }, select: 选, take: 候选上限 + 1 });
+      if (!们.length && 名) 们 = await prisma.customer.findMany({ where: 客户按名条件(名), select: 选, take: 候选上限 + 1 });
       if (!们.length) return { summary: "没找到这位客户", data: { error: `当前账号能看到的范围里没找到「${名 || id}」` } };
       const 前 = 们.slice(0, 候选上限);
       if (前.length === 1) {
-        return 出卡(ctx, "customer_delete", { id: 前[0].id, name: 前[0].name }, { targetId: 前[0].id, targetName: 前[0].name, reason: a.reason });
+        const 叫 = 客户显名(前[0]);
+        return 出卡(ctx, "customer_delete", { id: 前[0].id, name: 叫 }, { targetId: 前[0].id, targetName: 叫, reason: a.reason });
       }
       return 出卡(ctx, "customer_delete", { id: "", name: "" }, {
         targetId: "", targetName: "", reason: a.reason,
-        候选: 前.map((c): 候选 => ({ id: c.id, 名: c.name, 说明: `${c._count.projects} 个项目`, 补: { customerId: c.id, customerName: c.name } })),
+        候选: 前.map((c): 候选 => ({ id: c.id, 名: 客户显名(c), 说明: `${c._count.projects} 个项目`, 补: { customerId: c.id, customerName: 客户显名(c) } })),
       });
     },
   },

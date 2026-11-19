@@ -115,6 +115,17 @@ describe("撤回", () => {
     expect(await prisma.customer.count()).toBe(0);
   });
 
+  it("没全称的客户导入后改过、撤不动：留下明细里报客户编号，不报 cuid（11-19 客户名称选填）", async () => {
+    const id = await 导([客户表([["C3", "", "13800000003", "张伟", "A", ""]])]);
+    const c = await prisma.customer.findFirstOrThrow({ where: { phone: "13800000003" } });
+    expect(c.name).toBe("");
+    await prisma.customer.update({ where: { id: c.id }, data: { remark: "我们补的备注" } });
+    const r = await 撤回一批(id, 我);
+    const 留 = r.留下.find((x) => x.外部ID === "C3");
+    expect(留?.名称).toMatch(/^NO\.\d+$/);
+    expect(留?.名称).not.toBe(c.id);
+  });
+
   it("导入后改过的、导入不碰的格子被填过的：留下不动，原因记下来；别的照撤", async () => {
     const id = await 导([客户表(), 线索表()]);
     await prisma.customer.updateMany({ where: { name: "宁波海川贸易" }, data: { remark: "我们补的备注" } });

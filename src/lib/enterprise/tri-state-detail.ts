@@ -144,7 +144,7 @@ export const 页面占位词 = cache(async (): Promise<readonly string[]> => 规
 
 /** 页面已经读过的那位客户（客户行带上钟；三态关着时页面不带钟） */
 export type 页面客户 = {
-  id: string; name: string; salesOwnerId: string; bizLine: string | null; poolInvalidAt: Date | null; pool: unknown;
+  id: string; name: string; shortName?: string | null; customerNo?: number | null; salesOwnerId: string; bizLine: string | null; poolInvalidAt: Date | null; pool: unknown;
   entClock?: Prisma.EntCustomerClockGetPayload<object> | null;
 };
 
@@ -188,7 +188,7 @@ export async function 读三态条(me: 谁, customerId: string, 现在: Date = n
   if (!(await 三态开着())) return null;
   const 客户 = await 看全部(() => prisma.customer.findUnique({
     where: { id: customerId },
-    select: { id: true, name: true, salesOwnerId: true, bizLine: true, poolInvalidAt: true, pool: { select: { customerId: true } }, entClock: true },
+    select: { id: true, name: true, shortName: true, customerNo: true, salesOwnerId: true, bizLine: true, poolInvalidAt: true, pool: { select: { customerId: true } }, entClock: true },
   }));
   return 客户 ? (await 读客户三态(me, 客户, new Map(), 现在))?.条 ?? null : null;
 }

@@ -21,6 +21,7 @@ import { 拆角色, 直属上级of } from "./org-core";
 import { 读组织 } from "./org";
 import { notify } from "./notify";
 import { 通知里的客户名, 撞的写法 } from "./notice-mask";
+import { 全称或显名 } from "./customer-title";
 import { 挂靠超时小时, 挂靠页 } from "./attach-approval";
 import { 挂靠进公海状态 } from "@/lib/owner-log-db";
 import { 离职负责人找谁 } from "./departed-owner";
@@ -171,7 +172,7 @@ export async function 撞上客户(
   if (!企业版()) return null;
   const c = await 看全部(() => prisma.customer.findUnique({
     where: { id: customerId },
-    select: { id: true, name: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } },
+    select: { id: true, name: true, shortName: true, customerNo: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } },
   }));
   if (!c || c.pool || !c.salesOwnerId || c.salesOwnerId === 我) return null;
   const 负责人 = await 露出负责人(c.salesOwnerId);
@@ -186,7 +187,8 @@ export async function 撞上客户(
     撞号id: 组 ? null : 行?.id ?? null,
     键类型,
     客户id: 看得见 ? c.id : null,
-    客户名: 看得见 || 键类型 === "客户名" ? c.name : null,
+    // 查重提示里叫 全称或显名（11-19 口径：按公司名撞上、对方没全称时叫出显名，不出空白）
+    客户名: 看得见 || 键类型 === "客户名" ? 全称或显名(c) : null,
     负责人,
     ...(组 ? { 同组: 组 } : {}),
     ...(行?.action === "申请挂靠" ? { 已申请: true as const } : {}),
@@ -205,7 +207,7 @@ export type 名撞结论 = { 我名下: { 客户名: string; 客户id: string } 
 /** 名键太短（一个字）的不比：撞得太多、多半不是同一位 */
 const 够长 = (k: string) => k.length >= 2;
 
-type 名查重行 = { id: string; name: string; school: string | null; salesOwnerId: string };
+type 名查重行 = { id: string; name: string; shortName: string | null; customerNo: number | null; school: string | null; salesOwnerId: string };
 
 /**
  * 客户名查重要比的客户：全公司在用、不在公海的，按建档先后（同一刻按 id）。原来整批 1.9 万位经 Prisma 取回来在内存里比名键（单人 70 ms，11-14）；
@@ -218,7 +220,7 @@ async function 名查重候选(名k: string, 公k: string): Promise<名查重行
   if ((够长(名k) && !名字.length) || (够长(公k) && !公字.length)) {
     return 看全部(() => prisma.customer.findMany({
       where: { pool: { is: null } },
-      select: { id: true, name: true, school: true, salesOwnerId: true },
+      select: { id: true, name: true, shortName: true, customerNo: true, school: true, salesOwnerId: true },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     }));
   }
@@ -227,10 +229,12 @@ async function 名查重候选(名k: string, 公k: string): Promise<名查重行
   if (公字.length) 或.push(`(${公字.map(() => `instr(c."school", ?) > 0`).join(" AND ")})`);
   // NOT INDEXED：顺表扫一遍（7 ms）；没统计信息的 SQLite 会挑 deletedAt / createdAt 索引逐行回表（26 ms）。命中的几位再排序
   // 裸 SQL 不过软删扩展，自己带 deletedAt IS NULL（同 看全部 + 扩展的口径：没删、不在公海）
-  return prisma.$queryRawUnsafe<名查重行[]>(
-    `SELECT c.id, c."name", c."school", c."salesOwnerId" FROM "Customer" c NOT INDEXED WHERE (${或.join(" OR ")}) AND c."deletedAt" IS NULL AND NOT EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id) ORDER BY c."createdAt" ASC, c.id ASC`,
+  // 简称、客户编号一起取（11-19 客户名称选填）：提示里叫 全称或显名，对方没全称时兜得到；编号裸 SQL 可能回 BigInt，转成数
+  const 行 = await prisma.$queryRawUnsafe<(Omit<名查重行, "customerNo"> & { customerNo: number | bigint | null })[]>(
+    `SELECT c.id, c."name", c."shortName", c."customerNo", c."school", c."salesOwnerId" FROM "Customer" c NOT INDEXED WHERE (${或.join(" OR ")}) AND c."deletedAt" IS NULL AND NOT EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id) ORDER BY c."createdAt" ASC, c.id ASC`,
     ...名字, ...公字,
   );
+  return 行.map((r) => ({ ...r, customerNo: r.customerNo == null ? null : Number(r.customerNo) }));
 }
 
 /**
@@ -248,7 +252,7 @@ export async function 客户名查重(我: string, 读的我: 谁 | null, 名: s
   const 命中 = 们.filter((c) => 撞名(c) || 撞公司(c));
   if (!命中.length) return null;
   const 我的 = 命中.find((c) => c.salesOwnerId === 我);
-  if (我的) return { 我名下: { 客户名: 我的.name, 客户id: 我的.id } };
+  if (我的) return { 我名下: { 客户名: 全称或显名(我的), 客户id: 我的.id } };
   for (const c of 命中) {
     const 按名 = 撞名(c);
     const 露 = await 撞上客户(我, 读的我, 按名 ? "客户名" : "公司名", 按名 ? 名.trim() : (公司 ?? "").trim(), c.id);

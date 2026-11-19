@@ -33,7 +33,8 @@ export async function 全局搜索(关键词: string): Promise<全局搜索结�
   const [客户条件, 藏号, 号, 市场] = await Promise.all([客户关键词条件(词, true, me.id), 号码藏着(me.id), 号码脱敏器(me.id), 读市场身份(me.id)]);
   // 项目、联系人两组也按拆开的词比，每个词都要中（2F，同客户那一组 客户关键词条件）
   const 词们 = 拆搜索词(词);
-  const 项目条件 = 词们.map((w) => ({ OR: [{ name: { contains: w } }, { customer: { name: { contains: w } } }] }));
+  // 客户那一半全称、简称都比（11-19 客户名称选填：没全称的客户按简称也搜得到他的项目，同 relate-actions）
+  const 项目条件 = 词们.map((w) => ({ OR: [{ name: { contains: w } }, { customer: { name: { contains: w } } }, { customer: { shortName: { contains: w } } }] }));
   const 联系人条件 = 词们.map((w) => ({ OR: [{ name: { contains: w } }, ...(藏号 ? [] : [{ phone: { contains: 号码片段(w) ?? w } }]), { wechat: { contains: w } }] }));
 
   const [客户们, 项目们, 联系人们] = await Promise.all([

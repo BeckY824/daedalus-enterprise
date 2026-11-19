@@ -185,7 +185,8 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
   // 同事的项目平时看不到，被拦时只说个数（P-看-12 例外、Even C4），按选的先后列
   const 被同事拦 = 有权限.filter((c) => 同事在推.has(c.id)).sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
   // 别的照放时提示条只说「N 位…没放」，那就带上客户名
-  const 同事项目 = 被同事拦.length ? await 同事在推项目说法(prisma, 被同事拦, 被同事拦.length > 1 || 能放.length > 0) : "";
+  // 客户名称选填（11-19）：说法里叫显名（简称 → 全称 → 客户编号），不出「」
+  const 同事项目 = 被同事拦.length ? await 同事在推项目说法(prisma, 被同事拦.map((c) => ({ ...c, name: 客户显名(c) })), 被同事拦.length > 1 || 能放.length > 0) : "";
   const 没权限 = 这些.length - 已在.length - 有权限.length;
   /** 报错里叫哪位（11-19 客户名称选填：没全称按简称 → 客户编号叫，不出「」） */
   const 叫 = (c: (typeof 有权限)[number] | undefined) => (c ? 客户显名(c) : "");

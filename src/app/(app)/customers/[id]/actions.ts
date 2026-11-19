@@ -990,7 +990,8 @@ export async function detachContact(id: string) {
       await tx.unassignedContact.create({
         data: {
           id: c.id, name: c.name, position: c.position, phone: c.phone, email: c.email, wechat: c.wechat, remark: 移出备注,
-          fromCustomerId: c.customerId, fromCustomerName: 客户显名(c.customer),
+          // 存进库的文字：全称或显名（11-19 口径）
+          fromCustomerId: c.customerId, fromCustomerName: 全称或显名(c.customer),
           wasPrimary: c.isPrimary,
           ownerId: me.id,
           followUpIds: 跟进.length ? JSON.stringify(跟进.map((f) => f.id)) : null,

@@ -21,6 +21,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { getSetting, setSetting } from "@/lib/settings";
 import { beijingDay, beijingWallIso } from "@/lib/business-clock";
 import { 算三态, 解除后几天收, type 提醒级, type 今天提醒 } from "./tri-state";
+import { 通知里的客户名 } from "./notice-mask";
 import { 收三态客户, 候选客户, 分批, 三态开着, 三态夜扫, 三态扫过键, 钟状态of, 离职交接中的, 待交接理由, type 自动收了 } from "./tri-state-db";
 import { 交接挂起超了, 交接兜底工作日, 交接兜底自然日 } from "./tri-state";
 import { 待确认, 离职盖住的客户, 离职盖住的项目 } from "./handover-db";
@@ -136,7 +137,8 @@ async function 发三态提醒(规则: Awaited<ReturnType<typeof 生效组织规
         if (data) await prisma.entCustomerClock.update({ where: { customerId: c.id }, data });
         continue;
       }
-      const 条: 条 = { 客户: c.id, 名: c.name, 负责人: c.salesOwnerId, 事由: r.提醒.事由, ...(r.提醒.第几次 ? { 第几次: r.提醒.第几次 } : {}) };
+      // 客户名称选填（11-19）：通知里叫客户同其他通知（通知里的客户名：全称空着兜简称 → 客户编号，号码打码）
+      const 条: 条 = { 客户: c.id, 名: 通知里的客户名(c), 负责人: c.salesOwnerId, 事由: r.提醒.事由, ...(r.提醒.第几次 ? { 第几次: r.提醒.第几次 } : {}) };
       for (const u of 人们) 给.set(u, [...(给.get(u) ?? []), 条]);
       要记.set(c.id, { 收件人: new Set(人们), data });
     }
@@ -176,15 +178,15 @@ export async function 已回公海通知(们: readonly 自动收了[], org: 组�
     const key = `tri-pooled:${x.id}:${今天}`;
     const 正文 = x.第几次 >= 2 ? `这位客户第 ${x.第几次} 次被自动收回` : "";
     if (本人在职(org, x.原负责人)) {
-      await notify([x.原负责人], { kind: "回收", title: `「${x.name}」即将回收阶段期满没人处理，已回客户公海`, body: 正文, link: "/pool", key });
+      await notify([x.原负责人], { kind: "回收", title: `「${通知里的客户名(x)}」即将回收阶段期满没人处理，已回客户公海`, body: 正文, link: "/pool", key });
     } else {
       // 原负责人停用了：改发他停用前的直属上级（同 T12 提醒，找直属上级：找不到往条线总管理、系统管理员兜）；抄送那条不再重复发
       const 代收 = 找直属上级(org, x.bizLine ?? null, x.原负责人);
-      await notify(代收, { kind: "回收", title: `停用账号名下的客户「${x.name}」即将回收阶段期满没人处理，已回客户公海`, body: 正文, link: "/pool", key });
+      await notify(代收, { kind: "回收", title: `停用账号名下的客户「${通知里的客户名(x)}」即将回收阶段期满没人处理，已回客户公海`, body: 正文, link: "/pool", key });
       if (上 && 代收.includes(上)) continue;
     }
     if (上 && 上 !== x.原负责人) {
-      await notify([上], { kind: "回收", title: `下属的客户「${x.name}」第 ${x.第几次} 次被自动收回，已回客户公海`, body: "要不要标无效由条线总管理在公海回收站里定", link: "/pool", key });
+      await notify([上], { kind: "回收", title: `下属的客户「${通知里的客户名(x)}」第 ${x.第几次} 次被自动收回，已回客户公海`, body: "要不要标无效由条线总管理在公海回收站里定", link: "/pool", key });
     }
   }
 }

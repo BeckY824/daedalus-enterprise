@@ -469,3 +469,72 @@ describe("日志口径：全称或显名（有全称照旧写全称；没全称�
     expect(记).not.toContain("「」");
   });
 });
+
+describe("复审 11-19：放公海同事在推、AI 删客户卡、导出、移出联系人、查重提示、搜索、导入撤销报名、灰字判空", () => {
+  const 光客户 = (no: number, 补: Record<string, unknown> = {}) =>
+    prisma.customer.create({ data: { name: "", customerNo: no, phone: `1380000${String(no).padStart(4, "0")}`, salesOwnerId: "tester-id", ...补 } });
+
+  it("一次放回多位、都有同事在推的项目：说法里叫客户编号，不出「」", async () => {
+    const a = await 光客户(51);
+    const b = await 光客户(52);
+    for (const c of [a, b]) await prisma.project.create({ data: { name: "同事的项目", customerId: c.id, ownerId: 销售, creatorId: 销售 } });
+    const { 放进公海 } = await import("@/app/(app)/customers/pool-actions");
+    const r = await 放进公海([a.id, b.id]);
+    expect(r.ok).toBe(false);
+    const 话 = "error" in r ? String(r.error) : "";
+    expect(话).toContain("「NO.00051」");
+    expect(话).toContain("「NO.00052」");
+    expect(话).not.toContain("「」");
+  });
+
+  it("AI 删客户卡：按简称、客户编号找得到没全称的那位，卡上叫客户显名", async () => {
+    const c = await 光客户(53, { shortName: "编的简称" });
+    const { 项目写工具 } = await import("@/lib/agent/project-tools");
+    const 删 = 项目写工具.find((t) => t.name === "propose_customer_delete")!;
+    const ctx = { userId: "tester-id", userName: "测试员", b: DEFAULT_BUSINESS, recordOffset: 0, proposals: [] as unknown[] } as never as Parameters<typeof 删.run>[1];
+    const r = await 删.run({ customer: "编的简称", reason: "重复建档" }, ctx);
+    expect(r.summary).not.toMatch(/没找到/);
+    const 卡 = (ctx as unknown as { proposals: { targetId?: string; targetName?: string }[] }).proposals.at(-1)!;
+    expect(卡).toMatchObject({ targetId: c.id, targetName: "编的简称" });
+    const ctx2 = { userId: "tester-id", userName: "测试员", b: DEFAULT_BUSINESS, recordOffset: 0, proposals: [] as unknown[] } as never as Parameters<typeof 删.run>[1];
+    expect((await 删.run({ customer: "NO.00053", reason: "重复建档" }, ctx2)).summary).not.toMatch(/没找到/);
+  });
+
+  it("跟进导出：客户名有全称写全称（哪怕有简称）、没全称写客户编号（全称或显名）", async () => {
+    const 老 = await 光客户(54, { name: "编的单位全称", shortName: "编的简称" });
+    const 新 = await 光客户(55);
+    for (const c of [老, 新]) await prisma.followUp.create({ data: { type: "NOTE", title: "", content: "回访", status: "已完成", customerId: c.id, ownerId: "tester-id", occurredAt: new Date() } });
+    await prisma.entMember.update({ where: { userId: "tester-id" }, data: { bizRole: "director" } });
+    忘掉企业版范围();
+    const 出 = await 导出客户({});
+    if (!出.ok) throw new Error(出.error);
+    expect(出.跟进.map((f) => f.customerName).sort()).toEqual(["NO.00055", "编的单位全称"]);
+  });
+
+  it("把联系人移出没全称的客户：未归属那一行记的原客户名是客户编号；有全称的记全称", async () => {
+    const c = await 光客户(56, { shortName: "编的简称", name: "编的单位全称" });
+    const 人 = await prisma.contact.create({ data: { customerId: c.id, name: "张伟", phone: "13800000156" } });
+    const { detachContact } = await import("@/app/(app)/customers/[id]/actions");
+    expect(await detachContact(人.id)).toMatchObject({ ok: true });
+    expect((await prisma.unassignedContact.findFirstOrThrow()).fromCustomerName).toBe("编的单位全称");
+  });
+
+  it("按公司名撞上没全称的客户：查重提示叫客户编号，不出空白", async () => {
+    await 光客户(57, { school: "编的公司有限公司" });
+    const r = await 客户名查重("tester-id", null, "", "编的公司有限公司");
+    expect(r).toMatchObject({ 我名下: { 客户名: "NO.00057" } });
+  });
+
+  it("全局搜索：按简称也搜得到没全称客户的项目", async () => {
+    const c = await 光客户(58, { shortName: "编的简称" });
+    await prisma.project.create({ data: { name: "一单", customerId: c.id, ownerId: "tester-id", creatorId: "tester-id" } });
+    const { 全局搜索 } = await import("@/app/(app)/global-search");
+    const r = await 全局搜索("编的简称");
+    expect(JSON.stringify(r)).toContain("一单");
+  });
+
+  it("灰字判空和保存同一条：只有零宽字符的也提示没填全称", () => {
+    expect(全称提示("\u200b\u200b")).toBe(没填全称提示);
+    expect(全称提示("  ")).toBe(没填全称提示);
+  });
+});
