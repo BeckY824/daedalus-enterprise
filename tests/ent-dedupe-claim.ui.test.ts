@@ -6,7 +6,7 @@
  *     向导 / AI 卡上已选的渠道带进来当默认（仍可改）；向导选的是渠道触点的提示先找销售管理分配
  *     对接人先带出号码撞上的那位（选已有的就挂他，不填名字）；选「新的人」才填名字（必填）、职务
  *   - 框里一行客户名（超长省略号、悬停看全文）；取框数据失败：交的键提示就是失败原因
- *   - 草稿键不带号码；领成了向导面板按重查的结果刷新、那一行话留着
+ *   - 草稿键不带号码；领成了不重查号码（重查是「重复」会记撞号台账、摆挂靠 / 协同），面板只剩「已领取」那句
  *   - 交上去只带号码（类型 + 值）、那条沟通、看到的客户 id、这次的渠道和录的对接人；领成了键收起、就地一行话
  *   - 只领旧项目那条路（框数据说 新建线索项目 = false）：没有渠道、对接人格
  *   - 没有 市场可领（销售等）照旧「去领取」；原负责人是我但服务端说可领（是客户创建人，用户 11-19「仅对创建人豁免」）也摆键、不摆「领不回」
@@ -28,7 +28,7 @@ const plugin: Plugin = { name: "ent-dedupe-claim", setup(b) {
   stub(/^\.\.\/actions$/, "export const 建档向导=async()=>({ok:true,customerId:'c1',projectId:'p1'});export const 建档只建客户=async()=>({ok:true,customerId:'c2',projectId:null});");
   stub(/customers\/actions$/, "export const checkDuplicate=async()=>null;export const 推荐人候选=async()=>[];");
   // 查号码：撞上公海里的「星河电子」；市场可领 / 原负责人是我 由用例设
-  stub(/(^|\/)number-actions$/, 补全动作桩("src/app/(app)/customers/number-actions.ts", "export const 查号码=async(t,v)=>window.__领&&!window.__回?({ok:true,状态:'重复',提示:'这个号码已有同事在跟进',值:v,撞:{id:'c7',name:'星河电子',school:null,salesOwnerName:'销售甲某',createdAt:null},归属地:null}):({ok:true,状态:'公海待捞',提示:'这个号码的客户在公海，本次录入已拦截，可去公海领取',值:v,撞:{id:'c7',name:'星河电子',school:null,salesOwnerName:'无负责人',createdAt:null},归属地:null,...(window.__可领?{市场可领:true}:{}),...(window.__我退的?{原负责人是我:true}:{})});export const 查客户名=async()=>({ok:true,撞:null});"));
+  stub(/(^|\/)number-actions$/, 补全动作桩("src/app/(app)/customers/number-actions.ts", "export const 查号码=async(t,v)=>(window.__查次=(window.__查次??0)+1,{ok:true,状态:'公海待捞',提示:'这个号码的客户在公海，本次录入已拦截，可去公海领取',值:v,撞:{id:'c7',name:'星河电子',school:null,salesOwnerName:'无负责人',createdAt:null},归属地:null,...(window.__可领?{市场可领:true}:{}),...(window.__我退的?{原负责人是我:true}:{})});export const 查客户名=async()=>({ok:true,撞:null});"));
   stub(/(^|\/)pool-actions$/, 补全动作桩("src/app/(app)/customers/pool-actions.ts", "export const 查重领取框数据=async()=>window.__框??{ok:true,新建线索项目:true,客户名:'星河电子',渠道们:[{id:'ch1',name:'小红书|笔记',attr:null,platform:'小红书',active:true}],联系人们:[{id:'k1',name:'王经理',position:'采购'},{id:'k2',name:'李工',position:null}],默认对接人:'k1'};export const 查重领取=async(t,v,f,id,n)=>{window.__领=[t,v,f,id,n];return window.__回??{ok:true,提示:'已领取并自动分配给 销售甲某，沟通已记在项目「星河电子-咨询」上',接手人:'销售甲某',项目:'星河电子-咨询',为什么:''}};"));
   stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[];");
   stub(/customers\/\[id\]\/project-actions$/, 补全动作桩("src/app/(app)/customers/[id]/project-actions.ts", "export const 新项目分配数据=async()=>({分配方式们:[],默认分配方式:0,是销售:false,客户业务线:'内贸',客户区域线:null,客户有地址:false});export const 建项目带走的项目=async()=>({项目数:0,项目:[]});"));
@@ -113,10 +113,16 @@ it("市场可领：摆「领取并记沟通」不摆「去领取」；内容空�
     expect(领[2]).toMatchObject({ content: "客户来电咨询报价" });
     expect(领[3]).toBe("c7");
     expect(领[4]).toEqual({ 渠道: "ch1", 对接人: { 原id: "k1" } });
-    // 面板按重查的结果刷新：在销售甲某名下，键没了，那一行话还在
-    await 向导.getByText("负责人：销售甲某").first().waitFor();
-    expect(await 向导.getByTestId("dedupe-claim").count()).toBe(0);
-    expect(await 向导.getByRole("status").filter({ hasText: "已领取并自动分配给 销售甲某" }).count()).toBe(1);
+    // 不重查号码；面板收成只剩「已领取」那句：没有领取键、去领取、打开它、挂靠 / 协同入口
+    expect(await page.evaluate(() => (window as unknown as { __查次: number }).__查次)).toBe(1);
+    expect(await 向导.getByTestId("dedupe-claim-done").innerText()).toBe("已领取并自动分配给 销售甲某，沟通已记在项目「星河电子-咨询」上");
+    expect(await 向导.getByText("星河电子", { exact: true }).count()).toBe(0);
+    for (const 键 of ["打开它", "去领取", "领取并记沟通", "申请挂靠"]) expect(await 向导.getByRole("button", { name: 键 }).count(), 键).toBe(0);
+    // 改号码就清掉，按新号码再查
+    await 向导.getByLabel("号码", { exact: true }).fill("13905712267");
+    await 向导.getByLabel("号码", { exact: true }).press("Enter");
+    await 向导.getByTestId("dedupe-claim").waitFor();
+    expect(await 向导.getByTestId("dedupe-claim-done").count()).toBe(0);
     // 框关掉（关的动画放完才拆）
     await expect.poll(() => page.getByTestId("dedupe-claim-form").count()).toBe(0);
   } finally { await page.close(); }

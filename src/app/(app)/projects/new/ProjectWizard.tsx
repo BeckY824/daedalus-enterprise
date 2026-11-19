@@ -350,7 +350,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   const [撞, set撞] = useState<DuplicateHit>(null);
   // 企业版「查重」回来的那句（格式不对 / 首次录入 / 撞了哪种）
   const [企查, set企查] = useState<查号码结果 | null>(null);
-  // 查重领取成了（F-016）那一行话：面板按重查的结果刷新后还留着，下次查号清掉
+  // 查重领取成了（F-016）那一句：有它时撞号面板只剩它（不重查、不摆挂靠 / 协同），下次查号、改号码清掉
   const [领成话, set领成话] = useState("");
   const [查中, set查中] = useState(false);
   // 企业版客户名查重（P-挂靠-01）：离开客户名那格就查；撞了就地摆出负责人和申请挂靠，改了名字再查
@@ -707,6 +707,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     set已查(null);
     set撞(null);
     set企查(null);
+    set领成话("");
     set名查(null);
     set显错(false);
     set已存(false);
@@ -907,6 +908,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
                 onChange={(v) => {
                   改("号码类型", v);
                   set企查(null);
+                  set领成话("");
                   // 换了类型：号码已经填了就照新类型再查一次
                   if (d.phone.trim()) void 查号({ ...d, 号码类型: v });
                 }}
@@ -919,6 +921,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
                 onChange={(e) => {
                   改("phone", e.target.value);
                   set企查(null);
+                  set领成话("");
                 }}
                 onBlur={() => { if (d.phone.trim() && !号查过) void 查号(); }}
                 onPressEnter={() => void 查号()}
@@ -942,7 +945,10 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
             <div className="cr-wide">
               {企查.ok && 企查.状态 === "首次录入" ? <Alert type="success" showIcon title={去符号(企查.提示)} description={企查.归属地 ? `归属地：${企查.归属地}` : undefined} />
                 : !企查.ok ? <Alert type="warning" showIcon title={去符号(企查.提示)} />
-                : <撞号面板 查={企查} users={users} 类型={d.号码类型 ?? ""} 捞回了={set企查} 渠道={d.客户.渠道 || null} 触点={d.客户.触点 || null} 领成话={领成话} 领成了={set领成话} 协同={企查.可协同 ? <SameNumberEntry 类型={d.号码类型} 值={企查.值} 渠道们={企业?.渠道们 ?? []} 默认渠道={d.客户.渠道 || null} 情况={企查.协同} /> : null} />}
+                // 查重领取成了（F-016）：面板收成只剩「已领取」那句。不重查——客户已在销售名下，重查是「重复」，会记撞号台账、摆挂靠 / 同号协同，
+                // 把市场成员引去挂靠自己刚交出去的客户。下次查号清掉
+                : 领成话 ? <Alert type="success" showIcon title={<span role="status" data-testid="dedupe-claim-done">{领成话}</span>} />
+                : <撞号面板 查={企查} users={users} 类型={d.号码类型 ?? ""} 捞回了={set企查} 渠道={d.客户.渠道 || null} 触点={d.客户.触点 || null} 领成了={set领成话} 协同={企查.可协同 ? <SameNumberEntry 类型={d.号码类型} 值={企查.值} 渠道们={企业?.渠道们 ?? []} 默认渠道={d.客户.渠道 || null} 情况={企查.协同} /> : null} />}
             </div>
           )}
           {!企业版 && 号查过 && (
@@ -1230,9 +1236,9 @@ function 去符号(s: string): string {
  * 企业版查重撞了（P0-7）：把撞到的那条摆出来，并给出口，而不是只说「已存在」。
  * 看不到的客户不给名字（撞号结论 按 看得到 收），写「领取后可见」；在公海的给「去领取」，在同事名下的给「联系负责人」
  */
-function 撞号面板({ 查, users, 类型, 捞回了, 渠道, 触点, 领成话, 领成了, 协同 }: {
+function 撞号面板({ 查, users, 类型, 捞回了, 渠道, 触点, 领成了, 协同 }: {
   查: Extract<查号码结果, { ok: true }>; users: 可选成员[]; 类型: string; 捞回了: (查: 查号码结果) => void;
-  渠道?: string | null; 触点?: string | null; 领成话?: string; 领成了?: (话: string) => void; 协同?: React.ReactNode;
+  渠道?: string | null; 触点?: string | null; 领成了?: (话: string) => void; 协同?: React.ReactNode;
 }) {
   const 撞 = 查.撞;
   const 在公海 = 查.状态 === "公海待捞";
@@ -1272,7 +1278,7 @@ function 撞号面板({ 查, users, 类型, 捞回了, 渠道, 触点, 领成话
             {市场领 && (
               <DedupeClaimKey
                 类型={类型} 值={查.值} 客户id={撞?.id} 渠道={{ id: 渠道 }} 触点={触点}
-                领了={(t) => { 领成了?.(t); void 查号码(类型, 查.值).then(捞回了).catch(() => {}); }}
+                领了={领成了}
               />
             )}
             {在公海 && !我退的 && !市场领 && <Link href={撞?.name ? `/pool?keyword=${encodeURIComponent(撞.name)}` : "/pool"}><Button size="small">去领取</Button></Link>}
@@ -1281,7 +1287,6 @@ function 撞号面板({ 查, users, 类型, 捞回了, 渠道, 触点, 领成话
               ? <CopyValue 种类="邮箱" 叫法="负责人邮箱" value={邮箱} 文字={`联系负责人：${负责人}`} style={{ color: "var(--text-muted)" }} />
               : <span style={{ color: "var(--text-muted)" }}>联系负责人：{负责人}</span>)}
           </Space>
-          {领成话 && <div role="status" className="cu-said">{领成话}</div>}
           {查.状态 === "重复" && 查.挂靠 && <AttachEntry key={查.挂靠.撞号id ?? 查.值} 露出={查.挂靠} 不给打开 />}
           {协同}
         </div>
