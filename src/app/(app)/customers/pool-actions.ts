@@ -33,7 +33,7 @@ import { 在事务里分公海项目们, type 分项目上下文, type 分项目
 import { 能进公海的阶段, 持有上限起点, 整批核上限, 整批或不做, 领公海项目准备, 领取公海项目们, 在事务里领公海项目们, type 领项目上下文 } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 公海按线拦 } from "@/lib/enterprise/pool-line-guard";
-import { 历史负责人们, 还原清掉的组员 } from "@/lib/project/pool-owner";
+import { 历史负责人, 历史负责人们, 还原清掉的组员 } from "@/lib/project/pool-owner";
 import { 换负责人待办 } from "@/lib/project/carry-tasks";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 有同事在推的客户, 同事在推不能放公海话, 同事在推项目说法, 订单项目说法 } from "@/lib/enterprise/colleague-projects";
@@ -45,6 +45,23 @@ import { 还负责人 } from "@/lib/project/owner-write";
 import { 要补潜客培育, 零项目客户补潜客培育, 撤回补的潜客培育 } from "@/lib/project/nurture";
 import { 系统分配方式 } from "@/lib/project/proj-fields";
 import { 写公海领取, 还公海领取前的客户分配, type 出公海原值 } from "@/lib/enterprise/customer-assign-way";
+import { 验号码 } from "@/lib/enterprise/contact-format";
+import { 全公司查号, 首条撞的 } from "@/lib/enterprise/contact-dedupe";
+import { 认跟进方式 } from "@/lib/enterprise/dict";
+import { 规整沟通 } from "@/lib/project/wizard";
+import { 规则开着 } from "@/lib/enterprise/rules";
+import { 挑接手人, 挑的理由, 本月已分, 配额of, 满了 } from "@/lib/enterprise/lead-assign";
+import { 本月分配行, 读挑人底子 } from "@/lib/enterprise/assign-eta";
+import { 分配通知 } from "@/lib/enterprise/notice-sources";
+import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
+import {
+  能查重领取, 不是市场成员查重领取话, 没撞上公海话, 查重领取作废, 查重领取换人, 公海客户的原负责人, 客户创建人, 要回避, 最近的公海项目, 最近的在推项目,
+  查重领取候选们, 查重领取理由, 挑不到话, 查重领取记沟通, 查重领取口径, 撞上的联系人, 查重领取建线索项目, 认对接人, 落对接人, type 认好的对接人, type 录的对接人,
+} from "@/lib/enterprise/dedupe-claim";
+import { 可选渠道们 } from "@/lib/enterprise/channel-options";
+import { 落到渠道, 新数据渠道不行 } from "@/lib/enterprise/channel-main";
+import { 算市场建给销售, 市场分配进线索验证 } from "@/lib/enterprise/market-assign-node";
+import type { 可选渠道 } from "@/components/ChannelPicker";
 
 export type 公海结果 =
   | {
@@ -358,6 +375,11 @@ async function 公海客户出手(
   项目?: { me: Parameters<typeof 在事务里领公海项目们>[1]; 上下文: 领项目上下文; ids: string[] },
   分项目?: { ids: string[]; 上下文: 分项目上下文 },
   补培育 = false,
+  /**
+   * 查重领取（F-016）用：补的潜客培育记哪种分配方式（不给按 kind 定）；然后 = 同一个事务里、核持有上限之前再做的那几样
+   *（新建线索项目、记分配、写沟通），抛错整笔回滚、一个都不出公海
+   */
+  附?: { 补的方式?: string; 然后?: (tx: Prisma.TransactionClient, 出: { 到: 出公海原值[]; 记下: 带走的; 公海项目: string[] }) => Promise<void> },
 ) {
   const 规则 = await 生效组织规则();
   return 整批或不做(() => 查完再写(async (tx) => {
@@ -393,9 +415,11 @@ async function 公海客户出手(
     // 名下只有已结束的历史分析回填项目的也补（11-18「领走补一个能推进的项目」，nurture.ts 算有项目）：那几个已随客户带出公海（带走公海项目）
     if (补培育 && 客户部分.到.length) {
       // 补的项目分配方式：领取记「公海捞取」，分配公海记「指定分配」（11-18 复盘第 5 类：原来不写）
-      const 补了 = await 零项目客户补潜客培育(tx, 客户部分.到.map((x) => x.id), 操作人, kind === "claim" ? 系统分配方式.公海捞取 : 系统分配方式.指定分配);
+      const 补了 = await 零项目客户补潜客培育(tx, 客户部分.到.map((x) => x.id), 操作人, 附?.补的方式 ?? (kind === "claim" ? 系统分配方式.公海捞取 : 系统分配方式.指定分配));
       if (补了.size) 客户部分.记下.培育 = [...补了.values()];
     }
+    // 查重领取的那几样（新建线索项目、记分配、写沟通）放在核上限前面：新建的那条也算进接手人的持有数（同补培育）
+    if (附?.然后) await 看全部(() => 附.然后!(tx, 客户部分));
     await 整批核上限(tx, 起, kind === "claim" ? "领" : "接");
     return { ...客户部分, 项目结果, 分项目结果 };
   }));
@@ -615,4 +639,190 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
   // 一位都没撤成、全是刚被别人改走的：明说，别让界面报「已撤销」
   if (退.length && !撤成.length) return { ok: false, error: 培育拦 ? 培育项目动过 : `${负责人被改过}，刷新看看` };
   return { ok: true, updated: 撤成.length, unchanged: ids.length - 撤成.length, 没权限: 0 };
+}
+
+/** 查重领取那条沟通（同记沟通的必填：沟通方式 / 类型、内容、时间）；下一步是接手人的格，这里不收 */
+export type 查重领取沟通 = { type: string; method?: string | null; initiator?: string | null; content: string; occurredAt: string };
+/**
+ * 新建线索项目那条路要的（查重领取口径.新建线索项目）：这次的渠道（必填，不默认带客户来源；新建线索那套主 / 子渠道，主渠道占位 id 也认）、
+ * 这次录的对接人（必填，名字同名挂原人不改、不同名新建，见 dedupe-claim.ts 认对接人）
+ */
+export type 查重领取新项目 = { 渠道?: string | null; 对接人?: 录的对接人 | null };
+export type 查重领取结果 =
+  | { ok: true; 提示: string; 接手人: string; 项目: string; 为什么: string }
+  | { ok: false; error: string };
+
+/** 自动分配挑人的事务复核最多重挑几次（同 自动分给） */
+const 查重领取最多重挑 = 5;
+
+/** 查重领取框打开时取：用不用填渠道 / 对接人（看两条路的开关）、能选的渠道、这位客户的联系人、默认对接人。服务端照样重查号码，没撞上公海 = error */
+export type 查重领取框 =
+  | { ok: true; 新建线索项目: boolean; 渠道们: 可选渠道[]; 联系人们: 框里的联系人[]; 默认对接人: string | null }
+  | { ok: false; error: string };
+
+export type 框里的联系人 = { id: string; name: string; position: string | null };
+
+export async function 查重领取框数据(类型: string, 值: string): Promise<查重领取框> {
+  const me = await requireUser();
+  if (!企业版() || (await getBusiness()).projectMode !== true) return { ok: false, error: "查重领取只在企业版项目模式里有" };
+  if (!能查重领取(await 权限组织(), me.id)) return { ok: false, error: 不是市场成员查重领取话 };
+  const 号 = 验号码(类型, 值);
+  if (!号.ok) return { ok: false, error: 号.提示 };
+  const 挑 = await 首条撞的(prisma, await 全公司查号(prisma, 号.类型, 号.值, 号.键));
+  if (!挑?.pool) return { ok: false, error: 没撞上公海话 };
+  if (!查重领取口径.新建线索项目) return { ok: true, 新建线索项目: false, 渠道们: [], 联系人们: [], 默认对接人: null };
+  const 联系人们 = await 看全部(() => prisma.contact.findMany({ where: { customerId: 挑.id, deletedAt: null }, orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }], select: { id: true, name: true, position: true } }));
+  return { ok: true, 新建线索项目: true, 渠道们: await 可选渠道们(), 联系人们, 默认对接人: await 撞上的联系人(prisma, 挑.id, 号) };
+}
+
+/**
+ * 市场成员经号码查重领公海客户（员工反馈 F-016；客户 11-19：「可以进行该公海项目/客户的领取，但领取时……1.必须写沟通记录；2.只能自动分配」）。
+ * 只认号码不认 id（同 从回收站捞回）：服务端重查一遍，首条撞的那位还在客户公海里才领；客户id 是界面看到的那位，交了就要对得上，对不上按最新结论说。
+ * 一个事务里：客户整体出公海直接给自动挑中的销售（不落在市场成员名下，照 P-公海-11 客户在公海 / 市场手里整体给销售）、名下公海项目一起带走；
+ * 沟通挂哪条项目分两条路（lib/enterprise/dedupe-claim.ts 查重领取口径，见那边文件头）：
+ *   - 新建线索项目（现行，用户 11-19）：另建一条线索项目（这次的渠道、对接人），沟通记在它上面，市场分给销售进线索验证；不补潜客培育
+ *   - 只领旧项目：最近进公海的那条公海项目；没有就补潜客培育那条；都没有取名下最近建的在推项目
+ * 那条项目分配方式记「自动分配」、记一行算数的分配记录（只这一条计入接手人本月已分，P-转-29）、挂上那条沟通（P-沟通-03）。客户的渠道、联系人不改。
+ * 挑不到人（没人参与、方向对不上、都满额、都超持有上限）：不领、什么都不写，回原因（P-转-38 的说法）。
+ * 原负责人回避（P-公海-04）：用户 11-19「仅对创建人豁免，对其他人有效」——发起人是原负责人且不是客户创建人照旧拦；
+ * 自动分配不挑原负责人，除非他是客户创建人（dedupe-claim.ts 要回避）。
+ * 事务提交后：通知接手人（P-转-17，不走接手人确认）、操作日志一条、重算客户三态
+ */
+export async function 查重领取(类型: string, 值: string, 沟通: 查重领取沟通, 客户id?: string | null, 新项目?: 查重领取新项目): Promise<查重领取结果> {
+  const me = await requireUser();
+  const b = await getBusiness();
+  if (!企业版() || b.projectMode !== true) return { ok: false, error: "查重领取只在企业版项目模式里有" };
+  const org = await 权限组织();
+  if (!org || !能查重领取(org, me.id)) return { ok: false, error: 不是市场成员查重领取话 };
+  if (!(await 规则开着("线索分配"))) return { ok: false, error: 挑不到话("规则「线索分配」没开，查重领取只能自动分配") };
+  // 沟通先验（必填同记沟通）：没写的整笔不做
+  if (!沟通 || typeof 沟通 !== "object") return { ok: false, error: "领取时必须写一条沟通记录" };
+  const 认 = await 认跟进方式({ ...沟通 });
+  if ("error" in 认) return { ok: false, error: 认.error };
+  const 好 = 规整沟通({ ...认, 下一步: null, 下一步时间: null }, { 要下一步: false, 叫法: "这条" });
+  if ("error" in 好) return { ok: false, error: 好.error };
+  const 新建 = 查重领取口径.新建线索项目;
+  // 新建线索项目那条路：这次的渠道必填（主渠道占位落成渠道、停用 / 历史渠道不认，同建档向导）
+  const 渠道交 = 新建 && typeof 新项目?.渠道 === "string" ? 新项目.渠道.trim() : "";
+  if (新建 && !渠道交) return { ok: false, error: "请选这次的渠道：新建的线索项目记在这个渠道上" };
+  // 服务端重查：号码确实撞上这位公海客户（首条撞的、还在客户公海）
+  const 号 = 验号码(类型, 值);
+  if (!号.ok) return { ok: false, error: 号.提示 };
+  const 挑 = await 首条撞的(prisma, await 全公司查号(prisma, 号.类型, 号.值, 号.键));
+  if (!挑?.pool || (客户id && 客户id !== 挑.id)) return { ok: false, error: 没撞上公海话 };
+  const cid = 挑.id;
+  const 原负责人 = await 公海客户的原负责人(prisma, cid);
+  const 创建人 = await 客户创建人(prisma, cid);
+  if (拦原负责人() && 原负责人 === me.id && 要回避(原负责人, 创建人)) return { ok: false, error: 原负责人不能领回提示 };
+  const 移交中 = await 移交中不能领([cid], "领");
+  if (移交中) return { ok: false, error: 移交中 };
+  if ((await 无效的([cid])).size) return { ok: false, error: 无效不能领提示 };
+  // 对接人以这次录的为准：同名挂原人（不改原信息）、不同名在客户下新建（事务里建，挑不到人一起回滚）
+  let 对接人: 认好的对接人 | null = null;
+  if (新建) {
+    const 认 = await 认对接人(prisma, cid, 新项目?.对接人);
+    if ("error" in 认) return { ok: false, error: 认.error };
+    对接人 = 认;
+  }
+  let 渠道 = "";
+  if (新建) {
+    const 落 = await 落到渠道(渠道交, me);
+    if (!落.ok) return { ok: false, error: 落.error };
+    const 不行 = 落.id ? await 新数据渠道不行(落.id) : "停用";
+    if (不行) return { ok: false, error: 不行 === "停用" ? "这个渠道不存在或已停用，换一个" : 不行 };
+    渠道 = 落.id!;
+  }
+  const 目标 = await 最近的公海项目(prisma, cid);
+  // 回避：客户的原负责人、最近那条公海项目的历史负责人（都是「最近一次把它放进公海的人」），客户创建人豁免
+  const 回避 = 拦原负责人()
+    ? [原负责人, 目标 ? await 历史负责人(prisma, 目标.id) : null].filter((x): x is string => !!x && 要回避(x, 创建人))
+    : [];
+  // 分配方向看客户地址 → 项目所在地（只领旧项目那条路看那条公海项目）→ 客户的号 → 我的事业部
+  const 候 = await 查重领取候选们(org, me.id, cid, 新建 ? null : (目标?.id ?? null), 回避);
+  const way = await 分配方式叫法(1);
+  const 跳过 = new Set(候.底.不参与);
+  let 底 = 候.底;
+  let 重挑 = 0;
+  let 末因 = "";
+  await 钉住老签约();
+  for (;;) {
+    const 谁 = 挑接手人(底.排位(), 跳过, 候.查满, 底.不限额);
+    if (!谁) {
+      if (末因) return { ok: false, error: 挑不到话(末因) };
+      const 参与的 = 底.排位().filter((c) => !底.不参与.includes(c.userId));
+      const 为什么 = !候.人们.length ? `${候.向.线 ?? "两条线"}上没有能接的销售（或业务线对不上）`
+        : !参与的.length ? "能接的销售都暂停或禁止了自动分配"
+        : !底.不限额 && 参与的.some((c) => c.配额 !== null) ? "能接的销售本月都已满额"
+        : "能接的销售都没填配额，不参与自动分配";
+      return { ok: false, error: 挑不到话(为什么) };
+    }
+    const 为什么 = 查重领取理由(候, 挑的理由(底.排位(), 跳过, 候.查满, 谁, 底.不限额));
+    let 项目id = "";
+    try {
+      const r = await 公海客户出手([cid], 谁, me.id, "pool-assign", undefined, undefined, undefined, !新建 && 要补潜客培育(企业版(), b.projectMode), {
+        补的方式: way,
+        然后: async (tx, 出) => {
+          if (出.到.length !== 1) throw new 查重领取作废("这位客户刚被别人领走了，这次没领");
+          // 事务里按重读的本月分配数再挑一遍：还是他才写（同 自动分给 的复核）
+          if (挑接手人(底.排位(undefined, await 本月分配行(候.人们, 候.月, tx)), 跳过, 候.查满, 底.不限额) !== 谁) throw new 查重领取换人(false);
+          if (候.查满 && !底.不限额 && 满了(await 本月已分(谁, 候.月, tx), await 配额of(谁, tx))) throw new 查重领取换人(true);
+          项目id = 新建
+            ? await 新建这条(tx, { cid, 客户名: 挑.name, 谁, me: me.id, 渠道, 对接人: 对接人!, 线: 候.向.线, way, org })
+            : await 领旧的这条(tx, { cid, 谁, 目标, 出, way });
+          await tx.entLeadAssign.create({
+            data: { projectId: 项目id, toUserId: 谁, fromUserId: 原负责人, byUserId: me.id, line: 候.向.线, kind: "营销", counted: 候.查满, month: 候.月, way },
+          });
+          await 查重领取记沟通(tx, me.id, 项目id, 好, new Date());
+        },
+      });
+      if (!r.ok) { 末因 = r.超; 跳过.add(谁); continue; }
+    } catch (e) {
+      if (e instanceof 查重领取换人) {
+        if (e.满) { 跳过.add(谁); continue; }
+        if (++重挑 > 查重领取最多重挑) return { ok: false, error: "同时分配的太多，这次没领，请稍后再试" };
+        底 = await 读挑人底子(候.人们, 候.月);
+        continue;
+      }
+      if (e instanceof 查重领取作废) return { ok: false, error: e.message };
+      throw e;
+    }
+    const 人 = await prisma.user.findUnique({ where: { id: 谁 }, select: { name: true } });
+    const 接手人 = 人?.name ?? 谁;
+    const 项目名 = (await 看全部(() => prisma.project.findUnique({ where: { id: 项目id }, select: { name: true } })))?.name ?? "";
+    await recordAudit({
+      user: me, action: "claim", entity: "Customer", entityId: cid,
+      summary: `经号码查重从公海领取${b.customer}「${挑.name}」（${新建 ? "新建线索项目" : "项目"}「${项目名}」），自动分配给「${接手人}」，并记了一条沟通`,
+      detail: { 查重领取: true, 新建线索项目: 新建, 号码类型: 号.类型, 项目: 项目id, 给: 谁, 原负责人, 分配方式: way, 为什么, ...(新建 ? { 渠道, 对接人: 新项目?.对接人?.名字 ?? null, 新建对接人: !!对接人 && "建" in 对接人 } : {}) },
+    });
+    await 分配通知(me, [{ projectId: 项目id, toUserId: 谁 }], true, `${me.name} 查号码撞上公海里的这位${b.customer}，领取时记了一条沟通，${b.customer}连项目一起给你`);
+    await 存沟通后重算三态(cid);
+    刷新([cid]);
+    revalidatePath("/projects");
+    revalidatePath("/leads");
+    return { ok: true, 提示: `已领取并自动分配给 ${接手人}，沟通已记在${新建 ? "新建的线索项目" : "项目"}「${项目名}」上`, 接手人, 项目: 项目名, 为什么 };
+  }
+}
+
+/** 新建线索项目那条路（事务里）：建在接手人名下，市场分给销售进线索验证（同新线索自动分配，market-assign-node.ts） */
+async function 新建这条(
+  tx: Prisma.TransactionClient,
+  a: { cid: string; 客户名: string; 谁: string; me: string; 渠道: string; 对接人: 认好的对接人; 线: "内贸" | "外贸" | null; way: string; org: NonNullable<Awaited<ReturnType<typeof 权限组织>>> },
+): Promise<string> {
+  const 对接人 = await 落对接人(tx, a.cid, a.对接人, a.me);
+  const id = await 查重领取建线索项目(tx, { customerId: a.cid, 客户名: a.客户名, 接手人: a.谁, 创建人: a.me, 渠道: a.渠道, 对接人, 线: a.线, 分配方式: a.way });
+  if (算市场建给销售(a.org, a.me, a.谁)) await 市场分配进线索验证(tx, [id], a.谁, a.me);
+  return id;
+}
+
+/** 只领旧项目那条路（事务里）：最近进公海的那条要真随客户带出来了；没有公海项目 = 补的潜客培育；再没有 = 名下最近建的在推项目。分配方式改成自动分配 */
+async function 领旧的这条(
+  tx: Prisma.TransactionClient,
+  a: { cid: string; 谁: string; 目标: { id: string } | null; 出: { 记下: 带走的; 公海项目: string[] }; way: string },
+): Promise<string> {
+  const id = a.目标
+    ? (a.出.公海项目.includes(a.目标.id) ? a.目标.id : "")
+    : a.出.记下.培育?.[0] ?? (await 最近的在推项目(tx, a.cid, a.谁)) ?? "";
+  if (!id) throw new 查重领取作废(a.目标 ? "要领的那条公海项目刚被人动过，这次没领" : "这位客户名下没有能挂沟通的在推项目，这次没领");
+  await tx.project.update({ where: { id }, data: { assignMode: a.way } });
+  return id;
 }

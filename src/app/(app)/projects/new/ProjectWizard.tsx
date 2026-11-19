@@ -28,6 +28,7 @@ import { 查号码, 查客户名, type 查号码结果 } from "../../customers/n
 import type { 名撞结论 } from "@/lib/enterprise/dupe-ledger";
 import AttachEntry, { 负责人说法, 我名下入口 } from "./AttachEntry";
 import RescueKey from "../../customers/RescueKey";
+import DedupeClaimKey from "../../customers/DedupeClaimKey";
 import { 向导能选类型, 带进联系人, 号码类型叫法, type 联系人三格 } from "@/lib/enterprise/contact-format";
 import { 每人最多号码, 内置号码种类, 号码上限, 联系人姓名问题 } from "@/lib/enterprise/customer-v2";
 import { 线索号码种类 } from "@/lib/agent/proposals";
@@ -1233,8 +1234,11 @@ function 撞号面板({ 查, users, 类型, 捞回了, 协同 }: { 查: Extract<
   if (查.状态 === "回收站里有") {
     return <Alert type="error" showIcon title={去符号(查.提示)} description={<div><div>{撞?.name ? `${撞.name} · ` : ""}在回收站里</div><Space size={8} style={{ marginTop: 8 }}><RescueKey 类型={类型} 值={查.值} 捞回了={捞回了} /></Space>{协同}</div>} />;
   }
+  // 市场成员撞上公海（F-016）：就地「领取并记沟通」，领了自动分给销售；公海页他领不了，不给「去领取」。
+  // 是自己退回公海的也给（服务端只在他是客户创建人时说 市场可领，用户 11-19「仅对创建人豁免」）
+  const 市场领 = 在公海 && !!查.市场可领;
   // 自己退回公海的：企业版原负责人看不到也领不回，「打开它」「去领取」都走不通，不摆（11-03 B7-3）
-  const 我退的 = 在公海 && !!查.原负责人是我;
+  const 我退的 = 在公海 && !!查.原负责人是我 && !市场领;
   const 负责人 = 撞?.salesOwnerName ?? "";
   // 负责人已离职（11-03 C4-5）：不叫人找他，指他的直属上级（没有就系统管理员）
   const 离职找 = 撞?.负责人已离职找 ?? "";
@@ -1259,7 +1263,8 @@ function 撞号面板({ 查, users, 类型, 捞回了, 协同 }: { 查: Extract<
           <Space size={8} style={{ marginTop: 8 }} wrap>
             {撞?.id && !我退的 && <Link href={`/customers/${撞.id}`}><Button size="small">打开它</Button></Link>}
             {我退的 && <span style={{ color: "var(--text-muted)" }}>是你退回公海的，{原负责人不能领回提示}</span>}
-            {在公海 && !我退的 && <Link href={撞?.name ? `/pool?keyword=${encodeURIComponent(撞.name)}` : "/pool"}><Button size="small">去领取</Button></Link>}
+            {市场领 && <DedupeClaimKey 类型={类型} 值={查.值} 客户id={撞?.id} />}
+            {在公海 && !我退的 && !市场领 && <Link href={撞?.name ? `/pool?keyword=${encodeURIComponent(撞.name)}` : "/pool"}><Button size="small">去领取</Button></Link>}
             {查.状态 === "重复" && 离职找 && <span style={{ color: "var(--text-muted)" }}>负责人已离职，请联系 {离职找}</span>}
             {查.状态 === "重复" && 负责人 && !离职找 && (邮箱
               ? <CopyValue 种类="邮箱" 叫法="负责人邮箱" value={邮箱} 文字={`联系负责人：${负责人}`} style={{ color: "var(--text-muted)" }} />
