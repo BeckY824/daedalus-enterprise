@@ -204,9 +204,9 @@ it("分配模式的指定分配：下拉只列可指定的人；普通转让照�
         await 开框(page, ["c1", "c2"]);
         if (递) await expect.poll(() => 方式(page).count()).toBe(1);
         await 框(page).getByRole("combobox", { name: "转给谁" }).click();
+        // 下拉展开有 slide-up 动画：起始帧下拉高 0、选项算不可见，读一次会读成 []（机器忙时就撞上）——轮询到选项真出来再比
         const 单 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
-        await 单.first().waitFor();
-        expect((await 单.allInnerTexts()).filter((x) => x !== "小王"), `宽 ${w} 递=${递}`).toEqual([...期]);
+        await expect.poll(async () => (await 单.allInnerTexts()).filter((x) => x !== "小王"), { message: `宽 ${w} 递=${递}`, timeout: 5000 }).toEqual([...期]);
         await page.keyboard.press("Escape");
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `宽 ${w}`).toBe(true);
         expect(errors).toEqual([]);
