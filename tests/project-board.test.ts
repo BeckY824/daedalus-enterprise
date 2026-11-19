@@ -100,6 +100,39 @@ describe("看板分列（企业版：按进程分列，11-03 客户反馈 6）",
   });
 });
 
+describe("看板分列（企业版）：库里存着改名前旧节点名的项目按新名归列（10-31 改名）", () => {
+  const 企 = 字典of(true);
+
+  it("存旧名「共识方案」「方案确认」的落「方案敲定」、「明确需求」落「痛点挖掘」，不再全进本阶段第一列；小字和列一致", () => {
+    const 旧 = 行({ phase: "商机", node: "共识方案", amount: 3 });
+    const 列 = 看板分列([
+      旧,
+      行({ phase: "商机", node: "方案确认", amount: 4 }),
+      行({ phase: "商机", node: "方案敲定", amount: 5 }),
+      行({ phase: "商机", node: "明确需求" }),
+      行({ phase: "订单", node: "验收交付" }),
+      行({ phase: "订单", node: "尾款结算", result: "成功交付" }),
+    ], 企);
+    const 数 = Object.fromEntries(列.map((c) => [c.名, c.数]));
+    expect(数).toMatchObject({ 方案敲定: 3, 痛点挖掘: 1, 交付验收: 1, 交付结清: 1, 生产备货: 0 });
+    expect(列.find((c) => c.名 === "方案敲定")!.合计).toEqual([{ 币种: "CNY", 合计: 12 }]);
+    expect(列.find((c) => c.名 === "方案敲定")!.行.map((r) => r.id)).toContain(旧.id);
+    expect(卡片小字(旧, 企)).toBe("方案敲定");
+    expect(卡片小字(行({ phase: "商机", node: "共识方案", result: "异常状态", exceptionCategory: "项目停滞" }), 企)).toBe("异常 · 项目停滞 · 方案敲定");
+  });
+
+  it("列头按库里分的组算（服务端分页）：64 个存旧名「共识方案」的组计进「方案敲定」，痛点挖掘不多数", () => {
+    const 全部 = [
+      { phase: "商机", node: "共识方案", result: null, currency: "CNY", amount: 640, 数: 64 },
+      { phase: "商机", node: "方案敲定", result: null, currency: "CNY", amount: 10, 数: 1 },
+      { phase: "商机", node: "痛点挖掘", result: null, currency: "CNY", amount: 0, 数: 2 },
+    ];
+    const 列 = 看板分列([], 企, undefined, 全部);
+    expect(列.find((c) => c.名 === "方案敲定")).toMatchObject({ 数: 65, 合计: [{ 币种: "CNY", 合计: 650 }] });
+    expect(列.find((c) => c.名 === "痛点挖掘")!.数).toBe(2);
+  });
+});
+
 describe("看板卡片小字跟着当前进程走（11-03 A5-5）", () => {
   const 企 = 字典of(true);
   const 列名of = (r: 项目行) => 看板分列([r], 企).find((c) => c.行.length)!.列;

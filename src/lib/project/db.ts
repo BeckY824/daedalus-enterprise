@@ -1762,9 +1762,10 @@ export async function 客户项目按必填推进(me: { id: string }, customerId
   const 规则 = await 生效组织规则();
   if (!节点推进生效(规则) || !customerId) return [];
   const 配了的 = Object.keys(规则.节点推进.必填).filter((n) => 节点必填(规则, n).length);
+  // 配置的 key 已按本套名换成新名（org-rules.ts）；库里还存着旧节点名的项目（10-31 改名前的）新旧名一起认（同名们），不然漏推。
   // 生效时刻之前建的存量项目不查（按必填推进 里也会再挡一遍）
   const 起 = 规则.节点推进.生效于;
-  const 们 = await prisma.project.findMany({ where: { customerId, pooledAt: null, result: null, node: { in: 配了的 }, ...(起 ? { createdAt: { gte: new Date(起) } } : {}) }, select: { id: true, name: true } });
+  const 们 = await prisma.project.findMany({ where: { customerId, pooledAt: null, result: null, node: { in: [...new Set(配了的.flatMap(同名们))] }, ...(起 ? { createdAt: { gte: new Date(起) } } : {}) }, select: { id: true, name: true } });
   const 推了: { id: string; name: string; 到: string[] }[] = [];
   for (const p of 们) {
     const 到 = await 查完再写((tx) => 按必填推进(tx, 规则, me, p.id));

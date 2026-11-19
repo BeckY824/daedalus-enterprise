@@ -121,6 +121,15 @@ describe("节点必填自动推进", () => {
     expect((await 现(没配.id)).node).toBe("线索验证");
   });
 
+  it("客户资料齐了：存着改名前旧节点名（共识方案）的项目按新名「方案敲定」的配置照样推（10-31 改名）", async () => {
+    await setSetting("orgRules", 开着({ 方案敲定: ["国家", "来源"] }));
+    const 旧 = await 项目({ phase: "商机", node: "共识方案" });
+    await prisma.customerExtra.create({ data: { customerId: 客户, country: "德国", source: "展会" } });
+    expect(await 客户项目按必填推进(乙, 客户)).toEqual([{ id: 旧.id, name: "一号项目", 到: ["成交推进"] }]);
+    expect(await 现(旧.id)).toMatchObject({ phase: "商机", node: "成交推进" });
+    expect(await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: 旧.id, reason: { startsWith: 自动推进理由 } } })).toMatchObject({ fromNode: "方案敲定", toNode: "成交推进" });
+  });
+
   it("退回来的节点不自动推；负责人再往前推过去之后照常", async () => {
     await setSetting("orgRules", 开着({ 线索验证: ["金额"] }));
     const p = await 项目({ node: "线索推进", amount: 0 });
