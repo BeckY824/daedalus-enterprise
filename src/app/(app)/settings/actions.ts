@@ -7,7 +7,9 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { beijingDay } from "@/lib/business-clock";
 import { 进公海挂靠通知 } from "@/lib/enterprise/attach-approval";
 import { 解绑飞书 } from "@/lib/enterprise/feishu-login";
-import { 读组织, 直属上级of, 权限组织, 是系统管理员of, 能管设置of, 有人能管设置, 读组织于, 留一位系统管理员错, 留一位系统管理员话 } from "@/lib/enterprise/org";
+import { 读组织, 直属上级of, 权限组织, 是系统管理员of, 能管设置of, 有人能管设置, 读组织于, 留一位系统管理员错, 留一位系统管理员话, 拆角色, 合角色 } from "@/lib/enterprise/org";
+import { 是业务角色, 角色名, 角色组合问题, type 业务角色 } from "@/lib/sync/dept-policy";
+import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 能改后台设置, 是总管理, 只读角色 } from "@/lib/enterprise/permissions";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 停用分拣, 停用方式们, type 停用方式 } from "@/lib/offboard-db";
@@ -115,6 +117,11 @@ export async function saveUser(input: {
   active: boolean;
   /** 用户已在弹窗里确认「确实是另一个人」 */
   force?: boolean;
+  /**
+   * 企业版新增成员当场给的业务角色（11-19，可多选，空 = 不设）。只收新建：改已有成员的角色走组织架构 org-actions.ts 设成员
+   * （那边连着系统管理员标记、留一位系统管理员的守卫）。组合规则和 设成员 同一份 角色组合问题
+   */
+  业务角色?: string[] | null;
 }): Promise<
   | { ok: true }
   | { ok: false; error: string }
@@ -130,6 +137,21 @@ export async function saveUser(input: {
   }
   if (!ROLES.some((r) => r.value === input.role)) {
     return { ok: false as const, error: `角色「${input.role}」不是合法取值` };
+  }
+  // 业务角色：能走到这里的已经是能管设置的系统管理员（requireAdmin），总管理 / 管理员 / 销售教练都能给，同组织架构页
+  let 新角色们: 业务角色[] | null = null;
+  if (input.业务角色 != null) {
+    if (!Array.isArray(input.业务角色) || !input.业务角色.every((r) => typeof r === "string")) return { ok: false, error: "成员信息不完整或格式不正确" };
+    const 传 = input.业务角色.map((r) => r.trim()).filter(Boolean);
+    if (传.length) {
+      if (!企业版() || 托管版()) return { ok: false, error: "这个版本没有业务角色" };
+      if (input.id) return { ok: false, error: "改业务角色请到「组织架构」里改" };
+      if (!传.every(是业务角色)) return { ok: false, error: "没有这个角色" };
+      新角色们 = 拆角色(传.join(","));
+      // Q10：销售教练不兼销售类角色；只读管理员不兼别的（教练除外）——同 设成员
+      const 组合 = 角色组合问题(新角色们);
+      if (组合) return { ok: false, error: 组合 };
+    }
   }
   const 登录名 = input.email.trim().toLowerCase();
   /**
@@ -193,6 +215,8 @@ export async function saveUser(input: {
     active: input.active,
   };
 
+  /** 新建出来的那个人：审计 entityId 记他（编辑记 input.id） */
+  let 新id: string | null = null;
   if (input.id) {
     const 之前 = await prisma.user.findUnique({ where: { id: input.id }, select: { active: true } });
     if (!之前) return { ok: false, error: "这个成员已不存在，请刷新重试" };
@@ -259,6 +283,7 @@ export async function saveUser(input: {
       const t = await resolveCurrentTenant();
       if (!t) return { ok: false as const, error: "解析不到当前工作区，请刷新重试" };
       const user = await prisma.user.create({ data: { ...base, password: "!managed" } });
+      新id = user.id;
       const 配 = await 配账号({
         workspaceId: t.workspaceId,
         userId: user.id,
@@ -274,18 +299,26 @@ export async function saveUser(input: {
       }
       await prisma.workspaceAccount.create({ data: { userId: user.id, accountId: 配.accountId } });
     } else {
-      await prisma.user.create({
-        data: { ...base, password: await 哈希密码(input.password) },
-      });
+      const 密码 = await 哈希密码(input.password);
+      // 账号和业务角色一起落：角色没存上账号也别留（留下的是一个没角色、什么都做不了的人）
+      // 企业版库只开一条连接：默认 2 秒排队会报 P2028，等待时长照 org-actions 的 事务选项
+      新id = await prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({ data: { ...base, password: 密码 } });
+        if (新角色们) await tx.entMember.create({ data: { userId: user.id, bizRole: 合角色(新角色们) } });
+        return user.id;
+      }, { maxWait: 15_000, timeout: 20_000 });
+      // 组织一变谁看得到谁就变了：清掉可见范围缓存（同 org-actions 改完了）
+      if (新角色们) 忘掉企业版范围();
     }
   }
 
   await recordAudit({
-    user: me, action: input.id ? "update" : "create", entity: "User", entityId: input.id ?? null,
+    user: me, action: input.id ? "update" : "create", entity: "User", entityId: input.id ?? 新id,
     summary: `${input.id ? "修改" : "新建"}成员「${base.name}」（${base.role}）` +
+      (新角色们 ? `，业务角色：${新角色们.map((r) => 角色名[r]).join("、")}` : "") +
       (input.password ? "，并重置了密码" : "") +
       (input.force ? "（已确认与既有同名成员不是同一人）" : ""),
-    detail: { name: base.name, email: base.email, role: base.role, active: base.active },
+    detail: { name: base.name, email: base.email, role: base.role, active: base.active, ...(新角色们 ? { 业务角色: 新角色们 } : {}) },
   });
 
   revalidatePath("/settings");

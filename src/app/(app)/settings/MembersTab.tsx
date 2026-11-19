@@ -14,7 +14,8 @@ import type { SessionUser } from "@/lib/auth";
 import { saveUser, deactivateUser, reactivateUser, 停用清点, 批量停用, 解绑飞书身份 } from "./actions";
 import { 设不管设置, 设系统管理员 } from "./org-actions";
 import { 按阶段说, 三阶段 } from "@/lib/project/member-count";
-import { 角色名, 是只读角色们, type 业务角色 } from "@/lib/sync/dept-policy";
+import { 角色名, 是只读角色们, 角色组合问题, type 业务角色 } from "@/lib/sync/dept-policy";
+import BizRoleSelect from "./BizRoleSelect";
 import { useConsequence } from "@/components/ConsequenceDialog";
 import InlineConfirm from "@/components/InlineConfirm";
 
@@ -86,6 +87,14 @@ export default function MembersTab({
   const [恢复中, set恢复中] = useState<string | null>(null);
   const [form] = Form.useForm();
   const 按业务角色 = users.some((u) => u.业务角色);
+  /** 企业版新增成员：当场选业务角色（编辑已有成员的角色在「组织架构」里改） */
+  const 新建带角色 = 企业版 && 按业务角色 && !editing;
+  /**
+   * 新增时选了总管理：提醒一句他建好就能管设置。系统管理员 = 总管理且没设业务线（或带标记），
+   * 能管设置 = 系统管理员且没勾「不管设置」（lib/enterprise/org-core.ts 是系统管理员of / 能管设置of）；新建的人还没设业务线、不管设置默认关
+   */
+  const 选的角色 = Form.useWatch("业务角色", form) as string[] | undefined;
+  const 新建总管理 = 新建带角色 && !!选的角色?.includes("director");
   const [改不管设置中, set改不管设置中] = useState<string | null>(null);
   /** 拨「系统管理员」：只有能管设置的系统管理员（服务端 org-actions 设系统管理员 再拦、不能关掉最后一位） */
   const on系统管理员 = async (r: Row, on: boolean) => {
@@ -612,13 +621,41 @@ export default function MembersTab({
                 <Input />
               </Form.Item>
             </Col>
+            {/*
+              企业版新增成员当场选业务角色（11-19：原来只有「账号权限」那一栏，没有销售教练可选，要建完再去组织架构里设）。
+              选项、灰掉的规则和组织架构那一格是同一个 BizRoleSelect；服务端 saveUser 按同一个 角色组合问题 再挡一遍。
+              编辑已有成员不在这里改角色：组织架构那一格还连着系统管理员标记、留一位系统管理员这些守卫，只留一处改
+            */}
+            {新建带角色 && (
+              <Col span={24}>
+                <Form.Item
+                  name="业务角色"
+                  label="业务角色"
+                  extra={
+                    <>
+                      能做什么只看业务角色，可多选；销售教练不兼销售类角色。部门、业务线、上级建好后在「组织架构」里设。不选 = 什么都做不了
+                      {新建总管理 && (
+                        <div className="member-director-note" role="note">
+                          没设业务线的总管理就是系统管理员，能管设置。新建时还没设业务线，所以他建好就能管设置
+                        </div>
+                      )}
+                    </>
+                  }
+                  rules={[{ validator: (_, v?: string[]) => { const 问题 = v?.length ? 角色组合问题(v) : null; return 问题 ? Promise.reject(new Error(问题)) : Promise.resolve(); } }]}
+                >
+                  <BizRoleSelect aria-label="业务角色" placeholder="选业务角色（如销售成员、销售教练）" allowClear />
+                </Form.Item>
+              </Col>
+            )}
             <Col span={12}>
               <Form.Item
                 name="role"
                 label={按业务角色 ? "账号权限" : "角色"}
                 extra={
                   按业务角色
-                    ? "能做什么只看业务角色（总管理、销售管理……在「组织架构」里设）；没设业务角色的人什么都做不了。"
+                    ? 新建带角色
+                      ? "企业版这一栏不多给权限，能做什么只看上面的业务角色。"
+                      : "能做什么只看业务角色（总管理、销售管理、销售教练……在「组织架构」里设）；没设业务角色的人什么都做不了。"
                     : "销售主管与销售目前使用相同业务权限；职位仅用于展示，管理权限由角色决定。"
                 }
               >

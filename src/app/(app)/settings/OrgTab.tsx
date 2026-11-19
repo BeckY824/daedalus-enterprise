@@ -8,6 +8,7 @@ import { useConsequence } from "@/components/ConsequenceDialog";
 import InlineConfirm from "@/components/InlineConfirm";
 import SaveButton from "@/components/SaveButton";
 import { 角色名, 业务角色, 部门最多层数, 角色组合问题 } from "@/lib/sync/dept-policy";
+import BizRoleSelect, { 总管级 } from "./BizRoleSelect";
 import { 部门树, type 组织部门 } from "@/lib/enterprise/org-tree";
 import { 拆角色, 合角色 } from "@/lib/enterprise/org-core";
 import { 规则, 规则名们, 默认开的规则, 关掉后果, type 规则名 } from "@/lib/enterprise/rules-table";
@@ -55,26 +56,9 @@ export type 组织架构 = {
 };
 type 结果 = Promise<{ ok: boolean; error?: string; 提示?: string; 要确认?: string }>;
 
-/** 只有系统管理员能给、能改的角色：总管理、管理员、销售教练（看全部的那几个） */
-const 总管级 = (r: string) => r === "director" || r === "admin" || r === "coach";
 /** 开关的 data-testid：第一条沿用老名字，E2E 在用 */
 const 规则testid: Record<规则名, string> = { 按组织看客户: "org-rule-scope", 线索分配: "org-rule-lead-assign", 字段权限: "org-rule-field-perm", 市场复核: "org-rule-market-review", 超时自动转: "org-rule-reply-overdue" };
 const 级别名 = { 改: "能改", 看: "只能看", 藏: "看不到" } as const;
-/**
- * 角色下拉每项下面那行「能做什么」（10-30）：只写代码里按角色写死的那几样——总管理员看全部（lib/enterprise/visibility.ts）、
- * 改组织架构（org-actions）、分配线索 / 录渠道投入 / 改销售的参与状态（只有总管理员）（lead-assign、channel-stats）、复核和终判无效线索（lead-verify）。
- * 字段权限、分配方式谁能用那两张表按角色配，不写在这里
- */
-const 角色能做: Record<业务角色, string> = {
-  director: "看全部客户；改组织架构；分配线索、改销售的参与状态、录渠道投入；终判无效线索",
-  admin: "只能看、不能改。没设业务线看全部；设了只看这条线的数据、下属和公海",
-  coach: "只能看、不能改，电话和提成看不到。看全部（设了业务线也看全部）。不能兼销售类角色",
-  sales_mgr: "能分到线索；手动指派线索",
-  sales: "能分到线索",
-  marketing_mgr: "分配线索、录渠道投入；复核被判无效的线索",
-  channel_ops: "没有额外的管理权限",
-  project_ops: "没有额外的管理权限",
-};
 /** 「后台设置谁能改」表的列 */
 const 人列: readonly 能改的人[] = ["总管理员", "销售管理", "市场管理", "直属上级", "虚线上级"];
 /** 表头显示的叫法：存的值还是「总管理员」（老配置都按这个存），界面统一叫总管理（D2-2） */
@@ -513,20 +497,10 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
                   labelRender={({ value: v }) => 名.get(String(v)) ?? "未分部门"}
                   options={[{ value: "__无", label: "未分部门" }, ...部门选项]} />
                 {/* 业务角色可多选（10-27）：一个人兼销售管理和市场管理之类；至少留一个，清空不交 */}
-                <Select size="small" mode="multiple" style={{ minWidth: 150, maxWidth: 320 }} aria-label={`${m.name} 的角色`} disabled={!改他 || 忙(`成员-${m.id}`)}
-                  value={他的角色} onChange={(v: string[]) => { if (v.length && !角色组合问题(v)) 设(m.id, { bizRole: 合角色(v) }); }}
-                  popupMatchSelectWidth={280}
-                  options={业务角色.filter((r) => 是老板 || !总管级(r) || 他的角色.includes(r)).map((r) => ({
-                    value: r, label: 角色名[r],
-                    // Q10：销售教练不兼销售类角色，撞了的那几项灰掉（服务端 设成员 同样挡）
-                    disabled: !他的角色.includes(r) && !!角色组合问题([...他的角色, r]),
-                  }))}
-                  optionRender={(o) => (
-                    <div>
-                      <div>{o.label}</div>
-                      <div className="muted" style={{ fontSize: 12, whiteSpace: "normal" }}>{角色能做[o.value as 业务角色]}</div>
-                    </div>
-                  )} />
+                <BizRoleSelect size="small" style={{ minWidth: 150, maxWidth: 320 }} aria-label={`${m.name} 的角色`} disabled={!改他 || 忙(`成员-${m.id}`)}
+                  // Q10：销售教练不兼销售类角色，撞了的那几项灰掉（BizRoleSelect 按 角色组合问题；服务端 设成员 同样挡）
+                  value={他的角色} onChange={(v) => { if (v.length && !角色组合问题(v)) 设(m.id, { bizRole: 合角色(v) }); }}
+                  能给总管级={是老板} />
                 <Select size="small" style={{ minWidth: 110 }} aria-label={`${m.name} 的业务线`} disabled={!改他 || 忙(`成员-${m.id}`)}
                   value={m.line ?? "__都"} onChange={(v) => 设(m.id, { line: v === "__都" ? null : v })}
                   options={[{ value: "__都", label: "两边都做" }, { value: "内贸", label: "内贸" }, { value: "外贸", label: "外贸" }]} />
