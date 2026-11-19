@@ -258,21 +258,19 @@ it("对照：没给定向（不是市场成员转暂不分配的客户）——�
 
 // 11-18 定：分配模式下的「指定」只列正常参与的人（同 可指定的人）；普通转让（没有方式那组）照列全部
 it("分配模式的指定分配：下拉只列可指定的人；普通转让照列全部（1024 / 1280 / 1366）", async () => {
-  const 列 = async (page: Page, 框: ReturnType<Page["getByRole"]>) => {
+  const 列 = async (page: Page, 框: ReturnType<Page["getByRole"]>, 期: readonly string[], 话: string) => {
     await 框.getByRole("combobox", { name: "转给谁" }).click();
+    // 下拉展开有 slide-up 动画：起始帧下拉高 0、选项算不可见，读一次会读成 []（机器忙时就撞上）——轮询到选项真出来再比
     const 单 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
-    await 单.first().waitFor();
-    const 字 = await 单.allInnerTexts();
+    await expect.poll(async () => (await 单.allInnerTexts()).filter((x) => x !== "小王"), { message: 话, timeout: 5000 }).toEqual([...期]);
     await page.keyboard.press("Escape");
-    return 字;
   };
   for (const w of [1024, 1280, 1366]) {
     for (const [自动, 期] of [[true, ["小李"]], [false, ["小张", "小李"]]] as const) {
       const { page, errors } = await 开(w, { 自动, 可指定: ["u3", "qa"] });
       try {
         const 框 = await 点转让(page);
-        const 字 = await 列(page, 框);
-        expect(字.filter((x) => x !== "小王"), `宽 ${w} 自动=${自动}`).toEqual([...期]);
+        await 列(page, 框, 期, `宽 ${w} 自动=${自动}`);
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `宽 ${w}`).toBe(true);
         expect(errors).toEqual([]);
       } finally { await page.close(); }
