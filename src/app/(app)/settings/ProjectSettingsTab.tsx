@@ -167,7 +167,8 @@ function EntDictCard({ 各类, 谁能用配置, 挡, 卡 }: {
   const [种类, set种类] = useState<字典种类>(字典种类们[0]);
   const 定义 = 字典定义[种类];
   return (
-    <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+    // data-set-find：设置搜索直达的锚点（SettingsView 找卡），这几个词落在这一块，标题里没有
+    <div style={{ display: "grid", gap: 8, minWidth: 0 }} data-set-find="字典 分配方式 回收原因">
       {/* 七类在 1024 宽的设置页里一排放不下，折成两行，不要左右拖（10-27）；外框的横滚只在样式没加载时兜底 */}
       <div style={{ overflowX: "auto" }}>
         <Segmented
@@ -462,6 +463,7 @@ function TimeoutCard({
   return (
     <Card
       title="超时回收"
+      data-set-find="进程时限"
       extra={
         <Space>
           {挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}
@@ -561,6 +563,7 @@ function AdvanceCard({
   return (
     <Card
       title="节点推进"
+      data-set-find="必填"
       extra={
         <Space>
           {挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}

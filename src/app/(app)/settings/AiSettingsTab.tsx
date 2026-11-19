@@ -485,7 +485,7 @@ function McpBlock() {
   }
 
   return (
-    <div className="mcp-block">
+    <div className="mcp-block" data-set-find="MCP 令牌">
       {后果框}
       {提示条}
       <h4>让别的 agent 连进来</h4>
