@@ -27,10 +27,10 @@ import { 超时回收日, 超时起点, 超时理由, 节点超时天数, 计时
 import { 停用项目进公海理由 } from "@/lib/offboard-db";
 import { 拦原负责人, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示, 拦客户公海里的项目, 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
 import { 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
-import { 字典of } from "@/lib/project/stage-dict";
+import { 字典of, 同名们 } from "@/lib/project/stage-dict";
 import { 本套位置 } from "@/lib/project/nodes";
 import { 读线索验证 } from "@/lib/project/lead-verify";
-import { 有效线索节点 } from "@/lib/project/stage-gates";
+import { 有效线索节点, 要沟通的节点 } from "@/lib/project/stage-gates";
 import { 待分配占位 } from "@/lib/enterprise/await-assign";
 import { 市场进不了详情, 读市场身份 } from "@/lib/enterprise/market-view-db";
 import { 只读卡放行 } from "@/lib/enterprise/customer-readonly-card";
@@ -319,6 +319,10 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   const 系统的 = 本人改候选.length ? await 系统记的沟通们(本人改候选) : new Set<string>();
   const 本人候选 = new Set(本人改候选.filter((f) => !系统的.has(f.id)).map((f) => f.id));
   const 最近写过下一步 = !!问下一步 && 本人候选.has(问下一步) && 留痕.写过下一步;
+  // F-017：后台开了「前两节点要沟通」、停在线索验证、这个节点上还没记过沟通 → 推过线索验证的提示里一并写「记一条沟通」。
+  // 读的是同一个开关、同一份节点表，判法照 lib/project/stage-gates.ts 企业版推进关（沟通挂的节点新旧名都算）；只管提示，拦照旧在服务端
+  const 线索验证缺沟通 = 企业 && 现.phase === "线索" && 现.node === 有效线索节点 && !p.result && 规则.阶段.前两节点要沟通
+    && 要沟通的节点().includes(有效线索节点) && !p.followUps.some((f) => 同名们(有效线索节点).includes(f.node));
   const 详情: 项目详情 = {
     收藏了: await 项目收藏了吗(me.id, id),
     id: p.id, name: p.name, remark: p.remark, amount: p.amount, currency: p.currency,
@@ -327,7 +331,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     // 在公海里 ownerName 给原负责人（界面写「原负责人 X」），企业版库里负责人已经清空，从留痕取；没这个人就是空串，界面写「暂无」
     ownerId: p.ownerId, ownerName: (公海 ? 叫(上一任) : 叫(p.ownerId)) ?? "", historyOwners: 历史负责人.map((x) => 叫(x)!), creatorName: 人名显示(p.creatorId, 名, { 创建人: true, 不在: "已不在的成员" }), createdAt: p.createdAt.toISOString(),
     phase: 现.phase, node: 现.node, result: 现.result, exceptionReason: p.exceptionReason, exceptionCategory: p.exceptionCategory?.name ?? null,
-    pooled: 公海, 我是负责人: p.ownerId === me.id, 企业版: 企业, 出口叫法: 企业 ? 规则.阶段.出口叫法 : {}, 有效沟通差, 来源线索, ...(线索验证 ? { 线索验证, 线索验证必填 } : {}),
+    pooled: 公海, 我是负责人: p.ownerId === me.id, 企业版: 企业, 出口叫法: 企业 ? 规则.阶段.出口叫法 : {}, 有效沟通差, ...(线索验证缺沟通 ? { 线索验证缺沟通 } : {}), 来源线索, ...(线索验证 ? { 线索验证, 线索验证必填 } : {}),
     原因选项: { 回收: 回收原因们, 无效: 无效原因们 },
     // 培育计划、无效原因字数上限（M-节点-03）：组织规则里管理员设的，没设 = null = 不限
     ...(企业 ? { 字数上限: { 培育计划: 规则.阶段.培育计划上限, 无效原因: 规则.阶段.无效原因上限 } } : {}),
