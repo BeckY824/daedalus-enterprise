@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Button, Card, Input, Modal, Select, Space, Tag, Timeline } from "antd";
+import { Button, Input, Modal, Select, Space, Tag, Timeline } from "antd";
 import InlineConfirm from "@/components/InlineConfirm";
 import SaveButton from "@/components/SaveButton";
 import { dayjs, fmtDateTime } from "@/lib/utils";
@@ -186,7 +186,7 @@ export function 卡点头({ b, 带项目 = false }: { b: 卡点卡; 带项目?: 
 /**
  * 一串卡点：头 + 描述 + 会签行（x/y、每人打勾）+ 每人的备注；按钮只有「认领」「我已完成」（11-01 定稿：不指认、不转让、不退回）。
  * 最后一个点「我已完成」的人要写解决方案和解决结果，写完卡点就锁成已解决。
- * 项目详情和「我的卡点」共用；带项目 = 卡片上带项目名
+ * 项目详情和复盘页「卡点」页签共用；带项目 = 卡片上带项目名
  */
 export function BlockerList({ 们, 带项目 = false, 空 = "还没有卡点" }: { 们: 卡点卡[]; 带项目?: boolean; 空?: string }) {
   const { 忙, 跑 } = useRun();
@@ -301,16 +301,5 @@ export function BlockerList({ 们, 带项目 = false, 空 = "还没有卡点" }:
         </Space>
       </Modal>
     </>
-  );
-}
-
-/** 项目列表顶上：「我的卡点」（我看得到、还没人认领的，和我认领了还没完成的），没有就不显示 */
-export function MyBlockersBoard({ 们 }: { 们: 卡点卡[] }) {
-  if (!们.length) return null;
-  const 待 = 们.filter((b) => b.status === "待接受").length;
-  return (
-    <Card title={`我的卡点（${们.length}${待 ? `，${待} 条等人认领` : ""}）`} size="small" style={{ marginBottom: 16 }}>
-      <BlockerList 们={们} 带项目 />
-    </Card>
   );
 }

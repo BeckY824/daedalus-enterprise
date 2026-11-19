@@ -39,7 +39,7 @@
   "app/(app)/overview/ProjectStatsView.tsx": 10,
   "app/(app)/overview/ReviewSummary.tsx": 1,
   "app/(app)/pool/PoolView.tsx": 8,
-  "app/(app)/projects/BlockerPanel.tsx": 25,
+  "app/(app)/projects/BlockerPanel.tsx": 24,
   "app/(app)/projects/InviteInbox.tsx": 5,
   "app/(app)/projects/ProjectsView.tsx": 8,
   "app/(app)/projects/VerifyInbox.tsx": 7,

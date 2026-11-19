@@ -4917,7 +4917,7 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 .rec-plan-said { font-size: var(--fs-note); color: var(--text-muted); overflow-wrap: anywhere; animation: cd-pj-flash-in var(--t) var(--ease); }
 .rec-said { margin: 4px 0 6px; }
 .rec-tag-err { margin-left: 6px; white-space: normal; }
-/* 卡点（dt.blocker，项目详情 / 我的卡点）：挂在哪条沟通、类型影响一行、认领就地变色 */
+/* 卡点（dt.blocker，项目详情 / 复盘页卡点页签）：挂在哪条沟通、类型影响一行、认领就地变色 */
 .pd-blk-on { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .pd-blk-on-k { flex: none; color: var(--text-muted); font-size: var(--fs-note); }
 .pd-blk-on-v { flex: 1 1 auto; min-width: 0; }

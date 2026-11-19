@@ -37,7 +37,6 @@ import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 字典of, 结局叫法, 阶段与进程, 阶段们, type 阶段, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import InviteInbox, { type 邀请行 } from "./InviteInbox";
 import VerifyInbox, { type 待复核行 } from "./VerifyInbox";
-import { MyBlockersBoard, type 卡点卡 } from "./BlockerPanel";
 import { 自动分配线索, 撤销自动分配, 分配带走的项目, type 自动分配结果 } from "../leads/assign-actions";
 import { useCarryConfirm } from "../customers/useCarryConfirm";
 import { AssignLeadModal, AssignedOutButton, useBatchAutoAssign } from "../leads/AssignLead";
@@ -98,7 +97,7 @@ function 待分配格({ r }: { r: 项目行 }) {
 }
 
 export default function ProjectsView({
-  行, 列: 看板, 总数, 页, 每页, 要的页, 排序 = "", users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 卡点们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 能分公海客户项目 = false, 满额提醒: 提醒们 = [], 能按号码筛 = false, 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [], 客户页 = false, 基址 = "/projects", 标题, 换回客户列表 = false, 能新建客户 = false, 三态点, 每列,
+  行, 列: 看板, 总数, 页, 每页, 要的页, 排序 = "", users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 能分公海客户项目 = false, 满额提醒: 提醒们 = [], 能按号码筛 = false, 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [], 客户页 = false, 基址 = "/projects", 标题, 换回客户列表 = false, 能新建客户 = false, 三态点, 每列,
 }: {
   行: 项目行[];
   列: 看板一列[];
@@ -127,8 +126,6 @@ export default function ProjectsView({
   邀请们?: 邀请行[];
   /** 企业版线索验证：等我复核 / 终验 / 认领的线索（别的版本是空的） */
   待复核们?: 待复核行[];
-  /** 企业版：「我的卡点」看板（指给我的、我项目上等人认领的；别的版本是空的） */
-  卡点们?: 卡点卡[];
   /** 企业版「新线索」页：只看线索阶段 */
   阶段?: "线索";
   /** 企业版「线索分配和配额」开着：页头摆「我分出去的」（新线索页；项目页筛到线索阶段时也摆） */
@@ -159,7 +156,7 @@ export default function ProjectsView({
   /**
    * 画在企业版客户页的「看板」视图里（11-12 客户详情合并第 3 批，构想页 C17 / C18 / C4）：只画看板这一块——
    * 页头、「列表 / 看板」、筛选行都是客户页自己的（CustomersView），这里不摆；项目专用的「分配」「我分出去的」「新增项目」放看板工具行；
-   * 项目组邀请、线索复核、我的卡点照原样；离职交接在客户页页头（C15）。翻页保留地址栏上客户页的筛选
+   * 项目组邀请、线索复核照原样（「我的卡点」11-19 拿掉，只在复盘页「卡点」页签看）；离职交接在客户页页头（C15）。翻页保留地址栏上客户页的筛选
    */
   客户页?: boolean;
   /** 整页画在哪个地址上：筛选、翻页留在这里（X-107：市场角色的客户页 = /customers）；默认 /projects */
@@ -675,7 +672,6 @@ export default function ProjectsView({
       {换回客户列表 && 看法 === "列表" && 总数 === 0 && !在筛 && <div className="cust-view-seg">{换回切换}</div>}
       <InviteInbox 邀请们={邀请们} />
       <VerifyInbox 们={待复核们} />
-      <MyBlockersBoard 们={卡点们} />
       {新线索 && <LeadFullNotices 提醒={提醒们} />}
 
       <div key={看法} ref={视图包} className={换过 ? "proj-view-in" : undefined}>

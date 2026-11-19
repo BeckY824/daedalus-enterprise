@@ -650,13 +650,13 @@ async function 成视图(me: 谁, 们: 带全的卡点[], 权: 我的卡点权�
 }
 
 /** 我看得到的卡点（再并上调用方的条件）：没开 = 空；全部 = 不限；只看自己 = 自己的条件 */
-async function 看得到的(me: 谁, where: Prisma.EntBlockerWhereInput, opt: { 只看自己?: boolean; orderBy?: Prisma.EntBlockerOrderByWithRelationInput[]; take?: number } = {}): Promise<卡点视图[]> {
+async function 看得到的(me: 谁, where: Prisma.EntBlockerWhereInput): Promise<卡点视图[]> {
   if (!企业版()) return [];
   const [权, org] = await Promise.all([卡点权限(me), 组织of()]);
   if (!权.开) return [];
-  const 范围 = 权.全部 && !opt.只看自己 ? {} : await 自己的条件(me.id, org);
+  const 范围 = 权.全部 ? {} : await 自己的条件(me.id, org);
   return 看全部(async () => {
-    const 们 = await prisma.entBlocker.findMany({ where: { AND: [范围, where] }, include: 卡点带, orderBy: opt.orderBy ?? [{ createdAt: "desc" }], take: opt.take });
+    const 们 = await prisma.entBlocker.findMany({ where: { AND: [范围, where] }, include: 卡点带, orderBy: [{ createdAt: "desc" }] });
     return 成视图(me, 们, 权);
   });
 }
@@ -664,11 +664,6 @@ async function 看得到的(me: 谁, where: Prisma.EntBlockerWhereInput, opt: { 
 /** 项目详情里的卡点 */
 export async function 项目的卡点(me: 谁, projectId: string): Promise<卡点视图[]> {
   return 看得到的(me, { projectId: String(projectId ?? "") });
-}
-
-/** 我的卡点（项目列表页）：我认领了还没点完成的，加上我看得到的、还没人认领的（只按自己相关的算，不看全部） */
-export async function 我的卡点(me: 谁): Promise<卡点视图[]> {
-  return 看得到的(me, { OR: [{ status: "待接受" }, { status: "处理中", claims: { some: { userId: me.id, done: false } } }] }, { 只看自己: true, orderBy: [{ createdAt: "asc" }] });
 }
 
 /**

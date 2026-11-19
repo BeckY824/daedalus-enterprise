@@ -25,7 +25,7 @@ const plugin: Plugin = { name: "ent-board-drag", setup(b) {
   // 就地补填框（ProjectFillRequired）存字段走 [id] 下的 ../actions
   stub(/^\.\.\/actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return{ok:true}};export const 编辑项目=记('详编'),改项目画像Action=记('画像'),勾项目交付=记('交付');");
   stub(/assign-actions$/, "export const 分配线索=async()=>({ok:true}),自动分配线索=async()=>({ok:true}),撤销自动分配=async()=>({ok:true}),批量自动分配=async()=>({ok:true,结果:[]}),本月分配情况=async()=>[],我分出去的线索=async()=>[],关满额提醒=async()=>({ok:true}),项目分配线=async()=>null,分配带走的项目=async()=>({项目数:0,项目:[]});");
-  stub(/blocker-actions$/, "const 好=async()=>({ok:true});export const 发布卡点Action=好,认领卡点Action=好,完成卡点Action=好,删卡点Action=好,存卡点默认Action=好,存卡点角色开关Action=好,新增原因Action=好,改原因名Action=好,改原因状态Action=好,删原因Action=好,合并原因Action=好,我的卡点Action=async()=>[];");
+  stub(/blocker-actions$/, "const 好=async()=>({ok:true});export const 发布卡点Action=好,认领卡点Action=好,完成卡点Action=好,删卡点Action=好,存卡点默认Action=好,存卡点角色开关Action=好,新增原因Action=好,改原因名Action=好,改原因状态Action=好,删原因Action=好,合并原因Action=好;");
   stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[],取客户选项=async()=>null,取客户近况=async()=>null;");
   stub(/project-actions$/, "export const 给客户建项目=async()=>({ok:true});export const 新项目分配数据=async()=>null;export const 建项目带走的项目=async()=>({项目数:0,项目:[]});");
   stub(/new\/wizard-actions$/, "export const 取建档数据=async()=>null;");
@@ -56,14 +56,15 @@ beforeAll(async () => {
     window.__画=(o={})=>{const root=(window.__root||=createRoot(document.getElementById('root')));
       if(o.客户看板) return root.render(<App><CustomerBoard 行们={[{id:'k1',name:'客户甲',customerAttr:null,salesOwnerName:'王0',pool:false,extra:{}}]} 字典={[]} 加载中={false} 页={1} 每页={20} 总数={1} 翻页={()=>{}} 去={(id)=>window.__去.push(id)}/></App>);
       root.render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
-        <Projects 行={[]} 列={o.团队?五列():进程列()} 每列={{}} 总数={2} 页={1} 每页={20} users={[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:''}} 企业版={!o.团队}/>
+        <Projects 行={[]} 列={o.团队?五列():进程列()} 每列={{}} 总数={2} 页={1} 每页={20} users={[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:''}} 企业版={!o.团队} 客户页={!!o.客户页}
+          {...(o.旧卡点?{卡点们:[{id:'b0',code:'BLK-20261119-001',title:'',projectId:'p1',项目:'一期',followUpId:'f0',phase:'线索',type:'中度卡点',impact:'短期不影响',原因们:[{id:'r1',name:'价格',status:'启用'}],description:'',status:'待接受',发布人:'王0',resourceRequest:null,solution:null,result:null,resolvedAt:null,createdAt:new Date().toISOString(),流转:[],认领:[],进度:{完成:0,共:0},能:{认领:true,完成:false,最后一个:false,删:false},有标题:false}]}:{})}/>
       </BusinessProvider></App>);};
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
   bundle = r.outputFiles[0].text; browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 设 = { 预检?: unknown; 改?: unknown; 团队?: boolean; 客户看板?: boolean; 少动?: boolean };
+type 设 = { 预检?: unknown; 改?: unknown; 团队?: boolean; 客户看板?: boolean; 少动?: boolean; 客户页?: boolean; 旧卡点?: boolean };
 async function 打开(width = 1280, o: 设 = {}): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 800 }, reducedMotion: o.少动 ? "reduce" : "no-preference" }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -89,6 +90,15 @@ async function 拖到(page: Page, i: number) {
   await page.mouse.move(b.x + b.width / 2, b.y + 60, { steps: 6 });
   await page.mouse.up();
 }
+
+it("看板上不再摆「我的卡点」（11-19 用户：拿掉，只留复盘页）：/projects 和客户页看板都没有，服务端照老样子塞了卡点也不画", async () => {
+  for (const 客户页 of [false, true]) {
+    const { page, errors } = await 打开(1280, { 客户页, 旧卡点: true });
+    expect(await page.getByText("我的卡点").count(), String(客户页)).toBe(0);
+    expect(await page.getByText("BLK-20261119-001").count(), String(客户页)).toBe(0);
+    expect(errors).toEqual([]); await page.close();
+  }
+});
 
 it("拖到下一个进程：先预检再改节点，卡片落到新列、计数跟着变，底部能撤销；不当成点卡片进详情", async () => {
   for (const w of [1024, 1280, 1366]) {

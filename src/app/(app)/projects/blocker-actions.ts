@@ -12,7 +12,7 @@ import { 不在了 } from "@/lib/not-there";
 import { getBusiness } from "@/lib/business";
 import { 企业版 } from "@/lib/enterprise/switch";
 import {
-  发布卡点, 认领卡点, 完成卡点, 删卡点, 存卡点默认, 存卡点角色开关, 我的卡点, 新增原因, 改原因名, 改原因状态, 删原因, 合并原因, 原因字典,
+  发布卡点, 认领卡点, 完成卡点, 删卡点, 存卡点默认, 存卡点角色开关, 新增原因, 改原因名, 改原因状态, 删原因, 合并原因, 原因字典,
   type 卡点结果,
 } from "@/lib/project/blocker";
 import type { 发布输入 } from "@/lib/project/blocker-rules";
@@ -175,13 +175,4 @@ export async function 合并原因Action(从id: string, 到id: string) {
     if (挡) return 挡;
     return 字典收尾(me, await 合并原因(me, 从id, 到id), "合并阻碍原因", "merge");
   } catch (e) { return 不在了(e); }
-}
-
-/** 「我的卡点」看板（项目列表页）刷新用 */
-export async function 我的卡点Action() {
-  try {
-    const me = await requireUser();
-    if (await 拦()) return [];
-    return await 我的卡点(me);
-  } catch { return []; }
 }

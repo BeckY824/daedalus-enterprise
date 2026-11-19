@@ -27,7 +27,7 @@ import { 领客户带走公海项目 } from "@/lib/enterprise/pool-link";
 import { 公海规则 } from "@/lib/enterprise/pool-rules";
 import * as 卡点模块 from "@/lib/project/blocker";
 import {
-  发布卡点, 认领卡点, 完成卡点, 交接卡点, 卡点随项目换人, 项目的卡点, 我的卡点, 能发卡点, 卡点看板, 卡点权限,
+  发布卡点, 认领卡点, 完成卡点, 交接卡点, 卡点随项目换人, 项目的卡点, 能发卡点, 卡点看板, 卡点权限,
   存卡点默认, 读卡点默认, 存卡点角色开关, 离职交接理由, 离职转上级理由, 离职去掉理由, 卡点脱离沟通, 删卡点,
   原因字典, 可选原因们, 新增原因, 改原因名, 改原因状态, 删原因, 合并原因,
   公海领走接手理由, 转让接手理由, 移出组员接手理由,
@@ -332,7 +332,6 @@ describe("企业版卡点", () => {
         expect((await 项目的卡点(p, 项目)).map((x) => x.id), p.id).toEqual([b.id]);
         expect((await 卡点看板(p)).栏.待接受.map((x) => x.id), p.id).toEqual([b.id]);
       }
-      expect((await 我的卡点(大主管)).map((x) => x.id)).toEqual([b.id]);
       // 虚线只往下走一跳再顺实线：虚 的实线上级不因此看到 虚 的虚线下属；别组主管看不到
       for (const p of [虚上, 散主管]) expect(await 项目的卡点(p, 项目), p.id).toEqual([]);
       // 和项目列表同一套：组织范围of 的「读」里有负责人 ⇔ 卡点看得到
@@ -418,7 +417,6 @@ describe("企业版卡点", () => {
         const 板ids = [...板.栏.待接受, ...板.栏.处理中, ...板.栏.已解决].map((x) => x.id).sort();
         const 详情ids = (await Promise.all([项目, 散的项目, 公海项目].map((pid) => 项目的卡点(p, pid)))).flat().map((x) => x.id).sort();
         expect(板ids, p.id).toEqual(详情ids);
-        expect((await 我的卡点(p)).every((x) => 详情ids.includes(x.id)), p.id).toBe(true);
         for (const b of 们) if (!详情ids.includes(b.id)) expect(await 认领卡点(p, b.id), `${p.id} ${b.id}`).toMatchObject({ ok: false, error: expect.stringContaining("不在了") });
       }
       // 公海项目：负责人（组员）不再凭负责人身份看到；组员也不是创建人 → 看不到
@@ -501,7 +499,6 @@ describe("企业版卡点", () => {
     const 谁认领 = async (blockerId: string) => (await 认领行们(blockerId)).map((c) => c.userId);
     const 看到 = async (me: 人) => ({
       项目里: (await 项目的卡点(me, 项目)).map((x) => x.id).sort(),
-      我的: (await 我的卡点(me)).map((x) => x.id).sort(),
       看板: Object.values((await 卡点看板(me, { 只看自己: true })).栏).flat().map((x) => x.id).sort(),
     });
 
@@ -511,14 +508,14 @@ describe("企业版卡点", () => {
       await 认领卡点(销售, 甲.id);
       await 认领卡点(销售, 乙.id);
       const 两条 = [甲.id, 乙.id].sort();
-      expect(await 看到(销售)).toEqual({ 项目里: 两条, 我的: 两条, 看板: 两条 });
+      expect(await 看到(销售)).toEqual({ 项目里: 两条, 看板: 两条 });
 
       expect(await 放回公海(销售, 项目)).toEqual({ ok: true });
       expect((await prisma.project.findUniqueOrThrow({ where: { id: 项目 } })).ownerId).toBe("");
       expect(await 谁认领(甲.id)).toEqual([销售.id]);
       expect(await 谁认领(乙.id)).toEqual([销售.id]);
       // 历史负责人：列表、我的、看板都没有，单条认领 / 完成也当不在了
-      expect(await 看到(销售)).toEqual({ 项目里: [], 我的: [], 看板: [] });
+      expect(await 看到(销售)).toEqual({ 项目里: [], 看板: [] });
       expect(await 完成卡点(销售, 乙.id, { solution: "x", result: "y" })).toMatchObject({ ok: false, error: "这个卡点已经不在了，刷新看看" });
       expect(await 认领卡点(销售, 乙.id)).toMatchObject({ ok: false, error: "这个卡点已经不在了，刷新看看" });
       // 进公海清组员（X-72）：原组员不再凭组员看；总管理员照看；不公开：别组的看不到
@@ -671,8 +668,11 @@ describe("企业版卡点", () => {
     expect((await 卡点看板(总管, { 类型: "重要卡点" })).统计.未解决).toBe(1);
     expect((await 卡点看板(总管, { 影响: "项目暂停" })).栏.待接受.map((x) => x.id)).toEqual([a.id]);
     expect((await 卡点看板(总管, { 项目: "别的" })).统计).toMatchObject({ 未解决: 0, 已解决: 0 });
-    // 我的卡点：我认领了没完成的 + 我相关的待接受
-    expect((await 我的卡点(组员)).map((x) => x.id).sort()).toEqual([a.id, b.id].sort());
+    // 原来项目看板顶上「我的卡点」那块（我相关的待接受 + 我认领了没完成的）11-19 拿掉，只留复盘页：
+    // 复盘看板里都找得到——待接受在「全部」的待接受栏，我认领的处理中在「我的认领」的处理中栏（已完成的不在处理中）
+    expect((await 卡点看板(组员)).栏.待接受.map((x) => x.id)).toEqual([a.id]);
+    expect((await 卡点看板(组员, { 只看自己: true })).栏.待接受.map((x) => x.id)).toEqual([a.id]);
+    expect((await 卡点看板(组员, { 我的认领: true })).栏.已解决.map((x) => x.id)).toEqual([c.id]);
   });
 
   it("卡点默认：总管理员能改，坏值报错；发布按新默认", async () => {
