@@ -49,6 +49,7 @@ import { 收块, 取暂存, type 一块 } from "@/lib/import/staging";
 import { 名键, 公司名键, 归档号键, 撞已有客户 } from "@/lib/enterprise-import/clean";
 import { 读导入查重索引, type 导入查重索引 } from "@/lib/enterprise-import/dedup";
 import { 带客户编号 } from "@/lib/customer-no";
+import { 客户显名 } from "@/lib/enterprise/customer-title";
 
 /** 一次导入最多落多少条。和 parse.ts 的行数上限一致，服务端再收一道 */
 const 落库上限 = 10000;
@@ -198,7 +199,8 @@ async function 排好(方案: 导入方案, 查重: 导入查重索引 | null = 
   const 认得的渠道 = 用到渠道 ? new Set([...库里渠道.map((c) => c.name), ...(企业版() ? (await 能落的主渠道入口()).keys() : [])]) : undefined;
   // 历史渠道（P-渠道-06）只承载历史客户：新导入的不落到上面，预览里说清（企业版才有主渠道分类）
   const 历史渠道 = 用到渠道 && 企业版() ? new Set(库里渠道.filter((c) => 是历史渠道(c.main?.category)).map((c) => c.name)) : undefined;
-  const rows = 摊开({ ...方案, 字段表: 表, 认得的渠道, 历史渠道 });
+  // 企业版客户名称选填（11-19）：没有名称的行照导、落空串（同新建客户、企业导入）
+  const rows = 摊开({ ...方案, 字段表: 表, 认得的渠道, 历史渠道, 名称选填: 企业版() });
   if (查重) {
     for (const r of rows) {
       const 撞 = r.进不了 ? null : 撞号名(查重, r);
@@ -556,7 +558,7 @@ async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = fa
         if (!短号 && await 看全部(async () => tx.customer.findFirst({ where: phone ? await 同号条件(tx, phone, null) : email ? await 同邮箱条件(tx, email) : wechat ? await 同微信条件(tx, wechat) : await 同阿里条件(tx, alibabaId), select: { id: true } }))) return null;
         const c = await tx.customer.create({
           data: await 带客户编号(tx, {
-            name: r.值.name!,
+            name: r.值.name ?? "",
             phone,
             school: r.值.school ?? null,
             grade: r.值.grade ?? null,
@@ -836,14 +838,17 @@ async function 撤这一批(
   const 选 = {
     id: true,
     name: true,
+    // 客户名称选填（11-19）：没名的撤销说明里按简称 / 客户编号叫
+    shortName: true,
+    customerNo: true,
     updatedAt: true,
     _count: { select: { followUps: true, contracts: true, contacts: true, tasks: true, plans: true } },
     /*
       被别人当推荐人、或是别人的业绩归属对象：删掉他，下游那几位的推荐人和归属会被外键悄悄置空。
       手工删客户（deleteCustomers）早就拦了这种，撤销导入原来漏了（2026-10-01 排查 A7）
     */
-    referrals: { select: { name: true }, take: 3 },
-    attributedCustomers: { select: { name: true }, take: 3 },
+    referrals: { select: { id: true, name: true, shortName: true, customerNo: true }, take: 3 },
+    attributedCustomers: { select: { id: true, name: true, shortName: true, customerNo: true }, take: 3 },
   } as const;
   for (let 起 = 0; 起 < batch.rows.length; 起 += 500) {
     const 这批 = batch.rows.slice(起, 起 + 500);
@@ -861,7 +866,7 @@ async function 撤这一批(
       }
 
       const 有挂件 = Object.values(c._count).some((n) => n > 0);
-      const 下游 = [...new Set([...c.referrals, ...c.attributedCustomers].map((x) => x.name))];
+      const 下游 = [...new Set([...c.referrals, ...c.attributedCustomers].map((x) => 客户显名(x)))];
       /*
         有 writtenAt 就精确比：写完那一刻的 updatedAt 和现在的不一样，就是之后有人改过。
         老批次没有，照旧按批次时刻 + 2 秒（毫秒级的相等不能当「改过」：建完马上写 ImportRow，只差几毫秒）
@@ -872,15 +877,15 @@ async function 撤这一批(
 
       if (row.kind === "create") {
         if (下游.length) {
-          没动.push({ name: c.name, 原因: `他是${下游.join("、")}的推荐人或业绩归属，删了他们的归属会断` });
+          没动.push({ name: 客户显名(c), 原因: `他是${下游.join("、")}的推荐人或业绩归属，删了他们的归属会断` });
           continue;
         }
         if (有挂件) {
-          没动.push({ name: c.name, 原因: "名下已经有跟进记录或商机了" });
+          没动.push({ name: 客户显名(c), 原因: "名下已经有跟进记录或商机了" });
           continue;
         }
         if (被改过) {
-          没动.push({ name: c.name, 原因: "导入之后又改过他的档案" });
+          没动.push({ name: 客户显名(c), 原因: "导入之后又改过他的档案" });
           continue;
         }
         // 这一批末尾一起删；查完到删之间被手工删了也算撤到了（deleteMany 不抛）
@@ -890,14 +895,14 @@ async function 撤这一批(
 
       // update：把当时补进去的那几格还原成原来的样子（按定义全是空）
       if (被改过) {
-        没动.push({ name: c.name, 原因: "导入之后又改过他的档案" });
+        没动.push({ name: 客户显名(c), 原因: "导入之后又改过他的档案" });
         continue;
       }
       let before: Record<string, unknown> = {};
       try {
         before = JSON.parse(row.before ?? "{}") as Record<string, unknown>;
       } catch {
-        没动.push({ name: c.name, 原因: "这条的原值读不出来了" });
+        没动.push({ name: 客户显名(c), 原因: "这条的原值读不出来了" });
         continue;
       }
       const data: Record<string, unknown> = {};

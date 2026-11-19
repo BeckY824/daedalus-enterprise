@@ -3,7 +3,9 @@
  *
  *   建档：saveCustomer（新建弹窗 / 建档向导 / 只建客户都落到这里）空名照存空串、照样取客户编号；只有空格的当没填；非企业版照旧必填
  *   就地改：资料卡全称能清空（patchCustomer）
- *   AI 建档卡：名称空着不算缺项、确认后建得成；项目名落「潜在项目」（不拿联系人姓名、号码顶）
+ *   AI 建档卡：名称空着不算缺项、确认后建得成；项目名跟客户起 = 全称或显名（客户编号），不落「潜在项目」、不拿联系人姓名、号码顶
+ *   粘贴切人导入（首页粘一段 → 导入抽屉）：企业版没名称的行照导；跟进导出、背调「像你的老客户」叫显名
+ *   全称灰字（PR-7 摘来）：没填 → 怎么显示；像人名 → 提醒，都不拦
  *   显示兜底：客户显名 = 简称 → 全称 → 客户编号（回填前短号），永远不空；日志不出空引号；潜客培育项目名不空；分给你通知不因名字空被吞
  *   查重：空名不参与按名字的查重——两位都没名字、号码不同的客户互不相撞；导入查重索引里空名不建键
  */
@@ -29,6 +31,11 @@ import { 撞已有客户 } from "@/lib/enterprise-import/clean";
 import { 客户显名, 客户引, 全称或显名, 客户抬头 } from "@/lib/enterprise/customer-title";
 import { 分给你通知 } from "@/lib/enterprise/notice-sources";
 import { 潜在项目名 } from "@/lib/project/relate-names";
+import { 全称像人名, 全称提示, 没填全称提示, 像人名提示 } from "@/lib/enterprise/fullname-hint";
+import { 摊开 } from "@/lib/import/plan";
+import { 字段表 } from "@/lib/import/fields";
+import { 导出客户 } from "@/app/(app)/customers/export-action";
+import { 老客户清单 } from "@/lib/research/similar";
 
 let 销售: string;
 
@@ -181,12 +188,73 @@ describe("AI 建档卡：名称选填", () => {
     expect(missingFields(卡() as never, undefined, 企建档)).toEqual([]);
   });
 
-  it("确认后建成：客户名称空串，项目名落「潜在项目」", async () => {
-    expect(await applyProposal(卡() as never)).toMatchObject({ ok: true });
+  it("确认后建成：客户名称空串，项目名跟客户起（全称或显名 = 客户编号），不落「潜在项目」、不带联系人名", async () => {
+    expect(await applyProposal(卡({ contact: "张伟" }) as never)).toMatchObject({ ok: true });
     const c = await prisma.customer.findFirstOrThrow();
     expect(c.name).toBe("");
+    expect(c.customerNo).not.toBeNull();
     const 项目们 = await prisma.project.findMany();
-    expect(项目们.map((p) => p.name)).toContain(潜在项目名);
-    for (const p of 项目们) expect(p.name.trim()).not.toBe("");
+    expect(项目们.length).toBeGreaterThan(0);
+    for (const p of 项目们) {
+      expect(p.name).toBe(全称或显名(c));
+      expect(p.name).not.toBe(潜在项目名);
+      expect(p.name).not.toContain("张伟");
+    }
+    const 日志 = (await prisma.auditLog.findMany({ select: { summary: true } })).map((x) => x.summary).join("\n");
+    expect(日志).not.toContain("「」");
+  });
+
+  it("填了名称：项目名照旧用卡上的名称", async () => {
+    expect(await applyProposal(卡({ name: "编的展具厂" }) as never)).toMatchObject({ ok: true });
+    expect((await prisma.project.findMany()).map((p) => p.name)).toContain("编的展具厂");
+  });
+});
+
+describe("全称灰字（PR-7 fullname-hint 摘来，纯函数）", () => {
+  it("像人名：常见姓两三个字、称呼、英文人名、老补名「姓名｜国家」", () => {
+    for (const x of ["张伟", "欧阳娜娜", "王总", "李先生", "John Smith", "Mr. Brown", "张三｜美国"]) expect(全称像人名(x), x).toBe(true);
+  });
+  it("单位名不算：带公司 / 厂 / 贸易 / Ltd 这类字样，或不像人名的", () => {
+    for (const x of ["华东展具", "杭州云帆科技有限公司", "张记五金店", "王氏贸易", "Acme Trading Co", "ACME", "云帆", "美国｜加州"]) expect(全称像人名(x), x).toBe(false);
+  });
+  it("提示：空 → 怎么显示；像人名 → 提醒；其余没有", () => {
+    expect(全称提示("")).toBe(没填全称提示);
+    expect(全称提示("   ")).toBe(没填全称提示);
+    expect(全称提示("张伟")).toBe(像人名提示);
+    expect(全称提示("杭州云帆科技有限公司")).toBeNull();
+  });
+});
+
+describe("粘贴切人导入：企业版没名称照导", () => {
+  const 排 = (名称选填?: boolean) =>
+    摊开({ 表头: ["姓名", "手机号"], 数据: [["", "13800000091"]], 映射: ["name", "phone"], 字段表: 字段表(DEFAULT_BUSINESS), 名称选填 } as never);
+  it("企业版：没名称的行不拦", () => expect(排(true)[0].进不了).toBeUndefined());
+  it("不给（桌面端）：照旧「这一行没有姓名」", () => expect(排()[0].进不了).toBe("这一行没有姓名"));
+});
+
+describe("导出 / 背调：没名的叫显名，不出空白", () => {
+  it("跟进导出的客户名：没名的叫客户编号；客户表全称列照原样留空", async () => {
+    const r = await 新建({ phone: "13800000095" });
+    if (!r.ok) throw new Error(r.error);
+    const c = await prisma.customer.findUniqueOrThrow({ where: { id: r.id! } });
+    await prisma.followUp.create({ data: { customerId: c.id, ownerId: "tester-id", type: "NOTE", title: "", content: "聊了一次", status: "已完成", occurredAt: new Date() } });
+    // 企业版导出只给总管理（lib/enterprise/import-perm.ts）
+    await prisma.entMember.update({ where: { userId: "tester-id" }, data: { bizRole: "director" } });
+    忘掉企业版范围();
+    const 出 = await 导出客户({});
+    if (!出.ok) throw new Error(出.error);
+    expect(出.rows.find((x) => x.id === c.id)?.name).toBe("");
+    expect(出.跟进.map((f) => f.customerName)).toContain(客户显名(c));
+    for (const f of 出.跟进) expect(f.customerName.trim()).not.toBe("");
+  });
+
+  it("背调「像你的老客户」清单：没名的叫客户编号", async () => {
+    const r = await 新建({ phone: "13800000096", followStatus: "已签约" });
+    if (!r.ok) throw new Error(r.error);
+    const c = await prisma.customer.findUniqueOrThrow({ where: { id: r.id! } });
+    await prisma.customer.update({ where: { id: c.id }, data: { followStatus: "已签约" } });
+    const 清单 = await 老客户清单(DEFAULT_BUSINESS);
+    expect(清单.find((x) => x.id === c.id)?.name).toBe(客户显名(c));
+    for (const x of 清单) expect(x.name.trim()).not.toBe("");
   });
 });

@@ -52,6 +52,7 @@ import ReplyWindowInput from "@/components/ReplyWindowInput";
 import { 回复晚于回收, 北京墙钟转时刻, 认定时分配, 分配晚于回复 } from "@/lib/project/time-fields";
 import ScheduleAssignInput from "@/components/ScheduleAssignInput";
 import { 选沟通附件, 传沟通附件 } from "@/components/FollowAttachments";
+import { 全称提示, 全称像人名, 像人名提示 } from "@/lib/enterprise/fullname-hint";
 
 const 草稿键 = "项目建档向导";
 const 时间格式 = "YYYY-MM-DD HH:mm";
@@ -991,7 +992,10 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
               onChange={(e) => 改("客户", { name: e.target.value })}
               onBlur={() => { const 名 = d.客户.name.trim(); if (企业版 && 名 && 名查?.名 !== 名) void 查名(名); }}
             />
-          ), !企业版, false, 企业版 && 名对上 && !名查?.撞 ? <span className="cr-ok">没有同名{b.customer}</span> : undefined)}
+          ), !企业版, false, 企业版 && 名对上 && !名查?.撞
+            // 灰字（PR-7 摘来）：没填 → 列表上怎么显示；像人名 → 提醒写单位名称，都不拦（P-抬头-13 / 16）
+            ? <><span className="cr-ok">没有同名{b.customer}</span>{全称像人名(d.客户.name) ? <span data-testid="fullname-hint">；{像人名提示}</span> : null}</>
+            : 企业版 && 全称提示(d.客户.name) ? <span data-testid="fullname-hint">{全称提示(d.客户.name)}</span> : undefined)}
           {名拦 && 名查 && 名查.撞 && (
             <Alert
               data-testid="wizard-name-dupe"

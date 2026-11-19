@@ -16,7 +16,8 @@ describe("老客户清单", () => {
     const { 老客户清单 } = await import("@/lib/research/similar");
     const list = await 老客户清单({ fields: { school: "公司", grade: "职位", major: "行业" } });
     const select = (findMany.mock.calls[0][0] as { select: Record<string, unknown> }).select;
-    expect(Object.keys(select).sort()).toEqual(["_count", "extra", "followStatus", "grade", "id", "major", "name", "school"].sort());
+    // 简称、客户编号（11-19 客户名称选填）：没名的拿来兜显名，不是联系方式
+    expect(Object.keys(select).sort()).toEqual(["_count", "customerNo", "extra", "followStatus", "grade", "id", "major", "name", "school", "shortName"].sort());
     expect(select.extra).toEqual({ select: { country: true } });
     expect(JSON.stringify(select)).not.toMatch(/phone|email|whatsapp|wechat|followUps|remark/);
     expect(list).toEqual([

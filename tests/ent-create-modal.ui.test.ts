@@ -114,6 +114,14 @@ it("按钮不变灰：空着点「建好」就地标红、写「还差 N 项」�
     expect(await 框.locator("[data-ge='客户名'] [role=alert]").count()).toBe(0);
     expect(await 框.locator("[data-ge='客户名'] .cr-req").count()).toBe(0);
     expect(await 框.locator("[data-ge='号码'] [role=alert]").innerText()).toContain("请填号码");
+    // 灰字（PR-7 摘来）：空着说列表上怎么显示；像人名只提醒、不拦（P-抬头-13）；写成单位名灰字就没了
+    expect(await 框.locator("[data-ge='客户名'] [data-testid=fullname-hint]").innerText()).toContain("没填全称");
+    await 框.getByLabel("客户名称").fill("张伟");
+    expect(await 框.locator("[data-ge='客户名'] [data-testid=fullname-hint]").innerText()).toContain("像联系人姓名");
+    expect(await 框.locator("[data-ge='客户名'] [role=alert]").count()).toBe(0);
+    await 框.getByLabel("客户名称").fill("华东展具");
+    expect(await 框.locator("[data-ge='客户名'] [data-testid=fullname-hint]").count()).toBe(0);
+    await 框.getByLabel("客户名称").fill("");
     expect((await 调(page)).filter((x) => String(x[0]).startsWith("建档")).length).toBe(0);
     await 框.getByLabel("号码", { exact: true }).fill("13905712266");
     expect(await 框.locator("[data-ge='号码'] [role=alert]").count()).toBe(0);
@@ -126,6 +134,8 @@ it("客户名称选填（11-19 用户「客户名称设为不必填」）：名�
     try {
       const 框 = page.getByRole("dialog");
       expect(await 框.getByLabel("客户名称").getAttribute("placeholder")).toContain("可留空");
+      // 空着那行灰字窄屏也折得下（不撑出横向滚动，下面统一量）
+      expect(await 框.locator("[data-ge='客户名'] [data-testid=fullname-hint]").isVisible()).toBe(true);
       await 框.getByLabel("号码", { exact: true }).fill("13905712266");
       await 框.getByLabel("联系人姓名").click();
       await 框.getByText("首次录入").waitFor();
