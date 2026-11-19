@@ -10,6 +10,7 @@
  * 最后那一查用 看全部：关联项目的跟进挂在那个项目的主客户名下，限定层按客户滤会把我看得到的项目的记录也滤掉；
  * 项目 id 已经是上面滤过的，跟项目详情页「沟通」卡给的是同一批。
  */
+import { 改过的沟通们 } from "./follow-edited";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma";
 import { 看全部 } from "@/lib/team-scope";
@@ -241,13 +242,15 @@ async function 汇总一页(customerId: string, 项目们: Map<string, string>, 
     ...别的客户.map((c) => 一位(c, { projectNode: { projectId: { in: ids } } })),
   ]);
   const rows = 各句.length === 1 ? 各句[0] : 各句.flat().sort(按时间线顺序).slice(0, 汇总每页 + 1);
+  // 「已修改」小字（11-19 记录人 30 分钟内能改）：这一页一句留痕
+  const 改过的 = await 改过的沟通们(rows.slice(0, 汇总每页).map((f) => f.id));
   return {
     rows: rows.slice(0, 汇总每页).map((f) => {
       // 删了的项目不标（上面的 删了的）
       const pid = f.projectNode && 项目们.has(f.projectNode.projectId) ? f.projectNode.projectId : null;
       const 行 = serializeFollowHistory(f);
       // 别的客户名下的记录（关联项目的）：商机是那家客户的，不在这里露
-      return { ...行, opportunity: f.customerId === customerId ? 行.opportunity : null, 项目: pid ? { id: pid, 名: 项目们.get(pid) ?? "" } : null };
+      return { ...行, opportunity: f.customerId === customerId ? 行.opportunity : null, 项目: pid ? { id: pid, 名: 项目们.get(pid) ?? "" } : null, ...(改过的.has(f.id) ? { 已修改: true } : {}) };
     }),
     hasMore: rows.length > 汇总每页,
   };

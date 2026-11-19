@@ -14,7 +14,9 @@ import { 来源字, 人名显示 } from "@/lib/project/system-created";
 import { 页面可选项, 预读页面字典, type 字典种类 } from "@/lib/enterprise/dict";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看项目, 能转让项目, 是经理, 能删除, 能新建和领取 } from "@/lib/enterprise/permissions";
-import { 页面能改沟通, 能改沟通of, 页面能删沟通, 能删沟通of } from "@/lib/enterprise/follow-perm";
+import { 页面能改沟通, 能改沟通of, 页面能删沟通, 能删沟通of, 本人限时可改of, 本人可改到, 下一步跟着改of, 系统记的沟通们 } from "@/lib/enterprise/follow-perm";
+import { 沟通留痕们 } from "@/lib/enterprise/follow-edited";
+import { 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
 import { 沟通附件们 } from "@/lib/attachments";
 import type { 附件 } from "@/lib/attachment-rules";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -134,7 +136,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
       exceptionCategory: { select: { name: true } },
       logs: { orderBy: { at: "desc" }, take: 200 },
       members: { orderBy: { createdAt: "asc" } },
-      followUps: { include: { followUp: { select: { id: true, type: true, method: true, initiator: true, content: true, occurredAt: true, ownerId: true, createdAt: true, updatedAt: true } } } },
+      followUps: { include: { followUp: { select: { id: true, type: true, title: true, method: true, initiator: true, content: true, occurredAt: true, ownerId: true, createdAt: true, updatedAt: true } } } },
       _count: { select: { logs: true } },
     },
   });
@@ -305,6 +307,18 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   const 关联 = 企业 && 露 ? await 项目关联们(me, p.id) : null;
   // 库里存着旧节点名 / 旧结局的（企业版 10-31 改名）按这套的新名给界面；节点变更历史（logs）照原样
   const 现 = 本套位置({ phase: p.phase, node: p.node, result: p.result }, 字典);
+  // 沟通「已修改」小字、本人限时改（11-19）：一页一句留痕；最近记的那条按写入时刻（下一步跟着改认它）
+  const 现在 = new Date();
+  const 最近一条 = p.followUps.reduce<{ id: string; at: number } | null>((m, f) => (!m || f.followUp.createdAt.getTime() > m.at ? { id: f.followUp.id, at: f.followUp.createdAt.getTime() } : m), null)?.id ?? null;
+  // 本人限时改的候选：我记的、30 分钟内、沟通类型（待办 / 提醒不算）；导入建的、系统留痕剔掉（一句）
+  const 本人改候选 = 企业 && 能记沟通 ? p.followUps.map((f) => f.followUp).filter((f) => 本人限时可改of(me, f, 现在) && 要挂项目的类型(f.type)) : [];
+  // 「已修改」和最近一条写没写过下一步合一句留痕（最近一条是候选、我能管时才问）
+  const 问下一步 = !!最近一条 && 能改 && 本人改候选.some((f) => f.id === 最近一条) ? 最近一条 : null;
+  const 留痕 = 企业 && 露沟通 && p.followUps.length ? await 沟通留痕们(p.followUps.map((f) => f.followUp.id), 问下一步) : { 改过的: new Set<string>(), 写过下一步: false };
+  const 改过的 = 留痕.改过的;
+  const 系统的 = 本人改候选.length ? await 系统记的沟通们(本人改候选) : new Set<string>();
+  const 本人候选 = new Set(本人改候选.filter((f) => !系统的.has(f.id)).map((f) => f.id));
+  const 最近写过下一步 = !!问下一步 && 本人候选.has(问下一步) && 留痕.写过下一步;
   // F-017：后台开了「前两节点要沟通」、停在线索验证、这个节点上还没记过沟通 → 推过线索验证的提示里一并写「记一条沟通」。
   // 读的是同一个开关、同一份节点表，判法照 lib/project/stage-gates.ts 企业版推进关（沟通挂的节点新旧名都算）；只管提示，拦照旧在服务端
   const 线索验证缺沟通 = 企业 && 现.phase === "线索" && 现.node === 有效线索节点 && !p.result && 规则.阶段.前两节点要沟通
@@ -331,7 +345,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     // 指定分配时间（PR3）：还没到点的定时，详情上写时间和分给谁；录入人、能分配的人能改 / 取消 / 改成现在分配
     ...(企业 && p.scheduledAssignAt && p.awaitAssignAt && !p.pooledAt ? { 定时分配: {
       时间: 时刻转北京墙钟(p.scheduledAssignAt)!, 给谁: p.scheduledAssignTo ? 叫(p.scheduledAssignTo) ?? "已不在的成员" : null, 能动: !!org && 能动定时(me, p, org),
-    } } : {}), 要下一步, 能记沟通, 组员记沟通: 能记沟通 && !能改, 可改沟通, 可删沟通, 必填, 不给推, 能改节点: 节点能改, 能转让: 能转,
+    } } : {}), 要下一步, 能记沟通, 组员记沟通: 能记沟通 && !能改, 可改沟通, 可删沟通, ...(本人候选.size ? { 服务器现在: 现在.toISOString() } : {}), 必填, 不给推, 能改节点: 节点能改, 能转让: 能转,
     // 转给谁以后自己还看得到（11-03 A5-3）：总管理、上级转给下属照样能看，提示不说「看不到」，转完也不跳回列表
     ...(企业版() && 能转 ? { 转后还能看: 候选.filter((c) => 能看项目(me, { ...p, ownerId: c.id, 已加入 }, org)).map((c) => c.id) } : {}),
     能放公海: !公海 && 能放回公海(me, p, org) && (能进公海的阶段 as readonly string[]).includes(p.phase) && !(企业 && p.result), // 已结束的不能单独放回（X-70）
@@ -361,10 +375,16 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     followUps: (露沟通 ? p.followUps : [])
       .map((f) => {
         const 编 = 编号.get(f.followUp.id);
+        // 记录人本人 30 分钟内能改（11-19）：还能往这个项目记沟通才给；原本就能改的（可改沟通）界面上照旧不看这个
+        const 本人可改 = 本人候选.has(f.followUp.id);
+        const 跟着改下一步 = 本人可改 && 能改 && 下一步跟着改of(me, f.followUp, { ownerId: p.ownerId, 最近一条id: 最近一条, 能管: 能改, 写过下一步: 最近写过下一步 }, 现在);
         return {
           id: f.followUp.id, type: f.followUp.type, method: f.followUp.method, initiator: f.followUp.initiator, content: f.followUp.content, occurredAt: f.followUp.occurredAt.toISOString(), who: 叫(f.followUp.ownerId)!, node: f.node, 版本: f.followUp.updatedAt.toISOString(),
           ...(编 ? { code: 编.code, 提醒: 编.nextAt ? 时限标签(编.nextAt) : null } : {}),
           ...(企业 ? { 附件: 沟通附件.get(f.followUp.id) ?? [], 我记的: f.followUp.ownerId === me.id, 接手前: f.followUp.ownerId !== p.ownerId } : {}),
+          ...(本人可改 ? { 本人可改到: 本人可改到(f.followUp.createdAt).toISOString() } : {}),
+          ...(跟着改下一步 ? { 下一步: { 文字: p.nextStepText ?? "", 时间: 编?.nextAt ? dayjs(编.nextAt).format("YYYY-MM-DD") : null } } : {}),
+          ...(改过的.has(f.followUp.id) ? { 已修改: true } : {}),
         };
       })
       .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)),

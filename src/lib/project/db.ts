@@ -1361,7 +1361,7 @@ async function 提醒明天收(规则: 组织规则, 今: Date, 成员: 成员�
  * 跟进挂在客户上（客户页也看得到）+ 挂上项目当时的节点；客户的最近跟进往后推；填了下一步（文字 / 时间）写到项目上。
  * 要下一步文字 = 项目详情「记一条」那条路（10-29）：下一步做什么必填一句话
  */
-export async function 记项目沟通(me: 谁, projectId: string, input: 向导跟进, now: Date = new Date(), opt: { 要下一步文字?: boolean } = {}): Promise<结果 & { followUpId?: string; 自动推到?: string[] }> {
+export async function 记项目沟通(me: 谁, projectId: string, input: 向导跟进, now: Date = new Date(), opt: { 要下一步文字?: boolean } = {}): Promise<结果 & { followUpId?: string; 自动推到?: string[]; 写了下一步?: boolean }> {
   if (!input || typeof input !== "object") return { ok: false, error: "要记什么？" };
   const 认 = await 认跟进方式(input);
   if ("error" in 认) return { ok: false, error: 认.error };
@@ -1417,7 +1417,8 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
       const 推进 = 组员记 ? [] : await 按必填推进(tx, 规则, me, p.id);
       if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
       await 勾掉将回收提醒(tx, 规则, p, now);
-      return { ok: true as const, followUpId: 跟进.id, ...带推进(推进) };
+      // 写了项目上的下一步（文字或时间）：调用方在「记了一条沟通」日志里打标记，30 分钟内改这条时下一步才跟着改（follow-perm 下一步跟着改of）
+      return { ok: true as const, followUpId: 跟进.id, 写了下一步: !!(好.nextStepText || 好.nextStepAt), ...带推进(推进) };
     });
   });
 }

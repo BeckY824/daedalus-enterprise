@@ -53,7 +53,8 @@ export function 框里原因({ 话 }: { 话: string | null }) {
  * 选.报错：没成的原因交给它（弹框里写在框里），开跑前会先用 null 清一次；没给就写在详情底部的就地小条上
  */
 export type 跑法 = (
-  f: () => Promise<{ ok: boolean; error?: string | null; 自动推到?: string[] }>,
+  /** 提示：成了但有一句要说的（改项目沟通 下一步没同步，低-6），接在「成了」那句后面 */
+  f: () => Promise<{ ok: boolean; error?: string | null; 自动推到?: string[]; 提示?: string }>,
   成了?: string,
   选?: { 报错?: (话: string | null) => void },
 ) => Promise<boolean>;

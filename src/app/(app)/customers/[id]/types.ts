@@ -34,6 +34,8 @@ export type FollowUpRow = {
   updatedAt: string;
   /** 企业版客户页「沟通记录」汇总时：这条属于哪个项目（null = 客户本身挂的老跟进；2026-10-29 P14） */
   项目?: { id: string; 名: string } | null;
+  /** 企业版：提交后改过（操作日志里有「改了沟通」，11-19）——列表上标「已修改」 */
+  已修改?: boolean;
 };
 
 export type ContactRow = {

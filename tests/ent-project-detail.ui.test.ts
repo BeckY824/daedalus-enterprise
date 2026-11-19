@@ -15,7 +15,7 @@ const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
   const 空跑 = "async()=>({ok:true})";
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
-  stub(/^\.\.\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return{ok:true}},终止项目进程=async(...a)=>{(window.__终止||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return window.__编辑回||{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=f,删项目沟通=async(...a)=>{(window.__删沟通||=[]).push(a);return{ok:true}},加项目组员=f,换项目组员角色=f,移出项目组员=f;`));
+  stub(/^\.\.\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return{ok:true}},终止项目进程=async(...a)=>{(window.__终止||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return window.__编辑回||{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=async(...a)=>{(window.__改沟通||=[]).push(a);return{ok:true}},删项目沟通=async(...a)=>{(window.__删沟通||=[]).push(a);return{ok:true}},加项目组员=f,换项目组员角色=f,移出项目组员=f;`));
   stub(/^\.\.\/commission-actions$/, `const f=${空跑};export const 存项目底价=f,存提成分配=f,更正实际提成=f;`);
   // 定时分配（11-17）改 / 取消 / 现在分：服务端那串（prisma、通知）进不了浏览器包
   stub(/(^|\/)schedule-actions$/, 补全动作桩("src/app/(app)/leads/schedule-actions.ts", `const f=${空跑};export const 改定时分配=f,取消定时分配=f,定时分配现在分=f;`));
@@ -813,6 +813,130 @@ for (const 宽 of [1280, 1024]) {
     } finally { await page.close(); }
   });
 }
+
+/* 11-19 客户：沟通提交后 30 分钟内记录人本人能改。界面按服务端给的 本人可改到 出「修改（HH:mm 前可改）」，到点收起；改过的标「已修改」 */
+const 本人行 = (id: string, 到: number, x: Record<string, unknown> = {}) => ({ id, type: "PHONE", content: "沟通内容" + "长".repeat(400) + "X".repeat(200), occurredAt: "2026-10-03T00:00:00.000Z", who: "组长甲" + "名".repeat(40), node: "生产备货", code: null, 提醒: null, 版本: "2026-10-03T00:00:00.000Z", 我记的: true, 本人可改到: new Date(到).toISOString(), ...x });
+const 菜单项 = async (page: import("playwright").Page, n: number) => {
+  await page.getByRole("button", { name: "这条沟通的更多操作" }).nth(n).click();
+  const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu");
+  await 菜单.waitFor();
+  const 项 = (await 菜单.locator(".ant-dropdown-menu-item").allInnerTexts()).map(t => t.trim());
+  await page.keyboard.press("Escape");
+  await 菜单.waitFor({ state: "hidden" });
+  return 项;
+};
+for (const 宽 of [1024, 1280, 1366]) {
+  it(`${宽}px：本人 30 分钟内的那条「…」里有「修改（HH:mm 前可改）」，过了时限的没有；「已修改」小字、超长内容不横滚`, async () => {
+    const 到 = Date.now() + 10 * 60_000;
+    const { page, errors } = await 覆盖(宽, { 可改沟通: false, 可删沟通: false, followUps: [本人行("f1", 到, { 已修改: true }), 本人行("f2", Date.now() - 60_000)] });
+    try {
+      const 时 = new Date(到);
+      const 写法 = `修改（${String(时.getHours()).padStart(2, "0")}:${String(时.getMinutes()).padStart(2, "0")} 前可改）`;
+      await page.waitForFunction(() => document.querySelectorAll("[data-testid=follow-edited]").length === 1);
+      expect(await 菜单项(page, 0)).toEqual(["新建卡点", 写法]);
+      expect(await 菜单项(page, 1)).toEqual(["新建卡点"]);
+      expect(await page.locator("#follow-f1").getByTestId("follow-edited").innerText()).toBe("已修改");
+      expect(await page.locator("#follow-f2").getByTestId("follow-edited").count()).toBe(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      expect(await 不伸出(page, ".proj-main")).toEqual([]);
+      const 小字 = (await page.locator("#follow-f1").getByTestId("follow-edited").boundingBox())!;
+      expect(小字.x + 小字.width).toBeLessThanOrEqual(宽);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}
+
+it("本人限时改：到点「修改」自己收起；修改框带下一步两格（最近一条），交上去带下一步", async () => {
+  const 快到 = Date.now() + 6000;
+  const { page, errors } = await 覆盖(1280, { 可改沟通: false, 可删沟通: false, 要下一步: true, followUps: [本人行("f1", Date.now() + 10 * 60_000, { content: "短内容", 下一步: { 文字: "周五前发报价单", 时间: "2099-01-02" } }), 本人行("f2", 快到, { content: "快到点的" })] });
+  try {
+    await page.waitForFunction(() => document.querySelectorAll("[aria-label=这条沟通的更多操作]").length === 2);
+    expect((await 菜单项(page, 1)).some(t => t.startsWith("修改（"))).toBe(true);
+    // 到点不用刷新，「修改」自己收起
+    await page.waitForTimeout(Math.max(0, 快到 - Date.now()) + 700);
+    expect(await 菜单项(page, 1)).toEqual(["新建卡点"]);
+    await page.getByRole("button", { name: "这条沟通的更多操作" }).first().click();
+    await page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu").getByText(/^修改（/).click();
+    const 窗 = page.getByRole("dialog").filter({ hasText: "修改这条沟通" });
+    await 窗.waitFor();
+    expect(await 窗.getByLabel("下一步计划").inputValue()).toBe("周五前发报价单");
+    expect(await 窗.innerText()).toContain("改了会同步到项目上的下一步");
+    await 窗.getByLabel("下一步计划").fill("改成周四打电话");
+    await 窗.getByRole("button", { name: /保\s*存/ }).click();
+    await page.waitForFunction(() => ((Reflect.get(window, "__改沟通") as unknown[] | undefined)?.length ?? 0) === 1);
+    const 交 = await page.evaluate(() => (Reflect.get(window, "__改沟通") as unknown[][])[0]);
+    expect(交[1]).toBe("f1");
+    expect(交[2]).toMatchObject({ content: "短内容", 下一步: "改成周四打电话", 下一步时间: "2099-01-02" });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("本人限时改：不是最近一条（没给下一步）的修改框不出下一步两格，交上去也不带", async () => {
+  const { page, errors } = await 覆盖(1280, { 可改沟通: false, 可删沟通: false, followUps: [本人行("f1", Date.now() + 10 * 60_000, { content: "老一条" })] });
+  try {
+    await page.waitForFunction(() => !!document.querySelector("[aria-label=这条沟通的更多操作]"));
+    await page.getByRole("button", { name: "这条沟通的更多操作" }).first().click();
+    await page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu").getByText(/^修改（/).click();
+    const 窗 = page.getByRole("dialog").filter({ hasText: "修改这条沟通" });
+    await 窗.waitFor();
+    expect(await 窗.getByLabel("下一步计划").count()).toBe(0);
+    await 窗.getByRole("button", { name: /保\s*存/ }).click();
+    await page.waitForFunction(() => ((Reflect.get(window, "__改沟通") as unknown[] | undefined)?.length ?? 0) === 1);
+    expect(await page.evaluate(() => (Reflect.get(window, "__改沟通") as unknown[][])[0][2])).not.toHaveProperty("下一步");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("本人限时改（审核中-1 / 低-2）：下一步两格人没动就不交下一步、不逼填时间；沟通时间没动原样交回 ISO（带秒不截）", async () => {
+  const { page, errors } = await 覆盖(1280, { 可改沟通: false, 可删沟通: false, 要下一步: true, followUps: [本人行("f1", Date.now() + 10 * 60_000, { content: "短内容", occurredAt: "2026-10-03T00:00:42.000Z", 下一步: { 文字: "周五前发报价单", 时间: null } })] });
+  try {
+    await page.waitForFunction(() => !!document.querySelector("[aria-label=这条沟通的更多操作]"));
+    await page.getByRole("button", { name: "这条沟通的更多操作" }).first().click();
+    await page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu").getByText(/^修改（/).click();
+    const 窗 = page.getByRole("dialog").filter({ hasText: "修改这条沟通" });
+    await 窗.waitFor();
+    expect(await 窗.getByLabel("下一步计划").inputValue()).toBe("周五前发报价单");
+    await 窗.getByLabel("沟通内容").fill("只改内容");
+    // 下一步时间空着、要下一步开着：人没动下一步，照样能存
+    expect(await 窗.getByRole("button", { name: /保\s*存/ }).isDisabled()).toBe(false);
+    await 窗.getByRole("button", { name: /保\s*存/ }).click();
+    await page.waitForFunction(() => ((Reflect.get(window, "__改沟通") as unknown[] | undefined)?.length ?? 0) === 1);
+    const 交 = await page.evaluate(() => (Reflect.get(window, "__改沟通") as unknown[][])[0][2] as Record<string, unknown>);
+    expect(交).not.toHaveProperty("下一步");
+    expect(交).not.toHaveProperty("下一步时间");
+    expect(交).toMatchObject({ content: "只改内容", occurredAt: "2026-10-03T00:00:42.000Z" });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("本人限时改（低-1）：按服务器钟算——本机钟快了 20 分钟，服务器说还能改就照样出「修改」", async () => {
+  const 服务器 = Date.now() - 20 * 60_000;
+  const { page, errors } = await 覆盖(1280, { 可改沟通: false, 可删沟通: false, 服务器现在: new Date(服务器).toISOString(), followUps: [本人行("f1", 服务器 + 10 * 60_000)] });
+  try {
+    await page.waitForFunction(() => !!document.querySelector("[aria-label=这条沟通的更多操作]"));
+    await page.waitForTimeout(300);
+    expect((await 菜单项(page, 0)).some(t => t.startsWith("修改（"))).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("本人限时改（低-1）：弹窗开着到点，框里说一句、草稿清掉、保存灰掉", async () => {
+  const 快到 = Date.now() + 5000;
+  const { page, errors } = await 覆盖(1280, { 可改沟通: false, 可删沟通: false, followUps: [本人行("f1", 快到, { content: "快到点的" })] });
+  try {
+    await page.waitForFunction(() => !!document.querySelector("[aria-label=这条沟通的更多操作]"));
+    await page.getByRole("button", { name: "这条沟通的更多操作" }).first().click();
+    await page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu").getByText(/^修改（/).click();
+    const 窗 = page.getByRole("dialog").filter({ hasText: "修改这条沟通" });
+    await 窗.waitFor();
+    await 窗.getByLabel("沟通内容").fill("打了一半的字");
+    await page.waitForTimeout(Math.max(0, 快到 - Date.now()) + 800);
+    expect(await 窗.innerText()).toContain("已经超过提交后 30 分钟，这条不能再改了");
+    expect(await 窗.getByRole("button", { name: /保\s*存/ }).isDisabled()).toBe(true);
+    expect(await page.evaluate(() => Object.keys(localStorage).filter(k => k.includes("改项目沟通:f1")).length)).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
 
 it("没有改沟通的权限：「…」里只剩新建卡点（10-30 从行上收进来，11-12 由发卡点改名）", async () => {
   const { page, errors } = await 覆盖(1280, { 可改沟通: false });
