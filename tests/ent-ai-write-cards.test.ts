@@ -55,6 +55,7 @@ import * as 联系人动作 from "@/app/(app)/customers/[id]/actions";
 import * as 客户动作 from "@/app/(app)/customers/actions";
 import { 记回款 as 库记回款 } from "@/lib/project/payment-db";
 import { 记项目沟通 } from "@/lib/project/db";
+import { 发卡点判断, 能发卡点 } from "@/lib/project/blocker";
 import { 北京日期 } from "./helpers/beijing-date";
 
 type 人 = { id: string; name: string; role: string };
@@ -209,11 +210,38 @@ describe("沟通 + 卡点：原因字典、旧卡（11-19）", () => {
     expect((r.data as { error: string }).error).toBe("你不能在这个项目上新建卡点，只能记沟通（propose_project_followup）");
     // 只记沟通照样出卡（组员记）
     expect((await 出("propose_project_followup", { projectId: 项目id, content: "丙聊了", reason: "人说的" }, 丙)).卡).toMatchObject({ 组员记: true, 要卡点: false });
-    // 两个候选：一个是别人的（丙只是组员）、一个是丙自己的 → 只剩丙自己的那个，直接指向它
+    // 两个候选：一个是别人的（丙只是组员）、一个是丙自己的 → 剔掉一期，只剩二期也照候选出、不替人选；返回写明剔掉了哪个
     const 二期 = (await prisma.project.create({ data: { name: "云帆二期", customerId: 客户id, ownerId: 丙.id, creatorId: 丙.id, phase: "线索", node: "潜客培育" } })).id;
     const 两个 = await 出("propose_blocker_add", { project: "云帆", 卡点类型: "中度卡点", 阻碍原因: ["其他"], content: "丙聊了", 下一步: "再聊", reason: "人说的" }, 丙);
-    expect(两个.卡).toMatchObject({ targetId: 二期, 要卡点: true });
-    expect(两个.卡!.候选 ?? []).toEqual([]);
+    expect(两个.卡).toMatchObject({ targetId: "", 要卡点: true });
+    expect(两个.卡!.候选!.map((c) => c.id)).toEqual([二期]);
+    expect(两个.卡!.候选![0].补).toMatchObject({ projectId: 二期, 组员记: false });
+    const note = (两个.r.data as { note: string }).note;
+    expect(note).toContain("另有 1 个项目你不能新建卡点，已去掉：云帆一期");
+    expect(note).toContain("卡上列了它让人自己点选");
+    // 只找到一个、能发的：照旧直接指向，不列候选
+    const 一个 = await 出("propose_blocker_add", { project: "云帆二期", 卡点类型: "中度卡点", 阻碍原因: ["其他"], content: "丙聊了", 下一步: "再聊", reason: "人说的" }, 丙);
+    expect(一个.卡).toMatchObject({ targetId: 二期, 要卡点: true });
+    expect(一个.卡!.候选 ?? []).toEqual([]);
+    expect((一个.r.data as { note: string }).note).not.toContain("已去掉");
+  });
+
+  it("发卡点判断（读一次权限和组织、每个项目同步判断）和 能发卡点 结果一致", async () => {
+    const 二期 = (await prisma.project.create({ data: { name: "云帆二期", customerId: 客户id, ownerId: 丙.id, creatorId: 丙.id, phase: "线索", node: "潜客培育" } })).id;
+    const 公海 = (await prisma.project.create({ data: { name: "云帆三期", customerId: 客户id, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育", pooledAt: new Date() } })).id;
+    const 项目们 = await prisma.project.findMany({ where: { id: { in: [项目id, 二期, 公海] } }, select: { id: true, ownerId: true, pooledAt: true } });
+    const 表 = async (me: 人) => {
+      当(me);
+      return 以谁的身份(me.id, async () => {
+        const 判 = await 发卡点判断(me);
+        return Promise.all(项目们.map(async (p) => [p.id, !!判 && 判(p), await 能发卡点(me, p.id)] as const));
+      });
+    };
+    const 全 = [...(await 表(老板)), ...(await 表(乙)), ...(await 表(丙))];
+    for (const [, 同步, 查库] of 全) expect(同步).toBe(查库);
+    // 不是全 false 糊过去：乙能发一期、丙能发二期，公海的谁都不能
+    expect(全.filter(([, x]) => x).length).toBeGreaterThanOrEqual(2);
+    expect(全.filter(([id, x]) => id === 公海 && x)).toEqual([]);
   });
 
   it("模型还传了卡点描述：并进沟通内容（已经写在内容里的不重复）", () => {

@@ -19,7 +19,7 @@ import { 可选项 } from "../enterprise/dict";
 import { buildProposal, describeProposal, missingFields } from "./proposals";
 import { 认目标, 每步能判, 联系人可改, type 候选, type 项目卡Kind, type 验证步 } from "./project-proposals";
 import { 卡点类型们, 影响等级们, 卡点显示名, 清原因们 } from "../project/blocker-rules";
-import { 可选原因们, 能发卡点 } from "../project/blocker";
+import { 可选原因们, 发卡点判断 } from "../project/blocker";
 import { dayjs } from "../utils";
 
 const str = (v: unknown, max = 60) => (typeof v === "string" ? v.trim().slice(0, max) : typeof v === "number" ? String(v) : "");
@@ -84,16 +84,16 @@ function 出卡(ctx: ToolContext, kind: 项目卡Kind, 客户: { id: string; nam
     summary: `建议：${describeProposal(r.proposal, ctx.b.customer, undefined, ctx.b)}${miss.length ? `（还差 ${miss.join("、")}）` : ""}`,
     data: {
       ok: true, missing: miss,
-      note: `${候.length ? "找到不止一个，卡上列了几个让人自己挑，不要替人选，也不要再调同一个工具。" : ""}${miss.length ? "建议卡已给出，留空的人会在卡片上补。" : "建议卡已给出，等人确认。"}不要再调同一个工具，回答里说清楚：确认后才会写入。${补话}`,
+      note: `${候.length > 1 ? "找到不止一个，卡上列了几个让人自己挑，不要替人选，也不要再调同一个工具。" : 候.length ? "卡上列了它让人自己点选，不要替人选，也不要再调同一个工具。" : ""}${miss.length ? "建议卡已给出，留空的人会在卡片上补。" : "建议卡已给出，等人确认。"}不要再调同一个工具，回答里说清楚：确认后才会写入。${补话}`,
       ...(挑 ? { 挑: 挑 } : {}),
     },
   };
 }
 
-/** 一个 → 直接指向它；多个 → 候选（每个带自己的 补） */
-function 指向(行: 项目行[], 露: (p: 项目行) => boolean, 补of: (p: 项目行) => Record<string, unknown> = () => ({})) {
+/** 一个 → 直接指向它；多个 → 候选（每个带自己的 补）。要挑 = 原来找到不止一个、筛完只剩一个也照候选出，让人自己点 */
+function 指向(行: 项目行[], 露: (p: 项目行) => boolean, 补of: (p: 项目行) => Record<string, unknown> = () => ({}), 要挑 = false) {
   const 前 = 行.slice(0, 候选上限);
-  if (前.length === 1) {
+  if (前.length === 1 && !要挑) {
     const p = 前[0];
     return { 客户: { id: 客户of(p, 露).customerId, name: 客户of(p, 露).customerName }, args: { targetId: p.id, targetName: p.name, projectId: p.id, ...补of(p) } };
   }
@@ -376,18 +376,24 @@ async function 沟通卡(a: Record<string, unknown>, ctx: ToolContext, 要卡点
   const 要时间 = (p: 项目行) => !组员记(p) && 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
   /*
     加卡点：发不了卡点的项目（组员记、没卡点权限、在公海……同 发布卡点 的判断）不出卡——出了也是死路：卡上去不掉卡点，
-    确认时 记项目沟通Action 先查后写整条拦下，沟通也记不上。几个候选的把发不了的剔掉，全剔光了才报错、指路去只记沟通
+    确认时 记项目沟通Action 先查后写整条拦下，沟通也记不上。几个候选的把发不了的剔掉，全剔光了才报错、指路去只记沟通。
+    原来找到不止一个的，剔到只剩一个也照候选出、让人自己点（模糊匹配，他说的可能正是剔掉的那个），返回里写明剔掉了哪些，让模型照实说。
+    权限和组织只读一次（发卡点判断），每个候选同步判断，和 能发卡点 同一个 能发
   */
-  let 行们 = 找.行;
+  let 行们 = 找.行.slice(0, 候选上限);
+  let 剔话 = "";
   if (要卡点) {
-    const 能发们 = 我 ? await Promise.all(行们.map(async (p) => !组员记(p) && (await 能发卡点(我, p.id)))) : 行们.map(() => false);
-    行们 = 行们.filter((_, i) => 能发们[i]);
+    const 判 = 我 ? await 发卡点判断(我) : null;
+    const 能 = (p: 项目行) => !!判 && !组员记(p) && 判(p);
+    const 剔掉 = 行们.filter((p) => !能(p));
+    行们 = 行们.filter(能);
     if (!行们.length) {
       const 话 = 找.行.length > 1 ? "找到的这几个项目你都不能新建卡点，只能记沟通（propose_project_followup）" : "你不能在这个项目上新建卡点，只能记沟通（propose_project_followup）";
       return { summary: 话, data: { error: 话 } };
     }
+    if (剔掉.length) 剔话 = `另有 ${剔掉.length} 个项目你不能新建卡点，已去掉：${剔掉.map((p) => p.name).join("、")}。回答里照实说一句；用户说的要是这几个，只能记沟通（propose_project_followup）。`;
   }
-  const 指 = 指向(行们, 找.露, (p) => ({ ...(要时间(p) ? { 要时间: true } : {}), 组员记: 组员记(p) }));
+  const 指 = 指向(行们, 找.露, (p) => ({ ...(要时间(p) ? { 要时间: true } : {}), 组员记: 组员记(p) }), 找.行.length > 1);
   // 11-19：卡点不再有标题、卡在哪儿；阻碍原因必填，卡上给设置里启用的原因当下拉（也能现打）
   const 原因可选们 = 要卡点 ? await 可选原因们() : [];
   // 不在字典里的原因：卡上标「新增·待审核」，返回里也告诉模型，让它照实说
@@ -400,7 +406,7 @@ async function 沟通卡(a: Record<string, unknown>, ctx: ToolContext, 要卡点
     要卡点, 卡点类型: 要卡点 ? a.卡点类型 : "", 影响等级: 要卡点 ? a.影响等级 : "", 阻碍原因: 要卡点 ? a.阻碍原因 : [],
     ...(要卡点 ? { 原因可选们 } : {}),
     reason: a.reason,
-  }, 原因话);
+  }, 剔话 + 原因话);
 }
 
 export const 项目写工具名: ReadonlySet<string> = new Set(项目写工具.map((t) => t.name));

@@ -329,7 +329,8 @@ async function 下一个卡点编号(tx: Prisma.TransactionClient, now: Date): P
  * （负责人本人且是销售 / 销售管理，permissions.ts 能编辑项目；卡点从沟通发，和记沟通同一道门）。
  * 总管理、上级、组员不能在别人的项目上发（C2：只能看、转让；看得到的卡点照样能认领、点完成）
  */
-function 能发(me: 谁, p: 项目要的, 权: 我的卡点权限, org: 组织 | null): boolean {
+type 能发要的 = Pick<项目要的, "ownerId" | "pooledAt">;
+function 能发(me: 谁, p: 能发要的, 权: 我的卡点权限, org: 组织 | null): boolean {
   return 权.能写 && !p.pooledAt && 能编辑项目(me, p, org);
 }
 
@@ -670,14 +671,24 @@ export async function 我的卡点(me: 谁): Promise<卡点视图[]> {
   return 看得到的(me, { OR: [{ status: "待接受" }, { status: "处理中", claims: { some: { userId: me.id, done: false } } }] }, { 只看自己: true, orderBy: [{ createdAt: "asc" }] });
 }
 
+/**
+ * 读一次卡点权限和组织，回一个同步的「能不能在这个项目上发卡点」判断（和 发布卡点 同一个 能发）；没开 = null。
+ * 一次要判好几个项目的（AI 加卡点的候选）用它，别每个都调 能发卡点 重复查库
+ */
+export async function 发卡点判断(me: 谁): Promise<((p: 能发要的) => boolean) | null> {
+  if (!企业版()) return null;
+  const [权, org] = await Promise.all([卡点权限(me), 组织of()]);
+  if (!权.开) return null;
+  return (p) => 能发(me, p, 权, org);
+}
+
 /** 项目详情要不要给「发卡点」按钮：和 发布卡点 同一个判断 */
 export async function 能发卡点(me: 谁, projectId: string): Promise<boolean> {
-  if (!企业版()) return false;
-  const [权, org] = await Promise.all([卡点权限(me), 组织of()]);
-  if (!权.开) return false;
+  const 判 = await 发卡点判断(me);
+  if (!判) return false;
   return 看全部(async () => {
     const p = await prisma.project.findUnique({ where: { id: String(projectId ?? "") }, select: 项目字段 });
-    return !!p && 能发(me, p, 权, org);
+    return !!p && 判(p);
   });
 }
 
