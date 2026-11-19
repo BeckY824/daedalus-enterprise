@@ -27,7 +27,7 @@ import { 规则 } from "@/lib/enterprise/rules";
 import { 版本冲突 } from "@/lib/edit-version";
 import { 文字格改动, 沟通正文改动, 钱格改动 } from "@/lib/project/inline-edit";
 import { 合并附件 } from "@/lib/attachment-rules";
-import { 不能改沟通话 } from "@/lib/enterprise/follow-perm";
+import { 本人改沟通过时话 } from "@/lib/enterprise/follow-perm";
 
 let 销售: string, 同事: string, 客户: string, 项目: string;
 const 当 = (id: string, role = "SALES") => { mocks.user = { ...mocks.user, id, role }; };
@@ -213,12 +213,13 @@ describe("沟通正文", () => {
     expect((await prisma.followUp.findUniqueOrThrow({ where: { id: f.id } })).content).toBe("电话聊了报价");
   });
 
-  it("负责人是销售（不是管理）：自己记的也改不了", async () => {
+  it("负责人是销售（不是管理）：自己记的过了 30 分钟改不了（11-19 起 30 分钟内本人能改，见 ent-followup-edit-30min）", async () => {
     await prisma.entMember.update({ where: { userId: 销售 }, data: { bizRole: "sales" } });
-    const f = await 记一条();
+    const 记 = await 记一条();
+    const f = await prisma.followUp.update({ where: { id: 记.id }, data: { createdAt: new Date(Date.now() - 31 * 60_000) } });
     const 交 = 沟通正文改动({ type: f.type, occurredAt: f.occurredAt.toISOString(), 版本: f.updatedAt.toISOString() }, "销售改的");
     if ("error" in 交) throw new Error(交.error);
-    expect(await 改项目沟通(项目, f.id, 交.改动)).toEqual({ ok: false, error: 不能改沟通话 });
+    expect(await 改项目沟通(项目, f.id, 交.改动)).toEqual({ ok: false, error: 本人改沟通过时话 });
     expect((await prisma.followUp.findUniqueOrThrow({ where: { id: f.id } })).content).toBe("电话聊了报价");
   });
 });

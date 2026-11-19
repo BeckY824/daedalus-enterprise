@@ -40,6 +40,7 @@ import { 记项目沟通 } from "@/lib/project/db";
 import { 只读客户 } from "@/lib/team-scope";
 import { saveFollowUp, type FollowUpInput } from "@/app/(app)/customers/[id]/actions";
 import { 沟通项目已结束话 } from "@/lib/project/follow-needs-project";
+import { 本人改沟通过时话 } from "@/lib/enterprise/follow-perm";
 
 const 负责人 = "cm_owner";
 const 组员 = "cm_member";
@@ -138,7 +139,7 @@ describe("组员在只读客户上记沟通（真范围）", () => {
     expect((await raw.customer.findUniqueOrThrow({ where: { id: 客户 } })).salesOwnerId).toBe(负责人);
   });
 
-  it("组员只能记沟通：待办 / 提醒、顺带下次计划、改已有的沟通都照旧只读，库里不多一条", async () => {
+  it("组员只能记沟通：待办 / 提醒、顺带下次计划照旧只读，库里不多一条；改自己记的只在 30 分钟内（11-19），过了照旧不行", async () => {
     const p = await 建项目();
     await 作为(组员, async () => {
       expect(await 记({ type: "TASK", dueAt: dayjs().add(1, "day").format("YYYY-MM-DD") })).toEqual({ ok: false, error: 组员只读话 });
@@ -147,8 +148,10 @@ describe("组员在只读客户上记沟通（真范围）", () => {
     expect(await raw.followUp.count()).toBe(0);
     const 记了 = await 作为(组员, () => 记项目沟通({ id: 组员, role: "SALES" }, p.id, 向导()));
     expect(记了).toMatchObject({ ok: true });
+    // 11-19 客户：提交后 30 分钟内能改（记录人本人，ent-followup-edit-30min.test.ts）；过了 30 分钟照旧改不了
+    await raw.followUp.update({ where: { id: 记了.followUpId! }, data: { createdAt: new Date(Date.now() - 31 * 60_000) } });
     const 改 = await 作为(组员, () => 记({ id: 记了.followUpId!, content: "组员想改" }));
-    expect(改).toMatchObject({ ok: false });
+    expect(改).toEqual({ ok: false, error: 本人改沟通过时话 });
     expect((await raw.followUp.findUniqueOrThrow({ where: { id: 记了.followUpId! } })).content).toBe("组员打了电话");
   });
 

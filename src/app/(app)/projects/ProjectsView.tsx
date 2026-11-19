@@ -433,6 +433,10 @@ export default function ProjectsView({
       { title: "级别", key: "level", width: 72, 默认: false, render: (_: unknown, r: 项目行) => { const 档 = 企业级别(r.level); return 档 ? <span title={企业级别说明[档]} aria-label={企业级别说明[档]} style={{ color: "var(--warning-text)", whiteSpace: "nowrap" }}>{级别星(档, false)}</span> : 无; } },
       // 项目标签（F-项目-14）：和级别各一列、各自填；默认收在「列」里，放不下「…」悬停看全文
       { title: "项目标签", key: "projTag", width: 110, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.项目标签) ? <span className="fulltext" title={r.项目标签!}>{r.项目标签}</span> : 无) },
+      // 备货状态、物流状态、物流单号（迁移 154，客户 11-19）：默认收在「列」里，放不下「…」悬停看全文
+      { title: "备货状态", key: "stockStatus", width: 90, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.备货状态) ? <span className="fulltext" title={r.备货状态!}>{r.备货状态}</span> : 无) },
+      { title: "物流状态", key: "logisticsStatus", width: 90, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.物流状态) ? <span className="fulltext" title={r.物流状态!}>{r.物流状态}</span> : 无) },
+      { title: "物流单号", key: "trackingNo", width: 140, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.物流单号) ? <span className="fulltext" title={r.物流单号!}>{r.物流单号}</span> : 无) },
       // 指定回复时间（11-17）：默认收在「列」里（1366 宽不横滚），新线索页、项目页都能勾出来；服务端排好的北京时间
       { title: "指定回复", key: "replyAt", width: 150, 默认: false, render: (_: unknown, r: 项目行) => (有值(r.指定回复) ? <span className="nowrap" title={r.指定回复!}>{r.指定回复}</span> : 无) },
       { title: "预计成交", key: "expectedDealAt", width: 110, 默认: false, sorter: true, sortOrder: 序of("expectedDealAt"), render: (_: unknown, r: 项目行) => (有值(r.expectedDealAt) ? r.expectedDealAt : 无) },

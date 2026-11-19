@@ -3,7 +3,7 @@
  *   联系方式先规整再全量查：卡上的电话，加上备注里认得出的邮箱 / 微信 / 阿里国际站ID（名片卡把它们拼成「邮箱：x」这样的行；10-29 前叫旺旺，旧说法也认）
  *   重复：不录入，回录入的人「〈原负责人〉已有该客户信息，请及时核对」，
  *         给原负责人建一条待办挂在原客户上「〈触发人〉疑似与您负责的〈客户名〉重复，请及时核对」（看不看得到原客户都建，待办只给原负责人）
- *   公海待捞、我名下已有：照查重原提示拦
+ *   公海待捞、我名下已有：照查重原提示拦；市场成员撞上公海另带 公海（卡片给「领取并记沟通」，F-016）
  *   在用的没撞、回收站里撞了：照建档的提示拦，叫人找系统管理员恢复（客户 11-05（X-10））
  *   团队版服务端那边撞的：本机没有那位客户可挂待办，只回提示
  * 不加字段：邮箱、微信进联系人原有的两格，认出来的那几行从备注拿掉，认不出的原样留在备注
@@ -16,10 +16,12 @@ import { 查重提示 } from "./contact-format";
 import { 全公司查号, 撞号结论, 首条撞的, 问同事撞没撞, 回收站撞没撞 } from "./contact-dedupe";
 import { notify } from "./notify";
 import { 同号再次录入, type 录入信息 } from "./same-number-collab";
+import { 查重可领 } from "./dedupe-claim";
 
 // 认备注里的号码是纯函数，11-17 搬到 remark-numbers.ts（新线索卡的必填在浏览器里也要用）；这里照旧导出
 export { 认出备注里的号码, type 认出的号 } from "./remark-numbers";
 import type { 认出的号 } from "./remark-numbers";
+import { 客户显名 } from "./customer-title";
 
 /** 挨个查，撞了回给录入的人看的话（不建档）；都没撞回 null */
 export async function AI建档查重(号们: 认出的号[], 我: { id: string; name: string }, 录入?: 录入信息): Promise<string | null> {
@@ -27,7 +29,7 @@ export async function AI建档查重(号们: 认出的号[], 我: { id: string; 
 }
 
 /** 同 AI建档查重，另带上只在回收站里撞上的那个号（卡片上给「从回收站捞回」，客户 11-05） */
-export async function AI建档查重详(号们: 认出的号[], 我: { id: string; name: string }, 录入?: 录入信息): Promise<{ 话: string; 回收站?: 认出的号 } | null> {
+export async function AI建档查重详(号们: 认出的号[], 我: { id: string; name: string }, 录入?: 录入信息): Promise<{ 话: string; 回收站?: 认出的号; 公海?: 认出的号 } | null> {
   const 读 = await 读的我(defaultClient);
   for (const 号 of 号们) {
     const ids = await 全公司查号(prisma, 号.类型, 号.值, 号.键);
@@ -41,9 +43,11 @@ export async function AI建档查重详(号们: 认出的号[], 我: { id: strin
     const 结论 = await 撞号结论(prisma, ids, 我.id, 读);
     // 卡上录的内容也接同号协同（写进现有项目、发邀请、通知）；回 AI 卡的话照 10-27 定的原文，协同已经通知过就不再响铃
     const 协同 = 录入 ? await 同号再次录入(我, 号, 录入) : null;
+    // 市场成员撞上公海（F-016）：卡片上给「领取并记沟通」（customers/pool-actions.ts 查重领取），话照旧
+    if (结论.状态 === "公海待捞" && (await 查重可领(我.id, 号))) return { 话: 结论.提示, 公海: 号 };
     if (结论.状态 !== "重复") return { 话: 结论.提示 };
     const 原 = await 首条撞的(prisma, ids);
-    if (原?.salesOwnerId) await 提醒原负责人(原.id, 原.name, 原.salesOwnerId, 我, !协同?.走);
+    if (原?.salesOwnerId) await 提醒原负责人(原.id, 客户显名(原), 原.salesOwnerId, 我, !协同?.走);
     return { 话: 查重提示.AI建档重复(结论.撞.salesOwnerName) };
   }
   return null;

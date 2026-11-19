@@ -22,6 +22,7 @@ const plugin: Plugin = { name: "ai-followup-noproject", setup(b) {
   stub(/card-scan\/originals$/, "export const 取走名片原图=()=>null,记下刚建的=()=>{},忘掉刚建的=()=>{};");
   stub(/attachment-upload$/, "export const 传附件=async()=>({ok:true});");
   stub(/customers\/RescueKey$/, "export default function R(){return null}");
+  stub(/customers\/DedupeClaimKey$/, "export default function D(){return null}");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {

@@ -22,7 +22,7 @@ import { 查完再写 } from "@/lib/check-then-write";
 import { 能恢复, 没设业务角色, 没业务角色不能领话, 能领公海, 不能领公海话, 只读角色, 只读话of, 能新建和领取 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
 import type { 组织 } from "@/lib/enterprise/org-core";
-import { 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话, 卡片刚记的能撤, 在卡片撤销里, 卡片撤销过时话, 客户事项挡, 本人勾完成挡 } from "@/lib/enterprise/follow-perm";
+import { 能改这条沟通, 能删沟通, 不能删沟通话, 本人限时改挡, 本人限时适用, 改沟通的顺带, 本人改不能变待办话, 本人改只改内容话, 卡片刚记的能撤, 在卡片撤销里, 卡片撤销过时话, 客户事项挡, 本人勾完成挡 } from "@/lib/enterprise/follow-perm";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 卡点脱离沟通 } from "@/lib/project/blocker";
 import { 在推项目条件 } from "@/lib/project/active";
@@ -164,6 +164,41 @@ async function 挂项目(me: { id: string; role: string }, followUpId: string, c
   return null;
 }
 
+/** 改一条沟通前后比一比，改了哪几格（留痕用的叫法）。dueAt 只比时刻：只改了钟点有没有也算「提醒时间」 */
+function 沟通改了哪些(
+  前: { type: string; method: string | null; initiator: string | null; title: string; content: string; status: string; duration: number | null; occurredAt: Date; dueAt: Date | null; contactId: string | null; opportunityId: string | null; participants: string | null },
+  后: { type: string; method?: string | null; initiator?: string | null; title: string; content: string; status: string; duration: number | null; occurredAt: Date; dueAt: Date | null; contactId: string | null; opportunityId: string | null; participants: string | null },
+): string[] {
+  const 时 = (d: Date | null) => d?.getTime() ?? null;
+  const 改了: string[] = [];
+  if (前.type !== 后.type || (后.method !== undefined && (前.method ?? null) !== (后.method ?? null))) 改了.push("沟通方式");
+  if (后.initiator !== undefined && (前.initiator ?? null) !== (后.initiator ?? null)) 改了.push("发起主体");
+  if (时(前.occurredAt) !== 时(后.occurredAt)) 改了.push("沟通时间");
+  if (前.content !== 后.content) 改了.push("沟通内容");
+  if (前.title !== 后.title) 改了.push("标题");
+  if (前.status !== 后.status) 改了.push("状态");
+  if ((前.duration ?? null) !== (后.duration ?? null)) 改了.push("时长");
+  if (时(前.dueAt) !== 时(后.dueAt)) 改了.push("提醒时间");
+  if ((前.contactId ?? null) !== (后.contactId ?? null)) 改了.push("联系人");
+  if ((前.opportunityId ?? null) !== (后.opportunityId ?? null)) 改了.push("商机");
+  if ((前.participants ?? null) !== (后.participants ?? null)) 改了.push("参与人");
+  return 改了;
+}
+
+/**
+ * 本人限时改（③，客户 11-19 第 32 题 A 定稿）越界了没有：标题、状态、时长、提醒时间（日期 / 钟点）、联系人、商机、参与人有一格和改前不同 = 越界。
+ * 方式、发起主体、沟通时间、内容放行。空串 / 0 和空当一样（原样带回来的不误拒）；提醒只比时刻和日历日（老数据 dueHasTime 空 = 带钟点）
+ */
+function 限时改越界(
+  前: { title: string; status: string; duration: number | null; dueAt: Date | null; dueOn: string | null; contactId: string | null; opportunityId: string | null; participants: string | null },
+  后: { title: string; status: string; duration: number | null; dueAt: Date | null; dueOn: string | null; contactId: string | null; opportunityId: string | null; participants: string | null },
+): boolean {
+  const 空 = (v: string | null | undefined) => v?.trim() || null;
+  return 空(前.title) !== 空(后.title) || 前.status !== 后.status || (前.duration || null) !== (后.duration || null)
+    || (前.dueAt?.getTime() ?? null) !== (后.dueAt?.getTime() ?? null) || 空(前.dueOn) !== 空(后.dueOn)
+    || 空(前.contactId) !== 空(后.contactId) || 空(前.opportunityId) !== 空(后.opportunityId) || 空(前.participants) !== 空(后.participants);
+}
+
 /** 事务里挂不上项目：抛它让整条回滚，外面接住说那一句 */
 class 挂不上项目 extends Error {}
 
@@ -173,10 +208,24 @@ export async function saveFollowUp(input: FollowUpInput) {
     if (!input || typeof input !== "object" || typeof input.content !== "string" || typeof input.customerId !== "string") return { ok: false as const, error: "跟进信息格式不正确" };
     if (!hasVisibleText(input.content)) return { ok: false as const, error: "请填写沟通内容" };
     // 企业版 M-权限-09（11-02 再定）：记完的沟通只有负责人能改（客户负责人或挂的项目的负责人，lib/enterprise/follow-perm.ts）；按库里那条的客户认，不信传来的
+    // 例外（客户 11-19 第 32 题 A 定稿）：记这条的本人，写入 30 分钟内能改（本人限时改挡）；原本就能改的照旧不限时
+    /** 走「本人限时改」放进来的（原本改不了）：只许改内容、方式、时间（③） */
+    let 本人限时 = false;
+    /** 记录人本人、写入 30 分钟内改（含原本就能改的管理改自己记的）：不自动推进、日志标「本人限时改」（⑤） */
+    let 本人窗口内 = false;
     if (input.id && 企业版()) {
-      const 原那条 = await prisma.followUp.findUnique({ where: { id: input.id }, select: { customerId: true } });
+      // 组员记的沟通挂在别人名下的项目上，客户对他连带只读、限定层可能滤掉：限定层没给的，只再认「我记的」那一条（别人的照旧说不在了）
+      const 选 = { customerId: true, ownerId: true, createdAt: true, type: true, title: true } as const;
+      const 原那条 = (await prisma.followUp.findUnique({ where: { id: input.id }, select: 选 }))
+        ?? (await 看全部(() => prisma.followUp.findFirst({ where: { id: input.id!, ownerId: user.id }, select: 选 })));
       if (!原那条 || 原那条.customerId !== input.customerId) return { ok: false as const, error: "这条跟进已经不在了，刷新看看" };
-      if (!(await 能改这条沟通(user, { customerId: 原那条.customerId, id: input.id }))) return { ok: false as const, error: 不能改沟通话 };
+      if (!(await 能改这条沟通(user, { customerId: 原那条.customerId, id: input.id }))) {
+        const 挡 = await 本人限时改挡(user, { id: input.id, ...原那条 });
+        if (挡) return { ok: false as const, error: 挡 };
+        本人限时 = true;
+      }
+      // 待办 / 提醒、导入建的、系统留痕不算本人记的（本人限时适用）
+      本人窗口内 = 本人限时 || (await 本人限时适用(user, { id: input.id, ...原那条 }));
     }
     if (!FOLLOW_TYPES.some((t) => t.value === input.type)) return { ok: false as const, error: `跟进类型「${input.type}」不是合法取值` };
     if (!FOLLOW_RECORD_STATUSES.includes(input.status as (typeof FOLLOW_RECORD_STATUSES)[number])) return { ok: false as const, error: `记录状态「${input.status}」不是合法取值` };
@@ -205,7 +254,12 @@ export async function saveFollowUp(input: FollowUpInput) {
       「已进组、在推、有业务角色」，核不过照旧说只读；记录人是我，客户和项目负责人不变
     */
     const 组员来记 = 只读档 === "全" && 企业版() && !input.id && 要挂项目的类型(input.type) && !免挂项目中() && !extra?.tasks?.length && !extra?.plan && !extra?.完成计划;
-    if (只读档 === "全" && !组员来记) return { ok: false as const, error: await 只读话(defaultClient) };
+    /*
+      本人限时改（11-19）：组员改自己 30 分钟内记的、挂在项目上的那条（上面 本人限时改挡 核过还能往那个项目记沟通），客户对他只读也放行，
+      只改这一条（不建待办 / 计划，下面「附带」本来就不许和改一起来）；没挂项目的照旧按只读
+    */
+    const 本人改只读的 = 本人限时 && 只读档 === "全" && !!(await 看全部(() => prisma.followUpProject.count({ where: { followUpId: input.id! } })));
+    if (只读档 === "全" && !组员来记 && !本人改只读的) return { ok: false as const, error: await 只读话(defaultClient) };
     const 同事的 = 只读档 === "加跟进";
     if (同事的) {
       if (input.id) return { ok: false as const, error: "这是同事的客户：只能新加跟进，改已有的跟进请找负责人" };
@@ -236,13 +290,16 @@ export async function saveFollowUp(input: FollowUpInput) {
       if (!商机在) return { ok: false as const, error: "选的商机不是这位客户的，请重新选择" };
     }
     // 企业版沟通方式（10-31）：选的方式对出 type；改已有的、方式没变的不查停用
-    const 原 = input.id ? await prisma.followUp.findUnique({ where: { id: input.id }, select: { method: true, initiator: true, type: true, projectNode: { select: { projectId: true } } } }) : null;
+    const 读原 = () => prisma.followUp.findUnique({ where: { id: input.id! }, select: { method: true, initiator: true, type: true, projectNode: { select: { projectId: true } } } });
+    const 原 = input.id ? await (本人改只读的 ? 看全部(读原) : 读原()) : null;
     const 方式 = await 定沟通方式(input.method, input.type, 原?.method);
     if (!方式.ok) return 方式;
     // 组员来记只认沟通：选的方式对出来是待办 / 提醒的照旧只读
     if (组员来记 && !要挂项目的类型(方式.type)) return { ok: false as const, error: await 只读话(defaultClient) };
     // 沟通必须挂项目（11-17）：没挂项目的待办 / 提醒改成沟通 = 绕过来记了一条不挂项目的沟通，不让改（老的客户沟通照旧能改）
     if (input.id && 企业版() && 原 && !要挂项目的类型(原.type) && 要挂项目的类型(方式.type) && !原.projectNode) return { ok: false as const, error: 待办改沟通话 };
+    // 本人限时改只改内容：沟通不能改成待办 / 提醒（那会带出待办、离开项目的沟通统计），待办 / 提醒也不能改成沟通（同上一条）
+    if (本人限时 && 原 && 要挂项目的类型(原.type) !== 要挂项目的类型(方式.type)) return { ok: false as const, error: 要挂项目的类型(原.type) ? 本人改不能变待办话 : 待办改沟通话 };
     // 发起主体（11-01）：同上，改已有的、没变的不查停用
     const 发起 = await 定发起主体(input.initiator, 方式.type, input.id ? { 有: true, 值: 原?.initiator } : undefined);
     if (!发起.ok) return 发起;
@@ -282,7 +339,8 @@ export async function saveFollowUp(input: FollowUpInput) {
     if (组员来记 && !挂到) return { ok: false as const, error: await 只读话(defaultClient) };
     const 领取了 = 在公海 && await 领取([input.customerId]).then((r) => r.ok && r.updated > 0);
     // 组员来记（上面已核过）：这位客户在限定层是「只能看」，新建沟通会被拦，这一笔按全部写——只写这条沟通、挂项目、客户最近跟进
-    const 这一笔 = <T,>(f: () => Promise<T>) => (组员来记 ? 看全部(f) : f());
+    // 本人改只读的（上面核过）同理：只写这一条沟通（和它带的待办），按全部写
+    const 这一笔 = <T,>(f: () => Promise<T>) => (组员来记 || 本人改只读的 ? 看全部(f) : f());
     // 组织表在事务外读好：事务里再用全局连接去读，单连接时会等到事务超时
     const 挂时组织 = 挂到 ? await 权限组织() : null;
     const result = await 这一笔(() => prisma.$transaction(async (tx) => {
@@ -295,24 +353,36 @@ export async function saveFollowUp(input: FollowUpInput) {
       let id = input.id ?? "";
       let 待办id: string | undefined;
       let 下次计划id: string | undefined;
+      /** 改已有的：改了哪几格（留痕写进去；企业版一格没变不留痕，列表上「已修改」认这条痕） */
+      let 改了: string[] = [];
       if (input.id) {
-        const 改前 = await tx.followUp.findUnique({ where: { id: input.id }, select: { type: true, title: true, content: true, status: true, dueAt: true, dueOn: true, dueHasTime: true } });
+        const 改前 = await tx.followUp.findUnique({ where: { id: input.id }, select: { type: true, method: true, initiator: true, title: true, content: true, status: true, duration: true, occurredAt: true, dueAt: true, dueOn: true, dueHasTime: true, contactId: true, opportunityId: true, participants: true } });
         if (!改前) return { ok: false as const, error: "这条跟进已经不在了（可能在别处删了），刷新看看" };
         const 时间 = parseScheduleDate(input.dueAt, { at: 改前.dueAt, on: 改前.dueOn, hasTime: 改前.dueHasTime }, input.dueHasTime)!;
         Object.assign(data, { dueAt: 时间.at, dueOn: 时间.on, dueHasTime: 时间.hasTime });
+        // 沟通时间按分钟比（低-2）：弹窗只到分钟，带秒的老记录原样交回来不算改、不被截掉秒
+        if (Math.floor(data.occurredAt.getTime() / 60_000) === Math.floor(改前.occurredAt.getTime() / 60_000)) data.occurredAt = 改前.occurredAt;
+        // ③ 本人限时改只改沟通内容、方式（含发起主体）、时间：别的格和改前不同就拒（还没写，直接返回不留东西）
+        if (本人限时 && 限时改越界(改前, data)) return { ok: false as const, error: 本人改只改内容话 };
         const 写了 = await tx.followUp.updateMany({ where: { id: input.id, ...版本条件(input.版本) }, data: { ...data, ...推进版本(input.版本) } });
         if (写了.count === 0) return { ok: false as const, error: 版本冲突 };
         // 存的时候无效、这次改成有效：记下首次有效时刻（客户三态额度判「实时」用；不论三态开关，内容没变不查库）
         await 记首次有效(tx, input.id, 改前.content, data.content, now);
         await 跟着改待办(input.customerId, 改前, data, tx);
+        改了 = 沟通改了哪些(改前, data);
+        // 改项目沟通 顺带改下一步（低-6）：和这条沟通同一个事务（follow-perm 改沟通时顺带；前端调不到）
+        await 改沟通的顺带(input.id)?.(tx);
       } else {
         const sourceText = input.sourceText?.trim().slice(0, SOURCE_TEXT_MAX);
         id = (await tx.followUp.create({ data: { ...data, ownerId: user.id, source: sourceText ? { create: { text: sourceText } } : undefined } })).id;
         if (会带待办(data) && data.status !== "已完成") 待办id = (await tx.task.create({ data: { title: 待办标题(data), dueAt: data.dueAt!, dueOn: data.dueOn, dueHasTime: data.dueHasTime, customerId: input.customerId, ownerId: user.id } })).id;
       }
-      audits.push({ user, action: input.id ? "update" : "create", entity: "FollowUp", entityId: id,
-        summary: `${input.id ? "修改" : "记了"}${客户显名(customer)}的一条${"method" in data && data.method ? data.method : 类型名(data.type)}跟进（${dayjs(data.occurredAt).format("YYYY-MM-DD")}）`,
-        detail: { 客户: 客户显名(customer), 类型: "method" in data && data.method ? data.method : 类型名(data.type), 状态: data.status, 内容: data.content.slice(0, 120) } });
+      // 企业版改沟通（11-19）：留痕写「改了沟通」和改了哪几格；一格没变（点了保存没改）不留，免得列表上标「已修改」
+      if (!(input.id && 企业版() && !改了.length)) audits.push({ user, action: input.id ? "update" : "create", entity: "FollowUp", entityId: id,
+        summary: input.id && 企业版()
+          ? `改了沟通：${客户显名(customer)}的一条${"method" in data && data.method ? data.method : 类型名(data.type)}（${dayjs(data.occurredAt).format("YYYY-MM-DD")}），改了${改了.join("、")}${本人窗口内 ? "（记录人本人提交后 30 分钟内修改）" : ""}`
+          : `${input.id ? "修改" : "记了"}${客户显名(customer)}的一条${"method" in data && data.method ? data.method : 类型名(data.type)}跟进（${dayjs(data.occurredAt).format("YYYY-MM-DD")}）`,
+        detail: { 客户: 客户显名(customer), 类型: "method" in data && data.method ? data.method : 类型名(data.type), 状态: data.status, 内容: data.content.slice(0, 120), ...(input.id && 企业版() ? { 改了, ...(本人窗口内 ? { 本人限时改: true } : {}) } : {}) } });
       const 挂不上 = 挂到 ? await 挂项目(user, id, input.customerId, 挂到, tx, 挂时组织) : null;
       if (挂不上) throw new 挂不上项目(挂不上);
       for (const item of extra?.tasks ?? []) {
@@ -345,7 +415,8 @@ export async function saveFollowUp(input: FollowUpInput) {
     刷新待办(input.customerId);
     // 客户最近跟进往后推了 = 名下项目的回收时钟续了：「再不跟进」的提醒跟着勾掉（11-03 B3-1）。按推进前的节点找提醒，放在自动推进前面
     await 客户跟进后勾掉将回收提醒(input.customerId, now);
-    await 客户存了推项目(user, input.customerId);
+    // ⑤ 记录人本人 30 分钟内改（管理改自己记的也算）：不重跑「必填齐自动推进」（推进门槛按当时记的算）；管理改别人记的照旧
+    if (!本人窗口内) await 客户存了推项目(user, input.customerId);
     // 客户三态：新建 / 改了一条沟通，马上重算这位的钟（不等夜扫；关着不查库，出错不影响保存）
     await 存沟通后重算三态(input.customerId);
     // 客户三态（C12）：新记的这条不算有效沟通，回原因给前端一句轻提示（不拦；三态关着不查库）

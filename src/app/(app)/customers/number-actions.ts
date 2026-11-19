@@ -20,6 +20,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 恢复到停用负责人通知 } from "@/lib/enterprise/notice-sources";
 import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 企业号码查重, type 撞到的人 } from "@/lib/enterprise/contact-dedupe";
+import { 查重可领 } from "@/lib/enterprise/dedupe-claim";
 import { 号码归属地 } from "@/lib/enterprise/phone-region";
 import { 同号协同情况, type 协同情况 } from "@/lib/enterprise/same-number-collab";
 import { 号码撞上, 客户名查重, 名撞说法, 申请挂靠 as 记申请挂靠, type 撞号露出, type 名撞结论 } from "@/lib/enterprise/dupe-ledger";
@@ -35,8 +36,10 @@ export type 查号码结果 =
    * 协同 = 同时带上有没有项目、是不是自己负责、是否已在组，向导按它说那段话（11-03 B6-8 / B7-4）
    * 回收站里有 = 在用的没撞、回收站里撞了（客户 11-05（X-10））：拦下，向导给「从回收站捞回」（从回收站捞回）
    * 挂靠 = 「重复」时露出负责人（姓名 · 级别 · 状态）、台账那一行的 id（给「申请挂靠」）、是否同组（P-挂靠-01，lib/enterprise/dupe-ledger.ts）
+   * 市场可领 = 「公海待捞」、我是市场成员（F-016）：给「领取并记沟通」（pool-actions.ts 查重领取，领了自动分给销售），不给「去领取」（公海页市场成员领不了）。
+   *   原负责人是我的：我是客户创建人才给（用户 11-19「仅对创建人豁免，对其他人有效」），给了就不带 原负责人是我（两个不同时为真）
    */
-  | { ok: true; 状态: "首次录入" | "公海待捞" | "我的通讯录已有" | "重复" | "回收站里有"; 提示: string; 值: string; 撞: 撞到的人 | null; 归属地: string | null; 可协同?: true; 协同?: 协同情况; 原负责人是我?: true; 挂靠?: 撞号露出 };
+  | { ok: true; 状态: "首次录入" | "公海待捞" | "我的通讯录已有" | "重复" | "回收站里有"; 提示: string; 值: string; 撞: 撞到的人 | null; 归属地: string | null; 可协同?: true; 协同?: 协同情况; 原负责人是我?: true; 挂靠?: 撞号露出; 市场可领?: true };
 
 export async function 查号码(类型: string, 值: string): Promise<查号码结果> {
   const me = await requireUser();
@@ -48,7 +51,8 @@ export async function 查号码(类型: string, 值: string): Promise<查号码�
   const 协同 = 结论.状态 !== "首次录入" ? await 同号协同情况(号, me.id) : null;
   // 撞了有人在跟的：露出负责人 + 记撞号台账（问同事撞的本机没这位客户，号码撞上 回 null）
   const 挂靠 = 结论.状态 === "重复" ? await 号码撞上(me.id, 我, 号) : null;
-  return { ok: true, 状态: 结论.状态, 提示: 结论.提示, 值: 号.值, 撞: 结论.撞, 归属地: 号码归属地(号.类型, 号.值)?.文字 ?? null, ...(结论.状态 === "公海待捞" && 结论.原负责人是我 ? { 原负责人是我: true as const } : {}), ...(协同 ? { 可协同: true as const, 协同 } : {}), ...(挂靠 ? { 挂靠 } : {}) };
+  const 市场可领 = 结论.状态 === "公海待捞" && await 查重可领(me.id, 号);
+  return { ok: true, 状态: 结论.状态, 提示: 结论.提示, 值: 号.值, 撞: 结论.撞, 归属地: 号码归属地(号.类型, 号.值)?.文字 ?? null, ...(结论.状态 === "公海待捞" && 结论.原负责人是我 && !市场可领 ? { 原负责人是我: true as const } : {}), ...(协同 ? { 可协同: true as const, 协同 } : {}), ...(挂靠 ? { 挂靠 } : {}), ...(市场可领 ? { 市场可领: true as const } : {}) };
 }
 
 export type 查客户名结果 = { ok: true; 撞: null } | { ok: true; 撞: 名撞结论; 提示: string } | { ok: false; error: string };

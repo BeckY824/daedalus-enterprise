@@ -473,7 +473,7 @@ async function 拼项目行(
     ...(企 && p.awaitAssignAt && !p.pooledAt && p.scheduledAssignAt ? { 定时分配: { 时: 短时刻(p.scheduledAssignAt, 今) ?? "", 给谁: p.scheduledAssignTo ? 名字.get(p.scheduledAssignTo) ?? "已不在的成员" : null } } : {}),
     ...(企 ? { 即将回收: 将收(p), 回收日: 规则 && !p.pooledAt ? 项目回收日(规则, p, 超时线们) : null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null, 指定回复: p.replyStartAt || p.replyEndAt ? 指定回复文字(p.replyStartAt, p.replyEndAt, 今) : null } : {}),
     // 项目来源和渠道统计同一条规则：项目自己选的优先，没选跟客户来源（lib/enterprise/channel-stats.ts 项目算哪个渠道）；客户不露时不拿客户的来源
-    ...(企 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null, 已立项天数: 已立项天数(p.createdAt, 今), 项目来源: p.channel?.name ?? (可见.has(p.customerId) ? p.customer.channel?.name : null) ?? null, level: p.level, 项目标签: p.projTag } : {}),
+    ...(企 ? { expectedDealAt: p.expectedDealAt ? dayjs(p.expectedDealAt).format("YYYY-MM-DD") : null, 已立项天数: 已立项天数(p.createdAt, 今), 项目来源: p.channel?.name ?? (可见.has(p.customerId) ? p.customer.channel?.name : null) ?? null, level: p.level, 项目标签: p.projTag, 备货状态: p.stockStatus, 物流状态: p.logisticsStatus, 物流单号: p.trackingNo } : {}),
     ...(收回 ? { 收回次数: 收回.get(p.id) ?? 0 } : {}),
     ...市场格(p),
     amount: p.amount, currency: p.currency, updatedAt: p.updatedAt.toISOString(), createdAt: p.createdAt.toISOString(),
@@ -491,7 +491,7 @@ async function 拼项目行(
  * 首屏一屏看板约 200 张卡片，这几样占卡片 JSON 的三四成。updatedAt 留着（不带 每列 时 看板分列 按它排）
  */
 export function 看板卡片版(r: 项目行): 看板卡片 {
-  const { 回收日: _a, 下一步时间: _b, 收回次数: _c, expectedDealAt: _d, 已立项天数: _e, 项目来源: _f, level: _g, 项目标签: _k, 验证结果: _h, 验证全文: _i, createdAt: _j, ...卡 } = r;
+  const { 回收日: _a, 下一步时间: _b, 收回次数: _c, expectedDealAt: _d, 已立项天数: _e, 项目来源: _f, level: _g, 项目标签: _k, 备货状态: _l, 物流状态: _m, 物流单号: _n, 验证结果: _h, 验证全文: _i, createdAt: _j, ...卡 } = r;
   return 卡;
 }
 

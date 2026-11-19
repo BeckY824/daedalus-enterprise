@@ -98,4 +98,5 @@
 .set-skel-nav, .set-skel-body { width: 100%; }
 /* 换主题整屏交叉淡化（st.theme）：0.2 秒附近，用 --t 令牌 */
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--t); animation-timing-function: var(--ease); }
-.set-advance-since { margin-bottom: var(--s3, 12px); }
+.set-advance-since { margin-bottom: var(--s3, 12px); color: var(--text-muted); overflow-wrap: anywhere; }
+.set-advance-scope { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2, 8px); margin-bottom: var(--s2, 8px); }

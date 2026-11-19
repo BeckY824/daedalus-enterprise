@@ -34,7 +34,7 @@ describe("超时起点", () => {
   });
 });
 
-describe("超时自动转那行不算起点（Even 11-19 第 14 题 B）", () => {
+describe("超时自动转那行不算起点（客户 11-19 第 14 题 B）", () => {
   const 轮转原因 = `分配方式：自动分配；${超时自动转理由}（原负责人 甲 超时没记有效沟通）`;
   it("转让 + 操作人系统 + 原因带「超时未跟进自动转」三样都对上才算（reply-overdue.ts 超时转理由 就是这串，见 ent-reply-overdue.test.ts）", () => {
     expect(是超时自动转痕({ kind: "transfer", userId: 系统.id, reason: 轮转原因 })).toBe(true);
@@ -227,7 +227,7 @@ describe("扫库收回", () => {
     expect(await 超时预览(开着({ 潜客培育: 1 }))).toBe(1);
   });
 
-  it("起点过滤（Even 11-19 第 14 题 B）：超时自动转那行不推后起点；手动转让、领取、换节点、系统别的转让照推；首页紧筛同一口径", async () => {
+  it("起点过滤（客户 11-19 第 14 题 B）：超时自动转那行不推后起点；手动转让、领取、换节点、系统别的转让照推；首页紧筛同一口径", async () => {
     await setSetting("orgRules", 开着({ 潜客培育: 3 }));
     const p = await 项目(乙.id, { createdAt: 天后(-10) });
     const 底 = { projectId: p.id, at: 天后(-1), fromPhase: "线索", fromNode: "潜客培育", toPhase: "线索", toNode: "潜客培育" };

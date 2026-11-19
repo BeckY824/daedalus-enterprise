@@ -5,6 +5,8 @@
  * 规矩在 lib/project/nodes.ts、读写在 lib/project/db.ts、建档向导在 lib/project/wizard.ts，这里只管登录、开关、操作日志和刷新。
  */
 import { 能往项目记沟通 } from "@/lib/project/follow-needs-project";
+import { 本人限时可改of, 下一步跟着改of, 改沟通时顺带, 下一步没同步话 } from "@/lib/enterprise/follow-perm";
+import { 写过下一步, 写了下一步标记 } from "@/lib/enterprise/follow-edited";
 import { revalidatePath } from "next/cache";
 import { 读项目详情 } from "./[id]/load";
 import type { 项目详情Props } from "./[id]/ProjectDetail";
@@ -22,12 +24,12 @@ import { 每人最多号码 } from "@/lib/enterprise/customer-v2";
 import type { Prisma } from "@/generated/prisma";
 import { 登记接着建, 记联系人带号 } from "@/lib/project/hook";
 import { 签首条附件票 } from "@/lib/enterprise/first-follow-ticket";
-import { 规整向导, 向导接着建, 规整只建客户, 只建客户接着建, 项目来源默认, 占位名提示, type 建好的, type 建好的客户, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
+import { 规整向导, 规整沟通, 向导接着建, 规整只建客户, 只建客户接着建, 项目来源默认, 占位名提示, type 建好的, type 建好的客户, type 向导联系人, type 向导项目, type 向导跟进 } from "@/lib/project/wizard";
 import { 补潜客培育 } from "@/lib/project/nurture";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
 import { 读必填数据, 能改节点, 上级只推, 直属才推, 只有负责人改进程, 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 能进公海的阶段, 超时成员线, 超时线, 补回收起点留痕, 能管项目, type 交付项 } from "@/lib/project/db";
-import { 合上改动, 是不限, 三态改动摘要, type 规则改动 } from "@/lib/project/org-rules";
+import { 合上改动, 是不限, 三态改动摘要, type 规则改动, type 组织规则 } from "@/lib/project/org-rules";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 不能新建项目话, 是经理 } from "@/lib/enterprise/permissions";
@@ -44,7 +46,7 @@ import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通�
 import { 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
 import { 市场分配进线索验证 } from "@/lib/enterprise/market-assign-node";
 import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
-import { 项目按必填走, 是占位值, 还差 as 必填还差, 必填叫法 } from "@/lib/project/required";
+import { 项目按必填走, 只管新建之后, 是占位值, 还差 as 必填还差, 必填叫法 } from "@/lib/project/required";
 import { dayjs } from "@/lib/utils";
 import { 字典of } from "@/lib/project/stage-dict";
 import type { 回收预演底子 } from "@/lib/enterprise/recycle-text";
@@ -549,7 +551,7 @@ export async function 看板推进预检(projectId: string, 到: 位置): Promis
     }
     const 字典 = 字典of(企业版(), 企业版() ? 规则.阶段.出口叫法 : null);
     const 往前 = !p.result && 节点序号(本套位置({ ...到, result: null }, 字典), 字典) > 节点序号(本套位置(p, 字典), 字典);
-    // 生效时刻之前建的存量项目不按必填拦（和 改节点 同一个判断，11-19 第 25 题）
+    // 节点推进管不管这个项目（默认全部项目都管，客户 11-19；设置成只管新建的时存量不拦）：和 改节点 同一个判断
     if (!往前 || !项目按必填走(规则, p)) return { ok: true, 还差: [], 能留空推: false };
     const 差 = 必填还差(规则, await 读必填数据(prisma, p, 规则));
     return { ok: true, 还差: 差.map(必填叫法), 能留空推: 是经理(me, org) };
@@ -717,10 +719,17 @@ const 项目字段名: Record<string, string> = {
   level: "项目级别", projTag: "项目标签", addrCountry: "所在地", addrProvince: "所在地", addrCity: "所在地", addrDistrict: "所在地", location: "详细地址",
   dealDemand: "需求描述", contractAmount: "合同金额", contractCurrency: "合同金额", depositAmount: "定金金额", depositCurrency: "定金金额",
   painPoints: "痛点标注", contractStatus: "合同状态", bizLine: "业务线",
+  stockStatus: "备货状态", logisticsStatus: "物流状态", trackingNo: "物流单号",
   replyStartAt: "指定回复时间", replyEndAt: "指定回复时间",
 };
 
-/** 编辑项目：名称、负责人、金额、币种、备注、主联系人；企业版还有预计成交日期、项目来源、项目级别、项目标签、所在地、需求描述、合同金额、定金金额、痛点标注、合同状态、业务线（改了不重新自动分配） */
+/** 操作日志里节点推进管哪些项目（客户 11-19：默认存量、新建都管；设置成只管新建的写上从哪一刻起） */
+function 推进范围话(r: 组织规则): string {
+  const 起 = 只管新建之后(r);
+  return 起 ? `只管 ${dayjs(起).format("YYYY-MM-DD HH:mm")} 之后新建的项目` : r.节点推进.范围 === "新建" ? "只管开启之后新建的项目" : "存量和新建的项目都管";
+}
+
+/** 编辑项目：名称、负责人、金额、币种、备注、主联系人；企业版还有预计成交日期、项目来源、项目级别、项目标签、所在地、需求描述、合同金额、定金金额、痛点标注、合同状态、备货状态、物流状态、物流单号、业务线（改了不重新自动分配） */
 export async function 编辑项目(projectId: string, patch: 编辑项目改动, 带待办?: boolean) {
   try {
     const me = await requireUser();
@@ -962,7 +971,7 @@ export async function 改组织规则(改: 规则改动) {
         ? `组织规则：培育计划字数上限 ${新.阶段.培育计划上限 ?? "不设"}，无效原因字数上限 ${新.阶段.无效原因上限 ?? "不设"}`
         : `组织规则：往前推权限 ${新.阶段.推进权限}，改了 ${Object.keys(新.阶段.出口叫法).length} 个阶段的结束状态叫法`
       : 改.节点推进 !== undefined
-      ? 推.开 ? `组织规则：节点推进开，${Object.keys(推.必填).length} 个进程配了必填${推.生效于 ? `，只管 ${dayjs(推.生效于).format("YYYY-MM-DD HH:mm")} 之后新建的项目` : ""}` : "组织规则：节点推进关"
+      ? 推.开 ? `组织规则：节点推进开，${Object.keys(推.必填).length} 个进程配了必填，${推进范围话(新)}` : `组织规则：节点推进关${改.节点推进.范围 !== undefined ? `，${推进范围话(新)}` : ""}`
       : 改.超时回收 !== undefined
       ? (t.开 ? `组织规则：超时回收开，设了 ${Object.keys(t.节点天数).length} 个进程的处理时长${Object.keys(t.外贸节点天数 ?? {}).length ? `（外贸单设 ${Object.keys(t.外贸节点天数 ?? {}).length} 个）` : ""}` : "组织规则：超时回收关") + (改.超时回收.起算日 !== undefined ? `，起算日 ${t.起算日 ?? "不设"}` : "")
       : 改.公海?.多项目客户 !== undefined
@@ -1036,6 +1045,8 @@ export async function 记项目沟通Action(projectId: string, input: 向导跟�
       await recordAudit({
         user: me, action: "create", entity: "FollowUp", entityId: r.followUpId,
         summary: `在项目「${p?.name ?? ""}」上记了一条沟通（${input.阶段 ?? ""}阶段）`,
+        // 这条写了项目上的下一步：打标记（30 分钟内改这条时下一步才跟着改，follow-edited.ts 写过下一步）
+        ...(r.写了下一步 ? { detail: 写了下一步标记 } : {}),
       });
       await 记这个项目的自动推进(me, projectId, r.自动推到);
       // 客户三态：记了一条沟通（可能还推了节点），马上重算这位的钟（关着不查库，出错不影响保存）
@@ -1081,7 +1092,7 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
     if (要下一步 && !项目按必填走(规则, p) && !验证中) {
       const 字典 = 字典of(true, 规则.阶段.出口叫法);
       const c = await 看全部(() => prisma.customer.findUnique({ where: { id: p.customerId }, select: { lastFollowAt: true } }));
-      // 最近一条留痕：超时自动转那行不算（Even 11-19 第 14 题 B，同 lib/project/db.ts 项目回收日）
+      // 最近一条留痕：超时自动转那行不算（客户 11-19 第 14 题 B，同 lib/project/db.ts 项目回收日）
       const [留] = await 补回收起点留痕([p]);
       const 起点 = 超时起点(p.createdAt, 留.logs[0]?.at, c?.lastFollowAt);
       const 线 = 超时线(p, await 超时成员线(规则));  // 按项目业务线分内外贸天数（C7）
@@ -1100,7 +1111,7 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
  * 只认挂在这个项目上的沟通；同事的客户 / 虚线下属的客户（只读客户）改不了、删不了，和客户页不摆编辑删除一致。
  * 删 = 企业版软删，进「设置 → 回收站」，30 天内系统管理员、回收站副手能恢复
  */
-async function 项目上的沟通(projectId: string, followUpId: string) {
+async function 项目上的沟通(projectId: string, followUpId: string, 本人?: { id: string }) {
   if (typeof projectId !== "string" || typeof followUpId !== "string" || !projectId || !followUpId) return { ok: false as const, error: "这条沟通的信息不完整，刷新看看" };
   const 挂 = await prisma.followUpProject.findUnique({ where: { followUpId }, select: { projectId: true } });
   if (!挂 || 挂.projectId !== projectId) return { ok: false as const, error: "这条沟通不在这个项目上了，刷新看看" };
@@ -1109,34 +1120,100 @@ async function 项目上的沟通(projectId: string, followUpId: string) {
   const c = await prisma.customer.findUnique({ where: { id: f.customerId }, select: { id: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } } });
   if (!c) return { ok: false as const, error: "这位客户已经不在了，刷新看看" };
   const 只读档 = await 只读客户(defaultClient, c);
-  if (只读档 === "全") return { ok: false as const, error: await 只读话(defaultClient) };
-  if (只读档) return { ok: false as const, error: "这是同事的客户：只能新加沟通，改、删已有的请找负责人" };
+  // 改（给了 本人）：自己 30 分钟内记的这条，客户对我只读（项目组员）也先放过去，saveFollowUp 里 本人限时改挡 再核（11-19）
+  if (只读档 === "全" && !(本人 && 企业版() && 本人限时可改of(本人, f))) return { ok: false as const, error: await 只读话(defaultClient) };
+  if (只读档 === "加跟进") return { ok: false as const, error: "这是同事的客户：只能新加沟通，改、删已有的请找负责人" };
   return { ok: true as const, f };
 }
 
-export type 改沟通输入 = { type: string; method?: string | null; /** 发起主体（企业版，11-01）：没带不动 */ initiator?: string | null; content: string; occurredAt: string; 版本?: string };
+export type 改沟通输入 = {
+  type: string; method?: string | null; /** 发起主体（企业版，11-01）：没带不动 */ initiator?: string | null; content: string; occurredAt: string; 版本?: string;
+  /**
+   * 下一步做什么 / 下一步时间（11-19 记录人 30 分钟内改）：都没带 = 不动、不校验（人没动下一步前端就不带）。只有 下一步跟着改of 成立
+   * （这个项目最近一条、负责人自己记的、记的时候写过下一步、还在 30 分钟内）才认，改了同步回项目上的下一步和这条的下一步时间；
+   * 不成立（比如页面开着时组员新记了一条）只丢掉下一步、沟通照存，回一句 提示
+   */
+  下一步?: string | null; 下一步时间?: string | null;
+};
+
+/** 这个项目最近记的一条沟通（按写入时刻；软删的不算）。下一步跟着改of 认它；改项目沟通 在事务里读（db 传 tx） */
+async function 项目最近一条沟通(projectId: string, db: Pick<Prisma.TransactionClient, "followUpProject"> = prisma): Promise<string | null> {
+  const r = await 看全部(() => db.followUpProject.findFirst({ where: { projectId, followUp: { deletedAt: null } }, orderBy: { followUp: { createdAt: "desc" } }, select: { followUpId: true } }));
+  return r?.followUpId ?? null;
+}
 
 /** 改项目上的一条沟通：只改沟通方式、发起主体、时间、内容，别的格子（状态、时长、提醒、联系人、与会人）原样带回去 */
 export async function 改项目沟通(projectId: string, followUpId: string, input: 改沟通输入) {
   try {
-    await requireUser();
+    const me = await requireUser();
     if (!(await 开着())) return 没开;
     if (!企业版()) return { ok: false as const, error: "在项目上改沟通是企业版的功能，请去客户页改" };
     if (!input || typeof input !== "object") return { ok: false as const, error: "沟通信息格式不正确" };
-    const 查 = await 项目上的沟通(projectId, followUpId);
+    const 查 = await 项目上的沟通(projectId, followUpId, me);
     if (!查.ok) return 查;
     const f = 查.f;
-    const r = await saveFollowUp({
+    // 下一步跟着改（11-19）：带了才核填得对不对（核不过整次拒，同记的时候）；能不能跟着改放进存沟通的事务里再判（低-6）
+    const 带下一步 = input.下一步 !== undefined || input.下一步时间 !== undefined;
+    let 新下一步: { 文字: string | null; 时间: Date | null } | null = null;
+    let 资格: { 写过: boolean; 能管: boolean } | null = null;
+    if (带下一步) {
+      const p = await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, result: true, phase: true } }));
+      if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
+      const 规则 = await 生效组织规则();
+      const 要下一步 = 规则.超时回收.开 && (能进公海的阶段 as readonly string[]).includes(p.phase);
+      // 和记的时候同一套校验（项目详情「记一条」：下一步做什么必填，线索 / 商机阶段开了超时回收时间也必填）
+      const 好 = 规整沟通({ type: input.type, method: input.method, initiator: input.initiator, content: input.content, occurredAt: input.occurredAt, 下一步: input.下一步 ?? null, 下一步时间: input.下一步时间 ?? null } as 向导跟进, { 要下一步, 要下一步文字: true });
+      if ("error" in 好) return { ok: false as const, error: 好.error };
+      新下一步 = { 文字: 好.nextStepText, 时间: 好.nextStepAt };
+      // 组织表、操作日志在事务外读好（事务里用全局连接读，单连接时会等到事务超时）
+      资格 = { 写过: await 写过下一步(f.id), 能管: 能管项目(me, p, await 权限组织()) };
+    }
+    /** 事务里判下来：下一步没跟着改（资格丢了）就回一句提示；改了就记下留痕的料，存上后再写日志 */
+    const 下一步结果: { 丢了: boolean; 痕: 下一步痕 | null } = { 丢了: false, 痕: null };
+    const 顺带 = async (tx: Prisma.TransactionClient) => {
+      if (!新下一步 || !资格) return;
+      const p = await 看全部(() => tx.project.findUnique({ where: { id: projectId }, select: { ownerId: true, pooledAt: true, result: true } }));
+      const 成 = !!p && 下一步跟着改of(me, f, { ownerId: p.ownerId, 最近一条id: await 项目最近一条沟通(projectId, tx), 能管: 资格.能管 && !p.pooledAt && !p.result, 写过下一步: 资格.写过 });
+      if (!成) { 下一步结果.丢了 = true; return; }
+      下一步结果.痕 = await 改沟通的下一步(tx, projectId, f.id, 新下一步);
+    };
+    const r = await 改沟通时顺带(f.id, 顺带, () => saveFollowUp({
       id: f.id, customerId: f.customerId, type: input.type, method: input.method, initiator: input.initiator, content: input.content, occurredAt: input.occurredAt,
       title: f.title, status: f.status, durationMinutes: f.duration != null ? f.duration / 60 : null,
       dueAt: scheduleValue(f.dueAt, f.dueOn), dueHasTime: f.dueHasTime ?? undefined,
       contactId: f.contactId, opportunityId: f.opportunityId, participants: f.participants,
       版本: input.版本 ?? f.updatedAt.toISOString(),
-    });
+    }));
     if (!r.ok) return r;
+    const 痕 = 下一步结果.痕;
+    if (痕) await recordAudit({
+      user: me, action: "update", entity: "FollowUp", entityId: f.id,
+      summary: `改了沟通：项目「${痕.项目}」上的一条沟通，改了${痕.改了.join("、")}（记录人本人提交后 30 分钟内修改，项目上的下一步跟着改）`,
+      detail: { 项目: 痕.项目, 改了: 痕.改了, 本人限时改: true, 原下一步: 痕.原下一步, 原下一步时间: 痕.原下一步时间 },
+    });
     刷新项目(projectId, f.customerId);
-    return { ok: true as const };
+    return { ok: true as const, ...(下一步结果.丢了 ? { 提示: 下一步没同步话 } : {}) };
   } catch (e) { return 不在了(e); }
+}
+
+type 下一步痕 = { 项目: string; 改了: string[]; 原下一步: string | null; 原下一步时间: string | null };
+
+/**
+ * 下一步跟着改（改项目沟通 在存沟通的事务里核过资格后调）：这条的下一步时间（时限提醒按它算）、项目上的下一步做什么 / 下一步时间一起换，和记的时候写法一样；
+ * 没变不写、不留痕。下一步时间只提醒、不改回收日（11-18），这里不碰回收
+ */
+async function 改沟通的下一步(tx: Prisma.TransactionClient, projectId: string, followUpId: string, 新: { 文字: string | null; 时间: Date | null }): Promise<下一步痕 | null> {
+  const 时 = (d: Date | null | undefined) => d?.getTime() ?? null;
+  const p = await 看全部(() => tx.project.findUnique({ where: { id: projectId }, select: { name: true, nextStepText: true, nextStepAt: true } }));
+  const 元 = await 看全部(() => tx.entFollowUpMeta.findUnique({ where: { followUpId }, select: { nextAt: true } }));
+  if (!p) return null;
+  const 改了: string[] = [];
+  if ((p.nextStepText ?? null) !== 新.文字) 改了.push("下一步");
+  if (时(p.nextStepAt) !== 时(新.时间) || (元 && 时(元.nextAt) !== 时(新.时间))) 改了.push("下一步时间");
+  if (!改了.length) return null;
+  if (元) await tx.entFollowUpMeta.update({ where: { followUpId }, data: { nextAt: 新.时间 } });
+  await tx.project.update({ where: { id: projectId }, data: { nextStepText: 新.文字, nextStepAt: 新.时间 } });
+  return { 项目: p.name, 改了, 原下一步: p.nextStepText, 原下一步时间: p.nextStepAt?.toISOString() ?? null };
 }
 
 /** 删项目上的一条沟通：企业版软删进回收站（11-09 起不给本人撤回，找回走回收站） */

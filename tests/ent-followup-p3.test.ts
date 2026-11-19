@@ -33,7 +33,7 @@ import { 记项目沟通Action, 改项目沟通, 删项目沟通 } from "@/app/(
 import { deleteFollowUp } from "@/app/(app)/customers/[id]/actions";
 import { undoProposal } from "@/app/(app)/dashboard/apply";
 import { 沟通卡点, 沟通卡点占位描述, 默认卡点默认 } from "@/lib/project/blocker-rules";
-import { 能改沟通of, 能删沟通of, 负责人能改of, 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话 } from "@/lib/enterprise/follow-perm";
+import { 能改沟通of, 能删沟通of, 负责人能改of, 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话, 本人改沟通过时话 } from "@/lib/enterprise/follow-perm";
 import { 建组织 } from "@/lib/enterprise/org-core";
 import { 回收站列表 } from "@/lib/enterprise/soft-delete";
 import { 清孤儿 } from "@/lib/attachments";
@@ -276,10 +276,12 @@ describe("M-权限-09 谁能改删沟通", () => {
     expect(await 能删沟通({ id: 销售, role: "SALES" }, { customerId: 客户 })).toBe(true);
   });
 
-  it("11-09 原口径：销售负责人本人改、删都不行（原样还在）；同事也不行；身为负责人的销售管理能改、能删（软删）", async () => {
+  it("11-09 原口径：销售负责人本人改（过了 30 分钟）、删都不行（原样还在）；同事也不行；身为负责人的销售管理能改、能删（软删）", async () => {
     const { followUpId } = await 记一条();
     const id = followUpId!;
-    expect(await 改项目沟通(项目, id, { type: "WECHAT", content: "负责人想改", occurredAt: "2026-10-19 09:30" })).toEqual({ ok: false, error: 不能改沟通话 });
+    // 11-19 起记录人本人 30 分钟内能改（ent-followup-edit-30min）：这里钉过了时限的
+    await 变老(id);
+    expect(await 改项目沟通(项目, id, { type: "WECHAT", content: "负责人想改", occurredAt: "2026-10-19 09:30" })).toEqual({ ok: false, error: 本人改沟通过时话 });
     expect(await 删项目沟通(项目, id)).toEqual({ ok: false, error: 不能删沟通话 });
     expect(await deleteFollowUp(id, 客户)).toEqual({ ok: false, error: 不能删沟通话 });
     当(同事);

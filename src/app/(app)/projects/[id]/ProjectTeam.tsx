@@ -13,7 +13,7 @@ import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import AddressInput, { 空地址 } from "@/components/AddressInput";
 import { 企业客户级别, 企业级别说明, type 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 详细地址上限, 详细地址提示, 成交需求上限, type 项目成交钱 } from "@/lib/project/profile-rules";
-import { 合同状态们, 痛点标注上限, type 合同状态 } from "@/lib/project/proj-fields";
+import { 合同状态们, 痛点标注上限, 备货状态们, 物流单号上限, type 合同状态, type 备货状态 } from "@/lib/project/proj-fields";
 import { 三种业务线, 建议业务线, 所在地提示, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 再邀默认角色 } from "@/lib/project/team-ui";
 import { 不填项, 去不填, 未选占位 } from "@/lib/enterprise/dict-kinds";
@@ -40,6 +40,7 @@ const 满宽: React.CSSProperties = { width: "100%" };
  * 企业版另有项目级别（S / A / B / C，显示成星）、项目标签（字典 projTag，和级别各自填，F-项目-14）、所在地四格 + 详细地址（P11 定稿 -2 版）：和客户地址同一套组件和校验（AddressInput / 规整地址）；
  * 需求描述（原成交需求）、合同金额、定金金额（迁移 097）：两个金额和上面「金额」一样，左边币种下拉、右边数字连成一格（Space.Compact）；
  * 痛点标注（多行）、合同状态（七项单选）（迁移 101）：哪一项没传（不是企业版 / 字段权限藏了）就不摆、不交；
+ * 备货状态、物流状态、物流单号（迁移 154，客户 11-19）：订单阶段才传、才摆（同交付卡），没改的不交；
  * 业务线（11-02）：三选一；改了所在地、按所在地看像另一条线时在所在地下面提示 +「改成 X」，点了才换，不悄悄改；改线不重新自动分配
  */
 export function ProjectEditModal({
@@ -63,6 +64,8 @@ export function ProjectEditModal({
     成交钱?: 项目成交钱;
     /** 企业版才传；里面哪个键没有 = 那一项不摆、不交 */
     项目新字段?: { painPoints?: string | null; contractStatus?: 合同状态 | null };
+    /** 企业版、订单阶段才传（迁移 154，同交付卡）：备货状态、物流状态（现值 + 字典选项）、物流单号；不传 = 不摆、不交；没改的那格不交 */
+    备货物流?: { 备货状态: 备货状态 | null; 物流状态: { 值: string | null; 选项: string[] }; 物流单号: string | null };
   };
   候选: 可选成员[];
   联系人们: 联系人[];
@@ -88,6 +91,10 @@ export function ProjectEditModal({
   const 新 = p.项目新字段;
   const [痛点, set痛点] = useState(新?.painPoints ?? "");
   const [合同, set合同] = useState<合同状态 | null>(新?.contractStatus ?? null);
+  const 货 = p.备货物流;
+  const [备货, set备货] = useState<string | null>(货?.备货状态 ?? null);
+  const [物流, set物流] = useState<string | null>(货?.物流状态.值 ?? null);
+  const [单号, set单号] = useState(货?.物流单号 ?? "");
   const 改 = (x: Partial<typeof d>) => setD((o) => ({ ...o, ...x }));
   const 改钱 = (x: Partial<NonNullable<typeof 钱>>) => set钱((o) => (o ? { ...o, ...x } : o));
   /*
@@ -96,9 +103,12 @@ export function ProjectEditModal({
   */
   const 稿 = useFormDraft({
     键: open ? `编辑项目:${p.id}` : null,
-    值: { ...d, 级别, 标签, 地址, 详细, 线, 钱, 痛点, 合同 },
+    值: { ...d, 级别, 标签, 地址, 详细, 线, 钱, 痛点, 合同, 备货, 物流, 单号 },
     带回: (v) => {
-      const { 级别: 级, 标签: 签, 地址: 址, 详细: 细, 线: 线2, 钱: 钱2, 痛点: 痛, 合同: 合, ...其余 } = v;
+      const { 级别: 级, 标签: 签, 地址: 址, 详细: 细, 线: 线2, 钱: 钱2, 痛点: 痛, 合同: 合, 备货: 货2, 物流: 流, 单号: 号, ...其余 } = v;
+      if ("备货" in v) set备货(货2 ?? null);
+      if ("物流" in v) set物流(流 ?? null);
+      if (typeof 号 === "string") set单号(号);
       if ("级别" in v) set级别(级 ?? null);
       if ("标签" in v) set标签(签 ?? null);
       if (址 && typeof 址 === "object") set地址(址);
@@ -124,6 +134,10 @@ export function ProjectEditModal({
     ...(钱 ? { ...钱, dealDemand: 钱.dealDemand.trim() || null } : {}),
     ...(新 && "painPoints" in 新 ? { painPoints: 痛点.trim() || null } : {}),
     ...(新?.contractStatus !== undefined ? { contractStatus: 合同 } : {}),
+    // 备货、物流（迁移 154）：没改的不交（物流状态停用了还留着的那项不会被服务端拿去对字典）
+    ...(货 && 备货 !== (货.备货状态 ?? null) ? { stockStatus: 备货 } : {}),
+    ...(货 && 物流 !== (货.物流状态.值 ?? null) ? { logisticsStatus: 物流 } : {}),
+    ...(货 && (单号.trim() || null) !== (货.物流单号 ?? null) ? { trackingNo: 单号.trim() || null } : {}),
   };
   const 行 = (label: string, el: React.ReactNode) => (
     <div style={{ marginBottom: 12 }}>
@@ -211,6 +225,9 @@ export function ProjectEditModal({
         </Space.Compact>
       ))}
       {新?.contractStatus !== undefined && 行("合同状态", <Select style={{ width: "100%" }} aria-label="合同状态" allowClear placeholder={未选占位} value={合同 ?? undefined} options={[不填项, ...合同状态们.map((v) => ({ value: v, label: v }))]} onChange={(v?: string) => set合同(去不填(v) as 合同状态 | null)} />)}
+      {货 && 行("备货状态", <Select style={满宽} aria-label="备货状态" allowClear placeholder={未选占位} value={备货 ?? undefined} options={[不填项, ...备货状态们.map((v) => ({ value: v, label: v }))]} onChange={(v?: string) => set备货(去不填(v))} />)}
+      {货 && 行("物流状态", <Select style={满宽} aria-label="物流状态" allowClear placeholder={未选占位} value={物流 ?? undefined} options={[不填项, ...货.物流状态.选项.map((v) => ({ value: v, label: v }))]} onChange={(v?: string) => set物流(去不填(v))} />)}
+      {货 && 行("物流单号", <Input aria-label="物流单号" maxLength={物流单号上限} placeholder="几个单号用逗号隔开" value={单号} onChange={(e) => set单号(e.target.value)} />)}
       {钱 && 行("需求描述", <Input.TextArea aria-label="需求描述" rows={2} maxLength={成交需求上限} placeholder="客户想买什么、要多少" value={钱.dealDemand} onChange={(e) => 改钱({ dealDemand: e.target.value })} />)}
       {新 && "painPoints" in 新 && 行("痛点标注", <Input.TextArea aria-label="痛点标注" rows={3} maxLength={痛点标注上限} placeholder="客户现在卡在哪、最着急解决什么" value={痛点} onChange={(e) => set痛点(e.target.value)} />)}
       {p.expectedDealAt !== undefined && 行("预计成交日期", (

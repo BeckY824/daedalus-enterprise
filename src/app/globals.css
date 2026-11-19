@@ -1353,6 +1353,8 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-inline-edit { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 .proj-inline-money { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .proj-inline-money > * { flex: 1 1 110px; min-width: 0; }
+/* 交付卡里的备货状态、物流状态、物流单号（迁移 154）：和下面两个勾隔开一点 */
+.proj-stock-rows { min-width: 0; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
 .proj-inline-err { color: var(--danger-text); overflow-wrap: anywhere; }
 .proj-inline-acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .proj-inline-hint { color: var(--text-muted); font-size: var(--dt-aux, 12px); }
@@ -5044,6 +5046,16 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 .cu-said-row { margin-bottom: var(--s3); }
 /* 联系人表单：号码在回收站里（审核 11-18 新建入口 P2-6），黄条里摆「从回收站捞回」 */
 .cf-trash-hit { margin-top: var(--s2); }
+/* 市场成员查重撞上公海客户：「领取并记沟通」框（F-016）。几格竖排、底下按钮靠右 */
+.dc-claim-body { display: flex; flex-direction: column; gap: var(--s3); }
+.dc-claim-full { width: 100%; }
+.dc-claim-req { color: var(--danger); }
+.dc-claim-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s3); }
+.dc-claim-wide { grid-column: 1 / -1; overflow-wrap: anywhere; }
+.dc-claim-who { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 767px) { .dc-claim-grid { grid-template-columns: minmax(0, 1fr); } }
+.dc-claim-foot { display: flex; justify-content: flex-end; gap: var(--s2); }
+.prop-err-act { margin-top: var(--s2); }
 .cu-said-warn { color: var(--warning-text); }
 .cu-said-err { color: var(--danger-text); }
 span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
@@ -5183,3 +5195,10 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 .dir-select-w120 { width: 120px; }
 .dir-select-w110 { width: 110px; }
 .lead-region-line { font-size: var(--fs-min); }
+/* 沟通 30 分钟内本人改（F-013）：已修改小字、修改框里的下一步两格 */
+.proj-fu-edited { color: var(--text-muted); font-size: var(--dt-aux, 12px); white-space: nowrap; }
+.proj-fu-lab { margin-bottom: 4px; }
+.proj-fu-req { color: var(--danger-text); }
+.proj-fu-mute { color: var(--text-muted); }
+.proj-fu-full { width: 100%; }
+.proj-fu-note { color: var(--text-muted); font-size: var(--dt-aux, 12px); margin-top: 4px; }

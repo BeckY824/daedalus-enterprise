@@ -28,6 +28,7 @@ import { 查号码, 查客户名, type 查号码结果 } from "../../customers/n
 import type { 名撞结论 } from "@/lib/enterprise/dupe-ledger";
 import AttachEntry, { 负责人说法, 我名下入口 } from "./AttachEntry";
 import RescueKey from "../../customers/RescueKey";
+import DedupeClaimKey from "../../customers/DedupeClaimKey";
 import { 向导能选类型, 带进联系人, 号码类型叫法, type 联系人三格 } from "@/lib/enterprise/contact-format";
 import { 每人最多号码, 内置号码种类, 号码上限, 联系人姓名问题 } from "@/lib/enterprise/customer-v2";
 import { 线索号码种类 } from "@/lib/agent/proposals";
@@ -351,6 +352,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   const [撞, set撞] = useState<DuplicateHit>(null);
   // 企业版「查重」回来的那句（格式不对 / 首次录入 / 撞了哪种）
   const [企查, set企查] = useState<查号码结果 | null>(null);
+  // 查重领取成了（F-016）那一句：有它时撞号面板只剩它（不重查、不摆挂靠 / 协同），下次查号、改号码清掉
+  const [领成话, set领成话] = useState("");
   const [查中, set查中] = useState(false);
   // 企业版客户名查重（P-挂靠-01）：离开客户名那格就查；撞了就地摆出负责人和申请挂靠，改了名字再查
   const [名查, set名查] = useState<{ 名: string; 撞: 名撞结论 | null; 提示: string } | null>(null);
@@ -432,6 +435,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
       if (企业版) {
         const r = await 查号码(稿面.号码类型 ?? "", 号);
         set企查(r);
+        set领成话("");
         set已查(查过键(稿面, true));
         if (!(r.ok && r.状态 === "首次录入")) return null;
         // 查过的号码顺手填进联系人那一格：空着的、或者还是上次查重带进去的（人没改过）换成这次的
@@ -706,6 +710,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     set已查(null);
     set撞(null);
     set企查(null);
+    set领成话("");
     set名查(null);
     set显错(false);
     set已存(false);
@@ -906,6 +911,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
                 onChange={(v) => {
                   改("号码类型", v);
                   set企查(null);
+                  set领成话("");
                   // 换了类型：号码已经填了就照新类型再查一次
                   if (d.phone.trim()) void 查号({ ...d, 号码类型: v });
                 }}
@@ -918,6 +924,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
                 onChange={(e) => {
                   改("phone", e.target.value);
                   set企查(null);
+                  set领成话("");
                 }}
                 onBlur={() => { if (d.phone.trim() && !号查过) void 查号(); }}
                 onPressEnter={() => void 查号()}
@@ -941,7 +948,10 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
             <div className="cr-wide">
               {企查.ok && 企查.状态 === "首次录入" ? <Alert type="success" showIcon title={去符号(企查.提示)} description={企查.归属地 ? `归属地：${企查.归属地}` : undefined} />
                 : !企查.ok ? <Alert type="warning" showIcon title={去符号(企查.提示)} />
-                : <撞号面板 查={企查} users={users} 类型={d.号码类型 ?? ""} 捞回了={set企查} 协同={企查.可协同 ? <SameNumberEntry 类型={d.号码类型} 值={企查.值} 渠道们={企业?.渠道们 ?? []} 默认渠道={d.客户.渠道 || null} 情况={企查.协同} /> : null} />}
+                // 查重领取成了（F-016）：面板收成只剩「已领取」那句。不重查——客户已在销售名下，重查是「重复」，会记撞号台账、摆挂靠 / 同号协同，
+                // 把市场成员引去挂靠自己刚交出去的客户。下次查号清掉
+                : 领成话 ? <Alert type="success" showIcon title={<span role="status" data-testid="dedupe-claim-done">{领成话}</span>} />
+                : <撞号面板 查={企查} users={users} 类型={d.号码类型 ?? ""} 捞回了={set企查} 渠道={d.客户.渠道 || null} 触点={d.客户.触点 || null} 领成了={set领成话} 协同={企查.可协同 ? <SameNumberEntry 类型={d.号码类型} 值={企查.值} 渠道们={企业?.渠道们 ?? []} 默认渠道={d.客户.渠道 || null} 情况={企查.协同} /> : null} />}
             </div>
           )}
           {!企业版 && 号查过 && (
@@ -1232,15 +1242,21 @@ function 去符号(s: string): string {
  * 企业版查重撞了（P0-7）：把撞到的那条摆出来，并给出口，而不是只说「已存在」。
  * 看不到的客户不给名字（撞号结论 按 看得到 收），写「领取后可见」；在公海的给「去领取」，在同事名下的给「联系负责人」
  */
-function 撞号面板({ 查, users, 类型, 捞回了, 协同 }: { 查: Extract<查号码结果, { ok: true }>; users: 可选成员[]; 类型: string; 捞回了: (查: 查号码结果) => void; 协同?: React.ReactNode }) {
+function 撞号面板({ 查, users, 类型, 捞回了, 渠道, 触点, 领成了, 协同 }: {
+  查: Extract<查号码结果, { ok: true }>; users: 可选成员[]; 类型: string; 捞回了: (查: 查号码结果) => void;
+  渠道?: string | null; 触点?: string | null; 领成了?: (话: string) => void; 协同?: React.ReactNode;
+}) {
   const 撞 = 查.撞;
   const 在公海 = 查.状态 === "公海待捞";
   // 只在回收站里撞上（11-05 X-10）：没有「领取」「负责人」可说，给「从回收站捞回」（客户 11-05：只有查重触发时可以捞回）
   if (查.状态 === "回收站里有") {
     return <Alert type="error" showIcon title={去符号(查.提示)} description={<div><div>{撞?.name ? `${撞.name} · ` : ""}在回收站里</div><Space size={8} style={{ marginTop: 8 }}><RescueKey 类型={类型} 值={查.值} 捞回了={捞回了} /></Space>{协同}</div>} />;
   }
+  // 市场成员撞上公海（F-016）：就地「领取并记沟通」，领了自动分给销售；公海页他领不了，不给「去领取」。
+  // 是自己退回公海的也给（服务端只在他是客户创建人时说 市场可领，用户 11-19「仅对创建人豁免」）
+  const 市场领 = 在公海 && !!查.市场可领;
   // 自己退回公海的：企业版原负责人看不到也领不回，「打开它」「去领取」都走不通，不摆（11-03 B7-3）
-  const 我退的 = 在公海 && !!查.原负责人是我;
+  const 我退的 = 在公海 && !!查.原负责人是我 && !市场领;
   const 负责人 = 撞?.salesOwnerName ?? "";
   // 负责人已离职（11-03 C4-5）：不叫人找他，指他的直属上级（没有就系统管理员）
   const 离职找 = 撞?.负责人已离职找 ?? "";
@@ -1265,7 +1281,13 @@ function 撞号面板({ 查, users, 类型, 捞回了, 协同 }: { 查: Extract<
           <Space size={8} style={{ marginTop: 8 }} wrap>
             {撞?.id && !我退的 && <Link href={`/customers/${撞.id}`}><Button size="small">打开它</Button></Link>}
             {我退的 && <span style={{ color: "var(--text-muted)" }}>是你退回公海的，{原负责人不能领回提示}</span>}
-            {在公海 && !我退的 && <Link href={撞?.name ? `/pool?keyword=${encodeURIComponent(撞.name)}` : "/pool"}><Button size="small">去领取</Button></Link>}
+            {市场领 && (
+              <DedupeClaimKey
+                类型={类型} 值={查.值} 客户id={撞?.id} 渠道={{ id: 渠道 }} 触点={触点}
+                领了={领成了}
+              />
+            )}
+            {在公海 && !我退的 && !市场领 && <Link href={撞?.name ? `/pool?keyword=${encodeURIComponent(撞.name)}` : "/pool"}><Button size="small">去领取</Button></Link>}
             {查.状态 === "重复" && 离职找 && <span style={{ color: "var(--text-muted)" }}>负责人已离职，请联系 {离职找}</span>}
             {查.状态 === "重复" && 负责人 && !离职找 && (邮箱
               ? <CopyValue 种类="邮箱" 叫法="负责人邮箱" value={邮箱} 文字={`联系负责人：${负责人}`} style={{ color: "var(--text-muted)" }} />

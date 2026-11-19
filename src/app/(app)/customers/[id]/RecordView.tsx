@@ -2004,6 +2004,7 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
         {f.项目 && <div><RowLink href={项目地址(f.项目.id)} className="rec-sum-proj" title={`项目：${f.项目.名}`}>项目：{f.项目.名}</RowLink></div>}
         <div className="rec-tl-meta">
           {f.ownerName && <span>{f.ownerName}</span>}
+          {f.已修改 && <span title="这条沟通提交后改过，改了什么见操作日志">已修改</span>}
           {f.duration ? <span>时长 {duration(f.duration)}</span> : null}
           {(f.contactName || f.contactId) && <span>{空显(f.contactName)}{f.contactPosition ? `（${f.contactPosition}）` : ""}</span>}
           {f.participants && <span>参与人：{f.participants}</span>}

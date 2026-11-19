@@ -127,7 +127,9 @@ const 可写: Record<string, string[]> = {
     // 企业版成交需求、合同金额 + 币种、定金金额 + 币种（迁移 097）：编辑项目框（编辑项目 → lib/project/db.ts 改项目），导入（enterprise-import/project-target.ts 建项目 / 改项目）
     "dealDemand", "contractAmount", "contractCurrency", "depositAmount", "depositCurrency",
     // 企业版痛点标注、合同状态（迁移 101）：编辑项目框（编辑项目 → lib/project/db.ts 改项目）；合同状态新建项目时写「起草中」
-    "painPoints", "contractStatus"],
+    "painPoints", "contractStatus",
+    // 企业版备货状态、物流状态、物流单号（迁移 154，客户 11-19）：交付卡就地改、编辑项目框、完成节点框（编辑项目 → lib/project/db.ts 改项目）
+    "stockStatus", "logisticsStatus", "trackingNo"],
   ProjectMember: ["roleId"],
   ProjectRole: ["name", "active"],
   ProjectExceptionCategory: ["name", "active"],
