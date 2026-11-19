@@ -5,7 +5,8 @@
  *   就地改：资料卡全称能清空（patchCustomer）
  *   AI 建档卡：名称空着不算缺项、确认后建得成；项目名跟客户起 = 全称或显名（客户编号），不落「潜在项目」、不拿联系人姓名、号码顶
  *   粘贴切人导入（首页粘一段 → 导入抽屉）：企业版没名称的行照导；跟进导出、背调「像你的老客户」叫显名
- *   全称灰字（PR-7 摘来）：没填 → 怎么显示；像人名 → 提醒，都不拦
+ *   全称灰字（PR-7 摘来）：没填 → 怎么显示；像人名 → 提醒，都不拦；三处名称框提示统一「单位名称，可留空」
+ *   粘贴切人导入的对列（企业版）：「联系人 / 姓名」列落主要联系人、只认明确的单位名称进全称（P-抬头-13）；桌面端映射不动
  *   显示兜底：客户显名 = 简称 → 全称 → 客户编号（回填前短号），永远不空；日志不出空引号；潜客培育项目名不空；分给你通知不因名字空被吞
  *   查重：空名不参与按名字的查重——两位都没名字、号码不同的客户互不相撞；导入查重索引里空名不建键
  */
@@ -33,7 +34,9 @@ import { 分给你通知 } from "@/lib/enterprise/notice-sources";
 import { 潜在项目名 } from "@/lib/project/relate-names";
 import { 全称像人名, 全称提示, 没填全称提示, 像人名提示 } from "@/lib/enterprise/fullname-hint";
 import { 摊开 } from "@/lib/import/plan";
-import { 字段表 } from "@/lib/import/fields";
+import { 字段表, 猜列 } from "@/lib/import/fields";
+import { 执行导入, 撤销批次 } from "@/app/(app)/customers/import-actions";
+import { 清空暂存 } from "@/lib/import/staging";
 import { 导出客户 } from "@/app/(app)/customers/export-action";
 import { 老客户清单 } from "@/lib/research/similar";
 
@@ -256,5 +259,55 @@ describe("导出 / 背调：没名的叫显名，不出空白", () => {
     const 清单 = await 老客户清单(DEFAULT_BUSINESS);
     expect(清单.find((x) => x.id === c.id)?.name).toBe(客户显名(c));
     for (const x of 清单) expect(x.name.trim()).not.toBe("");
+  });
+});
+
+describe("粘贴切人导入的对列（企业版，P-抬头-13）", () => {
+  const 企 = () => 字段表(DEFAULT_BUSINESS, true);
+  it("「联系人 / 联系人姓名 / 姓名」对到联系人姓名；「客户名称 / 公司 / 全称」才对到客户全称", () => {
+    expect(猜列(["联系人", "公司", "手机号"], 企())).toEqual(["contactName", "name", "phone"]);
+    expect(猜列(["联系人姓名", "客户名称"], 企())).toEqual(["contactName", "name"]);
+    expect(猜列(["姓名", "全称"], 企())).toEqual(["contactName", "name"]);
+    expect(猜列(["公司名称"], 企())).toEqual(["name"]);
+  });
+  it("企业版客户全称不标必填；公司 / 单位不再落到档案那一格", () => {
+    const 名 = 企().find((f) => f.名 === "name")!;
+    expect(名.必填).toBeUndefined();
+    expect(名.label).toBe("客户全称");
+    const 档 = 企().find((f) => f.名 === "school")!;
+    expect(档.别名).not.toContain("公司");
+    expect(档.别名).not.toContain("单位");
+  });
+  it("桌面端映射不动：「联系人」「姓名」照旧是客户姓名，「公司」照旧是档案那一格，姓名照旧必填", () => {
+    const 桌 = 字段表(DEFAULT_BUSINESS);
+    expect(猜列(["联系人", "公司"], 桌)).toEqual(["name", "school"]);
+    expect(桌.find((f) => f.名 === "name")!.必填).toBe(true);
+    expect(桌.some((f) => (f.名 as string) === "contactName")).toBe(false);
+  });
+
+  it("落库：联系人列建成主要联系人、客户全称空着；撤销连联系人一起删", async () => {
+    清空暂存();
+    await prisma.entMember.update({ where: { userId: "tester-id" }, data: { bizRole: "director" } });
+    忘掉企业版范围();
+    const 表头 = ["联系人", "手机号"];
+    const r = await 执行导入({ 表头, 数据: [["张伟", "13800000097"]], 映射: 猜列(表头, 企()), 重复行: "跳过" }, "a.xlsx");
+    if (!r.ok) throw new Error(r.error);
+    expect(r.新建).toBe(1);
+    const c = await prisma.customer.findFirstOrThrow({ include: { contacts: true } });
+    expect(c.name).toBe("");
+    expect(c.contacts).toHaveLength(1);
+    expect(c.contacts[0]).toMatchObject({ name: "张伟", phone: "13800000097", isPrimary: true });
+    const 撤 = await 撤销批次(r.batchId);
+    expect(撤).toMatchObject({ ok: true, 删掉: 1 });
+    expect(await prisma.customer.count()).toBe(0);
+    expect(await prisma.contact.count()).toBe(0);
+  });
+});
+
+describe("名称框提示、像人名灰字三处同一句（11-19）", () => {
+  it("提示是「单位名称，可留空」；像人名说联系人填到下面", async () => {
+    const { 名称框提示 } = await import("@/lib/enterprise/fullname-hint");
+    expect(名称框提示).toBe("单位名称，可留空");
+    expect(像人名提示).toBe("看着像联系人姓名，联系人请填在下面的联系人里");
   });
 });

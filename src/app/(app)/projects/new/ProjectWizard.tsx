@@ -52,7 +52,7 @@ import ReplyWindowInput from "@/components/ReplyWindowInput";
 import { 回复晚于回收, 北京墙钟转时刻, 认定时分配, 分配晚于回复 } from "@/lib/project/time-fields";
 import ScheduleAssignInput from "@/components/ScheduleAssignInput";
 import { 选沟通附件, 传沟通附件 } from "@/components/FollowAttachments";
-import { 全称提示, 全称像人名, 像人名提示 } from "@/lib/enterprise/fullname-hint";
+import { 全称提示, 全称像人名, 像人名提示, 名称框提示 } from "@/lib/enterprise/fullname-hint";
 
 const 草稿键 = "项目建档向导";
 const 时间格式 = "YYYY-MM-DD HH:mm";
@@ -981,14 +981,14 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
               onSelect={(v: string) => { if (v.startsWith("old:")) 挑老(v.slice(4)); }}
               onBlur={() => { const 名 = d.客户.name.trim(); if (名 && 名查?.名 !== 名) void 查名(名); }}
             >
-              <Input aria-label={`${b.customer}名称`} placeholder={企业版 ? "公司或个人，可留空；已有的直接搜到" : "公司或个人；已有的直接搜到"} />
+              <Input aria-label={`${b.customer}名称`} placeholder={企业版 ? `${名称框提示}；已有的直接搜到` : "公司或个人；已有的直接搜到"} />
             </AutoComplete>
           ) : (
             <Input
               aria-label={`${b.customer}名称`}
               value={d.客户.name}
               status={红("客户名") ?? (名拦 ? "error" : undefined)}
-              placeholder={企业版 ? "公司或个人，可留空" : "公司或个人"}
+              placeholder={企业版 ? 名称框提示 : "公司或个人"}
               onChange={(e) => 改("客户", { name: e.target.value })}
               onBlur={() => { const 名 = d.客户.name.trim(); if (企业版 && 名 && 名查?.名 !== 名) void 查名(名); }}
             />

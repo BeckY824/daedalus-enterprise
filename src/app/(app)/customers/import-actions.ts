@@ -191,7 +191,8 @@ function 阿里那一批(行: { 进不了?: string; 值: { phone?: string; email
  */
 async function 排好(方案: 导入方案, 查重: 导入查重索引 | null = null) {
   const b = await getBusiness();
-  const 表 = 字段表(b);
+  // 企业版（11-19）：「联系人 / 姓名」列落主要联系人、只认明确的单位名称进全称（P-抬头-13），和抽屉同一份字段表
+  const 表 = 字段表(b, 企业版());
   // 来源渠道当场对库里的名单：对不上的预览里就标出来、原文并进备注，和落库是同一个结果
   const 用到渠道 = 方案.映射.includes("channelName");
   const 库里渠道 = 用到渠道 ? await prisma.channel.findMany({ select: { name: true, main: { select: { category: true } } } }) : [];
@@ -576,7 +577,11 @@ async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = fa
           }),
         });
         await 写外贸档案(tx, c.id, Object.fromEntries(外贸导入字段.filter((k) => r.值[k]).map((k) => [k, r.值[k]!])), false);
-        await tx.importRow.create({ data: { batchId: 现场.batchId, customerId: c.id, kind: "create", writtenAt: c.updatedAt } });
+        // 企业版「联系人 / 姓名」列（11-19，P-抬头-13）：落成这位客户的主要联系人，号码一并带上；记进导入记录，撤销时不当「名下挂了东西」
+        const 联系人 = 企业版() && r.值.contactName?.trim()
+          ? await tx.contact.create({ data: { name: r.值.contactName.trim(), phone: phone || null, email: email || null, wechat: wechat || null, isPrimary: true, customerId: c.id }, select: { id: true } })
+          : null;
+        await tx.importRow.create({ data: { batchId: 现场.batchId, customerId: c.id, kind: "create", writtenAt: c.updatedAt, ...(联系人 ? { before: JSON.stringify({ [导入联系人键]: 联系人.id }) } : {}) } });
         return c;
       });
       // 另一个窗口刚建了这个号码：算已在库里、跳过，不另建一份
@@ -598,6 +603,17 @@ async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = fa
   }
 
   return { 新建, 补空, 跳过, 进不了, 回收站里, 撞已有: 撞了 };
+}
+
+/** 企业版导入时一起建的主要联系人 id 记在 create 行的 before 里（11-19）。老批次、桌面端没有 */
+const 导入联系人键 = "导入联系人";
+function 导入建的联系人(before: string | null): string | null {
+  try {
+    const v = (JSON.parse(before ?? "{}") as Record<string, unknown>)[导入联系人键];
+    return typeof v === "string" ? v : null;
+  } catch {
+    return null;
+  }
 }
 
 async function 记一笔(me: Awaited<ReturnType<typeof requireUser>>, 客户叫法: string, batchId: string, fileName: string, n: Omit<几条, "回收站里" | "撞已有"> & { 回收站里?: number }) {
@@ -865,7 +881,9 @@ async function 撤这一批(
         continue;
       }
 
-      const 有挂件 = Object.values(c._count).some((n) => n > 0);
+      // 导入时一起建的主要联系人（企业版「联系人」列）不算挂件：撤销连客户一起删
+      const 带的联系人 = row.kind === "create" ? 导入建的联系人(row.before) : null;
+      const 有挂件 = Object.entries(c._count).some(([k, n]) => n > (k === "contacts" && 带的联系人 ? 1 : 0));
       const 下游 = [...new Set([...c.referrals, ...c.attributedCustomers].map((x) => 客户显名(x)))];
       /*
         有 writtenAt 就精确比：写完那一刻的 updatedAt 和现在的不一样，就是之后有人改过。

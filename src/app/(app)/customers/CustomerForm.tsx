@@ -34,7 +34,7 @@ import { 释义下拉, type 客户字典释义 } from "@/components/DictNote";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import { 渠道触点们, 客户介绍触点 } from "@/lib/enterprise/touchpoint";
 import { 动作出错话 } from "@/lib/stale-deploy";
-import { 全称提示 } from "@/lib/enterprise/fullname-hint";
+import { 全称提示, 名称框提示 } from "@/lib/enterprise/fullname-hint";
 
 export type CustomerRow = {
   id: string;
@@ -528,7 +528,7 @@ function CustomerFormInner({
               rules={企业 ? undefined : [requiredText("请输入姓名")]}
               extra={全称灰字 ? <span data-testid="fullname-hint">{全称灰字}</span> : undefined}
             >
-              <Input placeholder={企业 ? "营业执照上的全称，可留空" : "如：张三"} maxLength={企业 ? 200 : undefined} />
+              <Input placeholder={企业 ? 名称框提示 : "如：张三"} maxLength={企业 ? 200 : undefined} />
             </Form.Item>
           </Col>
           <Col span={8}>

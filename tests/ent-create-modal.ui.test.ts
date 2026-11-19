@@ -133,7 +133,7 @@ it("客户名称选填（11-19 用户「客户名称设为不必填」）：名�
     const page = await 开(w);
     try {
       const 框 = page.getByRole("dialog");
-      expect(await 框.getByLabel("客户名称").getAttribute("placeholder")).toContain("可留空");
+      expect(await 框.getByLabel("客户名称").getAttribute("placeholder")).toMatch(/^单位名称，可留空/);
       // 空着那行灰字窄屏也折得下（不撑出横向滚动，下面统一量）
       expect(await 框.locator("[data-ge='客户名'] [data-testid=fullname-hint]").isVisible()).toBe(true);
       await 框.getByLabel("号码", { exact: true }).fill("13905712266");
