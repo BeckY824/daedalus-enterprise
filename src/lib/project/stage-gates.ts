@@ -9,14 +9,24 @@ import type { Prisma } from "@/generated/prisma";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 节点序号, 字典of, 是阶段, 本套位置, 同名们, type 位置 } from "./nodes";
 import type { 组织规则 } from "./org-rules";
+import { 必填叫法 } from "./required";
 
 /** 过了这个节点才算有效线索（MQL 合格）：往后推要先有一条有效沟通 */
 export const 有效线索节点 = "线索验证";
 export const 缺有效沟通 = "线索验证合格要先填好「线索验证」的必填项";
 /** 新建（向导、客户页建项目、AI 建档）只能落在线索验证及之前：建的时候还填不了线索验证的必填项（11-05） */
 export const 建档不能过线索验证 = "新建只能落在「线索验证」及之前：在项目里填好线索验证的必填项后再往下推";
-/** 带上还差哪几项：「…：还差需求状态、项目级别」 */
-export const 缺有效沟通还差 = (差: string[]) => (差.length ? `${缺有效沟通}：还差${差.join("、")}` : 缺有效沟通);
+/** 「需求」这一项的两种写法：没配必填时服务端直接写「需求状态」，配了的按界面叫法「需求（需求状态）」 */
+const 需求叫法们: readonly string[] = ["需求状态", 必填叫法("需求")];
+/**
+ * 带上还差哪几项：「…：还差需求状态、项目级别」。
+ * 只差需求状态时补一句在哪选（F-017：需求状态在「项目画像」卡上，不在「项目资料」卡里，销售找不到）
+ */
+export const 缺有效沟通还差 = (差: string[]) => {
+  if (!差.length) return 缺有效沟通;
+  if (差.length === 1 && 需求叫法们.includes(差[0])) return `${缺有效沟通}：还差需求状态（在「项目画像」里选）`;
+  return `${缺有效沟通}：还差${差.join("、")}`;
+};
 
 /** 这个项目有几条勾了「客户明确回复了」的沟通（11-05 起不再当门槛，只留旧数据统计用） */
 export async function 有效沟通数(tx: Prisma.TransactionClient, projectId: string): Promise<number> {

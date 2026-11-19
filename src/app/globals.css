@@ -1491,6 +1491,10 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .ant-space-compact > .ant-btn.proj-done-btn + .ant-btn.proj-done-btn:not(:disabled),
 .ant-space-compact > .proj-stage-tip + .ant-btn.proj-done-btn:not(:disabled) { border-left-color: color-mix(in srgb, var(--on-ink) 45%, var(--success-text)); }
 .proj-stage-why { min-width: 0; overflow-wrap: anywhere; }
+/* F-017 推过线索验证的补填提示：一句话 + 「去填」，窄了按钮折到下一行，话自己折行不撑宽 */
+.proj-gate-hint { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; min-width: 0; }
+.proj-gate-hint-t { color: var(--text-muted); min-width: 0; overflow-wrap: anywhere; }
+.proj-gate-hint > .ant-btn { flex: none; }
 .proj-stage-tab {
   display: inline-flex; align-items: center; gap: 6px; flex: none; white-space: nowrap;
   padding: 6px 10px; margin-bottom: -1px; border: none; border-bottom: 2px solid transparent;
