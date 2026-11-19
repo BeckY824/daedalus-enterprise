@@ -1403,6 +1403,8 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .org-len-name { min-width: 0; overflow-wrap: anywhere; }
 /* 设置·组织架构「无主线索复核人」（11-18）：选人框不超过 480、保存一行和上面隔开 */
 .org-pick { width: 100%; max-width: 480px; }
+/* 业务角色下拉每项下面那行说明（BizRoleSelect：组织架构、新增成员共用）；灰掉的项这行写为什么不能选 */
+.biz-role-opt-desc { font-size: var(--fs-min); color: var(--text-muted); white-space: normal; }
 .org-save-row { margin-top: 12px; }
 .org-len-input.ant-input-number, .org-len-input.ant-input-number-affix-wrapper { width: 120px; flex: none; }
 .org-len-save.ant-btn { margin-bottom: 16px; }
