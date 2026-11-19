@@ -20,6 +20,7 @@ import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 默认组织规则, type 组织规则 } from "@/lib/project/org-rules";
 import { 改节点, 改项目, 客户项目按必填推进, 读必填数据, 终止进程 } from "@/lib/project/db";
+import { 改项目画像 } from "@/lib/project/profile";
 import { 还差, 宽严互斥, 去掉宽的 } from "@/lib/project/required";
 import { 改节点问题, 交付不在尾款话, 企业版字典 } from "@/lib/project/nodes";
 import { 看板推进预检 } from "@/app/(app)/projects/actions";
@@ -302,6 +303,83 @@ describe("节点推进规则定稿（真库）", () => {
     });
   });
 
+  describe("⑦ 项目画像补齐最后一项也自动推（不只需求状态）", () => {
+    it("痛点挖掘配痛点标注 + 预算能力：先写痛点不推，画像选了预算能力推到方案敲定；同值再存不推、不连推", async () => {
+      await setSetting("orgRules", 开着({ 痛点挖掘: ["痛点标注", "预算能力"], 方案敲定: ["决策链路"] }));
+      const p = await 项目({ phase: "商机", node: "痛点挖掘", decisionChain: "多部门决策" });
+      expect(await 改项目(乙, p.id, { painPoints: "排产慢" })).not.toHaveProperty("自动推到");
+      expect((await 详(p.id)).必填?.还差).toEqual(["预算能力"]);
+      expect(await 改项目画像(乙, p.id, { budgetLevel: "预算充足" })).toEqual({ ok: true, 变了: ["budgetLevel"], 自动推到: ["方案敲定"] });
+      // 方案敲定的决策链路一开始就齐：一次一格，停在方案敲定
+      expect((await 现(p.id)).node).toBe("方案敲定");
+      // 没变的不算保存：不推
+      expect(await 改项目画像(乙, p.id, { budgetLevel: "预算充足", decisionChain: "多部门决策" })).toEqual({ ok: true, 变了: [] });
+      expect((await 现(p.id)).node).toBe("方案敲定");
+      // 画像别的项变了：按必填再推一格
+      expect(await 改项目画像(乙, p.id, { priceSense: "价格认可" })).toMatchObject({ ok: true, 自动推到: ["成交推进"] });
+    });
+
+    it("需求类型（多选）补齐也推；节点推进关着、项目在公海里不推", async () => {
+      await setSetting("orgRules", 开着({ 痛点挖掘: ["需求类型"] }));
+      const p = await 项目({ phase: "商机", node: "痛点挖掘" });
+      expect(await 改项目画像(乙, p.id, { productNeeds: ["常规标品"] })).toMatchObject({ ok: true, 自动推到: ["方案敲定"] });
+      await setSetting("orgRules", { ...默认组织规则, 节点推进: { 开: false, 必填: { 痛点挖掘: ["预算能力"] } } });
+      invalidateSettingsCache();
+      const q = await 项目({ name: "二号", phase: "商机", node: "痛点挖掘" });
+      expect(await 改项目画像(乙, q.id, { budgetLevel: "预算充足" })).toEqual({ ok: true, 变了: ["budgetLevel"] });
+      expect((await 现(q.id)).node).toBe("痛点挖掘");
+      await setSetting("orgRules", 开着({ 痛点挖掘: ["预算能力"] }));
+      invalidateSettingsCache();
+      const 公海 = await 项目({ name: "三号", phase: "商机", node: "痛点挖掘", pooledAt: new Date() });
+      // 公海里的项目先领取才能改：改不了也就推不了
+      expect(await 改项目画像(乙, 公海.id, { budgetLevel: "预算充足" })).toMatchObject({ ok: false });
+      expect((await 现(公海.id)).node).toBe("痛点挖掘");
+    });
+  });
+
+  describe("跨阶段不自动推", () => {
+    it("线索推进、首款到账填齐了：存了不推、停在本格，项目页没有存一下就推；手动点完成节点照推；同阶段照旧自动推一格", async () => {
+      await setSetting("orgRules", 开着({ 线索推进: ["金额"], 首款到账: ["定金金额"], 痛点挖掘: ["痛点标注"] }));
+      const 线 = await 项目({ phase: "线索", node: "线索推进", demandStatus: "明确需求" });
+      expect(await 改项目(乙, 线.id, { amount: 1000 })).toEqual({ ok: true, 变了: ["amount"] });
+      expect((await 现(线.id)).node).toBe("线索推进");
+      expect((await 详(线.id)).必填).toEqual({ 配了: ["金额"], 还差: [] });
+      // 客户资料连带推也不跨
+      expect(await 客户项目按必填推进(乙, 客户)).toEqual([]);
+      const 推 = await 改节点(乙, 线.id, { phase: "商机", node: "痛点挖掘" });
+      expect(推, JSON.stringify(推)).toEqual({ ok: true, 变了: true });
+      // 进了商机：同阶段照旧自动推一格
+      expect(await 改项目(乙, 线.id, { painPoints: "排产慢" })).toMatchObject({ ok: true, 自动推到: ["方案敲定"] });
+      const 款 = await 项目({ name: "二号", phase: "商机", node: "首款到账" });
+      expect(await 改项目(乙, 款.id, { depositAmount: 500 })).not.toHaveProperty("自动推到");
+      expect((await 现(款.id)).node).toBe("首款到账");
+      expect(await 改节点(乙, 款.id, { phase: "订单", node: "生产备货" })).toMatchObject({ ok: true, 变了: true });
+    });
+  });
+
+  describe("不给推时谁能点「完成节点」（load.ts 不给推谁能推，项目页必填齐了那句用）", () => {
+    it("仅上级推：负责人 → 上级；负责人可推：组员 → 负责人或上级、负责人能推没有；需求补全期 → 销售管理或总管理", async () => {
+      const 组长 = await 人("lead", "MANAGER", "sales_mgr");
+      const 丙 = await 人("bing", "SALES", "sales");
+      await prisma.entMember.update({ where: { userId: 乙.id }, data: { managerId: 组长.id } });
+      await setSetting("enterprise.rule.org_scope", true);
+      const p = await 项目();
+      await prisma.projectMember.create({ data: { projectId: p.id, userId: 丙.id, inviteStatus: "JOINED" } });
+      await setSetting("orgRules", { ...默认组织规则, 阶段: { ...默认组织规则.阶段, 推进权限: "仅上级推" as const } });
+      invalidateSettingsCache();
+      expect(await 详(p.id)).toMatchObject({ 不给推: "往前推进程要由你的直属上级来推", 不给推谁能推: "上级" });
+      await setSetting("orgRules", 默认组织规则);
+      invalidateSettingsCache();
+      expect(await 详(p.id)).toMatchObject({ 不给推: null, 不给推谁能推: null });
+      mocks.user = { ...mocks.user, id: 丙.id };
+      expect(await 详(p.id)).toMatchObject({ 不给推: "只有负责人的直属上级能往前推进程", 不给推谁能推: "负责人或上级" });
+      mocks.user = { ...mocks.user, id: 乙.id };
+      await setSetting("orgRules", { ...默认组织规则, 阶段: { ...默认组织规则.阶段, 需求补全期: true } });
+      invalidateSettingsCache();
+      expect(await 详(p.id)).toMatchObject({ 不给推谁能推: "销售管理或总管理" });
+    });
+  });
+
   describe("⑥ 仅上级推：上级推到已齐的节点停住，项目页说存一下就推", () => {
     it("直属上级手动推到齐了的物流运输：停住；负责人看项目页有 存一下就推，存一下推一格；没齐、负责人可推时都没有", async () => {
       const 组长 = await 人("lead", "MANAGER", "sales_mgr");
@@ -316,6 +394,9 @@ describe("节点推进规则定稿（真库）", () => {
       expect(await 改节点(组长, p.id, { phase: "订单", node: "物流运输" })).toEqual({ ok: true, 变了: true });
       expect((await 现(p.id)).node).toBe("物流运输");
       expect((await 详(p.id)).必填).toEqual({ 配了: ["物流单号"], 还差: [], 存一下就推: true });
+      // 提示写「值没变不算」：原样再存一遍不推
+      expect(await 改项目(乙, p.id, { trackingNo: "SF1" })).toEqual({ ok: true, 变了: [] });
+      expect((await 现(p.id)).node).toBe("物流运输");
       expect(await 改项目(乙, p.id, { remark: "存一下" })).toMatchObject({ ok: true, 自动推到: ["安装实施"] });
       // 没齐：没有
       const q = await 项目({ name: "二号" });

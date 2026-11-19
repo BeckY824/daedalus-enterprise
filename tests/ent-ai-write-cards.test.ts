@@ -45,7 +45,7 @@ import { 规则 } from "@/lib/enterprise/rules";
 import { TOOLS } from "@/lib/agent/tools";
 import { 这一家的工具 } from "@/lib/agent/run";
 import { buildProposal, missingFields, type Proposal } from "@/lib/agent/proposals";
-import { 不可撤销, type 项目卡 } from "@/lib/agent/project-proposals";
+import { 不可撤销, 跨阶段提醒, type 项目卡 } from "@/lib/agent/project-proposals";
 import { applyProposal, undoProposal } from "@/app/(app)/dashboard/apply";
 import { DEFAULT_BUSINESS } from "@/lib/business-config";
 import * as 项目动作 from "@/app/(app)/projects/actions";
@@ -137,6 +137,23 @@ describe("推进节点 / 定结局", () => {
     expect(项目动作.改项目节点).not.toHaveBeenCalled();
     expect((await prisma.project.findUniqueOrThrow({ where: { id: 项目id } })).result).toBe("线索流失");
     expect(await prisma.auditLog.count({ where: { action: "ai_apply" } })).toBe(1);
+  });
+
+  it("跨阶段推（线索→商机、商机→订单）卡上带「进了 X 就退不回 Y」；同阶段、定结局不带", async () => {
+    const 跨 = await 出("propose_project_node", { project: "云帆一期", 目标: "痛点挖掘", reason: "人说聊到痛点了" });
+    expect(跨.卡).toMatchObject({ kind: "project_node", 到: { phase: "商机", node: "痛点挖掘" }, 从阶段: "线索" });
+    expect(跨阶段提醒(跨.卡!)).toBe("进了商机就退不回线索");
+    const 同 = await 出("propose_project_node", { project: "云帆一期", 目标: "下一步", reason: "往前推" });
+    expect(同.卡).toMatchObject({ 到: { phase: "线索" } });
+    expect(跨阶段提醒(同.卡!)).toBeNull();
+    const 终 = await 出("propose_project_node", { project: "云帆一期", 目标: "终止", 原因: "x", reason: "y" });
+    expect(跨阶段提醒(终.卡!)).toBeNull();
+    await prisma.project.update({ where: { id: 项目id }, data: { phase: "商机", node: "首款到账" } });
+    const 进订单 = await 出("propose_project_node", { project: "云帆一期", 目标: "下一步", reason: "首款到了" });
+    expect(进订单.卡).toMatchObject({ 到: { phase: "订单" } });
+    expect(跨阶段提醒(进订单.卡!)).toBe("进了订单就退不回商机");
+    // 往回（商机 → 线索节点）不算「进了就退不回」
+    expect(跨阶段提醒({ ...进订单.卡!, 到: { phase: "线索", node: "潜客培育" } } as 项目卡)).toBeNull();
   });
 
   it("同名两个：不替人挑，候选里两个，挑之前确认拦下", async () => {

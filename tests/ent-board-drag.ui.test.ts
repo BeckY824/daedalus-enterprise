@@ -51,12 +51,17 @@ beforeAll(async () => {
       {列:'线索推进',名:'线索推进',色:'线索',阶段:'线索',空态:'还没有在线索推进的项目',数:0,合计:[],行:[]},
       {列:'交付结清',名:'交付结清',色:'成功交付',空态:'还没有交付结清的项目',数:0,合计:[],行:[]},
     ];
+    // 跨阶段：线索推进（最后一个线索进程）→ 痛点挖掘（商机第一个）
+    const 跨列=()=>[
+      {列:'线索推进',名:'线索推进',色:'线索',阶段:'线索',空态:'',数:1,合计:[],行:[row('p1','线索推进')]},
+      {列:'痛点挖掘',名:'痛点挖掘',色:'商机',阶段:'商机',空态:'还没有在痛点挖掘的项目',数:0,合计:[],行:[]},
+    ];
     // 团队版五列（没有阶段）
     const 五列=()=>['线索','商机','订单','成功交付','没成'].map((列,i)=>({列,名:列,色:列,空态:'',数:1,合计:[],行:[row('t'+i,'潜客培育',{phase:列==='没成'?'线索':列})]}));
     window.__画=(o={})=>{const root=(window.__root||=createRoot(document.getElementById('root')));
       if(o.客户看板) return root.render(<App><CustomerBoard 行们={[{id:'k1',name:'客户甲',customerAttr:null,salesOwnerName:'王0',pool:false,extra:{}}]} 字典={[]} 加载中={false} 页={1} 每页={20} 总数={1} 翻页={()=>{}} 去={(id)=>window.__去.push(id)}/></App>);
       root.render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
-        <Projects 行={[]} 列={o.团队?五列():进程列()} 每列={{}} 总数={2} 页={1} 每页={20} users={[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:''}} 企业版={!o.团队} 客户页={!!o.客户页}
+        <Projects 行={[]} 列={o.团队?五列():o.跨?跨列():进程列()} 每列={{}} 总数={2} 页={1} 每页={20} users={[{id:'u0',name:'王0',email:'a'},{id:'u1',name:'王1',email:'b'}]} filters={{keyword:'',ownerId:'',pool:'',phase:''}} 企业版={!o.团队} 客户页={!!o.客户页}
           {...(o.旧卡点?{卡点们:[{id:'b0',code:'BLK-20261119-001',title:'',projectId:'p1',项目:'一期',followUpId:'f0',phase:'线索',type:'中度卡点',impact:'短期不影响',原因们:[{id:'r1',name:'价格',status:'启用'}],description:'',status:'待接受',发布人:'王0',resourceRequest:null,solution:null,result:null,resolvedAt:null,createdAt:new Date().toISOString(),流转:[],认领:[],进度:{完成:0,共:0},能:{认领:true,完成:false,最后一个:false,删:false},有标题:false}]}:{})}/>
       </BusinessProvider></App>);};
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
@@ -64,7 +69,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 设 = { 预检?: unknown; 改?: unknown; 团队?: boolean; 客户看板?: boolean; 少动?: boolean; 客户页?: boolean; 旧卡点?: boolean };
+type 设 = { 预检?: unknown; 改?: unknown; 团队?: boolean; 客户看板?: boolean; 少动?: boolean; 客户页?: boolean; 旧卡点?: boolean; 跨?: boolean };
 async function 打开(width = 1280, o: 设 = {}): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 800 }, reducedMotion: o.少动 ? "reduce" : "no-preference" }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -122,6 +127,29 @@ it("拖到下一个进程：先预检再改节点，卡片落到新列、计数�
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
+});
+
+it("拖到下一阶段的列（线索推进→痛点挖掘）：先确认（待客户定 A），推成了卡片落到新列，不给撤销条（企业版退不回上一阶段）", async () => {
+  const { page, errors } = await 打开(1280, { 跨: true });
+  try {
+    // [待客户定 A] 先确认：取消 = 弹回原列、不改；确认了才推
+    await 拖到(page, 1);
+    const 问 = page.getByRole("dialog").filter({ hasText: "推过去就回不了上一阶段，确定？" });
+    await 问.waitFor();
+    expect(await 问.innerText()).toContain("进了商机就不能再退回线索");
+    await 问.getByRole("button", { name: /取\s*消/ }).click();
+    await 问.waitFor({ state: "hidden" });
+    await 列(page, 0).locator('[data-card-id="p1"]').waitFor();
+    expect(await 调了(page, "改")).toEqual([]);
+    await 拖到(page, 1);
+    await 问.waitFor();
+    await 问.getByRole("button", { name: "进商机" }).click();
+    await 列(page, 1).locator('[data-card-id="p1"]').waitFor();
+    expect(await 调了(page, "改")).toEqual([["改", "p1", { phase: "商机", node: "痛点挖掘", result: null }]]);
+    await page.waitForTimeout(300);
+    expect(await page.locator(".undo-bar").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
 });
 
 it("被权限挡（预检回原因 / 真推回原因）：卡片弹回原列，说原因", async () => {

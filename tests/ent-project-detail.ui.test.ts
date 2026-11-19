@@ -503,15 +503,59 @@ for (const 宽 of [390, 1024, 1280, 1366]) {
   }, 60_000);
 }
 
-it("仅上级推下停在已齐的节点（存一下就推）：当前进程卡写「已经填齐：改任一项保存、或记一条沟通，就会自动推到下一步」；别的情况照旧", async () => {
+it("必填齐了、下一格换阶段：当前进程卡写「必填齐了，点「完成节点」进商机」；同阶段照旧", async () => {
+  const { page, errors } = await open(true, 1280);
+  try {
+    await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "线索", node: "线索推进", 必填: { 配了: ["金额"], 还差: [] } }));
+    await page.getByText("必填齐了，点「完成节点」进商机").waitFor();
+    await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "商机", node: "首款到账", 必填: { 配了: ["金额"], 还差: [] } }));
+    await page.getByText("必填齐了，点「完成节点」进订单").waitFor();
+    await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "商机", node: "痛点挖掘", 必填: { 配了: ["金额"], 还差: [] } }));
+    await page.getByText("这个节点的必填都齐了，可以点「完成节点」往前推").waitFor();
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
+it("「完成节点」灰在不给推：必填齐了的说法写明该谁点（上级 / 销售管理或总管理 / 负责人或上级），不叫他点；灰因是等复核时不写该谁点", async () => {
+  const { page, errors } = await open(true, 1280);
+  const 上级推 = "往前推进程要由你的直属上级来推";
+  try {
+    await page.evaluate((x) => (window as unknown as { __over: (x: object) => void }).__over({ phase: "线索", node: "线索推进", 必填: { 配了: ["金额"], 还差: [] }, 不给推: x }), 上级推);
+    await page.getByText("必填齐了，进商机要上级点「完成节点」").waitFor();
+    expect(await page.getByText("必填齐了，点「完成节点」进商机").count()).toBe(0);
+    await page.evaluate((x) => (window as unknown as { __over: (x: object) => void }).__over({ phase: "商机", node: "首款到账", 必填: { 配了: ["金额"], 还差: [] }, 不给推: x }), 上级推);
+    await page.getByText("必填齐了，进订单要上级点「完成节点」").waitFor();
+    expect(await page.getByText("必填齐了，点「完成节点」进订单").count()).toBe(0);
+    await page.evaluate((x) => (window as unknown as { __over: (x: object) => void }).__over({ phase: "商机", node: "痛点挖掘", 必填: { 配了: ["金额"], 还差: [] }, 不给推: x }), 上级推);
+    await page.getByText("这个节点的必填都齐了，往前推要上级点「完成节点」").waitFor();
+    expect(await page.getByText("这个节点的必填都齐了，可以点「完成节点」往前推").count()).toBe(0);
+    // 需求补全期：上级是销售账号也推不了，写销售管理或总管理（load.ts 不给推谁能推）
+    const 补全期 = "需求状态补全期：只有销售管理、总管理能往前推进程，沟通照常记";
+    await page.evaluate((x) => (window as unknown as { __over: (x: object) => void }).__over({ phase: "线索", node: "线索推进", 必填: { 配了: ["金额"], 还差: [] }, 不给推: x, 不给推谁能推: "销售管理或总管理" }), 补全期);
+    await page.getByText("必填齐了，进商机要销售管理或总管理点「完成节点」").waitFor();
+    expect(await page.getByText("必填齐了，进商机要上级点「完成节点」").count()).toBe(0);
+    // 负责人可推下的组员：负责人自己也能推，写负责人或上级
+    await page.evaluate((x) => (window as unknown as { __over: (x: object) => void }).__over({ phase: "商机", node: "首款到账", 必填: { 配了: ["金额"], 还差: [] }, 不给推: x, 不给推谁能推: "负责人或上级" }), "只有负责人的直属上级能往前推进程");
+    await page.getByText("必填齐了，进订单要负责人或上级点「完成节点」").waitFor();
+    // 等复核先拦下（灰因不是不给推）：上级也推不了，不写该谁点，只说齐了
+    await page.evaluate((x) => (window as unknown as { __over: (x: object) => void }).__over({ phase: "线索", node: "线索推进", 必填: { 配了: ["金额"], 还差: [] }, 不给推: x, 不给推谁能推: "上级",
+      线索验证: { 判定: "初验无效", 待: "市场复核", 无效原因: null, 复核结果: null, 最终结果: null, 终验: null, 初判即终判: false, 叫法: "初验无效", 我能: null, 痕: [] } }), 上级推);
+    await page.getByText("这个节点的必填都齐了", { exact: true }).waitFor();
+    expect(await page.getByText("要上级点「完成节点」").count()).toBe(0);
+    expect(await page.getByText("点「完成节点」进商机").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
+it("仅上级推下停在已齐的节点（存一下就推）：当前进程卡写「已经填齐：改任一项（项目资料、画像都算，值没变不算）保存、或记一条沟通，就会自动推到下一步」；别的情况照旧", async () => {
   const { page, errors } = await open(true, 1280);
   try {
     await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "订单", node: "物流运输", 必填: { 配了: ["物流单号"], 还差: [], 存一下就推: true } }));
-    await page.getByText("已经填齐：改任一项保存、或记一条沟通，就会自动推到下一步").waitFor();
+    await page.getByText("已经填齐：改任一项（项目资料、画像都算，值没变不算）保存、或记一条沟通，就会自动推到下一步").waitFor();
     expect(await page.getByText("这个节点的必填都齐了，可以点「完成节点」往前推").count()).toBe(0);
     await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "订单", node: "物流运输", 必填: { 配了: ["物流单号"], 还差: [] } }));
     await page.getByText("这个节点的必填都齐了，可以点「完成节点」往前推").waitFor();
-    expect(await page.getByText("已经填齐：改任一项保存、或记一条沟通，就会自动推到下一步").count()).toBe(0);
+    expect(await page.getByText("已经填齐：改任一项（项目资料、画像都算，值没变不算）保存、或记一条沟通，就会自动推到下一步").count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 }, 60_000);
@@ -2068,6 +2112,58 @@ it("dt.stage：必填齐了完成节点一步推（不开框），推完底部�
     expect(两次[1][1].node).not.toBe(两次[0][1].node);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
+});
+
+it("完成节点跨阶段（线索推进→痛点挖掘、首款到账→生产备货）：先确认（待客户定 A），企业版退不回上一阶段，不给撤销条，只写就地回执", async () => {
+  const { page, errors } = await open(true, 1280);
+  try {
+    for (const [phase, node, 到阶段] of [["线索", "线索推进", "商机"], ["商机", "首款到账", "订单"]] as const) {
+      await page.evaluate(() => { (window as unknown as { __改节点: unknown[] }).__改节点 = []; });
+      await page.evaluate((x) => (window as unknown as { __over: (x: unknown) => void }).__over(x), { phase, node, 必填: null });
+      await page.waitForFunction((n) => document.querySelector(".proj-stage-node.is-cur")?.textContent?.startsWith(n), node);
+      await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
+      // [待客户定 A] 跨阶段先确认：取消不推；确认了才推
+      const 问 = page.getByRole("dialog").filter({ hasText: "推过去就回不了上一阶段，确定？" });
+      await 问.waitFor();
+      expect(await 问.innerText()).toContain(`进了${到阶段}就不能再退回${phase}`);
+      await 问.getByRole("button", { name: /取\s*消/ }).click();
+      await 问.waitFor({ state: "hidden" });
+      expect(await 窗变量(page, "__改节点")).toBe("[]");
+      await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
+      await 问.waitFor();
+      await 问.getByRole("button", { name: `进${到阶段}` }).click();
+      await expect.poll(async () => (JSON.parse(await 窗变量(page, "__改节点")) as [string, { phase: string }][]).map((x) => x[1].phase)).toEqual([到阶段]);
+      await expect.poll(() => page.locator(".pd-note").innerText().catch(() => "")).toContain(`进到 ${到阶段}`);
+      expect(await page.locator("#undo-host").getByRole("button", { name: /撤销/ }).count()).toBe(0);
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("手机 390 / 360 宽：「完成节点」补填框不出屏（贴左右各 8px）；1024 / 1280 / 1366 照旧挂在按钮右下", async () => {
+  for (const w of [360, 390, 1024, 1280, 1366]) {
+    const { page, errors } = await open(true, w);
+    try {
+      await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ 必填: { 配了: ["金额"], 还差: ["金额"] } }));
+      const 钮 = page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" });
+      await 钮.click();
+      const 框 = page.locator(".pd-fill-pop");
+      await 框.locator(".pd-fill-pop-body").waitFor();
+      await page.waitForTimeout(350);
+      const [框位, 钮位] = await Promise.all([框.evaluate((e) => e.getBoundingClientRect().toJSON()), 钮.evaluate((e) => e.getBoundingClientRect().toJSON())]) as DOMRect[];
+      expect(框位.left, `宽 ${w}`).toBeGreaterThanOrEqual(0);
+      expect(框位.right, `宽 ${w}`).toBeLessThanOrEqual(w);
+      if (w < 768) {
+        expect(Math.round(框位.left), `宽 ${w}`).toBe(8);
+        expect(Math.round(框位.right), `宽 ${w}`).toBe(w - 8);
+      } else {
+        // 宽屏照旧：右边和按钮右边对齐（右下对齐，箭头关着），框在按钮下面
+        expect(Math.abs(框位.right - 钮位.right), `宽 ${w}`).toBeLessThanOrEqual(1);
+      }
+      expect(框位.top, `宽 ${w}`).toBeGreaterThanOrEqual(钮位.bottom);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
 });
 
 it("dt.pay：删回款是后果框，写明哪一笔和删后的合计；取消不生效；服务端挡了原因留在框里", async () => {

@@ -26,7 +26,7 @@ import { 软删一条 } from "@/lib/enterprise/soft-delete";
 import { 按主键取没删的 } from "@/lib/enterprise/soft-delete-core";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 挡改设置 } from "@/lib/enterprise/edit-perm";
-import { 选的原因, 认跟进方式, 已签收物流状态 } from "@/lib/enterprise/dict";
+import { 选的原因, 认跟进方式, 已签收物流状态, type 已签收认法结果 } from "@/lib/enterprise/dict";
 import { 去不填 } from "@/lib/enterprise/dict-kinds";
 import { 生效组织规则 } from "./org-rules-store";
 import { 超时回收日, 已超时, 即将回收, 将回收提醒, 将回收提醒头, 超时理由, 超时起点, 系统, 回收原因前缀, 算回收起点的留痕 } from "./timeout";
@@ -1639,9 +1639,10 @@ type 必填项目行 = Pick<Project,
  * 算「还差」要的数据（企业版节点必填，D-37）：客户（含外贸字段）、客户下的联系人、项目上的沟通各在哪个节点记的。
  * 11-01 按客户矩阵加：每条沟通的发起主体 / 内容 / 方式、项目分配记录的分配方式、线索验证结果。
  * 带上 规则 才读「线索验证」节点配的必填项（算有效沟通用，11-05）；不带 = 有效沟通看需求状态。
- * 只用 tx：保存的那笔事务里调，刚写的也读得到
+ * 只用 tx：保存的那笔事务里调，刚写的也读得到。
+ * 签收：渲染路径（项目页 load.ts）传页面字典算好的已签收认法，不另查一句（客户详情查询条数上限）；写库路径不传，用 tx 现读
  */
-export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项目行, 规则?: 组织规则): Promise<必填数据> {
+export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项目行, 规则?: 组织规则, 签收已读?: Pick<已签收认法结果, "名们">): Promise<必填数据> {
   const [c, 联系人们, 沟通, 合同附件数, 回款笔数, 项目方案数, 分配, 验证, 验收报告数, 签收] = await Promise.all([
     // 只用来判必填齐没齐、不回给页面：绕开可见范围读，组员看不到客户时也不误报「所属客户」（11-03 B6-1）
     看全部(() => tx.customer.findUnique({
@@ -1663,7 +1664,7 @@ export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项
     // 验收报告（M-必填-11）：「项目附件」里验收报告那一格传了几份
     tx.attachment.count({ where: { projectId: p.id, tag: "验收报告" } }),
     // 物流状态里算「已签收」的名字（客户 11-19 定稿）：按字典默认项 id 认，改了名也认
-    已签收物流状态(tx),
+    签收已读 ?? 已签收物流状态(tx),
   ]);
   return {
     项目: {
@@ -1739,9 +1740,10 @@ async function 往前进来的(tx: Prisma.TransactionClient, p: { id: string; ph
 
 /**
  * 这个人现在存一下，项目会不会按必填自动推一格：会 = 推到的位置，不会 = null。只查不写；按必填推进 和项目页「存一下会自动推」提示共用。
- * 节点推进没生效、需求补全期（M-权限-07）这两条由调用方先挡（按必填推进 开头挡了）
+ * 节点推进没生效、需求补全期（M-权限-07）这两条由调用方先挡（按必填推进 开头挡了）。
+ * 已读：渲染路径（项目页 load.ts）已经读好的 读必填数据 结果，传了就不再读；写库路径（按必填推进）不传，用 tx 现读
  */
-export async function 自动推得到(tx: Prisma.TransactionClient, 规则: 组织规则, me: { id: string }, p: Project): Promise<{ phase: string; node: string } | null> {
+export async function 自动推得到(tx: Prisma.TransactionClient, 规则: 组织规则, me: { id: string }, p: Project, 已读?: () => Promise<必填数据>): Promise<{ phase: string; node: string } | null> {
   if (!节点推进生效(规则) || (企业版() && 规则.阶段.需求补全期)) return null;
   // 节点推进不管的项目不自动推（项目按必填走：默认全部都管；设置成只管新建的时看 createdAt）；已结束、在公海的不推
   if (p.pooledAt || p.result || !项目按必填走(规则, p)) return null;
@@ -1749,10 +1751,14 @@ export async function 自动推得到(tx: Prisma.TransactionClient, 规则: 组�
   if (待分配占位(me, p)) return null;
   const 下 = 下一步(p, 字典of(企业版()));
   if (!下) return null;
+  // [待客户定 A] 下一格换了阶段（线索→商机、商机→订单）不自动推：企业版跨阶段退不回去（nodes.ts 改节点问题），停在本格，
+  // 等人点「完成节点」（项目页、看板都先弹确认）；项目页提示「必填齐了，点「完成节点」进商机 / 订单」。同阶段内照旧自动推一格
+  if (企业版() && 下.phase !== p.phase) return null;
   // 退回来的节点不推（退回一般是要重做）
   if (!(await 往前进来的(tx, p))) return null;
-  if (还差(规则, await 读必填数据(tx, p, 规则)).length) return null;
-  if (await 企业版推进关(tx, p, 下, 规则, 有效沟通差of(tx, p, 规则))) return null;
+  const 数据 = 已读 ?? (() => 读必填数据(tx, p, 规则));
+  if (还差(规则, await 数据()).length) return null;
+  if (await 企业版推进关(tx, p, 下, 规则, 已读 ? async () => 有效沟通还差(await 已读()).map(必填叫法) : 有效沟通差of(tx, p, 规则))) return null;
   return 下;
 }
 

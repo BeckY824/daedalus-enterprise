@@ -27,6 +27,7 @@ import { 企业级别 } from "@/lib/enterprise/customer-v2";
 import { 未分级 } from "@/app/(app)/customers/query-shared";
 import { 创建时间段, 是日期 } from "@/lib/custom-date-range";
 import { 不算补建, 不算历史分析 } from "./system-created";
+import { 读批次, 批次参数, 批次条件 } from "./import-batch";
 import { 指定回复文字, 短时刻 } from "./time-fields";
 
 /** 判了无效的三个叫法：列表上叫法后面跟原因摘要（客户 11-05（X-09）：「初验无效 · 原因」） */
@@ -85,6 +86,11 @@ export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; 
   open?: string;
   /** 「手机号」筛选（11-11）：项目的客户号码对得上的（同客户列表，lib/search-keyword.ts 客户号码SQL）；客户不露的不算 */
   phone?: string;
+  /**
+   * 导入批次（11-19，import-batch.ts）：batch=批次号 只看这一批、batch=-批次号 排掉这一批（importBatch 为空的留着）。
+   * 数据页卡片点进来带的；列表页头挂一枚「导入批次：… ×」标签能清掉，不进筛选栏
+   */
+  batch?: string;
   /**
    * 客户页看板视图（11-12 第 3 批 C18）：先按客户页那一行筛出客户（customers/query.ts 客户筛选条件），再出这些客户名下的项目。
    * 只收窄：项目自己的可见范围照旧由限定层管。不是地址栏参数，服务端自己给
@@ -195,6 +201,7 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
   const 级别筛 = !企 ? "" : sp.level === 未分级 ? 未分级 : (企业级别(sp.level) ?? "");
   const 标签筛 = 企 && typeof sp.projTag === "string" ? sp.projTag.trim().slice(0, 40) : "";
   const 建于 = 创建时间段(sp.createdFrom, sp.createdTo);
+  const 批 = 读批次(sp.batch);
   // 手机号（11-11）：先按号码找客户（电话藏着的人 = null，不筛），再取挂在这些客户上的项目，客户要露
   const 号码 = await 客户号码条件(sp.phone, me.id);
   // 客户条件只认服务端给的对象（客户页看板视图）；地址栏原样传进来的字符串（新线索页等直接把 searchParams 给进来）当没给
@@ -217,6 +224,7 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
   const 收回筛 = 企 && sp.pool === "1" ? 收回次数筛(sp.recycled) : "";
   const 并且: Prisma.ProjectWhereInput[] = [
     ...(建于 ? [{ createdAt: 建于, ...(sp.onlyNew === "1" ? 不算补建 : {}) }] : []),
+    ...(批 ? [批次条件(批)!] : []),
     /*
       按号码筛中的是客户：只算「客户看得到」的（11-12 堵口子）。原来按「露客户」算——自己负责的项目、客户不归我也算中，
       只负责项目的人（project-only-customers.ts）输个号码看自己的项目留不留，就试得出看不到的客户的电话、联系人电话。
@@ -253,7 +261,7 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
     ...(sp.pool === "1" ? { pooledAt: { not: null } } : 企 && !卡 ? { pooledAt: null } : {}),
     ...(并且.length ? { AND: 并且 } : {}),
   };
-  return { where, 词, 企, 规则, 今, 卡, 阶进, 市场, 创建人, 来源, 级别筛, 标签筛, 号码, 收回筛 };
+  return { where, 词, 企, 规则, 今, 卡, 阶进, 市场, 创建人, 来源, 级别筛, 标签筛, 号码, 收回筛, 批 };
 }
 
 /**
@@ -510,7 +518,7 @@ export async function 读项目列表(
   await 公海超时收回(me).catch((e) => console.error("[超时回收] 扫的时候出错，这次先不收", e));
   await 回填一次();
   const 条件 = await 列表条件(me, sp, 只看阶段);
-  const { where, 词, 企, 规则, 卡, 阶进, 市场, 创建人, 来源, 级别筛, 标签筛, 号码, 收回筛 } = 条件;
+  const { where, 词, 企, 规则, 卡, 阶进, 市场, 创建人, 来源, 级别筛, 标签筛, 号码, 收回筛, 批 } = 条件;
   const 排 = 认项目排序(sp.sort);
   const 每页 = 认每页(sp.pageSize);
   const 要页 = 认页码(sp.page);
@@ -643,7 +651,9 @@ export async function 读项目列表(
     filters: { keyword: 词, ownerId: typeof sp.ownerId === "string" ? sp.ownerId : "", pool: sp.pool === "1" ? "1" : "", recycled: 收回筛, f: 卡, phase: 阶进.阶段, node: 阶进.进程, creator: 创建人, channelId: 来源, level: 级别筛, projTag: 标签筛,
       // 原样回给界面（选择器回显）；写错的那头 创建时间段 当没给
       createdFrom: 是日期(sp.createdFrom) ? sp.createdFrom : "", createdTo: 是日期(sp.createdTo) ? sp.createdTo : "",
-      phone: 号码 ? 搜索词(sp.phone) : "" },
+      phone: 号码 ? 搜索词(sp.phone) : "",
+      // 导入批次：认得出的原样回给界面（页头标签），认不出的当没筛
+      batch: 批次参数(批) },
     // 电话藏着的人（字段权限 Y27）不摆「手机号」筛选
     能按号码筛: !(await 号码藏着(me.id)),
     // 自定义筛选「渠道」的候选；新线索页不摆
@@ -680,7 +690,9 @@ export async function 公海名单条件(me: { id: string }, 候选: Prisma.Proj
 }
 
 /** 公海页按项目一条一行时的筛选（地址栏 projChannel / phase / createdFrom / createdTo）；空的那项不筛 */
-export type 公海名单筛 = { channelId?: string; phase?: string; createdFrom?: string; createdTo?: string; /** 同 项目筛选.onlyNew */ onlyNew?: string; /** 同 项目筛选.open */ open?: string };
+export type 公海名单筛 = { channelId?: string; phase?: string; createdFrom?: string; createdTo?: string; /** 同 项目筛选.onlyNew */ onlyNew?: string; /** 同 项目筛选.open */ open?: string;
+  /** 同 项目筛选.batch（数据页「线索池」点进来带的，11-19）：只看 / 排掉某一批；带了也按项目一条一行 */
+  batch?: string };
 
 /**
  * 公海页渠道名单的候选：这个渠道（项目来源优先，没填跟客户来源）+ 同口径的阶段（阶段进程条件）+ 项目创建时间段
@@ -688,10 +700,13 @@ export type 公海名单筛 = { channelId?: string; phase?: string; createdFrom?
  */
 export function 公海名单候选(f: 公海名单筛): Prisma.ProjectWhereInput | null {
   const 建于 = 创建时间段(f.createdFrom, f.createdTo);
+  const 批 = 读批次(f.batch);
   const 并: Prisma.ProjectWhereInput[] = [
     // 渠道名单不列历史分析回填的（渠道页数的 渠道项目条件 不算它们，点进来条数要对得上）
     ...(f.channelId ? [{ OR: [{ channelId: f.channelId }, { channelId: null, customer: { channelId: f.channelId } }], ...不算历史分析 }] : []),
     ...(建于 ? [{ createdAt: 建于, ...(f.onlyNew === "1" ? 不算补建 : {}) }] : []),
+    // 导入批次：数据页的线索池数不算历史分析回填的，点进来同样排掉，条数对得上
+    ...(批 ? [批次条件(批)!, 不算历史分析] : []),
   ];
   if (!并.length) return null;
   return { AND: [...并, ...(f.phase || f.open ? 阶段进程条件({ phase: f.phase, open: f.open }, 字典of(企业版())).where : [])] };

@@ -1007,6 +1007,9 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
 
 /* 标题和紧跟着它的那一小块（客户页的「客户 / 公海」页签）摆一行 */
 .page-head-t { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; }
+/* 列表页头「导入批次：… ×」（11-19，数据页按批次点进来）：批次名长，一行省略、悬停看全，窄屏不撑出页宽 */
+.batch-filter-tag { display: inline-flex; align-items: center; max-width: 100%; min-width: 0; margin-inline-end: 0; }
+.batch-filter-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 页头右上角那组动作。⌘N 也认这个选择器找主按钮，别改名 */
 .page-head-a { flex: none; display: flex; align-items: center; gap: var(--s2); }
@@ -1932,6 +1935,9 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .custom-range { flex: none; width: 236px; max-width: 100%; }
 .custom-range.ant-picker-small { width: 216px; }
 .data-shell-who .ant-select-selection-item { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 「数据」页签的导入批次（11-19）：批次名长（「销帮帮增量 11-19 · 公海客户项目」），一行省略、悬停看全，窄了随那一排换行 */
+.data-shell-batch { width: 240px; max-width: 100%; }
+.data-shell-batch .ant-select-selection-item { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 复盘页两个页签（P15）：人员选择在页签上面；Tabs 只当导航，内容由服务端给、摆在 .data-shell-body 里 */
 .data-shell-bar-who { margin-bottom: var(--s2); transition: opacity var(--t) var(--ease); }
 /* 卡点页签（ov.layout）：卡点按角色定能看谁，人员那一行不撤（撤了整页上跳一截），留在原地变淡；控件本身 disabled 点不了 */
@@ -2147,6 +2153,8 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
   .cmap:not(.no-map) .cmap-rank .btodo-rc-row { grid-template-columns: minmax(0, 7em) minmax(0, 1fr) 3em; }
 }
 .rkpi-cap { font-size: var(--fs-note); }
+/* 标题和旁边那句灰字（「不跟导入批次」，11-19）并成左边一组，右边的「看全部」照旧靠右 */
+.rkpi-head-l { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--s2); min-width: 0; }
 .rkpi-warn { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
 .rkpi-warn li + li { border-top: 1px solid var(--line-soft); }
 .rkpi-warn-a { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) auto; align-items: center; gap: var(--s3); padding: var(--s2) var(--s1); color: inherit; }
@@ -2428,6 +2436,7 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 /* 认图没把握的格：黄标，点掉 = 核对过 */
 .prop-f-wait { flex: none; font-size: var(--fs-min); color: var(--warning-text); background: var(--warning-bg); border: 1px solid var(--warning-line); border-radius: var(--r-ctl); padding: 0 6px; cursor: pointer; }
 .prop-f-wait:hover { border-color: var(--warning); }
+.prop-f-warn { flex-basis: 100%; font-size: var(--fs-note); color: var(--warning-text); }
 /* AI 新线索卡的联系方式几行（11-17）：类型 + 号码，一行一条；窄屏号码那格先让 */
 .prop-nums { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
 .prop-num { display: flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; }
@@ -5119,6 +5128,12 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 .pd-fill-pop .ant-popover-inner { padding: var(--s3); }
 .pd-fill-pop-body { width: min(420px, calc(100vw - 32px)); max-height: min(72vh, 640px); overflow-y: auto; overscroll-behavior: contain; }
 .pd-fill-pop-t { font-weight: 600; color: var(--ink); margin-bottom: var(--s2); overflow-wrap: anywhere; }
+/* 手机窄屏：框按右下对齐挂在「完成节点」右边，按钮不在屏幕最右时框从左边出屏（390 宽切掉 52px）。
+   贴左右各 8px、宽跟屏走（同 .demo-switch-pop 窄屏压 left 的做法；浮层位置是浮层库写在行内的，只能 !important 盖），上下位置照旧挂在按钮下面 */
+@media (max-width: 767px) {
+  .pd-fill-pop.ant-popover { left: 8px !important; right: auto !important; }
+  .pd-fill-pop-body { width: calc(100vw - 16px - 2 * var(--s3)); }
+}
 /* 项目详情 · 删沟通（dt.talkdel）：确认条长在这一条下面，写清进回收站、谁能恢复；删成了这一条原地收起 */
 .pd-del-band { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin-top: var(--s2); padding: var(--s2) var(--s3);
   border-radius: var(--r-ctl); background: var(--danger-bg); border: 1px solid var(--danger-line); animation: pd-band-in var(--t) var(--ease) both; }

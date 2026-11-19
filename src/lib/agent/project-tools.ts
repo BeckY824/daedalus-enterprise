@@ -138,7 +138,7 @@ export const 项目写工具: Tool[] = [
       const 类 = str(a.异常类别, 30);
       if (类 && !类们.includes(类)) return { summary: "异常类别不认得", data: { error: `没有异常类别「${类}」，可选：${类们.join(" / ")}` } };
       const 到of = new Map(能.map((x) => [x.p.id, x.认.ok ? x.认.到 : null]));
-      const 指 = 指向(能.map((x) => x.p), 找.露, (p) => ({ 到: 到of.get(p.id) }));
+      const 指 = 指向(能.map((x) => x.p), 找.露, (p) => ({ 到: 到of.get(p.id), 从阶段: p.phase }));
       return 出卡(ctx, "project_node", 指.客户, { ...指.args, 目标, 原因: a.原因, 异常类别: 类, 异常类别们: 类们, reason: a.reason });
     },
   },
