@@ -300,10 +300,12 @@ export const 建议SCHEMAS: Record<string, Schema> = {
   propose_blocker_add: {
     type: "object",
     properties: {
-      project: 串("项目名或客户名"), projectId: 串(), 卡点类型: 串(), 影响等级: 串(), 卡点描述: 串(),
-      type: 串("沟通方式"), content: 串(), 下一步: 串(), 下一步时间: 串("YYYY-MM-DD"), reason: 串(理由),
+      project: 串("项目名或客户名"), projectId: 串(), 卡点类型: 串(), 影响等级: 串(),
+      // 11-19：卡点不再有标题、卡在哪儿；阻碍原因必填，卡在哪儿写进沟通内容
+      阻碍原因: { type: "array", items: { type: "string" }, description: "阻碍原因名，一个或几个；尽量用设置里已有的" },
+      type: 串("沟通方式"), content: 串("沟通内容，卡在哪儿写在这里"), 下一步: 串(), 下一步时间: 串("YYYY-MM-DD"), reason: 串(理由),
     },
-    required: ["卡点类型", "卡点描述", "reason"],
+    required: ["卡点类型", "阻碍原因", "content", "reason"],
     additionalProperties: false,
   },
   propose_blocker_resolve: {

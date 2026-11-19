@@ -122,9 +122,11 @@ describe("发布卡点", () => {
 
   it("记沟通时顺带发卡点：同样通知上级", async () => {
     当(甲);
-    const r = await 记项目沟通Action(项目, { type: "PHONE", content: "聊了", occurredAt: 北京日期(), 阶段: "线索", 明确回复: true, 下一步: "再聊", 下一步时间: dayjs().format("YYYY-MM-DD") }, { type: "中度卡点", description: "报价比别家高一成" });
+    const r = await 记项目沟通Action(项目, { type: "PHONE", content: "聊了", occurredAt: 北京日期(), 阶段: "线索", 明确回复: true, 下一步: "再聊", 下一步时间: dayjs().format("YYYY-MM-DD") }, { type: "中度卡点", reasons: ["价格预算分歧"] });
     expect(r, JSON.stringify(r)).toMatchObject({ ok: true, 卡点: expect.any(String) });
     expect(await 收件人("卡点")).toEqual([组长]);
+    // 11-19：新卡点没有标题，通知正文用显示名「类型 · 原因」
+    expect((await 通知们({ kind: "卡点" }))[0].body).toContain("中度卡点 · 价格预算分歧");
   });
 
   it("「暂无卡点」不生成，也不通知", async () => {

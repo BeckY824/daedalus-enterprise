@@ -8,7 +8,7 @@ import InlineConfirm from "@/components/InlineConfirm";
 import SaveButton from "@/components/SaveButton";
 import { dayjs, fmtDateTime } from "@/lib/utils";
 import type { 卡点卡 } from "@/lib/project/blocker";
-import { 卡点类型们, 影响等级们, 动作叫法, 描述上限, 标题上限, 原因最多, 原因名上限, type 卡点默认 } from "@/lib/project/blocker-rules";
+import { 卡点类型们, 影响等级们, 动作叫法, 描述上限, 原因最多, 原因名上限, 缺原因话, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 发布卡点Action, 认领卡点Action, 完成卡点Action, 删卡点Action } from "./blocker-actions";
 import { useFormDraft } from "@/components/FormDraft";
 import { 有字 } from "@/lib/form-draft";
@@ -73,7 +73,7 @@ export function 会签文字(b: Pick<卡点卡, "status" | "进度" | "认领">)
   return `${b.status} ${b.进度.完成}/${b.进度.共} ${b.认领.map((c) => `${c.done ? "✓" : "⏳"}${c.名字}`).join(" ")}`;
 }
 
-/** 阻碍原因的多选：下拉是设置里启用的原因，也能现打一个新的（发出去后进「待审核」，总管理员在设置里审） */
+/** 阻碍原因的多选（11-19 起选了卡点类型就必填）：下拉是设置里启用的原因，也能现打一个新的（发出去后进「待审核」，总管理员在设置里审）；空白、纯空格不算 */
 export function 原因选择({ 原因们, 值, on改, disabled }: { 原因们: string[]; 值: string[]; on改: (v: string[]) => void; disabled?: boolean }) {
   return (
     <Select
@@ -81,7 +81,7 @@ export function 原因选择({ 原因们, 值, on改, disabled }: { 原因们: s
       mode="tags"
       maxCount={原因最多}
       disabled={disabled}
-      placeholder="阻碍原因（可多选；没有合适的可以直接打字新增）"
+      placeholder="阻碍原因（必填，可多选；没有合适的可以直接打字新增）"
       value={值}
       onChange={(v: string[]) => on改([...new Set(v.map((x) => x.trim().slice(0, 原因名上限)).filter(Boolean))])}
       options={原因们.map((t) => ({ value: t, label: t }))}
@@ -91,7 +91,7 @@ export function 原因选择({ 原因们, 值, on改, disabled }: { 原因们: s
 }
 
 /**
- * 从一条沟通记录发布卡点：类型、影响、标题、阻碍原因（多选）、描述、资源申请。
+ * 从一条沟通记录发布卡点：类型、影响、阻碍原因（多选、必填）、资源申请（11-19 去掉标题、卡在哪儿，同记沟通里的卡点）。
  * 不指给谁：发出去是「待接受」，看得到的人都能认领（11-01 定稿 B1/B3）
  */
 export function PublishBlockerModal({ followUpId, 默认, 原因们, 沟通们, onClose }: { followUpId: string; 默认: 卡点默认; 原因们: string[]; /** 「挂在」可换到哪条沟通（项目详情给；不给就只写挂在哪、不能换） */ 沟通们?: 可挂沟通[]; onClose: () => void }) {
@@ -100,30 +100,26 @@ export function PublishBlockerModal({ followUpId, 默认, 原因们, 沟通们, 
   const 挂的那条 = 沟通们?.find((f) => f.id === 挂在);
   const [type, setType] = useState<string>(默认.默认类型 === "暂无卡点" ? "轻度卡点" : 默认.默认类型);
   const [impact, setImpact] = useState<string>(默认.默认影响);
-  const [title, setTitle] = useState("");
   const [reasons, setReasons] = useState<string[]>([]);
-  const [description, setDescription] = useState("");
   const [resourceRequest, setResourceRequest] = useState("");
   // 打了没发的留草稿（11-17，components/FormDraft.tsx）：按挂的那条沟通分；发出去了、点了取消就删
   const 稿 = useFormDraft({
     键: `新建卡点:${followUpId}`,
-    值: { 挂在, type, impact, title, reasons, description, resourceRequest },
+    值: { 挂在, type, impact, reasons, resourceRequest },
     带回: (v) => {
       if (typeof v.挂在 === "string" && (!沟通们 || 沟通们.some((f) => f.id === v.挂在))) set挂在(v.挂在);
       if (typeof v.type === "string") setType(v.type);
       if (typeof v.impact === "string") setImpact(v.impact);
-      if (typeof v.title === "string") setTitle(v.title);
       if (Array.isArray(v.reasons)) setReasons(v.reasons);
-      if (typeof v.description === "string") setDescription(v.description);
       if (typeof v.resourceRequest === "string") setResourceRequest(v.resourceRequest);
     },
-    算填过: (改) => 有字([改.title, 改.description, 改.resourceRequest, 改.reasons]),
+    算填过: (改) => 有字([改.resourceRequest, 改.reasons]),
   });
   const 不要了 = () => {
     稿.丢掉();
     onClose();
   };
-  const 差 = !reasons.length ? "选一个阻碍原因" : !description.trim() ? "写一句卡在哪" : "";
+  const 差 = !reasons.length ? 缺原因话 : "";
   return (
     <Modal
       open
@@ -132,7 +128,7 @@ export function PublishBlockerModal({ followUpId, 默认, 原因们, 沟通们, 
       // 原型 dt.blocker「改后」：发布键里转圈 →「已发布」放完再关框，新卡点出现在列表里；没发出去原因浮在键上方、框不关（不弹顶部提示）
       footer={<Space>
         <Button onClick={不要了}>取消</Button>
-        <SaveButton disabled={!!差} 已保存="已发布" 没保存="没发出去" 做={() => 跑(() => 发布卡点Action(挂在, { type, impact, title, reasons, description, resourceRequest }))} 成了={() => { 稿.存好了(); onClose(); }}>发布</SaveButton>
+        <SaveButton disabled={!!差} 已保存="已发布" 没保存="没发出去" 做={() => 跑(() => 发布卡点Action(挂在, { type, impact, reasons, resourceRequest }))} 成了={() => { 稿.存好了(); onClose(); }}>发布</SaveButton>
       </Space>}
     >
       {稿.提示}
@@ -152,9 +148,7 @@ export function PublishBlockerModal({ followUpId, 默认, 原因们, 沟通们, 
           <Select aria-label="卡点类型" value={type} onChange={(v: string) => setType(v)} options={卡点类型们.filter((t) => t !== "暂无卡点").map((t) => ({ value: t, label: t }))} />
           <Select aria-label="影响等级" value={impact} onChange={(v: string) => setImpact(v)} options={影响等级们.map((t) => ({ value: t, label: t }))} />
         </div>
-        <Input aria-label="卡点标题" maxLength={标题上限} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="标题（不写就取描述的前 20 个字）" />
         <原因选择 原因们={原因们} 值={reasons} on改={setReasons} />
-        <Input.TextArea aria-label="卡点描述" rows={3} maxLength={描述上限} showCount value={description} onChange={(e) => setDescription(e.target.value)} placeholder="卡在哪（必填）" />
         <Input.TextArea aria-label="资源申请" rows={2} maxLength={描述上限} value={resourceRequest} onChange={(e) => setResourceRequest(e.target.value)} placeholder="需要什么资源（可不写）" />
         {差 && <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{差}</div>}
       </Space>
@@ -162,7 +156,7 @@ export function PublishBlockerModal({ followUpId, 默认, 原因们, 沟通们, 
   );
 }
 
-/** 一条卡点的头：编号、状态、类型、影响、原因（待审核的标出来；老卡点没挂原因的显示「原阻碍主体：X」）、标题 */
+/** 一条卡点的头：编号、状态、类型、影响、原因（待审核的标出来；老卡点没挂原因的显示「原阻碍主体：X」）、显示名（老卡点的标题，新卡点「类型 · 原因」，blocker-rules.ts 卡点显示名） */
 export function 卡点头({ b, 带项目 = false }: { b: 卡点卡; 带项目?: boolean }) {
   return (
     <>
@@ -239,7 +233,8 @@ export function BlockerList({ 们, 带项目 = false, 空 = "还没有卡点" }:
       {们.map((b) => (
         <div key={b.id} className={`pd-blk${刚认领.has(b.id) ? " is-claimed" : ""}`} data-status={刚认领.has(b.id) && b.status === "待接受" ? "处理中" : b.status} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid var(--line-soft)", minWidth: 0 }}>
           <卡点头 b={b} 带项目={带项目} />
-          <div style={{ whiteSpace: "pre-wrap", marginTop: 4, overflowWrap: "anywhere" }}>{b.description}</div>
+          {/* 11-19 起新卡点不写「卡在哪儿」：没有就不占一行；老卡点的照旧显示 */}
+          {b.description && <div style={{ whiteSpace: "pre-wrap", marginTop: 4, overflowWrap: "anywhere" }}>{b.description}</div>}
           <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 2, overflowWrap: "anywhere" }}>
             {耗时文字(b)}{" · "}{b.发布人} 发布{b.followUpId ? "" : " · 来源沟通已删除"}
           </div>

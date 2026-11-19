@@ -79,7 +79,8 @@ async function 分派(p: 项目卡, me: 我): Promise<分派结果> {
       const 结 = await 记项目沟通Action(
         p.targetId,
         { type: p.type, content: p.content, occurredAt: new Date().toISOString(), 下一步时间: p.下一步时间 || null, 阶段: 项.phase, 下一步: p.下一步 },
-        p.要卡点 ? { type: p.卡点类型, impact: p.影响等级 || undefined, description: p.卡点描述 || undefined } : undefined,
+        // 11-19：卡点带阻碍原因（必填，服务端 规整发布 兜），不再带描述
+        p.要卡点 ? { type: p.卡点类型, impact: p.影响等级 || undefined, reasons: p.阻碍原因 ?? [] } : undefined,
       );
       if (!结.ok) return { ok: false, error: 话(结) };
       const 卡 = "卡点" in 结 && 结.卡点 ? `；卡点 ${结.卡点} 已发布` : "";

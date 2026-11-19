@@ -33,7 +33,7 @@ import { 按线范围of, 按线项目 } from "@/lib/enterprise/line-viewer";
 import {
   规整卡点默认, 合上卡点默认, 规整发布, 规整文字, 拼卡点编号, 卡点编号头, 下一个卡点流水, 写库时限天数, 会签进度,
   规整卡点角色开关, 合上卡点角色开关, 卡点角色键, 卡点权限of, 看得到卡点, 原因种子们, 种子原因id, 规整原因名, 兜底原因,
-  卡点状态们, 卡点类型们, 影响等级们, 卡点只读, 能管卡点, 未分类原因id, 未分类原因名,
+  卡点状态们, 卡点类型们, 影响等级们, 卡点只读, 能管卡点, 未分类原因id, 未分类原因名, 卡点显示名,
   type 卡点默认, type 发布输入, type 卡点角色开关, type 卡点状态, type 原因状态,
 } from "./blocker-rules";
 
@@ -238,7 +238,8 @@ const 项目字段 = { id: true, ownerId: true, pooledAt: true, customerId: true
 const 卡点带 = {
   project: { select: { ...项目字段, name: true, members: { where: { inviteStatus: "JOINED" }, select: { userId: true } } } },
   claims: { orderBy: { createdAt: "asc" as const } },
-  reasons: { include: { reason: { select: { id: true, name: true, status: true } } } },
+  // 按字典顺序排：标签和显示名（卡点显示名）里原因的先后每次一样
+  reasons: { include: { reason: { select: { id: true, name: true, status: true } } }, orderBy: [{ reason: { sort: "asc" as const } }, { reason: { name: "asc" as const } }] },
   logs: { orderBy: { at: "asc" as const } },
 } satisfies Prisma.EntBlockerInclude;
 type 带全的卡点 = Prisma.EntBlockerGetPayload<{ include: typeof 卡点带 }>;
@@ -313,7 +314,7 @@ function 能发(me: 谁, p: 项目要的, 权: 我的卡点权限, org: 组织 |
 
 /**
  * 从一条沟通记录发布卡点 → 待接受（没人认领）。类型「暂无卡点」不生成（返回 ok、不带 id）。
- * 阻碍原因多选：字典里没有的新建成待审核；一个没选落「其他」
+ * 阻碍原因多选、必填（11-19）：字典里没有的新建成待审核；标题、描述不再要，新卡点标题存空、显示名按 卡点显示名 现拼
  */
 export async function 发布卡点(
   me: 谁, followUpId: string, input: 发布输入, now: Date = new Date(),
@@ -574,7 +575,7 @@ async function 成视图(me: 谁, 们: 带全的卡点[], 权: 我的卡点权�
     const 进度 = 会签进度(b.claims);
     const 开着 = 权.能写 && b.status !== "已解决";
     return {
-      id: b.id, code: b.code, title: b.title || b.description.slice(0, 20), projectId: b.projectId, 项目: b.project.name, followUpId: b.followUpId, phase: b.phase,
+      id: b.id, code: b.code, title: 卡点显示名({ title: b.title, type: b.type, 原因们: b.reasons.map((l) => l.reason.name), description: b.description }), projectId: b.projectId, 项目: b.project.name, followUpId: b.followUpId, phase: b.phase,
       type: b.type, impact: b.impact, 原因们: b.reasons.map((l) => l.reason), description: b.description,
       原阻碍主体: b.reasons.length === 0 ? (b.obstacle || null) : null,
       status: b.status, creatorId: b.creatorId, 发布人: 名.get(b.creatorId) ?? "—",

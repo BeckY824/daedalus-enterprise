@@ -15,7 +15,7 @@ const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
   const 空跑 = "async()=>({ok:true})";
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
-  stub(/^\.\.\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return{ok:true}},终止项目进程=async(...a)=>{(window.__终止||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return window.__编辑回||{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=async(...a)=>{(window.__改沟通||=[]).push(a);return{ok:true}},删项目沟通=async(...a)=>{(window.__删沟通||=[]).push(a);return{ok:true}},加项目组员=f,换项目组员角色=f,移出项目组员=f;`));
+  stub(/^\.\.\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return{ok:true}},终止项目进程=async(...a)=>{(window.__终止||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=async(...a)=>{(window.__记沟通||=[]).push(a);return{ok:true,followUpId:'fx'}},判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return window.__编辑回||{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=async(...a)=>{(window.__改沟通||=[]).push(a);return{ok:true}},删项目沟通=async(...a)=>{(window.__删沟通||=[]).push(a);return{ok:true}},加项目组员=f,换项目组员角色=f,移出项目组员=f;`));
   stub(/^\.\.\/commission-actions$/, `const f=${空跑};export const 存项目底价=f,存提成分配=f,更正实际提成=f;`);
   // 定时分配（11-17）改 / 取消 / 现在分：服务端那串（prisma、通知）进不了浏览器包
   stub(/(^|\/)schedule-actions$/, 补全动作桩("src/app/(app)/leads/schedule-actions.ts", `const f=${空跑};export const 改定时分配=f,取消定时分配=f,定时分配现在分=f;`));
@@ -1115,6 +1115,85 @@ it("组员记沟通（11-19 客户答复）：记一条沟通框不摆下一步�
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
+});
+
+it.each([375, 1024, 1280, 1366])("记一条沟通的卡点（11-19）%ipx：默认「暂无卡点」只摆类型一格；选了类型出影响和阻碍原因、没有标题和卡在哪儿；没选原因「记下」灰着写「请选阻碍原因」；能打字新增；框不横溢", async (w) => {
+  const { page, errors } = await 覆盖(w, { 能记沟通: true });
+  try {
+    await page.getByTestId("follow-card-new").click();
+    const 窗 = page.getByRole("dialog");
+    const 类型 = 窗.getByRole("combobox", { name: "卡点类型" });
+    await 类型.waitFor();
+    expect(await 窗.locator(".follow-blocker").innerText()).toContain("暂无卡点");
+    // 暂无卡点：不带出影响、原因（不留卡点标识）；标题、卡在哪儿任何时候都没有
+    expect(await 窗.getByRole("combobox", { name: "卡点影响" }).count()).toBe(0);
+    expect(await 窗.getByRole("combobox", { name: "阻碍原因" }).count()).toBe(0);
+    for (const l of ["卡点标题", "卡点描述"]) expect(await 窗.getByLabel(l).count()).toBe(0);
+    await 窗.getByLabel("沟通内容").fill("聊了报价");
+    await 窗.getByLabel("下一步计划").fill("周五前发报价单");
+    const 记下 = 窗.getByRole("button", { name: /记\s*下/ });
+    expect(await 记下.isDisabled()).toBe(false);
+    await 类型.click();
+    await page.locator(".ant-select-item-option").filter({ hasText: "中度卡点" }).click();
+    const 影响 = 窗.getByRole("combobox", { name: "卡点影响" });
+    const 原因 = 窗.getByRole("combobox", { name: "阻碍原因" });
+    await 原因.waitFor();
+    expect(await 影响.count()).toBe(1);
+    // 影响照旧默认（占位写默认值）
+    expect(await 窗.locator(".follow-blocker").innerText()).toContain("默认短期不影响");
+    for (const l of ["卡点标题", "卡点描述"]) expect(await 窗.getByLabel(l).count()).toBe(0);
+    // 没选原因：「记下」灰着，旁边写「请选阻碍原因」
+    expect(await 记下.isDisabled()).toBe(true);
+    expect(await 窗.locator(".ant-modal-footer").innerText()).toContain("请选阻碍原因");
+    // 框不横溢、卡点那几格不出框
+    const 宽 = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+    expect(宽[0]).toBeLessThanOrEqual(宽[1]);
+    const 框 = (await 窗.boundingBox())!;
+    const 格们 = await 窗.locator(".follow-blocker").evaluate((el) => [...el.querySelectorAll(":scope > div > .ant-select, :scope .follow-blocker-row > .ant-select, :scope > div > div > .ant-select")].map((e) => { const r = e.getBoundingClientRect(); return [r.left, r.right]; }));
+    expect(格们.length).toBe(3);
+    for (const [左, 右] of 格们) {
+      expect(左).toBeGreaterThanOrEqual(框.x - 1);
+      expect(右).toBeLessThanOrEqual(框.x + 框.width + 1);
+    }
+    expect(await 窗.locator(".follow-blocker").evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+    // 选一个 + 打字新增一个（纯空格不算）
+    await 原因.click();
+    await page.locator(".ant-select-item-option").filter({ hasText: "价格" }).click();
+    await page.keyboard.type("   ");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("自填一条原因");
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Escape");
+    expect(await 记下.isDisabled()).toBe(false);
+    await 记下.click();
+    await page.waitForFunction(() => Reflect.get(window, "__记沟通"));
+    const 交 = await page.evaluate(() => (Reflect.get(window, "__记沟通") as unknown[][])[0][2]);
+    expect(交).toEqual({ type: "中度卡点", impact: null, reasons: ["价格", "自填一条原因"] });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("记一条沟通的卡点（11-19）：选了类型再换回「暂无卡点」，影响、原因收起，记下时交的是暂无（不生成）", async () => {
+  const { page, errors } = await 覆盖(1280, { 能记沟通: true });
+  try {
+    await page.getByTestId("follow-card-new").click();
+    const 窗 = page.getByRole("dialog");
+    const 类型 = 窗.getByRole("combobox", { name: "卡点类型" });
+    await 类型.waitFor();
+    await 类型.click();
+    await page.locator(".ant-select-item-option").filter({ hasText: "重要卡点" }).click();
+    await 窗.getByRole("combobox", { name: "阻碍原因" }).waitFor();
+    await 类型.click();
+    await page.locator(".ant-select-item-option").filter({ hasText: "暂无卡点" }).click();
+    expect(await 窗.getByRole("combobox", { name: "阻碍原因" }).count()).toBe(0);
+    expect(await 窗.getByRole("combobox", { name: "卡点影响" }).count()).toBe(0);
+    await 窗.getByLabel("沟通内容").fill("聊了报价");
+    await 窗.getByLabel("下一步计划").fill("周五前发报价单");
+    await 窗.getByRole("button", { name: /记\s*下/ }).click();
+    await page.waitForFunction(() => Reflect.get(window, "__记沟通"));
+    expect(await page.evaluate(() => (Reflect.get(window, "__记沟通") as unknown[][])[0][2])).toMatchObject({ type: "暂无卡点" });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
 });
 
 /* 10-31 改版 R6：企业版页头把这一页能做的事摆成具名按钮，要填的进弹窗；卡上原入口照旧 */

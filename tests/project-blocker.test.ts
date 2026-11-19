@@ -34,7 +34,7 @@ import {
 } from "@/lib/project/blocker";
 import { 卡点改版, 卡点改版记号键 } from "@/lib/project/blocker-migrate";
 import {
-  时限提醒of, 编号日, 规整发布, 默认卡点默认, 改版后, 原因种子们, 会签进度, 默认卡点角色开关, 卡点权限of,
+  时限提醒of, 编号日, 规整发布, 卡点显示名, 默认卡点默认, 改版后, 原因种子们, 会签进度, 默认卡点角色开关, 卡点权限of,
   卡点只读, 能管卡点, 未分类原因id, 未分类原因名,
 } from "@/lib/project/blocker-rules";
 import { 清过期 } from "@/lib/enterprise/soft-delete";
@@ -207,7 +207,7 @@ describe("企业版卡点", () => {
     expect(await prisma.entBlocker.count({ where: { code: "BLK20261101999" } })).toBe(1);
   });
 
-  it("发布：要从项目沟通来；只有负责人（销售）、系统管理员（V3.5.1）能发；直属上级、虚线上级、组员、无关的人不能（C2：只能看、转让）；标题没填取描述前 20 字", async () => {
+  it("发布：要从项目沟通来；只有负责人（销售）、系统管理员（V3.5.1）能发；直属上级、虚线上级、组员、无关的人不能（C2：只能看、转让）；11-19 阻碍原因必填、标题和描述不要", async () => {
     expect(await 发布卡点(销售, "nope", 卡)).toMatchObject({ ok: false, error: expect.stringContaining("沟通") });
     const f = await 沟通();
     expect(await 发布卡点(散, f, 卡)).toMatchObject({ ok: false });
@@ -218,13 +218,20 @@ describe("企业版卡点", () => {
     expect(await 能发卡点(组长, 项目)).toBe(false);
     expect(await 能发卡点(总管, 项目)).toBe(true);
     expect(await 能发卡点(散, 项目)).toBe(false);
-    expect(await 发布卡点(销售, f, { description: "" })).toMatchObject({ ok: false, error: "写一句卡在哪" });
-    const r = await 发布卡点(销售, f, { description: "一二三四五六七八九十一二三四五六七八九十多出来的字" }, now);
+    // 11-19：阻碍原因一个没选（空白、纯空格也算没选）→ 拦下，一行不写；不再落「其他」
+    expect(await 发布卡点(销售, f, { description: "写了描述也不行" })).toMatchObject({ ok: false, error: "请选阻碍原因" });
+    expect(await 发布卡点(销售, f, { reasons: ["  ", ""] })).toMatchObject({ ok: false, error: "请选阻碍原因" });
+    expect(await prisma.entBlocker.count()).toBe(0);
+    // 标题、描述都不填照样发得出去：标题、描述存空，显示名「类型 · 原因」
+    const r = await 发布卡点(销售, f, { type: "中度卡点", reasons: ["价格预算分歧", "需求变更"] }, now);
     expect(r.ok).toBe(true);
-    const row = await 行(r.id!);
-    expect(row.title).toBe("一二三四五六七八九十一二三四五六七八九十");
-    // 一个原因没选：落「其他」
-    expect((await prisma.entBlockerReasonLink.findMany({ where: { blockerId: r.id! }, include: { reason: true } })).map((l) => l.reason.name)).toEqual(["其他"]);
+    expect(await 行(r.id!)).toMatchObject({ title: "", description: "", obstacle: expect.any(String) });
+    expect((await 项目的卡点(销售, 项目)).find((x) => x.id === r.id)?.title).toBe("中度卡点 · 价格预算分歧、需求变更");
+    // 老卡点：有标题的照旧显示标题、描述照旧在
+    const 老 = await prisma.entBlocker.create({
+      data: { code: "BLK20261020001", title: "老标题还在", projectId: 项目, followUpId: f, customerId: 客户, phase: "线索", type: "轻度卡点", impact: "短期不影响", obstacle: "价格", description: "老卡在哪儿", dueDays: 7, dueAt: now, status: "待接受", creatorId: 销售.id },
+    });
+    expect((await 项目的卡点(销售, 项目)).find((x) => x.id === 老.id)).toMatchObject({ title: "老标题还在", description: "老卡在哪儿" });
   });
 
   describe("谁看得到（只认业务角色）", () => {
@@ -668,7 +675,7 @@ describe("企业版卡点", () => {
     expect(await 存卡点默认(总管, { 默认类型: "轻度卡点", 默认影响: "可能丢单" })).toMatchObject({ ok: true });
     invalidateSettingsCache();
     expect(await 读卡点默认()).toEqual({ 默认类型: "轻度卡点", 默认影响: "可能丢单" });
-    const b = await 发(销售, { description: "x" });
+    const b = await 发(销售, { reasons: ["其他"] });
     expect(await 行(b.id)).toMatchObject({ type: "轻度卡点", impact: "可能丢单" });
   });
 
@@ -761,13 +768,25 @@ describe("卡点规矩", () => {
     expect(会签进度([{ done: true }, { done: true }])).toEqual({ 完成: 2, 共: 2, 齐了: true });
   });
 
-  it("规整发布：没填类型、影响按默认；暂无卡点 = null；没有时限这回事", () => {
-    expect(规整发布({ description: "x" }, 默认卡点默认)).toMatchObject({ type: "中度卡点", impact: "短期不影响", title: "x", reasons: ["其他"] });
+  it("规整发布：没填类型、影响按默认；暂无卡点 = null；没有时限这回事；11-19 原因必填、标题描述不要", () => {
+    expect(规整发布({ reasons: ["其他"] }, 默认卡点默认)).toMatchObject({ type: "中度卡点", impact: "短期不影响", title: "", description: "", reasons: ["其他"] });
     expect(规整发布({ type: "暂无卡点", description: "" }, 默认卡点默认)).toBeNull();
-    // 老调用方还传单个阻碍主体：不再换成原因（B9），没选原因照样落「其他」
-    expect(规整发布({ description: "x", obstacle: "竞品" } as never, 默认卡点默认)).toMatchObject({ reasons: ["其他"] });
-    expect(规整发布({ description: "x" }, 默认卡点默认)).not.toHaveProperty("dueDays");
-    expect(规整发布({ description: "x", type: "乱写" }, 默认卡点默认)).toHaveProperty("error");
+    // 老调用方还传单个阻碍主体：不再换成原因（B9）；没选原因 → 报错（11-19 起不再落「其他」）
+    expect(规整发布({ description: "x", obstacle: "竞品" } as never, 默认卡点默认)).toEqual({ error: "请选阻碍原因" });
+    expect(规整发布({ reasons: [" ", ""] }, 默认卡点默认)).toEqual({ error: "请选阻碍原因" });
+    // 传了标题、描述照存（不再拿描述补标题）
+    expect(规整发布({ reasons: ["其他"], title: " 标 ", description: "描述" }, 默认卡点默认)).toMatchObject({ title: "标", description: "描述" });
+    expect(规整发布({ reasons: ["其他"] }, 默认卡点默认)).not.toHaveProperty("dueDays");
+    expect(规整发布({ reasons: ["其他"], type: "乱写" }, 默认卡点默认)).toHaveProperty("error");
+  });
+
+  it("卡点显示名（11-19）：有标题用标题；没标题「类型 · 原因」，超过 3 个写「等 N 个」；都没有退回描述前 20 字、再退回类型", () => {
+    expect(卡点显示名({ title: "老标题", type: "中度卡点", 原因们: ["需求变更"], description: "d" })).toBe("老标题");
+    expect(卡点显示名({ title: "  ", type: "中度卡点", 原因们: ["需求变更"] })).toBe("中度卡点 · 需求变更");
+    expect(卡点显示名({ title: "", type: "重要卡点", 原因们: ["甲", "乙", "丙", "丁", "戊"] })).toBe("重要卡点 · 甲、乙、丙 等 5 个");
+    expect(卡点显示名({ title: "", type: "轻度卡点", 原因们: ["甲", "乙", "丙"] })).toBe("轻度卡点 · 甲、乙、丙");
+    expect(卡点显示名({ title: "", type: "轻度卡点", 原因们: [], description: "一二三四五六七八九十一二三四五六七八九十多出来" })).toBe("一二三四五六七八九十一二三四五六七八九十");
+    expect(卡点显示名({ title: null, type: "轻度卡点", 原因们: [], description: "" })).toBe("轻度卡点");
   });
 
   it("编号日按北京", () => {

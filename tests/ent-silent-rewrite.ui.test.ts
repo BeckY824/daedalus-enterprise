@@ -43,6 +43,8 @@ beforeAll(async () => {
     window.__签约=()=>root.render(包(<div className="cli-col"><ProposalCard proposal={{id:'p2',kind:'add_contract',customerId:'c1',customerName:'甲公司',reason:'x',amount:0,signedAt:'2026-11-17T00:00:00.000Z',remark:''}}/></div>));
     function 回款(){const [d,setD]=useState({kind:'payment_add',targetId:'p1',targetName:'项目一',paidAt:'2026-11-17',currency:'CNY',amount:0});window.__稿=d;return <div className="prop"><ProjectProposalFields draft={d} setDraft={setD}/></div>;}
     window.__回款=()=>root.render(包(<回款/>));
+    function 卡点卡(){const [d,setD]=useState({kind:'project_followup',targetId:'p1',targetName:'项目一',type:'PHONE',content:'聊了',下一步:'再聊',下一步时间:'',要卡点:true,卡点类型:'中度卡点',影响等级:'',阻碍原因:[],原因可选们:['价格预算分歧','需求变更']});window.__稿=d;return <div className="prop"><ProjectProposalFields draft={d} setDraft={setD}/></div>;}
+    window.__卡点卡=()=>root.render(包(<卡点卡/>));
     window.__方式=()=>root.render(包(<div>
       <div data-testid="cells"><FollowTypeCell type="OTHER" method={null}/><FollowTypeCell type="OTHER" method="Telegram"/><FollowTypeCell type="PHONE" method={null}/></div>
       <div data-testid="sel-other"><FollowMethodSelect aria-label="沟通方式甲" type="OTHER" method={null} 类型们={[]} onChange={v=>{window.__改=v}}/></div>
@@ -99,6 +101,25 @@ it("回款卡金额：「-500」框下说认不出、交上去的是 NaN（缺�
     expect(await page.getByRole("alert").count()).toBe(0);
     await 金额框(page).fill("");
     await expect.poll(稿).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it.each([375, 1024, 1366])("AI 记沟通带卡点的卡（11-19）%ipx：没有卡点描述，阻碍原因能选、能直接打字新增（纯空格不算），不横撑", async (w) => {
+  const { page, errors } = await open("__卡点卡", w);
+  try {
+    const 原因 = page.getByRole("combobox", { name: "阻碍原因" });
+    await 原因.waitFor();
+    expect(await page.getByText("卡点描述").count()).toBe(0);
+    await 原因.click();
+    await page.locator(".ant-select-item-option").filter({ hasText: "需求变更" }).click();
+    await page.keyboard.type("   ");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("AI 卡上自填");
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Escape");
+    expect(await page.evaluate(() => (Reflect.get(window, "__稿") as { 阻碍原因: string[] }).阻碍原因)).toEqual(["需求变更", "AI 卡上自填"]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

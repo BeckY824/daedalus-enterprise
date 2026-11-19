@@ -155,15 +155,25 @@ describe("推进节点 / 定结局", () => {
 });
 
 describe("沟通 + 卡点", () => {
-  it("收卡：卡点类型不认得拒；没填下一步算缺（11-05 起不问明确回复）", () => {
+  it("收卡：卡点类型不认得拒；没填下一步算缺（11-05 起不问明确回复）；11-19 没填阻碍原因算缺", () => {
     expect(收("project_followup", { targetId: 项目id, content: "x", 要卡点: true, 卡点类型: "超级卡点" })).toMatchObject({ ok: false });
     const r = 收("project_followup", { targetId: 项目id, targetName: "x", content: "聊了报价", 要卡点: true, 卡点类型: "" });
-    expect(missingFields((r as { proposal: Proposal }).proposal)).toEqual(["下一步计划", "卡点类型"]);
+    expect(missingFields((r as { proposal: Proposal }).proposal)).toEqual(["下一步计划", "卡点类型", "阻碍原因"]);
+    // 空白不算；一串字符串按顿号拆开、去重
+    const 空白 = 收("project_followup", { targetId: 项目id, targetName: "x", content: "聊了", 下一步: "再聊", 要卡点: true, 卡点类型: "轻度卡点", 阻碍原因: ["  ", ""] });
+    expect(missingFields((空白 as { proposal: Proposal }).proposal)).toEqual(["阻碍原因"]);
+    const 串 = 收("project_followup", { targetId: 项目id, targetName: "x", content: "聊了", 下一步: "再聊", 要卡点: true, 卡点类型: "轻度卡点", 阻碍原因: "需求变更、需求变更、自填一条" });
+    expect((串 as { proposal: { 阻碍原因: string[] } }).proposal.阻碍原因).toEqual(["需求变更", "自填一条"]);
+    // 不要卡点的沟通卡：不问阻碍原因
+    const 不要 = 收("project_followup", { targetId: 项目id, targetName: "x", content: "聊了", 下一步: "再聊" });
+    expect(missingFields((不要 as { proposal: Proposal }).proposal)).toEqual([]);
   });
 
   it("负责人确认：转给 记项目沟通Action（带卡点）；沟通、卡点各一条；同事确认一行不写", async () => {
-    const { 卡 } = await 出("propose_blocker_add", { project: "云帆一期", 卡点类型: "中度卡点", 影响等级: "短期不影响", 卡点描述: "报价高", content: "客户嫌贵", 明确回复: "否", 下一步: "下周再报价", reason: "人说卡在价格" });
-    expect(卡).toMatchObject({ kind: "project_followup", 要卡点: true, 卡点类型: "中度卡点" });
+    const { 卡 } = await 出("propose_blocker_add", { project: "云帆一期", 卡点类型: "中度卡点", 影响等级: "短期不影响", 阻碍原因: ["价格预算分歧"], content: "客户嫌贵", 明确回复: "否", 下一步: "下周再报价", reason: "人说卡在价格" });
+    // 卡上带阻碍原因和下拉选项（设置里启用的原因）
+    expect(卡).toMatchObject({ kind: "project_followup", 要卡点: true, 卡点类型: "中度卡点", 阻碍原因: ["价格预算分歧"], 原因可选们: expect.arrayContaining(["价格预算分歧", "其他"]) });
+    expect(卡).not.toHaveProperty("卡点描述");
 
     expect((await 确认(卡!, 丙)).ok).toBe(false);
     expect(await prisma.followUp.count()).toBe(0);
@@ -174,7 +184,7 @@ describe("沟通 + 卡点", () => {
     expect(项目动作.记项目沟通Action).toHaveBeenCalledWith(
       项目id,
       expect.objectContaining({ content: "客户嫌贵", 下一步: "下周再报价", 阶段: "线索" }),
-      { type: "中度卡点", impact: "短期不影响", description: "报价高" },
+      { type: "中度卡点", impact: "短期不影响", reasons: ["价格预算分歧"] },
     );
     expect(await prisma.followUp.count()).toBe(1);
     expect(await prisma.entBlocker.count()).toBe(1);

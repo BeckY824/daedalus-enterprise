@@ -6,7 +6,7 @@ import AmountTextInput from "@/components/AmountTextInput";
 import { FOLLOW_TYPES } from "@/lib/constants";
 import { 币种符号 } from "@/lib/currency";
 import { dayjs } from "@/lib/utils";
-import { 卡点类型们, 影响等级们 } from "@/lib/project/blocker-rules";
+import { 卡点类型们, 影响等级们, 原因最多, 原因名上限 } from "@/lib/project/blocker-rules";
 import { 性别们 } from "@/lib/enterprise/customer-v2";
 import { 每步能判, 联系人可改, type 项目卡 } from "@/lib/agent/project-proposals";
 
@@ -98,8 +98,14 @@ export default function ProjectProposalFields({ draft, setDraft }: { draft: 项�
               <F label="影响">
                 <Select size="small" style={{ width: 140 }} value={draft.影响等级 || undefined} placeholder="可不填" allowClear options={影响等级们.map((v) => ({ value: v, label: v }))} onChange={(v) => 设({ 影响等级: v ?? "" })} />
               </F>
-              <F label="卡点描述" block>
-                <Input.TextArea size="small" autoSize={{ minRows: 1, maxRows: 4 }} value={draft.卡点描述} onChange={(e) => 设({ 卡点描述: e.target.value })} />
+              {/* 11-19：标题、卡点描述去掉；阻碍原因必填，能选也能直接打字新增（同项目页 原因选择） */}
+              <F label="阻碍原因" block>
+                <Select
+                  size="small" mode="tags" aria-label="阻碍原因" maxCount={原因最多}
+                  placeholder="选或直接打字新增" value={draft.阻碍原因 ?? []}
+                  options={(draft.原因可选们 ?? []).map((v) => ({ value: v, label: v }))}
+                  onChange={(v: string[]) => 设({ 阻碍原因: [...new Set(v.map((x) => x.trim().slice(0, 原因名上限)).filter(Boolean))] })}
+                />
               </F>
             </>
           )}

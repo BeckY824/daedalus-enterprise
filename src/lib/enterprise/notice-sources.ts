@@ -14,6 +14,7 @@ import { 企业版 } from "./switch";
 import { 公海入口 } from "./nav";
 import { 能改后台设置, 只读角色, 是销售角色 } from "./permissions";
 import { 无效交给, 实际待, type 待哪步 } from "@/lib/project/lead-verify";
+import { 卡点显示名 } from "@/lib/project/blocker-rules";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 不跟着转的提醒 } from "@/lib/carry-over-db";
 import { 快轮到提醒 } from "./assign-eta";
@@ -342,6 +343,12 @@ export async function 转项目通知(me: 人, projectId: string): Promise<void>
 
 export type 卡点动作 = "认领" | "解决";
 
+/** 通知正文里的卡点名：同界面（blocker-rules.ts 卡点显示名），老卡点用标题，新卡点「类型 · 阻碍原因」 */
+const 原因名带 = { select: { reason: { select: { name: true } } }, orderBy: [{ reason: { sort: "asc" as const } }, { reason: { name: "asc" as const } }] };
+function 通知卡点名(b: { title: string; type: string; description: string; reasons: { reason: { name: string } }[] }): string {
+  return 卡点显示名({ title: b.title, type: b.type, 原因们: b.reasons.map((l) => l.reason.name), description: b.description });
+}
+
 /** 发布了卡点：告诉项目负责人和他的直属上级（发布的人自己不收）。同一个卡点只发一次 */
 export async function 卡点发布通知(me: 人, code: string | undefined): Promise<void> {
   await 稳("卡点发布通知", async () => {
@@ -349,7 +356,7 @@ export async function 卡点发布通知(me: 人, code: string | undefined): Pro
     const [b, org] = await 看全部(() => Promise.all([
       prisma.entBlocker.findUnique({
         where: { code },
-        select: { code: true, projectId: true, title: true, description: true, project: { select: { name: true, ownerId: true } } },
+        select: { code: true, projectId: true, title: true, type: true, description: true, reasons: 原因名带, project: { select: { name: true, ownerId: true } } },
       }),
       读组织(),
     ]));
@@ -357,7 +364,7 @@ export async function 卡点发布通知(me: 人, code: string | undefined): Pro
     await notify(负责人和上级(org, b.project.ownerId, me.id), {
       kind: "卡点",
       title: `${me.name} 发布了卡点 ${b.code}`,
-      body: `项目「${b.project.name}」· ${(b.title || b.description).slice(0, 200)}`,
+      body: `项目「${b.project.name}」· ${通知卡点名(b).slice(0, 200)}`,
       link: `/projects/${b.projectId}`,
       key: `blocker-new:${b.code}`,
     });
@@ -370,7 +377,7 @@ export async function 卡点通知(me: 人, code: string | undefined, 动作: �
     if (!code) return;
     const b = await 看全部(() => prisma.entBlocker.findUnique({
       where: { code },
-      select: { code: true, projectId: true, creatorId: true, title: true, description: true, project: { select: { name: true } } },
+      select: { code: true, projectId: true, creatorId: true, title: true, type: true, description: true, reasons: 原因名带, project: { select: { name: true } } },
     }));
     if (!b) return;
     const 给 = b.creatorId;
@@ -379,7 +386,7 @@ export async function 卡点通知(me: 人, code: string | undefined, 动作: �
     await notify([给], {
       kind: "卡点",
       title,
-      body: `项目「${b.project.name}」· ${(b.title || b.description).slice(0, 200)}`,
+      body: `项目「${b.project.name}」· ${通知卡点名(b).slice(0, 200)}`,
       link: `/projects/${b.projectId}`,
       key: `blocker:${b.code}:${动作}:${给}:${分钟()}`,
     });

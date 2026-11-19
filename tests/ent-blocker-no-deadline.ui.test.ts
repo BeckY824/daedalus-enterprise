@@ -3,6 +3,7 @@
  *
  *   卡点列表：没解决的「已开 N 天」，解决了的「用了 N 天解决」；不再有「时限 N 天」「（已超时）」和标红
  *   发布框：没有「解决时限」输入，交上去不带 dueDays（服务端按类型默认值照旧写库）；阻碍原因多选（11-01 B9）
+ *   11-19：发布框没有标题、卡在哪儿；阻碍原因必填（没选「发布」灰着、写「请选阻碍原因」），能直接打字新增；新卡点没描述不占一行
  *   设置 → 卡点默认值：没有每类的时限天数，默认类型和影响还在；阻碍原因是单独的字典卡
  *   Windows 1024 / 1280 / 1366：超长描述、超长认领人名不横向撑出，「认领」「我已完成」点得中
  * 卡点只有企业版有（开关关时项目详情的卡点是 null，见 ent-project-detail.ui.test.ts）。
@@ -80,24 +81,35 @@ it("卡点列表：显示开了几天 / 用了几天解决，没有时限、没�
   } finally { await page.close(); }
 });
 
-it("发布框：没有「解决时限」，交上去不带 dueDays", async () => {
+it("发布框：没有「解决时限」，交上去不带 dueDays；11-19 没有标题、卡在哪儿，阻碍原因必填、能打字新增", async () => {
   const { page, errors } = await open("publish");
   try {
     const dlg = page.getByRole("dialog"); await dlg.waitFor();
     expect(await dlg.getByLabel("解决时限").count()).toBe(0);
     expect(await dlg.innerText()).not.toMatch(/时限/);
+    expect(await dlg.getByLabel("卡点标题").count()).toBe(0);
+    expect(await dlg.getByLabel("卡点描述").count()).toBe(0);
+    // 没选原因：发布键灰着，框里写「请选阻碍原因」
+    const 发布键 = dlg.getByRole("button", { name: /发\s*布/ });
+    expect(await 发布键.isDisabled()).toBe(true);
+    expect(await dlg.innerText()).toContain("请选阻碍原因");
     await dlg.getByLabel("阻碍原因").click();
     await page.locator(".ant-select-item-option").filter({ hasText: "价格" }).click();
+    // 直接打字新增一个字典里没有的（纯空格不算）
+    await page.keyboard.type("   ");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("自填的原因");
+    await page.keyboard.press("Enter");
     await page.keyboard.press("Escape");
     await page.locator(".ant-select-dropdown:visible").waitFor({ state: "hidden" });
-    await dlg.getByLabel("卡点描述").click();
-    await dlg.getByLabel("卡点描述").fill("卡在报价");
-    await dlg.getByRole("button", { name: /发\s*布/ }).click();
+    expect(await 发布键.isDisabled()).toBe(false);
+    await 发布键.click();
     await page.waitForFunction(() => Reflect.get(window, "__发布"));
     const 交 = await page.evaluate(() => Reflect.get(window, "__发布") as Record<string, unknown>);
     expect(交).not.toHaveProperty("dueDays");
-    expect(交.description).toBe("卡在报价");
-    expect(交.reasons).toEqual(["价格"]);
+    expect(交).not.toHaveProperty("title");
+    expect(交).not.toHaveProperty("description");
+    expect(交.reasons).toEqual(["价格", "自填的原因"]);
     expect(交).not.toHaveProperty("obstacle");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
@@ -183,7 +195,6 @@ it("dt.blocker：发布框写「挂在」哪条沟通、能换；类型影响一
       await dlg.getByLabel("阻碍原因").click();
       await page.locator(".ant-select-item-option").filter({ hasText: "价格" }).click();
       await page.keyboard.press("Escape");
-      await dlg.getByLabel("卡点描述").fill("卡在报价");
       await page.evaluate(() => Reflect.set(window, "__发布回", { ok: false, error: "这条沟通已经删了，换一条" }));
       const 发布键 = dlg.locator(".ant-modal-footer").getByRole("button").last();
       await 发布键.click();

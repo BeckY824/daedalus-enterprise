@@ -7,6 +7,7 @@
  * - 多人认领：每人一行，各自点「我已完成」；x/y 全齐才整体变已解决并锁定，锁定后不能再认领
  * - 阻碍原因多选，字典在后台可增删改、停用、合并；用过的只能停用；前台新加的进「待审核」
  * - 卡点类型「暂无卡点」不生成记录
+ * - 11-19：选了类型，阻碍原因必填；标题、卡在哪儿（描述）界面上去掉，显示名用 卡点显示名（类型 + 原因）
  * 管理员的默认（默认类型 / 影响）存 Setting 的 entBlockerDefaults；角色开关存 entBlockerRoles
  */
 import { dayjs } from "../utils";
@@ -113,15 +114,38 @@ export type 好的发布 = {
   type: Exclude<卡点类型, "暂无卡点">; impact: 影响等级; title: string; reasons: string[]; description: string; resourceRequest: string | null;
 };
 
-/** 标题：填了用填的；没填取描述前 20 字 */
+/** 标题：填了用填的；没填取描述前 20 字（只给 11-01 改版迁移老卡点用；11-19 起新卡点不写标题，显示名见 卡点显示名） */
 export function 标题of(title: string | null | undefined, description: string | null | undefined): string {
   const t = 文字(title);
   return t || 文字(description).slice(0, 老标题字数);
 }
 
+/** 显示名里最多列几个阻碍原因，多的写「等 N 个」 */
+export const 显示名原因数 = 3;
 /**
- * 发布卡点填的：类型、影响没填按默认；「暂无卡点」不生成（返回 null）；描述必填；标题没填取描述前 20 字；
- * 阻碍原因多选，一个没选落「其他」。原因在不在字典里、新名字进待审核，读写库那边管
+ * 卡点的显示名（11-19 起界面不再填标题、卡在哪儿）：卡点列表、详情、复盘看板、通知、AI 候选都用它。
+ * - 存着标题的（老卡点）照旧用标题
+ * - 新卡点：「类型 · 原因1、原因2、原因3」，原因超过 3 个写「… 等 N 个」
+ * - 都没有（极老的数据）：退回描述前 20 字，再没有就是类型
+ */
+export function 卡点显示名(b: { title?: string | null; type: string; 原因们?: readonly (string | null | undefined)[]; description?: string | null }): string {
+  const t = 文字(b.title);
+  if (t) return t;
+  const 们 = (b.原因们 ?? []).map(文字).filter(Boolean);
+  if (们.length) {
+    const 多 = 们.length > 显示名原因数 ? ` 等 ${们.length} 个` : "";
+    return `${b.type} · ${们.slice(0, 显示名原因数).join("、")}${多}`;
+  }
+  return 文字(b.description).slice(0, 老标题字数) || b.type;
+}
+
+/** 选了卡点类型、阻碍原因一个没选：前端提示、服务端报错都用这句 */
+export const 缺原因话 = "请选阻碍原因";
+
+/**
+ * 发布卡点填的（11-19 起）：类型、影响没填按默认；「暂无卡点」不生成（返回 null）；
+ * 阻碍原因必填（至少选一个或打一个，空白不算）；标题、描述（卡在哪儿）界面不再填，服务端不要求，传了照存。
+ * 原因在不在字典里、新名字进待审核，读写库那边管
  */
 export function 规整发布(input: 发布输入, 默认: 卡点默认): 好的发布 | null | { error: string } {
   if (!input || typeof input !== "object") return { error: "要发布什么卡点？" };
@@ -131,25 +155,23 @@ export function 规整发布(input: 发布输入, 默认: 卡点默认): 好的�
   const impact = input.impact === undefined || input.impact === "" ? 默认.默认影响 : input.impact;
   if (!是影响(impact)) return { error: "影响等级不对" };
   const description = 文字(input.description);
-  if (!description) return { error: "写一句卡在哪" };
   if (description.length > 描述上限) return { error: `描述不超过 ${描述上限} 个字` };
   const 标 = 文字(input.title);
   if (标.length > 标题上限) return { error: `标题不超过 ${标题上限} 个字` };
-  let reasons = 规整原因们(input.reasons);
+  const reasons = 规整原因们(input.reasons);
   if ("error" in reasons) return reasons;
-  if (!reasons.length) reasons = [兜底原因];
+  if (!reasons.length) return { error: 缺原因话 };
   const 资源 = 文字(input.resourceRequest);
   if (资源.length > 描述上限) return { error: `资源申请不超过 ${描述上限} 个字` };
-  return { type, impact, title: 标题of(标, description), reasons, description, resourceRequest: 资源 || null };
+  return { type, impact, title: 标, reasons, description, resourceRequest: 资源 || null };
 }
 
 /**
- * 记沟通时顺手标的卡点（2026-10-31 F-跟进-08）：卡点类型、影响、描述、原因都选填。
+ * 记沟通时顺手标的卡点（2026-10-31 F-跟进-08，11-19 改）：卡点类型、影响、阻碍原因。
  * - 类型没选或选「暂无卡点」→ null，不生成卡点（11-01：「暂无卡点」不生成记录）
- * - 选了别的类型才生成一个：影响没选按默认；原因没选落「其他」；描述空写一句占位
- * 返回的直接喂给 发布卡点；先过一遍 规整发布，坏的在建沟通之前就报
+ * - 选了别的类型才生成一个：影响没选按默认；阻碍原因必填（规整发布 报「请选阻碍原因」）；标题、描述不再要
+ * 返回的直接喂给 发布卡点；先过一遍 规整发布，坏的在建沟通之前就报（沟通也不记）
  */
-export const 沟通卡点占位描述 = "记沟通时标了卡点，未写描述";
 export type 沟通卡点输入 = { type?: unknown; impact?: unknown; description?: unknown; reasons?: unknown; title?: unknown } | null | undefined;
 export function 沟通卡点(input: 沟通卡点输入, 默认: 卡点默认): 发布输入 | null | { error: string } {
   if (input == null) return null;
@@ -157,8 +179,7 @@ export function 沟通卡点(input: 沟通卡点输入, 默认: 卡点默认): �
   const 类 = 文字(input.type);
   if (!类 || 类 === "暂无卡点") return null;
   const 发: 发布输入 = {
-    type: 类, impact: 文字(input.impact) || 默认.默认影响, title: input.title, reasons: input.reasons,
-    description: 文字(input.description) || 沟通卡点占位描述,
+    type: 类, impact: 文字(input.impact) || 默认.默认影响, title: input.title, reasons: input.reasons, description: input.description,
   };
   const 好 = 规整发布(发, 默认);
   return 好 && "error" in 好 ? 好 : 发;

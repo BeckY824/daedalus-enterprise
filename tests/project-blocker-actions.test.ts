@@ -30,7 +30,7 @@ import { 北京日期 } from "./helpers/beijing-date";
 let 甲: string;
 let 项目id: string;
 let 沟通id: string;
-const 卡 = { description: "报价高" };
+const 卡 = { reasons: ["价格预算分歧"] };
 
 beforeEach(async () => {
   await resetDb();
