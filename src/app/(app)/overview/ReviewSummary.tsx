@@ -57,14 +57,20 @@ export function 复盘概况排({ 数, 本位币, 不算 = "商机丢单 / 线�
   );
 }
 
-/** 卡点分布 + 超时预警，并排（窄了上下） */
-export function 复盘提醒排({ 分布, 预警, 将回公海 }: { 分布: 卡点分布; 预警: 预警行[]; 将回公海: number | null }) {
+/**
+ * 数据页按导入批次筛着时（11-19，lib/project/import-batch.ts），卡点分布、超时预警、客户分布这几块不跟批次走（按人、按客户数，不是按项目批次），
+ * 标题旁写一句灰字说清，数不改
+ */
+const 不跟批次话 = "不跟导入批次";
+
+/** 卡点分布 + 超时预警，并排（窄了上下）。不跟批次：数据页正按导入批次筛，标题旁写一句「不跟导入批次」 */
+export function 复盘提醒排({ 分布, 预警, 将回公海, 不跟批次 = false }: { 分布: 卡点分布; 预警: 预警行[]; 将回公海: number | null; 不跟批次?: boolean }) {
   return (
     <div className="rkpi-pair">
       <section className="btodo-list" aria-label="卡点分布">
         <div className="btodo-head">
           <b className="section-title">卡点分布</b>
-          <span className="muted rkpi-cap">未解决 {分布.总数} 条，按阻碍主体</span>
+          <span className="muted rkpi-cap">未解决 {分布.总数} 条，按阻碍主体{不跟批次 && `，${不跟批次话}`}</span>
         </div>
         {分布.总数 === 0 ? (
           <EmptyState title="没有未解决的卡点" hint="项目上发布的卡点处理完了，这里就是空的。" demo={false} />
@@ -74,7 +80,10 @@ export function 复盘提醒排({ 分布, 预警, 将回公海 }: { 分布: 卡�
       </section>
       <section className="btodo-list" aria-label="超时预警">
         <div className="btodo-head">
-          <b className="section-title">超时预警</b>
+          <span className="rkpi-head-l">
+            <b className="section-title">超时预警</b>
+            {不跟批次 && <span className="muted rkpi-cap">{不跟批次话}</span>}
+          </span>
           {!!将回公海 && <Link href="/projects?f=due-soon" className="link-strong">看全部 {将回公海} 个 ›</Link>}
         </div>
         {将回公海 === null ? (
@@ -106,20 +115,21 @@ export function 复盘提醒排({ 分布, 预警, 将回公海 }: { 分布: 卡�
  * 按国家（同日客户又要「像地图那种的呈现」）：世界地图着色 + 前几名榜单（宽时榜单在右、窄时在下），榜单下面单写没填国家的；
  * 地图拉不下来就只留榜单
  */
-export function 客户分布排({ 分布 }: { 分布: 客户分布 }) {
+export function 客户分布排({ 分布, 不跟批次 = false }: { 分布: 客户分布; 不跟批次?: boolean }) {
   const 空 = <EmptyState title="还没有客户" hint="这一圈负责的客户会按国家和业务线摆在这里。" demo={false} />;
   return (
     <div className="rkpi-pair is-stacked">
       <section className="btodo-list" aria-label="客户分布·按国家">
         <div className="btodo-head">
           <b className="section-title">客户分布 · 按国家</b>
-          <span className="muted rkpi-cap">共 {分布.总数} 个客户，不含公海</span>
+          <span className="muted rkpi-cap">共 {分布.总数} 个客户，不含公海{不跟批次 && `，${不跟批次话}`}</span>
         </div>
         {分布.总数 === 0 ? 空 : <CountryMapAndRank 分布={分布} />}
       </section>
       <section className="btodo-list" aria-label="客户分布·按业务线">
         <div className="btodo-head">
           <b className="section-title">客户分布 · 按业务线</b>
+          {不跟批次 && <span className="muted rkpi-cap">{不跟批次话}</span>}
         </div>
         {分布.总数 === 0 ? 空 : <分布横条 们={分布.按业务线} 单位="个" 最多={Infinity} />}
       </section>

@@ -55,6 +55,7 @@ import { showUndo } from "@/components/UndoBar";
 import NewMenuButton from "@/components/NewMenuButton";
 import { 看板工具位 } from "../customers/board-slot";
 import { 动作出错话 } from "@/lib/stale-deploy";
+import BatchFilterTag from "@/components/BatchFilterTag";
 
 
 /** 看板列的颜色：三个阶段沿用商机管道的蓝绿黄（企业版进程列跟所在阶段），成功交付（企业版叫 交付结清）粉、没成（流失 / 丢单）灰 */
@@ -113,7 +114,9 @@ export default function ProjectsView({
   排序?: string;
   users: 可选成员[];
   /** f：企业版首页指标卡点进来的筛选（lib/project/home-cards.ts），页头标出来、能清掉 */
-  filters: { keyword: string; ownerId: string; pool: string; recycled: string; f: string; phase: string; node: string; creator?: string; channelId?: string; level?: string; projTag?: string; createdFrom?: string; createdTo?: string; phone?: string };
+  filters: { keyword: string; ownerId: string; pool: string; recycled: string; f: string; phase: string; node: string; creator?: string; channelId?: string; level?: string; projTag?: string; createdFrom?: string; createdTo?: string; phone?: string;
+    /** 导入批次（11-19，lib/project/import-batch.ts）：数据页卡片点进来带的，页头挂一枚能关掉的标签，不进筛选栏 */
+    batch?: string };
   /** 摆不摆「手机号」筛选（电话藏着的人不摆）；不给 = 不摆 */
   能按号码筛?: boolean;
   渠道筛选项?: { value: string; label: string }[];
@@ -362,6 +365,8 @@ export default function ProjectsView({
       {首页卡口径[卡].名}
     </Tag>
   ) : undefined;
+  // 从数据页按导入批次点进来：同样挂一枚能关掉的标签，说清只看 / 排掉了哪一批
+  const 批标 = filters.batch ? <BatchFilterTag batch={filters.batch} 清掉={() => apply({ batch: "" })} /> : undefined;
   // 看不到的客户不给客户名（page.tsx 露客户）：在公海的领了再看；不在公海的（比如组员）领不了，不写「领取」（11-03 B6-1）
   const 领了再看 = (r: { pooled: boolean }) => (r.pooled ? "领取后可见" : "无权查看");
 
@@ -659,7 +664,7 @@ export default function ProjectsView({
       ) : (
       <PageHead
         title={新线索 ? "新线索" : 标题 ?? "项目"}
-        titleAside={卡标}
+        titleAside={卡标 || 批标 ? <>{卡标}{批标}</> : undefined}
         subtitle={
           新线索
               ? "项目的线索阶段：潜客培育 → 线索验证 → 线索推进，以转商机或线索流失结束；转了商机到「项目」里接着走"

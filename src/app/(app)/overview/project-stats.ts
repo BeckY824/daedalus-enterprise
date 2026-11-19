@@ -7,6 +7,7 @@ import type { Prisma } from "@/generated/prisma";
 import { bucketOf, 刻度们, type 粒度 } from "./data";
 import { 项目漏斗of, type 漏斗格 } from "./funnel";
 import { 不算补建, 不算历史分析, 历史分析来源, 留痕不算历史分析, 并条件 } from "@/lib/project/system-created";
+import { 批次条件, 读批次, 批次参数, 批次下拉项, type 批次筛 } from "@/lib/project/import-batch";
 
 /**
  * 企业版只用项目时「数据」页的数（10-26 用户：「「数据」页改成按项目统计」，线索 / 商机 / 订单是项目的三大阶段）。
@@ -90,13 +91,15 @@ type 现在组 = { phase: string; node: string; result: string | null; currency:
  * 库里分组数（11-18）：不再把看得到的全部项目逐个读进内存（回填后公海里多出约 6 万个），按 阶段 / 节点 / 结局 / 币种 / 负责人 × 在不在公海 分组，
  * 判无效另数一组；本套位置（旧名对新名）对分组的键做，口径和逐个数一样
  */
-export async function 项目现在(本位币: string, 只看?: 只看谁): Promise<项目现在> {
+export async function 项目现在(本位币: string, 只看?: 只看谁, 批次?: 批次筛 | null): Promise<项目现在> {
   const 字典 = 字典of(企业版());
   const 谁的 = 只看 === undefined ? undefined : await 这些人的(只看);
-  const 范围 = 并条件(谁的, 不算历史分析);
+  // 导入批次（11-19，import-batch.ts）：只看 / 排掉某一批，所有项目的数都套上；不给 = 全部，和原来一样
+  const 批 = 批次条件(批次);
+  const 范围 = 并条件(谁的, 不算历史分析, 批);
   // 历史分析的项目被人领走、还在推的（领客户时一起带走的进行中项目）：是这个人手上真在跟的，只进阶段 / 节点 / 按人 / 外币（同 持有数、复盘「在跟」），
   // 结局、公海、漏斗、线索瀑布、线索转商机照样不算
-  const 在跟条件 = 并条件(谁的, { result: null, pooledAt: null });
+  const 在跟条件 = 并条件(谁的, 批, { result: null, pooledAt: null });
   const 键 = ["phase", "node", "result", "currency", "ownerId"] as const;
   const [不在公海, 在公海, 判无效组, 没判无效组, 外币, 领走的历史] = await Promise.all([
     prisma.project.groupBy({ by: [...键], where: 并条件(范围, { pooledAt: null }), _count: { _all: true }, _sum: { amount: true } }),
@@ -184,16 +187,18 @@ export type 项目一段 = {
  *   成功交付 / 线索流失 / 丢单 / 异常状态：现在是这个结局、结束在这一段（closedAt）——后来又恢复了的不算
  *     「成功交付」这一格 = 订单走成的（企业版叫 交付结清，库里旧名也认，见 是交付），键名不改
  * 按人拆按项目现在的负责人，不是当时的。只看（P15）也按现在的负责人筛。
+ * 批次（11-19，import-batch.ts）：只看 / 排掉某一批，新建、转商机 / 转订单、结局都只数这些项目；补建的照旧不进新建（选只看补建批次 = 0）
  */
-export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币: string, 只看?: 只看谁): Promise<项目一段> {
+export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币: string, 只看?: 只看谁, 批次?: 批次筛 | null): Promise<项目一段> {
   const 字典 = 字典of(企业版());
+  const 批 = 批次条件(批次);
   const 段 = { gte: from, lte: to };
   // 同 项目现在：按人看时公海里的不算在谁头上（线索瀑布除外，它要数退回公海的）
   const 负责 = 只看 === undefined ? {} : await 这些人的(只看);
   const 谁 = 只看 === undefined ? {} : { ownerId: 负责人是(只看), pooledAt: null };
   const [新全, 变, 结] = await Promise.all([
     prisma.project.findMany({
-      where: { createdAt: 段, ...负责, ...不算补建 },
+      where: 并条件({ createdAt: 段, ...负责, ...不算补建 }, 批),
       select: { id: true, ownerId: true, createdAt: true, phase: true, node: true, result: true, pooledAt: true, entLeadVerify: { select: { finalResult: true } } },
     }),
     // 历史分析回填约定不写节点变更；万一写了（留痕人 = 历史分析留痕人）、或项目是历史分析的，都不算转商机 / 转订单（system-created.ts）
@@ -201,13 +206,13 @@ export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币:
       where: {
         kind: "node", at: 段, OR: [{ fromPhase: "线索", toPhase: "商机" }, { fromPhase: "商机", toPhase: "订单" }],
         userId: 留痕不算历史分析.userId,
-        project: 并条件(留痕不算历史分析.project, 只看 === undefined ? undefined : 谁),
+        project: 并条件(留痕不算历史分析.project, 只看 === undefined ? undefined : 谁, 批),
       },
       select: { projectId: true, fromPhase: true, at: true, project: { select: { ownerId: true } } },
       orderBy: { at: "asc" },
     }),
     // 结局按 closedAt 落段：历史分析回填的 closedAt 是当年的时间，不算（不然 2022–25 年各月凭空多出流失、丢单）
-    prisma.project.findMany({ where: { result: { not: null }, closedAt: 段, ...谁, ...不算历史分析 }, select: { id: true, ownerId: true, result: true, closedAt: true, amount: true, currency: true } }),
+    prisma.project.findMany({ where: 并条件({ result: { not: null }, closedAt: 段, ...谁, ...不算历史分析 }, 批), select: { id: true, ownerId: true, result: true, closedAt: true, amount: true, currency: true } }),
   ]);
   const 新 = 只看 === undefined ? 新全 : 新全.filter((p) => !p.pooledAt);
 
@@ -272,6 +277,28 @@ export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币:
     线索节点: 线索节点of(新全.map((p) => ({ ...p, 判无效: 判无效了(p.entLeadVerify) })), 字典),
     线索转商机: 线索转商机of(新),
   };
+}
+
+/**
+ * 数据页「导入批次」下拉的候选（11-19）：库里有项目的那些批次号，新的在前（批次号带日期，按字串倒排）。
+ * 历史分析回填的那批不列：它们哪个数都不算（system-created.ts），选了全是 0
+ */
+export async function 导入批次们(): Promise<string[]> {
+  const gs = await prisma.project.groupBy({ by: ["importBatch"], where: 并条件({ importBatch: { not: null } }, 不算历史分析) });
+  return gs.map((g) => g.importBatch).filter((b): b is string => !!b).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
+}
+
+/**
+ * 数据页这一次按哪一批数、摆不摆「导入批次」下拉（11-19）。
+ * 只有看得到全部的人（看板的人 的 全看：总管理、管理员）才认地址栏 batch=、才摆下拉；主管、业务员带了 batch= 也当「全部」，数和不带一样。
+ * 地址栏的批次库里没有（写错、那批删了）也当「全部」；库里一批都没有就不摆下拉
+ */
+export async function 数据页批次(全看: boolean | undefined, 要的: unknown): Promise<{ 批: 批次筛 | null; 下拉?: { 选项: { value: string; label: string }[]; 当前: string } }> {
+  if (!全看) return { 批: null };
+  const 们 = await 导入批次们();
+  const 要 = 读批次(要的);
+  const 批 = 要 && 们.includes(要.批) ? 要 : null;
+  return { 批, 下拉: 们.length ? { 选项: 批次下拉项(们), 当前: 批次参数(批) } : undefined };
 }
 
 /** 填上名字；同名的带上邮箱分开，人已经删了的写「已不在的成员」 */

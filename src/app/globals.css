@@ -1007,6 +1007,9 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
 
 /* 标题和紧跟着它的那一小块（客户页的「客户 / 公海」页签）摆一行 */
 .page-head-t { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; }
+/* 列表页头「导入批次：… ×」（11-19，数据页按批次点进来）：批次名长，一行省略、悬停看全，窄屏不撑出页宽 */
+.batch-filter-tag { display: inline-flex; align-items: center; max-width: 100%; min-width: 0; margin-inline-end: 0; }
+.batch-filter-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 页头右上角那组动作。⌘N 也认这个选择器找主按钮，别改名 */
 .page-head-a { flex: none; display: flex; align-items: center; gap: var(--s2); }
@@ -1932,6 +1935,9 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .custom-range { flex: none; width: 236px; max-width: 100%; }
 .custom-range.ant-picker-small { width: 216px; }
 .data-shell-who .ant-select-selection-item { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 「数据」页签的导入批次（11-19）：批次名长（「销帮帮增量 11-19 · 公海客户项目」），一行省略、悬停看全，窄了随那一排换行 */
+.data-shell-batch { width: 240px; max-width: 100%; }
+.data-shell-batch .ant-select-selection-item { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 复盘页两个页签（P15）：人员选择在页签上面；Tabs 只当导航，内容由服务端给、摆在 .data-shell-body 里 */
 .data-shell-bar-who { margin-bottom: var(--s2); transition: opacity var(--t) var(--ease); }
 /* 卡点页签（ov.layout）：卡点按角色定能看谁，人员那一行不撤（撤了整页上跳一截），留在原地变淡；控件本身 disabled 点不了 */
@@ -2147,6 +2153,8 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
   .cmap:not(.no-map) .cmap-rank .btodo-rc-row { grid-template-columns: minmax(0, 7em) minmax(0, 1fr) 3em; }
 }
 .rkpi-cap { font-size: var(--fs-note); }
+/* 标题和旁边那句灰字（「不跟导入批次」，11-19）并成左边一组，右边的「看全部」照旧靠右 */
+.rkpi-head-l { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--s2); min-width: 0; }
 .rkpi-warn { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
 .rkpi-warn li + li { border-top: 1px solid var(--line-soft); }
 .rkpi-warn-a { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) auto; align-items: center; gap: var(--s3); padding: var(--s2) var(--s1); color: inherit; }

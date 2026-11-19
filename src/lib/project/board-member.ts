@@ -42,6 +42,8 @@ export type 看板的人 = {
   谁?: readonly string[];
   /** 下拉里的人（同名带邮箱）；null = 不给选（业务员、能选的只有自己、不是企业版） */
   选项: { value: string; label: string }[] | null;
+  /** 看得到所有人的（总管理、管理员，看板范围of 的 全看）：数据页的「导入批次」下拉只给他们（11-19） */
+  全看?: boolean;
 };
 
 /** 复盘页、首页卡这一次按谁算。管理层默认看全部（10-29 定稿） */
@@ -52,10 +54,10 @@ export async function 看板的人(user: { id: string; role: string }, 要看?: 
   if (!管理层) return { 只看: user.id, 谁: [user.id], 选项: null };
   const 只看 = 要看 && 可选.includes(要看) ? 要看 : undefined;
   const 谁 = 只看 ? [只看] : 全看 ? undefined : 可选;
-  if (可选.length <= 1) return { 只看, 谁, 选项: null };
+  if (可选.length <= 1) return { 只看, 谁, 选项: null, 全看 };
   // 停用的人（留在停用前上级的链里，算在「全部」里数）不进下拉（审核 11-18 统计 P2-6）
   const users = await prisma.user.findMany({ where: { id: { in: 可选 }, active: true }, select: { id: true, name: true, email: true }, orderBy: { name: "asc" } });
   // 自己排第一个，管理层最常看的是自己和全部
   users.sort((a, b) => Number(b.id === user.id) - Number(a.id === user.id));
-  return { 只看, 谁, 选项: 成员选项(users) };
+  return { 只看, 谁, 选项: 成员选项(users), 全看 };
 }
