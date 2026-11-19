@@ -109,19 +109,34 @@ function 指向(行: 项目行[], 露: (p: 项目行) => boolean, 补of: (p: 项
 }
 
 /**
- * 人这一轮的原话有没有点名说是 p 这个项目（只看这一轮，前几轮的不算）：
- * 原话里有它的 id；或有它的名字，且名字不和客户名撞（「X 那个项目」说的是客户，不是项目「X」），
- * 原话里出现的其他候选名字也都只是它名字的一截（说「X（2）」时「X」也算出现过）。
- * 没原话（单测、别的入口）一律不算点名
+ * 人这一轮的原话（不含附件、前几轮）有没有点名说是 p 这个项目：
+ *   - 原话里有它的 id；或
+ *   - 它的名字在原话里「露出」过：至少有一处不是整个落在客户全称 / 简称的某次出现里
+ *     （「X 那个项目」说的是客户 X，不是项目「X」；客户「甲-乙-丙」、项目「甲」，说客户全称不算点了项目），并且
+ *   - 原话里露出的其他候选名字都只是它名字的一截（说「X（2）」时「X」也算出现过）；和它完全同名的兄弟项目露出了就分不清，不算点名。
+ * 没原话（单测、别的入口）一律不算点名。候们是同一位客户名下的项目，客户名按 p 的算
  */
 export function 本轮点名(p: { id: string; name: string; customer: { name: string; shortName: string | null } }, 候们: { id: string; name: string }[], 问题?: string): boolean {
   const 话 = (问题 ?? "").trim();
   if (!话) return false;
   if (话.includes(p.id)) return true;
   const 名 = p.name.trim();
-  if (!名 || !话.includes(名)) return false;
-  if ([p.customer.name, p.customer.shortName ?? ""].some((c) => c.trim() === 名)) return false;
-  return 候们.every((c) => c.id === p.id || !c.name.trim() || !话.includes(c.name.trim()) || 名.includes(c.name.trim()));
+  const 客名们 = [p.customer.name, p.customer.shortName ?? ""].map((s) => s.trim()).filter(Boolean);
+  /** 词在原话里至少有一处不是整个落在某次客户名出现里 */
+  const 露出 = (词: string) => {
+    if (!词) return false;
+    const 盖住 = (i: number) => 客名们.some((c) => {
+      for (let j = 话.indexOf(c); j >= 0; j = 话.indexOf(c, j + 1)) if (j <= i && i + 词.length <= j + c.length) return true;
+      return false;
+    });
+    for (let i = 话.indexOf(词); i >= 0; i = 话.indexOf(词, i + 1)) if (!盖住(i)) return true;
+    return false;
+  };
+  if (!露出(名)) return false;
+  return 候们.every((c) => {
+    const 它 = c.name.trim();
+    return c.id === p.id || !露出(它) || (它 !== 名 && 名.includes(它));
+  });
 }
 
 async function 字典() {
@@ -417,11 +432,12 @@ async function 沟通卡(a: Record<string, unknown>, ctx: ToolContext, 要卡点
       按名字（或模型自己查来的 id）只对上一个项目，但这位客户名下还有别的、这个人也能加卡点的项目：
       模型多半是先查了客户、自己挑了一个（11-19 实操：客户名和其中一个项目名一样，「给 X 那个项目加卡点」它直接挑了「X（2）」）。
       卡上换不了项目，所以不替人选：把这几个一起放进候选（同模糊名那条路：同一个 能、同一个 指向、要人点选）。
-      人这一轮点名说了是哪个项目（原话里有它的 id，或有它的名字且名字不和客户名撞、也不是别的候选名字的一截）才直接指向
+      人这一轮的原话点名说了是哪个项目（本轮点名：有它的 id，或它的名字不只是客户名里的一截、也没有同名或更长的兄弟项目一起露出）才直接指向
     */
     if (!要挑 && 行们.length === 1 && 找.露(行们[0])) {
       const p = 行们[0];
-      const 同客户 = (await prisma.project.findMany({ where: { customerId: p.customerId, id: { not: p.id } }, select: 项目列, take: 候选上限, orderBy: { updatedAt: "desc" } })).filter(能);
+      // 先筛能加卡点的再截：最近改过的几个要是都加不了，别把后面能加的挤掉（一位客户的项目不会很多，多取一些）
+      const 同客户 = (await prisma.project.findMany({ where: { customerId: p.customerId, id: { not: p.id } }, select: 项目列, take: 候选上限 * 5, orderBy: { updatedAt: "desc" } })).filter(能).slice(0, 候选上限 - 1);
       if (同客户.length && !本轮点名(p, [p, ...同客户], ctx.问题)) {
         行们 = [p, ...同客户].slice(0, 候选上限);
         要挑 = true;

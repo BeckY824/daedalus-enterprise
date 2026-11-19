@@ -395,6 +395,11 @@ export async function runAgent(
     question: string; user: { id: string; name: string }; b: BusinessConfig; history?: HistoryTurn[]; 页面上下文?: string; 页面范围?: 页面范围;
     /** 调用方已经定好要跑哪几个工具（名片识别先查公司和联系人，card-scan/agent-prompt.ts）：不再认意图，跑完只让模型说话 */
     指定调用?: 命中结果;
+    /**
+     * 人这一轮打的原话（不拼附件全文、不含前几轮）：question 在 route 里已经拼了附件，
+     * 项目类写工具判断「人点没点名是哪个项目」只能看原话（ToolContext.问题）。不给 = 当没点名
+     */
+    原话?: string;
   },
   ev: AgentEvents = {},
 ): Promise<AgentResult> {
@@ -534,7 +539,7 @@ ${写不了 ? 只读规则(写不了) : 出卡规则}
     而 AI 工具原来是**没人接上的第四个出口**——问一句就能拿到完整号码，
     还会原样写进回答和对话存档。见 lib/shared-ws/current.ts。
   */
-  const ctx: ToolContext = { userId: user.id, userName: user.name, 问题: question, b, recordOffset: 0, proposals: [], 号: await 号码脱敏器(), 页面筛选: 页面范围?.表 === "客户" ? 页面范围.筛选 : undefined, 页面: 页面范围?.表 };
+  const ctx: ToolContext = { userId: user.id, userName: user.name, 问题: input.原话, b, recordOffset: 0, proposals: [], 号: await 号码脱敏器(), 页面筛选: 页面范围?.表 === "客户" ? 页面范围.筛选 : undefined, 页面: 页面范围?.表 };
   const records: BriefRecord[] = [];
   const customers = new Map<string, 提到的客户>();
   const mentioned = new Map<string, 提到的客户>();

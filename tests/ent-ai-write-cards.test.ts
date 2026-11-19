@@ -294,6 +294,28 @@ describe("沟通 + 卡点：原因字典、旧卡（11-19）", () => {
     }
   });
 
+  it("同名兄弟项目、项目名是客户全称的一截：模型带 projectId 来，人说的名字分不清是哪个 → 照样列候选、确认拦下", async () => {
+    const 参 = { 卡点类型: "中度卡点", 阻碍原因: ["价格预算分歧"], content: "预算没批", 下一步: "下周再问", reason: "人说的" };
+    // 同一位客户名下两个都叫「青禾工程」
+    const 客1 = (await prisma.customer.create({ data: { name: "青禾", phone: "13900000009", salesOwnerId: 乙.id } })).id;
+    const 同1 = (await prisma.project.create({ data: { name: "青禾工程", customerId: 客1, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育" } })).id;
+    const 同2 = (await prisma.project.create({ data: { name: "青禾工程", customerId: 客1, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育" } })).id;
+    // 客户全称「甲方-乙方-丙方」，项目「甲方」是它的一截
+    const 客2 = (await prisma.customer.create({ data: { name: "甲方-乙方-丙方", phone: "13900000008", salesOwnerId: 乙.id } })).id;
+    const 截 = (await prisma.project.create({ data: { name: "甲方", customerId: 客2, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育" } })).id;
+    const 截2 = (await prisma.project.create({ data: { name: "二期改造", customerId: 客2, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育" } })).id;
+    for (const [id, 话, 该有] of [[同1, "给青禾工程加个卡点", [同1, 同2]], [截, "给甲方-乙方-丙方加个卡点", [截, 截2]]] as const) {
+      const { 卡 } = await 出("propose_blocker_add", { projectId: id, ...参 }, 乙, 话);
+      expect(卡).toMatchObject({ targetId: "", 要卡点: true });
+      expect(卡!.候选!.map((c) => c.id).sort()).toEqual([...该有].sort());
+      expect(await 确认(卡!, 乙)).toMatchObject({ ok: false, error: expect.stringContaining("选哪一个") });
+    }
+    expect(项目动作.记项目沟通Action).not.toHaveBeenCalled();
+    // 项目名在客户名之外单独说了：算点名，直接指向
+    const { 卡 } = await 出("propose_blocker_add", { projectId: 截, ...参 }, 乙, "甲方-乙方-丙方的甲方那个项目加个卡点");
+    expect(卡).toMatchObject({ targetId: 截, 要卡点: true });
+  });
+
   it("本轮点名：名字和客户名撞不算；说「X（2）」时只认 X（2），不认 X；没原话不算", () => {
     const 客 = { name: "青禾", shortName: null };
     const 甲 = { id: "p1", name: "青禾", customer: 客 }, 乙p = { id: "p2", name: "青禾（2）", customer: 客 };
@@ -306,6 +328,15 @@ describe("沟通 + 卡点：原因字典、旧卡（11-19）", () => {
     expect(本轮点名(设备, [设备, 设备2], "给某厂的设备加卡点")).toBe(true);
     expect(本轮点名(设备, [设备, 设备2], `就是 p3`)).toBe(true);
     expect(本轮点名(设备, [设备, 设备2], undefined)).toBe(false);
+    // 同名兄弟：说了这个名字也分不清
+    const 同a = { id: "p5", name: "设备", customer: { name: "某厂", shortName: null } };
+    expect(本轮点名(设备, [设备, 同a], "给设备加卡点")).toBe(false);
+    // 项目名只是客户全称（或简称）的一截：说客户名不算；项目名比客户名长不误伤
+    const 截 = { id: "p6", name: "甲方", customer: { name: "甲方-乙方-丙方", shortName: "甲乙" } };
+    expect(本轮点名(截, [截], "给甲方-乙方-丙方加卡点")).toBe(false);
+    expect(本轮点名(截, [截], "甲方-乙方-丙方的甲方项目")).toBe(true);
+    expect(本轮点名({ id: "p7", name: "甲乙", customer: 截.customer }, [], "给甲乙加卡点")).toBe(false);
+    expect(本轮点名({ id: "p8", name: "甲方-乙方-丙方二期", customer: 截.customer }, [], "给甲方-乙方-丙方二期加卡点")).toBe(true);
   });
 
   it("发卡点判断（读一次权限和组织、每个项目同步判断）和 能发卡点 结果一致", async () => {
