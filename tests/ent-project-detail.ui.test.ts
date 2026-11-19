@@ -67,6 +67,8 @@ beforeAll(async () => {
     const 主题条=(id,status)=>({id,node:'线索验证',title:'主题'+串,body:'内容'+串,status,createdAt:'2026-11-17T02:00:00.000Z',closedAt:null,作者:{id:'c1',name:'教练'+串,身份:'销售教练'},关的人:null,回复们:[],能回:true,能关:true,能删:false});
     window.__主题=()=>root.render(包(<ProjectDetail {...详情(true).props} 教练主题={{们:[主题条('t1','待回复')],能发:true,填写人:{id:'c1',name:'教练',身份:'销售教练'},负责人:{id:'u1',name:'负责人'},项目名:'项目',当前节点:'线索验证',待回复数:1,冻结:false}}/>));
     window.__画像=(能改)=>root.render(包(<ProjectDetail p={{...详情(true).props.p,关联,画像}} 能改={能改} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={{们:[],能发:true,默认:{默认类型:'中度卡点',默认影响:'短期不影响'},原因们:['价格']}}/>));
+    /* F-017：线索阶段推过线索验证的补填提示（x 给阶段、进程、有效沟通差、线索验证缺沟通），带画像卡 */
+    window.__线索=(x,能改=true)=>root.render(包(<ProjectDetail p={{...详情(true).props.p,画像,...x}} 能改={能改} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={{们:[],能发:true,默认:{默认类型:'中度卡点',默认影响:'短期不影响'},原因们:['价格']}}/>));
     /* 三栏：照 AppShell 桌面那套 .shell > nav.rail + 中栏 + main.main.app-content > 换页那层 div。名单故意按 订单 → 线索 → 空 → 商机 给，组头得照三大阶段排 */
     const 行=(id,name,阶段,进程,x)=>({id,name,阶段,进程,结局:null,pooled:false,customerName:'超长客户名'+串,lastType:'PHONE',lastAt:'2026-10-20T00:00:00.000Z',lastNote:'最近一句'+串,nextAt:null,...x});
     const 名单={取到上限:false,rows:[行('p1',长,'订单','生产备货'+'备'.repeat(20)),行('p2','线索项目'+串,'线索','初次接触'),行('p5','没填阶段的项目',null,null,{lastAt:null,lastNote:null}),行('p3',串,'商机','方案报价',{pooled:true,结局:'输单'}),行('p4','商机二','商机','首款支付',{nextAt:'2026-10-01'})]};
@@ -1822,4 +1824,92 @@ it("数据来源：历史分析的项目摆标签、正常的不摆；1024 / 128
       await page.close();
     }
   }
+});
+
+/* F-017（员工反馈）：销售点「完成节点」推不过线索验证，提示「还要填：需求（需求状态）」却找不到在哪填。
+   口径（客户 11-19 第 31a 题）：节点推进关着时只有「线索验证」仍要填需求状态，其余节点不出补填提示 →
+   提示只在下一步要越过线索验证时出、写明在「项目画像」选「需求状态」、带「去填」（收起的先展开再滚过去）；
+   「前两节点要沟通」开着且线索验证上还没沟通（load.ts 线索验证缺沟通）才写「并在线索验证记一条沟通」 */
+describe("F-017 推过线索验证的补填提示", () => {
+  type 窗 = { __线索: (x: object, 能改?: boolean) => void; __滚到?: string[] };
+  const 只差需求 = { phase: "线索", node: "线索验证", 有效沟通差: ["需求（需求状态）"] };
+  const 开 = async (x: object, width = 1366, 能改 = true) => {
+    const { page, errors } = await open(true, width);
+    await page.evaluate(([x, 能改]) => (window as unknown as 窗).__线索(x as object, 能改 as boolean), [x, 能改] as const);
+    await page.locator("#project-profile-fold").waitFor();
+    return { page, errors };
+  };
+  const 提示 = (page: import("playwright").Page) => page.getByTestId("lead-gate-hint");
+  const 灰因 = (page: import("playwright").Page) => page.locator(".proj-stage-why");
+
+  it("停在线索验证、只差需求状态：写明在「项目画像」选，灰按钮的话也指位置；「去填」把收起的画像卡展开并滚过去", async () => {
+    const { page, errors } = await 开(只差需求);
+    try {
+      expect(await 提示(page).locator(".proj-gate-hint-t").innerText()).toBe("要推过线索验证：在「项目画像」选「需求状态」");
+      expect(await 灰因(page).innerText()).toBe("线索验证合格要先填好「线索验证」的必填项：还差需求状态（在「项目画像」里选）");
+      expect(await page.locator(".proj-stage-acts button").first().isDisabled()).toBe(true);
+      // 两处画像卡同一个落点：独立页右栏这张挂着 id
+      expect(await page.locator(".proj-side #project-profile-fold").count()).toBe(1);
+      // 先收起画像卡，再点「去填」：展开、滚到它（记下 scrollIntoView 滚的是谁）
+      await page.locator("#project-profile-fold > .proj-fold-btn").click();
+      await page.locator("#project-profile-fold.is-closed").waitFor();
+      await page.evaluate(() => {
+        const 原 = Element.prototype.scrollIntoView;
+        Element.prototype.scrollIntoView = function (this: Element, o?: boolean | ScrollIntoViewOptions) { ((window as unknown as 窗).__滚到 ||= []).push(this.id); return 原.call(this, o); };
+      });
+      await 提示(page).getByRole("button", { name: /^去\s?填$/ }).click();
+      await page.waitForFunction(() => !document.getElementById("project-profile-fold")!.classList.contains("is-closed"));
+      await page.waitForFunction(() => ((window as unknown as 窗).__滚到 ?? []).includes("project-profile-fold"));
+      await expect.poll(() => page.getByRole("combobox", { name: "需求状态" }).isVisible()).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
+  it("潜客培育（往下推到线索验证不拦）：不出补填提示，灰按钮也不提需求", async () => {
+    const { page, errors } = await 开({ ...只差需求, node: "潜客培育" });
+    try {
+      expect(await 提示(page).count()).toBe(0);
+      expect(await page.getByText("要推过线索验证").count()).toBe(0);
+      expect(await 灰因(page).count()).toBe(0);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
+  it("「前两节点要沟通」开着、线索验证上还没沟通：提示和灰按钮都写「并在线索验证记一条沟通」；开关关着（不给这一项）不写", async () => {
+    const 开着 = await 开({ ...只差需求, 线索验证缺沟通: true });
+    try {
+      expect(await 提示(开着.page).locator(".proj-gate-hint-t").innerText()).toBe("要推过线索验证：在「项目画像」选「需求状态」，并在「线索验证」记一条沟通");
+      expect(await 灰因(开着.page).innerText()).toContain("（在「项目画像」里选），并在「线索验证」记一条沟通");
+      expect(开着.errors).toEqual([]);
+    } finally { await 开着.page.close(); }
+    const 关着 = await 开(只差需求);
+    try {
+      expect(await 提示(关着.page).innerText()).not.toContain("沟通");
+      expect(await 灰因(关着.page).innerText()).not.toContain("记一条沟通");
+    } finally { await 关着.page.close(); }
+  });
+
+  it("线索验证配了几项必填（含需求）：照列各项、补一句需求状态在哪选；看得到改不了的人不摆「去填」", async () => {
+    const { page, errors } = await 开({ ...只差需求, 有效沟通差: ["所属联系人", "国家", "需求（需求状态）"] }, 1366, false);
+    try {
+      expect(await 提示(page).innerText()).toBe("要推过线索验证，还要填：所属联系人、国家、需求（需求状态）（需求状态在「项目画像」里选）");
+      expect(await 提示(page).getByRole("button", { name: /^去\s?填$/ }).count()).toBe(0);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
+  it.each([1024, 1280, 1366, 390])("%ipx（Windows 三档 + 手机）超长项目名：提示折行不撑宽，「去填」点得中", async (w) => {
+    const { page, errors } = await 开({ ...只差需求, 线索验证缺沟通: true }, w);
+    try {
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      expect(await 提示(page).evaluate(e => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+      const 卡 = 提示(page).locator("xpath=ancestor::div[contains(@class,'ant-card')][1]");
+      expect(await 卡.evaluate(e => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+      const 钮 = 提示(page).getByRole("button", { name: /^去\s?填$/ });
+      await 钮.scrollIntoViewIfNeeded();
+      const 框 = (await 钮.boundingBox())!;
+      expect(await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest("[data-testid=lead-gate-hint] .ant-btn"), [框.x + 框.width / 2, 框.y + 框.height / 2])).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
 });

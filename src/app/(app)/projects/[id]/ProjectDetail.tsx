@@ -133,6 +133,8 @@ export type 项目详情 = {
   出口叫法: 出口叫法改动;
   /** 企业版线索阶段：推过线索验证还差哪几样（显示名，11-05），空 = 齐了 */
   有效沟通差: string[];
+  /** 企业版：后台开了「前两节点要沟通」、停在线索验证、这个节点上还没记过沟通（F-017，load.ts 算，只用来写提示） */
+  线索验证缺沟通?: boolean;
   /** 企业版：组织规则里「线索验证」节点配的必填 key（线索验证面板写判定依据用）；没开节点推进 = 空 */
   线索验证必填?: 必填项[];
   /**
@@ -389,6 +391,8 @@ function 项目人说法(p: 项目详情): string {
 /** 企业版卡点：项目详情上的卡点列表、发卡点要的默认值和阻碍原因下拉；不是企业版不给（null） */
 export type 项目卡点 = { 们: 卡点卡[]; 能发: boolean; 默认: 卡点默认; 原因们: string[] };
 
+/** 「项目画像」模块壳的落点 id（F-017「去填」需求状态滚过去）：独立页、嵌在客户页两处画像卡挂同一个 */
+const 画像落点 = "project-profile-fold";
 const 无效原因前缀 = "无效原因：";
 
 // 规则 E：红只给已经过了的，当天橙，还早的不上色
@@ -560,8 +564,16 @@ export default function ProjectDetail({
   const 节点不能改 = p.能改节点 ? (p.pooled ? 不能改 : undefined) : 不能改;
   // 企业版：线索阶段线索验证的必填项还没填齐（没配就看需求状态），推不过「线索验证」（服务端 lib/project/stage-gates.ts 同一条）
   const 没有效沟通 = p.企业版 && p.phase === "线索" && !p.result && p.有效沟通差.length > 0;
-  const 缺有效沟通话 = 没有效沟通 ? 缺有效沟通还差(p.有效沟通差) : null;
+  // F-017：「前两节点要沟通」开着、线索验证上还没沟通，服务端推的时候还会再拦一次，灰按钮的话一并写上（开关关着不写）
+  const 沟通半句 = p.线索验证缺沟通 ? `，并在「${有效线索节点}」记一条沟通` : "";
+  const 缺有效沟通话 = 没有效沟通 ? 缺有效沟通还差(p.有效沟通差) + 沟通半句 : null;
   const 卡有效沟通 = 没有效沟通 && !!下 && 节点序号(下, 字典) > 节点序号({ phase: "线索", node: 有效线索节点 }, 字典);
+  // F-017：补填提示只在下一步要越过线索验证时出（停在线索验证或更后）；潜客培育往下推到线索验证不拦，不出（客户 11-19 第 31a 题）。
+  // 需求状态在右栏「项目画像」卡上（不在「项目资料」卡里），提示写明位置，「去填」滚过去
+  const 缺需求 = p.有效沟通差.includes(必填叫法("需求"));
+  const 补填提示 = !卡有效沟通 ? null
+    : p.有效沟通差.length === 1 && 缺需求 ? `要推过线索验证：在「项目画像」选「需求状态」${沟通半句}`
+    : `要推过线索验证，还要填：${p.有效沟通差.join("、")}${缺需求 ? "（需求状态在「项目画像」里选）" : ""}${沟通半句}`;
   // 企业版线索阶段不显示交付（QA #5）：只有订单阶段才有尾款、验收
   const 显示交付 = !p.企业版 || p.phase === "订单";
   // 线索在等复核：服务端这时不给改进程、点结局、放回公海（lib/project/lead-verify-guard.ts），界面直接灰着说清在等谁
@@ -984,8 +996,11 @@ export default function ProjectDetail({
           <Button size="small" onClick={() => set验证开着(true)}>打开线索验证</Button>
         </div>
       )}
-      {没有效沟通 && !p.线索验证?.我能 && !(p.必填 && p.node === 有效线索节点) && (
-        <div style={{ marginTop: 12, color: "var(--text-muted)", overflowWrap: "anywhere" }}>要推过线索验证，还要填：{p.有效沟通差.join("、")}</div>
+      {补填提示 && !p.线索验证?.我能 && !(p.必填 && p.node === 有效线索节点) && (
+        <div className="proj-gate-hint" data-testid="lead-gate-hint">
+          <span className="proj-gate-hint-t">{补填提示}</span>
+          {缺需求 && p.画像 && 可改 && <Button size="small" onClick={() => 定位到模块(画像落点)}>去填</Button>}
+        </div>
       )}
       {p.必填 && !p.result && (
         <div style={{ marginTop: 12, color: p.必填.还差.length ? "var(--text-muted)" : "var(--success-text)", overflowWrap: "anywhere" }}>
@@ -1873,7 +1888,7 @@ export default function ProjectDetail({
           <卡名Provider value={项目卡名}>
             <aside className="cd-side" aria-label="项目资料">
               {折("项目资料", 项目卡)}
-              {折("项目画像", 画像卡)}
+              {折("项目画像", 画像卡, 画像落点)}
               {折("项目附件", 附件卡, "project-attachments-fold")}
               {折(卡名("回款"), 回款卡, "project-payments-fold", false)}
               {显示交付 && 折(卡名("交付"), 交付卡, undefined, false)}
@@ -1927,7 +1942,7 @@ export default function ProjectDetail({
             </div>
             <aside className="proj-side" aria-label="项目资料">
               {折("项目", 项目卡)}
-              {折("项目画像", 画像卡)}
+              {折("项目画像", 画像卡, 画像落点)}
               {p.关联 && 折("关联客户", <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} 只="客户" />)}
               {p.关联 && 折("关联联系人", <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} 只="联系人" />)}
               {折("交付", 交付卡)}
