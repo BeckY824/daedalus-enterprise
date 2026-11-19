@@ -340,8 +340,12 @@ async function 批量读字典(kinds: readonly 字典种类[]): Promise<Map<字�
 /** 同 可选项，走 页面字典 */
 export const 页面可选项 = cache(async (kind: 字典种类): Promise<string[]> => {
   if (!企业版()) return [];
-  return (await 页面字典(kind)).filter(能选).map((x) => x.name);
+  return 可选名们(await 页面字典(kind));
 });
+/** 一类字典行里下拉能选的名字（同 页面可选项 的筛法）：已经拿到行的（如物流状态还要认已签收）用它，不用再读一遍 */
+export function 可选名们(行们: readonly EntDictItem[]): string[] {
+  return 行们.filter(能选).map((x) => x.name);
+}
 
 /**
  * 下拉里每项下面那行灰字（10-30，客户状态、客户类型）：名字 → 释义，只列有释义的（停用的也列：客户身上的原值可能是停用项）。

@@ -11,7 +11,7 @@ import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import { llmEnabled } from "@/lib/llm";
 import { 已立项天数 } from "@/lib/project/project-fields";
 import { 来源字, 人名显示 } from "@/lib/project/system-created";
-import { 页面可选项, 预读页面字典, 已签收物流状态, type 字典种类 } from "@/lib/enterprise/dict";
+import { 页面可选项, 预读页面字典, 页面字典, 可选名们, 已签收认法, type 字典种类 } from "@/lib/enterprise/dict";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看项目, 能转让项目, 能删除, 能新建和领取 } from "@/lib/enterprise/permissions";
 import { 页面能改沟通, 能改沟通of, 页面能删沟通, 能删沟通of, 本人限时可改of, 本人可改到, 下一步跟着改of, 系统记的沟通们 } from "@/lib/enterprise/follow-perm";
@@ -127,7 +127,12 @@ async function 字典格(种类: "projTag" | "projLogistics", v: string | null):
  * 现在叫什么（提示里写）；那一项停用了、项目上又没存着 = 下拉里选不到，完成节点框提示管理员去启用
  */
 async function 备货物流格(p: { stockStatus: string | null; logisticsStatus: string | null; trackingNo: string | null }) {
-  const [物流状态, 签收] = await Promise.all([字典格("projLogistics", p.logisticsStatus), 已签收物流状态()]);
+  // 物流状态的选项和「已签收」认法用同一份行（页面字典，和客户页项目区预读的是一份）：不另查一句（客户详情查询条数上限）
+  const 行们 = 企业版() ? await 页面字典("projLogistics") : [];
+  const 签收 = 已签收认法(行们);
+  const 启用 = 可选名们(行们).filter((x) => x !== 其他项);
+  const v = p.logisticsStatus;
+  const 物流状态 = { 值: v, 选项: 有值(v) && !启用.includes(v) ? [...启用, v] : 启用 };
   return {
     备货状态: 备货状态显示(p.stockStatus), 物流状态, 物流单号: p.trackingNo,
     已签收: { 名们: 签收.名们, 现名: 签收.现名, 能选: 物流状态.选项.some((x) => 签收.名们.includes(x)) },
