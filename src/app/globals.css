@@ -1353,6 +1353,8 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .proj-inline-edit { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 .proj-inline-money { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .proj-inline-money > * { flex: 1 1 110px; min-width: 0; }
+/* 交付卡里的备货状态、物流状态、物流单号（迁移 154）：和下面两个勾隔开一点 */
+.proj-stock-rows { min-width: 0; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
 .proj-inline-err { color: var(--danger-text); overflow-wrap: anywhere; }
 .proj-inline-acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .proj-inline-hint { color: var(--text-muted); font-size: var(--dt-aux, 12px); }

@@ -42,7 +42,7 @@ import { 项目画像项, 其他项, 字典定义 } from "@/lib/enterprise/dict-
 import { 读产品需求 } from "@/lib/project/profile-rules";
 import { 项目关联们 } from "@/lib/project/relate";
 import { 字段权限of } from "@/lib/enterprise/field-perm";
-import { 合同状态显示 } from "@/lib/project/proj-fields";
+import { 合同状态显示, 备货状态显示 } from "@/lib/project/proj-fields";
 import type { 项目画像 } from "./ProjectExtras";
 import type { 项目详情, 项目卡点, 放回方式, 项目详情Props } from "./ProjectDetail";
 import { 去空, 有值 } from "@/lib/empty-value";
@@ -114,14 +114,14 @@ export async function 项目页去向(me: SessionUser, id: string): Promise<{ �
   return { 种: "客户页", 到: 客户页项目地址(p.customerId, p.id) };
 }
 
-/** 项目标签格：现值 + 下拉选项（「其他」要另写一句，这里一改就存，不给选） */
-async function 项目标签格(v: string | null): Promise<{ 值: string | null; 选项: string[] }> {
-  const 启用 = (await 页面可选项("projTag")).filter((x) => x !== 其他项);
+/** 存字典项名的格（项目标签、物流状态）：现值 + 下拉选项（「其他」要另写一句，这里一改就存，不给选）；存着、后来停用的那项也摆上 */
+async function 字典格(种类: "projTag" | "projLogistics", v: string | null): Promise<{ 值: string | null; 选项: string[] }> {
+  const 启用 = (await 页面可选项(种类)).filter((x) => x !== 其他项);
   return { 值: v, 选项: 有值(v) && !启用.includes(v) ? [...启用, v] : 启用 };
 }
 
 /** 项目详情这一屏读的字典（回收 / 无效原因、项目画像各项、关联的身份 / 角色 / 立场）：客户页项目区和项目页开头一起预读，合成两句 */
-export const 项目详情字典们: readonly 字典种类[] = ["recycle", "invalid", ...项目画像项.map((x) => x.种类), "projTag", "projCustRole", "projContactRole", "projStance"];
+export const 项目详情字典们: readonly 字典种类[] = ["recycle", "invalid", ...项目画像项.map((x) => x.种类), "projTag", "projLogistics", "projCustRole", "projContactRole", "projStance"];
 
 /** 项目详情（团队版项目模式 1a）：改节点、勾尾款 / 验收、节点变更和挂在项目上的沟通。开关关着时不存在 */
 export async function 读项目详情(me: SessionUser, id: string): Promise<项目详情载入> {
@@ -223,7 +223,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   const 占位 = 待分配占位(me, p);
   const 节点能改 = !占位 && (能改节点(me, p, org) || 上级只推(me, p, await 直属才推(org), 规则));
   // 有结局的也算（11-03 A5-1）：改回到后面的节点同样算往前推，下拉里照样灰着
-  // 生效时刻之前建的存量项目：不列必填、不灰下拉（节点推进只管之后新建的，11-19 第 25 题）
+  // 节点推进管的项目才列必填、灰下拉：默认全部项目（客户 11-19，存量也要补齐）；设置成只管新建的时，生效时刻之前建的不列
   const 必填 = !公海 && 项目按必填走(规则, p)
     ? { 配了: 节点必填(规则, p.node), 还差: 还差(规则, await 读必填数据(prisma, p, 规则)), 只能靠填齐: !是经理(me, org) }
     : null;
@@ -265,7 +265,9 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     // 项目级别、所在地（P11 定稿 -2 版，迁移 093）：级别是项目自己的，都给看；所在地跟客户资料一样，公海里同事客户的项目没领之前不给
     level: p.level,
     // 项目标签（迁移 153，F-项目-14）：和级别各一列、各自填，同样都给看。选项 = 字典里启用着的 + 这个项目存着、后来停用的那项（同项目画像）
-    项目标签: await 项目标签格(p.projTag),
+    项目标签: await 字典格("projTag", p.projTag),
+    // 备货状态、物流状态、物流单号（迁移 154，客户 11-19）：项目自己的，都给看；物流状态选项同项目标签（字典 projLogistics）
+    备货物流: { 备货状态: 备货状态显示(p.stockStatus), 物流状态: await 字典格("projLogistics", p.logisticsStatus), 物流单号: p.trackingNo },
     // 业务线（11-02）：编辑框里能改（改了不重新自动分配）；老项目没填是 null
     bizLine: p.bizLine,
     所在地: 露 ? { addrCountry: p.addrCountry, addrProvince: p.addrProvince, addrCity: p.addrCity, addrDistrict: p.addrDistrict, location: p.location } : null,

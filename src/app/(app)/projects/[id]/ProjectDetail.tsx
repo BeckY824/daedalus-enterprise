@@ -55,7 +55,7 @@ import { 定时时刻格 } from "@/components/ScheduleAssignInput";
 import { 改定时分配, 取消定时分配, 定时分配现在分 } from "../../leads/schedule-actions";
 import { 指定回复文字, 北京墙钟转时刻, 回复晚于回收, 短时刻, 客户在谁名下话 } from "@/lib/project/time-fields";
 import { 成交需求上限, 详细地址上限, 详细地址提示, 项目区域, type 项目成交钱 } from "@/lib/project/profile-rules";
-import { 合同状态们, 痛点标注上限, type 合同状态 } from "@/lib/project/proj-fields";
+import { 合同状态们, 痛点标注上限, 备货状态们, 物流单号上限, type 合同状态, type 备货状态 } from "@/lib/project/proj-fields";
 import { 备注上限 } from "@/lib/project/wizard";
 import { 文字格改动, 沟通正文改动, 钱格改动, type 钱格值 } from "@/lib/project/inline-edit";
 import ProjectInlineField, { type 编辑器参数 } from "./ProjectInlineField";
@@ -183,6 +183,11 @@ export type 项目详情 = {
    */
   项目新字段?: { painPoints?: string | null; contractStatus?: 合同状态 | null };
   /**
+   * 企业版备货状态、物流状态、物流单号（迁移 154，客户 11-19）：不是企业版不传。备货状态三项固定，没填 null；
+   * 物流状态 = 存的选项名 + 字典 projLogistics 启用着的（同项目标签）；物流单号一行文字
+   */
+  备货物流?: { 备货状态: 备货状态 | null; 物流状态: { 值: string | null; 选项: string[] }; 物流单号: string | null };
+  /**
    * 企业版节点必填：这个节点配了必填才有（没开 / 没配 / 有结局 / 在公海 = null）。填齐了自动往前推；
    * 只能靠填齐 = 不是老板、主管，手动往前推不给（往后退、点结局照旧）
    */
@@ -254,6 +259,13 @@ function 钱编辑器(名: string) {
 function 文字编辑器(名: string, 上限: number) {
   return function 编辑文字({ 草稿, set草稿, 忙 }: 编辑器参数<string>) {
     return <Input.TextArea aria-label={名} autoFocus autoSize={{ minRows: 2, maxRows: 10 }} maxLength={上限} showCount disabled={忙} value={草稿} onChange={(e) => set草稿(e.target.value)} />;
+  };
+}
+
+/** 就地改：一行文字（物流单号）；回车存 */
+function 单行编辑器(名: string, 上限: number) {
+  return function 编辑一行({ 草稿, set草稿, 忙 }: 编辑器参数<string>) {
+    return <Input aria-label={名} autoFocus maxLength={上限} disabled={忙} value={草稿} onChange={(e) => set草稿(e.target.value)} />;
   };
 }
 
@@ -580,6 +592,7 @@ export default function ProjectDetail({
   // 卡片就地改（11-02）：只开企业版；字段权限不是「改」的那几项不摆入口（服务端 改项目 同一张表）。入口灰不灰不看 忙，存的时候各格自己转圈
   const 能就地改 = 可改 && p.企业版;
   const 字段能改 = (名: string) => 能就地改 && !p.只能看字段?.includes(名);
+  const 备货物流 = p.备货物流;
   /** 存项目卡的一格：同一个 编辑项目（权限、字段权限、留痕都在里面）；失败把原因交回格子，留在编辑态 */
   const 存项目项 = async (patch: Parameters<typeof 编辑项目>[1]): Promise<string | null> => {
     const r = await 编辑项目(p.id, patch);
@@ -1340,6 +1353,51 @@ export default function ProjectDetail({
   const 卡点名 = 嵌入 ? 客户详情卡点 : "卡点";
   const 交付卡 = 显示交付 && (
     <Card title={卡名("交付")}>
+      {/* 备货状态（生产备货）、物流状态 + 物流单号（物流运输）：迁移 154，客户 11-19。交付卡只在订单阶段出现，这三格跟着它；
+          缺着的必填在「完成节点」框里也能当场填 */}
+      {p.企业版 && 备货物流 && (
+        <div className="proj-stock-rows">
+          <div style={行样}>
+            <span style={键样}>备货状态</span>
+            <ProjectInlineField<string | null>
+              名="备货状态"
+              值={备货物流.备货状态}
+              能改={能就地改}
+              显示={(v) => (有值(v) ? <span className="proj-one" title={v}>{v}</span> : p.必填?.还差.includes("备货状态") ? 占位确认("备货状态") : 待填("备货状态"))}
+              存={(v) => 存项目项({ stockStatus: v })}
+              编辑器={({ 草稿, 提交, 忙 }) => (
+                <Select aria-label="备货状态" autoFocus defaultOpen allowClear disabled={忙} placeholder={未选占位} style={满宽} value={草稿 ?? undefined} options={[不填项, ...备货状态们.map((x) => ({ value: x, label: x }))]} onChange={(v?: string) => 提交(去不填(v))} />
+              )}
+            />
+          </div>
+          <div style={行样}>
+            <span style={键样}>物流状态</span>
+            <ProjectInlineField<string | null>
+              名="物流状态"
+              值={备货物流.物流状态.值}
+              能改={能就地改}
+              显示={(v) => (有值(v) ? <span className="proj-one" title={v}>{v}</span> : p.必填?.还差.includes("物流状态") ? 占位确认("物流状态") : 待填("物流状态"))}
+              存={(v) => 存项目项({ logisticsStatus: v })}
+              编辑器={({ 草稿, 提交, 忙 }) => (
+                <Select aria-label="物流状态" autoFocus defaultOpen allowClear disabled={忙} placeholder={未选占位} style={满宽} value={草稿 ?? undefined} options={[不填项, ...备货物流.物流状态.选项.map((x) => ({ value: x, label: x }))]} onChange={(v?: string) => 提交(去不填(v))} />
+              )}
+            />
+          </div>
+          <div style={行样}>
+            <span style={键样}>物流单号</span>
+            <ProjectInlineField<string>
+              名="物流单号"
+              规整={(v) => v.trim()}
+              值={备货物流.物流单号 ?? ""}
+              能改={能就地改}
+              回车存
+              显示={(v) => (有值(v) ? <span className="proj-one" title={v}>{v}</span> : p.必填?.还差.includes("物流单号") ? 占位确认("物流单号") : 待填("物流单号"))}
+              存={(v) => 存项目项({ trackingNo: 文字格改动(v) })}
+              编辑器={单行编辑器("物流单号", 物流单号上限)}
+            />
+          </div>
+        </div>
+      )}
       {(["balanceSettled", "acceptancePassed"] as const).map((k) => {
         const 勾了 = p[k];
         const 谁 = k === "balanceSettled" ? p.balanceSettledBy : p.acceptancePassedBy;
@@ -1702,7 +1760,7 @@ export default function ProjectDetail({
           open
           onClose={() => set编辑开着(false)}
           跑={跑}
-          p={{ id: p.id, name: p.name, ownerId: p.ownerId, amount: p.amount, currency: p.currency, remark: p.remark, contactId: p.contact?.id ?? null, ...(p.企业版 ? { expectedDealAt: p.expectedDealAt ?? null, channelId: p.channelId ?? null, level: p.level ?? null, ...(p.项目标签 ? { 项目标签: p.项目标签 } : {}), bizLine: p.bizLine ?? null, 所在地: p.所在地 ?? null, ...(p.成交钱 ? { 成交钱: p.成交钱 } : {}), ...(p.项目新字段 ? { 项目新字段: p.项目新字段 } : {}) } : {}) }}
+          p={{ id: p.id, name: p.name, ownerId: p.ownerId, amount: p.amount, currency: p.currency, remark: p.remark, contactId: p.contact?.id ?? null, ...(p.企业版 ? { expectedDealAt: p.expectedDealAt ?? null, channelId: p.channelId ?? null, level: p.level ?? null, ...(p.项目标签 ? { 项目标签: p.项目标签 } : {}), bizLine: p.bizLine ?? null, 所在地: p.所在地 ?? null, ...(p.成交钱 ? { 成交钱: p.成交钱 } : {}), ...(p.项目新字段 ? { 项目新字段: p.项目新字段 } : {}), ...(p.备货物流 && 显示交付 ? { 备货物流: p.备货物流 } : {}) } : {}) }}
           候选={候选}
           联系人们={联系人们}
           渠道们={p.企业版 ? p.渠道们 : undefined}

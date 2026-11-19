@@ -976,6 +976,13 @@ model Project {
   /// 合同状态（企业版，迁移 101）：起草中 / 待对方确认 / 待我方确认 / 对方修改中 / 我方修改中 / 已生效 / 已终止（lib/project/proj-fields.ts 合同状态们）。
   /// 新建项目写「起草中」；老项目是空，界面按「起草中」显示（不改老数据）。项目方案是附件（Attachment.tag「方案」），不在这里
   contractStatus       String?
+  /// 备货状态（企业版，迁移 154，客户 11-19）：未生产 / 生产中 / 已备货（lib/project/proj-fields.ts 备货状态们），可空 = 没填。
+  /// 「生产备货」进程的必填里配「备货状态」= 选了任一项就算，配「已备货」= 要选「已备货」才算（required.ts）
+  stockStatus          String?
+  /// 物流状态（企业版，迁移 154，客户 11-19）：字典 projLogistics 里的一项（默认 待发货 / 运输中 / 已签收，设置里可改），可空 = 没填。存的是选项名，字典改名不回写
+  logisticsStatus      String?
+  /// 物流单号（企业版，迁移 154，客户 11-19）：自由文本一行，可空
+  trackingNo           String?
   /// 预计成交日期（企业版）：这个项目预计哪天签。老数据从客户的 expectedSignAt 搬过来，只搬客户名下只有一个进行中项目的，见 lib/project/expected-deal.ts
   expectedDealAt       DateTime?
   /// 项目来源（企业版，迁移 077）：这个项目是哪个渠道带来的，存渠道 id，界面写渠道全称。

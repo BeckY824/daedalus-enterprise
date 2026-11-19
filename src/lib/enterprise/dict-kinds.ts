@@ -1,6 +1,6 @@
 /** 企业版选项字典有哪几类、默认选项（纯数据，设置页客户端组件也 import）。读写库在 dict.ts */
 import { 空值符 } from "@/lib/empty-value";
-export const 字典种类们 = ["assign", "recycle", "invalid", "transfer", "verify", "custStatus", "projTag", "channelAttr", "custAssign", "contactKind", "projBudget", "projPrice", "projDecision", "projDemand", "projProduct", "custType", "projCustRole", "projContactRole", "projStance", "followMethod", "projCycle", "projFit", "projValue", "projReach", "projRival", "projDeploy", "projSite", "contactTitle", "custAttr", "followInitiator", "channelStrategy"] as const;
+export const 字典种类们 = ["assign", "recycle", "invalid", "transfer", "verify", "custStatus", "projTag", "channelAttr", "custAssign", "contactKind", "projBudget", "projPrice", "projDecision", "projDemand", "projProduct", "custType", "projCustRole", "projContactRole", "projStance", "followMethod", "projCycle", "projFit", "projValue", "projReach", "projRival", "projDeploy", "projSite", "contactTitle", "custAttr", "followInitiator", "channelStrategy", "projLogistics"] as const;
 export type 字典种类 = (typeof 字典种类们)[number];
 
 /**
@@ -149,6 +149,11 @@ export const 字典定义: Record<字典种类, { 名: string; 说明: string; �
   followInitiator: { 名: "发起主体", 说明: "这次沟通是谁发起的。", 默认: ["双方约定", "我方发起", "客户发起", "内部会议"] },
   // 运营策略（11-08 渠道两层）：渠道上用什么打法获客，多选（Channel.strategies）。对方没给默认，留空由市场在设置里加；名字对方写的是暂定
   channelStrategy: { 名: "运营策略", 说明: "在这个渠道上用什么打法获客，可多选。", 默认: [] },
+  /*
+    物流状态（11-19，迁移 154）：项目「物流运输」进程上填，存在 Project.logisticsStatus（选项名）。
+    客户只说加这个字段、没给取值：先按常见的三步给默认，设置里可改名、加项、停用
+  */
+  projLogistics: { 名: "物流状态", 说明: "项目的货走到哪一步了。", 默认: ["待发货", "运输中", "已签收"] },
   /*
     项目画像又加七项（10-31）：都单选、可不填，存在 Project 的七列上（迁移 102），和前五项一样存选项名。
     取值从「差」排到「好」；不带「其他」，选项不够就在设置里加。
