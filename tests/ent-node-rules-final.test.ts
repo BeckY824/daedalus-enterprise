@@ -1,7 +1,10 @@
 /**
  * 节点推进规则定稿（客户 11-19 对《全周期节点必填清单》的回复：「除了第6点必须全员统一规则必须填齐，其他的均按建议进行」），真库：
  *   ① 备货状态要选到「已备货」、物流状态要选到「已签收」才算（已签收按字典默认项 id 认：改名后新名、改名前存的旧名都认；停用了已选的照认）
- *   ② 交付结清只能在「尾款结算」这一步点（改节点问题 服务端拦，首页 AI、看板、接口都走它）；线索流失、丢单、异常不变
+ *   ② 交付结清只能在「尾款结算」这一步点（改节点问题 服务端拦，首页 AI、看板、接口都走它）；跟「节点推进」开关一起生效（用户定）：
+ *      开关关着照旧任一订单节点能点，开了才只在尾款结算；线索流失、丢单、异常不变
+ *   ⑤ 同一列宽严两项（备货状态 / 已备货、物流状态 / 已签收）：设置页互斥、补填框去重（宽严互斥、去掉宽的）
+ *   ⑥ 「仅上级推」下上级手动推到已齐的节点后停住：项目页给「存一下就推」（load.ts）
  *   ③ 全员统一必须填齐：总管理、销售管理、系统管理员缺必填也不能留空先推（看板预检不再回「能留空推」，项目页不再给「只能靠填齐」）
  *   ④ 填齐自动推进一次只推一格：保存项目字段、客户资料连带推、手动推之后都不连推
  */
@@ -17,7 +20,7 @@ import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 默认组织规则, type 组织规则 } from "@/lib/project/org-rules";
 import { 改节点, 改项目, 客户项目按必填推进, 读必填数据, 终止进程 } from "@/lib/project/db";
-import { 还差 } from "@/lib/project/required";
+import { 还差, 宽严互斥, 去掉宽的 } from "@/lib/project/required";
 import { 改节点问题, 交付不在尾款话, 企业版字典 } from "@/lib/project/nodes";
 import { 看板推进预检 } from "@/app/(app)/projects/actions";
 import { 读项目详情 } from "@/app/(app)/projects/[id]/load";
@@ -64,8 +67,25 @@ describe("交付结清只在尾款结算（纯函数 改节点问题）", () => 
     expect(改节点问题({ phase: "商机", node: "方案敲定", result: "丢单" }, { phase: "商机", node: "方案敲定", ...两勾 }, { 备注: "价格" }, true, 企业版字典)).toBeNull();
     expect(改节点问题({ phase: "线索", node: "潜客培育", result: "线索流失" }, { phase: "线索", node: "潜客培育", ...两勾 }, { 备注: "没需求" }, true, 企业版字典)).toBeNull();
   });
+  it("不查尾款（节点推进开关关着，db.ts 传 false）：企业版订单任一节点两勾齐了照旧能点", () => {
+    expect(改节点问题({ phase: "订单", node: "安装实施", result: "交付结清" }, { phase: "订单", node: "安装实施", ...两勾 }, undefined, true, 企业版字典, false)).toBeNull();
+  });
   it("不是企业版（团队版字典）：照旧，订单任一节点两勾齐了能点成功交付", () => {
     expect(改节点问题({ phase: "订单", node: "生产备货", result: "成功交付" }, { phase: "订单", node: "生产备货", ...两勾 })).toBeNull();
+  });
+});
+
+describe("宽严两项互斥 / 去重（纯函数）", () => {
+  it("设置页：选了严的去掉宽的，选了宽的去掉严的；老配置两项都在留严的；别的项不动", () => {
+    expect(宽严互斥(["备货状态", "场地现状", "已备货"], ["备货状态", "场地现状"])).toEqual(["场地现状", "已备货"]);
+    expect(宽严互斥(["已签收", "物流单号", "物流状态"], ["已签收", "物流单号"])).toEqual(["物流单号", "物流状态"]);
+    expect(宽严互斥(["物流状态", "已签收"], ["物流状态", "已签收"])).toEqual(["已签收"]);
+    expect(宽严互斥(["备货状态", "物流单号"], [])).toEqual(["备货状态", "物流单号"]);
+  });
+  it("补填框：同一列宽严都缺只留严的；只缺宽的照留", () => {
+    expect(去掉宽的(["备货状态", "已备货", "物流单号"])).toEqual(["已备货", "物流单号"]);
+    expect(去掉宽的(["物流状态", "已签收"])).toEqual(["已签收"]);
+    expect(去掉宽的(["备货状态", "物流状态"])).toEqual(["备货状态", "物流状态"]);
   });
 });
 
@@ -164,8 +184,24 @@ describe("节点推进规则定稿（真库）", () => {
     });
   });
 
-  describe("② 交付结清只在尾款结算", () => {
-    it("两勾都齐，停在交付验收点交付结清被拦（目标写尾款结算也拦）；推到尾款结算再点才成", async () => {
+  describe("② 交付结清只在尾款结算（跟节点推进开关一起生效）", () => {
+    beforeEach(async () => { await setSetting("orgRules", 开着({})); invalidateSettingsCache(); });
+    it("开关关着：照旧，订单中间节点两勾齐了就能点交付结清；项目页不查尾款", async () => {
+      await setSetting("orgRules", { ...默认组织规则, 节点推进: { 开: false, 必填: {} } });
+      invalidateSettingsCache();
+      const p = await 项目({ node: "安装实施", balanceSettled: true, acceptancePassed: true });
+      expect((await 详(p.id)).交付只在尾款).toBe(false);
+      expect(await 改节点(乙, p.id, { phase: "订单", node: "安装实施", result: "交付结清" })).toMatchObject({ ok: true, 变了: true });
+      expect((await 现(p.id)).result).toBe("交付结清");
+    });
+    it("开关开着、范围只管新建的：生效之前建的存量项目照旧能在中间节点点（和节点推进管同一个判断）", async () => {
+      await setSetting("orgRules", { ...默认组织规则, 节点推进: { 开: true, 必填: {}, 范围: "新建", 生效于: new Date().toISOString() } });
+      invalidateSettingsCache();
+      const 老 = await 项目({ node: "交付验收", balanceSettled: true, acceptancePassed: true, createdAt: new Date(Date.now() - 86400_000) });
+      expect((await 详(老.id)).交付只在尾款).toBe(false);
+      expect(await 改节点(乙, 老.id, { phase: "订单", node: "交付验收", result: "交付结清" })).toMatchObject({ ok: true });
+    });
+    it("开关开着：两勾都齐，停在交付验收点交付结清被拦（目标写尾款结算也拦）；推到尾款结算再点才成", async () => {
       const p = await 项目({ node: "交付验收", balanceSettled: true, acceptancePassed: true });
       const 拦 = await 改节点(乙, p.id, { phase: "订单", node: "交付验收", result: "交付结清" });
       expect(!拦.ok && 拦.error).toBe("「交付结清」只能在「尾款结算」这一步点，先把进程推到「尾款结算」");
@@ -186,10 +222,10 @@ describe("节点推进规则定稿（真库）", () => {
       expect(await 改节点(乙, q.id, { phase: "订单", node: "尾款结算", result: "交付结清" })).toMatchObject({ ok: true });
     });
 
-    it("项目页：停在别的订单节点，交付卡写清要先推到尾款结算", async () => {
+    it("项目页：开关开着给 交付只在尾款，停在别的订单节点交付卡写清要先推到尾款结算", async () => {
       const p = await 项目({ node: "安装实施" });
       const x = await 详(p.id);
-      expect(x).toMatchObject({ phase: "订单", node: "安装实施" });
+      expect(x).toMatchObject({ phase: "订单", node: "安装实施", 交付只在尾款: true });
       expect(交付不在尾款话(x, null, 企业版字典)).toMatch(/先把进程推到「尾款结算」/);
     });
   });
@@ -263,6 +299,32 @@ describe("节点推进规则定稿（真库）", () => {
       const 结 = await 项目({ name: "二号", stockStatus: "已备货", result: "异常状态" });
       expect(await 改项目(乙, 结.id, { remark: "存" })).not.toHaveProperty("自动推到");
       expect((await 现(结.id)).node).toBe("生产备货");
+    });
+  });
+
+  describe("⑥ 仅上级推：上级推到已齐的节点停住，项目页说存一下就推", () => {
+    it("直属上级手动推到齐了的物流运输：停住；负责人看项目页有 存一下就推，存一下推一格；没齐、负责人可推时都没有", async () => {
+      const 组长 = await 人("lead", "MANAGER", "sales_mgr");
+      await prisma.entMember.update({ where: { userId: 乙.id }, data: { managerId: 组长.id } });
+      await setSetting("enterprise.rule.org_scope", true);
+      const 仅上级 = { ...开着({ 生产备货: ["已备货"], 物流运输: ["物流单号"] }), 阶段: { ...默认组织规则.阶段, 推进权限: "仅上级推" as const } };
+      await setSetting("orgRules", 仅上级);
+      invalidateSettingsCache();
+      const p = await 项目({ stockStatus: "已备货", trackingNo: "SF1" });
+      // 生产备货已齐，负责人自己看：仅上级推下也能存一下推走，先看提示
+      expect((await 详(p.id)).必填).toEqual({ 配了: ["已备货"], 还差: [], 存一下就推: true });
+      expect(await 改节点(组长, p.id, { phase: "订单", node: "物流运输" })).toEqual({ ok: true, 变了: true });
+      expect((await 现(p.id)).node).toBe("物流运输");
+      expect((await 详(p.id)).必填).toEqual({ 配了: ["物流单号"], 还差: [], 存一下就推: true });
+      expect(await 改项目(乙, p.id, { remark: "存一下" })).toMatchObject({ ok: true, 自动推到: ["安装实施"] });
+      // 没齐：没有
+      const q = await 项目({ name: "二号" });
+      expect((await 详(q.id)).必填).toEqual({ 配了: ["已备货"], 还差: ["已备货"] });
+      // 负责人可推：没有（负责人自己点完成节点就行）
+      await setSetting("orgRules", 开着({ 生产备货: ["已备货"] }));
+      invalidateSettingsCache();
+      const r = await 项目({ name: "三号", stockStatus: "已备货" });
+      expect((await 详(r.id)).必填).toEqual({ 配了: ["已备货"], 还差: [] });
     });
   });
 });

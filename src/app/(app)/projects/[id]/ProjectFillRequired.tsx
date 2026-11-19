@@ -13,7 +13,7 @@ import { 金额格式 } from "@/lib/money-input";
 import { dayjs } from "@/lib/utils";
 import { 企业客户级别, 企业级别说明 } from "@/lib/enterprise/customer-v2";
 import { 未选占位, 不填项, 去不填, 去多选不填 } from "@/lib/enterprise/dict-kinds";
-import { 必填叫法, type 必填项 } from "@/lib/project/required";
+import { 必填叫法, 去掉宽的, type 必填项 } from "@/lib/project/required";
 import { 项目名上限 } from "@/lib/project/wizard";
 import { 成交需求上限 } from "@/lib/project/profile-rules";
 import { 合同状态们, 痛点标注上限, 备货状态们, 物流单号上限 } from "@/lib/project/proj-fields";
@@ -80,7 +80,8 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
   const 刷完要 = useRef(false);
   const 缺 = useMemo(() => {
     const 配的 = p.必填?.还差 ?? [];
-    return [...配的, ...((交付还差 ?? []) as 必填项[]).filter((k) => !配的.includes(k))];
+    // 同一列宽严两项都缺（老配置两项一起配了）：只留判得严的那一行，不然一列摆两个下拉、后存的那行把值改回去
+    return 去掉宽的([...配的, ...((交付还差 ?? []) as 必填项[]).filter((k) => !配的.includes(k))]);
   }, [p.必填?.还差, 交付还差]);
   const 环: 窗里环境 = {
     能就地改,

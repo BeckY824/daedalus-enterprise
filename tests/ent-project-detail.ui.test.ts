@@ -470,17 +470,17 @@ for (const 宽 of [390, 1024, 1280, 1366]) {
 }
 
 for (const 宽 of [390, 1024, 1280, 1366]) {
-  it(`${宽}px 交付结清只在尾款结算（客户 11-19 定稿）：停在别的订单节点交付卡不摆按钮、写清先推到尾款结算；到了尾款结算两勾齐才能点；不溢出`, async () => {
+  it(`${宽}px 交付结清只在尾款结算（客户 11-19 定稿，跟节点推进开关一起生效）：开关开着停在别的订单节点交付卡不摆按钮、写清先推到尾款结算；到了尾款结算两勾齐才能点；开关关着中间节点照旧能点；不溢出`, async () => {
     const { page, errors } = await open(true, 宽);
     try {
       const 卡 = page.locator(".ant-card").filter({ has: page.locator(".ant-card-head-title", { hasText: /^交付$/ }) }).first();
       const 钮 = 卡.getByRole("button", { name: "交付结清" });
       for (const node of ["生产备货", "交付验收"]) {
-        await page.evaluate(v => (window as unknown as { __over: (x: object) => void }).__over(v), { phase: "订单", node, balanceSettled: true, acceptancePassed: true });
+        await page.evaluate(v => (window as unknown as { __over: (x: object) => void }).__over(v), { phase: "订单", node, balanceSettled: true, acceptancePassed: true, 交付只在尾款: true });
         await expect.poll(() => 卡.innerText()).toContain("「交付结清」只能在「尾款结算」这一步点，先把进程推到「尾款结算」");
         expect(await 钮.count()).toBe(0);
       }
-      await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "订单", node: "尾款结算", balanceSettled: true, acceptancePassed: true }));
+      await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "订单", node: "尾款结算", balanceSettled: true, acceptancePassed: true, 交付只在尾款: true }));
       await 钮.waitFor();
       expect(await 钮.isDisabled()).toBe(false);
       expect(await 卡.innerText()).toContain("可以点交付结清");
@@ -490,13 +490,31 @@ for (const 宽 of [390, 1024, 1280, 1366]) {
       });
       expect(溢).toEqual({ 出: 0, 横滚: false });
       // 尾款结算上缺勾：按钮在、灰着，写还差哪样
-      await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "订单", node: "尾款结算", balanceSettled: false, acceptancePassed: true }));
+      await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "订单", node: "尾款结算", balanceSettled: false, acceptancePassed: true, 交付只在尾款: true }));
       await expect.poll(() => 钮.isDisabled()).toBe(true);
       expect(await 卡.innerText()).toContain("尾款结清");
+      // 开关关着（交付只在尾款 = false）：停在安装实施照旧摆按钮、能点
+      await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "订单", node: "安装实施", balanceSettled: true, acceptancePassed: true, 交付只在尾款: false }));
+      await expect.poll(() => 卡.innerText()).toContain("可以点交付结清");
+      expect(await 钮.isDisabled()).toBe(false);
+      expect(await 卡.innerText()).not.toContain("只能在「尾款结算」");
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }, 60_000);
 }
+
+it("仅上级推下停在已齐的节点（存一下就推）：当前进程卡写「已经填齐，存一下会自动推到下一步」；别的情况照旧", async () => {
+  const { page, errors } = await open(true, 1280);
+  try {
+    await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "订单", node: "物流运输", 必填: { 配了: ["物流单号"], 还差: [], 存一下就推: true } }));
+    await page.getByText("已经填齐，存一下会自动推到下一步").waitFor();
+    expect(await page.getByText("这个节点的必填都齐了，可以点「完成节点」往前推").count()).toBe(0);
+    await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "订单", node: "物流运输", 必填: { 配了: ["物流单号"], 还差: [] } }));
+    await page.getByText("这个节点的必填都齐了，可以点「完成节点」往前推").waitFor();
+    expect(await page.getByText("已经填齐，存一下会自动推到下一步").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
 
 for (const 宽 of [390, 1366]) {
   it(`${宽}px 迁移 154 编辑项目框：订单阶段有三格；只改物流单号只交 trackingNo（停用了还存着的物流状态不带上）；没交的刷新后带回草稿`, async () => {

@@ -20,7 +20,7 @@ import { 字典种类们, 字典定义, type 字典种类 } from "@/lib/enterpri
 import type { 时限范围 } from "@/lib/enterprise/edit-perm-table";
 import { 分配可选角色, 谁能用, type 分配谁能用配置 } from "@/lib/enterprise/assign-use";
 import { 角色名, 业务角色 as 业务角色们 } from "@/lib/sync/dept-policy";
-import { 必填项们, 必填叫法, 能配必填的节点, 建议必填 } from "@/lib/project/required";
+import { 必填项们, 必填叫法, 能配必填的节点, 建议必填, 是宽的, 宽严互斥 } from "@/lib/project/required";
 import {
   存卡点默认Action, 存卡点角色开关Action, 新增原因Action, 改原因名Action, 改原因状态Action, 删原因Action, 合并原因Action,
 } from "@/app/(app)/projects/blocker-actions";
@@ -543,7 +543,8 @@ function TimeoutCard({
   );
 }
 
-const 必填选项 = 必填项们.map((x) => ({ value: x.key, label: 必填叫法(x.key), title: x.说明 }));
+// 备货状态、物流状态（选了任一项就算）是旧的那一档，和「已备货」「已签收」同一列、互斥（客户 11-19 定稿，宽严互斥）
+const 必填选项 = 必填项们.map((x) => ({ value: x.key, label: 是宽的(x.key) ? `${必填叫法(x.key)}（选了任一项就算·旧）` : 必填叫法(x.key), title: x.说明 }));
 const 同一份 = (a: string[] = [], b: string[] = []) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 /**
@@ -618,7 +619,7 @@ function AdvanceCard({
                     disabled={!!挡}
                     options={必填选项}
                     value={必填[n] ?? []}
-                    onChange={(v: string[]) => set必填((m) => ({ ...m, [n]: v }))}
+                    onChange={(v: string[]) => set必填((m) => ({ ...m, [n]: 宽严互斥(v, m[n] ?? []) }))}
                   />
                 </div>
               ))}

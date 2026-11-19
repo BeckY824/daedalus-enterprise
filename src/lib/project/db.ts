@@ -9,7 +9,7 @@ import { prisma, defaultClient } from "../prisma";
 import { 不能当负责人 } from "../owners";
 import { 查完再写 } from "../check-then-write";
 import { 改节点问题, 原因上限, 要写原因, 终止结局, 下一步, 节点序号, 字典of, 本套位置, 本套名, 同名们, 是交付, 结局叫法, type 位置 } from "./nodes";
-import { 还差, 必填叫法, 节点推进生效, 项目按必填走, 只管新建之后, 节点必填, 有效线索判定, 有效沟通还差, type 必填数据 } from "./required";
+import { 还差, 必填叫法, 节点推进生效, 项目按必填走, 节点推进管, 只管新建之后, 节点必填, 有效线索判定, 有效沟通还差, type 必填数据 } from "./required";
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "./wizard";
 import { 持有上限of, 负责人可推, type 组织规则 } from "./org-rules";
 import { 企业版推进关, 记沟通阶段问题, 记沟通标记, 有效线索节点 } from "./stage-gates";
@@ -340,7 +340,9 @@ export async function 改节点(
     const 有验收报告 = 企业版() && !!result && 是交付(result) && !p.acceptancePassed
       ? (await tx.attachment.count({ where: { projectId: p.id, tag: "验收报告" } })) > 0
       : false;
-    const 问题 = 改节点问题({ ...到, result }, { ...p, 有验收报告 }, 异常, 企业版(), 字典);
+    // 交付结清只在尾款结算（客户 11-19 定稿）：现在受「节点推进」开关管（节点推进管 = 开着、且这个项目在管的范围里）；
+    // 待客户定，不受开关管就把这一项改成 企业版()（项目页 load.ts 交付只在尾款 同步改）
+    const 问题 = 改节点问题({ ...到, result }, { ...p, 有验收报告 }, 异常, 企业版(), 字典, 企业版() && 节点推进管(规则, p));
     if (问题) return { ok: false as const, error: 问题 };
     const 挡 = 到.phase !== 现.phase || 到.node !== 现.node || result !== 现.result ? 改不了的话(级别, ["商机阶段"]) : null;
     if (挡) return { ok: false as const, error: 挡 };
@@ -1736,6 +1738,25 @@ async function 往前进来的(tx: Prisma.TransactionClient, p: { id: string; ph
 }
 
 /**
+ * 这个人现在存一下，项目会不会按必填自动推一格：会 = 推到的位置，不会 = null。只查不写；按必填推进 和项目页「存一下会自动推」提示共用。
+ * 节点推进没生效、需求补全期（M-权限-07）这两条由调用方先挡（按必填推进 开头挡了）
+ */
+export async function 自动推得到(tx: Prisma.TransactionClient, 规则: 组织规则, me: { id: string }, p: Project): Promise<{ phase: string; node: string } | null> {
+  if (!节点推进生效(规则) || (企业版() && 规则.阶段.需求补全期)) return null;
+  // 节点推进不管的项目不自动推（项目按必填走：默认全部都管；设置成只管新建的时看 createdAt）；已结束、在公海的不推
+  if (p.pooledAt || p.result || !项目按必填走(规则, p)) return null;
+  // 待分配期间占位的建的人改字段：字段照存，不跟着自动推进（P-转-21、X-68 建的人不能推进）
+  if (待分配占位(me, p)) return null;
+  const 下 = 下一步(p, 字典of(企业版()));
+  if (!下) return null;
+  // 退回来的节点不推（退回一般是要重做）
+  if (!(await 往前进来的(tx, p))) return null;
+  if (还差(规则, await 读必填数据(tx, p, 规则)).length) return null;
+  if (await 企业版推进关(tx, p, 下, 规则, 有效沟通差of(tx, p, 规则))) return null;
+  return 下;
+}
+
+/**
  * 企业版节点必填（D-37）：现在的节点配了必填、全齐了、是往前走进来的，就往前推一步，记一行节点变更（理由写明自动推进，操作人 = 这次保存的人）。
  * 一次最多推一格（客户 11-19 定稿）：推到的节点就算也配了、也齐了，也停在那，等下一次保存（或人点「完成节点」）再推。
  * 返回推到的节点（没推 = 空，推了 = 一个）。没生效时一行都不查。在保存的那笔事务里调，规则在事务外读好传进来。
@@ -1745,16 +1766,9 @@ export async function 按必填推进(tx: Prisma.TransactionClient, 规则: 组�
   // 需求状态补全期（M-权限-07）：只有销售管理、总管理手动推，填齐了也不自动推
   if (!节点推进生效(规则) || (企业版() && 规则.阶段.需求补全期)) return [];
   const p = await tx.project.findUnique({ where: { id: projectId } });
-  // 节点推进不管的项目不自动推（项目按必填走：默认全部都管；设置成只管新建的时看 createdAt）；已结束、在公海的不推
-  if (!p || p.pooledAt || p.result || !项目按必填走(规则, p)) return [];
-  // 待分配期间占位的建的人改字段：字段照存，不跟着自动推进（P-转-21、X-68 建的人不能推进）
-  if (待分配占位(me, p)) return [];
-  const 下 = 下一步(p, 字典of(企业版()));
+  if (!p) return [];
+  const 下 = await 自动推得到(tx, 规则, me, p);
   if (!下) return [];
-  // 退回来的节点不推（退回一般是要重做）
-  if (!(await 往前进来的(tx, p))) return [];
-  if (还差(规则, await 读必填数据(tx, p, 规则)).length) return [];
-  if (await 企业版推进关(tx, p, 下, 规则, 有效沟通差of(tx, p, 规则))) return [];
   // 推到下一个节点：带过去的下一步不算新节点的（不然新节点配了下一步必填就直接齐了），清掉，老值记进这行节点变更
   await tx.project.update({ where: { id: p.id }, data: { phase: 下.phase, node: 下.node, ...清掉的下一步 } });
   await 节点变了的提成(tx, p.id, p.phase, 下.phase);

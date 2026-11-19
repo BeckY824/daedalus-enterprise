@@ -237,6 +237,18 @@ describe("完成节点框：一窗填完", () => {
     await page.close();
   }, 60_000);
 
+  it("同一列宽严两项都缺（老配置备货状态 + 已备货一起配了）：只摆判得严的那一行，存一次", async () => {
+    const { page, errors } = await 开({ 还差: ["备货状态", "已备货", "物流状态", "已签收"] });
+    await expect.poll(() => page.locator(".proj-miss-list > li").evaluateAll((es) => es.map((e) => e.getAttribute("data-required")))).toEqual(["已备货", "已签收"]);
+    await 选(page, "已备货", "已备货");
+    await 选(page, "已签收", "已签收");
+    await 主按钮(page).click();
+    await page.locator("#关了").waitFor();
+    expect(await 窗口变量(page, "__存")).toEqual([["项目", { stockStatus: "已备货" }], ["项目", { logisticsStatus: "已签收" }]]);
+    expect(errors).toEqual([]);
+    await page.close();
+  }, 60_000);
+
   it("已签收那一项停用了、项目上又没存着：不摆下拉，写清请管理员去设置里启用", async () => {
     const { page } = await 开({ 还差: ["已签收"], p: { 备货物流: { 备货状态: null, 物流状态: { 值: null, 选项: ["待发货", "运输中"] }, 物流单号: null, 已签收: { 名们: ["已签收"], 现名: "已签收", 能选: false } } } });
     await expect.poll(() => page.getByText("物流状态字典里的「已签收」停用了，选不上；请管理员在设置里启用").count()).toBe(1);

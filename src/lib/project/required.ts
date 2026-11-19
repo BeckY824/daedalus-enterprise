@@ -77,6 +77,33 @@ export const 必填项们 = [
 ] as const satisfies readonly { key: string; 叫法?: string; 说明: string }[];
 export type 必填项 = (typeof 必填项们)[number]["key"];
 export const 必填项名们: readonly string[] = 必填项们.map((x) => x.key);
+
+/**
+ * 同一列上一宽一严的两项（客户 11-19 定稿）：严 = 要选到那一项才算（已备货、已签收），宽 = 选了任一项就算（备货状态、物流状态，旧的，存过的配置照认）。
+ * 同一个节点两项一起配没有意义（严的齐了宽的一定齐），补填框还会对同一列摆两个下拉、后存的那行把值改回去：
+ * 设置页选的时候互斥（宽严互斥），补填框按列去重（去掉宽的）
+ */
+export const 宽严对们: readonly { 宽: 必填项; 严: 必填项 }[] = [{ 宽: "备货状态", 严: "已备货" }, { 宽: "物流状态", 严: "已签收" }];
+export const 是宽的 = (k: string) => 宽严对们.some((x) => x.宽 === k);
+
+/** 一个节点的必填里同一列宽严都在时去掉宽的（老配置两项都配了：按严的走），顺序不变 */
+export function 去掉宽的<T extends string>(们: readonly T[]): T[] {
+  return 们.filter((k) => !宽严对们.some((x) => x.宽 === k && 们.includes(x.严 as T)));
+}
+
+/**
+ * 设置页一个节点的多选改了（旧 → 新）：刚选上的那一项把同一列的另一项挤掉（选了严的去掉宽的，选了宽的去掉严的）；
+ * 没新选、两项本来都在（老配置）的，留严的
+ */
+export function 宽严互斥(新: readonly string[], 旧: readonly string[]): string[] {
+  let 果 = [...新];
+  for (const { 宽, 严 } of 宽严对们) {
+    if (!果.includes(宽) || !果.includes(严)) continue;
+    const 去 = !旧.includes(宽) && 旧.includes(严) ? 严 : 宽;
+    果 = 果.filter((k) => k !== 去);
+  }
+  return 果;
+}
 /**
  * 界面上的叫法：键名存在组织规则里不改，给人看的写明白在哪填（「需求」查需求状态、「本节点沟通」10-29 起叫当前进程沟通；
  * 11-01 按客户矩阵的字段名：金额 = 预计成交金额、回款 = 当前回款、主联系人 = 所属联系人…）。没写叫法的原样
