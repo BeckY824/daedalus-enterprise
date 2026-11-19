@@ -32,7 +32,7 @@ import { 读必填数据, 能改节点, 上级只推, 直属才推, 只有负责
 import { 合上改动, 是不限, 三态改动摘要, type 规则改动, type 组织规则 } from "@/lib/project/org-rules";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 不能新建项目话, 是经理 } from "@/lib/enterprise/permissions";
+import { 不能新建项目话 } from "@/lib/enterprise/permissions";
 import { 看全部 } from "@/lib/team-scope";
 import { 挡改设置, 读改权限, 能改时限的节点, 挡时限改动, type 设置项名 } from "@/lib/enterprise/edit-perm";
 import { 读组织, 权限组织 } from "@/lib/enterprise/org";
@@ -510,7 +510,7 @@ export async function 改项目节点(projectId: string, 到: 位置, 异常?: {
 
 /**
  * 看板拖到别的进程之前先问一句（P-界面-45，原型 pr.drag / cu.board）：这一步往前推、当前进程配了必填、还没填齐的，
- * 回还差哪几项（显示名）和能不能留空先推（总管理、销售管理 = 是经理，和 改节点 里放行的是同一拨人）。
+ * 回还差哪几项（显示名）。缺着必填谁都不能推（客户 11-19 定稿，全员统一；原来总管理、销售管理能留空先推，去掉了）。
  * 只是预演：真推照旧走 改项目节点，权限、推进关、必填都在那里再判一遍；改不了进程的人这里就回那句原因，卡片弹回
  */
 /**
@@ -538,7 +538,7 @@ export async function 看板补必填料(projectId: string): Promise<
   }
 }
 
-export async function 看板推进预检(projectId: string, 到: 位置): Promise<{ ok: true; 还差: string[]; 能留空推: boolean } | { ok: false; error: string }> {
+export async function 看板推进预检(projectId: string, 到: 位置): Promise<{ ok: true; 还差: string[] } | { ok: false; error: string }> {
   try {
     const me = await requireUser();
     if (!(await 开着())) return 没开;
@@ -552,9 +552,9 @@ export async function 看板推进预检(projectId: string, 到: 位置): Promis
     const 字典 = 字典of(企业版(), 企业版() ? 规则.阶段.出口叫法 : null);
     const 往前 = !p.result && 节点序号(本套位置({ ...到, result: null }, 字典), 字典) > 节点序号(本套位置(p, 字典), 字典);
     // 节点推进管不管这个项目（默认全部项目都管，客户 11-19；设置成只管新建的时存量不拦）：和 改节点 同一个判断
-    if (!往前 || !项目按必填走(规则, p)) return { ok: true, 还差: [], 能留空推: false };
+    if (!往前 || !项目按必填走(规则, p)) return { ok: true, 还差: [] };
     const 差 = 必填还差(规则, await 读必填数据(prisma, p, 规则));
-    return { ok: true, 还差: 差.map(必填叫法), 能留空推: 是经理(me, org) };
+    return { ok: true, 还差: 差.map(必填叫法) };
   } catch (e) { return 不在了(e); }
 }
 

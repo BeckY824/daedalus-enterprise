@@ -20,6 +20,7 @@ import { 没设业务角色, 没业务角色不能新建话 } from "./permission
 import { 规则开着 } from "./rules";
 import { 规则 } from "./rules-table";
 import { 方式对类型, 补的方式 } from "@/lib/follow-method";
+import { 默认已签收 } from "@/lib/project/proj-fields";
 
 export * from "./dict-kinds";
 export * from "./assign-use";
@@ -405,6 +406,30 @@ export async function 客户分配叫法(i: 客户分配序号, db: Pick<Prisma.
 export async function 是客户分配项(v: string, db: Pick<Prisma.TransactionClient, "entDictItem"> = prisma): Promise<boolean> {
   if ((字典定义.custAssign.默认 as readonly string[]).includes(v)) return true;
   return !!(await db.entDictItem.findFirst({ where: { kind: "custAssign", name: v }, select: { id: true } }));
+}
+
+/** 物流状态默认项里「已签收」那一项的 id（dict-projLogistics-2）：改名不变 */
+const 已签收id = 默认id("projLogistics", 字典定义.projLogistics.默认.indexOf(默认已签收));
+export type 已签收认法结果 = { 名们: string[]; 现名: string; 停用: boolean };
+
+/**
+ * 物流状态里算「已签收」的名字（客户 11-19 定稿：物流要选到已签收才算填了）。纯函数，行们 = 字典 projLogistics 的行（含停用的）。
+ *   - 按默认项 id 认那一项：管理员把它改了名（比如改成「已送达」），新名照认；
+ *     项目上存的是选项名、改名不回写，改名前已经选了「已签收」的项目也照认（默认名一起算）
+ *   - 改名之后又新加了一项叫「已签收」：那是另一项，默认名不再认（只认 id 那一项现在的名字）
+ *   - 这一类还没建过、或那一项不在了（字典只停用不删，按理不会）：只认默认名
+ *   - 停用了也照认（已经选上的不作废）；停用后下拉里选不到，项目页、完成节点框提示管理员去设置里启用
+ */
+export function 已签收认法(行们: readonly { id: string; name: string; active: boolean }[]): 已签收认法结果 {
+  const 那项 = 行们.find((x) => x.id === 已签收id);
+  if (!那项) return { 名们: [默认已签收], 现名: 默认已签收, 停用: false };
+  const 默认名被占 = 行们.some((x) => x.id !== 那项.id && x.name === 默认已签收);
+  return { 名们: [...new Set([那项.name, ...(默认名被占 ? [] : [默认已签收])])], 现名: 那项.name, 停用: !那项.active };
+}
+
+/** 读库版：只读、不建默认项，事务里也能调（传 tx） */
+export async function 已签收物流状态(db: Pick<Prisma.TransactionClient, "entDictItem"> = prisma): Promise<已签收认法结果> {
+  return 已签收认法(await db.entDictItem.findMany({ where: { kind: "projLogistics" }, select: { id: true, name: true, active: true } }));
 }
 
 /** 分配方式谁能用（assign-use.ts）：没存 = 默认；不是企业版 = 空 */

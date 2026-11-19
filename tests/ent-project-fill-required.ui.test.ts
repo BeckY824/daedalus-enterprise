@@ -25,11 +25,11 @@ beforeAll(async () => {
       备货物流:{备货状态:null,物流状态:{值:null,选项:['待发货','运输中','已签收']},物流单号:null},
       balanceSettled:false,acceptancePassed:false,能记沟通:true,项目附件:{},回款们:[],线索验证:{},只能看字段:[]};
     const 草稿留着={current:{}};
-    function 壳({还差,只能靠填齐,能就地改=true,联系人们=[],能推进=true,p:改项}){
+    function 壳({还差,能就地改=true,联系人们=[],能推进=true,p:改项}){
       const [缺,set缺]=useState(还差);const [开,set开]=useState(true);
       /* router.refresh：测试脚本定刷新后还差剩什么；没定就按存过的算全齐 */
       window.__刷新=()=>{React.startTransition(()=>set缺(window.__刷新后还差??[]));};
-      const p={...基,...改项,必填:{配了:还差,还差:缺,只能靠填齐}};
+      const p={...基,...改项,必填:{配了:还差,还差:缺}};
       window.__重开=()=>set开(true);
       if(!开)return <div id='关了'>框关了</div>;
       return <Modal open title='完成节点' footer={null} width={520} onCancel={()=>set开(false)}><ProjectFillRequired p={p} 联系人们={联系人们} 能就地改={能就地改} 改不了话='只有项目负责人能改，其他人只能看' 现在在='线索 · 潜客培育' 能推进={能推进} 完成到字='下一节点：线索验证'
@@ -76,7 +76,7 @@ describe("完成节点框：一窗填完", () => {
 
   it.each([1024, 1280, 1366])("%i 宽：全部控件 + 长名字长值不溢出，超高能滚", async (w) => {
     const 长 = "很长的联系人名字".repeat(10);
-    const { page, errors } = await 开({ 还差: 一堆, 只能靠填齐: true, 联系人们: [{ id: "k1", name: 长, position: "职位".repeat(20) }] }, w, 700);
+    const { page, errors } = await 开({ 还差: 一堆, 联系人们: [{ id: "k1", name: 长, position: "职位".repeat(20) }] }, w, 700);
     await page.getByRole("textbox", { name: "项目名称" }).fill("长".repeat(60));
     await 选(page, "主联系人", `${长} · ${"职位".repeat(20)}`);
     const 量 = await 量溢出(page);
@@ -96,7 +96,7 @@ describe("完成节点框：一窗填完", () => {
   }, 60_000);
 
   it("全填好才亮，点一次存齐并推进；占位值、0 不算", async () => {
-    const { page, errors } = await 开({ 还差: ["金额", "需求描述", "预算能力"], 只能靠填齐: true });
+    const { page, errors } = await 开({ 还差: ["金额", "需求描述", "预算能力"] });
     await expect.poll(() => 主按钮(page).isDisabled()).toBe(true);
     // 库里的占位值不带进格子，也说一句
     await expect.poll(() => page.getByText("现在是「暂无」，不算填了").count()).toBe(1);
@@ -119,7 +119,7 @@ describe("完成节点框：一窗填完", () => {
   }, 60_000);
 
   it.each([[390, 760], [1024, 700]])("备货状态、物流状态、物流单号（客户 11-19）：%i 宽就地填，选了任一项就算，存到各自的列再推进；不溢出", async (w, h) => {
-    const { page, errors } = await 开({ 还差: ["备货状态", "物流状态", "物流单号"], 只能靠填齐: true }, w, h);
+    const { page, errors } = await 开({ 还差: ["备货状态", "物流状态", "物流单号"] }, w, h);
     await expect.poll(() => 主按钮(page).isDisabled()).toBe(true);
     await 选(page, "备货状态", "未生产");
     await 选(page, "物流状态", "运输中");
@@ -143,7 +143,7 @@ describe("完成节点框：一窗填完", () => {
   }, 60_000);
 
   it("部分失败：留窗、写哪项错、已填的不丢、只重试失败项，存齐才推进", async () => {
-    const { page } = await 开({ 还差: ["金额", "预算能力"], 只能靠填齐: true });
+    const { page } = await 开({ 还差: ["金额", "预算能力"] });
     await page.evaluate(() => { const w = window as unknown as Record<string, unknown>; w.__错 = { amount: "金额超过上限了" }; w.__刷新后还差 = ["金额"]; });
     await page.getByRole("spinbutton", { name: "金额" }).fill("999");
     await 选(page, "预算能力", "选项二");
@@ -162,7 +162,7 @@ describe("完成节点框：一窗填完", () => {
   }, 60_000);
 
   it("服务端已经自动推进：关窗，不再手动推", async () => {
-    const { page } = await 开({ 还差: ["金额"], 只能靠填齐: true });
+    const { page } = await 开({ 还差: ["金额"] });
     await page.evaluate(() => { (window as unknown as Record<string, unknown>).__自动推到 = ["线索验证"]; });
     await page.getByRole("spinbutton", { name: "金额" }).fill("5");
     await 主按钮(page).click();
@@ -172,7 +172,7 @@ describe("完成节点框：一窗填完", () => {
   }, 60_000);
 
   it("存完系统里还差（别人同时改了）：留窗说清楚，不推", async () => {
-    const { page } = await 开({ 还差: ["金额"], 只能靠填齐: true });
+    const { page } = await 开({ 还差: ["金额"] });
     await page.evaluate(() => { (window as unknown as Record<string, unknown>).__刷新后还差 = ["金额"]; });
     await page.getByRole("spinbutton", { name: "金额" }).fill("5");
     await 主按钮(page).click();
@@ -182,7 +182,7 @@ describe("完成节点框：一窗填完", () => {
   }, 60_000);
 
   it("窗外项：不摆控件、不给一键完成，给入口；已填的可以先存，回来草稿还在", async () => {
-    const { page } = await 开({ 还差: ["金额", "合同附件", "回款", "下一步时间", "线索验证结果", "来源"], 只能靠填齐: true });
+    const { page } = await 开({ 还差: ["金额", "合同附件", "回款", "下一步时间", "线索验证结果", "来源"] });
     await page.getByRole("spinbutton", { name: "金额" }).fill("88");
     await expect.poll(() => 主按钮(page).isDisabled()).toBe(true);
     await expect.poll(() => page.getByText(/这里填不了，处理完才能完成节点/).count()).toBe(1);
@@ -197,33 +197,55 @@ describe("完成节点框：一窗填完", () => {
     await page.close();
   }, 60_000);
 
-  it("老板 / 主管：保留「仍要推进」，填了的先存再推；没填的不拦", async () => {
-    const { page } = await 开({ 还差: ["金额", "预算能力"], 只能靠填齐: false });
-    await page.evaluate(() => { (window as unknown as Record<string, unknown>).__刷新后还差 = ["预算能力"]; });
-    await page.getByRole("spinbutton", { name: "金额" }).fill("7");
-    await page.getByRole("button", { name: "仍要推进" }).click();
-    await page.locator("#关了").waitFor();
-    expect(await 窗口变量(page, "__存")).toEqual([["项目", { amount: 7, currency: "USD" }]]);
-    expect(await 窗口变量(page, "__推")).toBe(1);
-    await page.close();
-  }, 60_000);
-
-  it("只能靠填齐：没有「仍要推进」；改不了内容的上级不摆控件、写原因，还能仍要推进", async () => {
-    const a = await 开({ 还差: ["金额"], 只能靠填齐: true });
-    await expect.poll(() => a.page.getByRole("button", { name: "仍要推进" }).count()).toBe(0);
+  it("全员统一必须填齐（客户 11-19 定稿）：谁都没有「仍要推进」、不写「可以先推」；只填了一部分只能先保存，不推", async () => {
+    const a = await 开({ 还差: ["金额", "预算能力"] });
+    await expect.poll(() => a.page.getByText("还差这些必填，补齐了才能完成这个节点").count()).toBe(1);
+    expect(await a.page.getByRole("button", { name: "仍要推进" }).count()).toBe(0);
+    expect(await a.page.getByText(/可以先推/).count()).toBe(0);
+    await a.page.getByRole("spinbutton", { name: "金额" }).fill("7");
+    await expect.poll(() => 主按钮(a.page).isDisabled()).toBe(true);
+    await a.page.evaluate(() => { (window as unknown as Record<string, unknown>).__刷新后还差 = ["预算能力"]; });
+    await a.page.getByRole("button", { name: "先保存已填的" }).click();
+    await expect.poll(() => 窗口变量(a.page, "__存")).toEqual([["项目", { amount: 7, currency: "USD" }]]);
+    expect(await 窗口变量(a.page, "__推")).toBeUndefined();
     await a.page.close();
-    const b = await 开({ 还差: ["金额"], 只能靠填齐: false, 能就地改: false });
-    await expect.poll(() => b.page.getByRole("spinbutton", { name: "金额" }).count()).toBe(0);
+    // 改不了内容的人：不摆控件、写原因，也没有推的按钮
+    const b = await 开({ 还差: ["金额"], 能就地改: false });
     await expect.poll(() => b.page.getByText("只有项目负责人能改，其他人只能看").count()).toBe(1);
-    await b.page.getByRole("button", { name: "仍要推进" }).click();
-    await b.page.locator("#关了").waitFor();
-    expect(await 窗口变量(b.page, "__存")).toBeUndefined();
-    expect(await 窗口变量(b.page, "__推")).toBe(1);
+    expect(await b.page.getByRole("spinbutton", { name: "金额" }).count()).toBe(0);
+    expect(await b.page.getByRole("button", { name: /仍要推进|保存并完成节点/ }).count()).toBe(0);
     await b.page.close();
   }, 60_000);
 
+  it.each([[390, 760], [1024, 700], [1280, 800], [1366, 900]])("已备货 / 已签收（客户 11-19 定稿）：%i 宽，选了别的项当场说要选哪项，选对才亮；改名的按现名；不溢出", async (w, h) => {
+    const { page, errors } = await 开({ 还差: ["已备货", "已签收"], p: { 备货物流: { 备货状态: "生产中", 物流状态: { 值: null, 选项: ["待发货", "运输中", "已送达"] }, 物流单号: null, 已签收: { 名们: ["已送达", "已签收"], 现名: "已送达", 能选: true } } } }, w, h);
+    await expect.poll(() => page.getByText("要选「已备货」才算填上").count()).toBe(1);
+    await 选(page, "已签收", "运输中");
+    await expect.poll(() => page.getByText("要选「已送达」才算填上").count()).toBe(1);
+    await expect.poll(() => 主按钮(page).isDisabled()).toBe(true);
+    await 选(page, "已备货", "已备货");
+    await 选(page, "已签收", "已送达");
+    await expect.poll(() => 主按钮(page).isDisabled()).toBe(false);
+    const 量 = await 量溢出(page);
+    expect(量.出框).toEqual([]);
+    expect(量.页面横滚).toBe(false);
+    expect(量.单横滚).toBe(false);
+    await 主按钮(page).click();
+    await page.locator("#关了").waitFor();
+    expect(await 窗口变量(page, "__存")).toEqual([["项目", { stockStatus: "已备货" }], ["项目", { logisticsStatus: "已送达" }]]);
+    expect(errors).toEqual([]);
+    await page.close();
+  }, 60_000);
+
+  it("已签收那一项停用了、项目上又没存着：不摆下拉，写清请管理员去设置里启用", async () => {
+    const { page } = await 开({ 还差: ["已签收"], p: { 备货物流: { 备货状态: null, 物流状态: { 值: null, 选项: ["待发货", "运输中"] }, 物流单号: null, 已签收: { 名们: ["已签收"], 现名: "已签收", 能选: false } } } });
+    await expect.poll(() => page.getByText("物流状态字典里的「已签收」停用了，选不上；请管理员在设置里启用").count()).toBe(1);
+    expect(await page.locator('[data-required="已签收"]').getByRole("combobox").count()).toBe(0);
+    await page.close();
+  }, 60_000);
+
   it("字段权限只读：那一格不摆控件", async () => {
-    const { page } = await 开({ 还差: ["金额", "预算能力"], 只能靠填齐: true, p: { 只能看字段: ["商机金额"] } });
+    const { page } = await 开({ 还差: ["金额", "预算能力"], p: { 只能看字段: ["商机金额"] } });
     await expect.poll(() => page.getByRole("spinbutton", { name: "金额" }).count()).toBe(0);
     await expect.poll(() => page.getByRole("combobox", { name: "预算能力" }).count()).toBe(1);
     await page.close();

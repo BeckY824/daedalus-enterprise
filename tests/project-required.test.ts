@@ -32,7 +32,8 @@ describe("目录", () => {
       expect(项.length).toBeGreaterThan(0);
     }
     expect(建议必填.潜客培育).toEqual(["需求类型", "需求", "分配方式", "项目名称", "所属客户", "主联系人", "项目来源", "项目所在地"]);
-    expect(建议必填.线索验证).toEqual(["需求描述", "有效沟通", "分配方式", "项目级别", "项目标签", "线索验证结果"]);
+    // 客户 11-19 定稿：线索验证加「需求」（需求状态）
+    expect(建议必填.线索验证).toEqual(["需求描述", "需求", "有效沟通", "分配方式", "项目级别", "项目标签", "线索验证结果"]);
     expect(建议必填.线索推进).toEqual(["需求"]);
     expect(建议必填.明确需求).toEqual(["预算能力", "痛点标注"]);
     expect(建议必填.共识方案).toEqual(["价格感知", "采购周期", "产品匹配", "竞品信息", "项目方案", "金额", "预计成交日期"]);
@@ -40,8 +41,10 @@ describe("目录", () => {
     expect(建议必填.签约审批).toEqual(["部署条件", "合同已生效"]);
     expect(建议必填.签订合同).toEqual(["合同附件", "合同金额", "定金金额"]);
     expect(建议必填.首款支付).toEqual(["回款"]);
-    expect(建议必填.生产备货).toEqual(["备货状态"]);
-    expect(建议必填.物流运输).toEqual(["物流状态", "物流单号"]);
+    // 客户 11-19 定稿：备货要「已备货」、物流要「已签收」（选了任一项就算的那两项还在目录里，存过的配置照认）
+    expect(建议必填.生产备货).toEqual(["已备货"]);
+    expect(建议必填.物流运输).toEqual(["已签收", "物流单号"]);
+    for (const k of ["备货状态", "物流状态"]) expect(必填项名们).toContain(k);
     expect(建议必填.安装实施).toEqual(["场地现状"]);
     // M-必填-11（11-08）：交付验收认「验收报告」附件，不再用「验收通过」勾
     expect(建议必填.验收交付).toEqual(["验收报告"]);
@@ -114,7 +117,8 @@ describe("还差", () => {
       budgetLevel: "充足", priceSense: "价格认可", decisionChain: "已摸清", purchaseCycle: "一个月内", productFit: "完全匹配",
       valueFit: "认同", decisionReach: "已触达", competitor: "无竞品·我方独家", deployFit: "完全符合", siteStatus: "已有场地",
       // 客户 11-19：备货状态、物流状态、物流单号
-      stockStatus: "生产中", logisticsStatus: "待发货", trackingNo: "SF1",
+      // 已备货、已签收（客户 11-19 定稿）要选到那一项；备货状态、物流状态选了任一项就算
+      stockStatus: "已备货", logisticsStatus: "已签收", trackingNo: "SF1",
     });
     Object.assign(d, {
       有客户: true, 需求类型们: ["常规标品"], 分配方式: "指定分配", 有效沟通数: 1,

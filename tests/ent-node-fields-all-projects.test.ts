@@ -85,7 +85,7 @@ describe("备货状态、物流状态、物流单号 + 节点推进管全部项�
   it("物流状态字典可改：默认三项；改名、加项后项目页下拉跟着变；停用的不能再选，已存着的照显示", async () => {
     expect((await 企业字典("projLogistics")).map((x) => x.name)).toEqual(["待发货", "运输中", "已签收"]);
     const p = await 老项目({ logisticsStatus: "运输中" });
-    expect((await 详(p.id)).备货物流).toEqual({ 备货状态: null, 物流状态: { 值: "运输中", 选项: ["待发货", "运输中", "已签收"] }, 物流单号: null });
+    expect((await 详(p.id)).备货物流).toEqual({ 备货状态: null, 物流状态: { 值: "运输中", 选项: ["待发货", "运输中", "已签收"] }, 物流单号: null, 已签收: { 名们: ["已签收"], 现名: "已签收", 能选: true } });
     const 项们 = await 企业字典("projLogistics");
     const 签收 = 项们.find((x) => x.name === "已签收")!;
     const 运输 = 项们.find((x) => x.name === "运输中")!;
@@ -121,7 +121,7 @@ describe("备货状态、物流状态、物流单号 + 节点推进管全部项�
     await setSetting("orgRules", 开着({ 生产备货: ["备货状态"], 潜客培育: ["国家", "来源"] }));
     const p = await 老项目();
     const 预 = await 看板推进预检(p.id, { phase: "订单", node: "物流运输" });
-    expect(预).toMatchObject({ ok: true, 还差: ["备货状态"], 能留空推: false });
+    expect(预).toEqual({ ok: true, 还差: ["备货状态"] });
     const 线索 = await 老项目({ name: "老线索", phase: "线索", node: "潜客培育" });
     await prisma.customerExtra.create({ data: { customerId: 客户, country: "德国", source: "展会" } });
     expect((await 客户项目按必填推进(乙, 客户)).map((x) => x.id)).toEqual([线索.id]);

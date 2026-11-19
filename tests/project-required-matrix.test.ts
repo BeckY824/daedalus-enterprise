@@ -4,7 +4,7 @@
  *   - 沟通三项：同一条沟通上发起主体、内容、方式都有才算；删了的沟通不算
  *   - 线索验证结果：判有效线索且没在等才算；等销售认领不算
  *   - 分配方式 / 所属客户 / 项目来源 / 项目所在地 / 项目级别 从库里读得到
- *   - 配了的节点销售手动推被拦、列的是中文叫法；销售管理自己负责的能推、系统管理员也能推；没配的节点不拦
+ *   - 配了的节点销售手动推被拦、列的是中文叫法；销售管理、系统管理员缺着必填也一样拦（客户 11-19 定稿）；没配的节点不拦
  *   - 没开节点推进的组织（老组织）：一样不拦、不自动推
  *   - 矩阵里的结局原因（线索流失 / 商机丢单原因、异常类别、尾款结算两勾）：服务端 改节点问题 已经管，这里钉住
  */
@@ -30,7 +30,7 @@ const 建议配置 = () => Object.fromEntries(Object.entries(建议必填).map((
  * 31b 题起建议清单不再带这五项，但手动配了照样按这套走——下一步清空、只推一步这些规矩用它钉
  */
 const 前九 = new Set(["潜客培育", "线索验证", "线索推进", "痛点挖掘", "方案敲定", "成交推进", "合同审批", "签订合同", "首款到账"]);
-const 新字段 = ["备货状态", "物流状态", "物流单号"];
+const 新字段 = ["备货状态", "物流状态", "物流单号", "已备货", "已签收"];
 const 带下一步配置 = () => Object.fromEntries(Object.entries(建议配置()).map(([n, v]) => [n, [...v.filter((x) => !新字段.includes(x)), ...(前九.has(n) ? ["沟通三项"] : []), "下一步计划", "下一步时间"]]));
 
 describe("节点必填按矩阵（真库）", () => {
@@ -188,18 +188,21 @@ describe("节点必填按矩阵（真库）", () => {
     expect(await 存一下(p.id)).toMatchObject({ ok: true, 自动推到: ["线索推进"] });
   });
 
-  it("配了的节点：销售手动往前推被拦，还差用中文叫法列；销售管理自己负责的能推；没配的节点不拦", async () => {
+  it("配了的节点：销售手动往前推被拦，还差用中文叫法列；系统管理员、销售管理也一样拦（客户 11-19 定稿全员统一）；没配的节点不拦", async () => {
     await setSetting("orgRules", 开着(带下一步配置()));
     const p = await 项目({ phase: "商机", node: "首款到账" });
     const r = await 改节点(乙, p.id, { phase: "订单", node: "生产备货" });
     expect(r.ok).toBe(false);
     expect(!r.ok && r.error).toContain("还差必填：当前回款、当前进程沟通（发起主体、沟通内容、沟通方式）、下一步计划、下一步时间");
-    // V3.5.1：系统管理员（老板）能推别人的项目，缺着必填也能推；销售管理自己负责的项目缺着必填也能推（是经理）
-    expect(await 改节点(老板, p.id, { phase: "订单", node: "生产备货" })).toMatchObject({ ok: true });
+    // 客户 11-19 定稿「必须全员统一规则必须填齐」：系统管理员（老板）推别人的、销售管理推自己负责的，缺着必填一样拦（原来能留空先推）
+    const 老板推 = await 改节点(老板, p.id, { phase: "订单", node: "生产备货" });
+    expect(老板推.ok).toBe(false);
+    expect(!老板推.ok && 老板推.error).toContain("还差必填");
     const 经理 = await 人("mgr", "MANAGER");
     await prisma.entMember.create({ data: { userId: 经理.id, bizRole: "sales_mgr" } });
     const 自己的 = await 项目({ phase: "商机", node: "首款到账", ownerId: 经理.id });
-    expect(await 改节点(经理, 自己的.id, { phase: "订单", node: "生产备货" })).toMatchObject({ ok: true });
+    expect(await 改节点(经理, 自己的.id, { phase: "订单", node: "生产备货" })).toMatchObject({ ok: false });
+    expect((await 现(自己的.id)).node).toBe("首款到账");
     // 只配一个节点：别的节点照旧手动推
     await setSetting("orgRules", 开着({ 交付验收: ["验收通过"] }));
     invalidateSettingsCache();
@@ -207,14 +210,17 @@ describe("节点必填按矩阵（真库）", () => {
     expect(await 改节点(乙, q.id, { phase: "订单", node: "物流运输" })).toMatchObject({ ok: true });
   });
 
-  it("用建议清单（31b 题起只留业务字段）：生产备货选了备货状态（任一项）就推，物流运输备货 → 物流状态 + 物流单号都有才推；不看下一步", async () => {
+  it("用建议清单（客户 11-19 定稿）：生产备货要选到「已备货」才推，物流运输要「已签收」+ 物流单号都有才推；不看下一步", async () => {
     await setSetting("orgRules", 开着(建议配置()));
     const p = await 项目({ phase: "订单", node: "生产备货" });
     expect(await 存一下(p.id)).not.toHaveProperty("自动推到");
-    expect(await 改项目(乙, p.id, { stockStatus: "生产中" })).toMatchObject({ ok: true, 自动推到: ["物流运输"] });
+    expect(await 改项目(乙, p.id, { stockStatus: "生产中" })).not.toHaveProperty("自动推到");
+    expect(还差(开着(建议配置()), await 读必填数据(prisma as never, await 现(p.id)))).toEqual(["已备货"]);
+    expect(await 改项目(乙, p.id, { stockStatus: "已备货" })).toMatchObject({ ok: true, 自动推到: ["物流运输"] });
     expect(await 改项目(乙, p.id, { trackingNo: "SF123" })).not.toHaveProperty("自动推到");
-    expect(还差(开着(建议配置()), await 读必填数据(prisma as never, await 现(p.id)))).toEqual(["物流状态"]);
-    expect(await 改项目(乙, p.id, { logisticsStatus: "运输中" })).toMatchObject({ ok: true, 自动推到: ["安装实施"] });
+    expect(await 改项目(乙, p.id, { logisticsStatus: "运输中" })).not.toHaveProperty("自动推到");
+    expect(还差(开着(建议配置()), await 读必填数据(prisma as never, await 现(p.id)))).toEqual(["已签收"]);
+    expect(await 改项目(乙, p.id, { logisticsStatus: "已签收" })).toMatchObject({ ok: true, 自动推到: ["安装实施"] });
   });
 
   it("老组织（节点推进没开，必填里存着建议清单）：不拦手动推、不自动推", async () => {

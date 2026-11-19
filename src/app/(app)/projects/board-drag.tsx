@@ -16,11 +16,11 @@ const 撤销毫秒 = 6000;
 /**
  * 看板拖动换进程（P-界面-45，原型 pr.drag / cu.board，11-15 新功能）：企业版项目看板（/projects、客户页的项目看板）上，
  * 把卡片拖到另一个进程列 = 改到那个进程。规则一条不在这里判：
- *   ① 先问服务端 看板推进预检（改不了进程的人 → 回原因；当前进程配了必填、没填齐 → 回还差哪几项、能不能留空先推）；
+ *   ① 先问服务端 看板推进预检（改不了进程的人 → 回原因；当前进程配了必填、没填齐 → 回还差哪几项）；
  *   ② 真推照旧走 改项目节点（权限、推进关、必填、补全期全在那里再判一遍），被挡就弹回原位、说原因。
  * 缺必填：卡片先弹回原处，弹一个小框就地补填（11-15 用户定：和项目详情「完成节点」同一个 ProjectFillRequired，填完直接推过去）；
- * 小框里填不了的（沟通、附件、回款这类）照旧给「去…」进项目。读不到项目料时退回只列还差哪几项的小框——「去补齐」进项目，
- * 总管理、销售管理多一颗「仍要推进 · 缺的留空」（和项目详情「完成节点」放行的是同一拨人）。
+ * 小框里填不了的（沟通、附件、回款这类）照旧给「去…」进项目。读不到项目料时退回只列还差哪几项的小框——「去补齐」进项目。
+ * 缺着必填谁都不能推（客户 11-19 定稿「全员统一必须填齐」：原来总管理、销售管理的「仍要推进 · 缺的留空」去掉了）。
  * 推成了：底部一句「已推到 X」带「撤销」（P-界面-40 推进节点可撤销），撤销 = 改回原来的进程（同样走服务端）。
  * 只有进程列能放（交付结清、流失、丢单要写原因、勾验收，回项目里点）；有结局的、在公海的、只看进度的卡片不给拖。
  * 键盘：卡片上按 Alt + → / ← 推到下一个 / 退回上一个进程，走同一条路；读屏念结果（role=status）。
@@ -28,7 +28,7 @@ const 撤销毫秒 = 6000;
  */
 
 type 落点 = { 列: string; 名: string; phase: string; node: string };
-type 补框 = { id: string; 卡名: string; 到: 落点; 还差: string[]; 能留空推: boolean; 锚: DOMRect; 原: 看板卡片; 从名: string; 料?: 补料 };
+type 补框 = { id: string; 卡名: string; 到: 落点; 还差: string[]; 锚: DOMRect; 原: 看板卡片; 从名: string; 料?: 补料 };
 type 补料 = Extract<Awaited<ReturnType<typeof 看板补必填料>>, { ok: true }>;
 type 拖着 = { id: string; 卡: 看板卡片; 从列: string; el: HTMLElement; x0: number; y0: number; 动了: boolean; pointerId: number };
 
@@ -132,7 +132,7 @@ export function useBoardDrag({ 看板, 开, 名of, 去补齐, 刷新, 框 }: {
         // 读得到项目料、且项目页那套也认还差 → 就地补填；不然退回只列还差的小框
         const 料 = await 看板补必填料(r.id).catch(() => null);
         const 用料 = 料?.ok && 料.p.必填?.还差?.length ? 料 : undefined;
-        return set补({ id: r.id, 卡名: 名of(r), 到, 还差: 预.还差, 能留空推: 预.能留空推, 锚, 原: r, 从名: 看板.find((x) => x.列 === 从列)?.名 ?? "", 料: 用料 });
+        return set补({ id: r.id, 卡名: 名of(r), 到, 还差: 预.还差, 锚, 原: r, 从名: 看板.find((x) => x.列 === 从列)?.名 ?? "", 料: 用料 });
       }
     } catch (出错) {
       return 弹回去(r.id, 动作出错话(出错, "没推成，请稍后再试"));
@@ -293,8 +293,7 @@ export function useBoardDrag({ 看板, 开, 名of, 去补齐, 刷新, 框 }: {
       )}
       {补 && !补.料 && typeof document !== "undefined" && createPortal(
         <BoardGate 框={补} style={补框位置(补.锚)} 关={关补}
-          去补齐={() => { 关补(); 去补齐(补.原); }}
-          留空推={补.能留空推 ? () => { const x = 补; 关补(); void 真推(x.原, x.到); } : undefined} />,
+          去补齐={() => { 关补(); 去补齐(补.原); }} />,
         document.body,
       )}
     </>
@@ -311,7 +310,7 @@ function 补框位置(锚: DOMRect): CSSProperties {
   return { left, top: Math.max(8, Math.min(锚.top, innerHeight - 220)), width: 宽 };
 }
 
-function BoardGate({ 框: x, style, 关, 去补齐, 留空推 }: { 框: 补框; style: CSSProperties; 关: () => void; 去补齐: () => void; 留空推?: () => void }) {
+function BoardGate({ 框: x, style, 关, 去补齐 }: { 框: 补框; style: CSSProperties; 关: () => void; 去补齐: () => void }) {
   const 首钮 = useRef<HTMLButtonElement>(null);
   useEffect(() => { 首钮.current?.focus(); }, []);
   return (
@@ -320,7 +319,6 @@ function BoardGate({ 框: x, style, 关, 去补齐, 留空推 }: { 框: 补框; 
       <div className="board-gate-t">推到「{x.到.名}」前还差 {x.还差.length} 项</div>
       <div className="board-gate-name" title={x.卡名}>{x.卡名}</div>
       <ul className="board-gate-list">{x.还差.map((k) => <li key={k}>{k}</li>)}</ul>
-      {留空推 && <Button type="link" size="small" className="board-gate-force" onClick={留空推}>仍要推进 · 缺的留空</Button>}
       <div className="board-gate-foot">
         <Button size="small" onClick={关}>先不推</Button>
         <Button ref={首钮} size="small" type="primary" onClick={去补齐}>去补齐</Button>

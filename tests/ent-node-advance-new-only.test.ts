@@ -159,9 +159,10 @@ describe("范围 = 开启之后新建的（第 25 题那版，设置项）：存
     await setSetting("orgRules", 推进规则({ 潜客培育: ["金额"] }, true, 一小时前()));
     const 老 = await 老项目(), 新 = await 新项目();
     const 到 = { phase: "线索", node: "线索验证" };
-    expect(await 看板推进预检(老.id, 到)).toEqual({ ok: true, 还差: [], 能留空推: false });
+    expect(await 看板推进预检(老.id, 到)).toEqual({ ok: true, 还差: [] });
     const 预 = await 看板推进预检(新.id, 到);
-    expect(预).toMatchObject({ ok: true, 能留空推: false });
+    expect(预).toMatchObject({ ok: true });
+    expect(预).not.toHaveProperty("能留空推");
     expect(预.ok && 预.还差.length).toBe(1);
     expect(await 改项目节点(老.id, { ...到, result: null })).toMatchObject({ ok: true, 变了: true });
     expect(await 改项目节点(新.id, { ...到, result: null })).toMatchObject({ ok: false });

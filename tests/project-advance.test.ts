@@ -1,8 +1,8 @@
 /**
  * 企业版节点必填 + 自动推进（D-37，lib/project/required.ts + lib/project/db.ts 按必填推进）。
- *   - 填齐了自动往前推一步、留一行节点变更（理由写自动推进）；下一个节点也齐了接着推
+ *   - 填齐了自动往前推一步、留一行节点变更（理由写自动推进）；一次只推一格（客户 11-19 定稿），下一个节点也齐了等下次保存再推
  *   - 没齐照样能保存，只是不推；退回来的节点不自动推
- *   - 配了必填的节点，销售手动往前推被拦（列还差）；自己当负责人的销售管理能推（11-01：总管理、上级改不了进程）；往后退照旧
+ *   - 配了必填的节点，缺着必填谁手动往前推都被拦（列还差；客户 11-19 定稿全员统一，销售管理、系统管理员也不例外）；往后退照旧
  *   - 客户那边补了资料：客户名下停在配了节点上的项目跟着推
  *   - 不是企业版 / 没开：和原来一样
  */
@@ -73,13 +73,15 @@ describe("节点必填自动推进", () => {
     expect(log).toMatchObject({ kind: "node", userId: 乙.id, fromNode: "潜客培育", toNode: "线索验证", toResult: null });
   });
 
-  it("下一个节点也配了、也齐了：接着推，跨阶段也一步一步走", async () => {
+  it("下一个节点也配了、也齐了：一次只推一格（客户 11-19 定稿），再存一次再推，跨阶段也一步一步走", async () => {
     // 必填配置存的旧节点名 key（明确需求）读成新名 痛点挖掘，照样推；推到的写新名
     await setSetting("orgRules", 开着({ 线索验证: ["金额"], 线索推进: ["金额"], 明确需求: ["主联系人"] }));
     const p = await 项目({ node: "线索验证" });
     await 记有效沟通(p.id); // 越过线索验证要先有有效沟通
     const r = await 改项目(乙, p.id, { name: "一号项目", amount: 5 });
-    expect(r).toMatchObject({ ok: true, 自动推到: ["线索推进", "痛点挖掘"] });
+    expect(r).toMatchObject({ ok: true, 自动推到: ["线索推进"] });
+    expect(await 现(p.id)).toMatchObject({ phase: "线索", node: "线索推进" });
+    expect(await 改项目(乙, p.id, { name: "一号项目", remark: "再存一下" })).toMatchObject({ ok: true, 自动推到: ["痛点挖掘"] });
     expect(await 现(p.id)).toMatchObject({ phase: "商机", node: "痛点挖掘" });
     expect(await prisma.projectNodeLog.count({ where: { projectId: p.id, reason: 自动推进理由 } })).toBe(2);
   });
@@ -137,13 +139,15 @@ describe("节点必填自动推进", () => {
     没推(await 改项目(乙, p.id, { name: "一号项目", amount: 9 }));
     expect((await 现(p.id)).node).toBe("线索验证");
 
-    // 手动往前推进来的节点齐了：接着推（11-01 权限只认业务角色：总管理改不了进程，推的人从老板换成负责人乙）
+    // 手动往前推进来的节点齐了：手动推本身就是这一格，不接着推（客户 11-19 定稿一次只推一格）；之后存一下照常推
     const q = await 项目({ amount: 9 });
     await 记有效沟通(q.id);
-    expect(await 改节点(乙, q.id, { phase: "线索", node: "线索验证" })).toMatchObject({ ok: true, 自动推到: ["线索推进"] });
+    没推(await 改节点(乙, q.id, { phase: "线索", node: "线索验证" }));
+    expect((await 现(q.id)).node).toBe("线索验证");
+    expect(await 改项目(乙, q.id, { name: "一号项目", remark: "存一下" })).toMatchObject({ ok: true, 自动推到: ["线索推进"] });
   });
 
-  it("配了必填的节点：销售手动往前推被拦并列还差；自己当负责人的销售管理、系统管理员能推，不是负责人的推不了；往后退照旧；越过线索验证谁都要有效沟通", async () => {
+  it("配了必填的节点：缺必填谁手动往前推都被拦（销售、系统管理员、自己当负责人的销售管理，客户 11-19 定稿）；不是负责人的推不了；往后退照旧；越过线索验证谁都要有效沟通", async () => {
     await setSetting("orgRules", 开着({ 潜客培育: ["金额", "国家"], 线索验证: ["金额", "国家"] }));
     const p = await 项目({ node: "线索验证" });
     await 记有效沟通(p.id);
@@ -155,14 +159,14 @@ describe("节点必填自动推进", () => {
     expect(!老板推.ok && 老板推.error).toContain("预计成交金额、国家");
     expect(await 改节点(乙, p.id, { phase: "线索", node: "潜客培育" })).toMatchObject({ ok: true });
     expect((await 改节点(乙, p.id, { phase: "线索", node: "线索验证" })).ok).toBe(false);
-    // V3.5.1：缺必填往前推给「自己当负责人的销售管理」和系统管理员（老板 = 总管理、没设线）；不是负责人的销售管理改不了进程
-    expect(await 改节点(老板, p.id, { phase: "线索", node: "线索验证" })).toMatchObject({ ok: true, 变了: true });
-    await prisma.project.update({ where: { id: p.id }, data: { node: "潜客培育" } });
+    // 客户 11-19 定稿「必须全员统一规则必须填齐」：系统管理员、自己当负责人的销售管理缺着必填也推不了（原来能留空先推）；不是负责人的销售管理改不了进程
+    expect(await 改节点(老板, p.id, { phase: "线索", node: "线索验证" })).toMatchObject({ ok: false, error: expect.stringContaining("还差必填") });
     const 主管 = await 人("mgr", "MANAGER");
     await prisma.entMember.create({ data: { userId: 主管.id, bizRole: "sales_mgr" } });
     expect(await 改节点(主管, p.id, { phase: "线索", node: "线索验证" })).toEqual({ ok: false, error: 只有负责人改进程 });
     await prisma.project.update({ where: { id: p.id }, data: { ownerId: 主管.id } });
-    expect(await 改节点(主管, p.id, { phase: "线索", node: "线索验证" })).toMatchObject({ ok: true });
+    expect(await 改节点(主管, p.id, { phase: "线索", node: "线索验证" })).toMatchObject({ ok: false, error: expect.stringContaining("还差必填") });
+    await prisma.project.update({ where: { id: p.id }, data: { node: "线索验证" } });
     // 结局不算往前，照旧能点（负责人现在是主管）
     expect(await 改节点(主管, p.id, { phase: "线索", node: "线索验证", result: "线索流失" }, { 备注: "联系不上" })).toMatchObject({ ok: true });
   });
