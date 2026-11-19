@@ -1981,6 +1981,22 @@ it("dt.stage：必填齐了完成节点一步推（不开框），推完底部�
   } finally { await page.close(); }
 });
 
+it("完成节点跨阶段（线索推进→痛点挖掘、首款到账→生产备货）：企业版退不回上一阶段，不给撤销条，只写就地回执", async () => {
+  const { page, errors } = await open(true, 1280);
+  try {
+    for (const [phase, node, 到阶段] of [["线索", "线索推进", "商机"], ["商机", "首款到账", "订单"]] as const) {
+      await page.evaluate(() => { (window as unknown as { __改节点: unknown[] }).__改节点 = []; });
+      await page.evaluate((x) => (window as unknown as { __over: (x: unknown) => void }).__over(x), { phase, node, 必填: null });
+      await page.waitForFunction((n) => document.querySelector(".proj-stage-node.is-cur")?.textContent?.startsWith(n), node);
+      await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
+      await expect.poll(async () => (JSON.parse(await 窗变量(page, "__改节点")) as [string, { phase: string }][]).map((x) => x[1].phase)).toEqual([到阶段]);
+      await expect.poll(() => page.locator(".pd-note").innerText().catch(() => "")).toContain(`进到 ${到阶段}`);
+      expect(await page.locator("#undo-host").getByRole("button", { name: /撤销/ }).count()).toBe(0);
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it("手机 390 / 360 宽：「完成节点」补填框不出屏（贴左右各 8px）；1024 / 1280 / 1366 照旧挂在按钮右下", async () => {
   for (const w of [360, 390, 1024, 1280, 1366]) {
     const { page, errors } = await open(true, w);
