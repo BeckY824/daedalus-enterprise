@@ -69,6 +69,8 @@ export type 项目卡 =
       异常类别们?: string[];
       /** 工具按项目现在的位置算好的落点；落库时按库里的位置重算一遍，对不上就不写 */
       到?: 位置 | null;
+      /** 出卡时项目在哪个阶段（只给卡上那句「进了 X 就退不回 Y」用，落库不看） */
+      从阶段?: string;
     })
   | (项目Base & {
       kind: "project_followup";
@@ -164,9 +166,10 @@ export function buildProjectProposal(
   if (kind === "project_node") {
     const 到 = 收位置(args.到);
     const 们 = 名单(args.异常类别们);
+    const 从阶段 = str(args.从阶段, 10);
     return {
       ok: true,
-      proposal: { ...共, kind, 目标: str(args.目标, 20), 原因: str(args.原因, 原因上限), 异常类别: str(args.异常类别, 30), ...(们 ? { 异常类别们: 们 } : {}), ...(到 ? { 到 } : {}) },
+      proposal: { ...共, kind, 目标: str(args.目标, 20), 原因: str(args.原因, 原因上限), 异常类别: str(args.异常类别, 30), ...(们 ? { 异常类别们: 们 } : {}), ...(到 ? { 到 } : {}), ...(从阶段 ? { 从阶段 } : {}) },
     };
   }
 
@@ -286,6 +289,17 @@ export function 不可撤销(kind: 项目卡Kind): boolean {
 }
 
 const 名 = (p: 项目卡) => p.targetName || (p.候选?.length ? `（${p.候选.length} 个同名，待选）` : "…");
+
+/**
+ * 推节点卡往后跨阶段（线索→商机、商机→订单）时卡上那句提醒：企业版跨了阶段退不回去（nodes.ts 改节点问题）。
+ * 同阶段、往回、定结局、还没挑项目（没落点）都不写
+ */
+export function 跨阶段提醒(p: 项目卡): string | null {
+  if (p.kind !== "project_node" || !p.到 || p.到.result || !p.从阶段) return null;
+  const 从 = p.从阶段, 到 = p.到.phase;
+  if (!是阶段(从) || !是阶段(到) || 阶段们.indexOf(到) <= 阶段们.indexOf(从)) return null;
+  return `进了${到}就退不回${从}`;
+}
 
 /** 卡片抬头 / 操作记录那句话。删除类一定带「删除」和名字 */
 export function 描述项目卡(p: 项目卡): string {

@@ -8,7 +8,7 @@ import { 币种符号 } from "@/lib/currency";
 import { dayjs } from "@/lib/utils";
 import { 卡点类型们, 影响等级们 } from "@/lib/project/blocker-rules";
 import { 性别们 } from "@/lib/enterprise/customer-v2";
-import { 每步能判, 联系人可改, type 项目卡 } from "@/lib/agent/project-proposals";
+import { 每步能判, 联系人可改, 跨阶段提醒, type 项目卡 } from "@/lib/agent/project-proposals";
 
 /**
  * 全页面 AI 的项目类建议卡（project-proposals.ts）在卡片上的那几格。
@@ -45,6 +45,8 @@ export default function ProjectProposalFields({ draft, setDraft }: { draft: 项�
           <F label="去哪一步">
             <span>{draft.到 ? `${draft.到.phase} · ${draft.到.node}${draft.到.result ? ` · ${draft.到.result}` : ""}` : draft.目标 || "—"}</span>
           </F>
+          {/* 跨阶段退不回去：卡本来就要人点确认，这里只把后果写上 */}
+          {跨阶段提醒(draft) && <span className="prop-f-warn" data-testid="prop-cross-phase">{跨阶段提醒(draft)}</span>}
           {draft.到?.result === "异常状态" && (
             <F label="异常类别">
               <Select
