@@ -55,6 +55,7 @@ import * as 联系人动作 from "@/app/(app)/customers/[id]/actions";
 import * as 客户动作 from "@/app/(app)/customers/actions";
 import { 记回款 as 库记回款 } from "@/lib/project/payment-db";
 import { 记项目沟通 } from "@/lib/project/db";
+import { 发卡点判断, 能发卡点 } from "@/lib/project/blocker";
 import { 北京日期 } from "./helpers/beijing-date";
 
 type 人 = { id: string; name: string; role: string };
@@ -172,15 +173,25 @@ describe("推进节点 / 定结局", () => {
 });
 
 describe("沟通 + 卡点", () => {
-  it("收卡：卡点类型不认得拒；没填下一步算缺（11-05 起不问明确回复）", () => {
+  it("收卡：卡点类型不认得拒；没填下一步算缺（11-05 起不问明确回复）；11-19 没填阻碍原因算缺", () => {
     expect(收("project_followup", { targetId: 项目id, content: "x", 要卡点: true, 卡点类型: "超级卡点" })).toMatchObject({ ok: false });
     const r = 收("project_followup", { targetId: 项目id, targetName: "x", content: "聊了报价", 要卡点: true, 卡点类型: "" });
-    expect(missingFields((r as { proposal: Proposal }).proposal)).toEqual(["下一步计划", "卡点类型"]);
+    expect(missingFields((r as { proposal: Proposal }).proposal)).toEqual(["下一步计划", "卡点类型", "阻碍原因"]);
+    // 空白不算；一串字符串按顿号拆开、去重
+    const 空白 = 收("project_followup", { targetId: 项目id, targetName: "x", content: "聊了", 下一步: "再聊", 要卡点: true, 卡点类型: "轻度卡点", 阻碍原因: ["  ", ""] });
+    expect(missingFields((空白 as { proposal: Proposal }).proposal)).toEqual(["阻碍原因"]);
+    const 串 = 收("project_followup", { targetId: 项目id, targetName: "x", content: "聊了", 下一步: "再聊", 要卡点: true, 卡点类型: "轻度卡点", 阻碍原因: "需求变更、需求变更、自填一条" });
+    expect((串 as { proposal: { 阻碍原因: string[] } }).proposal.阻碍原因).toEqual(["需求变更", "自填一条"]);
+    // 不要卡点的沟通卡：不问阻碍原因
+    const 不要 = 收("project_followup", { targetId: 项目id, targetName: "x", content: "聊了", 下一步: "再聊" });
+    expect(missingFields((不要 as { proposal: Proposal }).proposal)).toEqual([]);
   });
 
   it("负责人确认：转给 记项目沟通Action（带卡点）；沟通、卡点各一条；同事确认一行不写", async () => {
-    const { 卡 } = await 出("propose_blocker_add", { project: "云帆一期", 卡点类型: "中度卡点", 影响等级: "短期不影响", 卡点描述: "报价高", content: "客户嫌贵", 明确回复: "否", 下一步: "下周再报价", reason: "人说卡在价格" });
-    expect(卡).toMatchObject({ kind: "project_followup", 要卡点: true, 卡点类型: "中度卡点" });
+    const { 卡 } = await 出("propose_blocker_add", { project: "云帆一期", 卡点类型: "中度卡点", 影响等级: "短期不影响", 阻碍原因: ["价格预算分歧"], content: "客户嫌贵", 明确回复: "否", 下一步: "下周再报价", reason: "人说卡在价格" });
+    // 卡上带阻碍原因和下拉选项（设置里启用的原因）
+    expect(卡).toMatchObject({ kind: "project_followup", 要卡点: true, 卡点类型: "中度卡点", 阻碍原因: ["价格预算分歧"], 原因可选们: expect.arrayContaining(["价格预算分歧", "其他"]) });
+    expect(卡).not.toHaveProperty("卡点描述");
 
     expect((await 确认(卡!, 丙)).ok).toBe(false);
     expect(await prisma.followUp.count()).toBe(0);
@@ -191,9 +202,82 @@ describe("沟通 + 卡点", () => {
     expect(项目动作.记项目沟通Action).toHaveBeenCalledWith(
       项目id,
       expect.objectContaining({ content: "客户嫌贵", 下一步: "下周再报价", 阶段: "线索" }),
-      { type: "中度卡点", impact: "短期不影响", description: "报价高" },
+      { type: "中度卡点", impact: "短期不影响", reasons: ["价格预算分歧"] },
     );
     expect(await prisma.followUp.count()).toBe(1);
+    expect(await prisma.entBlocker.count()).toBe(1);
+  });
+});
+
+describe("沟通 + 卡点：原因字典、旧卡（11-19）", () => {
+  it("出卡时把启用的原因名告诉模型；不在字典里的原因点名说会进待审核；零宽字符清掉", async () => {
+    const { r, 卡 } = await 出("propose_blocker_add", { project: "云帆一期", 卡点类型: "轻度卡点", 阻碍原因: ["需求变更\u200b", "自造的原因"], content: "客户要改需求", 下一步: "下周再聊", reason: "人说的" });
+    expect(卡).toMatchObject({ 阻碍原因: ["需求变更", "自造的原因"] });
+    const note = (r.data as { note: string }).note;
+    expect(note).toContain("设置里启用的阻碍原因：");
+    expect(note).toContain("需求变更");
+    expect(note).toContain("「自造的原因」不在里面");
+    expect(note).not.toContain("「需求变更」不在里面");
+  });
+
+  it("组员让 AI 加卡点：发不了卡点的项目不出卡（出了也是死路），直接报错指路去只记沟通；几个候选的剔掉发不了的", async () => {
+    await prisma.projectMember.create({ data: { projectId: 项目id, userId: 丙.id, inviteStatus: "JOINED" } });
+    const { r, 卡 } = await 出("propose_blocker_add", { projectId: 项目id, 卡点类型: "中度卡点", 阻碍原因: ["其他"], content: "丙聊了", 下一步: "再聊", reason: "人说的" }, 丙);
+    expect(卡).toBeUndefined();
+    expect((r.data as { error: string }).error).toBe("你不能在这个项目上新建卡点，只能记沟通（propose_project_followup）");
+    // 只记沟通照样出卡（组员记）
+    expect((await 出("propose_project_followup", { projectId: 项目id, content: "丙聊了", reason: "人说的" }, 丙)).卡).toMatchObject({ 组员记: true, 要卡点: false });
+    // 两个候选：一个是别人的（丙只是组员）、一个是丙自己的 → 剔掉一期，只剩二期也照候选出、不替人选；返回写明剔掉了哪个
+    const 二期 = (await prisma.project.create({ data: { name: "云帆二期", customerId: 客户id, ownerId: 丙.id, creatorId: 丙.id, phase: "线索", node: "潜客培育" } })).id;
+    const 两个 = await 出("propose_blocker_add", { project: "云帆", 卡点类型: "中度卡点", 阻碍原因: ["其他"], content: "丙聊了", 下一步: "再聊", reason: "人说的" }, 丙);
+    expect(两个.卡).toMatchObject({ targetId: "", 要卡点: true });
+    expect(两个.卡!.候选!.map((c) => c.id)).toEqual([二期]);
+    expect(两个.卡!.候选![0].补).toMatchObject({ projectId: 二期, 组员记: false });
+    const note = (两个.r.data as { note: string }).note;
+    expect(note).toContain("另有 1 个项目你不能新建卡点，已去掉：云帆一期");
+    expect(note).toContain("卡上列了它让人自己点选");
+    // 只找到一个、能发的：照旧直接指向，不列候选
+    const 一个 = await 出("propose_blocker_add", { project: "云帆二期", 卡点类型: "中度卡点", 阻碍原因: ["其他"], content: "丙聊了", 下一步: "再聊", reason: "人说的" }, 丙);
+    expect(一个.卡).toMatchObject({ targetId: 二期, 要卡点: true });
+    expect(一个.卡!.候选 ?? []).toEqual([]);
+    expect((一个.r.data as { note: string }).note).not.toContain("已去掉");
+  });
+
+  it("发卡点判断（读一次权限和组织、每个项目同步判断）和 能发卡点 结果一致", async () => {
+    const 二期 = (await prisma.project.create({ data: { name: "云帆二期", customerId: 客户id, ownerId: 丙.id, creatorId: 丙.id, phase: "线索", node: "潜客培育" } })).id;
+    const 公海 = (await prisma.project.create({ data: { name: "云帆三期", customerId: 客户id, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育", pooledAt: new Date() } })).id;
+    const 项目们 = await prisma.project.findMany({ where: { id: { in: [项目id, 二期, 公海] } }, select: { id: true, ownerId: true, pooledAt: true } });
+    const 表 = async (me: 人) => {
+      当(me);
+      return 以谁的身份(me.id, async () => {
+        const 判 = await 发卡点判断(me);
+        return Promise.all(项目们.map(async (p) => [p.id, !!判 && 判(p), await 能发卡点(me, p.id)] as const));
+      });
+    };
+    const 全 = [...(await 表(老板)), ...(await 表(乙)), ...(await 表(丙))];
+    for (const [, 同步, 查库] of 全) expect(同步).toBe(查库);
+    // 不是全 false 糊过去：乙能发一期、丙能发二期，公海的谁都不能
+    expect(全.filter(([, x]) => x).length).toBeGreaterThanOrEqual(2);
+    expect(全.filter(([id, x]) => id === 公海 && x)).toEqual([]);
+  });
+
+  it("模型还传了卡点描述：并进沟通内容（已经写在内容里的不重复）", () => {
+    const 有 = 收("project_followup", { targetId: 项目id, targetName: "x", content: "客户嫌贵", 下一步: "再聊", 要卡点: true, 卡点类型: "轻度卡点", 阻碍原因: ["其他"], 卡点描述: "财务卡着" });
+    expect((有 as { proposal: { content: string } }).proposal.content).toBe("客户嫌贵\n卡点：财务卡着");
+    const 重 = 收("project_followup", { targetId: 项目id, targetName: "x", content: "客户嫌贵，财务卡着", 下一步: "再聊", 要卡点: true, 卡点类型: "轻度卡点", 阻碍原因: ["其他"], 卡点描述: "财务卡着" });
+    expect((重 as { proposal: { content: string } }).proposal.content).toBe("客户嫌贵，财务卡着");
+  });
+
+  it("老对话里的旧卡带着卡点描述、没有阻碍原因：要人补原因；补了确认时描述接在沟通内容后面，不丢", async () => {
+    const { 卡 } = await 出("propose_blocker_add", { project: "云帆一期", 卡点类型: "中度卡点", 阻碍原因: ["价格预算分歧"], content: "客户嫌贵", 下一步: "下周再报价", reason: "人说的" });
+    const 旧 = { ...卡!, 阻碍原因: undefined, 原因可选们: undefined, 卡点描述: "报价比别家高一成" } as unknown as 项目卡;
+    expect(missingFields(旧 as Proposal)).toContain("阻碍原因");
+    expect(await 确认({ ...旧, 阻碍原因: ["价格预算分歧"] } as Proposal, 乙)).toMatchObject({ ok: true });
+    expect(项目动作.记项目沟通Action).toHaveBeenCalledWith(
+      项目id,
+      expect.objectContaining({ content: "客户嫌贵\n卡点：报价比别家高一成" }),
+      { type: "中度卡点", impact: undefined, reasons: ["价格预算分歧"] },
+    );
     expect(await prisma.entBlocker.count()).toBe(1);
   });
 });

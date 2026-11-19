@@ -23,8 +23,8 @@ const plugin: Plugin = { name: "ent-new-leads", setup(b) {
   stub(/^\.\.\/actions$/, "const 好=async()=>({ok:true});export const 编辑项目=好,改项目画像Action=好,勾项目交付=好;");
   // 分配那几个 server action：记下调了什么，回成功
   stub(/assign-actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return n==='本月分配情况'?{月:'2026-10',人:[]}:n==='我分出去的线索'?[]:n==='批量自动分配'?(window.__批量||{ok:true,结果:[]}):{ok:true,toUserId:'u1',接手人:'王1',已分:1,配额:null,为什么:'按顺序',还原:{原:'u1',待分配:null,公海:null}}};export const 分配线索=记('分配线索'),自动分配线索=记('自动分配线索'),撤销自动分配=async(...a)=>{(window.__调||=[]).push(['撤销自动分配',...a]);return window.__撤销||{ok:true}},批量自动分配=记('批量自动分配'),本月分配情况=记('本月分配情况'),我分出去的线索=记('我分出去的线索'),关满额提醒=记('关满额提醒'),项目分配线=async()=>({线:'内贸'}),分配带走的项目=async(...a)=>{(window.__调||=[]).push(['分配带走的项目',...a]);return window.__带走||{项目数:0,项目:[]}};");
-  // 卡点面板（我的卡点看板）的 server action：这几条测试不点卡点，回成功就行
-  stub(/blocker-actions$/, "const 好=async()=>({ok:true});export const 发布卡点Action=好,认领卡点Action=好,完成卡点Action=好,删卡点Action=好,存卡点默认Action=好,存卡点角色开关Action=好,新增原因Action=好,改原因名Action=好,改原因状态Action=好,删原因Action=好,合并原因Action=好,我的卡点Action=async()=>[];");
+  // 卡点面板的 server action：这几条测试不点卡点，回成功就行
+  stub(/blocker-actions$/, "const 好=async()=>({ok:true});export const 发布卡点Action=好,认领卡点Action=好,完成卡点Action=好,删卡点Action=好,存卡点默认Action=好,存卡点角色开关Action=好,新增原因Action=好,改原因名Action=好,改原因状态Action=好,删原因Action=好,合并原因Action=好;");
   // 「给老客户开项目」挑客户、建项目那几个 server action：这几条测试不点，空着就行
   // window.__搜到：挑得到一位老客户（走「给老客户开项目」整条链看焦点回位）
   stub(/customers\/\[id\]\/pick$/, "const 甲={id:'c9',name:'老客户甲',附注:null};export const 搜客户=async()=>window.__搜到?[甲]:[],取客户选项=async()=>window.__搜到?甲:null,取客户近况=async()=>window.__搜到?{id:'c9',name:'老客户甲',上次跟进:null,未完成计划:null,未完成计划数:0,contacts:[]}:null;");

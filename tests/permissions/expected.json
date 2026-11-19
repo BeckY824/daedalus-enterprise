@@ -281,7 +281,6 @@
     "动作 app/(app)/projects/blocker-actions.ts#存卡点角色开关Action": {"未登录":"401","销售":"403","市场":"403","经理":"403","老板":"允许"},
     "动作 app/(app)/projects/blocker-actions.ts#存卡点默认Action": {"未登录":"401","销售":"403","市场":"403","经理":"403","老板":"允许"},
     "动作 app/(app)/projects/blocker-actions.ts#完成卡点Action": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},
-    "动作 app/(app)/projects/blocker-actions.ts#我的卡点Action": {"未登录":"允许","销售":"允许","市场":"允许","经理":"允许","老板":"允许","注":"未登录放行：blocker-actions.ts:141 的 catch 把跳登录吞了、回空数组，不漏数据"},
     "动作 app/(app)/projects/blocker-actions.ts#改原因名Action": {"未登录":"401","销售":"403","市场":"403","经理":"403","老板":"允许"},
     "动作 app/(app)/projects/blocker-actions.ts#改原因状态Action": {"未登录":"401","销售":"403","市场":"403","经理":"403","老板":"允许"},
     "动作 app/(app)/projects/blocker-actions.ts#新增原因Action": {"未登录":"401","销售":"403","市场":"403","经理":"403","老板":"允许"},

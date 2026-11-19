@@ -65,7 +65,7 @@ import { 改项目节点, 终止项目进程, 勾项目交付, 删除项目, 放
 import type { 可选成员 } from "@/lib/utils";
 import { ProjectEditModal, ProjectTeamCard, type 组员, type 角色, type 联系人 } from "./ProjectTeam";
 import { BlockerList, PublishBlockerModal, 原因选择, type 卡点卡 } from "../BlockerPanel";
-import { 卡点类型们, 影响等级们, 描述上限, 标题上限, type 卡点默认 } from "@/lib/project/blocker-rules";
+import { 卡点类型们, 影响等级们, 缺原因话, 清原因们, type 卡点默认 } from "@/lib/project/blocker-rules";
 import type { 附件 } from "@/lib/attachment-rules";
 import FollowAttachments, { 选沟通附件 as 选沟通附件框, 传沟通附件 } from "@/components/FollowAttachments";
 import { ProjectCommissionCard } from "./ProjectCommission";
@@ -2234,7 +2234,7 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
  *
  * F-跟进-06：主区只摆 沟通方式、发起主体（11-01 答复 #2 挪出来、必填）、沟通内容、（卡点）、下一步、下一步时间；沟通时间、项目阶段、AI 预填收进默认折叠的「更多」，
  * 字段和校验一个不少。11-05 客户确认去掉「客户明确回复了吗」（线索验证改看必填项）。
- * F-跟进-08：沟通内容和下一步之间一块卡点（类型 / 影响 / 描述，全可空）；类型「暂无卡点」= 不生成（11-01 答复 #5），选了别的类型记下后照发卡点那一套生成一个。
+ * F-跟进-08：沟通内容和下一步之间一块卡点（类型 / 影响 / 阻碍原因）；类型「暂无卡点」= 不生成（11-01 答复 #5），选了别的类型阻碍原因必填（11-19），记下后照发卡点那一套生成一个。
  * F-跟进-07（企业版）：可先挑截图、录音，记下之后挂到这条沟通上
  */
 /** 记一条沟通弹窗顶上的「手动录入 | AI 录入」，记在这台浏览器上（存不了就每次手动） */
@@ -2299,8 +2299,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
   const [更多开, set更多开] = useState(false);
   const [卡点类型, set卡点类型] = useState<string>("暂无卡点");
   const [卡点影响, set卡点影响] = useState<string | null>(null);
-  const [卡点描述, set卡点描述] = useState("");
-  const [卡点标题, set卡点标题] = useState("");
+  // 11-19：卡点只留类型、影响、阻碍原因（选了类型必填）；标题、卡在哪儿去掉
   const [卡点原因, set卡点原因] = useState<string[]>([]);
   const [附件们, set附件们] = useState<File[]>([]);
   const router = useRouter();
@@ -2363,10 +2362,10 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
   */
   const 稿 = useFormDraft({
     键: `项目沟通:${p.id}`,
-    值: { type, method, 发起: 选的发起, occurredAt, content, 下一步文字, 下一步时间, 卡点类型, 卡点影响, 卡点描述, 卡点标题, 卡点原因, 原话 },
+    值: { type, method, 发起: 选的发起, occurredAt, content, 下一步文字, 下一步时间, 卡点类型, 卡点影响, 卡点原因, 原话 },
     附件数: 附件们.length,
     // 只认打的字：沟通方式的默认值是晚一步才到的（字典读回来才设），光它变了不算填过
-    算填过: (改) => 有字([改.content, 改.下一步文字, 改.卡点描述, 改.卡点标题, 改.原话]),
+    算填过: (改) => 有字([改.content, 改.下一步文字, 改.卡点类型 === "暂无卡点" ? [] : 改.卡点原因, 改.原话]),
     带回: (v) => {
       if (typeof v.type === "string") { setType(v.type); 人改过方式.current = true; }
       if (v.method !== undefined) setMethod(v.method ?? null);
@@ -2377,13 +2376,12 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
       if (v.下一步时间 !== undefined) set下一步时间(v.下一步时间 ?? null);
       if (typeof v.卡点类型 === "string") set卡点类型(v.卡点类型);
       if (v.卡点影响 !== undefined) set卡点影响(v.卡点影响 ?? null);
-      if (typeof v.卡点描述 === "string") set卡点描述(v.卡点描述);
-      if (typeof v.卡点标题 === "string") set卡点标题(v.卡点标题);
-      if (Array.isArray(v.卡点原因)) set卡点原因(v.卡点原因);
+      if (Array.isArray(v.卡点原因)) set卡点原因(清原因们(v.卡点原因));
       if (typeof v.原话 === "string") set原话(v.原话);
     },
   });
   const 差 = !content.trim() ? "请填写这次沟通的内容" : 主体们 && !发起 ? "请选发起主体"
+    : 卡点默认 && 卡点类型 !== "暂无卡点" && !卡点原因.length ? 缺原因话
     : p.组员记沟通 ? "" : !下一步文字.trim() ? "请写下一步计划" : p.要下一步 && !下一步时间 ? "请填下一步时间" : "";
   // 选了下一步时间就预演回收日（10-30 P0-2）：和服务端同一个算法，算不准（没底子）就不写
   const 预演 = 预演回收日(p.回收预演, dayjs(occurredAt, 沟通时间格式).format("YYYY-MM-DD"), 下一步时间);
@@ -2391,7 +2389,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
   const 交 = async () => {
     set交中(true);
     const 回: { r: Awaited<ReturnType<typeof 记项目沟通Action>> | null } = { r: null };
-    const 卡点 = 卡点默认 ? { type: 卡点类型, impact: 卡点影响, title: 卡点标题, reasons: 卡点原因, description: 卡点描述 } : undefined;
+    const 卡点 = 卡点默认 ? { type: 卡点类型, impact: 卡点影响, reasons: 卡点原因 } : undefined;
     // 没记上的原因写在框里、框不关（g.save，不弹顶部提示）
     // 发版后老页面交的（lib/stale-deploy.ts）：填的字一直在存草稿，刷新后点开接着填；截图录音存不进来，说一句
     const 报错 = (话: string | null) => set交错(话 === 刷新再提交话 ? `${话}（${附件们.length ? "填的字刷新后还在，截图 / 录音要重新选" : "填的内容刷新后还在"}）` : 话);
@@ -2432,7 +2430,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
         </div>
       )}
       // 写了字就别让点到框外把草稿关掉（10-29 实点：点日历时手一偏，整段没了）
-      mask={{ closable: !content.trim() && !下一步文字.trim() && !原话.trim() && !卡点描述.trim() && !附件们.length }}
+      mask={{ closable: !content.trim() && !下一步文字.trim() && !原话.trim() && (卡点类型 === "暂无卡点" || !卡点原因.length) && !附件们.length }}
       // 点了取消 / Esc / X：人明说不要了，草稿一起删
       onCancel={() => { 稿.丢掉(); 关(); }}
       onOk={() => void 交()}
@@ -2499,13 +2497,12 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
         {卡点默认 && (
           <div className="follow-blocker">
             <div style={{ marginBottom: 4 }}>卡点<span style={{ color: "var(--text-muted)" }}>（选「暂无卡点」不生成；选了其他类型，记下时生成一个卡点）</span></div>
+            {/* 11-19：「暂无卡点」只摆类型一格，不带出影响、原因；选了类型才出影响（默认值照旧）和阻碍原因（必填，能直接打字新增） */}
             <div className="follow-blocker-row">
-              <Select aria-label="卡点类型" value={卡点类型} onChange={set卡点类型} options={卡点类型们.map((v) => ({ value: v, label: v }))} />
-              <Select aria-label="卡点影响" allowClear disabled={卡点类型 === "暂无卡点"} value={卡点影响} onChange={(v) => set卡点影响(v ?? null)} placeholder={`卡点影响（默认${卡点默认.默认影响}）`} options={影响等级们.map((v) => ({ value: v, label: v }))} />
+              <Select aria-label="卡点类型" value={卡点类型} onChange={(v: string) => { set卡点类型(v); if (v === "暂无卡点") { set卡点原因([]); set卡点影响(null); } }} options={卡点类型们.map((v) => ({ value: v, label: v }))} />
+              {卡点类型 !== "暂无卡点" && <Select aria-label="卡点影响" allowClear value={卡点影响} onChange={(v) => set卡点影响(v ?? null)} placeholder={`卡点影响（默认${卡点默认.默认影响}）`} options={影响等级们.map((v) => ({ value: v, label: v }))} />}
             </div>
-            <Input aria-label="卡点标题" disabled={卡点类型 === "暂无卡点"} style={{ marginTop: 8 }} maxLength={标题上限} value={卡点标题} onChange={(e) => set卡点标题(e.target.value)} placeholder="标题（不写取描述前 20 字）" />
-            <div style={{ marginTop: 8 }}><原因选择 原因们={卡点原因们} 值={卡点原因} on改={set卡点原因} disabled={卡点类型 === "暂无卡点"} /></div>
-            <Input.TextArea aria-label="卡点描述" disabled={卡点类型 === "暂无卡点"} style={{ marginTop: 8 }} autoSize={{ minRows: 1, maxRows: 4 }} maxLength={描述上限} value={卡点描述} onChange={(e) => set卡点描述(e.target.value)} placeholder="卡在哪儿" />
+            {卡点类型 !== "暂无卡点" && <div style={{ marginTop: 8 }}><原因选择 原因们={卡点原因们} 值={卡点原因} on改={set卡点原因} /></div>}
           </div>
         )}
         {!p.组员记沟通 && (<>

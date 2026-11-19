@@ -20,6 +20,8 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 项目写工具名 } from "./project-tools";
 import { 验证步们, 每步能判, 联系人可改 } from "./project-proposals";
 import { 卡点类型们, 影响等级们 } from "../project/blocker-rules";
+import { 能写卡点, 启用原因名们 } from "../project/blocker";
+import { 原因名列多少 } from "./project-tools";
 
 /**
  * 企业版只用项目时没有的老表工具：线索、商机、订单都是项目的阶段了，问它们走 list_projects。
@@ -410,6 +412,10 @@ export async function runAgent(
   const 只用项目 = 企业版() && b.projectMode === true;
   const 写不了 = await AI写不了(user.id);
   const { TOOLS, TOOL_MAP } = 这一家的工具(b, 只用项目, !!写不了);
+  // 加卡点要填阻碍原因（11-19 必填）：这个人能写卡点（业务角色开着、不是只读）才把启用的原因名告诉模型，尽量从里面选；
+  // 只读轻量查询（不补种子、不数引用），读不到就不列（工具返回里还会再说一遍）
+  const 原因名们 = 只用项目 && !写不了 && (await 能写卡点(user.id).catch(() => false))
+    ? (await 启用原因名们().catch(() => [] as string[])).slice(0, 原因名列多少) : [];
   const 页面上下文 = 只用项目 && input.页面上下文 ? 页面说法换成项目(input.页面上下文) : input.页面上下文;
   const toolDoc = TOOLS.map((t) => `- ${t.name}：${t.description}\n  参数：${t.args}`).join("\n");
 
@@ -466,7 +472,8 @@ ${写不了 ? 只读规则(写不了) : 出卡规则}
   propose_project_followup 记沟通和下一步，propose_blocker_add / propose_blocker_resolve 加卡点 / 卡点我已完成，propose_payment_add / propose_payment_delete 记 / 删回款，
   propose_lead_verify 线索验证，propose_contact_update 改联系人，propose_customer_delete 删客户）。人只是问情况时不要提。
   这些工具按名字找项目；找到不止一个时卡上会列出来让人挑，你不要替人选，也不要说"已经改好"。项目不能删，人要删项目就说企业版不支持删项目
-  取值：卡点类型 ${卡点类型们.filter((t) => t !== "暂无卡点").join(" / ")}；影响等级 ${影响等级们.join(" / ")}；
+  取值：卡点类型 ${卡点类型们.filter((t) => t !== "暂无卡点").join(" / ")}；影响等级 ${影响等级们.join(" / ")}；${原因名们.length ? `
+  阻碍原因（加卡点必填，尽量从这里选，没有合适的才写新的，新的要总管理员审核）：${原因名们.join(" / ")}；` : ""}
   线索验证每步能判：${验证步们.map((步) => `${步} ${每步能判[步].join("/")}`).join("；")}；联系人能改的：${Object.values(联系人可改).join("、")}（电话、邮箱、微信不经 AI 改）`}`
       : ""
   }

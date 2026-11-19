@@ -33,7 +33,7 @@ import { 按线范围of, 按线项目 } from "@/lib/enterprise/line-viewer";
 import {
   规整卡点默认, 合上卡点默认, 规整发布, 规整文字, 拼卡点编号, 卡点编号头, 下一个卡点流水, 写库时限天数, 会签进度,
   规整卡点角色开关, 合上卡点角色开关, 卡点角色键, 卡点权限of, 看得到卡点, 原因种子们, 种子原因id, 规整原因名, 兜底原因,
-  卡点状态们, 卡点类型们, 影响等级们, 卡点只读, 能管卡点, 未分类原因id, 未分类原因名,
+  卡点状态们, 卡点类型们, 影响等级们, 卡点只读, 能管卡点, 未分类原因id, 未分类原因名, 卡点显示名,
   type 卡点默认, type 发布输入, type 卡点角色开关, type 卡点状态, type 原因状态,
 } from "./blocker-rules";
 
@@ -79,6 +79,12 @@ export async function 卡点权限(me: 谁): Promise<我的卡点权限> {
   // 管理员设了业务线（11-02）：不算「全部」，下面按这条线算
   const 全部 = 权.全部 && !(卡点只读(角色们) && 只读按线(me, await 读组织()));
   return { ...权, 全部, 能写: 权.开 && !卡点只读(角色们), 能管: 能管卡点(角色们) && (await 系统管理员(me)) };
+}
+/** 只问能不能写卡点（开着且不是只读角色，同 卡点权限 的 能写）：首页 AI 决定要不要把原因字典写进系统提示用，不查组织 */
+export async function 能写卡点(userId: string): Promise<boolean> {
+  if (!企业版()) return false;
+  const 角色们 = await 角色们of(userId);
+  return 卡点权限of(角色们, await 读卡点角色开关()).开 && !卡点只读(角色们);
 }
 
 /** 改卡点默认（默认类型 / 影响）：系统管理员 */
@@ -139,6 +145,17 @@ export async function 原因字典(): Promise<原因行[]> {
 /** 发卡点时下拉里的：启用的（待审核的不进下拉，前台照样能打字新加） */
 export async function 可选原因们(): Promise<string[]> {
   return (await 原因字典()).filter((r) => r.status === "启用").map((r) => r.name);
+}
+
+/**
+ * 只读、轻量的启用原因名（首页 AI 系统提示每问一次都要用）：不补种子、不数引用。
+ * 还没补过种子（谁都没打开过卡点）就给种子名单——第一次发卡点时 备好原因 补上的就是这些
+ */
+export async function 启用原因名们(): Promise<string[]> {
+  if (!企业版()) return [];
+  const 们 = await 看全部(() => prisma.entBlockerReason.findMany({ where: { status: "启用" }, select: { name: true }, orderBy: [{ sort: "asc" }, { createdAt: "asc" }] }));
+  if (!们.length && !(await getSetting<boolean>(原因种子键))) return [...原因种子们];
+  return 们.map((r) => r.name);
 }
 
 async function 管字典<T>(me: 谁, fn: (tx: Prisma.TransactionClient) => Promise<T | 错>): Promise<T | 错> {
@@ -216,12 +233,18 @@ export async function 合并原因(me: 谁, 从id: string, 到id: string): Promi
  * 发布时选的原因名 → id：字典里有、启用 / 待审核 → 用它；停用的、并过的 → 用并到的那个，单纯停用的报错；
  * 字典里没有的 → 新建一条「待审核」（谁加的记上），挂在这条卡点上，等总管理员审核、合并或停用
  */
+/** 按名字认一个原因：停用了但并到别的原因上的，认成并入的那个；没有 = null（发的时候新建成待审核） */
+async function 认原因(db: Pick<Prisma.TransactionClient, "entBlockerReason">, name: string) {
+  const r = await db.entBlockerReason.findUnique({ where: { name } });
+  return r && r.status === "停用" && r.mergedIntoId ? db.entBlockerReason.findUnique({ where: { id: r.mergedIntoId } }) : r;
+}
+const 停用话 = (name: string) => `阻碍原因「${name}」已停用，换一个`;
+
 export async function 原因ids(tx: Prisma.TransactionClient, 名们: readonly string[], 我: string): Promise<string[] | 错> {
   const ids: string[] = [];
   for (const name of 名们) {
-    let r = await tx.entBlockerReason.findUnique({ where: { name } });
-    if (r && r.status === "停用" && r.mergedIntoId) r = await tx.entBlockerReason.findUnique({ where: { id: r.mergedIntoId } });
-    if (r && r.status === "停用") return { ok: false, error: `阻碍原因「${r.name}」已停用，换一个` };
+    let r = await 认原因(tx, name);
+    if (r && r.status === "停用") return { ok: false, error: 停用话(r.name) };
     if (!r) {
       const 末 = await tx.entBlockerReason.findFirst({ orderBy: { sort: "desc" }, select: { sort: true } });
       r = await tx.entBlockerReason.create({ data: { name, status: "待审核", sort: (末?.sort ?? 0) + 1, createdById: 我 } });
@@ -238,7 +261,8 @@ const 项目字段 = { id: true, ownerId: true, pooledAt: true, customerId: true
 const 卡点带 = {
   project: { select: { ...项目字段, name: true, members: { where: { inviteStatus: "JOINED" }, select: { userId: true } } } },
   claims: { orderBy: { createdAt: "asc" as const } },
-  reasons: { include: { reason: { select: { id: true, name: true, status: true } } } },
+  // 按字典顺序排：标签和显示名（卡点显示名）里原因的先后每次一样
+  reasons: { include: { reason: { select: { id: true, name: true, status: true } } }, orderBy: [{ reason: { sort: "asc" as const } }, { reason: { name: "asc" as const } }] },
   logs: { orderBy: { at: "asc" as const } },
 } satisfies Prisma.EntBlockerInclude;
 type 带全的卡点 = Prisma.EntBlockerGetPayload<{ include: typeof 卡点带 }>;
@@ -305,15 +329,42 @@ async function 下一个卡点编号(tx: Prisma.TransactionClient, now: Date): P
  * （负责人本人且是销售 / 销售管理，permissions.ts 能编辑项目；卡点从沟通发，和记沟通同一道门）。
  * 总管理、上级、组员不能在别人的项目上发（C2：只能看、转让；看得到的卡点照样能认领、点完成）
  */
-function 能发(me: 谁, p: 项目要的, 权: 我的卡点权限, org: 组织 | null): boolean {
+type 能发要的 = Pick<项目要的, "ownerId" | "pooledAt">;
+function 能发(me: 谁, p: 能发要的, 权: 我的卡点权限, org: 组织 | null): boolean {
   return 权.能写 && !p.pooledAt && 能编辑项目(me, p, org);
+}
+
+const 在公海话 = "这个项目在公海里，先领取再新建卡点";
+const 不能发话 = "只有项目负责人或系统管理员能新建卡点（条线总管理、上级、项目组成员只能看，看得到的卡点能认领）";
+
+/**
+ * 记沟通顺带卡点：写沟通之前先只读查一遍发卡点会不会被拒（11-19）——卡点权限、项目在不在公海、能不能在这个项目上发、
+ * 原因有没有停用（并到别的原因上的不算停用）。不行回原因，调用方整条拦下、沟通也不写；行 = null。
+ * 判断和 发布卡点 是同一套（能发、认原因），发布卡点 在事务里还会再查一遍
+ */
+export async function 发卡点预检(me: 谁, projectId: string, 原因名们: readonly string[]): Promise<string | null> {
+  if (!企业版()) return 没开.error;
+  const [权, org] = await Promise.all([卡点权限(me), 组织of()]);
+  if (!权.开) return 没权.error;
+  if (!权.能写) return 只读.error;
+  return 看全部(async () => {
+    const p = await prisma.project.findUnique({ where: { id: String(projectId ?? "") }, select: 项目字段 });
+    if (!p) return "这个项目已经不在了，刷新看看";
+    if (p.pooledAt) return 在公海话;
+    if (!能发(me, p, 权, org)) return 不能发话;
+    for (const name of 原因名们) {
+      const r = await 认原因(prisma, name);
+      if (r && r.status === "停用") return 停用话(r.name);
+    }
+    return null;
+  });
 }
 
 /* ───────────── 写：发布、认领、我已完成 ───────────── */
 
 /**
  * 从一条沟通记录发布卡点 → 待接受（没人认领）。类型「暂无卡点」不生成（返回 ok、不带 id）。
- * 阻碍原因多选：字典里没有的新建成待审核；一个没选落「其他」
+ * 阻碍原因多选、必填（11-19）：字典里没有的新建成待审核；标题、描述不再要，新卡点标题存空、显示名按 卡点显示名 现拼
  */
 export async function 发布卡点(
   me: 谁, followUpId: string, input: 发布输入, now: Date = new Date(),
@@ -327,8 +378,8 @@ export async function 发布卡点(
     const fp = await tx.followUpProject.findUnique({ where: { followUpId: String(followUpId ?? "") }, include: { project: { select: 项目字段 } } });
     if (!fp) return { ok: false as const, error: "卡点要从项目上的一条沟通记录发，这条沟通找不到了，刷新看看" };
     const p = fp.project;
-    if (p.pooledAt) return { ok: false as const, error: "这个项目在公海里，先领取再新建卡点" };
-    if (!能发(me, p, 权, org)) return { ok: false as const, error: "只有项目负责人或系统管理员能新建卡点（条线总管理、上级、项目组成员只能看，看得到的卡点能认领）" };
+    if (p.pooledAt) return { ok: false as const, error: 在公海话 };
+    if (!能发(me, p, 权, org)) return { ok: false as const, error: 不能发话 };
     const 好 = 规整发布(input, 默认);
     if (好 === null) return { ok: true as const };
     if ("error" in 好) return { ok: false as const, error: 好.error };
@@ -533,7 +584,10 @@ export async function 卡点脱离沟通(tx: Prisma.TransactionClient, followUpI
 export type 卡点流转 = { id: string; action: string; at: Date; 谁: string; 从: string | null; 到: string | null; note: string | null };
 export type 认领行 = { userId: string; 名字: string; done: boolean; note: string | null; doneAt: Date | null; 是我: boolean };
 export type 卡点视图 = {
+  /** 显示名（blocker-rules.ts 卡点显示名）：老卡点的标题；新卡点「类型 · 原因」。通知、AI 候选、搜索都用它 */
   id: string; code: string; title: string; projectId: string; 项目: string; followUpId: string | null; phase: string;
+  /** 库里存着标题（11-19 前的老卡点）：卡片头才加粗写 title；新卡点标签已经有类型和原因，不重复 */
+  有标题: boolean;
   type: string; impact: string; 原因们: { id: string; name: string; status: string }[]; description: string;
   status: string; creatorId: string; 发布人: string;
   resourceRequest: string | null; solution: string | null; result: string | null; resolvedAt: Date | null;
@@ -574,7 +628,7 @@ async function 成视图(me: 谁, 们: 带全的卡点[], 权: 我的卡点权�
     const 进度 = 会签进度(b.claims);
     const 开着 = 权.能写 && b.status !== "已解决";
     return {
-      id: b.id, code: b.code, title: b.title || b.description.slice(0, 20), projectId: b.projectId, 项目: b.project.name, followUpId: b.followUpId, phase: b.phase,
+      id: b.id, code: b.code, title: 卡点显示名({ title: b.title, type: b.type, 原因们: b.reasons.map((l) => l.reason.name), description: b.description }), 有标题: !!b.title.trim(), projectId: b.projectId, 项目: b.project.name, followUpId: b.followUpId, phase: b.phase,
       type: b.type, impact: b.impact, 原因们: b.reasons.map((l) => l.reason), description: b.description,
       原阻碍主体: b.reasons.length === 0 ? (b.obstacle || null) : null,
       status: b.status, creatorId: b.creatorId, 发布人: 名.get(b.creatorId) ?? "—",
@@ -596,13 +650,13 @@ async function 成视图(me: 谁, 们: 带全的卡点[], 权: 我的卡点权�
 }
 
 /** 我看得到的卡点（再并上调用方的条件）：没开 = 空；全部 = 不限；只看自己 = 自己的条件 */
-async function 看得到的(me: 谁, where: Prisma.EntBlockerWhereInput, opt: { 只看自己?: boolean; orderBy?: Prisma.EntBlockerOrderByWithRelationInput[]; take?: number } = {}): Promise<卡点视图[]> {
+async function 看得到的(me: 谁, where: Prisma.EntBlockerWhereInput): Promise<卡点视图[]> {
   if (!企业版()) return [];
   const [权, org] = await Promise.all([卡点权限(me), 组织of()]);
   if (!权.开) return [];
-  const 范围 = 权.全部 && !opt.只看自己 ? {} : await 自己的条件(me.id, org);
+  const 范围 = 权.全部 ? {} : await 自己的条件(me.id, org);
   return 看全部(async () => {
-    const 们 = await prisma.entBlocker.findMany({ where: { AND: [范围, where] }, include: 卡点带, orderBy: opt.orderBy ?? [{ createdAt: "desc" }], take: opt.take });
+    const 们 = await prisma.entBlocker.findMany({ where: { AND: [范围, where] }, include: 卡点带, orderBy: [{ createdAt: "desc" }] });
     return 成视图(me, 们, 权);
   });
 }
@@ -612,19 +666,24 @@ export async function 项目的卡点(me: 谁, projectId: string): Promise<卡�
   return 看得到的(me, { projectId: String(projectId ?? "") });
 }
 
-/** 我的卡点（项目列表页）：我认领了还没点完成的，加上我看得到的、还没人认领的（只按自己相关的算，不看全部） */
-export async function 我的卡点(me: 谁): Promise<卡点视图[]> {
-  return 看得到的(me, { OR: [{ status: "待接受" }, { status: "处理中", claims: { some: { userId: me.id, done: false } } }] }, { 只看自己: true, orderBy: [{ createdAt: "asc" }] });
+/**
+ * 读一次卡点权限和组织，回一个同步的「能不能在这个项目上发卡点」判断（和 发布卡点 同一个 能发）；没开 = null。
+ * 一次要判好几个项目的（AI 加卡点的候选）用它，别每个都调 能发卡点 重复查库
+ */
+export async function 发卡点判断(me: 谁): Promise<((p: 能发要的) => boolean) | null> {
+  if (!企业版()) return null;
+  const [权, org] = await Promise.all([卡点权限(me), 组织of()]);
+  if (!权.开) return null;
+  return (p) => 能发(me, p, 权, org);
 }
 
 /** 项目详情要不要给「发卡点」按钮：和 发布卡点 同一个判断 */
 export async function 能发卡点(me: 谁, projectId: string): Promise<boolean> {
-  if (!企业版()) return false;
-  const [权, org] = await Promise.all([卡点权限(me), 组织of()]);
-  if (!权.开) return false;
+  const 判 = await 发卡点判断(me);
+  if (!判) return false;
   return 看全部(async () => {
     const p = await prisma.project.findUnique({ where: { id: String(projectId ?? "") }, select: 项目字段 });
-    return !!p && 能发(me, p, 权, org);
+    return !!p && 判(p);
   });
 }
 

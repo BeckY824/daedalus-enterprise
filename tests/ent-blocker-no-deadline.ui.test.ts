@@ -3,6 +3,7 @@
  *
  *   卡点列表：没解决的「已开 N 天」，解决了的「用了 N 天解决」；不再有「时限 N 天」「（已超时）」和标红
  *   发布框：没有「解决时限」输入，交上去不带 dueDays（服务端按类型默认值照旧写库）；阻碍原因多选（11-01 B9）
+ *   11-19：发布框没有标题、卡在哪儿；阻碍原因必填（没选「发布」灰着、写「请选阻碍原因」），能直接打字新增；新卡点没描述不占一行
  *   设置 → 卡点默认值：没有每类的时限天数，默认类型和影响还在；阻碍原因是单独的字典卡
  *   Windows 1024 / 1280 / 1366：超长描述、超长认领人名不横向撑出，「认领」「我已完成」点得中
  * 卡点只有企业版有（开关关时项目详情的卡点是 null，见 ent-project-detail.ui.test.ts）。
@@ -19,7 +20,7 @@ const plugin: Plugin = { name: "blocker-boundaries", setup(b) {
   const 空跑 = "async()=>({ok:true})";
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
-  stub(/blocker-actions$/, `const f=${空跑},字=async()=>({ok:true,字典:[]});export const 发布卡点Action=async(id,input)=>{window.__发布=input;window.__发布挂=id;return window.__发布回??{ok:true}},认领卡点Action=async(id)=>{(window.__认领??=[]).push(id);return window.__认领回??{ok:true}},完成卡点Action=f,删卡点Action=async(id)=>{(window.__删??=[]).push(id);return window.__删回??{ok:true}},存卡点默认Action=async(p)=>{window.__存=p;return{ok:true}},存卡点角色开关Action=f,新增原因Action=字,改原因名Action=字,改原因状态Action=字,删原因Action=字,合并原因Action=字,我的卡点Action=async()=>[];`);
+  stub(/blocker-actions$/, `const f=${空跑},字=async()=>({ok:true,字典:[]});export const 发布卡点Action=async(id,input)=>{window.__发布=input;window.__发布挂=id;return window.__发布回??{ok:true}},认领卡点Action=async(id)=>{(window.__认领??=[]).push(id);return window.__认领回??{ok:true}},完成卡点Action=f,删卡点Action=async(id)=>{(window.__删??=[]).push(id);return window.__删回??{ok:true}},存卡点默认Action=async(p)=>{window.__存=p;return{ok:true}},存卡点角色开关Action=f,新增原因Action=字,改原因名Action=字,改原因状态Action=字,删原因Action=字,合并原因Action=字;`);
   stub(/\/projects\/actions$|\/ent-dict-actions$|\/commission-actions$/, `const f=${空跑};export const 加组员角色=f,改组员角色=f,加项目异常类别=f,改项目异常类别=f,改组织规则=f,预览超时回收=async()=>({ok:true,项目:[]}),改提成比例=f,改按人提成比例=f,加企业选项=f,改企业选项=f,存分配谁能用=f;`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
@@ -31,12 +32,13 @@ beforeAll(async () => {
     const root=createRoot(document.getElementById('root'));
     const 串='卡在哪'.repeat(40)+'X'.repeat(120), 天前=n=>new Date(Date.now()-n*86400000+3600000).toISOString();
     const 长名='认领人'+'X'.repeat(60);
-    const 卡=(id,status,开,解)=>({id,code:'BLK-20261101-00'+id,title:'报价卡住'+'Y'.repeat(60),projectId:'p1',项目:'项目',followUpId:'f1',phase:'订单',type:'重要卡点',impact:'可能丢单',
+    const 卡=(id,status,开,解)=>({id,code:'BLK-20261101-00'+id,title:'报价卡住'+'Y'.repeat(60),有标题:true,projectId:'p1',项目:'项目',followUpId:'f1',phase:'订单',type:'重要卡点',impact:'可能丢单',
       原因们:[{id:'r1',name:'价格',status:'启用'}],description:串,status,发布人:'组长甲',resourceRequest:null,solution:解==null?null:'降价',result:解==null?null:'签了',
       resolvedAt:解==null?null:天前(解),createdAt:天前(开),流转:[],
       认领:status==='待接受'?[]:[{名字:长名,done:status==='已解决',note:null,doneAt:null,是我:true}],进度:{完成:status==='已解决'?1:0,共:status==='待接受'?0:1},
       能:{认领:status==='待接受',完成:status==='处理中',最后一个:status==='处理中'}});
     window.__render=(what)=>root.render(<App>{
+      what==='list新'?<BlockerList 们={[{...卡('4','待接受',2,null),title:'重要卡点 · 价格',有标题:false,description:''}]}/>:
       what==='list'?<BlockerList 们={[卡('1','待接受',5,null),卡('2','处理中',4,null),卡('3','已解决',9,6)]} 带项目/>:
       what==='publish2'?<PublishBlockerModal followUpId='f1' 沟通们={[{id:'f1',occurredAt:'2026-11-10T02:00:00.000Z',content:'最近这条：客户说预算要再批'},{id:'f2',occurredAt:'2026-11-03T02:00:00.000Z',content:'上周那条'+'很长'.repeat(40)}]} 默认={默认卡点默认} 原因们={['价格','交期']} onClose={()=>{window.__关=1}}/>:
       what==='publish'?<PublishBlockerModal followUpId='f1' 默认={默认卡点默认} 原因们={['价格','交期']} onClose={()=>{}}/>:
@@ -46,7 +48,7 @@ beforeAll(async () => {
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-async function open(what: "list" | "publish" | "publish2" | "settings", width = 1366) {
+async function open(what: "list" | "list新" | "publish" | "publish2" | "settings", width = 1366) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://blk.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
@@ -80,24 +82,48 @@ it("卡点列表：显示开了几天 / 用了几天解决，没有时限、没�
   } finally { await page.close(); }
 });
 
-it("发布框：没有「解决时限」，交上去不带 dueDays", async () => {
+it("11-19 新卡点（没存标题）：卡片头只有标签行，不再加粗写一遍「类型 · 原因」；没描述不占一行；老卡点的标题照旧", async () => {
+  const { page, errors } = await open("list新");
+  try {
+    await page.getByText("BLK-20261101-004").waitFor();
+    expect(await page.getByText("重要卡点 · 价格").count()).toBe(0);
+    expect(await page.getByText("重要卡点", { exact: true }).count()).toBe(1);
+    expect(await page.locator(".pd-blk").innerText()).not.toContain("Y".repeat(10));
+    await page.evaluate(() => (window as unknown as { __render: (x: string) => void }).__render("list"));
+    await page.getByText("报价卡住" + "Y".repeat(60)).first().waitFor();
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("发布框：没有「解决时限」，交上去不带 dueDays；11-19 没有标题、卡在哪儿，阻碍原因必填、能打字新增", async () => {
   const { page, errors } = await open("publish");
   try {
     const dlg = page.getByRole("dialog"); await dlg.waitFor();
     expect(await dlg.getByLabel("解决时限").count()).toBe(0);
     expect(await dlg.innerText()).not.toMatch(/时限/);
+    expect(await dlg.getByLabel("卡点标题").count()).toBe(0);
+    expect(await dlg.getByLabel("卡点描述").count()).toBe(0);
+    // 没选原因：发布键灰着，框里写「请选阻碍原因」
+    const 发布键 = dlg.getByRole("button", { name: /发\s*布/ });
+    expect(await 发布键.isDisabled()).toBe(true);
+    expect(await dlg.innerText()).toContain("请选阻碍原因");
     await dlg.getByLabel("阻碍原因").click();
     await page.locator(".ant-select-item-option").filter({ hasText: "价格" }).click();
+    // 直接打字新增一个字典里没有的（纯空格不算）
+    await page.keyboard.type("   ");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("自填的原因");
+    await page.keyboard.press("Enter");
     await page.keyboard.press("Escape");
     await page.locator(".ant-select-dropdown:visible").waitFor({ state: "hidden" });
-    await dlg.getByLabel("卡点描述").click();
-    await dlg.getByLabel("卡点描述").fill("卡在报价");
-    await dlg.getByRole("button", { name: /发\s*布/ }).click();
+    expect(await 发布键.isDisabled()).toBe(false);
+    await 发布键.click();
     await page.waitForFunction(() => Reflect.get(window, "__发布"));
     const 交 = await page.evaluate(() => Reflect.get(window, "__发布") as Record<string, unknown>);
     expect(交).not.toHaveProperty("dueDays");
-    expect(交.description).toBe("卡在报价");
-    expect(交.reasons).toEqual(["价格"]);
+    expect(交).not.toHaveProperty("title");
+    expect(交).not.toHaveProperty("description");
+    expect(交.reasons).toEqual(["价格", "自填的原因"]);
     expect(交).not.toHaveProperty("obstacle");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
@@ -183,7 +209,6 @@ it("dt.blocker：发布框写「挂在」哪条沟通、能换；类型影响一
       await dlg.getByLabel("阻碍原因").click();
       await page.locator(".ant-select-item-option").filter({ hasText: "价格" }).click();
       await page.keyboard.press("Escape");
-      await dlg.getByLabel("卡点描述").fill("卡在报价");
       await page.evaluate(() => Reflect.set(window, "__发布回", { ok: false, error: "这条沟通已经删了，换一条" }));
       const 发布键 = dlg.locator(".ant-modal-footer").getByRole("button").last();
       await 发布键.click();

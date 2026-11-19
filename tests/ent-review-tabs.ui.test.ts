@@ -86,6 +86,12 @@ it("卡点：三栏看板（待接受 / 处理中 / 已解决）摆得出；统�
   const { page, errors } = await 打开({ 页: "block" }, 1280, "/overview?tab=block&ownerId=u1&p=2");
   expect(await page.locator(".rblk-col").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))).toEqual(["待接受的卡点", "处理中的卡点", "已解决的卡点"]);
   expect(await page.locator('[aria-label="卡点统计"]').innerText()).toMatch(/未解决\s*3[\s\S]*已解决\s*1/);
+  // 原来项目看板顶上「我的卡点」那块拿掉了（11-19），待接受的卡点在这里看得到、能认领；「我的认领」筛选在
+  const 待接受栏 = page.locator('.rblk-col[aria-label="待接受的卡点"]');
+  expect(await 待接受栏.innerText()).toContain("BLK-20261101-00");
+  expect(await 待接受栏.innerText()).toContain("BLK-20261101-01");
+  expect(await 待接受栏.getByRole("button", { name: /^认\s*领$/ }).count()).toBe(2);
+  expect(await page.getByLabel("全部或我的认领").count()).toBe(1);
   expect(await page.locator(".rblk-reason").last().innerText()).toContain("（待审核）");
   await page.locator(".rblk-reason").first().click();
   expect(await 去了(page)).toEqual(["/overview?tab=block&ownerId=u1&br=r1"]);

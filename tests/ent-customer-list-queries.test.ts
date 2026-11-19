@@ -104,10 +104,11 @@ const 客户列表三态开着上限 = 客户列表查询上限 + 2;
 /**
  * /projects（项目页，看板 / 列表在浏览器里切，服务端两份都取）：改成看板每列各自取数（11-12）以后——
  * 列表这一页先只取 id，再和看板每列的卡片一起一句 include（最近留痕另一句 groupBy，替掉原来 include 里的那一句）：比改前 23 条多 1 条 = 24；
- * 每有一列超过 20 个，多 1 句只取这一列前 20 的 id。按负责人排 25 → 26（同上多 1 条；这一页落在几位名下都最多 3 句，不随人数涨）
+ * 每有一列超过 20 个，多 1 句只取这一列前 20 的 id。按负责人排 25 → 26（同上多 1 条；这一页落在几位名下都最多 3 句，不随人数涨）。
+ * 11-19 看板上的「我的卡点」拿掉（只留复盘页），不再取它：24 → 21、26 → 23
  */
-const 项目页查询数 = 24;
-const 项目页按负责人查询数 = 26;
+const 项目页查询数 = 21;
+const 项目页按负责人查询数 = 23;
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 const 造人 = async (key: string, bizRole: string, managerId: string | null = null): Promise<人> => {

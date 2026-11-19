@@ -22,7 +22,7 @@ import { 记项目沟通 } from "@/lib/project/db";
 import * as 接口 from "@/app/(app)/projects/blocker-actions";
 import {
   发布卡点Action, 认领卡点Action, 完成卡点Action, 存卡点默认Action, 存卡点角色开关Action,
-  新增原因Action, 改原因名Action, 改原因状态Action, 删原因Action, 合并原因Action, 我的卡点Action,
+  新增原因Action, 改原因名Action, 改原因状态Action, 删原因Action, 合并原因Action,
 } from "@/app/(app)/projects/blocker-actions";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 北京日期 } from "./helpers/beijing-date";
@@ -30,7 +30,7 @@ import { 北京日期 } from "./helpers/beijing-date";
 let 甲: string;
 let 项目id: string;
 let 沟通id: string;
-const 卡 = { description: "报价高" };
+const 卡 = { reasons: ["价格预算分歧"] };
 
 beforeEach(async () => {
   await resetDb();
@@ -59,7 +59,6 @@ async function 全拦(期望: string) {
     await 新增原因Action("新原因"), await 改原因名Action("x", "y"), await 改原因状态Action("x", "停用"),
     await 删原因Action("x"), await 合并原因Action("x", "y"),
   ]) expect(x).toMatchObject({ ok: false, error: expect.stringContaining(期望) });
-  expect(await 我的卡点Action()).toEqual([]);
   expect(await prisma.entBlocker.findUniqueOrThrow({ where: { id: b.id } })).toMatchObject({ status: "待接受", assigneeId: null });
   expect(await prisma.entBlocker.count()).toBe(1);
   expect(await prisma.entBlockerClaim.count()).toBe(0);
@@ -90,7 +89,6 @@ describe("卡点接口", () => {
     expect(r).toMatchObject({ ok: true, code: expect.stringMatching(/^BLK-\d{8}-001$/) });
     const b = await prisma.entBlocker.findFirstOrThrow();
     expect(await 认领卡点Action(b.id)).toEqual({ ok: true, 解决了: false });
-    expect((await 我的卡点Action()).map((x) => x.id)).toEqual([b.id]);
     expect(await 完成卡点Action(b.id, {})).toMatchObject({ ok: false });
     expect(await 完成卡点Action(b.id, { solution: "降价", result: "签了" })).toEqual({ ok: true, 解决了: true });
     const 记录 = await prisma.auditLog.findMany({ where: { entity: "EntBlocker" }, orderBy: { at: "asc" }, select: { summary: true } });

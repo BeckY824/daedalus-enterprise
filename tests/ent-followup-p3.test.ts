@@ -3,8 +3,8 @@
  *
  * 钉的是：
  *   - 卡点（lib/project/blocker-rules.ts 沟通卡点）：没给、类型「暂无卡点」或没选 → 不生成（描述写了也不生成，11-01 答复 #5）；选了别的类型 → 生成，
- *     影响没选按默认、阻碍主体落「其他」、描述空写占位；坏取值报错、一行不写
- *   - 记项目沟通Action 带卡点：生成的卡点挂在这条沟通上；暂无 + 空描述一个卡点都不建；客户页带的标题 / 状态 / 时长 / 参与人 / 联系人一次存好
+ *     影响没选按默认；11-19 起阻碍原因必填（没选 / 纯空格报「请选阻碍原因」）、标题和描述不再要、不写占位；坏取值报错、一行不写
+ *   - 记项目沟通Action 带卡点：生成的卡点挂在这条沟通上、标题存空、显示名「类型 · 原因」；暂无 + 空描述一个卡点都不建；没选原因整条不记；客户页带的标题 / 状态 / 时长 / 参与人 / 联系人一次存好
  *   - 附件：?followUpId= 记这条的本人能传截图、录音（m4a 没类型按扩展名认），别的文件 415；同事传 403；
  *     删只有系统管理员、身为负责人的管理能删，普通成员、销售负责人 403 附件原样；没挂项目的沟通、项目模式关着 404；沟通进回收站附件不当孤儿清
  *   - 权限（M-权限-09 原口径，11-09）：管理以下（销售负责人本人也算）改、删都被拒（原样还在）；本人刚记的也删不了（P-沟通-01），AI 卡片撤销照常；
@@ -28,11 +28,11 @@ vi.mock("@/lib/business", async (原) => {
 
 import { prisma, defaultClient as raw } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { invalidateSettingsCache } from "@/lib/settings";
+import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 记项目沟通Action, 改项目沟通, 删项目沟通 } from "@/app/(app)/projects/actions";
 import { deleteFollowUp } from "@/app/(app)/customers/[id]/actions";
 import { undoProposal } from "@/app/(app)/dashboard/apply";
-import { 沟通卡点, 沟通卡点占位描述, 默认卡点默认 } from "@/lib/project/blocker-rules";
+import { 沟通卡点, 默认卡点默认, 缺原因话, 卡点角色键, 默认卡点角色开关 } from "@/lib/project/blocker-rules";
 import { 能改沟通of, 能删沟通of, 负责人能改of, 能改这条沟通, 能删沟通, 不能改沟通话, 不能删沟通话, 本人改沟通过时话 } from "@/lib/enterprise/follow-perm";
 import { 建组织 } from "@/lib/enterprise/org-core";
 import { 回收站列表 } from "@/lib/enterprise/soft-delete";
@@ -107,19 +107,27 @@ describe("F-跟进-08 卡点：生成 / 不生成", () => {
     expect(沟通卡点({ type: "暂无卡点", description: "预算还没批" }, 默)).toBeNull();
     expect(沟通卡点({ description: "等对方技术评估" }, 默)).toBeNull();
   });
-  it("选了别的类型 → 生成；影响没选按默认，描述空写占位；原因没选留空（发布时落「其他」）", () => {
-    expect(沟通卡点({ type: "重要卡点" }, 默)).toEqual({ type: "重要卡点", impact: 默.默认影响, description: 沟通卡点占位描述 });
-    // 老调用方还传单个阻碍主体：不归类、不往下传（B9），原因没选发布时落「其他」
-    const 老 = 沟通卡点({ type: "中度卡点", impact: "项目暂停", description: "x", obstacle: "价格" } as never, 默);
+  it("选了别的类型 → 生成；影响没选按默认；描述不再写占位", () => {
+    expect(沟通卡点({ type: "重要卡点", reasons: ["需求变更"] }, 默)).toEqual({ type: "重要卡点", impact: 默.默认影响, reasons: ["需求变更"], title: undefined, description: undefined });
+    // 老调用方还传单个阻碍主体：不归类、不往下传（B9）
+    const 老 = 沟通卡点({ type: "中度卡点", impact: "项目暂停", description: "x", obstacle: "价格", reasons: ["其他"] } as never, 默);
     expect(老).toMatchObject({ impact: "项目暂停" });
     expect(老).not.toHaveProperty("obstacle");
     expect(沟通卡点({ type: "轻度卡点", reasons: ["其他"] }, 默)).toMatchObject({ reasons: ["其他"] });
+  });
+  it("11-19 选了类型没选阻碍原因 → 报「请选阻碍原因」；空白、纯空格不算", () => {
+    expect(沟通卡点({ type: "重要卡点" }, 默)).toEqual({ error: 缺原因话 });
+    expect(沟通卡点({ type: "重要卡点", reasons: [] }, 默)).toEqual({ error: 缺原因话 });
+    expect(沟通卡点({ type: "轻度卡点", reasons: ["", "   "] }, 默)).toEqual({ error: 缺原因话 });
+    expect(沟通卡点({ type: "轻度卡点", reasons: "  " }, 默)).toEqual({ error: 缺原因话 });
+    // 暂无卡点：原因空也不报，照旧不生成
+    expect(沟通卡点({ type: "暂无卡点", reasons: [] }, 默)).toBeNull();
   });
   it("坏取值报错", () => {
     expect(沟通卡点({ type: "瞎填" }, 默)).toHaveProperty("error");
     expect(沟通卡点({ type: "重要卡点", impact: "瞎填" }, 默)).toHaveProperty("error");
     expect(沟通卡点("重要卡点" as never, 默)).toHaveProperty("error");
-    expect(沟通卡点({ type: "轻度卡点", description: "字".repeat(501) }, 默)).toHaveProperty("error");
+    expect(沟通卡点({ type: "轻度卡点", reasons: ["其他"], description: "字".repeat(501) }, 默)).toHaveProperty("error");
   });
 
   it("记沟通带卡点：暂无 + 空描述一个都不建；选了重要卡点建一个、挂在这条沟通上", async () => {
@@ -128,11 +136,54 @@ describe("F-跟进-08 卡点：生成 / 不生成", () => {
     expect(没).not.toHaveProperty("卡点没发");
     expect(await prisma.entBlocker.count()).toBe(0);
 
-    const 有 = await 记一条({}, { type: "重要卡点", impact: "项目暂停", description: "预算卡住了" });
+    const 有 = await 记一条({}, { type: "重要卡点", impact: "项目暂停", reasons: ["价格预算分歧", "  ", "客户自填的原因"] });
     expect(有).toMatchObject({ ok: true, 卡点: expect.stringMatching(/^BLK/) });
-    const 卡 = await prisma.entBlocker.findFirstOrThrow();
-    expect(卡).toMatchObject({ followUpId: 有.followUpId, projectId: 项目, customerId: 客户, type: "重要卡点", impact: "项目暂停", obstacle: "其他", description: "预算卡住了", creatorId: 销售 });
+    const 卡 = await prisma.entBlocker.findFirstOrThrow({ include: { reasons: { include: { reason: true } } } });
+    // 11-19：标题、描述不再写（存空），第一个原因记进 obstacle；自填的原因进字典「待审核」
+    expect(卡).toMatchObject({ followUpId: 有.followUpId, projectId: 项目, customerId: 客户, type: "重要卡点", impact: "项目暂停", obstacle: "价格预算分歧", title: "", description: "", creatorId: 销售 });
+    expect(卡.reasons.map((l) => l.reason.name).sort()).toEqual(["价格预算分歧", "客户自填的原因"].sort());
+    expect(await prisma.entBlockerReason.findUniqueOrThrow({ where: { name: "客户自填的原因" } })).toMatchObject({ status: "待审核" });
     expect(await prisma.entBlocker.count()).toBe(1);
+  });
+
+  it("11-19 零宽字符不算原因：只有零宽字符的拦；带零宽字符的认成字典里那条，不新建近似重复的待审核原因", async () => {
+    expect(沟通卡点({ type: "轻度卡点", reasons: ["\u200b", "\ufeff \u2060"] }, 默)).toEqual({ error: 缺原因话 });
+    expect(await 记项目沟通Action(项目, 沟通() as never, { type: "轻度卡点", reasons: ["\u200b"] })).toMatchObject({ ok: false, error: `卡点：${缺原因话}` });
+    expect(await prisma.followUpProject.count({ where: { projectId: 项目 } })).toBe(0);
+    await 记一条({}, { type: "轻度卡点", reasons: ["需求变更\u200b", "\u200c需求变更"] });
+    const 卡 = await prisma.entBlocker.findFirstOrThrow({ include: { reasons: { include: { reason: true } } } });
+    expect(卡.reasons.map((l) => l.reason.name)).toEqual(["需求变更"]);
+    expect(await prisma.entBlockerReason.count({ where: { status: "待审核" } })).toBe(0);
+  });
+
+  it("11-19 先查后写：原因已停用（没并到别处）、没有发卡点的权限 → 整条拦下说清原因，沟通也不写；停用但并进别的原因的照常", async () => {
+    await 记一条({}, { type: "轻度卡点", reasons: ["其他"] });  // 先补上种子字典
+    await prisma.entBlocker.deleteMany();
+    await prisma.followUpProject.deleteMany();
+    const 沟通数 = await prisma.followUp.count();
+    await prisma.entBlockerReason.update({ where: { name: "需求变更" }, data: { status: "停用" } });
+    expect(await 记项目沟通Action(项目, 沟通() as never, { type: "中度卡点", reasons: ["需求变更"] })).toEqual({ ok: false, error: "卡点：阻碍原因「需求变更」已停用，换一个" });
+    expect(await prisma.followUp.count()).toBe(沟通数);
+    expect(await prisma.entBlocker.count()).toBe(0);
+    // 停用了但并进「其他」：照常记，挂的是「其他」
+    const 其他 = await prisma.entBlockerReason.findUniqueOrThrow({ where: { name: "其他" } });
+    await prisma.entBlockerReason.update({ where: { name: "需求变更" }, data: { mergedIntoId: 其他.id } });
+    expect(await 记项目沟通Action(项目, 沟通() as never, { type: "中度卡点", reasons: ["需求变更"] })).toMatchObject({ ok: true, 卡点: expect.any(String) });
+    expect((await prisma.entBlockerReasonLink.findFirstOrThrow({ include: { reason: true } })).reason.name).toBe("其他");
+    // 销售这个业务角色的卡点关了：没权限发卡点 → 整条拦下（原来是沟通记上、卡点没发）
+    await setSetting(卡点角色键, { ...默认卡点角色开关, 启用: { ...默认卡点角色开关.启用, sales: false } });
+    invalidateSettingsCache();
+    const 前 = await prisma.followUp.count();
+    expect(await 记项目沟通Action(项目, 沟通() as never, { type: "中度卡点", reasons: ["其他"] })).toMatchObject({ ok: false, error: expect.stringMatching(/^卡点：你的业务角色没开卡点/) });
+    expect(await prisma.followUp.count()).toBe(前);
+    // 不带卡点（暂无）照常记
+    expect(await 记项目沟通Action(项目, 沟通() as never, { type: "暂无卡点", reasons: [] })).toMatchObject({ ok: true });
+  });
+
+  it("11-19 选了类型没选阻碍原因：整条不记（沟通、卡点都不建）", async () => {
+    expect(await 记项目沟通Action(项目, 沟通() as never, { type: "中度卡点", reasons: ["   "] })).toMatchObject({ ok: false, error: `卡点：${缺原因话}` });
+    expect(await prisma.followUpProject.count({ where: { projectId: 项目 } })).toBe(0);
+    expect(await prisma.entBlocker.count()).toBe(0);
   });
 
   it("卡点取值坏的：整条不记（沟通、卡点都不建）", async () => {

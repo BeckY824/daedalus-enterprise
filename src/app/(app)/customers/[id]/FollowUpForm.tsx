@@ -32,33 +32,45 @@ import CustomerPick, { type 客户近况 } from "./CustomerPick";
 import FollowMethodSelect, { InitiatorSelect, useFollowHabit, useFollowInitiators, useFollowMethods, 默认沟通方式, 默认发起主体 } from "@/components/FollowMethodSelect";
 import { 对得上的方式, 方式对类型 } from "@/lib/follow-method";
 import { useFormGuard } from "@/lib/form-guard";
-import { 卡点类型们, 影响等级们, 描述上限, 标题上限, 原因最多, 原因名上限, type 卡点默认 } from "@/lib/project/blocker-rules";
+import { 卡点类型们, 影响等级们, 原因最多, 缺原因话, 清原因们, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 选沟通附件, 传沟通附件 } from "@/components/FollowAttachments";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
 import { 沟通没项目话, 请负责人建项目话, 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
 import { 动作出错话, 出错原话 } from "@/lib/stale-deploy";
 
-/** 记沟通时顺手标的卡点（F-跟进-08）：类型「暂无卡点」= 不生成，描述写了也不生成（11-01 答复 #5；服务端 沟通卡点 同一条规则） */
-type 卡点值 = { type: string; impact: string | null; title: string; reasons: string[]; description: string };
-const 空卡点: 卡点值 = { type: "暂无卡点", impact: null, title: "", reasons: [], description: "" };
+/**
+ * 记沟通时顺手标的卡点（F-跟进-08）：类型「暂无卡点」= 不生成（11-01 答复 #5；服务端 沟通卡点 同一条规则）。
+ * 11-19：只留类型、影响、阻碍原因；选了类型阻碍原因必填，标题、卡在哪儿去掉
+ */
+type 卡点值 = { type: string; impact: string | null; reasons: string[] };
+const 空卡点: 卡点值 = { type: "暂无卡点", impact: null, reasons: [] };
+/** 草稿带回的卡点：只认这三格（老草稿里的标题、描述丢掉），坏的退回「暂无卡点」 */
+function 带回卡点(x: unknown): 卡点值 {
+  const v = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
+  return {
+    type: typeof v.type === "string" && (卡点类型们 as readonly string[]).includes(v.type) ? v.type : 空卡点.type,
+    impact: typeof v.impact === "string" ? v.impact : null,
+    reasons: Array.isArray(v.reasons) ? 清原因们(v.reasons) : [],
+  };
+}
 
-/** 卡点那一块：摆在沟通内容和下一步之间，和项目详情「记一条沟通」一个样子（同一套 CSS） */
+/** 卡点那一块：摆在沟通内容和下一步之间，和项目详情「记一条沟通」一个样子（同一套 CSS）。「暂无卡点」只摆类型一格 */
 function 卡点格({ 默认, 原因们, 值, on改 }: { 默认: 卡点默认; 原因们: string[]; 值: 卡点值; on改: (x: 卡点值) => void }) {
   const 暂无 = 值.type === "暂无卡点";
   return (
     <div className="follow-blocker" style={{ marginBottom: 16 }}>
       <div style={{ marginBottom: 4 }}>卡点<span style={{ color: "var(--text-muted)" }}>（选「暂无卡点」不生成；选了其他类型，记下时生成一个卡点）</span></div>
       <div className="follow-blocker-row">
-        <Select aria-label="卡点类型" value={值.type} onChange={(v) => on改({ ...值, type: v })} options={卡点类型们.map((v) => ({ value: v, label: v }))} />
-        <Select aria-label="卡点影响" allowClear disabled={暂无} value={值.impact} onChange={(v) => on改({ ...值, impact: v ?? null })} placeholder={`卡点影响（默认${默认.默认影响}）`} options={影响等级们.map((v) => ({ value: v, label: v }))} />
+        <Select aria-label="卡点类型" value={值.type} onChange={(v) => on改(v === "暂无卡点" ? 空卡点 : { ...值, type: v })} options={卡点类型们.map((v) => ({ value: v, label: v }))} />
+        {!暂无 && <Select aria-label="卡点影响" allowClear value={值.impact} onChange={(v) => on改({ ...值, impact: v ?? null })} placeholder={`卡点影响（默认${默认.默认影响}）`} options={影响等级们.map((v) => ({ value: v, label: v }))} />}
       </div>
-      <Input aria-label="卡点标题" disabled={暂无} style={{ marginTop: 8 }} maxLength={标题上限} value={值.title} onChange={(e) => on改({ ...值, title: e.target.value })} placeholder="卡点标题（不填取描述前 20 字）" />
-      <Select
-        aria-label="阻碍原因" mode="tags" disabled={暂无} style={{ marginTop: 8, width: "100%" }} maxCount={原因最多} value={值.reasons}
-        onChange={(v: string[]) => on改({ ...值, reasons: v.map((x) => x.trim().slice(0, 原因名上限)).filter(Boolean) })}
-        placeholder="阻碍原因（可多选；没有的直接打字新加，等总管理员审核）" options={原因们.map((v) => ({ value: v, label: v }))}
-      />
-      <Input.TextArea aria-label="卡点描述" disabled={暂无} style={{ marginTop: 8 }} autoSize={{ minRows: 1, maxRows: 4 }} maxLength={描述上限} value={值.description} onChange={(e) => on改({ ...值, description: e.target.value })} placeholder="卡在哪儿" />
+      {!暂无 && (
+        <Select
+          aria-label="阻碍原因" mode="tags" style={{ marginTop: 8, width: "100%", minWidth: 0 }} maxCount={原因最多} value={值.reasons}
+          onChange={(v: string[]) => on改({ ...值, reasons: 清原因们(v) })}
+          placeholder="阻碍原因（必填，可多选；没有合适的可以直接打字新增）" options={原因们.map((v) => ({ value: v, label: v }))}
+        />
+      )}
     </div>
   );
 }
@@ -318,14 +330,14 @@ export default function FollowUpForm({
       resetAi();
       onClose();
     },
-    填过: () => aiText.trim() !== "" || 卡点.description.trim() !== "" || 附件们.length > 0,
+    填过: () => aiText.trim() !== "" || (卡点.type !== "暂无卡点" && 卡点.reasons.length > 0) || 附件们.length > 0,
     不存: 给定客户 ? ["projectId"] : ["customerId", "contactId", "opportunityId", "projectId"],
     // 表单外头也是人打的字：AI 速记框、卡点那一块；截图录音存不进来，带回时说要重选
     额外: {
       取: () => ({ aiText, 卡点 }),
       放: (x) => {
         if (typeof x.aiText === "string") setAiText(x.aiText);
-        if (x.卡点 && typeof x.卡点 === "object") set卡点({ ...空卡点, ...(x.卡点 as Partial<卡点值>) });
+        if (x.卡点 && typeof x.卡点 === "object") set卡点(带回卡点(x.卡点));
       },
     },
     附件数: () => 附件们.length,
@@ -606,6 +618,8 @@ export default function FollowUpForm({
    */
   async function 记到项目(v: Awaited<ReturnType<typeof form.validateFields>>, 谁: string, 要收口: typeof 收口计划): Promise<{ ok: boolean; error?: string }> {
     if (!须知) return { ok: false, error: "这个项目的记法没读到，请关掉重开" };
+    // 11-19：选了卡点类型，阻碍原因必填（服务端 规整发布 同一条，挡在记沟通之前）
+    if (须知.卡点默认 && 卡点.type !== "暂无卡点" && !卡点.reasons.length) return { ok: false, error: 缺原因话 };
     // 标题、另选的联系人、状态、时长、参与人随这一次一起交（服务端 认沟通额外），不再事后拿 saveFollowUp 补——普通成员不能改沟通了（M-权限-09）
     const r = await 记项目沟通Action(v.projectId, {
       type: v.type, method: 对得上的方式(v.type, v.method), initiator: v.initiator ?? null, content: v.content, occurredAt: v.occurredAt.toISOString(),

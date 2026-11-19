@@ -2427,6 +2427,8 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .prop-f { display: flex; align-items: center; gap: 8px; }
 .prop-f-block { flex-basis: 100%; align-items: flex-start; }
 .prop-f-block > *:last-child { flex: 1; }
+/* 整行的多选（AI 卡的阻碍原因）：占满剩下的宽，长标签不把卡撑宽 */
+.prop-f-block > .ant-select { min-width: 0; }
 /* AI 记沟通卡「关联项目」（11-17 沟通必须挂项目）：下拉定宽、只一个时项目名长了折行 */
 .prop-proj-pick { width: 200px; max-width: 100%; }
 .prop-proj-one { overflow-wrap: anywhere; }
@@ -4924,7 +4926,7 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 .rec-plan-said { font-size: var(--fs-note); color: var(--text-muted); overflow-wrap: anywhere; animation: cd-pj-flash-in var(--t) var(--ease); }
 .rec-said { margin: 4px 0 6px; }
 .rec-tag-err { margin-left: 6px; white-space: normal; }
-/* 卡点（dt.blocker，项目详情 / 我的卡点）：挂在哪条沟通、类型影响一行、认领就地变色 */
+/* 卡点（dt.blocker，项目详情 / 复盘页卡点页签）：挂在哪条沟通、类型影响一行、认领就地变色 */
 .pd-blk-on { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .pd-blk-on-k { flex: none; color: var(--text-muted); font-size: var(--fs-note); }
 .pd-blk-on-v { flex: 1 1 auto; min-width: 0; }
