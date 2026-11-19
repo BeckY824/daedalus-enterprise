@@ -157,6 +157,8 @@ export type 项目详情 = {
   客户在谁名下?: string;
   /** 沟通的「…」菜单（改 / 删，10-29）：能记沟通、看得到客户，且不是同事 / 虚线下属的客户；企业版改 = 身为负责人的管理（M-权限-09 原口径 11-09，管理以下含负责人本人不能改删） */
   可改沟通?: boolean;
+  /** 记录人本人限时改（低-1）：服务器出页时的钟（ISO），前端按和本机钟的偏差算「还能改到几点」；有本人可改的才给 */
+  服务器现在?: string;
   /** 沟通能删：系统管理员或身为负责人的管理（M-权限-09 原口径 11-09，和 可改沟通 分开） */
   可删沟通?: boolean;
   /**
@@ -525,7 +527,7 @@ export default function ProjectDetail({
   const [改沟通于, set改沟通于] = useState<项目详情["followUps"][number] | null>(null);
   const [删问于, set删问于] = useState<string | null>(null);
   /** 记录人本人 30 分钟内能改（11-19）：到点就收起「修改」，服务端照样拒 */
-  const 本人能改 = useOwnEditWindow(p.followUps.map((f) => f.本人可改到));
+  const { 能改: 本人能改, 钟差 } = useOwnEditWindow(p.followUps.map((f) => f.本人可改到), p.服务器现在);
   const 能改这条 = (f: 项目详情["followUps"][number]) => !!p.可改沟通 || 本人能改(f.本人可改到);
   /** 转让项目（10-30，原名「转给…」；U-项目-07 起点了确认就转、不再等 6 秒撤销）：弹窗开着、选了谁 */
   const [转给框, set转给框] = useState(false);
@@ -620,7 +622,9 @@ export default function ProjectDetail({
       else {
         // 企业版节点必填：这次保存把必填填齐了，项目自动往前推了几步
         const 推 = r.自动推到?.length ? `必填齐了，自动推进到 ${r.自动推到.join(" → ")}` : null;
-        if (成了 || 推) 就地.success([成了, 推].filter(Boolean).join("；"));
+        // 成了但有一句要说的（改项目沟通 下一步没同步）：用提醒调，不当「成了」一闪而过
+        if (r.提示) 就地.warning([成了, 推, r.提示].filter(Boolean).join("；"));
+        else if (成了 || 推) 就地.success([成了, 推].filter(Boolean).join("；"));
         router.refresh();
       }
       return r.ok;
@@ -1723,8 +1727,8 @@ export default function ProjectDetail({
 
       {卡点?.能发 && 发卡点于 && <PublishBlockerModal followUpId={发卡点于} 默认={卡点.默认} 原因们={卡点.原因们} 沟通们={p.followUps} onClose={() => set发卡点于(null)} />}
 
-      {/* 本人限时改的框打开后到点不收（打的字还在），交上去服务端说「超过 30 分钟」 */}
-      {改沟通于 && (p.可改沟通 || !!改沟通于.本人可改到) && <EditFollowModal projectId={p.id} f={改沟通于} 外贸={外贸精简(b)} 要下一步={!!p.要下一步} onClose={() => set改沟通于(null)} 跑={跑} />}
+      {/* 本人限时改的框打开后到点不收，框里说一句「过了 30 分钟」、清掉草稿、保存灰掉（低-1）；原本就能改的不限时 */}
+      {改沟通于 && (p.可改沟通 || !!改沟通于.本人可改到) && <EditFollowModal projectId={p.id} f={改沟通于} 外贸={外贸精简(b)} 要下一步={!!p.要下一步} 限时到={p.可改沟通 ? undefined : 改沟通于.本人可改到} 钟差={钟差} onClose={() => set改沟通于(null)} 跑={跑} />}
 
       {头部框 && 头部框 !== "完成" && (
         <Modal open title={`${头部框叫法[头部框]} · ${p.name}`} footer={null} width={520} onCancel={关头部框}>
@@ -1979,34 +1983,44 @@ export default function ProjectDetail({
 }
 
 /**
- * 记录人本人限时改（11-19）：给每条的「能改到几点」，返回判一条现在还能不能改。
- * 服务端渲染和首帧一律当不能改（钟不一样，免得水合对不上），挂上以后按本机钟判，最早那个到点时重渲一次把「修改」收起
+ * 记录人本人限时改（11-19）：给每条的「能改到几点」，返回判一条现在还能不能改，和 钟差（服务器钟 − 本机钟，毫秒）。
+ * 服务端渲染和首帧一律当不能改（钟不一样，免得水合对不上），挂上以后按「本机钟 + 钟差」判（低-1：本机钟不准也按服务器的 30 分钟收），
+ * 最早那个到点时重渲一次把「修改」收起。钟差按拿到页面那一刻量（服务器现在 没给 = 0），刷新页面重量
  */
-function useOwnEditWindow(到点们: readonly (string | undefined)[]): (到?: string) => boolean {
-  const [现在, set现在] = useState<number | null>(null);
+function useOwnEditWindow(到点们: readonly (string | undefined)[], 服务器现在?: string): { 能改: (到?: string) => boolean; 钟差: number } {
+  const [量过, set量过] = useState<{ 现在: number; 差: number; 按: string | undefined } | null>(null);
   const 键 = 到点们.filter(Boolean).join("|");
   useEffect(() => {
-    const 量 = () => set现在(Date.now());
-    // 首帧挂上就量一次；之后只在下一个还没过的点到了再量
-    if (现在 === null) { const t = setTimeout(量, 0); return () => clearTimeout(t); }
-    const 下一个 = 键 ? 键.split("|").map((x) => Date.parse(x)).filter((t) => t > 现在).sort((a, b) => a - b)[0] : undefined;
+    // 首帧挂上（或换了一页数据）就量一次钟差；之后只在下一个还没过的点到了再量
+    if (量过 === null || 量过.按 !== 服务器现在) {
+      const t = setTimeout(() => { const 差 = 服务器现在 ? Date.parse(服务器现在) - Date.now() : 0; set量过({ 现在: Date.now() + 差, 差, 按: 服务器现在 }); }, 0);
+      return () => clearTimeout(t);
+    }
+    const 下一个 = 键 ? 键.split("|").map((x) => Date.parse(x)).filter((t) => t > 量过.现在).sort((a, b) => a - b)[0] : undefined;
     if (下一个 === undefined) return;
-    const t = setTimeout(量, Math.min(下一个 - Date.now() + 200, 2 ** 31 - 1));
+    const t = setTimeout(() => set量过({ ...量过, 现在: Date.now() + 量过.差 }), Math.min(下一个 - (Date.now() + 量过.差) + 200, 2 ** 31 - 1));
     return () => clearTimeout(t);
-  }, [键, 现在]);
-  return (到) => !!到 && 现在 !== null && 现在 <= Date.parse(到);
+  }, [键, 量过, 服务器现在]);
+  return { 能改: (到) => !!到 && 量过 !== null && 量过.现在 <= Date.parse(到), 钟差: 量过?.差 ?? 0 };
 }
+
+/** 本人限时改的框开着到点（低-1） */
+const 本人改过时提示 = "已经超过提交后 30 分钟，这条不能再改了；没保存的改动已清掉";
 
 /**
  * 改项目上的一条沟通（「…」→ 修改，10-29）：沟通方式、时间、内容三格，别的（阶段、下一步）不在这里改。
  * 打开时的 updatedAt 一起交回去，别人先改了就报版本冲突，不悄悄盖掉
  */
-function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, onClose, 跑 }: {
+function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到, 钟差 = 0, onClose, 跑 }: {
   projectId: string;
   f: 项目详情["followUps"][number];
   外贸: boolean;
-  /** 线索 / 商机阶段开了超时回收：下一步时间必填（同记的时候）；只在 f.下一步 给了时用 */
+  /** 线索 / 商机阶段开了超时回收：下一步时间必填（同记的时候）；只在 f.下一步 给了、人动了下一步时用 */
   要下一步?: boolean;
+  /** 本人限时改能改到几点（ISO）；原本就能改的不给 = 不限时 */
+  限时到?: string;
+  /** 服务器钟 − 本机钟（毫秒，useOwnEditWindow 量的） */
+  钟差?: number;
   onClose: () => void;
   跑: 跑法;
 }) {
@@ -2018,15 +2032,21 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, onClose, 
   // 发起主体（11-01）：原来填了的改时也得有；老记录没填的不逼着补，空着交上去服务端原样留
   const 主体们 = useFollowInitiators();
   const [发起, set发起] = useState<string | null>(f.initiator ?? null);
-  const [occurredAt, setOccurredAt] = useState(() => dayjs(f.occurredAt).format(沟通时间格式));
+  // 沟通时间：弹窗只到分钟。人没动就原样交回 ISO（低-2：带秒的不被截、不多记一格「沟通时间」）
+  const 原时间 = dayjs(f.occurredAt).format(沟通时间格式);
+  const [occurredAt, setOccurredAt] = useState(原时间);
   const [content, setContent] = useState(f.content);
   // 下一步跟着改（11-19，f.下一步 给了才有）：和记的时候一样，下一步计划必填、时间按 要下一步
+  // 服务端只在这条记的时候写过下一步才给 f.下一步（审核中-1）；人没动这两格就不交、不校验，不覆盖项目上的下一步
   const 改下一步 = !!f.下一步;
   const [下一步文字, set下一步文字] = useState(f.下一步?.文字 ?? "");
   const [下一步时间, set下一步时间] = useState<string | null>(f.下一步?.时间 ?? null);
+  const 动了下一步 = 改下一步 && (下一步文字 !== (f.下一步?.文字 ?? "") || 下一步时间 !== (f.下一步?.时间 ?? null));
   const [交中, set交中] = useState(false);
   /** 没存上的原因（版本冲突、没权限……）：写在框里、框不关，不弹顶部提示 */
   const [交错, set交错] = useState<string | null>(null);
+  /** 本人限时改到点了（低-1）：框里说一句、草稿清掉、保存灰掉 */
+  const [过时了, set过时了] = useState(false);
   // 改了没交的留草稿（components/FormDraft.tsx）：刷新、发版后重开这条接着改；只存改过的格子
   const 稿 = useFormDraft({
     键: `改项目沟通:${f.id}`,
@@ -2041,11 +2061,18 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, onClose, 
       if (typeof v.content === "string") setContent(v.content);
     },
   });
-  const 差 = !content.trim() ? "请填写这次沟通的内容" : 主体们 && f.initiator && !发起 ? "请选发起主体"
-    : 改下一步 && !下一步文字.trim() ? "请写下一步计划" : 改下一步 && 要下一步 && !下一步时间 ? "请填下一步时间" : "";
+  const 丢稿 = 稿.丢掉;
+  useEffect(() => {
+    if (!限时到) return;
+    const 剩 = Date.parse(限时到) - (Date.now() + 钟差);
+    const t = setTimeout(() => { set过时了(true); set交错(本人改过时提示); 丢稿(); }, Math.max(0, Math.min(剩 + 200, 2 ** 31 - 1)));
+    return () => clearTimeout(t);
+  }, [限时到, 钟差, 丢稿]);
+  const 差 = 过时了 ? 本人改过时提示 : !content.trim() ? "请填写这次沟通的内容" : 主体们 && f.initiator && !发起 ? "请选发起主体"
+    : 动了下一步 && !下一步文字.trim() ? "请写下一步计划" : 动了下一步 && 要下一步 && !下一步时间 ? "请填下一步时间" : "";
   const 交 = async () => {
     set交中(true);
-    const ok = await 跑(() => 改项目沟通(projectId, f.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 版本: f.版本, ...(改下一步 ? { 下一步: 下一步文字, 下一步时间 } : {}) }), "已保存修改", { 报错: (话) => set交错(话 === 刷新再提交话 ? `${话}（改的字刷新后还在）` : 话) });
+    const ok = await 跑(() => 改项目沟通(projectId, f.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt: occurredAt === 原时间 ? f.occurredAt : occurredAt, 版本: f.版本, ...(动了下一步 ? { 下一步: 下一步文字, 下一步时间 } : {}) }), "已保存修改", { 报错: (话) => set交错(话 === 刷新再提交话 ? `${话}（改的字刷新后还在）` : 话) });
     set交中(false);
     if (ok) {
       稿.存好了();
@@ -2084,7 +2111,7 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, onClose, 
             <div className="proj-fu-note">改了会同步到项目上的下一步</div>
           </div>
         </>)}
-        {差 && <div style={{ color: "var(--text-muted)" }}>{差}</div>}
+        {差 && !过时了 && <div style={{ color: "var(--text-muted)" }}>{差}</div>}
         <框里原因 话={交错} />
       </div>
     </Modal>

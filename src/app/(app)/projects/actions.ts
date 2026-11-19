@@ -5,7 +5,8 @@
  * 规矩在 lib/project/nodes.ts、读写在 lib/project/db.ts、建档向导在 lib/project/wizard.ts，这里只管登录、开关、操作日志和刷新。
  */
 import { 能往项目记沟通 } from "@/lib/project/follow-needs-project";
-import { 本人限时可改of, 下一步跟着改of } from "@/lib/enterprise/follow-perm";
+import { 本人限时可改of, 下一步跟着改of, 改沟通时顺带, 下一步没同步话 } from "@/lib/enterprise/follow-perm";
+import { 写过下一步, 写了下一步标记 } from "@/lib/enterprise/follow-edited";
 import { revalidatePath } from "next/cache";
 import { 读项目详情 } from "./[id]/load";
 import type { 项目详情Props } from "./[id]/ProjectDetail";
@@ -1037,6 +1038,8 @@ export async function 记项目沟通Action(projectId: string, input: 向导跟�
       await recordAudit({
         user: me, action: "create", entity: "FollowUp", entityId: r.followUpId,
         summary: `在项目「${p?.name ?? ""}」上记了一条沟通（${input.阶段 ?? ""}阶段）`,
+        // 这条写了项目上的下一步：打标记（30 分钟内改这条时下一步才跟着改，follow-edited.ts 写过下一步）
+        ...(r.写了下一步 ? { detail: 写了下一步标记 } : {}),
       });
       await 记这个项目的自动推进(me, projectId, r.自动推到);
       // 客户三态：记了一条沟通（可能还推了节点），马上重算这位的钟（关着不查库，出错不影响保存）
@@ -1119,15 +1122,16 @@ async function 项目上的沟通(projectId: string, followUpId: string, 本人?
 export type 改沟通输入 = {
   type: string; method?: string | null; /** 发起主体（企业版，11-01）：没带不动 */ initiator?: string | null; content: string; occurredAt: string; 版本?: string;
   /**
-   * 下一步做什么 / 下一步时间（11-19 记录人 30 分钟内改）：都没带 = 不动。只有 下一步跟着改of 成立（这个项目最近一条、负责人自己记的、
-   * 还在 30 分钟内）才认，改了同步回项目上的下一步和这条的下一步时间；别的情形带了就拒
+   * 下一步做什么 / 下一步时间（11-19 记录人 30 分钟内改）：都没带 = 不动、不校验（人没动下一步前端就不带）。只有 下一步跟着改of 成立
+   * （这个项目最近一条、负责人自己记的、记的时候写过下一步、还在 30 分钟内）才认，改了同步回项目上的下一步和这条的下一步时间；
+   * 不成立（比如页面开着时组员新记了一条）只丢掉下一步、沟通照存，回一句 提示
    */
   下一步?: string | null; 下一步时间?: string | null;
 };
 
-/** 这个项目最近记的一条沟通（按写入时刻；软删的不算）。下一步跟着改of 认它 */
-async function 项目最近一条沟通(projectId: string): Promise<string | null> {
-  const r = await 看全部(() => prisma.followUpProject.findFirst({ where: { projectId, followUp: { deletedAt: null } }, orderBy: { followUp: { createdAt: "desc" } }, select: { followUpId: true } }));
+/** 这个项目最近记的一条沟通（按写入时刻；软删的不算）。下一步跟着改of 认它；改项目沟通 在事务里读（db 传 tx） */
+async function 项目最近一条沟通(projectId: string, db: Pick<Prisma.TransactionClient, "followUpProject"> = prisma): Promise<string | null> {
+  const r = await 看全部(() => db.followUpProject.findFirst({ where: { projectId, followUp: { deletedAt: null } }, orderBy: { followUp: { createdAt: "desc" } }, select: { followUpId: true } }));
   return r?.followUpId ?? null;
 }
 
@@ -1141,60 +1145,68 @@ export async function 改项目沟通(projectId: string, followUpId: string, inp
     const 查 = await 项目上的沟通(projectId, followUpId, me);
     if (!查.ok) return 查;
     const f = 查.f;
-    // 下一步跟着改（11-19）：先把能不能改、填得对不对核完，再存沟通，免得沟通存了下一步却被拒
+    // 下一步跟着改（11-19）：带了才核填得对不对（核不过整次拒，同记的时候）；能不能跟着改放进存沟通的事务里再判（低-6）
     const 带下一步 = input.下一步 !== undefined || input.下一步时间 !== undefined;
     let 新下一步: { 文字: string | null; 时间: Date | null } | null = null;
+    let 资格: { 写过: boolean; 能管: boolean } | null = null;
     if (带下一步) {
-      const p = await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, result: true, phase: true, nextStepText: true, nextStepAt: true } }));
-      const org = await 权限组织();
-      if (!p || !下一步跟着改of(me, f, { ownerId: p.ownerId, 最近一条id: await 项目最近一条沟通(projectId), 能管: 能管项目(me, p, org) && !p.pooledAt && !p.result })) return { ok: false as const, error: 下一步不能跟着改话 };
+      const p = await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, result: true, phase: true } }));
+      if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
       const 规则 = await 生效组织规则();
       const 要下一步 = 规则.超时回收.开 && (能进公海的阶段 as readonly string[]).includes(p.phase);
       // 和记的时候同一套校验（项目详情「记一条」：下一步做什么必填，线索 / 商机阶段开了超时回收时间也必填）
       const 好 = 规整沟通({ type: input.type, method: input.method, initiator: input.initiator, content: input.content, occurredAt: input.occurredAt, 下一步: input.下一步 ?? null, 下一步时间: input.下一步时间 ?? null } as 向导跟进, { 要下一步, 要下一步文字: true });
       if ("error" in 好) return { ok: false as const, error: 好.error };
       新下一步 = { 文字: 好.nextStepText, 时间: 好.nextStepAt };
+      // 组织表、操作日志在事务外读好（事务里用全局连接读，单连接时会等到事务超时）
+      资格 = { 写过: await 写过下一步(f.id), 能管: 能管项目(me, p, await 权限组织()) };
     }
-    const r = await saveFollowUp({
+    /** 事务里判下来：下一步没跟着改（资格丢了）就回一句提示；改了就记下留痕的料，存上后再写日志 */
+    const 下一步结果: { 丢了: boolean; 痕: 下一步痕 | null } = { 丢了: false, 痕: null };
+    const 顺带 = async (tx: Prisma.TransactionClient) => {
+      if (!新下一步 || !资格) return;
+      const p = await 看全部(() => tx.project.findUnique({ where: { id: projectId }, select: { ownerId: true, pooledAt: true, result: true } }));
+      const 成 = !!p && 下一步跟着改of(me, f, { ownerId: p.ownerId, 最近一条id: await 项目最近一条沟通(projectId, tx), 能管: 资格.能管 && !p.pooledAt && !p.result, 写过下一步: 资格.写过 });
+      if (!成) { 下一步结果.丢了 = true; return; }
+      下一步结果.痕 = await 改沟通的下一步(tx, projectId, f.id, 新下一步);
+    };
+    const r = await 改沟通时顺带(f.id, 顺带, () => saveFollowUp({
       id: f.id, customerId: f.customerId, type: input.type, method: input.method, initiator: input.initiator, content: input.content, occurredAt: input.occurredAt,
       title: f.title, status: f.status, durationMinutes: f.duration != null ? f.duration / 60 : null,
       dueAt: scheduleValue(f.dueAt, f.dueOn), dueHasTime: f.dueHasTime ?? undefined,
       contactId: f.contactId, opportunityId: f.opportunityId, participants: f.participants,
       版本: input.版本 ?? f.updatedAt.toISOString(),
-    });
+    }));
     if (!r.ok) return r;
-    if (新下一步) await 改沟通的下一步(me, projectId, f.id, 新下一步);
+    const 痕 = 下一步结果.痕;
+    if (痕) await recordAudit({
+      user: me, action: "update", entity: "FollowUp", entityId: f.id,
+      summary: `改了沟通：项目「${痕.项目}」上的一条沟通，改了${痕.改了.join("、")}（记录人本人提交后 30 分钟内修改，项目上的下一步跟着改）`,
+      detail: { 项目: 痕.项目, 改了: 痕.改了, 本人限时改: true, 原下一步: 痕.原下一步, 原下一步时间: 痕.原下一步时间 },
+    });
     刷新项目(projectId, f.customerId);
-    return { ok: true as const };
+    return { ok: true as const, ...(下一步结果.丢了 ? { 提示: 下一步没同步话 } : {}) };
   } catch (e) { return 不在了(e); }
 }
 
-const 下一步不能跟着改话 = "这条沟通的下一步不能在这里改（只有负责人 30 分钟内改自己最近记的那条能改）";
+type 下一步痕 = { 项目: string; 改了: string[]; 原下一步: string | null; 原下一步时间: string | null };
 
 /**
- * 下一步跟着改（上面核过）：这条的下一步时间（时限提醒按它算）、项目上的下一步做什么 / 下一步时间一起换，和记的时候写法一样；
+ * 下一步跟着改（改项目沟通 在存沟通的事务里核过资格后调）：这条的下一步时间（时限提醒按它算）、项目上的下一步做什么 / 下一步时间一起换，和记的时候写法一样；
  * 没变不写、不留痕。下一步时间只提醒、不改回收日（11-18），这里不碰回收
  */
-async function 改沟通的下一步(me: Awaited<ReturnType<typeof requireUser>>, projectId: string, followUpId: string, 新: { 文字: string | null; 时间: Date | null }) {
+async function 改沟通的下一步(tx: Prisma.TransactionClient, projectId: string, followUpId: string, 新: { 文字: string | null; 时间: Date | null }): Promise<下一步痕 | null> {
   const 时 = (d: Date | null | undefined) => d?.getTime() ?? null;
-  const [p, 元] = await Promise.all([
-    prisma.project.findUnique({ where: { id: projectId }, select: { name: true, nextStepText: true, nextStepAt: true } }),
-    prisma.entFollowUpMeta.findUnique({ where: { followUpId }, select: { nextAt: true } }),
-  ]);
-  if (!p) return;
+  const p = await 看全部(() => tx.project.findUnique({ where: { id: projectId }, select: { name: true, nextStepText: true, nextStepAt: true } }));
+  const 元 = await 看全部(() => tx.entFollowUpMeta.findUnique({ where: { followUpId }, select: { nextAt: true } }));
+  if (!p) return null;
   const 改了: string[] = [];
   if ((p.nextStepText ?? null) !== 新.文字) 改了.push("下一步");
   if (时(p.nextStepAt) !== 时(新.时间) || (元 && 时(元.nextAt) !== 时(新.时间))) 改了.push("下一步时间");
-  if (!改了.length) return;
-  await prisma.$transaction(async (tx) => {
-    if (元) await tx.entFollowUpMeta.update({ where: { followUpId }, data: { nextAt: 新.时间 } });
-    await tx.project.update({ where: { id: projectId }, data: { nextStepText: 新.文字, nextStepAt: 新.时间 } });
-  });
-  await recordAudit({
-    user: me, action: "update", entity: "FollowUp", entityId: followUpId,
-    summary: `改了沟通：项目「${p.name}」上的一条沟通，改了${改了.join("、")}（记录人本人提交后 30 分钟内修改，项目上的下一步跟着改）`,
-    detail: { 项目: p.name, 改了, 本人限时改: true, 原下一步: p.nextStepText, 原下一步时间: p.nextStepAt?.toISOString() ?? null },
-  });
+  if (!改了.length) return null;
+  if (元) await tx.entFollowUpMeta.update({ where: { followUpId }, data: { nextAt: 新.时间 } });
+  await tx.project.update({ where: { id: projectId }, data: { nextStepText: 新.文字, nextStepAt: 新.时间 } });
+  return { 项目: p.name, 改了, 原下一步: p.nextStepText, 原下一步时间: p.nextStepAt?.toISOString() ?? null };
 }
 
 /** 删项目上的一条沟通：企业版软删进回收站（11-09 起不给本人撤回，找回走回收站） */
