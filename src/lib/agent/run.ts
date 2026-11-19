@@ -50,7 +50,7 @@ export function 这一家的工具(b: Pick<BusinessConfig, "projectMode">, 只�
     .map((t) => (只用项目 && t.name === "query_records" ? { ...t, description: query_records说明(true), args: query_records参数(true) } : t))
     .map((t) =>
       只用项目 && t.name === "propose_lead"
-        ? { ...t, description: "建议新建一条新线索：确认后建一位客户和一个在「线索」阶段的项目。只知道名字也要提，留空的字段人会在卡片上补。人说了「分给谁」就把姓名原样放 assignTo，说了来源（平台、展会、渠道）就原样放 source——卡上认得出会预选，人确认；没说就不给，别猜。" + 线索号码说明 + "。" }
+        ? { ...t, description: "建议新建一条新线索：确认后建一位客户和一个在「线索」阶段的项目。客户名称（组织 / 公司全称）选填：不知道就空着，不要拿联系人姓名或号码顶上；只有号码、只知道名字都要提，留空的字段人会在卡片上补。人说了「分给谁」就把姓名原样放 assignTo，说了来源（平台、展会、渠道）就原样放 source——卡上认得出会预选，人确认；没说就不给，别猜。" + 线索号码说明 + "。" }
         : t,
     );
   return { TOOLS, TOOL_MAP: new Map(TOOLS.map((t) => [t.name, t])) as typeof 全部工具表 };

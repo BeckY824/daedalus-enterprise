@@ -19,6 +19,7 @@ import { 负责人显示名, 无负责人占位邮箱 } from "@/lib/pool";
 import { 包含模式, 号码片段, 号码藏着, 客户关键词条件, 客户号码条件, 线索关键词条件 } from "@/lib/search-keyword";
 import { 号键SQL } from "@/lib/phone-dedupe";
 import { 渠道启用 } from "@/lib/enterprise/channel-main-core";
+import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 
 /** 一张表里的命中 */
 export type 别处命中 = {
@@ -94,7 +95,7 @@ export async function 名字在别处(名: string, 号: (p: string | null) => st
     prisma.contact.findMany({
       where: 号中 ? { id: { in: 号中.联系人 } } : { name: 名条件 },
       take: 每表最多,
-      select: { name: true, phone: true, position: true, wechat: true, customerId: true, customer: { select: { name: true } } },
+      select: { name: true, phone: true, position: true, wechat: true, customerId: true, customer: { select: 显名列 } },
     }),
     // 从客户上移出、人留着的那些（未归属）。不查的话 AI 会说「库里没有这个人」，其实人在联系人页里
     prisma.unassignedContact.findMany({
@@ -132,7 +133,7 @@ export async function 名字在别处(名: string, 号: (p: string | null) => st
       条数: 联系人.length + 散的.length,
       记录: [
         // 带上所属客户的 id：人问的多半是「这个人是哪家的、谁在跟」，拿它直接 get_customer（批次 20a 跨联系人查）
-        ...联系人.map((c) => ({ 姓名: c.name, 电话: 号(c.phone), 职位: c.position ?? null, 微信: c.wechat ?? null, 属于: c.customer?.name ?? null, 客户id: c.customerId })),
+        ...联系人.map((c) => ({ 姓名: c.name, 电话: 号(c.phone), 职位: c.position ?? null, 微信: c.wechat ?? null, 属于: c.customer ? 客户显名(c.customer) : null, 客户id: c.customerId })),
         ...散的.map((c) => ({
           姓名: c.name, 电话: 号(c.phone), 职位: c.position ?? null, 微信: c.wechat ?? null,
           属于: c.fromCustomerName ? `未归属（原来在${c.fromCustomerName}下面）` : "未归属",
@@ -224,7 +225,7 @@ async function 找客户(词: string, 法: 怎么找) {
     where,
     take: 每表最多,
     orderBy: { lastFollowAt: "desc" },
-    select: { id: true, name: true, phone: true, school: true, grade: true, followStatus: true, salesOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } },
+    select: { ...显名列, phone: true, school: true, grade: true, followStatus: true, salesOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } },
   });
 }
 
@@ -236,7 +237,7 @@ async function 一轮(词: string, 号: (p: string | null) => string | null, 叫
     out.push({
       表: "客户",
       条数: 客户.length,
-      记录: 客户.map((c) => ({ id: c.id, 姓名: c.name, 电话: 号(c.phone), 学校或公司: c.school, 年级或职位: c.grade, 跟进状态: 叫(c.followStatus),
+      记录: 客户.map((c) => ({ id: c.id, 姓名: 客户显名(c), 电话: 号(c.phone), 学校或公司: c.school, 年级或职位: c.grade, 跟进状态: 叫(c.followStatus),
         // 公海里的只写「公海」，不露原负责人（公海页签同样不列）
         负责人: c.pool ? "公海" : 负责人显示名(c.salesOwner.name),
         ...(我 ? { 归属: c.pool ? "公海" : c.salesOwnerId === 我 ? "我负责的" : "同事或下属负责的" } : {}) })),

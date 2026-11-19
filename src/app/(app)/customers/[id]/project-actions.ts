@@ -54,6 +54,7 @@ import { 客户号们, 本人线of } from "@/lib/enterprise/assign-direction-db"
 import type { 线 } from "@/lib/enterprise/lead-assign";
 import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
 import { 规整指定回复 } from "@/lib/project/time-fields";
+import { 客户引, 全称或显名, 显名列 } from "@/lib/enterprise/customer-title";
 
 export type 给客户建项目输入 = {
   customerId: string;
@@ -143,7 +144,7 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     }
     const customerId = 输入.customerId;
     // 限定层：看不到的客户查不到；同事的 / 虚线下属的客户只读，不给建
-    const 客户 = await prisma.customer.findUnique({ where: { id: customerId }, select: { name: true, channelId: true } });
+    const 客户 = await prisma.customer.findUnique({ where: { id: customerId }, select: { ...显名列, channelId: true } });
     if (!客户) return { ok: false, error: "这位客户已经不在了（或你看不到），刷新看看" };
     if (await 同事的客户(defaultClient, customerId)) return { ok: false, error: await 只读话(defaultClient) };
     // 11-05：公海里的客户不能直接建项目，先领取（建了项目客户还挂在公海、负责人还是空，见 V3.5.1 P-公海-08）
@@ -286,8 +287,8 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
 
     await recordAudit({
       user: me, action: "create", entity: "Project", entityId: projectId,
-      summary: `客户页新建项目「${项目.name}」（客户「${客户.name}」，负责人 ${负责人.name}${分配 ? `，分配方式「${分配.名}」` : ""}），连同首条沟通`,
-      detail: { 项目: 项目.name, 客户: 客户.name, 负责人: 负责人.name, 金额: 项目.amount, 币种: 项目.currency, 节点: 落.节点, ...(分配 ? { 分配方式: 分配.名 } : {}), ...(留下 ? { 客户转给: 负责人.name } : {}) },
+      summary: `客户页新建项目「${项目.name}」（客户${客户引(客户)}，负责人 ${负责人.name}${分配 ? `，分配方式「${分配.名}」` : ""}），连同首条沟通`,
+      detail: { 项目: 项目.name, 客户: 全称或显名(客户), 负责人: 负责人.name, 金额: 项目.amount, 币种: 项目.currency, 节点: 落.节点, ...(分配 ? { 分配方式: 分配.名 } : {}), ...(留下 ? { 客户转给: 负责人.name } : {}) },
     });
     // 转走了：这位客户我可能已经看不到了，放开范围，不然推进被拦、静默跳过（同 建档向导）
     if (留下) await 看全部(() => 客户存了推项目(me, customerId));

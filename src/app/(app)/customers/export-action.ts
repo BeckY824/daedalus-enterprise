@@ -13,6 +13,7 @@ import { 客户附件个数 } from "@/lib/attachments";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 视图外部拒, 视图外部拦 } from "@/lib/enterprise/view-as";
 import { recordAudit } from "@/lib/audit";
+import { 全称或显名 } from "@/lib/enterprise/customer-title";
 
 /** 旧调用保留有明确截断标志的有界结果；产品按钮使用下面的完整分批出口。 */
 const 导出上限 = 20_000;
@@ -70,7 +71,8 @@ export async function 导出客户(条件: 客户条件): Promise<
     .filter((f) => 人.has(f.customerId))
     .sort((a, b) => (顺序.get(a.customerId) ?? 0) - (顺序.get(b.customerId) ?? 0) || a.occurredAt.getTime() - b.occurredAt.getTime())
     .map((f) => ({
-      customerName: 人.get(f.customerId)?.name ?? "",
+      // 客户名称选填（11-19）：导出文件里的客户名用全称或显名（有全称写全称，空着兜简称 → 客户编号，认得出是哪位；客户表的全称列照原样留空）
+      customerName: 人.has(f.customerId) ? 全称或显名(人.get(f.customerId)!) : "",
       phone: 号(人.get(f.customerId)?.phone ?? ""),
       occurredAt: f.occurredAt.toISOString(),
       type: f.type,
@@ -214,11 +216,11 @@ async function 读一批(条件: 客户条件, 截止: Date, 类别: "客户" | 
   const all = await prisma.followUp.findMany({
     where: { customer: where, ...截止前有(截止), ...(游标 ? { id: { gt: 游标 } } : {}) },
     orderBy: { id: "asc" }, take: 跟进每批 + 1,
-    select: { id: true, customerId: true, customer: { select: { name: true, phone: true, customerNo: true } }, occurredAt: true, type: true, method: true, title: true, content: true, status: true, owner: { select: { name: true } } },
+    select: { id: true, customerId: true, customer: { select: { id: true, name: true, shortName: true, phone: true, customerNo: true } }, occurredAt: true, type: true, method: true, title: true, content: true, status: true, owner: { select: { name: true } } },
   });
   const rows = all.slice(0, 跟进每批);
   await 让一让();
-  const values = await 分段映射(rows, (f) => ({ id: f.id, customerId: f.customerId, customerName: f.customer.name, phone: 号(f.customer.phone), customerNo: f.customer.customerNo, occurredAt: f.occurredAt.toISOString(), type: f.type, method: f.method, title: f.title, content: f.content, status: f.status, ownerName: f.owner.name }));
+  const values = await 分段映射(rows, (f) => ({ id: f.id, customerId: f.customerId, customerName: 全称或显名(f.customer), phone: 号(f.customer.phone), customerNo: f.customer.customerNo, occurredAt: f.occurredAt.toISOString(), type: f.type, method: f.method, title: f.title, content: f.content, status: f.status, ownerName: f.owner.name }));
   return { 类别: "跟进" as const, rows: values, 指纹: await 分段指纹(values), 游标: all.length > 跟进每批 ? rows.at(-1)!.id : null };
 }
 

@@ -89,6 +89,7 @@ export default function ImportDrawer({
   有别的成员 = false,
   初始来路,
   初始文本,
+  企业 = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -116,8 +117,13 @@ export default function ImportDrawer({
    * 输入框里那份被 maxLength 截过，所以必须由调用方把全文递进来。
    */
   初始文本?: string;
+  /**
+   * 企业版（服务端 企业版() 一路传下来，11-19）：客户全称选填、不标「（必填）」；「联系人 / 姓名」列对到联系人姓名，
+   * 不进全称（P-抬头-13）。和落库那一步（import-actions 排好）同一份字段表。桌面端不传
+   */
+  企业?: boolean;
 }) {
-  const 表 = useMemo(() => 字段表(b), [b]);
+  const 表 = useMemo(() => 字段表(b, 企业), [b, 企业]);
 
   const [步, set步] = useState(0);
   /**

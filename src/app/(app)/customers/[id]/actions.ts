@@ -43,6 +43,7 @@ import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
 import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
 import { 存沟通后重算三态, 记首次有效 } from "@/lib/enterprise/tri-state-db";
 
+import { 客户显名, 全称或显名, 显名列 } from "@/lib/enterprise/customer-title";
 const 只有总管理能恢复话 = "只有系统管理员或回收站副手能恢复删掉的记录";
 
 /**
@@ -53,8 +54,9 @@ const 只有总管理能恢复话 = "只有系统管理员或回收站副手能�
  * 「全员可见可改」成立的前提是有据可查（见 lib/audit.ts），那就不能只覆盖客户和合同。
  */
 async function 客户名(id: string): Promise<string> {
-  const c = await prisma.customer.findUnique({ where: { id }, select: { name: true } });
-  return c?.name ?? id;
+  const c = await prisma.customer.findUnique({ where: { id }, select: 显名列 });
+  // 日志里叫客户：全称或显名（11-19 口径）
+  return c ? 全称或显名(c) : id;
 }
 
 /** 待办会出现在首页和计划页上 */
@@ -343,7 +345,7 @@ export async function saveFollowUp(input: FollowUpInput) {
     // 组织表在事务外读好：事务里再用全局连接去读，单连接时会等到事务超时
     const 挂时组织 = 挂到 ? await 权限组织() : null;
     const result = await 这一笔(() => prisma.$transaction(async (tx) => {
-      const customer = await tx.customer.findUnique({ where: { id: input.customerId }, select: { name: true } });
+      const customer = await tx.customer.findUnique({ where: { id: input.customerId }, select: 显名列 });
       // 客户在、只是看不到（比如项目组员）：说没权限，不说「不在了」（11-03 B5-6）
       if (!customer) return { ok: false as const, error: (await 看全部(() => tx.customer.findUnique({ where: { id: input.customerId }, select: { id: true } }))) ? "你没有权限给这个客户记沟通，请找负责人" : "这个客户已经不在了，请刷新重试" };
       const plan = extra?.完成计划 ? await tx.followPlan.findFirst({ where: { id: extra.完成计划, customerId: input.customerId } }) : null;
@@ -379,25 +381,25 @@ export async function saveFollowUp(input: FollowUpInput) {
       // 企业版改沟通（11-19）：留痕写「改了沟通」和改了哪几格；一格没变（点了保存没改）不留，免得列表上标「已修改」
       if (!(input.id && 企业版() && !改了.length)) audits.push({ user, action: input.id ? "update" : "create", entity: "FollowUp", entityId: id,
         summary: input.id && 企业版()
-          ? `改了沟通：${customer.name}的一条${"method" in data && data.method ? data.method : 类型名(data.type)}（${dayjs(data.occurredAt).format("YYYY-MM-DD")}），改了${改了.join("、")}${本人窗口内 ? "（记录人本人提交后 30 分钟内修改）" : ""}`
-          : `${input.id ? "修改" : "记了"}${customer.name}的一条${"method" in data && data.method ? data.method : 类型名(data.type)}跟进（${dayjs(data.occurredAt).format("YYYY-MM-DD")}）`,
-        detail: { 客户: customer.name, 类型: "method" in data && data.method ? data.method : 类型名(data.type), 状态: data.status, 内容: data.content.slice(0, 120), ...(input.id && 企业版() ? { 改了, ...(本人窗口内 ? { 本人限时改: true } : {}) } : {}) } });
+          ? `改了沟通：${全称或显名(customer)}的一条${"method" in data && data.method ? data.method : 类型名(data.type)}（${dayjs(data.occurredAt).format("YYYY-MM-DD")}），改了${改了.join("、")}${本人窗口内 ? "（记录人本人提交后 30 分钟内修改）" : ""}`
+          : `${input.id ? "修改" : "记了"}${全称或显名(customer)}的一条${"method" in data && data.method ? data.method : 类型名(data.type)}跟进（${dayjs(data.occurredAt).format("YYYY-MM-DD")}）`,
+        detail: { 客户: 全称或显名(customer), 类型: "method" in data && data.method ? data.method : 类型名(data.type), 状态: data.status, 内容: data.content.slice(0, 120), ...(input.id && 企业版() ? { 改了, ...(本人窗口内 ? { 本人限时改: true } : {}) } : {}) } });
       const 挂不上 = 挂到 ? await 挂项目(user, id, input.customerId, 挂到, tx, 挂时组织) : null;
       if (挂不上) throw new 挂不上项目(挂不上);
       for (const item of extra?.tasks ?? []) {
         const 时间 = parseScheduleDate(item.dueAt)!;
         const task = await tx.task.create({ data: { title: item.title.trim(), dueAt: 时间.at, dueOn: 时间.on, dueHasTime: 时间.hasTime, customerId: input.customerId, ownerId: user.id } });
-        audits.push({ user, action: "create", entity: "Task", entityId: task.id, summary: `给${customer.name}加了待办「${task.title}」` });
+        audits.push({ user, action: "create", entity: "Task", entityId: task.id, summary: `给${全称或显名(customer)}加了待办「${task.title}」` });
       }
       if (extra?.plan) {
         const 时间 = parseScheduleDate(extra.plan.plannedAt)!;
         const next = await tx.followPlan.create({ data: { subject: extra.plan.subject.trim(), plannedAt: 时间.at!, plannedOn: 时间.on, plannedHasTime: 时间.hasTime, method: extra.plan.method, customerId: input.customerId, ownerId: user.id } });
         下次计划id = next.id;
-        audits.push({ user, action: "create", entity: "FollowPlan", entityId: next.id, summary: `给${customer.name}排了跟进计划（${dayjs(next.plannedAt).format("YYYY-MM-DD")} ${next.method}·${next.subject}）` });
+        audits.push({ user, action: "create", entity: "FollowPlan", entityId: next.id, summary: `给${全称或显名(customer)}排了跟进计划（${dayjs(next.plannedAt).format("YYYY-MM-DD")} ${next.method}·${next.subject}）` });
       }
       if (plan && !plan.done) {
         await tx.followPlan.update({ where: { id: plan.id }, data: { done: true, doneAt: new Date(), ...推进版本(plan.updatedAt.toISOString()) } });
-        audits.push({ user, action: "update", entity: "FollowPlan", entityId: plan.id, summary: `完成跟进计划「${plan.subject}」（${customer.name}）` });
+        audits.push({ user, action: "update", entity: "FollowPlan", entityId: plan.id, summary: `完成跟进计划「${plan.subject}」（${全称或显名(customer)}）` });
       }
       const latest = await tx.followUp.findFirst({ where: { customerId: input.customerId, occurredAt: { lte: new Date() } }, orderBy: { occurredAt: "desc" }, select: { occurredAt: true } });
       // 同事的客户：最近跟进时间是派生列、本来就不同步（各台回放时重算），裸 SQL 只改本机，不动 updatedAt、不推一条改客户
@@ -722,7 +724,7 @@ export async function 撤销记一笔(input: { customerId: string; 跟进id: str
       if (挡) return { ok: false as const, error: 挡 };
     }
     const result = await prisma.$transaction(async (tx) => {
-      const customer = await tx.customer.findUnique({ where: { id: input.customerId }, select: { name: true } });
+      const customer = await tx.customer.findUnique({ where: { id: input.customerId }, select: 显名列 });
       if (!customer) return { ok: false as const, error: "这位客户已经不在了，撤不回来" };
       const 计划 = await tx.followPlan.findFirst({ where: { id: input.计划id, customerId: input.customerId }, select: { id: true, subject: true } });
       if (!计划) return { ok: false as const, error: "这条计划已经不在了，刷新看看" };
@@ -735,15 +737,15 @@ export async function 撤销记一笔(input: { customerId: string; 跟进id: str
         // 11-01 卡点 B13：这条沟通上发过卡点的，卡点脱开照旧留着；老库脱不开就不撤
         if ((await 卡点脱离沟通(tx, [跟进.id])).size) return { ok: false as const, error: "这条跟进上已经发过卡点，撤不回来了，去时间线上删" };
         await tx.followUp.delete({ where: { id: 跟进.id } });
-        audits.push({ user, action: "delete", entity: "FollowUp", entityId: 跟进.id, summary: `撤销：删掉${customer.name}刚记的一条${类型名(跟进.type)}跟进（${dayjs(跟进.occurredAt).format("YYYY-MM-DD")}）` });
+        audits.push({ user, action: "delete", entity: "FollowUp", entityId: 跟进.id, summary: `撤销：删掉${全称或显名(customer)}刚记的一条${类型名(跟进.type)}跟进（${dayjs(跟进.occurredAt).format("YYYY-MM-DD")}）` });
       }
       const 下次 = input.下次计划id ? await tx.followPlan.findFirst({ where: { id: input.下次计划id, customerId: input.customerId, done: false }, select: { id: true, subject: true } }) : null;
       if (下次) {
         await tx.followPlan.delete({ where: { id: 下次.id } });
-        audits.push({ user, action: "delete", entity: "FollowPlan", entityId: 下次.id, summary: `撤销：删掉给${customer.name}刚排的跟进计划「${下次.subject}」` });
+        audits.push({ user, action: "delete", entity: "FollowPlan", entityId: 下次.id, summary: `撤销：删掉给${全称或显名(customer)}刚排的跟进计划「${下次.subject}」` });
       }
       await tx.followPlan.updateMany({ where: { id: 计划.id, done: true }, data: { done: false, doneAt: null } });
-      audits.push({ user, action: "update", entity: "FollowPlan", entityId: 计划.id, summary: `撤销完成跟进计划「${计划.subject}」（${customer.name}）` });
+      audits.push({ user, action: "update", entity: "FollowPlan", entityId: 计划.id, summary: `撤销完成跟进计划「${计划.subject}」（${全称或显名(customer)}）` });
       const latest = await tx.followUp.findFirst({ where: { customerId: input.customerId, occurredAt: { lte: new Date() } }, orderBy: { occurredAt: "desc" }, select: { occurredAt: true } });
       await tx.customer.update({ where: { id: input.customerId }, data: { lastFollowAt: latest?.occurredAt ?? null } });
       return { ok: true as const, audits };
@@ -973,7 +975,7 @@ async function 挂上(
 export async function detachContact(id: string) {
   try {
     const me = await requireUser();
-    const c = await prisma.contact.findUnique({ where: { id }, include: { customer: { select: { name: true } } } });
+    const c = await prisma.contact.findUnique({ where: { id }, include: { customer: { select: 显名列 } } });
     if (!c) return { ok: false as const, error: "这位联系人已经不在这儿了，刷新看看" };
     const 挡 = await 客户事项挡(me, c.customerId);
     if (挡) return { ok: false as const, error: 挡 };
@@ -988,7 +990,8 @@ export async function detachContact(id: string) {
       await tx.unassignedContact.create({
         data: {
           id: c.id, name: c.name, position: c.position, phone: c.phone, email: c.email, wechat: c.wechat, remark: 移出备注,
-          fromCustomerId: c.customerId, fromCustomerName: c.customer.name,
+          // 存进库的文字：全称或显名（11-19 口径）
+          fromCustomerId: c.customerId, fromCustomerName: 全称或显名(c.customer),
           wasPrimary: c.isPrimary,
           ownerId: me.id,
           followUpIds: 跟进.length ? JSON.stringify(跟进.map((f) => f.id)) : null,
@@ -1002,7 +1005,7 @@ export async function detachContact(id: string) {
     });
     await recordAudit({
       user: me, action: "update", entity: "Contact", entityId: id,
-      summary: `把联系人「${c.name}」从${c.customer.name}移出（联系人页里还留着）`,
+      summary: `把联系人「${c.name}」从${全称或显名(c.customer)}移出（联系人页里还留着）`,
       detail: { 姓名: c.name },
     });
     刷新联系人(c.customerId);
@@ -1057,17 +1060,18 @@ export async function saveUnassignedContact(input: 联系人字段 & { id: strin
     if (!电话.ok) return 电话;
     const data = { ...规整(input), phone: 电话.phone };
     if (input.customerId) {
-      const 客户 = await prisma.customer.findUnique({ where: { id: input.customerId }, select: { name: true } });
+      const 客户 = await prisma.customer.findUnique({ where: { id: input.customerId }, select: 显名列 });
       if (!客户) return { ok: false as const, error: "那位客户已经不在了，换一位" };
       await prisma.$transaction((tx) => 挂上(tx, { ...u, ...data }, input.customerId!, input.isPrimary ?? (input.customerId === u.fromCustomerId && u.wasPrimary === true)));
       await recordAudit({
         user: me, action: "update", entity: "Contact", entityId: u.id,
-        summary: `把未归属的联系人「${data.name}」挂到${客户.name}`,
+        summary: `把未归属的联系人「${data.name}」挂到${全称或显名(客户)}`,
         detail: { 姓名: data.name, 职位: data.position, 电话: data.phone, 微信: data.wechat },
       });
       刷新联系人(input.customerId);
       await 客户存了推项目(me, input.customerId);
-      return { ok: true as const, 挂到: 客户.name };
+      // 界面提示「已挂到 X」叫显名（11-19 客户名称选填）
+      return { ok: true as const, 挂到: 客户显名(客户) };
     }
     await prisma.unassignedContact.update({ where: { id: u.id }, data });
     await recordAudit({

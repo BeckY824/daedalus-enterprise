@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { 不在了 } from "@/lib/not-there";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 恢复到停用负责人通知 } from "@/lib/enterprise/notice-sources";
+import { 全称或显名, 显名列 } from "@/lib/enterprise/customer-title";
 import {
   回收站列表, 恢复, 彻底删除, 能管回收站, 能彻底删除, 回收站叫法, 软删表,
   type 回收站条目, type 软删表名,
@@ -69,7 +70,12 @@ async function 名字(t: 软删表名, id: string): Promise<string> {
     const f = await prisma.followUp.findUnique({ where: { id }, select: { title: true, content: true } });
     return (f?.title || f?.content || "").slice(0, 40);
   }
-  const m = { Customer: prisma.customer, Project: prisma.project, Contact: prisma.contact }[t] as unknown as {
+  // 客户全称选填（11-19）：留痕里客户叫 全称或显名（有全称照旧写全称，空着兜简称 → 客户编号），不出「」
+  if (t === "Customer") {
+    const c = await prisma.customer.findUnique({ where: { id }, select: 显名列 });
+    return c ? 全称或显名(c) : "";
+  }
+  const m = { Project: prisma.project, Contact: prisma.contact }[t] as unknown as {
     findUnique(a: unknown): Promise<{ name: string } | null>;
   };
   return (await m.findUnique({ where: { id }, select: { name: true } }))?.name ?? "";

@@ -18,6 +18,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 不在了 } from "@/lib/not-there";
 import { 关联对, 关联说明上限 } from "@/lib/enterprise/customer-v2";
 import { 改客户挡 } from "@/lib/enterprise/follow-perm";
+import { 客户显名, 全称或显名, 显名列 } from "@/lib/enterprise/customer-title";
 
 type 结果 = { ok: true } | { ok: false; error: string };
 
@@ -35,13 +36,14 @@ function 刷新(...ids: string[]) {
  * 能不能在这位客户身上动关联：看得到（限定层查得到）、不是只读的同事客户 / 虚线下属客户，且过 改客户挡（11-18）。
  * 关联是两头的，发起的那一头（我正在看的这位）要能改；另一头只要看得到就行——挑的时候下拉里也只列看得到的
  */
-async function 能改(me: Awaited<ReturnType<typeof requireUser>>, id: string): Promise<{ ok: true; name: string } | { ok: false; error: string }> {
-  const c = await prisma.customer.findUnique({ where: { id }, select: { name: true } });
+async function 能改(me: Awaited<ReturnType<typeof requireUser>>, id: string): Promise<{ ok: true; name: string; 日志名: string } | { ok: false; error: string }> {
+  const c = await prisma.customer.findUnique({ where: { id }, select: 显名列 });
   if (!c) return { ok: false, error: "这位客户已经不在了（或你看不到），刷新看看" };
   if (await 同事的客户(defaultClient, id)) return { ok: false, error: await 只读话(defaultClient) };
   const 挡 = await 改客户挡(me, id);
   if (挡) return { ok: false, error: 挡 };
-  return { ok: true, name: c.name };
+  // 全称选填（11-19）：提示里叫显名（简称 → 全称 → 客户编号），日志里叫全称或显名（有全称照旧写全称），都不出空引号
+  return { ok: true, name: 客户显名(c), 日志名: 全称或显名(c) };
 }
 
 export async function 关联客户(customerId: string, otherId: string, note?: string | null): Promise<结果> {
@@ -55,21 +57,21 @@ export async function 关联客户(customerId: string, otherId: string, note?: s
     if (!说.ok) return 说;
     const 这位 = await 能改(me, customerId);
     if (!这位.ok) return 这位;
-    const 那位 = await prisma.customer.findUnique({ where: { id: otherId }, select: { name: true } });
+    const 那位 = await prisma.customer.findUnique({ where: { id: otherId }, select: 显名列 });
     if (!那位) return { ok: false, error: "要关联的那位客户已经不在了（或你看不到），换一位" };
     // 唯一键兜底：两个人同时点关联同一对，后到的那次落到这里
     const 有 = await 看全部(() => prisma.entCustomerLink.findUnique({ where: { customerId_otherId: 对 } }));
-    if (有) return { ok: false, error: `「${这位.name}」和「${那位.name}」已经关联过了` };
+    if (有) return { ok: false, error: `「${这位.name}」和「${客户显名(那位)}」已经关联过了` };
     try {
       await prisma.entCustomerLink.create({ data: { ...对, note: 说.值, userId: me.id } });
     } catch (e) {
-      if ((e as { code?: string })?.code === "P2002") return { ok: false, error: `「${这位.name}」和「${那位.name}」已经关联过了` };
+      if ((e as { code?: string })?.code === "P2002") return { ok: false, error: `「${这位.name}」和「${客户显名(那位)}」已经关联过了` };
       throw e;
     }
     await recordAudit({
       user: me, action: "update", entity: "Customer", entityId: customerId,
-      summary: `关联客户：「${这位.name}」↔「${那位.name}」${说.值 ? `（${说.值}）` : ""}`,
-      detail: { 客户: 这位.name, 关联到: 那位.name, 说明: 说.值 ?? "（空）" },
+      summary: `关联客户：「${这位.日志名}」↔「${全称或显名(那位)}」${说.值 ? `（${说.值}）` : ""}`,
+      detail: { 客户: 这位.日志名, 关联到: 全称或显名(那位), 说明: 说.值 ?? "（空）" },
     });
     刷新(customerId, otherId);
     return { ok: true };
@@ -86,8 +88,8 @@ async function 取一行(me: Awaited<ReturnType<typeof requireUser>>, linkId: st
   const 这位 = await 能改(me, 从);
   if (!这位.ok) return 这位;
   const 另 = 行.customerId === 从 ? 行.otherId : 行.customerId;
-  const 那位 = await 看全部(() => prisma.customer.findUnique({ where: { id: 另 }, select: { name: true } }));
-  return { ok: true as const, 行, 这位: 这位.name, 那位: 那位?.name ?? "（已删除）", 另 };
+  const 那位 = await 看全部(() => prisma.customer.findUnique({ where: { id: 另 }, select: 显名列 }));
+  return { ok: true as const, 行, 这位: 这位.日志名, 那位: 那位 ? 全称或显名(那位) : "（已删除）", 另 };
 }
 
 export async function 改关联说明(linkId: string, 从: string, note: string | null): Promise<结果> {

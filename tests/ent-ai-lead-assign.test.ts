@@ -364,7 +364,9 @@ describe("新线索卡：和新建项目同一套必填", () => {
 
   it("齐了不缺", () => expect(缺({})).toEqual([]));
   // 11-17 员工反馈：联系人姓名不一定知道，改选填；联系方式全空才拦（M-必填-01）
-  it("客户名称；联系人姓名选填", () => expect(缺({ name: " ", contact: "" })).toEqual(["客户名称"]));
+  // 11-19 用户「客户名称设为不必填，AI 录入什么都是一样的」：企业版客户名称、联系人姓名都选填
+  it("客户名称、联系人姓名都选填", () => expect(缺({ name: " ", contact: "" })).toEqual([]));
+  it("不是企业版建档：名称照旧必填", () => expect(missingFields(卡({ name: " " }) as never)).toContain("名称"));
   it("联系方式全空", () => expect(缺({ phone: "" })).toEqual(["联系方式"]));
   it("分配方式", () => expect(缺({ 分配方式: undefined })).toEqual(["分配方式"]));
   it("指定分配没选负责人", () => expect(缺({ 分配方式: 0 })).toEqual(["项目负责人"]));

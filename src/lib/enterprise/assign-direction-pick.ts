@@ -20,6 +20,7 @@ import { 企业版 } from "./switch";
 import { 规则开着 } from "./rules";
 import { 挡分配方式 } from "./dict";
 import { 管理指定不限of, type 组织 } from "./org-core";
+import { 客户显名 } from "./customer-title";
 
 
 export async function 指定方向候选表(org: 组织): Promise<指定候选表> {
@@ -49,7 +50,7 @@ export async function 要按方向指定(me: { id: string; role: string }, org: 
  */
 export async function 市场指定方向挡(
   me: { id: string; role: string }, org: 组织,
-  客户们: readonly { id: string; name: string; salesOwnerId: string; bizLine: string | null; pool: { customerId: string } | null }[],
+  客户们: readonly { id: string; name: string; shortName?: string | null; customerNo?: number | null; salesOwnerId: string; bizLine: string | null; pool: { customerId: string } | null }[],
   接手人: string, 交来?: 线,
 ): Promise<string | null> {
   // 指定给自己 = 记在自己名下，不是分出去（同 市场分配指定挡）
@@ -60,7 +61,7 @@ export async function 市场指定方向挡(
     if (!projectId) continue;
     const 向: 分配方向 = 交来 ? { 线: 交来, 来源: "手动" } : await 客户默认分配方向(org, c.id, me.id, projectId);
     表 ??= await 指定方向候选表(org);
-    if (!按方向挑(表, 向.线).includes(接手人)) return `「${c.name}」${指定方向话(向.线)}：换一位，或改分配方向`;
+    if (!按方向挑(表, 向.线).includes(接手人)) return `「${客户显名(c)}」${指定方向话(向.线)}：换一位，或改分配方向`;
   }
   return null;
 }

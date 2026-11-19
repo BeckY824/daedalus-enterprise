@@ -79,7 +79,7 @@ import NewMenuButton from "@/components/NewMenuButton";
 import { 取客户页表单料, type 客户页表单料 } from "./form-data-action";
 import { 看板工具位 } from "./board-slot";
 import { 客户编号显示 } from "@/lib/customer-no";
-import { 客户抬头 } from "@/lib/enterprise/customer-title";
+import { 客户抬头, 客户显名 } from "@/lib/enterprise/customer-title";
 import { 出错原话 } from "@/lib/stale-deploy";
 
 /** 「新增客户」弹窗（10-31 P5，整套建档向导）：点了才要，单拆一包，不压客户列表首屏 JS（速度闸门 850 KB） */
@@ -383,6 +383,8 @@ export default function CustomersView({
   }, [导出话]);
   const 视图中 = useViewAs();
   const { 问删除 } = useDeleteCustomers((话) => 说(话, true));
+  /** 确认框、按钮读屏名里叫这一行（11-19 企业版全称选填：空着兜简称 / 客户编号） */
+  const 叫 = (r: CustomerRow) => (企业 ? 客户显名(r) : r.name);
   const { 先问转走的项目 } = useTransferConfirm(转让原因);
   const { 问放回公海 } = usePoolReturnConfirm();
   /** 批量转让框（原型 cu.transfer：选人、一起转走的项目、原因合成一个框）：开着时记住勾的是谁 */
@@ -1132,19 +1134,19 @@ export default function CustomersView({
           }] : []),
           { key: "edit", label: "编辑", onClick: () => 去编辑(r) },
           // 先数清会一起删掉什么再问（排查 B1，见 useDeleteCustomers）
-          ...(能删 && !删不了.has(r.id) ? [{ key: "delete", label: "删除", onClick: () => void 问删除([{ id: r.id, name: r.name }]) }] : []),
+          ...(能删 && !删不了.has(r.id) ? [{ key: "delete", label: "删除", onClick: () => void 问删除([{ id: r.id, name: 叫(r) }]) }] : []),
         ];
         return (
           <div>
             <Space size={2}>
               {公海里 && 能新建和领取 && (
-                <Button className="row-act" aria-label={`领取 ${r.name}`} disabled={领不回.has(r.id)} size="small"
+                <Button className="row-act" aria-label={`领取 ${叫(r)}`} disabled={领不回.has(r.id)} size="small"
                   onClick={async () => 公海提示(await 领取([r.id]), "领取", [r.id])}>领取</Button>
               )}
               {/* 菜单画在 body 上，但 React 事件照组件树冒泡到这一行：不拦住，点完就跟着进了记录页 */}
               {/* 展开时先把表单料拿起来（同「新建 ▾」），点「编辑」多半不用再等；还在取时这一行的按钮转圈、各行菜单都点不了（防连点） */}
               <Dropdown trigger={["click"]} disabled={!!编辑取中} onOpenChange={(开) => { if (开) { void 要表单料(false); 预取弹框(); } }} menu={{ items: 菜单, onClick: ({ domEvent }) => domEvent.stopPropagation() }}>
-                <Button className="row-act" aria-label={`更多操作 ${r.name}`} type="text" size="small" icon={<MoreOutlined />} loading={编辑取中 === r.id} />
+                <Button className="row-act" aria-label={`更多操作 ${叫(r)}`} type="text" size="small" icon={<MoreOutlined />} loading={编辑取中 === r.id} />
               </Dropdown>
             </Space>
             {公海里 && 能新建和领取 && 领不回.has(r.id) && <div className="muted" style={{ fontSize: 12, lineHeight: "16px" }}>{原负责人不能领回提示}</div>}
@@ -1506,7 +1508,7 @@ export default function CustomersView({
               disabled={selected.every((id) => 删不了.has(id))}
               title={selected.every((id) => 删不了.has(id)) ? "勾的都不是你负责的，删不了" : undefined}
               onClick={() => {
-                const 名 = (id: string) => ({ id, name: 选中行.find((r) => r.id === id)?.name ?? "" });
+                const 名 = (id: string) => { const r = 选中行.find((x) => x.id === id); return { id, name: r ? 叫(r) : "" }; };
                 void 问删除(selected.filter((id) => !删不了.has(id)).map(名), 清空, selected.filter((id) => 删不了.has(id)).map(名));
               }}
             >
@@ -1521,7 +1523,7 @@ export default function CustomersView({
           if (key === "createdAt") apply({ sort: order === "ascend" ? "created-asc" : order === "descend" ? "created-desc" : "" });
           if (key === "lastFollowAt") apply({ sort: order === "ascend" ? "follow-asc" : order === "descend" ? "follow-desc" : "" });
         }}
-        替表格={看板体 !== undefined ? 看板体 : 看法 === "看板" ? <CustomerBoard 行们={rows} 字典={客户属性字典} 加载中={pending} 页={page} 每页={pageSize} 总数={total} 翻页={翻页} 去={(id) => router.push(`/customers/${id}`)} /> : undefined}
+        替表格={看板体 !== undefined ? 看板体 : 看法 === "看板" ? <CustomerBoard 行们={rows} 字典={客户属性字典} 加载中={pending} 页={page} 每页={pageSize} 总数={total} 翻页={翻页} 去={(id) => router.push(`/customers/${id}`)} 抬头节点={抬头节点} /> : undefined}
         汇总={<>{看板体 === undefined && 看法 !== "看板" && 待复核}{看板体 === undefined && 看法 !== "看板" && <ProjectOnlyBlock 行们={仅项目行} 超了={仅项目超了} />}{金额排序 && <Space wrap style={{ marginBottom: 12 }}><span>金额按</span><CurrencySelect aria-label="金额排序币种" value={f.sortCurrency || b.currency} onChange={v => apply({ sortCurrency: v })}/><span>在全部筛选结果中{金额排序 === "amount-asc" ? "升序" : "降序"}排列；其他币种不相加</span></Space>}</>}
         分页={{
           当前页: page,

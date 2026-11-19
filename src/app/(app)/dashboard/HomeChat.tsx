@@ -186,6 +186,7 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
         渠道名们={渠道名们}
         示例槽={外框 ? 示例槽 : undefined}
         on发出={set刚发的}
+        企业版={企业版}
       />
     </div>
   );

@@ -4,6 +4,7 @@ import { Tag } from "antd";
 import { RowLink } from "@/components/ui";
 import { 有值 } from "@/lib/empty-value";
 import { 客户编号显示 } from "@/lib/customer-no";
+import { 客户抬头 } from "@/lib/enterprise/customer-title";
 import type { 仅项目列表行 } from "@/lib/enterprise/project-only-list-rows";
 
 /** 一格：一行、放不下省略号、悬停看全文 */
@@ -41,7 +42,8 @@ export default function ProjectOnlyBlock({ 行们, 超了 = false }: { 行们: �
           <div key={r.id} className="cust-ponly-r cust-ponly-row" role="row">
             <span className="cust-ponly-c cust-ponly-name" role="cell">
               <Tag className="cust-ponly-tag" title="这位客户不归你，你只负责其中的项目：客户资料只能看">仅项目</Tag>
-              <RowLink href={`/customers/${r.id}`} className="link-strong" title={r.name}>{r.name}</RowLink>
+              {/* 客户名称选填（11-19）：和下面客户表格第一列同一个抬头算法（没全称也不空，最后兜客户编号 | 当前节点） */}
+              <RowLink href={`/customers/${r.id}`} className="link-strong" title={客户抬头(r, r.当前节点)}>{客户抬头(r, r.当前节点)}</RowLink>
             </span>
             {/* 编号一行放全不省略（列宽在 globals.css 按「NO.123456」给）；存量回填前没有编号的写短号，同客户表格 */}
             <span className="cust-ponly-c cust-no" role="cell">{客户编号显示(r)}</span>

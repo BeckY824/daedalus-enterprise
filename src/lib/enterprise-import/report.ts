@@ -27,6 +27,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 能落的主渠道入口 } from "@/lib/enterprise/channel-main";
 import { 猜映射, 说明键, 值对照, 值叫法, 值说法, 进备注, type 建议器, type 成员, type 表概要 } from "./mapping";
 import { 实体顺序, 字段中文, 格式类们, type 格式类, type 来源, type 实体, type 映射, type 原始记录, type 问题, type 待写, type 值对照名, type 列映射 } from "./types";
+import { 全称或显名, 显名列 } from "../enterprise/customer-title";
 
 /** 报告里最多列多少条问题（存进库的那份）；总数另记，界面上说「还有 N 条没列出」 */
 const 问题上限 = 5000;
@@ -90,7 +91,7 @@ export async function 读本地索引(源: 来源): Promise<本地索引> {
       prisma.opportunity.findMany({ select: { id: true, customerId: true, name: true } }),
       prisma.entExternalRef.findMany({ where: { source: 源 }, select: { entity: true, externalId: true, targetId: true, fingerprint: true } }),
       prisma.channel.findMany({ where: { active: true }, select: { id: true, name: true, platform: true } }),
-      prisma.contact.findMany({ select: { id: true, name: true, customerId: true, phone: true, email: true, wechat: true, customer: { select: { name: true } } } }),
+      prisma.contact.findMany({ select: { id: true, name: true, customerId: true, phone: true, email: true, wechat: true, customer: { select: 显名列 } } }),
       // 联系方式子表里挂在联系人身上的手机 / 邮箱 / 微信（企业版客户页填的多个号都在这里）
       prisma.contactMethod.findMany({ where: { contactId: { not: null }, kind: { in: 联系人查重格.map((x) => x[1]) } }, select: { contactId: true, kind: true, value: true } }),
       // 导入查重（M-导入-24 / 29）：客户的 WhatsApp + 子表里客户 / 联系人身上的手机、座机、WhatsApp
@@ -124,7 +125,7 @@ export async function 读本地索引(源: 来源): Promise<本地索引> {
   for (const o of 商机们) 加(索引.商机名, `${o.customerId}|${名键(o.name)}`, o.id);
   // 联系人号码查重（P13 第 2 条）：老三格 + 子表，同一位同一个号只记一次
   const 联系人号 = new Map<string, 已有联系人[]>();
-  const 人 = new Map(联系人们.map((c) => [c.id, { id: c.id, name: c.name, customerId: c.customerId, customerName: c.customer.name }]));
+  const 人 = new Map(联系人们.map((c) => [c.id, { id: c.id, name: c.name, customerId: c.customerId, customerName: 全称或显名(c.customer) }]));
   const 记号 = (kind: string, v: string | null, id: string | null) => {
     const 键 = v ? 联系人号查重键(kind, v) : "";
     const 谁 = id ? 人.get(id) : undefined;

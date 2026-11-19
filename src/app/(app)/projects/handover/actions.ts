@@ -15,6 +15,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 交接挡, 发起交一位客户, 发起交一个项目, 发起全部交给 } from "@/lib/enterprise/offboard-handover";
 import { 交接通知 } from "@/lib/enterprise/notice-sources";
 
+import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 type 结果 = { ok: true; message: string; 交接?: string } | { ok: false; error: string };
 
 const 刷新 = () => {
@@ -38,7 +39,8 @@ export async function 交接客户(fromId: string, customerId: string, toId: str
   if (typeof customerId !== "string" || !customerId) return { ok: false, error: "这位客户已不在 TA 名下" };
   const r = await 发起交一位客户(me, fromId, customerId, toId);
   if (!r.ok) return r;
-  const 客户 = (await prisma.customer.findUnique({ where: { id: customerId }, select: { name: true } }))?.name ?? "";
+  const 客户行 = await prisma.customer.findUnique({ where: { id: customerId }, select: 显名列 });
+  const 客户 = 客户行 ? 客户显名(客户行) : "";
   await recordAudit({ user: me, action: "handover", entity: "Customer", entityId: customerId, summary: `离职交接：客户「${客户}」从「${从}」交给「${给}」，等对方确认`, detail: { from: fromId, to: toId, 交接: r.交接, 待确认: true } });
   await 交接通知(me, r.交接, "发起");
   刷新();

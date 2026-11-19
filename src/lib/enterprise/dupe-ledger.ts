@@ -4,6 +4,7 @@
  *
  * - 号码那一半的查重、拦截、同号协同照旧在 contact-dedupe.ts / same-number-collab.ts；这里只在撞了「有人在跟」的客户时补露出 + 台账。
  * - 客户名那一半是新的：名字按 名键 比（全角转半角、去空白、不分大小写，和导入查重同一个口径）；公司（school 列）填了的也按 名键 比公司。
+ *   只比全称（name）和公司：抬头（显示名，现算）、简称都不参与（P-抬头-17 / P-抬头-04）；全称空着的不比名字，空全称的老客户也撞不上
  * - 公海客户、没负责人（占位）的客户不提示（P-挂靠-01「公海客户、要回避的客户不提示」）；撞的是我自己名下的，只说「你名下已有」，不记台账、不给申请挂靠。
  * - 查询人在那位客户的项目组里（负责人或已加入的组员）= 同组：提示「同组协作」带项目名和组员，台账照记但标同组、不算预警（回执 X6「不记风险」）。
  * - 第一期不做强录：命中只拦截提示 + 台账留痕；第三档（绕过强录）随强录推迟，常量留着、不触发。
@@ -20,6 +21,7 @@ import { 拆角色, 直属上级of } from "./org-core";
 import { 读组织 } from "./org";
 import { notify } from "./notify";
 import { 通知里的客户名, 撞的写法 } from "./notice-mask";
+import { 全称或显名 } from "./customer-title";
 import { 挂靠超时小时, 挂靠页 } from "./attach-approval";
 import { 挂靠进公海状态 } from "@/lib/owner-log-db";
 import { 离职负责人找谁 } from "./departed-owner";
@@ -119,7 +121,7 @@ async function 看预警(行id: string, d: 台账行): Promise<void> {
   const 不同组 = { customerId: d.customerId, sameGroup: false, createdAt: { gte: 起 } };
   const [org, 客户, 查的人] = await Promise.all([
     读组织(),
-    看全部(() => prisma.customer.findUnique({ where: { id: d.customerId }, select: { id: true, name: true, customerNo: true } })),
+    看全部(() => prisma.customer.findUnique({ where: { id: d.customerId }, select: { id: true, name: true, shortName: true, customerNo: true } })),
     prisma.user.findUnique({ where: { id: d.userId }, select: { name: true } }),
   ]);
   const 客户名 = 客户 ? 通知里的客户名(客户) : "";
@@ -170,7 +172,7 @@ export async function 撞上客户(
   if (!企业版()) return null;
   const c = await 看全部(() => prisma.customer.findUnique({
     where: { id: customerId },
-    select: { id: true, name: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } },
+    select: { id: true, name: true, shortName: true, customerNo: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } },
   }));
   if (!c || c.pool || !c.salesOwnerId || c.salesOwnerId === 我) return null;
   const 负责人 = await 露出负责人(c.salesOwnerId);
@@ -185,7 +187,8 @@ export async function 撞上客户(
     撞号id: 组 ? null : 行?.id ?? null,
     键类型,
     客户id: 看得见 ? c.id : null,
-    客户名: 看得见 || 键类型 === "客户名" ? c.name : null,
+    // 查重提示里叫 全称或显名（11-19 口径：按公司名撞上、对方没全称时叫出显名，不出空白）
+    客户名: 看得见 || 键类型 === "客户名" ? 全称或显名(c) : null,
     负责人,
     ...(组 ? { 同组: 组 } : {}),
     ...(行?.action === "申请挂靠" ? { 已申请: true as const } : {}),
@@ -199,12 +202,13 @@ export async function 号码撞上(我: string, 读的我: 谁 | null, 号: 验�
   return 挑 ? 撞上客户(我, 读的我, 号.类型 as 撞号键类型, 号.值, 挑.id, 结果) : null;
 }
 
-export type 名撞结论 = { 我名下: { 客户名: string; 客户id: string } } | { 撞: 撞号露出 };
+/** 我名下.按：按全称撞上还是按公司撞上（11-19 复审：说法按它选「同名 / 同公司」，客户名照用全称或显名） */
+export type 名撞结论 = { 我名下: { 客户名: string; 客户id: string; 按: "客户名" | "公司名" } } | { 撞: 撞号露出 };
 
 /** 名键太短（一个字）的不比：撞得太多、多半不是同一位 */
 const 够长 = (k: string) => k.length >= 2;
 
-type 名查重行 = { id: string; name: string; school: string | null; salesOwnerId: string };
+type 名查重行 = { id: string; name: string; shortName: string | null; customerNo: number | null; school: string | null; salesOwnerId: string };
 
 /**
  * 客户名查重要比的客户：全公司在用、不在公海的，按建档先后（同一刻按 id）。原来整批 1.9 万位经 Prisma 取回来在内存里比名键（单人 70 ms，11-14）；
@@ -217,7 +221,7 @@ async function 名查重候选(名k: string, 公k: string): Promise<名查重行
   if ((够长(名k) && !名字.length) || (够长(公k) && !公字.length)) {
     return 看全部(() => prisma.customer.findMany({
       where: { pool: { is: null } },
-      select: { id: true, name: true, school: true, salesOwnerId: true },
+      select: { id: true, name: true, shortName: true, customerNo: true, school: true, salesOwnerId: true },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     }));
   }
@@ -226,10 +230,12 @@ async function 名查重候选(名k: string, 公k: string): Promise<名查重行
   if (公字.length) 或.push(`(${公字.map(() => `instr(c."school", ?) > 0`).join(" AND ")})`);
   // NOT INDEXED：顺表扫一遍（7 ms）；没统计信息的 SQLite 会挑 deletedAt / createdAt 索引逐行回表（26 ms）。命中的几位再排序
   // 裸 SQL 不过软删扩展，自己带 deletedAt IS NULL（同 看全部 + 扩展的口径：没删、不在公海）
-  return prisma.$queryRawUnsafe<名查重行[]>(
-    `SELECT c.id, c."name", c."school", c."salesOwnerId" FROM "Customer" c NOT INDEXED WHERE (${或.join(" OR ")}) AND c."deletedAt" IS NULL AND NOT EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id) ORDER BY c."createdAt" ASC, c.id ASC`,
+  // 简称、客户编号一起取（11-19 客户名称选填）：提示里叫 全称或显名，对方没全称时兜得到；编号裸 SQL 可能回 BigInt，转成数
+  const 行 = await prisma.$queryRawUnsafe<(Omit<名查重行, "customerNo"> & { customerNo: number | bigint | null })[]>(
+    `SELECT c.id, c."name", c."shortName", c."customerNo", c."school", c."salesOwnerId" FROM "Customer" c NOT INDEXED WHERE (${或.join(" OR ")}) AND c."deletedAt" IS NULL AND NOT EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id) ORDER BY c."createdAt" ASC, c.id ASC`,
     ...名字, ...公字,
   );
+  return 行.map((r) => ({ ...r, customerNo: r.customerNo == null ? null : Number(r.customerNo) }));
 }
 
 /**
@@ -247,7 +253,7 @@ export async function 客户名查重(我: string, 读的我: 谁 | null, 名: s
   const 命中 = 们.filter((c) => 撞名(c) || 撞公司(c));
   if (!命中.length) return null;
   const 我的 = 命中.find((c) => c.salesOwnerId === 我);
-  if (我的) return { 我名下: { 客户名: 我的.name, 客户id: 我的.id } };
+  if (我的) return { 我名下: { 客户名: 全称或显名(我的), 客户id: 我的.id, 按: 撞名(我的) ? "客户名" : "公司名" } };
   for (const c of 命中) {
     const 按名 = 撞名(c);
     const 露 = await 撞上客户(我, 读的我, 按名 ? "客户名" : "公司名", 按名 ? 名.trim() : (公司 ?? "").trim(), c.id);
@@ -258,7 +264,11 @@ export async function 客户名查重(我: string, 读的我: 谁 | null, 名: s
 
 /** 名字撞了拦下的那句话（保存被拦、向导面板共用） */
 export function 名撞说法(r: 名撞结论, 客户叫法 = "客户"): string {
-  if ("我名下" in r) return `你名下已有同名${客户叫法}「${r.我名下.客户名}」，请勿重复录入`;
+  // 按名撞上说「同名」，按公司撞上说「同公司」（11-19 复审：原来靠客户名空不空判，有全称的按公司撞上也说成同名）；客户名是全称或显名，不会空
+  if ("我名下" in r) {
+    const 名 = r.我名下.客户名 ? `「${r.我名下.客户名}」` : "";
+    return r.我名下.按 === "公司名" ? `你名下已有同公司的${客户叫法}${名}，请勿重复录入` : `你名下已有同名${客户叫法}${名}，请勿重复录入`;
+  }
   const { 撞 } = r;
   const 谁的 = 撞.客户名 ? `${客户叫法}「${撞.客户名}」` : `同事名下的${客户叫法}`;
   const 按 = 撞.键类型 === "公司名" ? "公司名重复" : `${客户叫法}名重复`;
@@ -300,7 +310,7 @@ export async function 申请挂靠(我: { id: string; name: string }, 撞号id: 
   }
 
   // 审批人 = 客户现在的负责人（P-挂靠-02；之后客户换负责人，审批人跟着换，见 owner-log-db.ts）。离职了也还是他、不另找人，24 小时后转他的实线上级
-  const 客户 = await 看全部(() => prisma.customer.findUnique({ where: { id: 行.customerId }, select: { id: true, name: true, customerNo: true, salesOwnerId: true } }));
+  const 客户 = await 看全部(() => prisma.customer.findUnique({ where: { id: 行.customerId }, select: { id: true, name: true, shortName: true, customerNo: true, salesOwnerId: true } }));
   const 收 = 客户?.salesOwnerId ?? null;
   await prisma.entDupeHit.update({ where: { id: 行.id }, data: { action: "申请挂靠", actionAt: new Date(), status: "待处理", approverId: 收 } });
   const org = await 读组织();

@@ -21,6 +21,7 @@ import { 字典of } from "@/lib/project/stage-dict";
 import { 页面字典 } from "@/lib/enterprise/dict";
 import { 客户状态色表 } from "@/lib/enterprise/cust-status-color";
 import { 拼地址 } from "@/lib/enterprise/customer-v2";
+import { 客户显名 } from "@/lib/enterprise/customer-title";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 有管理范围 } from "@/lib/enterprise/permissions";
 
@@ -72,7 +73,7 @@ export async function 学员名单() {
   const [页签数, ids, 列表条件, 状态字典] = await Promise.all([客户页签数(), 最近跟进的客户(50).then((x) => x ?? 不限定时最近跟进的客户(50)), 客户筛选条件({}, me.id), 企业 ? 页面字典("custStatus") : null]);
   const 排序 = [{ lastFollowAt: "desc" as const }, { createdAt: "desc" as const }];
   const 字段 = {
-    id: true, name: true, followStatus: true, custStatus: true, lastFollowAt: true, salesOwnerId: true,
+    id: true, name: true, shortName: true, customerNo: true, followStatus: true, custStatus: true, lastFollowAt: true, salesOwnerId: true,
     salesOwner: { select: { name: true } },
     channel: { select: { name: true } },
     addrCountry: true, addrProvince: true, addrCity: true,
@@ -104,7 +105,8 @@ export async function 学员名单() {
   const 一行 = (c: (typeof 取)[number]) => {
     const p = earliestScheduled(c.plans, p => scheduleOrder(p.plannedAt, p.plannedOn), 1)[0];
     return {
-      id: c.id, name: c.name, followStatus: c.followStatus,
+      // 企业版客户名称选填（11-19）：名单上的名字（头像、名单内筛也按它）没全称按简称 → 客户编号叫
+      id: c.id, name: 企业 ? 客户显名(c) : c.name, followStatus: c.followStatus,
       ...(企业 ? { custStatus: c.custStatus } : {}),
       lastFollowAt: c.lastFollowAt ? c.lastFollowAt.toISOString() : null,
       ownerName: 负责人显示名(c.salesOwner.name),

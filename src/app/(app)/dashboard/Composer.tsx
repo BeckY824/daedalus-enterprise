@@ -181,7 +181,7 @@ function useComposerHeight(composerRef: React.RefObject<HTMLDivElement | null>) 
   }, [composerRef]);
 }
 
-export default function Composer({ ref, 屏, scope, models, model, 模式, suggestions, 空库, 渠道名们, 示例槽, on发出 }: {
+export default function Composer({ ref, 屏, scope, models, model, 模式, suggestions, 空库, 渠道名们, 示例槽, on发出, 企业版 = false }: {
   ref?: React.Ref<ComposerHandle>;
   屏: 这一屏;
   scope: string;
@@ -196,6 +196,8 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
   示例槽?: HTMLElement | null;
   /** 刚发出去的那一问。只有它会在挂载时把自己滚到视口顶部，翻历史不该乱跳 */
   on发出: (id: string) => void;
+  /** 企业版（服务端给的）：粘一段切人导入走企业版字段表（客户全称选填、联系人列进联系人），见 ImportDrawer */
+  企业版?: boolean;
 }) {
   const { turns, running, runningKey, start, AI已用完 } = 屏;
   const b = useBusiness();
@@ -515,7 +517,7 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
         <ComposerFoot 摆建议={摆建议} 示例槽={示例槽} suggestions={suggestions} suggIdx={suggIdx} 空={empty} 在跑={running != null} 背调模式={背调模式} 背调价={调.背调价} AI已用完={AI已用完} on问={问这条} />
       </div>
 
-      <ComposerDoors 粘={粘} 调={调} aiEnabled={models.length > 0} q={q} setQ={setQ} taRef={taRef} />
+      <ComposerDoors 粘={粘} 调={调} aiEnabled={models.length > 0} q={q} setQ={setQ} taRef={taRef} 企业版={企业版} />
     </>
   );
 }
@@ -547,13 +549,14 @@ function useAddressAsk(submit: (q: string) => void) {
 }
 
 /** 输入框打开的两扇门：粘一段聊天的导入抽屉、粘贴询盘邮件的框 */
-function ComposerDoors({ 粘, 调, aiEnabled, q, setQ, taRef }: {
+function ComposerDoors({ 粘, 调, aiEnabled, q, setQ, taRef, 企业版 }: {
   粘: ReturnType<typeof usePaste>;
   调: ReturnType<typeof useResearchMode>;
   aiEnabled: boolean;
   q: string;
   setQ: (v: string) => void;
   taRef: React.RefObject<HTMLTextAreaElement | null>;
+  企业版: boolean;
 }) {
   const b = useBusiness();
   const router = useRouter();
@@ -571,6 +574,7 @@ function ComposerDoors({ 粘, 调, aiEnabled, q, setQ, taRef }: {
           aiEnabled={aiEnabled}
           初始来路="文本"
           初始文本={粘.粘来的}
+          企业={企业版}
           onClose={粘.关粘贴}
           onDone={() => router.refresh()}
         />

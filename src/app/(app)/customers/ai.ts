@@ -23,6 +23,7 @@ import { 组提示词, 核对, 粘贴字数上限, 分批粘贴, 合并粘贴批
 import { 带额度 } from "@/lib/tenant/ai-allowance";
 import { AI文本输入错误 } from "@/lib/ai-input";
 import { 视图外部拒, 正在切换视图 } from "@/lib/enterprise/view-as";
+import { 企业版 } from "@/lib/enterprise/switch";
 
 export type 粘贴回执 = ({ ok: true } & 粘贴结果) | { ok: false; error: string; 续作?: 粘贴续作 };
 
@@ -48,7 +49,8 @@ async function 切成表(原文: string, 续作?: 粘贴续作): Promise<粘贴�
   if (wait !== null) return { ok: false, error: `AI 调用太频繁，请 ${wait} 秒后再试` };
 
   const b = await getBusiness();
-  const 建议 = 字段表(b).map((f) => f.label);
+  // 企业版（11-19）：客户全称、联系人姓名分两列（P-抬头-13），和导入抽屉、落库同一份字段表
+  const 建议 = 字段表(b, 企业版()).map((f) => f.label);
   const 完成: 粘贴批表[] = [];
 
   try {
@@ -134,7 +136,7 @@ export async function 猜列建议(
   await requireUser();
   if (!(await 能认列())) return null;
 
-  const 问题 = 组问题(表头, 样例, 规则, 字段表(await getBusiness()));
+  const 问题 = 组问题(表头, 样例, 规则, 字段表(await getBusiness(), 企业版()));
   if (Object.keys(问题).length === 0) return null;
 
   return 问选择({ 任务: "把一份客户表格的每一列对应到 CRM 里的字段" }, 问题);

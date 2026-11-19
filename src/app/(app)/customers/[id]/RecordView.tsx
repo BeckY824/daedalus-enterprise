@@ -93,7 +93,7 @@ import { 放进公海, 领取, 撤销公海, 退回原因选项 } from "../pool-
 import { useDeleteCustomers } from "../useDeleteCustomers";
 import { 释义下拉宽 } from "@/components/DictNote";
 import { 客户编号显示 } from "@/lib/customer-no";
-import { 客户抬头 } from "@/lib/enterprise/customer-title";
+import { 客户抬头, 客户显名 } from "@/lib/enterprise/customer-title";
 import { 动作出错话, 出错原话 } from "@/lib/stale-deploy";
 import { useFormDraft } from "@/components/FormDraft";
 
@@ -243,6 +243,8 @@ export default function RecordView({
   */
   const 企业 = 项目们 !== null;
   const 页头名 = 企业 ? 客户抬头(customer, 抬头节点) : customer.name;
+  /** 提示、弹框标题、头像、AI 面板和背调标签上叫这位（11-19 企业版全称选填：空着兜简称 / 客户编号，不出空引号）；背调认对象照旧只看全称 */
+  const 叫这位 = 企业 ? 客户显名(customer) : customer.name;
   /** 客户页留哪几块（定稿 P5 待定 14）：企业版项目模式下记录输入、待办移到项目，转让、背调、下次跟进不放，旧字段不摆 */
   const 摆法 = 客户页摆法(企业);
   const [建项目开着, set建项目开着] = useState(false);
@@ -339,9 +341,9 @@ export default function RecordView({
   const 计划过期天 = plan ? Math.max(0, dayjs().startOf("day").diff(dayjs(plan.plannedAt).startOf("day"), "day")) : 0;
   // 右边的全局 AI 面板据此知道「他」「这位」是谁（lib/ai-context-page.ts 的客户详情那支）
   useEffect(() => {
-    登记详情名(customer.name);
+    登记详情名(叫这位);
     return () => 登记详情名(null);
-  }, [customer.name]);
+  }, [叫这位]);
 
   const [filter, setFilter] = useState<string>("全部");
   const [memo, setMemo] = useState("");
@@ -674,7 +676,7 @@ export default function RecordView({
     try { 选项 = await 退回原因选项(); } catch { 选项 = []; }
     let 结果: Awaited<ReturnType<typeof 放进公海>> | null = null;
     const 成了 = await 问后果({
-      题: `把「${customer.name}」退回公海`,
+      题: `把「${叫这位}」退回公海`,
       后果: [
         { 标: "一起退", 话: "名下联系人、项目一起进公海，同事领了客户就一起归他", 级: "警" },
         { 标: "看不到", 话: "你不能再领回来，也看不到它了", 级: "危" },
@@ -692,7 +694,7 @@ export default function RecordView({
     const r = 结果 as Awaited<ReturnType<typeof 放进公海>> | null;
     if (!成了 || !r || !r.ok) return;
     showUndo({
-      话: `已把「${customer.name}」退回公海`,
+      话: `已把「${叫这位}」退回公海`,
       毫秒: 6000,
       撤销: async () => {
         const u = await 撤销公海("放进", [{ id: customer.id, 值: "" }], r.带过来, undefined, r.公海项目);
@@ -1134,8 +1136,8 @@ export default function RecordView({
         {/* 名单不在时（窗口太窄收成抽屉，或者人自己点了收起），最左边补一颗侧栏图标把它叫回来（components/PaneToggle.tsx） */}
         <PaneToggle 栏="roster" 位置="主区" />
         {/* 头像圆片 + 名字 + 星（2026-10-02 照毛玻璃原型）：一眼认出这是谁，星是「放到左栏，下次一点就到」 */}
-        <span className="rec-head-av" aria-hidden="true" style={{ background: avatarColor(customer.name), color: AVATAR_TEXT }}>
-          {initial(customer.name)}
+        <span className="rec-head-av" aria-hidden="true" style={{ background: avatarColor(叫这位), color: AVATAR_TEXT }}>
+          {initial(叫这位)}
         </span>
         <div className="rec-head-id">
           <div className="rec-head-line">
@@ -1191,7 +1193,7 @@ export default function RecordView({
                 ...(只读 ? [] : [
                 { type: "divider" as const },
                 { key: "edit", icon: <EditOutlined />, label: `编辑${b.customer}资料`, onClick: () => setCustOpen(true) },
-                { key: "delete", icon: <DeleteOutlined />, danger: true, label: `删除这位${b.customer}`, onClick: () => void 问删除([{ id: customer.id, name: customer.name }], () => router.push("/customers")) },
+                { key: "delete", icon: <DeleteOutlined />, danger: true, label: `删除这位${b.customer}`, onClick: () => void 问删除([{ id: customer.id, name: 叫这位 }], () => router.push("/customers")) },
                 // 公海（第 6 块）：多人时、我是负责人或管理员、还不在公海里
                 ...(!独自一人(users) && 能放公海 && !customer.pool
                   ? [{ key: "pool", icon: <InboxOutlined />, label: "放回公海", onClick: () => void 公海动作("放进") }]
@@ -1325,8 +1327,8 @@ export default function RecordView({
           {节(去项目跟进 ? 客户详情左栏.资料 : "基本资料", undefined, undefined, <>
             {/* 企业版项目模式（11-17 客户抬头 PR-1b）：第一行全称、第二行简称，没填简称写「—」；原来的「公司」格不摆（库里照留）。
                 全称也点着就地改（员工反馈：负责人改不了全称——企业版页头没有「编辑客户资料」，完整表单进不去）：
-                不许清空、不按名字查重（同完整表单编辑，见 patchCustomer）；PR-7 合并时这里跟随全称可空。一行放不下省略号、悬停看全（TruncTip） */}
-            {摆法.新字段 && <InlineField 空时横线={企业} customerId={customer.id} field="name" label="全称" value={customer.name} />}
+                不按名字查重（同完整表单编辑，见 patchCustomer）；11-19 起企业版全称选填、能清空（空着写「—」，页头照抬头兜底）。一行放不下省略号、悬停看全（TruncTip） */}
+            {摆法.新字段 && <InlineField 空时横线={企业} customerId={customer.id} field="name" label="全称" value={customer.name} 可清空={企业} />}
             {摆法.新字段 && <InlineField 空时横线={企业} customerId={customer.id} field="shortName" label="简称" value={customer.shortName ?? null} placeholder={`最多 ${简称上限} 个字`} 可清空 />}
             {摆(customer.phone) && (
               <InlineField 空时横线={企业} customerId={customer.id} field="phone" label="电话" value={customer.phone}
@@ -1519,7 +1521,7 @@ export default function RecordView({
           {/* 企业版项目模式：客户背调挪到左栏，只摆状态标签，点开弹详情（U-客户-03；AI 改进后再挪显眼处） */}
           {去项目跟进 && 摆法.背调卡 && aiEnabled && (
             <ProjectFold 名="客户背调">
-              <CustomerResearchTag customerId={customer.id} customerName={customer.name} 档案={背调档案} on记跟进={点跟进} 卡 />
+              <CustomerResearchTag customerId={customer.id} customerName={customer.name} 显示名={叫这位} 档案={背调档案} on记跟进={点跟进} 卡 />
             </ProjectFold>
           )}
           {留痕放左栏 && 状态留痕 && <div className="rec-sec tri-log-left" data-testid="tri-log-left">{状态留痕}</div>}
@@ -1649,13 +1651,13 @@ export default function RecordView({
           <Space orientation="vertical" size={14} style={{ width: "100%" }}>
             {aiEnabled && !AI在抽屉里 && (
               <div className={量到 ? "rec-card" : "rec-card rec-ai-guess-col"}>
-                <AiPanel customerId={customer.id} customerName={customer.name} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸 && !企业} hasRecords={followUps.length > 0} on记跟进={点跟进} 简报叫={企业 ? "智能总结" : "简报"} 不背调={!摆法.背调} 背调另放={摆法.背调卡} />
+                <AiPanel customerId={customer.id} customerName={customer.name} 显示名={叫这位} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸 && !企业} hasRecords={followUps.length > 0} on记跟进={点跟进} 简报叫={企业 ? "智能总结" : "简报"} 不背调={!摆法.背调} 背调另放={摆法.背调卡} />
               </div>
             )}
 
             {/* 企业版：客户背调单独一张卡（P14 第 5 条），不挂在 AI 面板、「跟进」菜单里；AI 收进抽屉时它照样在右栏。
                 背调是 AI 的活，同 AI 面板一样只在开了 AI 时摆 */}
-            {摆法.背调卡 && aiEnabled && !去项目跟进 && <CustomerResearchCard customerId={customer.id} customerName={customer.name} 档案={背调档案} on记跟进={点跟进} />}
+            {摆法.背调卡 && aiEnabled && !去项目跟进 && <CustomerResearchCard customerId={customer.id} customerName={customer.name} 显示名={叫这位} 档案={背调档案} on记跟进={点跟进} />}
 
             {!去项目跟进 && 待办卡}
 
@@ -1688,8 +1690,8 @@ export default function RecordView({
       {/* 1180 以下 AI 收进抽屉。面板本身一个字都不用改——它的状态挂在
           进程内任务表上（lib/ai-jobs），不在组件 state 里，关掉再开还在那儿 */}
       {aiEnabled && (!!项目区 || !量到 || AI在抽屉里) && (
-        <Drawer placement="right" styles={{ wrapper: { width: 380 } }} open={AI抽屉开着} onClose={() => setAI抽屉开着(false)} title={`AI · ${customer.name}`}>
-          <AiPanel customerId={customer.id} customerName={customer.name} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸 && !企业} hasRecords={followUps.length > 0} on记跟进={点跟进} 简报叫={企业 ? "智能总结" : "简报"} 不背调={!摆法.背调} 背调另放={摆法.背调卡} />
+        <Drawer placement="right" styles={{ wrapper: { width: 380 } }} open={AI抽屉开着} onClose={() => setAI抽屉开着(false)} title={`AI · ${叫这位}`}>
+          <AiPanel customerId={customer.id} customerName={customer.name} 显示名={叫这位} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸 && !企业} hasRecords={followUps.length > 0} on记跟进={点跟进} 简报叫={企业 ? "智能总结" : "简报"} 不背调={!摆法.背调} 背调另放={摆法.背调卡} />
         </Drawer>
       )}
 
@@ -1787,9 +1789,9 @@ export default function RecordView({
           if (saved) router.refresh();
         }}
       />
-      <TransferBox open={转让开} 客户名={customer.name} 候选={转让候选} 定向={指定定向} 要申请={转让要申请} 作废天数={移交作废天数} 原因选项={转让原因?.选项 ?? []} 取预览={取转走预览} 做={发转让} 自动={转让框自动} onClose={() => set转让开(false)} />
+      <TransferBox open={转让开} 客户名={叫这位} 候选={转让候选} 定向={指定定向} 要申请={转让要申请} 作废天数={移交作废天数} 原因选项={转让原因?.选项 ?? []} 取预览={取转走预览} 做={发转让} 自动={转让框自动} onClose={() => set转让开(false)} />
       {头部框 && (
-        <Modal open title={`${头部框 === "关联客户" && 去项目跟进 ? 客户详情左栏.关联 : 客户头部框叫法[头部框]} · ${customer.name}`} footer={null} width={头部框 === "转让" ? 480 : 640} onCancel={() => set头部框(null)}>
+        <Modal open title={`${头部框 === "关联客户" && 去项目跟进 ? 客户详情左栏.关联 : 客户头部框叫法[头部框]} · ${叫这位}`} footer={null} width={头部框 === "转让" ? 480 : 640} onCancel={() => set头部框(null)}>
           {头部框 === "管理联系人" && (
             <div className="proj-modal-list">
               {可管联系人.map((c) => (
@@ -1827,7 +1829,7 @@ export default function RecordView({
           onClose={() => set建项目开着(false)}
           onError={(话) => 说就地(话, true)}
           on取中={set取建档中}
-          customer={{ id: customer.id, name: customer.name, shortName: customer.shortName, salesOwnerId: customer.salesOwnerId }}
+          customer={{ id: customer.id, name: customer.name, shortName: customer.shortName, customerNo: customer.customerNo, salesOwnerId: customer.salesOwnerId }}
           联系人们={contacts.filter((c) => !c.挂靠).map((c) => ({ id: c.id, name: c.name, isPrimary: c.isPrimary }))}
         />
       )}

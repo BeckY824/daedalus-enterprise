@@ -63,6 +63,7 @@ import { 落到渠道, 新数据渠道不行 } from "@/lib/enterprise/channel-ma
 import { 算市场建给销售, 市场分配进线索验证 } from "@/lib/enterprise/market-assign-node";
 import type { 可选渠道 } from "@/components/ChannelPicker";
 
+import { 客户显名, 客户引, 全称或显名, 显名列 } from "@/lib/enterprise/customer-title";
 export type 公海结果 =
   | {
       ok: true;
@@ -157,7 +158,7 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
   if (!ids.length) return { ok: true, updated: 0, unchanged: 0, 没权限: 0 };
   const 虚线 = await 虚线只读挡(defaultClient, ids);
   if (虚线) return { ok: false, error: 虚线 };
-  const 这些 = await prisma.customer.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, salesOwnerId: true, pool: { select: { customerId: true } } } });
+  const 这些 = await prisma.customer.findMany({ where: { id: { in: ids } }, select: { ...显名列, salesOwnerId: true, pool: { select: { customerId: true } } } });
   const 已在 = 这些.filter((c) => c.pool);
   const 组织 = await 权限组织();
   // P-公海-02：能放回 = 能转让（负责人本人、实线直属上级、条线总管理、系统管理员），逐位判；按钮同一处判（P-公海-05）
@@ -184,19 +185,22 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
   // 同事的项目平时看不到，被拦时只说个数（P-看-12 例外、Even C4），按选的先后列
   const 被同事拦 = 有权限.filter((c) => 同事在推.has(c.id)).sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
   // 别的照放时提示条只说「N 位…没放」，那就带上客户名
-  const 同事项目 = 被同事拦.length ? await 同事在推项目说法(prisma, 被同事拦, 被同事拦.length > 1 || 能放.length > 0) : "";
+  // 客户名称选填（11-19）：说法里叫显名（简称 → 全称 → 客户编号），不出「」
+  const 同事项目 = 被同事拦.length ? await 同事在推项目说法(prisma, 被同事拦.map((c) => ({ ...c, name: 客户显名(c) })), 被同事拦.length > 1 || 能放.length > 0) : "";
   const 没权限 = 这些.length - 已在.length - 有权限.length;
+  /** 报错里叫哪位（11-19 客户名称选填：没全称按简称 → 客户编号叫，不出「」） */
+  const 叫 = (c: (typeof 有权限)[number] | undefined) => (c ? 客户显名(c) : "");
   if (!能放.length) {
     if (有订单.size) return { ok: false, error: 有订单不能放提示(b.customer, 订单项目) };
     if (验证中.size) {
       const [id, 话] = [...验证中][0];
-      return { ok: false, error: 有权限.length > 1 ? 话.replace("这位客户", `「${有权限.find((c) => c.id === id)?.name ?? ""}」`) : 话 };
+      return { ok: false, error: 有权限.length > 1 ? 话.replace("这位客户", `「${叫(有权限.find((c) => c.id === id))}」`) : 话 };
     }
     if (交接中.size) return { ok: false, error: 交接中不能放提示(b.customer) };
-    if (同事在推.size) return { ok: false, error: 同事在推不能放公海话(被同事拦.map((c) => c.name), b.customer, 同事项目) };
+    if (同事在推.size) return { ok: false, error: 同事在推不能放公海话(被同事拦.map((c) => 客户显名(c)), b.customer, 同事项目) };
     if (号码错.size) {
       const [id, 话] = [...号码错][0];
-      const 名 = 有权限.length > 1 ? `「${有权限.find((c) => c.id === id)?.name ?? ""}」` : "";
+      const 名 = 有权限.length > 1 ? `「${叫(有权限.find((c) => c.id === id))}」` : "";
       return { ok: false, error: `${名}${话}` };
     }
     return 没权限 ? { ok: false, error: `只有负责人、直属上级或总管理能把${b.customer}放回公海` } : { ok: true, updated: 0, unchanged: 已在.length, 没权限: 0 };
@@ -678,9 +682,9 @@ export async function 查重领取框数据(类型: string, 值: string): Promis
   const 移交中 = await 移交中不能领([挑.id], "领");
   if (移交中) return { ok: false, error: 移交中 };
   if ((await 无效的([挑.id])).size) return { ok: false, error: 无效不能领提示 };
-  if (!查重领取口径.新建线索项目) return { ok: true, 新建线索项目: false, 客户名: 挑.name, 渠道们: [], 联系人们: [], 默认对接人: null };
+  if (!查重领取口径.新建线索项目) return { ok: true, 新建线索项目: false, 客户名: 客户显名(挑), 渠道们: [], 联系人们: [], 默认对接人: null };
   const 联系人们 = await 看全部(() => prisma.contact.findMany({ where: { customerId: 挑.id, deletedAt: null }, orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }], select: { id: true, name: true, position: true } }));
-  return { ok: true, 新建线索项目: true, 客户名: 挑.name, 渠道们: await 可选渠道们(), 联系人们, 默认对接人: await 撞上的联系人(prisma, 挑.id, 号) };
+  return { ok: true, 新建线索项目: true, 客户名: 客户显名(挑), 渠道们: await 可选渠道们(), 联系人们, 默认对接人: await 撞上的联系人(prisma, 挑.id, 号) };
 }
 
 /**
@@ -788,7 +792,7 @@ export async function 查重领取(类型: string, 值: string, 沟通: 查重�
           if (挑接手人(底.排位(undefined, await 本月分配行(候.人们, 候.月, tx)), 跳过, 查满, 底.不限额) !== 谁) throw new 查重领取换人(false);
           if (查满 && !底.不限额 && 满了(await 本月已分(谁, 候.月, tx), await 配额of(谁, tx))) throw new 查重领取换人(true);
           const 挂 = 新建
-            ? { id: await 新建这条(tx, { cid, 客户名: 挑.name, 谁, me: me.id, 渠道, 对接人: 对接人!, 线: 候.向.线, way, org }), 公海: false }
+            ? { id: await 新建这条(tx, { cid, 客户名: 全称或显名(挑), 谁, me: me.id, 渠道, 对接人: 对接人!, 线: 候.向.线, way, org }), 公海: false }
             : await 领旧的这条(tx, { cid, 谁, 目标, 出, way });
           项目id = 挂.id;
           算数 = 候.查满 && !挂.公海;
@@ -816,7 +820,7 @@ export async function 查重领取(类型: string, 值: string, 沟通: 查重�
     const 项目名 = (await 看全部(() => prisma.project.findUnique({ where: { id: 项目id }, select: { name: true } })))?.name ?? "";
     await recordAudit({
       user: me, action: "claim", entity: "Customer", entityId: cid,
-      summary: `经号码查重从公海领取${b.customer}「${挑.name}」（${新建 ? "新建线索项目" : "项目"}「${项目名}」），自动分配给「${接手人}」，并记了一条沟通`,
+      summary: `经号码查重从公海领取${b.customer}${客户引(挑)}（${新建 ? "新建线索项目" : "项目"}「${项目名}」），自动分配给「${接手人}」，并记了一条沟通`,
       detail: { 查重领取: true, 新建线索项目: 新建, 号码类型: 号.类型, 项目: 项目id, 给: 谁, 原负责人, 分配方式: way, 为什么, ...(新建 ? { 渠道, 对接人: 新项目?.对接人?.名字 ?? null, 新建对接人: !!对接人 && "建" in 对接人 } : {}) },
     });
     // 项目上也记一条（同 assign-actions 分项目给）：项目的操作日志里看得到这次分配

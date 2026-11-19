@@ -4,6 +4,7 @@
  * 先把交上来的规整好、该拦的先拦，再给 saveCustomer 一个「接着建」，在建客户的同一个事务里写下去。
  * 中途哪一步失败整笔回滚：客户、联系人、项目、跟进一行不留（tests/project-wizard.test.ts）。
  */
+import { 全称或显名, 显名列 } from "@/lib/enterprise/customer-title";
 import type { Prisma } from "@/generated/prisma";
 import { hasVisibleText } from "../form-validation";
 import { 规整手机号 } from "../phone";
@@ -66,7 +67,12 @@ export type 向导项目 = { name: string; ownerId?: string | null; amount?: num
    * 分配方向（企业版，11-18）：市场成员选自动分配时「内贸 / 外贸」那一格，人手动改过才交；没交按 客户区域 → 电话 → 本人事业部 现算
    * （customer-region.ts 默认分配方向）。只在 projects/actions.ts 建档向导里认
    */
-  分配方向?: string | null };
+  分配方向?: string | null;
+  /**
+   * 项目名空着时按客户起名（11-19 客户名称选填）：首页 AI 新线索卡没填客户名称、项目名跟着空，建好客户后按 全称或显名
+   * （全称 → 简称 → 客户编号，customer-title.ts）起名，和潜客培育、新客户建好再分同一个口径。向导界面不传，项目名照旧必填
+   */
+  跟客户起名?: boolean };
 /** 下一步时间：企业版开了超时回收时线索、商机阶段必填（lib/project/timeout.ts），没开可不填 */
 /**
  * 阶段：企业版记沟通必选（lib/project/stage-gates.ts 的 记沟通阶段问题），团队版不传、不看。
@@ -199,8 +205,11 @@ export function 规整向导(
   const 联系人 = 规整联系人(c, 企业);
   if ("error" in 联系人) return 联系人;
 
-  const 项目 = 规整项目(p, me.id);
+  // 项目名跟客户起（AI 卡没填客户名称）：这里先放过空名，建好客户后在 向导接着建 里按 全称或显名 补上
+  const 跟客户起名 = !!p.跟客户起名 && !hasVisibleText(p.name);
+  const 项目 = 规整项目(跟客户起名 ? { ...p, name: "跟客户起名" } : p, me.id);
   if ("error" in 项目) return 项目;
+  if (跟客户起名) 项目.name = "";
 
   // 企业版开了超时回收：下一步时间、下一步计划两格都必填（11-05）
   const 跟进 = 规整沟通(f, { 要下一步, now, 叫法: "首条", 要下一步文字: 要下一步 && 企业 });
@@ -210,7 +219,7 @@ export function 规整向导(
   let 企业档: 规整好的["企业"];
   if (企业) {
     // 占位值不算填了（11-03 A2-2）：「未知」「待定」「暂未确认」这类建出来详情也算缺；联系人姓名在 规整联系人 里拦
-    if (是占位值(p.name)) return { error: 占位名提示("项目名称") };
+    if (!跟客户起名 && 是占位值(p.name)) return { error: 占位名提示("项目名称") };
     if (!文字(p.ownerId)) return { error: "请选项目负责人" };
     const 节点 = 文字(f.节点);
     if (!企业版字典.节点们.线索.includes(节点)) return { error: "请选当前进程（线索阶段的哪一步）" };
@@ -248,6 +257,8 @@ export function 向导接着建(me: { id: string }, 好: 规整好的, 出参: P
     await tx.customerCreator.create({ data: { customerId, userId: me.id } });
     // 企业版建档选了跟进节点就落在那，团队版一律潜客培育
     const 落 = { phase: 第一个节点.phase, node: 好.企业?.节点 ?? 第一个节点.node };
+    // 项目名跟客户起（规整向导 放过的空名）：客户这时已建好、有编号，按 全称或显名 起；改在 好 上，后面的操作记录跟着用这个名
+    if (!好.项目.name) 好.项目.name = 全称或显名(await tx.customer.findUniqueOrThrow({ where: { id: customerId }, select: 显名列 })).slice(0, 项目名上限);
     const 项目 = await tx.project.create({
       data: {
         ...好.项目, customerId, contactId: 联系人.id, creatorId: me.id,
@@ -321,9 +332,10 @@ export function 只建客户接着建(me: { id: string }, 好: 规整好的只�
     });
     if (好.潜客培育) {
       // 潜客培育项目（M-公海-14）：名字、负责人同 saveCustomer 补的那个（客户名、客户负责人），落在第一个节点
-      const 客 = await tx.customer.findUniqueOrThrow({ where: { id: customerId }, select: { name: true, salesOwnerId: true } });
+      // 项目名用客户显名（11-19 全称选填：空着兜简称 / 客户编号，同 saveCustomer 补的那个）
+      const 客 = await tx.customer.findUniqueOrThrow({ where: { id: customerId }, select: { ...显名列, salesOwnerId: true } });
       if (!建潜客培育) throw new Error("企业版只建客户要带上建潜客培育");
-      const projectId = await 建潜客培育(tx, { customerId, 客户名: 客.name, ownerId: 客.salesOwnerId, creatorId: me.id });
+      const projectId = await 建潜客培育(tx, { customerId, 客户名: 全称或显名(客), ownerId: 客.salesOwnerId, creatorId: me.id });
       if (!projectId) throw new Error("新客户已经有项目了，潜客培育项目没建");
       if (好.跟进.nextStepAt || 好.跟进.nextStepText) {
         await tx.project.update({ where: { id: projectId }, data: { nextStepAt: 好.跟进.nextStepAt, nextStepText: 好.跟进.nextStepText } });

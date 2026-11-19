@@ -81,6 +81,9 @@ export { 三态扫过键 };
 export type 三态客户 = {
   id: string;
   name: string;
+  /** 简称、客户编号（11-19 客户名称选填）：通知里全称空着兜它们（通知里的客户名），不写成「」 */
+  shortName?: string | null;
+  customerNo?: number | null;
   salesOwnerId: string;
   /** 客户业务线（找哪位条线总管理先看它，M-公海-24） */
   bizLine: string | null;
@@ -105,7 +108,7 @@ export type 痕原行 = { id: string; customerId: string; at: Date; userId: stri
 
 /** 收三态客户 读的客户行（页面已经读过的可以直接递进来，见 预读） */
 type 客户行 = {
-  id: string; name: string; salesOwnerId: string; bizLine: string | null; poolInvalidAt: Date | null;
+  id: string; name: string; shortName?: string | null; customerNo?: number | null; salesOwnerId: string; bizLine: string | null; poolInvalidAt: Date | null;
   pool: unknown; entClock: Prisma.EntCustomerClockGetPayload<object> | null;
 };
 
@@ -150,7 +153,7 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
     const 预读客户 = 预读.客户们?.filter((c) => 这批.has(c.id));
     const 客户们: 客户行[] = 预读客户 && 预读客户.length === 批.length ? 预读客户 : await db.customer.findMany({
       where: { id: { in: 批 } },
-      select: { id: true, name: true, salesOwnerId: true, bizLine: true, poolInvalidAt: true, pool: { select: { customerId: true } }, entClock: true },
+      select: { id: true, name: true, shortName: true, customerNo: true, salesOwnerId: true, bizLine: true, poolInvalidAt: true, pool: { select: { customerId: true } }, entClock: true },
     });
     // 在推的、退回了项目公海的、软删了的一句读回来，下面分开。软删的只给额度重置当动静用（M-公海-54：删了项目额度不往回翻，同钟的 progressDay 兜底）
     const 连删的 = await 看已删(() => db.project.findMany({
@@ -269,7 +272,7 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
       const 上次换人 = (换人of.get(c.id) ?? []).at(-1)?.at ?? null;
       const 标 = 痕们.findLast((x) => x.reason === 待交接理由 && x.fromOwnerId === c.salesOwnerId && (上次换人 === null || x.at >= 上次换人));
       出.set(c.id, {
-        id: c.id, name: c.name, salesOwnerId: c.salesOwnerId, bizLine: c.bizLine, 在公海: !!c.pool, 事实, 钟, 留痕, 同事们, 待存归零: 换人们.待存,
+        id: c.id, name: c.name, shortName: c.shortName ?? null, customerNo: c.customerNo ?? null, salesOwnerId: c.salesOwnerId, bizLine: c.bizLine, 在公海: !!c.pool, 事实, 钟, 留痕, 同事们, 待存归零: 换人们.待存,
         负责人停用: 有负责人 && 停用的.has(c.salesOwnerId), 待交接日: 标 ? beijingDay(标.at) : null, 痕行们: 痕们,
       });
     }
@@ -538,7 +541,7 @@ export type 三态夜扫明细 = { 算了: number; 换状态: number; 进公海:
 const 空明细 = (): 三态夜扫明细 => ({ 算了: 0, 换状态: 0, 进公海: [], 新被挡: 0, 交接中没收: 0, 标公海: 0 });
 
 /** 自动进公海收了的一位：原负责人、这是第几次被三态自动收回（含这次，M-公海-28） */
-export type 自动收了 = { id: string; name: string; 原负责人: string; 第几次: number; bizLine?: string | null };
+export type 自动收了 = { id: string; name: string; shortName?: string | null; customerNo?: number | null; 原负责人: string; 第几次: number; bizLine?: string | null };
 
 /**
  * 夜扫（00:05 那一遍里，nightly.ts 调）：按客户算三态、写钟和留痕，到了自动进公海的进客户公海。
@@ -703,6 +706,6 @@ export async function 自动进公海一位(id: string, 规则: 组织规则, or
     await tx.entCustomerStateLog.create({ data: { customerId: id, fromState: c.钟?.state ?? "待回收", toState: 公海状态, via: 留痕方式.自动, reason: 理由, at: 现在 } });
     const 标 = { state: 公海状态, enteredDay: 今天, noticeCount: 0, lastNoticeDay: null, blocked: false, holdUntil: null, poolDueDay: null };
     await tx.entCustomerClock.upsert({ where: { customerId: id }, create: { customerId: id, ...标 }, update: 标 });
-    return { id, name: c.name, 原负责人: c.salesOwnerId, 第几次: 自动收回次数(c.留痕) + 1, bizLine: c.bizLine };
+    return { id, name: c.name, shortName: c.shortName, customerNo: c.customerNo, 原负责人: c.salesOwnerId, 第几次: 自动收回次数(c.留痕) + 1, bizLine: c.bizLine };
   });
 }

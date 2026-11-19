@@ -53,6 +53,7 @@ import ReplyWindowInput from "@/components/ReplyWindowInput";
 import { 回复晚于回收, 北京墙钟转时刻, 认定时分配, 分配晚于回复 } from "@/lib/project/time-fields";
 import ScheduleAssignInput from "@/components/ScheduleAssignInput";
 import { 选沟通附件, 传沟通附件 } from "@/components/FollowAttachments";
+import { 全称提示, 全称像人名, 像人名提示, 名称框提示 } from "@/lib/enterprise/fullname-hint";
 
 const 草稿键 = "项目建档向导";
 const 时间格式 = "YYYY-MM-DD HH:mm";
@@ -197,7 +198,8 @@ function 客户还差(d: 稿, 企业: 企业建档, 记: (格: 格, 话: string)
   const 没类型 = 企 ? (d.更多号码 ?? []).findIndex((x) => x.value.trim() && !x.kind) : -1;
   if (没类型 >= 0) 记("更多号码", `第 ${没类型 + 2} 个号码请选择号码类型`);
   // 企业版：「未知」「待定」「暂未确认」这类占位不算填了（11-03 A2-2，服务端同一句）
-  if (!d.客户.name.trim()) 记("客户名", "请填写名称");
+  // 企业版客户名称选填（11-19 用户「客户名称设为不必填」，服务端 saveCustomer 同一条）；填了占位词照拦
+  if (!d.客户.name.trim()) { if (!企) 记("客户名", "请填写名称"); }
   else if (企 && 是占位值(d.客户.name)) 记("客户名", 占位名提示("客户名称"));
   // 联系人姓名：企业版选填（11-17「联系人姓名不一定知道」），和联系方式至少一项（联系人电话 / 第一行带进的号 / 多加的号码，同服务端 联系人姓名问题）
   const 姓名问题 = 联系人姓名问题(企, d.联系人.name, [d.联系人.phone, d.联系人.email, d.联系人.wechat, ...(企 ? (d.更多号码 ?? []).map((x) => x.value) : [])]);
@@ -461,7 +463,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   /** 企业版客户名查重：没撞 = true；不是企业版不查 */
   const 查名 = async (名 = d.客户.name.trim()): Promise<boolean> => {
     if (!企业版) return true;
-    if (!名) return false;
+    // 名称选填（11-19）：没填就没有名字可查，算没撞（号码那一半照查）
+    if (!名) return true;
     set名查中(true);
     set查错("");
     try {
@@ -988,18 +991,23 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
               onSelect={(v: string) => { if (v.startsWith("old:")) 挑老(v.slice(4)); }}
               onBlur={() => { const 名 = d.客户.name.trim(); if (名 && 名查?.名 !== 名) void 查名(名); }}
             >
-              <Input aria-label={`${b.customer}名称`} placeholder="公司或个人；已有的直接搜到" />
+              <Input aria-label={`${b.customer}名称`} placeholder={企业版 ? `${名称框提示}；已有的直接搜到` : "公司或个人；已有的直接搜到"} />
             </AutoComplete>
           ) : (
             <Input
               aria-label={`${b.customer}名称`}
               value={d.客户.name}
               status={红("客户名") ?? (名拦 ? "error" : undefined)}
-              placeholder="公司或个人"
+              placeholder={企业版 ? 名称框提示 : "公司或个人"}
               onChange={(e) => 改("客户", { name: e.target.value })}
               onBlur={() => { const 名 = d.客户.name.trim(); if (企业版 && 名 && 名查?.名 !== 名) void 查名(名); }}
             />
-          ), true, false, 企业版 && 名对上 && !名查?.撞 ? <span className="cr-ok">没有同名{b.customer}</span> : undefined)}
+          ), !企业版, false, 企业版 && 名对上 && !名查?.撞
+            // 灰字（PR-7 摘来）：没填 → 列表上怎么显示；像人名 → 提醒写单位名称，都不拦（P-抬头-13 / 16）
+            ? 全称像人名(d.客户.name)
+              ? <span className="fullname-hint" data-testid="fullname-hint" title={`没有同名${b.customer}；${像人名提示}`}><span className="cr-ok">没有同名{b.customer}</span>；{像人名提示}</span>
+              : <span className="cr-ok">没有同名{b.customer}</span>
+            : 企业版 && 全称提示(d.客户.name) ? <span className="fullname-hint" data-testid="fullname-hint" title={全称提示(d.客户.name) ?? undefined}>{全称提示(d.客户.name)}</span> : undefined)}
           {名拦 && 名查 && 名查.撞 && (
             <Alert
               data-testid="wizard-name-dupe"

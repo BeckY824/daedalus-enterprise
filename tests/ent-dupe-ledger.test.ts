@@ -130,6 +130,20 @@ describe("客户名查重", () => {
   });
 });
 
+describe("查重不用抬头、简称，只比全称和公司（P-抬头-17 / P-抬头-04）", () => {
+  it("简称和已有客户一样不算撞；全称空的老客户谁也不撞；空名字不查", async () => {
+    const x = await 现场();
+    await prisma.customer.update({ where: { id: x.客户.id }, data: { shortName: "编的简称甲" } });
+    await prisma.customer.create({ data: { name: "", shortName: "编的简称乙", phone: "", salesOwnerId: x.负责人.id } });
+    for (const 名 of ["编的简称甲", "编的简称乙", "", "  "]) {
+      expect(await 作为(x.乙, () => 客户名查重(x.乙.id, [x.乙.id], 名))).toBeNull();
+    }
+    // 全称照比
+    const r = await 作为(x.乙, () => 客户名查重(x.乙.id, [x.乙.id], "编的客户甲"));
+    expect(r && "撞" in r && r.撞.键类型).toBe("客户名");
+  });
+});
+
 describe("saveCustomer 新建按名字挡", () => {
   it("撞了有人在跟的：不新建，回撞号（负责人 + 台账 id）", async () => {
     const x = await 现场();

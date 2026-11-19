@@ -2453,6 +2453,10 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .prop-f-pick { padding: 3px 0; }
 .prop-f-off { opacity: 0.45; }
 .prop-f-was { font-size: var(--fs-note); color: var(--text-muted); text-decoration: line-through; }
+/* AI 建档卡全称那格下面的灰字（没填 / 像人名），独占一行（PR-7 摘来） */
+.prop-name-hint { width: 100%; font-size: var(--fs-note); color: var(--text-muted); }
+/* 全称灰字（客户表单、新建弹窗、AI 建档卡同一套，11-19 审查）：一行放不下「…」，悬停 title 看全文（同 11-04 全站一行规矩） */
+.fullname-hint { display: block; max-width: 100%; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .prop-f-arrow { color: var(--text-faint); text-decoration: none; display: inline-block; margin-left: 2px; }
 .prop-err { margin-top: 8px; color: var(--danger-text); font-size: var(--fs-note); }
 .prop-err-inline { margin: 0; }

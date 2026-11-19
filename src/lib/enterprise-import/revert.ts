@@ -30,6 +30,7 @@ import { 建回项目, 是项目, 项目快照, 项目挂件 } from "./project-t
 import { 客户状态自动, 跟着项目重算 } from "../enterprise/cust-status-auto-db";
 import { 卡点脱离沟通 } from "../project/blocker";
 import { 带客户编号 } from "@/lib/customer-no";
+import { 客户显名, 显名列 } from "../enterprise/customer-title";
 import { 企业版只用项目 } from "../enterprise/project-only";
 import { 补待补的 } from "./nurture-rows";
 import { 沟通挂潜客培育 } from "../project/nurture";
@@ -263,7 +264,14 @@ async function 还在(tx: Tx, e: 实体, id: string): Promise<boolean> {
 async function 名称(tx: Tx, e: 实体, id: string, written: 值表): Promise<string> {
   const 现 = await 读现值(tx, e, id);
   const v = 现 ?? written;
-  return String((e === "followup" ? v.title : v.name) ?? "") || id;
+  const 名 = String((e === "followup" ? v.title : v.name) ?? "").trim();
+  if (名) return 名;
+  // 客户全称选填（11-19）：没全称的客户报简称 → 客户编号（同 客户显名），不报 cuid
+  if (e === "customer") {
+    const c = await tx.customer.findUnique({ where: { id }, select: 显名列 });
+    if (c) return 客户显名(c);
+  }
+  return id;
 }
 
 /** 跟进删了 / 建回来了：客户的「最近跟进」按剩下的重算（同合并客户） */

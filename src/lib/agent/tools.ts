@@ -28,6 +28,7 @@ import { 启用渠道条件 } from "../enterprise/channel-main";
 import { 渠道启用 } from "../enterprise/channel-main-core";
 import { 无负责人占位邮箱 } from "../pool";
 import { 现值选取, 现值表 } from "./current-values";
+import { 客户显名, 客户按名条件, 显名列 } from "../enterprise/customer-title";
 import { prisma } from "../prisma";
 import { dayjs } from "../utils";
 import { FOLLOW_TYPE_MAP } from "../constants";
@@ -247,7 +248,7 @@ export const TOOLS: Tool[] = [
       const 我的条件 = { salesOwnerId: me, pool: { is: null } } satisfies Prisma.CustomerWhereInput;
       const 我的 = { AND: [where, 我的条件] };
       const 别的 = { AND: [where, { OR: [{ salesOwnerId: { not: me } }, { pool: { isNot: null } }] }] };
-      const select = { id: true, name: true, phone: true, school: true, grade: true, major: true, followStatus: true, decisionStatus: true, salesOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } }, channel: { select: { name: true } }, expectedSignAt: true, expectedSignOn: true, createdAt: true, lastFollowAt: true } as const;
+      const select = { id: true, name: true, shortName: true, customerNo: true, phone: true, school: true, grade: true, major: true, followStatus: true, decisionStatus: true, salesOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } }, channel: { select: { name: true } }, expectedSignAt: true, expectedSignOn: true, createdAt: true, lastFollowAt: true } as const;
       const read = (args: unknown) => prisma.customer.findMany({ ...(args as Prisma.CustomerFindManyArgs), select });
       type 行 = Awaited<ReturnType<typeof read>>;
       const 取 = (w: Prisma.CustomerWhereInput, n: number): Promise<行> =>
@@ -268,13 +269,13 @@ export const TOOLS: Tool[] = [
         范围: 范围说法[范围],
         分组: { [归属叫法.我]: 我的数, [归属叫法.别人]: total - 我的数 - 公海数, [归属叫法.公海]: 公海数 },
         ...(另有 ? { 另有, 另有说明: `另有 ${另有} 位你看得到、但不归你负责（同事或下属负责的、你在组里的项目挂的）；用户问团队 / 下属 / 同事的才用 scope=team 查，别混进「我的客户」` } : {}),
-        customers: rows.map((r) => ({ id: r.id, name: r.name, 归属: 客户归属(me, r), phone: 号(r.phone), school: r.school, grade: r.grade, major: r.major, followStatus: statusLabel(ctx.b, r.followStatus), decisionStatus: statusLabel(ctx.b, r.decisionStatus), owner: 客户负责人名(r), channel: r.channel?.name ?? null, expectedSignAt: r.expectedSignOn ?? (r.expectedSignAt ? dayjs(r.expectedSignAt).format("YYYY-MM-DD") : null), createdAt: dayjs(r.createdAt).format("YYYY-MM-DD"), lastFollowAt: r.lastFollowAt ? dayjs(r.lastFollowAt).format("MM-DD") : null })),
+        customers: rows.map((r) => ({ id: r.id, name: 客户显名(r), 归属: 客户归属(me, r), phone: 号(r.phone), school: r.school, grade: r.grade, major: r.major, followStatus: statusLabel(ctx.b, r.followStatus), decisionStatus: statusLabel(ctx.b, r.decisionStatus), owner: 客户负责人名(r), channel: r.channel?.name ?? null, expectedSignAt: r.expectedSignOn ?? (r.expectedSignAt ? dayjs(r.expectedSignAt).format("YYYY-MM-DD") : null), createdAt: dayjs(r.createdAt).format("YYYY-MM-DD"), lastFollowAt: r.lastFollowAt ? dayjs(r.lastFollowAt).format("MM-DD") : null })),
       };
       const 区间说法 = (r: { from?: Dayjs; to?: Dayjs }, 名: string) =>
         r.from || r.to ? `${名} ${r.from ? r.from.format("YYYY-MM-DD") : "最早"}~${r.to ? r.to.format("YYYY-MM-DD") : "今天"}` : "";
       const cond = [页面条件 && "当前客户页筛选", q && `「${q}」`, channel && `渠道 ${channel}`, owner && `负责人 ${owner}`, status && `状态 ${status}`, decision && `决策 ${decision}`, 区间说法(建档, "建档"), 区间说法(预签, "预计签约")].filter(Boolean).join("、") || "全部";
       if (total) {
-        return { summary: `${范围说法[范围]} · ${cond}：${total} 位${total > rows.length ? `，列出前 ${rows.length}` : ""}——${rows.slice(0, 6).map((r) => r.name).join("、")}${rows.length > 6 ? "…" : ""}`, data };
+        return { summary: `${范围说法[范围]} · ${cond}：${total} 位${total > rows.length ? `，列出前 ${rows.length}` : ""}——${rows.slice(0, 6).map((r) => 客户显名(r)).join("、")}${rows.length > 6 ? "…" : ""}`, data };
       }
       // 我负责的里没有、但看得到的别人名下有：照实说「你负责的里没有」，不去别的表找（那一位就在客户表里）
       if (另有) return { summary: `${范围说法[范围]}里没有匹配 ${cond} 的${ctx.b.customer}（另有 ${另有} 位不归你负责）`, data: { ...data, 没有匹配: cond } };
@@ -358,10 +359,11 @@ export const TOOLS: Tool[] = [
       */
       if (!id && name) {
         const 候选 = await prisma.customer.findMany({
-          where: { name: { contains: name } },
+          // 全称、简称、客户编号都认（11-19 客户名称选填：没全称的按简称 / 编号也找得到）
+          where: 客户按名条件(name),
           take: 6,
           orderBy: { lastFollowAt: "desc" },
-          select: { id: true, name: true, school: true, phone: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } },
+          select: { ...显名列, school: true, phone: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } },
         });
         if (!候选.length) {
           // 和 search_customers 同一条：查无此人时把别的表一起看了，别让模型只会说「没有」
@@ -375,7 +377,7 @@ export const TOOLS: Tool[] = [
         if (候选.length > 1)
           return {
             summary: `叫「${name}」的有 ${候选.length} 位，要哪一位`,
-            data: { 需要挑一位: 候选.map((c) => ({ id: c.id, 姓名: c.name, 学校: c.school, 电话: 号(c.phone), 负责人: 客户负责人名(c) })) },
+            data: { 需要挑一位: 候选.map((c) => ({ id: c.id, 姓名: 客户显名(c), 学校: c.school, 电话: 号(c.phone), 负责人: 客户负责人名(c) })) },
           };
         id = 候选[0].id;
       }
@@ -438,7 +440,9 @@ export const TOOLS: Tool[] = [
       const 回填个 = 项目行.slice(0, 项目最多).filter(是历史分析).length;
       const data = {
         id: c.id,
-        name: c.name,
+        // 全称选填（11-19）：没全称给显名（简称 → 客户编号），全称另给一格，模型别把显名当全称写回
+        name: 客户显名(c),
+        全称: c.name || "（没填）",
         归属: 客户归属(ctx.userId, c),
         sourceLead: await 客户来源线索(c.id),
         // 电话一定要给：不给的话模型会如实说「系统里没存电话」，
@@ -456,7 +460,7 @@ export const TOOLS: Tool[] = [
         timeline: timeline || "（从未跟进过）",
         ...(只用项目 ? { 项目, ...(项目行.length > 项目最多 ? { 项目说明: `只列最近动过的 ${项目最多} 个，更早的用 list_projects 按客户名查` } : {}) } : {}),
       };
-      return { summary: `${c.name}：${c.followUps.length} 条跟进${sources ? `、${sources} 段原文` : ""}${项目.length ? `、${项目行.length > 项目最多 ? `${项目最多}+` : 项目.length - 回填个} 个项目${项目行.length <= 项目最多 && 回填个 ? `（另有 ${回填个} 个历史分析回填的，不计入）` : ""}` : ""}${c.plans[0] ? "、1 条计划" : ""}`, data, records };
+      return { summary: `${客户显名(c)}：${c.followUps.length} 条跟进${sources ? `、${sources} 段原文` : ""}${项目.length ? `、${项目行.length > 项目最多 ? `${项目最多}+` : 项目.length - 回填个} 个项目${项目行.length <= 项目最多 && 回填个 ? `（另有 ${回填个} 个历史分析回填的，不计入）` : ""}` : ""}${c.plans[0] ? "、1 条计划" : ""}`, data, records };
     },
   },
   {
@@ -540,19 +544,19 @@ export const TOOLS: Tool[] = [
           where: 我的跟进,
           orderBy: { occurredAt: "desc" },
           take: 50,
-          select: { type: true, title: true, content: true, occurredAt: true, customer: { select: { id: true, name: true, followStatus: true } } },
+          select: { type: true, title: true, content: true, occurredAt: true, customer: { select: { ...显名列, followStatus: true } } },
         }),
         prisma.contract.findMany({
           where: 我的签约,
           orderBy: { signedAt: "desc" },
           take: 30,
-          select: { amount: true, signedAt: true, customer: { select: { name: true } }, ...带币种.签约 },
+          select: { amount: true, signedAt: true, customer: { select: 显名列 }, ...带币种.签约 },
         }),
         prisma.customer.findMany({
           where: 我新建的,
           orderBy: { createdAt: "desc" },
           take: 30,
-          select: { name: true, phone: true, followStatus: true, createdAt: true },
+          select: { ...显名列, phone: true, followStatus: true, createdAt: true },
         }),
         prisma.followPlan.count({ where: { ownerId: ctx.userId, done: true, doneAt: 时间范围 } }),
       ]);
@@ -564,7 +568,7 @@ export const TOOLS: Tool[] = [
         if (有) 有.次数++;
         else
           按人.set(k, {
-            姓名: f.customer.name,
+            姓名: 客户显名(f.customer),
             次数: 1,
             最近: dayjs(f.occurredAt).format("MM-DD"),
             最近聊了: (f.title || f.content).slice(0, 60),
@@ -589,9 +593,9 @@ export const TOOLS: Tool[] = [
           ...(跟进笔数 > 跟进.length || 签约数 > 签约.length || 新建数 > 新建.length ? { 说明: "下面的明细只列了最近的一部分，数字以上面为准" } : {}),
           完成的计划: 完成的计划,
           跟过的人: [...按人.values()],
-          签约: 签约.map((c) => ({ 客户: c.customer.name, 金额: 签约金额(c), 币种: 签约币种(c), 签约日: dayjs(c.signedAt).format("YYYY-MM-DD") })),
+          签约: 签约.map((c) => ({ 客户: 客户显名(c.customer), 金额: 签约金额(c), 币种: 签约币种(c), 签约日: dayjs(c.signedAt).format("YYYY-MM-DD") })),
           签约合计: 金额,
-          新建的客户: 新建.map((c) => ({ 姓名: c.name, 电话: 号(c.phone), 跟进状态: statusLabel(ctx.b, c.followStatus), 建档日: dayjs(c.createdAt).format("YYYY-MM-DD") })),
+          新建的客户: 新建.map((c) => ({ 姓名: 客户显名(c), 电话: 号(c.phone), 跟进状态: statusLabel(ctx.b, c.followStatus), 建档日: dayjs(c.createdAt).format("YYYY-MM-DD") })),
         },
       };
     },
@@ -622,8 +626,8 @@ export const TOOLS: Tool[] = [
     args: "{}",
     async run(_args, ctx) {
       const [pendingPlans, pendingTasks] = await Promise.all([
-        prisma.followPlan.findMany({ where: { done: false, ownerId: ctx.userId }, orderBy: [{ plannedAt: "asc" }, { id: "asc" }], select: { id: true, subject: true, plannedAt: true, plannedOn: true, method: true, customer: { select: { id: true, name: true } } } }),
-        prisma.task.findMany({ where: { done: false, ownerId: ctx.userId }, orderBy: [{ dueAt: "asc" }, { id: "asc" }], select: { id: true, title: true, dueAt: true, dueOn: true, customer: { select: { id: true, name: true } } } }),
+        prisma.followPlan.findMany({ where: { done: false, ownerId: ctx.userId }, orderBy: [{ plannedAt: "asc" }, { id: "asc" }], select: { id: true, subject: true, plannedAt: true, plannedOn: true, method: true, customer: { select: 显名列 } } }),
+        prisma.task.findMany({ where: { done: false, ownerId: ctx.userId }, orderBy: [{ dueAt: "asc" }, { id: "asc" }], select: { id: true, title: true, dueAt: true, dueOn: true, customer: { select: 显名列 } } }),
       ]);
       const plans = earliestScheduled(pendingPlans, p => scheduleOrder(p.plannedAt, p.plannedOn), 10);
       const tasks = earliestScheduled(pendingTasks, t => scheduleOrder(t.dueAt, t.dueOn), 10);
@@ -637,8 +641,8 @@ export const TOOLS: Tool[] = [
         数逾期跟进(prisma, { ownerId: ctx.userId }),
       ]);
       const data = {
-        跟进计划: plans.map((p) => ({ customerId: p.customer.id, name: p.customer.name, when: dayjs(scheduleValue(p.plannedAt, p.plannedOn)).format(p.plannedOn ? "MM-DD" : "MM-DD HH:mm"), method: p.method, subject: p.subject, overdue: 是逾期(scheduleValue(p.plannedAt, p.plannedOn)) })),
-        待办: tasks.map((t) => ({ customerId: t.customer.id, name: t.customer.name, when: t.dueAt ? dayjs(scheduleValue(t.dueAt, t.dueOn)).format(t.dueOn ? "MM-DD" : "MM-DD HH:mm") : null, title: t.title, overdue: 是逾期(scheduleValue(t.dueAt, t.dueOn)) })),
+        跟进计划: plans.map((p) => ({ customerId: p.customer.id, name: 客户显名(p.customer), when: dayjs(scheduleValue(p.plannedAt, p.plannedOn)).format(p.plannedOn ? "MM-DD" : "MM-DD HH:mm"), method: p.method, subject: p.subject, overdue: 是逾期(scheduleValue(p.plannedAt, p.plannedOn)) })),
+        待办: tasks.map((t) => ({ customerId: t.customer.id, name: 客户显名(t.customer), when: t.dueAt ? dayjs(scheduleValue(t.dueAt, t.dueOn)).format(t.dueOn ? "MM-DD" : "MM-DD HH:mm") : null, title: t.title, overdue: 是逾期(scheduleValue(t.dueAt, t.dueOn)) })),
         ...(计划数 > plans.length || 待办数 > tasks.length ? { 说明: "下面只列了最早的各 10 条，条数以 summary 为准" } : {}),
       };
       const 段 = [计划数 && `${计划数} 条计划`, 待办数 && `${待办数} 条待办`].filter(Boolean).join("、");
@@ -755,7 +759,7 @@ export const TOOLS: Tool[] = [
         ...(node ? { node: { in: 同名们(node) } } : {}),
         ...(r === "全部" ? {} : r && 是结局(r) ? { result: { in: 同名们(r) } } : { result: null }),
         ...(ownerName ? { ownerId: { in: (await prisma.user.findMany({ where: { name: { contains: ownerName } }, select: { id: true } })).map((u) => u.id) } } : {}),
-        ...(词 ? { OR: [{ name: { contains: 词 } }, { customer: { name: { contains: 词 } } }] } : {}),
+        ...(词 ? { OR: [{ name: { contains: 词 } }, { customer: 客户按名条件(词) }] } : {}),
         ...(天 ? { updatedAt: { lt: dayjs().subtract(天, "day").toDate() } } : {}),
         // 公海里的项目只在问公海时列（P-看-03；企业版项目列表默认也不列公海项目，lib/project/list.ts 列表条件）。团队版照旧混着、行上写「在公海」
         ...(args.pooled === true ? { pooledAt: { not: null } } : 企业版() ? { pooledAt: null } : {}),
@@ -773,7 +777,7 @@ export const TOOLS: Tool[] = [
           where, orderBy: { updatedAt: "desc" }, take: 30,
           select: {
             id: true, name: true, customerId: true, ownerId: true, phase: true, node: true, result: true, amount: true, currency: true, source: true,
-            nextStepAt: true, nextStepText: true, updatedAt: true, pooledAt: true, customer: { select: { name: true } }, exceptionCategory: { select: { name: true } },
+            nextStepAt: true, nextStepText: true, updatedAt: true, pooledAt: true, customer: { select: 显名列 }, exceptionCategory: { select: { name: true } },
           },
         }),
       ]);
@@ -799,7 +803,7 @@ export const TOOLS: Tool[] = [
           项目: 列.map((p) => ({
             id: p.id,
             名称: p.name,
-            ...(露客户(me, p, 可见) ? { customerId: p.customerId, 客户: p.customer.name } : { 客户: "（公海里同事的客户，看不到名字）" }),
+            ...(露客户(me, p, 可见) ? { customerId: p.customerId, 客户: 客户显名(p.customer) } : { 客户: "（公海里同事的客户，看不到名字）" }),
             阶段: p.phase,
             节点: p.node,
             结局: p.result ?? "进行中",
@@ -871,7 +875,7 @@ export const TOOLS: Tool[] = [
           take: 30,
           select: {
             id: true, amount: true, signedAt: true, remark: true, ...带币种.签约,
-            customer: { select: { id: true, name: true, salesOwner: { select: { id: true, name: true, email: true } }, channelOwner: { select: { id: true, name: true, email: true } }, channel: { select: { name: true } } } },
+            customer: { select: { ...显名列, salesOwner: { select: { id: true, name: true, email: true } }, channelOwner: { select: { id: true, name: true, email: true } }, channel: { select: { name: true } } } },
             owner: { select: { salesOwnerId: true, channelOwnerId: true } },
           },
         }),
@@ -889,7 +893,7 @@ export const TOOLS: Tool[] = [
           已列出: rows.length,
           签约: rows.map((c) => ({
             customerId: c.customer.id,
-            客户: c.customer.name,
+            客户: 客户显名(c.customer),
             金额: 签约金额(c),
             币种: 签约币种(c),
             签约日: dayjs(c.signedAt).format("YYYY-MM-DD"),
@@ -961,7 +965,7 @@ export const TOOLS: Tool[] = [
         prisma.followUp.count({ where }),
         prisma.followUp.findMany({
           where, orderBy: { occurredAt: "desc" }, take: 15,
-          select: { content: true, type: true, occurredAt: true, customer: { select: { id: true, name: true, salesOwnerId: true } }, owner: { select: { name: true } } },
+          select: { content: true, type: true, occurredAt: true, customer: { select: { ...显名列, salesOwnerId: true } }, owner: { select: { name: true } } },
         }),
       ]);
       // 说清到底搜了哪些词：答案里出现「费用」而用户问的是「预算」时，人要能看懂为什么
@@ -973,7 +977,7 @@ export const TOOLS: Tool[] = [
           总数: total,
           记录: rows.map((f) => ({
             customerId: f.customer.id,
-            客户: f.customer.name,
+            客户: 客户显名(f.customer),
             归属: 客户归属(ctx.userId, f.customer),
             时间: dayjs(f.occurredAt).format("YYYY-MM-DD"),
             类型: FOLLOW_TYPE_MAP[f.type]?.label ?? f.type,
@@ -1166,7 +1170,7 @@ export const TOOLS: Tool[] = [
       const 挂项目 = 关联们[`${规格.表}.项目` as keyof typeof 关联们]?.列 === "project";
       const 带 = {
         ...(挂项目 ? { project: { select: { name: true } } } : {}),
-        ...(规格.表 === "项目" ? { customerId: true, customer: { select: { name: true } } } : {}),
+        ...(规格.表 === "项目" ? { customerId: true, customer: { select: 显名列 } } : {}),
       };
       const 主键 = 表定义.主键 ?? "id";
       const select = { [主键]: true, ...选, ...带, ...Object.fromEntries(内部日历列.map(k => [k, true])) };
@@ -1197,7 +1201,7 @@ export const TOOLS: Tool[] = [
           Object.entries(r).filter(([k]) => !内部日历列.includes(k) && k !== "customerId").map(([k, v]) => [
             k === "project" ? "所属项目" : k === "customer" ? "所属客户" : 中文[k] ?? k,
             k === "project" ? (v as { name: string } | null)?.name ?? null
-              : k === "customer" ? (露(r) ? (v as { name: string } | null)?.name ?? null : "（客户对你不可见）")
+              : k === "customer" ? (露(r) ? (v ? 客户显名(v as Parameters<typeof 客户显名>[0]) : null) : "（客户对你不可见）")
               : 叫(k, v) ?? (是电话(k) && typeof v === "string" ? 号(v) : 日历列[k] && typeof r[日历列[k]] === "string" ? r[日历列[k]] : v instanceof Date ? dayjs(v).format("YYYY-MM-DD") : 显示(k, v)),
           ]),
         ),
@@ -1266,7 +1270,8 @@ function proposeTool(name: string, description: string, args: string, kind: Prop
           ? await prisma.customer.findUnique({ where: { id }, select: 现值选取 })
           : null;
         if (!found) return { summary: "没有这位", data: { error: "id 不对，先用 search_customers 拿到 id" } };
-        c = { id: found.id, name: found.name };
+        // 卡上「给「X」记一条」叫显名（11-19 全称选填：空着兜简称 / 客户编号）
+        c = { id: found.id, name: 客户显名(found) };
         if (kind === "update_customer" || kind === "set_status") {
           /*
             现值里的电话**也打码**（2026-10-02 排查 AI A3）。原来说「这是预填值、会原样写回」所以不打码——那句不成立：

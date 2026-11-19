@@ -23,6 +23,7 @@ import { 收三态客户, 写钟, 三态开着, 存归零, type 三态客户 } f
 import { 读组织 } from "./org";
 import { 能继续持有三态, 能代选三态, 能裁决三态, 能总管理继续持有三态, type 谁 } from "./permissions";
 import { notify } from "./notify";
+import { 通知里的客户名 } from "./notice-mask";
 
 export type 三态动作结果 = { ok: true; 剩次数?: number; 剩天数?: number; 通知了?: number } | { ok: false; error: string };
 
@@ -110,7 +111,7 @@ export async function 继续持有(me: 我, customerId: string, 理由?: string 
     if (新r.计时) await 写钟(tx, 新, 新r, 今天, 现在, `继续持有顺延 ${天数} 天，三个节点一起往后挪`);
     await tx.entCustomerClock.update({ where: { customerId }, data: { holdUntil: 加天(今天, 天数), holdReason: 说 } });
     const 额 = 新r.计时 ? 新r.继续持有 : r.继续持有;
-    return { ok: true as const, 剩次数: 额.剩次数, 剩天数: 额.剩天数, 代选, 负责人: c.salesOwnerId, 名: c.name, 留痕Id: 留.id, 说 };
+    return { ok: true as const, 剩次数: 额.剩次数, 剩天数: 额.剩天数, 代选, 负责人: c.salesOwnerId, 名: 通知里的客户名(c), 留痕Id: 留.id, 说 };
   }));
   if (!结果.ok) return 结果;
   if (结果.代选) {
@@ -164,7 +165,7 @@ export async function 让同事结束项目动作(me: 我, customerId: string, �
     await tx.entCustomerStateLog.create({
       data: { customerId, fromState: "待回收", toState: "待回收", userId: me.id, via: 留痕方式.总管理裁决, reason: `${让同事结束项目}（${查.c.同事们.length} 位同事）`, at: 现在 },
     });
-    return { ok: true as const, 同事们: 查.c.同事们, 名: 查.c.name };
+    return { ok: true as const, 同事们: 查.c.同事们, 名: 通知里的客户名(查.c) };
   }));
   if (!结果.ok) return 结果;
   // M-公海-33 飞书只推三级提醒链和系统管理员：同事不在链上，只记站内

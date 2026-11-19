@@ -18,6 +18,7 @@ import { 客户属线条件, 客户说不清线, 项目属线条件, 项目说�
 import { 看全部 } from "@/lib/team-scope";
 import { 按主键取没删的 } from "./soft-delete-core";
 
+import { 客户显名, 显名列 } from "./customer-title";
 type 库 = Prisma.TransactionClient | typeof prisma;
 
 /** 公海操作限哪条线：null = 不限（系统管理员、没设业务线、不是企业版） */
@@ -54,9 +55,9 @@ export async function 公海别线的(
   const [客户, 项目] = await 看全部(() => Promise.all([
     客户ids.length
       ? Promise.all([
-          按主键取没删的(() => db.customer.findMany({ where: { id: { in: 客户ids } }, select: { id: true, name: true, deletedAt: true } })),
+          按主键取没删的(() => db.customer.findMany({ where: { id: { in: 客户ids } }, select: { ...显名列, deletedAt: true } })),
           按主键取没删的(() => db.customer.findMany({ where: { id: { in: 客户ids }, OR: [客户属线条件(线, 外贸们), 客户说不清线] }, select: { id: true, deletedAt: true } })),
-        ]).then(([全, 放行]) => 差(全, 放行))
+        ]).then(([全, 放行]) => 差(全, 放行).map((c) => ({ id: c.id, name: 客户显名(c) })))
       : Promise.resolve([]),
     项目ids.length
       ? Promise.all([

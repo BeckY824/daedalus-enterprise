@@ -26,7 +26,8 @@ import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 企业版 } from "./switch";
 import { 全公司查号, 首条撞的, type 验好的号 } from "./contact-dedupe";
 import { notify } from "./notify";
-import { 名字是号码, 通知里的客户名 } from "./notice-mask";
+import { 通知里的客户名 } from "./notice-mask";
+import { 全称或显名, 客户引 } from "./customer-title";
 import { 主渠道入口前缀, 是主渠道入口 } from "./channel-main-core";
 import { 读组织 } from "./org";
 import { 没设业务角色, 只看的人 } from "./permissions";
@@ -235,18 +236,17 @@ export async function 同号再次录入(我: 人, 号: 验好的号, 录入: �
   // 列表口径（限定层，含 11-04 市场成员「自己创建、不在公海」）看得到也算：直接按当前身份查一次
   const 列表看得到 = async () => !!(await prisma.customer.findFirst({ where: { id: 首条.id }, select: { id: true } }));
   const 看得见 = 看得到(首条, await 读的我(defaultClient)) || 记.成员状态 === "JOINED" || 自己负责 || (await 列表看得到());
-  const 反馈 = 拼反馈(负责人名, 自己负责, !!项目, 记.邀请, 看得见 ? 首条.name : null, !!待分配);
+  const 反馈 = 拼反馈(负责人名, 自己负责, !!项目, 记.邀请, 看得见 ? 全称或显名(首条) : null, !!待分配);
 
   if (!记.已记过) {
     // 待分配（X-87）：链到那条待分配线索，能分配的人从那里分；建的人只是占位，不发
     const 链接 = 待分配 ? `/projects/${待分配.id}` : 项目 ? `/projects/${项目.id}` : `/customers/${首条.id}`;
     const 收 = 待分配 ? 能分配的人们(await 读组织()) : [项目?.ownerId, 首条.salesOwnerId];
     // 推到飞书的不带号码、不带录入的沟通原文（P-转-12 提醒里不带手机号，审核 11-18 P1-2）：只说谁、从哪录的，原文去沟通记录看。
-    // 客户名就是号码的换成客户编号
-    const 编号 = 名字是号码(首条.name) ? (await 看全部(() => prisma.customer.findUnique({ where: { id: 首条.id }, select: { customerNo: true } })))?.customerNo : null;
+    // 客户名就是号码的、全称简称都空着的换成客户编号（首条撞的 带着 显名列）
     await notify(收.filter((u) => u !== 我.id), {
       kind: "撞号",
-      title: `${我.name} 再次录入了同一号码${拼.不同 ? "（来源不同）" : ""}：${通知里的客户名({ name: 首条.name, id: 首条.id, customerNo: 编号 })}`,
+      title: `${我.name} 再次录入了同一号码${拼.不同 ? "（来源不同）" : ""}：${通知里的客户名(首条)}`,
       body: 通知正文(我.name, 录入.入口, 来源, 拼.不同 ? 现有 : [], !!录入.内容?.trim(), !!项目),
       link: 链接,
       key: `same-number:${记.followUpId}`,
@@ -265,7 +265,7 @@ export async function 同号再次录入(我: 人, 号: 验好的号, 录入: �
       action: "create",
       entity: "FollowUp",
       entityId: 记.followUpId,
-      summary: `${拼.标题}：${我.name} 录入「${首条.name}」的号码，记录写入${项目 ? "现有项目" : "客户沟通记录"}${待分配 ? "（待分配，通知能分配的人）" : ""}${记.邀请 === "发了" ? "；系统因撞号发出组员邀请" : ""}`,
+      summary: `${拼.标题}：${我.name} 录入${客户引(首条)}的号码，记录写入${项目 ? "现有项目" : "客户沟通记录"}${待分配 ? "（待分配，通知能分配的人）" : ""}${记.邀请 === "发了" ? "；系统因撞号发出组员邀请" : ""}`,
       detail: { 客户: 首条.id, 项目: 项目?.id ?? null, 待分配项目: 待分配?.id ?? null, 入口: 录入.入口, 来源, 现有来源: 现有, 来源不同: 拼.不同, 邀请: 记.邀请 },
     });
   }

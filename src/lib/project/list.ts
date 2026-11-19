@@ -29,6 +29,7 @@ import { 创建时间段, 是日期 } from "@/lib/custom-date-range";
 import { 不算补建, 不算历史分析 } from "./system-created";
 import { 读批次, 批次参数, 批次条件 } from "./import-batch";
 import { 指定回复文字, 短时刻 } from "./time-fields";
+import { 客户显名 } from "@/lib/enterprise/customer-title";
 
 /** 判了无效的三个叫法：列表上叫法后面跟原因摘要（客户 11-05（X-09）：「初验无效 · 原因」） */
 const 带原因的叫法: ReadonlySet<验证结果叫法> = new Set<验证结果叫法>(["初验无效", "终验无效", "无效线索"]);
@@ -271,7 +272,7 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
  */
 function 行include(市场: boolean, meId: string) {
   return {
-    customer: { select: { name: true, lastFollowAt: true, channelId: true, pool: { select: { customerId: true } }, channel: { select: { name: true } } } },
+    customer: { select: { name: true, shortName: true, customerNo: true, lastFollowAt: true, channelId: true, pool: { select: { customerId: true } }, channel: { select: { name: true } } } },
     exceptionCategory: { select: { name: true } },
     channel: { select: { name: true } },
     ...(市场 ? {
@@ -469,7 +470,7 @@ async function 拼项目行(
   // 只负责项目的人（仅项目，project-only-customers.ts）：客户看不到，但点得进受限客户详情，不标「进不了」
   const 仅项目 = 企 && rows.some((p) => !可见.has(p.customerId) && p.ownerId === me.id) ? new Set([...(await 仅项目客户们(me)).values()].flat()) : new Set<string>();
   return rows.map((p) => ({
-    id: p.id, name: p.name, customerId: p.customerId, customerName: 露(p) ? p.customer.name : null, ...(企 && !可见.has(p.customerId) && !仅项目.has(p.id) ? { 进不了客户详情: true } : {}),
+    id: p.id, name: p.name, customerId: p.customerId, customerName: 露(p) ? 客户显名({ id: p.customerId, ...p.customer }) : null, ...(企 && !可见.has(p.customerId) && !仅项目.has(p.id) ? { 进不了客户详情: true } : {}),
     ownerId: p.ownerId, ownerName: 名字.get(负责人of(p)) ?? (负责人of(p) ? "已不在的成员" : "没人"),
     // 库里存着旧节点名 / 旧结局的按这套的新名给界面（企业版 10-31 改名）
     ...本套位置({ phase: p.phase, node: p.node, result: p.result }, 字典of(企)), exceptionCategory: p.exceptionCategory?.name ?? null, exceptionReason: p.exceptionReason,
@@ -750,7 +751,7 @@ export async function 读名单项目(me: { id: string; role?: string }, 字典:
     take: 项目上限,
     select: {
       id: true, name: true, phase: true, node: true, result: true, pooledAt: true, ownerId: true, customerId: true, nextStepAt: true, nextStepText: true,
-      customer: { select: { name: true } },
+      customer: { select: { name: true, shortName: true, customerNo: true } },
       followUps: { orderBy: { followUp: { occurredAt: "desc" } }, take: 1, select: { followUp: { select: { type: true, method: true, content: true, occurredAt: true } } } },
     },
   });
@@ -762,7 +763,8 @@ export async function 读名单项目(me: { id: string; role?: string }, 字典:
       const f = 露 ? r.followUps[0]?.followUp : undefined;
       return {
         id: r.id, name: r.name, ...阶段与进程(r, 字典), pooled: !!r.pooledAt,
-        customerName: 露 ? r.customer.name : null,
+        // 全称选填（11-19）：没全称的叫显名（简称 → 客户编号）
+        customerName: 露 ? 客户显名({ id: r.customerId, ...r.customer }) : null,
         lastType: f?.type ?? null,
         lastMethod: f?.method ?? null,
         lastAt: f ? f.occurredAt.toISOString() : null,

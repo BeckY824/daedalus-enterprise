@@ -525,9 +525,10 @@ export function missingFields(p: Proposal, b?: 叫法, 建档?: 建档必填): s
     if (!p.method) miss.push("方式");
   }
   if (p.kind === "add_lead") {
-    // 企业版和新建项目同叫法：客户名称（组织 / 公司）、联系人姓名都必填（11-04）
+    // 企业版和新建项目同叫法：客户名称（组织 / 公司）。11-19 起企业版客户名称选填（用户「AI 录入什么都是一样的」，同新建弹窗、saveCustomer）；
+    // 别的版本照旧必填
     const 企格 = 建档?.只用项目 ? 建档.企业 : undefined;
-    if (!p.name.trim()) miss.push(企格 ? "客户名称" : "名称");
+    if (!p.name.trim() && !企格) miss.push("名称");
     // 联系人姓名 11-17 起选填（员工反馈：市场录入时常常不知道）；联系方式任一类型必填（M-必填-01），全空才拦
     // 备注里认得出的邮箱 / 微信 / 阿里国际站ID 也算（落库时 dashboard/apply.ts 同样认出来记进联系人）
     if (企格 && !线索号码行(p).length && !认出备注里的号码(p.remark || "").号们.length) miss.push("联系方式");

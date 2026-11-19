@@ -30,6 +30,7 @@ import { 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
 import { 字典of, 同名们 } from "@/lib/project/stage-dict";
 import { 本套位置 } from "@/lib/project/nodes";
 import { 读线索验证 } from "@/lib/project/lead-verify";
+import { 客户显名 } from "@/lib/enterprise/customer-title";
 import { 有效线索节点, 要沟通的节点 } from "@/lib/project/stage-gates";
 import { 待分配占位 } from "@/lib/enterprise/await-assign";
 import { 市场进不了详情, 读市场身份 } from "@/lib/enterprise/market-view-db";
@@ -147,7 +148,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   const p = await prisma.project.findUnique({
     where: { id },
     include: {
-      customer: { select: { id: true, name: true, school: true, lastFollowAt: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, channel: { select: { name: true } } } },
+      customer: { select: { id: true, name: true, shortName: true, customerNo: true, school: true, lastFollowAt: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, channel: { select: { name: true } } } },
       channel: { select: { name: true } },
       contact: { select: { id: true, name: true, position: true } },
       exceptionCategory: { select: { name: true } },
@@ -356,8 +357,9 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   const 详情: 项目详情 = {
     收藏了: await 项目收藏了吗(me.id, id),
     id: p.id, name: p.name, remark: p.remark, amount: p.amount, currency: p.currency,
-    customer: 露 ? { id: p.customer.id, name: p.customer.name, school: p.customer.school } : null, contact: 露 ? p.contact : null,
-    客户入口, 客户卡名: 客户入口 === "只读卡" ? { name: p.customer.name, school: p.customer.school } : null,
+    // 全称选填（11-19）：没全称的叫显名（简称 → 客户编号），项目资料卡「客户」那格不空白
+    customer: 露 ? { id: p.customer.id, name: 客户显名(p.customer), school: p.customer.school } : null, contact: 露 ? p.contact : null,
+    客户入口, 客户卡名: 客户入口 === "只读卡" ? { name: 客户显名(p.customer), school: p.customer.school } : null,
     // 在公海里 ownerName 给原负责人（界面写「原负责人 X」），企业版库里负责人已经清空，从留痕取；没这个人就是空串，界面写「暂无」
     ownerId: p.ownerId, ownerName: (公海 ? 叫(上一任) : 叫(p.ownerId)) ?? "", historyOwners: 历史负责人.map((x) => 叫(x)!), creatorName: 人名显示(p.creatorId, 名, { 创建人: true, 不在: "已不在的成员" }), createdAt: p.createdAt.toISOString(),
     phase: 现.phase, node: 现.node, result: 现.result, exceptionReason: p.exceptionReason, exceptionCategory: p.exceptionCategory?.name ?? null,

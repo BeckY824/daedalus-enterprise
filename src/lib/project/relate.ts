@@ -28,6 +28,7 @@ import { 能管项目, 露客户 } from "./db";
 import { 页面看得到的客户 } from "./visible-customers";
 import { 读产品需求 as 读多选, 存产品需求 as 存多选 } from "./profile-rules";
 import { 客户显名, 引用联系人, 短号, 概览名称 } from "./relate-names";
+import { 显名列 } from "@/lib/enterprise/customer-title";
 import type { 阶段字典 } from "./stage-dict";
 import { 权限组织 } from "@/lib/enterprise/org";
 
@@ -72,7 +73,7 @@ async function 读项目(projectId: unknown) {
 /** 联系人看不看得到（同 customers/[id]/contact-link-actions.ts 看得到的人）：主客户看得到，或挂在一位看得到的客户上 */
 async function 看得到的人(contactId: unknown) {
   if (typeof contactId !== "string" || !contactId) return null;
-  const 人 = await 看全部(() => prisma.contact.findUnique({ where: { id: contactId }, select: { id: true, name: true, gender: true, customer: { select: { id: true, name: true, shortName: true } } } }));
+  const 人 = await 看全部(() => prisma.contact.findUnique({ where: { id: contactId }, select: { id: true, name: true, gender: true, customer: { select: 显名列 } } }));
   if (!人) return null;
   const 主见 = await prisma.contact.findUnique({ where: { id: contactId }, select: { id: true } });
   const 挂见 = 主见 ? null : await prisma.contactCustomer.findFirst({ where: { contactId }, select: { id: true } });
@@ -89,7 +90,7 @@ export async function 加关联客户(me: 谁, projectId: string, customerId: st
   if (!p) return 项目不在;
   if (typeof customerId !== "string" || !customerId) return { ok: false, error: "请选一位客户" };
   if (customerId === p.customerId) return { ok: false, error: "这就是项目的主客户，直接在它那一行勾身份" };
-  const c = await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true, name: true, shortName: true } });
+  const c = await prisma.customer.findUnique({ where: { id: customerId }, select: 显名列 });
   if (!c) return 客户不在;
   const 身份 = await 认多选("projCustRole", "项目身份", roles, []);
   if (!身份.ok) return 身份;
@@ -123,7 +124,7 @@ export async function 改客户身份(me: 谁, projectId: string, customerId: st
   const 原 = 行?.roles ?? null;
   const 身份 = await 认多选("projCustRole", "项目身份", roles, 读多选(原));
   if (!身份.ok) return 身份;
-  const c = await 看全部(() => prisma.customer.findUnique({ where: { id: customerId }, select: { id: true, name: true, shortName: true } }));
+  const c = await 看全部(() => prisma.customer.findUnique({ where: { id: customerId }, select: 显名列 }));
   if (!c) return 客户不在;
   if (身份.值 === 原) return { ok: true, 名: 客户显名(c), 变了: false };
   return 查完再写(async (tx) => {
@@ -146,7 +147,7 @@ export async function 解除关联客户(me: 谁, projectId: string, customerId:
   if (!p) return 项目不在;
   if (typeof customerId !== "string" || !customerId) return 客户不在;
   if (customerId === p.customerId) return { ok: false, error: "主客户解除不了，要换在「编辑项目」里换" };
-  const c = await 看全部(() => prisma.customer.findUnique({ where: { id: customerId }, select: { id: true, name: true, shortName: true } }));
+  const c = await 看全部(() => prisma.customer.findUnique({ where: { id: customerId }, select: 显名列 }));
   return 查完再写(async (tx) => {
     const 现 = await tx.project.findUnique({ where: { id: p.id }, select: { ownerId: true, pooledAt: true, customerId: true } });
     if (!现) return 项目不在;
@@ -213,7 +214,7 @@ export async function 改联系人角色立场(me: 谁, projectId: string, conta
     if (!s.ok) return s;
     if (s.值 !== (行?.stance ?? null)) 新.stance = s.值;
   }
-  const 人 = await 看全部(() => prisma.contact.findUnique({ where: { id: contactId }, select: { name: true, gender: true, customer: { select: { id: true, name: true, shortName: true } } } }));
+  const 人 = await 看全部(() => prisma.contact.findUnique({ where: { id: contactId }, select: { name: true, gender: true, customer: { select: 显名列 } } }));
   if (!人) return 人不在;
   if (!Object.keys(新).length) return { ok: true, 名: 引用联系人(人), 变了: false };
   return 查完再写(async (tx) => {
@@ -236,7 +237,7 @@ export async function 解除关联联系人(me: 谁, projectId: string, contactI
   if (!p) return 项目不在;
   if (typeof contactId !== "string" || !contactId) return 人不在;
   if (contactId === p.contactId) return { ok: false, error: "主联系人解除不了，要换在「编辑项目」里换" };
-  const 人 = await 看全部(() => prisma.contact.findUnique({ where: { id: contactId }, select: { name: true, gender: true, customer: { select: { id: true, name: true, shortName: true } } } }));
+  const 人 = await 看全部(() => prisma.contact.findUnique({ where: { id: contactId }, select: { name: true, gender: true, customer: { select: 显名列 } } }));
   return 查完再写(async (tx) => {
     const 现 = await tx.project.findUnique({ where: { id: p.id }, select: { ownerId: true, pooledAt: true, contactId: true } });
     if (!现) return 项目不在;
@@ -297,14 +298,14 @@ export async function 项目关联们(me: { id: string }, projectId: string): Pr
   const p = await 读项目(projectId);
   if (!p) return null;
   const [客户行, 联系人行, 主联系人, 身份, 角色, 立场] = await Promise.all([
-    看全部(() => prisma.projectCustomer.findMany({ where: { projectId: p.id }, orderBy: { createdAt: "asc" }, select: { customerId: true, roles: true, customer: { select: { id: true, name: true, shortName: true } } } })),
-    看全部(() => prisma.projectContact.findMany({ where: { projectId: p.id }, orderBy: { createdAt: "asc" }, select: { contactId: true, roles: true, stance: true, contact: { select: { id: true, name: true, gender: true, customerId: true, customer: { select: { id: true, name: true, shortName: true } } } } } })),
-    p.contactId ? 看全部(() => prisma.contact.findUnique({ where: { id: p.contactId! }, select: { id: true, name: true, gender: true, customerId: true, customer: { select: { id: true, name: true, shortName: true } } } })) : null,
+    看全部(() => prisma.projectCustomer.findMany({ where: { projectId: p.id }, orderBy: { createdAt: "asc" }, select: { customerId: true, roles: true, customer: { select: 显名列 } } })),
+    看全部(() => prisma.projectContact.findMany({ where: { projectId: p.id }, orderBy: { createdAt: "asc" }, select: { contactId: true, roles: true, stance: true, contact: { select: { id: true, name: true, gender: true, customerId: true, customer: { select: 显名列 } } } } })),
+    p.contactId ? 看全部(() => prisma.contact.findUnique({ where: { id: p.contactId! }, select: { id: true, name: true, gender: true, customerId: true, customer: { select: 显名列 } } })) : null,
     // 渲染读的，同一请求里同一类只读一次（页面可选项，React cache）；校验提交的 认多选 照旧现读
     页面可选项("projCustRole"), 页面可选项("projContactRole"), 页面可选项("projStance"),
   ]);
   const 主客户 = 客户行.find((r) => r.customerId === p.customerId)?.customer
-    ?? await 看全部(() => prisma.customer.findUnique({ where: { id: p.customerId }, select: { id: true, name: true, shortName: true } }));
+    ?? await 看全部(() => prisma.customer.findUnique({ where: { id: p.customerId }, select: 显名列 }));
 
   const 人们 = [...(主联系人 ? [主联系人] : []), ...联系人行.map((r) => r.contact)];
   const 客户id = [...new Set([p.customerId, ...客户行.map((r) => r.customerId), ...人们.map((c) => c.customerId)])];

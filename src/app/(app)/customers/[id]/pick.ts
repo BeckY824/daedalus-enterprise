@@ -6,6 +6,7 @@ import { scheduleValue, scheduleOrder, earliestScheduled } from "@/lib/schedule-
 import { requireUser } from "@/lib/auth";
 import { 客户跟进可见条件 } from "@/lib/enterprise/customer-follow-feed";
 import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
+import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 
 /**
  * 列表页上「新建计划 / 记录跟进」先挑人用的两个读取（2026-09-29）。
@@ -30,20 +31,21 @@ export async function 搜客户(关键词: string): Promise<可挑客户[]> {
     where: await 客户关键词条件(词, true),
     orderBy: [{ lastFollowAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
     take: 词 ? 20 : 8,
-    select: { id: true, name: true, school: true, phone: true },
+    select: { ...显名列, school: true, phone: true },
   });
   // 同名的人靠公司和号码分；电话设成看不到的角色号码照样打码（lib/enterprise/phone-mask.ts）
-  return rows.map((c) => ({ id: c.id, name: c.name, 附注: [c.school, 号(c.phone)].filter(Boolean).join(" · ") || null }));
+  // 全称选填（11-19）：没全称的显示显名（简称 → 编号），下拉里不出空白项
+  return rows.map((c) => ({ id: c.id, name: 客户显名(c), 附注: [c.school, 号(c.phone)].filter(Boolean).join(" · ") || null }));
 }
 
 /** 编辑已选客户时补回单个显示标签，仍经过租户/业务员限定及共享号码打码。 */
 export async function 取客户选项(id: string): Promise<可挑客户 | null> {
   await requireUser();
   if (typeof id !== "string" || !id || id.length > 256) return null;
-  const c = await prisma.customer.findUnique({ where: { id }, select: { id: true, name: true, school: true, phone: true } });
+  const c = await prisma.customer.findUnique({ where: { id }, select: { ...显名列, school: true, phone: true } });
   if (!c) return null;
   const 号 = await 号码脱敏器();
-  return { id: c.id, name: c.name, 附注: [c.school, 号(c.phone)].filter(Boolean).join(" · ") || null };
+  return { id: c.id, name: 客户显名(c), 附注: [c.school, 号(c.phone)].filter(Boolean).join(" · ") || null };
 }
 
 export type 客户近况 = {
@@ -68,8 +70,7 @@ export async function 取客户近况(id: string): Promise<客户近况 | null> 
   const c = await prisma.customer.findUnique({
     where: { id },
     select: {
-      id: true,
-      name: true,
+      ...显名列,
       followUps: { ...(可见 ? { where: 可见 } : {}), orderBy: { occurredAt: "desc" }, take: 1, select: { occurredAt: true, type: true, method: true, title: true, content: true } },
       plans: { where: { done: false }, orderBy: [{ plannedAt: "asc" }, { id: "asc" }], select: { id: true, subject: true, plannedAt: true, plannedOn: true, method: true } },
       _count: { select: { plans: { where: { done: false } } } },
@@ -83,7 +84,7 @@ export async function 取客户近况(id: string): Promise<客户近况 | null> 
   const p = earliestScheduled(c.plans, p => scheduleOrder(p.plannedAt, p.plannedOn), 1)[0];
   return {
     id: c.id,
-    name: c.name,
+    name: 客户显名(c),
     上次跟进: f ? { occurredAt: f.occurredAt.toISOString(), type: f.type, method: f.method, title: f.title, content: f.content } : null,
     未完成计划: p ? { id: p.id, subject: p.subject, plannedAt: scheduleValue(p.plannedAt, p.plannedOn)!, method: p.method } : null,
     未完成计划数: c._count.plans,

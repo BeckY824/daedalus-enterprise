@@ -13,6 +13,7 @@
 import { prisma } from "../prisma";
 import type { BusinessConfig } from "../business-config";
 import type { 像的老客户 } from "./types";
+import { 客户显名 } from "../enterprise/customer-title";
 
 /** 最多比几位。再多提示词就长了，而「像不像」看最近的一批就够 */
 export const 老客户上限 = 30;
@@ -30,6 +31,9 @@ export async function 老客户清单(b: Pick<BusinessConfig, "fields">): Promis
     select: {
       id: true,
       name: true,
+      // 企业版客户名称选填（11-19）：没填的按简称 / 客户编号叫，表里、「像你的老客户」卡上不出空名
+      shortName: true,
+      customerNo: true,
       school: true,
       grade: true,
       major: true,
@@ -49,7 +53,7 @@ export async function 老客户清单(b: Pick<BusinessConfig, "fields">): Promis
     ]
       .filter(Boolean)
       .join("；");
-    return { id: r.id, name: r.name, 国家: r.extra?.country ?? null, 档案, 状态: 成交 ? "已成交" : "在谈" };
+    return { id: r.id, name: 客户显名(r), 国家: r.extra?.country ?? null, 档案, 状态: 成交 ? "已成交" : "在谈" };
   });
 }
 

@@ -25,13 +25,17 @@ import { 客户背调对象, 对象说明, type 客户档案 } from "@/lib/resea
 export function useCustomerResearch({
   customerId,
   customerName,
+  显示名,
   档案,
   on记跟进,
   能发起 = true,
   开 = true,
 }: {
   customerId: string;
+  /** 客户全称（企业版可能空着）：背调对象按它认联系人 / 公司，不拿编号顶 */
   customerName: string;
+  /** 界面上叫这位（11-19 企业版全称选填：客户显名，简称 → 客户编号）；不给 = 用全称 */
+  显示名?: string;
   档案?: Omit<客户档案, "name">;
   on记跟进?: () => void;
   /** false = 不摆背调按钮（以前存下的背调摘要照样能看） */
@@ -39,6 +43,7 @@ export function useCustomerResearch({
   开?: boolean;
 }): { 按钮: ReactNode; 区: ReactNode; 能发起: boolean; 有上次: boolean; 状态: 背调状态 } {
   const b = useBusiness();
+  const 叫 = 显示名 || customerName;
   const researchKey = `research:${customerId}`;
   const researchJob = useJob(researchKey);
   const personKey = `${researchKey}:person`;
@@ -106,10 +111,10 @@ export function useCustomerResearch({
           {researchJob || 接着 || 对象.种类 === "公司" ? (
             <ResearchRun
               jobKey={researchKey}
-              company={接着?.候选.公司 ?? (对象.种类 === "公司" ? 对象.公司 : customerName)}
-              对象={接着 ? `背调 ${接着.候选.公司} · 联系人 ${customerName}` : 对象.种类 === "公司" ? 对象说明(对象) : undefined}
+              company={接着?.候选.公司 ?? (对象.种类 === "公司" ? 对象.公司 : customerName || 叫)}
+              对象={接着 ? `背调 ${接着.候选.公司}${customerName ? ` · 联系人 ${customerName}` : ""}` : 对象.种类 === "公司" ? 对象说明(对象) : undefined}
               接着={接着}
-              customer={{ id: customerId, name: customerName }}
+              customer={{ id: customerId, name: 叫 }}
               on记跟进={on记跟进}
               直接开跑
               onCancel={() => set背调开(false)}
@@ -166,7 +171,7 @@ const 背调状态色: Record<背调状态, string | undefined> = { 已有: "gre
  * 企业版客户页左栏的「客户背调」块（U-客户-03）：只摆一个状态标签（已有 / 无 / 进行中），点标签弹框看详情、发起背调。
  * 钩子挂在这个组件上，框关了任务和状态都还在
  */
-export function CustomerResearchTag(props: { customerId: string; customerName: string; 档案?: Omit<客户档案, "name">; on记跟进?: () => void; 卡?: boolean }) {
+export function CustomerResearchTag(props: { customerId: string; customerName: string; 显示名?: string; 档案?: Omit<客户档案, "name">; on记跟进?: () => void; 卡?: boolean }) {
   const { 按钮, 区, 能发起, 有上次, 状态 } = useCustomerResearch(props);
   const [开着, set开着] = useState(false);
   const 标签 = (
@@ -224,7 +229,7 @@ export function CustomerResearchTag(props: { customerId: string; customerName: s
  * 企业版客户页的「客户背调」卡（P14 第 5 条）：和右栏其他卡一个样子（rec-card rec-side-card），
  * 不再挂在 AI 面板或「跟进」菜单里。企业版网页上背调通道走不通时按钮不摆，只看以前存下的背调；都没有就说一句
  */
-export function CustomerResearchCard(props: { customerId: string; customerName: string; 档案?: Omit<客户档案, "name">; on记跟进?: () => void }) {
+export function CustomerResearchCard(props: { customerId: string; customerName: string; 显示名?: string; 档案?: Omit<客户档案, "name">; on记跟进?: () => void }) {
   const { 按钮, 区, 能发起, 有上次 } = useCustomerResearch(props);
   return (
     <div className="rec-card rec-side-card" aria-label="客户背调">

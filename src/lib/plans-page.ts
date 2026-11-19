@@ -3,6 +3,7 @@ import { scheduleValue } from "@/lib/schedule-date";
 import { dayjs } from "@/lib/utils";
 import { 分组, 分组日键, 组名, 每批, type 组 } from "@/lib/plans-groups";
 
+import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 /**
  * 跟进计划页一页取多少（2026-10-24 企业版压测）。
  *
@@ -24,11 +25,11 @@ const 原待办排序: Prisma.TaskOrderByWithRelationInput = { dueAt: { sort: "a
 
 const 计划详情 = {
   // 有 WhatsApp 号的：完成小框的方式默认 WhatsApp（2026-10-17 PR26 手测）
-  customer: { select: { id: true, name: true, extra: { select: { whatsapp: true } } } },
+  customer: { select: { ...显名列, extra: { select: { whatsapp: true } } } },
   owner: { select: { id: true, name: true } },
 } satisfies Prisma.FollowPlanInclude;
 const 待办详情 = {
-  customer: { select: { id: true, name: true } },
+  customer: { select: 显名列 },
   owner: { select: { id: true, name: true } },
 } satisfies Prisma.TaskInclude;
 
@@ -79,7 +80,7 @@ const 成计划 = (p: Prisma.FollowPlanGetPayload<{ include: typeof 计划详情
   method: p.method,
   updatedAt: p.updatedAt.toISOString(),
   customerId: p.customer.id,
-  customerName: p.customer.name,
+  customerName: 客户显名(p.customer),
   有WhatsApp: !!p.customer.extra?.whatsapp?.trim(),
   ownerId: p.owner.id,
   ownerName: p.owner.name,
@@ -92,7 +93,7 @@ const 成待办 = (t: Prisma.TaskGetPayload<{ include: typeof 待办详情 }>): 
   dueHasTime: t.dueHasTime,
   updatedAt: t.updatedAt.toISOString(),
   customerId: t.customer.id,
-  customerName: t.customer.name,
+  customerName: 客户显名(t.customer),
   ownerId: t.owner.id,
   ownerName: t.owner.name,
 });

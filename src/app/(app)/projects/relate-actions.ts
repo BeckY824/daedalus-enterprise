@@ -13,6 +13,7 @@ import { getBusiness } from "@/lib/business";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 看全部 } from "@/lib/team-scope";
 import { 引用联系人 } from "@/lib/project/relate-names";
+import { 显名列 } from "@/lib/enterprise/customer-title";
 import { 加关联客户, 改客户身份, 解除关联客户, 加关联联系人, 改联系人角色立场, 解除关联联系人 } from "@/lib/project/relate";
 
 const 没开 = { ok: false as const, error: "项目模式没开：请管理员在「设置 → 业务配置」里打开" };
@@ -123,7 +124,7 @@ export async function 搜项目联系人(projectId: string, 关键词: string): 
     where: 词 ? { OR: [{ name: { contains: 词 } }, { customer: { name: { contains: 词 } } }, { customer: { shortName: { contains: 词 } } }] } : { customerId: { in: [...牵着] } },
     orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
     take: 40,
-    select: { id: true, name: true, gender: true, position: true, customerId: true, customer: { select: { id: true, name: true, shortName: true } } },
+    select: { id: true, name: true, gender: true, position: true, customerId: true, customer: { select: 显名列 } },
   });
   return rows
     .filter((c) => !已有.has(c.id))

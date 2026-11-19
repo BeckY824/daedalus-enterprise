@@ -207,7 +207,9 @@ describe("记录页登记的名字", () => {
 
   it("RecordView 真的登记了（不是只写了函数）", async () => {
     const src = (await import("node:fs")).readFileSync(new URL("../src/app/(app)/customers/[id]/RecordView.tsx", import.meta.url), "utf8");
-    expect(src).toContain("登记详情名(customer.name)");
+    // 登记的是「叫这位」：企业版是客户显名（简称 → 全称 → 客户编号，全称选填后也不空），桌面端照旧全称（11-19 客户名称选填）
+    expect(src).toContain("登记详情名(叫这位)");
+    expect(src).toMatch(/const 叫这位 = 企业 \? 客户显名\(customer\) : customer\.name;/);
   });
 });
 

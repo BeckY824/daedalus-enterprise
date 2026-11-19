@@ -44,7 +44,7 @@ function 解<T>(s: string | null | undefined, 缺: T): T {
 
 type 冲突字段 = Record<string, { 原系统: 值表[string]; 我们: 值表[string]; 上次: 值表[string] }>;
 
-const 名称 = (w: 待写 | null) => String(w?.值.name ?? w?.值.title ?? w?.外部ID ?? "");
+const 名称 = (w: 待写 | null) => String(w?.值.name || w?.值.title || w?.外部ID || "");
 
 /** 记下之后又变了：不定，等下次同步重新比对 */
 function 过时了(c: { localDeleted: boolean; targetId: string }, ref: { fingerprint: string; targetId: string } | null, w: 待写, 还在: boolean): string | null {

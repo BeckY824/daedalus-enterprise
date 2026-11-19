@@ -9,6 +9,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Select, Input, Checkbox, Button } from "antd";
+import { 全称提示, 名称框提示 } from "@/lib/enterprise/fullname-hint";
 import { CheckOutlined, CloseOutlined, RightOutlined, MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import { motion } from "motion/react";
 import { applyProposal, undoProposal, type 撤销凭据, type 附件去处 } from "@/app/(app)/dashboard/apply";
@@ -674,8 +675,10 @@ export default function ProposalCard({
           return (
           <>
             <Field label={企卡 ? "客户名称（组织 / 公司）" : "名称"} 待={待.has("name") ? 点掉("name") : undefined}>
-              <Input size="small" style={{ width: 企卡 ? 200 : 160 }} placeholder={企卡 ? "组织或公司名" : "姓名或公司名"} value={draft.name} onChange={(e) => 改("name", e.target.value)} />
+              <Input size="small" style={{ width: 企卡 ? 200 : 160 }} placeholder={企卡 ? 名称框提示 : "姓名或公司名"} value={draft.name} onChange={(e) => 改("name", e.target.value)} />
             </Field>
+            {/* 灰字（PR-7 摘来）：企业版全称选填；没填、像人名的摆一行，不拦（P-抬头-13 / 16） */}
+            {企卡 && 全称提示(draft.name) && <div className="prop-name-hint fullname-hint" data-testid="fullname-hint" title={全称提示(draft.name) ?? undefined}>{全称提示(draft.name)}</div>}
             <Field label={企卡 ? "联系人姓名" : "联系人"} 待={待.has("contact") ? 点掉("contact") : undefined}>
               <Input size="small" style={{ width: 140 }} placeholder="可留空" value={draft.contact} onChange={(e) => 改("contact", e.target.value)} />
             </Field>

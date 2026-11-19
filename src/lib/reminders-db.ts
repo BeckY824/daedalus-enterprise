@@ -4,6 +4,7 @@ import { 今天界线, type 提醒项 } from "@/lib/reminders";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 在看已删 } from "@/lib/enterprise/soft-delete-core";
 
+import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 /**
  * 某人名下还没做的跟进计划和待办，摊成 算提醒() 要的样子。
  *
@@ -15,16 +16,16 @@ export async function 取提醒项(ownerId: string): Promise<提醒项[]> {
   const [plans, tasks] = await Promise.all([
     prisma.followPlan.findMany({
       where: { done: false, ownerId },
-      select: { id: true, subject: true, plannedAt: true, plannedOn: true, plannedHasTime: true, method: true, customer: { select: { id: true, name: true } } },
+      select: { id: true, subject: true, plannedAt: true, plannedOn: true, plannedHasTime: true, method: true, customer: { select: 显名列 } },
     }),
     prisma.task.findMany({
       where: { done: false, ownerId },
-      select: { id: true, title: true, dueAt: true, dueOn: true, dueHasTime: true, customer: { select: { id: true, name: true } } },
+      select: { id: true, title: true, dueAt: true, dueOn: true, dueHasTime: true, customer: { select: 显名列 } },
     }),
   ]);
   return [
-    ...plans.map((p) => ({ id: p.id, kind: "plan" as const, 标题: p.subject, 时间: p.plannedAt, 日历日: p.plannedOn, 明确钟点: p.plannedHasTime, customerId: p.customer.id, 客户: p.customer.name, 方式: p.method })),
-    ...tasks.map((t) => ({ id: t.id, kind: "task" as const, 标题: t.title, 时间: t.dueAt, 日历日: t.dueOn, 明确钟点: t.dueHasTime, customerId: t.customer.id, 客户: t.customer.name })),
+    ...plans.map((p) => ({ id: p.id, kind: "plan" as const, 标题: p.subject, 时间: p.plannedAt, 日历日: p.plannedOn, 明确钟点: p.plannedHasTime, customerId: p.customer.id, 客户: 客户显名(p.customer), 方式: p.method })),
+    ...tasks.map((t) => ({ id: t.id, kind: "task" as const, 标题: t.title, 时间: t.dueAt, 日历日: t.dueOn, 明确钟点: t.dueHasTime, customerId: t.customer.id, 客户: 客户显名(t.customer) })),
   ];
 }
 

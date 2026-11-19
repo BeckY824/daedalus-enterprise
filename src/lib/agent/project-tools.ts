@@ -22,12 +22,13 @@ import { 卡点类型们, 影响等级们, 卡点显示名, 清原因们 } from 
 import { 可选原因们, 发卡点判断 } from "../project/blocker";
 import { dayjs } from "../utils";
 
+import { 客户显名, 显名列, 客户按名条件 } from "@/lib/enterprise/customer-title";
 const str = (v: unknown, max = 60) => (typeof v === "string" ? v.trim().slice(0, max) : typeof v === "number" ? String(v) : "");
 /** 一次最多给人挑几个 */
 const 候选上限 = 10;
 
-const 项目列 = { id: true, name: true, customerId: true, ownerId: true, creatorId: true, pooledAt: true, awaitAssignAt: true, phase: true, node: true, result: true, customer: { select: { name: true } } } as const;
-type 项目行 = { id: string; name: string; customerId: string; ownerId: string; creatorId: string; pooledAt: Date | null; awaitAssignAt: Date | null; phase: string; node: string; result: string | null; customer: { name: string } };
+const 项目列 = { id: true, name: true, customerId: true, ownerId: true, creatorId: true, pooledAt: true, awaitAssignAt: true, phase: true, node: true, result: true, customer: { select: 显名列 } } as const;
+type 项目行 = { id: string; name: string; customerId: string; ownerId: string; creatorId: string; pooledAt: Date | null; awaitAssignAt: Date | null; phase: string; node: string; result: string | null; customer: { id: string; name: string; shortName: string | null; customerNo: number | null } };
 
 type 找到 = { ok: true; 行: 项目行[]; 露: (p: 项目行) => boolean } | { ok: false; 话: string };
 
@@ -46,7 +47,8 @@ async function 找项目(ctx: ToolContext, a: Record<string, unknown>): Promise<
   } else {
     行 = await prisma.project.findMany({ where: { OR: [{ name: 名 }, { customer: { name: 名 } }] }, select: 项目列, take: 候选上限 + 1, orderBy: { updatedAt: "desc" } });
     if (!行.length) {
-      行 = await prisma.project.findMany({ where: { OR: [{ name: { contains: 名 } }, { customer: { name: { contains: 名 } } }] }, select: 项目列, take: 候选上限 + 1, orderBy: { updatedAt: "desc" } });
+      // 客户那一半全称、简称、客户编号都认（11-19 客户名称选填）
+      行 = await prisma.project.findMany({ where: { OR: [{ name: { contains: 名 } }, { customer: 客户按名条件(名) }] }, select: 项目列, take: 候选上限 + 1, orderBy: { updatedAt: "desc" } });
     }
   }
   const 可见 = await 看得到的客户(行.map((p) => p.customerId));
@@ -57,8 +59,8 @@ async function 找项目(ctx: ToolContext, a: Record<string, unknown>): Promise<
   return { ok: true, 行, 露 };
 }
 
-const 客户of = (p: 项目行, 露: (p: 项目行) => boolean) => (露(p) ? { customerId: p.customerId, customerName: p.customer.name } : { customerId: "", customerName: "" });
-const 项目说明 = (p: 项目行, 露: (p: 项目行) => boolean) => `${露(p) ? `${p.customer.name} · ` : ""}${p.phase}·${p.node}${p.result ? `（${p.result}）` : ""}`;
+const 客户of = (p: 项目行, 露: (p: 项目行) => boolean) => (露(p) ? { customerId: p.customerId, customerName: 客户显名(p.customer) } : { customerId: "", customerName: "" });
+const 项目说明 = (p: 项目行, 露: (p: 项目行) => boolean) => `${露(p) ? `${客户显名(p.customer)} · ` : ""}${p.phase}·${p.node}${p.result ? `（${p.result}）` : ""}`;
 
 /**
  * 出一张卡：去重 → buildProposal 收一遍 → 放进 ctx.proposals → 告诉模型还差什么。
@@ -316,8 +318,8 @@ export const 项目写工具: Tool[] = [
       const 名 = str(a.contact, 40);
       if (!名) return { summary: "没说是哪位联系人", data: { error: "contact 必填" } };
       const 客户名 = str(a.customer, 60);
-      const 选 = { id: true, name: true, position: true, remark: true, gender: true, birthday: true, hobby: true, address: true, customerId: true, customer: { select: { name: true } } } as const;
-      const 条件 = (精确: boolean) => ({ deletedAt: null, name: 精确 ? 名 : { contains: 名 }, ...(客户名 ? { customer: { name: { contains: 客户名 } } } : {}) });
+      const 选 = { id: true, name: true, position: true, remark: true, gender: true, birthday: true, hobby: true, address: true, customerId: true, customer: { select: 显名列 } } as const;
+      const 条件 = (精确: boolean) => ({ deletedAt: null, name: 精确 ? 名 : { contains: 名 }, ...(客户名 ? { customer: 客户按名条件(客户名) } : {}) });
       let 人们 = await prisma.contact.findMany({ where: 条件(true), select: 选, take: 候选上限 + 1 });
       if (!人们.length) 人们 = await prisma.contact.findMany({ where: 条件(false), select: 选, take: 候选上限 + 1 });
       if (!人们.length) return { summary: "没找到这位联系人", data: { error: `当前账号能看到的范围里没找到联系人「${名}」` } };
@@ -328,11 +330,11 @@ export const 项目写工具: Tool[] = [
       const 前 = 人们.slice(0, 候选上限);
       if (前.length === 1) {
         const p = 前[0];
-        return 出卡(ctx, "contact_update", { id: p.customerId, name: p.customer.name }, { 改: a.改, reason: a.reason, targetId: p.id, targetName: p.name }, "", 现值of(p));
+        return 出卡(ctx, "contact_update", { id: p.customerId, name: 客户显名(p.customer) }, { 改: a.改, reason: a.reason, targetId: p.id, targetName: p.name }, "", 现值of(p));
       }
       return 出卡(ctx, "contact_update", { id: "", name: "" }, {
         改: a.改, reason: a.reason, targetId: "", targetName: "",
-        候选: 前.map((p): 候选 => ({ id: p.id, 名: p.name, 说明: `${p.customer.name}${p.position ? ` · ${p.position}` : ""}`, 补: { customerId: p.customerId, customerName: p.customer.name, 现值: 现值of(p) } })),
+        候选: 前.map((p): 候选 => ({ id: p.id, 名: p.name, 说明: `${客户显名(p.customer)}${p.position ? ` · ${p.position}` : ""}`, 补: { customerId: p.customerId, customerName: 客户显名(p.customer), 现值: 现值of(p) } })),
       });
     },
   },
@@ -344,19 +346,21 @@ export const 项目写工具: Tool[] = [
       const id = str(a.id, 40);
       const 名 = str(a.customer, 60);
       if (!id && !名) return { summary: "没说删哪位", data: { error: "给 customer（客户名）或 id" } };
-      const 选 = { id: true, name: true, _count: { select: { projects: true } } } as const;
+      // 客户名称选填（11-19）：按全称、简称、客户编号都找得到；卡上叫客户显名（落库日志在 deleteCustomers 里写全称或显名）
+      const 选 = { ...显名列, _count: { select: { projects: true } } } as const;
       let 们 = id
         ? await prisma.customer.findMany({ where: { id }, select: 选 })
         : await prisma.customer.findMany({ where: { name: 名 }, select: 选, take: 候选上限 + 1 });
-      if (!们.length && 名) 们 = await prisma.customer.findMany({ where: { name: { contains: 名 } }, select: 选, take: 候选上限 + 1 });
+      if (!们.length && 名) 们 = await prisma.customer.findMany({ where: 客户按名条件(名), select: 选, take: 候选上限 + 1 });
       if (!们.length) return { summary: "没找到这位客户", data: { error: `当前账号能看到的范围里没找到「${名 || id}」` } };
       const 前 = 们.slice(0, 候选上限);
       if (前.length === 1) {
-        return 出卡(ctx, "customer_delete", { id: 前[0].id, name: 前[0].name }, { targetId: 前[0].id, targetName: 前[0].name, reason: a.reason });
+        const 叫 = 客户显名(前[0]);
+        return 出卡(ctx, "customer_delete", { id: 前[0].id, name: 叫 }, { targetId: 前[0].id, targetName: 叫, reason: a.reason });
       }
       return 出卡(ctx, "customer_delete", { id: "", name: "" }, {
         targetId: "", targetName: "", reason: a.reason,
-        候选: 前.map((c): 候选 => ({ id: c.id, 名: c.name, 说明: `${c._count.projects} 个项目`, 补: { customerId: c.id, customerName: c.name } })),
+        候选: 前.map((c): 候选 => ({ id: c.id, 名: 客户显名(c), 说明: `${c._count.projects} 个项目`, 补: { customerId: c.id, customerName: 客户显名(c) } })),
       });
     },
   },

@@ -1,6 +1,7 @@
 import { prisma } from "./prisma";
 import { 可选渠道条件, 主渠道入口们, 来源选项列, 带主属性 } from "./enterprise/channel-main";
 import { 企业版 } from "./enterprise/switch";
+import { 客户显名, 显名列 } from "./enterprise/customer-title";
 
 /**
  * 表单下拉里「选一个渠道 / 选一个客户」的候选。几张页面都要，口径放在一处：
@@ -16,12 +17,14 @@ export async function 可选渠道() {
   return [...们, ...(await 主渠道入口们())].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
-export function 可选客户(除了?: string) {
-  return prisma.customer.findMany({
+export async function 可选客户(除了?: string): Promise<{ id: string; name: string }[]> {
+  const 们 = await prisma.customer.findMany({
     where: 除了 ? { id: { not: 除了 } } : undefined,
-    select: { id: true, name: true },
+    select: 显名列,
     orderBy: { name: "asc" },
   });
+  // 全称选填（11-19）：没全称的叫显名（简称 → 客户编号），下拉里不出空白项
+  return 们.map((c) => ({ id: c.id, name: 客户显名(c) }));
 }
 
 /**
@@ -30,5 +33,6 @@ export function 可选客户(除了?: string) {
  */
 export async function 带过来的客户(id: string | undefined): Promise<{ id: string; name: string } | null> {
   if (!id) return null;
-  return prisma.customer.findUnique({ where: { id }, select: { id: true, name: true } });
+  const c = await prisma.customer.findUnique({ where: { id }, select: 显名列 });
+  return c ? { id: c.id, name: 客户显名(c) } : null;
 }

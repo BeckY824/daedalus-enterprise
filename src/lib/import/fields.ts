@@ -18,6 +18,8 @@ import { 全角转半角 } from "../fullwidth";
 
 export type 字段名 =
   | "name"
+  // 企业版（11-19）：联系人姓名单独一列，落到主要联系人，不落客户全称（P-抬头-13）
+  | "contactName"
   | "phone"
   | "school"
   | "grade"
@@ -83,7 +85,37 @@ export type 字段规格 = {
  * 猜错的那一列人多半直接点了下一步，于是电话进了备注栏。所以这张表只收
  * 「几乎不可能是别的意思」的说法，不做模糊匹配、不做编辑距离。
  */
-export function 字段表(b: { fields: { school: string; grade: string; major: string }; grades: string[]; customer: string; statusLabels?: Record<string, string>; template?: string }): 字段规格[] {
+export function 字段表(b: { fields: { school: string; grade: string; major: string }; grades: string[]; customer: string; statusLabels?: Record<string, string>; template?: string }, 企业 = false): 字段规格[] {
+  return 企业 ? 企业版名称列(桌面字段表(b), b.customer) : 桌面字段表(b);
+}
+
+/** 企业版客户全称：只认明确是单位名称的表头（P-抬头-13 全称不得出现联系人姓名） */
+export const 企业全称别名 = ["客户全称", "客户名称", "全称", "公司", "公司名称", "公司全称", "单位", "单位名称", "企业名称", "组织名称", "机构名称", "company", "companyname", "org", "organization"] as const;
+/** 企业版联系人姓名：「联系人 / 姓名」这类表头落到主要联系人 */
+export const 企业联系人别名 = ["联系人姓名", "联系人", "联系人昵称", "联系人名称", "姓名", "名字", "客户姓名", "name", "fullname", "contactname", "contact"] as const;
+
+/**
+ * 企业版（11-19 用户「客户名称设为不必填…找到所有入口进行统一」+ P-抬头-13）：
+ * - 客户全称不必填，只认 企业全称别名（还有「客户」「{叫法}名称」）；原来落到 school 的「公司 / 单位」挪过来，school 不再认它们
+ * - 「联系人 / 联系人姓名 / 姓名」进新的 contactName（主要联系人姓名），不进全称
+ * 桌面端不走这里，映射照旧
+ */
+function 企业版名称列(表: 字段规格[], 叫法: string): 字段规格[] {
+  const 全称别名 = [...企业全称别名, `${叫法}名称`, `${叫法}全称`, 叫法];
+  const 占了 = new Set([...全称别名, ...企业联系人别名].map(规整表头));
+  const 出: 字段规格[] = [];
+  for (const f of 表) {
+    if (f.名 === "name") {
+      出.push({ 名: "name", label: "客户全称", kind: "text", 别名: 全称别名 });
+      continue;
+    }
+    出.push(f.名 === "school" ? { ...f, 别名: f.别名.filter((a) => !占了.has(规整表头(a))) } : f);
+    if (f.名 === "phone") 出.push({ 名: "contactName", label: "联系人姓名", kind: "text", 别名: [...企业联系人别名] });
+  }
+  return 出;
+}
+
+function 桌面字段表(b: { fields: { school: string; grade: string; major: string }; grades: string[]; customer: string; statusLabels?: Record<string, string>; template?: string }): 字段规格[] {
   /*
     外贸模版（2026-10-05）：多认国家 / WhatsApp / 微信 / 邮箱 / 来源五列（小满之类导出来的表都有），
     「来源」落到客户自己的来源格，不再去对渠道（外贸不摆渠道）——所以来源渠道那一项整个不给

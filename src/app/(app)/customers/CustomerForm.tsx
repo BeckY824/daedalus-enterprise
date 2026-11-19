@@ -34,6 +34,7 @@ import { 释义下拉, type 客户字典释义 } from "@/components/DictNote";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import { 渠道触点们, 客户介绍触点 } from "@/lib/enterprise/touchpoint";
 import { 动作出错话 } from "@/lib/stale-deploy";
+import { 全称提示, 名称框提示 } from "@/lib/enterprise/fullname-hint";
 
 export type CustomerRow = {
   id: string;
@@ -206,6 +207,9 @@ function CustomerFormInner({
   const [referrerType, setReferrerType] = useState<"channel" | "customer" | "none">(推荐方式(editing));
   /** 企业版渠道触点（P-渠道-08）：选了客户介绍才出「介绍人客户」（P-渠道-09），那时才取客户名单 */
   const 触点 = Form.useWatch("touchpoint", form) as string | null | undefined;
+  /** 全称那格下面的灰字（PR-7 摘来）：没填 → 列表上怎么显示；像人名 → 提醒写单位名称，不拦保存（P-抬头-13 / 16） */
+  const 填的全称 = Form.useWatch("name", form) as string | undefined;
+  const 全称灰字 = 企业 ? 全称提示(填的全称) : null;
   const 选了客户介绍 = 企业 && 触点 === 客户介绍触点;
   const 推荐人 = useReferrerCandidates(
     (!外贸 && !企业) || 选了客户介绍,
@@ -335,7 +339,7 @@ function CustomerFormInner({
               ...(企业 && editing.touchpoint !== undefined ? { touchpoint: editing.touchpoint ?? null } : {}),
             }
           : null,
-        name: v.name,
+        name: v.name ?? "",
         phone: v.phone ?? "",
         school: v.school ?? null,
         // 企业版不摆职位、行业（定稿 P5 第 22 条）：照原样交回，别因为表单里没有就清掉
@@ -517,8 +521,14 @@ function CustomerFormInner({
           <Col span={8}>
             {/* 跟业务配置的叫法走（2026-10-04 L-003）：改成「学员」后这里原来还写着「客户姓名」 */}
             {/* 企业版客户是单位：这一格叫「客户全称」，旁边另有一格简称（定稿 P5 第 22 条） */}
-            <Form.Item label={企业 ? "客户全称" : `${b.customer}姓名`} name="name" rules={[requiredText(企业 ? "请输入客户全称" : "请输入姓名")]}>
-              <Input placeholder={企业 ? "营业执照上的全称" : "如：张三"} maxLength={企业 ? 200 : undefined} />
+            {/* 企业版全称选填（11-19 用户「客户名称设为不必填」）：不摆红星、不校验；空着保存后列表按抬头显示（区域 | 简称…，都没有显示客户编号） */}
+            <Form.Item
+              label={企业 ? "客户全称" : `${b.customer}姓名`}
+              name="name"
+              rules={企业 ? undefined : [requiredText("请输入姓名")]}
+              extra={全称灰字 ? <span className="fullname-hint" data-testid="fullname-hint" title={全称灰字}>{全称灰字}</span> : undefined}
+            >
+              <Input placeholder={企业 ? 名称框提示 : "如：张三"} maxLength={企业 ? 200 : undefined} />
             </Form.Item>
           </Col>
           <Col span={8}>
