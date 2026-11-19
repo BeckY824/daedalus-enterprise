@@ -26,7 +26,7 @@ import { applyProposal } from "@/app/(app)/dashboard/apply";
 import { buildProposal, missingFields } from "@/lib/agent/proposals";
 import { SCHEMAS } from "@/lib/agent/schemas";
 import { DEFAULT_BUSINESS } from "@/lib/business-config";
-import { 客户名查重 } from "@/lib/enterprise/dupe-ledger";
+import { 客户名查重, 名撞说法 } from "@/lib/enterprise/dupe-ledger";
 import { 读导入查重索引 } from "@/lib/enterprise-import/dedup";
 import { 撞已有客户 } from "@/lib/enterprise-import/clean";
 import { 客户显名, 客户引, 全称或显名, 客户抬头 } from "@/lib/enterprise/customer-title";
@@ -517,12 +517,32 @@ describe("复审 11-19：放公海同事在推、AI 删客户卡、导出、移�
     const { detachContact } = await import("@/app/(app)/customers/[id]/actions");
     expect(await detachContact(人.id)).toMatchObject({ ok: true });
     expect((await prisma.unassignedContact.findFirstOrThrow()).fromCustomerName).toBe("编的单位全称");
+    // 没全称的一半：记客户编号（有简称也不用简称，存进库的文字口径是全称或显名 = 全称空着才兜显名）
+    const 空 = await 光客户(59);
+    const 人2 = await prisma.contact.create({ data: { customerId: 空.id, name: "李娜", phone: "13800000159" } });
+    expect(await detachContact(人2.id)).toMatchObject({ ok: true });
+    expect((await prisma.unassignedContact.findUniqueOrThrow({ where: { id: 人2.id } })).fromCustomerName).toBe("NO.00059");
   });
 
   it("按公司名撞上没全称的客户：查重提示叫客户编号，不出空白", async () => {
     await 光客户(57, { school: "编的公司有限公司" });
     const r = await 客户名查重("tester-id", null, "", "编的公司有限公司");
-    expect(r).toMatchObject({ 我名下: { 客户名: "NO.00057" } });
+    expect(r).toMatchObject({ 我名下: { 客户名: "NO.00057", 按: "公司名" } });
+    // 名字其实没撞：说「同公司」，不说「同名」（复审 11-19）
+    const 话 = 名撞说法(r!);
+    expect(话).toContain("同公司");
+    expect(话).not.toContain("同名");
+    expect(话).toContain("「NO.00057」");
+  });
+
+  it("有全称的客户按公司撞上：也说「同公司」，客户名写全称；按全称撞上说「同名」", async () => {
+    await 光客户(60, { name: "编的单位全称", school: "编的另一家有限公司" });
+    const 按公司 = await 客户名查重("tester-id", null, "", "编的另一家有限公司");
+    expect(按公司).toMatchObject({ 我名下: { 客户名: "编的单位全称", 按: "公司名" } });
+    expect(名撞说法(按公司!)).toBe("你名下已有同公司的客户「编的单位全称」，请勿重复录入");
+    const 按名 = await 客户名查重("tester-id", null, "编的单位全称", null);
+    expect(按名).toMatchObject({ 我名下: { 按: "客户名" } });
+    expect(名撞说法(按名!)).toBe("你名下已有同名客户「编的单位全称」，请勿重复录入");
   });
 
   it("全局搜索：按简称也搜得到没全称客户的项目", async () => {
