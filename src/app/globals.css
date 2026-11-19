@@ -5177,3 +5177,10 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 .dir-select-w120 { width: 120px; }
 .dir-select-w110 { width: 110px; }
 .lead-region-line { font-size: var(--fs-min); }
+/* 沟通 30 分钟内本人改（F-013）：已修改小字、修改框里的下一步两格 */
+.proj-fu-edited { color: var(--text-muted); font-size: var(--dt-aux, 12px); white-space: nowrap; }
+.proj-fu-lab { margin-bottom: 4px; }
+.proj-fu-req { color: var(--danger-text); }
+.proj-fu-mute { color: var(--text-muted); }
+.proj-fu-full { width: 100%; }
+.proj-fu-note { color: var(--text-muted); font-size: var(--dt-aux, 12px); margin-top: 4px; }

@@ -1437,7 +1437,7 @@ export default function ProjectDetail({
               <Tag>{f.node}</Tag>
               {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
               <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
-              {f.已修改 && <span data-testid="follow-edited" title="这条沟通提交后改过，改了什么见操作日志" style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)", whiteSpace: "nowrap" }}>已修改</span>}
+              {f.已修改 && <span data-testid="follow-edited" title="这条沟通提交后改过，改了什么见操作日志" className="proj-fu-edited">已修改</span>}
               {(能改这条(f) || p.可删沟通 || 卡点?.能发) && (
                 // 「…」放在这一行最右：发卡点、修改、删除（10-30 发卡点从行上收进来）；删除 = 这一条下面长出确认条（dt.talkdel），见 删沟通条
                 <span style={{ marginLeft: "auto" }}>
@@ -2073,15 +2073,15 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, onClose, 
         <Input.TextArea aria-label="沟通内容" rows={4} value={content} onChange={(e) => setContent(e.target.value)} placeholder="这次聊了什么" />
         {改下一步 && (<>
           <div>
-            <div style={{ marginBottom: 4 }}>下一步计划<span style={{ color: "var(--danger-text)" }}> *</span></div>
+            <div className="proj-fu-lab">下一步计划<span className="proj-fu-req"> *</span></div>
             <Input aria-label="下一步计划" value={下一步文字} onChange={(e) => set下一步文字(e.target.value)} maxLength={下一步文字上限} showCount placeholder="比如：周五前发报价单给对方采购" />
           </div>
           <div>
-            <div style={{ marginBottom: 4 }}>
-              下一步时间{要下一步 ? <span style={{ color: "var(--danger-text)" }}> *</span> : <span style={{ color: "var(--text-muted)" }}>（可不填）</span>}
+            <div className="proj-fu-lab">
+              下一步时间{要下一步 ? <span className="proj-fu-req"> *</span> : <span className="proj-fu-mute">（可不填）</span>}
             </div>
-            <DatePicker aria-label="下一步时间" style={{ width: "100%" }} value={下一步时间 ? dayjs(下一步时间) : null} disabledDate={(x) => x.isBefore(dayjs(), "day")} onChange={(v) => set下一步时间(v ? v.format("YYYY-MM-DD") : null)} />
-            <div style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)", marginTop: 4 }}>改了会同步到项目上的下一步</div>
+            <DatePicker aria-label="下一步时间" className="proj-fu-full" value={下一步时间 ? dayjs(下一步时间) : null} disabledDate={(x) => x.isBefore(dayjs(), "day")} onChange={(v) => set下一步时间(v ? v.format("YYYY-MM-DD") : null)} />
+            <div className="proj-fu-note">改了会同步到项目上的下一步</div>
           </div>
         </>)}
         {差 && <div style={{ color: "var(--text-muted)" }}>{差}</div>}
