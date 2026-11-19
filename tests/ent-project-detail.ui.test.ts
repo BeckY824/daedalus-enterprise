@@ -469,6 +469,45 @@ for (const 宽 of [390, 1024, 1280, 1366]) {
   }, 60_000);
 }
 
+for (const 宽 of [390, 1366]) {
+  it(`${宽}px 迁移 154 编辑项目框：订单阶段有三格；只改物流单号只交 trackingNo（停用了还存着的物流状态不带上）；没交的刷新后带回草稿`, async () => {
+    const { page, errors } = await open(true, 宽);
+    try {
+      const 货 = { 备货状态: "生产中", 物流状态: { 值: "已停用的状态", 选项: ["待发货", "已签收", "已停用的状态"] }, 物流单号: "SF1" };
+      const 摆 = () => page.evaluate(v => (window as unknown as { __over: (x: object) => void }).__over({ 备货物流: v }), 货);
+      await 摆();
+      await 编辑钮(page).click();
+      const 框 = page.locator(".ant-modal-container");
+      const 单号 = 框.getByRole("textbox", { name: "物流单号" });
+      await 单号.waitFor();
+      expect(await 框.getByRole("combobox", { name: "备货状态" }).count()).toBe(1);
+      expect(await 框.getByRole("combobox", { name: "物流状态" }).count()).toBe(1);
+      expect(await 框.locator(".ant-select").filter({ has: page.getByRole("combobox", { name: "物流状态" }) }).innerText()).toContain("已停用的状态");
+      expect(await 单号.inputValue()).toBe("SF1");
+      expect(await 框.evaluate(c => c.scrollWidth <= c.clientWidth + 1)).toBe(true);
+      // 打了字没交：草稿留着，刷新后重开带回（物流单号是改过的那格，另两格照库里的）
+      await 单号.fill("SF1, SF2");
+      await page.reload();
+      await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
+      await 摆();
+      await 编辑钮(page).click();
+      await 单号.waitFor();
+      await expect.poll(() => 单号.inputValue()).toBe("SF1, SF2");
+      await 框.getByRole("button", { name: /保\s*存/ }).click();
+      await page.waitForFunction(() => ((window as unknown as { __编辑?: unknown[] }).__编辑 ?? []).length > 0);
+      const [id, 交] = await page.evaluate(() => ((window as unknown as { __编辑: [string, Record<string, unknown>][] }).__编辑).at(-1)!);
+      expect(id).toBe("p1");
+      expect(交.trackingNo).toBe("SF1, SF2");
+      expect(Object.keys(交).filter(k => ["stockStatus", "logisticsStatus", "trackingNo"].includes(k))).toEqual(["trackingNo"]);
+      // 存上了草稿清掉：再开框是库里的值
+      // 「已保存」对勾放完（SaveButton 成了留 1.4 秒）才关框、清草稿
+      await 框.waitFor({ state: "hidden", timeout: 5000 });
+      await expect.poll(() => page.evaluate(() => Object.keys(localStorage).filter(k => k.includes("编辑项目:p1"))), { timeout: 5000 }).toEqual([]);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }, 60_000);
+}
+
 it("迁移 101：没给项目新字段（不是企业版 / 藏了）就不摆这两行、编辑框也没有", async () => {
   const { page, errors } = await open(true);
   try {

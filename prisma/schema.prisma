@@ -977,7 +977,7 @@ model Project {
   /// 新建项目写「起草中」；老项目是空，界面按「起草中」显示（不改老数据）。项目方案是附件（Attachment.tag「方案」），不在这里
   contractStatus       String?
   /// 备货状态（企业版，迁移 154，客户 11-19）：未生产 / 生产中 / 已备货（lib/project/proj-fields.ts 备货状态们），可空 = 没填。
-  /// 「生产备货」进程的必填里配「备货状态」= 选了任一项就算，配「已备货」= 要选「已备货」才算（required.ts）
+  /// 「生产备货」进程的必填里配「备货状态」= 选了任一项就算（required.ts）
   stockStatus          String?
   /// 物流状态（企业版，迁移 154，客户 11-19）：字典 projLogistics 里的一项（默认 待发货 / 运输中 / 已签收，设置里可改），可空 = 没填。存的是选项名，字典改名不回写
   logisticsStatus      String?
