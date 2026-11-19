@@ -258,7 +258,11 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   const 回收天数 = 企业 && 要下一步 && 回收日 && !必填 && !验证不收 ? 节点超时天数(规则, p.node, 字典, 回收线) : null;
   const 回收预演 = 回收天数 ? { 起点日: 计时起点(规则, 回收起点).format("YYYY-MM-DD"), 天数: 回收天数 } : null;
   // 需求状态补全期（M-权限-07）开着：只有经理、总管理员能往前推，和 lib/project/db.ts 改节点 同一个判断
-  const 不给推 = 企业 && !公海 ? 补全期不给(me, org, 规则) ?? 往前推不给(me, p.ownerId, await 直属才推(org), 负责人可推(规则)) : null;
+  const 补全期挡 = 企业 && !公海 ? 补全期不给(me, org, 规则) : null;
+  const 不给推 = 企业 && !公海 ? 补全期挡 ?? 往前推不给(me, p.ownerId, await 直属才推(org), 负责人可推(规则)) : null;
+  // 不给推时谁能点「完成节点」（必填齐了那句提示用）：补全期只有销售管理、总管理；负责人可推下我不是负责人 → 负责人或上级；
+  // 仅上级推（负责人本人、组员都一样）→ 上级
+  const 不给推谁能推 = !不给推 ? null : 补全期挡 ? "销售管理或总管理" : me.id !== p.ownerId && 负责人可推(规则) ? "负责人或上级" : "上级";
   // 企业版：线索验证往后推要先有有效沟通 = 线索验证节点配的其他必填项都齐（没配看需求状态，11-05；经理和缺必填一样不拦；和 lib/project/db.ts 有效沟通差of 同一个算法）
   const 有效沟通差 = 企业 && p.phase === "线索" && !p.result ? 有效沟通还差(await 必填数据()).map(必填叫法) : [];
   // 企业版提成卡：只给组长、已进组的组员、管理员、主管和负责人的上级（lib/project/commission-db.ts 能看提成）；不是企业版不查
@@ -371,7 +375,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     // 指定分配时间（PR3）：还没到点的定时，详情上写时间和分给谁；录入人、能分配的人能改 / 取消 / 改成现在分配
     ...(企业 && p.scheduledAssignAt && p.awaitAssignAt && !p.pooledAt ? { 定时分配: {
       时间: 时刻转北京墙钟(p.scheduledAssignAt)!, 给谁: p.scheduledAssignTo ? 叫(p.scheduledAssignTo) ?? "已不在的成员" : null, 能动: !!org && 能动定时(me, p, org),
-    } } : {}), 要下一步, 能记沟通, 组员记沟通: 能记沟通 && !能改, 可改沟通, 可删沟通, ...(本人候选.size ? { 服务器现在: 现在.toISOString() } : {}), 必填, 不给推, 交付只在尾款, 能改节点: 节点能改, 能转让: 能转,
+    } } : {}), 要下一步, 能记沟通, 组员记沟通: 能记沟通 && !能改, 可改沟通, 可删沟通, ...(本人候选.size ? { 服务器现在: 现在.toISOString() } : {}), 必填, 不给推, 不给推谁能推, 交付只在尾款, 能改节点: 节点能改, 能转让: 能转,
     // 转给谁以后自己还看得到（11-03 A5-3）：总管理、上级转给下属照样能看，提示不说「看不到」，转完也不跳回列表
     ...(企业版() && 能转 ? { 转后还能看: 候选.filter((c) => 能看项目(me, { ...p, ownerId: c.id, 已加入 }, org)).map((c) => c.id) } : {}),
     能放公海: !公海 && 能放回公海(me, p, org) && (能进公海的阶段 as readonly string[]).includes(p.phase) && !(企业 && p.result), // 已结束的不能单独放回（X-70）

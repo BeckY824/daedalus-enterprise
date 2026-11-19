@@ -337,7 +337,7 @@ describe("节点推进规则定稿（真库）", () => {
     });
   });
 
-  describe("[待客户定 A] 跨阶段不自动推", () => {
+  describe("跨阶段不自动推", () => {
     it("线索推进、首款到账填齐了：存了不推、停在本格，项目页没有存一下就推；手动点完成节点照推；同阶段照旧自动推一格", async () => {
       await setSetting("orgRules", 开着({ 线索推进: ["金额"], 首款到账: ["定金金额"], 痛点挖掘: ["痛点标注"] }));
       const 线 = await 项目({ phase: "线索", node: "线索推进", demandStatus: "明确需求" });
@@ -354,6 +354,29 @@ describe("节点推进规则定稿（真库）", () => {
       expect(await 改项目(乙, 款.id, { depositAmount: 500 })).not.toHaveProperty("自动推到");
       expect((await 现(款.id)).node).toBe("首款到账");
       expect(await 改节点(乙, 款.id, { phase: "订单", node: "生产备货" })).toMatchObject({ ok: true, 变了: true });
+    });
+  });
+
+  describe("不给推时谁能点「完成节点」（load.ts 不给推谁能推，项目页必填齐了那句用）", () => {
+    it("仅上级推：负责人 → 上级；负责人可推：组员 → 负责人或上级、负责人能推没有；需求补全期 → 销售管理或总管理", async () => {
+      const 组长 = await 人("lead", "MANAGER", "sales_mgr");
+      const 丙 = await 人("bing", "SALES", "sales");
+      await prisma.entMember.update({ where: { userId: 乙.id }, data: { managerId: 组长.id } });
+      await setSetting("enterprise.rule.org_scope", true);
+      const p = await 项目();
+      await prisma.projectMember.create({ data: { projectId: p.id, userId: 丙.id, inviteStatus: "JOINED" } });
+      await setSetting("orgRules", { ...默认组织规则, 阶段: { ...默认组织规则.阶段, 推进权限: "仅上级推" as const } });
+      invalidateSettingsCache();
+      expect(await 详(p.id)).toMatchObject({ 不给推: "往前推进程要由你的直属上级来推", 不给推谁能推: "上级" });
+      await setSetting("orgRules", 默认组织规则);
+      invalidateSettingsCache();
+      expect(await 详(p.id)).toMatchObject({ 不给推: null, 不给推谁能推: null });
+      mocks.user = { ...mocks.user, id: 丙.id };
+      expect(await 详(p.id)).toMatchObject({ 不给推: "只有负责人的直属上级能往前推进程", 不给推谁能推: "负责人或上级" });
+      mocks.user = { ...mocks.user, id: 乙.id };
+      await setSetting("orgRules", { ...默认组织规则, 阶段: { ...默认组织规则.阶段, 需求补全期: true } });
+      invalidateSettingsCache();
+      expect(await 详(p.id)).toMatchObject({ 不给推谁能推: "销售管理或总管理" });
     });
   });
 

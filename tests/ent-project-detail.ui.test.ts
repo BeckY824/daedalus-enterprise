@@ -503,7 +503,7 @@ for (const 宽 of [390, 1024, 1280, 1366]) {
   }, 60_000);
 }
 
-it("[待客户定 A] 必填齐了、下一格换阶段：当前进程卡写「必填齐了，点「完成节点」进商机」；同阶段照旧", async () => {
+it("必填齐了、下一格换阶段：当前进程卡写「必填齐了，点「完成节点」进商机」；同阶段照旧", async () => {
   const { page, errors } = await open(true, 1280);
   try {
     await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "线索", node: "线索推进", 必填: { 配了: ["金额"], 还差: [] } }));
@@ -516,7 +516,7 @@ it("[待客户定 A] 必填齐了、下一格换阶段：当前进程卡写「�
   } finally { await page.close(); }
 }, 60_000);
 
-it("仅上级推下负责人「完成节点」灰着（不给推）：必填齐了的说法改成「要上级点」，不叫他点；跨阶段、同阶段都一样", async () => {
+it("「完成节点」灰在不给推：必填齐了的说法写明该谁点（上级 / 销售管理或总管理 / 负责人或上级），不叫他点；灰因是等复核时不写该谁点", async () => {
   const { page, errors } = await open(true, 1280);
   const 上级推 = "往前推进程要由你的直属上级来推";
   try {
@@ -529,6 +529,20 @@ it("仅上级推下负责人「完成节点」灰着（不给推）：必填齐�
     await page.evaluate((x) => (window as unknown as { __over: (x: object) => void }).__over({ phase: "商机", node: "痛点挖掘", 必填: { 配了: ["金额"], 还差: [] }, 不给推: x }), 上级推);
     await page.getByText("这个节点的必填都齐了，往前推要上级点「完成节点」").waitFor();
     expect(await page.getByText("这个节点的必填都齐了，可以点「完成节点」往前推").count()).toBe(0);
+    // 需求补全期：上级是销售账号也推不了，写销售管理或总管理（load.ts 不给推谁能推）
+    const 补全期 = "需求状态补全期：只有销售管理、总管理能往前推进程，沟通照常记";
+    await page.evaluate((x) => (window as unknown as { __over: (x: object) => void }).__over({ phase: "线索", node: "线索推进", 必填: { 配了: ["金额"], 还差: [] }, 不给推: x, 不给推谁能推: "销售管理或总管理" }), 补全期);
+    await page.getByText("必填齐了，进商机要销售管理或总管理点「完成节点」").waitFor();
+    expect(await page.getByText("必填齐了，进商机要上级点「完成节点」").count()).toBe(0);
+    // 负责人可推下的组员：负责人自己也能推，写负责人或上级
+    await page.evaluate((x) => (window as unknown as { __over: (x: object) => void }).__over({ phase: "商机", node: "首款到账", 必填: { 配了: ["金额"], 还差: [] }, 不给推: x, 不给推谁能推: "负责人或上级" }), "只有负责人的直属上级能往前推进程");
+    await page.getByText("必填齐了，进订单要负责人或上级点「完成节点」").waitFor();
+    // 等复核先拦下（灰因不是不给推）：上级也推不了，不写该谁点，只说齐了
+    await page.evaluate((x) => (window as unknown as { __over: (x: object) => void }).__over({ phase: "线索", node: "线索推进", 必填: { 配了: ["金额"], 还差: [] }, 不给推: x, 不给推谁能推: "上级",
+      线索验证: { 判定: "初验无效", 待: "市场复核", 无效原因: null, 复核结果: null, 最终结果: null, 终验: null, 初判即终判: false, 叫法: "初验无效", 我能: null, 痕: [] } }), 上级推);
+    await page.getByText("这个节点的必填都齐了", { exact: true }).waitFor();
+    expect(await page.getByText("要上级点「完成节点」").count()).toBe(0);
+    expect(await page.getByText("点「完成节点」进商机").count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 }, 60_000);
