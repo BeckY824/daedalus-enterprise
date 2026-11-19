@@ -79,6 +79,11 @@ const 客户详情查询上限 = 96;
  * 11-12 第一轮实测多 26 条；第二轮同一请求去重后多 11 条（关 92 / 活跃 95 / 沉睡 103）；最近沟通日改一句 SQL（沟通生效日）后多 8 条（沉睡 100），上限 = 实测 +2 */
 const 三态沉睡多查上限 = 10;
 
+/** 节点推进开、项目区当前页签停在配了必填的线索节点（要算必填差、有效沟通差，必填里带已签收）：11-19 实测 109 条。
+ * 改前 124 条：读必填数据 读两遍（每遍客户、联系人、联系方式、沟通、附件数、回款、分配、线索验证约 13 句）、已签收物流状态 每遍直查一句。
+ * 上限 = 实测 +2；涨了先 CUST_DETAIL_QUERY_DUMP=<文件> 跑，看 <文件>.node 里是不是又读了两遍 */
+const 节点推进线索上限 = 111;
+
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 const 造人 = async (key: string, bizRole: string): Promise<人> => {
   const email = `${key}@x`;
@@ -164,6 +169,24 @@ describe("客户详情一次打开的查询条数", () => {
     invalidateSettingsCache();
     const 关着多项目 = (await 量稳()).length;
     expect(多项目 - 关着多项目).toBe(沉睡 - 关着);
+  });
+
+  it("节点推进开 + 必填配置 + 线索阶段项目：项目区读必填数据只读一遍（必填差、有效沟通差共用），已签收认法用页面字典那一份", async () => {
+    await setSetting("orgRules", { ...默认组织规则, 节点推进: { 开: true, 必填: { 潜客培育: ["金额", "痛点标注", "已签收"], 线索验证: ["需求"] } } });
+    await prisma.project.updateMany({ where: { customerId: 客户, result: null }, data: { phase: "线索", node: "潜客培育" } });
+    invalidateSettingsCache();
+    const 量稳 = async () => { await 量(); return 量(); };
+    const 句 = await 量稳();
+    if (process.env.CUST_DETAIL_QUERY_DUMP) {
+      const { writeFileSync } = await import("node:fs");
+      writeFileSync(process.env.CUST_DETAIL_QUERY_DUMP + ".node", `共 ${句.length} 条\n${句.map((q) => q.replace(/\s+/g, " ").replace(/`main`\./g, "").slice(0, 160)).join("\n")}\n`);
+    }
+    // 读必填数据 里每样各一句（客户、联系人、项目沟通、合同 / 方案 / 验收报告附件数、回款笔数、分配记录、线索验证）：只该出现一遍；
+    // 已签收认法不另查 EntDictItem（物流状态字典走页面字典合读那一句）
+    expect(句.filter((q) => /^SELECT COUNT\(\*\).*FROM `EntProjectPayment`/.test(q.replace(/\s+/g, " ").replace(/`main`\./g, ""))).length).toBe(1);
+    // 已签收物流状态 直查那句（只 select id、name、active）：渲染路径不该有
+    expect(句.filter((q) => /^SELECT `EntDictItem`\.`id`, `EntDictItem`\.`name`, `EntDictItem`\.`active` FROM `EntDictItem` WHERE `EntDictItem`\.`kind` = \?/.test(q.replace(/\s+/g, " ").replace(/`main`\./g, ""))).length).toBe(0);
+    expect(句.length).toBeLessThanOrEqual(节点推进线索上限);
   });
 
   it("字典合读（预读页面字典）和逐类现读 企业字典 一个结果：新库第一次（要建默认）、建好以后（走合读）都一样", async () => {

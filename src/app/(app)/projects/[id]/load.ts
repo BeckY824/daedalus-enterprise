@@ -4,7 +4,7 @@ import { 只读客户 } from "@/lib/team-scope";
 import type { SessionUser } from "@/lib/auth";
 import { 项目收藏了吗 } from "@/lib/favorites";
 import { 能管项目, 能加组员, 能改组员, 能放回公海, 能改节点, 上级只推, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据, 自动推得到, 超时成员线, 超时线 } from "@/lib/project/db";
-import { 项目按必填走, 节点推进管, 节点必填, 还差, 有效沟通还差, 必填叫法 } from "@/lib/project/required";
+import { 项目按必填走, 节点推进管, 节点必填, 还差, 有效沟通还差, 必填叫法, type 必填数据 } from "@/lib/project/required";
 import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
@@ -243,10 +243,13 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   const 节点能改 = !占位 && (能改节点(me, p, org) || 上级只推(me, p, await 直属才推(org), 规则));
   // 有结局的也算（11-03 A5-1）：改回到后面的节点同样算往前推，下拉里照样灰着
   // 节点推进管的项目才列必填、灰下拉：默认全部项目（客户 11-19，存量也要补齐）；设置成只管新建的时，生效时刻之前建的不列
-  const 必填差 = !公海 && 项目按必填走(规则, p) ? 还差(规则, await 读必填数据(prisma, p, 规则)) : null;
+  // 读必填数据 只读一遍：必填差、存一下就推、有效沟通差共用；已签收认法用页面字典那一份（备货物流格 同一份行），不另查一句（客户详情查询条数上限）
+  let 必填数据读: Promise<必填数据> | null = null;
+  const 必填数据 = () => (必填数据读 ??= (async () => 读必填数据(prisma, p, 规则, 企业 ? 已签收认法(await 页面字典("projLogistics")) : undefined))());
+  const 必填差 = !公海 && 项目按必填走(规则, p) ? 还差(规则, await 必填数据()) : null;
   // 「仅上级推」下上级手动推到一个已经齐了的节点会停在那（一次只推一格，客户 11-19 定稿）：负责人存一下就会自动推一格，项目页说一句。
   // 只在这个情况出：仅上级推、齐了、看的人能改字段、存一下真推得动（和 按必填推进 同一个判断）
-  const 存一下就推 = !!必填差 && !必填差.length && !负责人可推(规则) && 能改 && !!(await 自动推得到(prisma, 规则, me, p));
+  const 存一下就推 = !!必填差 && !必填差.length && !负责人可推(规则) && 能改 && !!(await 自动推得到(prisma, 规则, me, p, 必填数据));
   // 交付结清只在尾款结算（客户 11-19 定稿）：和 db.ts 改节点 传给 改节点问题 的同一个判断；不受开关管就改成 企业
   const 交付只在尾款 = 企业 && 节点推进管(规则, p);
   const 必填 = 必填差 ? { 配了: 节点必填(规则, p.node), 还差: 必填差, ...(存一下就推 ? { 存一下就推 } : {}) } : null;
@@ -257,7 +260,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   // 需求状态补全期（M-权限-07）开着：只有经理、总管理员能往前推，和 lib/project/db.ts 改节点 同一个判断
   const 不给推 = 企业 && !公海 ? 补全期不给(me, org, 规则) ?? 往前推不给(me, p.ownerId, await 直属才推(org), 负责人可推(规则)) : null;
   // 企业版：线索验证往后推要先有有效沟通 = 线索验证节点配的其他必填项都齐（没配看需求状态，11-05；经理和缺必填一样不拦；和 lib/project/db.ts 有效沟通差of 同一个算法）
-  const 有效沟通差 = 企业 && p.phase === "线索" && !p.result ? 有效沟通还差(await 读必填数据(prisma, p, 规则)).map(必填叫法) : [];
+  const 有效沟通差 = 企业 && p.phase === "线索" && !p.result ? 有效沟通还差(await 必填数据()).map(必填叫法) : [];
   // 企业版提成卡：只给组长、已进组的组员、管理员、主管和负责人的上级（lib/project/commission-db.ts 能看提成）；不是企业版不查
   const 提成 = 企业 ? await 读项目提成(me, p, p.members.filter((m) => m.inviteStatus === "JOINED").map((m) => m.userId), org, (uid) => 叫(uid)!, prisma) : null;
   // 企业版教练主题（11-17，lib/enterprise/coach-topic-db.ts）：看得到的才给；没有、也发不了就不给这一块
