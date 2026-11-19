@@ -6,7 +6,6 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能管公海, 能恢复, 能新建和领取 } from "@/lib/enterprise/permissions";
 import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
-import { 规整公海属性, 是快捷, 规整排序 } from "@/lib/enterprise/unified-pool";
 import { 渠道筛选选项 } from "@/lib/enterprise/channel-options";
 import { 公海分配候选 } from "@/lib/owners";
 import { 持有数, 各人持有数 } from "@/lib/project/db";
@@ -14,10 +13,8 @@ import { 可选项 } from "@/lib/enterprise/dict";
 import { 持有上限of } from "@/lib/project/org-rules";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 公海别线的 } from "@/lib/enterprise/pool-line-guard";
-import { 阶段们 } from "@/lib/project/stage-dict";
-import { 是日期 } from "@/lib/custom-date-range";
-import { 读批次, 批次参数 } from "@/lib/project/import-batch";
 import PoolView from "./PoolView";
+import { 读公海页筛, 按名单 as 按名单of, type 公海页地址 } from "./filters";
 
 export const dynamic = "force-dynamic";
 
@@ -28,20 +25,8 @@ export const dynamic = "force-dynamic";
 export default async function PoolPage({
   searchParams,
 }: {
-  /** attr：公海属性；quick：快捷按钮；sort：pooled / follow / created */
-  searchParams: Promise<{ keyword?: string; attr?: string; quick?: string; sort?: string; channelId?: string; page?: string; pageSize?: string;
-    /** 渠道名单（渠道页「另 M 条在公海」点进来，11-11）：项目来源渠道（项目没填跟客户来源）+ 同口径的阶段；按项目一条一行 */
-    projChannel?: string; phase?: string;
-    /** 项目创建时间（渠道看板 TOP5 点进来带时间段，11-11）：两个日历日，北京日，和项目列表同名同读法；带了也按项目一条一行 */
-    createdFrom?: string; createdTo?: string;
-    /** =1：渠道分档点进来的，按创建时间筛时排掉补建的项目（同项目列表 onlyNew） */
-    onlyNew?: string;
-    /** =1：渠道页「关联线索」点进来的，只看没结局的（同项目列表 open） */
-    open?: string;
-    /** 号码不全（三态 T10）：=1 只看三态自动收回时打了「号码不全」的客户 */
-    phoneIncomplete?: string;
-    /** 导入批次（11-19，lib/project/import-batch.ts）：数据页「公海里还有 N 个」点进来带的；带了按项目一条一行，同项目列表 batch */
-    batch?: string }>;
+  /** 地址栏各项见 filters.ts 公海页地址（attr 公海属性、quick 快捷按钮、sort 排序……） */
+  searchParams: Promise<公海页地址>;
 }) {
   const me = await requireUser();
   if (!企业版() || (await getBusiness()).projectMode !== true) notFound();
@@ -51,30 +36,14 @@ export default async function PoolPage({
     return Number.isFinite(n) && n > 0 ? n : fallback;
   };
   const pageSize = Math.min(100, Math.max(10, 正整数(sp.pageSize, 20)));
-  const 筛 = {
-    keyword: (sp.keyword ?? "").trim(),
-    attr: 规整公海属性(sp.attr),
-    quick: 是快捷(sp.quick) ? sp.quick : "",
-    // 默认排序不写进地址：筛选栏的「重置」看得出没在筛
-    sort: sp.sort && 规整排序(sp.sort) === sp.sort ? sp.sort : "",
-    channelId: (sp.channelId ?? "").trim(),
-    projChannel: (sp.projChannel ?? "").trim(),
-    // 阶段只认三个，认不出的当没筛（同项目列表 阶段进程条件）
-    phase: 阶段们.includes(sp.phase as never) ? sp.phase! : "",
-    // 写错的那头当没给（custom-date-range.ts 创建时间段 同样认）
-    createdFrom: 是日期(sp.createdFrom) ? sp.createdFrom : "",
-    createdTo: 是日期(sp.createdTo) ? sp.createdTo : "",
-    phoneIncomplete: sp.phoneIncomplete === "1" ? "1" : "",
-    // 认不出的当没筛
-    batch: 批次参数(读批次(sp.batch)),
-  };
-  const 按名单 = !!(筛.projChannel || 筛.createdFrom || 筛.createdTo || 筛.batch);
+  const 筛 = 读公海页筛(sp);
+  const 按名单 = 按名单of(筛);
   const 权限org = await 权限组织();
   const 能分配 = 能管公海(me, 权限org);
   // 组织规则在设置缓存里读：客户三态关着时「号码不全」的标签、筛选都不出（P-界面-19 ⑦），地址栏带了也当没筛
   const 规则P = 生效组织规则();
   const [d, users, 规则, 有, 渠道筛选项, 无效原因选项] = await Promise.all([
-    规则P.then((r) => 读公海页(me, { 属性: 筛.attr, 快捷: 筛.quick, 排序: 筛.sort, keyword: 筛.keyword, 来源: 筛.channelId, 号码不全: r.三态.开 ? 筛.phoneIncomplete : "" }, 正整数(sp.page, 1), pageSize, 按名单 ? { channelId: 筛.projChannel, phase: 筛.phase, createdFrom: 筛.createdFrom, createdTo: 筛.createdTo, onlyNew: sp.onlyNew === "1" ? "1" : "", open: sp.open === "1" ? "1" : "", batch: 筛.batch } : undefined, { 数号码不全: r.三态.开 })),
+    规则P.then((r) => 读公海页(me, { 属性: 筛.attr, 快捷: 筛.quick, 排序: 筛.sort, keyword: 筛.keyword, 来源: 筛.channelId, 号码不全: r.三态.开 ? 筛.phoneIncomplete : "" }, 正整数(sp.page, 1), pageSize, 按名单 ? { channelId: 筛.projChannel, phase: 筛.phase, createdFrom: 筛.createdFrom, createdTo: 筛.createdTo, onlyNew: 筛.onlyNew, open: 筛.open, batch: 筛.batch } : undefined, { 数号码不全: r.三态.开 })),
     // 分配给谁：老板、主管才用得上；只列能当负责人的，不限业务线（P-转-08）
     能分配 ? 公海分配候选(me) : Promise.resolve([]),
     规则P,

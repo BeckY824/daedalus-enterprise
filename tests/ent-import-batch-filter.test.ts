@@ -17,7 +17,9 @@ vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: a
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 项目现在, 项目一段, 导入批次们 } from "../src/app/(app)/overview/project-stats";
+import { 项目现在, 项目一段, 导入批次们, 数据页批次 } from "../src/app/(app)/overview/project-stats";
+import { 看板的人 } from "@/lib/project/board-member";
+import { 读公海页筛, 按名单 } from "../src/app/(app)/pool/filters";
 import { 读批次, 批次参数, 批次条件, 批次名, 批次下拉项, 带批次 } from "@/lib/project/import-batch";
 import { 补建批次, 补建创建人, 历史分析来源 } from "@/lib/project/system-created";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
@@ -67,7 +69,7 @@ const 上月 = () => {
 };
 
 type 人 = { id: string; name: string; role: string };
-let 老板: 人, 销售: 人;
+let 老板: 人, 销售: 人, 主管: 人;
 let 公海客户: string, 普通客户: string;
 
 const 设 = (谁: 人) => { mocks.user = { ...mocks.user, id: 谁.id, name: 谁.name, role: 谁.role }; };
@@ -80,13 +82,14 @@ beforeEach(async () => {
   忘掉企业版范围();
   await setSetting("business", { projectMode: true });
   await setSetting(规则.按组织看客户.key, true);
-  const 建人 = async (email: string, name: string, role: string, bizRole: string): Promise<人> => {
+  const 建人 = async (email: string, name: string, role: string, bizRole: string, managerId?: string): Promise<人> => {
     const id = (await prisma.user.create({ data: { email, name, title: "", role, password: "x" } })).id;
-    await prisma.entMember.create({ data: { userId: id, bizRole } });
+    await prisma.entMember.create({ data: { userId: id, bizRole, managerId } });
     return { id, name, role };
   };
   老板 = await 建人("boss", "老板", "ADMIN", "director");
-  销售 = await 建人("s1", "销售甲", "SALES", "sales");
+  主管 = await 建人("m1", "主管", "SALES", "sales_mgr");
+  销售 = await 建人("s1", "销售甲", "SALES", "sales", 主管.id);
   invalidateSettingsCache();
   忘掉企业版范围();
   普通客户 = (await prisma.customer.create({ data: { name: "云帆科技", phone: "13900000001", salesOwnerId: 销售.id } })).id;
@@ -225,5 +228,56 @@ describe("卡片点进列表，条数对得上", () => {
     expect(公海页.总数).toBe(池.公海);
     const 排掉 = await 以谁的身份(老板.id, () => 读公海页(老板, {}, 1, 100, { batch: `-${公海批}`, open: "1" }));
     expect(排掉.行.map((r) => r.项目名)).toEqual(["自建公海"]);
+  });
+});
+
+describe("公海页从数据页点进来（open=1&batch=…）", () => {
+  it("open、onlyNew 随筛选回显（翻页、换池按它重拼地址）；翻到第 2 页总数不变，已结束的不混进来", async () => {
+    // 公海批里多一个已结束的：不带 open 会列出来，数据页的线索池数不算它
+    await prisma.project.create({ data: { name: "公海批流失", customerId: 公海客户, ownerId: "", creatorId: 销售.id, phase: "线索", node: "潜客培育", result: "线索流失", pooledAt: new Date(), importBatch: 公海批 } });
+    const 筛 = 读公海页筛({ open: "1", onlyNew: "1", batch: 公海批, page: "2" });
+    expect(筛).toMatchObject({ open: "1", onlyNew: "1", batch: 公海批 });
+    expect(按名单(筛)).toBe(true);
+    expect(读公海页筛({ open: "x", batch: "a b" })).toMatchObject({ open: "", onlyNew: "", batch: "" });
+
+    设(老板);
+    const 池 = await 以谁的身份(老板.id, () => 项目现在("CNY", undefined, { 批: 公海批, 排: false }));
+    expect(池.公海).toBe(13);
+    const 名单 = { batch: 筛.batch, open: 筛.open, onlyNew: 筛.onlyNew };
+    const 一 = await 以谁的身份(老板.id, () => 读公海页(老板, {}, 1, 10, 名单));
+    const 二 = await 以谁的身份(老板.id, () => 读公海页(老板, {}, 2, 10, 名单));
+    expect([一.总数, 二.总数]).toEqual([13, 13]);
+    expect(一.行.length + 二.行.length).toBe(13);
+    expect([...一.行, ...二.行].some((r) => r.项目名 === "公海批流失")).toBe(false);
+    // 丢了 open 就是 14（审查 #368 复现的样子）
+    expect((await 以谁的身份(老板.id, () => 读公海页(老板, {}, 2, 10, { batch: 公海批 }))).总数).toBe(14);
+  });
+});
+
+describe("谁能按批次看", () => {
+  it("总管理：摆下拉、认 batch=；库里没有的批次当全部", async () => {
+    const 人 = await 看板的人(老板);
+    expect(人.全看).toBe(true);
+    const d = await 数据页批次(人.全看, `-${公海批}`);
+    expect(d.批).toEqual({ 批: 公海批, 排: true });
+    expect(d.下拉?.当前).toBe(`-${公海批}`);
+    expect(d.下拉?.选项[0]).toEqual({ value: "", label: "全部批次" });
+    expect(await 数据页批次(人.全看, "no-such-batch")).toMatchObject({ 批: null, 下拉: { 当前: "" } });
+  });
+
+  it("主管、业务员带 batch= 打开数据页：不出下拉，数和不带时一样", async () => {
+    const m = 上月();
+    for (const 谁 of [主管, 销售]) {
+      设(谁);
+      const 人 = await 以谁的身份(谁.id, () => 看板的人(谁));
+      expect(人.全看, 谁.name).toBeFalsy();
+      const 范围 = 人.只看 ?? 人.谁;
+      for (const b of [增量, `-${增量}`, 公海批]) {
+        const d = await 以谁的身份(谁.id, () => 数据页批次(人.全看, b));
+        expect(d, `${谁.name} ${b}`).toEqual({ 批: null });
+        expect(await 以谁的身份(谁.id, () => 项目现在("CNY", 范围, d.批))).toEqual(await 以谁的身份(谁.id, () => 项目现在("CNY", 范围)));
+        expect(await 以谁的身份(谁.id, () => 项目一段(m.from, m.to, "day", "CNY", 范围, d.批))).toEqual(await 以谁的身份(谁.id, () => 项目一段(m.from, m.to, "day", "CNY", 范围)));
+      }
+    }
   });
 });

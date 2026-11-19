@@ -2153,6 +2153,8 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
   .cmap:not(.no-map) .cmap-rank .btodo-rc-row { grid-template-columns: minmax(0, 7em) minmax(0, 1fr) 3em; }
 }
 .rkpi-cap { font-size: var(--fs-note); }
+/* 标题和旁边那句灰字（「不跟导入批次」，11-19）并成左边一组，右边的「看全部」照旧靠右 */
+.rkpi-head-l { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--s2); min-width: 0; }
 .rkpi-warn { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
 .rkpi-warn li + li { border-top: 1px solid var(--line-soft); }
 .rkpi-warn-a { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) auto; align-items: center; gap: var(--s3); padding: var(--s2) var(--s1); color: inherit; }

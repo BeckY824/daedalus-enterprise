@@ -7,7 +7,7 @@ import type { Prisma } from "@/generated/prisma";
 import { bucketOf, 刻度们, type 粒度 } from "./data";
 import { 项目漏斗of, type 漏斗格 } from "./funnel";
 import { 不算补建, 不算历史分析, 历史分析来源, 留痕不算历史分析, 并条件 } from "@/lib/project/system-created";
-import { 批次条件, type 批次筛 } from "@/lib/project/import-batch";
+import { 批次条件, 读批次, 批次参数, 批次下拉项, type 批次筛 } from "@/lib/project/import-batch";
 
 /**
  * 企业版只用项目时「数据」页的数（10-26 用户：「「数据」页改成按项目统计」，线索 / 商机 / 订单是项目的三大阶段）。
@@ -286,6 +286,19 @@ export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币:
 export async function 导入批次们(): Promise<string[]> {
   const gs = await prisma.project.groupBy({ by: ["importBatch"], where: 并条件({ importBatch: { not: null } }, 不算历史分析) });
   return gs.map((g) => g.importBatch).filter((b): b is string => !!b).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
+}
+
+/**
+ * 数据页这一次按哪一批数、摆不摆「导入批次」下拉（11-19）。
+ * 只有看得到全部的人（看板的人 的 全看：总管理、管理员）才认地址栏 batch=、才摆下拉；主管、业务员带了 batch= 也当「全部」，数和不带一样。
+ * 地址栏的批次库里没有（写错、那批删了）也当「全部」；库里一批都没有就不摆下拉
+ */
+export async function 数据页批次(全看: boolean | undefined, 要的: unknown): Promise<{ 批: 批次筛 | null; 下拉?: { 选项: { value: string; label: string }[]; 当前: string } }> {
+  if (!全看) return { 批: null };
+  const 们 = await 导入批次们();
+  const 要 = 读批次(要的);
+  const 批 = 要 && 们.includes(要.批) ? 要 : null;
+  return { 批, 下拉: 们.length ? { 选项: 批次下拉项(们), 当前: 批次参数(批) } : undefined };
 }
 
 /** 填上名字；同名的带上邮箱分开，人已经删了的写「已不在的成员」 */

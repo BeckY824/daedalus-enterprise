@@ -8,8 +8,8 @@ import DataShell from "./DataShell";
 import { 唯一负责人 } from "@/lib/owners";
 import { getBusiness } from "@/lib/business";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
-import { 项目现在, 项目一段, 导入批次们 } from "./project-stats";
-import { 读批次, 批次参数, 批次下拉项 } from "@/lib/project/import-batch";
+import { 项目现在, 项目一段, 数据页批次 } from "./project-stats";
+import { 批次参数 } from "@/lib/project/import-batch";
 import { ProjectNowView, ProjectPeriodView } from "./ProjectStatsView";
 import BoardTodos from "./BoardTodos";
 import { 看板的人 } from "@/lib/project/board-member";
@@ -147,15 +147,9 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
     );
   }
 
-  const [业务, 批次们] = await Promise.all([
-    getBusiness(),
-    // 导入批次（11-19，lib/project/import-batch.ts）：看得到全部的人（总管理、管理员）才有这个下拉；地址栏 batch= 只认库里有的批次，别的当「全部」
-    人.全看 ? 导入批次们() : Promise.resolve([] as string[]),
-  ]);
+  // 导入批次（11-19，lib/project/import-batch.ts）：看得到全部的人（总管理、管理员）才有这个下拉；地址栏 batch= 只认库里有的批次，别的当「全部」
+  const [业务, { 批, 下拉: 批次 }] = await Promise.all([getBusiness(), 数据页批次(人.全看, sp.batch)]);
   const 本位币 = 业务.currency;
-  const 要的批 = 读批次(sp.batch);
-  const 批 = 要的批 && 批次们.includes(要的批.批) ? 要的批 : null;
-  const 批次 = 批次们.length ? { 选项: 批次下拉项(批次们), 当前: 批次参数(批) } : undefined;
   const 链批 = 批次参数(批) || undefined;
   if (view === "现在") {
     const [数, 唯一, 概况, 规则, 客户] = await Promise.all([项目现在(本位币, 范围, 批), 唯一负责人(), 复盘概况of(范围, user, 本位币), 生效组织规则(), 客户分布of(范围)]);

@@ -60,7 +60,12 @@ type Props = {
     /** 号码不全（三态 T10）：=1 只看三态自动收回时打了「号码不全」的客户；三态关着服务端不认、页面不摆 */
     phoneIncomplete?: string;
     /** 导入批次（11-19，lib/project/import-batch.ts）：数据页点进来带的；不进筛选栏，页头挂一枚能关掉的标签 */
-    batch?: string };
+    batch?: string;
+    /**
+     * open=1 只看没结局的、onlyNew=1 按创建时间筛时排掉补建（filters.ts 读公海页筛）：不进筛选栏、不算在筛，
+     * 但要留在 filters 里——翻页、换池、改筛选都按它重拼地址，不留就丢了，名单条数和点进来的卡对不上
+     */
+    open?: string; onlyNew?: string };
   /** 自定义筛选「客户来源」的候选 */
   渠道筛选项: { value: string; label: string }[];
   /** 老板、主管 */
@@ -147,15 +152,20 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
   const router = useRouter();
   const { f, setF, apply, 翻页, reset, pending } = useUrlFilters("/pool", filters, pageSize);
   const 在筛 = !!(f.keyword || f.attr || f.quick || f.sort || f.channelId || f.projChannel || f.createdFrom || f.createdTo || f.batch || (三态开 && f.phoneIncomplete));
+  /** 关掉名单类的标签 / 清掉创建时间：名单的条件都没了，open / onlyNew 一起去掉（它们只对名单起作用，留着会跟到下次筛的名单上） */
+  const 改名单 = (改: Partial<typeof f>) => {
+    const 后 = { ...f, ...改 };
+    apply(后.projChannel || 后.createdFrom || 后.createdTo || 后.batch ? 改 : { ...改, open: "", onlyNew: "" });
+  };
   // 渠道名单：说清现在只看哪个渠道、哪个阶段的公海项目（一条一行，条数 = 渠道页的「另 M 条在公海」），能关掉
   const 名单渠道 = filters.projChannel ? (渠道筛选项.find((o) => o.value === filters.projChannel)?.label ?? "这个渠道") : "";
   const 名单标 = filters.projChannel ? (
-    <Tag closable title="从渠道页点进来的：这个渠道（项目没填来源的跟客户来源）在公海里的项目，一个一行" onClose={(e) => { e.preventDefault(); apply({ projChannel: "", phase: "" }); }} closeIcon={<CloseOutlined aria-label="清掉渠道名单筛选" />}>
+    <Tag closable title="从渠道页点进来的：这个渠道（项目没填来源的跟客户来源）在公海里的项目，一个一行" onClose={(e) => { e.preventDefault(); 改名单({ projChannel: "", phase: "" }); }} closeIcon={<CloseOutlined aria-label="清掉渠道名单筛选" />}>
       渠道名单：{名单渠道}{filters.phase ? ` · ${filters.phase}` : ""}
     </Tag>
   ) : undefined;
   // 导入批次（数据页「公海里还有 N 个」点进来）：说清只看 / 排掉了哪一批，能关掉；样子同项目列表那一枚
-  const 批标 = filters.batch ? <BatchFilterTag batch={filters.batch} 清掉={() => apply({ batch: "" })} /> : undefined;
+  const 批标 = filters.batch ? <BatchFilterTag batch={filters.batch} 清掉={() => 改名单({ batch: "" })} /> : undefined;
   const 到上限 = !!持有 && 持有.有 >= 持有.上限;
   const 分给谁 = 成员选项(users);
   /** 客户池并成一行、展开着的（行 id） */
@@ -653,7 +663,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
       // 项目创建时间（11-11）：按项目算，筛了客户公海里的客户按名下项目拆成几行（同渠道名单），条数和渠道看板对得上
       键: "created", 名: "创建时间", 宽: 240, 默认外露: false, 有值: !!(f.createdFrom || f.createdTo),
       渲染: (style: CSSProperties) => (
-        <CreatedRangeFilter style={style} from={f.createdFrom} to={f.createdTo} 改={(v) => apply(v)} />
+        <CreatedRangeFilter style={style} from={f.createdFrom} to={f.createdTo} 改={(v) => 改名单(v)} />
       ),
     },
     {
