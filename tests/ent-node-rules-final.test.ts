@@ -20,6 +20,7 @@ import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 默认组织规则, type 组织规则 } from "@/lib/project/org-rules";
 import { 改节点, 改项目, 客户项目按必填推进, 读必填数据, 终止进程 } from "@/lib/project/db";
+import { 改项目画像 } from "@/lib/project/profile";
 import { 还差, 宽严互斥, 去掉宽的 } from "@/lib/project/required";
 import { 改节点问题, 交付不在尾款话, 企业版字典 } from "@/lib/project/nodes";
 import { 看板推进预检 } from "@/app/(app)/projects/actions";
@@ -299,6 +300,40 @@ describe("节点推进规则定稿（真库）", () => {
       const 结 = await 项目({ name: "二号", stockStatus: "已备货", result: "异常状态" });
       expect(await 改项目(乙, 结.id, { remark: "存" })).not.toHaveProperty("自动推到");
       expect((await 现(结.id)).node).toBe("生产备货");
+    });
+  });
+
+  describe("⑦ 项目画像补齐最后一项也自动推（不只需求状态）", () => {
+    it("痛点挖掘配痛点标注 + 预算能力：先写痛点不推，画像选了预算能力推到方案敲定；同值再存不推、不连推", async () => {
+      await setSetting("orgRules", 开着({ 痛点挖掘: ["痛点标注", "预算能力"], 方案敲定: ["决策链路"] }));
+      const p = await 项目({ phase: "商机", node: "痛点挖掘", decisionChain: "多部门决策" });
+      expect(await 改项目(乙, p.id, { painPoints: "排产慢" })).not.toHaveProperty("自动推到");
+      expect((await 详(p.id)).必填?.还差).toEqual(["预算能力"]);
+      expect(await 改项目画像(乙, p.id, { budgetLevel: "预算充足" })).toEqual({ ok: true, 变了: ["budgetLevel"], 自动推到: ["方案敲定"] });
+      // 方案敲定的决策链路一开始就齐：一次一格，停在方案敲定
+      expect((await 现(p.id)).node).toBe("方案敲定");
+      // 没变的不算保存：不推
+      expect(await 改项目画像(乙, p.id, { budgetLevel: "预算充足", decisionChain: "多部门决策" })).toEqual({ ok: true, 变了: [] });
+      expect((await 现(p.id)).node).toBe("方案敲定");
+      // 画像别的项变了：按必填再推一格
+      expect(await 改项目画像(乙, p.id, { priceSense: "价格认可" })).toMatchObject({ ok: true, 自动推到: ["成交推进"] });
+    });
+
+    it("需求类型（多选）补齐也推；节点推进关着、项目在公海里不推", async () => {
+      await setSetting("orgRules", 开着({ 痛点挖掘: ["需求类型"] }));
+      const p = await 项目({ phase: "商机", node: "痛点挖掘" });
+      expect(await 改项目画像(乙, p.id, { productNeeds: ["常规标品"] })).toMatchObject({ ok: true, 自动推到: ["方案敲定"] });
+      await setSetting("orgRules", { ...默认组织规则, 节点推进: { 开: false, 必填: { 痛点挖掘: ["预算能力"] } } });
+      invalidateSettingsCache();
+      const q = await 项目({ name: "二号", phase: "商机", node: "痛点挖掘" });
+      expect(await 改项目画像(乙, q.id, { budgetLevel: "预算充足" })).toEqual({ ok: true, 变了: ["budgetLevel"] });
+      expect((await 现(q.id)).node).toBe("痛点挖掘");
+      await setSetting("orgRules", 开着({ 痛点挖掘: ["预算能力"] }));
+      invalidateSettingsCache();
+      const 公海 = await 项目({ name: "三号", phase: "商机", node: "痛点挖掘", pooledAt: new Date() });
+      // 公海里的项目先领取才能改：改不了也就推不了
+      expect(await 改项目画像(乙, 公海.id, { budgetLevel: "预算充足" })).toMatchObject({ ok: false });
+      expect((await 现(公海.id)).node).toBe("痛点挖掘");
     });
   });
 
