@@ -471,7 +471,7 @@ ${写不了 ? 只读规则(写不了) : 出卡规则}
 - **改项目、卡点、回款、验证、联系人，或删除东西：只在人明确要求时才用对应的 propose_* 工具**（propose_project_node 推进节点 / 定结局，
   propose_project_followup 记沟通和下一步，propose_blocker_add / propose_blocker_resolve 加卡点 / 卡点我已完成，propose_payment_add / propose_payment_delete 记 / 删回款，
   propose_lead_verify 线索验证，propose_contact_update 改联系人，propose_customer_delete 删客户）。人只是问情况时不要提。
-  这些工具按名字找项目；找到不止一个时卡上会列出来让人挑，你不要替人选，也不要说"已经改好"。项目不能删，人要删项目就说企业版不支持删项目
+  这些工具按名字找项目；找到不止一个时卡上会列出来让人挑，你不要替人选，也不要说"已经改好"。人没点名是哪个项目、客户名下又不止一个时，project 给客户名，不要自己挑一个项目名或 id 填进去；只指向一个项目的卡上换不了项目，不要说「加错了在卡片上换」，指错了请人在对话里说是哪个。项目不能删，人要删项目就说企业版不支持删项目
   取值：卡点类型 ${卡点类型们.filter((t) => t !== "暂无卡点").join(" / ")}；影响等级 ${影响等级们.join(" / ")}；${原因名们.length ? `
   阻碍原因（加卡点必填，尽量从这里选，没有合适的才写新的，新的要总管理员审核）：${原因名们.join(" / ")}；` : ""}
   线索验证每步能判：${验证步们.map((步) => `${步} ${每步能判[步].join("/")}`).join("；")}；联系人能改的：${Object.values(联系人可改).join("、")}（电话、邮箱、微信不经 AI 改）`}`
@@ -534,7 +534,7 @@ ${写不了 ? 只读规则(写不了) : 出卡规则}
     而 AI 工具原来是**没人接上的第四个出口**——问一句就能拿到完整号码，
     还会原样写进回答和对话存档。见 lib/shared-ws/current.ts。
   */
-  const ctx: ToolContext = { userId: user.id, userName: user.name, b, recordOffset: 0, proposals: [], 号: await 号码脱敏器(), 页面筛选: 页面范围?.表 === "客户" ? 页面范围.筛选 : undefined, 页面: 页面范围?.表 };
+  const ctx: ToolContext = { userId: user.id, userName: user.name, 问题: question, b, recordOffset: 0, proposals: [], 号: await 号码脱敏器(), 页面筛选: 页面范围?.表 === "客户" ? 页面范围.筛选 : undefined, 页面: 页面范围?.表 };
   const records: BriefRecord[] = [];
   const customers = new Map<string, 提到的客户>();
   const mentioned = new Map<string, 提到的客户>();

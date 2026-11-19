@@ -56,6 +56,7 @@ import * as 客户动作 from "@/app/(app)/customers/actions";
 import { 记回款 as 库记回款 } from "@/lib/project/payment-db";
 import { 记项目沟通 } from "@/lib/project/db";
 import { 发卡点判断, 能发卡点 } from "@/lib/project/blocker";
+import { 本轮点名 } from "@/lib/agent/project-tools";
 import { 北京日期 } from "./helpers/beijing-date";
 
 type 人 = { id: string; name: string; role: string };
@@ -71,9 +72,9 @@ const b = { ...DEFAULT_BUSINESS, projectMode: true };
 const ctx = (me: 人) => ({ userId: me.id, userName: me.name, b, recordOffset: 0, proposals: [] as Proposal[] });
 
 /** 以某人身份调一个 propose_* 工具，拿回它出的那张卡 */
-async function 出(name: string, args: Record<string, unknown>, me: 人 = 乙) {
+async function 出(name: string, args: Record<string, unknown>, me: 人 = 乙, 问题?: string) {
   当(me);
-  const c = ctx(me);
+  const c = { ...ctx(me), ...(问题 ? { 问题 } : {}) };
   const r = await 以谁的身份(me.id, () => TOOLS.find((t) => t.name === name)!.run(args, c as never));
   return { r, 卡: c.proposals[0] as 项目卡 | undefined };
 }
@@ -241,6 +242,70 @@ describe("沟通 + 卡点：原因字典、旧卡（11-19）", () => {
     expect(一个.卡).toMatchObject({ targetId: 二期, 要卡点: true });
     expect(一个.卡!.候选 ?? []).toEqual([]);
     expect((一个.r.data as { note: string }).note).not.toContain("已去掉");
+  });
+
+  /*
+    11-19 3703 实操：客户名和其中一个项目名一样、名下两个项目，「给 X 那个项目加个卡点」模型先查客户、自己挑了「X（2）」出卡，
+    卡上又换不了项目。工具层堵住：没点名、名下还有别的能加卡点的项目 → 和模糊名同一条路列候选，不替人选（名字都是虚构的）
+  */
+  it("客户名和项目名撞、名下两个项目：模型按项目名或自己查来的 id 出卡，照样列候选、确认拦下；人挑了才能确认", async () => {
+    const 客 = (await prisma.customer.create({ data: { name: "青禾", phone: "13900000009", salesOwnerId: 乙.id } })).id;
+    const 甲项 = (await prisma.project.create({ data: { name: "青禾", customerId: 客, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育" } })).id;
+    const 乙项 = (await prisma.project.create({ data: { name: "青禾（2）", customerId: 客, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育" } })).id;
+    const 话 = "给青禾那个项目加个卡点，客户预算还没批下来";
+    const 参 = { 卡点类型: "中度卡点", 阻碍原因: ["价格预算分歧"], content: "客户预算还没批下来", 下一步: "下周再问", reason: "人说的" };
+    for (const 指 of [{ project: "青禾（2）" }, { projectId: 乙项 }, { projectId: 甲项 }, { project: "青禾" }]) {
+      const { r, 卡 } = await 出("propose_blocker_add", { ...指, ...参 }, 乙, 话);
+      expect(卡).toMatchObject({ kind: "project_followup", targetId: "", 要卡点: true });
+      expect(卡!.候选!.map((c) => c.id).sort()).toEqual([甲项, 乙项].sort());
+      expect(missingFields(卡!)).toContain("选哪一个");
+      expect((r.data as { note: string }).note).toContain("不要替人选");
+      expect(await 确认(卡!, 乙)).toMatchObject({ ok: false, error: expect.stringContaining("选哪一个") });
+    }
+    expect(项目动作.记项目沟通Action).not.toHaveBeenCalled();
+    // 人在卡上挑了「青禾（2）」：补 合进卡里，能确认，卡点发在挑的那个项目上
+    const { 卡 } = await 出("propose_blocker_add", { project: "青禾（2）", ...参 }, 乙, 话);
+    const c = 卡!.候选!.find((x) => x.id === 乙项)!;
+    const 挑了 = { ...卡!, targetId: c.id, targetName: c.名, ...(c.补 ?? {}) } as 项目卡;
+    expect(missingFields(挑了)).toEqual([]);
+    expect(await 确认(挑了, 乙)).toMatchObject({ ok: true });
+    expect(项目动作.记项目沟通Action).toHaveBeenCalledWith(乙项, expect.anything(), expect.objectContaining({ type: "中度卡点" }));
+    expect(await prisma.entBlocker.count({ where: { projectId: 乙项 } })).toBe(1);
+  });
+
+  it("这一轮人点名了是哪个项目（名字或 id）：直接出卡；名下只有一个项目：照常直接出卡", async () => {
+    const 客 = (await prisma.customer.create({ data: { name: "青禾", phone: "13900000009", salesOwnerId: 乙.id } })).id;
+    await prisma.project.create({ data: { name: "青禾", customerId: 客, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育" } });
+    const 乙项 = (await prisma.project.create({ data: { name: "青禾（2）", customerId: 客, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育" } })).id;
+    const 参 = { 卡点类型: "中度卡点", 阻碍原因: ["价格预算分歧"], content: "预算没批", 下一步: "下周再问", reason: "人说的" };
+    // 从候选里挑定（下一轮说了名字 / 带着 id）后模型带 id 来：直接指向，卡上不再列候选
+    for (const 话 of ["就加在青禾（2）上", `选 ${乙项}`]) {
+      const { r, 卡 } = await 出("propose_blocker_add", { projectId: 乙项, ...参 }, 乙, 话);
+      expect(卡).toMatchObject({ targetId: 乙项, 要卡点: true });
+      expect(卡!.候选 ?? []).toEqual([]);
+      expect(missingFields(卡!)).toEqual([]);
+      expect((r.data as { note: string }).note).toContain("卡上换不了");
+    }
+    // 名下只有一个项目（beforeEach 的云帆科技 · 云帆一期）：按客户名、按项目 id 都直接指向
+    for (const 指 of [{ project: "云帆科技" }, { projectId: 项目id }]) {
+      const { 卡 } = await 出("propose_blocker_add", { ...指, ...参 }, 乙, "给云帆科技加个卡点");
+      expect(卡).toMatchObject({ targetId: 项目id, 要卡点: true });
+      expect(卡!.候选 ?? []).toEqual([]);
+    }
+  });
+
+  it("本轮点名：名字和客户名撞不算；说「X（2）」时只认 X（2），不认 X；没原话不算", () => {
+    const 客 = { name: "青禾", shortName: null };
+    const 甲 = { id: "p1", name: "青禾", customer: 客 }, 乙p = { id: "p2", name: "青禾（2）", customer: 客 };
+    const 设备 = { id: "p3", name: "设备", customer: { name: "某厂", shortName: null } }, 设备2 = { id: "p4", name: "设备（2）", customer: { name: "某厂", shortName: null } };
+    expect(本轮点名(甲, [甲, 乙p], "给青禾那个项目加卡点")).toBe(false);
+    expect(本轮点名(乙p, [甲, 乙p], "给青禾那个项目加卡点")).toBe(false);
+    expect(本轮点名(乙p, [甲, 乙p], "加在青禾（2）上")).toBe(true);
+    expect(本轮点名(设备, [设备, 设备2], "给设备（2）加卡点")).toBe(false);
+    expect(本轮点名(设备2, [设备, 设备2], "给设备（2）加卡点")).toBe(true);
+    expect(本轮点名(设备, [设备, 设备2], "给某厂的设备加卡点")).toBe(true);
+    expect(本轮点名(设备, [设备, 设备2], `就是 p3`)).toBe(true);
+    expect(本轮点名(设备, [设备, 设备2], undefined)).toBe(false);
   });
 
   it("发卡点判断（读一次权限和组织、每个项目同步判断）和 能发卡点 结果一致", async () => {

@@ -86,7 +86,7 @@ function 出卡(ctx: ToolContext, kind: 项目卡Kind, 客户: { id: string; nam
     summary: `建议：${describeProposal(r.proposal, ctx.b.customer, undefined, ctx.b)}${miss.length ? `（还差 ${miss.join("、")}）` : ""}`,
     data: {
       ok: true, missing: miss,
-      note: `${候.length > 1 ? "找到不止一个，卡上列了几个让人自己挑，不要替人选，也不要再调同一个工具。" : 候.length ? "卡上列了它让人自己点选，不要替人选，也不要再调同一个工具。" : ""}${miss.length ? "建议卡已给出，留空的人会在卡片上补。" : "建议卡已给出，等人确认。"}不要再调同一个工具，回答里说清楚：确认后才会写入。${补话}`,
+      note: `${候.length > 1 ? "找到不止一个，卡上列了几个让人自己挑，不要替人选，也不要再调同一个工具。" : 候.length ? "卡上列了它让人自己点选，不要替人选，也不要再调同一个工具。" : `这张卡只指向「${str(args.targetName) || "这一个"}」，卡上换不了，不要说「加错了在卡片上换一下」；不对请人在对话里说是哪一个。`}${miss.length ? "建议卡已给出，留空的人会在卡片上补。" : "建议卡已给出，等人确认。"}不要再调同一个工具，回答里说清楚：确认后才会写入。${补话}`,
       ...(挑 ? { 挑: 挑 } : {}),
     },
   };
@@ -106,6 +106,22 @@ function 指向(行: 项目行[], 露: (p: 项目行) => boolean, 补of: (p: 项
       候选: 前.map((p): 候选 => ({ id: p.id, 名: p.name, 说明: 项目说明(p, 露), 补: { ...客户of(p, 露), projectId: p.id, ...补of(p) } })),
     },
   };
+}
+
+/**
+ * 人这一轮的原话有没有点名说是 p 这个项目（只看这一轮，前几轮的不算）：
+ * 原话里有它的 id；或有它的名字，且名字不和客户名撞（「X 那个项目」说的是客户，不是项目「X」），
+ * 原话里出现的其他候选名字也都只是它名字的一截（说「X（2）」时「X」也算出现过）。
+ * 没原话（单测、别的入口）一律不算点名
+ */
+export function 本轮点名(p: { id: string; name: string; customer: { name: string; shortName: string | null } }, 候们: { id: string; name: string }[], 问题?: string): boolean {
+  const 话 = (问题 ?? "").trim();
+  if (!话) return false;
+  if (话.includes(p.id)) return true;
+  const 名 = p.name.trim();
+  if (!名 || !话.includes(名)) return false;
+  if ([p.customer.name, p.customer.shortName ?? ""].some((c) => c.trim() === 名)) return false;
+  return 候们.every((c) => c.id === p.id || !c.name.trim() || !话.includes(c.name.trim()) || 名.includes(c.name.trim()));
 }
 
 async function 字典() {
@@ -386,6 +402,7 @@ async function 沟通卡(a: Record<string, unknown>, ctx: ToolContext, 要卡点
   */
   let 行们 = 找.行.slice(0, 候选上限);
   let 剔话 = "";
+  let 要挑 = 找.行.length > 1;
   if (要卡点) {
     const 判 = 我 ? await 发卡点判断(我) : null;
     const 能 = (p: 项目行) => !!判 && !组员记(p) && 判(p);
@@ -396,8 +413,22 @@ async function 沟通卡(a: Record<string, unknown>, ctx: ToolContext, 要卡点
       return { summary: 话, data: { error: 话 } };
     }
     if (剔掉.length) 剔话 = `另有 ${剔掉.length} 个项目你不能新建卡点，已去掉：${剔掉.map((p) => p.name).join("、")}。回答里照实说一句；用户说的要是这几个，只能记沟通（propose_project_followup）。`;
+    /*
+      按名字（或模型自己查来的 id）只对上一个项目，但这位客户名下还有别的、这个人也能加卡点的项目：
+      模型多半是先查了客户、自己挑了一个（11-19 实操：客户名和其中一个项目名一样，「给 X 那个项目加卡点」它直接挑了「X（2）」）。
+      卡上换不了项目，所以不替人选：把这几个一起放进候选（同模糊名那条路：同一个 能、同一个 指向、要人点选）。
+      人这一轮点名说了是哪个项目（原话里有它的 id，或有它的名字且名字不和客户名撞、也不是别的候选名字的一截）才直接指向
+    */
+    if (!要挑 && 行们.length === 1 && 找.露(行们[0])) {
+      const p = 行们[0];
+      const 同客户 = (await prisma.project.findMany({ where: { customerId: p.customerId, id: { not: p.id } }, select: 项目列, take: 候选上限, orderBy: { updatedAt: "desc" } })).filter(能);
+      if (同客户.length && !本轮点名(p, [p, ...同客户], ctx.问题)) {
+        行们 = [p, ...同客户].slice(0, 候选上限);
+        要挑 = true;
+      }
+    }
   }
-  const 指 = 指向(行们, 找.露, (p) => ({ ...(要时间(p) ? { 要时间: true } : {}), 组员记: 组员记(p) }), 找.行.length > 1);
+  const 指 = 指向(行们, 找.露, (p) => ({ ...(要时间(p) ? { 要时间: true } : {}), 组员记: 组员记(p) }), 要挑);
   // 11-19：卡点不再有标题、卡在哪儿；阻碍原因必填，卡上给设置里启用的原因当下拉（也能现打）
   const 原因可选们 = 要卡点 ? await 可选原因们() : [];
   // 不在字典里的原因：卡上标「新增·待审核」，返回里也告诉模型，让它照实说
