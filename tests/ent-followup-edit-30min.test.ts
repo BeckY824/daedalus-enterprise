@@ -1,5 +1,5 @@
 /**
- * 企业版沟通记录本人 30 分钟内能改（客户 11-19：「沟通记录填写提交后，可在30分钟进行修改」，M-权限-09 的例外）。
+ * 企业版沟通记录本人 30 分钟内能改（M-权限-09 的例外，客户 11-19 第 32 题 A 定稿，口径见 lib/enterprise/follow-perm.ts）。
  *
  * 钉的是：
  *   - 记录人本人（FollowUp.ownerId）写入 29 分钟改得了、31 分钟拒（本人改沟通过时话），原样还在；不是记录人的拒
@@ -7,7 +7,10 @@
  *   - 挂哪个客户 / 项目、哪个节点改不了；沟通不能改成待办
  *   - 留痕：一条「改了沟通」带改了哪几格；一格没变不留；改过的沟通们 认它（列表「已修改」）
  *   - 下一步跟着改：负责人最近记的那条才认，同步项目上的下一步和这条的下一步时间；别的带了下一步就拒、一格不写
- *   - 本人限时改不重跑必填齐自动推进（客户存了推项目 不调）
+ *   - 本人限时改不重跑必填齐自动推进（客户存了推项目 不调）；管理本人 30 分钟内改自己记的也不推、日志同样标，改别人记的照旧（⑤）
+ *   - ③ 直接调 saveFollowUp：本人限时改改标题 / 状态 / 时长 / 提醒时间 / 联系人 / 商机 / 参与人一律拒（本人改只改内容话），原样带回不误拒
+ *   - ⑤ 只能改不能删：记录人本人 30 分钟内删也拒（客户页 deleteFollowUp、项目页 删项目沟通）
+ *   - 「已修改」只认新格式留痕，老格式「修改…跟进」不算；待办 / 提醒改成沟通被拒
  *   - 项目详情给界面的：本人可改到（30 分钟内、我记的）、下一步（最近一条）、已修改
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -36,10 +39,12 @@ import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { dayjs } from "@/lib/utils";
-import { 记项目沟通Action, 改项目沟通 } from "@/app/(app)/projects/actions";
-import { saveFollowUp } from "@/app/(app)/customers/[id]/actions";
+import { 记项目沟通Action, 改项目沟通, 删项目沟通 } from "@/app/(app)/projects/actions";
+import { saveFollowUp, deleteFollowUp } from "@/app/(app)/customers/[id]/actions";
+import { scheduleValue } from "@/lib/schedule-date";
+import { 待办改沟通话 } from "@/lib/project/follow-needs-project-text";
 import { 读项目详情 } from "@/app/(app)/projects/[id]/load";
-import { 本人改沟通过时话, 不能改沟通话, 本人改不能变待办话, 本人限时可改of, 本人可改到, 下一步跟着改of } from "@/lib/enterprise/follow-perm";
+import { 本人改沟通过时话, 不能改沟通话, 不能删沟通话, 本人改不能变待办话, 本人改只改内容话, 本人限时可改of, 本人可改到, 下一步跟着改of } from "@/lib/enterprise/follow-perm";
 import { 改过的沟通们 } from "@/lib/enterprise/follow-edited";
 
 afterAll(async () => { await prisma.$disconnect(); });
@@ -63,6 +68,16 @@ const 开按组织看 = async () => {
   await raw.setting.upsert({ where: { key: 规则.按组织看客户.key }, update: { value: "true" }, create: { key: 规则.按组织看客户.key, value: "true" } });
   invalidateSettingsCache();
   忘掉企业版范围();
+};
+/** 照库里那条原样拼一份 saveFollowUp 入参（同 改项目沟通 带回别的格子的写法），测试只改要改的那格 */
+const 原样 = async (id: string): Promise<Parameters<typeof saveFollowUp>[0]> => {
+  const f = await raw.followUp.findUniqueOrThrow({ where: { id } });
+  return {
+    id, customerId: f.customerId, type: f.type, method: f.method, initiator: f.initiator, content: f.content, occurredAt: dayjs(f.occurredAt).format("YYYY-MM-DD HH:mm"),
+    title: f.title, status: f.status, durationMinutes: f.duration != null ? f.duration / 60 : null,
+    dueAt: scheduleValue(f.dueAt, f.dueOn), dueHasTime: f.dueHasTime ?? undefined,
+    contactId: f.contactId, opportunityId: f.opportunityId, participants: f.participants, 版本: f.updatedAt.toISOString(),
+  };
 };
 const 改沟通痕 = (id: string) => raw.auditLog.findMany({ where: { entity: "FollowUp", action: "update", entityId: id }, orderBy: { at: "asc" } });
 
@@ -245,5 +260,90 @@ describe("项目详情交给界面的", () => {
     忘掉企业版范围();
     当(同事);
     expect((await 行(id))?.本人可改到).toBeUndefined();
+  });
+});
+
+describe("③ 本人限时改只改沟通内容、方式、时间（直接调 saveFollowUp）", () => {
+  it("改标题 / 状态 / 时长 / 提醒时间 / 联系人 / 商机 / 参与人一律拒，一格不写；只改内容、方式、发起主体、时间放行", async () => {
+    const id = await 记一条();
+    const 联系人 = (await raw.contact.create({ data: { name: "QA-30分钟联系人", customerId: 客户 } })).id;
+    const 商机 = (await raw.opportunity.create({ data: { name: "QA-30分钟商机", customerId: 客户, ownerId: 销售 } })).id;
+    const 前 = await raw.followUp.findUniqueOrThrow({ where: { id } });
+    const 别的状态 = 前.status === "待处理" ? "已完成" : "待处理";
+    const 越界们: Record<string, Partial<Parameters<typeof saveFollowUp>[0]>> = {
+      标题: { title: "改个标题" }, 状态: { status: 别的状态 }, 时长: { durationMinutes: 5 },
+      提醒时间: { dueAt: dayjs().add(2, "day").format("YYYY-MM-DD"), dueHasTime: false }, 联系人: { contactId: 联系人 }, 商机: { opportunityId: 商机 }, 参与人: { participants: "张三,李四" },
+    };
+    for (const [格, 改法] of Object.entries(越界们)) {
+      expect(await 以(async () => saveFollowUp({ ...(await 原样(id)), content: `顺手改${格}`, ...改法 })), 格).toEqual({ ok: false, error: 本人改只改内容话 });
+    }
+    expect(本人改只改内容话).toBe("30 分钟内只能改沟通内容、方式和时间");
+    expect(await raw.followUp.findUniqueOrThrow({ where: { id } })).toMatchObject({ content: 前.content, title: 前.title, status: 前.status, duration: 前.duration, dueAt: 前.dueAt, contactId: 前.contactId, opportunityId: 前.opportunityId, participants: 前.participants });
+    expect(await 改沟通痕(id)).toEqual([]);
+    // 原样带回别的格子、只改内容 / 方式 / 时间：放行
+    expect(await 以(async () => saveFollowUp({ ...(await 原样(id)), type: "WECHAT", method: undefined, content: "只改内容方式时间", occurredAt: "2026-10-19 09:30" }))).toMatchObject({ ok: true });
+    expect(await raw.followUp.findUniqueOrThrow({ where: { id } })).toMatchObject({ type: "WECHAT", content: "只改内容方式时间", title: 前.title, status: 前.status });
+  });
+
+  it("待办 / 提醒改成沟通被拒（记录人本人 30 分钟内也不行）", async () => {
+    for (const type of ["TASK", "REMIND"]) {
+      const t = (await raw.followUp.create({ data: { customerId: 客户, ownerId: 销售, type, title: "回电", content: "记得回电", status: "待处理", occurredAt: new Date(Date.now() - 3_600_000) } })).id;
+      expect(await 以(async () => saveFollowUp({ ...(await 原样(t)), type: "PHONE" })), type).toEqual({ ok: false, error: 待办改沟通话 });
+      expect((await raw.followUp.findUniqueOrThrow({ where: { id: t } })).type).toBe(type);
+    }
+  });
+});
+
+describe("⑤ 只能改不能删、改完不自动推进", () => {
+  it("记录人本人 30 分钟内删也拒：客户页 deleteFollowUp、项目页 删项目沟通 两个入口", async () => {
+    const id = await 记一条();
+    await 记于(id, 1);
+    expect(await 以(() => deleteFollowUp(id, 客户))).toEqual({ ok: false, error: 不能删沟通话 });
+    expect(await 以(() => 删项目沟通(项目, id))).toEqual({ ok: false, error: 不能删沟通话 });
+    expect((await raw.followUp.findUniqueOrThrow({ where: { id } })).deletedAt).toBeNull();
+  });
+
+  it("管理本人 30 分钟内改自己记的：不自动推进、日志标本人限时改；改别人记的、自己记的过了 30 分钟照旧推进、不标", async () => {
+    const 管客户 = (await prisma.customer.create({ data: { name: "QA-30分钟管理的客户", phone: "13800003003", salesOwnerId: 销管 } })).id;
+    const 管项目 = (await prisma.project.create({ data: { customerId: 管客户, ownerId: 销管, creatorId: 销管, name: "QA-30分钟管理的项目", phase: "线索", node: "潜客培育" } })).id;
+    await raw.projectMember.create({ data: { projectId: 管项目, userId: 同事, inviteStatus: "JOINED" } });
+    忘掉企业版范围();
+    当(同事);
+    const 别人记的 = await 记一条({ 下一步: null }, 管项目);
+    当(销管);
+    const 自己记的 = await 记一条({}, 管项目);
+    const 最后一条痕 = async (id: string) => JSON.parse((await 改沟通痕(id)).at(-1)!.detail!) as { 改了: string[]; 本人限时改?: boolean };
+
+    mocks.推了 = 0;
+    expect(await 改(自己记的, { content: "管理改自己的" }, 管项目)).toEqual({ ok: true });
+    expect(mocks.推了).toBe(0);
+    expect(await 最后一条痕(自己记的)).toMatchObject({ 本人限时改: true });
+    // 管理原本就能改：不收窄格子（照原权限）
+    expect(await 以(async () => saveFollowUp({ ...(await 原样(自己记的)), participants: "张三" }))).toMatchObject({ ok: true });
+
+    mocks.推了 = 0;
+    expect(await 改(别人记的, { content: "管理改组员的" }, 管项目)).toEqual({ ok: true });
+    expect(mocks.推了).toBe(1);
+    expect((await 最后一条痕(别人记的)).本人限时改).toBeUndefined();
+
+    await 记于(自己记的, 31);
+    mocks.推了 = 0;
+    expect(await 改(自己记的, { content: "过了 30 分钟管理照原权限改" }, 管项目)).toEqual({ ok: true });
+    expect(mocks.推了).toBe(1);
+    expect((await 最后一条痕(自己记的)).本人限时改).toBeUndefined();
+  });
+});
+
+describe("「已修改」只认新格式留痕", () => {
+  it("老格式「修改…跟进」的修改日志不算；summary「改了沟通」开头或 detail 带改了才算", async () => {
+    const id = await 记一条();
+    const 痕 = (summary: string, detail: unknown) => raw.auditLog.create({ data: { userId: 销售, userName: "QA", action: "update", entity: "FollowUp", entityId: id, summary, detail: JSON.stringify(detail) } });
+    await 痕("修改QA-30分钟客户的一条电话跟进（2026-10-20）", { 客户: "QA-30分钟客户", 类型: "电话", 状态: "已完成", 内容: "电话聊了报价" });
+    expect((await 改过的沟通们([id])).has(id)).toBe(false);
+    await 痕("别的说法", { 改了: ["沟通内容"] });
+    expect((await 改过的沟通们([id])).has(id)).toBe(true);
+    const id2 = await 记一条({ content: "第二条" });
+    await raw.auditLog.create({ data: { userId: 销售, userName: "QA", action: "update", entity: "FollowUp", entityId: id2, summary: "改了沟通：QA 的一条电话，改了沟通内容" } });
+    expect((await 改过的沟通们([id2])).has(id2)).toBe(true);
   });
 });
