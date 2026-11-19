@@ -28,6 +28,7 @@ import { 摘联系人号 } from "./contact-number-detach";
 import { 换负责人 } from "@/lib/project/owner-write";
 import { 验证中不能改派 } from "@/lib/project/lead-verify-guard";
 import { 企业版只用项目 } from "./project-only";
+import { 客户显名, 客户引, 显名列 } from "./customer-title";
 
 export { 看已删, 回收站保留天数, 软删表, type 软删表名 } from "./soft-delete-core";
 
@@ -158,15 +159,15 @@ async function 只恢复(t: 软删表名, id: string, 操作人 = ""): Promise<�
     if (!行 || !时刻) return { ok: false as const, error: "这一条已经不在回收站里了，刷新看看" };
     const customerId = t === "Customer" ? id : String(行.customerId);
     if (t !== "Customer") {
-      const c = await tx.customer.findUnique({ where: { id: customerId }, select: { name: true, deletedAt: true } });
+      const c = await tx.customer.findUnique({ where: { id: customerId }, select: { ...显名列, deletedAt: true } });
       if (!c) return { ok: false as const, error: "所属客户已经不在了，恢复不了" };
-      if (c.deletedAt) return { ok: false as const, error: `所属客户「${c.name}」也在回收站里，先恢复客户` };
+      if (c.deletedAt) return { ok: false as const, error: `所属客户${客户引(c)}也在回收站里，先恢复客户` };
     }
     // P-删-09：客户在客户公海就拦（不然客户在公海、项目有人）；不在公海、项目不在项目公海的，归客户现负责人
     let 改归: { p: { id: string; phase: string; node: string; result: string | null }; 从: string; 到: string } | null = null;
     if (项目跟客户) {
-      const c = await tx.customer.findUnique({ where: { id: customerId }, select: { name: true, salesOwnerId: true, pool: { select: { customerId: true } } } });
-      if (c?.pool) return { ok: false as const, error: `所属客户「${c.name}」在客户公海里，先把客户领出来或分给销售，再恢复项目` };
+      const c = await tx.customer.findUnique({ where: { id: customerId }, select: { ...显名列, salesOwnerId: true, pool: { select: { customerId: true } } } });
+      if (c?.pool) return { ok: false as const, error: `所属客户${客户引(c)}在客户公海里，先把客户领出来或分给销售，再恢复项目` };
       const p = await tx.project.findUnique({ where: { id }, select: { id: true, phase: true, node: true, result: true, ownerId: true, pooledAt: true } });
       const 到 = c?.salesOwnerId ?? "";
       if (p && !p.pooledAt && 到 && p.ownerId !== 到) {
@@ -206,11 +207,11 @@ export async function 查重捞回(号: 验好的号, 操作人 = ""): Promise<�
     const ids = await 回收站里查号(prisma, 号.类型, 号.值, 号.键);
     if (!ids.length) return 没了;
     const 回来的: 捞回的[] = [];
-    const 删了的 = await 看已删(() => prisma.customer.findMany({ where: { id: { in: ids }, deletedAt: { not: null } }, select: { id: true, name: true } }));
+    const 删了的 = await 看已删(() => prisma.customer.findMany({ where: { id: { in: ids }, deletedAt: { not: null } }, select: 显名列 }));
     for (const c of 删了的) {
       const r = await 恢复一条("Customer", c.id, 操作人);
       if (!r.ok) return r;
-      回来的.push({ t: "Customer", id: c.id, 名: c.name, 连带: r.连带, 停用负责人: r.停用负责人 });
+      回来的.push({ t: "Customer", id: c.id, 名: 客户显名(c), 连带: r.连带, 停用负责人: r.停用负责人 });
     }
     // 客户回来了，带号的联系人可能是更早单独删的：再查一遍，剩下的都是「客户在、联系人删了」
     const 还剩 = await 回收站里查号(prisma, 号.类型, 号.值, 号.键);
@@ -273,6 +274,11 @@ async function 叫什么(tx: Tx, t: 软删表名, id: string): Promise<string> {
     const f = await tx.followUp.findUnique({ where: { id }, select: { title: true, content: true } });
     return (f?.title || f?.content || "").slice(0, 40);
   }
+  // 客户全称选填（11-19）：客户按 客户显名 叫（简称 → 全称 → 编号），不回空串
+  if (t === "Customer") {
+    const c = await tx.customer.findUnique({ where: { id }, select: 显名列 });
+    return c ? 客户显名(c) : "";
+  }
   const r = await 表(tx, t).findUnique({ where: { id }, select: { name: true } });
   return String(r?.name ?? "");
 }
@@ -330,10 +336,10 @@ export async function 回收站列表(me: 谁, 现在: Date = new Date()): Promi
   if (!(await 能管回收站(me))) return [];
   const 线 = 截止(现在);
   const 窗 = { deletedAt: { gte: 线 } };
-  const 客户选 = { select: { id: true, name: true, deletedAt: true } } as const;
+  const 客户选 = { select: { ...显名列, deletedAt: true } } as const;
   return 看已删(async () => {
     const [客户们, 项目们, 联系人们, 记录们] = await Promise.all([
-      prisma.customer.findMany({ where: 窗, select: { id: true, name: true, deletedAt: true }, orderBy: { deletedAt: "desc" }, take: 500 }),
+      prisma.customer.findMany({ where: 窗, select: { ...显名列, deletedAt: true }, orderBy: { deletedAt: "desc" }, take: 500 }),
       prisma.project.findMany({ where: 窗, select: { id: true, name: true, deletedAt: true, customer: 客户选 }, orderBy: { deletedAt: "desc" }, take: 500 }),
       prisma.contact.findMany({ where: 窗, select: { id: true, name: true, deletedAt: true, customer: 客户选 }, orderBy: { deletedAt: "desc" }, take: 500 }),
       prisma.followUp.findMany({ where: 窗, select: { id: true, title: true, content: true, deletedAt: true, customer: 客户选 }, orderBy: { deletedAt: "desc" }, take: 500 }),
@@ -342,7 +348,7 @@ export async function 回收站列表(me: 谁, 现在: Date = new Date()): Promi
     const 连带键 = (customerId: string, d: Date) => `${customerId}|${d.getTime()}`;
     const 连带数 = new Map<string, { 联系人: number; 项目: number; 沟通记录: number }>();
     const out: 回收站条目[] = [];
-    const 子 = (t: Exclude<软删表名, "Customer">, 键: "联系人" | "项目" | "沟通记录", 行: { id: string; deletedAt: Date | null; customer: { id: string; name: string; deletedAt: Date | null } }, 名称: string) => {
+    const 子 = (t: Exclude<软删表名, "Customer">, 键: "联系人" | "项目" | "沟通记录", 行: { id: string; deletedAt: Date | null; customer: { id: string; name: string; shortName: string | null; customerNo: number | null; deletedAt: Date | null } }, 名称: string) => {
       const d = 行.deletedAt!;
       const c = 行.customer;
       // 随客户一起删的：同一个时刻
@@ -353,13 +359,13 @@ export async function 回收站列表(me: 谁, 现在: Date = new Date()): Promi
         连带数.set(k, 计);
         return;
       }
-      out.push({ 表: t, id: 行.id, 名称, 客户: { id: c.id, name: c.name, 也删了: !!c.deletedAt }, deletedAt: d.toISOString(), 剩几天: 剩(d) });
+      out.push({ 表: t, id: 行.id, 名称, 客户: { id: c.id, name: 客户显名(c), 也删了: !!c.deletedAt }, deletedAt: d.toISOString(), 剩几天: 剩(d) });
     };
     for (const p of 项目们) 子("Project", "项目", p, p.name);
     for (const c of 联系人们) 子("Contact", "联系人", c, c.name);
     for (const f of 记录们) 子("FollowUp", "沟通记录", f, (f.title || f.content).slice(0, 40));
     for (const c of 客户们) {
-      out.push({ 表: "Customer", id: c.id, 名称: c.name, 客户: null, deletedAt: c.deletedAt!.toISOString(), 剩几天: 剩(c.deletedAt!), 连带: 连带数.get(连带键(c.id, c.deletedAt!)) ?? { 联系人: 0, 项目: 0, 沟通记录: 0 } });
+      out.push({ 表: "Customer", id: c.id, 名称: 客户显名(c), 客户: null, deletedAt: c.deletedAt!.toISOString(), 剩几天: 剩(c.deletedAt!), 连带: 连带数.get(连带键(c.id, c.deletedAt!)) ?? { 联系人: 0, 项目: 0, 沟通记录: 0 } });
     }
     return out.sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
   });

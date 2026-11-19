@@ -15,6 +15,7 @@ import { buildWatchlist, 盯盘排序, STALE_DAYS, STATUS_WEIGHT, type SentinelI
 import { getBusiness } from "./business";
 import { statusLabel, type BusinessConfig } from "./business-config";
 
+import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 /** 沉睡客户那一段的取法：全取回来交给 buildWatchlist 判（老路），或库里只取前几名 + 准确总数 */
 type 沉睡取法 = { 前几名: number } | null;
 
@@ -74,10 +75,10 @@ async function 取别的(a: { 谁的?: string; now: Dayjs }): Promise<Omit<Senti
   const overduePlans = await prisma.followPlan.findMany({
       // 逾期按今天零点算，和首页、左栏角标、计划页一个口径（lib/overdue.ts）：今天上午没做的还算今天的
       where: 逾期条件({ ownerId: 谁的 }, now.toDate()).plan,
-      select: { subject: true, plannedAt: true, plannedOn: true, customer: { select: { id: true, name: true } }, owner: { select: { name: true } } },
+      select: { subject: true, plannedAt: true, plannedOn: true, customer: { select: 显名列 }, owner: { select: { name: true } } },
   });
   return {
-    overduePlans: overduePlans.map((p) => ({ customerId: p.customer.id, customerName: p.customer.name, ownerName: p.owner.name, subject: p.subject, plannedAt: scheduleValue(p.plannedAt, p.plannedOn)! })),
+    overduePlans: overduePlans.map((p) => ({ customerId: p.customer.id, customerName: 客户显名(p.customer), ownerName: p.owner.name, subject: p.subject, plannedAt: scheduleValue(p.plannedAt, p.plannedOn)! })),
   };
 }
 
@@ -118,9 +119,9 @@ async function 取沉睡客户(a: { 谁的?: string; 肯定没睡: Date; now: Da
       // buildWatchlist 按 lastFollowAt 算天数；没跟进过、或跟进日期在未来（录错了）的按 createdAt
       OR: [{ lastFollowAt: { lt: a.肯定没睡 } }, { createdAt: { lt: a.肯定没睡 }, OR: [{ lastFollowAt: null }, { lastFollowAt: { gt: a.now.toDate() } }] }],
     },
-    select: { id: true, name: true, followStatus: true, lastFollowAt: true, createdAt: true, salesOwner: { select: { name: true } } },
+    select: { ...显名列, followStatus: true, lastFollowAt: true, createdAt: true, salesOwner: { select: { name: true } } },
   });
-  return rows.map((c) => ({ id: c.id, name: c.name, followStatus: c.followStatus, lastFollowAt: c.lastFollowAt, createdAt: c.createdAt, ownerName: 负责人显示名(c.salesOwner.name) }));
+  return rows.map((c) => ({ id: c.id, name: 客户显名(c), followStatus: c.followStatus, lastFollowAt: c.lastFollowAt, createdAt: c.createdAt, ownerName: 负责人显示名(c.salesOwner.name) }));
 }
 
 /** 沉睡分数里天数封顶 40（sentinel.ts）：40 天以上都一样 */

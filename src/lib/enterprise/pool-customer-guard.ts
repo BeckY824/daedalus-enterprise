@@ -10,13 +10,14 @@ import type { Prisma } from "@/generated/prisma";
 import { prisma } from "../prisma";
 import { 企业版 } from "./switch";
 
+import { 客户显名, 显名列 } from "./customer-title";
 type 库 = Prisma.TransactionClient | typeof prisma;
 
 /** 在公海里：回客户名，调用方拼提示；不在公海、客户不在了、不是企业版：回 null */
 export async function 公海客户要先领取(db: 库, customerId: string): Promise<{ 客户名: string } | null> {
   if (!企业版()) return null;
-  const 行 = await db.customerPool.findUnique({ where: { customerId }, select: { customer: { select: { name: true } } } });
-  return 行 ? { 客户名: 行.customer.name } : null;
+  const 行 = await db.customerPool.findUnique({ where: { customerId }, select: { customer: { select: 显名列 } } });
+  return 行 ? { 客户名: 客户显名(行.customer) } : null;
 }
 
 /** 批量、导入逐条列原因用（带客户名）。和客户页那句「这位客户在公海里，先领取再建项目」（pool-rules 公海客户先领取话）同一个说法 */

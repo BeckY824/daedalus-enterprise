@@ -16,6 +16,7 @@ import { 同事待分配随客户通知, type 留下的活, type 同事待分配
 import { 停用的同事 } from "@/lib/offboard-db";
 import { 换负责人, 还负责人 } from "@/lib/project/owner-write";
 
+import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 /**
  * 客户换了销售负责人，原负责人在他身上**没做完的活**跟着走（2026-10-02 排查 B3）：
  * 没完成的计划、待办，进行中的商机。原来不跟：客户转给李四以后，到点提醒、早报还发给张三，李四收不到。
@@ -60,9 +61,9 @@ export async function 数转走的项目(ids: string[], 新: string, 除了: str
       const where: Prisma.ProjectWhereInput = { AND: [{ OR: 换人的.map((c) => 跟着客户转的项目(c.id)) }, { ownerId: { not: 新 } }] };
       const [项目数, 们] = await Promise.all([
         prisma.project.count({ where }),
-        prisma.project.findMany({ where, orderBy: { createdAt: "asc" }, take: 预览列几个, select: { name: true, customer: { select: { name: true } } } }),
+        prisma.project.findMany({ where, orderBy: { createdAt: "asc" }, take: 预览列几个, select: { name: true, customer: { select: 显名列 } } }),
       ]);
-      return { 项目数, 项目: 们.map((p) => ({ name: p.name, 客户: p.customer.name })) };
+      return { 项目数, 项目: 们.map((p) => ({ name: p.name, 客户: 客户显名(p.customer) })) };
     }
     const 条件: Prisma.ProjectWhereInput[] = [];
     const 同事条件: Prisma.ProjectWhereInput[] = [];
@@ -81,7 +82,7 @@ export async function 数转走的项目(ids: string[], 新: string, 除了: str
     const 列 = { orderBy: { createdAt: "asc" as const }, take: 预览列几个 };
     const [列名的数, 们, 同事数] = await Promise.all([
       prisma.project.count({ where }),
-      prisma.project.findMany({ where, ...列, select: { name: true, ownerId: true, pooledAt: true, customerId: true, customer: { select: { name: true } } } }),
+      prisma.project.findMany({ where, ...列, select: { name: true, ownerId: true, pooledAt: true, customerId: true, customer: { select: 显名列 } } }),
       prisma.project.count({ where: 同事where }),
     ]);
     const 预: 转走项目预览 = {
@@ -89,7 +90,7 @@ export async function 数转走的项目(ids: string[], 新: string, 除了: str
       项目: 们.map((p) => {
         // 客户负责人自己的不用写；公海里的写「线索公海」，同事占着、待分配的写「待分配」（P-转-07：转之前列清楚）
         const 负责人 = p.pooledAt ? "线索公海" : p.ownerId && p.ownerId !== 主.get(p.customerId) ? "待分配" : "";
-        return { name: p.name, 客户: p.customer.name, ...(负责人 ? { 负责人 } : {}) };
+        return { name: p.name, 客户: 客户显名(p.customer), ...(负责人 ? { 负责人 } : {}) };
       }),
     };
     // 同事在推的只给个数，不回名字和负责人（Even C4，见 同事项目几个话）

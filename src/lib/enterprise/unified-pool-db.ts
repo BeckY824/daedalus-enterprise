@@ -37,6 +37,7 @@ import {
   type 公海行, type 公海筛选, type 入池类, type 公海属性, type 快捷,
 } from "./unified-pool";
 
+import { 客户显名 } from "./customer-title";
 /**
  * 改前（11-14 以前）客户公海、项目公海各最多取这么多（按入池时间新的在前），更早入池的搜不到、也不进各池的数。
  * 现在不再截：客户行在库里筛、数、分页（unified-pool-sql.ts），项目行、渠道名单的行量小，全取。只留给 tests/helpers 里改前的写法对拍用
@@ -101,9 +102,10 @@ function 客户项目格(名下: readonly 客户的项目[], 字典: 字典, 没
 }
 
 /** 项目行里要「我看不看得到这位客户」才定得下的两格：客户不露就不写名字，来源也只认项目自己选的 */
-function 项目客户格(露: boolean, p: { channelId: string | null; customer: { name: string; shortName: string | null; customerNo: number | null; channelId: string | null } }) {
+function 项目客户格(露: boolean, p: { customerId: string; channelId: string | null; customer: { name: string; shortName: string | null; customerNo: number | null; channelId: string | null } }) {
   return {
-    客户名: 露 ? p.customer.name : null,
+    // 全称选填（11-19）：没全称叫显名（简称 → 客户编号）；空串会被页面当「领取后可见」
+    客户名: 露 ? 客户显名({ id: p.customerId, ...p.customer }) : null,
     ...(露 && p.customer.shortName ? { 客户简称: p.customer.shortName } : {}),
     ...(露 && p.customer.customerNo ? { 客户编号: p.customer.customerNo } : {}),
     来源id: p.channelId ?? (露 ? p.customer.channelId : null),
@@ -168,7 +170,7 @@ function 拼客户行(me: { id: string }, c: 客户片, pool: 池片, 看得到�
   const 类: 入池类 = c.poolInvalidAt ? "无效" : 原类;
   return {
     id: `c:${c.id}`, 种: "客户", customerId: c.id,
-    客户名: c.name,
+    客户名: 客户显名(c),
     ...(c.shortName ? { 客户简称: c.shortName } : {}),
     ...(c.customerNo ? { 客户编号: c.customerNo } : {}),
     ...客户项目格(看得到的项目, 字典, 没项目),

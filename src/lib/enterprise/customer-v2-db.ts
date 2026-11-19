@@ -18,6 +18,7 @@ import { 号码归属地 } from "./phone-region";
 import { 认号码种类, 验一行号码, 老三格, 内置号码种类, 自定种类前缀, 每人最多号码, 另一头, 联系人号查重键, type 号码种类 } from "./customer-v2";
 import { 字典定义 } from "./dict-kinds";
 
+import { 客户显名, 显名列 } from "./customer-title";
 // ---------- 级别 D → C ----------
 
 export const 级别改过记号键 = "entCust.levelD2C";
@@ -183,10 +184,10 @@ export async function 关联客户们(customerId: string): Promise<关联一行[
   if (!行们.length) return [];
   const 另们 = 行们.map((x) => 另一头(x, customerId));
   const [名们, 能看] = await Promise.all([
-    看全部(() => prisma.customer.findMany({ where: { id: { in: 另们 } }, select: { id: true, name: true } })),
+    看全部(() => prisma.customer.findMany({ where: { id: { in: 另们 } }, select: 显名列 })),
     prisma.customer.findMany({ where: { id: { in: 另们 } }, select: { id: true } }),
   ]);
-  const 名 = new Map(名们.map((c) => [c.id, c.name]));
+  const 名 = new Map(名们.map((c) => [c.id, 客户显名(c)]));
   const 看 = new Set(能看.map((c) => c.id));
   return 行们.flatMap((x) => {
     const o = 另一头(x, customerId);
@@ -220,7 +221,7 @@ export async function 客户的联系人们(customerId: string): Promise<挂来�
       contact: {
         include: {
           contactMethods: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { kind: true, value: true } },
-          customer: { select: { id: true, name: true } },
+          customer: { select: 显名列 },
         },
       },
     },
@@ -234,7 +235,7 @@ export async function 客户的联系人们(customerId: string): Promise<挂来�
     contact,
     linkId: x.id,
     note: x.note,
-    主客户: { id: customer.id, name: customer.name, 看得到: 看.has(customer.id), 能改: 看.has(customer.id) && !只读.has(customer.id) },
+    主客户: { id: customer.id, name: 客户显名(customer), 看得到: 看.has(customer.id), 能改: 看.has(customer.id) && !只读.has(customer.id) },
   }));
 }
 
@@ -247,12 +248,12 @@ export async function 联系人另挂(contactIds: string[]): Promise<Record<stri
   const 行们 = await 看全部(() => prisma.contactCustomer.findMany({
     where: { contactId: { in: contactIds } },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-    select: { contactId: true, contact: { select: { customerId: true } }, customer: { select: { id: true, name: true } } },
+    select: { contactId: true, contact: { select: { customerId: true } }, customer: { select: 显名列 } },
   }));
   const 另 = 行们.filter((x) => x.customer.id !== x.contact.customerId);
   if (!另.length) return {};
   const 看 = new Set((await prisma.customer.findMany({ where: { id: { in: [...new Set(另.map((x) => x.customer.id))] } }, select: { id: true } })).map((c) => c.id));
   const 出: Record<string, { id: string; name: string; 看得到: boolean }[]> = {};
-  for (const x of 另) (出[x.contactId] ??= []).push({ ...x.customer, 看得到: 看.has(x.customer.id) });
+  for (const x of 另) (出[x.contactId] ??= []).push({ id: x.customer.id, name: 客户显名(x.customer), 看得到: 看.has(x.customer.id) });
   return 出;
 }

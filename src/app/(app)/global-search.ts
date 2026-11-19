@@ -7,6 +7,7 @@ import { 客户关键词条件, 搜索词, 拆搜索词, 号码片段, 号码藏
 import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 读市场身份, 市场进不了详情的 } from "@/lib/enterprise/market-view-db";
 import { 项目链接们 } from "@/lib/project/customer-detail-direct";
+import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 
 /**
  * 顶部全局搜索（U-项目-04，企业版项目模式）：⌘K / 左栏搜索框里打两个字以上，顺带搜客户、项目、联系人。
@@ -40,20 +41,20 @@ export async function 全局搜索(关键词: string): Promise<全局搜索结�
       where: 客户条件,
       orderBy: [{ lastFollowAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
       take: 每组上限,
-      select: { id: true, name: true, school: true, phone: true },
+      select: { ...显名列, school: true, phone: true },
     }),
     prisma.project.findMany({
       where: { AND: 项目条件 },
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
       // 市场角色多取几条：已分给圈外的人的那几条下面要去掉（点进去是 404）
       take: 市场 ? 每组上限 * 4 : 每组上限,
-      select: { id: true, name: true, phase: true, node: true, customer: { select: { name: true } } },
+      select: { id: true, name: true, phase: true, node: true, customer: { select: 显名列 } },
     }),
     prisma.contact.findMany({
       where: { AND: 联系人条件 },
       orderBy: [{ isPrimary: "desc" }, { updatedAt: "desc" }, { id: "desc" }],
       take: 每组上限,
-      select: { id: true, name: true, position: true, phone: true, customerId: true, customer: { select: { name: true } } },
+      select: { id: true, name: true, position: true, phone: true, customerId: true, customer: { select: 显名列 } },
     }),
   ]);
 
@@ -64,9 +65,10 @@ export async function 全局搜索(关键词: string): Promise<全局搜索结�
   const 链 = await 项目链接们(me, 能开项目.map((p) => p.id));
   const 拼 = (...xs: (string | null | undefined)[]) => xs.filter(Boolean).join(" · ") || null;
   return {
-    客户: 客户们.map((c) => ({ id: c.id, name: c.name, 附注: 拼(c.school, 号(c.phone)), 去: `/customers/${c.id}` })),
-    项目: 能开项目.map((p) => ({ id: p.id, name: p.name, 附注: 拼(p.customer?.name, p.phase, p.node), 去: 链.get(p.id) ?? `/projects/${p.id}` })),
+    // 全称选填（11-19）：名字空着的客户给显名（简称 → 全称 → 客户编号），结果里不出空白行
+    客户: 客户们.map((c) => ({ id: c.id, name: 客户显名(c), 附注: 拼(c.school, 号(c.phone)), 去: `/customers/${c.id}` })),
+    项目: 能开项目.map((p) => ({ id: p.id, name: p.name, 附注: 拼(p.customer ? 客户显名(p.customer) : null, p.phase, p.node), 去: 链.get(p.id) ?? `/projects/${p.id}` })),
     // 联系人没有自己的详情页，点了去所属客户
-    联系人: 联系人们.map((c) => ({ id: c.id, name: c.name, 附注: 拼(c.customer?.name, c.position, 号(c.phone)), 去: `/customers/${c.customerId}` })),
+    联系人: 联系人们.map((c) => ({ id: c.id, name: c.name, 附注: 拼(c.customer ? 客户显名(c.customer) : null, c.position, 号(c.phone)), 去: `/customers/${c.customerId}` })),
   };
 }

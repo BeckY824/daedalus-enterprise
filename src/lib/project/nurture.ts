@@ -17,6 +17,8 @@ import { 看全部 } from "../team-scope";
 import { 看已删 } from "../enterprise/soft-delete-core";
 import { 历史分析来源 } from "./system-created";
 import { 项目业务线 } from "../enterprise/assign-line";
+// 项目名用客户显名（11-19 全称选填：全称空着兜简称 / 客户编号，项目名不落成空白）
+import { 全称或显名, 显名列 } from "../enterprise/customer-title";
 
 /** 要不要补：企业版且开了项目模式才补（纯判断，方便单测钉住「没开项目模式时不建」） */
 export function 要补潜客培育(企业: boolean, 项目模式: boolean | undefined): boolean {
@@ -95,9 +97,9 @@ export async function 零项目客户补潜客培育(
     const 记: 建给自己记 = new Map();
     for (let i = 0; i < 没项目.length; i += 500) {
       // 默认读法已经滤掉回收站里的客户（软删扩展）；不在客户公海的才补
-      const 客户们 = await tx.customer.findMany({ where: { id: { in: 没项目.slice(i, i + 500) }, pool: null }, select: { id: true, name: true, salesOwnerId: true } });
+      const 客户们 = await tx.customer.findMany({ where: { id: { in: 没项目.slice(i, i + 500) }, pool: null }, select: { ...显名列, salesOwnerId: true } });
       for (const c of 客户们) {
-        const id = await 补潜客培育(tx, { customerId: c.id, 客户名: c.name, ownerId: c.salesOwnerId, creatorId: 操作人 || c.salesOwnerId, ...(分配方式 ? { 分配方式 } : {}) }, 记);
+        const id = await 补潜客培育(tx, { customerId: c.id, 客户名: 全称或显名(c), ownerId: c.salesOwnerId, creatorId: 操作人 || c.salesOwnerId, ...(分配方式 ? { 分配方式 } : {}) }, 记);
         if (id) 出.set(c.id, id);
       }
     }
@@ -119,7 +121,7 @@ export async function 沟通挂潜客培育(
   操作人?: string | null,
 ): Promise<{ projectId: string; node: string } | null> {
   return 看全部(async () => {
-    const c = await tx.customer.findUnique({ where: { id: customerId }, select: { name: true, salesOwnerId: true, pool: { select: { customerId: true } } } });
+    const c = await tx.customer.findUnique({ where: { id: customerId }, select: { ...显名列, salesOwnerId: true, pool: { select: { customerId: true } } } });
     if (!c || c.pool) return null;
     const 培育 = await tx.project.findFirst({
       where: { customerId, result: null, pooledAt: null, phase: 第一个节点.phase, node: 第一个节点.node },
@@ -127,7 +129,7 @@ export async function 沟通挂潜客培育(
       select: { id: true, node: true },
     });
     if (培育) return { projectId: 培育.id, node: 培育.node };
-    const id = await 补潜客培育(tx, { customerId, 客户名: c.name, ownerId: c.salesOwnerId, creatorId: 操作人 || c.salesOwnerId });
+    const id = await 补潜客培育(tx, { customerId, 客户名: 全称或显名(c), ownerId: c.salesOwnerId, creatorId: 操作人 || c.salesOwnerId });
     return id ? { projectId: id, node: 第一个节点.node } : null;
   });
 }

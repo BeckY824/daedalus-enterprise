@@ -8,6 +8,7 @@ import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 负责人候选 } from "@/lib/owners";
 import { 号码种类表, 联系人另挂 } from "@/lib/enterprise/customer-v2-db";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 客户显名 } from "@/lib/enterprise/customer-title";
 import { 页面可选项 } from "@/lib/enterprise/dict";
 
 export const dynamic = "force-dynamic";
@@ -51,7 +52,7 @@ export default async function ContactsPage({
       orderBy: [{ createdAt: "desc" }],
       take: 300,
       include: {
-        customer: { select: { id: true, name: true, school: true, salesOwner: { select: { id: true, name: true, email: true } } } },
+        customer: { select: { id: true, name: true, shortName: true, customerNo: true, school: true, salesOwner: { select: { id: true, name: true, email: true } } } },
       },
     }),
     prisma.unassignedContact.count({ where: 散的where }),
@@ -98,7 +99,8 @@ export default async function ContactsPage({
         未归属: false,
         原来: null as string | null,
         customerId: c.customer.id,
-        customerName: c.customer.name,
+        // 全称选填（11-19）：所属客户没全称的叫显名（简称 → 客户编号）
+        customerName: 客户显名(c.customer),
         school: c.customer.school,
         ownerName: 负责人显示名(c.customer.salesOwner.name),
         ownerId: c.customer.salesOwner.id,

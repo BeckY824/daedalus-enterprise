@@ -669,7 +669,7 @@ export default function ProposalCard({
           return (
           <>
             <Field label={企卡 ? "客户名称（组织 / 公司）" : "名称"} 待={待.has("name") ? 点掉("name") : undefined}>
-              <Input size="small" style={{ width: 企卡 ? 200 : 160 }} placeholder={企卡 ? "组织或公司名" : "姓名或公司名"} value={draft.name} onChange={(e) => 改("name", e.target.value)} />
+              <Input size="small" style={{ width: 企卡 ? 200 : 160 }} placeholder={企卡 ? "组织或公司名，可留空" : "姓名或公司名"} value={draft.name} onChange={(e) => 改("name", e.target.value)} />
             </Field>
             <Field label={企卡 ? "联系人姓名" : "联系人"} 待={待.has("contact") ? 点掉("contact") : undefined}>
               <Input size="small" style={{ width: 140 }} placeholder="可留空" value={draft.contact} onChange={(e) => 改("contact", e.target.value)} />

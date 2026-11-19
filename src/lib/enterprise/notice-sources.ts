@@ -17,6 +17,7 @@ import { 无效交给, 实际待, type 待哪步 } from "@/lib/project/lead-veri
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 不跟着转的提醒 } from "@/lib/carry-over-db";
 import { 快轮到提醒 } from "./assign-eta";
+import { 客户显名, 客户引, 显名列 } from "./customer-title";
 
 type 人 = { id: string; name: string };
 
@@ -67,8 +68,8 @@ async function 客户也转给你(们: readonly 分配条[]): Promise<string | n
   const ids = [...new Set(们.flatMap((c) => (c.留下 ? [c.留下.customerId] : [])))];
   if (!ids.length) return null;
   if (ids.length > 1) return `${ids.length} 位客户也转给你`;
-  const c = await 看全部(() => prisma.customer.findUnique({ where: { id: ids[0] }, select: { name: true } }));
-  return c ? `客户「${c.name}」也转给你` : "客户也转给你";
+  const c = await 看全部(() => prisma.customer.findUnique({ where: { id: ids[0] }, select: 显名列 }));
+  return c ? `客户${客户引(c)}也转给你` : "客户也转给你";
 }
 
 /**
@@ -142,10 +143,10 @@ export async function 市场改分通知(谁点的: 人, 条们: readonly 改分
     const [项目们, 线索们, 客户们, 人们] = await 看全部(() => Promise.all([
       pIds.length ? prisma.project.findMany({ where: { id: { in: pIds } }, select: { id: true, name: true } }) : [],
       lIds.length ? prisma.lead.findMany({ where: { id: { in: lIds } }, select: { id: true, name: true } }) : [],
-      cIds.length ? prisma.customer.findMany({ where: { id: { in: cIds } }, select: { id: true, name: true } }) : [],
+      cIds.length ? prisma.customer.findMany({ where: { id: { in: cIds } }, select: 显名列 }) : [],
       prisma.user.findMany({ where: { id: { in: 人ids } }, select: { id: true, name: true } }),
     ]));
-    const 名 = new Map([...项目们, ...线索们, ...客户们].map((x) => [x.id, x.name]));
+    const 名 = new Map<string, string>([...[...项目们, ...线索们].map((x) => [x.id, x.name] as const), ...客户们.map((x) => [x.id, 客户显名(x)] as const)]);
     const 叫 = new Map(人们.map((u) => [u.id, u.name]));
     const 一句 = (c: 改分条 & { 原: string }) => {
       const 是客户 = !c.projectId && !c.leadId;
@@ -200,7 +201,7 @@ export async function 公海分配通知(谁点的: 人, toUserId: string, 对�
   await 稳("公海分配通知", async () => {
     if (!ids.length || toUserId === 谁点的.id) return;
     const 行们 = await 看全部(async () => (对象 === "客户"
-      ? prisma.customer.findMany({ where: { id: { in: [...ids] } }, select: { id: true, name: true } })
+      ? prisma.customer.findMany({ where: { id: { in: [...ids] } }, select: 显名列 }).then((r) => r.map((x) => ({ id: x.id, name: 客户显名(x) })))
       : prisma.project.findMany({ where: { id: { in: [...ids] } }, select: { id: true, name: true } })));
     const 名 = new Map(行们.map((x) => [x.id, x.name]));
     const 名们 = ids.map((id) => 名.get(id) ?? `（一个${对象}）`);
@@ -236,10 +237,10 @@ export async function 同事待分配随客户通知(操作人: string, 新: str
     const 全部 = [...按人.values()].flat();
     const [项目们, 客户们] = await 看全部(() => Promise.all([
       prisma.project.findMany({ where: { id: { in: 全部.map((x) => x.id) } }, select: { id: true, name: true } }),
-      prisma.customer.findMany({ where: { id: { in: [...new Set(全部.map((x) => x.customerId))] } }, select: { id: true, name: true } }),
+      prisma.customer.findMany({ where: { id: { in: [...new Set(全部.map((x) => x.customerId))] } }, select: 显名列 }),
     ]));
     const 项目名 = new Map(项目们.map((x) => [x.id, x.name]));
-    const 客户名 = new Map(客户们.map((x) => [x.id, x.name]));
+    const 客户名 = new Map(客户们.map((x) => [x.id, 客户显名(x)]));
     const 新名 = 人.get(新)?.name ?? "";
     const 谁 = 人.get(操作人)?.name ?? "";
     for (const [原, 们] of 按人) {
@@ -430,7 +431,7 @@ export async function 交接通知(me: 人, handoverId: string, 事件: 交接�
     // 发起时接手人要知道接的是谁：单条带名字，全部在正文里列客户名（同原来当场交的通知，不带手机号）
     const [离职客户名, 离职项目名] = 新离职 && 事件 === "发起"
       ? await 看全部(() => Promise.all([
-          prisma.customer.findMany({ where: { id: { in: 读ids(h.customerIds).slice(0, 20) } }, select: { name: true } }).then((r) => r.map((x) => x.name)),
+          prisma.customer.findMany({ where: { id: { in: 读ids(h.customerIds).slice(0, 20) } }, select: 显名列 }).then((r) => r.map((x) => 客户显名(x))),
           prisma.project.findMany({ where: { id: { in: 读ids(h.projectIds).slice(0, 20) } }, select: { name: true } }).then((r) => r.map((x) => x.name)),
         ]))
       : [[], []];
@@ -510,7 +511,7 @@ function 读ids(customerIds: string): string[] {
 /** 交接里的客户名，最多列 3 个：「：甲、乙、丙 等 5 位」；查不到就空 */
 async function 交接客户名(ids: readonly string[]): Promise<string> {
   if (!ids.length) return "";
-  const 名们 = (await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids.slice(0, 3) } }, select: { name: true } }))).map((c) => c.name);
+  const 名们 = (await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids.slice(0, 3) } }, select: 显名列 }))).map((c) => 客户显名(c));
   if (!名们.length) return "";
   return `：${名们.join("、")}${ids.length > 名们.length ? ` 等 ${ids.length} 位` : ""}`;
 }
@@ -530,8 +531,9 @@ export async function 分给你通知(谁点的: 人, toUserId: string, customer
     const ids = [...new Set(customerIds)];
     if (!ids.length || !toUserId || toUserId === 谁点的.id) return;
     if (!(await 收得到分配(toUserId))) return;
-    const 行们 = await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }));
-    const 名 = new Map(行们.map((r) => [r.id, r.name]));
+    // 全称选填（11-19）：名字空着的客户用 客户显名 兜（简称 → 编号），不再因为名字空把这条通知整条吞掉
+    const 行们 = await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids } }, select: 显名列 }));
+    const 名 = new Map(行们.map((r) => [r.id, 客户显名(r)]));
     const 名们 = ids.map((id) => 名.get(id)).filter((n): n is string => !!n);
     if (!名们.length) return;
     const 单条 = ids.length === 1;
@@ -553,12 +555,12 @@ export async function 项目分给你通知(谁点的: 人, toUserId: string, pr
   await 稳("项目分给你通知", async () => {
     if (!toUserId || toUserId === 谁点的.id) return;
     if (!(await 收得到分配(toUserId))) return;
-    const c = await 看全部(() => prisma.customer.findUnique({ where: { id: customerId }, select: { name: true, salesOwnerId: true } }));
+    const c = await 看全部(() => prisma.customer.findUnique({ where: { id: customerId }, select: { ...显名列, salesOwnerId: true } }));
     if (!c) return;
     await notify([toUserId], {
       kind: "分配",
       title: `${谁点的.name} 把项目分给你：${项目名}`,
-      body: 接一句(接一句(`客户：${c.name}`, 留下 ? "客户也转给你" : null), 留下 ? await 客户上还留着([{ toUserId, 留下 }]) : null),
+      body: 接一句(接一句(`客户：${客户显名(c)}`, 留下 ? "客户也转给你" : null), 留下 ? await 客户上还留着([{ toUserId, 留下 }]) : null),
       link: c.salesOwnerId === toUserId ? `/customers/${customerId}` : `/projects/${projectId}`,
       key: `project-assign:${projectId}:${toUserId}:${分钟()}`,
     });
@@ -598,7 +600,7 @@ const 放回原因 = (原因?: string | null) => (typeof 原因 === "string" && 
  * 只发给原负责人本人，按人各发一条、只列他自己的客户（公海里不露原负责人，P-公海-04）。
  * 放回后原负责人看不到这位客户（回避），所以不给链接。公海项目 = 跟着进线索公海的项目 id（客户原负责人自己负责的）
  */
-export async function 客户放回公海通知(me: 人, 客户们: readonly { id: string; name: string; salesOwnerId: string }[], 原因?: string | null, 公海项目: readonly string[] = []): Promise<void> {
+export async function 客户放回公海通知(me: 人, 客户们: readonly { id: string; name: string; shortName?: string | null; customerNo?: number | null; salesOwnerId: string }[], 原因?: string | null, 公海项目: readonly string[] = []): Promise<void> {
   await 稳("客户放回公海通知", async () => {
     const 收 = await 在职的原负责人(me, 客户们.map((c) => c.salesOwnerId));
     if (!收.size) return;
@@ -609,14 +611,14 @@ export async function 客户放回公海通知(me: 人, 客户们: readonly { id
       const 项目数 = 项目行.filter((p) => ids.has(p.customerId)).length;
       const 单条 = 我的.length === 1;
       const 正文 = [
-        单条 ? "" : `客户：${名单(我的.map((c) => c.name))}`,
+        单条 ? "" : `客户：${名单(我的.map((c) => 客户显名(c)))}`,
         放回原因(原因),
         项目数 ? `你在${单条 ? "这位客户" : "这些客户"}上负责的 ${项目数} 个项目一起进了线索公海` : null,
         `放回后你看不到${单条 ? "这位客户" : "这些客户"}，也不能自己领回`,
       ].reduce<string>((a, b) => 接一句(a, b ? `${b}。` : null), "");
       await notify([原], {
         kind: "回收",
-        title: 单条 ? `${me.name} 把你名下的客户放回了公海：${我的[0].name}` : `${me.name} 把你名下的 ${我的.length} 位客户放回了公海`,
+        title: 单条 ? `${me.name} 把你名下的客户放回了公海：${客户显名(我的[0])}` : `${me.name} 把你名下的 ${我的.length} 位客户放回了公海`,
         body: 正文,
         link: null,
         key: `pool-return:customer:${[...ids].sort().join(",").slice(0, 400)}:${原}:${分钟()}`,
@@ -629,15 +631,15 @@ export async function 客户放回公海通知(me: 人, 客户们: readonly { id
 export async function 客户撤销放回通知(me: 人, 客户ids: readonly string[]): Promise<void> {
   await 稳("客户撤销放回通知", async () => {
     if (!客户ids.length) return;
-    const 现 = await 看全部(() => prisma.customer.findMany({ where: { id: { in: [...客户ids] }, pool: { is: null } }, select: { id: true, name: true, salesOwnerId: true } }));
+    const 现 = await 看全部(() => prisma.customer.findMany({ where: { id: { in: [...客户ids] }, pool: { is: null } }, select: { ...显名列, salesOwnerId: true } }));
     const 收 = await 在职的原负责人(me, 现.map((c) => c.salesOwnerId));
     for (const 原 of 收) {
       const 我的 = 现.filter((c) => c.salesOwnerId === 原);
       const 单条 = 我的.length === 1;
       await notify([原], {
         kind: "回收",
-        title: 单条 ? `${me.name} 撤销了刚才的放回公海，客户回到你名下：${我的[0].name}` : `${me.name} 撤销了刚才的放回公海，${我的.length} 位客户回到你名下`,
-        body: 单条 ? "" : `客户：${名单(我的.map((c) => c.name))}`,
+        title: 单条 ? `${me.name} 撤销了刚才的放回公海，客户回到你名下：${客户显名(我的[0])}` : `${me.name} 撤销了刚才的放回公海，${我的.length} 位客户回到你名下`,
+        body: 单条 ? "" : `客户：${名单(我的.map((c) => 客户显名(c)))}`,
         link: 单条 ? `/customers/${我的[0].id}` : "/customers",
         key: `pool-return-undo:${我的.map((c) => c.id).sort().join(",").slice(0, 400)}:${原}:${分钟()}`,
       });
@@ -658,13 +660,13 @@ export async function 项目放回公海通知(me: 人, projectId: string, 原�
     if (!痕?.fromOwnerId || 痕.userId !== me.id) return;
     const 原 = 痕.fromOwnerId;
     if (!(await 在职的原负责人(me, [原])).has(原)) return;
-    const p = await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true, customer: { select: { name: true, salesOwnerId: true, pool: { select: { customerId: true } } } } } }));
+    const p = await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true, customer: { select: { ...显名列, salesOwnerId: true, pool: { select: { customerId: true } } } } } }));
     if (!p) return;
     const 客户还归他 = p.customer.salesOwnerId === 原 && !p.customer.pool;
     await notify([原], {
       kind: "回收",
       title: `${me.name} 把你名下的项目放回了线索公海：${p.name}`,
-      body: [`客户：${p.customer.name}`, 放回原因(原因), "放回后你看不到这个项目，也不能自己领回"].reduce<string>((a, b) => 接一句(a, b ? `${b}。` : null), ""),
+      body: [`客户：${客户显名(p.customer)}`, 放回原因(原因), "放回后你看不到这个项目，也不能自己领回"].reduce<string>((a, b) => 接一句(a, b ? `${b}。` : null), ""),
       link: 客户还归他 ? `/customers/${p.customerId}` : null,
       key: `pool-return:project:${projectId}:${原}:${分钟()}`,
     });
@@ -687,11 +689,11 @@ export async function 恢复到停用负责人通知(me: 人, 条: readonly { id
   await 稳("恢复到停用负责人通知", async () => {
     if (!条.length) return;
     const [客户行, 人行, org] = await Promise.all([
-      看全部(() => prisma.customer.findMany({ where: { id: { in: 条.map((c) => c.id) } }, select: { id: true, name: true } })),
+      看全部(() => prisma.customer.findMany({ where: { id: { in: 条.map((c) => c.id) } }, select: 显名列 })),
       prisma.user.findMany({ where: { id: { in: [...new Set(条.map((c) => c.原))] } }, select: { id: true, name: true } }),
       读组织(),
     ]);
-    const 客户名 = new Map(客户行.map((c) => [c.id, c.name]));
+    const 客户名 = new Map(客户行.map((c) => [c.id, 客户显名(c)]));
     const 人名 = new Map(人行.map((u) => [u.id, u.name]));
     const 系统管理员们 = [...org.成员.keys()].filter((id) => 能改后台设置({ id }, org));
     type 一位 = { id: string; name: string; 原名: string; 没进原因: readonly string[] };

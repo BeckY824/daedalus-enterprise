@@ -35,6 +35,7 @@ import { 待我复核的 } from "@/lib/project/lead-verify";
 import { 权限组织, 读组织 } from "@/lib/enterprise/org";
 import { 能改后台设置, 是管理层 } from "@/lib/enterprise/permissions";
 
+import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 export const dynamic = "force-dynamic";
 
 /** 客户自己部署的服务器（企业版、自部署网页版）：空库那张「开始」卡不说「数据只在你的电脑上」 */
@@ -166,7 +167,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     数提醒(user.id),
     prisma.task.count({ where: { ownerId: user.id, done: false } }),
     prisma.followPlan.count({ where: { ownerId: user.id, done: false } }),
-    prisma.followUp.findFirst({ where: { ownerId: user.id }, orderBy: { occurredAt: "desc" }, select: { customer: { select: { name: true } } } }),
+    prisma.followUp.findFirst({ where: { ownerId: user.id }, orderBy: { occurredAt: "desc" }, select: { customer: { select: 显名列 } } }),
     // 只看我名下的、先筛再排前 8（排查 C7）。原来先取全团队前 8 再按姓名筛，会数漏、重名会混
     loadWatchlistPage(now, { ownerId: user.id }),
     listModelOptions(),
@@ -197,7 +198,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         : "今天没有要跟的",
   );
   if (mine.total > 0) parts.push(`${mine.total} 位${b.customer}正在被遗忘`);
-  if (myLast?.customer.name) parts.push(`上次跟的是${myLast.customer.name}`);
+  if (myLast?.customer) parts.push(`上次跟的是${客户显名(myLast.customer)}`);
   if (线索数 > 0) parts.push(`有 ${线索数} 条线索`);
 
   /*

@@ -13,7 +13,7 @@ import { dayjs } from "../utils";
  * （tests/agent-phone-mask.test.ts 里那条具名例外说的就是它）。
  */
 export const 现值选取 = {
-  id: true, name: true, phone: true, school: true, grade: true, major: true,
+  id: true, name: true, shortName: true, customerNo: true, phone: true, school: true, grade: true, major: true,
   followStatus: true, decisionStatus: true, expectedSignAt: true, expectedSignOn: true, remark: true,
   salesOwner: { select: { name: true } },
   channelOwner: { select: { name: true } },

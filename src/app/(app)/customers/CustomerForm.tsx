@@ -335,7 +335,7 @@ function CustomerFormInner({
               ...(企业 && editing.touchpoint !== undefined ? { touchpoint: editing.touchpoint ?? null } : {}),
             }
           : null,
-        name: v.name,
+        name: v.name ?? "",
         phone: v.phone ?? "",
         school: v.school ?? null,
         // 企业版不摆职位、行业（定稿 P5 第 22 条）：照原样交回，别因为表单里没有就清掉
@@ -517,8 +517,9 @@ function CustomerFormInner({
           <Col span={8}>
             {/* 跟业务配置的叫法走（2026-10-04 L-003）：改成「学员」后这里原来还写着「客户姓名」 */}
             {/* 企业版客户是单位：这一格叫「客户全称」，旁边另有一格简称（定稿 P5 第 22 条） */}
-            <Form.Item label={企业 ? "客户全称" : `${b.customer}姓名`} name="name" rules={[requiredText(企业 ? "请输入客户全称" : "请输入姓名")]}>
-              <Input placeholder={企业 ? "营业执照上的全称" : "如：张三"} maxLength={企业 ? 200 : undefined} />
+            {/* 企业版全称选填（11-19 用户「客户名称设为不必填」）：不摆红星、不校验；空着保存后列表按抬头显示（区域 | 简称…，都没有显示客户编号） */}
+            <Form.Item label={企业 ? "客户全称" : `${b.customer}姓名`} name="name" rules={企业 ? undefined : [requiredText("请输入姓名")]}>
+              <Input placeholder={企业 ? "营业执照上的全称，可留空" : "如：张三"} maxLength={企业 ? 200 : undefined} />
             </Form.Item>
           </Col>
           <Col span={8}>

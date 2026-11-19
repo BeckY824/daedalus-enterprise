@@ -9,6 +9,7 @@ import {
 } from "./review-tabs";
 import type { 日期段 } from "@/lib/custom-date-range";
 
+import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 /**
  * 复盘页「沟通」页签取数（P7 U-复盘-01；「卡点」11-01 起是三栏看板，取数在 lib/project/blocker.ts 卡点看板）。条件在 review-tabs.ts，这里只查库、排好、切一页。
  * 谁 = 看板的人 给的那一圈（只看了某个人 = [他]；总管理、管理员 = undefined）。
@@ -44,7 +45,7 @@ async function 取沟通(
     take: 每页,
     select: {
       id: true, occurredAt: true, type: true, method: true, initiator: true, title: true, content: true,
-      customer: { select: { name: true } },
+      customer: { select: 显名列 },
       entMeta: { select: { code: true } },
       owner: { select: { name: true, email: true } },
       projectNode: { select: { node: true, project: { select: { id: true, name: true } } } },
@@ -62,7 +63,7 @@ async function 取沟通(
       f.projectNode
         ? [{
             id: f.id, 时间: f.occurredAt.toISOString(), projectId: f.projectNode.project.id, 项目: f.projectNode.project.name,
-            节点: f.projectNode.node, 客户: f.customer?.name ?? "—", 方式: 跟进方式名(f), 标题: f.title, 内容: f.content, 负责人: 名(f.owner),
+            节点: f.projectNode.node, 客户: f.customer ? 客户显名(f.customer) : "—", 方式: 跟进方式名(f), 标题: f.title, 内容: f.content, 负责人: 名(f.owner),
             发起: f.initiator || null, 编号: f.entMeta?.code ?? null, 附件: 附件数.get(f.id) ?? 0,
           }]
         : [],

@@ -222,7 +222,7 @@ export const 建议SCHEMAS: Record<string, Schema> = {
   propose_lead: {
     type: "object",
     properties: {
-      name: 串("线索名称 / 姓名"),
+      name: 串("线索名称 / 客户名称（组织 / 公司），不知道就空着；不要填号码、联系人姓名"),
       contact: 串(),
       source: 串("来源 / 渠道：人说了从哪来（平台、展会、渠道名）就原样给，卡上按渠道名认"),
       status: 串(),
@@ -253,7 +253,8 @@ export const 建议SCHEMAS: Record<string, Schema> = {
       regionTo: { type: "array", items: { type: "string", enum: ["客户", "联系人", "项目"] }, description: "国家 / 省 / 城市是谁的：客户所在区域 / 联系人所在区域 / 项目所在地；说不清（比如只说「摩洛哥客户」）就不给，让人在卡上选" },
       reason: 串(理由),
     },
-    required: ["name", "reason"],
+    // 客户名称选填（11-19）：不知道名字也能出卡，name 不放必填
+    required: ["reason"],
     additionalProperties: false,
   },
   propose_customer_update: {

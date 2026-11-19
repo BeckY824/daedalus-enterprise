@@ -34,6 +34,7 @@ import { 交接通知, 同事待分配随客户通知 } from "@/lib/enterprise/n
 import { 不能当负责人 } from "@/lib/owners";
 import { notify } from "@/lib/enterprise/notify";
 
+import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 export type 交接行 = {
   id: string;
   kind: 交接种类;
@@ -163,7 +164,7 @@ export async function 待确认的交接(): Promise<{ 等我确认: 交接行[];
     const 离职能管 = (h: (typeof 行)[number]) => 管 || (h.byUserId === me.id && 还管.has(h.fromUserId));
     const 人 = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(行.flatMap((h) => [h.fromUserId, h.toUserId, h.byUserId]))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
     const 前几位 = 行.flatMap((h) => 读ids(h.customerIds).slice(0, 列几位));
-    const 名 = new Map((await 分段查(前几位, (段) => prisma.customer.findMany({ where: { id: { in: 段 } }, select: { id: true, name: true } }))).map((c) => [c.id, c.name]));
+    const 名 = new Map((await 分段查(前几位, (段) => prisma.customer.findMany({ where: { id: { in: 段 } }, select: 显名列 }))).map((c) => [c.id, 客户显名(c)]));
     // 转让：确认那一刻会一起转来的项目，按此刻的数据数（同 确认交接：还归原负责人、不在公海的才转）；同事在推的只给个数（P-转-07、X-49）
     const 项目句 = await 转让项目句(行.filter((h) => h.kind === "转让"));
     // 离职单条交项目：项目名（看板上交的是挂在别人客户上的项目，接手人要知道是哪个）

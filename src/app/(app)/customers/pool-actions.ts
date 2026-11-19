@@ -46,6 +46,7 @@ import { 要补潜客培育, 零项目客户补潜客培育, 撤回补的潜客�
 import { 系统分配方式 } from "@/lib/project/proj-fields";
 import { 写公海领取, 还公海领取前的客户分配, type 出公海原值 } from "@/lib/enterprise/customer-assign-way";
 
+import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 export type 公海结果 =
   | {
       ok: true;
@@ -140,7 +141,7 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
   if (!ids.length) return { ok: true, updated: 0, unchanged: 0, 没权限: 0 };
   const 虚线 = await 虚线只读挡(defaultClient, ids);
   if (虚线) return { ok: false, error: 虚线 };
-  const 这些 = await prisma.customer.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, salesOwnerId: true, pool: { select: { customerId: true } } } });
+  const 这些 = await prisma.customer.findMany({ where: { id: { in: ids } }, select: { ...显名列, salesOwnerId: true, pool: { select: { customerId: true } } } });
   const 已在 = 这些.filter((c) => c.pool);
   const 组织 = await 权限组织();
   // P-公海-02：能放回 = 能转让（负责人本人、实线直属上级、条线总管理、系统管理员），逐位判；按钮同一处判（P-公海-05）
@@ -176,7 +177,7 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
       return { ok: false, error: 有权限.length > 1 ? 话.replace("这位客户", `「${有权限.find((c) => c.id === id)?.name ?? ""}」`) : 话 };
     }
     if (交接中.size) return { ok: false, error: 交接中不能放提示(b.customer) };
-    if (同事在推.size) return { ok: false, error: 同事在推不能放公海话(被同事拦.map((c) => c.name), b.customer, 同事项目) };
+    if (同事在推.size) return { ok: false, error: 同事在推不能放公海话(被同事拦.map((c) => 客户显名(c)), b.customer, 同事项目) };
     if (号码错.size) {
       const [id, 话] = [...号码错][0];
       const 名 = 有权限.length > 1 ? `「${有权限.find((c) => c.id === id)?.name ?? ""}」` : "";

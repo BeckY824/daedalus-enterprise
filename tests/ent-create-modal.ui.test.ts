@@ -110,11 +110,37 @@ it("按钮不变灰：空着点「建好」就地标红、写「还差 N 项」�
     expect(await 建好.isDisabled()).toBe(false);
     await 建好.click();
     await 框.getByRole("status").filter({ hasText: /还差 \d+ 项/ }).waitFor();
-    expect(await 框.locator("[data-ge='客户名'] [role=alert]").innerText()).toContain("请填写名称");
-    expect((await 调(page)).filter((x) => String(x[0]).startsWith("建档")).length).toBe(0);
-    await 框.getByLabel("客户名称").fill("华东展具");
+    // 客户名称选填（11-19）：不标红、不摆红星；号码照旧必填
     expect(await 框.locator("[data-ge='客户名'] [role=alert]").count()).toBe(0);
+    expect(await 框.locator("[data-ge='客户名'] .cr-req").count()).toBe(0);
+    expect(await 框.locator("[data-ge='号码'] [role=alert]").innerText()).toContain("请填号码");
+    expect((await 调(page)).filter((x) => String(x[0]).startsWith("建档")).length).toBe(0);
+    await 框.getByLabel("号码", { exact: true }).fill("13905712266");
+    expect(await 框.locator("[data-ge='号码'] [role=alert]").count()).toBe(0);
   } finally { await page.close(); }
+});
+
+it("客户名称选填（11-19 用户「客户名称设为不必填」）：名称空着照样建，不查客户名，交上去 name 是空串；1024 / 1280 / 1366 和手机 390 不横向溢出", async () => {
+  for (const w of [1024, 1280, 1366, 390]) {
+    const page = await 开(w);
+    try {
+      const 框 = page.getByRole("dialog");
+      expect(await 框.getByLabel("客户名称").getAttribute("placeholder")).toContain("可留空");
+      await 框.getByLabel("号码", { exact: true }).fill("13905712266");
+      await 框.getByLabel("联系人姓名").click();
+      await 框.getByText("首次录入").waitFor();
+      await 框.getByLabel("联系人姓名").fill("王总");
+      await 选(page, "渠道触点", "公司资源");
+      await 选(page, "业务线", "内贸");
+      await 框.getByLabel("沟通内容").fill("客户要 3 套方案报价");
+      await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+      await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
+      const 交 = (await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 客户: Record<string, unknown> };
+      expect(交.客户.name).toBe("");
+      expect((await 调(page)).some((x) => x[0] === "查客户名")).toBe(false);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    } finally { await page.close(); }
+  }
 });
 
 it("没开项目：号码、客户名离开输入框自动查重；建好走「只建客户」，带客户业务线、下一步时间，不带项目；落到新客户页", async () => {

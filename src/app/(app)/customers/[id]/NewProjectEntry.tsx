@@ -6,6 +6,7 @@
  * 原来单独一个两步的「新增项目」框（NewProjectModal，前 3 步假完成）11-15 删了。
  * 表要的数据（成员、分配方式、渠道……）第一次打开时才取（不压客户页首屏），取过留着；取不到 / 项目模式没开：原因交给客户页就地说（onError），不弹顶部提示
  */
+import { 客户显名 } from "@/lib/enterprise/customer-title";
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { 取建档数据 } from "../../projects/new/wizard-actions";
@@ -22,7 +23,7 @@ export default function NewProjectEntry({
   onError: (话: string) => void;
   /** 正在取表要的数据：客户页「开项目」键转圈 */
   on取中?: (中: boolean) => void;
-  customer: { id: string; name: string; shortName?: string | null; salesOwnerId: string | null };
+  customer: { id: string; name: string; shortName?: string | null; customerNo?: number | null; salesOwnerId: string | null };
   联系人们: { id: string; name: string; isPrimary: boolean }[];
 }) {
   const [数据, set数据] = useState<建档数据 | null>(null);
@@ -51,8 +52,9 @@ export default function NewProjectEntry({
       标题="新增项目"
       数据={数据}
       onClose={onClose}
-      老客户={{ id: customer.id, name: customer.name, 附注: null }}
-      预选={{ 项目名: customer.shortName || customer.name, 默认负责人: customer.salesOwnerId, 联系人们 }}
+      // 全称选填（11-19）：没全称的客户叫显名（简称 → 客户编号），项目名默认同一个，不留空白
+      老客户={{ id: customer.id, name: 客户显名(customer), 附注: null }}
+      预选={{ 项目名: 客户显名(customer), 默认负责人: customer.salesOwnerId, 联系人们 }}
     />
   );
 }

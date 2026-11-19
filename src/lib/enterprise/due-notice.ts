@@ -33,6 +33,7 @@ import { notify } from "./notify";
 import { 读组织, 负责人和上级, type 组织 } from "./org";
 import { 企业版 } from "./switch";
 import { 视图中跳过 } from "./view-as";
+import { 客户引, 显名列 } from "./customer-title";
 
 export const 提醒时刻 = { 时: 9, 分: 0 } as const;
 const 钟上间隔毫秒 = 5 * 60_000;
@@ -62,7 +63,7 @@ async function 跟进计划行({ 首日, 末日, 零点, 次日 }: 日范围) {
   const 查到 = await prisma.followPlan.findMany({
     // 日历日的写法同 lib/overdue.ts 逾期条件：有 plannedOn 认它，老数据才看 plannedAt
     where: { done: false, customer: { pool: null }, OR: [{ plannedOn: { gte: 首日, lte: 末日 } }, { plannedOn: null, plannedAt: { gte: 零点, lt: 次日 } }] },
-    select: { id: true, subject: true, method: true, ownerId: true, customerId: true, plannedOn: true, plannedAt: true, customer: { select: { name: true, salesOwnerId: true } } },
+    select: { id: true, subject: true, method: true, ownerId: true, customerId: true, plannedOn: true, plannedAt: true, customer: { select: { ...显名列, salesOwnerId: true } } },
   });
   const 行们 = 查到.map((p) => ({ ...p, 日: p.plannedOn ?? calendarDay(p.plannedAt) }));
   if (!行们.length) return [];
@@ -90,7 +91,7 @@ async function 跟进计划们(范围: 日范围): Promise<条[]> {
     人们: [p.ownerId],
     kind: "跟进到期",
     title: `跟进计划今天到期：${p.subject}`,
-    body: `客户「${p.customer.name}」· ${p.method} · 到期日 ${p.日}`,
+    body: `客户${客户引(p.customer)}· ${p.method} · 到期日 ${p.日}`,
     link: p.link,
     key: `due:plan:${p.id}:${p.日}`,
     日: p.日,
@@ -103,7 +104,7 @@ async function 逾期跟进计划们(范围: 日范围): Promise<逾期条[]> {
     人们: [p.ownerId],
     kind: "跟进逾期",
     title: `跟进计划已逾期：${p.subject}`,
-    body: `客户「${p.customer.name}」· ${p.method} · 到期日 ${p.日}`,
+    body: `客户${客户引(p.customer)}· ${p.method} · 到期日 ${p.日}`,
     link: p.link,
     key: `overdue:plan:${p.id}:${p.日}`,
     日: p.日,

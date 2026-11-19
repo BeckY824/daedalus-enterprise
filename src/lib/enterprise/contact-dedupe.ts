@@ -36,6 +36,7 @@ import { 拦原负责人 } from "./pool-rules";
 import { 离职负责人找谁 } from "./departed-owner";
 import { 看已删, 在看已删 } from "./soft-delete-core";
 
+import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 /** ContactMethod.kind：号码类型 → 库里的写法。二维码没有号，不进子表 */
 export const 号码库类型 = { 手机号: "phone", 邮箱: "email", 微信: "wechat", 旺旺ID: "wangwang" } as const satisfies Partial<Record<号码类型, string>>;
 /** 反过来：ContactMethod.kind → 号码类型（只有这四类走建档查重、能当客户的企业号码；座机、WhatsApp 这些没有） */
@@ -208,7 +209,8 @@ export async function 撞号结论(db: 库, ids: string[], 我: string, 读的�
   const 同事 = 负责人显示名(挑.salesOwner?.name ?? "同事");
   const 撞: 撞到的人 = {
     id: 看得见 ? 挑.id : null,
-    name: 看得见 ? 挑.name : null,
+    // 全称选填（11-19）：撞上的客户没全称叫显名（简称 → 客户编号），提示、首页查重框的链接不出空白
+    name: 看得见 ? 客户显名(挑) : null,
     school: 看得见 ? 挑.school : null,
     salesOwnerName: 同事,
     createdAt: 看得见 ? 挑.createdAt.toISOString() : null,
@@ -243,7 +245,7 @@ export async function 首条撞的(db: 库, ids: string[]) {
   if (!ids.length) return null;
   const 们 = await 看全部(async () => db.customer.findMany({
     where: { id: { in: ids } },
-    select: { id: true, name: true, school: true, createdAt: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } },
+    select: { ...显名列, school: true, createdAt: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     take: 1,
   }));
@@ -411,7 +413,7 @@ export async function 联系人查重(
     where: { id: { in: [...撞.keys()] }, deletedAt: null, customer: { deletedAt: null } },
     select: {
       id: true, name: true, createdAt: true,
-      customer: { select: { id: true, name: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } } },
+      customer: { select: { ...显名列, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } } },
     },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   }));
@@ -422,7 +424,7 @@ export async function 联系人查重(
       contactId: 见 ? p.id : null,
       name: 见 ? p.name : null,
       customerId: 见 ? p.customer.id : null,
-      customerName: 见 ? p.customer.name : null,
+      customerName: 见 ? 客户显名(p.customer) : null,
       同事: 负责人显示名(p.customer.salesOwner?.name ?? "同事"),
       kind: 号.kind,
       value: 号.value,
@@ -436,7 +438,7 @@ export async function 联系人查重(
 async function 客户撞了(db: 库, 客户撞: Map<string, { kind: string; value: string }>, 读的我: 谁 | null): Promise<撞到的联系人[]> {
   const 们 = await 看全部(async () => db.customer.findMany({
     where: { id: { in: [...客户撞.keys()] }, deletedAt: null },
-    select: { id: true, name: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } },
+    select: { ...显名列, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   }));
   return 们.map((c) => {
@@ -444,7 +446,7 @@ async function 客户撞了(db: 库, 客户撞: Map<string, { kind: string; valu
     const 号 = 客户撞.get(c.id)!;
     return {
       contactId: null, name: null,
-      customerId: 见 ? c.id : null, customerName: 见 ? c.name : null,
+      customerId: 见 ? c.id : null, customerName: 见 ? 客户显名(c) : null,
       同事: 负责人显示名(c.salesOwner?.name ?? "同事"),
       kind: 号.kind, value: 号.value, 客户本身: true as const,
     };

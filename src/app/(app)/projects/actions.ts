@@ -453,7 +453,7 @@ async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输�
   if (!r.ok) return r;
   await recordAudit({
     user: me, action: "create", entity: "Customer", entityId: r.id,
-    summary: `新建客户「${String(客户.name ?? "").trim()}」，连同主要联系人「${好.联系人.name || "—"}」和首条沟通（${建了.projectId ? "挂在潜客培育项目上" : "没建项目"}）`,
+    summary: `新建客户${String(客户.name ?? "").trim() ? `「${String(客户.name ?? "").trim()}」` : "（没填名称）"}，连同主要联系人「${好.联系人.name || "—"}」和首条沟通（${建了.projectId ? "挂在潜客培育项目上" : "没建项目"}）`,
     detail: { 联系人: 好.联系人.name, 下一步时间: 好.跟进.nextStepAt ? 好.跟进.nextStepAt.toISOString().slice(0, 10) : null },
   });
   await 存沟通后重算三态(r.id);

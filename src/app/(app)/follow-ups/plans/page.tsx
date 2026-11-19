@@ -14,6 +14,7 @@ import { 名下事项够不着 } from "@/lib/enterprise/follow-perm";
 import { 市场进不了详情的 } from "@/lib/enterprise/market-view-db";
 import { 项目链接们 } from "@/lib/project/customer-detail-direct";
 
+import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 export const dynamic = "force-dynamic";
 
 export default async function PlansPage({
@@ -32,13 +33,13 @@ export default async function PlansPage({
     where: { done: true, ...(ownerId ? { ownerId } : {}) },
     orderBy: [{ doneAt: { sort: "desc", nulls: "last" } }, { id: "asc" }],
     take: 已完成上限,
-    include: { customer: { select: { id: true, name: true } }, owner: { select: { id: true, name: true } } },
+    include: { customer: { select: 显名列 }, owner: { select: { id: true, name: true } } },
   });
   const completedTasks = (ownerId?: string) => prisma.task.findMany({
     where: { done: true, ...(ownerId ? { ownerId } : {}) },
     orderBy: [{ doneAt: { sort: "desc", nulls: "last" } }, { id: "asc" }],
     take: 已完成上限,
-    include: { customer: { select: { id: true, name: true } }, owner: { select: { id: true, name: true } } },
+    include: { customer: { select: 显名列 }, owner: { select: { id: true, name: true } } },
   });
   /*
     团队那份没取满 200 条 = 看得到的已完成全在里面了；「我的」那份（ownerId = 我）的条件只比团队那份多一个 ownerId，
@@ -95,7 +96,7 @@ export default async function PlansPage({
           计划时间: scheduleValue(p.plannedAt, p.plannedOn)!,
           完成时间: p.doneAt?.toISOString() ?? null,
           customerId: p.customer.id,
-          customerName: p.customer.name,
+          customerName: 客户显名(p.customer),
           ownerId: p.owner.id,
           ownerName: p.owner.name,
         })),
@@ -107,7 +108,7 @@ export default async function PlansPage({
           计划时间: scheduleValue(t.dueAt, t.dueOn),
           完成时间: t.doneAt?.toISOString() ?? null,
           customerId: t.customer.id,
-          customerName: t.customer.name,
+          customerName: 客户显名(t.customer),
           ownerId: t.owner.id,
           ownerName: t.owner.name,
         })),

@@ -62,7 +62,7 @@ async function 起草邀请(input: {
 
   const prompt = `你替销售「${user.name}」起草一条发给已签约${b.customer}的消息（会从微信、WhatsApp 或邮件发出），礼貌地请对方帮忙介绍身边有同样需要的人。落款或自称一律用「${user.name}」，不要编别的名字或机构名。
 
-${b.customer}：${customer.name}${customer.grade ? `（${customer.grade}）` : ""}，已签约
+${b.customer}：${customer.name || "（没填名称）"}${customer.grade ? `（${customer.grade}）` : ""}，已签约
 ${origin ? `TA 自己当初也是「${origin}」介绍来的，可以自然地借这一点开口` : "TA 是自己找来的，没有推荐人"}
 备注：${(customer.remark || "无").slice(0, 100)}
 最近的跟进记录（新→旧）：
@@ -75,7 +75,7 @@ ${timeline}
     const raw = (await chatJSON(prompt, { feature: "invite" })) as { message?: unknown };
     const message = typeof raw.message === "string" ? raw.message.trim().slice(0, 话术上限) : "";
     if (!message) return { ok: false, error: "AI 未能生成话术，请重试" };
-    await recordAiUse(user, "invite", `AI 起草转介绍邀请（${b.customer}「${customer.name}」）`, input.customerId);
+    await recordAiUse(user, "invite", `AI 起草转介绍邀请（${b.customer}「${customer.name || "（没填名称）"}」）`, input.customerId);
     return { ok: true, message };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "生成失败，请稍后重试" };

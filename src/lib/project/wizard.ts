@@ -4,6 +4,7 @@
  * 先把交上来的规整好、该拦的先拦，再给 saveCustomer 一个「接着建」，在建客户的同一个事务里写下去。
  * 中途哪一步失败整笔回滚：客户、联系人、项目、跟进一行不留（tests/project-wizard.test.ts）。
  */
+import { 全称或显名, 显名列 } from "@/lib/enterprise/customer-title";
 import type { Prisma } from "@/generated/prisma";
 import { hasVisibleText } from "../form-validation";
 import { 规整手机号 } from "../phone";
@@ -321,9 +322,10 @@ export function 只建客户接着建(me: { id: string }, 好: 规整好的只�
     });
     if (好.潜客培育) {
       // 潜客培育项目（M-公海-14）：名字、负责人同 saveCustomer 补的那个（客户名、客户负责人），落在第一个节点
-      const 客 = await tx.customer.findUniqueOrThrow({ where: { id: customerId }, select: { name: true, salesOwnerId: true } });
+      // 项目名用客户显名（11-19 全称选填：空着兜简称 / 客户编号，同 saveCustomer 补的那个）
+      const 客 = await tx.customer.findUniqueOrThrow({ where: { id: customerId }, select: { ...显名列, salesOwnerId: true } });
       if (!建潜客培育) throw new Error("企业版只建客户要带上建潜客培育");
-      const projectId = await 建潜客培育(tx, { customerId, 客户名: 客.name, ownerId: 客.salesOwnerId, creatorId: me.id });
+      const projectId = await 建潜客培育(tx, { customerId, 客户名: 全称或显名(客), ownerId: 客.salesOwnerId, creatorId: me.id });
       if (!projectId) throw new Error("新客户已经有项目了，潜客培育项目没建");
       if (好.跟进.nextStepAt || 好.跟进.nextStepText) {
         await tx.project.update({ where: { id: projectId }, data: { nextStepAt: 好.跟进.nextStepAt, nextStepText: 好.跟进.nextStepText } });

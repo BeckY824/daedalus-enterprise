@@ -86,9 +86,28 @@ export function 客户抬头(c: 抬头料, 节点?: string | null): string {
   return [区, 主 || 节].filter(Boolean).join(抬头分隔);
 }
 
-/** 客户显名（关联客户、引用联系人那些地方叫一位客户）：简称 → 全称 → 客户编号（没给编号 / 回填前是短号）。都去首尾空白 */
+/**
+ * 客户显名（关联客户、引用联系人、通知、搜索结果、下拉、日志这些地方叫一位客户）：简称 → 全称 → 客户编号（没给编号 / 回填前是短号）。都去首尾空白。
+ * 11-19 起企业版客户全称选填（新建弹窗、建档向导、AI 建档卡、资料卡就地改都能空着）：列表第一列、详情页头走 客户抬头，
+ * 其余凡是要「叫出一位客户」的地方一律走这里，永远不给空串；不拿联系人姓名、号码兜（P-抬头-13）
+ */
 export function 客户显名(c: { id: string; name?: string | null; shortName?: string | null; customerNo?: number | null }): string {
   return (c.shortName ?? "").trim() || (c.name ?? "").trim() || 客户编号显示(c);
+}
+
+/** 叫一位客户要取的列（Prisma select 片段，和 客户显名 配套）：只取 name 的地方换成这个，名字空着时才兜得到简称 / 编号 */
+export const 显名列 = { id: true, name: true, shortName: true, customerNo: true } as const;
+
+/**
+ * 项目默认名（潜客培育、建档时跟着客户起的名）：有全称照旧用全称（老规矩不变），全称空着才兜 客户显名（简称 → 客户编号），不落成空白
+ */
+export function 全称或显名(c: Parameters<typeof 客户显名>[0]): string {
+  return (c.name ?? "").trim() || 客户显名(c);
+}
+
+/** 日志、提示里引一位客户：「显名」（显名不会空，不出现空引号「」） */
+export function 客户引(c: Parameters<typeof 客户显名>[0]): string {
+  return `「${客户显名(c)}」`;
 }
 
 /** 能跑裸 SQL 的客户端（服务端传 prisma；测试传数句子的假库） */

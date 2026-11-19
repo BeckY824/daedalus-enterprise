@@ -10,6 +10,7 @@ import { 暂未跟进负责人们 } from "./home-cards-db";
 import { 卡点看板范围 } from "./blocker";
 import { 复盘待办计数 } from "./board-todos-db";
 
+import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 type 谁 = { id: string; role: string };
 import {
   负责人条件, 回收条们, 按节点数, 排卡点分布, 排客户分布, 算回款, 预警最多, 缺沟通最多,
@@ -68,13 +69,13 @@ export async function 缺沟通of(范围: 范围): Promise<缺沟通> {
       where,
       orderBy: [{ createdAt: "desc" }, { id: "asc" }],
       take: 缺沟通最多,
-      select: { id: true, name: true, node: true, ownerId: true, createdAt: true, customer: { select: { name: true } } },
+      select: { id: true, name: true, node: true, ownerId: true, createdAt: true, customer: { select: 显名列 } },
     }),
   ]);
   const 叫 = await 叫们(们.map((p) => p.ownerId));
   return {
     总数,
-    行: 们.map((p) => ({ id: p.id, 名: p.name, 客户: p.customer?.name ?? "—", 节点: p.node, 负责人: 叫.get(p.ownerId) ?? "—", 建于: p.createdAt.toISOString() })),
+    行: 们.map((p) => ({ id: p.id, 名: p.name, 客户: p.customer ? 客户显名(p.customer) : "—", 节点: p.node, 负责人: 叫.get(p.ownerId) ?? "—", 建于: p.createdAt.toISOString() })),
   };
 }
 

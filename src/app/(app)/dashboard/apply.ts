@@ -1,5 +1,6 @@
 "use server";
 
+import { 潜在项目名 } from "@/lib/project/relate-names";
 import { scheduleValue } from "@/lib/schedule-date";
 
 import { 读现值 } from "@/lib/agent/current-values";
@@ -346,7 +347,9 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
       老卡没这几格：不传分配方式（向导按负责人 = 我推成个人自持 / 默认），业务线跟我自己的线，节点线索第一步
     */
     项目: {
-      name: p.name, amount: 0,
+      // 客户名称选填（11-19）：没填的项目名落「潜在项目」——新建项目没起名的默认名，项目显名里当没名字、概览名称按进程|项目编号显示
+      // （lib/project/relate-names.ts）；不拿联系人姓名、号码顶（P-抬头-13）。人到项目页可改
+      name: p.name.trim() || 潜在项目名, amount: 0,
       ownerId: 项目负责人,
       ...(p.分配方式 !== undefined ? { 分配方式: p.分配方式 } : {}),
       业务线: p.业务线 ?? (是业务线(我的线) ? 我的线 : "暂不分配"),

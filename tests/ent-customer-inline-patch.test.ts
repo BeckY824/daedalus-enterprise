@@ -153,14 +153,14 @@ describe("全称就地改（员工反馈：负责人改不了全称）", () => {
     expect((await 读(id)).name).toBe(原名);
   });
 
-  it("空串、只有空格、null 都拒（main 现状全称不许清空）；超长拒；库不变", async () => {
+  it("11-19 客户名称选填：空串、只有空格、null 都按清空存空串；超长拒、库不变", async () => {
+    for (const 空 of ["", "   ", null]) {
+      const id0 = await 新建();
+      expect(await patchCustomer(id0, "name", 空)).toMatchObject({ ok: true });
+      expect((await 读(id0)).name).toBe("");
+    }
     const id = await 新建();
     const 原名 = (await 读(id)).name;
-    for (const 空 of ["", "   ", null]) {
-      const r = await patchCustomer(id, "name", 空);
-      expect(r).toMatchObject({ ok: false });
-      expect((r as { error: string }).error).toContain("全称");
-    }
     const r = await patchCustomer(id, "name", "长".repeat(201));
     expect(r).toMatchObject({ ok: false });
     expect((r as { error: string }).error).toContain("200");

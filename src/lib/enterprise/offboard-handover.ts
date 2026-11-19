@@ -13,6 +13,7 @@ import { 公海客户原负责人是 } from "@/lib/owner-log-db";
 import { 离职转给接手人 } from "@/lib/offboard-move";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 待确认, 了结, 读ids, 离职范围of, 离职盖住的客户, 离职盖住的项目, 离职段 } from "@/lib/enterprise/handover-db";
+import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 
 export { 离职段 };
 import { 权限组织 } from "@/lib/enterprise/org";
@@ -175,20 +176,20 @@ export async function 读离职交接(me: 谁): Promise<离职待交接[]> {
       else 放走的of.set(人, new Set([客户id]));
     }
     const 没放走 = (x: { ownerId: string; customerId: string }) => !放走的of.get(x.ownerId)?.has(x.customerId);
-    const 客户们of = new Map<string, { id: string; name: string; salesOwnerId: string }[]>();
+    const 客户们of = new Map<string, { id: string; name: string; shortName: string | null; customerNo: number | null; salesOwnerId: string }[]>();
     const 客户上的项目of = new Map<string, { ownerId: string; awaitAssignAt: Date | null; result: string | null }[]>();
-    const 项目们of = new Map<string, { id: string; name: string; ownerId: string; customerId: string; customer: { name: string } }[]>();
+    const 项目们of = new Map<string, { id: string; name: string; ownerId: string; customerId: string; customer: { id: string; name: string; shortName: string | null; customerNo: number | null } }[]>();
     const 数 = { 线索: new Map<string, number>(), 渠道: new Map<string, number>(), 主渠道: new Map<string, number>(), 待办: new Map<string, number>() };
     for (const 批 of 分批(ids)) {
       const 人 = { in: 批 };
       // 同 停用分拣：在公海里的不算他的（谁领谁接）
       const 他的客户 = { salesOwnerId: 人, pool: { is: null } };
       const [客户们, 项目们, 线索, 渠道, 主渠道, 待办们] = await Promise.all([
-        prisma.customer.findMany({ where: 他的客户, select: { id: true, name: true, salesOwnerId: true }, orderBy: { name: "asc" } }),
+        prisma.customer.findMany({ where: 他的客户, select: { ...显名列, salesOwnerId: true }, orderBy: { name: "asc" } }),
         带项目
           ? prisma.project.findMany({
               where: { ownerId: 人, pooledAt: null, result: null, OR: 挂在别人客户上(批) },
-              select: { id: true, name: true, ownerId: true, customerId: true, customer: { select: { name: true } } },
+              select: { id: true, name: true, ownerId: true, customerId: true, customer: { select: 显名列 } },
               orderBy: { name: "asc" },
             })
           : [],
@@ -254,9 +255,9 @@ export async function 读离职交接(me: 谁): Promise<离职待交接[]> {
         单条等确认: 这几笔.filter((x) => !x.整包).length,
         客户: 客户们.map((c) => {
           const 标 = 标日.get(`${u.id}|${c.id}`);
-          return { id: c.id, name: c.name, 项目数: (客户上的项目of.get(c.id) ?? []).filter(算项目).length, ...(挂of(c.id) ? { 交接中: 挂of(c.id)! } : {}), ...(标 ? { 待交接日: 标, 挂起天数: 差天(标, 今天), 挂起工作日: 工作日数(标, 今天), 超期: 交接挂起超了(标, 今天) } : {}) };
+          return { id: c.id, name: 客户显名(c), 项目数: (客户上的项目of.get(c.id) ?? []).filter(算项目).length, ...(挂of(c.id) ? { 交接中: 挂of(c.id)! } : {}), ...(标 ? { 待交接日: 标, 挂起天数: 差天(标, 今天), 挂起工作日: 工作日数(标, 今天), 超期: 交接挂起超了(标, 今天) } : {}) };
         }),
-        项目: 项目们.map((p) => ({ id: p.id, name: p.name, 客户: p.customer.name, ...(项目挂of(p.id) ? { 交接中: 项目挂of(p.id)! } : {}) })),
+        项目: 项目们.map((p) => ({ id: p.id, name: p.name, 客户: 客户显名(p.customer), ...(项目挂of(p.id) ? { 交接中: 项目挂of(p.id)! } : {}) })),
         其余: { 线索, 渠道, 主渠道, 待办 },
       });
     }

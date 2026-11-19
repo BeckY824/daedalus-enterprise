@@ -56,6 +56,7 @@ import { 换负责人 } from "@/lib/project/owner-write";
 import { 定时分配令牌, 超时转令牌 } from "@/lib/enterprise/scheduled-assign-token";
 import { 刷新页面 } from "@/lib/revalidate-safe";
 
+import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 type 结果 = { ok: true } | { ok: false; error: string };
 /** 分哪一条：老的线索表，或者企业版「新线索」= 线索阶段的项目 */
 type 目标 = { leadId: string; projectId?: undefined } | { projectId: string; leadId?: undefined };
@@ -766,7 +767,7 @@ export async function 超时转出(
 export type 客户自动分配结果 = { ok: true; toUserId: string; 接手人: string; 为什么: string; 区域未填?: true } | { ok: false; error: string };
 
 type 看的客户 = { id: string; name: string; salesOwnerId: string; bizLine: string | null; pool: { customerId: string } | null };
-const 看客户字段 = { id: true, name: true, salesOwnerId: true, bizLine: true, pool: { select: { customerId: true } } } as const;
+const 看客户字段 = { ...显名列, salesOwnerId: true, bizLine: true, pool: { select: { customerId: true } } } as const;
 const 客户看不到话 = "这位客户已经不在了（或者你看不到它），刷新看看";
 
 /**
@@ -790,7 +791,7 @@ async function 自动分一位客户(
   }
   await recordAudit({
     user: me, action: "assign", entity: "Customer", entityId: c.id,
-    summary: `客户转让（自动分配）：把「${c.name}」分给「${r.接手人}」${原因值 ? `（${原因值}）` : ""}`,
+    summary: `客户转让（自动分配）：把「${客户显名(c)}」分给「${r.接手人}」${原因值 ? `（${原因值}）` : ""}`,
     detail: { 自动分配: true, 原负责人: c.salesOwnerId, salesOwnerId: r.toUserId, projectId: 能.projectId, 为什么: r.为什么, ...(原因值 ? { 转让原因: 原因值 } : {}) },
   });
   return {
@@ -875,7 +876,7 @@ export async function 批量客户自动分配预看(customerIds: string[]): Pro
       if (!c) { 不可.push({ customerId: id, name: "（看不到这位）", error: 客户看不到话 }); continue; }
       const 能 = await 能自动分配客户(me, org, c);
       if (能.ok) 可.push(id);
-      else 不可.push({ customerId: id, name: c.name, error: 能.error });
+      else 不可.push({ customerId: id, name: 客户显名(c), error: 能.error });
       const 定向项目 = await 要按方向指定(me, org, c);
       if (定向项目) 默认线们.add((await 客户默认分配方向(org, c.id, me.id, 定向项目)).线);
     }

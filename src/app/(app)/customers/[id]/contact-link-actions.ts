@@ -22,6 +22,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 不在了 } from "@/lib/not-there";
 import { 挂靠说明上限 } from "@/lib/enterprise/customer-v2";
 import { 客户事项挡 } from "@/lib/enterprise/follow-perm";
+import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 
 type 结果 = { ok: true } | { ok: false; error: string };
 const 关着 = { ok: false as const, error: "这个版本没有联系人挂靠" };
@@ -41,18 +42,19 @@ function 刷新(...ids: (string | null | undefined)[]) {
 /** 能不能在这位客户身上挂 / 解联系人：看得到、不是只读的同事客户 / 虚线下属客户，且过 客户事项挡（能改这位客户） */
 async function 能改(me: Awaited<ReturnType<typeof requireUser>>, id: string): Promise<{ ok: true; name: string } | { ok: false; error: string }> {
   if (typeof id !== "string" || !id) return { ok: false, error: "请选一位客户" };
-  const c = await prisma.customer.findUnique({ where: { id }, select: { name: true } });
+  const c = await prisma.customer.findUnique({ where: { id }, select: 显名列 });
   if (!c) return { ok: false, error: "这位客户已经不在了（或你看不到），刷新看看" };
   if (await 同事的客户(defaultClient, id)) return { ok: false, error: await 只读话(defaultClient) };
   const 挡 = await 客户事项挡(me, id);
   if (挡) return { ok: false, error: 挡 };
-  return { ok: true, name: c.name };
+  // 全称选填（11-19）：提示、日志里叫显名（简称 → 全称 → 客户编号），不出空引号
+  return { ok: true, name: 客户显名(c) };
 }
 
 /** 联系人看不看得到：主客户看得到，或挂在一位看得到的客户上。看得到才回名字和主客户 */
 async function 看得到的人(contactId: unknown) {
   if (typeof contactId !== "string" || !contactId) return null;
-  const 人 = await 看全部(() => prisma.contact.findUnique({ where: { id: contactId }, select: { id: true, name: true, customerId: true, customer: { select: { name: true } } } }));
+  const 人 = await 看全部(() => prisma.contact.findUnique({ where: { id: contactId }, select: { id: true, name: true, customerId: true, customer: { select: 显名列 } } }));
   if (!人) return null;
   const 主见 = await prisma.contact.findUnique({ where: { id: contactId }, select: { id: true } });
   const 挂见 = 主见 ? null : await prisma.contactCustomer.findFirst({ where: { contactId }, select: { id: true } });
@@ -85,8 +87,8 @@ export async function 挂到客户(contactId: string, customerId: string, note?:
     }
     await recordAudit({
       user: me, action: "update", entity: "Customer", entityId: customerId,
-      summary: `把联系人「${人.name}」（主客户「${人.customer.name}」）挂到「${这位.name}」${说.值 ? `（${说.值}）` : ""}`,
-      detail: { 联系人: 人.name, 主客户: 人.customer.name, 挂到: 这位.name, 说明: 说.值 ?? "（空）" },
+      summary: `把联系人「${人.name}」（主客户「${客户显名(人.customer)}」）挂到「${这位.name}」${说.值 ? `（${说.值}）` : ""}`,
+      detail: { 联系人: 人.name, 主客户: 客户显名(人.customer), 挂到: 这位.name, 说明: 说.值 ?? "（空）" },
     });
     刷新(customerId, 人.customerId);
     return { ok: true };

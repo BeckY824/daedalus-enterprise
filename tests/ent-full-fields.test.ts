@@ -310,8 +310,9 @@ describe("客户字段：saveCustomer / patchCustomer 真库", () => {
     expect(await 整表保存(id, { name: "老".repeat(301) })).toMatchObject({ ok: false });
   });
 
-  it("名称只有空白 / 零宽字符拒", async () => {
-    expect(await 新建({ name: "   " })).toMatchObject({ ok: false });
-    expect(await 新建({ name: "​​" })).toMatchObject({ ok: false });
+  it("11-19 客户名称选填：只有空白 / 零宽字符按没填存空串", async () => {
+    for (const 空 of ["   ", "​​"]) {
+      expect((await 读(await 新建id({ name: 空 }))).name).toBe("");
+    }
   });
 });
