@@ -40,8 +40,7 @@ import { 号键 } from "@/lib/phone";
 import { 号键SQL } from "@/lib/phone-dedupe";
 import { getBusiness } from "@/lib/business";
 import { 权限组织 } from "./org";
-import { 拦原负责人 } from "./pool-rules";
-import { 全公司查号, 首条撞的, type 验好的号 } from "./contact-dedupe";
+import { 全公司查号, 首条撞的, 我回避的, type 验好的号 } from "./contact-dedupe";
 
 type 库 = Prisma.TransactionClient | typeof prisma;
 
@@ -68,19 +67,22 @@ export class 查重领取换人 extends Error {
 }
 
 /**
- * 公海客户的原负责人 = 最近一次把它放进公海的人（P-公海-04、M-公海-03）：客户挂占位账号的，认最近一条 pool-release 的 from；
- * 负责人还是真人的（部署前进公海的老数据）就是他。认不出 = null
+ * 公海客户的原负责人 = 最近一次把它放进公海的人（P-公海-04、M-公海-03）：客户挂占位账号的，认最近一条换到占位账号的记录的 from
+ *（不限种类，同 owner-log-db.ts 公海客户原负责人是，向导里「原负责人是我」和这里一个口径）；负责人还是真人的（部署前进公海的老数据）就是他。认不出 = null。
+ * 整个包 看全部：公海回避会把「我放进公海的客户」的换负责人记录藏掉（team-scope 里跟着客户走），限定读读成 null 就等于放行原负责人领回
  */
 export async function 公海客户的原负责人(db: 库, customerId: string): Promise<string | null> {
-  const c = await 看全部(() => db.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, salesOwner: { select: { email: true } } } }));
-  if (!c) return null;
-  if (c.salesOwner?.email !== 无负责人占位邮箱) return c.salesOwnerId || null;
-  const r = await db.customerOwnerLog.findFirst({
-    where: { customerId, toOwnerId: c.salesOwnerId, kind: "pool-release" },
-    orderBy: [{ at: "desc" }, { id: "desc" }],
-    select: { fromOwnerId: true },
+  return 看全部(async () => {
+    const c = await db.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, salesOwner: { select: { email: true } } } });
+    if (!c) return null;
+    if (c.salesOwner?.email !== 无负责人占位邮箱) return c.salesOwnerId || null;
+    const r = await db.customerOwnerLog.findFirst({
+      where: { customerId, toOwnerId: c.salesOwnerId },
+      orderBy: [{ at: "desc" }, { id: "desc" }],
+      select: { fromOwnerId: true },
+    });
+    return r?.fromOwnerId ?? null;
   });
-  return r?.fromOwnerId ?? null;
 }
 
 /** 客户创建人（CustomerCreator）；没记 = null */
@@ -97,6 +99,16 @@ export function 要回避(原负责人: string | null, 创建人: string | null)
 }
 
 /**
+ * 发起领取的这位是不是「原负责人领不回」（P-公海-04）：和查重向导的「原负责人是我」同一个判断（contact-dedupe.ts 我回避的：
+ * 负责人还是我、换到占位账号的最近一条是我放的、公海回避名单里有它），再按用户 11-19「仅对创建人豁免」放过客户创建人。
+ * 这样向导里「原负责人是我」和「市场可领」不会同时为真
+ */
+export async function 发起人领不回(db: 库, 挑: { id: string; salesOwnerId: string | null }, meId: string): Promise<boolean> {
+  if (!(await 我回避的(db, 挑, meId))) return false;
+  return (await 客户创建人(db, 挑.id)) !== meId;
+}
+
+/**
  * 查重撞上「公海待捞」时这位能不能就地领（查号码的 市场可领、AI 建档卡片的 公海号）：同 查重领取 进门那几道——
  * 项目模式、市场成员、首条撞的还在客户公海、原负责人回避只豁免客户创建人。只给界面摆不摆键，领的时候 查重领取 再判一遍
  */
@@ -105,9 +117,7 @@ export async function 查重可领(meId: string, 号: 验好的号): Promise<boo
   if (!能查重领取(await 权限组织(), meId)) return false;
   const 挑 = await 首条撞的(prisma, await 全公司查号(prisma, 号.类型, 号.值, 号.键));
   if (!挑?.pool) return false;
-  if (!拦原负责人()) return true;
-  const 原 = await 公海客户的原负责人(prisma, 挑.id);
-  return 原 !== meId || !要回避(原, await 客户创建人(prisma, 挑.id));
+  return !(await 发起人领不回(prisma, 挑, meId));
 }
 
 /** 名下在线索公海里的项目：取最近进公海的一条（同一刻按建得晚的、id 大的）。多条时只认这一条挂沟通、记分配，别的照「领客户带走公海里的项目」一起归接手人 */
@@ -203,35 +213,42 @@ export async function 撞上的联系人(db: 库, customerId: string, 号: 验�
   });
 }
 
-/** 领取框里录的对接人：名字必填，职务可空；原id = 从客户哪位联系人带出来的（号码撞上的那位先带出来，可换、可清掉当新的人） */
-export type 录的对接人 = { 原id?: string | null; 名字: string; 职务?: string | null };
+/** 领取框里录的对接人：原id = 选的客户名下已有的那位（号码撞上的那位先带出来，可换）；原id 空 = 「新的人」，名字必填、职务可空 */
+export type 录的对接人 = { 原id?: string | null; 名字?: string | null; 职务?: string | null };
 export const 对接人名上限 = 100;
 /** 认好的：挂客户名下已有的那位（不改他的信息）；或在客户下新建一位（不设主联系人） */
 export type 认好的对接人 = { 挂: string } | { 建: { name: string; position: string | null } };
 
 /**
- * 认对接人（用户 11-19「客户联系人不变，项目对接人以录入为主」；总控 11-19 细则）：
- *   - 名字和客户名下哪位已有联系人一样（先看带出来的那位，再看别的）→ 挂他，原有的名字 / 职务 / 号码一律不改
- *   - 名字不一样 → 在这位客户下新建一位联系人（不设主联系人），只挂到这条新项目上
- * 带出来的那位要还在这位客户名下（回收站的不算）；客户的主联系人不换
+ * 认对接人（用户 11-19「客户联系人不变，项目对接人以录入为主」；导入的规矩「认人锁手机号」）：
+ *   - 选的是客户名下已有的联系人（带原id）：直接挂他——不拿名字重新认人、不强制有名字（号码撞上的那位没名字照样挂）、他原有的信息一律不改
+ *   - 选「新的人」：名字必填，在这位客户下新建一位联系人（不设主联系人），只挂到这条新项目上
+ * 带出来的那位要还在这位客户名下（回收站的不算）；事务里 落对接人 再核一遍。客户的主联系人不换
  */
 export async function 认对接人(db: 库, customerId: string, 录: unknown): Promise<认好的对接人 | { error: string }> {
   const r = (录 && typeof 录 === "object" ? 录 : {}) as Partial<录的对接人>;
+  const 原id = typeof r.原id === "string" && r.原id ? r.原id : null;
+  if (原id) {
+    const 在 = await 看全部(() => db.contact.findFirst({ where: { id: 原id, customerId, deletedAt: null }, select: { id: true } }));
+    return 在 ? { 挂: 在.id } : { error: "选的对接人已经不在这位客户名下了，关掉重新打开" };
+  }
   const 名字 = typeof r.名字 === "string" ? r.名字.trim() : "";
-  if (!名字) return { error: "请填写这次的对接人" };
+  if (!名字) return { error: "请填写这次的对接人：选客户原有的联系人，或填新的人的名字" };
   if (名字.length > 对接人名上限) return { error: `对接人名字最多 ${对接人名上限} 个字` };
   const 职务 = typeof r.职务 === "string" && r.职务.trim() ? r.职务.trim().slice(0, 对接人名上限) : null;
-  const 们 = await 看全部(() => db.contact.findMany({ where: { customerId, deletedAt: null }, select: { id: true, name: true }, orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }] }));
-  const 原id = typeof r.原id === "string" && r.原id ? r.原id : null;
-  const 原 = 原id ? 们.find((c) => c.id === 原id) : null;
-  if (原id && !原) return { error: "带出来的那位联系人已经不在这位客户名下了，关掉重新打开" };
-  const 同名 = 原 && 原.name.trim() === 名字 ? 原 : 们.find((c) => c.name.trim() === 名字);
-  return 同名 ? { 挂: 同名.id } : { 建: { name: 名字, position: 职务 } };
+  return { 建: { name: 名字, position: 职务 } };
 }
 
-/** 事务里落对接人：挂的直接用；建的在客户下新建（同受限详情新增联系人：不设主联系人、挂客户行、记谁建的） */
+/**
+ * 事务里落对接人：挂的先在事务里再核一遍还在这位客户名下（事务外认完到这一刻被删 / 被移走：抛 查重领取作废 整笔回滚）；
+ * 建的在客户下新建（同受限详情新增联系人：不设主联系人、挂客户行、记谁建的）
+ */
 export async function 落对接人(tx: Prisma.TransactionClient, customerId: string, 认: 认好的对接人, 建的人: string): Promise<string> {
-  if ("挂" in 认) return 认.挂;
+  if ("挂" in 认) {
+    const 在 = await tx.contact.findFirst({ where: { id: 认.挂, customerId, deletedAt: null }, select: { id: true } });
+    if (!在) throw new 查重领取作废("选的对接人刚被删了或不在这位客户名下了，这次没领；关掉重新打开");
+    return 在.id;
+  }
   const c = await tx.contact.create({ data: { ...认.建, isPrimary: false, customerId, createdById: 建的人 }, select: { id: true } });
   await tx.contactCustomer.create({ data: { contactId: c.id, customerId } });
   return c.id;

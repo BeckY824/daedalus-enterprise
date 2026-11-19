@@ -5043,7 +5043,8 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 .dc-claim-full { width: 100%; }
 .dc-claim-req { color: var(--danger); }
 .dc-claim-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s3); }
-.dc-claim-wide { grid-column: 1 / -1; }
+.dc-claim-wide { grid-column: 1 / -1; overflow-wrap: anywhere; }
+.dc-claim-who { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 600px) { .dc-claim-grid { grid-template-columns: minmax(0, 1fr); } }
 .dc-claim-foot { display: flex; justify-content: flex-end; gap: var(--s2); }
 .prop-err-act { margin-top: var(--s2); }

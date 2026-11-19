@@ -224,7 +224,7 @@ export async function 撞号结论(db: 库, ids: string[], 我: string, 读的�
  * 这位公海客户是不是我退的、我领不回也看不到（11-03 B7-3）：和 team-scope 公海回避 同一套——负责人是我，或在我的回避名单里；
  * 名单过上限（null）时照回避的退路，看有没有我退的公海项目；客户例外里的（最近一次不是我）不算
  */
-async function 我回避的(db: 库, 挑: { id: string; salesOwnerId: string | null }, 我: string): Promise<boolean> {
+export async function 我回避的(db: 库, 挑: { id: string; salesOwnerId: string | null }, 我: string): Promise<boolean> {
   if (!拦原负责人()) return false;
   if (挑.salesOwnerId === 我) return true;
   if ((await 看全部(() => 公海客户原负责人是(db, [我], [挑.id]))).size) return true;
