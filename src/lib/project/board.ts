@@ -4,7 +4,7 @@
  */
 import { 按币种合计, type 币种合计 } from "../currency";
 import { 有值 } from "../empty-value";
-import { 看板列, 看板列们, 是阶段, type 看板列 as 列名 } from "./nodes";
+import { 看板列, 看板列们, 是阶段, 本套位置, type 看板列 as 列名 } from "./nodes";
 import { 阶段们, 是交付, 结局叫法, type 阶段, type 阶段字典 } from "./stage-dict";
 
 export type 项目行 = {
@@ -95,8 +95,13 @@ function 进程列们(字典: 阶段字典, 只看阶段?: string): 列定义[] 
   return [...进程, ...出口];
 }
 
-/** 企业版这一行落哪列：有结局（异常除外）进出口列，其余进所在进程；认不出的进程落本阶段第一列，不丢 */
-function 进程列(r: Pick<项目行, "phase" | "node" | "result">, 字典: 阶段字典): string {
+/**
+ * 企业版这一行落哪列：有结局（异常除外）进出口列，其余进所在进程；认不出的进程落本阶段第一列，不丢。
+ * 库里存着旧节点名 / 旧结局的（10-31 改名，如 共识方案、方案确认）先按 本套位置 换成新名再归列（不然落进本阶段第一列，和卡片小字对不上）；
+ * 列表那边库里按 阶段 / 进程 / 结局 分的组（看板合计组）也走这里，列头的数、列条件跟着一起对
+ */
+function 进程列(行: Pick<项目行, "phase" | "node" | "result">, 字典: 阶段字典): string {
+  const r = 本套位置(行, 字典);
   if (r.result && r.result !== "异常状态") return 是交付(r.result) ? (字典.出口们.订单[0].结局 ?? r.result) : r.result;
   const 阶 = 是阶段(r.phase) ? r.phase : "线索";
   return 字典.节点们[阶].includes(r.node) ? r.node : 字典.节点们[阶][0];

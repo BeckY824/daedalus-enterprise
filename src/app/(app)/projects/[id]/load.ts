@@ -4,7 +4,7 @@ import { 只读客户 } from "@/lib/team-scope";
 import type { SessionUser } from "@/lib/auth";
 import { 项目收藏了吗 } from "@/lib/favorites";
 import { 能管项目, 能加组员, 能改组员, 能放回公海, 能改节点, 上级只推, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据, 超时成员线, 超时线 } from "@/lib/project/db";
-import { 按必填走, 节点必填, 还差, 有效沟通还差, 必填叫法 } from "@/lib/project/required";
+import { 项目按必填走, 节点必填, 还差, 有效沟通还差, 必填叫法 } from "@/lib/project/required";
 import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
@@ -224,7 +224,8 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   const 占位 = 待分配占位(me, p);
   const 节点能改 = !占位 && (能改节点(me, p, org) || 上级只推(me, p, await 直属才推(org), 规则));
   // 有结局的也算（11-03 A5-1）：改回到后面的节点同样算往前推，下拉里照样灰着
-  const 必填 = !公海 && 按必填走(规则, p.node)
+  // 生效时刻之前建的存量项目：不列必填、不灰下拉（节点推进只管之后新建的，11-19 第 25 题）
+  const 必填 = !公海 && 项目按必填走(规则, p)
     ? { 配了: 节点必填(规则, p.node), 还差: 还差(规则, await 读必填数据(prisma, p, 规则)), 只能靠填齐: !是经理(me, org) }
     : null;
   // 记沟通时预演回收日（10-30 P0-2，lib/enterprise/recycle-text.ts 预演回收日）：给起点日和这个进程的天数，浏览器按同一个算法算。
