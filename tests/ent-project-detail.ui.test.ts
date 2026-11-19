@@ -503,15 +503,15 @@ for (const 宽 of [390, 1024, 1280, 1366]) {
   }, 60_000);
 }
 
-it("仅上级推下停在已齐的节点（存一下就推）：当前进程卡写「已经填齐，存一下会自动推到下一步」；别的情况照旧", async () => {
+it("仅上级推下停在已齐的节点（存一下就推）：当前进程卡写「已经填齐：改任一项保存、或记一条沟通，就会自动推到下一步」；别的情况照旧", async () => {
   const { page, errors } = await open(true, 1280);
   try {
     await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "订单", node: "物流运输", 必填: { 配了: ["物流单号"], 还差: [], 存一下就推: true } }));
-    await page.getByText("已经填齐，存一下会自动推到下一步").waitFor();
+    await page.getByText("已经填齐：改任一项保存、或记一条沟通，就会自动推到下一步").waitFor();
     expect(await page.getByText("这个节点的必填都齐了，可以点「完成节点」往前推").count()).toBe(0);
     await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "订单", node: "物流运输", 必填: { 配了: ["物流单号"], 还差: [] } }));
     await page.getByText("这个节点的必填都齐了，可以点「完成节点」往前推").waitFor();
-    expect(await page.getByText("已经填齐，存一下会自动推到下一步").count()).toBe(0);
+    expect(await page.getByText("已经填齐：改任一项保存、或记一条沟通，就会自动推到下一步").count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 }, 60_000);

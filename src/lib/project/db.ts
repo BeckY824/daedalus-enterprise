@@ -340,8 +340,8 @@ export async function 改节点(
     const 有验收报告 = 企业版() && !!result && 是交付(result) && !p.acceptancePassed
       ? (await tx.attachment.count({ where: { projectId: p.id, tag: "验收报告" } })) > 0
       : false;
-    // 交付结清只在尾款结算（客户 11-19 定稿）：现在受「节点推进」开关管（节点推进管 = 开着、且这个项目在管的范围里）；
-    // 待客户定，不受开关管就把这一项改成 企业版()（项目页 load.ts 交付只在尾款 同步改）
+    // 交付结清只在尾款结算（客户 11-19 定稿）：跟「节点推进」开关一起生效（11-19 定；节点推进管 = 开着、且这个项目在管的范围里）；
+    // 项目页 load.ts 交付只在尾款 用同一个判断
     const 问题 = 改节点问题({ ...到, result }, { ...p, 有验收报告 }, 异常, 企业版(), 字典, 企业版() && 节点推进管(规则, p));
     if (问题) return { ok: false as const, error: 问题 };
     const 挡 = 到.phase !== 现.phase || 到.node !== 现.node || result !== 现.result ? 改不了的话(级别, ["商机阶段"]) : null;

@@ -1037,7 +1037,7 @@ export default function ProjectDetail({
         <div style={{ marginTop: 12, color: p.必填.还差.length ? "var(--text-muted)" : "var(--success-text)", overflowWrap: "anywhere" }}>
           {p.必填.还差.length
             ? `这个节点还差必填：${p.必填.还差.map(必填叫法).join("、")}（「暂无」「-」这类占位不算填了）`
-            : p.必填.存一下就推 ? "已经填齐，存一下会自动推到下一步" : "这个节点的必填都齐了，可以点「完成节点」往前推"}
+            : p.必填.存一下就推 ? "已经填齐：改任一项保存、或记一条沟通，就会自动推到下一步" : "这个节点的必填都齐了，可以点「完成节点」往前推"}
         </div>
       )}
     </Card>
