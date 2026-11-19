@@ -351,6 +351,9 @@ describe("节点推进规则定稿（真库）", () => {
       expect(await 改节点(组长, p.id, { phase: "订单", node: "物流运输" })).toEqual({ ok: true, 变了: true });
       expect((await 现(p.id)).node).toBe("物流运输");
       expect((await 详(p.id)).必填).toEqual({ 配了: ["物流单号"], 还差: [], 存一下就推: true });
+      // 提示写「值没变不算」：原样再存一遍不推
+      expect(await 改项目(乙, p.id, { trackingNo: "SF1" })).toEqual({ ok: true, 变了: [] });
+      expect((await 现(p.id)).node).toBe("物流运输");
       expect(await 改项目(乙, p.id, { remark: "存一下" })).toMatchObject({ ok: true, 自动推到: ["安装实施"] });
       // 没齐：没有
       const q = await 项目({ name: "二号" });
