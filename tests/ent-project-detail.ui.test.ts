@@ -1981,6 +1981,32 @@ it("dt.stage：必填齐了完成节点一步推（不开框），推完底部�
   } finally { await page.close(); }
 });
 
+it("手机 390 / 360 宽：「完成节点」补填框不出屏（贴左右各 8px）；1024 / 1280 / 1366 照旧挂在按钮右下", async () => {
+  for (const w of [360, 390, 1024, 1280, 1366]) {
+    const { page, errors } = await open(true, w);
+    try {
+      await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ 必填: { 配了: ["金额"], 还差: ["金额"] } }));
+      const 钮 = page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" });
+      await 钮.click();
+      const 框 = page.locator(".pd-fill-pop");
+      await 框.locator(".pd-fill-pop-body").waitFor();
+      await page.waitForTimeout(350);
+      const [框位, 钮位] = await Promise.all([框.evaluate((e) => e.getBoundingClientRect().toJSON()), 钮.evaluate((e) => e.getBoundingClientRect().toJSON())]) as DOMRect[];
+      expect(框位.left, `宽 ${w}`).toBeGreaterThanOrEqual(0);
+      expect(框位.right, `宽 ${w}`).toBeLessThanOrEqual(w);
+      if (w < 768) {
+        expect(Math.round(框位.left), `宽 ${w}`).toBe(8);
+        expect(Math.round(框位.right), `宽 ${w}`).toBe(w - 8);
+      } else {
+        // 宽屏照旧：右边和按钮右边对齐（右下对齐，箭头关着），框在按钮下面
+        expect(Math.abs(框位.right - 钮位.right), `宽 ${w}`).toBeLessThanOrEqual(1);
+      }
+      expect(框位.top, `宽 ${w}`).toBeGreaterThanOrEqual(钮位.bottom);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
 it("dt.pay：删回款是后果框，写明哪一笔和删后的合计；取消不生效；服务端挡了原因留在框里", async () => {
   for (const w of [1024, 1366]) {
     const { page, errors } = await open(true, w);
