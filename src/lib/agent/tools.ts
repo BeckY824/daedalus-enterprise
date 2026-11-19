@@ -28,7 +28,7 @@ import { 启用渠道条件 } from "../enterprise/channel-main";
 import { 渠道启用 } from "../enterprise/channel-main-core";
 import { 无负责人占位邮箱 } from "../pool";
 import { 现值选取, 现值表 } from "./current-values";
-import { 客户显名, 显名列 } from "../enterprise/customer-title";
+import { 客户显名, 客户按名条件, 显名列 } from "../enterprise/customer-title";
 import { prisma } from "../prisma";
 import { dayjs } from "../utils";
 import { FOLLOW_TYPE_MAP } from "../constants";
@@ -359,7 +359,8 @@ export const TOOLS: Tool[] = [
       */
       if (!id && name) {
         const 候选 = await prisma.customer.findMany({
-          where: { name: { contains: name } },
+          // 全称、简称、客户编号都认（11-19 客户名称选填：没全称的按简称 / 编号也找得到）
+          where: 客户按名条件(name),
           take: 6,
           orderBy: { lastFollowAt: "desc" },
           select: { ...显名列, school: true, phone: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } },
@@ -543,19 +544,19 @@ export const TOOLS: Tool[] = [
           where: 我的跟进,
           orderBy: { occurredAt: "desc" },
           take: 50,
-          select: { type: true, title: true, content: true, occurredAt: true, customer: { select: { id: true, name: true, followStatus: true } } },
+          select: { type: true, title: true, content: true, occurredAt: true, customer: { select: { ...显名列, followStatus: true } } },
         }),
         prisma.contract.findMany({
           where: 我的签约,
           orderBy: { signedAt: "desc" },
           take: 30,
-          select: { amount: true, signedAt: true, customer: { select: { name: true } }, ...带币种.签约 },
+          select: { amount: true, signedAt: true, customer: { select: 显名列 }, ...带币种.签约 },
         }),
         prisma.customer.findMany({
           where: 我新建的,
           orderBy: { createdAt: "desc" },
           take: 30,
-          select: { name: true, phone: true, followStatus: true, createdAt: true },
+          select: { ...显名列, phone: true, followStatus: true, createdAt: true },
         }),
         prisma.followPlan.count({ where: { ownerId: ctx.userId, done: true, doneAt: 时间范围 } }),
       ]);
@@ -567,7 +568,7 @@ export const TOOLS: Tool[] = [
         if (有) 有.次数++;
         else
           按人.set(k, {
-            姓名: f.customer.name,
+            姓名: 客户显名(f.customer),
             次数: 1,
             最近: dayjs(f.occurredAt).format("MM-DD"),
             最近聊了: (f.title || f.content).slice(0, 60),
@@ -592,9 +593,9 @@ export const TOOLS: Tool[] = [
           ...(跟进笔数 > 跟进.length || 签约数 > 签约.length || 新建数 > 新建.length ? { 说明: "下面的明细只列了最近的一部分，数字以上面为准" } : {}),
           完成的计划: 完成的计划,
           跟过的人: [...按人.values()],
-          签约: 签约.map((c) => ({ 客户: c.customer.name, 金额: 签约金额(c), 币种: 签约币种(c), 签约日: dayjs(c.signedAt).format("YYYY-MM-DD") })),
+          签约: 签约.map((c) => ({ 客户: 客户显名(c.customer), 金额: 签约金额(c), 币种: 签约币种(c), 签约日: dayjs(c.signedAt).format("YYYY-MM-DD") })),
           签约合计: 金额,
-          新建的客户: 新建.map((c) => ({ 姓名: c.name, 电话: 号(c.phone), 跟进状态: statusLabel(ctx.b, c.followStatus), 建档日: dayjs(c.createdAt).format("YYYY-MM-DD") })),
+          新建的客户: 新建.map((c) => ({ 姓名: 客户显名(c), 电话: 号(c.phone), 跟进状态: statusLabel(ctx.b, c.followStatus), 建档日: dayjs(c.createdAt).format("YYYY-MM-DD") })),
         },
       };
     },
@@ -758,7 +759,7 @@ export const TOOLS: Tool[] = [
         ...(node ? { node: { in: 同名们(node) } } : {}),
         ...(r === "全部" ? {} : r && 是结局(r) ? { result: { in: 同名们(r) } } : { result: null }),
         ...(ownerName ? { ownerId: { in: (await prisma.user.findMany({ where: { name: { contains: ownerName } }, select: { id: true } })).map((u) => u.id) } } : {}),
-        ...(词 ? { OR: [{ name: { contains: 词 } }, { customer: { name: { contains: 词 } } }] } : {}),
+        ...(词 ? { OR: [{ name: { contains: 词 } }, { customer: 客户按名条件(词) }] } : {}),
         ...(天 ? { updatedAt: { lt: dayjs().subtract(天, "day").toDate() } } : {}),
         // 公海里的项目只在问公海时列（P-看-03；企业版项目列表默认也不列公海项目，lib/project/list.ts 列表条件）。团队版照旧混着、行上写「在公海」
         ...(args.pooled === true ? { pooledAt: { not: null } } : 企业版() ? { pooledAt: null } : {}),
@@ -874,7 +875,7 @@ export const TOOLS: Tool[] = [
           take: 30,
           select: {
             id: true, amount: true, signedAt: true, remark: true, ...带币种.签约,
-            customer: { select: { id: true, name: true, salesOwner: { select: { id: true, name: true, email: true } }, channelOwner: { select: { id: true, name: true, email: true } }, channel: { select: { name: true } } } },
+            customer: { select: { ...显名列, salesOwner: { select: { id: true, name: true, email: true } }, channelOwner: { select: { id: true, name: true, email: true } }, channel: { select: { name: true } } } },
             owner: { select: { salesOwnerId: true, channelOwnerId: true } },
           },
         }),
@@ -892,7 +893,7 @@ export const TOOLS: Tool[] = [
           已列出: rows.length,
           签约: rows.map((c) => ({
             customerId: c.customer.id,
-            客户: c.customer.name,
+            客户: 客户显名(c.customer),
             金额: 签约金额(c),
             币种: 签约币种(c),
             签约日: dayjs(c.signedAt).format("YYYY-MM-DD"),
@@ -964,7 +965,7 @@ export const TOOLS: Tool[] = [
         prisma.followUp.count({ where }),
         prisma.followUp.findMany({
           where, orderBy: { occurredAt: "desc" }, take: 15,
-          select: { content: true, type: true, occurredAt: true, customer: { select: { id: true, name: true, salesOwnerId: true } }, owner: { select: { name: true } } },
+          select: { content: true, type: true, occurredAt: true, customer: { select: { ...显名列, salesOwnerId: true } }, owner: { select: { name: true } } },
         }),
       ]);
       // 说清到底搜了哪些词：答案里出现「费用」而用户问的是「预算」时，人要能看懂为什么
@@ -976,7 +977,7 @@ export const TOOLS: Tool[] = [
           总数: total,
           记录: rows.map((f) => ({
             customerId: f.customer.id,
-            客户: f.customer.name,
+            客户: 客户显名(f.customer),
             归属: 客户归属(ctx.userId, f.customer),
             时间: dayjs(f.occurredAt).format("YYYY-MM-DD"),
             类型: FOLLOW_TYPE_MAP[f.type]?.label ?? f.type,

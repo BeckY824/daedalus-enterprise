@@ -29,6 +29,7 @@ import { 带币种, 签约合计 } from "@/lib/money-db";
 import { 合计文字 } from "@/lib/currency";
 import { AI客户输入错误, AI文本输入错误 } from "@/lib/ai-input";
 import { 视图外部拒 } from "@/lib/enterprise/view-as";
+import { 全称或显名, 显名列 } from "@/lib/enterprise/customer-title";
 
 /**
  * AI 只起草、不落库：这两个 action 都不写业务表。
@@ -68,7 +69,8 @@ async function 解析速记(input: {
   const customer = await prisma.customer.findUnique({
     where: { id: input.customerId },
     select: {
-      name: true,
+      // 提示词里叫这位：全称或显名（11-19 客户名称选填）
+      ...显名列,
       school: true,
       grade: true,
       contacts: { select: { id: true, name: true, position: true } },
@@ -81,7 +83,7 @@ async function 解析速记(input: {
     : "  （无）";
 
   const prompt = `现在时间：${现在带周几()}
-${b.customer}：${customer.name || "（没填名称）"}${[customer.school, customer.grade].filter(Boolean).length ? `（${[customer.school, customer.grade].filter(Boolean).join(" · ")}）` : ""}
+${b.customer}：${全称或显名(customer)}${[customer.school, customer.grade].filter(Boolean).length ? `（${[customer.school, customer.grade].filter(Boolean).join(" · ")}）` : ""}
 该${b.customer}的联系人（contactId：姓名）：
 ${contactLines}
 
@@ -133,7 +135,7 @@ ${text}
       opportunityIds: [],
     });
     // 解析本身不写业务数据，但按「AI 动了什么都可追溯」的口径留一条使用痕迹
-    await recordAiUse(user, "parse", `AI 解析跟进速记（${b.customer}「${customer.name || "（没填名称）"}」，识别为${FOLLOW_TYPE_MAP[draft.followUp.type]?.label ?? draft.followUp.type}）`, input.customerId);
+    await recordAiUse(user, "parse", `AI 解析跟进速记（${b.customer}「${全称或显名(customer)}」，识别为${FOLLOW_TYPE_MAP[draft.followUp.type]?.label ?? draft.followUp.type}）`, input.customerId);
     return { ok: true, draft };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "AI 解析失败，请稍后重试" };
@@ -233,7 +235,7 @@ async function 生成简报(input: {
 你要为${customer.salesOwner.name === 无负责人占位名 ? "接手的销售" : `销售「${customer.salesOwner.name}」`}生成联系${b.customer}前的一页简报。
 
 【${b.customer}档案】
-姓名：${customer.name || "（没填名称）"}
+姓名：${全称或显名(customer)}
 ${b.fields.school}/${b.fields.grade}/${b.fields.major}：${[customer.school, customer.grade, customer.major].filter(Boolean).join(" / ") || "未填"}
 跟进状态：${statusLabel(b, customer.followStatus)}；决策状态：${statusLabel(b, customer.decisionStatus)}
 ${外贸精简(b)
@@ -267,7 +269,7 @@ ${question ? `\n【销售此刻的问题】\n${question}\n` : ""}
     // 简报要读整条时间线还要标引用，推理模型常常要想 60 秒以上；给到 120 秒
     const raw = await chatJSON(prompt, { timeoutMs: 120_000, feature: "brief" });
     stepDone(emit, "think", question ? "围绕问题重读" : `生成${名}`);
-    await recordAiUse(user, "brief", `AI 生成${名}（${b.customer}「${customer.name || "（没填名称）"}」${question ? `，问题「${question.slice(0, 40)}」` : ""}）`, input.customerId);
+    await recordAiUse(user, "brief", `AI 生成${名}（${b.customer}「${全称或显名(customer)}」${question ? `，问题「${question.slice(0, 40)}」` : ""}）`, input.customerId);
     return { ok: true, brief: sanitizeBrief(raw), records };
   } catch (e) {
     // sanitizeBrief 的报错写死了「简报」，企业版换成这边的叫法

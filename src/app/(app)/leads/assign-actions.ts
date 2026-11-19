@@ -56,7 +56,7 @@ import { 换负责人 } from "@/lib/project/owner-write";
 import { 定时分配令牌, 超时转令牌 } from "@/lib/enterprise/scheduled-assign-token";
 import { 刷新页面 } from "@/lib/revalidate-safe";
 
-import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
+import { 客户显名, 全称或显名, 显名列 } from "@/lib/enterprise/customer-title";
 type 结果 = { ok: true } | { ok: false; error: string };
 /** 分哪一条：老的线索表，或者企业版「新线索」= 线索阶段的项目 */
 type 目标 = { leadId: string; projectId?: undefined } | { projectId: string; leadId?: undefined };
@@ -791,7 +791,7 @@ async function 自动分一位客户(
   }
   await recordAudit({
     user: me, action: "assign", entity: "Customer", entityId: c.id,
-    summary: `客户转让（自动分配）：把「${客户显名(c)}」分给「${r.接手人}」${原因值 ? `（${原因值}）` : ""}`,
+    summary: `客户转让（自动分配）：把「${全称或显名(c)}」分给「${r.接手人}」${原因值 ? `（${原因值}）` : ""}`,
     detail: { 自动分配: true, 原负责人: c.salesOwnerId, salesOwnerId: r.toUserId, projectId: 能.projectId, 为什么: r.为什么, ...(原因值 ? { 转让原因: 原因值 } : {}) },
   });
   return {
@@ -907,7 +907,8 @@ export async function 批量客户自动分配(customerIds: string[], 原因?: s
     if (!勾.ok) return 勾;
     const 选 = await 选的原因("transfer", 原因);
     if (!选.ok) return 选;
-    const 名 = new Map((await prisma.customer.findMany({ where: { id: { in: 勾.ids } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
+    // 结果表里叫这位（11-19 客户名称选填：没全称按简称 → 客户编号叫）
+    const 名 = new Map((await prisma.customer.findMany({ where: { id: { in: 勾.ids } }, select: 显名列 })).map((c) => [c.id, 客户显名(c)]));
     const 结果: 批量客户自动分配行[] = [];
     const 通知条: 分配条[] = [];
     for (const id of 勾.ids) {

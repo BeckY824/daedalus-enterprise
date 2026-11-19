@@ -5,13 +5,14 @@ import LevelLetter from "@/components/LevelLetter";
 import { 客户看板分列 } from "@/lib/enterprise/cust-attr";
 import { 有值, 空显 } from "@/lib/empty-value";
 import type { CustomerRow } from "./CustomerForm";
+import { 客户抬头 } from "@/lib/enterprise/customer-title";
 
 /**
  * 客户看板（U-客户-06）：一列一个客户属性（lib/enterprise/cust-attr.ts 客户看板分列），没填的（含导入占位的 "-"）进「—」那一列、没人时不摆（11-01）。
  * 列多（10 项起），沿用项目看板的 .pipe：列宽固定（一屏约 4 列），放不下在看板框里左右滑；0 位客户的属性列照常摆、写空态（11-01）。
  * 卡片：客户名（整段显示，同项目看板 10-30）、级别字母、客户状态、负责人；客户状态、负责人没填写「—」（lib/empty-value.ts）
  */
-export default function CustomerBoard({ 行们, 字典, 加载中, 页, 每页, 总数, 翻页, 去 }: {
+export default function CustomerBoard({ 行们, 字典, 加载中, 页, 每页, 总数, 翻页, 去, 抬头节点 }: {
   行们: CustomerRow[];
   字典: { name: string; active: boolean }[];
   加载中: boolean;
@@ -20,6 +21,8 @@ export default function CustomerBoard({ 行们, 字典, 加载中, 页, 每页, 
   总数: number;
   翻页: (页: number, 每页: number) => void;
   去: (id: string) => void;
+  /** 抬头里的当前节点（同列表第一列，CustomersView 的 抬头节点）：只有简称、全称、类型都空的客户才有 */
+  抬头节点?: Record<string, string>;
 }) {
   const 列们 = 客户看板分列(行们, (r) => r.customerAttr, 字典);
   return (
@@ -36,7 +39,7 @@ export default function CustomerBoard({ 行们, 字典, 加载中, 页, 每页, 
               <div className="pipe-bar" style={{ background: c.key === null ? "var(--line-strong)" : "var(--brand)" }} />
               {c.行们.length === 0 && <div className="pipe-empty">这一类还没有客户</div>}
               {c.行们.map((r) => (
-                <div key={r.id} className="pipe-card" tabIndex={0} role="link" title={r.name} aria-label={`${r.name}，${空显(r.salesOwnerName)}`}
+                <div key={r.id} className="pipe-card" tabIndex={0} role="link" title={客户抬头(r, 抬头节点?.[r.id])} aria-label={`${客户抬头(r, 抬头节点?.[r.id])}，${空显(r.salesOwnerName)}`}
                   onClick={() => 去(r.id)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
@@ -45,7 +48,8 @@ export default function CustomerBoard({ 行们, 字典, 加载中, 页, 每页, 
                     }
                   }}
                 >
-                  <div className="pipe-card-t fulltext">{r.name}</div>
+                  {/* 客户名称选填（11-19）：和列表第一列同一个抬头算法，没全称也不空 */}
+                  <div className="pipe-card-t fulltext">{客户抬头(r, 抬头节点?.[r.id])}</div>
                   <div className="pipe-card-m">
                     <span className="pipe-card-o cust-board-meta">
                       <LevelLetter level={r.extra?.level} 空={null} />

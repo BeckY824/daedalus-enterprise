@@ -120,7 +120,7 @@ async function 看预警(行id: string, d: 台账行): Promise<void> {
   const 不同组 = { customerId: d.customerId, sameGroup: false, createdAt: { gte: 起 } };
   const [org, 客户, 查的人] = await Promise.all([
     读组织(),
-    看全部(() => prisma.customer.findUnique({ where: { id: d.customerId }, select: { id: true, name: true, customerNo: true } })),
+    看全部(() => prisma.customer.findUnique({ where: { id: d.customerId }, select: { id: true, name: true, shortName: true, customerNo: true } })),
     prisma.user.findUnique({ where: { id: d.userId }, select: { name: true } }),
   ]);
   const 客户名 = 客户 ? 通知里的客户名(客户) : "";
@@ -302,7 +302,7 @@ export async function 申请挂靠(我: { id: string; name: string }, 撞号id: 
   }
 
   // 审批人 = 客户现在的负责人（P-挂靠-02；之后客户换负责人，审批人跟着换，见 owner-log-db.ts）。离职了也还是他、不另找人，24 小时后转他的实线上级
-  const 客户 = await 看全部(() => prisma.customer.findUnique({ where: { id: 行.customerId }, select: { id: true, name: true, customerNo: true, salesOwnerId: true } }));
+  const 客户 = await 看全部(() => prisma.customer.findUnique({ where: { id: 行.customerId }, select: { id: true, name: true, shortName: true, customerNo: true, salesOwnerId: true } }));
   const 收 = 客户?.salesOwnerId ?? null;
   await prisma.entDupeHit.update({ where: { id: 行.id }, data: { action: "申请挂靠", actionAt: new Date(), status: "待处理", approverId: 收 } });
   const org = await 读组织();

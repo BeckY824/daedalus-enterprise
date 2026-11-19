@@ -214,7 +214,8 @@ const 撞到的字段 = { ...显名列, salesOwnerId: true, channelOwnerId: true
 async function 撞号说法(依据: string, dup: 撞到的, 我: 谁 | null, 客户: string): Promise<string> {
   // 负责人已离职（11-03 C4-5）：不叫人去找他，指他的直属上级
   const 找谁 = await 离职负责人找谁(dup.salesOwnerId);
-  const 名 = 客户显名(dup);
+  // 查重提示里的客户名用 全称或显名（11-19 口径：有全称照旧写全称）
+  const 名 = 全称或显名(dup);
   if (看得到(dup, 我)) return `${依据} 已存在（${名}），请勿重复录入${找谁 ? `；${离职负责人说法(找谁)}` : ""}`;
   if (找谁) return `${依据} 已是${客户}「${名}」，请勿重复录入；${离职负责人说法(找谁)}`;
   return 同事撞号说法(依据, 负责人显示名(dup.salesOwner?.name ?? "同事"), 名, 客户);
@@ -240,7 +241,7 @@ export async function checkDuplicate(phone: string, excludeId?: string): Promise
   const 找谁 = await 离职负责人找谁(hit.salesOwnerId);
   return {
     id: 看得见 ? hit.id : null,
-    name: 客户显名(hit),
+    name: 全称或显名(hit),
     school: 看得见 ? hit.school : null,
     salesOwnerName: 负责人显示名(hit.salesOwner?.name ?? "同事"),
     createdAt: 看得见 ? hit.createdAt.toISOString() : null,
@@ -871,7 +872,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   if (first.count === 1) {
     const 改前行 = 改前 as unknown as Record<string, unknown>;
     await 记一笔(diffKeys(改前行, data as Record<string, unknown>), 改前行);
-    await 改外贸档案(me, input.id, 客户显名(这位), 档案.data, b.customer);
+    await 改外贸档案(me, input.id, 全称或显名(这位), 档案.data, b.customer);
     const 带 = first.带;
     await 带走后通知(带);
     const 带走 = 带?.数;
@@ -938,7 +939,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
 
     // 我什么都没改，写下去也是原样，直接当成功（外贸档案在旁表，不过这道闸，照改）
     if (!mine.length) {
-      await 改外贸档案(me, input.id, 客户显名(这位), 档案.data, b.customer);
+      await 改外贸档案(me, input.id, 全称或显名(这位), 档案.data, b.customer);
       await 客户存了推项目(me, input.id);
       return { ok: true, id: input.id, ...(await 发起交接()) };
     }
@@ -957,7 +958,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     const merged = await 写主表({ id: input.id, updatedAt: current.updatedAt }, { ...patch, updatedAt: bump(current.updatedAt) }, mine.includes("salesOwnerId") ? current.salesOwnerId : null);
     if (merged.count === 1) {
       await 记一笔(mine, currentRow, true);
-      await 改外贸档案(me, input.id, 客户显名(这位), 档案.data, b.customer);
+      await 改外贸档案(me, input.id, 全称或显名(这位), 档案.data, b.customer);
       const 带 = merged.带;
       await 带走后通知(带);
       const 带走 = 带?.数;
@@ -1094,7 +1095,7 @@ export async function deleteCustomers(
     where: { id: { in: ids } },
     select: { ...显名列, phone: true },
   });
-  const 删名单 = 待删.map((c) => 客户显名(c)).join("、");
+  const 删名单 = 待删.map((c) => 全称或显名(c)).join("、");
   /*
     两个窗口几乎同时删同一位（或两批选中的有重叠）：两边都先读到了同一批联系人，后提交的那边在
     「搬进未归属」时撞上同一个 id（P2002），或删的时候那位已经没了——原来直接抛，界面上点了没反应（2026-10-04 第 2 期 2a）。
@@ -1306,7 +1307,7 @@ async function 指定方向挡(me: Awaited<ReturnType<typeof requireUser>>, ids:
   if (!认.ok) return 认.error;
   const org = await 权限组织();
   if (!org) return null;
-  const 们 = await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, salesOwnerId: true, bizLine: true, pool: { select: { customerId: true } } } }));
+  const 们 = await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids } }, select: { ...显名列, salesOwnerId: true, bizLine: true, pool: { select: { customerId: true } } } }));
   return 市场指定方向挡(me, org, 们, 接手人, 认.线);
 }
 
@@ -1830,7 +1831,7 @@ export async function saveContract(input: {
         where: { id: input.customerId }, data: { followStatus: "已签约", decisionStatus: "已决定报名" },
       });
       const 收尾 = !input.id && input.联动
-        ? await 签约收尾(tx, input.customerId, 签约id, input.联动, me, (学员 ? 客户显名(学员) : input.customerId))
+        ? await 签约收尾(tx, input.customerId, 签约id, input.联动, me, (学员 ? 全称或显名(学员) : input.customerId))
         : undefined;
       return { 签约id, 币, 收尾 };
     });
@@ -1840,7 +1841,7 @@ export async function saveContract(input: {
     await recordAudit({
       user: me, action: input.id ? "update" : "create", entity: "Contract", entityId: 签约id,
       // 外贸模版下日志照旧说「订单」（界面上就这么叫），只是不再带订单号
-      summary: `${input.id ? "修改" : "登记"}「${(学员 ? 客户显名(学员) : input.customerId)}」的${签约叫(业务)} ${显示金额(精确, 币)}` +
+      summary: `${input.id ? "修改" : "登记"}「${(学员 ? 全称或显名(学员) : input.customerId)}」的${签约叫(业务)} ${显示金额(精确, 币)}` +
         (input.force ? "（已确认不是重复录入）" : ""),
       detail: { customerId: input.customerId, amount: 精确, currency: 币, signedAt: input.signedAt, force: !!input.force },
     });

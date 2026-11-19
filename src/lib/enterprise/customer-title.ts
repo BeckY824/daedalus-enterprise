@@ -95,6 +95,16 @@ export function 客户显名(c: { id: string; name?: string | null; shortName?: 
   return (c.shortName ?? "").trim() || (c.name ?? "").trim() || 客户编号显示(c);
 }
 
+/**
+ * 按名字找客户的 where 片段（11-19 客户名称选填）：全称、简称都比 contains；词像客户编号（NO.00012 / 12）再按编号对上。
+ * AI 工具「按名查客户 / 项目」用，没全称的客户也找得到
+ */
+export function 客户按名条件(词: string): { OR: ({ name: { contains: string } } | { shortName: { contains: string } } | { customerNo: number })[] } {
+  const t = 词.trim();
+  const 号 = /^(?:no\.?\s*)?0*(\d{1,9})$/i.exec(t);
+  return { OR: [{ name: { contains: t } }, { shortName: { contains: t } }, ...(号 ? [{ customerNo: Number(号[1]) }] : [])] };
+}
+
 /** 叫一位客户要取的列（Prisma select 片段，和 客户显名 配套）：只取 name 的地方换成这个，名字空着时才兜得到简称 / 编号 */
 export const 显名列 = { id: true, name: true, shortName: true, customerNo: true } as const;
 
@@ -105,9 +115,12 @@ export function 全称或显名(c: Parameters<typeof 客户显名>[0]): string {
   return (c.name ?? "").trim() || 客户显名(c);
 }
 
-/** 日志、提示里引一位客户：「显名」（显名不会空，不出现空引号「」） */
+/**
+ * 操作日志、查重提示里引一位客户：「全称或显名」（11-19 口径：有全称的老客户照旧写全称、按全称搜得到日志；
+ * 全称空着才兜简称 → 客户编号，不出现空引号「」）。界面上叫客户照旧用 客户显名
+ */
 export function 客户引(c: Parameters<typeof 客户显名>[0]): string {
-  return `「${客户显名(c)}」`;
+  return `「${全称或显名(c)}」`;
 }
 
 /** 能跑裸 SQL 的客户端（服务端传 prisma；测试传数句子的假库） */

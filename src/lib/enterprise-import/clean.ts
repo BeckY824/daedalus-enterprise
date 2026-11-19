@@ -52,6 +52,7 @@ import { 成交需求上限 } from "../project/profile-rules";
 import { 实体顺序, 必填, 字段中文, type 原始记录, type 实体, type 映射, type 问题, type 待写, type 格式类 } from "./types";
 import { 全角转半角 } from "../fullwidth";
 import { 认金额 } from "../money-input";
+import { hasVisibleText } from "../form-validation";
 
 /** 我们这边已有的东西，调用方从库里查好传进来。键都已规整过（见下面的 名键 / 号键） */
 export type 本地索引 = {
@@ -761,7 +762,7 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
       }
     }
     // 只给了客户名称、按名称挂不上（P-抬头-16）：没有全称的客户只能按所属客户 ID 挂，单独一类、报告里逐行列出
-    if (名 && !ref) 出问题(r, "跳过", "按名称挂不上", `按客户名称「${名}」挂不上客户，这一条不导；没有全称的客户只能按「所属客户 ID」挂，请补这一列`);
+    if (名 && !ref) 出问题(r, "跳过", "按名称挂不上", `找不到叫「${名}」的客户（没有全称的客户只能按所属客户 ID 挂），这一条不导`);
     else 出问题(r, "跳过", "找不到客户", ref || 名 ? `找不到所属客户「${名 || ref}」，这一条不导` : "没有所属客户，这一条不导");
     return null;
   };
@@ -975,7 +976,8 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
         const channelId = 认渠道(r, s.值.source, source, 附加);
         const 新 = 客户新格(r, s.值, 附加);
         // 全称空着不带这一格（P-抬头-16）：新建落空串，以前导过的不拿空值清掉我们这边的全称（apply.ts 三方比对跳过）
-        const 全称 = s.值.name ?? "";
+        // 只有空白 / 零宽字符的当没填（和 saveCustomer 同一条 hasVisibleText）：不进名键、不算同名
+        const 全称 = hasVisibleText(s.值.name) ? s.值.name : "";
         const 值: 待写["值"] = {
           ...(全称 ? { name: 全称 } : {}),
           phone,

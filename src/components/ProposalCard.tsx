@@ -678,7 +678,7 @@ export default function ProposalCard({
               <Input size="small" style={{ width: 企卡 ? 200 : 160 }} placeholder={企卡 ? 名称框提示 : "姓名或公司名"} value={draft.name} onChange={(e) => 改("name", e.target.value)} />
             </Field>
             {/* 灰字（PR-7 摘来）：企业版全称选填；没填、像人名的摆一行，不拦（P-抬头-13 / 16） */}
-            {企卡 && 全称提示(draft.name) && <div className="prop-name-hint" data-testid="fullname-hint">{全称提示(draft.name)}</div>}
+            {企卡 && 全称提示(draft.name) && <div className="prop-name-hint fullname-hint" data-testid="fullname-hint" title={全称提示(draft.name) ?? undefined}>{全称提示(draft.name)}</div>}
             <Field label={企卡 ? "联系人姓名" : "联系人"} 待={待.has("contact") ? 点掉("contact") : undefined}>
               <Input size="small" style={{ width: 140 }} placeholder="可留空" value={draft.contact} onChange={(e) => 改("contact", e.target.value)} />
             </Field>

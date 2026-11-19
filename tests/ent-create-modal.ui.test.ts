@@ -136,7 +136,11 @@ it("客户名称选填（11-19 用户「客户名称设为不必填」）：名�
       const 框 = page.getByRole("dialog");
       expect(await 框.getByLabel("客户名称").getAttribute("placeholder")).toMatch(/^单位名称，可留空/);
       // 空着那行灰字窄屏也折得下（不撑出横向滚动，下面统一量）
-      expect(await 框.locator("[data-ge='客户名'] [data-testid=fullname-hint]").isVisible()).toBe(true);
+      const 灰字 = 框.locator("[data-ge='客户名'] [data-testid=fullname-hint]");
+      expect(await 灰字.isVisible()).toBe(true);
+      // 一行，放不下「…」、悬停看全文（审查 11-19，企业版一行 + 省略号 + 悬停）
+      expect(await 灰字.evaluate((el) => [getComputedStyle(el).whiteSpace, getComputedStyle(el).textOverflow])).toEqual(["nowrap", "ellipsis"]);
+      expect(await 灰字.getAttribute("title")).toContain("没填全称");
       await 框.getByLabel("号码", { exact: true }).fill("13905712266");
       await 框.getByLabel("联系人姓名").click();
       await 框.getByText("首次录入").waitFor();

@@ -50,6 +50,7 @@ import { 名键, 公司名键, 归档号键, 撞已有客户 } from "@/lib/enter
 import { 读导入查重索引, type 导入查重索引 } from "@/lib/enterprise-import/dedup";
 import { 带客户编号 } from "@/lib/customer-no";
 import { 客户显名 } from "@/lib/enterprise/customer-title";
+import { hasVisibleText } from "@/lib/form-validation";
 
 /** 一次导入最多落多少条。和 parse.ts 的行数上限一致，服务端再收一道 */
 const 落库上限 = 10000;
@@ -559,7 +560,8 @@ async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = fa
         if (!短号 && await 看全部(async () => tx.customer.findFirst({ where: phone ? await 同号条件(tx, phone, null) : email ? await 同邮箱条件(tx, email) : wechat ? await 同微信条件(tx, wechat) : await 同阿里条件(tx, alibabaId), select: { id: true } }))) return null;
         const c = await tx.customer.create({
           data: await 带客户编号(tx, {
-            name: r.值.name ?? "",
+            // 只有空白 / 零宽字符的当没填（和 saveCustomer 同一条 hasVisibleText）
+            name: hasVisibleText(r.值.name) ? r.值.name.trim() : "",
             phone,
             school: r.值.school ?? null,
             grade: r.值.grade ?? null,
@@ -578,10 +580,10 @@ async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = fa
         });
         await 写外贸档案(tx, c.id, Object.fromEntries(外贸导入字段.filter((k) => r.值[k]).map((k) => [k, r.值[k]!])), false);
         // 企业版「联系人 / 姓名」列（11-19，P-抬头-13）：落成这位客户的主要联系人，号码一并带上；记进导入记录，撤销时不当「名下挂了东西」
-        const 联系人 = 企业版() && r.值.contactName?.trim()
-          ? await tx.contact.create({ data: { name: r.值.contactName.trim(), phone: phone || null, email: email || null, wechat: wechat || null, isPrimary: true, customerId: c.id }, select: { id: true } })
+        const 联系人 = 企业版() && hasVisibleText(r.值.contactName)
+          ? await tx.contact.create({ data: { name: r.值.contactName.trim(), phone: phone || null, email: email || null, wechat: wechat || null, isPrimary: true, customerId: c.id }, select: { id: true, updatedAt: true } })
           : null;
-        await tx.importRow.create({ data: { batchId: 现场.batchId, customerId: c.id, kind: "create", writtenAt: c.updatedAt, ...(联系人 ? { before: JSON.stringify({ [导入联系人键]: 联系人.id }) } : {}) } });
+        await tx.importRow.create({ data: { batchId: 现场.batchId, customerId: c.id, kind: "create", writtenAt: c.updatedAt, ...(联系人 ? { before: JSON.stringify({ [导入联系人键]: 联系人.id, [导入联系人写后键]: 联系人.updatedAt.toISOString() }) } : {}) } });
         return c;
       });
       // 另一个窗口刚建了这个号码：算已在库里、跳过，不另建一份
@@ -607,10 +609,13 @@ async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = fa
 
 /** 企业版导入时一起建的主要联系人 id 记在 create 行的 before 里（11-19）。老批次、桌面端没有 */
 const 导入联系人键 = "导入联系人";
-function 导入建的联系人(before: string | null): string | null {
+/** 建好那一刻联系人的 updatedAt：撤销时比它，之后有人改过这位联系人就不当「导入建的、没动过」 */
+const 导入联系人写后键 = "导入联系人写后";
+function 导入建的联系人(before: string | null): { id: string; 写后: string } | null {
   try {
-    const v = (JSON.parse(before ?? "{}") as Record<string, unknown>)[导入联系人键];
-    return typeof v === "string" ? v : null;
+    const o = JSON.parse(before ?? "{}") as Record<string, unknown>;
+    const [id, 写后] = [o[导入联系人键], o[导入联系人写后键]];
+    return typeof id === "string" && typeof 写后 === "string" ? { id, 写后 } : null;
   } catch {
     return null;
   }
@@ -859,6 +864,8 @@ async function 撤这一批(
     customerNo: true,
     updatedAt: true,
     _count: { select: { followUps: true, contracts: true, contacts: true, tasks: true, plans: true } },
+    // 企业版导入时一起建的主要联系人（11-19）：撤销时核对名下联系人是不是恰好就是它、没改过
+    contacts: { select: { id: true, updatedAt: true }, take: 2 },
     /*
       被别人当推荐人、或是别人的业绩归属对象：删掉他，下游那几位的推荐人和归属会被外键悄悄置空。
       手工删客户（deleteCustomers）早就拦了这种，撤销导入原来漏了（2026-10-01 排查 A7）
@@ -882,8 +889,10 @@ async function 撤这一批(
       }
 
       // 导入时一起建的主要联系人（企业版「联系人」列）不算挂件：撤销连客户一起删
+      // 名下联系人恰好只有导入建的那一位、而且没人改过，才不算挂件（审查 11-19：只看个数会放过「删了导入那位、另加了一位」）
       const 带的联系人 = row.kind === "create" ? 导入建的联系人(row.before) : null;
-      const 有挂件 = Object.entries(c._count).some(([k, n]) => n > (k === "contacts" && 带的联系人 ? 1 : 0));
+      const 只有导入那位 = !!带的联系人 && c._count.contacts === 1 && c.contacts.length === 1 && c.contacts[0].id === 带的联系人.id && c.contacts[0].updatedAt.toISOString() === 带的联系人.写后;
+      const 有挂件 = Object.entries(c._count).some(([k, n]) => n > (k === "contacts" && 只有导入那位 ? 1 : 0));
       const 下游 = [...new Set([...c.referrals, ...c.attributedCustomers].map((x) => 客户显名(x)))];
       /*
         有 writtenAt 就精确比：写完那一刻的 updatedAt 和现在的不一样，就是之后有人改过。

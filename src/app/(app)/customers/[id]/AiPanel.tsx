@@ -30,6 +30,7 @@ type BriefAnswer = { brief: CustomerBrief; records: BriefRecord[] };
 export default function AiPanel({
   customerId,
   customerName,
+  显示名,
   档案,
   fingerprint,
   signed,
@@ -41,7 +42,10 @@ export default function AiPanel({
   背调另放 = false,
 }: {
   customerId: string;
+  /** 客户全称（企业版可能空着）：只给背调认对象用 */
   customerName: string;
+  /** 界面上叫这位（11-19 企业版全称选填：客户显名）；不给 = 用全称 */
+  显示名?: string;
   /** 背调查谁看它（lib/research/subject.ts）：有公司查公司、客户名当联系人；没公司按电话先找公司。不给就只有客户名 */
   档案?: Omit<客户档案, "name">;
   /** 时间线指纹：跟进条数 + 最新一条时间，用来判断缓存是否还新鲜 */
@@ -78,10 +82,11 @@ export default function AiPanel({
   const inviteJob = useJob<string>(草稿键("invite", customerId));
   const [q, setQ] = useState("");
   /* 背调（lib/research）整段在 useCustomerResearch：企业版客户页把它单拎成一张卡（P14 第 5 条），这里就不摆 */
-  const 背调 = useCustomerResearch({ customerId, customerName, 档案, on记跟进, 能发起: !不背调, 开: !背调另放 });
+  const 背调 = useCustomerResearch({ customerId, customerName, 显示名, 档案, on记跟进, 能发起: !不背调, 开: !背调另放 });
+  const 叫 = 显示名 || customerName;
 
   /** 侧栏那条「AI 任务」认这个：叫什么、点了回哪儿 */
-  const 标签 = useMemo(() => ({ 名: `${customerName} 的${简报叫}`, 去: `/customers/${customerId}` }), [customerName, customerId, 简报叫]);
+  const 标签 = useMemo(() => ({ 名: `${叫} 的${简报叫}`, 去: `/customers/${customerId}` }), [叫, customerId, 简报叫]);
 
   function regenerate() {
     if (AI已用完) return;
@@ -91,7 +96,7 @@ export default function AiPanel({
   }
   function ask(question: string) {
     if (AI已用完) return;
-    runStream<BriefAnswer>(askKey, { mode: "brief", customerId, question }, question, { 名: `问 ${customerName}：${question.slice(0, 12)}`, 去: `/customers/${customerId}` });
+    runStream<BriefAnswer>(askKey, { mode: "brief", customerId, question }, question, { 名: `问 ${叫}：${question.slice(0, 12)}`, 去: `/customers/${customerId}` });
   }
 
   // 简报生成完写进 sessionStorage；首次进入有缓存就直接用
@@ -154,7 +159,7 @@ export default function AiPanel({
       <div className="rec-ai-head">
         <span className="rec-ai-title">
           {/* 没生成过就别说「已读完」——那是句还没发生的话 */}
-          <ThunderboltOutlined /> {result ? `AI 已读完 ${customerName} 的记录` : `AI 可以读 ${customerName} 的记录`}
+          <ThunderboltOutlined /> {result ? `AI 已读完 ${叫} 的记录` : `AI 可以读 ${叫} 的记录`}
         </span>
         {(result || loading) && (
           <Tooltip title={`重新生成${简报叫}`}>
@@ -225,7 +230,7 @@ export default function AiPanel({
           placeholder={`问一句，比如"下次该怎么谈报价"`}
           maxLength={200}
           disabled={!hasRecords}
-          aria-label={`问 AI 关于 ${customerName} 的事`}
+          aria-label={`问 AI 关于 ${叫} 的事`}
           onPressEnter={() => {
             if (q.trim() && !AI已用完) {
               ask(q.trim());
@@ -285,8 +290,8 @@ export default function AiPanel({
       </div>
 
       {[
-        { kind: "wakeup" as const, job: wakeupJob, title: "跟进话术草稿", 在做: `读 ${customerName} 的跟进，起草一段能直接发的微信` },
-        ...(企业 ? [] : [{ kind: "invite" as const, job: inviteJob, title: "转介绍邀请草稿", 在做: `照 ${customerName} 的情况，起草一段请他介绍朋友的微信` }]),
+        { kind: "wakeup" as const, job: wakeupJob, title: "跟进话术草稿", 在做: `读 ${叫} 的跟进，起草一段能直接发的微信` },
+        ...(企业 ? [] : [{ kind: "invite" as const, job: inviteJob, title: "转介绍邀请草稿", 在做: `照 ${叫} 的情况，起草一段请他介绍朋友的微信` }]),
       ].map(({ kind, job, title, 在做 }) => (
         <AnimatePresence key={kind}>
           {job?.status === "loading" && (

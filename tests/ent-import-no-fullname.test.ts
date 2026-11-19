@@ -73,7 +73,7 @@ describe("导入：客户全称可以空（P-抬头-16）", () => {
     const 挂 = Object.fromEntries(待写.filter((w) => w.实体 !== "customer").map((w) => [w.外部ID, w.父客户]));
     expect(挂).toEqual({ p1: { 外部ID: "c1" }, o1: { 外部ID: "c1" }, f1: { 外部ID: "c1" } });
     for (const id of ["p2", "o2", "f2"]) expect(类(问题, id)).toEqual(["跳过:按名称挂不上"]);
-    expect(问题.find((p) => p.外部ID === "o2")!.说明).toMatch(/按客户名称「某某贸易」挂不上.*所属客户 ID/);
+    expect(问题.find((p) => p.外部ID === "o2")!.说明).toMatch(/找不到叫「某某贸易」的客户（没有全称的客户只能按所属客户 ID 挂）/);
     expect(类(问题, "f3")).toEqual(["跳过:找不到客户"]);
   });
 

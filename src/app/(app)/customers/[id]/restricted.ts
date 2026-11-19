@@ -22,6 +22,7 @@ import { 读项目区 } from "./project-zone";
 import { 项目详情字典们 } from "../../projects/[id]/load";
 import type { 项目区数据 } from "./ProjectZone";
 import type { ContactRow } from "./types";
+import { 客户抬头, 抬头节点们 } from "@/lib/enterprise/customer-title";
 
 /** 我这几个项目上的一条沟通（只读，按项目摆） */
 export type 受限沟通 = { id: string; 项目: { id: string; 名: string }; occurredAt: string; type: string; method: string | null; content: string; who: string };
@@ -55,7 +56,7 @@ export async function 读受限客户详情(me: SessionUser, customerId: string,
 
   // 绕开限定层的读一律写明字段：客户本身看不到
   const [客户行, 项目行, 我建的, 号] = await Promise.all([
-    看全部(() => prisma.customer.findFirst({ where: { id: customerId, deletedAt: null }, select: { id: true, name: true } })),
+    看全部(() => prisma.customer.findFirst({ where: { id: customerId, deletedAt: null }, select: { id: true, name: true, shortName: true, customerNo: true, customerType: true, addrCountry: true, addrProvince: true, addrCity: true, addrDistrict: true } })),
     看全部(() => prisma.project.findMany({
       where: { id: { in: 我的项目 }, customerId, ownerId: me.id, pooledAt: null },
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
@@ -95,7 +96,8 @@ export async function 读受限客户详情(me: SessionUser, customerId: string,
   const 记的人 = new Map((await 看全部(() => prisma.user.findMany({ where: { id: { in: [...new Set(沟通行.map((r) => r.followUp.ownerId))] } }, select: { id: true, name: true } }))).map((u) => [u.id, u.name]));
 
   return {
-    客户: 客户行,
+    // 页头和客户详情同一个抬头算法（11-19 客户名称选填：没全称也不空，最后兜客户编号）
+    客户: { id: 客户行.id, name: 客户抬头(客户行, (await 抬头节点们(prisma, [客户行]))[客户行.id] ?? null) },
     卡,
     可改联系人: 我建的.map((c) => ({
       id: c.id, name: c.name, position: c.position, phone: 号(c.phone), email: c.email, wechat: c.wechat,

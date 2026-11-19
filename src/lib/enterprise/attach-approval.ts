@@ -27,6 +27,7 @@ import type { 谁 } from "./permissions";
 import { 挂靠进公海状态 } from "@/lib/owner-log-db";
 import { recordAudit } from "@/lib/audit";
 import { 系统 } from "@/lib/project/timeout";
+import { 客户显名 } from "@/lib/enterprise/customer-title";
 
 export const 挂靠超时小时 = 24;
 const 小时毫秒 = 3_600_000;
@@ -53,8 +54,9 @@ async function 名字们(ids: readonly (string | null)[]): Promise<Map<string, s
 async function 客户们(ids: readonly string[]): Promise<Map<string, { 名: string; 称呼: string; 负责人: string }>> {
   const 们 = [...new Set(ids)];
   if (!们.length) return new Map();
-  const cs = await 看全部(() => prisma.customer.findMany({ where: { id: { in: 们 } }, select: { id: true, name: true, customerNo: true, salesOwnerId: true } }));
-  return new Map(cs.map((c) => [c.id, { 名: c.name, 称呼: 通知里的客户名(c), 负责人: c.salesOwnerId }]));
+  const cs = await 看全部(() => prisma.customer.findMany({ where: { id: { in: 们 } }, select: { id: true, name: true, shortName: true, customerNo: true, salesOwnerId: true } }));
+  // 客户名称选填（11-19）：页面上列的叫显名（简称 → 客户编号），通知里的称呼同样兜简称 → 编号
+  return new Map(cs.map((c) => [c.id, { 名: 客户显名(c), 称呼: 通知里的客户名(c), 负责人: c.salesOwnerId }]));
 }
 
 export type 待审批挂靠 = {

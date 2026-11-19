@@ -61,6 +61,7 @@ import { 落到渠道 } from "../enterprise/channel-main";
 import { 是主渠道入口 } from "../enterprise/channel-main-core";
 import { 记首次有效 } from "../enterprise/tri-state-db";
 import { 带客户编号 } from "@/lib/customer-no";
+import { hasVisibleText } from "../form-validation";
 
 type Tx = Prisma.TransactionClient;
 type 结果 = "新建" | "更新" | "跳过" | "冲突";
@@ -345,7 +346,8 @@ export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?:
     const c = await tx.customer.create({
       data: await 带客户编号(tx, {
         // 全称可以空（P-抬头-16）：清洗时没带这一格，落空串，不补名
-        name: 串(v.name ?? null) ?? "",
+        // 只有空白 / 零宽字符的当没填（和 saveCustomer 同一条 hasVisibleText）
+        name: hasVisibleText(串(v.name ?? null)) ? 串(v.name ?? null)! : "",
         phone: 串(v.phone) ?? "",
         salesOwnerId: String(v.salesOwnerId),
         followStatus: 串(v.followStatus) ?? "待跟进",

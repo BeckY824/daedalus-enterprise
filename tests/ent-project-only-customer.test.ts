@@ -252,6 +252,20 @@ describe("saveContact 守卫（提交 2）", () => {
   });
 });
 
+describe("客户名称选填（11-19 审查）：仅项目的人看没全称的客户", () => {
+  it("受限详情页头走客户抬头，没全称、没简称也不空（兜到客户编号）；带简称的叫简称", async () => {
+    const c = await 客户(甲.id, { name: "", customerNo: 4321 });
+    await 项目(c, 乙.id);
+    忘掉企业版范围();
+    const 详情 = (await 以(乙, () => 读受限客户详情(乙 as never, c, null)))!;
+    expect(详情.客户.name.trim()).not.toBe("");
+    expect(详情.客户.name).toContain("04321");
+    await prisma.customer.update({ where: { id: c }, data: { shortName: "编的简称" } });
+    忘掉企业版范围();
+    expect((await 以(乙, () => 读受限客户详情(乙 as never, c, null)))!.客户.name).toContain("编的简称");
+  });
+});
+
 describe("客户页看板（提交 3）", () => {
   const 看板 = async (u: 人, q: Record<string, string> = {}) => {
     const { 项目: 项, 客户: 客, 仅项目客户 } = await 以(u, () => 客户页看板条件(q));

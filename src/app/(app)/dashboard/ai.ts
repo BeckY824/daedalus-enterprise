@@ -12,6 +12,7 @@ import { formatTimeline } from "@/lib/ai-context";
 import { 带额度 } from "@/lib/tenant/ai-allowance";
 import { AI客户输入错误, AI文本输入错误 } from "@/lib/ai-input";
 import { 视图外部拒 } from "@/lib/enterprise/view-as";
+import { 全称或显名, 显名列 } from "@/lib/enterprise/customer-title";
 
 /**
  * 盯盘清单的「起草跟进」：给一条唤醒话术草稿。
@@ -39,7 +40,8 @@ async function 起草唤醒话术(input: {
   const customer = await prisma.customer.findUnique({
     where: { id: input.customerId },
     select: {
-      name: true,
+      // 提示词里叫这位：全称或显名（11-19 客户名称选填）
+      ...显名列,
       grade: true,
       followStatus: true,
       decisionStatus: true,
@@ -60,7 +62,7 @@ async function 起草唤醒话术(input: {
 
   const prompt = `你替销售「${user.name}」起草一条发给${b.customer}的消息（会从微信、WhatsApp 或邮件发出），用来重新接上中断的沟通。落款或自称一律用「${user.name}」，不要编别的名字或机构名。
 
-${b.customer}：${customer.name || "（没填名称）"}${customer.grade ? `（${customer.grade}）` : ""}，跟进状态「${statusLabel(b, customer.followStatus)}」，决策状态「${statusLabel(b, customer.decisionStatus)}」
+${b.customer}：${全称或显名(customer)}${customer.grade ? `（${customer.grade}）` : ""}，跟进状态「${statusLabel(b, customer.followStatus)}」，决策状态「${statusLabel(b, customer.decisionStatus)}」
 唤醒原因：${input.reason.slice(0, 100)}
 备注：${(customer.remark || "无").slice(0, 100)}
 最近的跟进记录（新→旧；带「原文」的是当时的聊天记录原话）：
@@ -73,7 +75,7 @@ ${timeline}
     const raw = (await chatJSON(prompt, { feature: "wakeup" })) as { message?: unknown };
     const message = typeof raw.message === "string" ? raw.message.trim().slice(0, 话术上限) : "";
     if (!message) return { ok: false, error: "AI 未能生成话术，请重试" };
-    await recordAiUse(user, "wakeup", `AI 起草唤醒话术（${b.customer}「${customer.name || "（没填名称）"}」：${input.reason.slice(0, 50)}）`, input.customerId);
+    await recordAiUse(user, "wakeup", `AI 起草唤醒话术（${b.customer}「${全称或显名(customer)}」：${input.reason.slice(0, 50)}）`, input.customerId);
     return { ok: true, message };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "生成失败，请稍后重试" };

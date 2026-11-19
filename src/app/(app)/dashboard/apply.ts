@@ -34,6 +34,7 @@ import { 是项目卡, type 项目卡 } from "@/lib/agent/project-proposals";
 import { 做项目卡 } from "@/lib/agent/apply-project";
 import { 删回款 } from "../projects/payment-actions";
 import { 认渠道, 候选说明 } from "@/lib/enterprise/channel-match";
+import { 全称或显名, 显名列 } from "@/lib/enterprise/customer-title";
 
 /**
  * 确认之后怎么撤回去。只给能**干净还原**的两种：记了一条跟进（删掉它）、改了一个状态（改回原值）。
@@ -394,9 +395,10 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
   // 新建线索不挂在任何客户下，其余三种都必须指到一个还在的客户
   let c = { id: "", name: "" };
   if (input?.kind !== "add_lead" && input?.kind !== "update_channel") {
-    const found = await prisma.customer.findUnique({ where: { id: String(input?.customerId ?? "") }, select: { id: true, name: true } });
+    const found = await prisma.customer.findUnique({ where: { id: String(input?.customerId ?? "") }, select: 显名列 });
     if (!found) return { ok: false, error: `这条${b.customer}已被删除` };
-    c = found;
+    // 操作日志里叫这位：全称或显名（11-19 口径：有全称照旧写全称，没全称兜简称 → 客户编号）；卡上照旧叫显名
+    c = { id: found.id, name: 全称或显名(found) };
   }
 
   // 人改过的值和模型给的值一样不可信，重新校验一遍
@@ -510,7 +512,7 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
   }
   if (!done.ok) return done;
 
-  const summary = summarizeApplied(p, b.customer, b);
+  const summary = summarizeApplied(c.name ? { ...p, customerName: c.name } : p, b.customer, b);
   // 记跟进卡：把建出来的那条跟进 id 记进留痕，撤销时凭它认「这条是 AI 卡建的」（凭据是前端带回来的，多进程下内存里那张表也认不全）
   await recordAudit({ user: me, action: "ai_apply", entity: "Ai", entityId: p.kind, summary, detail: { 对象: c.name || p.customerName, 理由: p.reason, ...(撤销?.kind === "add_followup" ? { 跟进: 撤销.id } : {}) } });
   const 话 = summary.replace("确认 AI 建议：", "已") + (done.提示 ? `；${done.提示}` : "");
@@ -542,7 +544,8 @@ export async function undoProposal(u: 撤销凭据): Promise<{ ok: true } | { ok
     await recordAudit({ user: me, action: "ai_undo", entity: "Ai", entityId: u.kind, summary: `撤销 AI 建议：项目「${笔.project?.name ?? ""}」的一笔回款` });
     return { ok: true };
   }
-  const 名 = await prisma.customer.findUnique({ where: { id: String(u?.customerId ?? "") }, select: { name: true } });
+  const 名行 = await prisma.customer.findUnique({ where: { id: String(u?.customerId ?? "") }, select: 显名列 });
+  const 名 = 名行 ? { name: 全称或显名(名行) } : null;
   if (!名) return { ok: false, error: "这条记录已被删除，没法撤销" };
 
   if (u.kind === "add_followup") {

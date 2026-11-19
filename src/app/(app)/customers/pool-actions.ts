@@ -187,17 +187,19 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
   // 别的照放时提示条只说「N 位…没放」，那就带上客户名
   const 同事项目 = 被同事拦.length ? await 同事在推项目说法(prisma, 被同事拦, 被同事拦.length > 1 || 能放.length > 0) : "";
   const 没权限 = 这些.length - 已在.length - 有权限.length;
+  /** 报错里叫哪位（11-19 客户名称选填：没全称按简称 → 客户编号叫，不出「」） */
+  const 叫 = (c: (typeof 有权限)[number] | undefined) => (c ? 客户显名(c) : "");
   if (!能放.length) {
     if (有订单.size) return { ok: false, error: 有订单不能放提示(b.customer, 订单项目) };
     if (验证中.size) {
       const [id, 话] = [...验证中][0];
-      return { ok: false, error: 有权限.length > 1 ? 话.replace("这位客户", `「${有权限.find((c) => c.id === id)?.name ?? ""}」`) : 话 };
+      return { ok: false, error: 有权限.length > 1 ? 话.replace("这位客户", `「${叫(有权限.find((c) => c.id === id))}」`) : 话 };
     }
     if (交接中.size) return { ok: false, error: 交接中不能放提示(b.customer) };
     if (同事在推.size) return { ok: false, error: 同事在推不能放公海话(被同事拦.map((c) => 客户显名(c)), b.customer, 同事项目) };
     if (号码错.size) {
       const [id, 话] = [...号码错][0];
-      const 名 = 有权限.length > 1 ? `「${有权限.find((c) => c.id === id)?.name ?? ""}」` : "";
+      const 名 = 有权限.length > 1 ? `「${叫(有权限.find((c) => c.id === id))}」` : "";
       return { ok: false, error: `${名}${话}` };
     }
     return 没权限 ? { ok: false, error: `只有负责人、直属上级或总管理能把${b.customer}放回公海` } : { ok: true, updated: 0, unchanged: 已在.length, 没权限: 0 };

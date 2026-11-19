@@ -21,7 +21,7 @@ import { 认目标, 每步能判, 联系人可改, type 候选, type 项目卡Ki
 import { 卡点类型们, 影响等级们 } from "../project/blocker-rules";
 import { dayjs } from "../utils";
 
-import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
+import { 客户显名, 显名列, 客户按名条件 } from "@/lib/enterprise/customer-title";
 const str = (v: unknown, max = 60) => (typeof v === "string" ? v.trim().slice(0, max) : typeof v === "number" ? String(v) : "");
 /** 一次最多给人挑几个 */
 const 候选上限 = 10;
@@ -46,7 +46,8 @@ async function 找项目(ctx: ToolContext, a: Record<string, unknown>): Promise<
   } else {
     行 = await prisma.project.findMany({ where: { OR: [{ name: 名 }, { customer: { name: 名 } }] }, select: 项目列, take: 候选上限 + 1, orderBy: { updatedAt: "desc" } });
     if (!行.length) {
-      行 = await prisma.project.findMany({ where: { OR: [{ name: { contains: 名 } }, { customer: { name: { contains: 名 } } }] }, select: 项目列, take: 候选上限 + 1, orderBy: { updatedAt: "desc" } });
+      // 客户那一半全称、简称、客户编号都认（11-19 客户名称选填）
+      行 = await prisma.project.findMany({ where: { OR: [{ name: { contains: 名 } }, { customer: 客户按名条件(名) }] }, select: 项目列, take: 候选上限 + 1, orderBy: { updatedAt: "desc" } });
     }
   }
   const 可见 = await 看得到的客户(行.map((p) => p.customerId));
@@ -313,7 +314,7 @@ export const 项目写工具: Tool[] = [
       if (!名) return { summary: "没说是哪位联系人", data: { error: "contact 必填" } };
       const 客户名 = str(a.customer, 60);
       const 选 = { id: true, name: true, position: true, remark: true, gender: true, birthday: true, hobby: true, address: true, customerId: true, customer: { select: 显名列 } } as const;
-      const 条件 = (精确: boolean) => ({ deletedAt: null, name: 精确 ? 名 : { contains: 名 }, ...(客户名 ? { customer: { name: { contains: 客户名 } } } : {}) });
+      const 条件 = (精确: boolean) => ({ deletedAt: null, name: 精确 ? 名 : { contains: 名 }, ...(客户名 ? { customer: 客户按名条件(客户名) } : {}) });
       let 人们 = await prisma.contact.findMany({ where: 条件(true), select: 选, take: 候选上限 + 1 });
       if (!人们.length) 人们 = await prisma.contact.findMany({ where: 条件(false), select: 选, take: 候选上限 + 1 });
       if (!人们.length) return { summary: "没找到这位联系人", data: { error: `当前账号能看到的范围里没找到联系人「${名}」` } };

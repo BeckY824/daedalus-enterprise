@@ -21,7 +21,7 @@ import { 查重可领 } from "./dedupe-claim";
 // 认备注里的号码是纯函数，11-17 搬到 remark-numbers.ts（新线索卡的必填在浏览器里也要用）；这里照旧导出
 export { 认出备注里的号码, type 认出的号 } from "./remark-numbers";
 import type { 认出的号 } from "./remark-numbers";
-import { 客户显名 } from "./customer-title";
+import { 全称或显名 } from "./customer-title";
 
 /** 挨个查，撞了回给录入的人看的话（不建档）；都没撞回 null */
 export async function AI建档查重(号们: 认出的号[], 我: { id: string; name: string }, 录入?: 录入信息): Promise<string | null> {
@@ -47,7 +47,7 @@ export async function AI建档查重详(号们: 认出的号[], 我: { id: strin
     if (结论.状态 === "公海待捞" && (await 查重可领(我.id, 号))) return { 话: 结论.提示, 公海: 号 };
     if (结论.状态 !== "重复") return { 话: 结论.提示 };
     const 原 = await 首条撞的(prisma, ids);
-    if (原?.salesOwnerId) await 提醒原负责人(原.id, 客户显名(原), 原.salesOwnerId, 我, !协同?.走);
+    if (原?.salesOwnerId) await 提醒原负责人(原.id, 全称或显名(原), 原.salesOwnerId, 我, !协同?.走);
     return { 话: 查重提示.AI建档重复(结论.撞.salesOwnerName) };
   }
   return null;

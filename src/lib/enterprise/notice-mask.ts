@@ -50,12 +50,13 @@ export function 名字是号码(name: string | null | undefined): boolean {
 }
 
 /**
- * 通知里怎么称呼这位客户：名字就是号码的换成客户编号（没编号用短号），名字里夹着号码的打码，其余原样。
- * 要有客户编号就 select customerNo；没传 id 又没编号时写「一位客户」
+ * 通知里怎么称呼这位客户：名字就是号码的、全称简称都空着的换成客户编号（没编号用短号），名字里夹着号码的打码，其余原样。
+ * 要有客户编号就 select customerNo（全称空着兜简称就 select shortName）；没传 id 又没编号时写「一位客户」
  */
-export function 通知里的客户名(c: { name: string | null | undefined; customerNo?: number | null; id?: string | null }): string {
-  const name = (c.name ?? "").trim();
-  if (名字是号码(name)) {
+export function 通知里的客户名(c: { name: string | null | undefined; shortName?: string | null; customerNo?: number | null; id?: string | null }): string {
+  // 企业版客户名称选填（11-19）：全称空着兜简称 → 客户编号（短号），不写成空白
+  const name = (c.name ?? "").trim() || (c.shortName ?? "").trim();
+  if (!name || 名字是号码(name)) {
     const 编号 = 客户编号文字(c.customerNo) ?? (c.id ? 短号(c.id) : "");
     return 编号 ? `客户 ${编号}` : "一位客户";
   }

@@ -526,7 +526,7 @@ function CustomerFormInner({
               label={企业 ? "客户全称" : `${b.customer}姓名`}
               name="name"
               rules={企业 ? undefined : [requiredText("请输入姓名")]}
-              extra={全称灰字 ? <span data-testid="fullname-hint">{全称灰字}</span> : undefined}
+              extra={全称灰字 ? <span className="fullname-hint" data-testid="fullname-hint" title={全称灰字}>{全称灰字}</span> : undefined}
             >
               <Input placeholder={企业 ? 名称框提示 : "如：张三"} maxLength={企业 ? 200 : undefined} />
             </Form.Item>

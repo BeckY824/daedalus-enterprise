@@ -22,7 +22,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 不在了 } from "@/lib/not-there";
 import { 挂靠说明上限 } from "@/lib/enterprise/customer-v2";
 import { 客户事项挡 } from "@/lib/enterprise/follow-perm";
-import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
+import { 客户显名, 全称或显名, 显名列 } from "@/lib/enterprise/customer-title";
 
 type 结果 = { ok: true } | { ok: false; error: string };
 const 关着 = { ok: false as const, error: "这个版本没有联系人挂靠" };
@@ -40,15 +40,15 @@ function 刷新(...ids: (string | null | undefined)[]) {
 }
 
 /** 能不能在这位客户身上挂 / 解联系人：看得到、不是只读的同事客户 / 虚线下属客户，且过 客户事项挡（能改这位客户） */
-async function 能改(me: Awaited<ReturnType<typeof requireUser>>, id: string): Promise<{ ok: true; name: string } | { ok: false; error: string }> {
+async function 能改(me: Awaited<ReturnType<typeof requireUser>>, id: string): Promise<{ ok: true; name: string; 日志名: string } | { ok: false; error: string }> {
   if (typeof id !== "string" || !id) return { ok: false, error: "请选一位客户" };
   const c = await prisma.customer.findUnique({ where: { id }, select: 显名列 });
   if (!c) return { ok: false, error: "这位客户已经不在了（或你看不到），刷新看看" };
   if (await 同事的客户(defaultClient, id)) return { ok: false, error: await 只读话(defaultClient) };
   const 挡 = await 客户事项挡(me, id);
   if (挡) return { ok: false, error: 挡 };
-  // 全称选填（11-19）：提示、日志里叫显名（简称 → 全称 → 客户编号），不出空引号
-  return { ok: true, name: 客户显名(c) };
+  // 全称选填（11-19）：提示里叫显名（简称 → 全称 → 客户编号），日志里叫全称或显名（有全称照旧写全称），都不出空引号
+  return { ok: true, name: 客户显名(c), 日志名: 全称或显名(c) };
 }
 
 /** 联系人看不看得到：主客户看得到，或挂在一位看得到的客户上。看得到才回名字和主客户 */
@@ -87,8 +87,8 @@ export async function 挂到客户(contactId: string, customerId: string, note?:
     }
     await recordAudit({
       user: me, action: "update", entity: "Customer", entityId: customerId,
-      summary: `把联系人「${人.name}」（主客户「${客户显名(人.customer)}」）挂到「${这位.name}」${说.值 ? `（${说.值}）` : ""}`,
-      detail: { 联系人: 人.name, 主客户: 客户显名(人.customer), 挂到: 这位.name, 说明: 说.值 ?? "（空）" },
+      summary: `把联系人「${人.name}」（主客户「${全称或显名(人.customer)}」）挂到「${这位.日志名}」${说.值 ? `（${说.值}）` : ""}`,
+      detail: { 联系人: 人.name, 主客户: 全称或显名(人.customer), 挂到: 这位.日志名, 说明: 说.值 ?? "（空）" },
     });
     刷新(customerId, 人.customerId);
     return { ok: true };
@@ -105,7 +105,7 @@ async function 取一行(me: Awaited<ReturnType<typeof requireUser>>, linkId: un
   if (!行) return { ok: false as const, error: "这条挂靠已经不在了，刷新看看" };
   const 这位 = await 能改(me, 行.customerId);
   if (!这位.ok) return 这位;
-  return { ok: true as const, 行, 客户名: 这位.name };
+  return { ok: true as const, 行, 客户名: 这位.日志名 };
 }
 
 export async function 改挂靠说明(linkId: string, note: string | null): Promise<结果> {
@@ -181,8 +181,8 @@ export async function 换主客户(contactId: string, newCustomerId: string): Pr
       }));
     await recordAudit({
       user: me, action: "update", entity: "Customer", entityId: newCustomerId,
-      summary: `联系人「${人.name}」的主客户从「${原.name}」换成「${新.name}」（「${原.name}」留作挂靠）`,
-      detail: { 联系人: 人.name, 原主客户: 原.name, 新主客户: 新.name },
+      summary: `联系人「${人.name}」的主客户从「${原.日志名}」换成「${新.日志名}」（「${原.日志名}」留作挂靠）`,
+      detail: { 联系人: 人.name, 原主客户: 原.日志名, 新主客户: 新.日志名 },
     });
     刷新(人.customerId, newCustomerId);
     return { ok: true };

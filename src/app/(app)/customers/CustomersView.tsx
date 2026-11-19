@@ -1523,7 +1523,7 @@ export default function CustomersView({
           if (key === "createdAt") apply({ sort: order === "ascend" ? "created-asc" : order === "descend" ? "created-desc" : "" });
           if (key === "lastFollowAt") apply({ sort: order === "ascend" ? "follow-asc" : order === "descend" ? "follow-desc" : "" });
         }}
-        替表格={看板体 !== undefined ? 看板体 : 看法 === "看板" ? <CustomerBoard 行们={rows} 字典={客户属性字典} 加载中={pending} 页={page} 每页={pageSize} 总数={total} 翻页={翻页} 去={(id) => router.push(`/customers/${id}`)} /> : undefined}
+        替表格={看板体 !== undefined ? 看板体 : 看法 === "看板" ? <CustomerBoard 行们={rows} 字典={客户属性字典} 加载中={pending} 页={page} 每页={pageSize} 总数={total} 翻页={翻页} 去={(id) => router.push(`/customers/${id}`)} 抬头节点={抬头节点} /> : undefined}
         汇总={<>{看板体 === undefined && 看法 !== "看板" && 待复核}{看板体 === undefined && 看法 !== "看板" && <ProjectOnlyBlock 行们={仅项目行} 超了={仅项目超了} />}{金额排序 && <Space wrap style={{ marginBottom: 12 }}><span>金额按</span><CurrencySelect aria-label="金额排序币种" value={f.sortCurrency || b.currency} onChange={v => apply({ sortCurrency: v })}/><span>在全部筛选结果中{金额排序 === "amount-asc" ? "升序" : "降序"}排列；其他币种不相加</span></Space>}</>}
         分页={{
           当前页: page,

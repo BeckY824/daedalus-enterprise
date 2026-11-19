@@ -28,7 +28,7 @@ import { 摘联系人号 } from "./contact-number-detach";
 import { 换负责人 } from "@/lib/project/owner-write";
 import { 验证中不能改派 } from "@/lib/project/lead-verify-guard";
 import { 企业版只用项目 } from "./project-only";
-import { 客户显名, 客户引, 显名列 } from "./customer-title";
+import { 客户显名, 客户引, 全称或显名, 显名列 } from "./customer-title";
 
 export { 看已删, 回收站保留天数, 软删表, type 软删表名 } from "./soft-delete-core";
 
@@ -274,10 +274,10 @@ async function 叫什么(tx: Tx, t: 软删表名, id: string): Promise<string> {
     const f = await tx.followUp.findUnique({ where: { id }, select: { title: true, content: true } });
     return (f?.title || f?.content || "").slice(0, 40);
   }
-  // 客户全称选填（11-19）：客户按 客户显名 叫（简称 → 全称 → 编号），不回空串
+  // 客户全称选填（11-19）：留痕里客户按 全称或显名 叫（有全称照旧写全称，空着兜简称 → 编号），不回空串
   if (t === "Customer") {
     const c = await tx.customer.findUnique({ where: { id }, select: 显名列 });
-    return c ? 客户显名(c) : "";
+    return c ? 全称或显名(c) : "";
   }
   const r = await 表(tx, t).findUnique({ where: { id }, select: { name: true } });
   return String(r?.name ?? "");

@@ -1004,8 +1004,10 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
             />
           ), !企业版, false, 企业版 && 名对上 && !名查?.撞
             // 灰字（PR-7 摘来）：没填 → 列表上怎么显示；像人名 → 提醒写单位名称，都不拦（P-抬头-13 / 16）
-            ? <><span className="cr-ok">没有同名{b.customer}</span>{全称像人名(d.客户.name) ? <span data-testid="fullname-hint">；{像人名提示}</span> : null}</>
-            : 企业版 && 全称提示(d.客户.name) ? <span data-testid="fullname-hint">{全称提示(d.客户.name)}</span> : undefined)}
+            ? 全称像人名(d.客户.name)
+              ? <span className="fullname-hint" data-testid="fullname-hint" title={`没有同名${b.customer}；${像人名提示}`}><span className="cr-ok">没有同名{b.customer}</span>；{像人名提示}</span>
+              : <span className="cr-ok">没有同名{b.customer}</span>
+            : 企业版 && 全称提示(d.客户.name) ? <span className="fullname-hint" data-testid="fullname-hint" title={全称提示(d.客户.name) ?? undefined}>{全称提示(d.客户.name)}</span> : undefined)}
           {名拦 && 名查 && 名查.撞 && (
             <Alert
               data-testid="wizard-name-dupe"

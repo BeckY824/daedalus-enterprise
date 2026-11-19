@@ -243,7 +243,7 @@ export default function RecordView({
   */
   const 企业 = 项目们 !== null;
   const 页头名 = 企业 ? 客户抬头(customer, 抬头节点) : customer.name;
-  /** 提示、弹框标题、头像里叫这位（11-19 企业版全称选填：空着兜简称 / 客户编号，不出空引号）；背调、AI 那几处照旧传全称 */
+  /** 提示、弹框标题、头像、AI 面板和背调标签上叫这位（11-19 企业版全称选填：空着兜简称 / 客户编号，不出空引号）；背调认对象照旧只看全称 */
   const 叫这位 = 企业 ? 客户显名(customer) : customer.name;
   /** 客户页留哪几块（定稿 P5 待定 14）：企业版项目模式下记录输入、待办移到项目，转让、背调、下次跟进不放，旧字段不摆 */
   const 摆法 = 客户页摆法(企业);
@@ -1521,7 +1521,7 @@ export default function RecordView({
           {/* 企业版项目模式：客户背调挪到左栏，只摆状态标签，点开弹详情（U-客户-03；AI 改进后再挪显眼处） */}
           {去项目跟进 && 摆法.背调卡 && aiEnabled && (
             <ProjectFold 名="客户背调">
-              <CustomerResearchTag customerId={customer.id} customerName={customer.name} 档案={背调档案} on记跟进={点跟进} 卡 />
+              <CustomerResearchTag customerId={customer.id} customerName={customer.name} 显示名={叫这位} 档案={背调档案} on记跟进={点跟进} 卡 />
             </ProjectFold>
           )}
           {留痕放左栏 && 状态留痕 && <div className="rec-sec tri-log-left" data-testid="tri-log-left">{状态留痕}</div>}
@@ -1651,13 +1651,13 @@ export default function RecordView({
           <Space orientation="vertical" size={14} style={{ width: "100%" }}>
             {aiEnabled && !AI在抽屉里 && (
               <div className={量到 ? "rec-card" : "rec-card rec-ai-guess-col"}>
-                <AiPanel customerId={customer.id} customerName={customer.name} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸 && !企业} hasRecords={followUps.length > 0} on记跟进={点跟进} 简报叫={企业 ? "智能总结" : "简报"} 不背调={!摆法.背调} 背调另放={摆法.背调卡} />
+                <AiPanel customerId={customer.id} customerName={customer.name} 显示名={叫这位} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸 && !企业} hasRecords={followUps.length > 0} on记跟进={点跟进} 简报叫={企业 ? "智能总结" : "简报"} 不背调={!摆法.背调} 背调另放={摆法.背调卡} />
               </div>
             )}
 
             {/* 企业版：客户背调单独一张卡（P14 第 5 条），不挂在 AI 面板、「跟进」菜单里；AI 收进抽屉时它照样在右栏。
                 背调是 AI 的活，同 AI 面板一样只在开了 AI 时摆 */}
-            {摆法.背调卡 && aiEnabled && !去项目跟进 && <CustomerResearchCard customerId={customer.id} customerName={customer.name} 档案={背调档案} on记跟进={点跟进} />}
+            {摆法.背调卡 && aiEnabled && !去项目跟进 && <CustomerResearchCard customerId={customer.id} customerName={customer.name} 显示名={叫这位} 档案={背调档案} on记跟进={点跟进} />}
 
             {!去项目跟进 && 待办卡}
 
@@ -1691,7 +1691,7 @@ export default function RecordView({
           进程内任务表上（lib/ai-jobs），不在组件 state 里，关掉再开还在那儿 */}
       {aiEnabled && (!!项目区 || !量到 || AI在抽屉里) && (
         <Drawer placement="right" styles={{ wrapper: { width: 380 } }} open={AI抽屉开着} onClose={() => setAI抽屉开着(false)} title={`AI · ${叫这位}`}>
-          <AiPanel customerId={customer.id} customerName={customer.name} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸 && !企业} hasRecords={followUps.length > 0} on记跟进={点跟进} 简报叫={企业 ? "智能总结" : "简报"} 不背调={!摆法.背调} 背调另放={摆法.背调卡} />
+          <AiPanel customerId={customer.id} customerName={customer.name} 显示名={叫这位} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸 && !企业} hasRecords={followUps.length > 0} on记跟进={点跟进} 简报叫={企业 ? "智能总结" : "简报"} 不背调={!摆法.背调} 背调另放={摆法.背调卡} />
         </Drawer>
       )}
 
