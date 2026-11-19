@@ -18,7 +18,7 @@ import { 读线索验证, 待我复核的 } from "../project/lead-verify";
 import { 可选项 } from "../enterprise/dict";
 import { buildProposal, describeProposal, missingFields } from "./proposals";
 import { 认目标, 每步能判, 联系人可改, type 候选, type 项目卡Kind, type 验证步 } from "./project-proposals";
-import { 卡点类型们, 影响等级们, 卡点显示名 } from "../project/blocker-rules";
+import { 卡点类型们, 影响等级们, 卡点显示名, 清原因们 } from "../project/blocker-rules";
 import { 可选原因们 } from "../project/blocker";
 import { dayjs } from "../utils";
 
@@ -112,6 +112,8 @@ async function 字典() {
 }
 
 const 卡点类型说 = 卡点类型们.filter((t) => t !== "暂无卡点").join("/");
+/** 系统提示、工具返回里最多列几个阻碍原因名（字典一般十几个；列太多占提示长度） */
+export const 原因名列多少 = 40;
 
 export const 项目写工具: Tool[] = [
   {
@@ -375,13 +377,17 @@ async function 沟通卡(a: Record<string, unknown>, ctx: ToolContext, 要卡点
   const 指 = 指向(找.行, 找.露, (p) => ({ ...(要时间(p) ? { 要时间: true } : {}), 组员记: 组员记(p) }));
   // 11-19：卡点不再有标题、卡在哪儿；阻碍原因必填，卡上给设置里启用的原因当下拉（也能现打）
   const 原因可选们 = 要卡点 ? await 可选原因们() : [];
+  // 不在字典里的原因：卡上标「新增·待审核」，返回里也告诉模型，让它照实说
+  const 新的 = 要卡点 ? 清原因们(Array.isArray(a.阻碍原因) ? a.阻碍原因 : typeof a.阻碍原因 === "string" ? [a.阻碍原因] : []).filter((x) => !原因可选们.includes(x)) : [];
+  const 原因话 = !要卡点 ? "" : `设置里启用的阻碍原因：${原因可选们.slice(0, 原因名列多少).join(" / ") || "（没有）"}。`
+    + (新的.length ? `「${新的.join("」「")}」不在里面，确认后会作为新原因等总管理员审核，回答里说一句。` : "");
   return 出卡(ctx, "project_followup", 指.客户, {
     ...指.args,
     type: a.type, content: str(a.content, 2000), 下一步: a.下一步, 下一步时间: a.下一步时间,
     要卡点, 卡点类型: 要卡点 ? a.卡点类型 : "", 影响等级: 要卡点 ? a.影响等级 : "", 阻碍原因: 要卡点 ? a.阻碍原因 : [],
     ...(要卡点 ? { 原因可选们 } : {}),
     reason: a.reason,
-  });
+  }, 原因话);
 }
 
 export const 项目写工具名: ReadonlySet<string> = new Set(项目写工具.map((t) => t.name));

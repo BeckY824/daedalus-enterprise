@@ -84,9 +84,22 @@ export const 兜底原因 = "其他";
 export const 未分类原因id = "__未分类";
 export const 未分类原因名 = "未分类（老数据）";
 
-/** 原因名：去空格、限长；空 = null */
+/**
+ * 清一个原因名：去零宽字符（\u200b–\u200d、\u2060、\ufeff，看不见、搜不到，同 lib/import/parse.ts 的 清）再去首尾空白。
+ * 不清的话「\u200b」能当一个原因发出去（显示名成了「轻度卡点 · 」），「需求变更\u200b」会新建一条看着一样的待审核原因。
+ * 前端（多选框）、AI 卡、服务端都用这一个
+ */
+export function 清原因名(v: unknown): string {
+  return typeof v === "string" ? v.replace(/[\u200b-\u200d\u2060\ufeff]/g, "").trim() : "";
+}
+/** 多选框里的原因们：逐个清、限长、去空、去重（前端 onChange、AI 卡共用；超长截断不报错，人还能改） */
+export function 清原因们(v: readonly unknown[]): string[] {
+  return [...new Set(v.map((x) => 清原因名(x).slice(0, 原因名上限)).filter(Boolean))];
+}
+
+/** 原因名：去零宽字符和空格、限长；空 = null */
 export function 规整原因名(v: unknown): string | null {
-  const s = 文字(v);
+  const s = 清原因名(v);
   return s && s.length <= 原因名上限 ? s : null;
 }
 
@@ -96,7 +109,7 @@ export function 规整原因们(v: unknown): string[] | { error: string } {
   const 原 = Array.isArray(v) ? v : [v];
   const 们: string[] = [];
   for (const x of 原) {
-    const s = 文字(x);
+    const s = 清原因名(x);
     if (!s) continue;
     if (s.length > 原因名上限) return { error: `阻碍原因每个不超过 ${原因名上限} 个字` };
     if (!们.includes(s)) 们.push(s);

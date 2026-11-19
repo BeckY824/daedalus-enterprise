@@ -32,12 +32,13 @@ beforeAll(async () => {
     const root=createRoot(document.getElementById('root'));
     const 串='卡在哪'.repeat(40)+'X'.repeat(120), 天前=n=>new Date(Date.now()-n*86400000+3600000).toISOString();
     const 长名='认领人'+'X'.repeat(60);
-    const 卡=(id,status,开,解)=>({id,code:'BLK-20261101-00'+id,title:'报价卡住'+'Y'.repeat(60),projectId:'p1',项目:'项目',followUpId:'f1',phase:'订单',type:'重要卡点',impact:'可能丢单',
+    const 卡=(id,status,开,解)=>({id,code:'BLK-20261101-00'+id,title:'报价卡住'+'Y'.repeat(60),有标题:true,projectId:'p1',项目:'项目',followUpId:'f1',phase:'订单',type:'重要卡点',impact:'可能丢单',
       原因们:[{id:'r1',name:'价格',status:'启用'}],description:串,status,发布人:'组长甲',resourceRequest:null,solution:解==null?null:'降价',result:解==null?null:'签了',
       resolvedAt:解==null?null:天前(解),createdAt:天前(开),流转:[],
       认领:status==='待接受'?[]:[{名字:长名,done:status==='已解决',note:null,doneAt:null,是我:true}],进度:{完成:status==='已解决'?1:0,共:status==='待接受'?0:1},
       能:{认领:status==='待接受',完成:status==='处理中',最后一个:status==='处理中'}});
     window.__render=(what)=>root.render(<App>{
+      what==='list新'?<BlockerList 们={[{...卡('4','待接受',2,null),title:'重要卡点 · 价格',有标题:false,description:''}]}/>:
       what==='list'?<BlockerList 们={[卡('1','待接受',5,null),卡('2','处理中',4,null),卡('3','已解决',9,6)]} 带项目/>:
       what==='publish2'?<PublishBlockerModal followUpId='f1' 沟通们={[{id:'f1',occurredAt:'2026-11-10T02:00:00.000Z',content:'最近这条：客户说预算要再批'},{id:'f2',occurredAt:'2026-11-03T02:00:00.000Z',content:'上周那条'+'很长'.repeat(40)}]} 默认={默认卡点默认} 原因们={['价格','交期']} onClose={()=>{window.__关=1}}/>:
       what==='publish'?<PublishBlockerModal followUpId='f1' 默认={默认卡点默认} 原因们={['价格','交期']} onClose={()=>{}}/>:
@@ -47,7 +48,7 @@ beforeAll(async () => {
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-async function open(what: "list" | "publish" | "publish2" | "settings", width = 1366) {
+async function open(what: "list" | "list新" | "publish" | "publish2" | "settings", width = 1366) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://blk.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
@@ -77,6 +78,19 @@ it("卡点列表：显示开了几天 / 用了几天解决，没有时限、没�
     expect(t).not.toMatch(/指认|转让|退回|标为已解决/);
     expect(t).toContain("待接受，还没人认领");
     expect(t).toMatch(/处理中 0\/1 ⏳认领人/);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("11-19 新卡点（没存标题）：卡片头只有标签行，不再加粗写一遍「类型 · 原因」；没描述不占一行；老卡点的标题照旧", async () => {
+  const { page, errors } = await open("list新");
+  try {
+    await page.getByText("BLK-20261101-004").waitFor();
+    expect(await page.getByText("重要卡点 · 价格").count()).toBe(0);
+    expect(await page.getByText("重要卡点", { exact: true }).count()).toBe(1);
+    expect(await page.locator(".pd-blk").innerText()).not.toContain("Y".repeat(10));
+    await page.evaluate(() => (window as unknown as { __render: (x: string) => void }).__render("list"));
+    await page.getByText("报价卡住" + "Y".repeat(60)).first().waitFor();
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

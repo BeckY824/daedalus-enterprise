@@ -1173,7 +1173,7 @@ it.each([375, 1024, 1280, 1366])("记一条沟通的卡点（11-19）%ipx：默�
   } finally { await page.close(); }
 });
 
-it("记一条沟通的卡点（11-19）：选了类型再换回「暂无卡点」，影响、原因收起，记下时交的是暂无（不生成）", async () => {
+it("记一条沟通的卡点（11-19）：选了类型、挑了原因再换回「暂无卡点」，影响、原因收起并清空，记下时交的是暂无（不生成）", async () => {
   const { page, errors } = await 覆盖(1280, { 能记沟通: true });
   try {
     await page.getByTestId("follow-card-new").click();
@@ -1182,11 +1182,21 @@ it("记一条沟通的卡点（11-19）：选了类型再换回「暂无卡点�
     await 类型.waitFor();
     await 类型.click();
     await page.locator(".ant-select-item-option").filter({ hasText: "重要卡点" }).click();
-    await 窗.getByRole("combobox", { name: "阻碍原因" }).waitFor();
+    const 原因 = 窗.getByRole("combobox", { name: "阻碍原因" });
+    await 原因.click();
+    await page.locator(".ant-select-item-option").filter({ hasText: "价格" }).click();
+    await page.keyboard.press("Escape");
     await 类型.click();
     await page.locator(".ant-select-item-option").filter({ hasText: "暂无卡点" }).click();
-    expect(await 窗.getByRole("combobox", { name: "阻碍原因" }).count()).toBe(0);
+    expect(await 原因.count()).toBe(0);
     expect(await 窗.getByRole("combobox", { name: "卡点影响" }).count()).toBe(0);
+    // 换回暂无时原因一起清掉：再选类型，原因是空的、「记下」又灰着
+    await 类型.click();
+    await page.locator(".ant-select-item-option").filter({ hasText: "轻度卡点" }).click();
+    await 原因.waitFor();
+    expect(await 窗.locator(".follow-blocker .ant-select-selection-item").filter({ hasText: "价格" }).count()).toBe(0);
+    await 类型.click();
+    await page.locator(".ant-select-item-option").filter({ hasText: "暂无卡点" }).click();
     await 窗.getByLabel("沟通内容").fill("聊了报价");
     await 窗.getByLabel("下一步计划").fill("周五前发报价单");
     await 窗.getByRole("button", { name: /记\s*下/ }).click();

@@ -65,7 +65,7 @@ import { 改项目节点, 终止项目进程, 勾项目交付, 删除项目, 放
 import type { 可选成员 } from "@/lib/utils";
 import { ProjectEditModal, ProjectTeamCard, type 组员, type 角色, type 联系人 } from "./ProjectTeam";
 import { BlockerList, PublishBlockerModal, 原因选择, type 卡点卡 } from "../BlockerPanel";
-import { 卡点类型们, 影响等级们, 缺原因话, type 卡点默认 } from "@/lib/project/blocker-rules";
+import { 卡点类型们, 影响等级们, 缺原因话, 清原因们, type 卡点默认 } from "@/lib/project/blocker-rules";
 import type { 附件 } from "@/lib/attachment-rules";
 import FollowAttachments, { 选沟通附件 as 选沟通附件框, 传沟通附件 } from "@/components/FollowAttachments";
 import { ProjectCommissionCard } from "./ProjectCommission";
@@ -2334,7 +2334,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
     值: { type, method, 发起: 选的发起, occurredAt, content, 下一步文字, 下一步时间, 卡点类型, 卡点影响, 卡点原因, 原话 },
     附件数: 附件们.length,
     // 只认打的字：沟通方式的默认值是晚一步才到的（字典读回来才设），光它变了不算填过
-    算填过: (改) => 有字([改.content, 改.下一步文字, 改.卡点原因, 改.原话]),
+    算填过: (改) => 有字([改.content, 改.下一步文字, 改.卡点类型 === "暂无卡点" ? [] : 改.卡点原因, 改.原话]),
     带回: (v) => {
       if (typeof v.type === "string") { setType(v.type); 人改过方式.current = true; }
       if (v.method !== undefined) setMethod(v.method ?? null);
@@ -2345,7 +2345,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
       if (v.下一步时间 !== undefined) set下一步时间(v.下一步时间 ?? null);
       if (typeof v.卡点类型 === "string") set卡点类型(v.卡点类型);
       if (v.卡点影响 !== undefined) set卡点影响(v.卡点影响 ?? null);
-      if (Array.isArray(v.卡点原因)) set卡点原因(v.卡点原因);
+      if (Array.isArray(v.卡点原因)) set卡点原因(清原因们(v.卡点原因));
       if (typeof v.原话 === "string") set原话(v.原话);
     },
   });
@@ -2399,7 +2399,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
         </div>
       )}
       // 写了字就别让点到框外把草稿关掉（10-29 实点：点日历时手一偏，整段没了）
-      mask={{ closable: !content.trim() && !下一步文字.trim() && !原话.trim() && !卡点原因.length && !附件们.length }}
+      mask={{ closable: !content.trim() && !下一步文字.trim() && !原话.trim() && (卡点类型 === "暂无卡点" || !卡点原因.length) && !附件们.length }}
       // 点了取消 / Esc / X：人明说不要了，草稿一起删
       onCancel={() => { 稿.丢掉(); 关(); }}
       onOk={() => void 交()}
@@ -2468,7 +2468,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
             <div style={{ marginBottom: 4 }}>卡点<span style={{ color: "var(--text-muted)" }}>（选「暂无卡点」不生成；选了其他类型，记下时生成一个卡点）</span></div>
             {/* 11-19：「暂无卡点」只摆类型一格，不带出影响、原因；选了类型才出影响（默认值照旧）和阻碍原因（必填，能直接打字新增） */}
             <div className="follow-blocker-row">
-              <Select aria-label="卡点类型" value={卡点类型} onChange={set卡点类型} options={卡点类型们.map((v) => ({ value: v, label: v }))} />
+              <Select aria-label="卡点类型" value={卡点类型} onChange={(v: string) => { set卡点类型(v); if (v === "暂无卡点") { set卡点原因([]); set卡点影响(null); } }} options={卡点类型们.map((v) => ({ value: v, label: v }))} />
               {卡点类型 !== "暂无卡点" && <Select aria-label="卡点影响" allowClear value={卡点影响} onChange={(v) => set卡点影响(v ?? null)} placeholder={`卡点影响（默认${卡点默认.默认影响}）`} options={影响等级们.map((v) => ({ value: v, label: v }))} />}
             </div>
             {卡点类型 !== "暂无卡点" && <div style={{ marginTop: 8 }}><原因选择 原因们={卡点原因们} 值={卡点原因} on改={set卡点原因} /></div>}

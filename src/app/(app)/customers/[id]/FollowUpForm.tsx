@@ -32,7 +32,7 @@ import CustomerPick, { type 客户近况 } from "./CustomerPick";
 import FollowMethodSelect, { InitiatorSelect, useFollowHabit, useFollowInitiators, useFollowMethods, 默认沟通方式, 默认发起主体 } from "@/components/FollowMethodSelect";
 import { 对得上的方式, 方式对类型 } from "@/lib/follow-method";
 import { useFormGuard } from "@/lib/form-guard";
-import { 卡点类型们, 影响等级们, 原因最多, 原因名上限, 缺原因话, type 卡点默认 } from "@/lib/project/blocker-rules";
+import { 卡点类型们, 影响等级们, 原因最多, 缺原因话, 清原因们, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 选沟通附件, 传沟通附件 } from "@/components/FollowAttachments";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
 import { 沟通没项目话, 请负责人建项目话, 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
@@ -50,7 +50,7 @@ function 带回卡点(x: unknown): 卡点值 {
   return {
     type: typeof v.type === "string" && (卡点类型们 as readonly string[]).includes(v.type) ? v.type : 空卡点.type,
     impact: typeof v.impact === "string" ? v.impact : null,
-    reasons: Array.isArray(v.reasons) ? v.reasons.filter((r): r is string => typeof r === "string" && !!r.trim()) : [],
+    reasons: Array.isArray(v.reasons) ? 清原因们(v.reasons) : [],
   };
 }
 
@@ -61,13 +61,13 @@ function 卡点格({ 默认, 原因们, 值, on改 }: { 默认: 卡点默认; �
     <div className="follow-blocker" style={{ marginBottom: 16 }}>
       <div style={{ marginBottom: 4 }}>卡点<span style={{ color: "var(--text-muted)" }}>（选「暂无卡点」不生成；选了其他类型，记下时生成一个卡点）</span></div>
       <div className="follow-blocker-row">
-        <Select aria-label="卡点类型" value={值.type} onChange={(v) => on改({ ...值, type: v })} options={卡点类型们.map((v) => ({ value: v, label: v }))} />
+        <Select aria-label="卡点类型" value={值.type} onChange={(v) => on改(v === "暂无卡点" ? 空卡点 : { ...值, type: v })} options={卡点类型们.map((v) => ({ value: v, label: v }))} />
         {!暂无 && <Select aria-label="卡点影响" allowClear value={值.impact} onChange={(v) => on改({ ...值, impact: v ?? null })} placeholder={`卡点影响（默认${默认.默认影响}）`} options={影响等级们.map((v) => ({ value: v, label: v }))} />}
       </div>
       {!暂无 && (
         <Select
           aria-label="阻碍原因" mode="tags" style={{ marginTop: 8, width: "100%", minWidth: 0 }} maxCount={原因最多} value={值.reasons}
-          onChange={(v: string[]) => on改({ ...值, reasons: [...new Set(v.map((x) => x.trim().slice(0, 原因名上限)).filter(Boolean))] })}
+          onChange={(v: string[]) => on改({ ...值, reasons: 清原因们(v) })}
           placeholder="阻碍原因（必填，可多选；没有合适的可以直接打字新增）" options={原因们.map((v) => ({ value: v, label: v }))}
         />
       )}
@@ -330,7 +330,7 @@ export default function FollowUpForm({
       resetAi();
       onClose();
     },
-    填过: () => aiText.trim() !== "" || 卡点.reasons.length > 0 || 附件们.length > 0,
+    填过: () => aiText.trim() !== "" || (卡点.type !== "暂无卡点" && 卡点.reasons.length > 0) || 附件们.length > 0,
     不存: 给定客户 ? ["projectId"] : ["customerId", "contactId", "opportunityId", "projectId"],
     // 表单外头也是人打的字：AI 速记框、卡点那一块；截图录音存不进来，带回时说要重选
     额外: {

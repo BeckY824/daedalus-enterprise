@@ -34,7 +34,7 @@ import {
 } from "@/lib/project/blocker";
 import { 卡点改版, 卡点改版记号键 } from "@/lib/project/blocker-migrate";
 import {
-  时限提醒of, 编号日, 规整发布, 卡点显示名, 默认卡点默认, 改版后, 原因种子们, 会签进度, 默认卡点角色开关, 卡点权限of,
+  时限提醒of, 编号日, 规整发布, 卡点显示名, 清原因名, 清原因们, 规整原因名, 规整原因们, 默认卡点默认, 改版后, 原因种子们, 会签进度, 默认卡点角色开关, 卡点权限of,
   卡点只读, 能管卡点, 未分类原因id, 未分类原因名,
 } from "@/lib/project/blocker-rules";
 import { 清过期 } from "@/lib/enterprise/soft-delete";
@@ -226,12 +226,18 @@ describe("企业版卡点", () => {
     const r = await 发布卡点(销售, f, { type: "中度卡点", reasons: ["价格预算分歧", "需求变更"] }, now);
     expect(r.ok).toBe(true);
     expect(await 行(r.id!)).toMatchObject({ title: "", description: "", obstacle: expect.any(String) });
-    expect((await 项目的卡点(销售, 项目)).find((x) => x.id === r.id)?.title).toBe("中度卡点 · 价格预算分歧、需求变更");
+    // 新卡点没存标题：显示名「类型 · 原因」，有标题 = false（卡片头不再加粗重复一遍）
+    expect((await 项目的卡点(销售, 项目)).find((x) => x.id === r.id)).toMatchObject({ title: "中度卡点 · 价格预算分歧、需求变更", 有标题: false });
     // 老卡点：有标题的照旧显示标题、描述照旧在
     const 老 = await prisma.entBlocker.create({
       data: { code: "BLK20261020001", title: "老标题还在", projectId: 项目, followUpId: f, customerId: 客户, phase: "线索", type: "轻度卡点", impact: "短期不影响", obstacle: "价格", description: "老卡在哪儿", dueDays: 7, dueAt: now, status: "待接受", creatorId: 销售.id },
     });
-    expect((await 项目的卡点(销售, 项目)).find((x) => x.id === 老.id)).toMatchObject({ title: "老标题还在", description: "老卡在哪儿" });
+    expect((await 项目的卡点(销售, 项目)).find((x) => x.id === 老.id)).toMatchObject({ title: "老标题还在", 有标题: true, description: "老卡在哪儿" });
+    // 零宽字符：只有零宽字符的不算原因；带零宽字符的认成字典里那条，不新建近似重复
+    expect(await 发布卡点(销售, f, { reasons: ["\u200b", "\ufeff"] })).toMatchObject({ ok: false, error: "请选阻碍原因" });
+    const 零 = await 发布卡点(销售, f, { reasons: ["需求变更\u200b", "\u2060需求变更 "] }, now);
+    expect((await prisma.entBlockerReasonLink.findMany({ where: { blockerId: 零.id! }, include: { reason: true } })).map((l) => l.reason.name)).toEqual(["需求变更"]);
+    expect(await prisma.entBlockerReason.count({ where: { status: "待审核" } })).toBe(0);
   });
 
   describe("谁看得到（只认业务角色）", () => {
@@ -778,6 +784,16 @@ describe("卡点规矩", () => {
     expect(规整发布({ reasons: ["其他"], title: " 标 ", description: "描述" }, 默认卡点默认)).toMatchObject({ title: "标", description: "描述" });
     expect(规整发布({ reasons: ["其他"] }, 默认卡点默认)).not.toHaveProperty("dueDays");
     expect(规整发布({ reasons: ["其他"], type: "乱写" }, 默认卡点默认)).toHaveProperty("error");
+  });
+
+  it("清原因名 / 清原因们 / 规整原因名 / 规整原因们（11-19）：去零宽字符和首尾空白；只剩零宽字符的算空", () => {
+    expect(清原因名(" 需求变更\u200b\u200c\u200d\u2060\ufeff ")).toBe("需求变更");
+    expect(清原因名("\u200b")).toBe("");
+    expect(清原因名(3)).toBe("");
+    expect(清原因们(["需求变更\u200b", "需求变更", "\u200b", "  ", "字".repeat(30)])).toEqual(["需求变更", "字".repeat(20)]);
+    expect(规整原因名("\u200b")).toBeNull();
+    expect(规整原因名("价格\ufeff")).toBe("价格");
+    expect(规整原因们(["价格\u200b", "价格", "\u2060"])).toEqual(["价格"]);
   });
 
   it("卡点显示名（11-19）：有标题用标题；没标题「类型 · 原因」，超过 3 个写「等 N 个」；都没有退回描述前 20 字、再退回类型", () => {

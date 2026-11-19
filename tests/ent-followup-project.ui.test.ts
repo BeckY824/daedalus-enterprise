@@ -328,6 +328,28 @@ it("F-跟进-08：卡点在沟通内容和下一步之间；11-19 选了类型�
     expect(await b.page.getByRole("combobox", { name: "卡点类型" }).count()).toBe(0);
   } finally { await b.page.close(); }
 });
+it("卡点（11-19）：挑了原因再换回「暂无卡点」，原因清空，交上去是暂无、原因空", async () => {
+  const { page, errors } = await open({ 项目: "有", 须知: 须知(null) });
+  try {
+    const 类型 = page.getByRole("combobox", { name: "卡点类型" });
+    await 类型.waitFor();
+    await 类型.click();
+    await page.locator(".ant-select-item-option").filter({ hasText: "中度卡点" }).click();
+    await page.getByRole("combobox", { name: "阻碍原因" }).click();
+    await page.locator(".ant-select-item-option").filter({ hasText: "价格" }).click();
+    await page.keyboard.press("Escape");
+    await 类型.click();
+    await page.locator(".ant-select-item-option").filter({ hasText: "暂无卡点" }).click();
+    expect(await page.getByRole("combobox", { name: "阻碍原因" }).count()).toBe(0);
+    await page.locator("#content").fill("聊了报价");
+    await 格(page, "下一步计划").locator("input").fill("周五前发报价单");
+    await page.getByRole("button", { name: /保\s*存/ }).click();
+    await page.waitForFunction(() => Reflect.get(window, "__项目存"));
+    expect(await page.evaluate(() => Reflect.get(window, "__卡点"))).toEqual({ type: "暂无卡点", impact: null, reasons: [] });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it.each([375, 1024, 1280, 1366])("卡点（11-19）%ipx：选了类型、挂上超长原因，卡点那几格不出框、弹框不横溢", async (w) => {
   const { page, errors } = await open({ 项目: "有", 须知: { ...须知(null), 卡点原因们: ["价格", "原因".repeat(10)] } }, w);
   try {

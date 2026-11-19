@@ -65,8 +65,8 @@ import { 本人线of } from "@/lib/enterprise/assign-direction-db";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 import { 字典定义, 项目画像项, 认跟进方式, 选的原因 } from "@/lib/enterprise/dict";
 import { 改项目画像, type 画像改动, type 画像字段 } from "@/lib/project/profile";
-import { 发布卡点, 读卡点默认, 能发卡点, 可选原因们 } from "@/lib/project/blocker";
-import { 沟通卡点, type 沟通卡点输入, type 卡点默认 } from "@/lib/project/blocker-rules";
+import { 发布卡点, 读卡点默认, 能发卡点, 可选原因们, 发卡点预检 } from "@/lib/project/blocker";
+import { 沟通卡点, 规整原因们, type 沟通卡点输入, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
 import { 存沟通后重算三态, 三态改天数预览 } from "@/lib/enterprise/tri-state-db";
 
@@ -1030,6 +1030,12 @@ export async function 记项目沟通Action(projectId: string, input: 向导跟�
     if (!企业版()) return { ok: false as const, error: "在项目上记沟通是企业版的功能，请去客户页记" };
     const 要发 = 卡点 == null ? null : 沟通卡点(卡点, await 读卡点默认());
     if (要发 && "error" in 要发) return { ok: false as const, error: `卡点：${要发.error}` };
+    // 11-19 先查后写：卡点会被拒（没权限、项目在公海、原因停用了）就整条拦下，沟通也不写，免得「沟通记上了、卡点没发」
+    if (要发) {
+      const 原因们 = 规整原因们(要发.reasons);
+      const 拦 = await 发卡点预检(me, projectId, Array.isArray(原因们) ? 原因们 : []);
+      if (拦) return { ok: false as const, error: `卡点：${拦}` };
+    }
     const r = await 记项目沟通(me, projectId, input, new Date(), { 要下一步文字: true });
     let 卡点结果: { 卡点?: string; 卡点没发?: string } = {};
     if (r.ok && 要发 && r.followUpId) {

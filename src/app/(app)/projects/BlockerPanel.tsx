@@ -8,7 +8,7 @@ import InlineConfirm from "@/components/InlineConfirm";
 import SaveButton from "@/components/SaveButton";
 import { dayjs, fmtDateTime } from "@/lib/utils";
 import type { 卡点卡 } from "@/lib/project/blocker";
-import { 卡点类型们, 影响等级们, 动作叫法, 描述上限, 原因最多, 原因名上限, 缺原因话, type 卡点默认 } from "@/lib/project/blocker-rules";
+import { 卡点类型们, 影响等级们, 动作叫法, 描述上限, 原因最多, 缺原因话, 清原因们, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 发布卡点Action, 认领卡点Action, 完成卡点Action, 删卡点Action } from "./blocker-actions";
 import { useFormDraft } from "@/components/FormDraft";
 import { 有字 } from "@/lib/form-draft";
@@ -83,7 +83,7 @@ export function 原因选择({ 原因们, 值, on改, disabled }: { 原因们: s
       disabled={disabled}
       placeholder="阻碍原因（必填，可多选；没有合适的可以直接打字新增）"
       value={值}
-      onChange={(v: string[]) => on改([...new Set(v.map((x) => x.trim().slice(0, 原因名上限)).filter(Boolean))])}
+      onChange={(v: string[]) => on改(清原因们(v))}
       options={原因们.map((t) => ({ value: t, label: t }))}
       style={{ width: "100%", minWidth: 0 }}
     />
@@ -156,7 +156,7 @@ export function PublishBlockerModal({ followUpId, 默认, 原因们, 沟通们, 
   );
 }
 
-/** 一条卡点的头：编号、状态、类型、影响、原因（待审核的标出来；老卡点没挂原因的显示「原阻碍主体：X」）、显示名（老卡点的标题，新卡点「类型 · 原因」，blocker-rules.ts 卡点显示名） */
+/** 一条卡点的头：编号、状态、类型、影响、原因（待审核的标出来；老卡点没挂原因的显示「原阻碍主体：X」）、老卡点存着的标题（新卡点没有，不重复写类型和原因） */
 export function 卡点头({ b, 带项目 = false }: { b: 卡点卡; 带项目?: boolean }) {
   return (
     <>
@@ -177,7 +177,8 @@ export function 卡点头({ b, 带项目 = false }: { b: 卡点卡; 带项目?: 
         )}
         {带项目 && <Link href={`/projects/${b.projectId}`} style={{ overflowWrap: "anywhere" }}>{b.项目}</Link>}
       </div>
-      <div style={{ fontWeight: 600, marginTop: 4, overflowWrap: "anywhere" }}>{b.title}</div>
+      {/* 11-19：新卡点不存标题，类型、原因上面的标签已经写了，不再加粗重复一遍；老卡点有标题照旧显示 */}
+      {b.有标题 && <div style={{ fontWeight: 600, marginTop: 4, overflowWrap: "anywhere" }}>{b.title}</div>}
     </>
   );
 }

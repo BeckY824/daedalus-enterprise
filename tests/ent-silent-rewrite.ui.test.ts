@@ -119,6 +119,15 @@ it.each([375, 1024, 1366])("AI 记沟通带卡点的卡（11-19）%ipx：没有�
     await page.keyboard.press("Enter");
     await page.keyboard.press("Escape");
     expect(await page.evaluate(() => (Reflect.get(window, "__稿") as { 阻碍原因: string[] }).阻碍原因)).toEqual(["需求变更", "AI 卡上自填"]);
+    // 不在设置字典里的标「新增·待审核」，字典里的不标
+    const 标签 = await page.locator(".prop .ant-tag").allInnerTexts();
+    expect(标签.map((t) => t.trim())).toEqual(["需求变更", "AI 卡上自填（新增·待审核）"]);
+    // 零宽字符清掉、只剩零宽字符的不算
+    await 原因.click();
+    await page.keyboard.type("\u200b");
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Escape");
+    expect(await page.evaluate(() => (Reflect.get(window, "__稿") as { 阻碍原因: string[] }).阻碍原因)).toEqual(["需求变更", "AI 卡上自填"]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }

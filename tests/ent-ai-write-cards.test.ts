@@ -191,6 +191,38 @@ describe("沟通 + 卡点", () => {
   });
 });
 
+describe("沟通 + 卡点：原因字典、旧卡（11-19）", () => {
+  it("出卡时把启用的原因名告诉模型；不在字典里的原因点名说会进待审核；零宽字符清掉", async () => {
+    const { r, 卡 } = await 出("propose_blocker_add", { project: "云帆一期", 卡点类型: "轻度卡点", 阻碍原因: ["需求变更\u200b", "自造的原因"], content: "客户要改需求", 下一步: "下周再聊", reason: "人说的" });
+    expect(卡).toMatchObject({ 阻碍原因: ["需求变更", "自造的原因"] });
+    const note = (r.data as { note: string }).note;
+    expect(note).toContain("设置里启用的阻碍原因：");
+    expect(note).toContain("需求变更");
+    expect(note).toContain("「自造的原因」不在里面");
+    expect(note).not.toContain("「需求变更」不在里面");
+  });
+
+  it("模型还传了卡点描述：并进沟通内容（已经写在内容里的不重复）", () => {
+    const 有 = 收("project_followup", { targetId: 项目id, targetName: "x", content: "客户嫌贵", 下一步: "再聊", 要卡点: true, 卡点类型: "轻度卡点", 阻碍原因: ["其他"], 卡点描述: "财务卡着" });
+    expect((有 as { proposal: { content: string } }).proposal.content).toBe("客户嫌贵\n卡点：财务卡着");
+    const 重 = 收("project_followup", { targetId: 项目id, targetName: "x", content: "客户嫌贵，财务卡着", 下一步: "再聊", 要卡点: true, 卡点类型: "轻度卡点", 阻碍原因: ["其他"], 卡点描述: "财务卡着" });
+    expect((重 as { proposal: { content: string } }).proposal.content).toBe("客户嫌贵，财务卡着");
+  });
+
+  it("老对话里的旧卡带着卡点描述、没有阻碍原因：要人补原因；补了确认时描述接在沟通内容后面，不丢", async () => {
+    const { 卡 } = await 出("propose_blocker_add", { project: "云帆一期", 卡点类型: "中度卡点", 阻碍原因: ["价格预算分歧"], content: "客户嫌贵", 下一步: "下周再报价", reason: "人说的" });
+    const 旧 = { ...卡!, 阻碍原因: undefined, 原因可选们: undefined, 卡点描述: "报价比别家高一成" } as unknown as 项目卡;
+    expect(missingFields(旧 as Proposal)).toContain("阻碍原因");
+    expect(await 确认({ ...旧, 阻碍原因: ["价格预算分歧"] } as Proposal, 乙)).toMatchObject({ ok: true });
+    expect(项目动作.记项目沟通Action).toHaveBeenCalledWith(
+      项目id,
+      expect.objectContaining({ content: "客户嫌贵\n卡点：报价比别家高一成" }),
+      { type: "中度卡点", impact: undefined, reasons: ["价格预算分歧"] },
+    );
+    expect(await prisma.entBlocker.count()).toBe(1);
+  });
+});
+
 describe("沟通：组员记不改项目下一步（11-19 客户答复）", () => {
   it("组员出的卡不要求下一步、标着组员记；确认后沟通记上，项目下一步不动；负责人的卡照旧要下一步", async () => {
     await prisma.project.update({ where: { id: 项目id }, data: { nextStepText: "乙定的下一步" } });

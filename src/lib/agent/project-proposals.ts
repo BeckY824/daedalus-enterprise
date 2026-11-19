@@ -12,7 +12,7 @@ import { FOLLOW_TYPES, FOLLOW_TYPE_MAP } from "../constants";
 import { 是币种 } from "../currency";
 import { parseDateInput } from "@/lib/date-input";
 import { 阶段们, 是阶段, 本套名, 结局叫法, 字典of, 终止结局, 下一步, 要写原因, 原因上限, type 位置, type 阶段字典 } from "../project/nodes";
-import { 卡点类型们, 影响等级们, 描述上限, 原因名上限, 原因最多 } from "../project/blocker-rules";
+import { 卡点类型们, 影响等级们, 描述上限, 原因最多, 清原因们 } from "../project/blocker-rules";
 import { 性别们, 爱好上限, 联系人地址上限, 认生日 } from "../enterprise/customer-v2";
 
 export const 项目卡种类 = [
@@ -83,6 +83,8 @@ export type 项目卡 =
       阻碍原因: string[];
       /** 卡上阻碍原因下拉的选项：设置里启用的原因（工具出卡时带上），也能现打 */
       原因可选们?: string[];
+      /** 11-19 前出的旧卡才有：确认时接在沟通内容后面（并进沟通内容），不悄悄丢 */
+      卡点描述?: string;
       /** 开了超时回收、项目在线索 / 商机：下一步时间必填 */
       要时间?: boolean;
       /** 确认人是项目组员、不是能管项目的人（11-19 客户答复）：卡上不摆下一步、不要求，落库也不写项目的下一步 */
@@ -100,15 +102,20 @@ export type 项目卡 =
 export type 项目卡结果 = { ok: true; proposal: 项目卡 } | { ok: false; error: string };
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : typeof v === "number" ? String(v).slice(0, max) : "");
-/** 阻碍原因：一个字符串或一串；去空白、去重、每个限长、限个数（同 blocker-rules.ts 规整原因们，超长的截断不报错——卡上人还能改） */
+/**
+ * 旧卡点的「卡点描述」（11-19 起界面不再有这一格）并进沟通内容：沟通内容里已经有这段就不重复，没有就接在后面。
+ * 收卡（模型还传了这个参数）和落库（老对话里的旧卡）都走它
+ */
+export function 并进描述(content: string, 描述: string | null | undefined): string {
+  const d = (描述 ?? "").trim();
+  if (!d || content.includes(d)) return content;
+  return content.trim() ? `${content}\n卡点：${d}` : d;
+}
+
+/** 阻碍原因：一个字符串或一串；去零宽字符和空白、去重、每个限长、限个数（blocker-rules.ts 清原因们，超长的截断不报错——卡上人还能改） */
 function 收原因(v: unknown): string[] {
   const 原 = Array.isArray(v) ? v : typeof v === "string" ? v.split(/[、,，;；]/) : [];
-  const 们: string[] = [];
-  for (const x of 原) {
-    const t = typeof x === "string" ? x.trim().slice(0, 原因名上限) : "";
-    if (t && !们.includes(t)) 们.push(t);
-  }
-  return 们.slice(0, 原因最多);
+  return 清原因们(原).slice(0, 原因最多);
 }
 const 名单 = (v: unknown, max = 50) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x.trim()).map((x) => x.trim().slice(0, 60)).slice(0, max) : undefined);
 
@@ -196,7 +203,7 @@ export function buildProjectProposal(
     return {
       ok: true,
       proposal: {
-        ...共, kind, type, content: str(args.content, 2000), 下一步: str(args.下一步, 100), 下一步时间: 时间,
+        ...共, kind, type, content: 并进描述(str(args.content, 2000), str(args.卡点描述, 描述上限)), 下一步: str(args.下一步, 100), 下一步时间: 时间,
         要卡点: args.要卡点 === true, 卡点类型, 影响等级, 阻碍原因: 收原因(args.阻碍原因),
         ...(可选 ? { 原因可选们: 可选 } : {}),
         ...(args.要时间 === true ? { 要时间: true } : {}),
@@ -267,12 +274,12 @@ export function 项目卡缺(p: 项目卡): string[] {
     if (p.到?.result === "异常状态" && !p.异常类别) miss.push("异常类别");
   }
   if (p.kind === "project_followup") {
-    if (!p.content.trim()) miss.push("沟通内容");
+    if (!并进描述(p.content, p.卡点描述).trim()) miss.push("沟通内容");
     if (!p.组员记 && !p.下一步.trim()) miss.push("下一步计划");
     if (!p.组员记 && p.要时间 && !p.下一步时间) miss.push("下一步时间");
     if (p.要卡点 && (!p.卡点类型 || p.卡点类型 === "暂无卡点")) miss.push("卡点类型");
     // 11-19：选了卡点类型，阻碍原因必填（落库时 规整发布 再兜一次）；老对话里的卡没有这一格，同样要人补
-    if (p.要卡点 && !(p.阻碍原因 ?? []).some((x) => x.trim())) miss.push("阻碍原因");
+    if (p.要卡点 && !清原因们(p.阻碍原因 ?? []).length) miss.push("阻碍原因");
   }
   // 方案 / 结果只有最后一个完成的人必填（11-01 定稿）；其余人点完成只留处理说明，可空
   if (p.kind === "blocker_resolve" && p.最后一个 !== false) {
