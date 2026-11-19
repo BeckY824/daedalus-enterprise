@@ -52,9 +52,9 @@ describe("c1 必填矩阵：规整后原样", () => {
     expect(规则.节点推进.开).toBe(true);
   });
 
-  it("代码里的建议必填 = c1 的矩阵去掉沟通三项、下一步计划 / 时间（客户第 31b 题），生产备货加备货状态、物流运输加物流状态 + 物流单号（客户 11-19）", () => {
+  it("代码里的建议必填 = c1 的矩阵去掉沟通三项、下一步计划 / 时间（客户第 31b 题）；客户 11-19 定稿：生产备货要已备货、物流运输要已签收 + 物流单号、线索验证加需求", () => {
     const 去五项 = Object.fromEntries(Object.entries(c1原样.节点推进.必填).map(([n, v]) => [n, v.filter((x) => !["沟通三项", "下一步计划", "下一步时间"].includes(x))]));
-    expect(建议必填).toEqual({ ...去五项, 生产备货: ["备货状态"], 物流运输: ["物流状态", "物流单号"] });
+    expect(建议必填).toEqual({ ...去五项, 线索验证: ["需求描述", "需求", ...去五项.线索验证.slice(1)], 生产备货: ["已备货"], 物流运输: ["已签收", "物流单号"] });
   });
 
   it.each(Object.entries(建议必填))("建议清单 %s：全齐 = 空；缺任一项 = 正好报那一项", (老名, 项们) => {
@@ -62,7 +62,9 @@ describe("c1 必填矩阵：规整后原样", () => {
     const node = 新名(老名);
     expect(节点必填(r, node)).toEqual(项们);
     expect(还差(r, 全齐(node))).toEqual([]);
-    for (const 项 of 项们) expect(还差(r, 去掉(全齐(node), 项))).toEqual([项]);
+    // 线索验证的「有效沟通」= 这个节点配的其他项都齐（数据里没带配置时看需求状态）：需求、有效沟通都配了时，缺需求状态两项一起报
+    const 连着 = 项们.includes("需求") && 项们.includes("有效沟通");
+    for (const 项 of 项们) expect(还差(r, 去掉(全齐(node), 项))).toEqual(连着 && (项 === "需求" || 项 === "有效沟通") ? ["需求", "有效沟通"] : [项]);
   });
 
   it.each(Object.entries(c1原样.节点推进.必填))("%s：新名、旧名都读到同一份，一项不多一项不少", (老名, 项们) => {
@@ -110,7 +112,7 @@ function 全齐(node: string): 必填数据 {
       level: "A", projTag: "A 重点推进", dealDemand: "要两台", nextStepText: "约演示", contractAmount: 100, depositAmount: 10, balanceSettled: true,
       budgetLevel: "高", priceSense: "敏感", decisionChain: "清楚", purchaseCycle: "三个月", productFit: "匹配", valueFit: "认同",
       decisionReach: "已触达", competitor: "有", deployFit: "具备", siteStatus: "已平整",
-      stockStatus: "已备货", logisticsStatus: "运输中", trackingNo: "SF1234567",
+      stockStatus: "已备货", logisticsStatus: "已签收", trackingNo: "SF1234567",
     },
     客户: { phone: "13800000001", extra: { country: "中国", source: "展会", level: "A" }, assignWay: "自动分配" },
     有客户: true,
@@ -164,6 +166,9 @@ function 去掉(d: 必填数据, 项: 必填项): 必填数据 {
     case "备货状态": p.stockStatus = "备好了"; break;
     case "物流状态": p.logisticsStatus = "-"; break;
     case "物流单号": p.trackingNo = "暂无"; break;
+    // 客户 11-19 定稿：要选到那一项，选了别的项不算
+    case "已备货": p.stockStatus = "生产中"; break;
+    case "已签收": p.logisticsStatus = "运输中"; break;
     default: throw new Error(`测试没写怎么去掉：${项}`);
   }
   return x;

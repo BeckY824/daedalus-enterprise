@@ -9,7 +9,7 @@ import { prisma, defaultClient } from "../prisma";
 import { 不能当负责人 } from "../owners";
 import { 查完再写 } from "../check-then-write";
 import { 改节点问题, 原因上限, 要写原因, 终止结局, 下一步, 节点序号, 字典of, 本套位置, 本套名, 同名们, 是交付, 结局叫法, type 位置 } from "./nodes";
-import { 还差, 必填叫法, 节点推进生效, 项目按必填走, 只管新建之后, 节点必填, 有效线索判定, 有效沟通还差, type 必填数据 } from "./required";
+import { 还差, 必填叫法, 节点推进生效, 项目按必填走, 节点推进管, 只管新建之后, 节点必填, 有效线索判定, 有效沟通还差, type 必填数据 } from "./required";
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "./wizard";
 import { 持有上限of, 负责人可推, type 组织规则 } from "./org-rules";
 import { 企业版推进关, 记沟通阶段问题, 记沟通标记, 有效线索节点 } from "./stage-gates";
@@ -26,7 +26,7 @@ import { 软删一条 } from "@/lib/enterprise/soft-delete";
 import { 按主键取没删的 } from "@/lib/enterprise/soft-delete-core";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 挡改设置 } from "@/lib/enterprise/edit-perm";
-import { 选的原因, 认跟进方式 } from "@/lib/enterprise/dict";
+import { 选的原因, 认跟进方式, 已签收物流状态 } from "@/lib/enterprise/dict";
 import { 去不填 } from "@/lib/enterprise/dict-kinds";
 import { 生效组织规则 } from "./org-rules-store";
 import { 超时回收日, 已超时, 即将回收, 将回收提醒, 将回收提醒头, 超时理由, 超时起点, 系统, 回收原因前缀, 算回收起点的留痕 } from "./timeout";
@@ -340,7 +340,9 @@ export async function 改节点(
     const 有验收报告 = 企业版() && !!result && 是交付(result) && !p.acceptancePassed
       ? (await tx.attachment.count({ where: { projectId: p.id, tag: "验收报告" } })) > 0
       : false;
-    const 问题 = 改节点问题({ ...到, result }, { ...p, 有验收报告 }, 异常, 企业版(), 字典);
+    // 交付结清只在尾款结算（客户 11-19 定稿）：跟「节点推进」开关一起生效（11-19 定；节点推进管 = 开着、且这个项目在管的范围里）；
+    // 项目页 load.ts 交付只在尾款 用同一个判断
+    const 问题 = 改节点问题({ ...到, result }, { ...p, 有验收报告 }, 异常, 企业版(), 字典, 企业版() && 节点推进管(规则, p));
     if (问题) return { ok: false as const, error: 问题 };
     const 挡 = 到.phase !== 现.phase || 到.node !== 现.node || result !== 现.result ? 改不了的话(级别, ["商机阶段"]) : null;
     if (挡) return { ok: false as const, error: 挡 };
@@ -355,14 +357,14 @@ export async function 改节点(
       ? (企业版() ? 补全期不给(me, org, 规则) : null) ?? 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则)) ?? (await 企业版推进关(tx, p, 到, 规则, 有效沟通差of(tx, p, 规则)))
       : null;
     if (不给) return { ok: false as const, error: 不给 };
-    // 企业版节点必填（D-37）：配了必填的节点，缺着必填往前推只给「经理」（企业版 = 销售管理：自己当负责人的，或「仅上级推」下的直属上级，见 是经理）；
-    // 销售本人填齐了（占位值不算填了）点「完成节点」照样能推（M-节点-05/09）
+    // 企业版节点必填（D-37）：配了必填的节点，缺着必填谁都不能往前推（客户 11-19 定稿「必须全员统一规则必须填齐」：
+    // 原来总管理、销售管理能留空先推，去掉了；首页 AI、看板拖动、项目页都走这里）；填齐了（占位值不算填了）点「完成节点」照样能推（M-节点-05/09）
     // 节点推进管的项目才拦（项目按必填走）：默认全部项目，存量也要补齐（客户 11-19）；设置成只管新建的时，生效时刻之前建的照手动推
-    if (往前 && 项目按必填走(规则, p) && !是经理(me, org)) {
+    if (往前 && 项目按必填走(规则, p)) {
       const 数据 = await 读必填数据(tx, p, 规则);
       // 线索核验判有效（lead-verify.ts 带 验证放行 进来）：先推进程、推成了才写判定，这一步的「线索验证结果」按判了有效算
       const 差 = 还差(规则, 选项?.验证放行 ? { ...数据, 线索验证: { verdict: 有效线索判定, finalResult: 有效线索判定, pending: null } } : 数据);
-      if (差.length) return { ok: false as const, error: `「${现.node}」还差必填：${差.map(必填叫法).join("、")}；补齐再推${企业版() ? "" : "，要先推请找老板或主管"}` };
+      if (差.length) return { ok: false as const, error: `「${现.node}」还差必填：${差.map(必填叫法).join("、")}；补齐再推` };
     }
     let 类别: string | null = null;
     let 备注: string | null = null;
@@ -400,10 +402,9 @@ export async function 改节点(
         toPhase: 到.phase, toNode: 到.node, toResult: result, categoryId: 类别, reason: 清下一步 ? 拼备注(原因, 原下一步备注(p)) : 原因,
       },
     });
-    // 老板、主管往前推到的节点也配了、也齐了：接着推
-    const 推进 = 往前 ? await 按必填推进(tx, 规则, me, p.id, true) : [];
+    // 手动往前推本身就是这次的一格（客户 11-19 定稿：一次只推一格）：推到的节点就算也齐了，也不接着自动推，等下一次保存或再点「完成节点」
     await 跟着项目重算(tx, 状态开, [p.customerId]);
-    return { ok: true as const, 变了: true, ...带推进(推进) };
+    return { ok: true as const, 变了: true };
   });
 }
 
@@ -1641,7 +1642,7 @@ type 必填项目行 = Pick<Project,
  * 只用 tx：保存的那笔事务里调，刚写的也读得到
  */
 export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项目行, 规则?: 组织规则): Promise<必填数据> {
-  const [c, 联系人们, 沟通, 合同附件数, 回款笔数, 项目方案数, 分配, 验证, 验收报告数] = await Promise.all([
+  const [c, 联系人们, 沟通, 合同附件数, 回款笔数, 项目方案数, 分配, 验证, 验收报告数, 签收] = await Promise.all([
     // 只用来判必填齐没齐、不回给页面：绕开可见范围读，组员看不到客户时也不误报「所属客户」（11-03 B6-1）
     看全部(() => tx.customer.findUnique({
       where: { id: p.customerId },
@@ -1661,6 +1662,8 @@ export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项
     tx.entLeadVerify.findUnique({ where: { projectId: p.id }, select: { verdict: true, finalResult: true, pending: true } }),
     // 验收报告（M-必填-11）：「项目附件」里验收报告那一格传了几份
     tx.attachment.count({ where: { projectId: p.id, tag: "验收报告" } }),
+    // 物流状态里算「已签收」的名字（客户 11-19 定稿）：按字典默认项 id 认，改了名也认
+    已签收物流状态(tx),
   ]);
   return {
     项目: {
@@ -1685,6 +1688,7 @@ export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项
     分配方式: 分配?.way ?? null,
     线索验证: 验证 ?? null,
     线索验证必填: 规则 ? 节点必填(规则, 有效线索节点) : [],
+    已签收物流们: 签收.名们,
   };
 }
 
@@ -1734,40 +1738,47 @@ async function 往前进来的(tx: Prisma.TransactionClient, p: { id: string; ph
 }
 
 /**
- * 企业版节点必填（D-37）：现在的节点配了必填、全齐了、是往前走进来的，就往前推一步，记一行节点变更（理由写明自动推进，操作人 = 这次保存的人）；
- * 推到的节点也配了、也齐了，接着推。返回推到的节点（没推 = 空）。
- * 没生效时一行都不查。在保存的那笔事务里调，规则在事务外读好传进来。
- * 刚往前推进来（老板、主管手动推）的传 刚往前 = true，省一次查
+ * 这个人现在存一下，项目会不会按必填自动推一格：会 = 推到的位置，不会 = null。只查不写；按必填推进 和项目页「存一下会自动推」提示共用。
+ * 节点推进没生效、需求补全期（M-权限-07）这两条由调用方先挡（按必填推进 开头挡了）
  */
-export async function 按必填推进(tx: Prisma.TransactionClient, 规则: 组织规则, me: { id: string }, projectId: string, 刚往前 = false): Promise<string[]> {
+export async function 自动推得到(tx: Prisma.TransactionClient, 规则: 组织规则, me: { id: string }, p: Project): Promise<{ phase: string; node: string } | null> {
+  if (!节点推进生效(规则) || (企业版() && 规则.阶段.需求补全期)) return null;
+  // 节点推进不管的项目不自动推（项目按必填走：默认全部都管；设置成只管新建的时看 createdAt）；已结束、在公海的不推
+  if (p.pooledAt || p.result || !项目按必填走(规则, p)) return null;
+  // 待分配期间占位的建的人改字段：字段照存，不跟着自动推进（P-转-21、X-68 建的人不能推进）
+  if (待分配占位(me, p)) return null;
+  const 下 = 下一步(p, 字典of(企业版()));
+  if (!下) return null;
+  // 退回来的节点不推（退回一般是要重做）
+  if (!(await 往前进来的(tx, p))) return null;
+  if (还差(规则, await 读必填数据(tx, p, 规则)).length) return null;
+  if (await 企业版推进关(tx, p, 下, 规则, 有效沟通差of(tx, p, 规则))) return null;
+  return 下;
+}
+
+/**
+ * 企业版节点必填（D-37）：现在的节点配了必填、全齐了、是往前走进来的，就往前推一步，记一行节点变更（理由写明自动推进，操作人 = 这次保存的人）。
+ * 一次最多推一格（客户 11-19 定稿）：推到的节点就算也配了、也齐了，也停在那，等下一次保存（或人点「完成节点」）再推。
+ * 返回推到的节点（没推 = 空，推了 = 一个）。没生效时一行都不查。在保存的那笔事务里调，规则在事务外读好传进来。
+ * 保存项目字段、画像、勾交付、记回款、记沟通、客户资料连带推（客户项目按必填推进）、看板就地补填都走这一个
+ */
+export async function 按必填推进(tx: Prisma.TransactionClient, 规则: 组织规则, me: { id: string }, projectId: string): Promise<string[]> {
   // 需求状态补全期（M-权限-07）：只有销售管理、总管理手动推，填齐了也不自动推
   if (!节点推进生效(规则) || (企业版() && 规则.阶段.需求补全期)) return [];
-  const 到了: string[] = [];
-  let 往前 = 刚往前;
-  for (;;) {
-    const p = await tx.project.findUnique({ where: { id: projectId } });
-    // 节点推进不管的项目不自动推（项目按必填走：默认全部都管；设置成只管新建的时看 createdAt）
-    if (!p || p.pooledAt || p.result || !项目按必填走(规则, p)) break;
-    // 待分配期间占位的建的人改字段：字段照存，不跟着自动推进（P-转-21、X-68 建的人不能推进）
-    if (待分配占位(me, p)) break;
-    const 下 = 下一步(p, 字典of(企业版()));
-    if (!下) break;
-    if (!往前 && !(await 往前进来的(tx, p))) break;
-    if (还差(规则, await 读必填数据(tx, p, 规则)).length) break;
-    if (await 企业版推进关(tx, p, 下, 规则, 有效沟通差of(tx, p, 规则))) break;
-    // 推到下一个节点：带过去的下一步不算新节点的（不然新节点配了下一步必填就直接齐了、一路连推），清掉，老值记进这行节点变更
-    await tx.project.update({ where: { id: p.id }, data: { phase: 下.phase, node: 下.node, ...清掉的下一步 } });
-    await 节点变了的提成(tx, p.id, p.phase, 下.phase);
-    await tx.projectNodeLog.create({
-      data: {
-        projectId: p.id, userId: me.id, reason: 拼备注(自动推进理由, 原下一步备注(p)),
-        fromPhase: p.phase, fromNode: 本套名(p.node, 字典of(企业版())), fromResult: null, toPhase: 下.phase, toNode: 下.node, toResult: null,
-      },
-    });
-    到了.push(下.node);
-    往前 = true;
-  }
-  return 到了;
+  const p = await tx.project.findUnique({ where: { id: projectId } });
+  if (!p) return [];
+  const 下 = await 自动推得到(tx, 规则, me, p);
+  if (!下) return [];
+  // 推到下一个节点：带过去的下一步不算新节点的（不然新节点配了下一步必填就直接齐了），清掉，老值记进这行节点变更
+  await tx.project.update({ where: { id: p.id }, data: { phase: 下.phase, node: 下.node, ...清掉的下一步 } });
+  await 节点变了的提成(tx, p.id, p.phase, 下.phase);
+  await tx.projectNodeLog.create({
+    data: {
+      projectId: p.id, userId: me.id, reason: 拼备注(自动推进理由, 原下一步备注(p)),
+      fromPhase: p.phase, fromNode: 本套名(p.node, 字典of(企业版())), fromResult: null, toPhase: 下.phase, toNode: 下.node, toResult: null,
+    },
+  });
+  return [下.node];
 }
 
 /**

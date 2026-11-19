@@ -13,7 +13,7 @@ import { 金额格式 } from "@/lib/money-input";
 import { dayjs } from "@/lib/utils";
 import { 企业客户级别, 企业级别说明 } from "@/lib/enterprise/customer-v2";
 import { 未选占位, 不填项, 去不填, 去多选不填 } from "@/lib/enterprise/dict-kinds";
-import { 必填叫法, type 必填项 } from "@/lib/project/required";
+import { 必填叫法, 去掉宽的, type 必填项 } from "@/lib/project/required";
 import { 项目名上限 } from "@/lib/project/wizard";
 import { 成交需求上限 } from "@/lib/project/profile-rules";
 import { 合同状态们, 痛点标注上限, 备货状态们, 物流单号上限 } from "@/lib/project/proj-fields";
@@ -77,12 +77,12 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
   const [刷新中, 开始刷新] = useTransition();
   /** 防连点；存完等页面刷新好（拿到新的还差）才推 */
   const 锁 = useRef(false);
-  const 刷完要 = useRef<"推" | "强推" | null>(null);
+  const 刷完要 = useRef(false);
   const 缺 = useMemo(() => {
     const 配的 = p.必填?.还差 ?? [];
-    return [...配的, ...((交付还差 ?? []) as 必填项[]).filter((k) => !配的.includes(k))];
+    // 同一列宽严两项都缺（老配置两项一起配了）：只留判得严的那一行，不然一列摆两个下拉、后存的那行把值改回去
+    return 去掉宽的([...配的, ...((交付还差 ?? []) as 必填项[]).filter((k) => !配的.includes(k))]);
   }, [p.必填?.还差, 交付还差]);
-  const 只能靠填齐 = !!p.必填?.只能靠填齐 || !!交付还差?.length;
   const 环: 窗里环境 = {
     能就地改,
     改不了话,
@@ -92,6 +92,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
     有画像: !!p.画像,
     有标签: !!p.项目标签?.选项.length,
     有物流: !!p.备货物流?.物流状态.选项.length,
+    已签收: p.备货物流?.已签收,
     联系人数: 联系人们.length,
   };
   const 值 = (k: 必填项): 草稿值 | undefined => (k in 草稿 ? 草稿[k] : 初始草稿(k, p));
@@ -117,7 +118,6 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
   const 行们 = 按目录排([...缺, ...已存]);
   const 态 = 算窗口状态(行们, 环, 值, 已存, 能推进);
   const 占着 = 忙 || 存着 || 刷新中;
-  const 能老板推 = 能推进 && !只能靠填齐;
   const 有格子 = 态.待存.length + 态.没填好.length > 0;
 
   const 改 = (k: 必填项, v: 草稿值) => {
@@ -130,22 +130,21 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
   // 存完的下一步要等页面刷新好再走：on完成 用的是最新的节点，尾款、验收刚勾上的也算数
   useEffect(() => {
     if (刷新中 || !刷完要.current) return;
-    const 要 = 刷完要.current;
-    刷完要.current = null;
-    if (要 === "推" && 缺.length) {
+    刷完要.current = false;
+    if (缺.length) {
       // 服务端读回来还差（比如别人同时改了）：说清楚留在框里，刚存的要是还差也能重填
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- 这一步只能等 router.refresh 的过渡结束，且 刷完要 只触发一次
       set已存((x) => x.filter((k) => !缺.includes(k as 必填项)));
       set话(`已保存，但系统里还差：${缺.map(必填叫法).join("、")}`);
       return;
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 这一步只能等 router.refresh 的过渡结束，且 刷完要 只触发一次
     if (!能推进) return set话(完成不了 ?? "现在不能完成这个节点");
     on完成();
   }, [刷新中, 缺, 能推进, 完成不了, on完成]);
 
   const 走 = async (想: 想怎么走) => {
     if (锁.current) return;
-    if (!态.待存.length) return 想 === "强推" ? on完成() : undefined;
+    if (!态.待存.length) return;
     锁.current = true;
     set存着(true);
     set话(null);
@@ -179,7 +178,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
       else router.refresh();
       return;
     }
-    if (接着 === "推" || 接着 === "强推") 刷完要.current = 接着;
+    if (接着 === "推") 刷完要.current = true;
     开始刷新(async () => { if (刷新) await 刷新(); else router.refresh(); });
   };
 
@@ -258,7 +257,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
 
   // 灰按钮要写为什么
   const 灰着话 = !缺.length || !能推进 || 态.能一键完成 ? null
-    : 态.窗外们.length ? `${态.窗外们.map(必填叫法).join("、")} 这里填不了，处理完才能完成节点${能老板推 ? "，或点「仍要推进」" : ""}`
+    : 态.窗外们.length ? `${态.窗外们.map(必填叫法).join("、")} 这里填不了，处理完才能完成节点`
     : 态.没填好.length ? `还没填好：${态.没填好.map(必填叫法).join("、")}`
     : null;
 
@@ -267,7 +266,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
       {稿.提示}
       <div><span className="proj-where-label">现在在</span> {现在在}</div>
       {缺.length ? (
-        <Alert type="warning" showIcon message={只能靠填齐 ? "还差这些必填，补齐了才能完成这个节点" : "还差这些必填（你是总管理 / 销售管理，可以先推）"} />
+        <Alert type="warning" showIcon message="还差这些必填，补齐了才能完成这个节点" />
       ) : (
         <Alert type="success" showIcon message={p.必填 ? "这个节点的必填都齐了，可以推进" : "这个节点没有配必填，可以推进"} />
       )}
@@ -282,7 +281,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
             const 类 = 归类(k, 环);
             const 存上了 = 已存.includes(k);
             const 项 = k as 必填项;
-            const 问题 = 类.类 === "填" && !存上了 && !草稿是空的(项, 值(项)) ? 草稿问题(项, 值(项)) : null;
+            const 问题 = 类.类 === "填" && !存上了 && !草稿是空的(项, 值(项)) ? 草稿问题(项, 值(项), 环) : null;
             const 现值话 = 类.类 === "填" && !存上了 ? 现值不算的话(项, p) : null;
             return (
               <li key={k} data-required={k} style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
@@ -313,9 +312,6 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
         )}
         {!!缺.length && !态.能一键完成 && 态.待存.length > 0 && (
           <Button disabled={占着} onClick={() => 走("只存")}>先保存已填的</Button>
-        )}
-        {!!缺.length && 能老板推 && (
-          <Button type={有格子 ? "default" : "primary"} disabled={占着} onClick={() => 走("强推")}>仍要推进</Button>
         )}
         {!缺.length && 能推进 && <Button type="primary" disabled={占着} onClick={on完成}>确认推进</Button>}
         <Button onClick={on关}>取消</Button>

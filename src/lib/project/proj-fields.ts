@@ -27,6 +27,13 @@ export type 备货状态 = (typeof 备货状态们)[number];
 export function 是备货状态(v: unknown): v is 备货状态 {
   return typeof v === "string" && (备货状态们 as readonly string[]).includes(v);
 }
+/** 必填里「已备货」认的那一项（客户 11-19 定稿：备货要选到已备货才算） */
+export const 已备货的备货状态: 备货状态 = "已备货";
+/**
+ * 物流状态字典（projLogistics）默认项里算「已签收」的那一项的默认名（客户 11-19 定稿：物流要选到已签收才算）。
+ * 字典能改名：判的时候按这一项的默认 id 认，见 dict.ts 已签收物流状态；这里只是默认名（没建字典 / 没读库时用）
+ */
+export const 默认已签收 = "已签收";
 /** 显示用：库里空的、认不出的都当没填（null，界面写「—」） */
 export function 备货状态显示(存的: string | null | undefined): 备货状态 | null {
   return 是备货状态(存的) ? 存的 : null;

@@ -3,17 +3,17 @@ import { 能往项目记沟通 } from "@/lib/project/follow-needs-project";
 import { 只读客户 } from "@/lib/team-scope";
 import type { SessionUser } from "@/lib/auth";
 import { 项目收藏了吗 } from "@/lib/favorites";
-import { 能管项目, 能加组员, 能改组员, 能放回公海, 能改节点, 上级只推, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据, 超时成员线, 超时线 } from "@/lib/project/db";
-import { 项目按必填走, 节点必填, 还差, 有效沟通还差, 必填叫法 } from "@/lib/project/required";
+import { 能管项目, 能加组员, 能改组员, 能放回公海, 能改节点, 上级只推, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据, 自动推得到, 超时成员线, 超时线 } from "@/lib/project/db";
+import { 项目按必填走, 节点推进管, 节点必填, 还差, 有效沟通还差, 必填叫法 } from "@/lib/project/required";
 import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import { llmEnabled } from "@/lib/llm";
 import { 已立项天数 } from "@/lib/project/project-fields";
 import { 来源字, 人名显示 } from "@/lib/project/system-created";
-import { 页面可选项, 预读页面字典, type 字典种类 } from "@/lib/enterprise/dict";
+import { 页面可选项, 预读页面字典, 页面字典, 可选名们, 已签收认法, type 字典种类 } from "@/lib/enterprise/dict";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能看项目, 能转让项目, 是经理, 能删除, 能新建和领取 } from "@/lib/enterprise/permissions";
+import { 能看项目, 能转让项目, 能删除, 能新建和领取 } from "@/lib/enterprise/permissions";
 import { 页面能改沟通, 能改沟通of, 页面能删沟通, 能删沟通of, 本人限时可改of, 本人可改到, 下一步跟着改of, 系统记的沟通们 } from "@/lib/enterprise/follow-perm";
 import { 沟通留痕们 } from "@/lib/enterprise/follow-edited";
 import { 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
@@ -122,6 +122,23 @@ async function 字典格(种类: "projTag" | "projLogistics", v: string | null):
   return { 值: v, 选项: 有值(v) && !启用.includes(v) ? [...启用, v] : 启用 };
 }
 
+/**
+ * 交付卡、完成节点框的备货 / 物流三格。已签收（客户 11-19 定稿：物流要选到「已签收」才算）：算数的名字（字典那一项现在的名字 + 改名前的默认名）、
+ * 现在叫什么（提示里写）；那一项停用了、项目上又没存着 = 下拉里选不到，完成节点框提示管理员去启用
+ */
+async function 备货物流格(p: { stockStatus: string | null; logisticsStatus: string | null; trackingNo: string | null }) {
+  // 物流状态的选项和「已签收」认法用同一份行（页面字典，和客户页项目区预读的是一份）：不另查一句（客户详情查询条数上限）
+  const 行们 = 企业版() ? await 页面字典("projLogistics") : [];
+  const 签收 = 已签收认法(行们);
+  const 启用 = 可选名们(行们).filter((x) => x !== 其他项);
+  const v = p.logisticsStatus;
+  const 物流状态 = { 值: v, 选项: 有值(v) && !启用.includes(v) ? [...启用, v] : 启用 };
+  return {
+    备货状态: 备货状态显示(p.stockStatus), 物流状态, 物流单号: p.trackingNo,
+    已签收: { 名们: 签收.名们, 现名: 签收.现名, 能选: 物流状态.选项.some((x) => 签收.名们.includes(x)) },
+  };
+}
+
 /** 项目详情这一屏读的字典（回收 / 无效原因、项目画像各项、关联的身份 / 角色 / 立场）：客户页项目区和项目页开头一起预读，合成两句 */
 export const 项目详情字典们: readonly 字典种类[] = ["recycle", "invalid", ...项目画像项.map((x) => x.种类), "projTag", "projLogistics", "projCustRole", "projContactRole", "projStance"];
 
@@ -226,9 +243,13 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   const 节点能改 = !占位 && (能改节点(me, p, org) || 上级只推(me, p, await 直属才推(org), 规则));
   // 有结局的也算（11-03 A5-1）：改回到后面的节点同样算往前推，下拉里照样灰着
   // 节点推进管的项目才列必填、灰下拉：默认全部项目（客户 11-19，存量也要补齐）；设置成只管新建的时，生效时刻之前建的不列
-  const 必填 = !公海 && 项目按必填走(规则, p)
-    ? { 配了: 节点必填(规则, p.node), 还差: 还差(规则, await 读必填数据(prisma, p, 规则)), 只能靠填齐: !是经理(me, org) }
-    : null;
+  const 必填差 = !公海 && 项目按必填走(规则, p) ? 还差(规则, await 读必填数据(prisma, p, 规则)) : null;
+  // 「仅上级推」下上级手动推到一个已经齐了的节点会停在那（一次只推一格，客户 11-19 定稿）：负责人存一下就会自动推一格，项目页说一句。
+  // 只在这个情况出：仅上级推、齐了、看的人能改字段、存一下真推得动（和 按必填推进 同一个判断）
+  const 存一下就推 = !!必填差 && !必填差.length && !负责人可推(规则) && 能改 && !!(await 自动推得到(prisma, 规则, me, p));
+  // 交付结清只在尾款结算（客户 11-19 定稿）：和 db.ts 改节点 传给 改节点问题 的同一个判断；不受开关管就改成 企业
+  const 交付只在尾款 = 企业 && 节点推进管(规则, p);
+  const 必填 = 必填差 ? { 配了: 节点必填(规则, p.node), 还差: 必填差, ...(存一下就推 ? { 存一下就推 } : {}) } : null;
   // 记沟通时预演回收日（10-30 P0-2，lib/enterprise/recycle-text.ts 预演回收日）：给起点日和这个进程的天数，浏览器按同一个算法算。
   // 配了必填的进程记完可能自动推到下一个进程（天数跟着换），算不准就不给，界面不显示那一句
   const 回收天数 = 企业 && 要下一步 && 回收日 && !必填 && !验证不收 ? 节点超时天数(规则, p.node, 字典, 回收线) : null;
@@ -269,7 +290,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     // 项目标签（迁移 153，F-项目-14）：和级别各一列、各自填，同样都给看。选项 = 字典里启用着的 + 这个项目存着、后来停用的那项（同项目画像）
     项目标签: await 字典格("projTag", p.projTag),
     // 备货状态、物流状态、物流单号（迁移 154，客户 11-19）：项目自己的，都给看；物流状态选项同项目标签（字典 projLogistics）
-    备货物流: { 备货状态: 备货状态显示(p.stockStatus), 物流状态: await 字典格("projLogistics", p.logisticsStatus), 物流单号: p.trackingNo },
+    备货物流: await 备货物流格(p),
     // 业务线（11-02）：编辑框里能改（改了不重新自动分配）；老项目没填是 null
     bizLine: p.bizLine,
     所在地: 露 ? { addrCountry: p.addrCountry, addrProvince: p.addrProvince, addrCity: p.addrCity, addrDistrict: p.addrDistrict, location: p.location } : null,
@@ -347,7 +368,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     // 指定分配时间（PR3）：还没到点的定时，详情上写时间和分给谁；录入人、能分配的人能改 / 取消 / 改成现在分配
     ...(企业 && p.scheduledAssignAt && p.awaitAssignAt && !p.pooledAt ? { 定时分配: {
       时间: 时刻转北京墙钟(p.scheduledAssignAt)!, 给谁: p.scheduledAssignTo ? 叫(p.scheduledAssignTo) ?? "已不在的成员" : null, 能动: !!org && 能动定时(me, p, org),
-    } } : {}), 要下一步, 能记沟通, 组员记沟通: 能记沟通 && !能改, 可改沟通, 可删沟通, ...(本人候选.size ? { 服务器现在: 现在.toISOString() } : {}), 必填, 不给推, 能改节点: 节点能改, 能转让: 能转,
+    } } : {}), 要下一步, 能记沟通, 组员记沟通: 能记沟通 && !能改, 可改沟通, 可删沟通, ...(本人候选.size ? { 服务器现在: 现在.toISOString() } : {}), 必填, 不给推, 交付只在尾款, 能改节点: 节点能改, 能转让: 能转,
     // 转给谁以后自己还看得到（11-03 A5-3）：总管理、上级转给下属照样能看，提示不说「看不到」，转完也不跳回列表
     ...(企业版() && 能转 ? { 转后还能看: 候选.filter((c) => 能看项目(me, { ...p, ownerId: c.id, 已加入 }, org)).map((c) => c.id) } : {}),
     能放公海: !公海 && 能放回公海(me, p, org) && (能进公海的阶段 as readonly string[]).includes(p.phase) && !(企业 && p.result), // 已结束的不能单独放回（X-70）

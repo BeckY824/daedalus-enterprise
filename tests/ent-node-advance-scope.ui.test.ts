@@ -1,7 +1,8 @@
 /**
  * 设置 → 项目模式 → 节点推进卡（客户 11-19）：
  *   - 「管哪些项目」默认「全部项目」（存量、新建都按必填走），能改成「开启之后新建的」（第 25 题那版），点了当场存
- *   - 「用建议清单」：只留业务字段（客户第 31b 题，不再带沟通三项、下一步），生产备货填备货状态、物流运输填物流状态 + 物流单号
+ *   - 「用建议清单」：只留业务字段（客户第 31b 题，不再带沟通三项、下一步），生产备货填已备货、物流运输填已签收 + 物流单号（客户 11-19 定稿）
+ *   - 同一列宽严两项互斥：选了「备货状态（已备货）」就去掉「备货状态（选了任一项就算·旧）」，反过来一样
  *   - 390 / 1024 / 1280 / 1366 宽不横向溢出
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -33,9 +34,9 @@ for (const 宽 of [390, 1024, 1280, 1366]) {
       // 用建议清单：生产备货、物流运输的下拉里是新字段；别的节点没有沟通三项、下一步
       await 卡.getByRole("button", { name: "用建议清单" }).click();
       const 节点 = (n: string) => 卡.locator(`[aria-label="「${n}」的必填"]`).locator("xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' ant-select ')][1]");
-      await expect.poll(() => 节点("生产备货").innerText()).toContain("备货状态");
+      await expect.poll(() => 节点("生产备货").innerText()).toContain("备货状态（已备货）");
       const 物流 = await 节点("物流运输").innerText();
-      expect(物流).toContain("物流状态");
+      expect(物流).toContain("物流状态（已签收）");
       expect(物流).toContain("物流单号");
       expect(await 卡.innerText()).not.toMatch(/下一步计划|当前进程沟通（发起主体/);
       const 溢 = await 卡.evaluate((c) => {
@@ -59,3 +60,31 @@ it("选的是「开启之后新建的」：写生效时刻；关着不摆范围"
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 }, 60_000);
+
+for (const 宽 of [390, 1366]) {
+  it(`${宽}px 同一列宽严两项互斥（客户 11-19 定稿）：选了严的去掉宽的、选了宽的去掉严的；宽的写「选了任一项就算·旧」`, async () => {
+    const { page, errors } = await 开页(browser, bundle, { 开: true, 必填: { 生产备货: ["备货状态"] }, 生效于: null }, 宽);
+    try {
+      const 卡 = page.locator(".ant-card").filter({ has: page.locator(".ant-card-head-title", { hasText: /^节点推进$/ }) });
+      await 卡.waitFor();
+      const 框 = 卡.locator(`[aria-label="「生产备货」的必填"]`);
+      const 节点 = 框.locator("xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' ant-select ')][1]");
+      const 标签们 = () => 节点.locator(".ant-select-selection-item").allInnerTexts();
+      await expect.poll(标签们).toEqual(["备货状态（选了任一项就算·旧）"]);
+      // 下拉是虚拟列表、几十项：按 key 搜（多选默认按值筛），回车选中当前那项
+      const 选 = async (key: string, 名: string) => {
+        await 框.click();
+        await page.keyboard.type(key);
+        await page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option-active").filter({ hasText: 名 }).waitFor();
+        await page.keyboard.press("Enter");
+        await page.keyboard.press("Escape");
+      };
+      await 选("已备货", "备货状态（已备货）");
+      await expect.poll(标签们).toEqual(["备货状态（已备货）"]);
+      await 选("备货状态", "备货状态（选了任一项就算·旧）");
+      await expect.poll(标签们).toEqual(["备货状态（选了任一项就算·旧）"]);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }, 60_000);
+}

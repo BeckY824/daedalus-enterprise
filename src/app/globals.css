@@ -3099,7 +3099,6 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .board-gate-t { color: var(--warning-text); font-weight: 600; }
 .board-gate-name { margin-top: var(--s1); font-size: var(--fs-note); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .board-gate-list { margin: var(--s2) 0 0; padding-inline-start: 18px; }
-.board-gate-force.ant-btn { padding: 0; height: auto; margin-top: var(--s2); color: var(--warning-text); }
 .board-gate-foot { display: flex; justify-content: flex-end; gap: var(--s2); margin-top: var(--s3); }
 @media (prefers-reduced-motion: reduce) { .pipe-card[data-card-id] { transition: none; } .pipe-card.is-bounced, .board-gate { animation: none !important; } }
 /* 减弱动态：时长归零还不够，排队的延迟（--stagger × 序）会让卡片空着等一会儿，整个不放 */

@@ -25,7 +25,7 @@ import FollowMethodSelect, { InitiatorSelect, useFollowHabit, useFollowInitiator
 import { 对得上的方式, 方式对类型 } from "@/lib/follow-method";
 import { 外贸精简 } from "@/lib/business-config";
 import { 币种选项, 金额, 合计文字, 按币种合计, 默认币种 } from "@/lib/currency";
-import { 阶段们, 交付还差, 交付还差话, 终止结局, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 是交付, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
+import { 阶段们, 交付还差, 交付还差话, 交付不在尾款话, 终止结局, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 是交付, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
 import { 超时理由 } from "@/lib/project/timeout";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
 import { 进公海理由显示 } from "@/lib/enterprise/tri-state-label";
@@ -38,7 +38,7 @@ import { FoldSplit, ProjectFold, 模块钮色, 连体箭头 } from "./ProjectFol
 import { 卡名Provider, 客户详情卡点, 项目卡名 } from "./card-names";
 import { ProjectFillRequired, 定位到模块 } from "./ProjectFillRequired";
 import { CustomerReadonlyCard } from "./CustomerReadonlyCard";
-import type { 窗外去处, 草稿们 } from "@/lib/project/required-fill";
+import type { 窗外去处, 草稿们, 已签收格 } from "@/lib/project/required-fill";
 import ProjectStages from "./ProjectStages";
 import ProjectStarButton from "./ProjectStarButton";
 import { 两行, 等复核说法, 能项目转让, type 项目动作键 } from "./project-menu";
@@ -188,14 +188,17 @@ export type 项目详情 = {
   项目新字段?: { painPoints?: string | null; contractStatus?: 合同状态 | null };
   /**
    * 企业版备货状态、物流状态、物流单号（迁移 154，客户 11-19）：不是企业版不传。备货状态三项固定，没填 null；
-   * 物流状态 = 存的选项名 + 字典 projLogistics 启用着的（同项目标签）；物流单号一行文字
+   * 物流状态 = 存的选项名 + 字典 projLogistics 启用着的（同项目标签）；物流单号一行文字；
+   * 已签收 = 物流状态里算「已签收」的（客户 11-19 定稿，load.ts 备货物流格）
    */
-  备货物流?: { 备货状态: 备货状态 | null; 物流状态: { 值: string | null; 选项: string[] }; 物流单号: string | null };
+  备货物流?: { 备货状态: 备货状态 | null; 物流状态: { 值: string | null; 选项: string[] }; 物流单号: string | null; 已签收?: 已签收格 };
   /**
-   * 企业版节点必填：这个节点配了必填才有（没开 / 没配 / 有结局 / 在公海 = null）。填齐了自动往前推；
-   * 只能靠填齐 = 不是老板、主管，手动往前推不给（往后退、点结局照旧）
+   * 企业版节点必填：这个节点配了必填才有（没开 / 没配 / 有结局 / 在公海 = null）。填齐了自动往前推一格；
+   * 缺着必填谁都不能手动往前推（客户 11-19 定稿，全员统一；往后退、点结局照旧）
    */
-  必填: { 配了: string[]; 还差: string[]; 只能靠填齐: boolean } | null;
+  /** 交付结清只能在尾款结算点（客户 11-19 定稿；现在受节点推进开关管，load.ts 和 db.ts 改节点 同一个判断）；不传 = 不查 */
+  交付只在尾款?: boolean;
+  必填: { 配了: string[]; 还差: string[]; /** 「仅上级推」下这个节点已经齐了、看的人存一下就会自动推一格（load.ts） */ 存一下就推?: boolean } | null;
   /** 企业版 D-37：负责人有直属上级、我又不是这位上级（也不是老板）时，往前推不给的那句话；null = 能推 */
   不给推: string | null;
   /** 能改节点：能改的人 + 企业版负责人的直属上级（账号可能是 SALES）；只管节点这一块 */
@@ -309,8 +312,8 @@ function 位置文字(p: 位置, 字典: 阶段字典 = 团队版字典): string
  * 企业版（字典跨阶段不能退）：前面阶段的节点、结局都灰着；线索、商机阶段多列一条「→ 转商机 / → 赢单」，
  * 选它 = 进下一阶段第一个节点（和直接选那个节点一样），让「线索只能流失或转商机、商机只能流失或赢单」在下拉里看得见
  */
-function 去处们(当前: 位置, 不能往前 = false, 字典: 阶段字典 = 团队版字典) {
-  // 配了必填、不是老板主管：往前的节点灰着（靠填齐自动推），结局照旧能点
+function 去处们(当前: 位置, 不能往前 = false, 字典: 阶段字典 = 团队版字典, 交付只在尾款 = false) {
+  // 配了必填、还没填齐：往前的节点灰着（靠填齐自动推），结局照旧能点（企业版交付结清只在尾款结算能点，客户 11-19 定稿，服务端 改节点问题 同一条）
   const 太远 = (到: 位置) => 节点序号(到, 字典) > 节点序号(当前, 字典) + (不能往前 && !到.result ? 0 : 1);
   const 退不回 = (s: string) => !字典.跨阶段能退 && 阶段们.indexOf(s as never) < 阶段们.indexOf(当前.phase as never);
   return 阶段们.map((s, i) => {
@@ -331,7 +334,7 @@ function 去处们(当前: 位置, 不能往前 = false, 字典: 阶段字典 = 
         // 结局落在哪个节点：没走成的停在当前节点（同阶段时），否则停在阶段最后一个节点
         ...结局.map((r) => {
           const 到 = { phase: s, node: 当前.phase === s ? 当前.node : 尾, result: r };
-          return { value: JSON.stringify(到), label: `→ ${结局叫法(r, 字典)}`, disabled: 当前.result === r || 太远(到) || 退不回(s) };
+          return { value: JSON.stringify(到), label: `→ ${结局叫法(r, 字典)}`, disabled: 当前.result === r || 太远(到) || 退不回(s) || (交付只在尾款 && 是交付(r) && !!交付不在尾款话(当前, 到, 字典)) };
         }),
         // 走成那条（只在项目还在这个阶段时能点）：值里带个 出口 记号，免得和下一阶段第一个节点撞值；改到 之前去掉
         ...(走成 && 下阶段
@@ -578,6 +581,8 @@ export default function ProjectDetail({
   const 交付结局 = 字典.出口们.订单[0].结局 ?? "成功交付";
   const 交付叫法 = 结局叫法(交付结局, 字典);
   const 交付了 = 是交付(p.result);
+  // 企业版交付结清只能在尾款结算点（客户 11-19 定稿）：不在那一步 = 那句话（交付卡按钮不摆），服务端 改节点问题 同一条
+  const 交付不在尾款 = p.企业版 && p.交付只在尾款 && !交付了 ? 交付不在尾款话(当前, null, 字典) : null;
   const 异常 = p.result === "异常状态";
   const 可改 = 能改 && !p.pooled;
   // 企业版 11-01：只有负责人能改内容，总管理、上级、组员都只能看
@@ -606,8 +611,8 @@ export default function ProjectDetail({
   const 动不了 = (节点可改 ? undefined : 节点不能改 ?? 改不了话) ?? 等复核文字;
   // 往前推另外的关：直属上级才推 / 需求状态补全期（p.不给推）、线索验证缺有效沟通
   const 往前不了 = p.不给推 ?? (卡有效沟通 ? 缺有效沟通话! : undefined);
-  // 配了必填、不是老板主管：缺着必填不给往前推；填齐了（占位值不算）照样能推（M-节点-05/09）
-  const 缺必填 = p.必填?.只能靠填齐 && p.必填.还差.length ? `还差必填：${p.必填.还差.map(必填叫法).join("、")}；补齐再推，要先推请找总管理或销售管理` : undefined;
+  // 配了必填：缺着必填谁都不能往前推（客户 11-19 定稿，全员统一）；填齐了（占位值不算）照样能推（M-节点-05/09）
+  const 缺必填 = p.必填?.还差.length ? `还差必填：${p.必填.还差.map(必填叫法).join("、")}；补齐再推` : undefined;
   const 推不了 = 动不了 ?? 往前不了 ?? 缺必填
     ?? (下 ? undefined : p.result ? "先改回某个进程再往前推" : "这是最后一个进程了，接下来点结局");
   const 下一步字 = 下 ? `下一步：${下.phase === p.phase ? 下.node : `${下.phase}·${下.node}`}` : "下一步";
@@ -765,7 +770,7 @@ export default function ProjectDetail({
     });
   };
   const 不能往前 = !!缺必填 || !!p.不给推 || 卡有效沟通;
-  const 更多去处项 = 节点可改 && !等复核 ? 更多去处(当前, 去处们(当前, 不能往前, 字典), 字典) : [];
+  const 更多去处项 = 节点可改 && !等复核 ? 更多去处(当前, 去处们(当前, 不能往前, 字典, p.企业版 && !!p.交付只在尾款), 字典) : [];
 
   /**
    * 企业版「完成节点」（M-节点-05/06/09）：一次往前一个节点；本阶段最后一个节点完成 = 进下一阶段第一个节点（线索→已转商机、商机→商机赢单，
@@ -777,7 +782,7 @@ export default function ProjectDetail({
     : 完成到.phase !== p.phase ? `${字典.出口们[p.phase as (typeof 阶段们)[number]]?.[0]?.叫法 ?? "进下一阶段"}，进到 ${完成到.phase}·${完成到.node}` : `下一节点：${完成到.node}`;
   /**
    * dt.stage：必填齐了（没配也算）、推的不是结局 → 点「完成节点」一步推，推完给撤销条；
-   * 还差必填 → 开框就地补齐再推（和看板拖动缺必填同一个 ProjectFillRequired），管理角色照旧能「仍要推进」
+   * 还差必填 → 开框就地补齐再推（和看板拖动缺必填同一个 ProjectFillRequired）；谁都不能缺着推（客户 11-19 定稿）
    */
   const 要先补齐 = !!p.必填?.还差?.length || !!完成到?.result;
   /** 「完成节点」为什么点不了（缺必填不算：点了在框里列出来）；undefined = 能点 */
@@ -867,7 +872,7 @@ export default function ProjectDetail({
     else if (去 === "回款") 定位到模块("project-payments-fold");
   };
   /** dt.stage 补填小框（挂在「完成节点」上的 Popover 里）：M-节点-05/09 先查这个节点的必填（占位值不算填了），缺了当场填（11-03 一窗填完），
-   * 齐了写能推到哪。总管理、销售管理缺着也能「仍要推进」。Esc 收起；打开时焦点落到第一格 */
+   * 齐了写能推到哪。缺着谁都推不了（客户 11-19 定稿）。Esc 收起；打开时焦点落到第一格 */
   const 完成补填框 = () => (
     <div
       className="pd-fill-pop-body"
@@ -909,7 +914,7 @@ export default function ProjectDetail({
           : (
             <Space.Compact className="split-btn split-success">
               {灰着(完成灰, 要先补齐 ? (
-                // dt.stage：还差必填 → 从「完成节点」下面长出补填小框（不再开大框），就地补齐再推；管理角色照旧能「仍要推进」。
+                // dt.stage：还差必填 → 从「完成节点」下面长出补填小框（不再开大框），就地补齐再推。
                 // 内容推迟到弹出时才画（content 给函数）：补填框用到的几样在下面才定义。点外面、Esc 收起，填过的留草稿
                 <Popover
                   open={头部框 === "完成"}
@@ -1032,7 +1037,7 @@ export default function ProjectDetail({
         <div style={{ marginTop: 12, color: p.必填.还差.length ? "var(--text-muted)" : "var(--success-text)", overflowWrap: "anywhere" }}>
           {p.必填.还差.length
             ? `这个节点还差必填：${p.必填.还差.map(必填叫法).join("、")}（「暂无」「-」这类占位不算填了）`
-            : "这个节点的必填都齐了，可以点「完成节点」往前推"}
+            : p.必填.存一下就推 ? "已经填齐：改任一项保存、或记一条沟通，就会自动推到下一步" : "这个节点的必填都齐了，可以点「完成节点」往前推"}
         </div>
       )}
     </Card>
@@ -1391,7 +1396,7 @@ export default function ProjectDetail({
               名="备货状态"
               值={备货物流.备货状态}
               能改={能就地改}
-              显示={(v) => (有值(v) ? <span className="proj-one" title={v}>{v}</span> : p.必填?.还差.includes("备货状态") ? 占位确认("备货状态") : 待填("备货状态"))}
+              显示={(v) => (有值(v) ? <span className="proj-one" title={v}>{v}</span> : (p.必填?.还差.includes("备货状态") || p.必填?.还差.includes("已备货")) ? 占位确认("备货状态") : 待填("备货状态"))}
               存={(v) => 存项目项({ stockStatus: v })}
               编辑器={({ 草稿, 提交, 忙 }) => (
                 <Select aria-label="备货状态" autoFocus defaultOpen allowClear disabled={忙} placeholder={未选占位} style={满宽} value={草稿 ?? undefined} options={[不填项, ...备货状态们.map((x) => ({ value: x, label: x }))]} onChange={(v?: string) => 提交(去不填(v))} />
@@ -1404,7 +1409,7 @@ export default function ProjectDetail({
               名="物流状态"
               值={备货物流.物流状态.值}
               能改={能就地改}
-              显示={(v) => (有值(v) ? <span className="proj-one" title={v}>{v}</span> : p.必填?.还差.includes("物流状态") ? 占位确认("物流状态") : 待填("物流状态"))}
+              显示={(v) => (有值(v) ? <span className="proj-one" title={v}>{v}</span> : (p.必填?.还差.includes("物流状态") || p.必填?.还差.includes("已签收")) ? 占位确认("物流状态") : 待填("物流状态"))}
               存={(v) => 存项目项({ logisticsStatus: v })}
               编辑器={({ 草稿, 提交, 忙 }) => (
                 <Select aria-label="物流状态" autoFocus defaultOpen allowClear disabled={忙} placeholder={未选占位} style={满宽} value={草稿 ?? undefined} options={[不填项, ...备货物流.物流状态.选项.map((x) => ({ value: x, label: x }))]} onChange={(v?: string) => 提交(去不填(v))} />
@@ -1446,10 +1451,11 @@ export default function ProjectDetail({
       })}
       <div style={{ color: "var(--text-muted)", marginTop: 4 }}>
         {交付了 ? `已经${交付叫法}` : p.企业版
-          ? (差.length ? 交付还差话(差, 交付叫法, true) : `可以点${交付叫法}`)
+          ? (交付不在尾款 ?? (差.length ? 交付还差话(差, 交付叫法, true) : `可以点${交付叫法}`))
           : 差.length ? `两项都勾上才能点${交付叫法}（还差${差.join("、")}）` : `两项都勾上了，可以点${交付叫法}`}
       </div>
-      {!交付了 && (
+      {/* 企业版交付结清只在尾款结算这一步摆按钮（客户 11-19 定稿）；别的节点上面那行写清要先推到哪 */}
+      {!交付了 && !交付不在尾款 && (
         <Button
           style={{ marginTop: 8 }}
           disabled={!可改 || 忙 || 差.length > 0}

@@ -2,7 +2,7 @@
  * 看板拖动换进程（P-界面-45，原型 pr.drag / cu.board，11-15 新功能，projects/board-drag.tsx）：
  *   拖到下一个进程列：先问 看板推进预检，再走 改项目节点（规则全在服务端）；推成了卡片落到新列、底部带「撤销」
  *   被权限挡（预检或真推回 ok:false）：卡片弹回原列，说原因
- *   当前进程必填没填齐：卡片弹回，旁边小框写还差哪几项；「去补齐」进项目；管理（能留空推）多一颗「仍要推进 · 缺的留空」
+ *   当前进程必填没填齐：卡片弹回，旁边小框写还差哪几项；「去补齐」进项目；谁都没有「仍要推进 · 缺的留空」（客户 11-19 定稿全员统一必须填齐）
  *   出口列（交付结清等）不能放；键盘 Alt+→ 走同一条路；减弱动态下卡片不跟指针位移
  *   不开项目模式（客户看板 CustomerBoard）、团队版五列：没有可拖的卡片
  * Windows 1024 / 1280 / 1366：补填小框整个在视口里，页面不横滚
@@ -21,7 +21,7 @@ const plugin: Plugin = { name: "ent-board-drag", setup(b) {
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
   stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
   // 项目的 server action：预检、改节点记下调了什么，回 window.__预检 / window.__改（默认放行）
-  stub(/^\.\/actions$/, "const 记=(n,默)=>async(...a)=>{(window.__调||=[]).push([n,...a]);const 回=window['__'+n];return typeof 回==='function'?回(...a):回||默};export const 回项目邀请=记('回邀请',{ok:true}),市场复核Action=记('复核',{ok:true}),总管理终判Action=记('终判',{ok:true}),看板推进预检=记('预检',{ok:true,还差:[],能留空推:false}),改项目节点=记('改',{ok:true,变了:true}),编辑项目=记('编辑',{ok:true}),看板补必填料=记('补必填料',{ok:false,error:'读不到'});");
+  stub(/^\.\/actions$/, "const 记=(n,默)=>async(...a)=>{(window.__调||=[]).push([n,...a]);const 回=window['__'+n];return typeof 回==='function'?回(...a):回||默};export const 回项目邀请=记('回邀请',{ok:true}),市场复核Action=记('复核',{ok:true}),总管理终判Action=记('终判',{ok:true}),看板推进预检=记('预检',{ok:true,还差:[]}),改项目节点=记('改',{ok:true,变了:true}),编辑项目=记('编辑',{ok:true}),看板补必填料=记('补必填料',{ok:false,error:'读不到'});");
   // 就地补填框（ProjectFillRequired）存字段走 [id] 下的 ../actions
   stub(/^\.\.\/actions$/, "const 记=(n)=>async(...a)=>{(window.__调||=[]).push([n,...a]);return{ok:true}};export const 编辑项目=记('详编'),改项目画像Action=记('画像'),勾项目交付=记('交付');");
   stub(/assign-actions$/, "export const 分配线索=async()=>({ok:true}),自动分配线索=async()=>({ok:true}),撤销自动分配=async()=>({ok:true}),批量自动分配=async()=>({ok:true,结果:[]}),本月分配情况=async()=>[],我分出去的线索=async()=>[],关满额提醒=async()=>({ok:true}),项目分配线=async()=>null,分配带走的项目=async()=>({项目数:0,项目:[]});");
@@ -139,7 +139,7 @@ it("被权限挡（预检回原因 / 真推回原因）：卡片弹回原列，�
 
 it("必填没填齐：卡片弹回、旁边写还差哪几项，不改节点；「去补齐」进项目；三种宽度小框整个在视口里", async () => {
   for (const w of [1024, 1280, 1366]) {
-    const { page, errors } = await 打开(w, { 预检: { ok: true, 还差: ["需求", "预计成交日期"], 能留空推: false } });
+    const { page, errors } = await 打开(w, { 预检: { ok: true, 还差: ["需求", "预计成交日期"] } });
     try {
       await 拖到(page, 1);
       const 框 = page.getByRole("dialog", { name: "推到「线索验证」前还差 2 项" });
@@ -160,18 +160,16 @@ it("必填没填齐：卡片弹回、旁边写还差哪几项，不改节点；�
   }
 });
 
-it("管理（能留空推）：小框多一颗「仍要推进 · 缺的留空」，点了才改节点；「先不推」什么都不改", async () => {
+it("全员统一必须填齐（客户 11-19 定稿）：老服务端还回 能留空推:true 也不摆「仍要推进 · 缺的留空」；「先不推」什么都不改", async () => {
   const { page, errors } = await 打开(1280, { 预检: { ok: true, 还差: ["需求"], 能留空推: true } });
   try {
     await 拖到(page, 1);
     const 框 = page.getByRole("dialog", { name: /前还差 1 项/ });
+    await 框.waitFor();
+    expect(await 框.getByRole("button", { name: /仍要推进/ }).count()).toBe(0);
     await 框.getByRole("button", { name: "先不推" }).click();
     await 框.waitFor({ state: "detached" });
     expect(await 调了(page, "改")).toEqual([]);
-    await 拖到(page, 1);
-    await 框.getByRole("button", { name: "仍要推进 · 缺的留空" }).click();
-    await 列(page, 1).locator('[data-card-id="p1"]').waitFor();
-    expect(await 调了(page, "改")).toEqual([["改", "p1", { phase: "线索", node: "线索验证", result: null }]]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -181,7 +179,7 @@ it("必填没填齐、读得到项目料：弹小框就地补填（和完成节�
     所在地: { addrCountry: null, addrProvince: null, addrCity: null, addrDistrict: null, location: null }, 成交钱: { dealDemand: "暂无", contractAmount: null, contractCurrency: null, depositAmount: null, depositCurrency: null },
     项目新字段: { painPoints: null, contractStatus: null }, 画像: null, balanceSettled: false, acceptancePassed: false, 能记沟通: true, 项目附件: {}, 回款们: [], 线索验证: {}, 只能看字段: [], 企业版: true };
   for (const w of [1024, 1280, 1366]) {
-    const { page, errors } = await 打开(w, { 预检: { ok: true, 还差: ["金额"], 能留空推: false } });
+    const { page, errors } = await 打开(w, { 预检: { ok: true, 还差: ["金额"] } });
     try {
       await page.evaluate((b) => {
         const x = window as unknown as Record<string, unknown> & { __调?: unknown[][] };

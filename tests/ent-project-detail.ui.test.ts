@@ -361,7 +361,7 @@ it("10-31 必填 + 11-01 会议：这个进程配了必填、还没填的项目�
   try {
     await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({
       成交钱: { contractAmount: null, contractCurrency: null, depositAmount: null, depositCurrency: null, dealDemand: null }, expectedDealAt: null, 项目来源: null,
-      必填: { 配了: ["金额", "预计成交日期"], 还差: ["金额", "预计成交日期"], 只能靠填齐: false } }));
+      必填: { 配了: ["金额", "预计成交日期"], 还差: ["金额", "预计成交日期"] } }));
     const 卡 = page.locator(".proj-side .ant-card").filter({ hasText: "定金金额" }).first();
     await 卡.locator("[data-required]").first().waitFor();
     expect(await 卡.locator("[data-required]").evaluateAll(es => es.map(e => e.getAttribute("data-empty")))).toEqual(["金额", "预计成交日期"]);
@@ -378,7 +378,7 @@ it("10-31 必填 + 11-01 会议：这个进程配了必填、还没填的项目�
     const 浅 = await page.evaluate(() => { const s = document.createElement("span"); s.style.color = "var(--text-faint)"; document.body.append(s); const c = getComputedStyle(s).color; s.remove(); return c; });
     expect(await 卡.locator("[data-required]").first().evaluate(e => getComputedStyle(e).color)).toBe(浅);
     // 填上了就照常显示（__over 每次从底稿起，成交钱要再带上）
-    await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ 成交钱: { contractAmount: null, contractCurrency: null, depositAmount: null, depositCurrency: null, dealDemand: null }, 项目来源: null, expectedDealAt: "2026-12-01", 必填: { 配了: ["金额", "预计成交日期"], 还差: ["金额"], 只能靠填齐: false } }));
+    await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ 成交钱: { contractAmount: null, contractCurrency: null, depositAmount: null, depositCurrency: null, dealDemand: null }, 项目来源: null, expectedDealAt: "2026-12-01", 必填: { 配了: ["金额", "预计成交日期"], 还差: ["金额"] } }));
     await 卡.getByText("2026-12-01").waitFor();
     expect(await 卡.locator("[data-required]").count()).toBe(1);
     expect(errors).toEqual([]);
@@ -436,7 +436,7 @@ for (const 宽 of [390, 1024, 1280, 1366]) {
       const 长单号 = "SF1234567890,".repeat(7);
       await page.evaluate(v => (window as unknown as { __over: (x: object) => void }).__over(v), {
         备货物流: { 备货状态: null, 物流状态: { 值: "客户已签收（超长的自定义物流状态名）", 选项: ["待发货", "运输中", "客户已签收（超长的自定义物流状态名）"] }, 物流单号: 长单号 },
-        必填: { 配了: ["备货状态"], 还差: ["备货状态"], 只能靠填齐: true },
+        必填: { 配了: ["备货状态"], 还差: ["备货状态"] },
       });
       const 卡 = page.locator(".ant-card").filter({ has: page.locator(".ant-card-head-title", { hasText: /^交付$/ }) }).first();
       await 卡.locator(".proj-stock-rows").waitFor();
@@ -468,6 +468,53 @@ for (const 宽 of [390, 1024, 1280, 1366]) {
     } finally { await page.close(); }
   }, 60_000);
 }
+
+for (const 宽 of [390, 1024, 1280, 1366]) {
+  it(`${宽}px 交付结清只在尾款结算（客户 11-19 定稿，跟节点推进开关一起生效）：开关开着停在别的订单节点交付卡不摆按钮、写清先推到尾款结算；到了尾款结算两勾齐才能点；开关关着中间节点照旧能点；不溢出`, async () => {
+    const { page, errors } = await open(true, 宽);
+    try {
+      const 卡 = page.locator(".ant-card").filter({ has: page.locator(".ant-card-head-title", { hasText: /^交付$/ }) }).first();
+      const 钮 = 卡.getByRole("button", { name: "交付结清" });
+      for (const node of ["生产备货", "交付验收"]) {
+        await page.evaluate(v => (window as unknown as { __over: (x: object) => void }).__over(v), { phase: "订单", node, balanceSettled: true, acceptancePassed: true, 交付只在尾款: true });
+        await expect.poll(() => 卡.innerText()).toContain("「交付结清」只能在「尾款结算」这一步点，先把进程推到「尾款结算」");
+        expect(await 钮.count()).toBe(0);
+      }
+      await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "订单", node: "尾款结算", balanceSettled: true, acceptancePassed: true, 交付只在尾款: true }));
+      await 钮.waitFor();
+      expect(await 钮.isDisabled()).toBe(false);
+      expect(await 卡.innerText()).toContain("可以点交付结清");
+      const 溢 = await 卡.evaluate((c) => {
+        const r = c.getBoundingClientRect();
+        return { 出: [...c.querySelectorAll("*")].filter((e) => { const x = e.getBoundingClientRect(); return x.width > 0 && (x.right > r.right + 1 || x.left < r.left - 1); }).length, 横滚: document.documentElement.scrollWidth > innerWidth };
+      });
+      expect(溢).toEqual({ 出: 0, 横滚: false });
+      // 尾款结算上缺勾：按钮在、灰着，写还差哪样
+      await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "订单", node: "尾款结算", balanceSettled: false, acceptancePassed: true, 交付只在尾款: true }));
+      await expect.poll(() => 钮.isDisabled()).toBe(true);
+      expect(await 卡.innerText()).toContain("尾款结清");
+      // 开关关着（交付只在尾款 = false）：停在安装实施照旧摆按钮、能点
+      await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "订单", node: "安装实施", balanceSettled: true, acceptancePassed: true, 交付只在尾款: false }));
+      await expect.poll(() => 卡.innerText()).toContain("可以点交付结清");
+      expect(await 钮.isDisabled()).toBe(false);
+      expect(await 卡.innerText()).not.toContain("只能在「尾款结算」");
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }, 60_000);
+}
+
+it("仅上级推下停在已齐的节点（存一下就推）：当前进程卡写「已经填齐：改任一项保存、或记一条沟通，就会自动推到下一步」；别的情况照旧", async () => {
+  const { page, errors } = await open(true, 1280);
+  try {
+    await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "订单", node: "物流运输", 必填: { 配了: ["物流单号"], 还差: [], 存一下就推: true } }));
+    await page.getByText("已经填齐：改任一项保存、或记一条沟通，就会自动推到下一步").waitFor();
+    expect(await page.getByText("这个节点的必填都齐了，可以点「完成节点」往前推").count()).toBe(0);
+    await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "订单", node: "物流运输", 必填: { 配了: ["物流单号"], 还差: [] } }));
+    await page.getByText("这个节点的必填都齐了，可以点「完成节点」往前推").waitFor();
+    expect(await page.getByText("已经填齐：改任一项保存、或记一条沟通，就会自动推到下一步").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
 
 for (const 宽 of [390, 1366]) {
   it(`${宽}px 迁移 154 编辑项目框：订单阶段有三格；只改物流单号只交 trackingNo（停用了还存着的物流状态不带上）；没交的刷新后带回草稿`, async () => {
@@ -1253,7 +1300,7 @@ it("R5 完成节点 / 终止进程（M-节点-04/05）：必填齐了一步推�
 it("R5 线索（M-节点-05/09）：完成节点一次一个节点；最后一个节点完成写「已转商机，进到 商机·痛点挖掘」；终止落到线索流失；缺必填列出来", async () => {
   const { page, errors } = await open(true, 1280);
   try {
-    // dt.stage 起没缺必填一步推、不开框：这里给一项还差（管理能仍要推进），看框里写推到哪
+    // dt.stage 起没缺必填一步推、不开框：这里给一项还差，看框里写推到哪
     const 框字 = async () => {
       await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
       const 窗 = page.getByRole("dialog").filter({ hasText: "完成节点 · " });
@@ -1263,18 +1310,18 @@ it("R5 线索（M-节点-05/09）：完成节点一次一个节点；最后一�
       await 窗.waitFor({ state: "hidden" });
       return 字;
     };
-    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "线索", node: "潜客培育", 必填: { 配了: ["金额"], 还差: ["金额"], 只能靠填齐: false } }));
+    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "线索", node: "潜客培育", 必填: { 配了: ["金额"], 还差: ["金额"] } }));
     await page.waitForFunction(() => document.querySelector(".proj-stage-tab.is-on")?.textContent?.startsWith("线索"));
     expect(await page.locator(".proj-stage-exit.is-todo").innerText()).toBe("已转商机");
     expect(await 框字()).toContain("下一节点：线索验证");
     await page.getByRole("button", { name: "终止进程" }).click();
     expect(await page.getByRole("menuitem", { name: /终止进程/ }).innerText()).toContain("落到「线索流失」");
     await page.keyboard.press("Escape");
-    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "线索", node: "线索推进", 必填: { 配了: ["金额"], 还差: ["金额"], 只能靠填齐: false } }));
+    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "线索", node: "线索推进", 必填: { 配了: ["金额"], 还差: ["金额"] } }));
     await page.waitForFunction(() => document.querySelector(".proj-stage-node.is-cur")?.textContent?.startsWith("线索推进"));
     expect(await 框字()).toContain("已转商机，进到 商机·痛点挖掘");
     // 销售缺必填：框里列出来，没有推进按钮
-    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "线索", node: "线索推进", 必填: { 配了: ["金额"], 还差: ["金额"], 只能靠填齐: true } }));
+    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "线索", node: "线索推进", 必填: { 配了: ["金额"], 还差: ["金额"] } }));
     await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
     const 窗 = page.getByRole("dialog").filter({ hasText: "完成节点 · " });
     await 窗.waitFor();
@@ -1287,7 +1334,7 @@ it("R5 线索（M-节点-05/09）：完成节点一次一个节点；最后一�
 it.each([1280, 1024])("dt.stage %ipx：缺必填点完成节点，补填框长在按钮下面（不盖整页的弹窗），焦点进框，Esc / 取消收起", async (w) => {
   const { page, errors } = await open(true, w);
   try {
-    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "线索", node: "潜客培育", 必填: { 配了: ["金额"], 还差: ["金额"], 只能靠填齐: false } }));
+    await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ phase: "线索", node: "潜客培育", 必填: { 配了: ["金额"], 还差: ["金额"] } }));
     await page.waitForFunction(() => document.querySelector(".proj-stage-tab.is-on")?.textContent?.startsWith("线索"));
     const 钮 = page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" });
     expect(await 钮.getAttribute("aria-haspopup")).toBe("dialog");
