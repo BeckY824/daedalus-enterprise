@@ -497,7 +497,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
         )}
       </Card>
 
-      <Card title="每个人的部门、角色和上级" extra={只看}>
+      <Card title="每个人的部门、角色和上级" extra={只看} data-set-find="直属上级 虚线上级 业务角色 只看某人">
         <p className="muted">业务线用来分线索：内贸线索只分给内贸的人，外贸同理，「两边都做」两种都能分到。虚线上级只能看他的客户，不能改、不能转。
           「只看某人」：这个人只看选中的人建的、负责的数据（公海照常），不当负责人、不能改；设了的人不能当别人的直属上级。</p>
         <ul className="team-dept-members" data-testid="org-members">

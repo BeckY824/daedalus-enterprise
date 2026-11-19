@@ -6,6 +6,8 @@
  *   - 窄（800 宽、手机 375）：照原样上下排，目录在正文上面，整层一起滚
  *   - 整页 /settings：右边跟窗口滚，左目录粘在视口里、自己滚
  * 另：搜「节点推进」能搜到项目模式那一栏（卡片 11-18 由「进程推进」改名）
+ * 11-19 点检补：整页滚下去再换栏，窗口回到正文顶（手机上下排点目录也滚到正文顶）；
+ *   搜到某张卡（不是整栏）回车 / 点结果，切栏后那张卡滚进可视区、亮一下——浮层滚正文，整页滚窗口
  * 渲染照真的 SettingsModal（拦截路由那层）+ SettingsView；整页照 AppShell 的 main.main.app-content
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -18,7 +20,9 @@ beforeAll(async () => {
   bundle = await 打包(`
     import React from 'react';import {createRoot} from 'react-dom/client';import {App} from 'antd';
     import V from '@/app/(app)/settings/SettingsView';import M from '@/components/SettingsModal';import {DEFAULT_BUSINESS} from '@/lib/business-config';
-    window.__render=(p,浮层)=>{const v=<V business={DEFAULT_BUSINESS} {...p}/>;createRoot(document.getElementById('root')).render(<App>{浮层?<M>{v}</M>:<div className='shell'><main className='main app-content' style={{padding:'22px 26px'}}>{v}</main></div>}</App>);};`);
+    import {默认组织规则} from '@/lib/project/org-rules';
+    // 项目模式那一栏摆上企业版组织规则的几张卡（持有上限、超时回收、节点推进……），节点推进才落在正文几千像素下面，和线上一样
+    window.__render=(p,浮层)=>{const v=<V business={DEFAULT_BUSINESS} {...p} 项目设置={{...p.项目设置,组织规则:默认组织规则}}/>;createRoot(document.getElementById('root')).render(<App>{浮层?<M>{v}</M>:<div className='shell'><main className='main app-content' style={{padding:'22px 26px'}}>{v}</main></div>}</App>);};`);
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
@@ -197,6 +201,15 @@ it("手机整页 375：目录压在正文上面、不封高不自己滚（和改
   } finally { await page.close(); }
 });
 
+/** 正文、窗口此刻的位置；卡 = 标题是这个的 antd 卡片 */
+const 位置 = (page: Page, 卡?: string) => page.evaluate((卡) => {
+  const body = document.querySelector(".set > .set-body") as HTMLElement;
+  const card = 卡 ? [...document.querySelectorAll(".set-body .ant-card-head-title")].find((t) => t.textContent === 卡)?.closest(".ant-card") as HTMLElement | undefined : undefined;
+  const r = body.getBoundingClientRect(), c = card?.getBoundingClientRect();
+  return { y: scrollY, vh: innerHeight, bodyTop: r.top, bodyBottom: Math.min(r.bottom, innerHeight), bodySt: body.scrollTop,
+    cardTop: c?.top ?? null, cardBottom: c?.bottom ?? null, 亮: card?.classList.contains("set-hit") ?? false, 正文亮: body.classList.contains("set-flash") };
+}, 卡);
+
 it("搜「节点推进」能搜到项目模式那一栏，回车直达", async () => {
   const { page } = await 开(1366, 768, true);
   try {
@@ -205,5 +218,102 @@ it("搜「节点推进」能搜到项目模式那一栏，回车直达", async (
     await 项.getByText("项目模式 › 节点推进").waitFor();
     await page.getByRole("searchbox", { name: "搜索设置" }).press("Enter");
     await page.waitForFunction(() => location.search === "?tab=project");
+  } finally { await page.close(); }
+});
+
+for (const [w, h] of [[1024, 768], [1366, 768]] as const) {
+  it(`浮层 ${w}×${h}：搜到某张卡回车，切栏后那张卡滚进正文可视区、亮一下；命中整栏照旧回顶`, async () => {
+    const { page, errors } = await 开(w, h, true);
+    try {
+      const 搜 = page.getByRole("searchbox", { name: "搜索设置" });
+      await 搜.fill("节点推进");
+      await 搜.press("Enter");
+      await page.waitForFunction(() => location.search === "?tab=project");
+      await page.waitForFunction(() => (document.querySelector(".set > .set-body") as HTMLElement).scrollTop > 0);
+      const a = await 位置(page, "节点推进");
+      // 卡在正文下面几千像素：正文自己滚过去，卡顶落在正文可视区里，窗口不动
+      expect(a.bodySt).toBeGreaterThan(1000);
+      expect(a.cardTop!).toBeGreaterThanOrEqual(a.bodyTop - 0.5);
+      expect(a.cardTop!).toBeLessThan(a.bodyBottom - 40);
+      expect(a.y).toBe(0);
+      expect(a.亮).toBe(true);
+      // 1.5 秒后摘掉
+      await page.waitForFunction(() => !document.querySelector(".set-body .set-hit"), undefined, { timeout: 3000 });
+
+      // 写明的锚点（data-set-find）：「进程时限」标题里没有，落在「超时回收」那张卡；同一栏里再搜也滚
+      await 搜.fill("进程时限");
+      await page.getByRole("tab", { name: /项目模式/ }).click();
+      await page.waitForFunction(() => document.querySelector(".set-body .set-hit")?.textContent?.includes("超时回收"));
+      const b = await 位置(page, "超时回收");
+      expect(b.cardTop!).toBeGreaterThanOrEqual(b.bodyTop - 0.5);
+      expect(b.cardTop!).toBeLessThan(b.bodyBottom - 40);
+
+      // 命中整栏（页签名就带这个词）：回到正文顶，正文亮一下
+      await 搜.fill("操作日志");
+      await 搜.press("Enter");
+      await page.waitForFunction(() => location.search === "?tab=audit");
+      const c = await 位置(page);
+      expect(c.bodySt).toBe(0);
+      expect(c.正文亮).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}
+
+it("整页 /settings 1366×768：搜到某张卡回车，窗口滚到那张卡、亮一下", async () => {
+  const { page, errors } = await 开(1366, 768, false);
+  try {
+    const 搜 = page.getByRole("searchbox", { name: "搜索设置" });
+    await 搜.fill("节点推进");
+    await 搜.press("Enter");
+    await page.waitForFunction(() => location.search === "?tab=project");
+    await page.waitForFunction(() => scrollY > 1000);
+    const a = await 位置(page, "节点推进");
+    expect(a.cardTop!).toBeGreaterThanOrEqual(0);
+    expect(a.cardTop!).toBeLessThan(a.vh - 40);
+    expect(a.亮).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+for (const [w, h] of [[1024, 768], [1280, 800], [1366, 768]] as const) {
+  it(`整页 /settings ${w}×${h}：滚下去再换栏，窗口回到正文顶；没滚过换栏不动`, async () => {
+    const { page, errors } = await 开(w, h, false);
+    try {
+      // 没往下滚：换栏窗口不动（页头不被顶上去）
+      await page.getByRole("tab", { name: /导出记录/ }).click();
+      await page.waitForFunction(() => location.search === "?tab=exports");
+      expect((await 位置(page)).y).toBe(0);
+      // 项目模式那一栏两千来像素长：往下滚（点检时滚到 1796，这里的假数据短一点、能滚多少滚多少）再点左目录（粘在视口里）
+      await page.getByRole("tab", { name: /项目模式/ }).click();
+      await page.waitForFunction(() => location.search === "?tab=project");
+      await page.evaluate(() => scrollTo(0, 1796));
+      expect((await 位置(page)).y).toBeGreaterThan(1000);
+      for (const [名, tab] of [["团队成员", "members"], ["业务配置", "business"]] as const) {
+        if (名 === "业务配置") await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+        await page.getByRole("tab", { name: new RegExp(名) }).click();
+        await page.waitForFunction((t) => location.search === `?tab=${t}`, tab);
+        const a = await 位置(page);
+        // 正文顶对齐在视口顶下面一点（scroll-margin-top 16），不停在原来滚到的地方
+        expect(a.bodyTop).toBeGreaterThanOrEqual(0);
+        expect(a.bodyTop).toBeLessThan(40);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}
+
+it("手机整页 375：目录压在正文上面，点目录换栏滚到正文顶", async () => {
+  const { page, errors } = await 开(375, 812, false);
+  try {
+    const 前 = await 位置(page);
+    expect(前.bodyTop).toBeGreaterThan(前.vh * 0.5);
+    await page.getByRole("tab", { name: /团队成员/ }).click();
+    await page.waitForFunction(() => location.search === "?tab=members");
+    const a = await 位置(page);
+    expect(a.bodyTop).toBeGreaterThanOrEqual(0);
+    expect(a.bodyTop).toBeLessThan(40);
+    expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

@@ -63,6 +63,11 @@
 @keyframes set-flash { 0%, 50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 22%, transparent); border-radius: var(--r-card); } 100% { box-shadow: 0 0 0 3px transparent; } }
 @keyframes set-pop { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .set-flash, .set-lock-sent { animation: none; } }
+/* 搜索直达（SettingsView 找卡）：滚过去时顶上留一点空，不贴着视口 / 正文滚动区的边（整页时也不钻到粘着的目录那一行下面去）。
+   命中的那张卡亮 1.5 秒，同 .set-flash 那一下；减弱动态时不放动画，亮着的 1.5 秒里给一圈静态的框 */
+.set-body, .set-body .ant-card, .set-body [data-set-find] { scroll-margin-top: var(--s4); }
+.set-hit { animation: set-flash 1.5s var(--ease); }
+@media (prefers-reduced-motion: reduce) { .set-hit { animation: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 22%, transparent); } }
 .set-pwd-note { margin: 0 0 12px; color: var(--text-muted); font-size: var(--fs-note); }
 .keymap-hit { animation: set-flash-row 1.2s var(--ease); border-radius: 8px; }
 @keyframes set-flash-row { 0%, 40% { background: var(--hover); } 100% { background: transparent; } }

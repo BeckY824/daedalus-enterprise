@@ -69,7 +69,7 @@ export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分�
   };
 
   return (
-    <Card id="lead-assign" title="线索分配" data-testid="org-lead-assign"
+    <Card id="lead-assign" title="线索分配" data-testid="org-lead-assign" data-set-find="配额"
       extra={!能改参与 && <span style={{ color: "var(--text-muted)" }}>参与状态只有总管理员能改</span>}>
       {提示条}
       {不限额 ? (

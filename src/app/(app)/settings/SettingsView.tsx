@@ -31,6 +31,7 @@ import { PermTab, RulesTab } from "./IdentityTabs";
 import { 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
 import type { BusinessConfig } from "@/lib/business-config";
 import type { AiUsage } from "@/lib/ai-usage";
+import { 滚法 } from "@/lib/reduced-motion";
 
 /** 左目录里每一项底下那句话。放在组件外面，免得每次渲染重建 */
 const 说明表: Record<string, string> = {
@@ -78,6 +79,56 @@ const 搜词表: Record<string, string[]> = {
   perm: ["权限", "能做什么"],
   rules: ["公海", "回收天数", "持有上限", "进程时限", "字段权限", "市场部门", "组织架构", "开通"],
 };
+
+/**
+ * 搜到某一栏里具体那一项时，要滚到的那张卡（11-19：搜「节点推进」回车，切到项目模式却停在顶上，那张卡在三千多像素下面）。
+ * 通用锚点，两种都认、先认写明的：
+ *   1. 卡上写了 data-set-find="词 词"（卡片标题里没有这个词时用，比如「必填」落在「节点推进」卡）
+ *   2. antd 卡片标题里带这个词的（「节点推进」「超时回收」「提成」……不用另写）
+ * 都没有 = null，照旧回到正文顶上。加了新卡、新搜索词，标题里带着这个词就自动能直达
+ */
+function 找卡(容器: HTMLElement, 词: string): HTMLElement | null {
+  const 看得见 = (el: Element) => el.getClientRects().length > 0;
+  const 写明的 = [...容器.querySelectorAll<HTMLElement>("[data-set-find]")].find((el) => 看得见(el) && (el.dataset.setFind ?? "").split(/\s+/).includes(词));
+  if (写明的) return 写明的;
+  const 标题 = [...容器.querySelectorAll<HTMLElement>(".ant-card-head-title")].find((el) => 看得见(el) && (el.textContent ?? "").includes(词));
+  return 标题?.closest<HTMLElement>(".ant-card") ?? null;
+}
+
+/** el 往上第一个真在滚的祖先（overflow auto / scroll 且内容比它高）；都不滚就是窗口 */
+function 滚动区(el: HTMLElement): HTMLElement | null {
+  for (let p = el.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement) {
+    const oy = getComputedStyle(p).overflowY;
+    if ((oy === "auto" || oy === "scroll") && p.scrollHeight > p.clientHeight + 1) return p;
+  }
+  return null;
+}
+
+/**
+ * 换一栏从正文顶上看起。两栏浮层：正文自己是滚动区，归零就行；
+ * 整页 /settings 两栏跟窗口滚：正文顶已经滚出可视区上沿才把它滚回来对齐（scroll-margin-top 留一点空），
+ * 本来就看得见（没往下滚过）不动，免得页头被顶上去；
+ * 上下排（窄屏 / 手机，目录压在正文上面）：点了目录正文还在下面看不到，一律滚到正文顶
+ */
+function 正文回顶(正文: HTMLElement) {
+  正文.scrollTop = 0;
+  const 外 = 滚动区(正文);
+  const 可视顶 = 外 ? 外.getBoundingClientRect().top : 0;
+  const 顶 = 正文.getBoundingClientRect().top;
+  const 目录 = 正文.parentElement?.querySelector(".set-nav");
+  const 上下排 = !!目录 && 目录.getBoundingClientRect().bottom <= 顶 + 1;
+  if (上下排 || 顶 < 可视顶 - 0.5) 正文.scrollIntoView({ block: "start", behavior: "instant" });
+}
+
+/** 亮一下：去掉再加回去，连按两次也能重放；到点摘掉。减弱动态时样式里不放动画（settings.css） */
+const 亮着: WeakMap<HTMLElement, number> = new WeakMap();
+function 闪(el: HTMLElement, 类: string, 毫秒: number) {
+  window.clearTimeout(亮着.get(el));
+  el.classList.remove(类);
+  void el.offsetWidth;
+  el.classList.add(类);
+  亮着.set(el, window.setTimeout(() => el.classList.remove(类), 毫秒));
+}
 
 export default function SettingsView({
   users,
@@ -153,8 +204,12 @@ export default function SettingsView({
   const 身份名 = 身份 === "系统管理员" ? "总管理（系统管理员）" : 身份 === "只读管理员" ? (我的角色.includes("coach") && !我的角色.includes("admin") ? "销售教练（只读）" : "管理员（只读）")
     : 我的角色.map((r) => (r === "director" && 条线 ? "条线总管理" : 角色名[r as 业务角色] ?? r)).join("、") || "还没设业务角色";
   const [搜, set搜] = useState("");
-  // 回车直达后正文亮一下（原型 st.find）：换个 key 让动画重放
-  const [亮, set亮] = useState(0);
+  /**
+   * 搜索直达（回车、点结果）：切到哪一栏、命中的是哪个词（null = 命中整栏）、要不要亮一下。
+   * 切栏走 history.replaceState，useSearchParams 跟上可能晚一拍，所以记在这里，等正文真换成那一栏再滚
+   */
+  const 待跳 = useRef<{ key: string; 词: string | null; 闪: boolean } | null>(null);
+  const [跳次, set跳次] = useState(0);
   // 当前页签由地址栏 ?tab= 决定：中栏那列设置项就是一组带 tab 的链接，刷新、回退都对得上
   const timeZone = useBusinessTimeZone();
   const pathname = usePathname();
@@ -224,11 +279,34 @@ export default function SettingsView({
    * 左边亮哪项、正文画哪栏、读屏的 aria 指向，三处都只认这一个值。
    */
   const 当前 = 目录.some((x) => x.key === tab) ? tab : 目录[0].key;
-  // 浮层两栏时右边正文自己是一个滚动区（settings.css「各滚各的」）：换一栏从顶上看起，不停在上一栏滚到的位置。整页 / 单栏时它不滚，这句什么都不做
+  /*
+    换一栏从正文顶上看起，不停在上一栏滚到的位置：浮层两栏归零正文自己的滚动，整页 / 窄屏把窗口（整层）滚回正文顶（11-19 点检：
+    整页滚到 1796 再换栏，窗口还停在 1796，「业务配置」直接落在底下保存按钮那里）。进页第一下不动窗口。
+    搜索直达命中某张卡：把那张卡滚进视野、亮 1.5 秒；命中整栏：回顶，回车的话正文亮一下（原型 st.find）
+  */
   const 正文 = useRef<HTMLDivElement>(null);
+  const 上一栏 = useRef<string | null>(null);
   useEffect(() => {
-    if (正文.current) 正文.current.scrollTop = 0;
-  }, [当前]);
+    const el = 正文.current;
+    if (!el) return;
+    const 换栏了 = 上一栏.current !== null && 上一栏.current !== 当前;
+    上一栏.current = 当前;
+    const 跳 = 待跳.current;
+    if (跳 && 跳.key === 当前) {
+      待跳.current = null;
+      const 卡 = 跳.词 ? 找卡(el, 跳.词) : null;
+      if (卡) {
+        el.scrollTop = 0;
+        卡.scrollIntoView({ block: "start", behavior: 滚法() });
+        闪(卡, "set-hit", 1500);
+        return;
+      }
+      正文回顶(el);
+      if (跳.闪) 闪(el, "set-flash", 1600);
+      return;
+    }
+    if (换栏了) 正文回顶(el);
+  }, [当前, 跳次]);
 
   const 词 = 搜.trim().toLowerCase();
   /** 命中的是哪一项（页签名、说明没中、具体那一项中了时写出来） */
@@ -236,6 +314,12 @@ export default function SettingsView({
     `${x.label}${x.说明}${x.key}`.toLowerCase().includes(词) ? "" : (搜词表[x.key] ?? []).find((w) => w.toLowerCase().includes(词)) ?? null;
   const 搜到的 = 词 ? 目录.filter((x) => 命中of(x) !== null) : 目录;
   const 去 = (key: string) => window.history.replaceState(null, "", `${pathname}?tab=${key}`);
+  /** 从搜索结果过去：命中具体那一项的话到了滚到那张卡 */
+  const 搜着去 = (x: (typeof 目录)[number], 闪: boolean) => {
+    待跳.current = { key: x.key, 词: 命中of(x) || null, 闪 };
+    去(x.key);
+    set跳次((n) => n + 1);
+  };
   const 分好组: [string, typeof 目录][] = 词
     ? [["", 搜到的]]
     : 分组表
@@ -268,11 +352,8 @@ export default function SettingsView({
             value={搜}
             onChange={(e) => set搜(e.target.value)}
             onKeyDown={(e) => {
-              // 回车直达第一个结果，正文亮一下
-              if (e.key === "Enter" && 词 && 搜到的[0]) {
-                去(搜到的[0].key);
-                set亮((n) => n + 1);
-              }
+              // 回车直达第一个结果：命中具体那一项滚到那张卡、卡亮一下；命中整栏回到正文顶、正文亮一下
+              if (e.key === "Enter" && 词 && 搜到的[0]) 搜着去(搜到的[0], true);
             }}
             placeholder="搜一项设置，比如「公海」「分配」"
             aria-label="搜索设置"
@@ -298,7 +379,7 @@ export default function SettingsView({
                 （2026-09-17 用户在真机上感觉到「偶尔卡卡的」）。Next 会把原生 pushState/replaceState
                 同步进 useSearchParams，所以下面读 tab 的那行照旧生效，刷新、回退也照旧对得上。
               */
-              onClick={() => 去(x.key)}
+              onClick={() => (词 ? 搜着去(x, false) : 去(x.key))}
             >
               <b>{x.label}</b>
               <span>{词 && 命中of(x) ? `${x.label} › ${命中of(x)}` : x.说明}</span>
@@ -307,7 +388,7 @@ export default function SettingsView({
             </div>
           ))}
         </div>
-        <div ref={正文} key={亮} className={`set-body${亮 ? " set-flash" : ""}`} role="tabpanel" id={`set-panel-${当前}`} aria-labelledby={`set-tab-${当前}`}>
+        <div ref={正文} className="set-body" role="tabpanel" id={`set-panel-${当前}`} aria-labelledby={`set-tab-${当前}`}>
           {只读 && (
             <div className="set-ro" role="note">你是只读管理员：业务数据能看全部、不能改；后台设置只有系统管理员能进。</div>
           )}
