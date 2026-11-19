@@ -128,7 +128,7 @@ export async function POST(req: Request) {
               const 页面 = !名片 && typeof body.pageContext === "string" ? body.pageContext.trim().slice(0, 1200) : "";
               const 范围 = 名片 ? undefined : 页面范围;
               const r = await runAgent(
-                { question: 问, user: { id: user.id, name: user.name }, b, history: 名片 ? undefined : history, 页面上下文: 页面 || undefined, 页面范围: 范围, 指定调用: 名片 ? 名片要查(名片) : undefined },
+                { question: 问, 原话: 名片 ? undefined : question.trim().slice(0, 问题上限), user: { id: user.id, name: user.name }, b, history: 名片 ? undefined : history, 页面上下文: 页面 || undefined, 页面范围: 范围, 指定调用: 名片 ? 名片要查(名片) : undefined },
                 { emit, model, onToken: (t) => send({ type: "token", text: t }), onReset: () => send({ type: "reset" }), signal: abort.signal },
               );
               // 日志只记问题和文件**名**，不记文件内容——那张表全员可读
