@@ -44,7 +44,8 @@ import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通�
 import { 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
 import { 市场分配进线索验证 } from "@/lib/enterprise/market-assign-node";
 import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
-import { 按必填走, 是占位值, 还差 as 必填还差, 必填叫法 } from "@/lib/project/required";
+import { 项目按必填走, 是占位值, 还差 as 必填还差, 必填叫法 } from "@/lib/project/required";
+import { dayjs } from "@/lib/utils";
 import { 字典of } from "@/lib/project/stage-dict";
 import type { 回收预演底子 } from "@/lib/enterprise/recycle-text";
 import { 读团队 } from "@/lib/sync/client";
@@ -548,7 +549,8 @@ export async function 看板推进预检(projectId: string, 到: 位置): Promis
     }
     const 字典 = 字典of(企业版(), 企业版() ? 规则.阶段.出口叫法 : null);
     const 往前 = !p.result && 节点序号(本套位置({ ...到, result: null }, 字典), 字典) > 节点序号(本套位置(p, 字典), 字典);
-    if (!往前 || !按必填走(规则, p.node)) return { ok: true, 还差: [], 能留空推: false };
+    // 生效时刻之前建的存量项目不按必填拦（和 改节点 同一个判断，11-19 第 25 题）
+    if (!往前 || !项目按必填走(规则, p)) return { ok: true, 还差: [], 能留空推: false };
     const 差 = 必填还差(规则, await 读必填数据(prisma, p, 规则));
     return { ok: true, 还差: 差.map(必填叫法), 能留空推: 是经理(me, org) };
   } catch (e) { return 不在了(e); }
@@ -960,7 +962,7 @@ export async function 改组织规则(改: 规则改动) {
         ? `组织规则：培育计划字数上限 ${新.阶段.培育计划上限 ?? "不设"}，无效原因字数上限 ${新.阶段.无效原因上限 ?? "不设"}`
         : `组织规则：往前推权限 ${新.阶段.推进权限}，改了 ${Object.keys(新.阶段.出口叫法).length} 个阶段的结束状态叫法`
       : 改.节点推进 !== undefined
-      ? 推.开 ? `组织规则：节点推进开，${Object.keys(推.必填).length} 个进程配了必填` : "组织规则：节点推进关"
+      ? 推.开 ? `组织规则：节点推进开，${Object.keys(推.必填).length} 个进程配了必填${推.生效于 ? `，只管 ${dayjs(推.生效于).format("YYYY-MM-DD HH:mm")} 之后新建的项目` : ""}` : "组织规则：节点推进关"
       : 改.超时回收 !== undefined
       ? (t.开 ? `组织规则：超时回收开，设了 ${Object.keys(t.节点天数).length} 个进程的处理时长${Object.keys(t.外贸节点天数 ?? {}).length ? `（外贸单设 ${Object.keys(t.外贸节点天数 ?? {}).length} 个）` : ""}` : "组织规则：超时回收关") + (改.超时回收.起算日 !== undefined ? `，起算日 ${t.起算日 ?? "不设"}` : "")
       : 改.公海?.多项目客户 !== undefined
@@ -1076,7 +1078,7 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
     let 回收预演: 回收预演底子 | null = null;
     // 验证中的线索不参与超时回收（X-78）：不预演回收日
     const 验证中 = !!(await prisma.entLeadVerify.findUnique({ where: { projectId: p.id }, select: { pending: true } }))?.pending;
-    if (要下一步 && !按必填走(规则, p.node) && !验证中) {
+    if (要下一步 && !项目按必填走(规则, p) && !验证中) {
       const 字典 = 字典of(true, 规则.阶段.出口叫法);
       const c = await 看全部(() => prisma.customer.findUnique({ where: { id: p.customerId }, select: { lastFollowAt: true } }));
       // 最近一条留痕：超时自动转那行不算（Even 11-19 第 14 题 B，同 lib/project/db.ts 项目回收日）

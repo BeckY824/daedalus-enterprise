@@ -274,6 +274,24 @@ export function 节点推进生效(规则: 组织规则): boolean {
   return 规则.节点推进.开 && Object.values(规则.节点推进.必填).some((l) => l.length > 0);
 }
 
+/**
+ * 节点推进管不管这个项目（11-19 客户第 25 题：开时只对开关之后新建的项目生效、存量照现在）：
+ * 开着、且项目建在生效时刻之后（同一毫秒也算之后：开关那一刻和建项目分不出先后，按新建的管）才管；生效时刻没记（这次改动前就开着的老数据）= 照原来都管。
+ * 不管的项目：配了必填也不拦往前推、填齐也不自动推、项目页不列还差——和开关关着时一样。
+ * 只管这一条；「线索验证」的有效沟通门槛（stage-gates.ts 企业版推进关）、前两节点要沟通照旧按全局规则走，不看这个
+ */
+export function 节点推进管(规则: 组织规则, p: { createdAt: Date | string }): boolean {
+  if (!规则.节点推进.开) return false;
+  const 起 = 规则.节点推进.生效于;
+  if (!起) return true;
+  return new Date(p.createdAt).getTime() >= Date.parse(起);
+}
+
+/** 这个项目在它现在的节点上按必填走：节点推进管它、这个节点配了至少一样。拦手动推、自动推、项目页还差、看板预检都走这一个 */
+export function 项目按必填走(规则: 组织规则, p: { node: string; createdAt: Date | string }): boolean {
+  return 节点推进管(规则, p) && 按必填走(规则, p.node);
+}
+
 /** 现在这个节点还差哪几样（按配的顺序）；空 = 齐了。没配的节点永远空 */
 export function 还差(规则: 组织规则, d: 必填数据): 必填项[] {
   return 节点必填(规则, d.项目.node).filter((项) => !齐了(项, d));

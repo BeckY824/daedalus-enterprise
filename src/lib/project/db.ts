@@ -9,7 +9,7 @@ import { prisma, defaultClient } from "../prisma";
 import { 不能当负责人 } from "../owners";
 import { 查完再写 } from "../check-then-write";
 import { 改节点问题, 原因上限, 要写原因, 终止结局, 下一步, 节点序号, 字典of, 本套位置, 本套名, 同名们, 是交付, 结局叫法, type 位置 } from "./nodes";
-import { 还差, 必填叫法, 节点推进生效, 按必填走, 节点必填, 有效线索判定, 有效沟通还差, type 必填数据 } from "./required";
+import { 还差, 必填叫法, 节点推进生效, 项目按必填走, 节点必填, 有效线索判定, 有效沟通还差, type 必填数据 } from "./required";
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "./wizard";
 import { 持有上限of, 负责人可推, type 组织规则 } from "./org-rules";
 import { 企业版推进关, 记沟通阶段问题, 记沟通标记, 有效线索节点 } from "./stage-gates";
@@ -357,7 +357,8 @@ export async function 改节点(
     if (不给) return { ok: false as const, error: 不给 };
     // 企业版节点必填（D-37）：配了必填的节点，缺着必填往前推只给「经理」（企业版 = 销售管理：自己当负责人的，或「仅上级推」下的直属上级，见 是经理）；
     // 销售本人填齐了（占位值不算填了）点「完成节点」照样能推（M-节点-05/09）
-    if (往前 && 按必填走(规则, p.node) && !是经理(me, org)) {
+    // 节点推进只管生效时刻之后新建的项目（11-19 第 25 题）：存量项目照开关关着时手动推、不拦
+    if (往前 && 项目按必填走(规则, p) && !是经理(me, org)) {
       const 数据 = await 读必填数据(tx, p, 规则);
       // 线索核验判有效（lead-verify.ts 带 验证放行 进来）：先推进程、推成了才写判定，这一步的「线索验证结果」按判了有效算
       const 差 = 还差(规则, 选项?.验证放行 ? { ...数据, 线索验证: { verdict: 有效线索判定, finalResult: 有效线索判定, pending: null } } : 数据);
@@ -1729,7 +1730,8 @@ export async function 按必填推进(tx: Prisma.TransactionClient, 规则: 组�
   let 往前 = 刚往前;
   for (;;) {
     const p = await tx.project.findUnique({ where: { id: projectId } });
-    if (!p || p.pooledAt || p.result || !按必填走(规则, p.node)) break;
+    // 生效时刻之前建的存量项目不自动推（项目按必填走 里看 createdAt，11-19 第 25 题）
+    if (!p || p.pooledAt || p.result || !项目按必填走(规则, p)) break;
     // 待分配期间占位的建的人改字段：字段照存，不跟着自动推进（P-转-21、X-68 建的人不能推进）
     if (待分配占位(me, p)) break;
     const 下 = 下一步(p, 字典of(企业版()));
@@ -1760,8 +1762,10 @@ export async function 客户项目按必填推进(me: { id: string }, customerId
   const 规则 = await 生效组织规则();
   if (!节点推进生效(规则) || !customerId) return [];
   const 配了的 = Object.keys(规则.节点推进.必填).filter((n) => 节点必填(规则, n).length);
-  // 配置的 key 已按本套名换成新名（org-rules.ts）；库里还存着旧节点名的项目（10-31 改名前的）新旧名一起认（同名们），不然漏推
-  const 们 = await prisma.project.findMany({ where: { customerId, pooledAt: null, result: null, node: { in: [...new Set(配了的.flatMap(同名们))] } }, select: { id: true, name: true } });
+  // 配置的 key 已按本套名换成新名（org-rules.ts）；库里还存着旧节点名的项目（10-31 改名前的）新旧名一起认（同名们），不然漏推。
+  // 生效时刻之前建的存量项目不查（按必填推进 里也会再挡一遍）
+  const 起 = 规则.节点推进.生效于;
+  const 们 = await prisma.project.findMany({ where: { customerId, pooledAt: null, result: null, node: { in: [...new Set(配了的.flatMap(同名们))] }, ...(起 ? { createdAt: { gte: new Date(起) } } : {}) }, select: { id: true, name: true } });
   const 推了: { id: string; name: string; 到: string[] }[] = [];
   for (const p of 们) {
     const 到 = await 查完再写((tx) => 按必填推进(tx, 规则, me, p.id));
