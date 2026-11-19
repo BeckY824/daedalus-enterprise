@@ -26,6 +26,7 @@ const 清单: { 文件: string; 函数: string; 类: 类; 须含: RegExp[]; 为�
   { 文件: "lib/project/from-lead.ts", 函数: "线索建项目", 类: "同事务建项目", 须含: [/\.project\.create\(/, /followUpProject\.create\(/], 为什么: "线索转化：项目和首条跟进一起建" },
   { 文件: "lib/enterprise-import/apply.ts", 函数: "建", 类: "找不到项目改挂潜客培育", 须含: [/写不进\(沟通没对上项目话\)/, /沟通挂潜客培育\(/], 为什么: "导入：没对上项目不导；给了项目却找不到改挂潜客培育" },
   { 文件: "lib/enterprise-import/revert.ts", 函数: "建回", 类: "找不到项目改挂潜客培育", 须含: [/沟通挂潜客培育\(/, /不动\(沟通没对上项目话\)/], 为什么: "撤回后恢复：原来挂的项目不在了改挂潜客培育，挂不上不建回" },
+  { 文件: "lib/enterprise/dedupe-claim.ts", 函数: "查重领取记沟通", 类: "同事务建项目", 须含: [/p\.pooledAt \|\| p\.result/, /followUpProject\.create\(/], 为什么: "市场成员查重领公海客户（F-016）：同一事务里出公海领到 / 补潜客培育的那条项目，核过在推再挂" },
   { 文件: "lib/enterprise/same-number-collab.ts", 函数: "同号再次录入", 类: "系统豁免", 须含: [], 为什么: "同号再次录入系统自动留的记录（规则里写明不受限），有项目就挂" },
   { 文件: "lib/enterprise/same-number-collab.ts", 函数: "同号只记备注", 类: "系统豁免", 须含: [/followUpProject\.create\(/], 为什么: "导入撞同号：只在已有项目上记一笔醒目备注，挑不到项目就不记" },
   { 文件: "lib/shared-ws/dataset.ts", 函数: "灌演示数据", 类: "系统豁免", 须含: [], 为什么: "共享工作区的演示数据（团队版网页演示），不走企业版" },

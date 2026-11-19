@@ -5042,6 +5042,16 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 .cu-said-row { margin-bottom: var(--s3); }
 /* 联系人表单：号码在回收站里（审核 11-18 新建入口 P2-6），黄条里摆「从回收站捞回」 */
 .cf-trash-hit { margin-top: var(--s2); }
+/* 市场成员查重撞上公海客户：「领取并记沟通」框（F-016）。几格竖排、底下按钮靠右 */
+.dc-claim-body { display: flex; flex-direction: column; gap: var(--s3); }
+.dc-claim-full { width: 100%; }
+.dc-claim-req { color: var(--danger); }
+.dc-claim-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s3); }
+.dc-claim-wide { grid-column: 1 / -1; overflow-wrap: anywhere; }
+.dc-claim-who { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 767px) { .dc-claim-grid { grid-template-columns: minmax(0, 1fr); } }
+.dc-claim-foot { display: flex; justify-content: flex-end; gap: var(--s2); }
+.prop-err-act { margin-top: var(--s2); }
 .cu-said-warn { color: var(--warning-text); }
 .cu-said-err { color: var(--danger-text); }
 span.cu-said { display: inline; margin: 0 0 0 var(--s2); }

@@ -23,6 +23,7 @@ const plugin: Plugin = { name: "silent-rewrite", setup(b) {
   stub(/card-scan\/originals$/, "export const 取走名片原图=()=>null,记下刚建的=()=>{},忘掉刚建的=()=>{};");
   stub(/attachment-upload$/, "export const 传附件=async()=>({ok:true});");
   stub(/customers\/RescueKey$/, "export default function R(){return null}");
+  stub(/customers\/DedupeClaimKey$/, "export default function D(){return null}");
   stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>window.__方式们;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>null;", "async()=>null"));
   // AI 记沟通卡（ProposalCard）问客户能挂哪些项目（沟通必须挂项目，11-17）：回 null = 不查项目，卡片照旧
   stub(/customers\/\[id\]\/actions$/, 补全动作桩("src/app/(app)/customers/[id]/actions.ts", "export const 沟通可选项目=async()=>({ok:true,项目们:null,能建项目:true});"));

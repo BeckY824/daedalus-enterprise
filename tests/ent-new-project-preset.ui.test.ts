@@ -24,6 +24,7 @@ const plugin: Plugin = { name: "new-project-preset", setup(b) {
   stub(/^\.\.\/actions$/, "export const 建档向导=async(x)=>{(window.__调||=[]).push(['建档向导',x]);return {ok:true,customerId:'c1',projectId:'p1'}};export const 建档只建客户=async(x)=>{(window.__调||=[]).push(['建档只建客户',x]);return {ok:true,customerId:'c2',projectId:null}};");
   stub(/customers\/actions$/, "export const checkDuplicate=async()=>null;export const 推荐人候选=async()=>[];");
   stub(/(^|\/)number-actions$/, "export const 查号码=async(t,v)=>{(window.__调||=[]).push(['查号码',t,v]);return {ok:true,状态:'首次录入',提示:'首次录入',值:v,归属地:null}};export const 查客户名=async(n)=>{(window.__调||=[]).push(['查客户名',n]);return {ok:true,撞:null}};export const 申请挂靠=async()=>({ok:true});export const 从回收站捞回=async()=>({ok:true});");
+  stub(/customers\/DedupeClaimKey$/, "export default function D(){return null}");
   stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async(w)=>{(window.__调||=[]).push(['搜客户',w]);return []};");
   stub(/customers\/\[id\]\/project-actions$/, "export const 给客户建项目=async(x)=>{window.__建={...x};return window.__回??{ok:true,projectId:'np1'}};export const 新项目分配数据=async()=>({分配方式们:[{i:0,名:'指定分配'},{i:1,名:'自动分配'}],默认分配方式:0,是销售:false,客户业务线:'内贸'});export const 建项目带走的项目=async(...a)=>{(window.__预览=window.__预览??[]).push(a);if(window.__预览失败)throw new Error('断网');return window.__带走??{项目数:0,项目:[]}};");
   stub(/same-number-actions$/, "export const 同号协同录入=async()=>({ok:true});");
