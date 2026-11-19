@@ -16,7 +16,7 @@ import { 未选占位, 不填项, 去不填, 去多选不填 } from "@/lib/enter
 import { 必填叫法, type 必填项 } from "@/lib/project/required";
 import { 项目名上限 } from "@/lib/project/wizard";
 import { 成交需求上限 } from "@/lib/project/profile-rules";
-import { 合同状态们, 痛点标注上限 } from "@/lib/project/proj-fields";
+import { 合同状态们, 痛点标注上限, 备货状态们, 物流单号上限 } from "@/lib/project/proj-fields";
 import type { 钱格值 } from "@/lib/project/inline-edit";
 import {
   归类, 客户格, 初始草稿, 草稿问题, 草稿是空的, 现值不算的话, 这项的改动, 算窗口状态, 依次保存, 存完怎么走, 按目录排,
@@ -91,6 +91,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
     有所在地: !!p.所在地,
     有画像: !!p.画像,
     有标签: !!p.项目标签?.选项.length,
+    有物流: !!p.备货物流?.物流状态.选项.length,
     联系人数: 联系人们.length,
   };
   const 值 = (k: 必填项): 草稿值 | undefined => (k in 草稿 ? 草稿[k] : 初始草稿(k, p));
@@ -209,6 +210,12 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
         return <Select aria-label={名} style={满宽} allowClear placeholder="选级别" value={字 || undefined} options={企业客户级别.map((x) => ({ value: x, label: 企业级别说明[x] }))} onChange={(x?: string) => 改(k, x ?? null)} />;
       case "标签":
         return <Select aria-label={名} style={满宽} allowClear placeholder={未选占位} value={字 || undefined} options={[不填项, ...(p.项目标签?.选项 ?? []).map((x) => ({ value: x, label: x }))]} onChange={(x?: string) => 改(k, 去不填(x))} />;
+      case "备货":
+        return <Select aria-label={名} style={满宽} allowClear value={字 || undefined} placeholder={未选占位} options={[不填项, ...备货状态们.map((x) => ({ value: x, label: x }))]} onChange={(x?: string) => 改(k, 去不填(x))} />;
+      case "物流":
+        return <Select aria-label={名} style={满宽} allowClear value={字 || undefined} placeholder={未选占位} options={[不填项, ...(p.备货物流?.物流状态.选项 ?? []).map((x) => ({ value: x, label: x }))]} onChange={(x?: string) => 改(k, 去不填(x))} />;
+      case "单号":
+        return <Input aria-label={名} maxLength={物流单号上限} placeholder="几个单号用逗号隔开" value={字} onChange={(e) => 改(k, e.target.value)} />;
       case "合同状态":
         return <Select aria-label={名} style={满宽} allowClear value={字 || undefined} placeholder={未选占位} options={[不填项, ...合同状态们.map((x) => ({ value: x, label: x }))]} onChange={(x?: string) => 改(k, 去不填(x))} />;
       case "联系人":

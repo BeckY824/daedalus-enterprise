@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, Checkbox, Input, InputNumber, Radio, Segmented, Select, Space, Switch, Tag } from "antd";
 import { 加组员角色, 改组员角色, 加项目异常类别, 改项目异常类别, 改组织规则, 预览超时回收 } from "@/app/(app)/projects/actions";
-import { 上限最大, 时长最大, 字数上限最大, 默认起算日, 是不限, 到上限的人数, 推进权限们, type 推进权限, type 组织规则, type 规则改动 } from "@/lib/project/org-rules";
+import { 上限最大, 时长最大, 字数上限最大, 默认起算日, 是不限, 到上限的人数, 推进权限们, type 推进权限, type 组织规则, type 规则改动, type 节点推进范围 } from "@/lib/project/org-rules";
 import BusinessDatePicker from "@/components/BusinessDatePicker";
 import { useConsequence } from "@/components/ConsequenceDialog";
 import InlineConfirm from "@/components/InlineConfirm";
@@ -550,7 +550,9 @@ const 同一份 = (a: string[] = [], b: string[] = []) => a.length === b.length 
  * 节点推进（企业版组织规则，默认关）：老板给节点配「必填哪几样」，项目在这个节点上填齐了自动推到下一节点。
  * 配了必填的节点，手动往前推只给老板、主管；没配的节点照原来手动推。最后一个节点由人点结局（团队版成功交付 / 企业版交付结清），不能配。
  * 改了清单不当场推：项目下次保存（改项目、记沟通、改客户资料）时按新清单走。
- * 11-19 客户第 25 题：只管开关第一次打开之后新建的项目（规则.生效于，服务端 合上改动 记），之前的照手动推；关了再开不刷新
+ * 管哪些项目（规则.范围）：默认「全部项目」——客户 11-19 最新口径「不论是存量项目还是新增项目都需要按这一规则执行」；
+ * 「开启之后新建的」是第 25 题那版（只管开关第一次打开之后新建的，规则.生效于 由服务端 合上改动 记，关了再开不刷新），留作可选。
+ * 改范围当场存（和开关一样），存量项目下次保存或点「完成节点」时按必填走
  */
 function AdvanceCard({
   规则, 挡, 忙, 跑, 存,
@@ -562,6 +564,7 @@ function AdvanceCard({
   const 改了 = 能配必填的节点.some((n) => !同一份(必填[n], 规则.必填[n]));
   const 阶段们 = (["线索", "商机", "订单"] as const).map((阶段) => ({ 阶段, 节点: 节点们[阶段].filter((n) => 能配必填的节点.includes(n)) }));
   const 时区 = useBusinessTimeZone();
+  const 只管新建 = 规则.范围 === "新建";
 
   return (
     <Card
@@ -581,15 +584,25 @@ function AdvanceCard({
     >
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
         开了以后，给进程配上必填的几样，项目在这个进程上填齐了自动推到下一个进程，进程变更里记一行「必填齐了，自动推进」。没填齐也能保存，项目页上会列出还差哪几样。配了必填的进程，没填齐不能往前推，往后退照旧；没配的进程照原来手动推。改了清单以后，项目下次保存时按新清单走。默认关。
-        只管开启之后新建的项目；开启前已有的项目照现在手动推。生效时刻按第一次打开的那一刻算，关了再开不改。
       </div>
-      {规则.开 && 规则.生效于 && (
-        <div className="set-advance-since" data-testid="节点推进生效时刻">
-          生效时刻：{dayjs(规则.生效于).format("YYYY-MM-DD HH:mm")}（{时区 ? "北京时间" : "本机时间"}），这之后新建的项目按必填走
-        </div>
-      )}
       {规则.开 && (
         <>
+          <div className="set-advance-scope">
+            <span>管哪些项目</span>
+            <Radio.Group
+              size="small" optionType="button" aria-label="节点推进管哪些项目" disabled={!!挡 || 忙}
+              value={只管新建 ? "新建" : "全部"}
+              onChange={(e) => void 跑(() => 改组织规则({ 节点推进: { 范围: e.target.value as 节点推进范围 } }), "已保存")}
+              options={[{ value: "全部", label: "全部项目" }, { value: "新建", label: "开启之后新建的" }]}
+            />
+          </div>
+          <div className="set-advance-since" data-testid="节点推进生效时刻">
+            {只管新建
+              ? 规则.生效于
+                ? `生效时刻：${dayjs(规则.生效于).format("YYYY-MM-DD HH:mm")}（${时区 ? "北京时间" : "本机时间"}），这之后新建的项目按必填走；之前的照手动推`
+                : "开启之后新建的项目按必填走；之前的照手动推"
+              : "存量项目和新建的项目都按必填走：存量项目点「完成节点」时缺的必填当场补齐"}
+          </div>
           {阶段们.map(({ 阶段, 节点 }) => (
             <div key={阶段} style={{ marginBottom: 8 }}>
               <div style={{ fontWeight: 500, marginBottom: 8 }}>{阶段}阶段</div>

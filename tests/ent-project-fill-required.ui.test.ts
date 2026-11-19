@@ -22,6 +22,7 @@ beforeAll(async () => {
     const 画像={项们:[{键:'budgetLevel',名:'预算能力',多选:false,选项},{键:'demandStatus',名:'需求',多选:false,选项},{键:'productNeeds',名:'需求类型',多选:true,选项},{键:'priceSense',名:'价格感知',多选:false,选项}],值:{budgetLevel:null,demandStatus:'暂未确认',productNeeds:[],priceSense:null}};
     const 基={id:'p1',name:'项目'+'长'.repeat(40),amount:0,currency:'USD',customer:{id:'c1'},contact:null,expectedDealAt:null,channelId:null,渠道们:[{id:'ch1',name:'渠道一',attr:null,platform:null,active:true}],level:null,
       所在地:{addrCountry:null,addrProvince:null,addrCity:null,addrDistrict:null,location:null},成交钱:{dealDemand:'暂无',contractAmount:null,contractCurrency:null,depositAmount:null,depositCurrency:null},项目新字段:{painPoints:null,contractStatus:'起草中'},画像,
+      备货物流:{备货状态:null,物流状态:{值:null,选项:['待发货','运输中','已签收']},物流单号:null},
       balanceSettled:false,acceptancePassed:false,能记沟通:true,项目附件:{},回款们:[],线索验证:{},只能看字段:[]};
     const 草稿留着={current:{}};
     function 壳({还差,只能靠填齐,能就地改=true,联系人们=[],能推进=true,p:改项}){
@@ -71,7 +72,7 @@ async function 量溢出(page: Page) {
 }
 
 describe("完成节点框：一窗填完", () => {
-  const 一堆 = ["金额", "合同金额", "定金金额", "预计成交日期", "需求描述", "痛点标注", "合同已生效", "项目名称", "项目级别", "项目来源", "项目所在地", "主联系人", "需求", "需求类型", "预算能力", "价格感知", "验收通过", "尾款结清", "合同附件", "回款", "下一步时间", "线索验证结果", "来源"];
+  const 一堆 = ["金额", "合同金额", "定金金额", "预计成交日期", "需求描述", "痛点标注", "合同已生效", "项目名称", "项目级别", "项目来源", "项目所在地", "主联系人", "需求", "需求类型", "预算能力", "价格感知", "验收通过", "尾款结清", "备货状态", "物流状态", "物流单号", "合同附件", "回款", "下一步时间", "线索验证结果", "来源"];
 
   it.each([1024, 1280, 1366])("%i 宽：全部控件 + 长名字长值不溢出，超高能滚", async (w) => {
     const 长 = "很长的联系人名字".repeat(10);
@@ -112,6 +113,30 @@ describe("完成节点框：一窗填完", () => {
     const 存了 = await 窗口变量<unknown[]>(page, "__存");
     expect(存了).toHaveLength(3);
     expect(存了).toEqual(expect.arrayContaining([["项目", { amount: 100, currency: "USD" }], ["项目", { dealDemand: "要十台" }], ["画像", { budgetLevel: "选项一" }]]));
+    expect(await 窗口变量(page, "__推")).toBe(1);
+    expect(errors).toEqual([]);
+    await page.close();
+  }, 60_000);
+
+  it.each([[390, 760], [1024, 700]])("备货状态、物流状态、物流单号（客户 11-19）：%i 宽就地填，选了任一项就算，存到各自的列再推进；不溢出", async (w, h) => {
+    const { page, errors } = await 开({ 还差: ["备货状态", "物流状态", "物流单号"], 只能靠填齐: true }, w, h);
+    await expect.poll(() => 主按钮(page).isDisabled()).toBe(true);
+    await 选(page, "备货状态", "未生产");
+    await 选(page, "物流状态", "运输中");
+    await page.getByRole("textbox", { name: "物流单号" }).fill("暂无");
+    await expect.poll(() => page.getByText("「暂无」是占位值，不算填了").count()).toBe(1);
+    await page.getByRole("textbox", { name: "物流单号" }).fill(" SF1234567890".repeat(6));
+    const 量 = await 量溢出(page);
+    expect(量.出框).toEqual([]);
+    expect(量.页面横滚).toBe(false);
+    expect(量.单横滚).toBe(false);
+    await 主按钮(page).click();
+    await page.locator("#关了").waitFor();
+    expect(await 窗口变量(page, "__存")).toEqual([
+      ["项目", { stockStatus: "未生产" }],
+      ["项目", { logisticsStatus: "运输中" }],
+      ["项目", { trackingNo: "SF1234567890".repeat(6).replace(/SF/g, " SF").trim() }],
+    ]);
     expect(await 窗口变量(page, "__推")).toBe(1);
     expect(errors).toEqual([]);
     await page.close();

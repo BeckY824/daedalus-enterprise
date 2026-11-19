@@ -9,7 +9,7 @@ import { prisma, defaultClient } from "../prisma";
 import { 不能当负责人 } from "../owners";
 import { 查完再写 } from "../check-then-write";
 import { 改节点问题, 原因上限, 要写原因, 终止结局, 下一步, 节点序号, 字典of, 本套位置, 本套名, 同名们, 是交付, 结局叫法, type 位置 } from "./nodes";
-import { 还差, 必填叫法, 节点推进生效, 项目按必填走, 节点必填, 有效线索判定, 有效沟通还差, type 必填数据 } from "./required";
+import { 还差, 必填叫法, 节点推进生效, 项目按必填走, 只管新建之后, 节点必填, 有效线索判定, 有效沟通还差, type 必填数据 } from "./required";
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "./wizard";
 import { 持有上限of, 负责人可推, type 组织规则 } from "./org-rules";
 import { 企业版推进关, 记沟通阶段问题, 记沟通标记, 有效线索节点 } from "./stage-gates";
@@ -43,7 +43,7 @@ import { 单项目客户跟进公海, 单项目客户跟着领, 领项目连带�
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 字段权限of, 改不了的话, 项目列字段 } from "@/lib/enterprise/field-perm";
 import { 项目级别和地址改成, 项目成交钱改成, 读产品需求, type 项目级别和地址, type 项目成交钱 } from "./profile-rules";
-import { 项目新字段改成, type 项目新字段 } from "./proj-fields";
+import { 项目新字段改成, 备货单号改成, type 项目新字段, type 备货单号 } from "./proj-fields";
 import { 客户状态自动, 跟着项目重算, 项目变了重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { notify } from "@/lib/enterprise/notify";
@@ -357,7 +357,7 @@ export async function 改节点(
     if (不给) return { ok: false as const, error: 不给 };
     // 企业版节点必填（D-37）：配了必填的节点，缺着必填往前推只给「经理」（企业版 = 销售管理：自己当负责人的，或「仅上级推」下的直属上级，见 是经理）；
     // 销售本人填齐了（占位值不算填了）点「完成节点」照样能推（M-节点-05/09）
-    // 节点推进只管生效时刻之后新建的项目（11-19 第 25 题）：存量项目照开关关着时手动推、不拦
+    // 节点推进管的项目才拦（项目按必填走）：默认全部项目，存量也要补齐（客户 11-19）；设置成只管新建的时，生效时刻之前建的照手动推
     if (往前 && 项目按必填走(规则, p) && !是经理(me, org)) {
       const 数据 = await 读必填数据(tx, p, 规则);
       // 线索核验判有效（lead-verify.ts 带 验证放行 进来）：先推进程、推成了才写判定，这一步的「线索验证结果」按判了有效算
@@ -547,9 +547,9 @@ async function 在职(tx: Prisma.TransactionClient, userId: string) {
 
 /**
  * 编辑项目：名称、负责人、金额 + 币种、备注、主联系人，企业版还有预计成交日期、项目来源、项目级别、项目标签、所在地（地址四格 + 详细地址）。
- * 项目标签（迁移 153，F-项目-14）和级别是两列、各自填：选字典 projTag 里启用着的一项，没换（含停用了还留着的那项）原样留，见 项目标签改成。
+ * 项目标签（迁移 153，F-项目-14）和级别是两列、各自填：选字典 projTag 里启用着的一项，没换（含停用了还留着的那项）原样留，见 字典格改成（物流状态同样）。
  * 规矩同向导第四步（规整项目）；级别和所在地见 profile-rules.ts 项目级别和地址改成，成交需求 / 合同金额 / 定金金额见 项目成交钱改成，
- * 痛点标注 / 合同状态见 proj-fields.ts 项目新字段改成，业务线（11-02）三选一、不给清空、改了不重新自动分配（都是不是企业版传了也不动）；
+ * 痛点标注 / 合同状态见 proj-fields.ts 项目新字段改成，备货状态 / 物流单号见 备货单号改成、物流状态对字典 projLogistics（迁移 154），业务线（11-02）三选一、不给清空、改了不重新自动分配（都是不是企业版传了也不动）；
  * 负责人得在职，主联系人得是这位客户的。节点、交付两项不走这里。
  * 换负责人 = 转让：能转让项目的人（企业版 = 总管理、负责人的实线上级、负责人本人；不是企业版 = 负责人本人、老板、主管）能转，
  * 只改这一个项目，记谁、何时、从谁到谁；别的字段 = 编辑内容，只给 能管项目 的人（企业版 C2：总管理、上级能转不能改）。
@@ -558,8 +558,8 @@ async function 在职(tx: Prisma.TransactionClient, userId: string) {
  * 没传的 = 不动（11-02 卡片就地改一次只交一格）：名称、负责人、金额、币种、备注也按「传了才改」，
  * 别拿打开页面时的旧值把别人刚改的盖回去，也不会因为顺手带了只能看的金额被字段权限拦
  */
-export type 编辑项目改动 = Partial<向导项目> & { contactId?: string | null; expectedDealAt?: string | null; projTag?: string | null } & Partial<Record<keyof 项目级别和地址, string | null>>
-  & Partial<{ [K in keyof 项目成交钱]: 项目成交钱[K] }> & Partial<项目新字段>;
+export type 编辑项目改动 = Partial<向导项目> & { contactId?: string | null; expectedDealAt?: string | null; projTag?: string | null; logisticsStatus?: string | null } & Partial<Record<keyof 项目级别和地址, string | null>>
+  & Partial<{ [K in keyof 项目成交钱]: 项目成交钱[K] }> & Partial<项目新字段> & Partial<备货单号>;
 export async function 改项目(me: 谁, projectId: string, patch: 编辑项目改动, 带待办?: boolean): Promise<结果 & { 变了?: string[]; 自动推到?: string[] }> {
   if (!patch || typeof patch !== "object") return { ok: false, error: "要改什么？" };
   // 项目来源补的是「只有主渠道」的占位：先看这人改不改得了这个项目，再落成子渠道名留空的那条渠道（channel-main.ts 落到渠道，在事务外）
@@ -572,9 +572,11 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     if (!落.ok) return { ok: false, error: 落.error };
     patch = { ...patch, channelId: 落.id };
   }
-  // 项目标签（企业版）：对字典要读库，放在事务外（同 改项目画像）
-  const 标签 = 企业版() && patch.projTag !== undefined ? await 项目标签改成(String(projectId ?? ""), patch.projTag) : null;
+  // 项目标签、物流状态（企业版）：对字典要读库，放在事务外（同 改项目画像）
+  const 标签 = 企业版() && patch.projTag !== undefined ? await 字典格改成(String(projectId ?? ""), "projTag", patch.projTag) : null;
   if (标签 && !标签.ok) return 标签;
+  const 物流 = 企业版() && patch.logisticsStatus !== undefined ? await 字典格改成(String(projectId ?? ""), "logisticsStatus", patch.logisticsStatus) : null;
+  if (物流 && !物流.ok) return 物流;
   const 规则 = await 生效组织规则();
   const 级别 = await 字段权限of(me.id);
   const 状态开 = await 客户状态自动();
@@ -617,6 +619,9 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     if (钱 && !钱.ok) return { ok: false as const, error: 钱.error };
     const 新字段 = 企业版() ? 项目新字段改成(patch, p) : null;
     if (新字段 && !新字段.ok) return { ok: false as const, error: 新字段.error };
+    // 备货状态、物流单号（迁移 154，客户 11-19）：传了才比，规矩见 proj-fields.ts 备货单号改成
+    const 备货 = 企业版() ? 备货单号改成(patch, p) : null;
+    if (备货 && !备货.ok) return { ok: false as const, error: 备货.error };
     // 业务线（11-02，企业版）：传了才比；三选一，不给清空。改了只换线，不重新自动分配（所在地给的建议由界面提示、人点了才改）
     const 改线 = 企业版() && patch.业务线 !== undefined;
     const 线 = 改线 ? 认业务线(patch.业务线) : null;
@@ -629,7 +634,7 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
       : null;
     if (回复 && !回复.ok) return { ok: false as const, error: 回复.error };
     const 回复改了 = 回复?.ok ? 回复键们.filter((k) => (回复.值[k]?.getTime() ?? null) !== (p[k]?.getTime() ?? null)) : [];
-    const 新 = { ...好, ...(传.name === undefined ? { name: p.name } : {}), ...(传.remark === undefined ? { remark: p.remark } : {}), contactId, channelId: 来源, ...(位置?.ok ? 位置.值 : {}), ...(钱?.ok ? 钱.值 : {}), ...(新字段?.ok ? 新字段.值 : {}), ...(标签?.ok ? { projTag: 标签.值 } : {}), ...(改线 && 线 ? { bizLine: 线 } : {}) };
+    const 新 = { ...好, ...(传.name === undefined ? { name: p.name } : {}), ...(传.remark === undefined ? { remark: p.remark } : {}), contactId, channelId: 来源, ...(位置?.ok ? 位置.值 : {}), ...(钱?.ok ? 钱.值 : {}), ...(新字段?.ok ? 新字段.值 : {}), ...(备货?.ok ? 备货.值 : {}), ...(标签?.ok ? { projTag: 标签.值 } : {}), ...(物流?.ok ? { logisticsStatus: 物流.值 } : {}), ...(改线 && 线 ? { bizLine: 线 } : {}) };
     const 变了: string[] = (Object.keys(新) as (keyof typeof 新)[]).filter((k) => 新[k] !== p[k]);
     const 日变了 = (日?.getTime() ?? null) !== (p.expectedDealAt?.getTime() ?? null);
     if (日变了) 变了.push("expectedDealAt");
@@ -679,17 +684,25 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
   });
 }
 
+/** 存字典项名的两格：列 → 字典种类、叫法 */
+const 字典格们 = {
+  projTag: { 种类: "projTag", 名: "项目标签" },
+  // 物流状态（迁移 154，客户 11-19）：同项目标签的规矩
+  logisticsStatus: { 种类: "projLogistics", 名: "物流状态" },
+} as const;
+
 /**
- * 项目标签（企业版，迁移 153，F-项目-14）：传了才调。空 / 「—」= 清掉；和库里现在的一样（含停用了还留着的那项）原样留、不再对字典；
- * 换成别的要是字典 projTag 里启用着的一项（选的原因，「其他：…」同别的字典）。和项目级别不相干，谁也不顶替谁
+ * 项目标签（企业版，迁移 153，F-项目-14）、物流状态（迁移 154）：传了才调。空 / 「—」= 清掉；和库里现在的一样（含停用了还留着的那项）原样留、不再对字典；
+ * 换成别的要是字典里启用着的一项（选的原因，「其他：…」同别的字典）。项目标签和项目级别不相干，谁也不顶替谁
  */
-async function 项目标签改成(id: string, v: unknown): Promise<{ ok: true; 值: string | null } | { ok: false; error: string }> {
-  if (v != null && typeof v !== "string") return { ok: false, error: "项目标签要选列表里的项" };
+async function 字典格改成(id: string, 列: keyof typeof 字典格们, v: unknown): Promise<{ ok: true; 值: string | null } | { ok: false; error: string }> {
+  const { 种类, 名 } = 字典格们[列];
+  if (v != null && typeof v !== "string") return { ok: false, error: `${名}要选列表里的项` };
   const t = 去不填(typeof v === "string" ? v.trim() : null) ?? "";
   if (!t) return { ok: true, 值: null };
-  const 原 = await prisma.project.findUnique({ where: { id }, select: { projTag: true } });
-  if (原?.projTag === t) return { ok: true, 值: t };
-  return 选的原因("projTag", t);
+  const 原 = await prisma.project.findUnique({ where: { id }, select: { projTag: true, logisticsStatus: true } });
+  if (原?.[列] === t) return { ok: true, 值: t };
+  return 选的原因(种类, t);
 }
 
 /** 改项目 规整前的底子：没传的格子用库里现在的值 */
@@ -1082,7 +1095,7 @@ type 待查项目 = Prisma.ProjectGetPayload<{ select: typeof 算超时要的 }>
 const 留痕每批 = 500;
 
 /**
- * 一批项目各自算回收起点认的最近一条留痕：超时自动转那行不算（Even 11-19 第 14 题 B，timeout.ts 算回收起点的留痕），
+ * 一批项目各自算回收起点认的最近一条留痕：超时自动转那行不算（客户 11-19 第 14 题 B，timeout.ts 算回收起点的留痕），
  * 一句 groupBy（projectId, MAX(at)）走 (projectId, at) 索引，每个项目只回一行。
  * 不写成 select 里 logs 的 where：条件里有「不等于 / 不含」（否定条件），项目一多 Prisma 要把 IN 拆成几句时会直接报错
  * （Query parameter limit exceeded … negation filters … prevent the query from being split），所以这里自己按 留痕每批 拆。
@@ -1618,6 +1631,7 @@ export async function 移出组员(me: 谁, memberId: string): Promise<结果> {
 type 必填项目行 = Pick<Project,
   "id" | "customerId" | "node" | "contactId" | "nextStepAt" | "nextStepText" | "expectedDealAt" | "amount" | "remark" | "acceptancePassed" | "balanceSettled"
   | "painPoints" | "contractStatus" | "demandStatus" | "productNeeds" | "name" | "channelId" | "addrCountry" | "level" | "projTag" | "dealDemand" | "contractAmount" | "depositAmount"
+  | "stockStatus" | "logisticsStatus" | "trackingNo"
   | "budgetLevel" | "priceSense" | "decisionChain" | "purchaseCycle" | "productFit" | "valueFit" | "decisionReach" | "competitor" | "deployFit" | "siteStatus"> & Partial<Pick<Project, "assignMode">>;
 
 /**
@@ -1653,6 +1667,7 @@ export async function 读必填数据(tx: Prisma.TransactionClient, p: 必填项
       node: p.node, contactId: p.contactId, nextStepAt: p.nextStepAt, expectedDealAt: p.expectedDealAt, amount: p.amount, remark: p.remark, acceptancePassed: p.acceptancePassed, demandStatus: p.demandStatus ?? null, assignMode: p.assignMode ?? null,
       name: p.name, channelId: p.channelId, addrCountry: p.addrCountry, level: p.level, projTag: p.projTag, dealDemand: p.dealDemand, nextStepText: p.nextStepText,
       contractAmount: p.contractAmount, depositAmount: p.depositAmount, balanceSettled: p.balanceSettled,
+      stockStatus: p.stockStatus, logisticsStatus: p.logisticsStatus, trackingNo: p.trackingNo,
       budgetLevel: p.budgetLevel, priceSense: p.priceSense, decisionChain: p.decisionChain, purchaseCycle: p.purchaseCycle, productFit: p.productFit,
       valueFit: p.valueFit, decisionReach: p.decisionReach, competitor: p.competitor, deployFit: p.deployFit, siteStatus: p.siteStatus,
     },
@@ -1731,7 +1746,7 @@ export async function 按必填推进(tx: Prisma.TransactionClient, 规则: 组�
   let 往前 = 刚往前;
   for (;;) {
     const p = await tx.project.findUnique({ where: { id: projectId } });
-    // 生效时刻之前建的存量项目不自动推（项目按必填走 里看 createdAt，11-19 第 25 题）
+    // 节点推进不管的项目不自动推（项目按必填走：默认全部都管；设置成只管新建的时看 createdAt）
     if (!p || p.pooledAt || p.result || !项目按必填走(规则, p)) break;
     // 待分配期间占位的建的人改字段：字段照存，不跟着自动推进（P-转-21、X-68 建的人不能推进）
     if (待分配占位(me, p)) break;
@@ -1764,8 +1779,8 @@ export async function 客户项目按必填推进(me: { id: string }, customerId
   if (!节点推进生效(规则) || !customerId) return [];
   const 配了的 = Object.keys(规则.节点推进.必填).filter((n) => 节点必填(规则, n).length);
   // 配置的 key 已按本套名换成新名（org-rules.ts）；库里还存着旧节点名的项目（10-31 改名前的）新旧名一起认（同名们），不然漏推。
-  // 生效时刻之前建的存量项目不查（按必填推进 里也会再挡一遍）
-  const 起 = 规则.节点推进.生效于;
+  // 范围是「只管开启之后新建的」时，生效时刻之前建的存量项目不查（按必填推进 里也会再挡一遍）；默认「全部」都查（客户 11-19 最新口径）
+  const 起 = 只管新建之后(规则);
   const 们 = await prisma.project.findMany({ where: { customerId, pooledAt: null, result: null, node: { in: [...new Set(配了的.flatMap(同名们))] }, ...(起 ? { createdAt: { gte: new Date(起) } } : {}) }, select: { id: true, name: true } });
   const 推了: { id: string; name: string; 到: string[] }[] = [];
   for (const p of 们) {

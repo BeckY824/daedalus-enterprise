@@ -9,7 +9,7 @@ import {
   type 补齐项目, type 草稿值, type 窗里环境,
 } from "@/lib/project/required-fill";
 
-const 环境 = (x: Partial<窗里环境> = {}): 窗里环境 => ({ 能就地改: true, 改不了话: "只有项目负责人能改，其他人只能看", 只能看字段: [], 渠道数: 2, 有所在地: true, 有画像: true, 有标签: true, 联系人数: 1, ...x });
+const 环境 = (x: Partial<窗里环境> = {}): 窗里环境 => ({ 能就地改: true, 改不了话: "只有项目负责人能改，其他人只能看", 只能看字段: [], 渠道数: 2, 有所在地: true, 有画像: true, 有标签: true, 有物流: true, 联系人数: 1, ...x });
 const 项目 = (x: Partial<补齐项目> = {}): 补齐项目 => ({ name: "项目甲", amount: 0, currency: "USD", acceptancePassed: false, balanceSettled: false, ...x });
 const 空数据 = (): 必填数据 => ({
   项目: { node: "潜客培育", contactId: null, nextStepAt: null, expectedDealAt: null, amount: 0, remark: null, acceptancePassed: false },
@@ -45,6 +45,7 @@ const 算数的值: Partial<Record<必填项, 草稿值>> = {
   项目所在地: { addrCountry: null, addrProvince: "广东省", addrCity: "深圳市", addrDistrict: null }, 项目级别: "A", 项目标签: "B 潜力跟进",
   验收通过: true, 尾款结清: true, 预算能力: "预算充足", 价格感知: "敏感", 决策链路: "清楚", 采购周期: "半年", 产品匹配: "匹配", 价值认同: "认同",
   决策触达: "已触达", 竞品信息: "无竞品", 部署条件: "满足", 场地现状: "已有",
+  备货状态: "未生产", 物流状态: "运输中", 物流单号: "SF123",
 };
 
 describe("填法表", () => {
@@ -69,6 +70,33 @@ describe("填法表", () => {
     expect(这项的改动("项目标签", "A 重点推进")).toEqual({ 存: "项目", 改动: { projTag: "A 重点推进" } });
     expect(这项的改动("项目级别", "A")).toEqual({ 存: "项目", 改动: { level: "A" } });
     expect(控件("尾款结清")).toBe("勾");
+    // 客户 11-19：备货状态、物流状态、物流单号，和交付卡同一套控件、各存各的列
+    expect(控件("备货状态")).toBe("备货");
+    expect(控件("物流状态")).toBe("物流");
+    expect(控件("物流单号")).toBe("单号");
+    expect(这项的改动("备货状态", "生产中")).toEqual({ 存: "项目", 改动: { stockStatus: "生产中" } });
+    expect(这项的改动("物流状态", "运输中")).toEqual({ 存: "项目", 改动: { logisticsStatus: "运输中" } });
+    expect(这项的改动("物流单号", "  SF1 ")).toEqual({ 存: "项目", 改动: { trackingNo: "SF1" } });
+  });
+  it("备货 / 物流三格：现值带进框；物流状态字典没项可选时去别处；选了任一项就算（不要求已备货 / 已签收）", () => {
+    const p = 项目({ 备货物流: { 备货状态: "生产中", 物流状态: { 值: "暂无", 选项: ["待发货"] }, 物流单号: "SF9" } });
+    expect(初始草稿("备货状态", p)).toBe("生产中");
+    // 物流状态存的是占位值：格子留空，旁边说为什么
+    expect(初始草稿("物流状态", p)).toBeNull();
+    expect(现值不算的话("物流状态", p)).toContain("暂无");
+    expect(初始草稿("物流单号", p)).toBe("SF9");
+    expect(归类("物流状态", 环境({ 有物流: false })).类).toBe("去");
+    expect(归类("物流状态", 环境({ 有物流: true })).类).toBe("填");
+    expect(归类("备货状态", 环境()).类).toBe("填");
+    expect(归类("物流单号", 环境()).类).toBe("填");
+    for (const v of ["未生产", "生产中", "已备货"]) {
+      expect(草稿问题("备货状态", v)).toBeNull();
+      expect(服务端算不算("备货状态", v)).toBe(true);
+    }
+    expect(草稿问题("备货状态", null)).toBeTruthy();
+    expect(草稿问题("物流单号", "-")).toMatch(/占位值/);
+    expect(服务端算不算("物流单号", "-")).toBe(false);
+    expect(服务端算不算("物流状态", "待发货")).toBe(true);
   });
   it("要传文件、记沟通、走判定的不假装能填，且写清去哪", () => {
     const 去 = (k: 必填项) => { const 类 = 归类(k, 环境()); return 类.类 === "去" ? 类.去 : "能填"; };

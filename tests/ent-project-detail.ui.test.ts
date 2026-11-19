@@ -429,6 +429,85 @@ it("迁移 101：项目卡有合同状态、痛点标注（多行），左栏合
   } finally { await page.close(); }
 });
 
+for (const 宽 of [390, 1024, 1280, 1366]) {
+  it(`${宽}px 迁移 154（客户 11-19）：交付卡里有备货状态、物流状态、物流单号，长值不溢出；就地改交到各自的列；不在订单阶段不摆`, async () => {
+    const { page, errors } = await open(true, 宽);
+    try {
+      const 长单号 = "SF1234567890,".repeat(7);
+      await page.evaluate(v => (window as unknown as { __over: (x: object) => void }).__over(v), {
+        备货物流: { 备货状态: null, 物流状态: { 值: "客户已签收（超长的自定义物流状态名）", 选项: ["待发货", "运输中", "客户已签收（超长的自定义物流状态名）"] }, 物流单号: 长单号 },
+        必填: { 配了: ["备货状态"], 还差: ["备货状态"], 只能靠填齐: true },
+      });
+      const 卡 = page.locator(".ant-card").filter({ has: page.locator(".ant-card-head-title", { hasText: /^交付$/ }) }).first();
+      await 卡.locator(".proj-stock-rows").waitFor();
+      const 字 = await 卡.innerText();
+      expect(字.indexOf("备货状态")).toBeLessThan(字.indexOf("物流状态"));
+      expect(字.indexOf("物流单号")).toBeLessThan(字.indexOf("尾款结清"));
+      // 缺着的必填写「—」、悬停说是必填
+      expect(await 卡.locator('[data-empty="备货状态"]').getAttribute("data-required")).toBe("");
+      const 溢 = await 卡.evaluate((c) => {
+        const r = c.getBoundingClientRect();
+        // 值格（.proj-inline-val）自己裁掉、打省略号，里头的字不算出界；量行、键、值格、笔
+        const 出 = [...c.querySelectorAll(".proj-stock-rows > div, .proj-stock-rows > div > *, .proj-stock-rows .proj-inline-val, .proj-stock-rows .proj-inline-pen")].filter((e) => { const x = e.getBoundingClientRect(); return x.width > 0 && (x.right > r.right + 1 || x.left < r.left - 1); }).map((e) => `${e.tagName}.${e.className}:${e.textContent?.slice(0, 20)}`);
+        const 单号格 = [...c.querySelectorAll(".proj-stock-rows .proj-inline-val")].find((e) => e.textContent?.startsWith("SF"))!;
+        return { 出, 横滚: document.documentElement.scrollWidth > innerWidth, 单号裁了: 单号格.scrollWidth > 单号格.clientWidth, 悬停全文: 单号格.querySelector("[title]")?.getAttribute("title")?.length };
+      });
+      expect(溢).toEqual({ 出: [], 横滚: false, 单号裁了: true, 悬停全文: 长单号.length });
+      // 就地改：备货状态选一项，交 stockStatus
+      await 卡.getByRole("button", { name: "改备货状态", exact: true }).click();
+      await 卡.getByRole("combobox", { name: "备货状态" }).waitFor();
+      const 下拉 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
+      await expect.poll(() => 下拉.allInnerTexts(), { timeout: 10_000 }).toEqual(["—", "未生产", "生产中", "已备货"]);
+      await 下拉.filter({ hasText: "生产中" }).click();
+      await page.waitForFunction(() => ((window as unknown as { __编辑?: unknown[] }).__编辑 ?? []).length > 0);
+      expect(await page.evaluate(() => ((window as unknown as { __编辑: [string, Record<string, unknown>][] }).__编辑).at(-1))).toEqual(["p1", { stockStatus: "生产中" }]);
+      // 线索阶段：没有交付卡，这三格也不摆
+      await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "线索", node: "潜客培育", 备货物流: { 备货状态: null, 物流状态: { 值: null, 选项: ["待发货"] }, 物流单号: null } }));
+      await expect.poll(() => page.locator(".proj-stock-rows").count()).toBe(0);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }, 60_000);
+}
+
+for (const 宽 of [390, 1366]) {
+  it(`${宽}px 迁移 154 编辑项目框：订单阶段有三格；只改物流单号只交 trackingNo（停用了还存着的物流状态不带上）；没交的刷新后带回草稿`, async () => {
+    const { page, errors } = await open(true, 宽);
+    try {
+      const 货 = { 备货状态: "生产中", 物流状态: { 值: "已停用的状态", 选项: ["待发货", "已签收", "已停用的状态"] }, 物流单号: "SF1" };
+      const 摆 = () => page.evaluate(v => (window as unknown as { __over: (x: object) => void }).__over({ 备货物流: v }), 货);
+      await 摆();
+      await 编辑钮(page).click();
+      const 框 = page.locator(".ant-modal-container");
+      const 单号 = 框.getByRole("textbox", { name: "物流单号" });
+      await 单号.waitFor();
+      expect(await 框.getByRole("combobox", { name: "备货状态" }).count()).toBe(1);
+      expect(await 框.getByRole("combobox", { name: "物流状态" }).count()).toBe(1);
+      expect(await 框.locator(".ant-select").filter({ has: page.getByRole("combobox", { name: "物流状态" }) }).innerText()).toContain("已停用的状态");
+      expect(await 单号.inputValue()).toBe("SF1");
+      expect(await 框.evaluate(c => c.scrollWidth <= c.clientWidth + 1)).toBe(true);
+      // 打了字没交：草稿留着，刷新后重开带回（物流单号是改过的那格，另两格照库里的）
+      await 单号.fill("SF1, SF2");
+      await page.reload();
+      await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
+      await 摆();
+      await 编辑钮(page).click();
+      await 单号.waitFor();
+      await expect.poll(() => 单号.inputValue()).toBe("SF1, SF2");
+      await 框.getByRole("button", { name: /保\s*存/ }).click();
+      await page.waitForFunction(() => ((window as unknown as { __编辑?: unknown[] }).__编辑 ?? []).length > 0);
+      const [id, 交] = await page.evaluate(() => ((window as unknown as { __编辑: [string, Record<string, unknown>][] }).__编辑).at(-1)!);
+      expect(id).toBe("p1");
+      expect(交.trackingNo).toBe("SF1, SF2");
+      expect(Object.keys(交).filter(k => ["stockStatus", "logisticsStatus", "trackingNo"].includes(k))).toEqual(["trackingNo"]);
+      // 存上了草稿清掉：再开框是库里的值
+      // 「已保存」对勾放完（SaveButton 成了留 1.4 秒）才关框、清草稿
+      await 框.waitFor({ state: "hidden", timeout: 5000 });
+      await expect.poll(() => page.evaluate(() => Object.keys(localStorage).filter(k => k.includes("编辑项目:p1"))), { timeout: 5000 }).toEqual([]);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }, 60_000);
+}
+
 it("迁移 101：没给项目新字段（不是企业版 / 藏了）就不摆这两行、编辑框也没有", async () => {
   const { page, errors } = await open(true);
   try {

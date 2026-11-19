@@ -1,9 +1,11 @@
 /**
- * 项目上的痛点标注、合同状态（企业版，迁移 101）的纯规矩：选项、默认值、编辑项目交上来的值怎么认。
+ * 项目上的痛点标注、合同状态（企业版，迁移 101）、备货状态、物流单号（迁移 154）的纯规矩：选项、默认值、编辑项目交上来的值怎么认。
  * 不碰库，界面、db.ts 改项目、必填判定共用。项目方案是附件（tag「方案」），规矩见 enterprise/customer-v2.ts 项目附件分类们。
  *
  * 合同状态默认「起草中」：新建项目写进去；库里空的（老项目、或用户选了「—」）界面显示「—」（11-04 用户：空值统一「—」、下拉能回到「—」）
  */
+
+import { 不填值 } from "@/lib/enterprise/dict-kinds";
 
 /** 合同状态七项，顺序固定（界面下拉就按这个排） */
 export const 合同状态们 = ["起草中", "待对方确认", "待我方确认", "对方修改中", "我方修改中", "已生效", "已终止"] as const;
@@ -14,6 +16,49 @@ export const 生效的合同状态: 合同状态 = "已生效";
 
 export function 是合同状态(v: unknown): v is 合同状态 {
   return typeof v === "string" && (合同状态们 as readonly string[]).includes(v);
+}
+
+/**
+ * 备货状态（企业版，迁移 154，客户 11-19：「生产备货」新增「备货状态」字段，枚举值为未生产、生产中、已备货）。
+ * 三项固定、顺序固定（客户给的就是这三个，不进字典）；没填 = 空，界面写「—」。新建项目不写默认
+ */
+export const 备货状态们 = ["未生产", "生产中", "已备货"] as const;
+export type 备货状态 = (typeof 备货状态们)[number];
+export function 是备货状态(v: unknown): v is 备货状态 {
+  return typeof v === "string" && (备货状态们 as readonly string[]).includes(v);
+}
+/** 显示用：库里空的、认不出的都当没填（null，界面写「—」） */
+export function 备货状态显示(存的: string | null | undefined): 备货状态 | null {
+  return 是备货状态(存的) ? 存的 : null;
+}
+/** 物流单号最多几个字：一行，够放好几个单号用逗号隔开 */
+export const 物流单号上限 = 100;
+
+export type 备货单号 = { stockStatus: string | null; trackingNo: string | null };
+/**
+ * 编辑项目交上来的备货状态、物流单号 → 要存的值（改项目 合进 新 里比变没变）。物流状态对字典要读库，在 db.ts 物流状态改成。
+ *   备货状态：没传 = 原样；空 / 「—」= 清掉；不在三项里报错；和现在显示的一样 = 原样
+ *   物流单号：没传 = 原样；去首尾空白，空 = 清掉；只写一行（换行报错）；超长报错（不悄悄截断）
+ */
+export function 备货单号改成(
+  patch: Partial<Record<keyof 备货单号, unknown>>,
+  原: 备货单号,
+): { ok: true; 值: 备货单号 } | { ok: false; error: string } {
+  let stockStatus = 原.stockStatus;
+  if (patch.stockStatus !== undefined) {
+    const v = patch.stockStatus === null || patch.stockStatus === "" || patch.stockStatus === 不填值 ? null : patch.stockStatus;
+    if (v !== null && !是备货状态(v)) return { ok: false, error: `备货状态「${String(v)}」认不出来，从下拉里选一个` };
+    if (v !== 备货状态显示(原.stockStatus)) stockStatus = v;
+  }
+  let trackingNo = 原.trackingNo;
+  if (patch.trackingNo !== undefined) {
+    if (patch.trackingNo !== null && typeof patch.trackingNo !== "string") return { ok: false, error: "物流单号要写文字" };
+    const t = (patch.trackingNo ?? "").trim();
+    if (/[\r\n]/.test(t)) return { ok: false, error: "物流单号只写一行，几个单号用逗号隔开" };
+    if ([...t].length > 物流单号上限) return { ok: false, error: `物流单号最多 ${物流单号上限} 个字` };
+    trackingNo = t || null;
+  }
+  return { ok: true, 值: { stockStatus, trackingNo } };
 }
 
 /**

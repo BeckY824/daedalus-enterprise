@@ -18,7 +18,7 @@ import { 企业版 } from "./switch";
 
 /**
  * 换负责人记录种类 → 三态的换负责人方式；不在表里的种类三态不认（不计次、不归零、不算动静）。
- * 超时未跟进自动转、客户随线索走（overdue-assign，11-17，reply-overdue.ts）故意不收：Even 11-19 第 14 题 B
+ * 超时未跟进自动转、客户随线索走（overdue-assign，11-17，reply-overdue.ts）故意不收：客户 11-19 第 14 题 B
  * 「超时自动轮转不重置超时回收日；手动转让、领取照旧归零」，客户跟着轮转过去时三态钟接着走
  */
 export const 换人方式: Readonly<Record<string, 换负责人方式>> = { assign: "转让", deactivate: "离职交接", claim: "公海捞取", "pool-assign": "公海指派", "market-assign": "市场首次分配" };
