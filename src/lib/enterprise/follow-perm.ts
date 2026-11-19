@@ -15,7 +15,8 @@ import { 企业版 } from "./switch";
 import { 权限组织, type 组织 } from "./org";
 import { 能删除, 有业务角色, 只读角色, 只读话of, 没设业务角色, 能改客户 } from "./permissions";
 import { defaultClient, prisma } from "@/lib/prisma";
-import { 限定的我 } from "@/lib/team-scope";
+import { 限定的我, 看全部 } from "@/lib/team-scope";
+import { 能往项目记沟通 } from "@/lib/project/follow-needs-project";
 import { 看得到的客户 } from "@/lib/project/db";
 import { 全进程上下文 } from "@/lib/process-als";
 
@@ -56,6 +57,61 @@ export const 卡片撤销过时话 = `只能撤销自己刚记的（${卡片撤�
 export function 卡片刚记的能撤(me: { id: string }, f: { ownerId: string | null; createdAt: Date }, now: Date = new Date()): boolean {
   if (!f.ownerId || f.ownerId !== me.id) return false;
   return now.getTime() - f.createdAt.getTime() <= 卡片撤销窗口分钟 * 60_000;
+}
+
+/**
+ * 记录人本人限时改（客户 11-19：「沟通记录填写提交后，可在30分钟进行修改」，M-权限-09 的例外）：
+ * 这条沟通是我记的（ownerId），从写入时刻（createdAt，服务器时间）起 本人改沟通窗口分钟 以内能改内容；过了不出入口、服务端拒。
+ * 原本就能改的（身为负责人的管理，能改沟通of）照旧不受这个时限。只改内容格子，挂哪个客户 / 项目、哪个节点不动（saveFollowUp 本来就不改）
+ */
+export const 本人改沟通窗口分钟 = 30;
+export const 本人改沟通过时话 = `提交超过 ${本人改沟通窗口分钟} 分钟，不能再改`;
+export const 本人改沟通项目话 = "这条沟通挂的项目你已经记不了沟通（已结束、进了公海或你已不在项目组），不能再改";
+export const 本人改不能变待办话 = "沟通不能改成待办或提醒";
+
+/** 这条本人还能改到几点（写入时刻 + 窗口）：前端拿它决定「修改」出不出、几点收起 */
+export function 本人可改到(createdAt: Date): Date {
+  return new Date(createdAt.getTime() + 本人改沟通窗口分钟 * 60_000);
+}
+
+/** 纯函数：是我记的、写入还不到 本人改沟通窗口分钟（含正好 30 分钟那一刻） */
+export function 本人限时可改of(me: { id: string }, f: { ownerId: string | null; createdAt: Date }, now: Date = new Date()): boolean {
+  if (!f.ownerId || f.ownerId !== me.id) return false;
+  return now.getTime() <= 本人可改到(f.createdAt).getTime();
+}
+
+/**
+ * 本人限时改时下一步（项目上的下一步做什么 / 下一步时间）能不能跟着改（11-19 默认口径，待客户确认）：
+ * 这条是这个项目最近记的一条（按写入时刻）、记录人就是项目负责人、改的人是他本人且还在 30 分钟内、他能管这个项目（组员记的本来就不填下一步）。
+ * 只有这样项目上的下一步才是这条写进去的，改了才同步回项目；别的情形不出这两格
+ */
+export function 下一步跟着改of(
+  me: { id: string },
+  f: { id: string; ownerId: string | null; createdAt: Date },
+  p: { ownerId: string | null; 最近一条id: string | null | undefined; 能管: boolean },
+  now: Date = new Date(),
+): boolean {
+  return p.能管 && !!p.ownerId && f.ownerId === p.ownerId && f.id === p.最近一条id && 本人限时可改of(me, f, now);
+}
+
+/**
+ * 本人限时改的服务端挡（saveFollowUp 用；不是企业版不走这里）：null = 放行。
+ * 不是我记的 → 不能改沟通话；过了时限 → 本人改沟通过时话；没设业务角色 / 只读角色照旧拒；
+ * 挂在项目上的，我得还能往这个项目记沟通（负责人或已进组的组员、项目没结束没进公海，同 能往项目记沟通）
+ */
+export async function 本人限时改挡(me: 谁, f: { id: string; ownerId: string | null; createdAt: Date }, now: Date = new Date()): Promise<string | null> {
+  if (!f.ownerId || f.ownerId !== me.id) return 不能改沟通话;
+  if (!本人限时可改of(me, f, now)) return 本人改沟通过时话;
+  const org = await 权限组织();
+  if (!org || 没设业务角色(org, me.id)) return 没业务角色话;
+  if (只读角色(me, org)) return 只读话of(me, org);
+  // 组员看客户是连带只读，项目按 id 取全（同 定沟通挂哪个项目），能不能记下面判
+  const 挂 = await 看全部(() => defaultClient.followUpProject.findUnique({
+    where: { followUpId: f.id },
+    select: { project: { select: { ownerId: true, pooledAt: true, result: true, members: { where: { userId: me.id }, select: { inviteStatus: true } } } } },
+  }));
+  if (挂?.project && (挂.project.result || !能往项目记沟通(me, 挂.project, org, 挂.project.members[0]?.inviteStatus))) return 本人改沟通项目话;
+  return null;
 }
 
 /*

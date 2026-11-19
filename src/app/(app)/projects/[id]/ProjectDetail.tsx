@@ -209,7 +209,13 @@ export type 项目详情 = {
     /** 企业版沟通上的截图、录音（F-跟进-07）；我记的 = 这条是我记的（记的人能往上加附件，删 = 系统管理员或身为负责人的管理，M-权限-09 原口径 11-09） */
     附件?: 附件[]; 我记的?: boolean;
     /** 企业版：这条沟通的归属人不是当前负责人（负责人可以点一下不看，11-02） */
-    接手前?: boolean }[];
+    接手前?: boolean;
+    /** 企业版记录人本人能改到几点（写入 + 30 分钟，11-19）；不是我记的、我已经记不了这个项目的不给。原本就能改的看 可改沟通 */
+    本人可改到?: string;
+    /** 本人限时改时下一步跟着改（这个项目最近一条、负责人自己记的）：项目上现在的下一步和这条的下一步时间；不给 = 修改框不出这两格 */
+    下一步?: { 文字: string; 时间: string | null };
+    /** 改过（操作日志里有「改了沟通」）：行上标「已修改」 */
+    已修改?: boolean }[];
   members: 组员[];
   /** 企业版提成卡：不是企业版、我看不了（不是组长 / 组员 / 管理员 / 上级）= null，卡片不出 */
   提成: 提成卡 | null;
@@ -518,6 +524,9 @@ export default function ProjectDetail({
   /** 沟通的「…」菜单：正在改哪一条 / 删除问句开在哪一条上 */
   const [改沟通于, set改沟通于] = useState<项目详情["followUps"][number] | null>(null);
   const [删问于, set删问于] = useState<string | null>(null);
+  /** 记录人本人 30 分钟内能改（11-19）：到点就收起「修改」，服务端照样拒 */
+  const 本人能改 = useOwnEditWindow(p.followUps.map((f) => f.本人可改到));
+  const 能改这条 = (f: 项目详情["followUps"][number]) => !!p.可改沟通 || 本人能改(f.本人可改到);
   /** 转让项目（10-30，原名「转给…」；U-项目-07 起点了确认就转、不再等 6 秒撤销）：弹窗开着、选了谁 */
   const [转给框, set转给框] = useState(false);
   const [转给谁, set转给谁] = useState<string | null>(null);
@@ -1428,7 +1437,8 @@ export default function ProjectDetail({
               <Tag>{f.node}</Tag>
               {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
               <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
-              {(p.可改沟通 || p.可删沟通 || 卡点?.能发) && (
+              {f.已修改 && <span data-testid="follow-edited" title="这条沟通提交后改过，改了什么见操作日志" style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)", whiteSpace: "nowrap" }}>已修改</span>}
+              {(能改这条(f) || p.可删沟通 || 卡点?.能发) && (
                 // 「…」放在这一行最右：发卡点、修改、删除（10-30 发卡点从行上收进来）；删除 = 这一条下面长出确认条（dt.talkdel），见 删沟通条
                 <span style={{ marginLeft: "auto" }}>
                     <Dropdown
@@ -1438,7 +1448,8 @@ export default function ProjectDetail({
                       menu={{
                         items: [
                           ...(卡点?.能发 ? [{ key: "blocker", label: "新建卡点" }] : []),
-                          ...(p.可改沟通 ? [{ key: "edit", label: "修改" }] : []),
+                          // 本人限时改的写清改到几点（原本就能改的不写）
+                          ...(能改这条(f) ? [{ key: "edit", label: !p.可改沟通 && f.本人可改到 ? `修改（${dayjs(f.本人可改到).format("HH:mm")} 前可改）` : "修改" }] : []),
                           ...(p.可删沟通 ? [{ key: "delete", label: "删除", danger: true }] : []),
                         ],
                         onClick: ({ key }) => (key === "blocker" ? set发卡点于(f.id) : key === "edit" ? set改沟通于(f) : set删问于(f.id)),
@@ -1454,7 +1465,7 @@ export default function ProjectDetail({
                 名="沟通内容"
                 规整={(v) => v.trim()}
                 值={f.content}
-                能改={p.企业版 && !!p.可改沟通}
+                能改={p.企业版 && 能改这条(f)}
                 多行
                 显示={(v) => <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{v}</div>}
                 存={(v) => 存沟通正文(f, v)}
@@ -1712,7 +1723,8 @@ export default function ProjectDetail({
 
       {卡点?.能发 && 发卡点于 && <PublishBlockerModal followUpId={发卡点于} 默认={卡点.默认} 原因们={卡点.原因们} 沟通们={p.followUps} onClose={() => set发卡点于(null)} />}
 
-      {p.可改沟通 && 改沟通于 && <EditFollowModal projectId={p.id} f={改沟通于} 外贸={外贸精简(b)} onClose={() => set改沟通于(null)} 跑={跑} />}
+      {/* 本人限时改的框打开后到点不收（打的字还在），交上去服务端说「超过 30 分钟」 */}
+      {改沟通于 && (p.可改沟通 || !!改沟通于.本人可改到) && <EditFollowModal projectId={p.id} f={改沟通于} 外贸={外贸精简(b)} 要下一步={!!p.要下一步} onClose={() => set改沟通于(null)} 跑={跑} />}
 
       {头部框 && 头部框 !== "完成" && (
         <Modal open title={`${头部框叫法[头部框]} · ${p.name}`} footer={null} width={520} onCancel={关头部框}>
@@ -1967,13 +1979,34 @@ export default function ProjectDetail({
 }
 
 /**
+ * 记录人本人限时改（11-19）：给每条的「能改到几点」，返回判一条现在还能不能改。
+ * 服务端渲染和首帧一律当不能改（钟不一样，免得水合对不上），挂上以后按本机钟判，最早那个到点时重渲一次把「修改」收起
+ */
+function useOwnEditWindow(到点们: readonly (string | undefined)[]): (到?: string) => boolean {
+  const [现在, set现在] = useState<number | null>(null);
+  const 键 = 到点们.filter(Boolean).join("|");
+  useEffect(() => {
+    const 量 = () => set现在(Date.now());
+    // 首帧挂上就量一次；之后只在下一个还没过的点到了再量
+    if (现在 === null) { const t = setTimeout(量, 0); return () => clearTimeout(t); }
+    const 下一个 = 键 ? 键.split("|").map((x) => Date.parse(x)).filter((t) => t > 现在).sort((a, b) => a - b)[0] : undefined;
+    if (下一个 === undefined) return;
+    const t = setTimeout(量, Math.min(下一个 - Date.now() + 200, 2 ** 31 - 1));
+    return () => clearTimeout(t);
+  }, [键, 现在]);
+  return (到) => !!到 && 现在 !== null && 现在 <= Date.parse(到);
+}
+
+/**
  * 改项目上的一条沟通（「…」→ 修改，10-29）：沟通方式、时间、内容三格，别的（阶段、下一步）不在这里改。
  * 打开时的 updatedAt 一起交回去，别人先改了就报版本冲突，不悄悄盖掉
  */
-function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
+function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, onClose, 跑 }: {
   projectId: string;
   f: 项目详情["followUps"][number];
   外贸: boolean;
+  /** 线索 / 商机阶段开了超时回收：下一步时间必填（同记的时候）；只在 f.下一步 给了时用 */
+  要下一步?: boolean;
   onClose: () => void;
   跑: 跑法;
 }) {
@@ -1987,14 +2020,20 @@ function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
   const [发起, set发起] = useState<string | null>(f.initiator ?? null);
   const [occurredAt, setOccurredAt] = useState(() => dayjs(f.occurredAt).format(沟通时间格式));
   const [content, setContent] = useState(f.content);
+  // 下一步跟着改（11-19，f.下一步 给了才有）：和记的时候一样，下一步计划必填、时间按 要下一步
+  const 改下一步 = !!f.下一步;
+  const [下一步文字, set下一步文字] = useState(f.下一步?.文字 ?? "");
+  const [下一步时间, set下一步时间] = useState<string | null>(f.下一步?.时间 ?? null);
   const [交中, set交中] = useState(false);
   /** 没存上的原因（版本冲突、没权限……）：写在框里、框不关，不弹顶部提示 */
   const [交错, set交错] = useState<string | null>(null);
   // 改了没交的留草稿（components/FormDraft.tsx）：刷新、发版后重开这条接着改；只存改过的格子
   const 稿 = useFormDraft({
     键: `改项目沟通:${f.id}`,
-    值: { type, method, 发起, occurredAt, content },
+    值: { type, method, 发起, occurredAt, content, ...(改下一步 ? { 下一步文字, 下一步时间 } : {}) },
     带回: (v) => {
+      if (改下一步 && typeof v.下一步文字 === "string") set下一步文字(v.下一步文字);
+      if (改下一步 && v.下一步时间 !== undefined) set下一步时间(v.下一步时间 ?? null);
       if (typeof v.type === "string") setType(v.type);
       if (v.method !== undefined) setMethod(v.method ?? null);
       if (v.发起 !== undefined) set发起(v.发起 ?? null);
@@ -2002,10 +2041,11 @@ function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
       if (typeof v.content === "string") setContent(v.content);
     },
   });
-  const 差 = !content.trim() ? "请填写这次沟通的内容" : 主体们 && f.initiator && !发起 ? "请选发起主体" : "";
+  const 差 = !content.trim() ? "请填写这次沟通的内容" : 主体们 && f.initiator && !发起 ? "请选发起主体"
+    : 改下一步 && !下一步文字.trim() ? "请写下一步计划" : 改下一步 && 要下一步 && !下一步时间 ? "请填下一步时间" : "";
   const 交 = async () => {
     set交中(true);
-    const ok = await 跑(() => 改项目沟通(projectId, f.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 版本: f.版本 }), "已保存修改", { 报错: (话) => set交错(话 === 刷新再提交话 ? `${话}（改的字刷新后还在）` : 话) });
+    const ok = await 跑(() => 改项目沟通(projectId, f.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 版本: f.版本, ...(改下一步 ? { 下一步: 下一步文字, 下一步时间 } : {}) }), "已保存修改", { 报错: (话) => set交错(话 === 刷新再提交话 ? `${话}（改的字刷新后还在）` : 话) });
     set交中(false);
     if (ok) {
       稿.存好了();
@@ -2031,6 +2071,19 @@ function EditFollowModal({ projectId, f, 外贸, onClose, 跑 }: {
           onChange={(v) => v && setOccurredAt(v.format(沟通时间格式))}
         />
         <Input.TextArea aria-label="沟通内容" rows={4} value={content} onChange={(e) => setContent(e.target.value)} placeholder="这次聊了什么" />
+        {改下一步 && (<>
+          <div>
+            <div style={{ marginBottom: 4 }}>下一步计划<span style={{ color: "var(--danger-text)" }}> *</span></div>
+            <Input aria-label="下一步计划" value={下一步文字} onChange={(e) => set下一步文字(e.target.value)} maxLength={下一步文字上限} showCount placeholder="比如：周五前发报价单给对方采购" />
+          </div>
+          <div>
+            <div style={{ marginBottom: 4 }}>
+              下一步时间{要下一步 ? <span style={{ color: "var(--danger-text)" }}> *</span> : <span style={{ color: "var(--text-muted)" }}>（可不填）</span>}
+            </div>
+            <DatePicker aria-label="下一步时间" style={{ width: "100%" }} value={下一步时间 ? dayjs(下一步时间) : null} disabledDate={(x) => x.isBefore(dayjs(), "day")} onChange={(v) => set下一步时间(v ? v.format("YYYY-MM-DD") : null)} />
+            <div style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)", marginTop: 4 }}>改了会同步到项目上的下一步</div>
+          </div>
+        </>)}
         {差 && <div style={{ color: "var(--text-muted)" }}>{差}</div>}
         <框里原因 话={交错} />
       </div>

@@ -14,7 +14,8 @@ import { 来源字, 人名显示 } from "@/lib/project/system-created";
 import { 页面可选项, 预读页面字典, type 字典种类 } from "@/lib/enterprise/dict";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看项目, 能转让项目, 是经理, 能删除, 能新建和领取 } from "@/lib/enterprise/permissions";
-import { 页面能改沟通, 能改沟通of, 页面能删沟通, 能删沟通of } from "@/lib/enterprise/follow-perm";
+import { 页面能改沟通, 能改沟通of, 页面能删沟通, 能删沟通of, 本人限时可改of, 本人可改到, 下一步跟着改of } from "@/lib/enterprise/follow-perm";
+import { 改过的沟通们 } from "@/lib/enterprise/follow-edited";
 import { 沟通附件们 } from "@/lib/attachments";
 import type { 附件 } from "@/lib/attachment-rules";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -304,6 +305,10 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   const 关联 = 企业 && 露 ? await 项目关联们(me, p.id) : null;
   // 库里存着旧节点名 / 旧结局的（企业版 10-31 改名）按这套的新名给界面；节点变更历史（logs）照原样
   const 现 = 本套位置({ phase: p.phase, node: p.node, result: p.result }, 字典);
+  // 沟通「已修改」小字、本人限时改（11-19）：一页一句留痕；最近记的那条按写入时刻（下一步跟着改认它）
+  const 现在 = new Date();
+  const 改过的 = 企业 && 露沟通 && p.followUps.length ? await 改过的沟通们(p.followUps.map((f) => f.followUp.id)) : new Set<string>();
+  const 最近一条 = p.followUps.reduce<{ id: string; at: number } | null>((m, f) => (!m || f.followUp.createdAt.getTime() > m.at ? { id: f.followUp.id, at: f.followUp.createdAt.getTime() } : m), null)?.id ?? null;
   const 详情: 项目详情 = {
     收藏了: await 项目收藏了吗(me.id, id),
     id: p.id, name: p.name, remark: p.remark, amount: p.amount, currency: p.currency,
@@ -356,10 +361,16 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     followUps: (露沟通 ? p.followUps : [])
       .map((f) => {
         const 编 = 编号.get(f.followUp.id);
+        // 记录人本人 30 分钟内能改（11-19）：还能往这个项目记沟通才给；原本就能改的（可改沟通）界面上照旧不看这个
+        const 本人可改 = 企业 && 能记沟通 && 本人限时可改of(me, f.followUp, 现在);
+        const 跟着改下一步 = 本人可改 && 能改 && 下一步跟着改of(me, f.followUp, { ownerId: p.ownerId, 最近一条id: 最近一条, 能管: 能改 }, 现在);
         return {
           id: f.followUp.id, type: f.followUp.type, method: f.followUp.method, initiator: f.followUp.initiator, content: f.followUp.content, occurredAt: f.followUp.occurredAt.toISOString(), who: 叫(f.followUp.ownerId)!, node: f.node, 版本: f.followUp.updatedAt.toISOString(),
           ...(编 ? { code: 编.code, 提醒: 编.nextAt ? 时限标签(编.nextAt) : null } : {}),
           ...(企业 ? { 附件: 沟通附件.get(f.followUp.id) ?? [], 我记的: f.followUp.ownerId === me.id, 接手前: f.followUp.ownerId !== p.ownerId } : {}),
+          ...(本人可改 ? { 本人可改到: 本人可改到(f.followUp.createdAt).toISOString() } : {}),
+          ...(跟着改下一步 ? { 下一步: { 文字: p.nextStepText ?? "", 时间: 编?.nextAt ? dayjs(编.nextAt).format("YYYY-MM-DD") : null } } : {}),
+          ...(改过的.has(f.followUp.id) ? { 已修改: true } : {}),
         };
       })
       .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)),
