@@ -73,7 +73,7 @@ describe("节点必填自动推进", () => {
     expect(log).toMatchObject({ kind: "node", userId: 乙.id, fromNode: "潜客培育", toNode: "线索验证", toResult: null });
   });
 
-  it("下一个节点也配了、也齐了：一次只推一格（客户 11-19 定稿），再存一次再推，跨阶段也一步一步走", async () => {
+  it("下一个节点也配了、也齐了：一次只推一格（客户 11-19 定稿），再存一次再推；跨阶段不自动推（待客户定 A），要手动点", async () => {
     // 必填配置存的旧节点名 key（明确需求）读成新名 痛点挖掘，照样推；推到的写新名
     await setSetting("orgRules", 开着({ 线索验证: ["金额"], 线索推进: ["金额"], 明确需求: ["主联系人"] }));
     const p = await 项目({ node: "线索验证" });
@@ -81,9 +81,10 @@ describe("节点必填自动推进", () => {
     const r = await 改项目(乙, p.id, { name: "一号项目", amount: 5 });
     expect(r).toMatchObject({ ok: true, 自动推到: ["线索推进"] });
     expect(await 现(p.id)).toMatchObject({ phase: "线索", node: "线索推进" });
-    expect(await 改项目(乙, p.id, { name: "一号项目", remark: "再存一下" })).toMatchObject({ ok: true, 自动推到: ["痛点挖掘"] });
-    expect(await 现(p.id)).toMatchObject({ phase: "商机", node: "痛点挖掘" });
-    expect(await prisma.projectNodeLog.count({ where: { projectId: p.id, reason: 自动推进理由 } })).toBe(2);
+    // [待客户定 A] 线索推进 → 痛点挖掘换了阶段：齐了也停着，等人点「完成节点」
+    expect(await 改项目(乙, p.id, { name: "一号项目", remark: "再存一下" })).not.toHaveProperty("自动推到");
+    expect(await 现(p.id)).toMatchObject({ phase: "线索", node: "线索推进" });
+    expect(await prisma.projectNodeLog.count({ where: { projectId: p.id, reason: 自动推进理由 } })).toBe(1);
   });
 
   it("记沟通：本节点沟通 + 下一步时间齐了就推；勾交付：验收通过", async () => {

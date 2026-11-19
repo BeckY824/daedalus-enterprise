@@ -148,7 +148,7 @@ describe("节点必填按矩阵（真库）", () => {
     expect((await 现(p.id)).node).toBe("生产备货");
   });
 
-  it("沟通三项：缺方式、缺发起主体、删了的、记在别的节点的都不算；三样齐的一条就推", async () => {
+  it("沟通三项：缺方式、缺发起主体、删了的、记在别的节点的都不算；三样齐的一条就算齐（首款到账跨阶段不自动推，待客户定 A）", async () => {
     await setSetting("orgRules", 开着({ 首款到账: ["沟通三项"] }));
     const p = await 项目({ phase: "商机", node: "首款到账" });
     await 沟通(p.id, { initiator: "我方", method: null });
@@ -159,8 +159,10 @@ describe("节点必填按矩阵（真库）", () => {
     expect(await 存一下(p.id)).not.toHaveProperty("自动推到");
     expect(还差(开着({ 首款到账: ["沟通三项"] }), await 读必填数据(prisma as never, await 现(p.id)))).toEqual(["沟通三项"]);
     await 沟通(p.id, { initiator: "客户", method: "微信沟通", content: "确认首款已打" });
-    expect(await 存一下(p.id)).toMatchObject({ ok: true, 自动推到: ["生产备货"] });
-    expect(await 现(p.id)).toMatchObject({ phase: "订单", node: "生产备货" });
+    // 齐了（还差为空）；[待客户定 A] 首款到账 → 生产备货换阶段不自动推，停在首款到账
+    expect(还差(开着({ 首款到账: ["沟通三项"] }), await 读必填数据(prisma as never, await 现(p.id)))).toEqual([]);
+    expect(await 存一下(p.id)).not.toHaveProperty("自动推到");
+    expect(await 现(p.id)).toMatchObject({ phase: "商机", node: "首款到账" });
   });
 
   it("潜客培育那几样从库里读：所属客户、项目来源（渠道）、项目所在地、分配方式（分配记录或客户上的）、需求类型", async () => {

@@ -337,6 +337,26 @@ describe("节点推进规则定稿（真库）", () => {
     });
   });
 
+  describe("[待客户定 A] 跨阶段不自动推", () => {
+    it("线索推进、首款到账填齐了：存了不推、停在本格，项目页没有存一下就推；手动点完成节点照推；同阶段照旧自动推一格", async () => {
+      await setSetting("orgRules", 开着({ 线索推进: ["金额"], 首款到账: ["定金金额"], 痛点挖掘: ["痛点标注"] }));
+      const 线 = await 项目({ phase: "线索", node: "线索推进", demandStatus: "明确需求" });
+      expect(await 改项目(乙, 线.id, { amount: 1000 })).toEqual({ ok: true, 变了: ["amount"] });
+      expect((await 现(线.id)).node).toBe("线索推进");
+      expect((await 详(线.id)).必填).toEqual({ 配了: ["金额"], 还差: [] });
+      // 客户资料连带推也不跨
+      expect(await 客户项目按必填推进(乙, 客户)).toEqual([]);
+      const 推 = await 改节点(乙, 线.id, { phase: "商机", node: "痛点挖掘" });
+      expect(推, JSON.stringify(推)).toEqual({ ok: true, 变了: true });
+      // 进了商机：同阶段照旧自动推一格
+      expect(await 改项目(乙, 线.id, { painPoints: "排产慢" })).toMatchObject({ ok: true, 自动推到: ["方案敲定"] });
+      const 款 = await 项目({ name: "二号", phase: "商机", node: "首款到账" });
+      expect(await 改项目(乙, 款.id, { depositAmount: 500 })).not.toHaveProperty("自动推到");
+      expect((await 现(款.id)).node).toBe("首款到账");
+      expect(await 改节点(乙, 款.id, { phase: "订单", node: "生产备货" })).toMatchObject({ ok: true, 变了: true });
+    });
+  });
+
   describe("⑥ 仅上级推：上级推到已齐的节点停住，项目页说存一下就推", () => {
     it("直属上级手动推到齐了的物流运输：停住；负责人看项目页有 存一下就推，存一下推一格；没齐、负责人可推时都没有", async () => {
       const 组长 = await 人("lead", "MANAGER", "sales_mgr");

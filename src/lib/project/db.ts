@@ -1751,6 +1751,9 @@ export async function 自动推得到(tx: Prisma.TransactionClient, 规则: 组�
   if (待分配占位(me, p)) return null;
   const 下 = 下一步(p, 字典of(企业版()));
   if (!下) return null;
+  // [待客户定 A] 下一格换了阶段（线索→商机、商机→订单）不自动推：企业版跨阶段退不回去（nodes.ts 改节点问题），停在本格，
+  // 等人点「完成节点」（项目页、看板都先弹确认）；项目页提示「必填齐了，点「完成节点」进商机 / 订单」。同阶段内照旧自动推一格
+  if (企业版() && 下.phase !== p.phase) return null;
   // 退回来的节点不推（退回一般是要重做）
   if (!(await 往前进来的(tx, p))) return null;
   const 数据 = 已读 ?? (() => 读必填数据(tx, p, 规则));

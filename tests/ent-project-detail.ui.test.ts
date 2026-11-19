@@ -503,6 +503,19 @@ for (const 宽 of [390, 1024, 1280, 1366]) {
   }, 60_000);
 }
 
+it("[待客户定 A] 必填齐了、下一格换阶段：当前进程卡写「必填齐了，点「完成节点」进商机」；同阶段照旧", async () => {
+  const { page, errors } = await open(true, 1280);
+  try {
+    await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "线索", node: "线索推进", 必填: { 配了: ["金额"], 还差: [] } }));
+    await page.getByText("必填齐了，点「完成节点」进商机").waitFor();
+    await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "商机", node: "首款到账", 必填: { 配了: ["金额"], 还差: [] } }));
+    await page.getByText("必填齐了，点「完成节点」进订单").waitFor();
+    await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ phase: "商机", node: "痛点挖掘", 必填: { 配了: ["金额"], 还差: [] } }));
+    await page.getByText("这个节点的必填都齐了，可以点「完成节点」往前推").waitFor();
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
 it("仅上级推下停在已齐的节点（存一下就推）：当前进程卡写「已经填齐：改任一项（项目资料、画像都算，值没变不算）保存、或记一条沟通，就会自动推到下一步」；别的情况照旧", async () => {
   const { page, errors } = await open(true, 1280);
   try {
@@ -1981,7 +1994,7 @@ it("dt.stage：必填齐了完成节点一步推（不开框），推完底部�
   } finally { await page.close(); }
 });
 
-it("完成节点跨阶段（线索推进→痛点挖掘、首款到账→生产备货）：企业版退不回上一阶段，不给撤销条，只写就地回执", async () => {
+it("完成节点跨阶段（线索推进→痛点挖掘、首款到账→生产备货）：先确认（待客户定 A），企业版退不回上一阶段，不给撤销条，只写就地回执", async () => {
   const { page, errors } = await open(true, 1280);
   try {
     for (const [phase, node, 到阶段] of [["线索", "线索推进", "商机"], ["商机", "首款到账", "订单"]] as const) {
@@ -1989,6 +2002,16 @@ it("完成节点跨阶段（线索推进→痛点挖掘、首款到账→生产�
       await page.evaluate((x) => (window as unknown as { __over: (x: unknown) => void }).__over(x), { phase, node, 必填: null });
       await page.waitForFunction((n) => document.querySelector(".proj-stage-node.is-cur")?.textContent?.startsWith(n), node);
       await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
+      // [待客户定 A] 跨阶段先确认：取消不推；确认了才推
+      const 问 = page.getByRole("dialog").filter({ hasText: "推过去就回不了上一阶段，确定？" });
+      await 问.waitFor();
+      expect(await 问.innerText()).toContain(`进了${到阶段}就不能再退回${phase}`);
+      await 问.getByRole("button", { name: /取\s*消/ }).click();
+      await 问.waitFor({ state: "hidden" });
+      expect(await 窗变量(page, "__改节点")).toBe("[]");
+      await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
+      await 问.waitFor();
+      await 问.getByRole("button", { name: `进${到阶段}` }).click();
       await expect.poll(async () => (JSON.parse(await 窗变量(page, "__改节点")) as [string, { phase: string }][]).map((x) => x[1].phase)).toEqual([到阶段]);
       await expect.poll(() => page.locator(".pd-note").innerText().catch(() => "")).toContain(`进到 ${到阶段}`);
       expect(await page.locator("#undo-host").getByRole("button", { name: /撤销/ }).count()).toBe(0);

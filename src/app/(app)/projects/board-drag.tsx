@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties, type RefObject, type K
 import { createPortal } from "react-dom";
 import { Button, Modal } from "antd";
 import { showUndo } from "@/components/UndoBar";
+import { useConsequence } from "@/components/ConsequenceDialog";
 import { 少动 } from "@/lib/reduced-motion";
 import type { 看板一列, 看板卡片 } from "@/lib/project/board";
 import type { 草稿们 } from "@/lib/project/required-fill";
@@ -21,7 +22,8 @@ const 撤销毫秒 = 6000;
  * 缺必填：卡片先弹回原处，弹一个小框就地补填（11-15 用户定：和项目详情「完成节点」同一个 ProjectFillRequired，填完直接推过去）；
  * 小框里填不了的（沟通、附件、回款这类）照旧给「去…」进项目。读不到项目料时退回只列还差哪几项的小框——「去补齐」进项目。
  * 缺着必填谁都不能推（客户 11-19 定稿「全员统一必须填齐」：原来总管理、销售管理的「仍要推进 · 缺的留空」去掉了）。
- * 推成了：底部一句「已推到 X」带「撤销」（P-界面-40 推进节点可撤销），撤销 = 改回原来的进程（同样走服务端）。
+ * 推成了：底部一句「已推到 X」带「撤销」（P-界面-40 推进节点可撤销），撤销 = 改回原来的进程（同样走服务端）；
+ * 跨阶段（线索→商机、商机→订单）先确认、推成了不给撤销（企业版退不回上一阶段）。
  * 只有进程列能放（交付结清、流失、丢单要写原因、勾验收，回项目里点）；有结局的、在公海的、只看进度的卡片不给拖。
  * 键盘：卡片上按 Alt + → / ← 推到下一个 / 退回上一个进程，走同一条路；读屏念结果（role=status）。
  * 减弱动态：卡片不跟着指针位移、不弹，只亮目标列，落位直接换列
@@ -63,6 +65,7 @@ export function useBoardDrag({ 看板, 开, 名of, 去补齐, 刷新, 框 }: {
   const [拖中, set拖中] = useState<string | null>(null);
   const [弹回, set弹回] = useState<string | null>(null);
   const [补, set补] = useState<补框 | null>(null);
+  const [问后果, 后果框] = useConsequence();
   const [播报, set播报] = useState("");
   /** 卡片弹回的原因：一张小卡浮在那张卡旁边（同还差小框的样子），不弹顶部提示；点一下或 6 秒后收 */
   const [弹回话, set弹回话] = useState<{ 话: string; 位: CSSProperties; 次: number } | null>(null);
@@ -91,6 +94,22 @@ export function useBoardDrag({ 看板, 开, 名of, 去补齐, 刷新, 框 }: {
   };
 
   async function 真推(r: 看板卡片, 到: 落点) {
+    // [待客户定 A] 拖到下一阶段的列（线索→商机、商机→订单）先确认：企业版推过去就回不了上一阶段（同项目页「完成节点」那个框）。
+    // 问的时候卡片先回原列，确认了才落到新列；取消 = 弹回、不说话
+    if (到.phase !== r.phase) {
+      改搬(r.id, null);
+      const 好 = await 问后果({
+        题: "推过去就回不了上一阶段，确定？",
+        后果: [
+          { 标: "会发生", 话: `「${名of(r)}」进到 ${到.phase}·${到.名}`, 级: "警" },
+          { 标: "回不来", 话: `进了${到.phase}就不能再退回${r.phase}`, 级: "危" },
+        ],
+        是: `进${到.phase}`,
+        危: false,
+        做: () => undefined,
+      });
+      if (!好) return 弹回去(r.id);
+    }
     改搬(r.id, 到.列);
     const 原 = { phase: r.phase, node: r.node, result: null };
     try {
@@ -264,6 +283,7 @@ export function useBoardDrag({ 看板, 开, 名of, 去补齐, 刷新, 框 }: {
     <>
       <span id="board-drag-hint" hidden>拖到别的进程列改进程；也可以按 Alt 加右方向键推到下一个进程，Alt 加左方向键退回上一个</span>
       <span role="status" aria-live="polite" className="sr-only">{播报}</span>
+      {后果框}
       {弹回话 && (
         <div className="board-gate" role="alert" style={弹回话.位}>
           <button type="button" className="board-gate-x" aria-label="收起" onClick={() => set弹回话(null)}>×</button>

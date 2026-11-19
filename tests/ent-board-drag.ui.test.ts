@@ -119,10 +119,21 @@ it("拖到下一个进程：先预检再改节点，卡片落到新列、计数�
   }
 });
 
-it("拖到下一阶段的列（线索推进→痛点挖掘）：推成了卡片落到新列，不给撤销条（企业版退不回上一阶段）", async () => {
+it("拖到下一阶段的列（线索推进→痛点挖掘）：先确认（待客户定 A），推成了卡片落到新列，不给撤销条（企业版退不回上一阶段）", async () => {
   const { page, errors } = await 打开(1280, { 跨: true });
   try {
+    // [待客户定 A] 先确认：取消 = 弹回原列、不改；确认了才推
     await 拖到(page, 1);
+    const 问 = page.getByRole("dialog").filter({ hasText: "推过去就回不了上一阶段，确定？" });
+    await 问.waitFor();
+    expect(await 问.innerText()).toContain("进了商机就不能再退回线索");
+    await 问.getByRole("button", { name: /取\s*消/ }).click();
+    await 问.waitFor({ state: "hidden" });
+    await 列(page, 0).locator('[data-card-id="p1"]').waitFor();
+    expect(await 调了(page, "改")).toEqual([]);
+    await 拖到(page, 1);
+    await 问.waitFor();
+    await 问.getByRole("button", { name: "进商机" }).click();
     await 列(page, 1).locator('[data-card-id="p1"]').waitFor();
     expect(await 调了(page, "改")).toEqual([["改", "p1", { phase: "商机", node: "痛点挖掘", result: null }]]);
     await page.waitForTimeout(300);
