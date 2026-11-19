@@ -584,7 +584,7 @@ function AdvanceCard({
         只管开启之后新建的项目；开启前已有的项目照现在手动推。生效时刻按第一次打开的那一刻算，关了再开不改。
       </div>
       {规则.开 && 规则.生效于 && (
-        <div style={{ marginBottom: 12 }} data-testid="节点推进生效时刻">
+        <div className="set-advance-since" data-testid="节点推进生效时刻">
           生效时刻：{dayjs(规则.生效于).format("YYYY-MM-DD HH:mm")}（{时区 ? "北京时间" : "本机时间"}），这之后新建的项目按必填走
         </div>
       )}
