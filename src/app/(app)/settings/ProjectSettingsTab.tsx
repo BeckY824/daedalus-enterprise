@@ -11,6 +11,7 @@ import { useConsequence } from "@/components/ConsequenceDialog";
 import InlineConfirm from "@/components/InlineConfirm";
 import SaveButton from "@/components/SaveButton";
 import { dayjs } from "@/lib/utils";
+import { useBusinessTimeZone } from "@/lib/business-client";
 // 这两张卡（超时回收、节点推进）只在企业版出现（组织规则 只有企业版才读），节点按企业版字典列
 import { 企业版字典, 字典of, 本套节点名, 出口叫法上限 } from "@/lib/project/stage-dict";
 import { 要沟通的节点 } from "@/lib/project/stage-gates";
@@ -548,7 +549,8 @@ const 同一份 = (a: string[] = [], b: string[] = []) => a.length === b.length 
 /**
  * 节点推进（企业版组织规则，默认关）：老板给节点配「必填哪几样」，项目在这个节点上填齐了自动推到下一节点。
  * 配了必填的节点，手动往前推只给老板、主管；没配的节点照原来手动推。最后一个节点由人点结局（团队版成功交付 / 企业版交付结清），不能配。
- * 改了清单不当场推：项目下次保存（改项目、记沟通、改客户资料）时按新清单走
+ * 改了清单不当场推：项目下次保存（改项目、记沟通、改客户资料）时按新清单走。
+ * 11-19 客户第 25 题：只管开关第一次打开之后新建的项目（规则.生效于，服务端 合上改动 记），之前的照手动推；关了再开不刷新
  */
 function AdvanceCard({
   规则, 挡, 忙, 跑, 存,
@@ -559,6 +561,7 @@ function AdvanceCard({
   const [必填, set必填] = useState<Record<string, string[]>>(规则.必填);
   const 改了 = 能配必填的节点.some((n) => !同一份(必填[n], 规则.必填[n]));
   const 阶段们 = (["线索", "商机", "订单"] as const).map((阶段) => ({ 阶段, 节点: 节点们[阶段].filter((n) => 能配必填的节点.includes(n)) }));
+  const 时区 = useBusinessTimeZone();
 
   return (
     <Card
@@ -578,7 +581,13 @@ function AdvanceCard({
     >
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
         开了以后，给进程配上必填的几样，项目在这个进程上填齐了自动推到下一个进程，进程变更里记一行「必填齐了，自动推进」。没填齐也能保存，项目页上会列出还差哪几样。配了必填的进程，没填齐不能往前推，往后退照旧；没配的进程照原来手动推。改了清单以后，项目下次保存时按新清单走。默认关。
+        只管开启之后新建的项目；开启前已有的项目照现在手动推。生效时刻按第一次打开的那一刻算，关了再开不改。
       </div>
+      {规则.开 && 规则.生效于 && (
+        <div style={{ marginBottom: 12 }} data-testid="节点推进生效时刻">
+          生效时刻：{dayjs(规则.生效于).format("YYYY-MM-DD HH:mm")}（{时区 ? "北京时间" : "本机时间"}），这之后新建的项目按必填走
+        </div>
+      )}
       {规则.开 && (
         <>
           {阶段们.map(({ 阶段, 节点 }) => (

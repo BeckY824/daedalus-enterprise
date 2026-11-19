@@ -124,13 +124,17 @@ describe("改组织规则（企业版持有上限）", () => {
 
   it("节点推进：老板配必填、开关，存下并留记录；配不能配的节点拦", async () => {
     expect(await 改组织规则({ 节点推进: { 开: true, 必填: { 潜客培育: ["联系方式", "来源"], 线索验证: [] } } })).toEqual({ ok: true, 收回: 0 });
-    expect((await 读组织规则()).节点推进).toEqual({ 开: true, 必填: { 潜客培育: ["联系方式", "来源"] } });
+    // 11-19 第 25 题：第一次打开记下生效时刻（只管这之后新建的项目），和开关存在同一份组织规则里
+    const 第一次 = (await 读组织规则()).节点推进;
+    expect(第一次).toEqual({ 开: true, 必填: { 潜客培育: ["联系方式", "来源"] }, 生效于: expect.any(String) });
     expect(await 改组织规则({ 节点推进: { 开: false } })).toEqual({ ok: true, 收回: 0 });
+    expect((await 读组织规则()).节点推进.生效于).toBe(第一次.生效于);
     expect(await 改组织规则({ 节点推进: { 必填: { 尾款结算: ["金额"] } } })).toMatchObject({ ok: false, error: expect.stringContaining("不能配必填") });
-    expect((await 记录()).map((r) => r.summary)).toEqual([
-      "组织规则：节点推进开，1 个进程配了必填",
-      "组织规则：节点推进关",
-    ]);
+    // 关了再开：生效时刻保留第一次的，不刷新
+    expect(await 改组织规则({ 节点推进: { 开: true } })).toEqual({ ok: true, 收回: 0 });
+    expect((await 读组织规则()).节点推进).toMatchObject({ 开: true, 生效于: 第一次.生效于 });
+    const 开那句 = expect.stringMatching(/^组织规则：节点推进开，1 个进程配了必填，只管 \d{4}-\d{2}-\d{2} \d{2}:\d{2} 之后新建的项目$/);
+    expect((await 记录()).map((r) => r.summary)).toEqual([开那句, "组织规则：节点推进关", 开那句]);
   });
 
   it("业务员改不了；开关关着拦；填错拦，都不写", async () => {
