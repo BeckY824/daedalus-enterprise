@@ -358,7 +358,7 @@ describe("节点推进规则定稿（真库）", () => {
   });
 
   describe("不给推时谁能点「完成节点」（load.ts 不给推谁能推，项目页必填齐了那句用）", () => {
-    it("仅上级推：负责人 → 上级；负责人可推：组员 → 负责人或上级、负责人能推没有；需求补全期 → 销售管理或总管理", async () => {
+    it("仅上级推：负责人 → 上级；负责人可推：组员 → 负责人（上级只看、只转让）、负责人能推没有；需求补全期 → 销售管理或总管理", async () => {
       const 组长 = await 人("lead", "MANAGER", "sales_mgr");
       const 丙 = await 人("bing", "SALES", "sales");
       await prisma.entMember.update({ where: { userId: 乙.id }, data: { managerId: 组长.id } });
@@ -372,7 +372,7 @@ describe("节点推进规则定稿（真库）", () => {
       invalidateSettingsCache();
       expect(await 详(p.id)).toMatchObject({ 不给推: null, 不给推谁能推: null });
       mocks.user = { ...mocks.user, id: 丙.id };
-      expect(await 详(p.id)).toMatchObject({ 不给推: "只有负责人的直属上级能往前推进程", 不给推谁能推: "负责人或上级" });
+      expect(await 详(p.id)).toMatchObject({ 不给推: "只有负责人能往前推进程", 不给推谁能推: "负责人" });
       mocks.user = { ...mocks.user, id: 乙.id };
       await setSetting("orgRules", { ...默认组织规则, 阶段: { ...默认组织规则.阶段, 需求补全期: true } });
       invalidateSettingsCache();

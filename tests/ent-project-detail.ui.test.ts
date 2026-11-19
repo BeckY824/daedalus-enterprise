@@ -516,7 +516,7 @@ it("必填齐了、下一格换阶段：当前进程卡写「必填齐了，点�
   } finally { await page.close(); }
 }, 60_000);
 
-it("「完成节点」灰在不给推：必填齐了的说法写明该谁点（上级 / 销售管理或总管理 / 负责人或上级），不叫他点；灰因是等复核时不写该谁点", async () => {
+it("「完成节点」灰在不给推：必填齐了的说法写明该谁点（上级 / 销售管理或总管理 / 负责人），不叫他点；灰因是等复核时不写该谁点", async () => {
   const { page, errors } = await open(true, 1280);
   const 上级推 = "往前推进程要由你的直属上级来推";
   try {
@@ -534,9 +534,9 @@ it("「完成节点」灰在不给推：必填齐了的说法写明该谁点（�
     await page.evaluate((x) => (window as unknown as { __over: (x: object) => void }).__over({ phase: "线索", node: "线索推进", 必填: { 配了: ["金额"], 还差: [] }, 不给推: x, 不给推谁能推: "销售管理或总管理" }), 补全期);
     await page.getByText("必填齐了，进商机要销售管理或总管理点「完成节点」").waitFor();
     expect(await page.getByText("必填齐了，进商机要上级点「完成节点」").count()).toBe(0);
-    // 负责人可推下的组员：负责人自己也能推，写负责人或上级
-    await page.evaluate((x) => (window as unknown as { __over: (x: object) => void }).__over({ phase: "商机", node: "首款到账", 必填: { 配了: ["金额"], 还差: [] }, 不给推: x, 不给推谁能推: "负责人或上级" }), "只有负责人的直属上级能往前推进程");
-    await page.getByText("必填齐了，进订单要负责人或上级点「完成节点」").waitFor();
+    // 负责人可推下的组员：只有负责人能推（11-01 C2：上级只看、只转让），写负责人
+    await page.evaluate((x) => (window as unknown as { __over: (x: object) => void }).__over({ phase: "商机", node: "首款到账", 必填: { 配了: ["金额"], 还差: [] }, 不给推: x, 不给推谁能推: "负责人" }), "只有负责人能往前推进程");
+    await page.getByText("必填齐了，进订单要负责人点「完成节点」").waitFor();
     // 等复核先拦下（灰因不是不给推）：上级也推不了，不写该谁点，只说齐了
     await page.evaluate((x) => (window as unknown as { __over: (x: object) => void }).__over({ phase: "线索", node: "线索推进", 必填: { 配了: ["金额"], 还差: [] }, 不给推: x, 不给推谁能推: "上级",
       线索验证: { 判定: "初验无效", 待: "市场复核", 无效原因: null, 复核结果: null, 最终结果: null, 终验: null, 初判即终判: false, 叫法: "初验无效", 我能: null, 痕: [] } }), 上级推);
