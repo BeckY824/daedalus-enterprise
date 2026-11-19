@@ -11,6 +11,18 @@ import { getBusiness } from "@/lib/business";
 import { 读看板一列, 每列条数 } from "@/lib/project/list";
 import type { 项目行 } from "@/lib/project/board";
 import { 项目页筛选 } from "./page-query";
+import { 可选项 } from "@/lib/enterprise/dict";
+import { 其他项 } from "@/lib/enterprise/dict-kinds";
+
+/**
+ * 项目列表「项目标签」筛选的候选（F-项目-14）：字典 projTag 里启用着的（「其他」要另写一句，筛选里不摆）。
+ * 点开下拉才取，不放进首屏（/projects 首屏查询条数钉在 tests/ent-customer-list-queries.test.ts）。只读；企业版、项目模式开着才给
+ */
+export async function 项目标签筛选项(): Promise<string[]> {
+  await requireUser();
+  if (!企业版() || !(await getBusiness()).projectMode) return [];
+  return (await 可选项("projTag")).filter((x) => x !== 其他项);
+}
 
 export type 项目页再看结果 = { ok: true; 行: 项目行[]; 总: number } | { ok: false; error: string };
 

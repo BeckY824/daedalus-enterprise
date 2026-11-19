@@ -2,8 +2,6 @@ import { prisma, defaultClient } from "@/lib/prisma";
 import { 搜索词, 拆搜索词, 全半角写法, 客户号码条件, 号码藏着 } from "@/lib/search-keyword";
 import { 负责人候选 } from "@/lib/owners";
 import { 看板落列, 看板列键们, 未填标签, type 项目行, type 看板合计组, type 看板卡片 } from "./board";
-import { 页面可选项 } from "@/lib/enterprise/dict";
-import { 其他项 } from "@/lib/enterprise/dict-kinds";
 import type { 阶段 } from "./nodes";
 import { 看得到的客户, 露客户, 公海超时收回, 待我回的邀请, 项目回收日, 算超时要的, 超时成员线, 补回收起点留痕, type 回收起点留痕 } from "./db";
 import { 即将回收 } from "./timeout";
@@ -650,8 +648,6 @@ export async function 读项目列表(
     能按号码筛: !(await 号码藏着(me.id)),
     // 自定义筛选「渠道」的候选；新线索页不摆
     渠道筛选项: 企 && !只看阶段 ? await 渠道筛选选项() : [],
-    // 项目标签筛选的候选（F-项目-14）：字典里启用着的；新线索页不摆（同级别）
-    标签筛选项: 企 && !只看阶段 ? (await 页面可选项("projTag")).filter((x) => x !== 其他项) : [],
     // 市场视角（null = 别的角色，界面照旧）；市场管理的「创建人」筛选候选 = 本人 + 实线下属
     市场: 市场 ? { 视角: 市场.视角, 创建人们: 市场.视角 === "市场管理" ? await prisma.user.findMany({ where: { id: { in: 市场.圈 } }, select: { id: true, name: true }, orderBy: { name: "asc" } }) : [] } : null,
   };
