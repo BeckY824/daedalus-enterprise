@@ -29,13 +29,18 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function open(开: boolean, 预览: unknown = { ok: true, 预览: { 变: 12, 进公海: 3 } }, width = 1366, 超时回收开 = false): Promise<{ page: Page; errors: string[] }> {
+/** 壳：照真实设置页摆（左栏 220 + 设置左侧分类 200 + 正文 set-body），两份样式（globals + 三态那份，layout.tsx 都引）都加载 */
+async function open(开: boolean, 预览: unknown = { ok: true, 预览: { 变: 12, 进公海: 3 } }, width = 1366, 超时回收开 = false, 壳 = false): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.route("http://recycle.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
+  const 体 = 壳
+    ? "<style>body{margin:0}</style><div style='margin-left:220px;padding:22px 26px'><div class='set'><div class='set-nav'>分类</div><div class='set-body'><div id='root'></div></div></div></div>"
+    : "<div id='root'></div>";
+  await page.route("http://recycle.test/**", r => r.fulfill({ contentType: "text/html", body: `<meta charset='utf-8'>${体}` }));
   await page.goto("http://recycle.test");
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+  if (壳) await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") });
   await page.evaluate((x) => { (window as unknown as Record<string, unknown>).__预览 = x; }, 预览);
   await page.addScriptTag({ content: bundle });
   await page.evaluate(([a, c]) => (window as unknown as { __render: (x: boolean, y: boolean) => void }).__render(a, c), [开, 超时回收开] as const);
@@ -193,5 +198,30 @@ it("确认框在 Windows 常见宽度（1024 / 1280 / 1366）不溢出、页面�
       expect(k[0]).toBeGreaterThanOrEqual(0);
       expect(k[1]).toBeLessThanOrEqual(w);
     } finally { await page.close(); }
+  }
+}, 60_000);
+
+// 32D：设置 → 客户回收在 1366 宽卡片撑到 2151px、页面横滚、开关挤出屏幕。原因是 globals.css 里客户详情状态条的旁注也叫 .tri-note（一行不换行），
+// 设置页的说明段落同名、被它压成一行。量：两份样式都加载、照设置页的壳摆，卡片不超出正文、说明段落折行、开关整颗在视口里、页面不横滚
+it("设置 → 客户回收：1024 / 1280 / 1366 宽卡片不超出正文、说明段落折行、开关在视口里、页面不横滚", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    for (const 开 of [false, true]) {
+      const { page, errors } = await open(开, undefined, w, false, true);
+      try {
+        const r = await page.evaluate(() => {
+          const 正文 = document.querySelector<HTMLElement>(".set-body")!.getBoundingClientRect();
+          const 卡们 = [...document.querySelectorAll<HTMLElement>(".tri-recycle .ant-card")].map((c) => c.getBoundingClientRect());
+          const 开关 = document.querySelector<HTMLElement>("[role=switch]")!.getBoundingClientRect();
+          const 说明 = document.querySelector<HTMLElement>(".tri-recycle .tri-note")!;
+          return {
+            卡宽超出: 卡们.some((c) => c.right > 正文.right + 0.5), 开关在里: 开关.left >= 0 && 开关.right <= document.documentElement.clientWidth,
+            说明折行: getComputedStyle(说明).whiteSpace !== "nowrap" && 说明.getBoundingClientRect().height > 30,
+            横滚: document.documentElement.scrollWidth > window.innerWidth,
+          };
+        });
+        expect(r, `宽 ${w} 开 ${开}`).toEqual({ 卡宽超出: false, 开关在里: true, 说明折行: true, 横滚: false });
+        expect(errors).toEqual([]);
+      } finally { await page.close(); }
+    }
   }
 }, 60_000);
