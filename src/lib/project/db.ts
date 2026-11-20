@@ -52,7 +52,7 @@ import { notify } from "@/lib/enterprise/notify";
 import { 项目业务线, 认业务线, 业务线不认得, 业务线必填, type 成员线查 } from "@/lib/enterprise/assign-line";
 import { 进公海后负责人, 历史负责人, 进公海关待办, 一批id数, 进公海清组员, 进公海关主题 } from "./pool-owner";
 import { 卡点随项目换人, 公海领走接手理由, 转让接手理由, 移出组员接手理由 } from "./blocker";
-import { 换负责人待办, 待办痕 } from "./carry-tasks";
+import { 换负责人待办, 待办痕, 手动转让痕 } from "./carry-tasks";
 import { 换负责人 } from "@/lib/project/owner-write";
 import { 待分配占位, 待分配不能动 } from "@/lib/enterprise/await-assign";
 import { 规整指定回复, 时刻转北京墙钟, 回复键们 } from "./time-fields";
@@ -709,7 +709,8 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
       await 将回收提醒跟着换人(tx, p, 原, 新.ownerId);
       // 原负责人的待办（C-06）：勾着带给新负责人，不勾关掉；碰了几条写进这行留痕
       const 几条 = await 换负责人待办(tx, p, 原, 新.ownerId, 带待办);
-      await 记转让(tx, p, me.id, 原, 新.ownerId, "transfer", 待办痕(带待办, 几条));
+      // 没碰待办（换负责人带待办关着、没传勾）记「手动转让」：超时未跟进自动转靠原因认手动转让（carry-tasks.ts 待办痕头）
+      await 记转让(tx, p, me.id, 原, 新.ownerId, "transfer", 待办痕(带待办, 几条) ?? 手动转让痕);
       await 勾掉将回收提醒(tx, 规则, { ...p, ownerId: 新.ownerId }, new Date());
     }
     const 推进 = await 按必填推进(tx, 规则, me, p.id);

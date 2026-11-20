@@ -4,7 +4,7 @@ import type { 组织 } from "@/lib/enterprise/org";
 import { 记转让 } from "@/lib/project/db";
 import { 单项目客户跟着领, 客户整包出公海, type 整包出公海 } from "@/lib/enterprise/pool-link";
 import { 历史负责人 } from "@/lib/project/pool-owner";
-import { 换负责人待办, 待办痕 } from "@/lib/project/carry-tasks";
+import { 换负责人待办, 待办痕, 接上待办痕, 线索公海分配痕 } from "@/lib/project/carry-tasks";
 import type { 同事待分配条 } from "@/lib/enterprise/notice-sources";
 import { 公海项目市场转, 转客户给销售 } from "@/lib/enterprise/market-transfer";
 import type { 带走的 } from "@/lib/carry-over-db";
@@ -68,7 +68,8 @@ export async function 在事务里分公海项目们(
       // 市场转客户的待办计划还归市场（P-转-10），勾不算数
       const 这带 = 转 ? undefined : 带;
       const 几条 = await 换负责人待办(tx, p, 原, 给, 这带);
-      await 记转让(tx, p, 操作人, 原, 给, "pool-claim", 待办痕(这带, 几条));
+      // 留痕原因以「从线索公海分配」开头（超时未跟进自动转算分给他；客户跟着市场转的那行是 market-assign，不能靠它认）
+      await 记转让(tx, p, 操作人, 原, 给, "pool-claim", 接上待办痕(线索公海分配痕, 待办痕(这带, 几条)));
       if (出整包) 包 = await 客户整包出公海(tx, p.customerId, 给, 操作人, 带, "pool-assign");
       else await 单项目客户跟着领(tx, p.customerId, 给, 操作人, 这带);
       // 推节点 false：公海分配不推进线索验证（审核 11-18；这条路的撤销也不带 带过来）

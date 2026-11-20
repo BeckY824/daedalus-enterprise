@@ -1,7 +1,7 @@
 /**
  * 超时未跟进自动转「按分配」起算（没填指定回复时间，11-20）：用真实入口写出来的留痕，核哪些算「别人把它分给他」。
- *   起算：管理从线索公海分配（分配公海项目）、管理从客户公海分客户带出的线索公海项目（分配公海，「从客户公海分配」）、
- *        自动 / 指定分配（定时分出去 → 分项目给）、手动转让（改项目）
+ *   起算：管理从线索公海分配（分配公海项目，「从线索公海分配」；客户还在市场手里、跟着市场转的也算）、管理从客户公海分客户带出的线索公海项目（分配公海，「从客户公海分配」）、
+ *        自动 / 指定分配（定时分出去 → 分项目给）、手动转让（改项目；换负责人带待办关着时记「手动转让」）
  *   不起算：销售自己去公海领（领取公海项目，留痕带历史负责人）、客户转让带项目和带出的公海项目（带走一位，「跟着客户转过来」）、
  *          离职交接（交客户 带走一位 / 只交项目 确认离职交接 / 全部交给的其余和同事两组 离职转给接手人，「离职交接」）、
  *          市场转客户带项目和带出的公海项目（市场转一位，「随客户转走」）、从回收站恢复跟客户现负责人（恢复）
@@ -41,7 +41,7 @@ import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 盘点超时链, 超时转扫一遍, 顺延到白天 } from "@/lib/enterprise/reply-overdue";
 
 type 人 = { id: string; name: string; role: string };
-let 老板: 人, 甲: 人, 乙: 人, 丙: 人;
+let 老板: 人, 甲: 人, 乙: 人, 丙: 人, 市场: 人;
 async function 造人(email: string, name: string, role: string): Promise<人> {
   const u = await prisma.user.create({ data: { email, name, title: "", role, password: "x" } });
   return { id: u.id, name, role };
@@ -80,12 +80,14 @@ beforeEach(async () => {
   甲 = await 造人("jia", "甲", "SALES");
   乙 = await 造人("yi", "乙", "SALES");
   丙 = await 造人("bing", "丙", "SALES");
+  市场 = await 造人("mkt", "市场", "SALES");
   await prisma.entMember.createMany({
     data: [
       { userId: 老板.id, bizRole: "director" },
       { userId: 甲.id, bizRole: "sales", line: "内贸" },
       { userId: 乙.id, bizRole: "sales", line: "内贸" },
       { userId: 丙.id, bizRole: "sales", line: "内贸" },
+      { userId: 市场.id, bizRole: "channel_ops" },
     ],
   });
   await setSetting("business", { projectMode: true });
@@ -102,7 +104,7 @@ describe("起算的入口", () => {
     const { p } = await 线索(乙.id);
     expect(await 放回公海(乙, p)).toMatchObject({ ok: true });
     expect(await 分配公海项目([p], 丙.id)).toMatchObject({ ok: true, 分到: [p] });
-    expect(await 最近痕(p)).toMatchObject({ kind: "pool-claim", userId: 老板.id, toOwnerId: 丙.id });
+    expect(await 最近痕(p)).toMatchObject({ kind: "pool-claim", userId: 老板.id, toOwnerId: 丙.id, reason: expect.stringMatching(/^从线索公海分配/) });
     expect(await 在链上(p)).toBe(true);
     const 扫于 = 顺延到白天(new Date((await 最近痕(p)).at.getTime() + 61 * 60_000));
     expect(await 超时转扫一遍(扫于)).toMatchObject({ 提醒: 1 });
@@ -118,6 +120,15 @@ describe("起算的入口", () => {
     expect(await 在链上(指定.p)).toBe(true);
   });
 
+  it("管理从线索公海分配、客户还在市场成员手里（分配公海项目 → 跟着市场转，客户换人记 market-assign，P-公海-11）：进链", async () => {
+    const { c, p } = await 公海线索(市场.id);
+    expect(await 分配公海项目([p], 丙.id)).toMatchObject({ ok: true, 分到: [p] });
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(丙.id);
+    expect(await prisma.customerOwnerLog.findFirst({ where: { customerId: c, toOwnerId: 丙.id } })).toMatchObject({ kind: "market-assign", userId: 老板.id });
+    expect(await 最近痕(p)).toMatchObject({ kind: "pool-claim", userId: 老板.id, toOwnerId: 丙.id, reason: expect.stringMatching(/^从线索公海分配/) });
+    expect(await 在链上(p)).toBe(true);
+  });
+
   it("管理从客户公海分客户、带出线索公海里的项目（分配公海，「从客户公海分配」）：带出的那条进链", async () => {
     const { c, p } = await 公海线索(乙.id);
     await prisma.customerPool.create({ data: { customerId: c, userId: 乙.id, reason: "手动" } });
@@ -126,10 +137,19 @@ describe("起算的入口", () => {
     expect(await 在链上(p)).toBe(true);
   });
 
-  it("手动转让（改项目，原因是待办痕）：进链", async () => {
+  it("手动转让（改项目，原因是待办痕；换负责人带待办关着时记「手动转让」）：进链", async () => {
     const { p } = await 线索(乙.id, {}, 老板.id);
     expect(await 改项目(老板, p, { name: "x", ownerId: 丙.id, amount: 0 }, false)).toMatchObject({ ok: true });
+    expect((await 最近痕(p)).reason).toMatch(/^原负责人没做完的待办/);
     expect(await 在链上(p)).toBe(true);
+    const 关着 = await 线索(乙.id, {}, 老板.id);
+    const 原 = 公海规则.换负责人带待办;
+    公海规则.换负责人带待办 = false;
+    try {
+      expect(await 改项目(老板, 关着.p, { name: "y", ownerId: 丙.id, amount: 0 }, true)).toMatchObject({ ok: true });
+    } finally { 公海规则.换负责人带待办 = 原; }
+    expect(await 最近痕(关着.p)).toMatchObject({ kind: "transfer", userId: 老板.id, toOwnerId: 丙.id, reason: "手动转让" });
+    expect(await 在链上(关着.p)).toBe(true);
   });
 });
 
