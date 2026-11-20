@@ -152,7 +152,7 @@ export default function ContactForm({
   const [删错, set删错] = useState<string | null>(null);
   /**
    * 企业版号码查重撞了（P13 第 2 条）：不静默合并，框顶上摆撞到的那几位（看得到的能点进去）。
-   * 人核对后可以「仍然保存」（同一个号两个人用），或在客户页上直接把那位挂到这位客户上
+   * 号码全公司唯一（11-20，原来的「仍然保存」取消）：人核对后改号码，或在客户页上直接把那位挂到这位客户上
    */
   const [撞号, set撞号] = useState<撞到的联系人[] | null>(null);
   /** 号码在回收站里的客户上（审核 11-18 新建入口 P2-6，P-删-08）：拦下，框顶上摆「从回收站捞回」（同建档入口） */
@@ -160,7 +160,7 @@ export default function ContactForm({
   /** 撞号是失焦先查出来的（还没点保存）：黄条标题换一句；点保存撞了的照旧 */
   const [先查的, set先查的] = useState(false);
   const 查序 = useRef(0);
-  /** dt.contact：号码那格失焦就查一遍撞没撞（企业版），撞了把黄条摆出来，给「挂到本客户」「仍然新建」 */
+  /** dt.contact：号码那格失焦就查一遍撞没撞（企业版），撞了把黄条摆出来，给「挂到本客户」 */
   async function 失焦查号() {
     if (!企业) return;
     const 们 = ((form.getFieldValue("号码们") ?? []) as { kind?: string; value?: string }[])
@@ -178,7 +178,7 @@ export default function ContactForm({
     set上次开着(open);
     if (open) { set撞号(null); set回收站号(null); }
   }
-  /** 黄条里「挂到本客户」「仍然保存」没成的原因：就地写在框顶上（不弹顶部提示，原型 g.notice） */
+  /** 黄条里「挂到本客户」没成的原因：就地写在框顶上（不弹顶部提示，原型 g.notice） */
   const [就地错, set就地错] = useState<string | null>(null);
   /** 存上了、等对勾放完再交回去（SaveButton 的 成了）；这时点取消 / Esc 也照样交回去 */
   const 存好交回 = useRef<(() => void) | null>(null);
@@ -192,26 +192,19 @@ export default function ContactForm({
     else 守.要关();
   }
   /** 保存键（原型 g.save）：保存中 / 已保存 / 没存上都在键里；回 { ok:false, error } = 没存上，原因浮在键上方 */
-  async function 保存(照存 = false): Promise<{ ok: boolean; error?: string }> {
+  async function 保存(): Promise<{ ok: boolean; error?: string }> {
     if (存着) return { ok: false, error: "正在保存，请稍等" };
     set存着(true);
     set就地错(null);
     try {
-      return await onOk(照存);
+      return await onOk();
     } catch (error) {
       return { ok: false, error: isFormValidationError(error) ? "有几项没填好，看标红的" : "保存失败，请刷新确认结果后重试" };
     } finally {
       set存着(false);
     }
   }
-  /** 黄条里的「仍然保存 / 仍然新建」：不经保存键，成了直接交回，没成原因写在框顶上 */
-  async function 照存() {
-    const r = await 保存(true);
-    if (r.ok) 交回();
-    else if (r.error) set就地错(r.error);
-  }
-
-  async function onOk(照存 = false): Promise<{ ok: boolean; error?: string }> {
+  async function onOk(): Promise<{ ok: boolean; error?: string }> {
     const v = await form.validateFields();
     // 记录页给的 customerId 说了算；列表页上它在表单里
     const 归属 = customerId ?? (v.customerId as string);
@@ -234,7 +227,7 @@ export default function ContactForm({
           号码们: (号码们 ?? []).filter((x) => x && x.value && x.value.trim()).map((x) => ({ kind: x.kind ?? "", value: x.value ?? "" })),
         }
       : null;
-    const r = await (存法 ?? saveContact)({ id: record?.id, 版本: record?.updatedAt, ...(企业 ? { ...其余, name: typeof 其余.name === "string" ? 其余.name : "" } : v), isPrimary: Boolean(v.isPrimary), customerId: 归属, ...(企业资料 ? { 企业: 企业资料 } : {}), ...(照存 ? { 照存: true } : {}) } as Parameters<typeof saveContact>[0]);
+    const r = await (存法 ?? saveContact)({ id: record?.id, 版本: record?.updatedAt, ...(企业 ? { ...其余, name: typeof 其余.name === "string" ? 其余.name : "" } : v), isPrimary: Boolean(v.isPrimary), customerId: 归属, ...(企业资料 ? { 企业: 企业资料 } : {}) } as Parameters<typeof saveContact>[0]);
     // 原来不看返回值：联系人刚被别人移出、或电话不收时，弹框卡在那儿什么也不说（排查 D8）
     if (!r.ok) {
       if ("撞了" in r && r.撞了?.length) { set先查的(false); set撞号(r.撞了); return { ok: false, error: "号码撞了，看框顶上" }; }
@@ -322,12 +315,7 @@ export default function ContactForm({
                   )}
                 </div>
               ))}
-              <div>
-                确认是另一个人（比如共用的总机）：
-                <Button type="link" size="small" style={{ padding: 0, height: "auto" }} disabled={存着} onClick={() => void 照存()}>
-                  {record ? "仍然保存" : "仍然新建"}
-                </Button>
-              </div>
+              <div>号码全公司唯一，不能重复登记：核对后改号码{!record && customerId && !存法 ? `，或把那位挂到本${b.customer}` : ""}</div>
             </div>
           }
         />
