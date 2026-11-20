@@ -37,7 +37,7 @@ import { 只看某人键 } from "@/lib/enterprise/org-core";
 import { 默认组织规则 } from "@/lib/project/org-rules";
 import { 分配谁能用key } from "@/lib/enterprise/assign-use";
 import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
-import { 盘点超时链, 顺延到白天 } from "@/lib/enterprise/reply-overdue";
+import { 盘点超时链, 顺延到白天, 超时转生效key } from "@/lib/enterprise/reply-overdue";
 /** pool-actions.ts 里的那句（"use server" 文件不导出常量） */
 const 无效不能领提示 = "标了无效的客户不能领取，要系统管理员先恢复";
 import { 不能领公海话 } from "@/lib/enterprise/permissions";
@@ -105,6 +105,8 @@ beforeEach(async () => {
   await setSetting("business", { projectMode: true });
   await setSetting(规则.线索分配.key, true);
   await setSetting(自动分配不参与key, { [总管.id]: "禁止" });
+  // 超时转生效时刻（11-20）：留痕用真实时钟，按早就生效了算
+  await setSetting(超时转生效key, "2020-01-01T00:00:00.000Z");
   invalidateSettingsCache();
   老渠道 = (await prisma.channel.create({ data: { name: "展会|首次", channelOwnerId: 总管.id } })).id;
   新渠道 = (await prisma.channel.create({ data: { name: "小红书|笔记", channelOwnerId: 总管.id } })).id;

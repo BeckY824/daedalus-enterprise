@@ -38,7 +38,7 @@ import { 带走一位 } from "@/lib/carry-over-db";
 import { 市场转一位 } from "@/lib/enterprise/market-transfer";
 import { 软删一条, 恢复 } from "@/lib/enterprise/soft-delete";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
-import { 盘点超时链, 超时转扫一遍, 顺延到白天 } from "@/lib/enterprise/reply-overdue";
+import { 盘点超时链, 超时转扫一遍, 顺延到白天, 超时转生效key } from "@/lib/enterprise/reply-overdue";
 
 type 人 = { id: string; name: string; role: string };
 let 老板: 人, 甲: 人, 乙: 人, 丙: 人, 市场: 人;
@@ -93,6 +93,8 @@ beforeEach(async () => {
   await setSetting("business", { projectMode: true });
   await setSetting(规则.线索分配.key, true);
   await setSetting(自动分配不参与key, { [老板.id]: "禁止" });
+  // 超时转生效时刻（11-20）：留痕用真实时钟，按早就生效了算
+  await setSetting(超时转生效key, "2020-01-01T00:00:00.000Z");
   invalidateSettingsCache();
   mocks.user = { ...mocks.user, id: 老板.id, name: 老板.name, role: 老板.role };
 });

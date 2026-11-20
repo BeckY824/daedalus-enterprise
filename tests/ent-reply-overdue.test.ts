@@ -24,6 +24,7 @@ import {
   超时转扫一遍, 在夜里, 顺延到白天, 超时提醒到期, 超时转出到期, 该做, 本轮排除, 读试过, 客户怎么办, 客户在谁名下, 超时基准,
   收回话, 超时转理由, 超时通知种类, 超时转重新起算, 我超时未跟进的, 自留超时话,
   分配基准, 分配起链往回看天, 起链往回看天, 建档随手记秒, 盘点超时链, type 换人痕,
+  超时转生效key, 超时转生效时刻,
 } from "@/lib/enterprise/reply-overdue";
 import { 客户在谁名下话, 分配后未跟进话, 短时刻 } from "@/lib/project/time-fields";
 import { 项目回收日, 算超时要的, 改项目, 补回收起点留痕 } from "@/lib/project/db";
@@ -84,6 +85,8 @@ beforeEach(async () => {
   await setSetting("business", { projectMode: true });
   await setSetting(规则.线索分配.key, true);
   await setSetting(自动分配不参与key, { [老板.id]: "禁止" });
+  // 生效时刻（11-20 事故后）：下面老用例都按「早就生效了」算；生效范围的用例自己改
+  await setSetting(超时转生效key, 京("2026-01-01 00:00").toISOString());
   invalidateSettingsCache();
 });
 afterEach(() => { vi.unstubAllEnvs(); 忘掉企业版范围(); invalidateSettingsCache(); });
@@ -443,7 +446,7 @@ describe("管理员开关：组织规则「超时未跟进自动转」（默认�
       .toEqual({ holderId: 乙.id, transfers: 1, stoppedAt: null });
   });
 
-  it("提醒发了、没转就关掉，过一阵再打开：从打开那刻重新计时、重发提醒，不一打开就转", async () => {
+  it("提醒发了、没转就关掉，过一阵再打开：重新生效——在计时的链停下、不再提醒不再转；指定回复时间在打开以后的照常计时（11-20）", async () => {
     const { id } = await 建线索(甲, { replyEndAt: 京("2026-11-20 15:00") });
     expect(await 超时转扫一遍(京("2026-11-20 16:00"))).toMatchObject({ 提醒: 1 });
     await 拨(false);
@@ -451,16 +454,22 @@ describe("管理员开关：组织规则「超时未跟进自动转」（默认�
     // 17:00 打开（设规则 从关拨到开时调 超时转重新起算）
     await 拨(true);
     expect(await 超时转重新起算(京("2026-11-20 17:00"))).toBe(1);
-    expect(await 超时转扫一遍(京("2026-11-20 17:00"))).toMatchObject({ 提醒: 0, 转出: 0 });
-    expect(await 超时转扫一遍(京("2026-11-20 17:59"))).toMatchObject({ 提醒: 0, 转出: 0 });
-    expect(await 超时转扫一遍(京("2026-11-20 18:00"))).toMatchObject({ 提醒: 1 });
-    expect(await 超时通知(甲.id)).toHaveLength(2);
+    expect(await 超时转生效时刻(京("2026-11-20 18:00"))).toEqual(京("2026-11-20 17:00"));
+    expect(await prisma.entReplyOverdue.findUniqueOrThrow({ where: { projectId: id } })).toMatchObject({ stoppedAt: 京("2026-11-20 17:00") });
+    expect(await 我超时未跟进的(甲.id)).toEqual([]);
+    for (const t of ["2026-11-20 17:00", "2026-11-20 18:00", "2026-11-20 18:30", "2026-11-21 10:00"]) {
+      expect(await 超时转扫一遍(京(t))).toMatchObject({ 提醒: 0, 转出: 0 });
+    }
+    expect(await 超时通知(甲.id)).toHaveLength(1);
     expect((await 项目(id)).ownerId).toBe(甲.id);
-    expect(await 超时转扫一遍(京("2026-11-20 18:30"))).toMatchObject({ 转出: 1 });
-    expect((await 项目(id)).ownerId).toBe(乙.id);
+    // 打开以后约的：照常计时
+    const 新 = await 建线索(甲, { replyEndAt: 京("2026-11-21 10:00") });
+    expect(await 超时转扫一遍(京("2026-11-21 11:00"))).toMatchObject({ 提醒: 1 });
+    expect(await 超时转扫一遍(京("2026-11-21 11:30"))).toMatchObject({ 转出: 1 });
+    expect((await 项目(新.id)).ownerId).toBe(乙.id);
   });
 
-  it("重新起算只动还在走的链：停了的（记过沟通）不动", async () => {
+  it("重新生效只停还在走的链：停了的（记过沟通）原样不动", async () => {
     const a = await 建线索(甲, { replyEndAt: 京("2026-11-20 15:00") });
     await 记沟通(a.id, "打了电话，客户说下周来看样品", 京("2026-11-20 15:20"));
     await 超时转扫一遍(京("2026-11-20 16:00"));
@@ -573,11 +582,13 @@ describe("没填指定回复时间：从分配给销售那一刻起算（11-20 �
     const d = await 分来线索(甲, 京("2026-11-20 10:00"));
     await 谁记沟通(d.id, 甲.id, "", 京("2026-11-20 10:20"));
     await 谁记沟通(d.id, 甲.id, "客户又来问了", 京("2026-11-20 10:30"), 同号节点);
-    // 记在分配那一刻之前的（建档前、分配前）也不算
+    // 别人记在分配那一刻之前的（建档前、分配前）不算；负责人本人之前记的算（之前的跟进也算，11-20，另见「生效范围」）
     const e = await 分来线索(甲, 京("2026-11-20 10:00"), { 建档记一条: false });
-    await 谁记沟通(e.id, 甲.id, "之前在别的渠道聊过一次", 京("2026-11-20 09:00"));
-    expect(await 超时转扫一遍(京("2026-11-20 11:00"))).toMatchObject({ 提醒: 2, 停: 3 });
-    for (const x of [a, b, c]) expect((await 链(x.id))?.stoppedAt).not.toBeNull();
+    await 谁记沟通(e.id, 丙.id, "之前在别的渠道聊过一次", 京("2026-11-20 09:00"));
+    const g = await 分来线索(甲, 京("2026-11-20 10:00"), { 建档记一条: false });
+    await 谁记沟通(g.id, 甲.id, "之前在别的渠道聊过一次", 京("2026-11-20 09:00"));
+    expect(await 超时转扫一遍(京("2026-11-20 11:00"))).toMatchObject({ 提醒: 2, 停: 4 });
+    for (const x of [a, b, c, g]) expect((await 链(x.id))?.stoppedAt).not.toBeNull();
     expect((await 链(d.id))?.overdueAt).toEqual(京("2026-11-20 11:00"));
     expect((await 链(e.id))?.overdueAt).toEqual(京("2026-11-20 11:00"));
   });
@@ -716,7 +727,7 @@ describe("没填指定回复时间：从分配给销售那一刻起算（11-20 �
     expect((await 项目(id)).ownerId).toBe(乙.id);
   });
 
-  it("上线首扫只走一步：2 天前分配、一直没记的，第一遍只发超时提醒，30 分钟后才转，接手人从转出那刻起算、不连环转", async () => {
+  it("停机补跑只走一步：2 天前分配（生效以后）、一直没记的，第一遍只发超时提醒，30 分钟后才转，接手人从转出那刻起算、不连环转", async () => {
     const { id } = await 分来线索(甲, 京("2026-11-18 14:00"));
     expect(await 盘点超时链(京("2026-11-20 14:00"))).toEqual([expect.objectContaining({ id, ownerId: 甲.id, 按分配: true, 回了: false, 起链: true, 下一步: "提醒" })]);
     expect(await 链(id)).toBeNull(); // 盘点只读
@@ -829,6 +840,131 @@ describe("轮转不重置超时回收日（客户 11-19 第 14 题 B）；手动
     expect(行们.map((x) => x.kind)).toEqual(["overdue-assign"]);
     expect([...换负责人们of(行们, 默认三态规则)]).toEqual([]);
     expect([...换负责人们of([...行们, { at: 京("2026-11-20 17:00"), kind: "assign" }], 默认三态规则)]).toEqual([{ 日: "2026-11-20", 方式: "转让", 归零: true }]);
+  });
+});
+
+describe("生效范围（11-20 事故：只对生效以后新分配的计时、之前的跟进也算）", () => {
+  const 设生效 = async (t: Date) => { await setSetting(超时转生效key, t.toISOString()); invalidateSettingsCache(); };
+  const 链 = (projectId: string) => prisma.entReplyOverdue.findUnique({ where: { projectId } });
+  /** 一行换人留痕 */
+  async function 记换人(projectId: string, 操作人: string, 到: string, at: Date, kind: "transfer" | "pool-claim" = "transfer", reason = "分配方式：自动分配") {
+    const p = await prisma.project.findUniqueOrThrow({ where: { id: projectId } });
+    await prisma.projectNodeLog.create({ data: { projectId, userId: 操作人, kind, fromOwnerId: null, toOwnerId: 到, reason, at, fromPhase: p.phase, fromNode: p.node, toPhase: p.phase, toNode: p.node } });
+  }
+  /** 老板建档、在 分于 自动分给 owner（转让留痕 + 分配记录），建档那一刻老板随手记一条 */
+  async function 分来(owner: 人, 分于: Date, 建于: Date = 分于, customerId?: string) {
+    const r = await 建线索(owner, { createdAt: 建于 }, customerId);
+    await 记换人(r.id, 老板.id, owner.id, 分于);
+    await prisma.entLeadAssign.create({ data: { projectId: r.id, toUserId: owner.id, fromUserId: 老板.id, byUserId: 老板.id, month: "2026-11", counted: true, createdAt: 分于 } });
+    await 记(r.customerId, 老板.id, "客户在展会留了电话，想要一套报价", new Date(建于.getTime() + 30_000), r.id);
+    return r;
+  }
+  /** 记一条沟通：挂项目（projectId）或只挂客户；type、标题、节点可改 */
+  async function 记(customerId: string, ownerId: string, content: string, at: Date, projectId?: string, o: { type?: string; title?: string; node?: string; occurredAt?: Date } = {}) {
+    const f = await prisma.followUp.create({ data: { type: o.type ?? "WECHAT", content, occurredAt: o.occurredAt ?? at, createdAt: at, title: o.title ?? "", status: "已完成", customerId, ownerId } });
+    if (projectId) await prisma.followUpProject.create({ data: { followUpId: f.id, projectId, node: o.node ?? "潜客培育" } });
+  }
+
+  it("复现 11-20 事故：11-14 管理从客户公海分给甲（老留痕）、甲 11-03 导入过历史跟进；生效时刻 11-20 20:35 → 21:06 起一直不提醒、不转", async () => {
+    await 设生效(京("2026-11-20 20:35"));
+    // A：11-14 管理从客户公海分（pool-claim 带待办痕 + 同一刻客户换人 pool-assign），甲一条沟通都没记
+    const A = await 建线索(甲, { createdAt: 京("2026-09-12 00:00") });
+    await 记换人(A.id, 老板.id, 甲.id, 京("2026-11-14 22:29"), "pool-claim", "原负责人没做完的待办带过来 0 条");
+    await prisma.customerOwnerLog.create({ data: { customerId: A.customerId, userId: 老板.id, toOwnerId: 甲.id, kind: "pool-assign", at: 京("2026-11-14 22:29") } });
+    // B：同一批，甲 11-03 导入过 7 月的跟进（挂在这条项目上）
+    const B = await 建线索(甲, { createdAt: 京("2026-04-01 00:00") });
+    await 记换人(B.id, 老板.id, 甲.id, 京("2026-11-14 22:29"), "pool-claim", "原负责人没做完的待办带过来 0 条");
+    await prisma.customerOwnerLog.create({ data: { customerId: B.customerId, userId: 老板.id, toOwnerId: 甲.id, kind: "pool-assign", at: 京("2026-11-14 22:29") } });
+    await 记(B.customerId, 甲.id, "加了微信，客户要了产品目录和报价", 京("2026-11-03 15:32"), B.id, { occurredAt: 京("2026-07-17 14:47") });
+    // C：当天中午自动分给甲（生效以前）
+    const C = await 分来(甲, 京("2026-11-20 13:39"));
+    // 旧代码会把这三条全提醒、再转走（生效时刻当成很早）
+    for (const t of ["2026-11-20 20:35", "2026-11-20 21:06", "2026-11-20 21:36", "2026-11-21 08:00", "2026-11-21 08:30"]) {
+      expect(await 超时转扫一遍(京(t))).toEqual({ 提醒: 0, 转出: 0, 没转成: 0, 停: 0 });
+    }
+    for (const x of [A, B, C]) {
+      expect((await 项目(x.id)).ownerId).toBe(甲.id);
+      expect(await 链(x.id)).toBeNull();
+    }
+    expect(await 超时通知(甲.id)).toHaveLength(0);
+    expect(await 盘点超时链(京("2026-11-20 21:06"))).toEqual([]);
+    // 生效以后新分的照常：20:40 分给甲，21:40 提醒，次日 08:00 转（夜里顺延：21:40 提醒 → 22:10 该转 → 08:00）
+    const D = await 分来(甲, 京("2026-11-20 20:40"));
+    expect(await 超时转扫一遍(京("2026-11-20 21:40"))).toMatchObject({ 提醒: 1, 转出: 0 });
+    expect(await 超时转扫一遍(京("2026-11-21 08:00"))).toMatchObject({ 转出: 1 });
+    expect((await 项目(D.id)).ownerId).toBe(乙.id);
+  });
+
+  it("之前的跟进也算：就算生效时刻很早，负责人以前在这位客户上记过有效沟通（导入的旧跟进、没挂项目的、挂在同客户别的项目上的）不起链", async () => {
+    const 分于 = 京("2026-11-20 10:00");
+    const 挂本条 = await 分来(甲, 分于);
+    await 记(挂本条.customerId, 甲.id, "加了微信，客户要了产品目录和报价", 京("2026-11-03 15:32"), 挂本条.id, { occurredAt: 京("2026-07-17 14:47") });
+    const 只挂客户 = await 分来(甲, 分于);
+    await 记(只挂客户.customerId, 甲.id, "电话里报了价，客户说月底定", 京("2026-11-12 15:41"));
+    const 别的项目 = await 分来(甲, 分于);
+    const 旧项目 = await 建线索(甲, { createdAt: 京("2026-10-01 00:00") }, 别的项目.customerId);
+    await 记(别的项目.customerId, 甲.id, "上次这位客户订过一批样品，回访过", 京("2026-10-02 10:00"), 旧项目.id);
+    // 不算：只有跟进任务 / 提醒、同号留痕、空的占位的、别人（市场、前任）记的
+    const 任务 = await 分来(甲, 分于);
+    await 记(任务.customerId, 甲.id, "明天给客户打电话问报价", 京("2026-11-19 10:00"), 任务.id, { type: "TASK" });
+    const 同号 = await 分来(甲, 分于);
+    await 记(同号.customerId, 甲.id, "客户又来问了一次报价单", 京("2026-11-19 10:00"), 同号.id, { title: "同号再次录入", node: 同号节点 });
+    const 占位 = await 分来(甲, 分于);
+    await 记(占位.customerId, 甲.id, "已联系", 京("2026-11-19 10:00"), 占位.id);
+    const 别人 = await 分来(甲, 分于);
+    await 记(别人.customerId, 丙.id, "前任跟过：客户要了报价单", 京("2026-11-03 15:32"), 别人.id);
+    expect(await 超时转扫一遍(京("2026-11-20 11:00"))).toMatchObject({ 提醒: 4, 停: 3 });
+    for (const x of [挂本条, 只挂客户, 别的项目]) expect((await 链(x.id))?.stoppedAt).toEqual(京("2026-11-20 11:00"));
+    for (const x of [任务, 同号, 占位, 别人]) expect(await 链(x.id)).toMatchObject({ overdueAt: 京("2026-11-20 11:00"), stoppedAt: null });
+    expect(await 超时转扫一遍(京("2026-11-20 11:30"))).toMatchObject({ 转出: 4 });
+    for (const x of [挂本条, 只挂客户, 别的项目]) expect((await 项目(x.id)).ownerId).toBe(甲.id);
+  });
+
+  it("轮转到的接手人以前跟过这位客户：链停下，不再转", async () => {
+    const r = await 分来(甲, 京("2026-11-20 10:00"));
+    await 记(r.customerId, 乙.id, "去年见过面，聊过一次合作", 京("2026-11-01 10:00"));
+    await 超时转扫一遍(京("2026-11-20 11:00"));
+    expect(await 超时转扫一遍(京("2026-11-20 11:30"))).toMatchObject({ 转出: 1 });
+    expect((await 项目(r.id)).ownerId).toBe(乙.id);
+    expect(await 超时转扫一遍(京("2026-11-20 11:31"))).toMatchObject({ 停: 1 });
+    expect(await 超时转扫一遍(京("2026-11-20 13:00"))).toMatchObject({ 提醒: 0, 转出: 0 });
+    expect((await 项目(r.id)).ownerId).toBe(乙.id);
+  });
+
+  it("还在走、基准早于生效时刻的链（事故那批留下的）：下一遍停掉，不提醒、不转，首页待办不标", async () => {
+    const r = await 分来(甲, 京("2026-11-14 22:29"));
+    await prisma.entReplyOverdue.create({ data: { projectId: r.id, anchorAt: 京("2026-11-14 22:29"), holderId: 甲.id, since: 京("2026-11-20 20:35"), overdueAt: 京("2026-11-20 20:36") } });
+    await 设生效(京("2026-11-20 22:00"));
+    expect(await 我超时未跟进的(甲.id)).toEqual([]);
+    expect(await 超时转扫一遍(京("2026-11-21 08:00"))).toMatchObject({ 提醒: 0, 转出: 0 });
+    expect((await 链(r.id))?.stoppedAt).toEqual(京("2026-11-21 08:00"));
+    expect((await 项目(r.id)).ownerId).toBe(甲.id);
+  });
+
+  it("从没记过生效时刻：开着时第一遍扫记成那一刻（= 上线时刻），以前分的不起链；盘点、首页只读不记，当现在", async () => {
+    await prisma.setting.delete({ where: { key: 超时转生效key } });
+    invalidateSettingsCache();
+    const 老 = await 分来(甲, 京("2026-11-20 10:00"));
+    expect(await 盘点超时链(京("2026-11-20 12:00"))).toEqual([]);
+    expect(await prisma.setting.count({ where: { key: 超时转生效key } })).toBe(0);
+    expect(await 超时转扫一遍(京("2026-11-20 12:00"))).toEqual({ 提醒: 0, 转出: 0, 没转成: 0, 停: 0 });
+    expect(await 超时转生效时刻(京("2026-11-20 13:00"))).toEqual(京("2026-11-20 12:00"));
+    expect(await 链(老.id)).toBeNull();
+    // 关着时扫不记（打开时由 超时转重新起算 记）
+    await prisma.setting.delete({ where: { key: 超时转生效key } });
+    await setSetting(规则.超时自动转.key, false);
+    invalidateSettingsCache();
+    await 超时转扫一遍(京("2026-11-20 12:30"));
+    expect(await prisma.setting.count({ where: { key: 超时转生效key } })).toBe(0);
+    // 存坏了当没记过
+    await setSetting(规则.超时自动转.key, true);
+    await setSetting(超时转生效key, "不是时刻");
+    invalidateSettingsCache();
+    expect(await 超时转生效时刻(京("2026-11-20 13:00"))).toEqual(京("2026-11-20 13:00"));
+    const 新 = await 分来(甲, 京("2026-11-20 13:10"));
+    await 超时转扫一遍(京("2026-11-20 13:05"));
+    expect(await 超时转扫一遍(京("2026-11-20 14:10"))).toMatchObject({ 提醒: 1 });
+    expect(await 链(新.id)).toMatchObject({ anchorAt: 京("2026-11-20 13:10") });
   });
 });
 

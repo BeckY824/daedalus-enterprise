@@ -14,6 +14,15 @@
  *   3. 客户跟着线索给接手人。唯一例外：原负责人手上还有这位客户别的进行中项目 → 客户留在原负责人名下，接手人在项目页看到「该客户在 XXX 名下」。
  *      这是 P-转-04（项目层动作不动客户）的例外，只在这条自动转里。
  *
+ * 生效范围（11-20 事故后用户定「只对上线后新分配的计时、之前的跟进也算」）：
+ *   - 生效时刻 = Setting 超时转生效key（ISO 时刻）：开关从关拨到开时记成打开那一刻（超时转重新起算）；从没记过的（新装、默认开着上线），
+ *     开着时第一遍扫记成那一刻（= 上线时刻）。超时基准早于生效时刻的一律不起链；还在走的、基准早于生效时刻的停掉。
+ *     按分配 = 分配（接手）时刻在生效时刻以后；按时 = 指定回复时间（结束，没填用开始）在生效时刻以后
+ *     （11-20 21:06 一批把 11-14 管理从客户公海分的、往回 7 天里的老分配一口气转走 77 条）
+ *   - 之前的跟进也算（只对按分配）：负责人本人在这位客户上记过的有效沟通（任何时候、挂哪条项目都算、没挂项目的也算），
+ *     就算已沟通——不起链、在走的停下（负责人以前在这位客户身上跟过：导入的历史跟进、报过价的，不是「分来没人理」）。
+ *     不算：跟进任务 / 跟进提醒（TASK / REMIND）、同号留痕、空的占位的、别人记的（市场建档那条照旧不算）
+ *
  * 规则没说、按默认做的（集中在本文件，改口径只改这里）：
  *   - 超时基准：按时 = 指定回复时间的结束，没填结束用开始（一个时间点就是它；一段时间按段尾）；
  *     按分配 = 分配基准()：最近一次「别人把这条线索分给他」的时刻。起算的只有这几种留痕（算起算()）：
@@ -62,8 +71,8 @@
  *   - 出了范围（进公海、有结局、转商机、客户进公海、进回收站）的链就此停下，领回来 / 恢复了也不再接着转
  *   - 改指定回复时间 = 基准对不上 = 整行重来：改了时间按新时间；从空填上 = 改按时（按新填的时间，往回 3 天）；
  *     清空 = 改按分配（分配在往回 7 天里、分配后没记有效沟通的照进链，上线后一样先提醒、30 分钟后才转）；清空了又没有分配基准 = 链停下
- *   - 起链只往回看：按时 起链往回看天 天、按分配 分配起链往回看天 天（老数据上线不一口气全转；更早的由超时回收 / 三态兜底）；
- *     停过机、刚上线的按状态补：一遍只走一步，超时提醒补发了再等 30 分钟才转，不连环转
+ *   - 起链只往回看：按时 起链往回看天 天、按分配 分配起链往回看天 天，且不早于生效时刻（见上「生效范围」）；
+ *     停过机的按状态补：一遍只走一步，超时提醒补发了再等 30 分钟才转，不连环转
  *   - 客户随线索换人时，原负责人在这位客户上没做完的计划、待办一起给接手人；已结束的项目照留原负责人名下当历史
  *
  * 挂在夜扫那个每分钟的钟上（lib/project/nightly.ts，多进程只一个进程跑），排在定时分配、指定回复提醒后面。
@@ -89,11 +98,14 @@ import { 待办痕头, 公海分配痕, 线索公海分配痕, 手动转让痕 }
 import { 有内容的沟通 } from "./tri-state-quota";
 import { 同号节点 } from "./same-number-collab";
 import { 读占位词 } from "./tri-state-db";
+import { getSetting, setSetting } from "@/lib/settings";
+import { 同号标题 } from "./same-number-mark";
 
 /**
  * 总开关 = 组织规则「超时未跟进自动转」（rules-table.ts，设置 → 组织架构里系统管理员拨，默认开）。
  * 关着 = 只留 30 分钟前那条提醒，不做超时提醒和自动转、首页待办不标超时；已经转出去的不回滚，链停在原处不动。
- * 再打开时在计时的链从打开那刻重新起算（超时转重新起算），不会一打开就把关着期间早该转的一口气转走
+ * 再打开 = 重新生效（超时转重新起算）：生效时刻记成打开那一刻，在计时的链全停，只对打开以后新分配的计时，
+ * 不会一打开就把关着期间、或打开以前分的一口气转走
  */
 export const 超时自动转开着 = (): Promise<boolean> => 规则开着("超时自动转");
 /** 计时起点（指定回复时间 / 接手）往后多少分钟发超时提醒 */
@@ -117,6 +129,22 @@ export const 收回话 = "超时未跟进已自动收回并分配给其他成员
 export const 超时转理由 = 超时自动转理由;
 /** 通知种类（铃铛里的来源） */
 export const 超时通知种类 = "超时未跟进";
+
+/** 生效时刻存在这一行（Setting，值是 ISO 时刻，见文件头「生效范围」） */
+export const 超时转生效key = "enterprise.reply_overdue.since";
+/**
+ * 生效时刻：只对超时基准不早于它的计时。没记过（或存坏了）：写 = 记成现在（开着时第一遍扫 = 上线时刻）；
+ * 不写（盘点、首页待办）= 当现在（还没生效，以前的都不算）
+ */
+export async function 超时转生效时刻(现在: Date, 写 = false): Promise<Date> {
+  const v = await getSetting<unknown>(超时转生效key);
+  const t = typeof v === "string" ? new Date(v) : null;
+  if (t && !Number.isNaN(t.getTime())) return t;
+  if (写) await setSetting(超时转生效key, 现在.toISOString());
+  return 现在;
+}
+/** 跟进任务、跟进提醒不是沟通（「之前的跟进也算」不认它们） */
+const 不是沟通的类型 = ["TASK", "REMIND"];
 
 const 分 = 60_000;
 const 天 = 86_400_000;
@@ -295,9 +323,9 @@ async function 换人记录of(们: readonly { id: string; customerId: string }[]
 
 /**
  * 该看的项目：在管的范围里，且（链还在走，或超时基准在起链窗口里、还没起链 / 链停了但基准变了 = 新的一次约定或新的一次分配，整条重来）。
- * 没基准的 = 还在走、但现在算不出基准的链（清了指定回复时间、又没有分配基准），调用方停掉
+ * 没基准的 = 还在走、但现在算不出基准的链（清了指定回复时间、又没有分配基准），或基准早于生效时刻的（见文件头「生效范围」），调用方停掉
  */
-async function 链上的(现在: Date): Promise<{ 们: 链项目[]; 没基准的: string[] }> {
+async function 链上的(现在: Date, 生效: Date): Promise<{ 们: 链项目[]; 没基准的: string[] }> {
   const 早 = new Date(现在.getTime() - 起链往回看天 * 天);
   const 晚 = new Date(现在.getTime() - 超时提醒分钟 * 分);
   const 分配早 = new Date(现在.getTime() - 分配起链往回看天 * 天);
@@ -332,7 +360,8 @@ async function 链上的(现在: Date): Promise<{ 们: 链项目[]; 没基准的
       // 还在走、按分配起的链：基准钉在起链那一刻，中途手动换人不重来（走一步 按新负责人接手那刻接着算）
       基 = 行 && 在走 && 是分配时刻(行.anchorAt, 痕, 分) ? 行.anchorAt : 分配基准(p, 痕, 分, 客户换人of.get(p.customerId) ?? []);
     }
-    if (!基) {
+    // 生效时刻以前的分配 / 约定不计时（11-20 事故）：还在走的停掉
+    if (!基 || 基.getTime() < 生效.getTime()) {
       if (在走) 没基准的.push(p.id);
       continue;
     }
@@ -393,7 +422,8 @@ export async function 超时转扫一遍(现在: Date = new Date()): Promise<超
     if (await 视图中跳过()) return 明细;
     await 看全部(async () => {
       await 停掉出圈的(现在);
-      const { 们, 没基准的 } = await 链上的(现在);
+      const 生效 = await 超时转生效时刻(现在, true);
+      const { 们, 没基准的 } = await 链上的(现在, 生效);
       if (没基准的.length) await prisma.entReplyOverdue.updateMany({ where: { projectId: { in: 没基准的 }, stoppedAt: null }, data: { stoppedAt: 现在 } });
       if (!们.length) return;
       const 回了 = await 记过有效沟通的(们);
@@ -424,7 +454,7 @@ export type 盘点行 = { id: string; ownerId: string; 按分配: boolean; 基: 
  */
 export async function 盘点超时链(现在: Date = new Date()): Promise<盘点行[]> {
   return 看全部(async () => {
-    const { 们 } = await 链上的(现在);
+    const { 们 } = await 链上的(现在, await 超时转生效时刻(现在));
     const 回了 = await 记过有效沟通的(们);
     const 白天 = 顺延到白天(现在);
     const 行们: 盘点行[] = [];
@@ -449,13 +479,15 @@ export async function 盘点超时链(现在: Date = new Date()): Promise<盘点
 }
 
 /**
- * 开关从关拨到开时调（settings/org-actions.ts 设规则）：还在走的链（没停、没转成的那一位）从现在重新计时、超时提醒清掉重发。
- * 关着期间钟不走，不重算的话打开那一分钟就会把早该转的一口气转走，负责人连句新提醒都没有。
- * 只动链的计时，不动项目、负责人；回改了几条。出错只记日志、回 0，不挡开关本身
+ * 开关从关拨到开时调（settings/org-actions.ts 设规则）：重新生效——生效时刻记成现在，还在走的链（没停的）全停，
+ * 只对打开以后新分配的（按时：指定回复时间在打开以后的）计时（11-20 用户定「只对上线后新分配的计时」）。
+ * 不然打开那一分钟会把关着期间、打开以前分的一口气提醒、转走。
+ * 只动生效时刻和链，不动项目、负责人；回停了几条。出错只记日志、回 0，不挡开关本身
  */
 export async function 超时转重新起算(现在: Date = new Date()): Promise<number> {
   try {
-    return (await 看全部(() => prisma.entReplyOverdue.updateMany({ where: { stoppedAt: null }, data: { since: 现在, overdueAt: null } }))).count;
+    await setSetting(超时转生效key, 现在.toISOString());
+    return (await 看全部(() => prisma.entReplyOverdue.updateMany({ where: { stoppedAt: null }, data: { stoppedAt: 现在 } }))).count;
   } catch (e) {
     console.error("[超时自动转] 重新打开时没重新计时", e);
     return 0;
@@ -596,13 +628,34 @@ export async function 客户在谁名下(p: { id: string; ownerId: string; custo
 
 /**
  * 这几条里哪些已经记过有效沟通（见文件头「有效沟通」）：按时的照 reply-notice.ts 已回复的（提醒时刻以后记的），
- * 按分配的照 分配后沟通过的（分配那一刻之后记的、建的人建档时随手记的不算）
+ * 按分配的照 分配后沟通过的（分配那一刻之后记的、建的人建档时随手记的不算），外加 负责人跟过的（之前的跟进也算，见文件头「生效范围」）
  */
 export async function 记过有效沟通的(
-  们: readonly (两格 & { id: string; creatorId: string; createdAt: Date; 基: Date; 按分配: boolean })[],
+  们: readonly (两格 & { id: string; ownerId: string; customerId: string; creatorId: string; createdAt: Date; 基: Date; 按分配: boolean })[],
 ): Promise<Set<string>> {
-  const [按时, 按分配] = await Promise.all([已回复的(们.filter((p) => !p.按分配)), 分配后沟通过的(们.filter((p) => p.按分配))]);
-  return new Set([...按时, ...按分配]);
+  const 按分配们 = 们.filter((p) => p.按分配);
+  const [按时, 按分配, 跟过] = await Promise.all([已回复的(们.filter((p) => !p.按分配)), 分配后沟通过的(按分配们), 负责人跟过的(按分配们)]);
+  return new Set([...按时, ...按分配, ...跟过]);
+}
+
+/**
+ * 之前的跟进也算（11-20 用户定）：负责人本人在这位客户上记过有效沟通的那几条（任何时候、挂哪条项目都算、没挂项目的也算）。
+ * 跟进任务 / 提醒、同号留痕（标题或节点）、空的占位的不算；只认负责人本人记的
+ */
+export async function 负责人跟过的(们: readonly { id: string; ownerId: string; customerId: string }[]): Promise<Set<string>> {
+  if (!们.length) return new Set();
+  const [沟通们, 词] = await Promise.all([
+    prisma.followUp.findMany({
+      where: {
+        customerId: { in: [...new Set(们.map((p) => p.customerId))] }, ownerId: { in: [...new Set(们.map((p) => p.ownerId))] },
+        deletedAt: null, type: { notIn: 不是沟通的类型 }, NOT: { title: { startsWith: 同号标题 } },
+      },
+      select: { customerId: true, ownerId: true, content: true, projectNode: { select: { node: true } } },
+    }),
+    读占位词(),
+  ]);
+  const 跟过 = new Set(沟通们.filter((f) => f.projectNode?.node !== 同号节点 && 有内容的沟通(f.content, { 占位词: 词 })).map((f) => `${f.customerId}|${f.ownerId}`));
+  return new Set(们.filter((p) => 跟过.has(`${p.customerId}|${p.ownerId}`)).map((p) => p.id));
 }
 
 /** 按分配的有效沟通：基准之后（严格晚于）挂在这条项目上、有内容、不是同号留痕、不是建的人建档时随手记的 */
@@ -629,12 +682,14 @@ export type 我超时的 = { id: string; name: string; replyStartAt: Date | null
 /** 首页待办：我手上发过超时提醒、还没记有效沟通的（链还在走） */
 export async function 我超时未跟进的(userId: string): Promise<我超时的[]> {
   if (!企业版() || !(await 超时自动转开着())) return [];
+  // 生效时刻以前起的链不标（下一遍扫会停掉；扫之前那一分钟也别标出来）
+  const 生效 = await 超时转生效时刻(new Date());
   const 们 = await prisma.project.findMany({
     where: {
       ownerId: userId, phase: "线索", result: null, pooledAt: null, awaitAssignAt: null, customer: { pool: null },
-      replyOverdue: { is: { holderId: userId, overdueAt: { not: null }, stoppedAt: null } },
+      replyOverdue: { is: { holderId: userId, overdueAt: { not: null }, stoppedAt: null, anchorAt: { gte: 生效 } } },
     },
-    select: { id: true, name: true, creatorId: true, createdAt: true, replyStartAt: true, replyEndAt: true, replyOverdue: { select: { anchorAt: true, since: true } } },
+    select: { id: true, name: true, ownerId: true, customerId: true, creatorId: true, createdAt: true, replyStartAt: true, replyEndAt: true, replyOverdue: { select: { anchorAt: true, since: true } } },
   });
   if (!们.length) return [];
   // 填了指定回复时间的按它；没填的按链上记的基准（分配时刻）
