@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Alert, Button, Card, Drawer, Dropdown, Input, Modal, Space, Tag, Avatar, Checkbox, Tooltip, Select, Typography, type MenuProps } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
-import { 原负责人不能领回提示, 公海客户先领取话 } from "@/lib/enterprise/pool-rules";
+import { 原负责人不能领回提示, 公海客户先领取话, 无效客户不能领短话 } from "@/lib/enterprise/pool-rules";
 import { 号码保护of } from "@/lib/enterprise/contact-guard";
 import {
   DownOutlined,
@@ -183,6 +183,7 @@ export default function RecordView({
   指定定向,
   自动指定候选,
   原负责人领不回 = false,
+  恢复无效,
   只读: 只读档 = false,
   只读话: 全只读话 = "这是虚线下属的客户：只能看，不能改、不能转",
   只读横幅,
@@ -628,10 +629,28 @@ export default function RecordView({
     setFollowOpen(true);
   }
 
+  /** 公海回收站里的无效客户恢复成有效（系统管理员、回收站副手；同公海列表行上的「恢复」）：成了刷新，标和灰着的领取一起没了，没成原因写在页头下面 */
+  const [恢复中, set恢复中] = useState(false);
+  async function 恢复这位() {
+    if (!恢复无效 || 恢复中) return;
+    set恢复中(true);
+    try {
+      const r = await 恢复无效([customer.id]);
+      if (!r.ok) return void 说就地(r.error, true);
+      if (!r.updated) return void 说就地("已经恢复过了，刷新看看");
+      说就地("已恢复成有效客户，还在公海里，能领取了");
+      router.refresh();
+    } catch {
+      说就地("没恢复上，刷新后再试", true);
+    } finally {
+      set恢复中(false);
+    }
+  }
+
   const 能建项目 = !!(摆法.新建项目 && 新建项目 && !只读 && 能新建项目);
-  /** 公海里的客户先领取再建项目（11-05）：按钮照摆，点了说先领取，服务端也拦 */
+  /** 公海里的客户先领取再建项目（11-05）：按钮照摆，点了说先领取，服务端也拦；标了无效的领不了，说先恢复 */
   function 开建项目() {
-    if (customer.pool) return void 说就地(公海客户先领取话);
+    if (customer.pool) return void 说就地(customer.pool.无效 ? 无效客户不能领短话 : 公海客户先领取话);
     set建项目开着(true);
   }
   /**
@@ -1280,11 +1299,19 @@ export default function RecordView({
         {customer.pool && (
           <span className="rec-tags-n rec-pool">
             <Tag className="pool-tag" title={customer.pool.reason === "手动" ? "手动放回公海" : 进公海理由显示(customer.pool.reason)}>{公海标签(customer.salesOwnerName)}</Tag>
-            {管理员只读 || !能领 ? null : 原负责人领不回
+            {/* 公海回收站（标了无效，P-公海-09）：和公海列表那一格同一个红色「无效」标；领不了（M-权限-03）——能恢复的人摆「恢复」，别人领取灰着、原因写在旁边 */}
+            {customer.pool.无效 && <Tag color="red" title="无效客户：全员看得到、查重查得到，领不了；系统管理员、回收站副手能恢复">无效</Tag>}
+            {customer.pool.无效
+              ? (恢复无效
+                ? <Button size="small" type="link" loading={恢复中} onClick={() => void 恢复这位()}>恢复</Button>
+                : 管理员只读 || !能领 ? null
+                : <Tooltip title={无效客户不能领短话}><Button size="small" type="link" icon={<UserAddOutlined />} disabled aria-describedby="rec-pool-why">领取</Button></Tooltip>)
+              : 管理员只读 || !能领 ? null : 原负责人领不回
               ? <Tooltip title={原负责人不能领回提示}><Button size="small" type="link" icon={<UserAddOutlined />} disabled>领取</Button></Tooltip>
               : <Button size="small" type="link" icon={<UserAddOutlined />} onClick={() => void 公海动作("领取")}>领取</Button>}
           </span>
         )}
+        {customer.pool?.无效 && !恢复无效 && !管理员只读 && 能领 && <span id="rec-pool-why" className="rec-tags-n" title={无效客户不能领短话}>{无效客户不能领短话}</span>}
         {/* 一个数都没有就不出现：「预计签约 —」占着一行却什么也没说 */}
         {/* 企业版不摆（10-28 去遗留 A4）：成交看项目，不看签约 */}
         {!企业 && (customer.signedAmount > 0 || (customer.expectedSignAt && !外贸)) && (

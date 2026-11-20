@@ -127,6 +127,11 @@ export type RecordProps = {
   自动指定候选?: string[];
   /** 企业版：在公海里、我是原负责人——领取按钮灰着，悬停说「原负责人不能领回」（lib/enterprise/pool-rules.ts） */
   原负责人领不回?: boolean;
+  /**
+   * 公海回收站里的无效客户（P-公海-09）：系统管理员、回收站副手（本业务线，P-公海-07）在详情页也能「恢复」，同公海列表 P-界面-44。
+   * 页面把服务端动作（pool/actions 恢复有效客户）当参数递进来；不给 = 不摆，领取灰着、写原因
+   */
+  恢复无效?: (ids: string[]) => Promise<{ ok: true; updated: number; unchanged: number } | { ok: false; error: string }>;
   /** 换负责人记录（企业版 D-36），时间正序；左栏「历史负责人」用，没有就不摆 */
   换负责人记录?: import("@/lib/owner-log").换负责人记录[];
   /**
