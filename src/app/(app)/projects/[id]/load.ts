@@ -186,7 +186,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     角色字典(),
     异常类别字典(),
     // 历史负责人（企业版才显示）：放回过公海的人。单独查，不受上面节点变更只取 200 行的限
-    !企业版() ? [] : prisma.projectNodeLog.findMany({ where: { projectId: p.id, kind: "pool-release" }, orderBy: { at: "desc" }, select: { fromOwnerId: true } }),
+    !企业版() ? [] : prisma.projectNodeLog.findMany({ where: { projectId: p.id, kind: "pool-release" }, orderBy: { at: "desc" }, select: { fromOwnerId: true, userId: true, reason: true } }),
     生效组织规则(),
   ]);
   const 类别名 = new Map(类别们.map((c) => [c.id, c.name]));
@@ -205,7 +205,10 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   if (公海 && 原负责人回避() && me.id === 上一任 && !(await 回避豁免(me))) return { 种: "无" };
 
   const 历史负责人 = [...new Set(放回过.map((l) => l.fromOwnerId).filter((x): x is string => !!x))];
-  const 人id = new Set<string>([...历史负责人, ...(上一任 ? [上一任] : []), p.ownerId, p.creatorId, ...(p.scheduledAssignTo ? [p.scheduledAssignTo] : []), ...p.members.map((m) => m.userId), ...p.logs.flatMap((l) => [l.userId, l.fromOwnerId, l.toOwnerId].filter((x): x is string => !!x)), ...(露沟通 ? p.followUps.map((f) => f.followUp.ownerId) : [])]);
+  // 最近一次放回（页头「Y 放回的」、提示条「是你放回去的」）：认上面不限条数的放回留痕；p.logs 只取最近 200 条，进出公海多了会掉出去。
+  // 不是企业版（放回过 = 空）照旧从 p.logs 找
+  const 最近放回: { userId: string; reason: string | null } | undefined = 公海 ? 放回过[0] ?? p.logs.find((l) => l.kind === "pool-release") : undefined;
+  const 人id = new Set<string>([...历史负责人, ...(上一任 ? [上一任] : []), ...(最近放回 ? [最近放回.userId] : []), p.ownerId, p.creatorId, ...(p.scheduledAssignTo ? [p.scheduledAssignTo] : []), ...p.members.map((m) => m.userId), ...p.logs.flatMap((l) => [l.userId, l.fromOwnerId, l.toOwnerId].filter((x): x is string => !!x)), ...(露沟通 ? p.followUps.map((f) => f.followUp.ownerId) : [])]);
   for (const x of [p.balanceSettledById, p.acceptancePassedById]) if (x) 人id.add(x);
   const 人 = await prisma.user.findMany({ where: { id: { in: [...人id] } }, select: { id: true, name: true } });
   const 名 = new Map(人.map((u) => [u.id, u.name]));
@@ -214,7 +217,6 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   const 叫 = (uid: string | null) => (uid ? 人名显示(uid, 名, { 不在: "已不在的成员" }) : null);
   // 怎么进的公海：超时系统收的 / 办停用时放的（操作人是办的那位管理员，不是离职的人）/ 有人手动放回（QA #14）
   const 认放回 = (reason: string | null): 放回方式 => (reason === 超时理由 ? "超时" : reason === 停用项目进公海理由 ? "停用" : "手动");
-  const 最近放回 = 公海 ? p.logs.find((l) => l.kind === "pool-release") : undefined;
   // 企业版「非原负责人均可领取」：原负责人看得到领取按钮、灰着（pool-rules.ts）
   const 原负责人领不回 = 公海 && me.id === 上一任 && 拦原负责人();
 
@@ -393,6 +395,9 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     // 项目不能单独领（10-31 晚定）：按钮灰着、说去领客户
     领取不给: !能领 ? null : 原负责人领不回 ? 原负责人不能领回提示 : 公海 && 企业 && p.result ? `这个项目已经结束（${p.result}），不能单独领取` : 公海 && 拦单独领项目() ? 项目不能单独领提示 : 公海 && 拦客户公海里的项目(!!p.customer.pool) ? 客户在公海项目不单领提示 : null,
     进公海: 最近放回 ? { 方式: 认放回(最近放回.reason), 谁: 叫(最近放回.userId)! } : null,
+    // 最近一次是不是我放回的：公海提示条只对放回的那位说「是你放回去的」，别人（如看别人退回的管理员）不说。
+    // 最近放回认的是不限条数的放回留痕；系统超时收回的操作人是「系统」，不算我；没留痕的老数据按原负责人认
+    放回的是我: 公海 && (最近放回 ? 最近放回.userId === me.id : 上一任 === me.id),
     balanceSettled: p.balanceSettled, balanceSettledBy: 叫(p.balanceSettledById), balanceSettledAt: p.balanceSettledAt?.toISOString() ?? null,
     acceptancePassed: p.acceptancePassed, acceptancePassedBy: 叫(p.acceptancePassedById), acceptancePassedAt: p.acceptancePassedAt?.toISOString() ?? null,
     logs: p.logs.map((l) => ({

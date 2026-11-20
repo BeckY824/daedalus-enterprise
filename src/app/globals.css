@@ -1038,6 +1038,12 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
 @media (max-width: 767px) {
   .page-head:has(.cust-scope) { flex-wrap: wrap; align-items: center; row-gap: var(--s2); }
   .page-head:has(.cust-scope) > :first-child { flex-basis: 100% !important; }
+  /* 右上那组按钮自己也要能折行（11-20 c2 实操：系统管理员客户页「导入 · 导出 · 新建 · 离职交接 N」375 宽一排放不下，「离职交接」出屏、整页横滚）：
+     原来 flex: none 按一排的宽度摆，里面的 Space wrap 折不了；手机上不许比页头宽，放不下的按钮换到下一行。
+     按钮组折到标题下面那一行时照旧靠右（margin-left: auto），和一行放得下时同一边 */
+  .page-head { flex-wrap: wrap; row-gap: var(--s2); }
+  .page-head-a { flex: 0 1 auto; min-width: 0; max-width: 100%; margin-left: auto; }
+  .page-head-a > .ant-space { flex-wrap: wrap; row-gap: var(--s2); max-width: 100%; }
 }
 
 /* 一行显示，放不下打省略号，悬停看全文（2026-11-04 用户：「尽量所有信息都在一行显示完整。除了备注」
@@ -4078,6 +4084,9 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 /* 列表那一格：原负责人名字长时在列宽里省略，别压到右边「最近跟进」上（2026-10-04 实机）；全文在悬停提示里 */
 .ant-table-cell .pool-tag { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
 .rec-pool { display: inline-flex; align-items: center; gap: 2px; }
+/* 原负责人名字长、或后面多了「无效」标 /「恢复」（公海回收站，11-20）：公海标签自己省略（悬停看全），后面的标和按钮不被挤出这一格、照样点得到 */
+.rec-pool > .pool-tag { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec-pool > :not(.pool-tag) { flex: none; }
 
 /* 轻量订单页（2026-10-05）：顶上记一笔的框，下面挂在这张订单上的跟进 */
 .ord-note-box { display: flex; gap: 12px; align-items: flex-end; }
@@ -4742,6 +4751,10 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .pool-act .inlc-q:empty { display: none; }
 /* 领取确认展开时按钮下面的后果（P-界面-41）：橙色小字、可折行，不撑宽操作列 */
 .pool-why { margin-top: 2px; font-size: var(--fs-min); line-height: 18px; color: var(--warning-text); white-space: normal; overflow-wrap: anywhere; animation: pool-rise var(--t) var(--ease) both; }
+/* 行内领客户的原地确认里「会一起转走的 N 个项目」（同客户详情页领取框）：名单字号跟着这一块，项目名一行一个、放不下省略，多了框里滚 */
+.pool-carry { margin-top: 4px; color: var(--ink-soft); }
+.pool-carry .cu-carry-list { margin-top: 2px; max-height: 120px; font-size: inherit; color: inherit; }
+.pool-carry .cu-carry-more { font-size: inherit; }
 .pool-err { font-size: var(--fs-min); line-height: 18px; color: var(--danger-text); white-space: normal; overflow-wrap: anywhere; }
 .pool-row-err { margin-top: 2px; }
 @keyframes pool-rise { from { opacity: 0; transform: translateY(-3px); } }
@@ -5136,6 +5149,9 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 .list-skel-on .ant-table-tbody > tr > td.ant-table-selection-column .skel { visibility: hidden; }
 /* 项目详情 · 推进节点还差必填（dt.stage）：从「完成节点」下面长出补填小框，不开大框；内容长了框里滚，按钮那排照旧贴底 */
 .pd-fill-pop .ant-popover-inner { padding: var(--s3); }
+/* 挪进屏里时按浮层外框算（ProjectDetail 补填框挪进屏）：外框底下留 8px + 手机底部安全区（iOS 横条、飞书 / 微信底栏），按钮那排不贴着屏幕最底下、也不被横条盖住。
+   外框这一截是透明的，不另写高度 */
+.pd-fill-pop.ant-popover { padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
 .pd-fill-pop-body { width: min(420px, calc(100vw - 32px)); max-height: min(72vh, 640px); overflow-y: auto; overscroll-behavior: contain; }
 .pd-fill-pop-t { font-weight: 600; color: var(--ink); margin-bottom: var(--s2); overflow-wrap: anywhere; }
 /* 手机窄屏：框按右下对齐挂在「完成节点」右边，按钮不在屏幕最右时框从左边出屏（390 宽切掉 52px）。

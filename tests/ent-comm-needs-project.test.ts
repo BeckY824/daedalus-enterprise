@@ -28,6 +28,7 @@ import { applyProposal } from "@/app/(app)/dashboard/apply";
 import { 记项目沟通 } from "@/lib/project/db";
 import { 存背调到客户 } from "@/lib/research/actions";
 import { 初始状态 } from "@/lib/research/state";
+import { 无效客户不能记沟通话 } from "@/lib/enterprise/pool-rules";
 import {
   不挂项目也能存, 沟通没项目话, 沟通没在推项目话, 沟通要选项目话, 沟通都不能记话, 沟通客户在公海话, 沟通项目已结束话, 沟通不是组员话, 待办改沟通话,
 } from "@/lib/project/follow-needs-project";
@@ -119,6 +120,64 @@ describe("客户页记沟通", () => {
     await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 同事 } });
     await prisma.customerPool.create({ data: { customerId: 客户, reason: "手动", userId: 同事 } });
     expect(await 记()).toEqual({ ok: false, error: 沟通客户在公海话, 没项目: true });
+    expect(await prisma.customerPool.count({ where: { customerId: 客户 } })).toBe(1);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 客户 } })).salesOwnerId).toBe(同事);
+  });
+
+  // 11-20 c2 实操：公海回收站里的无效客户（P-公海-09）领不了（M-权限-03）。真正的沟通挂不上在推项目：整条不存、说先恢复（原来照存一条、领取悄悄没成）
+  it("标了无效的公海客户、名下没有我能记的在推项目：沟通不记、不领，说要先恢复", async () => {
+    const 项 = await 项目({ ownerId: "", pooledAt: new Date() });
+    await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 同事, poolInvalidAt: new Date() } });
+    await prisma.customerPool.create({ data: { customerId: 客户, reason: "手动", userId: 同事 } });
+    expect(await 记()).toEqual({ ok: false, error: 无效客户不能记沟通话 });
+    // 带了项目、项目不行（在公海里）：照原话说是这个项目的问题
+    const 带项目 = await 记({ projectId: 项.id });
+    expect(带项目).toMatchObject({ ok: false });
+    expect((带项目 as { error: string }).error).not.toBe(无效客户不能记沟通话);
+    expect(await 记({ type: "OTHER", content: "随手记" })).toEqual({ ok: false, error: 无效客户不能记沟通话 });
+    expect(await prisma.followUp.count({ where: { customerId: 客户 } })).toBe(0);
+    expect(await prisma.customerPool.count({ where: { customerId: 客户 } })).toBe(1);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 客户 } })).salesOwnerId).toBe(同事);
+  });
+
+  // 审查 29A：同事 A 把客户退回公海、又标了无效，我名下在推的项目留在原处（pooledAt 空）。首页 AI 记沟通卡 / 完成计划带 projectId 走这里，
+  // 和项目页 记项目沟通Action 一样照记、挂我的项目；客户不领、还在公海、无效标不动
+  it("标了无效的公海客户、我名下在推项目留在原处：挂上这个项目照记，不领客户", async () => {
+    const 项 = await 项目({ ownerId: 我 });
+    await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 同事, poolInvalidAt: new Date() } });
+    await prisma.customerPool.create({ data: { customerId: 客户, reason: "手动", userId: 同事 } });
+    const 带项目 = await 记({ projectId: 项.id });
+    expect(带项目).toMatchObject({ ok: true });
+    expect(带项目).not.toHaveProperty("领取了");
+    expect(await 挂在((带项目 as { id: string }).id)).toBe(项.id);
+    // 没选：能记的只有这一个，自动挂它
+    const 没选 = await 记({ content: "又聊了一次" });
+    expect(没选).toMatchObject({ ok: true });
+    expect(await 挂在((没选 as { id: string }).id)).toBe(项.id);
+    expect(await prisma.customerPool.count({ where: { customerId: 客户 } })).toBe(1);
+    const 客 = await prisma.customer.findUniqueOrThrow({ where: { id: 客户 } });
+    expect(客.salesOwnerId).toBe(同事);
+    expect(客.poolInvalidAt).not.toBeNull();
+  });
+
+  // 复审 29A：我名下两个在推项目留在原处，不选项目记沟通——是「请选一个」，不是「无效不能记」
+  it("标了无效的公海客户、我名下两个在推项目留在原处、没选：照旧说请选一个关联项目", async () => {
+    await 项目({ ownerId: 我 });
+    await 项目({ ownerId: 我 });
+    await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 同事, poolInvalidAt: new Date() } });
+    await prisma.customerPool.create({ data: { customerId: 客户, reason: "手动", userId: 同事 } });
+    expect(await 记()).toEqual({ ok: false, error: 沟通要选项目话 });
+    expect(await prisma.followUp.count({ where: { customerId: 客户 } })).toBe(0);
+    expect(await prisma.customerPool.count({ where: { customerId: 客户 } })).toBe(1);
+  });
+
+  it("标了无效的公海客户：待办 / 提醒、背调存档照旧能存（只挂客户），不领客户", async () => {
+    await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 同事, poolInvalidAt: new Date() } });
+    await prisma.customerPool.create({ data: { customerId: 客户, reason: "手动", userId: 同事 } });
+    const 后天 = dayjs().add(2, "day").format("YYYY-MM-DD HH:mm");
+    expect(await 记({ type: "TASK", content: "要做的事", status: "待处理", dueAt: 后天, dueHasTime: true })).toMatchObject({ ok: true });
+    expect(await 存背调到客户(客户, { ...初始状态({ name: "客户甲" }), done: true })).toMatchObject({ ok: true });
+    expect(await prisma.followUp.count({ where: { customerId: 客户 } })).toBe(2);
     expect(await prisma.customerPool.count({ where: { customerId: 客户 } })).toBe(1);
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: 客户 } })).salesOwnerId).toBe(同事);
   });
