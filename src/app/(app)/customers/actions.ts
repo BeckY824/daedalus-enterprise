@@ -62,7 +62,7 @@ import { 选的原因, 可选项, 客户分配序号 } from "@/lib/enterprise/di
 import { 建档记自持, 补客户分配 } from "@/lib/enterprise/customer-assign-way";
 import { 验号码, 验客户电话 } from "@/lib/enterprise/contact-format";
 import { 客户还有别的联系方式, 同步电话子表, 客户电话撞号, 清空电话拦话, 删光号码拦话, 电话子表键们 } from "@/lib/enterprise/customer-phone-db";
-import { 企业号码查重, 全公司查号, 撞号结论, 记号码, 一行号全公司查, 回收站里查号, 回收站里有提示, 库类型到号码类型 } from "@/lib/enterprise/contact-dedupe";
+import { 企业号码查重, 全公司查号, 撞号结论, 记号码, 一行号全公司查, 一行号回收站查, 回收站里有提示 } from "@/lib/enterprise/contact-dedupe";
 import { 验联系人号码们, 号码种类表, 种类叫法 } from "@/lib/enterprise/customer-v2-db";
 import { 号码撞上, 客户名查重, 名撞说法, type 名撞结论 } from "@/lib/enterprise/dupe-ledger";
 import { setOppStatus } from "../opportunities/actions";
@@ -2309,7 +2309,8 @@ export async function saveCustomerNumbers(id: string, 交的: { kind: string; va
     const ids = await 一行号全公司查(prisma, r, id);
     const 论 = ids.length ? await 撞号结论(prisma, ids, me.id, 读的) : null;
     if (论 && 论.状态 !== "首次录入") return { ok: false, error: `${种类叫法(表, r.kind)} ${r.value}：${论.提示}` };
-    if (库类型到号码类型[r.kind] && (await 回收站里查号(prisma, 库类型到号码类型[r.kind]!, r.value, r.numberKey, id)).length) {
+    // 回收站里撞了：任何类型都和所有类型的号比（11-20 跨类型，原来只看手机 / 邮箱 / 微信 / 旺旺四类）
+    if ((await 一行号回收站查(prisma, r, id)).length) {
       return { ok: false, error: `${种类叫法(表, r.kind)} ${r.value}：${回收站里有提示}` };
     }
   }

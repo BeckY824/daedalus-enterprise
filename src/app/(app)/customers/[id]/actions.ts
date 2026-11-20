@@ -804,7 +804,8 @@ function 刷新联系人(customerId?: string | null) {
 
 /**
  * 企业版号码查重（2026-10-29 P13 第 2 条）撞了：不保存，回 撞了 给表单摆成能点的链接。
- * 照存 = 人看过提示、确认是另一个人（同一个号两个人用，比如公司总机）；再交一次带上它就不查
+ * 11-20 起号码全公司唯一（客户「号码必须是唯一值」，用户「去掉」）：原来的「照存」（确认是另一个人再交一次就不查）取消，
+ * 撞了一律拦，交上来带着它也照样查
  */
 /**
  * 联系人号码失焦先查（dt.contact，企业版）：填完一个号就看撞没撞，不等到点保存。只读、不写库；
@@ -827,7 +828,7 @@ export async function 联系人号码先查(号码们: { kind: string; value: st
   }
 }
 
-export async function saveContact(input: 联系人字段 & { id?: string; customerId: string; isPrimary: boolean; 版本?: string | null; 企业?: 企业联系人资料 | null; 照存?: boolean }) {
+export async function saveContact(input: 联系人字段 & { id?: string; customerId: string; isPrimary: boolean; 版本?: string | null; 企业?: 企业联系人资料 | null }) {
   try {
     const me = await requireUser();
   // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）；企业版 11-17 起姓名和联系方式至少一项（联系人姓名问题）
@@ -904,12 +905,12 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
         if (键) 原有.add(`${kind}|${键}`);
       }
       const 新的 = 查的行们.filter((x) => !原有.has(`${x.kind}|${x.numberKey}`));
-      const 撞了 = 新的.length && !input.照存 ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), input.id, 主客户) : [];
+      const 撞了 = 新的.length ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), input.id, 主客户) : [];
       if (撞了.length) {
         const 表 = await 号码种类表();
         return { ok: false as const, error: 联系人撞号话(撞了, (k) => 种类叫法(表, k), 主客户), 撞了 };
       }
-      // 在用的没撞、回收站里撞了（审核 11-18 新建入口 P2-6，P-删-08，同建档入口）：拦下给捞回，「仍然保存」也不放
+      // 在用的没撞、回收站里撞了（审核 11-18 新建入口 P2-6，P-删-08，同建档入口）：拦下给捞回
       const 回收站 = 企业版() && 新的.length ? await 联系人回收站撞(prisma, 新的) : null;
       if (回收站) return { ok: false as const, error: 联系人回收站撞话, 回收站 };
     }

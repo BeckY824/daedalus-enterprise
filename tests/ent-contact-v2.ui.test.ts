@@ -4,7 +4,7 @@ import path from "node:path";
 import { chromium, type Browser } from "playwright";
 /* 2026-10-29 P13：企业版联系人第二轮的三处界面——
    1. 级别：10-31 起（F-客户-01）去星标只显示字母徽标，读屏念「客户级别 A 重点」
-   2. 联系人表单号码撞了：框顶黄条列出撞到的那位（看得到的可点进客户页、客户页上新建能「挂到本客户」），「仍然保存」照存；改了表单黄条收起
+   2. 联系人表单号码撞了：框顶黄条列出撞到的那位（看得到的可点进客户页、客户页上新建能「挂到本客户」），没有「仍然保存」（11-20 号码全公司唯一）；改了表单黄条收起
    3. 客户页联系人卡的挂靠一段：挂来的摆主客户 + 说明、能解除；自家的摆「也挂在」、看不到的客户不给链接
    4. 10-31：企业版联系人「职务」下拉 19 项、也能手填；字典外的老职务原样显示；非企业版照旧「与客户关系」 */
 let browser: Browser, bundle: string;
@@ -67,7 +67,7 @@ async function open(画: "__表单" | "__挂靠" | "__职务" | "__职务老" | 
   return page;
 }
 
-it("号码撞了：黄条列出撞到的人（可点、可挂到本客户）、看不到的只说负责人；仍然保存带照存；改表单黄条收起", async () => {
+it("号码撞了：黄条列出撞到的人（可点、可挂到本客户）、看不到的只说负责人；没有仍然保存 / 仍然新建；改表单黄条收起", async () => {
   const page = await open("__表单");
   try {
     await page.getByLabel("姓名").fill("李四");
@@ -93,11 +93,11 @@ it("号码撞了：黄条列出撞到的人（可点、可挂到本客户）、�
     await p2.getByPlaceholder(/号码/).first().fill("13900000001");
     await p2.getByRole("button", { name: /^保\s?存$/ }).click();
     await p2.locator(".ant-alert-warning").waitFor();
-    // 新建时这颗叫「仍然新建」（dt.contact）
-    await p2.getByRole("button", { name: "仍然新建" }).click();
-    await p2.waitForFunction(() => (window as unknown as { __存好?: number }).__存好 === 1);
+    // 号码全公司唯一（11-20）：没有「仍然新建 / 仍然保存」，黄条说清不能重复登记
+    expect(await p2.getByRole("button", { name: /仍然/ }).count()).toBe(0);
+    expect(await p2.locator(".ant-alert-warning").innerText()).toContain("号码全公司唯一，不能重复登记");
     const 存 = await p2.evaluate(() => (window as unknown as { __存: { 照存?: boolean }[] }).__存.map(x => !!x.照存));
-    expect(存).toEqual([false, true]);
+    expect(存).toEqual([false]);
   } finally { await p2.close(); }
 
   const p3 = await open("__表单");
@@ -111,7 +111,7 @@ it("号码撞了：黄条列出撞到的人（可点、可挂到本客户）、�
   } finally { await p3.close(); }
 });
 
-it("dt.contact：号码一失焦就查，撞了不等点保存就摆黄条（挂到本客户 / 仍然新建）；没撞不摆", async () => {
+it("dt.contact：号码一失焦就查，撞了不等点保存就摆黄条（挂到本客户，没有仍然新建）；没撞不摆", async () => {
   const page = await open("__表单");
   try {
     await page.getByLabel("姓名").fill("李四");
@@ -132,7 +132,7 @@ it("dt.contact：号码一失焦就查，撞了不等点保存就摆黄条（挂
     expect(await 条.innerText()).toContain("这个号码已经记在别的联系人或客户身上，先核对一下");
     expect(await page.evaluate(() => (window as unknown as { __存?: unknown[] }).__存 ?? [])).toEqual([]);
     await 条.getByRole("button", { name: /挂到本/ }).waitFor();
-    await 条.getByRole("button", { name: "仍然新建" }).waitFor();
+    expect(await 条.getByRole("button", { name: /仍然/ }).count()).toBe(0);
   } finally { await page.close(); }
 });
 
