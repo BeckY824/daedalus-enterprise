@@ -28,6 +28,7 @@ import { 视图中跳过 } from "./view-as";
 import { 能分配的人们 } from "./await-assign";
 import { 有内容的沟通 } from "./tri-state-quota";
 import { 同号节点 } from "./same-number-collab";
+import { 同号标题 } from "./same-number-mark";
 import { 读占位词 } from "./tri-state-db";
 import { 北京墙钟转时刻, 时刻转北京墙钟, 指定回复文字, 短时刻, 分配后未跟进话 } from "@/lib/project/time-fields";
 import { 空值符 } from "@/lib/empty-value";
@@ -83,11 +84,27 @@ async function 窗口里的(现在: Date, ownerId?: string): Promise<行[]> {
   return 们.filter((p) => 在提醒窗口(p, 现在));
 }
 
+/** 跟进任务、跟进提醒不是沟通（超时转的有效沟通不认它们） */
+export const 不是沟通的类型: readonly string[] = ["TASK", "REMIND"];
+
+/**
+ * 超时未跟进自动转认的有效沟通（11-20 用户定，reply-overdue.ts 按时、按分配、之前跟过三处同一套，只此一份）：
+ * 不是跟进任务 / 跟进提醒（TASK / REMIND）、不是同号再次录入的系统留痕（标题以 同号标题 开头，或挂项目的节点是 同号节点）、
+ * 有内容（空的、占位式的不算，有内容的沟通）。记录人是不是负责人本人由调用方再判。
+ * 节点 = 这条沟通挂在项目上的节点（没挂项目 = null）
+ */
+export function 是有效沟通(
+  f: { type: string; title: string | null; content: string | null }, 节点: string | null | undefined, 占位词: readonly string[],
+): boolean {
+  return !不是沟通的类型.includes(f.type) && !(f.title ?? "").startsWith(同号标题) && 节点 !== 同号节点 && 有内容的沟通(f.content, { 占位词 });
+}
+
 /**
  * 这几条里哪些已经回复了：提醒时刻以后记的、挂在这条项目上、有内容的沟通（谁记的都算）。
  * 同号再次录入的系统留痕（节点 = 同号节点）不算回复，见文件头。
- * 只认负责人 = 只算记录人是这条项目现负责人（传进来的 ownerId）的：超时未跟进自动转 reply-overdue.ts 按时那一支用（11-20 用户定），
- * 本文件自己的提醒、首页待办不传，照旧谁记的都算
+ * 只认负责人 = 超时未跟进自动转 reply-overdue.ts 按时那一支用（11-20 用户定）：只算记录人是这条项目现负责人（传进来的 ownerId）的，
+ * 且按 是有效沟通 判（跟进任务 / 提醒、同号标题也不算，和按分配、之前跟过同一套）；
+ * 本文件自己的提醒、首页待办不传，照旧谁记的都算、只排同号节点
  */
 export async function 已回复的(们: readonly (两格 & { id: string; ownerId?: string })[], 只认负责人 = false): Promise<Set<string>> {
   if (!们.length) return new Set();
@@ -95,15 +112,16 @@ export async function 已回复的(们: readonly (两格 & { id: string; ownerId
   const [挂的, 词] = await Promise.all([
     prisma.followUpProject.findMany({
       where: { projectId: { in: 们.map((p) => p.id) }, node: { not: 同号节点 }, followUp: { createdAt: { gte: 最早 }, deletedAt: null } },
-      select: { projectId: true, followUp: { select: { content: true, createdAt: true, ownerId: true } } },
+      select: { projectId: true, node: true, followUp: { select: { type: true, title: true, content: true, createdAt: true, ownerId: true } } },
     }),
     读占位词(),
   ]);
   const 提of = new Map(们.map((p) => [p.id, 回复提醒时刻(p)!.getTime()]));
   const 负责人of = new Map(们.map((p) => [p.id, p.ownerId]));
   return new Set(挂的.filter((f) => f.followUp.createdAt.getTime() >= (提of.get(f.projectId) ?? Infinity)
-    && (!只认负责人 || (!!负责人of.get(f.projectId) && f.followUp.ownerId === 负责人of.get(f.projectId)))
-    && 有内容的沟通(f.followUp.content, { 占位词: 词 })).map((f) => f.projectId));
+    && (只认负责人
+      ? !!负责人of.get(f.projectId) && f.followUp.ownerId === 负责人of.get(f.projectId) && 是有效沟通(f.followUp, f.node, 词)
+      : 有内容的沟通(f.followUp.content, { 占位词: 词 }))).map((f) => f.projectId));
 }
 
 /** 扫一遍，回新记了几条通知。从不抛 */

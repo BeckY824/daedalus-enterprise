@@ -40,6 +40,7 @@ import { 新数据渠道不行, 落到渠道 } from "@/lib/enterprise/channel-ma
 import { 是主渠道入口 } from "@/lib/enterprise/channel-main-core";
 import { 认渠道触点, 渠道触点们, 新建来源还差 } from "@/lib/enterprise/touchpoint";
 import { 指定问题 } from "@/lib/enterprise/assign-eta";
+import { 新建指定方向挡 } from "@/lib/enterprise/assign-direction-pick";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 记新建指定分配 } from "@/lib/enterprise/direct-assign";
 import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知, 项目被删通知, 项目放回公海通知, 市场改分通知 } from "@/lib/enterprise/notice-sources";
@@ -213,6 +214,9 @@ export async function 建档向导(输入: 建档向导输入) {
         const org = await 读组织();
         const 问题 = await 指定问题(org, 好.项目.ownerId);
         if (问题) return { ok: false as const, error: 问题 };
+        // 市场成员指定分配也先定方向（P-转-26，11-20 3703 实操）：负责人要在所选方向（业务线内贸 / 外贸）能挑的人里，不然线会记错
+        const 方向不符 = await 新建指定方向挡(me, org, 好.项目.ownerId, 好.企业?.业务线);
+        if (方向不符) return { ok: false as const, error: 方向不符 };
         // 市场指定给销售 = 市场首次分配，算转客户（X-18，和自动分配同一条）；其余角色指定给别人，客户留在建的人名下（P-转-03）
         转客户 = 算市场转客户(org, { salesOwnerId: me.id, pool: null }, 好.项目.ownerId);
       }
