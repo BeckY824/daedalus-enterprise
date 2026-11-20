@@ -10,7 +10,9 @@
  *   - 提醒时刻 = (开始 ?? 结束) - 30 分钟；截止 = 结束；只填开始的，截止 = 开始那天（北京）过完
  *   - 提醒谁：这条项目「到点时」的负责人；还在待分配（定时分配没到点 / 没分出去）= 能分配的人（市场管理、销售管理、总管理员），
  *     提醒里写明还在待分配。停用的人不收
- *   - 已回复 = 提醒时刻以后这条项目上记了一条有内容的沟通（空的、占位式的不算，M-公海-42 同一个判定 有内容的沟通）：首页待办那一行消失
+ *   - 已回复 = 提醒时刻以后这条项目上记了一条有内容的沟通（空的、占位式的不算，M-公海-42 同一个判定 有内容的沟通）：首页待办那一行消失。
+ *     同号再次录入的系统留痕（挂项目时节点写 同号节点，same-number-collab.ts，导入撞号 同号只记备注 同样）不算：那是别人又录了这个号、客户又来问了，
+ *     不是负责人回了客户；算了的话客户越催，待回复、超时提醒和超时自动转反而全停
  *   - 到截止首页待办那一行消失；进公海、进回收站、有结局的不提醒、不进待办；被领走 / 分走后新负责人照常收（时间过了的不补）
  *   - 改了时间重新算：去重键带提醒时刻，换了时刻是新的一条
  *
@@ -25,6 +27,7 @@ import { 企业版 } from "./switch";
 import { 视图中跳过 } from "./view-as";
 import { 能分配的人们 } from "./await-assign";
 import { 有内容的沟通 } from "./tri-state-quota";
+import { 同号节点 } from "./same-number-collab";
 import { 读占位词 } from "./tri-state-db";
 import { 北京墙钟转时刻, 时刻转北京墙钟, 指定回复文字 } from "@/lib/project/time-fields";
 import { 我超时未跟进的 } from "./reply-overdue";
@@ -79,13 +82,16 @@ async function 窗口里的(现在: Date, ownerId?: string): Promise<行[]> {
   return 们.filter((p) => 在提醒窗口(p, 现在));
 }
 
-/** 这几条里哪些已经回复了：提醒时刻以后记的、挂在这条项目上、有内容的沟通（超时未跟进自动转 reply-overdue.ts 同一个判定） */
+/**
+ * 这几条里哪些已经回复了：提醒时刻以后记的、挂在这条项目上、有内容的沟通（超时未跟进自动转 reply-overdue.ts 同一个判定）。
+ * 同号再次录入的系统留痕（节点 = 同号节点）不算回复，见文件头
+ */
 export async function 已回复的(们: readonly (两格 & { id: string })[]): Promise<Set<string>> {
   if (!们.length) return new Set();
   const 最早 = new Date(Math.min(...们.map((p) => 回复提醒时刻(p)!.getTime())));
   const [挂的, 词] = await Promise.all([
     prisma.followUpProject.findMany({
-      where: { projectId: { in: 们.map((p) => p.id) }, followUp: { createdAt: { gte: 最早 } } },
+      where: { projectId: { in: 们.map((p) => p.id) }, node: { not: 同号节点 }, followUp: { createdAt: { gte: 最早 }, deletedAt: null } },
       select: { projectId: true, followUp: { select: { content: true, createdAt: true } } },
     }),
     读占位词(),

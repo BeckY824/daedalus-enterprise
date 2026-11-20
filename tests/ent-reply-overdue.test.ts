@@ -31,6 +31,9 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 超时回收日, 超时自动转理由 } from "@/lib/project/timeout";
 import { 即将逾期的项目 } from "@/lib/project/home-cards-db";
 import { 换负责人们of } from "@/lib/enterprise/tri-state-transfer";
+import { 同号再次录入, 同号节点 } from "@/lib/enterprise/same-number-collab";
+import { 验号码 } from "@/lib/enterprise/contact-format";
+import { 北京日期 } from "./helpers/beijing-date";
 
 /** 北京时间的一个瞬间 */
 const 京 = (s: string) => new Date(`${s.replace(" ", "T")}:00+08:00`);
@@ -230,6 +233,34 @@ describe("钟上走一遍（到点提醒、自动转）", () => {
     await 超时转扫一遍(京("2026-11-21 11:30"));
     expect((await 项目(b.id)).ownerId).toBe(甲.id);
     expect(await 待回复客户of(甲.id, 京("2026-11-21 11:31"))).toBeNull();
+  });
+
+  it("同号再次录入（客户又来问、别人又录了这个号）写进项目的系统留痕不停链：照常超时提醒、照常自动转", async () => {
+    const 日 = 北京日期(-1);
+    const { id, customerId } = await 建线索(甲, { replyEndAt: 京(`${日} 15:00`) });
+    const c = await prisma.customer.findUniqueOrThrow({ where: { id: customerId } });
+    const 号 = 验号码("手机号", c.phone);
+    if (!号.ok) throw new Error("号码样例没过格式");
+    /** 按系统时钟拨到 时刻 再录：同号再次录入的写入时刻取系统时钟 */
+    const 再录 = async (时刻: string) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        vi.setSystemTime(京(`${日} ${时刻}`));
+        return await 同号再次录入(老板, 号, { 入口: "手工建档", 内容: "客户又打电话来催，问什么时候回电" });
+      } finally {
+        vi.useRealTimers();
+      }
+    };
+    // 提醒之后、超时提醒之前录一次
+    expect((await 再录("15:10")).走).toBe(true);
+    expect(await prisma.followUpProject.findMany({ where: { projectId: id }, select: { node: true } })).toEqual([{ node: 同号节点 }]);
+    expect(await 超时转扫一遍(京(`${日} 16:00`))).toMatchObject({ 提醒: 1, 停: 0 });
+    expect(await 待回复客户of(甲.id, 京(`${日} 16:01`))).toMatchObject({ 条数: 1, 超时: 1, 最早: { projectId: id, 超时: true } });
+    expect(await 我超时未跟进的(甲.id)).toHaveLength(1);
+    // 超时提醒之后、转之前又录一次：照转
+    expect((await 再录("16:10")).走).toBe(true);
+    expect(await 超时转扫一遍(京(`${日} 16:30`))).toMatchObject({ 转出: 1 });
+    expect((await 项目(id)).ownerId).not.toBe(甲.id);
   });
 
   it("夜里不执行：21:20 超时提醒、21:50 转给乙 → 22:50 该提醒 → 次日 08:00 提醒、08:30 转", async () => {
