@@ -22,6 +22,7 @@ import {
   选清洗器,
   格式说明键,
   同一家说明键,
+  清洗提示词,
   type 清洗器,
   type 清洗输入,
 } from "@/lib/enterprise-import/ai-clean";
@@ -221,7 +222,7 @@ describe("清洗照 m.格式 / m.同一家 用", () => {
     expect(矛盾.值.contractAmount).toBeUndefined();
     expect(矛盾.值.contractCurrency).toBeUndefined();
     expect(String(矛盾.值.remark)).toContain("合同金额：$5000元");
-    expect(矛盾.话.some((x) => x.includes("前后写的币种对不上"))).toBe(true);
+    expect(矛盾.话.some((x) => x.includes("写的币种对不上"))).toBe(true);
     // HK$5000：规则照旧认不出；补认回来没有币种列可依也不写（不猜成人民币或美元）；有币种列照币种列
     expect(一个("HK$5000").值.contractAmount).toBeUndefined();
     const 港 = 一个("HK$5000", "5000");
@@ -274,6 +275,76 @@ describe("清洗照 m.格式 / m.同一家 用", () => {
     );
     expect(待写.map((w) => w.并入 ?? null)).toEqual([null, null]);
   });
+});
+
+/*
+  审查 11-20 第三轮：导入回归表。合同金额照规则认、规则认不出照补认（模拟 AI 清洗交回的数），币种照字里全部记号定：
+  括号、后缀里的记号也算，「含税13%」、年份、期数里的数字不碍事；记号对不上、写了别的币种（又没币种列）都不写、原样进备注；
+  币种列和字里记号对不上照币种列写，但提醒、原文进备注
+*/
+describe("项目合同金额：导入回归表（审查 11-20 第三轮）", () => {
+  const 一个 = (原: string, 补: string | null, 币种列?: string) => {
+    const m = 映射样({ 格式: { 金额: 补 === null ? {} : { [原]: 补 } }, 项目: true } as Partial<映射>);
+    m.列.opportunity = { ...m.列.opportunity, 合同金额: "contractAmount", 合同币种: "contractCurrency" };
+    const { 待写, 问题 } = 清洗(
+      [
+        条("customer", { 外部: "C1", 名称: "甲公司", 电话: "13800000001" }),
+        条("opportunity", { 外部: "O1", 客户ID: "C1", 名称: "一单", 合同金额: 原, ...(币种列 ? { 合同币种: 币种列 } : {}) }),
+      ],
+      m,
+    );
+    const 单 = 待写.find((w) => w.实体 === "opportunity")!;
+    // 只看金额 / 币种的提醒（「没写负责人」那条和这里无关）
+    return { 值: 单.值, 话: 问题.filter((x) => x.实体 === "opportunity" && /金额|币种/.test(x.说明)).map((x) => x.说明) };
+  };
+
+  it.each([
+    ["5万元", "50000", 50000, "CNY"], ["RMB 5万", "50000", 50000, "CNY"], ["5,000.00元", "5000", 5000, "CNY"], ["￥5000.00", "5000", 5000, "CNY"],
+    ["5000 元", "5000", 5000, "CNY"], ["5000\u3000元", "5000", 5000, "CNY"], ["5000元整", "5000", 5000, "CNY"], ["1.5亿元", "150000000", 150000000, "CNY"],
+    ["5000rmb", "5000", 5000, "CNY"], ["5k", "5000", 5000, "CNY"], ["5w", "50000", 50000, "CNY"], ["5000元（含税）", "5000", 5000, "CNY"],
+    ["5000（含税）", "5000", 5000, "CNY"], ["5万元（不含税）", "50000", 50000, "CNY"], ["含税5000元", "5000", 5000, "CNY"], ["5000（约）元", "5000", 5000, "CNY"],
+    ["合同5000元", "5000", 5000, "CNY"], ["5000元/月", "5000", 5000, "CNY"], ["USD5000/年", "5000", 5000, "USD"], ["约5000USD", "5000", 5000, "USD"],
+    ["5000美元（2024年）", "5000", 5000, "USD"], ["5000 USD/2年", "5000", 5000, "USD"], ["合同价：5000美元，分2期", "5000", 5000, "USD"],
+    ["5000美元(含税13%)", "5000", 5000, "USD"],
+  ] as const)("「%s」（补认 %s）→ %s %s", (原, 补, 数, 币) => {
+    const r = 一个(原, 补);
+    expect(r.值).toMatchObject({ contractAmount: 数, contractCurrency: 币 });
+    expect(r.话).toEqual([]);
+  });
+
+  it.each([
+    ["5000韩元", "币种记号「韩元」认不出"], ["5000元（港币）", "币种记号「港币」认不出"], ["5000EUR(2024)", "币种记号「EUR」认不出"],
+    ["澳币5000", "币种记号「澳币」认不出"], ["5000円", "币种记号「円」认不出"], ["CHF5000", "币种记号「CHF」认不出"], ["KRW 5000", "币种记号「KRW」认不出"],
+    ["5000泰铢", "币种记号「泰铢」认不出"], ["Rs5000", "币种记号「Rs」认不出"],
+    ["$5000元", "写的币种对不上（$ / 元）"], ["约3.6万元(5000美元)", "写的币种对不上（元 / 美元）"],
+  ] as const)("「%s」不写、原样进备注：%s", (原, 话) => {
+    const r = 一个(原, "5000");
+    expect(r.值.contractAmount).toBeUndefined();
+    expect(r.值.contractCurrency).toBeUndefined();
+    expect(String(r.值.remark)).toContain(`合同金额：${原}`);
+    expect(r.话.some((x) => x.includes(话)), r.话.join()).toBe(true);
+  });
+
+  it("币种列和字里记号对不上：照币种列写，提醒一笔、原文进备注；对得上（「$」配港币）不出声", () => {
+    const 美配人民币 = 一个("$5000", null, "人民币");
+    expect(美配人民币.值).toMatchObject({ contractAmount: 5000, contractCurrency: "CNY" });
+    expect(String(美配人民币.值.remark)).toContain("合同金额：$5000 人民币");
+    expect(美配人民币.话).toEqual(["合同金额「$5000」写的是美元，合同币种是人民币，按人民币写，原文放进了备注"]);
+    const 元配美元 = 一个("5000元", null, "美元");
+    expect(元配美元.值).toMatchObject({ contractAmount: 5000, contractCurrency: "USD" });
+    expect(String(元配美元.值.remark)).toContain("合同金额：5000元 美元");
+    expect(元配美元.话.some((x) => x.includes("写的是人民币，合同币种是美元"))).toBe(true);
+    for (const [原, 列, 币] of [["$5000", "HKD", "HKD"], ["5000元", "人民币", "CNY"], ["5000", "美元", "USD"]] as const) {
+      const r = 一个(原, null, 列);
+      expect(r.值, 原).toMatchObject({ contractAmount: 5000, contractCurrency: 币 });
+      expect(r.话, 原).toEqual([]);
+    }
+  });
+});
+
+it("AI 清洗提示词：金额按原写法的币种给数，不按汇率换算（审查 11-20 第三轮）", () => {
+  expect(清洗提示词).toContain("按原写法的币种给数，只把万 / 千 / w / k 换成数字，不按汇率换算");
+  expect(清洗提示词).not.toContain("单位元");
 });
 
 describe("AI补清洗 / 去掉AI清洗", () => {
