@@ -19,7 +19,7 @@ import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 自动分配不参与key } from "@/lib/enterprise/lead-assign";
 import { 规则, 规则开着 } from "@/lib/enterprise/rules";
-import { 待回复客户of } from "@/lib/enterprise/reply-notice";
+import { 待回复客户of, 已回复的 } from "@/lib/enterprise/reply-notice";
 import {
   超时转扫一遍, 在夜里, 顺延到白天, 超时提醒到期, 超时转出到期, 该做, 本轮排除, 读试过, 客户怎么办, 客户在谁名下, 超时基准,
   收回话, 超时转理由, 超时通知种类, 超时转重新起算, 我超时未跟进的, 自留超时话,
@@ -237,6 +237,32 @@ describe("钟上走一遍（到点提醒、自动转）", () => {
     await 超时转扫一遍(京("2026-11-21 11:30"));
     expect((await 项目(b.id)).ownerId).toBe(甲.id);
     expect(await 待回复客户of(甲.id, 京("2026-11-21 11:31"))).toBeNull();
+  });
+
+  it("[11-20 只认负责人本人] 按时：指定回复时间以后同事、管理记的沟通不停链（30 分钟前那条提醒照旧算回复），照常超时提醒、转；接手人本人记了才停", async () => {
+    const 记 = async (projectId: string, ownerId: string, content: string, at: Date) => {
+      const p = await prisma.project.findUniqueOrThrow({ where: { id: projectId } });
+      const f = await prisma.followUp.create({ data: { type: "PHONE", content, occurredAt: at, createdAt: at, title: "", status: "已完成", customerId: p.customerId, ownerId } });
+      await prisma.followUpProject.create({ data: { followUpId: f.id, projectId, node: p.node } });
+    };
+    const { id } = await 建线索(甲, { replyEndAt: 京("2026-11-20 15:00") });
+    await 记(id, 丙.id, "帮甲接了电话，客户要报价单", 京("2026-11-20 15:10"));
+    await 记(id, 老板.id, "回访了一次，客户确认要样品", 京("2026-11-20 15:20"));
+    // 指定回复前 30 分钟那条提醒（reply-notice.ts）自己的已回复判定不变：谁记的都算
+    expect(await 已回复的([{ id, replyStartAt: null, replyEndAt: 京("2026-11-20 15:00") }])).toEqual(new Set([id]));
+    expect(await 超时转扫一遍(京("2026-11-20 16:00"))).toMatchObject({ 提醒: 1, 停: 0 });
+    expect(await 我超时未跟进的(甲.id)).toMatchObject([{ id, 按分配: false }]);
+    expect(await 待回复客户of(甲.id, 京("2026-11-20 16:01"))).toMatchObject({ 条数: 1, 超时: 1, 最早: { projectId: id, 超时: true } });
+    expect(await 超时转扫一遍(京("2026-11-20 16:30"))).toMatchObject({ 转出: 1 });
+    expect((await 项目(id)).ownerId).toBe(乙.id);
+    // 轮到乙：前负责人甲记的不算
+    await 记(id, 甲.id, "我之前联系过，客户要报价", 京("2026-11-20 16:40"));
+    expect(await 超时转扫一遍(京("2026-11-20 17:30"))).toMatchObject({ 提醒: 1, 停: 0 });
+    await 记(id, 乙.id, "电话联系上了，约了明天看样品", 京("2026-11-20 17:40"));
+    expect(await 我超时未跟进的(乙.id)).toEqual([]);
+    expect(await 待回复客户of(乙.id, 京("2026-11-20 17:41"))).toBeNull();
+    expect(await 超时转扫一遍(京("2026-11-20 18:00"))).toMatchObject({ 停: 1, 转出: 0 });
+    expect((await 项目(id)).ownerId).toBe(乙.id);
   });
 
   it("同号再次录入（客户又来问、别人又录了这个号）写进项目的系统留痕不停链：照常超时提醒、照常自动转", async () => {
@@ -584,7 +610,7 @@ describe("没填指定回复时间：从分配给销售那一刻起算（11-20 �
     expect((await 项目(id)).ownerId).toBe(乙.id);
   });
 
-  it("分配后记了有效沟通（销售记、别人记都算）链就停；空的、占位的、同号留痕不算；建的人过了建档那一分钟再记的算", async () => {
+  it("分配后记了有效沟通（只认负责人本人记的，11-20 用户定）链就停；别人记的（同事、建的人过了建档那一分钟再记的）、空的、占位的、同号留痕不算", async () => {
     const a = await 分来线索(甲, 京("2026-11-20 10:00"));
     await 记沟通(a.id, "打了电话，客户说下周来看样品", 京("2026-11-20 10:40"));
     const b = await 分来线索(甲, 京("2026-11-20 10:00"));
@@ -599,10 +625,31 @@ describe("没填指定回复时间：从分配给销售那一刻起算（11-20 �
     await 谁记沟通(e.id, 丙.id, "之前在别的渠道聊过一次", 京("2026-11-20 09:00"));
     const g = await 分来线索(甲, 京("2026-11-20 10:00"), { 建档记一条: false });
     await 谁记沟通(g.id, 甲.id, "之前在别的渠道聊过一次", 京("2026-11-20 09:00"));
-    expect(await 超时转扫一遍(京("2026-11-20 11:00"))).toMatchObject({ 提醒: 2, 停: 4 });
-    for (const x of [a, b, c, g]) expect((await 链(x.id))?.stoppedAt).not.toBeNull();
-    expect((await 链(d.id))?.overdueAt).toEqual(京("2026-11-20 11:00"));
-    expect((await 链(e.id))?.overdueAt).toEqual(京("2026-11-20 11:00"));
+    expect(await 超时转扫一遍(京("2026-11-20 11:00"))).toMatchObject({ 提醒: 4, 停: 2 });
+    for (const x of [a, g]) expect((await 链(x.id))?.stoppedAt).not.toBeNull();
+    for (const x of [b, c, d, e]) expect(await 链(x.id)).toMatchObject({ overdueAt: 京("2026-11-20 11:00"), stoppedAt: null });
+  });
+
+  it("[11-20 只认负责人本人] 按分配：同事、管理、市场（建的人）、前负责人在分配后记的沟通都不停链，照常提醒、转；负责人本人记了才停；首页待办跟着", async () => {
+    const 分于 = 京("2026-11-20 10:00");
+    const r = await 分来线索(甲, 分于);
+    await 谁记沟通(r.id, 丙.id, "帮甲接了电话，客户要报价单", 京("2026-11-20 10:20"));
+    await 谁记沟通(r.id, 老板.id, "回访了一次，客户确认要样品", 京("2026-11-20 10:30"));
+    expect(await 超时转扫一遍(京("2026-11-20 11:00"))).toMatchObject({ 提醒: 1, 停: 0 });
+    expect(await 我超时未跟进的(甲.id)).toMatchObject([{ id: r.id, 按分配: true }]);
+    expect(await 待回复客户of(甲.id, 京("2026-11-20 11:01"))).toMatchObject({ 超时: 1, 最早: { projectId: r.id, 超时: true } });
+    expect((await 盘点超时链(京("2026-11-20 11:01"))).find((x) => x.id === r.id)).toMatchObject({ 回了: false, 下一步: null });
+    expect(await 超时转扫一遍(京("2026-11-20 11:30"))).toMatchObject({ 转出: 1 });
+    expect((await 项目(r.id)).ownerId).toBe(乙.id);
+    // 轮到乙：前负责人甲、同事丙接着记的都不算，乙到点照样提醒
+    await 谁记沟通(r.id, 甲.id, "我之前联系过，客户要报价", 京("2026-11-20 11:40"));
+    await 谁记沟通(r.id, 丙.id, "又帮忙接了一次电话", 京("2026-11-20 11:50"));
+    expect(await 超时转扫一遍(京("2026-11-20 12:30"))).toMatchObject({ 提醒: 1, 停: 0 });
+    // 乙本人记了：链停下，乙首页待办不再标超时，不再转
+    await 谁记沟通(r.id, 乙.id, "电话联系上了，约了明天看样品", 京("2026-11-20 12:40"));
+    expect(await 我超时未跟进的(乙.id)).toEqual([]);
+    expect(await 超时转扫一遍(京("2026-11-20 13:00"))).toMatchObject({ 停: 1, 转出: 0 });
+    expect((await 项目(r.id)).ownerId).toBe(乙.id);
   });
 
   it("往回看 7 天：分配在 7 天内的进链，早于 7 天的不进；填了指定回复时间的照旧 3 天、照旧按指定回复时间（不改按分配）", async () => {
@@ -614,10 +661,10 @@ describe("没填指定回复时间：从分配给销售那一刻起算（11-20 �
     // 填了指定回复时间：4 天前的不进（不因为 1 天前分配过就改按分配）；2 天前的照进
     const 回4 = await 分来线索(甲, 京("2026-11-19 10:00"), { 补: { replyEndAt: 京("2026-11-16 10:00") } });
     const 回2 = await 分来线索(甲, 京("2026-11-19 10:00"), { 补: { replyEndAt: 京("2026-11-18 10:00") }, 建档记一条: false });
-    // 原判定不变（防误伤）：填了指定回复时间的，提醒时刻以后记的都算，建的人建档时那条在提醒时刻之后也算回了
+    // 填了指定回复时间的：建的人（市场）建档时那条在提醒时刻之后，但不是负责人本人记的，不算回了（11-20 用户定只认负责人本人记的）
     const 回2记 = await 分来线索(甲, 京("2026-11-19 10:00"), { 补: { replyEndAt: 京("2026-11-18 10:00") } });
-    expect(await 超时转扫一遍(现在)).toMatchObject({ 提醒: 2, 停: 1 });
-    expect((await 链(回2记.id))?.stoppedAt).toEqual(现在);
+    expect(await 超时转扫一遍(现在)).toMatchObject({ 提醒: 3, 停: 0 });
+    expect(await 链(回2记.id)).toMatchObject({ anchorAt: 京("2026-11-18 10:00"), overdueAt: 现在, stoppedAt: null });
     expect(await 链(内.id)).toMatchObject({ overdueAt: 现在 });
     expect(await 链(外.id)).toBeNull();
     expect(await 链(回4.id)).toBeNull();
@@ -625,7 +672,7 @@ describe("没填指定回复时间：从分配给销售那一刻起算（11-20 �
     // 文案：按分配的写「分配后 1 小时未跟进」；按时、分配晚于指定回复时间的照旧（从接手那刻算，「接手已满 1 小时」）
     const 文 = (await 超时通知(甲.id)).map((n) => n.body);
     expect(文.filter((x) => x.includes(分配后未跟进话(60)))).toHaveLength(1);
-    expect(文.filter((x) => x.includes("接手已满 1 小时"))).toHaveLength(1);
+    expect(文.filter((x) => x.includes("接手已满 1 小时"))).toHaveLength(2);
   });
 
   it("管理从线索公海分给销售（pool-claim、操作人不是接手人）进链：按分的那一刻起算，到点提醒、再 30 分钟转", async () => {
@@ -1063,6 +1110,24 @@ describe("生效范围（11-20 事故：只对生效以后新分配的计时、�
     expect(await 链(市场自留.id)).toBeNull();
     // 接手的照常计时：08:30 接手，09:30 提醒
     expect(await 超时转扫一遍(京("2026-12-01 09:30"))).toMatchObject({ 提醒: 4 });
+  });
+
+  it("[11-20 只认负责人本人] 历史数据起算：历史起算以后别人（市场、管理、同事）在这条线索上记的沟通不停链，照常提醒、转；负责人本人记了才停", async () => {
+    await 设生效(京("2026-11-21 09:30"));
+    await setSetting(历史起算key, 京("2026-12-01 00:00").toISOString());
+    invalidateSettingsCache();
+    const 别人记 = await 建线索(甲, { createdAt: 京("2026-10-01 00:00") });
+    await 记(别人记.customerId, 老板.id, "管理回访：客户还在比价", 京("2026-12-01 07:00"), 别人记.id);
+    await 记(别人记.customerId, 丙.id, "帮甲接了电话，客户要报价单", 京("2026-12-01 07:10"), 别人记.id);
+    const 本人记 = await 建线索(甲, { createdAt: 京("2026-10-01 00:00") });
+    await 记(本人记.customerId, 甲.id, "电话联系上了，客户要报价", 京("2026-12-01 07:20"), 本人记.id);
+    expect(await 超时转扫一遍(京("2026-12-01 08:00"))).toMatchObject({ 提醒: 1, 停: 1 });
+    expect(await 链(别人记.id)).toMatchObject({ overdueAt: 京("2026-12-01 08:00"), stoppedAt: null });
+    expect((await 链(本人记.id))?.stoppedAt).toEqual(京("2026-12-01 08:00"));
+    expect(await 我超时未跟进的(甲.id)).toMatchObject([{ id: 别人记.id, 按分配: true }]);
+    expect(await 超时转扫一遍(京("2026-12-01 08:30"))).toMatchObject({ 转出: 1 });
+    expect((await 项目(别人记.id)).ownerId).not.toBe(甲.id);
+    expect((await 项目(本人记.id)).ownerId).toBe(甲.id);
   });
 
   it("[32G] 只管首次沟通：接手后记了第一条有效沟通，链停下，之后再久不记也不提醒、不转", async () => {

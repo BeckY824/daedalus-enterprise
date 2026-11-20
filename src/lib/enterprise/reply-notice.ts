@@ -84,21 +84,26 @@ async function 窗口里的(现在: Date, ownerId?: string): Promise<行[]> {
 }
 
 /**
- * 这几条里哪些已经回复了：提醒时刻以后记的、挂在这条项目上、有内容的沟通（超时未跟进自动转 reply-overdue.ts 同一个判定）。
- * 同号再次录入的系统留痕（节点 = 同号节点）不算回复，见文件头
+ * 这几条里哪些已经回复了：提醒时刻以后记的、挂在这条项目上、有内容的沟通（谁记的都算）。
+ * 同号再次录入的系统留痕（节点 = 同号节点）不算回复，见文件头。
+ * 只认负责人 = 只算记录人是这条项目现负责人（传进来的 ownerId）的：超时未跟进自动转 reply-overdue.ts 按时那一支用（11-20 用户定），
+ * 本文件自己的提醒、首页待办不传，照旧谁记的都算
  */
-export async function 已回复的(们: readonly (两格 & { id: string })[]): Promise<Set<string>> {
+export async function 已回复的(们: readonly (两格 & { id: string; ownerId?: string })[], 只认负责人 = false): Promise<Set<string>> {
   if (!们.length) return new Set();
   const 最早 = new Date(Math.min(...们.map((p) => 回复提醒时刻(p)!.getTime())));
   const [挂的, 词] = await Promise.all([
     prisma.followUpProject.findMany({
       where: { projectId: { in: 们.map((p) => p.id) }, node: { not: 同号节点 }, followUp: { createdAt: { gte: 最早 }, deletedAt: null } },
-      select: { projectId: true, followUp: { select: { content: true, createdAt: true } } },
+      select: { projectId: true, followUp: { select: { content: true, createdAt: true, ownerId: true } } },
     }),
     读占位词(),
   ]);
   const 提of = new Map(们.map((p) => [p.id, 回复提醒时刻(p)!.getTime()]));
-  return new Set(挂的.filter((f) => f.followUp.createdAt.getTime() >= (提of.get(f.projectId) ?? Infinity) && 有内容的沟通(f.followUp.content, { 占位词: 词 })).map((f) => f.projectId));
+  const 负责人of = new Map(们.map((p) => [p.id, p.ownerId]));
+  return new Set(挂的.filter((f) => f.followUp.createdAt.getTime() >= (提of.get(f.projectId) ?? Infinity)
+    && (!只认负责人 || (!!负责人of.get(f.projectId) && f.followUp.ownerId === 负责人of.get(f.projectId)))
+    && 有内容的沟通(f.followUp.content, { 占位词: 词 })).map((f) => f.projectId));
 }
 
 /** 扫一遍，回新记了几条通知。从不抛 */

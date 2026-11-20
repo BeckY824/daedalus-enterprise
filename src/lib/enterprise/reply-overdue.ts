@@ -19,7 +19,7 @@
  *     开着时第一遍扫记成那一刻（= 上线时刻）。超时基准早于生效时刻的一律不起链；还在走的、基准早于生效时刻的停掉。
  *     按分配 = 分配（接手）时刻在生效时刻以后；按时 = 指定回复时间（结束，没填用开始）在生效时刻以后
  *     （11-20 21:06 一批把 11-14 管理从客户公海分的、往回 7 天里的老分配一口气转走 77 条）
- *   - 之前的跟进也算（只对按分配）：负责人本人在这位客户上记过的有效沟通（任何时候、挂哪条项目都算、没挂项目的也算），
+ *   - 之前的跟进也算（只对按分配、历史）：负责人本人在这位客户上记过的有效沟通（任何时候、挂哪条项目都算、没挂项目的也算），
  *     就算已沟通——不起链、在走的停下（负责人以前在这位客户身上跟过：导入的历史跟进、报过价的，不是「分来没人理」）。
  *     不算：跟进任务 / 跟进提醒（TASK / REMIND）、同号留痕、空的占位的、别人记的（市场建档那条照旧不算）
  *   - 生效时刻可以先设成将来（Even 11-20「两步走」第一步：北京 11-21 09:30 起只对新分配的）：开关先开着，到那一刻之前一律不计时；
@@ -57,11 +57,14 @@
  *         照起算（上线时往回 7 天里一条都没有）
  *       · 超时自动转那几行跳过（链上第一位的分配时刻不随轮转挪）；没留痕就换了负责人的（导入改负责人）= 不知道什么时候到他手上
  *     还得是「分来的」（是分来的()）：自留、自持的没填指定回复时间不进链
- *   - 有效沟通：按时 = 和指定回复提醒同一个判定：提醒时刻（开始 ?? 结束 − 30 分钟）以后挂在这条项目上、有内容的沟通（谁记的都算）；
- *     按分配 = 分配那一刻之后（createdAt 严格晚于基准）挂在这条项目上、有内容的沟通（谁记的都算），建的人建档那一刻随手记的
- *     （建的人记的、和项目建档相差不到 建档随手记秒 秒；含查重领取时市场成员记的那条）不算——例：市场建档记了一条沟通、
- *     同一分钟自动分给销售，销售之后没记 → 照样进链。
- *     两种都是：同号再次录入的系统留痕（节点 同号节点）不算，客户又来问不等于负责人回了（reply-notice.ts 已回复的）。
+ *   - 有效沟通（11-20 用户定：只认负责人本人记的）：只算记录人（FollowUp.ownerId）= 这条链当前负责人（项目 ownerId）的沟通；
+ *     别人记的（销售管理、市场、前负责人、同事）一律不算、不让链停下。三种基准都一样：
+ *     按时 = 和指定回复提醒同一个判定、外加记录人 = 负责人：提醒时刻（开始 ?? 结束 − 30 分钟）以后挂在这条项目上、有内容的沟通
+ *     （reply-notice.ts 自己的 30 分钟前提醒、首页「待回复客户」照旧谁记的都算，只有超时这边过滤）；
+ *     按分配、历史 = 基准那一刻之后（createdAt 严格晚于基准）挂在这条项目上、负责人本人记的、有内容的沟通，建的人建档那一刻随手记的
+ *     （建的人记的、和项目建档相差不到 建档随手记秒 秒；销售自建给自己时建档随手记的那条）不算——例：市场建档记了一条沟通、
+ *     同一分钟自动分给销售，销售之后没记 → 照样进链；市场、管理之后又记了 → 照样进链。
+ *     几种都是：同号再次录入的系统留痕（节点 同号节点）不算，客户又来问不等于负责人回了（reply-notice.ts 已回复的）。
  *     任何时候记了，这条链就停下（这一位不再提醒、不再转）
  *   - 每一步按上一步「实际执行」的时刻往后算：超时提醒顺延到 08:00 → 08:30 转；21:50 接手 → 22:50 该提醒 → 08:00 提醒 → 08:30 转
  *   - 下一位 = 现成的自动分配挑人（assign-actions.ts 超时转出：这条线索定好的流转线、参与状态、本月分得最少、并列最早进池，
@@ -393,7 +396,8 @@ async function 链上的(现在: Date, 生效: Date, 历史: Date | null, org: �
     orderBy: { id: "asc" },
     select: 链上列,
   });
-  // 历史数据起算（见文件头）：分来的（负责人不是建的人）、还没有链的（或链停了、基准早于历史起算）线索，一遍最多 历史一批 条，
+  // 历史数据起算（见文件头）：有负责人、不在公海、不在待分配、不是市场成员自留的（分来的、自建的、领取的、导入的都收）、
+  // 还没有链的（或链停了、基准早于历史起算）线索，一遍最多 历史一批 条，
   // 按项目 id 接着上一遍往后取、取完从头再来（还没到点的、不够格的不会一直占着名额）
   if (历史) {
     const 有了 = new Set(行们.map((p) => p.id));
@@ -714,14 +718,15 @@ export async function 客户在谁名下(p: { id: string; ownerId: string; custo
 }
 
 /**
- * 这几条里哪些已经记过有效沟通（见文件头「有效沟通」）：按时的照 reply-notice.ts 已回复的（提醒时刻以后记的），
- * 按分配的照 分配后沟通过的（分配那一刻之后记的、建的人建档时随手记的不算），外加 负责人跟过的（之前的跟进也算，见文件头「生效范围」）
+ * 这几条里哪些已经记过有效沟通（见文件头「有效沟通」，11-20 用户定只认负责人本人记的）：按时的照 reply-notice.ts 已回复的
+ * （提醒时刻以后记的，传 只认负责人），按分配 / 历史的照 分配后沟通过的（基准那一刻之后负责人本人记的、建档时随手记的不算），
+ * 外加 负责人跟过的（之前的跟进也算，见文件头「生效范围」）
  */
 export async function 记过有效沟通的(
   们: readonly (两格 & { id: string; ownerId: string; customerId: string; creatorId: string; createdAt: Date; 基: Date; 按分配: boolean })[],
 ): Promise<Set<string>> {
   const 按分配们 = 们.filter((p) => p.按分配);
-  const [按时, 按分配, 跟过] = await Promise.all([已回复的(们.filter((p) => !p.按分配)), 分配后沟通过的(按分配们), 负责人跟过的(按分配们)]);
+  const [按时, 按分配, 跟过] = await Promise.all([已回复的(们.filter((p) => !p.按分配), true), 分配后沟通过的(按分配们), 负责人跟过的(按分配们)]);
   return new Set([...按时, ...按分配, ...跟过]);
 }
 
@@ -745,13 +750,19 @@ export async function 负责人跟过的(们: readonly { id: string; ownerId: st
   return new Set(们.filter((p) => 跟过.has(`${p.customerId}|${p.ownerId}`)).map((p) => p.id));
 }
 
-/** 按分配的有效沟通：基准之后（严格晚于）挂在这条项目上、有内容、不是同号留痕、不是建的人建档时随手记的 */
-export async function 分配后沟通过的(们: readonly { id: string; creatorId: string; createdAt: Date; 基: Date }[]): Promise<Set<string>> {
+/**
+ * 按分配（含历史）的有效沟通：基准之后（严格晚于）挂在这条项目上、记录人是负责人本人（11-20 用户定）、有内容、不是同号留痕、
+ * 不是建的人建档时随手记的
+ */
+export async function 分配后沟通过的(们: readonly { id: string; ownerId: string; creatorId: string; createdAt: Date; 基: Date }[]): Promise<Set<string>> {
   if (!们.length) return new Set();
   const 最早 = new Date(Math.min(...们.map((p) => p.基.getTime())));
   const [挂的, 词] = await Promise.all([
     prisma.followUpProject.findMany({
-      where: { projectId: { in: 们.map((p) => p.id) }, node: { not: 同号节点 }, followUp: { createdAt: { gt: 最早 }, deletedAt: null } },
+      where: {
+        projectId: { in: 们.map((p) => p.id) }, node: { not: 同号节点 },
+        followUp: { createdAt: { gt: 最早 }, deletedAt: null, ownerId: { in: [...new Set(们.map((p) => p.ownerId))] } },
+      },
       select: { projectId: true, followUp: { select: { content: true, createdAt: true, ownerId: true } } },
     }),
     读占位词(),
@@ -759,7 +770,7 @@ export async function 分配后沟通过的(们: readonly { id: string; creatorI
   const 项目of = new Map(们.map((p) => [p.id, p]));
   return new Set(挂的.filter(({ projectId, followUp: f }) => {
     const p = 项目of.get(projectId);
-    return !!p && f.createdAt.getTime() > p.基.getTime() && !建档随手记(f, p) && 有内容的沟通(f.content, { 占位词: 词 });
+    return !!p && f.ownerId === p.ownerId && f.createdAt.getTime() > p.基.getTime() && !建档随手记(f, p) && 有内容的沟通(f.content, { 占位词: 词 });
   }).map((f) => f.projectId));
 }
 
