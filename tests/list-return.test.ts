@@ -4,14 +4,18 @@
  * 这里没有 window：读写走模块里的内存兜底（和存储被禁时同一条路）。
  */
 import { describe, it, expect } from "vitest";
-import { 列表种of, 是详情页, 页码of, 回列表文字, 记地址, 地址快照, 解析地址们, 订阅地址, 读滚动, 记滚动, 读勾选, 记勾选, 记横滚, 当前列表地址 } from "@/lib/list-return";
+import { 列表种of, 是详情页, 页码of, 回列表文字, 记地址, 地址快照, 解析地址们, 订阅地址, 读滚动, 记滚动, 读勾选, 记勾选, 记横滚, 记本地页, 当前列表地址 } from "@/lib/list-return";
 
 describe("认路径", () => {
-  it("三张列表：客户 / 公海 / 项目；子路径、别的页都不算", () => {
+  it("七张列表：客户 / 公海 / 项目，11-20 起加线索 / 渠道 / 联系人 / 跟进计划；子路径、别的页都不算", () => {
     expect(列表种of("/customers")).toBe("客户");
     expect(列表种of("/pool")).toBe("公海");
     expect(列表种of("/projects")).toBe("项目");
-    for (const p of ["/customers/abc", "/projects/new", "/pool/x", "/dashboard", "/leads", "/customersX", ""]) expect(列表种of(p)).toBeNull();
+    expect(列表种of("/leads")).toBe("线索");
+    expect(列表种of("/channels")).toBe("渠道");
+    expect(列表种of("/contacts")).toBe("联系人");
+    expect(列表种of("/follow-ups/plans")).toBe("跟进");
+    for (const p of ["/customers/abc", "/projects/new", "/pool/x", "/dashboard", "/overview", "/settings", "/follow-ups", "/customersX", ""]) expect(列表种of(p)).toBeNull();
   });
 
   it("详情页：客户详情、项目详情；项目的新建 / 交接 / 挂靠不算", () => {
@@ -36,6 +40,10 @@ describe("页码和文字", () => {
     expect(回列表文字("客户", "/customers", "学员")).toBe("回到学员列表");
     expect(回列表文字("公海", "/pool?page=3")).toBe("回到公海（第 3 页）");
     expect(回列表文字("项目", "/projects")).toBe("回到项目列表");
+    expect(回列表文字("线索", "/leads?page=2")).toBe("回到线索列表（第 2 页）");
+    expect(回列表文字("渠道", "/channels")).toBe("回到渠道列表");
+    expect(回列表文字("联系人", "/contacts?keyword=a")).toBe("回到联系人列表");
+    expect(回列表文字("跟进", "/follow-ups/plans")).toBe("回到跟进计划");
   });
 });
 
@@ -104,6 +112,16 @@ describe("勾选和横滚（29R：进详情再回来、刷新后还原）", () =
     expect(读勾选("ent-projects", "/projects?keyword=b")?.x).toBe(0);
     记勾选("ent-projects", "/projects?keyword=b", []);
     expect(读勾选("ent-projects", "/projects?keyword=b")?.ids).toEqual([]);
+  });
+
+  it("浏览器里分页的表：第几页、每页几条跟着地址记；勾选、横滚改了照留；坏值不认", () => {
+    记本地页("contacts", "/contacts", 3, 50);
+    记勾选("contacts", "/contacts", ["k1"]);
+    记横滚("contacts", "/contacts", 40);
+    expect(读勾选("contacts", "/contacts")).toEqual({ href: "/contacts", ids: ["k1"], x: 40, 本地: { 当前: 3, 每页: 50 } });
+    expect(读勾选("contacts", "/contacts?keyword=a")).toBeNull();
+    记本地页("contacts", "/contacts", 0, 50);
+    expect(读勾选("contacts", "/contacts")?.本地).toBeUndefined();
   });
 
   it("没有 window（服务端）：当前地址是空串，不抛", () => {

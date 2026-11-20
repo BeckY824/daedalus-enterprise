@@ -60,8 +60,8 @@ async function 打开(page: Page, 地址: string, 先设?: () => void) {
   if (先设) await page.evaluate(先设);
   await 挂上(page);
 }
-async function 新页(errors: string[]) {
-  const page = await browser.newPage({ viewport: { width: 1024, height: 800 } });
+async function 新页(errors: string[], 宽 = 1024) {
+  const page = await browser.newPage({ viewport: { width: 宽, height: 800 } });
   page.setDefaultTimeout(5000);
   page.on("pageerror", (e) => errors.push(e.message));
   await page.route("http://localhost/**", (r) => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
@@ -132,6 +132,24 @@ it("29R：勾两行、横滚一段 → 重新挂上（回来 / 刷新）勾选�
     await page.waitForTimeout(200);
     expect(await 勾着(page)).toEqual([]);
     expect(await 横滚(page)).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("29R 手机宽（375）：勾两行、横滚 → 回来 / 刷新照样还原；号码那一格照样带复制键", async () => {
+  const errors: string[] = [];
+  const page = await 新页(errors, 375);
+  try {
+    await 打开(page, "http://localhost/customers?keyword=a", () => localStorage.setItem("list-cols:customers", JSON.stringify(["phone"])));
+    await page.locator("tr[data-row-key=c2] .ant-checkbox-input").check();
+    await page.locator("tr[data-row-key=c3] .ant-checkbox-input").check();
+    await page.evaluate(() => { document.querySelector<HTMLElement>(".ant-table-content")!.scrollLeft = 60; });
+    await page.waitForTimeout(400);
+    await page.reload();
+    await 挂上(page);
+    await expect.poll(() => 勾着(page)).toEqual(["c2", "c3"]);
+    await expect.poll(() => 横滚(page)).toBe(60);
+    expect(await 格(page, "c1").getByRole("button", { name: "复制电话" }).count()).toBe(1);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

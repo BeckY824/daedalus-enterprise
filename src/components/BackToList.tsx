@@ -8,7 +8,7 @@ import { useMemo, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import { useBusiness } from "@/lib/business-client";
-import { 回列表文字, 地址快照, 解析地址们, 订阅地址, type 列表种 } from "@/lib/list-return";
+import { 回列表文字, 地址快照, 解析地址们, 订阅地址, 列表路径, type 列表种 } from "@/lib/list-return";
 
 const 服务端快照 = () => "";
 
@@ -26,7 +26,7 @@ export default function BackToList({ 默认 = "客户" }: { 默认?: 列表种 }
   const 地址们 = useRememberedLists();
   const b = useBusiness();
   const 种 = 地址们.最近 ?? 默认;
-  const href = 地址们[种] ?? (种 === "客户" ? "/customers" : 种 === "公海" ? "/pool" : "/projects");
+  const href = 地址们[种] ?? 列表路径[种];
   const 文字 = 回列表文字(种, href, b.customer);
   return (
     <Link href={href} className="back-to-list" title={文字} aria-label={文字} data-testid="back-to-list">

@@ -1,5 +1,6 @@
 "use client";
 
+import { useSessionPref } from "@/lib/local-pref";
 import { 空显 } from "@/lib/empty-value";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -97,11 +98,12 @@ export default function ContactsView({
 
   /*
     关系和负责人两个筛选在本地做：这一页一次最多取 300 行，已经全在手上了，
-    为两个下拉再跑一趟服务端不值当。关键词那个仍然走服务端——它要搜的是全库。
+    为两个下拉再跑一趟服务端不值当。关键词那个仍然走服务端——它要搜的是全库（在地址栏里）。
+    这三个记在这个标签页里（29R 推广，11-20）：点进客户详情再回来、刷新，筛的还在
   */
-  const [关系, set关系] = useState("");
-  const [负责人, set负责人] = useState("");
-  const [归属, set归属] = useState<"" | "有" | "无">("");
+  const [关系, set关系] = useSessionPref("list-keep:contacts:position", "");
+  const [负责人, set负责人] = useSessionPref("list-keep:contacts:owner", "");
+  const [归属, set归属] = useSessionPref<"" | "有" | "无">("list-keep:contacts:owned", "");
   const 有未归属 = 全部行.some((r) => r.未归属);
   const 关系选项 = useMemo(
     () => [...new Set(全部行.map((r) => r.position).filter(Boolean))].map((v) => ({ value: v as string, label: v as string })),
@@ -217,6 +219,8 @@ export default function ContactsView({
         // 关系、负责人、归属是在本地筛的：拿取回来的行数比，筛完行变少不算截断（J-015）
         截断={{ 总数, 取回: 全部行.length }}
         页="contacts"
+        // 进客户详情再回来、刷新：第几页、横滚还原（29R 推广）
+        回来还原
         空库={全部行.length === 0 && !keyword}
         列={列表}
         行={rows}

@@ -13,7 +13,7 @@ import CountUp from "@/components/CountUp";
 import Skeleton from "@/components/Skeleton";
 import { useLocalPref } from "@/lib/local-pref";
 import { 只留当前行, 露出这一列, 算可见列, 切换后存 } from "@/lib/list-select";
-import { 当前列表地址, 读勾选, 记勾选, 记横滚 } from "@/lib/list-return";
+import { 当前列表地址, 读勾选, 记勾选, 记横滚, 记本地页 } from "@/lib/list-return";
 
 /**
  * 列表页的那张表。**全站只有这一个表格实现**（批 2 抽出来，批 3 六页照用）。
@@ -128,7 +128,9 @@ type Props<T> = {
   /**
    * 进详情再回来（或刷新）还原勾选和表格横滚位置（29R，11-20 员工反馈「点进去再退出来，之前勾选的就全乱了」）。
    * 按「页 + 地址」记在 sessionStorage（lib/list-return.ts 读勾选）：地址一样才还原，还原的勾选也只留眼前的行。
-   * 筛选、排序、页码、页签在地址栏，纵向滚动由外壳 ListMemory 滚回去，列设置本来就记在本地（useLocalPref）
+   * 在浏览器里分页的表（不给 分页）第几页、每页几条也一起记。
+   * 筛选、排序、页码、页签在地址栏，纵向滚动由外壳 ListMemory 滚回去，列设置本来就记在本地（useLocalPref）；
+   * 筛选在本页 state 里的（联系人、渠道）用 lib/local-pref.ts 的 useSessionPref 记
    */
   回来还原?: boolean;
 };
@@ -291,6 +293,7 @@ export default function DataList<T extends { id: string }>({
     // 不支持多选的表只还原横滚
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sessionStorage 只有到了浏览器里才读得到（服务端那一版没有勾选），挂上只读这一次
     if (留.length && 批量) set选中(留);
+    if (记的.本地 && 分页 === undefined) set本地页(记的.本地);
     if (记的.x > 0) {
       // 等这一帧画完（勾选框那一列、列宽都在了）再横滚过去；这时已经卸了就找不到框，什么也不做
       requestAnimationFrame(() => {
@@ -511,7 +514,10 @@ export default function DataList<T extends { id: string }>({
               : {
                   current: 本地页.当前,
                   pageSize: 本地页.每页,
-                  onChange: 换页(本地页.每页, (当前, 每页) => set本地页({ 当前, 每页 })),
+                  onChange: 换页(本地页.每页, (当前, 每页) => {
+                    set本地页({ 当前, 每页 });
+                    if (还原键) 记本地页(还原键, 当前列表地址(), 当前, 每页);
+                  }),
                   // 截断时 `t` 是取回来的行数，不是库里的总数——别让它冒充总数
                   showTotal: (t) => (真截断 ? <>这里 {总数(t)} 条</> : <>共 {总数(t)} 条</>),
                   showSizeChanger: true,

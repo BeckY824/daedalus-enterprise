@@ -1,5 +1,6 @@
 "use client";
 
+import { useSessionPref } from "@/lib/local-pref";
 import { useBusinessTimeZone } from "@/lib/business-client";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -166,7 +167,11 @@ export default function PlansView({
   const 改不了 = useMemo(() => new Set(改不了的客户), [改不了的客户]);
   const timeZone = useBusinessTimeZone();
   const router = useRouter();
-  const [scope, setScope] = useState<string | number>(全员 ? "全部成员" : "我的");
+  /*
+    「我的 / 全部成员」「待办 / 已完成」记在这个标签页里（29R 推广，11-20「之前筛选栏的保持，对其他页面也一样」）：
+    点进客户详情再回来、刷新都还在。从数据页带 ?scope=all 进来的另记一份，默认「全部成员」，不被平常那份盖掉
+  */
+  const [scope, setScope] = useSessionPref<string | number>(全员 ? "list-keep:plans:scope-all" : "list-keep:plans:scope", 全员 ? "全部成员" : "我的");
   /**
    * 看待办还是看做完的。
    *
@@ -174,7 +179,7 @@ export default function PlansView({
    * 没有任何地方答得上来（2026-09-18 问到的）。默认仍然是「待办」：
    * 这一页首先是今天要干什么，回顾是第二位的。
    */
-  const [看, set看] = useState<string | number>("待办");
+  const [看, set看] = useSessionPref<string | number>("list-keep:plans:view", "待办");
   /** 刚点过完成、还留在原地的那几条 */
   const [刚完成, set刚完成] = useState<string[]>([]);
   /** 「排下一次」给哪一位排：完成一条计划之后撤销条上点进来（审查 M10；默认 3 天后，P-界面-34） */
@@ -372,7 +377,8 @@ export default function PlansView({
       ) : (
         <>
           <Space wrap style={{ marginBottom: 16 }}>
-            <Segmented value={看} onChange={set看} options={["待办", `已完成${我的已完成.length ? ` ${我的已完成.length}` : ""}`]} />
+            {/* 值固定「待办 / 已完成」、字上带数：记下来的值不跟着条数变（29R 推广） */}
+            <Segmented value={String(看).startsWith("已完成") ? "已完成" : "待办"} onChange={set看} options={[{ value: "待办", label: "待办" }, { value: "已完成", label: `已完成${我的已完成.length ? ` ${我的已完成.length}` : ""}` }]} />
             {!只有我 && <Segmented value={scope} onChange={setScope} options={["我的", "全部成员"]} />}
             {/* 自己名下空、团队里却有一堆的时候要说一声。
                 三组全写着「这一组是空的」，人会以为整个团队都没排 */}
