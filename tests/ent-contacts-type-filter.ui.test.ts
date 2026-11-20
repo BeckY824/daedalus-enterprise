@@ -11,7 +11,7 @@ const plugin: Plugin = { name: "contacts-type", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "stub", pluginData: code }));
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
   // push 永远不回来：模拟服务端那一趟还在路上
-  stub(/^next\/navigation$/, "export const useRouter=()=>({push(){return new Promise(()=>{})},refresh(){}});");
+  stub(/^next\/navigation$/, "export const useRouter=()=>({push(){return new Promise(()=>{})},refresh(){}});export const usePathname=()=>location.pathname;");
   stub(/components\/DataList$/, "export default function D(p){return <><div data-testid='rows' data-loading={String(!!p.加载中)}>{p.行.map(x=><div key={x.id}>{x.name}</div>)}</div>{p.筛选}</>}");
   stub(/\/ContactForm$/, "export default function F(){return null}");
   // PR5b（ls.ct.orphan）：彻底删除改成 ContactsView 自己调 action + 底部撤销条

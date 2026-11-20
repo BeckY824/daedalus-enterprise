@@ -29,6 +29,12 @@ const mocks = vi.hoisted(() => ({ user: { id: "", name: "乙", email: "乙", rol
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user, getCurrentUser: async () => mocks.user }));
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
+/** 同事的客户（团队互看「加跟进」档）那条拼接 SQL 分支：单测里凑不出团队互看，开了这个开关就让 只读客户 直接说「加跟进」 */
+const 互看 = vi.hoisted(() => ({ 加跟进: false }));
+vi.mock("@/lib/team-scope", async (原) => {
+  const m = await 原<typeof import("@/lib/team-scope")>();
+  return { ...m, 只读客户: async (...a: Parameters<typeof m.只读客户>) => (互看.加跟进 ? ("加跟进" as const) : m.只读客户(...a)) };
+});
 vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
 vi.mock("@/lib/business", async (原) => {
   const m = await 原<typeof import("@/lib/business")>();
@@ -50,8 +56,14 @@ import { 沟通生效时刻 } from "@/lib/enterprise/tri-state-quota";
 import { 读一位三态 } from "@/lib/enterprise/tri-state-hold";
 import { 等通知推完 } from "@/lib/enterprise/notify";
 import { beijingDay } from "@/lib/business-clock";
-import { saveFollowUp } from "@/app/(app)/customers/[id]/actions";
+import { saveFollowUp, deleteFollowUp } from "@/app/(app)/customers/[id]/actions";
+import { 记项目沟通 } from "@/lib/project/db";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
+import { 同号再次录入, 同号只记备注 } from "@/lib/enterprise/same-number-collab";
+import { 同号节点, 同号标题不许用话, 同号留痕标题不能改话, 同号标题问题 } from "@/lib/enterprise/same-number-mark";
+import { 验号码 } from "@/lib/enterprise/contact-format";
+import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
+import { 读冷项目 } from "@/lib/enterprise/tri-state-detail";
 
 /*
   保存动作用真实的现在（写入时间是数据库引擎记的，假不了 Date），所以按今天往回数：系统起算日设成 起算前 天前，
@@ -82,6 +94,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await 等通知推完();
   vi.unstubAllEnvs();
+  互看.加跟进 = false;
 });
 afterAll(async () => { await prisma.$disconnect(); });
 
@@ -162,6 +175,147 @@ describe("存沟通后马上重算", () => {
     expect(关着句.filter((q) => /EntCustomerClock|EntCustomerStateLog/.test(q))).toEqual([]);
     expect(多沟通).toBe(开着);
     expect(开着 - 关着句.length).toBeLessThanOrEqual(存沟通后多查上限);
+  });
+});
+
+/**
+ * 同号再次录入（same-number-collab.ts）是系统留痕、不算沟通（11-03 设计，用户 11-20 再定）：别人又录了这个号，
+ * 记下的那条不替负责人续钟——写完不马上重算；之后的夜扫、存别的沟通后的重算、冷项目、最近跟进也都不把它算进去。负责人自己记的有效沟通照旧续
+ */
+describe("同号再次录入不续三态钟（11-20）", () => {
+  const 丙录同号 = async () => {
+    const 丙 = (await prisma.user.create({ data: { email: "丙", name: "丙", title: "", role: "SALES", password: "x" } })).id;
+    await prisma.entMember.create({ data: { userId: 丙, bizRole: "sales", line: "内贸" } });
+    const 号 = 验号码("手机号", "13800000001");
+    if (!号.ok) throw new Error("号码样例没过格式");
+    const 我 = { id: 丙, name: "丙", email: "丙", role: "SALES" };
+    忘掉企业版范围();
+    const r = await 以谁的身份(丙, () => 同号再次录入(我, 号, { 入口: "手工建档", 内容: "展会上又聊了一次预算和交付时间" }));
+    忘掉企业版范围();
+    expect(r.走).toBe(true);
+    return r;
+  };
+  const 最近跟进 = async () => (await prisma.customer.findUniqueOrThrow({ where: { id: 客户 } })).lastFollowAt;
+
+  it("沉睡客户被同号录入：钟马上不变，之后夜扫、手动重算也不变；归零日、最近跟进都不动", async () => {
+    await 开三态(95);
+    await 三态夜扫();
+    expect(await 钟()).toBe("沉睡");
+    const 前状态 = (await 读一位三态(客户))!;
+    const 痕数 = await prisma.entCustomerStateLog.count({ where: { customerId: 客户 } });
+    await 丙录同号();
+    // 立即：录入本身不重算、不续钟
+    expect(await 钟()).toBe("沉睡");
+    // 之后：夜扫和别处的重算都把这条排除
+    await 三态夜扫();
+    expect(await 钟()).toBe("沉睡");
+    await 存沟通后重算三态(客户);
+    expect(await 钟()).toBe("沉睡");
+    expect((await 读一位三态(客户))!).toMatchObject({ 状态: "沉睡", 归零日: 前状态.归零日 });
+    expect(await prisma.entCustomerStateLog.count({ where: { customerId: 客户 } })).toBe(痕数);
+    expect(await 最近跟进()).toBeNull();
+    // 不记有效沟通标记
+    const f = await prisma.followUp.findFirstOrThrow({ where: { customerId: 客户 } });
+    expect(await prisma.entFollowUpFirstValid.count({ where: { followUpId: f.id } })).toBe(0);
+  });
+
+  it("同号留痕在先，负责人再记沟通：补录旧沟通只推到那天、最近跟进不被同号那条顶上去；当天有效沟通照旧变活跃（防误伤）", async () => {
+    await 开三态(150);
+    await 三态夜扫();
+    await 丙录同号();
+    expect(await 记跟进("电话聊了预算和交付时间", 100)).toMatchObject({ ok: true });
+    expect(await 钟()).toBe("沉睡");
+    expect((await 读一位三态(客户))!).toMatchObject({ 状态: "沉睡", 归零日: 前(100) });
+    expect(beijingDay((await 最近跟进())!)).toBe(前(100));
+    // 负责人当天记的有效沟通：照旧续钟、续最近跟进
+    expect(await 记跟进("电话确认了下周来厂看样")).toMatchObject({ ok: true });
+    expect(await 钟()).toBe("活跃");
+    expect((await 读一位三态(客户))!.归零日).toBe(今天);
+    expect(beijingDay((await 最近跟进())!)).toBe(今天);
+  });
+
+  it("导入撞号的同号备注（同号只记备注）：夜扫同样不算、钟不变", async () => {
+    await 开三态(95);
+    await 三态夜扫();
+    const 号 = 验号码("手机号", "13800000001");
+    if (!号.ok) throw new Error("号码样例没过格式");
+    const id = await prisma.$transaction((tx) => 同号只记备注(tx, { customerId: 客户, 操作人: 乙, 号, 入口: "飞书", 来源: "展会" }));
+    expect(id).toBeTruthy();
+    await 三态夜扫();
+    await 存沟通后重算三态(客户);
+    expect(await 钟()).toBe("沉睡");
+  });
+
+  it("同事的客户（互看只许加跟进，拼接 SQL 那条分支）：同号留痕不把最近跟进顶上去", async () => {
+    await 开三态(150);
+    await 丙录同号();
+    互看.加跟进 = true;
+    expect(await 记跟进("电话聊了预算和交付时间", 100)).toMatchObject({ ok: true });
+    expect(beijingDay((await 最近跟进())!)).toBe(前(100));
+  });
+
+  it("删掉一条真沟通：最近跟进回落到前一条真沟通，不落到同号留痕的时间", async () => {
+    await 开三态(150);
+    expect(await 记跟进("电话聊了预算和交付时间", 100)).toMatchObject({ ok: true });
+    await 丙录同号();
+    const r = await 记跟进("电话确认了下周来厂看样");
+    expect(beijingDay((await 最近跟进())!)).toBe(今天);
+    // 删沟通要系统管理员（M-权限-09：销售负责人本人删不了）
+    const 管 = (await prisma.user.create({ data: { email: "管", name: "管", title: "", role: "ADMIN", password: "x" } })).id;
+    await prisma.entMember.create({ data: { userId: 管, bizRole: "director" } });
+    mocks.user = { ...mocks.user, id: 管, name: "管", email: "管", role: "ADMIN" };
+    expect(await deleteFollowUp((r as { id: string }).id, 客户)).toMatchObject({ ok: true });
+    expect(beijingDay((await 最近跟进())!)).toBe(前(100));
+  });
+
+  it("用户写的标题不许以「同号再次录入」开头（客户页记沟通、项目记沟通都拦）", async () => {
+    await 开三态(150);
+    for (const title of ["同号再次录入", "  同号再次录入（来源不同）", "同号再次录入：又聊了"])
+      expect(await saveFollowUp({ customerId: 客户, type: "PHONE", status: "已完成", content: "电话聊了预算和交付时间", occurredAt: `${今天} 00:00`, title })).toEqual({ ok: false, error: 同号标题不许用话 });
+    // 不在开头的照存
+    expect(await saveFollowUp({ customerId: 客户, type: "PHONE", status: "已完成", content: "电话聊了预算和交付时间", occurredAt: `${今天} 00:00`, title: "关于同号再次录入的说明" })).toMatchObject({ ok: true });
+    const 项目 = (await prisma.project.findFirstOrThrow({ where: { customerId: 客户 } })).id;
+    expect(await 记项目沟通({ id: 乙, role: "SALES" } as never, 项目, { type: "PHONE", content: "电话聊了预算和交付时间", occurredAt: `${今天} 00:00`, 下一步: "下周报价", 阶段: "商机", 额外: { title: "同号再次录入" } } as never)).toMatchObject({ ok: false, error: 同号标题不许用话 });
+    expect(await prisma.followUp.count({ where: { customerId: 客户, title: { startsWith: "同号再次录入" } } })).toBe(0);
+    // 纯判定：改同号留痕时标题必须原样（去头尾空格后一字不差），清空、改成别的、换成另一种同号标题都拒；不是留痕的不许改成同号开头
+    expect(同号标题问题("同号再次录入", "同号再次录入")).toBeNull();
+    expect(同号标题问题(" 同号再次录入 ", "同号再次录入")).toBeNull();
+    for (const t of ["", undefined, null, "电话", "同号再次录入（来源不同）"]) expect(同号标题问题(t, "同号再次录入")).toBe(同号留痕标题不能改话);
+    expect(同号标题问题("同号再次录入")).toBe(同号标题不许用话);
+    expect(同号标题问题("同号再次录入", "电话")).toBe(同号标题不许用话);
+    expect(同号标题问题("电话", "")).toBeNull();
+    expect(同号标题问题("")).toBeNull();
+    expect(同号标题问题(undefined)).toBeNull();
+  });
+
+  it("负责人改同事留下的同号留痕：只改内容能存、三态钟和最近跟进不变；标题清空或改掉被拒", async () => {
+    await 开三态(95);
+    await 三态夜扫();
+    expect(await 钟()).toBe("沉睡");
+    // 能改沟通的要是身为负责人的管理（M-权限-09）：乙升成销售管理
+    await prisma.entMember.updateMany({ where: { userId: 乙 }, data: { bizRole: "sales_mgr" } });
+    await 丙录同号();
+    const f = await prisma.followUp.findFirstOrThrow({ where: { customerId: 客户, title: { startsWith: "同号再次录入" } } });
+    const 痕数 = await prisma.entCustomerStateLog.count({ where: { customerId: 客户 } });
+    const 改 = (title: string | undefined) => saveFollowUp({ id: f.id, customerId: 客户, type: f.type, status: f.status, content: "展会上又聊了一次预算和交付时间，补一句报价", occurredAt: f.occurredAt.toISOString(), title });
+    for (const t of ["", "电话", undefined]) expect(await 改(t)).toEqual({ ok: false, error: 同号留痕标题不能改话 });
+    expect((await prisma.followUp.findUniqueOrThrow({ where: { id: f.id } })).content).toBe(f.content);
+    expect(await 改(f.title)).toMatchObject({ ok: true });
+    expect(await prisma.followUp.findUniqueOrThrow({ where: { id: f.id } })).toMatchObject({ title: f.title, content: "展会上又聊了一次预算和交付时间，补一句报价" });
+    expect(await 钟()).toBe("沉睡");
+    expect(await prisma.entCustomerStateLog.count({ where: { customerId: 客户 } })).toBe(痕数);
+    expect(await 最近跟进()).toBeNull();
+  });
+
+  it("冷项目：同号留痕挂在项目上不清冷标；负责人记一条挂项目的有效沟通才清", async () => {
+    await 开三态(95);
+    const 项目 = (await prisma.project.findFirstOrThrow({ where: { customerId: 客户 } })).id;
+    expect((await 读冷项目([项目]))[项目]).toBe(95);
+    await 丙录同号();
+    expect(await prisma.followUpProject.count({ where: { projectId: 项目, node: 同号节点 } })).toBe(1);
+    expect((await 读冷项目([项目]))[项目]).toBe(95);
+    expect(await 记跟进("电话聊了预算和交付时间")).toMatchObject({ ok: true });
+    expect((await 读冷项目([项目]))[项目]).toBeUndefined();
   });
 });
 
@@ -429,7 +583,8 @@ describe("写沟通的调用点都接了存沟通后重算三态", () => {
     "app/(app)/customers/[id]/actions.ts#restoreContact": "恢复联系人时把沟通挂回去，只改 contactId",
     "lib/shared-ws/dataset.ts#灌演示数据": "桌面端示例数据，不跑三态",
     "lib/enterprise/legacy-cleanup.ts#清理老数据": "只把沟通从商机上解挂，不改内容和日期",
-    "lib/enterprise/same-number-collab.ts#同号只记备注": "只有导入在用（apply.ts），整批，夜扫补",
+    "lib/enterprise/same-number-collab.ts#同号只记备注": "只有导入在用（apply.ts），整批；系统留痕不算沟通，夜扫也按标题排除",
+    "lib/enterprise/same-number-collab.ts#同号再次录入": "系统留痕不算沟通、不续钟（11-03 设计、用户 11-20）；夜扫按标题排除（same-number-mark.ts）",
     "lib/enterprise/soft-delete.ts#清过期": "回收站过期真删，删的本来就是已软删、不算数的沟通",
     "lib/enterprise-import/apply.ts#建": "导入，整批，夜扫补",
     "lib/enterprise-import/apply.ts#改": "导入，整批，夜扫补",

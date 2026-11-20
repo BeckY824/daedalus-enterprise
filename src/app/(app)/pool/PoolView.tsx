@@ -768,6 +768,8 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
       />
       <DataList<公海行>
         页="pool"
+        // 进详情再回来、刷新：勾选和横滚位置还原（29R）
+        回来还原
         列={列们}
         行={行}
         空库={!库里有 && !在筛}

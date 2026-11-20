@@ -59,6 +59,8 @@ import { 切换视图Provider } from "@/components/ViewAsContext";
 import ViewAsPicker from "@/components/ViewAsPicker";
 import { 左栏收窄 } from "@/lib/rail-mini";
 import { ListMemory, useRailHref } from "@/components/ListReturn";
+import { 设列表主人, 清列表记忆 } from "@/lib/list-return";
+import { 清会话偏好 } from "@/lib/local-pref";
 
 const { Header, Content } = Layout;
 
@@ -180,6 +182,9 @@ function 身份分组(名单: 演示组[], 前缀: "view" | "demo", 我: string)
 }
 
 export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = [], 计数 = {}, 要跟, desktop, 反馈去向, 企业版项目 = false, 企业版 = false, 通知未读, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, 全局搜索, 视图名单, 视图换人, 视图退出, 正在视图, 预热 = "全部", children }: Props) {
+  // 列表记的勾选、筛选、地址按人分（lib/list-return.ts，#381）：子组件渲染前先报现在是谁；幂等，换人后下一次渲染就换键
+  // 只在浏览器里报：服务端渲染时这是整个进程共用的模块变量，各请求会串
+  if (typeof window !== "undefined") 设列表主人(user.id);
   const 动效值 = useMotionTheme();
   const b = useBusiness();
   const modifier = useModifierKey();
@@ -481,6 +486,9 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
+    // 同一个标签页换人登录：列表记的勾选、筛选、地址不留给下一个人（#381）
+    清列表记忆();
+    清会话偏好();
     router.push("/login");
     router.refresh();
   }
@@ -494,6 +502,9 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
     if (id === user.id || !演示换人) return;
     const res = await 演示换人(id).catch(() => ({ ok: false as const, error: "换人失败，请检查网络连接后重试" }));
     if (!res.ok) return void window.alert(res.error);
+    // 换了人：上一个人列表记的勾选、筛选、地址不留在这个标签页（#381 复审）
+    清列表记忆();
+    清会话偏好();
     // 同 login/after-login.ts：换的是会话，整页重来才干净
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.assign("/" + (pathname.split("/")[1] || "dashboard"));
@@ -503,6 +514,8 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
     if (!视图换人) return;
     const res = await 视图换人(id).catch(() => ({ ok: false as const, error: "切换失败，请检查网络连接后重试" }));
     if (!res.ok) return void window.alert(res.error);
+    清列表记忆();
+    清会话偏好();
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.assign("/" + (pathname.split("/")[1] || "dashboard"));
   }
@@ -511,6 +524,8 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
     if (!视图退出) return;
     const res = await 视图退出().catch(() => ({ ok: false as const, error: "退出失败，请检查网络连接后重试" }));
     if (!res.ok) return void window.alert(res.error);
+    清列表记忆();
+    清会话偏好();
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.assign("/" + (pathname.split("/")[1] || "dashboard"));
   }

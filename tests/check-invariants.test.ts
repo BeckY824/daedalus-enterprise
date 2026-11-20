@@ -163,10 +163,10 @@ describe("附录 C 补的 13 条（待核·仅提示）：命中 1 行、对照 
     const 值们 = [id, id, "", "u1", t, t, ...Object.values(列)];
     db.prepare(`INSERT INTO "Customer" (${名们.map((x) => `"${x}"`).join(", ")}) VALUES (${名们.map(() => "?").join(", ")})`).run(...值们);
   };
-  const 插沟通 = (db: DatabaseSync, id: string, customerId: string, 列: { type?: string; method?: string | null; occurredAt?: number | string; deletedAt?: number | null } = {}) =>
+  const 插沟通 = (db: DatabaseSync, id: string, customerId: string, 列: { type?: string; title?: string; method?: string | null; occurredAt?: number | string; deletedAt?: number | null } = {}) =>
     db
-      .prepare(`INSERT INTO "FollowUp" (id, type, title, content, customerId, ownerId, method, occurredAt, deletedAt, createdAt, updatedAt) VALUES (?, ?, '', '', ?, 'u1', ?, ?, ?, ?, ?)`)
-      .run(id, 列.type ?? "PHONE", customerId, 列.method ?? null, 列.occurredAt ?? t, 列.deletedAt ?? null, t, t);
+      .prepare(`INSERT INTO "FollowUp" (id, type, title, content, customerId, ownerId, method, occurredAt, deletedAt, createdAt, updatedAt) VALUES (?, ?, ?, '', ?, 'u1', ?, ?, ?, ?, ?)`)
+      .run(id, 列.type ?? "PHONE", 列.title ?? "", customerId, 列.method ?? null, 列.occurredAt ?? t, 列.deletedAt ?? null, t, t);
   const 插号 = (db: DatabaseSync, id: string, customerId: string, kind: string, numberKey: string, formatStatus = "ok") =>
     db.prepare(`INSERT INTO "ContactMethod" (id, customerId, kind, value, numberKey, formatStatus) VALUES (?, ?, ?, ?, ?, ?)`).run(id, customerId, kind, numberKey, numberKey, formatStatus);
 
@@ -188,6 +188,9 @@ describe("附录 C 补的 13 条（待核·仅提示）：命中 1 行、对照 
         插沟通(db, "f-ok", "cB");
         db.prepare(`INSERT INTO "FollowUpProject" (followUpId, projectId, node) VALUES ('f-ok', 'pB', '潜客培育')`).run();
         插沟通(db, "f-del", "cB", { deletedAt: t });
+        // 同号再次录入的系统留痕：客户没项目时只挂客户，不算没挂
+        插沟通(db, "f-mark", "cB", { title: "同号再次录入" });
+        插沟通(db, "f-mark2", "cB", { title: "同号再次录入（来源不同）" });
       },
       命中: "f-bad",
     },
@@ -264,7 +267,8 @@ describe("附录 C 补的 13 条（待核·仅提示）：命中 1 行、对照 
     {
       键: "最近跟进对不上",
       // cA：最近跟进存整数毫秒、沟通发生时间存 ISO 文本，同一刻 → 对得上；
-      // cB：最近跟进比实际最后一条晚（删了的那条、未来的那条都不算）→ 命中；cC 没沟通、最近跟进空 → 对得上
+      // cB：最近跟进比实际最后一条晚（删了的那条、未来的那条都不算）→ 命中；cC 没沟通、最近跟进空 → 对得上；
+      // cD：最后两条是同号再次录入的系统留痕（两种标题），最近跟进停在前一条真沟通 → 对得上（same-number-mark.ts：留痕不续最近跟进）
       造: (db) => {
         db.prepare(`UPDATE "Customer" SET lastFollowAt = ? WHERE id = 'cA'`).run(t);
         插沟通(db, "f-a", "cA", { occurredAt: "2026-11-02T00:00:00.000Z" });
@@ -273,6 +277,11 @@ describe("附录 C 补的 13 条（待核·仅提示）：命中 1 行、对照 
         插沟通(db, "f-b-del", "cB", { occurredAt: 毫秒("2026-11-05T00:00:00Z"), deletedAt: t });
         插沟通(db, "f-b-future", "cB", { occurredAt: 毫秒("2099-01-01T00:00:00Z") });
         插客户(db, "cC");
+        插客户(db, "cD");
+        db.prepare(`UPDATE "Customer" SET lastFollowAt = ? WHERE id = 'cD'`).run(t);
+        插沟通(db, "f-d", "cD");
+        插沟通(db, "f-d-mark", "cD", { title: "同号再次录入", occurredAt: 毫秒("2026-11-03T00:00:00Z") });
+        插沟通(db, "f-d-mark2", "cD", { title: "同号再次录入（来源不同）", occurredAt: 毫秒("2026-11-04T00:00:00Z") });
       },
       命中: "cB",
     },

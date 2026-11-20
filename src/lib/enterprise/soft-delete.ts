@@ -29,6 +29,7 @@ import { 换负责人 } from "@/lib/project/owner-write";
 import { 验证中不能改派 } from "@/lib/project/lead-verify-guard";
 import { 企业版只用项目 } from "./project-only";
 import { 客户显名, 客户引, 全称或显名, 显名列 } from "./customer-title";
+import { 不是同号留痕 } from "./same-number-mark";
 
 export { 看已删, 回收站保留天数, 软删表, type 软删表名 } from "./soft-delete-core";
 
@@ -106,9 +107,9 @@ export async function 软删一条(tx: Tx, t: Exclude<软删表名, "Customer">,
   return (await 表(tx, t).updateMany({ where: { id }, data: { deletedAt: 时刻 } })).count > 0;
 }
 
-/** 最近跟进时间按没删的沟通记录重算（删 / 恢复沟通记录、恢复客户后） */
+/** 最近跟进时间按没删的沟通记录重算（删 / 恢复沟通记录、恢复客户后）；同号再次录入的系统留痕不算（same-number-mark.ts） */
 async function 重算最近跟进(tx: Tx, customerId: string) {
-  const latest = await tx.followUp.findFirst({ where: { customerId, occurredAt: { lte: new Date() } }, orderBy: { occurredAt: "desc" }, select: { occurredAt: true } });
+  const latest = await tx.followUp.findFirst({ where: { customerId, occurredAt: { lte: new Date() }, ...不是同号留痕 }, orderBy: { occurredAt: "desc" }, select: { occurredAt: true } });
   await tx.customer.updateMany({ where: { id: customerId }, data: { lastFollowAt: latest?.occurredAt ?? null } });
 }
 

@@ -9,6 +9,7 @@ import { Button, Space, Tag, Modal, Form, Input, Select, Tooltip, Row as 行, Co
 import { PlusOutlined, SearchOutlined, MoreOutlined } from "@ant-design/icons";
 import type { Dayjs } from "dayjs";
 import ResetFilters from "@/components/ResetFilters";
+import { useListKeep } from "@/lib/list-keep";
 import { useCustomFilters } from "@/components/CustomFilters";
 import DatePicker from "@/components/BusinessDatePicker";
 import { 列表不问归属 } from "@/lib/solo";
@@ -215,16 +216,19 @@ export default function ChannelsView({
   /* 自定义那一段在路上（看板在换、或这一段的数还没到）：表格出骨架，同看板，不拿「—」冒充没数 */
   const [看板忙, set看板忙] = useState(false);
   const 等自定义 = 有期 && 期 === 自定义 && (看板忙 || 原行.some((r) => r.期统计 && !r.期统计.自定义));
-  /* 筛选条件都在本地：行已经全在手上了 */
-  const [kw, setKw] = useState("");
-  const [attr, setAttr] = useState("");
-  const [ownerId, setOwnerId] = useState("");
-  const [active, setActive] = useState("");
-  const [creator, setCreator] = useState("");
-  const [主, set主] = useState("");
+  /*
+    筛选条件都在本地：行已经全在手上了。
+    记在这个标签页里（29R 推广，11-20）：点数字进项目 / 客户列表再回来、刷新，筛的还在；看板时间段跟地址栏走，不在这里记
+  */
+  const [kw, setKw] = useListKeep("list-keep:channels:kw", "");
+  const [attr, setAttr] = useListKeep("list-keep:channels:attr", "");
+  const [ownerId, setOwnerId] = useListKeep("list-keep:channels:owner", "");
+  const [active, setActive] = useListKeep("list-keep:channels:active", "");
+  const [creator, setCreator] = useListKeep("list-keep:channels:creator", "");
+  const [主, set主] = useListKeep("list-keep:channels:main", "");
   const 两层 = 开两层;
   /** 统计按两层看（P-渠道-01 附.5）：按子渠道一行（原样）/ 按主渠道并成一行；只有两层时才有这个切换 */
-  const [按主看, set按主看] = useState(false);
+  const [按主看, set按主看] = useListKeep("list-keep:channels:by-main", false);
   // 看板也吃这一份：列表剩几个渠道，看板就按这几个算
   const rows = useMemo(() => {
     const 筛过 = 筛渠道(全部行, { kw, attr, ownerId, active, creator });
@@ -730,6 +734,8 @@ export default function ChannelsView({
       {两层 && 按主看 ? (
         <DataList<主渠道汇总>
           页="channels-main"
+          // 进详情再回来、刷新：第几页、横滚还原（29R 推广）
+          回来还原
           空库={全部行.length === 0 && 主渠道们.length === 0}
           列={主列表}
           行={主行们}
@@ -742,6 +748,8 @@ export default function ChannelsView({
       ) : (
       <DataList<Row>
         页="channels"
+        // 进详情再回来、刷新：第几页、勾选、横滚还原（29R 推广）
+        回来还原
         空库={全部行.length === 0}
         列={列表}
         行={rows}
