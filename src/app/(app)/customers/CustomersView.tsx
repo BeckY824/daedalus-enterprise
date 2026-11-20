@@ -933,8 +933,9 @@ export default function CustomersView({
   */
   const 三态挤 = 企业 && !!三态标;
   const 宽 = (常: number, 三态开: number) => (三态挤 ? 三态开 : 常);
-  /** 这一页有公海里的：操作列多一颗「领取」、加宽到 132，手机宽照旧钉右 */
-  const 有领取 = !不问归属 && rows.some((r) => r.pool);
+  /** 这一页有公海里的、我又能领（能新建和领取）：操作列多一颗「领取」、加宽到 132，手机宽照旧钉右。
+   *  领不了的角色（没设业务角色、只读）行里不摆领取，操作列只剩「⋯」，照 56 宽、手机宽不钉（32B） */
+  const 有领取 = !不问归属 && 能新建和领取 && rows.some((r) => r.pool);
   const 企业列: 列<CustomerRow>[] = [
     {
       title: "级别", key: "level", width: 宽(76, 60),

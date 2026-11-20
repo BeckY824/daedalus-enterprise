@@ -524,11 +524,13 @@ it("三态开着在「列」里主动勾上项目数：显示、刷新后仍显�
 });
 
 // 手机宽操作列钉不钉（PR #384 跟进）：只一颗「⋯」（56 宽）才不钉，让出中间给号码列；这一页有公海行、多出「领取」（132 宽）照旧钉右
-it("375 宽：操作列只有「⋯」时不钉右；这一页有公海行（132 宽、带领取）照旧钉右、领取整颗在视口里", async () => {
-  for (const 公海 of [false, true]) {
+// 32B：有公海行但我领不了（能新建和领取 = 否：没设业务角色、只读）——行里没有领取，操作列只剩「⋯」，照 56 宽、不钉
+it("375 宽：操作列只有「⋯」时不钉右；这一页有公海行（132 宽、带领取）照旧钉右、领取整颗在视口里；有公海行但领不了照 56 宽不钉", async () => {
+  for (const [公海, 不能领] of [[false, false], [true, false], [true, true]] as const) {
     const errors: string[] = [];
     const page = await 新列表页(375, errors);
     try {
+      await page.evaluate((x) => Object.assign(window, { __不能新建: x }), 不能领);
       await 开列表(page, { 公海 });
       const 量 = await page.evaluate(() => {
         const th = document.querySelector<HTMLElement>("thead th.dl-col-action")!;
@@ -536,7 +538,7 @@ it("375 宽：操作列只有「⋯」时不钉右；这一页有公海行（132
         const r = 领?.getBoundingClientRect();
         return { 钉右: /ant-table-cell-fix-(right|end)/.test(th.className), 宽: th.offsetWidth, 领取在里: r ? r.left >= 0 && r.right <= document.documentElement.clientWidth : null };
       });
-      expect(量, `公海 ${公海} ${JSON.stringify(量)}`).toEqual(公海 ? { 钉右: true, 宽: 132, 领取在里: true } : { 钉右: false, 宽: 56, 领取在里: null });
+      expect(量, `公海 ${公海} 不能领 ${不能领} ${JSON.stringify(量)}`).toEqual(公海 && !不能领 ? { 钉右: true, 宽: 132, 领取在里: true } : { 钉右: false, 宽: 56, 领取在里: null });
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
