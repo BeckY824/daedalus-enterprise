@@ -93,7 +93,8 @@ beforeAll(async () => {
           跟进去处={[{id:'p1',名:'项目一',主:true,结束:false,说明:null,下一步:null,下一步文字:null}]} 待办计划={[]} 能放公海 新建项目={{节点们:['线索验证'],要下一步:false}}
           只读={o.只读?'全':false}
           三态条={o.提醒?{状态:'沉睡',文字:'满 90 天没有有效沟通，也可以用右上角「客户操作」转让或退回公海',悬停:'满 90 天没有有效沟通',旁注:null,按钮们:[{动作:'继续持有',字:'我还在跟',说明:'顺延 30 天',要理由:false,主:true}]}:null}
-          项目数据={{customerId:'a',页签们:签,锁数:o.锁数??0,当前}}/>
+          项目数据={{customerId:'a',页签们:签,锁数:o.锁数??0,当前}}
+          {...(o.号码?{号码种类:[{名:'手机',kind:'phone',active:true},{名:'座机',kind:'landline',active:true},{名:'WhatsApp',kind:'whatsapp',active:true}],客户号码们:[{kind:'landline',value:'010-66001234'},{kind:'whatsapp',value:'+44 20 7946 0958'}]}:{})}/>
       </div></main></div></BusinessProvider></App></ConfigProvider>));
     };
     // 受限客户详情（只负责项目的人）：同一套项目区 + 嵌入版 ProjectDetail，左栏客户只读卡
@@ -113,7 +114,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 参 = { 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean };
+type 参 = { 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean };
 /** 11-12 用户「右上角只保存三个按钮：AI，项目操作，客户操作」：点开某个下拉，返回菜单 */
 const 开菜单 = async (page: Page, 名: "项目操作" | "客户操作") => {
   await page.locator(".rec-head-acts").getByRole("button", { name: new RegExp(名) }).click();
@@ -707,6 +708,48 @@ it("受限客户详情：最后一个项目退回公海后回客户列表、带�
       else expect(带的).toMatchObject({ 到: "/customers", 话: "这位客户下已经没有你负责的项目了，已回到客户列表" });
       await page.evaluate(() => sessionStorage.removeItem("crm:landing-note"));
     }
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+/* 11-20 3703 实操：左栏「客户资料」卡里号码格编辑时，号码框只剩 ~24 宽（1366 / 1024），打的号看不见。
+   改成编辑态上下排、放不下就折行：1366 / 1024 / 390 / 375 号码框都 ≥ 140、十五位号整个看得见，类型、号码、去掉不互相叠、不出卡，页不横滚 */
+it.each([1366, 1024, 390, 375])("号码格编辑态 %ipx：号码框看得清，类型和号码不互相挤掉，不横滚", async (w) => {
+  const { page, errors } = await 开(w, { 号码: true }, 900);
+  try {
+    /*
+      点这一行的标签进编辑，不点行中心（CI #384 只在 390 红）：行里号码后面紧跟复制键，复制键按设计拦住点击（点复制不算点这一行）；
+      Linux 字体数字窄一点，390 下行中心正好落在复制键上 → 复制了、没进编辑。点标签那一格才是稳定的「点这一行」
+    */
+    await page.getByRole("button", { name: "编辑号码" }).first().locator(".rec-field-k").click();
+    await page.getByRole("button", { name: "加一个号码" }).waitFor();
+    await page.getByRole("textbox", { name: "号码" }).first().fill("+86 13912345678");
+    const m = await page.evaluate(() => {
+      const 块 = document.querySelector("[data-testid=customer-numbers]") as HTMLElement;
+      const 卡框 = (块.closest(".ant-card") as HTMLElement).getBoundingClientRect();
+      const 叠 = (a: DOMRect, b: DOMRect) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+      const 行们 = [...块.querySelectorAll(".cn-row")].map((行) => {
+        const 类 = 行.querySelector(".cn-kind")!.getBoundingClientRect();
+        const 框 = 行.querySelector("input.cn-val") as HTMLInputElement;
+        const 号 = 框.getBoundingClientRect();
+        const 去 = 行.querySelector("button")!.getBoundingClientRect();
+        return {
+          类宽: 类.width, 号宽: 号.width, 截了: 框.scrollWidth > 框.clientWidth + 1,
+          互叠: 叠(类, 号) || 叠(号, 去) || 叠(类, 去),
+          出卡: [类, 号, 去].some((r) => r.right > 卡框.right + 0.5 || r.left < 卡框.left - 0.5),
+        };
+      });
+      return { 卡宽: 卡框.width, 行们, 页横滚: document.documentElement.scrollWidth - window.innerWidth };
+    });
+    expect(m.行们.length, `${w}`).toBe(2);
+    for (const [i, r] of m.行们.entries()) {
+      expect(r.号宽, `${w} 第 ${i + 1} 行号码框宽（卡宽 ${m.卡宽}）`).toBeGreaterThanOrEqual(140);
+      expect(r.类宽, `${w} 第 ${i + 1} 行类型没被挤`).toBeGreaterThanOrEqual(80);
+      expect(r.互叠, `${w} 第 ${i + 1} 行类型、号码、去掉不叠`).toBe(false);
+      expect(r.出卡, `${w} 第 ${i + 1} 行不出卡`).toBe(false);
+    }
+    expect(m.行们[0].截了, `${w} 十五位号（+86 13912345678）整个看得见`).toBe(false);
+    expect(m.页横滚, `${w}`).toBeLessThanOrEqual(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

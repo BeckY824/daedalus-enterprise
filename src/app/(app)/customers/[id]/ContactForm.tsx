@@ -10,7 +10,7 @@ import SaveButton from "@/components/SaveButton";
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import DatePicker from "@/components/BusinessDatePicker";
 import { dayjs } from "@/lib/utils";
-import { 性别们, 爱好上限, 联系人地址上限, 号码上限, 每人最多号码, 联系人姓名问题, 姓名号码至少一项 } from "@/lib/enterprise/customer-v2";
+import { 性别们, 爱好上限, 联系人地址上限, 号码上限, 每人最多号码, 联系人姓名问题, 姓名号码至少一项, 撞号怎么办, 回收站话, 联系人显名 } from "@/lib/enterprise/customer-v2";
 import { saveContact, saveUnassignedContact, 联系人号码先查 } from "./actions";
 import { 挂到客户 } from "./contact-link-actions";
 import RescueKey from "../RescueKey";
@@ -157,7 +157,7 @@ export default function ContactForm({
   const [撞号, set撞号] = useState<撞到的联系人[] | null>(null);
   /** 号码在回收站里的客户上（审核 11-18 新建入口 P2-6，P-删-08）：拦下，框顶上摆「从回收站捞回」（同建档入口） */
   const [回收站号, set回收站号] = useState<{ 类型: string; 值: string } | null>(null);
-  /** 撞号是失焦先查出来的（还没点保存）：黄条标题换一句；点保存撞了的照旧 */
+  /** 撞号 / 回收站是失焦先查出来的（还没点保存）：黄条标题换一句；点保存撞了的照旧 */
   const [先查的, set先查的] = useState(false);
   const 查序 = useRef(0);
   /** dt.contact：号码那格失焦就查一遍撞没撞（企业版），撞了把黄条摆出来，给「挂到本客户」 */
@@ -168,9 +168,17 @@ export default function ContactForm({
       .map((x) => ({ kind: x.kind!, value: x.value!.trim() }));
     const 序 = ++查序.current;
     if (!们.length) return;
-    const r = await 联系人号码先查(们, record?.id ?? null, customerId ?? null).catch(() => null);
+    /*
+      归属同保存（onOk 的 归属）：记录页给的 customerId；联系人页上挑的客户在表单里（3703 实操 #384：原来只传 customerId，
+      联系人页挑了客户再填它本身的电话，失焦报撞号、保存却照存；填它自己联系人的号只给通用话术）
+    */
+    const 归属 = customerId ?? (form.getFieldValue("customerId") as string | undefined) ?? null;
+    const r = await 联系人号码先查(们, record?.id ?? null, 归属).catch(() => null);
     if (序 !== 查序.current || !r?.ok) return;
-    if (r.撞了.length) { set撞号(r.撞了); set先查的(true); }
+    // 两条黄条只摆一条（复审 #384）：撞了收起回收站那条，回收站有收起撞号那条
+    if (r.撞了.length) { set回收站号(null); set撞号(r.撞了); set先查的(true); }
+    // 回收站里有（11-20 3703 实操）：失焦就摆「从回收站捞回」，同建档向导，不等点保存
+    else if (r.回收站) { set撞号(null); set回收站号(r.回收站); set先查的(true); }
   }
   // 重新打开框时收起上次的黄条（渲染时比对，不放进 effect 里 setState）
   const [上次开着, set上次开着] = useState(open);
@@ -230,8 +238,8 @@ export default function ContactForm({
     const r = await (存法 ?? saveContact)({ id: record?.id, 版本: record?.updatedAt, ...(企业 ? { ...其余, name: typeof 其余.name === "string" ? 其余.name : "" } : v), isPrimary: Boolean(v.isPrimary), customerId: 归属, ...(企业资料 ? { 企业: 企业资料 } : {}) } as Parameters<typeof saveContact>[0]);
     // 原来不看返回值：联系人刚被别人移出、或电话不收时，弹框卡在那儿什么也不说（排查 D8）
     if (!r.ok) {
-      if ("撞了" in r && r.撞了?.length) { set先查的(false); set撞号(r.撞了); return { ok: false, error: "号码撞了，看框顶上" }; }
-      if ("回收站" in r && r.回收站) { set回收站号(r.回收站); return { ok: false, error: "号码在回收站里，看框顶上" }; }
+      if ("撞了" in r && r.撞了?.length) { set先查的(false); set回收站号(null); set撞号(r.撞了); return { ok: false, error: "号码撞了，看框顶上" }; }
+      if ("回收站" in r && r.回收站) { set先查的(false); set撞号(null); set回收站号(r.回收站); return { ok: false, error: "号码在回收站里，看框顶上" }; }
       return { ok: false, error: r.error };
     }
     守.存好了();
@@ -279,7 +287,8 @@ export default function ContactForm({
           showIcon
           className="cf-trash-hit"
           data-testid="contact-trash-hit"
-          message="这个号码在回收站里的客户上，本次没保存"
+          // 号码全公司唯一：捞回后号码记在捞回的那位客户身上，这位联系人照样存不下，所以不说「捞回就能存」（复审 #384）
+          message={回收站话(先查的)}
           description={<RescueKey 类型={回收站号.类型} 值={回收站号.值} 捞回了={() => {}} />}
         />
       )}
@@ -301,7 +310,7 @@ export default function ContactForm({
                   ) : x.contactId && x.customerId ? (
                     <>
                       <Link href={`/customers/${encodeURIComponent(x.customerId)}`} target="_blank">
-                        {x.name}（{x.customerName}）
+                        {联系人显名(x.name)}（{x.customerName}）
                       </Link>
                       {/* 客户页上新建：多半就是同一个人，直接挂过来比再建一位好 */}
                       {!record && customerId && !存法 && x.customerId !== customerId && (
@@ -315,7 +324,8 @@ export default function ContactForm({
                   )}
                 </div>
               ))}
-              <div>号码全公司唯一，不能重复登记：核对后改号码{!record && customerId && !存法 ? `，或把那位挂到本${b.customer}` : ""}</div>
+              {/* 按真给得出的动作说（11-20 3703 实操）：摆了「挂到本客户」键才提它，撞本客户自己的联系人叫改号码 */}
+              <div data-testid="contact-dup-advice">{撞号怎么办(撞号, customerId ?? 挑的, !record && !!customerId && !存法, b.customer)}</div>
             </div>
           }
         />

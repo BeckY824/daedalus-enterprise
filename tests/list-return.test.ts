@@ -41,6 +41,8 @@ describe("页码和文字", () => {
     expect(回列表文字("公海", "/pool?page=3")).toBe("回到公海（第 3 页）");
     expect(回列表文字("项目", "/projects")).toBe("回到项目列表");
     expect(回列表文字("线索", "/leads?page=2")).toBe("回到线索列表（第 2 页）");
+    // 项目模式页名叫「新线索」，返回字和页名一致（#381 实操）
+    expect(回列表文字("线索", "/leads", "客户", "新线索")).toBe("回到新线索列表");
     expect(回列表文字("渠道", "/channels")).toBe("回到渠道列表");
     expect(回列表文字("联系人", "/contacts?keyword=a")).toBe("回到联系人列表");
     expect(回列表文字("跟进", "/follow-ups/plans")).toBe("回到跟进计划");

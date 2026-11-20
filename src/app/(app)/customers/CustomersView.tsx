@@ -933,6 +933,8 @@ export default function CustomersView({
   */
   const 三态挤 = 企业 && !!三态标;
   const 宽 = (常: number, 三态开: number) => (三态挤 ? 三态开 : 常);
+  /** 这一页有公海里的：操作列多一颗「领取」、加宽到 132，手机宽照旧钉右 */
+  const 有领取 = !不问归属 && rows.some((r) => r.pool);
   const 企业列: 列<CustomerRow>[] = [
     {
       title: "级别", key: "level", width: 宽(76, 60),
@@ -998,6 +1000,14 @@ export default function CustomersView({
       render: (_: unknown, r: CustomerRow) => <span className="cust-no">{客户编号显示(r)}</span>,
     }] satisfies 列<CustomerRow>[] : []),
     /*
+      号码全显 + 一键复制（29Q，11-20 客户管理员：展会大量现场加的客户要逐个加微信）：服务端给的是什么就显示什么——
+      号码脱敏器（销售教练、字段权限里电话「看不到」的角色）和公海里的客户（page.tsx 列表行，用户 11-20 定「不显示」）在服务端就打好了码，
+      带 * 的 CopyValue 不给复制键。
+      默认显示、紧跟客户名 / 编号（#381 实操，客户口径「号码可以全部显示」）：摆在最后 1280 宽要横滚才看得到，等于没默认显示。
+      存过列设置的老用户：只有主动藏过（存了 -phone）的照旧收着，其余（存过别的列、没提过号码）一律显示（PR #384 审查）
+    */
+    { title: "联系电话", key: "phone", dataIndex: "phone", width: 150, render: (v: string | null) => (v ? <CopyValue 叫法="电话" value={v} /> : 空) },
+    /*
       「当前节点」「项目数」（11-12 客户详情合并第 3 批，定稿 UI 表格）：只算我能看的项目。
       当前节点 = 点进这位客户默认停的那个项目页签的节点（lib/project/customer-list-projects.ts）；没有我能看的项目写「—」，项目数写 0。
       一行放不下省略号，悬停看全（全站 TruncTip）
@@ -1012,7 +1022,10 @@ export default function CustomersView({
       },
     }, {
       // 72：表头三个字连左右内边距放得下（64 在大一号的字体下被截成「项…」）
-      title: "项目数", key: "projectCount", width: 72,
+      // 三态开着默认收进「列」（PR #384，用户定方案 A「收起项目数」）：给默认显示的「联系电话」腾位置，1280 宽内部横滚压在 80 以内、1366 不横滚。
+      // 只认三态开着之后在「列」里主动勾出来的：列设置存的是全部可见列，三态开着动过任何一列的老设置都带着 projectCount，那不算主动。
+      // 所以三态开着换一个存键「+projectCount」，老设置里的 projectCount 不算（留着不删，三态关了照旧生效）；勾上就一直显示，取消又收起。三态关着不变
+      title: "项目数", key: "projectCount", width: 72, ...(三态挤 ? { 默认: false, 存键: "+projectCount" } : {}),
       render: (_: unknown, r: CustomerRow) => <span className="nowrap">{项目概况[r.id]?.项目数 ?? 0}</span>,
     }] satisfies 列<CustomerRow>[] : []),
     /*
@@ -1088,12 +1101,6 @@ export default function CustomersView({
       ),
     },
 
-    /*
-      号码全显 + 一键复制（29Q，11-20 客户管理员：展会大量现场加的客户要逐个加微信）：服务端给的是什么就显示什么——
-      号码脱敏器（销售教练、字段权限里电话「看不到」的角色）和公海里的客户（page.tsx 列表行，用户 11-20 定「不显示」）在服务端就打好了码，
-      带 * 的 CopyValue 不给复制键
-    */
-    { title: "联系电话", key: "phone", dataIndex: "phone", width: 150, 默认: false, render: (v: string | null) => (v ? <CopyValue 叫法="电话" value={v} /> : 空) },
     // 创建（入库）时间（11-11）：默认收在「列」里；点表头在全部筛选结果里排（服务端 sort=created-asc / created-desc），不点就是默认的新的在前
     {
       title: "创建时间", key: "createdAt", dataIndex: "createdAt", width: 104, 默认: false,
@@ -1125,7 +1132,9 @@ export default function CustomersView({
     {
       // 这一页有公海里的才多一个「领取」、才加宽：表格本来就比 13 寸窗口宽一点，不为用不上的按钮再挤
       // 一行只摆一个字按钮（领取），分配、编辑、删除收进「⋯」（交互规则 D，2026-10-30）；领不了的原因写在按钮下面，不靠悬停
-      title: "", key: "action", width: !不问归属 && rows.some((r) => r.pool) ? 132 : 56, 常驻: true, fixed: "right",
+      // 手机不钉（#381 实操）：只一颗「⋯」（56 宽）时手机宽不钉右，让出中间给号码列整列横滚进来（DataList 手机不钉）；
+      // 这一页有公海行、多出「领取」（132 宽）时照旧钉右：领取是要一眼看得见的主按钮
+      title: "", key: "action", width: 有领取 ? 132 : 56, 常驻: true, fixed: "right", 手机不钉: !有领取,
       render: (_, r) => {
         // 虚线下属的客户：编辑、删除点了也会被拦，不摆按钮，直接说只能看
         if (只读的.has(r.id)) return <span className="muted nowrap">只能看</span>;

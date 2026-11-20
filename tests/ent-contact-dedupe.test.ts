@@ -16,7 +16,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { saveCustomer, checkDuplicate, saveCustomerNumbers, type CustomerInput } from "@/app/(app)/customers/actions";
 import { 查号码, 从回收站捞回 } from "@/app/(app)/customers/number-actions";
-import { 全公司查号, 撞号结论, 回收站里有提示, 联系人查重, 联系人回收站撞, 一行号全公司查, 一行号回收站查, 跨类键, 跨类SQL } from "@/lib/enterprise/contact-dedupe";
+import { 全公司查号, 撞号结论, 回收站里有提示, 联系人查重, 联系人撞号话, 联系人回收站撞, 一行号全公司查, 一行号回收站查, 跨类键, 跨类SQL } from "@/lib/enterprise/contact-dedupe";
 import { 号键索引名, 号键SQL } from "@/lib/phone-dedupe";
 import fs from "node:fs";
 import path from "node:path";
@@ -334,6 +334,20 @@ describe("跨类型全局查重（11-20：号码不分类型，全公司唯一�
     // 自己这位客户本身的号不算
     expect(await 联系人查重(prisma, [{ kind: "phone", value: "13900000410", numberKey: "13900000410" }], null, undefined, 乙客.id)).toEqual([]);
     expect(await 联系人查重(prisma, [{ kind: "wechat", value: "13900000411", numberKey: "13900000411" }], null)).toEqual([]);
+  });
+
+  it("同一位客户的联系人和客户本身同号：只报联系人一行；看不到的客户（id 抹成 null）也不列两行（3703 实操 #384）", async () => {
+    const c = await 建("甲的大客户", 甲, { phone: "13900000420" });
+    const 人 = await prisma.contact.create({ data: { customerId: c.id, name: "", phone: "13900000420" } });
+    const 行 = [{ kind: "phone", value: "13900000420", numberKey: "13900000420" }];
+    // 看得到（读的我 = null 看全部）：联系人一行，客户本身那行不另报
+    expect(await 联系人查重(prisma, 行, null)).toMatchObject([{ contactId: 人.id, customerId: c.id }]);
+    expect((await 联系人查重(prisma, 行, null)).length).toBe(1);
+    // 销售乙看不到甲的客户：一行，只给负责人
+    // 保存被拦那一句：看得到、没填姓名的联系人写「未填姓名的联系人」，不只剩客户名
+    expect(联系人撞号话(await 联系人查重(prisma, 行, null), () => "手机")).toContain("已经记在「未填姓名的联系人」（甲的大客户）身上");
+    const 乙看 = await 联系人查重(prisma, 行, 乙);
+    expect(乙看).toEqual([{ contactId: null, name: null, customerId: null, customerName: null, 同事: "甲", kind: "phone", value: "13900000420" }]);
   });
 
   it("别的类型的行（传真、自己加的）也和手机、微信互比", async () => {

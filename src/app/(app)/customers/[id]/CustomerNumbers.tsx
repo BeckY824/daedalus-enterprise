@@ -82,16 +82,23 @@ export default function CustomerNumbers({ customerId, 号码们, 号码种类 }:
 
   const 改 = (i: number, x: Partial<一行>) => set草稿((们) => 们.map((r, j) => (j === i ? { ...r, ...x } : r)));
   return (
-    <div className="rec-field rec-field-editing" data-field="numbers" data-testid="customer-numbers">
+    /*
+      编辑态上下排（cn-editing，同备注的 is-multi）：左栏卡只有 ~220 宽，标签列占掉 70 后「类型 92 + 号码 + 去掉 32」里号码只剩 ~24，
+      打的号看不见（11-20 3703 实操，1366 / 1024）。标签提到上面一行、编辑区占满卡宽；一行里放不下「类型 + 至少 150 的号码 + 去掉」时
+      类型单占一行、号码和去掉换到下一行（cn-row 折行），号码框不再被挤没
+    */
+    <div className="rec-field rec-field-editing cn-editing" data-field="numbers" data-testid="customer-numbers">
       <div className="rec-field-k">号码</div>
       <div className="cn-edit">
         {草稿.map((r, i) => (
-          <Space.Compact key={i} className="cn-row">
+          <div key={i} className="cn-row">
             <Select size="middle" className="cn-kind" popupMatchSelectWidth={false} options={类型选项} value={r.kind} onChange={(v: string) => 改(i, { kind: v })} aria-label="号码类型" />
-            <Input size="middle" className="cn-val" maxLength={号码上限} value={r.value} placeholder="号码或账号" aria-label="号码"
-              onChange={(e) => 改(i, { value: e.target.value })} onPressEnter={() => void 保存()} onKeyDown={(e) => e.key === "Escape" && set编辑(false)} />
-            <Button icon={<MinusCircleOutlined />} onClick={() => set草稿((们) => 们.filter((_, j) => j !== i))} aria-label="去掉这一行" />
-          </Space.Compact>
+            <span className="cn-val-line">
+              <Input size="middle" className="cn-val" maxLength={号码上限} value={r.value} placeholder="号码或账号" aria-label="号码"
+                onChange={(e) => 改(i, { value: e.target.value })} onPressEnter={() => void 保存()} onKeyDown={(e) => e.key === "Escape" && set编辑(false)} />
+              <Button icon={<MinusCircleOutlined />} onClick={() => set草稿((们) => 们.filter((_, j) => j !== i))} aria-label="去掉这一行" />
+            </span>
+          </div>
         ))}
         {草稿.length < 每人最多号码 && (
           <Button type="dashed" size="small" block icon={<PlusOutlined />} className="cn-add" onClick={() => set草稿((们) => [...们, { kind: 默认种类, value: "" }])}>
