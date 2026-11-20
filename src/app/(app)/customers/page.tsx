@@ -12,7 +12,7 @@ import { 可选渠道 } from "@/lib/options";
 import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 离职交接入口 } from "@/lib/enterprise/offboard-handover";
 import { llmEnabled } from "@/lib/llm";
-import { 客户筛选条件, 客户行字段, 成客户行, 客户金额分页, 在看子集, 只按页签, 关键词分页, 按序取客户行 } from "./query";
+import { 客户筛选条件, 客户行字段, 成列表行, 客户金额分页, 在看子集, 只按页签, 关键词分页, 按序取客户行 } from "./query";
 import { 规整币种 } from "@/lib/currency";
 import { 号码藏着 } from "@/lib/search-keyword";
 import { 自动掉公海, 客户页签数 } from "@/lib/pool-db";
@@ -366,7 +366,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       // P-公海-07：公海里不是我这条业务线的（销管、条线总管理），不摆「分配给…」；服务端 分配公海 另拦
       公海别线ids={企 && 能管公海(me, 删权限org) ? (await 公海别线的(prisma, me, 删权限org, { 客户: rows.filter((r) => r.pool).map((r) => r.id) })).客户.map((x) => x.id) : []}
       负责人只能自己={只给自己}
-      rows={rows.map((r) => 成客户行(r, 号))}
+      rows={rows.map((r) => 成列表行(r, 号))}
       total={total}
       page={page}
       // 看板视图的 page 是看板翻项目用的（项目页自己纠正），不按客户总数改地址

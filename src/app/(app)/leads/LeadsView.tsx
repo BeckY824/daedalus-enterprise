@@ -393,6 +393,8 @@ export default function LeadsView({
       <DataList<Row>
         截断={{ 总数 }}
         页="leads"
+        // 进详情再回来、刷新：勾选、横滚还原（29R 推广；筛选、页码在地址栏）
+        回来还原
         空库={空库}
         列={列表}
         行={rows}

@@ -10,7 +10,7 @@
 import { useEffect, useRef } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useRememberedLists } from "@/components/BackToList";
-import { 列表种of, 左栏列表种, 是详情页, 读滚动, 记地址, 记滚动 } from "@/lib/list-return";
+import { 列表种of, 左栏列表种, 是详情页, 读滚动, 记地址, 记滚动, 记后退, 记进入 } from "@/lib/list-return";
 
 /** 当前地址（路径 + 查询串），和 记地址 存的同一个写法 */
 function useHereHref() {
@@ -68,14 +68,19 @@ export function ListMemory() {
   const 滚回中 = useRef(false);
 
   useEffect(() => {
-    const 记后退 = () => (后退来的.current = true);
-    window.addEventListener("popstate", 记后退);
-    return () => window.removeEventListener("popstate", 记后退);
+    const 后退了 = () => {
+      后退来的.current = true;
+      // 列表组件挂上时问「进来可还原」用（lib/list-return.ts）
+      记后退();
+    };
+    window.addEventListener("popstate", 后退了);
+    return () => window.removeEventListener("popstate", 后退了);
   }, []);
 
   useEffect(() => {
     const 从哪来 = 上一页.current;
     上一页.current = pathname;
+    记进入(pathname);
     const 后退 = 后退来的.current;
     后退来的.current = false;
     const 种 = 列表种of(pathname);

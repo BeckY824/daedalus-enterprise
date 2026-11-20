@@ -6,7 +6,7 @@ let browser: Browser; let bundle: string;
 const plugin: Plugin = { name: "members-ui", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "stub", pluginData: code }));
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
-  stub(/^next\/navigation$/, "export const useRouter=()=>({push(){},refresh(){}});");
+  stub(/^next\/navigation$/, "export const useRouter=()=>({push(){},refresh(){}});export const usePathname=()=>location.pathname;");
   stub(/components\/DataList$/, "export default function D(p){return <><div data-testid='rows'>{p.行.map(x=><div key={x.id}>{x.name}</div>)}</div>{p.筛选}</>}");
   stub(/\/ContactForm$/, "export default function F(){return null}");
   stub(/\/useContactRemoval$/, "export const useContactRemoval=()=>({彻底删(){}});");

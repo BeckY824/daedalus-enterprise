@@ -3,15 +3,19 @@
  * 真浏览器里回来后筛选、页码、滚动还在，见 e2e-ent/list-return.spec.ts。
  * 这里没有 window：读写走模块里的内存兜底（和存储被禁时同一条路）。
  */
-import { describe, it, expect } from "vitest";
-import { 列表种of, 是详情页, 页码of, 回列表文字, 记地址, 地址快照, 解析地址们, 订阅地址, 读滚动, 记滚动 } from "@/lib/list-return";
+import { describe, it, expect, vi } from "vitest";
+import { 列表种of, 是详情页, 页码of, 回列表文字, 记地址, 地址快照, 解析地址们, 订阅地址, 读滚动, 记滚动, 读勾选, 记勾选, 记横滚, 记本地页, 当前列表地址, 设列表主人, 清列表记忆, 记进入, 记后退, 进来可还原, 清勾选 } from "@/lib/list-return";
 
 describe("认路径", () => {
-  it("三张列表：客户 / 公海 / 项目；子路径、别的页都不算", () => {
+  it("七张列表：客户 / 公海 / 项目，11-20 起加线索 / 渠道 / 联系人 / 跟进计划；子路径、别的页都不算", () => {
     expect(列表种of("/customers")).toBe("客户");
     expect(列表种of("/pool")).toBe("公海");
     expect(列表种of("/projects")).toBe("项目");
-    for (const p of ["/customers/abc", "/projects/new", "/pool/x", "/dashboard", "/leads", "/customersX", ""]) expect(列表种of(p)).toBeNull();
+    expect(列表种of("/leads")).toBe("线索");
+    expect(列表种of("/channels")).toBe("渠道");
+    expect(列表种of("/contacts")).toBe("联系人");
+    expect(列表种of("/follow-ups/plans")).toBe("跟进");
+    for (const p of ["/customers/abc", "/projects/new", "/pool/x", "/dashboard", "/overview", "/settings", "/follow-ups", "/customersX", ""]) expect(列表种of(p)).toBeNull();
   });
 
   it("详情页：客户详情、项目详情；项目的新建 / 交接 / 挂靠不算", () => {
@@ -36,6 +40,10 @@ describe("页码和文字", () => {
     expect(回列表文字("客户", "/customers", "学员")).toBe("回到学员列表");
     expect(回列表文字("公海", "/pool?page=3")).toBe("回到公海（第 3 页）");
     expect(回列表文字("项目", "/projects")).toBe("回到项目列表");
+    expect(回列表文字("线索", "/leads?page=2")).toBe("回到线索列表（第 2 页）");
+    expect(回列表文字("渠道", "/channels")).toBe("回到渠道列表");
+    expect(回列表文字("联系人", "/contacts?keyword=a")).toBe("回到联系人列表");
+    expect(回列表文字("跟进", "/follow-ups/plans")).toBe("回到跟进计划");
   });
 });
 
@@ -76,5 +84,136 @@ describe("记滚动", () => {
     记滚动("公海", "/pool", -5);
     expect(读滚动("公海")).toEqual({ href: "/pool", y: 0 });
     expect(读滚动("客户")).toEqual({ href: "/customers?page=4", y: 1235 });
+  });
+});
+
+describe("勾选和横滚（29R：进详情再回来、刷新后还原）", () => {
+  it("同一张表、同一个地址读回勾选；地址不一样不还原；别的表互不影响", () => {
+    记勾选("customers", "/customers?page=2", ["c1", "c2"]);
+    expect(读勾选("customers", "/customers?page=2")).toEqual({ href: "/customers?page=2", ids: ["c1", "c2"], x: 0 });
+    expect(读勾选("customers", "/customers?page=3")).toBeNull();
+    expect(读勾选("pool", "/customers?page=2")).toBeNull();
+    记勾选("pool", "/pool", ["p1"]);
+    expect(读勾选("customers", "/customers?page=2")?.ids).toEqual(["c1", "c2"]);
+    expect(读勾选("pool", "/pool")?.ids).toEqual(["p1"]);
+  });
+
+  it("横滚位置：同一个地址上和勾选互相留着；换了地址另起一份（勾选清空）", () => {
+    记勾选("ent-projects", "/projects?keyword=a", ["x1"]);
+    记横滚("ent-projects", "/projects?keyword=a", 312.6);
+    expect(读勾选("ent-projects", "/projects?keyword=a")).toEqual({ href: "/projects?keyword=a", ids: ["x1"], x: 313 });
+    记勾选("ent-projects", "/projects?keyword=a", ["x1", "x2"]);
+    expect(读勾选("ent-projects", "/projects?keyword=a")?.x).toBe(313);
+    记横滚("ent-projects", "/projects?keyword=b", 80);
+    expect(读勾选("ent-projects", "/projects?keyword=b")).toEqual({ href: "/projects?keyword=b", ids: [], x: 80 });
+    expect(读勾选("ent-projects", "/projects?keyword=a")).toBeNull();
+    // 负数、NaN 当 0；取消全部勾选也记下（回来不再冒出旧勾选）
+    记横滚("ent-projects", "/projects?keyword=b", Number.NaN);
+    expect(读勾选("ent-projects", "/projects?keyword=b")?.x).toBe(0);
+    记勾选("ent-projects", "/projects?keyword=b", []);
+    expect(读勾选("ent-projects", "/projects?keyword=b")?.ids).toEqual([]);
+  });
+
+  it("浏览器里分页的表：第几页、每页几条跟着地址记；勾选、横滚改了照留；坏值不认", () => {
+    记本地页("contacts", "/contacts", 3, 50);
+    记勾选("contacts", "/contacts", ["k1"]);
+    记横滚("contacts", "/contacts", 40);
+    expect(读勾选("contacts", "/contacts")).toEqual({ href: "/contacts", ids: ["k1"], x: 40, 本地: { 当前: 3, 每页: 50 } });
+    expect(读勾选("contacts", "/contacts?keyword=a")).toBeNull();
+    记本地页("contacts", "/contacts", 0, 50);
+    expect(读勾选("contacts", "/contacts")?.本地).toBeUndefined();
+  });
+
+  it("没有 window（服务端）：当前地址是空串，不抛", () => {
+    expect(当前列表地址()).toBe("");
+  });
+});
+
+describe("按人分、退出清（#381）", () => {
+  it("换了人：同一张表同一个地址读不到上一个人的勾选、记住的列表地址；换回来还在；清列表记忆 后都没了", () => {
+    设列表主人("A");
+    记勾选("customers", "/customers?keyword=x", ["c1"]);
+    记地址("客户", "/customers?keyword=x");
+    设列表主人("B");
+    expect(读勾选("customers", "/customers?keyword=x")).toBeNull();
+    expect(解析地址们(地址快照()).客户).toBeUndefined();
+    设列表主人("A");
+    expect(读勾选("customers", "/customers?keyword=x")?.ids).toEqual(["c1"]);
+    expect(解析地址们(地址快照()).客户).toBe("/customers?keyword=x");
+    清列表记忆();
+    expect(读勾选("customers", "/customers?keyword=x")).toBeNull();
+    expect(解析地址们(地址快照()).客户).toBeUndefined();
+    设列表主人(null);
+  });
+});
+
+describe("什么时候还原（#381：和客户列表对齐）", () => {
+  it("从详情页回来还原；从别的页（左栏、首页）点进来不还原；ListMemory 先报了新路径也照样认", () => {
+    记进入("/customers/c1");
+    expect(进来可还原("/contacts")).toBe(true);
+    记进入("/contacts");
+    expect(进来可还原("/contacts")).toBe(true);
+    记进入("/dashboard");
+    expect(进来可还原("/contacts")).toBe(false);
+    记进入("/contacts");
+    expect(进来可还原("/contacts")).toBe(false);
+    记进入("/projects/p1");
+    expect(进来可还原("/channels")).toBe(true);
+    记进入("/channels");
+    记进入("/follow-ups/plans");
+    expect(进来可还原("/channels")).toBe(false);
+  });
+
+  it("浏览器后退 / 前进进来的还原（不管从哪页退回来）", () => {
+    记进入("/dashboard");
+    记后退();
+    expect(进来可还原("/channels")).toBe(true);
+    记进入("/channels");
+    expect(进来可还原("/channels")).toBe(true);
+    记进入("/contacts");
+    expect(进来可还原("/contacts")).toBe(false);
+  });
+
+  it("#381 复审：渲染那一下地址栏还是详情（Next 提交阶段才 pushState）也按传进来的路径判，不看 window.location", () => {
+    vi.stubGlobal("window", { location: { pathname: "/customers/c1", search: "" } });
+    try {
+      // 列表 → 详情 → 60 秒内点左栏回联系人：ListMemory 还没报 /contacts，地址栏也还是详情
+      记进入("/contacts");
+      记进入("/customers/c1");
+      expect(进来可还原("/contacts")).toBe(true);
+      // 反过来：详情 → 首页 → 左栏渠道，地址栏还停在首页
+      (window as unknown as { location: { pathname: string } }).location.pathname = "/dashboard";
+      记进入("/dashboard");
+      expect(进来可还原("/channels")).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("#381 复审：同一路径里后退（只换查询串）用掉「后退」，之后从左栏进别的列表不误判；后退到同一路径照样认", () => {
+    记进入("/customers");
+    记后退();
+    记进入("/customers");
+    expect(进来可还原("/customers")).toBe(true);
+    记进入("/dashboard");
+    expect(进来可还原("/channels")).toBe(false);
+    // 后退进来的列表里再换筛选（同一路径 push）：这一页仍算后退来的
+    记后退();
+    记进入("/contacts");
+    记进入("/contacts");
+    expect(进来可还原("/contacts")).toBe(true);
+  });
+});
+
+describe("不还原时清掉这张表的记录（#381 复审）", () => {
+  it("清勾选：这张表的勾选、横滚、本地页都没了；别的表不动", () => {
+    记勾选("客户列表x", "/customers", ["a"]);
+    记横滚("客户列表x", "/customers", 300);
+    记本地页("客户列表x", "/customers", 3, 20);
+    记勾选("联系人x", "/contacts", ["b"]);
+    清勾选("客户列表x");
+    expect(读勾选("客户列表x", "/customers")).toBeNull();
+    expect(读勾选("联系人x", "/contacts")?.ids).toEqual(["b"]);
+    清勾选("没记过的表");
   });
 });
