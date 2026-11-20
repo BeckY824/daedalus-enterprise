@@ -26,6 +26,9 @@ env:
 # （E2E 网页 1–5/5、和 main 逐字段一致的差分）护不住我们发出去的东西，删掉。
 # 分支保护认的三个必过检查名字不变：「类型 / 代码检查 / 单元测试」「E2E」「密钥扫描」，
 # 前两个现在是汇总 job，等各片跑完、全绿才绿。10-29 起「E2E」也等速度闸门（perf）。
+# 11-20 批次 32A 回压（用例、断言、超时一条不动，只改怎么排）：单测按耗时分片 + 跑在 Playwright 镜像里（不再每片 apt 装浏览器依赖）、
+# 企业版主流程拆 2 片、网页 E2E 6 片并成 4 片。11-19～20 共 45 轮实测每轮 15–25 分钟，关键路径几乎都是最慢的那片单测；
+# 账号同时只给 20 台 runner，原来一轮就要 23 台、和 main 那轮叠在一起时单测片排队 2–6 分钟。现在一轮最多 20 台
 jobs:
   lint:
     name: 类型 / 代码检查（tsc + eslint）
@@ -58,12 +61,11 @@ jobs:
       mode: ${{ steps.pick.outputs.mode }}
       shards: ${{ steps.pick.outputs.shards }}
     steps:
+      # 11-20 批次 32A：推 main / PR 全套也要 checkout——全套的分片表也在这里按耗时算（scripts/ci/unit-timing.json），不再交给 vitest --shard
       - uses: actions/checkout@v4
-        if: github.event_name == 'pull_request'
         with:
-          fetch-depth: 0
+          fetch-depth: ${{ github.event_name == 'pull_request' && 0 || 1 }}
       - uses: actions/setup-node@v4
-        if: github.event_name == 'pull_request'
         with:
           node-version: 22
       - id: pick
@@ -72,27 +74,44 @@ jobs:
         # 最后一行打范围标记（部署脚本认）：全套 = 这一轮和推 main 完全一样；牵连 = 单测只跑牵连的；
         # 单测全套 = related-tests 自己退回了全套，但 E2E 仍按 PR 设置（--max-failures=2），部署脚本不认它。
         # 标记用 ${scope} 拼出来，日志里回显的脚本原文就不会被认成标记；测试代码树 = 这一轮实际测的代码（PR 是和 base 的合并结果）
+        # 全套（含 related-tests 自己退回的全套）分片表里的用例数要等于 tests/ 下 *.test.ts 的个数，对不上就红：宁可停，不许漏跑
         run: |
-          if [ "${{ github.event_name }}" != pull_request ]; then
-            echo "mode=full" >> "$GITHUB_OUTPUT"; echo "推送：全套"; scope=全套; echo "CI范围=${scope}"; exit 0
-          fi
+          核对() {
+            if grep -q '^mode=full$' "$GITHUB_OUTPUT"; then
+              want=$(find tests -name '*.test.ts' -not -path '*/node_modules/*' | wc -l | tr -d ' ')
+              got=$(grep '^shards=' "$GITHUB_OUTPUT" | tail -1 | sed 's/^shards=//' | jq '[.[][]] | unique | length')
+              echo "全套分片核对：tests/ 下 ${want} 个，分片表 ${got} 个"
+              [ "$want" -gt 0 ] && [ "$want" -eq "$got" ] || { echo "::error::全套分片表和 tests/ 下的用例个数对不上（${got} / ${want}）"; exit 1; }
+            fi
+          }
           tree=$(git rev-parse 'HEAD^{tree}')
+          if [ "${{ github.event_name }}" != pull_request ]; then
+            node scripts/ci/related-tests.mjs select --all --shards 8; 核对
+            echo "推送：全套"; scope=全套; echo "CI范围=${scope}"; exit 0
+          fi
           if [ "$ENT_CI_FULL" = true ]; then
-            echo "mode=full" >> "$GITHUB_OUTPUT"; echo "PR 全套（标签 full-ci 或 hotfix/ 分支）：单测不筛、E2E 不提前停，和推 main 一样"
+            node scripts/ci/related-tests.mjs select --all --shards 8; 核对
+            echo "PR 全套（标签 full-ci 或 hotfix/ 分支）：单测不筛、E2E 不提前停，和推 main 一样"
             scope=全套; echo "CI范围=${scope} 测试代码树=${tree}"; exit 0
           fi
           git fetch -q origin "$BASE_REF"
-          node scripts/ci/related-tests.mjs select --base "$(git merge-base FETCH_HEAD HEAD)" --shards 8
+          node scripts/ci/related-tests.mjs select --base "$(git merge-base FETCH_HEAD HEAD)" --shards 8; 核对
           if grep -q '^mode=full$' "$GITHUB_OUTPUT"; then scope=单测全套; else scope=牵连; fi
           echo "CI范围=${scope} 测试代码树=${tree}"
 
   unit:
     # 11-17：4 片各 10–14 分钟，是 CI 关键路径；仓库公开、runner 免费，拆成 8 片
+    # 11-20 批次 32A：每片跑哪些文件都由「单测范围」按耗时表分好（全套也是），8 片各 ~470 秒；
+    # 原来 vitest --shard 按个数切，最慢一片 ~620–780 秒、最快 ~330 秒，最慢那片就是整轮 CI 的关键路径
     # PR 相关模式下每片只跑分给它的那几个用例，分不到的直接通过（job 名不变，聚合 job 照旧看 needs.unit.result）
     name: 单元测试 ${{ matrix.shard }}/8
     needs: select
-    # 钉 24.04：ubuntu-latest 2026-10-28 起逐步换成 26.04，Playwright 1.56 在上面装不了 chromium，整片挂
     runs-on: ubuntu-24.04
+    # 11-20 批次 32A：跑在和 E2E 同一个 Playwright 镜像里（自带 Chromium 和系统依赖），不再每片 playwright install --with-deps：
+    # 那一步要 apt 下 ~32 MB，平均 83 秒、两成多超过 2 分钟（Ubuntu 源 140 kB/s 时近 4 分钟），11-19 有两轮 4–6 片一起
+    # 「Installation process exited with code: 100」整片红。镜像版本跟 package.json 的 @playwright/test 一起换
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
     strategy:
       fail-fast: false
       matrix:
@@ -104,47 +123,42 @@ jobs:
           MODE: ${{ needs.select.outputs.mode }}
           SHARDS: ${{ needs.select.outputs.shards }}
         run: |
-          if [ "$MODE" != related ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"; echo "args=--shard=${{ matrix.shard }}/8" >> "$GITHUB_OUTPUT"; echo "全套：--shard=${{ matrix.shard }}/8"; exit 0
+          files=$(echo "${SHARDS:-[]}" | jq -r '.[${{ matrix.shard }} - 1][]?' | tr '\n' ' ')
+          if [ -n "$files" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "args=$files" >> "$GITHUB_OUTPUT"; echo "${MODE}：$(echo $files | wc -w | tr -d ' ') 个文件：$files"; exit 0
           fi
-          files=$(echo "$SHARDS" | jq -r '.[${{ matrix.shard }} - 1][]?' | tr '\n' ' ')
-          if [ -z "$files" ]; then echo "run=false" >> "$GITHUB_OUTPUT"; echo "相关模式：这片没分到用例，直接通过"; exit 0; fi
-          echo "run=true" >> "$GITHUB_OUTPUT"; echo "args=$files" >> "$GITHUB_OUTPUT"; echo "相关模式：$files"
+          if [ "$MODE" = related ]; then echo "run=false" >> "$GITHUB_OUTPUT"; echo "相关模式：这片没分到用例，直接通过"; exit 0; fi
+          # 全套却没拿到分片表（不该发生，「单测范围」已核对过个数）：退回 vitest 自己按个数切，宁可不匀也不漏
+          echo "run=true" >> "$GITHUB_OUTPUT"; echo "args=--shard=${{ matrix.shard }}/8" >> "$GITHUB_OUTPUT"; echo "全套（没有分片表）：--shard=${{ matrix.shard }}/8"
       - uses: actions/checkout@v4
         if: steps.scope.outputs.run == 'true'
-      - uses: actions/setup-node@v4
+      # 容器里没有 setup-node，npm 下载缓存自己存（同 E2E）
+      - name: 缓存 npm 下载
         if: steps.scope.outputs.run == 'true'
+        uses: actions/cache@v4
         with:
-          node-version: 22
-          cache: npm
+          path: ~/.npm
+          key: npm-e2e-${{ hashFiles('package-lock.json') }}
       # 装依赖断网（Prisma 引擎下载 ECONNRESET，10-28 #47 后 main 红过）重试 2 次，别整轮重跑
       - if: steps.scope.outputs.run == 'true'
-        run: for i in 1 2 3; do npm ci && break; [ $i = 3 ] && exit 1; echo "npm ci 第 $i 次失败，15 秒后重试"; sleep 15; done
+        run: node -v; for i in 1 2 3; do npm ci && break; [ $i = 3 ] && exit 1; echo "npm ci 第 $i 次失败，15 秒后重试"; sleep 15; done
       - if: steps.scope.outputs.run == 'true'
         run: npx prisma generate
       - if: steps.scope.outputs.run == 'true'
         run: npx prisma generate --schema=prisma/control.prisma
         env:
           CONTROL_DATABASE_URL: file:/tmp/control-ci.db
-      # 浏览器按 Playwright 版本缓存：命中了下面那步只补系统依赖，不再每次下载 Chromium（10-24 提速）
-      - name: 缓存 Playwright 浏览器
-        if: steps.scope.outputs.run == 'true'
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-        # 有几份单测在真 Chromium 里点组件（ai-settings-ui、import-ai-columns-ui、r6-review-otp、r7-review-auth-ui），
-        # 没装浏览器整份起不来（2026-10-05 main 上第一次撞到）
-      - if: steps.scope.outputs.run == 'true'
-        run: npx playwright install --with-deps chromium
+        # 有几份单测在真 Chromium 里点组件（*.ui.test.ts 等，约 160 份），浏览器用镜像自带的（/ms-playwright）。
         # 与生产（Dockerfile 的 ENV TZ=Asia/Shanghai）一致。
         # vitest.config.ts 里也钉了一道，这里再写一次是为了让人看 workflow 就知道。
         # 每片在自己的机器上跑，测试库 prisma/test.db 各建各的，互不干扰
-        # 多挂一个 json 报告只为留逐文件耗时（dot 不带），过不过仍由 vitest 退出码定
+        # 多挂一个 json 报告只为留逐文件耗时（dot 不带），过不过仍由 vitest 退出码定；scripts/ci/unit-timing.json 就从这些报告重写
       - if: steps.scope.outputs.run == 'true'
         run: npx vitest run ${{ steps.scope.outputs.args }} --passWithNoTests --reporter=dot --reporter=json --outputFile.json=test-results/vitest-timing-${{ matrix.shard }}.json
         env:
           TZ: Asia/Shanghai
+          # 同 E2E：容器里 GitHub 把 HOME 设成 /github/home，Chromium 用 root 自己的家目录
+          HOME: /root
       # 下面两步只看耗时，自己出错不许把这一片变红
       - name: 最慢的 20 个测试文件
         if: ${{ !cancelled() && steps.scope.outputs.run == 'true' }}
@@ -173,14 +187,14 @@ jobs:
           [ "${{ needs.lint.result }}" = success ] && [ "${{ needs.unit.result }}" = success ]
 
   e2e-web-ent:
-    name: E2E 网页·企业版开 ${{ matrix.shard }}/6
+    name: E2E 网页·企业版开 ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.56.1-noble
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       # 容器里没有 setup-node，npm 下载缓存自己存（10-24 提速）
@@ -213,7 +227,10 @@ jobs:
       # 6 片（10-28，原 5 片）：按 main 绿跑各文件实测耗时模拟 playwright 的按条数切法，
       # 5 片最慢一片用例 ~188 秒、6 片 ~150 秒、7 片 ~128 秒；第 7 片再省 20 秒不值一台机器的固定开销（装依赖 + 构建 ~3–4 分钟）。
       # 最大的文件（workbench ~67 秒）远小于每片 ~105 秒的均值，不用拆文件
-      - run: npx playwright test --shard=${{ matrix.shard }}/6 ${{ env.ENT_CI_FULL != 'true' && '--max-failures=2' || '' }}
+      # 4 片（11-20 批次 32A，原 6 片）：11-19～20 共 45 轮实测，每片 ~6 分钟里装依赖 + next build（含 next.config 打 OCR 47 秒、TypeScript 78 秒）
+      # 就占 ~4 分钟，用例本身只有 60–140 秒（6 片合计 ~7 分钟）。按各文件实测秒数套 playwright 的切法：4 片最慢一片 ~150 秒、6 片 ~125 秒，
+      # 整片多 ~30 秒、~7 分钟，仍短于单测和排版闸门，整轮不变慢；省下 2 台机器（账号同时只给 20 台，一轮原来就要 23 台）
+      - run: npx playwright test --shard=${{ matrix.shard }}/4 ${{ env.ENT_CI_FULL != 'true' && '--max-failures=2' || '' }}
         env:
           CRM_ENTERPRISE: "1"
           E2E_PROD: "1"
@@ -228,10 +245,17 @@ jobs:
           retention-days: 7
 
   e2e-ent-flow:
-    name: E2E 企业版主流程
+    # 2 片（11-20 批次 32A）：原来一台串行 ~10–11 分钟（用例 ~8.5 分钟），单测提速后就是它压整轮。
+    # 四份 spec 各自现造人和数据、文件头都写了互不依赖；分开后每片各起一份服务、各建一份库（webServer 里跑 global-setup），
+    # 片内仍是 1 个 worker 按文件串行。playwright 按文件切：list-return + main-flow ~4 分钟、owner-first-batch + record-followup ~3.3 分钟
+    name: E2E 企业版主流程 ${{ matrix.shard }}/2
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.56.1-noble
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v4
       - name: 缓存 npm 下载
@@ -247,14 +271,14 @@ jobs:
           CONTROL_DATABASE_URL: file:/tmp/control-ci.db
       # 只有企业版才有的流程（2026-10-27）：四类账号、导入导出权限、跳转、组织设置、项目公海整体转让。
       # 自己的库和种子（e2e-ent/global-setup.ts），测试密码每轮随机、不进仓库
-      - run: npm run test:ent -- ${{ env.ENT_CI_FULL != 'true' && '--max-failures=2' || '' }}
+      - run: npm run test:ent -- --shard=${{ matrix.shard }}/2 ${{ env.ENT_CI_FULL != 'true' && '--max-failures=2' || '' }}
         env:
           HOME: /root
           TZ: Asia/Shanghai
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-report-ent-flow
+          name: playwright-report-ent-flow-${{ matrix.shard }}
           path: test-results/
           retention-days: 7
 
