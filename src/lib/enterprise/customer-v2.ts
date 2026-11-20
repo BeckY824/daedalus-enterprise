@@ -29,6 +29,27 @@ export function 联系人姓名问题(企业: boolean, name: unknown, 号们: re
   return 号们.some((v) => typeof v === "string" && v.trim()) ? null : 姓名号码至少一项;
 }
 
+/** 撞号提示要看的几项（同 contact-dedupe.ts 的 撞到的联系人；这里只取拼话术用到的，免得浏览器端引服务端模块） */
+type 撞的那位 = { contactId: string | null; name: string | null; customerId: string | null; 客户本身?: true };
+
+/**
+ * 联系人号码撞了之后「怎么办」那一句（11-20 3703 实操）：按界面上真给得出的动作拼，不再一律写「或把那位挂到本客户」。
+ * - 撞的是这位客户自己的联系人（同一家第二位填了一样的总机）：挂过来不成立，说清是哪位、请改号码；
+ * - 能挂 = 这个入口摆「挂到本客户」键（客户页上新建、不是受限详情），且撞到的里有看得到的、别家客户的联系人：才提挂过来；
+ * - 别的（看不到的、撞的是客户本身的号）：只叫核对后改号码。
+ * 这位客户 = 正在给哪位客户存联系人；客户叫法 = 业务配置里客户叫什么
+ */
+export function 撞号怎么办(撞: readonly 撞的那位[], 这位客户: string | null | undefined, 能挂: boolean, 客户叫法 = "客户"): string {
+  const 本家的 = 这位客户 ? 撞.filter((x) => !x.客户本身 && x.contactId && x.customerId === 这位客户) : [];
+  const 可挂 = 能挂 && 撞.some((x) => !x.客户本身 && x.contactId && x.customerId && x.customerId !== 这位客户);
+  const 本家话 = 本家的.length
+    ? `本${客户叫法}已有联系人${本家的[0].name?.trim() ? `「${本家的[0].name.trim()}」` : "（没填姓名）"}用了这个号码`
+    : "";
+  if (本家的.length && 本家的.length === 撞.length) return `${本家话}，号码全公司唯一，请改号码`;
+  const 后 = `号码全公司唯一，不能重复登记：核对后改号码${可挂 ? `，或把那位挂到本${客户叫法}` : ""}`;
+  return 本家话 ? `${本家话}；${后}` : 后;
+}
+
 // ---------- 客户级别 ----------
 
 /** 企业版客户级别（定稿 P5 第 23 条）：S 最高。还是存在 CustomerExtra.level 这一列，只换了能选的几档 */

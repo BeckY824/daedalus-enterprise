@@ -26,7 +26,7 @@ import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 可选项, 字典定义, 企业字典, 页面释义 } from "@/lib/enterprise/dict";
 import { 字典项释义 } from "@/lib/enterprise/dict-kinds";
-import { 级别显示, 级别选项, 级别星数, 满星, 联系人号查重键, 自定号码键 } from "@/lib/enterprise/customer-v2";
+import { 级别显示, 级别选项, 级别星数, 满星, 联系人号查重键, 自定号码键, 撞号怎么办 } from "@/lib/enterprise/customer-v2";
 import { 客户的联系人们, 联系人另挂, 联系人挂靠回填 } from "@/lib/enterprise/customer-v2-db";
 import { 联系人查重, 联系人撞号话 } from "@/lib/enterprise/contact-dedupe";
 import { 清洗, 空索引, type 已有联系人 } from "@/lib/enterprise-import/clean";
@@ -458,8 +458,39 @@ describe("联系方式查重", () => {
     expect(联系人撞号话([见], 叫)).toContain("「张三」（某客户）");
     // 撞到的就在这位客户上：不叫人「挂到这位客户上」（11-03 B7-6）
     expect(联系人撞号话([见], 叫, 见.customerId!)).not.toContain("挂到这位客户上");
-    expect(联系人撞号话([见], 叫, "别的客户")).toContain("挂到这位客户上");
+    // 能挂 = 新建（编辑没有挂过来这条路）才提（11-20 3703 实操）
+    expect(联系人撞号话([见], 叫, "别的客户", true)).toContain("或把那位挂到本客户");
+    expect(联系人撞号话([见], 叫, "别的客户")).not.toContain("挂到");
+    // 撞的是看不到的那位：不提挂（框里也没有这颗键）
+    expect(联系人撞号话([{ ...见, contactId: null, name: null, customerId: null, customerName: null }], 叫, "别的客户", true)).not.toContain("挂到");
     expect(联系人撞号话([{ ...见, contactId: null, name: null, customerId: null, customerName: null }, 见], 叫)).toContain("销售名下的一位联系人身上等 2 位");
+  });
+});
+
+describe("撞号后怎么办那一句（撞号怎么办，11-20 3703 实操）", () => {
+  const 别家 = { contactId: "c1", name: "张三", customerId: "u1" };
+  const 看不到 = { contactId: null, name: null, customerId: null };
+  const 本家 = { contactId: "c2", name: "总机甲", customerId: "k0" };
+  const 客户本身 = { contactId: null, name: null, customerId: "u2", 客户本身: true as const };
+  it("撞到看不到的联系人：只叫核对后改号码，不提挂（框里没有这颗键）", () => {
+    expect(撞号怎么办([看不到], "k0", true)).toBe("号码全公司唯一，不能重复登记：核对后改号码");
+  });
+  it("撞到别家客户本身的号：只叫改号码", () => {
+    expect(撞号怎么办([客户本身], "k0", true)).toBe("号码全公司唯一，不能重复登记：核对后改号码");
+  });
+  it("撞到本客户自己的联系人：说清是哪位、请改号码，不提挂", () => {
+    expect(撞号怎么办([本家], "k0", true)).toBe("本客户已有联系人「总机甲」用了这个号码，号码全公司唯一，请改号码");
+    expect(撞号怎么办([{ ...本家, name: "" }], "k0", true)).toBe("本客户已有联系人（没填姓名）用了这个号码，号码全公司唯一，请改号码");
+    // 业务配置换了叫法
+    expect(撞号怎么办([本家], "k0", true, "学员")).toBe("本学员已有联系人「总机甲」用了这个号码，号码全公司唯一，请改号码");
+  });
+  it("撞到看得到的别家联系人：摆了挂键才提挂（客户页上新建）；编辑 / 联系人页 / 受限详情不提", () => {
+    expect(撞号怎么办([别家], "k0", true)).toBe("号码全公司唯一，不能重复登记：核对后改号码，或把那位挂到本客户");
+    expect(撞号怎么办([别家], "k0", false)).toBe("号码全公司唯一，不能重复登记：核对后改号码");
+  });
+  it("本家和别家一起撞：两头都说", () => {
+    expect(撞号怎么办([本家, 别家], "k0", true)).toBe("本客户已有联系人「总机甲」用了这个号码；号码全公司唯一，不能重复登记：核对后改号码，或把那位挂到本客户");
+    expect(撞号怎么办([本家, 看不到], "k0", true)).toBe("本客户已有联系人「总机甲」用了这个号码；号码全公司唯一，不能重复登记：核对后改号码");
   });
 });
 

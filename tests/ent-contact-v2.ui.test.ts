@@ -17,7 +17,7 @@ const plugin: Plugin = { name: "contact-v2-boundaries", setup(b) {
   stub(/^\.\/actions$/, `
     export const saveUnassignedContact=async()=>({ok:true});
     // dt.contact：号码失焦先查（默认没撞；__先查撞 给了就撞那几位）
-    export const 联系人号码先查=async(们,除了)=>{(window.__先查=window.__先查||[]).push([们,除了]);return {ok:true,撞了:window.__先查撞||[]};};
+    export const 联系人号码先查=async(们,除了)=>{(window.__先查=window.__先查||[]).push([们,除了]);return {ok:true,撞了:window.__先查撞||[],...(window.__先查回收站?{回收站:window.__先查回收站}:{})};};
     export const saveContact=async(x)=>{(window.__存=window.__存||[]).push(x);
       if(x.照存) return {ok:true};
       return {ok:false,error:'撞了',撞了:[
@@ -133,6 +133,46 @@ it("dt.contact：号码一失焦就查，撞了不等点保存就摆黄条（挂
     expect(await page.evaluate(() => (window as unknown as { __存?: unknown[] }).__存 ?? [])).toEqual([]);
     await 条.getByRole("button", { name: /挂到本/ }).waitFor();
     expect(await 条.getByRole("button", { name: /仍然/ }).count()).toBe(0);
+  } finally { await page.close(); }
+});
+
+it("撞号那一句按真给得出的动作说（11-20 3703 实操）：看不到的 / 客户本身只叫改号码；本客户自己的联系人说清是哪位；看得到的别家才提挂", async () => {
+  const 情形: [string, unknown[], RegExp | string, boolean][] = [
+    ["看不到的", [{ contactId: null, name: null, customerId: null, customerName: null, 同事: "销售B", kind: "phone", value: "13900000001" }], "号码全公司唯一，不能重复登记：核对后改号码", false],
+    ["客户本身", [{ contactId: null, name: null, customerId: "k1", customerName: "甲公司", 同事: "销售", kind: "phone", value: "13900000001", 客户本身: true }], "号码全公司唯一，不能重复登记：核对后改号码", false],
+    ["本客户自己的", [{ contactId: "p2", name: "总机甲", customerId: "k0", customerName: "本家", 同事: "销售", kind: "phone", value: "13900000001" }], "本客户已有联系人「总机甲」用了这个号码，号码全公司唯一，请改号码", false],
+    ["看得到的别家", [{ contactId: "p1", name: "张三", customerId: "k1", customerName: "甲公司", 同事: "销售", kind: "phone", value: "13900000001" }], "号码全公司唯一，不能重复登记：核对后改号码，或把那位挂到本客户", true],
+  ];
+  for (const [名, 撞, 话, 有挂] of 情形) {
+    const page = await open("__表单");
+    try {
+      await page.evaluate((x) => { Reflect.set(window, "__先查撞", x); }, 撞);
+      await page.getByLabel("姓名").fill("李四");
+      await page.getByPlaceholder(/号码/).first().fill("13900000001");
+      await page.getByLabel("姓名").click();
+      const 条 = page.locator(".ant-alert-warning");
+      await 条.waitFor();
+      expect(await page.getByTestId("contact-dup-advice").innerText(), 名).toBe(话);
+      expect(await 条.getByRole("button", { name: /挂到本/ }).count(), `${名} 挂键`).toBe(有挂 ? 1 : 0);
+    } finally { await page.close(); }
+  }
+});
+
+it("号码在回收站里（11-20 3703 实操）：失焦就摆「从回收站捞回」，不等点保存（同建档向导）；改号码收起", async () => {
+  const page = await open("__表单");
+  try {
+    await page.evaluate(() => { Reflect.set(window, "__先查回收站", { 类型: "手机号", 值: "13900000009" }); });
+    await page.getByLabel("姓名").fill("李四");
+    await page.getByPlaceholder(/号码/).first().fill("13900000009");
+    await page.getByLabel("姓名").click();
+    const 条 = page.getByTestId("contact-trash-hit");
+    await 条.waitFor();
+    expect(await 条.innerText()).toContain("这个号码在回收站里的客户上，先捞回或改号码");
+    await 条.getByTestId("rescue-from-trash").waitFor();
+    // 还没点保存
+    expect(await page.evaluate(() => Reflect.get(window, "__存") ?? [])).toEqual([]);
+    await page.getByPlaceholder(/号码/).first().fill("13900000010");
+    await 条.waitFor({ state: "detached" });
   } finally { await page.close(); }
 });
 

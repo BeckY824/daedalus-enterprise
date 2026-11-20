@@ -23,7 +23,7 @@ import { 读组织 } from "@/lib/enterprise/org";
 import { 只看某人键 } from "@/lib/enterprise/org-core";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 import { 验号码 } from "@/lib/enterprise/contact-format";
-import { saveContact } from "@/app/(app)/customers/[id]/actions";
+import { saveContact, 联系人号码先查 } from "@/app/(app)/customers/[id]/actions";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 负责人和上级, 在职负责人或上级 } from "@/lib/enterprise/org-core";
@@ -132,6 +132,22 @@ describe("新建入口 P2-6 联系人表单查重算回收站（P-删-08）", ()
     expect(r).toMatchObject({ ok: false, error: expect.stringContaining("回收站"), 回收站: { 类型: "手机号", 值: "13900000301" } });
     expect(await saveContact({ ...(交 as object), 照存: true } as never)).toMatchObject({ ok: false, 回收站: { 类型: "手机号" } });
     expect(await prisma.contact.count({ where: { name: "新联系人" } })).toBe(0);
+  });
+
+  it("号码失焦先查也说回收站（11-20 3703 实操，同建档向导）：新建回 回收站；编辑时这位原来就有的号不说", async () => {
+    await 客户(销售, { phone: "13900000303", deletedAt: new Date() });
+    const 活 = await 客户(销售);
+    当(系管);
+    const r = await 联系人号码先查([{ kind: "phone", value: "13900000303" }], null, 活);
+    expect(r).toMatchObject({ ok: true, 撞了: [], 回收站: { 类型: "手机号", 值: "13900000303" } });
+    // 编辑一位原来就记着这个号的：不叫人捞（同 saveContact 只查新加的号）
+    const 老 = await prisma.contact.create({ data: { customerId: 活, name: "老联系人", phone: "13900000303" } });
+    const 编 = await 联系人号码先查([{ kind: "phone", value: "13900000303" }], 老.id, 活);
+    expect(编).toMatchObject({ ok: true });
+    expect(编.ok && "回收站" in 编 ? 编.回收站 : null).toBeNull();
+    // 对照：回收站里没有的号不说
+    const 没 = await 联系人号码先查([{ kind: "phone", value: "13900000304" }], null, 活);
+    expect(没.ok && "回收站" in 没 ? 没.回收站 : null).toBeNull();
   });
 
   it("对照：回收站里没有的号照常存", async () => {

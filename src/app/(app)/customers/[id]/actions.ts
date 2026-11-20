@@ -810,7 +810,7 @@ function 刷新联系人(customerId?: string | null) {
  * 号码不合规的不在这里说（保存时照旧说），查不了也不挡——保存那一步还会再查一遍。
  * 除了 = 编辑时排除这位自己
  */
-export async function 联系人号码先查(号码们: { kind: string; value: string }[], 除了?: string | null, 客户?: string | null): Promise<{ ok: true; 撞了: 撞到的联系人[] } | { ok: false; error: string }> {
+export async function 联系人号码先查(号码们: { kind: string; value: string }[], 除了?: string | null, 客户?: string | null): Promise<{ ok: true; 撞了: 撞到的联系人[]; 回收站?: { 类型: string; 值: string } } | { ok: false; error: string }> {
   // 认人放在 try 外：没登录照常抛（按未登录处理），不被下面「号码没查成」那句盖住
   await requireUser();
   try {
@@ -820,7 +820,21 @@ export async function 联系人号码先查(号码们: { kind: string; value: st
     const 号 = await 验联系人号码们(行们, []);
     if (!号.ok) return { ok: true, 撞了: [] };
     const 撞了 = 号.行们.length ? await 联系人查重(defaultClient, 号.行们, await 读的我(defaultClient), 除了 ?? undefined, 客户 ?? undefined) : [];
-    return { ok: true, 撞了 };
+    if (撞了.length) return { ok: true, 撞了 };
+    /*
+      在用的没撞、回收站里撞了（11-20 3703 实操）：失焦就说、给捞回，同建档向导（原来要点保存才拦）。
+      同 saveContact：编辑时这位原来就有的号不算（原来就记着的号不因回收站里有而叫人捞）
+    */
+    const 原有 = new Set<string>();
+    if (除了) {
+      const 原 = await prisma.contact.findUnique({ where: { id: 除了 }, select: { phone: true, email: true, wechat: true, contactMethods: { select: { kind: true, numberKey: true } } } });
+      for (const x of 原?.contactMethods ?? []) 原有.add(`${x.kind}|${x.numberKey}`);
+      if (原?.phone) 原有.add(`phone|${号键(原.phone)}`);
+      for (const [kind, v] of [["email", 原?.email], ["wechat", 原?.wechat]] as const) if (v?.trim()) 原有.add(`${kind}|${v.trim().toLowerCase()}`);
+    }
+    const 新的 = 号.行们.filter((x) => !原有.has(`${x.kind}|${x.numberKey}`));
+    const 回收站 = 新的.length ? await 联系人回收站撞(prisma, 新的) : null;
+    return { ok: true, 撞了, ...(回收站 ? { 回收站 } : {}) };
   } catch {
     return { ok: false, error: "号码没查成，保存时会再查一遍" };
   }
@@ -906,7 +920,7 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
       const 撞了 = 新的.length ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), input.id, 主客户) : [];
       if (撞了.length) {
         const 表 = await 号码种类表();
-        return { ok: false as const, error: 联系人撞号话(撞了, (k) => 种类叫法(表, k), 主客户), 撞了 };
+        return { ok: false as const, error: 联系人撞号话(撞了, (k) => 种类叫法(表, k), 主客户, !input.id), 撞了 };
       }
       // 在用的没撞、回收站里撞了（审核 11-18 新建入口 P2-6，P-删-08，同建档入口）：拦下给捞回
       const 回收站 = 企业版() && 新的.length ? await 联系人回收站撞(prisma, 新的) : null;
