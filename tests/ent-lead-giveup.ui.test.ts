@@ -16,7 +16,7 @@ let browser: Browser, bundle: string, orgBundle: string;
 const 空跑 = "async()=>({ok:true})";
 const plugin: Plugin = { name: "giveup", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
-  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__refresh=(window.__refresh||0)+1},push(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
+  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__refresh=(window.__refresh||0)+1},push(u){(window.__push||(window.__push=[])).push(u)}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^\.\/giveup-actions$/, 补全动作桩("src/app/(app)/projects/[id]/giveup-actions.ts",
     "export const 放弃线索Action=async(...a)=>{(window.__调用||(window.__调用=[])).push(a);return window.__回||{ok:true,接手人:'乙'}};"));
   stub(/^\.\/LeadAssignCard$/, "export default function C(){return null}");
@@ -67,7 +67,7 @@ async function open(入口: 入口, o: { width?: number; 有验证?: boolean; �
 const 调用们 = (page: Page) => page.evaluate(() => (window as unknown as { __调用?: unknown[][] }).__调用 ?? []);
 const 能 = { 可: true, 本月已用: false };
 
-it("原因三选一、没有线索无效 / 质量不达标；没选、选其他没写时确认钮灰着；确认调动作、刷新、提示条换成已放弃", async () => {
+it("原因三选一、没有线索无效 / 质量不达标；没选、选其他没写时确认钮灰着；确认调动作，提示条换成已放弃、不刷新本页（转走了就看不到了），点「知道了」回项目列表", async () => {
   const { page, errors } = await open(能);
   try {
     expect(await page.getByTestId("proj-giveup").innerText()).toContain("每人每月 1 次");
@@ -87,8 +87,11 @@ it("原因三选一、没有线索无效 / 质量不达标；没选、选其他�
     await 确认.click();
     await page.getByTestId("proj-giveup-done").waitFor();
     expect(await 调用们(page)).toEqual([["p1", "其他", "下午去医院"]]);
-    expect(await page.evaluate(() => (window as unknown as { __refresh?: number }).__refresh)).toBe(1);
+    // [审查 3] 不刷新本页：线索已经转走，刷新会落到看不到的页
+    expect(await page.evaluate(() => (window as unknown as { __refresh?: number }).__refresh ?? 0)).toBe(0);
     expect(await page.getByTestId("proj-giveup-done").innerText()).toContain("转给了 乙");
+    await page.getByTestId("proj-giveup-done").getByRole("button", { name: "知道了" }).click();
+    expect(await page.evaluate(() => (window as unknown as { __push?: string[] }).__push)).toEqual(["/projects"]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

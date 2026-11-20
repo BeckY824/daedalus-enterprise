@@ -7,6 +7,7 @@
  *   - 线索阶段、没结局、不在公海（项目和客户都不在）、不在待分配、没删
  *   - 新分配给他的（lead-giveup-core.ts 新分配时刻：市场分配（自动 / 指定 / 定时）、超时转来的、别人主动放弃转来的），
  *     接手在往回 7 天里；超时转开着时到点就被转走了，所以实际就是「接手后、超时转到点前」
+ *   - 这条占过他的名额：他在这条上最近一条分配记录算数（counted），或是补发给他的；管理从公海分、企划不计数的不给（M-线索-02 没占过的不补）
  *   - 本人还没记有效沟通：同超时转的「首次沟通」口径（reply-overdue.ts 负责人跟过的 + 分配后沟通过的，只认负责人本人，
  *     有效 = reply-notice.ts 是有效沟通）。记过的不出按钮
  * 出了按钮但点不了（灰着、写为什么）：验证中（X-77，等复核、等销售：不能改负责人）；本月已经用过（每人每月 1 次，北京自然月）。
@@ -15,7 +16,7 @@
  * 点了（原因必填，选项 外出 / 忙不过来 / 其他，不含「线索无效 / 质量不达标」，那种走判无效）：
  *   1. 先占这个月的次数（EntLeadGiveUp 一行，(userId, month) 唯一：同时点两条只成一条）
  *   2. 按超时转同一套挑人转给本线下一位（assign-actions.ts 超时转出：这条线索的流转线、参与状态、本月分得最少、配额照查），
- *      排除放弃人和这一轮超时过的人，挑不到再开新一轮（仍不给放弃人）。挑不到 / 没转成 = 删掉占的那一行（不扣次数）、什么都不改，
+ *      排除这条线索上放弃过的人（EntLeadGiveUp）和这一轮超时过的人，挑不到再开新一轮（仍不给放弃过的人；超时转同样不给回他们）。挑不到 / 没转成 = 删掉占的那一行（不扣次数）、什么都不改，
  *      明确回「这条转不出去」
  *   3. 接手人照记一次「本月已分」（超时转出 不用待补、算数，同 P-转-29 ②）；放弃人原来那条分配记录照算（不退名额、不改 counted）
  *   4. 客户随线索：照超时转（reply-overdue.ts 客户随线索：原负责人手上还有这位客户别的进行中项目就留给他）
@@ -41,10 +42,10 @@ import { 规则开着 } from "./rules";
 import { 月份 } from "./lead-assign";
 import { 读组织于 } from "./org";
 import { 只读角色 } from "./permissions";
-import { 是销售, 负责人跟过的, 分配后沟通过的, 读试过, 本轮排除, 客户随线索, 超时提醒分钟, 超时自动转开着, 客户在谁名下话 } from "./reply-overdue";
+import { 是销售, 负责人跟过的, 分配后沟通过的, 读试过, 本轮排除, 客户随线索, 超时提醒分钟, 客户在谁名下话, 放弃过的人, 会按超时计时 } from "./reply-overdue";
 import { 超时转令牌 } from "./scheduled-assign-token";
 import { 系统操作人 } from "./scheduled-assign";
-import { 放弃待补种类 } from "./invalid-makeup";
+import { 放弃待补种类, 是补发来的 } from "./invalid-makeup";
 import { notify } from "./notify";
 import { 分配通知 } from "./notice-sources";
 import { 新分配时刻, 在放弃窗口, 认放弃原因, 本月用过话, 每月放弃次数, type 放弃入口 } from "./lead-giveup-core";
@@ -83,6 +84,10 @@ export async function 放弃资格(me: Pick<SessionUser, "id" | "视图由">, pr
     ]);
     const 接手 = 新分配时刻(me.id, p, 痕们, 分配们);
     if (!接手 || !在放弃窗口(接手, 现在)) return null;
+    // 占过名额的才给放弃、才补（M-线索-02「没占过额度的不补」）：他在这条上最近一条分配记录算数（自动 / 指定 / 定时分配、超时转来、放弃转来），
+    // 或这条是补发给他的（补发 counted=false，但用掉过他的待补）。管理从公海分（P-转-29 ③）、企划不计数的 counted=false：不出按钮
+    const 最近分 = await prisma.entLeadAssign.findFirst({ where: { projectId, toUserId: me.id }, orderBy: { createdAt: "desc" }, select: { counted: true } });
+    if (!最近分 || (!最近分.counted && !(await 是补发来的(prisma, projectId, me.id)))) return null;
     // 本人还没记有效沟通（同超时转「首次沟通」：这位客户上他记过的、或接手以后挂这条记的，只认本人）
     const [跟过, 分配后] = await Promise.all([负责人跟过的([p]), 分配后沟通过的([{ ...p, 基: 接手 }])]);
     if (跟过.has(p.id) || 分配后.has(p.id)) return null;
@@ -95,6 +100,10 @@ export async function 放弃资格(me: Pick<SessionUser, "id" | "视图由">, pr
 }
 
 export type 放弃结果 = { ok: true; 接手人: string } | { ok: false; error: string };
+
+/** Prisma 唯一键冲突（P2002）或 SQLite 的 UNIQUE constraint failed */
+const 是唯一键冲突 = (e: unknown): boolean =>
+  (e as { code?: string } | null)?.code === "P2002" || /UNIQUE constraint failed/i.test(String((e as Error | null)?.message ?? e));
 
 /** 转不出去时那句（明确告诉不扣次数、线索还在手上） */
 const 转不出去话 = (为什么: string, 挑不到: boolean) =>
@@ -128,18 +137,24 @@ async function 放出去(
   let 占: string;
   try {
     占 = (await prisma.entLeadGiveUp.create({ data: { userId: me.id, month: 月, projectId, reason: 认.原因, note: 认.补充 } })).id;
-  } catch {
-    return { ok: false, error: 本月用过话 };
+  } catch (e) {
+    // 只有 (userId, month) 唯一键冲突才是「本月用过了」（同时点两条）；别的错（库锁、磁盘）照实说没放弃成
+    if (是唯一键冲突(e)) return { ok: false, error: 本月用过话 };
+    console.error(`[主动放弃] ${projectId} 占次数出错`, e);
+    return { ok: false, error: "这次没放弃成，刷新看看再点" };
   }
   const 退次数 = () => prisma.entLeadGiveUp.deleteMany({ where: { id: 占 } }).catch((e) => console.error("[主动放弃] 退次数没退成", e));
   // 2. 挑人转出：同超时转（排除放弃人和这一轮超时过的人，挑不到开新一轮、仍不给放弃人）
   const 链 = await prisma.entReplyOverdue.findUnique({ where: { projectId }, select: { tried: true, transfers: true, stoppedAt: true } });
   const 试过 = 链 && !链.stoppedAt ? 读试过(链.tried) : [];
   const 附 = `同事 ${me.name} ${放弃转理由}转给你，原因：${认.文字}`;
-  let 排除 = 本轮排除(试过, me.id);
+  // 这条线索上放弃过的人（含刚占的这一行 = 放弃人自己）都不给，开新一轮也不给（没起链就放弃的，链里没有他们）
+  const 放弃过 = await 放弃过的人(projectId);
+  let 排除 = [...new Set([...本轮排除(试过, me.id), ...放弃过])];
+  const 新轮排除 = [...new Set([me.id, ...放弃过])];
   let r = await 超时转出(超时转令牌, 系统操作人, projectId, me.id, 排除, 附);
-  if (!r.ok && r.挑不到 && 排除.length > 1) {
-    排除 = [me.id];
+  if (!r.ok && r.挑不到 && 新轮排除.length < 排除.length) {
+    排除 = 新轮排除;
     r = await 超时转出(超时转令牌, 系统操作人, projectId, me.id, 排除, 附);
   }
   if (!r.ok) {
@@ -148,16 +163,21 @@ async function 放出去(
   }
   const 新 = r.接手人Id;
   // 3. 次数记上接手人、给放弃人记 1 条待补（方向 = 他这条的分配方向）
-  await 查完再写(async (tx) => {
-    const 分 = await tx.entLeadAssign.findFirst({ where: { projectId, toUserId: me.id }, orderBy: { createdAt: "desc" }, select: { line: true } });
-    const 补 = await tx.entLeadMakeup.create({ data: { userId: me.id, projectId, line: 分?.line ?? null, kind: 放弃待补种类, createdAt: 现在 } });
-    await tx.entLeadGiveUp.update({ where: { id: 占 }, data: { toUserId: 新, makeupId: 补.id } });
-  });
+  // 线索已经转走、次数已经占上：这一步出错只记日志、照常回成功（不能让人以为没放弃成再点一次）
+  try {
+    await 查完再写(async (tx) => {
+      const 分 = await tx.entLeadAssign.findFirst({ where: { projectId, toUserId: me.id }, orderBy: { createdAt: "desc" }, select: { line: true } });
+      const 补 = await tx.entLeadMakeup.create({ data: { userId: me.id, projectId, line: 分?.line ?? null, kind: 放弃待补种类, createdAt: 现在 } });
+      await tx.entLeadGiveUp.update({ where: { id: 占 }, data: { toUserId: 新, makeupId: 补.id } });
+    });
+  } catch (e) {
+    console.error(`[主动放弃] ${projectId} 待补 / 接手人没记上（线索已转给 ${新}）`, e);
+  }
   // 4. 超时链在走的：链上记成接手人、从现在起算，放弃人记进这一轮（轮转不再给回他）
   if (链 && !链.stoppedAt) {
     await prisma.entReplyOverdue.update({
       where: { projectId },
-      data: { holderId: 新, since: 现在, overdueAt: null, tried: JSON.stringify([...new Set([...排除, me.id])]), transfers: 链.transfers + 1 },
+      data: { holderId: 新, since: 现在, overdueAt: null, tried: JSON.stringify([...new Set([...本轮排除(试过, me.id), me.id])]), transfers: 链.transfers + 1 },
     }).catch((e) => console.error(`[主动放弃] ${projectId} 超时链没跟上`, e));
   }
   // 5. 客户随线索（同超时转）
@@ -175,7 +195,8 @@ async function 放出去(
     detail: { 原负责人: me.id, 接手人: 新, 原因: 认.原因, ...(认.补充 ? { 补充: 认.补充 } : {}), 月: 月, 客户: 客户.去向 },
   });
   // 7. 通知：接手人收「分给你」+ 同事主动放弃那句；放弃人收确认
-  const 计时话 = (await 超时自动转开着()) ? `；请在 ${超时提醒分钟 / 60} 小时内记一条有效沟通，没记会按超时规则再转走` : "";
+  // 接手人这条会按超时计时（开关开着、分配基准不早于生效时刻）才写那句；生效以前分的线索不计时，不吓人
+  const 计时话 = (await 会按超时计时(projectId, 现在).catch(() => false)) ? `；请在 ${超时提醒分钟 / 60} 小时内记一条有效沟通，没记会按超时规则再转走` : "";
   await 分配通知(系统操作人, [{ projectId, toUserId: 新, ...(r.留下 ? { 留下: r.留下 } : {}) }], true, `${附}${客户名下 ? `；${客户在谁名下话(客户名下)}` : ""}${计时话}`);
   const 客户话 = 客户.去向 === "留给原负责人" ? "你手上还有这位客户别的项目，客户还在你名下；" : 客户.去向 === "跟着走" ? "客户一起给了接手人；" : "";
   await notify([me.id], {

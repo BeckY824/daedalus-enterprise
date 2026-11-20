@@ -2,7 +2,9 @@
 /**
  * 项目页「放弃（豁免）」（32H，lib/enterprise/lead-giveup.ts）：新分配给我、我还没记有效沟通的线索，页头提示条里一颗按钮。
  * 点开框：原因必选（外出 / 忙不过来 / 其他，其他要写一句），框里写明线索无效走判无效、能一键跳到「线索验证」。
- * 点不了（验证中、本月用过）按钮灰着，提示条里写为什么。按钮在提示条正文里（不放 Alert 的 action 位），手机 390 宽也不横向撑出
+ * 点不了（验证中、本月用过）按钮灰着，提示条里写为什么。按钮在提示条正文里（不放 Alert 的 action 位），手机 390 宽也不横向撑出。
+ * 放弃成了不刷新本页：线索已经转走，本页（项目页、客户详情项目区）他多半已经看不到了，刷新会落到「找不到」。
+ * 提示条换成「已转给 X」，点「知道了」回项目列表
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -18,6 +20,9 @@ function 去判无效(): boolean {
   el.scrollIntoView({ behavior: "smooth", block: "center" });
   return true;
 }
+
+/** 放弃成了点「知道了」去哪：项目列表（销售都能进） */
+const 放弃后去 = "/projects";
 
 export default function GiveUpBanner({ projectId, 入口 }: { projectId: string; 入口: 放弃入口 }) {
   const router = useRouter();
@@ -36,14 +41,25 @@ export default function GiveUpBanner({ projectId, 入口 }: { projectId: string;
       if (!r.ok) { set错(r.error); return; }
       set开(false);
       set成(`已放弃，转给了 ${r.接手人}；已给你记 1 条待补`);
-      router.refresh();
     } catch {
       set错("网络没连上，这次没放弃，稍后再点");
     } finally {
       set忙(false);
     }
   };
-  if (成) return <Alert type="success" showIcon className="giveup-bar" data-testid="proj-giveup-done" title={成} />;
+  if (成) {
+    return (
+      <Alert
+        type="success" showIcon className="giveup-bar" data-testid="proj-giveup-done" title={成}
+        description={(
+          <div className="giveup-body">
+            <div>这条线索已不在你名下，回项目列表继续跟别的。</div>
+            <Button size="small" type="primary" className="giveup-open" onClick={() => router.push(放弃后去)} data-testid="proj-giveup-back">知道了</Button>
+          </div>
+        )}
+      />
+    );
+  }
   return (
     <>
       <Alert

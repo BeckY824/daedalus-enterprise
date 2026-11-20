@@ -26,7 +26,7 @@ import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibil
 import { 自动分配线索 } from "@/app/(app)/leads/assign-actions";
 import { 自动分配不参与key, 不设配额key, 月份 } from "@/lib/enterprise/lead-assign";
 import { 待补数们, 作废补位, 记补位 } from "@/lib/enterprise/invalid-makeup";
-import { 超时转扫一遍, 超时转生效key, 超时通知种类 } from "@/lib/enterprise/reply-overdue";
+import { 超时转扫一遍, 超时转生效key, 超时通知种类, 改链若持有人是 } from "@/lib/enterprise/reply-overdue";
 import { 是超时自动转痕, 放弃转理由 } from "@/lib/project/timeout";
 import {
   放弃线索, 放弃资格, 认放弃原因, 新分配时刻, 放弃原因们, 走判无效话, 本月用过话, 放弃通知种类, 在放弃窗口,
@@ -49,13 +49,13 @@ let 序 = 0;
  * 市场新建时直接分给 谁 的一条线索（只有一条分配记录，没有转让留痕；流转线内贸），分于 = 分配时刻（建档同一刻）。
  * 客户也给了 谁（市场首次分给销售客户随行）
  */
-async function 分来的(谁: 人, 分于: Date, 补: Record<string, unknown> = {}) {
+async function 分来的(谁: 人, 分于: Date, 补: Record<string, unknown> = {}, o: { counted?: boolean } = {}) {
   序++;
   const cid = (await prisma.customer.create({ data: { name: `客户${序}`, phone: `139${String(序).padStart(8, "0")}`, salesOwnerId: 谁.id } })).id;
   const p = await prisma.project.create({
     data: { name: `线索${序}`, customerId: cid, ownerId: 谁.id, creatorId: 市场.id, phase: "线索", node: "潜客培育", bizLine: "内贸", flowLine: "内贸", createdAt: 分于, ...补 },
   });
-  await prisma.entLeadAssign.create({ data: { projectId: p.id, toUserId: 谁.id, fromUserId: 市场.id, byUserId: 市场.id, line: "内贸", month: 月份(分于), way: "自动分配", createdAt: 分于 } });
+  await prisma.entLeadAssign.create({ data: { projectId: p.id, toUserId: 谁.id, fromUserId: 市场.id, byUserId: 市场.id, line: "内贸", month: 月份(分于), way: "自动分配", createdAt: 分于, counted: o.counted ?? true } });
   return { id: p.id, customerId: cid };
 }
 const 项目 = (id: string) => prisma.project.findUniqueOrThrow({ where: { id }, include: { customer: true } });
@@ -328,5 +328,89 @@ describe("点了以后", () => {
     // 真钟：分配时刻在 7 天窗口外的不给，这里把分配记录挪到现在
     await prisma.entLeadAssign.updateMany({ where: { projectId: id }, data: { createdAt: new Date() } });
     expect(await 以谁的身份(甲.id, () => 放弃线索Action(id, "外出"))).toMatchObject({ ok: true });
+  });
+
+  it("[审查 1] 没占名额的分配（counted=false：管理从公海分、企划不计数）不给放弃、不补；补发来的（counted=false 但用掉过待补）照给", async () => {
+    const 现在 = 京("2026-11-20 10:10");
+    const { id } = await 分来的(甲, 京("2026-11-20 10:00"), {}, { counted: false });
+    expect(await 以(甲, () => 放弃资格(甲, id, 现在))).toBeNull();
+    expect(await 放弃(甲, id, 现在)).toMatchObject({ ok: false });
+    expect(await 待补(甲)).toBe(0);
+    expect((await 项目(id)).ownerId).toBe(甲.id);
+    // 补发来的：分配记录 counted=false，但用掉过甲的一个待补在这条分配上
+    const 补 = await 分来的(甲, 京("2026-11-20 10:01"), {}, { counted: false });
+    const 记 = await prisma.entLeadAssign.findFirstOrThrow({ where: { projectId: 补.id } });
+    await prisma.entLeadMakeup.create({ data: { userId: 甲.id, projectId: "坏线索", usedAt: 京("2026-11-20 10:01"), usedAssignId: 记.id, usedProjectId: 补.id } });
+    expect(await 以(甲, () => 放弃资格(甲, 补.id, 现在))).toMatchObject({ 可: true });
+  });
+
+  it("[审查 2] 没起超时链就放弃：接手人再超时也不转回放弃人（同线只剩放弃人时留在接手人手上）", async () => {
+    await setSetting(自动分配不参与key, { [总管.id]: "禁止", [市场.id]: "禁止", [丙.id]: "禁止" });
+    invalidateSettingsCache();
+    const { id } = await 分来的(甲, 京("2026-11-20 15:00"));
+    expect(await 放弃(甲, id, 京("2026-11-20 15:20"))).toMatchObject({ ok: true });
+    expect(await prisma.entReplyOverdue.count({ where: { projectId: id } })).toBe(0);
+    await prisma.projectNodeLog.updateMany({ where: { projectId: id, kind: "transfer" }, data: { at: 京("2026-11-20 15:20") } });
+    expect((await 项目(id)).ownerId).toBe(乙.id);
+    expect(await 超时转扫一遍(京("2026-11-20 16:20"))).toMatchObject({ 提醒: 1 });
+    await 超时转扫一遍(京("2026-11-20 16:50"));
+    expect((await 项目(id)).ownerId).not.toBe(甲.id);
+    expect((await 项目(id)).ownerId).toBe(乙.id);
+  });
+
+  it("[审查 2] 乙接手后也放弃：不转回甲（同线只剩甲时说转不出去、不扣乙的次数）；有丙就给丙", async () => {
+    await setSetting(自动分配不参与key, { [总管.id]: "禁止", [市场.id]: "禁止", [丙.id]: "禁止" });
+    invalidateSettingsCache();
+    const { id } = await 分来的(甲, 京("2026-11-20 10:00"));
+    expect(await 放弃(甲, id, 京("2026-11-20 10:10"))).toMatchObject({ ok: true });
+    expect((await 项目(id)).ownerId).toBe(乙.id);
+    // 超时转出 按墙上时间记留痕和分配记录：挪回用例里的 10:10
+    await prisma.projectNodeLog.updateMany({ where: { projectId: id, kind: "transfer" }, data: { at: 京("2026-11-20 10:10") } });
+    await prisma.entLeadAssign.updateMany({ where: { projectId: id, toUserId: 乙.id }, data: { createdAt: 京("2026-11-20 10:10") } });
+    expect(await 放弃(乙, id, 京("2026-11-20 10:20"))).toMatchObject({ ok: false, error: expect.stringContaining("这条转不出去") });
+    expect((await 项目(id)).ownerId).toBe(乙.id);
+    expect(await prisma.entLeadGiveUp.count({ where: { userId: 乙.id } })).toBe(0);
+    await setSetting(自动分配不参与key, { [总管.id]: "禁止", [市场.id]: "禁止" });
+    invalidateSettingsCache();
+    expect(await 放弃(乙, id, 京("2026-11-20 10:21"))).toEqual({ ok: true, 接手人: "bing" });
+  });
+
+  it("[审查 a] 接手人的分配基准早于超时转生效时刻（这条不计时）：通知里不写「1 小时内记有效沟通」；计时的才写", async () => {
+    const 老 = await 分来的(甲, 京("2026-11-20 10:00"));
+    await setSetting(超时转生效key, 京("2026-11-20 10:05").toISOString());
+    invalidateSettingsCache();
+    expect(await 放弃(甲, 老.id, 京("2026-11-20 10:10"))).toMatchObject({ ok: true });
+    const 接 = (await 项目(老.id)).ownerId;
+    expect((await 通知(接)).at(-1)!.body).not.toContain("小时内记一条有效沟通");
+    const 新 = await 分来的(乙, 京("2026-11-20 10:30"));
+    expect(await 放弃(乙, 新.id, 京("2026-11-20 10:40"))).toMatchObject({ ok: true });
+    const 接2 = (await 项目(新.id)).ownerId;
+    expect((await 通知(接2)).at(-1)!.body).toContain("小时内记一条有效沟通");
+  });
+
+  it("[审查 c] 占次数时不是唯一键冲突的错：回「没放弃成」，不说本月用过", async () => {
+    const { id } = await 分来的(甲, 京("2026-11-20 10:00"));
+    const 桩 = vi.spyOn(prisma.entLeadGiveUp, "create").mockRejectedValueOnce(new Error("disk I/O error"));
+    try {
+      const r = await 放弃(甲, id, 京("2026-11-20 10:10"));
+      expect(r).toMatchObject({ ok: false });
+      expect(r.ok ? "" : r.error).not.toBe(本月用过话);
+      expect(r.ok ? "" : r.error).toContain("没放弃成");
+    } finally { 桩.mockRestore(); }
+    expect((await 项目(id)).ownerId).toBe(甲.id);
+  });
+
+  it("[审查 d] 超时链按「持有人还是原来那位」才写：放弃已经把链改给接手人，扫描拿着旧持有人写不进去", async () => {
+    const { id } = await 分来的(甲, 京("2026-11-20 15:00"));
+    expect(await 超时转扫一遍(京("2026-11-20 16:00"))).toMatchObject({ 提醒: 1 });
+    expect(await 放弃(甲, id, 京("2026-11-20 16:10"))).toMatchObject({ ok: true });
+    const 接 = (await 项目(id)).ownerId;
+    // 同一分钟里拿着放弃前读到的（持有人甲）去写：不覆盖
+    expect(await 改链若持有人是(id, 甲.id, { anchorAt: 京("2026-11-20 15:00"), holderId: 甲.id, since: 京("2026-11-20 15:00"), overdueAt: 京("2026-11-20 16:10") })).toBe(false);
+    expect(await prisma.entReplyOverdue.findUniqueOrThrow({ where: { projectId: id } })).toMatchObject({ holderId: 接, overdueAt: null });
+    // 持有人对得上照写；没有链的照建
+    expect(await 改链若持有人是(id, 接, { anchorAt: 京("2026-11-20 15:00"), holderId: 接, since: 京("2026-11-20 16:10"), overdueAt: 京("2026-11-20 17:10") })).toBe(true);
+    const 别的 = await 分来的(乙, 京("2026-11-20 15:00"));
+    expect(await 改链若持有人是(别的.id, 乙.id, { anchorAt: 京("2026-11-20 15:00"), holderId: 乙.id, since: 京("2026-11-20 15:00"), overdueAt: null })).toBe(true);
   });
 });

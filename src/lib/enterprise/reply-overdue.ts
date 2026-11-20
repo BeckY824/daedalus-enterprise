@@ -556,6 +556,48 @@ async function 记链(projectId: string, data: { anchorAt: Date; holderId: strin
   await prisma.entReplyOverdue.upsert({ where: { projectId }, create: { projectId, ...行 }, update: 行 });
 }
 
+/**
+ * 链写回去，但只在库里这一行的持有人还是 持有人 时才改（没有这一行就建）。扫描读完链到写回之间，负责人点了「主动放弃」
+ * （lead-giveup.ts 已经把链改成接手人）时，拿着旧持有人写不进去，不把接手人的计时覆盖掉。回写没写上
+ */
+export async function 改链若持有人是(
+  projectId: string, 持有人: string,
+  data: { anchorAt: Date; holderId: string; since: Date; overdueAt: Date | null; tried?: string[]; transfers?: number; stoppedAt?: Date | null },
+): Promise<boolean> {
+  const { tried, ...别的 } = data;
+  const 行 = { ...别的, ...(tried ? { tried: JSON.stringify(tried) } : {}) };
+  if ((await prisma.entReplyOverdue.updateMany({ where: { projectId, holderId: 持有人 }, data: 行 })).count === 1) return true;
+  if (await prisma.entReplyOverdue.findUnique({ where: { projectId }, select: { projectId: true } })) return false;
+  try {
+    await prisma.entReplyOverdue.create({ data: { projectId, ...行 } });
+    return true;
+  } catch {
+    return false; // 同一刻别人建了这一行
+  }
+}
+
+/** 这条线索上主动放弃过的人（lead-giveup.ts，EntLeadGiveUp）：超时转、再放弃挑人时都不给回他们（开新一轮也不给） */
+export async function 放弃过的人(projectId: string): Promise<string[]> {
+  return [...new Set((await prisma.entLeadGiveUp.findMany({ where: { projectId }, select: { userId: true } })).map((r) => r.userId))];
+}
+
+/**
+ * 这条线索现在的负责人会不会按超时转计时（主动放弃转出后，接手人通知里要不要写「1 小时内记有效沟通」用）：
+ * 开关开着、分配基准（同 链上的：超时转、放弃转那几行跳过）算得出、且不早于生效时刻。只读、看全部
+ */
+export async function 会按超时计时(projectId: string, 现在: Date = new Date()): Promise<boolean> {
+  if (!企业版() || !(await 超时自动转开着())) return false;
+  return 看全部(async () => {
+    const p = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, creatorId: true, customerId: true, createdAt: true } });
+    if (!p) return false;
+    const [org, 记录, 导入, 生效] = await Promise.all([
+      读组织于(prisma), 换人记录of([p], new Date(0)), 导入建的of(p.ownerId === p.creatorId ? [p.id] : []), 超时转生效时刻(现在),
+    ]);
+    const 基 = 分配基准(p, 记录.痕of.get(p.id) ?? [], 记录.分配of.get(p.id) ?? [], 记录.客户换人of.get(p.customerId) ?? [], 是销售(org, p.ownerId), 导入.has(p.id));
+    return !!基 && 基.getTime() >= 生效.getTime();
+  });
+}
+
 /** 同一条同一个原因的「没转成」日志只记一次（钟一分钟一遍，别刷屏） */
 const 记过没转成 = new Map<string, string>();
 function 记没转成(projectId: string, 为什么: string) {
@@ -684,7 +726,8 @@ async function 走一步(p: 链项目, 回了: boolean, 现在: Date, 明细: �
   const 分来 = await 可转of(org, p);
   if (步 === "提醒") {
     await 发超时提醒(p, since, since.getTime() !== 基.getTime(), 现在, 分来);
-    await 记链(p.id, { anchorAt: 基, holderId: p.ownerId, since, overdueAt: 现在, tried: 试过, transfers });
+    // 按持有人条件写：这一分钟里负责人点了主动放弃、链已改给接手人的，不覆盖
+    await 改链若持有人是(p.id, p.ownerId, { anchorAt: 基, holderId: p.ownerId, since, overdueAt: 现在, tried: 试过, transfers });
     明细.提醒++;
   } else if (步 === "转" && 分来) {
     if (await 转出去(p, 基, 试过, transfers, 现在)) 明细.转出++;
@@ -716,13 +759,16 @@ async function 转出去(p: 链项目, 基: Date, 试过: string[], transfers: n
   const 原 = p.ownerId;
   const 原名 = (await prisma.user.findUnique({ where: { id: 原 }, select: { name: true } }))?.name ?? "原负责人";
   const 附 = `${超时转理由}（原负责人 ${原名} 超时没记有效沟通）`;
-  let 排除 = 本轮排除(试过, 原);
+  // 这条线索上主动放弃过的人一律不给回（32H，没起链就放弃的不在 试过 里），开新一轮也不给
+  const 放弃过 = await 放弃过的人(p.id);
+  let 排除 = [...new Set([...本轮排除(试过, 原), ...放弃过])];
+  const 新轮排除 = [...new Set([原, ...放弃过])];
   let 新一轮 = false;
   let r = await 超时转出(超时转令牌, 系统操作人, p.id, 原, 排除, 附);
   // 这一轮人人都超时过了：开新一轮，仍不给现负责人
-  if (!r.ok && r.挑不到 && 排除.length > 1) {
+  if (!r.ok && r.挑不到 && 新轮排除.length < 排除.length) {
     新一轮 = true;
-    排除 = [原];
+    排除 = 新轮排除;
     r = await 超时转出(超时转令牌, 系统操作人, p.id, 原, 排除, 附);
   }
   if (!r.ok) {
@@ -732,7 +778,7 @@ async function 转出去(p: 链项目, 基: Date, 试过: string[], transfers: n
   记过没转成.delete(p.id);
   const 新 = r.接手人Id;
   // 链先记上（接手人从现在起算），客户、通知出错也不会再转一次
-  await 记链(p.id, { anchorAt: 基, holderId: 新, since: 现在, overdueAt: null, tried: 新一轮 ? [原] : 排除, transfers: transfers + 1, stoppedAt: null });
+  await 记链(p.id, { anchorAt: 基, holderId: 新, since: 现在, overdueAt: null, tried: 新一轮 ? [原] : 本轮排除(试过, 原), transfers: transfers + 1, stoppedAt: null });
   const 客户 = await 客户随线索(p.id, p.customerId, 原, 新).catch((e) => {
     console.error(`[超时自动转] ${p.id} 客户没跟过去`, e);
     return { 去向: "不动" as 客户去向, 在谁名下: null };
