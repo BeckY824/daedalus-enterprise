@@ -1358,7 +1358,7 @@ export default function ProjectDetail({
             名="项目来源"
             值={p.channelId ?? null}
             能改={能就地改 && !!p.渠道们 && !p.channelId}
-            显示={() => <span className="proj-one">{p.项目来源 ? p.项目来源.name ? <>{p.项目来源.name}{p.项目来源.跟客户 && <span style={{ color: "var(--text-muted)" }}>（同{b.customer}来源）</span>}</> : <span style={{ color: "var(--text-muted)" }}>随{b.customer}来源</span> : 待填("项目来源")}</span>}
+            显示={() => <span className="proj-one">{p.项目来源 ? p.项目来源.name ? <>{p.项目来源.name}{p.项目来源.跟客户 && <span style={{ color: "var(--text-muted)" }}>（同{b.customer}来源）</span>}</> : <span className="muted">随{b.customer}来源</span> : 待填("项目来源")}</span>}
             存={(v) => 存项目项({ channelId: v })}
             编辑器={({ 草稿, 提交, 忙 }) => (
               <ChannelPicker aria-label="项目来源" channels={p.渠道们 ?? []} value={草稿} disabled={忙} allowClear={false} placeholder="补一次项目来源，补了就不能改" style={{ width: "100%" }} onChange={(v) => { if (v) 提交(v); }} />

@@ -23,6 +23,7 @@ import { 规则 as 开关 } from "@/lib/enterprise/rules";
 import { saveFollowUp } from "@/app/(app)/customers/[id]/actions";
 import { applyProposal } from "@/app/(app)/dashboard/apply";
 import { buildProposal, type Proposal } from "@/lib/agent/proposals";
+import { 北京日期 } from "./helpers/beijing-date";
 import { DEFAULT_BUSINESS } from "@/lib/business-config";
 import { 自动推进话, 自动推进话of } from "@/lib/project/auto-advance-text";
 import { 项目来源有值, 还差, type 必填数据 } from "@/lib/project/required";
@@ -138,7 +139,7 @@ describe("真库", () => {
   it("项目上记沟通：这次刚写的下一步不被这次自动推进清掉；回 推前（推之前的节点和下一步）", async () => {
     await setSetting("orgRules", 开着({ 痛点挖掘: ["预算能力"] }));
     const p = await 画像齐了的项目({ nextStepText: "旧的下一步" });
-    const 时 = new Date(Date.now() + 2 * 86400_000).toISOString().slice(0, 10);
+    const 时 = 北京日期(2);
     const r = await 记项目沟通({ id: 乙.id, role: "SALES" }, p.id, { type: "PHONE", content: "电话聊了预算和排期", occurredAt: new Date().toISOString(), 下一步: "下周报方案", 下一步时间: 时, 阶段: "商机" });
     expect(r).toMatchObject({ ok: true, 自动推到: ["方案敲定"], 推前: { phase: "商机", node: "痛点挖掘", 下一步文字: "下周报方案" } });
     const 后 = await prisma.project.findUniqueOrThrow({ where: { id: p.id } });
