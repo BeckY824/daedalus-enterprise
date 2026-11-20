@@ -35,6 +35,7 @@ import { useFormGuard } from "@/lib/form-guard";
 import { 卡点类型们, 影响等级们, 原因最多, 缺原因话, 清原因们, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 选沟通附件, 传沟通附件 } from "@/components/FollowAttachments";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
+import { 自动推进话of } from "@/lib/project/auto-advance-text";
 import { 沟通没项目话, 请负责人建项目话, 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
 import { 动作出错话, 出错原话 } from "@/lib/stale-deploy";
 
@@ -576,6 +577,9 @@ export default function FollowUpForm({
     // 客户三态（C12）：新记的这条不算有效沟通，另给一句轻提示（照常保存，不拦）
     const 短 = 短沟通话of(res);
     if (短) 话们.push({ 话: 短 });
+    // 客户上记的沟通顺带把名下项目按必填推了一格（saveFollowUp → 客户存了推项目）：说推了哪个、推到哪（不悄悄推，11-20）
+    const 推 = 自动推进话of(res);
+    if (推) 话们.push({ 话: 推 });
     // 顺手完成那条到期计划：记录页上提示由它出（带撤销、排下一次）
     if (要收口 && 完成了计划) {
       收尾.current = () => { onSaved(); 完成了计划(要收口, true); };
@@ -655,7 +659,8 @@ export default function FollowUpForm({
     if (没存上.length) 话们.push({ 话: `沟通已记下，${没存上.join("、")}没存上，请到记录页补一下`, 错: true });
     if ("卡点" in r && r.卡点) 话们.push({ 话: `已生成卡点 ${r.卡点}` });
     if ("卡点没发" in r && r.卡点没发) 话们.push({ 话: `沟通记下了，卡点没生成：${r.卡点没发}`, 错: true });
-    if (r.自动推到?.length) 话们.push({ 话: `必填齐了，自动推进到 ${r.自动推到.join(" → ")}` });
+    const 推话 = 自动推进话of(r);
+    if (推话) 话们.push({ 话: 推话 });
     // 客户三态（C12）：这条不算有效沟通，另给一句轻提示（照常保存，不拦）
     const 短 = 短沟通话of(r);
     if (短) 话们.push({ 话: 短 });

@@ -2,6 +2,7 @@
 
 import DatePicker from "@/components/BusinessDatePicker";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
+import { 自动推进话of } from "@/lib/project/auto-advance-text";
 import { useEffect, useRef, useState } from "react";
 import { Modal, Input, Segmented, Button, Space, Typography, Select } from "antd";
 import SaveButton from "@/components/SaveButton";
@@ -203,7 +204,8 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
       }).catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "没保存上，请稍后重试") }));
       if (!r.ok) return { ok: false, error: "error" in r && r.error ? r.error : "没保存上，请稍后重试" };
       // 客户三态（C12）：这条不算有效沟通时给一句轻提示（照常保存，不拦）
-      const 短 = 短沟通话of(r) ?? undefined;
+      // 顺带把名下项目按必填推了一格：和短沟通那句一起说（不悄悄推，11-20）
+      const 短 = [短沟通话of(r), 自动推进话of(r)].filter(Boolean).join("；") || undefined;
       if (短) set短话(短);
       守.存好了();
       set已存(true);

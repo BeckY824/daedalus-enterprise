@@ -101,7 +101,7 @@
   "components/Logo.tsx": 4,
   "components/Markdown.tsx": 3,
   "components/ModelPicker.tsx": 2,
-  "components/ProjectProposalFields.tsx": 10,
+  "components/ProjectProposalFields.tsx": 9,
   "components/ProjectRoster.tsx": 3,
   "components/ProposalCard.tsx": 25,
   "components/StatePage.tsx": 1,

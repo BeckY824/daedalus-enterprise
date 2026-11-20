@@ -514,6 +514,8 @@ describe("回款", () => {
     const 笔 = await 库记回款({ id: 乙.id, role: "SALES" }, 项目id, { paidAt: "2026-10-20", currency: "CNY", amount: 800 });
     const { 卡 } = await 出("propose_payment_delete", { project: "云帆一期", amount: 800, reason: "人说记错了" });
     expect(卡).toMatchObject({ kind: "payment_delete", targetId: 笔.id });
+    // 删了不能恢复：卡上先写日期、金额，项目名放后面（窄屏截也只截项目名；「删除」那格折行，11-20 审查）
+    expect(卡!.targetName).toBe("2026-10-20 CNY 800 · 云帆一期");
 
     expect((await 确认(卡!, 丙)).ok).toBe(false);
     expect(await prisma.entProjectPayment.count()).toBe(1);
@@ -606,5 +608,132 @@ describe("删客户", () => {
     expect(r).toMatchObject({ ok: true });
     expect(客户动作.deleteCustomers).toHaveBeenCalledWith([客户id]);
     expect(await prisma.customer.count()).toBe(0);
+  });
+});
+
+/*
+  11-20：首页 AI 记沟通卡（propose_project_followup）补上 #374 那层保护；两张卡的候选只列在推项目（P-沟通-03）；
+  模型看到的候选和卡上的是同一份（工具返回里带候选清单，回答只许提这几个）。名字都是虚构的
+*/
+describe("记沟通卡：多个在推项目列候选、只列在推的、回话只提卡上的（11-20）", () => {
+  const 沟通参 = { content: "电话聊了排期", 下一步: "下周再报价", reason: "人说的" };
+  async function 一客两项() {
+    const 客 = (await prisma.customer.create({ data: { name: "青禾", phone: "13900000009", salesOwnerId: 乙.id } })).id;
+    const 甲项 = (await prisma.project.create({ data: { name: "青禾", customerId: 客, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育" } })).id;
+    const 乙项 = (await prisma.project.create({ data: { name: "青禾（2）", customerId: 客, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育" } })).id;
+    return { 客, 甲项, 乙项 };
+  }
+
+  it("客户名下两个在推项目、没点名：模型按项目名或 id 出记沟通卡，照样列候选、确认拦下；挑了才能确认", async () => {
+    const { 甲项, 乙项 } = await 一客两项();
+    const 话 = "给青禾记一下，电话聊了排期";
+    for (const 指 of [{ project: "青禾（2）" }, { projectId: 乙项 }, { projectId: 甲项 }, { project: "青禾" }]) {
+      const { r, 卡 } = await 出("propose_project_followup", { ...指, ...沟通参 }, 乙, 话);
+      expect(卡).toMatchObject({ kind: "project_followup", targetId: "", 要卡点: false });
+      expect(卡!.候选!.map((c) => c.id).sort()).toEqual([甲项, 乙项].sort());
+      expect(missingFields(卡!)).toContain("选哪一个");
+      expect((r.data as { note: string }).note).toContain("不要替人选");
+      expect(await 确认(卡!, 乙)).toMatchObject({ ok: false, error: expect.stringContaining("选哪一个") });
+    }
+    expect(项目动作.记项目沟通Action).not.toHaveBeenCalled();
+    const { 卡 } = await 出("propose_project_followup", { project: "青禾（2）", ...沟通参 }, 乙, 话);
+    const c = 卡!.候选!.find((x) => x.id === 乙项)!;
+    const 挑了 = { ...卡!, targetId: c.id, targetName: c.名, ...(c.补 ?? {}) } as 项目卡;
+    expect(missingFields(挑了)).toEqual([]);
+    expect(await 确认(挑了, 乙)).toMatchObject({ ok: true });
+    expect(项目动作.记项目沟通Action).toHaveBeenCalledWith(乙项, expect.anything(), undefined);
+  });
+
+  it("点名了是哪个项目、或名下只有一个在推项目：直接出卡，不列候选", async () => {
+    const { 乙项 } = await 一客两项();
+    const { 卡 } = await 出("propose_project_followup", { projectId: 乙项, ...沟通参 }, 乙, "记在青禾（2）上");
+    expect(卡).toMatchObject({ targetId: 乙项 });
+    expect(卡!.候选 ?? []).toEqual([]);
+    const 一个 = await 出("propose_project_followup", { project: "云帆科技", ...沟通参 }, 乙, "给云帆科技记一下");
+    expect(一个.卡).toMatchObject({ targetId: 项目id });
+    expect(一个.卡!.候选 ?? []).toEqual([]);
+  });
+
+  it("兄弟项目只算我能记的在推项目：已结束、在公海、进了回收站、我记不了（同事负责、我没进组）的不进候选", async () => {
+    const { 客, 甲项 } = await 一客两项();
+    // 把（2）结掉；另加一个公海里的、一个丙负责的
+    await prisma.project.updateMany({ where: { customerId: 客, name: "青禾（2）" }, data: { result: "交付结清", phase: "订单", node: "尾款结算" } });
+    await prisma.project.create({ data: { name: "青禾（公海）", customerId: 客, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育", pooledAt: new Date() } });
+    await prisma.project.create({ data: { name: "青禾（丙的）", customerId: 客, ownerId: 丙.id, creatorId: 丙.id, phase: "线索", node: "潜客培育" } });
+    // 进了回收站的（软删）也不算
+    await prisma.project.create({ data: { name: "青禾（删了）", customerId: 客, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育", deletedAt: new Date() } });
+    const { 卡 } = await 出("propose_project_followup", { projectId: 甲项, ...沟通参 }, 乙, "给青禾记一下");
+    expect(卡).toMatchObject({ targetId: 甲项 });
+    expect(卡!.候选 ?? []).toEqual([]);
+  });
+
+  it("候选只列在推项目：已交付结清（更近改过）、在公海的不排在前面、也不列；两张卡同一条", async () => {
+    const 客 = (await prisma.customer.create({ data: { name: "远山", phone: "13900000019", salesOwnerId: 乙.id } })).id;
+    const 推1 = (await prisma.project.create({ data: { name: "远山一期", customerId: 客, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育" } })).id;
+    const 推2 = (await prisma.project.create({ data: { name: "远山二期", customerId: 客, ownerId: 乙.id, creatorId: 乙.id, phase: "商机", node: "痛点挖掘" } })).id;
+    // 最后改的是已结束那个（updatedAt 最新），原来按 updatedAt 排它在最前
+    await prisma.project.create({ data: { name: "远山三期", customerId: 客, ownerId: 乙.id, creatorId: 乙.id, phase: "订单", node: "尾款结算", result: "交付结清" } });
+    for (const 工具 of ["propose_project_followup", "propose_blocker_add"]) {
+      const 参 = 工具 === "propose_blocker_add" ? { ...沟通参, 卡点类型: "中度卡点", 阻碍原因: ["价格预算分歧"] } : 沟通参;
+      const { r, 卡 } = await 出(工具, { project: "远山", ...参 }, 乙);
+      expect(卡!.候选!.map((c) => c.名).sort()).toEqual(["远山一期", "远山二期"]);
+      expect(卡!.候选!.map((c) => c.id).sort()).toEqual([推1, 推2].sort());
+      // 回话和卡对得上：返回里就是卡上那一份候选，并说只能提这几个
+      const d = r.data as { note: string; 候选清单: string[] };
+      expect(d.候选清单.map((x) => x.split("（")[0]).sort()).toEqual(["远山一期", "远山二期"]);
+      expect(d.note).toContain("卡上的候选只有这 2 个");
+      expect(d.note).toContain("别的一概不提");
+      expect(d.note).not.toContain("远山三期");
+    }
+    // 直接点名已结束的：不出卡，说清只能记在在推项目上
+    const 结 = await 出("propose_project_followup", { project: "远山三期", ...沟通参 }, 乙);
+    expect(结.卡).toBeUndefined();
+    expect((结.r.data as { error: string }).error).toBe("项目「远山三期」已结束或在公海，沟通只能记在还在推进的项目上（没结局、不在公海）");
+  });
+
+  it("只指向一个：返回里说回答只提它这一个", async () => {
+    const { r } = await 出("propose_project_followup", { project: "云帆一期", ...沟通参 }, 乙);
+    expect((r.data as { note: string }).note).toContain("回答里只说「云帆一期」这一个");
+  });
+
+  it("精确名字对上的项目都已结束：直接说已结束，不落到「包含」去模糊匹配别的在推项目（11-20 审查）", async () => {
+    // 远山：已结束的「远山三期」和在推的「远山三期扩建」同一位客户
+    const 远 = (await prisma.customer.create({ data: { name: "远山", phone: "13900000029", salesOwnerId: 乙.id } })).id;
+    await prisma.project.create({ data: { name: "远山三期", customerId: 远, ownerId: 乙.id, creatorId: 乙.id, phase: "订单", node: "尾款结算", result: "交付结清" } });
+    const 扩建 = (await prisma.project.create({ data: { name: "远山三期扩建", customerId: 远, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育" } })).id;
+    // 华东：名下全已结束；另一位客户「华东展具」有在推项目
+    const 华 = (await prisma.customer.create({ data: { name: "华东", phone: "13900000039", salesOwnerId: 乙.id } })).id;
+    await prisma.project.create({ data: { name: "华东一期", customerId: 华, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育", result: "线索流失" } });
+    const 展 = (await prisma.customer.create({ data: { name: "华东展具", phone: "13900000049", salesOwnerId: 乙.id } })).id;
+    await prisma.project.create({ data: { name: "展具采购", customerId: 展, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育" } });
+    for (const 工具 of ["propose_project_followup", "propose_blocker_add"]) {
+      const 参 = 工具 === "propose_blocker_add" ? { ...沟通参, 卡点类型: "中度卡点", 阻碍原因: ["价格预算分歧"] } : 沟通参;
+      const 三期 = await 出(工具, { project: "远山三期", ...参 }, 乙, "给远山三期记一条沟通");
+      expect(三期.卡).toBeUndefined();
+      expect((三期.r.data as { error: string }).error).toBe("项目「远山三期」已结束或在公海，沟通只能记在还在推进的项目上（没结局、不在公海）");
+      const 华东 = await 出(工具, { project: "华东", ...参 }, 乙, "给华东记一条沟通");
+      expect(华东.卡).toBeUndefined();
+      expect((华东.r.data as { error: string }).error).toBe("项目「华东一期」已结束或在公海，沟通只能记在还在推进的项目上（没结局、不在公海）");
+    }
+    // 精确一个都没对上，才去「包含」找（只找在推的）
+    const 包含 = await 出("propose_project_followup", { project: "三期扩", ...沟通参 }, 乙, "给三期扩建记一条");
+    expect(包含.卡).toMatchObject({ targetId: 扩建 });
+  });
+
+  it("名字直接对上的主候选也要我能记沟通（同兄弟项目一个口径）：上级看得到下属的项目，但记不了，不出卡 / 不进候选", async () => {
+    const 经 = await 造人("jing", "经理", "SALES");
+    await prisma.entMember.create({ data: { userId: 经.id, bizRole: "sales_mgr" } });
+    await prisma.entMember.update({ where: { userId: 乙.id }, data: { managerId: 经.id } });
+    // 只对上乙的项目：经理记不了，直接说
+    const 单 = await 出("propose_project_followup", { project: "云帆一期", ...沟通参 }, 经);
+    expect(单.卡).toBeUndefined();
+    expect((单.r.data as { error: string }).error).toContain("只有项目负责人或项目组员能把沟通记到这个项目上");
+    // 同名对上两个：乙的、经理自己的 → 只留经理自己的
+    const 客 = (await prisma.customer.create({ data: { name: "松石", phone: "13900000059", salesOwnerId: 经.id } })).id;
+    const 自己 = (await prisma.project.create({ data: { name: "松石改造", customerId: 客, ownerId: 经.id, creatorId: 经.id, phase: "线索", node: "潜客培育" } })).id;
+    await prisma.project.create({ data: { name: "松石改造", customerId: 客户id, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育" } });
+    const 两 = await 出("propose_project_followup", { project: "松石改造", ...沟通参 }, 经);
+    const ids = 两.卡!.targetId ? [两.卡!.targetId] : 两.卡!.候选!.map((c) => c.id);
+    expect(ids).toEqual([自己]);
   });
 });

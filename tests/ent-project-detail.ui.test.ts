@@ -15,7 +15,7 @@ const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
   const 空跑 = "async()=>({ok:true})";
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
-  stub(/^\.\.\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return{ok:true}},终止项目进程=async(...a)=>{(window.__终止||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=async(...a)=>{(window.__记沟通||=[]).push(a);return{ok:true,followUpId:'fx'}},判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return window.__编辑回||{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=async(...a)=>{(window.__改沟通||=[]).push(a);return{ok:true}},删项目沟通=async(...a)=>{(window.__删沟通||=[]).push(a);return{ok:true}},加项目组员=f,换项目组员角色=f,移出项目组员=f;`));
+  stub(/^\.\.\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return window.__改节点回??{ok:true}},终止项目进程=async(...a)=>{(window.__终止||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=async(...a)=>{(window.__记沟通||=[]).push(a);return window.__记沟通回??{ok:true,followUpId:'fx'}},判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return window.__编辑回||{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=async(...a)=>{(window.__改沟通||=[]).push(a);return{ok:true}},删项目沟通=async(...a)=>{(window.__删沟通||=[]).push(a);return{ok:true}},加项目组员=f,换项目组员角色=f,移出项目组员=f;`));
   stub(/^\.\.\/commission-actions$/, `const f=${空跑};export const 存项目底价=f,存提成分配=f,更正实际提成=f;`);
   // 定时分配（11-17）改 / 取消 / 现在分：服务端那串（prisma、通知）进不了浏览器包
   stub(/(^|\/)schedule-actions$/, 补全动作桩("src/app/(app)/leads/schedule-actions.ts", `const f=${空跑};export const 改定时分配=f,取消定时分配=f,定时分配现在分=f;`));
@@ -2120,14 +2120,19 @@ it("dt.stage：必填齐了完成节点一步推（不开框），推完底部�
   const { page, errors } = await open(true, 1280);
   try {
     // 必填齐了（没配）：一步推，不开框
+    // 服务端回推之前在哪、下一步是什么（11-20 审查：撤销回到这次推之前，不按页面上可能过时的那份；被清掉的下一步一起带回）
+    await page.evaluate(() => Reflect.set(window, "__改节点回", { ok: true, 变了: true, 原: { phase: "线索", node: "潜客培育", result: null, 下一步文字: "推之前的下一步", 下一步时间: null } }));
     await page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" }).click();
     expect(await page.getByRole("dialog").filter({ hasText: "完成节点 · " }).count()).toBe(0);
     const 条 = page.locator("#undo-host");
     await expect.poll(() => 条.innerText().catch(() => "")).toContain("已推进到");
     await 条.getByRole("button", { name: /撤销/ }).click();
     await expect.poll(async () => (JSON.parse(await 窗变量(page, "__改节点")) as unknown[]).length).toBe(2);
-    const 两次 = JSON.parse(await 窗变量(page, "__改节点")) as [string, { node: string }][];
+    const 两次 = JSON.parse(await 窗变量(page, "__改节点")) as [string, { node: string }, unknown, unknown][];
+    expect(两次[1][1]).toEqual({ phase: "线索", node: "潜客培育", result: null });
     expect(两次[1][1].node).not.toBe(两次[0][1].node);
+    // 撤销带「期望现在在哪」= 刚推到的那一格（被人改过就不撤），和被清掉的下一步
+    expect(两次[1][3]).toEqual({ 期望在: 两次[0][1], 下一步: { 文字: "推之前的下一步", 时间: null } });
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -2397,4 +2402,59 @@ describe("F-017 推过线索验证的补填提示", () => {
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   });
+});
+
+/*
+  11-20：记一条沟通顺带按必填把节点推了一格（画像早就齐了，这次记沟通才推，#370）——原来回执一条盖一条，推到哪那句被盖掉、界面上一个字没有。
+  现在：能改节点 → 底部撤销条说推到哪，点撤销 = 改回记之前的节点（P-界面-40 推进节点可撤销）；改不了节点 → 写进回执。375 / 1366 都量
+*/
+it.each([375, 1366])("记一条沟通顺带自动推了一格（11-20）%ipx：撤销条说推到哪、点撤销改回原节点；撤销条不横溢", async (w) => {
+  const { page, errors } = await 覆盖(w, { 能记沟通: true });
+  try {
+    // 服务端回这次推之前的节点和下一步（推前）：撤销按它回去，不按页面上那份（11-20 审查）
+    await page.evaluate(() => Reflect.set(window, "__记沟通回", { ok: true, followUpId: "fx", 自动推到: ["物流运输"], 推前: { phase: "订单", node: "生产备货", 下一步文字: "周五前发货", 下一步时间: null } }));
+    await page.getByTestId("follow-card-new").click();
+    const 窗 = page.getByRole("dialog");
+    await 窗.getByLabel("沟通内容").fill("聊了发货安排");
+    await 窗.getByLabel("下一步计划").fill("周五前发货");
+    await 窗.getByRole("button", { name: /记\s*下/ }).click();
+    const 条 = page.locator(".undo-bar");
+    await 条.waitFor();
+    expect(await 条.innerText()).toContain("必填齐了，自动推进到 物流运输");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const 框 = (await 条.boundingBox())!;
+    expect(框.x).toBeGreaterThanOrEqual(0);
+    expect(框.x + 框.width).toBeLessThanOrEqual(w + 1);
+    await 条.getByRole("button", { name: "撤销" }).click();
+    await page.waitForFunction(() => Reflect.get(window, "__改节点"));
+    expect(await page.evaluate(() => (Reflect.get(window, "__改节点") as unknown[][])[0])).toEqual(["p1", { phase: "订单", node: "生产备货", result: null }, null, { 期望在: { phase: "订单", node: "物流运输", result: null }, 下一步: { 文字: "周五前发货", 时间: null } }]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("记一条沟通顺带自动推了一格、我改不了节点（11-20）：不给撤销条，推到哪写进底部回执", async () => {
+  const { page, errors } = await 覆盖(1280, { 能记沟通: true, 能改节点: false });
+  try {
+    await page.evaluate(() => Reflect.set(window, "__记沟通回", { ok: true, followUpId: "fx", 自动推到: ["物流运输"] }));
+    await page.getByTestId("follow-card-new").click();
+    const 窗 = page.getByRole("dialog");
+    await 窗.getByLabel("沟通内容").fill("聊了发货安排");
+    await 窗.getByLabel("下一步计划").fill("周五前发货");
+    await 窗.getByRole("button", { name: /记\s*下/ }).click();
+    await page.getByText("已记下这条沟通；必填齐了，自动推进到 物流运输").waitFor();
+    expect(await page.locator(".undo-bar").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("项目来源：项目没选、客户有来源但我看不到客户（name 空）：写「随客户来源」，不写待填、不露渠道名（11-20 总控判定：只露有无）", async () => {
+  const { page, errors } = await 覆盖(1280, { 项目来源: { name: "", 跟客户: true } });
+  try {
+    const 卡 = page.locator(".proj-side .ant-card").filter({ hasText: "项目来源" }).first();
+    await 卡.getByText("随客户来源").waitFor();
+    const 行 = await 卡.getByText("项目来源", { exact: true }).locator("..").innerText();
+    expect(行).toContain("随客户来源");
+    expect(行).not.toContain("待填");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
 });
