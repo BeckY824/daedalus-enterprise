@@ -393,6 +393,8 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     // 项目不能单独领（10-31 晚定）：按钮灰着、说去领客户
     领取不给: !能领 ? null : 原负责人领不回 ? 原负责人不能领回提示 : 公海 && 企业 && p.result ? `这个项目已经结束（${p.result}），不能单独领取` : 公海 && 拦单独领项目() ? 项目不能单独领提示 : 公海 && 拦客户公海里的项目(!!p.customer.pool) ? 客户在公海项目不单领提示 : null,
     进公海: 最近放回 ? { 方式: 认放回(最近放回.reason), 谁: 叫(最近放回.userId)! } : null,
+    // 最近一次是不是我放回的（没留痕的老数据按原负责人认）：公海提示条只对放回的那位说「是你放回去的」，别人（如看别人退回的管理员）不说
+    放回的是我: 公海 && (最近放回 ? 最近放回.userId === me.id : 上一任 === me.id),
     balanceSettled: p.balanceSettled, balanceSettledBy: 叫(p.balanceSettledById), balanceSettledAt: p.balanceSettledAt?.toISOString() ?? null,
     acceptancePassed: p.acceptancePassed, acceptancePassedBy: 叫(p.acceptancePassedById), acceptancePassedAt: p.acceptancePassedAt?.toISOString() ?? null,
     logs: p.logs.map((l) => ({

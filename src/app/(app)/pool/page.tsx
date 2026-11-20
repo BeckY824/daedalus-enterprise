@@ -14,6 +14,7 @@ import { 持有上限of } from "@/lib/project/org-rules";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 公海别线的 } from "@/lib/enterprise/pool-line-guard";
 import PoolView from "./PoolView";
+import { 转走项目预览of } from "../customers/actions";
 import { 读公海页筛, 按名单 as 按名单of, type 公海页地址 } from "./filters";
 
 export const dynamic = "force-dynamic";
@@ -87,6 +88,8 @@ export default async function PoolPage({
       users={users}
       候选信息={候选信息}
       无效原因选项={无效原因选项}
+      // 行内领客户时列「会一起转走的项目」，和客户详情页领取前同一份数（服务端动作当参数递，界面测试不用桩）
+      转走预览={转走项目预览of}
       持有={上限 === null ? null : { 有, 上限 }}
       // 只读管理员（B2-1）、没设业务角色的（11-03 D3-7 ④）：领取都不摆
       只读={!能新建和领取(me, 权限org)}

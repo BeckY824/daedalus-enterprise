@@ -911,6 +911,24 @@ it.each<[string, Record<string, unknown>, string]>([
   } finally { await page.close(); }
 });
 
+// 11-20 c2 实操：管理员看别人退回公海的项目，提示条写「是你放回去的」——原来领不了又没给原因的一律这么说。只对真放回的那位说
+it.each<[string, Record<string, unknown>, string]>([
+  ["别人放回、我的账号领不了（如系统管理员没设业务角色）", { 放回的是我: false, 进公海: { 方式: "手动", 谁: "销售乙" } }, "你的账号不能领公海项目，等能领的同事领取"],
+  ["没给放回的是我（老数据）当不是", { 进公海: { 方式: "手动", 谁: "销售乙" } }, "你的账号不能领公海项目，等能领的同事领取"],
+  ["真是我放回的", { 放回的是我: true, 进公海: { 方式: "手动", 谁: "组长甲" } }, "是你放回去的，等同事领取"],
+  ["我是原负责人、领不回", { 领取不给: "原负责人不能领回", 放回的是我: true }, "你是原负责人，原负责人不能领回，等同事领取"],
+  ["已结束的项目：照原因说，不说「你是原负责人」", { 领取不给: "这个项目已经结束（输单），不能单独领取", 放回的是我: false }, "这个项目已经结束（输单），不能单独领取"],
+  ["能领", { 能领取: true }, "领取了你就是负责人，可以接着推进程"],
+])("公海提示条按实际情况说：%s", async (_, x, 话) => {
+  const { page, errors } = await 覆盖(1280, { pooled: true, ownerId: "", ownerName: "销售乙", 能领取: false, 领取不给: null, ...x });
+  try {
+    const 条 = page.locator(".ant-alert").filter({ hasText: "这个项目在线索公海里" });
+    expect((await 条.locator(".ant-alert-description").innerText()).trim()).toBe(话);
+    if (!x.放回的是我) expect(await 条.innerText()).not.toContain("你放回");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it.each([1024, 1280, 1366])("%ipx：超长负责人、创建人名字在页头折行，不横向伸出，也不压住按钮", async (宽) => {
   const 长名 = "超长名字" + "Y".repeat(300); // 这里没有外壳，页头有整屏宽：90 个不够宽，去掉折行规则也量不出来
   const { page, errors } = await 覆盖(宽, { ownerName: 长名, creatorName: 长名 + "丙" });
@@ -2164,6 +2182,38 @@ it("手机 390 / 360 宽：「完成节点」补填框不出屏（贴左右各 8
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
+});
+
+// 11-20 c2 实操：375 宽「完成节点」补填框底下那排按钮比屏幕低约 6px，要滚一下才看得到。缺得多（框长到最高）、几种手机高度都要整排在屏里；
+// 飞书 / 微信内置浏览器去掉标题栏后更矮（375×623），iPhone SE（375×667），常见全面屏（375×812、390×844）
+it.each([[375, 623], [375, 667], [375, 812], [390, 844], [360, 640], [1024, 680], [1366, 680]])("%i×%i：补填框缺得多时底下按钮整排在屏里，不用滚页面", async (w, h) => {
+  const { page, errors } = await open(true, w);
+  try {
+    await page.setViewportSize({ width: w, height: h });
+    const 缺 = ["金额", "预计成交日期", "项目方案", "客户等级", "主联系人", "需求描述", "项目名称", "项目来源", "项目所在地", "项目级别", "项目标签", "合同已生效"];
+    await page.evaluate((x) => (window as unknown as { __over: (x: unknown) => void }).__over(x), { phase: "商机", node: "方案敲定", 必填: { 配了: 缺, 还差: 缺 } });
+    const 钮 = page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" });
+    await 钮.scrollIntoViewIfNeeded();
+    await 钮.click();
+    const 框 = page.locator(".pd-fill-pop");
+    await 框.locator(".pd-fill-pop-body").waitFor();
+    await page.waitForTimeout(400);
+    const 量 = () => page.evaluate(() => {
+      const 框 = document.querySelector(".pd-fill-pop .ant-popover-container, .pd-fill-pop .ant-popover-inner")!.getBoundingClientRect();
+      const 排 = document.querySelector(".pd-fill-pop .proj-fill-foot")!.getBoundingClientRect();
+      const 取消 = [...document.querySelectorAll<HTMLElement>(".pd-fill-pop .proj-fill-foot button")].map((b) => b.getBoundingClientRect());
+      const 底 = Math.max(...取消.map((r) => r.bottom));
+      const 中 = 取消[0] ? document.elementFromPoint(取消[0].left + 取消[0].width / 2, 取消[0].top + 取消[0].height / 2)?.closest(".proj-fill-foot") != null : false;
+      return { 框底: 框.bottom, 排底: 排.bottom, 钮底: 底, 屏高: window.innerHeight, 点得到: 中, 框顶: 框.top };
+    });
+    const m = await 量();
+    expect(m.钮底, JSON.stringify(m)).toBeLessThanOrEqual(m.屏高);
+    expect(m.框底, JSON.stringify(m)).toBeLessThanOrEqual(m.屏高);
+    expect(m.框顶, JSON.stringify(m)).toBeGreaterThanOrEqual(0);
+    expect(m.点得到, JSON.stringify(m)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
 });
 
 it("dt.pay：删回款是后果框，写明哪一笔和删后的合计；取消不生效；服务端挡了原因留在框里", async () => {

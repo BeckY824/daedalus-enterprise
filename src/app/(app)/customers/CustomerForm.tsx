@@ -87,8 +87,8 @@ export type CustomerRow = {
   signedAmount: number;
   /** 已签约按币种合计（2026-10-03）。老调用方没给就当没有 */
   signedTotals?: { 币种: string; 合计: number }[];
-  /** 在公海里（2026-10-03 第 6 块）。老调用方没给就当不在 */
-  pool?: { reason: string } | null;
+  /** 在公海里（2026-10-03 第 6 块）。老调用方没给就当不在。无效 = 企业版标了无效（公海回收站，P-公海-09）：领不了，详情页摆红色「无效」标 */
+  pool?: { reason: string; 无效?: boolean } | null;
   /** 外贸档案：国家、WhatsApp、微信、邮箱、来源（2026-10-05）。老调用方没给就当都没填 */
   extra?: 外贸档案 | null;
   /** 这条记录的版本号，保存时回传做并发校验 */

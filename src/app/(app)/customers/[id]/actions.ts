@@ -21,6 +21,7 @@ import { 软删开着, 撤销软删, 删除挡, 看已删 } from "@/lib/enterpri
 import { 查完再写 } from "@/lib/check-then-write";
 import { 能恢复, 没设业务角色, 没业务角色不能领话, 能领公海, 不能领公海话, 只读角色, 只读话of, 能新建和领取 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
+import { 无效客户不能记沟通话 } from "@/lib/enterprise/pool-rules";
 import type { 组织 } from "@/lib/enterprise/org-core";
 import { 能改这条沟通, 能删沟通, 不能删沟通话, 本人限时改挡, 本人限时适用, 改沟通的顺带, 本人改不能变待办话, 本人改只改内容话, 卡片刚记的能撤, 在卡片撤销里, 卡片撤销过时话, 客户事项挡, 本人勾完成挡 } from "@/lib/enterprise/follow-perm";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
@@ -326,6 +327,8 @@ export async function saveFollowUp(input: FollowUpInput) {
     if (在公海 && 企业版() && 没设业务角色(await 权限组织(), user.id)) return { ok: false as const, error: 没业务角色不能领话 };
     // 角色不领公海的（市管、渠运、项目组员，V3.5.1）同样不记
     if (在公海 && 企业版() && !能领公海(user, await 权限组织())) return { ok: false as const, error: 只读角色(user, await 权限组织()) ? 只读话of(user, await 权限组织()) : 不能领公海话 };
+    // 标了无效的（公海回收站，P-公海-09）领不了：原来照存一条沟通、人没领到；角色拦之后、挂项目之前整条不存
+    if (在公海 && 企业版() && (await prisma.customer.findUnique({ where: { id: input.customerId }, select: { poolInvalidAt: true } }))?.poolInvalidAt) return { ok: false as const, error: 无效客户不能记沟通话 };
     // 挂哪个项目放在公海两道角色拦之后（那两句更准）、领取之前：拦下的不顺手领走
     const 给的项目 = typeof input.projectId === "string" && input.projectId ? input.projectId : null;
     let 挂到: string | null = null;

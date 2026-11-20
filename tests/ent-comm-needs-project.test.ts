@@ -28,6 +28,7 @@ import { applyProposal } from "@/app/(app)/dashboard/apply";
 import { 记项目沟通 } from "@/lib/project/db";
 import { 存背调到客户 } from "@/lib/research/actions";
 import { 初始状态 } from "@/lib/research/state";
+import { 无效客户不能记沟通话 } from "@/lib/enterprise/pool-rules";
 import {
   不挂项目也能存, 沟通没项目话, 沟通没在推项目话, 沟通要选项目话, 沟通都不能记话, 沟通客户在公海话, 沟通项目已结束话, 沟通不是组员话, 待办改沟通话,
 } from "@/lib/project/follow-needs-project";
@@ -119,6 +120,19 @@ describe("客户页记沟通", () => {
     await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 同事 } });
     await prisma.customerPool.create({ data: { customerId: 客户, reason: "手动", userId: 同事 } });
     expect(await 记()).toEqual({ ok: false, error: 沟通客户在公海话, 没项目: true });
+    expect(await prisma.customerPool.count({ where: { customerId: 客户 } })).toBe(1);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 客户 } })).salesOwnerId).toBe(同事);
+  });
+
+  // 11-20 c2 实操：公海回收站里的无效客户（P-公海-09）领不了（M-权限-03）。原来记沟通照存一条、领取悄悄没成；改成整条不存、说先恢复
+  it("标了无效的公海客户：不记、不领，说要先恢复（选了项目、待办都一样）", async () => {
+    const 项 = await 项目({ ownerId: "", pooledAt: new Date() });
+    await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 同事, poolInvalidAt: new Date() } });
+    await prisma.customerPool.create({ data: { customerId: 客户, reason: "手动", userId: 同事 } });
+    expect(await 记()).toEqual({ ok: false, error: 无效客户不能记沟通话 });
+    expect(await 记({ projectId: 项.id })).toEqual({ ok: false, error: 无效客户不能记沟通话 });
+    expect(await 记({ type: "OTHER", content: "随手记" })).toEqual({ ok: false, error: 无效客户不能记沟通话 });
+    expect(await prisma.followUp.count({ where: { customerId: 客户 } })).toBe(0);
     expect(await prisma.customerPool.count({ where: { customerId: 客户 } })).toBe(1);
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: 客户 } })).salesOwnerId).toBe(同事);
   });

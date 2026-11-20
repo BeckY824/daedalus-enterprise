@@ -35,8 +35,9 @@ import { PageHead, RowLink } from "@/components/ui";
 import { fmtDateTime, smartTime, 成员选项, type 可选成员 } from "@/lib/utils";
 import { useUrlFilters } from "@/lib/url-filters";
 import BatchFilterTag from "@/components/BatchFilterTag";
-import { 带走说法 } from "@/lib/carry-over";
-import { 公海规则, 原负责人不能领回提示, 项目不能单独领提示 } from "@/lib/enterprise/pool-rules";
+import { 带走说法, 转走项目说法, type 转走项目预览 } from "@/lib/carry-over";
+import { 转走项目列表 } from "../customers/useCarryConfirm";
+import { 公海规则, 原负责人不能领回提示, 项目不能单独领提示, 无效客户不能领短话 } from "@/lib/enterprise/pool-rules";
 import { 公海属性们, 快捷们, 排序们, 默认排序, 多次退回起, 没原因, 入池类叫法, type 公海行, type 公海属性, type 快捷 } from "@/lib/enterprise/unified-pool";
 import { 领取, 分配公海, 撤销公海, type 公海结果 } from "../customers/pool-actions";
 import { 标无效客户, 恢复有效客户, 分配公海项目, 撤销公海项目, type 整包撤销 } from "./actions";
@@ -90,6 +91,11 @@ type Props = {
   三态开?: boolean;
   /** 「号码不全」上的数 = 在现在这些筛选上再点它会列出几行（三态开着才给，lib/enterprise/unified-pool-db.ts 读公海页） */
   号码不全数?: number | null;
+  /**
+   * 领客户前数「会一起转走的项目」（customers/actions 转走项目预览of，页面当参数递进来）：行内点「领取」时原地确认里列出来，
+   * 和客户详情页领取前那个框同一份数（P-转-07 / M-公海-05）。不给 = 不列（老调用方、界面测试）
+   */
+  转走预览?: (ids: string[]) => Promise<转走项目预览>;
 };
 
 /** 「号码不全」标签的悬停说明（M-公海-51：同手动退回公海那把尺） */
@@ -120,7 +126,7 @@ const 快捷说明: Record<快捷, string> = {
 const 公海回收站 = "公海回收站";
 const 快捷叫法 = (k: 快捷): string => (k === "无效客户" ? 公海回收站 : k);
 
-const 无效原因 = "标了无效，要系统管理员先恢复";
+const 无效原因 = 无效客户不能领短话;
 
 const 行名 = (r: 公海行) => (r.种 === "项目" ? r.项目名 ?? r.客户名 : r.客户名 ?? r.项目名) ?? "这一行";
 /** 提示条里叫这一行：项目行写明是项目，别读成客户被领走 / 分走（11-03 B2-6：只动了项目，提示写的是客户名） */
@@ -147,7 +153,7 @@ function ResultNote({ 文案, 没领到, 关 }: { 文案: string; 没领到: 没
   );
 }
 
-export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快捷数, 属性数, 截断, 库里有, filters, 渠道筛选项, 能标无效, 能恢复, 能分配, 别线ids = [], users, 候选信息 = {}, 无效原因选项 = [], 持有, 只读 = false, 三态开 = false, 号码不全数 = null }: Props) {
+export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快捷数, 属性数, 截断, 库里有, filters, 渠道筛选项, 能标无效, 能恢复, 能分配, 别线ids = [], users, 候选信息 = {}, 无效原因选项 = [], 转走预览, 持有, 只读 = false, 三态开 = false, 号码不全数 = null }: Props) {
   const 别线 = new Set(别线ids);
   const router = useRouter();
   const { f, setF, apply, 翻页, reset, pending } = useUrlFilters("/pool", filters, pageSize);
@@ -177,6 +183,19 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
   const [问后果, 后果框] = useConsequence();
   /** 正在就地确认领取的那一行（同一时刻只一行） */
   const [问着, set问着] = useState<string | null>(null);
+  /**
+   * 行内领客户时会一起转走的项目（行 id → 说法；「取中」= 在数，null = 没有要转走的 / 数不出来）：点「领取」时现取，原地确认里列名单（同客户详情页的领取框）。
+   * 数不出来不拦着（领取本身照样带走项目），只是不列
+   */
+  const [转走, set转走] = useState<Record<string, ReturnType<typeof 转走项目说法> | "取中">>({});
+  function 数转走(r: 公海行) {
+    if (!转走预览 || r.种 !== "客户" || r.子) return;
+    set转走((x) => ({ ...x, [r.id]: "取中" }));
+    转走预览([r.customerId]).then(
+      (p) => set转走((x) => ({ ...x, [r.id]: 转走项目说法(p) })),
+      () => set转走((x) => ({ ...x, [r.id]: null })),
+    );
+  }
   /** 行上没领到的原因（行 id → 原因），写在按钮下面 */
   const [行错, set行错] = useState<Record<string, string>>({});
   /** 表格上方的就地提示：这一批有几个没领到 / 没分出去 */
@@ -483,7 +502,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
         ) : !只读 && (
           <InlineConfirm 问="" 中性 是="确认领取" 毫秒={8000} 开={问} set开={(v) => set问着(v ? r.id : null)} 做={() => 领一个(r)}>
             <Button className="row-act" aria-label={`领取 ${行名(r)}`} disabled={!!因} size="small"
-              onClick={() => { 清行错(r.id); set问着(r.id); }}>
+              onClick={() => { 清行错(r.id); set问着(r.id); 数转走(r); }}>
               领取
             </Button>
           </InlineConfirm>
@@ -516,11 +535,25 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
             transition={{ duration: 时长.base, ease: 曲线.ease }}
           >
             {问
-              ? <div className="pool-why" aria-live="polite">{领取后果([r]).map((t) => <div key={t}>{t}</div>)}</div>
+              ? <div className="pool-why" aria-live="polite">{领取后果([r]).map((t) => <div key={t}>{t}</div>)}{转走说法(r)}</div>
               : <div className="pool-err pool-row-err" role="alert">{错}</div>}
           </motion.div>
         )}
       </AnimatePresence>
+    );
+  }
+
+  /** 原地确认里「会一起转走的 N 个项目」：项目名一行一个（同客户详情页领取框，useCarryConfirm 的 转走项目列表）；同事在推的只说个数 */
+  function 转走说法(r: 公海行): ReactNode {
+    const 说 = 转走[r.id];
+    if (说 === "取中") return <div className="muted">在数会一起转走的项目…</div>;
+    if (!说) return null;
+    return (
+      <div className="pool-carry">
+        <div>{说.标题}{说.行.length ? "，负责人一起改成你" : ""}</div>
+        <转走项目列表 说法={说} />
+        {说.同事 && <div>{说.同事}</div>}
+      </div>
     );
   }
 

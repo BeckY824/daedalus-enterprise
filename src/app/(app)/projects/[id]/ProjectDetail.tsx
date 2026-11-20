@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { DownOutlined, EditOutlined, MoreOutlined, RightOutlined, SearchOutlined, ThunderboltOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Checkbox, Dropdown, Input, InputNumber, Menu, Modal, Popover, Progress, Segmented, Select, Space, Tag, Timeline, Tooltip, type MenuProps } from "antd";
+import { Alert, Button, Card, Checkbox, Dropdown, Input, InputNumber, Menu, Modal, Popover, Progress, Segmented, Select, Space, Tag, Timeline, Tooltip, type MenuProps, type PopoverProps } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import DictSelect from "@/components/DictSelect";
 import { useMotionTheme } from "@/components/MotionTheme";
@@ -14,7 +14,7 @@ import { useConsequence } from "@/components/ConsequenceDialog";
 import { showUndo } from "@/components/UndoBar";
 import { 其他没写好, 不填项, 去不填, 未选占位 } from "@/lib/enterprise/dict-kinds";
 import { 有值, 空值符, 空显 } from "@/lib/empty-value";
-import { 项目不能单独领提示, 客户在公海项目不单领提示, 公海规则 } from "@/lib/enterprise/pool-rules";
+import { 公海规则, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 必填叫法, type 必填项 } from "@/lib/project/required";
 import { PageHead, CustomerLink, FollowTypeCell } from "@/components/ui";
 import { useBusiness } from "@/lib/business-client";
@@ -121,6 +121,8 @@ export type 项目详情 = {
   领取不给: string | null;
   /** 在公海里时最近一次怎么进来的（ownerName 这时是原负责人）：谁放的、超时系统收 / 办停用时放 / 手动放回 */
   进公海: { 方式: 放回方式; 谁: string } | null;
+  /** 在公海里、最近一次是我放回的（load.ts）；老调用方没给当不是 */
+  放回的是我?: boolean;
   /** 服务端读的 企业版()：放回公海的说法跟着它走 */
   企业版: boolean;
   /** 能删这个项目：企业版系统管理员或负责人本人（销售、销管、渠运，V3.5.1；进回收站），别的版本 = 能改 */
@@ -387,6 +389,23 @@ function 级别格(v: string | null) {
       {" "}<span style={{ color: "var(--text-muted)" }}>{企业级别说明[档].replace(/^\S+\s*/, "")}</span>
     </span>
   );
+}
+
+/**
+ * 公海提示条那句（项目页、客户页项目区同一个）：能领说领了怎样；领不了说为什么。
+ * 「是你放回去的」只对真放回的那位说（放回的是我）：原来领不了又没给原因的一律这么说，管理员看别人退回的项目也被说成「你放回去的」（11-20 c2 实操）
+ */
+/**
+ * 「完成节点」补填框放不下时：能翻就翻、翻了也放不下就挪进屏里（放外面，每次渲染同一个对象）。
+ * antd 把这个对象原样并进浮层库的 overflow（_util/placements getOverflowOptions），shiftY 浮层库认、antd 的类型没列，只能断言
+ */
+const 补填框挪进屏 = { adjustX: 1, adjustY: 1, shiftY: true } as Exclude<PopoverProps["autoAdjustOverflow"], boolean | undefined>;
+
+function 公海告示话(p: Pick<项目详情, "能领取" | "领取不给" | "放回的是我">): string {
+  if (p.能领取) return "领取了你就是负责人，可以接着推进程";
+  if (p.领取不给 === 原负责人不能领回提示) return `你是原负责人，${原负责人不能领回提示}，等同事领取`;
+  if (p.领取不给) return p.领取不给;
+  return p.放回的是我 ? "是你放回去的，等同事领取" : "你的账号不能领公海项目，等能领的同事领取";
 }
 
 function 进公海说法(进: 项目详情["进公海"], 原负责人: string): string {
@@ -942,6 +961,9 @@ export default function ProjectDetail({
                   open={头部框 === "完成"}
                   trigger="click"
                   placement="bottomRight"
+                  // 下面放不下：先试翻到按钮上面，还放不下就整块往上挪到屏里（11-20 c2 实操：375 宽缺得多时底下按钮比屏幕低、要滚一下才看得到）。
+                  // 默认只翻不挪，翻上去也放不下就照旧挂在下面伸出屏外；挪的时候按浮层外框算，外框底下留的安全区见 globals.css .pd-fill-pop
+                  autoAdjustOverflow={补填框挪进屏}
                   arrow={false}
                   destroyOnHidden
                   classNames={{ root: "pd-fill-pop" }}
@@ -1949,7 +1971,7 @@ export default function ProjectDetail({
   const 告示 = (
     <>
       {p.pooled && (
-        <Alert type="info" showIcon style={{ marginBottom: 16 }} title="这个项目在线索公海里" description={p.能领取 ? "领取了你就是负责人，可以接着推进程" : p.领取不给 === 项目不能单独领提示 || p.领取不给 === 客户在公海项目不单领提示 ? p.领取不给 : p.领取不给 ? `你是原负责人，${p.领取不给}，等同事领取` : "是你放回去的，等同事领取"} />
+        <Alert type="info" showIcon style={{ marginBottom: 16 }} title="这个项目在线索公海里" description={公海告示话(p)} />
       )}
 
       {p.客户在谁名下 && (
