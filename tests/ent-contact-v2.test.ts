@@ -372,7 +372,7 @@ describe("联系人挂多位客户", () => {
 });
 
 describe("联系方式查重", () => {
-  it("各种类型都比：手机 +86、邮箱大小写、自己加的类型分隔符；不同类型同号不算", async () => {
+  it("各种类型都比：手机 +86、邮箱大小写、自己加的类型分隔符；不同类型同号也算（11-20 全局查重）", async () => {
     const 甲 = await 新建id();
     await 企业字典("contactKind");
     await prisma.entDictItem.create({ data: { kind: "contactKind", name: "QQ", sort: 99 } });
@@ -387,8 +387,9 @@ describe("联系方式查重", () => {
     expect((await 查("email", "zhang@x.com", "zhang@x.com")).map((x) => x.kind)).toEqual(["email"]);
     expect(await 查("landline", "02112345678", "02112345678")).toHaveLength(1);
     expect(await 查("custom:QQ", "abc1", 联系人号查重键("custom:QQ", "abc1"))).toHaveLength(1);
-    expect(await 查("custom:微博", "abc1", "abc1")).toEqual([]);
-    expect(await 查("wechat", "13900000021", "13900000021")).toEqual([]);
+    expect(await 查("custom:微博", "abc1", "abc1")).toHaveLength(1);
+    expect((await 查("wechat", "13900000021", "13900000021")).map((x) => x.name)).toEqual(["张一"]);
+    expect(await 查("wechat", "13900000029", "13900000029")).toEqual([]);
     // 子表回填之前的老三格也比
     await prisma.contact.create({ data: { customerId: 甲, name: "老三格", wechat: " LaoWX " } });
     expect((await 查("wechat", "laowx", "laowx")).map((x) => x.name)).toEqual(["老三格"]);
@@ -435,8 +436,8 @@ describe("联系方式查重", () => {
     const 存 = (号: { kind: string; value: string }) => saveContact({ customerId: 乙, name: "李四示例", isPrimary: false, 企业: { 号码们: [号] } });
     expect(await 存({ kind: "fax", value: "(021) 12345678" })).toMatchObject({ ok: false, 撞了: [{ contactId: 张, kind: "fax" }] });
     expect(await 存({ kind: "telegram", value: "shi_li01" })).toMatchObject({ ok: false, 撞了: [{ contactId: 张, kind: "telegram" }] });
-    // 同一个号换了类型不算撞
-    expect((await 存({ kind: "landline", value: "021-12345678" })).ok).toBe(true);
+    // 同一个号换了类型也算撞（11-20 全局查重）
+    expect(await 存({ kind: "landline", value: "021-12345678" })).toMatchObject({ ok: false, 撞了: [{ contactId: 张, kind: "landline" }] });
     expect(await prisma.contactMethod.findMany({ where: { contactId: 张 }, select: { kind: true, numberKey: true }, orderBy: { kind: "asc" } }))
       .toEqual([{ kind: "fax", numberKey: "02112345678" }, { kind: "telegram", numberKey: "shi_li01" }]);
     // Telegram 写号码的，和手机一样去 +86
