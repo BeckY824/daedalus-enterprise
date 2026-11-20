@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getBusiness } from "@/lib/business";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 带走一位, 转项目 } from "@/lib/carry-over-db";
+import { 离职交接痕 } from "@/lib/project/carry-tasks";
 import { 看全部 } from "@/lib/team-scope";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 停用分拣, 停用的同事 } from "@/lib/offboard-db";
@@ -464,7 +465,7 @@ export async function 确认离职交接(me: { id: string; role: string }, h: { 
     if (范围 === "项目") {
       const 要 = 读ids(h.projectIds);
       // 没开项目模式了：项目不动，按转不了跳过
-      const 转了 = 带项目 && 要.length ? await 转项目(tx, { id: { in: 要 }, ownerId: from, pooledAt: null, result: null }, to, 操作人) : [];
+      const 转了 = 带项目 && 要.length ? await 转项目(tx, { id: { in: 要 }, ownerId: from, pooledAt: null, result: null }, to, 操作人, true, 离职交接痕) : [];
       // 他自己占着待分配的，交过去清待分配（P-转-20、X-84）
       if (转了.length) await tx.project.updateMany({ where: { id: { in: 转了 }, awaitAssignAt: { not: null } }, data: { awaitAssignAt: null } });
       await 整批核上限(tx, 起, "交接", 确认超上限尾);

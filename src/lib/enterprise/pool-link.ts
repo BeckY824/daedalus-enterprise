@@ -15,6 +15,7 @@ import { 公海规则, 单项目客户进公海理由, 客户整体进公海理�
 import { 看全部 } from "@/lib/team-scope";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 带走一位, 带走公海项目, type 带走的 } from "@/lib/carry-over-db";
+import { 公海分配痕 } from "@/lib/project/carry-tasks";
 import { 记转让, 能进公海的阶段, 超上限n, 算持有的项目 } from "@/lib/project/db";
 import type { 组织规则 } from "@/lib/project/org-rules";
 import { 进公海后负责人, 进公海关待办, 进公海清组员, 进公海关主题 } from "@/lib/project/pool-owner";
@@ -194,7 +195,8 @@ export async function 客户整包出公海(
     // 出客户公海归销售：客户分配记「公海领取」（customer-assign-way.ts），撤销整包退回时按 分 还
     const 分 = await 写公海领取(tx, customerId);
     const 带 = c.salesOwnerId !== 新 ? await 带走一位(tx, customerId, c.salesOwnerId, 新, kind === "claim" ? 新 : 操作人, kind) : null;
-    const 公海项目 = 公海规则.领客户带走公海里的项目 ? await 带走公海项目(tx, [customerId], 新, 操作人, 带待办) : [];
+    // 管理分出去的（pool-assign、分的人不是接手人）：带出公海的项目留痕记「从客户公海分配」（超时未跟进自动转算分给他）；自己领的不记
+    const 公海项目 = 公海规则.领客户带走公海里的项目 ? await 带走公海项目(tx, [customerId], 新, 操作人, 带待办, kind === "pool-assign" && 操作人 !== 新 ? 公海分配痕 : null) : [];
     // 撤销整包退回（P-公海-10）只还这次带过来的活，同客户公海分配的 带过来
     const 带过来: 带走的 = { 计划: 带?.计划 ?? [], 待办: 带?.待办 ?? [], 商机: 带?.商机 ?? [], 项目: 带?.项目 ?? [] };
     return { customerId, 旧: c.salesOwnerId, 公海项目, 带过来, ...(分 ? { 分: 分.原 } : {}) };

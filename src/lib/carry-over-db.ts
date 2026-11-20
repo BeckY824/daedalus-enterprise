@@ -7,7 +7,7 @@ import { 卡点随项目换人, 转让接手理由 } from "@/lib/project/blocker
 import { 记换负责人, 公海前负责人, type 换负责人种类 } from "@/lib/owner-log-db";
 import { 历史负责人们 } from "@/lib/project/pool-owner";
 import { 公海领走接手理由 } from "@/lib/project/blocker";
-import { 换负责人待办, 待办痕, 接上待办痕 } from "@/lib/project/carry-tasks";
+import { 换负责人待办, 待办痕, 接上待办痕, 跟着客户痕, 离职交接痕 } from "@/lib/project/carry-tasks";
 import { 撞号提醒尾 } from "@/lib/enterprise/contact-format";
 import { 预览列几个, type 带走数, type 转走项目预览 } from "@/lib/carry-over";
 import { 权限组织, type 组织 } from "@/lib/enterprise/org";
@@ -365,7 +365,8 @@ export async function 带走一位(tx: Prisma.TransactionClient, customerId: str
   if (计划.length) await tx.followPlan.updateMany({ where: { id: { in: 计划 } }, data: { ownerId: 新 } });
   if (待办.length) await tx.task.updateMany({ where: { id: { in: 待办 } }, data: { ownerId: 新 } });
   const 转客户 = 企业版() && kind === "assign";
-  const 项目痕 = 选项.项目痕 ?? null;
+  // 跟着客户转过去的项目，留痕原因都带个开头（超时未跟进自动转靠它认「跟着带过去的」，不起算）：离职交接 / 跟着客户；市场转给销售传 随客户痕
+  const 项目痕 = 选项.项目痕 ?? (kind === "deactivate" ? 离职交接痕 : 跟着客户痕);
   // 同事负责、正在待分配的（用户 11-09 定）：先查（原负责人自己的转完也归 新，不能混进来）；转项目 跳过接手人自己占着的，那些只清状态
   const 待分配 = 带项目 && 企业版() && (kind === "assign" || kind === "deactivate")
     ? await tx.project.findMany({ where: { customerId, pooledAt: null, awaitAssignAt: { not: null }, ownerId: { notIn: [实际旧, ""] } }, select: { id: true, awaitAssignAt: true, ownerId: true } })
