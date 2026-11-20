@@ -23,9 +23,42 @@ export type 编辑器参数<T> = { 草稿: T; set草稿: (v: T) => void; 提交:
  * - 存失败（存 返回一句话、或抛错）：留在编辑态、输入不丢、行内写原因；同一份草稿再失焦不重复交，改了字再失焦才再交
  * - 存成功先显示新值，旁边一个 ✓ 停一下淡掉；等 router.refresh 带回新 props 就听服务端的（值变了清掉乐观值，渲染时比，不用 effect）
  * - 失焦存的不把焦点抢回笔上（人已经点到别处了）；回车 / ⌘↵ / Esc 收起时焦点回到笔上
+ * - 钱格敲了认不出的字（AmountInput 交 NaN）：「改没改」用 串 比（NaN ≠ 空），照样交给 存 说为什么；草稿里 NaN 换回原值（11-20 审查）
  *
  * 客户页的 InlineField 绑死了 patchCustomer，不能复用，这里只借它的按键习惯
  */
+/**
+ * 比「改没改」、记「哪份草稿没存上」用的串。NaN（金额框敲了认不出的字）JSON 会写成 null：
+ * 原值空着时「约5万」的草稿 {数: NaN} 和 {数: null} 一个串，提交会当没改直接收起、字丢了也没一句话（审查 11-20）。这里 NaN 单独记
+ */
+function 串(v: unknown): string {
+  return JSON.stringify(v, (_, x) => (typeof x === "number" && Number.isNaN(x) ? "\u0000NaN" : x)) ?? "";
+}
+
+/**
+ * 留草稿用的值：一格里认不出的金额（NaN）换回打开时的值——JSON 存不了 NaN，存成 null 带回再保存就把原金额清掉了（审查 11-20）。
+ * 认不出的那几个字本来就要人重敲，草稿里只留别的（比如改过的币种）
+ */
+function 去认不出<T>(草稿: T, 原: T): T {
+  if (typeof 草稿 === "number" && Number.isNaN(草稿)) return 原;
+  if (!草稿 || typeof 草稿 !== "object" || Array.isArray(草稿)) return 草稿;
+  const 原格 = (原 && typeof 原 === "object" ? 原 : {}) as Record<string, unknown>;
+  let 改了 = false;
+  const 出: Record<string, unknown> = { ...(草稿 as Record<string, unknown>) };
+  for (const [k, x] of Object.entries(出)) {
+    if (typeof x === "number" && Number.isNaN(x)) {
+      出[k] = 原格[k] ?? null;
+      改了 = true;
+    }
+  }
+  return 改了 ? (出 as T) : 草稿;
+}
+
+/** 钱格（lib/project/inline-edit 的 钱格值）：{ 数, 币 } */
+function 钱格样(v: unknown): v is { 数: unknown; 币: unknown } {
+  return !!v && typeof v === "object" && "数" in v && "币" in v;
+}
+
 export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存, 能改, 多行 = false, 一行显示 = false, 回车存 = false, 规整 }: {
   名: string;
   值: T;
@@ -70,9 +103,13 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
   const 稿 = useFormDraft({
     键: 范围 ? `${范围}:就地:${名}` : null,
     开: 开着,
-    值: { v: 草稿 as unknown },
+    值: { v: 去认不出(草稿, 现) as unknown },
     带回: (x) => {
-      if (x.v !== undefined) set草稿(x.v as T);
+      if (x.v === undefined) return;
+      // 钱格的 数 只带回有限数或 null（清掉）；别的（缺了、字串、NaN 写成的怪值）留现值，不拿去存
+      const 带 = x.v as T;
+      if (钱格样(带) && 钱格样(现) && 带.数 !== null && !(typeof 带.数 === "number" && Number.isFinite(带.数))) set草稿({ ...带, 数: 现.数 } as T);
+      else set草稿(带);
     },
     紧凑: true,
   });
@@ -118,15 +155,16 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
     const 输入 = 传的 === undefined ? 草稿 : 传的;
     set草稿(输入);
     const v = 规整 ? 规整(输入) : 输入;
-    if (JSON.stringify(v) === JSON.stringify(现)) return 关(!失焦);
-    if (失焦 && 失败的.current === JSON.stringify(输入)) return;
+    // 用 串 比：认不出的金额（NaN）不能和「空着」算一样，要交给 存 说为什么
+    if (串(v) === 串(现)) return 关(!失焦);
+    if (失焦 && 失败的.current === 串(输入)) return;
     在存.current = true;
     set忙(true);
     set错(null);
     try {
       const 话 = await 存(v);
       if (话) {
-        失败的.current = JSON.stringify(输入);
+        失败的.current = 串(输入);
         return set错(话);
       }
       稿.存好了();
@@ -134,7 +172,7 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
       set刚存((n) => n + 1);
       关(!失焦);
     } catch (e) {
-      失败的.current = JSON.stringify(输入);
+      失败的.current = 串(输入);
       set错(动作出错话(e, "没存上，请稍后再试"));
     } finally {
       在存.current = false;

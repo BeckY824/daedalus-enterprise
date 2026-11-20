@@ -51,7 +51,7 @@ import { 认归档档位 } from "../enterprise/archive-tier";
 import { 成交需求上限 } from "../project/profile-rules";
 import { 实体顺序, 必填, 字段中文, type 原始记录, type 实体, type 映射, type 问题, type 待写, type 格式类 } from "./types";
 import { 全角转半角 } from "../fullwidth";
-import { 认金额 } from "../money-input";
+import { 认金额, 金额字币种 } from "../money-input";
 import { hasVisibleText } from "../form-validation";
 
 /** 我们这边已有的东西，调用方从库里查好传进来。键都已规整过（见下面的 名键 / 号键） */
@@ -283,14 +283,6 @@ function 拼备注(...段: (string | undefined | null)[]): string | null {
 
 /** 项目成交钱那五格（迁移 097），非项目模式进备注的顺序 */
 const 成交钱列 = ["dealDemand", "contractAmount", "contractCurrency", "depositAmount", "depositCurrency"] as const;
-
-/** 金额前面带的货币符号认得出就用它（认金额会把符号去掉）；没有 = null */
-function 符号币种(v: string): string | null {
-  const s = v.trim();
-  if (/^(US\$|USD|\$)/i.test(s) || /usd$/i.test(s)) return "USD";
-  if (/^(¥|￥|RMB|CNY)/i.test(s) || /(元|人民币|rmb|cny)$/i.test(s)) return "CNY";
-  return null;
-}
 
 /** 是 / 否：关键联系人这种格子 */
 function 认是否(v: string): boolean {
@@ -634,7 +626,8 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
         出问题(r, "提醒", "格式不对", `${名}「${原}」认不出，没写，原样放进了备注`);
         continue;
       }
-      let 币 = 符号币种(原) ?? 默认币种;
+      // 金额前后带的货币记号认得出就用它（认金额会把记号去掉；金额框、AI 收卡同一个）
+      let 币 = 金额字币种(原) ?? 默认币种;
       if (v[币种键]) {
         const c = 认币种(v[币种键]);
         if (c) 币 = c;

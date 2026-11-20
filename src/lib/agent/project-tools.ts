@@ -14,7 +14,7 @@ import { 权限组织 } from "../enterprise/org";
 import { 本套位置, 字典of, type 阶段字典 } from "../project/nodes";
 import { 生效组织规则 } from "../project/org-rules-store";
 import { 有效线索节点 } from "../project/stage-gates";
-import { 认金额 } from "../money-input";
+import { 认金额, 金额字带币 } from "../money-input";
 import { 读线索验证, 待我复核的 } from "../project/lead-verify";
 import { 可选项 } from "../enterprise/dict";
 import { buildProposal, describeProposal, missingFields } from "./proposals";
@@ -271,6 +271,8 @@ export const 项目写工具: Tool[] = [
       if (d && !d.isValid()) return { summary: "日期看不懂", data: { error: "paidAt 写成 YYYY-MM-DD" } };
       const 额 = typeof a.amount === "number" ? a.amount : str(a.amount) ? (认金额(str(a.amount)) ?? Number.NaN) : null;
       if (额 !== null && !Number.isFinite(额)) return { summary: "金额看不懂", data: { error: "amount 要是数字" } };
+      // 金额里写了币种记号（「$5000」「5万元」）：只找那种币的，别把同数目的别种币那笔拿去删（审查 11-20）
+      const 字币 = 金额字带币(a.amount);
       // 回款表不带团队范围：只在上面找到（看得到）的项目里找
       const 项目们 = new Map(找.行.map((p) => [p.id, p]));
       const 笔们 = await prisma.entProjectPayment.findMany({
@@ -278,6 +280,7 @@ export const 项目写工具: Tool[] = [
           projectId: { in: [...项目们.keys()] },
           ...(d ? { paidAt: { gte: d.startOf("day").toDate(), lte: d.endOf("day").toDate() } } : {}),
           ...(额 !== null ? { amount: 额 } : {}),
+          ...(字币 ? { currency: { in: 字币.可为 } } : {}),
         },
         select: { id: true, projectId: true, paidAt: true, currency: true, amount: true },
         orderBy: { paidAt: "desc" },

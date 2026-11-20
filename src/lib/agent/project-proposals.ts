@@ -10,7 +10,7 @@
  */
 import { FOLLOW_TYPES, FOLLOW_TYPE_MAP } from "../constants";
 import { 是币种 } from "../currency";
-import { 认金额 } from "../money-input";
+import { 认金额, 金额字带币, 币种对不上话 } from "../money-input";
 import { parseDateInput } from "@/lib/date-input";
 import { 阶段们, 是阶段, 本套名, 结局叫法, 字典of, 终止结局, 下一步, 要写原因, 原因上限, type 位置, type 阶段字典 } from "../project/nodes";
 import { 卡点类型们, 影响等级们, 描述上限, 原因最多, 清原因们 } from "../project/blocker-rules";
@@ -224,9 +224,12 @@ export function buildProjectProposal(
     if (paidAt === null) return { ok: false, error: "回款时间看不懂，写成 YYYY-MM-DD" };
     const amount = 收金额(args.amount);
     if (amount === null) return { ok: false, error: "金额要是不小于 0 的数字" };
+    const 字币 = 金额字带币(args.amount);
     const c = str(args.currency, 10).toUpperCase();
-    const currency = c || (b?.currency ?? "CNY");
+    // currency 没给：金额里写了记号就按记号，没写才按本位币；写了又和 currency 对不上就拒（审查 11-20）
+    const currency = c || 字币?.币 || (b?.currency ?? "CNY");
     if (!是币种(currency)) return { ok: false, error: `不认得币种「${c}」` };
+    if (字币 && !字币.可为.includes(currency)) return { ok: false, error: 币种对不上话(String(args.amount).trim(), 字币.币, currency) };
     return { ok: true, proposal: { ...共, kind, paidAt, currency, amount } };
   }
 

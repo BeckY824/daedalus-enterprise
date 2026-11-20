@@ -5,7 +5,6 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { DownOutlined, EditOutlined, MoreOutlined, RightOutlined, SearchOutlined, ThunderboltOutlined } from "@ant-design/icons";
-import AmountInput, { 金额框认不出提示, 金额认不出 } from "@/components/AmountInput";
 import { Alert, Button, Card, Checkbox, Dropdown, Input, Menu, Modal, Popover, Progress, Segmented, Select, Space, Tag, Timeline, Tooltip, type MenuProps, type PopoverProps } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import DictSelect from "@/components/DictSelect";
@@ -25,7 +24,7 @@ import { 跟进类型们 } from "@/lib/constants";
 import FollowMethodSelect, { InitiatorSelect, useFollowHabit, useFollowInitiators, useFollowMethods, 默认沟通方式, 默认发起主体 } from "@/components/FollowMethodSelect";
 import { 对得上的方式, 方式对类型 } from "@/lib/follow-method";
 import { 外贸精简 } from "@/lib/business-config";
-import { 币种选项, 金额, 合计文字, 按币种合计, 默认币种 } from "@/lib/currency";
+import { 金额, 合计文字, 按币种合计, 默认币种 } from "@/lib/currency";
 import { 阶段们, 交付还差, 交付还差话, 交付不在尾款话, 终止结局, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 是交付, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
 import { 超时理由 } from "@/lib/project/timeout";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
@@ -58,8 +57,9 @@ import { 指定回复文字, 北京墙钟转时刻, 回复晚于回收, 短时�
 import { 成交需求上限, 详细地址上限, 详细地址提示, 项目区域, type 项目成交钱 } from "@/lib/project/profile-rules";
 import { 合同状态们, 痛点标注上限, 备货状态们, 物流单号上限, type 合同状态, type 备货状态 } from "@/lib/project/proj-fields";
 import { 备注上限 } from "@/lib/project/wizard";
-import { 文字格改动, 沟通正文改动, 钱格改动, type 钱格值 } from "@/lib/project/inline-edit";
+import { 文字格改动, 沟通正文改动, type 钱格值 } from "@/lib/project/inline-edit";
 import ProjectInlineField, { type 编辑器参数 } from "./ProjectInlineField";
+import { 钱编辑器, 钱格存法 } from "./money-cell";
 import { 项目沟通预填, 沟通时间格式, 下一步文字上限 } from "@/lib/project/project-fields";
 import { parseFollowUpDraft } from "../../customers/[id]/ai";
 import { 改项目节点, 终止项目进程, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 改项目沟通, 删项目沟通, 编辑项目 } from "../actions";
@@ -260,18 +260,6 @@ const 满宽: React.CSSProperties = { width: "100%" };
 const 键样: React.CSSProperties = { color: "var(--text-muted)", fontSize: "var(--dt-label)", flex: "0 0 4.3em", whiteSpace: "nowrap" }; // 字段名 13（16a 同客户详情）
 // 多行的格子（需求描述、痛点、备注；前两个 11-04 起平时一行）：键和第一行对齐，不居中到一大段字的中间
 const 多行行样: React.CSSProperties = { ...行样, alignItems: "flex-start" };
-
-/** 就地改：一格钱（数 + 币种），窄卡上折成两行不溢出 */
-function 钱编辑器(名: string) {
-  return function 编辑钱({ 草稿, set草稿, 忙 }: 编辑器参数<钱格值>) {
-    return (
-      <div className="proj-inline-money">
-        <AmountInput aria-label={名} autoFocus min={0} max={1e12} precision={2} disabled={忙} value={草稿.数} onChange={(v) => set草稿({ ...草稿, 数: v })} />
-        <Select aria-label={`${名}币种`} showSearch disabled={忙} value={草稿.币} options={币种选项()} onChange={(v: string) => set草稿({ ...草稿, 币: v })} />
-      </div>
-    );
-  };
-}
 
 /** 就地改：多行文字 */
 function 文字编辑器(名: string, 上限: number) {
@@ -651,9 +639,8 @@ export default function ProjectDetail({
     router.refresh();
     return null;
   };
-  /** 钱格就地改：框里敲了认不出的字（AmountInput 交 NaN）不交，框不收、就地说为什么 */
-  const 存钱格 = async (格: "金额" | "定金金额" | "合同金额", v: 钱格值): Promise<string | null> =>
-    金额认不出(v.数) ? 金额框认不出提示 : 存项目项(钱格改动(格, v));
+  /** 钱格就地改：框里敲了认不出的字（AmountInput 交 NaN）不交，框不收、就地说为什么（money-cell.tsx） */
+  const 存钱格 = 钱格存法(存项目项);
   /** 存沟通正文：版本冲突（别人刚改过）失败时也刷新，拿到新版本，草稿还在，再点保存就行 */
   const 存沟通正文 = async (f: 项目详情["followUps"][number], content: string): Promise<string | null> => {
     const 交 = 沟通正文改动(f, content);

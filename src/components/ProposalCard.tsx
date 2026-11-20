@@ -539,7 +539,7 @@ export default function ProposalCard({
         {draft.kind === "add_contract" && (
           <>
             <Field label={签约叫(b) === "订单" ? "订单金额" : "签约金额"}>
-              <AmountTextInput aria-label="金额" prefix={币种符号(draft.currency || b.currency)} value={draft.amount} onChange={(n) => setDraft({ ...draft, amount: n })} />
+              <AmountTextInput aria-label="金额" prefix={币种符号(draft.currency || b.currency)} currency={draft.currency || b.currency} value={draft.amount} onChange={(n) => setDraft({ ...draft, amount: n })} />
             </Field>
             <Field label={签约叫(b) === "订单" ? "订单确认时间" : "签约日期"}>
               <DatePicker size="small" format="YYYY-MM-DD" allowClear={false} value={draft.signedAt ? dayjs(draft.signedAt) : null} onChange={(d) => d && setDraft({ ...draft, signedAt: d.toISOString() })} />

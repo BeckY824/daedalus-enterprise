@@ -1,7 +1,7 @@
 "use client";
 
 import { InputNumber, Tooltip, type InputNumberProps } from "antd";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { 千分位, 读金额原文, 金额格式 } from "@/lib/money-input";
 
 /** 表单校验、保存挡住时说的那句（框上悬停 / 聚焦时另有带原文的那句） */
@@ -23,17 +23,19 @@ type 透传 = Omit<InputNumberProps<number>, "value" | "defaultValue" | "onChang
  *   交上去的是 NaN，各处保存按 金额认不出 挡住（表单走校验），绝不把敲到一半的数或上一个数当成人要的。清空 = null（没填）。
  * 提示浮在框上方、不放进框里：项目卡就地改的金额框连币种只有一百来宽，放框里会把敲的字挤没（11-20 生产构建实量）。
  * 拼音输入（敲 wan 选「万」）中途不判，选完再认。
+ * currency = 旁边选的币种（审查 11-20）：敲的字里带了币种记号（「5000元」「USD 5000」「¥5万」）又和选的对不上，算认不出、说清楚，
+ *   不悄悄按选的币种存；改了币种对上了就照常认。没写记号的照常按选的币种。
  */
 export default function AmountInput({
-  value, onChange, onInput, onFocus, onBlur, onCompositionStart, onCompositionEnd, onMouseEnter, onMouseLeave, max, status, ...rest
-}: 透传 & { value?: number | null; onChange?: (v: number | null) => void }) {
+  value, onChange, onInput, onFocus, onBlur, onCompositionStart, onCompositionEnd, onMouseEnter, onMouseLeave, max, status, currency, ...rest
+}: 透传 & { value?: number | null; onChange?: (v: number | null) => void; currency?: string | null }) {
   const [原文, set原文] = useState<string | null>(null);
   const [聚焦, set聚焦] = useState(false);
   const [悬停, set悬停] = useState(false);
   const 拼 = useRef(false);
   const 上限 = typeof max === "number" ? max : undefined;
   const 错 = 金额认不出(value);
-  const 读 = 原文 === null ? null : 读金额原文(原文, 上限);
+  const 读 = 原文 === null ? null : 读金额原文(原文, 上限, currency);
   const 话 = 错 ? (读?.类 === "错" ? 读.话 : 金额框认不出提示) : null;
   const 换算 = !错 && 读?.类 === "换算" && 读.值 === value ? 读.值 : null;
   // 认不出的说为什么（聚焦、悬停都出）；换算只在敲的时候出
@@ -44,11 +46,26 @@ export default function AmountInput({
   const 收 = (s: string) => {
     if (拼.current) return;
     set原文(s);
-    const r = 读金额原文(s, 上限);
+    const r = 读金额原文(s, 上限, currency);
     if (r.类 === "错") {
       if (!错) onChange?.(Number.NaN);
     } else if (r.类 === "空" && 错) onChange?.(null);
   };
+
+  /*
+    敲完再改币种：框里还留着认不出的原文就按新币种重认一遍——「5000元」配美元认不出，币种改成人民币就交 5000。
+    认得出的失焦后原文已清、框里是数，之后改币种是人明着改的，照新币种存
+  */
+  const 上回币 = useRef(currency);
+  useEffect(() => {
+    if (上回币.current === currency) return;
+    上回币.current = currency;
+    if (原文 === null || 拼.current) return;
+    const r = 读金额原文(原文, 上限, currency);
+    if (r.类 === "错") {
+      if (!错) onChange?.(Number.NaN);
+    } else if (r.类 !== "空" && 错) onChange?.(r.值);
+  }, [currency, 原文, 上限, 错, onChange]);
 
   return (
     <Tooltip open={浮着} title={浮}>
@@ -59,7 +76,7 @@ export default function AmountInput({
         value={错 ? null : value}
         formatter={金额格式}
         parser={(s) => {
-          const r = 读金额原文(s ?? "", 上限);
+          const r = 读金额原文(s ?? "", 上限, currency);
           return (r.类 === "空" ? "" : r.类 === "错" ? "NaN" : String(r.值)) as unknown as number;
         }}
         status={错 ? "error" : status}

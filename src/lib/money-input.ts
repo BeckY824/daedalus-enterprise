@@ -1,4 +1,5 @@
-import { 全角数字和点转半角 } from "./fullwidth";
+import { 币种名 } from "./currency";
+import { 全角转半角 } from "./fullwidth";
 
 /**
  * 金额输入框（antd InputNumber）的 formatter。商机、签约、赢单顺手登记签约三处共用。
@@ -26,12 +27,46 @@ export function 认金额(v: string): number | null {
   return 拆金额(v)?.值 ?? null;
 }
 
-/** 认金额 的底子：倍 ≠ 1 = 带了「万 / 千 / k / w / 亿」，框旁要说换算成了多少 */
-function 拆金额(v: string): { 值: number; 倍: number } | null {
-  let s = 全角数字和点转半角(v.trim())
-    .replace(/[,，\s]/g, "")
-    .replace(/^(¥|￥|\$|US\$|RMB|CNY|USD)/i, "")
-    .replace(/(元整|整|元|人民币|rmb|cny|usd)$/i, "");
+/** 「$」也是港币、新加坡元、澳元、加元…自己的记号，「¥」也是日元的：选这几种时写这个记号不算对不上 */
+const 美元记号币 = ["USD", "HKD", "SGD", "AUD", "CAD", "NZD", "TWD", "MXN"];
+const 前记号: [RegExp, string[]][] = [
+  [/^(US\$|USD)/i, ["USD"]],
+  [/^\$/, 美元记号币],
+  [/^(RMB|CNY)/i, ["CNY"]],
+  [/^(¥|￥)/, ["CNY", "JPY"]],
+];
+const 后记号: [RegExp, string[] | null][] = [
+  [/(元整|元|人民币|rmb|cny)$/i, ["CNY"]],
+  [/usd$/i, ["USD"]],
+  // 「整」不是币种
+  [/整$/, null],
+];
+
+/**
+ * 认金额 的底子：倍 ≠ 1 = 带了「万 / 千 / k / w」，框旁要说换算成了多少；
+ * 币 = 字里写了的币种（¥ / 元 / RMB → CNY，$ / USD → USD），没写 = null；可为 = 这个记号也能算哪几种（「$」港币也用、「¥」日元也用）。
+ * 前后都写了又对不上（「$5000元」）= 认不出，不挑一个。全角字母、数字、点、逗号都先转半角（「３ｗ」「１２．５万」）
+ */
+export function 拆金额(v: string): { 值: number; 倍: number; 币: string | null; 可为: string[] } | null {
+  let s = 全角转半角(v.trim()).replace(/[,，\s]/g, "");
+  let 可为: string[] | null = null;
+  for (const [re, 码] of 前记号) {
+    const m = re.exec(s);
+    if (!m) continue;
+    可为 = 码;
+    s = s.slice(m[0].length);
+    break;
+  }
+  for (const [re, 码] of 后记号) {
+    const m = re.exec(s);
+    if (!m) continue;
+    s = s.slice(0, -m[0].length);
+    if (码) {
+      可为 = 可为 ? 可为.filter((c) => 码.includes(c)) : 码;
+      if (!可为.length) return null;
+    }
+    break;
+  }
   let 倍 = 1;
   const 单位 = /(k|千|万|w|亿)$/i.exec(s);
   if (单位) {
@@ -40,8 +75,24 @@ function 拆金额(v: string): { 值: number; 倍: number } | null {
   }
   if (!/^-?(\d+\.?\d*|\.\d+)$/.test(s)) return null;
   const n = Number(s) * 倍;
-  return Number.isFinite(n) && n >= 0 ? { 值: Math.round(n * 100) / 100, 倍 } : null;
+  return Number.isFinite(n) && n >= 0 ? { 值: Math.round(n * 100) / 100, 倍, 币: 可为?.[0] ?? null, 可为: 可为 ?? [] } : null;
 }
+
+/** 金额字里写了哪种币（¥ / 元 / RMB / CNY → CNY；$ / US$ / USD → USD）；没写或认不出 = null。导入、AI 收卡共用 */
+export function 金额字币种(v: string): string | null {
+  return 拆金额(v)?.币 ?? null;
+}
+
+/** AI 收卡：模型交的金额字串里写了币种记号（¥ / 元 / $ / USD）就给出来，和 currency 对不上要拒，不悄悄按 currency 存（审查 11-20）。数字、没写记号 = null */
+export function 金额字带币(v: unknown): { 币: string; 可为: string[] } | null {
+  if (typeof v !== "string") return null;
+  const r = 拆金额(v);
+  return r?.币 ? { 币: r.币, 可为: r.可为 } : null;
+}
+
+/** 字里写的币种和选的不一样时说的那句（金额框、AI 卡共用） */
+export const 币种对不上话 = (原文: string, 写的: string, 选的: string) =>
+  `「${原文}」写的是${币种名(写的)}，币种选的是${币种名(选的)}：改币种，或去掉「${写的 === "USD" ? "$ / USD" : "¥ / 元"}」`;
 
 /** 认不出时说的那句（金额框、AI 卡、测试共用） */
 export const 金额认不出话 = (原文: string) => `认不出「${原文}」：只填不小于 0 的数字，可带千分位、¥、万 / 千 / k / w`;
@@ -51,16 +102,20 @@ export const 千分位 = (n: number) => 金额格式(n, { userTyping: false, inp
 
 export type 金额原文 =
   | { 类: "空" }
-  | { 类: "数"; 值: number }
+  | { 类: "数"; 值: number; 币: string | null }
   /** 带了单位：框旁写「＝ 换算后」 */
-  | { 类: "换算"; 值: number }
+  | { 类: "换算"; 值: number; 币: string | null }
   | { 类: "错"; 话: string };
 
-/** 金额框里敲的这串字算什么。上限：超了也算错（不悄悄压成上限） */
-export function 读金额原文(原文: string, 上限?: number): 金额原文 {
+/**
+ * 金额框里敲的这串字算什么。上限：超了也算错（不悄悄压成上限）。
+ * 币种 = 框旁选的币种：字里写了币种记号（「5000元」「USD 5000」）又和选的不一样，算错、说清楚（不悄悄按选的存）；没写记号的照常按选的
+ */
+export function 读金额原文(原文: string, 上限?: number, 币种?: string | null): 金额原文 {
   if (!原文.trim()) return { 类: "空" };
   const r = 拆金额(原文);
   if (!r) return { 类: "错", 话: 金额认不出话(原文.trim()) };
+  if (币种 && r.币 && !r.可为.includes(币种)) return { 类: "错", 话: 币种对不上话(原文.trim(), r.币, 币种) };
   if (上限 !== undefined && r.值 > 上限) return { 类: "错", 话: `「${原文.trim()}」超过上限 ${千分位(上限)}` };
-  return r.倍 === 1 ? { 类: "数", 值: r.值 } : { 类: "换算", 值: r.值 };
+  return r.倍 === 1 ? { 类: "数", 值: r.值, 币: r.币 } : { 类: "换算", 值: r.值, 币: r.币 };
 }

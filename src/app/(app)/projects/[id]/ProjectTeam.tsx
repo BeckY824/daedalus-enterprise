@@ -103,9 +103,22 @@ export function ProjectEditModal({
   */
   const 稿 = useFormDraft({
     键: open ? `编辑项目:${p.id}` : null,
-    值: { ...d, 级别, 标签, 地址, 详细, 线, 钱, 痛点, 合同, 备货, 物流, 单号 },
+    // 认不出的金额（NaN）不进草稿：JSON 会写成 null，带回再保存就把金额清成 0 / 空（审查 11-20）。换回打开时的值 = 这一格没改
+    值: {
+      ...d,
+      amount: 金额认不出(d.amount) ? p.amount : d.amount,
+      级别, 标签, 地址, 详细, 线,
+      钱: 钱 && p.成交钱 ? {
+        ...钱,
+        depositAmount: 金额认不出(钱.depositAmount) ? p.成交钱.depositAmount : 钱.depositAmount,
+        contractAmount: 金额认不出(钱.contractAmount) ? p.成交钱.contractAmount : 钱.contractAmount,
+      } : 钱,
+      痛点, 合同, 备货, 物流, 单号,
+    },
     带回: (v) => {
       const { 级别: 级, 标签: 签, 地址: 址, 详细: 细, 线: 线2, 钱: 钱2, 痛点: 痛, 合同: 合, 备货: 货2, 物流: 流, 单号: 号, ...其余 } = v;
+      // 金额只带回有限数（这一格不会是空：清掉交 0）；别的不带回，留打开时的值
+      if ("amount" in 其余 && !(typeof 其余.amount === "number" && Number.isFinite(其余.amount))) delete 其余.amount;
       if ("备货" in v) set备货(货2 ?? null);
       if ("物流" in v) set物流(流 ?? null);
       if (typeof 号 === "string") set单号(号);
@@ -114,7 +127,9 @@ export function ProjectEditModal({
       if (址 && typeof 址 === "object") set地址(址);
       if (typeof 细 === "string") set详细(细);
       if ("线" in v) set线(线2 ?? null);
-      if (钱2 && typeof 钱2 === "object") set钱(钱2);
+      // 定金、合同金额：有限数或 null（清掉）才带回，别的留现值
+      const 可带 = (x: unknown) => x === null || (typeof x === "number" && Number.isFinite(x));
+      if (钱2 && typeof 钱2 === "object") set钱((o) => ({ ...钱2, depositAmount: 可带(钱2.depositAmount) ? 钱2.depositAmount : (o?.depositAmount ?? null), contractAmount: 可带(钱2.contractAmount) ? 钱2.contractAmount : (o?.contractAmount ?? null) }));
       if (typeof 痛 === "string") set痛点(痛);
       if ("合同" in v) set合同(合 ?? null);
       if (Object.keys(其余).length) 改(其余 as Partial<typeof d>);
@@ -211,19 +226,19 @@ export function ProjectEditModal({
       {行("金额", (
         <Space.Compact style={{ width: "100%" }}>
           <Select style={{ width: 140 }} value={d.currency} options={币种选项()} onChange={(v) => 改({ currency: v })} showSearch optionFilterProp="label" />
-          <AmountInput style={{ width: "100%" }} aria-label="金额" min={0} value={d.amount} onChange={(v) => 改({ amount: v ?? 0 })} />
+          <AmountInput style={{ width: "100%" }} aria-label="金额" min={0} currency={d.currency} value={d.amount} onChange={(v) => 改({ amount: v ?? 0 })} />
         </Space.Compact>
       ))}
       {钱 && 行("定金金额", (
         <Space.Compact style={{ width: "100%" }}>
           <Select style={{ width: 140 }} aria-label="定金金额币种" value={钱.depositCurrency} options={币种选项()} onChange={(v) => 改钱({ depositCurrency: v })} showSearch optionFilterProp="label" />
-          <AmountInput style={{ width: "100%" }} aria-label="定金金额" min={0} placeholder="待填写定金金额" value={钱.depositAmount} onChange={(v) => 改钱({ depositAmount: v })} />
+          <AmountInput style={{ width: "100%" }} aria-label="定金金额" min={0} placeholder="待填写定金金额" currency={钱.depositCurrency} value={钱.depositAmount} onChange={(v) => 改钱({ depositAmount: v })} />
         </Space.Compact>
       ))}
       {钱 && 行("合同金额", (
         <Space.Compact style={{ width: "100%" }}>
           <Select style={{ width: 140 }} aria-label="合同金额币种" value={钱.contractCurrency} options={币种选项()} onChange={(v) => 改钱({ contractCurrency: v })} showSearch optionFilterProp="label" />
-          <AmountInput style={{ width: "100%" }} aria-label="合同金额" min={0} placeholder="待填写合同金额" value={钱.contractAmount} onChange={(v) => 改钱({ contractAmount: v })} />
+          <AmountInput style={{ width: "100%" }} aria-label="合同金额" min={0} placeholder="待填写合同金额" currency={钱.contractCurrency} value={钱.contractAmount} onChange={(v) => 改钱({ contractAmount: v })} />
         </Space.Compact>
       ))}
       {新?.contractStatus !== undefined && 行("合同状态", <Select style={{ width: "100%" }} aria-label="合同状态" allowClear placeholder={未选占位} value={合同 ?? undefined} options={[不填项, ...合同状态们.map((v) => ({ value: v, label: v }))]} onChange={(v?: string) => set合同(去不填(v) as 合同状态 | null)} />)}

@@ -210,6 +210,23 @@ describe("商机与签约的提议", () => {
     }
   });
 
+  it("金额字串里写的币种和 currency 对不上：拒并说原因，不悄悄按 currency 存（审查 11-20）；没给 currency 按记号", () => {
+    for (const [原, 币, 话] of [["5000元", "USD", "写的是人民币，币种选的是美元"], ["¥5万", "USD", "写的是人民币"], ["USD 5000", "CNY", "写的是美元，币种选的是人民币"], ["5000usd", "CNY", "写的是美元"]] as const) {
+      const a = 建("add_contract", { amount: 原, currency: 币, signedAt: "2026-09-01", reason: "x" });
+      expect(a.ok, 原).toBe(false);
+      expect(!a.ok && a.error, 原).toContain(话);
+      const b = 建("payment_add", { targetId: "p1", targetName: "x", paidAt: "2026-11-01", amount: 原, currency: 币, reason: "x" });
+      expect(b.ok, 原).toBe(false);
+      expect(!b.ok && b.error, 原).toContain(话);
+    }
+    // 对得上的、没写记号的照常；没给 currency 的按记号（不按本位币）
+    expect(提("add_contract", { amount: "5000元", currency: "CNY", signedAt: "2026-09-01", reason: "x" })).toMatchObject({ amount: 5000, currency: "CNY" });
+    expect(提("add_contract", { amount: "5万", currency: "USD", signedAt: "2026-09-01", reason: "x" })).toMatchObject({ amount: 50000, currency: "USD" });
+    expect(提("add_contract", { amount: "$5000", signedAt: "2026-09-01", reason: "x" })).toMatchObject({ amount: 5000, currency: "USD" });
+    const q = 建("payment_add", { targetId: "p1", targetName: "x", paidAt: "2026-11-01", amount: "US$800", reason: "x" });
+    expect(q.ok && q.proposal).toMatchObject({ amount: 800, currency: "USD" });
+  });
+
   it("金额和日期没填时出卡片但不让确认——留空是让人补，不是拒绝提议", () => {
     const p = 提("add_contract", { signedAt: "", reason: "x" });
     expect(missingFields(p).length).toBeGreaterThan(0);

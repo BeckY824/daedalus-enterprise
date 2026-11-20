@@ -193,7 +193,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
         return (
           <Space.Compact style={满宽}>
             <Select aria-label={`${名}币种`} style={{ width: 140, flexShrink: 0 }} options={币种选项()} showSearch optionFilterProp="label" value={钱.币} onChange={(币: string) => 改(k, { ...钱, 币 })} />
-            <AmountInput aria-label={名} style={满宽} min={0} value={钱.数} onChange={(数) => 改(k, { ...钱, 数 })} />
+            <AmountInput aria-label={名} style={满宽} min={0} currency={钱.币} value={钱.数} onChange={(数) => 改(k, { ...钱, 数 })} />
           </Space.Compact>
         );
       }

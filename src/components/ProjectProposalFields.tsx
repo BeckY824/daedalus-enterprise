@@ -149,7 +149,7 @@ export default function ProjectProposalFields({ draft, setDraft }: { draft: 项�
       {draft.kind === "payment_add" && (
         <>
           <F label="金额">
-            <AmountTextInput aria-label="金额" prefix={币种符号(draft.currency)} value={draft.amount} onChange={(n) => 设({ amount: n })} />
+            <AmountTextInput aria-label="金额" prefix={币种符号(draft.currency)} currency={draft.currency} value={draft.amount} onChange={(n) => 设({ amount: n })} />
           </F>
           <F label="回款时间">
             <DatePicker size="small" format="YYYY-MM-DD" value={日(draft.paidAt)} onChange={(d) => 设({ paidAt: d ? d.format("YYYY-MM-DD") : "" })} />

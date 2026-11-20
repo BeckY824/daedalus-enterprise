@@ -5,6 +5,12 @@
  * 现在：认得出的换算成元、敲的时候框上方浮「「12.5万」= 125,000」，失焦后框里就是换算后的数；认不出的框标红，
  * 聚焦 / 悬停说为什么、失焦后占位写「认不出「…」」，交上去的是 NaN（表单校验挡住），失焦也不会被压成 0 或上一个数。
  * 375 / 1024 / 1280 / 1366：和币种下拉拼在一起（Space.Compact）提示浮在框外，敲的字不被挤、页面不横撑。
+ *
+ * 审查 11-20 补：
+ * - 项目卡就地改的钱格（真的 ProjectInlineField + money-cell 的 钱编辑器 / 钱格存法，.proj-inline-money）：
+ *   原值空着敲「约5万」回车，原来 {数: NaN} 被 JSON 当成 {数: null}、等于原值，直接收起、字丢了也没一句话；
+ *   草稿把 NaN 存成 null，刷新后带回再存就把原金额清成 0
+ * - 币种记号和选的币种对不上（选美元敲「5000元」）算认不出、说清楚；改了币种对上了照常认
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build } from "esbuild";
@@ -16,6 +22,10 @@ beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React,{useState} from 'react';import {createRoot} from 'react-dom/client';import {App,Button,ConfigProvider,Form,Select,Space} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import AmountInput, {金额框认不出提示, 金额认不出} from '@/components/AmountInput';
+    import ProjectInlineField from '@/app/(app)/projects/[id]/ProjectInlineField';
+    import {钱编辑器, 钱格存法} from '@/app/(app)/projects/[id]/money-cell';
+    import {草稿范围} from '@/components/FormDraft';
+    import {金额 as 显金额} from '@/lib/currency';
     function 拼框({起}){
       const [v,setV]=useState(起??null);window.__值=v;
       return <div style={{padding:16}}><Space.Compact style={{width:'100%'}}>
@@ -26,16 +36,37 @@ beforeAll(async () => {
     function 表单(){
       const [f]=Form.useForm();
       return <Form form={f} style={{padding:16}} onFinish={(x)=>{window.__交=x.amount}}>
-        <Form.Item label='投入金额' required><Form.Item name='amount' noStyle rules={[{required:true,message:'请填写金额'},{validator:(_,v)=>金额认不出(v)?Promise.reject(new Error(金额框认不出提示)):Promise.resolve()},{type:'number',min:0.01,message:'金额要大于 0'}]}>
+        <Form.Item label='投入金额' required><Form.Item name='amount' noStyle validateFirst rules={[{required:true,message:'请填写金额'},{validator:(_,v)=>金额认不出(v)?Promise.reject(new Error(金额框认不出提示)):Promise.resolve()},{type:'number',min:0.01,message:'金额要大于 0'}]}>
           <AmountInput aria-label='投入金额' min={0} precision={2} style={{width:'100%'}}/>
         </Form.Item></Form.Item>
         <Button htmlType='submit'>保存</Button>
       </Form>;
     }
+    function 币框(){
+      const [v,setV]=useState(null);const [币,set币]=useState('USD');window.__值=v;
+      return <div style={{padding:16}}><Space.Compact style={{width:'100%'}}>
+        <Select aria-label='币种' style={{width:140,flexShrink:0}} value={币} options={[{value:'CNY',label:'CNY'},{value:'USD',label:'USD'}]} onChange={set币}/>
+        <AmountInput aria-label='金额' style={{width:'100%'}} min={0} max={1e12} precision={2} currency={币} value={v} onChange={setV}/>
+      </Space.Compact><button id='换人民币' onClick={()=>set币('CNY')}>人民币</button><button id='换美元' onClick={()=>set币('USD')}>美元</button></div>;
+    }
+    // 项目卡就地改的金额格：和 ProjectDetail 同一套（ProjectInlineField + 钱编辑器 + 钱格存法），存项目项 换成记下交了什么
+    window.__就地交=[];
+    const 存=钱格存法(async(patch)=>{window.__就地交.push(patch);return null;});
+    function 就地({起}){
+      const [值,set值]=useState(起);
+      return <div style={{padding:16}}><div style={{display:'flex',gap:12,alignItems:'center',width:280,minWidth:0}}>
+        <span style={{flex:'0 0 4.3em'}}>金额</span>
+        <ProjectInlineField 名='金额' 值={值} 能改 回车存 显示={(x)=>x.数?显金额(x.数,x.币):'待填写'} 存={async(x)=>{const r=await 存('金额',x);if(!r)set值(x);return r;}} 编辑器={钱编辑器('金额')}/>
+      </div><button id='别处'>别处</button></div>;
+    }
     const root=createRoot(document.getElementById('root'));
     const 包=(x)=><ConfigProvider locale={zhCN}><App>{x}</App></ConfigProvider>;
     window.__拼=(起)=>root.render(包(<拼框 起={起}/>));
     window.__表单=()=>root.render(包(<表单/>));
+    window.__币框=()=>root.render(包(<币框/>));
+    // 重挂 = 刷新页面：组件状态全丢，localStorage 里的草稿还在
+    let 第几回=0;
+    window.__就地=(起)=>root.render(包(<草稿范围 value='项目:t1'><就地 key={++第几回} 起={起}/></草稿范围>));
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
@@ -139,6 +170,8 @@ it("表单里（渠道投入那种 Form.Item 校验）：认不出挡住保存�
     await 框(page, "投入金额").fill("5万5");
     await page.getByRole("button", { name: /保\s*存/ }).click();
     await expect.poll(() => page.getByText("金额认不出：只填不小于 0 的数字").count()).toBe(1);
+    // validateFirst（和渠道抽屉一样）：认不出只出这一句，不再叠一行「金额要大于 0」
+    expect(await page.getByText("金额要大于 0").count()).toBe(0);
     expect(await 交()).toBeUndefined();
     await 框(page, "投入金额").fill("5万");
     await page.getByRole("button", { name: /保\s*存/ }).click();
@@ -157,6 +190,97 @@ it.each([375, 1024, 1280, 1366])("%ipx：和币种拼在一起，换算 / 认不
       // 敲的字整串放得下（提示没占框里的地方）
       expect(await 框(page).evaluate((i: HTMLInputElement) => i.scrollWidth <= i.clientWidth + 1)).toBe(true);
       // 浮层放出来有个缩放动画、对齐也晚一拍：等它站稳再量
+      await expect.poll(async () => { const b = await 浮层(page).boundingBox(); return !!b && b.x >= 0 && b.x + b.width <= w + 0.5; }).toBe(true);
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+const 交了 = (page: Page) => page.evaluate(() => (window as unknown as { __就地交: unknown[] }).__就地交);
+const 开格 = async (page: Page) => { await page.getByRole("button", { name: "改金额" }).click(); await 框(page).waitFor(); };
+
+it.each([
+  // 金额 0 在卡上也是空（p.amount || null）
+  ["原值空着 / 0", null],
+  ["原值 2 万", 20000],
+])("就地改金额（%s）：敲「约5万」回车 / 点别处都有提示、不收起、不交；改敲「3万」回车存 30000", async (_, 起) => {
+  const { page, errors } = await open("__就地", { 数: 起, 币: "CNY" }, 1280);
+  try {
+    await 开格(page);
+    await 框(page).fill("约5万");
+    await 框(page).press("Enter");
+    await expect.poll(() => page.locator(".proj-inline-err").innerText()).toContain("金额认不出");
+    expect(await page.locator(".proj-inline-money").count()).toBe(1);
+    await page.locator("#别处").click();
+    await page.waitForTimeout(100);
+    expect(await page.locator(".proj-inline-money").count()).toBe(1);
+    expect(await 框(page).getAttribute("placeholder")).toBe("认不出「约5万」");
+    expect(await 交了(page)).toEqual([]);
+    await 框(page).fill("3万");
+    await 框(page).press("Enter");
+    await expect.poll(() => 交了(page)).toEqual([{ amount: 30000, currency: "CNY" }]);
+    await expect.poll(() => page.locator(".proj-inline-money").count()).toBe(0);
+    expect(await page.locator(".proj-inline-val").innerText()).toContain("30,000");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("就地改金额：敲了认不出的字又改了币种，刷新后带回的草稿不把原金额清掉（原来 NaN 存成 null，带回再存 = 0）", async () => {
+  const { page, errors } = await open("__就地", { 数: 50000, 币: "CNY" }, 1280);
+  try {
+    await 开格(page);
+    await page.getByRole("combobox", { name: "金额币种" }).click();
+    await page.keyboard.type("USD");
+    await page.keyboard.press("Enter");
+    await 框(page).fill("约5万");
+    await expect.poll(() => 根(page).evaluate((el) => el.className)).toMatch(/status-error/);
+    await page.waitForTimeout(100);
+    expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.includes("就地:金额")).length)).toBe(1);
+    const 稿 = await page.evaluate(() => localStorage.getItem(Object.keys(localStorage).find((k) => k.includes("就地:金额"))!)!);
+    expect(JSON.parse(稿).v).toEqual({ v: { 数: 50000, 币: "USD" } });
+    // 刷新
+    await page.evaluate(() => (window as unknown as { __就地: (x: unknown) => void }).__就地({ 数: 50000, 币: "CNY" }));
+    await 开格(page);
+    await expect.poll(() => page.getByText("已带回上次没提交的内容").count()).toBe(1);
+    expect(await 框(page).inputValue()).toBe("50,000");
+    await 框(page).press("Enter");
+    await expect.poll(() => 交了(page)).toEqual([{ amount: 50000, currency: "USD" }]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("币种记号和选的对不上（选美元敲「5000元」、选人民币敲「USD 5000」）：交 NaN、说清楚；改了币种对上了就认", async () => {
+  const { page, errors } = await open("__币框");
+  try {
+    await 框(page).fill("5000元");
+    await expect.poll(() => 值(page)).toBe("NaN");
+    await expect.poll(() => page.getByRole("tooltip").filter({ hasText: "写的是人民币，币种选的是美元" }).count()).toBe(1);
+    expect(await 根(page).evaluate((el) => el.className)).toMatch(/status-error/);
+    await page.locator("#换人民币").click();
+    await expect.poll(() => 值(page)).toBe(5000);
+    expect(await 根(page).evaluate((el) => el.className)).not.toMatch(/status-error/);
+    await 框(page).fill("USD 5000");
+    await expect.poll(() => 值(page)).toBe("NaN");
+    await expect.poll(() => page.getByRole("tooltip").filter({ hasText: "写的是美元，币种选的是人民币" }).count()).toBe(1);
+    await 框(page).fill("¥5万");
+    await expect.poll(() => 值(page)).toBe(50000);
+    // 没写记号的照常按选的币种
+    await page.locator("#换美元").click();
+    await 框(page).fill("３ｗ");
+    await expect.poll(() => 值(page)).toBe(30000);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it.each([375, 1280])("%ipx：项目卡就地改的钱格（.proj-inline-money，右栏 280 宽）换算 / 认不出浮在框外，敲的字不被挤、浮层在视口里", async (w) => {
+  const { page, errors } = await open("__就地", { 数: null, 币: "CNY" }, w);
+  try {
+    await 开格(page);
+    for (const 敲 of ["1.5亿", "5万5"]) {
+      await 框(page).fill(敲);
+      await 浮层(page).waitFor();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      expect(await 框(page).evaluate((i: HTMLInputElement) => i.scrollWidth <= i.clientWidth + 1)).toBe(true);
       await expect.poll(async () => { const b = await 浮层(page).boundingBox(); return !!b && b.x >= 0 && b.x + b.width <= w + 0.5; }).toBe(true);
     }
     expect(errors).toEqual([]);

@@ -522,6 +522,19 @@ describe("回款", () => {
     expect(回款动作.删回款).toHaveBeenCalledWith(笔.id);
     expect(await prisma.entProjectPayment.count()).toBe(0);
   });
+
+  it("按金额字串找要删的那笔（审查 11-20）：「0.08万」按万算；「800元」只找人民币那笔，「US$800」不拿同数目的人民币那笔", async () => {
+    const 人民币 = await 库记回款({ id: 乙.id, role: "SALES" }, 项目id, { paidAt: "2026-10-20", currency: "CNY", amount: 800 });
+    const 美元 = await 库记回款({ id: 乙.id, role: "SALES" }, 项目id, { paidAt: "2026-10-21", currency: "USD", amount: 800 });
+    await 库记回款({ id: 乙.id, role: "SALES" }, 项目id, { paidAt: "2026-10-22", currency: "CNY", amount: 8000 });
+    const { 卡: 两笔 } = await 出("propose_payment_delete", { project: "云帆一期", amount: "0.08万", reason: "人说记错了" });
+    expect(两笔).toMatchObject({ kind: "payment_delete", targetId: "" });
+    expect(两笔?.候选?.map((x) => x.id).sort()).toEqual([人民币.id, 美元.id].sort());
+    const { 卡: 元 } = await 出("propose_payment_delete", { project: "云帆一期", amount: "800元", reason: "人说记错了" });
+    expect(元).toMatchObject({ kind: "payment_delete", targetId: 人民币.id });
+    const { 卡: 刀 } = await 出("propose_payment_delete", { project: "云帆一期", amount: "US$800", reason: "人说记错了" });
+    expect(刀).toMatchObject({ kind: "payment_delete", targetId: 美元.id });
+  });
 });
 
 describe("线索验证", () => {

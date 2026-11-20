@@ -14,7 +14,7 @@ import { FOLLOW_TYPES, FOLLOW_TYPE_MAP, FOLLOW_METHODS, FOLLOW_STATUSES, DECISIO
 import { DEFAULT_BUSINESS, statusLabel, 签约叫, type BusinessConfig } from "../business-config";
 import { dayjs } from "../utils";
 import { 是币种, 金额 } from "../currency";
-import { 认金额 } from "../money-input";
+import { 认金额, 金额字带币, 币种对不上话 } from "../money-input";
 import { 有效线索节点, 建档不能过线索验证 } from "../project/stage-gates";
 import { 是项目卡, buildProjectProposal, 项目卡缺, 描述项目卡, type 项目卡, type 项目卡Kind } from "./project-proposals";
 import { 内置号码种类, 每人最多号码, 号码上限 } from "../enterprise/customer-v2";
@@ -455,8 +455,11 @@ export function buildProposal(
     if (!when.ok) return { ok: false, error: "signedAt 解析不了，用 YYYY-MM-DD" };
     const amount = 收金额(args.amount);
     if (amount === null) return { ok: false, error: "amount 要是个非负数字" };
-    const currency = 收币种(args.currency, b.currency);
+    const 字币 = 金额字带币(args.amount);
+    // currency 没给：amount 里写了记号（「$5000」「5万元」）就按记号，没写才按本位币
+    const currency = 收币种(args.currency, 字币?.币 ?? b.currency);
     if (currency === null) return { ok: false, error: "currency 要是三位币种代码，如 USD / EUR / CNY" };
+    if (字币 && !字币.可为.includes(currency)) return { ok: false, error: 币种对不上话(String(args.amount).trim(), 字币.币, currency) };
     return { ok: true, proposal: { ...base, kind, amount, currency, signedAt: when.at, remark: str(args.remark, 500) } };
   }
 

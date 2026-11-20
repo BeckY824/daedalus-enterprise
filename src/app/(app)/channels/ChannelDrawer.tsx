@@ -57,6 +57,8 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
   const [错, set错] = useState<string | null>(null);
   const [录, set录] = useState(先录);
   const [form] = Form.useForm();
+  // 金额框按选的币种核字里写的记号（「5000元」配美元说对不上）
+  const 录币种 = Form.useWatch("currency", form) as string | undefined;
   const s: 渠道统计 | undefined = row.统计;
 
   const 读 = useCallback(async () => {
@@ -265,9 +267,11 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
             <Form.Item
               name="amount"
               noStyle
+              // 认不出时只出一句（金额认不出 和「金额要大于 0」不同时报）
+              validateFirst
               rules={[{ required: true, message: "请填写金额" }, { validator: (_, v) => (金额认不出(v) ? Promise.reject(new Error(金额框认不出提示)) : Promise.resolve()) }, { type: "number", min: 0.01, message: "金额要大于 0" }]}
             >
-              <AmountInput aria-label="投入金额" placeholder="投入金额" min={0} precision={2} style={{ width: "100%" }} />
+              <AmountInput aria-label="投入金额" placeholder="投入金额" min={0} precision={2} style={{ width: "100%" }} currency={录币种} />
             </Form.Item>
           </Space.Compact>
           <Form.Item label="投入日期" name="date" rules={[{ required: true, message: "请选择日期" }]} style={{ marginTop: 12 }}>

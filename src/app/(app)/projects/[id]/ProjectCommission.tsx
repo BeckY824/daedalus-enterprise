@@ -42,7 +42,7 @@ export function ProjectCommissionCard({ projectId, t, 忙, 跑, 不摆改 = fals
         <span style={键样}>项目底价</span>
         {底价能改 ? (
           <Space.Compact>
-            <AmountInput aria-label="项目底价" min={0} precision={2} style={{ width: 160 }} placeholder="还没填" value={底价} onChange={(v) => set底价(v ?? null)} />
+            <AmountInput aria-label="项目底价" min={0} precision={2} style={{ width: 160 }} placeholder="还没填" currency={t.币种} value={底价} onChange={(v) => set底价(v ?? null)} />
             {/* 按钮内反馈（g.save）：转圈 → 已保存 ✓；没存上原因浮在按钮上方 */}
             <SaveButton type="default" disabled={忙 || 底价 === t.项目底价 || 金额认不出(底价)} 做={() => 跑给按钮(跑, () => 存项目底价(projectId, 底价))}>保存</SaveButton>
           </Space.Compact>
@@ -80,7 +80,7 @@ export function ProjectCommissionCard({ projectId, t, 忙, 跑, 不摆改 = fals
       <div style={{ ...淡, marginTop: 4 }}>组长把提成按比例分给已进组的组员，剩下的归组长{固定了 ? "" : "；金额按预估算，赢单后按实际提成算"}</div>
 
       {分开着 && <SplitModal projectId={projectId} t={t} onClose={() => set分开着(false)} />}
-      {更正开着 && t.实际 && <FixModal projectId={projectId} 现在={t.实际.合计} 钱={钱} 跑={跑} onClose={() => set更正开着(false)} />}
+      {更正开着 && t.实际 && <FixModal projectId={projectId} 现在={t.实际.合计} 钱={钱} 币种={t.币种} 跑={跑} onClose={() => set更正开着(false)} />}
     </Card>
   );
 }
@@ -144,7 +144,7 @@ export function SplitModal({ projectId, t, onClose }: { projectId: string; t: �
   );
 }
 
-function FixModal({ projectId, 现在, 钱, 跑, onClose }: { projectId: string; 现在: number; 钱: (n: number) => string; 跑: 跑法; onClose: () => void }) {
+function FixModal({ projectId, 现在, 钱, 币种, 跑, onClose }: { projectId: string; 现在: number; 钱: (n: number) => string; 币种: string; 跑: 跑法; onClose: () => void }) {
   const [金额, set金额] = useState<number | null>(现在);
   const [原因, set原因] = useState("");
   const [忙, set忙] = useState(false);
@@ -171,7 +171,7 @@ function FixModal({ projectId, 现在, 钱, 跑, onClose }: { projectId: string;
       <div style={{ ...淡, marginBottom: 12 }}>现在的实际提成 {钱(现在)}。更正后组员按原来的比例分新金额，操作记录里留更正前后的金额和原因</div>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
         <span style={{ flex: "0 0 auto" }}>更正为</span>
-        <AmountInput aria-label="更正后的实际提成" min={0} precision={2} style={{ width: 180 }} value={金额} onChange={(v) => set金额(v ?? null)} />
+        <AmountInput aria-label="更正后的实际提成" min={0} precision={2} style={{ width: 180 }} currency={币种} value={金额} onChange={(v) => set金额(v ?? null)} />
       </div>
       <Input.TextArea aria-label="更正原因" rows={3} maxLength={更正原因上限} showCount placeholder="更正原因（必填），比如：回款少了一笔，按实收重算" value={原因} onChange={(e) => set原因(e.target.value)} />
       <框里原因 话={错} />
