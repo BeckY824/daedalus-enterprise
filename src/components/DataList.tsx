@@ -41,6 +41,13 @@ export type 列<T> = ColumnType<T> & {
   列名?: string;
   /** false = 默认收在「列」里，要勾才显示。不写就是默认显示 */
   默认?: boolean;
+  /**
+   * 列设置里记这一列用的键（不写 = key）。换一个键 = 老设置里关于这一列的记录（勾着的「键」、藏着的「-键」）一律不算，按 默认 重来；
+   * 老设置里原来那个键照样留着不删，换回原键（比如三态关了）时照旧生效。
+   * 客户列表三态开着的「项目数」写「+projectCount」（PR #384，方案 A）：列设置存的是全部可见列，三态开着动过任何一列的人都带着 projectCount，
+   * 不换键的话收起对多数老用户不生效；只有三态开着之后在「列」里勾出来的才显示
+   */
+  存键?: string;
   /** true = 不进列设置，永远跟着（操作列） */
   常驻?: boolean;
   /**
@@ -248,7 +255,9 @@ export default function DataList<T extends { id: string }>({
 
   const [列单开着, set列单开着] = useState(false);
   const 可选的 = useMemo(() => 全部列.filter((c) => !c.常驻), [全部列]);
-  const 默认可见 = useMemo(() => 可选的.filter((c) => c.默认 !== false).map(列键), [可选的]);
+  /** 列设置里记的键（列键 ↔ 存键，没写 存键 的两边一样） */
+  const 存键们 = useMemo(() => new Map(可选的.map((c) => [列键(c), c.存键 ?? 列键(c)])), [可选的]);
+  const 默认可见 = useMemo(() => 可选的.filter((c) => c.默认 !== false).map((c) => c.存键 ?? 列键(c)), [可选的]);
   /** 列设置存在这台机器上，一页一份。丢了就回到默认那套，不影响用 */
   const [存的, 存列] = useLocalPref<string[] | null>(`list-cols:${页}`, null);
 
@@ -256,15 +265,21 @@ export default function DataList<T extends { id: string }>({
     存完之后新加的列：存的时候还不存在，按它自己的默认值补上，不然加了列的人永远看不到新列。
     藏起来的默认列记成「-键」，不然它也被当成新加的列补回来、永远藏不住（见 lib/list-select 的 算可见列）
   */
-  const 锁定的 = useMemo(() => 可选的.filter((c) => c.锁定).map(列键), [可选的]);
-  const 可见 = useMemo(() => {
-    const 算 = 存的 ? 算可见列(可选的.map((c) => ({ 键: 列键(c), 默认显示: c.默认 !== false })), 存的) : 默认可见;
+  const 锁定的 = useMemo(() => 可选的.filter((c) => c.锁定).map((c) => c.存键 ?? 列键(c)), [可选的]);
+  /** 按存键算的可见（存的里认不出的老键原样带着，切列时照旧存回去）；可见 = 换回列键、只留眼下有的列 */
+  const 可见存 = useMemo(() => {
+    const 算 = 存的 ? 算可见列(可选的.map((c) => ({ 键: c.存键 ?? 列键(c), 默认显示: c.默认 !== false })), 存的) : 默认可见;
     return 锁定的.length ? [...new Set([...算, ...锁定的])] : 算;
   }, [存的, 默认可见, 可选的, 锁定的]);
+  const 可见 = useMemo(() => {
+    const 显示 = new Set(可见存);
+    return 可选的.filter((c) => 显示.has(c.存键 ?? 列键(c))).map(列键);
+  }, [可见存, 可选的]);
 
   function 切列(k: string, 显示: boolean) {
-    if (锁定的.includes(k)) return;
-    存列(切换后存(可见, 存的, k, 显示));
+    const 键 = 存键们.get(k) ?? k;
+    if (锁定的.includes(键)) return;
+    存列(切换后存(可见存, 存的, 键, 显示));
     if (显示) 待露.current = k;
   }
 

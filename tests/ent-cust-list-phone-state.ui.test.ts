@@ -42,7 +42,8 @@ beforeAll(async () => {
     设列表主人(window.__人||'A');
     const users=[{id:'me',name:'小王',email:'s1',role:'SALES',active:true},{id:'u2',name:'小李',email:'s2',role:'SALES',active:true}];
     const 行=(id,phone,pool)=>({id,name:'某某贸易有限公司'+id,phone,school:null,grade:null,major:null,followStatus:'待跟进',decisionStatus:'了解中',custStatus:'跟进中',salesOwnerId:'me',salesOwnerName:'小王',createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',lastFollowAt:'2026-11-01T00:00:00.000Z',signedAmount:0,referrerCustomerId:null,referrerName:null,channelId:null,channelName:null,expectedSignAt:null,remark:'备注'.repeat(20),addrCountry:'中国',extra:{level:'A'},customerNo:Number(id.slice(1)),pool:pool?{reason:'超时回收'}:null});
-    const rows=[行('c1','13800000001'),行('c2','138****0002',true),行('c3',''),行('c4','02166668888')];
+    // window.__无公海：这一页没有公海行（操作列只一颗「⋯」、56 宽，手机宽才不钉右）
+    const rows=[行('c1','13800000001'),行('c2','138****0002',true),行('c3',''),行('c4','02166668888')].map((r)=>window.__无公海?{...r,pool:null}:r);
     // window.__刷新(只读ids)：模拟 router.refresh 之后服务端给的新一屏（行数组换新、只读的换了）
     function Root(){
       const [只读,set只读]=React.useState(window.__只读||[]);const [rs,setRs]=React.useState(rows);
@@ -344,12 +345,13 @@ it("#381 实操（PR #384 审查）：记的横滚够不着（回来时列少了
 });
 
 for (const 宽 of [390, 375]) {
-  it(`#381 实操：${宽} 宽客户列表号码列能整列横滚进两侧固定列中间；名字列收窄、操作列不钉；页面不横滚`, async () => {
+  // 这一页没有公海行：操作列只一颗「⋯」才不钉（有公海行、带「领取」照旧钉右，见 ent-cust-list-columns「375 宽：操作列」那条）
+  it(`#381 实操：${宽} 宽客户列表（没有公海行）号码列能整列横滚进两侧固定列中间；名字列收窄、操作列不钉；页面不横滚`, async () => {
     const errors: string[] = [];
     const page = await 新页(errors, 宽);
     try {
       // 手机网页的版面：正文左右各 12（实操截图里表格卡片 12 起）
-      await 打开(page, "http://localhost/customers?page=1");
+      await 打开(page, "http://localhost/customers?page=1", () => { (window as unknown as { __无公海: boolean }).__无公海 = true; });
       await page.addStyleTag({ content: "#root{padding:0 12px}" });
       await expect.poll(() => page.locator("thead th.dl-col-phone").count()).toBe(1);
       const 量 = await page.evaluate(() => {

@@ -448,6 +448,99 @@ it("三态开着、这一页是公海里的客户：负责人列照旧 140，「
     } finally { await page.close(); }
   }
 });
+/*
+  PR #384 方案 A 跟进：三态开着「项目数」只认三态开着之后在「列」里主动勾出来的（存键「+projectCount」）。
+  列设置存的是全部可见列，三态开着动过任何一列的老设置都带着 projectCount——那不算主动，照样收起；三态关着照旧认老设置
+*/
+async function 开列表(page: import("playwright").Page, 设: { 三态?: boolean; 公海?: boolean; 存?: string[] }) {
+  if (设.存) await page.evaluate((v) => localStorage.setItem("list-cols:customers", JSON.stringify(v)), 设.存);
+  await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") });
+  await page.evaluate((x) => Object.assign(window, { __三态: !!x.三态, __公海: !!x.公海 }), 设);
+  await page.addScriptTag({ content: 包 });
+  await page.locator("tr.ant-table-row").first().waitFor();
+}
+async function 新列表页(w: number, errors: string[]) {
+  const page = await browser.newPage({ viewport: { width: w, height: 900 } }); page.setDefaultTimeout(5000);
+  page.on("pageerror", e => errors.push(e.message));
+  await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+  await page.goto("http://cust-cols.test");
+  return page;
+}
+const 有项目数 = (page: import("playwright").Page) => page.locator("thead th.dl-col-projectCount").count();
+const 存的列 = (page: import("playwright").Page) => page.evaluate(() => JSON.parse(localStorage.getItem("list-cols:customers") ?? "null") as string[] | null);
+
+it("三态开着：老设置里带着 projectCount（动过别的列时整份存下的）不算主动，项目数照样收起；三态关着照旧显示；老设置藏过的三态关着照旧藏", async () => {
+  const errors: string[] = [];
+  const page = await 新列表页(1366, errors);
+  try {
+    const 老设置 = ["phone", "projectNode", "projectCount", "level", "custStatus", "salesOwnerName", "lastFollowAt", "createdAt"];
+    await 开列表(page, { 三态: true, 存: 老设置 });
+    expect(await 有项目数(page)).toBe(0);
+    // 老设置里别的照认：勾过的创建时间显示
+    expect(await page.locator("thead th.dl-col-createdAt").count()).toBe(1);
+    await page.reload(); await 开列表(page, { 三态: false, 存: 老设置 });
+    expect(await 有项目数(page)).toBe(1);
+    await page.reload(); await 开列表(page, { 三态: false, 存: ["-projectCount"] });
+    expect(await 有项目数(page)).toBe(0);
+    // 三态开着、没存过列设置：默认收着
+    await page.evaluate(() => localStorage.clear());
+    await page.reload(); await 开列表(page, { 三态: true });
+    expect(await 有项目数(page)).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("三态开着在「列」里主动勾上项目数：显示、刷新后仍显示，老设置里的 projectCount 留着；再取消就收起、刷新后仍收着；三态关了照老设置", async () => {
+  const errors: string[] = [];
+  const page = await 新列表页(1366, errors);
+  const 勾 = async (勾上: boolean) => {
+    await page.getByRole("button", { name: "选择要显示的列" }).click();
+    const 框 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").getByRole("checkbox", { name: "项目数" });
+    await expect.poll(() => 框.isChecked()).toBe(!勾上);
+    await 框.click();
+    await expect.poll(() => 框.isChecked()).toBe(勾上);
+    // 列单受控：只认再点一次按钮 / 点到外面才收
+    await page.getByRole("button", { name: "选择要显示的列" }).click();
+    await expect.poll(() => page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").count()).toBe(0);
+  };
+  try {
+    await 开列表(page, { 三态: true, 存: ["phone", "projectCount", "createdAt"] });
+    expect(await 有项目数(page)).toBe(0);
+    await 勾(true);
+    await expect.poll(() => 有项目数(page)).toBe(1);
+    expect(await 存的列(page)).toEqual(expect.arrayContaining(["+projectCount", "projectCount", "createdAt", "phone"]));
+    await page.reload(); await 开列表(page, { 三态: true });
+    expect(await 有项目数(page)).toBe(1);
+    await 勾(false);
+    await expect.poll(() => 有项目数(page)).toBe(0);
+    expect(await 存的列(page)).toEqual(expect.arrayContaining(["-+projectCount", "projectCount"]));
+    await page.reload(); await 开列表(page, { 三态: true });
+    expect(await 有项目数(page)).toBe(0);
+    // 三态关了：认原来那个键（老设置里勾着的 projectCount），照旧显示
+    await page.reload(); await 开列表(page, { 三态: false });
+    expect(await 有项目数(page)).toBe(1);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+// 手机宽操作列钉不钉（PR #384 跟进）：只一颗「⋯」（56 宽）才不钉，让出中间给号码列；这一页有公海行、多出「领取」（132 宽）照旧钉右
+it("375 宽：操作列只有「⋯」时不钉右；这一页有公海行（132 宽、带领取）照旧钉右、领取整颗在视口里", async () => {
+  for (const 公海 of [false, true]) {
+    const errors: string[] = [];
+    const page = await 新列表页(375, errors);
+    try {
+      await 开列表(page, { 公海 });
+      const 量 = await page.evaluate(() => {
+        const th = document.querySelector<HTMLElement>("thead th.dl-col-action")!;
+        const 领 = document.querySelector<HTMLElement>("tr.ant-table-row td.dl-col-action button[aria-label^='领取']");
+        const r = 领?.getBoundingClientRect();
+        return { 钉右: /ant-table-cell-fix-(right|end)/.test(th.className), 宽: th.offsetWidth, 领取在里: r ? r.left >= 0 && r.right <= document.documentElement.clientWidth : null };
+      });
+      expect(量, `公海 ${公海} ${JSON.stringify(量)}`).toEqual(公海 ? { 钉右: true, 宽: 132, 领取在里: true } : { 钉右: false, 宽: 56, 领取在里: null });
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
 afterAll(async () => { if (process.env.CUST_COLS_DUMP) (await import("node:fs")).writeFileSync(process.env.CUST_COLS_DUMP, 摆法.join("\n")); });
 
 it("拉宽窗口阶段 / 进程回到外面，再拉窄又收进去，筛选行一直一行", async () => {

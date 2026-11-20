@@ -933,6 +933,8 @@ export default function CustomersView({
   */
   const 三态挤 = 企业 && !!三态标;
   const 宽 = (常: number, 三态开: number) => (三态挤 ? 三态开 : 常);
+  /** 这一页有公海里的：操作列多一颗「领取」、加宽到 132，手机宽照旧钉右 */
+  const 有领取 = !不问归属 && rows.some((r) => r.pool);
   const 企业列: 列<CustomerRow>[] = [
     {
       title: "级别", key: "level", width: 宽(76, 60),
@@ -1021,8 +1023,9 @@ export default function CustomersView({
     }, {
       // 72：表头三个字连左右内边距放得下（64 在大一号的字体下被截成「项…」）
       // 三态开着默认收进「列」（PR #384，用户定方案 A「收起项目数」）：给默认显示的「联系电话」腾位置，1280 宽内部横滚压在 80 以内、1366 不横滚。
-      // 存过列设置里有它（勾过、或那时默认显示时存下的）的照旧显示；三态关着不变
-      title: "项目数", key: "projectCount", width: 72, ...(三态挤 ? { 默认: false } : {}),
+      // 只认三态开着之后在「列」里主动勾出来的：列设置存的是全部可见列，三态开着动过任何一列的老设置都带着 projectCount，那不算主动。
+      // 所以三态开着换一个存键「+projectCount」，老设置里的 projectCount 不算（留着不删，三态关了照旧生效）；勾上就一直显示，取消又收起。三态关着不变
+      title: "项目数", key: "projectCount", width: 72, ...(三态挤 ? { 默认: false, 存键: "+projectCount" } : {}),
       render: (_: unknown, r: CustomerRow) => <span className="nowrap">{项目概况[r.id]?.项目数 ?? 0}</span>,
     }] satisfies 列<CustomerRow>[] : []),
     /*
@@ -1129,8 +1132,9 @@ export default function CustomersView({
     {
       // 这一页有公海里的才多一个「领取」、才加宽：表格本来就比 13 寸窗口宽一点，不为用不上的按钮再挤
       // 一行只摆一个字按钮（领取），分配、编辑、删除收进「⋯」（交互规则 D，2026-10-30）；领不了的原因写在按钮下面，不靠悬停
-      // 手机不钉（#381 实操）：手机宽不钉右，让出中间给号码列整列横滚进来（DataList 手机不钉）
-      title: "", key: "action", width: !不问归属 && rows.some((r) => r.pool) ? 132 : 56, 常驻: true, fixed: "right", 手机不钉: true,
+      // 手机不钉（#381 实操）：只一颗「⋯」（56 宽）时手机宽不钉右，让出中间给号码列整列横滚进来（DataList 手机不钉）；
+      // 这一页有公海行、多出「领取」（132 宽）时照旧钉右：领取是要一眼看得见的主按钮
+      title: "", key: "action", width: 有领取 ? 132 : 56, 常驻: true, fixed: "right", 手机不钉: !有领取,
       render: (_, r) => {
         // 虚线下属的客户：编辑、删除点了也会被拦，不摆按钮，直接说只能看
         if (只读的.has(r.id)) return <span className="muted nowrap">只能看</span>;
