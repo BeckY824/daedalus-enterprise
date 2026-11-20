@@ -12,12 +12,13 @@ const plugin: Plugin = { name: "contact-v2-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__刷新=(window.__刷新||0)+1},push(){}});");
   stub(/^next\/link$/, "export default function L({href,children,...p}){return <a href={href} {...p}>{children}</a>}");
-  stub(/(^|\/)CustomerSearchSelect$/, "export default function Empty(){return null}");
+  // 联系人页上挑客户（没给 customerId 时才摆）：一颗键，点了挑 k5
+  stub(/(^|\/)CustomerSearchSelect$/, "export default function S({value,onChange}){return <button type='button' data-testid='pick-k5' onClick={()=>onChange&&onChange('k5')}>{value||'挑客户'}</button>}");
   stub(/^\.\/pick$/, "export const 搜客户=async()=>[{id:'k9',name:'别的客户',附注:null}];");
   stub(/^\.\/actions$/, `
     export const saveUnassignedContact=async()=>({ok:true});
     // dt.contact：号码失焦先查（默认没撞；__先查撞 给了就撞那几位）
-    export const 联系人号码先查=async(们,除了)=>{(window.__先查=window.__先查||[]).push([们,除了]);return {ok:true,撞了:window.__先查撞||[],...(window.__先查回收站?{回收站:window.__先查回收站}:{})};};
+    export const 联系人号码先查=async(们,除了,客户)=>{(window.__先查=window.__先查||[]).push([们,除了,客户]);return {ok:true,撞了:window.__先查撞||[],...(window.__先查回收站?{回收站:window.__先查回收站}:{})};};
     export const saveContact=async(x)=>{(window.__存=window.__存||[]).push(x);
       if(x.照存) return {ok:true};
       return {ok:false,error:'撞了',撞了:[
@@ -49,6 +50,8 @@ beforeAll(async () => {
     // 审核 11-18 新建入口 P2-6：号码在回收站里的客户上——拦下，框顶上摆「从回收站捞回」
     window.__回收站=()=>root.render(壳(<ContactForm open onClose={()=>{}} onSaved={()=>{window.__存好=1}} customerId='k0' record={null} 号码种类={种类}
       存法={async(x)=>{(window.__存=window.__存||[]).push(x);return {ok:false,error:'这个号码在回收站里的客户上，本次没保存，可以从回收站捞回',回收站:{类型:'phone',值:'13900000009'}}}}/>));
+    // 联系人页「添加联系人」：不给 customerId，客户在表单里挑
+    window.__联系人页=()=>root.render(壳(<ContactForm open onClose={()=>{}} onSaved={()=>{}} record={null} 号码种类={种类}/>));
     window.__非企业=()=>root.render(壳(<ContactForm open onClose={()=>{}} onSaved={()=>{}} customerId='k0' record={null}/>));
     window.__挂靠=()=>root.render(壳(<div style={{width:300}}>
       <div data-t='挂来的'><ContactLinks customerId='k0' 只读={false} c={{...人,挂靠:{linkId:'L1',note:'采购对接',主客户Id:'k1',主客户名:'主客户甲',主客户看得到:true,能改:false}}}/></div>
@@ -59,7 +62,7 @@ beforeAll(async () => {
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-async function open(画: "__表单" | "__挂靠" | "__职务" | "__职务老" | "__非企业" | "__回收站", width = 1024) {
+async function open(画: "__表单" | "__挂靠" | "__职务" | "__职务老" | "__非企业" | "__回收站" | "__联系人页", width = 1024) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   await page.route("http://cv2.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://cv2.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
@@ -133,6 +136,26 @@ it("dt.contact：号码一失焦就查，撞了不等点保存就摆黄条（挂
     expect(await page.evaluate(() => (window as unknown as { __存?: unknown[] }).__存 ?? [])).toEqual([]);
     await 条.getByRole("button", { name: /挂到本/ }).waitFor();
     expect(await 条.getByRole("button", { name: /仍然/ }).count()).toBe(0);
+  } finally { await page.close(); }
+});
+
+it("联系人页挑客户（3703 实操 #384）：失焦先查带上挑的客户；撞到这位客户自己没填姓名的联系人，说「本客户已有联系人」、链接写「未填姓名的联系人」", async () => {
+  const page = await open("__联系人页");
+  try {
+    await page.getByTestId("pick-k5").click();
+    await expect.poll(() => page.getByTestId("pick-k5").innerText()).toBe("k5");
+    await page.evaluate(() => { Reflect.set(window, "__先查撞", [{ contactId: "p7", name: "", customerId: "k5", customerName: "本家", 同事: "销售", kind: "phone", value: "13900000001" }]); });
+    await page.getByLabel("姓名").fill("李四");
+    await page.getByPlaceholder(/号码/).first().fill("13900000001");
+    await page.getByLabel("姓名").click();
+    const 条 = page.locator(".ant-alert-warning");
+    await 条.waitFor();
+    const 查的 = await page.evaluate(() => (window as unknown as { __先查: unknown[][] }).__先查.at(-1));
+    expect(查的?.[2]).toBe("k5");
+    expect(await 条.getByRole("link").innerText()).toBe("未填姓名的联系人（本家）");
+    expect(await page.getByTestId("contact-dup-advice").innerText()).toBe("本客户已有联系人（没填姓名）用了这个号码，号码全公司唯一，请改号码");
+    // 联系人页没有「挂到本客户」这条路
+    expect(await 条.getByRole("button", { name: /挂到本/ }).count()).toBe(0);
   } finally { await page.close(); }
 });
 

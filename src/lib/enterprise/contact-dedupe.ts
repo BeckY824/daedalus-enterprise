@@ -32,7 +32,7 @@ import { 看全部, 看得到, 限定的我, 只读错误, 现在的公海回避
 import { 公海客户原负责人是 } from "@/lib/owner-log-db";
 import { 问同事 } from "@/lib/sync/dedupe-client";
 import { 查重提示, 验号码, type 号码类型 } from "./contact-format";
-import { 通号种类, 号键变体, 通号键, 撞号怎么办, 回收站话 } from "./customer-v2";
+import { 通号种类, 号键变体, 通号键, 撞号怎么办, 回收站话, 联系人显名 } from "./customer-v2";
 import { 全角转半角 } from "@/lib/fullwidth";
 import { 号码归属地 } from "./phone-region";
 import { 拦原负责人 } from "./pool-rules";
@@ -579,10 +579,8 @@ export async function 联系人查重(
     for (const contactId of 跨.联系人.keys()) 记(contactId, 行);
     for (const customerId of 跨.客户) 记客户(customerId, 行);
   }
-  // 撞到的联系人就挂在那位客户上的：说联系人就够了，不再另报客户本身
   if (!撞.size && !客户撞.size) return [];
-  const 客户们 = 客户撞.size ? await 客户撞了(db, 客户撞, 读的我) : [];
-  if (!撞.size) return 客户们;
+  if (!撞.size) return 客户撞了(db, 客户撞, 读的我);
   // 回收站里的联系人、挂在回收站里客户上的不算在用（db 多半是不过限定层的 defaultClient，软删不会自动滤；回收站另走 联系人回收站撞）
   const 人们 = await 看全部(async () => db.contact.findMany({
     where: { id: { in: [...撞.keys()] }, deletedAt: null, customer: { deletedAt: null } },
@@ -605,8 +603,13 @@ export async function 联系人查重(
       value: 号.value,
     };
   });
-  const 有人的客户 = new Set(人们.map((p) => p.customer.id));
-  return [...联系人们, ...客户们.filter((x) => !x.customerId || !有人的客户.has(x.customerId))];
+  /*
+    撞到的联系人就挂在那位客户上的：说联系人就够了，不再另报客户本身。按真 id 去重、在抹掉看不到的 id 之前（3703 实操 #384：
+    原来拿抹过的 customerId 比，看不到的客户 id 成了 null，同一位看不到的客户（联系人和客户本身同号）黄条列两行）
+  */
+  for (const p of 人们) 客户撞.delete(p.customer.id);
+  const 客户们 = 客户撞.size ? await 客户撞了(db, 客户撞, 读的我) : [];
+  return [...联系人们, ...客户们];
 }
 
 /** 撞到的别的客户本身的号 → 给人看的样子（看得到的给客户 id、名字；看不到的只给负责人名字）。回收站里的客户不在里面 */
@@ -636,7 +639,7 @@ export function 联系人撞号话(撞: readonly 撞到的联系人[], 叫法: (
   const 头 = 撞[0];
   const 谁 = 头.客户本身
     ? (头.customerName ? `客户「${头.customerName}」本身` : `${头.同事}名下的一位客户本身`)
-    : 头.name ? `「${头.name}」（${头.customerName}）` : `${头.同事}名下的一位联系人`;
+    : 头.contactId ? `「${联系人显名(头.name)}」（${头.customerName}）` : `${头.同事}名下的一位联系人`;
   // 后半句同联系人框黄条（撞号怎么办）：能挂 = 新建（编辑没有挂过来这条路），且撞到的里有看得到的别家联系人才提
   return `${叫法(头.kind)} ${头.value} 已经记在${谁}身上${撞.length > 1 ? `等 ${撞.length} 位` : ""}，本次没保存。${撞号怎么办(撞, 这位客户, 能挂)}`;
 }

@@ -39,6 +39,9 @@ type 撞的那位 = { contactId: string | null; name: string | null; customerId:
  * - 别的（看不到的、撞的是客户本身的号）：只叫核对后改号码。
  * 这位客户 = 正在给哪位客户存联系人；客户叫法 = 业务配置里客户叫什么
  */
+/** 撞到的联系人没填姓名（企业版姓名、号码至少填一项）：黄条链接、撞号提示里不只剩「（NO.xxx）」（3703 实操 #384） */
+export const 联系人显名 = (name: string | null | undefined): string => name?.trim() || "未填姓名的联系人";
+
 export function 撞号怎么办(撞: readonly 撞的那位[], 这位客户: string | null | undefined, 能挂: boolean, 客户叫法 = "客户"): string {
   const 本家的 = 这位客户 ? 撞.filter((x) => !x.客户本身 && x.contactId && x.customerId === 这位客户) : [];
   const 可挂 = 能挂 && 撞.some((x) => !x.客户本身 && x.contactId && x.customerId && x.customerId !== 这位客户);

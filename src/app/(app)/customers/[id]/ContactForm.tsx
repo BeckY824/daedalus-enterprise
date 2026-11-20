@@ -10,7 +10,7 @@ import SaveButton from "@/components/SaveButton";
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import DatePicker from "@/components/BusinessDatePicker";
 import { dayjs } from "@/lib/utils";
-import { 性别们, 爱好上限, 联系人地址上限, 号码上限, 每人最多号码, 联系人姓名问题, 姓名号码至少一项, 撞号怎么办, 回收站话 } from "@/lib/enterprise/customer-v2";
+import { 性别们, 爱好上限, 联系人地址上限, 号码上限, 每人最多号码, 联系人姓名问题, 姓名号码至少一项, 撞号怎么办, 回收站话, 联系人显名 } from "@/lib/enterprise/customer-v2";
 import { saveContact, saveUnassignedContact, 联系人号码先查 } from "./actions";
 import { 挂到客户 } from "./contact-link-actions";
 import RescueKey from "../RescueKey";
@@ -168,7 +168,12 @@ export default function ContactForm({
       .map((x) => ({ kind: x.kind!, value: x.value!.trim() }));
     const 序 = ++查序.current;
     if (!们.length) return;
-    const r = await 联系人号码先查(们, record?.id ?? null, customerId ?? null).catch(() => null);
+    /*
+      归属同保存（onOk 的 归属）：记录页给的 customerId；联系人页上挑的客户在表单里（3703 实操 #384：原来只传 customerId，
+      联系人页挑了客户再填它本身的电话，失焦报撞号、保存却照存；填它自己联系人的号只给通用话术）
+    */
+    const 归属 = customerId ?? (form.getFieldValue("customerId") as string | undefined) ?? null;
+    const r = await 联系人号码先查(们, record?.id ?? null, 归属).catch(() => null);
     if (序 !== 查序.current || !r?.ok) return;
     // 两条黄条只摆一条（复审 #384）：撞了收起回收站那条，回收站有收起撞号那条
     if (r.撞了.length) { set回收站号(null); set撞号(r.撞了); set先查的(true); }
@@ -305,7 +310,7 @@ export default function ContactForm({
                   ) : x.contactId && x.customerId ? (
                     <>
                       <Link href={`/customers/${encodeURIComponent(x.customerId)}`} target="_blank">
-                        {x.name}（{x.customerName}）
+                        {联系人显名(x.name)}（{x.customerName}）
                       </Link>
                       {/* 客户页上新建：多半就是同一个人，直接挂过来比再建一位好 */}
                       {!record && customerId && !存法 && x.customerId !== customerId && (
@@ -320,7 +325,7 @@ export default function ContactForm({
                 </div>
               ))}
               {/* 按真给得出的动作说（11-20 3703 实操）：摆了「挂到本客户」键才提它，撞本客户自己的联系人叫改号码 */}
-              <div data-testid="contact-dup-advice">{撞号怎么办(撞号, customerId, !record && !!customerId && !存法, b.customer)}</div>
+              <div data-testid="contact-dup-advice">{撞号怎么办(撞号, customerId ?? 挑的, !record && !!customerId && !存法, b.customer)}</div>
             </div>
           }
         />
