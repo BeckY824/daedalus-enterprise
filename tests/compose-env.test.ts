@@ -49,6 +49,7 @@ const 不用进容器: Record<string, string> = {
   CRM_NAV_PREWARM: "左栏空闲预热的范围：不设就是全部预热（现状），单核服务器上才需要收窄；不走容器（lib/nav-prewarm.ts）",
   NEXT_PHASE: "Next 构建时自己设的阶段标记，只用来认出构建期预渲染（那时 antd 样式照旧内联），不是部署要配的变量（components/AntdRegistry.tsx）",
   CRM_ANTD_CSS_DIR: "antd 样式外链的落盘目录，不设就用系统临时目录；私有部署的服务用了私有临时目录（重启即清）时才需要另指一个留得住的位置（lib/antd-css-disk.ts）",
+  ENT_FEISHU_RATE: "飞书推送每个进程每秒上限，默认 4（lib/enterprise/feishu-queue.ts）；企业版 c2 用 run.sh 起进程、不走 compose，平时不用设，只在要临时调限速时手动 export",
   CRM_ENT_VIEW_AS: "切换视图（以某人的视角查看）的关闭开关：企业版默认有这个功能，只有设成 0 才关；平时不用设，企业版部署包故意不映射（lib/enterprise/view-as.ts）",
   NEXT_RUNTIME: "Next 自己设的（nodejs / edge），不是我们配的",
   CRM_JOBS: "多进程部署时哪个进程跑后台任务（1 跑 / 0 不跑，不设 = 跑）：企业版多进程由部署脚本的 run.sh 按进程号设，不经 compose；单容器不设就是原来的单进程行为（lib/jobs.ts）",
