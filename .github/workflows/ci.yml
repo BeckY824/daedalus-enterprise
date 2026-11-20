@@ -64,7 +64,8 @@ jobs:
       # 11-20 批次 32A：推 main / PR 全套也要 checkout——全套的分片表也在这里按耗时算（scripts/ci/unit-timing.json），不再交给 vitest --shard
       - uses: actions/checkout@v4
         with:
-          fetch-depth: ${{ github.event_name == 'pull_request' && 0 || 1 }}
+          # 注意不能写 `== 'pull_request' && 0 || 1`：表达式里 0 算假，那样永远得 1，PR 浅克隆找不到 merge-base（11-20 #385 红过）
+          fetch-depth: ${{ github.event_name != 'pull_request' && 1 || 0 }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -95,7 +96,8 @@ jobs:
             scope=全套; echo "CI范围=${scope} 测试代码树=${tree}"; exit 0
           fi
           git fetch -q origin "$BASE_REF"
-          node scripts/ci/related-tests.mjs select --base "$(git merge-base FETCH_HEAD HEAD)" --shards 8; 核对
+          base=$(git merge-base FETCH_HEAD HEAD) || { echo "::error::找不到和 ${BASE_REF} 的 merge-base（checkout 是不是浅克隆了？）"; exit 1; }
+          node scripts/ci/related-tests.mjs select --base "$base" --shards 8; 核对
           if grep -q '^mode=full$' "$GITHUB_OUTPUT"; then scope=单测全套; else scope=牵连; fi
           echo "CI范围=${scope} 测试代码树=${tree}"
 
