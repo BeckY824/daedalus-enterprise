@@ -968,6 +968,62 @@ describe("生效范围（11-20 事故：只对生效以后新分配的计时、�
   });
 });
 
+describe("[F-业务线] 超时自动转不跨线：只在原负责人所在线里转（11-20 员工反馈）", () => {
+  let 丁: 人, 戊: 人, 市场: 人;
+  beforeEach(async () => {
+    丁 = await 造人("ding", "丁");
+    戊 = await 造人("wu", "戊");
+    市场 = await 造人("mkt", "市场");
+    await prisma.entMember.createMany({
+      data: [
+        { userId: 丁.id, bizRole: "sales", line: "外贸" },
+        { userId: 戊.id, bizRole: "sales", line: "外贸" },
+        { userId: 市场.id, bizRole: "channel_ops" },
+      ],
+    });
+    忘掉企业版范围();
+  });
+  /** 一位客户（地址、电话可给）+ 一条线索：owner 负责、creator 建，项目业务线 bizLine，指定回复时间 15:00 */
+  async function 线索(owner: 人, creator: 人, bizLine: string, 客户: { addrCountry?: string; phone?: string | null } = {}) {
+    序++;
+    const c = await prisma.customer.create({ data: { name: `跨线客户${序}`, phone: 客户.phone === undefined ? `1390001${String(序).padStart(4, "0")}` : (客户.phone ?? ""), addrCountry: 客户.addrCountry ?? null, salesOwnerId: owner.id, bizLine } });
+    const p = await prisma.project.create({ data: { name: `跨线线索${序}`, customerId: c.id, ownerId: owner.id, creatorId: creator.id, phase: "线索", node: "潜客培育", bizLine, replyEndAt: 京("2026-11-20 15:00") } });
+    return p.id;
+  }
+
+  it("内贸的甲手上的外贸线索（项目业务线外贸，管理跨线分的）：到点照提醒，转的那步不转、留在甲手上，不发收回通知", async () => {
+    const id = await 线索(甲, 老板, "外贸");
+    expect(await 超时转扫一遍(京("2026-11-20 16:00"))).toMatchObject({ 提醒: 1 });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await 超时转扫一遍(京("2026-11-20 16:30"))).toMatchObject({ 转出: 0, 没转成: 1 });
+    expect(warn.mock.calls.flat().join("")).toContain("超时不跨线自动转");
+    warn.mockRestore();
+    expect((await 项目(id)).ownerId).toBe(甲.id);
+    expect((await 超时通知(甲.id)).filter((n) => n.title.includes(收回话))).toHaveLength(0);
+    for (const u of [乙, 丙, 丁, 戊]) expect(await 通知(u.id)).toHaveLength(0);
+  });
+
+  it("市场建的、客户区域在国外（按区域定外贸），负责人是内贸的甲：不转；客户区域记成中国、负责人是外贸的丁：也不转", async () => {
+    const 国外 = await 线索(甲, 市场, "内贸", { addrCountry: "越南" });
+    const 国内 = await 线索(丁, 市场, "内贸", { addrCountry: "中国" });
+    await 超时转扫一遍(京("2026-11-20 16:00"));
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await 超时转扫一遍(京("2026-11-20 16:30"))).toMatchObject({ 转出: 0, 没转成: 2 });
+    vi.restoreAllMocks();
+    expect((await 项目(国外)).ownerId).toBe(甲.id);
+    expect((await 项目(国内)).ownerId).toBe(丁.id);
+  });
+
+  it("同一条线照转：外贸的丁手上的外贸线索转给外贸的戊；区域、电话都判不出（两条线都算）时只挑原负责人那条线的人", async () => {
+    const 同线 = await 线索(丁, 老板, "外贸");
+    const 判不出 = await 线索(丁, 市场, "内贸", { phone: null });
+    await 超时转扫一遍(京("2026-11-20 16:00"));
+    expect(await 超时转扫一遍(京("2026-11-20 16:30"))).toMatchObject({ 转出: 2 });
+    expect((await 项目(同线)).ownerId).toBe(戊.id);
+    expect((await 项目(判不出)).ownerId).toBe(戊.id);
+  });
+});
+
 describe("挂在夜扫钟上", () => {
   it("nightly 每分钟那一遍调 钟上超时自动转，排在指定回复提醒后面", () => {
     const 钟 = fs.readFileSync(path.resolve("src/lib/project/nightly.ts"), "utf8");

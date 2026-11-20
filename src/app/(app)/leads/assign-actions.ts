@@ -617,6 +617,11 @@ async function 自动分给(
   方向?: 分配方向,
   /** 不用判无效待补：超时未跟进自动转（P-转-29 ②「超时转两人都算」，接手人照记一次算数的分配，补发 counted=false 会冲突） */
   不用补位?: true,
+  /**
+   * 只在这条线里挑（超时未跟进自动转不跨线，[F-业务线] 11-20）：按区域 / 项目业务线定出来的线和它对不上 = 不分、回 跨线不转话；
+   * 区域判不出（两条线都算）= 只挑这条线的人。没交 = 照旧
+   */
+  只给线?: 线 | null,
 ): Promise<内部自动结果> {
   const 看 = await 分前看(哪条, org);
   if (!看.ok) return 看;
@@ -673,6 +678,15 @@ async function 自动分给(
     查线 = 查哪条线(org, 设, line);
   } else {
     人们 = 自动可接(org, 自动候选人们(org, 看.ownerId, line), line).filter((id) => !在不进自动分配部门(org, id));
+  }
+  if (只给线 && 哪条.projectId !== undefined) {
+    if (line && line !== 只给线) return { ok: false, error: 跨线不转话(line, 只给线) };
+    if (!line) {
+      const 设 = await 读线部门();
+      line = 只给线;
+      人们 = 自动分配池(org, 看.ownerId, 只给线, 设);
+      查线 = 查哪条线(org, 设, 只给线);
+    }
   }
   if (排除?.length) 人们 = 人们.filter((id) => !排除.includes(id));
   // 公海里的项目自动分配不挑把它放回公海的人（P-公海-04 回避；上级指定分回给他另说，X-67）
@@ -764,11 +778,17 @@ export async function 定时分出去(令牌: unknown, 谁: SessionUser, project
   return { ok: true, 接手人: r.接手人 };
 }
 
+/** 超时未跟进自动转不跨线（[F-业务线]）：自动分配定的线和原负责人所在线对不上时的原因（只进日志） */
+const 跨线不转话 = (该给: 线, 原线: 线) => `这条按自动分配该给${该给}，原负责人在${原线}，超时不跨线自动转，留在原负责人手上`;
+
 /**
  * 超时未跟进自动转（11-17，lib/enterprise/reply-overdue.ts 调；钟上到点）：不是给浏览器的 action，带服务端令牌（同 定时分出去）。
  * 按自动分配挑下一位（同一套候选：项目业务线 / 市场成员建的按客户区域、参与状态、本月分得最少、并列最早进池；配额照查，不看持有上限），
  * 排除 = 现负责人 + 这一轮超时过的人。乐观锁：负责人还得是 原。不发通知（调用方把客户怎么办定好了再发，通知里要写客户在谁名下）。
- * 挑不到 = 挑不到人（排除之后没人能接），调用方据此开新一轮；别的不成（验证中、规则关着、被人先分走）原样回原因，项目不动
+ * 挑不到 = 挑不到人（排除之后没人能接），调用方据此开新一轮；别的不成（验证中、规则关着、被人先分走）原样回原因，项目不动。
+ * 不跨线（[F-业务线]，11-20 员工反馈内贸销售收到超时转来的外贸客户）：只在原负责人所在线（本人事业部）里转；
+ * 自动分配按客户区域 / 项目业务线定的线和它对不上（管理跨线分过的、客户区域记错的）= 不转、留原负责人手上，同挑不到只记日志；
+ * 区域判不出 = 只挑原负责人那条线的人；原负责人线判不出 = 照旧
  */
 export async function 超时转出(
   令牌: unknown, 谁: SessionUser, projectId: string, 原: string, 排除: readonly string[], 附: string,
@@ -777,7 +797,8 @@ export async function 超时转出(
   if (!(await 规则开着("线索分配"))) return { ok: false, error: "规则「线索分配」关着" };
   const org = await 读组织();
   const 建的人 = (await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { creatorId: true } })))?.creatorId;
-  const r = await 自动分给(谁, org, { projectId }, null, "营销", 原, 附, 建的人, 排除, undefined, true);
+  const 原线 = 本人事业部(org, await 读线部门(), 原);
+  const r = await 自动分给(谁, org, { projectId }, null, "营销", 原, 附, 建的人, 排除, undefined, true, 原线);
   if (!r.ok) return { ok: false, error: r.error, ...(r.待分配 ? { 挑不到: true as const } : {}) };
   return { ok: true, 接手人Id: r.toUserId, 接手人: r.接手人, ...留下字段(r.留下) };
 }
