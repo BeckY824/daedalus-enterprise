@@ -201,6 +201,11 @@ export async function 建档向导(输入: 建档向导输入) {
         }
       }
     }
+    // 「指定分配 + 指定时间」先建在我名下、到点给 定时.接手人：业务线定好了，同样先核方向（P-转-26，11-20 审查）
+    if (企业版() && 定时?.接手人) {
+      const 方向不符 = await 新建指定方向挡(me, await 读组织(), 定时.接手人, 好.企业?.业务线);
+      if (方向不符) return { ok: false as const, error: 方向不符 };
+    }
     const 负责人 = await prisma.user.findUnique({ where: { id: 好.项目.ownerId }, select: { name: true, active: true } });
     if (!负责人?.active) return { ok: false as const, error: "项目负责人不存在或已停用，请选一位在职成员" };
     const 不行 = await 不能当负责人(好.项目.ownerId);

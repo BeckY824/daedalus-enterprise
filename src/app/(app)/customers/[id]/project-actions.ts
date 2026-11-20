@@ -40,6 +40,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 定分配方式, 建好再分, 新建分配方式数据, 认新建定时 } from "@/lib/project/after-create-assign";
+import { 新建指定方向挡 } from "@/lib/enterprise/assign-direction-pick";
 import { 指定问题 } from "@/lib/enterprise/assign-eta";
 import { 项目分给你通知, 同事待分配随客户通知, type 留下的活 } from "@/lib/enterprise/notice-sources";
 import { 记新建指定分配 } from "@/lib/enterprise/direct-assign";
@@ -229,6 +230,12 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     if (指定给别人) {
       const 问题 = await 指定问题(org, 项目.ownerId);
       if (问题) return { ok: false, error: 问题 };
+    }
+    // 市场成员指定分配先定方向（P-转-26，11-20）：直接指定的负责人、「指定时间」到点的接手人都要在所选方向（业务线内贸 / 外贸）能挑的人里
+    const 指定的人 = 定时?.接手人 ?? (指定给别人 ? 项目.ownerId : null);
+    if (指定的人) {
+      const 方向不符 = await 新建指定方向挡(me, org, 指定的人, 业务线);
+      if (方向不符) return { ok: false, error: 方向不符 };
     }
     const 读客户 = (db: Parameters<typeof 转客户给销售>[0]) => 看全部(() => db.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } }));
     const 市场转客户 = 指定给别人 && 算市场转客户(org, await 读客户(prisma), 项目.ownerId);

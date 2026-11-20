@@ -496,7 +496,7 @@ describe("管理员开关：组织规则「超时未跟进自动转」（默认�
   });
 
   it("提醒发了、没转就关掉，过一阵再打开：重新生效——在计时的链停下、不再提醒不再转；打开以后新分的照常计时、老分配新约时间的不计时（11-20 B1）", async () => {
-    const { id } = await 建线索(甲, { replyEndAt: 京("2026-11-20 15:00") });
+    const { id } = await 建线索(甲, { replyEndAt: 京("2026-11-20 15:00"), createdAt: 京("2026-11-20 10:00") }); // 分配时刻钉死（不取真实当前时间），打开以后不算新分配
     expect(await 超时转扫一遍(京("2026-11-20 16:00"))).toMatchObject({ 提醒: 1 });
     await 拨(false);
     expect(await 超时转扫一遍(京("2026-11-20 16:30"))).toMatchObject({ 转出: 0 });
@@ -1442,6 +1442,38 @@ describe("11-20 审查修正（B1 按时也只计新分配、B2 导入不算自�
     expect(提[0].link).toBe(`/projects/${id}`);
     expect(提[0].body).toContain(`${本人记话}，`);
     expect(提[0].body).toContain("16:30 前还没记");
+  });
+
+  it("[性能 11-20 复审] 每分钟认「导入建的」：EntImportRow 有 (entity, targetId) 索引（迁移 159），那句查询走索引、不扫整表", async () => {
+    const 有 = await prisma.$queryRawUnsafe<{ name: string }[]>(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'EntImportRow_entity_targetId_idx'`);
+    expect(有).toHaveLength(1);
+    const 计划 = await prisma.$queryRawUnsafe<{ detail: string }[]>(
+      `EXPLAIN QUERY PLAN SELECT "targetId" FROM "EntImportRow" WHERE "entity" = ? AND "kind" = ? AND "targetId" IN (?, ?)`, "opportunity", "create", "a", "b");
+    expect(计划.map((r) => r.detail).join("\n")).toContain("EntImportRow_entity_targetId_idx");
+  });
+
+  it("[漏计 11-20 复审] 生效后新分配、带着生效前的旧指定回复时间：改按分配算（分配后 1 小时提醒、1.5 小时转）；老分配 + 老回复时间照旧不计时", async () => {
+    await 设生效(京("2026-11-21 09:30"));
+    const 老 = { replyEndAt: 京("2026-11-20 15:00"), createdAt: 京("2026-11-10 10:00") };
+    const 新分 = await 建线索(甲, 老, undefined, { 分于: 京("2026-11-10 10:00") });
+    const 照旧 = await 建线索(甲, 老, undefined, { 分于: 京("2026-11-10 10:00") });
+    // 生效后 11-21 10:00 由系统自动分配给乙（换人留痕 + 分配记录）
+    const 分于 = 京("2026-11-21 10:00");
+    await prisma.project.update({ where: { id: 新分.id }, data: { ownerId: 乙.id } });
+    await prisma.projectNodeLog.create({ data: { projectId: 新分.id, userId: 老板.id, kind: "transfer", fromOwnerId: 甲.id, toOwnerId: 乙.id, reason: "分配方式：自动分配", at: 分于, fromPhase: "线索", fromNode: "潜客培育", toPhase: "线索", toNode: "潜客培育" } });
+    await prisma.entLeadAssign.create({ data: { projectId: 新分.id, toUserId: 乙.id, fromUserId: 甲.id, byUserId: 老板.id, month: "2026-11", counted: false, createdAt: 分于 } });
+
+    expect(await 超时转扫一遍(京("2026-11-21 10:59"))).toMatchObject({ 提醒: 0, 转出: 0 });
+    expect(await 超时转扫一遍(京("2026-11-21 11:00"))).toMatchObject({ 提醒: 1, 转出: 0 });
+    expect(await 链(新分.id)).toMatchObject({ anchorAt: 分于, overdueAt: 京("2026-11-21 11:00") });
+    const 提 = await 超时通知(乙.id);
+    expect(提).toHaveLength(1);
+    expect(提[0].body).toContain(分配后未跟进话(60));
+    expect(await 超时转扫一遍(京("2026-11-21 11:30"))).toMatchObject({ 转出: 1 });
+    expect((await 项目(新分.id)).ownerId).not.toBe(乙.id);
+    // 老分配 + 老回复时间：上线安全照旧，从头到尾不起链
+    expect(await 链(照旧.id)).toBeNull();
+    expect((await 项目(照旧.id)).ownerId).toBe(甲.id);
   });
 });
 

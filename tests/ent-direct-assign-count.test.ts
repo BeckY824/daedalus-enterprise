@@ -32,6 +32,7 @@ import { 估算轮到, 快轮到kind } from "@/lib/enterprise/assign-eta";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 新建分配方式数据 } from "@/lib/project/after-create-assign";
 import { 指定选项, 方向可指定 } from "@/lib/enterprise/designate-options";
+import { 时刻转北京墙钟 } from "@/lib/project/time-fields";
 
 afterAll(() => prisma.$disconnect());
 
@@ -260,6 +261,36 @@ describe("[P-转-26] 新线索向导「指定分配」也先定方向（11-20 37
     }
     const 暂不 = await 建档向导(向导输入(外贸销售, { 分配方式: 0, 业务线: "暂不分配" }));
     expect(暂不.ok, 暂不.ok ? "" : 暂不.error).toBe(true);
+  });
+
+  /** 往后 n 小时（到分钟）的北京墙钟：「指定时间」分配要的值 */
+  const 后墙 = (小时: number) => 时刻转北京墙钟(new Date(Date.now() + 小时 * 3_600_000))!;
+  const 老客户项目 = (customerId: string, 项目: Record<string, unknown>) => 给客户建项目({
+    customerId,
+    项目: { name: "老客户新线索", amount: 0, currency: "CNY", 分配方式: 0, ...项目 } as never,
+    跟进: { type: "PHONE", content: "电话聊了需求", occurredAt: "2026-10-20 10:00", 节点: "潜客培育", 明确回复: false } as never,
+  });
+
+  it("[审查 11-20] 向导选老客户（给客户建项目）：方向不符拒（直接指定、指定时间到点的接手人都核），一致照常", async () => {
+    const c = await prisma.customer.create({ data: { name: "老客户丙", phone: "13900000013", salesOwnerId: 市场 } });
+    const 拒 = "负责人不在所选方向（外贸），请改方向或换人";
+    expect(await 老客户项目(c.id, { ownerId: 销售, 业务线: "外贸" })).toMatchObject({ ok: false, error: 拒 });
+    expect(await 老客户项目(c.id, { ownerId: 销售, 业务线: "外贸", 定时分配: 后墙(3) })).toMatchObject({ ok: false, error: 拒 });
+    expect(await prisma.project.count({ where: { customerId: c.id } })).toBe(0);
+    const 好 = await 老客户项目(c.id, { ownerId: 外贸销售, 业务线: "外贸" });
+    expect(好.ok, 好.ok ? "" : (好 as { error: string }).error).toBe(true);
+    const 定时好 = await 老客户项目(c.id, { ownerId: 销售, 业务线: "内贸", 定时分配: 后墙(3) });
+    expect(定时好.ok, 定时好.ok ? "" : (定时好 as { error: string }).error).toBe(true);
+    expect(await prisma.project.count({ where: { customerId: c.id } })).toBe(2);
+  });
+
+  it("[审查 11-20] 建档向导「指定分配 + 指定时间」（先建在自己名下、到点给接手人）：接手人方向不符拒，一致照常", async () => {
+    const 拒 = await 建档向导(向导输入(销售, { 分配方式: 0, 业务线: "外贸", 定时分配: 后墙(3) } as never));
+    expect(拒.ok ? "" : 拒.error).toBe("负责人不在所选方向（外贸），请改方向或换人");
+    expect(await prisma.project.count()).toBe(0);
+    const 好 = await 建档向导(向导输入(外贸销售, { 分配方式: 0, 业务线: "外贸", 定时分配: 后墙(3) } as never));
+    expect(好.ok, 好.ok ? "" : 好.error).toBe(true);
+    expect(await prisma.project.count({ where: { ownerId: 市场, scheduledAssignAt: { not: null } } })).toBe(1);
   });
 
   it("不是市场成员发起的（销售管理、条线总管理指定）不按方向限人（P-转-26 末句）", async () => {

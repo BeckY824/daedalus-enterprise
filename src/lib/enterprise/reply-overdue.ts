@@ -357,14 +357,17 @@ export const 是销售 = (org: Pick<组织, "成员">, id: string): boolean => !
 const 自留不计 = (org: 组织, p: { ownerId: string; creatorId: string }, 导入的: boolean): boolean =>
   市场自留(org, p) || (p.ownerId === p.creatorId && !导入的 && !是销售(org, p.ownerId));
 
-/** 这几条项目里哪些是导入 / 同步建的（P-转-41「导入不起算」）：导入建项目写了 EntImportRow（opportunity、create），商机表建的还写 EntExternalRef */
+/**
+ * 这几条项目里哪些是导入 / 同步建的（P-转-41「导入不起算」）：商机表建的写了 EntExternalRef（opportunity），线索表带出的只写 EntImportRow
+ * （opportunity、create）。每分钟一遍：先查 EntExternalRef，查不到的那几条再查 EntImportRow（两张表都有 [entity, targetId] 索引，迁移 159）
+ */
 async function 导入建的of(ids: readonly string[]): Promise<Set<string>> {
   if (!ids.length) return new Set();
-  const [对照, 导入行] = await Promise.all([
-    prisma.entExternalRef.findMany({ where: { entity: "opportunity", targetId: { in: [...ids] } }, select: { targetId: true } }),
-    prisma.entImportRow.findMany({ where: { entity: "opportunity", kind: "create", targetId: { in: [...ids] } }, select: { targetId: true } }),
-  ]);
-  return new Set([...对照, ...导入行].map((r) => r.targetId));
+  const 对照 = new Set((await prisma.entExternalRef.findMany({ where: { entity: "opportunity", targetId: { in: [...ids] } }, select: { targetId: true } })).map((r) => r.targetId));
+  const 余 = ids.filter((id) => !对照.has(id));
+  if (!余.length) return 对照;
+  const 导入行 = await prisma.entImportRow.findMany({ where: { entity: "opportunity", kind: "create", targetId: { in: 余 } }, select: { targetId: true } });
+  return new Set([...对照, ...导入行.map((r) => r.targetId)]);
 }
 
 /** 到点转不转：除了市场成员自留的都转（用户 11-20「包括」）；市场成员自留、但有人分回给他的照旧算分来 */
@@ -434,9 +437,10 @@ async function 链上的(现在: Date, 生效: Date, 历史: Date | null, org: �
         { replyOverdue: { is: { stoppedAt: null } } },
         { AND: [没在走, { replyEndAt: { gte: 早, lte: 晚 } }] },
         { AND: [没在走, { replyEndAt: null, replyStartAt: { gte: 早, lte: 晚 } }] },
-        // 没填指定回复时间（按分配）：这几天里有过转让 / 公海分配留痕、或这几天里建的（新建时直接给销售只有分配记录）；准的下面按 分配基准 再判
+        // 按分配：这几天里有过转让 / 公海分配留痕、或这几天里建的（新建时直接给销售只有分配记录）；准的下面按 分配基准 再判。
+        // 填了指定回复时间的也收（11-20 审查）：生效后新分配、带着生效前旧回复时间的改按分配（下面），旧回复时间早过了 3 天也得进得来
         {
-          AND: [没在走, { replyEndAt: null, replyStartAt: null }, {
+          AND: [没在走, {
             OR: [{ logs: { some: { kind: { in: ["transfer", "pool-claim"] }, at: { gte: 分配早, lte: 晚 } } } }, { createdAt: { gte: new Date(分配早.getTime() - 分), lte: 晚 } }],
           }],
         },
@@ -469,6 +473,11 @@ async function 链上的(现在: Date, 生效: Date, 历史: Date | null, org: �
     if (!基) {
       // 还在走、按分配起的链：基准钉在起链那一刻（分配、换人、销售自建的建档那一刻），中途手动换人、轮转不重来（走一步 按新负责人接手那刻接着算）
       基 = 行 && 在走 && 是分配时刻(行.anchorAt, 痕, 分, p.createdAt) ? 行.anchorAt : 分起;
+    } else if (基.getTime() < 生效.getTime() && 分起 && 分起.getTime() >= 生效.getTime()) {
+      // 生效后新分配、带着生效前的旧指定回复时间（分配时不清回复时间，11-20 审查）：旧时间不算，改按分配走（基准 = 分配基准，钉法同上）。
+      // 只在旧回复时间早于生效时刻时改：生效以后约的回复时间照旧按时（分配晚于它的从接手那刻算，「往回看 7 天」那条用例）
+      基 = 行 && 在走 && 是分配时刻(行.anchorAt, 痕, 分, p.createdAt) ? 行.anchorAt : 分起;
+      按分配 = true;
     } else if (在走 ? !!分起 && 分起.getTime() < 生效.getTime() : !分起 || 分起.getTime() < 生效.getTime()) {
       // 按时（填了指定回复时间）也只计生效以后被分配 / 销售自建 / 销售自领的（11-20 Even 两步走第一步）：分配基准算不出或早于生效时刻 = 不计时。
       // 还在走的链只在算得出、且早于生效时刻时停（轮转、中途换人以后算不出 = 照走，同按分配钉住基准）

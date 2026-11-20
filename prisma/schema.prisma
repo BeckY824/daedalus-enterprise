@@ -1409,6 +1409,8 @@ model EntImportRow {
   createdAt  DateTime       @default(now())
 
   @@index([batchId, entity])
+  // 超时转每分钟按目标认导入建的项目（迁移 159）
+  @@index([entity, targetId])
 }
 
 /// 原系统记录 ↔ 我们这边记录。同步按 来源 + 原系统 ID 认人
