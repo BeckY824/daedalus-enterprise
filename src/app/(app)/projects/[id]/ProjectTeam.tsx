@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Card, Input, InputNumber, Modal, Select, Space, Tag } from "antd";
+import { Button, Card, Input, Modal, Select, Space, Tag } from "antd";
 import InlineConfirm from "@/components/InlineConfirm";
 import DatePicker from "@/components/BusinessDatePicker";
 import { 币种选项, 默认币种 } from "@/lib/currency";
-import { 金额格式 } from "@/lib/money-input";
+import AmountInput, { 金额认不出 } from "@/components/AmountInput";
 import { dayjs, 成员选项, 独自一人, type 可选成员 } from "@/lib/utils";
 import { 项目名上限, 备注上限 } from "@/lib/project/wizard";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
@@ -139,6 +139,8 @@ export function ProjectEditModal({
     ...(货 && 物流 !== (货.物流状态.值 ?? null) ? { logisticsStatus: 物流 } : {}),
     ...(货 && (单号.trim() || null) !== (货.物流单号 ?? null) ? { trackingNo: 单号.trim() || null } : {}),
   };
+  // 金额框敲了认不出的字（AmountInput 交 NaN）：框上标红说为什么，保存挡住
+  const 钱认不出 = 金额认不出(d.amount) || 金额认不出(钱?.depositAmount) || 金额认不出(钱?.contractAmount);
   const 行 = (label: string, el: React.ReactNode) => (
     <div style={{ marginBottom: 12 }}>
       <div style={{ marginBottom: 4, color: "var(--text-muted)" }}>{label}</div>
@@ -154,7 +156,7 @@ export function ProjectEditModal({
       footer={(
         <Space>
           <Button onClick={不要了}>取消</Button>
-          <SaveButton disabled={!d.name.trim()} 做={() => 跑给按钮(跑, () => 编辑项目(p.id, { ...d, amount: d.amount ?? 0, ...附带 }))} 成了={() => { 稿.存好了(); onClose(); }}>保存</SaveButton>
+          <SaveButton disabled={!d.name.trim() || 钱认不出} 做={() => 跑给按钮(跑, () => 编辑项目(p.id, { ...d, amount: d.amount ?? 0, ...附带 }))} 成了={() => { 稿.存好了(); onClose(); }}>保存</SaveButton>
         </Space>
       )}
     >
@@ -209,19 +211,19 @@ export function ProjectEditModal({
       {行("金额", (
         <Space.Compact style={{ width: "100%" }}>
           <Select style={{ width: 140 }} value={d.currency} options={币种选项()} onChange={(v) => 改({ currency: v })} showSearch optionFilterProp="label" />
-          <InputNumber<number> style={{ width: "100%" }} min={0} value={d.amount} formatter={金额格式} onChange={(v) => 改({ amount: v ?? 0 })} />
+          <AmountInput style={{ width: "100%" }} aria-label="金额" min={0} value={d.amount} onChange={(v) => 改({ amount: v ?? 0 })} />
         </Space.Compact>
       ))}
       {钱 && 行("定金金额", (
         <Space.Compact style={{ width: "100%" }}>
           <Select style={{ width: 140 }} aria-label="定金金额币种" value={钱.depositCurrency} options={币种选项()} onChange={(v) => 改钱({ depositCurrency: v })} showSearch optionFilterProp="label" />
-          <InputNumber<number> style={{ width: "100%" }} aria-label="定金金额" min={0} placeholder="待填写定金金额" value={钱.depositAmount} formatter={金额格式} onChange={(v) => 改钱({ depositAmount: v ?? null })} />
+          <AmountInput style={{ width: "100%" }} aria-label="定金金额" min={0} placeholder="待填写定金金额" value={钱.depositAmount} onChange={(v) => 改钱({ depositAmount: v })} />
         </Space.Compact>
       ))}
       {钱 && 行("合同金额", (
         <Space.Compact style={{ width: "100%" }}>
           <Select style={{ width: 140 }} aria-label="合同金额币种" value={钱.contractCurrency} options={币种选项()} onChange={(v) => 改钱({ contractCurrency: v })} showSearch optionFilterProp="label" />
-          <InputNumber<number> style={{ width: "100%" }} aria-label="合同金额" min={0} placeholder="待填写合同金额" value={钱.contractAmount} formatter={金额格式} onChange={(v) => 改钱({ contractAmount: v ?? null })} />
+          <AmountInput style={{ width: "100%" }} aria-label="合同金额" min={0} placeholder="待填写合同金额" value={钱.contractAmount} onChange={(v) => 改钱({ contractAmount: v })} />
         </Space.Compact>
       ))}
       {新?.contractStatus !== undefined && 行("合同状态", <Select style={{ width: "100%" }} aria-label="合同状态" allowClear placeholder={未选占位} value={合同 ?? undefined} options={[不填项, ...合同状态们.map((v) => ({ value: v, label: v }))]} onChange={(v?: string) => set合同(去不填(v) as 合同状态 | null)} />)}

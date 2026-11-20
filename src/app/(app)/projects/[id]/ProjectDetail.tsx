@@ -5,7 +5,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { DownOutlined, EditOutlined, MoreOutlined, RightOutlined, SearchOutlined, ThunderboltOutlined } from "@ant-design/icons";
-import { Alert, Button, Card, Checkbox, Dropdown, Input, InputNumber, Menu, Modal, Popover, Progress, Segmented, Select, Space, Tag, Timeline, Tooltip, type MenuProps } from "antd";
+import AmountInput, { 金额框认不出提示, 金额认不出 } from "@/components/AmountInput";
+import { Alert, Button, Card, Checkbox, Dropdown, Input, Menu, Modal, Popover, Progress, Segmented, Select, Space, Tag, Timeline, Tooltip, type MenuProps } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import DictSelect from "@/components/DictSelect";
 import { useMotionTheme } from "@/components/MotionTheme";
@@ -263,7 +264,7 @@ function 钱编辑器(名: string) {
   return function 编辑钱({ 草稿, set草稿, 忙 }: 编辑器参数<钱格值>) {
     return (
       <div className="proj-inline-money">
-        <InputNumber aria-label={名} autoFocus min={0} max={1e12} precision={2} disabled={忙} value={草稿.数} onChange={(v) => set草稿({ ...草稿, 数: typeof v === "number" ? v : null })} />
+        <AmountInput aria-label={名} autoFocus min={0} max={1e12} precision={2} disabled={忙} value={草稿.数} onChange={(v) => set草稿({ ...草稿, 数: v })} />
         <Select aria-label={`${名}币种`} showSearch disabled={忙} value={草稿.币} options={币种选项()} onChange={(v: string) => set草稿({ ...草稿, 币: v })} />
       </div>
     );
@@ -631,6 +632,9 @@ export default function ProjectDetail({
     router.refresh();
     return null;
   };
+  /** 钱格就地改：框里敲了认不出的字（AmountInput 交 NaN）不交，框不收、就地说为什么 */
+  const 存钱格 = async (格: "金额" | "定金金额" | "合同金额", v: 钱格值): Promise<string | null> =>
+    金额认不出(v.数) ? 金额框认不出提示 : 存项目项(钱格改动(格, v));
   /** 存沟通正文：版本冲突（别人刚改过）失败时也刷新，拿到新版本，草稿还在，再点保存就行 */
   const 存沟通正文 = async (f: 项目详情["followUps"][number], content: string): Promise<string | null> => {
     const 交 = 沟通正文改动(f, content);
@@ -1166,7 +1170,7 @@ export default function ProjectDetail({
           回车存
           // 必填占位只对库里那个值说话：刚改过（乐观值）就直接显示新值
           显示={(v) => (v.数 === (p.amount || null) && p.必填?.还差.includes("金额") ? 占位确认("金额") : v.数 ? 金额(v.数, v.币) : 待填("金额"))}
-          存={(v) => 存项目项(钱格改动("金额", v))}
+          存={(v) => 存钱格("金额", v)}
           编辑器={钱编辑器("金额")}
         />
       </div>
@@ -1180,7 +1184,7 @@ export default function ProjectDetail({
               能改={字段能改("商机金额")}
               回车存
               显示={(v) => (v.数 !== null ? 金额(v.数, v.币) : 待填("定金金额"))}
-              存={(v) => 存项目项(钱格改动("定金金额", v))}
+              存={(v) => 存钱格("定金金额", v)}
               编辑器={钱编辑器("定金金额")}
             />
           </div>
@@ -1192,7 +1196,7 @@ export default function ProjectDetail({
               能改={字段能改("商机金额")}
               回车存
               显示={(v) => (v.数 !== null ? 金额(v.数, v.币) : 待填("合同金额"))}
-              存={(v) => 存项目项(钱格改动("合同金额", v))}
+              存={(v) => 存钱格("合同金额", v)}
               编辑器={钱编辑器("合同金额")}
             />
           </div>

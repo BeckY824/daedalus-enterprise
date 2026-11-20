@@ -203,13 +203,16 @@ export default function ProjectsView({
   // 点切换时量下每张卡 / 每一行的位置，新样子画出来那一帧（useLayoutEffect）从旧位置滑过去；
   // 一个都对不上（列表那页没有看板上露着的）或减弱动态：退回原来那样，换上来的整块淡入、轻轻上移落位。第一次进页不动
   const [换过, set换过] = useState(false);
+  /** 开始等筛选回包那一下看板上已有的卡（见下面「改筛选 / 翻页等回包」）；回包后不在里面的才依次落位 */
+  const [筛前, set筛前] = useState<ReadonlySet<string> | null>(null);
   const 视图包 = useRef<HTMLDivElement>(null);
   const 变形起点 = useRef<Map<string, DOMRect> | null>(null);
   const { 时长: 动效时长 } = useMotionTheme();
   const 换看法 = (v: "列表" | "看板") => {
     const 起 = 少动() ? null : 量变形起点(视图包.current);
     变形起点.current = 起;
-    set临时列表(false); set看法(v); set换过(!起?.size);
+    // 换看法重挂回来的卡片走变形 / 整块淡入，不按上一次筛选再一张张落位（筛前 清掉）
+    set临时列表(false); set看法(v); set换过(!起?.size); set筛前(null);
   };
   useLayoutEffect(() => {
     const 起 = 变形起点.current;
@@ -254,9 +257,6 @@ export default function ProjectsView({
       }
     : apply;
   const pending = 筛选中 || 翻页中;
-  // 原型 pr.filter：改了筛选（或翻页）等回包时看板先出骨架卡；回来以后卡片依次落位。第一次进页不排队
-  const [筛过, set筛过] = useState(false);
-  if (pending && !筛过) set筛过(true);
   // 要的页越界（删空了最后一页、手改地址栏）：服务端已给了实际那一页，这里只把地址栏改对，不再取一次（同客户列表）
   useEffect(() => {
     // 客户页看板：地址栏的 page 是客户列表的，不归这里改（看板不取列表页时服务端也不给 要的页）
@@ -330,6 +330,17 @@ export default function ProjectsView({
   });
   const 全部卡 = new Map<string, { 卡: 看板卡片; 列: string }>();
   for (const c of 看板) for (const r of [...c.行, ...(每列取数 ? (追加.们[c.列]?.行 ?? []) : [])]) 全部卡.set(r.id, { 卡: r, 列: c.列 });
+  /*
+    改筛选 / 翻页等回包（11-20 看板闪回骨架）：原来一挂起（useUrlFilters 的 startTransition(router.push)）每一列就整列换成两张骨架卡（原型 pr.filter），
+    回包后卡片整批重挂、从透明淡入——筛完还是那几张也是「卡片没了 → 骨架 → 又冒出来」，换看法重挂回来的也跟着重放淡入。
+    现在卡片原地留着，看板 aria-busy、晚 180ms 才整体变淡（快的回包看不见，globals.css .pipe[aria-busy]）；回来以后还在的不动，
+    只有这次新冒出来的依次落位（pipe-card-in）。筛前 = 开始等回包那一下看板上已有的卡；第一次进页、没筛过不排队
+  */
+  const [上回在等, set上回在等] = useState(pending);
+  if (pending !== 上回在等) {
+    set上回在等(pending);
+    if (pending) set筛前(new Set(全部卡.keys()));
+  }
   // 看板每列的卡片（含「再看」追加的）也算：客户页看板不取列表页（行 是空的），不带上的话有「已不在的成员 / 没人」的卡片也会把负责人藏掉
   const 不问归属 = !f.ownerId && 列表不问归属ID(users, [...行, ...看板.flatMap((c) => c.行), ...Object.values(追加.们).flatMap((x) => x.行)].map((r) => r.ownerId));
   const 在筛 = Object.values(filters).some(Boolean);
@@ -740,10 +751,9 @@ export default function ProjectsView({
                       <span className="pipe-sum" title={sum}>{sum}</span>
                     </div>
                     <div className="pipe-bar" style={{ background: 列色[c.色] }} />
-                    {/* 等筛选回包：先出两张骨架卡占位（原型 pr.filter），不让人对着旧卡片以为没反应 */}
-                    {pending && <><div className="pipe-card pipe-card-skel" aria-hidden="true"><i /><i /></div><div className="pipe-card pipe-card-skel" aria-hidden="true"><i /><i /></div></>}
-                    {!pending && 这列卡.length === 0 && <div className="pipe-empty">{在筛 ? "这一列没有对上的" : c.空态}</div>}
-                    {!pending && 这列卡.map((r, 序) => {
+                    {/* 等筛选回包：卡片原地留着、整块变淡（见上面 筛前），不再整列换成骨架卡 */}
+                    {这列卡.length === 0 && <div className="pipe-empty">{在筛 ? "这一列没有对上的" : c.空态}</div>}
+                    {这列卡.map((r, 序) => {
                       const 异常 = r.result === "异常状态";
                       const 小字 = 卡片小字(r, 字典);
                       const 刚来 = 刚到.has(r.id);
@@ -757,7 +767,7 @@ export default function ProjectsView({
                           key={r.id}
                           data-morph-key={客户页 ? r.customerId : r.id}
                           {...卡拖?.dom}
-                          className={`${能进 ? "pipe-card" : "pipe-card pipe-card-ro"}${刚来 ? " pipe-card-new" : 筛过 ? " pipe-card-in" : ""}${卡拖?.类 ?? ""}`}
+                          className={`${能进 ? "pipe-card" : "pipe-card pipe-card-ro"}${刚来 ? " pipe-card-new" : 筛前 && !筛前.has(r.id) ? " pipe-card-in" : ""}${卡拖?.类 ?? ""}`}
                           style={{ borderLeftColor: 异常 ? "var(--danger)" : 列色[c.色], ["--i" as string]: Math.min(档, 8) }}
                           tabIndex={能进 ? 0 : undefined}
                           role={能进 ? "link" : undefined}

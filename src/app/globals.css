@@ -2467,6 +2467,8 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 /* AI 卡金额框（AmountTextInput）：框 + 认不出时框下一句 */
 .amount-text { display: inline-flex; flex-direction: column; gap: 2px; }
 .amount-text-box { width: 140px; }
+/* AI 卡金额框换算（11-20）：框下一句「= 125,000」（页面金额框 AmountInput 的换算浮在框上方，不占地方） */
+.amount-text-conv { color: var(--text-muted); font-size: var(--fs-note); white-space: nowrap; font-variant-numeric: tabular-nums; }
 /* 确认之后会发生、人要先知道的事（自动分配：分出去自己就看不到了）：整句写在页脚，不只放悬停 */
 .prop-consequence { flex: 1 1 100%; min-width: 0; font-size: var(--fs-note); color: var(--warning-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /*
@@ -3094,9 +3096,9 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
    列底「再看」接上的卡片滑入并淡亮一下（同 row-fresh 的亮法），看得出是刚加的。减弱动态时全站动画时长归零，不位移 */
 .proj-view-in { animation: proj-view-in var(--t-morph) var(--ease) both; }
 @keyframes proj-view-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.pipe-card-skel { cursor: default; display: flex; flex-direction: column; gap: var(--s2); border-left-color: var(--line); pointer-events: none; }
-.pipe-card-skel > i { display: block; height: 9px; border-radius: 999px; background: var(--line); }
-.pipe-card-skel > i + i { width: 62%; }
+/* 等筛选回包（11-20）：卡片原地留着、整块变淡，晚 --t 才淡（快的回包看不见）；回来立刻复原。不再换成骨架卡。
+   transition 写全（拖动卡片那条 .pipe-card[data-card-id] 的 transform / box-shadow 也带上），不然被它盖掉没有延迟 */
+.pipe[aria-busy="true"] .pipe-card { opacity: .55; transition: opacity var(--t) var(--ease) var(--t), transform var(--t) var(--ease-spring), box-shadow var(--t) var(--ease); }
 .pipe-card-in { animation: pipe-card-in var(--t) var(--ease) calc(var(--stagger) * var(--i, 0)) both; }
 @keyframes pipe-card-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .pipe-card-new { animation: pipe-card-in var(--t-morph) var(--ease) calc(var(--stagger) * var(--i, 0)) both, pipe-card-fresh 2s var(--ease) calc(var(--stagger) * var(--i, 0)) both; }

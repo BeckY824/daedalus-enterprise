@@ -4,12 +4,12 @@ import { 空显 } from "@/lib/empty-value";
 import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Alert, Button, Checkbox, Input, InputNumber, Select, Space, Tag } from "antd";
+import { Alert, Button, Checkbox, Input, Select, Space, Tag } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import ChannelPicker from "@/components/ChannelPicker";
 import AddressInput from "@/components/AddressInput";
 import { 币种选项 } from "@/lib/currency";
-import { 金额格式 } from "@/lib/money-input";
+import AmountInput from "@/components/AmountInput";
 import { dayjs } from "@/lib/utils";
 import { 企业客户级别, 企业级别说明 } from "@/lib/enterprise/customer-v2";
 import { 未选占位, 不填项, 去不填, 去多选不填 } from "@/lib/enterprise/dict-kinds";
@@ -193,7 +193,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
         return (
           <Space.Compact style={满宽}>
             <Select aria-label={`${名}币种`} style={{ width: 140, flexShrink: 0 }} options={币种选项()} showSearch optionFilterProp="label" value={钱.币} onChange={(币: string) => 改(k, { ...钱, 币 })} />
-            <InputNumber<number> aria-label={名} style={满宽} min={0} formatter={金额格式} value={钱.数} onChange={(数) => 改(k, { ...钱, 数 })} />
+            <AmountInput aria-label={名} style={满宽} min={0} value={钱.数} onChange={(数) => 改(k, { ...钱, 数 })} />
           </Space.Compact>
         );
       }

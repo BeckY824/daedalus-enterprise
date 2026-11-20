@@ -99,6 +99,11 @@ it("回款卡金额：「-500」框下说认不出、交上去的是 NaN（缺�
     await 金额框(page).fill("2.5万");
     await expect.poll(稿).toBe(25000);
     expect(await page.getByRole("alert").count()).toBe(0);
+    // 11-20：带单位的框下写换算后的数；「3w」也认
+    expect((await page.locator(".amount-text-conv").innerText()).trim()).toBe("= 25,000");
+    await 金额框(page).fill("3w");
+    await expect.poll(稿).toBe(30000);
+    expect((await page.locator(".amount-text-conv").innerText()).trim()).toBe("= 30,000");
     await 金额框(page).fill("");
     await expect.poll(稿).toBe(0);
     expect(errors).toEqual([]);

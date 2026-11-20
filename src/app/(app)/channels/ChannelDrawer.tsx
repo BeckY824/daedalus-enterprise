@@ -8,7 +8,8 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Descriptions, Drawer, Empty, Form, Input, InputNumber, Skeleton, Space, Tag } from "antd";
+import { Button, Descriptions, Drawer, Empty, Form, Input, Skeleton, Space, Tag } from "antd";
+import AmountInput, { 金额框认不出提示, 金额认不出 } from "@/components/AmountInput";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import type { Dayjs } from "dayjs";
 import DatePicker from "@/components/BusinessDatePicker";
@@ -264,9 +265,9 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
             <Form.Item
               name="amount"
               noStyle
-              rules={[{ required: true, message: "请填写金额" }, { type: "number", min: 0.01, message: "金额要大于 0" }]}
+              rules={[{ required: true, message: "请填写金额" }, { validator: (_, v) => (金额认不出(v) ? Promise.reject(new Error(金额框认不出提示)) : Promise.resolve()) }, { type: "number", min: 0.01, message: "金额要大于 0" }]}
             >
-              <InputNumber aria-label="投入金额" placeholder="投入金额" min={0} precision={2} style={{ width: "100%" }} />
+              <AmountInput aria-label="投入金额" placeholder="投入金额" min={0} precision={2} style={{ width: "100%" }} />
             </Form.Item>
           </Space.Compact>
           <Form.Item label="投入日期" name="date" rules={[{ required: true, message: "请选择日期" }]} style={{ marginTop: 12 }}>

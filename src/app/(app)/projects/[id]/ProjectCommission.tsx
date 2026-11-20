@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import { useCardName } from "./card-names";
 import { Button, Card, Input, InputNumber, Modal, Space, Tag } from "antd";
 import { 金额 } from "@/lib/currency";
-import { 金额格式 } from "@/lib/money-input";
+import AmountInput, { 金额认不出 } from "@/components/AmountInput";
 import { 两位, 低于底价, 分配问题, 更正问题, 更正原因上限, type 提成卡, type 分配 } from "@/lib/project/commission";
 import { 存项目底价, 存提成分配, 更正实际提成 } from "../commission-actions";
 import SaveButton from "@/components/SaveButton";
@@ -42,9 +42,9 @@ export function ProjectCommissionCard({ projectId, t, 忙, 跑, 不摆改 = fals
         <span style={键样}>项目底价</span>
         {底价能改 ? (
           <Space.Compact>
-            <InputNumber<number> aria-label="项目底价" min={0} precision={2} formatter={金额格式} style={{ width: 160 }} placeholder="还没填" value={底价} onChange={(v) => set底价(v ?? null)} />
+            <AmountInput aria-label="项目底价" min={0} precision={2} style={{ width: 160 }} placeholder="还没填" value={底价} onChange={(v) => set底价(v ?? null)} />
             {/* 按钮内反馈（g.save）：转圈 → 已保存 ✓；没存上原因浮在按钮上方 */}
-            <SaveButton type="default" disabled={忙 || 底价 === t.项目底价} 做={() => 跑给按钮(跑, () => 存项目底价(projectId, 底价))}>保存</SaveButton>
+            <SaveButton type="default" disabled={忙 || 底价 === t.项目底价 || 金额认不出(底价)} 做={() => 跑给按钮(跑, () => 存项目底价(projectId, 底价))}>保存</SaveButton>
           </Space.Compact>
         ) : (
           <span title={t.能填底价 && 固定了 ? "已经赢单，实际提成已固定，不能再改" : "项目底价由项目负责人填"}>{钱(t.实际?.项目底价 ?? t.项目底价)}</span>
@@ -171,7 +171,7 @@ function FixModal({ projectId, 现在, 钱, 跑, onClose }: { projectId: string;
       <div style={{ ...淡, marginBottom: 12 }}>现在的实际提成 {钱(现在)}。更正后组员按原来的比例分新金额，操作记录里留更正前后的金额和原因</div>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
         <span style={{ flex: "0 0 auto" }}>更正为</span>
-        <InputNumber<number> aria-label="更正后的实际提成" min={0} precision={2} formatter={金额格式} style={{ width: 180 }} value={金额} onChange={(v) => set金额(v ?? null)} />
+        <AmountInput aria-label="更正后的实际提成" min={0} precision={2} style={{ width: 180 }} value={金额} onChange={(v) => set金额(v ?? null)} />
       </div>
       <Input.TextArea aria-label="更正原因" rows={3} maxLength={更正原因上限} showCount placeholder="更正原因（必填），比如：回款少了一笔，按实收重算" value={原因} onChange={(e) => set原因(e.target.value)} />
       <框里原因 话={错} />

@@ -118,6 +118,21 @@ describe("完成节点框：一窗填完", () => {
     await page.close();
   }, 60_000);
 
+  it("金额框认「万」（11-20，components/AmountInput）：「12.5万」存 125000；「5万5」不截成 50000，说认不出、主按钮灰着", async () => {
+    const { page, errors } = await 开({ 还差: ["金额"] });
+    await page.getByRole("spinbutton", { name: "金额" }).fill("5万5");
+    await expect.poll(() => page.getByText("金额认不出，请重填").count()).toBe(1);
+    await expect.poll(() => 主按钮(page).isDisabled()).toBe(true);
+    await page.getByRole("spinbutton", { name: "金额" }).fill("12.5万");
+    await expect.poll(() => page.locator(".ant-tooltip:not(.ant-tooltip-hidden)").innerText()).toBe("「12.5万」= 125,000");
+    await expect.poll(() => 主按钮(page).isDisabled()).toBe(false);
+    await 主按钮(page).click();
+    await page.locator("#关了").waitFor();
+    expect(await 窗口变量<unknown[]>(page, "__存")).toEqual([["项目", { amount: 125000, currency: "USD" }]]);
+    expect(errors).toEqual([]);
+    await page.close();
+  }, 60_000);
+
   it.each([[390, 760], [1024, 700]])("备货状态、物流状态、物流单号（客户 11-19）：%i 宽就地填，选了任一项就算，存到各自的列再推进；不溢出", async (w, h) => {
     const { page, errors } = await 开({ 还差: ["备货状态", "物流状态", "物流单号"] }, w, h);
     await expect.poll(() => 主按钮(page).isDisabled()).toBe(true);
