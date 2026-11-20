@@ -33,7 +33,7 @@ import { 公海客户原负责人是 } from "@/lib/owner-log-db";
 import { 问同事 } from "@/lib/sync/dedupe-client";
 import { 查重提示, 验号码, type 号码类型 } from "./contact-format";
 import { 通号种类, 号键变体, 通号键 } from "./customer-v2";
-import { 全角数字转半角 } from "@/lib/fullwidth";
+import { 全角转半角 } from "@/lib/fullwidth";
 import { 号码归属地 } from "./phone-region";
 import { 拦原负责人 } from "./pool-rules";
 import { 离职负责人找谁 } from "./departed-owner";
@@ -97,7 +97,7 @@ export async function 全公司查号(db: 库, 类型: 号码类型, 值: string
     for (const r of await db.contactMethod.findMany({ where: { kind: { in: [...通号种类] }, numberKey: { in: 号键变体(键) } }, select: { customerId: true } })) ids.add(r.customerId);
   }
   // 不分类型（11-20）：这个号记成了别的类型（微信格里的手机号、档案邮箱格里的微信号……）也算撞
-  const 跨 = await 跨类查(db, 值, 键);
+  const 跨 = await 跨类查(db, 值);
   for (const id of [...跨.客户, ...跨.联系人.values()]) ids.add(id);
   if (除了) ids.delete(除了);
   return [...ids];
@@ -113,98 +113,122 @@ function 像电话(s: string): boolean {
 }
 
 /**
- * 跨类型比的键（11-20）：全角数字转半角、去掉所有空白、转小写；像电话的再按 通号键 规整
- * （+86 / 0086 去掉、+86 区号座机换回 0 开头、国外号去掉 +），和手机号的键（验号码 的 键）同一个空间；别的就是这一串。
+ * 跨类型比的键（11-20）：全角转半角（数字、字母、＋、．、＠）、去掉所有空白、转小写、去掉开头的 @（Telegram 用户名的写法）；
+ * 像电话的再按 通号键 规整（+86 / 0086 去掉、+86 区号座机换回 0 开头、国外号去掉 +），和手机号的键（验号码 的 键）同一个空间；别的就是这一串。
+ * 两边都只拿原值算这一个键（不用各类型自己的键：自定类型的键去了分隔符，拿它比会一头查得到一头查不到）。
  * 电话 = 是不是按电话规整的（电话那一路还要认库里带 86 的老写法，见 号键变体）
  */
 export function 跨类键(原: string): { 键: string; 电话: boolean } {
-  const s = 全角数字转半角(原).replace(/＋/g, "+").replace(/\s+/g, "").toLowerCase();
+  const s = 全角转半角(原).replace(/\s+/g, "").toLowerCase().replace(/^@+/, "");
   if (!s) return { 键: "", 电话: false };
   return 像电话(s) ? { 键: 通号键(s), 电话: true } : { 键: s, 电话: false };
 }
 
-/** 拿值和类型自己的键各算一次 跨类键：电话那一路的几种写法（含带 86 的老键）、文字那一路的串 */
-function 跨类候选(值: string, 键?: string): { 电话: string[]; 文字: string[] } {
-  const 电话 = new Set<string>(), 文字 = new Set<string>();
-  for (const v of [值, 键 ?? ""]) {
-    const k = 跨类键(v);
-    if (!k.键) continue;
-    if (k.电话) for (const x of 号键变体(k.键)) 电话.add(x);
-    else 文字.add(k.键);
-  }
-  return { 电话: [...电话], 文字: [...文字] };
-}
+/** 号码子表里 numberKey 不等于 跨类键 的几类（Telegram 键去了 @、自定类型键去了分隔符）：跨类型比的时候按 value 现算 */
+const 按原值比的种类SQL = `("kind" = 'telegram' OR ("kind" >= 'custom:' AND "kind" < 'custom;'))`;
 
 const 占位 = (n: number) => Array.from({ length: n }, () => "?").join(", ");
 
 /**
- * 跨类型撞到的（11-20）：号码不分类型，和全公司所有类型的号比。
+ * 跨类型查重的几句裸 SQL（导出给用例看查询计划，tests/ent-contact-dedupe.test.ts）。客户、档案那几句不带回收站条件：
+ * 「deletedAt IS NULL」、「customerId IN (没删的客户)」一加，SQLite 就改走 deletedAt 索引、表达式索引不用了（审查实测 85–165ms），
+ * 查出来以后再按客户删没删滤（滤回收站）
+ */
+export const 跨类SQL = {
+  /** 客户电话里的文字号（老数据电话格填了微信号，录入电话现在不收字母）：走号键索引 Customer_phoneKey_idx */
+  客户电话: (n: number) => `SELECT "id", "deletedAt" FROM "Customer" WHERE ${号键SQL('"phone"')} IN (${占位(n)})`,
+  /**
+   * 客户档案邮箱 / 微信 / 阿里国际站ID 原样比：走 048 的三个表达式索引。拆成三句 UNION（写成一句 OR，SQLite 整表扫，13ms）；
+   * 阿里国际站ID 在 c2 上全空，ANALYZE 的统计让它那句走整表（约 4ms），不强指索引（老库没有 048 时 INDEXED BY 会报错）
+   */
+  档案原样: (n: number) =>
+    (["email", "wechat", "alibabaId"] as const).map((列) => `SELECT "customerId" AS id FROM "CustomerExtra" WHERE lower(trim("${列}")) IN (${占位(n)})`).join(" UNION "),
+  /** 客户档案微信格、WhatsApp 格按号键比（只有像电话的号查；带分隔符的老写法也认）：走 156 的号键索引 */
+  档案号键: (n: number) =>
+    (["wechat", "whatsapp"] as const).map((列) => `SELECT "customerId" AS id FROM "CustomerExtra" WHERE ${号键SQL(`"${列}"`)} IN (${占位(n)})`).join(" UNION "),
+  /**
+   * 联系人电话、微信格（像电话的号）：电话按号键走 142 的 Contact_phoneKey_idx；微信格先原样比、带分隔符的老写法再按号键比
+   * （联系人表几千行，整表比约 1ms，不另建索引）。也不带回收站条件（带上就改走 deletedAt 索引），查出来再滤
+   */
+  联系人号键: (号键n: number, 原样n: number) =>
+    `SELECT "id", "customerId", "deletedAt" FROM "Contact" WHERE ${号键SQL('"phone"')} IN (${占位(号键n)}) UNION ` +
+    `SELECT "id", "customerId", "deletedAt" FROM "Contact" WHERE lower(trim("wechat")) IN (${占位(原样n)}) OR ("wechat" GLOB '*[^0-9a-zA-Z_@.]*' AND ${号键SQL('"wechat"')} IN (${占位(号键n)}))`,
+} as const;
+
+/**
+ * 跨类型撞到的（11-20）：号码不分类型，和全公司所有类型的号比，只按 跨类键 比（两边同一个规整）。
  * - 客户 = 号记在客户本身上的：客户电话、档案（CustomerExtra）的邮箱 / 微信 / 阿里国际站ID / WhatsApp、子表里没挂联系人的行
  * - 联系人 = 号记在联系人身上的（联系人 id → 客户 id）：联系人老三格、子表里挂了联系人的行
- * 子表所有类型按 numberKey 比；老列像电话的按号键比（库里带空格、横杠、+86 的写法都认），别的去空格不分大小写。
- * 裸 SQL 这几句自己认回收站（同 联系人里的：包在 看已删 里连回收站一起算）；子表走 db（企业版 prisma 的软删层滤掉父行删了的，
+ * 子表按 numberKey 比（Telegram、自定类型按 value 现算）；老列像电话的按号键比（库里带空格、横杠、+86 的写法都认），别的去空格不分大小写。
+ * 裸 SQL 自己认回收站（同 联系人里的：包在 看已删 里连回收站一起算）；子表走 db（企业版 prisma 的软删层滤掉父行删了的，
  * defaultClient 不滤、调用方自己滤，同 联系人查重）
  */
-async function 跨类查(db: 库, 值: string, 键?: string): Promise<{ 客户: Set<string>; 联系人: Map<string, string> }> {
+async function 跨类查(db: 库, 值: string): Promise<{ 客户: Set<string>; 联系人: Map<string, string> }> {
   const 客户 = new Set<string>();
   const 联系人 = new Map<string, string>();
-  const { 电话, 文字 } = 跨类候选(值, 键);
-  if (!电话.length && !文字.length) return { 客户, 联系人 };
+  const k = 跨类键(值);
+  if (!k.键) return { 客户, 联系人 };
   const 删 = 在看已删();
+  /** 电话那一路的几种键（含带 86 的老键） */
+  const 电话 = k.电话 ? 号键变体(k.键) : [];
   /** 号键SQL 比的写法（号键SQL 把 + 去掉了）：再认 00 国际前缀 */
   const 号键们 = [...new Set([...电话, ...电话.map((x) => `00${x}`)])];
-  /** 原样（去首尾空格、小写）比的写法：+ 和 00 开头的也认 */
-  const 原样们 = [...new Set([...文字, ...电话, ...电话.map((x) => `+${x}`), ...电话.map((x) => `00${x}`)])];
+  /** 原样（去首尾空格、小写）比的写法：电话的 + 和 00 开头的也认 */
+  const 原样们 = k.电话 ? [...new Set([...电话, ...电话.map((x) => `+${x}`), ...电话.map((x) => `00${x}`)])] : [k.键];
 
-  // 1. 子表：所有类型（类型自己的键也带上，旺旺「ab-cd」这类键里留着符号的）
-  const 子表键 = [...new Set([...原样们, ...(键 ? [键] : [])])];
-  for (const r of await db.contactMethod.findMany({ where: { numberKey: { in: 子表键 } }, select: { customerId: true, contactId: true } })) {
+  // 1. 子表：numberKey 就是 跨类键 的那几类走 (kind, numberKey) 索引；Telegram、自定类型按 value 现算（kind 范围走同一个索引）
+  for (const r of await db.contactMethod.findMany({
+    where: { numberKey: { in: 原样们 }, kind: { not: "telegram" }, NOT: { kind: { startsWith: "custom:" } } },
+    select: { customerId: true, contactId: true },
+  })) {
+    if (r.contactId) 联系人.set(r.contactId, r.customerId);
+    else 客户.add(r.customerId);
+  }
+  const 按原值 = k.电话
+    ? { 式: `${号键SQL('"value"')} IN (${占位(号键们.length)})`, 参: 号键们 }
+    : { 式: `ltrim(lower(replace(replace(trim("value"), ' ', ''), '　', '')), '@') = ?`, 参: [k.键] };
+  for (const r of await db.$queryRawUnsafe<{ customerId: string; contactId: string | null }[]>(
+    `SELECT "customerId", "contactId" FROM "ContactMethod" WHERE ${按原值比的种类SQL} AND ${按原值.式}`, ...按原值.参)) {
     if (r.contactId) 联系人.set(r.contactId, r.customerId);
     else 客户.add(r.customerId);
   }
 
-  // 2. 联系人老三格
-  const 人条: string[] = [], 人参: string[] = [];
-  if (电话.length) {
-    人条.push(`${号键SQL('"phone"')} IN (${占位(号键们.length)})`, `${号键SQL('lower(trim("wechat"))')} IN (${占位(号键们.length)})`);
-    人参.push(...号键们, ...号键们);
+  // 2. 联系人老三格：像电话的按号键走索引；文字号整表比（联系人表几千行）
+  const 人 = k.电话
+    ? { sql: 跨类SQL.联系人号键(号键们.length, 原样们.length), 参: [...号键们, ...原样们, ...号键们] }
+    : {
+        sql: `SELECT "id", "customerId", "deletedAt" FROM "Contact" WHERE lower(trim("email")) = ? OR lower(trim("wechat")) = ? OR lower(${号键SQL('"phone"')}) = ?`,
+        参: [k.键, k.键, k.键],
+      };
+  for (const r of await db.$queryRawUnsafe<{ id: string; customerId: string; deletedAt: unknown }[]>(人.sql, ...人.参)) {
+    if (删 || r.deletedAt == null) 联系人.set(r.id, r.customerId);
   }
-  if (文字.length) {
-    人条.push(`lower(trim("email")) IN (${占位(文字.length)})`, `lower(trim("wechat")) IN (${占位(文字.length)})`, `lower(${号键SQL('"phone"')}) IN (${占位(文字.length)})`);
-    人参.push(...文字, ...文字, ...文字);
-  }
-  const 人未删 = 删 ? "" : `"deletedAt" IS NULL AND `;
-  for (const r of await db.$queryRawUnsafe<{ id: string; customerId: string }[]>(
-    `SELECT "id", "customerId" FROM "Contact" WHERE ${人未删}(${人条.join(" OR ")})`, ...人参)) 联系人.set(r.id, r.customerId);
 
-  // 3. 客户电话：像电话的同 全公司查号 手机号那一路（分机、带 86 的老写法都认）；别的（老数据电话格里填了微信号）去分隔符不分大小写
-  const 客未删 = 删 ? "" : `"deletedAt" IS NULL AND `;
-  if (电话.length) {
+  // 3. 客户电话：像电话的同 全公司查号 手机号那一路（分机、带 86 的老写法都认）；
+  //    文字号（老数据电话格里填了微信号）按号键索引比，大小写在这头备几种写法（录入电话不收字母，c2 上一行也没有）
+  if (k.电话) {
     const 起 = await 分机留存起();
-    const 条件们: Prisma.CustomerWhereInput[] = [];
-    for (const k of new Set(电话.map((x) => 跨类键(x).键))) {
-      const 当电话 = 通号当电话(k);
-      条件们.push(await 同号条件(db, 当电话, 起), ...(/^\d{11}$/.test(当电话) ? [await 同号条件(db, `86${当电话}`, 起)] : []));
-    }
+    const 当电话 = 通号当电话(k.键);
+    const 条件们 = [await 同号条件(db, 当电话, 起), ...(/^\d{11}$/.test(当电话) ? [await 同号条件(db, `86${当电话}`, 起)] : [])];
     for (const c of await 看全部(async () => db.customer.findMany({ where: { OR: 条件们 }, select: { id: true } }))) 客户.add(c.id);
-  }
-  if (文字.length) {
-    for (const r of await db.$queryRawUnsafe<{ id: string }[]>(
-      `SELECT "id" FROM "Customer" WHERE ${客未删}lower(${号键SQL('"phone"')}) IN (${占位(文字.length)})`, ...文字)) 客户.add(r.id);
+  } else {
+    const 原写法 = 全角转半角(值).replace(/\s+/g, "");
+    const 写法们 = [...new Set([k.键, k.键.toUpperCase(), 原写法, 原写法.replace(/^@+/, "")].map(号键))];
+    for (const r of await db.$queryRawUnsafe<{ id: string; deletedAt: unknown }[]>(跨类SQL.客户电话(写法们.length), ...写法们)) {
+      if (删 || r.deletedAt == null) 客户.add(r.id);
+    }
   }
 
-  // 4. 客户档案（CustomerExtra）：邮箱 / 微信 / 阿里国际站ID 原样比（走表达式索引）；像电话的再比带分隔符的老写法和 WhatsApp
-  const 档未删 = 删 ? "" : `"customerId" IN (SELECT "id" FROM "Customer" WHERE "deletedAt" IS NULL) AND `;
-  const 档条 = [`lower(trim("email")) IN (${占位(原样们.length)})`, `lower(trim("wechat")) IN (${占位(原样们.length)})`, `lower(trim("alibabaId")) IN (${占位(原样们.length)})`];
-  const 档参 = [...原样们, ...原样们, ...原样们];
-  if (电话.length) {
-    // 带空格、横杠、括号的才算号键（先用 GLOB 筛掉纯数字、纯账号那些，整表 7 万行不必每行都套一遍 replace）
-    档条.push(`("wechat" GLOB '*[^0-9a-zA-Z_@.]*' AND ${号键SQL('"wechat"')} IN (${占位(号键们.length)}))`, `("whatsapp" <> '' AND ${号键SQL('"whatsapp"')} IN (${占位(号键们.length)}))`);
-    档参.push(...号键们, ...号键们);
+  // 4. 客户档案（CustomerExtra）：邮箱 / 微信 / 阿里国际站ID 原样比（048 的索引）；像电话的再按号键比微信格（带分隔符的老写法）和 WhatsApp（156 的索引）。
+  //    不在 SQL 里滤回收站（见 跨类SQL），查出来再按客户删没删滤
+  const 档ids = new Set((await db.$queryRawUnsafe<{ id: string }[]>(跨类SQL.档案原样(原样们.length), ...原样们, ...原样们, ...原样们)).map((r) => r.id));
+  if (k.电话) for (const r of await db.$queryRawUnsafe<{ id: string }[]>(跨类SQL.档案号键(号键们.length), ...号键们, ...号键们)) 档ids.add(r.id);
+  if (档ids.size && !删) {
+    const 留 = await db.$queryRawUnsafe<{ id: string }[]>(`SELECT "id" FROM "Customer" WHERE "id" IN (${占位(档ids.size)}) AND "deletedAt" IS NULL`, ...档ids);
+    档ids.clear();
+    for (const r of 留) 档ids.add(r.id);
   }
-  for (const r of await db.$queryRawUnsafe<{ id: string }[]>(
-    `SELECT "customerId" AS id FROM "CustomerExtra" WHERE ${档未删}(${档条.join(" OR ")})`, ...档参)) 客户.add(r.id);
-
+  for (const id of 档ids) 客户.add(id);
   return { 客户, 联系人 };
 }
 
@@ -221,7 +245,7 @@ export async function 一行号全公司查(db: 库, 行: { kind: string; value:
   if (通号种类.has(行.kind)) return 全公司查号(db, "手机号", 通号当电话(行.numberKey), 行.numberKey, 除了);
   const ids = new Set((await db.contactMethod.findMany({ where: { kind: 行.kind, numberKey: { in: 号键变体(行.numberKey) } }, select: { customerId: true } })).map((r) => r.customerId));
   // 不分类型（11-20）：和所有类型的号比
-  const 跨 = await 跨类查(db, 行.value, 行.numberKey);
+  const 跨 = await 跨类查(db, 行.value || 行.numberKey);
   for (const id of [...跨.客户, ...跨.联系人.values()]) ids.add(id);
   if (除了) ids.delete(除了);
   return [...ids];
@@ -274,7 +298,7 @@ export async function 回收站里带号的联系人(db: 库, 号: 验好的号,
     for (const r of 删了的) ids.add(r.id);
   }
   // 不分类型（11-20）：号记成别的类型的联系人（微信格里存的手机号……）也捞回
-  const 跨 = await 看已删(() => 跨类查(db, 号.值, 号.键));
+  const 跨 = await 看已删(() => 跨类查(db, 号.值));
   const 候 = [...跨.联系人].filter(([, 客]) => 客户ids.includes(客)).map(([id]) => id);
   if (候.length) for (const r of await 看已删(() => db.contact.findMany({ where: { id: { in: 候 }, deletedAt: { not: null } }, select: { id: true } }))) ids.add(r.id);
   return [...ids];
@@ -282,24 +306,38 @@ export async function 回收站里带号的联系人(db: 库, 号: 验好的号,
 
 /**
  * 联系人表单的号（审核 11-18 新建入口 P2-6，P-删-08）：在用的都没撞时，回收站里撞了的第一行。
- * 只看能捞回的几类（手机 / 邮箱 / 微信 / 阿里国际站ID；座机、WhatsApp 和别的类型里像电话的按手机号那套，同 一行号全公司查），
+ * 任何类型都查（11-20 起和 saveCustomerNumbers 一样都拦），
  * 回 捞回键 要的 类型 + 值（查号码 / 从回收站捞回 认的写法）。回收站里也没有回 null
  */
 export async function 联系人回收站撞(db: 库, 行们: readonly { kind: string; value: string; numberKey: string }[]): Promise<{ 类型: 号码类型; 值: string } | null> {
   for (const 行 of 行们) {
     if (!行.numberKey) continue;
-    const 本类 = 库类型到号码类型[行.kind];
-    // 别的类型（传真、Telegram、自定的）像电话的也按手机号捞回（11-20 跨类型）；不像电话的捞回认不了类型，不在这里拦
-    const 跨 = 跨类键(行.value || 行.numberKey);
-    const 类型: 号码类型 | null = 本类 ?? (通号种类.has(行.kind) || 跨.电话 ? "手机号" : null);
-    if (!类型) continue;
-    const 值 = 本类 ? 行.value : 通号当电话(通号种类.has(行.kind) ? 行.numberKey : 跨.键);
-    // 一行号回收站查：任何类型都和所有类型的号比（11-20）
-    if ((await 一行号回收站查(db, 行)).length) return { 类型, 值 };
+    // 一行号回收站查：任何类型都和所有类型的号比（11-20），撞了一律拦（和 saveCustomerNumbers 一样）
+    if (!(await 一行号回收站查(db, 行)).length) continue;
+    return 捞回用的号(行);
   }
   return null;
 }
-/** 联系人表单撞了回收站里的号：拦下（「仍然保存」也不放），提示里给「从回收站捞回」 */
+
+/**
+ * 回收站撞了的这一行，拿去「从回收站捞回」用哪个 类型 + 值（捞回认 验号码 的四类，查重跨类型，认哪类都捞得到同一批）：
+ * 手机 / 邮箱 / 微信 / 旺旺按本类；座机、WhatsApp 和别的类型里像电话的按手机号；别的（Telegram 用户名、自定类型的串）
+ * 挑第一个验得过的（微信 → 邮箱 → 旺旺）；都验不过的照样拦，类型按微信给（捞回那一步会说格式不对，叫人找系统管理员）
+ */
+function 捞回用的号(行: { kind: string; value: string; numberKey: string }): { 类型: 号码类型; 值: string } {
+  const 本类 = 库类型到号码类型[行.kind];
+  if (本类) return { 类型: 本类, 值: 行.value };
+  const 跨 = 跨类键(行.value || 行.numberKey);
+  if (通号种类.has(行.kind)) return { 类型: "手机号", 值: 通号当电话(行.numberKey) };
+  if (跨.电话) return { 类型: "手机号", 值: 通号当电话(跨.键) };
+  const 原 = (行.value || 行.numberKey).trim().replace(/^@+/, "");
+  for (const 类型 of ["微信", "邮箱", "旺旺ID"] as const) {
+    const r = 验号码(类型, 原);
+    if (r.ok) return { 类型, 值: r.值 };
+  }
+  return { 类型: "微信", 值: 原 };
+}
+/** 联系人表单撞了回收站里的号：拦下，提示里给「从回收站捞回」 */
 export const 联系人回收站撞话 = "这个号码在回收站里的客户上，本次没保存，可以从回收站捞回";
 
 /** 回收站里撞了的提示（客户 11-05（X-10）；11-05 客户回复「可以捞回且只有查重触发时可以捞回」，原文是我们拟的） */
@@ -537,7 +575,7 @@ export async function 联系人查重(
   }
   // 不分类型（11-20）：和所有类型的号比（联系人微信格填了别人的手机号、别的客户档案里的邮箱 / 微信……）
   for (const 行 of 们) {
-    const 跨 = await 跨类查(db, 行.value, 行.numberKey);
+    const 跨 = await 跨类查(db, 行.value || 行.numberKey);
     for (const contactId of 跨.联系人.keys()) 记(contactId, 行);
     for (const customerId of 跨.客户) 记客户(customerId, 行);
   }
@@ -600,5 +638,5 @@ export function 联系人撞号话(撞: readonly 撞到的联系人[], 叫法: (
     ? (头.customerName ? `客户「${头.customerName}」本身` : `${头.同事}名下的一位客户本身`)
     : 头.name ? `「${头.name}」（${头.customerName}）` : `${头.同事}名下的一位联系人`;
   const 同客户 = !!这位客户 && 头.customerId === 这位客户;
-  return `${叫法(头.kind)} ${头.value} 已经记在${谁}身上${撞.length > 1 ? `等 ${撞.length} 位` : ""}，本次没保存。${同客户 ? "这位客户上已经有这个号，核对后改号码，或确认是两个人共用再仍然保存" : 头.客户本身 ? "核对后改号码，或确认是另一个人再仍然保存" : "可以把那位挂到这位客户上，或核对后改号码"}`;
+  return `${叫法(头.kind)} ${头.value} 已经记在${谁}身上${撞.length > 1 ? `等 ${撞.length} 位` : ""}，本次没保存。号码全公司唯一，不能重复登记：${同客户 ? "这位客户上已经有这个号，核对后改号码" : 头.客户本身 ? "核对后改号码" : "可以把那位挂到这位客户上，或核对后改号码"}`;
 }

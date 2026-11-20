@@ -2,7 +2,7 @@
  * 企业版客户与联系人第二轮（2026-10-29 P13）：
  *   - 联系人挂多位客户（迁移 090）：新建记一行主客户挂靠；挂到别的客户、改说明、解除（主客户那行解不掉）、换主客户（号码跟着走、原主客户留作挂靠）；
  *     客户页 客户的联系人们 / 联系人页 联系人另挂；启动回填只补缺的、重跑不多
- *   - 联系方式全部查重：各种类型（含自己加的）同类型 + 规整值算撞，+86 / 0086、大小写、分隔符不算不同；saveContact 撞了不存、照存放行、
+ *   - 联系方式全部查重：各种类型（含自己加的）同类型 + 规整值算撞，+86 / 0086、大小写、分隔符不算不同；saveContact 撞了不存（11-20 起没有照存放行，号码全公司唯一）、
  *     编辑只查新出现的号；导入照写 + 提醒「号码重复」（本批前后、和我们这边已有的）
  *   - 客户类型（迁移 092，字典 custType）：保存 / 单格改只收启用的、原值停用了原样交回也认；导入认得上才落，对不上进备注
  *     10-30 换了一套默认（贸易商→中间贸易商、代理商→国家代理商、经销商默认停用、加专业运营商 / 一般客户），老库第一次读时改名、补项、换顺序；
@@ -387,7 +387,9 @@ describe("联系方式查重", () => {
     expect((await 查("email", "zhang@x.com", "zhang@x.com")).map((x) => x.kind)).toEqual(["email"]);
     expect(await 查("landline", "02112345678", "02112345678")).toHaveLength(1);
     expect(await 查("custom:QQ", "abc1", 联系人号查重键("custom:QQ", "abc1"))).toHaveLength(1);
-    expect(await 查("custom:微博", "abc1", "abc1")).toHaveLength(1);
+    // 跨类型按原值比（11-20，两边同一个规整）：「Ab-C 1」去空格小写是「ab-c1」，和别的类型的「abc1」不是同一串
+    expect(await 查("custom:微博", "abc1", "abc1")).toEqual([]);
+    expect(await 查("custom:微博", "AB-C1", "abc1")).toHaveLength(1);
     expect((await 查("wechat", "13900000021", "13900000021")).map((x) => x.name)).toEqual(["张一"]);
     expect(await 查("wechat", "13900000029", "13900000029")).toEqual([]);
     // 子表回填之前的老三格也比
@@ -395,7 +397,7 @@ describe("联系方式查重", () => {
     expect((await 查("wechat", "laowx", "laowx")).map((x) => x.name)).toEqual(["老三格"]);
   });
 
-  it("saveContact 撞了不存、回撞到的那位；照存放行；编辑时原来就有的号不再查", async () => {
+  it("saveContact 撞了不存、回撞到的那位；带照存也不放（11-20 号码全公司唯一）；编辑时原来就有的号不再查", async () => {
     const 甲 = await 新建id();
     const 乙 = await 新建id();
     const 张 = await 建联系人(甲, "张二", [{ kind: "phone", value: "13900000031" }]);
@@ -404,18 +406,22 @@ describe("联系方式查重", () => {
     if (!撞.ok && "撞了" in 撞) expect(撞.error).toContain("张二");
     expect(await prisma.contact.count({ where: { name: "李二" } })).toBe(0);
 
-    const 照 = await saveContact({ customerId: 乙, name: "李二", isPrimary: false, 照存: true, 企业: { 号码们: [{ kind: "phone", value: "13900000031" }] } });
-    expect(照.ok).toBe(true);
+    // 原来的「仍然保存」（照存）取消：老页面再交带着它，服务端照样拦
+    const 照 = await saveContact({ customerId: 乙, name: "李二", isPrimary: false, 照存: true, 企业: { 号码们: [{ kind: "phone", value: "13900000031" }] } } as never);
+    expect(照).toMatchObject({ ok: false, 撞了: [{ contactId: 张 }] });
+    if (!照.ok) expect(照.error).toContain("号码全公司唯一，不能重复登记");
+    expect(await prisma.contact.count({ where: { name: "李二" } })).toBe(0);
+    expect((await saveContact({ customerId: 乙, name: "李二", isPrimary: false, 企业: { 号码们: [{ kind: "phone", value: "13900000032" }] } })).ok).toBe(true);
     // 李二改个职位：号是原来就有的，不再拦
     const 李 = await prisma.contact.findFirstOrThrow({ where: { name: "李二" } });
-    const 改 = await saveContact({ id: 李.id, customerId: 乙, name: "李二", isPrimary: false, position: "经理", 企业: { 号码们: [{ kind: "phone", value: "13900000031" }] }, 版本: 李.updatedAt.toISOString() });
+    const 改 = await saveContact({ id: 李.id, customerId: 乙, name: "李二", isPrimary: false, position: "经理", 企业: { 号码们: [{ kind: "phone", value: "13900000032" }] }, 版本: 李.updatedAt.toISOString() });
     expect(改.ok).toBe(true);
     // 编辑自己不算撞自己
     const 张本 = await prisma.contact.findUniqueOrThrow({ where: { id: 张 } });
     expect((await saveContact({ id: 张, customerId: 甲, name: "张二", isPrimary: false, 企业: { 号码们: [{ kind: "phone", value: "13900000031" }, { kind: "email", value: "z2@x.com" }] }, 版本: 张本.updatedAt.toISOString() })).ok).toBe(true);
   });
 
-  it("不带号码几行、只交老三格（联系人页原来的表单）也查重：撞了不存，照存放行（11-03 完成度 B7-1）", async () => {
+  it("不带号码几行、只交老三格（联系人页原来的表单）也查重：撞了不存，带照存也不放（11-03 完成度 B7-1；11-20）", async () => {
     const 甲 = await 新建id();
     const 乙 = await 新建id();
     const 张 = await 建联系人(甲, "张七", [{ kind: "phone", value: "13900000071" }, { kind: "wechat", value: "ZhangQi" }]);
@@ -423,10 +429,11 @@ describe("联系方式查重", () => {
     expect(await 存({ phone: "139 0000 0071" })).toMatchObject({ ok: false, 撞了: [{ contactId: 张, kind: "phone" }] });
     expect(await 存({ wechat: " zhangqi " })).toMatchObject({ ok: false, 撞了: [{ contactId: 张, kind: "wechat" }] });
     expect(await prisma.contact.count({ where: { name: "李七" } })).toBe(0);
-    expect((await 存({ phone: "13900000071", 照存: true })).ok).toBe(true);
+    expect(await 存({ phone: "13900000071", 照存: true })).toMatchObject({ ok: false, 撞了: [{ contactId: 张 }] });
+    expect((await 存({ phone: "13900000072" })).ok).toBe(true);
     // 编辑：原来就有的号不再拦
     const 李 = await prisma.contact.findFirstOrThrow({ where: { name: "李七" } });
-    expect((await saveContact({ id: 李.id, customerId: 乙, name: "李七", isPrimary: false, phone: "13900000071", position: "经理", 版本: 李.updatedAt.toISOString() })).ok).toBe(true);
+    expect((await saveContact({ id: 李.id, customerId: 乙, name: "李七", isPrimary: false, phone: "13900000072", position: "经理", 版本: 李.updatedAt.toISOString() })).ok).toBe(true);
   });
 
   it("传真、Telegram 也查重：传真只比数字，Telegram 用户名去 @ 不分大小写；saveContact 撞了不存", async () => {

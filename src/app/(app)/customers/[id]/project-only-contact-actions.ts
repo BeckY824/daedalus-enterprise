@@ -23,7 +23,7 @@ import { 联系人查重, 联系人回收站撞, 联系人回收站撞话, type 
 import { 版本冲突, 版本条件 } from "@/lib/edit-version";
 import { 联系人电话, 规整, 规整企业联系人, type 联系人字段, type 企业联系人资料 } from "./contact-input";
 
-type 交来的 = 联系人字段 & { 版本?: string | null; 企业?: 企业联系人资料 | null; 照存?: boolean };
+type 交来的 = 联系人字段 & { 版本?: string | null; 企业?: 企业联系人资料 | null };
 type 结果 = { ok: true; id: string } | { ok: false; error: string; 撞了?: 撞到的联系人[]; 回收站?: { 类型: string; 值: string } };
 
 const 关着 = { ok: false as const, error: "这里不能改联系人" };
@@ -67,13 +67,14 @@ async function 准备(input: 交来的, 原: 原联系人 | null, 跳过的联�
       if (键) 原有.add(`${kind}|${键}`);
     }
     const 新的 = 查的行们.filter((x) => !原有.has(`${x.kind}|${x.numberKey}`));
-    const 撞了 = 新的.length && input.照存 !== true ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), 跳过的联系人, 客户) : [];
+    // 号码全公司唯一（11-20）：撞了一律拦，没有「仍然保存」
+    const 撞了 = 新的.length ? await 联系人查重(defaultClient, 新的, await 读的我(defaultClient), 跳过的联系人, 客户) : [];
     if (撞了.length) {
       const 表 = await 号码种类表();
       const 头 = 撞了[0];
       return {
         ok: false as const,
-        error: `${种类叫法(表, 头.kind)} ${头.value} 已经记在别的联系人或客户身上，本次没保存。确认是另一个人（比如共用的总机）可以「仍然保存」`,
+        error: `${种类叫法(表, 头.kind)} ${头.value} 已经记在别的联系人或客户身上，本次没保存。号码全公司唯一，不能重复登记，核对后改号码`,
         // 不说撞了谁、在哪位客户下（这家客户他本来就看不到）
         撞了: 撞了.map((x) => ({ contactId: null, name: null, customerId: null, customerName: null, 同事: "同事", kind: x.kind, value: x.value })),
       };
