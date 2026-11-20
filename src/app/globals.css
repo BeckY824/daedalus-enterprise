@@ -1039,9 +1039,10 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
   .page-head:has(.cust-scope) { flex-wrap: wrap; align-items: center; row-gap: var(--s2); }
   .page-head:has(.cust-scope) > :first-child { flex-basis: 100% !important; }
   /* 右上那组按钮自己也要能折行（11-20 c2 实操：系统管理员客户页「导入 · 导出 · 新建 · 离职交接 N」375 宽一排放不下，「离职交接」出屏、整页横滚）：
-     原来 flex: none 按一排的宽度摆，里面的 Space wrap 折不了；手机上不许比页头宽，放不下的按钮换到下一行 */
+     原来 flex: none 按一排的宽度摆，里面的 Space wrap 折不了；手机上不许比页头宽，放不下的按钮换到下一行。
+     按钮组折到标题下面那一行时照旧靠右（margin-left: auto），和一行放得下时同一边 */
   .page-head { flex-wrap: wrap; row-gap: var(--s2); }
-  .page-head-a { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+  .page-head-a { flex: 0 1 auto; min-width: 0; max-width: 100%; margin-left: auto; }
   .page-head-a > .ant-space { flex-wrap: wrap; row-gap: var(--s2); max-width: 100%; }
 }
 

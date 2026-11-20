@@ -186,7 +186,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     角色字典(),
     异常类别字典(),
     // 历史负责人（企业版才显示）：放回过公海的人。单独查，不受上面节点变更只取 200 行的限
-    !企业版() ? [] : prisma.projectNodeLog.findMany({ where: { projectId: p.id, kind: "pool-release" }, orderBy: { at: "desc" }, select: { fromOwnerId: true } }),
+    !企业版() ? [] : prisma.projectNodeLog.findMany({ where: { projectId: p.id, kind: "pool-release" }, orderBy: { at: "desc" }, select: { fromOwnerId: true, userId: true } }),
     生效组织规则(),
   ]);
   const 类别名 = new Map(类别们.map((c) => [c.id, c.name]));
@@ -393,8 +393,9 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     // 项目不能单独领（10-31 晚定）：按钮灰着、说去领客户
     领取不给: !能领 ? null : 原负责人领不回 ? 原负责人不能领回提示 : 公海 && 企业 && p.result ? `这个项目已经结束（${p.result}），不能单独领取` : 公海 && 拦单独领项目() ? 项目不能单独领提示 : 公海 && 拦客户公海里的项目(!!p.customer.pool) ? 客户在公海项目不单领提示 : null,
     进公海: 最近放回 ? { 方式: 认放回(最近放回.reason), 谁: 叫(最近放回.userId)! } : null,
-    // 最近一次是不是我放回的（没留痕的老数据按原负责人认）：公海提示条只对放回的那位说「是你放回去的」，别人（如看别人退回的管理员）不说
-    放回的是我: 公海 && (最近放回 ? 最近放回.userId === me.id : 上一任 === me.id),
+    // 最近一次是不是我放回的：公海提示条只对放回的那位说「是你放回去的」，别人（如看别人退回的管理员）不说。
+    // 认上面那条不限条数的放回留痕（p.logs 只取 200 条，进出公海多了会取不到）；系统超时收回的操作人是「系统」，不算我；没留痕的老数据按原负责人认
+    放回的是我: 公海 && (放回过[0] ? 放回过[0].userId === me.id : 最近放回 ? 最近放回.userId === me.id : 上一任 === me.id),
     balanceSettled: p.balanceSettled, balanceSettledBy: 叫(p.balanceSettledById), balanceSettledAt: p.balanceSettledAt?.toISOString() ?? null,
     acceptancePassed: p.acceptancePassed, acceptancePassedBy: 叫(p.acceptancePassedById), acceptancePassedAt: p.acceptancePassedAt?.toISOString() ?? null,
     logs: p.logs.map((l) => ({

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getBusiness } from "@/lib/business";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能管公海, 能恢复, 能新建和领取 } from "@/lib/enterprise/permissions";
+import { 能管公海, 能恢复, 能领公海 } from "@/lib/enterprise/permissions";
 import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
 import { 渠道筛选选项 } from "@/lib/enterprise/channel-options";
 import { 公海分配候选 } from "@/lib/owners";
@@ -91,8 +91,9 @@ export default async function PoolPage({
       // 行内领客户时列「会一起转走的项目」，和客户详情页领取前同一份数（服务端动作当参数递，界面测试不用桩）
       转走预览={转走项目预览of}
       持有={上限 === null ? null : { 有, 上限 }}
-      // 只读管理员（B2-1）、没设业务角色的（11-03 D3-7 ④）：领取都不摆
-      只读={!能新建和领取(me, 权限org)}
+      // 只读管理员（B2-1）、没设业务角色的（11-03 D3-7 ④）、角色不领公海的（市管、渠运、项目组员、只看某人的）：领取都不摆，
+      // 和服务端 领取 同一把尺（能领公海，审查 29A）；能分配的（总管理、销管）都能领，批量分配不受影响
+      只读={!能领公海(me, 权限org)}
     />
   );
 }

@@ -75,12 +75,25 @@ it.each([375, 390, 360])("%ipx 手机：系统管理员四颗按钮（含离职�
       expect(await page.locator(".page-head-a button").filter({ hasText: "离职交接 3" }).count()).toBe(1);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `宽 ${w} 范围 ${有范围}`).toBe(true);
       expect(await 按钮们在屏里(page), `宽 ${w} 范围 ${有范围}`).toEqual([]);
-      const 组 = await page.locator(".page-head-a").evaluate((e) => { const r = e.getBoundingClientRect(); return { 右: r.right, 宽: e.scrollWidth - e.clientWidth }; });
+      const 组 = await page.locator(".page-head-a").evaluate((e) => { const r = e.getBoundingClientRect(); return { 右: r.right, 宽: e.scrollWidth - e.clientWidth, 头右: e.parentElement!.getBoundingClientRect().right }; });
       expect(组.右, `宽 ${w}`).toBeLessThanOrEqual(w);
       expect(组.宽, `宽 ${w}`).toBeLessThanOrEqual(0);
+      // 折到下一行也照旧靠右（审查 29A）
+      expect(Math.abs(组.右 - 组.头右), `宽 ${w} 范围 ${有范围}`).toBeLessThanOrEqual(1);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
+});
+
+it.each([375, 390])("%ipx 手机：按钮少（没导入导出、有范围页签）折到标题下面那行也靠右", async (w) => {
+  const { page, errors } = await 开({ 待交接: 3, 导入导出: false }, w);
+  try {
+    const 组 = await page.locator(".page-head-a").evaluate((e) => ({ 右: e.getBoundingClientRect().right, 左: e.getBoundingClientRect().left, 头右: e.parentElement!.getBoundingClientRect().right, 头左: e.parentElement!.getBoundingClientRect().left }));
+    expect(Math.abs(组.右 - 组.头右)).toBeLessThanOrEqual(1);
+    expect(组.左).toBeGreaterThan(组.头左 + 1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
 });
 
 it.each([1024, 1280, 1366])("%ipx 桌面：照旧一排摆在右上，不折行", async (w) => {

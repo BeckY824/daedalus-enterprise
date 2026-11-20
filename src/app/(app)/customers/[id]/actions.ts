@@ -327,8 +327,13 @@ export async function saveFollowUp(input: FollowUpInput) {
     if (在公海 && 企业版() && 没设业务角色(await 权限组织(), user.id)) return { ok: false as const, error: 没业务角色不能领话 };
     // 角色不领公海的（市管、渠运、项目组员，V3.5.1）同样不记
     if (在公海 && 企业版() && !能领公海(user, await 权限组织())) return { ok: false as const, error: 只读角色(user, await 权限组织()) ? 只读话of(user, await 权限组织()) : 不能领公海话 };
-    // 标了无效的（公海回收站，P-公海-09）领不了：原来照存一条沟通、人没领到；角色拦之后、挂项目之前整条不存
-    if (在公海 && 企业版() && (await prisma.customer.findUnique({ where: { id: input.customerId }, select: { poolInvalidAt: true } }))?.poolInvalidAt) return { ok: false as const, error: 无效客户不能记沟通话 };
+    /*
+      标了无效的（公海回收站，P-公海-09）领不了（M-权限-03）：不顺手领取。真正的沟通（不是待办 / 提醒、不在背调存档那一段）
+      挂不上在推项目就整条不存、说先恢复（原来照存一条、领取悄悄没成）；挂上了自己能记的在推项目（同事名下留在原处的那种）照存，
+      同 记项目沟通Action。待办 / 提醒、背调存档照旧（P-沟通-03 允许只挂客户），只是不去领
+    */
+    const 无效公海 = 在公海 && 企业版() && !!(await prisma.customer.findUnique({ where: { id: input.customerId }, select: { poolInvalidAt: true } }))?.poolInvalidAt;
+    const 无效要拦 = 无效公海 && 要挂项目的类型(方式.type) && !免挂项目中();
     // 挂哪个项目放在公海两道角色拦之后（那两句更准）、领取之前：拦下的不顺手领走
     const 给的项目 = typeof input.projectId === "string" && input.projectId ? input.projectId : null;
     let 挂到: string | null = null;
@@ -337,11 +342,13 @@ export async function saveFollowUp(input: FollowUpInput) {
       const 定 = await 定沟通挂哪个项目(user, input.customerId, 给的项目);
       // 组员来记：没有我能记的在推项目 = 这位客户我只能看，照旧说只读（不叫他去建项目）；几个要选、选的不行照说
       if (!定.ok && 组员来记 && (定.没项目 || 定.error === 沟通都不能记话)) return { ok: false as const, error: await 只读话(defaultClient) };
+      if (!定.ok && 无效要拦) return { ok: false as const, error: 无效客户不能记沟通话 };
       if (!定.ok) return { ok: false as const, error: 在公海 && !给的项目 ? 沟通客户在公海话 : 定.error, ...(定.没项目 ? { 没项目: true as const } : {}) };
       挂到 = 定.projectId;
     }
     if (组员来记 && !挂到) return { ok: false as const, error: await 只读话(defaultClient) };
-    const 领取了 = 在公海 && await 领取([input.customerId]).then((r) => r.ok && r.updated > 0);
+    if (无效要拦 && !挂到) return { ok: false as const, error: 无效客户不能记沟通话 };
+    const 领取了 = 在公海 && !无效公海 && await 领取([input.customerId]).then((r) => r.ok && r.updated > 0);
     // 组员来记（上面已核过）：这位客户在限定层是「只能看」，新建沟通会被拦，这一笔按全部写——只写这条沟通、挂项目、客户最近跟进
     // 本人改只读的（上面核过）同理：只写这一条沟通（和它带的待办），按全部写
     const 这一笔 = <T,>(f: () => Promise<T>) => (组员来记 || 本人改只读的 ? 看全部(f) : f());
