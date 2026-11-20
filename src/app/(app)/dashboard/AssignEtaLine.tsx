@@ -13,7 +13,7 @@ export default function AssignEtaLine({ 轮到 }: { 轮到: 轮到 | null | unde
   if (!轮到) return null;
   const 话 = 轮到 === "暂无法估算"
     ? "暂无法估算（还没有分配记录）"
-    : `按现在的数，${轮到.数 === 0 ? "下一条就轮到你" : `前面约 ${轮到.数} 条轮到你`}`;
+    : `按现在的数，${轮到.数 === 0 ? "下一条就轮到你" : `前面约 ${轮到.数} 条轮到你`}${轮到.待补 ? `（判无效待补 ${轮到.待补} 条，优先补给你）` : ""}`;
   return (
     <div className="home-cth-todo" role="status" data-testid="home-assign-eta">
       <span className="home-cth-todo-t home-eta-t">自动分配：{话}</span>

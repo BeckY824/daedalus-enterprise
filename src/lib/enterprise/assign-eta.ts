@@ -21,9 +21,10 @@ import { 规则开着 } from "./rules";
 import { notify } from "./notify";
 import {
   月份, 本月加额们, 生效配额, 前面几条, 计不计数, 自动候选人们, 认参与状态, 企划线索计数key, 自动分配不参与key, 不设配额key,
-  起算时刻key, 认起算时刻, 起算补, 月初of, 按行数已分, 参与状态of, 接手问题,
-  type 候选人, type 线, type 分配行,
+  起算时刻key, 认起算时刻, 起算补, 月初of, 按行数已分, 参与状态of, 接手问题, 挂补位,
+  type 候选人, type 线, type 分配行, type 线索种类,
 } from "./lead-assign";
+import { 待用补位行, type 补位行 } from "./invalid-makeup";
 import { 按部门候选, 自动可接, 在不进自动分配部门, 两条线, 规整线部门, 线部门key, 线部门们, type 线部门 } from "./assign-line";
 import { 查完再写 } from "@/lib/check-then-write";
 
@@ -33,8 +34,11 @@ export const 快轮到kind = "快轮到";
 /** 首页、设置那一列旁边的说明 */
 export const 估算说明 = "这是估算：指定分配、有人暂停或新同事加入都会让它变";
 
-/** 前面约几条：数 = 按现在的数估出来的；暂无法估算 = 系统里还没有一条分配记录 */
-export type 轮到 = { 数: number } | "暂无法估算";
+/**
+ * 前面约几条：数 = 按现在的数估出来的；暂无法估算 = 系统里还没有一条分配记录。
+ * 待补 = 他有几条判无效待补（方向对得上这条线的，invalid-makeup.ts）；有待补的排在前面，数多半是 0
+ */
+export type 轮到 = { 数: number; 待补?: number } | "暂无法估算";
 
 /** 后台设的「各条线参与自动分配的部门」；没设 = 两条线都没勾（按成员标记） */
 export async function 读线部门(): Promise<线部门> {
@@ -77,11 +81,13 @@ export async function 本月分配行(ids: readonly string[], 月 = 月份(), db
 /**
  * 挑人要的数（自动分给 和 估算共用一份）：这几个人本月已分（只数算数的）、生效配额、建号时间（= 进池先后），
  * 外加不参与名单、营销企划算不算数、是不是不设配额、起算时刻和本月分配行。
- * 排序前要过 排位(子集)：按同池（传进来的那几位）做起算补（11-18 第 3 题 B），估算时每条线各补各的
+ * 排序前要过 排位(子集)：按同池（传进来的那几位）做起算补（11-18 第 3 题 B），估算时每条线各补各的。
+ * 补位（判无效待补，invalid-makeup.ts）：传了 = 这次分配用待补（算本月已分的新线索自动分配），排位时把方向对得上 线 的待补挂上去，
+ * 挑接手人 让有待补的先；不传（公海分配、不算数的）= 不挂、照原来挑。kind 是营销企划且设成不算数的，同样不挂
  */
-export async function 读挑人底子(人们: readonly string[], 月 = 月份()) {
+export async function 读挑人底子(人们: readonly string[], 月 = 月份(), 补位: { 线: 线 | null; kind?: 线索种类 } | null = null) {
   const ids = [...人们];
-  const [行们, 配额, 加额, 建号, 不参与, 企划算数, 不限额, 起算] = await Promise.all([
+  const [行们, 配额, 加额, 建号, 不参与, 企划算数, 不限额, 起算, 补位行们] = await Promise.all([
     本月分配行(ids, 月),
     prisma.entLeadQuota.findMany({ where: { userId: { in: ids } } }),
     本月加额们(ids, 月),
@@ -90,19 +96,26 @@ export async function 读挑人底子(人们: readonly string[], 月 = 月份())
     getSetting<boolean>(企划线索计数key),
     不设配额开着(),
     起算时刻表(),
+    补位 ? 待用补位行(ids) : Promise.resolve([] as 补位行[]),
   ]);
+  // 这次分配用不用待补：只用在算本月已分的那种（营销企划设成不算数的不用）
+  const 用补位 = !!补位 && 计不计数(补位.kind ?? "营销", 企划算数);
   // 生效配额 = 设的 + 本月加的额（线索最终判无效 +1）
   const 额 = new Map(配额.map((q) => [q.userId, 生效配额(q.quota, 加额.get(q.userId) ?? 0)]));
   const 候选: 候选人[] = 按行数已分(建号.map((u) => ({ userId: u.id, 已分: 0, 配额: 额.get(u.id) ?? null, 进池: u.createdAt })), 行们);
   const 不参与集 = new Set(不参与);
   const 月初 = 月初of();
-  /** 排序用的候选（起算补过）：池 = 子集（不传 = 全部）；行 = 换一份分配行（事务里重读的） */
-  const 排位 = (子集?: readonly string[], 行?: readonly 分配行[]): 候选人[] => {
+  /**
+   * 排序用的候选（起算补过、挂了待补）：池 = 子集（不传 = 全部）；行 = 换一份分配行（事务里重读的）；
+   * 补 = 换一份待用补位（事务里重读的）；线 = 换一条线挂待补（估算两条线各算各的；不传按读的时候给的线）
+   */
+  const 排位 = (子集?: readonly string[], 行?: readonly 分配行[], 补?: readonly 补位行[], 线?: 线 | null): 候选人[] => {
     const 池 = 子集 ? 候选.filter((c) => 子集.includes(c.userId)) : 候选;
     const 数过 = 行 ? 按行数已分(池, 行) : 池;
-    return 起算补(数过, 起算, 行 ?? 行们, 不参与集, 月初);
+    const 排 = 起算补(数过, 起算, 行 ?? 行们, 不参与集, 月初);
+    return 用补位 ? 挂补位(排, 补 ?? 补位行们, 线 === undefined ? 补位!.线 : 线) : 排;
   };
-  return { 候选, 额, 建号, 不参与, 企划算数, 不限额, 排位 };
+  return { 候选, 额, 建号, 不参与, 企划算数, 不限额, 排位, 用补位 };
 }
 
 /**
@@ -174,20 +187,21 @@ export async function 估算轮到(org: 组织): Promise<Map<string, 轮到>> {
   const 全部 = [...new Set(池们.flat())];
   if (!全部.length) return 出;
   await 补记销售管理起算(org, 全部);
-  const [底, 有记录] = await Promise.all([读挑人底子(全部), prisma.entLeadAssign.findFirst({ select: { id: true } })]);
+  // 估的是市场按区域发起的营销线索：用待补（判无效待补的人排在前面，M-线索-02 补「优先」），每条线挂各自方向的
+  const [底, 有记录] = await Promise.all([读挑人底子(全部, 月份(), { 线: null }), prisma.entLeadAssign.findFirst({ select: { id: true } })]);
   const 不参与 = new Set(底.不参与);
   // 估的是市场按区域发起的营销线索（最常见的那种）：营销线索一律算数
   const 查满 = 计不计数("营销", 底.企划算数);
-  for (const 池 of 池们) {
-    // 起算补按这条线的池各补各的（同池最少的数）
-    const 候选 = 底.排位(池);
+  for (const [i, 池] of 池们.entries()) {
+    // 起算补按这条线的池各补各的（同池最少的数）；待补只挂方向对得上这条线的
+    const 候选 = 底.排位(池, undefined, undefined, 两条线[i]);
     for (const c of 候选) {
       if (不参与.has(c.userId)) continue;
       if (!有记录) { 出.set(c.userId, "暂无法估算"); continue; }
       const n = 前面几条(候选, 不参与, 查满, 底.不限额, c.userId);
       if (n === null) continue;
       const 旧 = 出.get(c.userId);
-      if (!旧 || 旧 === "暂无法估算" || n < 旧.数) 出.set(c.userId, { 数: n });
+      if (!旧 || 旧 === "暂无法估算" || n < 旧.数) 出.set(c.userId, { 数: n, ...(c.待补?.length ? { 待补: c.待补.length } : {}) });
     }
   }
   return 出;
@@ -215,7 +229,8 @@ export function 能看轮到(org: 组织, me: { id: string; role?: string | null
 /** 给人看的那一句：「前面约 N 条轮到你」/「下一条就轮到你」/「暂无法估算」 */
 export function 轮到话(x: 轮到, 你 = "你"): string {
   if (x === "暂无法估算") return "暂无法估算";
-  return x.数 === 0 ? `下一条就轮到${你}` : `前面约 ${x.数} 条轮到${你}`;
+  const 话 = x.数 === 0 ? `下一条就轮到${你}` : `前面约 ${x.数} 条轮到${你}`;
+  return x.待补 ? `${话}（判无效待补 ${x.待补} 条，优先补）` : 话;
 }
 
 /**

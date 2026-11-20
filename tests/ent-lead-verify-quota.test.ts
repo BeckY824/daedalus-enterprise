@@ -1,6 +1,8 @@
 /**
  * 线索最终判无效补名额（11-09，M-线索-02 + 决定二）：没占过额度的判无效不补。
  * 占过额度 = 现负责人在这条线索上有算数的分配记录。批量分配时随客户走的那几条不写分配记录、不占额度，判无效也不补。
+ * 11-20 起「补」= 记 1 个判无效待补（下一条自动分配优先补发、补发不算本月已分，lib/enterprise/invalid-makeup.ts），
+ * 不再给本月配额 +1（判无效那条的名额不退，用户 11-20）；这里的「补 1」= 待补 1、本月加额一律 0
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
@@ -20,6 +22,9 @@ import { 批量自动分配 } from "@/app/(app)/leads/assign-actions";
 import { 自动分配不参与key, 不设配额key, 本月加额, 配额of, 月份 } from "@/lib/enterprise/lead-assign";
 import { 销售初判, 市场复核, 销售终验, 总管理终判 } from "@/lib/project/lead-verify";
 import { 改节点 } from "@/lib/project/db";
+import { 待补数们 } from "@/lib/enterprise/invalid-makeup";
+
+const 待补 = async (u: { id: string }) => (await 待补数们([u.id])).get(u.id) ?? 0;
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 let 总管: 人;
@@ -97,29 +102,31 @@ describe("批量分配：同客户三条，第一条占额度，后两条随客�
   it("三条都判无效：只补 1", async () => {
     const [L1, L2, L3] = await 三条();
     await 判死(L1); await 判死(L2); await 判死(L3);
-    expect(await 本月加额(甲.id)).toBe(1);
-    expect(await 配额of(甲.id)).toBe(6);
+    expect(await 待补(甲)).toBe(1);
+    // 判无效那条的名额不退、配额不加
+    expect(await 本月加额(甲.id)).toBe(0);
+    expect(await 配额of(甲.id)).toBe(5);
   });
 
   it("只判随客户那条：不补", async () => {
     const [, L2] = await 三条();
     await 判死(L2);
-    expect(await 本月加额(甲.id)).toBe(0);
+    expect(await 待补(甲)).toBe(0);
     expect(await 配额of(甲.id)).toBe(5);
   });
 
   it("只判占额度那条：补 1", async () => {
     const [L1] = await 三条();
     await 判死(L1);
-    expect(await 本月加额(甲.id)).toBe(1);
+    expect(await 待补(甲)).toBe(1);
   });
 
   it("走到总管理终判也一样：随客户那条不补，占额度那条补 1", async () => {
     const [L1, L2] = await 三条();
     await 终判死(L2);
-    expect(await 本月加额(甲.id)).toBe(0);
+    expect(await 待补(甲)).toBe(0);
     await 终判死(L1);
-    expect(await 本月加额(甲.id)).toBe(1);
+    expect(await 待补(甲)).toBe(1);
   });
 });
 
@@ -129,21 +136,21 @@ describe("别的情况", () => {
     await 以(市场, () => 批量自动分配([L], { 项目: true }));
     expect(await prisma.entLeadAssign.count({ where: { projectId: L, toUserId: 甲.id, counted: true } })).toBe(1);
     await 判死(L);
-    expect(await 本月加额(甲.id)).toBe(1);
+    expect(await 待补(甲)).toBe(1);
   });
 
   it("分配记录不算数（企划线索 counted=false）：没占额度，不补", async () => {
     const L = await 线索(await 客户(市场.id), 甲.id, 市场.id);
     await 分配行(L, 甲.id, { counted: false });
     await 判死(L);
-    expect(await 本月加额(甲.id)).toBe(0);
+    expect(await 待补(甲)).toBe(0);
   });
 
   it("没有分配记录（老数据、手工建、导入）：不补", async () => {
     const L = await 线索(await 客户(市场.id), 甲.id, 市场.id);
     await 判死(L);
     expect((await 项目of(L)).result).toBe("线索流失");
-    expect(await 本月加额(甲.id)).toBe(0);
+    expect(await 待补(甲)).toBe(0);
   });
 
   it("转让过：占额度的是前任，现负责人没占过，谁都不补", async () => {
@@ -151,30 +158,31 @@ describe("别的情况", () => {
     const L = await 线索(await 客户(市场.id), 乙.id, 市场.id);
     await 分配行(L, 甲.id);
     await 判死(L, 乙);
-    expect(await 本月加额(乙.id)).toBe(0);
-    expect(await 本月加额(甲.id)).toBe(0);
+    expect(await 待补(乙)).toBe(0);
+    expect(await 待补(甲)).toBe(0);
   });
 
   it("分给甲、转走又分回甲（两行记录）：判一次只补 1", async () => {
     const L = await 线索(await 客户(市场.id), 甲.id, 市场.id);
     await 分配行(L, 甲.id); await 分配行(L, 甲.id);
     await 判死(L);
-    expect(await 本月加额(甲.id)).toBe(1);
+    expect(await 待补(甲)).toBe(1);
   });
 
-  it("上个月占的、这个月判：补在这个月这一格", async () => {
+  it("上个月占的、这个月判：照样补（待补不分月）", async () => {
     const L = await 线索(await 客户(市场.id), 甲.id, 市场.id);
     await 分配行(L, 甲.id, { month: "2020-01" });
     await 判死(L);
-    expect(await 本月加额(甲.id)).toBe(1);
+    expect(await 待补(甲)).toBe(1);
     expect(await 本月加额(甲.id, "2020-01")).toBe(0);
+    expect(await 本月加额(甲.id)).toBe(0);
   });
 
-  it("占过额度但没设配额：照旧不加", async () => {
+  it("占过额度但没设配额：照样记待补（11-20 起不看配额模式），配额还是没设", async () => {
     const L = await 线索(await 客户(市场.id), 乙.id, 市场.id);
     await 分配行(L, 乙.id);
     await 判死(L, 乙);
-    expect(await 本月加额(乙.id)).toBe(0);
+    expect(await 待补(乙)).toBe(1);
     expect(await 配额of(乙.id)).toBeNull();
   });
 
@@ -183,18 +191,18 @@ describe("别的情况", () => {
     await 分配行(L, 甲.id);
     expect((await 销售初判(身份(甲), L, "无效", { invalidReason: "联系方式无效", verifyNote: "打了三次" })).ok).toBe(true);
     expect((await 项目of(L)).result).toBe("线索流失");
-    expect(await 本月加额(甲.id)).toBe(0);
+    expect(await 待补(甲)).toBe(0);
   });
 
-  it("判无效没有撤销路径：改回进行中被拒、再判作废，名额不会补第二次", async () => {
+  it("判无效没有撤销路径：改回进行中被拒、再判作废，不会补第二次", async () => {
     const L = await 线索(await 客户(市场.id), 甲.id, 市场.id);
     await 分配行(L, 甲.id);
     await 判死(L);
-    expect(await 本月加额(甲.id)).toBe(1);
+    expect(await 待补(甲)).toBe(1);
     for (const 谁 of [甲, 总管]) expect((await 改节点(身份(谁), L, { phase: "线索", node: "线索验证" })).ok).toBe(false);
     expect((await 项目of(L)).result).toBe("线索流失");
     expect((await 市场复核(身份(市场), L, false)).ok).toBe(false);
     expect((await 销售初判(身份(甲), L, "无效", { invalidReason: "联系方式无效", verifyNote: "再判" })).ok).toBe(false);
-    expect(await 本月加额(甲.id)).toBe(1);
+    expect(await 待补(甲)).toBe(1);
   });
 });

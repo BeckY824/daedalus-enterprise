@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { notify } from "./notify";
 import { 离职段 } from "./handover-db";
+import { 这条记了补位 } from "./invalid-makeup";
 import { 读组织, 负责人和上级, 在职负责人或上级, 市场复核人们, 市场复核要读的, 是系统管理员of, 管理员类别们of, 拆角色 } from "./org";
 import { 企业版 } from "./switch";
 import { 公海入口 } from "./nav";
@@ -283,7 +284,10 @@ export async function 验证待办通知(me: 人, projectId: string): Promise<vo
     ]));
     if (!p || !v) return;
     const 步 = 实际待(v.pending, await 无效交给(org));
-    if (!步) return;
+    if (!步) {
+      await 判无效结果通知(me, org, p, v.updatedAt);
+      return;
+    }
     const 销售步 = 步 === "销售终验" || 步 === "销售认领";
     // 销售那一步：负责人停用了改发他停用前的直属上级（审核 11-18 通知 P2-7）
     const 收 = 销售步
@@ -307,6 +311,24 @@ export async function 验证待办通知(me: 人, projectId: string): Promise<vo
       link: 销售步 ? `/projects/${p.id}` : "/projects",
       key: `verify:${projectId}:${步}:${v.updatedAt.getTime()}`,
     });
+  });
+}
+
+/**
+ * 最终判无效（市场复核 / 总管理终判判无效，线索流失）：告诉负责人结果（同一种通知「线索验证」，11-20 补）。
+ * 记了判无效待补的（invalid-makeup.ts）加一句「已记 1 条判无效待补，下一条自动分配优先补给你」。
+ * 只认最后一步是 市场复核 / 总管理终判 判无效的；销售自己初判即终判的不发（他自己判的）
+ */
+async function 判无效结果通知(me: 人, org: Awaited<ReturnType<typeof 读组织>>, p: { id: string; name: string; ownerId: string }, 版: Date): Promise<void> {
+  const 末 = await 看全部(() => prisma.entLeadVerifyLog.findFirst({ where: { projectId: p.id }, orderBy: [{ at: "desc" }, { id: "desc" }], select: { step: true, verdict: true, note: true } }));
+  if (!末 || 末.verdict !== "无效" || (末.step !== "市场复核" && 末.step !== "总管理终判")) return;
+  const 补了 = await 这条记了补位(p.id, p.ownerId);
+  await notify(在职负责人或上级(org, p.ownerId).filter((id) => id !== me.id), {
+    kind: "线索验证",
+    title: `线索「${p.name}」${末.step}最终判了无效`,
+    body: `${me.name} 判了无效${末.note ? `：${末.note}。` : "。"}${补了 ? "已记 1 条判无效待补，下一条自动分配优先补给你。" : ""}`,
+    link: `/projects/${p.id}`,
+    key: `verify:${p.id}:判无效:${版.getTime()}`,
   });
 }
 

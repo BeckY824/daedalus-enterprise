@@ -21,6 +21,7 @@ import {
   销售初判, 市场复核, 销售终验, 总管理终判, 销售认领, 读线索验证, 待我复核的, 实际待, 验证结果叫法,
 } from "@/lib/project/lead-verify";
 import { 本月加额, 配额of, 月份 } from "@/lib/enterprise/lead-assign";
+import { 待补数们 } from "@/lib/enterprise/invalid-makeup";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 市场成员key } from "@/lib/enterprise/market";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
@@ -296,38 +297,30 @@ describe("企业版线索有效性验证", () => {
     expect(叫("无效线索")).toBe("无效线索");
   });
 
-  describe("最终判无效 → 负责人本月配额 +1", () => {
+  describe("最终判无效 → 负责人记判无效待补（11-20 起不再加配额，invalid-makeup.ts）", () => {
     const 占额度 = (projectId: string, toUserId: string) => prisma.entLeadAssign.create({ data: { projectId, toUserId, byUserId: 市场.id, month: 月份() } });
+    const 待补 = async (id: string) => (await 待补数们([id])).get(id) ?? 0;
 
-    it("设了配额的 +1，下个月是新的一格；没设配额的不加", async () => {
+    it("占过名额的每判死一条记 1 个待补（市场复核、总管理终判都算）；配额不加、判无效那条照算", async () => {
       await 设配额(乙.id, 5);
       const a = await 项目();
       await 占额度(a, 乙.id);
       await 判无效(a);
       await 市场复核(市场, a, false);
-      expect(await 本月加额(乙.id)).toBe(1);
-      expect(await 配额of(乙.id)).toBe(6);
-      const 下月 = 月份(dayjs().add(1, "month").toDate());
-      expect(await 本月加额(乙.id, 下月)).toBe(0);
-      expect(await 配额of(乙.id, prisma, 下月)).toBe(5);
-      // 同月第二条：+2
+      expect(await 待补(乙.id)).toBe(1);
+      expect(await 本月加额(乙.id)).toBe(0);
+      expect(await 配额of(乙.id)).toBe(5);
       const b = await 项目({ name: "二号" });
       await 占额度(b, 乙.id);
       await 判无效(b);
       await 市场复核(市场, b, true);
       await 销售终验(乙, b, false, "坚持");
       await 总管理终判(总管, b, false);
-      expect(await 配额of(乙.id)).toBe(7);
-      // 丙没设配额：判死了也不加
-      const c = await prisma.project.create({ data: { name: "丙的", customerId: 客户, ownerId: 丙.id, creatorId: 丙.id, node: "线索验证" } });
-      await 占额度(c.id, 丙.id);
-      await 判无效(c.id, 丙);
-      await 市场复核(市场, c.id, false);
-      expect(await 本月加额(丙.id)).toBe(0);
-      expect(await 配额of(丙.id)).toBeNull();
+      expect(await 待补(乙.id)).toBe(2);
+      expect(await prisma.entLeadAssign.count({ where: { toUserId: 乙.id, counted: true } })).toBe(2);
     });
 
-    it("复核判有效、接受复核：不加", async () => {
+    it("复核判有效、接受复核：不记", async () => {
       await 设配额(乙.id, 5);
       const id = await 项目();
       await 记有效沟通(id);
@@ -335,6 +328,7 @@ describe("企业版线索有效性验证", () => {
       await 市场复核(市场, id, true);
       await 销售终验(乙, id, true);
       expect(await 本月加额(乙.id)).toBe(0);
+      expect(await 待补(乙.id)).toBe(0);
     });
   });
 

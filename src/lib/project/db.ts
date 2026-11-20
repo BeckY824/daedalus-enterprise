@@ -8,6 +8,7 @@ import { Prisma, type Project } from "@/generated/prisma";
 import { prisma, defaultClient } from "../prisma";
 import { 不能当负责人 } from "../owners";
 import { 查完再写 } from "../check-then-write";
+import { 作废补位 } from "@/lib/enterprise/invalid-makeup";
 import { 改节点问题, 原因上限, 要写原因, 终止结局, 下一步, 节点序号, 字典of, 本套位置, 本套名, 同名们, 是交付, 结局叫法, type 位置 } from "./nodes";
 import { 还差, 必填叫法, 节点推进生效, 项目按必填走, 节点推进管, 只管新建之后, 节点必填, 有效线索判定, 有效沟通还差, type 必填数据 } from "./required";
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "./wizard";
@@ -424,6 +425,8 @@ export async function 改节点(
     });
     // 企业版提成：进订单（赢单）固定实际提成（lib/project/commission-db.ts）。企业版进了订单不能退回商机（改节点问题 里拦）
     await 节点变了的提成(tx, p.id, p.phase, 到.phase);
+    // 判无效的线索被恢复（线索流失 → 回到进行中）：判无效时记的待补没用掉的作废（invalid-makeup.ts，11-20），已用掉的不回收
+    if (企业版() && 现.result === "线索流失" && result !== "线索流失") await 作废补位(tx, p.id);
     await tx.projectNodeLog.create({
       data: {
         projectId: p.id, userId: me.id,

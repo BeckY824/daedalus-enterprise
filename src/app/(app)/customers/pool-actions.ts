@@ -52,6 +52,7 @@ import { 规整沟通 } from "@/lib/project/wizard";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 挑接手人, 挑的理由, 本月已分, 配额of, 满了 } from "@/lib/enterprise/lead-assign";
 import { 本月分配行, 读挑人底子 } from "@/lib/enterprise/assign-eta";
+import { 找待用补位, 用掉补位, 待用补位行 } from "@/lib/enterprise/invalid-makeup";
 import { 分配通知 } from "@/lib/enterprise/notice-sources";
 import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
 import {
@@ -757,7 +758,8 @@ export async function 查重领取(类型: string, 值: string, 沟通: 查重�
     ? [原负责人, 目标 ? await 看全部(() => 历史负责人(prisma, 目标.id)) : null].filter((x): x is string => !!x && 要回避(x, 创建人))
     : [];
   // 分配方向看客户地址 → 项目所在地（只领旧项目那条路看那条公海项目）→ 客户的号 → 我的事业部
-  const 候 = await 查重领取候选们(org, me.id, cid, 新建 ? null : (目标?.id ?? null), 回避);
+  // 判无效待补（invalid-makeup.ts）：只在这次算本月已分时用（新建线索项目、或没有公海项目可挂；同下面 查满）
+  const 候 = await 查重领取候选们(org, me.id, cid, 新建 ? null : (目标?.id ?? null), 回避, 新建 || !目标);
   const way = await 分配方式叫法(1);
   // 计不计本月已分：只领旧项目那条路挂的是线索公海里带出来的那条 = 不计（同 assign-actions 这条算数 = counted && !p.pooledAt），也就不卡满额
   const 查满 = 候.查满 && (新建 || !目标);
@@ -789,17 +791,23 @@ export async function 查重领取(类型: string, 值: string, 沟通: 查重�
           // 没出来：事务里读到刚被标了无效（公海客户出手 跳过）或刚被别人领走；回滚后按哪种说（下面 catch）
           if (出.到.length !== 1) throw new 查重领取作废("这位客户刚被别人领走了，这次没领");
           // 事务里按重读的本月分配数再挑一遍：还是他才写（同 自动分给 的复核）
-          if (挑接手人(底.排位(undefined, await 本月分配行(候.人们, 候.月, tx)), 跳过, 查满, 底.不限额) !== 谁) throw new 查重领取换人(false);
-          if (查满 && !底.不限额 && 满了(await 本月已分(谁, 候.月, tx), await 配额of(谁, tx))) throw new 查重领取换人(true);
+          if (挑接手人(底.排位(undefined, await 本月分配行(候.人们, 候.月, tx), 底.用补位 ? await 待用补位行(候.人们, tx) : undefined), 跳过, 查满, 底.不限额) !== 谁) throw new 查重领取换人(false);
+          // 判无效补发（invalid-makeup.ts，用户 11-20）：他有方向对得上的待补 = 补发，不算本月已分、不查满额
+          const 补位id = 底.用补位 ? await 找待用补位(tx, 谁, 候.向.线) : null;
+          if (!补位id && 查满 && !底.不限额 && 满了(await 本月已分(谁, 候.月, tx), await 配额of(谁, tx))) throw new 查重领取换人(true);
           const 挂 = 新建
             ? { id: await 新建这条(tx, { cid, 客户名: 全称或显名(挑), 谁, me: me.id, 渠道, 对接人: 对接人!, 线: 候.向.线, way, org }), 公海: false }
             : await 领旧的这条(tx, { cid, 谁, 目标, 出, way });
           项目id = 挂.id;
-          算数 = 候.查满 && !挂.公海;
+          算数 = 候.查满 && !挂.公海 && !补位id;
           带出 = 出.公海项目.filter((x) => x !== 项目id).length;
-          await tx.entLeadAssign.create({
+          const 记 = await tx.entLeadAssign.create({
             data: { projectId: 项目id, toUserId: 谁, fromUserId: 原负责人, byUserId: me.id, line: 候.向.线, kind: "营销", counted: 算数, month: 候.月, way },
+            select: { id: true },
           });
+          // 判无效补发：标这个待补用在这条分配上（同 assign-actions 分项目给）
+          // 没标上（按说不会）= 抛换人：整笔回滚、按最新的数重挑
+          if (补位id && !挂.公海 && !(await 用掉补位(tx, 补位id, 记.id, 项目id))) throw new 查重领取换人(false);
           await 查重领取记沟通(tx, me.id, 项目id, 好, new Date());
         },
       });
@@ -809,7 +817,7 @@ export async function 查重领取(类型: string, 值: string, 沟通: 查重�
       if (e instanceof 查重领取换人) {
         if (e.满) { 跳过.add(谁); continue; }
         if (++重挑 > 查重领取最多重挑) return { ok: false, error: "同时分配的太多，这次没领，请稍后再试" };
-        底 = await 读挑人底子(候.人们, 候.月);
+        底 = await 读挑人底子(候.人们, 候.月, 候.补位);
         continue;
       }
       if (e instanceof 查重领取作废) return { ok: false, error: (await 无效的([cid])).size ? 无效不能领提示 : e.message };

@@ -4187,6 +4187,8 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .org-field-perm tbody th { min-width: 6em; max-width: 9em; }
 /* 线索分配那一屏：长名字截断，悬停看全名；窄窗口靠外层横向滚动 */
 .org-lead-assign-name { display: inline-block; max-width: 160px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+/* 「本月已分 N（另补 M） / 配额 +N 满额 待补 K」那一格：窄屏放不下折行（判无效待补，11-20） */
+.org-lead-assign-quota { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 /* 批量自动分配的结果：一条一行，线索名太长省略，别把弹窗撑开 */
 .lead-auto-assign-list { margin: 8px 0 0; padding: 0; list-style: none; max-height: 360px; overflow-y: auto; }
 .lead-auto-assign-list li { display: flex; gap: 8px; padding: 4px 0; min-width: 0; }
