@@ -15,7 +15,7 @@ import { chromium, type Browser, type Page } from "playwright";
 import { 补全动作桩 } from "./helpers/action-stubs";
 
 let browser: Browser, bundle: string;
-type W = { __调: Record<string, unknown[][]>; __挡?: boolean; __render: (o?: { 持有?: { 有: number; 上限: number } | null; 候选信息?: unknown; 无效原因选项?: string[]; 能恢复?: boolean; 多人?: number }) => void };
+type W = { __调: Record<string, unknown[][]>; __挡?: boolean; __预览?: unknown; __render: (o?: { 持有?: { 有: number; 上限: number } | null; 候选信息?: unknown; 无效原因选项?: string[]; 能恢复?: boolean; 多人?: number; 转走?: boolean }) => void };
 
 beforeAll(async () => {
   const plugin: Plugin = { name: "pool-confirm-boundaries", setup(b) {
@@ -47,7 +47,7 @@ beforeAll(async () => {
     const 多=(n)=>Array.from({length:n},(_,i)=>({id:'m'+i,name:'同事'+String(i).padStart(2,'0'),email:'m'+i}));
     window.__render=(o={})=>{ root=root||createRoot(document.getElementById('root')); root.render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
       <div style={{display:'flex'}}><nav style={{width:220,flex:'none'}}/><main style={{flex:1,minWidth:0,padding:24}}>
-        <Pool 行={行} 总数={3} 当前页={1} pageSize={20} 快捷数={快捷数} 属性数={{全部:3,线索池:0,商机池:0,订单池:0,客户池:3}} 截断={false} 库里有 filters={{keyword:'',attr:'',quick:'',sort:''}} 渠道筛选项={[]} 能标无效 能恢复={o.能恢复??true} 能分配 users={o.多人?[...users,...多(o.多人)]:users} 候选信息={o.候选信息} 无效原因选项={o.无效原因选项} 持有={o.持有??null} 三态开/>
+        <Pool 行={行} 总数={3} 当前页={1} pageSize={20} 快捷数={快捷数} 属性数={{全部:3,线索池:0,商机池:0,订单池:0,客户池:3}} 截断={false} 库里有 filters={{keyword:'',attr:'',quick:'',sort:''}} 渠道筛选项={[]} 能标无效 能恢复={o.能恢复??true} 能分配 users={o.多人?[...users,...多(o.多人)]:users} 候选信息={o.候选信息} 无效原因选项={o.无效原因选项} 持有={o.持有??null} 三态开 转走预览={o.转走?async(ids)=>{(window.__调.转走预览??=[]).push([ids]);await new Promise(r=>setTimeout(r,80));if(window.__预览==='坏')throw new Error('x');return window.__预览??{项目数:0,项目:[]}}:undefined}/>
       </main></div></BusinessProvider></App>); };
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
@@ -104,6 +104,56 @@ it("号码不全并进领取确认（不另弹框）", async () => {
     await r.getByRole("button", { name: "确认领取" }).waitFor();
     expect(await r.locator(".pool-why").innerText()).toContain("号码不全，领到后记得补全");
     expect(await page.getByRole("dialog").count()).toBe(0);
+  } finally { await page.close(); }
+});
+
+// 11-20 c2 实操：行内领客户不列名下会一起转走的项目（客户详情页领取前会列）。和详情页同一份数（转走项目预览of）、同一种列法（项目名一行一个，同事在推的只说个数）
+it.each([1024, 1280, 1366])("%ipx 行内领客户：原地确认里列出会一起转走的项目，长名字省略不撑出；没项目不列、数不出来不拦", async (w) => {
+  const { page, errors } = await open(w);
+  try {
+    const 长项目 = "超长项目名字".repeat(12);
+    await page.evaluate((长) => { const x = window as unknown as W; x.__预览 = { 项目数: 3, 项目: [{ name: 长, 客户: "蓝湾科技", 负责人: "线索公海" }, { name: "二期扩容", 客户: "蓝湾科技" }], 同事: { 项目数: 1 } }; x.__render({ 转走: true }); }, 长项目);
+    const r = 行(page, "c1");
+    await r.getByRole("button", { name: /^领取/ }).click();
+    await r.getByRole("button", { name: "确认领取" }).waitFor();
+    const 名单 = r.locator(".pool-carry");
+    await 名单.waitFor();
+    expect(await 调(page, "转走预览")).toBe(1);
+    expect(JSON.parse(await page.evaluate(() => JSON.stringify((window as unknown as W).__调.转走预览[0])))).toEqual([["c1"]]);
+    const 字 = await 名单.innerText();
+    expect(字).toContain("会一起转走的 3 个项目");
+    expect(字).toContain("二期扩容（蓝湾科技）");
+    expect(字).toContain("线索公海");
+    expect(字).toContain("有 1 个同事在推的项目");
+    // 项目名一行一个、放不下省略：每一项不比名单宽，整页不横滚
+    expect(await 名单.locator("li").evaluateAll((ls) => ls.every((l) => l.scrollWidth >= l.clientWidth && l.getBoundingClientRect().right <= l.parentElement!.getBoundingClientRect().right + 1))).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `宽 ${w}`).toBe(true);
+    // 确认键照旧在屏里点得到（名单长在名字那一格下面，不挤操作格）
+    const 键 = r.getByRole("button", { name: "确认领取" });
+    expect(await 键.evaluate((el) => { const b = el.getBoundingClientRect(); const 顶 = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return b.right <= innerWidth && (el === 顶 || el.contains(顶)); })).toBe(true);
+    await 键.click();
+    await expect.poll(() => 调(page, "领取")).toBe(1);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("行内领客户：名下没有会一起走的项目不列；预览取不到也不拦领取；项目行、没给预览的不去取", async () => {
+  const { page, errors } = await open();
+  try {
+    await page.evaluate(() => { const x = window as unknown as W; x.__预览 = { 项目数: 0, 项目: [] }; x.__render({ 转走: true }); });
+    let r = 行(page, "c1");
+    await r.getByRole("button", { name: /^领取/ }).click();
+    await r.getByRole("button", { name: "确认领取" }).waitFor();
+    await expect.poll(() => 调(page, "转走预览")).toBe(1);
+    await page.waitForTimeout(150);
+    expect(await r.locator(".pool-carry").count()).toBe(0);
+    await r.getByRole("button", { name: "取消" }).click();
+    await page.evaluate(() => { (window as unknown as W).__预览 = "坏"; });
+    r = 行(page, "c2");
+    await r.getByRole("button", { name: /^领取/ }).click();
+    await r.getByRole("button", { name: "确认领取" }).click();
+    await expect.poll(() => 调(page, "领取")).toBe(1);
+    expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
 

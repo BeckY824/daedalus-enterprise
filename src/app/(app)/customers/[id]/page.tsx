@@ -28,7 +28,9 @@ import { 只读原因of, 只读横幅 } from "@/lib/enterprise/readonly-reason";
 import { getBusiness } from "@/lib/business";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 字段权限of, 客户列字段 } from "@/lib/enterprise/field-perm";
-import { 能管公海, 能转出自己的, 能放回客户公海, 只读角色, 能新建和领取, 转自己客户要申请 } from "@/lib/enterprise/permissions";
+import { 能管公海, 能转出自己的, 能放回客户公海, 只读角色, 能新建和领取, 转自己客户要申请, 能恢复, 能领公海 } from "@/lib/enterprise/permissions";
+import { 公海别线的 } from "@/lib/enterprise/pool-line-guard";
+import { 恢复有效客户 } from "../../pool/actions";
 import { 客户在市场手里 } from "@/lib/enterprise/market-transfer";
 import { 页面可自动分配, 暂不分配项目of, 市场分配限指定 } from "@/lib/enterprise/cust-auto-assign";
 import { 客户默认分配方向 } from "@/lib/enterprise/assign-direction-db";
@@ -290,7 +292,11 @@ export default async function CustomerDetailPage({
       })() : undefined}
       只能看的格={await 只能看的格P}
       管理员只读={企 && 只读角色(me, await 权限组织())}
-      能领={!企 || 能新建和领取(me, await 权限组织())}
+      // 摆不摆可点的「领取」（含无效客户灰着的领取和「要先恢复」那句）：和服务端 领取 同一把尺（能领公海：市管、渠运、项目组员、只看某人的都不摆，审查 29A）
+      能领={!企 || 能领公海(me, await 权限组织())}
+      // 公海回收站里的无效客户：系统管理员、回收站副手在详情页也能「恢复」（同公海列表 P-界面-44）；设了业务线的副手只恢复本线的（P-公海-07，服务端另拦）
+      恢复无效={企 && !!customer.pool && !!customer.poolInvalidAt && 能恢复(me, await 权限组织())
+        && !(await 公海别线的(prisma, me, await 权限组织(), { 客户: [customer.id] })).客户.length ? 恢复有效客户 : undefined}
       能新建项目={!企 || 能新建和领取(me, await 权限组织())}
       能改沟通={可改沟通}
       能删沟通={可删沟通}
@@ -355,7 +361,8 @@ export default async function CustomerDetailPage({
         salesOwnerName: 负责人显示名(customer.salesOwner.name),
         signedAmount: customer.contracts.reduce((a, c) => a + 签约金额(c), 0),
         signedTotals: 签约合计(customer.contracts),
-        pool: customer.pool ? { reason: customer.pool.reason } : null,
+        // 标了无效（公海回收站，P-公海-09）：详情页和公海列表一样摆「无效」标、领取灰着（M-权限-03 无效客户不能领）
+        pool: customer.pool ? { reason: customer.pool.reason, ...(企 && customer.poolInvalidAt ? { 无效: true } : {}) } : null,
         // WhatsApp 也是号码：共享试用区和电话一样打码
         extra: (() => { const x = 取档案(customer.extra); return { ...x, whatsapp: x.whatsapp && 号(x.whatsapp) }; })(),
         updatedAt: customer.updatedAt.toISOString(),
