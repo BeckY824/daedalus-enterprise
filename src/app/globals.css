@@ -2429,19 +2429,27 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .prop-list { margin-top: 12px; margin-left: 20px; display: flex; flex-direction: column; gap: 8px; }
 /* 建议卡没确认之前是铅笔：虚线框、「AI 草稿」字样也是虚线。确认之后换成 .prop-done 的墨水 */
 .prop { border: 1px var(--draft) var(--pencil); border-radius: var(--r-card); background: var(--panel); padding: 12px 14px; }
-.prop-h { display: flex; align-items: baseline; gap: 8px; }
+/* 卡头一行（11-04 全站一行规矩，11-20 补到 AI 卡）：长项目名 / 客户名放不下「…」，悬停 TruncTip 看全文 */
+.prop-h { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .prop-tag { flex: none; font-size: var(--fs-min); color: var(--pencil-text); border: 1px var(--draft) var(--pencil); border-radius: var(--r-ctl); padding: 0 6px; }
-.prop-t { color: var(--ink); font-weight: 500; font-size: var(--fs-body); }
+.prop-t { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-weight: 500; font-size: var(--fs-body); }
 .prop-why { margin-top: 6px; color: var(--text-muted); font-size: var(--fs-note); line-height: 1.6; }
 .prop-body { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px 16px; }
-.prop-f { display: flex; align-items: center; gap: 8px; }
+/* 一格不许把卡撑宽（窄屏 375）：值放不下在格里「…」，不顶出卡外被裁掉 */
+.prop-f { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
+.prop-f-v { min-width: 0; }
+/* 删回款卡「删除」那格：删了不能恢复，日期、金额、项目名整句折行看全（不截，11-20 审查） */
+.prop-f-wrap { white-space: normal; overflow-wrap: anywhere; word-break: normal; }
+.prop-f > .ant-input, .prop-f > .ant-select, .prop-f > .ant-picker, .prop-f > .amount-text { min-width: 0; max-width: 100%; }
 .prop-f-block { flex-basis: 100%; align-items: flex-start; }
 .prop-f-block > *:last-child { flex: 1; }
 /* 整行的多选（AI 卡的阻碍原因）：占满剩下的宽，长标签不把卡撑宽 */
 .prop-f-block > .ant-select { min-width: 0; }
-/* AI 记沟通卡「关联项目」（11-17 沟通必须挂项目）：下拉定宽、只一个时项目名长了折行 */
+/* AI 记沟通卡「关联项目」（11-17 沟通必须挂项目）：下拉定宽；只一个时项目名一行，放不下「…」悬停看全文（11-20 改，原来折行） */
 .prop-proj-pick { width: 200px; max-width: 100%; }
-.prop-proj-one { overflow-wrap: anywhere; }
+.prop-proj-one { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* AI 项目卡「选哪一个」：占满这一行，选中的长名字在框里「…」，悬停（原生 title）看全文 */
+.prop-pick { width: 100%; min-width: 0; }
 .prop-f-l { flex: none; font-size: var(--fs-note); color: var(--text-muted); }
 /* 认图没把握的格：黄标，点掉 = 核对过 */
 .prop-f-wait { flex: none; font-size: var(--fs-min); color: var(--warning-text); background: var(--warning-bg); border: 1px solid var(--warning-line); border-radius: var(--r-ctl); padding: 0 6px; cursor: pointer; }
@@ -2499,6 +2507,8 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 */
 .prop-done { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; border: 1px solid var(--ink-soft); background: var(--panel); border-radius: var(--r-card); padding: 8px 12px; color: var(--ink); font-size: var(--fs-note); }
 .prop-done-t { flex: 1 1 180px; min-width: 0; }
+/* 落印下面一行：顺带按必填推了一格、推到哪（11-20）。回执句子，同其它回执折行（手机上没有悬停，截了就看不全） */
+.prop-done-push { flex-basis: 100%; min-width: 0; color: var(--text-muted); overflow-wrap: anywhere; }
 .prop-seal { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 0 7px; line-height: 20px; border: 1.5px solid var(--seal); border-radius: var(--r-ctl); color: var(--seal); font-size: var(--fs-min); font-weight: 600; letter-spacing: .04em; font-variant-numeric: tabular-nums; rotate: -2deg; }
 .prop-seal.is-new { animation: prop-seal var(--t-seal) var(--ease-spring) both; }
 @keyframes prop-seal { from { opacity: 0; transform: scale(1.35); } to { opacity: 1; transform: none; } }
@@ -4928,6 +4938,8 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 .ov-rc-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
 .ov-rc-left { flex: none; font-size: var(--fs-min); color: var(--warning-text); background: var(--warning-bg); border-radius: 999px; padding: 0 8px; }
 .ov-rc-left.is-late { color: var(--danger-text); background: var(--danger-bg); }
+/* 记了沟通、顺带按必填推了一格（11-20）：行下面一句。回执句子折行看全（手机上没有悬停），同 AI 卡落印下那一行 */
+.ov-rc-pushed { font-size: var(--fs-min); color: var(--text-muted); padding: 0 0 2px; overflow-wrap: anywhere; }
 .ov-rc-log, .ov-rc-cancel { flex: none; border: 0; background: none; padding: 0; font: inherit; font-size: var(--fs-note); color: var(--brand); cursor: pointer; }
 .ov-rc-cancel { color: var(--text-muted); }
 .ov-rc-form { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; padding: var(--s2) 0 var(--s3); }

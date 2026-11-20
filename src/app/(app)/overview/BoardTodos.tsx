@@ -9,6 +9,7 @@ import SaveButton from "@/components/SaveButton";
 import { useFormDraft } from "@/components/FormDraft";
 import BusinessDatePicker from "@/components/BusinessDatePicker";
 import { 记项目沟通Action } from "../projects/actions";
+import { 自动推进话of } from "@/lib/project/auto-advance-text";
 import FollowMethodSelect, { useHabitDefault } from "@/components/FollowMethodSelect";
 import { 跟进类型们 } from "@/lib/constants";
 import type { 预警行 } from "@/lib/project/review-extras";
@@ -422,6 +423,8 @@ function RecycleProjectRow({ p }: { p: 预警行 }) {
   const [内容, set内容] = useState("");
   const [下一步, set下一步] = useState("");
   const [下一步时间, set下一步时间] = useState(() => dayjs().add(3, "day"));
+  /** 记上了、顺带按必填把节点推了一格：框收起后在这一行下面说推到哪（不悄悄推，11-20）；再点「记一条沟通」清掉 */
+  const [推话, set推话] = useState<string | null>(null);
   /** 沟通方式由人选（同项目详情 / 完成计划小框那一套），不替人写死；打开时按个人习惯默认（11-18），人改过的不盖 */
   const [类型, set类型] = useState("PHONE");
   const [方式, set方式] = useState<string | null>(null);
@@ -437,6 +440,7 @@ function RecycleProjectRow({ p }: { p: 预警行 }) {
       阶段: p.阶段, 下一步, 下一步时间: 下一步时间 ? 下一步时间.format("YYYY-MM-DD") : null,
     });
     if (!r.ok) return { ok: false, error: "error" in r ? r.error : "没记上，请刷新后重试" };
+    set推话(自动推进话of(r));
     return { ok: true };
   }
   return (
@@ -445,9 +449,10 @@ function RecycleProjectRow({ p }: { p: 预警行 }) {
         <Link href={`/projects/${p.id}`} className="ov-rc-name" title={p.名}>{p.名}</Link>
         <span className={`ov-rc-left${剩 <= 1 ? " is-late" : ""}`}>{剩 === 0 ? "今天收回" : `还剩 ${剩} 天`}</span>
         {!记 && (
-          <button type="button" className="ov-rc-log" onClick={() => set记(true)}>记一条沟通</button>
+          <button type="button" className="ov-rc-log" onClick={() => { set推话(null); set记(true); }}>记一条沟通</button>
         )}
       </div>
+      {!记 && 推话 && <div role="status" className="ov-rc-pushed">{推话}</div>}
       {记 && (
         <div className="ov-rc-form">
           {稿.提示}

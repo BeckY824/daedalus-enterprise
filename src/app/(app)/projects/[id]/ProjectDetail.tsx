@@ -12,6 +12,7 @@ import { useMotionTheme } from "@/components/MotionTheme";
 import { 少动 } from "@/lib/reduced-motion";
 import { useConsequence } from "@/components/ConsequenceDialog";
 import { showUndo } from "@/components/UndoBar";
+import { 自动推进话of } from "@/lib/project/auto-advance-text";
 import { 其他没写好, 不填项, 去不填, 未选占位 } from "@/lib/enterprise/dict-kinds";
 import { 有值, 空值符, 空显 } from "@/lib/empty-value";
 import { 公海规则, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
@@ -170,6 +171,7 @@ export type 项目详情 = {
    * 企业版（10-29 P6）：项目来源 = 项目自己选的渠道（没选 = 跟客户来源走，null = 客户也没有）；已立项天数从建项目那天按自然日数；
    * 渠道们 = 能改时编辑框里选项目来源用的；aiEnabled = 「记一条沟通」里给不给 AI 解析（没配模型不给）。不是企业版都不传
    */
+  /** name 空 = 跟客户来源、但这位客户我看不到：只写「随客户来源」，不露渠道名（11-20 总控判定：只露有无，不露来源值） */
   项目来源?: { name: string; 跟客户: boolean } | null; channelId?: string | null; 已立项天数?: number; 渠道们?: 可选渠道[]; aiEnabled?: boolean;
   /** 数据来源（迁移 151）：历史沟通分析回填的项目是「历史分析」，显示成标签；正常建的不传、不摆这一行 */
   数据来源?: string;
@@ -726,14 +728,21 @@ export default function ProjectDetail({
       return;
     }
     // 完成节点往前推一步（dt.stage，P-界面-40「推进节点可撤销」）：不弹顶部提示，底部撤销条，撤销 = 改回原来那个节点
+    /*
+      撤销回到服务端回的「改之前」（原），不按页面上可能过时的那份；带「期望现在在哪」= 刚推到的这一格，推完又被人改过就不撤（说一句）；
+      完成节点清掉的下一步一起带回（11-20 审查）。老服务端没回 原 时照旧按页面那份
+    */
     if (附.可撤) {
-      const 原: 位置 = { phase: p.phase, node: p.node, result: p.result ?? null };
-      void 跑(() => 改项目节点(p.id, 到)).then((ok) => {
+      const 页上: 位置 = { phase: p.phase, node: p.node, result: p.result ?? null };
+      const 回: { r?: Awaited<ReturnType<typeof 改项目节点>> } = {};
+      void 跑(async () => (回.r = await 改项目节点(p.id, 到))).then((ok) => {
         if (!ok) return;
+        const 原 = 回.r && "原" in 回.r && 回.r.原 ? 回.r.原 : null;
+        const 回到: 位置 = 原 ? { phase: 原.phase, node: 原.node, result: 原.result } : 页上;
         showUndo({
           话: 附.成了 ?? `已改到 ${位置文字(到, 字典)}`,
           撤销: async () => {
-            const r = await 改项目节点(p.id, 原);
+            const r = await 改项目节点(p.id, 回到, null, { 期望在: 到, ...(原 ? { 下一步: { 文字: 原.下一步文字, 时间: 原.下一步时间 } } : {}) });
             router.refresh();
             return r;
           },
@@ -1340,7 +1349,7 @@ export default function ProjectDetail({
             名="项目来源"
             值={p.channelId ?? null}
             能改={能就地改 && !!p.渠道们 && !p.channelId}
-            显示={() => <span className="proj-one">{p.项目来源 ? <>{p.项目来源.name}{p.项目来源.跟客户 && <span style={{ color: "var(--text-muted)" }}>（同{b.customer}来源）</span>}</> : 待填("项目来源")}</span>}
+            显示={() => <span className="proj-one">{p.项目来源 ? p.项目来源.name ? <>{p.项目来源.name}{p.项目来源.跟客户 && <span style={{ color: "var(--text-muted)" }}>（同{b.customer}来源）</span>}</> : <span className="muted">随{b.customer}来源</span> : 待填("项目来源")}</span>}
             存={(v) => 存项目项({ channelId: v })}
             编辑器={({ 草稿, 提交, 忙 }) => (
               <ChannelPicker aria-label="项目来源" channels={p.渠道们 ?? []} value={草稿} disabled={忙} allowClear={false} placeholder="补一次项目来源，补了就不能改" style={{ width: "100%" }} onChange={(v) => { if (v) 提交(v); }} />
@@ -2422,7 +2431,33 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
         if (错.length) { 话们.push(...错); 调 = "error"; }
         router.refresh();
       }
+      /*
+        这条沟通顺带按必填把节点推了一格（画像等早就齐了、这次记沟通才推，#370）：不悄悄推，说推到哪（11-20）。
+        P-界面-40「推进节点可撤销」：同阶段内（自动推本来就不跨阶段）、我能改节点 → 底部撤销条，撤销 = 改回记之前那个节点（同「完成节点」的撤销）；
+        撤不了的写进回执。沟通本身不撤（P-沟通-01）
+      */
+      /*
+        撤销回到服务端回的推之前那一格（推前），不按页面上可能过时的那份；带「期望现在在哪」= 刚推到的那一格，推完又被人改过就不撤；
+        推进清掉的下一步（这次没写下一步时清的是旧的）一起带回。没回推前（老服务端）：按页面那份回，话里写明下一步要重写（11-20 审查）
+      */
+      const 推话 = 自动推进话of(r);
+      const 推前 = "推前" in r && r.推前 ? r.推前 : null;
+      const 回到: 位置 = 推前 ? { phase: 推前.phase, node: 推前.node, result: null } : { phase: p.phase, node: p.node, result: p.result ?? null };
+      const 推到 = "自动推到" in r && r.自动推到?.length ? r.自动推到[r.自动推到.length - 1] : null;
+      const 期望在: 位置 | null = 推到 ? { phase: 回到.phase, node: 推到, result: null } : null;
+      const 能撤 = !!推话 && !!期望在 && p.能改节点 && !p.pooled && !p.result;
+      if (推话 && !能撤) 话们.push(推话);
       回执[调](话们.join("；"));
+      if (推话 && 能撤 && 期望在) {
+        showUndo({
+          话: 推前 ? 推话 : `${推话}（撤销后下一步要重写）`,
+          撤销: async () => {
+            const u = await 改项目节点(p.id, 回到, null, { 期望在, ...(推前 ? { 下一步: { 文字: 推前.下一步文字, 时间: 推前.下一步时间 } } : {}) });
+            router.refresh();
+            return u;
+          },
+        });
+      }
     }
     set交中(false);
     if (ok) 关();
