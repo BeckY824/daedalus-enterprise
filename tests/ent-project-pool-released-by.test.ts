@@ -24,12 +24,13 @@ describe("项目在公海：放回的是我", () => {
     prisma.projectNodeLog.create({ data: { projectId: 项目, userId, at, kind: "pool-release", fromOwnerId, toPhase: "线索", toNode: "初次接触", reason } });
   const 领回 = (userId: string, at: Date) =>
     prisma.projectNodeLog.create({ data: { projectId: 项目, userId, at, kind: "pool-claim", toOwnerId: userId, toPhase: "线索", toNode: "初次接触" } });
-  const 看 = async (谁: string) => {
+  const 详 = async (谁: string) => {
     mocks.user = { ...mocks.user, id: 谁 };
     const r = await 读项目详情(mocks.user as never, 项目);
     if (r.种 !== "有") throw new Error(`没读到项目：${r.种}`);
-    return r.props.p.放回的是我;
+    return r.props.p;
   };
+  const 看 = async (谁: string) => (await 详(谁)).放回的是我;
   const 天前 = (n: number) => new Date(Date.now() - n * 86400_000);
 
   beforeEach(async () => {
@@ -52,6 +53,8 @@ describe("项目在公海：放回的是我", () => {
     await prisma.projectNodeLog.createMany({ data: Array.from({ length: 210 }, (_, i) => ({ projectId: 项目, userId: 甲, at: new Date(后 + i * 1000), kind: "member", toPhase: "线索", toNode: "初次接触" })) });
     expect(await 看(乙)).toBe(true);
     expect(await 看(甲)).toBe(false);
+    // 页头「Y 放回的」也认这一条（复审 29A：原来从只取 200 条的 p.logs 找，找不到就整段不写）
+    expect((await 详(甲)).进公海).toEqual({ 方式: "手动", 谁: "乙" });
   });
 
   // 原负责人自己看不到公海里自己放的项目（回避），这里放回的都是替丙放的上级 / 管理
@@ -71,10 +74,12 @@ describe("项目在公海：放回的是我", () => {
   it("系统超时收回：谁看都不是「我放回的」", async () => {
     await 放回("system", 丙, 天前(3), 超时理由);
     expect(await 看(甲)).toBe(false);
+    expect((await 详(甲)).进公海?.方式).toBe("超时");
     expect(await 看(乙)).toBe(false);
   });
 
   it("没留痕的老数据（企业版负责人已清空）：不算我", async () => {
     expect(await 看(乙)).toBe(false);
+    expect((await 详(乙)).进公海).toBeNull();
   });
 });

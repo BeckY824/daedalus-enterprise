@@ -130,7 +130,10 @@ describe("客户页记沟通", () => {
     await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 同事, poolInvalidAt: new Date() } });
     await prisma.customerPool.create({ data: { customerId: 客户, reason: "手动", userId: 同事 } });
     expect(await 记()).toEqual({ ok: false, error: 无效客户不能记沟通话 });
-    expect(await 记({ projectId: 项.id })).toEqual({ ok: false, error: 无效客户不能记沟通话 });
+    // 带了项目、项目不行（在公海里）：照原话说是这个项目的问题
+    const 带项目 = await 记({ projectId: 项.id });
+    expect(带项目).toMatchObject({ ok: false });
+    expect((带项目 as { error: string }).error).not.toBe(无效客户不能记沟通话);
     expect(await 记({ type: "OTHER", content: "随手记" })).toEqual({ ok: false, error: 无效客户不能记沟通话 });
     expect(await prisma.followUp.count({ where: { customerId: 客户 } })).toBe(0);
     expect(await prisma.customerPool.count({ where: { customerId: 客户 } })).toBe(1);
@@ -155,6 +158,17 @@ describe("客户页记沟通", () => {
     const 客 = await prisma.customer.findUniqueOrThrow({ where: { id: 客户 } });
     expect(客.salesOwnerId).toBe(同事);
     expect(客.poolInvalidAt).not.toBeNull();
+  });
+
+  // 复审 29A：我名下两个在推项目留在原处，不选项目记沟通——是「请选一个」，不是「无效不能记」
+  it("标了无效的公海客户、我名下两个在推项目留在原处、没选：照旧说请选一个关联项目", async () => {
+    await 项目({ ownerId: 我 });
+    await 项目({ ownerId: 我 });
+    await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 同事, poolInvalidAt: new Date() } });
+    await prisma.customerPool.create({ data: { customerId: 客户, reason: "手动", userId: 同事 } });
+    expect(await 记()).toEqual({ ok: false, error: 沟通要选项目话 });
+    expect(await prisma.followUp.count({ where: { customerId: 客户 } })).toBe(0);
+    expect(await prisma.customerPool.count({ where: { customerId: 客户 } })).toBe(1);
   });
 
   it("标了无效的公海客户：待办 / 提醒、背调存档照旧能存（只挂客户），不领客户", async () => {

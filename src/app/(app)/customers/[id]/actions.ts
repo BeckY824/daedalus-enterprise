@@ -342,8 +342,10 @@ export async function saveFollowUp(input: FollowUpInput) {
       const 定 = await 定沟通挂哪个项目(user, input.customerId, 给的项目);
       // 组员来记：没有我能记的在推项目 = 这位客户我只能看，照旧说只读（不叫他去建项目）；几个要选、选的不行照说
       if (!定.ok && 组员来记 && (定.没项目 || 定.error === 沟通都不能记话)) return { ok: false as const, error: await 只读话(defaultClient) };
-      if (!定.ok && 无效要拦) return { ok: false as const, error: 无效客户不能记沟通话 };
-      if (!定.ok) return { ok: false as const, error: 在公海 && !给的项目 ? 沟通客户在公海话 : 定.error, ...(定.没项目 ? { 没项目: true as const } : {}) };
+      // 确实没有我能记的在推项目才换成无效那句；「请选一个关联项目」、带了项目但这个项目不行的照原话说
+      if (!定.ok && 无效要拦 && !给的项目 && (定.没项目 || 定.error === 沟通都不能记话)) return { ok: false as const, error: 无效客户不能记沟通话 };
+      // 公海客户没选项目说「先领取再选」；标了无效的领不了，不叫他去领，照原话（如「请选一个关联项目」）
+      if (!定.ok) return { ok: false as const, error: 在公海 && !给的项目 && !无效公海 ? 沟通客户在公海话 : 定.error, ...(定.没项目 ? { 没项目: true as const } : {}) };
       挂到 = 定.projectId;
     }
     if (组员来记 && !挂到) return { ok: false as const, error: await 只读话(defaultClient) };
