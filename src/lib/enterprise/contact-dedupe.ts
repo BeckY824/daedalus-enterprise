@@ -32,7 +32,7 @@ import { 看全部, 看得到, 限定的我, 只读错误, 现在的公海回避
 import { 公海客户原负责人是 } from "@/lib/owner-log-db";
 import { 问同事 } from "@/lib/sync/dedupe-client";
 import { 查重提示, 验号码, type 号码类型 } from "./contact-format";
-import { 通号种类, 号键变体, 通号键, 撞号怎么办 } from "./customer-v2";
+import { 通号种类, 号键变体, 通号键, 撞号怎么办, 回收站话 } from "./customer-v2";
 import { 全角转半角 } from "@/lib/fullwidth";
 import { 号码归属地 } from "./phone-region";
 import { 拦原负责人 } from "./pool-rules";
@@ -338,7 +338,7 @@ function 捞回用的号(行: { kind: string; value: string; numberKey: string }
   return { 类型: "微信", 值: 原 };
 }
 /** 联系人表单撞了回收站里的号：拦下，提示里给「从回收站捞回」 */
-export const 联系人回收站撞话 = "这个号码在回收站里的客户上，本次没保存，可以从回收站捞回";
+export const 联系人回收站撞话 = 回收站话(false);
 
 /** 回收站里撞了的提示（客户 11-05（X-10）；11-05 客户回复「可以捞回且只有查重触发时可以捞回」，原文是我们拟的） */
 export const 回收站里有提示 = "这个号码在回收站里，本次录入已拦截，可以从回收站捞回";

@@ -823,11 +823,13 @@ export async function 联系人号码先查(号码们: { kind: string; value: st
     if (撞了.length) return { ok: true, 撞了 };
     /*
       在用的没撞、回收站里撞了（11-20 3703 实操）：失焦就说、给捞回，同建档向导（原来要点保存才拦）。
-      同 saveContact：编辑时这位原来就有的号不算（原来就记着的号不因回收站里有而叫人捞）
+      同 saveContact：编辑时这位原来就有的号不算（原来就记着的号不因回收站里有而叫人捞）。
+      读原有号包 看全部：只负责项目的人看不到客户，带限定读回 null，原有号会被当新号误报回收站（受限详情保存那边用 看全部 能存）；
+      读到的只拿来排除，不回前端
     */
     const 原有 = new Set<string>();
     if (除了) {
-      const 原 = await prisma.contact.findUnique({ where: { id: 除了 }, select: { phone: true, email: true, wechat: true, contactMethods: { select: { kind: true, numberKey: true } } } });
+      const 原 = await 看全部(() => prisma.contact.findUnique({ where: { id: 除了 }, select: { phone: true, email: true, wechat: true, contactMethods: { select: { kind: true, numberKey: true } } } }));
       for (const x of 原?.contactMethods ?? []) 原有.add(`${x.kind}|${x.numberKey}`);
       if (原?.phone) 原有.add(`phone|${号键(原.phone)}`);
       for (const [kind, v] of [["email", 原?.email], ["wechat", 原?.wechat]] as const) if (v?.trim()) 原有.add(`${kind}|${v.trim().toLowerCase()}`);

@@ -10,7 +10,7 @@ import SaveButton from "@/components/SaveButton";
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import DatePicker from "@/components/BusinessDatePicker";
 import { dayjs } from "@/lib/utils";
-import { 性别们, 爱好上限, 联系人地址上限, 号码上限, 每人最多号码, 联系人姓名问题, 姓名号码至少一项, 撞号怎么办 } from "@/lib/enterprise/customer-v2";
+import { 性别们, 爱好上限, 联系人地址上限, 号码上限, 每人最多号码, 联系人姓名问题, 姓名号码至少一项, 撞号怎么办, 回收站话 } from "@/lib/enterprise/customer-v2";
 import { saveContact, saveUnassignedContact, 联系人号码先查 } from "./actions";
 import { 挂到客户 } from "./contact-link-actions";
 import RescueKey from "../RescueKey";
@@ -170,9 +170,10 @@ export default function ContactForm({
     if (!们.length) return;
     const r = await 联系人号码先查(们, record?.id ?? null, customerId ?? null).catch(() => null);
     if (序 !== 查序.current || !r?.ok) return;
-    if (r.撞了.length) { set撞号(r.撞了); set先查的(true); }
+    // 两条黄条只摆一条（复审 #384）：撞了收起回收站那条，回收站有收起撞号那条
+    if (r.撞了.length) { set回收站号(null); set撞号(r.撞了); set先查的(true); }
     // 回收站里有（11-20 3703 实操）：失焦就摆「从回收站捞回」，同建档向导，不等点保存
-    else if (r.回收站) { set回收站号(r.回收站); set先查的(true); }
+    else if (r.回收站) { set撞号(null); set回收站号(r.回收站); set先查的(true); }
   }
   // 重新打开框时收起上次的黄条（渲染时比对，不放进 effect 里 setState）
   const [上次开着, set上次开着] = useState(open);
@@ -232,8 +233,8 @@ export default function ContactForm({
     const r = await (存法 ?? saveContact)({ id: record?.id, 版本: record?.updatedAt, ...(企业 ? { ...其余, name: typeof 其余.name === "string" ? 其余.name : "" } : v), isPrimary: Boolean(v.isPrimary), customerId: 归属, ...(企业资料 ? { 企业: 企业资料 } : {}) } as Parameters<typeof saveContact>[0]);
     // 原来不看返回值：联系人刚被别人移出、或电话不收时，弹框卡在那儿什么也不说（排查 D8）
     if (!r.ok) {
-      if ("撞了" in r && r.撞了?.length) { set先查的(false); set撞号(r.撞了); return { ok: false, error: "号码撞了，看框顶上" }; }
-      if ("回收站" in r && r.回收站) { set先查的(false); set回收站号(r.回收站); return { ok: false, error: "号码在回收站里，看框顶上" }; }
+      if ("撞了" in r && r.撞了?.length) { set先查的(false); set回收站号(null); set撞号(r.撞了); return { ok: false, error: "号码撞了，看框顶上" }; }
+      if ("回收站" in r && r.回收站) { set先查的(false); set撞号(null); set回收站号(r.回收站); return { ok: false, error: "号码在回收站里，看框顶上" }; }
       return { ok: false, error: r.error };
     }
     守.存好了();
@@ -281,7 +282,8 @@ export default function ContactForm({
           showIcon
           className="cf-trash-hit"
           data-testid="contact-trash-hit"
-          message={先查的 ? "这个号码在回收站里的客户上，先捞回或改号码" : "这个号码在回收站里的客户上，本次没保存"}
+          // 号码全公司唯一：捞回后号码记在捞回的那位客户身上，这位联系人照样存不下，所以不说「捞回就能存」（复审 #384）
+          message={回收站话(先查的)}
           description={<RescueKey 类型={回收站号.类型} 值={回收站号.值} 捞回了={() => {}} />}
         />
       )}

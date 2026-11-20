@@ -167,13 +167,46 @@ it("号码在回收站里（11-20 3703 实操）：失焦就摆「从回收站�
     await page.getByLabel("姓名").click();
     const 条 = page.getByTestId("contact-trash-hit");
     await 条.waitFor();
-    expect(await 条.innerText()).toContain("这个号码在回收站里的客户上，先捞回或改号码");
+    // 不说「捞回就能存」：号码全公司唯一，捞回后号码记在那位客户身上（复审 #384）
+    expect(await 条.innerText()).toContain("这个号码在回收站里的客户上。号码全公司唯一：改号码，或从回收站捞回那位客户");
+    expect(await 条.innerText()).not.toContain("本次没保存");
     await 条.getByTestId("rescue-from-trash").waitFor();
     // 还没点保存
     expect(await page.evaluate(() => Reflect.get(window, "__存") ?? [])).toEqual([]);
     await page.getByPlaceholder(/号码/).first().fill("13900000010");
     await 条.waitFor({ state: "detached" });
   } finally { await page.close(); }
+});
+
+it("撞号黄条和回收站黄条只摆一条（复审 #384）：失焦回收站后点保存撞了 → 只剩撞号；失焦撞了后点保存回收站 → 只剩回收站", async () => {
+  const 撞 = [{ contactId: "p1", name: "张三", customerId: "k1", customerName: "甲公司", 同事: "销售", kind: "phone", value: "13900000001" }];
+  const page = await open("__表单");
+  try {
+    await page.evaluate(() => { Reflect.set(window, "__先查回收站", { 类型: "手机号", 值: "13900000001" }); });
+    await page.getByLabel("姓名").fill("李四");
+    await page.getByPlaceholder(/号码/).first().fill("13900000001");
+    await page.getByLabel("姓名").click();
+    await page.getByTestId("contact-trash-hit").waitFor();
+    await page.getByRole("button", { name: /^保\s?存$/ }).click();
+    await page.getByTestId("contact-dup-advice").waitFor();
+    expect(await page.getByTestId("contact-trash-hit").count()).toBe(0);
+    expect(await page.locator(".ant-alert-warning").count()).toBe(1);
+  } finally { await page.close(); }
+
+  const p2 = await open("__回收站");
+  try {
+    await p2.evaluate((x) => { Reflect.set(window, "__先查撞", x); }, 撞);
+    await p2.getByLabel("姓名").fill("李四");
+    await p2.getByPlaceholder(/号码/).first().fill("13900000001");
+    await p2.getByLabel("姓名").click();
+    await p2.getByTestId("contact-dup-advice").waitFor();
+    await p2.getByRole("button", { name: /^保\s?存$/ }).click();
+    const 条 = p2.getByTestId("contact-trash-hit");
+    await 条.waitFor();
+    expect(await p2.getByTestId("contact-dup-advice").count()).toBe(0);
+    expect(await p2.locator(".ant-alert-warning").count()).toBe(1);
+    expect(await 条.innerText()).toContain("这个号码在回收站里的客户上，本次没保存。号码全公司唯一：改号码，或从回收站捞回那位客户");
+  } finally { await p2.close(); }
 });
 
 it("挂靠一段：挂来的摆主客户和说明、能解除不能换；自家的摆也挂在、看不到的不给链接；只读不给按钮", async () => {
