@@ -1982,7 +1982,7 @@ export default function ProjectDetail({
         <Alert type="warning" showIcon style={提示条下距} data-testid="proj-customer-held" title={客户在谁名下话(p.客户在谁名下)} description={`这条线索是系统转给你的（超时未跟进自动转，或同事主动放弃），客户不在你名下；跟进前先和 ${p.客户在谁名下} 通个气，别两个人同时跟同一位客户`} />
       )}
 
-      {p.放弃 && <GiveUpBanner projectId={p.id} 入口={p.放弃} />}
+      {p.放弃 && <GiveUpBanner projectId={p.id} 入口={p.放弃} 打开判无效={p.线索验证 ? () => set验证开着(true) : undefined} />}
 
       {异常 && (
         <Alert

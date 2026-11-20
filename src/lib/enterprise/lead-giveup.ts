@@ -3,7 +3,9 @@
  *
  * 谁、什么时候能点（全满足才出按钮）：
  *   - 组织规则「销售主动放弃线索（豁免）」开着（rules-table.ts，默认关；关着按钮不出现）
- *   - 点的人是这条线索的负责人、是销售（业务角色有 sales），不是切换视图、不是只读身份
+ *   - 点的人是这条线索的负责人、是这条线索流转线上的自动分配候选（assign-eta.ts 自动分配池，同自动分配、超时转挑人那一份：
+ *     销售；内贸线另含销售管理 P-转-34，外贸销售管理不参与；整组不进自动分配的部门不算），不是切换视图、不是只读身份。
+ *     能被自动分配 / 超时转 / 放弃转分到线索、被计时的人才给（3703 实操 r22：内贸纯销售管理原来接得到、计时，却没有按钮）
  *   - 线索阶段、没结局、不在公海（项目和客户都不在）、不在待分配、没删
  *   - 新分配给他的（lead-giveup-core.ts 新分配时刻：市场分配（自动 / 指定 / 定时）、超时转来的、别人主动放弃转来的），
  *     接手在往回 7 天里；超时转开着时到点就被转走了，所以实际就是「接手后、超时转到点前」
@@ -34,15 +36,18 @@ import type { SessionUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { 看全部 } from "@/lib/team-scope";
 import { 查完再写 } from "@/lib/check-then-write";
+import { 不刷新页面 } from "@/lib/revalidate-safe";
 import { 放弃转理由 } from "@/lib/project/timeout";
 import { 验证中不能改派 } from "@/lib/project/lead-verify-guard";
 import { 超时转出 } from "@/app/(app)/leads/assign-actions";
 import { 企业版 } from "./switch";
 import { 规则开着 } from "./rules";
+import { 自动分配池, 读线部门 } from "./assign-eta";
+import { 超时转的线 } from "./flow-line-core";
 import { 月份 } from "./lead-assign";
 import { 读组织于 } from "./org";
 import { 只读角色 } from "./permissions";
-import { 是销售, 负责人跟过的, 分配后沟通过的, 读试过, 本轮排除, 客户随线索, 超时提醒分钟, 客户在谁名下话, 放弃过的人, 会按超时计时 } from "./reply-overdue";
+import { 负责人跟过的, 分配后沟通过的, 读试过, 本轮排除, 客户随线索, 超时提醒分钟, 客户在谁名下话, 放弃过的人, 会按超时计时 } from "./reply-overdue";
 import { 超时转令牌 } from "./scheduled-assign-token";
 import { 系统操作人 } from "./scheduled-assign";
 import { 放弃待补种类, 是补发来的 } from "./invalid-makeup";
@@ -72,12 +77,16 @@ export async function 放弃资格(me: Pick<SessionUser, "id" | "视图由">, pr
   if (!企业版() || !me?.id || me.视图由 || !(await 主动放弃开着())) return null;
   return 看全部(async () => {
     const org = await 读组织于(prisma);
-    if (只读角色({ id: me.id }, org) || !是销售(org, me.id)) return null;
+    if (只读角色({ id: me.id }, org)) return null;
     const p = await prisma.project.findFirst({
       where: { id: projectId, deletedAt: null, ownerId: me.id, phase: "线索", result: null, pooledAt: null, awaitAssignAt: null, customer: { pool: null } },
-      select: { id: true, name: true, ownerId: true, creatorId: true, customerId: true, createdAt: true },
+      select: { id: true, name: true, ownerId: true, creatorId: true, customerId: true, createdAt: true, flowLine: true },
     });
     if (!p) return null;
+    // 本线自动分配候选（同超时转出：线 = 项目上存的流转线，没存按他所在事业部兜底；候选池同自动分配那一份）
+    const 设 = await 读线部门();
+    const 线 = 超时转的线(org, 设, p.flowLine, me.id);
+    if (!线 || !自动分配池(org, null, 线, 设).includes(me.id)) return null;
     const [痕们, 分配们] = await Promise.all([
       prisma.projectNodeLog.findMany({ where: { projectId, kind: { in: ["transfer", "pool-claim"] } }, select: { kind: true, userId: true, reason: true, toOwnerId: true, at: true } }),
       prisma.entLeadAssign.findMany({ where: { projectId }, select: { toUserId: true, byUserId: true, createdAt: true } }),
@@ -105,9 +114,22 @@ export type 放弃结果 = { ok: true; 接手人: string } | { ok: false; error:
 const 是唯一键冲突 = (e: unknown): boolean =>
   (e as { code?: string } | null)?.code === "P2002" || /UNIQUE constraint failed/i.test(String((e as Error | null)?.message ?? e));
 
-/** 转不出去时那句（明确告诉不扣次数、线索还在手上） */
-const 转不出去话 = (为什么: string, 挑不到: boolean) =>
-  `${挑不到 ? "这条转不出去" : "这条没转成"}：${为什么.replace(/。?(已留在新线索待分配|这条新线索留在原处)，可以手动指派$/, "")}。没扣本月放弃次数，线索还在你手上`;
+/** 节点记录里放弃转的那一行（最近一条转给 新、原因带 痕附 的）补成「…，原因：…，转给 Y」 */
+async function 补上接手人(projectId: string, 新: string, 痕附: string, 接手人: string): Promise<void> {
+  const 行 = await prisma.projectNodeLog.findFirst({
+    where: { projectId, kind: "transfer", toOwnerId: 新, reason: { contains: 痕附 } }, orderBy: { at: "desc" }, select: { id: true, reason: true },
+  });
+  if (!行?.reason) return;
+  await prisma.projectNodeLog.update({ where: { id: 行.id }, data: { reason: 行.reason.replace(痕附, `${痕附}，转给 ${接手人}`) } });
+}
+
+/** 只剩放弃过的人能接时那句（别说「都暂停或禁止了」：是放弃过的人不再分回） */
+const 只剩放弃过的话 = "本线其他人都不能接（放弃过的人不会再分回）";
+
+/** 转不出去时那句（明确告诉不扣次数、线索还在手上）；别人在这条上也放弃过、挑不到 = 只剩放弃过的人 */
+const 转不出去话 = (为什么: string, 挑不到: boolean, 别人放弃过 = false) => 挑不到 && 别人放弃过
+  ? `这条转不出去：${只剩放弃过的话}。没扣本月放弃次数，线索还在你手上`
+  : `${挑不到 ? "这条转不出去" : "这条没转成"}：${为什么.replace(/。?(已留在新线索待分配|这条新线索留在原处)，可以手动指派$/, "")}。没扣本月放弃次数，线索还在你手上`;
 
 /**
  * 点「放弃」：见文件头。成了回接手人名字；不成回原因，什么都不改（占的次数退掉）。从不抛
@@ -119,8 +141,9 @@ export async function 放弃线索(me: SessionUser, projectId: string, 原因: u
     if (!资格) return { ok: false, error: "这条线索现在不能放弃：只有新分配给你、你还没记有效沟通的线索能放弃（刷新看看）" };
     if (!资格.可) return { ok: false, error: 资格.为什么 ?? "这条线索现在不能放弃" };
     if (!认.ok) return 认;
-    // 挑人要数全组本月已分、读同事的参与状态：同超时转在钟上那样看全部，不按点的人的可见范围
-    return await 看全部(() => 放出去(me, 资格, 认, 现在));
+    // 挑人要数全组本月已分、读同事的参与状态：同超时转在钟上那样看全部，不按点的人的可见范围。
+    // 不刷新页面：转出走的 分项目给 会 revalidate，server action 里 revalidate 过 Next 就重画当前页，线索已转走 → 落「找不到」（3703 实操 r22）
+    return await 不刷新页面(() => 看全部(() => 放出去(me, 资格, 认, 现在)));
   } catch (e) {
     console.error(`[主动放弃] ${projectId} 出错`, e);
     return { ok: false, error: "这次没放弃成，刷新看看再点" };
@@ -147,21 +170,25 @@ async function 放出去(
   // 2. 挑人转出：同超时转（排除放弃人和这一轮超时过的人，挑不到开新一轮、仍不给放弃人）
   const 链 = await prisma.entReplyOverdue.findUnique({ where: { projectId }, select: { tried: true, transfers: true, stoppedAt: true } });
   const 试过 = 链 && !链.stoppedAt ? 读试过(链.tried) : [];
+  // 项目节点记录那行（进程变更，管理、市场都看）写第三人称，转成了再补「，转给 Y」；接手人通知里才说「转给你」
+  const 痕附 = `${me.name} ${放弃转理由}，原因：${认.文字}`;
   const 附 = `同事 ${me.name} ${放弃转理由}转给你，原因：${认.文字}`;
   // 这条线索上放弃过的人（含刚占的这一行 = 放弃人自己）都不给，开新一轮也不给（没起链就放弃的，链里没有他们）
   const 放弃过 = await 放弃过的人(projectId);
   let 排除 = [...new Set([...本轮排除(试过, me.id), ...放弃过])];
   const 新轮排除 = [...new Set([me.id, ...放弃过])];
-  let r = await 超时转出(超时转令牌, 系统操作人, projectId, me.id, 排除, 附);
+  let r = await 超时转出(超时转令牌, 系统操作人, projectId, me.id, 排除, 痕附);
   if (!r.ok && r.挑不到 && 新轮排除.length < 排除.length) {
     排除 = 新轮排除;
-    r = await 超时转出(超时转令牌, 系统操作人, projectId, me.id, 排除, 附);
+    r = await 超时转出(超时转令牌, 系统操作人, projectId, me.id, 排除, 痕附);
   }
   if (!r.ok) {
     await 退次数();
-    return { ok: false, error: 转不出去话(r.error, !!r.挑不到) };
+    return { ok: false, error: 转不出去话(r.error, !!r.挑不到, 放弃过.some((id) => id !== me.id)) };
   }
   const 新 = r.接手人Id;
+  // 节点记录那行补上接手人（超时转出 写的时候还不知道挑中谁）。补不上只记日志
+  await 补上接手人(projectId, 新, 痕附, r.接手人).catch((e) => console.error(`[主动放弃] ${projectId} 节点记录没补上接手人`, e));
   // 3. 次数记上接手人、给放弃人记 1 条待补（方向 = 他这条的分配方向）
   // 线索已经转走、次数已经占上：这一步出错只记日志、照常回成功（不能让人以为没放弃成再点一次）
   try {

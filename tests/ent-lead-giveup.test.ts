@@ -11,8 +11,8 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ user: { id: "", name: "", email: "", role: "SALES", title: "", avatar: null as string | null } }));
-vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
+const mocks = vi.hoisted(() => ({ user: { id: "", name: "", email: "", role: "SALES", title: "", avatar: null as string | null }, revalidatePath: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath, revalidateTag: () => {} }));
 vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 vi.mock("@/lib/sync/dedupe-client", async (原) => ({ ...(await 原<object>()), 问同事: async () => null }));
@@ -32,6 +32,10 @@ import {
   放弃线索, 放弃资格, 认放弃原因, 新分配时刻, 放弃原因们, 走判无效话, 本月用过话, 放弃通知种类, 在放弃窗口,
 } from "@/lib/enterprise/lead-giveup";
 import { 放弃线索Action } from "@/app/(app)/projects/[id]/giveup-actions";
+import { 刷新页面 } from "@/lib/revalidate-safe";
+import { 估算轮到, 轮到话 } from "@/lib/enterprise/assign-eta";
+import { 读组织 } from "@/lib/enterprise/org";
+import { 关掉后果 } from "@/lib/enterprise/rules-table";
 
 /** 北京时间的一个瞬间 */
 const 京 = (s: string) => new Date(`${s.replace(" ", "T")}:00+08:00`);
@@ -367,7 +371,11 @@ describe("点了以后", () => {
     // 超时转出 按墙上时间记留痕和分配记录：挪回用例里的 10:10
     await prisma.projectNodeLog.updateMany({ where: { projectId: id, kind: "transfer" }, data: { at: 京("2026-11-20 10:10") } });
     await prisma.entLeadAssign.updateMany({ where: { projectId: id, toUserId: 乙.id }, data: { createdAt: 京("2026-11-20 10:10") } });
-    expect(await 放弃(乙, id, 京("2026-11-20 10:20"))).toMatchObject({ ok: false, error: expect.stringContaining("这条转不出去") });
+    const 转不出 = await 放弃(乙, id, 京("2026-11-20 10:20"));
+    expect(转不出).toMatchObject({ ok: false, error: expect.stringContaining("这条转不出去") });
+    // [实操 5] 只剩放弃过的人能接：不说「都暂停或禁止了」
+    expect(转不出).toMatchObject({ error: expect.stringContaining("本线其他人都不能接（放弃过的人不会再分回）") });
+    expect(转不出).not.toMatchObject({ error: expect.stringContaining("暂停或禁止") });
     expect((await 项目(id)).ownerId).toBe(乙.id);
     expect(await prisma.entLeadGiveUp.count({ where: { userId: 乙.id } })).toBe(0);
     await setSetting(自动分配不参与key, { [总管.id]: "禁止", [市场.id]: "禁止" });
@@ -412,5 +420,68 @@ describe("点了以后", () => {
     expect(await 改链若持有人是(id, 接, { anchorAt: 京("2026-11-20 15:00"), holderId: 接, since: 京("2026-11-20 16:10"), overdueAt: 京("2026-11-20 17:10") })).toBe(true);
     const 别的 = await 分来的(乙, 京("2026-11-20 15:00"));
     expect(await 改链若持有人是(别的.id, 乙.id, { anchorAt: 京("2026-11-20 15:00"), holderId: 乙.id, since: 京("2026-11-20 15:00"), overdueAt: null })).toBe(true);
+  });
+});
+
+describe("3703 实操 r22", () => {
+  it("[实操 1] 放弃这条路不调 revalidatePath（动作里 revalidate 会连带重画当前页，转走后落到「找不到」）；别处照常刷新", async () => {
+    const { id } = await 分来的(甲, new Date());
+    mocks.revalidatePath.mockClear();
+    mocks.user = { ...甲 };
+    expect(await 以谁的身份(甲.id, () => 放弃线索Action(id, "外出"))).toMatchObject({ ok: true });
+    expect((await 项目(id)).ownerId).not.toBe(甲.id);
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+    刷新页面("/leads");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/leads");
+  });
+
+  it("[实操 4] 放弃资格看「是不是本线自动分配候选」：内贸纯销售管理（不兼销售）给；外贸销售管理在外贸线上不给；外贸销售照给", async () => {
+    const 内管 = await 造人("neiguan", "SALES", "sales_mgr", "内贸");
+    const 外管 = await 造人("waiguan", "SALES", "sales_mgr", "外贸");
+    const 外销 = await 造人("waixiao", "SALES", "sales", "外贸");
+    const 现在 = 京("2026-11-20 10:10");
+    const 内 = await 分来的(内管 as 人, 京("2026-11-20 10:00"));
+    expect(await 以(内管, () => 放弃资格(内管, 内.id, 现在))).toMatchObject({ 可: true });
+    const 外 = await 分来的(外管, 京("2026-11-20 10:00"), { bizLine: "外贸", flowLine: "外贸" });
+    expect(await 以(外管, () => 放弃资格(外管, 外.id, 现在))).toBeNull();
+    expect(await 放弃(外管, 外.id, 现在)).toMatchObject({ ok: false });
+    const 外2 = await 分来的(外销, 京("2026-11-20 10:00"), { bizLine: "外贸", flowLine: "外贸" });
+    expect(await 以(外销, () => 放弃资格(外销, 外2.id, 现在))).toMatchObject({ 可: true });
+    // 内贸销售管理点了照常转给本线下一位
+    expect(await 放弃(内管, 内.id, 现在)).toMatchObject({ ok: true });
+    expect((await 项目(内.id)).ownerId).not.toBe(内管.id);
+  });
+
+  it("[实操 5] 进程变更那一行写第三人称「X 主动放弃（豁免），原因：…，转给 Y」；接手人通知照写「同事 X … 转给你」", async () => {
+    const { id } = await 分来的(甲, 京("2026-11-20 10:00"));
+    const r = await 放弃(甲, id, 京("2026-11-20 10:10"), "其他", "下午去医院");
+    expect(r).toMatchObject({ ok: true });
+    const 接 = r.ok ? r.接手人 : "";
+    const 行 = await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: id, kind: "transfer" } });
+    expect(行.reason).toContain(`jia 主动放弃（豁免），原因：其他：下午去医院，转给 ${接}`);
+    expect(行.reason).not.toContain("转给你");
+    expect(行.reason?.startsWith("分配方式：")).toBe(true);
+    const 收 = await 通知((await 项目(id)).ownerId);
+    expect(收.map((n) => n.body).join("\n")).toContain("同事 jia 主动放弃（豁免）转给你");
+  });
+
+  it("[实操 5] 快轮到：放弃记的待补写「放弃记的待补 N 条」，判无效的写「判无效待补」，两种都有分开写", async () => {
+    expect(轮到话({ 数: 0, 待补: 1, 放弃待补: 1 })).toBe("下一条就轮到你（放弃记的待补 1 条，优先补）");
+    expect(轮到话({ 数: 0, 待补: 1 })).toBe("下一条就轮到你（判无效待补 1 条，优先补）");
+    expect(轮到话({ 数: 0, 待补: 3, 放弃待补: 1 })).toBe("下一条就轮到你（判无效待补 2 条、放弃记的待补 1 条，优先补）");
+    const { id } = await 分来的(甲, 京("2026-11-20 10:00"));
+    expect(await 放弃(甲, id, 京("2026-11-20 10:10"))).toMatchObject({ ok: true });
+    const 估 = (await 估算轮到(await 读组织())).get(甲.id);
+    expect(估).toMatchObject({ 待补: 1, 放弃待补: 1 });
+    expect(轮到话(估!)).toContain("放弃记的待补 1 条");
+    expect(轮到话(估!)).not.toContain("判无效");
+  });
+
+  it("[实操 5] 开关文案：说明里按钮叫「放弃（豁免）」；关掉后果写明按钮不出、已转出的不收回、待补照补", () => {
+    expect(规则.主动放弃.说明).toContain("「放弃（豁免）」");
+    expect(规则.主动放弃.说明).not.toContain("点「放弃」");
+    expect(关掉后果.主动放弃).toMatch(/不再出.*放弃（豁免）/);
+    expect(关掉后果.主动放弃).toContain("不收回");
+    expect(关掉后果.主动放弃).toContain("待补");
   });
 });

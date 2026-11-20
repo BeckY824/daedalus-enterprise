@@ -24,7 +24,8 @@ import {
   起算时刻key, 认起算时刻, 起算补, 月初of, 按行数已分, 参与状态of, 接手问题, 挂补位,
   type 候选人, type 线, type 分配行, type 线索种类,
 } from "./lead-assign";
-import { 待用补位行, type 补位行 } from "./invalid-makeup";
+import { 待用补位行, 放弃待补种类, 线对得上, type 补位行 } from "./invalid-makeup";
+import { 待补来源话 } from "./lead-giveup-core";
 import { 按部门候选, 自动可接, 在不进自动分配部门, 两条线, 规整线部门, 线部门key, 线部门们, type 线部门 } from "./assign-line";
 import { 查完再写 } from "@/lib/check-then-write";
 
@@ -38,7 +39,7 @@ export const 估算说明 = "这是估算：指定分配、有人暂停或新同
  * 前面约几条：数 = 按现在的数估出来的；暂无法估算 = 系统里还没有一条分配记录。
  * 待补 = 他有几条判无效待补（方向对得上这条线的，invalid-makeup.ts）；有待补的排在前面，数多半是 0
  */
-export type 轮到 = { 数: number; 待补?: number } | "暂无法估算";
+export type 轮到 = { 数: number; 待补?: number; 放弃待补?: number } | "暂无法估算";
 
 /** 后台设的「各条线参与自动分配的部门」；没设 = 两条线都没勾（按成员标记） */
 export async function 读线部门(): Promise<线部门> {
@@ -188,7 +189,11 @@ export async function 估算轮到(org: 组织): Promise<Map<string, 轮到>> {
   if (!全部.length) return 出;
   await 补记销售管理起算(org, 全部);
   // 估的是市场按区域发起的营销线索：用待补（判无效待补的人排在前面，M-线索-02 补「优先」），每条线挂各自方向的
-  const [底, 有记录] = await Promise.all([读挑人底子(全部, 月份(), { 线: null }), prisma.entLeadAssign.findFirst({ select: { id: true } })]);
+  const [底, 有记录, 放弃补们] = await Promise.all([
+    读挑人底子(全部, 月份(), { 线: null }), prisma.entLeadAssign.findFirst({ select: { id: true } }),
+    // 待补里哪几条是主动放弃（豁免）记的：提醒里按来源分开说（3703 实操 r22）
+    prisma.entLeadMakeup.findMany({ where: { userId: { in: 全部 }, usedAt: null, voidAt: null, kind: 放弃待补种类 }, select: { userId: true, line: true } }),
+  ]);
   const 不参与 = new Set(底.不参与);
   // 估的是市场按区域发起的营销线索（最常见的那种）：营销线索一律算数
   const 查满 = 计不计数("营销", 底.企划算数);
@@ -201,7 +206,10 @@ export async function 估算轮到(org: 组织): Promise<Map<string, 轮到>> {
       const n = 前面几条(候选, 不参与, 查满, 底.不限额, c.userId);
       if (n === null) continue;
       const 旧 = 出.get(c.userId);
-      if (!旧 || 旧 === "暂无法估算" || n < 旧.数) 出.set(c.userId, { 数: n, ...(c.待补?.length ? { 待补: c.待补.length } : {}) });
+      if (!旧 || 旧 === "暂无法估算" || n < 旧.数) {
+        const 放弃 = c.待补?.length ? 放弃补们.filter((b) => b.userId === c.userId && 线对得上(b.line, 两条线[i])).length : 0;
+        出.set(c.userId, { 数: n, ...(c.待补?.length ? { 待补: c.待补.length } : {}), ...(放弃 ? { 放弃待补: Math.min(放弃, c.待补!.length) } : {}) });
+      }
     }
   }
   return 出;
@@ -230,7 +238,7 @@ export function 能看轮到(org: 组织, me: { id: string; role?: string | null
 export function 轮到话(x: 轮到, 你 = "你"): string {
   if (x === "暂无法估算") return "暂无法估算";
   const 话 = x.数 === 0 ? `下一条就轮到${你}` : `前面约 ${x.数} 条轮到${你}`;
-  return x.待补 ? `${话}（判无效待补 ${x.待补} 条，优先补）` : 话;
+  return x.待补 ? `${话}（${待补来源话(x.待补, x.放弃待补)}，优先补）` : 话;
 }
 
 /**

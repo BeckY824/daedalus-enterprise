@@ -37,8 +37,7 @@ beforeAll(async () => {
     import GiveUpBanner from '@/app/(app)/projects/[id]/GiveUpBanner';
     const root=createRoot(document.getElementById('root'));
     window.__render=({入口,有验证})=>root.render(<App><div style={{padding:16}}>
-      <GiveUpBanner projectId="p1" 入口={入口}/>
-      {有验证 && <div style={{marginTop:2000}} data-testid="lead-verify">线索验证</div>}
+      <GiveUpBanner projectId="p1" 入口={入口} 打开判无效={有验证 ? () => { window.__验证开=(window.__验证开||0)+1; } : undefined}/>
     </div></App>);
   `);
   orgBundle = await 打包(`
@@ -96,6 +95,25 @@ it("原因三选一、没有线索无效 / 质量不达标；没选、选其他�
   } finally { await page.close(); }
 });
 
+it("[实操 2] 选「其他」写了补充又换成外出：补充框收起、内容清空，提交不带补充；再换回其他是空的", async () => {
+  const { page, errors } = await open(能);
+  try {
+    await page.getByTestId("proj-giveup-open").click();
+    const 框 = page.getByRole("dialog");
+    await 框.getByText("其他", { exact: true }).click();
+    await 框.getByTestId("proj-giveup-note").fill("号码有误");
+    await 框.getByText("外出", { exact: true }).click();
+    expect(await 框.getByTestId("proj-giveup-note").count()).toBe(0);
+    await 框.getByText("其他", { exact: true }).click();
+    expect(await 框.getByTestId("proj-giveup-note").inputValue()).toBe("");
+    await 框.getByText("忙不过来", { exact: true }).click();
+    await 框.getByRole("button", { name: "确认放弃" }).click();
+    await page.getByTestId("proj-giveup-done").waitFor();
+    expect(await 调用们(page)).toEqual([["p1", "忙不过来", ""]]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it("转不出去：原因写在框里，框不关、不刷新", async () => {
   const { page, errors } = await open(能);
   try {
@@ -111,13 +129,14 @@ it("转不出去：原因写在框里，框不关、不刷新", async () => {
   } finally { await page.close(); }
 });
 
-it("去判无效：页上有「线索验证」就关框跳过去；还没走到那一步就在框里说先推进程", async () => {
+it("[实操 3] 去判无效：项目有「线索验证」就关放弃框、直接打开「线索验证」弹框（面板在弹框里，页上找不到）；没有就在框里说先推进程", async () => {
   const 有 = await open(能, { 有验证: true });
   try {
     await 有.page.getByTestId("proj-giveup-open").click();
     await 有.page.getByTestId("proj-giveup-to-invalid").click();
     await 有.page.getByRole("dialog").waitFor({ state: "hidden" });
-    await 有.page.waitForFunction(() => window.scrollY > 500);
+    expect(await 有.page.evaluate(() => (window as unknown as { __验证开?: number }).__验证开 ?? 0)).toBe(1);
+    expect(await 有.page.getByTestId("proj-giveup-error").count()).toBe(0);
   } finally { await 有.page.close(); }
   const 没 = await open(能);
   try {

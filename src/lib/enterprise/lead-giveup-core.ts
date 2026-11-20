@@ -76,6 +76,16 @@ export function 新分配时刻(我: string, p: { ownerId: string; creatorId: st
 export const 在放弃窗口 = (接手: Date, 现在: Date): boolean => 接手.getTime() >= 现在.getTime() - 放弃窗口天 * 86_400_000 && 接手.getTime() <= 现在.getTime() + 60_000;
 
 /** 本月用过了的那句 */
+/**
+ * 「待补 N 条」按来源说（快轮到提醒、首页那一行）：总 = 待补几条，放弃 = 其中主动放弃（豁免）记的几条，余下是判无效记的。
+ * 没有待补回空串
+ */
+export function 待补来源话(总: number, 放弃 = 0): string {
+  const 放 = Math.min(Math.max(放弃, 0), 总);
+  const 判 = 总 - 放;
+  return [判 > 0 ? `判无效待补 ${判} 条` : "", 放 > 0 ? `放弃记的待补 ${放} 条` : ""].filter(Boolean).join("、");
+}
+
 export const 本月用过话 = `每人每月只能放弃 ${每月放弃次数} 次，本月已经用过了，下月 1 日起可再用`;
 
 /**
