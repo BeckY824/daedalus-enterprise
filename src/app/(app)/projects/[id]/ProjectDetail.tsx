@@ -12,6 +12,7 @@ import { useMotionTheme } from "@/components/MotionTheme";
 import { 少动 } from "@/lib/reduced-motion";
 import { useConsequence } from "@/components/ConsequenceDialog";
 import { showUndo } from "@/components/UndoBar";
+import { 自动推进话of } from "@/lib/project/auto-advance-text";
 import { 其他没写好, 不填项, 去不填, 未选占位 } from "@/lib/enterprise/dict-kinds";
 import { 有值, 空值符, 空显 } from "@/lib/empty-value";
 import { 项目不能单独领提示, 客户在公海项目不单领提示, 公海规则 } from "@/lib/enterprise/pool-rules";
@@ -2409,7 +2410,26 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
         if (错.length) { 话们.push(...错); 调 = "error"; }
         router.refresh();
       }
+      /*
+        这条沟通顺带按必填把节点推了一格（画像等早就齐了、这次记沟通才推，#370）：不悄悄推，说推到哪（11-20）。
+        P-界面-40「推进节点可撤销」：同阶段内（自动推本来就不跨阶段）、我能改节点 → 底部撤销条，撤销 = 改回记之前那个节点（同「完成节点」的撤销）；
+        撤不了的写进回执。沟通本身不撤（P-沟通-01）
+      */
+      const 推话 = 自动推进话of(r);
+      const 原: 位置 = { phase: p.phase, node: p.node, result: p.result ?? null };
+      const 能撤 = !!推话 && p.能改节点 && !p.pooled && !p.result;
+      if (推话 && !能撤) 话们.push(推话);
       回执[调](话们.join("；"));
+      if (推话 && 能撤) {
+        showUndo({
+          话: 推话,
+          撤销: async () => {
+            const u = await 改项目节点(p.id, 原);
+            router.refresh();
+            return u;
+          },
+        });
+      }
     }
     set交中(false);
     if (ok) 关();

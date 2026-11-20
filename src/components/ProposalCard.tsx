@@ -90,7 +90,8 @@ export const 新线索企业 = createContext<新线索企业格 | null>(null);
 /** 新建只能落在线索验证及之前（11-05：过了线索验证要看它的必填项，新建时填不了；lib/project/wizard.ts 同口径） */
 const 线索节点们 = 企业版字典.节点们.线索.slice(0, 企业版字典.节点们.线索.indexOf(有效线索节点) + 1 || undefined);
 
-type 落印回执 = { at: string; 撤销?: 撤销凭据; 项目?: string };
+/** 推进：写进去时顺带按必填把项目推了一格（apply 回的 推进），落印下面写一行（11-20） */
+type 落印回执 = { at: string; 撤销?: 撤销凭据; 项目?: string; 推进?: string };
 
 /**
  * 卡片报给外面的状态（2026-11-15）：首页那一轮靠它知道还有没有「等你确认」的，
@@ -272,7 +273,7 @@ export default function ProposalCard({
       return false;
     }
     if (r.ok) {
-      const 回执: 落印回执 = { at: dayjs().format("HH:mm"), 撤销: r.撤销, ...(r.项目 ? { 项目: r.项目 } : {}) };
+      const 回执: 落印回执 = { at: dayjs().format("HH:mm"), 撤销: r.撤销, ...(r.项目 ? { 项目: r.项目 } : {}), ...(r.推进 ? { 推进: r.推进 } : {}) };
       set落印(回执);
       if (记号) 记下回执(记号, 回执);
       set刚("落印");
@@ -432,6 +433,8 @@ export default function ProposalCard({
             查看 <RightOutlined style={{ fontSize: 10 }} />
           </Link>
         </span>
+        {/* 顺带按必填推了一格：独占一行说推到哪（回执句子，同其它回执折行，手机上没有悬停也看得全） */}
+        {落印?.推进 && <span className="prop-done-push" role="status" data-testid="prop-done-push">{落印.推进}</span>}
         {撤错 && (
           <span className="prop-err prop-err-inline" role="alert">
             {撤错}

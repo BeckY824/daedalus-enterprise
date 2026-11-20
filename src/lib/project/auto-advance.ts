@@ -8,6 +8,7 @@ import { recordAudit, type Actor } from "../audit";
 import { getBusiness } from "../business";
 import { 企业版 } from "../enterprise/switch";
 import { 客户项目按必填推进 } from "./db";
+import type { 自动推进了 } from "./auto-advance-text";
 
 export async function 记自动推进(me: Actor, 项目们: { id: string; name: string; 到: string[] }[]) {
   for (const p of 项目们) {
@@ -27,19 +28,22 @@ export async function 记这个项目的自动推进(me: Actor, projectId: strin
 }
 
 /**
- * 客户这边存了东西（客户资料、联系人、客户上的跟进）之后调：客户名下齐了的项目往前推、记日志、刷新项目页。
+ * 客户这边存了东西（客户资料、联系人、客户上的跟进）之后调：客户名下齐了的项目往前推、记日志、刷新项目页；返回推了的（没推 / 出错 = 空）。
  * 不是企业版、项目模式没开：直接回，不查库。出错不影响客户那边已经存好的
  */
-export async function 客户存了推项目(me: Actor, customerId: string | null | undefined) {
-  if (!customerId || !企业版()) return;
+export async function 客户存了推项目(me: Actor, customerId: string | null | undefined): Promise<自动推进了[]> {
+  if (!customerId || !企业版()) return [];
   try {
-    if ((await getBusiness()).projectMode !== true) return;
+    if ((await getBusiness()).projectMode !== true) return [];
     const 推了 = await 客户项目按必填推进(me, customerId);
-    if (!推了.length) return;
+    if (!推了.length) return [];
     await 记自动推进(me, 推了);
     revalidatePath("/projects");
     for (const p of 推了) revalidatePath(`/projects/${p.id}`);
+    // 推了哪几个、推到哪：调用方拿去给人一句提示（记沟通推了节点不能悄悄推，lib/project/auto-advance-text.ts）
+    return 推了;
   } catch (e) {
     console.error("[节点必填] 客户存了之后推项目失败", e);
+    return [];
   }
 }

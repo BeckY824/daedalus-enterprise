@@ -26,12 +26,14 @@ export default function ProjectProposalFields({ draft, setDraft }: { draft: 项�
     <>
       {候.length > 0 && (
         <F label={draft.targetId ? "选的是" : "选哪一个"} block>
+          {/* 长项目名 / 客户名：框和下拉里都一行「…」，悬停看全文（原生 title；11-04 全站一行规矩）。不再定 260 最小宽，窄屏不把卡撑宽 */}
           <Select
             size="small"
-            style={{ minWidth: 260 }}
+            className="prop-pick"
+            aria-label="选哪一个项目"
             placeholder={`对上 ${候.length} 个，挑一个`}
             value={draft.targetId || undefined}
-            options={候.map((c) => ({ value: c.id, label: c.说明 ? `${c.名}（${c.说明}）` : c.名 }))}
+            options={候.map((c) => { const 叫 = c.说明 ? `${c.名}（${c.说明}）` : c.名; return { value: c.id, label: 叫, title: 叫 }; })}
             onChange={(id) => {
               const c = 候.find((x) => x.id === id);
               if (c) setDraft({ ...draft, targetId: c.id, targetName: c.名, ...(c.补 ?? {}) } as 项目卡);
@@ -43,7 +45,7 @@ export default function ProjectProposalFields({ draft, setDraft }: { draft: 项�
       {draft.kind === "project_node" && (
         <>
           <F label="去哪一步">
-            <span>{draft.到 ? `${draft.到.phase} · ${draft.到.node}${draft.到.result ? ` · ${draft.到.result}` : ""}` : draft.目标 || "—"}</span>
+            <span className="prop-f-v fulltext">{draft.到 ? `${draft.到.phase} · ${draft.到.node}${draft.到.result ? ` · ${draft.到.result}` : ""}` : draft.目标 || "—"}</span>
           </F>
           {/* 跨阶段退不回去：卡本来就要人点确认，这里只把后果写上 */}
           {跨阶段提醒(draft) && <span className="prop-f-warn" data-testid="prop-cross-phase">{跨阶段提醒(draft)}</span>}
@@ -206,7 +208,7 @@ export default function ProjectProposalFields({ draft, setDraft }: { draft: 项�
 
       {(draft.kind === "customer_delete" || draft.kind === "payment_delete") && (
         <F label="删除">
-          <span>{draft.targetName || "（先选上面哪一个）"}</span>
+          <span className="prop-f-v fulltext">{draft.targetName || "（先选上面哪一个）"}</span>
         </F>
       )}
     </>
