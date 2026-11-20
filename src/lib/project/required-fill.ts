@@ -254,6 +254,8 @@ export function 草稿问题(项: 必填项, 值: 草稿值 | undefined, 环?: P
     case "窗外": return "这一项这里填不了";
     case "钱": {
       const v = 值 as 钱格值 | null | undefined;
+      // 金额框敲了认不出的字交上来是 NaN（components/AmountInput）
+      if (typeof v?.数 === "number" && Number.isNaN(v.数)) return "金额认不出，请重填";
       if (v?.数 == null || !(v.数 > 0)) return "要大于 0";
       return v.币 ? null : "请选币种";
     }

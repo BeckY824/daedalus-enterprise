@@ -157,9 +157,10 @@ export function 收清洗建议(m: 映射, out: 清洗输出, 输入: 清洗输�
 export const 格式说明键 = (类: 格式类, v: string) => `格式|${类}|${v}`;
 export const 同一家说明键 = (k: string) => `同一家|${k}`;
 
-const 提示词 = `你在帮一家公司把老 CRM（飞书 / 钉钉等）导出的数据搬进新 CRM。下面是规则认不出来的几样格子，请逐项给建议。
+/** 给 AI 的提示词（导出给测试核：金额不按汇率换算，审查 11-20 第三轮——币种照原写法的记号定，换算了就存错） */
+export const 清洗提示词 = `你在帮一家公司把老 CRM（飞书 / 钉钉等）导出的数据搬进新 CRM。下面是规则认不出来的几样格子，请逐项给建议。
 输入是 JSON：
-- 格式.金额：原写法 → 金额数字（单位元，只写数字，比如 "50000"）。
+- 格式.金额：原写法 → 金额数字（只写数字，比如 "50000"）。按原写法的币种给数，只把万 / 千 / w / k 换成数字，不按汇率换算（「约5000USD」给 "5000"，不给换成人民币的数）。
 - 格式.日期：原写法 → "YYYY-MM-DD"。
 - 格式.时间：原写法 → "YYYY-MM-DD HH:mm"（没写钟点就 "00:00"）。
 - 格式.国家：原写法 → 「国家候选」里的一个；格式.来源：原写法 → 「来源候选」里的一个。
@@ -172,7 +173,7 @@ export const AI清洗: 清洗器 = async (输入) => {
   const { chatMessagesJSON } = await import("../llm");
   const out = await chatMessagesJSON(
     [
-      { role: "system", content: 提示词 },
+      { role: "system", content: 清洗提示词 },
       { role: "user", content: JSON.stringify(输入) },
     ],
     { maxTokens: 4000, temperature: 0, timeoutMs: 90_000, feature: "import" },

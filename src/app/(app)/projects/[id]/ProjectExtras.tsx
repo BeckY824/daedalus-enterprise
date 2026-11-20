@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import { useCardName } from "./card-names";
 import { useRouter } from "next/navigation";
-import { Button, Card, InputNumber, Select, Space } from "antd";
+import { Button, Card, Select, Space } from "antd";
+import AmountInput, { 金额认不出 } from "@/components/AmountInput";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import FollowAttachments from "@/components/FollowAttachments";
 import type { 附件 } from "@/lib/attachment-rules";
@@ -244,8 +245,8 @@ export function ProjectPaymentsCard({ projectId, 回款们, 能改, 默认: 默�
         <Space wrap style={{ marginTop: 8 }}>
           <DatePicker aria-label="回款时间" allowClear={false} value={日 ? dayjs(日, "YYYY-MM-DD") : null} onChange={(v) => set日(v ? v.format("YYYY-MM-DD") : null)} />
           <Select aria-label="回款币种" showSearch style={{ width: 130 }} value={币} options={币种选项()} onChange={(v: string) => set币(v)} />
-          <InputNumber aria-label="回款金额" min={0.01} max={1e12} precision={2} placeholder="回款金额" style={{ width: 160 }} value={数} onChange={(v) => set数(typeof v === "number" ? v : null)} />
-          <SaveButton disabled={!日 || !数} 做={记} 已保存="已记下">记一笔</SaveButton>
+          <AmountInput aria-label="回款金额" min={0.01} max={1e12} precision={2} placeholder="回款金额" style={{ width: 160 }} currency={币} value={数} onChange={set数} />
+          <SaveButton disabled={!日 || !数 || 金额认不出(数)} 做={记} 已保存="已记下">记一笔</SaveButton>
         </Space>
       )}
       {能改 && 少了 && <div role="status" className="pay-short-hint">{少了}</div>}

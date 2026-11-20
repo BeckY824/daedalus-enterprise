@@ -41,8 +41,9 @@ beforeAll(async () => {
     const root=createRoot(document.getElementById('root'));
     const 包=(x)=><ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}>{x}</BusinessProvider></App></ConfigProvider>;
     window.__签约=()=>root.render(包(<div className="cli-col"><ProposalCard proposal={{id:'p2',kind:'add_contract',customerId:'c1',customerName:'甲公司',reason:'x',amount:0,signedAt:'2026-11-17T00:00:00.000Z',remark:''}}/></div>));
-    function 回款(){const [d,setD]=useState({kind:'payment_add',targetId:'p1',targetName:'项目一',paidAt:'2026-11-17',currency:'CNY',amount:0});window.__稿=d;return <div className="prop"><ProjectProposalFields draft={d} setDraft={setD}/></div>;}
+    function 回款({币='CNY'}){const [d,setD]=useState({kind:'payment_add',targetId:'p1',targetName:'项目一',paidAt:'2026-11-17',currency:币,amount:0});window.__稿=d;return <div className="prop"><ProjectProposalFields draft={d} setDraft={setD}/></div>;}
     window.__回款=()=>root.render(包(<回款/>));
+    window.__美元回款=()=>root.render(包(<回款 币='USD'/>));
     function 卡点卡(){const [d,setD]=useState({kind:'project_followup',targetId:'p1',targetName:'项目一',type:'PHONE',content:'聊了',下一步:'再聊',下一步时间:'',要卡点:true,卡点类型:'中度卡点',影响等级:'',阻碍原因:[],原因可选们:['价格预算分歧','需求变更']});window.__稿=d;return <div className="prop"><ProjectProposalFields draft={d} setDraft={setD}/></div>;}
     window.__卡点卡=()=>root.render(包(<卡点卡/>));
     window.__方式=()=>root.render(包(<div>
@@ -99,8 +100,34 @@ it("回款卡金额：「-500」框下说认不出、交上去的是 NaN（缺�
     await 金额框(page).fill("2.5万");
     await expect.poll(稿).toBe(25000);
     expect(await page.getByRole("alert").count()).toBe(0);
+    // 11-20：带单位的框下写换算后的数；「3w」也认
+    expect((await page.locator(".amount-text-conv").innerText()).trim()).toBe("= 25,000");
+    await 金额框(page).fill("3w");
+    await expect.poll(稿).toBe(30000);
+    expect((await page.locator(".amount-text-conv").innerText()).trim()).toBe("= 30,000");
     await 金额框(page).fill("");
     await expect.poll(稿).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("AI 回款卡（美元）金额框：敲「5000元」「¥5万」框下说写的是人民币、币种是美元，交 NaN（拦确认）；「US$800」「$800」「800」认成 800（审查 11-20 第二轮）", async () => {
+  const { page, errors } = await open("__美元回款");
+  try {
+    const 稿 = () => page.evaluate(() => { const a = (window as unknown as { __稿: { amount: number } }).__稿.amount; return Number.isNaN(a) ? "NaN" : a; });
+    for (const 原 of ["5000元", "¥5万"]) {
+      await 金额框(page).fill(原);
+      await expect.poll(() => page.getByRole("alert").filter({ hasText: "写的是人民币，币种选的是美元" }).count()).toBe(1);
+      expect(await 稿(), 原).toBe("NaN");
+      // 对不上就只说对不上，不说「可带 ¥」那句
+      expect(await page.getByRole("alert").innerText(), 原).not.toContain("可带");
+      expect(await 金额框(page).inputValue(), 原).toBe(原);
+    }
+    for (const 原 of ["US$800", "$800", "800"]) {
+      await 金额框(page).fill(原);
+      await expect.poll(稿).toBe(800);
+      expect(await page.getByRole("alert").count(), 原).toBe(0);
+    }
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

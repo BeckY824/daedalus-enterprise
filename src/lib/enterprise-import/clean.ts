@@ -46,12 +46,12 @@ import { 第一个节点, 是结局 } from "../project/nodes";
 import { 结局默认节点, 节点所在阶段 } from "./project-values";
 import { 企业级别, 规整地址, 简称上限, 性别们, 爱好上限, 联系人地址上限, 认生日, 是国内, 国内叫法, type 客户地址 } from "../enterprise/customer-v2";
 import { 没国家认得出, 国内地名级别 } from "../enterprise/cn-place";
-import { 默认币种, 认币种 } from "../currency";
+import { 默认币种, 认币种, 币种名 } from "../currency";
 import { 认归档档位 } from "../enterprise/archive-tier";
 import { 成交需求上限 } from "../project/profile-rules";
 import { 实体顺序, 必填, 字段中文, type 原始记录, type 实体, type 映射, type 问题, type 待写, type 格式类 } from "./types";
 import { 全角转半角 } from "../fullwidth";
-import { 认金额 } from "../money-input";
+import { 认金额, 金额字记号 } from "../money-input";
 import { hasVisibleText } from "../form-validation";
 
 /** 我们这边已有的东西，调用方从库里查好传进来。键都已规整过（见下面的 名键 / 号键） */
@@ -283,14 +283,6 @@ function 拼备注(...段: (string | undefined | null)[]): string | null {
 
 /** 项目成交钱那五格（迁移 097），非项目模式进备注的顺序 */
 const 成交钱列 = ["dealDemand", "contractAmount", "contractCurrency", "depositAmount", "depositCurrency"] as const;
-
-/** 金额前面带的货币符号认得出就用它（认金额会把符号去掉）；没有 = null */
-function 符号币种(v: string): string | null {
-  const s = v.trim();
-  if (/^(US\$|USD|\$)/i.test(s) || /usd$/i.test(s)) return "USD";
-  if (/^(¥|￥|RMB|CNY)/i.test(s) || /(元|人民币|rmb|cny)$/i.test(s)) return "CNY";
-  return null;
-}
 
 /** 是 / 否：关键联系人这种格子 */
 function 认是否(v: string): boolean {
@@ -604,7 +596,8 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
   /**
    * 项目的需求描述 / 合同金额 / 定金金额（迁移 097）。项目模式才落这几格，否则原样进备注。
    * 和客户新几格一样逐格留空：原表这一格空着就不带这个键（apply 只补的格，不算原系统清空）。
-   * 金额带的币种：币种列 → 金额前面的符号（$ / US$ / USD 算美元）→ 默认人民币；币种列认不出就按后两步定的写，提醒一笔、原样进备注
+   * 金额带的币种：币种列 → 金额字里的记号（$ / US$ / USD 算美元，元 / ¥ / RMB 算人民币）→ 默认人民币；币种列认不出就按后两步定的写，提醒一笔、原样进备注；
+   * 币种列和字里记号对不上照币种列写，提醒一笔、原文进备注；记号之间对不上、或记号认不出又没币种列可依，金额不写、原样进备注
    */
   const 项目成交钱格 = (r: 原始记录, v: Record<string, string>, 项目: boolean, 附加: string[]): 待写["值"] => {
     const 出: 待写["值"] = {};
@@ -634,14 +627,37 @@ export function 清洗(记录: readonly 原始记录[], m: 映射, 本地: 本�
         出问题(r, "提醒", "格式不对", `${名}「${原}」认不出，没写，原样放进了备注`);
         continue;
       }
-      let 币 = 符号币种(原) ?? 默认币种;
+      /*
+        金额字里带的货币记号认得出就用它（认金额会把记号去掉）。扫整串记号（括号、后缀里的也算，审查 11-20 第三轮）、不要求整串认得出（第二轮）：
+        金额靠 AI 清洗 / 模拟清洗补认回来的（「约5000USD」「五千元」）也照记号定币种，不落成默认人民币。
+        记号对不上（「$5000元」「约3.6万元(5000美元)」）不挑一个；写了别的币种记号（「HK$」「EUR」「韩元」）又没有币种列，不猜——都不写、原样进备注
+      */
+      const 记 = 金额字记号(原);
+      if (记.类 === "矛盾") {
+        附加.push(`${名}：${原}${v[币种键] ? ` ${v[币种键]}` : ""}`);
+        出问题(r, "提醒", "格式不对", `${名}「${原}」写的币种对不上（${记.记号.join(" / ")}），没写，原样放进了备注`);
+        continue;
+      }
+      let 币: string | null = 记.类 === "币" ? 记.币 : 记.类 === "无" ? 默认币种 : null;
       if (v[币种键]) {
         const c = 认币种(v[币种键]);
-        if (c) 币 = c;
-        else {
+        if (c) {
+          // 币种列和字里记号对不上（「$5000」配人民币、「5000元」配美元）：照币种列存，但出声、原文进备注（审查 11-20 第三轮）
+          if (记.类 === "币" && !记.可为.includes(c)) {
+            附加.push(`${名}：${原} ${v[币种键]}`);
+            出问题(r, "提醒", "格式不对", `${名}「${原}」写的是${币种名(记.币)}，${字段中文[币种键]}是${币种名(c)}，按${币种名(c)}写，原文放进了备注`);
+          }
+          币 = c;
+        } else if (币 !== null) {
           附加.push(`${字段中文[币种键]}：${v[币种键]}`);
           出问题(r, "提醒", "格式不对", `${字段中文[币种键]}「${v[币种键]}」认不出，按 ${币} 写，原样放进了备注`);
         }
+      }
+      if (币 === null) {
+        const 记号 = 记.类 === "不认得" ? 记.记号 : "";
+        附加.push(`${名}：${原}${v[币种键] ? ` ${v[币种键]}` : ""}`);
+        出问题(r, "提醒", "格式不对", `${名}「${原}」带的币种记号「${记号}」认不出${v[币种键] ? `、${字段中文[币种键]}「${v[币种键]}」也认不出` : ""}，没写，原样放进了备注`);
+        continue;
       }
       出[金额键] = a;
       出[币种键] = 币;

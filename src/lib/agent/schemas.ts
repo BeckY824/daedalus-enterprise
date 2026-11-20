@@ -185,7 +185,7 @@ export const 只读SCHEMAS: Record<string, Schema> = {
  * 人没法判断该不该点。
  */
 const 理由 = "一句话理由";
-const 币种 = "币种代码如 USD，空 = 本位币";
+const 币种 = "币种代码如 USD；空 = 看 amount 里写的记号（没写或记号也能算本位币 = 本位币，写了别的币种记号 = 按记号）";
 
 export const 建议SCHEMAS: Record<string, Schema> = {
   propose_status_change: {

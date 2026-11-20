@@ -6,9 +6,10 @@
  * 录完 / 删完刷新页面，列表上的「当前投入」「投入产出比」跟着变。
  * 右上「编辑」只给能管渠道的人（10-30 B1，channel-stats.ts 的 能管渠道）：不给 onEdit 就不摆。
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Descriptions, Drawer, Empty, Form, Input, InputNumber, Skeleton, Space, Tag } from "antd";
+import { Button, Descriptions, Drawer, Empty, Form, Input, Skeleton, Space, Tag } from "antd";
+import AmountInput, { 金额框挡住话, 金额认不出 } from "@/components/AmountInput";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import type { Dayjs } from "dayjs";
 import DatePicker from "@/components/BusinessDatePicker";
@@ -56,6 +57,10 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
   const [错, set错] = useState<string | null>(null);
   const [录, set录] = useState(先录);
   const [form] = Form.useForm();
+  // 金额框按选的币种核字里写的记号（「5000元」配美元说对不上）
+  const 录币种 = Form.useWatch("currency", form) as string | undefined;
+  // 金额框里敲的原文：认不出挡住时配选的币种说清是认不出还是币种对不上（审查 11-20 第二轮）
+  const 金额原文 = useRef<string | null>(null);
   const s: 渠道统计 | undefined = row.统计;
 
   const 读 = useCallback(async () => {
@@ -100,7 +105,11 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
     try {
       v = await form.validateFields();
     } catch (e) {
-      if (isFormValidationError(e)) return { ok: false, error: "金额和日期要先填好" };
+      if (isFormValidationError(e)) {
+        // 金额框敲了认不出的字：按钮上说为什么（认不出 / 币种记号对不上），不笼统说「要先填好」（审查 11-20 第二轮）
+        if (金额认不出(form.getFieldValue("amount"))) return { ok: false, error: 金额框挡住话(金额原文.current, form.getFieldValue("currency")) };
+        return { ok: false, error: "金额和日期要先填好" };
+      }
       throw e;
     }
     const res = await addChannelInvest({
@@ -264,9 +273,17 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
             <Form.Item
               name="amount"
               noStyle
-              rules={[{ required: true, message: "请填写金额" }, { type: "number", min: 0.01, message: "金额要大于 0" }]}
+              // 认不出时只出一句（金额认不出 和「金额要大于 0」不同时报）
+              validateFirst
+              // 改了币种重核一遍：「对不上」那句里的币种名跟着变
+              dependencies={["currency"]}
+              rules={[
+                { required: true, message: "请填写金额" },
+                { validator: (_, v) => (金额认不出(v) ? Promise.reject(new Error(金额框挡住话(金额原文.current, form.getFieldValue("currency")))) : Promise.resolve()) },
+                { type: "number", min: 0.01, message: "金额要大于 0" },
+              ]}
             >
-              <InputNumber aria-label="投入金额" placeholder="投入金额" min={0} precision={2} style={{ width: "100%" }} />
+              <AmountInput aria-label="投入金额" placeholder="投入金额" min={0} precision={2} style={{ width: "100%" }} currency={录币种} on原文={(s) => (金额原文.current = s)} />
             </Form.Item>
           </Space.Compact>
           <Form.Item label="投入日期" name="date" rules={[{ required: true, message: "请选择日期" }]} style={{ marginTop: 12 }}>

@@ -10,6 +10,7 @@
  */
 import { FOLLOW_TYPES, FOLLOW_TYPE_MAP } from "../constants";
 import { 是币种 } from "../currency";
+import { 认金额, 金额字带币, 币种对不上话 } from "../money-input";
 import { parseDateInput } from "@/lib/date-input";
 import { 阶段们, 是阶段, 本套名, 结局叫法, 字典of, 终止结局, 下一步, 要写原因, 原因上限, type 位置, type 阶段字典 } from "../project/nodes";
 import { 卡点类型们, 影响等级们, 描述上限, 原因最多, 清原因们 } from "../project/blocker-rules";
@@ -131,10 +132,11 @@ function 收日子(v: unknown): string | null {
   return m ? `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}` : null;
 }
 
+/** 模型交的字串用 认金额 认（和金额框、导入同一个：「3万」「3w」都认，「约5万」拒） */
 function 收金额(v: unknown): number | null {
-  if (v === undefined || v === null || v === "") return 0;
-  const n = typeof v === "number" ? v : Number(String(v).replace(/[,¥￥\s]/g, ""));
-  if (!Number.isFinite(n) || n < 0 || n > 1e12) return null;
+  if (v === undefined || v === null || String(v).trim() === "") return 0;
+  const n = typeof v === "number" ? v : 认金额(String(v));
+  if (n === null || !Number.isFinite(n) || n < 0 || n > 1e12) return null;
   return Math.round(n * 100) / 100;
 }
 
@@ -222,9 +224,14 @@ export function buildProjectProposal(
     if (paidAt === null) return { ok: false, error: "回款时间看不懂，写成 YYYY-MM-DD" };
     const amount = 收金额(args.amount);
     if (amount === null) return { ok: false, error: "金额要是不小于 0 的数字" };
+    const 字币 = 金额字带币(args.amount);
     const c = str(args.currency, 10).toUpperCase();
-    const currency = c || (b?.currency ?? "CNY");
+    // currency 没给：金额里写了记号就按记号，没写才按本位币；写了又和 currency 对不上就拒（审查 11-20）。
+    // 记号也能算本位币（港币本位交「$5000」、日元本位交「¥50万」）就按本位币，不把「$」一律当美元（审查 11-20 第二轮）
+    const 本位 = b?.currency ?? "CNY";
+    const currency = c || (字币 ? (字币.可为.includes(本位) ? 本位 : 字币.币) : 本位);
     if (!是币种(currency)) return { ok: false, error: `不认得币种「${c}」` };
+    if (字币 && !字币.可为.includes(currency)) return { ok: false, error: 币种对不上话(String(args.amount).trim(), 字币.币, currency) };
     return { ok: true, proposal: { ...共, kind, paidAt, currency, amount } };
   }
 

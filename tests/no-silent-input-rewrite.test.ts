@@ -91,3 +91,37 @@ describe("号码、金额不悄悄改写", () => {
     expect(犯).toEqual([]);
   });
 });
+
+/*
+ * 11-20：页面金额框不许直接用 antd InputNumber —— 它默认的 parser 删掉非 \w 的字，「5万」悄悄存成 5、「3w」停在 3。
+ * 金额一律用 components/AmountInput（认金额 认、框里写换算、认不出交 NaN 挡保存）。
+ * 判据：`formatter={金额格式}`（金额框的记号）只许出现在 AmountInput 里；InputNumber 的 aria-label 带「金额 / 底价 / 提成」（「提成比例」不算）也算金额框。
+ * 例外只列企业版不显示的两处（本仓库只出企业版，CRM_ENTERPRISE=1）：
+ *   - 新建向导的项目金额：`!企业 &&` 才摆，企业版建档不填金额；
+ *   - 客户详情的登记签约 / 订单（ContractForm）：RecordView 里 `!企业 &&` 才摆。
+ */
+describe("金额框都走 AmountInput", () => {
+  const 例外 = new Set(["src/components/AmountInput.tsx", "src/app/(app)/projects/new/ProjectWizard.tsx", "src/app/(app)/customers/[id]/ContractForm.tsx"]);
+  it("没有直接拿 InputNumber 当金额框的", () => {
+    const 犯: string[] = [];
+    for (const f of 源文件(path.join(根, "src"), /\.tsx$/)) {
+      const rel = path.relative(根, f);
+      if (例外.has(rel)) continue;
+      const s = fs.readFileSync(f, "utf8");
+      if (/formatter=\{金额格式\}/.test(s)) 犯.push(`${rel} formatter={金额格式}`);
+      for (const m of s.matchAll(/<InputNumber\b[^>]*?aria-label=\{?[`"][^`"]*(金额|底价|提成)(?!比例)[^`"]*[`"]/g)) {
+        if (!/提成比例/.test(m[0])) 犯.push(`${rel}:${s.slice(0, m.index).split("\n").length} ${m[1]}`);
+      }
+    }
+    expect(犯).toEqual([]);
+  });
+  it("例外那两处还是企业版不摆（摆出来了就得换成 AmountInput）", () => {
+    const 向导 = fs.readFileSync(path.join(根, "src/app/(app)/projects/new/ProjectWizard.tsx"), "utf8");
+    expect(向导).toMatch(/\{!企业 && 一格\(null, "金额"/);
+    const 客户页 = fs.readFileSync(path.join(根, "src/app/(app)/customers/[id]/RecordView.tsx"), "utf8");
+    const 签约按钮 = 客户页.indexOf("setContractOpen(true)");
+    const 包着 = 客户页.lastIndexOf("{!企业 && (", 签约按钮);
+    expect(包着).toBeGreaterThan(-1);
+    expect(签约按钮 - 包着).toBeLessThan(800);
+  });
+});

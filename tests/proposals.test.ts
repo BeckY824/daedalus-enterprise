@@ -197,6 +197,63 @@ describe("商机与签约的提议", () => {
     expect(p.kind === "add_contract" && p.amount).toBe(19800);
   });
 
+  it("模型照人原话交「3万」「3w」「12.5万」：和金额框同一个 认金额，按万算；「约5万」「5万5」拒，不悄悄去字存成 5", () => {
+    for (const [原, 数] of [["3万", 30000], ["3w", 30000], ["3W", 30000], ["12.5万", 125000], ["2.5k", 2500]] as const) {
+      const p = 提("add_contract", { amount: 原, signedAt: "2026-09-01", reason: "x" });
+      expect(p.kind === "add_contract" && p.amount, 原).toBe(数);
+      const q = 建("payment_add", { targetId: "p1", targetName: "x", paidAt: "2026-11-01", amount: 原, reason: "x" });
+      expect(q.ok && (q.proposal as { amount: number }).amount, 原).toBe(数);
+    }
+    for (const 原 of ["约5万", "5万5", "-3w", "面议"]) {
+      expect(建("add_contract", { amount: 原, signedAt: "2026-09-01", reason: "x" }).ok, 原).toBe(false);
+      expect(建("payment_add", { targetId: "p1", paidAt: "2026-11-01", amount: 原, reason: "x" }).ok, 原).toBe(false);
+    }
+  });
+
+  it("金额字串里写的币种和 currency 对不上：拒并说原因，不悄悄按 currency 存（审查 11-20）；没给 currency 按记号", () => {
+    for (const [原, 币, 话] of [["5000元", "USD", "写的是人民币，币种选的是美元"], ["¥5万", "USD", "写的是人民币"], ["USD 5000", "CNY", "写的是美元，币种选的是人民币"], ["5000usd", "CNY", "写的是美元"]] as const) {
+      const a = 建("add_contract", { amount: 原, currency: 币, signedAt: "2026-09-01", reason: "x" });
+      expect(a.ok, 原).toBe(false);
+      expect(!a.ok && a.error, 原).toContain(话);
+      const b = 建("payment_add", { targetId: "p1", targetName: "x", paidAt: "2026-11-01", amount: 原, currency: 币, reason: "x" });
+      expect(b.ok, 原).toBe(false);
+      expect(!b.ok && b.error, 原).toContain(话);
+    }
+    // 对得上的、没写记号的照常；没给 currency 的按记号（不按本位币）
+    expect(提("add_contract", { amount: "5000元", currency: "CNY", signedAt: "2026-09-01", reason: "x" })).toMatchObject({ amount: 5000, currency: "CNY" });
+    expect(提("add_contract", { amount: "5万", currency: "USD", signedAt: "2026-09-01", reason: "x" })).toMatchObject({ amount: 50000, currency: "USD" });
+    expect(提("add_contract", { amount: "$5000", signedAt: "2026-09-01", reason: "x" })).toMatchObject({ amount: 5000, currency: "USD" });
+    const q = 建("payment_add", { targetId: "p1", targetName: "x", paidAt: "2026-11-01", amount: "US$800", reason: "x" });
+    expect(q.ok && q.proposal).toMatchObject({ amount: 800, currency: "USD" });
+  });
+
+  it("本位币不是人民币时没给 currency 按记号推币种：记号也能算本位币就按本位币（港币本位「$5000」= HKD、日元本位「¥50万」= JPY），别的按记号（审查 11-20 第二轮）", () => {
+    const 本位建 = (本位: string, kind: Parameters<typeof buildProposal>[1], args: Record<string, unknown>) => buildProposal("p1", kind, 客户, args, { ...业务, currency: 本位 });
+    for (const [本位, 原, 数, 币] of [
+      ["HKD", "$5000", 5000, "HKD"],
+      ["SGD", "$5000", 5000, "SGD"],
+      ["AUD", "$5000", 5000, "AUD"],
+      ["CAD", "$5000", 5000, "CAD"],
+      ["JPY", "¥50万", 500000, "JPY"],
+      // 只算一种的记号照记号：「US$」「USD」只算美元，「元」只算人民币
+      ["HKD", "US$5000", 5000, "USD"],
+      ["JPY", "5000元", 5000, "CNY"],
+      // 本位币不在记号的可为里：取记号的头一个（「$」= 美元、「¥」= 人民币）
+      ["EUR", "$5000", 5000, "USD"],
+      ["EUR", "¥5000", 5000, "CNY"],
+      // 没写记号 = 本位币
+      ["HKD", "5000", 5000, "HKD"],
+    ] as const) {
+      const a = 本位建(本位, "add_contract", { amount: 原, signedAt: "2026-09-01", reason: "x" });
+      expect(a.ok && a.proposal, `${本位} ${原}`).toMatchObject({ amount: 数, currency: 币 });
+      const q = 本位建(本位, "payment_add", { targetId: "p1", targetName: "x", paidAt: "2026-11-01", amount: 原, reason: "x" });
+      expect(q.ok && q.proposal, `${本位} ${原}`).toMatchObject({ amount: 数, currency: 币 });
+    }
+    // 给了 currency 的照旧按给的核
+    const r = 本位建("HKD", "add_contract", { amount: "$5000", currency: "USD", signedAt: "2026-09-01", reason: "x" });
+    expect(r.ok && r.proposal).toMatchObject({ currency: "USD" });
+  });
+
   it("金额和日期没填时出卡片但不让确认——留空是让人补，不是拒绝提议", () => {
     const p = 提("add_contract", { signedAt: "", reason: "x" });
     expect(missingFields(p).length).toBeGreaterThan(0);

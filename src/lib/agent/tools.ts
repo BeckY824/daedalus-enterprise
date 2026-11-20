@@ -1013,7 +1013,7 @@ export const TOOLS: Tool[] = [
   proposeTool(
     "propose_contract",
     "建议记一笔签约（已经成交、要入账的那笔钱）。商机是在谈，签约是谈成了。",
-    '{"id": "客户 id", "amount": 金额数字, "currency": "币种代码如 USD/EUR，可空（空 = 本位币）", "signedAt": "YYYY-MM-DD", "remark": "可空", "reason": "一句话：为什么"}',
+    '{"id": "客户 id", "amount": 金额数字, "currency": "币种代码如 USD/EUR，可空（空 = 看 amount 里写的记号：没写记号或记号也能算本位币 = 本位币，写了「$ / USD」「¥ / 元」等别的 = 按记号）", "signedAt": "YYYY-MM-DD", "remark": "可空", "reason": "一句话：为什么"}',
     "add_contract",
   ),
   /**
