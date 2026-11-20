@@ -11,6 +11,18 @@ export const 同号节点 = "同号再次录入";
 
 export const 是同号留痕 = (title: string | null | undefined): boolean => !!title?.startsWith(同号标题);
 
+/** 用户写的标题不许冒充同号留痕：写成「同号再次录入…」就会被三态、最近跟进当成系统留痕排除，负责人的沟通白记了 */
+export const 同号标题不许用话 = `标题不能以「${同号标题}」开头，这是系统用语`;
+
+/**
+ * 用户存沟通时标题占没占系统用语（saveFollowUp 拦、记沟通表单提示）：新标题（去头尾空格）以 同号标题 开头、又不是原样留着原来那条的标题。
+ * 原样留着放过：改的就是那条系统留痕本身（改内容、方式、时间），标题没动，它还是留痕。原标题 = 改的那条在库里的标题，新记的不传
+ */
+export const 标题占了同号 = (新: string | null | undefined, 原?: string | null): boolean => {
+  const t = 新?.trim() ?? "";
+  return 是同号留痕(t) && t !== (原 ?? null);
+};
+
 /** Prisma 的 FollowUp where 片段：不是同号留痕（并进 where，原 where 里不能另有 NOT） */
 export const 不是同号留痕 = { NOT: { title: { startsWith: 同号标题 } } };
 

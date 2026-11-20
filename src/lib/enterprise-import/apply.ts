@@ -433,6 +433,8 @@ export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?:
     if (!挂到) throw new 写不进(沟通没对上项目话);
     v.projectId = 挂到.projectId;
   }
+  // 标题照导、不拦「同号再次录入」开头的（same-number-mark.ts）：导入是搬旧系统原样数据、整批可撤回，逐行拦会让整批说不清；
+  // 旧系统里正好这么写的，三态、最近跟进会把它当系统留痕排除——这种写法只有本系统写，旧数据里撞上的概率可忽略
   const f = await tx.followUp.create({
     data: {
       type: String(v.type),

@@ -35,6 +35,7 @@ import { useFormGuard } from "@/lib/form-guard";
 import { 卡点类型们, 影响等级们, 原因最多, 缺原因话, 清原因们, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 选沟通附件, 传沟通附件 } from "@/components/FollowAttachments";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
+import { 同号标题不许用话, 标题占了同号 } from "@/lib/enterprise/same-number-mark";
 import { 自动推进话of } from "@/lib/project/auto-advance-text";
 import { 沟通没项目话, 请负责人建项目话, 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
 import { 动作出错话, 出错原话 } from "@/lib/stale-deploy";
@@ -195,6 +196,8 @@ export default function FollowUpForm({
   只读?: boolean;
 }) {
   const [form] = Form.useForm();
+  // 标题不许写成「同号再次录入…」（系统留痕用语，same-number-mark.ts）；改那条留痕本身、标题原样不动的放过。服务端 saveFollowUp 同一判定
+  const 同号标题规则 = { validator: (_: unknown, v?: string) => (标题占了同号(v, record?.id ? (record.title ?? null) : null) ? Promise.reject(new Error(同号标题不许用话)) : Promise.resolve()) };
   const AI已用完 = useAiOutOfCredits();
   const router = useRouter();
   const b = useBusiness();
@@ -908,7 +911,7 @@ export default function FollowUpForm({
 
                   <Col span={24}>
                     {/* 选填：时间线上已有跟进类型，标题只在需要一句话概括时才有意义 */}
-                    <Form.Item name="title" label="标题" extra="选填，填了会显示在沟通记录上">
+                    <Form.Item name="title" label="标题" extra="选填，填了会显示在沟通记录上" rules={[同号标题规则]}>
                       <Input placeholder="如：与周总沟通试单与报价" />
                     </Form.Item>
                   </Col>
@@ -975,7 +978,7 @@ export default function FollowUpForm({
 
             <Col span={24}>
               {/* 选填：时间线上已有跟进类型，标题只在需要一句话概括时才有意义 */}
-              <Form.Item name="title" label="标题" extra="选填，填了会显示在沟通记录上">
+              <Form.Item name="title" label="标题" extra="选填，填了会显示在沟通记录上" rules={[同号标题规则]}>
                 <Input placeholder="如：与周总沟通试单与报价" />
               </Form.Item>
             </Col>

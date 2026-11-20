@@ -16,6 +16,7 @@ import { 持有上限of, 负责人可推, type 组织规则 } from "./org-rules"
 import { 企业版推进关, 记沟通阶段问题, 记沟通标记, 有效线索节点 } from "./stage-gates";
 import { 等复核拦, 复核判死拦, 验证中不能改派, 进公海清验证 } from "./lead-verify-guard";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 同号标题不许用话, 标题占了同号 } from "@/lib/enterprise/same-number-mark";
 import { 落到渠道 } from "@/lib/enterprise/channel-main";
 import { 是主渠道入口, 渠道启用 } from "@/lib/enterprise/channel-main-core";
 import { parseDateInput } from "@/lib/date-input";
@@ -1485,6 +1486,8 @@ async function 认沟通额外(
   if (x == null) return 空;
   if (typeof x !== "object") return { error: "沟通信息格式不正确" };
   const title = typeof x.title === "string" ? x.title.trim().slice(0, 200) : "";
+  // 标题不许冒充同号再次录入的系统留痕（same-number-mark.ts：三态、最近跟进按标题排除它）；这里只新记，没有「改留痕本身」的情形
+  if (标题占了同号(title)) return { error: 同号标题不许用话 };
   const status = x.status == null || x.status === "" ? "已完成" : x.status;
   if (!(FOLLOW_RECORD_STATUSES as readonly string[]).includes(status)) return { error: `记录状态「${status}」不是合法取值` };
   const 分 = x.durationMinutes;
