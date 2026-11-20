@@ -120,6 +120,19 @@ describe("到点提醒（钟上每分钟一遍）", () => {
     expect(await 待回复客户of(销售, 京(`${日} 14:55`))).toBeNull();
   });
 
+  it("负责人记了一条沟通又删掉：不算回复，待办照在、照常提醒", async () => {
+    const 日 = 北京日期(-1);
+    const c = await prisma.customer.create({ data: { name: "编的客户丙", phone: "13912345679", salesOwnerId: 销售 } });
+    const id = (await prisma.project.create({
+      data: { name: "编的项目丙", customerId: c.id, ownerId: 销售, creatorId: 销售, phase: "线索", node: "潜客培育", replyStartAt: 京(`${日} 15:00`), replyEndAt: 京(`${日} 17:00`) },
+    })).id;
+    await 记沟通(id, "电话回了客户，报价今天下午发过去", 京(`${日} 14:40`));
+    expect(await 待回复客户of(销售, 京(`${日} 14:45`))).toBeNull();
+    await prisma.followUp.updateMany({ where: { customerId: c.id }, data: { deletedAt: 京(`${日} 14:46`) } });
+    expect(await 待回复客户of(销售, 京(`${日} 14:47`))).toMatchObject({ 条数: 1, 最早: { projectId: id } });
+    expect(await 指定回复提醒扫一遍(京(`${日} 14:47`))).toBe(1);
+  });
+
   it("到截止首页待办消失；停机补跑：开机时还没到截止的照常提醒，已过截止的不补", async () => {
     const 没过 = await 项目(销售, { replyStartAt: 京("2026-11-20 15:00"), replyEndAt: 京("2026-11-20 17:00") });
     const 过了 = await 项目(销售, { replyStartAt: 京("2026-11-20 09:00"), replyEndAt: 京("2026-11-20 10:00") });

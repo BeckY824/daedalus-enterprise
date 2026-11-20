@@ -91,7 +91,7 @@ export async function 已回复的(们: readonly (两格 & { id: string })[]): P
   const 最早 = new Date(Math.min(...们.map((p) => 回复提醒时刻(p)!.getTime())));
   const [挂的, 词] = await Promise.all([
     prisma.followUpProject.findMany({
-      where: { projectId: { in: 们.map((p) => p.id) }, node: { not: 同号节点 }, followUp: { createdAt: { gte: 最早 } } },
+      where: { projectId: { in: 们.map((p) => p.id) }, node: { not: 同号节点 }, followUp: { createdAt: { gte: 最早 }, deletedAt: null } },
       select: { projectId: true, followUp: { select: { content: true, createdAt: true } } },
     }),
     读占位词(),
