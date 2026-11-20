@@ -55,6 +55,7 @@ import type { 线 } from "@/lib/enterprise/lead-assign";
 import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
 import { 规整指定回复 } from "@/lib/project/time-fields";
 import { 客户引, 全称或显名, 显名列 } from "@/lib/enterprise/customer-title";
+import { 新建后定线 } from "@/lib/enterprise/flow-line";
 
 export type 给客户建项目输入 = {
   customerId: string;
@@ -298,6 +299,8 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     revalidatePath("/projects");
     revalidatePath(`/projects/${projectId}`);
     revalidatePath(`/customers/${customerId}`);
+    // 流转线（32G）：新增按建的人所在事业部写下（自动分配那一刻再按方向写），要在 建好再分 之前
+    await 新建后定线(projectId, me.id);
     const 分了 = 分配 ? await 建好再分(me, 分配, projectId, 项目.name, 业务线, 定时, 建档方向) : null;
     // 自动 / 公海 / 暂不分配 建好再分 自己管（返回对象）；指定别人走这里，自己留着函数里不发
     if (!分了) await 项目分给你通知(me, 项目.ownerId, projectId, 项目.name, customerId, 留下);

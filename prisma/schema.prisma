@@ -208,6 +208,8 @@ model Customer {
   customerAttr String?
   /// 企业版业务线（迁移 106，2026-11-01 清单 A1）：内贸 / 外贸 / 暂不分配，新建客户时手动选，可空；客户页新开项目时当项目业务线的默认值
   bizLine      String?
+  /// 企业版流转线（迁移 158，32G 11-20）：= 名下线索最近一次写的流转线（lib/enterprise/flow-line.ts 写项目时带上），客户公海按它给人看；空 = 判不出
+  flowLine     String?
   /// 企业版归档档位（迁移 114，M-导入-23）：A1 / A2 / B / C / D / E，只由归档导入写；空 = 不是归档导入来的。取值见 lib/enterprise/archive-tier.ts
   archiveTier  String?
   /// 企业版渠道触点（迁移 116，P-渠道-08）：公司资源 / 客户介绍，这两类主渠道留空、由触点承载；主渠道和触点至少填一个。取值见 lib/enterprise/touchpoint.ts
@@ -1059,6 +1061,10 @@ model Project {
   /// 空 = 没改过，按 区域 → 电话 → 本人事业部 现算（lib/enterprise/customer-region.ts 默认分配方向）。
   /// 之后每一次自动分配（定时到点、超时自动转、列表 / 批量自动分配）都先认它（assign-actions.ts 自动分给）；建好之后不改
   assignDir            String?
+  /// 流转线（企业版，迁移 157，32G 11-20）：这条线索在内贸还是外贸流转，只取「内贸」「外贸」，空 = 判不出。
+  /// 只在三种时候写（lib/enterprise/flow-line.ts）：市场分配那一刻按分配方向（含手改）、销售 / 市场新增时按新增人所在事业部、
+  /// 管理手动指定时写成接收人的线；超时转、公海领取不改。超时转只在这条线里挑人，线索公海按它给人看。不复用 bizLine（导入脏数据、有第三个值）
+  flowLine             String?
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
   /// 企业版软删（2026-10-29，P9）：空 = 没删；有值 = 进了回收站，30 天后清掉。读的时候 lib/enterprise/soft-delete.ts 统一滤掉

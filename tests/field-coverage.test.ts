@@ -611,6 +611,11 @@ const 派生: Record<string, Record<string, string>> = {
 type 系统事实项 = { 写入方: string[]; 说明: string; 仓库外?: string; 漏写?: string };
 const 系统事实: Record<string, Record<string, 系统事实项>> = {
   Customer: {
+    flowLine: {
+      写入方: ["src/lib/enterprise/flow-line.ts"],
+      说明: "流转线（迁移 158，32G）：名下线索最近一次写的流转线，跟着 Project.flowLine 一起写（flow-line.ts 写流转线，裸 SQL 不碰 updatedAt）；公海按线可见用它",
+      仓库外: "老数据由一次性定线脚本回填（r20-按线定线）",
+    },
     assignWay: {
       写入方: ["src/lib/enterprise/customer-assign-way.ts", "src/lib/enterprise-import/clean.ts"],
       说明: "客户分配（怎么到销售手上）：分配 / 领取 / 市场转销售时系统按字典「客户分配」当时的叫法写（customer-assign-way.ts）；导入时按「分配方式」一列写（clean.ts）；表单上也能手改",
@@ -622,6 +627,11 @@ const 系统事实: Record<string, Record<string, 系统事实项>> = {
     },
   },
   Project: {
+    flowLine: {
+      写入方: ["src/lib/enterprise/flow-line.ts"],
+      说明: "流转线（迁移 157，32G）：内贸 / 外贸，市场分配那一刻按方向写、销售 / 市场新增按新增人事业部写、管理手动指定按接收人事业部改；超时转、公海领取不改（规则见 flow-line-core.ts）；超时转只在这条线里转",
+      仓库外: "老数据由一次性定线脚本回填（r20-按线定线）",
+    },
     assignMode: {
       写入方: ["src/lib/project/proj-fields.ts", "src/lib/enterprise/market-transfer.ts"],
       说明: "新建线索 / 项目时选的分配方式，建的那一刻记下，之后不改（11-01 会议 §3，lib/project/after-create-assign.ts）；市场转销售带走的线索补写。" +
