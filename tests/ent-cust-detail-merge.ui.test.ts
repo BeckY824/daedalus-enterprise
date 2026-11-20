@@ -717,7 +717,11 @@ it("受限客户详情：最后一个项目退回公海后回客户列表、带�
 it.each([1366, 1024, 390, 375])("号码格编辑态 %ipx：号码框看得清，类型和号码不互相挤掉，不横滚", async (w) => {
   const { page, errors } = await 开(w, { 号码: true }, 900);
   try {
-    await page.getByRole("button", { name: "编辑号码" }).first().click();
+    /*
+      点这一行的标签进编辑，不点行中心（CI #384 只在 390 红）：行里号码后面紧跟复制键，复制键按设计拦住点击（点复制不算点这一行）；
+      Linux 字体数字窄一点，390 下行中心正好落在复制键上 → 复制了、没进编辑。点标签那一格才是稳定的「点这一行」
+    */
+    await page.getByRole("button", { name: "编辑号码" }).first().locator(".rec-field-k").click();
     await page.getByRole("button", { name: "加一个号码" }).waitFor();
     await page.getByRole("textbox", { name: "号码" }).first().fill("+86 13912345678");
     const m = await page.evaluate(() => {
