@@ -109,10 +109,10 @@ it("初判：缺有效沟通时「有效」灰着；判无效没选原因确定�
   } finally { await page.close(); }
 });
 
-// 11-09 口径：现负责人有占额度的分配行才补，自动、指定都算，不限哪个月，补在判无效的这个月
-it("判无效的补额度说法：详情页和待复核列表都不再写「本月自动分配」", async () => {
+// 11-09 口径（11-20 改补法）：现负责人有占额度的分配行（或补发来的）才补，自动、指定都算，不限哪个月；补 = 记 1 个判无效待补
+it("判无效的补额度说法：详情页和待复核列表写判无效待补，不再写「本月自动分配」「本月补回」", async () => {
   const { page, errors } = await open("市场复核");
-  const 说法 = "现负责人的分配占过额度的（自动、指定都算，不限哪个月），给他本月补回 1 个；随客户分到的、转来的、没分配记录的、没设配额的不补。";
+  const 说法 = "现负责人占过名额的（自动、指定都算，不限月；补发来的也算）记 1 个判无效待补，下一条自动分配优先补发给他；随客户分到的、转来的、没分配记录的不补。";
   try {
     for (const 第几个 of [0, 1]) {
       await page.getByRole("button", { name: "判无效", exact: true }).nth(第几个).click();
@@ -121,6 +121,7 @@ it("判无效的补额度说法：详情页和待复核列表都不再写「本�
       const 字 = await 框.innerText();
       expect(字).toContain(说法);
       expect(字).not.toContain("本月自动分配");
+      expect(字).not.toContain("本月补回");
       await 框.locator(".ant-btn:not(.ant-btn-primary)").first().click();
       await 框.waitFor({ state: "hidden" });
     }

@@ -351,8 +351,8 @@ async function 分项目给(
       data: { projectId: p.id, toUserId: input.toUserId, fromUserId: 原, byUserId: me.id, line: input.line, kind: input.kind, counted: 这条算数, month: 月, way: input.way },
       select: { id: true },
     });
-    // 判无效补发：标这个待补用在这条分配上（撤销自动分配时退回）
-    if (补位id) await 用掉补位(tx, 补位id, 记.id, p.id);
+    // 判无效补发：标这个待补用在这条分配上（撤销自动分配时退回）。没标上（事务排着队，按说不会）= 抛错整笔回滚，不留没扣待补的补发
+    if (补位id && !(await 用掉补位(tx, 补位id, 记.id, p.id))) throw new Error("判无效待补刚被别的分配用掉了，这条没分出去，请再点一次自动分配");
     // 还原单（撤销自动分配整批还原用，auto-assign-undo.ts）：分之前的负责人、待分配 / 入池时刻、市场转销售连带过去的客户和活
     const 还原: 自动分配还原 = {
       原, 待分配: p.awaitAssignAt?.toISOString() ?? null, 公海: p.pooledAt?.toISOString() ?? null, ...(改方式 ? { 暂不分配: true } : {}),

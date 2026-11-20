@@ -494,3 +494,31 @@ describe("原负责人回避（用户 11-19：仅对创建人豁免，对其他�
     expect(await prisma.followUp.count({ where: { customerId: c.id, ownerId: 市场.id } })).toBe(1);
   });
 });
+
+// 判无效待补（11-20，lib/enterprise/invalid-makeup.ts）：查重领取新建线索项目也是新线索自动分配，有待补的先补发，补发不算本月已分
+describe("查重领取用判无效待补", () => {
+  it("乙有内贸待补：补发给乙（本来轮到甲），分配记录 counted=false、待补记用在这条上", async () => {
+    await prisma.entLeadMakeup.create({ data: { userId: 乙.id, projectId: "坏线索", line: "内贸" } });
+    const c = await 公海客户(总管.id);
+    当(市场);
+    const r = await 查重领取("手机号", c.号, 沟通(), c.id, 新(c));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.接手人).toBe(乙.name);
+    const 记 = await prisma.entLeadAssign.findFirstOrThrow();
+    expect(记).toMatchObject({ toUserId: 乙.id, counted: false });
+    expect(await prisma.entLeadMakeup.findFirstOrThrow()).toMatchObject({ usedAssignId: 记.id, usedProjectId: 记.projectId });
+    expect(await 本月已分(乙.id)).toBe(0);
+  });
+
+  it("只领旧公海项目（不计本月已分）：不用待补，照轮转给甲", async () => {
+    查重领取口径.新建线索项目 = false;
+    await prisma.entLeadMakeup.create({ data: { userId: 乙.id, projectId: "坏线索", line: "内贸" } });
+    const c = await 公海客户(总管.id);
+    await 公海项目(c.id, 总管.id, new Date("2026-11-01T00:00:00Z"));
+    当(市场);
+    const r = await 查重领取("手机号", c.号, 沟通(), c.id);
+    if (!r.ok) throw new Error(r.error);
+    expect(r.接手人).toBe(甲.name);
+    expect((await prisma.entLeadMakeup.findFirstOrThrow()).usedAt).toBeNull();
+  });
+});

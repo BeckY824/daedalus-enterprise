@@ -67,7 +67,10 @@ const 分来又判死 = async (谁: 人, 补: { line?: string } = {}) => {
 /** 市场手上一条等分的新线索（潜客培育，市场建、市场名下） */
 const 新线索 = async () => 线索(await 客户(市场.id), 市场.id, 市场.id, "潜客培育");
 const 待补 = async (u: 人) => (await 待补数们([u.id])).get(u.id) ?? 0;
-
+/** 甲本月已经分到 2 条（算数），乙、丙 0 条：按现行该给乙 */
+const 甲多分 = async () => {
+  for (let i = 0; i < 2; i++) await 分配行(await 线索(await 客户(市场.id), 甲.id, 市场.id, "线索推进"), 甲.id);
+};
 beforeEach(async () => {
   await resetDb();
   invalidateSettingsCache();
@@ -151,20 +154,26 @@ describe("判无效记待补", () => {
     expect((await 市场复核(身份(市场), L, false)).ok).toBe(true);
     expect(await 待补(甲)).toBe(0);
   });
-  it("判无效结果通知负责人，带「已补名额，下一条自动分配优先给你」", async () => {
+  it("判无效结果通知负责人，带「已记 1 条判无效待补」；没填说明句号收尾", async () => {
     const L = await 分来又判死(甲);
     await 验证待办通知({ id: 市场.id, name: 市场.name }, L);
     const n = await prisma.entNotice.findFirstOrThrow({ where: { userId: 甲.id, kind: "线索验证" } });
     expect(n.title).toContain("最终判了无效");
-    expect(n.body).toContain("已补名额，下一条自动分配优先给你");
+    expect(n.body).toBe(`${市场.name} 判了无效。已记 1 条判无效待补，下一条自动分配优先补给你。`);
+  });
+  it("填了说明：说明后面有句号，再接待补那句", async () => {
+    const L = await 线索(await 客户(市场.id), 甲.id, 市场.id);
+    await 分配行(L, 甲.id);
+    expect((await 销售初判(身份(甲), L, "无效", { invalidReason: "联系方式无效" })).ok).toBe(true);
+    expect((await 市场复核(身份(市场), L, false, "打过三次都是空号")).ok).toBe(true);
+    await 验证待办通知({ id: 市场.id, name: 市场.name }, L);
+    const n = await prisma.entNotice.findFirstOrThrow({ where: { userId: 甲.id, kind: "线索验证" } });
+    expect(n.body).toBe(`${市场.name} 判了无效：打过三次都是空号。已记 1 条判无效待补，下一条自动分配优先补给你。`);
   });
 });
 
 describe("自动分配优先补", () => {
-  /** 甲本月已经分到 2 条（算数），乙、丙 0 条：按现行该给乙 */
-  const 甲多分 = async () => {
-    for (let i = 0; i < 2; i++) await 分配行(await 线索(await 客户(市场.id), 甲.id, 市场.id, "线索推进"), 甲.id);
-  };
+
 
   it("没待补：照现行给本月已分最少的（乙）", async () => {
     await 甲多分();
@@ -263,6 +272,35 @@ describe("自动分配优先补", () => {
     expect(await 超时转出(超时转令牌, 系统操作人, N, 乙.id, [甲.id, 乙.id], "超时未跟进自动转")).toMatchObject({ ok: true, 接手人Id: 丙.id });
     expect(await 待补(丙)).toBe(1);
     expect(await prisma.entLeadAssign.findFirstOrThrow({ where: { projectId: N, toUserId: 丙.id } })).toMatchObject({ counted: true });
+  });
+});
+
+describe("真写库的几条：批量、按配额满额", () => {
+  it("批量自动分配一次分 4 条：甲 1 个待补只补 1 条，其余照轮转", async () => {
+    await 甲多分(); // 甲本月 2 条，乙丙 0 条
+    await 分来又判死(甲);
+    const 们 = [await 新线索(), await 新线索(), await 新线索(), await 新线索()];
+    const r = await 以(市场, () => 批量自动分配(们, { 项目: true }));
+    expect(r.ok).toBe(true);
+    const 给了 = await Promise.all(们.map(负责人));
+    expect(给了).toEqual([甲.id, 乙.id, 丙.id, 乙.id]);
+    expect(给了.filter((x) => x === 甲.id)).toHaveLength(1);
+    expect(await 待补(甲)).toBe(0);
+    expect(await prisma.entLeadAssign.count({ where: { projectId: { in: 们 }, counted: false } })).toBe(1);
+  });
+
+  it("按配额分、甲已分满：有待补照样补发给他（走 分项目给 真写库，不查满额、不占配额）", async () => {
+    await setSetting(不设配额key, false);
+    for (const u of [甲, 乙, 丙]) await prisma.entLeadQuota.create({ data: { userId: u.id, quota: 2, setById: 总管.id } });
+    invalidateSettingsCache();
+    await 甲多分(); // 甲 2/2 满额
+    await 分来又判死(甲);
+    const N = await 新线索();
+    expect(await 以(市场, () => 自动分配线索(N, { 项目: true }))).toMatchObject({ ok: true, toUserId: 甲.id });
+    expect(await prisma.entLeadAssign.findFirstOrThrow({ where: { projectId: N } })).toMatchObject({ counted: false });
+    // 补完待补没了，满额的甲不再挑
+    const N2 = await 新线索();
+    expect(await 以(市场, () => 自动分配线索(N2, { 项目: true }))).toMatchObject({ ok: true, toUserId: 乙.id });
   });
 });
 

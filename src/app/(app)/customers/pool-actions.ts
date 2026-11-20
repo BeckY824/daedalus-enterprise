@@ -806,7 +806,8 @@ export async function 查重领取(类型: string, 值: string, 沟通: 查重�
             select: { id: true },
           });
           // 判无效补发：标这个待补用在这条分配上（同 assign-actions 分项目给）
-          if (补位id && !挂.公海) await 用掉补位(tx, 补位id, 记.id, 项目id);
+          // 没标上（按说不会）= 抛换人：整笔回滚、按最新的数重挑
+          if (补位id && !挂.公海 && !(await 用掉补位(tx, 补位id, 记.id, 项目id))) throw new 查重领取换人(false);
           await 查重领取记沟通(tx, me.id, 项目id, 好, new Date());
         },
       });

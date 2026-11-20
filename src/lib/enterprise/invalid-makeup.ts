@@ -94,7 +94,7 @@ export async function 退回补位(tx: 库, assignIds: readonly string[]): Promi
   return (await tx.entLeadMakeup.updateMany({ where: { usedAssignId: { in: [...assignIds] }, voidAt: null }, data: { usedAt: null, usedAssignId: null, usedProjectId: null } })).count;
 }
 
-/** 这条线索判无效时记的补位还在待用（判无效结果通知里说「已补名额」用） */
+/** 这条线索判无效时记的补位还在待用（判无效结果通知里说「已记 1 条判无效待补」用） */
 export async function 这条记了补位(projectId: string, userId: string, db: 库 = prisma): Promise<boolean> {
   return !!(await db.entLeadMakeup.findFirst({ where: { projectId, userId, ...待用 }, select: { id: true } }));
 }

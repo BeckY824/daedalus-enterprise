@@ -108,7 +108,7 @@ export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分�
                   <th scope="row"><span className="org-lead-assign-name" title={r.name}>{r.name}</span></th>
                   <td>{r.line ?? "两边都做"}</td>
                   <td>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <span className="org-lead-assign-quota">
                       <span>{r.已分}{r.另补 > 0 && <span className="muted" title="判无效补发的，不算进本月已分、不影响轮转" data-testid={`org-lead-extra-${r.userId}`}>（另补 {r.另补}）</span>} /</span>
                       {r.能设配额 ? (
                         <InputNumber size="small" min={0} max={10000} precision={0} placeholder="没填" style={{ width: 84 }}
