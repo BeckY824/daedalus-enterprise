@@ -481,9 +481,12 @@ describe("受限客户详情（提交 4）", () => {
     const 当前 = d.项目区.当前!;
     const { 候选, 在职, ...其余 } = 当前;
     expect([...候选, ...在职].every((u) => Object.keys(u).every((k) => ["id", "name", "email", "role", "title", "avatar", "active"].includes(k)))).toBe(true);
-    // 渠道选项（项目自己选渠道用）是全公司的渠道名单，和这位客户无关，单独看：这位客户的来源不能挂在项目来源上
+    // 渠道选项（项目自己选渠道用）是全公司的渠道名单，和这位客户无关，单独看：这位客户的来源不能挂在项目来源上。
+    // 11-20 总控判定「只露有无，不露来源值」：项目没选、客户有来源时项目来源那格写「随客户来源」（name 空、跟客户），渠道名 / id 都不给
     const { 渠道们: _渠道选项, ...项目其余 } = 其余.p as typeof 其余.p & { 渠道们?: unknown };
-    expect((其余.p as { 项目来源?: unknown }).项目来源 ?? null).toBeNull();
+    expect((其余.p as { 项目来源?: unknown }).项目来源).toEqual({ name: "", 跟客户: true });
+    const 客户渠道 = await prisma.channel.findFirstOrThrow({ where: { name: "特征客户渠道名" } });
+    expect(JSON.stringify(项目其余)).not.toContain(客户渠道.id);
     const 文 = JSON.stringify({ ...d, 项目区: { ...d.项目区, 当前: { ...其余, p: 项目其余 } } });
     const 李行 = await prisma.contact.findUniqueOrThrow({ where: { id: 李 } });
     for (const 不该有 of ["13900009999", 李行.phone!, "wx同事李", "987654", "876543", "765432", "salesOwnerId", 甲.name, 甲.id, "特征状态", "custStatus", "lastFollowAt", "2026-01-02", "特征备注", "同事项目备注", "同事丙的沟通", "客户级老跟进", "甲的客户待办", "特征客户渠道名", q]) {

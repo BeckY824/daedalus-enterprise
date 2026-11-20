@@ -204,7 +204,7 @@ async function 转项目之后(user: Actor, lead: { name: string }, customerId: 
   });
   // 企业版客户状态跟着项目算：多了一个线索阶段的项目
   await 项目变了重算([customerId]);
-  await 客户存了推项目(user, customerId);
+  await 客户存了推项目(user, customerId, { 新建的: projectId });
   revalidatePath("/projects");
 }
 

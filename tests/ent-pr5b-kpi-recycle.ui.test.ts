@@ -21,7 +21,7 @@ const plugin: Plugin = { name: "pr5b-kpi-recycle", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({push(u){(window.__去||(window.__去=[])).push(u)},refresh(){},replace(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可用:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
   stub(/customers\/\[id\]\/actions$/, 补全动作桩("src/app/(app)/customers/[id]/actions.ts", "export const toggleTask=async()=>({ok:true}),completePlan=async()=>({ok:true}),沟通可选项目=async()=>({ok:true,项目们:null,能建项目:true});"));
-  stub(/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 记项目沟通Action=async(id,v)=>{(window.__调||(window.__调=[])).push({id,...v});return window.__挡?{ok:false,error:window.__挡}:{ok:true}};"));
+  stub(/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 记项目沟通Action=async(id,v)=>{(window.__调||(window.__调=[])).push({id,...v});return window.__挡?{ok:false,error:window.__挡}:(window.__回??{ok:true})};"));
   stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>{if(window.__习惯慢)await new Promise(r=>setTimeout(r,window.__习惯慢));return window.__习惯??null};", "async()=>null"));
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
@@ -159,5 +159,34 @@ it("ov.recycle：习惯晚到、人先改过方式 → 不盖人选的", async (
   await page.getByRole("button", { name: /^记\s*下$/ }).click();
   await expect.poll(async () => (await 调了(page)).length).toBe(1);
   expect((await 调了(page))[0]).toMatchObject({ type: "VISIT" });
+  await page.close();
+});
+
+/* 11-20：记成了、顺带按必填把节点推了一格（画像早就齐了，这次记沟通才推）：表单收起后这一行下面说推到哪，不悄悄推；一行放不下「…」、不横滚 */
+it("ov.recycle：记成了、顺带自动推了一格，行下面说推到哪；没推不说（11-20）", async () => {
+  for (const w of [375, 1366]) {
+    const page = await 打开("todos", w);
+    await page.evaluate(() => Reflect.set(window, "__回", { ok: true, 自动推到: ["线索验证"] }));
+    await page.getByRole("button", { name: /潜客培育 · 7 天没跟进收回/ }).click();
+    await page.getByRole("button", { name: "记一条沟通" }).first().click();
+    await page.getByRole("textbox", { name: /沟通了什么/ }).fill("聊了需求");
+    await page.getByRole("textbox", { name: "下一步计划" }).fill("下周回访");
+    await page.getByRole("button", { name: /^记\s*下$/ }).click();
+    const 说 = page.getByRole("status").filter({ hasText: "必填齐了，自动推进到 线索验证" });
+    await 说.waitFor({ timeout: 6000 });
+    expect(await 横滚(page)).toBeLessThanOrEqual(0);
+    // 再点「记一条沟通」：那句清掉
+    await page.getByRole("button", { name: "记一条沟通" }).first().click();
+    expect(await 说.count()).toBe(0);
+    await page.close();
+  }
+  const page = await 打开("todos", 1280);
+  await page.getByRole("button", { name: /潜客培育 · 7 天没跟进收回/ }).click();
+  await page.getByRole("button", { name: "记一条沟通" }).first().click();
+  await page.getByRole("textbox", { name: /沟通了什么/ }).fill("聊了需求");
+  await page.getByRole("textbox", { name: "下一步计划" }).fill("下周回访");
+  await page.getByRole("button", { name: /^记\s*下$/ }).click();
+  await expect.poll(async () => page.getByRole("textbox", { name: /沟通了什么/ }).count(), { timeout: 6000 }).toBe(0);
+  expect(await page.getByText("自动推进到").count()).toBe(0);
   await page.close();
 });

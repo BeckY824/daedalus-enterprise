@@ -17,6 +17,15 @@
 import { 团队版字典, 企业版字典, 企业版旧名换新名, 同名们, type 阶段字典 } from "./stage-dict";
 import type { 组织规则 } from "./org-rules";
 import { 生效的合同状态, 是备货状态, 已备货的备货状态, 默认已签收 } from "./proj-fields";
+import { 项目算哪个渠道 } from "../enterprise/channel-stats";
+
+/**
+ * 项目来源算不算有值——节点必填（齐了）、项目页那一格（load.ts）同一个判断（11-20：原来页面跟客户来源显示有值、必填只认项目自己选的，两边打架）。
+ * 和渠道统计同一条规则（项目算哪个渠道）：项目自己选了渠道就是它；没选（向导没另选、系统补建、线索转来、导入）跟客户来源走；两个都空才算没填
+ */
+export function 项目来源有值(项目来源: string | null | undefined, 客户来源: string | null | undefined): boolean {
+  return !!项目算哪个渠道(项目来源, 客户来源);
+}
 
 export const 必填项们 = [
   { key: "联系方式", 说明: "电话、座机、WhatsApp、微信、邮箱、阿里国际站 ID 等任一（客户或联系人上的都算）" },
@@ -49,7 +58,7 @@ export const 必填项们 = [
   { key: "分配方式", 说明: "新建时选了分配方式，或项目分配记录上有分配方式，或客户的「分配方式（客户）」选了" },
   { key: "项目名称", 说明: "项目名称写了" },
   { key: "所属客户", 说明: "项目挂在一位客户名下" },
-  { key: "项目来源", 说明: "项目来源选了渠道" },
+  { key: "项目来源", 说明: "项目来源选了渠道（项目没选、跟客户来源走的也算）" },
   { key: "项目所在地", 说明: "项目所在地的国家 / 地区选了" },
   // 11-08 定（F-项目-14）：项目级别、项目标签各一列、各自填，互不关联。存过的「项目级别」一项照旧只看级别列，不会变成标签
   { key: "项目级别", 说明: "项目级别（S / A / B / C）选了" },
@@ -275,7 +284,8 @@ function 齐了(项: 必填项, d: 必填数据): boolean {
     case "分配方式": return 有(d.分配方式) || 有(d.客户.assignWay) || 有(d.项目.assignMode);
     case "项目名称": return 有(d.项目.name);
     case "所属客户": return !!d.有客户;
-    case "项目来源": return !!d.项目.channelId;
+    // 项目自己没选、跟客户来源走的也算有（项目页显示、渠道统计同一条：项目来源有值）
+    case "项目来源": return 项目来源有值(d.项目.channelId, d.客户.channelId);
     case "项目所在地": return 有(d.项目.addrCountry);
     case "项目级别": return 有(d.项目.level);
     case "项目标签": return 有(d.项目.projTag);

@@ -4,7 +4,7 @@ import { 只读客户 } from "@/lib/team-scope";
 import type { SessionUser } from "@/lib/auth";
 import { 项目收藏了吗 } from "@/lib/favorites";
 import { 能管项目, 能加组员, 能改组员, 能放回公海, 能改节点, 上级只推, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据, 自动推得到, 超时成员线, 超时线 } from "@/lib/project/db";
-import { 项目按必填走, 节点推进管, 节点必填, 还差, 有效沟通还差, 必填叫法, type 必填数据 } from "@/lib/project/required";
+import { 项目按必填走, 节点推进管, 节点必填, 还差, 有效沟通还差, 必填叫法, 项目来源有值, type 必填数据 } from "@/lib/project/required";
 import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
@@ -148,7 +148,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   const p = await prisma.project.findUnique({
     where: { id },
     include: {
-      customer: { select: { id: true, name: true, shortName: true, customerNo: true, school: true, lastFollowAt: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, channel: { select: { name: true } } } },
+      customer: { select: { id: true, name: true, shortName: true, customerNo: true, school: true, lastFollowAt: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, channelId: true, channel: { select: { name: true } } } },
       channel: { select: { name: true } },
       contact: { select: { id: true, name: true, position: true } },
       exceptionCategory: { select: { name: true } },
@@ -287,8 +287,12 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   // 痛点标注、合同状态（迁移 101）：字段权限「藏」的那一项不给值（界面不摆那一行、编辑框不交那一项）
   const 权限 = 企业 ? await 字段权限of(me.id) : null;
   const 企业项目字段 = !企业 ? {} : {
-    // 跟客户来源的那一半只给客户看得到的（11-12 审查）：只负责项目的人、实线上级看不到客户，不露客户从哪个渠道来
-    项目来源: p.channel ? { name: p.channel.name, 跟客户: false } : 看得到客户.has(p.customerId) && p.customer.channel ? { name: p.customer.channel.name, 跟客户: true } : null,
+    // 有没有值和节点必填同一个判断（required.ts 项目来源有值，是项目本身的属性，不随看的人变），不然这里显示有、必填说没填（或反过来）。
+    // 跟客户来源的渠道名只给看得到客户的人（11-12 审查）；看不到客户的（只负责项目的人、实线上级）：11-20 总控判定「只露有无，不露来源值」——
+    // name 空，界面写「随客户来源」，不写待填（免得误导去补填、改掉渠道归属），渠道名 / id 都不给
+    项目来源: !项目来源有值(p.channelId, p.customer.channelId) ? null
+      : p.channel ? { name: p.channel.name, 跟客户: false }
+      : { name: 看得到客户.has(p.customerId) ? p.customer.channel?.name ?? "" : "", 跟客户: true },
     channelId: p.channelId,
     // 数据来源（迁移 151）：历史沟通分析回填的项目写「历史分析」；系统里正常建的不给（界面不摆那一行）
     ...(p.source ? { 数据来源: 来源字(p.source) } : {}),

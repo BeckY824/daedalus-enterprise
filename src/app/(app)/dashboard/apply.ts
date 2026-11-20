@@ -15,6 +15,7 @@ import { buildProposal, missingFields, summarizeApplied, 可改字段表, 线索
 import { statusLabel, type BusinessConfig } from "@/lib/business-config";
 import { patchCustomer, saveCustomer, saveContract } from "../customers/actions";
 import { saveFollowUp, savePlan, deleteFollowUp } from "../customers/[id]/actions";
+import { 自动推进话of } from "@/lib/project/auto-advance-text";
 import { saveLead } from "../leads/actions";
 import { 建档向导 } from "../projects/actions";
 import { 新建分配方式数据 } from "@/lib/project/after-create-assign";
@@ -65,7 +66,8 @@ export type 附件去处 = { contactId: string } | { leadId: string };
  */
 export type 首条附件票 = { followUpId: string; 票: string };
 export type 确认选项 = { 首条附件?: boolean };
-export type ApplyResult = { ok: true; message: string; 撤销?: 撤销凭据; 附件去处?: 附件去处; 项目?: string; 首条附件票?: 首条附件票 } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string }; 公海号?: { 类型: string; 值: string } };
+/** 推进：写进去时顺带按必填把项目推了一格，推到哪（卡上落印下面那一行，不悄悄推，11-20） */
+export type ApplyResult = { ok: true; message: string; 撤销?: 撤销凭据; 附件去处?: 附件去处; 项目?: string; 首条附件票?: 首条附件票; 推进?: string } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string }; 公海号?: { 类型: string; 值: string } };
 
 /**
  * 确认一张 AI 建议卡，把它真的写进去。
@@ -461,7 +463,7 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
   if (p.kind === "add_opportunity") return { ok: false, error: "这里商机是项目的一个阶段：请到项目页把它推到商机阶段" };
   if (只用项目 && p.kind === "add_contract") return { ok: false, error: "这里成交记在项目上：请到项目页把它推到成交" };
 
-  let done: { ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string; 首条附件票?: 首条附件票 } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string }; 公海号?: { 类型: string; 值: string } };
+  let done: { ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string; 首条附件票?: 首条附件票; 推进?: string } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string }; 公海号?: { 类型: string; 值: string } };
   let 撤销: 撤销凭据 | undefined;
   if (只用项目 && p.kind === "add_lead") {
     done = await 建成项目(p, me, 要传附件);
@@ -498,7 +500,9 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
       status: "已完成",
       occurredAt: p.occurredAt,
     });
-    done = r.ok ? { ok: true } : { ok: false, error: r.error };
+    // 记上了、顺带把项目按必填推了一格：卡上落印那句带上推到哪（不悄悄推，11-20）；撤销只删这条沟通、推回不去，照实说
+    const 推话 = r.ok ? 自动推进话of(r) : null;
+    done = r.ok ? { ok: true, ...(推话 ? { 提示: 推话, 推进: `${推话}（撤销这条沟通不会把进程退回去）` } : {}) } : { ok: false, error: r.error };
     if (r.ok) 撤销 = { kind: "add_followup", customerId: p.customerId, id: r.id };
   } else if (p.kind === "add_plan") {
     const r = await savePlan({ customerId: p.customerId, subject: p.subject, plannedAt: p.plannedAt, method: p.method });
@@ -516,7 +520,7 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
   // 记跟进卡：把建出来的那条跟进 id 记进留痕，撤销时凭它认「这条是 AI 卡建的」（凭据是前端带回来的，多进程下内存里那张表也认不全）
   await recordAudit({ user: me, action: "ai_apply", entity: "Ai", entityId: p.kind, summary, detail: { 对象: c.name || p.customerName, 理由: p.reason, ...(撤销?.kind === "add_followup" ? { 跟进: 撤销.id } : {}) } });
   const 话 = summary.replace("确认 AI 建议：", "已") + (done.提示 ? `；${done.提示}` : "");
-  return { ok: true, message: 话, 撤销, ...(done.附件去处 ? { 附件去处: done.附件去处 } : {}), ...(done.项目 ? { 项目: done.项目 } : {}), ...(done.首条附件票 ? { 首条附件票: done.首条附件票 } : {}) };
+  return { ok: true, message: 话, 撤销, ...(done.附件去处 ? { 附件去处: done.附件去处 } : {}), ...(done.项目 ? { 项目: done.项目 } : {}), ...(done.首条附件票 ? { 首条附件票: done.首条附件票 } : {}), ...(done.推进 ? { 推进: done.推进 } : {}) };
 }
 
 /**

@@ -80,6 +80,7 @@ import { deleteContract, 删签约前清点, assignSalesOwner, 撤销改负责�
 import type { RecordProps, FollowUpRow, ContactRow } from "./types";
 import TriStateBar, { TriStateLog } from "./TriStateBar";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
+import { 自动推进话of } from "@/lib/project/auto-advance-text";
 import { 进公海理由显示 } from "@/lib/enterprise/tri-state-label";
 import { 换负责人怎么来的 } from "@/lib/owner-log";
 import { useMotionTheme } from "@/components/MotionTheme";
@@ -827,7 +828,9 @@ export default function RecordView({
     // 记上了：领取了 / 不算有效沟通（客户三态 C12，照常保存不拦）写在速记框下面一行，不弹顶部提示
     const 领了 = "领取了" in res && res.领取了 ? "已领取并记下跟进，这位现在归你跟进" : "";
     const 短 = 短沟通话of(res);
-    set速记话(领了 || 短 ? { 话: [领了, 短].filter(Boolean).join("；") } : null);
+    // 顺带把名下项目按必填推了一格：一起说（不悄悄推，11-20）
+    const 推 = 自动推进话of(res);
+    set速记话(领了 || 短 || 推 ? { 话: [领了, 短, 推].filter(Boolean).join("；") } : null);
     router.refresh();
   }
 
