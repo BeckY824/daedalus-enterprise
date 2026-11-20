@@ -285,12 +285,12 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   // 痛点标注、合同状态（迁移 101）：字段权限「藏」的那一项不给值（界面不摆那一行、编辑框不交那一项）
   const 权限 = 企业 ? await 字段权限of(me.id) : null;
   const 企业项目字段 = !企业 ? {} : {
-    // 有没有值和节点必填同一个判断（required.ts 项目来源有值），不然这里显示有、必填说没填（或反过来）。
-    // 例外：跟客户来源的只给看得到客户的人（11-12 审查，泄露哨兵守着）：只负责项目的人、实线上级看不到客户，
-    // 连「客户有来源」都不露，照旧给 null（显示待填）；必填那边照样算齐——这是唯一一处两边不一样，有意的
-    项目来源: p.channel ? { name: p.channel.name, 跟客户: false }
-      : 看得到客户.has(p.customerId) && 项目来源有值(null, p.customer.channelId) && p.customer.channel ? { name: p.customer.channel.name, 跟客户: true }
-      : null,
+    // 有没有值和节点必填同一个判断（required.ts 项目来源有值，是项目本身的属性，不随看的人变），不然这里显示有、必填说没填（或反过来）。
+    // 跟客户来源的渠道名只给看得到客户的人（11-12 审查）；看不到客户的（只负责项目的人、实线上级）：11-20 总控判定「只露有无，不露来源值」——
+    // name 空，界面写「随客户来源」，不写待填（免得误导去补填、改掉渠道归属），渠道名 / id 都不给
+    项目来源: !项目来源有值(p.channelId, p.customer.channelId) ? null
+      : p.channel ? { name: p.channel.name, 跟客户: false }
+      : { name: 看得到客户.has(p.customerId) ? p.customer.channel?.name ?? "" : "", 跟客户: true },
     channelId: p.channelId,
     // 数据来源（迁移 151）：历史沟通分析回填的项目写「历史分析」；系统里正常建的不给（界面不摆那一行）
     ...(p.source ? { 数据来源: 来源字(p.source) } : {}),

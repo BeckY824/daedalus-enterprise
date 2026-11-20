@@ -37,6 +37,7 @@ import { dayjs } from "../utils";
 import { 看全部, 只读身份中, 系统写 } from "../team-scope";
 import { FOLLOW_RECORD_STATUSES } from "../constants";
 import { 记沟通编号 } from "./followup-meta";
+import { 下一步文字上限 } from "./project-fields";
 import { 节点变了的提成 } from "./commission-db";
 import { 公海规则, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示, 拦客户公海里的项目, 客户在公海项目不单领提示, 无效客户项目不能转提示 } from "@/lib/enterprise/pool-rules";
 import { 单项目客户跟进公海, 单项目客户跟着领, 领项目连带超上限 } from "@/lib/enterprise/pool-link";
@@ -316,8 +317,16 @@ export const 带推进 = (到: string[]) => (到.length ? { 自动推到: 到 } 
  */
 export async function 改节点(
   me: 谁, projectId: string, 到: 位置, 异常?: { categoryId?: string | null; 备注?: string | null },
-  选项?: { 验证放行?: boolean },
-): Promise<结果 & { 变了?: boolean; 自动推到?: string[] }> {
+  选项?: {
+    验证放行?: boolean;
+    /** 撤销（11-20 审查）：项目现在应该在的那一格（= 刚推到的）；对不上 = 推完又被人改过，不撤，说一句 */
+    期望在?: 位置;
+    /** 撤销时带回推之前的下一步（推进 / 完成节点清掉的那一份）；只和 期望在 一起认 */
+    恢复下一步?: { 文字?: string | null; 时间?: string | null } | null;
+    /** 回 原（改之前在哪、下一步是什么）：项目页撤销条要（改项目节点 带上），别的调用方不要 */
+    回原?: boolean;
+  },
+): Promise<结果 & { 变了?: boolean; 自动推到?: string[]; 原?: 推前 & { result: string | null } }> {
   const 规则 = await 生效组织规则();
   const org = await 权限组织();
   const 推的组织 = await 直属才推(org);
@@ -341,6 +350,12 @@ export async function 改节点(
     到 = 本套位置({ ...到, result: 到.result || null }, 字典);
     const result = 到.result || null;
     const 现 = 本套位置(p, 字典);
+    if (选项?.期望在) {
+      const 期 = 本套位置({ ...选项.期望在, result: 选项.期望在.result || null }, 字典);
+      if (期.phase !== 现.phase || 期.node !== 现.node || (期.result || null) !== (现.result || null)) {
+        return { ok: false as const, error: `项目进程已经被改过（现在在 ${现.phase}·${现.node}${现.result ? `（${现.result}）` : ""}），没有撤销；要改请在进程上手动改` };
+      }
+    }
     // 企业版点交付结清：验收认「验收通过」勾或项目附件「验收报告」里有一份（M-必填-11），数一下那一格
     const 有验收报告 = 企业版() && !!result && 是交付(result) && !p.acceptancePassed
       ? (await tx.attachment.count({ where: { projectId: p.id, tag: "验收报告" } })) > 0
@@ -388,14 +403,20 @@ export async function 改节点(
     if (现.phase === 到.phase && 现.node === 到.node && 现.result === result && p.exceptionCategoryId === 类别 && (p.exceptionReason ?? null) === 备注) {
       return { ok: true as const, 变了: false };
     }
-    // 企业版换了节点：下一步计划 / 时间只算当前节点的，清掉，老值记进这次节点变更（换下一步）
+    // 企业版换了节点：下一步计划 / 时间只算当前节点的，清掉，老值记进这次节点变更（换下一步）。
+    // 撤销（带 期望在）且带回了推之前的下一步：换成那一份，不清（11-20 审查：撤销 = 回到原样）
     const 清下一步 = 企业版() && (到.phase !== 现.phase || 到.node !== 现.node);
+    const 恢 = 选项?.期望在 && 选项.恢复下一步 && typeof 选项.恢复下一步 === "object" ? 选项.恢复下一步 : null;
+    const 恢时 = 恢 && typeof 恢.时间 === "string" && 恢.时间 ? new Date(恢.时间) : null;
+    const 换下一步 = 恢
+      ? { nextStepText: typeof 恢.文字 === "string" ? 恢.文字.trim().slice(0, 下一步文字上限) || null : null, nextStepAt: 恢时 && !Number.isNaN(恢时.getTime()) ? 恢时 : null }
+      : 清掉的下一步;
     await tx.project.update({
       where: { id: p.id },
       data: {
         phase: 到.phase, node: 到.node, result, exceptionCategoryId: 类别, exceptionReason: 备注,
         closedAt: result ? (现.result === result ? p.closedAt : new Date()) : null,
-        ...(清下一步 ? 清掉的下一步 : {}),
+        ...(清下一步 ? 换下一步 : {}),
       },
     });
     // 企业版提成：进订单（赢单）固定实际提成（lib/project/commission-db.ts）。企业版进了订单不能退回商机（改节点问题 里拦）
@@ -409,7 +430,8 @@ export async function 改节点(
     });
     // 手动往前推本身就是这次的一格（客户 11-19 定稿：一次只推一格）：推到的节点就算也齐了，也不接着自动推，等下一次保存或再点「完成节点」
     await 跟着项目重算(tx, 状态开, [p.customerId]);
-    return { ok: true as const, 变了: true };
+    // 原 = 改之前在哪、下一步是什么：撤销条按它回去（不按页面上可能过时的那份，11-20 审查）
+    return { ok: true as const, 变了: true, ...(选项?.回原 ? { 原: { phase: 现.phase, node: 现.node, result: 现.result || null, 下一步文字: p.nextStepText ?? null, 下一步时间: p.nextStepAt ? p.nextStepAt.toISOString() : null } } : {}) };
   });
 }
 
@@ -1380,7 +1402,7 @@ async function 提醒明天收(规则: 组织规则, 今: Date, 成员: 成员�
  * 跟进挂在客户上（客户页也看得到）+ 挂上项目当时的节点；客户的最近跟进往后推；填了下一步（文字 / 时间）写到项目上。
  * 要下一步文字 = 项目详情「记一条」那条路（10-29）：下一步做什么必填一句话
  */
-export async function 记项目沟通(me: 谁, projectId: string, input: 向导跟进, now: Date = new Date(), opt: { 要下一步文字?: boolean } = {}): Promise<结果 & { followUpId?: string; 自动推到?: string[]; 写了下一步?: boolean }> {
+export async function 记项目沟通(me: 谁, projectId: string, input: 向导跟进, now: Date = new Date(), opt: { 要下一步文字?: boolean } = {}): Promise<结果 & { followUpId?: string; 自动推到?: string[]; 推前?: 推前; 写了下一步?: boolean }> {
   if (!input || typeof input !== "object") return { ok: false, error: "要记什么？" };
   const 认 = await 认跟进方式(input);
   if ("error" in 认) return { ok: false, error: 认.error };
@@ -1433,11 +1455,13 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
       // 下一步：写了文字就文字 + 时间一起换（时间可空，空就清掉上一次的时间）；老入口只给时间，照旧只改时间、文字不动
       if (好.nextStepText) await tx.project.update({ where: { id: p.id }, data: { nextStepText: 好.nextStepText, nextStepAt: 好.nextStepAt } });
       else if (好.nextStepAt) await tx.project.update({ where: { id: p.id }, data: { nextStepAt: 好.nextStepAt } });
-      const 推进 = 组员记 ? [] : await 按必填推进(tx, 规则, me, p.id);
-      if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
+      // 这次写了下一步：自动推进不清它（按必填推进详 留下一步，11-20 审查）；推前 回给前端，撤销回到这一格、带回这份下一步
+      const 写了下一步 = !!(好.nextStepText || 好.nextStepAt);
+      const 推 = 组员记 ? { 到: [] as string[] } : await 按必填推进详(tx, 规则, me, p.id, { 留下一步: 写了下一步 });
+      if (推.到.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
       await 勾掉将回收提醒(tx, 规则, p, now);
       // 写了项目上的下一步（文字或时间）：调用方在「记了一条沟通」日志里打标记，30 分钟内改这条时下一步才跟着改（follow-perm 下一步跟着改of）
-      return { ok: true as const, followUpId: 跟进.id, 写了下一步: !!(好.nextStepText || 好.nextStepAt), ...带推进(推进) };
+      return { ok: true as const, followUpId: 跟进.id, 写了下一步, ...带推进(推.到), ...(推.推前 ? { 推前: 推.推前 } : {}) };
     });
   });
 }
@@ -1774,22 +1798,35 @@ export async function 自动推得到(tx: Prisma.TransactionClient, 规则: 组�
  * 保存项目字段、画像、勾交付、记回款、记沟通、客户资料连带推（客户项目按必填推进）、看板就地补填都走这一个
  */
 export async function 按必填推进(tx: Prisma.TransactionClient, 规则: 组织规则, me: { id: string }, projectId: string): Promise<string[]> {
+  return (await 按必填推进详(tx, 规则, me, projectId)).到;
+}
+
+/** 自动推之前项目在哪、下一步是什么（撤销用：回到这一格、带回这一份下一步，11-20 审查） */
+export type 推前 = { phase: string; node: string; 下一步文字: string | null; 下一步时间: string | null };
+
+/**
+ * 按必填推进 + 回推之前在哪（推前）。
+ * 留下一步（11-20 审查）：同一次保存里刚写了下一步（项目上记沟通填了下一步）就不清——那是员工这次刚交的，被这次自动推进清掉 = 悄悄丢输入；
+ * 不清时节点变更备注里也不记「原下一步」。手动「完成节点」（改节点）、没写下一步的保存照旧清，老值记进备注
+ */
+export async function 按必填推进详(tx: Prisma.TransactionClient, 规则: 组织规则, me: { id: string }, projectId: string, opt: { 留下一步?: boolean } = {}): Promise<{ 到: string[]; 推前?: 推前 }> {
   // 需求状态补全期（M-权限-07）：只有销售管理、总管理手动推，填齐了也不自动推
-  if (!节点推进生效(规则) || (企业版() && 规则.阶段.需求补全期)) return [];
+  if (!节点推进生效(规则) || (企业版() && 规则.阶段.需求补全期)) return { 到: [] };
   const p = await tx.project.findUnique({ where: { id: projectId } });
-  if (!p) return [];
+  if (!p) return { 到: [] };
   const 下 = await 自动推得到(tx, 规则, me, p);
-  if (!下) return [];
+  if (!下) return { 到: [] };
   // 推到下一个节点：带过去的下一步不算新节点的（不然新节点配了下一步必填就直接齐了），清掉，老值记进这行节点变更
-  await tx.project.update({ where: { id: p.id }, data: { phase: 下.phase, node: 下.node, ...清掉的下一步 } });
+  await tx.project.update({ where: { id: p.id }, data: { phase: 下.phase, node: 下.node, ...(opt.留下一步 ? {} : 清掉的下一步) } });
   await 节点变了的提成(tx, p.id, p.phase, 下.phase);
+  const 自 = 本套位置({ phase: p.phase, node: p.node, result: null }, 字典of(企业版()));
   await tx.projectNodeLog.create({
     data: {
-      projectId: p.id, userId: me.id, reason: 拼备注(自动推进理由, 原下一步备注(p)),
-      fromPhase: p.phase, fromNode: 本套名(p.node, 字典of(企业版())), fromResult: null, toPhase: 下.phase, toNode: 下.node, toResult: null,
+      projectId: p.id, userId: me.id, reason: 拼备注(自动推进理由, opt.留下一步 ? null : 原下一步备注(p)),
+      fromPhase: p.phase, fromNode: 自.node, fromResult: null, toPhase: 下.phase, toNode: 下.node, toResult: null,
     },
   });
-  return [下.node];
+  return { 到: [下.node], 推前: { phase: 自.phase, node: 自.node, 下一步文字: p.nextStepText ?? null, 下一步时间: p.nextStepAt ? p.nextStepAt.toISOString() : null } };
 }
 
 /**

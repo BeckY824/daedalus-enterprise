@@ -26,6 +26,7 @@ import { 客户显名, 显名列, 客户按名条件 } from "@/lib/enterprise/cu
 import type { Prisma } from "@/generated/prisma";
 import { 在推项目条件 } from "../project/active";
 import { 能往项目记沟通 } from "../project/follow-needs-project";
+import { 沟通不是组员话 } from "../project/follow-needs-project-text";
 const str = (v: unknown, max = 60) => (typeof v === "string" ? v.trim().slice(0, max) : typeof v === "number" ? String(v) : "");
 /** 一次最多给人挑几个 */
 const 候选上限 = 10;
@@ -43,31 +44,41 @@ async function 找项目(ctx: ToolContext, a: Record<string, unknown>, 限?: Pri
   const id = str(a.projectId, 40);
   const 名 = str(a.project, 60);
   if (!id && !名) return { ok: false, 话: "要说是哪个项目：给 project（项目名或客户名）或 projectId" };
-  // 限（记沟通 / 加卡点只找在推的，P-沟通-03）放进查询里：已结束、在公海的不占 候选上限 的名额，也不排在在推的前面
-  const 且 = (w: Prisma.ProjectWhereInput): Prisma.ProjectWhereInput => (限 ? { AND: [w, 限] } : w);
-  let 行: 项目行[];
-  if (id) {
-    const p = await prisma.project.findFirst({ where: 且({ id }), select: 项目列 });
-    行 = p ? [p] : [];
-  } else {
-    行 = await prisma.project.findMany({ where: 且({ OR: [{ name: 名 }, { customer: { name: 名 } }] }), select: 项目列, take: 候选上限 + 1, orderBy: { updatedAt: "desc" } });
-    if (!行.length) {
-      // 客户那一半全称、简称、客户编号都认（11-19 客户名称选填）
-      行 = await prisma.project.findMany({ where: 且({ OR: [{ name: { contains: 名 } }, { customer: 客户按名条件(名) }] }), select: 项目列, take: 候选上限 + 1, orderBy: { updatedAt: "desc" } });
-    }
-  }
-  const 可见 = await 看得到的客户(行.map((p) => p.customerId));
   const me = { id: ctx.userId };
+  let 可见 = new Set<string>();
   const 露 = (p: 项目行) => 露客户(me, p, 可见);
-  行 = 行.filter((p) => !名 || p.name.includes(名) || 露(p));
-  if (!行.length) {
-    // 带了限、限内一个没有：不带限再找一遍，找得到 = 有，只是都不在推，照实说（不说「没找到」）
-    if (限) {
-      const 全 = await 找项目(ctx, a);
-      if (全.ok) return { ok: false, 话: 全.行.length > 1 ? `找到的这几个项目（${全.行.map((p) => p.name).join("、")}）都已结束或在公海，沟通只能记在还在推进的项目上（没结局、不在公海）` : `项目「${全.行[0].name}」已结束或在公海，沟通只能记在还在推进的项目上（没结局、不在公海）` };
-    }
-    return { ok: false, 话: `当前账号能看到的范围里没找到项目「${名 || id}」` };
+  // 按客户名找到、但这位客户此刻看不到的剔掉（看不到的客户名不能拿来试）
+  const 查 = async (w: Prisma.ProjectWhereInput, 带限: boolean): Promise<项目行[]> => {
+    const 们 = await prisma.project.findMany({ where: 带限 && 限 ? { AND: [w, 限] } : w, select: 项目列, take: 候选上限 + 1, orderBy: { updatedAt: "desc" } });
+    可见 = new Set([...可见, ...(await 看得到的客户(们.map((p) => p.customerId)))]);
+    return 们.filter((p) => !名 || p.name.includes(名) || 露(p));
+  };
+  const 都不在推 = (全: 项目行[]): 找到 => ({
+    ok: false,
+    话: 全.length > 1 ? `找到的这几个项目（${全.map((p) => p.name).join("、")}）都已结束或在公海，沟通只能记在还在推进的项目上（没结局、不在公海）` : `项目「${全[0].name}」已结束或在公海，沟通只能记在还在推进的项目上（没结局、不在公海）`,
+  });
+  /*
+    限（记沟通 / 加卡点只找在推的，P-沟通-03）放进查询里：已结束、在公海的不占 候选上限 的名额，也不排在在推的前面。
+    先精确、再包含，限只管「在推」，不改「精确优先」（11-20 审查）：精确名字对上了、但都不在推 → 照实说已结束，
+    不落到「包含」去模糊匹配别的在推项目（说「远山三期」不能指到「远山三期扩建」，说「华东」不能指到别的客户「华东展具」）。
+    精确一个都没对上才走「包含」；包含那轮带限，限内没有、不带限有 → 同样照实说
+  */
+  const 两轮 = async (w: Prisma.ProjectWhereInput): Promise<项目行[] | 找到> => {
+    const 在推 = await 查(w, true);
+    if (在推.length || !限) return 在推;
+    const 全 = await 查(w, false);
+    return 全.length ? 都不在推(全) : [];
+  };
+  let 行: 项目行[] | 找到;
+  if (id) {
+    行 = await 两轮({ id });
+  } else {
+    行 = await 两轮({ OR: [{ name: 名 }, { customer: { name: 名 } }] });
+    // 客户那一半全称、简称、客户编号都认（11-19 客户名称选填）
+    if (Array.isArray(行) && !行.length) 行 = await 两轮({ OR: [{ name: { contains: 名 } }, { customer: 客户按名条件(名) }] });
   }
+  if (!Array.isArray(行)) return 行;
+  if (!行.length) return { ok: false, 话: `当前账号能看到的范围里没找到项目「${名 || id}」` };
   return { ok: true, 行, 露 };
 }
 
@@ -303,7 +314,8 @@ export const 项目写工具: Tool[] = [
         take: 候选上限 + 1,
       });
       if (!笔们.length) return { summary: "没找到这笔回款", data: { error: `项目「${找.行.map((p) => p.name).join("、")}」上没找到对得上的回款` } };
-      const 名of = (x: (typeof 笔们)[number]) => `${项目们.get(x.projectId)?.name ?? ""} ${dayjs(x.paidAt).format("YYYY-MM-DD")} ${x.currency} ${x.amount}`;
+      // 删了不能恢复：日期、金额放前面，项目名放后面（窄屏截也只截项目名；卡上「删除」那格折行，11-20 审查）
+      const 名of = (x: (typeof 笔们)[number]) => `${dayjs(x.paidAt).format("YYYY-MM-DD")} ${x.currency} ${x.amount} · ${项目们.get(x.projectId)?.name ?? ""}`;
       const 前 = 笔们.slice(0, 候选上限);
       const 补of = (x: (typeof 笔们)[number]) => ({ projectId: x.projectId, ...客户of(项目们.get(x.projectId)!, 找.露) });
       const args =
@@ -439,7 +451,17 @@ async function 沟通卡(a: Record<string, unknown>, ctx: ToolContext, 要卡点
     原来找到不止一个的，剔到只剩一个也照候选出、让人自己点（模糊匹配，他说的可能正是剔掉的那个），返回里写明剔掉了哪些，让模型照实说。
     权限和组织只读一次（发卡点判断），每个候选同步判断，和 能发卡点 同一个 能发
   */
-  let 行们 = 找.行.slice(0, 候选上限);
+  /*
+    名字直接对上的主候选也要我能往里记沟通（11-20 审查：和下面兄弟项目、客户页 可记沟通项目们 同一个 能往项目记沟通）：
+    看得到、记不了的（比如上级看下属的项目）不出卡——出了确认时 记项目沟通Action 也会拦下。原来找到不止一个的，剔掉后照旧让人挑
+  */
+  const 组员态 = new Map((await prisma.projectMember.findMany({ where: { userId: ctx.userId, projectId: { in: 找.行.map((p) => p.id) } }, select: { projectId: true, inviteStatus: true } })).map((m) => [m.projectId, m.inviteStatus]));
+  const 能记 = (p: 项目行) => !!我 && 能往项目记沟通(我, p, org, 组员态.get(p.id));
+  let 行们 = 找.行.filter(能记).slice(0, 候选上限);
+  if (!行们.length) {
+    const 话 = 找.行.length > 1 ? `找到的这几个项目（${找.行.map((p) => p.name).join("、")}）都记不了：${沟通不是组员话.replace("这个项目", "这些项目")}` : 沟通不是组员话;
+    return { summary: 话, data: { error: 话 } };
+  }
   let 剔话 = "";
   let 要挑 = 找.行.length > 1;
   const 判 = 要卡点 && 我 ? await 发卡点判断(我) : null;

@@ -4,6 +4,8 @@
  *   - 首页 AI 记沟通卡（add_followup）、项目上的 AI 记沟通卡（project_followup）确认后回 推进 那一句
  *   - 文案共用一处（lib/project/auto-advance-text.ts）
  * 另：项目来源有没有值，节点必填和项目页同一个判断（项目没选跟客户来源也算有，同渠道统计）
+ * 11-20 审查补：组员记沟通不推（P-沟通-05）；同一次保存刚写的下一步不被这次自动推进清掉；
+ *   撤销回到这次推之前的节点、带回被清掉的下一步，项目已经被改过就不撤
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 
@@ -26,6 +28,8 @@ import { 自动推进话, 自动推进话of } from "@/lib/project/auto-advance-t
 import { 项目来源有值, 还差, type 必填数据 } from "@/lib/project/required";
 import { 读必填数据 } from "@/lib/project/db";
 import { 读项目详情 } from "@/app/(app)/projects/[id]/load";
+import { 记项目沟通 } from "@/lib/project/db";
+import { 改项目节点 } from "@/app/(app)/projects/actions";
 
 const 开着 = (必填: Record<string, string[]>): 组织规则 => ({ ...默认组织规则, 节点推进: { 开: true, 必填 } });
 const b = { ...DEFAULT_BUSINESS, projectMode: true };
@@ -114,6 +118,67 @@ describe("真库", () => {
     expect(没推).not.toHaveProperty("推进");
   });
 
+  it("组员记沟通（P-沟通-05）：客户页 / 首页 AI 记沟通卡走 saveFollowUp，挂到别人负责的项目上，不触发自动推进", async () => {
+    await setSetting("orgRules", 开着({ 痛点挖掘: ["预算能力"] }));
+    const 丙 = await 人("bing", "SALES", "sales");
+    // ① 客户是丙的、我看不到（组员来记）；② 客户我看得到、项目是丙的、我进了组
+    const 丙客 = (await prisma.customer.create({ data: { name: "客户丙", phone: "13800000003", salesOwnerId: 丙.id } })).id;
+    for (const cid of [丙客, 客户]) {
+      const p = await prisma.project.create({ data: { name: `丙的项目${cid === 客户 ? "二" : "一"}`, customerId: cid, ownerId: 丙.id, creatorId: 丙.id, phase: "商机", node: "痛点挖掘", budgetLevel: "预算充足" } });
+      await prisma.projectMember.create({ data: { projectId: p.id, userId: 乙.id, inviteStatus: "JOINED" } });
+      当(乙);
+      const r = await 以谁的身份(乙.id, () => saveFollowUp({ customerId: cid, projectId: p.id, type: "PHONE", title: "", content: "组员电话聊了预算", status: "已完成", occurredAt: new Date().toISOString() }));
+      expect(r.ok).toBe(true);
+      expect(r).not.toHaveProperty("自动推进");
+      expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).node).toBe("痛点挖掘");
+      expect(await prisma.projectNodeLog.count({ where: { projectId: p.id } })).toBe(0);
+    }
+  });
+
+  it("项目上记沟通：这次刚写的下一步不被这次自动推进清掉；回 推前（推之前的节点和下一步）", async () => {
+    await setSetting("orgRules", 开着({ 痛点挖掘: ["预算能力"] }));
+    const p = await 画像齐了的项目({ nextStepText: "旧的下一步" });
+    const 时 = new Date(Date.now() + 2 * 86400_000).toISOString().slice(0, 10);
+    const r = await 记项目沟通({ id: 乙.id, role: "SALES" }, p.id, { type: "PHONE", content: "电话聊了预算和排期", occurredAt: new Date().toISOString(), 下一步: "下周报方案", 下一步时间: 时, 阶段: "商机" });
+    expect(r).toMatchObject({ ok: true, 自动推到: ["方案敲定"], 推前: { phase: "商机", node: "痛点挖掘", 下一步文字: "下周报方案" } });
+    const 后 = await prisma.project.findUniqueOrThrow({ where: { id: p.id } });
+    expect(后.node).toBe("方案敲定");
+    expect(后.nextStepText).toBe("下周报方案");
+    expect(后.nextStepAt).not.toBeNull();
+  });
+
+  it("撤销自动推进：回到推之前的节点、带回被清掉的下一步；项目已经被改过就不撤，说一句", async () => {
+    await setSetting("orgRules", 开着({ 痛点挖掘: ["预算能力"] }));
+    const 旧时 = new Date(Date.now() + 3 * 86400_000);
+    const p = await 画像齐了的项目({ nextStepText: "旧的下一步", nextStepAt: 旧时 });
+    // 这次没写下一步：推进照旧清掉旧的（旧值记在推进那行备注里），推前 带回旧的
+    const r = await 记项目沟通({ id: 乙.id, role: "SALES" }, p.id, { type: "PHONE", content: "电话聊了预算和排期", occurredAt: new Date().toISOString(), 阶段: "商机" });
+    expect(r).toMatchObject({ ok: true, 自动推到: ["方案敲定"], 推前: { phase: "商机", node: "痛点挖掘", 下一步文字: "旧的下一步", 下一步时间: 旧时.toISOString() } });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).nextStepText).toBeNull();
+    const 前 = (r as { 推前: { phase: string; node: string; 下一步文字: string | null; 下一步时间: string | null } }).推前;
+    当(乙);
+    // 期望现在在哪对不上（被人改过）：不撤
+    const 错 = await 以谁的身份(乙.id, () => 改项目节点(p.id, { phase: 前.phase, node: 前.node, result: null }, null, { 期望在: { phase: "商机", node: "成交推进", result: null }, 下一步: { 文字: 前.下一步文字, 时间: 前.下一步时间 } }));
+    expect(错).toMatchObject({ ok: false, error: expect.stringContaining("已经被改过") });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).node).toBe("方案敲定");
+    const 撤 = await 以谁的身份(乙.id, () => 改项目节点(p.id, { phase: 前.phase, node: 前.node, result: null }, null, { 期望在: { phase: "商机", node: "方案敲定", result: null }, 下一步: { 文字: 前.下一步文字, 时间: 前.下一步时间 } }));
+    expect(撤).toMatchObject({ ok: true, 变了: true });
+    const 回 = await prisma.project.findUniqueOrThrow({ where: { id: p.id } });
+    expect(回).toMatchObject({ phase: "商机", node: "痛点挖掘", nextStepText: "旧的下一步" });
+    expect(回.nextStepAt?.toISOString()).toBe(旧时.toISOString());
+  });
+
+  it("完成节点（手动往前推）照旧清下一步；回 原（推之前的节点和下一步），撤销同一写法带回来", async () => {
+    const p = await prisma.project.create({ data: { name: "手动推", customerId: 客户, ownerId: 乙.id, creatorId: 乙.id, phase: "商机", node: "痛点挖掘", nextStepText: "手动前的下一步" } });
+    当(乙);
+    const r = await 以谁的身份(乙.id, () => 改项目节点(p.id, { phase: "商机", node: "方案敲定", result: null }));
+    expect(r).toMatchObject({ ok: true, 变了: true, 原: { phase: "商机", node: "痛点挖掘", result: null, 下一步文字: "手动前的下一步", 下一步时间: null } });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).nextStepText).toBeNull();
+    const 撤 = await 以谁的身份(乙.id, () => 改项目节点(p.id, { phase: "商机", node: "痛点挖掘", result: null }, null, { 期望在: { phase: "商机", node: "方案敲定", result: null }, 下一步: { 文字: "手动前的下一步", 时间: null } }));
+    expect(撤.ok).toBe(true);
+    expect(await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ node: "痛点挖掘", nextStepText: "手动前的下一步" });
+  });
+
   it("项目来源：项目没选、跟客户来源走的，节点必填不再报缺、项目页显示同客户来源；客户也没来源才算缺", async () => {
     await setSetting("orgRules", 开着({ 潜客培育: ["项目来源"] }));
     const 渠道 = await prisma.channel.create({ data: { name: "展会", channelOwnerId: 乙.id } });
@@ -132,5 +197,22 @@ describe("真库", () => {
     const 详2 = await 以谁的身份(乙.id, () => 读项目详情(mocks.user as never, 空.id));
     expect(详2.种 === "有" && 详2.props.p.项目来源).toBeNull();
     expect(详2.种 === "有" && 详2.props.p.必填?.还差).toEqual(["项目来源"]);
+  });
+
+  it("项目来源：看不到客户的组员，项目没选、客户有来源 → 必填算齐，那格写「随客户来源」（只露有无、不露渠道名，11-20 总控判定）", async () => {
+    await setSetting("orgRules", 开着({ 潜客培育: ["项目来源"] }));
+    const 丙 = await 人("bing", "SALES", "sales");
+    const 渠道 = await prisma.channel.create({ data: { name: "特征渠道名X", channelOwnerId: 丙.id } });
+    const 丙客 = (await prisma.customer.create({ data: { name: "客户丙", phone: "13800000003", salesOwnerId: 丙.id, channelId: 渠道.id } })).id;
+    const p = await prisma.project.create({ data: { name: "乙负责的", customerId: 丙客, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育" } });
+    当(乙);
+    const 详 = await 以谁的身份(乙.id, () => 读项目详情(mocks.user as never, p.id));
+    expect(详.种).toBe("有");
+    if (详.种 !== "有") return;
+    expect(详.props.p.项目来源).toEqual({ name: "", 跟客户: true });
+    expect(详.props.p.必填?.还差 ?? []).toEqual([]);
+    const { 渠道们: _选项, ...其余 } = 详.props.p as typeof 详.props.p & { 渠道们?: unknown };
+    expect(JSON.stringify(其余)).not.toContain("特征渠道名X");
+    expect(JSON.stringify(其余)).not.toContain(渠道.id);
   });
 });

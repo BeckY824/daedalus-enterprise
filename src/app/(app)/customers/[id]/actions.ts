@@ -10,7 +10,7 @@ import type { Prisma } from "@/generated/prisma";
 import { requireUser } from "@/lib/auth";
 import { FOLLOW_TYPES, FOLLOW_RECORD_STATUSES } from "@/lib/constants";
 import { 客户存了推项目 } from "@/lib/project/auto-advance";
-import { 客户跟进后勾掉将回收提醒 } from "@/lib/project/db";
+import { 客户跟进后勾掉将回收提醒, 能改节点 } from "@/lib/project/db";
 import { recordAudit } from "@/lib/audit";
 import { 领取 } from "../pool-actions";
 import { 认回打码号, 号键 } from "@/lib/phone";
@@ -418,7 +418,15 @@ export async function saveFollowUp(input: FollowUpInput) {
     await 客户跟进后勾掉将回收提醒(input.customerId, now);
     // ⑤ 记录人本人 30 分钟内改（管理改自己记的也算）：不重跑「必填齐自动推进」（推进门槛按当时记的算）；管理改别人记的照旧
     // 推了哪几个回给前端说一句（记沟通推了节点不能悄悄推，11-20）
-    const 自动推进 = 本人窗口内 ? [] : await 客户存了推项目(user, input.customerId);
+    /*
+      组员记沟通不触发自动推进（P-沟通-05；项目页 记项目沟通 的 组员记 同一条，11-20 审查）：组员来记（客户对我只读），
+      或挂到的项目我不是能推节点的人（客户看得到、项目是别人负责、我进了组）——这一条都不跑 客户存了推项目
+    */
+    const 组员不推 = 组员来记 || (!!挂到 && 企业版() && await (async () => {
+      const 项 = await 看全部(() => prisma.project.findUnique({ where: { id: 挂到 }, select: { ownerId: true, pooledAt: true } }));
+      return !项 || !能改节点(user, 项, await 权限组织());
+    })());
+    const 自动推进 = 本人窗口内 || 组员不推 ? [] : await 客户存了推项目(user, input.customerId);
     // 客户三态：新建 / 改了一条沟通，马上重算这位的钟（不等夜扫；关着不查库，出错不影响保存）
     await 存沟通后重算三态(input.customerId);
     // 客户三态（C12）：新记的这条不算有效沟通，回原因给前端一句轻提示（不拦；三态关着不查库）

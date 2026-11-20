@@ -206,9 +206,10 @@ export default function ProjectProposalFields({ draft, setDraft }: { draft: 项�
           );
         })}
 
+      {/* 删客户：名字一行「…」悬停看全；删回款：日期、金额、项目名整句折行（删了不能恢复，375 下不能截掉日期金额，11-20 审查） */}
       {(draft.kind === "customer_delete" || draft.kind === "payment_delete") && (
         <F label="删除">
-          <span className="prop-f-v fulltext">{draft.targetName || "（先选上面哪一个）"}</span>
+          <span className={draft.kind === "payment_delete" ? "prop-f-v prop-f-wrap" : "prop-f-v fulltext"}>{draft.targetName || "（先选上面哪一个）"}</span>
         </F>
       )}
     </>

@@ -127,3 +127,16 @@ it.each([1366, 375])("确认后顺带按必填推了一格 %ipx：落印下面�
     expect(await 二.page.getByTestId("prop-done-push").count()).toBe(0);
   } finally { await 二.page.close(); }
 });
+
+it.each([1366, 375])("删回款卡 %ipx：「删除」那格折行，日期、金额整句看得全（删了不能恢复，不能截）", async (w) => {
+  const 名 = `2026-10-20 CNY 128000 · ${长名}`;
+  const { page, errors } = await open(w, { id: "p1", kind: "payment_delete", customerId: "c1", customerName: "某某超长贸易进出口有限公司", reason: "人说记错了", targetId: "pay1", targetName: 名, projectId: "x1" });
+  try {
+    const 格 = page.locator(".prop-f-wrap");
+    await 格.waitFor();
+    expect(await 格.innerText()).toBe(名);
+    expect(await 格.evaluate((e) => { const s = getComputedStyle(e); return { 折: s.whiteSpace, 全: e.scrollWidth <= e.clientWidth + 1 }; })).toEqual({ 折: "normal", 全: true });
+    expect(await 不出卡(page)).toEqual({ 页: true, 出: [] });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});

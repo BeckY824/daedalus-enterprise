@@ -2432,6 +2432,8 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 /* 一格不许把卡撑宽（窄屏 375）：值放不下在格里「…」，不顶出卡外被裁掉 */
 .prop-f { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
 .prop-f-v { min-width: 0; }
+/* 删回款卡「删除」那格：删了不能恢复，日期、金额、项目名整句折行看全（不截，11-20 审查） */
+.prop-f-wrap { white-space: normal; overflow-wrap: anywhere; word-break: normal; }
 .prop-f > .ant-input, .prop-f > .ant-select, .prop-f > .ant-picker, .prop-f > .amount-text { min-width: 0; max-width: 100%; }
 .prop-f-block { flex-basis: 100%; align-items: flex-start; }
 .prop-f-block > *:last-child { flex: 1; }

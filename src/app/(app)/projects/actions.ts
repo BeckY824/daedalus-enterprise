@@ -484,7 +484,11 @@ async function 合无效原因(附: { 备注?: string | null; 无效原因?: str
   return { ok: true, 备注: [`无效原因：${选.值}`, (备注 ?? "").trim()].filter(Boolean).join("\n") };
 }
 
-export async function 改项目节点(projectId: string, 到: 位置, 异常?: { categoryId?: string | null; 备注?: string | null; 无效原因?: string | null } | null) {
+/**
+ * 撤（11-20 审查，撤销条用）：期望在 = 项目现在应该在的那一格（刚推到的），对不上就不撤、说「已经被改过」；
+ * 下一步 = 推之前的下一步，撤销时一起带回（推进 / 完成节点会清掉它）
+ */
+export async function 改项目节点(projectId: string, 到: 位置, 异常?: { categoryId?: string | null; 备注?: string | null; 无效原因?: string | null } | null, 撤?: { 期望在?: 位置 | null; 下一步?: { 文字?: string | null; 时间?: string | null } | null } | null) {
   try {
     const me = await requireUser();
     if (!(await 开着())) return 没开;
@@ -492,7 +496,8 @@ export async function 改项目节点(projectId: string, 到: 位置, 异常?: {
     const 因 = await 合无效原因(异常);
     if (!因.ok) return { ok: false as const, error: 因.error };
     const 异 = 异常 && typeof 异常 === "object" ? { categoryId: 异常.categoryId ?? null, 备注: 因.备注 } : undefined;
-    const r = await 改节点(me, projectId, 到, 异);
+    const 期望在 = 撤 && typeof 撤 === "object" && 撤.期望在 && typeof 撤.期望在 === "object" ? 撤.期望在 : null;
+    const r = await 改节点(me, projectId, 到, 异, { 回原: true, ...(期望在 ? { 期望在, 恢复下一步: 撤?.下一步 ?? null } : {}) });
     if (r.ok && r.变了) {
       const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true, exceptionCategory: { select: { name: true } } } });
       const 类别 = 到.result === "异常状态" ? p?.exceptionCategory?.name ?? null : null;
@@ -1061,7 +1066,7 @@ export async function 记项目沟通Action(projectId: string, input: 向导跟�
     }
     // 客户三态（C12）：这条不算有效沟通，回原因给前端一句轻提示（不拦；三态关着不查库）
     const 短沟通 = r.ok ? await 短沟通提示(r.followUpId).catch(() => null) : null;
-    return r.ok ? { ok: true as const, followUpId: r.followUpId, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}), ...卡点结果, ...(短沟通 ? { 短沟通 } : {}) } : r;
+    return r.ok ? { ok: true as const, followUpId: r.followUpId, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}), ...(r.推前 ? { 推前: r.推前 } : {}), ...卡点结果, ...(短沟通 ? { 短沟通 } : {}) } : r;
   } catch (e) { return 不在了(e); }
 }
 
