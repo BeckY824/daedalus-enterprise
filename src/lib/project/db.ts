@@ -404,9 +404,12 @@ export async function 改节点(
       return { ok: true as const, 变了: false };
     }
     // 企业版换了节点：下一步计划 / 时间只算当前节点的，清掉，老值记进这次节点变更（换下一步）。
-    // 撤销（带 期望在）且带回了推之前的下一步：换成那一份，不清（11-20 审查：撤销 = 回到原样）
+    // 撤销（带 期望在）且带回了推之前的下一步：换成那一份，不清（11-20 审查：撤销 = 回到原样）。
+    // 只认往回退、且是能改节点的人自己撤（11-20 复审）：「仅上级推」时直属上级代推只许往前推，带 期望在 + 任意下一步往前推
+    // 会把下属项目的下一步写成上级传的；往前推、上级代推带来的一律不认，照旧清掉
     const 清下一步 = 企业版() && (到.phase !== 现.phase || 到.node !== 现.node);
-    const 恢 = 选项?.期望在 && 选项.恢复下一步 && typeof 选项.恢复下一步 === "object" ? 选项.恢复下一步 : null;
+    const 往回 = !result && !现.result && 节点序号(到, 字典) < 节点序号(p, 字典);
+    const 恢 = 选项?.期望在 && 往回 && !上级代推 && 选项.恢复下一步 && typeof 选项.恢复下一步 === "object" ? 选项.恢复下一步 : null;
     const 恢时 = 恢 && typeof 恢.时间 === "string" && 恢.时间 ? new Date(恢.时间) : null;
     const 换下一步 = 恢
       ? { nextStepText: typeof 恢.文字 === "string" ? 恢.文字.trim().slice(0, 下一步文字上限) || null : null, nextStepAt: 恢时 && !Number.isNaN(恢时.getTime()) ? 恢时 : null }
@@ -1831,18 +1834,24 @@ export async function 按必填推进详(tx: Prisma.TransactionClient, 规则: �
 
 /**
  * 客户这边存了东西（客户资料、联系人、客户上的跟进）：这位客户名下停在配了必填节点上的项目，齐了的往前推。
- * 每个项目一笔事务；没生效时不查库。返回推了的项目和推到的节点（操作日志用）
+ * 每个项目一笔事务；没生效时不查库。返回推了的项目和推到的节点（操作日志用）。
+ * 企业版只推我能改节点的项目（能改节点，按项目逐个判，11-20 复审）：客户名下同事负责、我只是组员的不推（P-沟通-05 组员记沟通不触发自动推进），
+ * 销售管理 / 总管理改下属的客户、沟通也不推下属的项目（11-01 起直属上级、总管理不再代推，C2）；推了的节点变更操作人是我，不能落到别人的项目上。
+ * 例外 新建的：建档向导、客户页新建项目、线索转化这一次刚建的那个项目（可能指定给了别人），建的时候带的首条跟进齐了照推（原来就推，不改）
  */
-export async function 客户项目按必填推进(me: { id: string }, customerId: string): Promise<{ id: string; name: string; 到: string[] }[]> {
+export async function 客户项目按必填推进(me: { id: string; role?: string | null }, customerId: string, opt: { 新建的?: string } = {}): Promise<{ id: string; name: string; 到: string[] }[]> {
   const 规则 = await 生效组织规则();
   if (!节点推进生效(规则) || !customerId) return [];
   const 配了的 = Object.keys(规则.节点推进.必填).filter((n) => 节点必填(规则, n).length);
   // 配置的 key 已按本套名换成新名（org-rules.ts）；库里还存着旧节点名的项目（10-31 改名前的）新旧名一起认（同名们），不然漏推。
   // 范围是「只管开启之后新建的」时，生效时刻之前建的存量项目不查（按必填推进 里也会再挡一遍）；默认「全部」都查（客户 11-19 最新口径）
   const 起 = 只管新建之后(规则);
-  const 们 = await prisma.project.findMany({ where: { customerId, pooledAt: null, result: null, node: { in: [...new Set(配了的.flatMap(同名们))] }, ...(起 ? { createdAt: { gte: new Date(起) } } : {}) }, select: { id: true, name: true } });
+  const 们 = await prisma.project.findMany({ where: { customerId, pooledAt: null, result: null, node: { in: [...new Set(配了的.flatMap(同名们))] }, ...(起 ? { createdAt: { gte: new Date(起) } } : {}) }, select: { id: true, name: true, ownerId: true, pooledAt: true } });
+  const org = 企业版() && 们.length ? await 权限组织() : null;
   const 推了: { id: string; name: string; 到: string[] }[] = [];
-  for (const p of 们) {
+  for (const { ownerId, pooledAt, ...p } of 们) {
+    // 企业版只认业务角色、不看账号 role（Actor 不带 role 时补空）
+    if (企业版() && p.id !== opt.新建的 && !能改节点({ ...me, role: me.role ?? "" }, { ownerId, pooledAt }, org)) continue;
     const 到 = await 查完再写((tx) => 按必填推进(tx, 规则, me, p.id));
     if (到.length) 推了.push({ ...p, 到 });
   }

@@ -291,8 +291,8 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
       detail: { 项目: 项目.name, 客户: 全称或显名(客户), 负责人: 负责人.name, 金额: 项目.amount, 币种: 项目.currency, 节点: 落.节点, ...(分配 ? { 分配方式: 分配.名 } : {}), ...(留下 ? { 客户转给: 负责人.name } : {}) },
     });
     // 转走了：这位客户我可能已经看不到了，放开范围，不然推进被拦、静默跳过（同 建档向导）
-    if (留下) await 看全部(() => 客户存了推项目(me, customerId));
-    else await 客户存了推项目(me, customerId);
+    if (留下) await 看全部(() => 客户存了推项目(me, customerId, { 新建的: projectId }));
+    else await 客户存了推项目(me, customerId, { 新建的: projectId });
     // 客户三态：建项目带了首条跟进，马上重算这位的钟（关着不查库，出错不影响建项目）
     await 存沟通后重算三态(customerId);
     revalidatePath("/projects");

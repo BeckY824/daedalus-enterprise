@@ -28,14 +28,15 @@ export async function 记这个项目的自动推进(me: Actor, projectId: strin
 }
 
 /**
- * 客户这边存了东西（客户资料、联系人、客户上的跟进）之后调：客户名下齐了的项目往前推、记日志、刷新项目页；返回推了的（没推 / 出错 = 空）。
+ * 客户这边存了东西（客户资料、联系人、客户上的跟进）之后调：客户名下齐了的、我能改节点的项目往前推、记日志、刷新项目页；返回推了的（没推 / 出错 = 空）。
+ * 新建的 = 这一次刚建的项目（建档、客户页新建项目、线索转化）：指定给了别人也照推（客户项目按必填推进）。
  * 不是企业版、项目模式没开：直接回，不查库。出错不影响客户那边已经存好的
  */
-export async function 客户存了推项目(me: Actor, customerId: string | null | undefined): Promise<自动推进了[]> {
+export async function 客户存了推项目(me: Actor, customerId: string | null | undefined, opt: { 新建的?: string } = {}): Promise<自动推进了[]> {
   if (!customerId || !企业版()) return [];
   try {
     if ((await getBusiness()).projectMode !== true) return [];
-    const 推了 = await 客户项目按必填推进(me, customerId);
+    const 推了 = await 客户项目按必填推进(me, customerId, opt);
     if (!推了.length) return [];
     await 记自动推进(me, 推了);
     revalidatePath("/projects");

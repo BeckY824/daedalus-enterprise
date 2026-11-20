@@ -6,6 +6,8 @@
  * 另：项目来源有没有值，节点必填和项目页同一个判断（项目没选跟客户来源也算有，同渠道统计）
  * 11-20 审查补：组员记沟通不推（P-沟通-05）；同一次保存刚写的下一步不被这次自动推进清掉；
  *   撤销回到这次推之前的节点、带回被清掉的下一步，项目已经被改过就不撤
+ * 11-20 复审补：客户上存了之后只推我能改节点的项目（同事负责、我是组员的不推；销售管理改下属的沟通不推下属的项目）；
+ *   「仅上级推」上级代推带来的下一步不采纳
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 
@@ -29,7 +31,7 @@ import { 自动推进话, 自动推进话of } from "@/lib/project/auto-advance-t
 import { 项目来源有值, 还差, type 必填数据 } from "@/lib/project/required";
 import { 读必填数据 } from "@/lib/project/db";
 import { 读项目详情 } from "@/app/(app)/projects/[id]/load";
-import { 记项目沟通 } from "@/lib/project/db";
+import { 记项目沟通, 客户项目按必填推进 } from "@/lib/project/db";
 import { 改项目节点 } from "@/app/(app)/projects/actions";
 
 const 开着 = (必填: Record<string, string[]>): 组织规则 => ({ ...默认组织规则, 节点推进: { 开: true, 必填 } });
@@ -134,6 +136,90 @@ describe("真库", () => {
       expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).node).toBe("痛点挖掘");
       expect(await prisma.projectNodeLog.count({ where: { projectId: p.id } })).toBe(0);
     }
+  });
+
+  it("我负责 P1、又是同事 P2 的组员（复审①）：记沟通只推我能改节点的 P1，P2 不推；挂到 P2 记也照推我自己的 P1", async () => {
+    await setSetting("orgRules", 开着({ 痛点挖掘: ["预算能力"] }));
+    const 丙 = await 人("bing", "SALES", "sales");
+    for (const 挂 of ["P1", "P2"] as const) {
+      const P1 = await 画像齐了的项目({ name: `我的${挂}` });
+      const P2 = await prisma.project.create({ data: { name: `丙的${挂}`, customerId: 客户, ownerId: 丙.id, creatorId: 丙.id, phase: "商机", node: "痛点挖掘", budgetLevel: "预算充足" } });
+      await prisma.projectMember.create({ data: { projectId: P2.id, userId: 乙.id, inviteStatus: "JOINED" } });
+      当(乙);
+      const r = await 以谁的身份(乙.id, () => saveFollowUp({ customerId: 客户, projectId: (挂 === "P1" ? P1 : P2).id, type: "PHONE", title: "", content: `电话聊了预算（挂${挂}）`, status: "已完成", occurredAt: new Date().toISOString() }));
+      expect(r).toMatchObject({ ok: true, 自动推进: [{ id: P1.id, 到: ["方案敲定"] }] });
+      expect((r as { 自动推进: unknown[] }).自动推进).toHaveLength(1);
+      expect((await prisma.project.findUniqueOrThrow({ where: { id: P1.id } })).node).toBe("方案敲定");
+      expect((await prisma.project.findUniqueOrThrow({ where: { id: P2.id } })).node).toBe("痛点挖掘");
+      expect(await prisma.projectNodeLog.count({ where: { projectId: P2.id } })).toBe(0);
+    }
+  });
+
+  it("销售管理改下属记的沟通（复审①，input.id 路径）：不推下属负责的项目，只推自己负责的", async () => {
+    await setSetting("orgRules", 开着({ 痛点挖掘: ["预算能力"] }));
+    const 甲 = await 人("jia", "SALES", "sales_mgr");
+    await prisma.entMember.update({ where: { userId: 乙.id }, data: { managerId: 甲.id } });
+    // 客户是甲的（甲是客户负责人、又是管理，能改这位客户的沟通）；P 是下属乙负责的，Q 是甲自己的
+    await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 甲.id } });
+    const P = await 画像齐了的项目({ budgetLevel: null });
+    const Q = await prisma.project.create({ data: { name: "甲的项目", customerId: 客户, ownerId: 甲.id, creatorId: 甲.id, phase: "商机", node: "痛点挖掘" } });
+    当(乙);
+    // 乙在自己负责的项目上记（客户是甲的，乙从项目页记）
+    const 记 = await 以谁的身份(乙.id, () => 记项目沟通({ id: 乙.id, role: "SALES" }, P.id, { type: "PHONE", content: "乙电话聊了预算", occurredAt: new Date().toISOString(), 阶段: "商机" }));
+    expect(记).toMatchObject({ ok: true });
+    expect(记).not.toHaveProperty("自动推到");
+    // 记完之后两个项目的预算都补上了：下一次客户上保存才会推
+    await prisma.project.updateMany({ where: { id: { in: [P.id, Q.id] } }, data: { budgetLevel: "预算充足" } });
+    当(甲);
+    const 改 = await 以谁的身份(甲.id, () => saveFollowUp({ id: (记 as { followUpId: string }).followUpId, customerId: 客户, type: "PHONE", title: "", content: "乙电话聊了预算（甲补了几句）", status: "已完成", occurredAt: new Date().toISOString() }));
+    expect(改).toMatchObject({ ok: true, 自动推进: [{ id: Q.id, 到: ["方案敲定"] }] });
+    expect((改 as { 自动推进: unknown[] }).自动推进).toHaveLength(1);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: P.id } })).node).toBe("痛点挖掘");
+    expect(await prisma.projectNodeLog.count({ where: { projectId: P.id } })).toBe(0);
+  });
+
+  it("客户项目按必填推进 新建的：这一次刚建、指定给了别人的项目照推（建档 / 客户页新建项目 / 线索转化）；别的同事项目照旧不推", async () => {
+    await setSetting("orgRules", 开着({ 痛点挖掘: ["预算能力"] }));
+    const 丙 = await 人("bing", "SALES", "sales");
+    const 丙的 = (name: string) => prisma.project.create({ data: { name, customerId: 客户, ownerId: 丙.id, creatorId: 乙.id, phase: "商机", node: "痛点挖掘", budgetLevel: "预算充足" } });
+    const 新 = await 丙的("刚建给丙的");
+    const 老 = await 丙的("丙原来的");
+    当(乙);
+    const 推了 = await 客户项目按必填推进({ id: 乙.id, role: "SALES" }, 客户, { 新建的: 新.id });
+    expect(推了.map((x) => x.id)).toEqual([新.id]);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 新.id } })).node).toBe("方案敲定");
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 老.id } })).node).toBe("痛点挖掘");
+    expect(await 客户项目按必填推进({ id: 乙.id, role: "SALES" }, 客户)).toEqual([]);
+  });
+
+  it("「仅上级推」时直属上级代推带 期望在 + 下一步（复审②）：照推，但不采纳上级传的下一步，照旧清掉下属的", async () => {
+    await setSetting("orgRules", { ...默认组织规则, 阶段: { ...默认组织规则.阶段, 推进权限: "仅上级推" } });
+    const 甲 = await 人("jia", "SALES", "sales_mgr");
+    await prisma.entMember.update({ where: { userId: 乙.id }, data: { managerId: 甲.id } });
+    const p = await prisma.project.create({ data: { name: "代推的", customerId: 客户, ownerId: 乙.id, creatorId: 乙.id, phase: "商机", node: "痛点挖掘", nextStepText: "乙的下一步" } });
+    当(甲);
+    const r = await 以谁的身份(甲.id, () => 改项目节点(p.id, { phase: "商机", node: "方案敲定", result: null }, null, { 期望在: { phase: "商机", node: "痛点挖掘", result: null }, 下一步: { 文字: "上级塞的下一步", 时间: 北京日期(3) } }));
+    expect(r).toMatchObject({ ok: true, 变了: true });
+    const 后 = await prisma.project.findUniqueOrThrow({ where: { id: p.id } });
+    expect(后).toMatchObject({ node: "方案敲定", nextStepText: null, nextStepAt: null });
+    // 往回退照旧只给负责人：上级代推只有往前这一步
+    expect(await 以谁的身份(甲.id, () => 改项目节点(p.id, { phase: "商机", node: "痛点挖掘", result: null }, null, { 期望在: { phase: "商机", node: "方案敲定", result: null }, 下一步: { 文字: "上级塞的下一步", 时间: null } }))).toMatchObject({ ok: false });
+  });
+
+  it("标了无效的公海客户、挂到同事留在原处的项目（我是组员，复审①）：照记，不推同事的项目", async () => {
+    await setSetting("orgRules", 开着({ 痛点挖掘: ["预算能力"] }));
+    const 丙 = await 人("bing", "SALES", "sales");
+    await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 丙.id, poolInvalidAt: new Date() } });
+    await prisma.customerPool.create({ data: { customerId: 客户, reason: "手动", userId: 丙.id } });
+    const P = await prisma.project.create({ data: { name: "丙留在原处的", customerId: 客户, ownerId: 丙.id, creatorId: 丙.id, phase: "商机", node: "痛点挖掘", budgetLevel: "预算充足" } });
+    await prisma.projectMember.create({ data: { projectId: P.id, userId: 乙.id, inviteStatus: "JOINED" } });
+    当(乙);
+    const r = await 以谁的身份(乙.id, () => saveFollowUp({ customerId: 客户, projectId: P.id, type: "PHONE", title: "", content: "组员电话聊了预算", status: "已完成", occurredAt: new Date().toISOString() }));
+    expect(r.ok).toBe(true);
+    expect(r).not.toHaveProperty("自动推进");
+    expect(r).not.toHaveProperty("领取了");
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: P.id } })).node).toBe("痛点挖掘");
+    expect(await prisma.projectNodeLog.count({ where: { projectId: P.id } })).toBe(0);
   });
 
   it("项目上记沟通：这次刚写的下一步不被这次自动推进清掉；回 推前（推之前的节点和下一步）", async () => {
