@@ -17,8 +17,10 @@
  * 规则没说、按默认做的（集中在本文件，改口径只改这里）：
  *   - 超时基准：按时 = 指定回复时间的结束，没填结束用开始（一个时间点就是它；一段时间按段尾）；
  *     按分配 = 分配基准()：最近一次「分给人」的时刻（自动分配、指定分配、定时分配到点、转让，都记一行转让留痕；
- *     市场新建时直接给销售的只记一条分配记录，按那条记录的时刻）。超时自动转那几行不算（链上第一位的分配时刻不随轮转挪），
- *     公海领取（含管理从线索公海分配，留痕是 pool-claim）不起算：不是市场分出去的，按 P-转-28 不转；
+ *     管理（管理员 / 销售管理 / 总管理、查重领取的市场成员、系统）从公海分给销售记一行 pool-claim，操作人不是接手人；
+ *     市场新建时直接给销售的只记一条分配记录，按那条记录的时刻）。超时自动转那几行不算（链上第一位的分配时刻不随轮转挪）。
+ *     销售自己去公海领（pool-claim 那行操作人 = 接手人，ProjectNodeLog.userId = toOwnerId）不起算：不是别人分给他的（P-转-28；
+ *     总控 11-20 定「管理从线索公海分配给销售要起算，只有销售自己去公海领不起算」，依据客户 11-18 第 1 题 B、用户 11-20「76条也是」）；
  *     导入出公海那行（没有原负责人、操作人就是接手人）、没留痕就换了负责人的（导入改负责人）也不起算。
  *     还得是「分来的」（是分来的()）：自留、自持的没填指定回复时间不进链
  *   - 有效沟通：按时 = 和指定回复提醒同一个判定：提醒时刻（开始 ?? 结束 − 30 分钟）以后挂在这条项目上、有内容的沟通（谁记的都算）；
@@ -36,7 +38,8 @@
  *     客户跟着转的那行（overdue-assign）三态钟也不归零（tri-state-transfer.ts 换人方式 不收它）；手动转让、领取照旧归零。
  *     本文件的接手时刻照旧认那行（接手人的 1.5 小时从轮转那刻算）
  *   - 只管：线索阶段、没结局、不在公海（项目和客户都不在）、不在回收站、不在待分配；填了指定回复时间的，或没填、有分配基准的
- *   - 只转「分出去」的线索（11-18 客户定第 1 题 B）：负责人是别人分给他的（负责人不是建的人，或有一行把它分给现负责人的分配记录）才转；
+ *   - 只转「分出去」的线索（11-18 客户定第 1 题 B）：负责人是别人分给他的（负责人不是建的人，或有一行把它分给现负责人的分配记录，
+ *     或别人从线索公海分给他的 pool-claim 留痕，11-20）才转；
  *     自留的（市场成员建了暂不分配、负责人就是自己）、销售「个人自持」的（自己建给自己）填了指定回复时间的到点只发超时提醒给本人、
  *     首页待办标超时，不自动转；没填的不进链。以后有人把它分给别人了，按新负责人从接手那刻重新计时，到点照转
  *   - 别人手动换了负责人：按新负责人从他接手那刻重新计时（这一轮超时过的人照记）。按分配的链还在走时同样（基准钉在起链那一刻）；
@@ -131,19 +134,20 @@ export type 分配行 = { toUserId: string; createdAt: Date };
 /**
  * 超时基准（按分配，11-20 用户定，见文件头）：现负责人这条线是哪一刻分出来的；不算 / 不知道 = null。
  *   - 最近一行不是超时自动转的转让留痕（自动分配、指定分配、定时分配到点、手动转让都记这一行）的时刻；轮转那几行跳过，链上第一位的分配时刻不挪
- *   - 那一行是公海领取（pool-claim，含管理从线索公海分配）、导入出公海那行（没有原负责人、操作人就是接手人）= null
+ *   - 那一行是自己去公海领的（pool-claim、操作人 = 接手人）、导入出公海那行（transfer、没有原负责人、操作人就是接手人）= null；
+ *     别人从公海分给他的（pool-claim、操作人 ≠ 接手人）按那一刻
  *   - 一行转让都没有（市场新建时直接给了销售）= 最早那条分配记录的时刻
  *   - 最近一行换人留痕不是给现负责人的（没留痕就换了人，比如导入改负责人）、不是分来的（自留、自持）= null
  * 两张表的行都是这条项目的、顺序不限
  */
 export function 分配基准(p: { ownerId: string; creatorId: string }, 痕们: readonly 换人痕[], 分配们: readonly 分配行[]): Date | null {
-  if (!p.ownerId || !是分来的(p, 分配们.some((a) => a.toUserId === p.ownerId))) return null;
+  if (!p.ownerId || !是分来的(p, 分配们.some((a) => a.toUserId === p.ownerId) || 痕们.some((l) => 公海分给他(l, p.ownerId)))) return null;
   const 痕 = 痕们.filter((l) => l.kind === "transfer" || l.kind === "pool-claim").sort((a, b) => b.at.getTime() - a.at.getTime());
   if (痕.length && 痕[0].toOwnerId !== p.ownerId) return null;
   const 那次 = 痕.find((l) => !是超时自动转痕(l));
   if (那次) {
-    if (那次.kind === "pool-claim") return null;
-    if (!那次.fromOwnerId && 那次.userId === 那次.toOwnerId) return null;
+    // 操作人就是接手人：自己去公海领的（pool-claim），或导入出公海那行（transfer、没有原负责人）
+    if (那次.userId === 那次.toOwnerId && (那次.kind === "pool-claim" || !那次.fromOwnerId)) return null;
     return 那次.at;
   }
   const 最早 = [...分配们].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
@@ -203,13 +207,21 @@ export type 超时转明细 = { 提醒: number; 转出: number; 没转成: numbe
 
 /**
  * 是不是分出去的（第 1 题 B，见文件头）：负责人不是建的人 = 别人给他的（指定、自动、定时、超时转、转让）；
- * 负责人就是建的人，但有一行把它分给他的分配记录（比如分出去又分回来）也算。都不是 = 自留 / 个人自持
+ * 负责人就是建的人，但有一行把它分给他的分配记录（比如分出去又分回来）也算；别人从线索公海分给他的（pool-claim 留痕、操作人不是他，
+ * 管理从公海分配不写分配记录，总控 11-20 定「管理从线索公海分配给销售要起算」）也算。都不是 = 自留 / 个人自持
  */
 export const 是分来的 = (p: { ownerId: string; creatorId: string }, 有分给他的记录: boolean): boolean => p.ownerId !== p.creatorId || 有分给他的记录;
 
+/** 别人从公海分给他的那行（pool-claim、到 = 他、操作人不是他） */
+const 公海分给他 = (l: { kind: string; userId: string; toOwnerId: string | null }, 他: string): boolean => l.kind === "pool-claim" && l.toOwnerId === 他 && l.userId !== 他;
+
 async function 分来的of(p: { id: string; ownerId: string; creatorId: string }): Promise<boolean> {
   if (p.ownerId !== p.creatorId) return true;
-  return 是分来的(p, !!(await prisma.entLeadAssign.findFirst({ where: { projectId: p.id, toUserId: p.ownerId }, select: { id: true } })));
+  const [分, 公海] = await Promise.all([
+    prisma.entLeadAssign.findFirst({ where: { projectId: p.id, toUserId: p.ownerId }, select: { id: true } }),
+    prisma.projectNodeLog.findFirst({ where: { projectId: p.id, kind: "pool-claim", toOwnerId: p.ownerId, userId: { not: p.ownerId } }, select: { id: true } }),
+  ]);
+  return 是分来的(p, !!分 || !!公海);
 }
 
 /** 自留、自持的超时提醒那句（不说会自动收回） */
@@ -258,10 +270,10 @@ async function 链上的(现在: Date): Promise<{ 们: 链项目[]; 没基准的
         { replyOverdue: { is: { stoppedAt: null } } },
         { AND: [没在走, { replyEndAt: { gte: 早, lte: 晚 } }] },
         { AND: [没在走, { replyEndAt: null, replyStartAt: { gte: 早, lte: 晚 } }] },
-        // 没填指定回复时间（按分配）：这几天里有过转让留痕、或这几天里建的（新建时直接给销售只有分配记录）；准的下面按 分配基准 再判
+        // 没填指定回复时间（按分配）：这几天里有过转让 / 公海分配留痕、或这几天里建的（新建时直接给销售只有分配记录）；准的下面按 分配基准 再判
         {
           AND: [没在走, { replyEndAt: null, replyStartAt: null }, {
-            OR: [{ logs: { some: { kind: "transfer", at: { gte: 分配早, lte: 晚 } } } }, { createdAt: { gte: new Date(分配早.getTime() - 分), lte: 晚 } }],
+            OR: [{ logs: { some: { kind: { in: ["transfer", "pool-claim"] }, at: { gte: 分配早, lte: 晚 } } } }, { createdAt: { gte: new Date(分配早.getTime() - 分), lte: 晚 } }],
           }],
         },
       ],

@@ -605,12 +605,38 @@ describe("没填指定回复时间：从分配给销售那一刻起算（11-20 �
     expect(文.filter((x) => x.includes("接手已满 1 小时"))).toHaveLength(1);
   });
 
-  it("公海领取（自己领、管理从线索公海分）不起算；导入出公海那行、没留痕就换了人的不起算；自留（暂不分配）、自持不进；不发提醒也不转", async () => {
+  it("管理从线索公海分给销售（pool-claim、操作人不是接手人）进链：按分的那一刻起算，到点提醒、再 30 分钟转", async () => {
+    const { id } = await 建线索(甲, { createdAt: 京("2026-11-01 10:00") });
+    await 记换人(id, 老板.id, null, 甲.id, 京("2026-11-20 10:00"), "pool-claim", "原负责人没做完的待办带过来 0 条");
+    // 分之前记的（老沟通、上一位负责人记的）不算
+    await 谁记沟通(id, 乙.id, "上次联系过，客户说再考虑", 京("2026-11-05 10:00"));
+    expect(await 超时转扫一遍(京("2026-11-20 10:59"))).toMatchObject({ 提醒: 0 });
+    expect(await 超时转扫一遍(京("2026-11-20 11:00"))).toMatchObject({ 提醒: 1 });
+    expect(await 链(id)).toMatchObject({ anchorAt: 京("2026-11-20 10:00"), since: 京("2026-11-20 10:00") });
+    expect((await 超时通知(甲.id))[0].body).toContain(分配后未跟进话);
+    expect(await 超时转扫一遍(京("2026-11-20 11:30"))).toMatchObject({ 转出: 1 });
+    expect((await 项目(id)).ownerId).not.toBe(甲.id);
+
+    await prisma.project.update({ where: { id }, data: { result: "线索流失" } }); // 不掺和下面的计数
+    // 甲自己建的线索进了公海，管理从公海分回给甲（没有分配记录）：同样是别人分给他的，照转（填了指定回复时间的也一样）
+    const 回 = await 建线索(甲, { createdAt: 京("2026-11-01 10:00"), creatorId: 甲.id });
+    await 记换人(回.id, 老板.id, null, 甲.id, 京("2026-11-20 12:00"), "pool-claim", null);
+    const 回时 = await 建线索(甲, { createdAt: 京("2026-11-01 10:00"), creatorId: 甲.id, replyEndAt: 京("2026-11-20 12:00") });
+    await 记换人(回时.id, 老板.id, null, 甲.id, 京("2026-11-20 11:00"), "pool-claim", null);
+    expect(await 超时转扫一遍(京("2026-11-20 13:00"))).toMatchObject({ 提醒: 2 });
+    expect(await 超时转扫一遍(京("2026-11-20 13:30"))).toMatchObject({ 转出: 2 });
+    expect((await 项目(回.id)).ownerId).not.toBe(甲.id);
+    expect((await 项目(回时.id)).ownerId).not.toBe(甲.id);
+  });
+
+  it("销售自己去公海领（pool-claim、操作人 = 接手人）不起算；导入出公海那行、没留痕就换了人的不起算；自留（暂不分配）、自持不进；不发提醒也不转", async () => {
     const t = 京("2026-11-20 10:00");
     const 领 = await 建线索(甲, { createdAt: 京("2026-11-10 10:00") });
     await 记换人(领.id, 甲.id, null, 甲.id, t, "pool-claim", null);
-    const 管分 = await 建线索(甲, { createdAt: 京("2026-11-10 10:00") });
-    await 记换人(管分.id, 老板.id, null, 甲.id, t, "pool-claim", null);
+    // 先被管理从公海分给乙、乙放回去以后甲自己领：最近那次是自己领，不起算
+    const 再领 = await 建线索(甲, { createdAt: 京("2026-11-10 10:00") });
+    await 记换人(再领.id, 老板.id, null, 乙.id, 京("2026-11-19 10:00"), "pool-claim", null);
+    await 记换人(再领.id, 甲.id, null, 甲.id, t, "pool-claim", null);
     const 导入 = await 建线索(甲, { createdAt: 京("2026-11-10 10:00") });
     await 记换人(导入.id, 甲.id, null, 甲.id, t, "transfer", null);
     const 改人 = await 分来线索(乙, t);
@@ -618,18 +644,24 @@ describe("没填指定回复时间：从分配给销售那一刻起算（11-20 �
     const 自留 = await 建线索(甲, { createdAt: t, creatorId: 甲.id, assignMode: "暂不分配" });
     const 导入建 = await 建线索(甲, { createdAt: t }); // 导入建的（负责人不是建的人，但没有分配记录、没有转让留痕）
     expect(await 超时转扫一遍(京("2026-11-20 12:00"))).toEqual({ 提醒: 0, 转出: 0, 没转成: 0, 停: 0 });
-    for (const x of [领, 管分, 导入, 改人, 自留, 导入建]) expect(await 链(x.id)).toBeNull();
+    for (const x of [领, 再领, 导入, 改人, 自留, 导入建]) expect(await 链(x.id)).toBeNull();
     expect(await 超时通知(甲.id)).toHaveLength(0);
   });
 
-  it("分配基准（纯函数）：轮转那几行跳过、最近一次分配为准；公海领取 / 导入出公海 / 最近换人不是给现负责人 = null；只有分配记录按最早那条", () => {
+  it("分配基准（纯函数）：轮转那几行跳过、最近一次分配为准；管理从公海分按那一刻；自己领 / 导入出公海 / 最近换人不是给现负责人 = null；只有分配记录按最早那条", () => {
     const 痕 = (at: string, 到: string, 补: Partial<换人痕> = {}): 换人痕 => ({ kind: "transfer", userId: "boss", reason: "分配方式：自动分配", fromOwnerId: "boss", toOwnerId: 到, at: 京(at), ...补 });
     const 轮转 = (at: string, 从: string, 到: string) => 痕(at, 到, { userId: "system", fromOwnerId: 从, reason: `分配方式：自动分配；${超时自动转理由}（原负责人 x 超时没记有效沟通）` });
     const p = { ownerId: "b", creatorId: "boss" };
     expect(分配基准(p, [痕("2026-11-20 10:00", "a"), 轮转("2026-11-20 11:30", "a", "b")], [])).toEqual(京("2026-11-20 10:00"));
     expect(分配基准(p, [轮转("2026-11-20 11:30", "a", "b")], [{ toUserId: "a", createdAt: 京("2026-11-20 10:00") }, { toUserId: "b", createdAt: 京("2026-11-20 11:30") }])).toEqual(京("2026-11-20 10:00"));
     expect(分配基准(p, [痕("2026-11-20 10:00", "a"), 痕("2026-11-20 12:00", "b")], [])).toEqual(京("2026-11-20 12:00"));
-    expect(分配基准(p, [痕("2026-11-20 10:00", "b", { kind: "pool-claim" })], [])).toBeNull();
+    // 公海：别人分给他的按那一刻；自己领的 = null
+    expect(分配基准(p, [痕("2026-11-20 10:00", "b", { kind: "pool-claim", fromOwnerId: null })], [])).toEqual(京("2026-11-20 10:00"));
+    expect(分配基准(p, [痕("2026-11-20 10:00", "b", { kind: "pool-claim", userId: "system", fromOwnerId: null })], [])).toEqual(京("2026-11-20 10:00"));
+    expect(分配基准(p, [痕("2026-11-20 10:00", "b", { kind: "pool-claim", userId: "b", fromOwnerId: null })], [])).toBeNull();
+    // 建的人就是负责人：管理从公海分回给他也算分来的（没有分配记录）；自己领的不算
+    expect(分配基准({ ownerId: "b", creatorId: "b" }, [痕("2026-11-20 10:00", "b", { kind: "pool-claim", fromOwnerId: null })], [])).toEqual(京("2026-11-20 10:00"));
+    expect(分配基准({ ownerId: "b", creatorId: "b" }, [痕("2026-11-20 10:00", "b", { kind: "pool-claim", userId: "b", fromOwnerId: null })], [])).toBeNull();
     expect(分配基准(p, [痕("2026-11-20 10:00", "b", { userId: "b", fromOwnerId: null })], [])).toBeNull();
     expect(分配基准(p, [痕("2026-11-20 10:00", "a")], [])).toBeNull();
     expect(分配基准(p, [], [{ toUserId: "b", createdAt: 京("2026-11-20 09:00") }])).toEqual(京("2026-11-20 09:00"));
