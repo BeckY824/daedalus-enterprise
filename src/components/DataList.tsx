@@ -2,7 +2,7 @@
 
 import { 登记页面行 } from "@/lib/page-rows";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
 import { Table, Button, Dropdown, Checkbox, Grid } from "antd";
 import { SettingOutlined } from "@ant-design/icons";
@@ -13,7 +13,7 @@ import CountUp from "@/components/CountUp";
 import Skeleton from "@/components/Skeleton";
 import { useLocalPref } from "@/lib/local-pref";
 import { 只留当前行, 露出这一列, 算可见列, 切换后存 } from "@/lib/list-select";
-import { 当前列表地址, 读勾选, 记勾选, 记横滚, 记本地页, 进来可还原 } from "@/lib/list-return";
+import { 当前列表地址, 读勾选, 记勾选, 记横滚, 记本地页, 清勾选, 进来可还原 } from "@/lib/list-return";
 
 /**
  * 列表页的那张表。**全站只有这一个表格实现**（批 2 抽出来，批 3 六页照用）。
@@ -130,7 +130,7 @@ type Props<T> = {
    * 按「页 + 地址」记在 sessionStorage（lib/list-return.ts 读勾选）：地址一样才还原，还原的勾选也只留眼前的行。
    * 在浏览器里分页的表（不给 分页）第几页、每页几条也一起记。
    * 筛选、排序、页码、页签在地址栏，纵向滚动由外壳 ListMemory 滚回去，列设置本来就记在本地（useLocalPref）；
-   * 筛选在本页 state 里的（联系人、渠道）用 lib/local-pref.ts 的 useListKeep 记。
+   * 筛选在本页 state 里的（联系人、渠道）用 lib/list-keep.ts 的 useListKeep 记。
    * 只在「回来」时还原（从详情页回来、浏览器后退、刷新），从左栏点进来回默认（lib/list-return.ts 进来可还原）
    */
   回来还原?: boolean;
@@ -280,6 +280,8 @@ export default function DataList<T extends { id: string }>({
     「记」写在「读回」前面：两个 effect 按书写顺序跑，挂上那一轮还没读回，不能先拿空勾选把存的盖掉
   */
   const 还原键 = 回来还原 ? 页 : null;
+  // 判「是不是回来」用 usePathname，不用 window.location（Next 提交阶段才改地址栏，#381 复审）
+  const pathname = usePathname() ?? "";
   const 读回过 = useRef(false);
   useEffect(() => {
     if (!还原键 || !读回过.current) return;
@@ -288,8 +290,9 @@ export default function DataList<T extends { id: string }>({
   useEffect(() => {
     if (!还原键 || 读回过.current || 加载中) return;
     读回过.current = true;
-    // 从左栏、首页点进来不还原（和地址栏里的筛选一样回默认）；之后勾的照常记
-    if (!进来可还原()) return;
+    // 从左栏、首页点进来不还原（和地址栏里的筛选一样回默认）；之后勾的照常记。
+    // 不还原时把这张表记的也清掉：不然接着一刷新（刷新算回来）旧勾选、横滚、本地页又冒出来，勾选还会被算进批量（#381 复审）
+    if (!进来可还原(pathname)) return void 清勾选(还原键);
     const 记的 = 读勾选(还原键, 当前列表地址());
     if (!记的) return;
     // 这会儿不让勾的行（变成只读了）不还原成勾着，不然会被算进批量

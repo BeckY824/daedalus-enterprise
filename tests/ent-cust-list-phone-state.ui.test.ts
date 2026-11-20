@@ -178,6 +178,12 @@ it("#381：换人（同一个标签页 A 退出、B 登录）不带 A 的勾选�
     await 打开(page, "http://localhost/customers?page=1");
     await page.waitForTimeout(200);
     expect(await 勾着(page)).toEqual([]);
+    // 接着刷新一次（刷新算「回来」）：左栏进来那一下已把这张表记的清掉，旧勾选不再冒出来、不进批量（#381 复审）
+    await page.reload();
+    await 挂上(page, "A");
+    await page.waitForTimeout(200);
+    expect(await 勾着(page)).toEqual([]);
+    expect(await page.locator(".list-sel-float").count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

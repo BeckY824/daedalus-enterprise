@@ -10,6 +10,7 @@ import { useMotionTheme } from "@/components/MotionTheme";
 import { PixelLogo } from "@/components/Logo";
 import AuthSide from "./AuthSide";
 import {记找回邮箱,useLoginEmail} from "@/lib/auth-email-prefill";
+import { useLoginClearsListMemory } from "@/lib/local-pref";
 import { 飞书登录地址 } from "@/lib/safe-next";
 
 /** server action 迟迟不返回时的等待上限。链路正常时登录在 3 秒内完成。 */
@@ -57,6 +58,8 @@ export default function LoginForm({
   去处?: string;
 }) {
   const { 曲线, 时长 } = useMotionTheme();
+  // 到了登录页就是换人 / 没人了：上一个人列表记的勾选、筛选、地址清掉（#381）
+  useLoginClearsListMemory();
   /** 托管版的账号是邮箱，自部署是管理员建的登录名。见 page.tsx */
   const 账号名 = 用邮箱 ? "邮箱" : "用户名";
   const [账号, set账号] = useLoginEmail(用邮箱);

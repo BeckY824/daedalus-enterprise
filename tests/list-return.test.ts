@@ -3,8 +3,8 @@
  * 真浏览器里回来后筛选、页码、滚动还在，见 e2e-ent/list-return.spec.ts。
  * 这里没有 window：读写走模块里的内存兜底（和存储被禁时同一条路）。
  */
-import { describe, it, expect } from "vitest";
-import { 列表种of, 是详情页, 页码of, 回列表文字, 记地址, 地址快照, 解析地址们, 订阅地址, 读滚动, 记滚动, 读勾选, 记勾选, 记横滚, 记本地页, 当前列表地址, 设列表主人, 清列表记忆, 记进入, 记后退, 进来可还原 } from "@/lib/list-return";
+import { describe, it, expect, vi } from "vitest";
+import { 列表种of, 是详情页, 页码of, 回列表文字, 记地址, 地址快照, 解析地址们, 订阅地址, 读滚动, 记滚动, 读勾选, 记勾选, 记横滚, 记本地页, 当前列表地址, 设列表主人, 清列表记忆, 记进入, 记后退, 进来可还原, 清勾选 } from "@/lib/list-return";
 
 describe("认路径", () => {
   it("七张列表：客户 / 公海 / 项目，11-20 起加线索 / 渠道 / 联系人 / 跟进计划；子路径、别的页都不算", () => {
@@ -172,5 +172,48 @@ describe("什么时候还原（#381：和客户列表对齐）", () => {
     expect(进来可还原("/channels")).toBe(true);
     记进入("/contacts");
     expect(进来可还原("/contacts")).toBe(false);
+  });
+
+  it("#381 复审：渲染那一下地址栏还是详情（Next 提交阶段才 pushState）也按传进来的路径判，不看 window.location", () => {
+    vi.stubGlobal("window", { location: { pathname: "/customers/c1", search: "" } });
+    try {
+      // 列表 → 详情 → 60 秒内点左栏回联系人：ListMemory 还没报 /contacts，地址栏也还是详情
+      记进入("/contacts");
+      记进入("/customers/c1");
+      expect(进来可还原("/contacts")).toBe(true);
+      // 反过来：详情 → 首页 → 左栏渠道，地址栏还停在首页
+      (window as unknown as { location: { pathname: string } }).location.pathname = "/dashboard";
+      记进入("/dashboard");
+      expect(进来可还原("/channels")).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("#381 复审：同一路径里后退（只换查询串）用掉「后退」，之后从左栏进别的列表不误判；后退到同一路径照样认", () => {
+    记进入("/customers");
+    记后退();
+    记进入("/customers");
+    expect(进来可还原("/customers")).toBe(true);
+    记进入("/dashboard");
+    expect(进来可还原("/channels")).toBe(false);
+    // 后退进来的列表里再换筛选（同一路径 push）：这一页仍算后退来的
+    记后退();
+    记进入("/contacts");
+    记进入("/contacts");
+    expect(进来可还原("/contacts")).toBe(true);
+  });
+});
+
+describe("不还原时清掉这张表的记录（#381 复审）", () => {
+  it("清勾选：这张表的勾选、横滚、本地页都没了；别的表不动", () => {
+    记勾选("客户列表x", "/customers", ["a"]);
+    记横滚("客户列表x", "/customers", 300);
+    记本地页("客户列表x", "/customers", 3, 20);
+    记勾选("联系人x", "/contacts", ["b"]);
+    清勾选("客户列表x");
+    expect(读勾选("客户列表x", "/customers")).toBeNull();
+    expect(读勾选("联系人x", "/contacts")?.ids).toEqual(["b"]);
+    清勾选("没记过的表");
   });
 });

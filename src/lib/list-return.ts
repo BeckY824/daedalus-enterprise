@@ -79,7 +79,7 @@ let 主人 = "";
 export function 设列表主人(id: string | null | undefined) {
   主人 = id ?? "";
 }
-/** 这个人的键：本模块的三份记忆、local-pref 的会话偏好（useListKeep）都走它 */
+/** 这个人的键：本模块的三份记忆、list-keep 的会话偏好（useListKeep）都走它 */
 export const 带人 = (键: string): string => (主人 ? `${键}@${主人}` : 键);
 
 /** 本模块所有键的前缀（含带人的）；local-pref 的列表筛选键前缀是 list-keep: */
@@ -133,7 +133,15 @@ export function 记后退() {
   待后退 = true;
 }
 export function 记进入(pathname: string) {
-  if (路.现 === pathname) return;
+  if (路.现 === pathname) {
+    /*
+      同一路径里只换了查询串（含 popstate 退回同一路径，#381 复审）：前一页不变；这一页算不算「后退来的」只增不减
+      （后退到同一路径照样认；进来时是后退的，换筛选之后也还认），待后退 用掉清掉，免得留到下一次从左栏进别的列表被误判
+    */
+    路 = { ...路, 现后退: 路.现后退 || 待后退 };
+    待后退 = false;
+    return;
+  }
   路 = { 前: 路.现, 现: pathname, 现后退: 待后退 };
   待后退 = false;
 }
@@ -146,7 +154,11 @@ function 是刷新(): boolean {
     return false;
   }
 }
-export function 进来可还原(pathname: string = typeof window === "undefined" ? "" : window.location.pathname): boolean {
+/**
+ * pathname 要调用方传（usePathname()）：Next 16 在提交阶段才改地址栏（app-router 的 HistoryUpdater 用 useInsertionEffect），
+ * 页面预热过、不先出 loading 时，渲染那一下 window.location 还是上一页，拿它判会反过来（#381 复审）
+ */
+export function 进来可还原(pathname: string): boolean {
   const 已报 = 路.现 === pathname;
   const 从 = 已报 ? 路.前 : 路.现;
   const 后退 = 已报 ? 路.现后退 : 待后退;
@@ -239,6 +251,14 @@ export function 读勾选(表: string, href: string): 勾选记忆 | null {
 
 function 写勾选(表: string, 记忆: 勾选记忆) {
   写(勾选键, JSON.stringify({ ...读勾选表(), [表]: 记忆 }));
+}
+
+/** 这张表记的勾选、横滚、本地页整条清掉：判定不还原时调，免得接着一刷新旧勾选又冒出来、被算进批量（#381 复审） */
+export function 清勾选(表: string) {
+  const 全 = 读勾选表();
+  if (!(表 in 全)) return;
+  delete 全[表];
+  写(勾选键, JSON.stringify(全));
 }
 
 /** 勾选变了就记；同一个地址上的横滚位置留着，换了地址横滚归零 */

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * 存在这台机器上的小偏好（列表页显示哪几列等）；useListKeep 是同一套、记在这个标签页里（列表筛选）。
+ * 存在这台机器上的小偏好（列表页显示哪几列等）；lib/list-keep.ts 的 useListKeep 是同一套、记在这个标签页里（列表筛选）。
  *
  * 为什么不是 useState + useEffect 读一遍：那样等于在 effect 里 setState，
  * 会多渲染一轮，服务端渲染出来的还是默认那套、水合之后再跳一下。
@@ -11,8 +11,8 @@
  * 读不到、存不下、存进去的是坏 JSON——都当没存过，回到默认值。
  * 这里放的东西必须是「丢了也不影响用」的：真正要留住的状态不该在浏览器本地。
  */
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import { 带人, 进来可还原 } from "./list-return";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { 清列表记忆 } from "./list-return";
 
 const listeners = new Set<() => void>();
 /** 按 key 缓存上一次解析的结果：getSnapshot 每次都要返回同一个引用，否则会无限重渲 */
@@ -21,7 +21,7 @@ const cache = new Map<string, { raw: string | null; value: unknown }>();
 const memory = new Map<string, unknown>();
 
 /** local = 这台机器一直记着（列设置）；session = 这个标签页记着，刷新还在、关了就没（列表筛选，29R） */
-type 存处 = "local" | "session";
+export type 存处 = "local" | "session";
 const 库 = (处: 存处): Storage => (处 === "session" ? sessionStorage : localStorage);
 
 /** 内存兜底和解析缓存里的键：两处同名的键不串（local 的照旧用原键） */
@@ -54,24 +54,8 @@ export function useLocalPref<T>(key: string, fallback: T): [T, (v: T) => void] {
   return usePref("local", key, fallback);
 }
 
-/**
- * 列表页放在本页 state 里的筛选（联系人的关系 / 负责人、渠道的属性 / 状态、跟进的范围……）：
- * 进客户详情再回来、浏览器后退、刷新都还在（29R 推广，11-20 用户「之前筛选栏的保持，对其他页面也一样」）；
- * 从左栏、首页点进来回默认，和客户列表一样（#381 审查，判定见 lib/list-return.ts 进来可还原）。
- * 记在 sessionStorage，键按人分（带人）；key 要以 list-keep: 开头（退出时按前缀清）。
- * fallback 要是稳定的值（字面量），读到坏数据也回它
- */
-export function useListKeep<T>(key: string, fallback: T): [T, (v: T) => void] {
-  const 键 = 带人(key);
-  // 挂上那一下定：不是「回来」就把记的扔掉、回默认（只跑一次，放在初始化里，第一帧就是默认、不闪）
-  useState(() => {
-    if (typeof window !== "undefined" && !进来可还原()) 删("session", 键);
-    return null;
-  });
-  return usePref("session", 键, fallback);
-}
-
-function 删(处: 存处, key: string) {
+/** 删一个键（存储 + 内存兜底 + 解析缓存）；给 lib/list-keep.ts 用 */
+export function 删(处: 存处, key: string) {
   const 键 = 缓存键(处, key);
   memory.delete(键);
   cache.delete(键);
@@ -89,7 +73,19 @@ export function 清会话偏好() {
   listeners.forEach((l) => l());
 }
 
-function usePref<T>(处: 存处, key: string, fallback: T): [T, (v: T) => void] {
+/** 换人时（退出、会话过期跳登录、演示换人、视图换人）把这个标签页里列表记的东西全清：sessionStorage 按前缀 + 这边的内存和缓存 */
+export function 清本页列表记忆() {
+  清列表记忆();
+  清会话偏好();
+}
+
+/** 登录页挂上时清一次：会话过期被弹回登录、别的路子换了人，都不走「退出」，上一个人的列表记忆照样不留（#381 复审） */
+export function useLoginClearsListMemory() {
+  useEffect(() => 清本页列表记忆(), []);
+}
+
+/** 给 lib/list-keep.ts 用（useListKeep 记在 session） */
+export function usePref<T>(处: 存处, key: string, fallback: T): [T, (v: T) => void] {
   const subscribe = useCallback((l: () => void) => {
     listeners.add(l);
     return () => void listeners.delete(l);

@@ -7,6 +7,7 @@ import AuthSide from "./AuthSide";
 import { 演示登录 } from "./demo-actions";
 import { 登录之后 } from "./after-login";
 import type { 演示组 } from "@/lib/enterprise/demo-switch";
+import { useLoginClearsListMemory } from "@/lib/local-pref";
 
 /**
  * 演示部署的门（CRM_DEMO_SWITCH=1，见 lib/enterprise/demo-switch.ts）：不要密码，按业务角色列出所有人，点谁就以谁进。
@@ -15,6 +16,8 @@ import type { 演示组 } from "@/lib/enterprise/demo-switch";
 export default function DemoLogin({ 名单, 产品名, 去处 }: { 名单: 演示组[]; 产品名?: string; 去处?: string }) {
   const [正在, set正在] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 到了登录页就是换人 / 没人了：上一个人列表记的勾选、筛选、地址清掉（#381）
+  useLoginClearsListMemory();
 
   async function 进(id: string) {
     if (正在) return;
