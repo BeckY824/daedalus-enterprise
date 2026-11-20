@@ -10,6 +10,7 @@
  */
 import { FOLLOW_TYPES, FOLLOW_TYPE_MAP } from "../constants";
 import { 是币种 } from "../currency";
+import { 认金额 } from "../money-input";
 import { parseDateInput } from "@/lib/date-input";
 import { 阶段们, 是阶段, 本套名, 结局叫法, 字典of, 终止结局, 下一步, 要写原因, 原因上限, type 位置, type 阶段字典 } from "../project/nodes";
 import { 卡点类型们, 影响等级们, 描述上限, 原因最多, 清原因们 } from "../project/blocker-rules";
@@ -131,10 +132,11 @@ function 收日子(v: unknown): string | null {
   return m ? `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}` : null;
 }
 
+/** 模型交的字串用 认金额 认（和金额框、导入同一个：「3万」「3w」都认，「约5万」拒） */
 function 收金额(v: unknown): number | null {
-  if (v === undefined || v === null || v === "") return 0;
-  const n = typeof v === "number" ? v : Number(String(v).replace(/[,¥￥\s]/g, ""));
-  if (!Number.isFinite(n) || n < 0 || n > 1e12) return null;
+  if (v === undefined || v === null || String(v).trim() === "") return 0;
+  const n = typeof v === "number" ? v : 认金额(String(v));
+  if (n === null || !Number.isFinite(n) || n < 0 || n > 1e12) return null;
   return Math.round(n * 100) / 100;
 }
 

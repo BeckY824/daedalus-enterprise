@@ -14,6 +14,7 @@ import { FOLLOW_TYPES, FOLLOW_TYPE_MAP, FOLLOW_METHODS, FOLLOW_STATUSES, DECISIO
 import { DEFAULT_BUSINESS, statusLabel, 签约叫, type BusinessConfig } from "../business-config";
 import { dayjs } from "../utils";
 import { 是币种, 金额 } from "../currency";
+import { 认金额 } from "../money-input";
 import { 有效线索节点, 建档不能过线索验证 } from "../project/stage-gates";
 import { 是项目卡, buildProjectProposal, 项目卡缺, 描述项目卡, type 项目卡, type 项目卡Kind } from "./project-proposals";
 import { 内置号码种类, 每人最多号码, 号码上限 } from "../enterprise/customer-v2";
@@ -319,11 +320,11 @@ function pickEnum(v: unknown, allowed: readonly string[], fallback: string): { o
   return allowed.includes(s) ? { ok: true, value: s } : { ok: false };
 }
 
-/** 金额：给了就必须是非负数字；没给记 0，让人在卡片上补 */
+/** 金额：给了就必须是非负数字；没给记 0，让人在卡片上补。模型交的字串用 认金额 认（和金额框、导入同一个：「¥19,800」「3万」「3w」都认，「约5万」拒） */
 function 收金额(v: unknown): number | null {
-  if (v === undefined || v === null || v === "") return 0;
-  const n = typeof v === "number" ? v : Number(String(v).replace(/[,¥￥\s]/g, ""));
-  if (!Number.isFinite(n) || n < 0) return null;
+  if (v === undefined || v === null || String(v).trim() === "") return 0;
+  const n = typeof v === "number" ? v : 认金额(String(v));
+  if (n === null || !Number.isFinite(n) || n < 0) return null;
   return Math.round(n * 100) / 100;
 }
 

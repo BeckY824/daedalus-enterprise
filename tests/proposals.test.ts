@@ -197,6 +197,19 @@ describe("商机与签约的提议", () => {
     expect(p.kind === "add_contract" && p.amount).toBe(19800);
   });
 
+  it("模型照人原话交「3万」「3w」「12.5万」：和金额框同一个 认金额，按万算；「约5万」「5万5」拒，不悄悄去字存成 5", () => {
+    for (const [原, 数] of [["3万", 30000], ["3w", 30000], ["3W", 30000], ["12.5万", 125000], ["2.5k", 2500]] as const) {
+      const p = 提("add_contract", { amount: 原, signedAt: "2026-09-01", reason: "x" });
+      expect(p.kind === "add_contract" && p.amount, 原).toBe(数);
+      const q = 建("payment_add", { targetId: "p1", targetName: "x", paidAt: "2026-11-01", amount: 原, reason: "x" });
+      expect(q.ok && (q.proposal as { amount: number }).amount, 原).toBe(数);
+    }
+    for (const 原 of ["约5万", "5万5", "-3w", "面议"]) {
+      expect(建("add_contract", { amount: 原, signedAt: "2026-09-01", reason: "x" }).ok, 原).toBe(false);
+      expect(建("payment_add", { targetId: "p1", paidAt: "2026-11-01", amount: 原, reason: "x" }).ok, 原).toBe(false);
+    }
+  });
+
   it("金额和日期没填时出卡片但不让确认——留空是让人补，不是拒绝提议", () => {
     const p = 提("add_contract", { signedAt: "", reason: "x" });
     expect(missingFields(p).length).toBeGreaterThan(0);

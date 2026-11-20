@@ -14,6 +14,7 @@ import { 权限组织 } from "../enterprise/org";
 import { 本套位置, 字典of, type 阶段字典 } from "../project/nodes";
 import { 生效组织规则 } from "../project/org-rules-store";
 import { 有效线索节点 } from "../project/stage-gates";
+import { 认金额 } from "../money-input";
 import { 读线索验证, 待我复核的 } from "../project/lead-verify";
 import { 可选项 } from "../enterprise/dict";
 import { buildProposal, describeProposal, missingFields } from "./proposals";
@@ -268,7 +269,7 @@ export const 项目写工具: Tool[] = [
       const 日 = str(a.paidAt, 20);
       const d = 日 ? dayjs(日) : null;
       if (d && !d.isValid()) return { summary: "日期看不懂", data: { error: "paidAt 写成 YYYY-MM-DD" } };
-      const 额 = typeof a.amount === "number" ? a.amount : str(a.amount) ? Number(str(a.amount).replace(/[,¥￥\s]/g, "")) : null;
+      const 额 = typeof a.amount === "number" ? a.amount : str(a.amount) ? (认金额(str(a.amount)) ?? Number.NaN) : null;
       if (额 !== null && !Number.isFinite(额)) return { summary: "金额看不懂", data: { error: "amount 要是数字" } };
       // 回款表不带团队范围：只在上面找到（看得到）的项目里找
       const 项目们 = new Map(找.行.map((p) => [p.id, p]));
