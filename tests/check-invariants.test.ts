@@ -188,6 +188,9 @@ describe("附录 C 补的 13 条（待核·仅提示）：命中 1 行、对照 
         插沟通(db, "f-ok", "cB");
         db.prepare(`INSERT INTO "FollowUpProject" (followUpId, projectId, node) VALUES ('f-ok', 'pB', '潜客培育')`).run();
         插沟通(db, "f-del", "cB", { deletedAt: t });
+        // 同号再次录入的系统留痕：客户没项目时只挂客户，不算没挂
+        插沟通(db, "f-mark", "cB", { title: "同号再次录入" });
+        插沟通(db, "f-mark2", "cB", { title: "同号再次录入（来源不同）" });
       },
       命中: "f-bad",
     },

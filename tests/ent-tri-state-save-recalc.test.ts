@@ -60,7 +60,7 @@ import { saveFollowUp, deleteFollowUp } from "@/app/(app)/customers/[id]/actions
 import { 记项目沟通 } from "@/lib/project/db";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 同号再次录入, 同号只记备注 } from "@/lib/enterprise/same-number-collab";
-import { 同号节点, 同号标题不许用话, 标题占了同号 } from "@/lib/enterprise/same-number-mark";
+import { 同号节点, 同号标题不许用话, 同号留痕标题不能改话, 同号标题问题 } from "@/lib/enterprise/same-number-mark";
 import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 读冷项目 } from "@/lib/enterprise/tri-state-detail";
@@ -268,7 +268,7 @@ describe("同号再次录入不续三态钟（11-20）", () => {
     expect(beijingDay((await 最近跟进())!)).toBe(前(100));
   });
 
-  it("用户写的标题不许以「同号再次录入」开头（客户页记沟通、项目记沟通都拦）；改那条系统留痕本身、标题原样不动的放过", async () => {
+  it("用户写的标题不许以「同号再次录入」开头（客户页记沟通、项目记沟通都拦）", async () => {
     await 开三态(150);
     for (const title of ["同号再次录入", "  同号再次录入（来源不同）", "同号再次录入：又聊了"])
       expect(await saveFollowUp({ customerId: 客户, type: "PHONE", status: "已完成", content: "电话聊了预算和交付时间", occurredAt: `${今天} 00:00`, title })).toEqual({ ok: false, error: 同号标题不许用话 });
@@ -277,13 +277,34 @@ describe("同号再次录入不续三态钟（11-20）", () => {
     const 项目 = (await prisma.project.findFirstOrThrow({ where: { customerId: 客户 } })).id;
     expect(await 记项目沟通({ id: 乙, role: "SALES" } as never, 项目, { type: "PHONE", content: "电话聊了预算和交付时间", occurredAt: `${今天} 00:00`, 下一步: "下周报价", 阶段: "商机", 额外: { title: "同号再次录入" } } as never)).toMatchObject({ ok: false, error: 同号标题不许用话 });
     expect(await prisma.followUp.count({ where: { customerId: 客户, title: { startsWith: "同号再次录入" } } })).toBe(0);
-    // 纯判定：编辑时标题和库里原样一致 = 放过；改成别的同号开头 = 拦
-    expect(标题占了同号("同号再次录入", "同号再次录入")).toBe(false);
-    expect(标题占了同号(" 同号再次录入 ", "同号再次录入")).toBe(false);
-    expect(标题占了同号("同号再次录入（来源不同）", "同号再次录入")).toBe(true);
-    expect(标题占了同号("同号再次录入")).toBe(true);
-    expect(标题占了同号("")).toBe(false);
-    expect(标题占了同号(undefined)).toBe(false);
+    // 纯判定：改同号留痕时标题必须原样（去头尾空格后一字不差），清空、改成别的、换成另一种同号标题都拒；不是留痕的不许改成同号开头
+    expect(同号标题问题("同号再次录入", "同号再次录入")).toBeNull();
+    expect(同号标题问题(" 同号再次录入 ", "同号再次录入")).toBeNull();
+    for (const t of ["", undefined, null, "电话", "同号再次录入（来源不同）"]) expect(同号标题问题(t, "同号再次录入")).toBe(同号留痕标题不能改话);
+    expect(同号标题问题("同号再次录入")).toBe(同号标题不许用话);
+    expect(同号标题问题("同号再次录入", "电话")).toBe(同号标题不许用话);
+    expect(同号标题问题("电话", "")).toBeNull();
+    expect(同号标题问题("")).toBeNull();
+    expect(同号标题问题(undefined)).toBeNull();
+  });
+
+  it("负责人改同事留下的同号留痕：只改内容能存、三态钟和最近跟进不变；标题清空或改掉被拒", async () => {
+    await 开三态(95);
+    await 三态夜扫();
+    expect(await 钟()).toBe("沉睡");
+    // 能改沟通的要是身为负责人的管理（M-权限-09）：乙升成销售管理
+    await prisma.entMember.updateMany({ where: { userId: 乙 }, data: { bizRole: "sales_mgr" } });
+    await 丙录同号();
+    const f = await prisma.followUp.findFirstOrThrow({ where: { customerId: 客户, title: { startsWith: "同号再次录入" } } });
+    const 痕数 = await prisma.entCustomerStateLog.count({ where: { customerId: 客户 } });
+    const 改 = (title: string | undefined) => saveFollowUp({ id: f.id, customerId: 客户, type: f.type, status: f.status, content: "展会上又聊了一次预算和交付时间，补一句报价", occurredAt: f.occurredAt.toISOString(), title });
+    for (const t of ["", "电话", undefined]) expect(await 改(t)).toEqual({ ok: false, error: 同号留痕标题不能改话 });
+    expect((await prisma.followUp.findUniqueOrThrow({ where: { id: f.id } })).content).toBe(f.content);
+    expect(await 改(f.title)).toMatchObject({ ok: true });
+    expect(await prisma.followUp.findUniqueOrThrow({ where: { id: f.id } })).toMatchObject({ title: f.title, content: "展会上又聊了一次预算和交付时间，补一句报价" });
+    expect(await 钟()).toBe("沉睡");
+    expect(await prisma.entCustomerStateLog.count({ where: { customerId: 客户 } })).toBe(痕数);
+    expect(await 最近跟进()).toBeNull();
   });
 
   it("冷项目：同号留痕挂在项目上不清冷标；负责人记一条挂项目的有效沟通才清", async () => {

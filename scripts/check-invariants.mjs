@@ -229,13 +229,14 @@ export const 不变量们 = [
   },
   {
     键: "沟通没挂项目",
-    项: "没删的沟通（待办、提醒除外）挂在某个项目上",
+    项: "没删的沟通（待办、提醒、同号再次录入的系统留痕除外）挂在某个项目上",
     级别: "待核",
     仅提示: true,
-    // 附录 C 违规 276,947（待客户管理员定老沟通怎么挂）；新写入走 follow-needs-project.ts 共用守门。待办、提醒（TASK / REMIND）本来不挂
-    依据: "复盘 附录 C「沟通没挂项目」、第 5 类；follow-needs-project.ts",
+    // 附录 C 违规 276,947（待客户管理员定老沟通怎么挂）；新写入走 follow-needs-project.ts 共用守门。待办、提醒（TASK / REMIND）本来不挂；
+    // 同号再次录入的系统留痕（标题以「同号再次录入」开头，src/lib/enterprise/same-number-mark.ts）客户没项目时只挂客户，按设计不挂项目
+    依据: "复盘 附录 C「沟通没挂项目」、第 5 类；follow-needs-project.ts；same-number-collab.ts 同号再次录入",
     sql: `SELECT f.id FROM "FollowUp" f
-          WHERE f.deletedAt IS NULL AND f.type NOT IN ('TASK', 'REMIND')
+          WHERE f.deletedAt IS NULL AND f.type NOT IN ('TASK', 'REMIND') AND f.title NOT LIKE '同号再次录入%'
             AND NOT EXISTS (SELECT 1 FROM "FollowUpProject" fp WHERE fp.followUpId = f.id)`,
   },
   {

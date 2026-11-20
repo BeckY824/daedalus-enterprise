@@ -45,7 +45,7 @@ import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
 import { 存沟通后重算三态, 记首次有效 } from "@/lib/enterprise/tri-state-db";
 
 import { 客户显名, 全称或显名, 显名列 } from "@/lib/enterprise/customer-title";
-import { 不是同号留痕, 不是同号留痕SQL, 同号标题不许用话, 标题占了同号 } from "@/lib/enterprise/same-number-mark";
+import { 不是同号留痕, 不是同号留痕SQL, 同号标题问题 } from "@/lib/enterprise/same-number-mark";
 const 只有总管理能恢复话 = "只有系统管理员或回收站副手能恢复删掉的记录";
 
 /**
@@ -234,8 +234,10 @@ export async function saveFollowUp(input: FollowUpInput) {
       本人窗口内 = 本人限时 || (await 本人限时适用(user, { id: input.id, ...原那条 }));
     }
     if (!FOLLOW_TYPES.some((t) => t.value === input.type)) return { ok: false as const, error: `跟进类型「${input.type}」不是合法取值` };
-    // 标题以「同号再次录入」开头会被三态、最近跟进当成系统留痕排除（same-number-mark.ts），用户写的不许占；改那条系统留痕本身、标题原样不动的放过
-    if (标题占了同号(input.title, 原标题)) return { ok: false as const, error: 同号标题不许用话 };
+    // 标题以「同号再次录入」开头会被三态、最近跟进当成系统留痕排除（same-number-mark.ts）：用户写的不许占；
+    // 改的是同号留痕本身，标题必须原样（清空、改掉就成了真沟通，开始续钟、顶最近跟进）。项目详情改沟通也走这里（照带库里的标题）
+    const 标题问题 = 同号标题问题(input.title, 原标题);
+    if (标题问题) return { ok: false as const, error: 标题问题 };
     if (!FOLLOW_RECORD_STATUSES.includes(input.status as (typeof FOLLOW_RECORD_STATUSES)[number])) return { ok: false as const, error: `记录状态「${input.status}」不是合法取值` };
     if (input.durationMinutes != null && !(Number.isFinite(input.durationMinutes) && input.durationMinutes >= 0)) return { ok: false as const, error: "通话时长不能为负数" };
     const 有效日期 = (v: unknown) => parseDateInput(v) !== null;
