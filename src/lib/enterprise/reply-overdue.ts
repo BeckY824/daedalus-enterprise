@@ -60,7 +60,7 @@
  *         （老的分线索公海项目、客户跟着市场转的那种认不出来，按市场转不起算）；
  *         原因空的转让留痕一律不起算（老的离职交接只交项目也是这样）。老的查重领取带出的项目客户换人记录也是 pool-assign，认不出来，
  *         照起算（上线时往回 7 天里一条都没有）
- *       · 超时自动转那几行跳过（链上第一位的分配时刻不随轮转挪）；没留痕就换了负责人的（导入改负责人）= 不知道什么时候到他手上
+ *       · 超时自动转那几行跳过（链上第一位的分配时刻不随轮转挪；主动放弃转出那行同样跳过，32H lead-giveup.ts）；没留痕就换了负责人的（导入改负责人）= 不知道什么时候到他手上
  *     还得是「分来的」（是分来的()）：自留、自持的没填指定回复时间不进链
  *   - 有效沟通（11-20 用户定：只认负责人本人记的）：只算记录人（FollowUp.ownerId）= 这条链当前负责人（项目 ownerId）的沟通；
  *     别人记的（销售管理、市场、前负责人、同事）一律不算、不让链停下（超时提醒正文写明「需负责人本人记录有效沟通」）。
@@ -773,13 +773,17 @@ export async function 客户随线索(projectId: string, customerId: string, 原
 }
 
 /**
- * 项目页提示「该客户在 XXX 名下」：这条项目自动转过、客户不归项目负责人（规则 3 的例外，或客户本来就在别人名下）、客户不在公海。
+ * 项目页提示「该客户在 XXX 名下」：这条项目自动转过（超时转，或别人主动放弃转给现负责人的，32H lead-giveup.ts）、
+ * 客户不归项目负责人（规则 3 的例外，或客户本来就在别人名下）、客户不在公海。
  * 回 XXX 的名字；不用提示 = null
  */
 export async function 客户在谁名下(p: { id: string; ownerId: string; customer: { salesOwnerId: string; pool: unknown } }): Promise<string | null> {
   if (!企业版() || !p.ownerId || p.customer.pool || p.customer.salesOwnerId === p.ownerId) return null;
-  const 链 = await prisma.entReplyOverdue.findUnique({ where: { projectId: p.id }, select: { transfers: true } });
-  if (!链?.transfers) return null;
+  const [链, 放弃] = await Promise.all([
+    prisma.entReplyOverdue.findUnique({ where: { projectId: p.id }, select: { transfers: true } }),
+    prisma.entLeadGiveUp.findFirst({ where: { projectId: p.id, toUserId: p.ownerId }, select: { id: true } }),
+  ]);
+  if (!链?.transfers && !放弃) return null;
   return (await prisma.user.findUnique({ where: { id: p.customer.salesOwnerId }, select: { name: true } }))?.name ?? null;
 }
 

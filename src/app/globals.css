@@ -5261,3 +5261,14 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 .proj-fu-mute { color: var(--text-muted); }
 .proj-fu-full { width: 100%; }
 .proj-fu-note { color: var(--text-muted); font-size: var(--dt-aux, 12px); margin-top: 4px; }
+
+/* 项目页「放弃（豁免）」提示条和框（32H，projects/[id]/GiveUpBanner.tsx）：按钮放正文里，手机 390 宽也不横向撑出 */
+.giveup-bar { margin-bottom: 16px; }
+.giveup-body { min-width: 0; overflow-wrap: anywhere; }
+.giveup-why { margin-top: 4px; color: var(--text-muted); }
+.giveup-open { margin-top: 8px; }
+.giveup-lead { margin-top: 0; }
+.giveup-label { margin-bottom: 8px; }
+.giveup-note { margin-top: 8px; }
+.giveup-hint { margin-top: 12px; color: var(--text-muted); }
+.giveup-error { margin-top: 12px; }

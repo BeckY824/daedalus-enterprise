@@ -78,6 +78,7 @@ async function 清空() {
   await prisma.entLeadQuota.deleteMany();
   await prisma.entLeadQuotaBonus.deleteMany();
   await prisma.entLeadMakeup.deleteMany();
+  await prisma.entLeadGiveUp.deleteMany();
   await prisma.entLeadVerifyLog.deleteMany();
   await prisma.entLeadVerify.deleteMany();
   await prisma.entFollowUpMark.deleteMany();

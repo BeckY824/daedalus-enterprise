@@ -34,6 +34,8 @@ import { 阶段与进程, type 出口叫法改动 } from "@/lib/project/stage-di
 import { 有效线索节点, 缺有效沟通还差 } from "@/lib/project/stage-gates";
 import type { 线索验证 } from "@/lib/project/lead-verify";
 import LeadVerifyPanel from "./LeadVerifyPanel";
+import GiveUpBanner from "./GiveUpBanner";
+import type { 放弃入口 } from "@/lib/enterprise/lead-giveup-core";
 import { useDetailNote, 框里原因, type 跑法, type 就地回执 } from "./detail-note";
 import { FoldSplit, ProjectFold, 模块钮色, 连体箭头 } from "./ProjectFold";
 import { 卡名Provider, 客户详情卡点, 项目卡名 } from "./card-names";
@@ -161,6 +163,8 @@ export type 项目详情 = {
   定时分配?: { 时间: string; 给谁: string | null; 能动: boolean };
   /** 超时未跟进自动转过来、客户还在别人名下（11-17，lib/enterprise/reply-overdue.ts 规则 3 的例外）：那人的名字，只给负责人本人；没有 = 不提示 */
   客户在谁名下?: string;
+  /** 主动放弃（豁免，32H，lib/enterprise/lead-giveup.ts）：新分配给我、我还没记有效沟通的线索才有；可 = false 时按钮灰着、写为什么 */
+  放弃?: 放弃入口;
   /** 沟通的「…」菜单（改 / 删，10-29）：能记沟通、看得到客户，且不是同事 / 虚线下属的客户；企业版改 = 身为负责人的管理（M-权限-09 原口径 11-09，管理以下含负责人本人不能改删） */
   可改沟通?: boolean;
   /** 记录人本人限时改（低-1）：服务器出页时的钟（ISO），前端按和本机钟的偏差算「还能改到几点」；有本人可改的才给 */
@@ -1975,8 +1979,10 @@ export default function ProjectDetail({
       )}
 
       {p.客户在谁名下 && (
-        <Alert type="warning" showIcon style={提示条下距} data-testid="proj-customer-held" title={客户在谁名下话(p.客户在谁名下)} description={`这条线索是超时未跟进自动转给你的，客户不在你名下；跟进前先和 ${p.客户在谁名下} 通个气，别两个人同时跟同一位客户`} />
+        <Alert type="warning" showIcon style={提示条下距} data-testid="proj-customer-held" title={客户在谁名下话(p.客户在谁名下)} description={`这条线索是系统转给你的（超时未跟进自动转，或同事主动放弃），客户不在你名下；跟进前先和 ${p.客户在谁名下} 通个气，别两个人同时跟同一位客户`} />
       )}
+
+      {p.放弃 && <GiveUpBanner projectId={p.id} 入口={p.放弃} />}
 
       {异常 && (
         <Alert
@@ -2008,7 +2014,7 @@ export default function ProjectDetail({
       <section className="rec-zone" aria-label={`项目：${p.name}`} data-project={p.id}>
         <div className="cd-zb">
           {嵌入.提醒 && <div className="cd-alert">{嵌入.提醒}</div>}
-          {(p.pooled || 异常 || p.客户在谁名下) && <div className="cd-notice">{告示}</div>}
+          {(p.pooled || 异常 || p.客户在谁名下 || p.放弃) && <div className="cd-notice">{告示}</div>}
           <div className="cd-mid">
             {节点卡}
             {/* 「这位客户全部」是客户页那条时间线，不归这个搜索框管：切过去时清掉词（审查 #6）；搜索框原地变淡、点不了，不再藏起来让下面的卡往上跳（dt.scope） */}

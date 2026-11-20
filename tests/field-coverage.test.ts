@@ -592,6 +592,13 @@ const 派生: Record<string, Record<string, string>> = {
     usedAssignId: "用在哪条分配记录上，自动分配写分配记录时系统写",
     usedProjectId: "用在哪个项目上，同上",
     voidAt: "判无效的线索被恢复时系统作废，不给改",
+    kind: "哪种待补：空 = 判无效记的，giveup = 主动放弃记的，系统写（迁移 161）",
+  },
+  EntLeadGiveUp: {
+    userId: "谁放弃的：点「放弃」那一刻的负责人，系统记（lib/enterprise/lead-giveup.ts，迁移 160）",
+    month: "北京自然月，系统按点的那一刻算，每人每月 1 次靠它", projectId: "放弃的哪条线索，系统记",
+    reason: "放弃原因，销售在框里选（外出 / 忙不过来 / 其他），记下后不改", note: "选「其他」时销售写的那句，记下后不改",
+    toUserId: "转给了谁，转成时系统写", makeupId: "给放弃人记的那条待补，系统写",
   },
   EntReplyOverdue: {
     projectId: "哪个项目，超时未跟进那条链起头时系统建（迁移 150）", anchorAt: "起链时的超时基准，系统按指定回复时间写", holderId: "链上眼下这一位，系统写",
