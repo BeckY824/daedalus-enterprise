@@ -116,3 +116,9 @@ export function 分配晚于回复(定时: Date | null | undefined, 始: Date | 
 
 /** 超时未跟进自动转（lib/enterprise/reply-overdue.ts 规则 3 的例外）：客户留在别人名下时项目页那句提示；纯文字，浏览器也用 */
 export const 客户在谁名下话 = (名: string) => `该客户在 ${名} 名下`;
+
+/**
+ * 超时未跟进自动转「按分配」那种（没填指定回复时间、从分给销售那一刻起算，lib/enterprise/reply-overdue.ts，11-20）：
+ * 首页待办、通知里不写「指定回复时间」，写这句；纯文字，浏览器也用
+ */
+export const 分配后未跟进话 = "分配后 1 小时未跟进";
