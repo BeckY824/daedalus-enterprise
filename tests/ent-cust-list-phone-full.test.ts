@@ -1,7 +1,7 @@
 /**
  * 客户列表「联系电话」全显（29Q，11-20 客户管理员：展会大量现场加的客户要逐个加微信）：
  *   - 看得到这位客户、又不在公海的：列表行上是完整号码（浏览器那头带一键复制，见 ent-cust-list-phone-state.ui.test.ts）；
- *   - 公海里的客户照旧打码（用户 11-20 定「不显示」）；
+ *   - 公海里的客户照旧打码（用户 11-20 定「不显示」），WhatsApp 也是号码、一样打码；
  *   - 销售教练照旧打码（P-教练-05，规则开不开都打），字段权限里电话设成「看不到」的角色照旧打码；
  *   - 都在服务端打（query.ts 成列表行 + 号码脱敏器），浏览器拿不到原号。
  */
@@ -22,6 +22,8 @@ import { maskPhone } from "@/lib/utils";
 const 手上的号 = "13912345678";
 const 公海的号 = "15000000101";
 const 座机 = "02166668888";
+const 手上的WA = "+971 50 123 4567";
+const 公海的WA = "+971 55 765 4321";
 let 销售: string, 教练: string, 藏号的: string;
 
 beforeEach(async () => {
@@ -37,9 +39,9 @@ beforeEach(async () => {
   销售 = await 建人("s1", "SALES", "sales");
   教练 = await 建人("coach", "SALES", "coach");
   藏号的 = await 建人("cs", "SALES", "sales_ops");
-  await prisma.customer.create({ data: { name: "手上的", phone: 手上的号, salesOwnerId: 销售 } });
+  await prisma.customer.create({ data: { name: "手上的", phone: 手上的号, salesOwnerId: 销售, extra: { create: { whatsapp: 手上的WA } } } });
   await prisma.customer.create({ data: { name: "座机的", phone: 座机, salesOwnerId: 销售 } });
-  const 公海 = await prisma.customer.create({ data: { name: "公海的", phone: 公海的号, salesOwnerId: 销售 } });
+  const 公海 = await prisma.customer.create({ data: { name: "公海的", phone: 公海的号, salesOwnerId: 销售, extra: { create: { whatsapp: 公海的WA } } } });
   await prisma.customerPool.create({ data: { customerId: 公海.id } });
   await prisma.customer.create({ data: { name: "没号的", phone: "", salesOwnerId: 销售 } });
   invalidateSettingsCache();
@@ -68,4 +70,15 @@ it("字段权限开着、电话设成「看不到」的角色照旧打码；没�
   忘掉企业版范围();
   expect(await 号们(藏号的)).toEqual({ 手上的: maskPhone(手上的号), 座机的: maskPhone(座机), 公海的: maskPhone(公海的号), 没号的: "" });
   expect((await 号们(销售)).手上的).toBe(手上的号);
+});
+
+it("WhatsApp 也是号码：手上的完整；公海里的打码（不给 wa.me 链接）；教练两个都打码", async () => {
+  const WA们 = async (谁: string) => {
+    const 号 = await 号码脱敏器(谁);
+    const rows = await prisma.customer.findMany({ select: 客户行字段, where: { name: { in: ["手上的", "公海的"] } } });
+    return Object.fromEntries(rows.map((r) => [r.name, 成列表行(r, 号).extra.whatsapp]));
+  };
+  expect(await WA们(销售)).toEqual({ 手上的: 手上的WA, 公海的: maskPhone(公海的WA) });
+  expect(maskPhone(公海的WA)).toContain("*");
+  expect(await WA们(教练)).toEqual({ 手上的: maskPhone(手上的WA), 公海的: maskPhone(公海的WA) });
 });

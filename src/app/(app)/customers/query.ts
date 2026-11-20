@@ -461,10 +461,12 @@ export type 客户行 = ReturnType<typeof 成客户行>;
  * 客户列表页上的一行（29Q，11-20）：列表「联系电话」一列显示服务端给的号、带一键复制，
  * 所以要藏的号在这里就打好码，浏览器拿不到原号：
  *   - 号码脱敏器（销售教练、字段权限里电话「看不到」的角色）照旧，见 成客户行 的 号；
- *   - 公海里的客户照旧打码（用户 11-20 定「不显示」），领到手、不在公海了才显示完整号码。
+ *   - 公海里的客户照旧打码（用户 11-20 定「不显示」）：电话和 WhatsApp 都是号码，都打；领到手、不在公海了才显示完整号码。
  * 导出不走这里（导出口径另说，见 export-action.ts）
  */
 export function 成列表行(r: 取到的行, 号: (p: string) => string): 客户行 {
   const 行 = 成客户行(r, 号);
-  return r.pool && 行.phone ? { ...行, phone: maskPhone(行.phone) } : 行;
+  if (!r.pool) return 行;
+  const 打 = <T extends string | null | undefined>(p: T): T => (p ? (maskPhone(p) as T) : p);
+  return { ...行, phone: 打(行.phone), extra: { ...行.extra, whatsapp: 打(行.extra.whatsapp) } };
 }
