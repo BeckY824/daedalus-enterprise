@@ -11,6 +11,11 @@ import path from "node:path";
 import { chromium, type Browser } from "playwright";
 
 let browser: Browser, 包: string;
+/*
+  「联系电话」#381 实操起默认显示、紧跟编号（客户口径「号码可以全部显示」）：默认用户 1280 / 1366 三态开着会多 150 宽、表格内部横滚。
+  这几条量的是其余各列的摆法和宽度（1280 不横滚、最后一列看得全），先把号码藏起来（和人在「列」里取消勾一样）再量；号码默认显示见 ent-cust-list-phone-state.ui.test.ts
+*/
+const 藏号码 = (page: import("playwright").Page) => page.evaluate(() => localStorage.setItem("list-cols:customers", JSON.stringify(["-phone"])));
 const 列表桩: Plugin = { name: "import-perm-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   const 空跑 = "async()=>({ok:true})";
@@ -69,7 +74,7 @@ it("两列紧跟客户名；节点标签一行省略、—、0；三种宽度每
     const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
     try {
       await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
-      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await 藏号码(page);
       await page.addStyleTag({ content: `#root{margin-left:220px;margin-right:${右栏}px;padding:22px 26px}` });
       await page.addScriptTag({ content: 包 });
       await page.locator("tr.ant-table-row").first().waitFor();
@@ -125,7 +130,7 @@ it("三态开着：回收状态列在项目数后面、和客户状态两列；1
     const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
     try {
       await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
-      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") });
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") }); await 藏号码(page);
       await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
       await page.evaluate(() => { (window as unknown as { __三态: boolean }).__三态 = true; });
       await page.addScriptTag({ content: 包 });
@@ -166,7 +171,7 @@ it("三态开着：默认列在 1280 / 1366 不横向滚、最后一列看得全
     const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
     try {
       await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
-      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") });
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") }); await 藏号码(page);
       await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
       if (三) await page.evaluate(() => { (window as unknown as { __三态: boolean }).__三态 = true; });
       await page.addScriptTag({ content: 包 });
@@ -218,7 +223,7 @@ it("最近跟进带一句：时间在前、一句接后面一行省略；没有�
     const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
     try {
       await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
-      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") });
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") }); await 藏号码(page);
       await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
       await page.evaluate((三) => {
         const x = window as unknown as { __三态: boolean; __一句: Record<string, string> };
@@ -279,7 +284,7 @@ it("这一页没人填国家：「国家」一列照摆、每格「—」；三�
     const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
     try {
       await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
-      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") });
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") }); await 藏号码(page);
       await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
       await page.evaluate((三) => { const x = window as unknown as { __无国家: boolean; __三态: boolean }; x.__无国家 = true; x.__三态 = 三; }, 三);
       await page.addScriptTag({ content: 包 });

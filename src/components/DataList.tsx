@@ -14,6 +14,7 @@ import Skeleton from "@/components/Skeleton";
 import { useLocalPref } from "@/lib/local-pref";
 import { 只留当前行, 露出这一列, 算可见列, 切换后存 } from "@/lib/list-select";
 import { 当前列表地址, 读勾选, 记勾选, 记横滚, 记本地页, 清勾选, 进来可还原 } from "@/lib/list-return";
+import { 横滚回 } from "@/lib/hscroll-restore";
 
 /**
  * 列表页的那张表。**全站只有这一个表格实现**（批 2 抽出来，批 3 六页照用）。
@@ -40,6 +41,11 @@ export type 列<T> = ColumnType<T> & {
   列名?: string;
   /** false = 默认收在「列」里，要勾才显示。不写就是默认显示 */
   默认?: boolean;
+  /**
+   * 存过列设置、又没提过这一列的人显示不显示（不写 = 同 默认）。一列从「默认收着」改成「默认显示」时写 false：
+   * 老设置是按「它收着」存的（存的只有显示的列和主动藏的「-键」，收着没动过的不记），不写的话一升级它就冒出来，改了人自己的设置
+   */
+  老设置默认?: boolean;
   /** true = 不进列设置，永远跟着（操作列） */
   常驻?: boolean;
   /** true = 列设置里照列着、勾着，但灰掉不让取消（11-04 P-界面-08 市场角色项目页：项目、阶段、进程、验证结果、负责人锁定）。存的设置里藏过也照样显示 */
@@ -164,6 +170,9 @@ const 骨架格 = {
   },
 };
 
+/** 手机宽时钉在左边的名字列最多这么宽：390 / 375 宽减去勾选列、页边，中间还能完整露出 150 宽的号码列 */
+const 手机名字宽 = 120;
+
 export default function DataList<T extends { id: string }>({
   页, 列: 全部列, 行, 空库, 空态, 没对上, 筛选, 汇总, 替表格, 批量, 浮起操作条 = false, 加载中, 行链接, 行点击, 横向, 分页, 截断, 亮, 行类, 不可勾, 排序, 单行 = true, 展开, 回来还原 = false,
 }: Props<T>) {
@@ -186,7 +195,8 @@ export default function DataList<T extends { id: string }>({
   const [上次的行, set上次的行] = useState(行);
   if (上次的行 !== 行) {
     set上次的行(行);
-    const 留 = 只留当前行(选中, 行.map((r) => r.id));
+    // 只留眼前、而且现在还让勾的行：后退回来先用的是缓存里的旧行，新行到了有的变只读（改了上级），不能还勾着被算进批量（#381 实操）
+    const 留 = 只留当前行(选中, (不可勾 ? 行.filter((r) => !不可勾(r)) : 行).map((r) => r.id));
     if (留 !== 选中) set选中(留);
   }
   const 选中行 = useMemo(() => {
@@ -247,7 +257,7 @@ export default function DataList<T extends { id: string }>({
   */
   const 锁定的 = useMemo(() => 可选的.filter((c) => c.锁定).map(列键), [可选的]);
   const 可见 = useMemo(() => {
-    const 算 = 存的 ? 算可见列(可选的.map((c) => ({ 键: 列键(c), 默认显示: c.默认 !== false })), 存的) : 默认可见;
+    const 算 = 存的 ? 算可见列(可选的.map((c) => ({ 键: 列键(c), 默认显示: c.老设置默认 ?? c.默认 !== false })), 存的) : 默认可见;
     return 锁定的.length ? [...new Set([...算, ...锁定的])] : 算;
   }, [存的, 默认可见, 可选的, 锁定的]);
 
@@ -283,6 +293,9 @@ export default function DataList<T extends { id: string }>({
   // 判「是不是回来」用 usePathname，不用 window.location（Next 提交阶段才改地址栏，#381 复审）
   const pathname = usePathname() ?? "";
   const 读回过 = useRef(false);
+  /** 横滚正在还原：这时的 scroll 事件是还原自己设的、或左栏展开时被夹出来的，不记（#381 实操） */
+  const 横滚还原中 = useRef(false);
+  const 停横滚还原 = useRef<(() => void) | null>(null);
   useEffect(() => {
     if (!还原键 || !读回过.current) return;
     记勾选(还原键, 当前列表地址(), 选中);
@@ -301,16 +314,31 @@ export default function DataList<T extends { id: string }>({
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sessionStorage 只有到了浏览器里才读得到（服务端那一版没有勾选），挂上只读这一次
     if (留.length && 批量) set选中(留);
     if (记的.本地 && 分页 === undefined) set本地页(记的.本地);
+    /*
+      还原的勾选是按手上这份（可能是路由缓存里的旧）数据过滤的：浏览器后退、60 秒内点「回到…」都直接用缓存那一屏，
+      期间组织架构改了（改了上级，行变只读）也看不出来。有勾选还原出来就顺手要一份新的，新行到了上面「行一换」那段按可勾再滤一遍（#381 实操）
+    */
+    if (留.length && 批量) router.refresh();
     if (记的.x > 0) {
-      // 等这一帧画完（勾选框那一列、列宽都在了）再横滚过去；这时已经卸了就找不到框，什么也不做
-      requestAnimationFrame(() => {
-        const 框 = 表框.current?.querySelector<HTMLElement>(".ant-table-content");
-        if (框) 框.scrollLeft = 记的.x;
-      });
+      /*
+        横滚：从客户详情回来左栏正从图标窄栏展开、表格框在几帧里变窄，第一帧就设会被当时的最大值夹小、再被 scroll 事件记回去（#381 实操：1366 宽 120 → 0）。
+        滚到目标、尺寸稳住才算完（lib/hscroll-restore.ts），完之前 scroll 事件不记；这时已经卸了就找不到框，什么也不做
+      */
+      横滚还原中.current = true;
+      停横滚还原.current = 横滚回(
+        () => 表框.current?.querySelector<HTMLElement>(".ant-table-content"),
+        记的.x,
+        () => {
+          横滚还原中.current = false;
+          停横滚还原.current = null;
+        },
+      );
     }
     // 只在挂上、数据到了那一下读回；批量 是每次渲染新给的函数，不跟着它重跑
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [还原键, 加载中, 行]);
+  // 卸了就停（还原中的那一圈 rAF 不留着）
+  useEffect(() => () => 停横滚还原.current?.(), []);
   // 表格横着滚了就记位置（隔 150ms 写一次）。scroll 不冒泡，在外框上用捕获阶段听表格里那个横滚框
   useEffect(() => {
     const 框 = 表框.current;
@@ -318,9 +346,10 @@ export default function DataList<T extends { id: string }>({
     let 定时: number | undefined;
     const 记 = (e: Event) => {
       const el = e.target;
-      if (!(el instanceof HTMLElement) || !el.classList.contains("ant-table-content") || 定时 !== undefined) return;
+      if (!(el instanceof HTMLElement) || !el.classList.contains("ant-table-content") || 定时 !== undefined || 横滚还原中.current) return;
       定时 = window.setTimeout(() => {
         定时 = undefined;
+        if (横滚还原中.current) return;
         记横滚(还原键, 当前列表地址(), el.scrollLeft);
       }, 150);
     };
@@ -363,6 +392,13 @@ export default function DataList<T extends { id: string }>({
     }),
   };
 
+  const 屏 = Grid.useBreakpoint();
+  /*
+    手机宽（< 768，md 明确为 false 才算；服务端那一版还不知道多宽，照电脑画）：两边固定列把中间挤得只剩一条缝（#381 实操：390 宽客户列表
+    左边勾选 + 客户名钉到 244px、右边操作列从 322px 起，中间 78px，150 宽的号码列怎么横滚都只露一截）。
+    名字列收到 手机名字宽（一行省略、悬停看全照旧），右边固定的（操作列）不钉、跟着横滚到最后（要用滚到最右；点行进详情照旧）
+  */
+  const 手机 = 屏.md === false;
   const 显示的列 = useMemo(
     () =>
       全部列
@@ -371,14 +407,15 @@ export default function DataList<T extends { id: string }>({
           ...c,
           // 第一列就是「这一行是谁」（客户 / 线索 / 商机 / 渠道 / 联系人的名字），钉在左边。
           // 只钉常驻的：能被收进「列」里的列不该当名字
-          ...(i === 0 && c.常驻 && !c.fixed ? { fixed: "left" as const } : {}),
+          ...(i === 0 && c.常驻 && !c.fixed ? { fixed: "left" as const, ...(手机 && typeof c.width === "number" && c.width > 手机名字宽 ? { width: 手机名字宽 } : {}) } : {}),
+          ...(手机 && (c.fixed === "right" || c.fixed === "end") ? { fixed: undefined } : {}),
           // 带上列键做类名，挪到看得见 靠它找表头
           // 折行：备注这类长文照旧折行；操作列（表头空）按钮不截
           className: [c.className, `dl-col-${列键(c)}`, c.折行 ? "dl-wrap" : "", c.title === "" ? "dl-act" : ""].filter(Boolean).join(" "),
           // 操作列表头是空的，读屏念到这一格只有「列标题」；看不见的「操作」两个字给读屏用（10-27 整合第 8 条）
           ...(c.title === "" ? { title: <span className="sr-only">操作</span> } : {}),
         })),
-    [全部列, 可见],
+    [全部列, 可见, 手机],
   );
   useEffect(() => {
     if (!待露.current) return;
@@ -392,7 +429,6 @@ export default function DataList<T extends { id: string }>({
    * 有了它，超出的部分在表格自己的框里横滚，页面不动。
    * 带 responsive 的列在窄窗口下 antd 不画，这里也不算它的宽（10-27），不然收了列照样要左右拖
    */
-  const 屏 = Grid.useBreakpoint();
   const x = 横向 ?? 显示的列
     .filter((c) => !c.responsive || c.responsive.some((bp) => 屏[bp]))
     .reduce((s2, c) => s2 + (typeof c.width === "number" ? c.width : 120), 0);

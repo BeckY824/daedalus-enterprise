@@ -27,7 +27,8 @@ export default function BackToList({ 默认 = "客户" }: { 默认?: 列表种 }
   const b = useBusiness();
   const 种 = 地址们.最近 ?? 默认;
   const href = 地址们[种] ?? 列表路径[种];
-  const 文字 = 回列表文字(种, href, b.customer);
+  // 线索页在项目模式下叫「新线索」（leads/page.tsx 企业版项目 = 企业版 + projectMode；本仓只有企业版），和页名对齐
+  const 文字 = 回列表文字(种, href, b.customer, b.projectMode ? "新线索" : "线索");
   return (
     <Link href={href} className="back-to-list" title={文字} aria-label={文字} data-testid="back-to-list">
       <ArrowLeftOutlined aria-hidden />

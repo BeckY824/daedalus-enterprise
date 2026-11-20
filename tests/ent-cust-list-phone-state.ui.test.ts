@@ -3,6 +3,8 @@
  *   29Q「联系电话」一列：服务端给的完整号码原样显示、右边一颗复制键，点了复制完整号码、有一句轻提示、不算点这一行；
  *       服务端打了码的（公海、教练、字段权限藏号，见 ent-cust-list-phone-full.test.ts）带 *，不给复制键；没号的写「—」
  *   29R 进详情再回来 / 刷新：勾选、表格横滚位置还原（同一个地址才还原，换了页码不还原）；列设置刷新后还在
+ *   #381 实操：「联系电话」默认显示、紧跟编号（存过列设置的照存的）；回来时表格框在几帧里变窄（左栏从图标窄栏展开）横滚照样还原到记的值、
+ *       存的值不被改小；390 / 375 宽号码列能整列横滚进可视区、页面不横滚；还原的勾选在新数据到了之后按「可勾」再滤一遍
  * 真浏览器里挂真 CustomersView + DataList + CopyValue；「回来」用整页重新加载模拟（组件重新挂上、sessionStorage 留着，和点「回到客户列表」一样是重新挂载）
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -14,7 +16,7 @@ let browser: Browser, 包: string;
 const 桩: Plugin = { name: "cust-phone-state", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   const 空跑 = "async()=>({ok:true})";
-  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(u){window.__push=u},replace(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
+  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__刷过=(window.__刷过||0)+1},push(u){window.__push=u},replace(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
   stub(/^\.\/ImportDrawer$/, "export default function D(){return null}");
   stub(/^\.\/export-client$/, "export const 完整导出=async()=>({ok:true});");
@@ -41,8 +43,14 @@ beforeAll(async () => {
     const users=[{id:'me',name:'小王',email:'s1',role:'SALES',active:true},{id:'u2',name:'小李',email:'s2',role:'SALES',active:true}];
     const 行=(id,phone,pool)=>({id,name:'某某贸易有限公司'+id,phone,school:null,grade:null,major:null,followStatus:'待跟进',decisionStatus:'了解中',custStatus:'跟进中',salesOwnerId:'me',salesOwnerName:'小王',createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',lastFollowAt:'2026-11-01T00:00:00.000Z',signedAmount:0,referrerCustomerId:null,referrerName:null,channelId:null,channelName:null,expectedSignAt:null,remark:'备注'.repeat(20),addrCountry:'中国',extra:{level:'A'},customerNo:Number(id.slice(1)),pool:pool?{reason:'超时回收'}:null});
     const rows=[行('c1','13800000001'),行('c2','138****0002',true),行('c3',''),行('c4','02166668888')];
+    // window.__刷新(只读ids)：模拟 router.refresh 之后服务端给的新一屏（行数组换新、只读的换了）
+    function Root(){
+      const [只读,set只读]=React.useState(window.__只读||[]);const [rs,setRs]=React.useState(rows);
+      window.__刷新=(r)=>{set只读(r);setRs(rows.map((x)=>({...x})));};
+      return <CustomersView rows={rs} total={4} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:'',node:''}} 客户数={4} 企业版 项目概况={{}} 项目看板 只读ids={只读}/>;
+    }
     createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'me',name:'小王'}}>
-      <CustomersView rows={rows} total={4} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:'',node:''}} 客户数={4} 企业版 项目概况={{}} 项目看板 只读ids={window.__只读||[]}/>
+      <Root/>
     </我Provider></BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [桩], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
@@ -79,8 +87,8 @@ it("29Q：完整号码 + 复制键（复制完整号、轻提示、不进详情�
   const errors: string[] = [];
   const page = await 新页(errors);
   try {
-    // 「联系电话」默认收在「列」里：先勾上（列设置存本地）
-    await 打开(page, "http://localhost/customers?page=1", () => localStorage.setItem("list-cols:customers", JSON.stringify(["phone"])));
+    // 「联系电话」默认显示（#381 实操）：没存过列设置就有
+    await 打开(page, "http://localhost/customers?page=1");
     await expect.poll(() => 格(page, "c1").innerText()).toContain("13800000001");
     expect(await 格(page, "c4").innerText()).toContain("02166668888");
     expect(await 格(page, "c2").innerText()).toContain("138****0002");
@@ -184,6 +192,128 @@ it("#381：换人（同一个标签页 A 退出、B 登录）不带 A 的勾选�
     await page.waitForTimeout(200);
     expect(await 勾着(page)).toEqual([]);
     expect(await page.locator(".list-sel-float").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("#381 实操：「联系电话」默认显示、紧跟编号；存过列设置（那时号码收着、没勾过）的照旧收着；勾过的、藏过的照存的", async () => {
+  const errors: string[] = [];
+  const page = await 新页(errors, 1366);
+  const 头 = () => page.evaluate(() => [...document.querySelectorAll<HTMLElement>("thead th")].map((t) => t.innerText.trim()).filter(Boolean));
+  try {
+    await 打开(page, "http://localhost/customers?page=1");
+    expect((await 头()).slice(0, 3)).toEqual(["客户", "编号", "联系电话"]);
+    // 老设置：只勾过创建时间（存的里没有 phone）→ 号码照旧收着
+    await 打开(page, "http://localhost/customers?page=1", () => localStorage.setItem("list-cols:customers", JSON.stringify(["createdAt"])));
+    expect(await page.locator("thead th.dl-col-phone").count()).toBe(0);
+    expect(await page.locator("thead th.dl-col-createdAt").count()).toBe(1);
+    // 藏过的照旧藏着；勾过的照旧显示
+    await 打开(page, "http://localhost/customers?page=1", () => localStorage.setItem("list-cols:customers", JSON.stringify(["-phone"])));
+    expect(await page.locator("thead th.dl-col-phone").count()).toBe(0);
+    await 打开(page, "http://localhost/customers?page=1", () => localStorage.setItem("list-cols:customers", JSON.stringify(["createdAt", "phone"])));
+    expect(await page.locator("thead th.dl-col-phone").count()).toBe(1);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+/** 这张表 sessionStorage 里记的横滚值（键带人：crm:list-pick:v1@A） */
+const 存的横滚 = (page: Page) => page.evaluate(() => {
+  const k = Object.keys(sessionStorage).find((x) => x.startsWith("crm:list-pick"));
+  return k ? (JSON.parse(sessionStorage.getItem(k)!) as Record<string, { x: number }>).customers?.x ?? null : null;
+});
+
+it("#381 实操：回来时表格框在几帧里变窄（左栏从图标窄栏展开），横滚照样还原到记的值；还原期间不把夹小的值记回去", async () => {
+  const errors: string[] = [];
+  const page = await 新页(errors, 1366);
+  // 列表页：左栏 220 宽；客户详情上是 56 宽的图标窄栏（lib/rail-mini.ts），回来那一下从 56 过渡到 220
+  const 列表版面 = "#root{margin-left:220px;padding:22px 26px}";
+  try {
+    await 打开(page, "http://localhost/customers?page=1", () => localStorage.setItem("list-cols:customers", JSON.stringify(["phone", "createdAt", "signedAmount", "grade", "referrerName"])));
+    await page.addStyleTag({ content: 列表版面 });
+    // 滚到最右：这个值比框宽的时候（窄栏）能滚的最大值大，第一帧设会被夹小
+    const 目标 = await page.evaluate(() => { const x = document.querySelector<HTMLElement>(".ant-table-content")!; x.scrollLeft = x.scrollWidth; return x.scrollLeft; });
+    const 窄栏时最多 = await page.evaluate(() => { const x = document.querySelector<HTMLElement>(".ant-table-content")!; return x.scrollWidth - x.clientWidth - 164; });
+    expect(目标).toBeGreaterThan(窄栏时最多);
+    await page.waitForTimeout(400);
+    expect(await 存的横滚(page)).toBe(目标);
+
+    await page.reload();
+    // 挂上时框还宽（左栏 56），表格行一出来左栏就开始展开（同一次提交里换 rail-mini，过渡 180ms）
+    await page.addStyleTag({ content: "#root{margin-left:56px;padding:22px 26px;transition:margin-left 180ms cubic-bezier(.22,1,.36,1)}" });
+    await page.evaluate(() => {
+      const 盯 = new MutationObserver(() => {
+        if (!document.querySelector("tr.ant-table-row")) return;
+        盯.disconnect();
+        document.getElementById("root")!.style.marginLeft = "220px";
+      });
+      盯.observe(document.body, { childList: true, subtree: true });
+    });
+    await 挂上(page);
+    await expect.poll(() => 横滚(page)).toBe(目标);
+    await page.waitForTimeout(700);
+    expect(await 横滚(page)).toBe(目标);
+    expect(await 存的横滚(page)).toBe(目标);
+    // 还原完了人自己滚照常记
+    await page.evaluate(() => { document.querySelector<HTMLElement>(".ant-table-content")!.scrollLeft = 40; });
+    await page.waitForTimeout(400);
+    expect(await 存的横滚(page)).toBe(40);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+for (const 宽 of [390, 375]) {
+  it(`#381 实操：${宽} 宽客户列表号码列能整列横滚进两侧固定列中间；名字列收窄、操作列不钉；页面不横滚`, async () => {
+    const errors: string[] = [];
+    const page = await 新页(errors, 宽);
+    try {
+      // 手机网页的版面：正文左右各 12（实操截图里表格卡片 12 起）
+      await 打开(page, "http://localhost/customers?page=1");
+      await page.addStyleTag({ content: "#root{padding:0 12px}" });
+      await expect.poll(() => page.locator("thead th.dl-col-phone").count()).toBe(1);
+      const 量 = await page.evaluate(() => {
+        const 框 = document.querySelector<HTMLElement>(".ant-table-content")!;
+        const th = document.querySelector<HTMLElement>("thead th.dl-col-phone")!;
+        const 左固定 = [...框.querySelectorAll<HTMLElement>("thead th:is(.ant-table-cell-fix-start, .ant-table-cell-fix-left)")];
+        const 右固定 = [...框.querySelectorAll<HTMLElement>("thead th:is(.ant-table-cell-fix-end, .ant-table-cell-fix-right)")];
+        const 左边 = Math.max(框.getBoundingClientRect().left, ...左固定.map((t) => t.getBoundingClientRect().right));
+        // 把号码列滚到紧贴左固定列
+        框.scrollLeft = th.getBoundingClientRect().left - 左边 + 框.scrollLeft;
+        const r = th.getBoundingClientRect();
+        const 右边 = Math.min(框.getBoundingClientRect().right, ...右固定.map((t) => t.getBoundingClientRect().left));
+        const 格 = document.querySelector<HTMLElement>("tr[data-row-key=c1] td.dl-col-phone .copy-val-t")!;
+        return {
+          整列在里: r.left >= 左边 - 0.5 && r.right <= 右边 + 0.5,
+          中间宽: Math.round(右边 - 左边),
+          右固定: 右固定.length,
+          号码截了: 格.scrollWidth > 格.clientWidth,
+          页横滚: document.documentElement.scrollWidth > window.innerWidth,
+          名字宽: 左固定.find((t) => t.classList.contains("dl-col-name"))?.offsetWidth ?? null,
+        };
+      });
+      expect(量, JSON.stringify(量)).toMatchObject({ 整列在里: true, 右固定: 0, 号码截了: false, 页横滚: false, 名字宽: 120 });
+      expect(量.中间宽).toBeGreaterThanOrEqual(150);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}
+
+it("#381 实操：后退回来先用缓存旧数据、勾选按旧数据还原；还原出勾选就要一份新数据，新数据里变只读的行退出勾选、批量条跟着变", async () => {
+  const errors: string[] = [];
+  const page = await 新页(errors);
+  try {
+    await 打开(page, "http://localhost/customers?page=1");
+    await page.locator("tr[data-row-key=c1] .ant-checkbox-input").check();
+    await page.locator("tr[data-row-key=c4] .ant-checkbox-input").check();
+    await page.reload();
+    await 挂上(page);
+    // 手上这屏还是旧的：两行都还原成勾着；同时要了一次新数据
+    await expect.poll(() => 勾着(page)).toEqual(["c1", "c4"]);
+    expect(await page.evaluate(() => (window as unknown as { __刷过?: number }).__刷过)).toBe(1);
+    // 新数据到了：c4 变只读（改了上级成虚线）→ 退出勾选，批量条只剩 1
+    await page.evaluate(() => (window as unknown as { __刷新: (r: string[]) => void }).__刷新(["c4"]));
+    await expect.poll(() => 勾着(page)).toEqual(["c1"]);
+    expect(await page.locator("tr[data-row-key=c4] .ant-checkbox-input").isDisabled()).toBe(true);
+    await expect.poll(() => page.locator(".list-sel-float").innerText()).toContain("1");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

@@ -101,7 +101,8 @@ for (const 三态 of [false, true]) {
       const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
       try {
         await page.route("http://cust-title.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
-        await page.goto("http://cust-title.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+        // 「联系电话」#381 起默认显示（多 150 宽，1280 三态开着会内部横滚）：这里量抬头列，先把号码藏起来（同人在「列」里取消勾）
+        await page.goto("http://cust-title.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.evaluate(() => localStorage.setItem("list-cols:customers", JSON.stringify(["-phone"])));
         if (三态) await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") });
         // 左边留出 220 的左栏（壳里正文就这么宽）
         await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });

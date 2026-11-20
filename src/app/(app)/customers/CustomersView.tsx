@@ -998,6 +998,14 @@ export default function CustomersView({
       render: (_: unknown, r: CustomerRow) => <span className="cust-no">{客户编号显示(r)}</span>,
     }] satisfies 列<CustomerRow>[] : []),
     /*
+      号码全显 + 一键复制（29Q，11-20 客户管理员：展会大量现场加的客户要逐个加微信）：服务端给的是什么就显示什么——
+      号码脱敏器（销售教练、字段权限里电话「看不到」的角色）和公海里的客户（page.tsx 列表行，用户 11-20 定「不显示」）在服务端就打好了码，
+      带 * 的 CopyValue 不给复制键。
+      默认显示、紧跟客户名 / 编号（#381 实操，客户口径「号码可以全部显示」）：摆在最后 1280 宽要横滚才看得到，等于没默认显示。
+      存过列设置的人照他存的（老设置默认 false：那时它收着，没勾过的照旧收着）
+    */
+    { title: "联系电话", key: "phone", dataIndex: "phone", width: 150, 老设置默认: false, render: (v: string | null) => (v ? <CopyValue 叫法="电话" value={v} /> : 空) },
+    /*
       「当前节点」「项目数」（11-12 客户详情合并第 3 批，定稿 UI 表格）：只算我能看的项目。
       当前节点 = 点进这位客户默认停的那个项目页签的节点（lib/project/customer-list-projects.ts）；没有我能看的项目写「—」，项目数写 0。
       一行放不下省略号，悬停看全（全站 TruncTip）
@@ -1088,12 +1096,6 @@ export default function CustomersView({
       ),
     },
 
-    /*
-      号码全显 + 一键复制（29Q，11-20 客户管理员：展会大量现场加的客户要逐个加微信）：服务端给的是什么就显示什么——
-      号码脱敏器（销售教练、字段权限里电话「看不到」的角色）和公海里的客户（page.tsx 列表行，用户 11-20 定「不显示」）在服务端就打好了码，
-      带 * 的 CopyValue 不给复制键
-    */
-    { title: "联系电话", key: "phone", dataIndex: "phone", width: 150, 默认: false, render: (v: string | null) => (v ? <CopyValue 叫法="电话" value={v} /> : 空) },
     // 创建（入库）时间（11-11）：默认收在「列」里；点表头在全部筛选结果里排（服务端 sort=created-asc / created-desc），不点就是默认的新的在前
     {
       title: "创建时间", key: "createdAt", dataIndex: "createdAt", width: 104, 默认: false,
