@@ -2,7 +2,8 @@
  * 超时未跟进自动转「按分配」起算（没填指定回复时间，11-20）：用真实入口写出来的留痕，核哪些算「别人把它分给他」。
  *   起算：管理从线索公海分配（分配公海项目，「从线索公海分配」；客户还在市场手里、跟着市场转的也算）、管理从客户公海分客户带出的线索公海项目（分配公海，「从客户公海分配」）、
  *        自动 / 指定分配（定时分出去 → 分项目给）、手动转让（改项目；换负责人带待办关着时记「手动转让」）
- *   不起算：销售自己去公海领（领取公海项目，留痕带历史负责人）、客户转让带项目和带出的公海项目（带走一位，「跟着客户转过来」）、
+ *   起算（[32G] 用户 11-20「包括」）：销售自己去公海领（领取公海项目，留痕带历史负责人）
+ *   不起算：客户转让带项目和带出的公海项目（带走一位，「跟着客户转过来」）、
  *          离职交接（交客户 带走一位 / 只交项目 确认离职交接 / 全部交给的其余和同事两组 离职转给接手人，「离职交接」）、
  *          市场转客户带项目和带出的公海项目（市场转一位，「随客户转走」）、从回收站恢复跟客户现负责人（恢复）
  * 入口写的留痕时刻是真实时钟：扫的时刻取「留痕 + 61 分钟」（夜里顺延到早上 08:00），只用只读的 盘点超时链 判进没进链
@@ -38,7 +39,7 @@ import { 带走一位 } from "@/lib/carry-over-db";
 import { 市场转一位 } from "@/lib/enterprise/market-transfer";
 import { 软删一条, 恢复 } from "@/lib/enterprise/soft-delete";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
-import { 盘点超时链, 超时转扫一遍, 顺延到白天 } from "@/lib/enterprise/reply-overdue";
+import { 盘点超时链, 超时转扫一遍, 顺延到白天, 超时转生效key } from "@/lib/enterprise/reply-overdue";
 
 type 人 = { id: string; name: string; role: string };
 let 老板: 人, 甲: 人, 乙: 人, 丙: 人, 市场: 人;
@@ -93,6 +94,8 @@ beforeEach(async () => {
   await setSetting("business", { projectMode: true });
   await setSetting(规则.线索分配.key, true);
   await setSetting(自动分配不参与key, { [老板.id]: "禁止" });
+  // 超时转生效时刻（11-20）：留痕用真实时钟，按早就生效了算
+  await setSetting(超时转生效key, "2020-01-01T00:00:00.000Z");
   invalidateSettingsCache();
   mocks.user = { ...mocks.user, id: 老板.id, name: 老板.name, role: 老板.role };
 });
@@ -153,14 +156,18 @@ describe("起算的入口", () => {
   });
 });
 
-describe("不起算的入口", () => {
-  it("销售自己去公海领（领取公海项目：操作人 = 接手人、从 = 历史负责人）：不进链", async () => {
+describe("[32G] 销售自己去公海领也起算（用户 11-20「包括」）", () => {
+  it("领取公海项目（操作人 = 接手人、从 = 历史负责人）：进链，按领的那一刻", async () => {
     const { p } = await 线索(乙.id);
     await 放回公海(乙, p);
     expect(await 领取公海项目(丙, p)).toMatchObject({ ok: true });
     expect(await 最近痕(p)).toMatchObject({ kind: "pool-claim", userId: 丙.id, toOwnerId: 丙.id, fromOwnerId: 乙.id });
-    expect(await 在链上(p)).toBe(false);
+    expect(await 在链上(p)).toBe(true);
   });
+});
+
+describe("不起算的入口", () => {
+
 
   it("客户转让带项目、离职交一位客户（带走一位，「跟着客户转过来」/「离职交接」）：不进链", async () => {
     const 转让 = await 线索(乙.id);

@@ -40,6 +40,7 @@ import { 新数据渠道不行, 落到渠道 } from "@/lib/enterprise/channel-ma
 import { 是主渠道入口 } from "@/lib/enterprise/channel-main-core";
 import { 认渠道触点, 渠道触点们, 新建来源还差 } from "@/lib/enterprise/touchpoint";
 import { 指定问题 } from "@/lib/enterprise/assign-eta";
+import { 新建指定方向挡 } from "@/lib/enterprise/assign-direction-pick";
 import { 记这个项目的自动推进, 客户存了推项目 } from "@/lib/project/auto-advance";
 import { 记新建指定分配 } from "@/lib/enterprise/direct-assign";
 import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知, 项目被删通知, 项目放回公海通知, 市场改分通知 } from "@/lib/enterprise/notice-sources";
@@ -69,6 +70,7 @@ import { 发布卡点, 读卡点默认, 能发卡点, 可选原因们, 发卡点
 import { 沟通卡点, 规整原因们, type 沟通卡点输入, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
 import { 存沟通后重算三态, 三态改天数预览 } from "@/lib/enterprise/tri-state-db";
+import { 新建后定线 } from "@/lib/enterprise/flow-line";
 
 const 没开 = { ok: false as const, error: "项目模式没开：请管理员在「设置 → 业务配置」里打开" };
 
@@ -199,6 +201,11 @@ export async function 建档向导(输入: 建档向导输入) {
         }
       }
     }
+    // 「指定分配 + 指定时间」先建在我名下、到点给 定时.接手人：业务线定好了，同样先核方向（P-转-26，11-20 审查）
+    if (企业版() && 定时?.接手人) {
+      const 方向不符 = await 新建指定方向挡(me, await 读组织(), 定时.接手人, 好.企业?.业务线);
+      if (方向不符) return { ok: false as const, error: 方向不符 };
+    }
     const 负责人 = await prisma.user.findUnique({ where: { id: 好.项目.ownerId }, select: { name: true, active: true } });
     if (!负责人?.active) return { ok: false as const, error: "项目负责人不存在或已停用，请选一位在职成员" };
     const 不行 = await 不能当负责人(好.项目.ownerId);
@@ -212,6 +219,9 @@ export async function 建档向导(输入: 建档向导输入) {
         const org = await 读组织();
         const 问题 = await 指定问题(org, 好.项目.ownerId);
         if (问题) return { ok: false as const, error: 问题 };
+        // 市场成员指定分配也先定方向（P-转-26，11-20 3703 实操）：负责人要在所选方向（业务线内贸 / 外贸）能挑的人里，不然线会记错
+        const 方向不符 = await 新建指定方向挡(me, org, 好.项目.ownerId, 好.企业?.业务线);
+        if (方向不符) return { ok: false as const, error: 方向不符 };
         // 市场指定给销售 = 市场首次分配，算转客户（X-18，和自动分配同一条）；其余角色指定给别人，客户留在建的人名下（P-转-03）
         转客户 = 算市场转客户(org, { salesOwnerId: me.id, pool: null }, 好.项目.ownerId);
       }
@@ -305,6 +315,8 @@ export async function 建档向导(输入: 建档向导输入) {
     await 存沟通后重算三态(r.id);
     刷新项目(建了.projectId, r.id);
     // 指定给了别人：项目不在我名下，跳详情页会是「不存在或无权查看」（11-03 A2-1），和自动分配一样回线索列表
+    // 流转线（32G）：新增按建的人所在事业部写下（自动分配那一刻再按方向写），要在 建好再分 之前
+    if (企) await 新建后定线(建了.projectId, me.id);
     const 再分 = 分配 ? await 建好再分(me, 分配, 建了.projectId!, 好.项目.name, 好.企业?.业务线 ?? null, 定时, 区域定线 ? 建档方向 : undefined) : null;
     // 指定给了别人：告诉接手人。客户转过去了链客户详情（看得到联系方式）；客户没转就是项目分给他，链项目详情。自动分配、进公海走 建好再分 里自己的通知，这里不重复
     if (!再分 && 好.项目.ownerId !== me.id) {
@@ -459,6 +471,8 @@ async function 只建客户写(me: Awaited<ReturnType<typeof requireUser>>, 输�
     detail: { 联系人: 好.联系人.name, 下一步时间: 好.跟进.nextStepAt ? 好.跟进.nextStepAt.toISOString().slice(0, 10) : null },
   });
   await 存沟通后重算三态(r.id);
+  // 流转线（32G）：只建客户带的潜客培育项目，新增按建的人所在事业部
+  if (企) await 新建后定线(建了.projectId, me.id);
   // 市场成员新建客户时直接选了销售当负责人 = 指定分配（11-18，direct-assign.ts）：记在刚建的潜客培育项目上；负责人是自己的不记
   if (企) await 记新建指定分配(me, 建了.projectId);
   刷新项目(建了.projectId ?? undefined, r.id);

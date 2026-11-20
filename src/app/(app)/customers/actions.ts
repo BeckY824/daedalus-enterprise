@@ -87,6 +87,7 @@ import { 带客户编号 } from "@/lib/customer-no";
 import { 市场指定方向挡 } from "@/lib/enterprise/assign-direction-pick";
 import { 认分配方向 } from "@/lib/enterprise/customer-region";
 import { 市场分配指定挡 } from "@/lib/enterprise/cust-auto-assign";
+import { 新建后定线 } from "@/lib/enterprise/flow-line";
 
 
 /** 状态不在取值表里就给那句报错，合法给 null。建客户、批量改、撤销、行内改四处共用，报错文案一字不改 */
@@ -803,6 +804,8 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     else if (!认得(接着)) await 分给你通知(me, created.salesOwnerId, [created.id]);
     // 市场成员新建客户时直接选了销售当负责人 = 指定分配，记进分配数（11-18，direct-assign.ts）：记在客户自带的潜客培育项目上。
     // 向导、只建客户自己建了项目（这里补的是 null），各自在调用方记；选了项目分配方式的这里找回了那一个
+    // 流转线（32G）：新建客户带的潜客培育项目，新增按建的人所在事业部（要在 新客户建好再分 之前）
+    await 新建后定线(潜客培育, me.id);
     await 记新建指定分配(me, 潜客培育);
     // 自动分配 / 暂不分配：建好再分（自动分配分出去写分配记录；没分出去留待分配、提醒能分配的人）
     const 再分 = 新分配 && 潜客培育 ? await 新客户建好再分(me, 新分配, { customerId: created.id, projectId: 潜客培育, 项目名: 全称或显名(created), 客户线: created.bizLine ?? null }) : null;

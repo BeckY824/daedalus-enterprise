@@ -29,6 +29,7 @@ import { 读线部门 } from "./assign-eta";
 import { 客户号们 } from "./assign-direction-db";
 import { 企划线索计数key, 月份, 计不计数, type 线 } from "./lead-assign";
 import { 分配后估算推送 } from "./notice-sources";
+import { 换人定线 } from "./flow-line";
 
 /** 这次新建算不算市场成员的指定分配：建的人是市场成员（按业务角色）、负责人是另一个人 */
 export function 新建算指定分配(org: Pick<组织, "成员">, 建的人: string, 负责人: string | null | undefined): boolean {
@@ -59,10 +60,13 @@ async function 写一条(me: { id: string }, projectId: string, org: 组织): Pr
   if (!新建算指定分配(org, me.id, p.ownerId)) return false;
   if (await prisma.entLeadAssign.findFirst({ where: { projectId }, select: { id: true } })) return false;
   const { customer, ownerId, bizLine, addrCountry, addrProvince, addrCity, addrDistrict } = p;
+  const 设 = await 读线部门();
   const line = 新建指定方向({
     业务线: bizLine, 客户: customer, 项目: { addrCountry, addrProvince, addrCity, addrDistrict },
-    号们: await 客户号们(p.customerId), 接手人线: 本人事业部(org, await 读线部门(), ownerId),
+    号们: await 客户号们(p.customerId), 接手人线: 本人事业部(org, 设, ownerId),
   });
+  // 流转线（32G）：市场新建时直接指定 = 市场分配那一刻，按这次定的方向写（判不出按接收人事业部），盖掉建档时按建的人写的那条
+  await 换人定线(prisma, { 项目: [projectId] }, { 操作人: me.id, 接手人: ownerId, 方向: line }, { org, 设 });
   const kind = "营销" as const;
   const [企划算数, way] = await Promise.all([getSetting<boolean>(企划线索计数key), 分配方式叫法(0)]);
   await prisma.entLeadAssign.create({

@@ -355,13 +355,13 @@ export async function 设规则(on: boolean, 名: 规则名 = "按组织看客�
   if (!Object.hasOwn(规则, 名)) return { ok: false, error: "没有这条规则" };
   const r = 规则[名];
   try {
-    // 「超时未跟进自动转」从关拨到开：在计时的链从现在重新起算（关着期间钟没走，别一打开就把早该转的一口气转走）
+    // 「超时未跟进自动转」从关拨到开：重新生效，只对打开以后新分配的计时，在计时的链全停（11-20 事故后用户定，别一打开就把以前分的一口气转走）
     const 重新起算 = 名 === "超时自动转" && on && !(await 规则开着(名));
     await setSetting(r.key, on);
     const 重算了 = 重新起算 ? await 超时转重新起算() : 0;
     await recordAudit({
       user: who.me, action: "update", entity: "Setting", entityId: r.key,
-      summary: `${on ? "打开" : "关掉"}规则「${r.名}」${重算了 ? `，${重算了} 条在计时的线索从现在重新计时` : ""}`,
+      summary: `${on ? "打开" : "关掉"}规则「${r.名}」${重新起算 ? `，只对打开以后新分配的线索计时${重算了 ? `（${重算了} 条在计时的停下）` : ""}` : ""}`,
     });
     改完了();
     return { ok: true };

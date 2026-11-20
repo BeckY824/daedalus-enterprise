@@ -21,6 +21,7 @@ import { 读组织, 系统管理员标记键 } from "@/lib/enterprise/org";
 import { 是系统管理员, 能进设置 } from "@/lib/enterprise/permissions";
 import { 条线的线 } from "@/lib/enterprise/line-viewer";
 import { 规则, 规则开着 } from "@/lib/enterprise/rules";
+import { 超时转生效key } from "@/lib/enterprise/reply-overdue";
 
 let 老板: string;
 let 总管: string;
@@ -168,7 +169,7 @@ describe("规则开关", () => {
     expect((await 记录()).at(-1)).toEqual({ entity: "Setting", summary: "关掉规则「超时未跟进自动转」" });
   });
 
-  it("「超时未跟进自动转」从关拨到开：还在走的链从现在重新计时，留痕写几条；本来开着再拨开不动链", async () => {
+  it("「超时未跟进自动转」从关拨到开：重新生效（生效时刻记成打开那刻）、还在走的链全停，留痕写几条；本来开着再拨开不动链", async () => {
     const c = await prisma.customer.create({ data: { name: "某客户", phone: "13900001234", salesOwnerId: 销售 } });
     const p = await prisma.project.create({ data: { name: "某线索", customerId: c.id, ownerId: 销售, creatorId: 销售, phase: "线索", node: "潜客培育" } });
     const 旧 = new Date(Date.now() - 3 * 3_600_000);
@@ -178,11 +179,15 @@ describe("规则开关", () => {
     expect(await prisma.entReplyOverdue.findUniqueOrThrow({ where: { projectId: p.id } })).toMatchObject({ since: 旧, overdueAt: 旧 });
     expect((await 记录()).at(-1)!.summary).toBe("打开规则「超时未跟进自动转」");
     expect(await 设规则(false, "超时自动转")).toEqual({ ok: true });
+    expect(await prisma.setting.count({ where: { key: 超时转生效key } })).toBe(0);
+    const 开前 = Date.now();
     expect(await 设规则(true, "超时自动转")).toEqual({ ok: true });
     const 链 = await prisma.entReplyOverdue.findUniqueOrThrow({ where: { projectId: p.id } });
-    expect(链.overdueAt).toBeNull();
-    expect(链.since.getTime()).toBeGreaterThan(旧.getTime());
-    expect((await 记录()).at(-1)!.summary).toBe("打开规则「超时未跟进自动转」，1 条在计时的线索从现在重新计时");
+    expect(链).toMatchObject({ since: 旧, overdueAt: 旧 });
+    expect(链.stoppedAt!.getTime()).toBeGreaterThanOrEqual(开前);
+    const 生效 = new Date(JSON.parse((await prisma.setting.findUniqueOrThrow({ where: { key: 超时转生效key } })).value));
+    expect(生效.getTime()).toBeGreaterThanOrEqual(开前);
+    expect((await 记录()).at(-1)!.summary).toBe("打开规则「超时未跟进自动转」，只对打开以后新分配的线索计时（1 条在计时的停下）");
   });
 
   it("接口直调传别的东西拦掉", async () => {

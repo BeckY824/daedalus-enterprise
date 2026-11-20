@@ -18,6 +18,7 @@ import { prisma } from "@/lib/prisma";
 import { 按区域分配, 区域未填提示, type 分配方向 } from "@/lib/enterprise/customer-region";
 import { 本人线of } from "@/lib/enterprise/assign-direction-db";
 import { 可指定的人 } from "@/lib/enterprise/assign-eta";
+import { 新建指定候选表, type 指定候选表 } from "@/lib/enterprise/assign-direction-pick";
 import type { 线 } from "@/lib/enterprise/lead-assign";
 
 /** 新线索能手动分配 / 点自动分配的（A7）：和 lead-assign.ts 能分配 同一组业务角色 */
@@ -126,7 +127,9 @@ export async function 新建分配方式数据(me: 我): Promise<{ 分配方式�
   /** 本人事业部（11-18 分配方向第三步：区域、电话都判不出时的默认）；不是按区域分配的人不算，给 null */
   本人线: 线 | null;
   /** 指定分配的负责人下拉只列这些人（审核 11-18 追加，assign-eta.ts 可指定的人；和服务端 指定问题 同一口径） */
-  可指定: string[] }> {
+  可指定: string[];
+  /** 市场成员（不兼管理）指定分配按方向筛负责人下拉（P-转-26，11-20）：每条线能挑的人；别人 = null（不按方向筛）。服务端 新建指定方向挡 同一张表 */
+  指定候选表: 指定候选表 | null }> {
   const [能用, org] = await Promise.all([我能用的分配方式(me), 读组织()]);
   const 角色们 = org.成员.get(me.id)?.角色们 ?? [];
   // 「市场」含按部门认的市场成员（X-93）
@@ -135,5 +138,5 @@ export async function 新建分配方式数据(me: 我): Promise<{ 分配方式�
   // 没角色：向导一进来就提示、不让往下填，免得填完五步才被服务端拦（D3-6）
   // 按区域：市场成员（按岗位：市场管理、渠道运营，X-141 ②）选自动分配时业务线不用选，按客户区域定（P-转-26）
   const 按区域 = 按区域分配(角色们);
-  return { 分配方式们: 能用, 默认分配方式: 默认 ?? null, 是销售: 是销售角色(角色们, 部门市场), 是市场: 算市场(角色们, 部门市场), 没角色: 没设业务角色(org, me.id), 按区域, 本人线: 按区域 ? await 本人线of(org, me.id) : null, 可指定: await 可指定的人(org) };
+  return { 分配方式们: 能用, 默认分配方式: 默认 ?? null, 是销售: 是销售角色(角色们, 部门市场), 是市场: 算市场(角色们, 部门市场), 没角色: 没设业务角色(org, me.id), 按区域, 本人线: 按区域 ? await 本人线of(org, me.id) : null, 可指定: await 可指定的人(org), 指定候选表: await 新建指定候选表(me, org) };
 }

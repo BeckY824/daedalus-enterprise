@@ -9,8 +9,8 @@
  */
 import { 读线部门, 不参与名单 } from "./assign-eta";
 import { 按部门候选, 自动可接 } from "./assign-line";
-import { 按方向挑, 指定方向话, type 指定候选表 } from "./assign-direction-pick-core";
-export { 按方向挑, 指定方向话, type 指定候选表 } from "./assign-direction-pick-core";
+import { 按方向挑, 指定方向话, 新建方向不符话, type 指定候选表 } from "./assign-direction-pick-core";
+export { 按方向挑, 指定方向话, 新建方向不符话, type 指定候选表 } from "./assign-direction-pick-core";
 import { 自动候选人们, type 线 } from "./lead-assign";
 import { 按区域分配of, type 分配方向 } from "./customer-region";
 import { 客户在市场手里 } from "./market-transfer";
@@ -33,6 +33,24 @@ export async function 指定方向候选表(org: 组织): Promise<指定候选�
   return { 内贸: 内贸.filter((id) => !不.has(id)), 外贸: 外贸.filter((id) => !不.has(id)) };
 }
 
+
+/**
+ * 新线索向导「指定分配」（市场成员新建时直接选负责人，projects/actions.ts 建档向导）也先定方向（P-转-26，11-20 3703 实操发现：
+ * 内贸销售当负责人、方向选外贸照样建成、线记外贸）：选了方向（项目业务线内贸 / 外贸）就核负责人在不在这个方向能挑的人里
+ * （同客户转让框那张 指定方向候选表：内贸 = 内贸事业部的销售 + 销售管理；外贸 = 外贸事业部的销售）。
+ * 只管市场成员发起的；兼条线总管理 / 销售管理的不按方向限人（同 要按方向指定）；指定给自己、方向选「暂不分配」/ 没选的不核。
+ * 对不上 = 回原因（新建方向不符话）；对得上 / 不用核 = null
+ */
+export async function 新建指定方向挡(me: { id: string }, org: 组织, 负责人: string, 方向: string | null | undefined): Promise<string | null> {
+  if (!企业版() || 负责人 === me.id || !按区域分配of(org, me.id) || 管理指定不限of(org, me.id)) return null;
+  if (方向 !== "内贸" && 方向 !== "外贸") return null;
+  return 按方向挑(await 指定方向候选表(org), 方向).includes(负责人) ? null : 新建方向不符话(方向);
+}
+
+/** 新线索向导「指定分配」负责人下拉按方向筛要的那张表：市场成员（不兼管理）才给，别人 = null（不按方向筛） */
+export async function 新建指定候选表(me: { id: string }, org: 组织): Promise<指定候选表 | null> {
+  return 企业版() && 按区域分配of(org, me.id) && !管理指定不限of(org, me.id) ? 指定方向候选表(org) : null;
+}
 
 /**
  * 这位客户这次转让要不要按方向定人：市场成员（按岗位）、不兼条线总管理 / 销售管理（管理指定不限of）、客户在市场手里、名下有暂不分配的线索项目，

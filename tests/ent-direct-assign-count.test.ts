@@ -30,6 +30,9 @@ import { 记新建指定分配, 新建算指定分配, 新建指定方向 } from
 import { 本月已分, 月份, 自动分配不参与key } from "@/lib/enterprise/lead-assign";
 import { 估算轮到, 快轮到kind } from "@/lib/enterprise/assign-eta";
 import { 读组织 } from "@/lib/enterprise/org";
+import { 新建分配方式数据 } from "@/lib/project/after-create-assign";
+import { 指定选项, 方向可指定 } from "@/lib/enterprise/designate-options";
+import { 时刻转北京墙钟 } from "@/lib/project/time-fields";
 
 afterAll(() => prisma.$disconnect());
 
@@ -222,5 +225,91 @@ describe("估算跟着变、推「快轮到」", () => {
     expect(b.ok, b.ok ? "" : b.error).toBe(true);
     // 一样多（各 1 条），按开号先后：销售先
     expect(await 估()).toEqual({ 一: { 数: 0 }, 二: { 数: 1 } });
+  });
+});
+
+describe("[P-转-26] 新线索向导「指定分配」也先定方向（11-20 3703 实操）：负责人要在所选方向（业务线内贸 / 外贸）能挑的人里", () => {
+  let 外贸销售: string;
+  beforeEach(async () => {
+    外贸销售 = (await prisma.user.create({ data: { email: "w1", name: "w1", title: "", role: "SALES", password: "x" } })).id;
+    await prisma.entMember.create({ data: { userId: 外贸销售, bizRole: "sales", line: "外贸" } });
+  });
+
+  it("市场选内贸销售当负责人、方向选外贸：拒，提示改方向或换人，客户、项目都没建；内贸销售管理选外贸也拒（外贸方向不含销售管理）", async () => {
+    for (const 负责人 of [销售, 销管]) {
+      const 入 = 向导输入(负责人, { 分配方式: 0, 业务线: "外贸" });
+      const r = await 建档向导(入);
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.error).toBe("负责人不在所选方向（外贸），请改方向或换人");
+      expect(await prisma.customer.count({ where: { name: 入.客户.name } })).toBe(0);
+    }
+    // 渠道运营同样拒；外贸销售选内贸也拒
+    当(渠运);
+    const r = await 建档向导(向导输入(外贸销售, { 分配方式: 0, 业务线: "内贸" }));
+    expect(r.ok ? "" : r.error).toBe("负责人不在所选方向（内贸），请改方向或换人");
+    expect(await prisma.project.count()).toBe(0);
+    expect(await 记录们()).toHaveLength(0);
+  });
+
+  it("方向一致照常：内贸选内贸销售 / 内贸销售管理、外贸选外贸销售，建成、线记所选方向；业务线选「暂不分配」不核", async () => {
+    for (const [负责人, 线] of [[销售, "内贸"], [销管, "内贸"], [外贸销售, "外贸"]] as const) {
+      const r = await 建档向导(向导输入(负责人, { 分配方式: 0, 业务线: 线 }));
+      expect(r.ok, r.ok ? "" : r.error).toBe(true);
+      if (!r.ok) return;
+      expect(await prisma.project.findUniqueOrThrow({ where: { id: r.projectId! }, select: { ownerId: true, flowLine: true } })).toEqual({ ownerId: 负责人, flowLine: 线 });
+    }
+    const 暂不 = await 建档向导(向导输入(外贸销售, { 分配方式: 0, 业务线: "暂不分配" }));
+    expect(暂不.ok, 暂不.ok ? "" : 暂不.error).toBe(true);
+  });
+
+  /** 往后 n 小时（到分钟）的北京墙钟：「指定时间」分配要的值 */
+  const 后墙 = (小时: number) => 时刻转北京墙钟(new Date(Date.now() + 小时 * 3_600_000))!;
+  const 老客户项目 = (customerId: string, 项目: Record<string, unknown>) => 给客户建项目({
+    customerId,
+    项目: { name: "老客户新线索", amount: 0, currency: "CNY", 分配方式: 0, ...项目 } as never,
+    跟进: { type: "PHONE", content: "电话聊了需求", occurredAt: "2026-10-20 10:00", 节点: "潜客培育", 明确回复: false } as never,
+  });
+
+  it("[审查 11-20] 向导选老客户（给客户建项目）：方向不符拒（直接指定、指定时间到点的接手人都核），一致照常", async () => {
+    const c = await prisma.customer.create({ data: { name: "老客户丙", phone: "13900000013", salesOwnerId: 市场 } });
+    const 拒 = "负责人不在所选方向（外贸），请改方向或换人";
+    expect(await 老客户项目(c.id, { ownerId: 销售, 业务线: "外贸" })).toMatchObject({ ok: false, error: 拒 });
+    expect(await 老客户项目(c.id, { ownerId: 销售, 业务线: "外贸", 定时分配: 后墙(3) })).toMatchObject({ ok: false, error: 拒 });
+    expect(await prisma.project.count({ where: { customerId: c.id } })).toBe(0);
+    const 好 = await 老客户项目(c.id, { ownerId: 外贸销售, 业务线: "外贸" });
+    expect(好.ok, 好.ok ? "" : (好 as { error: string }).error).toBe(true);
+    const 定时好 = await 老客户项目(c.id, { ownerId: 销售, 业务线: "内贸", 定时分配: 后墙(3) });
+    expect(定时好.ok, 定时好.ok ? "" : (定时好 as { error: string }).error).toBe(true);
+    expect(await prisma.project.count({ where: { customerId: c.id } })).toBe(2);
+  });
+
+  it("[审查 11-20] 建档向导「指定分配 + 指定时间」（先建在自己名下、到点给接手人）：接手人方向不符拒，一致照常", async () => {
+    const 拒 = await 建档向导(向导输入(销售, { 分配方式: 0, 业务线: "外贸", 定时分配: 后墙(3) } as never));
+    expect(拒.ok ? "" : 拒.error).toBe("负责人不在所选方向（外贸），请改方向或换人");
+    expect(await prisma.project.count()).toBe(0);
+    const 好 = await 建档向导(向导输入(外贸销售, { 分配方式: 0, 业务线: "外贸", 定时分配: 后墙(3) } as never));
+    expect(好.ok, 好.ok ? "" : 好.error).toBe(true);
+    expect(await prisma.project.count({ where: { ownerId: 市场, scheduledAssignAt: { not: null } } })).toBe(1);
+  });
+
+  it("不是市场成员发起的（销售管理、条线总管理指定）不按方向限人（P-转-26 末句）", async () => {
+    当(销管);
+    const r = await 建档向导(向导输入(外贸销售, { 分配方式: 0, 业务线: "内贸" }));
+    expect(r.ok, r.ok ? "" : r.error).toBe(true);
+  });
+
+  it("负责人下拉跟着方向筛：市场成员拿到候选表（内贸 = 内贸销售 + 销售管理，外贸 = 外贸销售），方向一换下拉只留这条线的人；兼管理的不给表、不筛", async () => {
+    const 数 = await 新建分配方式数据({ id: 市场, name: "mkt", email: "", role: "SALES", title: "" } as never);
+    expect(数.指定候选表).not.toBeNull();
+    expect(new Set(数.指定候选表!.内贸)).toEqual(new Set([销管, 销售, 另一销售]));
+    expect(数.指定候选表!.外贸).toEqual([外贸销售]);
+    expect(new Set(方向可指定(数.可指定, 数.指定候选表, "外贸"))).toEqual(new Set([外贸销售]));
+    expect(new Set(方向可指定(数.可指定, 数.指定候选表, "内贸"))).toEqual(new Set([销管, 销售, 另一销售]));
+    expect(方向可指定(数.可指定, 数.指定候选表, "暂不分配")).toEqual(数.可指定);
+    expect(指定选项([{ value: 销售, label: "s1" }, { value: 外贸销售, label: "w1" }], 方向可指定(数.可指定, 数.指定候选表, "外贸"), 市场, 销售))
+      .toEqual([{ value: 外贸销售, label: "w1" }, { value: 销售, label: "s1（不能被指定）", disabled: true }]);
+    const 管 = await 新建分配方式数据({ id: 销管, name: "smgr", email: "", role: "SALES", title: "" } as never);
+    expect(管.指定候选表).toBeNull();
   });
 });
