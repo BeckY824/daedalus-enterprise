@@ -36,6 +36,7 @@ import { 补待补的 } from "./nurture-rows";
 import { 沟通挂潜客培育 } from "../project/nurture";
 import { 要挂项目的类型 } from "../project/follow-needs-project-text";
 import { 企业版字典, 本套名 } from "../project/stage-dict";
+import { 不是同号留痕SQL } from "../enterprise/same-number-mark";
 
 type Tx = Prisma.TransactionClient;
 type 引用行 = Prisma.EntExternalRefGetPayload<object>;
@@ -274,10 +275,10 @@ async function 名称(tx: Tx, e: 实体, id: string, written: 值表): Promise<s
   return id;
 }
 
-/** 跟进删了 / 建回来了：客户的「最近跟进」按剩下的重算（同合并客户） */
+/** 跟进删了 / 建回来了：客户的「最近跟进」按剩下的重算（同合并客户）；同号备注不算（same-number-mark.ts，同 apply.ts 收尾） */
 export async function 重算最近跟进(tx: Tx, 客户们: Set<string>): Promise<void> {
   for (const id of 客户们) {
-    await tx.$executeRawUnsafe('UPDATE "Customer" SET lastFollowAt = (SELECT MAX(occurredAt) FROM "FollowUp" WHERE customerId = ? AND "deletedAt" IS NULL) WHERE id = ?', id, id);
+    await tx.$executeRawUnsafe(`UPDATE "Customer" SET lastFollowAt = (SELECT MAX(occurredAt) FROM "FollowUp" WHERE customerId = ? AND "deletedAt" IS NULL AND ${不是同号留痕SQL()}) WHERE id = ?`, id, id);
   }
 }
 

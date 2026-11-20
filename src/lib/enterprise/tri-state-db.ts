@@ -4,7 +4,8 @@
  * 收哪些事实（一位客户）：
  *   - 计时范围（M-公海-34）：有负责人（不是无负责人占位账号）、不在客户公海、没标无效；负责人是市场（市场角色、又不兼销售）的不计；已删的读不到（软删统一滤掉）
  *   - 最近有效沟通日（拨钟、回满额度同源，T1 / T2，tri-state-quota.ts 有内容的沟通）：挂客户的、挂名下任一项目的（含同事负责的，沟通都带着 customerId）都算；
- *     一条算哪天按沟通生效日（M-公海-54：沟通日期和写入时间取早的，补录旧沟通只推到它发生那天，填未来日期的按写入时间）；空的、不足 4 字、只有占位词、只有素材链接的不算，AI 起草成功的算
+ *     一条算哪天按沟通生效日（M-公海-54：沟通日期和写入时间取早的，补录旧沟通只推到它发生那天，填未来日期的按写入时间）；空的、不足 4 字、只有占位词、只有素材链接的不算，AI 起草成功的算；
+ *     同号再次录入的系统留痕（标题以 同号标题 开头，same-number-mark.ts）不是沟通，不算（11-03 设计、用户 11-20：不替负责人续钟）
  *   - 最近项目推进日：名下项目建项目和换节点（ProjectNodeLog kind = node）里最晚的（T8：建项目算一次动静，建完转给同事的照算在客户上）；
  *     退回了项目公海的项目（T3），退回前的推进算到退回那天为止，退回本身不算动静
  *   - 额度重置日（T4）：最近有效沟通、最近一次从公海领走 / 分走里较晚的那天，继续持有额度从这天起重新数
@@ -53,6 +54,7 @@ import { 钉住老签约 } from "@/lib/contract-owner";
 import { 忘掉企业版范围 } from "./visibility";
 import { recordAudit } from "@/lib/audit";
 import { getSetting, setSetting } from "@/lib/settings";
+import { 不是同号留痕SQL } from "./same-number-mark";
 import { beijingDay } from "@/lib/business-clock";
 
 type 库 = Prisma.TransactionClient | typeof prisma;
@@ -329,7 +331,7 @@ const 转时刻 = (v: unknown): Date | null => {
  * 每位客户最近一条有效沟通的上海日（T1 / T2：拨钟和回满额度同源，tri-state-quota.ts 有内容的沟通）。
  * 一条沟通算哪天按沟通生效日（M-公海-54，tri-state-quota.ts 沟通生效时刻：沟通日期和写入时间取早的）：补录的旧沟通只推到它发生那天，
  * 填了未来日期的按写入时间算。一句 SQL 按生效日倒排、每位取最近几条判；都无效（空的、不足 4 字、只有占位词、只有链接）才逐位往前找。
- * 生效日晚于现在的不算；同一天几条只算一次（只取日子）；软删的不算
+ * 生效日晚于现在的不算；同一天几条只算一次（只取日子）；软删的不算；同号再次录入的系统留痕不算（same-number-mark.ts）
  */
 /** 一位客户的有效沟通：最近那条的生效日（拨钟用），和看到的有效沟通（按生效日倒排，额度重置判定用，tri-state-quota.ts 额度沟通日of） */
 type 客户沟通 = { 日: string; 候选们: 额度候选沟通[] };
@@ -341,7 +343,7 @@ async function 最近沟通日们(db: 库, ids: readonly string[], 现在: Date,
   const 生效 = (x: 行) => { const 写 = 转时刻(x.cat); return 写 ? 沟通生效时刻(转时刻(x.at), 写) : null; };
   const 有效 = (x: 行) => 有内容的沟通(x.content, { 占位词: 词们, AI生成: Number(x.src) === 1 || x.src === true });
   const 列 = `f."customerId" AS cid, f.content AS content, EXISTS (SELECT 1 FROM "FollowUpSource" s WHERE s."followUpId" = f.id) AS src, f."occurredAt" AS at, f."createdAt" AS cat, (SELECT v."at" FROM "EntFollowUpFirstValid" v WHERE v."followUpId" = f.id) AS vat`;
-  const 条件 = `f."deletedAt" IS NULL AND f.content <> ''`;
+  const 条件 = `f."deletedAt" IS NULL AND f.content <> '' AND ${不是同号留痕SQL("f")}`;
   const 先看 = await db.$queryRawUnsafe<(行 & { rn: unknown })[]>(
     `SELECT * FROM (SELECT ${列}, ROW_NUMBER() OVER (PARTITION BY f."customerId" ORDER BY ${沟通生效时刻SQL("f")} DESC, f.id DESC) AS rn
   FROM "FollowUp" f WHERE f."customerId" IN (${ids.map(() => "?").join(", ")}) AND ${条件}) WHERE rn <= ${最近沟通先看条数}`,

@@ -45,6 +45,7 @@ import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
 import { 存沟通后重算三态, 记首次有效 } from "@/lib/enterprise/tri-state-db";
 
 import { 客户显名, 全称或显名, 显名列 } from "@/lib/enterprise/customer-title";
+import { 不是同号留痕, 不是同号留痕SQL } from "@/lib/enterprise/same-number-mark";
 const 只有总管理能恢复话 = "只有系统管理员或回收站副手能恢复删掉的记录";
 
 /**
@@ -413,10 +414,11 @@ export async function saveFollowUp(input: FollowUpInput) {
         await tx.followPlan.update({ where: { id: plan.id }, data: { done: true, doneAt: new Date(), ...推进版本(plan.updatedAt.toISOString()) } });
         audits.push({ user, action: "update", entity: "FollowPlan", entityId: plan.id, summary: `完成跟进计划「${plan.subject}」（${全称或显名(customer)}）` });
       }
-      const latest = await tx.followUp.findFirst({ where: { customerId: input.customerId, occurredAt: { lte: new Date() } }, orderBy: { occurredAt: "desc" }, select: { occurredAt: true } });
+      // 最近跟进不算同号再次录入的系统留痕（same-number-mark.ts）：那是别人又录了这个号，不替负责人续
+      const latest = await tx.followUp.findFirst({ where: { customerId: input.customerId, occurredAt: { lte: new Date() }, ...不是同号留痕 }, orderBy: { occurredAt: "desc" }, select: { occurredAt: true } });
       // 同事的客户：最近跟进时间是派生列、本来就不同步（各台回放时重算），裸 SQL 只改本机，不动 updatedAt、不推一条改客户
-      // 和回放时的重算同一句（lib/sync/local.ts 重算派生），日期在库里怎么存不用这里管
-      if (同事的) await tx.$executeRawUnsafe('UPDATE "Customer" SET lastFollowAt = (SELECT MAX(occurredAt) FROM "FollowUp" WHERE customerId = ? AND "deletedAt" IS NULL) WHERE id = ?', input.customerId, input.customerId);
+      // 照回放时的重算（lib/sync/local.ts 重算派生）写，多滤软删和同号留痕；日期在库里怎么存不用这里管
+      if (同事的) await tx.$executeRawUnsafe(`UPDATE "Customer" SET lastFollowAt = (SELECT MAX(occurredAt) FROM "FollowUp" WHERE customerId = ? AND "deletedAt" IS NULL AND ${不是同号留痕SQL()}) WHERE id = ?`, input.customerId, input.customerId);
       else await tx.customer.update({ where: { id: input.customerId }, data: { lastFollowAt: latest?.occurredAt ?? null } });
       return { ok: true as const, id, 待办id, 下次计划id, audits };
     })).catch((e: unknown) => {
@@ -481,7 +483,7 @@ export async function deleteFollowUp(id: string, customerId: string) {
     // 重算最近跟进：读和写放进同一个事务（代码体检 C10）。原来分两步，读完那一刻同事刚记了一条新的，这里会把旧值写回去
     await 查完再写(async (tx) => {
       const latest = await tx.followUp.findFirst({
-        where: { customerId, occurredAt: { lte: new Date() } },
+        where: { customerId, occurredAt: { lte: new Date() }, ...不是同号留痕 },
         orderBy: { occurredAt: "desc" },
         select: { occurredAt: true },
       });
@@ -764,7 +766,7 @@ export async function 撤销记一笔(input: { customerId: string; 跟进id: str
       }
       await tx.followPlan.updateMany({ where: { id: 计划.id, done: true }, data: { done: false, doneAt: null } });
       audits.push({ user, action: "update", entity: "FollowPlan", entityId: 计划.id, summary: `撤销完成跟进计划「${计划.subject}」（${全称或显名(customer)}）` });
-      const latest = await tx.followUp.findFirst({ where: { customerId: input.customerId, occurredAt: { lte: new Date() } }, orderBy: { occurredAt: "desc" }, select: { occurredAt: true } });
+      const latest = await tx.followUp.findFirst({ where: { customerId: input.customerId, occurredAt: { lte: new Date() }, ...不是同号留痕 }, orderBy: { occurredAt: "desc" }, select: { occurredAt: true } });
       await tx.customer.update({ where: { id: input.customerId }, data: { lastFollowAt: latest?.occurredAt ?? null } });
       return { ok: true as const, audits };
     });
