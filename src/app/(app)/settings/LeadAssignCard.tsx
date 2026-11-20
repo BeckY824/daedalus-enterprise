@@ -76,12 +76,15 @@ export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分�
         <p className="muted" data-testid="org-lead-no-quota-note">
           现在是「不设配额」：自动分配在 线索 页点「自动分配」，挑参与的人里本月已分最少的，一样多先给最早进分配池的；配额不起作用，手动分也不查满额。
           「参与」选暂停或禁止的人照样不自动分给他。下面的配额先灰着、数留着，在上面规则里关掉「不设配额」就照旧按配额分。分配数每月 1 日清零，持有数不清。
+          分给他的线索最终判成无效的记「待补 N」：下一条自动分配在合格的人里优先补发给他，多人待补按判无效先后，用掉为止；
+          补发写在本月已分后面的「另补 M」里，不算本月已分、不影响轮转（本轮正常轮到他照常给），判无效那条照算、不退。
         </p>
       ) : (
       <p className="muted">
         自动分配在 线索 页点「自动分配」：挑参与的、填了配额、本月没分满的人里「本月已分 / 配额」比例最低的，比例一样先给最早进分配池的。
         没填配额（或填 0）的人不参与自动分配；「参与」选暂停（暂时不参与、可随时恢复）或禁止（不参与）也不再自动分给他。手动分配不受这几条影响。分配数每月 1 日清零，持有数不清。
-        线索最终判成无效的，负责人本月配额多给 1 条（配额后面的 +N），也是每月清零；没填配额的人不加。
+        分给他的线索最终判成无效的记「待补」：下一条自动分配在合格的人里优先补发给他（分满了也补），补发写在「另补」里、不算本月已分、不占配额；
+        判无效那条照算、不退。配额后面的 +N 是 11-20 之前判无效加的配额。
       </p>
       )}
       <p className="muted org-lead-eta-note" data-testid="org-lead-eta-note">「前面约几条」= 按自动分配挑人的规则、按现在的数估的再分几条轮到他。{估算说明}。</p>
@@ -106,7 +109,7 @@ export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分�
                   <td>{r.line ?? "两边都做"}</td>
                   <td>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                      <span>{r.已分} /</span>
+                      <span>{r.已分}{r.另补 > 0 && <span className="muted" title="判无效补发的，不算进本月已分、不影响轮转" data-testid={`org-lead-extra-${r.userId}`}>（另补 {r.另补}）</span>} /</span>
                       {r.能设配额 ? (
                         <InputNumber size="small" min={0} max={10000} precision={0} placeholder="没填" style={{ width: 84 }}
                           aria-label={`${r.name} 的每月配额`} disabled={不限额 || 忙 === r.userId || 刷新中}
@@ -123,6 +126,11 @@ export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分�
                         </span>
                       )}
                       {满 && <Tag color="warning" style={{ marginInlineEnd: 0 }}>满额</Tag>}
+                      {r.待补 > 0 && (
+                        <span className="muted" title={`有 ${r.待补} 条分给他的线索最终判了无效，下一条自动分配优先补发给他（补发不算本月已分），用掉为止`} data-testid={`org-lead-makeup-${r.userId}`}>
+                          待补 {r.待补}
+                        </span>
+                      )}
                     </span>
                   </td>
                   <td>{r.持有}</td>

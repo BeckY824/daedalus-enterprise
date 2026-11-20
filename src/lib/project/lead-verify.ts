@@ -7,7 +7,9 @@
  *   4. 总管理终判（老板 / 总管理员）：判无效 → 结束；判有效 → 回销售，销售认领继续推，或自己退回公海（算主动退回）。
  * 后台规则「无效线索要市场复核」（默认开）关了、或组织里没有市场管理：销售判无效直接交总管理终判。
  * 判死（市场复核 / 总管理终判判无效）：项目结局记 线索流失（和手动点线索流失同一格「没成」），节点变更留一行带无效原因；
- * 负责人占过额度的（这条线索上有他算数的分配记录）本月自动分配配额 +1，没占过的、没设配额的不加（见 lead-assign.ts 占过名额、加一条配额）。
+ * 负责人占过额度的（这条线索上有他算数的分配记录，或这条是补发来的）记一个判无效待补（不看配额模式），
+ * 下一条自动分配在合格的人里优先补发给他、补发不算本月已分；判无效这条占的名额不退、不加配额（lib/enterprise/invalid-makeup.ts，用户 11-20）。
+ * 11-20 之前是「本月配额 +1」（lead-assign.ts 加一条配额，没设配额的不加、不设配额模式下不起作用），已停用。
  * 每一步记一行 EntLeadVerifyLog（谁、何时、判了什么、说明），详情页小时间线读它。不是企业版一律拦，一行不写。
  */
 import { prisma } from "../prisma";
@@ -19,7 +21,8 @@ import { 读组织, 管理员类别们of, 能市场复核, 市场复核要读的
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 读市场成员们 } from "@/lib/enterprise/market-db";
 import { 可选项, 选的原因 } from "@/lib/enterprise/dict";
-import { 加一条配额, 占过名额 } from "@/lib/enterprise/lead-assign";
+import { 占过名额 } from "@/lib/enterprise/lead-assign";
+import { 记补位 } from "@/lib/enterprise/invalid-makeup";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 改节点, 能改节点, 放回公海 } from "./db";
 import { 是总管理 } from "@/lib/enterprise/permissions";
@@ -156,7 +159,7 @@ async function 写状态(projectId: string, 读: 读到, data: Record<string, un
 }
 
 /**
- * 判死：项目结局 线索流失（closedAt）、节点变更一行、验证状态 无效线索、占过额度的负责人本月配额 +1。都在一个事务里，项目先被人动了就作废。
+ * 判死：项目结局 线索流失（closedAt）、节点变更一行、验证状态 无效线索、占过额度的负责人记 1 个判无效待补。都在一个事务里，项目先被人动了就作废。
  * 先抢这一步（X-81）：别人先判过（复核判了有效、另一位也判了无效、初判已交了复核）回「已被别人判过」，项目一点不动——
  * 原来先改项目再核，核不过 return 了事务照样提交，项目白白流失。
  * 销售初判直接判死（创建人是销售）：带上这次的无效原因，不加配额——不是分来的线索，不补名额
@@ -180,7 +183,9 @@ async function 判死(me: 谁, projectId: string, 读: 读到, 步: "销售初�
       },
     });
     await tx.entLeadVerifyLog.create({ data: { projectId, step: 步, verdict: "无效", reason: 步 === "销售初判" ? 无效原因 : null, note: 说明 || null, userId: me.id } });
-    if (步 !== "销售初判" && (await 占过名额(tx, p.id, p.ownerId))) await 加一条配额(tx, p.ownerId);
+    // 补（M-线索-02，用户 11-20 改）：最终判无效、现负责人在这条线索上占过名额（或这条本身是补发来的）→ 记 1 个判无效待补，
+    // 下一条自动分配优先补发给他、补发那条不算本月已分（invalid-makeup.ts）。判无效这条原来占的名额不退：分配记录照算、不再加配额（原来的「本月配额 +1」停用，免得补两次）
+    if (步 !== "销售初判" && (await 占过名额(tx, p.id, p.ownerId))) await 记补位(tx, p.ownerId, p.id, 现在);
     await 跟着项目重算(tx, 状态开, [p.customerId]);
     return { ok: true as const };
   }));

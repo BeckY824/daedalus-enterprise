@@ -19,6 +19,7 @@ import type { Prisma } from "@/generated/prisma";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { businessDayjs } from "@/lib/business-clock";
 import { 随客户痕 } from "@/lib/project/carry-tasks";
+import { 是补发来的 } from "./invalid-makeup";
 import type { 组织 } from "./org-core";
 import { 能分配线索, 是总管理 } from "./permissions";
 import { 能改设置, type 改权限配置 } from "./edit-perm-table";
@@ -120,6 +121,42 @@ export type 候选人 = {
   起算?: number;
   /** 起算补 补了几条（只影响排序；按配额分时满没满按实数 = 已分 − 补） */
   补?: number;
+  /**
+   * 判无效待补（invalid-makeup.ts，M-线索-02 补「优先」）：方向对得上这次分配的待用补位，各自判无效的时刻，从早到晚。
+   * 有的人在合格候选里优先，多人按最早那个先；挑中就用掉最早一个，这条是补发、不算本月已分（前面几条 模拟时也一样）
+   */
+  待补?: Date[];
+};
+
+/**
+ * 把待用的补位挂到候选上（读挑人底子 排位 调）：只挂方向对得上这次分配的（线对得上），按退名额时刻从早到晚。
+ * 行们 已经按时刻排好（待用补位行）
+ */
+export function 挂补位(候选: readonly 候选人[], 行们: readonly { userId: string; at: Date; line: string | null }[], 线: 线 | null): 候选人[] {
+  const 表 = new Map<string, Date[]>();
+  for (const r of 行们) {
+    if (r.line && 线 && r.line !== 线) continue;
+    const 们 = 表.get(r.userId) ?? [];
+    们.push(r.at);
+    表.set(r.userId, 们);
+  }
+  return 候选.map((c) => {
+    const 们 = 表.get(c.userId);
+    if (!们?.length) {
+      const { 待补: _, ...别的 } = c;
+      return 别的;
+    }
+    return { ...c, 待补: [...们].sort((a, b) => a.getTime() - b.getTime()) };
+  });
+}
+
+/** 有待补的先（最早退名额的先）；都没有 = 0，交给原来的比法 */
+const 待补差 = (a: 候选人, b: 候选人): number => {
+  const x = a.待补?.[0]?.getTime(), y = b.待补?.[0]?.getTime();
+  if (x === undefined && y === undefined) return 0;
+  if (x === undefined) return 1;
+  if (y === undefined) return -1;
+  return x - y;
 };
 
 /**
@@ -136,7 +173,8 @@ export function 自动候选人们(org: 组织, 现负责人: string | null, lin
  */
 function 可挑(候选: 候选人[], 不参与: ReadonlySet<string>, 查满: boolean, 不限额: boolean): 候选人[] {
   if (不限额) return 候选.filter((c) => !不参与.has(c.userId));
-  return 候选.filter((c) => !不参与.has(c.userId) && 有配额(c.配额) && !(查满 && 满了(c.已分 - (c.补 ?? 0), c.配额)));
+  // 有待补的这条是补发（不算本月已分、不占配额），分满了也照挑
+  return 候选.filter((c) => !不参与.has(c.userId) && 有配额(c.配额) && !(查满 && !c.待补?.length && 满了(c.已分 - (c.补 ?? 0), c.配额)));
 }
 
 /** 本月已分 / 配额 谁的比例低：交叉相乘比，不做除法，3/9 和 1/3 判成一样。可挑的人配额都 > 0 */
@@ -208,12 +246,15 @@ const 已分差 = (a: 候选人, b: 候选人) => a.已分 - b.已分;
  * 自动分配挑谁（D-38，10-26 定成 A7 默认）：去掉不参与的、没填配额的、（这一条算数时）分满的，
  * 挑「本月已分 / 配额」比例最低的；比例一样给最早进分配池的。EntMember 没记进池时间，先按建号时间算；
  * 再一样按 id，结果不随查询顺序变。
- * 不限额（10-30）：参与的人都能挑，比本月已分条数（最少优先），并列的同样给最早进分配池的
+ * 不限额（10-30）：参与的人都能挑，比本月已分条数（最少优先），并列的同样给最早进分配池的。
+ * 判无效待补（11-20，invalid-makeup.ts）：上面筛完的合格的人里，有待补的先挑，多人按判无效时间最早的先；没人待补照上面比。
+ * 有待补的那条是补发、不算本月已分，按配额分时分满了也照挑
  */
 export function 挑接手人(候选: 候选人[], 不参与: ReadonlySet<string>, 查满: boolean, 不限额 = false): string | null {
   const 可 = 可挑(候选, 不参与, 查满, 不限额);
   const 差 = 不限额 ? 已分差 : 比例差;
-  可.sort((a, b) => 差(a, b) || a.进池.getTime() - b.进池.getTime() || (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0));
+  // 判无效待补（M-线索-02 补「优先」）：合格的人里有待补的先，多人按退名额时间最早的先；都没有照原来比
+  可.sort((a, b) => 待补差(a, b) || 差(a, b) || a.进池.getTime() - b.进池.getTime() || (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0));
   return 可[0]?.userId ?? null;
 }
 
@@ -229,7 +270,10 @@ export function 前面几条(候选: readonly 候选人[], 不参与: ReadonlySe
     const 谁 = 挑接手人(们, 不参与, 查满, 不限额);
     if (!谁) return null;
     if (谁 === 我) return n;
-    们.find((c) => c.userId === 谁)!.已分++;
+    const 中 = 们.find((c) => c.userId === 谁)!;
+    // 挑中有待补的人 = 补发：用掉他最早一个待补，不算本月已分（同真分配）；没待补的照常 +1
+    if (中.待补?.length) 中.待补 = 中.待补.slice(1);
+    else 中.已分++;
   }
   return null;
 }
@@ -242,6 +286,10 @@ export function 挑的理由(候选: 候选人[], 不参与: ReadonlySet<string>
   const 可 = 可挑(候选, 不参与, 查满, 不限额);
   const 他 = 可.find((c) => c.userId === 谁);
   if (!他) return "";
+  if (他.待补?.length) {
+    const 别的待补 = 可.filter((c) => c.userId !== 谁 && c.待补?.length).length;
+    return `判无效补发：他有 ${他.待补.length} 条线索最终判了无效、待补，优先补给他${别的待补 ? `（还有 ${别的待补} 人待补，按判无效先后）` : ""}；补发不算本月已分（现在 ${他.已分} 条），本轮正常轮到他照常给`;
+  }
   const 起算话 = 他.起算 !== undefined ? `，中途回来按 ${他.起算} 条起算` : "";
   if (不限额) {
     const 并列 = 可.filter((c) => c.已分 === 他.已分).length;
@@ -293,14 +341,17 @@ export async function 本月加额们(ids: string[], 月 = 月份(), db: Pick<�
 
 /**
  * 这条线索占过 userId 的额度没有：有他算数的分配记录才算（不限哪个月，有几行都只是占过）。
- * 批量分配时随客户走的、老数据、手工建的、转给他的都没有这一行；不算数的（counted=false）本来就没占
+ * 批量分配时随客户走的、老数据、手工建的、转给他的都没有这一行；不算数的（counted=false）本来就没占。
+ * 例外：判无效补发来的（counted=false，用掉了他的待补，invalid-makeup.ts）也算——补来的又判无效，再补 1 条
  */
-export async function 占过名额(db: Pick<库, "entLeadAssign">, projectId: string, userId: string): Promise<boolean> {
-  return !!(await db.entLeadAssign.findFirst({ where: { projectId, toUserId: userId, counted: true }, select: { id: true } }));
+export async function 占过名额(db: Pick<Prisma.TransactionClient, "entLeadAssign" | "entLeadMakeup">, projectId: string, userId: string): Promise<boolean> {
+  if (await db.entLeadAssign.findFirst({ where: { projectId, toUserId: userId, counted: true }, select: { id: true } })) return true;
+  return 是补发来的(db, projectId, userId);
 }
 
 /**
- * 给 userId 本月配额 +1（线索最终判无效、占过他额度时调）。没设配额的人不加，返回 false：
+ * 给 userId 本月配额 +1。11-20 起判无效不再调（改成判无效待补 + 补发不算本月已分，invalid-makeup.ts；用户 11-20 定：判无效那条的名额不退）；
+ * 留着读老数据（本月加额 / 生效配额 照旧把已加过的算进去）。原说明：线索最终判无效、占过他额度时调。没设配额的人不加，返回 false：
  * 他不参与自动分配、手动分也不限，加了没意义，还会让以后设配额的那个月凭空多出来
  */
 export async function 加一条配额(db: Pick<库, "entLeadQuota" | "entLeadQuotaBonus">, userId: string, 月 = 月份()): Promise<boolean> {

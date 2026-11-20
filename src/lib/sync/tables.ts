@@ -100,6 +100,8 @@ export const 不同步表 = [
   "EntFollowUpFirstValid",
   // 企业版超时未跟进自动转（2026-11-17，migrations/150）：同上
   "EntReplyOverdue",
+  // 企业版判无效待补（2026-11-20，migrations/155）：同上
+  "EntLeadMakeup",
 ] as const;
 
 /**
@@ -222,6 +224,8 @@ export const 指向人的列: [string, string][] = [
   ["EntLeadVerify", "finalById"],
   ["EntLeadVerifyLog", "userId"],
   ["EntLeadQuotaBonus", "userId"],
+  // 企业版判无效待补（2026-11-20）：不建外键
+  ["EntLeadMakeup", "userId"],
   // 企业版项目回款（2026-10-31）：谁记的
   ["EntProjectPayment", "userId"],
 ];

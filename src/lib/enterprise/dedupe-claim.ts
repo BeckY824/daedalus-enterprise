@@ -27,7 +27,7 @@ import { 企业版 } from "./switch";
 import { 是市场成员of, type 组织 } from "./org-core";
 import { 自动分配池, 读线部门, 读挑人底子, 补记销售管理起算 } from "./assign-eta";
 import { 两条线 } from "./assign-line";
-import { 计不计数, 月份 } from "./lead-assign";
+import { 计不计数, 月份, type 线 } from "./lead-assign";
 import { 方向分配理由, type 分配方向 } from "./customer-region";
 import { 客户默认分配方向 } from "./assign-direction-db";
 import { 本套名, 字典of, 第一个节点 } from "@/lib/project/nodes";
@@ -140,21 +140,25 @@ export type 查重领取候选 = {
   底: Awaited<ReturnType<typeof 读挑人底子>>;
   查满: boolean;
   月: string;
+  /** 读挑人底子 的补位参数（判无效待补）：重读底子时照传；null = 这次不用待补 */
+  补位: { 线: 线 | null } | null;
 };
 
 /**
  * 自动分配的候选（照 自动分给 市场成员按区域那一支）：方向按 客户区域 → 项目所在地 → 客户的号 → 发起人本人事业部，
- * 都判不出两条线都算；回避 = 不挑的人（原负责人回避，见 要回避）
+ * 都判不出两条线都算；回避 = 不挑的人（原负责人回避，见 要回避）。
+ * 用补位 = 这次算本月已分（新建线索项目、或没有公海项目可挂），判无效待补的人优先（invalid-makeup.ts）；只领旧的公海项目那条不算数、不用
  */
-export async function 查重领取候选们(org: 组织, 发起人: string, customerId: string, projectId: string | null, 回避: readonly string[]): Promise<查重领取候选> {
+export async function 查重领取候选们(org: 组织, 发起人: string, customerId: string, projectId: string | null, 回避: readonly string[], 用补位 = false): Promise<查重领取候选> {
   const 向 = await 客户默认分配方向(org, customerId, 发起人, projectId);
   const 设 = await 读线部门();
   const 池 = 向.线 ? 自动分配池(org, null, 向.线, 设) : [...new Set(两条线.flatMap((l) => 自动分配池(org, null, l, 设)))];
   const 人们 = 池.filter((id) => !回避.includes(id));
   await 补记销售管理起算(org, 人们);
   const 月 = 月份();
-  const 底 = await 读挑人底子(人们, 月);
-  return { 人们, 向, 底, 查满: 计不计数("营销", 底.企划算数), 月 };
+  const 补位 = 用补位 ? { 线: 向.线 } : null;
+  const 底 = await 读挑人底子(人们, 月, 补位);
+  return { 人们, 向, 底, 查满: 计不计数("营销", 底.企划算数), 月, 补位 };
 }
 
 export const 查重领取理由 = (c: 查重领取候选, 原因: string) => `${原因}；${方向分配理由(c.向)}`;

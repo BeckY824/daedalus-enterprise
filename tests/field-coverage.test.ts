@@ -584,6 +584,15 @@ const 派生: Record<string, Record<string, string>> = {
   EntFollowUpFirstValid: {
     followUpId: "哪条沟通，存的时候无效、后来改成有效时系统建（迁移 132）", at: "改成有效的那一刻，系统写、之后不改",
   },
+  EntLeadMakeup: {
+    userId: "补给谁：判无效时线索的负责人，系统记（lib/enterprise/invalid-makeup.ts，迁移 155）",
+    projectId: "哪条线索判了无效，判死时系统记",
+    line: "分配方向，从那条线索算数的分配记录抄过来",
+    usedAt: "自动分配用掉的那一刻，系统写；撤销自动分配时清掉",
+    usedAssignId: "用在哪条分配记录上，自动分配写分配记录时系统写",
+    usedProjectId: "用在哪个项目上，同上",
+    voidAt: "判无效的线索被恢复时系统作废，不给改",
+  },
   EntReplyOverdue: {
     projectId: "哪个项目，超时未跟进那条链起头时系统建（迁移 150）", anchorAt: "起链时的超时基准，系统按指定回复时间写", holderId: "链上眼下这一位，系统写",
     since: "这一位的计时起点，系统写", overdueAt: "超时提醒发出的那一刻，钟上系统写", tried: "这一轮超时过的人，自动转时系统写",

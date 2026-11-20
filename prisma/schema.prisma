@@ -1615,6 +1615,34 @@ model EntLeadQuotaBonus {
   @@id([userId, month])
 }
 
+/// 企业版判无效补位（2026-11-20，迁移 155）：线索验证最终判无效、按 M-线索-02 给负责人退了名额时记一行「待补」，
+/// 之后自动分配在合格候选里先给有待补的人（按退名额时间最早的先），挑中就用掉最早一个、记用在哪条分配上。
+/// 一次判无效一行；判无效的线索被恢复（结局清掉）时没用掉的作废（voidAt）；撤销自动分配时用掉的退回待用。
+/// 不建外键：同 EntLeadAssign，线索删了这行留着当记录（坏线索照样要补）。说明见 lib/enterprise/invalid-makeup.ts
+model EntLeadMakeup {
+  id            String    @id @default(cuid())
+  /// 补给谁：判无效那一刻线索的负责人（有他算数的分配记录才记，同退名额的条件）
+  userId        String
+  /// 哪条线索（项目）判了无效
+  projectId     String
+  /// 分配方向：内贸 / 外贸，取那条算数分配记录的 line；null = 没记方向，哪条线的自动分配都能用
+  line          String?
+  /// 用掉的那一刻；空 = 还没用
+  usedAt        DateTime?
+  /// 用在哪条分配记录上（EntLeadAssign.id）
+  usedAssignId  String?
+  /// 用在哪个项目上（补来的那条线索）
+  usedProjectId String?
+  /// 作废的那一刻（判无效的线索被恢复）；作废的不再用
+  voidAt        DateTime?
+  /// 退名额的那一刻（= 判无效那一刻），多人有待补时按它先后
+  createdAt     DateTime  @default(now())
+
+  @@index([userId, usedAt])
+  @@index([projectId])
+  @@index([usedAssignId])
+}
+
 /// 企业版线索有效性验证（2026-10-29，迁移 088，P12）：每个项目一份当前状态，四步走在 lib/project/lead-verify.ts。
 /// 销售初判（有效 / 无效 / 还需培育）→ 无效的进市场复核（规则「市场复核」关着或组织里没有市场管理就直接到总管理）→
 /// 市场判有效回销售终验（接受复核 / 提交异议）→ 异议到总管理终判。最终无效 = 项目点成线索流失。

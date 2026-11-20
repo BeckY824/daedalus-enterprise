@@ -23,6 +23,7 @@ import { 带过来对不上, 还项目, type 带走的 } from "@/lib/carry-over-
 import { 还待分配状态 } from "@/lib/enterprise/market-transfer";
 import { 市场分配进验证理由, 推回潜客培育 } from "@/lib/enterprise/market-assign-node";
 import { 分配方式叫法 } from "@/lib/enterprise/dict";
+import { 退回补位 } from "./invalid-makeup";
 
 /** 自动分配成了之后回给界面的「还原单」：撤销时原样交回来 */
 export type 自动分配还原 = {
@@ -127,7 +128,11 @@ export async function 撤回自动分配(
   await tx.projectNodeLog.delete({ where: { id: 痕.id } });
   // 这次的分配记录（占本月额度）删掉：撤了 = 没分过
   const 记 = await tx.entLeadAssign.findFirst({ where: { projectId, toUserId: 现, byUserId: 操作人, fromUserId: 原 }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true } });
-  if (记) await tx.entLeadAssign.delete({ where: { id: 记.id } });
+  if (记) {
+    await tx.entLeadAssign.delete({ where: { id: 记.id } });
+    // 这次自动分配用掉的判无效待补退回待用（invalid-makeup.ts）：分配撤了，补的那条也就没补上
+    await 退回补位(tx, [记.id]);
+  }
   return { ok: true, 名: p.name, 原, 现 };
 }
 
