@@ -84,6 +84,19 @@ describe("建档向导：第一行下面多加的号码", () => {
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: r.customerId } })).phone).toBe("13900000101");
   });
 
+  it("同一家「手机 = 微信」（微信同号）不撞自己；别人微信格里有这个号就不建（11-20 跨类型）", async () => {
+    const r = await 建档向导(输入([{ kind: "wechat", value: "13900000101" }]));
+    expect(r).toMatchObject({ ok: true });
+    if (!r.ok) return;
+    expect(await 联系人的号(r.customerId)).toEqual(["phone:13900000101", "wechat:13900000101"]);
+    const 前 = await 行数();
+    expect(await 建档向导(输入(undefined, "13900000101"))).toMatchObject({ ok: false });
+    const 乙客 = await prisma.customer.create({ data: { name: "乙的客户", phone: "", followStatus: "待跟进", decisionStatus: "了解中", salesOwnerId: 乙 } });
+    await prisma.contactMethod.create({ data: { customerId: 乙客.id, kind: "wechat", value: "13900000177", numberKey: "13900000177" } });
+    expect(await 建档向导(输入(undefined, "13900000177"))).toMatchObject({ ok: false });
+    expect(await 行数()).toEqual({ ...前, customer: 前.customer + 1 });
+  });
+
   it("第一行查重照旧生效：撞了同事的客户不建（多加的几行没撞也一样）", async () => {
     await prisma.customer.create({ data: { name: "乙的客户", phone: "13900000101", followStatus: "待跟进", decisionStatus: "了解中", salesOwnerId: 乙 } });
     const 前 = await 行数();
