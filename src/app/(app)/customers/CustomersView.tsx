@@ -24,7 +24,7 @@ import {
 } from "@ant-design/icons";
 import { FOLLOW_STATUSES, DECISION_STATUSES } from "@/lib/constants";
 import { 合计文字 } from "@/lib/currency";
-import { maskPhone, smartTime, fmtDate, 成员选项, 可选成员 } from "@/lib/utils";
+import { smartTime, fmtDate, 成员选项, 可选成员 } from "@/lib/utils";
 import ListSearch from "@/components/ListSearch";
 import { RowLink, FollowStatusTag, PageHead, UserCell, DecisionStatusTag } from "@/components/ui";
 import DataList, { type 列 } from "@/components/DataList";
@@ -1088,8 +1088,12 @@ export default function CustomersView({
       ),
     },
 
-    // 这一列一律打码显示，不给复制键：v 没打码时复制了就比屏幕上看到的多（电话、邮箱复制键见 CopyValue）
-    { title: "联系电话", key: "phone", dataIndex: "phone", width: 140, 默认: false, render: (v) => <span className="nowrap">{maskPhone(v)}</span> },
+    /*
+      号码全显 + 一键复制（29Q，11-20 客户管理员：展会大量现场加的客户要逐个加微信）：服务端给的是什么就显示什么——
+      号码脱敏器（销售教练、字段权限里电话「看不到」的角色）和公海里的客户（page.tsx 列表行，用户 11-20 定「不显示」）在服务端就打好了码，
+      带 * 的 CopyValue 不给复制键
+    */
+    { title: "联系电话", key: "phone", dataIndex: "phone", width: 150, 默认: false, render: (v: string | null) => (v ? <CopyValue 叫法="电话" value={v} /> : 空) },
     // 创建（入库）时间（11-11）：默认收在「列」里；点表头在全部筛选结果里排（服务端 sort=created-asc / created-desc），不点就是默认的新的在前
     {
       title: "创建时间", key: "createdAt", dataIndex: "createdAt", width: 104, 默认: false,
@@ -1337,6 +1341,8 @@ export default function CustomersView({
       <DataList<CustomerRow>
         浮起操作条
         页="customers"
+        // 进详情再回来、刷新：勾选和横滚位置还原（29R）
+        回来还原
         // 企业版每格一行、放不下省略号悬停看全（11-01 会议 §11）
         单行={企业}
         不可勾={只读的.size ? (r) => 只读的.has(r.id) : undefined}

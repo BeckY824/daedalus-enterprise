@@ -695,6 +695,8 @@ export default function ProjectsView({
         <DataList<项目行>
           // 企业版默认只摆 7 列（1366 宽不横滚），换个键让已存的旧列设置回到新默认
           页={企业版 ? (新线索 ? "ent-leads-v2" : 市场列 ? "ent-projects-market" : "ent-projects") : "projects"}
+          // 进详情再回来、刷新：勾选和横滚位置还原（29R）
+          回来还原
           单行={企业版}
           列={列表}
           行={行}
