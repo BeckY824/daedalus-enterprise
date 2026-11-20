@@ -134,6 +134,10 @@ jobs:
           echo "run=true" >> "$GITHUB_OUTPUT"; echo "args=--shard=${{ matrix.shard }}/8" >> "$GITHUB_OUTPUT"; echo "全套（没有分片表）：--shard=${{ matrix.shard }}/8"
       - uses: actions/checkout@v4
         if: steps.scope.outputs.run == 'true'
+      # 容器里是 root、工作区属 runner 用户，git 报 dubious ownership；checkout 加的 safe.directory 只写在它临时的 HOME 里、
+      # 用完就删，测试里还把 HOME 换成 /root。写进系统级配置，和 HOME 无关（11-20 #385 单测 2/8 红过：release-guards、skew-protection）
+      - if: steps.scope.outputs.run == 'true'
+        run: git config --system --add safe.directory "$GITHUB_WORKSPACE"
       # 容器里没有 setup-node，npm 下载缓存自己存（同 E2E）
       - name: 缓存 npm 下载
         if: steps.scope.outputs.run == 'true'
