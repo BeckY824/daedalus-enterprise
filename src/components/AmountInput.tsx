@@ -2,10 +2,19 @@
 
 import { InputNumber, Tooltip, type InputNumberProps } from "antd";
 import { useEffect, useRef, useState } from "react";
-import { 千分位, 读金额原文, 金额格式 } from "@/lib/money-input";
+import { 千分位, 币种对不上话, 拆金额, 读金额原文, 金额格式 } from "@/lib/money-input";
 
 /** 表单校验、保存挡住时说的那句（框上悬停 / 聚焦时另有带原文的那句） */
-export const 金额框认不出提示 = "金额认不出：只填不小于 0 的数字，可带千分位、¥、万 / 千 / k / w";
+export const 金额框认不出提示 = "金额认不出：只填不小于 0 的数字，可带千分位、¥、万 / 千 / k / w，或字里的币种记号和选的币种对不上";
+
+/**
+ * 保存挡住时那句（就地改钱格、渠道投入表单）：拿着框里敲的原文（on原文 报上来的）和选的币种，
+ * 字认得出、只是币种记号和选的对不上（选美元敲「5000元」）就说对不上，不说「可带 ¥」那句和浮层打架（审查 11-20 第二轮）；其余用通用句
+ */
+export function 金额框挡住话(原文: string | null | undefined, 币种?: string | null): string {
+  const r = 原文 ? 拆金额(原文) : null;
+  return r?.币 && 币种 && !r.可为.includes(币种) ? 币种对不上话(原文!.trim(), r.币, 币种) : 金额框认不出提示;
+}
 
 /** 金额框交上来的 NaN = 敲了认不出的字：保存要挡住 */
 export const 金额认不出 = (v: unknown): boolean => typeof v === "number" && Number.isNaN(v);
@@ -23,12 +32,13 @@ type 透传 = Omit<InputNumberProps<number>, "value" | "defaultValue" | "onChang
  *   交上去的是 NaN，各处保存按 金额认不出 挡住（表单走校验），绝不把敲到一半的数或上一个数当成人要的。清空 = null（没填）。
  * 提示浮在框上方、不放进框里：项目卡就地改的金额框连币种只有一百来宽，放框里会把敲的字挤没（11-20 生产构建实量）。
  * 拼音输入（敲 wan 选「万」）中途不判，选完再认。
+ * on原文 = 每敲一下报一声框里的原文（在交 onChange 之前、同步），保存挡住时拿它配 金额框挡住话 说清是认不出还是币种对不上。
  * currency = 旁边选的币种（审查 11-20）：敲的字里带了币种记号（「5000元」「USD 5000」「¥5万」）又和选的对不上，算认不出、说清楚，
  *   不悄悄按选的币种存；改了币种对上了就照常认。没写记号的照常按选的币种。
  */
 export default function AmountInput({
-  value, onChange, onInput, onFocus, onBlur, onCompositionStart, onCompositionEnd, onMouseEnter, onMouseLeave, max, status, currency, ...rest
-}: 透传 & { value?: number | null; onChange?: (v: number | null) => void; currency?: string | null }) {
+  value, onChange, onInput, onFocus, onBlur, onCompositionStart, onCompositionEnd, onMouseEnter, onMouseLeave, max, status, currency, on原文, ...rest
+}: 透传 & { value?: number | null; onChange?: (v: number | null) => void; currency?: string | null; on原文?: (s: string) => void }) {
   const [原文, set原文] = useState<string | null>(null);
   const [聚焦, set聚焦] = useState(false);
   const [悬停, set悬停] = useState(false);
@@ -46,6 +56,7 @@ export default function AmountInput({
   const 收 = (s: string) => {
     if (拼.current) return;
     set原文(s);
+    on原文?.(s);
     const r = 读金额原文(s, 上限, currency);
     if (r.类 === "错") {
       if (!错) onChange?.(Number.NaN);

@@ -21,7 +21,7 @@ let browser: Browser, bundle: string;
 beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React,{useState} from 'react';import {createRoot} from 'react-dom/client';import {App,Button,ConfigProvider,Form,Select,Space} from 'antd';import zhCN from 'antd/locale/zh_CN';
-    import AmountInput, {金额框认不出提示, 金额认不出} from '@/components/AmountInput';
+    import AmountInput, {金额框认不出提示, 金额框挡住话, 金额认不出} from '@/components/AmountInput';
     import ProjectInlineField from '@/app/(app)/projects/[id]/ProjectInlineField';
     import {钱编辑器, 钱格存法} from '@/app/(app)/projects/[id]/money-cell';
     import {草稿范围} from '@/components/FormDraft';
@@ -39,6 +39,17 @@ beforeAll(async () => {
         <Form.Item label='投入金额' required><Form.Item name='amount' noStyle validateFirst rules={[{required:true,message:'请填写金额'},{validator:(_,v)=>金额认不出(v)?Promise.reject(new Error(金额框认不出提示)):Promise.resolve()},{type:'number',min:0.01,message:'金额要大于 0'}]}>
           <AmountInput aria-label='投入金额' min={0} precision={2} style={{width:'100%'}}/>
         </Form.Item></Form.Item>
+        <Button htmlType='submit'>保存</Button>
+      </Form>;
+    }
+    // 渠道投入抽屉（ChannelDrawer）那种：币种 + 金额同一个表单，校验拿 on原文 记下的原文配选的币种说话（抽屉里这句上了保存按钮；这里套个带 label 的 Form.Item 让它显示出来）
+    function 币表单(){
+      const [f]=Form.useForm();const 币=Form.useWatch('currency',f);const 原=React.useRef(null);
+      return <Form form={f} style={{padding:16}} initialValues={{currency:'USD'}} onFinish={(x)=>{window.__交=x}}>
+        <Form.Item label='投入金额' required><Space.Compact block><Form.Item name='currency' noStyle><Select aria-label='币种' style={{width:140}} options={[{value:'CNY',label:'CNY'},{value:'USD',label:'USD'},{value:'EUR',label:'EUR'}]}/></Form.Item>
+        <Form.Item name='amount' noStyle validateFirst dependencies={['currency']} rules={[{required:true,message:'请填写金额'},{validator:(_,v)=>金额认不出(v)?Promise.reject(new Error(金额框挡住话(原.current,f.getFieldValue('currency')))):Promise.resolve()},{type:'number',min:0.01,message:'金额要大于 0'}]}>
+          <AmountInput aria-label='投入金额' min={0} precision={2} style={{width:'100%'}} currency={币} on原文={(s)=>(原.current=s)}/>
+        </Form.Item></Space.Compact></Form.Item>
         <Button htmlType='submit'>保存</Button>
       </Form>;
     }
@@ -64,6 +75,7 @@ beforeAll(async () => {
     window.__拼=(起)=>root.render(包(<拼框 起={起}/>));
     window.__表单=()=>root.render(包(<表单/>));
     window.__币框=()=>root.render(包(<币框/>));
+    window.__币表单=()=>root.render(包(<币表单/>));
     // 重挂 = 刷新页面：组件状态全丢，localStorage 里的草稿还在
     let 第几回=0;
     window.__就地=(起)=>root.render(包(<草稿范围 value='项目:t1'><就地 key={++第几回} 起={起}/></草稿范围>));
@@ -180,6 +192,30 @@ it("表单里（渠道投入那种 Form.Item 校验）：认不出挡住保存�
   } finally { await page.close(); }
 });
 
+it("表单（渠道投入那种，选美元）敲「5000元」：校验说写的是人民币、币种选的是美元，不说「可带 ¥」；改选欧元句子跟着变；改选人民币就过、存 5000（审查 11-20 第二轮）", async () => {
+  const { page, errors } = await open("__币表单");
+  try {
+    const 交 = () => page.evaluate(() => (window as unknown as { __交?: { amount: number; currency: string } }).__交);
+    const 错话 = page.locator(".ant-form-item-explain-error");
+    await 框(page, "投入金额").fill("5000元");
+    await page.getByRole("button", { name: /保\s*存/ }).click();
+    await expect.poll(() => 错话.allInnerTexts()).toEqual([expect.stringContaining("写的是人民币，币种选的是美元")]);
+    expect((await 错话.allInnerTexts()).join("")).not.toContain("可带");
+    expect(await 交()).toBeUndefined();
+    const 选 = async (币: string) => {
+      await page.getByRole("combobox", { name: "币种" }).click();
+      await page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter({ hasText: 币 }).click();
+    };
+    await 选("EUR");
+    await expect.poll(() => 错话.allInnerTexts()).toEqual([expect.stringContaining("写的是人民币，币种选的是欧元")]);
+    await 选("CNY");
+    await expect.poll(() => 错话.count()).toBe(0);
+    await page.getByRole("button", { name: /保\s*存/ }).click();
+    await expect.poll(交).toEqual({ currency: "CNY", amount: 5000 });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it.each([375, 1024, 1280, 1366])("%ipx：和币种拼在一起，换算 / 认不出浮在框外，敲的字不被挤、浮层在视口里、页面不横撑", async (w) => {
   const { page, errors } = await open("__拼", null, w);
   try {
@@ -268,6 +304,27 @@ it("币种记号和选的对不上（选美元敲「5000元」、选人民币敲
     await page.locator("#换美元").click();
     await 框(page).fill("３ｗ");
     await expect.poll(() => 值(page)).toBe(30000);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("就地改金额（选美元）敲「5000元」回车：行内说写的是人民币、币种选的是美元，不说「可带 ¥」；改敲「5000」存 5000 美元（审查 11-20 第二轮）", async () => {
+  const { page, errors } = await open("__就地", { 数: null, 币: "USD" }, 1280);
+  try {
+    await 开格(page);
+    await 框(page).fill("5000元");
+    await 框(page).press("Enter");
+    await expect.poll(() => page.locator(".proj-inline-err").innerText()).toContain("写的是人民币，币种选的是美元");
+    expect(await page.locator(".proj-inline-err").innerText()).not.toContain("可带");
+    expect(await 交了(page)).toEqual([]);
+    // 认不出的（不是币种的事）照旧用通用句，句末带上币种那半句
+    await 框(page).fill("约5万");
+    await 框(page).press("Enter");
+    await expect.poll(() => page.locator(".proj-inline-err").innerText()).toContain("金额认不出");
+    expect(await page.locator(".proj-inline-err").innerText()).toContain("或字里的币种记号和选的币种对不上");
+    await 框(page).fill("5000");
+    await 框(page).press("Enter");
+    await expect.poll(() => 交了(page)).toEqual([{ amount: 5000, currency: "USD" }]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

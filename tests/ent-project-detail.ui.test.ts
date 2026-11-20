@@ -599,6 +599,46 @@ for (const 宽 of [390, 1366]) {
   }, 60_000);
 }
 
+it("编辑项目框：金额 / 定金金额敲了认不出的字（NaN），草稿里换回原值；刷新后带回不把金额清成 0 / 空，改过的合同金额照带回（审查 11-20）", async () => {
+  const { page, errors } = await open(true);
+  try {
+    const 钱 = { contractAmount: 80000, contractCurrency: "CNY", depositAmount: 20000, depositCurrency: "CNY", dealDemand: null };
+    const 摆 = () => page.evaluate(v => (window as unknown as { __over: (x: object) => void }).__over({ 成交钱: v }), 钱);
+    await 摆();
+    await 编辑钮(page).click();
+    const 框 = page.locator(".ant-modal-container");
+    const 金额框 = 框.getByRole("spinbutton", { name: "金额", exact: true });
+    const 定金框 = 框.getByRole("spinbutton", { name: "定金金额" });
+    const 合同框 = 框.getByRole("spinbutton", { name: "合同金额" });
+    await 金额框.waitFor();
+    await 金额框.fill("约5万");
+    await 定金框.fill("约2万");
+    await 合同框.fill("9万");
+    // 认不出的两格挡住保存
+    await expect.poll(() => 框.getByRole("button", { name: /保\s*存/ }).isDisabled()).toBe(true);
+    const 稿们 = () => page.evaluate(() => Object.keys(localStorage).filter(k => k.includes("编辑项目:p1")).map(k => localStorage.getItem(k)!));
+    await expect.poll(async () => (await 稿们()).length).toBe(1);
+    const [稿] = await 稿们();
+    // 草稿里没有 null 金额（NaN 被 JSON 写成 null 带回就把金额清了）
+    expect(稿).toContain("90000");
+    expect(稿).not.toMatch(/"(amount|depositAmount)":null/);
+    // 刷新
+    await page.reload();
+    await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
+    await 摆();
+    await 编辑钮(page).click();
+    await 合同框.waitFor();
+    await expect.poll(() => 合同框.inputValue()).toBe("90,000");
+    expect(await 金额框.inputValue()).toBe("1,234,567.89");
+    expect(await 定金框.inputValue()).toBe("20,000");
+    await 框.getByRole("button", { name: /保\s*存/ }).click();
+    await page.waitForFunction(() => ((window as unknown as { __编辑?: unknown[] }).__编辑 ?? []).length > 0);
+    const 交 = await page.evaluate(() => ((window as unknown as { __编辑: [string, Record<string, unknown>][] }).__编辑).at(-1)![1]);
+    expect(交).toMatchObject({ amount: 1234567.89, depositAmount: 20000, contractAmount: 90000 });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
 it("迁移 101：没给项目新字段（不是企业版 / 藏了）就不摆这两行、编辑框也没有", async () => {
   const { page, errors } = await open(true);
   try {

@@ -251,7 +251,7 @@ export const 项目写工具: Tool[] = [
   {
     name: "propose_payment_add",
     description: "建议给一个项目记一笔回款（日期、金额、币种）。只出建议卡，人确认后才记；记完可以在卡上撤销。",
-    args: `{"project": "项目名或客户名", "projectId": "项目 id，可空", "paidAt": "回款日期 YYYY-MM-DD", "amount": 金额, "currency": "币种代码，可空（默认本位币）", "reason": "一句话理由"}`,
+    args: `{"project": "项目名或客户名", "projectId": "项目 id，可空", "paidAt": "回款日期 YYYY-MM-DD", "amount": 金额, "currency": "币种代码，可空（空 = 看 amount 里写的记号：没写记号或记号也能算本位币 = 本位币，写了别的币种记号 = 按记号）", "reason": "一句话理由"}`,
     async run(a, ctx) {
       const 找 = await 找项目(ctx, a);
       if (!找.ok) return { summary: 找.话, data: { error: 找.话 } };

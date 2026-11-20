@@ -456,8 +456,9 @@ export function buildProposal(
     const amount = 收金额(args.amount);
     if (amount === null) return { ok: false, error: "amount 要是个非负数字" };
     const 字币 = 金额字带币(args.amount);
-    // currency 没给：amount 里写了记号（「$5000」「5万元」）就按记号，没写才按本位币
-    const currency = 收币种(args.currency, 字币?.币 ?? b.currency);
+    // currency 没给：amount 里写了记号（「$5000」「5万元」）就按记号，没写才按本位币；
+    // 记号也能算本位币（港币本位交「$5000」、日元本位交「¥50万」）就按本位币，不把「$」一律当美元（审查 11-20 第二轮）
+    const currency = 收币种(args.currency, 字币 ? (b.currency && 字币.可为.includes(b.currency) ? b.currency : 字币.币) : b.currency);
     if (currency === null) return { ok: false, error: "currency 要是三位币种代码，如 USD / EUR / CNY" };
     if (字币 && !字币.可为.includes(currency)) return { ok: false, error: 币种对不上话(String(args.amount).trim(), 字币.币, currency) };
     return { ok: true, proposal: { ...base, kind, amount, currency, signedAt: when.at, remark: str(args.remark, 500) } };

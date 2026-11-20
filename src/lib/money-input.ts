@@ -83,6 +83,49 @@ export function 金额字币种(v: string): string | null {
   return 拆金额(v)?.币 ?? null;
 }
 
+/**
+ * 只看金额字前后写的币种记号，不要求整串认得出（审查 11-20 第二轮）：导入时金额靠 AI 清洗 / 模拟清洗补认回来
+ * （「约5000USD」「五千元」规则认不出），币种不能因此落成默认人民币。
+ * 前 = 第一个数字前面的字，后 = 最后一个数字后面的字（一个数字都没有就看整串）。
+ * - 无：没写记号；
+ * - 币：写了认得的记号（元 / 人民币 / RMB / CNY / ¥ → CNY，$ / US$ / USD / 美元 → USD；「$」「¥」另可为别的币，见 拆金额）；
+ * - 矛盾：前后写的对不上（「$5000元」），不挑一个；
+ * - 不认得：写了别的币种记号（「HK$」「EUR」「港币」…），不猜。
+ */
+export type 金额记号 =
+  | { 类: "无" }
+  | { 类: "币"; 币: string; 可为: string[] }
+  | { 类: "矛盾"; 记号: string[] }
+  | { 类: "不认得"; 记号: string };
+const 记号扫 =
+  /US\$|USD|美元|美金|人民币|RMB|CNY|[¥￥]|日元|港元|港币|澳元|加元|欧元|英镑|台币|新币|新加坡元|EUR|GBP|JPY|HKD|SGD|AUD|CAD|NZD|TWD|MXN|[A-Z]{1,2}\$|\$|元|[€£₩₹]/gi;
+const 认得记号 = (t: string): string[] | null => {
+  const u = t.toUpperCase();
+  if (u === "US$" || u === "USD" || t === "美元" || t === "美金") return ["USD"];
+  if (u === "$") return 美元记号币;
+  if (t === "元" || t === "人民币" || u === "RMB" || u === "CNY") return ["CNY"];
+  if (t === "¥" || t === "￥") return ["CNY", "JPY"];
+  return null;
+};
+export function 金额字记号(v: string): 金额记号 {
+  const s = 全角转半角(v.trim()).replace(/[,，\s]/g, "");
+  const 首 = s.search(/\d/);
+  const 尾 = s.length - (/\D*$/.exec(s)?.[0].length ?? 0);
+  const 区 = 首 < 0 ? [s] : [s.slice(0, 首), s.slice(尾)];
+  const 记号: string[] = [];
+  let 可为: string[] | null = null;
+  for (const 片 of 区) {
+    for (const m of 片.matchAll(记号扫)) {
+      const 码 = 认得记号(m[0]);
+      if (!码) return { 类: "不认得", 记号: m[0] };
+      记号.push(m[0]);
+      可为 = 可为 ? 可为.filter((c) => 码.includes(c)) : 码;
+    }
+  }
+  if (!可为) return { 类: "无" };
+  return 可为.length ? { 类: "币", 币: 可为[0], 可为 } : { 类: "矛盾", 记号 };
+}
+
 /** AI 收卡：模型交的金额字串里写了币种记号（¥ / 元 / $ / USD）就给出来，和 currency 对不上要拒，不悄悄按 currency 存（审查 11-20）。数字、没写记号 = null */
 export function 金额字带币(v: unknown): { 币: string; 可为: string[] } | null {
   if (typeof v !== "string") return null;
