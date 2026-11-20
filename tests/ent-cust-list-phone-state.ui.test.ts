@@ -35,12 +35,14 @@ beforeAll(async () => {
   包 = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {我Provider} from '@/lib/me-client';
-    import CustomersView from '@/app/(app)/customers/CustomersView';
+    import CustomersView from '@/app/(app)/customers/CustomersView';import {设列表主人} from '@/lib/list-return';
+    // 外壳报现在是谁（AppShell 渲染时调）：window.__人 换人
+    设列表主人(window.__人||'A');
     const users=[{id:'me',name:'小王',email:'s1',role:'SALES',active:true},{id:'u2',name:'小李',email:'s2',role:'SALES',active:true}];
     const 行=(id,phone,pool)=>({id,name:'某某贸易有限公司'+id,phone,school:null,grade:null,major:null,followStatus:'待跟进',decisionStatus:'了解中',custStatus:'跟进中',salesOwnerId:'me',salesOwnerName:'小王',createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',lastFollowAt:'2026-11-01T00:00:00.000Z',signedAmount:0,referrerCustomerId:null,referrerName:null,channelId:null,channelName:null,expectedSignAt:null,remark:'备注'.repeat(20),addrCountry:'中国',extra:{level:'A'},customerNo:Number(id.slice(1)),pool:pool?{reason:'超时回收'}:null});
     const rows=[行('c1','13800000001'),行('c2','138****0002',true),行('c3',''),行('c4','02166668888')];
     createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'me',name:'小王'}}>
-      <CustomersView rows={rows} total={4} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:'',node:''}} 客户数={4} 企业版 项目概况={{}} 项目看板/>
+      <CustomersView rows={rows} total={4} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:'',node:''}} 客户数={4} 企业版 项目概况={{}} 项目看板 只读ids={window.__只读||[]}/>
     </我Provider></BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [桩], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
@@ -50,7 +52,8 @@ afterAll(async () => { await browser?.close(); });
 /** localhost 才有 navigator.clipboard；换成记下写了什么 */
 const 记写入 = "window.__写=[];Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async(t)=>{window.__写.push(t)}}});";
 
-async function 挂上(page: Page) {
+async function 挂上(page: Page, 人?: string, 只读?: string[]) {
+  if (人 || 只读) await page.evaluate(([a, r]) => { Object.assign(window, { __人: a, __只读: r }); }, [人, 只读] as const);
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addScriptTag({ content: 包 });
   await page.locator("tr.ant-table-row").first().waitFor();
@@ -150,6 +153,31 @@ it("29R 手机宽（375）：勾两行、横滚 → 回来 / 刷新照样还原�
     await expect.poll(() => 勾着(page)).toEqual(["c2", "c3"]);
     await expect.poll(() => 横滚(page)).toBe(60);
     expect(await 格(page, "c1").getByRole("button", { name: "复制电话" }).count()).toBe(1);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("#381：换人（同一个标签页 A 退出、B 登录）不带 A 的勾选；行变只读后不还原成勾着；从左栏点进来（新开地址）不还原", async () => {
+  const errors: string[] = [];
+  const page = await 新页(errors);
+  try {
+    await 打开(page, "http://localhost/customers?page=1");
+    await page.locator("tr[data-row-key=c1] .ant-checkbox-input").check();
+    await page.locator("tr[data-row-key=c4] .ant-checkbox-input").check();
+    // B 在同一个标签页里（刷新 = 可还原的进法），A 的勾选一个都不带
+    await page.reload();
+    await 挂上(page, "B");
+    await page.waitForTimeout(200);
+    expect(await 勾着(page)).toEqual([]);
+    // 换回 A（刷新）：A 自己的还在；c4 这时变成只读（不让勾）：只还原 c1
+    await page.reload();
+    await 挂上(page, "A", ["c4"]);
+    await expect.poll(() => 勾着(page)).toEqual(["c1"]);
+    expect(await page.locator(".list-sel-float").innerText()).toContain("1");
+    // 从左栏点进来（同一个地址重新打开，不是刷新、不是从详情回来）：回默认，不还原
+    await 打开(page, "http://localhost/customers?page=1");
+    await page.waitForTimeout(200);
+    expect(await 勾着(page)).toEqual([]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

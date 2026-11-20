@@ -37,10 +37,7 @@ it("scope=all在单人待办及已完成不露头像，历史成员保留筛选�
  await p.evaluate(()=>Reflect.get(window,"__render")("plans"));await p.getByText("QA待办",{exact:true}).waitFor();
  expect(await p.locator(".plan-row .ant-avatar").count()).toBe(0);
  await p.getByText("已完成 1",{exact:true}).click();await p.getByText("QA已完成",{exact:true}).waitFor();expect(await p.locator(".plan-row .ant-avatar").count()).toBe(0);
-
- // 「待办 / 已完成」记在标签页里（29R 推广）：重新挂上停在已完成（多人那一版才有头像），再切回待办
- await p.evaluate(()=>Reflect.get(window,"__render")("plans",true));await p.getByText("QA已完成",{exact:true}).waitFor();await expect.poll(()=>p.locator(".plan-row .ant-avatar").count()).toBe(1);
- await p.locator(".ant-segmented-item",{hasText:"待办"}).click();await p.getByText("QA待办",{exact:true}).waitFor();expect(await p.locator(".plan-row .ant-avatar").count()).toBe(1);expect(await p.getByText("全部成员",{exact:true}).count()).toBe(1);
+ await p.evaluate(()=>Reflect.get(window,"__render")("plans",true));await p.getByText("QA待办",{exact:true}).waitFor();expect(await p.locator(".plan-row .ant-avatar").count()).toBe(1);expect(await p.getByText("全部成员",{exact:true}).count()).toBe(1);
  await p.getByText("已完成 1",{exact:true}).click();await p.getByText("QA已完成",{exact:true}).waitFor();expect(await p.locator(".plan-row .ant-avatar").count()).toBe(1);
  }finally{await p.close()}
 });

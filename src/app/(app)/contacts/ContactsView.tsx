@@ -1,6 +1,6 @@
 "use client";
 
-import { useSessionPref } from "@/lib/local-pref";
+import { useListKeep } from "@/lib/local-pref";
 import { 空显 } from "@/lib/empty-value";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -101,9 +101,9 @@ export default function ContactsView({
     为两个下拉再跑一趟服务端不值当。关键词那个仍然走服务端——它要搜的是全库（在地址栏里）。
     这三个记在这个标签页里（29R 推广，11-20）：点进客户详情再回来、刷新，筛的还在
   */
-  const [关系, set关系] = useSessionPref("list-keep:contacts:position", "");
-  const [负责人, set负责人] = useSessionPref("list-keep:contacts:owner", "");
-  const [归属, set归属] = useSessionPref<"" | "有" | "无">("list-keep:contacts:owned", "");
+  const [关系, set关系] = useListKeep("list-keep:contacts:position", "");
+  const [负责人, set负责人] = useListKeep("list-keep:contacts:owner", "");
+  const [归属, set归属] = useListKeep<"" | "有" | "无">("list-keep:contacts:owned", "");
   const 有未归属 = 全部行.some((r) => r.未归属);
   const 关系选项 = useMemo(
     () => [...new Set(全部行.map((r) => r.position).filter(Boolean))].map((v) => ({ value: v as string, label: v as string })),

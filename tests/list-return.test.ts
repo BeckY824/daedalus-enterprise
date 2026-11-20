@@ -4,7 +4,7 @@
  * 这里没有 window：读写走模块里的内存兜底（和存储被禁时同一条路）。
  */
 import { describe, it, expect } from "vitest";
-import { 列表种of, 是详情页, 页码of, 回列表文字, 记地址, 地址快照, 解析地址们, 订阅地址, 读滚动, 记滚动, 读勾选, 记勾选, 记横滚, 记本地页, 当前列表地址 } from "@/lib/list-return";
+import { 列表种of, 是详情页, 页码of, 回列表文字, 记地址, 地址快照, 解析地址们, 订阅地址, 读滚动, 记滚动, 读勾选, 记勾选, 记横滚, 记本地页, 当前列表地址, 设列表主人, 清列表记忆, 记进入, 记后退, 进来可还原 } from "@/lib/list-return";
 
 describe("认路径", () => {
   it("七张列表：客户 / 公海 / 项目，11-20 起加线索 / 渠道 / 联系人 / 跟进计划；子路径、别的页都不算", () => {
@@ -126,5 +126,51 @@ describe("勾选和横滚（29R：进详情再回来、刷新后还原）", () =
 
   it("没有 window（服务端）：当前地址是空串，不抛", () => {
     expect(当前列表地址()).toBe("");
+  });
+});
+
+describe("按人分、退出清（#381）", () => {
+  it("换了人：同一张表同一个地址读不到上一个人的勾选、记住的列表地址；换回来还在；清列表记忆 后都没了", () => {
+    设列表主人("A");
+    记勾选("customers", "/customers?keyword=x", ["c1"]);
+    记地址("客户", "/customers?keyword=x");
+    设列表主人("B");
+    expect(读勾选("customers", "/customers?keyword=x")).toBeNull();
+    expect(解析地址们(地址快照()).客户).toBeUndefined();
+    设列表主人("A");
+    expect(读勾选("customers", "/customers?keyword=x")?.ids).toEqual(["c1"]);
+    expect(解析地址们(地址快照()).客户).toBe("/customers?keyword=x");
+    清列表记忆();
+    expect(读勾选("customers", "/customers?keyword=x")).toBeNull();
+    expect(解析地址们(地址快照()).客户).toBeUndefined();
+    设列表主人(null);
+  });
+});
+
+describe("什么时候还原（#381：和客户列表对齐）", () => {
+  it("从详情页回来还原；从别的页（左栏、首页）点进来不还原；ListMemory 先报了新路径也照样认", () => {
+    记进入("/customers/c1");
+    expect(进来可还原("/contacts")).toBe(true);
+    记进入("/contacts");
+    expect(进来可还原("/contacts")).toBe(true);
+    记进入("/dashboard");
+    expect(进来可还原("/contacts")).toBe(false);
+    记进入("/contacts");
+    expect(进来可还原("/contacts")).toBe(false);
+    记进入("/projects/p1");
+    expect(进来可还原("/channels")).toBe(true);
+    记进入("/channels");
+    记进入("/follow-ups/plans");
+    expect(进来可还原("/channels")).toBe(false);
+  });
+
+  it("浏览器后退 / 前进进来的还原（不管从哪页退回来）", () => {
+    记进入("/dashboard");
+    记后退();
+    expect(进来可还原("/channels")).toBe(true);
+    记进入("/channels");
+    expect(进来可还原("/channels")).toBe(true);
+    记进入("/contacts");
+    expect(进来可还原("/contacts")).toBe(false);
   });
 });

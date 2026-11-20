@@ -13,7 +13,7 @@ import CountUp from "@/components/CountUp";
 import Skeleton from "@/components/Skeleton";
 import { useLocalPref } from "@/lib/local-pref";
 import { 只留当前行, 露出这一列, 算可见列, 切换后存 } from "@/lib/list-select";
-import { 当前列表地址, 读勾选, 记勾选, 记横滚, 记本地页 } from "@/lib/list-return";
+import { 当前列表地址, 读勾选, 记勾选, 记横滚, 记本地页, 进来可还原 } from "@/lib/list-return";
 
 /**
  * 列表页的那张表。**全站只有这一个表格实现**（批 2 抽出来，批 3 六页照用）。
@@ -130,7 +130,8 @@ type Props<T> = {
    * 按「页 + 地址」记在 sessionStorage（lib/list-return.ts 读勾选）：地址一样才还原，还原的勾选也只留眼前的行。
    * 在浏览器里分页的表（不给 分页）第几页、每页几条也一起记。
    * 筛选、排序、页码、页签在地址栏，纵向滚动由外壳 ListMemory 滚回去，列设置本来就记在本地（useLocalPref）；
-   * 筛选在本页 state 里的（联系人、渠道）用 lib/local-pref.ts 的 useSessionPref 记
+   * 筛选在本页 state 里的（联系人、渠道）用 lib/local-pref.ts 的 useListKeep 记。
+   * 只在「回来」时还原（从详情页回来、浏览器后退、刷新），从左栏点进来回默认（lib/list-return.ts 进来可还原）
    */
   回来还原?: boolean;
 };
@@ -287,9 +288,12 @@ export default function DataList<T extends { id: string }>({
   useEffect(() => {
     if (!还原键 || 读回过.current || 加载中) return;
     读回过.current = true;
+    // 从左栏、首页点进来不还原（和地址栏里的筛选一样回默认）；之后勾的照常记
+    if (!进来可还原()) return;
     const 记的 = 读勾选(还原键, 当前列表地址());
     if (!记的) return;
-    const 留 = 只留当前行(记的.ids, 行.map((r) => r.id));
+    // 这会儿不让勾的行（变成只读了）不还原成勾着，不然会被算进批量
+    const 留 = 只留当前行(记的.ids, 行.filter((r) => !不可勾?.(r)).map((r) => r.id));
     // 不支持多选的表只还原横滚
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sessionStorage 只有到了浏览器里才读得到（服务端那一版没有勾选），挂上只读这一次
     if (留.length && 批量) set选中(留);

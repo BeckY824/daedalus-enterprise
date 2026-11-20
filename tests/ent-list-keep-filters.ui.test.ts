@@ -6,6 +6,7 @@
  *   - 渠道：属性筛选 + 第几页
  *   - 跟进计划：「待办 / 已完成」「我的 / 全部成员」
  * 「回来」用整页重新加载模拟：组件重新挂上、sessionStorage 留着，和从详情页回来是同一条读的路。
+ * #381：从左栏点进来（新开同一个地址）回默认；同一个标签页换人不带上一个人的筛选。
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -25,7 +26,7 @@ const 打包 = async (name: string, stubs: [RegExp, string][], entry: string) =>
   return r.outputFiles[0].text;
 };
 const 路由 = "export const useRouter=()=>({refresh(){},push(){},replace(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);";
-const 壳头 = "import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {我Provider} from '@/lib/me-client';";
+const 壳头 = "import {设列表主人} from '@/lib/list-return';设列表主人(window.__人||'A');import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {我Provider} from '@/lib/me-client';";
 const 挂 = (x: string) => `createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS} timeZone={null}><我Provider value={{id:'me',name:'小王'}}>${x}</我Provider></BusinessProvider></App></ConfigProvider>);`;
 
 beforeAll(async () => {
@@ -75,7 +76,8 @@ async function 新页(宽: number, errors: string[]) {
   await page.route("http://keep.test/**", (r) => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
   return page;
 }
-async function 挂上(page: Page, 哪个: keyof typeof 包, 等: string) {
+async function 挂上(page: Page, 哪个: keyof typeof 包, 等: string, 人?: string) {
+  if (人) await page.evaluate((a) => { Object.assign(window, { __人: a }); }, 人);
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addScriptTag({ content: 包[哪个] });
   await page.locator(等).first().waitFor();
@@ -159,3 +161,49 @@ for (const 宽 of [1366, 375]) {
     } finally { await page.close(); }
   });
 }
+
+it("#381 联系人：从左栏点进来（新开同一个地址）回默认；A 筛过，同一个标签页换 B（刷新）不带 A 的筛选，换回 A 还在", async () => {
+  const errors: string[] = [];
+  const page = await 新页(1366, errors);
+  try {
+    await page.goto("http://keep.test/contacts");
+    await 挂上(page, "联系人", "tr.ant-table-row");
+    await 选(page, "全部职位 / 角色", "财务");
+    await expect.poll(async () => (await 行名(page)).length).toBe(5);
+    await 回来(page, "联系人", "tr.ant-table-row");
+    await expect.poll(async () => (await 行名(page)).length).toBe(5);
+    // 换 B
+    await page.reload();
+    await 挂上(page, "联系人", "tr.ant-table-row", "B");
+    await expect.poll(() => page.locator(".ant-pagination-total-text").innerText()).toContain("30");
+    expect(await page.locator(".ant-select", { hasText: "财务" }).count()).toBe(0);
+    // 换回 A（刷新）：A 的还在
+    await page.reload();
+    await 挂上(page, "联系人", "tr.ant-table-row", "A");
+    await expect.poll(async () => (await 行名(page)).length).toBe(5);
+    // 左栏点进来：回默认
+    await page.goto("http://keep.test/contacts");
+    await 挂上(page, "联系人", "tr.ant-table-row");
+    await expect.poll(() => page.locator(".ant-pagination-total-text").innerText()).toContain("30");
+    expect(await page.locator(".ant-select", { hasText: "财务" }).count()).toBe(0);
+    // 回默认之后再刷新也是默认（左栏进来那一下已经把旧的扔了）
+    await 回来(page, "联系人", "tr.ant-table-row");
+    expect(await page.locator(".ant-select", { hasText: "财务" }).count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("#381 跟进计划：「已完成」不再整个标签页粘着——左栏点进来回「待办 / 我的」", async () => {
+  const errors: string[] = [];
+  const page = await 新页(1366, errors);
+  try {
+    await page.goto("http://keep.test/follow-ups/plans");
+    await 挂上(page, "跟进", ".plan-row");
+    await page.locator(".ant-segmented-item", { hasText: /^已完成/ }).click();
+    await page.getByText("做完plan:d1").waitFor();
+    await page.goto("http://keep.test/follow-ups/plans");
+    await 挂上(page, "跟进", ".plan-row");
+    expect((await page.locator(".ant-segmented-item-selected").allInnerTexts()).map((t) => t.trim())).toEqual(["待办", "我的"]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});

@@ -70,8 +70,24 @@ function 合法地址(种: 列表种, href: unknown): href is string {
   return 列表种of(path) === 种;
 }
 
+/*
+  按人分（#381 审查）：同一个标签页里退出换人、演示换人，下一个人不能带上上一个人的勾选、筛选、记住的列表地址。
+  外壳（AppShell）每次渲染先报一声现在是谁（设列表主人），所有键后面挂上这个人；退出时 清列表记忆 再整个清掉
+*/
+let 主人 = "";
+/** 外壳报现在登录的是谁（渲染时调，幂等）；没报过（单测、登录页）就是空，键不带人 */
+export function 设列表主人(id: string | null | undefined) {
+  主人 = id ?? "";
+}
+/** 这个人的键：本模块的三份记忆、local-pref 的会话偏好（useListKeep）都走它 */
+export const 带人 = (键: string): string => (主人 ? `${键}@${主人}` : 键);
+
+/** 本模块所有键的前缀（含带人的）；local-pref 的列表筛选键前缀是 list-keep: */
+const 列表键前缀 = ["crm:list-return", "crm:list-pick", "list-keep:"];
+
 const 内存: Record<string, string> = {};
 function 读(键: string): string | null {
+  键 = 带人(键);
   try {
     const v = window.sessionStorage.getItem(键);
     if (v !== null) return v;
@@ -81,12 +97,61 @@ function 读(键: string): string | null {
   return 内存[键] ?? null;
 }
 function 写(键: string, v: string) {
+  键 = 带人(键);
   内存[键] = v;
   try {
     window.sessionStorage.setItem(键, v);
   } catch {
     /* 存不了就只留内存 */
   }
+}
+
+/** 退出时清掉列表记的东西（这个标签页里所有人的：地址、滚动、勾选、横滚、筛选），内存兜底一起清；local-pref 那边的缓存另清（清会话偏好） */
+export function 清列表记忆() {
+  for (const k of Object.keys(内存)) delete 内存[k];
+  try {
+    const 存 = window.sessionStorage;
+    const 要删: string[] = [];
+    for (let i = 0; i < 存.length; i++) {
+      const k = 存.key(i);
+      if (k && 列表键前缀.some((p) => k.startsWith(p))) 要删.push(k);
+    }
+    for (const k of 要删) 存.removeItem(k);
+  } catch {
+    /* 存储被禁：只有内存，上面清过了 */
+  }
+}
+
+/*
+  什么时候还原（#381 审查：和客户列表对齐）：从详情页回来、浏览器后退 / 前进、刷新才还原；
+  从左栏、首页之类点进来回默认。外壳的 ListMemory 每换一次路径报一声（记进入），后退由 popstate 先报（记后退）。
+  列表页里的组件挂上时问 进来可还原：那一下 ListMemory 可能还没报新路径（子组件的 effect 先跑），也可能已经报过（先出了 loading），两种都认
+*/
+let 路: { 现: string | null; 前: string | null; 现后退: boolean } = { 现: null, 前: null, 现后退: false };
+let 待后退 = false;
+export function 记后退() {
+  待后退 = true;
+}
+export function 记进入(pathname: string) {
+  if (路.现 === pathname) return;
+  路 = { 前: 路.现, 现: pathname, 现后退: 待后退 };
+  待后退 = false;
+}
+/** 这一页是整页刷新 / 浏览器前进后退进来的（不是新开、不是输地址） */
+function 是刷新(): boolean {
+  try {
+    const t = (performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined)?.type;
+    return t === "reload" || t === "back_forward";
+  } catch {
+    return false;
+  }
+}
+export function 进来可还原(pathname: string = typeof window === "undefined" ? "" : window.location.pathname): boolean {
+  const 已报 = 路.现 === pathname;
+  const 从 = 已报 ? 路.前 : 路.现;
+  const 后退 = 已报 ? 路.现后退 : 待后退;
+  if (从 === null) return 后退 || 是刷新();
+  return 后退 || 是详情页(从);
 }
 
 function 解析<T extends object>(raw: string | null): T {
