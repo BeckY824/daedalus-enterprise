@@ -15,6 +15,10 @@ import { resetDb } from "./reset";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 指定回复提醒扫一遍, 待回复客户of, 回复提醒时刻, 回复截止 } from "@/lib/enterprise/reply-notice";
+import { 同号再次录入, 同号节点 } from "@/lib/enterprise/same-number-collab";
+import { 验号码 } from "@/lib/enterprise/contact-format";
+import { 有内容的沟通 } from "@/lib/enterprise/tri-state-quota";
+import { 北京日期 } from "./helpers/beijing-date";
 
 /** 北京时间的一个瞬间 */
 const 京 = (s: string) => new Date(`${s.replace(" ", "T")}:00+08:00`);
@@ -83,6 +87,37 @@ describe("到点提醒（钟上每分钟一遍）", () => {
     const id2 = await 项目(销售, { replyEndAt: 京("2026-11-21 10:00") });
     await 记沟通(id2, "昨天聊过一次，客户说明早再约", 京("2026-11-20 18:00"));
     expect(await 指定回复提醒扫一遍(京("2026-11-21 09:30"))).toBe(1);
+  });
+
+  it("同号再次录入（别人又录了这个号）写进项目的那条系统留痕不算回复：照提醒、待办照在；负责人自己记一条有内容的沟通才算", async () => {
+    const 日 = 北京日期(-1);
+    const 号码 = "13912345678";
+    const c = await prisma.customer.create({ data: { name: "编的客户乙", phone: 号码, salesOwnerId: 销售 } });
+    const id = (await prisma.project.create({
+      data: { name: "编的项目乙", customerId: c.id, ownerId: 销售, creatorId: 销售, phase: "线索", node: "潜客培育", replyStartAt: 京(`${日} 15:00`), replyEndAt: 京(`${日} 17:00`) },
+    })).id;
+    const 号 = 验号码("手机号", 号码);
+    if (!号.ok) throw new Error("号码样例没过格式");
+    // 提醒时刻（14:30）以后，市场管理又录了同一个号：写进现有项目（写入时刻按系统时钟，这里拨到 14:40）
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(京(`${日} 14:40`));
+      const r = await 同号再次录入({ id: 市场管, name: "mkt" }, 号, { 入口: "手工建档", 内容: "客户又打电话来问报价，催得很急" });
+      expect(r.走).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+    const 挂的 = await prisma.followUpProject.findMany({ where: { projectId: id }, include: { followUp: true } });
+    expect(挂的).toHaveLength(1);
+    expect(挂的[0].node).toBe(同号节点);
+    // 单看内容够得上有效沟通（这正是之前被当成「已回复」的原因）
+    expect(有内容的沟通(挂的[0].followUp.content)).toBe(true);
+    // 照常提醒负责人、首页待办照在
+    expect(await 指定回复提醒扫一遍(京(`${日} 14:45`))).toBe(1);
+    expect(await 待回复客户of(销售, 京(`${日} 14:45`))).toMatchObject({ 条数: 1, 最早: { projectId: id } });
+    // 负责人自己记一条有内容的沟通 = 回复了
+    await 记沟通(id, "电话回了客户，报价今天下午发过去", 京(`${日} 14:50`));
+    expect(await 待回复客户of(销售, 京(`${日} 14:55`))).toBeNull();
   });
 
   it("到截止首页待办消失；停机补跑：开机时还没到截止的照常提醒，已过截止的不补", async () => {
