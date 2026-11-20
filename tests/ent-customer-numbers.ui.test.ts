@@ -93,6 +93,10 @@ const 量 = (page: import("playwright").Page) => page.evaluate(() => {
   return { 栏宽: 栏框.width, 行们, 栏横滚: 栏.scrollWidth > 栏.clientWidth + 1, 编辑出栏: 编辑件.length, 页横滚: document.documentElement.scrollWidth - window.innerWidth };
 });
 
+/*
+  进编辑都点这一行的标签（.rec-field-k），不点行中心（11-20 批次 32A，同 #384 ent-cust-detail-merge 那条）：
+  号码 / 电话后面紧跟复制键，复制键按设计拦住点击（点复制不算点这一行）；Linux 字体数字窄一点，行中心可能正好落在复制键上 → 只复制、不进编辑
+*/
 it("1024 / 1280 / 1366：号码一类一行，长值一行省略号，不出左栏；编辑态也不出栏", async () => {
   for (const w of [1024, 1280, 1366]) {
     const { page, errors } = await open(w);
@@ -109,7 +113,7 @@ it("1024 / 1280 / 1366：号码一类一行，长值一行省略号，不出左�
       expect(m.行们[0].截了 && m.行们[2].截了, `${w}`).toBe(true);
       expect(m.栏横滚, `${w}`).toBe(false);
       expect(m.页横滚, `${w}`).toBeLessThanOrEqual(0);
-      await page.getByRole("button", { name: "编辑号码" }).first().click();
+      await page.getByRole("button", { name: "编辑号码" }).first().locator(".rec-field-k").click();
       await page.getByRole("button", { name: "加一个号码" }).waitFor();
       const 编 = await 量(page);
       expect(编.编辑出栏, `${w} 编辑态的下拉、输入框、按钮不出栏`).toBe(0);
@@ -122,7 +126,7 @@ it("1024 / 1280 / 1366：号码一类一行，长值一行省略号，不出左�
 it("点一行进编辑：改、加、删后保存，交的是改完的几行；存上了收起、刷新", async () => {
   const { page, errors } = await open(1280);
   try {
-    await page.getByRole("button", { name: "编辑号码" }).first().click();
+    await page.getByRole("button", { name: "编辑号码" }).first().locator(".rec-field-k").click();
     const 号们 = page.getByRole("textbox", { name: "号码" });
     expect(await 号们.count()).toBe(4);
     await 号们.nth(1).fill("+44 20 7946 0000");
@@ -147,7 +151,7 @@ it("没存上：原因 role=alert 写在这一块下面，不弹顶部提示，�
   const { page, errors } = await open(1280);
   try {
     await page.evaluate(() => { Reflect.set(window, "__回", { 号: { ok: false, error: "删完后这位客户就没有任何联系方式了：先在联系人里补一个号码，或留一个号码" } }); });
-    await page.getByRole("button", { name: "编辑号码" }).first().click();
+    await page.getByRole("button", { name: "编辑号码" }).first().locator(".rec-field-k").click();
     for (let i = 0; i < 4; i++) await page.getByRole("button", { name: "去掉这一行" }).first().click();
     await page.getByRole("button", { name: /^保\s*存$/ }).click();
     await page.getByRole("alert").filter({ hasText: "没有任何联系方式" }).waitFor();
@@ -164,7 +168,7 @@ it("电话格：拒了退回原号、原因写在格子下面；存上了按服�
   try {
     const 格 = page.getByRole("button", { name: "编辑电话" });
     await page.evaluate(() => { Reflect.set(window, "__回", { patch: { ok: false, error: "格式不对，像微信号？请到联系方式里选「微信」类型" } }); });
-    await 格.click();
+    await 格.locator(".rec-field-k").click();
     await page.locator("[data-field=phone] input").fill("sqin17548955941");
     await page.locator("[data-field=phone] input").press("Enter");
     await page.getByRole("alert").filter({ hasText: "像微信号" }).waitFor();
@@ -172,14 +176,14 @@ it("电话格：拒了退回原号、原因写在格子下面；存上了按服�
     expect(await 格.innerText()).not.toContain("sqin");
 
     await page.evaluate(() => { Reflect.set(window, "__回", { patch: { ok: true, 值: "13900002222" } }); });
-    await 格.click();
+    await 格.locator(".rec-field-k").click();
     await page.locator("[data-field=phone] input").fill("+86 139-0000-2222");
     await page.locator("[data-field=phone] input").press("Enter");
     await expect.poll(() => 格.innerText()).toContain("13900002222");
     expect(await 格.innerText()).not.toContain("+86");
 
     await page.evaluate(() => { Reflect.set(window, "__回", { patch: { ok: true, 值: "" } }); });
-    await 格.click();
+    await 格.locator(".rec-field-k").click();
     await page.locator("[data-field=phone] input").fill("");
     await page.locator("[data-field=phone] input").press("Enter");
     await expect.poll(() => 格.innerText()).toContain("—");
