@@ -433,6 +433,8 @@ export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?:
     if (!挂到) throw new 写不进(沟通没对上项目话);
     v.projectId = 挂到.projectId;
   }
+  // 标题照导、不拦「同号再次录入」开头的（same-number-mark.ts）：导入是搬旧系统原样数据、整批可撤回，逐行拦会让整批说不清；
+  // 旧系统里正好这么写的，三态、最近跟进会把它当系统留痕排除——这种写法只有本系统写，旧数据里撞上的概率可忽略
   const f = await tx.followUp.create({
     data: {
       type: String(v.type),
@@ -637,6 +639,8 @@ export async function 改(tx: Tx, e: 实体, id: string, 改动: 值表, 现值:
     return;
   }
   const data: Prisma.FollowUpUncheckedUpdateInput = {};
+  // 标题照导、不拦「同号再次录入」开头的，也不挡改同号留痕的标题（same-number-mark.ts）：理由同上面 建 那里——搬旧系统原样数据、整批可撤回，
+  // 逐行拦会让整批说不清；这种写法只有本系统写，旧数据里撞上的概率可忽略
   for (const k of ["type", "title", "content", "status", "ownerId", "customerId"] as const) if (有(k)) data[k] = String(改动[k] ?? "");
   if (有("occurredAt")) data.occurredAt = 日(改动.occurredAt) ?? new Date(现在);
   if (有("opportunityId")) data.opportunityId = 串(改动.opportunityId);

@@ -25,6 +25,7 @@ export type 可见法 = (ids: string[]) => Promise<Set<string>>;
 import { 我回避的公海项目, 回避豁免 } from "@/lib/project/pool-owner";
 import { followHistoryInclude, followHistoryOrder, serializeFollowHistory } from "@/app/(app)/customers/[id]/follow-history-query";
 import type { FollowUpRow } from "@/app/(app)/customers/[id]/types";
+import { 是同号留痕 } from "./same-number-mark";
 
 export type 沟通游标 = { occurredAt: string; id: string };
 export const 汇总每页 = 50;
@@ -163,7 +164,8 @@ export async function 列表最近一句们(me: { id: string; role?: string }, �
   const 今 = Date.now();
   const 全 = await 看全部(() => prisma.followUp.findMany(取法));
   const 最近 = new Map<string, (typeof 全)[number]>();
-  for (const f of 全) if (f.occurredAt.getTime() <= 今 && !最近.has(f.customerId)) 最近.set(f.customerId, f);
+  // 同号再次录入的系统留痕不续最近跟进（same-number-mark.ts），句子也跳过它，和 lastFollowAt 对得上；读回来再滤，不改句子（计划钉在 perf-85k-indexes）
+  for (const f of 全) if (f.occurredAt.getTime() <= 今 && !是同号留痕(f.title) && !最近.has(f.customerId)) 最近.set(f.customerId, f);
   const pids = 按项目滤 ? [...new Set([...最近.values()].flatMap((f) => (f.projectNode ? [f.projectNode.projectId] : [])))] : [];
   const 能看 = new Set<string>();
   const 删了的 = new Map<string, string>();

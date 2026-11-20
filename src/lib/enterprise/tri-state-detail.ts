@@ -5,7 +5,7 @@
  *     页面不自己推权限。逐身份和按钮动作同一套判定：继续持有看 tri-state-hold.ts 继续持有身份（本人、直属上级、待回收轮的条线总管理 /
  *     系统管理员），暂缓回收、让同事结束项目看 permissions.ts 能裁决三态 + 暂缓回收不给——界面给的都能调，能调的界面都给（11-12 第二轮）
  *   - 冷项目（C11，M-公海-22）：只在客户活跃时标。线索 / 商机阶段、没结束、没进公海的项目，最近一次换节点、最近一条挂在它上面的
- *     有效沟通（同客户钟那个判定，含占位词表；沟通生效日 = 沟通日期和写入时间取早的，M-公海-54）、建档三者取最晚，再不早于系统起算日；没动静满「标冷」天数（默认 90）标冷。一句 SQL
+ *     有效沟通（同客户钟那个判定，含占位词表，同号再次录入的系统留痕不算；沟通生效日 = 沟通日期和写入时间取早的，M-公海-54）、建档三者取最晚，再不早于系统起算日；没动静满「标冷」天数（默认 90）标冷。一句 SQL
  *   - 状态留痕（C13）：最近 100 条，并进项目区「进程变更」卡的「客户状态」一段（没有进程变更卡时放左栏）。理由原文（继续持有写的、
  *     裁决写的、「由某某代选」）只有负责人本人、他的上级链、本线条线总管理、系统管理员看得到，别人只看谁、什么时候、做了什么（B1）
  *   - 短沟通提示（C12）：保存成功后按库里存下的内容判无效，回原因给前端一句轻提示；判的时候出错当没有，不影响保存结果
@@ -30,6 +30,7 @@ import { 能裁决三态, 能继续持有三态, 能代选三态, 是市场角�
 import { 找条线总管理 } from "./tri-state-people";
 import { 三态显示名, 换成新叫法, 暂缓回收按钮名 } from "./tri-state-label";
 import { 读组织, 是系统管理员of, type 组织 } from "./org";
+import { 不是同号留痕SQL } from "./same-number-mark";
 
 /** 状态条上的一颗按钮：动作对应 customers/tri-state-actions.ts（客户转让走客户页头那个框） */
 export type 三态条按钮 = {
@@ -229,7 +230,7 @@ SELECT 'f' AS t, x.pid AS id, x.at AS a, x.cat AS b, x.content AS content, x.src
     EXISTS (SELECT 1 FROM "FollowUpSource" s WHERE s."followUpId" = f.id) AS src,
     ROW_NUMBER() OVER (PARTITION BY fp."projectId" ORDER BY ${沟通生效时刻SQL("f")} DESC, f.id DESC) AS rn
   FROM "FollowUpProject" fp JOIN "FollowUp" f ON f.id = fp."followUpId" JOIN "Project" p ON p.id = fp."projectId"
-  WHERE ${合格} AND f."deletedAt" IS NULL
+  WHERE ${合格} AND f."deletedAt" IS NULL AND ${不是同号留痕SQL("f")}
 ) x WHERE x.rn <= ${冷项目看沟通条数}`,
     ...projectIds, ...projectIds,
   );
@@ -263,7 +264,7 @@ SELECT 'f' AS t, x.pid AS id, x.at AS a, x.cat AS b, x.content AS content, x.src
         `SELECT fp."projectId" AS id, f."occurredAt" AS a, f."createdAt" AS b, f.content AS content,
     EXISTS (SELECT 1 FROM "FollowUpSource" s WHERE s."followUpId" = f.id) AS src
   FROM "FollowUpProject" fp JOIN "FollowUp" f ON f.id = fp."followUpId"
-  WHERE fp."projectId" = ? AND f."deletedAt" IS NULL ORDER BY ${沟通生效时刻SQL("f")} DESC, f.id DESC LIMIT 200 OFFSET ${跳}`,
+  WHERE fp."projectId" = ? AND f."deletedAt" IS NULL AND ${不是同号留痕SQL("f")} ORDER BY ${沟通生效时刻SQL("f")} DESC, f.id DESC LIMIT 200 OFFSET ${跳}`,
         id,
       );
       for (const x of 往前) 收(x);
