@@ -12,8 +12,9 @@ import { chromium, type Browser } from "playwright";
 
 let browser: Browser, 包: string;
 /*
-  「联系电话」#381 实操起默认显示、紧跟编号（客户口径「号码可以全部显示」）：默认用户 1280 / 1366 三态开着会多 150 宽、表格内部横滚。
-  这几条量的是其余各列的摆法和宽度（1280 不横滚、最后一列看得全），先把号码藏起来（和人在「列」里取消勾一样）再量；号码默认显示见 ent-cust-list-phone-state.ui.test.ts
+  「联系电话」#381 实操起默认显示、紧跟编号（客户口径「号码可以全部显示」）；三态开着「项目数」默认收进「列」给它腾位置（PR #384，用户定方案 A）。
+  三态开着的三条（默认列宽、最近跟进带一句、国家）按默认列量（带号码）：1366 不出表格内部横滚，1280 内部横滚 ≤ 80、滚到最左客户 / 编号 / 联系电话整列看得见。
+  只量其余各列摆法的两条（两列紧跟客户名、回收状态位置）先把号码藏起来（和人在「列」里取消勾一样）再量；号码默认显示见 ent-cust-list-phone-state.ui.test.ts
 */
 const 藏号码 = (page: import("playwright").Page) => page.evaluate(() => localStorage.setItem("list-cols:customers", JSON.stringify(["-phone"])));
 const 列表桩: Plugin = { name: "import-perm-boundaries", setup(b) {
@@ -123,8 +124,9 @@ it("两列紧跟客户名；节点标签一行省略、—、0；三种宽度每
     } finally { await page.close(); }
   }
 });
-// 客户三态开着（11-12 三态界面 B 组）：多「回收状态」一列（紧跟项目数，和「客户状态」分开）、多「回收状态」筛选；三种宽度筛选行仍一行、每格一行、页面不撑出
-it("三态开着：回收状态列在项目数后面、和客户状态两列；1024 / 1280 / 1366 筛选行一行、每格一行、不横向撑出", async () => {
+// 客户三态开着（11-12 三态界面 B 组）：多「回收状态」一列（和「客户状态」分开）、多「回收状态」筛选；三种宽度筛选行仍一行、每格一行、页面不撑出。
+// PR #384 起三态开着「项目数」默认收进「列」，回收状态紧跟当前节点
+it("三态开着：回收状态列紧跟当前节点（项目数默认收起）、和客户状态两列；1024 / 1280 / 1366 筛选行一行、每格一行、不横向撑出", async () => {
   for (const w of [1024, 1280, 1366]) {
     const page = await browser.newPage({ viewport: { width: w, height: 900 } }); page.setDefaultTimeout(5000);
     const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -137,7 +139,7 @@ it("三态开着：回收状态列在项目数后面、和客户状态两列；1
       await page.locator("tr.ant-table-row").first().waitFor();
       const 头 = (await page.locator("thead th").allInnerTexts()).map((t) => t.trim());
       const 名位 = 头.indexOf("客户");
-      expect(头.slice(名位, 名位 + 6), `宽 ${w}`).toEqual(["客户", "编号", "当前节点", "项目数", "回收状态", "客户状态"]);
+      expect(头.slice(名位, 名位 + 5), `宽 ${w}`).toEqual(["客户", "编号", "当前节点", "回收状态", "客户状态"]);
       // 三态开着列收窄了，编号照样一行放全（含 6 位的 NO.123456）
       expect(await page.evaluate((列) => [...document.querySelectorAll("tr.ant-table-row")].every((tr) => {
         const td = tr.children[列] as HTMLElement, cs = getComputedStyle(td), r = document.createRange(); r.selectNodeContents(td);
@@ -159,9 +161,11 @@ it("三态开着：回收状态列在项目数后面、和客户状态两列；1
   }
 });
 /*
-  三态开着，默认列（客户、编号、当前节点、项目数、回收状态、客户状态、级别、国家、负责人、最近跟进 + 勾选 + 操作；11-17 起预计签约默认收进「列」、加了编号）：
+  三态开着，默认列（客户、编号、联系电话、当前节点、回收状态、客户状态、级别、国家、负责人、最近跟进 + 勾选 + 操作；11-17 起预计签约默认收进「列」、加了编号；
+  PR #384 起联系电话默认显示、项目数默认收进「列」）：
   量法：左栏 220 + 正文左右各 26 内边距，表格框 = .ant-table-content 的 clientWidth（1280 → 1008，1366 → 1094，1024 → 752）；
-  1280 / 1366 框里的 scrollWidth 不超过 clientWidth（不出内部横向滚动），最后一个数据列（最近跟进）右边界不越过固定的操作列左边界；
+  1366 框里的 scrollWidth 不超过 clientWidth（不出内部横向滚动）；1280 内部横滚不超过 80、滚到最左时客户 / 编号 / 联系电话整列看得见；
+  最后一个数据列（最近跟进）右边界不越过固定的操作列左边界；
   1024 允许内部横滚：滚到最右时最后一个数据列不被操作列盖住，滚到最左时第一个数据列不被勾选列盖住。
   表头都不截（scrollWidth ≤ clientWidth），「项目数」三个字放得下。三态关着列宽照旧（只有项目数 64 → 72）
 */
@@ -171,7 +175,7 @@ it("三态开着：默认列在 1280 / 1366 不横向滚、最后一列看得全
     const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
     try {
       await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
-      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") }); await 藏号码(page);
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") });
       await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
       if (三) await page.evaluate(() => { (window as unknown as { __三态: boolean }).__三态 = true; });
       await page.addScriptTag({ content: 包 });
@@ -190,24 +194,37 @@ it("三态开着：默认列在 1280 / 1366 不横向滚、最后一列看得全
           截了的头: ths.filter((t) => { const r = document.createRange(); r.selectNodeContents(t); const cs = getComputedStyle(t); return r.getBoundingClientRect().width > t.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) + 0.5; }).map((t) => t.innerText.trim()),
           末右: 数据.at(-1)!.getBoundingClientRect().right, 操作左: 操作.getBoundingClientRect().left,
           首左: 数据[0].getBoundingClientRect().left, 勾右: 勾.getBoundingClientRect().right,
+          // 客户 / 编号 / 联系电话三列整列在可视区里（框左右之间、不被勾选列和操作列盖住）
+          前三整列: ["客户", "编号", "联系电话"].map((名) => {
+            const th = ths.find((t) => t.innerText.trim() === 名);
+            if (!th) return `${名}:没有`;
+            const r = th.getBoundingClientRect(), 框r = 框.getBoundingClientRect();
+            const 左界 = th.classList.contains("ant-table-cell-fix-start") || th.classList.contains("ant-table-cell-fix-left") ? 框r.left : Math.max(框r.left, 勾.getBoundingClientRect().right);
+            return r.left >= 左界 - 0.5 && r.right <= Math.min(框r.right, 操作.getBoundingClientRect().left) + 0.5 ? `${名}:全` : `${名}:${Math.round(r.left)}-${Math.round(r.right)}`;
+          }),
         };
       }, 到);
       const 右 = await 量("右");
       expect(右.截了的头, `宽 ${w} 表头不截`).toEqual([]);
       expect(右.末右, `宽 ${w} 最后一列不被操作列盖住`).toBeLessThanOrEqual(右.操作左 + 0.5);
-      // 11-17 PR-1：多了常驻的「编号」；「预计签约」三态开着默认收进「列」（腾位置给编号，1280 照旧不横滚）
-      if (三) expect(右.头, `宽 ${w}`).toEqual(["客户", "编号", "当前节点", "项目数", "回收状态", "客户状态", "级别", "国家", "负责人", "最近跟进"]);
-      if (三 && w >= 1280) expect(右.内宽, `宽 ${w} 不出表格内部横向滚动`).toBeLessThanOrEqual(右.框宽);
-      if (w === 1366) {
-        // 大一号的表头字（换皮肤 / 系统字体更宽时）：「项目数」三个字照样放得下
-        await page.addStyleTag({ content: ":root{--fs-note:16px}" });
-        expect((await 量("右")).截了的头.filter((t) => t === "项目数"), "表头 16px").toEqual([]);
+      // 11-17 PR-1：多了常驻的「编号」；「预计签约」三态开着默认收进「列」（腾位置给编号）；
+      // PR #384：「联系电话」默认显示、紧跟编号，三态开着「项目数」默认收进「列」（用户定方案 A）
+      if (三) expect(右.头, `宽 ${w}`).toEqual(["客户", "编号", "联系电话", "当前节点", "回收状态", "客户状态", "级别", "国家", "负责人", "最近跟进"]);
+      if (三 && w === 1366) expect(右.内宽, `宽 ${w} 不出表格内部横向滚动`).toBeLessThanOrEqual(右.框宽);
+      if (三 && w === 1280) {
+        expect(右.内宽 - 右.框宽, `宽 ${w} 内部横滚不超过 80`).toBeLessThanOrEqual(80);
+        expect((await 量("左")).前三整列, `宽 ${w} 滚到最左`).toEqual(["客户:全", "编号:全", "联系电话:全"]);
       }
       if (w === 1024) {
         const 左 = await 量("左");
         expect(左.首左, `宽 ${w} 第一列不被勾选列盖住`).toBeGreaterThanOrEqual(左.勾右 - 0.5);
         // 1024 宽表格本来就横滚，列宽 = 设的宽：三态关着照旧（项目数 64 → 72），开着按收过的
-        expect(左.宽们, `宽 ${w} 三态${三 ? "开" : "关"}`).toEqual(三 ? [136, 104, 80, 72, 136, 76, 60, 68, 92, 92] : [200, 104, 112, 72, 110, 116, 76, 96, 140, 180]);
+        expect(左.宽们, `宽 ${w} 三态${三 ? "开" : "关"}`).toEqual(三 ? [136, 104, 150, 80, 136, 76, 60, 68, 92, 92] : [200, 104, 150, 112, 72, 110, 116, 76, 96, 140, 180]);
+      }
+      if (!三) {
+        // 大一号的表头字（换皮肤 / 系统字体更宽时）：「项目数」三个字照样放得下（三态开着它默认收着，在三态关着的这一轮、量完列宽之后量）
+        await page.addStyleTag({ content: ":root{--fs-note:16px}" });
+        expect((await 量("右")).截了的头.filter((t) => t === "项目数"), "表头 16px").toEqual([]);
       }
       expect(errors).toEqual([]);
     } finally { await page.close(); }
@@ -223,7 +240,7 @@ it("最近跟进带一句：时间在前、一句接后面一行省略；没有�
     const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
     try {
       await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
-      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") }); await 藏号码(page);
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") });
       await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
       await page.evaluate((三) => {
         const x = window as unknown as { __三态: boolean; __一句: Record<string, string> };
@@ -266,7 +283,9 @@ it("最近跟进带一句：时间在前、一句接后面一行省略；没有�
       for (const g of 量.格) expect([g.格在格里, g.时间在前, g.一行], `宽 ${w}`).toEqual([true, true, true]);
       expect(Math.max(...量.格.map((g) => g.高)) - Math.min(...量.格.map((g) => g.高)), `宽 ${w} 行高不变`).toBeLessThanOrEqual(1);
       expect(一.高, `宽 ${w}`).toBeLessThanOrEqual(60);
-      if (三 && w >= 1280) expect(量.内宽, `宽 ${w} 不出表格内部横向滚动`).toBeLessThanOrEqual(量.框宽);
+      // 带默认显示的号码（PR #384）：1366 不出内部横滚，1280 内部横滚不超过 80
+      if (三 && w === 1366) expect(量.内宽, `宽 ${w} 不出表格内部横向滚动`).toBeLessThanOrEqual(量.框宽);
+      if (三 && w === 1280) expect(量.内宽 - 量.框宽, `宽 ${w} 内部横滚不超过 80`).toBeLessThanOrEqual(80);
       expect(量.页宽, `宽 ${w} 页面不横向撑出`).toBeLessThanOrEqual(w);
       摆法.push(`一句 ${w}${三 ? " 三态" : ""}: 框 ${量.框宽} 内 ${量.内宽} 页 ${量.页宽} 行高 ${一.高}`);
       expect(errors).toEqual([]);
@@ -284,7 +303,7 @@ it("这一页没人填国家：「国家」一列照摆、每格「—」；三�
     const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
     try {
       await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
-      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") }); await 藏号码(page);
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") });
       await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
       await page.evaluate((三) => { const x = window as unknown as { __无国家: boolean; __三态: boolean }; x.__无国家 = true; x.__三态 = 三; }, 三);
       await page.addScriptTag({ content: 包 });
@@ -312,7 +331,9 @@ it("这一页没人填国家：「国家」一列照摆、每格「—」；三�
       expect(量.高, `宽 ${w} 每格一行`).toBeLessThanOrEqual(60);
       expect(量.末, `宽 ${w}`).toBe("最近跟进");
       expect(量.末右, `宽 ${w} 最后一列不被操作列盖住`).toBeLessThanOrEqual(量.操作左 + 0.5);
-      if (三 && w >= 1280) expect(量.内宽, `宽 ${w} 不出表格内部横向滚动`).toBeLessThanOrEqual(量.框宽);
+      // 带默认显示的号码（PR #384）：1366 不出内部横滚，1280 内部横滚不超过 80
+      if (三 && w === 1366) expect(量.内宽, `宽 ${w} 不出表格内部横向滚动`).toBeLessThanOrEqual(量.框宽);
+      if (三 && w === 1280) expect(量.内宽 - 量.框宽, `宽 ${w} 内部横滚不超过 80`).toBeLessThanOrEqual(80);
       expect(量.页宽, `宽 ${w} 页面不横向撑出`).toBeLessThanOrEqual(w);
       if (!(await page.getByRole("combobox", { name: "国家" }).count())) {
         await page.getByRole("button", { name: /^更多筛选/ }).click();

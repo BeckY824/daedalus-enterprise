@@ -196,18 +196,18 @@ it("#381：换人（同一个标签页 A 退出、B 登录）不带 A 的勾选�
   } finally { await page.close(); }
 });
 
-it("#381 实操：「联系电话」默认显示、紧跟编号；存过列设置（那时号码收着、没勾过）的照旧收着；勾过的、藏过的照存的", async () => {
+it("#381 实操：「联系电话」默认显示、紧跟编号；存过别的列设置、没提过号码的老用户照样显示；只有主动藏过（-phone）的收着", async () => {
   const errors: string[] = [];
   const page = await 新页(errors, 1366);
   const 头 = () => page.evaluate(() => [...document.querySelectorAll<HTMLElement>("thead th")].map((t) => t.innerText.trim()).filter(Boolean));
   try {
     await 打开(page, "http://localhost/customers?page=1");
     expect((await 头()).slice(0, 3)).toEqual(["客户", "编号", "联系电话"]);
-    // 老设置：只勾过创建时间（存的里没有 phone）→ 号码照旧收着
+    // 老设置：只勾过创建时间（存的里没有 phone）→ 号码照样显示（客户口径「号码可以全部显示」，PR #384 审查）
     await 打开(page, "http://localhost/customers?page=1", () => localStorage.setItem("list-cols:customers", JSON.stringify(["createdAt"])));
-    expect(await page.locator("thead th.dl-col-phone").count()).toBe(0);
+    expect(await page.locator("thead th.dl-col-phone").count()).toBe(1);
     expect(await page.locator("thead th.dl-col-createdAt").count()).toBe(1);
-    // 藏过的照旧藏着；勾过的照旧显示
+    // 主动藏过的照旧藏着；勾过的照旧显示
     await 打开(page, "http://localhost/customers?page=1", () => localStorage.setItem("list-cols:customers", JSON.stringify(["-phone"])));
     expect(await page.locator("thead th.dl-col-phone").count()).toBe(0);
     await 打开(page, "http://localhost/customers?page=1", () => localStorage.setItem("list-cols:customers", JSON.stringify(["createdAt", "phone"])));
@@ -257,6 +257,88 @@ it("#381 实操：回来时表格框在几帧里变窄（左栏从图标窄栏�
     await page.evaluate(() => { document.querySelector<HTMLElement>(".ant-table-content")!.scrollLeft = 40; });
     await page.waitForTimeout(400);
     expect(await 存的横滚(page)).toBe(40);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+/** 记一张宽表滚到最右的值，重新加载；回来时左栏从 56 慢慢展开到 220（过渡 过渡），表格行一出来就开始展开。返回滚到最右的值 */
+async function 记最右再回来(page: Page, 过渡: string, 每帧记?: boolean) {
+  await 打开(page, "http://localhost/customers?page=1", () => localStorage.setItem("list-cols:customers", JSON.stringify(["phone", "createdAt", "signedAmount", "grade", "referrerName"])));
+  await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
+  const 目标 = await page.evaluate(() => { const x = document.querySelector<HTMLElement>(".ant-table-content")!; x.scrollLeft = x.scrollWidth; return x.scrollLeft; });
+  await page.waitForTimeout(400);
+  expect(await 存的横滚(page)).toBe(目标);
+  await page.reload();
+  await page.addStyleTag({ content: `#root{margin-left:56px;padding:22px 26px;transition:margin-left ${过渡}}` });
+  await page.evaluate((每帧记) => {
+    const w = window as unknown as { __样: (number | null)[] };
+    w.__样 = [];
+    const 盯 = new MutationObserver(() => {
+      if (!document.querySelector("tr.ant-table-row")) return;
+      盯.disconnect();
+      document.getElementById("root")!.style.marginLeft = "220px";
+    });
+    盯.observe(document.body, { childList: true, subtree: true });
+    if (!每帧记) return;
+    // 每帧抄一次 sessionStorage 里记的横滚：还原途中存的值要一直是目标，不能哪一刻被夹小的值盖掉
+    const 抄 = () => {
+      const k = Object.keys(sessionStorage).find((x) => x.startsWith("crm:list-pick"));
+      w.__样.push(k ? (JSON.parse(sessionStorage.getItem(k)!) as Record<string, { x: number }>).customers?.x ?? null : null);
+      if (w.__样.length < 120) requestAnimationFrame(抄);
+    };
+    requestAnimationFrame(抄);
+  }, !!每帧记);
+  await 挂上(page);
+  return 目标;
+}
+
+it("#381 实操（PR #384 审查）：左栏展开得慢（600ms 线性）时还原途中每一帧存的横滚都是目标，不被夹小的值盖掉", async () => {
+  const errors: string[] = [];
+  const page = await 新页(errors, 1366);
+  try {
+    const 目标 = await 记最右再回来(page, "600ms linear", true);
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __样: unknown[] }).__样.length), { timeout: 5000 }).toBe(120);
+    const 样 = await page.evaluate(() => (window as unknown as { __样: (number | null)[] }).__样);
+    expect(样.filter((v) => v !== 目标), JSON.stringify(样)).toEqual([]);
+    await expect.poll(() => 横滚(page)).toBe(目标);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("#381 实操（PR #384 审查）：还原途中人滚一下（单次滚轮）当场停还原，人滚到的位置照记、不被拉回目标", async () => {
+  const errors: string[] = [];
+  const page = await 新页(errors, 1366);
+  try {
+    const 目标 = await 记最右再回来(page, "600ms linear");
+    await page.waitForTimeout(100);
+    await page.evaluate(() => { const x = document.querySelector<HTMLElement>(".ant-table-content")!; window.dispatchEvent(new WheelEvent("wheel")); x.scrollLeft = 40; });
+    await page.waitForTimeout(800);
+    expect({ 实际: await 横滚(page), 存的: await 存的横滚(page) }, `目标 ${目标}`).toEqual({ 实际: 40, 存的: 40 });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("#381 实操（PR #384 审查）：记的横滚够不着（回来时列少了），滚到最长时长收尾、把实际停的位置记一次", async () => {
+  const errors: string[] = [];
+  const page = await 新页(errors, 1366);
+  try {
+    await 打开(page, "http://localhost/customers?page=1", () => localStorage.setItem("list-cols:customers", JSON.stringify(["phone", "createdAt", "signedAmount", "grade", "referrerName"])));
+    await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
+    const 目标 = await page.evaluate(() => { const x = document.querySelector<HTMLElement>(".ant-table-content")!; x.scrollLeft = x.scrollWidth; return x.scrollLeft; });
+    await page.waitForTimeout(400);
+    expect(await 存的横滚(page)).toBe(目标);
+    // 回来前在别的页签把几列收了：表变窄，目标够不着
+    await page.evaluate(() => localStorage.setItem("list-cols:customers", JSON.stringify(["phone", "createdAt"])));
+    await page.reload();
+    await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
+    await 挂上(page);
+    const 最多 = await page.evaluate(() => { const x = document.querySelector<HTMLElement>(".ant-table-content")!; return x.scrollWidth - x.clientWidth; });
+    expect(最多).toBeGreaterThan(0);
+    expect(最多).toBeLessThan(目标);
+    // 最长 1500ms 到了才收尾；收尾前存的还是老值
+    expect(await 存的横滚(page)).toBe(目标);
+    await expect.poll(() => 存的横滚(page), { timeout: 4000 }).toBe(Math.round(await 横滚(page)));
+    expect(await 存的横滚(page)).toBeLessThan(目标);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

@@ -16,27 +16,32 @@ export type 横滚回选项 = {
   稳帧?: number;
 };
 
-export function 横滚回(取框: () => HTMLElement | null | undefined, x: number, 完了: () => void, 选项: 横滚回选项 = {}): () => void {
+/** 怎么停的：到了 = 滚到目标、尺寸稳住；人动了 = 滚轮 / 触摸 / 按键 / 按下；超时 = 最长时长到了还没到（目标够不着）；停了 = 调用方叫停（卸了） */
+export type 横滚停因 = "到了" | "人动了" | "超时" | "停了";
+
+export function 横滚回(取框: () => HTMLElement | null | undefined, x: number, 完了: (怎么停的: 横滚停因) => void, 选项: 横滚回选项 = {}): () => void {
   const { 最短 = 300, 最长 = 1500, 稳帧 = 3 } = 选项;
-  let 停 = false;
   let 收过 = false;
   let 稳 = 0;
   let 上尺: string | null = null;
   let 帧 = 0;
   const 开始 = performance.now();
-  const 人动了 = () => {
-    停 = true;
-  };
   const 事件 = ["wheel", "touchstart", "keydown", "mousedown", "pointerdown"] as const;
-  for (const e of 事件) window.addEventListener(e, 人动了, { passive: true, capture: true });
-  const 收 = () => {
+  const 收 = (因: 横滚停因) => {
     if (收过) return;
     收过 = true;
+    cancelAnimationFrame(帧);
     for (const e of 事件) window.removeEventListener(e, 人动了, { capture: true });
-    完了();
+    完了(因);
   };
+  /*
+    人动了当场收，不等下一帧（PR #384 审查）：人那一下的 scroll 事件可能赶在下一帧之前到，
+    那时还算「还原中」、调用方不记，人滚到的位置就丢了（探针：目标 620、人滚到 40，存的还是 620）
+  */
+  const 人动了 = () => 收("人动了");
+  for (const e of 事件) window.addEventListener(e, 人动了, { passive: true, capture: true });
   const 一步 = () => {
-    if (停) return 收();
+    if (收过) return;
     const 过了 = performance.now() - 开始;
     const 框 = 取框();
     if (框) {
@@ -45,15 +50,11 @@ export function 横滚回(取框: () => HTMLElement | null | undefined, x: numbe
       const 尺 = `${框.clientWidth}/${框.scrollWidth}`;
       稳 = Math.abs(框.scrollLeft - x) < 1 && 尺 === 上尺 ? 稳 + 1 : 0;
       上尺 = 尺;
-      if (稳 >= 稳帧 && 过了 >= 最短) return 收();
+      if (稳 >= 稳帧 && 过了 >= 最短) return 收("到了");
     }
-    if (过了 >= 最长) return 收();
+    if (过了 >= 最长) return 收("超时");
     帧 = requestAnimationFrame(一步);
   };
   帧 = requestAnimationFrame(一步);
-  return () => {
-    停 = true;
-    cancelAnimationFrame(帧);
-    收();
-  };
+  return () => 收("停了");
 }

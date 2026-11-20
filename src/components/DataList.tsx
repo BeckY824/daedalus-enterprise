@@ -41,13 +41,14 @@ export type 列<T> = ColumnType<T> & {
   列名?: string;
   /** false = 默认收在「列」里，要勾才显示。不写就是默认显示 */
   默认?: boolean;
-  /**
-   * 存过列设置、又没提过这一列的人显示不显示（不写 = 同 默认）。一列从「默认收着」改成「默认显示」时写 false：
-   * 老设置是按「它收着」存的（存的只有显示的列和主动藏的「-键」，收着没动过的不记），不写的话一升级它就冒出来，改了人自己的设置
-   */
-  老设置默认?: boolean;
   /** true = 不进列设置，永远跟着（操作列） */
   常驻?: boolean;
+  /**
+   * true = 手机宽（< 768）不钉右（只对 fixed: "right" / "end" 的列有用），跟着横滚到最后。不写照钉。
+   * 只有客户列表的操作列写（#381 实操：只一颗「⋯」，让出中间给号码列）；线索、公海这些的操作列放着分配 / 领取按钮和分完的结果，
+   * 手机上也得一眼看得见（e2e-ent/owner-first-batch A5：375 宽结果格不许跑出视口）
+   */
+  手机不钉?: boolean;
   /** true = 列设置里照列着、勾着，但灰掉不让取消（11-04 P-界面-08 市场角色项目页：项目、阶段、进程、验证结果、负责人锁定）。存的设置里藏过也照样显示 */
   锁定?: boolean;
   /** true = 这一列照旧折行写完（备注这类长文，11-04 用户：「除了备注，备注信息有时候过多」）。其余列一行、省略号、悬停看全 */
@@ -257,7 +258,7 @@ export default function DataList<T extends { id: string }>({
   */
   const 锁定的 = useMemo(() => 可选的.filter((c) => c.锁定).map(列键), [可选的]);
   const 可见 = useMemo(() => {
-    const 算 = 存的 ? 算可见列(可选的.map((c) => ({ 键: 列键(c), 默认显示: c.老设置默认 ?? c.默认 !== false })), 存的) : 默认可见;
+    const 算 = 存的 ? 算可见列(可选的.map((c) => ({ 键: 列键(c), 默认显示: c.默认 !== false })), 存的) : 默认可见;
     return 锁定的.length ? [...new Set([...算, ...锁定的])] : 算;
   }, [存的, 默认可见, 可选的, 锁定的]);
 
@@ -328,17 +329,30 @@ export default function DataList<T extends { id: string }>({
       停横滚还原.current = 横滚回(
         () => 表框.current?.querySelector<HTMLElement>(".ant-table-content"),
         记的.x,
-        () => {
+        (怎么停的) => {
           横滚还原中.current = false;
           停横滚还原.current = null;
+          /*
+            滚到头也没到目标（列少了、框变宽了，最长时长到了才停）：还原期间 scroll 事件不记，存的还是够不着的老值；
+            把眼下实际停的位置记一次，之后刷新照这个还原（PR #384 审查）。人动了的不用补：收尾在人那一下的 scroll 事件之前，那一下照常记
+          */
+          if (怎么停的 !== "超时") return;
+          const 框 = 表框.current?.querySelector<HTMLElement>(".ant-table-content");
+          if (框) 记横滚(还原键, 当前列表地址(), 框.scrollLeft);
         },
       );
     }
     // 只在挂上、数据到了那一下读回；批量 是每次渲染新给的函数，不跟着它重跑
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [还原键, 加载中, 行]);
-  // 卸了就停（还原中的那一圈 rAF 不留着）
-  useEffect(() => () => 停横滚还原.current?.(), []);
+  /*
+    卸了就停（还原中的那一圈 rAF 不留着），也把「读回过」复位：开发版严格模式挂上 → 卸 → 再挂上，第一次挂上读回过、
+    横滚还原被这里停掉，不复位的话再挂上那次以为读过了，横滚和勾选都不还原（PR #384 审查）。真卸了 ref 跟着没了，复位不碍事
+  */
+  useEffect(() => () => {
+    停横滚还原.current?.();
+    读回过.current = false;
+  }, []);
   // 表格横着滚了就记位置（隔 150ms 写一次）。scroll 不冒泡，在外框上用捕获阶段听表格里那个横滚框
   useEffect(() => {
     const 框 = 表框.current;
@@ -396,7 +410,8 @@ export default function DataList<T extends { id: string }>({
   /*
     手机宽（< 768，md 明确为 false 才算；服务端那一版还不知道多宽，照电脑画）：两边固定列把中间挤得只剩一条缝（#381 实操：390 宽客户列表
     左边勾选 + 客户名钉到 244px、右边操作列从 322px 起，中间 78px，150 宽的号码列怎么横滚都只露一截）。
-    名字列收到 手机名字宽（一行省略、悬停看全照旧），右边固定的（操作列）不钉、跟着横滚到最后（要用滚到最右；点行进详情照旧）
+    名字列收到 手机名字宽（一行省略、悬停看全照旧）；右边固定的列写了 手机不钉 的才不钉、跟着横滚到最后（要用滚到最右；点行进详情照旧）。
+    没写的照钉：PR #384 第一版一律不钉，线索列表的操作列（分配按钮、批量自动分配的结果格）在 375 宽被推到 930–1068px，看不见
   */
   const 手机 = 屏.md === false;
   const 显示的列 = useMemo(
@@ -408,7 +423,7 @@ export default function DataList<T extends { id: string }>({
           // 第一列就是「这一行是谁」（客户 / 线索 / 商机 / 渠道 / 联系人的名字），钉在左边。
           // 只钉常驻的：能被收进「列」里的列不该当名字
           ...(i === 0 && c.常驻 && !c.fixed ? { fixed: "left" as const, ...(手机 && typeof c.width === "number" && c.width > 手机名字宽 ? { width: 手机名字宽 } : {}) } : {}),
-          ...(手机 && (c.fixed === "right" || c.fixed === "end") ? { fixed: undefined } : {}),
+          ...(手机 && c.手机不钉 && (c.fixed === "right" || c.fixed === "end") ? { fixed: undefined } : {}),
           // 带上列键做类名，挪到看得见 靠它找表头
           // 折行：备注这类长文照旧折行；操作列（表头空）按钮不截
           className: [c.className, `dl-col-${列键(c)}`, c.折行 ? "dl-wrap" : "", c.title === "" ? "dl-act" : ""].filter(Boolean).join(" "),

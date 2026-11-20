@@ -203,7 +203,7 @@ test("客户列表：空库时不摆筛选栏，主动作还在原位", async ({
   await expect(企业版 ? page.locator(".page-head").getByRole("button", { name: /新建/ }) : page.getByRole("button", { name: /新建客户/ })).toBeVisible();
 });
 
-test("客户列表：默认只摆六列（企业版项目模式十列），其余在「列」里", async ({ page }) => {
+test("客户列表：默认只摆七列（企业版项目模式十一列），其余在「列」里", async ({ page }) => {
   const p = 连库();
   await 造模拟数据(p);
   await p.$disconnect();
@@ -212,31 +212,33 @@ test("客户列表：默认只摆六列（企业版项目模式十列），其�
   await page.goto("/customers");
   await page.waitForSelector(".ant-table-row");
 
-  // 六列 + 勾选框 + 操作列；操作列的「操作」只给读屏念（.sr-only），不算看得见的列
+  // 七列 + 勾选框 + 操作列；操作列的「操作」只给读屏念（.sr-only），不算看得见的列
   // 只数摆着的那张表：生产构建下 DOM 里偶尔多一份藏着的同页（本机 E2E_PROD 实测数出 16 个表头）
   const 表头 = await page.locator(".ant-table-thead:visible th").evaluateAll((ths) =>
     ths.map((th) => { const c = th.cloneNode(true) as HTMLElement; c.querySelectorAll(".sr-only").forEach((e) => e.remove()); return c.textContent ?? ""; }));
   // 企业版：不摆「院校·专业」（10-28 去遗留 B2），跟进状态换成客户状态，多一列「级别」（定稿客户字段）；
   // 项目模式客户名后紧跟「当前节点」「项目数」（11-12 客户详情合并第 3 批，定稿 UI 表格）；11-16 员工反馈 1C：「国家」固定显示在级别后；
-  // 11-17 客户抬头 PR-1：客户名后常驻「编号」（抬头可以重名，唯一性只靠编号），默认十列（三态开着「预计签约」收进「列」，这套没开三态）
+  // 11-17 客户抬头 PR-1：客户名后常驻「编号」（抬头可以重名，唯一性只靠编号）；
+  // 11-20 #381 实操：「联系电话」默认显示、紧跟编号（客户口径「号码可以全部显示」），默认十一列（三态开着「预计签约」收进「列」，这套没开三态）
   const 看得见 = 表头.map((t) => t.trim()).filter(Boolean);
   if (企业版) {
-    expect(看得见).toEqual(["客户", "编号", "当前节点", "项目数", "客户状态", "预计签约", "级别", "国家", "负责人", "最近跟进"]);
+    expect(看得见).toEqual(["客户", "编号", "联系电话", "当前节点", "项目数", "客户状态", "预计签约", "级别", "国家", "负责人", "最近跟进"]);
     // 编号格：有号写 NO.00012；种子直接插库的客户没号（存量回填前也是这样），写短号 #+ id 末 6 位，不是空的
     const 编号格 = await page.locator(".ant-table-row:visible .cust-no").allTextContents();
     expect(编号格.length).toBeGreaterThan(0);
     for (const t of 编号格) expect(t.trim()).toMatch(/^(NO\.\d{5,}|#[0-9A-Z]{6})$/);
-  } else expect(看得见.length).toBe(6);
-  // 1024 宽十列：表格自己能横滑可以，页面不能被撑出横向滚动
+  } else expect(看得见.length).toBe(7);
+  // 1024 宽十一列：表格自己能横滑可以，页面不能被撑出横向滚动
   await page.setViewportSize({ width: 1024, height: 700 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), { message: "1024 宽客户列表把页面撑出了横向滚动" }).toBe(true);
 
-  // 收起来的列要能勾出来
+  // 收起来的列要能勾出来（「联系电话」11-20 起默认显示，改拿默认收着的「创建时间」）
+  await expect(page.locator(".ant-table-thead th", { hasText: "创建时间" })).toHaveCount(0);
   await page.getByRole("button", { name: "列" }).click();
   const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden)");
   await 菜单.waitFor({ state: "visible" });
-  await 菜单.getByText("联系电话").click();
-  await expect(page.locator(".ant-table-thead th", { hasText: "联系电话" })).toBeVisible();
+  await 菜单.getByText("创建时间", { exact: true }).click();
+  await expect(page.locator(".ant-table-thead th", { hasText: "创建时间" })).toBeVisible();
 });
 
 /*
@@ -266,15 +268,16 @@ test("列设置：能连着勾好几项，单子不会自己收；再点按钮�
 
   // 连着点两项，每点一次单子都还得在。
   // 挑这两个是因为它们的名字不跟业务配置走（「职位/年级」那一列会跟着变）。
+  // 「联系电话」11-20 起默认显示（#381 实操），第一项改成默认收着的「创建时间」；
   // 企业版不摆决策状态（10-28 去遗留 A1），第二项改成把默认显示的「最近跟进」勾掉
   const 第二项 = 企业版 ? "最近跟进" : "决策状态";
-  for (const 列名 of ["联系电话", 第二项]) {
+  for (const 列名 of ["创建时间", 第二项]) {
     await 菜单.getByText(列名, { exact: true }).click();
     await expect(菜单, `点了「${列名}」之后单子不该收起来`).toBeVisible();
   }
 
   // 两次点击都真的生效了（不是只有第一次）
-  await expect(page.locator(".ant-table-thead th", { hasText: "联系电话" })).toBeVisible();
+  await expect(page.locator(".ant-table-thead th", { hasText: "创建时间" })).toBeVisible();
   if (企业版) await expect(page.locator(".ant-table-thead th", { hasText: "最近跟进" })).toHaveCount(0);
   else await expect(page.locator(".ant-table-thead th", { hasText: "决策状态" })).toBeVisible();
 
