@@ -665,16 +665,31 @@ describe("没填指定回复时间：从分配给销售那一刻起算（11-20 �
     expect(分配基准(p, [痕("2026-11-20 10:00", "b", { userId: "b", fromOwnerId: "a" })], [])).toBeNull();
     expect(分配基准(p, [痕("2026-11-20 10:00", "b", { userId: "b", fromOwnerId: null, reason: null })], [])).toBeNull();
     expect(分配基准(p, [], [{ toUserId: "b", byUserId: "b", createdAt: 京("2026-11-20 09:00") }])).toBeNull();
-    // 手动转让（改项目）：原因是待办痕或空、同一刻客户没换人 = 起算
+    // 手动转让（改项目）：原因是待办痕 = 起算；原因空的转让留痕一律不起算（老的离职交接只交项目、没带开头的转项目调用；客户换没换人都一样）
     expect(分配基准(p, [痕("2026-11-20 10:00", "b", { reason: "原负责人没做完的待办没带" })], [])).toEqual(京("2026-11-20 10:00"));
-    expect(分配基准(p, [痕("2026-11-20 10:00", "b", { reason: null })], [], [{ toOwnerId: "b", at: 京("2026-11-19 10:00") }])).toEqual(京("2026-11-20 10:00"));
-    // 跟着客户带过去的（原因空、同一刻客户也给了他）、随客户转走、回收站恢复、数据脚本 = 不起算
-    expect(分配基准(p, [痕("2026-11-20 10:00", "b", { reason: null })], [], [{ toOwnerId: "b", at: 京加("2026-11-20 10:00", 30) }])).toBeNull();
-    for (const 因 of ["随客户转走", "从回收站恢复，跟客户现负责人", "客户合并：随「某客户」并入 b 名下同一客户"]) {
+    expect(分配基准(p, [痕("2026-11-20 10:00", "b", { reason: null })], [])).toBeNull();
+    expect(分配基准(p, [痕("2026-11-20 10:00", "b", { reason: null })], [], [{ toOwnerId: "b", at: 京("2026-11-19 10:00"), kind: "assign", userId: "boss" }])).toBeNull();
+    expect(分配基准(p, [痕("2026-11-20 10:00", "b", { reason: null })], [], [{ toOwnerId: "b", at: 京加("2026-11-20 10:00", 30), kind: "assign", userId: "boss" }])).toBeNull();
+    // 跟着客户带过去的（跟着客户转过来、离职交接、随客户转走，转让和 pool-claim 都是）、回收站恢复、数据脚本 = 不起算
+    for (const 因 of ["跟着客户转过来", "跟着客户转过来；原负责人没做完的待办带过来 0 条", "离职交接", "随客户转走", "从回收站恢复，跟客户现负责人", "客户合并：随「某客户」并入 b 名下同一客户"]) {
       expect(分配基准(p, [痕("2026-11-20 10:00", "b", { reason: 因 })], [])).toBeNull();
+      expect(分配基准(p, [痕("2026-11-20 10:00", "b", { kind: "pool-claim", fromOwnerId: null, reason: 因 })], [])).toBeNull();
+    }
+    // 管理分客户公海带出的线索公海项目（从客户公海分配）= 起算，同一刻客户换了人也算
+    const 分客户 = { toOwnerId: "b", at: 京("2026-11-20 10:00"), kind: "pool-assign", userId: "boss" };
+    expect(分配基准(p, [痕("2026-11-20 10:00", "b", { kind: "pool-claim", fromOwnerId: null, reason: "从客户公海分配；原负责人没做完的待办带过来 0 条" })], [], [分客户])).toEqual(京("2026-11-20 10:00"));
+    // 老 pool-claim（没有开头）：同一刻客户换人是管理分客户公海 = 起算（11-14 那批）；是转让 / 市场转 / 离职 / 自己领 = 不起算；客户没换人 = 分线索公海项目、起算
+    const 老 = (原因: string | null) => 痕("2026-11-20 10:00", "b", { kind: "pool-claim", fromOwnerId: null, reason: 原因 });
+    for (const 原因 of [null, "原负责人没做完的待办带过来 0 条"]) {
+      expect(分配基准(p, [老(原因)], [], [{ ...分客户, at: 京加("2026-11-20 10:00", 2) }])).toEqual(京("2026-11-20 10:00"));
+      for (const kind of ["assign", "market-assign", "deactivate"]) expect(分配基准(p, [老(原因)], [], [{ ...分客户, kind }])).toBeNull();
+      expect(分配基准(p, [老(原因)], [], [{ ...分客户, kind: "claim", userId: "b" }])).toBeNull();
+      expect(分配基准(p, [老(原因)], [], [{ ...分客户, userId: "b" }])).toBeNull();
+      expect(分配基准(p, [老(原因)], [], [{ ...分客户, kind: "assign", at: 京加("2026-11-20 10:00", 60_000) }])).toEqual(京("2026-11-20 10:00"));
+      expect(分配基准(p, [老(原因)], [])).toEqual(京("2026-11-20 10:00"));
     }
     // 分配入口的那行同一刻客户也跟着转（市场首次分给销售）照样起算
-    expect(分配基准(p, [痕("2026-11-20 10:00", "b")], [], [{ toOwnerId: "b", at: 京("2026-11-20 10:00") }])).toEqual(京("2026-11-20 10:00"));
+    expect(分配基准(p, [痕("2026-11-20 10:00", "b")], [], [{ ...分客户, kind: "market-assign" }])).toEqual(京("2026-11-20 10:00"));
     // 建的人就是负责人：管理从公海分回给他也算分来的（没有分配记录）；自己领的不算
     expect(分配基准({ ownerId: "b", creatorId: "b" }, [痕("2026-11-20 10:00", "b", { kind: "pool-claim", fromOwnerId: null })], [])).toEqual(京("2026-11-20 10:00"));
     expect(分配基准({ ownerId: "b", creatorId: "b" }, [痕("2026-11-20 10:00", "b", { kind: "pool-claim", userId: "b", fromOwnerId: null })], [])).toBeNull();

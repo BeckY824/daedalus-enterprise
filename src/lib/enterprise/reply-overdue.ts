@@ -17,16 +17,23 @@
  * 规则没说、按默认做的（集中在本文件，改口径只改这里）：
  *   - 超时基准：按时 = 指定回复时间的结束，没填结束用开始（一个时间点就是它；一段时间按段尾）；
  *     按分配 = 分配基准()：最近一次「别人把这条线索分给他」的时刻。起算的只有这几种留痕（算起算()）：
+ *     只有「别人把这条项目分给他」起算，靠留痕原因的开头认（carry-tasks.ts 那几句，写痕的入口各自带上），不靠时间：
  *       · 分配入口（自动分配、指定分配、定时分配到点，assign-actions.ts 分项目给）：转让留痕，原因以「分配方式：」开头
- *       · 手动转让（改项目，含改公海里项目的负责人）：转让留痕，原因是 待办痕（「原负责人没做完的待办…」）或空、且同一刻客户没换人
- *       · 从公海分给他（管理员 / 销售管理 / 总管理分线索公海项目、客户公海分配带出的公海项目、查重领取、系统）：pool-claim 留痕
- *       · 市场新建时直接给销售（没有转让留痕，只有一条分配记录）：按那条分配记录的时刻
+ *       · 手动转让（改项目，含改公海里项目的负责人）：转让留痕，原因是 待办痕（「原负责人没做完的待办…」）
+ *       · 管理从线索公海分项目（分配公海项目、系统）：pool-claim 留痕（原因只有待办痕或空、同一刻客户没换人）
+ *       · 管理从客户公海分客户带出的线索公海项目（客户公海分配、分项目时整包出公海）：pool-claim，原因以「从客户公海分配」开头
+ *       · 市场新建时直接给销售（没有转让留痕，只有一条分配记录；含查重领取新建的那条）：按那条分配记录的时刻
  *     不起算（总控 11-20 定，P-转-28「只转市场分给销售的」：跟着客户带过去的、自己拿的不是「分给他」）：
  *       · 操作人就是接手人的（ProjectNodeLog.userId = toOwnerId；分配记录 byUserId = toUserId）：自己去公海领、自己分给自己、
  *         从客户公海领客户顺带过来的公海项目、导入出公海
- *       · 跟着客户整批带过去的：客户转让 / 离职交接 / 领客户带走的在推项目（carry-over-db.ts 转项目：原因空、同一刻客户换了人）、
- *         市场转客户带项目（原因「随客户转走」）
- *       · 从回收站恢复跟客户现负责人（原因「从回收站恢复…」，已停的链也不重启）、数据脚本写的留痕（别的原因，如「客户合并：随…并入」）
+ *       · 跟着客户带过去的：客户转让、管理分客户、查重领取（含带出线索公海的旧项目），原因「跟着客户转过来」开头；
+ *         离职交接（交客户、只交项目、全部交给里的其余和同事两组），原因「离职交接」开头；市场转客户带项目，原因「随客户转走」开头
+ *       · 原因空的转让留痕（没带开头的转项目调用、改项目没碰待办）、别的原因：从回收站恢复跟客户现负责人（「从回收站恢复…」，
+ *         已停的链也不重启）、数据脚本（如「客户合并：随…并入」）
+ *       · 11-20 以前写的老留痕没有这几个开头：pool-claim 按同一个客户、相差不到 随客户秒 秒、换给同一人的客户换负责人记录认——
+ *         那行是管理分客户公海（kind pool-assign）= 起算（11-14 那批），别的种类（转让、离职、市场转、领取）= 不起算，没有那行 = 分线索公海项目、起算；
+ *         原因空的转让留痕一律不起算（老的离职交接只交项目也是这样）。老的查重领取带出的项目客户换人记录也是 pool-assign，认不出来，
+ *         照起算（上线时往回 7 天里一条都没有）
  *       · 超时自动转那几行跳过（链上第一位的分配时刻不随轮转挪）；没留痕就换了负责人的（导入改负责人）= 不知道什么时候到他手上
  *     还得是「分来的」（是分来的()）：自留、自持的没填指定回复时间不进链
  *   - 有效沟通：按时 = 和指定回复提醒同一个判定：提醒时刻（开始 ?? 结束 − 30 分钟）以后挂在这条项目上、有内容的沟通（谁记的都算）；
@@ -76,7 +83,7 @@ import { 已回复的 } from "./reply-notice";
 import { 系统操作人 } from "./scheduled-assign";
 import { 超时转令牌 } from "./scheduled-assign-token";
 import { 规则开着 } from "./rules";
-import { 待办痕头 } from "@/lib/project/carry-tasks";
+import { 待办痕头, 公海分配痕 } from "@/lib/project/carry-tasks";
 import { 有内容的沟通 } from "./tri-state-quota";
 import { 同号节点 } from "./same-number-collab";
 import { 读占位词 } from "./tri-state-db";
@@ -138,11 +145,11 @@ export type 换人痕 = { kind: string; userId: string; reason: string | null; f
 /** 分配基准 要看的分配记录几列（EntLeadAssign） */
 export type 分配行 = { toUserId: string; byUserId: string; createdAt: Date };
 /** 分配基准 要看的客户换负责人记录几列（CustomerOwnerLog）：认「跟着客户带过去」的项目 */
-export type 客户换人 = { toOwnerId: string | null; at: Date };
+export type 客户换人 = { toOwnerId: string | null; at: Date; kind: string; userId: string };
 
 /** 分配入口（assign-actions.ts 分项目给）那行转让留痕原因的开头 */
 export const 分配方式痕头 = "分配方式：";
-/** 项目转让痕和客户换人记录相差不到这几秒、给的是同一个人 = 跟着客户带过去的（同一个事务里写的） */
+/** 老留痕：项目换人痕和客户换人记录相差不到这几秒、给的是同一个人 = 同一个事务里写的（看那行客户换人是哪种） */
 const 随客户秒 = 5;
 
 /**
@@ -150,12 +157,16 @@ const 随客户秒 = 5;
  */
 export function 算起算(l: 换人痕, 客户换人们: readonly 客户换人[]): boolean {
   if (!l.toOwnerId || l.userId === l.toOwnerId) return false;
-  if (l.kind === "pool-claim") return true;
-  if (l.kind !== "transfer") return false;
+  if (l.kind !== "transfer" && l.kind !== "pool-claim") return false;
   const 因 = l.reason ?? "";
-  if (因.startsWith(分配方式痕头) || 因.startsWith(待办痕头)) return true;
-  if (因) return false;
-  return !客户换人们.some((c) => c.toOwnerId === l.toOwnerId && Math.abs(c.at.getTime() - l.at.getTime()) <= 随客户秒 * 1000);
+  if (因.startsWith(分配方式痕头) || 因.startsWith(公海分配痕)) return true;
+  // 别的原因都不是分给他：跟着客户转过来、离职交接、随客户转走（carry-tasks.ts）、从回收站恢复、数据脚本……
+  if (因 && !因.startsWith(待办痕头)) return false;
+  // 只剩待办痕或空。转让：待办痕 = 手动转让（改项目）；空 = 没带开头的转项目调用（老的离职交接只交项目等），不起算
+  if (l.kind === "transfer") return !!因;
+  // pool-claim：分线索公海项目，或 11-20 以前写的老留痕（那时带出公海的都没开头），看同一刻的客户换人
+  const 同刻 = 客户换人们.find((c) => c.toOwnerId === l.toOwnerId && Math.abs(c.at.getTime() - l.at.getTime()) <= 随客户秒 * 1000);
+  return !同刻 || (同刻.kind === "pool-assign" && 同刻.userId !== l.toOwnerId);
 }
 
 /**
@@ -272,7 +283,7 @@ async function 换人记录of(们: readonly { id: string; customerId: string }[]
       select: { projectId: true, kind: true, userId: true, reason: true, fromOwnerId: true, toOwnerId: true, at: true },
     }),
     prisma.entLeadAssign.findMany({ where: { projectId: { in: [...ids] } }, select: { projectId: true, toUserId: true, byUserId: true, createdAt: true } }),
-    prisma.customerOwnerLog.findMany({ where: { customerId: { in: [...new Set(们.map((p) => p.customerId))] }, at: { gte: 从 } }, select: { customerId: true, toOwnerId: true, at: true } }),
+    prisma.customerOwnerLog.findMany({ where: { customerId: { in: [...new Set(们.map((p) => p.customerId))] }, at: { gte: 从 } }, select: { customerId: true, toOwnerId: true, at: true, kind: true, userId: true } }),
   ]);
   for (const { projectId, ...l } of 痕们) 痕of.set(projectId, [...(痕of.get(projectId) ?? []), l]);
   for (const { projectId, ...a } of 分配们) if (projectId) 分配of.set(projectId, [...(分配of.get(projectId) ?? []), a]);

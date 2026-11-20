@@ -1,10 +1,12 @@
 /**
  * 超时未跟进自动转「按分配」起算（没填指定回复时间，11-20）：用真实入口写出来的留痕，核哪些算「别人把它分给他」。
- *   起算：管理从线索公海分配（分配公海项目）、自动 / 指定分配（定时分出去 → 分项目给）、手动转让（改项目）
- *   不起算：销售自己去公海领（领取公海项目，留痕带历史负责人）、客户转让带项目、离职交接（带走一位）、
- *          市场转客户带项目（市场转一位，「随客户转走」）、从回收站恢复跟客户现负责人（恢复）
+ *   起算：管理从线索公海分配（分配公海项目）、管理从客户公海分客户带出的线索公海项目（分配公海，「从客户公海分配」）、
+ *        自动 / 指定分配（定时分出去 → 分项目给）、手动转让（改项目）
+ *   不起算：销售自己去公海领（领取公海项目，留痕带历史负责人）、客户转让带项目和带出的公海项目（带走一位，「跟着客户转过来」）、
+ *          离职交接（交客户 带走一位 / 只交项目 确认离职交接 / 全部交给的其余和同事两组 离职转给接手人，「离职交接」）、
+ *          市场转客户带项目和带出的公海项目（市场转一位，「随客户转走」）、从回收站恢复跟客户现负责人（恢复）
  * 入口写的留痕时刻是真实时钟：扫的时刻取「留痕 + 61 分钟」（夜里顺延到早上 08:00），只用只读的 盘点超时链 判进没进链
- * 查重领取新建的那条见 tests/ent-dedupe-claim.test.ts
+ * 查重领取（新建的那条进链、带出线索公海的旧项目不进）见 tests/ent-dedupe-claim.test.ts
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 
@@ -25,6 +27,10 @@ import { 自动分配不参与key } from "@/lib/enterprise/lead-assign";
 import { 公海规则 } from "@/lib/enterprise/pool-rules";
 import { 放回公海, 领取公海项目, 改项目 } from "@/lib/project/db";
 import { 分配公海项目 } from "@/app/(app)/pool/actions";
+import { 分配公海 } from "@/app/(app)/customers/pool-actions";
+import { 确认离职交接 } from "@/lib/enterprise/offboard-handover";
+import { 离职转给接手人 } from "@/lib/offboard-move";
+import type { 停用分拣结果 } from "@/lib/offboard-db";
 import { 定时分出去 } from "@/app/(app)/leads/assign-actions";
 import { 定时分配令牌 } from "@/lib/enterprise/scheduled-assign-token";
 import { 系统操作人 } from "@/lib/enterprise/scheduled-assign";
@@ -49,6 +55,12 @@ async function 线索(owner: string, 补: Record<string, unknown> = {}, 客户�
     data: { name: `线索${序}`, customerId: c, ownerId: owner, creatorId: 老板.id, phase: "线索", node: "潜客培育", bizLine: "内贸", createdAt: new Date(Date.now() - 10 * 86_400_000), ...补 },
   })).id;
   return { c, p };
+}
+/** 一位客户 + 一条放回了线索公海的线索（原负责人 owner），客户归 客户负责人 */
+async function 公海线索(owner: string, 客户负责人 = owner) {
+  const r = await 线索(owner, {}, 客户负责人);
+  expect(await 放回公海({ id: owner, role: "SALES" }, r.p)).toMatchObject({ ok: true });
+  return r;
 }
 /** 最近一行换人留痕 */
 const 最近痕 = (projectId: string) => prisma.projectNodeLog.findFirstOrThrow({ where: { projectId, kind: { in: ["transfer", "pool-claim"] } }, orderBy: [{ at: "desc" }, { id: "desc" }] });
@@ -106,6 +118,14 @@ describe("起算的入口", () => {
     expect(await 在链上(指定.p)).toBe(true);
   });
 
+  it("管理从客户公海分客户、带出线索公海里的项目（分配公海，「从客户公海分配」）：带出的那条进链", async () => {
+    const { c, p } = await 公海线索(乙.id);
+    await prisma.customerPool.create({ data: { customerId: c, userId: 乙.id, reason: "手动" } });
+    expect(await 分配公海([c], 丙.id)).toMatchObject({ ok: true, updated: 1 });
+    expect(await 最近痕(p)).toMatchObject({ kind: "pool-claim", userId: 老板.id, toOwnerId: 丙.id, reason: expect.stringMatching(/^从客户公海分配/) });
+    expect(await 在链上(p)).toBe(true);
+  });
+
   it("手动转让（改项目，原因是待办痕）：进链", async () => {
     const { p } = await 线索(乙.id, {}, 老板.id);
     expect(await 改项目(老板, p, { name: "x", ownerId: 丙.id, amount: 0 }, false)).toMatchObject({ ok: true });
@@ -122,22 +142,55 @@ describe("不起算的入口", () => {
     expect(await 在链上(p)).toBe(false);
   });
 
-  it("客户转让带项目、离职交接（带走一位，原因空、同一刻客户换了人）：不进链", async () => {
+  it("客户转让带项目、离职交一位客户（带走一位，「跟着客户转过来」/「离职交接」）：不进链", async () => {
     const 转让 = await 线索(乙.id);
     await prisma.$transaction((tx) => 带走一位(tx, 转让.c, 乙.id, 丙.id, 老板.id, "assign"));
-    expect(await 最近痕(转让.p)).toMatchObject({ kind: "transfer", toOwnerId: 丙.id, reason: null });
+    expect(await 最近痕(转让.p)).toMatchObject({ kind: "transfer", userId: 老板.id, toOwnerId: 丙.id, reason: "跟着客户转过来" });
     expect(await 在链上(转让.p)).toBe(false);
     const 交接 = await 线索(乙.id);
     await prisma.$transaction((tx) => 带走一位(tx, 交接.c, 乙.id, 甲.id, 老板.id, "deactivate"));
-    expect(await 最近痕(交接.p)).toMatchObject({ toOwnerId: 甲.id });
+    expect(await 最近痕(交接.p)).toMatchObject({ kind: "transfer", userId: 老板.id, toOwnerId: 甲.id, reason: "离职交接" });
     expect(await 在链上(交接.p)).toBe(false);
   });
 
-  it("市场转客户带项目（市场转一位，「随客户转走」）：不进链", async () => {
-    const { c, p } = await 线索(乙.id);
-    await prisma.$transaction((tx) => 市场转一位(tx, c, 乙.id, 丙.id, 老板.id, "指定分配", false));
-    expect(await 最近痕(p)).toMatchObject({ toOwnerId: 丙.id, reason: "随客户转走" });
+  it("客户转让带出线索公海里的项目（带走一位 assign → 带走公海项目，pool-claim「跟着客户转过来」）：不进链", async () => {
+    const { c, p } = await 公海线索(乙.id);
+    await prisma.customer.update({ where: { id: c }, data: { salesOwnerId: 丙.id } });
+    await prisma.$transaction((tx) => 带走一位(tx, c, 乙.id, 丙.id, 老板.id, "assign"));
+    expect(await 最近痕(p)).toMatchObject({ kind: "pool-claim", userId: 老板.id, toOwnerId: 丙.id, reason: "跟着客户转过来" });
     expect(await 在链上(p)).toBe(false);
+  });
+
+  it("离职交接只交项目（确认离职交接，范围 = 项目）：转让留痕「离职交接」、客户不换人，不进链", async () => {
+    const { p } = await 线索(乙.id, {}, 老板.id);
+    const h = await prisma.entHandover.create({ data: { kind: "离职", way: "项目", fromUserId: 乙.id, toUserId: 丙.id, byUserId: 老板.id, projectIds: JSON.stringify([p]) } });
+    expect(await 确认离职交接({ id: 丙.id, role: "SALES" }, h)).toMatchObject({ 项目: [p] });
+    expect(await 最近痕(p)).toMatchObject({ kind: "transfer", userId: 老板.id, toOwnerId: 丙.id, reason: "离职交接" });
+    expect(await prisma.customerOwnerLog.count()).toBe(0);
+    expect(await 在链上(p)).toBe(false);
+  });
+
+  it("全部交给里的「其余」和「同事」两组（离职转给接手人 → 转项目）：「离职交接」，不进链", async () => {
+    const 其余 = await 线索(乙.id, {}, 老板.id);
+    const 同事 = await 线索(甲.id, {}, 老板.id);
+    const 分 = { 客户: [], 进公海客户: [], 本来在公海: [], 商机: [], 待办: [], 计划: [], 线索: [], 渠道: [], 主渠道: [], 项目: [其余.p, 同事.p], 清待分配: [], 停用同事: [同事.p], 进公海项目: [], 订单项目: 0 } as unknown as 停用分拣结果;
+    await prisma.$transaction((tx) => 离职转给接手人(tx, 分, 乙.id, 丙.id, 老板.id, false));
+    for (const p of [其余.p, 同事.p]) {
+      expect(await 最近痕(p)).toMatchObject({ kind: "transfer", userId: 老板.id, toOwnerId: 丙.id, reason: "离职交接" });
+      expect(await 在链上(p)).toBe(false);
+    }
+  });
+
+  it("市场转客户带项目、带出线索公海里的项目（市场转一位，「随客户转走」）：不进链", async () => {
+    const { c, p } = await 线索(乙.id);
+    const 公海 = await 线索(乙.id);
+    await prisma.project.update({ where: { id: 公海.p }, data: { customerId: c } });
+    expect(await 放回公海({ id: 乙.id, role: "SALES" }, 公海.p)).toMatchObject({ ok: true });
+    await prisma.customer.update({ where: { id: c }, data: { salesOwnerId: 丙.id } });
+    await prisma.$transaction((tx) => 市场转一位(tx, c, 乙.id, 丙.id, 老板.id, "指定分配", false));
+    expect(await 最近痕(p)).toMatchObject({ kind: "transfer", toOwnerId: 丙.id, reason: "随客户转走" });
+    expect(await 最近痕(公海.p)).toMatchObject({ kind: "pool-claim", userId: 老板.id, toOwnerId: 丙.id, reason: "随客户转走" });
+    for (const x of [p, 公海.p]) expect(await 在链上(x)).toBe(false);
   });
 
   it("从回收站恢复跟客户现负责人（恢复）：不进链，原来停了的链也不重启", async () => {

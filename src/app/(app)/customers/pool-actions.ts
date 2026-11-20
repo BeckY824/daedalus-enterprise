@@ -20,7 +20,7 @@ import { 记换负责人, 是我刚换的, 撤销时限毫秒, 公海前负责�
 import type { 带走数 } from "@/lib/carry-over";
 import { 拦原负责人, 原负责人不能领回提示, 公海规则 } from "@/lib/enterprise/pool-rules";
 import { 客户名下在推项目进公海, 客户进公海清负责人 } from "@/lib/enterprise/pool-link";
-import { 带待办勾 } from "@/lib/project/carry-tasks";
+import { 带待办勾, 跟着客户痕, 公海分配痕 } from "@/lib/project/carry-tasks";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 进公海挂靠通知 } from "@/lib/enterprise/attach-approval";
@@ -382,9 +382,9 @@ async function 公海客户出手(
   补培育 = false,
   /**
    * 查重领取（F-016）用：补的潜客培育记哪种分配方式（不给按 kind 定）；然后 = 同一个事务里、核持有上限之前再做的那几样
-   *（新建线索项目、记分配、写沟通），抛错整笔回滚、一个都不出公海
+   *（新建线索项目、记分配、写沟通），抛错整笔回滚、一个都不出公海；公海项目痕 = 带出线索公海的项目那行 pool-claim 的原因开头（不给：管理分出去的记 公海分配痕）
    */
-  附?: { 补的方式?: string; 然后?: (tx: Prisma.TransactionClient, 出: { 到: 出公海原值[]; 记下: 带走的; 公海项目: string[] }) => Promise<void> },
+  附?: { 补的方式?: string; 公海项目痕?: string; 然后?: (tx: Prisma.TransactionClient, 出: { 到: 出公海原值[]; 记下: 带走的; 公海项目: string[] }) => Promise<void> },
 ) {
   const 规则 = await 生效组织规则();
   return 整批或不做(() => 查完再写(async (tx) => {
@@ -410,7 +410,7 @@ async function 公海客户出手(
       }
       const { 数, 记下 } = await 带走并记下在事务里(tx, 到.map((x) => ({ customerId: x.id, 旧: x.值 })), 给, 操作人, kind);
       // 企业版：名下放在项目公海里的项目一起归他（领客户即领项目，pool-link.ts）
-      const 公海项目 = 企业版() && 公海规则.领客户带走公海里的项目 && 到.length ? await 带走公海项目(tx, 到.map((x) => x.id), 给, 操作人, 带待办) : [];
+      const 公海项目 = 企业版() && 公海规则.领客户带走公海里的项目 && 到.length ? await 带走公海项目(tx, 到.map((x) => x.id), 给, 操作人, 带待办, 附?.公海项目痕 ?? (kind === "pool-assign" && 操作人 !== 给 ? 公海分配痕 : null)) : [];
       return { 到, 数, 记下, 公海项目 };
     });
     const 项目结果 = 项目?.ids.length ? await 在事务里领公海项目们(tx, 项目.me, 项目.ids, 项目.上下文) : null;
@@ -787,6 +787,8 @@ export async function 查重领取(类型: string, 值: string, 沟通: 查重�
     try {
       const r = await 公海客户出手([cid], 谁, me.id, "pool-assign", undefined, undefined, undefined, !新建 && 要补潜客培育(企业版(), b.projectMode), {
         补的方式: way,
+        // 查重领取带出线索公海的旧项目算跟着客户带过去的（超时未跟进自动转不起算，总控 11-20 定）
+        公海项目痕: 跟着客户痕,
         然后: async (tx, 出) => {
           // 没出来：事务里读到刚被标了无效（公海客户出手 跳过）或刚被别人领走；回滚后按哪种说（下面 catch）
           if (出.到.length !== 1) throw new 查重领取作废("这位客户刚被别人领走了，这次没领");
