@@ -102,6 +102,8 @@ export const 不同步表 = [
   "EntReplyOverdue",
   // 企业版判无效待补（2026-11-20，migrations/155）：同上
   "EntLeadMakeup",
+  // 企业版主动放弃（豁免）（2026-11-20，migrations/160）：同上
+  "EntLeadGiveUp",
 ] as const;
 
 /**
@@ -226,6 +228,9 @@ export const 指向人的列: [string, string][] = [
   ["EntLeadQuotaBonus", "userId"],
   // 企业版判无效待补（2026-11-20）：不建外键
   ["EntLeadMakeup", "userId"],
+  // 企业版主动放弃（豁免）（2026-11-20）：不建外键
+  ["EntLeadGiveUp", "userId"],
+  ["EntLeadGiveUp", "toUserId"],
   // 企业版项目回款（2026-10-31）：谁记的
   ["EntProjectPayment", "userId"],
 ];

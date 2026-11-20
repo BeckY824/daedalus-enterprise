@@ -12,6 +12,8 @@
  * - 有待补但这次不合格（停用、暂停 / 禁止、方向对不上……）= 这次不在候选里，待补留着。
  * 不用待补的：市场直接指定（P-转-30）、销售管理 / 总管理的公海分配（不计本月已分的那几种）、营销企划不算数的。
  * 待补跨月留着，用掉为止。判无效的线索被恢复（结局清掉）：这条线索上没用掉的作废；已用掉的不回收。撤销自动分配：那次用掉的退回待用。
+ * 主动放弃（豁免，32H，lead-giveup.ts）也记 1 个待补（kind = giveup），用法同上（优先补、补发不计数）；它不是判无效记的：
+ * 判无效那条线索被恢复时不作废它，判无效记补位查重时不把它当成「这条已经记过」。
  */
 import type { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
@@ -25,13 +27,17 @@ export const 线对得上 = (补: string | null, 这次: string | null | undefin
 
 /** 待用 = 没用掉、没作废 */
 const 待用 = { usedAt: null, voidAt: null } as const;
+/** 主动放弃（豁免）记的待补（EntLeadMakeup.kind，迁移 161）；空 = 判无效记的 */
+export const 放弃待补种类 = "giveup";
+/** 判无效记的那种（kind 空）：判无效记补位查重、恢复作废只看它 */
+const 判无效的 = { kind: null } as const;
 
 /**
  * 判无效时记一个补位（lead-verify 判死，事务里调）。方向取这条线索上他最近一条分配记录的 line（补发来的 counted = false 也算）。
  * 同一条线索同一个人已有待用的补位就不再记（防重复判、重跑），回 false
  */
 export async function 记补位(tx: Pick<Prisma.TransactionClient, "entLeadMakeup" | "entLeadAssign">, userId: string, projectId: string, at = new Date()): Promise<boolean> {
-  if (await tx.entLeadMakeup.findFirst({ where: { userId, projectId, ...待用 }, select: { id: true } })) return false;
+  if (await tx.entLeadMakeup.findFirst({ where: { userId, projectId, ...待用, ...判无效的 }, select: { id: true } })) return false;
   const 分 = await tx.entLeadAssign.findFirst({ where: { projectId, toUserId: userId }, orderBy: { createdAt: "desc" }, select: { line: true } });
   await tx.entLeadMakeup.create({ data: { userId, projectId, line: 分?.line ?? null, createdAt: at } });
   return true;
@@ -83,9 +89,9 @@ export async function 本月另补们(ids: readonly string[], 起: Date, db: 库
   return 数;
 }
 
-/** 判无效的线索被恢复（结局清掉）：这条线索上没用掉的补位作废，回作废了几个。已用掉的不回收 */
+/** 判无效的线索被恢复（结局清掉）：这条线索上判无效记的、没用掉的补位作废，回作废了几个。已用掉的不回收；主动放弃记的不作废 */
 export async function 作废补位(tx: 库, projectId: string, now = new Date()): Promise<number> {
-  return (await tx.entLeadMakeup.updateMany({ where: { projectId, ...待用 }, data: { voidAt: now } })).count;
+  return (await tx.entLeadMakeup.updateMany({ where: { projectId, ...待用, ...判无效的 }, data: { voidAt: now } })).count;
 }
 
 /** 撤销自动分配（删了那条分配记录）：那次用掉的补位退回待用 */
@@ -96,5 +102,5 @@ export async function 退回补位(tx: 库, assignIds: readonly string[]): Promi
 
 /** 这条线索判无效时记的补位还在待用（判无效结果通知里说「已记 1 条判无效待补」用） */
 export async function 这条记了补位(projectId: string, userId: string, db: 库 = prisma): Promise<boolean> {
-  return !!(await db.entLeadMakeup.findFirst({ where: { projectId, userId, ...待用 }, select: { id: true } }));
+  return !!(await db.entLeadMakeup.findFirst({ where: { projectId, userId, ...待用, ...判无效的 }, select: { id: true } }));
 }

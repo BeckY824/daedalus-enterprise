@@ -1645,10 +1645,36 @@ model EntLeadMakeup {
   voidAt        DateTime?
   /// 退名额的那一刻（= 判无效那一刻），多人有待补时按它先后
   createdAt     DateTime  @default(now())
+  /// 哪种待补（迁移 161）：空 = 判无效记的；giveup = 主动放弃（豁免）记的（lead-giveup.ts）。判无效那条线索被恢复时只作废空的那种
+  kind          String?
 
   @@index([userId, usedAt])
   @@index([projectId])
   @@index([usedAssignId])
+}
+
+/// 企业版主动放弃（豁免）（2026-11-20，迁移 160，32H，lib/enterprise/lead-giveup.ts）：销售对新分配、还没记有效沟通的线索点「放弃」，
+/// 立即按超时转同一套挑人转给本线下一位；每人每月（北京自然月）1 次，一次一行。(userId, month) 唯一 = 并发点两次只成一次
+model EntLeadGiveUp {
+  id        String   @id @default(cuid())
+  /// 谁放弃的（放弃那一刻的负责人）
+  userId    String
+  /// 北京自然月 YYYY-MM：每人每月 1 次靠它
+  month     String
+  /// 哪条线索（项目）
+  projectId String
+  /// 原因（选项：外出 / 忙不过来 / 其他），其他要补一句
+  reason    String
+  /// 补充说明（选「其他」时必填）
+  note      String?
+  /// 转给了谁；先占次数再转，转成了才写
+  toUserId  String?
+  /// 给放弃人记的那条待补（EntLeadMakeup.id）
+  makeupId  String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, month])
+  @@index([projectId])
 }
 
 /// 企业版线索有效性验证（2026-10-29，迁移 088，P12）：每个项目一份当前状态，四步走在 lib/project/lead-verify.ts。

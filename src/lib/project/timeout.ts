@@ -7,7 +7,7 @@
  *   - 企业版（10-26，清单 C7）：没设的节点按字典的默认天数（7 天）算；设了的按设的，改了以后新的回收日按新天数
  *   - 企业版按项目业务线分两套天数（11-01 清单 C7）：外贸项目先看外贸那套，没单设的节点跟内贸一样；内贸、暂不分配、老数据按内贸
  *   - 起点 = 最近一次「有人管」：建项目、换节点、接手（转让/领取）、客户上记了跟进，取最晚的
- *     超时未跟进自动转（系统轮转）不算接手、不重置（客户 11-19 第 14 题 B），见 是超时自动转痕
+ *     超时未跟进自动转（系统轮转）不算接手、不重置（客户 11-19 第 14 题 B），见 是超时自动转痕；主动放弃（豁免）转出同超时转（32H）
  *   - 起算日（10-31，超时回收设置里配，默认 2026-11-01）：起点早于起算日的一律从起算日算，之前的日子不计入超时
  *   - 起点 + 节点天数 那天还没新动静 → 回收（按自然日，和客户公海一样）
  *   - 下一步时间只提醒、不收回（11-18 客户定）：填没填、过没过都不改回收日，只按节点天数收；到期 / 逾期提醒照旧（lib/enterprise 下 due-notice.ts，只从夜里的钟上发）
@@ -33,15 +33,21 @@ export const 系统 = { id: "system", name: "系统" } as const;
  * 原因 =「分配方式：X；超时未跟进自动转（原负责人 … 超时没记有效沟通）」，带这几个字
  */
 export const 超时自动转理由 = "超时未跟进自动转";
+/**
+ * 主动放弃（豁免）转出（32H，lib/enterprise/lead-giveup.ts）记的那行转让留痕原因里带这几个字：操作人 系统，
+ * 原因 =「分配方式：X；同事 … 主动放弃（豁免）转给你，原因：…」。挑人、接手人计时都照超时自动转那一套，
+ * 所以同样不重置回收起点、不挪超时链的分配基准（是超时自动转痕 一并认它）
+ */
+export const 放弃转理由 = "主动放弃（豁免）";
 
 /**
  * 是不是超时自动转那行：它不重置项目超时回收的起点（客户 11-19 第 14 题 B：超时自动轮转不重置超时回收日；手动转让、领取照旧归零）。
- * 认法 = 转让（kind transfer）+ 操作人 系统 + 原因含 超时自动转理由，三样都对上才算，不加列、不迁移：
+ * 认法 = 转让（kind transfer）+ 操作人 系统 + 原因含 超时自动转理由（或 放弃转理由：主动放弃转出同超时转），三样都对上才算，不加列、不迁移：
  *   手动转让 / 分配、领取、导入的操作人是真成员；系统做的别的转让（定时分配到点、市场随客户转）原因里没有这几个字。
  * 只管回收起点：reply-overdue.ts 接手时刻、项目详情的换人记录照常认这一行
  */
 export function 是超时自动转痕(l: { kind: string; userId: string; reason: string | null }): boolean {
-  return l.kind === "transfer" && l.userId === 系统.id && !!l.reason?.includes(超时自动转理由);
+  return l.kind === "transfer" && l.userId === 系统.id && (!!l.reason?.includes(超时自动转理由) || !!l.reason?.includes(放弃转理由));
 }
 
 /**
@@ -49,7 +55,10 @@ export function 是超时自动转痕(l: { kind: string; userId: string; reason:
  * reason 可空：NOT 包三样遇到 reason 为空会算成 NULL、把那行也筛掉（系统做的没原因的转让），所以拆成 OR
  */
 export const 算回收起点的留痕 = {
-  OR: [{ kind: { not: "transfer" } }, { userId: { not: 系统.id } }, { reason: null }, { NOT: { reason: { contains: 超时自动转理由 } } }],
+  OR: [
+    { kind: { not: "transfer" } }, { userId: { not: 系统.id } }, { reason: null },
+    { AND: [{ NOT: { reason: { contains: 超时自动转理由 } } }, { NOT: { reason: { contains: 放弃转理由 } } }] },
+  ],
 } satisfies Prisma.ProjectNodeLogWhereInput;
 
 export type 超时项目 = {

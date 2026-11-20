@@ -25,6 +25,8 @@ const ACTION_LABEL: Record<string, string> = {
   restore: "从回收站恢复", purge: "彻底删除", sync: "同步", export: "导出", handover: "离职交接",
   // 教练主题（11-17）
   reply: "回复", close: "关闭", "pool-close": "进公海自动关闭",
+  // 主动放弃（豁免）（11-20，32H）
+  giveup: "主动放弃",
 };
 const ENTITY_LABEL: Record<string, string> = {
   Customer: "学员", Contract: "签约", Lead: "线索", User: "成员", Channel: "渠道", Setting: "系统设置", Ai: "AI 功能", Device: "机器",

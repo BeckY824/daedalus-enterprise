@@ -57,7 +57,7 @@ export type 组织架构 = {
 type 结果 = Promise<{ ok: boolean; error?: string; 提示?: string; 要确认?: string }>;
 
 /** 开关的 data-testid：第一条沿用老名字，E2E 在用 */
-const 规则testid: Record<规则名, string> = { 按组织看客户: "org-rule-scope", 线索分配: "org-rule-lead-assign", 字段权限: "org-rule-field-perm", 市场复核: "org-rule-market-review", 超时自动转: "org-rule-reply-overdue" };
+const 规则testid: Record<规则名, string> = { 按组织看客户: "org-rule-scope", 线索分配: "org-rule-lead-assign", 字段权限: "org-rule-field-perm", 市场复核: "org-rule-market-review", 超时自动转: "org-rule-reply-overdue", 主动放弃: "org-rule-lead-giveup" };
 const 级别名 = { 改: "能改", 看: "只能看", 藏: "看不到" } as const;
 /** 「后台设置谁能改」表的列 */
 const 人列: readonly 能改的人[] = ["总管理员", "销售管理", "市场管理", "直属上级", "虚线上级"];

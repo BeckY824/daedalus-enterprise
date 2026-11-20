@@ -54,11 +54,19 @@ import { 页面看得到的客户 } from "@/lib/project/visible-customers";
 import { 时刻转北京墙钟 } from "@/lib/project/time-fields";
 import { 能动定时 } from "@/lib/enterprise/scheduled-assign";
 import { 客户在谁名下 } from "@/lib/enterprise/reply-overdue";
+import { 放弃资格 } from "@/lib/enterprise/lead-giveup";
+import type { 放弃入口 } from "@/lib/enterprise/lead-giveup-core";
 
 /** 「该客户在 XXX 名下」那一格（超时未跟进自动转，11-17）：不用提示就不带这一格 */
 async function 客户名下提示(p: { id: string; ownerId: string; customer: { salesOwnerId: string; pool: unknown } }): Promise<{ 客户在谁名下?: string }> {
   const 名 = await 客户在谁名下(p);
   return 名 ? { 客户在谁名下: 名 } : {};
+}
+
+/** 「放弃（豁免）」入口（32H，lead-giveup.ts）：不给就不带这一格；给了带能不能点、为什么 */
+async function 放弃入口of(me: SessionUser, projectId: string): Promise<{ 放弃?: 放弃入口 }> {
+  const r = await 放弃资格(me, projectId);
+  return r ? { 放弃: { 可: r.可, 本月已用: r.本月已用, ...(r.为什么 ? { 为什么: r.为什么 } : {}) } } : {};
 }
 
 
@@ -380,6 +388,8 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     ...(企业 ? { 指定回复: { 开始: 时刻转北京墙钟(p.replyStartAt), 结束: 时刻转北京墙钟(p.replyEndAt) } } : {}),
     // 超时未跟进自动转过、客户留在别人名下（11-17，规则 3 的例外）：负责人本人看到「该客户在 XXX 名下」
     ...(企业 && !公海 && p.ownerId === me.id ? await 客户名下提示(p) : {}),
+    // 主动放弃（豁免，32H）：负责人本人、新分配、还没记有效沟通才有
+    ...(企业 && !公海 && p.ownerId === me.id && p.phase === "线索" ? await 放弃入口of(me, p.id) : {}),
     // 指定分配时间（PR3）：还没到点的定时，详情上写时间和分给谁；录入人、能分配的人能改 / 取消 / 改成现在分配
     ...(企业 && p.scheduledAssignAt && p.awaitAssignAt && !p.pooledAt ? { 定时分配: {
       时间: 时刻转北京墙钟(p.scheduledAssignAt)!, 给谁: p.scheduledAssignTo ? 叫(p.scheduledAssignTo) ?? "已不在的成员" : null, 能动: !!org && 能动定时(me, p, org),
