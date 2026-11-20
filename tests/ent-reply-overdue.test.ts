@@ -984,9 +984,9 @@ describe("[F-业务线] 超时自动转不跨线：只在原负责人所在线�
     忘掉企业版范围();
   });
   /** 一位客户（地址、电话可给）+ 一条线索：owner 负责、creator 建，项目业务线 bizLine，指定回复时间 15:00 */
-  async function 线索(owner: 人, creator: 人, bizLine: string, 客户: { addrCountry?: string; phone?: string | null } = {}) {
+  async function 线索(owner: 人, creator: 人, bizLine: string, 客户: { addrCountry?: string; phone?: string | null; bizLine?: string } = {}) {
     序++;
-    const c = await prisma.customer.create({ data: { name: `跨线客户${序}`, phone: 客户.phone === undefined ? `1390001${String(序).padStart(4, "0")}` : (客户.phone ?? ""), addrCountry: 客户.addrCountry ?? null, salesOwnerId: owner.id, bizLine } });
+    const c = await prisma.customer.create({ data: { name: `跨线客户${序}`, phone: 客户.phone === undefined ? `1390001${String(序).padStart(4, "0")}` : (客户.phone ?? ""), addrCountry: 客户.addrCountry ?? null, salesOwnerId: owner.id, bizLine: 客户.bizLine ?? bizLine } });
     const p = await prisma.project.create({ data: { name: `跨线线索${序}`, customerId: c.id, ownerId: owner.id, creatorId: creator.id, phase: "线索", node: "潜客培育", bizLine, replyEndAt: 京("2026-11-20 15:00") } });
     return p.id;
   }
@@ -1001,6 +1001,18 @@ describe("[F-业务线] 超时自动转不跨线：只在原负责人所在线�
     expect((await 项目(id)).ownerId).toBe(甲.id);
     expect((await 超时通知(甲.id)).filter((n) => n.title.includes(收回话))).toHaveLength(0);
     for (const u of [乙, 丙, 丁, 戊]) expect(await 通知(u.id)).toHaveLength(0);
+  });
+
+  it("判定按项目业务线、不看客户业务线：客户记外贸、项目记内贸、负责人是外贸的丁（误转里那种）→ 不转给内贸；客户记内贸、项目记外贸、负责人丁 → 照转给外贸的戊", async () => {
+    const 项目内贸 = await 线索(丁, 老板, "内贸", { bizLine: "外贸" });
+    const 项目外贸 = await 线索(丁, 老板, "外贸", { bizLine: "内贸" });
+    await 超时转扫一遍(京("2026-11-20 16:00"));
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await 超时转扫一遍(京("2026-11-20 16:30"))).toMatchObject({ 转出: 1, 没转成: 1 });
+    vi.restoreAllMocks();
+    expect((await 项目(项目内贸)).ownerId).toBe(丁.id);
+    expect((await 项目(项目外贸)).ownerId).toBe(戊.id);
+    for (const u of [甲, 乙, 丙]) expect(await 通知(u.id)).toHaveLength(0);
   });
 
   it("市场建的、客户区域在国外（按区域定外贸），负责人是内贸的甲：不转；客户区域记成中国、负责人是外贸的丁：也不转", async () => {
