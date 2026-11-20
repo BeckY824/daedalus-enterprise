@@ -8,12 +8,11 @@
  */
 import Link from "next/link";
 import type { 待回复客户数 } from "@/lib/enterprise/reply-notice";
-import { 分配后未跟进话 } from "@/lib/project/time-fields";
 
 export default function ReplyDueTodo({ 数据 }: { 数据: 待回复客户数 | null | undefined }) {
   if (!数据?.条数 || !数据.最早) return null;
   const 早 = 数据.最早;
-  const 说 = 早.分配 ? `${早.name} · ${早.时} 分配 · ${分配后未跟进话}` : `${早.name} · 指定回复 ${早.时}${早.超时 ? " · 超时未跟进" : ""}`;
+  const 说 = 早.分配话 ? `${早.name} · ${早.时} 分配 · ${早.分配话}` : `${早.name} · 指定回复 ${早.时}${早.超时 ? " · 超时未跟进" : ""}`;
   return (
     <div className="home-cth-todo" role="status" data-testid="home-reply-due">
       <span className="home-cth-todo-t">待回复客户 {数据.条数}{数据.超时 ? <span data-testid="home-reply-overdue" className="home-cth-todo-warn">（超时 {数据.超时}）</span> : null}</span>

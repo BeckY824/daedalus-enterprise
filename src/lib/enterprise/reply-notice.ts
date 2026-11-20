@@ -29,9 +29,9 @@ import { 能分配的人们 } from "./await-assign";
 import { 有内容的沟通 } from "./tri-state-quota";
 import { 同号节点 } from "./same-number-collab";
 import { 读占位词 } from "./tri-state-db";
-import { 北京墙钟转时刻, 时刻转北京墙钟, 指定回复文字, 短时刻 } from "@/lib/project/time-fields";
+import { 北京墙钟转时刻, 时刻转北京墙钟, 指定回复文字, 短时刻, 分配后未跟进话 } from "@/lib/project/time-fields";
 import { 空值符 } from "@/lib/empty-value";
-import { 我超时未跟进的 } from "./reply-overdue";
+import { 我超时未跟进的, 超时提醒分钟 } from "./reply-overdue";
 
 /** 待客户方确认：问题 1。true = 到点提醒（建议答案 B）；客户选 A（只存不提醒）改 false */
 export const 回复提醒开 = true;
@@ -149,9 +149,9 @@ export const 钟上指定回复提醒 = 指定回复提醒扫一遍;
 /**
  * 首页待办「待回复客户 N」：我负责的（不在待分配）、在提醒窗口里、还没回复的；最早截止的那条给链接。一条都没有 = null。
  * 超时 = 其中已经发过超时提醒、还没记沟通的（超时未跟进自动转 reply-overdue.ts，过了截止也留在这里，直到记了沟通或被转走）；
- * 有超时的先链到超时那条。没填指定回复时间、按分配时刻起算的超时（11-20）：时 = 分配时刻，带 分配，首页那行不写「指定回复」
+ * 有超时的先链到超时那条。没填指定回复时间、按分配时刻起算的超时（11-20）：时 = 这一位的计时起点（分配 / 接手那刻），分配话 = 「分配后 1 小时未跟进」，首页那行不写「指定回复」
  */
-export type 待回复客户数 = { 条数: number; 超时?: number; 最早: { projectId: string; name: string; 时: string; 超时?: true; 分配?: true } | null };
+export type 待回复客户数 = { 条数: number; 超时?: number; 最早: { projectId: string; name: string; 时: string; 超时?: true; 分配话?: string } | null };
 export async function 待回复客户of(userId: string, 现在: Date = new Date()): Promise<待回复客户数 | null> {
   if (!企业版() || !回复提醒开) return null;
   try {
@@ -165,7 +165,7 @@ export async function 待回复客户of(userId: string, 现在: Date = new Date(
     const 超 = 超时们[0];
     const 最早 = 超
       ? 超.按分配
-        ? { projectId: 超.id, name: 超.name, 时: 短时刻(超.分配于, 现在) || 空值符, 超时: true as const, 分配: true as const }
+        ? { projectId: 超.id, name: 超.name, 时: 短时刻(超.分配于, 现在) || 空值符, 超时: true as const, 分配话: 分配后未跟进话(超时提醒分钟) }
         : { projectId: 超.id, name: 超.name, 时: 时of(超), 超时: true as const }
       : { projectId: 剩[0].id, name: 剩[0].name, 时: 时of(剩[0]) };
     return { 条数: 剩.length + 超时们.length, ...(超时们.length ? { 超时: 超时们.length } : {}), 最早 };

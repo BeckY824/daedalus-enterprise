@@ -37,6 +37,7 @@ import { 只看某人键 } from "@/lib/enterprise/org-core";
 import { 默认组织规则 } from "@/lib/project/org-rules";
 import { 分配谁能用key } from "@/lib/enterprise/assign-use";
 import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
+import { 盘点超时链, 顺延到白天 } from "@/lib/enterprise/reply-overdue";
 /** pool-actions.ts 里的那句（"use server" 文件不导出常量） */
 const 无效不能领提示 = "标了无效的客户不能领取，要系统管理员先恢复";
 import { 不能领公海话 } from "@/lib/enterprise/permissions";
@@ -112,6 +113,16 @@ afterEach(() => { vi.unstubAllEnvs(); 忘掉企业版范围(); 查重领取口�
 afterAll(async () => { await prisma.$disconnect(); });
 
 describe("新建线索项目（用户 11-19：项目来源以每次新建的为主、项目对接人以录入为主）", () => {
+  it("超时未跟进自动转（没填指定回复时间，11-20）：查重领取新建给销售的那条从分配那一刻起算进链；市场成员领取时记的那条沟通不算有效沟通", async () => {
+    const c = await 公海客户(总管.id);
+    当(市场);
+    const r = await 查重领取("手机号", c.号, 沟通(), c.id, 新(c));
+    if (!r.ok) throw new Error(r.error);
+    const 记 = await prisma.entLeadAssign.findFirstOrThrow();
+    const 扫于 = 顺延到白天(new Date(记.createdAt.getTime() + 61 * 60_000));
+    expect((await 盘点超时链(扫于)).find((x) => x.id === 记.projectId)).toMatchObject({ ownerId: 甲.id, 按分配: true, 基: 记.createdAt, 回了: false, 下一步: "提醒" });
+  });
+
   it("能领：另建一条线索项目（这次的渠道、王经理对接、市场成员建、自动分配），沟通挂它上面、只它计本月已分；旧公海项目同给甲；客户来源和联系人不改", async () => {
     const c = await 公海客户(总管.id);
     const 早 = await 公海项目(c.id, 总管.id, new Date("2026-11-01T00:00:00Z"));

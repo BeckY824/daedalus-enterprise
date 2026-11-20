@@ -44,11 +44,13 @@ export async function 换负责人待办(
   return 转让带待办(tx, p, 原, 新, 带, at);
 }
 
+/** 待办痕 那句的开头（超时未跟进自动转 reply-overdue.ts 靠它认出手动转让那行，改字要一起改那边的用例） */
+export const 待办痕头 = "原负责人没做完的待办";
 /** 写进换人那行留痕的一句（带了 / 关了几条）；不碰待办返回 null */
 export function 待办痕(带: boolean | undefined, 几条: number | null): string | null {
   if (几条 === null || 带 === undefined) return null;
-  if (带) return `原负责人没做完的待办带过来 ${几条} 条`;
-  return 几条 ? `原负责人没做完的待办没带，关掉 ${几条} 条` : "原负责人没做完的待办没带";
+  if (带) return `${待办痕头}带过来 ${几条} 条`;
+  return 几条 ? `${待办痕头}没带，关掉 ${几条} 条` : `${待办痕头}没带`;
 }
 
 /**
