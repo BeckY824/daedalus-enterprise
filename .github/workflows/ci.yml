@@ -27,8 +27,8 @@ env:
 # 分支保护认的三个必过检查名字不变：「类型 / 代码检查 / 单元测试」「E2E」「密钥扫描」，
 # 前两个现在是汇总 job，等各片跑完、全绿才绿。10-29 起「E2E」也等速度闸门（perf）。
 # 11-20 批次 32A 回压（用例、断言、超时一条不动，只改怎么排）：单测按耗时分片 + 跑在 Playwright 镜像里（不再每片 apt 装浏览器依赖）、
-# 企业版主流程拆 2 片、网页 E2E 6 片并成 4 片。11-19～20 共 45 轮实测每轮 15–25 分钟，关键路径几乎都是最慢的那片单测；
-# 账号同时只给 20 台 runner，原来一轮就要 23 台、和 main 那轮叠在一起时单测片排队 2–6 分钟。现在一轮最多 20 台
+# 企业版主流程拆 2 片、网页 E2E 6 片并成 3 片。11-19～20 共 45 轮实测每轮 15–25 分钟，关键路径几乎都是最慢的那片单测；
+# 账号同时只给 20 台 runner，原来一轮就要 23 台、单测片排在最后、常等 2 分钟以上（和 main 那轮叠着时 6 分钟）。现在长任务一轮 19 台
 jobs:
   lint:
     name: 类型 / 代码检查（tsc + eslint）
@@ -187,14 +187,14 @@ jobs:
           [ "${{ needs.lint.result }}" = success ] && [ "${{ needs.unit.result }}" = success ]
 
   e2e-web-ent:
-    name: E2E 网页·企业版开 ${{ matrix.shard }}/4
+    name: E2E 网页·企业版开 ${{ matrix.shard }}/3
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.56.1-noble
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
       # 容器里没有 setup-node，npm 下载缓存自己存（10-24 提速）
@@ -227,10 +227,11 @@ jobs:
       # 6 片（10-28，原 5 片）：按 main 绿跑各文件实测耗时模拟 playwright 的按条数切法，
       # 5 片最慢一片用例 ~188 秒、6 片 ~150 秒、7 片 ~128 秒；第 7 片再省 20 秒不值一台机器的固定开销（装依赖 + 构建 ~3–4 分钟）。
       # 最大的文件（workbench ~67 秒）远小于每片 ~105 秒的均值，不用拆文件
-      # 4 片（11-20 批次 32A，原 6 片）：11-19～20 共 45 轮实测，每片 ~6 分钟里装依赖 + next build（含 next.config 打 OCR 47 秒、TypeScript 78 秒）
-      # 就占 ~4 分钟，用例本身只有 60–140 秒（6 片合计 ~7 分钟）。按各文件实测秒数套 playwright 的切法：4 片最慢一片 ~150 秒、6 片 ~125 秒，
-      # 整片多 ~30 秒、~7 分钟，仍短于单测和排版闸门，整轮不变慢；省下 2 台机器（账号同时只给 20 台，一轮原来就要 23 台）
-      - run: npx playwright test --shard=${{ matrix.shard }}/4 ${{ env.ENT_CI_FULL != 'true' && '--max-failures=2' || '' }}
+      # 3 片（11-20 批次 32A，原 6 片）：11-19～20 共 45 轮实测，每片 ~6 分钟里装依赖 + next build（含 next.config 打 OCR 47 秒、TypeScript 78 秒）
+      # 就占 ~4 分钟，用例本身只有 60–140 秒（6 片合计 ~7 分钟）。按各文件实测秒数套 playwright 的切法：6 片最慢一片 ~125 秒、4 片 ~150 秒、3 片 ~190 秒；
+      # 3 片整片 ~7.5 分钟，仍短于单测（~9.5 分钟）。账号同时只给 20 台 runner：单测 8 + 网页 3 + 主流程 2 + 排版 3 + 速度 2 + 类型检查 1 = 19，
+      # 留 1 台余量；4 片就是 20 台，开头的单测范围 / 密钥扫描还没退时最后一片单测要等类型检查（~3.5 分钟）跑完才排上
+      - run: npx playwright test --shard=${{ matrix.shard }}/3 ${{ env.ENT_CI_FULL != 'true' && '--max-failures=2' || '' }}
         env:
           CRM_ENTERPRISE: "1"
           E2E_PROD: "1"
