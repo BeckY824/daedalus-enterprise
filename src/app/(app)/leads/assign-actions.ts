@@ -615,6 +615,8 @@ async function 自动分给(
    * 没交 = 先认项目上存的手选方向（Project.assignDir，审核 11-18 P0-1），没存再按 区域 → 电话 → 本人事业部 现算
    */
   方向?: 分配方向,
+  /** 不用判无效待补：超时未跟进自动转（P-转-29 ②「超时转两人都算」，接手人照记一次算数的分配，补发 counted=false 会冲突） */
+  不用补位?: true,
 ): Promise<内部自动结果> {
   const 看 = await 分前看(哪条, org);
   if (!看.ok) return 看;
@@ -683,7 +685,8 @@ async function 自动分给(
   await 补记销售管理起算(org, 人们);
   // 本月已分、生效配额、进池先后、不参与、算不算数、不限额、起算补：和「快轮到我」估算读同一份（assign-eta.ts 读挑人底子）
   // 判无效待补（M-线索-02 补「优先」，invalid-makeup.ts）：新线索（项目）不在公海里的自动分配用；公海分配不计本月已分，不用
-  const 补位 = 哪条.projectId !== undefined && !看.公海 ? { 线: line, kind } : null;
+  // 超时自动转不用（P-转-29 ②）：接手那条照算本月已分，不优先、不消耗待补
+  const 补位 = 哪条.projectId !== undefined && !看.公海 && !不用补位 ? { 线: line, kind } : null;
   let 底 = await 读挑人底子(人们, 月, 补位);
   const { 额, 建号, 不参与, 企划算数, 不限额 } = 底;
   let 候选: 候选人[] = 底.排位();
@@ -774,7 +777,7 @@ export async function 超时转出(
   if (!(await 规则开着("线索分配"))) return { ok: false, error: "规则「线索分配」关着" };
   const org = await 读组织();
   const 建的人 = (await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { creatorId: true } })))?.creatorId;
-  const r = await 自动分给(谁, org, { projectId }, null, "营销", 原, 附, 建的人, 排除);
+  const r = await 自动分给(谁, org, { projectId }, null, "营销", 原, 附, 建的人, 排除, undefined, true);
   if (!r.ok) return { ok: false, error: r.error, ...(r.待分配 ? { 挑不到: true as const } : {}) };
   return { ok: true, 接手人Id: r.toUserId, 接手人: r.接手人, ...留下字段(r.留下) };
 }

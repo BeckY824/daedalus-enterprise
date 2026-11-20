@@ -240,16 +240,29 @@ describe("自动分配优先补", () => {
     expect(await 待补(甲)).toBe(1);
   });
 
-  it("定时分配到点、超时自动转也走同一套挑人：有待补的先", async () => {
+  it("定时分配到点也走同一套挑人：有待补的先", async () => {
     await 甲多分();
     await 分来又判死(甲);
-    await 分来又判死(丙);
     const N = await 新线索();
     expect(await 定时分出去(定时分配令牌, 系统操作人, N, null, "到点分配")).toMatchObject({ ok: true });
     expect(await 负责人(N)).toBe(甲.id);
-    // 超时转：排除现负责人甲，候选里丙有待补
-    expect(await 超时转出(超时转令牌, 系统操作人, N, 甲.id, [甲.id], "超时未跟进自动转")).toMatchObject({ ok: true, 接手人Id: 丙.id });
-    expect(await 待补数们([甲.id, 丙.id])).toEqual(new Map());
+    expect(await 待补(甲)).toBe(0);
+  });
+
+  it("超时自动转不用待补（P-转-29 ②）：不优先、不消耗，接手人照算本月已分", async () => {
+    // 乙本月已分 0、丙 1 条且有待补：超时转照现行给本月已分最少的乙
+    const N = await 线索(await 客户(市场.id), 甲.id, 市场.id, "线索推进");
+    await 分配行(N, 甲.id);
+    await 分配行(await 线索(await 客户(市场.id), 丙.id, 市场.id, "线索推进"), 丙.id);
+    await 分来又判死(丙);
+    expect(await 待补(丙)).toBe(1);
+    expect(await 超时转出(超时转令牌, 系统操作人, N, 甲.id, [甲.id], "超时未跟进自动转")).toMatchObject({ ok: true, 接手人Id: 乙.id });
+    expect(await 待补(丙)).toBe(1);
+    expect(await prisma.entLeadAssign.findFirstOrThrow({ where: { projectId: N, toUserId: 乙.id } })).toMatchObject({ counted: true });
+    // 只剩丙可接（乙也超时过）：照样给丙，但不消耗他的待补、照算
+    expect(await 超时转出(超时转令牌, 系统操作人, N, 乙.id, [甲.id, 乙.id], "超时未跟进自动转")).toMatchObject({ ok: true, 接手人Id: 丙.id });
+    expect(await 待补(丙)).toBe(1);
+    expect(await prisma.entLeadAssign.findFirstOrThrow({ where: { projectId: N, toUserId: 丙.id } })).toMatchObject({ counted: true });
   });
 });
 
