@@ -13,6 +13,7 @@ import CountUp from "@/components/CountUp";
 import Skeleton from "@/components/Skeleton";
 import { useLocalPref } from "@/lib/local-pref";
 import { 只留当前行, 露出这一列, 算可见列, 切换后存 } from "@/lib/list-select";
+import { 当前列表地址, 读勾选, 记勾选, 记横滚 } from "@/lib/list-return";
 
 /**
  * 列表页的那张表。**全站只有这一个表格实现**（批 2 抽出来，批 3 六页照用）。
@@ -124,6 +125,12 @@ type Props<T> = {
   单行?: boolean;
   /** 可展开的行（antd expandable 原样传）：公海客户池一位客户多个项目，展开逐个领（11-11）。行上别用 children 字段，antd 会当成树 */
   展开?: TableProps<T>["expandable"];
+  /**
+   * 进详情再回来（或刷新）还原勾选和表格横滚位置（29R，11-20 员工反馈「点进去再退出来，之前勾选的就全乱了」）。
+   * 按「页 + 地址」记在 sessionStorage（lib/list-return.ts 读勾选）：地址一样才还原，还原的勾选也只留眼前的行。
+   * 筛选、排序、页码、页签在地址栏，纵向滚动由外壳 ListMemory 滚回去，列设置本来就记在本地（useLocalPref）
+   */
+  回来还原?: boolean;
 };
 
 /** 浏览器里分页时每页默认几条（底部「条/页」能换，见 本地页） */
@@ -155,7 +162,7 @@ const 骨架格 = {
 };
 
 export default function DataList<T extends { id: string }>({
-  页, 列: 全部列, 行, 空库, 空态, 没对上, 筛选, 汇总, 替表格, 批量, 浮起操作条 = false, 加载中, 行链接, 行点击, 横向, 分页, 截断, 亮, 行类, 不可勾, 排序, 单行 = true, 展开,
+  页, 列: 全部列, 行, 空库, 空态, 没对上, 筛选, 汇总, 替表格, 批量, 浮起操作条 = false, 加载中, 行链接, 行点击, 横向, 分页, 截断, 亮, 行类, 不可勾, 排序, 单行 = true, 展开, 回来还原 = false,
 }: Props<T>) {
   const router = useRouter();
   const 预取 = useHoverPrefetch();
@@ -265,6 +272,55 @@ export default function DataList<T extends { id: string }>({
     const 行高 = 框?.querySelector<HTMLElement>(".ant-table-tbody > tr.ant-table-row")?.offsetHeight;
     if (框 && 行高) 框.style.setProperty("--list-row-h", `${行高}px`);
   });
+  /*
+    回来还原（29R）：勾选一变就记下；挂上之后（数据到了、不在骨架里）按这个地址读回一次勾选和横滚位置。
+    「记」写在「读回」前面：两个 effect 按书写顺序跑，挂上那一轮还没读回，不能先拿空勾选把存的盖掉
+  */
+  const 还原键 = 回来还原 ? 页 : null;
+  const 读回过 = useRef(false);
+  useEffect(() => {
+    if (!还原键 || !读回过.current) return;
+    记勾选(还原键, 当前列表地址(), 选中);
+  }, [还原键, 选中]);
+  useEffect(() => {
+    if (!还原键 || 读回过.current || 加载中) return;
+    读回过.current = true;
+    const 记的 = 读勾选(还原键, 当前列表地址());
+    if (!记的) return;
+    const 留 = 只留当前行(记的.ids, 行.map((r) => r.id));
+    // 不支持多选的表只还原横滚
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sessionStorage 只有到了浏览器里才读得到（服务端那一版没有勾选），挂上只读这一次
+    if (留.length && 批量) set选中(留);
+    if (记的.x > 0) {
+      // 等这一帧画完（勾选框那一列、列宽都在了）再横滚过去；这时已经卸了就找不到框，什么也不做
+      requestAnimationFrame(() => {
+        const 框 = 表框.current?.querySelector<HTMLElement>(".ant-table-content");
+        if (框) 框.scrollLeft = 记的.x;
+      });
+    }
+    // 只在挂上、数据到了那一下读回；批量 是每次渲染新给的函数，不跟着它重跑
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [还原键, 加载中, 行]);
+  // 表格横着滚了就记位置（隔 150ms 写一次）。scroll 不冒泡，在外框上用捕获阶段听表格里那个横滚框
+  useEffect(() => {
+    const 框 = 表框.current;
+    if (!还原键 || !框) return;
+    let 定时: number | undefined;
+    const 记 = (e: Event) => {
+      const el = e.target;
+      if (!(el instanceof HTMLElement) || !el.classList.contains("ant-table-content") || 定时 !== undefined) return;
+      定时 = window.setTimeout(() => {
+        定时 = undefined;
+        记横滚(还原键, 当前列表地址(), el.scrollLeft);
+      }, 150);
+    };
+    框.addEventListener("scroll", 记, true);
+    return () => {
+      框.removeEventListener("scroll", 记, true);
+      if (定时 !== undefined) window.clearTimeout(定时);
+    };
+  }, [还原键]);
+
   /** 刚勾上、等渲染出来再挪的那一列。放 ref 里、在下面的 effect 里挪：那时新列已经在 DOM 里了 */
   const 待露 = useRef<string | null>(null);
   function 挪到看得见(k: string) {

@@ -2,7 +2,7 @@ import { scheduleValue } from "@/lib/schedule-date";
 import { 负责人显示名 } from "@/lib/pool";
 import { prisma, defaultClient } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma";
-import { dayjs } from "@/lib/utils";
+import { dayjs, maskPhone } from "@/lib/utils";
 import { 带币种, 签约金额, 签约合计, 签约币种 } from "@/lib/money-db";
 import { 客户关键词条件, 客户关键词SQL, 客户id集合, 客户号码条件, 搜索词 } from "@/lib/search-keyword";
 import { 读的我, 有市场只读, 现在的公海回避, 看全部 } from "@/lib/team-scope";
@@ -456,3 +456,15 @@ export function 成客户行(r: 取到的行, 号: (p: string) => string) {
 }
 
 export type 客户行 = ReturnType<typeof 成客户行>;
+
+/**
+ * 客户列表页上的一行（29Q，11-20）：列表「联系电话」一列显示服务端给的号、带一键复制，
+ * 所以要藏的号在这里就打好码，浏览器拿不到原号：
+ *   - 号码脱敏器（销售教练、字段权限里电话「看不到」的角色）照旧，见 成客户行 的 号；
+ *   - 公海里的客户照旧打码（用户 11-20 定「不显示」），领到手、不在公海了才显示完整号码。
+ * 导出不走这里（导出口径另说，见 export-action.ts）
+ */
+export function 成列表行(r: 取到的行, 号: (p: string) => string): 客户行 {
+  const 行 = 成客户行(r, 号);
+  return r.pool && 行.phone ? { ...行, phone: maskPhone(行.phone) } : 行;
+}

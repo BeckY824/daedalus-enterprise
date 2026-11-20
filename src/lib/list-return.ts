@@ -128,3 +128,48 @@ export function 记滚动(种: 列表种, href: string, y: number) {
   const 全 = 解析<Record<string, unknown>>(读(滚动键));
   写(滚动键, JSON.stringify({ ...全, [种]: { href, y: Math.max(0, Math.round(y)) } }));
 }
+
+/*
+  勾选和横向滚动（29R，11-20 员工反馈：「点进去再退出来，之前勾选设置的页面就全乱了」「刷新之后，之前设置的东西就没了」）：
+  列表组件（components/DataList.tsx，给了 回来还原 的那几张）一挂上就按「这张表 + 这个地址」读回勾选和横滚位置。
+  地址不一样（换了筛选、翻了页）就不还原：勾选只认眼前的行（list-select.ts 只留当前行）。
+  和上面一样记在 sessionStorage（一个标签页一份，刷新还在、关了就没），存储被禁时退回这一页的内存，坏数据当没记。
+*/
+const 勾选键 = "crm:list-pick:v1";
+export type 勾选记忆 = { href: string; ids: string[]; x: number };
+
+/** 地址栏现在的地址（路径 + 规整过的查询串，和 ListMemory 记的同一个写法） */
+export function 当前列表地址(): string {
+  if (typeof window === "undefined") return "";
+  const q = new URLSearchParams(window.location.search).toString();
+  return q ? `${window.location.pathname}?${q}` : window.location.pathname;
+}
+
+function 读勾选表(): Record<string, unknown> {
+  return 解析<Record<string, unknown>>(读(勾选键));
+}
+
+/** 这张表在这个地址上记的勾选和横滚；没记过、地址对不上、坏数据都返回 null */
+export function 读勾选(表: string, href: string): 勾选记忆 | null {
+  const v = 读勾选表()[表] as { href?: unknown; ids?: unknown; x?: unknown } | undefined;
+  if (!v || v.href !== href) return null;
+  const ids = Array.isArray(v.ids) ? v.ids.filter((x): x is string => typeof x === "string").slice(0, 1000) : [];
+  const x = typeof v.x === "number" && Number.isFinite(v.x) && v.x > 0 ? Math.round(v.x) : 0;
+  return { href, ids, x };
+}
+
+function 写勾选(表: string, 记忆: 勾选记忆) {
+  写(勾选键, JSON.stringify({ ...读勾选表(), [表]: 记忆 }));
+}
+
+/** 勾选变了就记；同一个地址上的横滚位置留着，换了地址横滚归零 */
+export function 记勾选(表: string, href: string, ids: readonly string[]) {
+  const 旧 = 读勾选(表, href);
+  写勾选(表, { href, ids: ids.slice(0, 1000), x: 旧?.x ?? 0 });
+}
+
+/** 表格横着滚了就记；同一个地址上的勾选留着，换了地址勾选清空 */
+export function 记横滚(表: string, href: string, x: number) {
+  const 旧 = 读勾选(表, href);
+  写勾选(表, { href, ids: 旧?.ids ?? [], x: Number.isFinite(x) && x > 0 ? Math.round(x) : 0 });
+}

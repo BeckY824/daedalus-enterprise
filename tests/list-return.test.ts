@@ -4,7 +4,7 @@
  * 这里没有 window：读写走模块里的内存兜底（和存储被禁时同一条路）。
  */
 import { describe, it, expect } from "vitest";
-import { 列表种of, 是详情页, 页码of, 回列表文字, 记地址, 地址快照, 解析地址们, 订阅地址, 读滚动, 记滚动 } from "@/lib/list-return";
+import { 列表种of, 是详情页, 页码of, 回列表文字, 记地址, 地址快照, 解析地址们, 订阅地址, 读滚动, 记滚动, 读勾选, 记勾选, 记横滚, 当前列表地址 } from "@/lib/list-return";
 
 describe("认路径", () => {
   it("三张列表：客户 / 公海 / 项目；子路径、别的页都不算", () => {
@@ -76,5 +76,37 @@ describe("记滚动", () => {
     记滚动("公海", "/pool", -5);
     expect(读滚动("公海")).toEqual({ href: "/pool", y: 0 });
     expect(读滚动("客户")).toEqual({ href: "/customers?page=4", y: 1235 });
+  });
+});
+
+describe("勾选和横滚（29R：进详情再回来、刷新后还原）", () => {
+  it("同一张表、同一个地址读回勾选；地址不一样不还原；别的表互不影响", () => {
+    记勾选("customers", "/customers?page=2", ["c1", "c2"]);
+    expect(读勾选("customers", "/customers?page=2")).toEqual({ href: "/customers?page=2", ids: ["c1", "c2"], x: 0 });
+    expect(读勾选("customers", "/customers?page=3")).toBeNull();
+    expect(读勾选("pool", "/customers?page=2")).toBeNull();
+    记勾选("pool", "/pool", ["p1"]);
+    expect(读勾选("customers", "/customers?page=2")?.ids).toEqual(["c1", "c2"]);
+    expect(读勾选("pool", "/pool")?.ids).toEqual(["p1"]);
+  });
+
+  it("横滚位置：同一个地址上和勾选互相留着；换了地址另起一份（勾选清空）", () => {
+    记勾选("ent-projects", "/projects?keyword=a", ["x1"]);
+    记横滚("ent-projects", "/projects?keyword=a", 312.6);
+    expect(读勾选("ent-projects", "/projects?keyword=a")).toEqual({ href: "/projects?keyword=a", ids: ["x1"], x: 313 });
+    记勾选("ent-projects", "/projects?keyword=a", ["x1", "x2"]);
+    expect(读勾选("ent-projects", "/projects?keyword=a")?.x).toBe(313);
+    记横滚("ent-projects", "/projects?keyword=b", 80);
+    expect(读勾选("ent-projects", "/projects?keyword=b")).toEqual({ href: "/projects?keyword=b", ids: [], x: 80 });
+    expect(读勾选("ent-projects", "/projects?keyword=a")).toBeNull();
+    // 负数、NaN 当 0；取消全部勾选也记下（回来不再冒出旧勾选）
+    记横滚("ent-projects", "/projects?keyword=b", Number.NaN);
+    expect(读勾选("ent-projects", "/projects?keyword=b")?.x).toBe(0);
+    记勾选("ent-projects", "/projects?keyword=b", []);
+    expect(读勾选("ent-projects", "/projects?keyword=b")?.ids).toEqual([]);
+  });
+
+  it("没有 window（服务端）：当前地址是空串，不抛", () => {
+    expect(当前列表地址()).toBe("");
   });
 });
