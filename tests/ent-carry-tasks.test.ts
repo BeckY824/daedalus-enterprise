@@ -222,7 +222,7 @@ describe("分配（分配公海项目）", () => {
     await 放回公海(乙, p);
     expect(await 分配公海项目([p], 丙.id, false)).toMatchObject({ ok: true, 分到: [p] });
     expect(await 看(没做完.id)).toMatchObject({ ownerId: 乙.id, done: true, title: `回个电话${进公海关待办尾}` });
-    expect(await 痕(p, "pool-claim")).toBe("原负责人没做完的待办没带");
+    expect(await 痕(p, "pool-claim")).toBe("从线索公海分配；原负责人没做完的待办没带");
   });
 
   it("没传勾按默认勾（带）；原负责人没有待办时写 0 条", async () => {
@@ -230,6 +230,6 @@ describe("分配（分配公海项目）", () => {
     const p = await 项目(乙.id, c);
     await 放回公海(乙, p);
     expect(await 分配公海项目([p], 丙.id)).toMatchObject({ ok: true, 分到: [p] });
-    expect(await 痕(p, "pool-claim")).toBe("原负责人没做完的待办带过来 0 条");
+    expect(await 痕(p, "pool-claim")).toBe("从线索公海分配；原负责人没做完的待办带过来 0 条");
   });
 });
