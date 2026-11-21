@@ -75,14 +75,15 @@ export default function LeadAssignCard({ rows, 不限额 = false, 只拨暂停 =
   };
 
   return (
-    <Card id="lead-assign" title="线索分配" data-testid="org-lead-assign" data-set-find="配额"
-      extra={只拨暂停 ? <span className="muted" data-testid="org-lead-pause-only">你能暂停 / 恢复；「禁止」只有系统管理员能改</span>
-        : !能改参与 && <span className="muted">参与状态只有系统管理员能改（市场管理能暂停 / 恢复）</span>}>
+    <Card id="lead-assign" title="线索分配" data-testid="org-lead-assign" data-set-find="配额">
+      {/* 11-21 r30：这句原放在卡片头右侧 extra，390 宽把标题挤成「线.」→ 挪进正文第一行 */}
+      {只拨暂停 ? <p className="muted" data-testid="org-lead-pause-only">你能暂停 / 恢复；「禁止」只有系统管理员能改</p>
+        : !能改参与 && <p className="muted">参与状态只有系统管理员能改（市场管理能暂停 / 恢复）</p>}
       {提示条}
       {不限额 ? (
         <p className="muted" data-testid="org-lead-no-quota-note">
           现在是「不设配额」：自动分配在 线索 页点「自动分配」，挑参与的人里本月已分最少的，一样多先给最早进分配池的；配额不起作用，手动分也不查满额。
-          「参与」选暂停或禁止的人照样不自动分给他。下面的配额先灰着、数留着，在上面规则里关掉「不设配额」就照旧按配额分。分配数每月 1 日清零，持有数不清。
+          「参与」选暂停或禁止的人照样不自动分给他。下面的配额先灰着、数留着，系统管理员在组织规则里关掉「不设配额」就照旧按配额分。分配数每月 1 日清零，持有数不清。
           分给他的线索最终判成无效的、他主动放弃（豁免）的，都记「待补 N」：下一条自动分配在合格的人里优先补发给他，多人待补按记上的先后，用掉为止；
           补发写在本月已分后面的「另补 M」里，不算本月已分、不影响轮转（本轮正常轮到他照常给），判无效那条照算、不退。
         </p>
