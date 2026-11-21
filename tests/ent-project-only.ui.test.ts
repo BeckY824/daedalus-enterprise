@@ -17,7 +17,7 @@ const plugin: Plugin = { name: "ent-project-only", setup(b) {
   b.onResolve({ filter: /^next\/(navigation|link)$/ }, a => ({ path: a.path, namespace: "fixture" }));
   b.onResolve({ filter: /(^|\/)WhatsNew$/ }, a => ({ path: a.path, namespace: "whats-new" }));
   b.onLoad({ filter: /.*/, namespace: "whats-new" }, () => ({ contents: "export default function W(){return '更新记录'}" }));
-  b.onResolve({ filter: /(^|\/)(UpdateRow|AiTasks|AiDock|FeedbackButton|AiCost|RailResizer|LeadFullNotices|RecordView|ProjectDetail|NoticeBell)$/ }, a => ({ path: a.path, namespace: "empty-child" }));
+  b.onResolve({ filter: /(^|\/)(UpdateRow|AiTasks|AiDock|FeedbackButton|AiCost|RailResizer|AwaitAssignTodo|RecordView|ProjectDetail|NoticeBell)$/ }, a => ({ path: a.path, namespace: "empty-child" }));
   b.onLoad({ filter: /.*/, namespace: "empty-child" }, () => ({ contents: "export default function Empty(){return null} export function AiMeterBar(){return null}" }));
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ resolveDir: process.cwd(), contents: a.path === "next/link"
     ? `import React from 'react';export default function Link({href,onClick,prefetch,children,...p}){return React.createElement('a',{...p,href,onClick:e=>{onClick?.(e);if(!e.defaultPrevented){e.preventDefault();window.__route=href}}},children)}`

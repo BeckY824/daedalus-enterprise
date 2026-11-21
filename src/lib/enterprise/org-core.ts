@@ -42,6 +42,11 @@ export type 组织 = {
    * Setting enterprise.orphan_lead_reviewer（userId），org.ts 读组织 填；没设、人停用了 = null，落到系统管理员
    */
   无主线索复核人?: string | null;
+  /**
+   * 「线索分配」规则开关（Setting enterprise.rule.lead_assign，认法同 rules-table.ts 开关值开着、visibility.ts 数据层）。org.ts 读组织 填；
+   * 没填（测试里手搭的组织）= 关。能看项目 的待分配本线放开（await-assign-open.ts）按它判，和数据层同一口径（P-转-42 审查）
+   */
+  线索分配开着?: boolean;
 };
 
 /** 回收站副手名单存的 Setting 键（设置页存 JSON 数组；手写的逗号串也认） */

@@ -17,7 +17,7 @@ import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 企业版 } from "./switch";
 import { 权限组织 } from "./org";
 import { 直属上级of, type 组织 } from "./org-core";
-import { 能看项目, type 权限项目, type 谁 } from "./permissions";
+import { 能看项目, 权限项目选, 带已加入, type 权限项目, type 谁 } from "./permissions";
 import { 市场进不了详情 } from "./market-view-db";
 import { 拼地址 } from "./customer-v2";
 import { 号码种类表, 种类叫法, 联系人号码们 } from "./customer-v2-db";
@@ -73,15 +73,14 @@ export async function 读客户只读卡(me: 谁, projectId: string): Promise<�
   const p = await prisma.project.findFirst({
     where: { id: projectId },
     select: {
-      id: true, customerId: true, ownerId: true, creatorId: true, pooledAt: true, bizLine: true,
-      members: { where: { inviteStatus: "JOINED" }, select: { userId: true } },
+      id: true, customerId: true, ...权限项目选,
     },
   });
   if (!p) return null;
   // 客户本身多半看不到（这张卡就是给这种情况的），从这往下绕开限定层，所以字段全部写明，只取白名单
   const [org, 底] = await Promise.all([权限组织(), 读卡底子(p.customerId, p.ownerId)]);
   if (!底) return null;
-  const 放行 = await 只读卡放行(me, { ...p, 已加入: p.members.map((m) => m.userId), 客户在公海: 底.在公海 }, org);
+  const 放行 = await 只读卡放行(me, { ...带已加入(p), 客户在公海: 底.在公海 }, org);
   if (!放行) return null;
   return 拼卡(me, p.customerId, 底);
 }

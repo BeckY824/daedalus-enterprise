@@ -20,7 +20,6 @@ import { 数提醒 } from "@/lib/reminders-db";
 import { multiTenant } from "@/lib/tenant/context";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 自定产品名 } from "@/lib/enterprise/brand";
-import { 读满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 待回复主题of } from "@/lib/enterprise/coach-topic-db";
 import { 待回复客户of } from "@/lib/enterprise/reply-notice";
 import { 我的轮到 } from "@/lib/enterprise/assign-eta";
@@ -29,7 +28,7 @@ import NoAiHome from "./NoAiHome";
 import VerifyInbox from "../projects/VerifyInbox";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 能导入导出 } from "@/lib/enterprise/import-perm";
-import { 数新线索 } from "@/lib/project/list";
+import { 数新线索, 数待分配 } from "@/lib/project/list";
 import { 数首页卡 } from "@/lib/project/home-cards-db";
 import { 待我复核的 } from "@/lib/project/lead-verify";
 import { 权限组织, 读组织 } from "@/lib/enterprise/org";
@@ -76,8 +75,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const 对话 = sp0.c ? await 读对话(sp0.c) : null;
   // 企业版首页置顶「新分到你的线索，可以放弃（豁免）」（11-21）：只查本人、一批判（lead-giveup.ts 我能放弃的）；先发出去，和下面几样待办一起等（它从不抛）
   const 能放弃P = 企业版() ? 我能放弃的(user) : Promise.resolve([]);
-  // 企业版自动分配因都已满额没分出去的提醒：首页顶部也摆一份，和线索页同一份数据，哪边关了两边都没了
-  const 满额提醒们 = 企业版() ? await 读满额提醒(user.id) : [];
+  // 企业版首页待办「待分配新线索 N 条」（11-21，替原来一事一张的黄色大卡）：能分配的人按能分的业务线现数，和 /leads?f=await-assign 同一个条件；读不出来不挡首页
+  const 待分配 = 企业版() ? await 数待分配(user).catch((e) => { console.error("[待分配] 首页没数出来", e); return null; }) : null;
   // 企业版首页待办「待回复主题」（11-17，教练主题）：我负责的项目上等我回的
   const 待回复主题 = 企业版() ? await 待回复主题of(user.id) : null;
   // 企业版首页待办「待回复客户」（11-17，指定回复时间）：客户要求的联系时间快到了、还没记沟通的
@@ -107,7 +106,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     }
     // 老的数据看板（Board / DashboardView）10-28 删了：企业版只用项目，没配 AI 的首页一律是这一屏
     // 「去设置里配 AI」那个按钮：能改后台设置的人才摆（企业版 = 总管理，11-01 只认业务角色）
-    return <NoAiHome 管理员={企业版() ? 能改后台设置(user, await 权限组织()) : user.role === "ADMIN"} 找谁={企业版() ? "总管理" : "管理员"} 满额提醒={满额提醒们} 待回复主题={待回复主题} 待回复客户={待回复客户} 轮到={轮到} 待复核={待复核} 放弃条={放弃条} />;
+    return <NoAiHome 管理员={企业版() ? 能改后台设置(user, await 权限组织()) : user.role === "ADMIN"} 找谁={企业版() ? "总管理" : "管理员"} 待分配={待分配} 待回复主题={待回复主题} 待回复客户={待回复客户} 轮到={轮到} 待复核={待复核} 放弃条={放弃条} />;
   }
 
   if (只用项目) {
@@ -155,7 +154,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         去导入={await 去导入(user)}
         企业版
         产品名={自定产品名() ?? undefined}
-        满额提醒={满额提醒们}
+        待分配={待分配}
         待回复主题={待回复主题}
         待回复客户={待回复客户}
         轮到={轮到}
@@ -268,7 +267,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       去导入={await 去导入(user)}
       企业版={企业版()}
       产品名={自定产品名() ?? undefined}
-      满额提醒={满额提醒们}
       空库={学员数 === 0 && 线索数 === 0 && mine.total === 0 && myPlans === 0 && 没做完的待办 === 0}
       信号={{
         逾期,

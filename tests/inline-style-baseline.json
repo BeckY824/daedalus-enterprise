@@ -30,7 +30,6 @@
   "app/(app)/follow-ups/plans/PlansView.tsx": 10,
   "app/(app)/leads/AssignLead.tsx": 7,
   "app/(app)/leads/ConvertProjectModal.tsx": 10,
-  "app/(app)/leads/LeadFullNotices.tsx": 1,
   "app/(app)/leads/LeadsView.tsx": 10,
   "app/(app)/loading.tsx": 1,
   "app/(app)/overview/BoardBlockers.tsx": 2,
