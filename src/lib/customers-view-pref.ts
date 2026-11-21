@@ -10,13 +10,14 @@ export const 市场视图名 = ["客户列表", "我分出去的"] as const;
 
 /**
  * 浏览器里记下，再按同一组筛选重新取一屏（C18：两边是同一行筛选，切视图筛选留着）。
- * 页码、每页条数、排序两边各算各的（列表翻客户、看板翻项目），换视图时去掉
+ * 页码、每页条数、排序两边各算各的（列表翻客户、看板翻项目），换视图时去掉。
+ * 另去掉：市场角色从客户列表切到「我分出去的」传 ["scope"]——地址上带着「范围」时客户页按列表画（page.tsx，P-界面-51），留着就切不过去
  */
-export function 换客户页看法(v: 客户页看法, 去: { push: (u: string) => void; refresh: () => void }) {
+export function 换客户页看法(v: 客户页看法, 去: { push: (u: string) => void; refresh: () => void }, 另去掉: readonly string[] = []) {
   document.cookie = `${客户页看法键}=${v}; path=/; max-age=31536000; samesite=lax`;
   const q = new URLSearchParams(location.search);
   // q / hl 是被挡在详情外转来时带的（P-界面-11），只对那一次
-  for (const k of ["page", "pageSize", "sort", "sortCurrency", "q", "hl"]) q.delete(k);
+  for (const k of ["page", "pageSize", "sort", "sortCurrency", "q", "hl", ...另去掉]) q.delete(k);
   const 址 = q.size ? `/customers?${q}` : "/customers";
   if (location.pathname + location.search === 址) 去.refresh();
   else 去.push(址);

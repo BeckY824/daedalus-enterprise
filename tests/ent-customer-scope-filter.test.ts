@@ -9,12 +9,12 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import type { ReactElement } from "react";
 
-const mocks = vi.hoisted(() => ({ user: { id: "", name: "", email: "", role: "SALES", title: "", avatar: null as string | null }, 在请求: false }));
+const mocks = vi.hoisted(() => ({ user: { id: "", name: "", email: "", role: "SALES", title: "", avatar: null as string | null }, 在请求: false, 看法: undefined as string | undefined }));
 vi.mock("next/headers", async (原) => ({
   ...(await 原<object>()),
   cookies: async () => {
     if (!mocks.在请求) throw new Error("不在请求里");
-    return { get: () => undefined };
+    return { get: (k: string) => (k === "customers-view" && mocks.看法 ? { name: k, value: mocks.看法 } : undefined) };
   },
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
@@ -92,6 +92,7 @@ beforeEach(async () => {
   // 甲负责、又是组员的（自己负责的项目上也挂着自己）：只算「我负责的」
   const 自己 = await 建客户(甲);
   await 挂项目(自己.id, 甲, { 人: 甲, 状态: "JOINED" });
+  mocks.看法 = undefined;
   忘掉企业版范围();
 });
 afterAll(async () => { vi.unstubAllEnvs(); invalidateSettingsCache(); await prisma.$disconnect(); });
@@ -144,6 +145,86 @@ describe("客户页按范围筛（企业版项目模式）", () => {
   });
 });
 
+describe("市场管理在客户列表（P-界面-51，3703 实操发现）", () => {
+  it("记着「我分出去的」或没记过：地址带 scope（客户详情左侧名单「我负责的 N 位在表格里 ›」）进客户列表、只列本人负责的；不带 scope 照旧进我分出去的，带 hl 的一律进我分出去的", async () => {
+    const 市管 = await 造人("mm0", "marketing_mgr");
+    await 建客户(市管, "市管自己的");
+    const 下属 = await 造人("mm0x", "sales", 市管.id);
+    await 建客户(下属, "市场下属的");
+    忘掉企业版范围();
+    const 是我分出去的 = (p: unknown) => (p as { 换回客户列表?: boolean }).换回客户列表 === true;
+    for (const 记 of [undefined, "board"]) {
+      mocks.看法 = 记;
+      expect(是我分出去的(await 打开(市管)), String(记)).toBe(true);
+      const 我的 = await 打开(市管, { scope: "mine" });
+      expect(是我分出去的(我的), String(记)).toBe(false);
+      expect(我的.filters.scope, String(记)).toBe("mine");
+      expect(我的.total, String(记)).toBe(1);
+      // 列表里搜：filters 里留着 scope（useUrlFilters 照它拼地址），带关键词照样只列我负责的
+      const 搜 = await 打开(市管, { scope: "mine", keyword: "市" });
+      expect(搜.filters.scope, String(记)).toBe("mine");
+      expect(搜.total, String(记)).toBe(1);
+      // 「我可见的」也是列表那一项
+      expect((await 打开(市管, { scope: "visible" })).total, String(记)).toBe(2);
+      // 认不出的 scope 当没带
+      expect(是我分出去的(await 打开(市管, { scope: "乱写" })), String(记)).toBe(true);
+      expect(是我分出去的(await 打开(市管, { scope: "mine", hl: "x" })), String(记)).toBe(true);
+    }
+  });
+  it("从客户列表切到「我分出去的」：地址去掉 scope（不然又按列表画、切不过去）；项目模式别的人切看板留着 scope", async () => {
+    const { 换客户页看法 } = await import("@/lib/customers-view-pref");
+    const 去过: string[] = [];
+    const 去 = { push: (u: string) => { 去过.push(u); }, refresh: () => { 去过.push("refresh"); } };
+    vi.stubGlobal("document", { cookie: "" });
+    vi.stubGlobal("location", { pathname: "/customers", search: "?scope=mine&keyword=%E5%B8%82&page=2" });
+    try {
+      换客户页看法("board", 去, ["scope"]);
+      换客户页看法("board", 去);
+      expect(去过).toEqual([`/customers?${new URLSearchParams({ keyword: "市" })}`, `/customers?${new URLSearchParams({ scope: "mine", keyword: "市" })}`]);
+      expect(document.cookie).toContain("customers-view=board");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("「我可见的」里有别人负责的；选「我负责的」只列本人负责的，带关键词照样按范围筛、条件里留着 scope", async () => {
+    const 市管 = await 造人("mm", "marketing_mgr");
+    await 建客户(市管, "市管自己的");
+    // 市管手下一位销售负责的客户：按组织架构市管看得到这位，但负责人不是他
+    const 下属 = await 造人("mmx", "sales", 市管.id);
+    await 建客户(下属, "市场下属的");
+    忘掉企业版范围();
+    mocks.看法 = "list";
+    const 全 = await 打开(市管);
+    expect(全.filters.scope).toBe("visible");
+    expect(全.total).toBe(2);
+    const 我的 = await 打开(市管, { scope: "mine" });
+    expect(我的.filters.scope).toBe("mine");
+    expect(我的.total).toBe(1);
+    for (const keyword of ["市", "市管自己的"]) {
+      const 搜 = await 打开(市管, { scope: "mine", keyword });
+      expect(搜.filters.scope, keyword).toBe("mine");
+      expect(搜.total, keyword).toBe(1);
+    }
+  });
+  it("在市场部门里（市场相关客户放开读、关键词走老路）：「我负责的」同样只列本人负责的，搜索也是", async () => {
+    const 部 = await prisma.entDept.create({ data: { name: "市场部" } });
+    const 市管 = await 造人("mm2", "marketing_mgr");
+    await prisma.entMember.update({ where: { userId: 市管.id }, data: { deptId: 部.id } });
+    await 建客户(市管, "市管自己的");
+    // 市管建档、负责人是乙：按「市场相关客户」市管看得到（只读）
+    const 建的 = await 建客户(乙, "市管建的");
+    await prisma.customerCreator.create({ data: { customerId: 建的.id, userId: 市管.id } });
+    忘掉企业版范围();
+    mocks.看法 = "list";
+    expect((await 打开(市管)).total).toBe(2);
+    expect((await 打开(市管, { scope: "mine" })).total).toBe(1);
+    const 搜 = await 打开(市管, { scope: "mine", keyword: "市管" });
+    expect(搜.filters.scope).toBe("mine");
+    expect(搜.total).toBe(1);
+  });
+});
+
 describe("客户详情左侧名单：和「我负责的」对齐", () => {
   it("销售默认停在「我的」，「我的」总数 = 自己负责的；管理默认停在「全部」", async () => {
     mocks.user = { ...甲 };
@@ -167,7 +248,7 @@ describe("左侧名单底下那句：写的数 = 点过去表格里的数", () =
     expect(名单底句({ 页签: "我的", 默认页签: "我的", 全部总数: 120, 全部条数: 50, 我负责总数: 30, 我的条数: 30 })).toBeNull();
   });
   it("有管理范围：「全部」链 /customers（默认我可见的）写全部总数；「我的」链我负责的", () => {
-    expect(名单底句({ 页签: "全部", 默认页签: "全部", 全部总数: 900, 全部条数: 50, 我负责总数: 3, 我的条数: 3 })).toEqual({ href: "/customers", 条: 50, 名: "全部", 总: 900 });
+    expect(名单底句({ 页签: "全部", 默认页签: "全部", 全部总数: 900, 全部条数: 50, 我负责总数: 3, 我的条数: 3 })).toEqual({ href: "/customers?scope=visible", 条: 50, 名: "全部", 总: 900 });
     expect(名单底句({ 页签: "我的", 默认页签: "全部", 全部总数: 900, 全部条数: 50, 我负责总数: 70, 我的条数: 50 })).toEqual({ href: "/customers?scope=mine", 条: 50, 名: "我负责的", 总: 70 });
   });
   it("连库对拍：销售名单「全部」那句落到的范围，客户页的总数 = 名单给的数；管理「全部」落到默认，总数 = 名单全部总数", async () => {
@@ -180,5 +261,13 @@ describe("左侧名单底下那句：写的数 = 点过去表格里的数", () =
       const sp = Object.fromEntries(new URLSearchParams(句.href.split("?")[1] ?? ""));
       expect((await 打开(谁, sp)).total, `${谁.name} ${页签}`).toBe(句.总);
     }
+  });
+});
+
+describe("市场视图下「重置」留着默认范围（#395 审查必修）", () => {
+  it("重置在市场视图分支里带 scope 回列表，不走裸 reset", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const v = await readFile("src/app/(app)/customers/CustomersView.tsx", "utf8");
+    expect(v).toMatch(/市场视图 \? apply\(\{ \.\.\.\(Object\.fromEntries[^\n]*scope: 客户范围\?\.默认 \|\| "visible" \}\)/);
   });
 });

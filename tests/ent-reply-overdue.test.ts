@@ -1,7 +1,8 @@
 /**
  * 企业版「超时未跟进自动转」（11-17，lib/enterprise/reply-overdue.ts）：
  * 指定回复时间 + 1 小时没记有效沟通 → 超时提醒（站内 + 飞书 + 首页待办）；再 30 分钟没记 → 自动转下一位销售，接手人同样计时、不限次数；
- * 北京 22:00–08:00 不执行、顺延到 08:00，每一步按上一步实际执行的时刻往后算；一轮人人超时过就开新一轮；
+ * 北京 22:00–08:00 不执行、顺延到 08:00，周末和法定节假日整天不执行、顺延到下一个工作日 08:00（调休上班日照常，11-21 方案 B），
+ * 每一步按上一步实际执行的时刻往后算（落在周五夜 / 周六的老场景挪到了工作日）；一轮人人超时过就开新一轮；
  * 原负责人收「超时未跟进已自动收回并分配给其他成员」；客户随线索走，原负责人手上还有这位客户别的进行中项目就留给他、接手人页上提示。
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -21,9 +22,9 @@ import { 自动分配不参与key } from "@/lib/enterprise/lead-assign";
 import { 规则, 规则开着 } from "@/lib/enterprise/rules";
 import { 待回复客户of, 已回复的 } from "@/lib/enterprise/reply-notice";
 import {
-  超时转扫一遍, 在夜里, 顺延到白天, 超时提醒到期, 超时转出到期, 该做, 本轮排除, 读试过, 客户怎么办, 客户在谁名下, 超时基准,
+  超时转扫一遍, 在夜里, 不执行, 顺延到可执行, 超时提醒到期, 超时转出到期, 该做, 本轮排除, 读试过, 客户怎么办, 客户在谁名下, 超时基准,
   收回话, 超时转理由, 超时通知种类, 超时转重新起算, 我超时未跟进的, 自留超时话,
-  分配基准, 分配起链往回看天, 起链往回看天, 建档随手记秒, 盘点超时链, type 换人痕,
+  分配基准, 分配起链往回看天, 起链往回看天, 往回看起点, 在起链窗口, 建档随手记秒, 盘点超时链, type 换人痕,
   超时转生效key, 超时转生效时刻, 历史起算key, 历史基准, 本人记话,
 } from "@/lib/enterprise/reply-overdue";
 import { 试跑 } from "@/lib/enterprise-import/report";
@@ -40,6 +41,7 @@ import { 换负责人们of } from "@/lib/enterprise/tri-state-transfer";
 import { 同号再次录入, 同号节点 } from "@/lib/enterprise/same-number-collab";
 import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 北京日期 } from "./helpers/beijing-date";
+import { 是工作日, 有节假日表, 节假日表, 北京日 } from "@/lib/enterprise/cn-workday";
 
 /** 北京时间的一个瞬间 */
 const 京 = (s: string) => new Date(`${s.replace(" ", "T")}:00+08:00`);
@@ -104,16 +106,18 @@ afterEach(() => { vi.unstubAllEnvs(); 忘掉企业版范围(); invalidateSetting
 afterAll(async () => { await prisma.$disconnect(); });
 
 describe("时间线（纯函数）", () => {
-  it("夜里 = 北京 22:00–08:00；落在夜里的顺延到早上 08:00（过了零点是当天 08:00）", () => {
-    expect(在夜里(京("2026-11-20 21:59"))).toBe(false);
-    expect(在夜里(京("2026-11-20 22:00"))).toBe(true);
-    expect(在夜里(京("2026-11-21 07:59"))).toBe(true);
-    expect(在夜里(京("2026-11-21 08:00"))).toBe(false);
-    expect(顺延到白天(京("2026-11-20 22:50"))).toEqual(京("2026-11-21 08:00"));
-    expect(顺延到白天(京("2026-11-21 03:00"))).toEqual(京("2026-11-21 08:00"));
-    expect(顺延到白天(京("2026-11-20 15:00"))).toEqual(京("2026-11-20 15:00"));
-    // 跨月、跨年也对
-    expect(顺延到白天(京("2026-12-31 23:30"))).toEqual(京("2027-01-01 08:00"));
+  it("夜里 = 北京 22:00–08:00；落在夜里的顺延到早上 08:00（过了零点是当天 08:00；工作日之间）", () => {
+    expect(在夜里(京("2026-11-24 21:59"))).toBe(false);
+    expect(在夜里(京("2026-11-24 22:00"))).toBe(true);
+    expect(在夜里(京("2026-11-25 07:59"))).toBe(true);
+    expect(在夜里(京("2026-11-25 08:00"))).toBe(false);
+    expect(顺延到可执行(京("2026-11-24 22:50"))).toEqual(京("2026-11-25 08:00"));
+    expect(顺延到可执行(京("2026-11-25 03:00"))).toEqual(京("2026-11-25 08:00"));
+    expect(顺延到可执行(京("2026-11-24 15:00"))).toEqual(京("2026-11-24 15:00"));
+    // 跨月也对
+    expect(顺延到可执行(京("2026-11-30 23:30"))).toEqual(京("2026-12-01 08:00"));
+    // 跨年：2027-01-01 至 03 元旦放假（国办发明电〔2026〕10号），推到 01-04 周一
+    expect(顺延到可执行(京("2026-12-31 23:30"))).toEqual(京("2027-01-04 08:00"));
   });
 
   it("基准 + 1 小时提醒、提醒 + 30 分钟转；超时基准 = 结束，没填结束用开始", () => {
@@ -125,21 +129,98 @@ describe("时间线（纯函数）", () => {
   });
 
   it("每一步按上一步实际执行的时刻算：超时提醒顺延到 08:00 → 08:30 转；21:50 接手 → 22:50 该提醒 → 08:00 → 08:30 转", () => {
-    // 基准 21:30：22:30 该提醒 → 夜里，08:00 才提醒
-    const 起 = 京("2026-11-20 21:30");
-    expect(超时提醒到期(起)).toEqual(京("2026-11-21 08:00"));
-    expect(该做({ since: 起, overdueAt: null }, 京("2026-11-20 23:00"))).toBeNull();
-    expect(该做({ since: 起, overdueAt: null }, 京("2026-11-21 07:59"))).toBeNull();
-    expect(该做({ since: 起, overdueAt: null }, 京("2026-11-21 08:00"))).toBe("提醒");
-    expect(该做({ since: 起, overdueAt: 京("2026-11-21 08:00") }, 京("2026-11-21 08:29"))).toBeNull();
-    expect(该做({ since: 起, overdueAt: 京("2026-11-21 08:00") }, 京("2026-11-21 08:30"))).toBe("转");
+    // 基准 21:30（周二）：22:30 该提醒 → 夜里，周三 08:00 才提醒
+    const 起 = 京("2026-11-24 21:30");
+    expect(超时提醒到期(起)).toEqual(京("2026-11-25 08:00"));
+    expect(该做({ since: 起, overdueAt: null }, 京("2026-11-24 23:00"))).toBeNull();
+    expect(该做({ since: 起, overdueAt: null }, 京("2026-11-25 07:59"))).toBeNull();
+    expect(该做({ since: 起, overdueAt: null }, 京("2026-11-25 08:00"))).toBe("提醒");
+    expect(该做({ since: 起, overdueAt: 京("2026-11-25 08:00") }, 京("2026-11-25 08:29"))).toBeNull();
+    expect(该做({ since: 起, overdueAt: 京("2026-11-25 08:00") }, 京("2026-11-25 08:30"))).toBe("转");
     // 21:50 接手
-    const 接 = 京("2026-11-20 21:50");
-    expect(超时提醒到期(接)).toEqual(京("2026-11-21 08:00"));
-    expect(超时转出到期(京("2026-11-21 08:00"))).toEqual(京("2026-11-21 08:30"));
+    const 接 = 京("2026-11-24 21:50");
+    expect(超时提醒到期(接)).toEqual(京("2026-11-25 08:00"));
+    expect(超时转出到期(京("2026-11-25 08:00"))).toEqual(京("2026-11-25 08:30"));
     // 21:45 发了超时提醒：22:15 该转 → 08:00 转
-    expect(超时转出到期(京("2026-11-20 21:45"))).toEqual(京("2026-11-21 08:00"));
-    expect(该做({ since: 京("2026-11-20 20:45"), overdueAt: 京("2026-11-20 21:45") }, 京("2026-11-20 22:15"))).toBeNull();
+    expect(超时转出到期(京("2026-11-24 21:45"))).toEqual(京("2026-11-25 08:00"));
+    expect(该做({ since: 京("2026-11-24 20:45"), overdueAt: 京("2026-11-24 21:45") }, 京("2026-11-24 22:15"))).toBeNull();
+  });
+
+  it("[方案 B 11-21] 周末和法定节假日整天和夜里一样不执行，顺延到下一个工作日 08:00；调休上班的周六周日照常计时", () => {
+    // 不执行：周末整天、法定假日整天；调休上班的周六照常（白天）
+    expect(不执行(京("2026-11-21 10:00"))).toBe(true); // 周六
+    expect(不执行(京("2026-11-22 15:00"))).toBe(true); // 周日
+    expect(不执行(京("2026-11-23 08:00"))).toBe(false); // 周一
+    expect(不执行(京("2026-10-05 10:00"))).toBe(true); // 国庆（周一）
+    expect(不执行(京("2026-10-10 10:00"))).toBe(false); // 国庆调休上班的周六
+    expect(不执行(京("2026-10-10 22:30"))).toBe(true); // 调休上班日的夜里照旧不执行
+    // 客户示例：周六上午分来 → 下周一 08:00 超时提醒、08:30 仍没记才转
+    const 周六上午 = 京("2026-11-21 10:00");
+    expect(超时提醒到期(周六上午)).toEqual(京("2026-11-23 08:00"));
+    expect(超时转出到期(京("2026-11-23 08:00"))).toEqual(京("2026-11-23 08:30"));
+    expect(该做({ since: 周六上午, overdueAt: null }, 京("2026-11-21 11:00"))).toBeNull();
+    expect(该做({ since: 周六上午, overdueAt: null }, 京("2026-11-22 23:59"))).toBeNull();
+    expect(该做({ since: 周六上午, overdueAt: null }, 京("2026-11-23 07:59"))).toBeNull();
+    expect(该做({ since: 周六上午, overdueAt: null }, 京("2026-11-23 08:00"))).toBe("提醒");
+    expect(该做({ since: 周六上午, overdueAt: 京("2026-11-23 08:00") }, 京("2026-11-23 08:29"))).toBeNull();
+    expect(该做({ since: 周六上午, overdueAt: 京("2026-11-23 08:00") }, 京("2026-11-23 08:30"))).toBe("转");
+    // 周五 21:30 分来：22:30 该提醒 → 周五夜里 + 周末 → 下周一 08:00 提醒、08:30 转
+    expect(超时提醒到期(京("2026-11-20 21:30"))).toEqual(京("2026-11-23 08:00"));
+    // 周五 20:30 分来：21:30 照常提醒，22:00 该转 → 下周一 08:00 转
+    expect(超时提醒到期(京("2026-11-20 20:30"))).toEqual(京("2026-11-20 21:30"));
+    expect(超时转出到期(京("2026-11-20 21:30"))).toEqual(京("2026-11-23 08:00"));
+    // 周日凌晨、周六白天同样推到周一 08:00
+    expect(顺延到可执行(京("2026-11-22 03:00"))).toEqual(京("2026-11-23 08:00"));
+    expect(顺延到可执行(京("2026-11-21 15:00"))).toEqual(京("2026-11-23 08:00"));
+    // 法定假日中间：国庆 10-03 上午分来 → 10-08（周四，假期后第一个工作日）08:00 提醒、08:30 转
+    expect(超时提醒到期(京("2026-10-03 10:00"))).toEqual(京("2026-10-08 08:00"));
+    expect(超时转出到期(京("2026-10-08 08:00"))).toEqual(京("2026-10-08 08:30"));
+    // 假期前一天夜里：09-30 21:30 分来 → 22:30 该提醒 → 10-08 08:00
+    expect(超时提醒到期(京("2026-09-30 21:30"))).toEqual(京("2026-10-08 08:00"));
+    // 调休上班的周六（10-10）：照常 1 小时提醒、30 分钟转
+    expect(超时提醒到期(京("2026-10-10 10:00"))).toEqual(京("2026-10-10 11:00"));
+    expect(超时转出到期(京("2026-10-10 11:00"))).toEqual(京("2026-10-10 11:30"));
+    // 调休上班的周日（2026-09-20）凌晨：当天 08:00 就执行
+    expect(顺延到可执行(京("2026-09-20 03:00"))).toEqual(京("2026-09-20 08:00"));
+    // 调休上班日前一天（周五 10-09）夜里 → 周六 10-10 08:00（调休上班）
+    expect(顺延到可执行(京("2026-10-09 22:30"))).toEqual(京("2026-10-10 08:00"));
+    // 春节：2027-02-04 21:30 分来 → 除夕起放假到 02-13，02-14（周日调休上班）08:00 提醒
+    expect(超时提醒到期(京("2027-02-04 21:30"))).toEqual(京("2027-02-14 08:00"));
+  });
+
+  it("[方案 B 11-21] 往回看起点：刚过完周末 / 长假的那天补上紧挨着的不上班天数，平常工作日不补", () => {
+    expect(往回看起点(京("2026-11-24 10:00"), 3)).toEqual(京("2026-11-21 10:00")); // 周二：前一天周一上班，不补
+    expect(往回看起点(京("2026-11-23 08:00"), 3)).toEqual(京("2026-11-18 08:00")); // 周一：补周六、周日
+    expect(往回看起点(京("2026-10-08 08:00"), 7)).toEqual(京("2026-09-24 08:00")); // 国庆后：补 10-01 至 07
+    expect(在起链窗口(京("2026-10-02 10:00"), false, 京("2026-10-08 08:00"))).toBe(true);
+    expect(在起链窗口(京("2026-09-30 21:30"), true, 京("2026-10-08 08:00"))).toBe(true);
+    expect(在起链窗口(京("2026-11-20 09:00"), false, 京("2026-11-24 10:00"))).toBe(false); // 平常日照旧 3 天
+  });
+
+  it("[方案 B 11-21] 节假日表：2026、2027 照国务院办公厅通知原文；没录的年份按周一到周五兜底（不扣法定节假日、不认调休）", () => {
+    expect(有节假日表(2026)).toBe(true);
+    expect(有节假日表(2027)).toBe(true);
+    expect(有节假日表(2028)).toBe(false);
+    // 表里的调休上班日都是周六或周日，放假区间都对得上通知原文的星期
+    const 周 = (d: string) => new Date(`${d}T12:00:00+08:00`).getUTCDay();
+    for (const [年, 表] of Object.entries(节假日表)) {
+      for (const d of 表.上班) expect([0, 6], `${年} ${d}`).toContain(周(d));
+    }
+    expect(周("2026-02-15")).toBe(0); // 春节 2 月 15 日（周日）
+    expect(周("2027-02-05")).toBe(5); // 春节 2 月 5 日（周五）
+    expect(是工作日("2026-02-23")).toBe(false); // 春节最后一天（周一）
+    expect(是工作日("2026-02-28")).toBe(true); // 调休上班（周六）
+    expect(是工作日("2027-06-09")).toBe(false); // 端午（周三）
+    expect(是工作日("2027-06-10")).toBe(true);
+    expect(北京日(京("2026-11-21 07:59"))).toBe("2026-11-21");
+    expect(北京日(new Date("2026-11-20T16:00:00Z"))).toBe("2026-11-21"); // 北京零点
+    // 2028 没录：只按周一到周五（2028-01-01 周六、01-03 周一）
+    const 警 = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(是工作日("2028-01-01")).toBe(false);
+    expect(是工作日("2028-01-03")).toBe(true);
+    expect(顺延到可执行(京("2027-12-31 21:30"))).toEqual(京("2027-12-31 21:30")); // 周五白天照常
+    expect(超时提醒到期(京("2027-12-31 21:30"))).toEqual(京("2028-01-03 08:00")); // 周五夜里 → 周一（兜底）
+    警.mockRestore();
   });
 
   it("轮次：排除这一轮超时过的 + 现负责人；读坏了的当空", () => {
@@ -240,14 +321,14 @@ describe("钟上走一遍（到点提醒、自动转）", () => {
     expect(await 超时转扫一遍(京("2026-11-20 16:30"))).toMatchObject({ 提醒: 0, 转出: 0 });
     expect(await 超时通知(甲.id)).toHaveLength(0);
 
-    const b = await 建线索(甲, { replyEndAt: 京("2026-11-21 10:00") });
-    await 记沟通(b.id, "", 京("2026-11-21 10:30")); // 空的不算
-    await 超时转扫一遍(京("2026-11-21 11:00"));
+    const b = await 建线索(甲, { replyEndAt: 京("2026-11-23 10:00") });
+    await 记沟通(b.id, "", 京("2026-11-23 10:30")); // 空的不算
+    await 超时转扫一遍(京("2026-11-23 11:00"));
     expect(await 超时通知(甲.id)).toHaveLength(1);
-    await 记沟通(b.id, "微信发了报价单，约了明天电话", 京("2026-11-21 11:10"));
-    await 超时转扫一遍(京("2026-11-21 11:30"));
+    await 记沟通(b.id, "微信发了报价单，约了明天电话", 京("2026-11-23 11:10"));
+    await 超时转扫一遍(京("2026-11-23 11:30"));
     expect((await 项目(b.id)).ownerId).toBe(甲.id);
-    expect(await 待回复客户of(甲.id, 京("2026-11-21 11:31"))).toBeNull();
+    expect(await 待回复客户of(甲.id, 京("2026-11-23 11:31"))).toBeNull();
   });
 
   it("[11-20 只认负责人本人] 按时：指定回复时间以后同事、管理记的沟通不停链（30 分钟前那条提醒照旧算回复），照常超时提醒、转；接手人本人记了才停", async () => {
@@ -305,16 +386,16 @@ describe("钟上走一遍（到点提醒、自动转）", () => {
   });
 
   it("夜里不执行：21:20 超时提醒、21:50 转给乙 → 22:50 该提醒 → 次日 08:00 提醒、08:30 转", async () => {
-    const { id } = await 建线索(甲, { replyEndAt: 京("2026-11-20 20:20") });
-    await 超时转扫一遍(京("2026-11-20 21:20"));
-    await 超时转扫一遍(京("2026-11-20 21:50"));
+    const { id } = await 建线索(甲, { replyEndAt: 京("2026-11-19 20:20") });
+    await 超时转扫一遍(京("2026-11-19 21:20"));
+    await 超时转扫一遍(京("2026-11-19 21:50"));
     expect((await 项目(id)).ownerId).toBe(乙.id);
-    for (const t of ["2026-11-20 22:50", "2026-11-21 00:30", "2026-11-21 07:59"]) {
+    for (const t of ["2026-11-19 22:50", "2026-11-20 00:30", "2026-11-20 07:59"]) {
       expect(await 超时转扫一遍(京(t))).toEqual({ 提醒: 0, 转出: 0, 没转成: 0, 停: 0 });
     }
-    expect(await 超时转扫一遍(京("2026-11-21 08:00"))).toMatchObject({ 提醒: 1 });
-    expect(await 超时转扫一遍(京("2026-11-21 08:29"))).toMatchObject({ 转出: 0 });
-    expect(await 超时转扫一遍(京("2026-11-21 08:30"))).toMatchObject({ 转出: 1 });
+    expect(await 超时转扫一遍(京("2026-11-20 08:00"))).toMatchObject({ 提醒: 1 });
+    expect(await 超时转扫一遍(京("2026-11-20 08:29"))).toMatchObject({ 转出: 0 });
+    expect(await 超时转扫一遍(京("2026-11-20 08:30"))).toMatchObject({ 转出: 1 });
     expect((await 项目(id)).ownerId).toBe(丙.id);
   });
 
@@ -375,15 +456,15 @@ describe("钟上走一遍（到点提醒、自动转）", () => {
 
     // 前一条结了，不掺和下面的计数
     await prisma.project.update({ where: { id: a.id }, data: { result: "线索流失" } });
-    const b = await 建线索(甲, { replyEndAt: 京("2026-11-21 10:00") });
-    await 超时转扫一遍(京("2026-11-21 11:00"));
+    const b = await 建线索(甲, { replyEndAt: 京("2026-11-23 10:00") });
+    await 超时转扫一遍(京("2026-11-23 11:00"));
     // 11:10 销售管理手动转给丙
     await prisma.project.update({ where: { id: b.id }, data: { ownerId: 丙.id } });
     const p = await prisma.project.findUniqueOrThrow({ where: { id: b.id } });
-    await prisma.projectNodeLog.create({ data: { projectId: b.id, userId: 老板.id, kind: "transfer", fromOwnerId: 甲.id, toOwnerId: 丙.id, at: 京("2026-11-21 11:10"), fromPhase: p.phase, fromNode: p.node, toPhase: p.phase, toNode: p.node } });
-    expect(await 超时转扫一遍(京("2026-11-21 11:30"))).toMatchObject({ 转出: 0 });
-    expect(await 超时转扫一遍(京("2026-11-21 12:09"))).toMatchObject({ 提醒: 0 });
-    expect(await 超时转扫一遍(京("2026-11-21 12:10"))).toMatchObject({ 提醒: 1 });
+    await prisma.projectNodeLog.create({ data: { projectId: b.id, userId: 老板.id, kind: "transfer", fromOwnerId: 甲.id, toOwnerId: 丙.id, at: 京("2026-11-23 11:10"), fromPhase: p.phase, fromNode: p.node, toPhase: p.phase, toNode: p.node } });
+    expect(await 超时转扫一遍(京("2026-11-23 11:30"))).toMatchObject({ 转出: 0 });
+    expect(await 超时转扫一遍(京("2026-11-23 12:09"))).toMatchObject({ 提醒: 0 });
+    expect(await 超时转扫一遍(京("2026-11-23 12:10"))).toMatchObject({ 提醒: 1 });
     expect((await 超时通知(丙.id)).at(-1)!.body).toContain("接手已满 1 小时");
   });
 
@@ -399,10 +480,10 @@ describe("钟上走一遍（到点提醒、自动转）", () => {
     expect(await 待回复客户of(甲.id, 京("2026-11-20 16:31"))).toBeNull();
     await prisma.project.update({ where: { id: b.id }, data: { result: "线索流失" } }); // 不掺和下面的计数
 
-    const c = await 建线索(甲, { replyEndAt: 京("2026-11-21 10:00") });
-    await 记沟通(c.id, "打了电话，约了下周二再聊", 京("2026-11-21 09:50"));
-    expect(await 超时转扫一遍(京("2026-11-21 11:00"))).toMatchObject({ 停: 1 });
-    expect(await 超时转扫一遍(京("2026-11-21 11:30"))).toMatchObject({ 提醒: 0, 转出: 0, 停: 0 });
+    const c = await 建线索(甲, { replyEndAt: 京("2026-11-23 10:00") });
+    await 记沟通(c.id, "打了电话，约了下周二再聊", 京("2026-11-23 09:50"));
+    expect(await 超时转扫一遍(京("2026-11-23 11:00"))).toMatchObject({ 停: 1 });
+    expect(await 超时转扫一遍(京("2026-11-23 11:30"))).toMatchObject({ 提醒: 0, 转出: 0, 停: 0 });
     // 下周二约了新的指定回复时间，又没跟进：甲本人已经和客户沟通过（不是首次沟通），新约的时间不再计时（11-20 口径，只管首次沟通）
     await prisma.project.update({ where: { id: c.id }, data: { replyEndAt: 京("2026-11-24 10:00") } });
     expect(await 超时转扫一遍(京("2026-11-24 11:00"))).toMatchObject({ 提醒: 0, 转出: 0 });
@@ -506,16 +587,16 @@ describe("管理员开关：组织规则「超时未跟进自动转」（默认�
     expect(await 超时转生效时刻(京("2026-11-20 18:00"))).toEqual(京("2026-11-20 17:00"));
     expect(await prisma.entReplyOverdue.findUniqueOrThrow({ where: { projectId: id } })).toMatchObject({ stoppedAt: 京("2026-11-20 17:00") });
     expect(await 我超时未跟进的(甲.id)).toEqual([]);
-    for (const t of ["2026-11-20 17:00", "2026-11-20 18:00", "2026-11-20 18:30", "2026-11-21 10:00"]) {
+    for (const t of ["2026-11-20 17:00", "2026-11-20 18:00", "2026-11-20 18:30", "2026-11-23 10:00"]) {
       expect(await 超时转扫一遍(京(t))).toMatchObject({ 提醒: 0, 转出: 0 });
     }
     expect(await 超时通知(甲.id)).toHaveLength(1);
     expect((await 项目(id)).ownerId).toBe(甲.id);
     // [B1] 打开以后约的指定回复时间：只看分配在不在打开以后——老分配（打开以前分的）+ 新约的时间 = 不计时；打开以后新分的 + 约的时间 = 照常
-    const 老分 = await 建线索(甲, { replyEndAt: 京("2026-11-21 10:00") }, undefined, { 分于: 京("2026-11-20 10:00") });
-    const 新 = await 建线索(甲, { replyEndAt: 京("2026-11-21 10:00") }, undefined, { 分于: 京("2026-11-20 17:30") });
-    expect(await 超时转扫一遍(京("2026-11-21 11:00"))).toMatchObject({ 提醒: 1 });
-    expect(await 超时转扫一遍(京("2026-11-21 11:30"))).toMatchObject({ 转出: 1 });
+    const 老分 = await 建线索(甲, { replyEndAt: 京("2026-11-23 10:00") }, undefined, { 分于: 京("2026-11-20 10:00") });
+    const 新 = await 建线索(甲, { replyEndAt: 京("2026-11-23 10:00") }, undefined, { 分于: 京("2026-11-20 17:30") });
+    expect(await 超时转扫一遍(京("2026-11-23 11:00"))).toMatchObject({ 提醒: 1 });
+    expect(await 超时转扫一遍(京("2026-11-23 11:30"))).toMatchObject({ 转出: 1 });
     expect((await 项目(新.id)).ownerId).toBe(乙.id);
     expect((await 项目(老分.id)).ownerId).toBe(甲.id);
     expect(await prisma.entReplyOverdue.findUnique({ where: { projectId: 老分.id } })).toBeNull();
@@ -808,12 +889,75 @@ describe("没填指定回复时间：从分配给销售那一刻起算（11-20 �
   });
 
   it("夜里不执行：21:30 分配 → 22:30 该提醒 → 次日 08:00 提醒、08:30 转", async () => {
-    const { id } = await 分来线索(甲, 京("2026-11-20 21:30"));
-    for (const t of ["2026-11-20 22:30", "2026-11-21 03:00", "2026-11-21 07:59"]) expect(await 超时转扫一遍(京(t))).toEqual({ 提醒: 0, 转出: 0, 没转成: 0, 停: 0 });
-    expect(await 超时转扫一遍(京("2026-11-21 08:00"))).toMatchObject({ 提醒: 1 });
-    expect(await 超时转扫一遍(京("2026-11-21 08:29"))).toMatchObject({ 转出: 0 });
-    expect(await 超时转扫一遍(京("2026-11-21 08:30"))).toMatchObject({ 转出: 1 });
+    const { id } = await 分来线索(甲, 京("2026-11-19 21:30"));
+    for (const t of ["2026-11-19 22:30", "2026-11-20 03:00", "2026-11-20 07:59"]) expect(await 超时转扫一遍(京(t))).toEqual({ 提醒: 0, 转出: 0, 没转成: 0, 停: 0 });
+    expect(await 超时转扫一遍(京("2026-11-20 08:00"))).toMatchObject({ 提醒: 1 });
+    expect(await 超时转扫一遍(京("2026-11-20 08:29"))).toMatchObject({ 转出: 0 });
+    expect(await 超时转扫一遍(京("2026-11-20 08:30"))).toMatchObject({ 转出: 1 });
     expect((await 项目(id)).ownerId).toBe(乙.id);
+  });
+
+  const 空扫 = { 提醒: 0, 转出: 0, 没转成: 0, 停: 0 };
+
+  it("[方案 B 11-21] 周六上午分来：周六、周日整天不执行，下周一 08:00 超时提醒、08:30 仍没记才转（客户示例）", async () => {
+    const { id } = await 分来线索(甲, 京("2026-11-21 10:00"));
+    for (const t of ["2026-11-21 11:00", "2026-11-21 11:30", "2026-11-21 21:59", "2026-11-22 10:00", "2026-11-22 23:59", "2026-11-23 07:59"]) {
+      expect(await 超时转扫一遍(京(t))).toEqual(空扫);
+    }
+    expect(await 超时转扫一遍(京("2026-11-23 08:00"))).toMatchObject({ 提醒: 1, 转出: 0 });
+    expect((await 超时通知(甲.id)).at(-1)!.body).toContain(`${短时刻(京("2026-11-23 08:30"), 京("2026-11-23 08:00"))} 前还没记`);
+    expect(await 超时转扫一遍(京("2026-11-23 08:29"))).toMatchObject({ 转出: 0 });
+    expect(await 超时转扫一遍(京("2026-11-23 08:30"))).toMatchObject({ 转出: 1 });
+    expect((await 项目(id)).ownerId).toBe(乙.id);
+  });
+
+  it("[方案 B 11-21] 周五 21:30 分来 → 22:30 该提醒 → 周五夜里 + 周末顺延 → 下周一 08:00 提醒、08:30 转；周五 20:30 分来的 21:30 照常提醒，转推到周一 08:00", async () => {
+    const 晚 = await 分来线索(甲, 京("2026-11-20 21:30"));
+    const 早 = await 分来线索(丙, 京("2026-11-20 20:30"));
+    expect(await 超时转扫一遍(京("2026-11-20 21:30"))).toMatchObject({ 提醒: 1, 转出: 0 });
+    // 早的那条提醒里写的转出时刻 = 下周一 08:00
+    expect((await 超时通知(丙.id)).at(-1)!.body).toContain(`${短时刻(京("2026-11-23 08:00"), 京("2026-11-20 21:30"))} 前还没记`);
+    for (const t of ["2026-11-20 22:00", "2026-11-20 22:30", "2026-11-21 08:00", "2026-11-22 08:30", "2026-11-23 07:59"]) {
+      expect(await 超时转扫一遍(京(t))).toEqual(空扫);
+    }
+    // 周一 08:00：晚的发超时提醒，早的转走（同一遍各走一步）
+    expect(await 超时转扫一遍(京("2026-11-23 08:00"))).toMatchObject({ 提醒: 1, 转出: 1 });
+    expect((await 项目(早.id)).ownerId).not.toBe(丙.id);
+    expect((await 项目(晚.id)).ownerId).toBe(甲.id);
+    expect(await 超时转扫一遍(京("2026-11-23 08:30"))).toMatchObject({ 转出: 1 });
+    expect((await 项目(晚.id)).ownerId).not.toBe(甲.id);
+  });
+
+  it("[方案 B 11-21] 法定假日中间分来、假前一天夜里分来、假期里过了指定回复时间：长假整段不执行，假后第一个工作日 08:00 提醒、08:30 转（往回看的天数补上假期，不漏）", async () => {
+    // 国庆 10-01 至 07 放假（国办发明电〔2025〕7号）；10-03 上午分来
+    const 假中 = await 分来线索(甲, 京("2026-10-03 10:00"));
+    // 09-30 21:30 分来：到 10-08 08:00 已过了 7 天多（按分配往回看 7 天），靠补假期天数才不漏
+    const 假前 = await 分来线索(丙, 京("2026-09-30 21:30"));
+    // 按时：指定回复时间 10-02 10:00，到 10-08 已过 6 天（按时往回看 3 天）
+    const 按时 = await 建线索(乙, { replyEndAt: 京("2026-10-02 10:00") }, undefined, { 分于: 京("2026-09-30 15:00") });
+    for (const t of ["2026-09-30 22:30", "2026-10-01 10:00", "2026-10-03 11:00", "2026-10-07 23:00", "2026-10-08 07:59"]) {
+      expect(await 超时转扫一遍(京(t))).toEqual(空扫);
+    }
+    expect(await 超时转扫一遍(京("2026-10-08 08:00"))).toMatchObject({ 提醒: 3, 转出: 0 });
+    expect(await 超时转扫一遍(京("2026-10-08 08:29"))).toMatchObject({ 转出: 0 });
+    expect(await 超时转扫一遍(京("2026-10-08 08:30"))).toMatchObject({ 转出: 3 });
+    expect((await 项目(假中.id)).ownerId).not.toBe(甲.id);
+    expect((await 项目(假前.id)).ownerId).not.toBe(丙.id);
+    expect((await 项目(按时.id)).ownerId).not.toBe(乙.id);
+  });
+
+  it("[方案 B 11-21] 调休上班的周六（国庆调休 10-10）：照常计时，1 小时提醒、30 分钟后转；当天夜里照旧不执行", async () => {
+    const { id } = await 分来线索(甲, 京("2026-10-10 10:00"));
+    expect(await 超时转扫一遍(京("2026-10-10 11:00"))).toMatchObject({ 提醒: 1 });
+    expect(await 超时转扫一遍(京("2026-10-10 11:30"))).toMatchObject({ 转出: 1 });
+    expect((await 项目(id)).ownerId).not.toBe(甲.id);
+    await prisma.project.update({ where: { id }, data: { result: "线索流失" } }); // 不掺和下面的计数
+    const 夜 = await 分来线索(甲, 京("2026-10-10 21:30"));
+    expect(await 超时转扫一遍(京("2026-10-10 22:30"))).toEqual(空扫);
+    // 10-11 周日不上班 → 10-12 周一 08:00
+    expect(await 超时转扫一遍(京("2026-10-11 10:00"))).toEqual(空扫);
+    expect(await 超时转扫一遍(京("2026-10-12 08:00"))).toMatchObject({ 提醒: 1 });
+    expect((await 项目(夜.id)).ownerId).toBe(甲.id);
   });
 
   it("停机补跑只走一步：2 天前分配（生效以后）、一直没记的，第一遍只发超时提醒，30 分钟后才转，接手人从转出那刻起算、不连环转", async () => {
@@ -968,7 +1112,7 @@ describe("生效范围（11-20 事故：只对生效以后新分配的计时、�
     // C：当天中午自动分给甲（生效以前）
     const C = await 分来(甲, 京("2026-11-20 13:39"));
     // 旧代码会把这三条全提醒、再转走（生效时刻当成很早）
-    for (const t of ["2026-11-20 20:35", "2026-11-20 21:06", "2026-11-20 21:36", "2026-11-21 08:00", "2026-11-21 08:30"]) {
+    for (const t of ["2026-11-20 20:35", "2026-11-20 21:06", "2026-11-20 21:36", "2026-11-23 08:00", "2026-11-23 08:30"]) {
       expect(await 超时转扫一遍(京(t))).toEqual({ 提醒: 0, 转出: 0, 没转成: 0, 停: 0 });
     }
     for (const x of [A, B, C]) {
@@ -977,10 +1121,10 @@ describe("生效范围（11-20 事故：只对生效以后新分配的计时、�
     }
     expect(await 超时通知(甲.id)).toHaveLength(0);
     expect(await 盘点超时链(京("2026-11-20 21:06"))).toEqual([]);
-    // 生效以后新分的照常：20:40 分给甲，21:40 提醒，次日 08:00 转（夜里顺延：21:40 提醒 → 22:10 该转 → 08:00）
+    // 生效以后新分的照常：20:40 分给甲，21:40 提醒，下周一 08:00 转（21:40 提醒 → 22:10 该转 → 周五夜里 + 周末顺延 → 周一 08:00）
     const D = await 分来(甲, 京("2026-11-20 20:40"));
     expect(await 超时转扫一遍(京("2026-11-20 21:40"))).toMatchObject({ 提醒: 1, 转出: 0 });
-    expect(await 超时转扫一遍(京("2026-11-21 08:00"))).toMatchObject({ 转出: 1 });
+    expect(await 超时转扫一遍(京("2026-11-23 08:00"))).toMatchObject({ 转出: 1 });
     expect((await 项目(D.id)).ownerId).toBe(乙.id);
   });
 
@@ -1025,8 +1169,8 @@ describe("生效范围（11-20 事故：只对生效以后新分配的计时、�
     await prisma.entReplyOverdue.create({ data: { projectId: r.id, anchorAt: 京("2026-11-14 22:29"), holderId: 甲.id, since: 京("2026-11-20 20:35"), overdueAt: 京("2026-11-20 20:36") } });
     await 设生效(京("2026-11-20 22:00"));
     expect(await 我超时未跟进的(甲.id)).toEqual([]);
-    expect(await 超时转扫一遍(京("2026-11-21 08:00"))).toMatchObject({ 提醒: 0, 转出: 0 });
-    expect((await 链(r.id))?.stoppedAt).toEqual(京("2026-11-21 08:00"));
+    expect(await 超时转扫一遍(京("2026-11-23 08:00"))).toMatchObject({ 提醒: 0, 转出: 0 });
+    expect((await 链(r.id))?.stoppedAt).toEqual(京("2026-11-23 08:00"));
     expect((await 项目(r.id)).ownerId).toBe(甲.id);
   });
 
@@ -1079,8 +1223,13 @@ describe("生效范围（11-20 事故：只对生效以后新分配的计时、�
     // 生效时刻没被扫一遍改掉
     expect(await 超时转生效时刻(京("2026-11-21 11:00"))).toEqual(京("2026-11-21 09:30"));
     const 新 = await 分来(甲, 京("2026-11-21 09:40"));
-    expect(await 超时转扫一遍(京("2026-11-21 10:40"))).toMatchObject({ 提醒: 1, 转出: 0 });
-    expect(await 超时转扫一遍(京("2026-11-21 11:10"))).toMatchObject({ 转出: 1 });
+    // 11-21 是周六（客户 11-21 方案 B）：周末整天不执行，周一 08:00 才提醒、08:30 转；生效前分的周一照样不计时
+    for (const t of ["2026-11-21 10:40", "2026-11-21 11:10", "2026-11-22 10:40", "2026-11-23 07:59"]) {
+      expect(await 超时转扫一遍(京(t))).toEqual({ 提醒: 0, 转出: 0, 没转成: 0, 停: 0 });
+    }
+    expect(await 超时转扫一遍(京("2026-11-23 08:00"))).toMatchObject({ 提醒: 1, 转出: 0 });
+    expect(await 超时转扫一遍(京("2026-11-23 08:29"))).toMatchObject({ 转出: 0 });
+    expect(await 超时转扫一遍(京("2026-11-23 08:30"))).toMatchObject({ 转出: 1 });
     expect((await 项目(新.id)).ownerId).not.toBe(甲.id);
     expect((await 项目(早.id)).ownerId).toBe(甲.id);
   });
@@ -1296,15 +1445,15 @@ describe("11-20 审查修正（B1 按时也只计新分配、B2 导入不算自�
   }
 
   it("[B1] 按时也只计生效以后被分配 / 销售自建的：老分配 + 生效以后的指定回复时间 = 不计时；生效以后分的、销售生效以后自建的 + 指定回复时间 = 照常", async () => {
-    await 设生效(京("2026-11-21 09:30"));
-    const 老分 = await 建线索(甲, { replyEndAt: 京("2026-11-21 10:00") }, undefined, { 分于: 京("2026-11-20 20:00") });
-    const 新分 = await 建线索(乙, { replyEndAt: 京("2026-11-21 10:00") }, undefined, { 分于: 京("2026-11-21 09:40") });
-    const 自建 = await 建线索(丙, { replyEndAt: 京("2026-11-21 10:00"), createdAt: 京("2026-11-21 09:35"), creatorId: 丙.id });
+    await 设生效(京("2026-11-23 09:30"));
+    const 老分 = await 建线索(甲, { replyEndAt: 京("2026-11-23 10:00") }, undefined, { 分于: 京("2026-11-20 20:00") });
+    const 新分 = await 建线索(乙, { replyEndAt: 京("2026-11-23 10:00") }, undefined, { 分于: 京("2026-11-23 09:40") });
+    const 自建 = await 建线索(丙, { replyEndAt: 京("2026-11-23 10:00"), createdAt: 京("2026-11-23 09:35"), creatorId: 丙.id });
     // 没有分配记录也没有换人留痕（导入改负责人、老数据）：分配基准算不出，不计时
-    const 不知 = await 建线索(甲, { replyEndAt: 京("2026-11-21 10:00") }, undefined, { 不分配: true });
-    expect(await 超时转扫一遍(京("2026-11-21 11:00"))).toMatchObject({ 提醒: 2, 转出: 0 });
+    const 不知 = await 建线索(甲, { replyEndAt: 京("2026-11-23 10:00") }, undefined, { 不分配: true });
+    expect(await 超时转扫一遍(京("2026-11-23 11:00"))).toMatchObject({ 提醒: 2, 转出: 0 });
     for (const x of [老分, 不知]) expect(await 链(x.id)).toBeNull();
-    for (const x of [新分, 自建]) expect(await 链(x.id)).toMatchObject({ anchorAt: 京("2026-11-21 10:00"), overdueAt: 京("2026-11-21 11:00") });
+    for (const x of [新分, 自建]) expect(await 链(x.id)).toMatchObject({ anchorAt: 京("2026-11-23 10:00"), overdueAt: 京("2026-11-23 11:00") });
     expect(await 超时通知(甲.id)).toHaveLength(0);
     expect(await 我超时未跟进的(甲.id)).toEqual([]);
   });
@@ -1453,23 +1602,23 @@ describe("11-20 审查修正（B1 按时也只计新分配、B2 导入不算自�
   });
 
   it("[漏计 11-20 复审] 生效后新分配、带着生效前的旧指定回复时间：改按分配算（分配后 1 小时提醒、1.5 小时转）；老分配 + 老回复时间照旧不计时", async () => {
-    await 设生效(京("2026-11-21 09:30"));
+    await 设生效(京("2026-11-23 09:30"));
     const 老 = { replyEndAt: 京("2026-11-20 15:00"), createdAt: 京("2026-11-10 10:00") };
     const 新分 = await 建线索(甲, 老, undefined, { 分于: 京("2026-11-10 10:00") });
     const 照旧 = await 建线索(甲, 老, undefined, { 分于: 京("2026-11-10 10:00") });
     // 生效后 11-21 10:00 由系统自动分配给乙（换人留痕 + 分配记录）
-    const 分于 = 京("2026-11-21 10:00");
+    const 分于 = 京("2026-11-23 10:00");
     await prisma.project.update({ where: { id: 新分.id }, data: { ownerId: 乙.id } });
     await prisma.projectNodeLog.create({ data: { projectId: 新分.id, userId: 老板.id, kind: "transfer", fromOwnerId: 甲.id, toOwnerId: 乙.id, reason: "分配方式：自动分配", at: 分于, fromPhase: "线索", fromNode: "潜客培育", toPhase: "线索", toNode: "潜客培育" } });
     await prisma.entLeadAssign.create({ data: { projectId: 新分.id, toUserId: 乙.id, fromUserId: 甲.id, byUserId: 老板.id, month: "2026-11", counted: false, createdAt: 分于 } });
 
-    expect(await 超时转扫一遍(京("2026-11-21 10:59"))).toMatchObject({ 提醒: 0, 转出: 0 });
-    expect(await 超时转扫一遍(京("2026-11-21 11:00"))).toMatchObject({ 提醒: 1, 转出: 0 });
-    expect(await 链(新分.id)).toMatchObject({ anchorAt: 分于, overdueAt: 京("2026-11-21 11:00") });
+    expect(await 超时转扫一遍(京("2026-11-23 10:59"))).toMatchObject({ 提醒: 0, 转出: 0 });
+    expect(await 超时转扫一遍(京("2026-11-23 11:00"))).toMatchObject({ 提醒: 1, 转出: 0 });
+    expect(await 链(新分.id)).toMatchObject({ anchorAt: 分于, overdueAt: 京("2026-11-23 11:00") });
     const 提 = await 超时通知(乙.id);
     expect(提).toHaveLength(1);
     expect(提[0].body).toContain(分配后未跟进话(60));
-    expect(await 超时转扫一遍(京("2026-11-21 11:30"))).toMatchObject({ 转出: 1 });
+    expect(await 超时转扫一遍(京("2026-11-23 11:30"))).toMatchObject({ 转出: 1 });
     expect((await 项目(新分.id)).ownerId).not.toBe(乙.id);
     // 老分配 + 老回复时间：上线安全照旧，从头到尾不起链
     expect(await 链(照旧.id)).toBeNull();

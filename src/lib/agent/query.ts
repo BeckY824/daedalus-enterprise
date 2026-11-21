@@ -67,7 +67,7 @@ export const 节点记录类型叫法: Readonly<Record<string, string>> = {
   node: "改节点（node）",
   transfer: "换负责人（transfer；原 / 新节点照抄当时的，不是节点变化）",
   "pool-release": "放回公海（pool-release；原 / 新节点照抄当时的，不是节点变化）",
-  "pool-claim": "公海领取（pool-claim；原 / 新节点照抄当时的，不是节点变化）",
+  "pool-claim": "出线索公海换负责人（pool-claim；自己领取或管理分配，看原因开头：「从客户公海分配」「从线索公海分配」= 管理分的；原 / 新节点照抄当时的，不是节点变化）",
 };
 
 /**
