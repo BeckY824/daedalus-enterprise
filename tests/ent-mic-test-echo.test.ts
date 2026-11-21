@@ -214,6 +214,21 @@ describe("切文件段（multipart 就地切）", () => {
     expect(切文件段(编("什么都不是"), "multipart/form-data; boundary=AB")).toBeNull();
   });
 
+  it("塞大量空文件段：最多切 20 段就停，后面的不切（结尾坏了也照样回前 20 段，说明没往后切）", async () => {
+    const 一段 = '--AB\r\nContent-Disposition: form-data; name="f"; filename="a"\r\n\r\n\r\n';
+    // 10 万个空文件段，结尾故意不收（真切到底会因为没有结束分隔线返回 null）
+    const 体 = 编(一段.repeat(100_000) + "--AB\r\nContent-Disposition: form-data; name=\"f\"; filename=\"a\"\r\n\r\n没收尾");
+    const 段们 = 切文件段(体, "multipart/form-data; boundary=AB");
+    expect(段们).not.toBeNull();
+    expect(段们!.length).toBe(20);
+    expect(段们!.every((d) => d.字节.byteLength === 0)).toBe(true);
+    // 接口：照样 200，files 不超过 20 个
+    罐.用户 = { id: "u1" };
+    const res = await POST(new NextRequest(地址, { method: "POST", body: 体, headers: { "content-type": "multipart/form-data; boundary=AB" } }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).files).toHaveLength(20);
+  });
+
   it("接口：multipart 格式坏了回「multipart 解析失败」，不报错", async () => {
     罐.用户 = { id: "u1" };
     const res = await POST(new NextRequest(地址, { method: "POST", body: "乱码", headers: { "content-type": "multipart/form-data; boundary=AB" } }));

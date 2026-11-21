@@ -49,12 +49,15 @@ export function 回显处理中(): number {
   return 处理中;
 }
 
+/** 切文件段最多切出几段（回显只回这么多） */
+export const 文件段上限 = 20;
+
 export type 文件段 = { field: string; name: string; type: string; 字节: Uint8Array };
 
 /**
  * 就地切 multipart/form-data：只在已读进来的那一份字节上找分隔线，文件那一段用 subarray 指回原数组、不复制
  * （不用 Response.formData()：那条路要把整份请求体再复制两三份）。
- * 只要带 filename 的段（和 formData() 认文件的规则一样），普通字段跳过；格式不对返回 null。
+ * 只要带 filename 的段（和 formData() 认文件的规则一样），普通字段跳过；切满 文件段上限 就停；格式不对返回 null。
  */
 export function 切文件段(体: Uint8Array, contentType: string): 文件段[] | null {
   const m = /;\s*boundary=(?:"([^"]{1,70})"|([^;\s"]{1,70}))/i.exec(contentType);
@@ -92,6 +95,8 @@ export function 切文件段(体: Uint8Array, contentType: string): 文件段[] 
         type: /^content-type:\s*(.*)$/im.exec(头)?.[1].trim() ?? "",
         字节: 全.subarray(段起, 段止),
       });
+      // 回显只回前 20 段：够了就停，不把后面的都切出来（20MB 里塞几十万个空文件段也只切 20 个）
+      if (段们.length >= 文件段上限) return 段们;
     }
     位 = 段止 + 分隔.length;
   }
