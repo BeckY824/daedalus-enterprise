@@ -9,6 +9,7 @@ import { 空值符 } from "@/lib/empty-value";
 import { 号码上限, 每人最多号码 } from "@/lib/enterprise/customer-v2";
 import { saveCustomerNumbers } from "../actions";
 import { 只读上下文, 只能看的格上下文 } from "./read-only";
+import { 字段名档 } from "@/lib/gelv";
 
 type 一行 = { kind: string; value: string };
 /** 号码类的几种给复制键（同联系人卡：手机、座机；客户本身的号还常有 WhatsApp、传真） */
@@ -59,7 +60,7 @@ export default function CustomerNumbers({ customerId, 号码们, 号码种类 }:
         {号码们.length ? (
           号码们.map((m, i) => (
             <div key={`${m.kind}-${i}`} data-field="numbers" {...行属性}>
-              <div className="rec-field-k">{叫法(m.kind)}</div>
+              <div className="rec-field-k" data-fl={字段名档(叫法(m.kind))}>{叫法(m.kind)}</div>
               {/* 号码、邮箱是文字 + 复制键（同电话那格，省略号打在文字自己身上）；别的直接一行省略 */}
               <div className="rec-field-v is-line">
                 {m.kind === "email" || 带复制键.has(m.kind) ? (
@@ -105,7 +106,7 @@ export default function CustomerNumbers({ customerId, 号码们, 号码种类 }:
             加一个号码
           </Button>
         )}
-        <Space size={6}>
+        <Space className="gelv-acts" size={6}>
           <Button size="small" type="primary" loading={存着} onClick={() => void 保存()}>保存</Button>
           <Button size="small" disabled={存着} onClick={() => set编辑(false)}>取消</Button>
         </Space>

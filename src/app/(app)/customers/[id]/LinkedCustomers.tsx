@@ -92,7 +92,7 @@ export default function LinkedCustomers({ customerId, 关联们, 只读, 起手 
       {关联们.length === 0 && !加着 && <div className="rec-empty">还没有{叫}</div>}
       {关联们.map((x) =>
         改的?.id === x.id ? (
-          <Space.Compact key={x.id} style={{ display: "flex", marginBottom: 6 }}>
+          <Space.Compact className="gelv-acts" key={x.id} style={{ display: "flex", marginBottom: 6 }}>
             <Input
               size="small"
               autoFocus
@@ -145,7 +145,7 @@ export default function LinkedCustomers({ customerId, 关联们, 只读, 起手 
             aria-label="挑一位要关联的客户"
           />
           <Input size="small" value={说明} maxLength={关联说明上限} placeholder="一句话说明关系（选填），如 同一集团" onChange={(e) => set说明(e.target.value)} aria-label="关系说明" />
-          <Space size={6}>
+          <Space className="gelv-acts" size={6}>
             <Button
               size="small"
               type="primary"

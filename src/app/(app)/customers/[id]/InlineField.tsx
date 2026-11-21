@@ -16,6 +16,7 @@ import { 释义下拉 } from "@/components/DictNote";
 import { 不填项, 去不填 } from "@/lib/enterprise/dict-kinds";
 import { useFormDraft } from "@/components/FormDraft";
 import { 动作出错话 } from "@/lib/stale-deploy";
+import { 字段名档 } from "@/lib/gelv";
 
 type Option = { value: string; label: string };
 
@@ -182,11 +183,12 @@ export default function InlineField({
   if (!editing) {
     return (
       <div className={`rec-field${kind === "textarea" ? " is-multi" : ""}`} data-field={field} {...(只读 ? { style: { cursor: "default" }, ...(权限挡 ? { title: `你的角色只能看「${label}」，改不了（设置 → 组织架构 → 字段权限）` } : {}) } : { onClick: 开始, role: "button", tabIndex: 0, onKeyDown: (e: React.KeyboardEvent) => e.key === "Enter" && 开始(), "aria-label": `编辑${label}` })}>
-        <div className="rec-field-k">{label}</div>
+        <div className="rec-field-k" data-fl={字段名档(label)}>{label}</div>
         {/* 一行、放不下打省略号、悬停看全文（11-04 用户：「尽量所有信息都在一行显示完整。除了备注」）；
             悬停浮层是全站的 TruncTip，量到真截了才出。多行的备注照旧换行。
             换样子显示的（电话、邮箱）省略号打在文字自己身上，复制键不被挤出去（.copy-val） */}
         <div
+          data-ty="body"
           className={`rec-field-v${display ? "" : " rec-field-empty"}${saving ? " rec-field-saving" : ""}${kind === "textarea" ? "" : " is-line"}`}
           title={!display && 空时横线 && !只读 ? placeholder : undefined}
         >
@@ -206,7 +208,7 @@ export default function InlineField({
   const common = { autoFocus: true, size: "middle" as const, style: { width: "100%" } };
   return (
     <div className={`rec-field rec-field-editing${kind === "textarea" ? " is-multi" : ""}`} data-field={field}>
-      <div className="rec-field-k">{label}</div>
+      <div className="rec-field-k" data-fl={字段名档(label)}>{label}</div>
       {kind === "select" && (
         <Select
           {...common}

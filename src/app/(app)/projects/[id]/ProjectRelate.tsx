@@ -154,7 +154,7 @@ function RelateCustomers({ projectId, 关联, 能改, 起手, 不摆加 }: { pro
               style={{ width: "100%" }}
             />
             <Select mode="multiple" allowClear placeholder="项目身份（可多选）" value={身份} onChange={set身份} options={并上(关联.选项.身份, [])} aria-label="项目身份" style={{ width: "100%" }} />
-            <Space size={6}>
+            <Space className="gelv-acts" size={6}>
               <Button size="small" type="primary" disabled={!挑中} loading={忙} onClick={() => void 跑(() => 加关联客户Action(projectId, 挑中!, 身份)).then((ok) => ok && set加着(false))}>关联</Button>
               <Button size="small" onClick={() => set加着(false)}>取消</Button>
             </Space>
@@ -259,7 +259,7 @@ function RelateContacts({ projectId, 关联, 能改, 起手, 不摆加 }: { proj
             />
             <Select mode="multiple" allowClear placeholder="项目角色（可多选）" value={角色} onChange={set角色} options={并上(关联.选项.角色, [])} aria-label="项目角色" style={{ width: "100%" }} />
             <Select allowClear placeholder="项目立场" value={立场} onChange={set立场} options={并上(关联.选项.立场, [])} aria-label="项目立场" style={{ width: "100%" }} />
-            <Space size={6}>
+            <Space className="gelv-acts" size={6}>
               <Button size="small" type="primary" disabled={!挑中} loading={忙} onClick={() => void 跑(() => 加关联联系人Action(projectId, 挑中!, { roles: 角色, stance: 立场 ?? null })).then((ok) => ok && set加着(false))}>关联</Button>
               <Button size="small" onClick={() => set加着(false)}>取消</Button>
             </Space>

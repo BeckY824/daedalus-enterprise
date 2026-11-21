@@ -11,7 +11,8 @@
  *     也压过现有三四层类名的详情页规则；个别对着行内样式的地方才用 !important（P 批允许，0b 去掉前缀时一并收掉）
  *   - 不写色值（色板 hex 在 globals.css :root 和 dark.css / skins/tech.css 的 token 块里）；字号只写 var(--fs-*) / var(--ty-*-fs)；圆角只写 var(--r-*)
  *   - 结构层（角色字号、表格密度、字重）所有主题都换；气质层（圆角、阴影、字体栈）只换「现状」，别的主题保留自己的（规范第 8 节）
- *   - 只改样子，不碰行为：按钮顺序、文案、确认方式、节点条压缩、手机卡片化都不在这一批（落地计划「不做」）
+ *   - 只改样子，不碰行为：文案、确认方式、节点条压缩、手机卡片化都不在这一批（落地计划「不做」）。
+ *     按钮顺序（总控 11-21 要做）只在开关下换视觉顺序（CSS order），DOM、Tab 顺序、点了做什么都不变，见 6.11
  */
 
 /* ======================================================================
@@ -57,7 +58,7 @@
   --ty-meta-fs: var(--fs-12);     --ty-meta-lh: var(--lh-18);    --ty-meta-fw: var(--fw-regular);
   --ty-chip-fs: var(--fs-12);     --ty-chip-lh: var(--lh-20);    --ty-chip-fw: var(--fw-regular);
   --ty-kpi-fs: var(--fs-num);     --ty-kpi-lh: var(--lh-32);     --ty-kpi-fw: var(--fw-strong);
-  --ty-kpi-m-fs: var(--fs-20);    --ty-kpi-m-lh: var(--lh-28);   --ty-kpi-m-fw: var(--fw-strong);
+  --ty-kpi-m-fs: min(var(--fs-20), calc(var(--ty-page-fs) - var(--sp-2))); --ty-kpi-m-lh: var(--lh-28);   --ty-kpi-m-fw: var(--fw-strong);
   --ty-input-fs: var(--fs-14);
 
   /* 表格一种密度（规范 6.3）：表头 36 → 40；账簿 / 高级 44、科技 36 也收回 40（规范 8.1 审改） */
@@ -67,8 +68,8 @@
   /* 三档阴影：主题没给就借它自己的卡片影 / 浮层影（第 1b 段给「现状」写真值） */
   --shadow-1: var(--shadow-card); --shadow-2: var(--shadow-pop); --shadow-3: var(--shadow-pop);
   --focus-ring: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent-fill);
-  /* 字段名列宽只有两档（规范 6.4）：4 个字 13×4+8，6 个字 13×6+8 */
-  --fl-k4: 60px; --fl-k6: 86px;
+  /* 字段名列宽档（规范 6.4 两档 60 / 86；总控 11-21 加 5 字档：左栏最长的内置字段名是五个字，量下来 65，取 66——13×5+8=73 会把 1366 左栏的电话挤成省略号） */
+  --fl-k4: 60px; --fl-k5: 66px; --fl-k6: 86px;
 }
 
 /* 1b. 「现状」的气质层（规范 8.2：圆角 14→12、胶囊圆头→6、卡片薄影→纯线、字体栈去 Inter）。别的主题不动 */
@@ -250,12 +251,18 @@
 :root[data-gelv][data-skin][data-mode] .rec-page .ant-card > .ant-card-head { line-height: var(--ty-section-lh); letter-spacing: 0; }
 :root[data-gelv][data-skin][data-mode] .rec-page.ui-v2 :is(.rec-rail-blocks, .rec-col-blocks) > .proj-fold + .proj-fold { margin-top: var(--sp-16); }
 
-/* 6.4 字段（规范 6.4 FieldList）：字段名 ty-label 13/22 灰、值 ty-body 14/22 墨，两边同一行高、基线对齐；
-   字段名列宽只有 60 / 86 两档。左栏客户资料最长的内置字段名是五个字（销售负责人、历史负责人），取 86；项目资料、项目画像四个字，取 60 */
-:root[data-gelv][data-skin][data-mode] .rec-page .rec-field { grid-template-columns: var(--fl-k6) minmax(0, 1fr); }
-/* 窄容器（< 360）改「字段名在上、值在下」，中间隔 2（规范 6.4，照旧用容器查询）：左栏卡只有 260 宽，86 的字段名列会把号码挤成省略号 */
+/* 6.4 字段（规范 6.4 FieldList）：字段名 ty-label 13/22 灰、值 ty-body 14/22 墨，两边同一行高、基线对齐；左右两列（高密度）。
+   字段名列宽按这张卡里最长的字段名定档：4 字 60 / 5 字 66 / 6 字 86，更长的折行不截断。
+   字段名元素带 data-fl（lib/gelv.ts 字段名档；内置五个字的「销售负责人」「历史负责人」直接写 5），卡身用 :has() 选档；
+   不认 :has() 的浏览器（Firefox 111–120）落在 4 字档，长字段名折行，不影响用 */
+:root[data-gelv][data-skin][data-mode] .rec-page .rec-field { grid-template-columns: var(--fl-k, var(--fl-k4)) minmax(0, 1fr); }
+:root[data-gelv][data-skin][data-mode] .rec-page .ant-card-body { --fl-k: var(--fl-k4); }
+:root[data-gelv][data-skin][data-mode] .rec-page :is(.ant-card-body, .rec-card):has(.rec-field-k[data-fl="5"]) { --fl-k: var(--fl-k5); }
+:root[data-gelv][data-skin][data-mode] .rec-page :is(.ant-card-body, .rec-card):has(.rec-field-k[data-fl="6"]) { --fl-k: var(--fl-k6); }
+/* 上下排只在两种情况（总控 11-21 看图：1366 左栏上下排高度翻倍、违背高密度，改回左右排）：
+   ① 手机（≤767，见 6.9）；② 卡身极窄（< 180，约卡宽 < 214，左栏被拖到最窄时）。规范 6.4 原写 < 360，1366 左栏卡身只有 ~198，会整张上下排 */
 :root[data-gelv][data-skin][data-mode] .rec-page .rec-rail-blocks .rec-mod > .ant-card-body { container: gelv-fl / inline-size; }
-@container gelv-fl (max-width: 359px) {
+@container gelv-fl (max-width: 179px) {
   :root[data-gelv][data-skin][data-mode] .rec-page .rec-field { grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); }
 }
 :root[data-gelv][data-skin][data-mode] .rec-page .rec-field.is-multi,
@@ -315,8 +322,36 @@
 :root[data-gelv][data-skin][data-mode] .prop-why { font-size: var(--ty-prose-fs); line-height: var(--ty-prose-lh); color: var(--pencil-text); }
 :root[data-gelv][data-skin][data-mode] .prop-f-l { font-size: var(--ty-label-fs); line-height: var(--ty-label-lh); }
 
+/* 6.10 按钮层级（规范 6.6；总控 11-21：一页只一个品牌色实心）。
+   规范 6.6 只写「主按钮一个区域最多一个」，没写哪个算本页的主：按「每个视觉区块最多一个实心、全页只一个品牌色实心」处理——
+   节点操作区的「完成节点」是这一页推进业务的动作，保持实心，绿 → 品牌色（--accent-fill，和 antd 主按钮同一组变量）；
+   卡头的「新建沟通」（连体色 brand）降成次按钮（白底 1px 线，和「新建待办」「新建卡点」同一个样子） */
+:root[data-gelv][data-skin][data-mode] .ant-btn.proj-done-btn:not(:disabled) { background: var(--ant-color-primary); border-color: var(--ant-color-primary); color: var(--ant-color-text-light-solid); }
+:root[data-gelv][data-skin][data-mode] .ant-btn.proj-done-btn:not(:disabled):hover { background: var(--ant-color-primary-hover); border-color: var(--ant-color-primary-hover); color: var(--ant-color-text-light-solid); }
+:root[data-gelv][data-skin][data-mode] .ant-btn.proj-done-btn:disabled { background: var(--ant-color-bg-container-disabled); border-color: var(--ant-color-border); color: var(--ant-color-text-disabled); opacity: 1; }
+:root[data-gelv][data-skin][data-mode] .ant-space-compact > .ant-btn.proj-done-btn + .ant-btn.proj-done-btn:not(:disabled),
+:root[data-gelv][data-skin][data-mode] .ant-space-compact > .proj-stage-tip + .ant-btn.proj-done-btn:not(:disabled) { border-left-color: color-mix(in srgb, var(--ant-color-text-light-solid) 45%, var(--ant-color-primary)); }
+:root[data-gelv][data-skin][data-mode] .ant-space-compact.split-brand :is(.ant-btn-primary, .ant-btn-primary:hover, .ant-btn-primary:active):not(:disabled) {
+  background: var(--ant-color-bg-container); border-color: var(--ant-color-border); color: var(--ant-color-text); box-shadow: none;
+}
+:root[data-gelv][data-skin][data-mode] .ant-space-compact.split-brand .ant-btn-primary::before { display: none; }
+:root[data-gelv][data-skin][data-mode] .ant-space-compact.split-brand .ant-btn-primary:not(:disabled):hover { border-color: var(--ant-color-primary-hover); color: var(--ant-color-primary-hover); position: relative; z-index: 2; }
+
+/* 6.11 按钮顺序（规范 6.6）：次要在左、主按钮在最右。行内编辑原来「存 / 取消」主在左（客户详情 5 处、项目关联 2 处，挂 .gelv-acts），
+   开关下只换视觉顺序（order），DOM 和 Tab 顺序不动；连体（Space.Compact）的圆角跟着换到最右那颗。
+   「取消时内容改过就问一次放弃修改」（规范 6.6 Fable）是行为，P 批不做 */
+:root[data-gelv][data-skin][data-mode] .gelv-acts > :is(.ant-btn-primary, .ant-space-item:has(> .ant-btn-primary)) { order: 1; }
+:root[data-gelv][data-skin][data-mode] .ant-space-compact.gelv-acts > .ant-btn:not(.ant-btn-primary) { border-start-end-radius: 0; border-end-end-radius: 0; }
+:root[data-gelv][data-skin][data-mode] .ant-space-compact.gelv-acts > .ant-btn-primary { border-start-end-radius: var(--r-ctl); border-end-end-radius: var(--r-ctl); }
+:root[data-gelv][data-skin="now"][data-mode] .ant-space-compact.gelv-acts > .ant-btn-primary { border-start-end-radius: var(--r-sm); border-end-end-radius: var(--r-sm); }
+
 /* 6.9 手机：卡片内边距 12（规范 6.2）；输入框字 16，iOS 聚焦时不放大整页（规范 2.6） */
 @media (max-width: 767px) {
   :root[data-gelv][data-skin][data-mode] .rec-page.ui-v2 .rec-mod > .ant-card-body { padding-inline: var(--sp-12); }
+  /* 手机上字段名在上、值在下，中间隔 2（规范 6.4 窄容器；客户资料、项目资料、项目画像同一个做法） */
+  :root[data-gelv][data-skin][data-mode] .rec-page .rec-field { grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); }
+  :root[data-gelv][data-skin][data-mode] .pd-kv { flex-direction: column !important; align-items: stretch !important; gap: var(--sp-2) !important; }
+  :root[data-gelv][data-skin][data-mode] .pd-kv-k { flex: none !important; }
+  :root[data-gelv][data-skin][data-mode] :is(.proj-profile-row, .proj-wrap .proj-profile-row) { grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); }
   :root[data-gelv][data-skin][data-mode] :is(input.ant-input, textarea.ant-input, .ant-select-selection-search-input) { font-size: var(--ty-input-fs); }
 }

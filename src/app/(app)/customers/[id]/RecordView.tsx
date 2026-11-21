@@ -97,6 +97,7 @@ import { 客户编号显示 } from "@/lib/customer-no";
 import { 客户抬头, 客户显名 } from "@/lib/enterprise/customer-title";
 import { 动作出错话, 出错原话 } from "@/lib/stale-deploy";
 import { useFormDraft } from "@/components/FormDraft";
+import { 字段名档 } from "@/lib/gelv";
 
 /**
  * 记录页（v0.4）：三栏。
@@ -1054,7 +1055,7 @@ export default function RecordView({
   const 节 = (名: string, 数: number | string | undefined, 加: ReactNode, 身: ReactNode, 连体?: { 主: 连体主钮 | null; 色: 连体色 }) =>
     去项目跟进 ? (
       <ProjectFold key={名} 名={名} 连体={!!连体}>
-        <Card className="rec-mod" title={数 === undefined ? 名 : `${名}（${数}）`} extra={连体 ? <Space size={8}>{加}<FoldSplit 主={连体.主} 色={连体.色} /></Space> : 加 || undefined}>
+        <Card className="rec-mod" data-ty-box="" title={<span data-ty="title">{数 === undefined ? 名 : `${名}（${数}）`}</span>} extra={连体 ? <Space size={8}>{加}<FoldSplit 主={连体.主} 色={连体.色} /></Space> : 加 || undefined}>
           {身}
         </Card>
       </ProjectFold>
@@ -1424,7 +1425,7 @@ export default function RecordView({
             {/* 企业版：建档第一步选了阿里国际站ID（类型值、库里 kind 还叫旺旺）时，它只在联系方式子表里（客户表、档案都没有这一格），只读摆出来 */}
             {企业 && 旺旺们.length > 0 && (
               <div className="rec-field" style={{ cursor: "default" }}>
-                <div className="rec-field-k">阿里国际站ID</div>
+                <div className="rec-field-k" data-fl="6">阿里国际站ID</div>
                 <div className="rec-field-v" style={{ overflowWrap: "anywhere" }}>{旺旺们.join("、")}</div>
               </div>
             )}
@@ -1433,7 +1434,7 @@ export default function RecordView({
             {/* 企业版项目模式：客户页不转让（待定 14 红框），负责人只读；要换人在客户列表里整客户转让（连项目一起） */}
             {!独自一人(users, customer.salesOwnerId) && !摆法.转让 && (
               <div className="rec-field" style={{ cursor: "default" }} title={去项目跟进 ? "要换负责人：点上方「客户转让」" : "要换负责人：在客户列表里勾上这位，点「转让」"}>
-                <div className="rec-field-k">销售负责人</div>
+                <div className="rec-field-k" data-fl="5">销售负责人</div>
                 <div className="rec-field-v">{customer.salesOwnerName ?? (企业 ? <span className="rec-field-empty" title="未分配">{空值符}</span> : <span className="rec-field-empty">未分配</span>)}</div>
               </div>
             )}
@@ -1454,7 +1455,7 @@ export default function RecordView({
                 }
               >
                 <div className="rec-field" style={{ cursor: "default" }}>
-                  <div className="rec-field-k">历史负责人</div>
+                  <div className="rec-field-k" data-fl="5">历史负责人</div>
                   <div className="rec-field-v">{历史负责人们(换负责人记录, customer.salesOwnerName).join("、")}</div>
                 </div>
               </Tooltip>
@@ -1467,7 +1468,7 @@ export default function RecordView({
             {/* 企业版不摆签约金额（10-28 去遗留 A4） */}
             {!企业 && 摆(customer.signedAmount > 0 ? 1 : null) && (
               <div className="rec-field" style={{ cursor: "default" }}>
-                <div className="rec-field-k">{叫}金额</div>
+                <div className="rec-field-k" data-fl={字段名档(`${叫}金额`)}>{叫}金额</div>
                 <div className="rec-field-v">{customer.signedAmount > 0 ? 已签约文字 : <span className="rec-field-empty">{是订单 ? "还没有订单" : "未签约"}</span>}</div>
               </div>
             )}

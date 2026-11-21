@@ -1607,7 +1607,7 @@ export default function ProjectDetail({
                 值={f.content}
                 能改={p.企业版 && 能改这条(f)}
                 多行
-                显示={(v) => <div className="ty-prose" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{v}</div>}
+                显示={(v) => <div className="ty-prose" data-ty="body" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{v}</div>}
                 存={(v) => 存沟通正文(f, v)}
                 编辑器={({ 草稿, set草稿, 忙 }) => <Input.TextArea aria-label="沟通内容" autoFocus autoSize={{ minRows: 3, maxRows: 14 }} disabled={忙} value={草稿} onChange={(e) => set草稿(e.target.value)} />}
               />
@@ -1629,7 +1629,8 @@ export default function ProjectDetail({
   const 沟通卡 = 嵌入 ? (
     <Card
       className="cd-comm"
-      title={<span className="cd-comm-t"><span>沟通记录（{看全部沟通 ? 嵌入.全部沟通数 : 沟通数字}）</span>{沟通范围钮}</span>}
+      data-ty-box=""
+      title={<span className="cd-comm-t"><span data-ty="title">沟通记录（{看全部沟通 ? 嵌入.全部沟通数 : 沟通数字}）</span>{沟通范围钮}</span>}
       extra={(
         <Space size={8} className="proj-follow-acts">
           {能隐藏 && !看全部沟通 && <Button size="small" aria-pressed={隐藏中} title="隐藏归属人不是你的沟通，只是不显示，不删数据" onClick={() => set只看接手后(!只看接手后)} data-testid="follow-hide-before">{隐藏中 ? "显示全部" : "隐藏接手前"}</Button>}

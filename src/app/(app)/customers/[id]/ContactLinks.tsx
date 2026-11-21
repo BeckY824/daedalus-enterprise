@@ -119,7 +119,7 @@ export default function ContactLinks({ customerId, c, 只读 }: { customerId: st
         </div>
       )}
       {做着 === "说明" && 挂 && (
-        <Space.Compact className="rec-contact-form" style={{ display: "flex" }}>
+        <Space.Compact className="rec-contact-form gelv-acts" style={{ display: "flex" }}>
           <Input
             size="small"
             autoFocus
@@ -158,7 +158,7 @@ export default function ContactLinks({ customerId, c, 只读 }: { customerId: st
           ) : (
             <div className="rec-field-empty" style={{ fontSize: "var(--fs-note)" }}>号码跟着去新主客户，这位客户这边改成挂着</div>
           )}
-          <Space size={6}>
+          <Space className="gelv-acts" size={6}>
             <Button
               size="small"
               type="primary"
