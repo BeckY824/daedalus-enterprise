@@ -188,7 +188,7 @@ export type RecordProps = {
    * 右上角「更多操作 ▾」里项目那一组对当前项目生效的那几项（11-12 用户，CustomerDetail 按当前项目算好给）：名字 + 各项给不给、灰着的原因。
    * 点了经 项目动作口 交给嵌入版 ProjectDetail 开框；没有当前项目 = null（菜单里只剩「新建项目」）
    */
-  当前项目菜单?: { 名: string; 项们: import("../../projects/[id]/project-menu").项目菜单项[] } | null;
+  当前项目菜单?: { 名: string; 节点?: string | null; 项们: import("../../projects/[id]/project-menu").项目菜单项[] } | null;
   项目动作口?: { current: ((key: import("../../projects/[id]/project-menu").项目动作键) => void) | null } | null;
   /**
    * 右上角「发起点评 ▾」（教练点评改版 PR1，11-21，原沟通卡头「发起主题」）：CustomerDetail 按当前页签的项目画好整颗按钮递进来，

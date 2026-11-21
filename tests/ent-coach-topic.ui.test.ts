@@ -125,7 +125,7 @@ it("「发起点评 ▾」下拉：小标题当前项目（节点），写点评
   await 钮.click();
   const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) ul.rec-head-menu").last();
   await 菜单.waitFor();
-  expect(await 菜单.locator(".ant-dropdown-menu-item-group-title").innerText()).toMatch(/^当前项目：项目名很长Y+（线索验证）$/);
+  expect(await 菜单.locator(".ant-dropdown-menu-item-group-title").innerText()).toMatch(/^项目 · 项目名很长Y+（线索验证）$/);
   const 项 = 菜单.getByRole("menuitem");
   expect(await 项.count()).toBe(2);
   expect((await 项.nth(0).innerText()).replace(/\s+/g, " ")).toBe("写点评 打字写，和原来的「发起主题」一样");

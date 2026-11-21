@@ -27,7 +27,7 @@ export default function CustomerDetail({ 项目数据: 项目区, ...记录 }: R
         本项目: (p.关联?.联系人们 ?? []).filter((x) => x.看得到).map((x) => ({ contactId: x.contactId, 角色: x.角色, 立场: x.立场 })),
       }
     : null;
-  const 当前项目菜单 = 项目区.当前 ? { 名: 项目区.当前.p.name, 项们: 项目菜单项们(项目区.当前) } : null;
+  const 当前项目菜单 = 项目区.当前 ? { 名: 项目区.当前.p.name, 节点: 项目区.页签们.find((t) => t.id === 项目区.当前?.p.id)?.节点 ?? null, 项们: 项目菜单项们(项目区.当前) } : null;
   // 右上角「发起点评 ▾」（教练点评改版 PR1）：对当前页签的项目发，能不能发照教练主题那份（服务端算好的 能发）；不能发不摆
   const 发起点评钮 = 项目区.当前?.教练主题?.能发 ? <StartReviewButton 数据={项目区.当前.教练主题} projectId={项目区.当前.p.id} /> : null;
   return (
