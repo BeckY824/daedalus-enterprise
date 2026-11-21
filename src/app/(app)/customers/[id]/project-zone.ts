@@ -2,7 +2,7 @@ import type { SessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { 在推项目条件 } from "@/lib/project/active";
-import { 能看项目 } from "@/lib/enterprise/permissions";
+import { 能看项目, 权限项目选, 带已加入 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 读项目详情 } from "../../projects/[id]/load";
 import type { 项目区数据 } from "./ProjectZone";
@@ -25,10 +25,11 @@ export async function 读项目区(me: SessionUser, customerId: string, 列表: 
   const 行 = 列表.length
     ? await prisma.project.findMany({
         where: { id: { in: 列表.map((p) => p.id) } },
-        select: { id: true, ownerId: true, creatorId: true, pooledAt: true, bizLine: true, members: { where: { inviteStatus: "JOINED" }, select: { userId: true } } },
+        // 能看项目 要的列同一份（含待分配本线放开那几格，P-转-42）：少带了这里会把项目页刚放行跳过来的那条筛掉
+        select: { id: true, ...权限项目选 },
       })
     : [];
-  const 能看 = new Set(行.filter((r) => 能看项目(me, { ...r, 已加入: r.members.map((m) => m.userId) }, org)).map((r) => r.id));
+  const 能看 = new Set(行.filter((r) => 能看项目(me, 带已加入(r), org)).map((r) => r.id));
   const 可看 = 列表.filter((p) => 能看.has(p.id));
 
   // 先读要的那个；读不到（看不了、不是这位客户的、删了）就换默认的那个，再不行再往下找，不报「没有找到」

@@ -33,12 +33,10 @@ import { useFormGuard } from "@/lib/form-guard";
 import { 转化会带上 } from "@/lib/lead-convert";
 import { 自动分配线索, type 自动分配结果 } from "./assign-actions";
 import { AssignLeadModal, AssignedOutButton, useBatchAutoAssign } from "./AssignLead";
-import LeadFullNotices from "./LeadFullNotices";
 import ConvertProjectModal from "./ConvertProjectModal";
 import { useNewProjectFlow } from "../projects/NewProjectFlow";
 import type { 向导跟进 } from "@/lib/project/wizard";
 import { 公海线索先领取话 } from "@/lib/enterprise/pool-rules";
-import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 动作出错话 } from "@/lib/stale-deploy";
 
 type Row = {
@@ -70,7 +68,6 @@ export default function LeadsView({
   企业版项目 = false,
   要下一步 = false,
   线索分配开着 = false,
-  满额提醒 = [],
   联系人附件 = false,
 }: {
   rows: Row[];
@@ -89,8 +86,6 @@ export default function LeadsView({
   要下一步?: boolean;
   /** 企业版「线索分配」规则开着：负责人只能经「分配」换，编辑框里负责人只读；页头摆「我分出去的」 */
   线索分配开着?: boolean;
-  /** 企业版自动分配因都已满额没分出去的提醒，只有市场管理、总管理员有（lib/enterprise/lead-full-notice.ts） */
-  满额提醒?: 满额提醒[];
   /**
    * 企业版联系人附件（2026-10-28）：编辑线索时表单底下摆附件区（名片原图等），转客户时这些附件跟到联系人上。
    * 新建时不摆：线索还没有 id，存了再传
@@ -384,7 +379,6 @@ export default function LeadsView({
         }
       />
 
-      <LeadFullNotices 提醒={满额提醒} />
       {批量自动分.框}
       {提示 && (
         <div className={`ls-ld-note${提示.错 ? " is-err" : ""}`} role={提示.错 ? "alert" : "status"} title={提示.话}>{提示.话}</div>

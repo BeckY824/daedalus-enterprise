@@ -17,7 +17,7 @@ import { 看得到的客户 } from "@/lib/project/db";
 import type { 客户条件 } from "@/app/(app)/customers/query";
 import { 企业版只用项目 } from "./project-only";
 import { 权限组织 } from "./org";
-import { 能看项目, type 谁 } from "./permissions";
+import { 能看项目, 权限项目选, 带已加入, type 谁 } from "./permissions";
 import { 市场进不了详情的, 读市场身份 } from "./market-view-db";
 
 /** 一次请求一份（React cache；测试里直通，每次现算） */
@@ -32,7 +32,7 @@ const 按人算 = cache(async (meId: string, role: string): Promise<Map<string, 
   const 候选 = await 看全部(() => prisma.project.findMany({
     // 自己负责的客户先砍掉（本来就看得到，省得每个销售每次都把自己的项目全捞一遍）；剩下的再按限定层核
     where: { ownerId: meId, pooledAt: null, deletedAt: null, awaitAssignAt: null, customer: { deletedAt: null, pool: { is: null } }, NOT: { customer: { salesOwnerId: meId } } },
-    select: { bizLine: true, id: true, customerId: true, ownerId: true, creatorId: true, pooledAt: true, updatedAt: true, members: { where: { inviteStatus: "JOINED" }, select: { userId: true } } },
+    select: { id: true, customerId: true, updatedAt: true, ...权限项目选 },
     orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
   }));
   if (!候选.length) return 空;
@@ -46,7 +46,7 @@ const 按人算 = cache(async (meId: string, role: string): Promise<Map<string, 
   const 表 = new Map<string, string[]>();
   for (const p of 候选) {
     if (看得到.has(p.customerId) || 市场挡.has(p.id)) continue;
-    if (!能看项目(me, { ...p, 已加入: p.members.map((m) => m.userId) }, org)) continue;
+    if (!能看项目(me, 带已加入(p), org)) continue;
     表.set(p.customerId, [...(表.get(p.customerId) ?? []), p.id]);
   }
   return 表;

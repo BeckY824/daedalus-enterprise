@@ -1,7 +1,7 @@
 import type { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { cache } from "react";
-import { 能看项目, 能看全部, 只看的人, 没设业务角色, type 谁 } from "@/lib/enterprise/permissions";
+import { 能看项目, 能看全部, 只看的人, 没设业务角色, 权限项目列, type 谁 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 本套位置, 节点序号 } from "./nodes";
 import { 企业版字典, 字典of } from "./stage-dict";
@@ -26,8 +26,9 @@ async function 我能看的项目们(me: 谁, where: Prisma.ProjectWhereInput) {
   const 行 = await prisma.project.findMany({
     where: { AND: [where, { pooledAt: null }] },
     orderBy: { updatedAt: "desc" },
+    // 能看项目 要的列同一份（权限项目列，含待分配本线放开那几格，P-转-42）；组员只带我自己那一条
     select: {
-      id: true, customerId: true, phase: true, node: true, result: true, pooledAt: true, ownerId: true, creatorId: true, bizLine: true, updatedAt: true,
+      id: true, customerId: true, node: true, updatedAt: true, ...权限项目列,
       members: { where: { userId: me.id, inviteStatus: "JOINED" }, select: { userId: true } },
     },
   });
@@ -128,8 +129,15 @@ export function 设项目名候选先取(n: number) { 候选先取 = n; }
 export function 项目名另比(取我: () => Promise<谁 | null>): 另比一词 | undefined {
   if (!企业版()) return undefined;
   let 我: Promise<谁 | null> | undefined;
-  const 候选SQL = `SELECT p.id, p."customerId", p."ownerId", p."creatorId", p."bizLine" FROM "Project" p WHERE p.name GLOB ? AND p."deletedAt" IS NULL AND p."pooledAt" IS NULL`;
-  type 候选行 = { id: string; customerId: string; ownerId: string; creatorId: string | null; bizLine: string | null };
+  // 能看项目 要的列照 权限项目列 拼（含待分配本线放开那几格，P-转-42），不另写一份
+  const 候选SQL = `SELECT p.id, p."customerId", ${Object.keys(权限项目列).map((k) => `p."${k}"`).join(", ")} FROM "Project" p WHERE p.name GLOB ? AND p."deletedAt" IS NULL AND p."pooledAt" IS NULL`;
+  type 时刻 = Date | number | string | null;
+  type 候选行 = {
+    id: string; customerId: string; ownerId: string; creatorId: string | null; bizLine: string | null; phase: string | null; result: string | null;
+    pooledAt: 时刻; awaitAssignAt: 时刻; scheduledAssignAt: 时刻; deletedAt: 时刻;
+  };
+  // 裸 SQL 回来的时刻列（SQLite 存毫秒数）转回 Date：能看项目 只问有没有，空还是空
+  const 成时刻 = (v: 时刻): Date | null => (v == null ? null : v instanceof Date ? v : new Date(v));
   // 一个参数带整份名单（json_each），不受绑定参数个数上限管，也能进只读通道
   const 名单 = (ids: readonly string[]) => ({ sql: `c.id IN (SELECT value FROM json_each(?))`, values: [JSON.stringify([...new Set(ids)])] });
   return async (词) => {
@@ -148,7 +156,10 @@ export function 项目名另比(取我: () => Promise<谁 | null>): 另比一词
     const 加入了 = new Set((await prisma.$queryRawUnsafe<{ projectId: string }[]>(
       `SELECT m."projectId" FROM "ProjectMember" m WHERE m."userId" = ? AND m."inviteStatus" = 'JOINED'`, me.id,
     )).map((m) => m.projectId));
-    const 能看 = 候选.filter((p) => 能看项目(me, { ...p, pooledAt: null, 已加入: 加入了.has(p.id) ? [me.id] : [] }, org));
+    const 能看 = 候选.filter((p) => 能看项目(me, {
+      ...p, pooledAt: null, awaitAssignAt: 成时刻(p.awaitAssignAt), scheduledAssignAt: 成时刻(p.scheduledAssignAt), deletedAt: 成时刻(p.deletedAt),
+      已加入: 加入了.has(p.id) ? [me.id] : [],
+    }, org));
     if (!能看.length) return null;
     // 再经限定层核一遍（同 我能看的项目们）：只核内存里筛剩下的那几个
     const 核过 = await prisma.project.findMany({ where: { id: { in: 能看.map((p) => p.id) }, pooledAt: null }, select: { customerId: true } });

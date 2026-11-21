@@ -12,6 +12,7 @@ import { 看全部 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 指定问题 } from "@/lib/enterprise/assign-eta";
+import { 挑不到原因 } from "@/lib/enterprise/await-assign-core";
 import { 发待分配提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 执行一条定时, 清定时, 能动定时 as 能动 } from "@/lib/enterprise/scheduled-assign";
 import { 认定时分配, 短时刻 } from "@/lib/project/time-fields";
@@ -77,7 +78,7 @@ export async function 取消定时分配(projectId: string): Promise<结果> {
     const 改 = await 看全部(() => prisma.project.updateMany({ where: { id: p.id, scheduledAssignAt: p.scheduledAssignAt }, data: 清定时 }));
     if (改.count !== 1) return { ok: false, error: 不在 };
     await recordAudit({ user: me, action: "update", entity: "Project", entityId: p.id, summary: `取消了新线索「${p.name}」的定时分配（原定 ${短时刻(p.scheduledAssignAt)}），留在待分配` });
-    await 发待分配提醒(org, [p.name], me.name, `${me.name} 取消了定时分配（原定 ${短时刻(p.scheduledAssignAt)}）`).catch((e) => console.error("[待分配提醒] 没发出去", e));
+    await 发待分配提醒(org, [{ id: p.id, 名: p.name }], me.name, `${me.name} 取消了定时分配（原定 ${短时刻(p.scheduledAssignAt)}）`).catch((e) => console.error("[待分配提醒] 没发出去", e));
     刷新(p.id);
     return { ok: true, 提示: "已取消定时，留在新线索待分配" };
   } catch (e) {
@@ -96,7 +97,7 @@ export async function 定时分配现在分(projectId: string): Promise<结果> 
     if (!能动(me, p, org)) return { ok: false, error: 不能动话 };
     const r = await 看全部(() => 执行一条定时({ ...p, scheduledAssignAt: p.scheduledAssignAt! }, me, new Date()));
     刷新(p.id);
-    return r.ok ? { ok: true, 提示: `已分给 ${r.接手人}` } : { ok: false, error: `没分出去：${r.error}。已留在新线索待分配` };
+    return r.ok ? { ok: true, 提示: `已分给 ${r.接手人}` } : { ok: false, error: `没分出去：${挑不到原因(r.error)}。已留在新线索待分配` };
   } catch (e) {
     return 不在了(e);
   }

@@ -28,7 +28,7 @@ const 打包选项 = { bundle: true, write: false as const, format: "iife" as co
 /** AppShell 用的假 next / 空子件（同 ent-rail-mini.ui.test.ts） */
 const 壳插件: Plugin = { name: "ent-shell-look", setup(b) {
   b.onResolve({ filter: /^next\/(navigation|link)$/ }, (a) => ({ path: a.path, namespace: "fixture" }));
-  b.onResolve({ filter: /(^|\/)(WhatsNew|UpdateRow|FeedbackButton|AiCost|RailResizer|LeadFullNotices|RecordView|ProjectDetail|NoticeBell|AiDock)$/ }, (a) => ({ path: a.path, namespace: "empty-child" }));
+  b.onResolve({ filter: /(^|\/)(WhatsNew|UpdateRow|FeedbackButton|AiCost|RailResizer|AwaitAssignTodo|RecordView|ProjectDetail|NoticeBell|AiDock)$/ }, (a) => ({ path: a.path, namespace: "empty-child" }));
   b.onLoad({ filter: /.*/, namespace: "empty-child" }, () => ({ contents: "export default function Empty(){return null} export function AiMeterBar(){return null}" }));
   b.onLoad({ filter: /.*/, namespace: "fixture" }, (a) => ({ resolveDir: process.cwd(), contents: a.path === "next/link"
     ? `import React from 'react';export default function Link({href,onClick,prefetch,unstable_dynamicOnHover,children,...p}){return React.createElement('a',{...p,href,onClick:e=>{onClick?.(e);if(!e.defaultPrevented){e.preventDefault();window.__route=href}}},children)}`

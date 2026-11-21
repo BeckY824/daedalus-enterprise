@@ -20,7 +20,7 @@ describe("左栏收窄（路由）", () => {
 let browser: Browser; let bundle: string;
 const plugin: Plugin = { name: "ent-rail-mini", setup(b) {
   b.onResolve({ filter: /^next\/(navigation|link)$/ }, a => ({ path: a.path, namespace: "fixture" }));
-  b.onResolve({ filter: /(^|\/)(WhatsNew|UpdateRow|FeedbackButton|AiCost|RailResizer|LeadFullNotices|RecordView|ProjectDetail|NoticeBell)$/ }, a => ({ path: a.path, namespace: "empty-child" }));
+  b.onResolve({ filter: /(^|\/)(WhatsNew|UpdateRow|FeedbackButton|AiCost|RailResizer|AwaitAssignTodo|RecordView|ProjectDetail|NoticeBell)$/ }, a => ({ path: a.path, namespace: "empty-child" }));
   // AI 面板换成同样结构的假面板：<aside class="dock"> 里头一枚真的拖宽把手（和 AiDock 一样用 WidthHandle 面板把手）
   b.onResolve({ filter: /(^|\/)AiDock$/ }, a => ({ path: a.path, namespace: "dock" }));
   b.onLoad({ filter: /.*/, namespace: "dock" }, () => ({ resolveDir: process.cwd(), loader: "tsx", contents: "import WidthHandle, { 面板把手 } from '@/components/WidthHandle';export default function D(){return <aside className='dock' aria-label='AI 面板'><WidthHandle 规格={面板把手} /></aside>}" }));

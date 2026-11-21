@@ -11,9 +11,9 @@ import { 读组织, 权限组织 } from "@/lib/enterprise/org";
 import { 能新建和领取, 能管公海 } from "@/lib/enterprise/permissions";
 import { 能分配 } from "@/lib/enterprise/lead-assign";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 读满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
-import { 读项目列表 } from "@/lib/project/list";
+import { 读项目列表, 数待分配 } from "@/lib/project/list";
+import { 待分配筛 } from "@/lib/enterprise/await-assign-core";
 import { 看板分列 } from "@/lib/project/board";
 import ProjectsView from "../projects/ProjectsView";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
 export default async function LeadsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ keyword?: string; status?: string; ownerId?: string; source?: string; pool?: string; recycled?: string; node?: string; page?: string; pageSize?: string; sort?: string }>;
+  searchParams: Promise<{ f?: string; keyword?: string; status?: string; ownerId?: string; source?: string; pool?: string; recycled?: string; node?: string; page?: string; pageSize?: string; sort?: string }>;
 }) {
   const me = await requireUser();
   const sp = await searchParams;
@@ -33,11 +33,12 @@ export default async function LeadsPage({
   */
   if (await 企业版只用项目()) {
     const d = await 读项目列表(me, sp, "线索");
-    // 分配、满额提醒照老线索页的口径（下面那段），只是分的是线索阶段的项目
+    // 分配照老线索页的口径（下面那段），只是分的是线索阶段的项目
     const 线索分配开着 = await 规则开着("线索分配");
     const 能自动分配 = 线索分配开着 && 能分配(await 读组织(), me);
-    const 满额提醒们 = await 读满额提醒(me.id);
-    return <ProjectsView {...d} 列={看板分列(d.行, undefined, undefined, d.看板合计)} 阶段="线索" 线索分配开着={线索分配开着} 能自动分配={能自动分配} 能分公海客户项目={能自动分配 && 能管公海(me, await 读组织())} 满额提醒={满额提醒们} 能新建={能新建和领取(me, await 权限组织())} />;
+    // 「待分配新线索 N 条」那一行（11-21，替原来一事一张的黄色大卡）：同首页；正筛着它（f=await-assign）时页头已有标签，不再摆
+    const 待分配 = sp.f === 待分配筛 ? null : await 数待分配(me).catch((e) => { console.error("[待分配] 新线索页没数出来", e); return null; });
+    return <ProjectsView {...d} 列={看板分列(d.行, undefined, undefined, d.看板合计)} 阶段="线索" 线索分配开着={线索分配开着} 能自动分配={能自动分配} 能分公海客户项目={能自动分配 && 能管公海(me, await 读组织())} 待分配={待分配} 能新建={能新建和领取(me, await 权限组织())} />;
   }
   const where: Prisma.LeadWhereInput = {
     AND: [await 线索关键词条件(sp.keyword)],
@@ -81,8 +82,6 @@ export default async function LeadsPage({
   // 企业版「线索分配和配额」开着、我能分配（老板、总管理员、市场管理）才摆「分配」「自动分配」；服务端还会再查一遍
   const 线索分配开着 = await 规则开着("线索分配");
   const 能自动分配 = 线索分配开着 && 能分配(await 读组织(), me);
-  // 企业版自动分配因都已满额没分出去的提醒（只发给市场管理、总管理员，见 lib/enterprise/lead-full-notice.ts）
-  const 满额提醒们 = 企业版() ? await 读满额提醒(me.id) : [];
   // 企业版转项目要记首条跟进；开了超时回收，下一步时间必填（验收 #13，服务端 转项目前查 也拦）
   const 企业版项目 = 企业版() && b.projectMode === true;
   const 要下一步 = 企业版项目 && (await 生效组织规则()).超时回收.开;
@@ -97,7 +96,6 @@ export default async function LeadsPage({
       企业版项目={企业版项目}
       要下一步={要下一步}
       线索分配开着={线索分配开着}
-      满额提醒={满额提醒们}
       联系人附件={企业版()}
       rows={rows.map((l) => ({
         id: l.id,

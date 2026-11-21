@@ -21,7 +21,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 分配方式叫法, 挡分配方式, 选的原因 } from "@/lib/enterprise/dict";
 import { 能自动分配客户, 不是市场话, 市场分配限指定 } from "@/lib/enterprise/cust-auto-assign";
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
-import { 发满额提醒, 发待分配提醒, 读满额提醒, 关掉满额提醒, type 满额提醒 } from "@/lib/enterprise/lead-full-notice";
+import { 发满额提醒, 发待分配提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 读线部门, 参与状态表, 不参与名单, 不设配额开着, 自动分配池, 读挑人底子, 本月分配行, 补记销售管理起算, 指定问题, 可指定的人, 估算轮到, 能看轮到, type 轮到 } from "@/lib/enterprise/assign-eta";
 import { 找待用补位, 用掉补位, 待用补位行, 待补数们, 本月另补们 } from "@/lib/enterprise/invalid-makeup";
 import { 标待分配 } from "@/lib/enterprise/await-assign";
@@ -518,7 +518,11 @@ const 标了待分配话 = (为什么: string) => `${为什么}。已标成待�
  */
 async function 挑不到就标(projectId: string, r: 内部自动结果): Promise<内部自动结果> {
   if (r.ok || !r.要标) return r;
-  await 标待分配(projectId, null);
+  // 标不上（这一下被改了阶段、进了公海、有了结局）：不说「已标成」，也不发提醒（去掉 要标）
+  if (!(await 标待分配(projectId, null))) {
+    const { 要标: _不标, ...原样 } = r;
+    return 原样;
+  }
   return { ...r, error: 标了待分配话(r.要标.为什么) };
 }
 
@@ -546,8 +550,8 @@ export async function 自动分配线索(id: string, opts: { line?: 线 | null; 
       ? await 挑不到就标(哪条.projectId, await 自动分给(me, org, 哪条, line, kind, 认原负责人(opts.原负责人)))
       : await 自动分给(me, org, 哪条, line, kind, 认原负责人(opts.原负责人));
     if (r.ok) await 分配通知(me, [{ ...哪条, toUserId: r.toUserId, ...通知字段(r) }], true);
-    if (!r.ok && r.要标) {
-      await 发待分配提醒(org, [r.要标.名], me.name, r.要标.为什么).catch((e) => console.error("[待分配提醒] 没发出去", e));
+    if (!r.ok && r.要标 && 哪条.projectId !== undefined) {
+      await 发待分配提醒(org, [{ id: 哪条.projectId, 名: r.要标.名 }], me.name, r.要标.为什么).catch((e) => console.error("[待分配提醒] 没发出去", e));
     } else if (!r.ok && r.都满额) {
       const 看 = await 分前看(哪条).catch(() => null);
       await 发满额提醒(org, [看?.ok ? 看.名 : id], me.name).catch((e) => console.error("[满额提醒] 没发出去", e));
@@ -1063,7 +1067,7 @@ export async function 批量自动分配(
     // 提醒没发出去不能连累已经分好的结果
     if (标了的.length) {
       const 为什么们 = [...new Set(标了的.map((x) => x.为什么))];
-      await 发待分配提醒(org, 标了的.map((x) => x.名), me.name, 为什么们.join("；")).catch((e) => console.error("[待分配提醒] 没发出去", e));
+      await 发待分配提醒(org, 标了的.map((x) => ({ id: x.id, 名: x.名 })), me.name, 为什么们.join("；")).catch((e) => console.error("[待分配提醒] 没发出去", e));
     }
     const 标了ids = new Set(标了的.map((x) => x.id));
     await 发满额提醒(org, 结果.filter((x) => !x.ok && x.都满额 && !标了ids.has(x.leadId)).map((x) => x.name), me.name).catch((e) => console.error("[满额提醒] 没发出去", e));
@@ -1071,23 +1075,6 @@ export async function 批量自动分配(
   } catch (e) {
     return 不在了(e);
   }
-}
-
-/** 我的「都已满额」提醒（首页、线索页顶部）。不是企业版 = 没有；规则后来关了也照样给看，关掉为止 */
-export async function 我的满额提醒(): Promise<满额提醒[]> {
-  if (!企业版()) return [];
-  const me = await requireUser();
-  return 读满额提醒(me.id);
-}
-
-/** 关掉我自己的一条提醒 */
-export async function 关满额提醒(id: string): Promise<结果> {
-  if (!企业版() || typeof id !== "string") return { ok: true };
-  const me = await requireUser();
-  await 关掉满额提醒(me.id, id);
-  revalidatePath("/leads");
-  revalidatePath("/dashboard");
-  return { ok: true };
 }
 
 const 状态说法: Record<参与状态, (名: string) => string> = {
