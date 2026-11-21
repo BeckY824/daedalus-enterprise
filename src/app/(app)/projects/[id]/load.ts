@@ -33,6 +33,7 @@ import { 读线索验证 } from "@/lib/project/lead-verify";
 import { 客户显名 } from "@/lib/enterprise/customer-title";
 import { 有效线索节点, 要沟通的节点 } from "@/lib/project/stage-gates";
 import { 待分配占位 } from "@/lib/enterprise/await-assign";
+import { 换负责人 } from "@/lib/project/owner-write";
 import { 市场进不了详情, 读市场身份 } from "@/lib/enterprise/market-view-db";
 import { 只读卡放行 } from "@/lib/enterprise/customer-readonly-card";
 import { 仅项目可见 } from "@/lib/enterprise/project-only-customers";
@@ -395,8 +396,9 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     ...(企业 && p.scheduledAssignAt && p.awaitAssignAt && !p.pooledAt ? { 定时分配: {
       时间: 时刻转北京墙钟(p.scheduledAssignAt)!, 给谁: p.scheduledAssignTo ? 叫(p.scheduledAssignTo) ?? "已不在的成员" : null, 能动: !!org && 能动定时(me, p, org),
     } } : {}), 要下一步, 能记沟通, 组员记沟通: 能记沟通 && !能改, 可改沟通, 可删沟通, ...(本人候选.size ? { 服务器现在: 现在.toISOString() } : {}), 必填, 不给推, 不给推谁能推, 交付只在尾款, 能改节点: 节点能改, 能转让: 能转,
-    // 转给谁以后自己还看得到（11-03 A5-3）：总管理、上级转给下属照样能看，提示不说「看不到」，转完也不跳回列表
-    ...(企业版() && 能转 ? { 转后还能看: 候选.filter((c) => 能看项目(me, { ...p, ownerId: c.id, 已加入 }, org)).map((c) => c.id) } : {}),
+    // 转给谁以后自己还看得到（11-03 A5-3）：总管理、上级转给下属照样能看，提示不说「看不到」，转完也不跳回列表。
+    // 按转完的样子算：转让走 换负责人，同时清待分配（owner-write.ts）——不清的话本线管理靠「待分配放开」看得到，会误算成转给圈外的人也还能看（#392 审查）
+    ...(企业版() && 能转 ? { 转后还能看: 候选.filter((c) => 能看项目(me, { ...p, ...换负责人(c.id), 已加入 }, org)).map((c) => c.id) } : {}),
     能放公海: !公海 && 能放回公海(me, p, org) && (能进公海的阶段 as readonly string[]).includes(p.phase) && !(企业 && p.result), // 已结束的不能单独放回（X-70）
     // 企业版删项目：项目负责人本人或系统管理员（V3.5.1，进回收站）；别的版本照旧按 能改
     能删: 企业 ? !占位 && 能删除(me, org, 公海 ? null : p.ownerId) : 能改,

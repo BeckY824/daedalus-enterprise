@@ -62,6 +62,8 @@ export function 看全部<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 const 系统写这段 = 全进程上下文<true>("系统写");
+/** 正在 prisma.$transaction 里（加上限定 包的那层设）：限定层不再用 db 另查，SQLite 只有一条连接 */
+const 事务里 = 全进程上下文<true>("限定层事务里");
 /**
  * 这一段里的写是系统顺手做的（字典第一次读时建默认项这类），不算谁在改数据：企业版管理员（admin，只读）读页面时照样建得上。
  * 只给这种幂等的种子写用，用户动作别包
@@ -775,6 +777,14 @@ export function 加上限定(db: PrismaClient): PrismaClient {
               // 只因待分配放开才算「有只读」的（销售管理、条线总管理没别的只读范围）：只读的只有那几条项目和挂在项目上的，别的表照旧原样抛
               const 只因待分配 = !!待分配放开 && !互看 && !读 && !市场 && !市场全看 && 别人的.size === 0;
               if (只因待分配 && model !== "Project" && !跟项目的表.has(model)) throw e;
+              // 要说「待分配的只能看和分配」之前，先按读范围数一下这一条（#392 审查）：数不到 = 真不在了、或本来就看不到（不是放开的那条），原样抛，
+              // 免得没有可分配的也提示「只能分配」。交互式事务里不数（SQLite 只开一条连接，事务外再查要等到事务超时），照旧直接提示
+              if (!市场 && !读 && !话 && 待分配放开 && !事务里.getStore()) {
+                const 读条件 = 限定条件(model, 读谁, 读互看, 市场, 按线, 公海回避, 组员客户, 市场全看, false, 待分配放开);
+                const 表 = (db as unknown as Record<string, { count?: (x: unknown) => Promise<number> }>)[model[0].toLowerCase() + model.slice(1)];
+                const 有 = 表?.count ? await 表.count({ where: 读条件 ? 并限定(a.where, 读条件) : a.where }).catch(() => 1) : 1;
+                if (!有) throw e;
+              }
               throw new 只读错误(
                 市场 ? "改不了：这一条在只读的客户下面（虚线下属或市场成员相关的，只能看），或者已经在别处删了，刷新看看"
                 : 读 ? "改不了：这一条在虚线下属的客户下面（只能看），或者已经在别处删了，刷新看看"
@@ -802,7 +812,8 @@ export function 加上限定(db: PrismaClient): PrismaClient {
         // 交互式事务里的写一做完就加了写库版本，可事务还没提交：这期间别人读到的提交前旧数会带着新版本号进公海分组缓存。
         // 事务结束（提交或回滚）再记一次，那份就作废（enterprise/pool-count-cache.ts）。数组式的同样收尾，多记一次无妨
         try {
-          return await (v as (...x: unknown[]) => Promise<unknown>).apply(t, a);
+          // 标上「在事务里」：限定层里要另查一句的（待分配只读提示前的数一下）看到它就不查，免得等事务手里那条连接
+          return await 事务里.run(true, () => (v as (...x: unknown[]) => Promise<unknown>).apply(t, a));
         } finally {
           记一次写库();
         }
