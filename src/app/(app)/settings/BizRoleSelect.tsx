@@ -14,7 +14,7 @@ export const 总管级 = (r: string) => r === "director" || r === "admin" || r =
 
 /**
  * 角色下拉每项下面那行「能做什么」（10-30）：只写代码里按角色写死的那几样——总管理员看全部（lib/enterprise/visibility.ts）、
- * 改组织架构（org-actions）、分配线索 / 录渠道投入 / 改销售的参与状态（只有总管理员）（lead-assign、channel-stats）、复核和终判无效线索（lead-verify）。
+ * 改组织架构（org-actions）、分配线索 / 录渠道投入 / 改销售的参与状态（三态只有总管理员，市场管理只能暂停 / 允许）（lead-assign、channel-stats）、复核和终判无效线索（lead-verify）。
  * 字段权限、分配方式谁能用那两张表按角色配，不写在这里
  */
 export const 角色能做: Record<业务角色, string> = {
@@ -23,7 +23,7 @@ export const 角色能做: Record<业务角色, string> = {
   coach: "只能看、不能改，电话和提成看不到。看全部（设了业务线也看全部）。不能兼销售类角色",
   sales_mgr: "能分到线索；手动指派线索",
   sales: "能分到线索",
-  marketing_mgr: "分配线索、录渠道投入；复核被判无效的线索",
+  marketing_mgr: "分配线索、暂停 / 恢复销售参与自动分配、录渠道投入；复核被判无效的线索",
   channel_ops: "没有额外的管理权限",
   project_ops: "没有额外的管理权限",
 };

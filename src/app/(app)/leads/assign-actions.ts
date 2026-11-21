@@ -51,7 +51,7 @@ import type { 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 换负责人待办, 待办痕, 接上待办痕, 带待办勾 } from "@/lib/project/carry-tasks";
 import { 规整还原单, 撤回自动分配, 自动分配撤销对不上, type 自动分配还原 } from "@/lib/enterprise/auto-assign-undo";
 import {
-  企划线索计数key, 我分出去的, 月份, 月初of, 本月已分, 本月加额们, 生效配额, 满了, 接手问题, 能分配, 能设配额, 能改参与, 线索种类, 计不计数, 配额of, 挑接手人, 挑的理由, 自动分配不参与key,
+  企划线索计数key, 我分出去的, 月份, 月初of, 本月已分, 本月加额们, 生效配额, 满了, 接手问题, 能分配, 能设配额, 能改参与, 线索种类, 计不计数, 配额of, 挑接手人, 挑的理由, 自动分配不参与key, 参与改动挡, 参与可选,
   认参与状态, 参与状态of, 是参与状态, type 参与状态, 不设配额key, 自动候选人们, 起算时刻key,
   type 分出去的线索, type 线, type 候选人,
 } from "@/lib/enterprise/lead-assign";
@@ -1084,7 +1084,9 @@ const 状态说法: Record<参与状态, (名: string) => string> = {
 };
 
 /**
- * 设某人参与自动分配：允许（正常）/ 暂停 / 禁止（10-26 三态；11-01 16:1x 拍板：只有总管理员能改，市场管理、销售管理只能手动指派；直属上级只能看）。
+ * 设某人参与自动分配：允许（正常）/ 暂停 / 禁止（10-26 三态；11-01 16:1x 拍板：只有总管理员能改，销售管理只能手动指派；直属上级只能看）。
+ * 客户 11-21 选 A：市场管理也能在「允许 / 暂停」之间拨，「禁止」仍只给系统管理员（设禁止、把禁止改回来都拦，lead-assign 参与改动挡）；
+ * 原状态在事务里读，按原 → 新判，两个人同时改也不会让市场管理盖掉刚设的禁止。每次改都留操作记录：谁、何时、对谁、原 → 新。
  * 暂停、禁止都不进轮转，手动分配不受影响；每月计数照旧按 EntLeadAssign.month 自动清零。
  * 老的 true / false 照收：true = 允许，false = 禁止
  */
@@ -1095,7 +1097,9 @@ export async function 设自动分配参与(userId: string, 状态: 参与状态
   if (!新状态) return { ok: false, error: "参与只能是允许、暂停或禁止" };
   try {
     const org = await 读组织();
-    if (!能改参与(org, me)) return { ok: false, error: "只有总管理员能改销售的参与状态（市场管理、销售管理可以手动指派）" };
+    // 先认人再认对象：不能改的人拿到的是「只有…能改」（原状态这时还不知道，按「允许 → 新」先挡一道；市场管理设禁止在这就拦）
+    const 先挡 = 参与改动挡(org, me, "允许", 新状态);
+    if (先挡) return { ok: false, error: 先挡 };
     if (接手问题(org, userId, null)) return { ok: false, error: "这个人不在组织里、已经停用，或者不是销售 / 销售管理" };
     // 读-改-写放进一个事务：两个人同时改不同人的状态，后写的不会把先写的盖掉
     const 变了 = await 查完再写(async (tx) => {
@@ -1103,6 +1107,9 @@ export async function 设自动分配参与(userId: string, 状态: 参与状态
       let 原值: unknown = null;
       try { 原值 = 行 ? JSON.parse(行.value) : null; } catch { /* 被手改坏：当人人允许 */ }
       const 现在 = 认参与状态(原值);
+      // 按事务里读到的原状态再判一次（市场管理不能动已经禁止的人）
+      const 挡 = 参与改动挡(org, me, 参与状态of(现在, userId), 新状态);
+      if (挡) return { 挡 };
       const { [userId]: _, ...别人 } = 现在;
       const 新 = 新状态 === "允许" ? 别人 : { ...别人, [userId]: 新状态 };
       // 存着的跟要写的一样就不动；老格式（数组）下一次改就换成新格式，但人的状态没变不留痕
@@ -1117,16 +1124,19 @@ export async function 设自动分配参与(userId: string, 状态: 参与状态
         const 起值 = JSON.stringify({ ...起, [userId]: new Date().toISOString() });
         await tx.setting.upsert({ where: { key: 起算时刻key }, update: { value: 起值 }, create: { key: 起算时刻key, value: 起值 } });
       }
-      return 参与状态of(现在, userId) !== 新状态 ? "留痕" : "只换格式";
+      const 原: 参与状态 = 参与状态of(现在, userId);
+      return 原 !== 新状态 ? { 留痕: 原 } : "只换格式";
     });
     if (!变了) return { ok: true };
+    if (typeof 变了 === "object" && 变了.挡) return { ok: false, error: 变了.挡 };
     invalidateSettingsCache();
-    if (变了 === "留痕") {
+    if (typeof 变了 === "object" && 变了.留痕) {
       const 人 = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+      // 谁（user）、何时（at）、对谁（entityId + 名字）、原 → 新（summary 末尾、detail）
       await recordAudit({
         user: me, action: "update", entity: "EntLeadAssign", entityId: userId,
-        summary: 状态说法[新状态](人?.name ?? userId),
-        detail: { 参与: 新状态 },
+        summary: `${状态说法[新状态](人?.name ?? userId)}，原为${变了.留痕}`,
+        detail: { 对象: 人?.name ?? userId, 原: 变了.留痕, 参与: 新状态 },
       });
       // 池里的人变了，排位跟着变：照分配以后那样推一次「快轮到」（11-18 审核：凡改变排位的都走同一套提醒）
       await 分配后估算推送();
@@ -1272,7 +1282,10 @@ export type 分配情况 = {
   参与: boolean;
   参与状态: 参与状态;
   能设配额: boolean;
+  /** 我能改这一行的参与状态（参与可选 不空） */
   能改参与: boolean;
+  /** 这一行我能选哪几态：系统管理员三态；市场管理只有允许 / 暂停，对方已经禁止的 = 空（客户 11-21 选 A） */
+  参与可选: 参与状态[];
   /**
    * 自动分配「前面约几条轮到他」（11-18，assign-eta.ts）：我能看他的（本人；分配线索的人、总管理看全部；销售管理看本组）、
    * 他又是参加自动分配的销售才有；别的 = null（界面写「—」）
@@ -1289,7 +1302,6 @@ export async function 本月分配情况(): Promise<分配情况 | null> {
   if (!me) return null;
   const org = await 读组织();
   const 全看 = 能分配(org, me) || 能改参与(org, me);
-  const 改参与 = 能改参与(org, me);
   const 改权限 = await 读改权限();
   const 人们 = [...org.成员.values()].filter((m) => 接手问题(org, m.userId, null) === null && (全看 || 能设配额(org, me, m.userId, 改权限)));
   const ids = 人们.map((m) => m.userId);
@@ -1326,7 +1338,8 @@ export async function 本月分配情况(): Promise<分配情况 | null> {
       待补: 待补.get(m.userId) ?? 0,
       另补: 另补.get(m.userId) ?? 0,
       持有: 持.get(m.userId) ?? 0,
-      参与: 参与状态of(状态表, m.userId) === "允许", 参与状态: 参与状态of(状态表, m.userId), 能设配额: 能设配额(org, me, m.userId, 改权限), 能改参与: 改参与,
+      参与: 参与状态of(状态表, m.userId) === "允许", 参与状态: 参与状态of(状态表, m.userId), 能设配额: 能设配额(org, me, m.userId, 改权限),
+      ...((可选) => ({ 能改参与: 可选.length > 0, 参与可选: 可选 }))(参与可选(org, me, 参与状态of(状态表, m.userId))),
       轮到: 能看轮到(org, me, m.userId) ? (估.get(m.userId) ?? null) : null,
     }));
 }

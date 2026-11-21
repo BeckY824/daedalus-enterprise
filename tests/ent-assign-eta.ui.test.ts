@@ -70,7 +70,7 @@ it("首页：有数写「前面约 N 条」、0 条写「下一条就轮到你�
 });
 
 const 长名 = "某某超长名字的销售同事" + "长".repeat(30);
-const 行 = (userId: string, name: string, 轮到: unknown, 参与状态 = "允许") => ({ userId, name, line: "内贸", 已分: 12, 配额: null, 设的配额: 30, 加额: 0, 持有: 108, 参与: 参与状态 === "允许", 参与状态, 能设配额: true, 能改参与: true, 轮到 });
+const 行 = (userId: string, name: string, 轮到: unknown, 参与状态 = "允许") => ({ userId, name, line: "内贸", 已分: 12, 配额: null, 设的配额: 30, 加额: 0, 持有: 108, 参与: 参与状态 === "允许", 参与状态, 能设配额: true, 能改参与: true, 参与可选: ["允许", "暂停", "禁止"], 轮到 });
 const 设置props = {
   users: [], me: { id: "u1", name: "张敏", email: "zm", role: "SALES", title: "销售管理" }, isAdmin: false, logs: [],
   llm: { source: null, baseUrl: "", model: "", keyMasked: null, options: [] }, business: { customer: "客户" }, aiUsage: [], 机器: null, 企业版: true, 只个人: true, 身份: "成员",

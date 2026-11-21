@@ -73,6 +73,30 @@ it("市场管理的「我能做什么」：领公海、删客户是不能", asyn
   } finally { await page.close(); }
 });
 
+it("市场管理单有一栏「线索分配」（客户 11-21 选 A）：只能暂停 / 允许，禁止的人那格灰着；别的后台设置页签照旧没有", async () => {
+  const 行 = [
+    { userId: "u9", name: "陈默", line: "内贸", 已分: 1, 配额: 10, 设的配额: 10, 加额: 0, 待补: 0, 另补: 0, 持有: 1, 参与: true, 参与状态: "允许", 能设配额: false, 能改参与: true, 参与可选: ["允许", "暂停"], 轮到: null },
+    { userId: "u8", name: "林立", line: "外贸", 已分: 0, 配额: 10, 设的配额: 10, 加额: 0, 待补: 0, 另补: 0, 持有: 0, 参与: false, 参与状态: "禁止", 能设配额: false, 能改参与: false, 参与可选: [], 轮到: null },
+  ];
+  const { page, errors } = await 开页(browser, 页包, props("成员", { 我的角色: ["marketing_mgr"], 线索分配栏: { 行, 不限额: false } }), 1366, "?tab=assign");
+  try {
+    await page.getByTestId("org-lead-pause-only").waitFor();
+    const 有 = await 页签们(page);
+    expect(有).toContain("线索分配");
+    for (const 没 of ["团队成员", "组织架构", "项目模式", "客户回收", "操作日志", "导入记录", "AI 接入", "业务配置"]) expect(有).not.toContain(没);
+    // 允许那一行只有允许 / 暂停两态，点暂停就调 设自动分配参与
+    const 段 = page.getByTestId("org-lead-auto-u9");
+    expect((await 段.locator(".ant-segmented-item").allInnerTexts()).map((t) => t.trim())).toEqual(["允许", "暂停"]);
+    await 段.locator(".ant-segmented-item", { hasText: "暂停" }).click();
+    await page.waitForFunction(() => ((window as unknown as { __calls?: [string][] }).__calls ?? []).some(([n]) => n === "设自动分配参与"));
+    expect((await 调用们(page)).filter(([n]) => n === "设自动分配参与").map(([, a]) => a)).toEqual([["u9", "暂停"]]);
+    // 禁止那一行：三态摆着、整格灰
+    const 禁 = page.getByTestId("org-lead-auto-u8");
+    expect(await 禁.evaluate((el) => el.className.includes("disabled"))).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it("全公司规则：灰着写只有总管理能改；「找总管理开通」原地变成已发给谁", async () => {
   const { page, errors } = await 开页(browser, 页包, props("成员"), 1366, "?tab=rules");
   try {
@@ -97,7 +121,7 @@ it("只读管理员：仍只有个人页签（不扩大可见范围），顶上�
 });
 
 it("搜一项：「分配」搜到线索配额（写明在哪个页签），回车直达", async () => {
-  const 行 = [{ userId: "u9", name: "陈默", line: "内贸", 已分: 1, 配额: 10, 设的配额: 10, 加额: 0, 持有: 1, 参与: true, 参与状态: "允许", 能设配额: true, 能改参与: false }];
+  const 行 = [{ userId: "u9", name: "陈默", line: "内贸", 已分: 1, 配额: 10, 设的配额: 10, 加额: 0, 持有: 1, 参与: true, 参与状态: "允许", 能设配额: true, 能改参与: false, 参与可选: [] }];
   const { page } = await 开页(browser, 页包, props("成员", { 线索配额: { 行, 不限额: false } }));
   try {
     const 搜 = page.getByRole("searchbox", { name: "搜索设置" });
@@ -144,7 +168,7 @@ it("字典停用：原地问一句；不点确认不停用", async () => {
 });
 
 it("Windows 1024 / 1280 / 1366 + 超长名字：页面不横滚，页签名、规则行、我能做什么不溢出", async () => {
-  const 行 = [{ userId: "u9", name: 长名, line: "内贸", 已分: 1, 配额: 10, 设的配额: 10, 加额: 0, 持有: 1, 参与: true, 参与状态: "允许", 能设配额: true, 能改参与: false }];
+  const 行 = [{ userId: "u9", name: 长名, line: "内贸", 已分: 1, 配额: 10, 设的配额: 10, 加额: 0, 持有: 1, 参与: true, 参与状态: "允许", 能设配额: true, 能改参与: false, 参与可选: [] }];
   for (const w of [1024, 1280, 1366]) {
     for (const tab of ["rules", "perm", "quota"]) {
       const { page } = await 开页(browser, 页包, props("成员", { me: { id: "u1", name: 长名, email: "u1", role: "SALES", title: "" }, 我的角色: ["sales_mgr", "marketing_mgr", "channel_ops"], 线索配额: { 行, 不限额: false } }), w, `?tab=${tab}`);

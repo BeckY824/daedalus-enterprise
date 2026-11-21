@@ -21,7 +21,7 @@ import { businessDayjs } from "@/lib/business-clock";
 import { 随客户痕 } from "@/lib/project/carry-tasks";
 import { 是补发来的 } from "./invalid-makeup";
 import type { 组织 } from "./org-core";
-import { 能分配线索, 是总管理 } from "./permissions";
+import { 能分配线索, 能拨参与暂停, 是总管理 } from "./permissions";
 import { 能改设置, type 改权限配置 } from "./edit-perm-table";
 
 export const 线索种类 = ["营销", "营销企划"] as const;
@@ -304,11 +304,31 @@ export function 挑的理由(候选: 候选人[], 不参与: ReadonlySet<string>
 }
 
 /**
- * 能改销售「参与状态」（正常 / 暂停 / 禁止）的人：只有总管理员（11-01 16:1x 拍板，A9；permissions.ts 是总管理）。
- * 市场管理、销售管理只能手动指派、不能改参与状态；直属上级只能看；管理员（admin）只读。只认业务角色，账号 ADMIN 不放行
+ * 能把销售「参与状态」改成任何一态（正常 / 暂停 / 禁止）的人：只有系统管理员（11-01 16:1x 拍板，A9；permissions.ts 是总管理）。
+ * 市场管理只能在「允许 / 暂停」之间拨（客户 11-21 选 A，见 参与改动挡）；销售管理只能手动指派、不能改参与状态；直属上级只能看；
+ * 管理员（admin）只读。只认业务角色，账号 ADMIN 不放行
  */
 export function 能改参与(org: 组织, 我: { id: string; role?: string | null }): boolean {
   return 是总管理(我, org);
+}
+
+/** 市场管理碰到「禁止」时那一句 */
+export const 禁止只管理员话 = "「禁止」只有系统管理员能设、能改；市场管理只能暂停 / 允许";
+
+/**
+ * 我把某人的参与状态从 原 改成 新，挡不挡：null = 能改，否则是挡住的那句（客户 11-21 选 A）。
+ * 系统管理员三态随便改；市场管理只在允许 ↔ 暂停之间拨：不能设禁止，也不能把已经禁止的人改回来；别人都不能改
+ */
+export function 参与改动挡(org: 组织, 我: { id: string; role?: string | null }, 原: 参与状态, 新: 参与状态): string | null {
+  if (能改参与(org, 我)) return null;
+  if (!能拨参与暂停(我, org)) return "只有系统管理员、市场管理能改销售的参与状态（销售管理可以手动指派）";
+  if (新 === "禁止" || 原 === "禁止") return 禁止只管理员话;
+  return null;
+}
+
+/** 这一行我能选哪几态（设置页「参与自动分配」那一格）：空 = 不能改 */
+export function 参与可选(org: 组织, 我: { id: string; role?: string | null }, 原: 参与状态): 参与状态[] {
+  return 参与状态们.filter((新) => 参与改动挡(org, 我, 原, 新) === null);
 }
 
 // —— 读库 ——
