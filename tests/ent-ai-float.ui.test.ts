@@ -19,7 +19,7 @@ import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 import { readFileSync } from "node:fs";
-import { 打开AI浮窗, 登记打开AI浮窗, 打开智能总结, 登记智能总结, 有智能总结, 订阅智能总结 } from "@/lib/ai-float";
+import { 打开智能总结, 登记智能总结, 有智能总结, 订阅智能总结 } from "@/lib/ai-float";
 
 let browser: Browser;
 let 包: string;
@@ -100,18 +100,6 @@ const 打开 = async (page: Page) => {
   await page.getByRole("complementary", { name: "AI 对话" }).waitFor();
   await page.waitForTimeout(450);
 };
-
-describe("lib/ai-float：页里的按钮叫浮窗", () => {
-  it("没登记返回 false（按钮照旧开抽屉）；登记了就打开、返回 true；取消后又是 false", () => {
-    expect(打开AI浮窗()).toBe(false);
-    let 开了 = 0;
-    const 取消 = 登记打开AI浮窗(() => { 开了++; });
-    expect(打开AI浮窗()).toBe(true);
-    expect(开了).toBe(1);
-    取消();
-    expect(打开AI浮窗()).toBe(false);
-  });
-});
 
 describe("lib/ai-float：智能总结入口（扣额度的付费入口不能丢）", () => {
   it("没登记不摆、点了 false；客户页登记后订阅的人收到通知、点了走登记的那个（原抽屉）；卸掉后又没有", () => {
@@ -294,6 +282,39 @@ describe("AI 浮窗（P-界面-39）", () => {
     const 列表 = await 开(1280);
     try {
       await 打开(列表.page);
+      expect(await 列表.page.getByRole("group", { name: "快捷提问" }).count(), "列表页不摆").toBe(0);
+    } finally { await 列表.page.context().close(); }
+  });
+
+  /* 教练点评改版 PR1（11-21）：客户页页头「AI」按钮去掉了。手机没有浮窗，页头 AI 原来开的是智能总结抽屉；
+     去掉后手机靠浮标点开的铺满屏面板进智能总结——铺满屏那支也摆同一份快捷项，「总结这位客户」开原抽屉、面板收起不叠 */
+  it("手机 390 客户页：浮标点开铺满屏面板，空屏也有「总结这位客户」等三颗；点了开原智能总结抽屉、面板收起；问过之后头一行留一颗；列表页不摆", async () => {
+    const { page, errors } = await 开(390, false, "/customers/c1");
+    try {
+      await page.getByRole("button", { name: "打开 AI 对话" }).click();
+      await page.getByRole("complementary", { name: "AI 面板" }).waitFor();
+      const 组 = page.getByRole("group", { name: "快捷提问" });
+      expect(await 组.getByRole("button").allTextContents()).toEqual(["总结这位客户", "起草跟进话术", "现在卡在哪"]);
+      await 组.getByRole("button", { name: "总结这位客户" }).click();
+      expect(await page.getByRole("dialog", { name: "智能总结抽屉" }).textContent()).toContain("第1次打开");
+      expect(await page.getByRole("complementary", { name: "AI 面板" }).count(), "面板收起，不和抽屉叠").toBe(0);
+      // 问过一句之后空屏快捷不摆了：头一行留一颗小号「总结这位客户」，点了照旧收起面板、开原抽屉（只开抽屉，扣额度在抽屉里确认）
+      await page.getByRole("button", { name: "打开 AI 对话" }).click();
+      const 面板 = page.getByRole("complementary", { name: "AI 面板" });
+      await 面板.waitFor();
+      expect(await 面板.getByRole("button", { name: "总结这位客户" }).count(), "没问过时只在空屏快捷里，头一行不重复").toBe(1);
+      await page.evaluate(() => (window as unknown as { __问: (q: string) => void }).__问("现在卡在哪？"));
+      await 面板.getByText("现在卡在哪？ 的回答").waitFor();
+      expect(await 面板.getByRole("group", { name: "快捷提问" }).count()).toBe(0);
+      await 面板.locator(".dock-h").getByRole("button", { name: "总结这位客户" }).click();
+      expect(await page.getByRole("dialog", { name: "智能总结抽屉" }).textContent()).toContain("第2次打开");
+      expect(await page.getByRole("complementary", { name: "AI 面板" }).count()).toBe(0);
+      expect(errors).toEqual([]);
+    } finally { await page.context().close(); }
+    const 列表 = await 开(390);
+    try {
+      await 列表.page.getByRole("button", { name: "打开 AI 对话" }).click();
+      await 列表.page.getByRole("complementary", { name: "AI 面板" }).waitFor();
       expect(await 列表.page.getByRole("group", { name: "快捷提问" }).count(), "列表页不摆").toBe(0);
     } finally { await 列表.page.context().close(); }
   });
