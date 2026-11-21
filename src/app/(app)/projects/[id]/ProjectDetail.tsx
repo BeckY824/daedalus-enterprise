@@ -1,6 +1,7 @@
 "use client";
 
 import { 留落地话 } from "@/lib/landing-note";
+import { 公海领取文字 } from "@/lib/project/transfer-log-text";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -360,7 +361,8 @@ function 换人文字(l: 项目详情["logs"][number]): string {
     if (方式 === "停用") return `${l.who} 办成员停用，把 ${t.from} 的项目放回线索公海`;
     return l.who === t.from ? `${t.from} 把项目放回线索公海` : `${l.who} 把 ${t.from} 的项目放回线索公海`;
   }
-  if (l.kind === "pool-claim") return `${t.to} 从线索公海领取，成为负责人`;
+  // 按留痕原因的开头分客户公海分配 / 线索公海分配 / 跟着客户 / 自己领（lib/project/transfer-log-text.ts，3703 实操 11-21）
+  if (l.kind === "pool-claim") return 公海领取文字({ who: l.who, reason: l.reason, to: t.to });
   return `负责人从 ${t.from} 转给 ${t.to}`;
 }
 

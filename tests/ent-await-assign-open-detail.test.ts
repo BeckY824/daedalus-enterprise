@@ -38,10 +38,11 @@ import { 能看项目, 权限项目列 } from "@/lib/enterprise/permissions";
 import { 只读错误, 待分配只能看话 } from "@/lib/team-scope";
 import CustomerPage from "@/app/(app)/customers/[id]/page";
 import type { 项目区数据 } from "@/app/(app)/customers/[id]/ProjectZone";
-import { 项目页去向 } from "@/app/(app)/projects/[id]/load";
+import { 项目页去向, 读项目详情 } from "@/app/(app)/projects/[id]/load";
 import { 项目链接们 } from "@/lib/project/customer-detail-direct";
 import { 点得开的项目 } from "@/lib/favorites";
-import { 客户项目概况们, 项目名另比 } from "@/lib/project/customer-list-projects";
+import { 客户项目概况们, 项目名另比, 成时刻 } from "@/lib/project/customer-list-projects";
+import { readFileSync } from "node:fs";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 const 造人 = async (key: string, bizRole: string, x: { line?: string; managerId?: string } = {}): Promise<人> => {
@@ -112,6 +113,40 @@ describe("必修 1：客户看得到时，待分配线索点进去找得到", ()
   it("权限项目列 带全了 能看项目 判待分配放开要的格", () => {
     expect(Object.keys(权限项目列).sort()).toEqual(["awaitAssignAt", "bizLine", "creatorId", "deletedAt", "ownerId", "phase", "pooledAt", "result", "scheduledAssignAt"].sort());
   });
+
+  it("权限项目列 的字段在 schema 里都没有 @map（项目名另比 的裸 SQL 拿字段名当列名）", () => {
+    const 模型 = readFileSync("prisma/schema.prisma", "utf8").match(/^model Project \{([\s\S]*?)^\}/m)![1];
+    for (const k of Object.keys(权限项目列)) {
+      const 行 = 模型.split("\n").find((l) => new RegExp(`^\\s*${k}\\s`).test(l));
+      expect(行, k).toBeTruthy();
+      expect(行, k).not.toMatch(/@map\(/);
+    }
+    expect(模型).not.toMatch(/@@map\(/);
+  });
+
+  it("裸 SQL 时刻格：bigint / 毫秒数 / Date / 空都转得回，不抛", () => {
+    const t = Date.parse("2026-11-20T08:00:00Z");
+    expect(成时刻(BigInt(t))?.getTime()).toBe(t);
+    expect(成时刻(t)?.getTime()).toBe(t);
+    expect(成时刻(new Date(t))?.getTime()).toBe(t);
+    expect(成时刻(null)).toBeNull();
+  });
+});
+
+describe("#392 审查：转后还能看 按转完的样子算（转让会清待分配）", () => {
+  it("下属占着的待分配线索转给圈外的人：转完看不到，不算「转后还能看」；转给自己下属照算", async () => {
+    const 内销 = await 造人("ns2", "sales", { line: "内贸" });
+    const 外销2 = await 造人("ws3", "sales", { line: "外贸", managerId: 外管.id });
+    const 占 = (await prisma.project.create({
+      data: { name: "下属建的待分配", customerId: 客户X, ownerId: 外销.id, creatorId: 外销.id, phase: "线索", bizLine: "外贸", awaitAssignAt: new Date("2026-11-20T09:00:00Z") },
+    })).id;
+    忘掉企业版范围();
+    const r = await 以(外管, () => 读项目详情(外管 as never, 占));
+    expect(r.种).toBe("有");
+    const 还能看 = (r as { props: { p: { 转后还能看?: string[] } } }).props.p.转后还能看 ?? [];
+    expect(还能看).toContain(外销2.id);
+    expect(还能看).not.toContain(内销.id);
+  });
 });
 
 describe("小修 2：「按组织看客户」关着时，「线索分配」开关照样管住详情", () => {
@@ -137,6 +172,26 @@ describe("小修 3：直接改放开的那条，提示只能看", () => {
     const 删 = await 以(外管, () => prisma.project.delete({ where: { id: 待分 } }).then(() => null, (e: unknown) => e));
     expect(删).toBeInstanceOf(只读错误);
     expect((await prisma.project.findUniqueOrThrow({ where: { id: 待分 } })).name).toBe("市场建的待分配");
+  });
+
+  it("先数一下再提示（#392 审查）：看不到的项目、不存在的项目照旧原样抛，不说「只能分配」", async () => {
+    const 内销 = await 造人("ns", "sales", { line: "内贸" });
+    const 内客 = (await prisma.customer.create({ data: { name: "内贸客户", phone: "13900000031", salesOwnerId: 内销.id } })).id;
+    const 内项 = (await prisma.project.create({ data: { name: "内贸项目", customerId: 内客, ownerId: 内销.id, creatorId: 内销.id, phase: "商机", node: "需求确认" } })).id;
+    for (const id of [内项, "没有这个项目"]) {
+      const e = await 以(外管, () => prisma.project.update({ where: { id }, data: { name: "改了" } }).then(() => null, (x: unknown) => x));
+      expect(e).not.toBeInstanceOf(只读错误);
+      expect((e as { code?: string }).code).toBe("P2025");
+    }
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 内项 } })).name).toBe("内贸项目");
+  });
+
+  it("交互式事务里改放开的那条：不另查（不等连接），照旧提示只能看", async () => {
+    const 起 = Date.now();
+    const e = await 以(外管, () => prisma.$transaction((tx) => tx.project.update({ where: { id: 待分 }, data: { name: "改了" } })).then(() => null, (x: unknown) => x));
+    expect(e).toBeInstanceOf(只读错误);
+    expect((e as Error).message).toBe(待分配只能看话);
+    expect(Date.now() - 起).toBeLessThan(5000);
   });
 
   it("别的表真不在了：照旧原样抛（不借待分配的话）", async () => {

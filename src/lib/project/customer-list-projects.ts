@@ -112,6 +112,14 @@ const 阶段客户 = cache(async (id: string, role: string, phase: string, node:
   return 客户id集合(ids);
 });
 
+/** 裸 SQL 回来的时刻格：按列声明一般已是 Date；没认出类型时是毫秒数，超出 32 位的 SQLite 整数回来是 bigint */
+export type 裸时刻 = Date | number | bigint | string | null;
+/**
+ * 裸时刻转回 Date（能看项目 只问有没有，空还是空）。bigint 先转成数：new Date(bigint) 会直接抛 TypeError，
+ * 整份行也不能直接 JSON.stringify（bigint 不认）——所以候选行只在这里转、不往外交
+ */
+export const 成时刻 = (v: 裸时刻): Date | null => (v == null ? null : v instanceof Date ? v : new Date(typeof v === "bigint" ? Number(v) : v));
+
 /** 项目名另比：候选先取这么多行；超了（宽词）看全部的改用子查询、别的人再取全。测试里可以调小（设项目名候选先取） */
 let 候选先取 = 2000;
 export function 设项目名候选先取(n: number) { 候选先取 = n; }
@@ -129,15 +137,14 @@ export function 设项目名候选先取(n: number) { 候选先取 = n; }
 export function 项目名另比(取我: () => Promise<谁 | null>): 另比一词 | undefined {
   if (!企业版()) return undefined;
   let 我: Promise<谁 | null> | undefined;
-  // 能看项目 要的列照 权限项目列 拼（含待分配本线放开那几格，P-转-42），不另写一份
+  // 能看项目 要的列照 权限项目列 拼（含待分配本线放开那几格，P-转-42），不另写一份。
+  // 这里把字段名直接当列名用：权限项目列 只能放 schema 里没有 @map 的字段（有 @map 的库里列名和字段名不同，裸 SQL 会报找不到列）；
+  // 将来给其中哪个字段加 @map，这句要改成按库里列名写（tests/ent-await-assign-open-detail.test.ts 核着 schema）
   const 候选SQL = `SELECT p.id, p."customerId", ${Object.keys(权限项目列).map((k) => `p."${k}"`).join(", ")} FROM "Project" p WHERE p.name GLOB ? AND p."deletedAt" IS NULL AND p."pooledAt" IS NULL`;
-  type 时刻 = Date | number | string | null;
   type 候选行 = {
     id: string; customerId: string; ownerId: string; creatorId: string | null; bizLine: string | null; phase: string | null; result: string | null;
-    pooledAt: 时刻; awaitAssignAt: 时刻; scheduledAssignAt: 时刻; deletedAt: 时刻;
+    pooledAt: 裸时刻; awaitAssignAt: 裸时刻; scheduledAssignAt: 裸时刻; deletedAt: 裸时刻;
   };
-  // 裸 SQL 回来的时刻列（SQLite 存毫秒数）转回 Date：能看项目 只问有没有，空还是空
-  const 成时刻 = (v: 时刻): Date | null => (v == null ? null : v instanceof Date ? v : new Date(v));
   // 一个参数带整份名单（json_each），不受绑定参数个数上限管，也能进只读通道
   const 名单 = (ids: readonly string[]) => ({ sql: `c.id IN (SELECT value FROM json_each(?))`, values: [JSON.stringify([...new Set(ids)])] });
   return async (词) => {

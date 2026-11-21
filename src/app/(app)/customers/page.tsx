@@ -24,7 +24,7 @@ import { 读团队 } from "@/lib/sync/client";
 import { 客户页签归属 } from "@/lib/pool";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能管公海, 能转出自己的, 能删除, 能新建和领取, 能放回客户公海, 有管理范围 } from "@/lib/enterprise/permissions";
-import { 生效客户范围, 默认客户范围, 客户范围选项 } from "@/lib/enterprise/customer-scope";
+import { 生效客户范围, 默认客户范围, 客户范围选项, 是客户范围 } from "@/lib/enterprise/customer-scope";
 import { 公海别线的 } from "@/lib/enterprise/pool-line-guard";
 import { 摊平部门 } from "@/lib/sync/dept-policy";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
@@ -175,9 +175,11 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   */
   const 市场角色 = 企业版() && b.projectMode && !!(await 读市场身份(me.id));
   if (市场角色 && !sp.new && !sp.import && !在看子集(sp)) {
-    // 两个视图（用户 11-12「按第 1 种做」）：列表 = 原来的客户列表；看板 = 我分出去的。记了哪个进哪个，没记过进我分出去的；带 hl（被挡转来的）一律进我分出去的
+    // 两个视图（用户 11-12「按第 1 种做」）：列表 = 原来的客户列表；看板 = 我分出去的。记了哪个进哪个，没记过进我分出去的；带 hl（被挡转来的）一律进我分出去的。
+    // 地址上写明了「范围」（客户详情左侧名单「我负责的 N 位在表格里 ›」= ?scope=mine，P-界面-51）：要的是客户列表的那一项，记着看板也进列表——
+    // 我分出去的那套不认 scope，原来落过去列的是全部成员的、一搜 scope 也丢了（3703 实操 11-21）。从列表切回「我分出去的」时 scope 去掉（CustomersView）
     const 记 = await 记的看法();
-    if (sp.hl || 记 === "board" || 记 === undefined) {
+    if (sp.hl || (!是客户范围(sp.scope) && (记 === "board" || 记 === undefined))) {
       // 页头「新建 ▾」里的「新建客户」和客户列表那一边同一个判定（没设业务角色、只读管理员不摆）
       return 项目页(me, sp as 项目页参数, undefined, { 基址: "/customers", 标题: b.customer, 换回客户列表: true, 能新建客户: 能新建和领取(me, await 权限组织()) });
     }
