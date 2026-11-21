@@ -16,17 +16,8 @@ import { 企业版 } from "./switch";
 import { 读组织 } from "./org";
 import { 规则开着 } from "./rules";
 import { 能分配线索, 是系统管理员, type 谁 } from "./permissions";
-import { 三种业务线 } from "./assign-line";
 import type { 组织 } from "./org-core";
-import { 待分配在等 } from "./await-assign-core";
-
-/** 设了业务线的人能分哪几条：这条线的（同 项目业务线），加上「暂不分配」的 */
-export function 本线待分配条件(org: 组织, 线: "内贸" | "外贸"): Prisma.ProjectWhereInput {
-  const 未填: Prisma.ProjectWhereInput = { OR: [{ bizLine: null }, { bizLine: { notIn: [...三种业务线] } }] };
-  const 外贸们 = [...org.成员].filter(([, m]) => m.line === "外贸").map(([id]) => id);
-  const 负责人 = 线 === "外贸" ? { ownerId: { in: 外贸们 } } : { ownerId: { notIn: 外贸们 } };
-  return { OR: [{ bizLine: 线 }, { bizLine: "暂不分配" }, { AND: [未填, 负责人] }] };
-}
+import { 待分配在等, 本线待分配条件 } from "./await-assign-core";
 
 /** 我能看的待分配新线索的条件；null = 我没有这一行（不画、新线索页筛出来是空的） */
 export async function 待分配范围(me: 谁, 预读?: { org?: 组织; 开着?: boolean }): Promise<Prisma.ProjectWhereInput | null> {

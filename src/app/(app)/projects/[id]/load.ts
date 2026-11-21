@@ -108,7 +108,8 @@ export async function 项目页去向(me: SessionUser, id: string): Promise<{ �
   if (!企业版()) return { 种: "留" };
   const p = await prisma.project.findUnique({
     where: { id },
-    select: { id: true, name: true, ownerId: true, creatorId: true, pooledAt: true, bizLine: true, customerId: true, members: { where: { inviteStatus: "JOINED" }, select: { userId: true } } },
+    // 待分配本线放开（P-转-42）要的几格：phase、result、awaitAssignAt、scheduledAssignAt、deletedAt（能看项目 本线放开看得到）
+    select: { id: true, name: true, ownerId: true, creatorId: true, pooledAt: true, bizLine: true, customerId: true, phase: true, result: true, awaitAssignAt: true, scheduledAssignAt: true, deletedAt: true, members: { where: { inviteStatus: "JOINED" }, select: { userId: true } } },
   });
   if (!p) return { 种: "无" };
   const 已加入 = p.members.map((m) => m.userId);

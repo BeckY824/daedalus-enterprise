@@ -139,6 +139,11 @@ export type 限定 = {
    * 名单过上限是 null：退回按关联写的子查询
    */
   组员客户?: string[] | null;
+  /**
+   * 待分配对本线管理放开（P-转-42，用户 11-21 定）：销售管理、条线总管理读项目时多放这一段——还在待分配、本线（含暂不分配）的新线索
+   * （enterprise/await-assign-core.ts 本线放开条件）。只放读，写照旧只按 我；客户不跟着放开。「线索分配」关着、不是这两类的人没有这一项
+   */
+  待分配放开?: Record<string, unknown>;
 };
 const 不限定: 限定 = { 我: null, 互看: false, 别人的: new Set() };
 const g = globalThis as unknown as { __限定?: 限定 & { 到: number }; __限定刷新?: Promise<限定> };
@@ -378,7 +383,7 @@ export function 看得到(c: { salesOwnerId: string | null; channelOwnerId?: str
  * 每个要限定的模型加的那一句 where。互看读 = 开了互看时的读（查、数、汇总）：客户这条线不再限定，
  * 计划 / 待办都挂在客户上、全放开；线索只放开挂了客户的；未归属联系人、操作日志照旧只看自己的
  */
-export function 限定条件(model: string, 谁们: 谁, 互看读 = false, 市场?: readonly string[], 按线?: 按线读, 回避?: 公海回避, 组员?: string[] | null, 市场全看?: readonly string[], 不在公海 = false): Record<string, unknown> | null {
+export function 限定条件(model: string, 谁们: 谁, 互看读 = false, 市场?: readonly string[], 按线?: 按线读, 回避?: 公海回避, 组员?: string[] | null, 市场全看?: readonly string[], 不在公海 = false, 待分配放开?: Record<string, unknown>): Record<string, unknown> | null {
   const 我 = 等于(谁们);
   if (互看读) {
     switch (model) {
@@ -433,7 +438,7 @@ export function 限定条件(model: string, 谁们: 谁, 互看读 = false, 市�
     // 项目模式 1a（2026-10-23）：项目跟客户走；负责人不是这位客户的销售时，自己负责的项目也看得到；
     // 放在项目公海里的谁都看得到（才能领）。企业版（10-26）：点了同意的组员也看得到，只是邀请着的不算
     case "Project":
-      return 看得到的项目(我, 客户, 市场, 按线, 避项, 市场全看);
+      return 看得到的项目(我, 客户, 市场, 按线, 避项, 市场全看, 待分配放开);
     // 企业版卡点（10-26，11-01 改）：项目负责人、点了同意的组员、看得到这位客户的、认领了的、发布的；
     // 项目放在公海里时卡点不跟着公开（E11：无关的人直连接口也拿不到）
     case "EntBlocker":
@@ -443,7 +448,7 @@ export function 限定条件(model: string, 谁们: 谁, 互看读 = false, 市�
     case "EntBlockerReasonLink":
       return { blocker: 看得到的卡点(我, 客户, 按线, 避项) };
     default:
-      return 跟客户走(model, 客户) ?? (跟项目的表.has(model) ? { project: 看得到的项目(我, 客户, 市场, 按线, 避项, 市场全看) } : null);
+      return 跟客户走(model, 客户) ?? (跟项目的表.has(model) ? { project: 看得到的项目(我, 客户, 市场, 按线, 避项, 市场全看, 待分配放开) } : null);
   }
 }
 
@@ -551,7 +556,7 @@ export function 只回避条件(model: string, 避: 公海回避, 不在公海 =
   }
 }
 
-function 看得到的项目(我: string | { in: string[] }, 客户: Record<string, unknown>, 市场?: readonly string[], 按线?: 按线读, 避项?: Record<string, unknown> | null, 市场全看?: readonly string[]) {
+function 看得到的项目(我: string | { in: string[] }, 客户: Record<string, unknown>, 市场?: readonly string[], 按线?: 按线读, 避项?: Record<string, unknown> | null, 市场全看?: readonly string[], 待分配放开?: Record<string, unknown>) {
   if (按线) return { OR: [{ pooledAt: { not: null } }, { members: { some: { userId: 按线.本人, inviteStatus: "JOINED" } } }, 按线.项目] };
   if (企业版()) {
     // 11-01 只认业务角色（lib/enterprise/permissions.ts 能看项目）：企业版项目不再跟客户走——
@@ -562,6 +567,8 @@ function 看得到的项目(我: string | { in: string[] }, 客户: Record<strin
     if (市场?.length) 或.push({ ownerId: { in: [...市场] } }, { creatorId: { in: [...市场] }, pooledAt: null, ownerId: { not: "" } });
     // 市场管理（11-05 客户定）：本人 + 直属下级建的，不管在公海、已转给销售还是判了无效
     if (市场全看?.length) 或.push({ creatorId: { in: [...市场全看] } });
+    // 待分配对本线管理放开（P-转-42）：只在读里有（写走 限定条件 不带这一项）
+    if (待分配放开) 或.push(待分配放开);
     // 原负责人回避（11-03）：挡在整段外面，他自己是组员、下属负责的也不例外——不在公海了才从名单里出来
     return 避项 ? { AND: [{ OR: 或 }, 避项] } : { OR: 或 };
   }
@@ -729,7 +736,7 @@ export function 加上限定(db: PrismaClient): PrismaClient {
           if (写操作.has(operation)) 记一次写库();
           // 企业版软删（P9）：回收站里的统一滤掉，比业务员范围先算（老板也看不到删了的，除非在 看已删() 里）
           const args = (企业版() && !在看已删() ? 去掉已删(model, operation, 原参数) : 原参数) as typeof 原参数;
-          const { 我, 互看, 别人的, 读, 全拦, 话, 线索全看, 线索圈, 市场, 按线, 公海回避, 组员客户, 市场全看 } = await 现在的限定(db);
+          const { 我, 互看, 别人的, 读, 全拦, 话, 线索全看, 线索圈, 市场, 按线, 公海回避, 组员客户, 市场全看, 待分配放开 } = await 现在的限定(db);
           if (!我) {
             if (!公海回避) return 写操作.has(operation) ? query(args).finally(记一次写库) : query(args);
             // 规则关着（别人都不限定）：只加原负责人回避这一段，读写都挡
@@ -750,9 +757,9 @@ export function 加上限定(db: PrismaClient): PrismaClient {
             if (typeof id === "string" && 别人的.has(id)) throw new 只读错误(话);
           }
           // 带出来的关联都是读：市场那段跟着放开。写（改、删）照旧只按 我，市场相关的改不到
-          const a = 限定关联(model, (args ?? {}) as 查询参数, (m) => 限定条件(m, 读谁, 读互看, 市场, 按线, 公海回避, 组员客户, 市场全看));
+          const a = 限定关联(model, (args ?? {}) as 查询参数, (m) => 限定条件(m, 读谁, 读互看, 市场, 按线, 公海回避, 组员客户, 市场全看, false, 待分配放开));
           const 线索放 = 线索全看 && model === "Lead";
-          const 条件 = !限定的操作.has(operation) ? null : 线索放 ? (线索圈 ? { OR: [{ ownerId: null }, { ownerId: { in: [...线索圈] } }] } : null) : 写操作.has(operation) ? 限定条件(model, 我, false, undefined, undefined, 公海回避) : 限定条件(model, 读谁, 读互看, 市场, 按线, 公海回避, 组员客户, 市场全看, model === "Customer" && 限在非公海(a.where));
+          const 条件 = !限定的操作.has(operation) ? null : 线索放 ? (线索圈 ? { OR: [{ ownerId: null }, { ownerId: { in: [...线索圈] } }] } : null) : 写操作.has(operation) ? 限定条件(model, 我, false, undefined, undefined, 公海回避) : 限定条件(model, 读谁, 读互看, 市场, 按线, 公海回避, 组员客户, 市场全看, model === "Customer" && 限在非公海(a.where), 待分配放开);
           // 原来的 where 原样摊开、条件并进 AND：findUnique / update / delete 要求唯一键留在最外层
           const q0 = query((条件 ? { ...a, where: 并限定(a.where, 条件) } : a) as typeof args);
           const q = 写操作.has(operation) ? q0.finally(记一次写库) : q0;
