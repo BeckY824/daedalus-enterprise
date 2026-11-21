@@ -72,12 +72,12 @@ async function 开(设: { 方式们?: string[] | null; 习惯?: { type: string; 
   await page.evaluate(x => { const w = window as unknown as 窗; w.__方式们 = x.方式们 ?? null; w.__习惯 = x.习惯 ?? null; w.__主体们 = x.主体们 ?? null; w.__解析 = x.解析; w.__render(); }, 设);
   await page.getByTestId("follow-card-new").waitFor();
   await page.getByTestId("follow-card-new").click();
-  const 框 = page.getByRole("dialog", { name: "记一条沟通" });
+  const 框 = page.getByRole("dialog", { name: "新建沟通" });
   await 框.waitFor();
   return { page, errors, 框 };
 }
 /** 沟通方式那一格现在显示的 */
-const 选中的方式 = (page: Page) => page.getByRole("dialog", { name: "记一条沟通" }).locator(".follow-pick-row .ant-select").first().locator(".ant-select-content").innerText().catch(() => "");
+const 选中的方式 = (page: Page) => page.getByRole("dialog", { name: "新建沟通" }).locator(".follow-pick-row .ant-select").first().locator(".ant-select-content").innerText().catch(() => "");
 const 方式们 = ["微信沟通", "手机通话", "WhatsApp", "线下拜访"];
 
 it("有习惯：打开就选好最近用得最多的那种（不是写死的微信，也不是外贸就 WhatsApp）；发起主体照旧默认", async () => {
@@ -85,7 +85,7 @@ it("有习惯：打开就选好最近用得最多的那种（不是写死的微�
   try {
     await expect.poll(() => 选中的方式(page)).toBe("手机通话");
     // 发起主体不跟着习惯走
-    expect(await page.getByRole("dialog", { name: "记一条沟通" }).getByText("我方发起").count()).toBeGreaterThan(0);
+    expect(await page.getByRole("dialog", { name: "新建沟通" }).getByText("我方发起").count()).toBeGreaterThan(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -104,7 +104,7 @@ it("带回了草稿（草稿里换过方式）：以草稿为准，习惯不盖�
   const 稿 = { at: Date.now(), v: { type: "WHATSAPP", method: "WhatsApp", content: "上次没交的" } };
   const { page } = await 开({ 方式们, 习惯: { type: "PHONE", method: "手机通话" } }, { "daedalus:草稿:qa:项目沟通:p1": JSON.stringify(稿) });
   try {
-    await expect.poll(() => page.getByRole("dialog", { name: "记一条沟通" }).getByLabel("沟通内容").inputValue()).toBe("上次没交的");
+    await expect.poll(() => page.getByRole("dialog", { name: "新建沟通" }).getByLabel("沟通内容").inputValue()).toBe("上次没交的");
     await page.waitForTimeout(300);
     expect(await 选中的方式(page)).toBe("WhatsApp");
   } finally { await page.close(); }
@@ -117,7 +117,7 @@ it("AI 录入：AI 认不出方式（OTHER）→ 留着个人习惯；认出了 
   for (const [ai类型, 应是] of [["OTHER", "手机通话"], ["WECHAT", "微信沟通"]] as const) {
     const { page, errors } = await 开({ 方式们, 习惯: { type: "PHONE", method: "手机通话" }, 解析: AI回(ai类型) }, { "daedalus.follow.mode": "AI" });
     try {
-      const 框 = page.getByRole("dialog", { name: "记一条沟通" });
+      const 框 = page.getByRole("dialog", { name: "新建沟通" });
       await expect.poll(() => 选中的方式(page)).toBe("手机通话");
       await 框.getByLabel("沟通原话").fill("今天电话里聊了报价，下周再约");
       await 框.getByRole("button", { name: /AI 解析填表/ }).click();

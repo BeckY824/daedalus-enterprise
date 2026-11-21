@@ -5,6 +5,7 @@ import DatePicker from "@/components/BusinessDatePicker";
 import { requiredText } from "@/lib/form-validation";
 
 import { useEffect, useRef, useState } from "react";
+import { useIsNowSkin } from "@/lib/use-skin";
 import { useRouter } from "next/navigation";
 import { Modal, Form, Input, Checkbox, Typography, Button } from "antd";
 import SaveButton from "@/components/SaveButton";
@@ -35,6 +36,8 @@ export default function TaskForm({
   const hasTime = Form.useWatch("hasTime", form) ?? true;
   // 保存中：网慢时连点两下会建出两条一样的待办（2026-10-02 排查）
   const [存着, set存着] = useState(false);
+  /** D4 · M8-a「新建也叫保存」只在现状主题；换皮主题照旧「创建」（use-skin.ts） */
+  const 新样 = useIsNowSkin();
   // 点外面不关、关前问一句、新建的草稿留在本机（2026-10-19 客户反馈，lib/form-guard.tsx）
   const 守 = useFormGuard({ open, form, 草稿键: record ? `编辑待办:${record.id}` : `新建待办:${customerId}`, 编辑: !!record, 关: onClose, 忙: 存着, afterOpenChange: 聚焦首项 });
 
@@ -68,8 +71,12 @@ export default function TaskForm({
     */
     if (存着) return { ok: false, error: "正在保存，请稍等" };
     set存着(true);
-    // 校验没过：红字在框里
-    const v = await form.validateFields().catch(() => null);
+    // 校验没过：红字在框里；现状主题焦点再跳到第一处没填好的格（D4 · M8-a，和新建沟通、新建卡点框一样；等红字画出来再挪，#402 实操）
+    const v = await form.validateFields().catch((e: { errorFields?: { name: (string | number)[] }[] }) => {
+      const 名 = e?.errorFields?.[0]?.name;
+      if (新样 && 名) window.setTimeout(() => form.focusField(名), 0);
+      return null;
+    });
     if (!v) { set存着(false); return { ok: false, error: "有几项没填好，看标红的" }; }
     try {
       const r = await saveTask({
@@ -104,7 +111,8 @@ export default function TaskForm({
       title={record ? "改待办" : "新建待办"}
       footer={[
         <Button key="取消" onClick={关或收尾}>取消</Button>,
-        <SaveButton key="存" 做={提交} 已保存={record ? "已保存" : "已创建"} 没保存="没存上" 成了={() => { if (存上了.current) 收尾(); }}>{record ? "保存" : "创建"}</SaveButton>,
+        // 设计语言 D4 · M8-a（D14）：新建、修改提交键都叫「保存」（原新建叫「创建」）；一直能点，没填好在格子下报红（antd Form 校验）
+        <SaveButton key="存" 做={提交} 已保存={record || 新样 ? "已保存" : "已创建"} 没保存="没存上" 成了={() => { if (存上了.current) 收尾(); }}>{record || 新样 ? "保存" : "创建"}</SaveButton>,
       ]}
       destroyOnHidden
     >

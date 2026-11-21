@@ -202,13 +202,13 @@ it("记一条沟通：撞上老版本动作 → 框里说刷新、横幅亮；�
     await 装(page);
     await page.evaluate(() => { (window as unknown as 窗).__老版本 = true; });
     await page.getByTestId("follow-card-new").click();
-    const 框 = page.getByRole("dialog", { name: "记一条沟通" });
+    const 框 = page.getByRole("dialog", { name: "新建沟通" });
     await 框.waitFor();
     // 刚打开：没有草稿，不出「已带回」
     expect(await 框.getByText("已带回上次没提交的内容").count()).toBe(0);
     await 框.getByLabel("沟通内容").fill("客户说下周三前给预算，要先看样品");
     await 框.getByLabel("下一步计划").fill("周五前寄样品");
-    await 框.getByRole("button", { name: /^记\s*下$/ }).click();
+    await 框.getByRole("button", { name: /^保\s*存$/ }).click();
     await 框.getByRole("alert").filter({ hasText: "系统刚更新了，请刷新页面后再提交" }).waitFor();
     expect(await 框.getByRole("alert").innerText()).toContain("填的内容刷新后还在");
     expect(await 框.getByRole("alert").innerText()).not.toMatch(/Server Action|[A-Za-z]{4,}/);
@@ -226,7 +226,7 @@ it("记一条沟通：撞上老版本动作 → 框里说刷新、横幅亮；�
 
     // 这回服务端是新的：记上了，草稿清掉
     await page.evaluate(() => { (window as unknown as 窗).__老版本 = false; });
-    await 框.getByRole("button", { name: /^记\s*下$/ }).click();
+    await 框.getByRole("button", { name: /^保\s*存$/ }).click();
     await expect.poll(() => 框.count()).toBe(0);
     expect(await page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith("daedalus:草稿:")))).toEqual([]);
     const 记 = await page.evaluate(() => (window as unknown as 窗).__记);
@@ -240,7 +240,7 @@ it("记一条沟通：点「清空」放回空白、草稿删掉；点取消也�
   try {
     await 装(page);
     await page.getByTestId("follow-card-new").click();
-    const 框 = page.getByRole("dialog", { name: "记一条沟通" });
+    const 框 = page.getByRole("dialog", { name: "新建沟通" });
     await 框.getByLabel("沟通内容").fill("聊了一半");
     await page.waitForTimeout(100);
     await page.reload();

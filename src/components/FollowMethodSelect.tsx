@@ -75,15 +75,17 @@ export const 默认沟通方式 = "微信沟通";
 export const 默认发起主体 = "我方发起";
 
 /** 发起主体下拉：老记录的值已经停用的，补上它自己，不改就原样存回 */
-export function InitiatorSelect({ value, onChange, 们, style, "aria-label": ariaLabel = "发起主体" }: {
+export function InitiatorSelect({ value, onChange, 们, style, status, "aria-label": ariaLabel = "发起主体" }: {
   value?: string | null;
+  /** 点了保存还没选：格子标红（新建沟通 D4 · M7-b） */
+  status?: "error";
   onChange?: (v: string) => void;
   们: string[];
   style?: React.CSSProperties;
   "aria-label"?: string;
 }) {
   const 项 = value && !们.includes(value) ? [...们, value] : 们;
-  return <Select aria-label={ariaLabel} style={style} placeholder="选发起主体" value={value ?? undefined} options={项.map((x) => ({ value: x, label: x }))} onChange={onChange} />;
+  return <Select aria-label={ariaLabel} style={style} status={status} placeholder="选发起主体" value={value ?? undefined} options={项.map((x) => ({ value: x, label: x }))} onChange={onChange} />;
 }
 
 export type 方式和类型 = { type: string; method: string | null };

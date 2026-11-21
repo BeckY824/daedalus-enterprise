@@ -103,10 +103,19 @@ it("发布框：没有「解决时限」，交上去不带 dueDays；11-19 没�
     expect(await dlg.innerText()).not.toMatch(/时限/);
     expect(await dlg.getByLabel("卡点标题").count()).toBe(0);
     expect(await dlg.getByLabel("卡点描述").count()).toBe(0);
-    // 没选原因：发布键灰着，框里写「请选阻碍原因」
-    const 发布键 = dlg.getByRole("button", { name: /发\s*布/ });
-    expect(await 发布键.isDisabled()).toBe(true);
-    expect(await dlg.innerText()).toContain("请选阻碍原因");
+    // 设计语言 D4 · M9-a：提交键叫「保存」、一直能点；每格有标签（* 在标签前），占位字不再写「必填」
+    expect(await dlg.locator(".fm-label").allInnerTexts()).toEqual(["*卡点类型", "*影响等级", "*阻碍原因", "资源申请"]);
+    expect(await dlg.innerText()).not.toMatch(/（必填/);
+    const 发布键 = dlg.getByRole("button", { name: /保\s*存/ });
+    expect(await 发布键.isDisabled()).toBe(false);
+    expect(await dlg.innerText()).not.toContain("请选阻碍原因");
+    // 没选原因点保存：原因格下报红、格子标红、焦点落在原因格；不交
+    await 发布键.click();
+    await dlg.locator(".fm-err").waitFor();
+    expect(await dlg.locator(".fm-err").innerText()).toBe("请选阻碍原因");
+    expect(await dlg.locator('[data-fk="阻碍原因"] .ant-select-status-error').count()).toBe(1);
+    await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest('[data-fk="阻碍原因"]'))).toBe(true);
+    expect(await page.evaluate(() => Reflect.get(window, "__发布"))).toBeFalsy();
     await dlg.getByLabel("阻碍原因").click();
     await page.locator(".ant-select-item-option").filter({ hasText: "价格" }).click();
     // 直接打字新增一个字典里没有的（纯空格不算）
@@ -116,7 +125,8 @@ it("发布框：没有「解决时限」，交上去不带 dueDays；11-19 没�
     await page.keyboard.press("Enter");
     await page.keyboard.press("Escape");
     await page.locator(".ant-select-dropdown:visible").waitFor({ state: "hidden" });
-    expect(await 发布键.isDisabled()).toBe(false);
+    // 选上了红字当场消失
+    expect(await dlg.locator(".fm-err").count()).toBe(0);
     await 发布键.click();
     await page.waitForFunction(() => Reflect.get(window, "__发布"));
     const 交 = await page.evaluate(() => Reflect.get(window, "__发布") as Record<string, unknown>);
@@ -213,7 +223,7 @@ it("dt.blocker：发布框写「挂在」哪条沟通、能换；类型影响一
       const 发布键 = dlg.locator(".ant-modal-footer").getByRole("button").last();
       await 发布键.click();
       // 没发出去（原型 dt.blocker 发布键里反馈）：键上写「没发出去」，原因浮在键正上方（不是顶部提示），读屏也读得到；框不关
-      await expect.poll(() => 发布键.innerText()).toContain("没发出去");
+      await expect.poll(() => 发布键.innerText()).toContain("没存上");
       // 原因浮签（SaveButton 11-15 起不用 antd Tooltip，是自己的浮签 role=tooltip，键 aria-describedby 指向它）
       const 浮签 = page.getByRole("tooltip").filter({ hasText: "已经删了" });
       await 浮签.waitFor();
@@ -225,7 +235,7 @@ it("dt.blocker：发布框写「挂在」哪条沟通、能换；类型影响一
       // 放行：键里「已发布」放完框才关，不弹顶部提示
       await page.evaluate(() => Reflect.set(window, "__发布回", undefined));
       await 发布键.click();
-      await expect.poll(() => 发布键.innerText()).toContain("已发布");
+      await expect.poll(() => 发布键.innerText()).toContain("已保存");
       expect(await 窗(page, "__关")).toBeNull();
       await expect.poll(() => 窗(page, "__关"), { timeout: 4000 }).toBe(1);
       expect(await page.locator(".ant-message").innerText().catch(() => "")).toBe("");

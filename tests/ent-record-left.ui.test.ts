@@ -166,7 +166,7 @@ it("企业版项目模式（P14 → U-客户-03）：没有记录输入、沟通
     // 弹窗里「关联项目」默认第一个没结束的项目，已结束的不给选；长名字不把框撑出屏
     await 新建沟通.click();
     const 框 = page.getByRole("dialog");
-    await 框.getByText("记一条沟通").waitFor();
+    await 框.getByText("新建沟通").waitFor();
     expect(await 框.getByText("记到哪个项目").count()).toBe(0);
     const 项目格 = 框.locator(".ant-form-item").filter({ has: page.locator("label", { hasText: "关联项目" }) });
     expect(await 项目格.count()).toBe(1);

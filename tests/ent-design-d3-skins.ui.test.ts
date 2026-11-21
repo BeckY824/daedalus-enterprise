@@ -159,3 +159,10 @@ it("公海客户：资料格不是 role=button、没有笔，「先领取或分�
     expect(await page.getByTestId("pool-edit-note").innerText()).toBe(话);
   } finally { await page.close(); }
 }, 60_000);
+
+it("D4 · 待办空态：现状主题「还没有待办」，换皮主题照旧「暂无待办」", async () => {
+  for (const [skin, 话] of [["now", "还没有待办"], ["ledger", "暂无待办"], ["tech", "暂无待办"]] as const) {
+    const page = await open(skin);
+    try { expect(await page.getByText(话, { exact: true }).count(), skin).toBe(1); } finally { await page.close(); }
+  }
+}, 60_000);

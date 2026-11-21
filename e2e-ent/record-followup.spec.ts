@@ -51,7 +51,7 @@ test("有项目时在客户档案记沟通：「新建沟通」开框、关联�
   const 项目块 = 正文.getByRole("region", { name: `项目：记沟通项目${后缀}` });
   await expect(项目块).toBeVisible();
   await 项目块.getByRole("button", { name: /新建沟通/ }).first().click();
-  const 框 = page.getByRole("dialog", { name: "记一条沟通" });
+  const 框 = page.getByRole("dialog", { name: "新建沟通" });
   await expect(框).toBeVisible();
 
   // 发起主体字典里有「我方发起」时自动带上；没带上就挑第一项
@@ -64,8 +64,8 @@ test("有项目时在客户档案记沟通：「新建沟通」开框、关联�
   await 框.getByLabel("沟通内容").fill(内容);
   await 框.getByLabel("下一步计划").fill(`下一步：发报价${后缀}`);
   await 框.getByRole("button", { name: "3 天后" }).click();
-  // 项目那张记沟通框的提交键叫「记下」（11-15，原型 F-跟进-06），不叫「保存」
-  await 框.getByRole("button", { name: "记下", exact: true }).click();
+  // 项目那张记沟通框的提交键：11-15 起叫「记下」，D4 · M7-b 起现状主题叫「保存」（换皮主题照旧「记下」）
+  await 框.getByRole("button", { name: "保存", exact: true }).click();
   await expect(框).toBeHidden();
 
   // 不跳页，这条出现在沟通记录卡里

@@ -30,7 +30,7 @@ test("J-177 AI组合保存故障整体回滚，原表单重试后所有项一并
     await page.goto(`/customers/${customerId}`);
     // 页头按钮带加号图标，无障碍名是「plus 记一条沟通」
     await page.getByRole("button", { name: /^(plus )?记一条沟通$/ }).click();
-    const dialog = page.getByRole("dialog", { name: "记一条沟通" });
+    const dialog = page.getByRole("dialog", { name: "新建沟通" });
     await dialog.getByPlaceholder(/跟进速记/).fill("QA已确认报价，我明天发报价，后天再打电话回访。");
     await dialog.getByRole("button", { name: /AI 解析填表/ }).click();
     await expect(dialog.getByText(/同时创建下次跟进计划：QA下一次回访/)).toBeVisible();
