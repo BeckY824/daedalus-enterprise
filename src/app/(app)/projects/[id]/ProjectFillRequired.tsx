@@ -284,7 +284,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
             const 问题 = 类.类 === "填" && !存上了 && !草稿是空的(项, 值(项)) ? 草稿问题(项, 值(项), 环) : null;
             const 现值话 = 类.类 === "填" && !存上了 ? 现值不算的话(项, p) : null;
             return (
-              <li key={k} data-required={k} style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+              <li key={k} data-required={k} tabIndex={-1} style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
                 <div style={{ fontWeight: 500, overflowWrap: "anywhere" }}>
                   {必填叫法(k)}
                   {存上了 && <Tag color="success" style={{ marginInlineStart: 8 }}>已存上</Tag>}

@@ -26,12 +26,14 @@ const plugin: Plugin = { name: "d4-skins-boundaries", setup(b) {
   stub(/^\.\.\/relate-actions$/, `const f=${空跑};export const 加关联客户Action=f,改客户身份Action=async(...a)=>{(window.__身份存||=[]).push(a);return{ok:true}},解除关联客户Action=f,加关联联系人Action=f,改联系人角色立场Action=async(...a)=>{(window.__角色存||=[]).push(a);return{ok:true}},解除关联联系人Action=f,搜项目联系人=async()=>[];`);
   stub(/^\.\.\/\.\.\/favorites$/, `export const 切换项目收藏=async()=>({ok:true,收藏了:true});`);
   stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[];");
+  // 待办框（客户页「新建待办」、跟进计划页「改待办」同一个 TaskForm）的 ./actions：只认 TaskForm 引的那一个，别的 ./actions 照旧
+  b.onResolve({ filter: /^\.\/actions$/ }, a => (/TaskForm\.tsx$/.test(a.importer) ? { path: a.path, namespace: "fixture", pluginData: "export const saveTask=async(...a)=>{(window.__存待办||=[]).push(a);return{ok:true}};" } : undefined));
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
-    import ProjectDetail from '@/app/(app)/projects/[id]/ProjectDetail';import ProjectRoster from '@/components/ProjectRoster';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {项目画像项,字典定义} from '@/lib/enterprise/dict-kinds';
+    import ProjectDetail from '@/app/(app)/projects/[id]/ProjectDetail';import TaskForm from '@/app/(app)/customers/[id]/TaskForm';import ProjectRoster from '@/components/ProjectRoster';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {项目画像项,字典定义} from '@/lib/enterprise/dict-kinds';
     const root=createRoot(document.getElementById('root'));
     const 长='超长项目名字'.repeat(8), 串='X'.repeat(90);
     /* 11-01 权限只认业务角色：「项目转让」按 能转让 给（总管理 / 上级），fixture 里看的人能转让 */
@@ -48,6 +50,8 @@ beforeAll(async () => {
     const 详情=(企业)=><ProjectDetail p={{...基,企业版:企业,能记沟通:企业,提成:企业?提成:null,...(企业?{项目来源:{name:'渠道'+串,跟客户:true},channelId:null,已立项天数:28,渠道们:[],aiEnabled:true,level:'A',所在地:{addrCountry:'中国',addrProvince:'广东省',addrCity:'深圳市'+'市'.repeat(30),addrDistrict:'南山区',location:'科技园'+串}}:{})}} 能改={true} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={企业?{们:[],能发:true,默认:{默认类型:'中度卡点',默认影响:'短期不影响'},原因们:['价格']}:null}/>;
     const 包=(x)=><ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>{x}</BusinessProvider></App></ConfigProvider>;
     window.__render=(企业)=>root.render(包(详情(企业)));
+    /* 待办框：record 空 = 客户页「新建待办」，给了 = 跟进计划页「改待办」 */
+    window.__待办框=(record)=>root.render(包(<TaskForm open onClose={()=>{}} onSaved={()=>{}} customerId='c1' record={record}/>));
     /* 10-29 沟通「…」→ 修改 / 删除；下一步 = 一句话 + 可选时间 */
     window.__over=(x)=>root.render(包(<ProjectDetail p={{...详情(true).props.p,...x}} 能改={true} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={{们:[],能发:true,默认:{默认类型:'中度卡点',默认影响:'短期不影响'},原因们:['价格']}}/>));
     /* U-项目-07 转让：候选里有接手的人（第一个是自己） */
@@ -204,3 +208,46 @@ it("现状主题对照：缺项小块、「新建沟通」框「保存」一直�
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 }, 30_000);
+
+/* #402 实操：待办框空着点「保存」，红字出在格子下，焦点也要跳到那一格（和新建沟通、新建卡点框一样）；换皮主题照 D4 之前不挪 */
+describe("待办框空存：焦点跳到第一处没填的格", () => {
+  async function 待办框(skin: 皮, record: Record<string, unknown> | null) {
+    const page = await browser.newPage({ viewport: { width: 1366, height: 900 } }); page.setDefaultTimeout(5000);
+    const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+    await page.route("http://d4skins.test/**", r => r.fulfill({ contentType: "text/html", body: `<!doctype html><html data-skin="${skin}" data-paper="tone" data-mode="light"><meta charset='utf-8'><div id='root'></div></html>` }));
+    await page.goto("http://d4skins.test");
+    await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+    await page.addScriptTag({ content: bundle });
+    await page.evaluate(r => (window as unknown as { __待办框: (r: unknown) => void }).__待办框(r), record);
+    const 框 = page.getByRole("dialog");
+    await 框.waitFor();
+    // 开场动画走完、聚焦首项把光标放进「待办内容」之后再点保存（不然那一下会把焦点从保存键上又拿回去，量不准）
+    await expect.poll(() => 框.getByLabel("待办内容").evaluate(e => e === document.activeElement)).toBe(true);
+    return { page, errors, 框 };
+  }
+  const 原待办 = { id: "t1", title: "打电话", dueAt: null, dueHasTime: false, updatedAt: "2026-11-20T00:00:00.000Z" };
+  for (const [入口, record] of [["客户页「新建待办」", null], ["跟进计划页「改待办」（清空内容）", 原待办]] as const)
+    it(`现状主题 · ${入口}：红字在「待办内容」下，焦点落进那一格，没存`, async () => {
+      const { page, errors, 框 } = await 待办框("now", record);
+      try {
+        const 格 = 框.getByLabel("待办内容");
+        if (record) await 格.fill("");
+        await 框.getByRole("button", { name: /^保\s*存$/ }).click();
+        await 框.getByText("请填写待办内容").waitFor();
+        await expect.poll(() => 格.evaluate(e => e === document.activeElement)).toBe(true);
+        expect(await page.evaluate(() => (Reflect.get(window, "__存待办") as unknown[] | undefined)?.length ?? 0)).toBe(0);
+        expect(errors).toEqual([]);
+      } finally { await page.close(); }
+    });
+  it("账本主题 · 新建待办：照 D4 之前，焦点不挪（还在提交键上）", async () => {
+    const { page, errors, 框 } = await 待办框("ledger", null);
+    try {
+      const 键 = 框.getByRole("button", { name: /^创\s*建$/ });
+      await 键.click();
+      await 框.getByText("请填写待办内容").waitFor();
+      await page.waitForTimeout(100);
+      expect(await 框.getByLabel("待办内容").evaluate(e => e === document.activeElement)).toBe(false);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+});

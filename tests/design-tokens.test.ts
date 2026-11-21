@@ -225,7 +225,7 @@ describe("D1 · 设计语言 token 和基础控件", () => {
     const 结构 = [
       ".fm-label", ".fm-req", ".fm-help", ".fm-err",
       ".proj-miss", ".proj-miss.is-ok", ".proj-miss-t", ".proj-miss.is-ok .proj-miss-t", ".proj-miss-chips", ".proj-miss-chip", "button.proj-miss-chip", ".proj-miss-dot", ".proj-miss-help",
-      ".proj-fu-m", ".proj-fu-i", ".proj-fu-who", ".proj-fu-t",
+      ".proj-fu-m", ".proj-fu-l", ".proj-fu-i", ".proj-fu-who", ".proj-fu-t",
     ];
     const 不带 = 选择器们.filter((x) => !x.startsWith(现状));
     expect(不带).toEqual(结构);

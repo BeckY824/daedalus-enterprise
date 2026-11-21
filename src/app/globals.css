@@ -5598,10 +5598,12 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 button.proj-miss-chip { cursor: pointer; }
 .proj-miss-dot { flex: none; width: 5px; height: 5px; border-radius: 999px; background: var(--warning); }
 .proj-miss-help { margin-top: 6px; color: var(--warning-text); font-size: var(--fs-min); line-height: 18px; overflow-wrap: anywhere; }
-.proj-fu-m { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; color: var(--text-muted); font-size: var(--fs-note); line-height: 22px; }
+/* 沟通条目头一行：左段（.proj-fu-l）窄了自己折行让位，时间、已修改、⋮ 一直在第一行右边不折 */
+.proj-fu-m { display: flex; align-items: flex-start; gap: 4px 6px; min-width: 0; color: var(--text-muted); font-size: var(--fs-note); line-height: 22px; }
+.proj-fu-l { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; overflow-wrap: anywhere; }
 .proj-fu-i { display: inline-flex; flex: none; font-size: var(--fs-body); }
 .proj-fu-who { color: var(--ink-soft); font-weight: 500; }
-.proj-fu-t { margin-left: auto; white-space: nowrap; }
+.proj-fu-t { flex: none; margin-left: auto; white-space: nowrap; }
 
 /* 完成节点改浅绿（用户 11-21 按推荐：一屏只留「新建沟通」一颗蓝实心）；灰着整颗看得出灰；右半「终止进程」是菜单，白底 */
 :root:is(:not([data-skin]), [data-skin="now"]) .ant-btn.proj-done-btn:not(:disabled) { background: var(--success-bg); border-color: var(--success-line); color: var(--success-text); font-weight: 500; }

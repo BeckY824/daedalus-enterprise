@@ -71,8 +71,12 @@ export default function TaskForm({
     */
     if (存着) return { ok: false, error: "正在保存，请稍等" };
     set存着(true);
-    // 校验没过：红字在框里
-    const v = await form.validateFields().catch(() => null);
+    // 校验没过：红字在框里；现状主题焦点再跳到第一处没填好的格（D4 · M8-a，和新建沟通、新建卡点框一样；等红字画出来再挪，#402 实操）
+    const v = await form.validateFields().catch((e: { errorFields?: { name: (string | number)[] }[] }) => {
+      const 名 = e?.errorFields?.[0]?.name;
+      if (新样 && 名) window.setTimeout(() => form.focusField(名), 0);
+      return null;
+    });
     if (!v) { set存着(false); return { ok: false, error: "有几项没填好，看标红的" }; }
     try {
       const r = await saveTask({

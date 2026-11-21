@@ -2551,6 +2551,21 @@ describe("设计语言 D4：进程卡、沟通、卡点", () => {
     } finally { await page.close(); }
   });
 
+  it("#402 实操：完成节点框里排在后面的窗外项（国家）也落到那一行，不停在第一格「所属联系人」", async () => {
+    const { page, errors } = await 覆盖(1366, { phase: "线索", node: "潜客培育", 必填: { 配了: ["主联系人", "国家"], 还差: ["主联系人", "国家"] } });
+    try {
+      const 块 = page.getByTestId("node-required-miss");
+      await 块.waitFor();
+      await 块.getByRole("button", { name: /^国家/ }).click();
+      await page.locator(".pd-fill-pop [data-required='国家']").waitFor();
+      await expect.poll(() => page.evaluate(() => document.activeElement?.closest("[data-required]")?.getAttribute("data-required") ?? null)).toBe("国家");
+      // 再等一会儿也不被抢回第一格
+      await page.waitForTimeout(300);
+      expect(await page.evaluate(() => document.activeElement?.closest("[data-required]")?.getAttribute("data-required") ?? null)).toBe("国家");
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
   it("完成节点浅绿、只留一颗蓝实心；节点条放不下时那一头渐隐（--edge-fade）；结局钮写全不省略", async () => {
     const { page, errors } = await 覆盖(1024, { 能记沟通: true });
     try {
@@ -2584,6 +2599,25 @@ describe("设计语言 D4：进程卡、沟通、卡点", () => {
       expect(await 头.nth(0).locator(".proj-fu-t").getAttribute("title")).toMatch(/\d{4}-\d{2}-\d{2} 09:05/);
       // 阶段只留一块（发起不再是标签）
       expect(await 头.nth(0).locator(".ant-tag").allInnerTexts()).toEqual(["生产备货"]);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
+  it.each([1024, 1280, 390])("#402 实操 %ipx：沟通条目头一行字多（带提醒）时，时间和 ⋮ 不折到第二行，左边那段自己折行让位", async (w) => {
+    const { page, errors } = await 覆盖(w, { 可改沟通: true, 可删沟通: true, followUps: [{ id: "f1", type: "PHONE", method: "手机通话", initiator: "我方发起", content: "跟进", occurredAt: "2026-10-03T02:00:00.000Z", who: "冯某某某", node: "潜客培育", code: "FUL0001", 提醒: { 级别: "拿捏", 文字: "下一步 11-24" }, 版本: "v" }] });
+    try {
+      const 头 = page.locator(".proj-fu-m").first();
+      const 上 = (sel: string) => 头.locator(sel).first().evaluate(e => e.getBoundingClientRect().top);
+      const 左顶 = await 上(".proj-fu-l");
+      const 头盒 = (await 头.boundingBox())!;
+      for (const sel of [".proj-fu-t", ".proj-fu-kb"]) {
+        // 都在第一行（顶和左段第一行齐，差不过 4px）、不出头这一行的右边
+        expect(Math.abs((await 上(sel)) - 左顶), sel).toBeLessThanOrEqual(4);
+        const 盒 = (await 头.locator(sel).first().boundingBox())!;
+        expect(盒.x + 盒.width).toBeLessThanOrEqual(头盒.x + 头盒.width + 1);
+      }
+      expect(await 头.locator(".proj-fu-t").evaluate(e => e.getClientRects().length)).toBe(1);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   });

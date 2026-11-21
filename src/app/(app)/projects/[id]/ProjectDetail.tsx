@@ -885,11 +885,19 @@ export default function ProjectDetail({
     const 说在哪 = (话: string) => 就地.info(`「${叫}」：${话}`);
     if (节点可改 && !完成不了 && !忙 && 要先补齐 && 节点缺.includes(键)) {
       set头部框("完成");
-      window.setTimeout(() => {
+      /*
+        框开出来后焦点落到点的那一项：框挂上时自己会把焦点给第一格（下一帧），这里等框出来、再晚一帧挪过去，免得又被抢回第一格。
+        窗外那几项（国家、来源……）行里只有「去客户页」链接或一句说明：落到链接上，没有链接就落在那一行（#402 实操：点「国家」落到了「所属联系人」）
+      */
+      const 落 = (剩: number) => {
         const 格 = document.querySelector<HTMLElement>(`.pd-fill-pop [data-required="${键}"]`);
-        格?.scrollIntoView({ block: "nearest" });
-        格?.querySelector<HTMLElement>("input:not([disabled]), textarea:not([disabled]), button:not([disabled])")?.focus({ preventScroll: true });
-      }, 120);
+        if (!格) { if (剩 > 0) window.setTimeout(() => 落(剩 - 1), 60); return; }
+        window.requestAnimationFrame(() => {
+          格.scrollIntoView({ block: "nearest" });
+          (格.querySelector<HTMLElement>("input:not([disabled]), textarea:not([disabled]), button:not([disabled]), a[href]") ?? 格).focus({ preventScroll: true });
+        });
+      };
+      window.setTimeout(() => 落(10), 60);
       return;
     }
     if ((键 === "有效沟通" || 键 === "线索验证结果") && p.线索验证?.我能) { set验证开着(true); return; }
@@ -1720,19 +1728,23 @@ export default function ProjectDetail({
               时间和列表同一套（今天 13:13 / 昨天 / 3 天前 / 11 月 18 日，悬停看完整时刻）
             */}
             <div className={新样 ? "proj-fu-m" : undefined} style={新样 ? undefined : 旧沟通头样}>
-              {新样 ? (<>
-                <span className="proj-fu-i" aria-hidden>{f.type === "OTHER" ? <CommentOutlined /> : (FOLLOW_TYPE_ICON[f.type] ?? <CommentOutlined />)}</span>
-                <span className="proj-fu-who">{f.who}</span>
-                <span aria-hidden>·</span><span>{跟进方式名(f, "其他方式")}</span>
-                {f.initiator && <><span aria-hidden>·</span><span>{f.initiator}</span></>}
-                <Tag variant="filled" className="proj-fu-stage">{f.node}</Tag>
-              </>) : (<>
+              {新样 ? (
+                // 左边这一段（谁 · 方式 · 发起、阶段、提醒）窄了自己折行让位，右边时间和 ⋮ 不折（#402 实操：1024 宽时间和 ⋮ 掉到第二行）
+                <span className="proj-fu-l">
+                  <span className="proj-fu-i" aria-hidden>{f.type === "OTHER" ? <CommentOutlined /> : (FOLLOW_TYPE_ICON[f.type] ?? <CommentOutlined />)}</span>
+                  <span className="proj-fu-who">{f.who}</span>
+                  <span aria-hidden>·</span><span>{跟进方式名(f, "其他方式")}</span>
+                  {f.initiator && <><span aria-hidden>·</span><span>{f.initiator}</span></>}
+                  <Tag variant="filled" className="proj-fu-stage">{f.node}</Tag>
+                  {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
+                </span>
+              ) : (<>
                 {/* 换皮主题：D4 之前的方式小块 + 发起 / 阶段两个标签，谁 · 完整时刻 */}
                 <FollowTypeCell type={f.type} method={f.method} />
                 {f.initiator && <Tag variant="filled">{f.initiator}</Tag>}
                 <Tag>{f.node}</Tag>
+                {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
               </>)}
-              {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
               {新样
                 ? <span className="proj-fu-t" title={fmtDateTime(f.occurredAt)}>{smartTime(f.occurredAt)}</span>
                 : <span style={旧沟通时样}>{f.who} · {fmtDateTime(f.occurredAt)}</span>}
