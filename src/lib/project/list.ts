@@ -280,13 +280,16 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
  */
 export async function 数待分配(me: Parameters<typeof 列表条件>[0]): Promise<待分配数 | null> {
   if (!企业版()) return null;
+  // 先问有没有资格（只读组织、开关，不查库）：没资格的（销售最多）不跑整套 列表条件（市场身份、公海回避那几句）。首页是压测盯着的页
+  if (!(await 待分配范围(me))) return null;
   const c = await 列表条件(me, { f: 待分配筛 }, "线索");
   if (!c.待分配) return null;
   const [条数, 早] = await Promise.all([
     prisma.project.count({ where: c.where }),
     prisma.project.findFirst({ where: c.where, orderBy: { awaitAssignAt: "asc" }, select: { awaitAssignAt: true } }),
   ]);
-  return 条数 ? { 条数, 最早: 早?.awaitAssignAt?.toISOString() ?? null } : null;
+  // 最早那条的时刻在服务端按北京墙钟写好（同 待回复客户 的 时）：浏览器在伦敦也不会和服务端渲染的对不上
+  return 条数 ? { 条数, 最早: 短时刻(早?.awaitAssignAt) } : null;
 }
 
 /**
@@ -300,6 +303,7 @@ export async function 待分配看得到的(人们: readonly string[], projectId
   const { 以谁的身份 } = await import("@/lib/enterprise/visibility");
   const users = await 看全部(() => prisma.user.findMany({ where: { id: { in: [...人们] }, active: true }, select: { id: true, role: true, name: true } }));
   for (const u of users) {
+    if (!(await 待分配范围(u))) continue;
     const ids = await 照限定(() => 以谁的身份(u.id, async () => {
       const c = await 列表条件(u, { f: 待分配筛 }, "线索");
       if (!c.待分配) return [];

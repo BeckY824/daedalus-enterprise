@@ -23,6 +23,10 @@ import { 待分配筛 } from "@/lib/enterprise/await-assign-core";
 import { 发待分配提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 看全部 } from "@/lib/team-scope";
+import { 短时刻 } from "@/lib/project/time-fields";
+import { 自动分配线索 } from "@/app/(app)/leads/assign-actions";
+import { 标待分配 } from "@/lib/enterprise/await-assign";
+import { 自动分配不参与key } from "@/lib/enterprise/lead-assign";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: string | null };
 let 老板: 人, 外条线: 人, 市场管: 人, 内管: 人, 内销: 人, 外管: 人, 外销: 人;
@@ -95,7 +99,8 @@ afterEach(() => { vi.unstubAllEnvs(); });
 
 describe("谁看得到、看哪几条（开关开着）", () => {
   it("系统管理员：全部 4 条，最早那条的时间；定时的、进公海的、有结局的、进回收站的、已分走的、转了商机的都不算", async () => {
-    expect(await 数(老板)).toEqual({ 条数: 4, 最早: 早.toISOString() });
+    // 最早：服务端按北京墙钟写好（不在浏览器里按本地时区格式化）
+    expect(await 数(老板)).toEqual({ 条数: 4, 最早: 短时刻(早) });
     expect(await 两边对得上(老板)).toEqual(["内贸的", "外贸的", "暂不分配的", "没填线外贸人建的"].sort());
   });
 
@@ -209,5 +214,39 @@ describe("铃铛 / 飞书「待分配」提醒的收件人 = 首页那一行数�
     await prisma.project.updateMany({ where: { name: "外贸的" }, data: { awaitAssignAt: null } });
     await 发("外贸的");
     expect(await 收件人()).toEqual([]);
+  });
+});
+
+describe("挑不到人标待分配：写不套点击人的写范围（11-21 审查）", () => {
+  beforeEach(async () => {
+    await setSetting(规则.按组织看客户.key, true);
+    // 外贸线没人可自动分：外贸销售、外贸销售管理都不参与
+    await setSetting(自动分配不参与key, { [外销.id]: "禁止", [外管.id]: "禁止" });
+    忘掉企业版范围();
+  });
+
+  it("外贸条线总管理对条线里非下属的新线索点自动分配、挑不到人：照样标上待分配、提醒发出去、话里说已标成", async () => {
+    // 外贸销售占着负责人格（不是条线总管理的下属：条线内只读不可写），还没待分配
+    const p = await 线索("外贸销售的", 外销, { bizLine: "外贸", awaitAssignAt: null });
+    mocks.user = 外条线;
+    const r = await 以谁的身份(外条线.id, () => 自动分配线索(p, { 项目: true }));
+    expect(r).toMatchObject({ ok: false, 待分配: true, error: expect.stringContaining("已标成待分配") });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).awaitAssignAt).not.toBeNull();
+    const 收 = (await prisma.entNotice.findMany({ where: { kind: "待分配" } })).map((n) => n.userId);
+    expect(收).toContain(外条线.id);
+    expect(收).toContain(老板.id);
+  });
+
+  it("标不上（不在线索阶段）：回 false，不发提醒", async () => {
+    const p = await 线索("转了的", 外销, { bizLine: "外贸", awaitAssignAt: null, phase: "商机" });
+    const org = await 读组织();
+    expect(await 以谁的身份(内销.id, () => 标待分配(p, { org, 名: "转了的", 谁建的: "x", 为什么: "没人" }))).toBe(false);
+    expect(await prisma.entNotice.count({ where: { kind: "待分配" } })).toBe(0);
+  });
+
+  it("点的人写不到这条也标得上（入口已查过能不能分）", async () => {
+    const p = await 线索("别人的", 外销, { bizLine: "外贸", awaitAssignAt: null });
+    expect(await 以谁的身份(内销.id, () => 标待分配(p, null))).toBe(true);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).awaitAssignAt).not.toBeNull();
   });
 });

@@ -518,7 +518,11 @@ const 标了待分配话 = (为什么: string) => `${为什么}。已标成待�
  */
 async function 挑不到就标(projectId: string, r: 内部自动结果): Promise<内部自动结果> {
   if (r.ok || !r.要标) return r;
-  await 标待分配(projectId, null);
+  // 标不上（这一下被改了阶段、进了公海、有了结局）：不说「已标成」，也不发提醒（去掉 要标）
+  if (!(await 标待分配(projectId, null))) {
+    const { 要标: _不标, ...原样 } = r;
+    return 原样;
+  }
   return { ...r, error: 标了待分配话(r.要标.为什么) };
 }
 

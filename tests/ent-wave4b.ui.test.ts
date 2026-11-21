@@ -18,7 +18,7 @@ const 桩: Plugin = { name: "wave4b", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(u){window.__push=u},replace(){},prefetch(){}});export const usePathname=()=>'/x';export const useSearchParams=()=>new URLSearchParams('');");
   stub(/^next\/link$/, "export default function L({prefetch,scroll,replace,href,...p}){return <a href={href} {...p}/>}");
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
-  stub(/leads\/assign-actions$|^\.\/assign-actions$/, 补全动作桩("src/app/(app)/leads/assign-actions.ts", "export const 关满额提醒=async()=>({ok:true});"));
+  stub(/leads\/assign-actions$|^\.\/assign-actions$/, 补全动作桩("src/app/(app)/leads/assign-actions.ts", ""));
   stub(/projects\/actions$|^\.\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 市场复核Action=async()=>({ok:true}),总管理终判Action=async()=>({ok:true});"));
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };

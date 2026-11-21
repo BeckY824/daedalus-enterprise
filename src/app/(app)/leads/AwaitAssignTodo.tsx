@@ -6,7 +6,6 @@
  * 只画一行、高度固定（home-cth-todo-one 不换行，放不下省略），塞进首页左卡不把卡撑高
  */
 import Link from "next/link";
-import { fmtDateTime } from "@/lib/utils";
 import { 待分配链接, 待分配筛名, type 待分配数 } from "@/lib/enterprise/await-assign-core";
 
 export default function AwaitAssignTodo({ 数据 }: { 数据: 待分配数 | null | undefined }) {
@@ -14,7 +13,7 @@ export default function AwaitAssignTodo({ 数据 }: { 数据: 待分配数 | nul
   return (
     <div className="home-cth-todo home-cth-todo-one" role="status" data-testid="home-await-assign">
       <span className="home-cth-todo-t">{待分配筛名} {数据.条数} 条</span>
-      {数据.最早 ? <span className="home-cth-todo-s">最早 {fmtDateTime(数据.最早)}</span> : null}
+      {数据.最早 ? <span className="home-cth-todo-s">最早 {数据.最早}</span> : null}
       <Link className="link-strong home-cth-todo-a" href={待分配链接}>去分配 ›</Link>
     </div>
   );

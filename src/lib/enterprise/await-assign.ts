@@ -12,6 +12,7 @@
  */
 import type { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
+import { 看全部 } from "@/lib/team-scope";
 import { 企业版 } from "./switch";
 import { 发待分配提醒, 满额提醒收件人 } from "./lead-full-notice";
 import type { 组织 } from "./org-core";
@@ -20,11 +21,14 @@ export async function 标待分配(
   projectId: string,
   提醒: { org: 组织; 名: string; 谁建的: string; 为什么: string } | null,
   今 = new Date(),
-): Promise<void> {
-  if (!企业版()) return;
-  await prisma.project.updateMany({ where: { id: projectId, phase: "线索", result: null, pooledAt: null }, data: { awaitAssignAt: 今 } });
+): Promise<boolean> {
+  if (!企业版()) return false;
+  // 写不套点击人的写范围（看全部）：入口已查过他能不能分；条线总管理对条线里非下属的新线索可读不可写，套着就悄悄写不进（11-21 审查）
+  const 标上 = (await 看全部(() => prisma.project.updateMany({ where: { id: projectId, phase: "线索", result: null, pooledAt: null }, data: { awaitAssignAt: 今 } }))).count === 1;
+  if (!标上) return false;
   // 提醒没发出去不能连累已经建好的项目
   if (提醒) await 发待分配提醒(提醒.org, [{ id: projectId, 名: 提醒.名 }], 提醒.谁建的, 提醒.为什么, 今).catch((e) => console.error("[待分配提醒] 没发出去", e));
+  return true;
 }
 
 /**

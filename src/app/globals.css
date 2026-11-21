@@ -5239,8 +5239,9 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 .home-cth-todo-warn { color: var(--warning-text); }
 .home-cth-todo-s { flex: 1 1 200px; min-width: 0; color: var(--text-muted); font-size: var(--fs-note); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-cth-todo-a { white-space: nowrap; margin-inline-start: auto; }
-/* 只占一行的首页待办（待分配新线索，11-21）：不换行、高度固定，窄了先省略中间那段再省略标题，不把首页左卡撑高 */
-.home-cth-todo-one { flex-wrap: nowrap; align-items: center; overflow: hidden; }
+/* 只占一行的首页待办（待分配新线索，11-21）：不换行、高度固定，窄了先省略中间那段再省略标题，不把首页左卡撑高。
+   省略只放在标题、中间那段上，整行不 overflow: hidden——不然「去分配」的键盘焦点框会被裁掉 */
+.home-cth-todo-one { flex-wrap: nowrap; align-items: center; }
 .home-cth-todo-one .home-cth-todo-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .home-cth-todo-one .home-cth-todo-s { flex-basis: 0; }
 /* 首页置顶「新分到你的线索，可以放弃（豁免）」（dashboard/GiveUpHomeTodo.tsx，11-21）：名字 + 时限在左、两颗 40 高的按钮在右；
