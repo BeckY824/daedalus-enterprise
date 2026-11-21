@@ -77,7 +77,7 @@ export async function 取消定时分配(projectId: string): Promise<结果> {
     const 改 = await 看全部(() => prisma.project.updateMany({ where: { id: p.id, scheduledAssignAt: p.scheduledAssignAt }, data: 清定时 }));
     if (改.count !== 1) return { ok: false, error: 不在 };
     await recordAudit({ user: me, action: "update", entity: "Project", entityId: p.id, summary: `取消了新线索「${p.name}」的定时分配（原定 ${短时刻(p.scheduledAssignAt)}），留在待分配` });
-    await 发待分配提醒(org, [p.name], me.name, `${me.name} 取消了定时分配（原定 ${短时刻(p.scheduledAssignAt)}）`).catch((e) => console.error("[待分配提醒] 没发出去", e));
+    await 发待分配提醒(org, [{ id: p.id, 名: p.name }], me.name, `${me.name} 取消了定时分配（原定 ${短时刻(p.scheduledAssignAt)}）`).catch((e) => console.error("[待分配提醒] 没发出去", e));
     刷新(p.id);
     return { ok: true, 提示: "已取消定时，留在新线索待分配" };
   } catch (e) {

@@ -20,6 +20,9 @@ import { 规则 } from "@/lib/enterprise/rules";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 数待分配, 读项目列表 } from "@/lib/project/list";
 import { 待分配筛 } from "@/lib/enterprise/await-assign-core";
+import { 发待分配提醒 } from "@/lib/enterprise/lead-full-notice";
+import { 读组织 } from "@/lib/enterprise/org";
+import { 看全部 } from "@/lib/team-scope";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: string | null };
 let 老板: 人, 外条线: 人, 市场管: 人, 内管: 人, 内销: 人, 外管: 人, 外销: 人;
@@ -154,5 +157,57 @@ describe("「按组织看客户」开着：可见范围照旧由限定层管，�
     expect(await 两边对得上(老板)).toHaveLength(5);
     await 两边对得上(外管);
     await 两边对得上(市场管);
+  });
+});
+
+describe("铃铛 / 飞书「待分配」提醒的收件人 = 首页那一行数得到这条的人（11-21，P-转-38 / X-79）", () => {
+  const 收件人 = async () => (await prisma.entNotice.findMany({ where: { kind: "待分配" } })).map((n) => n.userId).sort();
+  const 发 = async (名: string) => {
+    const p = await prisma.project.findFirstOrThrow({ where: { name: 名 }, select: { id: true } });
+    // 调用方常在 看全部 里：收件人照样按各人的范围算
+    await 看全部(async () => 发待分配提醒(await 读组织(), [{ id: p.id, 名 }], "录入的人", "这条业务线没人可分"));
+  };
+
+  it("外贸的：外贸销售管理、外贸条线总管理、系统管理员、市场管理（自己建的）收到；内贸销售管理、销售收不到", async () => {
+    await 发("外贸的");
+    expect(await 收件人()).toEqual([老板.id, 外条线.id, 市场管.id, 外管.id].sort());
+  });
+
+  it("内贸的：内贸销售管理收到，外贸销售管理收不到", async () => {
+    await 发("内贸的");
+    const 们 = await 收件人();
+    expect(们).toContain(内管.id);
+    expect(们).not.toContain(外管.id);
+    expect(们).not.toContain(内销.id);
+  });
+
+  it("市场管理只在自己圈里的才收到：外贸销售自己建的那条，市场管理收不到（他的新线索页也不列）", async () => {
+    await 发("没填线外贸人建的");
+    expect(await 收件人()).toEqual([老板.id, 外条线.id, 外管.id].sort());
+  });
+
+  it("批量：一人一条，各人只列自己数得到的那几条", async () => {
+    const ps = await prisma.project.findMany({ where: { name: { in: ["内贸的", "外贸的"] } }, select: { id: true, name: true } });
+    await 发待分配提醒(await 读组织(), ps.map((p) => ({ id: p.id, 名: p.name })), "录入的人", "没人可分");
+    const 们 = await prisma.entNotice.findMany({ where: { kind: "待分配" } });
+    const of = (id: string) => 们.filter((n) => n.userId === id);
+    expect(of(老板.id)).toHaveLength(1);
+    expect(of(老板.id)[0].title).toBe("待分配：2 条新线索没自动分出去");
+    expect(of(内管.id)[0].title).toBe("待分配：1 条新线索没自动分出去");
+    expect(of(内管.id)[0].body).toMatch(/^内贸的（/);
+    expect(of(外管.id)[0].body).toMatch(/^外贸的（/);
+  });
+
+  it("「线索分配」开关关着：只有系统管理员", async () => {
+    await setSetting(规则.线索分配.key, false);
+    忘掉企业版范围();
+    await 发("外贸的");
+    expect(await 收件人()).toEqual([老板.id]);
+  });
+
+  it("已经分走（不在待分配了）的：谁都不发", async () => {
+    await prisma.project.updateMany({ where: { name: "外贸的" }, data: { awaitAssignAt: null } });
+    await 发("外贸的");
+    expect(await 收件人()).toEqual([]);
   });
 });

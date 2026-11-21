@@ -145,18 +145,23 @@ describe("都已满额 → 提醒市场管理、总管理员", () => {
 });
 
 describe("X-79 → P-转-03：「线索分配」开关关着，待分配提醒只发系统管理员", () => {
+  /** 市场建的、已标待分配的新线索（项目）：收件人按「谁的首页那一行数得到它」算（11-21） */
+  const 待分的 = async () => {
+    const c = (await prisma.customer.create({ data: { name: "待分客户", phone: "13900009999", salesOwnerId: 市场 } })).id;
+    return [{ id: (await prisma.project.create({ data: { name: "待分的", customerId: c, ownerId: 市场, creatorId: 市场, bizLine: "内贸", awaitAssignAt: new Date() } })).id, 名: "待分的" }];
+  };
   const 收到 = async () => {
     const 们 = [老板, 总管, 市场, 销售经理, 甲];
     return (await Promise.all(们.map(async (id) => ((await 读满额提醒(id, "待分配")).length ? id : null)))).filter(Boolean);
   };
   it("关着：只有总管理员（老板、总管）收到，市场管理、销售管理没有", async () => {
     await setSetting(规则.线索分配.key, false);
-    await 发待分配提醒(await 读组织(), ["待分的"], "市场小李", "这条业务线没人可分");
+    await 发待分配提醒(await 读组织(), await 待分的(), "市场小李", "这条业务线没人可分");
     expect(await 收到()).toEqual([老板, 总管]);
     expect((await prisma.entNotice.findMany({ where: { kind: "待分配" } })).map((n) => n.userId).sort()).toEqual([老板, 总管].sort());
   });
-  it("开着：照旧发市场管理、销售管理、总管理员", async () => {
-    await 发待分配提醒(await 读组织(), ["待分的"], "市场小李", "这条业务线没人可分");
+  it("开着：发能分这条的人——市场管理（自己建的）、销售管理（没设业务线）、总管理员", async () => {
+    await 发待分配提醒(await 读组织(), await 待分的(), "市场小李", "这条业务线没人可分");
     expect(await 收到()).toEqual([老板, 总管, 市场, 销售经理]);
   });
 });

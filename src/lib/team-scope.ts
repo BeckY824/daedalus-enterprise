@@ -47,6 +47,14 @@ import { 记一次写库 } from "./enterprise/pool-count-cache";
 
 const 不限 = 全进程上下文<true>("看全部");
 
+/**
+ * 这一段照常按限定，外面包了 看全部 也一样（11-21）：按某个人的身份（以谁的身份）数「他看得到的」时用，
+ * 不然调用方在 看全部 里，数出来的是全部（待分配提醒收件人，lib/project/list.ts 待分配看得到的）
+ */
+export function 照限定<T>(fn: () => Promise<T>): Promise<T> {
+  return (不限 as unknown as { run<R>(v: undefined, f: () => R): R }).run(undefined, async () => await fn());
+}
+
 /** 这一段里的查询不加限定（同步、查重、角色对齐） */
 export function 看全部<T>(fn: () => Promise<T>): Promise<T> {
   // 在 run 里 await：Prisma 的查询是懒的，拿到 then 才真正发出去——不 await 就跑到 run 外面去了

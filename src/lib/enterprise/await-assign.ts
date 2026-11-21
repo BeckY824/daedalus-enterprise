@@ -24,7 +24,7 @@ export async function 标待分配(
   if (!企业版()) return;
   await prisma.project.updateMany({ where: { id: projectId, phase: "线索", result: null, pooledAt: null }, data: { awaitAssignAt: 今 } });
   // 提醒没发出去不能连累已经建好的项目
-  if (提醒) await 发待分配提醒(提醒.org, [提醒.名], 提醒.谁建的, 提醒.为什么, 今).catch((e) => console.error("[待分配提醒] 没发出去", e));
+  if (提醒) await 发待分配提醒(提醒.org, [{ id: projectId, 名: 提醒.名 }], 提醒.谁建的, 提醒.为什么, 今).catch((e) => console.error("[待分配提醒] 没发出去", e));
 }
 
 /**

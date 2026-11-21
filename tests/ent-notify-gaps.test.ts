@@ -340,8 +340,10 @@ describe("回收、将回收", () => {
 });
 
 describe("待分配文案", () => {
+  /** 甲占着负责人格、标了待分配的新线索（收件人按「谁的首页那一行数得到它」算，11-21） */
+  const 待分配的 = async () => [{ id: (await prisma.project.create({ data: { name: "线索一", customerId: 客户, ownerId: 甲, creatorId: 甲, awaitAssignAt: new Date() } })).id, 名: "线索一" }];
   it("待分配：kind、标题不说满额，告诉为什么、去手动分", async () => {
-    await 发待分配提醒(await 读组织(), ["线索一"], "市场小李", "这条业务线没人可分");
+    await 发待分配提醒(await 读组织(), await 待分配的(), "市场小李", "这条业务线没人可分");
     const [n] = await prisma.entNotice.findMany();
     expect(n.kind).toBe("待分配");
     expect(n.title).toBe("待分配：1 条新线索没自动分出去");
@@ -352,11 +354,13 @@ describe("待分配文案", () => {
   });
 
   it("挑不到人回的整句当为什么交进来：只留原因本身，不和「线索留在新线索」一句里两种说法（11-21）", async () => {
-    await 发待分配提醒(await 读组织(), ["线索一"], "市场小李", "外贸线没人可分。这条新线索留在原处，可以手动指派");
+    await 发待分配提醒(await 读组织(), await 待分配的(), "市场小李", "外贸线没人可分。这条新线索留在原处，可以手动指派");
     const [n] = await prisma.entNotice.findMany();
     expect(n.body).toContain("外贸线没人可分。线索留在新线索、没有负责人：去新线索手动分。");
     expect(n.body).not.toContain("留在原处");
     expect(n.body).not.toContain("可以手动指派");
+    // 点进去就是首页那一行同一份（收件人也按那一行的口径算，数得到才发）
+    expect(n.link).toBe("/leads?f=await-assign");
     // 不再往 Setting 里存快照（首页那一行改成现数）
     expect(await prisma.setting.count({ where: { key: { startsWith: "entLeadFullNotice:" } } })).toBe(0);
   });

@@ -17,7 +17,7 @@ import { 字典of, 阶段与进程, 阶段们, 结局们of, 同名们, 本套名
 import { 本套位置 } from "./nodes";
 import type { Prisma } from "@/generated/prisma";
 import { 待我复核的, 验证结果叫法, 实际待, 无效交给 } from "./lead-verify";
-import { 看全部, 客户读条件 } from "../team-scope";
+import { 看全部, 照限定, 客户读条件 } from "../team-scope";
 import { 仅项目客户们 } from "@/lib/enterprise/project-only-customers";
 import { 读市场身份 } from "@/lib/enterprise/market-view-db";
 import { 市场项目条件, 只看进度 } from "@/lib/enterprise/market-view";
@@ -287,6 +287,27 @@ export async function 数待分配(me: Parameters<typeof 列表条件>[0]): Prom
     prisma.project.findFirst({ where: c.where, orderBy: { awaitAssignAt: "asc" }, select: { awaitAssignAt: true } }),
   ]);
   return 条数 ? { 条数, 最早: 早?.awaitAssignAt?.toISOString() ?? null } : null;
+}
+
+/**
+ * 「待分配」提醒发给谁（11-21，P-转-38 / X-79「提醒能分配的人（开关关着只提醒系统管理员）」）：候选人里，
+ * 各人首页「待分配新线索」那一行（数待分配，同一个 列表条件、按他的身份限定）数得到这批里的哪几条。回 人 → 他数得到的项目 id；数不到的人不在里面。
+ * 收到提醒点进去（/leads?f=await-assign）就看得到，不会「收到了、列表里没有」。外面包了 看全部 也照样按各人限定（照限定）
+ */
+export async function 待分配看得到的(人们: readonly string[], projectIds: readonly string[]): Promise<Map<string, string[]>> {
+  const 出 = new Map<string, string[]>();
+  if (!企业版() || !人们.length || !projectIds.length) return 出;
+  const { 以谁的身份 } = await import("@/lib/enterprise/visibility");
+  const users = await 看全部(() => prisma.user.findMany({ where: { id: { in: [...人们] }, active: true }, select: { id: true, role: true, name: true } }));
+  for (const u of users) {
+    const ids = await 照限定(() => 以谁的身份(u.id, async () => {
+      const c = await 列表条件(u, { f: 待分配筛 }, "线索");
+      if (!c.待分配) return [];
+      return (await prisma.project.findMany({ where: { AND: [c.where, { id: { in: [...projectIds] } }] }, select: { id: true } })).map((r) => r.id);
+    }));
+    if (ids.length) 出.set(u.id, ids);
+  }
+  return 出;
 }
 
 /**

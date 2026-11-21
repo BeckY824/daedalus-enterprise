@@ -546,8 +546,8 @@ export async function 自动分配线索(id: string, opts: { line?: 线 | null; 
       ? await 挑不到就标(哪条.projectId, await 自动分给(me, org, 哪条, line, kind, 认原负责人(opts.原负责人)))
       : await 自动分给(me, org, 哪条, line, kind, 认原负责人(opts.原负责人));
     if (r.ok) await 分配通知(me, [{ ...哪条, toUserId: r.toUserId, ...通知字段(r) }], true);
-    if (!r.ok && r.要标) {
-      await 发待分配提醒(org, [r.要标.名], me.name, r.要标.为什么).catch((e) => console.error("[待分配提醒] 没发出去", e));
+    if (!r.ok && r.要标 && 哪条.projectId !== undefined) {
+      await 发待分配提醒(org, [{ id: 哪条.projectId, 名: r.要标.名 }], me.name, r.要标.为什么).catch((e) => console.error("[待分配提醒] 没发出去", e));
     } else if (!r.ok && r.都满额) {
       const 看 = await 分前看(哪条).catch(() => null);
       await 发满额提醒(org, [看?.ok ? 看.名 : id], me.name).catch((e) => console.error("[满额提醒] 没发出去", e));
@@ -1063,7 +1063,7 @@ export async function 批量自动分配(
     // 提醒没发出去不能连累已经分好的结果
     if (标了的.length) {
       const 为什么们 = [...new Set(标了的.map((x) => x.为什么))];
-      await 发待分配提醒(org, 标了的.map((x) => x.名), me.name, 为什么们.join("；")).catch((e) => console.error("[待分配提醒] 没发出去", e));
+      await 发待分配提醒(org, 标了的.map((x) => ({ id: x.id, 名: x.名 })), me.name, 为什么们.join("；")).catch((e) => console.error("[待分配提醒] 没发出去", e));
     }
     const 标了ids = new Set(标了的.map((x) => x.id));
     await 发满额提醒(org, 结果.filter((x) => !x.ok && x.都满额 && !标了ids.has(x.leadId)).map((x) => x.name), me.name).catch((e) => console.error("[满额提醒] 没发出去", e));
