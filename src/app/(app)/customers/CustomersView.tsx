@@ -1205,7 +1205,7 @@ export default function CustomersView({
   */
   const 看法切换 = 项目看板
     ? (!空库 || 市场视图) && !子集 && (市场视图
-      ? <Segmented<string> aria-label="客户列表 / 我分出去的" options={[...市场视图名]} value={市场视图名[0]} onChange={(v) => v === 市场视图名[1] && 换客户页看法("board", router)} />
+      ? <Segmented<string> aria-label="客户列表 / 我分出去的" options={[...市场视图名]} value={市场视图名[0]} onChange={(v) => v === 市场视图名[1] && 换客户页看法("board", router, ["scope"])} />
       : <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={换项目看法到 ?? 项目看法} onChange={换项目看法} />)
     : 能看板 && !空库 && <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看法} onChange={set看法} />;
   /** 「新建 ▾ → 新建项目」点一次挂一份（换 key 重挂 = 重新打开选新老客户的框）；0 = 还没点过、不加载 */
