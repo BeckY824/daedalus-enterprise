@@ -1024,8 +1024,8 @@ for (const 宽 of [1280, 1024]) {
       expect(问盒.y + 问盒.height).toBeLessThanOrEqual(行盒.y + 行盒.height + 1);
       expect(问盒.x + 问盒.width).toBeLessThanOrEqual(宽);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-      // 确认键先拿焦点；取消 = 收起、没删
-      expect(await 问.getByRole("button", { name: "确认删除" }).evaluate((b) => b === document.activeElement)).toBe(true);
+      // 「取消」先拿焦点（#402 复审：多按一下回车不误删）；取消 = 收起、没删
+      expect(await 问.getByRole("button", { name: /取\s*消/ }).evaluate((b) => b === document.activeElement)).toBe(true);
       await 问.getByRole("button", { name: /取\s*消/ }).click();
       await 问.waitFor({ state: "hidden" });
       expect(await page.evaluate(() => (Reflect.get(window, "__删沟通") as unknown[] | undefined)?.length ?? 0)).toBe(0);
@@ -2634,7 +2634,7 @@ describe("设计语言 D4：进程卡、沟通、卡点", () => {
     新建沟通框；落不了的（客户资料在别页、附件卡不在这页）资料卡底部就地写「在哪里填」
   */
   const 各路 = { phase: "线索", node: "潜客培育", 能改节点: false, 客户入口: "文字",
-    必填: { 配了: ["项目级别", "需求", "线索验证结果", "国家", "本节点沟通", "合同附件"], 还差: ["项目级别", "需求", "线索验证结果", "国家", "本节点沟通", "合同附件"] },
+    必填: { 配了: ["项目级别", "项目所在地", "需求", "线索验证结果", "国家", "来源", "本节点沟通", "合同附件"], 还差: ["项目级别", "项目所在地", "需求", "线索验证结果", "国家", "来源", "本节点沟通", "合同附件"] },
     线索验证: { 判定: null, 待: null, 无效原因: null, 复核结果: null, 最终结果: null, 终验: null, 初判即终判: false, 叫法: null, 我能: null, 痕: [] } };
   it.each([1366, 390])("%ipx：完成节点框开不了时，每块都有落点——右栏那一格、画像卡、线索验证框、新建沟通框；国家、合同附件写明在哪填", async (w) => {
     const { page, errors } = await open(true, w);
@@ -2646,6 +2646,10 @@ describe("设计语言 D4：进程卡、沟通、卡点", () => {
       // 右栏那一格进编辑
       await 点("项目级别");
       await page.locator('[data-inline-field="级别"] .ant-select').waitFor();
+      await page.keyboard.press("Escape");
+      // 项目所在地 → 右栏「区域」那一格进编辑（#402 复审）
+      await 块.getByRole("button", { name: /^项目所在地/ }).click();
+      await page.locator('.proj-inline-edit[data-inline-field="区域"]').waitFor();
       await page.keyboard.press("Escape");
       // 画像卡
       await page.locator("#project-profile-fold > .proj-fold-btn").click();
@@ -2668,6 +2672,9 @@ describe("设计语言 D4：进程卡、沟通、卡点", () => {
       // 客户资料在客户页（这里客户名只是字）、附件卡不在这页：就地写在哪填
       await 点("国家");
       await page.getByText("「国家」：国家 / 地区记在客户资料上").waitFor();
+      // 企业版客户页没有「来源」那一格：就地说，不跳页（#402 复审）
+      await 块.getByRole("button", { name: /^来源/ }).click();
+      await page.getByText("客户来源是建客户时选的渠道或渠道触点，客户页上没有这一格，请找管理员处理", { exact: false }).waitFor();
       await 点("合同附件");
       await page.getByText("「合同附件」：要传文件，在「项目附件」的合同附件里传").waitFor();
       expect(errors).toEqual([]);
@@ -2680,14 +2687,15 @@ describe("设计语言 D4：进程卡、沟通、卡点", () => {
       const 点点 = page.getByRole("button", { name: "这条沟通的更多操作" });
       const 问 = page.getByRole("group", { name: "确认删除这条沟通" });
       const 焦点是点点 = () => page.evaluate(() => document.activeElement?.getAttribute("aria-label"));
-      // 开出确认条，再用键盘 Shift+Tab 进到条里的「取消」（键盘焦点在条里 = 停表）
+      // 开出确认条（焦点先在「取消」），再用键盘 Tab 到条里的「确认删除」（键盘焦点在条里 = 停表）
       const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu");
       await 点点.click();
       await 菜单.waitFor();
       await 菜单.getByText("删除").click();
       await 问.waitFor();
-      await page.keyboard.press("Shift+Tab");
+      await page.keyboard.press("Tab");
       expect(await 问.evaluate(e => e.contains(document.activeElement) && document.activeElement!.matches(":focus-visible"))).toBe(true);
+      expect(await 问.getByRole("button", { name: "确认删除" }).evaluate((b) => b === document.activeElement)).toBe(true);
       await page.waitForTimeout(4000);
       expect(await 问.count()).toBe(1);
       await page.keyboard.press("Escape");
@@ -2701,6 +2709,41 @@ describe("设计语言 D4：进程卡、沟通、卡点", () => {
       await page.mouse.move(2, 2);
       await 问.waitFor({ state: "detached", timeout: 4500 });
       await expect.poll(焦点是点点).toBe("这条沟通的更多操作");
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }, 30_000);
+
+  it("#402 复审：全程键盘 Tab 到 ⋮ → 回车 → 进菜单 → 方向键选「删除」→ 回车，只开出确认条（焦点在「取消」），等 4 秒还在，什么都没删", async () => {
+    const { page, errors } = await 覆盖(1280, { 可改沟通: true, 可删沟通: true, followUps: [{ id: "f1", type: "PHONE", content: "沟通内容", occurredAt: "2026-10-03T00:00:00.000Z", who: "组长甲", node: "生产备货", code: "FUL0001", 提醒: null, 版本: "v" }] });
+    try {
+      const 点点 = page.getByRole("button", { name: "这条沟通的更多操作" });
+      const 问 = page.getByRole("group", { name: "确认删除这条沟通" });
+      const 删了几次 = () => page.evaluate(() => (Reflect.get(window, "__删沟通") as unknown[] | undefined)?.length ?? 0);
+      // Tab 到 ⋮：先落在它前一个能聚焦的地方，再按一下 Tab
+      await 点点.focus();
+      await page.keyboard.press("Shift+Tab");
+      await page.keyboard.press("Tab");
+      expect(await 点点.evaluate((b) => b === document.activeElement && b.matches(":focus-visible"))).toBe(true);
+      await page.keyboard.press("Enter");
+      const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu");
+      await 菜单.waitFor();
+      // Tab 进菜单，方向键走到「删除」
+      await page.keyboard.press("Tab");
+      for (let i = 0; i < 6; i++) {
+        await page.keyboard.press("ArrowDown");
+        // rc-menu 下一帧才把焦点挪到高亮那一项
+        await page.waitForTimeout(100);
+        if ((await page.evaluate(() => document.activeElement?.textContent ?? "")) === "删除") break;
+      }
+      expect(await page.evaluate(() => document.activeElement?.closest(".ant-dropdown-menu-item-danger")?.textContent)).toBe("删除");
+      await page.keyboard.press("Enter");
+      await 问.waitFor();
+      expect(await 问.getByRole("button", { name: /取\s*消/ }).evaluate((b) => b === document.activeElement)).toBe(true);
+      expect(await 删了几次()).toBe(0);
+      await page.waitForTimeout(4000);
+      expect(await 问.count()).toBe(1);
+      expect(await 删了几次()).toBe(0);
+      expect(await page.locator("#follow-f1").count()).toBe(1);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }, 30_000);

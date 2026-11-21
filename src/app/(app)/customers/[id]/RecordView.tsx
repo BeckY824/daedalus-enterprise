@@ -290,19 +290,6 @@ export default function RecordView({
   const 页签集 = new Set(项目页签们 ?? []);
   const 时间线项目地址 = (id: string) => (页签集.has(id) ? 客户页项目地址(customer.id, id, "#project-follow") : 项目页地址(id));
   const [资料全开, set资料全开] = useState(false);
-  // 项目「完成节点」框里窗外项点「去客户页」带着 #field-xxx 来（11-03 A6-1）：没填的格收在「展开更多」里，先展开再滚到那一格
-  useEffect(() => {
-    const m = /^#field-(\w+)$/.exec(window.location.hash);
-    if (!m) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 地址栏的 hash 只有到了浏览器里才读得到，只在进页时跑一次
-    set资料全开(true);
-    const t = window.setTimeout(() => {
-      const 格 = document.querySelector<HTMLElement>(`[data-field="${m[1]}"]`);
-      格?.scrollIntoView({ block: "center", behavior: "smooth" });
-      格?.focus();
-    }, 80);
-    return () => window.clearTimeout(t);
-  }, []);
   /*
     外贸模版（2026-10-05 外贸客户建议）：签约就是订单——左栏「签约」那一节叫「订单」（订单号那几格 2026-10-29 随订单表删了）；
     不摆预计签约、推荐关系、渠道负责人；档案里多国家 / WhatsApp / 微信 / 邮箱 / 来源
@@ -563,6 +550,21 @@ export default function RecordView({
     const t = setTimeout(() => set就地话(null), 6000);
     return () => clearTimeout(t);
   }, [就地话]);
+  // 项目「完成节点」框里窗外项点「去客户页」带着 #field-xxx 来（11-03 A6-1）：没填的格收在「展开更多」里，先展开再滚到那一格；
+  // 这一页上找不到那一格（这一版客户页不摆、旧链接）就在页头下面说一句，不让人对着整页找（#402 复审）
+  useEffect(() => {
+    const m = /^#field-(\w+)$/.exec(window.location.hash);
+    if (!m) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 地址栏的 hash 只有到了浏览器里才读得到，只在进页时跑一次
+    set资料全开(true);
+    const t = window.setTimeout(() => {
+      const 格 = document.querySelector<HTMLElement>(`[data-field="${m[1]}"]`);
+      if (!格) return void set就地话({ 话: "这一页上没有要补的那一格，回项目页看缺项上写的在哪里填" });
+      格.scrollIntoView({ block: "center", behavior: "smooth" });
+      格.focus();
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, []);
   /** 速记框下面一行：没记上的原因、记上了顺带的提示（领取了 / 不算有效沟通） */
   const [速记话, set速记话] = useState<{ 话: string; 错?: boolean } | null>(null);
   /** 「加载更早的跟进」没成：原因写在按钮下面 */

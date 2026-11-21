@@ -64,7 +64,7 @@ test("有项目时在客户档案记沟通：「新建沟通」开框、关联�
   await 框.getByLabel("沟通内容").fill(内容);
   await 框.getByLabel("下一步计划").fill(`下一步：发报价${后缀}`);
   await 框.getByRole("button", { name: "3 天后" }).click();
-  // 项目那张记沟通框的提交键叫「记下」（11-15，原型 F-跟进-06），不叫「保存」
+  // 项目那张记沟通框的提交键：11-15 起叫「记下」，D4 · M7-b 起现状主题叫「保存」（换皮主题照旧「记下」）
   await 框.getByRole("button", { name: "保存", exact: true }).click();
   await expect(框).toBeHidden();
 

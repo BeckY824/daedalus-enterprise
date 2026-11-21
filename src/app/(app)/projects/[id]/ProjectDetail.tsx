@@ -456,9 +456,11 @@ function 格标签({ 新样, 名, 必填, 注 }: { 新样: boolean; 名: string;
   return <div style={旧标签样}>{名}{必填 && <span style={旧星样}> *</span>}{注 && <span style={旧注样}>（{注}）</span>}</div>;
 }
 /** 必填键 → 右栏就地改那一格的名字（ProjectInlineField 名），一样的不列 */
-const 右栏格名: Record<string, string> = { 项目级别: "级别", 主联系人: "联系人", 合同已生效: "合同状态", 已备货: "备货状态", 已签收: "物流状态", 预计成交日期: "预计成交" };
+const 右栏格名: Record<string, string> = { 项目级别: "级别", 主联系人: "联系人", 合同已生效: "合同状态", 已备货: "备货状态", 已签收: "物流状态", 预计成交日期: "预计成交", 项目所在地: "区域" };
 /** 缺项小块点「去客户」的几项落在客户资料哪一格（customers/[id] RecordView 的 data-field / #field-xxx） */
 const 客户资料格: Record<string, string> = { 国家: "addrCountry", 客户等级: "level", 来源: "source", 联系方式: "numbers", ...客户格 };
+/** 企业版「来源」缺项的就地说法：客户页上没有来源那一格，渠道 / 渠道触点是建客户时选的（CustomerForm 企业来源必填） */
+const 企业来源话 = "客户来源是建客户时选的渠道或渠道触点，客户页上没有这一格，请找管理员处理";
 const 无效原因前缀 = "无效原因：";
 
 // 规则 E：红只给已经过了的，当天橙，还早的不上色
@@ -900,6 +902,8 @@ export default function ProjectDetail({
         return;
       }
       if (去 === "线索验证" && p.线索验证) { set验证开着(true); return; }
+      // 企业版客户页没有「来源」那一格（客户来源 = 建客户时选的渠道 / 渠道触点），就地说，不跳页（#402 复审）
+      if (p.企业版 && 键 === "来源") return 说在哪(企业来源话);
       if (去 === "客户" && 客户资料格[键]) {
         const 找格 = () => document.querySelector<HTMLElement>(`.rec-rail [data-field="${客户资料格[键]}"]`);
         const 落 = (格: HTMLElement) => {
@@ -910,7 +914,7 @@ export default function ProjectDetail({
         if (嵌入) {
           const 格 = 找格();
           if (格) return 落(格);
-          const 展开 = document.querySelector<HTMLElement>('.rec-rail .rec-sec-more[aria-expanded="false"]');
+          const 展开 = document.querySelector<HTMLElement>('.rec-rail .rec-sec-more[aria-expanded="false"]:not(.rec-contact-rest-btn)');
           if (展开) {
             展开.click();
             window.setTimeout(() => { const g = 找格(); if (g) 落(g); else 说在哪(法.原因); }, 60);
@@ -1748,7 +1752,13 @@ export default function ProjectDetail({
                           // ⋮ 里「删除」前一道分隔线（D4 · M7-c），和上面的常用动作隔开
                           ...(p.可删沟通 ? [...(新样 && (卡点?.能发 || 能改这条(f)) ? [{ type: "divider" as const }] : []), { key: "delete", label: "删除", danger: true }] : []),
                         ],
-                        onClick: ({ key }) => (key === "blocker" ? set发卡点于(f.id) : key === "edit" ? set改沟通于(f) : set删问于(f.id)),
+                        // 键盘回车选中菜单项时 rc-menu 不拦回车的默认动作：不拦的话这一下回车会落到刚弹出来的确认条按钮上，直接删掉（#402 复审）
+                        onClick: ({ key, domEvent }) => {
+                          domEvent.preventDefault();
+                          if (key === "blocker") set发卡点于(f.id);
+                          else if (key === "edit") set改沟通于(f);
+                          else set删问于(f.id);
+                        },
                       }}
                     >
                       <Button type="text" size="small" icon={<MoreOutlined />} aria-label="这条沟通的更多操作" />
@@ -2867,7 +2877,10 @@ function useAutoCollapse(条: React.RefObject<HTMLDivElement | null>, 取消: ()
 
 // 名字要英文开头：hooks 规则只认大写开头的组件（下面 删沟通条 = 它）
 function FollowDeleteBand({ 忙, 取消, 删 }: { 忙: boolean; 取消: () => void; 删: () => void }) {
-  /** 收起（取消、Esc、到点自己收）后焦点还给这一条的 ⋮，不掉到 body（焦点原来在条里或已经掉了才还，不抢别处的） */
+  /**
+   * 弹出来焦点先落在「取消」（#402 复审）：多按一下回车只会收起，不会误删；要删得再 Tab 到「确认删除」。
+   * 收起（取消、Esc、到点自己收）后焦点还给这一条的 ⋮，不掉到 body（焦点原来在条里或已经掉了才还，不抢别处的）
+   */
   const 条 = useRef<HTMLDivElement>(null);
   const 收 = () => {
     const 行 = 条.current?.closest(".proj-follow-row");
@@ -2889,8 +2902,8 @@ function FollowDeleteBand({ 忙, 取消, 删 }: { 忙: boolean; 取消: () => vo
     >
       <span className="pd-del-band-t">删了进回收站 30 天，系统管理员或回收站副手能恢复</span>
       <span className="pd-del-band-a">
-        <Button size="small" onClick={收} disabled={忙}>取消</Button>
-        <Button size="small" type="primary" danger loading={忙} autoFocus onClick={删}>确认删除</Button>
+        <Button size="small" autoFocus onClick={收} disabled={忙}>取消</Button>
+        <Button size="small" type="primary" danger loading={忙} onClick={删}>确认删除</Button>
       </span>
     </div>
   );

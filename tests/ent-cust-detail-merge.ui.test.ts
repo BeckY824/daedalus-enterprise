@@ -126,7 +126,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 参 = { 项目改?: Record<string, unknown>; 八人?: boolean; 历史?: boolean; 皮?: string; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean };
+type 参 = { hash?: string; 项目改?: Record<string, unknown>; 八人?: boolean; 历史?: boolean; 皮?: string; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean };
 /** 右上角下拉（11-21 教练点评改版 PR1：「发起点评 ▾」「更多操作 ▾」；原 11-12「AI / 项目操作 / 客户操作」）：点开，返回菜单 */
 const 开菜单 = async (page: Page, 名: "更多操作" | "发起点评") => {
   await page.locator(".rec-head-acts").getByRole("button", { name: new RegExp(名) }).click();
@@ -150,7 +150,7 @@ async function 开(width: number, o: 参 = {}, height = 800) {
   const errors: string[] = [];
   page.on("pageerror", e => errors.push(e.message));
   await page.route("http://cust-merge.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
-  await page.goto("http://cust-merge.test/customers/a"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+  await page.goto("http://cust-merge.test/customers/a" + (o.hash ?? "")); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   if (o.皮) {
     await page.evaluate(k => document.documentElement.setAttribute("data-skin", k), o.皮);
     for (const f of ["src/app/skins/shared.css", `src/app/skins/${o.皮}.css`]) await page.addStyleTag({ path: path.resolve(f) });
@@ -1154,9 +1154,9 @@ it("[D3] 换皮主题（tech）不动：空态照旧 --text-faint、联系人照
   } finally { await page.close(); }
 });
 
-it("[D4 审查] 客户页项目区：缺项小块点了都有落点——右栏那一格、画像卡、线索验证框、新建沟通框；「国家」滚到左栏客户资料那一格", async () => {
-  const 还差 = ["项目级别", "需求", "线索验证结果", "国家", "本节点沟通"];
-  const { page, errors } = await 开(1366, { 项目改: { 带画像: true, phase: "线索", node: "潜客培育", 能改节点: false, 必填: { 配了: 还差, 还差 },
+it("[D4 审查] 客户页项目区：缺项小块点了都有落点——右栏那一格、画像卡、线索验证框、新建沟通框；「国家」滚到左栏客户资料那一格（联系人多到有「展开其余」也不点错）；企业版「来源」就地说", async () => {
+  const 还差 = ["项目级别", "需求", "线索验证结果", "国家", "来源", "本节点沟通"];
+  const { page, errors } = await 开(1366, { 八人: true, 项目改: { 带画像: true, phase: "线索", node: "潜客培育", 能改节点: false, 必填: { 配了: 还差, 还差 },
     线索验证: { 判定: null, 待: null, 无效原因: null, 复核结果: null, 最终结果: null, 终验: null, 初判即终判: false, 叫法: null, 我能: null, 痕: [] } } }, 900);
   try {
     const 块 = page.getByTestId("node-required-miss");
@@ -1180,6 +1180,26 @@ it("[D4 审查] 客户页项目区：缺项小块点了都有落点——右栏�
     // 国家：客户资料在同一页左栏，收在「展开没填的」里的先展开，焦点落到那一格
     await 点("国家");
     await expect.poll(() => page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.field ?? null)).toBe("addrCountry");
+    // 联系人「展开其余」没被当成资料的「展开没填的」点开（#402 复审）
+    expect(await page.locator(".rec-contact-rest-btn").getAttribute("aria-expanded")).toBe("false");
+    // 企业版客户页没有「来源」那一格：就地说在哪里填，不跳页
+    await 块.getByRole("button", { name: /^来源/ }).click();
+    await page.getByText("客户来源是建客户时选的渠道或渠道触点，客户页上没有这一格，请找管理员处理", { exact: false }).waitFor();
+    expect(await page.evaluate(() => Reflect.get(window, "__去") ?? null)).toBe(null);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
+}, 30_000);
+
+it("#402 复审：带 #field-xxx 进客户页，这一页上没有那一格时页头下面说一句；有那一格照旧焦点落过去、不说", async () => {
+  const { page, errors } = await 开(1366, { hash: "#field-nosuchfield" });
+  try {
+    await page.getByText("这一页上没有要补的那一格，回项目页看缺项上写的在哪里填").waitFor();
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+  const 有 = await 开(1366, { hash: "#field-addrCountry" });
+  try {
+    await expect.poll(() => 有.page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.field ?? null)).toBe("addrCountry");
+    expect(await 有.page.getByText("这一页上没有要补的那一格").count()).toBe(0);
+    expect(有.errors).toEqual([]);
+  } finally { await 有.page.close(); }
 }, 30_000);
