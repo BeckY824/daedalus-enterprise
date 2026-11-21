@@ -5512,7 +5512,7 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 
 /* M3-b（D11 / D20）：能改的格整行浅底 + 行尾一支笔（悬停 / 焦点出，触屏常显）；不能改的没有笔、不变底 */
 :root:is(:not([data-skin]), [data-skin="now"]) .rec-field[role="button"] { position: relative; padding-right: 24px; }
-:root:is(:not([data-skin]), [data-skin="now"]) .rec-field[role="button"] > .rec-field-pen { display: block; position: absolute; right: 8px; top: 10px; font-size: 12px; color: var(--text-muted); opacity: 0; transition: opacity var(--t-fast) var(--ease); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-field[role="button"] > .rec-field-pen { display: block; position: absolute; right: 8px; top: 10px; font-size: var(--fs-min); color: var(--text-muted); opacity: 0; transition: opacity var(--t-fast) var(--ease); }
 :root:is(:not([data-skin]), [data-skin="now"]) .rec-field[role="button"]:is(:hover, :focus-visible) > .rec-field-pen { opacity: 1; }
 :root:is(:not([data-skin]), [data-skin="now"]) .rec-field:not([role="button"], .rec-field-editing):hover { background: transparent; }
 :root:is(:not([data-skin]), [data-skin="now"]) .rec-field[role="button"]:focus-visible { outline: none; box-shadow: var(--focus-ring); }
