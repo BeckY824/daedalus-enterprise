@@ -15,7 +15,9 @@ const plugin: Plugin = { name: "customer-scroll-boundaries", setup(b) {
   stub(/(^|\/)InlineField$/, "export default function Inline(p){return <div className='rec-field' data-field={p.field}>{p.label}: {p.value}</div>}");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>\"/customers/x\";");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
-  stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|LinkedCustomers|NewProjectEntry|ContactLinks)$/, "export default function Empty(){return null}");
+  stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|LinkedCustomers|NewProjectEntry)$/, "export default function Empty(){return null}");
+  // 联系人组头和行经 ContactLinks 摆（D3 · 方案 A 的「⋯」在它里面）：桩照样把头和行摆出来，只是不给菜单
+  stub(/(^|\/)ContactLinks$/, "export default function L(p){return <>{p.头?.(null)}{p.children}</>}");
   stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({});export const ContactRemoveInline=()=>null;");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
   stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海,退回原因选项=async()=>[];");
@@ -230,7 +232,8 @@ it("10-31 改版 R7（16a 样板回六档）：标题 22、模块标题 15、值
     expect(await 色("--empty-fg")).toBe(灰);
     expect(await 色("--empty-fg")).not.toBe(浅);
     expect(await 样(".rec-tl-time")).toEqual({ 字: "13px", 色: 灰 });
-    expect(await 样(".rec-contact-p")).toEqual({ 字: "13px", 色: 灰 });
+    // D3 方案 A 起职务是联系人组里的一行（「职务」灰字 + 值），不再挤在名字后面
+    expect(await 样(".rec-contact-line .rec-contact-k")).toEqual({ 字: "13px", 色: 灰 });
     expect((await 样(".rec-tl-content")).字).toBe("14px");
     const 链 = ".rec-sec-t a, .rec-mod > .ant-card-head .ant-card-extra a";
     if (await page.locator(链).count()) expect(await 样(链)).toEqual({ 字: "14px", 色: 蓝 });

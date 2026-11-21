@@ -5473,3 +5473,108 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 :root:is(:not([data-skin]), [data-skin="now"]) .pane-sheet .pane-search { height: 40px; }
 :root:is(:not([data-skin]), [data-skin="now"]) .pane-sheet .roster-row { padding-block: 10px; }
 :root:is(:not([data-skin]), [data-skin="now"]) .pane-sheet .pane-rows { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+
+/* ---------- 客户资料、联系人、背调（D3 · 设计语言 11-21，规范 M3–M5）----------
+   外观规则一律只挂现状主题，换皮主题照原样（用户 11-21「换皮主题不动」）。
+   不带限定的只有几条结构规则：新元素（行尾笔、手机「变更记录」键、联系人组头右端操作、附件空格「＋ 添加」、新建联系人的规矩行、
+   挂靠就地表单的标签 / 报错、变更记录面板头、头像空名字的字色回退）不排就挤在一起或各主题都出；号码保护挪到号码后面要那一格能折行 */
+.rec-field-pen { display: none; }
+.rec-field-pen.anticon { display: none; } /* 压过 antd 图标自带的 display：换皮主题水合前也不露笔 */
+.rec-hist-btn.ant-btn { display: none; }
+@media (max-width: 767px) { .rec-hist-btn.ant-btn { display: inline-flex; height: auto; padding: 0 0 0 6px; font-size: var(--fs-note); vertical-align: baseline; } }
+.hist-sheet-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0 8px; }
+.hist-sheet .rec-hist-row { padding: 6px 0; border-top: 1px solid var(--line-soft); font-size: var(--fs-body); }
+.rec-contact-acts { display: inline-flex; align-items: center; flex: none; margin-left: auto; }
+.rec-contact-av.is-empty { color: var(--ink-soft); }
+.rec-contact-num { flex-wrap: wrap; align-items: center; gap: 2px 6px; }
+.rec-contact-kv { display: flex; flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.att-empty { display: inline-flex; align-items: center; gap: 6px; }
+.cf-rule { margin: -4px 0 12px; font-size: var(--fs-note); color: var(--text-muted); }
+.rec-contact-pick { display: grid; gap: 4px; }
+.rec-contact-fl { font-size: var(--fs-note); color: var(--text-muted); }
+.rec-contact-fl.is-req::before { content: "* "; color: var(--danger); }
+.rec-contact-err { font-size: var(--fs-note); color: var(--danger-text); }
+.cf-two-err { margin-top: 2px; font-size: var(--fs-note); color: var(--danger-text); }
+
+/* M3-a（D17）：号码、邮箱不打省略号。一个号码一整串不拆（文字是行内块，放得下就一行）；复制键跟在后面，同一行放不下就挪到下一行；
+   号码本身比整格还宽才在里面断（overflow-wrap: anywhere 兜底）。人名只在「、」处折，单个名字不拆 */
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-field-v.is-line:has(.copy-val) { white-space: normal; overflow: visible; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page :is(.rec-field-v, .rec-contact-v) .copy-val { display: inline; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page :is(.rec-field-v, .rec-contact-v) .copy-val-t { display: inline-block; max-width: 100%; vertical-align: top; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page :is(.rec-field-v, .rec-contact-v) .copy-val-b { position: relative; vertical-align: top; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-contact-num .rec-contact-v { white-space: normal; overflow: visible; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-names { white-space: normal; word-break: normal; overflow-wrap: normal; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-nm { display: inline-block; max-width: 100%; vertical-align: top; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 复制键点击区 28（--hit），触屏 44（--hit-touch）；上下、左边负外边距收回，行高不变；右边不收，键不出格 */
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .copy-val-b { width: var(--hit); height: var(--hit); margin: -3px 0 -3px 0; }
+@media (max-width: 767px), (pointer: coarse) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .rec-page .copy-val-b { width: var(--hit-touch); height: var(--hit-touch); margin: -11px 0; }
+}
+
+/* M3-b（D11 / D20）：能改的格整行浅底 + 行尾一支笔（悬停 / 焦点出，触屏常显）；不能改的没有笔、不变底 */
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-field[role="button"] { position: relative; padding-right: 24px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-field[role="button"] > .rec-field-pen { display: block; position: absolute; right: 8px; top: 10px; font-size: var(--fs-min); color: var(--text-muted); opacity: 0; transition: opacity var(--t-fast) var(--ease); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-field[role="button"]:is(:hover, :focus-visible) > .rec-field-pen { opacity: 1; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-field:not([role="button"], .rec-field-editing):hover { background: transparent; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-field[role="button"]:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+/* 带复制键的格（电话、邮箱、号码们）整行展开：名字一行（笔摆在这一行右端），号码下面独占整格宽——232 / 260 宽的左栏里
+   值那一列只有 109–137，13 位国际号会被拆开、复制键挤到第三行（PR #401 实操）。和备注（.is-multi）一个摆法，不给笔留右边 24 */
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page.ui-v2 .rec-field:has(.copy-val) { grid-template-columns: minmax(0, 1fr); gap: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page.ui-v2 .rec-field[role="button"]:has(.copy-val) { padding-right: 8px; }
+@media (hover: none) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .rec-field[role="button"] > .rec-field-pen { opacity: 1; }
+}
+/* M3-c（D12）：手机上「变更记录」底部面板，外观同名单抽屉（D2 · M2-c 那几条 .pane-sheet 已带限定） */
+:root:is(:not([data-skin]), [data-skin="now"]) .hist-sheet .rec-hist-t { color: var(--text-muted); font-size: var(--fs-note); font-variant-numeric: tabular-nums; }
+:root:is(:not([data-skin]), [data-skin="now"]) .hist-sheet .sheet-x.ant-btn { width: var(--hit-touch); height: var(--hit-touch); margin-right: -12px; }
+
+/* M4-a 方案 A（用户 11-21 选）：每人一组，组头「头像 24 · 名字 · 关键」一行，右端编辑和「⋯」常显（M4-c）；组间一条细线 */
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page.ui-v2 .rec-cg > .rec-contact-h { flex-wrap: nowrap; min-height: var(--hit); padding-left: 0; gap: 8px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page.ui-v2 .rec-cg > .rec-contact-h > .ant-avatar { position: static; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page.ui-v2 .rec-cg > .rec-contact-h > .rec-contact-n { flex: 0 1 auto; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-cg:hover { background: transparent; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-cg + .rec-cg,
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-cg + #contact-rest > .rec-cg:first-child { margin-top: 6px; padding-top: 10px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-cg + .rec-cg::before,
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-cg + #contact-rest > .rec-cg:first-child::before { content: ""; position: absolute; left: 8px; right: 8px; top: 0; height: 1px; background: var(--line-soft); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-contact-sub { margin: 12px 8px 0; padding-top: 10px; border-top: 1px solid var(--line-soft); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-contact-sub + .rec-cg { margin-top: 2px; padding-top: 6px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-contact-acts { gap: 0; margin-right: -4px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-contact-acts > .ant-btn,
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-contact-acts .rec-contact-menu.ant-btn { width: var(--hit); min-width: var(--hit); height: var(--hit); color: var(--text-muted); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-contact-acts .ant-btn:not(:disabled):hover { background: var(--row-hover); color: var(--ink); }
+@media (max-width: 767px), (pointer: coarse) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-contact-acts > .ant-btn,
+  :root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-contact-acts .rec-contact-menu.ant-btn { width: var(--hit-touch); min-width: var(--hit-touch); height: var(--hit-touch); margin-block: calc((var(--hit) - var(--hit-touch)) / 2); }
+}
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-contact-rest-btn.ant-btn { display: flex; margin: 8px 0 0; padding: 0 8px; height: var(--hit); }
+/* M4-b：名字没填「—」淡色常规字重，头像里的「—」同色（D1 实操遗留）；号码保护灰底 + 锁（绿只给「完成」，D10） */
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-contact-n.is-empty { color: var(--empty-fg); font-weight: 400; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-contact-av.is-empty { color: var(--empty-fg); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-tag.ant-tag.ant-tag.rec-contact-guard,
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-tag.ant-tag.ant-tag.rec-contact-guard.ant-tag-green { background: var(--tag-bg); color: var(--text-muted); border-color: transparent; }
+/* M4-c：附件空格「— ＋ 添加」小字键；挂靠就地表单的格子 32 高（--ctl-h） */
+:root:is(:not([data-skin]), [data-skin="now"]) .att-empty > .att-add.ant-btn { height: var(--hit); margin-block: -4px; padding: 0 4px; gap: 2px; font-size: var(--fs-note); color: var(--brand); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-contact-pick .ant-select { height: var(--ctl-h); }
+/* M4-d（D03 / D14）：新建联系人「姓名、联系方式至少填一项」放在表上头；两格一起标红 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cf-rule { color: var(--text-muted); }
+
+/* M5-a（D01 / D21 / D09）：空态字 muted、统一「还没有 X」；背调卡内容左右 16（原来 8，和资料格的字对齐）；
+   卡头动作同一款（图标 + 字，28 高，触屏 44 · --hit-touch，上下负外边距收回、卡头不变高）；左右只留 4、图标和字隔 2（规范 t-m4a），232 宽的左栏「客户联系人（8）」不被「＋ 新增」挤出省略号 */
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-empty { color: var(--text-muted); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page.ui-v2 .rec-rail-blocks .rec-research-card > .ant-card-body { padding: 12px 16px 16px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-research-card .cr-research-none { color: var(--text-muted); font-size: var(--fs-note); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-rail-blocks .rec-mod .ant-card-head-wrapper { gap: 4px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page.ui-v2 .rec-rail-blocks .rec-mod > .ant-card-head { padding-inline-end: 40px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page.ui-v2 .rec-rail-blocks > .proj-fold > .proj-fold-btn { right: 8px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-rail-blocks .rec-mod .ant-card-extra .ant-btn { height: var(--hit); padding-inline: 4px; gap: 2px; }
+@media (max-width: 767px), (pointer: coarse) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .rec-rail-blocks .rec-mod .ant-card-extra .ant-btn { height: var(--hit-touch); margin-block: calc((var(--hit) - var(--hit-touch)) / 2); padding-inline: 8px; }
+}
+
+/* 手机（单栏）：联系人整张卡挪到页头下面，排在项目区前（M0-2 / P-界面-14）；左栏这一格拆开，各卡直接排进单栏 */
+@container rec (max-width: 629px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .rec-page.ui-v2 > .rec.rec-cd > .rec-rail.rec-rail-blocks { display: contents; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rec-page.ui-v2 > .rec.rec-cd > .rec-rail-blocks > .proj-fold { margin-top: 0; min-width: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rec-page.ui-v2 > .rec.rec-cd > .rec-rail-blocks > #cust-contacts { order: -2; }
+}

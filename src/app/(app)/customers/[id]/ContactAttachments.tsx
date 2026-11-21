@@ -8,7 +8,9 @@
 import { 空值符 } from "@/lib/empty-value";
 import { useState } from "react";
 import { Button, Modal } from "antd";
+import { PlusOutlined } from "@ant-design/icons";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import { useIsNowSkin } from "@/lib/use-skin";
 import type { 附件分类 } from "@/lib/enterprise/customer-v2";
 
 /** 分类：企业版联系人附件的一格（名片 / 相册，2026-10-29）；不给 = 不分格（项目详情页那边照旧） */
@@ -21,12 +23,25 @@ type 入口参数 = { contactId: string; 名字: string; 起始个数: number; �
 export function ContactAttachmentsButton({ contactId, 名字, 起始个数, 只读, 分类 }: 入口参数) {
   const [开, set开] = useState(false);
   const [个数, set个数] = useState(起始个数);
+  const 新样 = useIsNowSkin();
+  const 添加叫法 = 分类 === "名片" ? "添加名片" : 分类 === "相册" ? "添加图片" : "添加名片或图片";
   if (只读 && 个数 === 0) return <span className="rec-field-empty">{空值符}</span>;
   return (
     <>
-      <Button type="link" size="small" style={{ padding: 0, height: "auto", fontSize: "inherit" }} onClick={() => set开(true)} aria-label={`${名字} 的附件`}>
-        {个数 ? `${个数} 张` : 分类 === "名片" ? "添加名片" : 分类 === "相册" ? "添加图片" : "添加名片或图片"}
-      </Button>
+      {个数 || !新样 ? (
+        /* 换皮主题照旧一句蓝字「添加名片」（用户 11-21「主题不动」） */
+        <Button type="link" size="small" style={{ padding: 0, height: "auto", fontSize: "inherit" }} onClick={() => set开(true)} aria-label={`${名字} 的附件`}>
+          {个数 ? `${个数} 张` : 添加叫法}
+        </Button>
+      ) : (
+        /* 设计语言 D3 · M4-c：空着写「—」，后面一颗小「＋ 添加」（原来整格是一句蓝字「添加名片」，一张卡四个蓝链接） */
+        <span className="att-empty">
+          <span className="rec-field-empty">{空值符}</span>
+          <Button type="text" size="small" className="att-add" icon={<PlusOutlined />} onClick={() => set开(true)} aria-label={`${名字} 的附件`} title={添加叫法}>
+            添加
+          </Button>
+        </span>
+      )}
       <Modal
         open={开}
         onCancel={() => set开(false)}

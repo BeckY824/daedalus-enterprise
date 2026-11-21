@@ -254,7 +254,17 @@ export async function 改客户挡(me: 谁, id?: string | null): Promise<string 
   if (!id) return 只读角色(me, org) ? 只读话of(me, org) : null;
   const c = await defaultClient.customer.findUnique({ where: { id }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
   if (!c) return null; // 不在了：后面照原样报「已删除」
-  if (c.pool) return 公海先领话;
+  return 改客户挡of(me, { salesOwnerId: c.salesOwnerId, 在公海: !!c.pool }, org);
+}
+
+/**
+ * 改客户挡 的判断本身（已有客户，不查库）：客户详情页拿现成的负责人、公海标记和组织算「资料格给不给点」，
+ * 和服务端 patchCustomer / patchCustomerRegion / saveCustomerNumbers 走同一段（PR #401：不为它多查库）。不是企业版 null
+ */
+export function 改客户挡of(me: 谁, c: { salesOwnerId: string | null; 在公海: boolean }, org: Awaited<ReturnType<typeof 权限组织>>): string | null {
+  if (!企业版()) return null;
+  if (!org || 没设业务角色(org, me.id)) return 没业务角色话;
+  if (c.在公海) return 公海先领话;
   return 能改客户(me, { salesOwnerId: c.salesOwnerId, 在公海: false }, org) ? null : 只有负责人改客户话;
 }
 

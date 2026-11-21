@@ -15,7 +15,9 @@ const plugin: Plugin = { name: "customer-modules", setup(b) {
   stub(/(^|\/)InlineField$/, "import Real from '@/app/(app)/customers/[id]/InlineField.tsx';export default function Inline(p){return p.field==='name'?<Real {...p}/>:<div className='rec-field' data-field={p.field}>{p.label}: {p.value}</div>}");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>\"/customers/x\";");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
-  stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|NewProjectEntry|ContactLinks|ResearchRun|ResearchPerson)$/, "export default function Empty(){return null}");
+  stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|NewProjectEntry|ResearchRun|ResearchPerson)$/, "export default function Empty(){return null}");
+  // 联系人组头和行经 ContactLinks 摆（D3 · 方案 A 的「⋯」在它里面）：桩照样把头和行摆出来，只是不给菜单
+  stub(/(^|\/)ContactLinks$/, "export default function L(p){return <>{p.头?.(null)}{p.children}</>}");
   stub(/research\/ResearchEntry$/, "export const useResearchEntry=()=>false;");
   stub(/research\/actions$/, "export const 最近背调=async()=>null,背调价目=async()=>({可用:false,原因:'桩'});");
   stub(/^\.\/pick$/, "export const 搜客户=async()=>[];");
@@ -253,16 +255,15 @@ it("1024 / 1280 / 1366：资料卡第一行全称、第二行简称、没有公�
   }
 });
 
-it("开了 AI：客户背调也是一张能收的卡，状态标签在卡里", async () => {
+it("开了 AI：客户背调也是一张能收的卡；没背调过不挂「无」小标签（D3 · M5-a），内容左右 16", async () => {
   const { page, errors } = await open(1366, 800, true);
   try {
     const 名们 = (await 模块们(page)).map(m => m.名);
     expect(名们).toContain("客户背调");
     const 壳 = page.locator(".proj-fold", { has: page.getByRole("button", { name: "收起客户背调" }) });
     expect(await 壳.locator(".ant-card-head-title").textContent()).toBe("客户背调");
-    expect(await 壳.locator(".rec-research-tag").textContent()).toBe("无");
-    // dt.research：结果、发起 / 重跑都在卡身里，标签不再是点开弹框的按钮
-    expect(await 壳.locator(".rec-research-tag").getAttribute("role")).toBeNull();
+    expect(await 壳.locator(".rec-research-tag").count()).toBe(0);
+    expect(await 壳.locator(".rec-mod > .ant-card-body").evaluate(el => getComputedStyle(el).paddingLeft)).toBe("16px");
     expect(await 壳.locator(".rec-research-body").count()).toBe(1);
     expect(await page.locator(".ant-modal").filter({ hasText: "客户背调" }).count()).toBe(0);
     expect(errors).toEqual([]);

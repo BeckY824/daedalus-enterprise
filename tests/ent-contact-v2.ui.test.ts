@@ -58,11 +58,21 @@ beforeAll(async () => {
       <div data-t='自家的'><ContactLinks customerId='k0' 只读={false} c={{...人,id:'c2',另挂:[{id:'k2',name:'看得到的',看得到:true},{id:'k3',name:'看不到的',看得到:false}]}}/></div>
       <div data-t='只读'><ContactLinks customerId='k0' 只读 c={{...人,id:'c3',另挂:[{id:'k2',name:'看得到的',看得到:true}]}}/></div>
     </div>));
+    // D3 · M4-c：客户详情里组头右端一颗「⋯」，挂到别的客户 / 换主客户 / 改说明 / 解除挂靠都收进去，不再一排蓝字
+    const 头=(名)=>(更多)=><div className='h'>{名}{更多}</div>;
+    window.__挂靠头=()=>root.render(壳(<div style={{width:300}}>
+      <div data-t='挂来的'><ContactLinks customerId='k0' 只读={false} 头={头('王五')} c={{...人,挂靠:{linkId:'L1',note:'采购对接',主客户Id:'k1',主客户名:'主客户甲',主客户看得到:true,能改:true}}}><div>号码行</div></ContactLinks></div>
+      <div data-t='自家的'><ContactLinks customerId='k0' 只读={false} 头={头('王五二')} c={{...人,id:'c2'}}><div>号码行二</div></ContactLinks></div>
+      <div data-t='只读'><ContactLinks customerId='k0' 只读 头={头('王五三')} c={{...人,id:'c3'}}><div>号码行三</div></ContactLinks></div>
+    </div>));
+    window.__新建=()=>root.render(壳(<ContactForm open onClose={()=>{}} onSaved={()=>{window.__存好=1}} customerId='k0' record={null} 号码种类={种类}
+      存法={async(x)=>{(window.__存=window.__存||[]).push(x);return {ok:true}}}/>));
+    window.__编无名=()=>root.render(壳(<ContactForm open onClose={()=>{}} onSaved={()=>{}} customerId='k0' record={{...人,name:''}} 号码种类={种类}/>));
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-async function open(画: "__表单" | "__挂靠" | "__职务" | "__职务老" | "__非企业" | "__回收站" | "__联系人页", width = 1024) {
+async function open(画: "__表单" | "__挂靠" | "__挂靠头" | "__新建" | "__编无名" | "__职务" | "__职务老" | "__非企业" | "__回收站" | "__联系人页", width = 1024) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   await page.route("http://cv2.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://cv2.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
@@ -260,7 +270,7 @@ it("挂靠一段：挂来的摆主客户和说明、能解除不能换；自家�
     await 自家.getByRole("button", { name: "挂到别的客户" }).click();
     await 自家.getByRole("combobox").click();
     await page.locator(".ant-select-item-option", { hasText: "别的客户" }).click();
-    await 自家.getByLabel("职位 / 关系说明").fill("顾问");
+    await 自家.getByLabel("在那位客户那边的职务").fill("顾问");
     await 自家.getByRole("button", { name: /^挂\s?上$/ }).click();
     await page.waitForFunction(() => (window as unknown as { __挂: unknown[] }).__挂.length === 2);
     expect(await page.evaluate(() => (window as unknown as { __挂: unknown[] }).__挂[1])).toEqual(["挂", "c2", "k9", "顾问"]);
@@ -322,4 +332,70 @@ it("号码在回收站里的客户上（审核 11-18 新建入口 P2-6）：没�
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
+});
+
+it("D3 · M4-c 组头「⋯」：挂到别的客户 / 换主客户收进菜单，不摆蓝字；没挑客户点「挂上」标红说原因；挂来的改到这位名下 / 解除挂靠原地确认；只读不给「⋯」", async () => {
+  const page = await open("__挂靠头");
+  try {
+    const 自家 = page.locator("[data-t='自家的']");
+    expect(await 自家.innerText()).toContain("号码行二");
+    expect(await 自家.getByRole("button", { name: "挂到别的客户" }).count()).toBe(0);
+    await 自家.getByRole("button", { name: "联系人 王五 的更多操作" }).click();
+    const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden)");
+    expect((await 菜单.getByRole("menuitem").allInnerTexts()).map(t => t.trim())).toEqual(["挂到别的客户", "换主客户"]);
+    await 菜单.getByRole("menuitem", { name: "挂到别的客户" }).click();
+    // 就地表单：带标签、格子 32 高；「挂上」一直能点，没挑点了标红
+    expect(await 自家.getByText("挂到哪位客户").count()).toBe(1);
+    expect(Math.round((await 自家.locator(".rec-contact-pick .ant-select").boundingBox())!.height)).toBe(32);
+    await 自家.getByRole("button", { name: /^挂\s?上$/ }).click();
+    expect(await 自家.getByRole("alert").innerText()).toBe("先挑一位客户");
+    expect(await 自家.locator(".ant-select-status-error").count()).toBe(1);
+    expect(await page.evaluate(() => (window as unknown as { __挂?: unknown[] }).__挂 ?? [])).toEqual([]);
+    await 自家.getByRole("combobox").click();
+    await page.locator(".ant-select-item-option", { hasText: "别的客户" }).click();
+    expect(await 自家.getByRole("alert").count()).toBe(0);
+    await 自家.getByLabel("在那位客户那边的职务").fill("顾问");
+    await 自家.getByRole("button", { name: /^挂\s?上$/ }).click();
+    await page.waitForFunction(() => ((window as unknown as { __挂?: unknown[] }).__挂 ?? []).length === 1);
+    expect(await page.evaluate(() => (window as unknown as { __挂: unknown[] }).__挂[0])).toEqual(["挂", "c2", "k9", "顾问"]);
+
+    const 挂来 = page.locator("[data-t='挂来的']");
+    await 挂来.getByRole("button", { name: "联系人 王五 的更多操作" }).click();
+    const 菜单2 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden)");
+    expect((await 菜单2.getByRole("menuitem").allInnerTexts()).map(t => t.trim())).toEqual(["改说明", "改到这位名下", "解除挂靠"]);
+    await 菜单2.getByRole("menuitem", { name: "解除挂靠" }).click();
+    await 挂来.getByRole("group").getByRole("button", { name: /^解\s?除$/ }).click();
+    await page.waitForFunction(() => (window as unknown as { __挂: unknown[] }).__挂.length === 2);
+    expect(await page.evaluate(() => (window as unknown as { __挂: unknown[] }).__挂[1])).toEqual(["解除", "L1"]);
+
+    const 只读 = page.locator("[data-t='只读']");
+    expect(await 只读.getByRole("button").count()).toBe(0);
+  } finally { await page.close(); }
+});
+
+it("D3 · M4-d 新建联系人：标题「新建联系人」、提交键「保存」一直能点；「姓名、联系方式至少填一项」在表上头；两格都空点保存两格一起红、不交；编辑没名字的标题不带「· —」", async () => {
+  const page = await open("__新建");
+  try {
+    const 框 = page.getByRole("dialog");
+    expect(await 框.locator(".ant-modal-title").innerText()).toBe("新建联系人");
+    const 规矩 = 框.locator(".cf-rule");
+    expect(await 规矩.innerText()).toBe("姓名、联系方式至少填一项");
+    const 表 = await 框.locator("form").boundingBox();
+    expect((await 规矩.boundingBox())!.y).toBeLessThan(表!.y + 40);
+    const 存 = 框.getByRole("button", { name: /^保\s?存$/ });
+    expect(await 存.isDisabled()).toBe(false);
+    await 存.click();
+    await 框.locator(".cf-two-err").waitFor();
+    expect(await 框.locator(".cf-two-err").innerText()).toBe("联系人姓名和联系方式至少填一项");
+    expect(await 框.locator(".ant-form-item-has-error").filter({ has: page.getByLabel("姓名") }).count()).toBe(1);
+    expect(await 框.locator(".ant-input-status-error, .ant-input-affix-wrapper-status-error").count()).toBeGreaterThanOrEqual(1);
+    expect(await page.evaluate(() => (window as unknown as { __存?: unknown[] }).__存 ?? [])).toEqual([]);
+    // 填了姓名红就退
+    await 框.getByLabel("姓名").fill("李四");
+    expect(await 框.locator(".cf-two-err").count()).toBe(0);
+  } finally { await page.close(); }
+  const p2 = await open("__编无名");
+  try {
+    expect(await p2.getByRole("dialog").locator(".ant-modal-title").innerText()).toBe("编辑联系人");
+  } finally { await p2.close(); }
 });

@@ -18,7 +18,9 @@ const plugin: Plugin = { name: "cust-detail-merge", setup(b) {
   stub(/(^|\/)InlineField$/, "export default function Inline(p){return <div className='rec-field' data-field={p.field}>{p.label}: {p.value}</div>}");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(u){window.__去=u},replace(u){window.__换=u},prefetch(){}});export const usePathname=()=>\"/customers/a\";export const useSearchParams=()=>new URLSearchParams(window.__sp||'');");
   stub(/^next\/link$/, "export default function L({prefetch,scroll,replace,...p}){return <a {...p}/>}");
-  stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|NewProjectEntry|ContactLinks|ResearchRun|ResearchPerson)$/, "export default function Empty(){return null}");
+  stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|NewProjectEntry|ResearchRun|ResearchPerson)$/, "export default function Empty(){return null}");
+  // 联系人组头和行经 ContactLinks 摆（D3 · 方案 A 的「⋯」在它里面）：桩照样把头和行摆出来，只是不给菜单
+  stub(/(^|\/)ContactLinks$/, "export default function L(p){return <>{p.头?.(null)}{p.children}</>}");
   stub(/research\/ResearchEntry$/, "export const useResearchEntry=()=>false;");
   stub(/research\/actions$/, "export const 最近背调=async()=>null,背调价目=async()=>({可用:false,原因:'桩'});");
   stub(/^\.\/pick$|customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[];");
@@ -59,6 +61,9 @@ beforeAll(async () => {
     const root=createRoot(document.getElementById('root'));
     const 人=(id,name,isPrimary)=>({id,name,position:'采购',phone:'1381200000'+id.slice(1),email:null,wechat:null,isPrimary,remark:null,updatedAt:'2026-01-01T00:00:00.000Z'});
     const contacts=[人('c1','王总',true),人('c2','李工',false),人('c3','陈经理',false)];
+    // D3：8 位联系人（超长名字、没填名字、超长号码）
+    const 八人=[{...人('c1','王总',true),phone:'+86 138-0013-8000 转 1234'},人('c2','李工',false),人('c3','陈经理',false),人('c4','超长联系人名字'.repeat(4),false),{...人('c5','',false),position:null},人('c6','赵六',false),人('c7','钱七',false),{...人('c8','孙八',false),phone:null}];
+    const 换负责人=[{at:'2026-09-01T02:00:00.000Z',操作人:'管理员',从:'欧阳某某某某',到:'同事乙',kind:'转让'},{at:'2026-10-01T02:00:00.000Z',操作人:'管理员',从:'同事乙',到:'QA',kind:'转让'}];
     const 客户沟通=Array.from({length:5},(_,i)=>({id:'cf'+i,type:i===0?'OTHER':'PHONE',method:null,title:'',content:'客户全部里的沟通'+i,status:'已完成',duration:null,occurredAt:'2026-10-2'+i+'T02:00:00.000Z',dueAt:null,participants:null,sourceText:null,ownerName:'QA',contactName:null,contactPosition:null,contactId:null,opportunityId:null,updatedAt:'2026-10-20T02:00:00.000Z',项目:{id:i%2?'p2':'p1',名:i%2?'项目二':'项目一'}}));
     const 关联=(主,本)=>({客户们:[],联系人们:本.map(([id,角色,立场])=>({contactId:id,名:id,姓名:id,customerId:'a',角色,立场,主:id===主,看得到:true})),选项:{身份:[],角色:[],立场:[]},上限:30});
     const 项目=(id,name,主,本,x={})=>({id,name,remark:null,amount:860000,currency:'CNY',customer:{id:'a',name:'客户A',school:null},contact:主?{id:主,name:主,position:null}:null,
@@ -92,7 +97,7 @@ beforeAll(async () => {
       if(当前&&o.点评!==undefined) 当前.教练主题={们:[],能发:o.点评,填写人:{id:'qa',name:'QA',身份:'销售教练'},负责人:{id:'u2',name:'同事乙'},项目名:当前.p.name,当前节点:'方案报价',待回复数:0,冻结:false};
       flushSync(()=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><div className='shell rail-mini'>{innerWidth>=768&&<nav className='rail' aria-label='主导航'/>}{innerWidth>=1214&&名单}<main className='main app-content' style={{padding:'22px 26px'}}><div>
         <CustomerDetail customer={{id:'a',extra:null,name:o.公司名||'客户A',phone:'13800138000',school:null,grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z',pool:null}}
-          contacts={contacts} contracts={[]} tasks={[{id:'t1',title:'周五带合同上门',dueAt:'2026-11-13T02:00:00.000Z',done:false}]} plan={null}
+          contacts={o.八人?八人:contacts} {...(o.历史?{换负责人记录:换负责人}:{})} contracts={[]} tasks={[{id:'t1',title:'周五带合同上门',dueAt:'2026-11-13T02:00:00.000Z',done:false}]} plan={null}
           users={[{id:'qa',name:'QA',email:'qa@x'},{id:'u2',name:'同事乙',email:'b@x'}]} channels={[]} aiEnabled={false} followUps={客户沟通} followUpsHasMore={false}
           项目们={签.map(t=>({id:t.id,name:t.name,phase:'商机',node:t.节点,result:null,pooledAt:null,amount:0,currency:'CNY'}))} 参与项目们={[]} 关联们={[]} 旺旺们={[]}
           跟进去处={[{id:'p1',名:'项目一',主:true,结束:false,说明:null,下一步:null,下一步文字:null}]} 待办计划={[]} 能放公海 新建项目={{节点们:['线索验证'],要下一步:false}}
@@ -119,7 +124,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 参 = { 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean };
+type 参 = { 八人?: boolean; 历史?: boolean; 皮?: string; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean };
 /** 右上角下拉（11-21 教练点评改版 PR1：「发起点评 ▾」「更多操作 ▾」；原 11-12「AI / 项目操作 / 客户操作」）：点开，返回菜单 */
 const 开菜单 = async (page: Page, 名: "更多操作" | "发起点评") => {
   await page.locator(".rec-head-acts").getByRole("button", { name: new RegExp(名) }).click();
@@ -143,7 +148,12 @@ async function 开(width: number, o: 参 = {}, height = 800) {
   const errors: string[] = [];
   page.on("pageerror", e => errors.push(e.message));
   await page.route("http://cust-merge.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
-  await page.goto("http://cust-merge.test/customers/a"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
+  await page.goto("http://cust-merge.test/customers/a"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+  if (o.皮) {
+    await page.evaluate(k => document.documentElement.setAttribute("data-skin", k), o.皮);
+    for (const f of ["src/app/skins/shared.css", `src/app/skins/${o.皮}.css`]) await page.addStyleTag({ path: path.resolve(f) });
+  }
+  await page.addScriptTag({ content: bundle });
   await 画(page, o);
   return { page, errors };
 }
@@ -160,8 +170,8 @@ it("页签切换后左栏「关键」跟着换：本项目主联系人排最前�
   try {
     expect(await 联系人们(page)).toEqual(["王总*", "李工", "陈经理"]);
     expect(await page.locator(".rec-contact-sub").innerText()).toBe("这位客户的其他联系人");
-    // 11-12 起左栏第一位联系人摊开、其余收在手风琴里：先全摊开再量
-    while (await page.locator('.rec-contact-tog[aria-expanded="false"]').count()) await page.locator('.rec-contact-tog[aria-expanded="false"]').first().click();
+    // D3 起左栏先摊开前 3 位、其余收在「展开其余 N 位」后面：先全摊开再量
+    if (await page.locator('.rec-contact-rest-btn[aria-expanded="false"]').count()) await page.locator('.rec-contact-rest-btn[aria-expanded="false"]').click();
     // 李工在本项目里是使用方、支持
     expect(await page.locator(".rec-contact", { hasText: "李工" }).getByTestId("contact-project-role").innerText()).toMatch(/本项目\s*使用方 · 支持/);
     // 页签是到客户详情 ?project= 的链接，当前那个标着
@@ -170,7 +180,7 @@ it("页签切换后左栏「关键」跟着换：本项目主联系人排最前�
     // 切到项目二（服务端按 ?project=p2 重画）：关键换成陈经理、排最前；王总变成其他联系人，不再是关键
     await 画(page, { 选: "p2" });
     expect(await 联系人们(page)).toEqual(["陈经理*", "王总", "李工"]);
-    while (await page.locator('.rec-contact-tog[aria-expanded="false"]').count()) await page.locator('.rec-contact-tog[aria-expanded="false"]').first().click();
+    if (await page.locator('.rec-contact-rest-btn[aria-expanded="false"]').count()) await page.locator('.rec-contact-rest-btn[aria-expanded="false"]').click();
     expect(await page.locator(".rec-contact", { hasText: "李工" }).getByTestId("contact-project-role").count()).toBe(0);
     expect(await page.locator(".cd-pj-pills").getByRole("tab", { selected: true }).getAttribute("href")).toBe("/customers/a?project=p2");
     expect(await page.locator(".rec-zone").getAttribute("data-project")).toBe("p2");
@@ -579,19 +589,20 @@ it("客户详情三栏叫法：左栏客户资料 / 客户联系人 / 关联组�
   } finally { await page.close(); }
 });
 
-it("手机单栏：客户名和客户按钮 → 卡头项目切换 → 阶段 → 沟通 → 待办 → 卡点 → 项目资料 → 客户资料；不横滚", async () => {
+it("手机单栏：客户名和客户按钮 → 客户联系人（D3 · M0-2 挪到页头下）→ 卡头项目切换 → 阶段 → 沟通 → 待办 → 卡点 → 项目资料 → 客户资料；不横滚", async () => {
   const { page, errors } = await 开(375, {}, 900);
   try {
     await expect.poll(() => page.locator(".rec.rec-cd").evaluate(el => el.classList.contains("rec-1col"))).toBe(true);
     const 上 = (s: string) => page.locator(s).first().evaluate(el => el.getBoundingClientRect().top);
     const 顺序 = [
       ".rec-head",
+      "#cust-contacts",
       ".cd-mid > .ant-card",
       "#project-follow",
       '.cd-mid > .proj-fold:has(.split-caret[aria-label="收起所有待办"])',
       "#project-blockers",
       ".cd-side",
-      ".rec-rail",
+      ".rec-rail > .proj-fold:not(#cust-contacts)",
     ];
     const 高们 = [];
     for (const s of 顺序) 高们.push(await 上(s));
@@ -1008,6 +1019,135 @@ it("[D2 · M1-c] 页头按钮悬停只铺浅底（--row-hover）、框 --field-l
     expect(await 钮.evaluate(b => getComputedStyle(b).backgroundColor)).toBe(await 底("--hover"));
     await page.mouse.up();
     await page.keyboard.press("Escape");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+/* D3 · 设计语言 11-21（客户详情规范 M3–M5）：真 CustomerDetail 上量联系人（方案 A）、变更记录、空态、卡头动作 */
+const 取色 = (page: Page, v: string, 属 = "color") => page.evaluate(([v, 属]) => { const s = document.createElement("span"); s.style.setProperty(属, `var(${v})`); document.body.append(s); const c = getComputedStyle(s).getPropertyValue(属); s.remove(); return c; }, [v, 属]);
+const 展开其余 = async (page: Page) => { if (await page.locator('.rec-contact-rest-btn[aria-expanded="false"]').count()) await page.locator('.rec-contact-rest-btn[aria-expanded="false"]').click(); };
+
+it("[D3 · M4-a 方案 A] 四个宽度 × 8 位联系人：先摆前 3 位（关键第一、浅蓝「关键」），其余「展开其余 5 位」；号码一个字不截、不横滚；编辑 /「⋯」常显；组间一条细线", async () => {
+  for (const w of [390, 1024, 1280, 1366]) {
+    const { page, errors } = await 开(w, { 八人: true }, 900);
+    try {
+      expect(await 联系人们(page), `${w}`).toEqual(["王总*", "李工", "陈经理"]);
+      const 关键 = page.locator(".rec-cg").first().locator(".tag-key");
+      expect(await 关键.evaluate(e => getComputedStyle(e).backgroundColor), `${w}`).toBe(await 取色(page, "--brand-bg", "background-color"));
+      const 钮 = page.getByRole("button", { name: "展开其余 5 位" });
+      expect(await 钮.getAttribute("aria-expanded")).toBe("false");
+      await 钮.click();
+      expect(await page.locator(".rec-cg").count(), `${w}`).toBe(8);
+      const 量 = await page.evaluate(() => {
+        const 卡 = document.querySelector("#cust-contacts")!.getBoundingClientRect();
+        return {
+          号码截了: [...document.querySelectorAll("#cust-contacts .copy-val-t")].filter(e => e.scrollWidth > e.clientWidth + 1).map(e => e.textContent),
+          出卡: [...document.querySelectorAll("#cust-contacts .rec-cg *")].filter(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.right > 卡.right + 0.5; }).map(e => e.className),
+          横滚: document.documentElement.scrollWidth > innerWidth + 1,
+          操作看不见: [...document.querySelectorAll("#cust-contacts .rec-contact-acts")].filter(e => getComputedStyle(e).opacity !== "1" || getComputedStyle(e).visibility === "hidden").length,
+          线: [...document.querySelectorAll("#cust-contacts .rec-cg")].map(e => getComputedStyle(e, "::before").height),
+          长号在: document.querySelector("#cust-contacts .rec-cg")!.textContent!.includes("+86 138-0013-8000 转 1234"),
+          // 号码保护一枚一行（不在「：」后折开），放不下整枚挪到下一行
+          保护最高: Math.max(...[...document.querySelectorAll("#cust-contacts .rec-contact-guard")].map(t => Math.round(t.getBoundingClientRect().height))),
+        };
+      });
+      expect(量, `${w}`).toMatchObject({ 号码截了: [], 出卡: [], 横滚: false, 操作看不见: 0, 长号在: true });
+      expect(量.保护最高, `${w} 号码保护一行`).toBeLessThanOrEqual(22);
+      // 卡头「客户联系人（8）」不被「＋ 新增」挤出省略号（232 宽的左栏也放得下）
+      expect(await page.locator("#cust-contacts .ant-card-head-title").evaluate(e => e.scrollWidth <= e.clientWidth + 1), `${w} 卡头标题`).toBe(true);
+      // 第一位没线；第二、三位有；「这位客户的其他联系人」小标题后面那位由小标题自己的线隔开
+      expect(量.线.slice(0, 2), `${w}`).toEqual(["auto", "1px"]);
+      // 编辑、「⋯」点击区 28，手机 44（--hit-touch，PR #401 审查）
+      const 编辑 = await page.locator(".rec-cg").first().locator(".rec-contact-edit").boundingBox();
+      expect(Math.round(编辑!.height), `${w}`).toBe(w < 768 ? 44 : 28);
+      await page.getByRole("button", { name: "收起其余 5 位" }).click();
+      expect(await page.locator(".rec-cg").count()).toBe(3);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+}, 90_000);
+
+it("[D3 · M4-b] 没填名字的联系人：「—」淡色（--empty-fg）常规字重，头像里的「—」同色；超长名字一行省略、title 给全名；号码保护灰底 + 锁、在号码后面", async () => {
+  const { page, errors } = await 开(1366, { 八人: true });
+  try {
+    await 展开其余(page);
+    const 空名 = page.locator(".rec-contact-n.is-empty");
+    expect(await 空名.innerText()).toBe("—");
+    const 淡 = await 取色(page, "--empty-fg");
+    expect(await 空名.evaluate(e => [getComputedStyle(e).color, getComputedStyle(e).fontWeight])).toEqual([淡, "400"]);
+    expect(await page.locator(".rec-contact-av.is-empty").evaluate(e => getComputedStyle(e).color)).toBe(淡);
+    const 长 = page.locator(".rec-contact-n", { hasText: "超长联系人名字超长" });
+    expect(await 长.evaluate(e => [getComputedStyle(e).textOverflow, e.scrollWidth > e.clientWidth, e.getAttribute("title")])).toEqual(["ellipsis", true, "超长联系人名字".repeat(4)]);
+    // 号码保护：跟在第一个号码后面那一格里，灰底（--tag-bg）、带锁
+    const 保护 = page.locator(".rec-cg").first().locator(".rec-contact-guard");
+    expect(await 保护.evaluate(e => !!e.closest(".rec-contact-num") && !!e.querySelector(".anticon-lock"))).toBe(true);
+    expect(await 保护.evaluate(e => getComputedStyle(e).backgroundColor)).toBe(await 取色(page, "--tag-bg", "background-color"));
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("[D3 · 手机] 390：联系人整张卡挪到页头下面、项目区前面；卡里的东西不出屏、不横滚", async () => {
+  const { page, errors } = await 开(390, { 八人: true }, 900);
+  try {
+    const [头, 联, 项] = await Promise.all([page.locator(".rec-head").boundingBox(), page.locator("#cust-contacts").boundingBox(), page.locator(".cd-mid > .ant-card").first().boundingBox()]);
+    expect(联!.y).toBeGreaterThan(头!.y + 头!.height - 1);
+    expect(联!.y + 联!.height).toBeLessThanOrEqual(项!.y + 1);
+    expect(联!.x + 联!.width).toBeLessThanOrEqual(390);
+    // 客户资料卡照旧在项目区后面
+    const 资料 = await page.locator(".rec-rail > .proj-fold:not(#cust-contacts)").first().boundingBox();
+    expect(资料!.y).toBeGreaterThan(项!.y);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("[D3 · M3-a / M3-c] 历史负责人：人名只在「、」处折、单个名字不拆；手机点「变更记录」开底部面板看每次谁换的，× 关；电脑上不摆这颗键（悬停看）", async () => {
+  const { page, errors } = await 开(390, { 历史: true }, 900);
+  try {
+    const 格 = page.locator(".rec-names");
+    expect(await 格.locator(".rec-nm").allInnerTexts()).toEqual(["同事乙", "欧阳某某某某"]);
+    expect(await 格.locator(".rec-nm").evaluateAll((ns: HTMLElement[]) => ns.map(n => getComputedStyle(n).whiteSpace))).toEqual(["nowrap", "nowrap"]);
+    await 格.getByRole("button", { name: "变更记录" }).click();
+    const 面板 = page.locator(".hist-sheet .ant-drawer-content-wrapper");
+    await 面板.waitFor();
+    expect(await 面板.locator(".rec-hist-row").count()).toBe(2);
+    expect(await 面板.innerText()).toContain("把负责人从 欧阳某某某某 换成 同事乙");
+    expect(await 面板.locator(".sheet-grab").count()).toBe(1);
+    const 关 = 面板.getByRole("button", { name: "关闭负责人变更记录" });
+    expect(Math.round((await 关.boundingBox())!.width)).toBe(44);
+    await 关.click();
+    await expect.poll(() => page.locator(".hist-sheet .ant-drawer-content-wrapper").evaluate(e => getComputedStyle(e).display !== "none" && e.getBoundingClientRect().top < innerHeight - 1).catch(() => false)).toBe(false);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+  const 电脑 = await 开(1366, { 历史: true });
+  try {
+    expect(await 电脑.page.locator(".rec-names .rec-hist-btn").evaluate(e => getComputedStyle(e).display)).toBe("none");
+  } finally { await 电脑.page.close(); }
+});
+
+it("[D3 · M5-a] 空态字 --text-muted、句式「还没有 X」；左栏卡头动作同一款（图标 + 字，28 高，手机 44）", async () => {
+  for (const w of [1366, 390]) {
+    const { page, errors } = await 开(w, {}, 900);
+    try {
+      const 空 = page.locator(".rec-rail .rec-empty").first();
+      expect(await 空.innerText()).toMatch(/^还没有/);
+      expect(await 空.evaluate(e => getComputedStyle(e).color)).toBe(await 取色(page, "--text-muted"));
+      const 钮们 = await page.locator(".rec-rail .rec-mod .ant-card-extra .ant-btn").evaluateAll((bs: HTMLElement[]) => bs.map(b => [b.innerText.trim(), Math.round(b.getBoundingClientRect().height), !!b.querySelector(".anticon")]));
+      expect(钮们.length, `${w}`).toBeGreaterThan(0);
+      for (const [字, 高, 有图标] of 钮们) expect([字 !== "", 高, 有图标], `${w} ${字}`).toEqual([true, w < 768 ? 44 : 28, true]);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+it("[D3] 换皮主题（tech）不动：空态照旧 --text-faint、联系人照旧第一位摊开 + 其余手风琴（没有组、没有细线）、复制键 20", async () => {
+  const { page, errors } = await 开(1366, { 八人: true, 皮: "tech" });
+  try {
+    expect(await page.locator(".rec-rail .rec-empty").first().evaluate(e => getComputedStyle(e).color)).toBe(await 取色(page, "--text-faint"));
+    // 结构按主题分开渲染（lib/use-skin.ts）：换皮主题不出 D3 的「每人一组」
+    expect(await page.locator(".rec-cg").count()).toBe(0);
+    expect(await page.locator(".rec-contact-fold").count()).toBe(7);
+    expect(Math.round((await page.locator(".rec-contact .copy-val-b").first().boundingBox())!.width)).toBe(20);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

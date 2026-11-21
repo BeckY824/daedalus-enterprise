@@ -183,7 +183,8 @@ describe("D1 · 设计语言 token 和基础控件", () => {
   it("D2（客户详情骨架、页头、名单）那段规则都带现状主题限定；不带限定的只有两条结构规则（名单「名字 + 时间」行、底部抽屉把手）", () => {
     const 起 = 全.indexOf(".roster-l1 { display: flex;");
     expect(起, "没找到 D2 那段").toBeGreaterThan(0);
-    const 段 = 全.slice(起);
+    const 止 = 全.indexOf(".rec-field-pen { display: none; }");
+    const 段 = 全.slice(起, 止 > 起 ? 止 : undefined);
     const 选择器们 = [...段.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => m[1].trim().replace(/\s+/g, " "));
     expect(选择器们.length).toBeGreaterThan(30);
     const 结构 = [".roster-l1", ".roster-l1 > .roster-n", ".pane-sheet .sheet-grab", ".pane-sheet .sheet-top"];
@@ -191,6 +192,25 @@ describe("D1 · 设计语言 token 和基础控件", () => {
     expect(不带).toEqual(结构);
     // 规范里的几样都在这段、都带限定：当前行浅蓝 + 左 2px、计数 --count-fg、手机名字两行、底部抽屉圆角、中右各自滚、底部留 --ai-safe
     for (const 片 of [".rec-head > :is(.rec-head-sp, .rcd-grow) { display: none; }", "background: var(--brand-bg)", "width: 2px", "color: var(--count-fg)", "-webkit-line-clamp: 2", "var(--r-pop) var(--r-pop) 0 0", "grid-row: 3", "var(--ai-safe)", "font-size: var(--fs-min); color: var(--text-muted)"]) {
+      expect(段, 片).toContain(片);
+    }
+  });
+
+  it("D3（客户资料、联系人、背调）那段规则都带现状主题限定；不带限定的只有列出来的结构规则", () => {
+    const 起 = 全.indexOf(".rec-field-pen { display: none; }");
+    expect(起, "没找到 D3 那段").toBeGreaterThan(0);
+    const 段 = 全.slice(起);
+    // 一条规则里逗号分开的几个选择器各自都要带限定（括号里的逗号不算）
+    const 选择器们 = [...段.matchAll(/([^{}]+)\{([^{}]*)\}/g)].flatMap((m) => m[1].trim().replace(/\s+/g, " ").split(/,(?![^()]*\))\s*/));
+    expect(选择器们.length).toBeGreaterThan(40);
+    const 结构 = [
+      ".rec-field-pen", ".rec-field-pen.anticon", ".rec-hist-btn.ant-btn", ".rec-hist-btn.ant-btn", ".hist-sheet-h", ".hist-sheet .rec-hist-row", ".rec-contact-acts", ".rec-contact-av.is-empty",
+      ".rec-contact-num", ".rec-contact-kv", ".att-empty", ".cf-rule", ".rec-contact-pick", ".rec-contact-fl", ".rec-contact-fl.is-req::before", ".rec-contact-err", ".cf-two-err",
+    ];
+    const 不带 = 选择器们.filter((x) => !x.startsWith(现状));
+    expect(不带).toEqual(结构);
+    // 结构规则只排位置，不上颜色——颜色只有回退（头像空名字照 main 的 --ink-soft）和本来就全站一样的提示 / 报错色
+    for (const 片 of ["color: var(--empty-fg)", "var(--hit)", "var(--hit-touch)", "order: -2", "display: contents", "white-space: normal", "opacity: 1", "border-top: 1px solid var(--line-soft)", "background: var(--line-soft)", "color: var(--text-muted)"]) {
       expect(段, 片).toContain(片);
     }
   });
