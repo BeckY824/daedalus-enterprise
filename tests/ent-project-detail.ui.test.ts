@@ -2306,7 +2306,7 @@ it("dt.fold：点过收起 / 展开才放高度过渡（首屏不动）；收着
   } finally { await page.close(); }
 });
 
-it("教练主题（11-17）：没关的钉在沟通卡身最上面、在沟通记录前；卡头有「发起主题」；1024 / 1280 / 1366 卡头不横滚、按钮点得中", async () => {
+it("教练主题（11-17）：没关的钉在沟通卡身最上面、在沟通记录前；独立项目页卡头有「发起点评 ▾」（11-21 教练点评改版 PR1，原「发起主题」）；1024 / 1280 / 1366 卡头不横滚、按钮点得中", async () => {
   for (const w of [1024, 1280, 1366]) {
     const { page, errors } = await open(true, w);
     try {
@@ -2321,6 +2321,7 @@ it("教练主题（11-17）：没关的钉在沟通卡身最上面、在沟通�
       expect(序).toEqual({ 在里面: true, 在前: true });
       const 钮 = page.getByTestId("coach-topic-new");
       expect(await 钮.count()).toBe(1);
+      expect((await 钮.innerText()).replace(/\s+/g, "")).toBe("发起点评");
       const 卡头 = await 钮.evaluate((el) => {
         const head = el.closest(".ant-card-head") as HTMLElement;
         const r = el.getBoundingClientRect();

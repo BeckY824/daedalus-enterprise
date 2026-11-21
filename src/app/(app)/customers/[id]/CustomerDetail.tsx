@@ -12,10 +12,10 @@ import type { RecordProps, 项目联系人 } from "./types";
  * 两边要互相递东西（客户全部沟通、待办卡给项目区；当前项目的联系人主次给左栏），在这一层接起来
  */
 export default function CustomerDetail({ 项目数据: 项目区, ...记录 }: RecordProps & { 项目数据: 项目区数据 | null }) {
-  // 右上角「项目操作 ▾」点了哪项 → 嵌入版 ProjectDetail 挂在这里的处理函数（开框、确认都还是它的）
+  // 右上角「更多操作 ▾」里项目那几项点了哪项 → 嵌入版 ProjectDetail 挂在这里的处理函数（开框、确认都还是它的）
   const 动作口 = useRef<((key: 项目动作键) => void) | null>(null);
   const 挂动作 = useCallback((做: ((key: 项目动作键) => void) | null) => { 动作口.current = 做; }, []);
-  // 项目区正在提交（领取、退回公海…）：右上角「项目操作 ▾」里那几项跟着灰，和项目页头按钮忙时变灰一样，不是点了没反应
+  // 项目区正在提交（领取、退回公海…）：右上角「更多操作 ▾」里项目那几项跟着灰，和项目页头按钮忙时变灰一样，不是点了没反应
   const [项目忙, set项目忙] = useState(false);
   if (!项目区) return <RecordView {...记录} />;
   const p = 项目区.当前?.p;
@@ -27,6 +27,8 @@ export default function CustomerDetail({ 项目数据: 项目区, ...记录 }: R
       }
     : null;
   const 当前项目菜单 = 项目区.当前 ? { 名: 项目区.当前.p.name, 项们: 项目菜单项们(项目区.当前) } : null;
+  // 右上角「发起点评 ▾」（教练点评改版 PR1）：对当前页签的项目发，能不能发照教练主题那份（服务端算好的 能发）
+  const 当前项目点评 = 项目区.当前 ? { 数据: 项目区.当前.教练主题 ?? null, projectId: 项目区.当前.p.id } : null;
   return (
     <RecordView
       {...记录}
@@ -34,6 +36,7 @@ export default function CustomerDetail({ 项目数据: 项目区, ...记录 }: R
       项目联系人={主次}
       项目页签们={项目区.页签们.map((t) => t.id)}
       当前项目菜单={当前项目菜单}
+      当前项目点评={当前项目点评}
       项目动作口={动作口}
       项目忙={项目忙}
       项目区={(槽) => <ProjectZone 数据={项目区} 槽={槽} 挂动作={挂动作} 报忙={set项目忙} />}

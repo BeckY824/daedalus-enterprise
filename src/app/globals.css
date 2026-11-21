@@ -4424,11 +4424,16 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
    RecordView 有项目区时 .rec 挂 .rec-cd，只有两格：.rec-rail（客户：基本资料、联系人、关联客户、背调）+ .rec-zone（ProjectDetail 嵌入版）。
    左栏约 260，正文窄（1280 开着名单）收到 232；项目区里 中栏自适应 + 右栏 300 / 244，再窄右栏落到中栏下面。全走容器查询，不加视口断点 */
 .rec-head-acts { display: flex; align-items: center; gap: var(--s2); flex: none; }
-/* 11-12：右上角只剩「AI / 项目操作 / 客户操作」，客户名再长也和它们同一行——名字一行省略（悬停 title 看全），不把按钮挤到下一行。
+/* 11-12：右上角只剩「AI / 项目操作 / 客户操作」（11-21 教练点评改版 PR1 起是「发起点评 ▾ / 更多操作 ▾」），客户名再长也和它们同一行——名字一行省略（悬停 title 看全），不把按钮挤到下一行。
    窄到手机那档照旧允许换行（名字至少留八个字宽） */
 @media (min-width: 768px) {
   .rec-head:has(> .rec-head-acts) { flex-wrap: nowrap; }
   .rec-head:has(> .rec-head-acts) > .rec-head-id { flex: 0 1 auto; min-width: 8em; }
+}
+/* 11-21 教练点评改版 PR1（方案 §2 手机 375）：名字一行，下面一行「发起点评 ▾」「更多操作 ▾」两颗各占一半；只有一颗就占满这一行 */
+@media (max-width: 767px) {
+  .rec-head > .rec-head-acts { flex: 1 1 100%; min-width: 0; }
+  .rec-head > .rec-head-acts > .ant-btn { flex: 1 1 0; min-width: 0; }
 }
 .rec-page.ui-v2 > .rec.rec-cd { grid-template-columns: 260px minmax(0, 1fr); grid-template-rows: none; gap: 14px; }
 .rec-page.ui-v2 > .rec.rec-cd > .rec-rail:first-child { grid-column: auto; grid-row: auto; }
@@ -4464,8 +4469,9 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .rec-zone > .cd-alert { margin-bottom: 12px; }
 .cd-notice { display: grid; gap: 12px; min-width: 0; }
 .cd-notice > .ant-alert { margin-bottom: 0 !important; }
-/* 右上角「项目操作 ▾」第一行：灰字「当前项目：名字」，不可点；名字太长一行省略、悬停看全 */
+/* 右上角「更多操作 ▾」「发起点评 ▾」的小标题（antd 菜单分组标题）：灰字「项目 · 当前：名字」「客户」「当前项目：名字（节点）」，不可点；名字太长一行省略、悬停看全 */
 .rec-head-menu .rec-menu-cur { cursor: default !important; }
+.rec-head-menu .ant-dropdown-menu-item-group-title { padding: 6px 12px 2px; }
 /* 菜单项两行（project-menu.tsx 两行）：上面名字，下面一行淡色小字说明 */
 .menu-2l { line-height: 1.4; padding: 2px 0; max-width: 280px; white-space: normal; }
 .menu-2l-note { font-size: var(--dt-aux, 12px); color: var(--text-muted); }

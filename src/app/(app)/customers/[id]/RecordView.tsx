@@ -55,13 +55,14 @@ import InlineField from "./InlineField";
 import CustomerNumbers from "./CustomerNumbers";
 import RegionInlineField from "./RegionInlineField";
 import AiPanel from "./AiPanel";
-import { 打开AI浮窗, 登记智能总结 } from "@/lib/ai-float";
+import { 登记智能总结 } from "@/lib/ai-float";
 import LinkedCustomers from "./LinkedCustomers";
 import { FoldSplit, ProjectFold, 模块钮色, type 连体主钮, type 连体色 } from "../../projects/[id]/ProjectFold";
 import { 客户详情左栏, 客户详情待办 } from "../../projects/[id]/card-names";
 import { 沟通都不能记话 } from "@/lib/project/follow-needs-project-text";
 import NewProjectEntry from "./NewProjectEntry";
-import { 两行, 项目忙说法 } from "../../projects/[id]/project-menu";
+import { 两行, 更多操作菜单 } from "../../projects/[id]/project-menu";
+import { StartReviewButton } from "../../projects/[id]/CoachTopics";
 import { 客户页摆法, 级别选项, 企业级别, 拼地址, 地址叫法, 简称上限 } from "@/lib/enterprise/customer-v2";
 import LevelLetter from "@/components/LevelLetter";
 import StarButton from "./StarButton";
@@ -219,6 +220,7 @@ export default function RecordView({
   三态留痕 = null,
   留痕放左栏 = false,
   当前项目菜单 = null,
+  当前项目点评 = null,
   项目动作口 = null,
   项目忙 = false,
 }: RecordProps) {
@@ -773,34 +775,29 @@ export default function RecordView({
   const 能转让 = 去项目跟进 && !只读 && 能转让客户 && !customer.pool && 转让候选.length > 0;
   const 能退回公海 = 去项目跟进 && !只读 && !独自一人(users) && 能放公海 && !customer.pool;
   const 开客户转让 = () => set转让开(true);
-  /** 右上角「客户操作 ▾」（11-12 用户）：客户转让、客户退回公海，给不给照原来两颗按钮 */
+  /** 「更多操作 ▾」里客户那一组（原「客户操作 ▾」，11-12 用户）：客户转让、客户退回公海，给不给照原来两颗按钮 */
   const 客户操作项: NonNullable<MenuProps["items"]> = [
-    ...(能转让 ? [{ key: "cust-transfer", label: <span title="客户换负责人，名下项目一起走">客户转让</span>, onClick: 开客户转让 }] : []),
+    ...(能转让 ? [{ key: "cust-transfer", label: 两行("客户转让", "客户换负责人，名下项目一起走"), onClick: 开客户转让 }] : []),
     ...(能退回公海 ? [{ key: "cust-pool", label: <span title="客户和你自己的项目一起进公海">客户退回公海</span>, onClick: () => void 公海动作("放进") }] : []),
   ];
   /**
-   * 右上角「项目操作 ▾」（11-12 用户）：只在项目区（客户详情合并）里有。第一行灰字「当前项目：名字」，再是新建项目、当前项目的几项，
-   * 删除项目放最后、危险色、上面一条线。灰着的项下面一行小字写原因（和项目页头灰按钮悬停那句一样）。没有当前项目只剩「新建项目」
+   * 「更多操作 ▾」里项目那一组（原「项目操作 ▾」，11-12 用户）：只在项目区（客户详情合并）里有。小标题「项目 · 当前：名字」，再是新建项目、当前项目的几项；
+   * 删除项目不在这组，单独放整个菜单最后（见 更多操作项）。灰着的项下面一行小字写原因（和项目页头灰按钮悬停那句一样）。没有当前项目小标题只写「项目」、只剩「新建项目」
    */
   /* 客户三态状态条（C10）：只在沉睡 / 待回收 / 暂缓回收中时服务端才给；三态关着、活跃时什么都不摆。
      有项目区时交给项目区摆（中栏宽、进程卡正上方），没有就照旧在客户名下面通栏 */
   const 提醒条 = 三态条 ? <TriStateBar 条={三态条} customerId={customer.id} 开客户转让={能转让 ? 开客户转让 : null} /> : null;
   const 项目菜单项们 = 项目区 ? 当前项目菜单?.项们 ?? [] : [];
   const 点项目项 = (key: (typeof 项目菜单项们)[number]["key"]) => 项目动作口?.current?.(key);
-  const 项目操作项: NonNullable<MenuProps["items"]> = !项目区 || (!能建项目 && 项目菜单项们.length === 0) ? [] : [
-    ...(当前项目菜单 && 项目菜单项们.length > 0
-      ? [{ key: "cur", disabled: true, className: "rec-menu-cur", label: <span className="rec-menu-cur-t" title={当前项目菜单.名}>当前项目：{当前项目菜单.名}</span> }]
-      : []),
-    ...(能建项目 ? [{ key: "new", label: "新建项目", onClick: 开建项目 }] : []),
-    ...项目菜单项们.filter((x) => x.key !== "delete").map((x) => {
-      const 灰 = x.灰 ?? (项目忙 ? 项目忙说法 : undefined);
-      return { key: x.key, disabled: !!灰, label: 灰 ? 两行(x.字, 灰) : <span title={x.注}>{x.字}</span>, onClick: () => 点项目项(x.key) };
-    }),
-    ...项目菜单项们.filter((x) => x.key === "delete").flatMap((x) => [
-      { type: "divider" as const },
-      { key: x.key, danger: true, disabled: 项目忙, label: 项目忙 ? 两行(x.字, 项目忙说法) : x.字, onClick: () => 点项目项(x.key) },
-    ]),
-  ];
+  const 更多操作项 = 更多操作菜单({
+    项目: !项目区 ? null : {
+      当前名: 当前项目菜单 && 项目菜单项们.length > 0 ? 当前项目菜单.名 : null,
+      能建: 能建项目, 开建: 开建项目, 项们: 项目菜单项们, 忙: 项目忙, 点: 点项目项,
+    },
+    客户: 客户操作项,
+  });
+  /** 右上角「发起点评 ▾」（教练点评改版 PR1，11-21）：只在项目区（客户详情合并）里、对当前页签的项目能发才摆 */
+  const 摆发起点评 = !!(项目区 && 当前项目点评?.数据?.能发);
   /** 「管理联系人」框里列谁：和联系人卡上露编辑 / 删除的是同一拨（见 联系人操作） */
   const 可管联系人 = 只读 ? [] : contacts.filter((c) => !c.挂靠 || c.挂靠.能改);
   /** 先关框、再开下一个（表单、确认框），不叠两层（同项目详情） */
@@ -1179,21 +1176,18 @@ export default function RecordView({
           </div>
         </div>
         <span style={{ flex: 1 }} />
-        {/* 两层排版（11-12 用户：「右上角只保存三个按钮：AI，项目操作，客户操作」）：AI 点开抽屉；
-            「项目操作 ▾」= 新建项目 + 当前项目的领取 / 项目转让 / 项目退回公海 / 删除项目；「客户操作 ▾」= 客户转让 / 客户退回公海。
-            每项给不给、灰不灰和原来那几颗按钮同一套判断；一项都没有的那颗不摆 */}
-        {去项目跟进 && ((项目区 && aiEnabled) || 项目操作项.length > 0 || 客户操作项.length > 0) && (
+        {/* 教练点评改版 PR1（11-21，原 11-12「AI / 项目操作 / 客户操作」三颗）：右端从左到右「发起点评 ▾」「更多操作 ▾」，「更多操作」永远在最右。
+            「发起点评 ▾」= 写点评（原沟通卡头「发起主题」那只框）/ 录音点评（还没开放，灰着）；能发的人才摆（P-教练-11/12/13）。
+            「更多操作 ▾」= 原「项目操作」+「客户操作」：项目一组、客户一组、删除项目单独放最后；每项给不给、灰不灰、确认流程和原来同一套判断，一项都没有整颗不摆。
+            原来的「AI」按钮去掉：电脑上 AI 从右下角浮标、⌘J 进，浮窗在客户页空屏有「总结这位客户」（开下面那只原 AI 抽屉）；
+            手机没有浮窗，浮标点开的铺满屏 AiDock 也摆「总结这位客户」（components/AiDock.tsx），智能总结不丢入口。
+            手机（< 768）：名字一行，下面两颗各占一半（globals.css .rec-head-acts） */}
+        {去项目跟进 && (摆发起点评 || 更多操作项.length > 0) && (
           <span className="rec-head-acts">
-            {/* dt.ai（P-界面-39）：不开抽屉，叫壳上的 AI 浮窗出来，左上带「客户 · 名字」；没有浮窗（没登 AI 等）才照旧开抽屉 */}
-            {项目区 && aiEnabled && <Button icon={<AiOutlined />} onClick={() => { if (!打开AI浮窗()) setAI抽屉开着(true); }}>AI</Button>}
-            {项目操作项.length > 0 && (
-              <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items: 项目操作项, className: "rec-head-menu" }}>
-                <Button>项目操作 <DownOutlined /></Button>
-              </Dropdown>
-            )}
-            {客户操作项.length > 0 && (
-              <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items: 客户操作项, className: "rec-head-menu" }}>
-                <Button>客户操作 <DownOutlined /></Button>
+            {摆发起点评 && 当前项目点评 && <StartReviewButton 数据={当前项目点评.数据} projectId={当前项目点评.projectId} />}
+            {更多操作项.length > 0 && (
+              <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items: 更多操作项, className: "rec-head-menu" }}>
+                <Button data-testid="rec-more-ops">更多操作 <DownOutlined /></Button>
               </Dropdown>
             )}
           </span>
@@ -1236,6 +1230,7 @@ export default function RecordView({
       {/*
         企业版页头按钮（10-31 改版 R6 → 10-31 会议 U-客户-03 精简 → 11-12 客户详情合并第 2 批 → 11-12 用户「右上角只保存三个按钮」）：
         客户名这一行右端只留「AI」「项目操作 ▾」「客户操作 ▾」，原来的客户转让 / 退回公海、项目转让 / 退回公海 / 删除、「＋ 新建项目」都收进两个菜单。
+        → 11-21 教练点评改版 PR1：改成「发起点评 ▾」「更多操作 ▾」（两个菜单合成一个），AI 按钮去掉，见上面页头那段。
         编辑资料、添加 / 管理联系人、删除客户、新建待办都不摆在这排：资料就地改（没权限的人改不了，M-权限-10），
         「新建沟通」在沟通记录卡头，「新建待办」在待办卡头，删除客户属权限限制不再给入口。原来名字下面单独那一排（.rec-acts）去掉
       */}

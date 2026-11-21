@@ -5,7 +5,8 @@ import { chromium, type Browser, type Page } from "playwright";
 import { 补全动作桩 } from "./helpers/action-stubs";
 /* 11-12 客户详情合并第 2 批（定稿 UI 客户详情-定稿UI-20261112.html）：客户和项目合成一页。
    真 CustomerDetail（RecordView + ProjectZone + 嵌入版 ProjectDetail）+ globals.css，只桩掉服务端动作。钉的是：
-   页签切换后左栏「关键」跟着换；项目各动作收进右上角「项目操作 ▾」、客户的进「客户操作 ▾」（11-12 用户）；页签行一行不换行（1024 / 1280 / 1366，超长项目名、超长公司名）；提醒条在中栏进程卡正上方；
+   页签切换后左栏「关键」跟着换；项目各动作、客户的动作都收进右上角「更多操作 ▾」（11-12 用户两颗「项目操作 / 客户操作」，11-21 教练点评改版 PR1 合成一颗、分组）；
+   能发点评的人右上角多一颗「发起点评 ▾」（写点评 / 录音点评灰着），按角色摆；页签行一行不换行（1024 / 1280 / 1366，超长项目名、超长公司名）；提醒条在中栏进程卡正上方；
    同事项目只给带锁个数；空状态；没项目时关键退回客户级；沟通「本项目 / 这位客户全部」；只读没有写入口；手机单栏顺序 */
 let browser: Browser, bundle: string;
 const 空跑 = "async()=>({ok:true})";
@@ -87,13 +88,15 @@ beforeAll(async () => {
       if(当前&&o.只读) 当前.p={...当前.p,能记沟通:false,能放公海:false,能转让:false,能改节点:false,能删:false,关联:当前.p.关联};
       if(当前&&o.删) 当前.p={...当前.p,能删:true};
       if(当前&&o.领不了) 当前.p={...当前.p,能领取:false,领取不给:'你是原负责人，不能领回'};
+      // 教练点评改版 PR1：当前项目的教练主题（能发 = 服务端按 P-教练-11/12/13 算好的），按角色给；只读管理员看得到主题但不能发
+      if(当前&&o.点评!==undefined) 当前.教练主题={们:[],能发:o.点评,填写人:{id:'qa',name:'QA',身份:'销售教练'},负责人:{id:'u2',name:'同事乙'},项目名:当前.p.name,当前节点:'方案报价',待回复数:0,冻结:false};
       flushSync(()=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><div className='shell rail-mini'>{innerWidth>=768&&<nav className='rail' aria-label='主导航'/>}{innerWidth>=1214&&名单}<main className='main app-content' style={{padding:'22px 26px'}}><div>
         <CustomerDetail customer={{id:'a',extra:null,name:o.公司名||'客户A',phone:'13800138000',school:null,grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z',pool:null}}
           contacts={contacts} contracts={[]} tasks={[{id:'t1',title:'周五带合同上门',dueAt:'2026-11-13T02:00:00.000Z',done:false}]} plan={null}
           users={[{id:'qa',name:'QA',email:'qa@x'},{id:'u2',name:'同事乙',email:'b@x'}]} channels={[]} aiEnabled={false} followUps={客户沟通} followUpsHasMore={false}
           项目们={签.map(t=>({id:t.id,name:t.name,phase:'商机',node:t.节点,result:null,pooledAt:null,amount:0,currency:'CNY'}))} 参与项目们={[]} 关联们={[]} 旺旺们={[]}
           跟进去处={[{id:'p1',名:'项目一',主:true,结束:false,说明:null,下一步:null,下一步文字:null}]} 待办计划={[]} 能放公海 新建项目={{节点们:['线索验证'],要下一步:false}}
-          只读={o.只读?'全':false}
+          只读={o.只读?'全':false} {...(o.不能转?{能转让客户:false}:{})} {...(o.不能放?{能放公海:false}:{})}
           三态条={o.提醒?{状态:'沉睡',文字:'满 90 天没有有效沟通，也可以用右上角「客户操作」转让或退回公海',悬停:'满 90 天没有有效沟通',旁注:null,按钮们:[{动作:'继续持有',字:'我还在跟',说明:'顺延 30 天',要理由:false,主:true}]}:null}
           项目数据={{customerId:'a',页签们:签,锁数:o.锁数??0,当前}}
           {...(o.号码?{号码种类:[{名:'手机',kind:'phone',active:true},{名:'座机',kind:'landline',active:true},{名:'WhatsApp',kind:'whatsapp',active:true}],客户号码们:[{kind:'landline',value:'010-66001234'},{kind:'whatsapp',value:'+44 20 7946 0958'}]}:{})}/>
@@ -116,17 +119,25 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 参 = { 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean };
-/** 11-12 用户「右上角只保存三个按钮：AI，项目操作，客户操作」：点开某个下拉，返回菜单 */
-const 开菜单 = async (page: Page, 名: "项目操作" | "客户操作") => {
+type 参 = { 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean };
+/** 右上角下拉（11-21 教练点评改版 PR1：「发起点评 ▾」「更多操作 ▾」；原 11-12「AI / 项目操作 / 客户操作」）：点开，返回菜单 */
+const 开菜单 = async (page: Page, 名: "更多操作" | "发起点评") => {
   await page.locator(".rec-head-acts").getByRole("button", { name: new RegExp(名) }).click();
   const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) ul.rec-head-menu").filter({ has: page.locator("li") }).last();
   await 菜单.waitFor();
   return 菜单;
 };
-/** 菜单里的项：文字（灰着的带 ⊘ 前缀），分隔线写成「—」 */
-const 菜单项们 = (菜单: import("playwright").Locator) => 菜单.evaluate((ul) => ([...ul.children] as HTMLElement[]).map(l =>
-  l.classList.contains("ant-dropdown-menu-item-divider") ? "—" : `${l.getAttribute("aria-disabled") === "true" ? "⊘" : ""}${l.classList.contains("ant-dropdown-menu-item-danger") ? "!" : ""}${l.innerText.replace(/\s+/g, " ").trim()}`));
+/** 菜单里的项：文字（灰着的带 ⊘ 前缀、危险色带 !），分隔线写成「—」，分组小标题写成「#标题」、组里的项接着往下排 */
+const 菜单项们 = (菜单: import("playwright").Locator) => 菜单.evaluate((ul) => {
+  const 项 = (l: HTMLElement) => `${l.getAttribute("aria-disabled") === "true" ? "⊘" : ""}${l.classList.contains("ant-dropdown-menu-item-danger") ? "!" : ""}${l.innerText.replace(/\s+/g, " ").trim()}`;
+  return ([...ul.children] as HTMLElement[]).flatMap(l =>
+    l.classList.contains("ant-dropdown-menu-item-divider") ? ["—"]
+      : l.classList.contains("ant-dropdown-menu-item-group")
+        ? [`#${(l.querySelector(".ant-dropdown-menu-item-group-title") as HTMLElement).innerText.trim()}`, ...([...l.querySelectorAll(":scope > ul > li")] as HTMLElement[]).map(项)]
+        : [项(l)]);
+});
+/** 页头右端那几颗按钮的字 */
+const 头按钮 = (page: Page) => page.locator(".rec-head-acts > button").evaluateAll((bs: HTMLElement[]) => bs.map(b => b.innerText.replace(/\s+/g, "")));
 async function 开(width: number, o: 参 = {}, height = 800) {
   const page = await browser.newPage({ viewport: { width, height } }); page.setDefaultTimeout(5000);
   const errors: string[] = [];
@@ -184,9 +195,9 @@ it("没有项目可选：项目区空状态 +「＋ 新建项目」；关键联�
     const 空 = page.getByTestId("project-zone-empty");
     expect(await 空.innerText()).toMatch(/这位客户还没有项目/);
     expect(await 空.getByRole("button", { name: /新建项目/ }).count()).toBe(1);
-    // 页签行不再摆「＋ 新建项目」；没有项目时「项目操作」里只剩新建项目
+    // 页签行不再摆「＋ 新建项目」；没有项目时「更多操作」里项目那组只剩新建项目（小标题只写「项目」），客户那组照旧
     expect(await page.locator(".cd-zh button, .cd-pj button, .cd-add:not(.cd-add-big)").count()).toBe(0);
-    expect(await 菜单项们(await 开菜单(page, "项目操作"))).toEqual(["新建项目"]);
+    expect(await 菜单项们(await 开菜单(page, "更多操作"))).toEqual(["#项目", "新建项目", "—", "#客户", "客户转让 客户换负责人，名下项目一起走", "客户退回公海"]);
     await page.keyboard.press("Escape");
     expect(await page.locator(".cd-pj-pills").getByRole("tab").count()).toBe(0);
     expect(await 联系人们(page)).toEqual(["王总*", "李工", "陈经理"]);
@@ -222,7 +233,7 @@ it("同事项目只给带锁的个数：不是链接、不是按钮，不露项�
   } finally { await page.close(); }
 });
 
-it("1024 / 1280 / 1366：页签行一行不换行、右端不再有按钮；页头只有「项目操作 ▾」「客户操作 ▾」，项目各动作在菜单里、只作用于当前项目；超长项目名、超长公司名省略不撑出、不横滚", async () => {
+it("1024 / 1280 / 1366：页签行一行不换行、右端不再有按钮；页头只有「更多操作 ▾」（项目、客户两组），项目各动作在菜单里、只作用于当前项目；超长项目名、超长公司名省略不撑出、不横滚", async () => {
   for (const w of [1024, 1280, 1366]) {
     const { page, errors } = await 开(w, { 锁数: 1, 公司名: "超长公司名有限责任公司".repeat(8) });
     try {
@@ -247,18 +258,18 @@ it("1024 / 1280 / 1366：页签行一行不换行、右端不再有按钮；页�
       for (const t of 量.页签) expect(t.title.startsWith(t.名!)).toBe(true);
       // 右栏卡头带当前项目名
       expect(await page.locator(".cd-side .ant-card-head-title").first().innerText()).toMatch(/^项目资料 · 项目一/);
-      // 页头：两颗下拉和客户名同一行、不折行
-      expect(await page.locator(".rec-head-acts button").evaluateAll((bs: HTMLElement[]) => bs.map(b => b.innerText.replace(/\s+/g, "")))).toEqual(["项目操作", "客户操作"]);
+      // 页头：下拉和客户名同一行、不折行；没有「AI」按钮（11-21 PR1 去掉，AI 从浮标 / ⌘J 进）
+      expect(await 头按钮(page)).toEqual(["更多操作"]);
       const [名, 排] = await Promise.all([page.locator(".rec-head-id").boundingBox(), page.locator(".rec-head-acts").boundingBox()]);
       expect(排!.y, `宽 ${w}`).toBeLessThan(名!.y + 名!.height);
       expect(await page.locator(".rec-head-acts button").evaluateAll((bs: HTMLElement[]) => bs.every(b => b.getBoundingClientRect().height <= 40))).toBe(true);
-      // 项目操作：第一行灰字当前项目（超长一行省略、title 全名），新建、转让、退回公海
-      const 菜单 = await 开菜单(page, "项目操作");
+      // 更多操作：项目组小标题灰字「项目 · 当前：名字」（超长一行省略、title 全名），新建、转让、退回公海；再是客户组
+      const 菜单 = await 开菜单(page, "更多操作");
       const 项们 = await 菜单项们(菜单);
-      expect(项们.slice(1), `宽 ${w}`).toEqual(["新建项目", "项目转让", "项目退回公海"]);
-      expect(项们[0]).toMatch(/^⊘当前项目：项目一/);
-      const 名格 = 菜单.locator(".rec-menu-cur-t");
-      expect(await 名格.getAttribute("title")).toMatch(/^项目一超长项目名字/);
+      expect(项们.slice(1), `宽 ${w}`).toEqual(["新建项目", "项目转让", "项目退回公海", "—", "#客户", "客户转让 客户换负责人，名下项目一起走", "客户退回公海"]);
+      expect(项们[0]).toMatch(/^#项目 · 当前：项目一/);
+      const 名格 = 菜单.locator(".rec-menu-cur-t").first();
+      expect(await 名格.getAttribute("title")).toMatch(/^项目 · 当前：项目一超长项目名字/);
       expect(await 名格.evaluate(el => el.scrollWidth > el.clientWidth && getComputedStyle(el).whiteSpace === "nowrap")).toBe(true);
       // 点「项目转让」开的是项目那只框
       await 菜单.getByRole("menuitem", { name: /^项目转让$/ }).click();
@@ -273,35 +284,34 @@ it("1024 / 1280 / 1366：页签行一行不换行、右端不再有按钮；页�
   }
 });
 
-it("项目操作：删除项目在最后、危险色、上面一条线，点了走原来的确认；领取灰着时菜单项灰着并写原因；客户操作里是客户转让、客户退回公海", async () => {
+it("更多操作：项目组、客户组，删除项目单独放整个菜单最后、危险色、上面一条线，点了走原来的确认；领取灰着时菜单项灰着并写原因", async () => {
   const { page, errors } = await 开(1280, { 删: true, 领不了: true });
   try {
-    const 菜单 = await 开菜单(page, "项目操作");
+    const 菜单 = await 开菜单(page, "更多操作");
     const 项们 = await 菜单项们(菜单);
-    expect(项们.slice(1)).toEqual(["新建项目", "⊘领取 你是原负责人，不能领回", "项目转让", "项目退回公海", "—", "!删除项目"]);
+    expect(项们.slice(1)).toEqual(["新建项目", "⊘领取 你是原负责人，不能领回", "项目转让", "项目退回公海", "—", "#客户", "客户转让 客户换负责人，名下项目一起走", "客户退回公海", "—", "!删除项目"]);
     await 菜单.getByRole("menuitem", { name: /删除项目/ }).click();
     // 后果框（PR5a，替代 modal.confirm）：标题、删前清点写在框里，取消关掉
     const 删框 = page.getByRole("dialog").filter({ hasText: "删除这个项目？" });
     await 删框.waitFor();
     await 删框.getByRole("button", { name: /取\s*消/ }).click();
     await 删框.waitFor({ state: "hidden" });
-    expect(await 菜单项们(await 开菜单(page, "客户操作"))).toEqual(["客户转让", "客户退回公海"]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
 
-it("项目区正在提交（退回公海还没回来）：页头「项目操作 ▾」里对当前项目的几项灰着写「正在处理」，新建项目照常能点", async () => {
+it("项目区正在提交（退回公海还没回来）：页头「更多操作 ▾」里对当前项目的几项灰着写「正在处理」，新建项目、客户那组照常能点", async () => {
   const { page, errors } = await 开(1280, { 删: true });
   try {
     await page.evaluate(() => { (window as unknown as { __挂起: boolean }).__挂起 = true; });
-    await (await 开菜单(page, "项目操作")).getByRole("menuitem", { name: /项目退回公海/ }).click();
+    await (await 开菜单(page, "更多操作")).getByRole("menuitem", { name: /项目退回公海/ }).click();
     const 框 = page.getByRole("dialog", { name: "把项目退回公海？" });
     await 框.getByRole("button", { name: "项目退回公海" }).click();
     await expect.poll(() => 框.getByRole("button", { name: "项目退回公海" }).evaluate(b => b.classList.contains("ant-btn-loading"))).toBe(true);
     await 框.getByRole("button", { name: /取\s*消/ }).click();
-    const 菜单 = await 开菜单(page, "项目操作");
+    const 菜单 = await 开菜单(page, "更多操作");
     const 项们 = await 菜单项们(菜单);
-    expect(项们.slice(1)).toEqual(["新建项目", "⊘项目转让 正在处理上一步，稍等", "⊘项目退回公海 正在处理上一步，稍等", "—", "⊘!删除项目 正在处理上一步，稍等"]);
+    expect(项们.slice(1)).toEqual(["新建项目", "⊘项目转让 正在处理上一步，稍等", "⊘项目退回公海 正在处理上一步，稍等", "—", "#客户", "客户转让 客户换负责人，名下项目一起走", "客户退回公海", "—", "⊘!删除项目 正在处理上一步，稍等"]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -319,7 +329,7 @@ it.each([1280, 1366, 1440])("提醒条 %ipx：在项目区中栏、进程卡正�
     expect(框!.y + 框!.height).toBeLessThanOrEqual(进程卡!.y + 1);
     expect(Math.abs(右栏!.y - 中栏!.y)).toBeLessThanOrEqual(1);
     expect(await page.locator(".rec-head + [data-testid=tri-state-bar]").count()).toBe(0);
-    expect(await 条.innerText()).toContain("右上角「客户操作」");
+    expect(await 条.innerText()).toContain("右上角「客户操作」"); // 桩里的话（服务端那句 11-21 起说「更多操作」，见 ent-tri-state-detail.test.ts）
     // 没有提醒：不占位，中栏、右栏照样对齐
     await 画(page, {});
     expect(await page.locator(".cd-alert").count()).toBe(0);
@@ -362,7 +372,7 @@ it("只读的客户（全只读）：页头、项目区都没有写入口", asyn
       expect(await page.getByRole("button", { name: 名 }).count(), String(名)).toBe(0);
     }
     expect(await page.locator(".cd-add, .rec-head-acts").count()).toBe(0);
-    expect(await page.getByRole("button", { name: /项目操作|客户操作/ }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: /更多操作|发起点评|项目操作|客户操作/ }).count()).toBe(0);
     // 页签照样能切（只是看）
     expect(await page.locator(".cd-pj-pills").getByRole("tab").count()).toBe(2);
     expect(errors).toEqual([]);
@@ -381,6 +391,115 @@ const 连体们 = (page: Page) => page.locator(".cd-mid > .proj-fold").evaluateA
     贴: 钮.length === 2 ? Math.abs(钮[0].getBoundingClientRect().right - 钮[1].getBoundingClientRect().left) <= 1 : null,
   };
 }));
+
+/* ---------- 11-21 教练点评改版 PR1：页头「发起点评 ▾」「更多操作 ▾」 ---------- */
+it.each([
+  // [角色, 参, 页头右端]：发起点评只给能发的人（P-教练-11/12/13：教练、实线 / 虚线上级、条线总管理、系统管理员），项目负责人本人、只读管理员不摆（不是灰着）
+  ["销售（项目负责人本人）", { 点评: false }, ["更多操作"]],
+  ["销售管理（实线上级，能转让、能退回、能发点评）", { 点评: true }, ["发起点评", "更多操作"]],
+  ["销售教练（全只读，能发点评）", { 点评: true, 只读: true }, ["发起点评"]],
+  ["只读管理员（全只读，看得到主题不能发）", { 点评: false, 只读: true }, []],
+] as const)("页头按角色：%s", async (_角色, o, 期望) => {
+  const { page, errors } = await 开(1366, o);
+  try {
+    expect(await 头按钮(page)).toEqual([...期望]);
+    expect(await page.getByRole("button", { name: /^AI$/ }).count()).toBe(0);
+    if (!期望.length) expect(await page.locator(".rec-head-acts").count()).toBe(0);
+    // 「发起点评」在左、「更多操作」永远在最右
+    if (期望.length === 2) {
+      const [左, 右] = await Promise.all([page.getByTestId("coach-topic-new").boundingBox(), page.getByTestId("rec-more-ops").boundingBox()]);
+      expect(左!.x + 左!.width).toBeLessThanOrEqual(右!.x);
+    }
+    // 沟通卡头不再有「发起主题 / 发起点评」：只剩「隐藏接手前」（有接手前的沟通才有）和「新建沟通」
+    const 卡头 = page.locator(".cd-comm .ant-card-extra");
+    expect(await 卡头.getByTestId("coach-topic-new").count()).toBe(0);
+    expect(await 卡头.getByRole("button", { name: /发起主题|发起点评/ }).count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("「更多操作 ▾」= 原「项目操作」+「客户操作」的并集，一项不丢；客户那组只剩一项、项目那组没有时各自照样分组", async () => {
+  const 原项目操作 = ["新建项目", "项目转让", "项目退回公海", "删除项目"];
+  const 原客户操作 = ["客户转让", "客户退回公海"];
+  const 名 = (xs: string[]) => xs.filter(x => x !== "—" && !x.startsWith("#")).map(x => x.replace(/^[⊘!]+/, "").split(" ")[0]);
+  const { page, errors } = await 开(1280, { 删: true });
+  try {
+    const 项们 = await 菜单项们(await 开菜单(page, "更多操作"));
+    expect(名(项们).sort()).toEqual([...原项目操作, ...原客户操作].sort());
+    expect(项们.filter(x => x.startsWith("#")).map(x => x.replace(/ · 当前：.*/, ""))).toEqual(["#项目", "#客户"]);
+    await page.keyboard.press("Escape");
+    // 不能转客户：客户组只剩「客户退回公海」
+    await 画(page, { 删: true, 不能转: true });
+    expect(名(await 菜单项们(await 开菜单(page, "更多操作")))).toEqual(["新建项目", "项目转让", "项目退回公海", "客户退回公海", "删除项目"]);
+    await page.keyboard.press("Escape");
+    // 客户组一项都没有：连小标题「客户」一起不出，也没有多余的分隔线
+    await 画(page, { 不能转: true, 不能放: true });
+    const 只项目 = await 菜单项们(await 开菜单(page, "更多操作"));
+    expect(只项目.some(x => x === "#客户")).toBe(false);
+    expect(只项目.filter(x => x === "—")).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("「发起点评 ▾」：小标题当前项目（节点）；写点评开原「发起主题」那只框（标题改叫写点评）；录音点评灰着、写「录音点评即将开放」、点了什么都不开", async () => {
+  const { page, errors } = await 开(1366, { 点评: true });
+  try {
+    const 菜单 = await 开菜单(page, "发起点评");
+    expect(await 菜单项们(菜单)).toEqual([expect.stringMatching(/^#当前项目：项目一.*（方案报价）$/), "写点评 打字写，和原来的「发起主题」一样", "⊘录音点评 录音点评即将开放"]);
+    expect(await page.getByTestId("coach-review-voice").getAttribute("title")).toBe("录音点评即将开放");
+    await 菜单.getByRole("menuitem", { name: /^录音点评/ }).click({ force: true });
+    await page.waitForTimeout(150);
+    expect(await page.locator(".ant-modal").count()).toBe(0);
+    // 写点评：原来那只框，项目 / 节点 / 填写人锁定、会通知负责人
+    if (!(await 菜单.isVisible())) await 开菜单(page, "发起点评");
+    await page.getByRole("menuitem", { name: /^写点评/ }).click();
+    const 框 = page.locator(".ant-modal");
+    await 框.waitFor();
+    expect(await 框.locator(".ant-modal-title").innerText()).toBe("写点评");
+    expect(await 框.innerText()).toMatch(/会通知\s*项目负责人 · 同事乙/);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it.each([1280, 1366])("%ipx 超长公司名：「发起点评 ▾」「更多操作 ▾」和客户名同一行、不折行、不越出页面，整页不横滚", async (w) => {
+  const { page, errors } = await 开(w, { 点评: true, 公司名: "超长公司名有限责任公司".repeat(8) });
+  try {
+    expect(await 头按钮(page)).toEqual(["发起点评", "更多操作"]);
+    const 量 = await page.evaluate(() => {
+      const 名 = document.querySelector(".rec-head-id")!.getBoundingClientRect();
+      const 钮 = [...document.querySelectorAll(".rec-head-acts > button")].map(b => b.getBoundingClientRect());
+      const 头 = document.querySelector(".rec-head")!.getBoundingClientRect();
+      return {
+        同一行: 钮.every(b => b.top < 名.bottom && b.bottom > 名.top),
+        折行: 钮.filter(b => b.height > 40).length,
+        越框: 钮.filter(b => b.right > 头.right + 1 || b.right > document.documentElement.clientWidth).length,
+        横滚: document.documentElement.scrollWidth > window.innerWidth + 1,
+      };
+    });
+    expect(量).toEqual({ 同一行: true, 折行: 0, 越框: 0, 横滚: false });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it.each([390, 375])("手机 %ipx：名字一行，下面「发起点评 ▾」「更多操作 ▾」两颗各占一半、同一行，不横滚", async (w) => {
+  const { page, errors } = await 开(w, { 点评: true, 公司名: "超长公司名有限责任公司".repeat(4) }, 900);
+  try {
+    expect(await 头按钮(page)).toEqual(["发起点评", "更多操作"]);
+    const 量 = await page.evaluate(() => {
+      const 名 = document.querySelector(".rec-head-id")!.getBoundingClientRect();
+      const 排 = document.querySelector(".rec-head-acts")!.getBoundingClientRect();
+      const 头 = document.querySelector(".rec-head")!.getBoundingClientRect();
+      const [a, b] = [...document.querySelectorAll(".rec-head-acts > button")].map(x => x.getBoundingClientRect());
+      return {
+        在名字下面: a.top >= 名.bottom - 1, 同一行: Math.abs(a.top - b.top) <= 1, 各半: Math.abs(a.width - b.width) <= 2,
+        占满: 排.width >= 头.width - 2, 左右: a.right <= b.left, 折行: [a, b].filter(x => x.height > 40).length,
+        横滚: document.documentElement.scrollWidth > window.innerWidth + 1,
+      };
+    });
+    expect(量).toEqual({ 在名字下面: true, 同一行: true, 各半: true, 占满: true, 左右: true, 折行: 0, 横滚: false });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
 
 it("中栏连体按钮：沟通（品牌蓝）、待办 / 卡点（描边）左半主动作、右半收起；不再有单独的收起钮；完成节点照旧", async () => {
   const { page, errors } = await 开(1366);
@@ -656,7 +775,7 @@ it("地址上的 ?project= 读不出来、服务端换成了别的：地址改�
   } finally { await page.close(); }
 });
 
-it("受限客户详情（只负责项目的人）：页头「仅项目」+ 只有「项目操作 ▾」（没有新建项目、没有客户操作）；沟通只看本项目，没有「这位客户全部」；1024 / 1280 / 1366 不横滚", async () => {
+it("受限客户详情（只负责项目的人）：页头「仅项目」+ 只有「更多操作 ▾」（11-21 PR1 前叫「项目操作 ▾」；只有项目一组，没有新建项目、没有客户组、没有发起点评）；沟通只看本项目，没有「这位客户全部」；1024 / 1280 / 1366 不横滚", async () => {
   const page = await browser.newPage({ viewport: { width: 1366, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = [];
   page.on("pageerror", e => errors.push(e.message));
@@ -670,8 +789,11 @@ it("受限客户详情（只负责项目的人）：页头「仅项目」+ 只�
     };
     await 画R({ 删: true });
     expect(await page.locator(".rec-head").getByText("仅项目", { exact: true }).count()).toBe(1);
-    expect(await page.locator(".rec-head-acts button").allInnerTexts()).toEqual([expect.stringMatching(/^项目操作/)]);
-    expect(await 菜单项们(await 开菜单(page, "项目操作"))).toEqual([expect.stringMatching(/^⊘当前项目：项目一/), "项目转让", "项目退回公海", "—", "!删除项目"]);
+    expect(await 头按钮(page)).toEqual(["更多操作"]);
+    expect(await 菜单项们(await 开菜单(page, "更多操作"))).toEqual([expect.stringMatching(/^#项目 · 当前：项目一/), "项目转让", "项目退回公海", "—", "!删除项目"]);
+    // 不摆「发起点评」：这页只列我负责的项目，负责人本人不能发（方案 §7）
+    expect(await page.getByTestId("coach-topic-new").count()).toBe(0);
+    await page.keyboard.press("Escape");
     const 卡 = page.locator(".cd-comm");
     expect(await 卡.getByRole("button", { name: "这位客户全部" }).count()).toBe(0);
     expect(await 卡.getByRole("button", { name: "本项目" }).count()).toBe(0);
@@ -702,7 +824,7 @@ it("受限客户详情：最后一个项目退回公海后回客户列表、带�
     for (const [两个, 去处] of [[false, "/customers"], [true, "/customers/a"]] as const) {
       await page.evaluate(a => { const w = window as unknown as { __renderR: (o: object) => void; __去?: string }; w.__去 = undefined; w.__renderR(a); }, { 两个 });
       await page.getByTestId("restricted-customer-detail").waitFor();
-      await (await 开菜单(page, "项目操作")).getByRole("menuitem", { name: /项目退回公海/ }).click();
+      await (await 开菜单(page, "更多操作")).getByRole("menuitem", { name: /项目退回公海/ }).click();
       const 框 = page.getByRole("dialog", { name: "把项目退回公海？" });
       await 框.getByRole("button", { name: "项目退回公海" }).click();
       await expect.poll(() => page.evaluate(() => (window as unknown as { __去?: string }).__去), { message: `两个 ${两个}` }).toBe(去处);
