@@ -680,6 +680,9 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
           <AiDock userName={user.name} userId={user.id} models={ai.models} 开着={手机开着} set开着={(开) => set手机开在(开 ? 底下那页 : null)} 企业版={企业版} 手机 />
         )}
         {显示浮标 && <AiFab onClick={() => set手机开在(底下那页)} />}
+        {/* 设计语言 D2 · M2-c（K8）：客户详情页头那颗「显示客户名单」在手机上开底部抽屉——名单得挂上才开得出来。
+            只挂客户详情这一处（槽位在手机上是一只关着的抽屉，不占地方）；别的页的中栏手机上照旧不挂 */}
+        {/^\/customers\/[^/]+$/.test(pathname) && pane}
       </Layout>
       </切换视图Provider>
     );

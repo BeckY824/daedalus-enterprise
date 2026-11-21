@@ -263,13 +263,14 @@ it("1024 / 1280 / 1366：页签行一行不换行、右端不再有按钮；页�
       const [名, 排] = await Promise.all([page.locator(".rec-head-id").boundingBox(), page.locator(".rec-head-acts").boundingBox()]);
       expect(排!.y, `宽 ${w}`).toBeLessThan(名!.y + 名!.height);
       expect(await page.locator(".rec-head-acts button").evaluateAll((bs: HTMLElement[]) => bs.every(b => b.getBoundingClientRect().height <= 40))).toBe(true);
-      // 更多操作：项目组小标题灰字「项目 · 当前：名字」（超长一行省略、title 全名），新建、转让、退回公海；再是客户组
+      // 更多操作：项目组小标题灰字「项目 · 名字（节点）」（设计语言 D2 · M1-b）（超长一行省略、title 全名），新建、转让、退回公海；再是客户组
       const 菜单 = await 开菜单(page, "更多操作");
       const 项们 = await 菜单项们(菜单);
       expect(项们.slice(1), `宽 ${w}`).toEqual(["新建项目", "项目转让", "项目退回公海", "—", "#客户", "客户转让 客户换负责人，名下项目一起走", "客户退回公海"]);
-      expect(项们[0]).toMatch(/^#项目 · 当前：项目一/);
+      expect(项们[0]).toMatch(/^#项目 · 项目一/);
+      expect(项们[0]).not.toContain("当前：");
       const 名格 = 菜单.locator(".rec-menu-cur-t").first();
-      expect(await 名格.getAttribute("title")).toMatch(/^项目 · 当前：项目一超长项目名字/);
+      expect(await 名格.getAttribute("title")).toMatch(/^项目 · 项目一超长项目名字.*（.+）$/);
       expect(await 名格.evaluate(el => el.scrollWidth > el.clientWidth && getComputedStyle(el).whiteSpace === "nowrap")).toBe(true);
       // 点「项目转让」开的是项目那只框
       await 菜单.getByRole("menuitem", { name: /^项目转让$/ }).click();
@@ -324,8 +325,10 @@ it.each([1280, 1366, 1440])("提醒条 %ipx：在项目区中栏、进程卡正�
     // 不在客户名下面通栏，在项目区那张网格里
     expect(await 条.evaluate(el => !!el.closest(".rec-zone .cd-zb > .cd-alert"))).toBe(true);
     const [框, 中栏, 右栏, 进程卡] = await Promise.all([条.boundingBox(), page.locator(".cd-mid").boundingBox(), page.locator(".cd-side").boundingBox(), page.locator(".cd-mid > .ant-card").first().boundingBox()]);
-    expect(Math.abs(框!.x - 中栏!.x)).toBeLessThanOrEqual(1);
-    expect(Math.abs(框!.width - 中栏!.width)).toBeLessThanOrEqual(1);
+    // 和中栏那一列同宽（量进程卡：D2 起中栏是一扇自己滚的窗，左右各让 4px 给卡片阴影，栏框比列宽 8px）
+    expect(Math.abs(框!.x - 进程卡!.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(框!.width - 进程卡!.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(框!.x - 中栏!.x)).toBeLessThanOrEqual(5);
     expect(框!.y + 框!.height).toBeLessThanOrEqual(进程卡!.y + 1);
     expect(Math.abs(右栏!.y - 中栏!.y)).toBeLessThanOrEqual(1);
     expect(await page.locator(".rec-head + [data-testid=tri-state-bar]").count()).toBe(0);
@@ -426,7 +429,7 @@ it("「更多操作 ▾」= 原「项目操作」+「客户操作」的并集，
   try {
     const 项们 = await 菜单项们(await 开菜单(page, "更多操作"));
     expect(名(项们).sort()).toEqual([...原项目操作, ...原客户操作].sort());
-    expect(项们.filter(x => x.startsWith("#")).map(x => x.replace(/ · 当前：.*/, ""))).toEqual(["#项目", "#客户"]);
+    expect(项们.filter(x => x.startsWith("#")).map(x => x.replace(/ · .*/, ""))).toEqual(["#项目", "#客户"]);
     await page.keyboard.press("Escape");
     // 不能转客户：客户组只剩「客户退回公海」
     await 画(page, { 删: true, 不能转: true });
@@ -445,7 +448,7 @@ it("「发起点评 ▾」：小标题当前项目（节点）；写点评开原
   const { page, errors } = await 开(1366, { 点评: true });
   try {
     const 菜单 = await 开菜单(page, "发起点评");
-    expect(await 菜单项们(菜单)).toEqual([expect.stringMatching(/^#当前项目：项目一.*（方案报价）$/), "写点评 打字写，和原来的「发起主题」一样", "⊘录音点评 录音点评即将开放"]);
+    expect(await 菜单项们(菜单)).toEqual([expect.stringMatching(/^#项目 · 项目一.*（方案报价）$/), "写点评 打字写，和原来的「发起主题」一样", "⊘录音点评 录音点评即将开放"]);
     expect(await page.getByTestId("coach-review-voice").getAttribute("title")).toBe("录音点评即将开放");
     // 灰着的项 Playwright 点不进（CI 上 force 也报「不在视口里」）：直接派一个 click 事件，看它什么都不做
     await 菜单.getByRole("menuitem", { name: /^录音点评/ }).dispatchEvent("click");
@@ -792,7 +795,7 @@ it("受限客户详情（只负责项目的人）：页头「仅项目」+ 只�
     await 画R({ 删: true });
     expect(await page.locator(".rec-head").getByText("仅项目", { exact: true }).count()).toBe(1);
     expect(await 头按钮(page)).toEqual(["更多操作"]);
-    expect(await 菜单项们(await 开菜单(page, "更多操作"))).toEqual([expect.stringMatching(/^#项目 · 当前：项目一/), "项目转让", "项目退回公海", "—", "!删除项目"]);
+    expect(await 菜单项们(await 开菜单(page, "更多操作"))).toEqual([expect.stringMatching(/^#项目 · 项目一/), "项目转让", "项目退回公海", "—", "!删除项目"]);
     // 不摆「发起点评」：这页只列我负责的项目，负责人本人不能发（方案 §7）
     expect(await page.getByTestId("coach-topic-new").count()).toBe(0);
     await page.keyboard.press("Escape");
@@ -911,4 +914,100 @@ it("[3703 实操 11-21] 从通知带 ?giveup=1 跳到客户详情、这条没有
     expect(await 平.evaluate(() => (window as unknown as { __问?: string[] }).__问 ?? [])).toEqual([]);
     expect(平错).toEqual([]);
   } finally { await 平.close(); }
+});
+
+/* D2 · 设计语言 11-21（客户详情规范 M0 / M1-c）：真 CustomerDetail 上量骨架和页头 */
+const 超长公司名 = "某某超长贸易进出口有限公司".repeat(6);
+
+it("[D2 · M0-a K10] 1024 / 1280 / 1366：中栏、右栏各自滚——右栏滚到底中栏不动（原来项目区整块滚，中栏滚出去只剩空白）；进程卡和项目资料顶边对齐；各栏底部至少留 72（AI 球）", async () => {
+  for (const w of [1024, 1280, 1366]) {
+    const { page, errors } = await 开(w, { 公司名: 超长公司名 }, 768);
+    try {
+      // 右栏撑高（进程变更、关联卡都展开时那样）
+      await page.locator(".cd-side").evaluate(el => { const d = document.createElement("div"); d.style.height = "2400px"; d.className = "撑高"; el.append(d); });
+      const 量 = () => page.evaluate(() => {
+        const g = (s: string) => { const e = document.querySelector(s) as HTMLElement; const r = e.getBoundingClientRect(); return { 顶: Math.round(r.top), 高: Math.round(r.height), 滚: Math.round(e.scrollTop), 溢: e.scrollHeight - e.clientHeight, 底留: parseFloat(getComputedStyle(e).paddingBottom) }; };
+        return { 区: g(".rec-zone"), 中: g(".cd-mid"), 右: g(".cd-side"), 左: g(".rec > .rec-rail"), 进程卡顶: Math.round(document.querySelector(".cd-mid > .ant-card")!.getBoundingClientRect().top), 资料卡顶: Math.round(document.querySelector(".cd-side > *")!.getBoundingClientRect().top) };
+      });
+      const 前 = await 量();
+      expect(前.区.溢, `宽 ${w} 项目区自己不滚`).toBe(0);
+      expect(前.右.溢, `宽 ${w}`).toBeGreaterThan(1000);
+      expect(前.中.高, `宽 ${w} 中栏一扇窗 = 右栏一扇窗`).toBe(前.右.高);
+      expect(Math.abs(前.进程卡顶 - 前.资料卡顶), `宽 ${w} 进程卡和项目资料顶边对齐（P-界面-22 ②）`).toBeLessThanOrEqual(1);
+      for (const k of ["中", "右", "左"] as const) expect(前[k].底留, `宽 ${w} ${k}栏底部留白`).toBeGreaterThanOrEqual(72);
+      await page.locator(".cd-side").evaluate(e => { e.scrollTop = e.scrollHeight; });
+      await page.waitForTimeout(100);
+      const 后 = await 量();
+      expect(后.右.滚, `宽 ${w}`).toBeGreaterThan(1000);
+      expect(后.中.滚, `宽 ${w} 中栏不跟着滚`).toBe(0);
+      expect(后.中.顶, `宽 ${w} 中栏没被滚出去`).toBe(前.中.顶);
+      expect(后.进程卡顶, `宽 ${w}`).toBe(前.进程卡顶);
+      expect(后.区.滚).toBe(0);
+      // 中栏自己也能滚（沟通多时），右栏不跟
+      await page.locator(".cd-mid").evaluate(el => { const d = document.createElement("div"); d.style.height = "1600px"; el.append(d); el.scrollTop = 300; });
+      await page.locator(".cd-side").evaluate(e => { e.scrollTop = 0; });
+      await page.waitForTimeout(100);
+      const 再 = await 量();
+      expect(再.中.滚, `宽 ${w}`).toBe(300);
+      expect(再.右.滚, `宽 ${w}`).toBe(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `宽 ${w} 不横滚`).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+it("[D2 · M1-c] 四个宽度 × 超长公司名：页头不撑破、头像和名字同一行；电脑上名字一行省略、按钮在同一行右端；手机（390）名字最多两行再省略、名单钮 44、下面一行两颗钮各半高 40", async () => {
+  for (const w of [1024, 1280, 1366, 390]) {
+    const { page, errors } = await 开(w, { 公司名: 超长公司名, 点评: true }, 844);
+    try {
+      const 头 = await page.evaluate(() => {
+        const r = (s: string) => { const e = document.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect(); return { x: Math.round(b.left), y: Math.round(b.top), 右: Math.round(b.right), 底: Math.round(b.bottom), 宽: Math.round(b.width), 高: Math.round(b.height) }; };
+        const 名 = document.querySelector(".rec-head-name") as HTMLElement;
+        return { 头: r(".rec-head"), 钮: r(".rec-head > .pane-toggle"), 像: r(".rec-head-av"), 名格: r(".rec-head-id"), 名: r(".rec-head-name"), 行数: Math.round(名.getBoundingClientRect().height / parseFloat(getComputedStyle(名).lineHeight)), 截了: 名.scrollHeight > 名.clientHeight + 1 || 名.scrollWidth > 名.clientWidth + 1,
+          按钮们: [...document.querySelectorAll(".rec-head-acts > .ant-btn")].map(b => { const x = b.getBoundingClientRect(); return { y: Math.round(x.top), 高: Math.round(x.height), 宽: Math.round(x.width) }; }) };
+      });
+      expect(头.名格!.右, `宽 ${w} 名字那格不出页头`).toBeLessThanOrEqual(头.头!.右 + 1);
+      expect(头.截了, `宽 ${w} 超长名字被截住（省略）`).toBe(true);
+      // 头像和名字那格同一行：名字那格的上下范围盖住头像中线
+      const 像中 = 头.像!.y + 头.像!.高 / 2;
+      expect(像中, `宽 ${w} 头像和名字同一行`).toBeGreaterThanOrEqual(头.名格!.y);
+      expect(像中, `宽 ${w}`).toBeLessThanOrEqual(头.名格!.底);
+      expect(头.名格!.x, `宽 ${w} 名字在头像右边`).toBeGreaterThanOrEqual(头.像!.右);
+      expect(头.按钮们.length, `宽 ${w}`).toBe(2);
+      if (w >= 768) {
+        expect(头.行数, `宽 ${w} 电脑上一行`).toBe(1);
+        for (const b of 头.按钮们) expect(b.y, `宽 ${w} 按钮和名字同一行`).toBeLessThan(头.名格!.底);
+      } else {
+        expect(头.行数, "手机两行").toBe(2);
+        expect(头.钮).toMatchObject({ 宽: 44, 高: 44 });
+        expect(头.钮!.y + 头.钮!.高 / 2, "名单钮和头像同一行").toBeCloseTo(像中, 0);
+        for (const b of 头.按钮们) { expect(b.高).toBe(40); expect(b.y).toBeGreaterThanOrEqual(头.名格!.底); }
+        expect(Math.abs(头.按钮们[0].宽 - 头.按钮们[1].宽), "两颗各半").toBeLessThanOrEqual(1);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `宽 ${w} 不横滚`).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+it("[D2 · M1-c] 页头按钮悬停只铺浅底（--row-hover）、框 --field-line、字不变色，按下再深一档（--hover）", async () => {
+  const { page, errors } = await 开(1366, { 点评: true });
+  try {
+    const 钮 = page.locator(".rec-head-acts > .ant-btn").last();
+    const 底 = (v: string) => page.evaluate(v => { const s = document.createElement("span"); s.style.background = `var(${v})`; document.body.append(s); const c = getComputedStyle(s).backgroundColor; s.remove(); return c; }, v);
+    const 框 = (v: string) => page.evaluate(v => { const s = document.createElement("span"); s.style.borderTop = `1px solid var(${v})`; document.body.append(s); const c = getComputedStyle(s).borderTopColor; s.remove(); return c; }, v);
+    const 字前 = await 钮.evaluate(b => getComputedStyle(b).color);
+    await 钮.hover(); await page.waitForTimeout(150);
+    const 悬 = await 钮.evaluate(b => ({ 底: getComputedStyle(b).backgroundColor, 框: getComputedStyle(b).borderTopColor, 字: getComputedStyle(b).color }));
+    expect(悬.底).toBe(await 底("--row-hover"));
+    expect(悬.框).toBe(await 框("--field-line"));
+    // 字照旧正文色（真页面 antd 主题 colorText = palette.ink，悬停也是 ink；这个夹具没挂主题，静止时是 antd 默认黑，所以对 --ink 比）
+    expect(悬.字).toBe(await page.evaluate(() => { const s = document.createElement("span"); s.style.color = "var(--ink)"; document.body.append(s); const c = getComputedStyle(s).color; s.remove(); return c; }));
+    expect(字前).not.toBe("");
+    await page.mouse.down(); await page.waitForTimeout(200);
+    expect(await 钮.evaluate(b => getComputedStyle(b).backgroundColor)).toBe(await 底("--hover"));
+    await page.mouse.up();
+    await page.keyboard.press("Escape");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
 });

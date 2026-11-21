@@ -17,7 +17,7 @@ import type { 项目主题们, 主题给界面 } from "@/lib/enterprise/coach-to
 import { 发主题动作, 回复主题动作, 关闭主题动作, 删主题动作 } from "../../customers/[id]/coach-topic-actions";
 import { 动作出错话 } from "@/lib/stale-deploy";
 import { useFormDraft } from "@/components/FormDraft";
-import { 两行 } from "./project-menu";
+import { 两行, 项目小标题 } from "./project-menu";
 
 const 状态色: Record<string, string> = { 待回复: "orange", 已回复: "blue", 已关闭: "default" };
 
@@ -27,12 +27,12 @@ export const 录音点评未开放 = "录音点评即将开放";
 /**
  * 「发起点评 ▾」（教练点评改版 PR1，11-21；原沟通卡头的「发起主题」）：能发才摆（P-教练-11/12/13，数据.能发 由服务端算，不新增规则）。
  * 客户页摆在右上角、「更多操作 ▾」左边；独立项目页（看不到客户的上级留在 /projects/<id>）摆在沟通卡头。
- * 下拉：灰字小标题「当前项目：名字（节点）」→「写点评」（原「发起主题」那只框，字段、服务端都不变）→「录音点评」（灰着、点不动，第二行写为什么）
+ * 下拉：灰字小标题「项目 · 名字（节点）」（设计语言 D2 · M1-b，和「更多操作 ▾」同一句）→「写点评」（原「发起主题」那只框，字段、服务端都不变）→「录音点评」（灰着、点不动，第二行写为什么）
  */
 export function StartReviewButton({ 数据, projectId, size }: { 数据: 项目主题们 | null | undefined; projectId: string; size?: "small" }) {
   const [开, set开] = useState(false);
   if (!数据?.能发) return null;
-  const 当前 = `当前项目：${数据.项目名}${数据.当前节点 ? `（${数据.当前节点}）` : ""}`;
+  const 当前 = 项目小标题(数据.项目名, 数据.当前节点);
   const items: MenuProps["items"] = [{
     type: "group",
     key: "cur",

@@ -6,14 +6,14 @@ import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Tag, Drawer } from "antd";
-import { SearchOutlined, TableOutlined } from "@ant-design/icons";
+import { CloseOutlined, SearchOutlined, TableOutlined } from "@ant-design/icons";
 import { FOLLOW_STATUS_COLOR } from "@/lib/constants";
 import { 名单分组, 客户状态分组, 未填写组 } from "@/lib/roster-groups";
 import { 客户状态色 } from "@/lib/enterprise/cust-status-color";
 import { avatarColor, initial, smartTime, AVATAR_TEXT } from "@/lib/utils";
 import { useBusiness } from "@/lib/business-client";
 import { statusLabel } from "@/lib/business-config";
-import { 开名单, 关名单, 登记换一位, DockOpenContext, DOCK_W } from "@/lib/roster";
+import { 开名单, 关名单, 登记换一位, useNarrow, DockOpenContext, DOCK_W } from "@/lib/roster";
 import { 名单回车去处 } from "@/lib/cmdk";
 import { useMiddlePane, usePaneShortcut } from "@/lib/middle-pane";
 import PaneToggle from "@/components/PaneToggle";
@@ -84,6 +84,10 @@ export default function CustomerRoster({ data, 默认页签 = "全部" }: { data
   const 中栏 = useMiddlePane("roster");
   const 抽屉里 = !中栏.露着;
   const 抽屉开着 = 中栏.抽屉开着;
+  /* 设计语言 D2 · M2-c（K8）：手机（≤767，AppShell 小屏）上名单从底部弹出（底部抽屉），顶上一道把手、右上 ×，往下一拉就关 */
+  const 手机 = useNarrow("(max-width: 767px)");
+  const 底部抽屉 = 抽屉里 && 手机;
+  const 拉 = useRef<number | null>(null);
   usePaneShortcut(中栏.切换);
   const 搜索框 = useRef<HTMLInputElement>(null);
   const activeId = pathname.startsWith("/customers/") ? pathname.split("/")[2] : "";
@@ -117,7 +121,15 @@ export default function CustomerRoster({ data, 默认页签 = "全部" }: { data
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [rows, 我的rows, 当前页签],
   );
-  const 底句 = 名单底句({ 页签: 当前页签, 默认页签, 全部总数: data.total, 全部条数: data.rows.length, 我负责总数: data.mineTotal, 我的条数: 我的rows?.length });
+  /* 设计语言 D2 · M2-a / 规范 M2-7：「这里只有最近 50 位…」只在「全部」「我的」写（我的那句是 11-18 第 12 题对齐的数）；
+     「本周要跟」是在这 50 位里再筛，写「本周要跟就这 N 位」。名单没摆全（客户多于 50 位）时如实说是「最近 50 位里」的 */
+  const 本周句 =
+    当前页签 === "本周" && !q.trim() && 页签里.length > 0
+      ? data.total > data.rows.length
+        ? `最近 ${data.rows.length} 位里本周要跟的有 ${页签里.length} 位`
+        : `本周要跟就这 ${页签里.length} 位`
+      : null;
+  const 底句 = 当前页签 === "本周" ? null : 名单底句({ 页签: 当前页签, 默认页签, 全部总数: data.total, 全部条数: data.rows.length, 我负责总数: data.mineTotal, 我的条数: 我的rows?.length });
   const 分组 = !q.trim();
   // 分组规则在 lib/roster-groups.ts：预设外的单独成组、空串归「未填写」，一个人都不能消失（2026-10-04 L-072）
   const 按客户状态 = data.客户状态 ?? null;
@@ -143,10 +155,10 @@ export default function CustomerRoster({ data, 默认页签 = "全部" }: { data
     [抽屉里],
   );
 
-  // 抽屉一打开就把光标放进搜索框——打开它就是为了找人
+  // 抽屉一打开就把光标放进搜索框——打开它就是为了找人。手机底部抽屉不抢：一聚焦键盘弹起来，半张名单被盖住
   useEffect(() => {
-    if (抽屉开着) setTimeout(() => 搜索框.current?.focus(), 80);
-  }, [抽屉开着]);
+    if (抽屉开着 && !手机) setTimeout(() => 搜索框.current?.focus(), 80);
+  }, [抽屉开着, 手机]);
 
   /**
    * 一行三层（照毛玻璃原型）：从哪儿来 · 时间 / 名字 / 最近一句 · 圆点。
@@ -174,18 +186,28 @@ export default function CustomerRoster({ data, 默认页签 = "全部" }: { data
           {initial(r.name)}
         </span>
         <span className="roster-m">
-          <span className="roster-l0">
-            <span className="roster-src" title={r.source ?? undefined}>
-              {带状态 && (
-                <Tag color={状态色(行状态(r))} style={{ margin: "0 6px 0 0", fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>
-                  {状态名(行状态(r))}
-                </Tag>
-              )}
-              {r.source ?? ""}
+          {/* 设计语言 D2 · M2-a：没有来源（也不挂状态标签）时第一行是空的，时间并到名字那一行，不留一条空行 */}
+          {带状态 || r.source ? (
+            <>
+              <span className="roster-l0">
+                <span className="roster-src" title={r.source ?? undefined}>
+                  {带状态 && (
+                    <Tag color={状态色(行状态(r))} style={{ margin: "0 6px 0 0", fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>
+                      {状态名(行状态(r))}
+                    </Tag>
+                  )}
+                  {r.source ?? ""}
+                </span>
+                <span className="roster-t">{r.lastFollowAt ? smartTime(r.lastFollowAt) : ""}</span>
+              </span>
+              <span className="roster-n">{r.name}</span>
+            </>
+          ) : (
+            <span className="roster-l1">
+              <span className="roster-n">{r.name}</span>
+              <span className="roster-t">{r.lastFollowAt ? smartTime(r.lastFollowAt) : ""}</span>
             </span>
-            <span className="roster-t">{r.lastFollowAt ? smartTime(r.lastFollowAt) : ""}</span>
-          </span>
-          <span className="roster-n">{r.name}</span>
+          )}
           <span className="roster-l2">
             {/* 名字一行、放不下省略号，悬停看全（11-04）；最近一句是辅助，最多两行 */}
             <span className="roster-note" title={r.lastNote ?? undefined}>{r.lastNote ?? `还没跟进 · ${r.ownerName}`}</span>
@@ -196,18 +218,44 @@ export default function CustomerRoster({ data, 默认页签 = "全部" }: { data
     );
   };
 
+  const 页头 = (
+    <div className="pane-h">
+      <span className="pane-t">
+        {b.customer}
+        <span className="pane-n">{data.total}</span>
+      </span>
+      <Link href="/customers" className="pane-ib" aria-label={`${b.customer}表格`} title="表格视图">
+        <TableOutlined />
+      </Link>
+      {底部抽屉 ? (
+        <button type="button" className="pane-ib sheet-x" aria-label={`关闭${b.customer}名单`} onClick={关名单}>
+          <CloseOutlined />
+        </button>
+      ) : (
+        <PaneToggle 栏="roster" 位置="中栏" />
+      )}
+    </div>
+  );
   const 内容 = (
     <>
-      <div className="pane-h">
-        <span className="pane-t">
-          {b.customer}
-          <span className="pane-n">{data.total}</span>
-        </span>
-        <Link href="/customers" className="pane-ib" aria-label={`${b.customer}表格`} title="表格视图">
-          <TableOutlined />
-        </Link>
-        <PaneToggle 栏="roster" 位置="中栏" />
-      </div>
+      {底部抽屉 ? (
+        /* 把手 + 页头这一截往下拉 60px 以上松手就关（名单本身照常上下滑，不抢它的手势） */
+        <div
+          className="sheet-top"
+          onTouchStart={(e) => (拉.current = e.touches[0]?.clientY ?? null)}
+          onTouchEnd={(e) => {
+            const 起 = 拉.current;
+            拉.current = null;
+            const 落 = e.changedTouches[0]?.clientY;
+            if (起 != null && 落 != null && 落 - 起 > 60) 关名单();
+          }}
+        >
+          <div className="sheet-grab" aria-hidden="true" />
+          {页头}
+        </div>
+      ) : (
+        页头
+      )}
       <div className="roster-tabs" role="tablist" aria-label={`${b.customer}名单`}>
         {(有别人的 ? (["全部", "我的", "本周"] as const) : (["全部", "本周"] as const)).map((t) => (
           <button key={t} type="button" role="tab" aria-selected={当前页签 === t} className={`roster-tab${当前页签 === t ? " on" : ""}`} onClick={() => set页签(t)}>
@@ -267,6 +315,7 @@ export default function CustomerRoster({ data, 默认页签 = "全部" }: { data
             })
           : 页签里.map((r) => 一行(r, true))}
         {/* 底下那句：数 = 点过去表格里的数（lib/enterprise/customer-scope.ts 名单底句；销售落在「我负责的」） */}
+        {本周句 && <div className="pane-more">{本周句}</div>}
         {底句 && (
           <Link href={底句.href} className="pane-more">
             这里只有最近 {底句.条} 位，{底句.名} {底句.总} 位在表格里 ›
@@ -275,6 +324,21 @@ export default function CustomerRoster({ data, 默认页签 = "全部" }: { data
       </div>
     </>
   );
+
+  if (底部抽屉) {
+    return (
+      <Drawer
+        placement="bottom"
+        open={抽屉开着}
+        onClose={关名单}
+        closable={false}
+        styles={{ wrapper: { height: "min(85dvh, 720px)" }, body: { padding: 0, display: "flex", flexDirection: "column" } }}
+        rootClassName="pane-drawer pane-sheet"
+      >
+        {内容}
+      </Drawer>
+    );
+  }
 
   if (抽屉里) {
     return (
