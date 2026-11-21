@@ -1,6 +1,7 @@
 /**
  * 飞书网页 JSAPI 鉴权签名接口 /api/feishu/jsapi-sign（11-21，录音点评 PR1，实测页和 PR3 飞书原生录音用）。
- * 钉住：未登录 401 且一次飞书请求都不发；只签本站 /mic-test.html（配了 ENT_PUBLIC_URL 就要同源）；
+ * 钉住：未登录 401 且一次飞书请求都不发；没配 ENT_PUBLIC_URL 一个都不签（400「未配置站点地址」，不看 Host）；
+ * 只签和 ENT_PUBLIC_URL 同源的 /mic-test.html；
  * 签名按飞书的拼法算（固定样例）；票不出服务端、每进程缓存到快过期；没凭据回「未配置」。
  */
 import { createHash } from "node:crypto";
@@ -18,7 +19,7 @@ vi.mock("@/lib/enterprise/feishu-push", () => ({
 }));
 
 import { GET } from "../src/app/api/feishu/jsapi-sign/route";
-import { 可签地址, 算签名, 清JSAPI票 } from "@/lib/enterprise/feishu-jsapi";
+import { 可签地址, 站点源, 算签名, 清JSAPI票 } from "@/lib/enterprise/feishu-jsapi";
 
 const 页 = "https://crm.example.test/mic-test.html?x=1";
 const 请求 = (url: string | null, host = "crm.example.test") =>
@@ -32,7 +33,7 @@ beforeEach(() => {
   罐.凭据 = { appId: "cli_test", appSecret: "s-test", 基址: "https://open.feishu.test" };
   飞书请求 = vi.fn(async () => 票回("TICKET-1"));
   vi.stubGlobal("fetch", 飞书请求);
-  vi.stubEnv("ENT_PUBLIC_URL", "");
+  vi.stubEnv("ENT_PUBLIC_URL", "https://crm.example.test");
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -74,10 +75,28 @@ describe("签名接口", () => {
     expect(飞书请求).not.toHaveBeenCalled();
   });
 
-  it("别的页面、别的主机不签：400；配了 ENT_PUBLIC_URL 就要和它同源", async () => {
+  it("没配 ENT_PUBLIC_URL：400「未配置站点地址」，Host / X-Forwarded-Host 对上了也不签，不去飞书", async () => {
+    罐.用户 = { id: "u1" };
+    for (const 值 of ["", "   ", "不是地址", "ftp://crm.example.test"]) {
+      vi.stubEnv("ENT_PUBLIC_URL", 值);
+      const 伪 = new NextRequest(`https://crm.example.test/api/feishu/jsapi-sign?url=${encodeURIComponent(页)}`, {
+        headers: { host: "crm.example.test", "x-forwarded-host": "crm.example.test" },
+      });
+      const res = await GET(伪);
+      expect(res.status, 值).toBe(400);
+      expect((await res.json()).error).toContain("未配置站点地址");
+    }
+    vi.stubEnv("ENT_PUBLIC_URL", undefined);
+    expect((await GET(请求(页))).status).toBe(400);
+    expect(飞书请求).not.toHaveBeenCalled();
+  });
+
+  it("别的页面、别的主机不签：400；以 ENT_PUBLIC_URL 为准，请求的 Host 不算", async () => {
     罐.用户 = { id: "u1" };
     expect((await GET(请求("https://crm.example.test/dashboard"))).status).toBe(400);
     expect((await GET(请求("https://evil.example/mic-test.html"))).status).toBe(400);
+    // 伪造 Host 成 evil.example 也不行
+    expect((await GET(请求("https://evil.example/mic-test.html", "evil.example"))).status).toBe(400);
     expect((await GET(请求(null))).status).toBe(400);
     vi.stubEnv("ENT_PUBLIC_URL", "https://119.0.0.1");
     // 请求主机对上了也不行：以 ENT_PUBLIC_URL 为准
@@ -117,15 +136,23 @@ describe("签名接口", () => {
 });
 
 describe("可签地址 / 算签名", () => {
-  it("只认 http(s)、本站、/mic-test.html；去掉 # 以后", () => {
-    expect(可签地址("https://a.test/mic-test.html#x", { 请求主机: ["a.test"] })).toBe("https://a.test/mic-test.html");
-    expect(可签地址("https://A.test/mic-test.html", { 请求主机: ["a.test"] })).toBe("https://A.test/mic-test.html");
-    expect(可签地址("https://a.test/mic-test.html", { 请求主机: [null, "", "b.test"] })).toBeNull();
-    expect(可签地址("javascript:alert(1)//mic-test.html", { 请求主机: ["a.test"] })).toBeNull();
-    expect(可签地址("https://u:p@a.test/mic-test.html", { 请求主机: ["a.test"] })).toBeNull();
-    expect(可签地址("https://a.test/mic-test.html/../login", { 请求主机: ["a.test"] })).toBeNull();
-    expect(可签地址("https://a.test/mic-test.html", { 公开地址: "https://a.test/", 请求主机: [] })).toBe("https://a.test/mic-test.html");
-    expect(可签地址("https://a.test:8443/mic-test.html", { 公开地址: "https://a.test", 请求主机: ["a.test:8443"] })).toBeNull();
+  it("只认 http(s)、和本站源同源、/mic-test.html；去掉 # 以后", () => {
+    const 本站 = 站点源("https://a.test/");
+    expect(本站).toBe("https://a.test");
+    expect(可签地址("https://a.test/mic-test.html#x", 本站)).toBe("https://a.test/mic-test.html");
+    expect(可签地址("https://A.test/mic-test.html", 本站)).toBe("https://A.test/mic-test.html");
+    expect(可签地址("https://b.test/mic-test.html", 本站)).toBeNull();
+    expect(可签地址("http://a.test/mic-test.html", 本站)).toBeNull();
+    expect(可签地址("javascript:alert(1)//mic-test.html", 本站)).toBeNull();
+    expect(可签地址("https://u:p@a.test/mic-test.html", 本站)).toBeNull();
+    expect(可签地址("https://a.test/mic-test.html/../login", 本站)).toBeNull();
+    expect(可签地址("https://a.test:8443/mic-test.html", 本站)).toBeNull();
+    expect(可签地址("https://a.test:8443/mic-test.html", 站点源("https://a.test:8443"))).toBe("https://a.test:8443/mic-test.html");
+  });
+
+  it("没有本站源（ENT_PUBLIC_URL 没配 / 配错）一律不签", () => {
+    for (const 值 of [undefined, null, "", "  ", "a.test", "ftp://a.test", "javascript:alert(1)"]) expect(站点源(值), String(值)).toBeNull();
+    expect(可签地址("https://a.test/mic-test.html", null)).toBeNull();
   });
 
   it("固定样例：sha1(jsapi_ticket=&noncestr=&timestamp=&url=) 十六进制", () => {

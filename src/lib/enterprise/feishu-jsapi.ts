@@ -10,7 +10,8 @@
  *          （飞书官方示例 larksuite/lark-samples web_app_with_jssdk 同样写法；签名 10 分钟内有效、不复用，所以每次现算）
  *
  * 不存任何东西：票只在本进程内存里缓存到快过期（和令牌一样），不落库、不写文件；票本身不回给浏览器。
- * 只签本站的实测页地址（路径必须是 /mic-test.html；配了 ENT_PUBLIC_URL 就必须和它同源），别的地址一律不签。
+ * 只签本站的实测页地址（路径必须是 /mic-test.html，且和 ENT_PUBLIC_URL 同源），别的地址一律不签；
+ * 没配 ENT_PUBLIC_URL 就一个都不签（Host / X-Forwarded-Host 客户端能伪造，不拿来认本站）。
  */
 import { createHash, randomBytes } from "node:crypto";
 import { 推送凭据, 飞书租户令牌, type 推送凭据 as 凭据 } from "./feishu-push";
@@ -57,12 +58,12 @@ export function 算签名(票: string, 随机串: string, 时间戳: number, 地
 }
 
 /**
- * 校验要签的地址：http(s)、路径在 可签页面 里、是本站：
- *   - 配了 ENT_PUBLIC_URL（c2 就是）→ 必须和它同源（协议 + 主机 + 端口）
- *   - 没配（本机、3703）→ 主机和这次请求的 Host / X-Forwarded-Host 之一相同
+ * 校验要签的地址：http(s)、路径在 可签页面 里、和本站公开地址（ENT_PUBLIC_URL 的源）同源（协议 + 主机 + 端口）。
+ * 没有公开地址一律不签：请求里的 Host / X-Forwarded-Host 客户端能伪造，不拿来认本站。
  * 合格返回去掉 # 之后的地址（飞书按这个比对），不合格返回 null
  */
-export function 可签地址(raw: string | null, 本站: { 公开地址?: string | null; 请求主机?: readonly (string | null | undefined)[] }): string | null {
+export function 可签地址(raw: string | null, 本站源: string | null): string | null {
+  if (!本站源) return null;
   if (!raw || raw.length > 2048) return null;
   let u: URL;
   try {
@@ -73,17 +74,12 @@ export function 可签地址(raw: string | null, 本站: { 公开地址?: string
   if (u.protocol !== "https:" && u.protocol !== "http:") return null;
   if (u.username || u.password) return null;
   if (!可签页面.has(u.pathname)) return null;
-  const 公开 = 源(本站.公开地址);
-  if (公开) {
-    if (u.origin !== 公开) return null;
-  } else {
-    const 主机们 = new Set((本站.请求主机 ?? []).filter((h): h is string => typeof h === "string" && h.trim() !== "").map((h) => h.trim().toLowerCase()));
-    if (!主机们.has(u.host.toLowerCase())) return null;
-  }
+  if (u.origin !== 本站源) return null;
   return raw.split("#")[0];
 }
 
-function 源(地址: string | null | undefined): string | null {
+/** 站点公开地址（ENT_PUBLIC_URL）→ 源（协议 + 主机 + 端口）；没配、配错（不是 http(s) 地址）返回 null */
+export function 站点源(地址: string | null | undefined): string | null {
   if (!地址 || !地址.trim()) return null;
   try {
     const u = new URL(地址.trim());
