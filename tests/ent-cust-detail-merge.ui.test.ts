@@ -1047,9 +1047,12 @@ it("[D3 · M4-a 方案 A] 四个宽度 × 8 位联系人：先摆前 3 位（关
           操作看不见: [...document.querySelectorAll("#cust-contacts .rec-contact-acts")].filter(e => getComputedStyle(e).opacity !== "1" || getComputedStyle(e).visibility === "hidden").length,
           线: [...document.querySelectorAll("#cust-contacts .rec-cg")].map(e => getComputedStyle(e, "::before").height),
           长号在: document.querySelector("#cust-contacts .rec-cg")!.textContent!.includes("+86 138-0013-8000 转 1234"),
+          // 号码保护一枚一行（不在「：」后折开），放不下整枚挪到下一行
+          保护最高: Math.max(...[...document.querySelectorAll("#cust-contacts .rec-contact-guard")].map(t => Math.round(t.getBoundingClientRect().height))),
         };
       });
       expect(量, `${w}`).toMatchObject({ 号码截了: [], 出卡: [], 横滚: false, 操作看不见: 0, 长号在: true });
+      expect(量.保护最高, `${w} 号码保护一行`).toBeLessThanOrEqual(22);
       // 卡头「客户联系人（8）」不被「＋ 新增」挤出省略号（232 宽的左栏也放得下）
       expect(await page.locator("#cust-contacts .ant-card-head-title").evaluate(e => e.scrollWidth <= e.clientWidth + 1), `${w} 卡头标题`).toBe(true);
       // 第一位没线；第二、三位有；「这位客户的其他联系人」小标题后面那位由小标题自己的线隔开

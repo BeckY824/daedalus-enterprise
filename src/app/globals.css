@@ -5485,7 +5485,8 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 .hist-sheet .rec-hist-row { padding: 6px 0; border-top: 1px solid var(--line-soft); font-size: var(--fs-body); }
 .rec-contact-acts { display: inline-flex; align-items: center; flex: none; margin-left: auto; }
 .rec-contact-av.is-empty { color: var(--ink-soft); }
-.rec-contact-num > .rec-contact-v { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
+.rec-contact-num { flex-wrap: wrap; align-items: center; gap: 2px 6px; }
+.rec-contact-kv { display: flex; flex: 0 1 auto; min-width: 0; max-width: 100%; }
 .att-empty { display: inline-flex; align-items: center; gap: 6px; }
 .cf-rule { margin: -4px 0 12px; font-size: var(--fs-note); color: var(--text-muted); }
 .rec-contact-pick { display: grid; gap: 4px; }
@@ -5494,18 +5495,19 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 .rec-contact-err { font-size: var(--fs-note); color: var(--danger-text); }
 .cf-two-err { margin-top: 2px; font-size: var(--fs-note); color: var(--danger-text); }
 
-/* M3-a（D17）：号码、邮箱不打省略号，放不下在空格 / 连字符处折行（「+86 138-0013-8000 转 1234」整串看得见）；
-   复制键贴在文字后面、顶着第一行；人名只在「、」处折，单个名字不拆 */
+/* M3-a（D17）：号码、邮箱不打省略号。一个号码一整串不拆（文字是行内块，放得下就一行）；复制键跟在后面，同一行放不下就挪到下一行；
+   号码本身比整格还宽才在里面断（overflow-wrap: anywhere 兜底）。人名只在「、」处折，单个名字不拆 */
 :root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-field-v.is-line:has(.copy-val) { white-space: normal; overflow: visible; }
-:root:is(:not([data-skin]), [data-skin="now"]) .rec-page :is(.rec-field-v, .rec-contact-v) .copy-val { align-items: flex-start; }
-:root:is(:not([data-skin]), [data-skin="now"]) .rec-page :is(.rec-field-v, .rec-contact-v) .copy-val-t { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
-:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-contact-num > .rec-contact-v { white-space: normal; overflow: visible; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page :is(.rec-field-v, .rec-contact-v) .copy-val { display: inline; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page :is(.rec-field-v, .rec-contact-v) .copy-val-t { display: inline-block; max-width: 100%; vertical-align: top; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page :is(.rec-field-v, .rec-contact-v) .copy-val-b { position: relative; vertical-align: top; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-contact-num .rec-contact-v { white-space: normal; overflow: visible; }
 :root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-names { white-space: normal; word-break: normal; overflow-wrap: normal; }
 :root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-nm { display: inline-block; max-width: 100%; vertical-align: top; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 复制键点击区 28（--hit），触屏 44（--hit-touch）；上下、左边负外边距收回，行高不变；右边不收，键不出格 */
-:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .copy-val-b { width: var(--hit); height: var(--hit); margin: -4px 0 -4px -2px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .copy-val-b { width: var(--hit); height: var(--hit); margin: -3px 0 -3px 0; }
 @media (max-width: 767px), (pointer: coarse) {
-  :root:is(:not([data-skin]), [data-skin="now"]) .rec-page .copy-val-b { width: var(--hit-touch); height: var(--hit-touch); margin: -12px 0 -12px -10px; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rec-page .copy-val-b { width: var(--hit-touch); height: var(--hit-touch); margin: -11px 0; }
 }
 
 /* M3-b（D11 / D20）：能改的格整行浅底 + 行尾一支笔（悬停 / 焦点出，触屏常显）；不能改的没有笔、不变底 */
@@ -5545,8 +5547,6 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 :root:is(:not([data-skin]), [data-skin="now"]) .rec-contact-n.is-empty { color: var(--empty-fg); font-weight: 400; }
 :root:is(:not([data-skin]), [data-skin="now"]) .rec-contact-av.is-empty { color: var(--empty-fg); }
 :root:is(:not([data-skin]), [data-skin="now"]) .ant-tag.ant-tag.ant-tag.rec-contact-guard { background: var(--tag-bg); color: var(--text-muted); border-color: transparent; }
-/* 值那一格放不下整枚（标签列是「联系方式」「WhatsApp」这类宽的）：标签自己在「：」后折成两行，不出卡 */
-:root:is(:not([data-skin]), [data-skin="now"]) .rec-contact-num .ant-tag.rec-contact-guard { max-width: 100%; height: auto; white-space: normal; word-break: keep-all; overflow-wrap: anywhere; }
 /* M4-c：附件空格「— ＋ 添加」小字键；挂靠就地表单的格子 32 高（--ctl-h） */
 :root:is(:not([data-skin]), [data-skin="now"]) .att-empty > .att-add.ant-btn { height: 20px; padding: 0 4px; gap: 2px; font-size: var(--fs-note); color: var(--brand); }
 :root:is(:not([data-skin]), [data-skin="now"]) .rec-contact-pick .ant-select { height: var(--ctl-h); }

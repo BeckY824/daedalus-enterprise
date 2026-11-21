@@ -205,7 +205,7 @@ describe("D1 · 设计语言 token 和基础控件", () => {
     expect(选择器们.length).toBeGreaterThan(40);
     const 结构 = [
       ".rec-field-pen", ".rec-hist-btn.ant-btn", ".rec-hist-btn.ant-btn", ".hist-sheet-h", ".hist-sheet .rec-hist-row", ".rec-contact-acts", ".rec-contact-av.is-empty",
-      ".rec-contact-num > .rec-contact-v", ".att-empty", ".cf-rule", ".rec-contact-pick", ".rec-contact-fl", ".rec-contact-fl.is-req::before", ".rec-contact-err", ".cf-two-err",
+      ".rec-contact-num", ".rec-contact-kv", ".att-empty", ".cf-rule", ".rec-contact-pick", ".rec-contact-fl", ".rec-contact-fl.is-req::before", ".rec-contact-err", ".cf-two-err",
     ];
     const 不带 = 选择器们.filter((x) => !x.startsWith(现状));
     expect(不带).toEqual(结构);

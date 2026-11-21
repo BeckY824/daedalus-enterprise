@@ -141,7 +141,7 @@ it("两条路都不通：明确说复制不了，键不变对勾", async () => {
   } finally { await page.close(); }
 });
 
-it("左栏窄：1024 / 1280 / 1366 号码、邮箱不打省略号、折行看全（D3 · M3-a），键 28 紧贴在格内能点到；别的单行值照旧省略、悬停看全文", async () => {
+it("左栏窄：1024 / 1280 / 1366 号码、邮箱不打省略号（D3 · M3-a），一整串不拆、比整格宽才在里面断，键 28 跟在后面（放不下挪下一行）在格内能点到；别的单行值照旧省略、悬停看全文", async () => {
   for (const w of [1024, 1280, 1366]) {
     const page = await open("localhost", 记写入, w);
     try {
@@ -151,9 +151,15 @@ it("左栏窄：1024 / 1280 / 1366 号码、邮箱不打省略号、折行看全
           const g = 格.getBoundingClientRect(), z = 字.getBoundingClientRect(), k = 键.getBoundingClientRect();
           const 点到 = document.elementFromPoint(k.left + k.width / 2, k.top + k.height / 2);
           const s = getComputedStyle(字);
-          return { 格不出界: 格.scrollWidth <= 格.clientWidth + 1, 字截了: 字.scrollWidth > 字.clientWidth + 1, 省略: s.textOverflow, 折行: s.whiteSpace, 不重叠: z.right <= k.left + 0.5, 紧贴: k.left - z.right <= 3, 键在格内: k.right <= g.right + 0.5, 键能点到: !!点到 && 键.contains(点到), 键宽: k.width, 键高: k.height };
+          // 一个号码一整串：放得下就一行；键同一行放不下就挪到下一行行首
+          const 同行 = k.top < z.bottom - 4;
+          const 量字 = document.createElement("span"); 量字.textContent = 字.textContent; 量字.style.cssText = "position:absolute;visibility:hidden;white-space:nowrap"; 字.parentElement!.append(量字);
+          const 整宽 = 量字.getBoundingClientRect().width; 量字.remove();
+          const 行数 = Math.round(z.height / parseFloat(s.lineHeight));
+          return { 格不出界: 格.scrollWidth <= 格.clientWidth + 1, 字截了: 字.scrollWidth > 字.clientWidth + 1, 省略: s.textOverflow, 折行: s.whiteSpace, 折得对: 行数 === 1 || 整宽 > g.width - 1,
+            不重叠: 同行 ? z.right <= k.left + 0.5 : k.top >= z.bottom - 4, 紧贴: 同行 ? k.left - z.right <= 3 : k.left - g.left <= 3, 键在格内: k.right <= g.right + 0.5, 键能点到: !!点到 && 键.contains(点到), 键宽: k.width, 键高: k.height };
         });
-        expect(量, `宽 ${w} ${f}`).toEqual({ 格不出界: true, 字截了: false, 省略: "clip", 折行: "normal", 不重叠: true, 紧贴: true, 键在格内: true, 键能点到: true, 键宽: 28, 键高: 28 });
+        expect(量, `宽 ${w} ${f}`).toEqual({ 格不出界: true, 字截了: false, 省略: "clip", 折行: "normal", 折得对: true, 不重叠: true, 紧贴: true, 键在格内: true, 键能点到: true, 键宽: 28, 键高: 28 });
       }
       expect(await page.locator(".rec-field[data-field=school] .rec-field-v").evaluate(e => e.classList.contains("is-line") && getComputedStyle(e).textOverflow)).toBe("ellipsis");
       // title 给全文；悬停：截了的出浮层、显示全文；移开收起

@@ -317,13 +317,14 @@ it("号码保护：每张卡一枚；有电话 + 客户有负责人 → 已开�
   } finally { await 关.close(); }
 });
 /* 11-09：联系人卡片里的电话、邮箱是真 RecordView + 真 CopyValue + globals.css；老三格和改版后的「号码们」都量 */
-it("超长号码、超长邮箱：1024 / 1280 / 1366 不打省略号、整串折行看得全（D3 · M3-a），复制键 28 紧贴在格内能点到，不出卡片；打码号没有键", async () => {
+it("超长号码、超长邮箱：1024 / 1280 / 1366 不打省略号（D3 · M3-a）；一个号码一整串不拆，比整格还宽才在里面断；复制键 28 跟在后面、放不下挪下一行，在格内能点到；打码号没有键", async () => {
   const 长号 = "+86 138-0013-8000 转 1234567890 分机 0987654321 备用 13800138001";
   const 长邮箱 = "very.long.mailbox.name.for.purchasing.department.and.more@example-supplier-company-with-long-name.com";
   const 联系人 = (id: string, 加: Record<string, unknown>) => ({ id, name: "赵六", position: null, phone: null, email: null, wechat: null, isPrimary: false, remark: null, updatedAt: "2026-01-01T00:00:00.000Z", ...加 });
   const contacts = [
     联系人("c1", { phone: 长号, email: 长邮箱 }),
     联系人("c2", { 号码们: [{ kind: "phone", value: 长号 }, { kind: "landline", value: 长号 }, { kind: "email", value: 长邮箱 }, { kind: "phone", value: "138****8001" }] }),
+    联系人("c3", { 号码们: [{ kind: "phone", value: "+86 138-0013-8000" }] }),
   ];
   const 号码种类 = [{ kind: "phone", 名: "手机" }, { kind: "landline", 名: "座机" }, { kind: "email", 名: "邮箱" }];
   for (const w of [1024, 1280, 1366]) {
@@ -333,24 +334,36 @@ it("超长号码、超长邮箱：1024 / 1280 / 1366 不打省略号、整串折
       if (await page.locator('.rec-contact-rest-btn[aria-expanded="false"]').count()) await page.locator('.rec-contact-rest-btn[aria-expanded="false"]').click();
       const 量 = await page.locator(".rec-contact .copy-val").evaluateAll((vs: HTMLElement[]) => vs.map(v => {
         const 字 = v.querySelector<HTMLElement>(".copy-val-t")!, 键 = v.querySelector<HTMLElement>("button");
-        const 卡 = v.closest<HTMLElement>(".rec-contact")!.getBoundingClientRect(), 格 = v.closest<HTMLElement>(".rec-contact-v")!;
+        const 格 = v.closest<HTMLElement>(".rec-contact-v")!;
+        const 量字 = document.createElement("span"); 量字.textContent = 字.textContent; 量字.style.cssText = "position:absolute;visibility:hidden;white-space:nowrap"; 字.parentElement!.append(量字);
+        const 整宽 = 量字.getBoundingClientRect().width; 量字.remove();
+        const 行数 = Math.round(字.getBoundingClientRect().height / parseFloat(getComputedStyle(字).lineHeight));
         if (!键) return { 文字: 字.textContent, 无键: true };
-        const r = 键.getBoundingClientRect(), 字框 = 字.getBoundingClientRect();
+        键.scrollIntoView({ block: "center" });
+        const r = 键.getBoundingClientRect(), 字框 = 字.getBoundingClientRect(), 格框 = 格.getBoundingClientRect(), 卡 = v.closest<HTMLElement>(".rec-contact")!.getBoundingClientRect();
         const 点到 = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        const 同行 = r.top < 字框.bottom - 4;
         return {
-          文字: 字.textContent, 无键: false, 被截: 字.scrollWidth > 字.clientWidth + 1, 折行: 字框.height > 30, title: 字.title,
+          文字: 字.textContent, 无键: false, 被截: 字.scrollWidth > 字.clientWidth + 1, 行数, title: 字.title,
+          折得对: 行数 === 1 || 整宽 > 格框.width - 1,
           键能点到: !!点到 && 键.contains(点到), 键宽: r.width,
-          紧贴: r.left - 字框.right, 不重叠: 字框.right <= r.left + 0.5, 在格内: r.right <= 格.getBoundingClientRect().right + 0.5 && r.right <= 卡.right + 0.5,
+          不重叠: 同行 ? 字框.right <= r.left + 0.5 : r.top >= 字框.bottom - 4, 紧贴: 同行 ? r.left - 字框.right <= 3 : r.left - 格框.left <= 3,
+          在格内: r.right <= 格框.right + 0.5 && r.right <= 卡.right + 0.5,
           格不出界: 格.scrollWidth <= 格.clientWidth + 1,
         };
       }));
-      expect(量.length).toBe(6);
+      expect(量.length).toBe(7);
       for (const x of 量.filter(y => !y.无键)) {
-        expect(x, `宽 ${w}：${x.文字}`).toMatchObject({ 键能点到: true, 键宽: 28, 不重叠: true, 在格内: true, 格不出界: true, 被截: false, title: x.文字 });
-        expect(x.紧贴!).toBeLessThanOrEqual(3);
+        expect(x, `宽 ${w}：${x.文字}`).toMatchObject({ 键能点到: true, 键宽: 28, 不重叠: true, 紧贴: true, 在格内: true, 格不出界: true, 被截: false, 折得对: true, title: x.文字 });
       }
       expect(量.filter(x => x.无键).map(x => x.文字)).toEqual(["138****8001"]);
-      expect(量.filter(y => !y.无键 && y.折行).length).toBeGreaterThan(0);
+      // 放得下的「+86 138-0013-8000」一行，不在连字符处断开；超长的那几串比整格宽，才在里面断
+      expect(量.find(x => x.文字 === "+86 138-0013-8000")!.行数, `宽 ${w}`).toBe(1);
+      expect(量.filter(y => !y.无键 && (y.行数 ?? 0) > 1).length).toBeGreaterThan(0);
+      // 号码保护一枚一行、不在「：」后折开，不出卡
+      const 保 = await page.locator(".rec-contact-guard").evaluateAll((ts: HTMLElement[]) => ts.map(t => { const r = t.getBoundingClientRect(); return { 高: Math.round(r.height), 出卡: r.right > t.closest(".rec-contact")!.getBoundingClientRect().right + 0.5 }; }));
+      for (const g of 保) expect(g, `宽 ${w}`).toEqual({ 高: expect.any(Number), 出卡: false });
+      expect(Math.max(...保.map(g => g.高)), `宽 ${w} 号码保护一行`).toBeLessThanOrEqual(22);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
     } finally { await page.close(); }
   }

@@ -911,9 +911,13 @@ export default function RecordView({
   const 联系人身 = (c: ContactRow) => {
     const 保护 = <号码保护标签 c={c} 客户={customer} />;
     const 号码行 = (k: string, v: ReactNode, 带保护: boolean, key?: string) => (
+      /* 号码保护跟在号码后面，一行放不下整枚挪到下一行（不在「：」后折开）；号码本身一整串不拆，比整格还宽才在里面断 */
       <div key={key} className="rec-contact-line rec-contact-num">
-        <span className="rec-contact-k">{k}</span>
-        <span className="rec-contact-v">{v}{带保护 && 保护}</span>
+        <span className="rec-contact-kv">
+          <span className="rec-contact-k">{k}</span>
+          <span className="rec-contact-v">{v}</span>
+        </span>
+        {带保护 && 保护}
       </div>
     );
     const 老号: { k: string; v: ReactNode }[] = [
