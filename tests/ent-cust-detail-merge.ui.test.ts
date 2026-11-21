@@ -649,6 +649,9 @@ it("地址上的 ?project= 读不出来、服务端换成了别的：地址改�
     await expect.poll(() => page.evaluate(() => (window as unknown as { __换?: string }).__换)).toBe("/customers/a?focus=plan%3Ax&project=p1&tab=2");
     await 画(page, { 地址: "focus=plan:x&project=p2", 空: true });
     await expect.poll(() => page.evaluate(() => (window as unknown as { __换?: string }).__换)).toBe("/customers/a?focus=plan%3Ax");
+    // 审查 2：从通知带 giveup=1 来、那条看不了：改地址时一并去掉 giveup（拿的是旧参数串，不去掉会把它写回地址栏）
+    await 画(page, { 地址: "project=看不了的&giveup=1&focus=plan:x" });
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __换?: string }).__换)).toBe("/customers/a?project=p1&focus=plan%3Ax");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

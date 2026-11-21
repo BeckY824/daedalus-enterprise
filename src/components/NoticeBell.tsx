@@ -211,7 +211,7 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
           成={(接手人, 客户) => {
             set放成((原) => ({ ...原, [放的.项目]: 接手人 }));
             set放的(null);
-            // 正停在这条线索（项目页、客户详情这条项目）或跟着转走的这位客户上：刷新会 404（他已不是负责人，同 #388），
+            // 正停在这条线索（项目页、客户详情这条项目）或这位客户上（跟着转走了，或没选项目、客户也没留给他）：刷新会 404（他已不是负责人，同 #388），
             // 去项目列表（抽屉里那句「已放弃，转给 X」留着）；别的页重拉一遍
             if (放弃后要离开(window.location.pathname, window.location.search, 放的.项目, 客户)) router.push("/projects");
             else router.refresh();

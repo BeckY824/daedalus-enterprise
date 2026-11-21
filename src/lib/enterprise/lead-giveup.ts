@@ -53,6 +53,7 @@ import { 月份 } from "./lead-assign";
 import { 读组织于 } from "./org";
 import { 只读角色 } from "./permissions";
 import { 负责人跟过的, 分配后沟通过的, 读试过, 本轮排除, 客户随线索, 超时提醒分钟, 客户在谁名下话, 放弃过的人, 会按超时计时, 超时时限们 } from "./reply-overdue";
+import type { 客户去向 } from "./reply-overdue";
 import { 超时转令牌 } from "./scheduled-assign-token";
 import { 系统操作人 } from "./scheduled-assign";
 import { 放弃待补种类 } from "./invalid-makeup";
@@ -182,9 +183,9 @@ export async function 我能放弃的(me: Pick<SessionUser, "id" | "视图由">,
       const org = await 读组织于(prisma);
       if (只读角色({ id: me.id }, org)) return [];
       const 起 = new Date(现在.getTime() - (放弃窗口天 + 1) * 86_400_000);
-      // 按分配时间倒序（新建早、最近才分来的也排得进）：近 8 天分给我的就这些，条数有限
+      // 按分配时间倒序（新建早、最近才分来的也排得进）：近 8 天分给我的就这些，条数有限；同一时刻的按记录 id，次次一样
       const 分给我 = await prisma.entLeadAssign.findMany({
-        where: { toUserId: me.id, createdAt: { gte: 起 }, projectId: { not: null } }, select: { projectId: true }, orderBy: { createdAt: "desc" },
+        where: { toUserId: me.id, createdAt: { gte: 起 }, projectId: { not: null } }, select: { projectId: true }, orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       });
       const 候选 = [...new Set(分给我.map((a) => a.projectId!))];
       if (!候选.length) return [];
@@ -203,7 +204,8 @@ export async function 我能放弃的(me: Pick<SessionUser, "id" | "视图由">,
       // 离超时还剩多久：同超时转那一套（reply-overdue.ts 超时时限们，链在走按链、还没起链按基准算）；不计时的按放弃窗口还剩多久
       const 时限们 = await 超时时限们(能.map((x) => ({ id: x.p.id, 接手于: x.接手于 })), 现在);
       return 能
-        .sort((a, b) => b.接手于.getTime() - a.接手于.getTime())
+        // 同一时刻接手的按项目 id 倒序：首页每次刷新顺序不跳
+        .sort((a, b) => b.接手于.getTime() - a.接手于.getTime() || (a.p.id < b.p.id ? 1 : a.p.id > b.p.id ? -1 : 0))
         .slice(0, 最多)
         .map(({ p, 接手于 }) => {
           const 时限 = 时限们.get(p.id) ?? { 种: "窗口" as const, 截止: new Date(接手于.getTime() + 放弃窗口天 * 86_400_000) };
@@ -231,9 +233,9 @@ export async function 通知放弃链接(userId: string, projectId: string, link
 
 /**
  * 放弃的结果。成了带上客户（铃铛里放弃后判断当前页是不是这条 / 这位客户，是就别刷新、去项目列表，lead-giveup-core.ts 放弃后要离开）：
- * 客户跟走 = 客户一起给了接手人（放弃人多半看不到这位客户了）
+ * 客户去向 = 客户跟着走（一起给了接手人）/ 留给原负责人（他手上还有这位客户别的项目）/ 不动（公海、归别人）
  */
-export type 放弃结果 = { ok: true; 接手人: string; customerId?: string; 客户跟走?: boolean } | { ok: false; error: string };
+export type 放弃结果 = { ok: true; 接手人: string; customerId?: string; 客户去向?: 客户去向 } | { ok: false; error: string };
 
 /** Prisma 唯一键冲突（P2002）或 SQLite 的 UNIQUE constraint failed */
 const 是唯一键冲突 = (e: unknown): boolean =>
@@ -357,5 +359,5 @@ async function 放出去(
     body: `已转给 ${r.接手人}（原因：${认.文字}）。${客户话}本月放弃次数已用（每人每月 ${每月放弃次数} 次）；已给你记 1 条待补，下一条自动分配先补给你，补的那条不计入本月已分`,
     key: `giveup:${projectId}:${me.id}:${月}`,
   });
-  return { ok: true, 接手人: r.接手人, customerId: p.customerId, 客户跟走: 客户.去向 === "跟着走" };
+  return { ok: true, 接手人: r.接手人, customerId: p.customerId, 客户去向: 客户.去向 };
 }

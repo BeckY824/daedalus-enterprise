@@ -125,12 +125,22 @@ describe("铃铛放弃成了以后当前页要不要离开（审查：刷新会 
     expect(放弃后要离开("/projects/p1", "", "p1")).toBe(true);
     expect(放弃后要离开("/projects/p1/", "?giveup=1", "p1")).toBe(true);
     expect(放弃后要离开("/customers/c1", "?project=p1", "p1")).toBe(true);
-    expect(放弃后要离开("/customers/c1", "", "p1", { customerId: "c1", 客户跟走: true })).toBe(true);
-    expect(放弃后要离开("/customers/c1", "", "p1", { customerId: "c1", 客户跟走: false })).toBe(false);
-    expect(放弃后要离开("/customers/c2", "", "p1", { customerId: "c1", 客户跟走: true })).toBe(false);
+    expect(放弃后要离开("/customers/c1", "", "p1", { customerId: "c1", 客户去向: "跟着走" })).toBe(true);
+    expect(放弃后要离开("/customers/c1", "?project=p2", "p1", { customerId: "c1", 客户去向: "跟着走" })).toBe(true);
+    expect(放弃后要离开("/customers/c1", "", "p1", { customerId: "c1", 客户去向: "留给原负责人" })).toBe(false);
+    expect(放弃后要离开("/customers/c2", "", "p1", { customerId: "c1", 客户去向: "跟着走" })).toBe(false);
     expect(放弃后要离开("/customers/c1", "?project=p2", "p1")).toBe(false);
     expect(放弃后要离开("/projects/p2", "", "p1")).toBe(false);
-    expect(放弃后要离开("/dashboard", "", "p1", { customerId: "c1", 客户跟走: true })).toBe(false);
-    expect(放弃后要离开("/customers/%E0%A4%A", "", "p1", { customerId: "c1", 客户跟走: true })).toBe(false);
+    expect(放弃后要离开("/dashboard", "", "p1", { customerId: "c1", 客户去向: "跟着走" })).toBe(false);
+    expect(放弃后要离开("/customers/%E0%A4%A", "", "p1", { customerId: "c1", 客户去向: "跟着走" })).toBe(false);
+  });
+
+  it("[审查 3] 停在这位客户的客户详情、没带 ?project：客户不是留给原负责人（不动 = 公海 / 归别人）也离开；带着别的项目、留给他的照旧刷新", () => {
+    expect(放弃后要离开("/customers/c1", "", "p1", { customerId: "c1", 客户去向: "不动" })).toBe(true);
+    expect(放弃后要离开("/customers/c1/", "#x", "p1", { customerId: "c1", 客户去向: "不动" })).toBe(true);
+    expect(放弃后要离开("/customers/c1", "?focus=a", "p1", { customerId: "c1", 客户去向: "不动" })).toBe(true);
+    expect(放弃后要离开("/customers/c1", "?project=p2", "p1", { customerId: "c1", 客户去向: "不动" })).toBe(false);
+    expect(放弃后要离开("/customers/c1", "?focus=a", "p1", { customerId: "c1", 客户去向: "留给原负责人" })).toBe(false);
+    expect(放弃后要离开("/customers/c2", "", "p1", { customerId: "c1", 客户去向: "不动" })).toBe(false);
   });
 });

@@ -36,10 +36,13 @@ function useGiveUpLanding(projectId: string, 入口: 放弃入口 | undefined): 
   useEffect(() => {
     if (落地.做 === "无") return;
     let 在 = true;
-    // 参数只用这一次：从地址里去掉，刷新、回退不再弹
+    // 参数只用这一次：从地址里去掉，刷新、回退不再弹。
+    // 第一个参数必须是 null：Next 的 replaceState 补丁见到带 __NA 的 state（= 原样传 history.state）就不同步路由，
+    // useSearchParams 还带着 giveup=1——之后换挂载点（p.放弃 有→无）会再落地一次，refresh 还会把参数写回地址栏。
+    // 传 null 时 Next 自己补回内部 state、按新地址同步路由，不重新取页面（同 RecordView 的写法）
     const 现 = `${window.location.pathname}${window.location.search}${window.location.hash}`;
     const 新 = 去放弃参数(现);
-    if (新 !== 现) window.history.replaceState(window.history.state, "", 新);
+    if (新 !== 现) window.history.replaceState(null, "", 新);
     if (落地.做 === "问服务器") {
       放弃说明Action(projectId).then((r) => 在 && set说明(r.可 ? 刷新再点话 : r.话)).catch(() => 在 && set说明(没问到话));
     } else {

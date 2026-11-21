@@ -684,8 +684,16 @@ describe("[11-21 审查] 指定回复提醒也带放弃链接；首页候选按�
     expect((await 我能放弃的(甲, 现在, 1)).map((x) => x.projectId)).toEqual([老.id]);
   });
 
-  it("放弃成了回客户 id、客户跟没跟着走（铃铛判当前页要不要离开）", async () => {
+  it("[审查 4] 首页候选同一时刻分来的：顺序固定（按项目 id 倒序），和建档先后无关", async () => {
+    const 现在 = 京("2026-11-20 15:10");
+    const 同时 = 京("2026-11-20 15:00");
+    for (const id of ["giveup-tie-a", "giveup-tie-c", "giveup-tie-b"]) await 分来的(甲, 同时, { id });
+    expect((await 我能放弃的(甲, 现在)).map((x) => x.projectId)).toEqual(["giveup-tie-c", "giveup-tie-b", "giveup-tie-a"]);
+    expect((await 我能放弃的(甲, 现在, 2)).map((x) => x.projectId)).toEqual(["giveup-tie-c", "giveup-tie-b"]);
+  });
+
+  it("放弃成了回客户 id、客户去向（铃铛判当前页要不要离开）", async () => {
     const { id, customerId } = await 分来的(甲, new Date(Date.now() - 5 * 60_000));
-    expect(await 放弃(甲, id, new Date())).toMatchObject({ ok: true, customerId, 客户跟走: true });
+    expect(await 放弃(甲, id, new Date())).toMatchObject({ ok: true, customerId, 客户去向: "跟着走" });
   });
 });

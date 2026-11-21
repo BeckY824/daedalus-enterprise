@@ -170,13 +170,16 @@ it("[11-21] 放弃没成：错误写在框里，按钮还在；「去判无效�
   } finally { await page.close(); }
 });
 
-it("[11-21 审查] 放弃成了：正停在这条（项目页、客户详情 ?project=这条、跟着转走的这位客户）不刷新、去项目列表；别的页照旧刷新", async () => {
+it("[11-21 审查] 放弃成了：正停在这条（项目页、客户详情 ?project=这条、跟着转走 / 没留给他的这位客户）不刷新、去项目列表；别的页照旧刷新", async () => {
   const 行们 = [{ id: "g1", kind: "分配", title: "分配给你一条新线索：华东", body: "", link: "/projects/p9?giveup=1", 放弃项目: "p9", read: true, createdAt: 刚才(0) }];
   const 情形: [string, unknown, boolean][] = [
     ["/projects/p9", undefined, true],
     ["/customers/c1?project=p9", undefined, true],
-    ["/customers/c1", { ok: true, 接手人: "乙", customerId: "c1", 客户跟走: true }, true],
-    ["/customers/c1", { ok: true, 接手人: "乙", customerId: "c1", 客户跟走: false }, false],
+    ["/customers/c1", { ok: true, 接手人: "乙", customerId: "c1", 客户去向: "跟着走" }, true],
+    ["/customers/c1", { ok: true, 接手人: "乙", customerId: "c1", 客户去向: "留给原负责人" }, false],
+    // 审查 3：客户没留给他（不动）、停在客户详情没选项目 = 也离开
+    ["/customers/c1", { ok: true, 接手人: "乙", customerId: "c1", 客户去向: "不动" }, true],
+    ["/customers/c1?project=p8", { ok: true, 接手人: "乙", customerId: "c1", 客户去向: "不动" }, false],
     ["/customers/c1?project=p8", undefined, false],
     ["/projects/p8", undefined, false],
   ];

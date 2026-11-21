@@ -2,6 +2,7 @@
  * 企业版主动放弃（豁免）（2026-11-20，32H）的纯规则：原因选项、原因怎么认、「新分配给我」怎么认。不碰库，界面也引。
  * 整套说明见 lead-giveup.ts 文件头。
  */
+import type { 客户去向 } from "./reply-overdue";
 
 /** 每人每月（北京自然月）几次 */
 export const 每月放弃次数 = 1;
@@ -197,22 +198,36 @@ export function 放弃链接项目(link: string | null | undefined): string | nu
   }
 }
 
+/** 放弃成了回给页面的客户：这条的客户 id、客户去向（reply-overdue.ts 客户怎么办：跟着走 / 留给原负责人 / 不动） */
+export type 放弃后客户 = { customerId?: string; 客户去向?: 客户去向 };
+
 /**
- * 在别处（铃铛）放弃成了以后，当前页是不是还停在这条线索 / 这位客户上（项目页 /projects/<id>、客户详情 ?project=<id>、
- * 客户跟着转走了的客户详情 /customers/<客户>）：是 = 别刷新（刷新他已不是负责人，整页 404），去项目列表；不是 = 照旧刷新
+ * 在别处（铃铛）放弃成了以后，当前页是不是还停在这条线索 / 这位客户上：是 = 别刷新（刷新他已不是负责人，整页 404），去项目列表；
+ * 不是 = 照旧刷新。算「停在上面」的：
+ *   项目页 /projects/<id>；客户详情 ?project=<id>；
+ *   这位客户的客户详情 /customers/<客户>：客户跟着走了（不论选中哪条）；或没带 ?project（默认显示的多半就是这条）、客户也没留给他
+ *   （不动 = 公海 / 归别人，他看这位客户靠的就是这条线索）。留给原负责人 = 客户还在他名下，照旧刷新
  */
-export function 放弃后要离开(pathname: string, search: string, projectId: string, 客户?: { customerId?: string; 客户跟走?: boolean }): boolean {
+export function 放弃后要离开(pathname: string, search: string, projectId: string, 客户?: 放弃后客户): boolean {
   if (落地对得上(projectId, pathname, null)) return true;
-  if (new URLSearchParams(search).get("project") === projectId) return true;
-  if (客户?.客户跟走 && 客户.customerId) {
-    const m = /^\/customers\/([^/?#]+)\/?$/.exec(pathname);
-    try {
-      if (m && decodeURIComponent(m[1]) === 客户.customerId) return true;
-    } catch {
-      /* 地址坏的当不是 */
-    }
+  const 选中 = new URLSearchParams(search).get("project");
+  if (选中 === projectId) return true;
+  if (客户?.customerId && 是客户页(pathname, 客户.customerId)) {
+    if (客户.客户去向 === "跟着走") return true;
+    if (选中 == null && 客户.客户去向 !== "留给原负责人") return true;
   }
   return false;
+}
+
+/** pathname 是不是这位客户的客户详情 /customers/<客户>（地址坏的当不是） */
+function 是客户页(pathname: string, customerId: string): boolean {
+  const m = /^\/customers\/([^/?#]+)\/?$/.exec(pathname);
+  if (!m) return false;
+  try {
+    return decodeURIComponent(m[1]) === customerId;
+  } catch {
+    return false;
+  }
 }
 
 /** 带参数打开的这一页是不是那一条：项目页 /projects/<id>，或客户详情 ?project=<id> */

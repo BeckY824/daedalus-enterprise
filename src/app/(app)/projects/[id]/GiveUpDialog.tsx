@@ -8,7 +8,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, Button, Input, Modal, Radio, Space } from "antd";
-import { 放弃原因们, 其他原因, 放弃补充上限, 走判无效话, 每月放弃次数 } from "@/lib/enterprise/lead-giveup-core";
+import { 放弃原因们, 其他原因, 放弃补充上限, 走判无效话, 每月放弃次数, type 放弃后客户 } from "@/lib/enterprise/lead-giveup-core";
 import { 有效线索节点 } from "@/lib/project/stage-gates";
 import { 放弃线索Action } from "./giveup-actions";
 
@@ -16,8 +16,8 @@ export default function GiveUpDialog({ projectId, 开, 关, 成, 打开判无效
   projectId: string;
   开: boolean;
   关: () => void;
-  /** 放弃成了：接手人名字；客户 = 这条的客户、客户跟没跟着走（铃铛判当前页要不要离开） */
-  成: (接手人: string, 客户: { customerId?: string; 客户跟走?: boolean }) => void;
+  /** 放弃成了：接手人名字；客户 = 这条的客户、客户去向（铃铛判当前页要不要离开） */
+  成: (接手人: string, 客户: 放弃后客户) => void;
   /** 项目页：打开「线索验证」弹框；这条没有线索验证（还没走到那一步）不传 */
   打开判无效?: () => void;
   /** 首页、铃铛：「去判无效」去哪（项目页） */
@@ -35,7 +35,7 @@ export default function GiveUpDialog({ projectId, 开, 关, 成, 打开判无效
     try {
       const r = await 放弃线索Action(projectId, 原因, 原因 === 其他原因 ? 补充 : "");
       if (!r.ok) { set错(r.error); return; }
-      成(r.接手人, { customerId: r.customerId, 客户跟走: r.客户跟走 });
+      成(r.接手人, { customerId: r.customerId, 客户去向: r.客户去向 });
     } catch {
       set错("网络没连上，这次没放弃，稍后再点");
     } finally {

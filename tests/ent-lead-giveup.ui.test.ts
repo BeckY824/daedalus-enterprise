@@ -13,11 +13,34 @@ import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 
-let browser: Browser, bundle: string, orgBundle: string;
+let browser: Browser, bundle: string, orgBundle: string, 换位包: string;
 const 空跑 = "async()=>({ok:true})";
-const plugin: Plugin = { name: "giveup", setup(b) {
+const 简导航 = "export const useRouter=()=>({refresh(){window.__refresh=(window.__refresh||0)+1},push(u){(window.__push||(window.__push=[])).push(u)}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);";
+/**
+ * 照 Next 16 app-router.js 的 history 补丁仿的导航（审查 1）：路由自己记一份地址（useSearchParams 读它）；
+ * 挂上时往 history.state 写带 __NA 的内部 state；replaceState 见到 __NA 就只改地址栏、不同步路由，没有才同步并补回 __NA；
+ * window.__刷() = router.refresh 之后 HistoryUpdater 把路由记的地址（canonicalUrl）写回地址栏
+ */
+const 仿Next导航 = `
+  import {useSyncExternalStore} from 'react';
+  let 路 = location.pathname + location.search; const 订 = new Set();
+  const 原 = history.replaceState.bind(history);
+  原({ __NA: true, __PRIVATE_NEXTJS_INTERNALS_TREE: ['', {}] }, '', location.href);
+  history.replaceState = function (data, u, url) {
+    if (data && (data.__NA || data._N)) return 原(data, u, url);
+    const d = Object.assign({}, data || {}, { __NA: true, __PRIVATE_NEXTJS_INTERNALS_TREE: history.state && history.state.__PRIVATE_NEXTJS_INTERNALS_TREE });
+    if (url) { const x = new URL(url, location.href); 路 = x.pathname + x.search; 订.forEach(f => f()); }
+    return 原(d, u, url);
+  };
+  window.__刷 = () => 原(history.state, '', 路);
+  const 看 = () => useSyncExternalStore(f => (订.add(f), () => 订.delete(f)), () => 路);
+  export const useRouter = () => ({ refresh() {}, push(u) { (window.__push || (window.__push = [])).push(u); } });
+  export const usePathname = () => 看().split('?')[0];
+  export const useSearchParams = () => new URLSearchParams(看().split('?')[1] || '');
+`;
+const plugin = (导航 = 简导航): Plugin => ({ name: "giveup", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
-  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__refresh=(window.__refresh||0)+1},push(u){(window.__push||(window.__push=[])).push(u)}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
+  stub(/^next\/navigation$/, 导航);
   stub(/^\.\/giveup-actions$/, 补全动作桩("src/app/(app)/projects/[id]/giveup-actions.ts",
     "export const 放弃线索Action=async(...a)=>{(window.__调用||(window.__调用=[])).push(a);return window.__回||{ok:true,接手人:'乙'}};" +
     "export const 放弃说明Action=async(id)=>{(window.__问||(window.__问=[])).push(id);return window.__说明||{可:false,话:'你已经在这条线索（这位客户）上记过有效沟通，不能放弃了'}};"));
@@ -28,10 +51,10 @@ const plugin: Plugin = { name: "giveup", setup(b) {
   stub(/^\.\/org-actions$/, 补全动作桩("src/app/(app)/settings/org-actions.ts", `const f=${空跑};export const 建部门=f,改部门=f,删部门=f,设字段权限=f,设改权限=f,设市场部门=f,设只看某人=f,设回收站副手=f,设成员=f,设规则=f;`));
   stub(/^\.\.\/leads\/assign-actions$/, `export const 设不设配额=${空跑};export const 读线部门设置=async()=>({设的:{内贸:[],外贸:[]},还没勾:[],能改:true});export const 设线部门=${空跑};`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
-} };
-const 打包 = async (contents: string) => (await build({
+} });
+const 打包 = async (contents: string, 导航?: string) => (await build({
   stdin: { contents, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic",
-  alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent",
+  alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin(导航)], logLevel: "silent",
 })).outputFiles[0].text;
 beforeAll(async () => {
   bundle = await 打包(`
@@ -53,6 +76,17 @@ beforeAll(async () => {
       // 浮层 = 设置浮层（SettingsModal）+ 设置栏（SettingsView）的同一套 class
       root.render(<App>{x&&x.浮层?<div className='setm'><div className='setm-box'><div className='setm-scroll'><div className='set'><div className='set-nav'/><div className='set-body'>{t}</div></div></div></div></div>:t}</App>);};
   `);
+  // 同项目详情（ProjectDetail.tsx）的两个挂载点：没入口挂在页头，有入口挂在下面；p.放弃 有↔无 = 卸了重挂
+  换位包 = await 打包(`
+    import React from 'react';import {createRoot} from 'react-dom/client';import {App} from 'antd';
+    import GiveUpBanner from '@/app/(app)/projects/[id]/GiveUpBanner';
+    const root=createRoot(document.getElementById('root'));
+    window.__render=({入口})=>root.render(<App><div style={{padding:16}}>
+      {!入口 && <GiveUpBanner projectId="p1"/>}
+      <div>正文</div>
+      {入口 && <GiveUpBanner projectId="p1" 入口={入口}/>}
+    </div></App>);
+  `, 仿Next导航);
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
@@ -291,6 +325,25 @@ describe("[11-21] 从通知带 ?giveup=1 打开", () => {
       expect(await 平.page.getByTestId("proj-giveup-cant").count()).toBe(0);
       expect(await 平.page.evaluate(() => (window as unknown as { __问?: string[] }).__问 ?? [])).toEqual([]);
     } finally { await 平.page.close(); }
+  });
+
+  it("[审查 1] 带参数落地、取消放弃框、之后 p.放弃 有→无（记了有效沟通 refresh，换挂载点）：不再问服务器、不再弹，地址栏也不被写回 giveup", async () => {
+    const { page, errors } = await open(能, { 地址: "/projects/p1?giveup=1", 包: 换位包 });
+    try {
+      const 框 = page.getByRole("dialog", { name: "放弃这条线索（豁免）" });
+      await 框.waitFor();
+      await expect.poll(() => 地址()(page)).toBe("/projects/p1");
+      await 框.getByRole("button", { name: "再想想" }).click();
+      await 框.waitFor({ state: "hidden" });
+      // 记了有效沟通 → router.refresh → p.放弃 变无：页头那个挂载点新挂上；HistoryUpdater 把路由记的地址写回地址栏
+      await page.evaluate(() => { const w = window as unknown as { __render: (x: unknown) => void; __刷: () => void }; w.__render({ 入口: undefined }); w.__刷(); });
+      await page.waitForTimeout(200);
+      expect(await page.evaluate(() => (window as unknown as { __问?: string[] }).__问 ?? [])).toEqual([]);
+      expect(await page.getByTestId("proj-giveup-cant").count()).toBe(0);
+      expect(await 框.count()).toBe(0);
+      expect(await 地址()(page)).toBe("/projects/p1");
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
   });
 
   it("客户详情里选中的不是那一条（那条看不到了）：说已不在你名下，不弹放弃框", async () => {
