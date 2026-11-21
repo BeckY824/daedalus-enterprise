@@ -2,7 +2,7 @@
 
 import { 留落地话 } from "@/lib/landing-note";
 import { 公海领取文字 } from "@/lib/project/transfer-log-text";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { CommentOutlined, DownOutlined, EditOutlined, MoreOutlined, RightOutlined, SearchOutlined, ThunderboltOutlined } from "@ant-design/icons";
@@ -377,6 +377,23 @@ const 待填 = (名: string) => <span style={{ color: "var(--empty-fg)" }} title
 /** 这个进程配了必填、还没填的那几格：同样写「—」，悬停写「必填：X，填齐后自动往前推」（10-31 原来写「占位确认」四个字，11-01 会议改成一律 —） */
 const 占位确认 = (名: string) => <span style={{ color: "var(--empty-fg)" }} title={`必填：${名}，填齐后自动往前推`} data-empty={名} data-required="">{空值符}</span>;
 
+/**
+ * 设计语言 D5 · M10-b：金额不用省略号截断——几种币用「 · 」连，放不下就在「 · 」处换到下一行，每段数字本身不拆（.proj-money-seg nowrap）。
+ * 只在现状主题用（换皮主题照 D5 之前一行、放不下省略）
+ */
+function 钱字(话: string) {
+  return (
+    <span className="proj-money">
+      {话.split(" · ").map((段, i) => <Fragment key={i}>{i > 0 && " · "}<span className="proj-money-seg">{段}</span></Fragment>)}
+    </span>
+  );
+}
+const 空色样: React.CSSProperties = { color: "var(--empty-fg)" };
+/** 联系人那一格（D5 · M10-a）：名字没填的「—」和别的空值同一个色（原来墨色），职位照写 */
+function 联系人字(c: { name: string | null; position?: string | null }) {
+  return <span className="proj-one">{c.name?.trim() ? c.name : <span style={空色样} title="没填姓名">{空值符}</span>}{c.position ? ` · ${c.position}` : ""}</span>;
+}
+
 /** 项目级别格（企业版 P11）：星 + 档名（「★★★☆ A 重点」）；没分级写「—」（11-01 没填的统一「—」），认不出的原样给 */
 function 级别格(v: string | null) {
   if (!有值(v)) return <span style={{ color: "var(--empty-fg)" }}>{空值符}</span>;
@@ -573,6 +590,7 @@ export default function ProjectDetail({
   const [问后果, 后果框] = useConsequence();
   /** 设计语言 D4 的结构、文案改动只在现状主题出；换皮主题照 D4 之前（use-skin.ts） */
   const 新样 = useIsNowSkin();
+  const 钱显 = (话: string) => (新样 ? 钱字(话) : 话);
   /** 删沟通没删成：原因写在那条沟通下面（就地，不弹顶部提示） */
   const [删沟通错, set删沟通错] = useState<{ id: string; 话: string } | null>(null);
   const [异常框, set异常框] = useState<位置 | null>(null);
@@ -941,7 +959,13 @@ export default function ProjectDetail({
       格.querySelector<HTMLElement>(".proj-inline-pen")?.click();
       return;
     }
-    if ((法?.控件 === "画像单选" || 法?.控件 === "画像多选" || 键 === "需求") && document.getElementById(画像落点)) { 定位到模块(画像落点); return; }
+    if ((法?.控件 === "画像单选" || 法?.控件 === "画像多选" || 键 === "需求") && document.getElementById(画像落点)) {
+      定位到模块(画像落点);
+      // 现状主题画像是「看 → 点了改」（D5 · M11）：滚过去后直接打开那一行的下拉（换皮主题下拉本来就常开）
+      const 项名 = 新样 && 法 && (法.控件 === "画像单选" || 法.控件 === "画像多选") ? p.画像?.项们.find((x) => (法.控件 === "画像多选" ? x.多选 : x.键 === 法.键))?.名 : undefined;
+      if (项名) window.setTimeout(() => document.querySelector<HTMLElement>(`#${画像落点} [data-inline-field="${项名}"] .proj-inline-pen`)?.click(), 120);
+      return;
+    }
     说在哪(法?.控件 === "勾" ? "在右栏「交付」卡上勾" : "在右栏项目资料里填");
   };
   const 完成 = () => {
@@ -1253,6 +1277,8 @@ export default function ProjectDetail({
   );
   const 项目卡 = (
     <Card
+      // 设计语言 D5 · M10：现状主题下行距 34、悬停整行浅底 + 行尾铅笔、改的时候标签顶对齐、卡头图标点击区 28 / 44（globals.css .proj-info，只挂现状主题）
+      className={新样 ? "proj-info" : undefined}
       title={嵌入 ? (嵌入.多项目 ? <span className="cd-info-t" title={`项目资料 · ${p.name}`}>项目资料 · {p.name}</span> : "项目资料") : "项目"}
       // U-项目-05：企业版改项目的入口挪到项目卡右上角一个笔（页头不再摆「编辑项目」），点开还是同一个编辑框；别的版本照旧「编辑」
       extra={嵌入 ? (
@@ -1292,7 +1318,8 @@ export default function ProjectDetail({
             能改
             显示={(id) => {
               const c = id === (p.contact?.id ?? null) ? p.contact : 联系人们.find((x) => x.id === id) ?? null;
-              return c ? <span className="proj-one">{空显(c.name)}{c.position ? ` · ${c.position}` : ""}</span> : 待填("联系人");
+              if (!c) return 待填("联系人");
+              return 新样 ? 联系人字(c) : <span className="proj-one">{空显(c.name)}{c.position ? ` · ${c.position}` : ""}</span>;
             }}
             存={(v) => 存项目项({ contactId: v })}
             编辑器={({ 草稿, 提交, 忙 }) => (
@@ -1301,7 +1328,10 @@ export default function ProjectDetail({
           />
         </div>
       ) : (
-        p.contact && <div style={行样}><span style={键样}>联系人</span><span className="proj-one">{空显(p.contact.name)}{p.contact.position ? ` · ${p.contact.position}` : ""}</span></div>
+        // 现状主题（D5 遗留）：只能看的人也摆这一行，没挂联系人写「—」；换皮主题照旧有才摆
+        新样 && p.企业版
+          ? <div style={行样}><span style={键样}>联系人</span>{p.contact ? 联系人字(p.contact) : 待填("联系人")}</div>
+          : p.contact && <div style={行样}><span style={键样}>联系人</span><span className="proj-one">{空显(p.contact.name)}{p.contact.position ? ` · ${p.contact.position}` : ""}</span></div>
       )}
       {p.contact && p.联系人附件 && <div style={行样}><span style={键样}>附件</span><ContactAttachmentsButton contactId={p.contact.id} 名字={p.contact.name} 起始个数={p.联系人附件.个数} 只读={p.联系人附件.只读} /></div>}
       {p.企业版 && p.level !== undefined && (
@@ -1343,7 +1373,7 @@ export default function ProjectDetail({
           能改={字段能改("商机金额")}
           回车存
           // 必填占位只对库里那个值说话：刚改过（乐观值）就直接显示新值
-          显示={(v) => (v.数 === (p.amount || null) && p.必填?.还差.includes("金额") ? 占位确认("金额") : v.数 ? 金额(v.数, v.币) : 待填("金额"))}
+          显示={(v) => (v.数 === (p.amount || null) && p.必填?.还差.includes("金额") ? 占位确认("金额") : v.数 ? 钱显(金额(v.数, v.币)) : 待填("金额"))}
           存={(v) => 存钱格("金额", v)}
           编辑器={钱编辑器("金额")}
         />
@@ -1357,7 +1387,7 @@ export default function ProjectDetail({
               值={{ 数: p.成交钱.depositAmount, 币: p.成交钱.depositCurrency ?? 默认币种 }}
               能改={字段能改("商机金额")}
               回车存
-              显示={(v) => (v.数 !== null ? 金额(v.数, v.币) : 待填("定金金额"))}
+              显示={(v) => (v.数 !== null ? 钱显(金额(v.数, v.币)) : 待填("定金金额"))}
               存={(v) => 存钱格("定金金额", v)}
               编辑器={钱编辑器("定金金额")}
             />
@@ -1369,7 +1399,7 @@ export default function ProjectDetail({
               值={{ 数: p.成交钱.contractAmount, 币: p.成交钱.contractCurrency ?? 默认币种 }}
               能改={字段能改("商机金额")}
               回车存
-              显示={(v) => (v.数 !== null ? 金额(v.数, v.币) : 待填("合同金额"))}
+              显示={(v) => (v.数 !== null ? 钱显(金额(v.数, v.币)) : 待填("合同金额"))}
               存={(v) => 存钱格("合同金额", v)}
               编辑器={钱编辑器("合同金额")}
             />
@@ -1389,7 +1419,7 @@ export default function ProjectDetail({
               />
             </div>
           )}
-          {p.回款们 && <div style={行样}><span style={键样}>当前回款</span><span className="proj-one">{p.回款们.length ? 合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency)) : 待填("当前回款")}</span></div>}
+          {p.回款们 && <div style={行样}><span style={键样}>当前回款</span>{新样 && p.回款们.length ? 钱字(合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency))) : <span className="proj-one">{p.回款们.length ? 合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency)) : 待填("当前回款")}</span>}</div>}
           <div style={多行行样}>
             <span style={键样}>需求描述</span>
             <ProjectInlineField<string>
@@ -1679,7 +1709,8 @@ export default function ProjectDetail({
   const 项目组卡 = <ProjectTeamCard projectId={p.id} 组员们={p.members} 角色们={角色们} 在职={在职} 能改={可改 || !!p.能改组员} 能加={!!p.能加组员 || 可改} 忙={忙} 跑={跑} 企业版={p.企业版} 组长={p.ownerName} />;
   const 提成区 = p.提成 && <ProjectCommissionCard key={`${p.提成.项目底价}-${p.提成.实际?.固定于 ?? ""}`} projectId={p.id} t={p.提成} 忙={忙} 跑={跑}  />;
   const 变更卡 = (
-    <Card title={卡名("进程变更")}>
+    // 设计语言 D5 · M11-a：折叠的卡都写条数（现状主题；换皮主题照旧只有名字）
+    <Card title={新样 ? `${卡名("进程变更")}（${p.logs.length}）` : 卡名("进程变更")}>
       <Timeline
         items={p.logs.map((l) => ({
           color: l.kind !== "node" ? "gray" : l.to.result === "异常状态" ? "red" : 是交付(l.to.result) ? "green" : "blue",

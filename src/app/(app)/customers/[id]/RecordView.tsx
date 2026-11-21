@@ -885,7 +885,12 @@ export default function RecordView({
   ));
   /** 联系人右边的编辑 / 删除：两种摆法共用 */
   // 挂来的联系人（企业版 P13）：资料归主客户，主客户那头我能改才给编辑；删除不给，拿掉走卡上的「解除挂靠」
-  const 能编联系人 = (c: ContactRow) => !只读 && (!c.挂靠 || c.挂靠.能改);
+  /*
+    公海里的客户（D5 遗留）：服务端改联系人、挂靠、联系人附件都过 客户事项挡，公海里一律「先领取再改」——
+    联系人那几处也和资料格一样不摆入口（编辑笔、移出、⋯、附件上传、卡头「＋ 新增」），免得有笔却存不了（同 D3 资料改挡）
+  */
+  const 联系人只读 = 只读 || !!资料改挡?.公海;
+  const 能编联系人 = (c: ContactRow) => !联系人只读 && (!c.挂靠 || c.挂靠.能改);
   const 编辑联系人钮 = (c: ContactRow) => (
     <Button type="text" size="small" className="rec-contact-edit" icon={<EditOutlined />} aria-label={`编辑联系人 ${空显(c.name)}`} onClick={() => { setEditingContact(c); setContactOpen(true); }} />
   );
@@ -969,9 +974,9 @@ export default function RecordView({
         {/* 名片、相册分两格（待定 19）；没给分格的个数时照旧一格 */}
         {联系人分类附件数
           ? (["名片", "相册"] as const).map((分类) => (
-              <ContactAttachments key={分类} contactId={c.id} 名字={c.name} 起始个数={联系人分类附件数[c.id]?.[分类] ?? 0} 只读={只读} 分类={分类} />
+              <ContactAttachments key={分类} contactId={c.id} 名字={c.name} 起始个数={联系人分类附件数[c.id]?.[分类] ?? 0} 只读={联系人只读} 分类={分类} />
             ))
-          : 联系人附件数 && <ContactAttachments contactId={c.id} 名字={c.name} 起始个数={联系人附件数[c.id] ?? 0} 只读={只读} />}
+          : 联系人附件数 && <ContactAttachments contactId={c.id} 名字={c.name} 起始个数={联系人附件数[c.id] ?? 0} 只读={联系人只读} />}
       </>
     );
   };
@@ -989,7 +994,7 @@ export default function RecordView({
     <Fragment key={c.id}>
       {c.id === 其他起点 && <div className="rec-contact-sub">这位客户的其他联系人</div>}
       <div className={`rec-contact rec-cg${c.id === 刚加的联系人 ? " rec-tl-item-flash" : ""}`} data-contact={c.id}>
-        <ContactLinks customerId={customer.id} c={c} 只读={只读} 头={(更多) => 联系人头(c, 更多)}>
+        <ContactLinks customerId={customer.id} c={c} 只读={联系人只读} 头={(更多) => 联系人头(c, 更多)}>
           {联系人身(c)}
         </ContactLinks>
       </div>
@@ -1054,10 +1059,10 @@ export default function RecordView({
       )}
       {联系人分类附件数
         ? (["名片", "相册"] as const).map((分类) => (
-            <ContactAttachments key={分类} contactId={c.id} 名字={c.name} 起始个数={联系人分类附件数[c.id]?.[分类] ?? 0} 只读={只读} 分类={分类} />
+            <ContactAttachments key={分类} contactId={c.id} 名字={c.name} 起始个数={联系人分类附件数[c.id]?.[分类] ?? 0} 只读={联系人只读} 分类={分类} />
           ))
-        : 联系人附件数 && <ContactAttachments contactId={c.id} 名字={c.name} 起始个数={联系人附件数[c.id] ?? 0} 只读={只读} />}
-      <ContactLinks customerId={customer.id} c={c} 只读={只读} />
+        : 联系人附件数 && <ContactAttachments contactId={c.id} 名字={c.name} 起始个数={联系人附件数[c.id] ?? 0} 只读={联系人只读} />}
+      <ContactLinks customerId={customer.id} c={c} 只读={联系人只读} />
       {联系人操作(c)}
     </>
   );
@@ -1605,7 +1610,7 @@ export default function RecordView({
 
           {/* 11-12 用户：去掉「全部 ›」（原来跳 /contacts?keyword=客户名），卡头只留一颗「＋」新增联系人（同一个 ContactForm、同样的只读判断）；
              企业版项目模式原来不给加（U-客户-03），这次用户点名要加回来 */}
-          {节(去项目跟进 ? 客户详情左栏.联系人 : "联系人", contacts.length, !只读 && (
+          {节(去项目跟进 ? 客户详情左栏.联系人 : "联系人", contacts.length, !联系人只读 && (
                 企业 && 新样
                   /* 设计语言 D3 · M4-b（D09）：卡头动作「＋ 新增」图标 + 字，和关联组织的「＋ 关联」同一款 */
                   ? <Button type="text" size="small" className="rec-sec-add rec-head-act" icon={<PlusOutlined />} aria-label="新增联系人" onClick={() => { setEditingContact(null); setContactOpen(true); }}>新增</Button>
@@ -1631,7 +1636,7 @@ export default function RecordView({
                 {联系人操作(c)}
               </div>
               {/* 企业版没开项目模式时联系人还是一行一个：附件那一行摆在名字底下 */}
-              {联系人附件数 && <ContactAttachments contactId={c.id} 名字={c.name} 起始个数={联系人附件数[c.id] ?? 0} 只读={只读} />}
+              {联系人附件数 && <ContactAttachments contactId={c.id} 名字={c.name} 起始个数={联系人附件数[c.id] ?? 0} 只读={联系人只读} />}
               </Fragment>
             ))}
           </>, undefined, "cust-contacts")}

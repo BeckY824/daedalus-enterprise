@@ -160,6 +160,23 @@ it("公海客户：资料格不是 role=button、没有笔，「先领取或分�
   } finally { await page.close(); }
 }, 60_000);
 
+it("D5 遗留 · 公海客户的联系人：服务端改联系人、挂靠、附件都要先领取——编辑笔、卡头「新增」都不摆（各主题一样）；不在公海照旧有", async () => {
+  const 话 = "公海里的客户先领取或分配，再改";
+  for (const skin of ["now", "ledger"] as const) {
+    const 自己的 = await open(skin, { 项目模式: true });
+    try {
+      expect(await 自己的.locator(".rec-contact-edit").count(), skin).toBeGreaterThan(0);
+      expect(await 自己的.getByRole("button", { name: "新增联系人" }).count(), skin).toBe(1);
+    } finally { await 自己的.close(); }
+    const 公海 = await open(skin, { 项目模式: true, 加: { 资料改挡: { 话, 公海: true } } });
+    try {
+      expect(await 公海.locator(".rec-contact-edit").count(), skin).toBe(0);
+      expect(await 公海.getByRole("button", { name: /编辑联系人/ }).count(), skin).toBe(0);
+      expect(await 公海.getByRole("button", { name: "新增联系人" }).count(), skin).toBe(0);
+    } finally { await 公海.close(); }
+  }
+}, 60_000);
+
 it("D4 · 待办空态：现状主题「还没有待办」，换皮主题照旧「暂无待办」", async () => {
   for (const [skin, 话] of [["now", "还没有待办"], ["ledger", "暂无待办"], ["tech", "暂无待办"]] as const) {
     const page = await open(skin);

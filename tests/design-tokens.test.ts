@@ -219,7 +219,8 @@ describe("D1 · 设计语言 token 和基础控件", () => {
   it("D4（进程卡、沟通、待办、卡点）那段规则都带现状主题限定；不带限定的只有新元素的结构规则", () => {
     const 起 = 全.indexOf(".fm-label { display: block;");
     expect(起, "没找到 D4 那段").toBeGreaterThan(0);
-    const 段 = 全.slice(起);
+    const 止 = 全.indexOf(".cd-skel { display: none; }");
+    const 段 = 全.slice(起, 止 > 起 ? 止 : undefined);
     const 选择器们 = [...段.matchAll(/([^{}]+)\{([^{}]*)\}/g)].flatMap((m) => m[1].trim().replace(/\s+/g, " ").split(/,(?![^()]*\))\s*/));
     expect(选择器们.length).toBeGreaterThan(30);
     const 结构 = [
@@ -240,6 +241,20 @@ describe("D1 · 设计语言 token 和基础控件", () => {
       for (const c of m[2].matchAll(/(?:^|;)\s*(?:color|background|border(?:-color)?):\s*([^;]+)/g)) {
         expect(c[1], m[1].trim()).toMatch(/var\(--(danger-text|text-muted|warning(-text|-line|-bg)?|success(-line|-bg|-text)?|panel|ink(-soft)?)\)|inherit|0|none/);
       }
+    }
+  });
+
+  it("D5（项目资料、画像、附件、加载 / 找不到）那段规则都带现状主题限定；不带限定的只有加载骨架默认不摆", () => {
+    const 起 = 全.indexOf(".cd-skel { display: none; }");
+    expect(起, "没找到 D5 那段").toBeGreaterThan(0);
+    const 段 = 全.slice(起);
+    const 选择器们 = [...段.matchAll(/([^{}]+)\{([^{}]*)\}/g)].flatMap((m) => m[1].trim().replace(/\s+/g, " ").split(/,(?![^()]*\))\s*/));
+    expect(选择器们.length).toBeGreaterThan(30);
+    const 不带 = 选择器们.filter((x) => !x.startsWith(现状));
+    expect(不带).toEqual([".cd-skel"]);
+    // 规范里的几样：行距 34（行高 24）、整行悬停 --row-hover、菜单里的「—」--empty-fg、末行 --ai-safe、计数 --count-fg、骨架 --skel-delay、按句断行不拆词
+    for (const 片 of ["min-height: 34px", "line-height: 24px", "background: var(--row-hover)", '.ant-select-item-option[title="—"]', "var(--ai-safe)", "color: var(--count-fg)", "var(--skel-delay)", "word-break: keep-all", "var(--hit-touch)"]) {
+      expect(段, 片).toContain(片);
     }
   });
 

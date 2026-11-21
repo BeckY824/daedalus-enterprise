@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Button, Image, Spin, Upload } from "antd";
 import InlineConfirm from "@/components/InlineConfirm";
 import { DeleteOutlined, FileOutlined, InboxOutlined, UploadOutlined } from "@ant-design/icons";
@@ -29,8 +29,10 @@ declare global {
  * 企业版项目附件（P11，10-29）：归属 = 项目，什么文件都收（收所有文件），说法从「图片」换成「附件」
  * 紧凑（F-项目-18，项目附件合成一块后每格用）：大拖放框换成一颗小「上传」按钮，上限、提示一样
  * 粘贴截图（11-17）：焦点在这块或它所在的弹窗 / 格里时 Ctrl+V / ⌘V，走和点选同一个 传一个（lib/paste-upload.ts）
+ * 小标题（设计语言 D5 · M11-b，项目附件现状主题）：这一格自己画小标题，「上传」挪到小标题右边；「单个最多 20 MB」由外面整卡写一次，
+ *   这里不再每格写；整格能拖进来（和点选同一个 传一个）；空态「还没有附件」不带句号
  */
-export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = false, 说明, on个数, 分类, 紧凑 = false, on变了 }: { 归属: 归属; 只读?: boolean; 说明?: string; on个数?: (n: number) => void; 分类?: string | null; 紧凑?: boolean; on变了?: () => void }) {
+export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = false, 说明, on个数, 分类, 紧凑 = false, on变了, 小标题 }: { 归属: 归属; 只读?: boolean; 说明?: string; on个数?: (n: number) => void; 分类?: string | null; 紧凑?: boolean; on变了?: () => void; 小标题?: ReactNode }) {
   /**
    * 就地反馈（dt.upload / g.save，不弹顶部提示）：在传的每个文件一行（进度环 → ✓ / 没传上的原因），
    * 读没成、删没成、打不开、自动推进了写在块里一行；几秒后自己收。错 = 红字（role=alert）；常 = 灰字（role=status）
@@ -176,10 +178,40 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = f
   const 根 = useRef<HTMLDivElement>(null);
   usePasteUpload(根, !只读 && !灰, (们) => { for (const f of 们) void 传一个(f); });
   const 粘贴话 = "也可以直接粘贴截图";
+  // 小标题那种（D5 · M11-b）：整格接拖放；拖着文件悬在上面时描一圈主色（.is-drop）
+  const [拖着, set拖着] = useState(false);
+  const 能拖 = 小标题 !== undefined && !只读 && !灰;
+  const 带文件 = (e: React.DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
+  const 拖放 = 能拖 ? {
+    onDragOver: (e: React.DragEvent) => { if (!带文件(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; if (!拖着) set拖着(true); },
+    onDragLeave: (e: React.DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) set拖着(false); },
+    onDrop: (e: React.DragEvent) => { if (!带文件(e)) return; e.preventDefault(); set拖着(false); for (const f of Array.from(e.dataTransfer.files)) void 传一个(f); },
+  } : {};
 
   return (
-    <div className="att-panel" data-testid="attachments-panel" ref={根} {...(只读 ? {} : { [粘贴标记]: "" })}>
-      {!只读 && 紧凑 && <div data-testid="attachment-upload" className="att-compact">
+    <div className={`att-panel${小标题 !== undefined && 拖着 && 能拖 ? " is-drop" : ""}`} data-testid="attachments-panel" ref={根} {...(只读 ? {} : { [粘贴标记]: "" })} {...拖放}>
+      {小标题 !== undefined && (
+        <div className="proj-att-h att-h-row">
+          <span className="att-h-t">{小标题}</span>
+          {!只读 && (
+            <span data-testid="attachment-upload" className="att-h-up-w">
+            <Upload
+              multiple
+              showUploadList={false}
+              disabled={灰}
+              accept={只图 ? 收的类型 : undefined}
+              beforeUpload={(f) => {
+                void 传一个(f);
+                return false;
+              }}
+            >
+              <Button type="text" size="small" className="att-h-up" icon={<UploadOutlined />} disabled={灰} title={满了 ? `已经 ${每条最多} 个了，先删掉几个不要的` : undefined}>上传</Button>
+            </Upload>
+            </span>
+          )}
+        </div>
+      )}
+      {小标题 === undefined && !只读 && 紧凑 && <div data-testid="attachment-upload" className="att-compact">
         <Upload
           multiple
           showUploadList={false}
@@ -194,7 +226,7 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = f
         </Upload>
         <span className="muted">{满了 ? `已经 ${每条最多} 个了，先删掉几个不要的` : `单个最多 ${读大小(附件上限字节)}；${粘贴话}`}</span>
       </div>}
-      {!只读 && !紧凑 && <div data-testid="attachment-upload">
+      {小标题 === undefined && !只读 && !紧凑 && <div data-testid="attachment-upload">
       <Upload.Dragger
         multiple
         showUploadList={false}
@@ -235,7 +267,9 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = f
             </ul>
           )}
           {块话 && <div role={块话.错 ? "alert" : "status"} className={块话.错 ? "att-said is-err" : "att-said"}>{块话.话}</div>}
-          {列表.length === 0 && 传着 === 0 && <div className="muted" style={{ marginTop: 只读 ? 0 : 10 }}>{只图 ? "还没有图片。" : "还没有附件。"}</div>}
+          {列表.length === 0 && 传着 === 0 && (小标题 !== undefined
+            ? <div className="att-empty-t">还没有附件</div>
+            : <div className="muted" style={{ marginTop: 只读 ? 0 : 10 }}>{只图 ? "还没有图片。" : "还没有附件。"}</div>)}
           {图们.length > 0 && (
             <Image.PreviewGroup>
               <div className="att-pics">

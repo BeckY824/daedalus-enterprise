@@ -5647,3 +5647,73 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]) .cd-comm .cd-seg { order: 2; flex: 1 1 100%; display: grid; grid-template-columns: 1fr 1fr; box-sizing: border-box; height: 40px; }
   :root:is(:not([data-skin]), [data-skin="now"]) .cd-comm .cd-seg > button { height: 36px; }
 }
+
+/* ==========================================================================
+   设计语言 D5（11-21，规范 M10–M12）：项目资料、画像、附件、加载 / 找不到。
+   换皮主题保持 D5 之前（用户 11-21「换皮主题不动」）：不带限定的只有 .cd-skel 默认不摆（加载页两份骨架按主题只露一份）；
+   别的新元素只在现状主题的 JSX 里出现，样式也都挂现状主题
+   ========================================================================== */
+.cd-skel { display: none; }
+/* M10 项目资料：行距 34（行高 24 + 上下各 5，右栏长约 80px）、悬停整行浅底 + 行尾铅笔、改的时候标签和控件顶对齐（行内样式的 marginBottom 8 要压掉） */
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-info > .ant-card-body > div { min-height: 34px; margin: 0 -8px !important; padding: 5px 8px; line-height: 24px; border-radius: var(--r-ctl); }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-info > .ant-card-body > div:has(> .proj-inline):hover { background: var(--row-hover); }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-info > .ant-card-body > div:has(> .proj-inline):hover .proj-inline-pen { opacity: 1; }
+:root:is(:not([data-skin]), [data-skin="now"]) :is(.proj-info, .proj-profile.is-look) .proj-inline-pen { margin-inline-start: auto; }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-info > .ant-card-body > div:has(> .proj-inline-edit) { align-items: flex-start !important; }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-info > .ant-card-body > div:has(> .proj-inline-edit) > span:first-child { line-height: var(--ctl-h); }
+/* 卡头图标（收藏星、编辑项目笔）点击区 28，触屏 44 */
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-info > .ant-card-head .ant-card-extra :is(.ant-btn, button) { min-width: var(--hit); height: var(--hit); }
+@media (hover: none), (max-width: 767px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .proj-info > .ant-card-head .ant-card-extra :is(.ant-btn, button) { min-width: var(--hit-touch); height: var(--hit-touch); }
+}
+/* M10-b 金额不截断：放不下在「 · 」处换行，每段数字不拆 */
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-inline-val:has(> .proj-money) { overflow: visible; white-space: normal; text-overflow: clip; }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-money { min-width: 0; white-space: normal; }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-info > .ant-card-body > div > .proj-money { flex: 1 1 auto; }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-money-seg { white-space: nowrap; }
+/* M10-a「—」同一个色：下拉菜单里的「—」选项、行内改 / 画像下拉的占位「—」 */
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-select-item-option[title="—"] .ant-select-item-option-content { color: var(--empty-fg); }
+:root:is(:not([data-skin]), [data-skin="now"]) :is(.proj-inline-edit, .proj-profile) .ant-select-placeholder { color: var(--empty-fg); }
+/* M10 ④ 末行下面留 --ai-safe（72），右下 AI 球不盖住（项目详情页两栏；客户详情 D2 已留） */
+@media (min-width: 768px) {
+  @container (min-width: 630px) {
+    :root:is(:not([data-skin]), [data-skin="now"]) .proj-wrap > .proj-2col > :is(.proj-main, .proj-side) { padding-bottom: max(var(--ai-safe), var(--detail-tail, 0px)); }
+  }
+}
+/* M11-a 画像「看 → 点了改」：和项目资料同一种行；卡头「已填 N / 12」，折叠卡计数同色 */
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-profile.is-look { gap: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-profile.is-look .proj-profile-row { min-height: 34px; margin: 0 -8px; padding: 5px 8px; align-items: start; line-height: 24px; border-radius: var(--r-ctl); }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-profile.is-look .proj-profile-row:has(> .proj-inline):hover { background: var(--row-hover); }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-profile.is-look .proj-profile-row:has(> .proj-inline):hover .proj-inline-pen { opacity: 1; }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-profile.is-look .proj-profile-row:has(> .proj-inline-edit) > .proj-profile-key { line-height: var(--ctl-h); }
+:root:is(:not([data-skin]), [data-skin="now"]) .card-t-count { display: inline-flex; align-items: baseline; gap: 8px; min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .card-count { color: var(--count-fg); font-size: var(--fs-note); font-weight: 400; white-space: nowrap; }
+/* M11-b 项目附件：「单个最多 20 MB」整卡一次；「上传」在各格小标题右边；整格能拖进（拖着时描一圈主色）；空态「还没有附件」 */
+:root:is(:not([data-skin]), [data-skin="now"]) .att-card-hint { margin-bottom: 10px; color: var(--text-muted); font-size: var(--fs-note); overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .att-h-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .att-h-t { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .att-h-up-w { flex: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .att-h-up.ant-btn { height: var(--ctl-h-sm); padding-inline: 6px; color: var(--brand); font-weight: 400; }
+:root:is(:not([data-skin]), [data-skin="now"]) .att-panel.is-drop { outline: 2px dashed var(--brand); outline-offset: 4px; border-radius: var(--r-ctl); background: var(--brand-bg); }
+:root:is(:not([data-skin]), [data-skin="now"]) .att-empty-t { color: var(--text-muted); font-size: var(--fs-note); }
+/* M12-a 加载：--skel-delay 后出和页面同形的骨架（页头 + 三栏卡）；减弱动态下灰条不扫光（.skel-bar 全局那条） */
+:root:is(:not([data-skin]), [data-skin="now"]) .cd-ld-old { display: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cd-skel { display: grid; gap: 14px; animation: app-loading-in var(--t) var(--ease) var(--skel-delay) both; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-head { display: flex; align-items: center; gap: 12px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-av { flex: none; width: 48px; height: 48px; border-radius: var(--r-card); background: var(--hover); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-hl { flex: 1 1 auto; display: grid; gap: 8px; max-width: 420px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-hl > .cd-skel-name { --skel-h: 20px; width: 60%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-hl > .cd-skel-sub { width: 36%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-cols { display: grid; grid-template-columns: 260px minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-col { display: grid; gap: 12px; min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-card { display: grid; gap: 10px; padding: 16px; background: var(--panel); border-radius: var(--r-card); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-card > .cd-skel-ct { --skel-h: 14px; width: 40%; }
+@media (max-width: 1279px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-cols { grid-template-columns: 232px minmax(0, 1fr) 260px; gap: 12px; }
+}
+@media (max-width: 1023px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-cols { grid-template-columns: minmax(0, 1fr); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-col:nth-child(n + 3) { display: none; }
+}
+/* M12 找不到：说明一句一行，句里只在标点处折（「不正确」不拆成两行），一句比一行还长才在句中断 */
+:root:is(:not([data-skin]), [data-skin="now"]) .empty-state-h > .sp-sent { display: block; word-break: keep-all; overflow-wrap: anywhere; }
