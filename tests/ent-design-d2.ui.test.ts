@@ -126,8 +126,8 @@ it("手机 390（K8）：页头「显示客户名单」44×44，点了名单从�
     const 框 = (await 壳.boundingBox())!;
     expect(Math.round(框.y + 框.height), "贴着屏幕底").toBe(844);
     expect(框.width).toBe(390);
-    // 顶上两角 --sheet-r（= --r-pop），底下两角不圆
-    const 角 = await 壳.evaluate(e => { const c = getComputedStyle(e); const s = document.createElement("div"); s.style.borderTopLeftRadius = "var(--sheet-r)"; document.body.append(s); const 期 = getComputedStyle(s).borderTopLeftRadius; s.remove(); return { 左上: c.borderTopLeftRadius, 右上: c.borderTopRightRadius, 左下: c.borderBottomLeftRadius, 期 }; });
+    // 顶上两角 --r-pop，底下两角不圆
+    const 角 = await 壳.evaluate(e => { const c = getComputedStyle(e); const s = document.createElement("div"); s.style.borderTopLeftRadius = "var(--r-pop)"; document.body.append(s); const 期 = getComputedStyle(s).borderTopLeftRadius; s.remove(); return { 左上: c.borderTopLeftRadius, 右上: c.borderTopRightRadius, 左下: c.borderBottomLeftRadius, 期 }; });
     expect(角.期).not.toBe("0px");
     expect(角).toEqual({ 左上: 角.期, 右上: 角.期, 左下: "0px", 期: 角.期 });
     expect(await page.locator(".pane-sheet .sheet-grab").boundingBox()).toMatchObject({ width: 36, height: 5 });
