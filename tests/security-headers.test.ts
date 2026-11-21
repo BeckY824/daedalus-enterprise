@@ -17,14 +17,15 @@ describe("安全响应头", () => {
     expect(键["Referrer-Policy"]).toBe("strict-origin-when-cross-origin");
     expect(键["Strict-Transport-Security"]).toMatch(/^max-age=\d+$/);
     expect(键["Strict-Transport-Security"], "preload 撤不回来，不要加").not.toContain("preload");
-    expect(键["Permissions-Policy"], "其余页面相机、话筒、定位都关着").toBe("camera=(), microphone=(), geolocation=()");
+    expect(键["Permissions-Policy"], "相机、定位都关着；话筒只放本站（录音点评，11-21）").toBe("camera=(), microphone=(self), geolocation=()");
   });
 
   /**
    * Next 的规则按顺序叠，同名头后面的覆盖前面的，所以这里按 Next 的路径匹配把每条规则过一遍。
    * 手机上拍名片走 <input capture>（dashboard/CardScanKey.tsx），是系统相机，不靠这个头放开。
+   * 话筒 11-21 起只放本站（microphone=(self)）：录音点评要网页直接录，实测页 /mic-test.html 先用；别的来源（iframe）照旧不行。
    */
-  it("所有路径相机、话筒、定位都关着", async () => {
+  it("所有路径相机、定位都关着，话筒只放本站", async () => {
     const { getPathMatch } = await import("next/dist/shared/lib/router/utils/path-match");
     const 规则 = await nextConfig.headers!();
     const 头 = (路径: string) => {
@@ -35,8 +36,11 @@ describe("安全响应头", () => {
       }
       return 值;
     };
-    for (const p of ["/login", "/dashboard", "/customers", "/api/mobile/scan", "/m", "/ocr/v1/paddle.js"]) {
-      expect(头(p), p).toBe("camera=(), microphone=(), geolocation=()");
+    for (const p of ["/login", "/dashboard", "/customers", "/projects/x", "/api/mobile/scan", "/m", "/ocr/v1/paddle.js", "/mic-test.html"]) {
+      const v = 头(p);
+      expect(v, p).toBe("camera=(), microphone=(self), geolocation=()");
+      // 不许写成 * 或带别的来源：只放本站
+      expect(v, p).not.toMatch(/microphone=\*|microphone=\(self [^)]/);
     }
   });
 });
