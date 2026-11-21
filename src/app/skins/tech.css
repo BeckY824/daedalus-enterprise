@@ -11,7 +11,8 @@
   color-scheme: dark;
   --brand: #5ee0ff; --brand-deep: #b5f2ff; --brand-bg: #0c2a34; --brand-line: #1f5a6b;
   --ink: #d6e3ea; --ink-soft: #adbfc8; --text-muted: #8196a1; --text-faint: #566a74;
-  --line: #1a3540; --line-soft: #122830; --line-strong: #2a5666;
+  --line: #1a3540; --line-soft: #122830; --field-line: #2a5666;
+  --field-line-hover: var(--text-faint); --ctl-line: var(--text-faint);
   --panel: #0a1015; --workbench: #06090c; --hover: #0f1920; --row-hover: #0d161c;
   --success: #3fe6a2; --success-text: #3fe6a2; --success-bg: #0b2a20; --success-line: #17563f;
   --warning: #ffbb55; --warning-text: #ffbb55; --warning-bg: #2b2110; --warning-line: #5c4417;
@@ -54,7 +55,8 @@
   --logo-frame: #0b1b33; --logo-line: #1554e8;
   --brand: #007aa3; --brand-deep: #005d7c; --brand-bg: #e2f4fa; --brand-line: #9fd3e4;
   --ink: #0b1a22; --ink-soft: #2a3d47; --text-muted: #5b707b; --text-faint: #97a9b1;
-  --line: #cfe0e6; --line-soft: #e3eef2; --line-strong: #9fc0cb;
+  --line: #cfe0e6; --line-soft: #e3eef2; --field-line: #9fc0cb;
+  --field-line-hover: var(--text-muted); --ctl-line: var(--text-muted);
   --panel: #ffffff; --workbench: #ffffff; --hover: #f1f6f8; --row-hover: #f5f9fb;
   --success: #0a8a57; --success-text: #08734a; --success-bg: #e2f5ec; --success-line: #a6dcc4;
   --warning: #a36400; --warning-text: #8a5500; --warning-bg: #fbefd9; --warning-line: #ebcf9c;
@@ -91,6 +93,6 @@
 /* 5. 左栏当前项：左边一道亮线 */
 :root[data-skin="tech"] .rail-on-bg { box-shadow: inset 2px 0 0 var(--brand); }
 /* 6. 方头像、方冷热格，一道细边 */
-:root[data-skin="tech"] :is(.ant-avatar, .roster-av, .heat i, .rec-tl-dot) { border-radius: 0; box-shadow: inset 0 0 0 1px var(--line-strong); }
+:root[data-skin="tech"] :is(.ant-avatar, .roster-av, .heat i, .rec-tl-dot) { border-radius: 0; box-shadow: inset 0 0 0 1px var(--field-line); }
 /* 7. 你说的话前面带一个 > */
 :root[data-skin="tech"] .cli-bubble::before { content: "> "; color: var(--brand); }

@@ -43,7 +43,7 @@
 .rs-stages { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .rs-stage { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 12px; align-items: start; padding: 3px 0; }
 .rs-node { position: relative; width: 16px; height: 16px; margin-top: 3px; display: grid; place-items: center; background: var(--panel); border-radius: 50%; z-index: 1; }
-.rs-node-idle::before { content: ""; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--line-strong); background: var(--panel); }
+.rs-node-idle::before { content: ""; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--field-line); background: var(--panel); }
 .rs-node-error::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
 .rs-node-ring { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--brand-line); border-top-color: var(--brand); animation: rs-spin 0.8s linear infinite; }
 .rs-stage-main { min-width: 0; }
@@ -73,7 +73,7 @@
 .rs-tool-ms { color: var(--text-faint); }
 .rs-chev { color: var(--text-faint); transition: transform var(--t) var(--ease); }
 .rs-chev.rs-open { transform: rotate(90deg); }
-.rs-spin { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--line-strong); border-top-color: var(--brand); animation: rs-spin 0.8s linear infinite; }
+.rs-spin { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--field-line); border-top-color: var(--brand); animation: rs-spin 0.8s linear infinite; }
 .rs-tool-srcs { list-style: none; margin: 0; padding: 0 10px; border-top: 1px solid var(--line-soft); overflow: hidden; }
 .rs-tool-srcs li { display: flex; flex-direction: column; padding: 6px 0; border-bottom: 1px solid var(--line-soft); font-size: var(--fs-min); }
 .rs-tool-srcs li:last-child { border-bottom: 0; }
@@ -99,7 +99,7 @@
 /* 评分条：档名 + ●●●○○（10-18 A+D 结构）；查不到、没来源的那一维证据前面挂「待验证」 */
 .rs-dim-g { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
 .rs-bars { font-weight: 400; letter-spacing: -1px; font-size: 10px; }
-.rs-pending { font-size: var(--fs-min); font-weight: 600; padding: 0 6px; margin-right: 6px; border-radius: var(--r-tag); border: 1px dashed var(--line-strong); color: var(--text-muted); white-space: nowrap; }
+.rs-pending { font-size: var(--fs-min); font-weight: 600; padding: 0 6px; margin-right: 6px; border-radius: var(--r-tag); border: 1px dashed var(--field-line); color: var(--text-muted); white-space: nowrap; }
 .rs-dim-l { color: var(--text-muted); }
 .rs-grade { font-weight: 600; }
 .rs-grade-high { color: var(--success-text); }
@@ -173,7 +173,7 @@
 .rs-num { font-variant-numeric: tabular-nums; }
 .rs-charge { margin-left: auto; color: var(--brand-deep); font-weight: 600; }
 .rs-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.rs-btn { border: 1px solid var(--line-strong); background: var(--panel); color: var(--ink); border-radius: var(--r-ctl); padding: 5px 12px; font: inherit; font-size: var(--fs-note); cursor: pointer;
+.rs-btn { border: 1px solid var(--field-line); background: var(--panel); color: var(--ink); border-radius: var(--r-ctl); padding: 5px 12px; font: inherit; font-size: var(--fs-note); cursor: pointer;
   transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
 .rs-btn:hover:not(:disabled) { background: var(--hover); }
 .rs-btn:disabled { cursor: default; opacity: 0.6; }
@@ -189,7 +189,7 @@
 .rs-confirm-t b { font-weight: 600; }
 .rs-save { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--page-bg); font-size: var(--fs-note); }
 .rs-save-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.rs-save input { border: 1px solid var(--line-strong); border-radius: var(--r-ctl); padding: 4px 8px; font: inherit; font-size: var(--fs-note); background: var(--panel); color: var(--ink); min-width: 0; flex: 1 1 140px; }
+.rs-save input { border: 1px solid var(--field-line); border-radius: var(--r-ctl); padding: 4px 8px; font: inherit; font-size: var(--fs-note); background: var(--panel); color: var(--ink); min-width: 0; flex: 1 1 140px; }
 .rs-save-hint { color: var(--text-muted); font-size: var(--fs-min); }
 
 /* ---------- 首页输入框：背调模式开关（选中要一眼看得出来：品牌色底 + 描边） ---------- */
@@ -201,7 +201,7 @@
 .rs-pick-n { margin-left: 6px; color: var(--text-muted); font-size: var(--fs-min); }
 .rs-pick-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .rs-pick-row:empty { display: none; }
-.rs-pick input { flex: 1 1 200px; min-width: 0; border: 1px solid var(--line-strong); border-radius: var(--r-ctl); padding: 5px 9px; font: inherit; font-size: var(--fs-note); background: var(--panel); color: var(--ink); }
+.rs-pick input { flex: 1 1 200px; min-width: 0; border: 1px solid var(--field-line); border-radius: var(--r-ctl); padding: 5px 9px; font: inherit; font-size: var(--fs-note); background: var(--panel); color: var(--ink); }
 
 /* 只有人名 + 电话：找公司的候选、「只有人」的简版（ResearchPerson.tsx） */
 .rs-cands { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }

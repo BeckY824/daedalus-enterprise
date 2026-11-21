@@ -11,7 +11,7 @@
   --cat-pink: var(--brand-deep); --cat-violet: var(--pencil); --cat-cyan: var(--text-muted); --cat-amber: var(--warning-text);
   --brand: #1f5a44; --brand-deep: #123a2b; --brand-bg: #e1ede5; --brand-line: #a9c9b6;
   --ink: #1c2420; --ink-soft: #36413b; --text-muted: #5f6b64; --text-faint: #9aa59e;
-  --line: #b7d0c0; --line-soft: #d6e5da; --line-strong: #86ab95;
+  --line: #b7d0c0; --line-soft: #d6e5da; --field-line: #86ab95;
   --panel: #fcfdfb; --workbench: #f4f7f3; --hover: #e9f0ea; --row-hover: #f1f6f1;
   --success: #1f5a44; --success-text: #1f5a44; --success-bg: #e1ede5; --success-line: #a9c9b6;
   --warning: #94660f; --warning-text: #7a540c; --warning-bg: #f6eedb; --warning-line: #e3cf9f;
@@ -49,12 +49,12 @@
 /* 1. 金额和大数字：会计双下划线（记账的惯例，表示合计） */
 :root[data-skin="ledger"] :is(.signal-v b, .stat-value) { display: inline-block; border-bottom: 3px double var(--ink); line-height: 1.1; }
 /* 2. 表头下面一道双线，行与行之间是稿纸格线 */
-:root[data-skin="ledger"] .ant-table-thead > tr > th { border-bottom: 3px double var(--line-strong) !important; }
+:root[data-skin="ledger"] .ant-table-thead > tr > th { border-bottom: 3px double var(--field-line) !important; }
 :root[data-skin="ledger"] .ant-table-tbody > tr > td { border-bottom-color: var(--line) !important; }
 /* 3. 状态标签：描边，不填底 */
 :root[data-skin="ledger"] .ant-tag { background: transparent !important; border: 1px solid currentColor !important; line-height: 18px; }
 /* 4. 分区标题下一道双线，像账页的栏目 */
-:root[data-skin="ledger"] :is(.rec-sec-t, .rec-side-t) { border-bottom: 3px double var(--line-strong); padding-bottom: 4px; margin-bottom: 4px; }
+:root[data-skin="ledger"] :is(.rec-sec-t, .rec-side-t) { border-bottom: 3px double var(--field-line); padding-bottom: 4px; margin-bottom: 4px; }
 /* 5. 时间线类型块：没有底，右边一道格线 */
 :root[data-skin="ledger"] .rec-tl-item .rec-tl-dot { background: none !important; border-right: 1px solid var(--line); }
 /* 6. 标题字距放开，宋体不加粗到发黑 */

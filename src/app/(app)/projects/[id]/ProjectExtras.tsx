@@ -28,7 +28,7 @@ export type 项目画像 = {
 };
 
 /** 没选的项写灰字「—」（10-31 是「暂未确认」，11-04 用户统一改「—」；和输入框占位同色），只是显示：库里还是空，统计、筛选照旧按空算 */
-const 空 = <span className="unconfirmed" style={{ color: "var(--text-faint)" }}>{未选占位}</span>;
+const 空 = <span className="unconfirmed" style={{ color: "var(--empty-fg)" }}>{未选占位}</span>;
 
 /**
  * 「项目画像」卡：能改的人改一项存一项（下拉选了就存），不能改的只看。

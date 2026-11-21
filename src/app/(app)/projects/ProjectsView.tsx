@@ -63,7 +63,7 @@ const 列色: Record<看板列, string> = {
   商机: 主题颜色(categorical.green),
   订单: 主题颜色(categorical.yellow),
   成功交付: 主题颜色(categorical.pink),
-  没成: "var(--line-strong)",
+  没成: "var(--field-line)",
 };
 
 /** 异常的悬停说明：类别 + 备注 */
@@ -431,7 +431,7 @@ export default function ProjectsView({
   });
 
   // 单格没填（含导入占位的 "-"）一律写「—」（11-01 用户定，lib/empty-value.ts）
-  const 无 = <span style={{ color: "var(--text-muted)" }}>{空值符}</span>;
+  const 无 = <span style={{ color: "var(--empty-fg)" }}>{空值符}</span>;
   // 企业版默认只摆 7 列（项目、客户、进程、下一步时间、金额、负责人、回公海日），其余收在「列」里（默认: false）；1366 宽不横向滚
   const 收起 = 企业版 ? { 默认: false } : {};
   const 普通列表: 列<项目行>[] = [

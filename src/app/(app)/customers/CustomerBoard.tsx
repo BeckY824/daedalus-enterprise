@@ -36,7 +36,7 @@ export default function CustomerBoard({ 行们, 字典, 加载中, 页, 每页, 
                 <span className="pipe-n">{c.行们.length}</span>
                 {c.停用 && <Tag style={{ marginInlineEnd: 0 }}>停用</Tag>}
               </div>
-              <div className="pipe-bar" style={{ background: c.key === null ? "var(--line-strong)" : "var(--brand)" }} />
+              <div className="pipe-bar" style={{ background: c.key === null ? "var(--field-line)" : "var(--brand)" }} />
               {c.行们.length === 0 && <div className="pipe-empty">这一类还没有客户</div>}
               {c.行们.map((r) => (
                 <div key={r.id} className="pipe-card" tabIndex={0} role="link" title={客户抬头(r, 抬头节点?.[r.id])} aria-label={`${客户抬头(r, 抬头节点?.[r.id])}，${空显(r.salesOwnerName)}`}

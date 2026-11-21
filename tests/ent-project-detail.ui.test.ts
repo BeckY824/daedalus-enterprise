@@ -346,8 +346,9 @@ it("10-31 改版 R4 + 11-01 会议：项目卡定金在合同前；空着一律�
     expect(字).toMatch(/合同金额\s*—/);
     expect(字).not.toMatch(/待填写|待选择|没填/);
     const 色 = await 卡.locator('[data-empty="合同金额"]').evaluate(e => getComputedStyle(e).color);
-    const 浅 = await page.evaluate(() => { const s = document.createElement("span"); s.style.color = "var(--text-faint)"; document.body.append(s); const c = getComputedStyle(s).color; s.remove(); return c; });
-    expect(色).toBe(浅);
+    // 空值「—」全站一个色 --empty-fg（D1 · 设计语言 11-21，D02；原来 faint）
+    const 空色 = await page.evaluate(() => { const s = document.createElement("span"); s.style.color = "var(--empty-fg)"; document.body.append(s); const c = getComputedStyle(s).color; s.remove(); return c; });
+    expect(色).toBe(空色);
     // 项目金额落库默认 0、分不出没填和填了 0：0 也写 —，不写 ¥ 0
     await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ amount: 0, 成交钱: { contractAmount: null, contractCurrency: null, depositAmount: null, depositCurrency: null, dealDemand: null } }));
     await 卡.locator('[data-empty="金额"]').waitFor();
@@ -376,8 +377,8 @@ it("10-31 必填 + 11-01 会议：这个进程配了必填、还没填的项目�
       expect(await 格.innerText()).toBe("—");
       expect(await 格.getAttribute("data-required")).toBeNull();
     }
-    const 浅 = await page.evaluate(() => { const s = document.createElement("span"); s.style.color = "var(--text-faint)"; document.body.append(s); const c = getComputedStyle(s).color; s.remove(); return c; });
-    expect(await 卡.locator("[data-required]").first().evaluate(e => getComputedStyle(e).color)).toBe(浅);
+    const 空色 = await page.evaluate(() => { const s = document.createElement("span"); s.style.color = "var(--empty-fg)"; document.body.append(s); const c = getComputedStyle(s).color; s.remove(); return c; });
+    expect(await 卡.locator("[data-required]").first().evaluate(e => getComputedStyle(e).color)).toBe(空色);
     // 填上了就照常显示（__over 每次从底稿起，成交钱要再带上）
     await page.evaluate(() => (window as unknown as { __over: (x: object) => void }).__over({ 成交钱: { contractAmount: null, contractCurrency: null, depositAmount: null, depositCurrency: null, dealDemand: null }, 项目来源: null, expectedDealAt: "2026-12-01", 必填: { 配了: ["金额", "预计成交日期"], 还差: ["金额"] } }));
     await 卡.getByText("2026-12-01").waitFor();
@@ -679,7 +680,8 @@ it("10-31 改版 R7（16a 回六档）：和客户详情同一套字阶——标
     expect(await 样(卡.getByText("定金金额", { exact: true }))).toEqual({ 字: "13px", 色: 灰 });
     const 零 = 卡.locator("div").filter({ hasText: /^定金金额/ }).last();
     expect(await 零.evaluate(e => { const c = getComputedStyle(e); return { 字: c.fontSize, 色: c.color }; })).toEqual({ 字: "14px", 色: 墨 });
-    expect(await 样(卡.locator('[data-empty="合同金额"]'))).toEqual({ 字: "14px", 色: 浅 });
+    expect(await 样(卡.locator('[data-empty="合同金额"]'))).toEqual({ 字: "14px", 色: await 色("--empty-fg") });
+    expect(await 色("--empty-fg")).not.toBe(浅);
     // 「阶段 / 进程」两格企业版不显示了（F-项目-19），.proj-where-label 只在有回收日时出现，这里不再量
     const 辅 = page.locator(".proj-main .ant-card span").filter({ hasText: / · \d{4}-\d{2}-\d{2}/ }).first();
     expect(await 样(辅)).toEqual({ 字: "13px", 色: 灰 });

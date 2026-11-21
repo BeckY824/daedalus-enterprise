@@ -38,7 +38,7 @@ const 差 = (r: number | null) => (r == null ? "—" : r > 1 ? `+${百分(r - 1)
 
 /** 环形图各段的颜色（主题变量），超出的并成「其他」用浅色 */
 const 环色 = ["var(--brand)", "var(--cat-green)", "var(--cat-amber)", "var(--cat-violet)"];
-const 其他色 = "var(--line-strong)";
+const 其他色 = "var(--field-line)";
 
 export default function ChannelDash({
   渠道们,

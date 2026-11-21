@@ -194,7 +194,7 @@
 }
 :root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-input, .ant-input-css-var) {
   --ant-input-active-border-color: var(--brand);
-  --ant-input-hover-border-color: var(--line-strong);
+  --ant-input-hover-border-color: var(--field-line);
   --ant-input-active-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 14%, transparent);
   --ant-input-hover-bg: var(--panel);
   --ant-input-active-bg: var(--panel);
@@ -207,7 +207,7 @@
   --ant-select-selector-bg: var(--panel);
   --ant-select-clear-bg: var(--panel);
   --ant-select-multiple-item-bg: var(--hover);
-  --ant-select-hover-border-color: var(--line-strong);
+  --ant-select-hover-border-color: var(--field-line);
   --ant-select-active-border-color: var(--brand);
   --ant-select-active-outline-color: color-mix(in srgb, var(--brand) 14%, transparent);
 }
@@ -233,10 +233,10 @@
   --ant-button-default-border-color: var(--line);
   --ant-button-default-hover-color: var(--ink);
   --ant-button-default-hover-bg: var(--panel);
-  --ant-button-default-hover-border-color: var(--line-strong);
+  --ant-button-default-hover-border-color: var(--field-line);
   --ant-button-default-active-color: var(--ink);
   --ant-button-default-active-bg: var(--hover);
-  --ant-button-default-active-border-color: var(--line-strong);
+  --ant-button-default-active-border-color: var(--field-line);
   --ant-button-default-bg-disabled: var(--hover);
   --ant-button-dashed-bg-disabled: var(--hover);
   --ant-button-border-color-disabled: var(--line-soft);
@@ -260,7 +260,7 @@
   --ant-pagination-item-input-bg: var(--panel);
   --ant-pagination-addon-bg: var(--hover);
   --ant-pagination-active-border-color: var(--brand);
-  --ant-pagination-hover-border-color: var(--line-strong);
+  --ant-pagination-hover-border-color: var(--field-line);
   --ant-pagination-hover-bg: var(--hover);
   --ant-pagination-active-bg: var(--panel);
 }

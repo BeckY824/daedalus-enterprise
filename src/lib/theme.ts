@@ -44,7 +44,7 @@ export const themeConfig: ThemeConfig = {
     /* 页面标题 22 / 区块标题 15，和 --fs-title / --fs-section 对齐 */
     fontSizeHeading4: 22,
     fontSizeHeading5: 15,
-    /* 控件三档（16a）：小 28、默认 32、主操作 40 */
+    /* 控件三档（16a）：小 28、默认 32、主操作 40。和 :root 的 --ctl-h-sm / --ctl-h / --ctl-h-lg 一字不差（tests/design-tokens.test.ts 对） */
     controlHeight: 32,
     controlHeightSM: 28,
     controlHeightLG: 40,
@@ -56,6 +56,8 @@ export const themeConfig: ThemeConfig = {
     colorTextDescription: palette.textMuted,
     /* --text-faint：placeholder、禁用、装饰。不许当正文 */
     colorTextTertiary: palette.textFaint,
+    /* 全局框色仍是 --line：按钮、分页、卡片靠它。输入框（--field-line）、复选 / 单选框（--ctl-line）在 globals.css 里
+       按控件单独换（D1 · 设计语言 11-21，D17），换皮主题不挂 */
     colorBorder: palette.line,
     colorBorderSecondary: palette.lineSoft,
     colorBgLayout: palette.workbench,
@@ -96,6 +98,7 @@ export const themeConfig: ThemeConfig = {
       /* 16a：卡片外壳圆角 14、不画边框（globals.css .ant-card 接 --card-line / --shadow-card，换主题时边框回来） */
       borderRadiusLG: 14,
       paddingLG: 16,
+      /* = --card-head-h */
       headerHeight: 48,
       headerFontSize: 15,
       colorBorderSecondary: palette.lineSoft,
@@ -126,9 +129,12 @@ export const themeConfig: ThemeConfig = {
       dangerShadow: "none",
       fontWeight: 500,
       defaultBorderColor: palette.line,
-      defaultHoverBorderColor: palette.lineStrong,
+      defaultHoverBorderColor: palette.fieldLine,
       defaultHoverColor: palette.ink,
     },
+    /* antd 主题全站只有一套：这里保持原值，不写现状主题的悬停框 / 光晕——写了会连带改到换皮主题（用户 11-21：换皮主题不动）。
+       现状主题的白底 + --field-line、悬停 --field-line-hover、聚焦 --focus-ring、报错 --error-ring 都在 globals.css「输入框、搜索框」那段，
+       只挂在现状主题上（D1 · 设计语言 11-21） */
     Input: { activeShadow: `0 0 0 3px ${alpha(palette.brand, 0.14)}` },
     Statistic: { contentFontSize: 26, titleFontSize: 13 },
     Tabs: { titleFontSize: 14, horizontalItemPadding: "10px 0", inkBarColor: palette.ink, itemSelectedColor: palette.ink, itemHoverColor: palette.ink },
