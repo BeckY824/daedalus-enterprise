@@ -132,10 +132,10 @@ export const themeConfig: ThemeConfig = {
       defaultHoverBorderColor: palette.fieldLine,
       defaultHoverColor: palette.ink,
     },
-    /* 聚焦光晕 = :root 的 --focus-ring（主色 18%）；报错 = --error-ring（红 12%）。现状主题下 globals.css 那段输入框规则也写同一个 */
-    Input: { activeShadow: `0 0 0 3px ${alpha(palette.brand, 0.18)}`, errorActiveShadow: `0 0 0 3px ${alpha(palette.danger, 0.12)}`, hoverBorderColor: palette.fieldLineHover },
-    InputNumber: { activeShadow: `0 0 0 3px ${alpha(palette.brand, 0.18)}`, errorActiveShadow: `0 0 0 3px ${alpha(palette.danger, 0.12)}`, hoverBorderColor: palette.fieldLineHover },
-    DatePicker: { activeShadow: `0 0 0 3px ${alpha(palette.brand, 0.18)}`, errorActiveShadow: `0 0 0 3px ${alpha(palette.danger, 0.12)}`, hoverBorderColor: palette.fieldLineHover },
+    /* antd 主题全站只有一套：这里保持原值，不写现状主题的悬停框 / 光晕——写了会连带改到换皮主题（用户 11-21：换皮主题不动）。
+       现状主题的白底 + --field-line、悬停 --field-line-hover、聚焦 --focus-ring、报错 --error-ring 都在 globals.css「输入框、搜索框」那段，
+       只挂在现状主题上（D1 · 设计语言 11-21） */
+    Input: { activeShadow: `0 0 0 3px ${alpha(palette.brand, 0.14)}` },
     Statistic: { contentFontSize: 26, titleFontSize: 13 },
     Tabs: { titleFontSize: 14, horizontalItemPadding: "10px 0", inkBarColor: palette.ink, itemSelectedColor: palette.ink, itemHoverColor: palette.ink },
     /* 未选中那几段的字用次一级正文 inkSoft（照苹果分段控件：没选中的字也是正文色，选中靠白滑块区分）。
@@ -149,7 +149,7 @@ export const themeConfig: ThemeConfig = {
     Form: { labelFontSize: 13, verticalLabelPadding: "0 0 4px", labelColor: palette.textMuted },
     Breadcrumb: { fontSize: 13 },
     Dropdown: { borderRadiusLG: 14 },
-    Select: { optionSelectedBg: palette.brandBg, borderRadiusLG: 14, hoverBorderColor: palette.fieldLineHover, activeOutlineColor: alpha(palette.brand, 0.18) },
+    Select: { optionSelectedBg: palette.brandBg, borderRadiusLG: 14 },
     Alert: { borderRadiusLG: 10 },
   },
 };

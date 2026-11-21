@@ -122,11 +122,28 @@ describe("D1 · 设计语言 token 和基础控件", () => {
     expect(段).toContain("box-shadow: var(--error-ring)");
   });
 
-  it("自绘的搜索框（中栏名单 .pane-search、左栏 .rail-search）也是白底 + --field-line，聚焦主色 + 光晕", () => {
-    expect(全).toMatch(/\.pane-search \{[^}]*background: var\(--panel\); border: 1px solid var\(--field-line\);/);
-    expect(全).toMatch(/\.pane-search:hover \{ border-color: var\(--field-line-hover\);/);
-    expect(全).toMatch(/\.pane-search:focus-within \{ border-color: var\(--brand\); box-shadow: var\(--focus-ring\); \}/);
-    expect(全).toMatch(/\.rail-search \{[^}]*border: 1px solid var\(--field-line\);/);
+  // 只挂在现状主题上：换皮主题（像素、账簿、奢华、科技）不动（用户 11-21；PR #398 审查）
+  const 现状 = ':root:is(:not([data-skin]), [data-skin="now"])';
+  const 转义 = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  it("自绘的搜索框（中栏名单 .pane-search、左栏 .rail-search）在现状主题下白底 + --field-line，聚焦主色 + 光晕；不带主题限定的老规则照 main 原样", () => {
+    const 前 = 转义(现状);
+    expect(全).toMatch(new RegExp(`${前} \\.pane-search \\{ background: var\\(--panel\\); border: 1px solid var\\(--field-line\\);`));
+    expect(全).toMatch(new RegExp(`${前} \\.pane-search:hover \\{ border-color: var\\(--field-line-hover\\);`));
+    expect(全).toMatch(new RegExp(`${前} \\.pane-search:focus-within \\{ border-color: var\\(--brand\\); box-shadow: var\\(--focus-ring\\); \\}`));
+    expect(全).toMatch(new RegExp(`${前} \\.rail-search \\{ border-color: var\\(--field-line\\); \\}`));
+    // 老规则（换皮主题吃的）：名单搜索框 --hover 灰底无框，左栏框 --line
+    expect(全).toMatch(/^\.pane-search \{[^}]*background: var\(--hover\);/m);
+    expect(全).not.toMatch(/^\.pane-search \{[^}]*border:/m);
+    expect(全).toMatch(/^\.rail-search \{[^}]*border: 1px solid var\(--line\);/m);
+  });
+
+  it("D1 新加的外观规则都带现状主题限定：输入框、复选框、搜索框、标签灰底", () => {
+    for (const 片 of ["border-color: var(--field-line-hover)", "--ant-color-border: var(--ctl-line)", "background: var(--tag-bg); color: var(--tag-fg)", "box-shadow: var(--focus-ring)", "box-shadow: var(--error-ring)"]) {
+      const 选择器们 = [...全.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => m[2].includes(片)).map((m) => m[1].trim());
+      expect(选择器们.length, 片).toBeGreaterThan(0);
+      for (const sel of 选择器们) expect(sel.startsWith(现状), `${片} 挂在没限定主题的规则上：${sel.slice(0, 160)}`).toBe(true);
+    }
   });
 
   it("复选框、单选框（含表格勾选、树勾选）的框换成 --ctl-line", () => {
@@ -145,18 +162,25 @@ describe("D1 · 设计语言 token 和基础控件", () => {
     expect(浅空, "这些「—」还写死 faint / muted，改 var(--empty-fg)").toEqual([]);
   });
 
-  it("标签权重（D10）：灰底那条 ≥ 0,5,0，压过 antd 预设色 .ant-tag.ant-tag-blue:not(.ant-tag-disabled).ant-tag-filled（0,4,0）；带色三条再高一档", () => {
-    // 类 + :not() 括号里最重的一项（1 个类）各算一档；:is() 同理
-    const 分 = (sel: string) => (sel.replace(/:(not|is)\(([^)]*)\)/g, " .x ").match(/\.[\w-]+/g) ?? []).length;
-    const 规则 = [...全.matchAll(/^(\.ant-tag[^{]*)\{/gm)].map((m) => m[1].trim()).filter((s) => /:not\(\.ant-tag-solid/.test(s));
-    const 灰 = 规则.find((s) => !/:is\(|tag-key|pool-tag/.test(s));
+  it("标签权重（D10）：现状主题的灰底那条 ≥ 0,6,0，压过 antd 预设色 .ant-tag.ant-tag-blue:not(.ant-tag-disabled).ant-tag-filled（0,4,0）；带色、关键、公海再高一档。不带限定的老规则保持 main 的 0,4,0（换皮主题原样）", () => {
+    // :root、类、属性各算一档；:not() / :is() 按括号里最重的一项算（这里都是一档）
+    const 分 = (sel: string) => {
+      const 去括号 = sel.replace(/:(not|is)\(([^()]*(\([^()]*\))?[^()]*)\)/g, " .x ");
+      return (去括号.match(/\.[\w-]+|\[[^\]]+\]|:root/g) ?? []).length;
+    };
+    const 规则 = [...全.matchAll(/^([^{}\n]*\.ant-tag\.ant-tag[^{]*)\{/gm)].map((m) => m[1].trim()).filter((s) => /:not\(\.ant-tag-solid/.test(s));
+    const 现状规则 = 规则.filter((s) => s.startsWith(现状));
+    const 老规则 = 规则.filter((s) => !s.startsWith(现状));
+    const 灰 = 现状规则.find((s) => !/\):is\(|tag-key|pool-tag/.test(s));
     expect(灰).toBeTruthy();
-    expect(分(灰!)).toBeGreaterThanOrEqual(5);
-    for (const s of 规则.filter((x) => x !== 灰)) expect(分(s), s).toBeGreaterThan(分(灰!));
-    expect(全).toMatch(/background: var\(--tag-bg\); color: var\(--tag-fg\);/);
+    expect(分(灰!)).toBeGreaterThanOrEqual(6);
+    for (const s of 现状规则.filter((x) => x !== 灰)) expect(分(s), s).toBeGreaterThan(分(灰!));
+    const 老灰 = 老规则.find((s) => !/\):is\(|tag-key|pool-tag/.test(s));
+    expect(老灰).toBe(".ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled)");
+    expect(全).toMatch(/background: var\(--hover\); color: var\(--ink\);/);
   });
 
-  it("lib/theme.ts 抄的控件三档高、卡头高和 :root 一致；输入框聚焦光晕和 --focus-ring 同一个透明度", async () => {
+  it("lib/theme.ts 抄的控件三档高、卡头高和 :root 一致；输入类组件 token 保持 main 原值", async () => {
     const { themeConfig } = await import("@/lib/theme");
     const t = themeConfig.token!;
     expect(`${t.controlHeightSM}px`).toBe(取("--ctl-h-sm"));
@@ -164,7 +188,11 @@ describe("D1 · 设计语言 token 和基础控件", () => {
     expect(`${t.controlHeightLG}px`).toBe(取("--ctl-h-lg"));
     expect(`${themeConfig.components!.Card!.headerHeight}px`).toBe(取("--card-head-h"));
     const { palette, alpha } = await import("@/lib/palette");
-    expect(themeConfig.components!.Input!.activeShadow).toBe(`0 0 0 3px ${alpha(palette.brand, 0.18)}`);
+    // antd 主题全站一套：输入类的悬停框、光晕不在这里改（会连带换皮主题），保持 main 的值；现状主题的在 globals.css
+    expect(themeConfig.components!.Input).toEqual({ activeShadow: `0 0 0 3px ${alpha(palette.brand, 0.14)}` });
+    expect(themeConfig.components!.InputNumber).toBeUndefined();
+    expect(themeConfig.components!.DatePicker).toBeUndefined();
+    expect(themeConfig.components!.Select).toEqual({ optionSelectedBg: palette.brandBg, borderRadiusLG: 14 });
     expect(palette.fieldLine).toBe(取("--field-line"));
     expect(palette.ctlLine).toBe(取("--ctl-line"));
   });

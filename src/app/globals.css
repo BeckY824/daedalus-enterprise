@@ -480,9 +480,12 @@ html.os-win[data-skin="now"] { --text-muted: color-mix(in srgb, var(--ink-soft) 
 .shell-desktop :is(a, button, input, select, textarea, [role="button"], [role="tab"], [role="menuitem"], .ant-select, .ant-input, .ant-input-affix-wrapper, .ant-btn, .ant-dropdown-trigger, .ant-segmented) { -webkit-app-region: no-drag; }
 .rail-top { display: flex; align-items: center; height: 40px; width: 100%; margin-bottom: 14px; }
 /* 左栏顶上的搜索框（AppShell，点开就是 ⌘K 那张跳转单）。样子是个输入框，其实是个按钮 */
-.rail-search { display: flex; align-items: center; gap: var(--s2); width: 100%; height: 32px; padding: 0 10px; border: 1px solid var(--field-line); border-radius: var(--r-card); background: var(--panel); color: var(--text-faint); font: inherit; font-size: var(--fs-note); cursor: pointer; -webkit-app-region: no-drag;
+.rail-search { display: flex; align-items: center; gap: var(--s2); width: 100%; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); color: var(--text-faint); font: inherit; font-size: var(--fs-note); cursor: pointer; -webkit-app-region: no-drag;
   transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
-.rail-search:hover { border-color: var(--field-line-hover); color: var(--text-muted); }
+.rail-search:hover { border-color: var(--field-line); color: var(--text-muted); }
+/* 现状主题：左栏「搜索 ⌘K」框和输入框同一套（D1 · 设计语言 11-21，D17）；换皮主题照上面原样 */
+:root:is(:not([data-skin]), [data-skin="now"]) .rail-search { border-color: var(--field-line); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rail-search:hover { border-color: var(--field-line-hover); }
 .rail-search:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .rail-search kbd { margin-left: auto; font-family: var(--font-ui); font-size: var(--fs-min); color: var(--text-faint); }
 html.glass .rail-search { background: color-mix(in srgb, var(--panel) 62%, transparent); border-color: color-mix(in srgb, var(--panel) 70%, transparent); }
@@ -798,11 +801,12 @@ body.rail-resizing .shell .rail { transition: none; }
 .pane-more:hover { color: var(--ink); }
 
 .pane-ib.on { background: var(--brand-bg); color: var(--brand-deep); }
-.pane-search { margin: 10px 12px 6px; height: 32px; border-radius: var(--r-ctl); background: var(--panel); border: 1px solid var(--field-line); display: flex; align-items: center; gap: 6px; padding: 0 10px;
-  transition: border-color var(--t-leave) var(--ease), box-shadow var(--t-leave) var(--ease); }
-/* 中栏名单的搜索框（D1 · 设计语言 11-21，D17）：和 antd 输入框同一套——白底 + --field-line，悬停加深，聚焦主色框 + 光晕。原来是 --hover 灰底无框 */
-.pane-search:hover { border-color: var(--field-line-hover); transition: none; }
-.pane-search:focus-within { border-color: var(--brand); box-shadow: var(--focus-ring); }
+.pane-search { margin: 10px 12px 6px; height: 32px; border-radius: var(--r-ctl); background: var(--hover); display: flex; align-items: center; gap: 6px; padding: 0 10px; }
+/* 现状主题：中栏名单的搜索框和 antd 输入框同一套（D1 · 设计语言 11-21，D17）——白底 + --field-line，悬停加深，聚焦主色框 + 光晕。
+   原来是 --hover 灰底无框；换皮主题照上面原样。框 1px 吃在 32 高里（全站 border-box），不长高 */
+:root:is(:not([data-skin]), [data-skin="now"]) .pane-search { background: var(--panel); border: 1px solid var(--field-line); transition: border-color var(--t-leave) var(--ease), box-shadow var(--t-leave) var(--ease); }
+:root:is(:not([data-skin]), [data-skin="now"]) .pane-search:hover { border-color: var(--field-line-hover); transition: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pane-search:focus-within { border-color: var(--brand); box-shadow: var(--focus-ring); }
 .pane-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; font-size: var(--fs-note); color: var(--ink); }
 .pane-search input::placeholder { color: var(--text-faint); }
 .pane-chips { display: flex; gap: 6px; padding: 4px 12px 8px; flex-wrap: wrap; }
@@ -4367,23 +4371,33 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 /* 大数字收字距：antd 的统计数值是通用组件，接 --num-track */
 .ant-statistic-content, .home-card-v, .rkpi-v, .signal-v b, .chan-dash-kv { letter-spacing: var(--num-track); }
 
-/* ---------- 标签：默认中性灰 12/500 胶囊（--tag-bg / --tag-fg）；只有三种带色——要人处理（橙）、出问题 / 无效（红）、完成 / 赢单（绿）。
+/* ---------- 标签：默认灰底深字 12/500 胶囊；只有三种带色——要人处理（橙）、出问题 / 无效（红）、完成 / 赢单（绿）。
    字和判定不动，只按 antd 现成的颜色类归档：green/success → 绿，red/volcano/error → 红，orange/warning → 橙，其余（蓝紫青金……）→ 灰。
    「关键」联系人另挂 .tag-key：强调色浅底，一眼认得出。
-   分量（D10，11-21 查清）：antd 6 标签默认 filled 变体，预设色那条 .ant-tag.ant-tag-blue:not(.ant-tag-disabled).ant-tag-filled 是 0,4,0
-   （哈希包在 :where() 里不计）；原来这里 .ant-tag 叠三遍 + :not() 也是 0,4,0，打平后 antd 样式表排在后面，蓝紫青金还是带色。
-   现在叠四遍：灰底那条 0,5,0，带色三条再多一个 :is() 是 0,6,0。tests/design-tokens.test.ts 钉着这两个分量 */
-.ant-tag.ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled) {
-  border-color: transparent; background: var(--tag-bg); color: var(--tag-fg);
+   这一段是全主题共用的老写法，换皮主题（像素、账簿、奢华、科技）照它走、不动（用户 11-21：换皮主题不动）。
+   注意它和 antd 预设色那条 .ant-tag.ant-tag-blue:not(.ant-tag-disabled).ant-tag-filled 权重打平（都是 0,4,0），antd 排在后面赢，
+   所以换皮主题下蓝紫青金仍带色——这是 main 上的原样，D1 不改；现状主题由下面那段压过去 */
+.ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled) {
+  border-color: transparent; background: var(--hover); color: var(--ink);
   font-size: var(--fs-min); font-weight: 500; line-height: 20px; border-radius: var(--r-tag);
 }
 .ant-tag :is(.anticon, .ant-tag-close-icon) { color: var(--text-muted); }
-.ant-tag.ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled):is(.ant-tag-green, .ant-tag-success) { background: var(--success-bg); color: var(--success-text); }
-.ant-tag.ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled):is(.ant-tag-red, .ant-tag-volcano, .ant-tag-error) { background: var(--danger-bg); color: var(--danger-text); }
-.ant-tag.ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled):is(.ant-tag-orange, .ant-tag-warning) { background: var(--warning-bg); color: var(--warning-text); }
-.ant-tag.ant-tag.ant-tag.ant-tag.tag-key:not(.ant-tag-solid, .ant-tag-disabled) { background: var(--brand-bg); color: var(--brand-deep); }
+.ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled):is(.ant-tag-green, .ant-tag-success) { background: var(--success-bg); color: var(--success-text); }
+.ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled):is(.ant-tag-red, .ant-tag-volcano, .ant-tag-error) { background: var(--danger-bg); color: var(--danger-text); }
+.ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled):is(.ant-tag-orange, .ant-tag-warning) { background: var(--warning-bg); color: var(--warning-text); }
+.ant-tag.ant-tag.ant-tag.tag-key:not(.ant-tag-solid, .ant-tag-disabled) { background: var(--brand-bg); color: var(--brand-deep); }
 /* 公海标签原来是虚线框：框去掉以后靠虚线认不出了，留一圈虚线 */
-.ant-tag.ant-tag.ant-tag.ant-tag.pool-tag:not(.ant-tag-solid, .ant-tag-disabled) { border-color: var(--field-line); border-style: dashed; background: transparent; color: var(--ink-soft); }
+.ant-tag.ant-tag.ant-tag.pool-tag:not(.ant-tag-solid, .ant-tag-disabled) { border-color: var(--field-line); border-style: dashed; background: transparent; color: var(--ink-soft); }
+
+/* 现状主题（明暗都算）：「其余一律灰」真正生效（D1 · 设计语言 11-21，D10），灰底接 --tag-bg / --tag-fg。
+   分量：前面垫 :root + 主题判断，灰底那条 0,6,0，压过 antd 预设色 0,4,0；带色、关键、公海再多一档 0,7,0。
+   tests/design-tokens.test.ts 钉着分量，tests/ent-design-d1.ui.test.ts 在真浏览器里量 */
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled) { background: var(--tag-bg); color: var(--tag-fg); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled):is(.ant-tag-green, .ant-tag-success) { background: var(--success-bg); color: var(--success-text); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled):is(.ant-tag-red, .ant-tag-volcano, .ant-tag-error) { background: var(--danger-bg); color: var(--danger-text); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled):is(.ant-tag-orange, .ant-tag-warning) { background: var(--warning-bg); color: var(--warning-text); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-tag.ant-tag.ant-tag.tag-key:not(.ant-tag-solid, .ant-tag-disabled) { background: var(--brand-bg); color: var(--brand-deep); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-tag.ant-tag.ant-tag.pool-tag:not(.ant-tag-solid, .ant-tag-disabled) { background: transparent; color: var(--ink-soft); }
 
 /* ---------- 列表页：表格成一张白卡（圆角 14、淡阴影），表头白底灰字；行高、表头高不动（40 / 36） ---------- */
 .list .ant-table-wrapper .ant-table { border-radius: var(--r-pop); box-shadow: var(--shadow-card); background: var(--panel); }
