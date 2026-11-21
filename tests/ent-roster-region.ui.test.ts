@@ -1,7 +1,7 @@
 /**
  * 客户记录页左边的名单（企业版）：名字上方从「来源」改成客户所在国家地区（11-04 用户）。拼法见 ent-clean-misc.test.ts B6。
  *
- *   名单宽 220：超长国家地区 + 状态标签不横撑、省略号收住，悬停 title 给全文；名字照旧在下一行
+ *   名单宽 220：超长国家地区 + 状态标签不横撑、省略号收住，悬停 title 给全文；名字照旧在下一行；没有地区的时间并到名字行（D2 · M2-a）
  *   1280 / 1366 名单常驻，1024 名单收进抽屉（globals.css 1213 门槛），这里量常驻的两档
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -44,14 +44,16 @@ it("名字上方是国家地区：超长不横撑、省略号收住、title 给�
       const r = await page.evaluate(() => {
         const 名单 = document.querySelector(".pane-roster, aside")!.getBoundingClientRect();
         return [...document.querySelectorAll(".roster-row")].map(row => {
-          const src = row.querySelector(".roster-src") as HTMLElement, n = row.querySelector(".roster-n") as HTMLElement;
+          const src = row.querySelector(".roster-src") as HTMLElement | null, n = row.querySelector(".roster-n") as HTMLElement;
+          // 没有国家地区（D2 · M2-a）：不留空的第一行，时间并到名字那一行
+          if (!src) { const t = row.querySelector(".roster-l1 > .roster-t")!.getBoundingClientRect(), nb = n.getBoundingClientRect(); return { 地区: "", 不出界: nb.right <= 名单.right + 1 && t.right <= 名单.right + 1, 时间和名字同行: Math.abs(t.bottom - nb.bottom) < 4 }; }
           return { 地区: src.textContent?.replace("意向客户", ""), title: src.title, 收住: src.scrollWidth > src.clientWidth ? "省略" : "放得下",
             不出界: src.getBoundingClientRect().right <= 名单.right + 1, 名字在下: n.getBoundingClientRect().top >= src.getBoundingClientRect().bottom - 1 };
         });
       });
       expect(r[0]).toMatchObject({ 地区: "刚果民主共和国 上加丹加省利卡西市郊区工业园区二期", title: "刚果民主共和国 上加丹加省利卡西市郊区工业园区二期", 收住: "省略", 不出界: true, 名字在下: true });
       expect(r[1]).toMatchObject({ 地区: "广东省 深圳市", 收住: "放得下", 不出界: true, 名字在下: true });
-      expect(r[2]).toMatchObject({ 地区: "", 不出界: true, 名字在下: true });
+      expect(r[2]).toEqual({ 地区: "", 不出界: true, 时间和名字同行: true });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       expect(errors).toEqual([]);
     } finally { await page.close(); }

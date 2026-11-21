@@ -98,7 +98,7 @@ describe("D1 · 设计语言 token 和基础控件", () => {
       "--card-pad": "16px", "--card-head-h": "48px", "--card-gap": "12px",
       "--field-line": "#c7c7cc", "--field-line-hover": "#86868b", "--ctl-line": "#86868b",
       "--tag-bg": "var(--hover)", "--tag-fg": "var(--ink-soft)", "--edge-fade": "24px", "--skel-delay": "180ms",
-      "--sheet-r": "var(--r-pop)", "--ai-safe": "72px",
+      "--ai-safe": "72px",
     };
     for (const [k, v] of Object.entries(期)) expect(取(k), k).toBe(v);
     expect(取("--focus-ring")).toMatch(/^0 0 0 3px color-mix\(in srgb, var\(--brand\) 18%, transparent\)$/);
@@ -178,6 +178,21 @@ describe("D1 · 设计语言 token 和基础控件", () => {
     const 老灰 = 老规则.find((s) => !/\):is\(|tag-key|pool-tag/.test(s));
     expect(老灰).toBe(".ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled)");
     expect(全).toMatch(/background: var\(--hover\); color: var\(--ink\);/);
+  });
+
+  it("D2（客户详情骨架、页头、名单）那段规则都带现状主题限定；不带限定的只有两条结构规则（名单「名字 + 时间」行、底部抽屉把手）", () => {
+    const 起 = 全.indexOf(".roster-l1 { display: flex;");
+    expect(起, "没找到 D2 那段").toBeGreaterThan(0);
+    const 段 = 全.slice(起);
+    const 选择器们 = [...段.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => m[1].trim().replace(/\s+/g, " "));
+    expect(选择器们.length).toBeGreaterThan(30);
+    const 结构 = [".roster-l1", ".roster-l1 > .roster-n", ".pane-sheet .sheet-grab", ".pane-sheet .sheet-top"];
+    const 不带 = 选择器们.filter((x) => !x.startsWith(现状));
+    expect(不带).toEqual(结构);
+    // 规范里的几样都在这段、都带限定：当前行浅蓝 + 左 2px、计数 --count-fg、手机名字两行、底部抽屉圆角、中右各自滚、底部留 --ai-safe
+    for (const 片 of [".rec-head > :is(.rec-head-sp, .rcd-grow) { display: none; }", "background: var(--brand-bg)", "width: 2px", "color: var(--count-fg)", "-webkit-line-clamp: 2", "var(--r-pop) var(--r-pop) 0 0", "grid-row: 3", "var(--ai-safe)", "font-size: var(--fs-min); color: var(--text-muted)"]) {
+      expect(段, 片).toContain(片);
+    }
   });
 
   it("lib/theme.ts 抄的控件三档高、卡头高和 :root 一致；输入类组件 token 保持 main 原值", async () => {

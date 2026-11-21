@@ -186,7 +186,6 @@
   --card-gap: 12px;                    /* 卡与卡之间 */
   --edge-fade: 24px;                   /* 横滑条两端渐隐宽度（节点条） */
   --skel-delay: 180ms;                 /* 加载多久后才出骨架：快的不闪（D07）。是延迟不是过渡，所以不叫 --t-* */
-  --sheet-r: var(--r-pop);             /* 390 底部抽屉上圆角 */
   --ai-safe: 72px;                     /* 滚动区底部留白，不让右下 AI 球盖住末行（D40） */
 }
 /* 不认 linear() 的浏览器（Safari 17.2 以前）：var(--ease) 落到 transition 里会让整条 transition 作废、一点动效都没有。
@@ -5390,3 +5389,87 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 .giveup-note { margin-top: 8px; }
 .giveup-hint { margin-top: 12px; color: var(--text-muted); }
 .giveup-error { margin-top: 12px; }
+
+/* ---------- 客户详情骨架、页头、名单（D2 · 设计语言 11-21，规范 M0–M2）----------
+   外观规则一律只挂现状主题（明暗都算），换皮主题照原样（用户 11-21「换皮主题不动」）。
+   只有两条结构规则不带限定：名单行「名字 + 时间」那一行（.roster-l1，新元素，不排就叠在一起）、手机底部抽屉的把手占位 */
+.roster-l1 { display: flex; align-items: baseline; gap: var(--s2); min-width: 0; margin-top: 1px; }
+.roster-l1 > .roster-n { flex: 1; }
+.pane-sheet .sheet-grab { width: 36px; height: 5px; margin: 8px auto 0; border-radius: 999px; background: var(--line); }
+.pane-sheet .sheet-top { touch-action: none; }
+
+/* M0-a（K10）：中栏、右栏各自滚。原来项目区整块一扇窗，右栏（项目资料、进程变更…）一长，滚到右栏底中栏整列滚出去、只剩空白。
+   两栏并排时项目区自己不滚：提醒条、告示钉在顶上，中栏、右栏各占一扇窗（都是这一格的可见高度），顶边仍对齐（P-界面-22 ②）；
+   右栏落到中栏下面（项目区 < 560）时照旧整块一起滚。最右那栏露细滚动条，中栏不露（11-01 同项目页）。
+   左右各让 4px 再用负外边距收回：栏边是滚动框的裁切边，卡片的阴影不被切掉
+   M0-b：各滚动区底部至少留 --ai-safe（72），右下 AI 球不盖末行；浮标页的 --detail-tail（给浮窗输入框留的）更大时取大的 */
+@media (min-width: 768px) {
+  @container rec (min-width: 630px) {
+    :root:is(:not([data-skin]), [data-skin="now"]) .main .rec-page > .rec.rec-cd > .rec-rail:first-child { padding-bottom: max(var(--ai-safe), var(--detail-tail, 0px)); }
+    :root:is(:not([data-skin]), [data-skin="now"]) .main .rec-page > .rec.rec-cd > .rec-zone { padding-bottom: max(var(--ai-safe), var(--detail-tail, 0px)); }
+    :root:is(:not([data-skin]), [data-skin="now"]) .main .rec-page > .rec.rec-cd > .rec-zone:has(> .cd-zb) { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
+    :root:is(:not([data-skin]), [data-skin="now"]) .main .rec-page > .rec.rec-cd > .rec-zone > .cd-zb { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin; padding-bottom: max(var(--ai-safe), var(--detail-tail, 0px)); }
+    @container cdzone (min-width: 560px) {
+      :root:is(:not([data-skin]), [data-skin="now"]) .main .rec-page > .rec.rec-cd > .rec-zone > .cd-zb { overflow: hidden; padding-bottom: 0; grid-template-rows: auto auto minmax(0, 1fr); row-gap: 0; }
+      :root:is(:not([data-skin]), [data-skin="now"]) .main .rec-page > .rec.rec-cd > .rec-zone > .cd-zb > :is(.cd-alert, .cd-notice) { margin-bottom: 14px; }
+      :root:is(:not([data-skin]), [data-skin="now"]) .main .rec-page > .rec.rec-cd > .rec-zone > .cd-zb > :is(.cd-mid, .cd-side) { grid-row: 3; align-self: stretch; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain;
+        margin: 0 -4px; padding: 0 4px max(var(--ai-safe), var(--detail-tail, 0px)); }
+      :root:is(:not([data-skin]), [data-skin="now"]) .main .rec-page > .rec.rec-cd > .rec-zone > .cd-zb > .cd-mid { scrollbar-width: none; }
+      :root:is(:not([data-skin]), [data-skin="now"]) .main .rec-page > .rec.rec-cd > .rec-zone > .cd-zb > .cd-mid::-webkit-scrollbar { display: none; }
+      :root:is(:not([data-skin]), [data-skin="now"]) .main .rec-page > .rec.rec-cd > .rec-zone > .cd-zb > .cd-side { scrollbar-width: thin; }
+    }
+    @container cdzone (min-width: 560px) and (max-width: 819px) {
+      :root:is(:not([data-skin]), [data-skin="now"]) .main .rec-page > .rec.rec-cd > .rec-zone > .cd-zb > :is(.cd-alert, .cd-notice) { margin-bottom: 12px; }
+    }
+  }
+}
+
+/* M1-b（D24）：菜单里灰着那项第二行的说明用最小字号 */
+:root:is(:not([data-skin]), [data-skin="now"]) .menu-2l-note { font-size: var(--fs-min); color: var(--text-muted); }
+
+/* M1-c（D05）：页头的图标钮、星标点击区 28（--hit），触屏 44（--hit-touch）；按钮悬停只铺浅底、框加深一档，按下再深一档（--t-press） */
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-head .rec-star.ant-btn { width: var(--hit); min-width: var(--hit); height: var(--hit); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-star.ant-btn:not(:disabled):hover { color: var(--warning); background: var(--row-hover); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-head-acts > .ant-btn.ant-btn-variant-outlined:not(:disabled) { transition: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-head-acts > .ant-btn.ant-btn-variant-outlined:not(:disabled):hover { color: var(--ink); border-color: var(--field-line); background: var(--row-hover); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-head-acts > .ant-btn.ant-btn-variant-outlined:not(:disabled):active { color: var(--ink); border-color: var(--field-line-hover); background: var(--hover); transition: background-color var(--t-press) var(--ease); }
+:root:is(:not([data-skin]), [data-skin="now"]) .pane-ib:hover { background: var(--row-hover); color: var(--ink); }
+:root:is(:not([data-skin]), [data-skin="now"]) .pane-ib:active { background: var(--hover); }
+@media (max-width: 767px), (pointer: coarse) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .rec-head .rec-star.ant-btn { width: var(--hit-touch); min-width: var(--hit-touch); height: var(--hit-touch); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rec-head > .pane-toggle { width: var(--hit-touch); height: var(--hit-touch); }
+}
+/* 手机（≤767）页头：头像和名字同一行，名字最多两行再省略（1366 照旧一行省略、悬停看全，P-界面-06 / 43）；
+   原来名字一长，名字那格整块折到头像下面一行。≤575 下面一行两颗钮各半、高 40 */
+@media (max-width: 767px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .rec-head > .rec-head-id { flex: 1 1 0; min-width: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rec-head > :is(.rec-head-sp, .rcd-grow) { display: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rec-head .rec-head-line { align-items: flex-start; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rec-head .rec-head-name { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; line-height: 28px; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rec-head .rec-head-line > .rec-star.ant-btn { margin-top: -8px; }
+}
+@media (max-width: 575px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .rec-head > .rec-head-acts > .ant-btn { height: 40px; }
+}
+
+/* M2-a / M2-b：名单计数 --count-fg（原来 faint，白底 2.2:1，D01）；一个月没动静的点 --text-muted；
+   悬停只换底色；当前那位浅蓝底 + 左边一道 2px 主色（原来浅灰底，和悬停分不清） */
+:root:is(:not([data-skin]), [data-skin="now"]) .pane-n { color: var(--count-fg); }
+:root:is(:not([data-skin]), [data-skin="now"]) .roster-cnt { color: var(--count-fg); font-size: var(--fs-min); }
+:root:is(:not([data-skin]), [data-skin="now"]) .roster-dot.cold { background: var(--text-muted); }
+:root:is(:not([data-skin]), [data-skin="now"]) .roster-row { position: relative; }
+:root:is(:not([data-skin]), [data-skin="now"]) .roster-row:hover { background: var(--row-hover); color: var(--ink); }
+:root:is(:not([data-skin]), [data-skin="now"]) .roster-row.on, :root:is(:not([data-skin]), [data-skin="now"]) .roster-row.on:hover { background: var(--brand-bg); }
+:root:is(:not([data-skin]), [data-skin="now"]) .roster-row.on::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 2px; border-radius: 999px; background: var(--brand); }
+
+/* M2-c（K8）：手机名单 = 底部抽屉。顶上圆角 --r-pop、往上的阴影、遮罩 30% 黑；页头右边 × 44；页签 36、搜索框 40、行上下 10 */
+:root:is(:not([data-skin]), [data-skin="now"]) .pane-sheet .ant-drawer-mask { background: rgba(0, 0, 0, .3); }
+:root:is(:not([data-skin]), [data-skin="now"]) .pane-sheet .ant-drawer-content-wrapper { border-radius: var(--r-pop) var(--r-pop) 0 0; overflow: hidden; background: var(--panel); box-shadow: 0 -8px 30px rgba(0, 0, 0, .15); }
+:root:is(:not([data-skin]), [data-skin="now"]) .pane-sheet .sheet-grab { background: var(--field-line); }
+:root:is(:not([data-skin]), [data-skin="now"]) .pane-sheet .pane-h { height: 52px; padding-right: 4px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pane-sheet .pane-ib { width: var(--hit-touch); height: var(--hit-touch); }
+:root:is(:not([data-skin]), [data-skin="now"]) .pane-sheet .pane-ib:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pane-sheet .roster-tab { height: 36px; padding: 0 12px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pane-sheet .pane-search { height: 40px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pane-sheet .roster-row { padding-block: 10px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pane-sheet .pane-rows { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
