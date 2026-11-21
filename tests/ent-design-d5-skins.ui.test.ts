@@ -181,6 +181,31 @@ describe("现状主题：D5 新样子", () => {
       } finally { await page.close(); }
     });
 
+  for (const 能改 of [false, true])
+    it(`375px · 画像看态不横向溢出（${能改 ? "能改" : "只读，同受限客户详情"}）：E2E「受限客户详情排版」那把尺——没有元素 scrollWidth 超过 clientWidth、也不出卡`, async () => {
+      const { page, errors } = await 开("now", {}, { width: 375, 能改 });
+      try {
+        const 卡 = page.locator(".ant-card").filter({ has: page.locator(".proj-profile.is-look") });
+        await 卡.waitFor();
+        const r = await 卡.evaluate((根) => {
+          const 框 = 根.getBoundingClientRect();
+          const 出卡: string[] = [], 自身溢出: string[] = [];
+          for (const el of [根, ...根.querySelectorAll<HTMLElement>("*")]) {
+            const b = el.getBoundingClientRect();
+            if (!b.width) continue;
+            const 名 = `${el.tagName}.${el.className}:${(el.textContent ?? "").slice(0, 16)}`;
+            if (b.right > 框.right + 1 || b.left < 框.left - 1) 出卡.push(名);
+            const 样 = getComputedStyle(el);
+            if (el.scrollWidth > el.clientWidth + 1 && 样.overflowX === "visible" && 样.display !== "inline") 自身溢出.push(名);
+          }
+          return { 出卡, 自身溢出 };
+        });
+        expect(r).toEqual({ 出卡: [], 自身溢出: [] });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+        expect(errors).toEqual([]);
+      } finally { await page.close(); }
+    });
+
   it("画像：平时一行字（没填「—」），卡头「已填 N / 12」；点一行展开下拉，选了就存；多选的下拉占位也是「—」", async () => {
     const { page, errors } = await 开("now");
     try {

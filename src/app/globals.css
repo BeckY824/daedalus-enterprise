@@ -5685,8 +5685,9 @@ button.proj-miss-chip { cursor: pointer; }
   }
 }
 /* M11-a 画像「看 → 点了改」：和项目资料同一种行；卡头「已填 N / 12」，折叠卡计数同色 */
-:root:is(:not([data-skin]), [data-skin="now"]) .proj-profile.is-look { gap: 0; }
-:root:is(:not([data-skin]), [data-skin="now"]) .proj-profile.is-look .proj-profile-row { min-height: 34px; margin: 0 -8px; padding: 5px 8px; align-items: start; line-height: 24px; border-radius: var(--r-ctl); }
+/* 负边距挂在整块上、不挂在行上：行挂 -8px 会让 .proj-profile 自己横向溢出 8px（E2E 受限详情 375 宽量到的「文字溢出」） */
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-profile.is-look { gap: 0; margin-inline: -8px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-profile.is-look .proj-profile-row { min-height: 34px; margin: 0; padding: 5px 8px; align-items: start; line-height: 24px; border-radius: var(--r-ctl); }
 :root:is(:not([data-skin]), [data-skin="now"]) .proj-profile.is-look .proj-profile-row:has(> .proj-inline):hover { background: var(--row-hover); }
 :root:is(:not([data-skin]), [data-skin="now"]) .proj-profile.is-look .proj-profile-row:has(> .proj-inline):hover .proj-inline-pen { opacity: 1; }
 :root:is(:not([data-skin]), [data-skin="now"]) .proj-profile.is-look .proj-profile-row:has(> .proj-inline-edit) > .proj-profile-key { line-height: var(--ctl-h); }
@@ -5702,22 +5703,24 @@ button.proj-miss-chip { cursor: pointer; }
 :root:is(:not([data-skin]), [data-skin="now"]) .att-empty-t { color: var(--text-muted); font-size: var(--fs-note); }
 /* M12-a 加载：--skel-delay 后出和页面同形的骨架（页头 + 三栏卡）；减弱动态下灰条不扫光（.skel-bar 全局那条） */
 :root:is(:not([data-skin]), [data-skin="now"]) .cd-ld-old { display: none; }
-:root:is(:not([data-skin]), [data-skin="now"]) .cd-skel { display: grid; gap: 14px; animation: app-loading-in var(--t) var(--ease) var(--skel-delay) both; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cd-skel { display: grid; gap: 14px; container: cd-skel / inline-size; animation: app-loading-in var(--t) var(--ease) var(--skel-delay) both; }
 :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-head { display: flex; align-items: center; gap: 12px; }
 :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-av { flex: none; width: 48px; height: 48px; border-radius: var(--r-card); background: var(--hover); }
 :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-hl { flex: 1 1 auto; display: grid; gap: 8px; max-width: 420px; }
 :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-hl > .cd-skel-name { --skel-h: 20px; width: 60%; }
 :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-hl > .cd-skel-sub { width: 36%; }
-:root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-cols { display: grid; grid-template-columns: 260px minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-cols { display: grid; grid-template-columns: 240px minmax(0, 1fr) var(--ai-w, 340px); gap: 14px; align-items: start; }
 :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-col { display: grid; gap: 12px; min-width: 0; }
 :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-card { display: grid; gap: 10px; padding: 16px; background: var(--panel); border-radius: var(--r-card); }
 :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-card > .cd-skel-ct { --skel-h: 14px; width: 40%; }
-@media (max-width: 1279px) {
-  :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-cols { grid-template-columns: 232px minmax(0, 1fr) 260px; gap: 12px; }
-}
-@media (max-width: 1023px) {
-  :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-cols { grid-template-columns: minmax(0, 1fr); }
+/* 栏数跟客户页 .rec 同一对容器门槛（1090 三栏 → 两栏、630 两栏 → 一栏，见上面 @container rec），按骨架自己的宽度判断，不用视口断点 */
+@container cd-skel (max-width: 1089px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-cols { grid-template-columns: 240px minmax(0, 1fr); }
   :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-col:nth-child(n + 3) { display: none; }
+}
+@container cd-skel (max-width: 629px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-cols { grid-template-columns: minmax(0, 1fr); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-col:nth-child(n + 2) { display: none; }
 }
 /* M12 找不到：说明一句一行，句里只在标点处折（「不正确」不拆成两行），一句比一行还长才在句中断 */
 :root:is(:not([data-skin]), [data-skin="now"]) .empty-state-h > .sp-sent { display: block; word-break: keep-all; overflow-wrap: anywhere; }
