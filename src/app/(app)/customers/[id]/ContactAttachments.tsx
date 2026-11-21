@@ -14,13 +14,14 @@ import { useIsNowSkin } from "@/lib/use-skin";
 import type { 附件分类 } from "@/lib/enterprise/customer-v2";
 
 /** 分类：企业版联系人附件的一格（名片 / 相册，2026-10-29）；不给 = 不分格（项目详情页那边照旧） */
-type 入口参数 = { contactId: string; 名字: string; 起始个数: number; 只读: boolean; 分类?: 附件分类 };
+/** 能删：只读时仍给删（公海里系统管理员，服务端删按删除挡另判，#403 审查） */
+type 入口参数 = { contactId: string; 名字: string; 起始个数: number; 只读: boolean; 能删?: boolean; 分类?: 附件分类 };
 
 /**
  * 只是「N 张 / 添加名片或图片」那个入口和弹窗，不带外面那一行（2026-10-28）：项目详情页联系人那一行下面也用它，
  * 那边的行样式是项目卡自己的
  */
-export function ContactAttachmentsButton({ contactId, 名字, 起始个数, 只读, 分类 }: 入口参数) {
+export function ContactAttachmentsButton({ contactId, 名字, 起始个数, 只读, 能删, 分类 }: 入口参数) {
   const [开, set开] = useState(false);
   const [个数, set个数] = useState(起始个数);
   const 新样 = useIsNowSkin();
@@ -54,6 +55,7 @@ export function ContactAttachmentsButton({ contactId, 名字, 起始个数, 只�
         <AttachmentsPanel
           归属={{ contactId }}
           只读={只读}
+          能删={能删}
           分类={分类}
           说明={分类 === "名片" ? "把名片拖到这里，或点一下选图片" : 分类 === "相册" ? "把这位联系人相关的图片拖到这里，或点一下选图片" : "把名片或这位联系人相关的图片拖到这里，或点一下选图片"}
           on个数={set个数}

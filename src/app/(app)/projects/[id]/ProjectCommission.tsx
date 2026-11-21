@@ -7,6 +7,7 @@
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useIsNowSkin } from "@/lib/use-skin";
 import { useCardName } from "./card-names";
 import { Button, Card, Input, InputNumber, Modal, Space, Tag } from "antd";
 import { 金额 } from "@/lib/currency";
@@ -34,9 +35,11 @@ export function ProjectCommissionCard({ projectId, t, 忙, 跑, 不摆改 = fals
   const 用的 = t.实际 ?? t.预估;
   const 固定了 = !!t.实际;
   const 底价能改 = t.能填底价 && !固定了;
+  // 设计语言 D5 · M11-a：折叠的卡都写条数（现状主题；换皮主题照旧只有名字）。口径和「项目组（N）」一样 = 人数、含组长（每人 里组长也有一行）
+  const 新样 = useIsNowSkin();
 
   return (
-    <Card title={卡名("提成")} extra={固定了 ? <Tag color="green">实际提成已固定</Tag> : <Tag>预估</Tag>}>
+    <Card title={新样 ? `${卡名("提成")}（${t.每人.length}）` : 卡名("提成")} extra={固定了 ? <Tag color="green">实际提成已固定</Tag> : <Tag>预估</Tag>}>
       <div style={行样}><span style={键样}>成交金额</span>{钱(t.实际?.成交金额 ?? t.成交金额)}{固定了 && t.实际!.成交金额 !== t.成交金额 && <span style={淡}>（现在项目金额 {钱(t.成交金额)}）</span>}</div>
       <div style={行样}>
         <span style={键样}>项目底价</span>

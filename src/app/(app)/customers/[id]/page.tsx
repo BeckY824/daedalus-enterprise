@@ -28,7 +28,7 @@ import { 只读原因of, 只读横幅 } from "@/lib/enterprise/readonly-reason";
 import { getBusiness } from "@/lib/business";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 字段权限of, 客户列字段 } from "@/lib/enterprise/field-perm";
-import { 能管公海, 能转出自己的, 能放回客户公海, 只读角色, 能新建和领取, 转自己客户要申请, 能恢复, 能领公海 } from "@/lib/enterprise/permissions";
+import { 能管公海, 能转出自己的, 能放回客户公海, 只读角色, 能新建和领取, 转自己客户要申请, 能恢复, 能领公海, 能删除 } from "@/lib/enterprise/permissions";
 import { 公海别线的 } from "@/lib/enterprise/pool-line-guard";
 import { 恢复有效客户 } from "../../pool/actions";
 import { 客户在市场手里 } from "@/lib/enterprise/market-transfer";
@@ -293,7 +293,13 @@ export default async function CustomerDetailPage({
       只能看的格={await 只能看的格P}
       管理员只读={企 && 只读角色(me, await 权限组织())}
       // 资料格给不给点、摆不摆笔：和 patchCustomer / patchCustomerRegion / saveCustomerNumbers 的 改客户挡 同一口径（PR #401 实操：总管理看别人的、公海客户原来有笔存不了）
-      资料改挡={企 && !只读 ? await (async () => { const 话 = 改客户挡of(me, { salesOwnerId: customer.salesOwnerId, 在公海: !!customer.pool }, await 权限组织()); return 话 ? { 话, 公海: !!customer.pool } : null; })() : null}
+      // 公海里改的入口不摆，删按删除挡另判（#403 审查）：删联系人 = deleteContact 的 删除挡（负责人本人或系统管理员）；删联系人附件 = access.ts 公海里只按系统管理员
+      资料改挡={企 && !只读 ? await (async () => {
+        const org = await 权限组织();
+        const 话 = 改客户挡of(me, { salesOwnerId: customer.salesOwnerId, 在公海: !!customer.pool }, org);
+        if (!话) return null;
+        return customer.pool ? { 话, 公海: true, 公海删: { 联系人: 能删除(me, org, customer.salesOwnerId), 附件: 能删除(me, org, null) } } : { 话, 公海: false };
+      })() : null}
       // 摆不摆可点的「领取」（含无效客户灰着的领取和「要先恢复」那句）：和服务端 领取 同一把尺（能领公海：市管、渠运、项目组员、只看某人的都不摆，审查 29A）
       能领={!企 || 能领公海(me, await 权限组织())}
       // 公海回收站里的无效客户：系统管理员、回收站副手在详情页也能「恢复」（同公海列表 P-界面-44）；设了业务线的副手只恢复本线的（P-公海-07，服务端另拦）

@@ -13,6 +13,16 @@ import Rise from "./Rise";
  * 不是三个人各画一个。空状态本身在 components/EmptyState.tsx——
  * 它多一层「灌演示数据」的判断，不并进来。
  */
+/**
+ * 说明按句断开（设计语言 D5 · M12-a）：每句一个 .sp-sent，现状主题下一句一行、句里只在标点处折（「不正确」不拆成两行），
+ * 一句比一行还长才在句中断。换皮主题没有这几条样式，span 照旧连成一段，看起来和原来一样
+ */
+function 按句(说明: React.ReactNode): React.ReactNode {
+  if (typeof 说明 !== "string") return 说明;
+  const 句们 = 说明.match(/[^。！？]+[。！？]?/g) ?? [说明];
+  return 句们.map((x, i) => <span key={i} className="sp-sent">{x}</span>);
+}
+
 export default function StatePage({
   标题,
   说明,
@@ -34,7 +44,7 @@ export default function StatePage({
        托一下再出现，比直接砸在屏幕中央温和——人第一眼要读的是那句说明，不是一次闪现 */
     <div className="empty-state">
       <Rise 第几个={0} className="empty-state-t">{标题}</Rise>
-      <Rise 第几个={1} className="empty-state-h">{说明}</Rise>
+      <Rise 第几个={1} className="empty-state-h">{按句(说明)}</Rise>
       <Rise 第几个={2} className="empty-state-a">
         {动作 && (
           <Button type="primary" href={动作.href} onClick={动作.onClick} loading={动作.loading}>

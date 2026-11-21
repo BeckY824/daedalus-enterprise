@@ -98,7 +98,8 @@ it("企业版：左边节点、沟通、卡点，右边项目、交付、项目�
   try {
     // U-项目-01：左栏瀑布流——当前进程（无标题）→ 沟通（带条数）→ 卡点；没给项目附件 / 回款就不摆那两块
     expect(await 卡标题(page, ".proj-main")).toEqual(["", "沟通（1）", "卡点（0）"]);
-    expect(await 卡标题(page, ".proj-side")).toEqual(["项目", "交付", "项目组", "提成", "进程变更"]);
+    // 设计语言 D5 · M10-c：现状主题下折叠卡头带个数
+    expect(await 卡标题(page, ".proj-side")).toEqual(["项目", "交付", "项目组（2）", "提成（2）", "进程变更（1）"]);
     const [主, 侧] = await Promise.all([page.locator(".proj-main").boundingBox(), page.locator(".proj-side").boundingBox()]);
     expect(侧!.x).toBeGreaterThan(主!.x + 主!.width);
     expect(Math.round(侧!.width)).toBe(320);
@@ -180,7 +181,7 @@ it.each([1024, 1280])("P17 %ipx：右栏关联客户 / 关联联系人跟在画�
     const 位 = (t: string) => 标题.indexOf(t);
     expect(位("关联客户（3）")).toBeGreaterThan(位("项目"));
     expect(位("关联联系人（2）")).toBe(位("关联客户（3）") + 1);
-    expect(位("进程变更")).toBeGreaterThan(位("关联联系人（2）"));
+    expect(标题.findIndex(t => t.startsWith("进程变更（"))).toBeGreaterThan(位("关联联系人（2）"));
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     const 伸出 = await page.locator(".proj-side .ant-card").evaluateAll(cs => cs.filter(c => c.scrollWidth > c.clientWidth + 1).map(c => c.querySelector(".ant-card-head-title")?.textContent));
     expect(伸出).toEqual([]);
@@ -407,7 +408,8 @@ it("迁移 101：项目卡有合同状态、痛点标注（多行），左栏合
     expect(字.indexOf("成交需求")).toBeLessThan(字.indexOf("痛点标注"));
     // F-项目-18：附件合成左栏一块「项目附件」，合同附件后面紧跟项目方案，再是验收报告（M-必填-11），最后是沟通上的附件
     expect(await 卡标题(page, ".proj-main")).toContain("项目附件（0）");
-    expect(await page.locator(".proj-main .proj-att-h").allInnerTexts()).toEqual(["合同附件（0）", "项目方案（0）", "验收报告（0）", "其它附件（0）", "沟通附件（0）"]);
+    // 设计语言 D5 · M12：现状主题每格小标题一行带「上传」，格名在 .att-h-t
+    expect(await page.locator(".proj-main .proj-att-h .att-h-t, .proj-main .proj-att-h:not(.att-h-row)").allInnerTexts()).toEqual(["合同附件（0）", "项目方案（0）", "验收报告（0）", "其它附件（0）", "沟通附件（0）"]);
     // 填了：一行显示（换行压成空格，放不下「…」），悬停浮层用 data-tip 里的原文、保住分段（11-04 用户：待定第 1 点按优化来）
     await page.evaluate(v => (window as unknown as { __over: (x: object) => void }).__over(v), { 成交钱: 钱, 项目附件: 附, 项目新字段: { painPoints: "交期总拖\n售后慢", contractStatus: "待我方确认" } });
     await 卡.getByText("待我方确认").waitFor();
@@ -729,7 +731,7 @@ it("开关关闭：照原来一列摆、960 宽，没有两栏；没有提成卡
     expect(await page.getByRole("button", { name: "AI 录入" }).count()).toBe(0);
     expect(await page.getByText("项目来源").count()).toBe(0);
     expect(await page.getByText("提成", { exact: true }).count()).toBe(0);
-    expect(await page.locator(".ant-card-head-title").allTextContents()).toEqual(["项目", "交付", "项目组", "进程变更", "沟通"]);
+    expect(await page.locator(".ant-card-head-title").allTextContents()).toEqual(["项目", "交付", "项目组（1）", "进程变更（1）", "沟通"]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -1653,6 +1655,8 @@ it.each([1024, 800])("R6 %ipx：页头按钮折行不出屏、标题不被挤没
 const 画像卡 = (page: import("playwright").Page) => page.locator(".ant-card").filter({ has: page.locator(".ant-card-head-title", { hasText: /^项目画像$/ }) }).first();
 async function 开画像(能改: boolean) {
   const { page, errors } = await open(true);
+  // 这两条测的是换皮主题的常开下拉（换皮不动）；现状主题「看 → 点了改」在 ent-design-d5-skins 里测
+  await page.evaluate(() => document.documentElement.setAttribute("data-skin", "ledger"));
   await page.evaluate(x => (window as unknown as { __画像: (x: boolean) => void }).__画像(x), 能改);
   await 画像卡(page).waitFor();
   return { page, errors };
@@ -1816,7 +1820,7 @@ it("F-项目-18：项目附件合一块，最后一格收沟通上的附件、�
     // 三格的个数以接口拿回来的为准（这里接口回空），沟通附件从沟通上收过来：合计 = 0 + 0 + 0 + 1
     await page.getByText("项目附件（1）").waitFor();
     expect((await 卡标题(page, ".proj-main")).slice(0, 4)).toEqual(["", "沟通（2）", "卡点（0）", "项目附件（1）"]);
-    expect(await 块.locator(".proj-att-h").allInnerTexts()).toEqual(["合同附件（0）", "项目方案（0）", "验收报告（0）", "其它附件（0）", "沟通附件（1）"]);
+    expect(await 块.locator(".proj-att-h .att-h-t, .proj-att-h:not(.att-h-row)").allInnerTexts()).toEqual(["合同附件（0）", "项目方案（0）", "验收报告（0）", "其它附件（0）", "沟通附件（1）"]);
     const 组 = 块.getByTestId("follow-att-group");
     expect(await 组.count()).toBe(1);
     const 字 = await 组.innerText();
