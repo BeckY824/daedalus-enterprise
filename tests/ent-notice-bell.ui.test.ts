@@ -127,6 +127,8 @@ it("[11-21] 此刻能放弃的那条：多一颗「放弃（豁免）」，原�
       expect(await 键.innerText()).toBe("放弃（豁免）");
       const 框位 = (await 键.boundingBox())!;
       expect(框位.x + 框位.width).toBeLessThanOrEqual(w);
+      // 3703 实操 11-21：390 宽只有 28 高不好点；和首页置顶条那两颗同一规格（≥40 高）
+      expect(框位.height).toBeGreaterThanOrEqual(40);
       await 键.click();
       const 框 = page.getByRole("dialog", { name: "放弃这条线索（豁免）" });
       await 框.waitFor();

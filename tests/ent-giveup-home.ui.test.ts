@@ -8,6 +8,7 @@
  */
 import { beforeAll, afterAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 import { 补全动作桩 } from "./helpers/action-stubs";
@@ -28,7 +29,8 @@ beforeAll(async () => {
     import HomeCards from '@/app/(app)/dashboard/HomeCards';
     import GiveUpHomeTodo from '@/app/(app)/dashboard/GiveUpHomeTodo';
     const 卡数 = { "month-new": 1, key: 2, "no-follow": 3, "due-soon": 4 };
-    window.__画 = (们) => createRoot(document.getElementById('root')).render(<App>
+    // 同一个根反复画（模拟 router.refresh 递进来新列表：同一位置、组件不卸载）
+    let 根; window.__画 = (们) => (根 ||= createRoot(document.getElementById('root'))).render(<App>
       <div className="cli cli-empty"><div className="cli-ck"><div className="cli-ck-g">
         <div className="cli-col cli-frame">
           <GiveUpHomeTodo 们={们} />
@@ -145,4 +147,31 @@ it("一条都没有：不画", async () => {
   try {
     expect(await page.getByTestId("home-giveup").count()).toBe(0);
   } finally { await page.close(); }
+});
+
+it("[3703 实操 11-21] 放弃成了、首页重拉后列表变空（本月次数用完）：「已放弃「X」，转给 某某」还留着，不多出空行；点关才没", async () => {
+  const { page, errors } = await 打开(两条.slice(1), 390);
+  try {
+    await page.getByTestId("home-giveup-open").click();
+    const 框 = page.getByRole("dialog", { name: "放弃这条线索（豁免）" });
+    await 框.getByText("外出", { exact: true }).click();
+    await 框.getByRole("button", { name: "确认放弃" }).click();
+    await page.getByTestId("home-giveup-done").waitFor();
+    expect(await 窗<number>(page, "__刷")).toBe(1);
+    // router.refresh 回来：本月用过了，能放弃的一条都没有（页面照样挂着组件，递空列表）
+    await page.evaluate(() => (window as unknown as { __画: (o: unknown) => void }).__画([]));
+    await page.waitForTimeout(600);
+    expect(await page.getByTestId("home-giveup-done").innerText()).toContain("已放弃「华东二期」，转给 乙");
+    expect(await page.getByTestId("home-giveup-row").count()).toBe(0);
+    expect(await 不溢出(page)).toBe(true);
+    await page.getByTestId("home-giveup-done").locator(".ant-alert-close-icon").click();
+    await expect.poll(() => page.getByTestId("home-giveup").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("[3703 实操 11-21] 首页（dashboard/page.tsx）企业版一直挂置顶条、不按条数挂：不然放弃成了重拉后组件被卸掉、提示一闪就没", () => {
+  const 首页 = readFileSync(path.resolve("src/app/(app)/dashboard/page.tsx"), "utf8");
+  expect(首页).toMatch(/放弃条 = 企业版\(\) \? <GiveUpHomeTodo 们=\{能放弃们\} \/> : undefined/);
+  expect(首页).not.toMatch(/能放弃们\.length \?/);
 });

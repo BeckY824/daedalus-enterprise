@@ -186,7 +186,7 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
                         <div className="notice-giveup-done" role="status" data-testid="notice-giveup-done">已放弃，转给 {放成[r.放弃项目]}</div>
                       ) : r.放弃项目 ? (
                         <div className="notice-giveup">
-                          <Button size="small" danger onClick={() => 点放弃(r)} data-testid="notice-giveup">放弃（豁免）</Button>
+                          <Button size="large" danger className="notice-giveup-btn" onClick={() => 点放弃(r)} data-testid="notice-giveup">放弃（豁免）</Button>
                         </div>
                       ) : null}
                       {通知要展开(r.body) && (

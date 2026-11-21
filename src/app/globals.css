@@ -491,8 +491,10 @@ html.glass .rail-search { background: color-mix(in srgb, var(--panel) 62%, trans
 /* 带「展开全文」的那条：悬停底色连着按钮一起铺，不让正文和按钮看着像两条 */
 .notice-list > li:has(.notice-more):hover { background: var(--row-hover); }
 .notice-more:hover { text-decoration: underline; }
-/* 铃铛里「放弃（豁免）」（11-21）：和标题对齐（左边让过蓝点），成了换成一句「已放弃，转给 X」 */
+/* 铃铛里「放弃（豁免）」（11-21）：和标题对齐（左边让过蓝点），成了换成一句「已放弃，转给 X」；
+   按钮和首页置顶条那两颗同一规格（large + 40 高，.home-giveup-btn），手机上好点 */
 .notice-giveup { margin: -4px 0 0; padding: 0 16px 10px 34px; }
+.notice-giveup-btn { min-height: 40px; }
 .notice-giveup-done { margin: -4px 0 0; padding: 0 16px 10px 34px; color: var(--success-text); font-size: var(--fs-note); overflow-wrap: anywhere; }
 .notice-more:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
 @media (prefers-reduced-motion: reduce) {
