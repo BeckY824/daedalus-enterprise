@@ -10,7 +10,7 @@ const plugin: Plugin = { name: "d4-skins-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   // 教练主题（11-17）的动作：服务端那串（prisma、通知）进不了浏览器包
   stub(/coach-topic-actions$/, "const f=async()=>({ok:true});export const 发主题动作=f,回复主题动作=f,关闭主题动作=f,删主题动作=f;");
-  stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
+  stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>['对方发起','第三方'];export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
   const 空跑 = "async()=>({ok:true})";
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
@@ -139,7 +139,9 @@ for (const skin of ["ledger", "tech"] as const)
         expect(await 框.locator(".ant-modal-title").innerText()).toBe("记一条沟通");
         const 记下 = 框.getByRole("button", { name: /^记\s*下$/ });
         expect(await 记下.isDisabled()).toBe(true);
-        expect(await 框.getByText("请填写这次沟通的内容").count()).toBe(1);
+        // 发起主体、内容都没填（字典里没有默认的「我方发起」）：键旁那句照 D4 之前的先后写内容那条（PR #402 审查）
+        expect(await 框.getByText("选发起主体").count()).toBe(1);
+        expect((await 框.locator(".ant-modal-footer").innerText()).replace(/\s+/g, "")).toBe("请填写这次沟通的内容取消记下");
         expect(await 框.locator(".fm-label, .fm-help").count()).toBe(0);
         expect(await 框.getByText("沟通内容 *", { exact: true }).count()).toBe(1);
         expect(errors).toEqual([]);
@@ -163,6 +165,21 @@ for (const skin of ["ledger", "tech"] as const)
         expect(errors).toEqual([]);
       } finally { await page.close(); }
     });
+  });
+
+const 判有效缺 = { phase: "线索", node: "线索验证", 有效沟通差: ["国家"], 线索验证: { 判定: null, 待: null, 无效原因: null, 复核结果: null, 最终结果: null, 终验: null, 初判即终判: false, 叫法: null, 我能: "初判", 痕: [] } };
+for (const [skin, 有块] of [["now", 1], ["ledger", 0], ["tech", 0]] as const)
+  it(`${skin}：线索验证框里判「有效」还差的${有块 ? "是缺项小块" : "照旧一行灰字，没有缺项小块"}`, async () => {
+    const { page, errors } = await 开(skin, 判有效缺);
+    try {
+      await page.getByTestId("lead-verify-nudge").getByRole("button", { name: /打开线索验证/ }).click();
+      const 框 = page.locator(".ant-modal").filter({ hasText: "线索验证" }).last();
+      await 框.waitFor();
+      await expect.poll(() => 框.getByText(/国家/).count()).toBeGreaterThan(0);
+      expect(await 框.getByTestId("lead-verify-miss").count()).toBe(有块);
+      expect(await 框.locator(".proj-miss").count()).toBe(有块);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
   });
 
 it("现状主题对照：缺项小块、「新建沟通」框「保存」一直能点、⋮ 有分隔线、卡点框「保存」", async () => {

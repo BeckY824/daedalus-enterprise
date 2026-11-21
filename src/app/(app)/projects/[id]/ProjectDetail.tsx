@@ -44,7 +44,7 @@ import { FoldSplit, ProjectFold, 模块钮色, 连体箭头 } from "./ProjectFol
 import { 卡名Provider, 客户详情卡点, 项目卡名 } from "./card-names";
 import { ProjectFillRequired, 定位到模块 } from "./ProjectFillRequired";
 import { CustomerReadonlyCard } from "./CustomerReadonlyCard";
-import type { 窗外去处, 草稿们, 已签收格 } from "@/lib/project/required-fill";
+import { 填法表, 客户格, type 窗外去处, type 草稿们, type 已签收格 } from "@/lib/project/required-fill";
 import ProjectStages from "./ProjectStages";
 import ProjectStarButton from "./ProjectStarButton";
 import { 两行, 等复核说法, 能项目转让, type 项目动作键 } from "./project-menu";
@@ -457,6 +457,8 @@ function 格标签({ 新样, 名, 必填, 注 }: { 新样: boolean; 名: string;
 }
 /** 必填键 → 右栏就地改那一格的名字（ProjectInlineField 名），一样的不列 */
 const 右栏格名: Record<string, string> = { 项目级别: "级别", 主联系人: "联系人", 合同已生效: "合同状态", 已备货: "备货状态", 已签收: "物流状态", 预计成交日期: "预计成交" };
+/** 缺项小块点「去客户」的几项落在客户资料哪一格（customers/[id] RecordView 的 data-field / #field-xxx） */
+const 客户资料格: Record<string, string> = { 国家: "addrCountry", 客户等级: "level", 来源: "source", 联系方式: "numbers", ...客户格 };
 const 无效原因前缀 = "无效原因：";
 
 // 规则 E：红只给已经过了的，当天橙，还早的不上色
@@ -868,8 +870,17 @@ export default function ProjectDetail({
       : !完成不了 ? "这个节点的必填都齐了，可以点「完成节点」往前推"
         : 灰在不给推 ? `这个节点的必填都齐了，往前推要${谁能推}点「完成节点」` : "这个节点的必填都齐了";
   const 能去填 = 可改 && !等复核;
-  /** 点缺项小块：完成节点框开得了就开框、落到那一格（M-节点-09 同一套填法）；开不了就去右栏那一格进编辑 / 画像卡 / 线索验证框 */
+  /**
+   * 点缺项小块（每一块都要有反应，PR #402 审查）：
+   * 1. 完成节点框开得了、又是这个节点缺的 → 开框、落到那一格（M-节点-09 同一套填法）
+   * 2. 线索验证那两项 → 线索验证框
+   * 3. 窗外的（lib/project/required-fill.ts 填法表）：沟通 → 新建沟通框；附件 / 回款 → 滚到那张卡；客户资料 → 客户页那一格（客户页项目区就地展开、滚过去）
+   * 4. 窗里的 → 右栏那一格进编辑；画像的 → 画像卡
+   * 都落不了（没权限、卡不在这页）→ 资料卡底部就地小条写「在哪里填」，不会点了没反应
+   */
   const 去填 = (键: string) => {
+    const 叫 = 必填叫法(键);
+    const 说在哪 = (话: string) => 就地.info(`「${叫}」：${话}`);
     if (节点可改 && !完成不了 && !忙 && 要先补齐 && 节点缺.includes(键)) {
       set头部框("完成");
       window.setTimeout(() => {
@@ -880,13 +891,46 @@ export default function ProjectDetail({
       return;
     }
     if ((键 === "有效沟通" || 键 === "线索验证结果") && p.线索验证?.我能) { set验证开着(true); return; }
+    const 法 = (填法表 as Record<string, (typeof 填法表)[keyof typeof 填法表] | undefined>)[键];
+    if (法?.控件 === "窗外") {
+      const 去 = 法.去;
+      if (去 === "沟通" && p.能记沟通) { set记一条开着(true); return; }
+      if ((去 === "附件" || 去 === "回款") && document.getElementById(去 === "附件" ? "project-attachments-fold" : "project-payments-fold")) {
+        定位到模块(去 === "附件" ? "project-attachments-fold" : "project-payments-fold");
+        return;
+      }
+      if (去 === "线索验证" && p.线索验证) { set验证开着(true); return; }
+      if (去 === "客户" && 客户资料格[键]) {
+        const 找格 = () => document.querySelector<HTMLElement>(`.rec-rail [data-field="${客户资料格[键]}"]`);
+        const 落 = (格: HTMLElement) => {
+          格.scrollIntoView({ block: "center", behavior: "smooth" });
+          if (格.getAttribute("role") === "button") 格.focus({ preventScroll: true });
+        };
+        // 客户页项目区：资料卡就在左栏，没填的收在「展开没填的」里，先展开再找
+        if (嵌入) {
+          const 格 = 找格();
+          if (格) return 落(格);
+          const 展开 = document.querySelector<HTMLElement>('.rec-rail .rec-sec-more[aria-expanded="false"]');
+          if (展开) {
+            展开.click();
+            window.setTimeout(() => { const g = 找格(); if (g) 落(g); else 说在哪(法.原因); }, 60);
+            return;
+          }
+        } else if (p.customer && (p.客户入口 ?? "详情") === "详情") {
+          router.push(`/customers/${p.customer.id}#field-${客户资料格[键]}`);
+          return;
+        }
+      }
+      return 说在哪(法.原因);
+    }
     const 格 = document.querySelector<HTMLElement>(`[data-inline-field="${右栏格名[键] ?? 键}"]`);
     if (格) {
       格.scrollIntoView({ block: "center", behavior: "smooth" });
       格.querySelector<HTMLElement>(".proj-inline-pen")?.click();
       return;
     }
-    if (键 === "需求" || 必填项们.find((x) => x.key === 键)?.说明.includes("项目画像")) 定位到模块(画像落点);
+    if ((法?.控件 === "画像单选" || 法?.控件 === "画像多选" || 键 === "需求") && document.getElementById(画像落点)) { 定位到模块(画像落点); return; }
+    说在哪(法?.控件 === "勾" ? "在右栏「交付」卡上勾" : "在右栏项目资料里填");
   };
   const 完成 = () => {
     if (!完成到) return;
@@ -1177,7 +1221,7 @@ export default function ProjectDetail({
         </div>
       )}
       {新样 && p.必填 && !p.result && !p.必填.还差.length && (
-        <div className="proj-miss is-ok" style={{ overflowWrap: "anywhere" }}>
+        <div className="proj-miss is-ok">
           <div className="proj-miss-t">{齐话}</div>
         </div>
       )}
@@ -2545,7 +2589,9 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
     ["下一步计划", !p.组员记沟通 && !下一步文字.trim() ? "请写下一步计划" : null],
     ["下一步时间", !p.组员记沟通 && p.要下一步 && !下一步时间 ? "请填下一步时间" : null],
   ];
-  const 差 = 错们.find(([, 话]) => 话)?.[1] ?? "";
+  // 换皮主题照 D4 之前的先后（内容在发起主体前），「记下」旁那句不变（PR #402 审查）
+  const 旧序 = ["沟通内容", "发起主体", "卡点原因", "下一步计划", "下一步时间"];
+  const 差 = (新样 ? 错们 : 旧序.map((k) => 错们.find(([格]) => 格 === k)!)).find(([, 话]) => 话)?.[1] ?? "";
   const [试过, set试过] = useState(false);
   const 格错 = (格: string) => (试过 && 新样 ? 错们.find(([k]) => k === 格)?.[1] ?? null : null);
   const 错行 = (格: string) => 格错(格) && <div className="fm-err" role="alert">{格错(格)}</div>;
@@ -2796,35 +2842,54 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
  * 打开焦点落在「确认删除」上，Esc = 取消；删的时候键转圈、不收第二下
  */
 /**
- * 设计语言 D4 · M7-c（P-界面-40）：原地确认 3 秒没动就自己收起；鼠标停在条上不收，移开重新数 3 秒；删的时候不收
+ * 设计语言 D4 · M7-c（P-界面-40）：原地确认 3 秒没动就自己收起；删的时候不收。
+ * 停表：鼠标停在条上（移开重新数 3 秒）；键盘焦点在条里（Tab / 回车从 ⋮ 菜单进来，autoFocus 落在「确认删除」上——
+ * 读屏、键盘用户要多久就给多久，WCAG 2.2.1；PR #402 审查）。触屏点一下不算悬停，不重新计时。
+ * 鼠标点开时 autoFocus 那一下不算键盘焦点（:focus-visible 不中），照样 3 秒收起
  */
-function useAutoCollapse(取消: () => void, 忙: boolean, 开 = true) {
-  const [停, set停] = useState(false);
+function useAutoCollapse(条: React.RefObject<HTMLDivElement | null>, 取消: () => void, 忙: boolean, 开 = true) {
+  const [悬停, set悬停] = useState(false);
+  const [键盘在里, set键盘在里] = useState(false);
   const 取消们 = useRef(取消);
   useEffect(() => { 取消们.current = 取消; }, [取消]);
   useEffect(() => {
-    if (!开 || 忙 || 停) return;
+    if (!开 || 忙 || 悬停 || 键盘在里) return;
     const t = window.setTimeout(() => 取消们.current(), 3000);
     return () => window.clearTimeout(t);
-  }, [开, 忙, 停]);
-  return { onPointerEnter: () => set停(true), onPointerLeave: () => set停(false) };
+  }, [开, 忙, 悬停, 键盘在里]);
+  return {
+    onPointerEnter: (e: React.PointerEvent) => { if (e.pointerType === "mouse") set悬停(true); },
+    onPointerLeave: (e: React.PointerEvent) => { if (e.pointerType === "mouse") set悬停(false); },
+    onFocus: (e: React.FocusEvent) => { if ((e.target as HTMLElement).matches(":focus-visible")) set键盘在里(true); },
+    onBlur: (e: React.FocusEvent) => { if (!条.current?.contains(e.relatedTarget as Node | null)) set键盘在里(false); },
+  };
 }
 
 // 名字要英文开头：hooks 规则只认大写开头的组件（下面 删沟通条 = 它）
 function FollowDeleteBand({ 忙, 取消, 删 }: { 忙: boolean; 取消: () => void; 删: () => void }) {
+  /** 收起（取消、Esc、到点自己收）后焦点还给这一条的 ⋮，不掉到 body（焦点原来在条里或已经掉了才还，不抢别处的） */
+  const 条 = useRef<HTMLDivElement>(null);
+  const 收 = () => {
+    const 行 = 条.current?.closest(".proj-follow-row");
+    const a = document.activeElement;
+    const 要还 = !a || a === document.body || !!条.current?.contains(a);
+    取消();
+    if (要还) window.setTimeout(() => 行?.querySelector<HTMLElement>('[aria-label="这条沟通的更多操作"]')?.focus(), 0);
+  };
   // 3 秒自己收起是 D4 · M7-c 的新规矩，只在现状主题；换皮主题照旧等人点（use-skin.ts）
-  const 停住 = useAutoCollapse(取消, 忙, useIsNowSkin());
+  const 停住 = useAutoCollapse(条, 收, 忙, useIsNowSkin());
   return (
     <div
+      ref={条}
       className="pd-del-band"
       role="group"
       aria-label="确认删除这条沟通"
       {...停住}
-      onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); 取消(); } }}
+      onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); 收(); } }}
     >
       <span className="pd-del-band-t">删了进回收站 30 天，系统管理员或回收站副手能恢复</span>
       <span className="pd-del-band-a">
-        <Button size="small" onClick={取消} disabled={忙}>取消</Button>
+        <Button size="small" onClick={收} disabled={忙}>取消</Button>
         <Button size="small" type="primary" danger loading={忙} autoFocus onClick={删}>确认删除</Button>
       </span>
     </div>

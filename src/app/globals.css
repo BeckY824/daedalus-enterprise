@@ -5594,7 +5594,7 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 .proj-miss-t { color: var(--warning-text); font-size: var(--fs-note); font-weight: 600; overflow-wrap: anywhere; }
 .proj-miss.is-ok .proj-miss-t { color: var(--success-text); font-weight: 500; }
 .proj-miss-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; min-width: 0; }
-.proj-miss-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 26px; padding: 0 9px; border: 1px solid var(--warning-line); border-radius: var(--r-tag); background: var(--panel); color: var(--ink); font: inherit; font-size: var(--fs-note); text-align: left; overflow-wrap: anywhere; }
+.proj-miss-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: var(--hit); padding: 0 8px; border: 1px solid var(--warning-line); border-radius: var(--r-tag); background: var(--panel); color: var(--ink); font: inherit; font-size: var(--fs-note); text-align: left; overflow-wrap: anywhere; }
 button.proj-miss-chip { cursor: pointer; }
 .proj-miss-dot { flex: none; width: 5px; height: 5px; border-radius: 999px; background: var(--warning); }
 .proj-miss-help { margin-top: 6px; color: var(--warning-text); font-size: var(--fs-min); line-height: 18px; overflow-wrap: anywhere; }

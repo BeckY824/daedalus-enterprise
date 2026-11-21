@@ -2629,6 +2629,82 @@ describe("设计语言 D4：进程卡、沟通、卡点", () => {
     } finally { await page.close(); }
   });
 
+  /*
+    PR #402 审查：缺项小块点了都要有反应。完成节点框开不了（这里 能改节点 = false）时按 填法表 落：右栏那一格进编辑、画像卡、线索验证框、
+    新建沟通框；落不了的（客户资料在别页、附件卡不在这页）资料卡底部就地写「在哪里填」
+  */
+  const 各路 = { phase: "线索", node: "潜客培育", 能改节点: false, 客户入口: "文字",
+    必填: { 配了: ["项目级别", "需求", "线索验证结果", "国家", "本节点沟通", "合同附件"], 还差: ["项目级别", "需求", "线索验证结果", "国家", "本节点沟通", "合同附件"] },
+    线索验证: { 判定: null, 待: null, 无效原因: null, 复核结果: null, 最终结果: null, 终验: null, 初判即终判: false, 叫法: null, 我能: null, 痕: [] } };
+  it.each([1366, 390])("%ipx：完成节点框开不了时，每块都有落点——右栏那一格、画像卡、线索验证框、新建沟通框；国家、合同附件写明在哪填", async (w) => {
+    const { page, errors } = await open(true, w);
+    try {
+      await page.evaluate(x => (window as unknown as { __线索: (x: object) => void }).__线索(x), 各路 as object);
+      const 块 = page.getByTestId("node-required-miss");
+      await 块.waitFor();
+      const 点 = (名: string) => 块.getByRole("button", { name: 名, exact: true }).click();
+      // 右栏那一格进编辑
+      await 点("项目级别");
+      await page.locator('[data-inline-field="级别"] .ant-select').waitFor();
+      await page.keyboard.press("Escape");
+      // 画像卡
+      await page.locator("#project-profile-fold > .proj-fold-btn").click();
+      await page.locator("#project-profile-fold.is-closed").waitFor();
+      await 点("需求（需求状态）");
+      await page.waitForFunction(() => !document.getElementById("project-profile-fold")!.classList.contains("is-closed"));
+      // 线索验证框
+      await 点("线索验证结果");
+      const 验证框 = page.locator(".ant-modal").filter({ hasText: "线索验证" }).last();
+      await 验证框.waitFor();
+      await 验证框.locator(".ant-modal-close").click();
+      await 验证框.waitFor({ state: "hidden" });
+      // 本节点沟通 → 新建沟通框
+      await 点("当前进程沟通");
+      const 沟通框 = page.locator(".follow-modal .ant-modal");
+      await 沟通框.waitFor();
+      expect(await 沟通框.locator(".ant-modal-title").innerText()).toBe("新建沟通");
+      await 沟通框.locator(".ant-modal-close").click();
+      await 沟通框.waitFor({ state: "hidden" });
+      // 客户资料在客户页（这里客户名只是字）、附件卡不在这页：就地写在哪填
+      await 点("国家");
+      await page.getByText("「国家」：国家 / 地区记在客户资料上").waitFor();
+      await 点("合同附件");
+      await page.getByText("「合同附件」：要传文件，在「项目附件」的合同附件里传").waitFor();
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }, 30_000);
+
+  it("删除确认条：键盘进来（焦点在条里）等 4 秒还在；Esc 收起后焦点回到这一条的 ⋮；鼠标点开到点自己收，焦点也回 ⋮", async () => {
+    const { page, errors } = await 覆盖(1280, { 可改沟通: true, 可删沟通: true, followUps: [{ id: "f1", type: "PHONE", content: "沟通内容", occurredAt: "2026-10-03T00:00:00.000Z", who: "组长甲", node: "生产备货", code: "FUL0001", 提醒: null, 版本: "v" }] });
+    try {
+      const 点点 = page.getByRole("button", { name: "这条沟通的更多操作" });
+      const 问 = page.getByRole("group", { name: "确认删除这条沟通" });
+      const 焦点是点点 = () => page.evaluate(() => document.activeElement?.getAttribute("aria-label"));
+      // 开出确认条，再用键盘 Shift+Tab 进到条里的「取消」（键盘焦点在条里 = 停表）
+      const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu");
+      await 点点.click();
+      await 菜单.waitFor();
+      await 菜单.getByText("删除").click();
+      await 问.waitFor();
+      await page.keyboard.press("Shift+Tab");
+      expect(await 问.evaluate(e => e.contains(document.activeElement) && document.activeElement!.matches(":focus-visible"))).toBe(true);
+      await page.waitForTimeout(4000);
+      expect(await 问.count()).toBe(1);
+      await page.keyboard.press("Escape");
+      await 问.waitFor({ state: "detached" });
+      await expect.poll(焦点是点点).toBe("这条沟通的更多操作");
+      // 鼠标点开：3 秒到点自己收，焦点回 ⋮ 不掉到 body
+      await 点点.click();
+      await 菜单.waitFor();
+      await 菜单.getByText("删除").click();
+      await 问.waitFor();
+      await page.mouse.move(2, 2);
+      await 问.waitFor({ state: "detached", timeout: 4500 });
+      await expect.poll(焦点是点点).toBe("这条沟通的更多操作");
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }, 30_000);
+
   it("搜着时卡点一条没有也写「没有对得上…的卡点」，不说「还没有卡点」", async () => {
     const { page, errors } = await 覆盖(1280, {});
     try {

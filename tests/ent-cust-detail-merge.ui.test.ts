@@ -57,7 +57,7 @@ const plugin: Plugin = { name: "cust-detail-merge", setup(b) {
 beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
-    import CustomerDetail from '@/app/(app)/customers/[id]/CustomerDetail';import RestrictedCustomerDetail from '@/app/(app)/customers/[id]/RestrictedCustomerDetail';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
+    import CustomerDetail from '@/app/(app)/customers/[id]/CustomerDetail';import {项目画像项,字典定义} from '@/lib/enterprise/dict-kinds';import RestrictedCustomerDetail from '@/app/(app)/customers/[id]/RestrictedCustomerDetail';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
     const root=createRoot(document.getElementById('root'));
     const 人=(id,name,isPrimary)=>({id,name,position:'采购',phone:'1381200000'+id.slice(1),email:null,wechat:null,isPrimary,remark:null,updatedAt:'2026-01-01T00:00:00.000Z'});
     const contacts=[人('c1','王总',true),人('c2','李工',false),人('c3','陈经理',false)];
@@ -92,6 +92,8 @@ beforeAll(async () => {
       const 当前=o.空?null:当前of(项目们[o.选||'p1'],!o.只读);
       if(当前&&o.只读) 当前.p={...当前.p,能记沟通:false,能放公海:false,能转让:false,能改节点:false,能删:false,关联:当前.p.关联};
       if(当前&&o.删) 当前.p={...当前.p,能删:true};
+      // D4 审查：缺项小块各条落点——项目上的覆盖（必填、线索验证等）+ 画像卡
+      if(当前&&o.项目改) 当前.p={...当前.p,...o.项目改,...(o.项目改.带画像?{画像:{项们:项目画像项.map(x=>({键:x.键,名:字典定义[x.种类].名,多选:x.多选,选项:[...字典定义[x.种类].默认]})),值:{}}}:{})};
       if(当前&&o.领不了) 当前.p={...当前.p,能领取:false,领取不给:'你是原负责人，不能领回'};
       // 教练点评改版 PR1：当前项目的教练主题（能发 = 服务端按 P-教练-11/12/13 算好的），按角色给；只读管理员看得到主题但不能发
       if(当前&&o.点评!==undefined) 当前.教练主题={们:[],能发:o.点评,填写人:{id:'qa',name:'QA',身份:'销售教练'},负责人:{id:'u2',name:'同事乙'},项目名:当前.p.name,当前节点:'方案报价',待回复数:0,冻结:false};
@@ -124,7 +126,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 参 = { 八人?: boolean; 历史?: boolean; 皮?: string; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean };
+type 参 = { 项目改?: Record<string, unknown>; 八人?: boolean; 历史?: boolean; 皮?: string; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean };
 /** 右上角下拉（11-21 教练点评改版 PR1：「发起点评 ▾」「更多操作 ▾」；原 11-12「AI / 项目操作 / 客户操作」）：点开，返回菜单 */
 const 开菜单 = async (page: Page, 名: "更多操作" | "发起点评") => {
   await page.locator(".rec-head-acts").getByRole("button", { name: new RegExp(名) }).click();
@@ -1151,3 +1153,33 @@ it("[D3] 换皮主题（tech）不动：空态照旧 --text-faint、联系人照
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
+
+it("[D4 审查] 客户页项目区：缺项小块点了都有落点——右栏那一格、画像卡、线索验证框、新建沟通框；「国家」滚到左栏客户资料那一格", async () => {
+  const 还差 = ["项目级别", "需求", "线索验证结果", "国家", "本节点沟通"];
+  const { page, errors } = await 开(1366, { 项目改: { 带画像: true, phase: "线索", node: "潜客培育", 能改节点: false, 必填: { 配了: 还差, 还差 },
+    线索验证: { 判定: null, 待: null, 无效原因: null, 复核结果: null, 最终结果: null, 终验: null, 初判即终判: false, 叫法: null, 我能: null, 痕: [] } } }, 900);
+  try {
+    const 块 = page.getByTestId("node-required-miss");
+    await 块.waitFor();
+    const 点 = (名: string) => 块.getByRole("button", { name: 名, exact: true }).click();
+    await 点("项目级别");
+    await page.locator('.rec-zone [data-inline-field="级别"] .ant-select').waitFor();
+    await page.keyboard.press("Escape");
+    await 点("需求（需求状态）");
+    await expect.poll(() => page.getByRole("combobox", { name: "需求状态" }).first().isVisible()).toBe(true);
+    await 点("线索验证结果");
+    const 验证框 = page.locator(".ant-modal").filter({ hasText: "线索验证" }).last();
+    await 验证框.waitFor();
+    await 验证框.locator(".ant-modal-close").click();
+    await 验证框.waitFor({ state: "hidden" });
+    await 点("当前进程沟通");
+    const 沟通框 = page.locator(".follow-modal .ant-modal");
+    await 沟通框.waitFor();
+    await 沟通框.locator(".ant-modal-close").click();
+    await 沟通框.waitFor({ state: "hidden" });
+    // 国家：客户资料在同一页左栏，收在「展开没填的」里的先展开，焦点落到那一格
+    await 点("国家");
+    await expect.poll(() => page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.field ?? null)).toBe("addrCountry");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 30_000);
