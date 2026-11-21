@@ -122,6 +122,13 @@ describe("D1 · 设计语言 token 和基础控件", () => {
     expect(段).toContain("box-shadow: var(--error-ring)");
   });
 
+  it("自绘的搜索框（中栏名单 .pane-search、左栏 .rail-search）也是白底 + --field-line，聚焦主色 + 光晕", () => {
+    expect(全).toMatch(/\.pane-search \{[^}]*background: var\(--panel\); border: 1px solid var\(--field-line\);/);
+    expect(全).toMatch(/\.pane-search:hover \{ border-color: var\(--field-line-hover\);/);
+    expect(全).toMatch(/\.pane-search:focus-within \{ border-color: var\(--brand\); box-shadow: var\(--focus-ring\); \}/);
+    expect(全).toMatch(/\.rail-search \{[^}]*border: 1px solid var\(--field-line\);/);
+  });
+
   it("复选框、单选框（含表格勾选、树勾选）的框换成 --ctl-line", () => {
     const m = /:is\(([^)]*\.ant-checkbox[^)]*)\)\s*\{\s*--ant-color-border: var\(--ctl-line\);/.exec(全);
     expect(m, "没找到把 --ant-color-border 换成 --ctl-line 的那条").toBeTruthy();
