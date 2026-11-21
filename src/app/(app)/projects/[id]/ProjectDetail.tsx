@@ -460,7 +460,7 @@ const 右栏格名: Record<string, string> = { 项目级别: "级别", 主联系
 /** 缺项小块点「去客户」的几项落在客户资料哪一格（customers/[id] RecordView 的 data-field / #field-xxx） */
 const 客户资料格: Record<string, string> = { 国家: "addrCountry", 客户等级: "level", 来源: "source", 联系方式: "numbers", ...客户格 };
 /** 企业版「来源」缺项的就地说法：客户页上没有来源那一格，渠道 / 渠道触点是建客户时选的（CustomerForm 企业来源必填） */
-const 企业来源话 = "客户来源是建客户时选的渠道或渠道触点，客户页上没有这一格，请找管理员处理";
+const 企业来源话 = "客户来源在建客户时选定（渠道或渠道触点），建好后不能改；空着的请联系系统管理员";
 const 无效原因前缀 = "无效原因：";
 
 // 规则 E：红只给已经过了的，当天橙，还早的不上色

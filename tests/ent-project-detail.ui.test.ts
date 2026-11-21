@@ -2674,7 +2674,7 @@ describe("设计语言 D4：进程卡、沟通、卡点", () => {
       await page.getByText("「国家」：国家 / 地区记在客户资料上").waitFor();
       // 企业版客户页没有「来源」那一格：就地说，不跳页（#402 复审）
       await 块.getByRole("button", { name: /^来源/ }).click();
-      await page.getByText("客户来源是建客户时选的渠道或渠道触点，客户页上没有这一格，请找管理员处理", { exact: false }).waitFor();
+      await page.getByText("客户来源在建客户时选定（渠道或渠道触点），建好后不能改；空着的请联系系统管理员", { exact: false }).waitFor();
       await 点("合同附件");
       await page.getByText("「合同附件」：要传文件，在「项目附件」的合同附件里传").waitFor();
       expect(errors).toEqual([]);

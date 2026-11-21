@@ -1184,7 +1184,7 @@ it("[D4 审查] 客户页项目区：缺项小块点了都有落点——右栏�
     expect(await page.locator(".rec-contact-rest-btn").getAttribute("aria-expanded")).toBe("false");
     // 企业版客户页没有「来源」那一格：就地说在哪里填，不跳页
     await 块.getByRole("button", { name: /^来源/ }).click();
-    await page.getByText("客户来源是建客户时选的渠道或渠道触点，客户页上没有这一格，请找管理员处理", { exact: false }).waitFor();
+    await page.getByText("客户来源在建客户时选定（渠道或渠道触点），建好后不能改；空着的请联系系统管理员", { exact: false }).waitFor();
     expect(await page.evaluate(() => Reflect.get(window, "__去") ?? null)).toBe(null);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
