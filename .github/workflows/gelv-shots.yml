@@ -6,6 +6,9 @@ name: 格律样板 Windows 截图
 
 on:
   workflow_dispatch:
+  # 手动触发要求 workflow 在默认分支上；样板分支不合并，所以推这些分支时也跑一次
+  push:
+    branches: ['feat/b33-gelv-*']
 
 permissions:
   contents: read
