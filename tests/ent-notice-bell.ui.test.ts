@@ -7,9 +7,12 @@
  *   空：「还没有通知」
  *   Windows 1024：搜索框 + 铃铛一行不折、页面不横向溢出；抽屉标题和「全部已读」不折行；超长标题截断
  *   暗黑：标题字是暗底的浅色；减弱动态：抽屉不走过渡
+ *   此刻还能放弃的（服务端给 放弃项目，11-21）：条目下多一颗「放弃（豁免）」，点了原地弹放弃框、交了换成「已放弃，转给 X」；
+ *   链接带 ?giveup=1 但服务端没给 放弃项目（现在放弃不了）的没有这颗；点条目本身去不带参数的
  */
 import { beforeAll, afterAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
+import { 补全动作桩 } from "./helpers/action-stubs";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 
@@ -26,6 +29,9 @@ const plugin: Plugin = { name: "ent-notice-bell", setup(b) {
     export const 标已读=async(id)=>{记('标:'+id);window.__通知=window.__通知.map(r=>r.id===id?{...r,read:true}:r);return 未()};
     export const 全部标已读=async()=>{记('全部');window.__通知=window.__通知.map(r=>({...r,read:true}));return 0};
   `);
+  // 放弃框（projects/[id]/GiveUpDialog）的动作：记下调用，回 window.__放弃回 或成功
+  stub(/^\.\/giveup-actions$/, 补全动作桩("src/app/(app)/projects/[id]/giveup-actions.ts",
+    "export const 放弃线索Action=async(...a)=>{(window.__放弃||(window.__放弃=[])).push(a);return window.__放弃回||{ok:true,接手人:'乙'}};"));
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
@@ -103,6 +109,63 @@ it("点一条：标已读、红数减一、关抽屉、跳到链接", async () =
   expect(await 窗<string[]>(page, "__去")).toEqual(["/projects/p2", "/customers"]);
   expect((await 窗<string[]>(page, "__调")).filter((x) => x.startsWith("标"))).toEqual(["标:n2"]);
   await page.close();
+});
+
+it("[11-21] 此刻能放弃的那条：多一颗「放弃（豁免）」，原地弹放弃框（标已读、不跳页），交了换成「已放弃，转给 X」；现在放弃不了的没有这颗", async () => {
+  const 行们 = [
+    { id: "g1", kind: "自动分配", title: "自动分配给你一条新线索：" + 长, body: "", link: "/projects/p9?giveup=1", 放弃项目: "p9", read: false, createdAt: 刚才(0) },
+    { id: "g2", kind: "超时未跟进", title: "超时未跟进：华东二期", body: "接手已满 1 小时还没记有效沟通", link: "/projects/p8?giveup=1", read: false, createdAt: 刚才(5) },
+    三条[2],
+  ];
+  for (const w of [1280, 390]) {
+    const { page, errors } = await 打开(行们, { width: w, 减弱: true });
+    try {
+      await 铃(page).click();
+      await page.locator(".notice-drawer .ant-drawer-section").waitFor();
+      expect(await page.getByTestId("notice-giveup").count()).toBe(1);
+      const 键 = page.getByTestId("notice-giveup");
+      expect(await 键.innerText()).toBe("放弃（豁免）");
+      const 框位 = (await 键.boundingBox())!;
+      expect(框位.x + 框位.width).toBeLessThanOrEqual(w);
+      await 键.click();
+      const 框 = page.getByRole("dialog", { name: "放弃这条线索（豁免）" });
+      await 框.waitFor();
+      expect(await 窗<string[] | undefined>(page, "__去")).toBeUndefined();
+      await expect.poll(() => 窗<string[]>(page, "__调")).toEqual(["读", "标:g1"]);
+      const 盒 = (await 框.boundingBox())!;
+      expect(盒.x).toBeGreaterThanOrEqual(0);
+      expect(盒.x + 盒.width).toBeLessThanOrEqual(w);
+      await 框.getByText("忙不过来", { exact: true }).click();
+      await 框.getByRole("button", { name: "确认放弃" }).click();
+      await page.getByTestId("notice-giveup-done").waitFor();
+      expect(await page.getByTestId("notice-giveup-done").innerText()).toBe("已放弃，转给 乙");
+      expect(await page.getByTestId("notice-giveup").count()).toBe(0);
+      expect(await 窗<unknown[][]>(page, "__放弃")).toEqual([["p9", "忙不过来", ""]]);
+      // 点条目本身：去不带参数的地址
+      await page.locator(".notice-item").nth(1).click();
+      expect(await 窗<string[]>(page, "__去")).toEqual(["/projects/p8"]);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+it("[11-21] 放弃没成：错误写在框里，按钮还在；「去判无效」关抽屉去项目页", async () => {
+  const 行们 = [{ id: "g1", kind: "分配", title: "分配给你一条新线索：华东", body: "", link: "/projects/p9?giveup=1", 放弃项目: "p9", read: true, createdAt: 刚才(0) }];
+  const { page } = await 打开(行们, { width: 390, 减弱: true });
+  try {
+    await page.evaluate(() => { (window as unknown as { __放弃回: unknown }).__放弃回 = { ok: false, error: "这条转不出去：本线其他人都不能接" }; });
+    await 铃(page).click();
+    await page.getByTestId("notice-giveup").click();
+    const 框 = page.getByRole("dialog", { name: "放弃这条线索（豁免）" });
+    await 框.getByText("外出", { exact: true }).click();
+    await 框.getByRole("button", { name: "确认放弃" }).click();
+    await 框.getByTestId("proj-giveup-error").waitFor();
+    expect(await 框.getByTestId("proj-giveup-error").innerText()).toContain("转不出去");
+    await 框.getByTestId("proj-giveup-to-invalid").click();
+    expect(await 窗<string[]>(page, "__去")).toEqual(["/projects/p9"]);
+    expect(await page.getByTestId("notice-giveup").count()).toBe(1);
+  } finally { await page.close(); }
 });
 
 it("全部已读：红数没了、按钮变灰、蓝点没了", async () => {

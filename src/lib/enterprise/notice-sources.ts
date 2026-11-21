@@ -62,6 +62,19 @@ async function 客户上还留着(们: readonly 分配条[]): Promise<string | n
   return 待办 || 计划 ? `客户上还有原负责人 ${待办} 条未完成待办、${计划} 条未完成计划` : null;
 }
 
+/**
+ * 分到我的线索、超时提醒的链接带不带「放弃（豁免）」（11-21，lead-giveup.ts 通知放弃链接）。
+ * 动态 import：lead-giveup.ts 自己 import 本文件（放弃转出发 分配通知），静态 import 成环
+ */
+export async function 带放弃链接(userId: string, projectId: string, link: string, 现在: Date = new Date()): Promise<string> {
+  try {
+    return await (await import("./lead-giveup")).通知放弃链接(userId, projectId, link, 现在);
+  } catch (e) {
+    console.warn("[通知] 放弃链接没判成：", e instanceof Error ? e.message : e);
+    return link;
+  }
+}
+
 /** 通知正文后面接一句 */
 const 接一句 = (正文: string, 句: string | null) => (!句 ? 正文 : !正文 ? 句 : 正文.endsWith("。") ? `${正文}${句}` : `${正文}。${句}`);
 
@@ -101,7 +114,8 @@ export async function 分配通知(谁点的: 人, 条们: readonly 分配条[],
         title: n === 1 ? `${头}一条新线索：${名们[0]}` : `${头} ${n} 条新线索`,
         // 另附（11-17 PR3）：定时分配到点时写「按定时分配，原定 HH:mm」；系统到点自动分的不说「谁点的」
         body: 接一句(接一句(接一句(n === 1 ? (自动 ? (谁点的.id === "system" ? "" : `${谁点的.name} 点的自动分配，轮到了你。`) : "") : 名单(名们), await 客户也转给你(们)), await 客户上还留着(们)), 另附 ?? null),
-        link: 只一条项目 ? `/projects/${们[0].projectId}` : "/leads",
+        // 只一条项目、发这一刻他能放弃（11-21）：链接带 ?giveup=1，飞书多一个「放弃（豁免）」、铃铛多一颗（lead-giveup-core.ts）
+        link: 只一条项目 ? await 带放弃链接(toUserId, 们[0].projectId!, `/projects/${们[0].projectId}`) : "/leads",
         key: `assign:${自动 ? "auto" : "manual"}:${们.map((c) => c.projectId ?? c.leadId).sort().join(",").slice(0, 400)}:${分钟()}`,
       });
     }

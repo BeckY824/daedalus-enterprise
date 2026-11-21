@@ -72,7 +72,11 @@ export async function notify(userIds: readonly (string | null | undefined)[], n:
 
 /* ───────────────────────── 铃铛读写（按人） ───────────────────────── */
 
-export type 通知行 = { id: string; kind: string; title: string; body: string; link: string | null; read: boolean; createdAt: string };
+export type 通知行 = {
+  id: string; kind: string; title: string; body: string; link: string | null; read: boolean; createdAt: string;
+  /** 这条带「放弃（豁免）」、且此刻我还能放弃那条线索（notice-actions.ts 读我的通知 现判，11-21）：那条项目 id；铃铛原地弹放弃框 */
+  放弃项目?: string;
+};
 
 export async function 我的通知(userId: string, 条数 = 30): Promise<通知行[]> {
   const 行们 = await prisma.entNotice.findMany({
@@ -82,7 +86,8 @@ export async function 我的通知(userId: string, 条数 = 30): Promise<通知�
     select: { id: true, kind: true, title: true, body: true, link: true, readAt: true, createdAt: true },
   });
   // 市场角色：链到「已分给圈外的人」的项目详情的，改链项目列表（那一行在列表里看进度，详情页本来也挡，11-04 P-看-06）
-  const 项目id = (link: string | null) => /^\/projects\/([^/?#]+)$/.exec(link ?? "")?.[1];
+  // 带 ?giveup=1 的（分到我的线索、超时提醒，11-21）同样认：挡了就改链项目列表，参数一起丢
+  const 项目id = (link: string | null) => /^\/projects\/([^/?#]+)(?:\?[^#]*)?$/.exec(link ?? "")?.[1];
   const ids = 行们.map((r) => 项目id(r.link)).filter((x): x is string => !!x).map((x) => decodeURIComponent(x));
   const 挡 = ids.length ? await 市场进不了详情的(userId, ids) : new Set<string>();
   const 链 = (link: string | null) => {

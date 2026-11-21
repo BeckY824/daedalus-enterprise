@@ -7,7 +7,7 @@
  * - 凭据和导入、通讯录同步、飞书登录同一份：Setting `entConn.feishu`，没存就看 ENT_FEISHU_APP_ID / ENT_FEISHU_APP_SECRET
  * - 组织开关 `entFeishuPush`（设置 → 组织 → 飞书推送），默认关；关着一次飞书请求都不发
  * - 收件人 = User.feishuOpenId（飞书登录、通讯录同步时记下的）；没绑的只有站内通知
- * - 链接 = ENT_PUBLIC_URL + 站内路径；没配 ENT_PUBLIC_URL 就只发标题和正文
+ * - 链接 = ENT_PUBLIC_URL + 站内路径；没配 ENT_PUBLIC_URL 就只发标题和正文；链接带 ?giveup=1 的再多一个「放弃（豁免）」（11-21，消息体）
  * - 令牌按 expire 缓存到快过期（提前 5 分钟），飞书说令牌失效时清掉重拿一次
  * - 每条通知先把 feishuStatus 从「待推」抢成「推送中」再发，抢不到就不发：同一条不会推两遍；
  *   请求体再带 uuid = 通知 id，飞书那边一小时内同 uuid 也只发一次
@@ -25,6 +25,7 @@ import { 正在切换视图 } from "./view-as";
 import { 通知文字打码 } from "./notice-mask";
 import { 推送队列, 本进程每秒, type 排队条, type 队列设置 } from "./feishu-queue";
 import { 推送先后 } from "./notice-kinds";
+import { 有放弃参数, 去放弃参数 } from "./lead-giveup-core";
 
 export const 飞书推送开关键 = "entFeishuPush";
 const 默认基址 = "https://open.feishu.cn";
@@ -107,11 +108,20 @@ async function 去拿令牌(c: 推送凭据, 键: string): Promise<string> {
 
 export type 飞书消息 = { 标题: string; 正文: string; 链接: string | null; uuid: string };
 
-/** 富文本（post）：标题 + 正文 + 「打开 CRM 查看」链接 */
+/** 飞书里那颗放弃链接的字 */
+export const 放弃链接字 = "放弃（豁免）";
+
+/**
+ * 富文本（post）：标题 + 正文 + 「打开 CRM 查看」链接。
+ * 链接带 ?giveup=1（分到我的线索、超时提醒，发那一刻能放弃，lead-giveup-core.ts）：同一行再给「放弃（豁免）」，
+ * 「打开 CRM 查看」去不带参数的地址（只看不弹框）
+ */
 export function 消息体(openId: string, m: 飞书消息) {
   const 段: { tag: string; text: string; href?: string }[][] = [];
   if (m.正文.trim()) 段.push([{ tag: "text", text: m.正文 }]);
-  if (m.链接) 段.push([{ tag: "a", text: "打开 CRM 查看", href: m.链接 }]);
+  if (m.链接 && 有放弃参数(m.链接)) {
+    段.push([{ tag: "a", text: "打开 CRM 查看", href: 去放弃参数(m.链接) }, { tag: "text", text: "　　" }, { tag: "a", text: 放弃链接字, href: m.链接 }]);
+  } else if (m.链接) 段.push([{ tag: "a", text: "打开 CRM 查看", href: m.链接 }]);
   return {
     receive_id: openId,
     msg_type: "post",

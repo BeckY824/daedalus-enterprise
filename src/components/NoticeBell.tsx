@@ -10,10 +10,15 @@ import { useSystemReducedMotion } from "@/lib/reduced-motion";
 import { 时长, 曲线, 间隔 } from "@/lib/motion";
 import { 读我的通知, 读未读通知数, 标已读, 全部标已读 } from "@/app/(app)/notice-actions";
 import type { 通知行 } from "@/lib/enterprise/notify";
+import { 去放弃参数 } from "@/lib/enterprise/lead-giveup-core";
+import GiveUpDialog from "@/app/(app)/projects/[id]/GiveUpDialog";
 
 /**
  * 企业版站内通知的铃铛（11-01）：左栏顶上搜索框右边 / 手机顶栏。红数 = 我没读的通知；
  * 点开右侧抽屉列最近 30 条，点一条 = 标已读 + 跳到对应页面；顶上「全部已读」。
+ * 分到我的线索、超时提醒（链接带 ?giveup=1，发那一刻能放弃）、且此刻还能放弃的（服务端现判，通知行.放弃项目，11-21）：
+ * 条目下多一颗「放弃（豁免）」，点了在抽屉上原地弹放弃框（projects/[id]/GiveUpDialog，同项目页、首页那个框）；成了那颗换成「已放弃，转给 X」。
+ * 点条目本身照旧去不带参数的地址（只看）。
  * 未读数每分钟（页面在前台时）问一次服务端；抽屉打开时现拉列表。
  * 减弱动态：抽屉不滑、列表不淡入（lib/reduced-motion.ts）。
  * 抽屉（连同包它的 ConfigProvider）第一次点开才挂：带主题的 ConfigProvider 一挂上，antd 就按新主题把整套样式再生成一遍，
@@ -104,8 +109,18 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
     }
     if (r.link) {
       set开着(false);
-      router.push(r.link);
+      // 带 ?giveup=1 的（11-21）：点这一条只去看，不弹放弃框；要放弃点下面那颗「放弃（豁免）」
+      router.push(去放弃参数(r.link));
     }
+  };
+  /** 正在放弃的那条（原地弹框）；放弃成了的：项目 id → 接手人 */
+  const [放的, set放的] = useState<{ 通知: string; 项目: string } | null>(null);
+  const [放成, set放成] = useState<Readonly<Record<string, string>>>({});
+  /** 「放弃（豁免）」：标已读 + 原地弹放弃框 */
+  const 点放弃 = (r: 通知行) => {
+    if (!r.放弃项目) return;
+    点({ ...r, link: null });
+    set放的({ 通知: r.id, 项目: r.放弃项目 });
   };
 
   const 全读 = async () => {
@@ -167,6 +182,13 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
                           </span>
                         </span>
                       </button>
+                      {r.放弃项目 && 放成[r.放弃项目] ? (
+                        <div className="notice-giveup-done" role="status" data-testid="notice-giveup-done">已放弃，转给 {放成[r.放弃项目]}</div>
+                      ) : r.放弃项目 ? (
+                        <div className="notice-giveup">
+                          <Button size="small" danger onClick={() => 点放弃(r)} data-testid="notice-giveup">放弃（豁免）</Button>
+                        </div>
+                      ) : null}
                       {通知要展开(r.body) && (
                         <button type="button" className="notice-more" aria-expanded={展开的.has(r.id)} onClick={() => 切展开(r.id)}>
                           {展开的.has(r.id) ? "收起" : "展开全文"}
@@ -179,6 +201,20 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
             )}
           </Drawer>
         </ConfigProvider>
+      )}
+      {放的 && (
+        <GiveUpDialog
+          key={放的.通知}
+          projectId={放的.项目} 开 关={() => set放的(null)}
+          // 铃铛里没有「线索验证」框：关抽屉去项目页判
+          打开判无效={() => { set开着(false); router.push(`/projects/${encodeURIComponent(放的.项目)}`); }}
+          成={(接手人) => {
+            set放成((原) => ({ ...原, [放的.项目]: 接手人 }));
+            set放的(null);
+            // 当前页可能就是这条项目（线索已转走）：重拉一遍
+            router.refresh();
+          }}
+        />
       )}
     </>
   );

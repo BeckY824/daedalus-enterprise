@@ -264,29 +264,26 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
       {提示条}
       <Card title="组织规则" extra={只看} data-testid="org-rules">
         <p className="muted">每条规则单独开关，除了{默认开的规则.map((n) => `「${规则[n].名}」`).join("")}都默认关着：关着时按原来的方式看客户。先把下面的部门和上级填好再打开。</p>
-        <div style={{ display: "grid", gap: 12 }}>
+        {/* 每条：开关 + 名字一行，说明在下面（globals.css .org-rule：电脑上说明缩进对齐名字，手机 390 宽下说明占满整行、不挤成一窄列） */}
+        <div className="org-rules">
           {规则名们.map((名) => (
-            <Space align="start" key={名}>
+            <div className="org-rule" key={名}>
               <Switch checked={开着(名)} disabled={!能改 || 忙(`规则-${名}`)} aria-label={规则[名].名} data-testid={规则testid[名]}
                 onChange={(v) => void 拨(名, v)} />
-              <div>
-                <b>{规则[名].名}</b>
-                <p className="muted" style={{ margin: 0 }}>{规则[名].说明}</p>
-                {/* 规则开着才有这个选项（10-30）：开了以后配额不起作用，下面「线索分配」里配额框灰掉 */}
-                {名 === "线索分配" && 开着(名) && value.线索不设配额 != null && (
-                  <Space align="start" style={{ marginTop: 8 }}>
-                    <Switch size="small" checked={不设配额} disabled={!能改 || 忙("不设配额")} aria-label="不设配额（人人参与、不限额）"
-                      data-testid="org-rule-lead-no-quota" onChange={(v) => void 拨不设(v)} />
-                    <div>
-                      <span>不设配额（人人参与、不限额）</span>
-                      <p className="muted" style={{ margin: 0 }}>
-                        开了以后：自动分配在参与的销售里挑本月已分最少的，一样多先给最早进分配池的；手动分也不查满额。设过的配额留着，关掉就照旧按配额分。
-                      </p>
-                    </div>
-                  </Space>
-                )}
-              </div>
-            </Space>
+              <b className="org-rule-name">{规则[名].名}</b>
+              <p className="muted org-rule-say">{规则[名].说明}</p>
+              {/* 规则开着才有这个选项（10-30）：开了以后配额不起作用，下面「线索分配」里配额框灰掉 */}
+              {名 === "线索分配" && 开着(名) && value.线索不设配额 != null && (
+                <div className="org-rule org-rule-sub">
+                  <Switch size="small" checked={不设配额} disabled={!能改 || 忙("不设配额")} aria-label="不设配额（人人参与、不限额）"
+                    data-testid="org-rule-lead-no-quota" onChange={(v) => void 拨不设(v)} />
+                  <span className="org-rule-name">不设配额（人人参与、不限额）</span>
+                  <p className="muted org-rule-say">
+                    开了以后：自动分配在参与的销售里挑本月已分最少的，一样多先给最早进分配池的；手动分也不查满额。设过的配额留着，关掉就照旧按配额分。
+                  </p>
+                </div>
+              )}
+            </div>
           ))}
         </div>
       </Card>
@@ -329,7 +326,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
           </table>
         </div>
         {!字段权限挡 && (
-          <Space style={{ marginTop: 12 }}>
+          <Space wrap style={{ marginTop: 12 }}>
             <SaveButton disabled={!表改了 || 忙("字段权限")} data-testid="org-field-perm-save" 做={() => 存("字段权限", () => 设字段权限(表))}>保存字段权限</SaveButton>
             <Button disabled={!表改了 || 忙("字段权限")} onClick={() => set草稿(null)}>放弃修改</Button>
             <Button disabled={忙("字段权限")} data-testid="org-field-perm-suggest" onClick={() => set草稿({ 基于: 页面表, 表: 推荐字段配置 })}>用推荐表</Button>
@@ -372,7 +369,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
           </table>
         </div>
         {能改 && (
-          <Space style={{ marginTop: 12 }}>
+          <Space wrap style={{ marginTop: 12 }}>
             <SaveButton disabled={!改权限改了 || 忙("改权限")} data-testid="org-edit-perm-save" 做={() => 存("改权限", () => 设改权限(改权限))}>保存</SaveButton>
             <Button disabled={!改权限改了 || 忙("改权限")} onClick={() => set权限草稿(null)}>放弃修改</Button>
           </Space>

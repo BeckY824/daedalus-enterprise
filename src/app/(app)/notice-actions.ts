@@ -15,12 +15,26 @@ import { 权限组织 } from "@/lib/enterprise/org";
 import { 能改后台设置 } from "@/lib/enterprise/permissions";
 import { 我的通知, 未读通知数, 标通知已读, 全部通知已读, type 通知行 } from "@/lib/enterprise/notify";
 import { 飞书推送开着, 飞书推送开关键, 推送凭据 } from "@/lib/enterprise/feishu-push";
+import { 我能放弃的, 放弃链接项目 } from "@/lib/enterprise/lead-giveup";
+
+/** 铃铛里一批最多判几条能放弃（通知最近 30 条，带放弃链接的只是其中一部分） */
+const 铃铛放弃最多 = 30;
 
 export async function 读我的通知(): Promise<{ 行们: 通知行[]; 未读: number }> {
   if (!企业版()) return { 行们: [], 未读: 0 };
   const me = await requireUser();
   const [行们, 未读] = await Promise.all([我的通知(me.id), 未读通知数(me.id)]);
-  return { 行们, 未读 };
+  // 带「放弃（豁免）」的（分到我的线索、超时提醒，11-21）：此刻还能放弃的才给按钮（发的时候能、现在不能了的不给）。
+  // 一条都没带就不查；带了的一批判（lead-giveup.ts 我能放弃的，只查本人）
+  if (!行们.some((r) => 放弃链接项目(r.link))) return { 行们, 未读 };
+  const 能 = new Set((await 我能放弃的(me, new Date(), 铃铛放弃最多)).map((x) => x.projectId));
+  return {
+    行们: 行们.map((r) => {
+      const id = 放弃链接项目(r.link);
+      return id && 能.has(id) ? { ...r, 放弃项目: id } : r;
+    }),
+    未读,
+  };
 }
 
 export async function 读未读通知数(): Promise<number> {

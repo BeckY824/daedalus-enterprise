@@ -30,6 +30,12 @@
  *   7. 留痕：项目节点记录一行转让（操作人 系统，原因写明谁主动放弃、原因）；操作日志一条（放弃人名下，action giveup）。
  *      市场管理、销售管理在项目节点记录（项目页「进程变更」）里看得到，和超时转的记录同一处，不另开页
  *   8. 通知（站内 + 飞书，notify 同超时转的通道）：接手人收「分给你」，正文写「同事 X 主动放弃（豁免）转给你」；放弃人收一条确认
+ *
+ * 从通知直达（11-21，用户「通知里面直接加上这个按钮」）：分到我的线索（自动 / 指定分配、超时转来、同事放弃转来，notice-sources.ts 分配通知，
+ * 只一条项目的）和超时提醒（reply-overdue.ts 发超时提醒）发出那一刻，对收件人按 放弃资格 能放弃（可 = true）才带 ?giveup=1（通知放弃链接）：
+ * 飞书多一个「放弃（豁免）」链接；项目页带参数打开自动弹框，不能放弃时弹 放弃资格明细 的那句（GiveUpBanner）。
+ * 首页置顶条、铃铛按钮（11-21，客户「用最短的路径让销售触达」）：我能放弃的（只查本人、一批判，判一批 同单条一份判定）此刻能放弃的才出，
+ * 原地弹同一个放弃框（projects/[id]/GiveUpDialog）
  */
 import { prisma } from "@/lib/prisma";
 import type { SessionUser } from "@/lib/auth";
@@ -38,7 +44,6 @@ import { 看全部 } from "@/lib/team-scope";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 不刷新页面 } from "@/lib/revalidate-safe";
 import { 放弃转理由 } from "@/lib/project/timeout";
-import { 验证中不能改派 } from "@/lib/project/lead-verify-guard";
 import { 超时转出 } from "@/app/(app)/leads/assign-actions";
 import { 企业版 } from "./switch";
 import { 规则开着 } from "./rules";
@@ -47,13 +52,16 @@ import { 超时转的线 } from "./flow-line-core";
 import { 月份 } from "./lead-assign";
 import { 读组织于 } from "./org";
 import { 只读角色 } from "./permissions";
-import { 负责人跟过的, 分配后沟通过的, 读试过, 本轮排除, 客户随线索, 超时提醒分钟, 客户在谁名下话, 放弃过的人, 会按超时计时 } from "./reply-overdue";
+import { 负责人跟过的, 分配后沟通过的, 读试过, 本轮排除, 客户随线索, 超时提醒分钟, 客户在谁名下话, 放弃过的人, 会按超时计时, 超时时限们 } from "./reply-overdue";
 import { 超时转令牌 } from "./scheduled-assign-token";
 import { 系统操作人 } from "./scheduled-assign";
-import { 放弃待补种类, 是补发来的 } from "./invalid-makeup";
+import { 放弃待补种类 } from "./invalid-makeup";
 import { notify } from "./notify";
 import { 分配通知 } from "./notice-sources";
-import { 新分配时刻, 在放弃窗口, 认放弃原因, 本月用过话, 每月放弃次数, type 放弃入口 } from "./lead-giveup-core";
+import {
+  新分配时刻, 在放弃窗口, 认放弃原因, 本月用过话, 每月放弃次数, 不给放弃话, 项目不给放弃, 通知链接带放弃, 放弃窗口天, 首页放弃最多, 放弃时限话,
+  type 放弃入口, type 我能放弃的线索,
+} from "./lead-giveup-core";
 
 export * from "./lead-giveup-core";
 
@@ -69,43 +77,152 @@ export async function 本月放弃过(userId: string, 现在: Date = new Date())
 
 type 看的项目 = { id: string; name: string; ownerId: string; creatorId: string; customerId: string; createdAt: Date };
 
+/** 放弃资格的明细：给 = 资格；不给 = 为什么（不给放弃话 里那几句） */
+export type 放弃资格明细结果 = { 资格: 放弃入口 & { p: 看的项目; 接手于: Date } } | { 不给: string };
+
 /**
- * 这条线索给不给我放弃（项目页按钮、点的时候都问它）：不给 = null（按钮不出现）；给但点不了 = 可 false + 为什么。
+ * 这条线索给不给我放弃（项目页按钮、点的时候、通知带不带「放弃（豁免）」都问它）：不给 = null（按钮不出现）；给但点不了 = 可 false + 为什么。
  * 只读，看全部（判定和谁在看无关，进门的权限由调用方保证：只有负责人本人会拿到非 null）
  */
 export async function 放弃资格(me: Pick<SessionUser, "id" | "视图由">, projectId: string, 现在: Date = new Date()): Promise<(放弃入口 & { p: 看的项目; 接手于: Date }) | null> {
-  if (!企业版() || !me?.id || me.视图由 || !(await 主动放弃开着())) return null;
-  return 看全部(async () => {
+  const r = await 放弃资格明细(me, projectId, 现在);
+  return "资格" in r ? r.资格 : null;
+}
+
+/** 判资格要读的项目列（单条、首页一批同一份） */
+const 判的列 = {
+  id: true, name: true, ownerId: true, creatorId: true, customerId: true, createdAt: true, flowLine: true,
+  phase: true, result: true, pooledAt: true, awaitAssignAt: true, deletedAt: true, customer: { select: { pool: { select: { customerId: true } } } },
+} as const;
+type 判的行 = 看的项目 & {
+  flowLine: string | null; phase: string; result: string | null; pooledAt: Date | null; awaitAssignAt: Date | null; deletedAt: Date | null;
+  customer: { pool: { customerId: string } | null } | null;
+};
+
+/** 同 放弃资格，不给时回为什么（项目页从通知带 ?giveup=1 打开、又没有入口时弹这一句） */
+export async function 放弃资格明细(me: Pick<SessionUser, "id" | "视图由">, projectId: string, 现在: Date = new Date()): Promise<放弃资格明细结果> {
+  if (!企业版() || !me?.id) return { 不给: 不给放弃话.不在手上 };
+  if (me.视图由) return { 不给: 不给放弃话.切换视图 };
+  if (!(await 主动放弃开着())) return { 不给: 不给放弃话.没开 };
+  return 看全部(async (): Promise<放弃资格明细结果> => {
     const org = await 读组织于(prisma);
-    if (只读角色({ id: me.id }, org)) return null;
-    const p = await prisma.project.findFirst({
-      where: { id: projectId, deletedAt: null, ownerId: me.id, phase: "线索", result: null, pooledAt: null, awaitAssignAt: null, customer: { pool: null } },
-      select: { id: true, name: true, ownerId: true, creatorId: true, customerId: true, createdAt: true, flowLine: true },
-    });
-    if (!p) return null;
+    if (只读角色({ id: me.id }, org)) return { 不给: 不给放弃话.只读 };
+    const 行 = await prisma.project.findFirst({ where: { id: projectId }, select: 判的列 });
+    if (!行) return { 不给: 不给放弃话.不在手上 };
+    return (await 判一批(me.id, org, [行], 现在)).get(行.id) ?? { 不给: 不给放弃话.不在手上 };
+  });
+}
+
+/**
+ * 判一批项目（同一个人）给不给放弃：单条（放弃资格明细）和首页 / 铃铛一批（我能放弃的）同一份判定。
+ * 调用方已在 看全部 里、已查过开关开着、不是只读身份。查询次数和条数无关（一批 in 查），只有「最近那条分配不计数」的才逐条问补发
+ */
+async function 判一批(me: string, org: Awaited<ReturnType<typeof 读组织于>>, 行们: readonly 判的行[], 现在: Date): Promise<Map<string, 放弃资格明细结果>> {
+  const 结果 = new Map<string, 放弃资格明细结果>();
+  const 设 = 行们.length ? await 读线部门() : null;
+  const 留: 判的行[] = [];
+  for (const 行 of 行们) {
+    const 状态不给 = 项目不给放弃(me, { ...行, 客户在公海: 行.customer?.pool != null });
+    if (状态不给) { 结果.set(行.id, { 不给: 状态不给 }); continue; }
     // 本线自动分配候选（同超时转出：线 = 项目上存的流转线，没存按他所在事业部兜底；候选池同自动分配那一份）
-    const 设 = await 读线部门();
-    const 线 = 超时转的线(org, 设, p.flowLine, me.id);
-    if (!线 || !自动分配池(org, null, 线, 设).includes(me.id)) return null;
-    const [痕们, 分配们] = await Promise.all([
-      prisma.projectNodeLog.findMany({ where: { projectId, kind: { in: ["transfer", "pool-claim"] } }, select: { kind: true, userId: true, reason: true, toOwnerId: true, at: true } }),
-      prisma.entLeadAssign.findMany({ where: { projectId }, select: { toUserId: true, byUserId: true, createdAt: true } }),
-    ]);
-    const 接手 = 新分配时刻(me.id, p, 痕们, 分配们);
-    if (!接手 || !在放弃窗口(接手, 现在)) return null;
+    const 线 = 超时转的线(org, 设, 行.flowLine, me);
+    if (!线 || !自动分配池(org, null, 线, 设!).includes(me)) { 结果.set(行.id, { 不给: 不给放弃话.不在分配池 }); continue; }
+    留.push(行);
+  }
+  if (!留.length) return 结果;
+  const ids = 留.map((p) => p.id);
+  const [痕们, 分配们, 补发们] = await Promise.all([
+    prisma.projectNodeLog.findMany({ where: { projectId: { in: ids }, kind: { in: ["transfer", "pool-claim"] } }, select: { projectId: true, kind: true, userId: true, reason: true, toOwnerId: true, at: true } }),
+    prisma.entLeadAssign.findMany({ where: { projectId: { in: ids } }, select: { projectId: true, toUserId: true, byUserId: true, createdAt: true, counted: true } }),
+    // 补发给他的（补发 counted=false，但用掉过他的待补，invalid-makeup.ts 是补发来的 的一批版）
+    prisma.entLeadMakeup.findMany({ where: { usedProjectId: { in: ids }, userId: me, usedAt: { not: null } }, select: { usedProjectId: true } }),
+  ]);
+  const 补发 = new Set(补发们.map((r) => r.usedProjectId));
+  const 接手们: (看的项目 & { 基: Date })[] = [];
+  for (const 行 of 留) {
+    const 分 = 分配们.filter((a) => a.projectId === 行.id);
+    const 接手 = 新分配时刻(me, 行, 痕们.filter((l) => l.projectId === 行.id), 分);
+    if (!接手) { 结果.set(行.id, { 不给: 不给放弃话.不是新分配 }); continue; }
+    if (!在放弃窗口(接手, 现在)) { 结果.set(行.id, { 不给: 不给放弃话.过了窗口 }); continue; }
     // 占过名额的才给放弃、才补（M-线索-02「没占过额度的不补」）：他在这条上最近一条分配记录算数（自动 / 指定 / 定时分配、超时转来、放弃转来），
     // 或这条是补发给他的（补发 counted=false，但用掉过他的待补）。管理从公海分（P-转-29 ③）、企划不计数的 counted=false：不出按钮
-    const 最近分 = await prisma.entLeadAssign.findFirst({ where: { projectId, toUserId: me.id }, orderBy: { createdAt: "desc" }, select: { counted: true } });
-    if (!最近分 || (!最近分.counted && !(await 是补发来的(prisma, projectId, me.id)))) return null;
-    // 本人还没记有效沟通（同超时转「首次沟通」：这位客户上他记过的、或接手以后挂这条记的，只认本人）
-    const [跟过, 分配后] = await Promise.all([负责人跟过的([p]), 分配后沟通过的([{ ...p, 基: 接手 }])]);
-    if (跟过.has(p.id) || 分配后.has(p.id)) return null;
-    const 本月已用 = await 本月放弃过(me.id, 现在);
-    const 验证中 = await 验证中不能改派(prisma, projectId);
-    if (验证中) return { p, 接手于: 接手, 可: false, 为什么: `这条线索在验证中，不能放弃（不能改负责人）；验证走完或先撤回验证`, 本月已用 };
-    if (本月已用) return { p, 接手于: 接手, 可: false, 为什么: 本月用过话, 本月已用 };
-    return { p, 接手于: 接手, 可: true, 本月已用 };
-  });
+    const 最近分 = 分.filter((a) => a.toUserId === me).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+    if (!最近分 || (!最近分.counted && !补发.has(行.id))) { 结果.set(行.id, { 不给: 不给放弃话.没占名额 }); continue; }
+    接手们.push({ id: 行.id, name: 行.name, ownerId: 行.ownerId, creatorId: 行.creatorId, customerId: 行.customerId, createdAt: 行.createdAt, 基: 接手 });
+  }
+  if (!接手们.length) return 结果;
+  // 本人还没记有效沟通（同超时转「首次沟通」：这位客户上他记过的、或接手以后挂这条记的，只认本人）
+  const [跟过, 分配后, 本月已用, 验证中们] = await Promise.all([
+    负责人跟过的(接手们), 分配后沟通过的(接手们), 本月放弃过(me, 现在),
+    企业版() ? prisma.entLeadVerify.findMany({ where: { projectId: { in: 接手们.map((p) => p.id) }, pending: { not: null } }, select: { projectId: true } }) : [],
+  ]);
+  const 验证中 = new Set(验证中们.map((v) => v.projectId));
+  for (const { 基: 接手, ...p } of 接手们) {
+    if (跟过.has(p.id) || 分配后.has(p.id)) { 结果.set(p.id, { 不给: 不给放弃话.记过沟通 }); continue; }
+    // 验证中（同 lead-verify-guard.ts 验证中不能改派：EntLeadVerify.pending 有值）
+    if (验证中.has(p.id)) 结果.set(p.id, { 资格: { p, 接手于: 接手, 可: false, 为什么: 验证中话, 本月已用 } });
+    else if (本月已用) 结果.set(p.id, { 资格: { p, 接手于: 接手, 可: false, 为什么: 本月用过话, 本月已用 } });
+    else 结果.set(p.id, { 资格: { p, 接手于: 接手, 可: true, 本月已用 } });
+  }
+  return 结果;
+}
+
+const 验证中话 = "这条线索在验证中，不能放弃（不能改负责人）；验证走完或先撤回验证";
+
+/**
+ * 我此刻能放弃（可 = true）的线索（首页置顶条、铃铛里那颗按钮，11-21 客户「用最短的路径让销售触达」）：只查本人，
+ * 先按「往回 放弃窗口天 + 1 天内分给我的分配记录」圈出候选（能放弃的必有一条分给他的分配记录，判定里 最近分 要它），再一批判。
+ * 本月用过、开关关、切换视图、只读身份 = 空，不往下查。带上离超时还剩多久（超时转计时的按超时，不计时的按放弃窗口）。从不抛（出错 = 空，首页照开）
+ */
+export async function 我能放弃的(me: Pick<SessionUser, "id" | "视图由">, 现在: Date = new Date(), 最多 = 首页放弃最多): Promise<我能放弃的线索[]> {
+  try {
+    if (!企业版() || !me?.id || me.视图由 || !(await 主动放弃开着())) return [];
+    if (await 本月放弃过(me.id, 现在)) return [];
+    return await 看全部(async () => {
+      const org = await 读组织于(prisma);
+      if (只读角色({ id: me.id }, org)) return [];
+      const 起 = new Date(现在.getTime() - (放弃窗口天 + 1) * 86_400_000);
+      const 分给我 = await prisma.entLeadAssign.findMany({ where: { toUserId: me.id, createdAt: { gte: 起 }, projectId: { not: null } }, select: { projectId: true } });
+      const 候选 = [...new Set(分给我.map((a) => a.projectId!))];
+      if (!候选.length) return [];
+      const 行们 = await prisma.project.findMany({
+        where: { id: { in: 候选 }, ownerId: me.id, deletedAt: null, phase: "线索", result: null, pooledAt: null, awaitAssignAt: null, customer: { pool: null } },
+        select: 判的列, orderBy: { createdAt: "desc" }, take: 最多 * 3,
+      });
+      const 判 = await 判一批(me.id, org, 行们, 现在);
+      const 能: { p: 看的项目; 接手于: Date }[] = [];
+      for (const 行 of 行们) {
+        const r = 判.get(行.id);
+        if (r && "资格" in r && r.资格.可) 能.push(r.资格);
+      }
+      if (!能.length) return [];
+      // 离超时还剩多久：同超时转那一套（reply-overdue.ts 超时时限们，链在走按链、还没起链按基准算）；不计时的按放弃窗口还剩多久
+      const 时限们 = await 超时时限们(能.map((x) => ({ id: x.p.id, 接手于: x.接手于 })), 现在);
+      return 能
+        .sort((a, b) => b.接手于.getTime() - a.接手于.getTime())
+        .slice(0, 最多)
+        .map(({ p, 接手于 }) => {
+          const 时限 = 时限们.get(p.id) ?? { 种: "窗口" as const, 截止: new Date(接手于.getTime() + 放弃窗口天 * 86_400_000) };
+          return { projectId: p.id, name: p.name, 接手于: 接手于.toISOString(), 时限话: 放弃时限话(时限.种, 时限.截止, 现在) };
+        });
+    });
+  } catch (e) {
+    console.error("[主动放弃] 首页 / 铃铛能放弃的没读出来", e);
+    return [];
+  }
+}
+
+/**
+ * 通知链接带不带「放弃（豁免）」（11-21）：发通知那一刻对收件人能放弃（资格在、可点）才带 ?giveup=1，
+ * 开关关、不给、验证中、本月用过的照旧只给原链接。从不抛（出错 = 原链接，通知照发）
+ */
+export async function 通知放弃链接(userId: string, projectId: string, link: string, 现在: Date = new Date()): Promise<string> {
+  try {
+    return 通知链接带放弃(link, await 放弃资格({ id: userId }, projectId, 现在));
+  } catch (e) {
+    console.warn(`[主动放弃] ${projectId} 通知链接没判成，照旧只给原链接：`, e instanceof Error ? e.message : e);
+    return link;
+  }
 }
 
 export type 放弃结果 = { ok: true; 接手人: string } | { ok: false; error: string };

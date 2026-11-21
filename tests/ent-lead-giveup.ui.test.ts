@@ -4,9 +4,10 @@
  *   - 没选原因、选了其他没写一句：确认钮灰着；点确认调 放弃线索Action(项目, 原因, 补充)，失败把原因写在框里
  *   - 点不了（验证中、本月用过）：按钮灰着，提示条里写为什么
  *   - 电脑 1366、手机 390：不横向撑出
- *   - 设置 → 组织规则里有「销售主动放弃线索（豁免）」，默认关
+ *   - 设置 → 组织规则里有「销售主动放弃线索（豁免）」，默认关；手机 390 宽设置浮层里规则说明正常换行、不横滚（11-21 用户截图）
+ *   - 从通知带 ?giveup=1 打开（11-21）：能放弃 = 自动弹放弃框；点不了 / 不给 / 不是这一条 = 弹一句为什么；弹过去掉参数
  */
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { 补全动作桩 } from "./helpers/action-stubs";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
@@ -16,9 +17,10 @@ let browser: Browser, bundle: string, orgBundle: string;
 const 空跑 = "async()=>({ok:true})";
 const plugin: Plugin = { name: "giveup", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
-  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__refresh=(window.__refresh||0)+1},push(u){(window.__push||(window.__push=[])).push(u)}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
+  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__refresh=(window.__refresh||0)+1},push(u){(window.__push||(window.__push=[])).push(u)}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
   stub(/^\.\/giveup-actions$/, 补全动作桩("src/app/(app)/projects/[id]/giveup-actions.ts",
-    "export const 放弃线索Action=async(...a)=>{(window.__调用||(window.__调用=[])).push(a);return window.__回||{ok:true,接手人:'乙'}};"));
+    "export const 放弃线索Action=async(...a)=>{(window.__调用||(window.__调用=[])).push(a);return window.__回||{ok:true,接手人:'乙'}};" +
+    "export const 放弃说明Action=async(id)=>{(window.__问||(window.__问=[])).push(id);return window.__说明||{可:false,话:'你已经在这条线索（这位客户）上记过有效沟通，不能放弃了'}};"));
   stub(/^\.\/LeadAssignCard$/, "export default function C(){return null}");
   stub(/^\.\/FeishuConnectCard$/, "export default function F(){return null}");
   stub(/^\.\/FeishuPushSwitch$/, "export default function P(){return null}");
@@ -45,22 +47,24 @@ beforeAll(async () => {
     import OrgTab from '@/app/(app)/settings/OrgTab';
     const root=createRoot(document.getElementById('root'));
     const 人=(id,name,bizRole)=>({id,name,deptId:null,bizRole,line:null,managerId:null,dottedManagerId:null});
-    window.__render=()=>root.render(<App><OrgTab value={{
-      部门:[],成员:[人('a','老板','director'),人('b','小王','sales')],能改:true,是老板:true,
-      规则开着:{按组织看客户:false,线索分配:true,字段权限:false,市场复核:true,超时自动转:true,主动放弃:false},字段权限:{},字段权限挡:null,改权限:{},线索分配:null}}/></App>);
+    window.__render=(x)=>{const t=<OrgTab value={{
+      部门:[],成员:[人('a','老板','director'),人('b','小王','sales')],能改:true,是老板:true,线索不设配额:false,
+      规则开着:{按组织看客户:false,线索分配:true,字段权限:false,市场复核:true,超时自动转:true,主动放弃:false},字段权限:{},字段权限挡:null,改权限:{},线索分配:null}}/>;
+      // 浮层 = 设置浮层（SettingsModal）+ 设置栏（SettingsView）的同一套 class
+      root.render(<App>{x&&x.浮层?<div className='setm'><div className='setm-box'><div className='setm-scroll'><div className='set'><div className='set-nav'/><div className='set-body'>{t}</div></div></div></div></div>:t}</App>);};
   `);
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
 type 入口 = { 可: boolean; 为什么?: string; 本月已用: boolean };
-async function open(入口: 入口, o: { width?: number; 有验证?: boolean; 包?: string } = {}) {
+async function open(入口: 入口 | undefined, o: { width?: number; 有验证?: boolean; 包?: string; 地址?: string; 浮层?: boolean } = {}) {
   const width = o.width ?? 1366;
   const page = await browser.newPage({ viewport: { width, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://giveup.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
-  await page.goto("http://giveup.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: o.包 ?? bundle });
-  await page.evaluate(x => (window as unknown as { __render: (x: unknown) => void }).__render(x), { 入口, 有验证: !!o.有验证 });
+  await page.goto(`http://giveup.test${o.地址 ?? "/"}`); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: o.包 ?? bundle });
+  await page.evaluate(x => (window as unknown as { __render: (x: unknown) => void }).__render(x), { 入口, 有验证: !!o.有验证, 浮层: !!o.浮层 });
   return { page, errors };
 }
 const 调用们 = (page: Page) => page.evaluate(() => (window as unknown as { __调用?: unknown[][] }).__调用 ?? []);
@@ -180,4 +184,121 @@ it("设置 → 组织规则：有「销售主动放弃线索（豁免）」，�
     expect(await page.getByTestId("org-rules").innerText()).toContain("每人每月 1 次");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
+});
+
+it("[11-21] 手机 390：设置浮层里组织规则说明正常换行（不挤成一窄列）、浮层不横向滚动；按钮行折行", async () => {
+  const { page, errors } = await open(能, { 包: orgBundle, width: 390, 浮层: true });
+  try {
+    await page.getByTestId("org-rules").waitFor();
+    const 量 = await page.evaluate(() => {
+      const 滚 = document.querySelector(".setm-scroll") as HTMLElement;
+      const 说明们 = [...document.querySelectorAll(".org-rule-say")].map((e) => Math.round(e.getBoundingClientRect().width));
+      return { 横滚: 滚.scrollWidth - 滚.clientWidth, 说明们, 页: document.documentElement.scrollWidth };
+    });
+    expect(量.横滚).toBeLessThanOrEqual(0);
+    expect(量.页).toBeLessThanOrEqual(390);
+    expect(量.说明们.length).toBeGreaterThanOrEqual(6);
+    // 原来 156 宽一窄列；现在说明从开关底下起占满卡片内宽
+    for (const w of 量.说明们) expect(w).toBeGreaterThanOrEqual(260);
+    // 同页别的卡（字段权限、后台设置谁能改、部门、市场部门、回收站副手、无主线索复核人、每个人的部门）：卡里的东西不伸出卡外
+    // （表格在自己的横滚框里滚，不算；框本身不伸出）
+    const 伸出 = await page.evaluate(() => {
+      const 出: string[] = [];
+      for (const 卡 of document.querySelectorAll(".set-body .ant-card")) {
+        const 右 = 卡.getBoundingClientRect().right + 1;
+        const 名 = 卡.querySelector(".ant-card-head-title")?.textContent ?? "";
+        for (const e of 卡.querySelectorAll("*")) {
+          if (e.closest("table") || (e.parentElement && getComputedStyle(e.parentElement).overflowX !== "visible" && e.parentElement !== 卡 && e.parentElement.closest(".ant-card") === 卡 && e.parentElement.scrollWidth > e.parentElement.clientWidth)) continue;
+          const r = e.getBoundingClientRect();
+          if (r.width && r.right > 右) 出.push(`${名}：${(e.className || e.tagName).toString().slice(0, 60)} ${Math.round(r.right)}>${Math.round(右)}`);
+        }
+      }
+      return 出;
+    });
+    expect(伸出).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("[11-21] 1366：规则一条 = 开关 + 名字一行，说明缩进对齐名字", async () => {
+  const { page } = await open(能, { 包: orgBundle, width: 1366, 浮层: true });
+  try {
+    const 条 = page.getByTestId("org-rules").locator(".org-rule").first();
+    const [开关, 名, 说明] = await Promise.all([条.locator(".ant-switch").boundingBox(), 条.locator(".org-rule-name").boundingBox(), 条.locator(".org-rule-say").boundingBox()]);
+    expect(Math.abs(名!.x - 说明!.x)).toBeLessThanOrEqual(1);
+    expect(说明!.x).toBeGreaterThan(开关!.x + 开关!.width);
+    expect(说明!.y).toBeGreaterThanOrEqual(名!.y + 名!.height - 1);
+  } finally { await page.close(); }
+});
+
+describe("[11-21] 从通知带 ?giveup=1 打开", () => {
+  const 地址 = () => (page: Page) => page.evaluate(() => location.pathname + location.search);
+  it.each([1366, 390])("%ipx 能放弃：进页面自动弹放弃框（能完整操作、不横滚），参数从地址里去掉", async (w) => {
+    const { page, errors } = await open(能, { width: w, 地址: "/projects/p1?giveup=1" });
+    try {
+      const 框 = page.getByRole("dialog", { name: "放弃这条线索（豁免）" });
+      await 框.waitFor();
+      await expect.poll(() => 地址()(page)).toBe("/projects/p1");
+      await 框.getByText("其他", { exact: true }).click();
+      await 框.getByTestId("proj-giveup-note").fill("下午去医院");
+      const 盒 = (await 框.boundingBox())!;
+      expect(盒.x).toBeGreaterThanOrEqual(0);
+      expect(盒.x + 盒.width).toBeLessThanOrEqual(w);
+      const 确认 = 框.getByRole("button", { name: "确认放弃" });
+      const 键 = (await 确认.boundingBox())!;
+      expect(键.x + 键.width).toBeLessThanOrEqual(w);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await 确认.click();
+      await page.getByTestId("proj-giveup-done").waitFor();
+      expect(await 调用们(page)).toEqual([["p1", "其他", "下午去医院"]]);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
+  it("客户详情 ?project=<这条>&giveup=1 同样弹框、去掉 giveup、留着 project", async () => {
+    const { page } = await open(能, { 地址: "/customers/c1?project=p1&giveup=1" });
+    try {
+      await page.getByRole("dialog", { name: "放弃这条线索（豁免）" }).waitFor();
+      await expect.poll(() => 地址()(page)).toBe("/customers/c1?project=p1");
+    } finally { await page.close(); }
+  });
+
+  it("入口在但点不了（本月用过）：不弹放弃框，弹一句为什么", async () => {
+    const { page } = await open({ 可: false, 本月已用: true, 为什么: "每人每月只能放弃 1 次，本月已经用过了，下月 1 日起可再用" }, { 地址: "/projects/p1?giveup=1" });
+    try {
+      await page.getByTestId("proj-giveup-cant").waitFor();
+      expect(await page.getByTestId("proj-giveup-cant").innerText()).toContain("本月已经用过了");
+      expect(await page.getByRole("dialog", { name: "放弃这条线索（豁免）" }).count()).toBe(0);
+      await expect.poll(() => 地址()(page)).toBe("/projects/p1");
+      await page.getByTestId("proj-giveup-cant-ok").click();
+      await page.getByTestId("proj-giveup-cant").waitFor({ state: "hidden" });
+    } finally { await page.close(); }
+  });
+
+  it("页上没有入口（不给放弃）：问服务器为什么，弹那一句；不带参数打开的什么都不问", async () => {
+    const { page, errors } = await open(undefined, { width: 390, 地址: "/projects/p1?giveup=1" });
+    try {
+      await page.getByTestId("proj-giveup-cant").waitFor();
+      expect(await page.getByTestId("proj-giveup-cant").innerText()).toContain("记过有效沟通");
+      expect(await page.evaluate(() => (window as unknown as { __问?: string[] }).__问)).toEqual(["p1"]);
+      expect(await page.getByTestId("proj-giveup").count()).toBe(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+    const 平 = await open(undefined, { 地址: "/projects/p1" });
+    try {
+      await 平.page.waitForTimeout(100);
+      expect(await 平.page.getByTestId("proj-giveup-cant").count()).toBe(0);
+      expect(await 平.page.evaluate(() => (window as unknown as { __问?: string[] }).__问 ?? [])).toEqual([]);
+    } finally { await 平.page.close(); }
+  });
+
+  it("客户详情里选中的不是那一条（那条看不到了）：说已不在你名下，不弹放弃框", async () => {
+    const { page } = await open(能, { 地址: "/customers/c1?project=p2&giveup=1" });
+    try {
+      await page.getByTestId("proj-giveup-cant").waitFor();
+      expect(await page.getByTestId("proj-giveup-cant").innerText()).toContain("已经不在你名下");
+      expect(await page.getByRole("dialog", { name: "放弃这条线索（豁免）" }).count()).toBe(0);
+    } finally { await page.close(); }
+  });
 });
