@@ -22,6 +22,7 @@
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { notify } from "./notify";
+import { 带放弃链接 } from "./notice-sources";
 import { 读组织 } from "./org";
 import { 企业版 } from "./switch";
 import { 视图中跳过 } from "./view-as";
@@ -154,7 +155,9 @@ export async function 指定回复提醒扫一遍(现在: Date = new Date()): Pr
           kind: "指定回复",
           title: `指定回复时间 ${时}：${p.name}`,
           body: p.awaitAssignAt ? `这条新线索还在待分配，指定回复时间 ${时}：先分给负责人，或者先联系一次` : `指定回复时间快到了（${时}），联系后在项目上记一条沟通`,
-          link: `/projects/${encodeURIComponent(p.id)}`,
+          // 发给负责人、发这一刻他能放弃（11-21，指定回复提醒 = 线索的再次提醒）：带 ?giveup=1，飞书、铃铛多一个「放弃（豁免）」。
+          // 待分配的发给能分配的人（不是负责人），不带
+          link: p.awaitAssignAt ? `/projects/${encodeURIComponent(p.id)}` : await 带放弃链接(p.ownerId, p.id, `/projects/${encodeURIComponent(p.id)}`, 现在),
           key,
         });
       }

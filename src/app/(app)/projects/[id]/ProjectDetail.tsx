@@ -1843,6 +1843,9 @@ export default function ProjectDetail({
   /** 各种弹窗：项目页和嵌在客户页共用 */
   const 弹窗们 = (
     <>
+      {/* 不给放弃（没有入口：已记有效沟通、开关关了、不是负责人…）：只管从通知带 ?giveup=1 来的那一下，弹一句为什么、去掉参数；
+          平时什么都不画。放这里不放告示里：嵌在客户页时告示块只在公海 / 异常 / 客户在别人名下 / 有入口时才画（3703 实操 11-21） */}
+      {!p.放弃 && <GiveUpBanner projectId={p.id} />}
       {p.线索验证 && (
         <Modal open={验证开着} title="线索验证" footer={null} width={560} onCancel={() => set验证开着(false)} destroyOnHidden>
           <LeadVerifyPanel projectId={p.id} v={p.线索验证} 无效原因选项={p.原因选项.无效} 字数上限={p.字数上限} 跑={跑} 忙={忙} 缺有效沟通话={缺有效沟通话} 不给推={p.不给推} 线索验证必填={p.线索验证必填 ?? []} />
@@ -1982,6 +1985,7 @@ export default function ProjectDetail({
         <Alert type="warning" showIcon style={提示条下距} data-testid="proj-customer-held" title={客户在谁名下话(p.客户在谁名下)} description={`这条线索是系统转给你的（超时未跟进自动转，或同事主动放弃），客户不在你名下；跟进前先和 ${p.客户在谁名下} 通个气，别两个人同时跟同一位客户`} />
       )}
 
+      {/* 给放弃（有入口）：提示条在告示里。不给放弃的那一下（从通知带 ?giveup=1 来，弹一句为什么）挂在 弹窗们 里 */}
       {p.放弃 && <GiveUpBanner projectId={p.id} 入口={p.放弃} 打开判无效={p.线索验证 ? () => set验证开着(true) : undefined} />}
 
       {异常 && (

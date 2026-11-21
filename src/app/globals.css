@@ -491,6 +491,11 @@ html.glass .rail-search { background: color-mix(in srgb, var(--panel) 62%, trans
 /* 带「展开全文」的那条：悬停底色连着按钮一起铺，不让正文和按钮看着像两条 */
 .notice-list > li:has(.notice-more):hover { background: var(--row-hover); }
 .notice-more:hover { text-decoration: underline; }
+/* 铃铛里「放弃（豁免）」（11-21）：和标题对齐（左边让过蓝点），成了换成一句「已放弃，转给 X」；
+   按钮和首页置顶条那两颗同一规格（large + 40 高，.home-giveup-btn），手机上好点 */
+.notice-giveup { margin: -4px 0 0; padding: 0 16px 10px 34px; }
+.notice-giveup-btn { min-height: 40px; }
+.notice-giveup-done { margin: -4px 0 0; padding: 0 16px 10px 34px; color: var(--success-text); font-size: var(--fs-note); overflow-wrap: anywhere; }
 .notice-more:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
 @media (prefers-reduced-motion: reduce) {
   .notice-item { transition: none; }
@@ -3302,6 +3307,24 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
   /* 窄屏下目录压到正文上面，**仍然是单列**——横过来会变成一排挤不下的页签 */
   .set { grid-template-columns: minmax(0, 1fr); }
   .set-nav { position: static; }
+  /* 手机上浮层铺满（11-21 用户截图：390 宽时浮层四周留白 + 滚动区 + 白卡 + antd 卡片层层内边距，组织规则说明挤成 150 宽一窄列）：
+     浮层不再四周留 24px，滚动区、白卡、卡片内边距都收一档 */
+  .setm { padding: 0; }
+  .setm-box { width: 100%; height: 100%; border-radius: 0; border: 0; }
+  .setm-scroll { padding: var(--s4) var(--s3); }
+  .set-body { padding: var(--s3); }
+  .set-body .ant-card-head { padding: 0 var(--s3); }
+  .set-body .ant-card-body { padding: var(--s3); }
+}
+/* 组织规则一条（settings/OrgTab.tsx）：开关 | 名字，说明在名字下面；min-width:0 + 断行，长说明不横向撑出 */
+.org-rules { display: grid; gap: 12px; min-width: 0; }
+.org-rule { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; row-gap: 2px; align-items: center; min-width: 0; }
+.org-rule-name { min-width: 0; overflow-wrap: anywhere; }
+.org-rule-say { grid-column: 2; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.org-rule-sub { grid-column: 2; margin-top: 8px; }
+@media (max-width: 767px) {
+  /* 手机上说明从开关底下起、占满整行 */
+  .org-rule-say, .org-rule-sub { grid-column: 1 / -1; }
 }
 
 /* ---------- 空状态 ----------
@@ -5216,6 +5239,20 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 .home-cth-todo-warn { color: var(--warning-text); }
 .home-cth-todo-s { flex: 1 1 200px; min-width: 0; color: var(--text-muted); font-size: var(--fs-note); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-cth-todo-a { white-space: nowrap; margin-inline-start: auto; }
+/* 首页置顶「新分到你的线索，可以放弃（豁免）」（dashboard/GiveUpHomeTodo.tsx，11-21）：名字 + 时限在左、两颗 40 高的按钮在右；
+   窄了按钮行折到名字下面、两颗各占一半，390 宽首屏可见、不横滚 */
+.home-giveup { display: grid; gap: var(--s2); margin-bottom: 16px; min-width: 0; }
+.home-giveup-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); padding: var(--s3); border: 1px solid var(--warning-line); border-radius: var(--r-card); background: var(--warning-bg); min-width: 0; }
+.home-giveup-main { flex: 1 1 220px; min-width: 0; }
+.home-giveup-t { color: var(--ink); overflow-wrap: anywhere; }
+.home-giveup-name { font-weight: 600; }
+.home-giveup-s { margin-top: 2px; color: var(--warning-text); font-size: var(--fs-note); overflow-wrap: anywhere; }
+.home-giveup-a { display: flex; gap: var(--s2); flex: 0 0 auto; margin-inline-start: auto; }
+.home-giveup-btn { min-height: 40px; }
+@media (max-width: 767px) {
+  .home-giveup-a { flex: 1 1 100%; margin-inline-start: 0; }
+  .home-giveup-a .home-giveup-btn { flex: 1 1 0; min-width: 0; }
+}
 /* 首页「自动分配：前面约 N 条轮到你」（11-18，AssignEtaLine）：主句和估算说明都折行、不省略——说明是客户要求旁注的，不能被截掉 */
 .home-eta-t { white-space: normal; min-width: 0; overflow-wrap: anywhere; }
 .home-eta-note { white-space: normal; overflow-wrap: anywhere; }

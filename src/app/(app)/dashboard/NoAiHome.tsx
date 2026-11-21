@@ -24,10 +24,11 @@ import type { 待回复客户数 } from "@/lib/enterprise/reply-notice";
  * 找谁：企业版能配 AI 的是总管理（能改后台设置），业务角色「管理员」是只读的、配不了（11-03 C5-2）。
  * 原来一律写「请找管理员」，只读管理员自己打开首页看到「请找管理员」，不知道该找谁
  */
-export default function NoAiHome({ 管理员, 找谁 = "管理员", 满额提醒 = [], 待回复主题 = null, 待回复客户 = null, 轮到 = null, 待复核 }: { 管理员: boolean; 找谁?: string; 满额提醒?: 满额提醒[]; 待回复主题?: 待回复主题数 | null; 待回复客户?: 待回复客户数 | null; 轮到?: 轮到 | null; /** 待我复核（审核 11-18 节点 P2-3）：页面画好 <VerifyInbox> 递进来，这里不引 projects/actions */ 待复核?: ReactNode }) {
+export default function NoAiHome({ 管理员, 找谁 = "管理员", 满额提醒 = [], 待回复主题 = null, 待回复客户 = null, 轮到 = null, 待复核, 放弃条 }: { 管理员: boolean; 找谁?: string; 满额提醒?: 满额提醒[]; 待回复主题?: 待回复主题数 | null; 待回复客户?: 待回复客户数 | null; 轮到?: 轮到 | null; /** 待我复核（审核 11-18 节点 P2-3）：页面画好 <VerifyInbox> 递进来，这里不引 projects/actions */ 待复核?: ReactNode; /** 置顶「新分到你的线索，可以放弃（豁免）」（11-21）：页面画好 <GiveUpHomeTodo> 递进来 */ 放弃条?: ReactNode }) {
   const router = useRouter();
   return (
     <>
+      {放弃条}
       <LeadFullNotices 提醒={满额提醒} />
       <CoachTopicTodo 数据={待回复主题} />
       <ReplyDueTodo 数据={待回复客户} />

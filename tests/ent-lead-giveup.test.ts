@@ -23,15 +23,20 @@ import { resetDb } from "./reset";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 规则, 规则开着 } from "@/lib/enterprise/rules";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import { 自动分配线索 } from "@/app/(app)/leads/assign-actions";
+import { 自动分配线索, 分配线索 } from "@/app/(app)/leads/assign-actions";
+import { 分配通知 } from "@/lib/enterprise/notice-sources";
+import { 等通知推完 } from "@/lib/enterprise/notify";
 import { 自动分配不参与key, 不设配额key, 月份 } from "@/lib/enterprise/lead-assign";
 import { 待补数们, 作废补位, 记补位 } from "@/lib/enterprise/invalid-makeup";
 import { 超时转扫一遍, 超时转生效key, 超时通知种类, 改链若持有人是 } from "@/lib/enterprise/reply-overdue";
 import { 是超时自动转痕, 放弃转理由 } from "@/lib/project/timeout";
 import {
-  放弃线索, 放弃资格, 认放弃原因, 新分配时刻, 放弃原因们, 走判无效话, 本月用过话, 放弃通知种类, 在放弃窗口,
+  放弃线索, 放弃资格, 认放弃原因, 新分配时刻, 放弃原因们, 走判无效话, 本月用过话, 放弃通知种类, 在放弃窗口, 放弃资格明细, 不给放弃话,
+  我能放弃的, 首页放弃最多,
 } from "@/lib/enterprise/lead-giveup";
-import { 放弃线索Action } from "@/app/(app)/projects/[id]/giveup-actions";
+import { 读我的通知 } from "@/app/(app)/notice-actions";
+import { 指定回复提醒扫一遍 } from "@/lib/enterprise/reply-notice";
+import { 放弃线索Action, 放弃说明Action } from "@/app/(app)/projects/[id]/giveup-actions";
 import { 刷新页面 } from "@/lib/revalidate-safe";
 import { 估算轮到, 轮到话 } from "@/lib/enterprise/assign-eta";
 import { 读组织 } from "@/lib/enterprise/org";
@@ -196,7 +201,7 @@ describe("点了以后", () => {
     // 照超时转挑人（本线、排除自己）：乙、丙里挑一位
     expect([乙.id, 丙.id]).toContain(p.ownerId);
     const 接 = p.ownerId === 乙.id ? 乙 : 丙;
-    expect(r).toEqual({ ok: true, 接手人: 接.name });
+    expect(r).toMatchObject({ ok: true, 接手人: 接.name });
     // 客户随线索（甲手上没这位客户别的项目）
     expect(p.customer.salesOwnerId).toBe(接.id);
     expect(await prisma.customerOwnerLog.findFirst({ where: { customerId }, select: { kind: true } })).toEqual({ kind: "overdue-assign" });
@@ -380,7 +385,7 @@ describe("点了以后", () => {
     expect(await prisma.entLeadGiveUp.count({ where: { userId: 乙.id } })).toBe(0);
     await setSetting(自动分配不参与key, { [总管.id]: "禁止", [市场.id]: "禁止" });
     invalidateSettingsCache();
-    expect(await 放弃(乙, id, 京("2026-11-20 10:21"))).toEqual({ ok: true, 接手人: "bing" });
+    expect(await 放弃(乙, id, 京("2026-11-20 10:21"))).toMatchObject({ ok: true, 接手人: "bing" });
   });
 
   it("[审查 a] 接手人的分配基准早于超时转生效时刻（这条不计时）：通知里不写「1 小时内记有效沟通」；计时的才写", async () => {
@@ -483,5 +488,212 @@ describe("3703 实操 r22", () => {
     expect(关掉后果.主动放弃).toMatch(/不再出.*放弃（豁免）/);
     expect(关掉后果.主动放弃).toContain("不收回");
     expect(关掉后果.主动放弃).toContain("待补");
+  });
+});
+
+describe("[11-21] 通知直达放弃：分到我的线索、超时提醒的链接带不带 ?giveup=1", () => {
+  /** 市场名下一条新线索（还没分） */
+  const 新线索 = async () => {
+    const cid = (await prisma.customer.create({ data: { name: `待分客户${++序}`, phone: `136${String(序).padStart(8, "0")}`, salesOwnerId: 市场.id } })).id;
+    return (await prisma.project.create({ data: { name: `待分线索${序}`, customerId: cid, ownerId: 市场.id, creatorId: 市场.id, phase: "线索", node: "潜客培育", bizLine: "内贸", flowLine: "内贸" } })).id;
+  };
+  const 那条通知 = async (userId: string, kind: string) => {
+    await 等通知推完();
+    return prisma.entNotice.findFirstOrThrow({ where: { userId, kind }, orderBy: { createdAt: "desc" } });
+  };
+  const 用过本月 = (u: 人) => prisma.entLeadGiveUp.create({ data: { userId: u.id, month: 月份(new Date()), projectId: "x", reason: "外出" } });
+
+  it("自动分配：开关开、能放弃 → 带；开关关 → 不带", async () => {
+    const N = await 新线索();
+    const r = await 以(市场, () => 自动分配线索(N, { 项目: true }));
+    expect(r).toMatchObject({ ok: true });
+    const 收 = (r as { toUserId: string }).toUserId;
+    expect((await 那条通知(收, "自动分配")).link).toBe(`/projects/${N}?giveup=1`);
+    await setSetting(规则.主动放弃.key, false);
+    invalidateSettingsCache();
+    const N2 = await 新线索();
+    const r2 = await 以(市场, () => 自动分配线索(N2, { 项目: true }));
+    expect(r2).toMatchObject({ ok: true });
+    const 收2 = (r2 as { toUserId: string }).toUserId;
+    expect((await 那条通知(收2, "自动分配")).link).toBe(`/projects/${N2}`);
+  });
+
+  it("指定分配：能放弃 → 带；本月用过（点不了）→ 不带", async () => {
+    const N = await 新线索();
+    expect(await 以(市场, () => 分配线索({ projectId: N, toUserId: 甲.id }))).toMatchObject({ ok: true });
+    expect((await 那条通知(甲.id, "分配")).link).toBe(`/projects/${N}?giveup=1`);
+    await 用过本月(乙);
+    const N2 = await 新线索();
+    expect(await 以(市场, () => 分配线索({ projectId: N2, toUserId: 乙.id }))).toMatchObject({ ok: true });
+    expect((await 那条通知(乙.id, "分配")).link).toBe(`/projects/${N2}`);
+  });
+
+  it("同事放弃转来（超时转来同一条路：超时转出 + 分配通知）：接手人那条带；一条通知里几条线索的（去 /leads）不带", async () => {
+    const { id } = await 分来的(甲, new Date(Date.now() - 5 * 60_000));
+    expect(await 放弃(甲, id, new Date())).toMatchObject({ ok: true });
+    const 接 = (await 项目(id)).ownerId;
+    expect((await 那条通知(接, "自动分配")).link).toBe(`/projects/${id}?giveup=1`);
+    const a = await 分来的(丙, new Date());
+    const b = await 分来的(丙, new Date());
+    await 分配通知(市场, [{ projectId: a.id, toUserId: 丙.id }, { projectId: b.id, toUserId: 丙.id }], false);
+    expect((await 那条通知(丙.id, "分配")).link).toBe("/leads");
+  });
+
+  it("超时提醒（给负责人「快超时了」那条）：能放弃 → 带；本月用过 → 不带；开关关 → 不带", async () => {
+    const a = await 分来的(甲, 京("2026-11-20 15:00"));
+    expect(await 超时转扫一遍(京("2026-11-20 16:00"))).toMatchObject({ 提醒: 1 });
+    expect((await 那条通知(甲.id, 超时通知种类)).link).toBe(`/projects/${encodeURIComponent(a.id)}?giveup=1`);
+    await prisma.entLeadGiveUp.create({ data: { userId: 乙.id, month: "2026-11", projectId: "x", reason: "外出" } });
+    const b = await 分来的(乙, 京("2026-11-20 15:30"));
+    expect(await 超时转扫一遍(京("2026-11-20 16:30"))).toMatchObject({ 提醒: 1 });
+    expect((await 那条通知(乙.id, 超时通知种类)).link).toBe(`/projects/${encodeURIComponent(b.id)}`);
+    await setSetting(规则.主动放弃.key, false);
+    invalidateSettingsCache();
+    const c = await 分来的(丙, 京("2026-11-20 15:40"));
+    expect(await 超时转扫一遍(京("2026-11-20 16:40"))).toMatchObject({ 提醒: 1 });
+    expect((await 那条通知(丙.id, 超时通知种类)).link).toBe(`/projects/${encodeURIComponent(c.id)}`);
+  });
+
+  it("放弃资格明细：不给时说为什么（没开 / 不在手上 / 不是新分配 / 过了 7 天 / 记过有效沟通）；放弃说明Action 照回", async () => {
+    const 现在 = 京("2026-11-20 10:10");
+    const { id } = await 分来的(甲, 京("2026-11-20 10:00"));
+    expect(await 放弃资格明细(甲, id, 现在)).toMatchObject({ 资格: { 可: true } });
+    expect(await 放弃资格明细(乙, id, 现在)).toEqual({ 不给: 不给放弃话.不在手上 });
+    expect(await 放弃资格明细(甲, "没有这条", 现在)).toEqual({ 不给: 不给放弃话.不在手上 });
+    const 老 = await 分来的(甲, 京("2026-11-12 10:00"));
+    expect(await 放弃资格明细(甲, 老.id, 现在)).toEqual({ 不给: 不给放弃话.过了窗口 });
+    const cid = (await prisma.customer.create({ data: { name: "自建客户2", phone: "13900000998", salesOwnerId: 甲.id } })).id;
+    const 自建 = await prisma.project.create({ data: { name: "自建2", customerId: cid, ownerId: 甲.id, creatorId: 甲.id, phase: "线索", node: "潜客培育", bizLine: "内贸", createdAt: 京("2026-11-20 10:00") } });
+    expect(await 放弃资格明细(甲, 自建.id, 现在)).toEqual({ 不给: 不给放弃话.不是新分配 });
+    await 记沟通(id, 甲.id, "打通了，客户要报价", 京("2026-11-20 10:06"));
+    expect(await 放弃资格明细(甲, id, 现在)).toEqual({ 不给: 不给放弃话.记过沟通 });
+    // 动作按登录的人、真钟：分来的那条（真钟里刚分）
+    const 新 = await 分来的(乙, new Date(Date.now() - 60_000));
+    mocks.user = { ...乙 };
+    expect(await 以谁的身份(乙.id, () => 放弃说明Action(新.id))).toEqual({ 可: true });
+    mocks.user = { ...甲 };
+    expect(await 以谁的身份(甲.id, () => 放弃说明Action(新.id))).toEqual({ 可: false, 话: 不给放弃话.不在手上 });
+    await setSetting(规则.主动放弃.key, false);
+    invalidateSettingsCache();
+    expect(await 放弃资格明细(甲, id, 现在)).toEqual({ 不给: 不给放弃话.没开 });
+  });
+});
+
+describe("[11-21] 首页置顶条、铃铛按钮：此刻能放弃的才出（我能放弃的，只查本人、一批判）", () => {
+  it("有资格的出、带离超时还剩多久；记过沟通 / 自己建的 / 过了 7 天 / 别人的不出；按接手先后新的在前", async () => {
+    const 现在 = 京("2026-11-20 15:10");
+    const a = await 分来的(甲, 京("2026-11-20 15:00"));
+    const b = await 分来的(甲, 京("2026-11-20 14:50"));
+    const 记过 = await 分来的(甲, 京("2026-11-20 14:00"));
+    await 记沟通(记过.id, 甲.id, "打通了，客户要报价", 京("2026-11-20 14:05"));
+    await 分来的(甲, 京("2026-11-12 10:00")); // 过了 7 天
+    await 分来的(乙, 京("2026-11-20 15:00")); // 别人的
+    const cid = (await prisma.customer.create({ data: { name: "自建客户9", phone: "13900000997", salesOwnerId: 甲.id } })).id;
+    await prisma.project.create({ data: { name: "自建9", customerId: cid, ownerId: 甲.id, creatorId: 甲.id, phase: "线索", node: "潜客培育", bizLine: "内贸", createdAt: 京("2026-11-20 15:00") } });
+    const 们 = await 我能放弃的(甲, 现在);
+    expect(们.map((x) => x.projectId)).toEqual([a.id, b.id]);
+    expect(们[0]).toMatchObject({ name: expect.stringMatching(/^线索/), 接手于: 京("2026-11-20 15:00").toISOString() });
+    // 超时链还没起（钟没扫到，到点才写链）：按分配基准算，15:00 分的 16:00 超时
+    expect(们[0].时限话).toBe("还剩 50 分钟 超时");
+    expect(们[1].时限话).toBe("还剩 40 分钟 超时");
+    // 超时转关着（不计时）：按放弃窗口还剩多久说
+    await setSetting(规则.超时自动转.key, false);
+    invalidateSettingsCache();
+    expect((await 我能放弃的(甲, 现在))[0].时限话).toBe("还剩 6 天 23 小时 可放弃");
+  });
+
+  it("超时链在走：还剩多久超时；发过超时提醒：已超时、还剩多久自动转走", async () => {
+    const a = await 分来的(甲, 京("2026-11-20 15:00"));
+    await 超时转扫一遍(京("2026-11-20 15:05"));
+    expect((await 我能放弃的(甲, 京("2026-11-20 15:10")))[0]).toMatchObject({ projectId: a.id, 时限话: "还剩 50 分钟 超时" });
+    expect(await 超时转扫一遍(京("2026-11-20 16:00"))).toMatchObject({ 提醒: 1 });
+    expect((await 我能放弃的(甲, 京("2026-11-20 16:05")))[0]).toMatchObject({ projectId: a.id, 时限话: "已超时，还剩 25 分钟 自动转走" });
+  });
+
+  it("开关关 / 本月用过 / 切换视图 / 只读身份：一条都没有；最多摆 首页放弃最多 条", async () => {
+    const 现在 = 京("2026-11-20 15:10");
+    for (let i = 0; i < 首页放弃最多 + 2; i++) await 分来的(甲, 京("2026-11-20 15:00"));
+    expect(await 我能放弃的(甲, 现在)).toHaveLength(首页放弃最多);
+    expect(await 我能放弃的(甲, 现在, 50)).toHaveLength(首页放弃最多 + 2);
+    expect(await 我能放弃的({ id: 甲.id, 视图由: { id: 总管.id, name: 总管.name } }, 现在)).toEqual([]);
+    await prisma.entLeadGiveUp.create({ data: { userId: 甲.id, month: "2026-11", projectId: "x", reason: "外出" } });
+    expect(await 我能放弃的(甲, 现在)).toEqual([]);
+    await 分来的(乙, 京("2026-11-20 15:00"));
+    expect(await 我能放弃的(乙, 现在)).toHaveLength(1);
+    await setSetting(规则.主动放弃.key, false);
+    invalidateSettingsCache();
+    expect(await 我能放弃的(乙, 现在)).toEqual([]);
+    await setSetting(规则.主动放弃.key, true);
+    invalidateSettingsCache();
+    await prisma.entMember.update({ where: { userId: 乙.id }, data: { bizRole: "admin" } });
+    忘掉企业版范围();
+    expect(await 我能放弃的(乙, 现在)).toEqual([]);
+  });
+
+  it("验证中的那条不出（点不了的不摆）；同一批里别的照出", async () => {
+    const 现在 = 京("2026-11-20 15:10");
+    const a = await 分来的(甲, 京("2026-11-20 15:00"));
+    const b = await 分来的(甲, 京("2026-11-20 15:01"));
+    await prisma.entLeadVerify.create({ data: { projectId: b.id, pending: "市场复核" } });
+    expect((await 我能放弃的(甲, 现在)).map((x) => x.projectId)).toEqual([a.id]);
+    expect(await 放弃资格(甲, b.id, 现在)).toMatchObject({ 可: false, 为什么: expect.stringContaining("验证中") });
+  });
+
+  it("铃铛：带放弃链接、此刻还能放弃的那条给 放弃项目；能放弃变不能（记了沟通）的、不带链接的不给", async () => {
+    const a = await 分来的(甲, new Date(Date.now() - 5 * 60_000));
+    const b = await 分来的(甲, new Date(Date.now() - 5 * 60_000));
+    await 记沟通(b.id, 甲.id, "打通了，客户要报价", new Date(Date.now() - 60_000));
+    const 发 = (key: string, link: string) => prisma.entNotice.create({ data: { userId: 甲.id, kind: "自动分配", title: key, link, dedupeKey: key, feishuStatus: "没推" } });
+    await 发("n1", `/projects/${a.id}?giveup=1`);
+    await 发("n2", `/projects/${b.id}?giveup=1`);
+    await 发("n3", `/projects/${a.id}`);
+    await 发("n4", "/leads");
+    mocks.user = { ...甲 };
+    const { 行们 } = await 以谁的身份(甲.id, () => 读我的通知());
+    const 按 = Object.fromEntries(行们.map((r) => [r.title, r.放弃项目 ?? null]));
+    expect(按).toEqual({ n1: a.id, n2: null, n3: null, n4: null });
+    // 开关关了：都不给
+    await setSetting(规则.主动放弃.key, false);
+    invalidateSettingsCache();
+    const 关后 = await 以谁的身份(甲.id, () => 读我的通知());
+    expect(关后.行们.every((r) => !r.放弃项目)).toBe(true);
+  });
+});
+
+describe("[11-21 审查] 指定回复提醒也带放弃链接；首页候选按分配时间；放弃结果带客户", () => {
+  it("指定回复提醒（线索的再次提醒）：发给负责人、能放弃 → 带；本月用过 → 不带；开关关 → 不带", async () => {
+    const 提醒链接 = async (u: 人) => (await prisma.entNotice.findFirstOrThrow({ where: { userId: u.id, kind: "指定回复" }, orderBy: { createdAt: "desc" } })).link;
+    const a = await 分来的(甲, 京("2026-11-20 14:00"), { replyStartAt: 京("2026-11-20 15:00") });
+    expect(await 指定回复提醒扫一遍(京("2026-11-20 14:30"))).toBe(1);
+    expect(await 提醒链接(甲)).toBe(`/projects/${encodeURIComponent(a.id)}?giveup=1`);
+    await prisma.entLeadGiveUp.create({ data: { userId: 乙.id, month: "2026-11", projectId: "x", reason: "外出" } });
+    const b = await 分来的(乙, 京("2026-11-20 14:00"), { replyStartAt: 京("2026-11-20 15:10") });
+    expect(await 指定回复提醒扫一遍(京("2026-11-20 14:40"))).toBe(1);
+    expect(await 提醒链接(乙)).toBe(`/projects/${encodeURIComponent(b.id)}`);
+    await setSetting(规则.主动放弃.key, false);
+    invalidateSettingsCache();
+    const c = await 分来的(丙, 京("2026-11-20 14:00"), { replyStartAt: 京("2026-11-20 15:20") });
+    expect(await 指定回复提醒扫一遍(京("2026-11-20 14:50"))).toBe(1);
+    expect(await 提醒链接(丙)).toBe(`/projects/${encodeURIComponent(c.id)}`);
+  });
+
+  it("首页候选按分配时间倒序：新建早、最近才分来的排得进（不按项目建档先后截）", async () => {
+    const 现在 = 京("2026-11-20 15:10");
+    for (let i = 0; i < 4; i++) await 分来的(甲, 京("2026-11-20 14:00"));
+    const 老 = await 分来的(甲, 京("2026-11-20 15:00"), { createdAt: 京("2026-11-10 10:00") });
+    expect((await 我能放弃的(甲, 现在, 1)).map((x) => x.projectId)).toEqual([老.id]);
+  });
+
+  it("[审查 4] 首页候选同一时刻分来的：顺序固定（按项目 id 倒序），和建档先后无关", async () => {
+    const 现在 = 京("2026-11-20 15:10");
+    const 同时 = 京("2026-11-20 15:00");
+    for (const id of ["giveup-tie-a", "giveup-tie-c", "giveup-tie-b"]) await 分来的(甲, 同时, { id });
+    expect((await 我能放弃的(甲, 现在)).map((x) => x.projectId)).toEqual(["giveup-tie-c", "giveup-tie-b", "giveup-tie-a"]);
+    expect((await 我能放弃的(甲, 现在, 2)).map((x) => x.projectId)).toEqual(["giveup-tie-c", "giveup-tie-b"]);
+  });
+
+  it("放弃成了回客户 id、客户去向（铃铛判当前页要不要离开）", async () => {
+    const { id, customerId } = await 分来的(甲, new Date(Date.now() - 5 * 60_000));
+    expect(await 放弃(甲, id, new Date())).toMatchObject({ ok: true, customerId, 客户去向: "跟着走" });
   });
 });

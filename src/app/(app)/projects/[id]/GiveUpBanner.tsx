@@ -6,44 +6,104 @@
  * 点不了（验证中、本月用过）按钮灰着，提示条里写为什么。按钮在提示条正文里（不放 Alert 的 action 位），手机 390 宽也不横向撑出。
  * 放弃成了不刷新本页：线索已经转走，本页（项目页、客户详情项目区）他多半已经看不到了，刷新会落到「找不到」。
  * 提示条换成「已转给 X」，点「知道了」回项目列表
+ *
+ * 从通知直达（11-21，用户「通知里面直接加上这个按钮」）：飞书 / 铃铛里点「放弃（豁免）」= 带 ?giveup=1 打开本页
+ * （项目页，或跳到客户详情 ?project=<id>&giveup=1）。打开那一下：此刻还能放弃 → 自动弹放弃框；入口在但点不了（验证中、本月用过）
+ * 或不给放弃（已记有效沟通、已转走、开关关了…）→ 弹一句为什么（不给的那句问服务器，放弃说明Action）；页上不是那一条 → 说已不在你名下。
+ * 弹过就把参数从地址里去掉（replaceState），刷新不再弹。没有入口时本组件只管这一下，平时什么都不画
  */
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Alert, Button, Input, Modal, Radio, Space } from "antd";
-import { 放弃原因们, 其他原因, 放弃补充上限, 走判无效话, 每月放弃次数, type 放弃入口 } from "@/lib/enterprise/lead-giveup-core";
-import { 有效线索节点 } from "@/lib/project/stage-gates";
-import { 放弃线索Action } from "./giveup-actions";
+import { useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Alert, Button, Modal, Result } from "antd";
+import { 每月放弃次数, 放弃参数, 不在手上话, 去放弃参数, 放弃落地of, 落地对得上, type 放弃入口 } from "@/lib/enterprise/lead-giveup-core";
+import { 放弃说明Action } from "./giveup-actions";
+import GiveUpDialog from "./GiveUpDialog";
+
+/** 页面现拿的答复：页面是旧的、其实能放弃了 */
+const 刷新再点话 = "这条线索现在可以放弃：刷新页面后点「放弃（豁免）」";
+const 没问到话 = "没问到这条能不能放弃，刷新页面看看";
+
+/**
+ * 带 ?giveup=1 打开这一页时做什么（进页面那一下定，之后不变）；弹框 / 说明 / 去参数在 effect 里做。
+ * 回：要不要弹框、要说的那句（问服务器的晚一点到）
+ */
+function useGiveUpLanding(projectId: string, 入口: 放弃入口 | undefined): { 弹框: boolean; 说明: string | null; 关说明: () => void } {
+  const 参数 = useSearchParams();
+  const 路径 = usePathname();
+  const [落地] = useState(() => 放弃落地of(参数?.get(放弃参数) === "1", 落地对得上(projectId, 路径 ?? "", 参数?.get("project") ?? null), 入口));
+  const [弹框, set弹框] = useState(false);
+  const [说明, set说明] = useState<string | null>(null);
+  useEffect(() => {
+    if (落地.做 === "无") return;
+    let 在 = true;
+    // 参数只用这一次：从地址里去掉，刷新、回退不再弹。
+    // 第一个参数必须是 null：Next 的 replaceState 补丁见到带 __NA 的 state（= 原样传 history.state）就不同步路由，
+    // useSearchParams 还带着 giveup=1——之后换挂载点（p.放弃 有→无）会再落地一次，refresh 还会把参数写回地址栏。
+    // 传 null 时 Next 自己补回内部 state、按新地址同步路由，不重新取页面（同 RecordView 的写法）
+    const 现 = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const 新 = 去放弃参数(现);
+    if (新 !== 现) window.history.replaceState(null, "", 新);
+    if (落地.做 === "问服务器") {
+      放弃说明Action(projectId).then((r) => 在 && set说明(r.可 ? 刷新再点话 : r.话)).catch(() => 在 && set说明(没问到话));
+    } else {
+      // 等挂上再开（服务端渲染时不画开着的框）
+      const t = window.setTimeout(() => (落地.做 === "弹框" ? set弹框(true) : set说明(落地.话)), 0);
+      return () => { 在 = false; window.clearTimeout(t); };
+    }
+    return () => { 在 = false; };
+  }, [落地, projectId]);
+  return { 弹框, 说明, 关说明: () => set说明(null) };
+}
+
+/** 弹一句为什么不能放弃（从通知带参数来、又放弃不了） */
+function CantGiveUpModal({ 话, 关 }: { 话: string | null; 关: () => void }) {
+  return (
+    <Modal
+      open={!!话} title="这条线索现在不能放弃" onCancel={关} destroyOnHidden width={400}
+      footer={<Button type="primary" onClick={关} data-testid="proj-giveup-cant-ok">知道了</Button>}
+    >
+      <p className="giveup-lead" data-testid="proj-giveup-cant">{话}</p>
+    </Modal>
+  );
+}
+
+/** 从通知点「放弃（豁免）」来、这条已经进不去了（已转走、已收回、已删）：项目页不落 404，说一句为什么 */
+export function GiveUpGone() {
+  const router = useRouter();
+  return (
+    <Result
+      status="info" title="这条线索现在不能放弃" subTitle={不在手上话} data-testid="proj-giveup-gone"
+      extra={<Button type="primary" onClick={() => router.push(放弃后去)}>回项目列表</Button>}
+    />
+  );
+}
 
 /** 放弃成了点「知道了」去哪：项目列表（销售都能进） */
 const 放弃后去 = "/projects";
 
 export default function GiveUpBanner({ projectId, 入口, 打开判无效 }: {
-  projectId: string; 入口: 放弃入口;
+  /** 不给放弃时不传：只管从通知带参数来的那一下（弹一句为什么），不画提示条 */
+  projectId: string; 入口?: 放弃入口;
   /** 打开项目页「线索验证」弹框（ProjectDetail 验证开着）；这条没有线索验证（还没走到那一步）不传 */
   打开判无效?: () => void;
 }) {
+  const 落地 = useGiveUpLanding(projectId, 入口);
+  if (!入口) return <CantGiveUpModal 话={落地.说明} 关={落地.关说明} />;
+  return <GiveUpBar projectId={projectId} 入口={入口} 打开判无效={打开判无效} 落地={落地} />;
+}
+
+function GiveUpBar({ projectId, 入口, 打开判无效, 落地 }: {
+  projectId: string; 入口: 放弃入口; 打开判无效?: () => void; 落地: ReturnType<typeof useGiveUpLanding>;
+}) {
   const router = useRouter();
   const [开, set开] = useState(false);
-  const [原因, set原因] = useState<string | null>(null);
-  const [补充, set补充] = useState("");
-  const [忙, set忙] = useState(false);
-  const [错, set错] = useState<string | null>(null);
+  // 从通知带参数来、此刻能放弃：进页面就弹框（只这一下；按渲染时比上一次，不用 effect）
+  const [弹过, set弹过] = useState(false);
+  if (落地.弹框 && !弹过) {
+    set弹过(true);
+    set开(true);
+  }
   const [成, set成] = useState<string | null>(null);
-  const 关 = () => { if (!忙) { set开(false); set错(null); } };
-  const 交 = async () => {
-    if (!原因) { set错("先选放弃原因"); return; }
-    set忙(true); set错(null);
-    try {
-      const r = await 放弃线索Action(projectId, 原因, 原因 === 其他原因 ? 补充 : "");
-      if (!r.ok) { set错(r.error); return; }
-      set开(false);
-      set成(`已放弃，转给了 ${r.接手人}；已给你记 1 条待补`);
-    } catch {
-      set错("网络没连上，这次没放弃，稍后再点");
-    } finally {
-      set忙(false);
-    }
-  };
   if (成) {
     return (
       <Alert
@@ -70,33 +130,11 @@ export default function GiveUpBanner({ projectId, 入口, 打开判无效 }: {
           </div>
         )}
       />
-      <Modal
-        open={开} title="放弃这条线索（豁免）" okText="确认放弃" cancelText="再想想"
-        okButtonProps={{ danger: true, loading: 忙, disabled: !原因 || (原因 === 其他原因 && !补充.trim()), ...{ "data-testid": "proj-giveup-ok" } }}
-        onCancel={关} onOk={() => void 交()} destroyOnHidden
-      >
-        <p className="giveup-lead">每人每月只能放弃 {每月放弃次数} 次。确认后这条线索立即转给本线下一位同事（接手人照记一次分配），你原来这条照算、不退名额，另给你记 1 条待补。转不出去时不扣次数。</p>
-        <div className="giveup-label"><b>放弃原因</b>（必选）</div>
-        <Radio.Group value={原因} onChange={(e) => { set原因(e.target.value as string); set补充(""); set错(null); }} data-testid="proj-giveup-reason">
-          <Space orientation="vertical">
-            {放弃原因们.map((r) => <Radio key={r} value={r}>{r}</Radio>)}
-          </Space>
-        </Radio.Group>
-        {原因 === 其他原因 && (
-          <Input.TextArea
-            className="giveup-note" rows={2} maxLength={放弃补充上限} showCount placeholder="写一句为什么放弃" aria-label="放弃补充说明"
-            value={补充} onChange={(e) => { set补充(e.target.value); set错(null); }} data-testid="proj-giveup-note"
-          />
-        )}
-        <div className="giveup-hint" data-testid="proj-giveup-invalid-hint">
-          {走判无效话}
-          <Button type="link" size="small" data-testid="proj-giveup-to-invalid" onClick={() => {
-            if (打开判无效) { set开(false); set错(null); 打开判无效(); }
-            else set错(`这条还没走到「线索·${有效线索节点}」：先把进程推到那一步，再在「线索验证」里判无效`);
-          }}>去判无效</Button>
-        </div>
-        {错 && <Alert type="error" showIcon className="giveup-error" title={错} data-testid="proj-giveup-error" />}
-      </Modal>
+      <CantGiveUpModal 话={落地.说明} 关={落地.关说明} />
+      <GiveUpDialog
+        projectId={projectId} 开={开} 关={() => set开(false)} 打开判无效={打开判无效}
+        成={(接手人) => { set开(false); set成(`已放弃，转给了 ${接手人}；已给你记 1 条待补`); }}
+      />
     </>
   );
 }

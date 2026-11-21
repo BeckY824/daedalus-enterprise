@@ -72,7 +72,7 @@
   "app/(app)/settings/LineDeptCard.tsx": 6,
   "app/(app)/settings/MembersTab.tsx": 12,
   "app/(app)/settings/OrgSyncCard.tsx": 12,
-  "app/(app)/settings/OrgTab.tsx": 27,
+  "app/(app)/settings/OrgTab.tsx": 23,
   "app/(app)/settings/PasswordTab.tsx": 7,
   "app/(app)/settings/ProfileTab.tsx": 6,
   "app/(app)/settings/ProjectSettingsTab.tsx": 108,

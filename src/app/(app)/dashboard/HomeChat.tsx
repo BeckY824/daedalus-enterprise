@@ -44,7 +44,7 @@ export type 首页信号 = {
   逾期: number; 高意向: number; 本月签约: { 币种: string; 合计: number }[]; 高意向标签: string;
 };
 
-export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, context, models, 空库, 信号, 模式 = "宽", 上下文提示, 上下文范围, scope = 首页屏, 标题前缀, 自己服务器 = false, 去导入 = false, 企业版 = false, 满额提醒 = [], 待回复主题 = null, 待回复客户 = null, 轮到 = null, 待复核, 渠道名们, 要下一步 = false, 新线索企业: 企业格, 产品名, 指标卡 }: {
+export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, context, models, 空库, 信号, 模式 = "宽", 上下文提示, 上下文范围, scope = 首页屏, 标题前缀, 自己服务器 = false, 去导入 = false, 企业版 = false, 满额提醒 = [], 待回复主题 = null, 待回复客户 = null, 轮到 = null, 待复核, 放弃条, 渠道名们, 要下一步 = false, 新线索企业: 企业格, 产品名, 指标卡 }: {
   /** 地址上 ?c= 指的那条对话，服务端读好传进来。null = 一屏新对话 */
   会话: { id: string; title: string; messages: 历史消息[] } | null;
   userName: string;
@@ -94,6 +94,8 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
   轮到?: 轮到 | null;
   /** 企业版首页待办「待我复核」（审核 11-18 节点 P2-3）：线索验证轮到我拍板的；页面画好 <VerifyInbox> 递进来（这里不引 projects/actions）；没有 = 不画 */
   待复核?: ReactNode;
+  /** 企业版首页置顶「新分到你的线索，可以放弃（豁免）」（11-21，GiveUpHomeTodo）：页面画好递进来；没有 = 不画。排在所有待办最前 */
+  放弃条?: ReactNode;
   /** 首页才给：企业版只用项目时启用中的渠道名。给了就摆「名片」键，新建线索卡的来源从这里选 */
   渠道名们?: string[];
   /** 企业版开了超时回收：新线索卡的下一步时间必填 */
@@ -144,6 +146,7 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
 
   const 对话列 = (
     <div className={`cli-col${外框 ? " cli-frame" : ""}`}>
+      {!窄 && 放弃条}
       {!窄 && <LeadFullNotices 提醒={满额提醒} />}
       {!窄 && <CoachTopicTodo 数据={待回复主题} />}
       {!窄 && <ReplyDueTodo 数据={待回复客户} />}

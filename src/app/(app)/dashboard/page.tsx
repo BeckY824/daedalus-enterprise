@@ -34,6 +34,8 @@ import { 数首页卡 } from "@/lib/project/home-cards-db";
 import { 待我复核的 } from "@/lib/project/lead-verify";
 import { 权限组织, 读组织 } from "@/lib/enterprise/org";
 import { 能改后台设置, 是管理层 } from "@/lib/enterprise/permissions";
+import { 我能放弃的 } from "@/lib/enterprise/lead-giveup";
+import GiveUpHomeTodo from "./GiveUpHomeTodo";
 
 import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 export const dynamic = "force-dynamic";
@@ -72,6 +74,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   */
   const sp0 = await searchParams;
   const 对话 = sp0.c ? await 读对话(sp0.c) : null;
+  // 企业版首页置顶「新分到你的线索，可以放弃（豁免）」（11-21）：只查本人、一批判（lead-giveup.ts 我能放弃的）；先发出去，和下面几样待办一起等（它从不抛）
+  const 能放弃P = 企业版() ? 我能放弃的(user) : Promise.resolve([]);
   // 企业版自动分配因都已满额没分出去的提醒：首页顶部也摆一份，和线索页同一份数据，哪边关了两边都没了
   const 满额提醒们 = 企业版() ? await 读满额提醒(user.id) : [];
   // 企业版首页待办「待回复主题」（11-17，教练主题）：我负责的项目上等我回的
@@ -83,6 +87,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   // 企业版首页待办「待我复核」（审核 11-18 节点 P2-3，P-线索-02 / 03）：和项目列表、客户页同一份数据（能拍板的人）；读不出来不挡首页
   const 待复核们 = 企业版() ? (await 待我复核的(user).catch((e) => { console.error("[待我复核] 首页没读出来", e); return []; })).map((r) => ({ ...r, 更新于: r.更新于.toISOString() })) : [];
   const 待复核 = 待复核们.length ? <VerifyInbox 们={待复核们} /> : undefined;
+  // 开关关 / 本月用过 / 没资格 = 空、不画（组件自己不画），出错不挡首页。
+  // 企业版一直挂着、不按条数挂：放弃成了 router.refresh() 后本月次数用完、列表变空，组件不能被卸掉，
+  // 不然「已放弃「X」，转给 某某」那句跟着一闪就没（3703 实操 11-21）
+  const 能放弃们 = await 能放弃P;
+  const 放弃条 = 企业版() ? <GiveUpHomeTodo 们={能放弃们} /> : undefined;
   // 企业版项目：首页是对话 + 右侧四张指标卡（10-29 首页改版），其余数据在「复盘」页
   const 只用项目 = await 企业版只用项目();
   if (!(await llmEnabled())) {
@@ -98,7 +107,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     }
     // 老的数据看板（Board / DashboardView）10-28 删了：企业版只用项目，没配 AI 的首页一律是这一屏
     // 「去设置里配 AI」那个按钮：能改后台设置的人才摆（企业版 = 总管理，11-01 只认业务角色）
-    return <NoAiHome 管理员={企业版() ? 能改后台设置(user, await 权限组织()) : user.role === "ADMIN"} 找谁={企业版() ? "总管理" : "管理员"} 满额提醒={满额提醒们} 待回复主题={待回复主题} 待回复客户={待回复客户} 轮到={轮到} 待复核={待复核} />;
+    return <NoAiHome 管理员={企业版() ? 能改后台设置(user, await 权限组织()) : user.role === "ADMIN"} 找谁={企业版() ? "总管理" : "管理员"} 满额提醒={满额提醒们} 待回复主题={待回复主题} 待回复客户={待回复客户} 轮到={轮到} 待复核={待复核} 放弃条={放弃条} />;
   }
 
   if (只用项目) {
@@ -151,6 +160,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         待回复客户={待回复客户}
         轮到={轮到}
         待复核={待复核}
+        放弃条={放弃条}
         渠道名们={[...渠道.map((c) => c.name), /* 渠道触点（P-渠道-08）也能选：主渠道留空、记触点（apply.ts） */ ...渠道触点们.filter((x) => !渠道.some((c) => c.name === x))]}
         要下一步={规则.超时回收.开}
         新线索企业={新线索企业格}

@@ -8,6 +8,7 @@ import { DownOutlined } from "@ant-design/icons";
 import { FoldSplit, ProjectFold, 模块钮色 } from "../../projects/[id]/ProjectFold";
 import ProjectDetail, { type 项目详情Props } from "../../projects/[id]/ProjectDetail";
 import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
+import { 放弃参数 } from "@/lib/enterprise/lead-giveup-core";
 import type { 项目区槽 } from "./types";
 import type { 项目动作键 } from "../../projects/[id]/project-menu";
 
@@ -240,6 +241,8 @@ export default function ProjectZone({ 数据, 槽, 挂动作, 报忙 }: { 数据
     if (!要 || 要 === 显示的) return;
     if (显示的) 现在.set("project", 显示的);
     else 现在.delete("project");
+    // 放弃参数只给打开那一下用（GiveUpBanner 落地时已读、已从地址去掉）；这里拿的是旧参数串，不去掉会写回地址栏
+    现在.delete(放弃参数);
     const 查 = 现在.toString();
     router.replace(`${客户页}${查 ? `?${查}` : ""}${window.location.hash}`, { scroll: false });
   }, [参数字, 显示的, 客户页, router]);

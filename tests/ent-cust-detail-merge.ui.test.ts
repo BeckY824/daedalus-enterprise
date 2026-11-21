@@ -42,7 +42,8 @@ const plugin: Plugin = { name: "cust-detail-merge", setup(b) {
   stub(/(^|\/)schedule-actions$/, 补全动作桩("src/app/(app)/leads/schedule-actions.ts", `const f=${空跑};export const 改定时分配=f,取消定时分配=f,定时分配现在分=f;`));
   stub(/^\.\.\/payment-actions$/, `const f=${空跑};export const 记回款=f,删回款=f;`);
   stub(/readonly-card-actions$/, 补全动作桩("src/app/(app)/projects/[id]/readonly-card-actions.ts", "export const 打开客户只读卡Action=async()=>({ok:false,error:'桩'});"));
-  stub(/giveup-actions$/, 补全动作桩("src/app/(app)/projects/[id]/giveup-actions.ts", ""));
+  stub(/giveup-actions$/, 补全动作桩("src/app/(app)/projects/[id]/giveup-actions.ts",
+    "export const 放弃说明Action=async(id)=>{(window.__问||(window.__问=[])).push(id);return {可:false,话:'你已经在这条线索（这位客户）上记过有效沟通，不能放弃了'}};"));
   stub(/^\.\/blocker-actions$/, `const f=${空跑};export const 发布卡点Action=f,认领卡点Action=f,完成卡点Action=f,删卡点Action=f,存卡点默认Action=f,存卡点角色开关Action=f,新增原因Action=f,改原因名Action=f,改原因状态Action=f,删原因Action=f,合并原因Action=f;`);
   stub(/^\.\.\/relate-actions$/, `const f=${空跑};export const 加关联客户Action=f,改客户身份Action=f,解除关联客户Action=f,加关联联系人Action=f,改联系人角色立场Action=f,解除关联联系人Action=f,搜项目联系人=async()=>[];`);
   stub(/project-only-contact-actions$/, `const f=${空跑};export const 新增仅项目联系人Action=f,改仅项目联系人Action=f;`);
@@ -648,6 +649,9 @@ it("地址上的 ?project= 读不出来、服务端换成了别的：地址改�
     await expect.poll(() => page.evaluate(() => (window as unknown as { __换?: string }).__换)).toBe("/customers/a?focus=plan%3Ax&project=p1&tab=2");
     await 画(page, { 地址: "focus=plan:x&project=p2", 空: true });
     await expect.poll(() => page.evaluate(() => (window as unknown as { __换?: string }).__换)).toBe("/customers/a?focus=plan%3Ax");
+    // 审查 2：从通知带 giveup=1 来、那条看不了：改地址时一并去掉 giveup（拿的是旧参数串，不去掉会把它写回地址栏）
+    await 画(page, { 地址: "project=看不了的&giveup=1&focus=plan:x" });
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __换?: string }).__换)).toBe("/customers/a?project=p1&focus=plan%3Ax");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -753,4 +757,34 @@ it.each([1366, 1024, 390, 375])("号码格编辑态 %ipx：号码框看得清，
     expect(m.页横滚, `${w}`).toBeLessThanOrEqual(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
+});
+
+it("[3703 实操 11-21] 从通知带 ?giveup=1 跳到客户详情、这条没有放弃入口（告示块不画）：照样弹为什么不能放弃，弹后去掉 giveup、留着 project；不带参数的什么都不多", async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 812 } }); page.setDefaultTimeout(5000);
+  const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+  await page.route("http://cust-merge.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+  await page.goto("http://cust-merge.test/customers/a?project=p1&giveup=1"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
+  try {
+    await 画(page, { 地址: "project=p1&giveup=1" });
+    // p1：不在公海、没异常、客户在自己名下、没有放弃入口 → 告示块不画
+    expect(await page.locator(".cd-notice").count()).toBe(0);
+    await page.getByTestId("proj-giveup-cant").waitFor();
+    expect(await page.getByTestId("proj-giveup-cant").innerText()).toContain("记过有效沟通");
+    expect(await page.evaluate(() => (window as unknown as { __问?: string[] }).__问)).toEqual(["p1"]);
+    await expect.poll(() => page.evaluate(() => location.pathname + location.search)).toBe("/customers/a?project=p1");
+    expect(await page.getByTestId("proj-giveup").count()).toBe(0);
+    await page.getByTestId("proj-giveup-cant-ok").click();
+    await page.getByTestId("proj-giveup-cant").waitFor({ state: "hidden" });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+  const { page: 平, errors: 平错 } = await 开(390, { 地址: "project=p1" });
+  try {
+    await 平.waitForTimeout(150);
+    expect(await 平.getByTestId("proj-giveup-cant").count()).toBe(0);
+    expect(await 平.locator(".ant-modal").count()).toBe(0);
+    expect(await 平.locator(".cd-notice").count()).toBe(0);
+    expect(await 平.evaluate(() => (window as unknown as { __问?: string[] }).__问 ?? [])).toEqual([]);
+    expect(平错).toEqual([]);
+  } finally { await 平.close(); }
 });

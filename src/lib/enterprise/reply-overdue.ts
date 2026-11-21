@@ -111,7 +111,7 @@ import { 系统, 超时自动转理由, 是超时自动转痕 } from "@/lib/proj
 import { 指定回复文字, 短时刻, 客户在谁名下话, 分配后未跟进话 } from "@/lib/project/time-fields";
 import { 超时转出 } from "@/app/(app)/leads/assign-actions";
 import { notify } from "./notify";
-import { 分配通知 } from "./notice-sources";
+import { 分配通知, 带放弃链接 } from "./notice-sources";
 import { 企业版 } from "./switch";
 import { 视图中跳过 } from "./view-as";
 import { 已回复的, 是有效沟通, 不是沟通的类型 } from "./reply-notice";
@@ -465,30 +465,7 @@ async function 链上的(现在: Date, 生效: Date, 历史: Date | null, org: �
   for (const p of 行们) {
     const 行 = p.replyOverdue;
     const 在走 = !!行 && !行.stoppedAt;
-    const 痕 = 痕of.get(p.id) ?? [], 分 = 分配of.get(p.id) ?? [];
-    const 导入的 = 导入.has(p.id);
-    const 分起 = 分配基准(p, 痕, 分, 客户换人of.get(p.customerId) ?? [], 是销售(org, p.ownerId), 导入的);
-    let 基 = 超时基准(p);
-    let 按分配 = !基;
-    if (!基) {
-      // 还在走、按分配起的链：基准钉在起链那一刻（分配、换人、销售自建的建档那一刻），中途手动换人、轮转不重来（走一步 按新负责人接手那刻接着算）
-      基 = 行 && 在走 && 是分配时刻(行.anchorAt, 痕, 分, p.createdAt) ? 行.anchorAt : 分起;
-    } else if (基.getTime() < 生效.getTime() && 分起 && 分起.getTime() >= 生效.getTime()) {
-      // 生效后新分配、带着生效前的旧指定回复时间（分配时不清回复时间，11-20 审查）：旧时间不算，改按分配走（基准 = 分配基准，钉法同上）。
-      // 只在旧回复时间早于生效时刻时改：生效以后约的回复时间照旧按时（分配晚于它的从接手那刻算，「往回看 7 天」那条用例）
-      基 = 行 && 在走 && 是分配时刻(行.anchorAt, 痕, 分, p.createdAt) ? 行.anchorAt : 分起;
-      按分配 = true;
-    } else if (在走 ? !!分起 && 分起.getTime() < 生效.getTime() : !分起 || 分起.getTime() < 生效.getTime()) {
-      // 按时（填了指定回复时间）也只计生效以后被分配 / 销售自建 / 销售自领的（11-20 Even 两步走第一步）：分配基准算不出或早于生效时刻 = 不计时。
-      // 还在走的链只在算得出、且早于生效时刻时停（轮转、中途换人以后算不出 = 照走，同按分配钉住基准）
-      基 = null;
-    }
-    // 历史数据起算（见文件头）：基准算不出、或早于生效时刻的线索，按历史基准、按分配那一套走；不受起链窗口限制
-    const 历史的 = !!历史 && (!基 || 基.getTime() < 生效.getTime()) && !!p.ownerId && !自留不计(org, p, 导入的);
-    if (历史的) {
-      基 = 历史基准(历史!, 生效, p.createdAt);
-      按分配 = true;
-    }
+    const { 基, 按分配, 历史的 } = 算链基(p, { 痕of, 分配of, 客户换人of }, 导入.has(p.id), org, 生效, 历史);
     // 生效时刻以前的分配 / 约定不计时（11-20 事故）：还在走的停掉
     if (!基 || 基.getTime() < 生效.getTime()) {
       if (在走) 没基准的.push(p.id);
@@ -499,6 +476,76 @@ async function 链上的(现在: Date, 生效: Date, 历史: Date | null, org: �
     们.push({ ...p, 基, 按分配, ...(历史的 ? { 历史: true } : {}) });
   }
   return { 们, 没基准的 };
+}
+
+/**
+ * 一条项目的超时基准（链上的 每条都这样算，首页「离超时还剩多久」超时时限们 同一份）：
+ * 按时 = 指定回复时间；没填 / 生效前的旧时间 = 按分配（分配基准）；算不出、早于生效时刻的按历史起算（开了的话）。
+ * 基 = null = 不计时。调用方再判「早于生效时刻」「停了的链基准没变」「起链窗口」
+ */
+function 算链基(p: 链行, 记录: 换人记录, 导入的: boolean, org: 组织, 生效: Date, 历史: Date | null): { 基: Date | null; 按分配: boolean; 历史的: boolean } {
+  const 行 = p.replyOverdue;
+  const 在走 = !!行 && !行.stoppedAt;
+  const 痕 = 记录.痕of.get(p.id) ?? [], 分 = 记录.分配of.get(p.id) ?? [];
+  const 分起 = 分配基准(p, 痕, 分, 记录.客户换人of.get(p.customerId) ?? [], 是销售(org, p.ownerId), 导入的);
+  let 基 = 超时基准(p);
+  let 按分配 = !基;
+  if (!基) {
+    // 还在走、按分配起的链：基准钉在起链那一刻（分配、换人、销售自建的建档那一刻），中途手动换人、轮转不重来（走一步 按新负责人接手那刻接着算）
+    基 = 行 && 在走 && 是分配时刻(行.anchorAt, 痕, 分, p.createdAt) ? 行.anchorAt : 分起;
+  } else if (基.getTime() < 生效.getTime() && 分起 && 分起.getTime() >= 生效.getTime()) {
+    // 生效后新分配、带着生效前的旧指定回复时间（分配时不清回复时间，11-20 审查）：旧时间不算，改按分配走（基准 = 分配基准，钉法同上）。
+    // 只在旧回复时间早于生效时刻时改：生效以后约的回复时间照旧按时（分配晚于它的从接手那刻算，「往回看 7 天」那条用例）
+    基 = 行 && 在走 && 是分配时刻(行.anchorAt, 痕, 分, p.createdAt) ? 行.anchorAt : 分起;
+    按分配 = true;
+  } else if (在走 ? !!分起 && 分起.getTime() < 生效.getTime() : !分起 || 分起.getTime() < 生效.getTime()) {
+    // 按时（填了指定回复时间）也只计生效以后被分配 / 销售自建 / 销售自领的（11-20 Even 两步走第一步）：分配基准算不出或早于生效时刻 = 不计时。
+    // 还在走的链只在算得出、且早于生效时刻时停（轮转、中途换人以后算不出 = 照走，同按分配钉住基准）
+    基 = null;
+  }
+  // 历史数据起算（见文件头）：基准算不出、或早于生效时刻的线索，按历史基准、按分配那一套走；不受起链窗口限制
+  const 历史的 = !!历史 && (!基 || 基.getTime() < 生效.getTime()) && !!p.ownerId && !自留不计(org, p, 导入的);
+  if (历史的) {
+    基 = 历史基准(历史!, 生效, p.createdAt);
+    按分配 = true;
+  }
+  return { 基, 按分配, 历史的 };
+}
+
+/** 首页「离超时还剩多久」：超时 = 到这一刻还没记有效沟通就发超时提醒；转走 = 已发超时提醒，到这一刻自动转走 */
+export type 超时时限 = { 种: "超时" | "转走"; 截止: Date };
+
+/**
+ * 这几条（同一位负责人手上的线索）离超时还剩多久（主动放弃首页置顶条用，lead-giveup.ts 我能放弃的，11-21）。只读，查询次数和条数无关。
+ *   - 超时转关着 = 空
+ *   - 链在走、持有人是现负责人：没发超时提醒 = 计时起点 + 1 小时（夜里顺延）；发过 = 提醒时刻 + 30 分钟
+ *   - 还没起链（钟一分钟扫一遍，到点才写链）/ 链停了基准变了：基准同 链上的（算链基），早于生效时刻 = 不计时；
+ *     计时起点 = 基准和 接手于（这位负责人接手那一刻）取晚的（同 走一步 新起链）
+ *   - 链在走、持有人换了（手动换人还没扫到）：从 接手于 起算
+ */
+export async function 超时时限们(们: readonly { id: string; 接手于: Date }[], 现在: Date = new Date()): Promise<Map<string, 超时时限>> {
+  const 结果 = new Map<string, 超时时限>();
+  if (!们.length || !企业版() || !(await 超时自动转开着())) return 结果;
+  const 接手of = new Map(们.map((x) => [x.id, x.接手于]));
+  const 行们: 链行[] = await prisma.project.findMany({ where: { id: { in: 们.map((x) => x.id) } }, select: 链上列 });
+  const [生效, 历史, org, 记录, 导入] = await Promise.all([
+    超时转生效时刻(现在), 历史起算时刻(现在), 读组织于(prisma), 换人记录of(行们, new Date(现在.getTime() - (分配起链往回看天 + 1) * 天)),
+    导入建的of(行们.filter((p) => !!p.ownerId && p.ownerId === p.creatorId).map((p) => p.id)),
+  ]);
+  for (const p of 行们) {
+    const 行 = p.replyOverdue;
+    const 接手 = 接手of.get(p.id) ?? 现在;
+    if (行 && !行.stoppedAt) {
+      if (行.holderId !== p.ownerId) 结果.set(p.id, { 种: "超时", 截止: 超时提醒到期(接手) });
+      else 结果.set(p.id, 行.overdueAt ? { 种: "转走", 截止: 超时转出到期(行.overdueAt) } : { 种: "超时", 截止: 超时提醒到期(行.since) });
+      continue;
+    }
+    const { 基 } = 算链基(p, 记录, 导入.has(p.id), org, 生效, 历史);
+    if (!基 || 基.getTime() < 生效.getTime()) continue;
+    if (行 && 行.anchorAt.getTime() === 基.getTime()) continue; // 停了的链、基准没变：不再计时
+    结果.set(p.id, { 种: "超时", 截止: 超时提醒到期(new Date(Math.max(基.getTime(), 接手.getTime()))) });
+  }
+  return 结果;
 }
 
 /** 历史候选接着往后取的位置（进程里记着；多进程只一个进程跑钟） */
@@ -749,7 +796,8 @@ async function 发超时提醒(p: 链项目, since: Date, 接手的: boolean, �
     kind: 超时通知种类,
     title: `超时未跟进：${p.name}`,
     body: 分来 ? `${头}。${本人记话}，${转时} 前还没记，这条线索会自动收回、分给其他成员` : `${头}。${本人记话}。${自留超时话}`,
-    link: `/projects/${encodeURIComponent(p.id)}`,
+    // 发这一刻他还能放弃（11-21）：带 ?giveup=1，飞书、铃铛多一个「放弃（豁免）」
+    link: await 带放弃链接(p.ownerId, p.id, `/projects/${encodeURIComponent(p.id)}`, 现在),
     key: `reply-overdue:${p.id}:${p.ownerId}:${since.toISOString()}`,
   });
 }
