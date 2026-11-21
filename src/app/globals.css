@@ -4438,8 +4438,9 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
   .rec-head:has(> .rec-head-acts) { flex-wrap: nowrap; }
   .rec-head:has(> .rec-head-acts) > .rec-head-id { flex: 0 1 auto; min-width: 8em; }
 }
-/* 11-21 教练点评改版 PR1（方案 §2 手机 375）：名字一行，下面一行「发起点评 ▾」「更多操作 ▾」两颗各占一半；只有一颗就占满这一行 */
-@media (max-width: 767px) {
+/* 11-21 教练点评改版 PR1（方案 §2 手机 375）：名字一行，下面一行「发起点评 ▾」「更多操作 ▾」两颗各占一半；只有一颗就占满这一行。
+   只管手机竖屏宽（≤575，同 antd xs）：576–767 的窄窗口（如 700）照 11-12 的规矩，按钮留在客户名那一行右端，放不下才自然折行 */
+@media (max-width: 575px) {
   .rec-head > .rec-head-acts { flex: 1 1 100%; min-width: 0; }
   .rec-head > .rec-head-acts > .ant-btn { flex: 1 1 0; min-width: 0; }
 }
