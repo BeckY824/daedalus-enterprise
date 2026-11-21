@@ -23,6 +23,7 @@ import { useFormGuard } from "@/lib/form-guard";
 import InlineConfirm from "@/components/InlineConfirm";
 import { 跑出原因, type 做的结果 } from "@/lib/confirm-result";
 import { 动作出错话 } from "@/lib/stale-deploy";
+import { useIsNowSkin } from "@/lib/use-skin";
 
 /*
   与客户的关系。取值有限却不封闭（教培里有姑姑、哥哥，公司里有「副总」），
@@ -150,6 +151,8 @@ export default function ContactForm({
   const [存着, set存着] = useState(false);
   /** 企业版姓名、联系方式一项都没填就点保存（设计语言 D3 · M4-d，D03）：两格一起标红，原因写在联系方式下面 */
   const [两格红, set两格红] = useState(false);
+  /** 设计语言 D3 的标题、规矩行只在现状主题出（use-skin.ts） */
+  const 新样 = useIsNowSkin();
   /** 彻底删除没删成的原因：就地写在删除键旁（不弹顶部提示） */
   const [删错, set删错] = useState<string | null>(null);
   /**
@@ -343,7 +346,7 @@ export default function ContactForm({
       {守.提示}
       <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={() => { 守.改了(); 查序.current++; if (撞号) set撞号(null); if (回收站号) set回收站号(null); if (两格红) set两格红(false); }}>
         {/* 设计语言 D3 · M4-d（D03）：规矩先写在上面，不等点了保存才知道 */}
-        {企业 && <div className="cf-rule">姓名、联系方式至少填一项</div>}
+        {企业 && 新样 && <div className="cf-rule">姓名、联系方式至少填一项</div>}
         <Row gutter={16}>
           {/* 从联系人列表进来时先选人：联系人挂在某一位学员下面，没有归属的联系人没有意义 */}
           {!customerId && (
@@ -474,7 +477,10 @@ export default function ContactForm({
     </>
   );
   // 设计语言 D3 · M4-b / M4-d（D14）：新建叫「新建联系人」；编辑时名字空着只写「编辑联系人」，不写「· —」
-  const 题 = record ? (record.name?.trim() ? `编辑联系人 · ${record.name}` : "编辑联系人") : "新建联系人";
+  // 换皮主题照旧（用户 11-21「主题不动」）
+  const 题 = 新样
+    ? record ? (record.name?.trim() ? `编辑联系人 · ${record.name}` : "编辑联系人") : "新建联系人"
+    : record ? `编辑联系人 · ${record.name || "—"}` : "添加联系人";
 
   return (
     <Modal

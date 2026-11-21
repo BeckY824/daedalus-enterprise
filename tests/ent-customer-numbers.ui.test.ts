@@ -89,6 +89,11 @@ const 量 = (page: import("playwright").Page) => page.evaluate(() => {
       键: f.querySelector(".rec-field-k")?.textContent ?? "",
       截了: 截的.length > 0, 省略: 截的.every((e) => getComputedStyle(e).textOverflow === "ellipsis"),
       高: r.height, 出栏: r.right > 栏框.right + 0.5 || r.left < 栏框.left - 0.5,
+      // 带复制键的：号码文字几行高、复制键是不是和号码同一行、跟在号码后面
+      号: (() => {
+        const t = f.querySelector(".copy-val-t")?.getBoundingClientRect(); const b = f.querySelector(".copy-val-b")?.getBoundingClientRect();
+        return t && b ? { 字高: Math.round(t.height), 同行: Math.abs((b.top + b.bottom) / 2 - (t.top + t.bottom) / 2) < 6, 在后面: b.left >= t.right - 1 } : null;
+      })(),
     };
   });
   const 编辑件 = [...document.querySelectorAll("[data-testid=customer-numbers] :is(.ant-select, input, button)")].map((e) => e.getBoundingClientRect()).filter((r) => r.right > 栏框.right + 0.5);
@@ -107,9 +112,13 @@ it("1024 / 1280 / 1366：号码一类一行，不出左栏；带复制键的号�
       }
       // 长邮箱、长座机在 232 / 260 的左栏里放不下：折成几行、一个字不截；短的 WhatsApp 一行；微信照旧一行
       expect(m.行们.map((r) => r.截了), `${w}`).toEqual([false, false, false, false]);
-      expect(m.行们[0].高, `${w} 座机折行`).toBeGreaterThan(44);
-      expect(m.行们[2].高, `${w} 邮箱折行`).toBeGreaterThan(44);
-      expect(m.行们[1].高, `${w} WhatsApp`).toBeLessThan(44);
+      // D3（PR #401 实操）起带复制键的格整行展开：名字一行、号码一行（复制键 28 高跟在号码后面），所以至多「两行」= 6 + 22 + 28 + 6 ≈ 60。
+      // 这份只跑现状主题（不挂 data-skin），换皮主题那边结构不变、见 ent-design-d3-skins.ui.test.ts
+      const 两行 = 60;
+      expect(m.行们[0].高, `${w} 座机折行`).toBeGreaterThan(两行);
+      expect(m.行们[2].高, `${w} 邮箱折行`).toBeGreaterThan(两行);
+      expect(m.行们[1].高, `${w} WhatsApp 两行以内`).toBeLessThanOrEqual(两行);
+      expect(m.行们[1].号, `${w} WhatsApp 整串一行、复制键同一行跟在后面`).toEqual({ 字高: 22, 同行: true, 在后面: true });
       expect(m.行们[3].高, `${w} 微信`).toBeLessThan(44);
       expect(m.栏横滚, `${w}`).toBe(false);
       expect(m.页横滚, `${w}`).toBeLessThanOrEqual(0);

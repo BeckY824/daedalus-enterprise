@@ -1057,9 +1057,9 @@ it("[D3 · M4-a 方案 A] 四个宽度 × 8 位联系人：先摆前 3 位（关
       expect(await page.locator("#cust-contacts .ant-card-head-title").evaluate(e => e.scrollWidth <= e.clientWidth + 1), `${w} 卡头标题`).toBe(true);
       // 第一位没线；第二、三位有；「这位客户的其他联系人」小标题后面那位由小标题自己的线隔开
       expect(量.线.slice(0, 2), `${w}`).toEqual(["auto", "1px"]);
-      // 编辑、「⋯」点击区 28，手机 36
+      // 编辑、「⋯」点击区 28，手机 44（--hit-touch，PR #401 审查）
       const 编辑 = await page.locator(".rec-cg").first().locator(".rec-contact-edit").boundingBox();
-      expect(Math.round(编辑!.height), `${w}`).toBe(w < 768 ? 36 : 28);
+      expect(Math.round(编辑!.height), `${w}`).toBe(w < 768 ? 44 : 28);
       await page.getByRole("button", { name: "收起其余 5 位" }).click();
       expect(await page.locator(".rec-cg").count()).toBe(3);
       expect(errors).toEqual([]);
@@ -1125,7 +1125,7 @@ it("[D3 · M3-a / M3-c] 历史负责人：人名只在「、」处折、单个�
   } finally { await 电脑.page.close(); }
 });
 
-it("[D3 · M5-a] 空态字 --text-muted、句式「还没有 X」；左栏卡头动作同一款（图标 + 字，28 高，手机 36）", async () => {
+it("[D3 · M5-a] 空态字 --text-muted、句式「还没有 X」；左栏卡头动作同一款（图标 + 字，28 高，手机 44）", async () => {
   for (const w of [1366, 390]) {
     const { page, errors } = await 开(w, {}, 900);
     try {
@@ -1134,18 +1134,20 @@ it("[D3 · M5-a] 空态字 --text-muted、句式「还没有 X」；左栏卡头
       expect(await 空.evaluate(e => getComputedStyle(e).color)).toBe(await 取色(page, "--text-muted"));
       const 钮们 = await page.locator(".rec-rail .rec-mod .ant-card-extra .ant-btn").evaluateAll((bs: HTMLElement[]) => bs.map(b => [b.innerText.trim(), Math.round(b.getBoundingClientRect().height), !!b.querySelector(".anticon")]));
       expect(钮们.length, `${w}`).toBeGreaterThan(0);
-      for (const [字, 高, 有图标] of 钮们) expect([字 !== "", 高, 有图标], `${w} ${字}`).toEqual([true, w < 768 ? 36 : 28, true]);
+      for (const [字, 高, 有图标] of 钮们) expect([字 !== "", 高, 有图标], `${w} ${字}`).toEqual([true, w < 768 ? 44 : 28, true]);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
 });
 
-it("[D3] 换皮主题（tech）不动：空态照旧 --text-faint、联系人组之间没有细线、复制键 20", async () => {
+it("[D3] 换皮主题（tech）不动：空态照旧 --text-faint、联系人照旧第一位摊开 + 其余手风琴（没有组、没有细线）、复制键 20", async () => {
   const { page, errors } = await 开(1366, { 八人: true, 皮: "tech" });
   try {
     expect(await page.locator(".rec-rail .rec-empty").first().evaluate(e => getComputedStyle(e).color)).toBe(await 取色(page, "--text-faint"));
-    expect(await page.locator(".rec-cg").nth(1).evaluate(e => getComputedStyle(e, "::before").content)).toBe("none");
-    expect(Math.round((await page.locator(".rec-cg .copy-val-b").first().boundingBox())!.width)).toBe(20);
+    // 结构按主题分开渲染（lib/use-skin.ts）：换皮主题不出 D3 的「每人一组」
+    expect(await page.locator(".rec-cg").count()).toBe(0);
+    expect(await page.locator(".rec-contact-fold").count()).toBe(7);
+    expect(Math.round((await page.locator(".rec-contact .copy-val-b").first().boundingBox())!.width)).toBe(20);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

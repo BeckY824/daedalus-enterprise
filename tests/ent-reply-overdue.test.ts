@@ -358,7 +358,11 @@ describe("钟上走一遍（到点提醒、自动转）", () => {
   });
 
   it("同号再次录入（客户又来问、别人又录了这个号）写进项目的系统留痕不停链：照常超时提醒、照常自动转", async () => {
-    const 日 = 北京日期(-1);
+    // 取昨天往前最近的工作日：周末 / 法定假日整天不执行（方案 B），落在不上班天这条就不会提醒（11-22 北京周日 CI 红过）
+    const 日 = (() => {
+      for (let k = -1; k >= -15; k--) if (是工作日(北京日期(k))) return 北京日期(k);
+      throw new Error("15 天内找不到工作日");
+    })();
     const { id, customerId } = await 建线索(甲, { replyEndAt: 京(`${日} 15:00`) });
     const c = await prisma.customer.findUniqueOrThrow({ where: { id: customerId } });
     const 号 = 验号码("手机号", c.phone);
