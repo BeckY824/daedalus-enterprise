@@ -5443,7 +5443,7 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
    原来名字一长，名字那格整块折到头像下面一行。≤575 下面一行两颗钮各半、高 40 */
 @media (max-width: 767px) {
   :root:is(:not([data-skin]), [data-skin="now"]) .rec-head > .rec-head-id { flex: 1 1 0; min-width: 0; }
-  :root:is(:not([data-skin]), [data-skin="now"]) .rec-head > .rec-head-sp { display: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rec-head > :is(.rec-head-sp, .rcd-grow) { display: none; }
   :root:is(:not([data-skin]), [data-skin="now"]) .rec-head .rec-head-line { align-items: flex-start; }
   :root:is(:not([data-skin]), [data-skin="now"]) .rec-head .rec-head-name { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; line-height: 28px; }
   :root:is(:not([data-skin]), [data-skin="now"]) .rec-head .rec-head-line > .rec-star.ant-btn { margin-top: -8px; }

@@ -190,7 +190,7 @@ describe("D1 · 设计语言 token 和基础控件", () => {
     const 不带 = 选择器们.filter((x) => !x.startsWith(现状));
     expect(不带).toEqual(结构);
     // 规范里的几样都在这段、都带限定：当前行浅蓝 + 左 2px、计数 --count-fg、手机名字两行、底部抽屉圆角、中右各自滚、底部留 --ai-safe
-    for (const 片 of ["background: var(--brand-bg)", "width: 2px", "color: var(--count-fg)", "-webkit-line-clamp: 2", "var(--r-pop) var(--r-pop) 0 0", "grid-row: 3", "var(--ai-safe)", "font-size: var(--fs-min); color: var(--text-muted)"]) {
+    for (const 片 of [".rec-head > :is(.rec-head-sp, .rcd-grow) { display: none; }", "background: var(--brand-bg)", "width: 2px", "color: var(--count-fg)", "-webkit-line-clamp: 2", "var(--r-pop) var(--r-pop) 0 0", "grid-row: 3", "var(--ai-safe)", "font-size: var(--fs-min); color: var(--text-muted)"]) {
       expect(段, 片).toContain(片);
     }
   });
