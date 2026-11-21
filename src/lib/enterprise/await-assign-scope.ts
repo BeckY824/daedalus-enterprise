@@ -17,7 +17,8 @@ import { 读组织 } from "./org";
 import { 规则开着 } from "./rules";
 import { 能分配线索, 是系统管理员, type 谁 } from "./permissions";
 import type { 组织 } from "./org-core";
-import { 待分配在等, 本线待分配条件 } from "./await-assign-core";
+import { 待分配在等 } from "./await-assign-core";
+import { 本线待分配条件 } from "./await-assign-open";
 
 /** 我能看的待分配新线索的条件；null = 我没有这一行（不画、新线索页筛出来是空的） */
 export async function 待分配范围(me: 谁, 预读?: { org?: 组织; 开着?: boolean }): Promise<Prisma.ProjectWhereInput | null> {

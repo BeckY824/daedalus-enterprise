@@ -6,9 +6,6 @@
  * 分走了自动少，没有了整行不画，不能关。铃铛、飞书照旧一事一条（lead-full-notice.ts）
  */
 import type { Prisma } from "@/generated/prisma";
-import type { 组织 } from "./org-core";
-import { 三种业务线, 是业务线, 项目业务线 } from "./assign-line";
-import type { 线 } from "./lead-assign";
 
 /** 新线索页的筛选键：/leads?f=await-assign 只列「待分配新线索」那一行数到的那几条（同一个条件，lib/project/list.ts） */
 export const 待分配筛 = "await-assign";
@@ -33,46 +30,6 @@ export const 待分配在等: Prisma.ProjectWhereInput = {
   result: null,
   deletedAt: null,
 };
-
-/** 设了业务线的人能分哪几条：这条线的（同 项目业务线），加上「暂不分配」的 */
-export function 本线待分配条件(org: 组织, 线: 线): Prisma.ProjectWhereInput {
-  const 未填: Prisma.ProjectWhereInput = { OR: [{ bizLine: null }, { bizLine: { notIn: [...三种业务线] } }] };
-  const 外贸们 = [...org.成员].filter(([, m]) => m.line === "外贸").map(([id]) => id);
-  const 负责人 = 线 === "外贸" ? { ownerId: { in: 外贸们 } } : { ownerId: { notIn: 外贸们 } };
-  return { OR: [{ bizLine: 线 }, { bizLine: "暂不分配" }, { AND: [未填, 负责人] }] };
-}
-
-/**
- * 待分配对本线管理放开（P-转-42，用户 11-21 定「放开给本线管理」）：销售管理、条线总管理（总管理设了业务线）看得到、能手动分配
- * 还在待分配的新线索——负责人那一格是建的人（常是市场同事）占着，按原可见范围（只到下属）他们看不到、分不了。
- * 回这人放开到哪条线（null = 没设线，各线都算）；不是这两类 = undefined。开关、只读、只看某人由调用方判。
- * 只放开看和分配：改字段、初判 / 推进、删、转让照旧按负责人判（permissions.ts），客户本身不跟着放开；分出去后照原范围
- */
-export function 本线放开的线(org: 组织, id: string): 线 | null | undefined {
-  const m = org.成员.get(id);
-  if (!m) return undefined;
-  if (m.角色们.includes("sales_mgr")) return 是业务线(m.line) ? m.line : null;
-  if (m.角色们.includes("director") && 是业务线(m.line)) return m.line;
-  return undefined;
-}
-
-/** 放开的那几条在库里的条件（可见层 team-scope 并进项目的读条件） */
-export function 本线放开条件(org: 组织, 线: 线 | null): Prisma.ProjectWhereInput {
-  return 线 ? { AND: [待分配在等, 本线待分配条件(org, 线)] } : 待分配在等;
-}
-
-/** 同一件事的纯判断（项目详情 能看项目）：这条项目现在是不是还在待分配、业务线是不是这人放开的线 */
-export function 本线放开看得到(org: 组织, id: string, p: {
-  ownerId: string; bizLine?: string | null; phase?: string | null; result?: string | null; pooledAt?: Date | null;
-  awaitAssignAt?: Date | null; scheduledAssignAt?: Date | null; deletedAt?: Date | null;
-}): boolean {
-  const 线 = 本线放开的线(org, id);
-  if (线 === undefined) return false;
-  if (p.phase !== "线索" || !p.awaitAssignAt || p.scheduledAssignAt || p.pooledAt || p.result || p.deletedAt) return false;
-  if (!线) return true;
-  const 项目线 = 项目业务线(p, org.成员);
-  return 项目线 === 线 || 项目线 === "暂不分配";
-}
 
 /**
  * 自动分配挑不到人时回的那句带着尾巴「已留在新线索待分配 / 这条新线索留在原处，可以手动指派」（assign-actions.ts 挑不到）。

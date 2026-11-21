@@ -11,6 +11,7 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { 企业版 } from "./switch";
+import { 规则, 开关值开着 } from "./rules-table";
 import { 回收站副手键, 只看某人键, 系统管理员标记键, 无主线索复核人键, 填组织设置, 建组织, 管理员类别of, type 组织, type 管理员类别 as 类别 } from "./org-core";
 
 export * from "./org-core";
@@ -28,21 +29,25 @@ export async function 读组织于(db: 库): Promise<组织> {
   const members = await db.entMember.findMany();
   const depts = await db.entDept.findMany({ select: { id: true, name: true, parentId: true, sort: true } });
   const 设 = async (key: string) => (await db.setting.findUnique({ where: { key }, select: { value: true } }))?.value ?? null;
-  return 填组织设置(建组织(users, members, depts), await 设(回收站副手键), await 设(只看某人键), await 设(系统管理员标记键), await 设(无主线索复核人键));
+  const org = 填组织设置(建组织(users, members, depts), await 设(回收站副手键), await 设(只看某人键), await 设(系统管理员标记键), await 设(无主线索复核人键));
+  org.线索分配开着 = 开关值开着(await 设(规则.线索分配.key));
+  return org;
 }
 
 /** 从库里读整张组织表。二三十人的公司，一次全读比逐条查省事也更快。一次渲染里只读一遍（客户列表一页要问四五次），渲染外（动作、测试）照旧每次现读 */
 export const 读组织 = cache(async (): Promise<组织> => {
-  const [users, members, depts, 副手, 只看, 标记, 无主] = await Promise.all([
+  // 几项组织设置一句读回（原来各一句 findUnique）：多读「线索分配」开关后条数不涨
+  const [users, members, depts, 设们] = await Promise.all([
     prisma.user.findMany({ select: { id: true, role: true, active: true } }),
     prisma.entMember.findMany(),
     prisma.entDept.findMany({ select: { id: true, name: true, parentId: true, sort: true } }),
-    prisma.setting.findUnique({ where: { key: 回收站副手键 }, select: { value: true } }),
-    prisma.setting.findUnique({ where: { key: 只看某人键 }, select: { value: true } }),
-    prisma.setting.findUnique({ where: { key: 系统管理员标记键 }, select: { value: true } }),
-    prisma.setting.findUnique({ where: { key: 无主线索复核人键 }, select: { value: true } }),
+    prisma.setting.findMany({ where: { key: { in: [回收站副手键, 只看某人键, 系统管理员标记键, 无主线索复核人键, 规则.线索分配.key] } }, select: { key: true, value: true } }),
   ]);
-  return 填组织设置(建组织(users, members, depts), 副手?.value, 只看?.value, 标记?.value ?? null, 无主?.value ?? null);
+  const 设 = (key: string) => 设们.find((x) => x.key === key)?.value ?? null;
+  const org = 填组织设置(建组织(users, members, depts), 设(回收站副手键), 设(只看某人键), 设(系统管理员标记键), 设(无主线索复核人键));
+  // 「线索分配」开关：能看项目 的待分配本线放开按它判（同 visibility.ts 数据层，P-转-42）
+  org.线索分配开着 = 开关值开着(设(规则.线索分配.key));
+  return org;
 });
 
 // 类型和读库的函数同名（老写法），类型在这里再转一次

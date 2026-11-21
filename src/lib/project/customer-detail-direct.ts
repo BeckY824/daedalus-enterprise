@@ -2,7 +2,7 @@ import type { SessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能看项目 } from "@/lib/enterprise/permissions";
+import { 能看项目, 权限项目选, 带已加入 } from "@/lib/enterprise/permissions";
 import { 市场进不了详情的 } from "@/lib/enterprise/market-view-db";
 import { 看得到的客户 } from "./db";
 import { 客户页项目地址 } from "./customer-detail-href";
@@ -18,7 +18,7 @@ export async function 项目链接们(me: SessionUser, ids: readonly string[]): 
   if (!企业版() || !ids.length) return 原;
   const 行 = await prisma.project.findMany({
     where: { id: { in: [...new Set(ids)] }, pooledAt: null },
-    select: { id: true, customerId: true, ownerId: true, creatorId: true, pooledAt: true, bizLine: true, members: { where: { inviteStatus: "JOINED" }, select: { userId: true } } },
+    select: { id: true, customerId: true, ...权限项目选 },
   });
   if (!行.length) return 原;
   const [org, 市场挡, 看得到] = await Promise.all([
@@ -30,7 +30,7 @@ export async function 项目链接们(me: SessionUser, ids: readonly string[]): 
     : new Set<string>();
   for (const r of 行) {
     if (市场挡.has(r.id) || (!看得到.has(r.customerId) && !仅项目.has(r.id))) continue;
-    if (!能看项目(me, { ...r, 已加入: r.members.map((m) => m.userId) }, org)) continue;
+    if (!能看项目(me, 带已加入(r), org)) continue;
     原.set(r.id, 客户页项目地址(r.customerId, r.id));
   }
   return 原;

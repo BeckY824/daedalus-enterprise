@@ -29,12 +29,12 @@ import { readSecret } from "@/lib/secret";
 import { 看得到, type 限定, type 公海回避 } from "@/lib/team-scope";
 import { 回收站副手键, 只看某人键, 系统管理员标记键, 填组织设置, 建组织, 实线下属, 虚线下属, 管理员类别们of, type 组织 } from "./org-core";
 import { 按线范围of, 按线项目, 按线客户, 条线范围of } from "./line-viewer";
-import { 规则 } from "./rules";
+import { 规则, 开关值开着 } from "./rules";
 import { 市场部门key, 市场成员key, 市场成员们, 市场相关客户, 市场只读话, 规整市场部门 } from "./market";
 import { 视图票, 验视图票, 会话时刻, 切换视图开着 } from "./view-as";
 import { 能看全部, 只读角色, 只读话of, 只看的人, 只看某人话, 没设业务角色, 业务线放行 } from "./permissions";
 import { 读纪元, 加纪元 } from "./scope-epoch";
-import { 本线放开的线, 本线放开条件 } from "./await-assign-core";
+import { 本线放开的线, 本线放开条件 } from "./await-assign-open";
 import { 读通道不限定 } from "@/lib/read-pool";
 
 /** lib/auth.ts 的 COOKIE */
@@ -195,11 +195,7 @@ function 认一次(db: PrismaClient, 钥: string, id: string | null, 纪: number
 /** 规则开关的 Setting 值：只有存的是 true 才算开（同 rules.ts 规则开着，这里在钩子里，直接读 db） */
 async function 开着(db: PrismaClient, key: string): Promise<boolean> {
   const v = await db.setting.findUnique({ where: { key }, select: { value: true } });
-  try {
-    return !!v && JSON.parse(v.value) === true;
-  } catch {
-    return false;
-  }
+  return 开关值开着(v?.value);
 }
 
 async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> {
