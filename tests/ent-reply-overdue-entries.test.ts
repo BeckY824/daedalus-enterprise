@@ -39,7 +39,7 @@ import { 带走一位 } from "@/lib/carry-over-db";
 import { 市场转一位 } from "@/lib/enterprise/market-transfer";
 import { 软删一条, 恢复 } from "@/lib/enterprise/soft-delete";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
-import { 盘点超时链, 超时转扫一遍, 顺延到白天, 超时转生效key } from "@/lib/enterprise/reply-overdue";
+import { 盘点超时链, 超时转扫一遍, 顺延到可执行, 超时转生效key } from "@/lib/enterprise/reply-overdue";
 
 type 人 = { id: string; name: string; role: string };
 let 老板: 人, 甲: 人, 乙: 人, 丙: 人, 市场: 人;
@@ -67,7 +67,7 @@ async function 公海线索(owner: string, 客户负责人 = owner) {
 const 最近痕 = (projectId: string) => prisma.projectNodeLog.findFirstOrThrow({ where: { projectId, kind: { in: ["transfer", "pool-claim"] } }, orderBy: [{ at: "desc" }, { id: "desc" }] });
 /** 留痕 + 61 分钟（夜里顺延到早上）这一刻，这条在不在链上 */
 async function 在链上(projectId: string): Promise<boolean> {
-  const 扫于 = 顺延到白天(new Date((await 最近痕(projectId)).at.getTime() + 61 * 60_000));
+  const 扫于 = 顺延到可执行(new Date((await 最近痕(projectId)).at.getTime() + 61 * 60_000));
   return (await 盘点超时链(扫于)).some((r) => r.id === projectId && r.按分配);
 }
 
@@ -109,7 +109,7 @@ describe("起算的入口", () => {
     expect(await 分配公海项目([p], 丙.id)).toMatchObject({ ok: true, 分到: [p] });
     expect(await 最近痕(p)).toMatchObject({ kind: "pool-claim", userId: 老板.id, toOwnerId: 丙.id, reason: expect.stringMatching(/^从线索公海分配/) });
     expect(await 在链上(p)).toBe(true);
-    const 扫于 = 顺延到白天(new Date((await 最近痕(p)).at.getTime() + 61 * 60_000));
+    const 扫于 = 顺延到可执行(new Date((await 最近痕(p)).at.getTime() + 61 * 60_000));
     expect(await 超时转扫一遍(扫于)).toMatchObject({ 提醒: 1 });
   });
 
