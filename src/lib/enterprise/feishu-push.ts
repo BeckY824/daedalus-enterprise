@@ -88,6 +88,9 @@ async function 拿令牌(c: 推送凭据, 换新 = false): Promise<string> {
   }
 }
 
+/** 网页 JSAPI 鉴权签名（feishu-jsapi.ts，录音实测页用）和推送共用一份租户令牌缓存 */
+export const 飞书租户令牌 = (c: 推送凭据, 换新 = false) => 拿令牌(c, 换新);
+
 async function 去拿令牌(c: 推送凭据, 键: string): Promise<string> {
   const res = await fetch(`${c.基址}/open-apis/auth/v3/tenant_access_token/internal`, {
     method: "POST",
