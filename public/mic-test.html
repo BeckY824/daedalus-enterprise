@@ -1,0 +1,931 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>录音实测</title>
+<!--
+  录音实测页（11-21，录音点评 PR1）。只读、纯前端：
+  - 要登录才能开（src/proxy.ts 的 matcher 放 .html 进来，不在公开名单，未登录跳登录页）
+  - 不连库、不存任何东西；只调本站两个小接口：/api/feishu/jsapi-sign（飞书鉴权签名）、/api/mic-test/echo（上传回显：只回字节数和格式，服务器不保存）
+  - 飞书网页 SDK 只这一页引，进了飞书才自动加载
+  测完把页尾「结果摘要」截图或复制发回。测什么见方案 §3.6 的 T1–T8
+-->
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #fff; --line: #e3e5ea; --text: #1d1f24; --sub: #5d6270; --muted: #8a8f9c;
+    --pri: #2457d6; --pri-soft: #e8eefc; --ok: #1a7f37; --ok-soft: #e6f4ea; --bad: #c62828; --bad-soft: #fdecea;
+    --warn: #9a6700; --warn-soft: #fff4d6; --rec: #d93025;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif; }
+  .wrap { max-width: 680px; margin: 0 auto; padding: 16px 16px calc(32px + env(safe-area-inset-bottom)); }
+  h1 { font-size: 20px; margin: 4px 0 4px; }
+  .lead { color: var(--sub); font-size: 13px; margin: 0 0 14px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin: 0 0 12px; }
+  h2 { font-size: 16px; margin: 0 0 4px; display: flex; gap: 8px; align-items: center; }
+  h2 .no { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--pri-soft); color: var(--pri); font-size: 13px; flex: none; }
+  h3 { font-size: 14px; margin: 14px 0 4px; }
+  .hint { color: var(--sub); font-size: 13px; margin: 0 0 10px; }
+  .kv { display: grid; grid-template-columns: 9em minmax(0, 1fr); gap: 4px 10px; font-size: 13px; margin: 0; }
+  .kv dt { color: var(--sub); }
+  .kv dd { margin: 0; overflow-wrap: anywhere; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+  button, .btn { appearance: none; border: 1px solid var(--line); background: #fff; color: var(--text); border-radius: 8px; min-height: 44px; padding: 0 14px; font: inherit; font-size: 14px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  button.pri { background: var(--pri); border-color: var(--pri); color: #fff; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  select { min-height: 44px; border: 1px solid var(--line); border-radius: 8px; padding: 0 10px; font: inherit; font-size: 14px; background: #fff; max-width: 100%; }
+  .tag { display: inline-block; padding: 0 8px; border-radius: 999px; font-size: 12px; line-height: 22px; background: #eef0f3; color: var(--sub); }
+  .tag.ok { background: var(--ok-soft); color: var(--ok); } .tag.bad { background: var(--bad-soft); color: var(--bad); } .tag.warn { background: var(--warn-soft); color: var(--warn); }
+  .out { font-size: 13px; background: #f8f9fb; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 8px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; min-height: 1.6em; }
+  .out:empty { display: none; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td, th { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+  th { color: var(--sub); font-weight: 500; }
+  audio { width: 100%; margin-top: 8px; }
+  .meter { height: 8px; background: #eef0f3; border-radius: 4px; overflow: hidden; margin-top: 8px; }
+  .meter i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .08s linear; }
+  .file-btn { position: relative; overflow: hidden; }
+  .file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; font-size: 0; }
+  .log { font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; max-height: 220px; overflow: auto; }
+  .ptt-box { display: grid; gap: 10px; }
+  .ptt { width: 100%; min-height: 64px; border-radius: 14px; font-size: 16px; font-weight: 600; background: var(--pri-soft); border-color: #c9d6f7; color: var(--pri);
+         touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  .ptt.on { background: var(--rec); border-color: var(--rec); color: #fff; }
+  .ptt.cancel { background: #5d6270; border-color: #5d6270; color: #fff; }
+  .ptt-state { font-size: 13px; color: var(--sub); min-height: 1.5em; text-align: center; }
+  .sum { border: 2px solid var(--pri); }
+  .sum pre { font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 0; background: #f8f9fb; border-radius: 8px; padding: 10px; border: 1px solid var(--line); }
+  @media (max-width: 420px) { .kv { grid-template-columns: 7.5em minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>录音实测</h1>
+  <p class="lead">只在这台设备上测：不存任何东西；按住说话录完会传一次到服务器，服务器只数字节、不保存。从上往下点一遍（约 10 分钟），最后把页尾「结果摘要」截图或复制发回。</p>
+
+  <!-- ① 环境 -->
+  <section id="b1">
+    <h2><span class="no">1</span>环境</h2>
+    <p class="hint">打开就自动查好了，不用点。</p>
+    <dl class="kv" id="env"></dl>
+  </section>
+
+  <!-- ② 麦克风 -->
+  <section id="b2">
+    <h2><span class="no">2</span>麦克风</h2>
+    <p class="hint">点「申请麦克风」，系统问要不要允许时选允许。拿到后对着手机说话，下面的条会动。</p>
+    <div class="row">
+      <button class="pri" id="micAsk">申请麦克风</button>
+      <button id="micStop" disabled>关掉麦克风</button>
+    </div>
+    <div class="meter" aria-hidden="true"><i id="micLevel"></i></div>
+    <div class="out" id="micOut"></div>
+  </section>
+
+  <!-- ③ 格式 -->
+  <section id="b3">
+    <h2><span class="no">3</span>录音格式 + 录 10 秒回放</h2>
+    <p class="hint">下表是浏览器说自己能录的格式。选一种点「录 10 秒」，录完自动出播放条，听一下回放正不正常。</p>
+    <table id="fmtTable"><thead><tr><th>格式</th><th style="width:6em">能不能录</th></tr></thead><tbody></tbody></table>
+    <div class="row">
+      <select id="fmtPick" aria-label="录音格式"></select>
+      <button class="pri" id="fmtRec">录 10 秒</button>
+    </div>
+    <div class="out" id="fmtOut"></div>
+    <div id="fmtPlay"></div>
+    <div class="row" id="fmtJudge" hidden>
+      <span class="hint" style="margin:0">回放听着：</span>
+      <button data-judge="正常">正常</button><button data-judge="有杂音/断续">有杂音/断续</button><button data-judge="没声音">没声音</button>
+    </div>
+  </section>
+
+  <!-- ④ 选文件 -->
+  <section id="b4">
+    <h2><span class="no">4</span>选录音文件</h2>
+    <p class="hint">三个按钮写法不同，每个都点一下，看能不能选到手机里的录音（iPhone：「文件」、语音备忘录；安卓：录音机、通话录音）。只显示文件信息，不上传。</p>
+    <div class="row">
+      <label class="btn file-btn">A 写类型+扩展名<input type="file" id="pickA" data-k="A 类型+扩展名" accept="audio/*,.m4a,.mp3,.amr,.wav,.aac,.ogg,.opus,.webm,.3gp,.mp4,.caf"></label>
+      <label class="btn file-btn">B 只写 audio/*<input type="file" id="pickB" data-k="B audio/*" accept="audio/*"></label>
+      <label class="btn file-btn">C 不限类型<input type="file" id="pickC" data-k="C 不限"></label>
+    </div>
+    <div class="out" id="pickOut"></div>
+  </section>
+
+  <!-- ⑤ 打断 -->
+  <section id="b5">
+    <h2><span class="no">5</span>打断（锁屏、切后台、来电）</h2>
+    <p class="hint">点「开始录 60 秒」，录的过程中做一件事：锁屏 30 秒 / 切到别的 App 30 秒 / 让人打个电话进来。回到这页看下面的记录，录音器还在不在录。</p>
+    <div class="row">
+      <button class="pri" id="intStart">开始录 60 秒</button>
+      <button id="intStop" disabled>提前结束</button>
+      <label class="hint" style="margin:0;display:flex;gap:6px;align-items:center"><input type="checkbox" id="intWake">申请屏幕常亮</label>
+    </div>
+    <div class="out" id="intNow"></div>
+    <div class="out log" id="intLog"></div>
+    <div id="intPlay"></div>
+  </section>
+
+  <!-- ⑥ 飞书原生录音（按住说话·飞书原生版） -->
+  <section id="b6">
+    <h2><span class="no">6</span>按住说话 · 飞书原生</h2>
+    <p class="hint">只在飞书里有用（进飞书自动加载飞书网页 SDK）。顺序：① 先<b>不鉴权</b>按住大按钮说 3 秒；② 点「鉴权」，再按住说 3 秒；③ 点「申请录音授权」看弹不弹。每次录完会自动用两种办法把文件传一次到服务器（只数字节，不保存）。</p>
+    <dl class="kv" id="fsEnv"></dl>
+    <div class="row">
+      <button id="fsLoad">加载飞书 SDK</button>
+      <button class="pri" id="fsAuth">鉴权</button>
+      <button id="fsAuthEmpty">空清单再鉴权</button>
+    </div>
+    <div class="row">
+      <button id="fsRecAuth">申请录音授权（scope.record）</button>
+      <button id="fsGetSetting">查授权状态</button>
+      <button id="fsOpenSetting">打开授权设置</button>
+    </div>
+    <div class="row">
+      <span class="hint" style="margin:0">格式</span>
+      <select id="pttFsFmt" aria-label="飞书录音格式"><option value="aac">aac（iOS 出 m4a）</option><option value="wav">wav（安卓只有这个）</option></select>
+      <label class="hint" style="margin:0;display:flex;gap:6px;align-items:center"><input type="checkbox" id="pttFsFrame">带 frameSize（要音量帧）</label>
+    </div>
+    <div class="ptt-box">
+      <button class="ptt" id="pttFs" type="button">按住说话（飞书原生）</button>
+      <div class="meter" aria-hidden="true"><i id="pttFsLevel"></i></div>
+      <div class="ptt-state" id="pttFsState"></div>
+    </div>
+    <div class="row" id="pttFsAfter" hidden>
+      <button id="pttFsUpA">再传一次：甲 readFile + fetch</button>
+      <button id="pttFsUpB">再传一次：乙 tt.uploadFile</button>
+      <button id="pttFsPlay">用飞书播放</button>
+    </div>
+    <div class="out log" id="pttFsOut"></div>
+  </section>
+
+  <!-- ⑦ 网页按住说话 -->
+  <section id="b7">
+    <h2><span class="no">7</span>按住说话 · 网页</h2>
+    <p class="hint">像飞书、微信发语音：按住录，松手停；按住时往上滑（或把鼠标拖出按钮、按 Esc）取消；不到 1 秒不留。电脑上也可以按住空格。按下才开麦克风，第一次会先弹授权。录完自动传一次到服务器（只数字节，不保存）。</p>
+    <div class="ptt-box">
+      <button class="ptt" id="pttWeb" type="button">按住说话</button>
+      <div class="meter" aria-hidden="true"><i id="pttWebLevel"></i></div>
+      <div class="ptt-state" id="pttWebState">松手发送 · 上滑取消 · 电脑可按住空格</div>
+    </div>
+    <div class="out" id="pttWebOut"></div>
+    <div id="pttWebPlay"></div>
+    <div class="row" id="pttWebJudge">
+      <span class="hint" style="margin:0">长按时：</span>
+      <button data-judge="没弹菜单、没选中文字">都正常</button><button data-judge="弹了系统菜单">弹了菜单</button><button data-judge="选中了文字">选中了文字</button><button data-judge="触发了飞书自己的手势">飞书手势</button>
+    </div>
+  </section>
+
+  <!-- ⑧ 跳系统浏览器 -->
+  <section id="b8">
+    <h2><span class="no">8</span>跳系统浏览器</h2>
+    <p class="hint">只在飞书里点。能跳过去的话，在系统浏览器里把这页从头再测一遍（就是 T7），回来在这里选一下跳过去的情况。</p>
+    <div class="row"><button class="pri" id="fsOpen">用系统浏览器打开（external:true）</button></div>
+    <div class="row" id="fsOpenJudge">
+      <span class="hint" style="margin:0">跳过去：</span>
+      <button data-judge="已登录，直接能用">直接能用</button><button data-judge="要重新登录，账号密码能登">要重新登录</button><button data-judge="要重新登录，用飞书登录走不通">飞书登录走不通</button><button data-judge="没跳过去">没跳</button>
+    </div>
+    <div class="out" id="fsOpenOut"></div>
+  </section>
+
+  <!-- 结果摘要 -->
+  <section class="sum" id="b9">
+    <h2>结果摘要</h2>
+    <p class="hint">测完截图这一块，或点「复制」粘贴发回。</p>
+    <div class="row"><button class="pri" id="sumCopy">复制摘要</button><span class="hint" id="sumCopied" style="margin:0"></span></div>
+    <pre id="sum"></pre>
+  </section>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var 版本 = "mic-test 2（2026-11-21）";
+  var 飞书SDK = "https://lf-scm-cn.feishucdn.com/lark/op/h5-js-sdk-1.5.44.js";
+  var 签名接口 = "/api/feishu/jsapi-sign";
+  var 回显接口 = "/api/mic-test/echo";
+  var 候选格式 = ["audio/mp4;codecs=mp4a.40.2", "audio/mp4", "audio/ogg;codecs=opus", "audio/webm;codecs=opus"];
+
+  var $ = function (id) { return document.getElementById(id); };
+  var 开页 = Date.now();
+  var UA = navigator.userAgent || "";
+  var 在飞书 = /Lark|Feishu/i.test(UA);
+  var 系统 = /iPhone|iPad|iPod/i.test(UA) || (/Macintosh/.test(UA) && navigator.maxTouchPoints > 1) ? "iOS"
+    : /Android/i.test(UA) ? "安卓" : /Windows/i.test(UA) ? "Windows" : /Mac OS X/i.test(UA) ? "Mac" : "其他";
+
+  /* ───── 结果摘要 ───── */
+  var 块名 = {
+    "环境": "环境",
+    T1: "T1 麦克风拿不拿得到",
+    T2: "T2 能录的格式 + 10 秒回放",
+    T3: "T3 三种选文件按钮",
+    T4: "T4 跳系统浏览器（openSchema external）",
+    T5: "T5 打断（锁屏/切后台/来电）",
+    T6a: "T6-a 有没有 tt.getRecorderManager",
+    T6b: "T6-b 不鉴权 / 鉴权后能不能调",
+    T6c: "T6-c scope.record 授权",
+    T6d: "T6-d 飞书原生按住说话（延迟/文件/格式/时长/音量帧/中断）",
+    T6e: "T6-e 原生录完传上来（甲 readFile+fetch / 乙 uploadFile）",
+    T7: "T7 系统浏览器基线",
+    T8: "T8 网页按住说话",
+  };
+  var 结果 = {};
+  Object.keys(块名).forEach(function (k) { 结果[k] = {}; });
+  function 记(块, 键, 值) { 结果[块][键] = 值; 画摘要(); }
+  function 时刻(ms) { var d = new Date(ms == null ? Date.now() : ms); return d.toTimeString().slice(0, 8); }
+  function 画摘要() {
+    var 行 = [版本, "打开于 " + new Date(开页).toLocaleString("zh-CN", { hour12: false }) + "，摘要更新 " + 时刻()];
+    Object.keys(块名).forEach(function (块) {
+      行.push("");
+      行.push("【" + 块名[块] + "】");
+      var 项 = 结果[块];
+      var 键们 = Object.keys(项);
+      if (!键们.length) 行.push("  （没测）");
+      键们.forEach(function (k) { 行.push("  " + k + "：" + 项[k]); });
+    });
+    $("sum").textContent = 行.join("\n");
+  }
+  function 错(e) {
+    if (!e) return "未知错误";
+    if (typeof e === "string") return e;
+    var n = e.name || e.errName || "", m = e.message || e.errMsg || e.errmsg || "";
+    var c = e.errCode != null ? " errCode=" + e.errCode : e.errno != null ? " errno=" + e.errno : "";
+    var s = (n + (n && m ? "：" : "") + m + c).trim();
+    if (!s) { try { s = JSON.stringify(e); } catch (x) { s = String(e); } }
+    return s;
+  }
+  function 大小(b) { return b >= 1048576 ? (b / 1048576).toFixed(2) + " MB" : (b / 1024).toFixed(1) + " KB"; }
+  function json(v) { try { return JSON.stringify(v); } catch (e) { return String(v); } }
+  function 加行(dl, k, v) { var dt = document.createElement("dt"); dt.textContent = k; var dd = document.createElement("dd"); dd.textContent = v; dl.appendChild(dt); dl.appendChild(dd); }
+  function 标(文, 类) { return "<span class=\"tag " + (类 || "") + "\">" + 文 + "</span>"; }
+  function 能录() { return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia); }
+  function 要话筒() { return navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
+  function 关流(s) { if (s) s.getTracks().forEach(function (t) { t.stop(); }); }
+  function 新录音器(流, 类型) {
+    return 类型 ? new MediaRecorder(流, { mimeType: 类型 }) : new MediaRecorder(流);
+  }
+  function 放回放(容器, blob, 回调) {
+    容器.innerHTML = "";
+    var a = document.createElement("audio");
+    a.controls = true; a.preload = "metadata";
+    a.src = URL.createObjectURL(blob);
+    容器.appendChild(a);
+    var 报了 = false;
+    a.addEventListener("loadedmetadata", function () {
+      if (a.duration === Infinity || isNaN(a.duration)) {
+        // webm 不带总时长：跳到很远处让浏览器算出来
+        a.currentTime = 1e101;
+        a.addEventListener("timeupdate", function f() { a.removeEventListener("timeupdate", f); a.currentTime = 0; if (!报了) { 报了 = true; 回调 && 回调(a.duration, null); } });
+      } else if (!报了) { 报了 = true; 回调 && 回调(a.duration, null); }
+    });
+    a.addEventListener("error", function () { if (!报了) { 报了 = true; 回调 && 回调(null, a.error ? "MediaError " + a.error.code : "error"); } });
+    return a;
+  }
+
+  /* ───── ① 环境 ───── */
+  (function 环境() {
+    var dl = $("env");
+    var 安全 = window.isSecureContext;
+    var 策略 = (function () {
+      try {
+        var p = document.permissionsPolicy || document.featurePolicy;
+        if (p && p.allowsFeature) return p.allowsFeature("microphone") ? "允许" : "不允许";
+      } catch (e) { return "查不了：" + 错(e); }
+      return "浏览器不告诉";
+    })();
+    var 项 = [
+      ["UA", UA],
+      ["是不是飞书", 在飞书 ? "是" : "否"],
+      ["系统", 系统],
+      ["安全环境", 安全 ? "是（https 或本机）" : "否（http，浏览器不给麦克风）"],
+      ["地址协议", location.protocol.replace(":", "")],
+      ["getUserMedia", 能录() ? "有" : "没有"],
+      ["MediaRecorder", typeof MediaRecorder === "function" ? "有" : "没有"],
+      ["页头放不放话筒", 策略],
+      ["屏幕常亮接口", "wakeLock" in navigator ? "有" : "没有"],
+      ["屏幕", innerWidth + "×" + innerHeight + " @" + (window.devicePixelRatio || 1) + "x"],
+    ];
+    项.forEach(function (x) { 加行(dl, x[0], x[1]); 记("环境", x[0], x[1]); });
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: "microphone" }).then(function (s) {
+        加行(dl, "话筒授权状态", s.state); 记("环境", "话筒授权状态", s.state);
+      }, function (e) { 加行(dl, "话筒授权状态", "查不了：" + 错(e)); 记("环境", "话筒授权状态", "查不了"); });
+    } else { 加行(dl, "话筒授权状态", "浏览器没有这个接口"); 记("环境", "话筒授权状态", "没有接口"); }
+  })();
+
+  /* ───── ② 麦克风 ───── */
+  var 共用流 = null, 音量停 = null;
+  function 开音量(流) {
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      var ctx = new AC(), src = ctx.createMediaStreamSource(流), an = ctx.createAnalyser();
+      an.fftSize = 512; src.connect(an);
+      var buf = new Uint8Array(an.fftSize), 最大 = 0, raf;
+      (function 画() {
+        an.getByteTimeDomainData(buf);
+        var peak = 0;
+        for (var i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i] - 128));
+        var v = Math.min(100, peak / 128 * 140);
+        最大 = Math.max(最大, v);
+        $("micLevel").style.width = v + "%";
+        raf = requestAnimationFrame(画);
+      })();
+      音量停 = function () { cancelAnimationFrame(raf); ctx.close(); $("micLevel").style.width = "0"; 记("T1", "最大音量", 最大.toFixed(0) + "%（0 = 没收到声音）"); };
+    } catch (e) { /* 只是音量条 */ }
+  }
+  $("micAsk").onclick = function () {
+    if (!能录()) { $("micOut").textContent = "这个浏览器没有 getUserMedia（http 页面也会这样）"; 记("T1", "结果", "没有 getUserMedia"); return; }
+    var t = performance.now();
+    $("micOut").textContent = "申请中…";
+    要话筒().then(function (s) {
+      共用流 = s;
+      var tr = s.getAudioTracks()[0], st = tr && tr.getSettings ? tr.getSettings() : {};
+      var 话 = "拿到了（" + Math.round(performance.now() - t) + " ms）\n设备：" + (tr && tr.label || "（没名字）") + "\n设置：" + json(st);
+      $("micOut").innerHTML = 标("成功", "ok") + " ";
+      $("micOut").appendChild(document.createTextNode(话));
+      记("T1", "结果", "成功");
+      记("T1", "设备", (tr && tr.label) || "（没名字）");
+      记("T1", "采样率/声道", (st.sampleRate || "?") + " / " + (st.channelCount || "?"));
+      $("micStop").disabled = false;
+      开音量(s);
+    }, function (e) {
+      $("micOut").innerHTML = 标("失败", "bad") + " ";
+      $("micOut").appendChild(document.createTextNode(错(e)));
+      记("T1", "结果", "失败 " + 错(e));
+    });
+  };
+  $("micStop").onclick = function () {
+    if (音量停) { 音量停(); 音量停 = null; }
+    关流(共用流); 共用流 = null;
+    $("micStop").disabled = true;
+    $("micOut").appendChild(document.createTextNode("\n已关掉麦克风"));
+  };
+
+  /* ───── ③ 格式 ───── */
+  (function 格式() {
+    var tb = $("fmtTable").tBodies[0], sel = $("fmtPick"), 有 = typeof MediaRecorder === "function";
+    var 能 = [];
+    候选格式.forEach(function (f) {
+      var ok = 有 && MediaRecorder.isTypeSupported ? MediaRecorder.isTypeSupported(f) : false;
+      var tr = document.createElement("tr");
+      tr.innerHTML = "<td></td><td>" + (ok ? 标("能", "ok") : 标("不能", "bad")) + "</td>";
+      tr.firstChild.textContent = f;
+      tb.appendChild(tr);
+      if (ok) 能.push(f);
+    });
+    记("T2", "能录的", 能.length ? 能.join("、") : "一种都没有");
+    var o = document.createElement("option"); o.value = ""; o.textContent = "浏览器默认"; sel.appendChild(o);
+    能.forEach(function (f) { var x = document.createElement("option"); x.value = f; x.textContent = f; sel.appendChild(x); });
+    if (!有) { $("fmtRec").disabled = true; $("fmtOut").textContent = "这个浏览器没有 MediaRecorder，录不了"; }
+  })();
+  var 当前格式试 = "";
+  $("fmtRec").onclick = function () {
+    if (!能录()) { $("fmtOut").textContent = "没有 getUserMedia"; return; }
+    var 类型 = $("fmtPick").value, btn = $("fmtRec");
+    btn.disabled = true; $("fmtPlay").innerHTML = ""; $("fmtJudge").hidden = true;
+    $("fmtOut").textContent = "申请麦克风…";
+    要话筒().then(function (流) {
+      var r;
+      try { r = 新录音器(流, 类型); } catch (e) { 关流(流); btn.disabled = false; $("fmtOut").textContent = "建录音器失败：" + 错(e); 记("T2", "录 " + (类型 || "默认"), "建录音器失败 " + 错(e)); return; }
+      var 块 = [], 开 = 0, 剩 = 10, 计时;
+      r.ondataavailable = function (e) { if (e.data && e.data.size) 块.push(e.data); };
+      r.onerror = function (e) { $("fmtOut").textContent += "\n录音器出错：" + 错(e.error || e); };
+      r.onstop = function () {
+        clearInterval(计时); 关流(流); btn.disabled = false;
+        var 实际 = r.mimeType || (块[0] && 块[0].type) || "（没说）";
+        var blob = new Blob(块, { type: 实际 });
+        var 秒 = ((performance.now() - 开) / 1000).toFixed(1);
+        当前格式试 = (类型 || "默认") + " → " + 实际 + "，" + 大小(blob.size) + "，录了 " + 秒 + " 秒";
+        $("fmtOut").textContent = "录完：" + 当前格式试 + "\n读取回放…";
+        放回放($("fmtPlay"), blob, function (时长, 坏) {
+          var 话 = 坏 ? "回放出错 " + 坏 : "回放时长 " + (时长 != null ? 时长.toFixed(1) + " 秒" : "?");
+          $("fmtOut").textContent = "录完：" + 当前格式试 + "\n" + 话 + (坏 ? "" : "（点播放听一下，再在下面选听着怎样）");
+          记("T2", "录 " + (类型 || "默认"), 当前格式试 + "；" + 话);
+          $("fmtJudge").hidden = !!坏;
+        });
+      };
+      r.start(1000); 开 = performance.now();
+      $("fmtOut").textContent = "● 录音中，还剩 10 秒（用 " + (类型 || "浏览器默认") + "）";
+      计时 = setInterval(function () {
+        剩 -= 1;
+        if (剩 <= 0) { clearInterval(计时); if (r.state !== "inactive") r.stop(); return; }
+        $("fmtOut").textContent = "● 录音中，还剩 " + 剩 + " 秒（用 " + (类型 || "浏览器默认") + "）";
+      }, 1000);
+    }, function (e) { btn.disabled = false; $("fmtOut").textContent = "拿不到麦克风：" + 错(e); 记("T2", "录 " + (类型 || "默认"), "拿不到麦克风 " + 错(e)); });
+  };
+  Array.prototype.forEach.call(document.querySelectorAll("#fmtJudge button"), function (b) {
+    b.onclick = function () { 记("T2", "回放听着（" + 当前格式试.split(" → ")[0] + "）", b.getAttribute("data-judge")); $("fmtJudge").hidden = true; };
+  });
+
+  /* ───── ④ 选文件 ───── */
+  ["pickA", "pickB", "pickC"].forEach(function (id) {
+    var inp = $(id), k = inp.getAttribute("data-k");
+    inp.addEventListener("click", function () { if (!结果["T3"][k]) 记("T3", k, "点了，还没选"); });
+    inp.addEventListener("change", function () {
+      var f = inp.files && inp.files[0];
+      var 话 = f ? f.name + " | " + (f.type || "（浏览器没给类型）") + " | " + 大小(f.size) + " | 修改于 " + new Date(f.lastModified).toLocaleString("zh-CN", { hour12: false }) : "没选（取消了）";
+      $("pickOut").textContent = ($("pickOut").textContent ? $("pickOut").textContent + "\n" : "") + k + "：" + 话;
+      记("T3", k, 话);
+      inp.value = "";
+    });
+  });
+
+  /* ───── ⑤ 打断 ───── */
+  var 打断 = null;
+  function 打断记(事) {
+    if (!打断) return;
+    var 秒 = ((performance.now() - 打断.开) / 1000).toFixed(1);
+    var 行 = 时刻() + " +" + 秒 + "s  " + 事;
+    打断.事件.push("+" + 秒 + "s " + 事);
+    var log = $("intLog");
+    log.textContent += (log.textContent ? "\n" : "") + 行;
+    log.scrollTop = log.scrollHeight;
+  }
+  function 打断状态() {
+    if (!打断) return;
+    var tr = 打断.流 && 打断.流.getAudioTracks()[0];
+    var 秒 = ((performance.now() - 打断.开) / 1000).toFixed(0);
+    $("intNow").textContent = "已过 " + 秒 + " 秒 | 录音器：" + 打断.r.state + " | 话筒轨道：" + (tr ? tr.readyState + (tr.muted ? "（静音）" : "") : "无") + " | 收到 " + 大小(打断.字节);
+  }
+  var 页面事件 = {
+    visibilitychange: function () { 打断记("页面 " + (document.visibilityState === "visible" ? "回到前台" : "转到后台")); if (document.visibilityState === "visible" && 打断) { var tr = 打断.流.getAudioTracks()[0]; 打断记("回来时：录音器 " + 打断.r.state + "，话筒轨道 " + (tr ? tr.readyState + (tr.muted ? " 静音" : "") : "无")); } },
+    pagehide: function () { 打断记("pagehide"); }, pageshow: function () { 打断记("pageshow"); },
+    freeze: function () { 打断记("页面被冻结 freeze"); }, resume: function () { 打断记("页面恢复 resume"); },
+    blur: function () { 打断记("窗口失去焦点"); }, focus: function () { 打断记("窗口拿回焦点"); },
+    online: function () { 打断记("联网"); }, offline: function () { 打断记("断网"); },
+  };
+  function 挂页面事件(挂) {
+    Object.keys(页面事件).forEach(function (k) {
+      var 目标 = k === "visibilitychange" || k === "freeze" || k === "resume" ? document : window;
+      目标[挂 ? "addEventListener" : "removeEventListener"](k, 页面事件[k]);
+    });
+  }
+  function 打断结束(原因) {
+    if (!打断 || 打断.完) return;
+    打断.完 = true;
+    clearInterval(打断.计时); clearTimeout(打断.到点);
+    if (打断.r.state !== "inactive") { 打断.原因 = 原因; try { 打断.r.stop(); } catch (e) { 打断记("stop 出错 " + 错(e)); } }
+  }
+  $("intStart").onclick = function () {
+    if (!能录() || typeof MediaRecorder !== "function") { $("intNow").textContent = "这个浏览器录不了"; return; }
+    $("intStart").disabled = true; $("intLog").textContent = ""; $("intPlay").innerHTML = ""; $("intNow").textContent = "申请麦克风…";
+    要话筒().then(function (流) {
+      var r;
+      try { r = 新录音器(流, ""); } catch (e) { 关流(流); $("intStart").disabled = false; $("intNow").textContent = "建录音器失败：" + 错(e); return; }
+      打断 = { 流: 流, r: r, 开: performance.now(), 事件: [], 块: [], 字节: 0, 完: false, 锁: null };
+      var tr = 流.getAudioTracks()[0];
+      if (tr) {
+        tr.addEventListener("mute", function () { 打断记("话筒轨道 mute"); });
+        tr.addEventListener("unmute", function () { 打断记("话筒轨道 unmute"); });
+        tr.addEventListener("ended", function () { 打断记("话筒轨道 ended（被系统掐了）"); });
+      }
+      r.addEventListener("start", function () { 打断记("录音器 start"); });
+      r.addEventListener("pause", function () { 打断记("录音器 pause"); });
+      r.addEventListener("resume", function () { 打断记("录音器 resume"); });
+      r.addEventListener("error", function (e) { 打断记("录音器 error " + 错(e.error || e)); });
+      r.ondataavailable = function (e) { if (e.data && e.data.size) { 打断.块.push(e.data); 打断.字节 += e.data.size; } };
+      r.addEventListener("stop", function () {
+        var 秒 = (performance.now() - 打断.开) / 1000;
+        var 原因 = 打断.原因 || "录音器自己停了（不是页面停的）";
+        打断记("录音器 stop（" + 原因 + "）");
+        clearInterval(打断.计时); clearTimeout(打断.到点); 打断.完 = true;
+        挂页面事件(false); 关流(流);
+        if (打断.锁) { 打断.锁.release().catch(function () {}); }
+        $("intStart").disabled = false; $("intStop").disabled = true;
+        打断状态();
+        var blob = new Blob(打断.块, { type: r.mimeType || "" });
+        放回放($("intPlay"), blob, function (时长, 坏) {
+          记("T5", "这次", "录了 " + 秒.toFixed(1) + " 秒，" + 大小(blob.size) + "，结束原因：" + 原因 + "，回放" + (坏 ? "出错 " + 坏 : "时长 " + (时长 != null ? 时长.toFixed(1) : "?") + " 秒"));
+        });
+        记("T5", "事件", 打断.事件.join("；"));
+      });
+      挂页面事件(true);
+      r.start(5000);
+      打断.计时 = setInterval(打断状态, 1000);
+      打断.到点 = setTimeout(function () { 打断结束("到 60 秒"); }, 60000);
+      $("intStop").disabled = false;
+      打断状态();
+      if ($("intWake").checked) {
+        if (navigator.wakeLock && navigator.wakeLock.request) {
+          navigator.wakeLock.request("screen").then(function (l) { 打断.锁 = l; 打断记("屏幕常亮：拿到了"); 记("T5", "屏幕常亮", "拿到了"); l.addEventListener("release", function () { 打断记("屏幕常亮：被释放"); }); },
+            function (e) { 打断记("屏幕常亮：没拿到 " + 错(e)); 记("T5", "屏幕常亮", "没拿到 " + 错(e)); });
+        } else { 打断记("屏幕常亮：浏览器没有这个接口"); 记("T5", "屏幕常亮", "没有接口"); }
+      }
+    }, function (e) { $("intStart").disabled = false; $("intNow").textContent = "拿不到麦克风：" + 错(e); 记("T5", "这次", "拿不到麦克风 " + 错(e)); });
+  };
+  $("intStop").onclick = function () { 打断结束("点了提前结束"); };
+
+  /* ───── 回显：只回字节数和格式，服务器不保存 ───── */
+  function 传回显(body, 类型, cb) {
+    fetch(回显接口, { method: "POST", body: body, headers: { "Content-Type": 类型 || "application/octet-stream" }, credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }, function () { return { ok: false, status: r.status, j: null }; }); })
+      .then(function (x) { cb(x.ok ? null : "HTTP " + x.status + " " + (x.j && x.j.error || ""), x.j); }, function (e) { cb("请求出错 " + 错(e)); });
+  }
+  function 回显话(j, 本地字节) {
+    var 话 = "服务器收到 " + j.bytes + " 字节，认出 " + j.format;
+    if (本地字节 != null) 话 += j.bytes === 本地字节 ? "（和本地一致）" : "（本地 " + 本地字节 + " 字节，不一致）";
+    return 话;
+  }
+
+  /* ───── 按住手势（网页、飞书原生共用）：上滑 ≥60px 或鼠标拖出按钮 = 取消 ───── */
+  var 上滑取消 = 60;
+  function 按住手势(btn, 开, 动, 停) {
+    var 起y = 0, 按着 = false;
+    btn.addEventListener("contextmenu", function (e) { e.preventDefault(); if (按着) 动(null, "contextmenu"); });
+    btn.addEventListener("pointerdown", function (e) {
+      if (e.button != null && e.button > 0) return;
+      e.preventDefault();
+      try { btn.setPointerCapture(e.pointerId); } catch (x) { /* 老浏览器 */ }
+      按着 = true; 起y = e.clientY; 开(e.pointerType === "mouse" ? "鼠标" : e.pointerType === "pen" ? "笔" : "手指");
+    });
+    btn.addEventListener("pointermove", function (e) {
+      if (!按着) return;
+      var r = btn.getBoundingClientRect();
+      var 出框 = e.pointerType === "mouse" && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom);
+      动(起y - e.clientY > 上滑取消 || 出框);
+    });
+    btn.addEventListener("pointerup", function () { if (按着) { 按着 = false; 停(false); } });
+    btn.addEventListener("pointercancel", function () { if (按着) { 按着 = false; 停(true, "系统打断了手势（pointercancel）"); } });
+  }
+  function 开音量条(流, 条) {
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      var ctx = new AC(), an = ctx.createAnalyser(), buf, raf, 最大 = 0;
+      ctx.createMediaStreamSource(流).connect(an);
+      an.fftSize = 512; buf = new Uint8Array(an.fftSize);
+      (function 画() {
+        an.getByteTimeDomainData(buf);
+        var peak = 0;
+        for (var i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i] - 128));
+        var v = Math.min(100, peak / 128 * 140);
+        最大 = Math.max(最大, v); 条.style.width = v + "%";
+        raf = requestAnimationFrame(画);
+      })();
+      return function () { cancelAnimationFrame(raf); ctx.close(); 条.style.width = "0"; return 最大; };
+    } catch (e) { return null; }
+  }
+
+  /* ───── ⑥ 飞书原生 ───── */
+  var 飞书 = { 脚本: "没加载", 鉴权: "没做" };
+  function 有tt(名) { return !!(window.tt && typeof window.tt[名] === "function"); }
+  function 飞书说(话) { var o = $("pttFsOut"); o.textContent = (o.textContent ? o.textContent + "\n" : "") + 时刻() + " " + 话; o.scrollTop = o.scrollHeight; }
+  function 画飞书() {
+    var dl = $("fsEnv"); dl.innerHTML = "";
+    [
+      ["飞书 UA", 在飞书 ? "是" : "否（这一块的接口多半都没有）"],
+      ["SDK 脚本", 飞书.脚本],
+      ["window.h5sdk", window.h5sdk ? "有" : "没有"],
+      ["tt.getRecorderManager", 有tt("getRecorderManager") ? "有" : "没有"],
+      ["tt.authorize", 有tt("authorize") ? "有" : "没有"],
+      ["tt.uploadFile", 有tt("uploadFile") ? "有" : "没有"],
+      ["readFile", 有tt("getFileSystemManager") ? "有 getFileSystemManager" : "没有"],
+      ["鉴权", 飞书.鉴权],
+    ].forEach(function (x) { 加行(dl, x[0], x[1]); });
+    记("T6a", "tt.getRecorderManager", 有tt("getRecorderManager") ? "有" : "没有（飞书 UA：" + (在飞书 ? "是" : "否") + "，SDK：" + 飞书.脚本 + "）");
+    记("T6a", "tt.uploadFile / getFileSystemManager", (有tt("uploadFile") ? "有" : "没有") + " / " + (有tt("getFileSystemManager") ? "有" : "没有"));
+    if (!原生) $("pttFsState").textContent = 有tt("getRecorderManager") ? "松手结束 · 上滑取消（" + (飞书.鉴权 === "成功" ? "已鉴权" : "还没鉴权") + "）" : "这里没有 tt.getRecorderManager（按一下会记下报什么错）";
+  }
+  function 加载飞书SDK() {
+    if (飞书.脚本 === "加载中" || 飞书.脚本 === "加载好了") return;
+    飞书.脚本 = "加载中"; 画飞书();
+    var s = document.createElement("script");
+    s.src = 飞书SDK; s.async = true;
+    s.onload = function () { 飞书.脚本 = "加载好了"; 画飞书(); 飞书说("SDK 加载好了"); };
+    s.onerror = function () { 飞书.脚本 = "加载失败（网络或被拦）"; 画飞书(); 飞书说("SDK 加载失败"); };
+    document.head.appendChild(s);
+  }
+  $("fsLoad").onclick = 加载飞书SDK;
+  function 鉴权(清单) {
+    var 名 = "鉴权（" + (清单.length ? "带接口清单" : "空清单") + "）";
+    if (!window.h5sdk) { 飞书说("没有 h5sdk：先加载 SDK，且要在飞书里打开"); 记("T6b", 名, "没有 h5sdk"); return; }
+    飞书.鉴权 = "进行中"; 画飞书();
+    fetch(签名接口 + "?url=" + encodeURIComponent(location.href.split("#")[0]), { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }); })
+      .then(function (x) {
+        if (!x.ok) { 飞书.鉴权 = "拿签名失败 " + x.status + " " + (x.j && x.j.error || ""); 画飞书(); 飞书说(飞书.鉴权); 记("T6b", 名, 飞书.鉴权); return; }
+        飞书说("拿到签名，调 h5sdk.config…");
+        window.h5sdk.error(function (e) { 飞书说("h5sdk.error " + json(e)); 记("T6b", "h5sdk.error", json(e)); });
+        window.h5sdk.config({
+          appId: x.j.appId, timestamp: x.j.timestamp, nonceStr: x.j.nonceStr, signature: x.j.signature, jsApiList: 清单,
+          onSuccess: function (res) { 飞书.鉴权 = "成功"; 画飞书(); 飞书说("config 成功 " + json(res)); 记("T6b", 名, "成功"); },
+          onFail: function (e) { 飞书.鉴权 = "失败 " + json(e); 画飞书(); 飞书说("config 失败 " + json(e)); 记("T6b", 名, "失败 " + json(e)); },
+        });
+        window.h5sdk.ready(function () { 飞书说("h5sdk.ready"); });
+      })
+      .catch(function (e) { 飞书.鉴权 = "拿签名出错 " + 错(e); 画飞书(); 飞书说(飞书.鉴权); 记("T6b", 名, 飞书.鉴权); });
+  }
+  $("fsAuth").onclick = function () { 鉴权(["getRecorderManager", "authorize", "getSetting", "openSetting", "openSchema", "getFileSystemManager", "uploadFile", "getFileInfo", "createInnerAudioContext"]); };
+  $("fsAuthEmpty").onclick = function () { 鉴权([]); };
+  function 调tt(名, 参数, 块, 键) {
+    if (!有tt(名)) { 飞书说("没有 tt." + 名); 记(块, 键, "没有 tt." + 名); return; }
+    var p = 参数 || {};
+    p.success = function (r) { 飞书说("tt." + 名 + " 成功 " + json(r)); 记(块, 键, "成功 " + json(r)); };
+    p.fail = function (e) { 飞书说("tt." + 名 + " 失败 " + 错(e)); 记(块, 键, "失败 " + 错(e)); };
+    try { window.tt[名](p); } catch (e) { 飞书说("tt." + 名 + " 抛错 " + 错(e)); 记(块, 键, "抛错 " + 错(e)); }
+  }
+  $("fsRecAuth").onclick = function () { 调tt("authorize", { scope: "scope.record" }, "T6c", "authorize scope.record（第 " + (++授权次数) + " 次）"); };
+  var 授权次数 = 0;
+  $("fsGetSetting").onclick = function () { 调tt("getSetting", {}, "T6c", "getSetting"); };
+  $("fsOpenSetting").onclick = function () { 调tt("openSetting", {}, "T6c", "openSetting（拒了以后从这里再要）"); };
+
+  var 管理器 = null, 原生 = null, 原生次数 = 0, 上个文件 = null;
+  function 原生界面(状态, 话) {
+    var b = $("pttFs");
+    b.classList.toggle("on", 状态 === "录"); b.classList.toggle("cancel", 状态 === "取消");
+    b.textContent = 状态 === "录" ? "● 录音中，松手结束" : 状态 === "取消" ? "松手取消" : "按住说话（飞书原生）";
+    if (话 != null) $("pttFsState").textContent = 话;
+  }
+  function 拿管理器() {
+    if (管理器) return 管理器;
+    var m = window.tt.getRecorderManager();
+    if (!m) throw new Error("getRecorderManager 返回空");
+    var 有 = function (n) { return typeof m[n] === "function"; };
+    记("T6d", "管理器上的回调", ["onStart", "onStop", "onError", "onPause", "onResume", "onFrameRecorded", "onInterruptionBegin", "onInterruptionEnd"].map(function (n) { return n + (有(n) ? "✓" : "✗"); }).join(" "));
+    if (有("onStart")) m.onStart(function () {
+      if (!原生) return;
+      原生.开录 = performance.now();
+      原生.起录ms = Math.round(原生.开录 - 原生.按下);
+      原生界面(原生.取消 ? "取消" : "录", "录音中（按下到 onStart " + 原生.起录ms + " ms）");
+      飞书说("onStart（按下后 " + 原生.起录ms + " ms）");
+      记("T6b", "调 start（" + 原生.鉴权 + "）", "能调（收到 onStart）");
+    });
+    if (有("onError")) m.onError(function (e) {
+      飞书说("onError " + 错(e) + " " + json(e));
+      记("T6b", "调 start（" + (原生 ? 原生.鉴权 : 飞书.鉴权) + "）", "onError " + 错(e));
+      原生界面("", "出错了：" + 错(e)); 原生 = null;
+    });
+    if (有("onPause")) m.onPause(function () { 飞书说("onPause"); 记("T6d", "中断事件", "onPause @" + 时刻()); });
+    if (有("onResume")) m.onResume(function () { 飞书说("onResume"); });
+    if (有("onInterruptionBegin")) m.onInterruptionBegin(function () { 飞书说("onInterruptionBegin（被打断）"); 记("T6d", "中断事件", "onInterruptionBegin @" + 时刻()); });
+    if (有("onInterruptionEnd")) m.onInterruptionEnd(function () { 飞书说("onInterruptionEnd"); });
+    if (有("onFrameRecorded")) m.onFrameRecorded(function (r) {
+      if (!原生) return;
+      原生.帧 += 1;
+      var n = r && r.frameBuffer && r.frameBuffer.byteLength || 0;
+      $("pttFsLevel").style.width = (20 + (原生.帧 % 5) * 15) + "%";
+      if (原生.帧 === 1) 飞书说("onFrameRecorded 第 1 帧 " + n + " 字节");
+    });
+    if (有("onStop")) m.onStop(function (res) {
+      var 这次 = 原生 || { 取消: false, 按下: performance.now(), 鉴权: 飞书.鉴权, 帧: 0 };
+      原生 = null;
+      $("pttFsLevel").style.width = "0";
+      原生次数 += 1;
+      var 键 = "第 " + 原生次数 + " 次（" + 这次.鉴权 + "）";
+      var 路径 = res && (res.tempFilePath || res.filePath || res.path) || "";
+      var 扩展 = (路径.match(/\.([a-z0-9]+)(?:\?|$)/i) || [])[1] || "?";
+      var 测时 = 这次.开录 ? ((这次.停 || performance.now()) - 这次.开录) / 1000 : null;
+      var 时长 = res && res.duration != null ? res.duration + "（接口给的）" : 测时 != null ? 测时.toFixed(1) + " 秒（页面量的）" : "?";
+      飞书说("onStop " + json(res));
+      var 话 = (这次.取消 ? "上滑取消；" : "") + "起录 " + (这次.起录ms != null ? 这次.起录ms + " ms" : "?") + " | tempFilePath " + (路径 || "（没给）") + " | 格式 " + 扩展 + " | 时长 " + 时长 + " | 音量帧 " + 这次.帧;
+      记("T6d", 键, 话);
+      记("T6d", 键 + " onStop 原始", json(res));
+      原生界面("", 这次.取消 ? "已取消（飞书仍给了文件，见下）" : "录好了，正在两种方式各传一次");
+      上个文件 = 路径 ? { 路径: 路径, 键: 键, 大小: null } : null;
+      $("pttFsAfter").hidden = !上个文件;
+      if (!上个文件) return;
+      查大小(上个文件, function () { if (!这次.取消) { 传法甲(上个文件); 传法乙(上个文件); } });
+    });
+    管理器 = m;
+    return m;
+  }
+  function 查大小(f, 完) {
+    var 记大小 = function (n, 从) { f.大小 = n; 记("T6d", f.键 + " 大小", (n != null ? 大小(n) + "（" + n + " 字节，" + 从 + "）" : 从)); 完(); };
+    try {
+      if (有tt("getFileInfo")) { window.tt.getFileInfo({ filePath: f.路径, success: function (r) { 记大小(r && r.size, "getFileInfo"); }, fail: function (e) { 记大小(null, "getFileInfo 失败 " + 错(e)); } }); return; }
+      var fsm = 有tt("getFileSystemManager") && window.tt.getFileSystemManager();
+      if (fsm && fsm.getFileInfo) { fsm.getFileInfo({ filePath: f.路径, success: function (r) { 记大小(r && r.size, "getFileSystemManager().getFileInfo"); }, fail: function (e) { 记大小(null, "getFileInfo 失败 " + 错(e)); } }); return; }
+    } catch (e) { 记大小(null, "查大小抛错 " + 错(e)); return; }
+    记大小(null, "没有查大小的接口");
+  }
+  function 传法甲(f) {
+    var 键 = f.键 + " 甲 readFile+fetch";
+    var fsm = null;
+    try { fsm = 有tt("getFileSystemManager") && window.tt.getFileSystemManager(); } catch (e) { 记("T6e", 键, "getFileSystemManager 抛错 " + 错(e)); return; }
+    if (!fsm || !fsm.readFile) { 记("T6e", 键, "没有 getFileSystemManager().readFile"); return; }
+    try {
+      fsm.readFile({ filePath: f.路径,
+        success: function (r) {
+          var d = r && r.data;
+          if (!(d instanceof ArrayBuffer)) { 记("T6e", 键, "readFile 给的不是字节（" + typeof d + "）"); return; }
+          飞书说("readFile 读到 " + d.byteLength + " 字节，传回显…");
+          传回显(d, "application/octet-stream", function (坏, j) { var 话 = 坏 ? "读到 " + d.byteLength + " 字节，传失败 " + 坏 : 回显话(j, f.大小 != null ? f.大小 : d.byteLength); 飞书说("甲：" + 话); 记("T6e", 键, 话); });
+        },
+        fail: function (e) { 飞书说("readFile 失败 " + 错(e)); 记("T6e", 键, "readFile 失败 " + 错(e)); } });
+    } catch (e) { 记("T6e", 键, "readFile 抛错 " + 错(e)); }
+  }
+  function 传法乙(f) {
+    var 键 = f.键 + " 乙 uploadFile";
+    if (!有tt("uploadFile")) { 记("T6e", 键, "没有 tt.uploadFile"); return; }
+    try {
+      window.tt.uploadFile({ url: location.origin + 回显接口, filePath: f.路径, name: "file", formData: { from: "tt.uploadFile" },
+        success: function (r) {
+          var j = null;
+          try { j = typeof r.data === "string" ? JSON.parse(r.data) : r.data; } catch (e) { j = null; }
+          var 文件 = j && j.files && j.files[0];
+          var 话 = r.statusCode !== 200 ? "HTTP " + r.statusCode + " " + (j && j.error || String(r.data).slice(0, 80)) + (r.statusCode === 401 ? "（没带登录 cookie）" : "")
+            : 文件 ? 回显话(文件, f.大小) + "（multipart 整包 " + j.bytes + " 字节）" : "收到了，但没认出文件段 " + json(j).slice(0, 120);
+          飞书说("乙：" + 话); 记("T6e", 键, 话);
+        },
+        fail: function (e) { 飞书说("uploadFile 失败 " + 错(e)); 记("T6e", 键, "失败 " + 错(e)); } });
+    } catch (e) { 记("T6e", 键, "uploadFile 抛错 " + 错(e)); }
+  }
+  function 原生开() {
+    if (!有tt("getRecorderManager")) {
+      var 话 = "没有 tt.getRecorderManager（" + (在飞书 ? "SDK 没加载好？" : "不在飞书里") + "）";
+      飞书说(话); 记("T6b", "按下", 话); 原生界面("", 话); return;
+    }
+    if (原生) return;
+    原生 = { 按下: performance.now(), 取消: false, 鉴权: 飞书.鉴权 === "成功" ? "已鉴权" : "没鉴权", 帧: 0 };
+    if (navigator.vibrate) { try { navigator.vibrate(15); } catch (e) { /* 不振也行 */ } }
+    原生界面("录", "启动中…");
+    var 参数 = { duration: 600000, sampleRate: 16000, numberOfChannels: 1, format: $("pttFsFmt").value };
+    if ($("pttFsFrame").checked) 参数.frameSize = 1;
+    try {
+      拿管理器().start(参数);
+      飞书说("调了 start " + json(参数) + "（" + 原生.鉴权 + "）");
+    } catch (e) {
+      飞书说("start 抛错 " + 错(e)); 记("T6b", "调 start（" + 原生.鉴权 + "）", "抛错 " + 错(e));
+      原生 = null; 原生界面("", "start 抛错：" + 错(e));
+    }
+  }
+  function 原生动(取消) { if (原生 && 取消 != null && 原生.取消 !== 取消) { 原生.取消 = 取消; 原生界面(取消 ? "取消" : "录", 取消 ? "松手取消" : "录音中"); } }
+  function 原生停(取消, 原因) {
+    if (!原生) return;
+    if (取消) 原生.取消 = true;
+    原生.停 = performance.now();
+    if (原因) 飞书说(原因);
+    try { 拿管理器().stop(); } catch (e) { 飞书说("stop 抛错 " + 错(e)); 记("T6d", "stop", "抛错 " + 错(e)); 原生 = null; 原生界面("", "stop 抛错"); }
+  }
+  按住手势($("pttFs"), 原生开, 原生动, 原生停);
+  $("pttFsUpA").onclick = function () { if (上个文件) 传法甲(上个文件); };
+  $("pttFsUpB").onclick = function () { if (上个文件) 传法乙(上个文件); };
+  $("pttFsPlay").onclick = function () {
+    if (!上个文件 || !有tt("createInnerAudioContext")) { 飞书说("没有 tt.createInnerAudioContext"); return; }
+    try {
+      var a = window.tt.createInnerAudioContext();
+      a.src = 上个文件.路径;
+      if (a.onPlay) a.onPlay(function () { 飞书说("回放开始"); 记("T6d", "回放", "能播"); });
+      if (a.onError) a.onError(function (e) { 飞书说("回放出错 " + 错(e)); 记("T6d", "回放", "出错 " + 错(e)); });
+      a.play();
+    } catch (e) { 飞书说("回放抛错 " + 错(e)); }
+  };
+  画飞书();
+  if (在飞书) 加载飞书SDK();
+
+  /* ───── ⑦ 网页按住说话：按下才开麦克风，松手关 ───── */
+  var 网页 = null, 网页次数 = 0, 网页上限秒 = 600;
+  function 网页界面(状态, 话) {
+    var b = $("pttWeb");
+    b.classList.toggle("on", 状态 === "录"); b.classList.toggle("cancel", 状态 === "取消");
+    b.textContent = 状态 === "录" ? "● 松开 结束" : 状态 === "取消" ? "松手取消" : 状态 === "备" ? "准备话筒…" : "按住说话";
+    $("pttWebState").textContent = 话 || "松手发送 · 上滑取消 · 电脑可按住空格";
+  }
+  function 网页开(来源) {
+    if (网页) return;
+    if (!能录() || typeof MediaRecorder !== "function") { $("pttWebOut").textContent = "这个浏览器录不了（没有 getUserMedia / MediaRecorder）"; 记("T8", "结果", "录不了"); return; }
+    网页 = { 来源: 来源, 按下: performance.now(), 取消: false, 松了: false, r: null, 流: null, 块: [], 菜单: 0, 选中: false };
+    var 这次 = 网页;
+    if (navigator.vibrate) { try { navigator.vibrate(15); } catch (e) { /* 不振也行 */ } }
+    网页界面("备");
+    要话筒().then(function (流) {
+      这次.流 = 流;
+      这次.拿到话筒ms = Math.round(performance.now() - 这次.按下);
+      if (这次.松了) {
+        关流(流); 网页 = null;
+        网页界面("", "已允许，请重新按住说话");
+        记("T8", "第一次按住", "松手时还在等授权（" + 这次.拿到话筒ms + " ms 后才拿到），这次不录，提示重新按住");
+        return;
+      }
+      try { 这次.r = 新录音器(流, ""); } catch (e) { 关流(流); 网页 = null; 网页界面("", "建录音器失败：" + 错(e)); 记("T8", "结果", "建录音器失败 " + 错(e)); return; }
+      这次.r.addEventListener("start", function () { 这次.开录 = performance.now(); 这次.起录ms = Math.round(这次.开录 - 这次.按下); });
+      这次.r.ondataavailable = function (e) {
+        if (!e.data || !e.data.size) return;
+        if (!这次.首块ms) 这次.首块ms = Math.round(performance.now() - 这次.按下);
+        这次.块.push(e.data);
+      };
+      这次.音量停 = 开音量条(流, $("pttWebLevel"));
+      这次.r.start(100);
+      if (!这次.开录) 这次.开录 = performance.now();
+      网页界面(这次.取消 ? "取消" : "录", 这次.取消 ? "松手取消" : "录音中");
+      这次.计时 = setInterval(function () {
+        if (网页 !== 这次) return;
+        var 秒 = (performance.now() - 这次.开录) / 1000;
+        if (秒 >= 网页上限秒) { 网页停(false, "到 10 分钟上限，自动结束"); return; }
+        var 剩 = 网页上限秒 - 秒;
+        $("pttWebState").textContent = (这次.取消 ? "松手取消 " : "● ") + 秒.toFixed(1) + " 秒 · " + (这次.取消 ? "滑回来继续录" : 剩 <= 30 ? "还能说 " + Math.ceil(剩) + " 秒" : "上滑取消");
+      }, 100);
+    }, function (e) {
+      网页 = null; 网页界面("", "拿不到麦克风：" + 错(e));
+      记("T8", "结果", "拿不到麦克风 " + 错(e));
+    });
+  }
+  function 网页动(取消, 事) {
+    if (!网页) return;
+    if (事 === "contextmenu") { 网页.菜单 += 1; return; }
+    if (网页.取消 === 取消) return;
+    网页.取消 = 取消;
+    if (网页.r) 网页界面(取消 ? "取消" : "录", 取消 ? "松手取消" : "录音中");
+  }
+  document.addEventListener("selectionchange", function () { if (网页 && String(getSelection() || "").trim()) 网页.选中 = true; });
+  function 网页停(取消, 原因) {
+    var 这次 = 网页;
+    if (!这次) return;
+    这次.松了 = true;
+    if (取消) 这次.取消 = true;
+    if (!这次.r) return; // 还在等授权，拿到后自己收尾
+    网页 = null;
+    clearInterval(这次.计时);
+    var 最大音量 = 这次.音量停 ? 这次.音量停() : null;
+    var 秒 = (performance.now() - 这次.开录) / 1000;
+    这次.r.onstop = function () {
+      关流(这次.流);
+      网页次数 += 1;
+      var 键 = "第 " + 网页次数 + " 次（" + 这次.来源 + "）";
+      var 延迟 = "按下→拿到话筒 " + 这次.拿到话筒ms + " ms、→录音器开始 " + (这次.起录ms != null ? 这次.起录ms : "?") + " ms、→首块数据 " + (这次.首块ms != null ? 这次.首块ms : "?") + " ms";
+      var 误触 = (这次.菜单 ? "；长按菜单事件 " + 这次.菜单 + " 次（已拦）" : "") + (这次.选中 ? "；按住时选中了文字" : "");
+      var 音量 = 最大音量 != null ? "；最大音量 " + 最大音量.toFixed(0) + "%" : "；没有音量条（无 AudioContext）";
+      if (这次.取消) {
+        网页界面("", 原因 || "已取消，这段没留");
+        $("pttWebOut").textContent = 键 + "：取消了，" + 秒.toFixed(1) + " 秒的录音丢弃" + (原因 ? "（" + 原因 + "）" : "");
+        $("pttWebPlay").innerHTML = "";
+        记("T8", 键, "取消" + (原因 ? "（" + 原因 + "）" : "") + "；" + 延迟 + 误触);
+        return;
+      }
+      if (秒 < 1) {
+        网页界面("", "说话时间太短");
+        $("pttWebOut").textContent = 键 + "：只按了 " + 秒.toFixed(2) + " 秒，不到 1 秒不留";
+        记("T8", 键, "太短（" + 秒.toFixed(2) + " 秒）丢弃" + 误触);
+        return;
+      }
+      var blob = new Blob(这次.块, { type: 这次.r.mimeType || "" });
+      var 话 = "录到 " + 秒.toFixed(1) + " 秒，" + (这次.r.mimeType || "（格式没说）") + "，" + 大小(blob.size) + "；" + 延迟 + 音量 + 误触 + (原因 ? "；" + 原因 : "");
+      网页界面("", "录好了，下面可以回放");
+      $("pttWebOut").textContent = 键 + "：" + 话 + "\n传回显中…";
+      记("T8", 键, 话);
+      放回放($("pttWebPlay"), blob, function (时长, 坏) { 记("T8", 键 + " 回放", 坏 ? "出错 " + 坏 : "时长 " + (时长 != null ? 时长.toFixed(1) : "?") + " 秒"); });
+      传回显(blob, blob.type || "application/octet-stream", function (坏, j) {
+        var r = 坏 ? "传失败 " + 坏 : 回显话(j, blob.size);
+        $("pttWebOut").textContent = 键 + "：" + 话 + "\n传回显：" + r;
+        记("T8", 键 + " 传回显", r);
+      });
+    };
+    try { 这次.r.stop(); } catch (e) { 网页界面("", "停录出错：" + 错(e)); }
+  }
+  按住手势($("pttWeb"), 网页开, 网页动, 网页停);
+  // 电脑：按住空格录，按住时 Esc 取消；在输入框、下拉里按空格不管
+  var 空格按着 = false;
+  function 不抢键(e) { var t = e.target, n = t && t.tagName; return n === "INPUT" || n === "SELECT" || n === "TEXTAREA" || (t && t.isContentEditable); }
+  document.addEventListener("keydown", function (e) {
+    if (e.code === "Space" || e.key === " ") {
+      if (不抢键(e)) return;
+      e.preventDefault();
+      if (e.repeat || 空格按着) return;
+      空格按着 = true; 网页开("空格");
+    } else if (e.key === "Escape" && 空格按着) { 网页动(true); }
+  });
+  document.addEventListener("keyup", function (e) {
+    if ((e.code === "Space" || e.key === " ") && 空格按着) { e.preventDefault(); 空格按着 = false; 网页停(false); }
+  });
+  window.addEventListener("blur", function () { if (空格按着) { 空格按着 = false; 网页停(true, "窗口失去焦点，当取消"); } });
+  Array.prototype.forEach.call(document.querySelectorAll("#pttWebJudge button"), function (b) {
+    b.onclick = function () { 记("T8", "长按误触（人看的）", b.getAttribute("data-judge")); };
+  });
+
+  /* ───── ⑧ 跳系统浏览器 ───── */
+  $("fsOpen").onclick = function () {
+    var o = $("fsOpenOut");
+    if (!有tt("openSchema")) { o.textContent = "没有 tt.openSchema（不在飞书里或 SDK 没加载）"; 记("T4", "openSchema external:true", "没有接口"); return; }
+    try {
+      window.tt.openSchema({ schema: location.href.split("#")[0], external: true,
+        success: function (r) { o.textContent = "openSchema 成功 " + json(r); 记("T4", "openSchema external:true", "成功（鉴权：" + 飞书.鉴权 + "）"); },
+        fail: function (e) { o.textContent = "openSchema 失败 " + 错(e); 记("T4", "openSchema external:true", "失败 " + 错(e) + "（鉴权：" + 飞书.鉴权 + "）"); } });
+    } catch (e) { o.textContent = "openSchema 抛错 " + 错(e); 记("T4", "openSchema external:true", "抛错 " + 错(e)); }
+  };
+  Array.prototype.forEach.call(document.querySelectorAll("#fsOpenJudge button"), function (b) {
+    b.onclick = function () { 记("T4", "跳过去以后（人看的）", b.getAttribute("data-judge")); };
+  });
+
+  /* ───── T7：这次在哪测 ───── */
+  记("T7", "这次在", 在飞书 ? "飞书内置浏览器：本页结果算 T1–T6、T8；T7 请在系统浏览器里再开一次" : "系统浏览器（" + 系统 + "）：上面 T1、T2、T3、T5、T8 就是 T7 基线");
+
+  /* ───── 摘要复制 ───── */
+  $("sumCopy").onclick = function () {
+    var 文 = $("sum").textContent;
+    function 好了(话) { $("sumCopied").textContent = 话; }
+    function 退路() {
+      var r = document.createRange(); r.selectNodeContents($("sum"));
+      var s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      try { 好了(document.execCommand("copy") ? "已复制" : "已选中，请长按复制"); } catch (e) { 好了("已选中，请长按复制"); }
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(文).then(function () { 好了("已复制"); }, 退路);
+    else 退路();
+  };
+  画摘要();
+})();
+</script>
+</body>
+</html>
