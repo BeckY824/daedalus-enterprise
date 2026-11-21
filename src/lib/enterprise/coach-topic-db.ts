@@ -19,14 +19,17 @@ import {
   发起身份of, 能发主题, 不能发主题话, 能看主题, 能回主题, 能关主题, 能删主题, 冻结了, 回复后状态, 主题输入问题, 回复输入问题,
   发起通知谁, 回复通知谁, 关闭通知谁, type 主题项目, type 发起身份, type 主题状态,
 } from "./coach-topic";
-import { 能看项目, type 谁 } from "./permissions";
+import { 能看项目, 权限项目选, type 谁 } from "./permissions";
 import { 夹页, 复盘列表每页, type 主题范围, type 主题状态筛, type 复盘主题 } from "@/lib/project/review-tabs";
 
 type 结果<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 /** 判主题要的项目字段（不过限定、不滤回收站：冻结要看 deletedAt） */
-const 项目选 = { id: true, name: true, ownerId: true, creatorId: true, pooledAt: true, bizLine: true, deletedAt: true, result: true, node: true, members: { where: { inviteStatus: "JOINED" }, select: { userId: true } } } as const;
-type 项目行 = { id: string; name: string; ownerId: string; creatorId: string | null; pooledAt: Date | null; bizLine: string | null; deletedAt: Date | null; result: string | null; node: string; members: { userId: string }[] };
+const 项目选 = { id: true, name: true, node: true, ...权限项目选 } as const;
+type 项目行 = {
+  id: string; name: string; ownerId: string; creatorId: string | null; pooledAt: Date | null; bizLine: string | null; deletedAt: Date | null; result: string | null; node: string; members: { userId: string }[];
+  phase: string; awaitAssignAt: Date | null; scheduledAssignAt: Date | null;
+};
 const 判项目 = (p: 项目行): 主题项目 & { id: string } => ({ ...p, 已加入: p.members.map((m) => m.userId) });
 
 async function 读项目(projectId: string): Promise<项目行 | null> {

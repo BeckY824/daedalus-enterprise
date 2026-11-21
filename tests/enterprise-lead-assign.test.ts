@@ -25,7 +25,6 @@ import { resetDb } from "./reset";
 import { 改权限key } from "@/lib/enterprise/edit-perm-table";
 import { 分配线索, 设配额, 我分出去的线索, 本月分配情况, 自动分配线索, 批量自动分配, 设自动分配参与, 读不设配额, 设不设配额, 项目分配线, 设线部门, 读线部门设置 } from "@/app/(app)/leads/assign-actions";
 import { 线部门key } from "@/lib/enterprise/assign-line";
-import { 读满额提醒 } from "@/lib/enterprise/lead-full-notice";
 import { getSetting } from "@/lib/settings";
 import { 企划线索计数key, 月份, 计不计数, 满了, 有配额, 挑接手人, 挑的理由, 自动分配不参与key, 认参与状态, 不设配额key, 自动候选人们 } from "@/lib/enterprise/lead-assign";
 import { 建组织 } from "@/lib/enterprise/org-core";
@@ -35,6 +34,8 @@ import { 改项目 } from "@/lib/project/db";
 import { 存组织规则 } from "@/lib/project/org-rules-store";
 import { 合上改动, 默认组织规则 } from "@/lib/project/org-rules";
 
+/** 这个人收到的「待分配」站内提醒（铃铛 + 飞书，11-21 起不再写 Setting 快照） */
+const 读满额提醒 = (userId: string) => prisma.entNotice.findMany({ where: { userId, kind: "待分配" }, orderBy: { createdAt: "desc" }, select: { title: true, body: true } });
 let 老板: string, 总管: string, 市场: string, 销售经理: string, 内贸: string, 外贸: string, 两边: string, 虚线经理: string, 渠道: string;
 
 const 当 = (id: string, role = "SALES") => { mocks.user = { ...mocks.user, id, role }; };
@@ -1143,7 +1144,7 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
     const 普通 = await 建项目("普通的", { bizLine: "外贸" });
     expect(await 自动分配线索(普通, { 项目: true })).toMatchObject({ ok: false, 待分配: true, error: expect.stringContaining("已标成待分配") });
     expect(await 项目(普通)).toMatchObject({ ownerId: 市场, awaitAssignAt: expect.any(Date), pooledAt: null });
-    for (const 谁 of [总管, 市场, 销售经理]) expect(await 读满额提醒(谁)).toMatchObject([{ 原因: "待分配", 线索: ["普通的"] }]);
+    for (const 谁 of [总管, 市场, 销售经理]) expect(await 读满额提醒(谁)).toMatchObject([{ title: "待分配：1 条新线索没自动分出去", body: expect.stringContaining("普通的") }]);
     expect(await 读满额提醒(内贸)).toEqual([]);
     // 内贸这条线还有人：照常分给内贸
     expect(await 自动分配线索(await 建项目("内贸的", { bizLine: "内贸" }), { 项目: true })).toMatchObject({ ok: true, toUserId: 内贸 });
@@ -1168,7 +1169,7 @@ describe("新线索按项目业务线分、并发不覆盖（11-01 QA #4 / #5、
     expect((await 项目(早)).awaitAssignAt).toEqual(new Date(2026, 0, 1));
     const 提醒 = await 读满额提醒(总管);
     expect(提醒).toHaveLength(1);
-    expect(提醒[0]).toMatchObject({ 原因: "待分配", 线索: ["甲", "乙"] });
+    expect(提醒[0]).toMatchObject({ title: "待分配：2 条新线索没自动分出去", body: expect.stringMatching(/^甲、乙（/) });
   });
 
   it("老项目没填业务线：按负责人的线（负责人没设 = 内贸）", async () => {

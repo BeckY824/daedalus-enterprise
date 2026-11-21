@@ -9,6 +9,7 @@ import { 放回公海 } from "@/lib/project/db";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 没设业务角色 } from "@/lib/enterprise/permissions";
 import { 标待分配 } from "@/lib/enterprise/await-assign";
+import { 挑不到原因 } from "@/lib/enterprise/await-assign-core";
 import { 读市场成员们 } from "@/lib/enterprise/market-db";
 import { 默认分配方式, 是销售角色, 算市场, type 项目线 } from "@/lib/enterprise/assign-line";
 import { 向导自动分配 } from "@/app/(app)/leads/assign-actions";
@@ -22,7 +23,8 @@ import { 新建指定候选表, type 指定候选表 } from "@/lib/enterprise/as
 import type { 线 } from "@/lib/enterprise/lead-assign";
 
 /** 新线索能手动分配 / 点自动分配的（A7）：和 lead-assign.ts 能分配 同一组业务角色 */
-const 能分配的人 = "市场管理、销售管理、总管理员";
+/** 提醒谁（11-21 起按线索算，同首页「待分配新线索」：本线销售管理、条线总管理、系统管理员，市场管理只管自己圈里建的，P-转-42） */
+const 能分配的人 = "能分配的人（本线销售管理、总管理员等）";
 
 /** 选「暂不分配」建好后回的那句（P-转-03） */
 export const 暂不分配提示 = "已记在你名下，在潜客培育自己跟进；之后可以再分配";
@@ -85,9 +87,11 @@ export async function 建好再分(me: 我, 分配: 定好的分配, projectId: 
     const r = await 向导自动分配(projectId, 方向);
     // 市场成员按客户区域分（P-转-26）、客户没填区域时两条线都算：提示里说一句，建议补区域
     if (r.ok) return { 提示: `已按「${分配.名}」分给 ${r.接手人}${r.区域未填 ? `（${区域未填提示}）` : ""}`, 转走: true };
-    await 标待分配(projectId, { org: await 读组织(), 名: 项目名, 谁建的: me.name, 为什么: r.error });
+    // 只交原因本身：r.error 带着「这条新线索留在原处，可以手动指派」，和「已留在新线索待分配」一句里两种说法（11-21）
+    const 为什么 = 挑不到原因(r.error);
+    await 标待分配(projectId, { org: await 读组织(), 名: 项目名, 谁建的: me.name, 为什么 });
     刷新(projectId);
-    return { 提示: `「${分配.名}」没分出去：${r.error}。已留在新线索待分配，已提醒${能分配的人}`, 转走: false };
+    return { 提示: `「${分配.名}」没分出去：${为什么}。已留在新线索待分配，已提醒${能分配的人}`, 转走: false };
   }
   // 暂不分配不标待分配（P-转-03、X-90，11-10 定）：建的人自己负责、算他持有，项目落在线索·潜客培育，之后照常可以再分配。
   // 回个对象（不回 null）：客户页新建靠它判「自己留着」，不给自己发「项目分给你」

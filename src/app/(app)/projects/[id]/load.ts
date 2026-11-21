@@ -13,7 +13,7 @@ import { 已立项天数 } from "@/lib/project/project-fields";
 import { 来源字, 人名显示 } from "@/lib/project/system-created";
 import { 页面可选项, 预读页面字典, 页面字典, 可选名们, 已签收认法, type 字典种类 } from "@/lib/enterprise/dict";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能看项目, 能转让项目, 能删除, 能新建和领取 } from "@/lib/enterprise/permissions";
+import { 能看项目, 能转让项目, 能删除, 能新建和领取, 权限项目选 } from "@/lib/enterprise/permissions";
 import { 页面能改沟通, 能改沟通of, 页面能删沟通, 能删沟通of, 本人限时可改of, 本人可改到, 下一步跟着改of, 系统记的沟通们 } from "@/lib/enterprise/follow-perm";
 import { 沟通留痕们 } from "@/lib/enterprise/follow-edited";
 import { 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
@@ -108,7 +108,8 @@ export async function 项目页去向(me: SessionUser, id: string): Promise<{ �
   if (!企业版()) return { 种: "留" };
   const p = await prisma.project.findUnique({
     where: { id },
-    select: { id: true, name: true, ownerId: true, creatorId: true, pooledAt: true, bizLine: true, customerId: true, members: { where: { inviteStatus: "JOINED" }, select: { userId: true } } },
+    // 能看项目 要的列同一份（权限项目选，含待分配本线放开 P-转-42 那几格）
+    select: { id: true, name: true, customerId: true, ...权限项目选 },
   });
   if (!p) return { 种: "无" };
   const 已加入 = p.members.map((m) => m.userId);

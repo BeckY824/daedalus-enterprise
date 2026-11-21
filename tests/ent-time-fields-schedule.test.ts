@@ -241,6 +241,19 @@ describe("到点前改 / 取消 / 作废", () => {
     expect((await prisma.entLeadAssign.findFirstOrThrow()).byUserId).toBe(市场.id);
   });
 
+  it("改成现在分配、分不出去：提示只说一次「留在新线索待分配」，不带挑不到人那句的尾巴（11-21 审查）", async () => {
+    await applyProposal(卡({ 分配方式: 1, 定时分配: 后(2).墙 }) as never);
+    const p = await 唯一项目();
+    // 能接的都停用：自动分配挑不到人
+    await prisma.user.updateMany({ where: { id: { in: [乙.id, 丙.id] } }, data: { active: false } });
+    忘掉企业版范围();
+    const r = await 定时分配现在分(p.id);
+    expect(r).toMatchObject({ ok: false, error: expect.stringMatching(/^没分出去：.+。已留在新线索待分配$/) });
+    const 话 = (r as { error: string }).error;
+    expect(话.split("待分配").length - 1).toBe(1);
+    expect(话).not.toMatch(/留在原处|可以手动指派/);
+  });
+
   it("能分配的人到点前手动分了（清了待分配标记）：定时作废，到点不再动", async () => {
     const { 墙, at } = 后(2);
     await applyProposal(卡({ 分配方式: 0, ownerId: 乙.id, 定时分配: 墙 }) as never);

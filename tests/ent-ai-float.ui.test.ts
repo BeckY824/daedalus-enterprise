@@ -26,7 +26,7 @@ let 包: string;
 
 const 插件: Plugin = { name: "ent-ai-float", setup(b) {
   b.onResolve({ filter: /^next\/(navigation|link)$/ }, (a) => ({ path: a.path, namespace: "fixture" }));
-  b.onResolve({ filter: /(^|\/)(WhatsNew|UpdateRow|FeedbackButton|AiCost|RailResizer|LeadFullNotices|RecordView|ProjectDetail|NoticeBell|DockThreads)$/ }, (a) => ({ path: a.path, namespace: "empty-child" }));
+  b.onResolve({ filter: /(^|\/)(WhatsNew|UpdateRow|FeedbackButton|AiCost|RailResizer|AwaitAssignTodo|RecordView|ProjectDetail|NoticeBell|DockThreads)$/ }, (a) => ({ path: a.path, namespace: "empty-child" }));
   b.onLoad({ filter: /.*/, namespace: "empty-child" }, () => ({ contents: "export default function Empty(){return null} export function AiMeterBar(){return null}" }));
   b.onResolve({ filter: /dashboard\/HomeChat$/ }, (a) => ({ path: a.path, namespace: "homechat" }));
   b.onLoad({ filter: /.*/, namespace: "homechat" }, () => ({ resolveDir: process.cwd(), loader: "jsx", contents: `
