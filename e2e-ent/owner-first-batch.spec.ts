@@ -203,8 +203,8 @@ test("A1 只负责项目的人：从项目进客户详情是受限详情（仅�
   const 正文 = page.getByRole("main");
   const 头 = 正文.locator(".rec-head");
   await expect(头.getByText("仅项目", { exact: true })).toBeVisible();
-  // 页头只有「项目操作 ▾」：没有客户操作、AI、星标
-  await expect(头.getByRole("button", { name: /客户操作/ })).toHaveCount(0);
+  // 页头最多一颗「更多操作 ▾」（11-21 PR1 前叫「项目操作 ▾」，只有项目一组；摆不摆看种子项目的阶段和权限，这里不钉）：没有客户操作、发起点评、AI、星标
+  await expect(头.getByRole("button", { name: /客户操作|发起点评/ })).toHaveCount(0);
   await expect(头.getByRole("button", { name: /^AI$/ })).toHaveCount(0);
   // 项目区只有丙自己的项目（只有一个：卡头直接写项目名，没有胶囊），没有带锁的同事项目
   await expect(正文.locator(".cd-pj-one .cd-pj-nm, .cd-pj-pill .cd-pj-nm")).toHaveCount(1);

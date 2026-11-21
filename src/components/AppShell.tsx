@@ -677,7 +677,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
         </Content>
         {/* 企业版项目模式：手机上也能问一句。点浮标，面板铺满屏（globals.css 的手机 .dock），× 收起 */}
         {ai && 企业版项目 && (
-          <AiDock userName={user.name} userId={user.id} models={ai.models} 开着={手机开着} set开着={(开) => set手机开在(开 ? 底下那页 : null)} 企业版={企业版} />
+          <AiDock userName={user.name} userId={user.id} models={ai.models} 开着={手机开着} set开着={(开) => set手机开在(开 ? 底下那页 : null)} 企业版={企业版} 手机 />
         )}
         {显示浮标 && <AiFab onClick={() => set手机开在(底下那页)} />}
       </Layout>

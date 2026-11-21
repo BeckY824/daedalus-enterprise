@@ -85,7 +85,7 @@ async function 开(去处: 去处[], width = 1280, 放回?: unknown, 额外: { �
 }
 const 取 = (page: Page, k: string) => page.evaluate((k) => Reflect.get(window, k) ?? null, k);
 async function 点退回(page: Page) {
-  await page.locator(".rec-head-acts button").filter({ hasText: /客户操作/ }).click();
+  await page.locator(".rec-head-acts button").filter({ hasText: /更多操作/ }).click();
   await page.locator(".rec-head-menu").last().getByRole("menuitem", { name: /^客户退回公海$/ }).click();
   const 框 = page.getByRole("dialog").filter({ hasText: "退回公海" });
   await 框.waitFor();
@@ -253,8 +253,8 @@ it("首页 AI 记沟通卡「去建项目」带 ?建项目=1 进来：直接打�
 });
 
 async function 点转让(page: Page) {
-  await page.locator(".rec-head-acts button").filter({ hasText: /客户操作/ }).click();
-  await page.locator(".rec-head-menu").last().getByRole("menuitem", { name: /^客户转让$/ }).click();
+  await page.locator(".rec-head-acts button").filter({ hasText: /更多操作/ }).click();
+  await page.locator(".rec-head-menu").last().getByRole("menuitem", { name: /^客户转让/ }).click();
   const 框 = page.getByRole("dialog").filter({ hasText: "客户转让" });
   await 框.waitFor();
   return 框;

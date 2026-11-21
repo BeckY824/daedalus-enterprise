@@ -375,8 +375,8 @@ test("项目公海：原负责人看不到公海里的项目；客户在公海�
   await expect(正文.getByText("这个项目在线索公海里", { exact: true })).toBeVisible();
   await expect(正文.getByText("这位客户在客户公海里，项目不能单独领、分或转：请先到客户公海领取或分配这位客户", { exact: true })).toBeVisible();
   await expect(正文.getByText(/你是原负责人/)).toHaveCount(0);
-  // 11-12 起项目的「领取」收进页头「项目操作 ▾」：领不了时那一项灰着（aria-disabled）
-  await 正文.getByRole("button", { name: /项目操作/ }).click();
+  // 11-12 起项目的「领取」收进页头「项目操作 ▾」（11-21 教练点评改版 PR1 合进「更多操作 ▾」）：领不了时那一项灰着（aria-disabled）
+  await 正文.getByRole("button", { name: /更多操作/ }).click();
   await expect(page.getByRole("menuitem", { name: /领\s*取/ })).toHaveAttribute("aria-disabled", "true");
   await page.keyboard.press("Escape");
 
