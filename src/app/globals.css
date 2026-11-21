@@ -5599,7 +5599,7 @@ button.proj-miss-chip { cursor: pointer; }
 .proj-miss-dot { flex: none; width: 5px; height: 5px; border-radius: 999px; background: var(--warning); }
 .proj-miss-help { margin-top: 6px; color: var(--warning-text); font-size: var(--fs-min); line-height: 18px; overflow-wrap: anywhere; }
 .proj-fu-m { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; color: var(--text-muted); font-size: var(--fs-note); line-height: 22px; }
-.proj-fu-i { display: inline-flex; flex: none; font-size: 14px; }
+.proj-fu-i { display: inline-flex; flex: none; font-size: var(--fs-body); }
 .proj-fu-who { color: var(--ink-soft); font-weight: 500; }
 .proj-fu-t { margin-left: auto; white-space: nowrap; }
 

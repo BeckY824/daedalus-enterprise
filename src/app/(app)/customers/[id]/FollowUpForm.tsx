@@ -9,6 +9,7 @@ import { 滚法 } from "@/lib/reduced-motion";
 import { requiredText } from "@/lib/form-validation";
 
 import { useEffect, useRef, useState } from "react";
+import { useIsNowSkin } from "@/lib/use-skin";
 import { useRouter } from "next/navigation";
 import { Modal, Form, Input, Select, InputNumber, Row, Col, Button, Checkbox, Space, Typography } from "antd";
 import SaveButton from "@/components/SaveButton";
@@ -220,6 +221,8 @@ export default function FollowUpForm({
     不是组员、项目在公海、类型是待办 / 提醒，都照旧走 saveFollowUp
   */
   const 要须知 = open && !!projects && !record?.id;
+  /** D4 · M7-b 标题「新建沟通」只在现状主题；换皮主题照旧「记一条沟通」（use-skin.ts） */
+  const 新样 = useIsNowSkin();
   const [须知存, set须知存] = useState<{ id: string; r: 项目沟通须知结果 } | null>(null);
   useEffect(() => {
     if (!要须知 || !projectId) return;
@@ -787,7 +790,7 @@ export default function FollowUpForm({
       // 存上了（对勾还在放 / 停下来让人看没成的那块）：Esc / X / 取消 也当「知道了」，照样交给页面刷新
       onCancel={关或收尾}
       open={open}
-      title={record?.id ? "编辑沟通记录" : "新建沟通"}
+      title={record?.id ? "编辑沟通记录" : 新样 ? "新建沟通" : "记一条沟通"}
       footer={停下看 ? [
         <Button key="知道了" type="primary" onClick={做收尾}>知道了</Button>,
       ] : [
