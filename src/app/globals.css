@@ -5072,6 +5072,8 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 .pd-blk-on-v { flex: 1 1 auto; min-width: 0; }
 .pd-blk-on-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pd-blk-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+/* D4 · M9-a：类型、影响各带标签后包了一层，下拉照旧撑满那一格 */
+.pd-blk-row .ant-select { width: 100%; }
 .pd-blk { transition: background-color var(--t) var(--ease), box-shadow var(--t) var(--ease); border-radius: var(--r-ctl); }
 .pd-blk.is-claimed { background: var(--brand-bg); box-shadow: inset 3px 0 0 var(--brand); }
 .pd-blk-claimed { font-size: var(--fs-note); color: var(--brand-deep); align-self: center; }
@@ -5571,4 +5573,69 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
   :root:is(:not([data-skin]), [data-skin="now"]) .rec-page.ui-v2 > .rec.rec-cd > .rec-rail.rec-rail-blocks { display: contents; }
   :root:is(:not([data-skin]), [data-skin="now"]) .rec-page.ui-v2 > .rec.rec-cd > .rec-rail-blocks > .proj-fold { margin-top: 0; min-width: 0; }
   :root:is(:not([data-skin]), [data-skin="now"]) .rec-page.ui-v2 > .rec.rec-cd > .rec-rail-blocks > #cust-contacts { order: -2; }
+}
+
+/* ---------- 进程卡、沟通、待办、卡点（D4 · 设计语言 11-21，规范 M6–M9）----------
+   外观规则一律只挂现状主题，换皮主题照原样（用户 11-21「换皮主题不动」）。
+   不带限定的只有新元素的结构规则：弹框标签（* 在标签前）/ 格子下说明 / 格子下报错、缺项小块那一块、沟通条目的一行灰字——
+   不排各主题都挤成一团；颜色只用全站本来就一样的提示 / 报错 / 警示色 */
+.fm-label { display: block; margin-bottom: 4px; }
+.fm-req { margin-inline-end: 4px; color: var(--danger-text); }
+.fm-help { margin-top: 4px; color: var(--text-muted); font-size: var(--fs-min); line-height: 18px; overflow-wrap: anywhere; }
+.fm-err { margin-top: 4px; color: var(--danger-text); font-size: var(--fs-min); line-height: 18px; overflow-wrap: anywhere; }
+.proj-miss { margin-top: 12px; padding: 8px 10px; border: 1px solid var(--warning-line); border-radius: var(--r-card); background: var(--warning-bg); min-width: 0; }
+.proj-miss.is-ok { border-color: var(--success-line); background: var(--success-bg); }
+.proj-miss-t { color: var(--warning-text); font-size: var(--fs-note); font-weight: 600; overflow-wrap: anywhere; }
+.proj-miss.is-ok .proj-miss-t { color: var(--success-text); font-weight: 500; }
+.proj-miss-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; min-width: 0; }
+.proj-miss-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 26px; padding: 0 9px; border: 1px solid var(--warning-line); border-radius: var(--r-tag); background: var(--panel); color: var(--ink); font: inherit; font-size: var(--fs-note); text-align: left; overflow-wrap: anywhere; }
+button.proj-miss-chip { cursor: pointer; }
+.proj-miss-dot { flex: none; width: 5px; height: 5px; border-radius: 999px; background: var(--warning); }
+.proj-miss-help { margin-top: 6px; color: var(--warning-text); font-size: var(--fs-min); line-height: 18px; overflow-wrap: anywhere; }
+.proj-fu-m { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; color: var(--text-muted); font-size: var(--fs-note); line-height: 22px; }
+.proj-fu-i { display: inline-flex; flex: none; font-size: 14px; }
+.proj-fu-who { color: var(--ink-soft); font-weight: 500; }
+.proj-fu-t { margin-left: auto; white-space: nowrap; }
+
+/* 完成节点改浅绿（用户 11-21 按推荐：一屏只留「新建沟通」一颗蓝实心）；灰着整颗看得出灰；右半「终止进程」是菜单，白底 */
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-btn.proj-done-btn:not(:disabled) { background: var(--success-bg); border-color: var(--success-line); color: var(--success-text); font-weight: 500; }
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-btn.proj-done-btn:not(:disabled):hover { background: color-mix(in srgb, var(--success-line) 40%, var(--success-bg)); border-color: color-mix(in srgb, var(--success) 40%, var(--success-line)); color: var(--success-text); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-btn.proj-done-btn:disabled { background: var(--workbench); border-color: var(--line); color: var(--text-muted); opacity: 1; }
+:root:is(:not([data-skin]), [data-skin="now"]) .split-success > .ant-btn.proj-done-btn.split-caret:not(:disabled) { background: var(--panel); border-color: var(--line); color: var(--ink-soft); }
+:root:is(:not([data-skin]), [data-skin="now"]) .split-success > .ant-btn.proj-done-btn.split-caret:not(:disabled):hover { background: var(--row-hover); border-color: var(--line); color: var(--ink); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-space-compact > .ant-btn.proj-done-btn + .ant-btn.proj-done-btn:not(:disabled),
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-space-compact > .proj-stage-tip + .ant-btn.proj-done-btn:not(:disabled) { border-left-color: var(--line); }
+/* 只读（没有左半）只剩的收起钮：白底方块，不再是蓝实心（M7 ⑩） */
+:root:is(:not([data-skin]), [data-skin="now"]) .split-btn.split-solo > .ant-btn.split-caret:not(:disabled) { background: var(--panel); border-color: var(--line); color: var(--ink-soft); box-shadow: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .split-btn.split-solo > .ant-btn.split-caret:not(:disabled):hover { background: var(--row-hover); color: var(--ink); }
+/* 节点条：还能往哪边滑，那一头渐隐（--edge-fade），不露半个字；结局钮写全「已转商机」，不省略 */
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-stage-nodes.fade-r { -webkit-mask-image: linear-gradient(90deg, black 0, black calc(100% - var(--edge-fade)), transparent 100%); mask-image: linear-gradient(90deg, black 0, black calc(100% - var(--edge-fade)), transparent 100%); }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-stage-nodes.fade-l { -webkit-mask-image: linear-gradient(90deg, transparent 0, black var(--edge-fade), black 100%); mask-image: linear-gradient(90deg, transparent 0, black var(--edge-fade), black 100%); }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-stage-nodes.fade-l.fade-r { -webkit-mask-image: linear-gradient(90deg, transparent 0, black var(--edge-fade), black calc(100% - var(--edge-fade)), transparent 100%); mask-image: linear-gradient(90deg, transparent 0, black var(--edge-fade), black calc(100% - var(--edge-fade)), transparent 100%); }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-stage-exit { flex: none; max-width: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-stage-exit .proj-stage-name { overflow: visible; }
+/* 缺项小块：悬停 / 按下深一档；键盘焦点同全站 */
+:root:is(:not([data-skin]), [data-skin="now"]) button.proj-miss-chip { transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
+:root:is(:not([data-skin]), [data-skin="now"]) button.proj-miss-chip:hover { background: var(--warning-bg); border-color: var(--warning); }
+:root:is(:not([data-skin]), [data-skin="now"]) button.proj-miss-chip:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+/* 沟通条目：阶段一个小块（无边浅灰），图标次要色 */
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-fu-m .proj-fu-stage { margin-inline-end: 0; background: var(--hover); color: var(--ink-soft); font-size: var(--fs-min); }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-fu-i { color: var(--text-muted); }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-fu-t { font-variant-numeric: tabular-nums; }
+/* 待办：勾选框和待办字之间 16（gap 8 + 8） */
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-task > .ant-checkbox-wrapper { margin-inline-end: 8px; }
+/* 手机宽（rec 容器 < 630）：项目名单独一行、最多两行（M6 ⑦）；沟通卡头「本项目 | 这位客户全部」单独一行、两半等宽 40 高（M7 ⑪），标题和「新建沟通」同一行 */
+@container rec (max-width: 629px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .proj-stage-bar.has-head { flex-wrap: wrap; row-gap: 8px; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .proj-stage-bar.has-head > .proj-stage-head { flex: 1 1 100%; padding-bottom: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .proj-stage-bar.has-head > .proj-stage-acts { margin-left: auto; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .proj-stage-head .cd-pj-one { align-items: flex-start; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .proj-stage-head .cd-pj-one > .cd-pj-nm { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; line-height: 24px; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .proj-stage-head .cd-pj > .cd-cap, :root:is(:not([data-skin]), [data-skin="now"]) .proj-stage-head .cd-pj-tag { align-self: flex-start; line-height: 24px; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cd-comm > .ant-card-head .ant-card-head-wrapper { flex-wrap: wrap; row-gap: 10px; padding-block: 10px; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cd-comm > .ant-card-head .ant-card-head-title, :root:is(:not([data-skin]), [data-skin="now"]) .cd-comm .cd-comm-t { display: contents; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cd-comm .cd-comm-t > span:first-child { flex: 1 1 auto; min-width: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cd-comm > .ant-card-head .ant-card-extra { margin-inline-start: auto; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cd-comm .cd-seg { order: 2; flex: 1 1 100%; display: grid; grid-template-columns: 1fr 1fr; box-sizing: border-box; height: 40px; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cd-comm .cd-seg > button { height: 36px; }
 }

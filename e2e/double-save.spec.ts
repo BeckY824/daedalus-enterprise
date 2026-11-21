@@ -103,7 +103,7 @@ test("记录跟进（带截止时间、连带建待办）：连点两次保存 �
   // 企业版原来带着这位到沟通记录页记；那页 11-15 删了，企业版记沟通在客户档案里、要先有项目（e2e-ent/record-followup.spec.ts 里验）
   test.skip(企业版, "沟通记录页 11-15 删了：企业版记沟通在客户档案里（先有项目），e2e-ent/record-followup.spec.ts 里验");
   await page.goto(`/customers/${客户id}`);
-  const 框 = await 打开(page, /^(plus )?记一条沟通$/, "记一条沟通");
+  const 框 = await 打开(page, /^(plus )?记一条沟通$/, "新建沟通");
   // 换成「跟进任务」才有截止时间；填了截止时间、状态没做完，保存时顺带建一条待办
   // 企业版下拉里先列 19 种沟通方式、待办类排在后面，虚拟列表不渲染屏外的项：先打字筛出来再点
   await 框.getByLabel("沟通方式").click();

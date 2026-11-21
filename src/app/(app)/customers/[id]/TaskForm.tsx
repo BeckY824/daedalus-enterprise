@@ -104,7 +104,8 @@ export default function TaskForm({
       title={record ? "改待办" : "新建待办"}
       footer={[
         <Button key="取消" onClick={关或收尾}>取消</Button>,
-        <SaveButton key="存" 做={提交} 已保存={record ? "已保存" : "已创建"} 没保存="没存上" 成了={() => { if (存上了.current) 收尾(); }}>{record ? "保存" : "创建"}</SaveButton>,
+        // 设计语言 D4 · M8-a（D14）：新建、修改提交键都叫「保存」（原新建叫「创建」）；一直能点，没填好在格子下报红（antd Form 校验）
+        <SaveButton key="存" 做={提交} 已保存="已保存" 没保存="没存上" 成了={() => { if (存上了.current) 收尾(); }}>保存</SaveButton>,
       ]}
       destroyOnHidden
     >

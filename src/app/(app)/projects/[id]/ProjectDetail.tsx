@@ -5,7 +5,7 @@ import { 公海领取文字 } from "@/lib/project/transfer-log-text";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { DownOutlined, EditOutlined, MoreOutlined, RightOutlined, SearchOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { CommentOutlined, DownOutlined, EditOutlined, MoreOutlined, RightOutlined, SearchOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Checkbox, Dropdown, Input, Menu, Modal, Popover, Progress, Segmented, Select, Space, Tag, Timeline, Tooltip, type MenuProps, type PopoverProps } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import DictSelect from "@/components/DictSelect";
@@ -17,10 +17,11 @@ import { 自动推进话of } from "@/lib/project/auto-advance-text";
 import { 其他没写好, 不填项, 去不填, 未选占位 } from "@/lib/enterprise/dict-kinds";
 import { 有值, 空值符, 空显 } from "@/lib/empty-value";
 import { 公海规则, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
-import { 必填叫法, type 必填项 } from "@/lib/project/required";
-import { PageHead, CustomerLink, FollowTypeCell } from "@/components/ui";
+import { 必填叫法, 必填项们, type 必填项 } from "@/lib/project/required";
+import { PageHead, CustomerLink, FOLLOW_TYPE_ICON } from "@/components/ui";
+import { 跟进方式名 } from "@/lib/follow-method";
 import { useBusiness } from "@/lib/business-client";
-import { dayjs, fmtDateTime, 成员选项 } from "@/lib/utils";
+import { dayjs, fmtDateTime, smartTime, 成员选项 } from "@/lib/utils";
 import { 回公海文案, 回公海颜色, 预演回收日, type 回收预演底子 } from "@/lib/enterprise/recycle-text";
 import { 跟进类型们 } from "@/lib/constants";
 import FollowMethodSelect, { InitiatorSelect, useFollowHabit, useFollowInitiators, useFollowMethods, 默认沟通方式, 默认发起主体 } from "@/components/FollowMethodSelect";
@@ -434,6 +435,8 @@ export type 项目卡点 = { 们: 卡点卡[]; 能发: boolean; 默认: 卡点�
 
 /** 「项目画像」模块壳的落点 id（F-017「去填」需求状态滚过去）：独立页、嵌在客户页两处画像卡挂同一个 */
 const 画像落点 = "project-profile-fold";
+/** 必填键 → 右栏就地改那一格的名字（ProjectInlineField 名），一样的不列 */
+const 右栏格名: Record<string, string> = { 项目级别: "级别", 主联系人: "联系人", 合同已生效: "合同状态", 已备货: "备货状态", 已签收: "物流状态", 预计成交日期: "预计成交" };
 const 无效原因前缀 = "无效原因：";
 
 // 规则 E：红只给已经过了的，当天橙，还早的不上色
@@ -817,6 +820,40 @@ export default function ProjectDetail({
   /** 「完成节点」灰着正是因为 不给推（不是等复核、改不了节点这些先拦下的）→ 必填齐了那句写明该谁点 */
   const 灰在不给推 = !!p.不给推 && 完成不了 === p.不给推;
   const 谁能推 = p.不给推谁能推 || "上级";
+  /*
+    设计语言 D4 · M6-a：缺项小块。节点缺 = 这个节点配的必填还差的；验证缺 = 要推过线索验证还要的（原来那段补填提示出的时候才算，条件不变）。
+    两边合成一份去重，判「有效」也要的打 •
+  */
+  const 节点缺 = p.必填 && !p.result ? p.必填.还差 : [];
+  const 显示验证缺 = !!补填提示 && !p.线索验证?.我能 && !(p.必填 && p.node === 有效线索节点);
+  const 叫法到键 = (叫: string) => 必填项们.find((x) => 必填叫法(x.key) === 叫)?.key ?? 叫;
+  const 缺项们: { 键: string; 叫: string; 判有效: boolean }[] = [];
+  for (const 键 of [...节点缺, ...(显示验证缺 ? p.有效沟通差.map(叫法到键) : [])]) {
+    if (缺项们.some((x) => x.键 === 键)) continue;
+    缺项们.push({ 键, 叫: 必填叫法(键), 判有效: 没有效沟通 && p.有效沟通差.includes(必填叫法(键)) });
+  }
+  const 判有效数 = 缺项们.filter((x) => x.判有效).length;
+  const 能去填 = 可改 && !等复核;
+  /** 点缺项小块：完成节点框开得了就开框、落到那一格（M-节点-09 同一套填法）；开不了就去右栏那一格进编辑 / 画像卡 / 线索验证框 */
+  const 去填 = (键: string) => {
+    if (节点可改 && !完成不了 && !忙 && 要先补齐 && 节点缺.includes(键)) {
+      set头部框("完成");
+      window.setTimeout(() => {
+        const 格 = document.querySelector<HTMLElement>(`.pd-fill-pop [data-required="${键}"]`);
+        格?.scrollIntoView({ block: "nearest" });
+        格?.querySelector<HTMLElement>("input:not([disabled]), textarea:not([disabled]), button:not([disabled])")?.focus({ preventScroll: true });
+      }, 120);
+      return;
+    }
+    if ((键 === "有效沟通" || 键 === "线索验证结果") && p.线索验证?.我能) { set验证开着(true); return; }
+    const 格 = document.querySelector<HTMLElement>(`[data-inline-field="${右栏格名[键] ?? 键}"]`);
+    if (格) {
+      格.scrollIntoView({ block: "center", behavior: "smooth" });
+      格.querySelector<HTMLElement>(".proj-inline-pen")?.click();
+      return;
+    }
+    if (键 === "需求" || 必填项们.find((x) => x.key === 键)?.说明.includes("项目画像")) 定位到模块(画像落点);
+  };
   const 完成 = () => {
     if (!完成到) return;
     if (完成到.result) return 结束确认(完成到);
@@ -1077,19 +1114,40 @@ export default function ProjectDetail({
           <Button size="small" onClick={() => set验证开着(true)}>打开线索验证</Button>
         </div>
       )}
-      {补填提示 && !p.线索验证?.我能 && !(p.必填 && p.node === 有效线索节点) && (
-        <div className="proj-gate-hint" data-testid="lead-gate-hint">
-          <span className="proj-gate-hint-t">{补填提示}</span>
-          {缺需求 && p.画像 && 可改 && <Button size="small" onClick={() => 定位到模块(画像落点)}>去填</Button>}
+      {/*
+        设计语言 D4 · M6-a（D36）：原来两段灰字（「要推过线索验证，还要填：…」「这个节点还差必填：…」）列的项还不一样，合成一块「还差 N 项」+ 缺项小块：
+        带 • 的是判「有效」也要的；小块保留括号别名、「暂无」「-」不算填了照留；点一块直接去填（完成节点框里那一格 / 右栏那一格 / 画像卡 / 线索验证框）
+      */}
+      {缺项们.length > 0 && (
+        <div className="proj-miss" data-testid={显示验证缺 ? "lead-gate-hint" : "node-required-miss"}>
+          <div className="proj-miss-t">{节点缺.length ? `完成这个节点还差 ${缺项们.length} 项` : `要推过线索验证还差 ${缺项们.length} 项`}</div>
+          <div className="proj-miss-chips">
+            {缺项们.map((x) => (
+              能去填 ? (
+                <button key={x.键} type="button" className="proj-miss-chip" data-miss={x.键} onClick={() => 去填(x.键)}>
+                  {x.判有效 && <i className="proj-miss-dot" aria-label="判「有效」也要" />}{x.叫}
+                </button>
+              ) : (
+                <span key={x.键} className="proj-miss-chip" data-miss={x.键}>{x.判有效 && <i className="proj-miss-dot" aria-label="判「有效」也要" />}{x.叫}</span>
+              )
+            ))}
+          </div>
+          <div className="proj-miss-help">
+            {[
+              判有效数 > 0 && 节点缺.length > 0 ? `带 • 的 ${判有效数} 项也是判「有效」要的` : "",
+              缺需求 && !能去填 ? "需求状态在「项目画像」里选" : "",
+              能去填 ? "点一项直接去填" : "",
+              "「暂无」「-」这类占位不算填了",
+            ].filter(Boolean).join("；")}{显示验证缺 ? 沟通半句 : ""}
+          </div>
         </div>
       )}
-      {p.必填 && !p.result && (
-        <div style={{ marginTop: 12, color: p.必填.还差.length ? "var(--text-muted)" : "var(--success-text)", overflowWrap: "anywhere" }}>
-          {p.必填.还差.length
-            ? `这个节点还差必填：${p.必填.还差.map(必填叫法).join("、")}（「暂无」「-」这类占位不算填了）`
-            // 存一下就推（仅上级推下停在已齐的节点）只给 能管项目 的人（load.ts 能改）：他们改项目字段、画像、勾交付、传附件、记回款、记沟通都会按必填推一格，
-            // 值没变的保存不算（改项目 / 改项目画像 变了为空直接回）；组员记沟通不推，但组员看不到这句
-            : p.必填.存一下就推 ? "已经填齐：改任一项（项目资料、画像都算，值没变不算）保存、或记一条沟通，就会自动推到下一步"
+      {p.必填 && !p.result && !p.必填.还差.length && (
+        <div className="proj-miss is-ok" style={{ overflowWrap: "anywhere" }}>
+          <div className="proj-miss-t">
+            {/* 存一下就推（仅上级推下停在已齐的节点）只给 能管项目 的人（load.ts 能改）：他们改项目字段、画像、勾交付、传附件、记回款、记沟通都会按必填推一格，
+                值没变的保存不算（改项目 / 改项目画像 变了为空直接回）；组员记沟通不推，但组员看不到这句 */}
+            {p.必填.存一下就推 ? "已经填齐：改任一项（项目资料、画像都算，值没变不算）保存、或记一条沟通，就会自动推到下一步"
               // 下一格换阶段不自动推（db.ts 自动推得到）：写明要点「完成节点」进下一阶段；
               // 「完成节点」灰着、灰因正是 p.不给推（仅上级推、补全期、负责人可推下的组员）：不叫他点，写明该谁点（load.ts 不给推谁能推）；
               // 灰因是别的（等复核、改不了节点、缺有效沟通，写在按钮下）：谁点都不行，这里只说齐了
@@ -1097,6 +1155,7 @@ export default function ProjectDetail({
                 ? (!完成不了 ? `必填齐了，点「完成节点」进${完成到.phase}` : 灰在不给推 ? `必填齐了，进${完成到.phase}要${谁能推}点「完成节点」` : "这个节点的必填都齐了")
                 : !完成不了 ? "这个节点的必填都齐了，可以点「完成节点」往前推"
                   : 灰在不给推 ? `这个节点的必填都齐了，往前推要${谁能推}点「完成节点」` : "这个节点的必填都齐了"}
+          </div>
         </div>
       )}
     </Card>
@@ -1573,16 +1632,22 @@ export default function ProjectDetail({
         {列沟通.map((f) => (
           // data-paste-scope：焦点在这条沟通里（含改沟通内容的文本框）粘截图，落进这条的附件（FollowAttachments）
           <div key={f.id} id={`follow-${f.id}`} data-paste-scope="" className={`proj-follow-row${删走 === f.id ? " pd-follow-leave" : ""}`} style={{ marginBottom: 12 }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <FollowTypeCell type={f.type} method={f.method} />
-              {f.initiator && <Tag bordered={false}>{f.initiator}</Tag>}
-              <Tag>{f.node}</Tag>
+            {/*
+              设计语言 D4 · M7-a：开头一颗方式图标（没写方式的不再是「···」）；谁 · 方式 · 发起写成一行灰字，只留阶段一个小块；
+              时间和列表同一套（今天 13:13 / 昨天 / 3 天前 / 11 月 18 日，悬停看完整时刻）
+            */}
+            <div className="proj-fu-m">
+              <span className="proj-fu-i" aria-hidden>{f.type === "OTHER" ? <CommentOutlined /> : (FOLLOW_TYPE_ICON[f.type] ?? <CommentOutlined />)}</span>
+              <span className="proj-fu-who">{f.who}</span>
+              <span aria-hidden>·</span><span>{跟进方式名(f, "其他方式")}</span>
+              {f.initiator && <><span aria-hidden>·</span><span>{f.initiator}</span></>}
+              <Tag variant="filled" className="proj-fu-stage">{f.node}</Tag>
               {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
-              <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
+              <span className="proj-fu-t" title={fmtDateTime(f.occurredAt)}>{smartTime(f.occurredAt)}</span>
               {f.已修改 && <span data-testid="follow-edited" title="这条沟通提交后改过，改了什么见操作日志" className="proj-fu-edited">已修改</span>}
               {(能改这条(f) || p.可删沟通 || 卡点?.能发) && (
-                // 「…」放在这一行最右：发卡点、修改、删除（10-30 发卡点从行上收进来）；删除 = 这一条下面长出确认条（dt.talkdel），见 删沟通条
-                <span style={{ marginLeft: "auto" }}>
+                // 「…」放在这一行最右（时间已经靠右顶过来，这里不再 auto）：发卡点、修改、删除（10-30 发卡点从行上收进来）；删除 = 这一条下面长出确认条（dt.talkdel），见 删沟通条
+                <span className="proj-fu-kb">
                     <Dropdown
                       trigger={["click"]}
                       placement="bottomRight"
@@ -1592,7 +1657,8 @@ export default function ProjectDetail({
                           ...(卡点?.能发 ? [{ key: "blocker", label: "新建卡点" }] : []),
                           // 本人限时改的写清改到几点（原本就能改的不写）
                           ...(能改这条(f) ? [{ key: "edit", label: !p.可改沟通 && f.本人可改到 ? `修改（${dayjs(f.本人可改到).format("HH:mm")} 前可改）` : "修改" }] : []),
-                          ...(p.可删沟通 ? [{ key: "delete", label: "删除", danger: true }] : []),
+                          // ⋮ 里「删除」前一道分隔线（D4 · M7-c），和上面的常用动作隔开
+                          ...(p.可删沟通 ? [...(卡点?.能发 || 能改这条(f) ? [{ type: "divider" as const }] : []), { key: "delete", label: "删除", danger: true }] : []),
                         ],
                         onClick: ({ key }) => (key === "blocker" ? set发卡点于(f.id) : key === "edit" ? set改沟通于(f) : set删问于(f.id)),
                       }}
@@ -1682,7 +1748,8 @@ export default function ProjectDetail({
       )}
     >
       <div id="project-blockers-body" className={p.企业版 ? "proj-mod-body" : undefined}>
-        <BlockerList 们={列卡点} 空={搜着 && 卡点.们.length ? `没有对得上「${搜.trim()}」的卡点` : "还没有卡点"} />
+        {/* 搜着时（不管有没有卡点）空态都写「没有对得上…」，不说「还没有卡点」（D4 · M7-d） */}
+        <BlockerList 们={列卡点} 空={搜着 ? `没有对得上「${搜.trim()}」的卡点` : "还没有卡点"} />
       </div>
     </Card>
   );
@@ -1851,7 +1918,11 @@ export default function ProjectDetail({
       {!p.放弃 && <GiveUpBanner projectId={p.id} />}
       {p.线索验证 && (
         <Modal open={验证开着} title="线索验证" footer={null} width={560} onCancel={() => set验证开着(false)} destroyOnHidden>
-          <LeadVerifyPanel projectId={p.id} v={p.线索验证} 无效原因选项={p.原因选项.无效} 字数上限={p.字数上限} 跑={跑} 忙={忙} 缺有效沟通话={缺有效沟通话} 不给推={p.不给推} 线索验证必填={p.线索验证必填 ?? []} />
+          <LeadVerifyPanel projectId={p.id} v={p.线索验证} 无效原因选项={p.原因选项.无效} 字数上限={p.字数上限} 跑={跑} 忙={忙} 缺有效沟通话={缺有效沟通话} 不给推={p.不给推} 线索验证必填={p.线索验证必填 ?? []}
+            有效还差={没有效沟通 ? p.有效沟通差 : []}
+            沟通半句={沟通半句}
+            on去填={能去填 ? (叫) => { set验证开着(false); window.setTimeout(() => 去填(叫法到键(叫)), 80); } : undefined}
+          />
         </Modal>
       )}
       {可改 && 编辑开着 && (
@@ -2006,7 +2077,8 @@ export default function ProjectDetail({
       <Input
         allowClear
         prefix={<SearchOutlined aria-hidden />}
-        placeholder="搜这个项目的沟通、卡点"
+        // 「这位客户全部」时框淡着点不了：占位字直接写为什么（D4 · M7-d），不让人以为坏了
+        placeholder={看全部沟通 ? "切回「本项目」才能搜" : "搜这个项目的沟通、卡点"}
         aria-label="搜这个项目的沟通、卡点"
         value={搜}
         onChange={(e) => set搜(e.target.value)}
@@ -2389,7 +2461,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
     if (填.下一步) set下一步文字(填.下一步);
     if (填.下一步时间) set下一步时间(填.下一步时间);
     const 摘要 = [填.type && "方式", 填.occurredAt && "时间", 填.content && "内容", 填.下一步 && "下一步", 填.下一步时间 && "下一步时间"].filter(Boolean);
-    set解析({ 起, 结果: 摘要.length ? `已预填：${摘要.join(" · ")}，核对无误再记下` : "没认出能填的，手动填吧" });
+    set解析({ 起, 结果: 摘要.length ? `已预填：${摘要.join(" · ")}，核对无误再保存` : "没认出能填的，手动填吧" });
   };
   /*
     打了没交的留草稿（11-17，components/FormDraft.tsx）：刷新、发版后重开「记一条沟通」接着填；截图录音存不进来，带回时说要重选。
@@ -2415,13 +2487,32 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
       if (typeof v.原话 === "string") set原话(v.原话);
     },
   });
-  const 差 = !content.trim() ? "请填写这次沟通的内容" : 主体们 && !发起 ? "请选发起主体"
-    : 卡点默认 && 卡点类型 !== "暂无卡点" && !卡点原因.length ? 缺原因话
-    : p.组员记沟通 ? "" : !下一步文字.trim() ? "请写下一步计划" : p.要下一步 && !下一步时间 ? "请填下一步时间" : "";
+  /*
+    设计语言 D4 · M7-b（D03）：「保存」一直能点；点了还缺的在各自格子下面报红、焦点跳到第一处（原来「记下」灰着、原因是右下一行小灰字）。
+    顺序 = 框里从上到下；填上了红字当场消失
+  */
+  const 错们: [格: string, 话: string | null][] = [
+    ["发起主体", 主体们 && !发起 ? "请选发起主体" : null],
+    ["沟通内容", !content.trim() ? "请填写这次沟通的内容" : null],
+    ["卡点原因", 卡点默认 && 卡点类型 !== "暂无卡点" && !卡点原因.length ? 缺原因话 : null],
+    ["下一步计划", !p.组员记沟通 && !下一步文字.trim() ? "请写下一步计划" : null],
+    ["下一步时间", !p.组员记沟通 && p.要下一步 && !下一步时间 ? "请填下一步时间" : null],
+  ];
+  const 差 = 错们.find(([, 话]) => 话)?.[1] ?? "";
+  const [试过, set试过] = useState(false);
+  const 格错 = (格: string) => (试过 ? 错们.find(([k]) => k === 格)?.[1] ?? null : null);
+  const 错行 = (格: string) => 格错(格) && <div className="fm-err" role="alert">{格错(格)}</div>;
   // 选了下一步时间就预演回收日（10-30 P0-2）：和服务端同一个算法，算不准（没底子）就不写
   const 预演 = 预演回收日(p.回收预演, dayjs(occurredAt, 沟通时间格式).format("YYYY-MM-DD"), 下一步时间);
 
   const 交 = async () => {
+    if (差) {
+      set试过(true);
+      // 焦点跳到第一处没填好的格子（等红字画出来再找）
+      const 第一处 = 错们.find(([, 话]) => 话)![0];
+      window.setTimeout(() => document.querySelector<HTMLElement>(`.follow-modal [data-fk="${第一处}"] :is(textarea, input:not([type=hidden]), .ant-select-selector, [tabindex="0"])`)?.focus(), 0);
+      return;
+    }
     set交中(true);
     const 回: { r: Awaited<ReturnType<typeof 记项目沟通Action>> | null } = { r: null };
     const 卡点 = 卡点默认 ? { type: 卡点类型, impact: 卡点影响, reasons: 卡点原因 } : undefined;
@@ -2479,14 +2570,14 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
   return (
     <Modal
       open
-      title="记一条沟通"
-      okText="记下"
-      okButtonProps={{ disabled: !!差, loading: 交中, title: 差 || undefined }}
-      // 还差哪一格写在「记下」旁边，不用悬停
+      // 设计语言 D4 · M7-b（D14）：标题和卡头同一个词「新建沟通」，提交键「保存」（原「记一条沟通」「记下」）
+      title="新建沟通"
+      okText="保存"
+      rootClassName="follow-modal"
+      okButtonProps={{ loading: 交中 }}
       footer={(按钮) => (
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
           {交错 && <span className="pd-modal-err pd-modal-err-inline" role="alert">{交错}</span>}
-          {差 && <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{差}</span>}
           <span>{按钮}</span>
         </div>
       )}
@@ -2528,7 +2619,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
             <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 {解析 ? <AiWait 在做="从这段话里认出沟通方式、内容和下一步时间" 起={解析.起} 结果={解析.结果} 出错={解析.出错} />
-                  : <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>只是预填下面的格子，核对无误再记下</span>}
+                  : <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>只是预填下面的格子，核对无误再保存</span>}
               </div>
               <Button size="small" type="primary" ghost icon={<ThunderboltOutlined />} disabled={解析中 || AI已用完} onClick={() => void AI解析()}>
                 {解析?.结果 ? "重新解析" : "AI 解析填表"}
@@ -2540,50 +2631,56 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
         )}
         {/* 11-01 客户答复 #2：沟通方式、发起主体都必填，摆在表面不收进「更多」 */}
         <div className="follow-pick-row">
-          <div>
-            <div style={{ marginBottom: 4 }}>沟通方式<span style={{ color: "var(--danger-text)" }}> *</span></div>
+          <div data-fk="沟通方式">
+            <div className="fm-label"><span className="fm-req" aria-hidden>*</span>沟通方式</div>
             <FollowMethodSelect aria-label="沟通方式" style={{ width: "100%" }} type={type} method={method} 类型们={能选类型} onChange={(v) => { setType(v.type); setMethod(v.method); 人改过方式.current = true; }} />
           </div>
           {主体们 && (
-            <div>
-              <div style={{ marginBottom: 4 }}>发起主体<span style={{ color: "var(--danger-text)" }}> *</span></div>
-              <InitiatorSelect 们={主体们} style={{ width: "100%" }} value={发起} onChange={set发起} />
+            <div data-fk="发起主体">
+              <div className="fm-label"><span className="fm-req" aria-hidden>*</span>发起主体</div>
+              <InitiatorSelect 们={主体们} style={{ width: "100%" }} status={格错("发起主体") ? "error" : undefined} value={发起} onChange={set发起} />
+              {错行("发起主体")}
             </div>
           )}
         </div>
-        <div>
-          <div style={{ marginBottom: 4 }}>沟通内容<span style={{ color: "var(--danger-text)" }}> *</span></div>
-          <Input.TextArea aria-label="沟通内容" rows={4} value={content} onChange={(e) => setContent(e.target.value)} placeholder="这次聊了什么" />
+        <div data-fk="沟通内容">
+          <div className="fm-label"><span className="fm-req" aria-hidden>*</span>沟通内容</div>
+          <Input.TextArea aria-label="沟通内容" rows={4} status={格错("沟通内容") ? "error" : undefined} value={content} onChange={(e) => setContent(e.target.value)} placeholder="这次聊了什么" />
+          {错行("沟通内容")}
         </div>
         {卡点默认 && (
-          <div className="follow-blocker">
-            <div style={{ marginBottom: 4 }}>卡点<span style={{ color: "var(--text-muted)" }}>（选「暂无卡点」不生成；选了其他类型，记下时生成一个卡点）</span></div>
+          <div className="follow-blocker" data-fk="卡点原因">
+            <div className="fm-label">卡点</div>
             {/* 11-19：「暂无卡点」只摆类型一格，不带出影响、原因；选了类型才出影响（默认值照旧）和阻碍原因（必填，能直接打字新增） */}
             <div className="follow-blocker-row">
               <Select aria-label="卡点类型" value={卡点类型} onChange={(v: string) => { set卡点类型(v); if (v === "暂无卡点") { set卡点原因([]); set卡点影响(null); } }} options={卡点类型们.map((v) => ({ value: v, label: v }))} />
               {卡点类型 !== "暂无卡点" && <Select aria-label="卡点影响" allowClear value={卡点影响} onChange={(v) => set卡点影响(v ?? null)} placeholder={`卡点影响（默认${卡点默认.默认影响}）`} options={影响等级们.map((v) => ({ value: v, label: v }))} />}
             </div>
-            {卡点类型 !== "暂无卡点" && <div style={{ marginTop: 8 }}><原因选择 原因们={卡点原因们} 值={卡点原因} on改={set卡点原因} /></div>}
+            {卡点类型 !== "暂无卡点" && <div style={{ marginTop: 8 }}><原因选择 原因们={卡点原因们} 值={卡点原因} on改={set卡点原因} 错={!!格错("卡点原因")} /></div>}
+            {错行("卡点原因")}
+            {/* 括号里的说明挪到格子下面（M7-b · D03） */}
+            <div className="fm-help">选「暂无卡点」不生成；选了其他类型，保存时生成一个卡点</div>
           </div>
         )}
         {!p.组员记沟通 && (<>
-        <div>
-          <div style={{ marginBottom: 4 }}>下一步计划<span style={{ color: "var(--danger-text)" }}> *</span></div>
+        <div data-fk="下一步计划">
+          <div className="fm-label"><span className="fm-req" aria-hidden>*</span>下一步计划</div>
           <Input
             aria-label="下一步计划"
+            status={格错("下一步计划") ? "error" : undefined}
             value={下一步文字}
             onChange={(e) => set下一步文字(e.target.value)}
             maxLength={下一步文字上限}
             showCount
             placeholder="比如：周五前发报价单给对方采购"
           />
+          {错行("下一步计划")}
         </div>
-        <div>
-          <div style={{ marginBottom: 4 }}>
-            下一步时间{p.要下一步 ? <span style={{ color: "var(--danger-text)" }}> *</span> : <span style={{ color: "var(--text-muted)" }}>（可不填）</span>}
-          </div>
+        <div data-fk="下一步时间">
+          <div className="fm-label">{p.要下一步 && <span className="fm-req" aria-hidden>*</span>}下一步时间</div>
           <DatePicker
             aria-label="下一步时间"
+            status={格错("下一步时间") ? "error" : undefined}
             style={{ width: "100%" }}
             value={下一步时间 ? dayjs(下一步时间) : null}
             disabledDate={(x) => x.isBefore(dayjs(), "day")}
@@ -2595,6 +2692,8 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
               return <Button key={名} size="small" type={下一步时间 === 日 ? "primary" : "default"} ghost={下一步时间 === 日} aria-pressed={下一步时间 === 日} onClick={() => set下一步时间(日)}>{名}</Button>;
             })}
           </Space>
+          {错行("下一步时间")}
+          {!p.要下一步 && <div className="fm-help">可不填</div>}
           {预演 ? (
             <div style={{ marginTop: 4, fontSize: "var(--dt-aux, 12px)", color: 回公海颜色[回公海文案(预演).级别] ?? "var(--text-muted)" }}>记完这条 → 回收日变为 {dayjs(预演).format("MM-DD")}</div>
           ) : p.要下一步 && <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>到那天还没人跟进，项目会自动回到线索公海</div>}
@@ -2602,8 +2701,9 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
         </>)}
         {p.企业版 && (
           <div>
-            <div style={{ marginBottom: 4 }}>截图 / 录音<span style={{ color: "var(--text-muted)" }}>（可不传，记下后挂在这条沟通上；也可以直接粘贴截图）</span></div>
+            <div className="fm-label">截图 / 录音</div>
             <选沟通附件框 文件们={附件们} on改={set附件们} />
+            <div className="fm-help">可不传，保存后挂在这条沟通上；也可以直接粘贴截图</div>
           </div>
         )}
         <div>
@@ -2614,7 +2714,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
         {更多开 && (
           <div className="follow-more">
             <div>
-              <div style={{ marginBottom: 4 }}>沟通时间</div>
+              <div className="fm-label">沟通时间</div>
               <DatePicker
                 aria-label="沟通时间"
                 showTime={{ format: "HH:mm" }}
@@ -2628,8 +2728,9 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
             </div>
             {p.企业版 && (
               <div>
-                <div style={{ marginBottom: 4 }}>项目阶段<span style={{ color: "var(--text-muted)" }}>（记在项目现在的阶段上）</span></div>
+                <div className="fm-label">项目阶段</div>
                 <Select aria-label="项目阶段" style={{ width: "100%" }} value={p.phase} disabled options={[{ value: p.phase, label: p.phase }]} />
+                <div className="fm-help">记在项目现在的阶段上</div>
               </div>
             )}
           </div>
@@ -2644,9 +2745,32 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
  * 删的人自己多半恢复不了（只有系统管理员和回收站副手能恢复），原来那句「30 天内可恢复」对他不成立。
  * 打开焦点落在「确认删除」上，Esc = 取消；删的时候键转圈、不收第二下
  */
-function 删沟通条({ 忙, 取消, 删 }: { 忙: boolean; 取消: () => void; 删: () => void }) {
+/**
+ * 设计语言 D4 · M7-c（P-界面-40）：原地确认 3 秒没动就自己收起；鼠标停在条上不收，移开重新数 3 秒；删的时候不收
+ */
+function useAutoCollapse(取消: () => void, 忙: boolean) {
+  const [停, set停] = useState(false);
+  const 取消们 = useRef(取消);
+  useEffect(() => { 取消们.current = 取消; }, [取消]);
+  useEffect(() => {
+    if (忙 || 停) return;
+    const t = window.setTimeout(() => 取消们.current(), 3000);
+    return () => window.clearTimeout(t);
+  }, [忙, 停]);
+  return { onPointerEnter: () => set停(true), onPointerLeave: () => set停(false) };
+}
+
+// 名字要英文开头：hooks 规则只认大写开头的组件（下面 删沟通条 = 它）
+function FollowDeleteBand({ 忙, 取消, 删 }: { 忙: boolean; 取消: () => void; 删: () => void }) {
+  const 停住 = useAutoCollapse(取消, 忙);
   return (
-    <div className="pd-del-band" role="group" aria-label="确认删除这条沟通" onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); 取消(); } }}>
+    <div
+      className="pd-del-band"
+      role="group"
+      aria-label="确认删除这条沟通"
+      {...停住}
+      onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); 取消(); } }}
+    >
       <span className="pd-del-band-t">删了进回收站 30 天，系统管理员或回收站副手能恢复</span>
       <span className="pd-del-band-a">
         <Button size="small" onClick={取消} disabled={忙}>取消</Button>
@@ -2655,3 +2779,4 @@ function 删沟通条({ 忙, 取消, 删 }: { 忙: boolean; 取消: () => void; 
     </div>
   );
 }
+const 删沟通条 = FollowDeleteBand;

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Button, Input, Modal, Select, Space, Tag, Timeline } from "antd";
 import InlineConfirm from "@/components/InlineConfirm";
 import SaveButton from "@/components/SaveButton";
-import { dayjs, fmtDateTime } from "@/lib/utils";
+import { dayjs, fmtDateTime, smartTime } from "@/lib/utils";
 import type { 卡点卡 } from "@/lib/project/blocker";
 import { 卡点类型们, 影响等级们, 动作叫法, 描述上限, 原因最多, 缺原因话, 清原因们, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 发布卡点Action, 认领卡点Action, 完成卡点Action, 删卡点Action } from "./blocker-actions";
@@ -44,7 +44,8 @@ function useRun() {
 export type 可挂沟通 = { id: string; occurredAt: string; content: string };
 export function 沟通短名(f: 可挂沟通): string {
   const 头 = f.content.replace(/\s+/g, " ").trim().slice(0, 24);
-  return `${dayjs(f.occurredAt).format("M月D日")} ${头 || "（没写内容）"}`;
+  // 时间和沟通列表同一套（今天 13:13 / 昨天 / 3 天前 / 11 月 18 日，D4 · M9 · D15）
+  return `${smartTime(f.occurredAt)} ${头 || "（没写内容）"}`;
 }
 
 export const 状态色: Record<string, string> = { 待接受: "gold", 处理中: "blue", 已解决: "green" };
@@ -74,14 +75,16 @@ export function 会签文字(b: Pick<卡点卡, "status" | "进度" | "认领">)
 }
 
 /** 阻碍原因的多选（11-19 起选了卡点类型就必填）：下拉是设置里启用的原因，也能现打一个新的（发出去后进「待审核」，总管理员在设置里审）；空白、纯空格不算 */
-export function 原因选择({ 原因们, 值, on改, disabled }: { 原因们: string[]; 值: string[]; on改: (v: string[]) => void; disabled?: boolean }) {
+export function 原因选择({ 原因们, 值, on改, disabled, 错 }: { 原因们: string[]; 值: string[]; on改: (v: string[]) => void; disabled?: boolean; 错?: boolean }) {
   return (
     <Select
       aria-label="阻碍原因"
       mode="tags"
       maxCount={原因最多}
       disabled={disabled}
-      placeholder="阻碍原因（必填，可多选；没有合适的可以直接打字新增）"
+      status={错 ? "error" : undefined}
+      // 必填写在标签上（* 在前），占位字只说怎么填（D4 · M9-a · D03）
+      placeholder="可多选；没有合适的可以直接打字新增"
       value={值}
       onChange={(v: string[]) => on改(清原因们(v))}
       options={原因们.map((t) => ({ value: t, label: t }))}
@@ -120,15 +123,26 @@ export function PublishBlockerModal({ followUpId, 默认, 原因们, 沟通们, 
     onClose();
   };
   const 差 = !reasons.length ? 缺原因话 : "";
+  // 设计语言 D4 · M9-a（D03 / D14）：提交键叫「保存」、一直能点；点了还缺原因就在格子下报红、焦点落到原因格（原来「发布」灰着、底下一行小灰字）
+  const [试过, set试过] = useState(false);
+  const 交 = async () => {
+    if (差) {
+      set试过(true);
+      window.setTimeout(() => document.querySelector<HTMLElement>(".blocker-modal [data-fk=\"阻碍原因\"] input")?.focus(), 0);
+      return { ok: false as const, error: "有一项没填好，看标红的" };
+    }
+    return 跑(() => 发布卡点Action(挂在, { type, impact, reasons, resourceRequest }));
+  };
   return (
     <Modal
       open
       title="新建卡点"
+      rootClassName="blocker-modal"
       onCancel={不要了}
-      // 原型 dt.blocker「改后」：发布键里转圈 →「已发布」放完再关框，新卡点出现在列表里；没发出去原因浮在键上方、框不关（不弹顶部提示）
+      // 原型 dt.blocker「改后」：保存键里转圈 →「已保存」放完再关框，新卡点出现在列表里；没存上原因浮在键上方、框不关（不弹顶部提示）
       footer={<Space>
         <Button onClick={不要了}>取消</Button>
-        <SaveButton disabled={!!差} 已保存="已发布" 没保存="没发出去" 做={() => 跑(() => 发布卡点Action(挂在, { type, impact, reasons, resourceRequest }))} 成了={() => { 稿.存好了(); onClose(); }}>发布</SaveButton>
+        <SaveButton 已保存="已保存" 没保存="没存上" 做={交} 成了={() => { 稿.存好了(); onClose(); }}>保存</SaveButton>
       </Space>}
     >
       {稿.提示}
@@ -143,14 +157,27 @@ export function PublishBlockerModal({ followUpId, 默认, 原因们, 沟通们, 
             <span className="pd-blk-on-v pd-blk-on-t" title={挂的那条 ? 挂的那条.content : undefined}>{挂的那条 ? 沟通短名(挂的那条) : "这条沟通"}</span>
           )}
         </div>
-        {/* 类型、影响一行，带好默认值（设置 → 卡点默认值） */}
+        {/* 类型、影响一行，带好默认值（设置 → 卡点默认值）；每格有标签（D4 · M9-a），不靠占位字 */}
         <div className="pd-blk-row">
-          <Select aria-label="卡点类型" value={type} onChange={(v: string) => setType(v)} options={卡点类型们.filter((t) => t !== "暂无卡点").map((t) => ({ value: t, label: t }))} />
-          <Select aria-label="影响等级" value={impact} onChange={(v: string) => setImpact(v)} options={影响等级们.map((t) => ({ value: t, label: t }))} />
+          <div>
+            <div className="fm-label"><span className="fm-req" aria-hidden>*</span>卡点类型</div>
+            <Select aria-label="卡点类型" value={type} onChange={(v: string) => setType(v)} options={卡点类型们.filter((t) => t !== "暂无卡点").map((t) => ({ value: t, label: t }))} />
+          </div>
+          <div>
+            <div className="fm-label"><span className="fm-req" aria-hidden>*</span>影响等级</div>
+            <Select aria-label="影响等级" value={impact} onChange={(v: string) => setImpact(v)} options={影响等级们.map((t) => ({ value: t, label: t }))} />
+          </div>
         </div>
-        <原因选择 原因们={原因们} 值={reasons} on改={setReasons} />
-        <Input.TextArea aria-label="资源申请" rows={2} maxLength={描述上限} value={resourceRequest} onChange={(e) => setResourceRequest(e.target.value)} placeholder="需要什么资源（可不写）" />
-        {差 && <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{差}</div>}
+        <div data-fk="阻碍原因">
+          <div className="fm-label"><span className="fm-req" aria-hidden>*</span>阻碍原因</div>
+          <原因选择 原因们={原因们} 值={reasons} on改={setReasons} 错={试过 && !!差} />
+          {试过 && 差 && <div className="fm-err" role="alert">{差}</div>}
+        </div>
+        <div>
+          <div className="fm-label">资源申请</div>
+          <Input.TextArea aria-label="资源申请" rows={2} maxLength={描述上限} value={resourceRequest} onChange={(e) => setResourceRequest(e.target.value)} placeholder="需要什么资源" />
+          <div className="fm-help">可不写</div>
+        </div>
       </Space>
     </Modal>
   );

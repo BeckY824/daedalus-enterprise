@@ -167,7 +167,8 @@ export default function ProjectStages({ 字典, 所在阶段, 所在进程, 结�
         )}
         <div className="proj-stage-strip">
         {能滚.左 && <button type="button" className="proj-stage-scroll is-l" aria-label="往左看节点" onClick={() => 滚一下(-1)}><LeftOutlined /></button>}
-        <ol className="proj-stage-nodes" ref={排} onScroll={量滚}>
+        {/* 设计语言 D4 · M6-b（D13）：还能往哪边滑，那一头渐隐（--edge-fade），不露半个字 */}
+        <ol className={`proj-stage-nodes${能滚.左 ? " fade-l" : ""}${能滚.右 ? " fade-r" : ""}`} ref={排} onScroll={量滚}>
           <li className="proj-stage-thumb" ref={浮片} role="presentation" aria-hidden data-on="0" />
           {节点们.map((n, i) => {
             const t = 态(i);

@@ -999,7 +999,7 @@ export default function RecordView({
      企业版项目模式摆在中栏沟通记录下面（11-01 用户：「待办模块放到沟通记录下方，而不是整体下方」）；其余照旧在右栏 */
   const 待办身 = (
     <>
-      {待办行.length === 0 && 计划行.length === 0 && 下一步行.length === 0 && <Typography.Text type="secondary" style={{ fontSize: 13 }}>暂无待办</Typography.Text>}
+      {待办行.length === 0 && 计划行.length === 0 && 下一步行.length === 0 && <Typography.Text type="secondary" style={{ fontSize: 13 }}>还没有待办</Typography.Text>}
       {计划行.map((p) => (
         <div key={`plan-${p.id}`} data-focus={`plan:${p.id}`} className="rec-task">
           <span className="rec-task-k">计划</span>

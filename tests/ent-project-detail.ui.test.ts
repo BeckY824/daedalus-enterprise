@@ -297,8 +297,11 @@ it("企业版 P6：项目卡有已立项、项目来源（跟客户来源时注�
     await 原话.fill("刚和王经理通了电话，下周三再聊报价");
     await page.getByRole("button", { name: /AI 解析填表/ }).click();
     await page.getByText("未启用").waitFor();
-    // 「记下」照旧要下一步计划，AI 没填出东西就点不了（只预填、不写库）
-    expect(await page.getByRole("button", { name: "记 下" }).or(page.getByRole("button", { name: "记下" })).first().isDisabled()).toBe(true);
+    // 「保存」照旧要下一步计划：D4 起保存一直能点，AI 没填出东西点了在「下一步计划」格下报红、不交（只预填、不写库）
+    await page.getByRole("dialog").getByRole("button", { name: /^保\s*存$/ }).click();
+    await page.getByRole("dialog").locator('[data-fk="下一步计划"] .fm-err').waitFor();
+    expect(await page.getByRole("dialog").locator('[data-fk="下一步计划"] .fm-err').innerText()).toBe("请写下一步计划");
+    expect(await page.evaluate(() => Reflect.get(window, "__记沟通"))).toBeFalsy();
     // 切回手动：原话框收起，手填的还在
     await 切.getByText("手动录入").click();
     await 原话.waitFor({ state: "detached" });
@@ -683,7 +686,8 @@ it("10-31 改版 R7（16a 回六档）：和客户详情同一套字阶——标
     expect(await 样(卡.locator('[data-empty="合同金额"]'))).toEqual({ 字: "14px", 色: await 色("--empty-fg") });
     expect(await 色("--empty-fg")).not.toBe(浅);
     // 「阶段 / 进程」两格企业版不显示了（F-项目-19），.proj-where-label 只在有回收日时出现，这里不再量
-    const 辅 = page.locator(".proj-main .ant-card span").filter({ hasText: / · \d{4}-\d{2}-\d{2}/ }).first();
+    // D4 · M7-a 起沟通条目头是一行灰字（谁 · 方式 · 发起 … 时间），时间换成列表那一套（今天 13:13 / 11 月 18 日）
+    const 辅 = page.locator(".proj-main .proj-fu-t").first();
     expect(await 样(辅)).toEqual({ 字: "13px", 色: 灰 });
     expect(errors).toEqual([]);
   } finally { await page.close(); }
@@ -1222,7 +1226,7 @@ it("组员记沟通（11-19 客户答复）：记一条沟通框不摆下一步�
   }
 });
 
-it.each([375, 1024, 1280, 1366])("记一条沟通的卡点（11-19）%ipx：默认「暂无卡点」只摆类型一格；选了类型出影响和阻碍原因、没有标题和卡在哪儿；没选原因「记下」灰着写「请选阻碍原因」；能打字新增；框不横溢", async (w) => {
+it.each([375, 1024, 1280, 1366])("新建沟通的卡点（11-19）%ipx：默认「暂无卡点」只摆类型一格；选了类型出影响和阻碍原因、没有标题和卡在哪儿；没选原因点「保存」在原因格下写「请选阻碍原因」、不交；能打字新增；框不横溢", async (w) => {
   const { page, errors } = await 覆盖(w, { 能记沟通: true });
   try {
     await page.getByTestId("follow-card-new").click();
@@ -1236,7 +1240,7 @@ it.each([375, 1024, 1280, 1366])("记一条沟通的卡点（11-19）%ipx：默�
     for (const l of ["卡点标题", "卡点描述"]) expect(await 窗.getByLabel(l).count()).toBe(0);
     await 窗.getByLabel("沟通内容").fill("聊了报价");
     await 窗.getByLabel("下一步计划").fill("周五前发报价单");
-    const 记下 = 窗.getByRole("button", { name: /记\s*下/ });
+    const 记下 = 窗.getByRole("button", { name: /^保\s*存$/ });
     expect(await 记下.isDisabled()).toBe(false);
     await 类型.click();
     await page.locator(".ant-select-item-option").filter({ hasText: "中度卡点" }).click();
@@ -1247,9 +1251,15 @@ it.each([375, 1024, 1280, 1366])("记一条沟通的卡点（11-19）%ipx：默�
     // 影响照旧默认（占位写默认值）
     expect(await 窗.locator(".follow-blocker").innerText()).toContain("默认短期不影响");
     for (const l of ["卡点标题", "卡点描述"]) expect(await 窗.getByLabel(l).count()).toBe(0);
-    // 没选原因：「记下」灰着，旁边写「请选阻碍原因」
-    expect(await 记下.isDisabled()).toBe(true);
-    expect(await 窗.locator(".ant-modal-footer").innerText()).toContain("请选阻碍原因");
+    // 没选原因：D4 起「保存」照样能点；点了在原因格下写「请选阻碍原因」、原因格标红、焦点落过去，不交
+    expect(await 记下.isDisabled()).toBe(false);
+    expect(await 窗.locator(".ant-modal-footer").innerText()).not.toContain("请选阻碍原因");
+    await 记下.click();
+    await 窗.locator('[data-fk="卡点原因"] .fm-err').waitFor();
+    expect(await 窗.locator('[data-fk="卡点原因"] .fm-err').innerText()).toBe("请选阻碍原因");
+    expect(await 窗.locator('[data-fk="卡点原因"] .ant-select-status-error').count()).toBe(1);
+    await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest('[data-fk="卡点原因"]'))).toBe(true);
+    expect(await page.evaluate(() => Reflect.get(window, "__记沟通"))).toBeFalsy();
     // 框不横溢、卡点那几格不出框
     const 宽 = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
     expect(宽[0]).toBeLessThanOrEqual(宽[1]);
@@ -1269,7 +1279,8 @@ it.each([375, 1024, 1280, 1366])("记一条沟通的卡点（11-19）%ipx：默�
     await page.keyboard.type("自填一条原因");
     await page.keyboard.press("Enter");
     await page.keyboard.press("Escape");
-    expect(await 记下.isDisabled()).toBe(false);
+    // 选上了红字当场消失
+    expect(await 窗.locator(".fm-err").count()).toBe(0);
     await 记下.click();
     await page.waitForFunction(() => Reflect.get(window, "__记沟通"));
     const 交 = await page.evaluate(() => (Reflect.get(window, "__记沟通") as unknown[][])[0][2]);
@@ -1304,7 +1315,7 @@ it("记一条沟通的卡点（11-19）：选了类型、挑了原因再换回�
     await page.locator(".ant-select-item-option").filter({ hasText: "暂无卡点" }).click();
     await 窗.getByLabel("沟通内容").fill("聊了报价");
     await 窗.getByLabel("下一步计划").fill("周五前发报价单");
-    await 窗.getByRole("button", { name: /记\s*下/ }).click();
+    await 窗.getByRole("button", { name: /^保\s*存$/ }).click();
     await page.waitForFunction(() => Reflect.get(window, "__记沟通"));
     expect(await page.evaluate(() => (Reflect.get(window, "__记沟通") as unknown[][])[0][2])).toMatchObject({ type: "暂无卡点" });
     expect(errors).toEqual([]);
@@ -1399,7 +1410,7 @@ it("R6 弹窗：完成节点、改进程、改分配都能打开，标题带项�
   } finally { await page.close(); }
 });
 
-it("11-01 会议 §13：节点图标前留一点间隔；「完成节点」绿底白字，▼ 跟着绿", async () => {
+it("11-01 会议 §13：节点图标前留一点间隔；D4（用户 11-21 定）「完成节点」浅绿底深绿字、右半「终止进程」白底；灰着整颗看得出灰", async () => {
   const { page, errors } = await open(true, 1280);
   try {
     const 间隔 = await page.locator(".proj-stage-node .proj-stage-mark").first().evaluate(e => parseFloat(getComputedStyle(e).marginInlineStart));
@@ -1408,16 +1419,18 @@ it("11-01 会议 §13：节点图标前留一点间隔；「完成节点」绿�
     const 钮 = page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" });
     expect(await 钮.isDisabled()).toBe(false);
     const [底, 字] = await 钮.evaluate(e => [getComputedStyle(e).backgroundColor, getComputedStyle(e).color]);
-    expect(底).toBe(await 色("var(--success-text)"));
-    expect(字).toBe(await 色("var(--on-ink)"));
-    expect(await page.getByRole("button", { name: "终止进程" }).evaluate(e => getComputedStyle(e).backgroundColor)).toBe(await 色("var(--success-text)"));
-    // 看别的阶段时灰掉：浅绿底、字还是深绿看得清，悬停照旧写原因
+    expect(底).toBe(await 色("var(--success-bg)"));
+    expect(字).toBe(await 色("var(--success-text)"));
+    // 一屏只留「新增沟通」一颗蓝实心：完成节点不是实心
+    expect(await page.locator(".proj-stage-acts .ant-btn-primary").allInnerTexts()).toEqual(["新增沟通"]);
+    expect(await page.getByRole("button", { name: "终止进程" }).evaluate(e => getComputedStyle(e).backgroundColor)).toBe(await 色("var(--panel)"));
+    // 看别的阶段时灰掉：工作台灰底、次要字，悬停照旧写原因
     await page.locator(".proj-stage-tab").filter({ hasText: "线索" }).first().click();
     await page.waitForFunction(() => (document.querySelector(".proj-stage-acts .proj-done-btn") as HTMLButtonElement | null)?.disabled === true);
     const 灰钮 = page.locator(".proj-stage-acts .proj-done-btn").first();
     const [灰底, 灰字] = await 灰钮.evaluate(e => [getComputedStyle(e).backgroundColor, getComputedStyle(e).color]);
-    expect(灰底).toBe(await 色("var(--success-bg)"));
-    expect(灰字).toBe(await 色("var(--success-text)"));
+    expect(灰底).toBe(await 色("var(--workbench)"));
+    expect(灰字).toBe(await 色("var(--text-muted)"));
     await page.locator(".proj-stage-acts .proj-stage-tip").first().hover();
     await page.locator(".ant-tooltip").filter({ hasText: /\S/ }).first().waitFor();
     expect(errors).toEqual([]);
@@ -2379,7 +2392,10 @@ describe("F-017 推过线索验证的补填提示", () => {
   it("停在线索验证、只差需求状态：写明在「项目画像」选，灰按钮的话也指位置；「去填」把收起的画像卡展开并滚过去", async () => {
     const { page, errors } = await 开(只差需求);
     try {
-      expect(await 提示(page).locator(".proj-gate-hint-t").innerText()).toBe("要推过线索验证：在「项目画像」选「需求状态」");
+      // 设计语言 D4 · M6-a：合成一块「还差 N 项」+ 缺项小块（保留括号别名），点小块直接去填（原来一句话 +「去填」）
+      expect(await 提示(page).locator(".proj-miss-t").innerText()).toBe("要推过线索验证还差 1 项");
+      expect(await 提示(page).locator(".proj-miss-chip").allInnerTexts()).toEqual(["需求（需求状态）"]);
+      expect(await 提示(page).locator(".proj-miss-help").innerText()).toBe("点一项直接去填；「暂无」「-」这类占位不算填了");
       expect(await 灰因(page).innerText()).toBe("线索验证合格要先填好「线索验证」的必填项：还差需求状态（在「项目画像」里选）");
       expect(await page.locator(".proj-stage-acts button").first().isDisabled()).toBe(true);
       // 两处画像卡同一个落点：独立页右栏这张挂着 id
@@ -2391,7 +2407,7 @@ describe("F-017 推过线索验证的补填提示", () => {
         const 原 = Element.prototype.scrollIntoView;
         Element.prototype.scrollIntoView = function (this: Element, o?: boolean | ScrollIntoViewOptions) { ((window as unknown as 窗).__滚到 ||= []).push(this.id); return 原.call(this, o); };
       });
-      await 提示(page).getByRole("button", { name: /^去\s?填$/ }).click();
+      await 提示(page).getByRole("button", { name: "需求（需求状态）" }).click();
       await page.waitForFunction(() => !document.getElementById("project-profile-fold")!.classList.contains("is-closed"));
       await page.waitForFunction(() => ((window as unknown as 窗).__滚到 ?? []).includes("project-profile-fold"));
       await expect.poll(() => page.getByRole("combobox", { name: "需求状态" }).isVisible()).toBe(true);
@@ -2412,7 +2428,7 @@ describe("F-017 推过线索验证的补填提示", () => {
   it("「前两节点要沟通」开着、线索验证上还没沟通：提示和灰按钮都写「并在线索验证记一条沟通」；开关关着（不给这一项）不写", async () => {
     const 开着 = await 开({ ...只差需求, 线索验证缺沟通: true });
     try {
-      expect(await 提示(开着.page).locator(".proj-gate-hint-t").innerText()).toBe("要推过线索验证：在「项目画像」选「需求状态」，并在「线索验证」记一条沟通");
+      expect(await 提示(开着.page).locator(".proj-miss-help").innerText()).toBe("点一项直接去填；「暂无」「-」这类占位不算填了，并在「线索验证」记一条沟通");
       expect(await 灰因(开着.page).innerText()).toContain("（在「项目画像」里选），并在「线索验证」记一条沟通");
       expect(开着.errors).toEqual([]);
     } finally { await 开着.page.close(); }
@@ -2426,23 +2442,26 @@ describe("F-017 推过线索验证的补填提示", () => {
   it("线索验证配了几项必填（含需求）：照列各项、补一句需求状态在哪选；看得到改不了的人不摆「去填」", async () => {
     const { page, errors } = await 开({ ...只差需求, 有效沟通差: ["所属联系人", "国家", "需求（需求状态）"] }, 1366, false);
     try {
-      expect(await 提示(page).innerText()).toBe("要推过线索验证，还要填：所属联系人、国家、需求（需求状态）（需求状态在「项目画像」里选）");
-      expect(await 提示(page).getByRole("button", { name: /^去\s?填$/ }).count()).toBe(0);
+      expect(await 提示(page).locator(".proj-miss-t").innerText()).toBe("要推过线索验证还差 3 项");
+      expect(await 提示(page).locator(".proj-miss-chip").allInnerTexts()).toEqual(["所属联系人", "国家", "需求（需求状态）"]);
+      expect(await 提示(page).locator(".proj-miss-help").innerText()).toBe("需求状态在「项目画像」里选；「暂无」「-」这类占位不算填了");
+      // 改不了的人：小块只是字，不是按钮
+      expect(await 提示(page).getByRole("button").count()).toBe(0);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   });
 
-  it.each([1024, 1280, 1366, 390])("%ipx（Windows 三档 + 手机）超长项目名：提示折行不撑宽，「去填」点得中", async (w) => {
+  it.each([1024, 1280, 1366, 390])("%ipx（Windows 三档 + 手机）超长项目名：提示折行不撑宽，缺项小块点得中", async (w) => {
     const { page, errors } = await 开({ ...只差需求, 线索验证缺沟通: true }, w);
     try {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       expect(await 提示(page).evaluate(e => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
       const 卡 = 提示(page).locator("xpath=ancestor::div[contains(@class,'ant-card')][1]");
       expect(await 卡.evaluate(e => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
-      const 钮 = 提示(page).getByRole("button", { name: /^去\s?填$/ });
+      const 钮 = 提示(page).getByRole("button", { name: "需求（需求状态）" });
       await 钮.scrollIntoViewIfNeeded();
       const 框 = (await 钮.boundingBox())!;
-      expect(await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest("[data-testid=lead-gate-hint] .ant-btn"), [框.x + 框.width / 2, 框.y + 框.height / 2])).toBe(true);
+      expect(await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest("[data-testid=lead-gate-hint] .proj-miss-chip"), [框.x + 框.width / 2, 框.y + 框.height / 2])).toBe(true);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   });
@@ -2461,7 +2480,7 @@ it.each([375, 1366])("记一条沟通顺带自动推了一格（11-20）%ipx：�
     const 窗 = page.getByRole("dialog");
     await 窗.getByLabel("沟通内容").fill("聊了发货安排");
     await 窗.getByLabel("下一步计划").fill("周五前发货");
-    await 窗.getByRole("button", { name: /记\s*下/ }).click();
+    await 窗.getByRole("button", { name: /^保\s*存$/ }).click();
     const 条 = page.locator(".undo-bar");
     await 条.waitFor();
     expect(await 条.innerText()).toContain("必填齐了，自动推进到 物流运输");
@@ -2484,7 +2503,7 @@ it("记一条沟通顺带自动推了一格、我改不了节点（11-20）：�
     const 窗 = page.getByRole("dialog");
     await 窗.getByLabel("沟通内容").fill("聊了发货安排");
     await 窗.getByLabel("下一步计划").fill("周五前发货");
-    await 窗.getByRole("button", { name: /记\s*下/ }).click();
+    await 窗.getByRole("button", { name: /^保\s*存$/ }).click();
     await page.getByText("已记下这条沟通；必填齐了，自动推进到 物流运输").waitFor();
     expect(await page.locator(".undo-bar").count()).toBe(0);
     expect(errors).toEqual([]);
@@ -2501,4 +2520,122 @@ it("项目来源：项目没选、客户有来源但我看不到客户（name �
     expect(行).not.toContain("待填");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
+});
+
+/*
+  设计语言 D4（规范 M6–M9，11-21）：缺项小块、完成节点浅绿、节点条渐隐、沟通条目一行灰字、⋮ 删除前分隔线 + 原地确认 3 秒自收、
+  只读收起钮白底、搜着时卡点空态。四个宽度都量不横滚
+*/
+describe("设计语言 D4：进程卡、沟通、卡点", () => {
+  const 缺两项 = { phase: "线索", node: "潜客培育", 必填: { 配了: ["项目级别", "需求描述"], 还差: ["项目级别", "需求描述"] }, 有效沟通差: ["需求描述（成交需求）"] };
+
+  it.each([1024, 1280, 1366, 390])("%ipx：两段必填提示合成一块「还差 N 项」+ 缺项小块（括号别名、判有效的打 •）；点一块开完成节点框、焦点落在那一格", async (w) => {
+    const { page, errors } = await 覆盖(w, 缺两项);
+    try {
+      const 块 = page.getByTestId("node-required-miss");
+      await 块.waitFor();
+      expect(await 块.locator(".proj-miss-t").innerText()).toBe("完成这个节点还差 2 项");
+      expect(await 块.locator(".proj-miss-chip").allInnerTexts()).toEqual(["项目级别", "需求描述（成交需求）"]);
+      // 判有效也要的那一项打 •，说明里写几项
+      expect(await 块.locator(".proj-miss-chip").nth(1).locator(".proj-miss-dot").count()).toBe(1);
+      expect(await 块.locator(".proj-miss-chip").nth(0).locator(".proj-miss-dot").count()).toBe(0);
+      expect(await 块.locator(".proj-miss-help").innerText()).toBe("带 • 的 1 项也是判「有效」要的；点一项直接去填；「暂无」「-」这类占位不算填了");
+      // 原来那句「这个节点还差必填：…」不再单出一段
+      expect(await page.getByText("这个节点还差必填").count()).toBe(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      expect(await 块.evaluate(e => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+      await 块.getByRole("button", { name: "项目级别" }).click();
+      await page.locator(".pd-fill-pop [data-required='项目级别']").waitFor();
+      await expect.poll(() => page.evaluate(() => document.activeElement?.closest("[data-required]")?.getAttribute("data-required") ?? null)).toBe("项目级别");
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
+  it("完成节点浅绿、只留一颗蓝实心；节点条放不下时那一头渐隐（--edge-fade）；结局钮写全不省略", async () => {
+    const { page, errors } = await 覆盖(1024, { 能记沟通: true });
+    try {
+      const 条 = page.locator(".proj-stage-nodes");
+      const 类 = await 条.getAttribute("class");
+      const 能滚 = await 条.evaluate(e => ({ 左: e.scrollLeft > 1, 右: e.scrollLeft + e.clientWidth < e.scrollWidth - 1 }));
+      expect(类?.includes("fade-r")).toBe(能滚.右);
+      expect(类?.includes("fade-l")).toBe(能滚.左);
+      if (能滚.左 || 能滚.右) expect(await 条.evaluate(e => getComputedStyle(e).maskImage || getComputedStyle(e).webkitMaskImage)).toContain("linear-gradient");
+      const 出口 = page.locator(".proj-stage-exit .proj-stage-name");
+      if (await 出口.count()) expect(await 出口.evaluate(e => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+      const 色 = (v: string) => page.evaluate(v => { const s = document.createElement("span"); s.style.color = v; document.body.append(s); const c = getComputedStyle(s).color; s.remove(); return c; }, v);
+      expect(await page.locator(".proj-stage-acts .ant-btn-primary").allInnerTexts()).toEqual(["新增沟通"]);
+      expect(await page.locator(".proj-stage-acts .proj-done-btn:not(.split-caret)").evaluate(e => getComputedStyle(e).backgroundColor)).toBe(await 色("var(--success-bg)"));
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
+  it("沟通条目：开头方式图标（没写方式的也不是「···」），谁 · 方式 · 发起一行灰字，阶段一块，时间同列表（悬停看完整时刻）", async () => {
+    const 今天 = new Date(); 今天.setHours(9, 5, 0, 0);
+    const { page, errors } = await 覆盖(1280, { followUps: [
+      { id: "f1", type: "PHONE", method: "手机通话", initiator: "我方发起", content: "打了电话", occurredAt: 今天.toISOString(), who: "组长甲", node: "生产备货", code: "FUL0001", 提醒: null, 版本: "v" },
+      { id: "f2", type: "OTHER", method: null, initiator: null, content: "没写方式", occurredAt: "2025-03-04T02:00:00.000Z", who: "组长甲", node: "生产备货", code: "FUL0002", 提醒: null, 版本: "v" },
+    ] });
+    try {
+      const 头 = page.locator(".proj-fu-m");
+      expect((await 头.nth(0).innerText()).replace(/\s+/g, " ")).toBe("组长甲 · 手机通话 · 我方发起 生产备货 今天 09:05");
+      expect((await 头.nth(1).innerText()).replace(/\s+/g, " ")).toBe("组长甲 · 其他方式 生产备货 2025 年 3 月 4 日");
+      expect(await 头.nth(1).locator(".proj-fu-i .anticon-ellipsis").count()).toBe(0);
+      expect(await 头.nth(1).locator(".proj-fu-i .anticon").count()).toBe(1);
+      expect(await 头.nth(0).locator(".proj-fu-t").getAttribute("title")).toMatch(/\d{4}-\d{2}-\d{2} 09:05/);
+      // 阶段只留一块（发起不再是标签）
+      expect(await 头.nth(0).locator(".ant-tag").allInnerTexts()).toEqual(["生产备货"]);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
+  it("⋮ 里「删除」前一道分隔线；原地确认 3 秒没动自己收起，鼠标停在条上不收", async () => {
+    const { page, errors } = await 覆盖(1280, { 可改沟通: true, 可删沟通: true, followUps: [{ id: "f1", type: "PHONE", content: "沟通内容", occurredAt: "2026-10-03T00:00:00.000Z", who: "组长甲", node: "生产备货", code: "FUL0001", 提醒: null, 版本: "v" }] });
+    try {
+      const 开删 = async () => {
+        await page.getByRole("button", { name: "这条沟通的更多操作" }).click();
+        const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu");
+        await 菜单.waitFor();
+        return 菜单;
+      };
+      const 菜单 = await 开删();
+      expect(await 菜单.evaluate(m => [...m.children].map(c => c.classList.contains("ant-dropdown-menu-item-divider") ? "—" : (c.textContent ?? "").trim()))).toEqual(["新建卡点", "修改", "—", "删除"]);
+      await 菜单.getByText("删除").click();
+      const 问 = page.getByRole("group", { name: "确认删除这条沟通" });
+      await 问.waitFor();
+      await page.mouse.move(2, 2);
+      await 问.waitFor({ state: "detached", timeout: 4500 });
+      // 再开一次，鼠标停在条上：过了 3 秒还在；移开再数 3 秒收起
+      await (await 开删()).getByText("删除").click();
+      await 问.waitFor();
+      await 问.hover();
+      await page.waitForTimeout(3400);
+      expect(await 问.count()).toBe(1);
+      await page.mouse.move(2, 2);
+      await 问.waitFor({ state: "detached", timeout: 4500 });
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }, 30_000);
+
+  it("只读（不能记沟通）：沟通卡头只剩的收起钮白底，不是蓝实心；悬停写「收起 / 展开」", async () => {
+    const { page, errors } = await 覆盖(1280, { 能记沟通: false });
+    try {
+      const 钮 = page.locator("#project-follow .split-solo .split-caret");
+      await 钮.waitFor();
+      const 色 = (v: string) => page.evaluate(v => { const s = document.createElement("span"); s.style.color = v; document.body.append(s); const c = getComputedStyle(s).color; s.remove(); return c; }, v);
+      expect(await 钮.evaluate(e => getComputedStyle(e).backgroundColor)).toBe(await 色("var(--panel)"));
+      await 钮.hover();
+      await page.locator(".ant-tooltip").filter({ hasText: /^(收起|展开)$/ }).first().waitFor();
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
+  it("搜着时卡点一条没有也写「没有对得上…的卡点」，不说「还没有卡点」", async () => {
+    const { page, errors } = await 覆盖(1280, {});
+    try {
+      await page.getByRole("textbox", { name: "搜这个项目的沟通、卡点" }).fill("找不到的词");
+      await page.getByText("没有对得上「找不到的词」的卡点").waitFor();
+      expect(await page.getByText("还没有卡点").count()).toBe(0);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
 });

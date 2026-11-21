@@ -51,6 +51,9 @@ export default function LeadVerifyPanel({
   缺有效沟通话,
   不给推,
   线索验证必填 = [],
+  有效还差 = [],
+  沟通半句 = "",
+  on去填,
 }: {
   projectId: string;
   v: 线索验证;
@@ -64,6 +67,12 @@ export default function LeadVerifyPanel({
   不给推: string | null;
   /** 组织规则里「线索验证」节点配的必填（顶上「判定依据」按它写，和推进时拦的是同一份）；没开节点推进 = 空 = 只看需求状态 */
   线索验证必填?: readonly 必填项[];
+  /** 判「有效」还差的几项（叫法，ProjectDetail 有效沟通差）：「有效」灰着的原因写成缺项小块（设计语言 D4 · M6-a，D36），和进程卡那块同一个样子 */
+  有效还差?: readonly string[];
+  /** 「前两节点要沟通」开着时还要记的那条沟通（接在说明后面） */
+  沟通半句?: string;
+  /** 点一块：关掉这个框，去那一格填（ProjectDetail 去填） */
+  on去填?: (叫: string) => void;
 }) {
   const [框, set框] = useState<null | "无效" | "培育" | "异议" | "复核有效" | "复核无效">(null);
   const [无效原因, set无效原因] = useState<string | null>(null);
@@ -266,7 +275,17 @@ export default function LeadVerifyPanel({
       )}
       {!弹框 && <框里原因 话={错} />}
       {推不了 && (v.我能 === "初判" || v.我能 === "销售终验" || v.我能 === "销售认领") && (
-        <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>{推不了}</div>
+        缺有效沟通话 && 有效还差.length ? (
+          <div className="proj-miss" data-testid="lead-verify-miss">
+            <div className="proj-miss-t">判「有效」还差 {有效还差.length} 项</div>
+            <div className="proj-miss-chips">
+              {有效还差.map((叫) => (on去填
+                ? <button key={叫} type="button" className="proj-miss-chip" onClick={() => on去填(叫)}>{叫}</button>
+                : <span key={叫} className="proj-miss-chip">{叫}</span>))}
+            </div>
+            <div className="proj-miss-help">{on去填 ? "点一项去填，填完回来再判；" : ""}「暂无」「-」这类占位不算填了{沟通半句}</div>
+          </div>
+        ) : <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: 12 }}>{推不了}</div>
       )}
       {v.我能 === "销售终验" && 最后说明 && (
         <div style={{ marginTop: 8, color: "var(--text-muted)", overflowWrap: "anywhere" }}>复核说明：{最后说明}</div>

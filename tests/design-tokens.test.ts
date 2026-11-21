@@ -199,7 +199,8 @@ describe("D1 · 设计语言 token 和基础控件", () => {
   it("D3（客户资料、联系人、背调）那段规则都带现状主题限定；不带限定的只有列出来的结构规则", () => {
     const 起 = 全.indexOf(".rec-field-pen { display: none; }");
     expect(起, "没找到 D3 那段").toBeGreaterThan(0);
-    const 段 = 全.slice(起);
+    const 止 = 全.indexOf(".fm-label { display: block;");
+    const 段 = 全.slice(起, 止 > 起 ? 止 : undefined);
     // 一条规则里逗号分开的几个选择器各自都要带限定（括号里的逗号不算）
     const 选择器们 = [...段.matchAll(/([^{}]+)\{([^{}]*)\}/g)].flatMap((m) => m[1].trim().replace(/\s+/g, " ").split(/,(?![^()]*\))\s*/));
     expect(选择器们.length).toBeGreaterThan(40);
@@ -212,6 +213,33 @@ describe("D1 · 设计语言 token 和基础控件", () => {
     // 结构规则只排位置，不上颜色——颜色只有回退（头像空名字照 main 的 --ink-soft）和本来就全站一样的提示 / 报错色
     for (const 片 of ["color: var(--empty-fg)", "var(--hit)", "var(--hit-touch)", "order: -2", "display: contents", "white-space: normal", "opacity: 1", "border-top: 1px solid var(--line-soft)", "background: var(--line-soft)", "color: var(--text-muted)"]) {
       expect(段, 片).toContain(片);
+    }
+  });
+
+  it("D4（进程卡、沟通、待办、卡点）那段规则都带现状主题限定；不带限定的只有新元素的结构规则", () => {
+    const 起 = 全.indexOf(".fm-label { display: block;");
+    expect(起, "没找到 D4 那段").toBeGreaterThan(0);
+    const 段 = 全.slice(起);
+    const 选择器们 = [...段.matchAll(/([^{}]+)\{([^{}]*)\}/g)].flatMap((m) => m[1].trim().replace(/\s+/g, " ").split(/,(?![^()]*\))\s*/));
+    expect(选择器们.length).toBeGreaterThan(30);
+    const 结构 = [
+      ".fm-label", ".fm-req", ".fm-help", ".fm-err",
+      ".proj-miss", ".proj-miss.is-ok", ".proj-miss-t", ".proj-miss.is-ok .proj-miss-t", ".proj-miss-chips", ".proj-miss-chip", "button.proj-miss-chip", ".proj-miss-dot", ".proj-miss-help",
+      ".proj-fu-m", ".proj-fu-i", ".proj-fu-who", ".proj-fu-t",
+    ];
+    const 不带 = 选择器们.filter((x) => !x.startsWith(现状));
+    expect(不带).toEqual(结构);
+    // 规范里的几样都在这段、都带限定：完成节点浅绿 + 右半白底、只读收起钮白底、节点条两头 --edge-fade、结局钮不省略、
+    // 手机项目名两行、切换两半等宽 40 高、待办勾选框间距 16（8 + gap 8）
+    for (const 片 of ["background: var(--success-bg); border-color: var(--success-line); color: var(--success-text)", "split-solo", "var(--edge-fade)", "max-width: none", "-webkit-line-clamp: 2", "grid-template-columns: 1fr 1fr", "height: 40px", "margin-inline-end: 8px"]) {
+      expect(段, 片).toContain(片);
+    }
+    // 结构规则只排位置，颜色只用全站一样的提示 / 报错 / 警示色
+    for (const m of 段.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (m[1].trim().startsWith(现状)) continue;
+      for (const c of m[2].matchAll(/(?:^|;)\s*(?:color|background|border(?:-color)?):\s*([^;]+)/g)) {
+        expect(c[1], m[1].trim()).toMatch(/var\(--(danger-text|text-muted|warning(-text|-line|-bg)?|success(-line|-bg|-text)?|panel|ink(-soft)?)\)|inherit|0|none/);
+      }
     }
   });
 

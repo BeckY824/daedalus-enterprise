@@ -103,17 +103,19 @@ export function FoldSplit({ 主, 色 = "plain" }: { 主?: 连体主钮 | null; �
   return (
     <Space.Compact className={`split-btn split-${色}${主 ? "" : " split-solo"}`}>
       {左 && (主!.原因 ? <Tooltip title={主!.原因}><span className="proj-stage-tip">{左}</span></Tooltip> : 左)}
-      <Button
-        type={型}
-        className={`split-caret${类 ? ` ${类}` : ""}`}
-        icon={连体箭头}
-        aria-expanded={折.摊开}
-        aria-controls={折.控制}
-        aria-label={`${折.摊开 ? "收起" : "展开"}${折.名}`}
-        title={折.锁开 ? "搜索时都摊开" : 折.摊开 ? "收起" : "展开"}
-        disabled={折.锁开}
-        onClick={折.切}
-      />
+      {/* 右半是收起 / 展开，不是菜单（P-界面-22 ⑥ 保留连体）：悬停给一句「收起 / 展开」（D4 · M9-a），原来只有浏览器自带的 title */}
+      <Tooltip title={折.锁开 ? "搜索时都摊开" : 折.摊开 ? "收起" : "展开"}>
+        <Button
+          type={型}
+          className={`split-caret${类 ? ` ${类}` : ""}`}
+          icon={连体箭头}
+          aria-expanded={折.摊开}
+          aria-controls={折.控制}
+          aria-label={`${折.摊开 ? "收起" : "展开"}${折.名}`}
+          disabled={折.锁开}
+          onClick={折.切}
+        />
+      </Tooltip>
     </Space.Compact>
   );
 }

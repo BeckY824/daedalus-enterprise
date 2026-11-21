@@ -787,7 +787,7 @@ export default function FollowUpForm({
       // 存上了（对勾还在放 / 停下来让人看没成的那块）：Esc / X / 取消 也当「知道了」，照样交给页面刷新
       onCancel={关或收尾}
       open={open}
-      title={record?.id ? "编辑沟通记录" : "记一条沟通"}
+      title={record?.id ? "编辑沟通记录" : "新建沟通"}
       footer={停下看 ? [
         <Button key="知道了" type="primary" onClick={做收尾}>知道了</Button>,
       ] : [
