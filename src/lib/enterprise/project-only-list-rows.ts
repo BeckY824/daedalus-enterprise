@@ -12,6 +12,7 @@ import { 仅项目客户们 } from "./project-only-customers";
 import { 本套位置 } from "@/lib/project/nodes";
 import { 企业版字典 } from "@/lib/project/stage-dict";
 import { 最近有动静的, 节点字 } from "@/lib/project/customer-list-projects";
+import type { 抬头节点格 } from "./customer-title";
 
 export type 仅项目列表行 = {
   id: string;
@@ -25,6 +26,8 @@ export type 仅项目列表行 = {
   地区: string;
   /** 我自己在这位客户名下的项目里最近有动静的那个的节点（同客户列表「当前节点」的写法） */
   当前节点: string | null;
+  /** 抬头用（F-040）：同一个项目的节点、项目名；全空客户抬头写项目名（customer-title.ts 全空抬头） */
+  抬头格?: 抬头节点格 | null;
   当前阶段: string | null;
   项目数: number;
   仅项目: true;
@@ -46,7 +49,7 @@ export async function 仅项目列表行们(me: { id: string; role?: string | nu
   const 项目ids = 客户们.flatMap((c) => 表.get(c.id) ?? []);
   const 项目们 = await 看全部(() => prisma.project.findMany({
     where: { id: { in: 项目ids }, ownerId: me.id, pooledAt: null, deletedAt: null },
-    select: { id: true, customerId: true, phase: true, node: true, result: true, updatedAt: true },
+    select: { id: true, customerId: true, phase: true, node: true, result: true, updatedAt: true, name: true },
   }));
   const 按客户 = new Map<string, typeof 项目们>();
   for (const p of 项目们) 按客户.set(p.customerId, [...(按客户.get(p.customerId) ?? []), p]);
@@ -58,7 +61,9 @@ export async function 仅项目列表行们(me: { id: string; role?: string | nu
     const 行: 仅项目列表行 = {
       id: c.id, name: c.name, shortName: c.shortName, school: c.school, customerNo: c.customerNo, customerType: c.customerType, customerAttr: c.customerAttr,
       地区: 拼地址(c),
-      当前节点: 位 ? 节点字(位) : null, 当前阶段: 位?.phase ?? null, 项目数: ps.length, 仅项目: true,
+      当前节点: 位 ? 节点字(位) : null,
+      抬头格: 位 ? { 节点: 节点字(位), 项目名: d.name } : null,
+      当前阶段: 位?.phase ?? null, 项目数: ps.length, 仅项目: true,
     };
     return [{ 行, 动: Math.max(...ps.map((p) => p.updatedAt.getTime())) }];
   });

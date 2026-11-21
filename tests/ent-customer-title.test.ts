@@ -115,15 +115,38 @@ describe("客户显名（关联客户那些地方）并进抬头文件，口径�
   });
 });
 
+const 只看节点 = (m: Record<string, { 节点: string }>) => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.节点]));
+
+describe("F-040 全空客户的抬头：员工起的项目名优先，编号 / 节点兜底", () => {
+  it("有项目名 → 只写项目名，不带节点、不带「· 下一步」（用户 11-21：后面「· 跟进」不用显示）", () => {
+    expect(客户抬头(客({ name: "" }), { 节点: "线索验证", 项目名: "抖音1-地下室300平" })).toBe("抖音1-地下室300平");
+    expect(客户抬头(客({ name: "暂无名称" }), { 节点: "线索验证", 项目名: " VR\n设备 " })).toBe("VR 设备");
+  });
+  it("项目名空着、是占位、是「暂无名称」、或就是这位客户的编号 / 短号 → 照旧 客户编号|节点", () => {
+    expect(客户抬头(客({ name: "" }), { 节点: "线索验证", 项目名: "" })).toBe("NO.01237|线索验证");
+    expect(客户抬头(客({ name: "" }), { 节点: "线索验证", 项目名: " — " })).toBe("NO.01237|线索验证");
+    expect(客户抬头(客({ name: "" }), { 节点: "线索验证", 项目名: "NO.01237" })).toBe("NO.01237|线索验证");
+    expect(客户抬头(客({ name: "", customerNo: null }), { 节点: "线索验证", 项目名: "#xyz789" })).toBe("#XYZ789|线索验证");
+    expect(客户抬头(客({ name: "" }), { 节点: "线索验证", 项目名: "暂无名称｜印度" })).toBe("NO.01237|线索验证");
+  });
+  it("客户有全称 / 简称 / 类型 / 区域的不受影响：项目名不进抬头", () => {
+    const 格 = { 节点: "痛点挖掘", 项目名: "VR设备" };
+    expect(客户抬头(客({ name: "某某公司" }), 格)).toBe("某某公司");
+    expect(客户抬头(客({ name: "", addrCity: "迪拜" }), 格)).toBe("迪拜|痛点挖掘");
+    expect(客户抬头(客({ name: "", customerType: "终端客户" }), 格)).toBe("终端客户");
+  });
+});
+
 describe("抬头节点们：一页一句，含公海、不按看的人算", () => {
   let 甲: string, 乙: string;
   const 时 = (分: number) => new Date(Date.UTC(2026, 10, 1, 8, 分));
   async function 造客户(data: { name?: string; shortName?: string | null; customerType?: string | null; addrCity?: string | null; customerNo?: number }) {
     return prisma.customer.create({ data: { name: "", phone: "", salesOwnerId: 甲, ...data } });
   }
-  async function 造项目(customerId: string, x: { phase?: string; node?: string; result?: string | null; updatedAt: Date; pooledAt?: Date | null; deletedAt?: Date | null; ownerId?: string }) {
+  // 项目名默认空着（老用例只看节点）；F-040 用例另给名字、下一步
+  async function 造项目(customerId: string, x: { name?: string; nextStepText?: string | null; phase?: string; node?: string; result?: string | null; updatedAt: Date; pooledAt?: Date | null; deletedAt?: Date | null; ownerId?: string }) {
     const { updatedAt, ...其余 } = x;
-    const p = await prisma.project.create({ data: { name: "项目", customerId, ownerId: 其余.ownerId ?? 甲, creatorId: 其余.ownerId ?? 甲, ...其余 } });
+    const p = await prisma.project.create({ data: { name: "", customerId, ownerId: 其余.ownerId ?? 甲, creatorId: 其余.ownerId ?? 甲, ...其余 } });
     // updatedAt 是 @updatedAt，建的时候盖成现在，另写一遍
     await prisma.$executeRawUnsafe(`UPDATE "Project" SET "updatedAt" = ? WHERE id = ?`, updatedAt, p.id);
     return p;
@@ -155,8 +178,16 @@ describe("抬头节点们：一页一句，含公海、不按看的人算", () =
 
     const 们 = [公海那位, 有结局, 异常, 一样新, 零项目, 有名字];
     const 节点 = await 抬头节点们(prisma, 们);
-    expect(节点).toEqual({ [公海那位.id]: "方案敲定", [有结局.id]: "丢单", [异常.id]: "异常 · 物流运输", [一样新.id]: "痛点挖掘" });
+    expect(只看节点(节点)).toEqual({ [公海那位.id]: "方案敲定", [有结局.id]: "丢单", [异常.id]: "异常 · 物流运输", [一样新.id]: "痛点挖掘" });
     expect(们.map((c) => 客户抬头(c, 节点[c.id]))).toEqual(["NO.00001|方案敲定", "NO.00002|丢单", "迪拜|异常 · 物流运输", "NO.00004|痛点挖掘", "NO.00005", "某某公司"]);
+  });
+
+  it("F-040：带回那个项目的名字，全空客户抬头写项目名", async () => {
+    const 新线索 = await 造客户({ customerNo: 8 });
+    await 造项目(新线索.id, { name: "VR设备", nextStepText: "跟进", phase: "线索", node: "线索验证", updatedAt: 时(2) });
+    const 格们 = await 抬头节点们(prisma, [新线索]);
+    expect(格们[新线索.id]).toEqual({ 节点: "线索验证", 项目名: "VR设备" });
+    expect(客户抬头(新线索, 格们[新线索.id])).toBe("VR设备");
   });
 
   it("不按看的人算：乙的项目甲看不到（限定层滤掉），甲打开时抬头节点照样取到（人人看到的抬头一样）", async () => {
@@ -172,7 +203,7 @@ describe("抬头节点们：一页一句，含公海、不按看的人算", () =
     expect(await 以谁的身份(甲, () => prisma.project.count({ where: { customerId: c.id } }))).toBe(0);
     const 甲看 = await 以谁的身份(甲, () => 抬头节点们(prisma, [c]));
     const 乙看 = await 以谁的身份(乙, () => 抬头节点们(prisma, [c]));
-    expect(甲看).toEqual({ [c.id]: "成交推进" });
+    expect(只看节点(甲看)).toEqual({ [c.id]: "成交推进" });
     expect(乙看).toEqual(甲看);
   });
 
