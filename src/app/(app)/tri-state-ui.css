@@ -53,9 +53,11 @@
 .tri-pending { margin-bottom: 16px; }
 .tri-pending-p.ant-typography { font-size: var(--fs-note); margin-top: 0; }
 /* 设置 → 客户回收 */
-.tri-recycle { display: grid; gap: 16px; }
+/* 一列 minmax(0, 1fr)：卡片跟正文一样宽，里面再长的一行也不把格子撑宽（32D） */
+.tri-recycle { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .tri-muted { color: var(--text-muted); }
-.tri-note { color: var(--text-muted); margin-bottom: 12px; }
+/* 只限客户回收页（32D）：客户详情状态条的旁注也叫 .tri-note（globals.css .tri-bar .tri-note），不限定时这里的下边距会加到状态条上 */
+.tri-recycle .tri-note { color: var(--text-muted); margin-bottom: 12px; }
 .tri-note-top { color: var(--text-muted); margin-top: 12px; }
 .tri-set { margin-bottom: 12px; }
 .tri-set-t { font-weight: 500; margin-bottom: 8px; }

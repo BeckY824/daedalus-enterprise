@@ -4575,7 +4575,8 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .tri-st.hold { background: color-mix(in srgb, var(--cat-violet) 12%, var(--panel)); color: color-mix(in srgb, var(--cat-violet) 70%, var(--ink)); }
 .tri-tx { flex: 0 1 auto; min-width: 0; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tri-sp { flex: 1 1 0; min-width: 0; }
-.tri-note { flex: 0 1 auto; min-width: 0; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 旁注只限状态条里（32D）：设置 → 客户回收的说明段落也叫 .tri-note（tri-state-ui.css），不限定时被这句压成一行、卡片撑到 2000 多宽 */
+.tri-bar .tri-note { flex: 0 1 auto; min-width: 0; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tri-acts { flex: none; display: inline-flex; align-items: center; gap: 8px; }
 .tri-more { display: none; }
 @container tribar (max-width: 720px) {

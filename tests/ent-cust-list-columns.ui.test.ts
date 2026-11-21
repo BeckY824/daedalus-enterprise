@@ -75,7 +75,9 @@ it("两列紧跟客户名；节点标签一行省略、—、0；三种宽度每
     const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
     try {
       await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
-      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await 藏号码(page);
+      // 项目数默认收着（32E 起三态关着也收）：这条量的就是这一列，勾出来（存键 +projectCount）
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+      await page.evaluate(() => localStorage.setItem("list-cols:customers", JSON.stringify(["-phone", "+projectCount"])));
       await page.addStyleTag({ content: `#root{margin-left:220px;margin-right:${右栏}px;padding:22px 26px}` });
       await page.addScriptTag({ content: 包 });
       await page.locator("tr.ant-table-row").first().waitFor();
@@ -167,10 +169,12 @@ it("三态开着：回收状态列紧跟当前节点（项目数默认收起）�
   1366 框里的 scrollWidth 不超过 clientWidth（不出内部横向滚动）；1280 内部横滚不超过 80、滚到最左时客户 / 编号 / 联系电话整列看得见；
   最后一个数据列（最近跟进）右边界不越过固定的操作列左边界；
   1024 允许内部横滚：滚到最右时最后一个数据列不被操作列盖住，滚到最左时第一个数据列不被勾选列盖住。
-  表头都不截（scrollWidth ≤ clientWidth），「项目数」三个字放得下。三态关着列宽照旧（只有项目数 64 → 72）
+  表头都不截（scrollWidth ≤ clientWidth），「项目数」三个字放得下。
+  三态关着（32E，P-界面-57 下批再理）：默认列同三态开着那一套少一列「回收状态」（项目数、预计签约收进「列」），守卫同样两条——
+  1366 不出内部横滚，1280 内部横滚不超过 80、滚到最左客户 / 编号 / 联系电话整列看得见。改前三态关着 1366 横滚约 350、1280 约 436
 */
-it("三态开着：默认列在 1280 / 1366 不横向滚、最后一列看得全；1024 横滚时固定列不盖内容；表头不截", async () => {
-  for (const [w, 三] of [[1024, true], [1280, true], [1366, true], [1024, false]] as const) {
+it("三态开 / 关：默认列在 1280 / 1366 不横向滚、最后一列看得全；1024 横滚时固定列不盖内容；表头不截", async () => {
+  for (const [w, 三] of [[1024, true], [1280, true], [1366, true], [1024, false], [1280, false], [1366, false]] as const) {
     const page = await browser.newPage({ viewport: { width: w, height: 900 } }); page.setDefaultTimeout(5000);
     const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
     try {
@@ -209,22 +213,33 @@ it("三态开着：默认列在 1280 / 1366 不横向滚、最后一列看得全
       expect(右.末右, `宽 ${w} 最后一列不被操作列盖住`).toBeLessThanOrEqual(右.操作左 + 0.5);
       // 11-17 PR-1：多了常驻的「编号」；「预计签约」三态开着默认收进「列」（腾位置给编号）；
       // PR #384：「联系电话」默认显示、紧跟编号，三态开着「项目数」默认收进「列」（用户定方案 A）
-      if (三) expect(右.头, `宽 ${w}`).toEqual(["客户", "编号", "联系电话", "当前节点", "回收状态", "客户状态", "级别", "国家", "负责人", "最近跟进"]);
-      if (三 && w === 1366) expect(右.内宽, `宽 ${w} 不出表格内部横向滚动`).toBeLessThanOrEqual(右.框宽);
-      if (三 && w === 1280) {
+      expect(右.头, `宽 ${w} 三态${三 ? "开" : "关"}`).toEqual(三
+        ? ["客户", "编号", "联系电话", "当前节点", "回收状态", "客户状态", "级别", "国家", "负责人", "最近跟进"]
+        : ["客户", "编号", "联系电话", "当前节点", "客户状态", "级别", "国家", "负责人", "最近跟进"]);
+      if (process.env.CUST_COLS_DUMP) 摆法.push(`宽 ${w} 三态${三 ? "开" : "关"} 框 ${右.框宽} 内 ${右.内宽} 宽们 ${右.宽们.join(",")}`);
+      if (w === 1366) expect(右.内宽, `宽 ${w} 三态${三 ? "开" : "关"} 不出表格内部横向滚动`).toBeLessThanOrEqual(右.框宽);
+      if (w === 1280) {
         expect(右.内宽 - 右.框宽, `宽 ${w} 内部横滚不超过 80`).toBeLessThanOrEqual(80);
         expect((await 量("左")).前三整列, `宽 ${w} 滚到最左`).toEqual(["客户:全", "编号:全", "联系电话:全"]);
       }
       if (w === 1024) {
         const 左 = await 量("左");
         expect(左.首左, `宽 ${w} 第一列不被勾选列盖住`).toBeGreaterThanOrEqual(左.勾右 - 0.5);
-        // 1024 宽表格本来就横滚，列宽 = 设的宽：三态关着照旧（项目数 64 → 72），开着按收过的
-        expect(左.宽们, `宽 ${w} 三态${三 ? "开" : "关"}`).toEqual(三 ? [136, 104, 150, 80, 136, 76, 60, 68, 92, 92] : [200, 104, 150, 112, 72, 110, 116, 76, 96, 140, 180]);
+        // 1024 宽表格本来就横滚，列宽 = 设的宽：开着按收过的；关着（32E）客户名照旧 200、最近跟进 120，其余收到开 / 关之间
+        expect(左.宽们, `宽 ${w} 三态${三 ? "开" : "关"}`).toEqual(三 ? [136, 104, 150, 80, 136, 76, 60, 68, 92, 92] : [200, 104, 150, 96, 88, 60, 68, 100, 120]);
       }
-      if (!三) {
-        // 大一号的表头字（换皮肤 / 系统字体更宽时）：「项目数」三个字照样放得下（三态开着它默认收着，在三态关着的这一轮、量完列宽之后量）
+      if (!三 && w === 1366) {
+        // 大一号的表头字（换皮肤 / 系统字体更宽时）：「项目数」「预计签约」勾出来时表头照样放得下（三态开关都默认收着，这里勾出来量）
+        await page.evaluate(() => localStorage.setItem("list-cols:customers", JSON.stringify(["+projectCount", "+expectedSignAt"])));
+        await page.reload();
+        await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") });
+        await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
+        await page.addScriptTag({ content: 包 });
+        await page.locator("tr.ant-table-row").first().waitFor();
         await page.addStyleTag({ content: ":root{--fs-note:16px}" });
-        expect((await 量("右")).截了的头.filter((t) => t === "项目数"), "表头 16px").toEqual([]);
+        const 大字 = await 量("右");
+        expect(大字.头.filter((t) => t === "项目数" || t === "预计签约"), "勾出来了").toEqual(["项目数", "预计签约"]);
+        expect(大字.截了的头, "表头 16px").toEqual([]);
       }
       expect(errors).toEqual([]);
     } finally { await page.close(); }
@@ -469,28 +484,29 @@ async function 新列表页(w: number, errors: string[]) {
 const 有项目数 = (page: import("playwright").Page) => page.locator("thead th.dl-col-projectCount").count();
 const 存的列 = (page: import("playwright").Page) => page.evaluate(() => JSON.parse(localStorage.getItem("list-cols:customers") ?? "null") as string[] | null);
 
-it("三态开着：老设置里带着 projectCount（动过别的列时整份存下的）不算主动，项目数照样收起；三态关着照旧显示；老设置藏过的三态关着照旧藏", async () => {
+it("三态开 / 关：老设置里带着 projectCount、expectedSignAt（动过别的列时整份存下的）不算主动，项目数、预计签约照样收起；老设置里别的照认", async () => {
+  // 32E：三态关着也收（P-界面-57 下批再理）；预计签约同样换存键（r17：三态关着存下的老设置带 expectedSignAt，开三态后照样显示、1366 横滚 88）
   const errors: string[] = [];
   const page = await 新列表页(1366, errors);
+  const 有预计签约 = () => page.locator("thead th.dl-col-expectedSignAt").count();
   try {
-    const 老设置 = ["phone", "projectNode", "projectCount", "level", "custStatus", "salesOwnerName", "lastFollowAt", "createdAt"];
-    await 开列表(page, { 三态: true, 存: 老设置 });
-    expect(await 有项目数(page)).toBe(0);
-    // 老设置里别的照认：勾过的创建时间显示
-    expect(await page.locator("thead th.dl-col-createdAt").count()).toBe(1);
-    await page.reload(); await 开列表(page, { 三态: false, 存: 老设置 });
-    expect(await 有项目数(page)).toBe(1);
-    await page.reload(); await 开列表(page, { 三态: false, 存: ["-projectCount"] });
-    expect(await 有项目数(page)).toBe(0);
-    // 三态开着、没存过列设置：默认收着
-    await page.evaluate(() => localStorage.clear());
-    await page.reload(); await 开列表(page, { 三态: true });
-    expect(await 有项目数(page)).toBe(0);
+    const 老设置 = ["phone", "projectNode", "projectCount", "expectedSignAt", "level", "custStatus", "salesOwnerName", "lastFollowAt", "createdAt"];
+    for (const 三态 of [true, false]) {
+      await page.evaluate(() => localStorage.clear());
+      await page.reload(); await 开列表(page, { 三态, 存: 老设置 });
+      expect([await 有项目数(page), await 有预计签约()], `三态${三态 ? "开" : "关"}`).toEqual([0, 0]);
+      // 老设置里别的照认：勾过的创建时间显示
+      expect(await page.locator("thead th.dl-col-createdAt").count()).toBe(1);
+      // 没存过列设置：默认收着
+      await page.evaluate(() => localStorage.clear());
+      await page.reload(); await 开列表(page, { 三态 });
+      expect([await 有项目数(page), await 有预计签约()], `三态${三态 ? "开" : "关"} 没存过`).toEqual([0, 0]);
+    }
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
 
-it("三态开着在「列」里主动勾上项目数：显示、刷新后仍显示，老设置里的 projectCount 留着；再取消就收起、刷新后仍收着；三态关了照老设置", async () => {
+it("在「列」里主动勾上项目数：显示、刷新后仍显示，三态开关切来切去都显示（同一个存键），老设置里的 projectCount 留着；再取消就收起、开关两边都收着", async () => {
   const errors: string[] = [];
   const page = await 新列表页(1366, errors);
   const 勾 = async (勾上: boolean) => {
@@ -511,24 +527,28 @@ it("三态开着在「列」里主动勾上项目数：显示、刷新后仍显�
     expect(await 存的列(page)).toEqual(expect.arrayContaining(["+projectCount", "projectCount", "createdAt", "phone"]));
     await page.reload(); await 开列表(page, { 三态: true });
     expect(await 有项目数(page)).toBe(1);
+    // 三态关了：同一个存键，照样显示
+    await page.reload(); await 开列表(page, { 三态: false });
+    expect(await 有项目数(page)).toBe(1);
     await 勾(false);
     await expect.poll(() => 有项目数(page)).toBe(0);
     expect(await 存的列(page)).toEqual(expect.arrayContaining(["-+projectCount", "projectCount"]));
+    await page.reload(); await 开列表(page, { 三态: false });
+    expect(await 有项目数(page)).toBe(0);
     await page.reload(); await 开列表(page, { 三态: true });
     expect(await 有项目数(page)).toBe(0);
-    // 三态关了：认原来那个键（老设置里勾着的 projectCount），照旧显示
-    await page.reload(); await 开列表(page, { 三态: false });
-    expect(await 有项目数(page)).toBe(1);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
 
 // 手机宽操作列钉不钉（PR #384 跟进）：只一颗「⋯」（56 宽）才不钉，让出中间给号码列；这一页有公海行、多出「领取」（132 宽）照旧钉右
-it("375 宽：操作列只有「⋯」时不钉右；这一页有公海行（132 宽、带领取）照旧钉右、领取整颗在视口里", async () => {
-  for (const 公海 of [false, true]) {
+// 32B：有公海行但我领不了（能新建和领取 = 否：没设业务角色、只读）——行里没有领取，操作列只剩「⋯」，照 56 宽、不钉
+it("375 宽：操作列只有「⋯」时不钉右；这一页有公海行（132 宽、带领取）照旧钉右、领取整颗在视口里；有公海行但领不了照 56 宽不钉", async () => {
+  for (const [公海, 不能领] of [[false, false], [true, false], [true, true]] as const) {
     const errors: string[] = [];
     const page = await 新列表页(375, errors);
     try {
+      await page.evaluate((x) => Object.assign(window, { __不能新建: x }), 不能领);
       await 开列表(page, { 公海 });
       const 量 = await page.evaluate(() => {
         const th = document.querySelector<HTMLElement>("thead th.dl-col-action")!;
@@ -536,7 +556,7 @@ it("375 宽：操作列只有「⋯」时不钉右；这一页有公海行（132
         const r = 领?.getBoundingClientRect();
         return { 钉右: /ant-table-cell-fix-(right|end)/.test(th.className), 宽: th.offsetWidth, 领取在里: r ? r.left >= 0 && r.right <= document.documentElement.clientWidth : null };
       });
-      expect(量, `公海 ${公海} ${JSON.stringify(量)}`).toEqual(公海 ? { 钉右: true, 宽: 132, 领取在里: true } : { 钉右: false, 宽: 56, 领取在里: null });
+      expect(量, `公海 ${公海} 不能领 ${不能领} ${JSON.stringify(量)}`).toEqual(公海 && !不能领 ? { 钉右: true, 宽: 132, 领取在里: true } : { 钉右: false, 宽: 56, 领取在里: null });
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }

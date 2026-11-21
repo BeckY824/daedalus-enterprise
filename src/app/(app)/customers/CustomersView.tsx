@@ -929,15 +929,21 @@ export default function CustomersView({
   /*
     客户三态开着（企业版多「回收状态」一列）：默认列在 1280 / 1366 宽（左栏 220）不出表格内部横向滚动，各列收到一行刚好放下常见内容，
     更长的照「一行 + 省略号 + 悬停」。量法和各列为什么是这个数见 tests/ent-cust-list-columns.ui.test.ts「三态开着：默认列不横向滚」。
-    三态关着列宽照旧（只有「项目数」放宽到表头三个字放得下）。这一页有公海里的客户时「负责人」不收（「公海（原 X）」要放得下）
+    这一页有公海里的客户时「负责人」不收（「公海（原 X）」要放得下）。
+    企业版三态关着（32E，P-界面-57「三态关着的默认列下批再理」）：默认列同三态开着那一套（项目数、预计签约收进「列」，老设置里带着的不算），
+    少了「回收状态」一列，多出来的宽给回客户名（200 照旧）和最近跟进（带一句）；其余各列收到三态关 / 三态开之间（比三态开宽，内容和表头照样放得下）。
+    1366 不出表格内部横滚、1280 内部横滚不超过 80，量法见 tests/ent-cust-list-columns.ui.test.ts「三态关着：默认列不横向滚」。
+    外贸、个人版（企业 = 否）列宽照旧
   */
   const 三态挤 = 企业 && !!三态标;
-  const 宽 = (常: number, 三态开: number) => (三态挤 ? 三态开 : 常);
-  /** 这一页有公海里的：操作列多一颗「领取」、加宽到 132，手机宽照旧钉右 */
-  const 有领取 = !不问归属 && rows.some((r) => r.pool);
+  /** 列宽：三态开着用 三态开；企业版三态关着用 企业关（不写 = 常）；别的版本用 常 */
+  const 宽 = (常: number, 三态开: number, 企业关: number = 常) => (三态挤 ? 三态开 : 企业 ? 企业关 : 常);
+  /** 这一页有公海里的、我又能领（能新建和领取）：操作列多一颗「领取」、加宽到 132，手机宽照旧钉右。
+   *  领不了的角色（没设业务角色、只读）行里不摆领取，操作列只剩「⋯」，照 56 宽、手机宽不钉（32B） */
+  const 有领取 = !不问归属 && 能新建和领取 && rows.some((r) => r.pool);
   const 企业列: 列<CustomerRow>[] = [
     {
-      title: "级别", key: "level", width: 宽(76, 60),
+      title: "级别", key: "level", width: 宽(76, 60, 60),
       sorter: true,
       sortOrder: 等级排序 === "level-asc" ? "ascend" : 等级排序 === "level-desc" ? "descend" : null,
       render: (_: unknown, r) => <LevelLetter level={r.extra?.level} 空={空} />,
@@ -955,7 +961,7 @@ export default function CustomersView({
       改成固定摆，没填的写「—」（X-08 空值都采用「—」）。客户名里带的「｜国家」（M-导入-54 补名字）不拆，另问业务方
     */
     {
-      title: "国家", key: "addrCountry", width: 宽(96, 68),
+      title: "国家", key: "addrCountry", width: 宽(96, 68, 68),
       render: (_: unknown, r: CustomerRow) => (有值(r.addrCountry) ? <span className="clamp-1" style={{ display: "block" }} title={r.addrCountry ?? ""}>{r.addrCountry}</span> : 空),
     },
     { title: "地址", key: "address", width: 180, 默认: false, render: (_: unknown, r) => { const t = 拼地址(r); return t ? <span title={t}>{t}</span> : 空; } },
@@ -1013,7 +1019,7 @@ export default function CustomersView({
       一行放不下省略号，悬停看全（全站 TruncTip）
     */
     ...(项目概况 ? [{
-      title: "当前节点", key: "projectNode", width: 宽(112, 80),
+      title: "当前节点", key: "projectNode", width: 宽(112, 80, 96),
       render: (_: unknown, r: CustomerRow) => {
         const x = 项目概况[r.id];
         return x?.当前节点
@@ -1023,9 +1029,10 @@ export default function CustomersView({
     }, {
       // 72：表头三个字连左右内边距放得下（64 在大一号的字体下被截成「项…」）
       // 三态开着默认收进「列」（PR #384，用户定方案 A「收起项目数」）：给默认显示的「联系电话」腾位置，1280 宽内部横滚压在 80 以内、1366 不横滚。
-      // 只认三态开着之后在「列」里主动勾出来的：列设置存的是全部可见列，三态开着动过任何一列的老设置都带着 projectCount，那不算主动。
-      // 所以三态开着换一个存键「+projectCount」，老设置里的 projectCount 不算（留着不删，三态关了照旧生效）；勾上就一直显示，取消又收起。三态关着不变
-      title: "项目数", key: "projectCount", width: 72, ...(三态挤 ? { 默认: false, 存键: "+projectCount" } : {}),
+      // 只认在「列」里主动勾出来的：列设置存的是全部可见列，动过任何一列的老设置都带着 projectCount，那不算主动。
+      // 所以换一个存键「+projectCount」，老设置里的 projectCount 不算（留着不删）；勾上就一直显示，取消又收起。
+      // 企业版三态关着同一套（32E）：默认收着、同一个存键，三态开关切来切去勾没勾都一样
+      title: "项目数", key: "projectCount", width: 72, ...(企业 ? { 默认: false, 存键: "+projectCount" } : {}),
       render: (_: unknown, r: CustomerRow) => <span className="nowrap">{项目概况[r.id]?.项目数 ?? 0}</span>,
     }] satisfies 列<CustomerRow>[] : []),
     /*
@@ -1059,12 +1066,14 @@ export default function CustomersView({
     } satisfies 列<CustomerRow>]),
     // 企业版：跟进状态换成客户状态（字典 custStatus，10-28 去遗留 A1）
     企业
-      ? { title: "客户状态", key: "custStatus", dataIndex: "custStatus", width: 宽(110, 76), render: (v: string | null) => (有值(v) ? <Tag color={客户状态色of(客户状态色, v)} style={{ margin: 0 }}>{v}</Tag> : 空) }
+      ? { title: "客户状态", key: "custStatus", dataIndex: "custStatus", width: 宽(110, 76, 88), render: (v: string | null) => (有值(v) ? <Tag color={客户状态色of(客户状态色, v)} style={{ margin: 0 }}>{v}</Tag> : 空) }
       : { title: "跟进状态", key: "followStatus", dataIndex: "followStatus", width: 110, render: (v: string) => <FollowStatusTag status={v} /> },
     // 外贸不摆预计签约（2026-10-05 外贸客户：「没有意义」——采购时间点看商机的询盘时间）
-    // 三态开着默认收进「列」（11-17 客户抬头 PR-1）：给常驻的「编号」腾位置，1280 宽照旧不出表格内部横滚；要看的人在「列」里勾回来
+    // 三态开着默认收进「列」（11-17 客户抬头 PR-1）：给常驻的「编号」腾位置，1280 宽照旧不出表格内部横滚；要看的人在「列」里勾回来。
+    // 企业版三态关着也收（32E）；存键换成「+expectedSignAt」（同项目数）：三态关着时存下的老设置都带着 expectedSignAt（那时默认显示），
+    // 不换键的话开三态后照样显示、1366 横滚 88（r17）；只认换键之后在「列」里主动勾出来的
     ...(外贸 ? [] : [{
-      title: "预计签约", key: "expectedSignAt", dataIndex: "expectedSignAt", width: 宽(116, 100), ...(三态挤 ? { 默认: false } : {}),
+      title: "预计签约", key: "expectedSignAt", dataIndex: "expectedSignAt", width: 宽(116, 100), ...(企业 ? { 默认: false, 存键: "+expectedSignAt" } : {}),
       render: (v: string | null) => <span className="muted nowrap">{有值(v) ? fmtDate(v) : 空值符}</span>,
     }]),
     /*
@@ -1074,7 +1083,7 @@ export default function CustomersView({
     ...(企业 ? 企业列 : 外贸 ? 外贸列 : []),
     ...(不问归属 ? [] : [{
       // 这一页有公海里的（「公海（原 X）」标签）照旧 140，三态开着也不收
-      title: "负责人", 列名: "负责人", key: "salesOwnerName", dataIndex: "salesOwnerName", width: rows.some((r) => r.pool) ? 140 : 宽(140, 92),
+      title: "负责人", 列名: "负责人", key: "salesOwnerName", dataIndex: "salesOwnerName", width: rows.some((r) => r.pool) ? 140 : 宽(140, 92, 100),
       // 在公海里：写「公海（原 X）」——原负责人还挂着，但谁都能领
       render: (v: string, r: CustomerRow) => r.pool
         ? <Tag className="pool-tag" title={`${公海标签(v)} · ${r.pool.reason === "手动" ? "手动放回公海" : 进公海理由显示(r.pool.reason)}`}>{公海标签(v)}</Tag>
@@ -1082,7 +1091,7 @@ export default function CustomersView({
     }]),
     // 三列各收一点，1366 宽时默认列和公海列都不用左右拖（10-27）；负责人不收，「公海（原 X）」要放得下
     {
-      title: "最近跟进", key: "lastFollowAt", dataIndex: "lastFollowAt", width: 宽(180, 92),
+      title: "最近跟进", key: "lastFollowAt", dataIndex: "lastFollowAt", width: 宽(180, 92, 120),
       // 企业版点表头在全部筛选结果里排（1I，11-16）：正序 = 最久没跟进的在前，从没跟进过的最前
       ...(企业 ? { sorter: true, sortOrder: 跟进排序 === "follow-asc" ? "ascend" as const : 跟进排序 === "follow-desc" ? "descend" as const : null } : {}),
       // 冷热在前：扫一眼这一列就知道谁凉了，日期留着给要细看的人
