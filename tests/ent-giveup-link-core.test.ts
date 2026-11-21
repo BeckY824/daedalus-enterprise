@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 import {
   有放弃参数, 带放弃参数, 去放弃参数, 通知链接带放弃, 放弃落地of, 落地对得上, 项目不给放弃, 不给放弃话, 不在手上话, 本月用过话,
-  放弃链接项目, 剩多久, 放弃时限话,
+  放弃链接项目, 剩多久, 放弃时限话, 放弃后要离开,
 } from "@/lib/enterprise/lead-giveup-core";
 import { 消息体, 放弃链接字 } from "@/lib/enterprise/feishu-push";
 
@@ -117,5 +117,20 @@ describe("铃铛按项目对能不能放弃、首页时限那句", () => {
     expect(放弃时限话("转走", 后(25), 现在)).toBe("已超时，还剩 25 分钟 自动转走");
     expect(放弃时限话("转走", 后(0), 现在)).toBe("已超时，马上自动转走");
     expect(放弃时限话("窗口", 后(3 * 24 * 60), 现在)).toBe("还剩 3 天 可放弃");
+  });
+});
+
+describe("铃铛放弃成了以后当前页要不要离开（审查：刷新会 404）", () => {
+  it("项目页这条、客户详情 ?project=这条、跟着转走的这位客户 = 离开；别的 = 刷新", () => {
+    expect(放弃后要离开("/projects/p1", "", "p1")).toBe(true);
+    expect(放弃后要离开("/projects/p1/", "?giveup=1", "p1")).toBe(true);
+    expect(放弃后要离开("/customers/c1", "?project=p1", "p1")).toBe(true);
+    expect(放弃后要离开("/customers/c1", "", "p1", { customerId: "c1", 客户跟走: true })).toBe(true);
+    expect(放弃后要离开("/customers/c1", "", "p1", { customerId: "c1", 客户跟走: false })).toBe(false);
+    expect(放弃后要离开("/customers/c2", "", "p1", { customerId: "c1", 客户跟走: true })).toBe(false);
+    expect(放弃后要离开("/customers/c1", "?project=p2", "p1")).toBe(false);
+    expect(放弃后要离开("/projects/p2", "", "p1")).toBe(false);
+    expect(放弃后要离开("/dashboard", "", "p1", { customerId: "c1", 客户跟走: true })).toBe(false);
+    expect(放弃后要离开("/customers/%E0%A4%A", "", "p1", { customerId: "c1", 客户跟走: true })).toBe(false);
   });
 });

@@ -182,13 +182,17 @@ export async function 我能放弃的(me: Pick<SessionUser, "id" | "视图由">,
       const org = await 读组织于(prisma);
       if (只读角色({ id: me.id }, org)) return [];
       const 起 = new Date(现在.getTime() - (放弃窗口天 + 1) * 86_400_000);
-      const 分给我 = await prisma.entLeadAssign.findMany({ where: { toUserId: me.id, createdAt: { gte: 起 }, projectId: { not: null } }, select: { projectId: true } });
+      // 按分配时间倒序（新建早、最近才分来的也排得进）：近 8 天分给我的就这些，条数有限
+      const 分给我 = await prisma.entLeadAssign.findMany({
+        where: { toUserId: me.id, createdAt: { gte: 起 }, projectId: { not: null } }, select: { projectId: true }, orderBy: { createdAt: "desc" },
+      });
       const 候选 = [...new Set(分给我.map((a) => a.projectId!))];
       if (!候选.length) return [];
-      const 行们 = await prisma.project.findMany({
+      const 先后 = new Map(候选.map((id, i) => [id, i]));
+      const 行们 = (await prisma.project.findMany({
         where: { id: { in: 候选 }, ownerId: me.id, deletedAt: null, phase: "线索", result: null, pooledAt: null, awaitAssignAt: null, customer: { pool: null } },
-        select: 判的列, orderBy: { createdAt: "desc" }, take: 最多 * 3,
-      });
+        select: 判的列,
+      })).sort((a, b) => 先后.get(a.id)! - 先后.get(b.id)!).slice(0, 最多 * 3);
       const 判 = await 判一批(me.id, org, 行们, 现在);
       const 能: { p: 看的项目; 接手于: Date }[] = [];
       for (const 行 of 行们) {
@@ -225,7 +229,11 @@ export async function 通知放弃链接(userId: string, projectId: string, link
   }
 }
 
-export type 放弃结果 = { ok: true; 接手人: string } | { ok: false; error: string };
+/**
+ * 放弃的结果。成了带上客户（铃铛里放弃后判断当前页是不是这条 / 这位客户，是就别刷新、去项目列表，lead-giveup-core.ts 放弃后要离开）：
+ * 客户跟走 = 客户一起给了接手人（放弃人多半看不到这位客户了）
+ */
+export type 放弃结果 = { ok: true; 接手人: string; customerId?: string; 客户跟走?: boolean } | { ok: false; error: string };
 
 /** Prisma 唯一键冲突（P2002）或 SQLite 的 UNIQUE constraint failed */
 const 是唯一键冲突 = (e: unknown): boolean =>
@@ -349,5 +357,5 @@ async function 放出去(
     body: `已转给 ${r.接手人}（原因：${认.文字}）。${客户话}本月放弃次数已用（每人每月 ${每月放弃次数} 次）；已给你记 1 条待补，下一条自动分配先补给你，补的那条不计入本月已分`,
     key: `giveup:${projectId}:${me.id}:${月}`,
   });
-  return { ok: true, 接手人: r.接手人 };
+  return { ok: true, 接手人: r.接手人, customerId: p.customerId, 客户跟走: 客户.去向 === "跟着走" };
 }

@@ -74,6 +74,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   */
   const sp0 = await searchParams;
   const 对话 = sp0.c ? await 读对话(sp0.c) : null;
+  // 企业版首页置顶「新分到你的线索，可以放弃（豁免）」（11-21）：只查本人、一批判（lead-giveup.ts 我能放弃的）；先发出去，和下面几样待办一起等（它从不抛）
+  const 能放弃P = 企业版() ? 我能放弃的(user) : Promise.resolve([]);
   // 企业版自动分配因都已满额没分出去的提醒：首页顶部也摆一份，和线索页同一份数据，哪边关了两边都没了
   const 满额提醒们 = 企业版() ? await 读满额提醒(user.id) : [];
   // 企业版首页待办「待回复主题」（11-17，教练主题）：我负责的项目上等我回的
@@ -85,8 +87,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   // 企业版首页待办「待我复核」（审核 11-18 节点 P2-3，P-线索-02 / 03）：和项目列表、客户页同一份数据（能拍板的人）；读不出来不挡首页
   const 待复核们 = 企业版() ? (await 待我复核的(user).catch((e) => { console.error("[待我复核] 首页没读出来", e); return []; })).map((r) => ({ ...r, 更新于: r.更新于.toISOString() })) : [];
   const 待复核 = 待复核们.length ? <VerifyInbox 们={待复核们} /> : undefined;
-  // 企业版首页置顶「新分到你的线索，可以放弃（豁免）」（11-21）：只查本人、一批判（lead-giveup.ts 我能放弃的）；开关关 / 本月用过 / 没资格 = 空、不画，出错不挡首页
-  const 能放弃们 = 企业版() ? await 我能放弃的(user) : [];
+  // 开关关 / 本月用过 / 没资格 = 空、不画，出错不挡首页
+  const 能放弃们 = await 能放弃P;
   const 放弃条 = 能放弃们.length ? <GiveUpHomeTodo 们={能放弃们} /> : undefined;
   // 企业版项目：首页是对话 + 右侧四张指标卡（10-29 首页改版），其余数据在「复盘」页
   const 只用项目 = await 企业版只用项目();

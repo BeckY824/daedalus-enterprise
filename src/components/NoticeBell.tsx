@@ -10,7 +10,7 @@ import { useSystemReducedMotion } from "@/lib/reduced-motion";
 import { 时长, 曲线, 间隔 } from "@/lib/motion";
 import { 读我的通知, 读未读通知数, 标已读, 全部标已读 } from "@/app/(app)/notice-actions";
 import type { 通知行 } from "@/lib/enterprise/notify";
-import { 去放弃参数 } from "@/lib/enterprise/lead-giveup-core";
+import { 去放弃参数, 放弃后要离开 } from "@/lib/enterprise/lead-giveup-core";
 import GiveUpDialog from "@/app/(app)/projects/[id]/GiveUpDialog";
 
 /**
@@ -208,11 +208,13 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
           projectId={放的.项目} 开 关={() => set放的(null)}
           // 铃铛里没有「线索验证」框：关抽屉去项目页判
           打开判无效={() => { set开着(false); router.push(`/projects/${encodeURIComponent(放的.项目)}`); }}
-          成={(接手人) => {
+          成={(接手人, 客户) => {
             set放成((原) => ({ ...原, [放的.项目]: 接手人 }));
             set放的(null);
-            // 当前页可能就是这条项目（线索已转走）：重拉一遍
-            router.refresh();
+            // 正停在这条线索（项目页、客户详情这条项目）或跟着转走的这位客户上：刷新会 404（他已不是负责人，同 #388），
+            // 去项目列表（抽屉里那句「已放弃，转给 X」留着）；别的页重拉一遍
+            if (放弃后要离开(window.location.pathname, window.location.search, 放的.项目, 客户)) router.push("/projects");
+            else router.refresh();
           }}
         />
       )}

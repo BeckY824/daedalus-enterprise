@@ -197,6 +197,24 @@ export function 放弃链接项目(link: string | null | undefined): string | nu
   }
 }
 
+/**
+ * 在别处（铃铛）放弃成了以后，当前页是不是还停在这条线索 / 这位客户上（项目页 /projects/<id>、客户详情 ?project=<id>、
+ * 客户跟着转走了的客户详情 /customers/<客户>）：是 = 别刷新（刷新他已不是负责人，整页 404），去项目列表；不是 = 照旧刷新
+ */
+export function 放弃后要离开(pathname: string, search: string, projectId: string, 客户?: { customerId?: string; 客户跟走?: boolean }): boolean {
+  if (落地对得上(projectId, pathname, null)) return true;
+  if (new URLSearchParams(search).get("project") === projectId) return true;
+  if (客户?.客户跟走 && 客户.customerId) {
+    const m = /^\/customers\/([^/?#]+)\/?$/.exec(pathname);
+    try {
+      if (m && decodeURIComponent(m[1]) === 客户.customerId) return true;
+    } catch {
+      /* 地址坏的当不是 */
+    }
+  }
+  return false;
+}
+
 /** 带参数打开的这一页是不是那一条：项目页 /projects/<id>，或客户详情 ?project=<id> */
 export function 落地对得上(projectId: string, pathname: string, 选中项目: string | null): boolean {
   if (选中项目 != null) return 选中项目 === projectId;

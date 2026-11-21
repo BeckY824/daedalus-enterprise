@@ -19,7 +19,7 @@ import { chromium, type Browser, type Page } from "playwright";
 let browser: Browser; let bundle: string;
 const plugin: Plugin = { name: "ent-notice-bell", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "stub", pluginData: code }));
-  stub(/^next\/navigation$/, "const 记=(u)=>{(window.__去||(window.__去=[])).push(u)};export const useRouter=()=>({push:记,refresh(){},replace:记});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
+  stub(/^next\/navigation$/, "const 记=(u)=>{(window.__去||(window.__去=[])).push(u)};export const useRouter=()=>({push:记,refresh(){window.__刷=(window.__刷||0)+1},replace:记});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
   // 服务端动作：读 window.__通知，标已读改它，并把调用记在 window.__调
   stub(/notice-actions$/, `
     const 记=(x)=>{(window.__调||(window.__调=[])).push(x)};
@@ -62,11 +62,11 @@ const 三条 = [
   { id: "n3", kind: "交接", title: "总管 确认接手了 3 位客户", body: "", link: "/customers", read: true, createdAt: 刚才(60 * 24 * 2) },
 ];
 
-async function 打开(行们: unknown[] = 三条, o: { width?: number; 暗?: boolean; 减弱?: boolean } = {}): Promise<{ page: Page; errors: string[] }> {
+async function 打开(行们: unknown[] = 三条, o: { width?: number; 暗?: boolean; 减弱?: boolean; 地址?: string } = {}): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width: o.width ?? 1280, height: 800 }, reducedMotion: o.减弱 ? "reduce" : "no-preference" }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://ent.test/**", r => r.fulfill({ contentType: "text/html", body: `<!doctype html><html${o.暗 ? ' data-mode="dark"' : ""}><meta charset='utf-8'><body><div id='root'></div></body></html>` }));
-  await page.goto("http://ent.test/customers");
+  await page.goto(`http://ent.test${o.地址 ?? "/customers"}`);
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addStyleTag({ path: path.resolve("src/app/dark.css") });
   await page.addScriptTag({ content: bundle });
@@ -166,6 +166,34 @@ it("[11-21] 放弃没成：错误写在框里，按钮还在；「去判无效�
     expect(await 窗<string[]>(page, "__去")).toEqual(["/projects/p9"]);
     expect(await page.getByTestId("notice-giveup").count()).toBe(1);
   } finally { await page.close(); }
+});
+
+it("[11-21 审查] 放弃成了：正停在这条（项目页、客户详情 ?project=这条、跟着转走的这位客户）不刷新、去项目列表；别的页照旧刷新", async () => {
+  const 行们 = [{ id: "g1", kind: "分配", title: "分配给你一条新线索：华东", body: "", link: "/projects/p9?giveup=1", 放弃项目: "p9", read: true, createdAt: 刚才(0) }];
+  const 情形: [string, unknown, boolean][] = [
+    ["/projects/p9", undefined, true],
+    ["/customers/c1?project=p9", undefined, true],
+    ["/customers/c1", { ok: true, 接手人: "乙", customerId: "c1", 客户跟走: true }, true],
+    ["/customers/c1", { ok: true, 接手人: "乙", customerId: "c1", 客户跟走: false }, false],
+    ["/customers/c1?project=p8", undefined, false],
+    ["/projects/p8", undefined, false],
+  ];
+  for (const [地址, 回, 离开] of 情形) {
+    const { page, errors } = await 打开(行们, { width: 390, 减弱: true, 地址 });
+    try {
+      if (回) await page.evaluate((x) => { (window as unknown as { __放弃回: unknown }).__放弃回 = x; }, 回);
+      await 铃(page).click();
+      await page.getByTestId("notice-giveup").click();
+      const 框 = page.getByRole("dialog", { name: "放弃这条线索（豁免）" });
+      await 框.getByText("外出", { exact: true }).click();
+      await 框.getByRole("button", { name: "确认放弃" }).click();
+      await page.getByTestId("notice-giveup-done").waitFor();
+      expect(await page.getByTestId("notice-giveup-done").innerText()).toBe("已放弃，转给 乙");
+      expect([地址, await 窗<string[] | undefined>(page, "__去") ?? [], await 窗<number | undefined>(page, "__刷") ?? 0])
+        .toEqual([地址, 离开 ? ["/projects"] : [], 离开 ? 0 : 1]);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
 });
 
 it("全部已读：红数没了、按钮变灰、蓝点没了", async () => {
