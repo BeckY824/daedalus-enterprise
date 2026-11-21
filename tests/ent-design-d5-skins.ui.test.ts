@@ -111,6 +111,8 @@ const 无名联系人 = { contact: { id: "k1", name: "", position: "采购" } };
 const 两币回款 = { 成交钱: { contractAmount: null, contractCurrency: null, depositAmount: null, depositCurrency: null, dealDemand: null }, 回款们: [
   { id: "r1", paidAt: "2026-10-01", currency: "CNY", amount: 12800000, userId: null, createdAt: "2026-10-01T00:00:00.000Z" },
   { id: "r2", paidAt: "2026-10-02", currency: "USD", amount: 1500000, userId: null, createdAt: "2026-10-02T00:00:00.000Z" },
+  // 第三种币：右栏里一定折成两三行（3704 实操：标签要和第一行顶对齐）
+  { id: "r3", paidAt: "2026-10-03", currency: "EUR", amount: 2300000, userId: null, createdAt: "2026-10-03T00:00:00.000Z" },
 ] };
 
 describe("现状主题：D5 新样子", () => {
@@ -119,8 +121,10 @@ describe("现状主题：D5 新样子", () => {
     try {
       const 卡 = page.locator(".proj-info");
       await 卡.waitFor();
-      const 行 = 卡.locator("> .ant-card-body > div").filter({ has: page.locator('[data-inline-field="级别"]') });
+      const 行 = 卡.locator(".proj-info-row").filter({ has: page.locator('[data-inline-field="级别"]') });
       expect((await 行.boundingBox())!.height).toBeGreaterThanOrEqual(34);
+      // #403 审查：样式只管资料行（.proj-info-row），行与行之间不再靠 !important 压行内 marginBottom
+      expect(await 行.evaluate(e => [getComputedStyle(e).marginBottom, getComputedStyle(e).marginLeft, e.getAttribute("style")?.includes("margin") ?? false])).toEqual(["0px", "-8px", false]);
       await 行.hover();
       expect(await 行.evaluate(e => getComputedStyle(e).backgroundColor)).toBe(await 色(page, "var(--row-hover)"));
       const 笔 = 行.locator(".proj-inline-pen");
@@ -142,7 +146,7 @@ describe("现状主题：D5 新样子", () => {
   it("改级别时标签和下拉顶对齐；下拉里的「—」选项用 --empty-fg", async () => {
     const { page, errors } = await 开("now");
     try {
-      const 行 = page.locator(".proj-info > .ant-card-body > div").filter({ has: page.locator('[data-inline-field="级别"]') });
+      const 行 = page.locator(".proj-info-row").filter({ has: page.locator('[data-inline-field="级别"]') });
       await 行.locator(".proj-inline-pen").click({ force: true });
       const 框 = 行.locator(".proj-inline-edit .ant-select");
       await 框.waitFor();
@@ -159,7 +163,7 @@ describe("现状主题：D5 新样子", () => {
     it(`${w}px：多币种长金额「¥ 12,800,000 · $ 1,500,000」不出省略号、每段数字不拆`, async () => {
       const { page, errors } = await 开("now", 两币回款, { width: w });
       try {
-        const 钱 = page.locator(".proj-info > .ant-card-body > div").filter({ hasText: /^当前回款/ }).locator(".proj-money");
+        const 钱 = page.locator(".proj-info-row").filter({ hasText: /^当前回款/ }).locator(".proj-money");
         await 钱.waitFor();
         expect((await 钱.innerText()).replace(/\s+/g, " ")).toMatch(/12,800,000 · .*1,500,000/);
         for (const 段 of await 钱.locator(".proj-money-seg").all()) {
@@ -168,6 +172,10 @@ describe("现状主题：D5 新样子", () => {
         }
         // 整格不被截：内容没有比格子宽
         expect(await 钱.evaluate(e => e.scrollWidth <= e.clientWidth + 1 || getComputedStyle(e).display === "inline")).toBe(true);
+        // 3704 实操：金额折成两三行时「当前回款」标签和第一行顶对齐（不垂直居中）——比的是两个盒子的顶，不看字体高
+        const 键盒 = (await 钱.evaluate(e => e.parentElement!.firstElementChild!.getBoundingClientRect().height));
+        expect((await 钱.boundingBox())!.height, "三种币要折成多行").toBeGreaterThan(键盒 * 1.5);
+        expect(await 钱.evaluate(e => Math.abs(e.parentElement!.firstElementChild!.getBoundingClientRect().top - e.getBoundingClientRect().top))).toBeLessThanOrEqual(1);
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
         expect(errors).toEqual([]);
       } finally { await page.close(); }
@@ -242,7 +250,7 @@ describe("现状主题：D5 新样子", () => {
   it("折叠的卡都写条数：项目组、提成、进程变更", async () => {
     const { page, errors } = await 开("now");
     try {
-      for (const 题 of [/^项目组（1）$/, /^提成（2）$/, /^进程变更（1）$/]) expect(await page.locator(".ant-card-head-title").filter({ hasText: 题 }).count(), String(题)).toBe(1);
+      for (const 题 of [/^项目组（2）$/, /^提成（2）$/, /^进程变更（1）$/]) expect(await page.locator(".ant-card-head-title").filter({ hasText: 题 }).count(), String(题)).toBe(1);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   });
@@ -250,7 +258,7 @@ describe("现状主题：D5 新样子", () => {
   it("只能看的人：项目资料里没挂联系人也摆一行「—」", async () => {
     const { page, errors } = await 开("now", { contact: null }, { 能改: false });
     try {
-      const 行 = page.locator(".proj-info > .ant-card-body > div").filter({ hasText: /^联系人/ });
+      const 行 = page.locator(".proj-info-row").filter({ hasText: /^联系人/ });
       expect((await 行.innerText()).replace(/\s+/g, "")).toBe("联系人—");
       expect(await 行.locator("[data-empty='联系人']").evaluate(e => getComputedStyle(e).color)).toBe(await 色(page, "var(--empty-fg)"));
       expect(errors).toEqual([]);
@@ -298,7 +306,7 @@ for (const skin of ["ledger", "tech"] as const)
     it("项目资料不挂新行样；画像还是 12 个常开下拉、卡头不写计数；折叠卡不写条数；附件每格各写一遍上限", async () => {
       const { page, errors } = await 开(skin, 无名联系人);
       try {
-        expect(await page.locator(".proj-info").count()).toBe(0);
+        expect(await page.locator(".proj-info, .proj-info-row").count()).toBe(0);
         const 画像卡 = page.locator(".ant-card").filter({ has: page.locator(".proj-profile") });
         expect(await 画像卡.locator(".ant-select").count()).toBe(12);
         expect(await 画像卡.locator(".ant-card-head-title").innerText()).toBe("项目画像");

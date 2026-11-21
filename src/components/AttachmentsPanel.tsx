@@ -32,7 +32,7 @@ declare global {
  * 小标题（设计语言 D5 · M11-b，项目附件现状主题）：这一格自己画小标题，「上传」挪到小标题右边；「单个最多 20 MB」由外面整卡写一次，
  *   这里不再每格写；整格能拖进来（和点选同一个 传一个）；空态「还没有附件」不带句号
  */
-export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = false, 说明, on个数, 分类, 紧凑 = false, on变了, 小标题 }: { 归属: 归属; 只读?: boolean; 说明?: string; on个数?: (n: number) => void; 分类?: string | null; 紧凑?: boolean; on变了?: () => void; 小标题?: ReactNode }) {
+export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = false, 能删: 能删参 = false, 说明, on个数, 分类, 紧凑 = false, on变了, 小标题 }: { 归属: 归属; 只读?: boolean; 能删?: boolean; 说明?: string; on个数?: (n: number) => void; 分类?: string | null; 紧凑?: boolean; on变了?: () => void; 小标题?: ReactNode }) {
   /**
    * 就地反馈（dt.upload / g.save，不弹顶部提示）：在传的每个文件一行（进度环 → ✓ / 没传上的原因），
    * 读没成、删没成、打不开、自动推进了写在块里一行；几秒后自己收。错 = 红字（role=alert）；常 = 灰字（role=status）
@@ -50,6 +50,8 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = f
   // 切换视图（只读预览）：看得到列表和图，不能传、删、下载（服务端同样拒）
   const 视图中 = useViewAs();
   const 只读 = 只读参 || 视图中;
+  // 只读时也给删（公海里系统管理员删联系人附件，服务端按删除挡另判，#403 审查）；切换视图照旧不给
+  const 可删 = !只读 || (能删参 && !视图中);
   const [列表, set列表] = useState<附件[] | null>(null);
   const [传着, set传着] = useState(0);
   // 分类（企业版联系人的 名片 / 相册，10-29）：只列这一格、传上去记成这一格
@@ -281,7 +283,7 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = f
                       <div className="att-missing" data-testid="attachment-missing">文件不在这台电脑上</div>
                     )}
                     <div className="att-pic-name">{a.name}</div>
-                    {!只读 && <删按钮 a={a} 删={删} />}
+                    {可删 && <删按钮 a={a} 删={删} />}
                   </div>
                 ))}
               </div>
@@ -294,7 +296,7 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = f
                   <FileOutlined />
                   <a onClick={() => void 打开(a)} title="用这台电脑上的程序打开">{a.name}</a>
                   {a.有文件 ? <span className="muted">{读大小(a.size)}</span> : <span className="muted" data-testid="attachment-missing">文件不在这台电脑上</span>}
-                  {!只读 && <删按钮 a={a} 删={删} />}
+                  {可删 && <删按钮 a={a} 删={删} />}
                 </li>
               ))}
             </ul>

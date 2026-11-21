@@ -63,7 +63,8 @@ export function useContactRemoval() {
  * 两颗键各自就地问一句：「移出」更不伤数据（中性色），「删除」连联系人页一起删（红）。
  * 没成：原因写在这两颗键后面一行（role=alert），几秒后收。
  */
-export function ContactRemoveInline({ c, 文字 = false }: { c: { id: string; name: string }; 文字?: boolean }) {
+/** 只删：公海里（移出走 客户事项挡 会被拒）只给「删除」一颗，删除挡放行的人（系统管理员）照常能删（#403 审查） */
+export function ContactRemoveInline({ c, 文字 = false, 只删 = false }: { c: { id: string; name: string }; 文字?: boolean; 只删?: boolean }) {
   const { 移出, 彻底删 } = useContactRemoval();
   const b = useBusiness();
   const [错, set错] = useState<string | null>(null);
@@ -79,9 +80,11 @@ export function ContactRemoveInline({ c, 文字 = false }: { c: { id: string; na
   };
   return (
     <>
-      <InlineConfirm 问={`联系人页里还留着，以后能挂到别的${b.customer}`} 是="只移出" 中性 做={() => 跑(() => 移出(c))}>
-        <Button type="text" size="small" aria-label={`移出联系人 ${c.name}`}>移出</Button>
-      </InlineConfirm>
+      {!只删 && (
+        <InlineConfirm 问={`联系人页里还留着，以后能挂到别的${b.customer}`} 是="只移出" 中性 做={() => 跑(() => 移出(c))}>
+          <Button type="text" size="small" aria-label={`移出联系人 ${c.name}`}>移出</Button>
+        </InlineConfirm>
+      )}
       <InlineConfirm 问="联系人页里也一起删掉，沟通记录不删" 是="彻底删除" 做={() => 跑(() => 彻底删(c))}>
         {文字
           ? <Button size="small" type="text" danger aria-label={`删除联系人 ${c.name}`}>删除</Button>

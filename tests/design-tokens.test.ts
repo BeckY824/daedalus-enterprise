@@ -256,6 +256,9 @@ describe("D1 · 设计语言 token 和基础控件", () => {
     for (const 片 of ["min-height: 34px", "line-height: 24px", "background: var(--row-hover)", '.ant-select-item-option[title="—"]', "var(--ai-safe)", "color: var(--count-fg)", "var(--skel-delay)", "word-break: keep-all", "var(--hit-touch)"]) {
       expect(段, 片).toContain(片);
     }
+    // #403 审查：项目资料的行距只管 .proj-info-row，不再拿 .proj-info 下所有 div、也不靠 !important 压行内样式
+    expect(段).not.toContain(".proj-info > .ant-card-body > div");
+    expect([...段.matchAll(/([^{}]*proj-info[^{}]*)\{([^{}]*)\}/g)].filter((m) => m[2].includes("!important")).map((m) => m[1].trim())).toEqual([]);
   });
 
   it("lib/theme.ts 抄的控件三档高、卡头高和 :root 一致；输入类组件 token 保持 main 原值", async () => {

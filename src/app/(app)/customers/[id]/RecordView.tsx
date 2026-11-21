@@ -887,19 +887,23 @@ export default function RecordView({
   // 挂来的联系人（企业版 P13）：资料归主客户，主客户那头我能改才给编辑；删除不给，拿掉走卡上的「解除挂靠」
   /*
     公海里的客户（D5 遗留）：服务端改联系人、挂靠、联系人附件都过 客户事项挡，公海里一律「先领取再改」——
-    联系人那几处也和资料格一样不摆入口（编辑笔、移出、⋯、附件上传、卡头「＋ 新增」），免得有笔却存不了（同 D3 资料改挡）
+    联系人那几处也和资料格一样不摆入口（编辑笔、移出、⋯、附件上传、卡头「＋ 新增」），免得有笔却存不了（同 D3 资料改挡）。
+    删是另一把尺（#403 审查）：删联系人、删联系人附件服务端走 删除挡，公海里系统管理员照常能删——「删除」和附件里的删单独按 公海删 摆
   */
   const 联系人只读 = 只读 || !!资料改挡?.公海;
+  const 公海删 = !只读 && 资料改挡?.公海 ? 资料改挡.公海删 : undefined;
   const 能编联系人 = (c: ContactRow) => !联系人只读 && (!c.挂靠 || c.挂靠.能改);
+  /** 摆不摆「移出 / 删除」：能编的照旧两颗都给；公海里只按删除挡给「删除」一颗（移出走 客户事项挡，公海里拒） */
+  const 能删联系人 = (c: ContactRow) => !c.挂靠 && !去项目跟进 && (能编联系人(c) || !!公海删?.联系人);
   const 编辑联系人钮 = (c: ContactRow) => (
     <Button type="text" size="small" className="rec-contact-edit" icon={<EditOutlined />} aria-label={`编辑联系人 ${空显(c.name)}`} onClick={() => { setEditingContact(c); setContactOpen(true); }} />
   );
-  const 联系人操作 = (c: ContactRow) => 能编联系人(c) && (
+  const 联系人操作 = (c: ContactRow) => (能编联系人(c) || 能删联系人(c)) && (
     <span className="rec-mini-acts">
-      {编辑联系人钮(c)}
+      {能编联系人(c) && 编辑联系人钮(c)}
       {/* 企业版项目模式去掉「管理联系人」后，删联系人不再给入口（U-客户-03）；编辑照旧给有权限的人 */}
       {/* 只移出 / 彻底删 各自原地确认（P-界面-40；2026-10-01 用户反馈：删完联系人页里也没了） */}
-      {!c.挂靠 && !去项目跟进 && <ContactRemoveInline c={c} />}
+      {能删联系人(c) && <ContactRemoveInline c={c} 只删={!能编联系人(c)} />}
     </span>
   );
 
@@ -916,11 +920,11 @@ export default function RecordView({
         <span className={`rec-contact-n${无名 ? " is-empty" : ""}`} title={无名 ? "没填姓名" : c.name}>{空显(c.name)}</span>
         {是关键(c) && <Tag className="tag-key" style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>关键</Tag>}
         {c.挂靠 && <Tag style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>挂靠</Tag>}
-        {(能编联系人(c) || 更多) && (
+        {(能编联系人(c) || 更多 || 能删联系人(c)) && (
           <span className="rec-contact-acts">
             {能编联系人(c) && 编辑联系人钮(c)}
             {更多}
-            {能编联系人(c) && !c.挂靠 && !去项目跟进 && <ContactRemoveInline c={c} />}
+            {能删联系人(c) && <ContactRemoveInline c={c} 只删={!能编联系人(c)} />}
           </span>
         )}
       </div>
@@ -974,9 +978,9 @@ export default function RecordView({
         {/* 名片、相册分两格（待定 19）；没给分格的个数时照旧一格 */}
         {联系人分类附件数
           ? (["名片", "相册"] as const).map((分类) => (
-              <ContactAttachments key={分类} contactId={c.id} 名字={c.name} 起始个数={联系人分类附件数[c.id]?.[分类] ?? 0} 只读={联系人只读} 分类={分类} />
+              <ContactAttachments key={分类} contactId={c.id} 名字={c.name} 起始个数={联系人分类附件数[c.id]?.[分类] ?? 0} 只读={联系人只读} 能删={公海删?.附件} 分类={分类} />
             ))
-          : 联系人附件数 && <ContactAttachments contactId={c.id} 名字={c.name} 起始个数={联系人附件数[c.id] ?? 0} 只读={联系人只读} />}
+          : 联系人附件数 && <ContactAttachments contactId={c.id} 名字={c.name} 起始个数={联系人附件数[c.id] ?? 0} 只读={联系人只读} 能删={公海删?.附件} />}
       </>
     );
   };
@@ -1059,9 +1063,9 @@ export default function RecordView({
       )}
       {联系人分类附件数
         ? (["名片", "相册"] as const).map((分类) => (
-            <ContactAttachments key={分类} contactId={c.id} 名字={c.name} 起始个数={联系人分类附件数[c.id]?.[分类] ?? 0} 只读={联系人只读} 分类={分类} />
+            <ContactAttachments key={分类} contactId={c.id} 名字={c.name} 起始个数={联系人分类附件数[c.id]?.[分类] ?? 0} 只读={联系人只读} 能删={公海删?.附件} 分类={分类} />
           ))
-        : 联系人附件数 && <ContactAttachments contactId={c.id} 名字={c.name} 起始个数={联系人附件数[c.id] ?? 0} 只读={联系人只读} />}
+        : 联系人附件数 && <ContactAttachments contactId={c.id} 名字={c.name} 起始个数={联系人附件数[c.id] ?? 0} 只读={联系人只读} 能删={公海删?.附件} />}
       <ContactLinks customerId={customer.id} c={c} 只读={联系人只读} />
       {联系人操作(c)}
     </>
@@ -1636,7 +1640,7 @@ export default function RecordView({
                 {联系人操作(c)}
               </div>
               {/* 企业版没开项目模式时联系人还是一行一个：附件那一行摆在名字底下 */}
-              {联系人附件数 && <ContactAttachments contactId={c.id} 名字={c.name} 起始个数={联系人附件数[c.id] ?? 0} 只读={联系人只读} />}
+              {联系人附件数 && <ContactAttachments contactId={c.id} 名字={c.name} 起始个数={联系人附件数[c.id] ?? 0} 只读={联系人只读} 能删={公海删?.附件} />}
               </Fragment>
             ))}
           </>, undefined, "cust-contacts")}

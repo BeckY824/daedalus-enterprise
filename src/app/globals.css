@@ -5504,7 +5504,7 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 :root:is(:not([data-skin]), [data-skin="now"]) .rec-page :is(.rec-field-v, .rec-contact-v) .copy-val { display: inline; }
 :root:is(:not([data-skin]), [data-skin="now"]) .rec-page :is(.rec-field-v, .rec-contact-v) .copy-val-t { display: inline-block; max-width: 100%; vertical-align: top; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 :root:is(:not([data-skin]), [data-skin="now"]) .rec-page :is(.rec-field-v, .rec-contact-v) .copy-val-b { position: relative; vertical-align: top; }
-:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-contact-num .rec-contact-v { white-space: normal; overflow: visible; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-contact-num .rec-contact-v { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
 :root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-names { white-space: normal; word-break: normal; overflow-wrap: normal; }
 :root:is(:not([data-skin]), [data-skin="now"]) .rec-page .rec-nm { display: inline-block; max-width: 100%; vertical-align: top; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 复制键点击区 28（--hit），触屏 44（--hit-touch）；上下、左边负外边距收回，行高不变；右边不收，键不出格 */
@@ -5654,13 +5654,15 @@ button.proj-miss-chip { cursor: pointer; }
    别的新元素只在现状主题的 JSX 里出现，样式也都挂现状主题
    ========================================================================== */
 .cd-skel { display: none; }
-/* M10 项目资料：行距 34（行高 24 + 上下各 5，右栏长约 80px）、悬停整行浅底 + 行尾铅笔、改的时候标签和控件顶对齐（行内样式的 marginBottom 8 要压掉） */
-:root:is(:not([data-skin]), [data-skin="now"]) .proj-info > .ant-card-body > div { min-height: 34px; margin: 0 -8px !important; padding: 5px 8px; line-height: 24px; border-radius: var(--r-ctl); }
-:root:is(:not([data-skin]), [data-skin="now"]) .proj-info > .ant-card-body > div:has(> .proj-inline):hover { background: var(--row-hover); }
-:root:is(:not([data-skin]), [data-skin="now"]) .proj-info > .ant-card-body > div:has(> .proj-inline):hover .proj-inline-pen { opacity: 1; }
+/* M10 项目资料：行距 34（行高 24 + 上下各 5，右栏长约 80px）、悬停整行浅底 + 行尾铅笔、改的时候标签和控件顶对齐。
+   只管资料行 .proj-info-row（现状主题 JSX 才挂，行内样式不再带 marginBottom / alignItems，不用 !important） */
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-info-row { min-height: 34px; margin: 0 -8px; padding: 5px 8px; line-height: 24px; border-radius: var(--r-ctl); align-items: center; }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-info-row.is-top { align-items: flex-start; }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-info-row:has(> .proj-inline):hover { background: var(--row-hover); }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-info-row:has(> .proj-inline):hover .proj-inline-pen { opacity: 1; }
 :root:is(:not([data-skin]), [data-skin="now"]) :is(.proj-info, .proj-profile.is-look) .proj-inline-pen { margin-inline-start: auto; }
-:root:is(:not([data-skin]), [data-skin="now"]) .proj-info > .ant-card-body > div:has(> .proj-inline-edit) { align-items: flex-start !important; }
-:root:is(:not([data-skin]), [data-skin="now"]) .proj-info > .ant-card-body > div:has(> .proj-inline-edit) > span:first-child { line-height: var(--ctl-h); }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-info-row:has(> .proj-inline-edit) { align-items: flex-start; }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-info-row:has(> .proj-inline-edit) > span:first-child { line-height: var(--ctl-h); }
 /* 卡头图标（收藏星、编辑项目笔）点击区 28，触屏 44 */
 :root:is(:not([data-skin]), [data-skin="now"]) .proj-info > .ant-card-head .ant-card-extra :is(.ant-btn, button) { min-width: var(--hit); height: var(--hit); }
 @media (hover: none), (max-width: 767px) {
@@ -5669,7 +5671,9 @@ button.proj-miss-chip { cursor: pointer; }
 /* M10-b 金额不截断：放不下在「 · 」处换行，每段数字不拆 */
 :root:is(:not([data-skin]), [data-skin="now"]) .proj-inline-val:has(> .proj-money) { overflow: visible; white-space: normal; text-overflow: clip; }
 :root:is(:not([data-skin]), [data-skin="now"]) .proj-money { min-width: 0; white-space: normal; }
-:root:is(:not([data-skin]), [data-skin="now"]) .proj-info > .ant-card-body > div > .proj-money { flex: 1 1 auto; }
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-info-row > .proj-money { flex: 1 1 auto; }
+/* 金额折成两三行时标签和第一行顶对齐（3704 实操），行内改的金额格也一样 */
+:root:is(:not([data-skin]), [data-skin="now"]) .proj-info-row:has(.proj-money) { align-items: flex-start; }
 :root:is(:not([data-skin]), [data-skin="now"]) .proj-money-seg { white-space: nowrap; }
 /* M10-a「—」同一个色：下拉菜单里的「—」选项、行内改 / 画像下拉的占位「—」 */
 :root:is(:not([data-skin]), [data-skin="now"]) .ant-select-item-option[title="—"] .ant-select-item-option-content { color: var(--empty-fg); }

@@ -343,8 +343,9 @@ export function ProjectTeamCard({
   const 新样 = useIsNowSkin();
 
   return (
-    // 设计语言 D5 · M11-a：折叠的卡都写条数（现状主题，组员人数，不含组长；换皮主题照旧只有名字）
-    <Card title={新样 ? `项目组（${组员们.length + 还没回来.length}）` : "项目组"}>
+    // 设计语言 D5 · M11-a：折叠的卡都写条数（现状主题；换皮主题照旧只有名字）。口径和「提成（N）」一样 = 人数、含组长（#403 审查）：
+    // 在组的人（拒了邀请的不算，邀请中的算）+ 组长一位
+    <Card title={新样 ? `项目组（${在组.size + (企业版 && 组长 ? 1 : 0)}）` : "项目组"}>
       {企业版 && 组长 && <div style={{ marginBottom: 8 }}>组长：{组长}</div>}
       {组员们.length === 0 && !还没回来.length && <div style={{ color: "var(--text-muted)", marginBottom: 8 }}>还没有拉人进项目组</div>}
       {组员们.map((m) => (

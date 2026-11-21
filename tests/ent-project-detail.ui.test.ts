@@ -99,7 +99,7 @@ it("企业版：左边节点、沟通、卡点，右边项目、交付、项目�
     // U-项目-01：左栏瀑布流——当前进程（无标题）→ 沟通（带条数）→ 卡点；没给项目附件 / 回款就不摆那两块
     expect(await 卡标题(page, ".proj-main")).toEqual(["", "沟通（1）", "卡点（0）"]);
     // 设计语言 D5 · M10-c：现状主题下折叠卡头带个数
-    expect(await 卡标题(page, ".proj-side")).toEqual(["项目", "交付", "项目组（1）", "提成（2）", "进程变更（1）"]);
+    expect(await 卡标题(page, ".proj-side")).toEqual(["项目", "交付", "项目组（2）", "提成（2）", "进程变更（1）"]);
     const [主, 侧] = await Promise.all([page.locator(".proj-main").boundingBox(), page.locator(".proj-side").boundingBox()]);
     expect(侧!.x).toBeGreaterThan(主!.x + 主!.width);
     expect(Math.round(侧!.width)).toBe(320);

@@ -35,7 +35,7 @@ export function ProjectCommissionCard({ projectId, t, 忙, 跑, 不摆改 = fals
   const 用的 = t.实际 ?? t.预估;
   const 固定了 = !!t.实际;
   const 底价能改 = t.能填底价 && !固定了;
-  // 设计语言 D5 · M11-a：折叠的卡都写条数（现状主题，分提成的人数）；换皮主题照旧只有名字
+  // 设计语言 D5 · M11-a：折叠的卡都写条数（现状主题；换皮主题照旧只有名字）。口径和「项目组（N）」一样 = 人数、含组长（每人 里组长也有一行）
   const 新样 = useIsNowSkin();
 
   return (
