@@ -5,7 +5,7 @@ import { 收藏了吗 } from "@/lib/favorites";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 历史负责人of, 我放出去的公海客户 } from "@/lib/owner-log-db";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 页面能改沟通, 页面能删沟通 } from "@/lib/enterprise/follow-perm";
+import { 页面能改沟通, 页面能删沟通, 改客户挡, 公海先领话 } from "@/lib/enterprise/follow-perm";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
 import { requireUser } from "@/lib/auth";
@@ -292,6 +292,8 @@ export default async function CustomerDetailPage({
       })() : undefined}
       只能看的格={await 只能看的格P}
       管理员只读={企 && 只读角色(me, await 权限组织())}
+      // 资料格给不给点、摆不摆笔：和 patchCustomer / patchCustomerRegion / saveCustomerNumbers 的 改客户挡 同一口径（PR #401 实操：总管理看别人的、公海客户原来有笔存不了）
+      资料改挡={企 && !只读 ? await (async () => { const 话 = await 改客户挡(me, customer.id); return 话 ? { 话, 公海: 话 === 公海先领话 } : null; })() : null}
       // 摆不摆可点的「领取」（含无效客户灰着的领取和「要先恢复」那句）：和服务端 领取 同一把尺（能领公海：市管、渠运、项目组员、只看某人的都不摆，审查 29A）
       能领={!企 || 能领公海(me, await 权限组织())}
       // 公海回收站里的无效客户：系统管理员、回收站副手在详情页也能「恢复」（同公海列表 P-界面-44）；设了业务线的副手只恢复本线的（P-公海-07，服务端另拦）
