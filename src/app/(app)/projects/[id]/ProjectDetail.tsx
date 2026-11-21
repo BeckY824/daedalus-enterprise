@@ -77,7 +77,7 @@ import { ProjectCommissionCard } from "./ProjectCommission";
 import { ContactAttachmentsButton } from "../../customers/[id]/ContactAttachments";
 import type { 提成卡 } from "@/lib/project/commission";
 import type { 项目主题们 } from "@/lib/enterprise/coach-topic-db";
-import CoachTopics, { NewTopicButton } from "./CoachTopics";
+import CoachTopics, { StartReviewButton } from "./CoachTopics";
 import PaneToggle from "@/components/PaneToggle";
 import BackToList from "@/components/BackToList";
 import { ProjectAttachmentsCard, ProjectPaymentsCard, ProjectProfileCard, type 沟通附件组, type 项目画像 } from "./ProjectExtras";
@@ -504,7 +504,7 @@ export type 项目详情Props = {
 /**
  * 嵌在客户详情里（11-12 客户详情合并第 2 批，定稿 UI 客户详情-定稿UI-20261112.html 的项目区）：
  * 不画页头；项目切换在进程卡卡头（客户页给）；中栏 阶段 → 沟通 → 待办 → 卡点，右栏项目资料各卡。
- * 这个项目的「领取」「项目转让」「项目退回公海」「删除项目」在客户页右上角「项目操作 ▾」里（11-12 用户），点了经 动作口 递回这里开框
+ * 这个项目的「领取」「项目转让」「项目退回公海」「删除项目」在客户页右上角「更多操作 ▾」里（11-12 用户），点了经 动作口 递回这里开框
  * 沟通卡标题旁「本项目 / 这位客户全部」，全部 = 客户页那条时间线（客户页给）；待办是客户页那张卡（客户页给）
  */
 export type 嵌在客户页 = {
@@ -514,9 +514,9 @@ export type 嵌在客户页 = {
   多项目?: boolean;
   /** 客户三态提醒条（客户页给，有才摆）：只占中栏宽、在进程卡正上方 */
   提醒?: ReactNode;
-  /** 客户页「项目操作 ▾」点了哪项：这里把处理函数挂给客户页（卸载时挂 null），客户页调它 */
+  /** 客户页「更多操作 ▾」点了哪项：这里把处理函数挂给客户页（卸载时挂 null），客户页调它 */
   挂动作?: (做: ((key: 项目动作键) => void) | null) => void;
-  /** 正在提交时告诉客户页：「项目操作 ▾」里的项跟着灰（卸载时报 false） */
+  /** 正在提交时告诉客户页：「更多操作 ▾」里的项跟着灰（卸载时报 false） */
   报忙?: (忙: boolean) => void;
   全部沟通: ReactNode;
   全部沟通数: string;
@@ -1635,8 +1635,8 @@ export default function ProjectDetail({
       extra={(
         <Space size={8} className="proj-follow-acts">
           {能隐藏 && !看全部沟通 && <Button size="small" aria-pressed={隐藏中} title="隐藏归属人不是你的沟通，只是不显示，不删数据" onClick={() => set只看接手后(!只看接手后)} data-testid="follow-hide-before">{隐藏中 ? "显示全部" : "隐藏接手前"}</Button>}
-          {/* 11-12：「AI 录入」不再单摆，进「新建沟通」弹窗顶上切「手动录入 | AI 录入」。连体按钮：左半新建沟通（⌘N 落这颗）、右半收起 / 展开这块；不能记沟通只剩右半 */}
-          {!看全部沟通 && <NewTopicButton 数据={教练主题} projectId={p.id} />}
+          {/* 11-12：「AI 录入」不再单摆，进「新建沟通」弹窗顶上切「手动录入 | AI 录入」。连体按钮：左半新建沟通（⌘N 落这颗）、右半收起 / 展开这块；不能记沟通只剩右半。
+              原来这里的「发起主题」挪到客户页右上角「发起点评 ▾」（教练点评改版 PR1，11-21），卡头只剩「隐藏接手前」和「新建沟通」 */}
           <FoldSplit 色={模块钮色.沟通} 主={p.能记沟通 ? { 字: "新建沟通", onClick: () => set记一条开着(true), disabled: 忙, testid: "follow-card-new", 主快捷: true } : null} />
         </Space>
       )}
@@ -1654,7 +1654,8 @@ export default function ProjectDetail({
           // 11-01 会议 §5：企业版删掉「去客户页看看」。窄的时候按钮折行，不把标题挤没（globals.css .proj-follow-acts）
           <Space size={8} wrap className="proj-follow-acts">
             {能隐藏 && <Button size="small" aria-pressed={隐藏中} title="隐藏归属人不是你的沟通，只是不显示，不删数据" onClick={() => set只看接手后(!只看接手后)} data-testid="follow-hide-before">{隐藏中 ? "显示全部" : "隐藏接手前"}</Button>}
-            <NewTopicButton 数据={教练主题} projectId={p.id} />
+            {/* 独立项目页（看不到客户的实线 / 虚线上级留在这页，能发点评）：「发起点评 ▾」留在沟通卡头，不挪到页头（这页页头 11-01 只留转让、退回公海） */}
+            <StartReviewButton 数据={教练主题} projectId={p.id} size="small" />
             <FoldSplit 色={模块钮色.沟通} 主={p.能记沟通 ? { 字: "新增沟通", onClick: () => set记一条开着(true), disabled: 忙, testid: "follow-card-new" } : null} />
           </Space>
         ) : p.能记沟通 ? <Button type="link" size="small" disabled={忙} onClick={() => set记一条开着(true)}>记一条</Button>
@@ -1742,7 +1743,7 @@ export default function ProjectDetail({
   };
   // 后果框：删前清点写在框里；没删成原因写在框里、框不关
   const 删问 = () => void 问后果({ 题: "删除这个项目？", 后果: [{ 标: "会删掉", 话: 删除说明(p.删前清点, b.customer, p.企业版), 级: "危" }], 是: "删除", 做: 删 });
-  // 嵌在客户页：右上角「项目操作 ▾」点了哪项经 动作口 递到这里，和原来那几颗按钮的 onClick 一样（忙着的时候按钮是灰的，这里同样不理）
+  // 嵌在客户页：右上角「更多操作 ▾」点了哪项经 动作口 递到这里，和原来那几颗按钮的 onClick 一样（忙着的时候按钮是灰的，这里同样不理）
   const 挂动作 = 嵌入?.挂动作;
   const 报忙 = 嵌入?.报忙;
   useEffect(() => { 报忙?.(忙); }, [报忙, 忙]);

@@ -4,27 +4,49 @@
  * 没关的（待回复、已回复）钉在沟通卡身最上面，不混进沟通记录那一串（那一串按时间分页，没回的会沉下去，11-17 评估）；
  * 已关闭的收在「已关闭的 N 条」里，点开才看。
  * 数据和每条能不能回 / 关 / 删都由服务端算好（lib/enterprise/coach-topic-db.ts 读项目主题），这里只画、只调动作。
+ * 发起入口是「发起点评 ▾」→「写点评」（教练点评改版 PR1，11-21：客户页挪到右上角，独立项目页留在沟通卡头）。
  * 回复、发起一步完成（不弹确认）；关闭、删除在这一条下面长出确认条（同删沟通）。不是沟通记录：不碰下一步计划、三态。
  */
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Input, Modal, Tag } from "antd";
+import { Button, Dropdown, Input, Modal, Tag, type MenuProps } from "antd";
+import { DownOutlined } from "@ant-design/icons";
 import { fmtDateTime } from "@/lib/utils";
 import { 教练发起标签, 主题标题上限, 主题内容上限, 回复上限 } from "@/lib/enterprise/coach-topic";
 import type { 项目主题们, 主题给界面 } from "@/lib/enterprise/coach-topic-db";
 import { 发主题动作, 回复主题动作, 关闭主题动作, 删主题动作 } from "../../customers/[id]/coach-topic-actions";
 import { 动作出错话 } from "@/lib/stale-deploy";
 import { useFormDraft } from "@/components/FormDraft";
+import { 两行 } from "./project-menu";
 
 const 状态色: Record<string, string> = { 待回复: "orange", 已回复: "blue", 已关闭: "default" };
 
-/** 沟通卡头的「发起主题」：能发才摆 */
-export function NewTopicButton({ 数据, projectId }: { 数据: 项目主题们 | null | undefined; projectId: string }) {
+/** 「录音点评」还没开放（教练点评改版 PR1 只做页头，11-21 用户「相关按钮功能目前点不动即可」）：下拉里灰着，这句既是第二行小字也是悬停说明 */
+export const 录音点评未开放 = "录音点评即将开放";
+
+/**
+ * 「发起点评 ▾」（教练点评改版 PR1，11-21；原沟通卡头的「发起主题」）：能发才摆（P-教练-11/12/13，数据.能发 由服务端算，不新增规则）。
+ * 客户页摆在右上角、「更多操作 ▾」左边；独立项目页（看不到客户的上级留在 /projects/<id>）摆在沟通卡头。
+ * 下拉：灰字小标题「当前项目：名字（节点）」→「写点评」（原「发起主题」那只框，字段、服务端都不变）→「录音点评」（灰着、点不动，第二行写为什么）
+ */
+export function StartReviewButton({ 数据, projectId, size }: { 数据: 项目主题们 | null | undefined; projectId: string; size?: "small" }) {
   const [开, set开] = useState(false);
   if (!数据?.能发) return null;
+  const 当前 = `当前项目：${数据.项目名}${数据.当前节点 ? `（${数据.当前节点}）` : ""}`;
+  const items: MenuProps["items"] = [{
+    type: "group",
+    key: "cur",
+    label: <span className="rec-menu-cur-t" title={当前}>{当前}</span>,
+    children: [
+      { key: "write", label: <span data-testid="coach-review-write">{两行("写点评", "打字写，和原来的「发起主题」一样")}</span>, onClick: () => set开(true) },
+      { key: "voice", disabled: true, label: <span data-testid="coach-review-voice" title={录音点评未开放}>{两行("录音点评", 录音点评未开放)}</span> },
+    ],
+  }];
   return (
     <>
-      <Button size="small" onClick={() => set开(true)} data-testid="coach-topic-new">发起主题</Button>
+      <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items, className: "rec-head-menu" }}>
+        <Button size={size} data-testid="coach-topic-new">发起点评 <DownOutlined /></Button>
+      </Dropdown>
       {开 && <NewTopicModal 数据={数据} projectId={projectId} 关={() => set开(false)} />}
     </>
   );
@@ -53,7 +75,7 @@ function NewTopicModal({ 数据, projectId, 关 }: { 数据: 项目主题们; pr
     <div className="cth-form-row"><span className="cth-form-k">{名}</span><span className="cth-form-v">{值}</span></div>
   );
   return (
-    <Modal open title="发起主题" onCancel={不要了} destroyOnHidden width={520}
+    <Modal open title="写点评" onCancel={不要了} destroyOnHidden width={520}
       footer={[
         <Button key="c" onClick={不要了} disabled={忙}>取消</Button>,
         <Button key="ok" type="primary" loading={忙} disabled={!title.trim() || !body.trim()} onClick={() => void 发()} data-testid="coach-topic-send">发出</Button>,

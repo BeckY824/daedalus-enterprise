@@ -815,7 +815,7 @@ export async function 主题通知(me: 人, 事件: 主题事件, t: { id: strin
   await 稳("主题通知", async () => {
     const 们 = 收件人.filter((x) => x && x !== me.id);
     if (!们.length) return;
-    const 话 = 事件 === "发起" ? "发起了主题" : 事件 === "关闭" ? "关闭了主题" : 事件 === "追问" ? "追问了主题" : "回复了主题";
+    const 话 = 事件 === "发起" ? "发起了点评" : 事件 === "关闭" ? "关闭了主题" : 事件 === "追问" ? "追问了主题" : "回复了主题";
     await notify(们, {
       kind: "主题",
       title: `${me.name} 在项目「${t.项目名}」${话}「${t.title}」`,
