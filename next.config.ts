@@ -26,7 +26,12 @@ const 安全头 = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Strict-Transport-Security", value: "max-age=15552000" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+  /*
+    麦克风只放本站（11-21 录音点评 PR1）：microphone=(self) = 本站页面能申请话筒（浏览器照旧弹框问人），
+    别的来源（嵌进来的 iframe）一律不行。https（或 localhost）下才拿得到，http 的 IP 地址浏览器自己就不给。
+    相机、定位照旧全关：手机拍名片走 <input capture>（系统相机），不靠这个头
+  */
+  { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=()" },
 ];
 
 /**
