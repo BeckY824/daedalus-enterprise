@@ -447,12 +447,14 @@ it("「发起点评 ▾」：小标题当前项目（节点）；写点评开原
     const 菜单 = await 开菜单(page, "发起点评");
     expect(await 菜单项们(菜单)).toEqual([expect.stringMatching(/^#当前项目：项目一.*（方案报价）$/), "写点评 打字写，和原来的「发起主题」一样", "⊘录音点评 录音点评即将开放"]);
     expect(await page.getByTestId("coach-review-voice").getAttribute("title")).toBe("录音点评即将开放");
-    await 菜单.getByRole("menuitem", { name: /^录音点评/ }).click({ force: true });
+    // 灰着的项 Playwright 点不进（CI 上 force 也报「不在视口里」）：直接派一个 click 事件，看它什么都不做
+    await 菜单.getByRole("menuitem", { name: /^录音点评/ }).dispatchEvent("click");
     await page.waitForTimeout(150);
     expect(await page.locator(".ant-modal").count()).toBe(0);
     // 写点评：原来那只框，项目 / 节点 / 填写人锁定、会通知负责人
     if (!(await 菜单.isVisible())) await 开菜单(page, "发起点评");
-    await page.getByRole("menuitem", { name: /^写点评/ }).click();
+    // 同上，这只下拉在 CI 上量出来不在视口里（只在这个用例的页面里），点击用派事件，不靠坐标
+    await page.getByRole("menuitem", { name: /^写点评/ }).dispatchEvent("click");
     const 框 = page.locator(".ant-modal");
     await 框.waitFor();
     expect(await 框.locator(".ant-modal-title").innerText()).toBe("写点评");

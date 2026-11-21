@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import RecordView from "./RecordView";
 import { 项目菜单项们, type 项目动作键 } from "../../projects/[id]/project-menu";
 import ProjectZone, { type 项目区数据 } from "./ProjectZone";
+import { StartReviewButton } from "../../projects/[id]/CoachTopics";
 import type { RecordProps, 项目联系人 } from "./types";
 
 /**
@@ -27,8 +28,8 @@ export default function CustomerDetail({ 项目数据: 项目区, ...记录 }: R
       }
     : null;
   const 当前项目菜单 = 项目区.当前 ? { 名: 项目区.当前.p.name, 项们: 项目菜单项们(项目区.当前) } : null;
-  // 右上角「发起点评 ▾」（教练点评改版 PR1）：对当前页签的项目发，能不能发照教练主题那份（服务端算好的 能发）
-  const 当前项目点评 = 项目区.当前 ? { 数据: 项目区.当前.教练主题 ?? null, projectId: 项目区.当前.p.id } : null;
+  // 右上角「发起点评 ▾」（教练点评改版 PR1）：对当前页签的项目发，能不能发照教练主题那份（服务端算好的 能发）；不能发不摆
+  const 发起点评钮 = 项目区.当前?.教练主题?.能发 ? <StartReviewButton 数据={项目区.当前.教练主题} projectId={项目区.当前.p.id} /> : null;
   return (
     <RecordView
       {...记录}
@@ -36,7 +37,7 @@ export default function CustomerDetail({ 项目数据: 项目区, ...记录 }: R
       项目联系人={主次}
       项目页签们={项目区.页签们.map((t) => t.id)}
       当前项目菜单={当前项目菜单}
-      当前项目点评={当前项目点评}
+      发起点评钮={发起点评钮}
       项目动作口={动作口}
       项目忙={项目忙}
       项目区={(槽) => <ProjectZone 数据={项目区} 槽={槽} 挂动作={挂动作} 报忙={set项目忙} />}

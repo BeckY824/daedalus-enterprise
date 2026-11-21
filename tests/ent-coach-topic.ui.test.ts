@@ -135,7 +135,7 @@ it("「发起点评 ▾」下拉：小标题当前项目（节点），写点评
   expect(await 录音.getAttribute("aria-disabled")).toBe("true");
   // 悬停给一句原因（手机长按看第二行那句，一直写着）
   expect(await page.getByTestId("coach-review-voice").getAttribute("title")).toBe("录音点评即将开放");
-  await 录音.click({ force: true });
+  await 录音.dispatchEvent("click");
   await page.waitForTimeout(150);
   expect(await page.locator(".ant-modal").count()).toBe(0);
   expect(await page.evaluate(() => (window as unknown as { __发?: unknown }).__发 ?? null)).toBeNull();

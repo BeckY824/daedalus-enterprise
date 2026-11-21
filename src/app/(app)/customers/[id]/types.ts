@@ -191,10 +191,11 @@ export type RecordProps = {
   当前项目菜单?: { 名: string; 项们: import("../../projects/[id]/project-menu").项目菜单项[] } | null;
   项目动作口?: { current: ((key: import("../../projects/[id]/project-menu").项目动作键) => void) | null } | null;
   /**
-   * 右上角「发起点评 ▾」（教练点评改版 PR1，11-21，原沟通卡头「发起主题」）：当前页签项目的教练主题数据 + 项目编号，CustomerDetail 给；
-   * 数据.能发 = false / 没有当前项目 = 不摆这颗（不是灰着）
+   * 右上角「发起点评 ▾」（教练点评改版 PR1，11-21，原沟通卡头「发起主题」）：CustomerDetail 按当前页签的项目画好整颗按钮递进来，
+   * 对当前项目不能发 / 没有当前项目 = null，不摆这颗（不是灰着）。
+   * 递画好的按钮、不在 RecordView 里引 CoachTopics：那边连着教练主题的服务端动作，只画客户层的 RecordView（各用例单独打包它）不该带上
    */
-  当前项目点评?: { 数据: import("@/lib/enterprise/coach-topic-db").项目主题们 | null; projectId: string } | null;
+  发起点评钮?: ReactNode | null;
   /** 项目区正在提交：「更多操作 ▾」里对当前项目的几项灰着、写「正在处理」 */
   项目忙?: boolean;
   /**

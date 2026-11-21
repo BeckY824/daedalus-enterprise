@@ -62,7 +62,6 @@ import { 客户详情左栏, 客户详情待办 } from "../../projects/[id]/card
 import { 沟通都不能记话 } from "@/lib/project/follow-needs-project-text";
 import NewProjectEntry from "./NewProjectEntry";
 import { 两行, 更多操作菜单 } from "../../projects/[id]/project-menu";
-import { StartReviewButton } from "../../projects/[id]/CoachTopics";
 import { 客户页摆法, 级别选项, 企业级别, 拼地址, 地址叫法, 简称上限 } from "@/lib/enterprise/customer-v2";
 import LevelLetter from "@/components/LevelLetter";
 import StarButton from "./StarButton";
@@ -220,7 +219,7 @@ export default function RecordView({
   三态留痕 = null,
   留痕放左栏 = false,
   当前项目菜单 = null,
-  当前项目点评 = null,
+  发起点评钮 = null,
   项目动作口 = null,
   项目忙 = false,
 }: RecordProps) {
@@ -797,7 +796,7 @@ export default function RecordView({
     客户: 客户操作项,
   });
   /** 右上角「发起点评 ▾」（教练点评改版 PR1，11-21）：只在项目区（客户详情合并）里、对当前页签的项目能发才摆 */
-  const 摆发起点评 = !!(项目区 && 当前项目点评?.数据?.能发);
+  const 摆发起点评 = !!(项目区 && 发起点评钮);
   /** 「管理联系人」框里列谁：和联系人卡上露编辑 / 删除的是同一拨（见 联系人操作） */
   const 可管联系人 = 只读 ? [] : contacts.filter((c) => !c.挂靠 || c.挂靠.能改);
   /** 先关框、再开下一个（表单、确认框），不叠两层（同项目详情） */
@@ -1184,7 +1183,7 @@ export default function RecordView({
             手机（< 768）：名字一行，下面两颗各占一半（globals.css .rec-head-acts） */}
         {去项目跟进 && (摆发起点评 || 更多操作项.length > 0) && (
           <span className="rec-head-acts">
-            {摆发起点评 && 当前项目点评 && <StartReviewButton 数据={当前项目点评.数据} projectId={当前项目点评.projectId} />}
+            {摆发起点评 && 发起点评钮}
             {更多操作项.length > 0 && (
               <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items: 更多操作项, className: "rec-head-menu" }}>
                 <Button data-testid="rec-more-ops">更多操作 <DownOutlined /></Button>
