@@ -643,7 +643,10 @@ export default function CustomersView({
   /** 一共筛着几个。0 的时候「重置」看不见——没筛过的页面上它是个哑按钮（位置留着，见 ResetFilters）。页签不算筛选 */
   const 筛了 = Object.entries(f).filter(([k, v]) => k !== "pool" && v && !(k === "scope" && v === 客户范围?.默认)).length;
   /** 重置留在当前页签：在「公海」里点重置，回到的是全部公海，不是跳回「客户」 */
-  const 重置 = () => (f.pool && !子集 ? apply({ ...(Object.fromEntries(Object.keys(f).map((k) => [k, ""])) as typeof f), pool: "1" }) : reset());
+  const 重置 = () => (f.pool && !子集 ? apply({ ...(Object.fromEntries(Object.keys(f).map((k) => [k, ""])) as typeof f), pool: "1" })
+    // 市场角色：地址不带 scope 时服务端画「我分出去的」→ 重置要留着默认范围，回到列表（#395 审查必修）
+    : 市场视图 ? apply({ ...(Object.fromEntries(Object.keys(f).map((k) => [k, ""])) as typeof f), scope: 客户范围?.默认 || "visible" })
+    : reset());
   /**
    * 只有一个人的库：负责人列、负责人筛选、渠道负责人、批量分配都不摆（审查 D2 / M3）。
    * 13 寸窗口下负责人那一列正好把「最近跟进」挤出视野，而它每一格都是同一个名字。

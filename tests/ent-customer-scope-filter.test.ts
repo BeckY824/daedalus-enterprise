@@ -248,7 +248,7 @@ describe("左侧名单底下那句：写的数 = 点过去表格里的数", () =
     expect(名单底句({ 页签: "我的", 默认页签: "我的", 全部总数: 120, 全部条数: 50, 我负责总数: 30, 我的条数: 30 })).toBeNull();
   });
   it("有管理范围：「全部」链 /customers（默认我可见的）写全部总数；「我的」链我负责的", () => {
-    expect(名单底句({ 页签: "全部", 默认页签: "全部", 全部总数: 900, 全部条数: 50, 我负责总数: 3, 我的条数: 3 })).toEqual({ href: "/customers", 条: 50, 名: "全部", 总: 900 });
+    expect(名单底句({ 页签: "全部", 默认页签: "全部", 全部总数: 900, 全部条数: 50, 我负责总数: 3, 我的条数: 3 })).toEqual({ href: "/customers?scope=visible", 条: 50, 名: "全部", 总: 900 });
     expect(名单底句({ 页签: "我的", 默认页签: "全部", 全部总数: 900, 全部条数: 50, 我负责总数: 70, 我的条数: 50 })).toEqual({ href: "/customers?scope=mine", 条: 50, 名: "我负责的", 总: 70 });
   });
   it("连库对拍：销售名单「全部」那句落到的范围，客户页的总数 = 名单给的数；管理「全部」落到默认，总数 = 名单全部总数", async () => {
@@ -261,5 +261,13 @@ describe("左侧名单底下那句：写的数 = 点过去表格里的数", () =
       const sp = Object.fromEntries(new URLSearchParams(句.href.split("?")[1] ?? ""));
       expect((await 打开(谁, sp)).total, `${谁.name} ${页签}`).toBe(句.总);
     }
+  });
+});
+
+describe("市场视图下「重置」留着默认范围（#395 审查必修）", () => {
+  it("重置在市场视图分支里带 scope 回列表，不走裸 reset", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const v = await readFile("src/app/(app)/customers/CustomersView.tsx", "utf8");
+    expect(v).toMatch(/市场视图 \? apply\(\{ \.\.\.\(Object\.fromEntries[^\n]*scope: 客户范围\?\.默认 \|\| "visible" \}\)/);
   });
 });

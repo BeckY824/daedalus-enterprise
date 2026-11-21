@@ -59,5 +59,6 @@ export function 名单底句(a: {
     const 还有 = 在我的 ? a.我负责总数! > 条 : a.全部总数 > a.全部条数;
     return 还有 ? { href: "/customers?scope=mine", 条, 名: "我负责的", 总: a.我负责总数! } : null;
   }
-  return a.全部总数 > a.全部条数 ? { href: "/customers", 条: a.全部条数, 名: "全部", 总: a.全部总数 } : null;
+  // 带 scope=visible：市场角色不带 scope 会落「我分出去的」、数对不上 M（P-界面-51）；visible 本就是各管理角色的默认
+  return a.全部总数 > a.全部条数 ? { href: "/customers?scope=visible", 条: a.全部条数, 名: "全部", 总: a.全部总数 } : null;
 }
