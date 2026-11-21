@@ -5479,6 +5479,7 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
    不带限定的只有几条结构规则：新元素（行尾笔、手机「变更记录」键、联系人组头右端操作、附件空格「＋ 添加」、新建联系人的规矩行、
    挂靠就地表单的标签 / 报错、变更记录面板头、头像空名字的字色回退）不排就挤在一起或各主题都出；号码保护挪到号码后面要那一格能折行 */
 .rec-field-pen { display: none; }
+.rec-field-pen.anticon { display: none; } /* 压过 antd 图标自带的 display：换皮主题水合前也不露笔 */
 .rec-hist-btn.ant-btn { display: none; }
 @media (max-width: 767px) { .rec-hist-btn.ant-btn { display: inline-flex; height: auto; padding: 0 0 0 6px; font-size: var(--fs-note); vertical-align: baseline; } }
 .hist-sheet-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0 8px; }
