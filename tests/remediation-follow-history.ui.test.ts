@@ -12,7 +12,9 @@ const plugin: Plugin = { name: "history-server-boundaries", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__refresh++},push(){}});export const usePathname=()=>\"/customers/x\";");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
   stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick)$/, "export default function Empty(){return null}");
-  stub(/^\.\/(LinkedCustomers|NewProjectEntry|ContactLinks)$/, "export default function Empty(){return null}");
+  stub(/^\.\/(LinkedCustomers|NewProjectEntry)$/, "export default function Empty(){return null}");
+  // 联系人组头和行经 ContactLinks 摆（D3 · 方案 A 的「⋯」在它里面）：桩照样把头和行摆出来，只是不给菜单
+  stub(/^\.\/ContactLinks$/, "export default function L(p){return <>{p.头?.(null)}{p.children}</>}");
   stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({});export const ContactRemoveInline=()=>null;");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
   stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海,退回原因选项=async()=>[];");

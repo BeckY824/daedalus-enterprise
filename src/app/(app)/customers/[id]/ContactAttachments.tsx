@@ -8,6 +8,7 @@
 import { 空值符 } from "@/lib/empty-value";
 import { useState } from "react";
 import { Button, Modal } from "antd";
+import { PlusOutlined } from "@ant-design/icons";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import type { 附件分类 } from "@/lib/enterprise/customer-v2";
 
@@ -24,9 +25,19 @@ export function ContactAttachmentsButton({ contactId, 名字, 起始个数, 只�
   if (只读 && 个数 === 0) return <span className="rec-field-empty">{空值符}</span>;
   return (
     <>
-      <Button type="link" size="small" style={{ padding: 0, height: "auto", fontSize: "inherit" }} onClick={() => set开(true)} aria-label={`${名字} 的附件`}>
-        {个数 ? `${个数} 张` : 分类 === "名片" ? "添加名片" : 分类 === "相册" ? "添加图片" : "添加名片或图片"}
-      </Button>
+      {个数 ? (
+        <Button type="link" size="small" style={{ padding: 0, height: "auto", fontSize: "inherit" }} onClick={() => set开(true)} aria-label={`${名字} 的附件`}>
+          {个数} 张
+        </Button>
+      ) : (
+        /* 设计语言 D3 · M4-c：空着写「—」，后面一颗小「＋ 添加」（原来整格是一句蓝字「添加名片」，一张卡四个蓝链接） */
+        <span className="att-empty">
+          <span className="rec-field-empty">{空值符}</span>
+          <Button type="text" size="small" className="att-add" icon={<PlusOutlined />} onClick={() => set开(true)} aria-label={`${名字} 的附件`} title={分类 === "名片" ? "添加名片" : 分类 === "相册" ? "添加图片" : "添加名片或图片"}>
+            添加
+          </Button>
+        </span>
+      )}
       <Modal
         open={开}
         onCancel={() => set开(false)}

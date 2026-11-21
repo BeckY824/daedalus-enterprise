@@ -17,7 +17,9 @@ const plugin: Plugin = { name: "customer-numbers", setup(b) {
   stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>null;", "async()=>null"));
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__刷新=(window.__刷新??0)+1},push(){}});export const usePathname=()=>\"/customers/x\";");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
-  stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|NewProjectEntry|ContactLinks|ResearchRun|ResearchPerson)$/, "export default function Empty(){return null}");
+  stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|NewProjectEntry|ResearchRun|ResearchPerson)$/, "export default function Empty(){return null}");
+  // 联系人组头和行经 ContactLinks 摆（D3 · 方案 A 的「⋯」在它里面）：桩照样把头和行摆出来，只是不给菜单
+  stub(/(^|\/)ContactLinks$/, "export default function L(p){return <>{p.头?.(null)}{p.children}</>}");
   stub(/research\/ResearchEntry$/, "export const useResearchEntry=()=>false;");
   stub(/research\/actions$/, "export const 最近背调=async()=>null,背调价目=async()=>({可用:false,原因:'桩'});");
   stub(/^\.\/pick$/, "export const 搜客户=async()=>[];");
@@ -93,7 +95,7 @@ const 量 = (page: import("playwright").Page) => page.evaluate(() => {
   return { 栏宽: 栏框.width, 行们, 栏横滚: 栏.scrollWidth > 栏.clientWidth + 1, 编辑出栏: 编辑件.length, 页横滚: document.documentElement.scrollWidth - window.innerWidth };
 });
 
-it("1024 / 1280 / 1366：号码一类一行，长值一行省略号，不出左栏；编辑态也不出栏", async () => {
+it("1024 / 1280 / 1366：号码一类一行，不出左栏；带复制键的号码、邮箱不打省略号、折行看全（D3 · M3-a），别的长值一行省略；编辑态也不出栏", async () => {
   for (const w of [1024, 1280, 1366]) {
     const { page, errors } = await open(w);
     try {
@@ -102,11 +104,13 @@ it("1024 / 1280 / 1366：号码一类一行，长值一行省略号，不出左�
       for (const r of m.行们) {
         expect(r.出栏, `${w} ${r.键}`).toBe(false);
         expect(r.省略, `${w} ${r.键} 截了的那层是省略号`).toBe(true);
-        // 一行：不折行（行高不超过两行字）
-        expect(r.高, `${w} ${r.键}`).toBeLessThan(44);
       }
-      // 长邮箱、长座机在 232 / 260 的左栏里一定放不下：真截了
-      expect(m.行们[0].截了 && m.行们[2].截了, `${w}`).toBe(true);
+      // 长邮箱、长座机在 232 / 260 的左栏里放不下：折成几行、一个字不截；短的 WhatsApp 一行；微信照旧一行
+      expect(m.行们.map((r) => r.截了), `${w}`).toEqual([false, false, false, false]);
+      expect(m.行们[0].高, `${w} 座机折行`).toBeGreaterThan(44);
+      expect(m.行们[2].高, `${w} 邮箱折行`).toBeGreaterThan(44);
+      expect(m.行们[1].高, `${w} WhatsApp`).toBeLessThan(44);
+      expect(m.行们[3].高, `${w} 微信`).toBeLessThan(44);
       expect(m.栏横滚, `${w}`).toBe(false);
       expect(m.页横滚, `${w}`).toBeLessThanOrEqual(0);
       await page.getByRole("button", { name: "编辑号码" }).first().click();

@@ -22,7 +22,9 @@ const plugin: Plugin = { name: "customer-ui-v2", setup(b) {
   stub(/(^|\/)useTransferConfirm$/, "export const useTransferConfirm=()=>({先问转走的项目:async()=>true});");
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>\"/customers/x\";");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
-  stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|NewProjectEntry|ContactLinks|ResearchRun|ResearchPerson)$/, "export default function Empty(){return null}");
+  stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|NewProjectEntry|ResearchRun|ResearchPerson)$/, "export default function Empty(){return null}");
+  // 联系人组头和行经 ContactLinks 摆（D3 · 方案 A 的「⋯」在它里面）：桩照样把头和行摆出来，只是不给菜单
+  stub(/(^|\/)ContactLinks$/, "export default function L(p){return <>{p.头?.(null)}{p.children}</>}");
   stub(/research\/ResearchEntry$/, "export const useResearchEntry=()=>false;");
   stub(/research\/actions$/, "export const 最近背调=async()=>null,背调价目=async()=>({可用:false,原因:'桩'});");
   stub(/^\.\/pick$/, "export const 搜客户=async()=>[];");
@@ -81,8 +83,8 @@ it("1024 / 1280 / 1366：左栏 ≥ 320；联系人姓名、电话可见、不�
     try {
       expect(await page.locator(".rec-page.ui-v2").count(), `${w}`).toBe(1);
       expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), `${w}`).toBeLessThanOrEqual(0);
-      // 11-12 起左栏第一位联系人摊开、其余收在手风琴里：先全摊开再量
-      while (await page.locator('.rec-contact-tog[aria-expanded="false"]').count()) await page.locator('.rec-contact-tog[aria-expanded="false"]').first().click();
+      // D3 起左栏先摊开前 3 位、其余收在「展开其余 N 位」后面：先全摊开再量
+      if (await page.locator('.rec-contact-rest-btn[aria-expanded="false"]').count()) await page.locator('.rec-contact-rest-btn[aria-expanded="false"]').click();
       const 量 = await page.evaluate(() => {
         const 框 = (e: Element) => { const r = e.getBoundingClientRect(); return { 宽: r.width, 右: r.right, 左: r.left, sw: (e as HTMLElement).scrollWidth, cw: (e as HTMLElement).clientWidth }; };
         const 左栏 = document.querySelector(".rec > .rec-rail")!;
@@ -98,8 +100,8 @@ it("1024 / 1280 / 1366：左栏 ≥ 320；联系人姓名、电话可见、不�
       expect(量.左栏.宽, `${w} 左栏`).toBeGreaterThanOrEqual(320);
       expect(量.人.length, `${w}`).toBe(6);
       for (const [i, p] of 量.人.entries()) {
-        // 姓名：独占一行、看得见、不出卡；普通长度（联系人1…5）不截
-        expect(p.名.宽, `${w} 联系人${i} 姓名宽`).toBeGreaterThan(200);
+        // 姓名：D3 方案 A 起和头像、关键、右端编辑 /「⋯」同一行；看得见、不出卡；普通长度（联系人1…5）不截，超长的那位至少露 140
+        if (!i) expect(p.名.宽, `${w} 联系人${i} 姓名宽`).toBeGreaterThan(140);
         if (i) expect(p.名.sw, `${w} 联系人${i} 姓名被截`).toBeLessThanOrEqual(p.名.cw + 1);
         expect(p.名.右, `${w} 联系人${i} 姓名出卡`).toBeLessThanOrEqual(p.卡.右 + 1);
         // 电话：看得见、整串放得下（+86 138-0013-8000 不打省略号）、不出卡

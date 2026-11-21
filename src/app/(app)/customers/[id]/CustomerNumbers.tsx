@@ -3,7 +3,7 @@
 import { useContext, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Input, Select, Space } from "antd";
-import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
+import { EditOutlined, MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import CopyValue from "@/components/CopyValue";
 import { 空值符 } from "@/lib/empty-value";
 import { 号码上限, 每人最多号码 } from "@/lib/enterprise/customer-v2";
@@ -68,12 +68,14 @@ export default function CustomerNumbers({ customerId, 号码们, 号码种类 }:
                   </span>
                 ) : m.value}
               </div>
+              {!只读 && <EditOutlined className="rec-field-pen" aria-hidden />}
             </div>
           ))
         ) : (
           <div data-field="numbers" {...行属性}>
             <div className="rec-field-k">号码</div>
             <div className="rec-field-v rec-field-empty is-line" title={只读 ? undefined : "点击添加座机、WhatsApp 等号码"}>{空值符}</div>
+            {!只读 && <EditOutlined className="rec-field-pen" aria-hidden />}
           </div>
         )}
       </div>

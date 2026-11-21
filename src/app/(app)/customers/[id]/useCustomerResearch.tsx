@@ -206,10 +206,13 @@ export function CustomerResearchTag(props: { customerId: string; customerName: s
   if (props.卡)
     return (
       <Card className="rec-mod rec-research-card" title="客户背调" aria-label="客户背调">
-        <div className="rec-research-head">
-          <Tag className="rec-research-tag" color={背调状态色[状态]} aria-label={`背调状态：${状态}`}>{状态}</Tag>
-          {按钮}
-        </div>
+        {/* 设计语言 D3 · M5-a：没有背调时不挂「无」小标签，只写「还没有背调记录」；已有 / 进行中照旧挂 */}
+        {(状态 !== "无" || 按钮) && (
+          <div className="rec-research-head">
+            {状态 !== "无" && <Tag className="rec-research-tag" color={背调状态色[状态]} aria-label={`背调状态：${状态}`}>{状态}</Tag>}
+            {按钮}
+          </div>
+        )}
         <div className="rec-research-body" data-state={状态}>{区}</div>
         {!能发起 && !有上次 && <div className="muted cr-research-none">还没有背调记录</div>}
       </Card>

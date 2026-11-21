@@ -24,6 +24,9 @@ import {
   DollarOutlined,
   InboxOutlined,
   UserAddOutlined,
+  LockOutlined,
+  UnlockOutlined,
+  CloseOutlined,
   ThunderboltOutlined as AiOutlined,
 } from "@ant-design/icons";
 import { motion, AnimatePresence } from "motion/react";
@@ -125,8 +128,9 @@ type Entry =
 /** 企业版联系人卡上的「号码保护：已开启 / 已关闭」（10-31）：只展示，不能点；为什么开 / 关鼠标停上去看 */
 function 号码保护标签({ c, 客户 }: { c: ContactRow; 客户: Parameters<typeof 号码保护of>[1] }) {
   const { 状态, 原因 } = 号码保护of(c, 客户);
+  // 设计语言 D3 · M4-b（D10）：灰底 + 锁，绿只给「完成」；摆在号码后面
   return (
-    <Tag className="rec-contact-guard" color={状态 === "已开启" ? "green" : undefined} title={原因} style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>
+    <Tag className="rec-contact-guard" icon={状态 === "已开启" ? <LockOutlined /> : <UnlockOutlined />} title={原因} style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>
       号码保护：{状态}
     </Tag>
   );
@@ -261,10 +265,6 @@ export default function RecordView({
   const 去项目跟进 = 摆法.跟进去项目 && 跟进去处 !== null;
   /** 记跟进默认挂的项目：没结束、不在公海的，最近动过的排前面（page.tsx 按 updatedAt 倒序给） */
   const 在推项目 = 项目们?.filter((p) => !p.result && !p.pooledAt) ?? null;
-  /** 联系人一个号码都没留：企业版写「—」（11-01 会议：未填字段一律 —），别的版本照旧一句话 */
-  const 没留联系 = 企业
-    ? <div className="rec-contact-line"><span className="rec-contact-k">联系方式</span><span className="rec-field-empty" title="没留联系方式">{空值符}</span></div>
-    : <div className="rec-contact-line rec-field-empty">没留联系方式</div>;
   // 当主客户的项目上勾过的项目身份（P17）：摆在「项目」那一节每行的小字里
   const 主项目身份 = new Map((参与项目们 ?? []).filter((x) => x.主).map((x) => [x.projectId, x.身份]));
   /*
@@ -393,8 +393,10 @@ export default function RecordView({
   // 刚加的联系人（11-03 C1-8）：这一页上排最前、底色闪一下淡掉（只动底色不位移，减弱动态下照样不晃）
   const [刚加的联系人, set刚加的联系人] = useState<string | null>(null);
   // 左栏联系人（11-12）：第一位整张摊开，其余收成一行一个的手风琴，点开哪个记哪个；刚加的那位直接摊开
-  const [开着的联系人, set开着的联系人] = useState<ReadonlySet<string>>(() => new Set());
-  const 切联系人 = (id: string) => set开着的联系人((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  /** 企业版左栏联系人（设计语言 D3 · M4-a 方案 A）：先摊开前 3 位，其余收在「展开其余 N 位」后面 */
+  const [其余联系人开, set其余联系人开] = useState(false);
+  /** 手机上「历史负责人」点「变更记录」开的底部面板（设计语言 D3 · M3-c） */
+  const [变更记录开, set变更记录开] = useState(false);
   const [editingContact, setEditingContact] = useState<ContactRow | null>(null);
   const [custOpen, setCustOpen] = useState(false);
   const [contractOpen, setContractOpen] = useState(false);
@@ -861,106 +863,130 @@ export default function RecordView({
           </div>
   );
 
+  /** 换负责人那几次（新的在前）：电脑上悬停「历史负责人」看，手机上点「变更记录」在底部面板里看 */
+  const 换负责人条们 = [...换负责人记录].reverse().map((r, i) => (
+    <div key={i} className="rec-hist-row">
+      <span className="rec-hist-t">{fmtDateTime(r.at)}</span> {换负责人一句(r)}
+    </div>
+  ));
   /** 联系人右边的编辑 / 删除：两种摆法共用 */
   // 挂来的联系人（企业版 P13）：资料归主客户，主客户那头我能改才给编辑；删除不给，拿掉走卡上的「解除挂靠」
-  const 联系人操作 = (c: ContactRow) => !只读 && (!c.挂靠 || c.挂靠.能改) && (
+  const 能编联系人 = (c: ContactRow) => !只读 && (!c.挂靠 || c.挂靠.能改);
+  const 编辑联系人钮 = (c: ContactRow) => (
+    <Button type="text" size="small" className="rec-contact-edit" icon={<EditOutlined />} aria-label={`编辑联系人 ${空显(c.name)}`} onClick={() => { setEditingContact(c); setContactOpen(true); }} />
+  );
+  const 联系人操作 = (c: ContactRow) => 能编联系人(c) && (
     <span className="rec-mini-acts">
-      <Button type="text" size="small" icon={<EditOutlined />} aria-label={`编辑联系人 ${空显(c.name)}`} onClick={() => { setEditingContact(c); setContactOpen(true); }} />
+      {编辑联系人钮(c)}
       {/* 企业版项目模式去掉「管理联系人」后，删联系人不再给入口（U-客户-03）；编辑照旧给有权限的人 */}
       {/* 只移出 / 彻底删 各自原地确认（P-界面-40；2026-10-01 用户反馈：删完联系人页里也没了） */}
       {!c.挂靠 && !去项目跟进 && <ContactRemoveInline c={c} />}
     </span>
   );
 
-  /** 企业版联系人卡头：头像、名字、关键 / 挂靠、职位、号码保护 */
-  const 联系人头 = (c: ContactRow) => (
-    <div className="rec-contact-h">
-      <Avatar size={26} style={{ background: avatarColor(c.name), color: AVATAR_TEXT, fontSize: 12, flex: "none" }}>{initial(空显(c.name))}</Avatar>
-      {/* 姓名可以空（11-17 AI 新线索卡联系人姓名选填）：没填显示「—」 */}
-      <span className="rec-contact-n">{空显(c.name)}</span>
-      {是关键(c) && <Tag className="tag-key" style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>关键</Tag>}
-      {c.挂靠 && <Tag style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>挂靠</Tag>}
-      {c.position && <span className="rec-contact-p">{c.position}</span>}
-      {/* 号码保护（10-31）：只展示，不能点，任何逻辑都不看它（lib/enterprise/contact-guard.ts） */}
-      <号码保护标签 c={c} 客户={customer} />
-    </div>
-  );
-  /** 企业版联系人卡身：本项目角色、联系方式几行、名片相册、挂靠、编辑删除 */
-  const 联系人身 = (c: ContactRow) => (
-    <>
-      {/* 本项目里的角色 / 立场（项目关联联系人里勾的），一行，放不下省略、悬停看全 */}
-      {本项目联系人.has(c.id) && (本项目联系人.get(c.id)!.角色.length > 0 || 本项目联系人.get(c.id)!.立场) && (
-        <div className="rec-contact-line" data-testid="contact-project-role">
-          <span className="rec-contact-k">本项目</span>
-          <span className="rec-contact-v">{[...本项目联系人.get(c.id)!.角色, ...(本项目联系人.get(c.id)!.立场 ? [本项目联系人.get(c.id)!.立场!] : [])].join(" · ")}</span>
-        </div>
-      )}
-      {c.号码们 && 号码种类 ? (
-        /* 改版后（定稿 P5 第 24 条）：联系方式几行（类型 + 号码），一人可以好几个；性别、生日、爱好、地址填了才摆 */
-        <>
-          {c.号码们.map((m, i) => (
-            <div key={`${m.kind}-${i}`} className="rec-contact-line">
-              <span className="rec-contact-k">{号码叫法(号码种类, m.kind)}</span>
-              <span className="rec-contact-v">{m.kind === "phone" || m.kind === "landline" ? <CopyValue 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.kind === "email" ? <CopyValue 种类="邮箱" 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.value}</span>
-            </div>
-          ))}
-          {c.号码们.length === 0 && 没留联系}
-          {c.gender && <div className="rec-contact-line"><span className="rec-contact-k">性别</span><span className="rec-contact-v">{c.gender}</span></div>}
-          {c.birthday && <div className="rec-contact-line"><span className="rec-contact-k">生日</span><span className="rec-contact-v">{c.birthday}</span></div>}
-          {c.hobby && <div className="rec-contact-line"><span className="rec-contact-k">爱好</span><span className="rec-contact-v">{c.hobby}</span></div>}
-          {c.address && <div className="rec-contact-line"><span className="rec-contact-k">地址</span><span className="rec-contact-v">{c.address}</span></div>}
-        </>
-      ) : (
-        <>
-          {c.phone && <div className="rec-contact-line"><span className="rec-contact-k">电话</span><span className="rec-contact-v"><CopyValue 叫法="电话" value={c.phone} /></span></div>}
-          {c.email && <div className="rec-contact-line"><span className="rec-contact-k">邮箱</span><span className="rec-contact-v"><CopyValue 种类="邮箱" 叫法="邮箱" value={c.email} /></span></div>}
-          {c.wechat && <div className="rec-contact-line"><span className="rec-contact-k">微信</span><span className="rec-contact-v">{c.wechat}</span></div>}
-          {!c.phone && !c.email && !c.wechat && 没留联系}
-        </>
-      )}
-      {/* 名片、相册分两格（待定 19）；没给分格的个数时照旧一格 */}
-      {联系人分类附件数
-        ? (["名片", "相册"] as const).map((分类) => (
-            <ContactAttachments key={分类} contactId={c.id} 名字={c.name} 起始个数={联系人分类附件数[c.id]?.[分类] ?? 0} 只读={只读} 分类={分类} />
-          ))
-        : 联系人附件数 && <ContactAttachments contactId={c.id} 名字={c.name} 起始个数={联系人附件数[c.id] ?? 0} 只读={只读} />}
-      {/* 挂多位客户（P13 第 1 条）：主客户是谁、另外挂在哪，挂到别的 / 换主客户 / 解除 */}
-      <ContactLinks customerId={customer.id} c={c} 只读={只读} />
-      {联系人操作(c)}
-    </>
-  );
+  /**
+   * 企业版联系人一组的头（设计语言 D3 · M4-a 方案 A）：头像、名字、关键 / 挂靠，右端编辑和「⋯」常显（M4-c）。
+   * 名字没填写「—」，淡色常规字重（M4-b）；头像里的「—」同样淡色（D1 实操遗留）
+   */
+  const 联系人头 = (c: ContactRow, 更多: ReactNode) => {
+    const 无名 = !c.name?.trim();
+    return (
+      <div className="rec-contact-h">
+        <Avatar size={24} className={无名 ? "rec-contact-av is-empty" : "rec-contact-av"} style={{ background: avatarColor(c.name), ...(无名 ? {} : { color: AVATAR_TEXT }), fontSize: 12, flex: "none" }}>{initial(空显(c.name))}</Avatar>
+        {/* 姓名可以空（11-17 AI 新线索卡联系人姓名选填）：没填显示「—」 */}
+        <span className={`rec-contact-n${无名 ? " is-empty" : ""}`} title={无名 ? "没填姓名" : c.name}>{空显(c.name)}</span>
+        {是关键(c) && <Tag className="tag-key" style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>关键</Tag>}
+        {c.挂靠 && <Tag style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>挂靠</Tag>}
+        {(能编联系人(c) || 更多) && (
+          <span className="rec-contact-acts">
+            {能编联系人(c) && 编辑联系人钮(c)}
+            {更多}
+            {能编联系人(c) && !c.挂靠 && !去项目跟进 && <ContactRemoveInline c={c} />}
+          </span>
+        )}
+      </div>
+    );
+  };
+  /** 企业版联系人一组的行：职务、本项目、各号码（号码保护跟在第一个号码后面）、性别生日爱好地址、名片、相册；挂靠那几行由 ContactLinks 接在后面 */
+  const 联系人身 = (c: ContactRow) => {
+    const 保护 = <号码保护标签 c={c} 客户={customer} />;
+    const 号码行 = (k: string, v: ReactNode, 带保护: boolean, key?: string) => (
+      <div key={key} className="rec-contact-line rec-contact-num">
+        <span className="rec-contact-k">{k}</span>
+        <span className="rec-contact-v">{v}{带保护 && 保护}</span>
+      </div>
+    );
+    const 老号: { k: string; v: ReactNode }[] = [
+      ...(c.phone ? [{ k: "电话", v: <CopyValue 叫法="电话" value={c.phone} /> }] : []),
+      ...(c.email ? [{ k: "邮箱", v: <CopyValue 种类="邮箱" 叫法="邮箱" value={c.email} /> }] : []),
+      ...(c.wechat ? [{ k: "微信", v: c.wechat }] : []),
+    ];
+    return (
+      <>
+        {c.position && <div className="rec-contact-line"><span className="rec-contact-k">职务</span><span className="rec-contact-v" title={c.position}>{c.position}</span></div>}
+        {/* 本项目里的角色 / 立场（项目关联联系人里勾的），一行，放不下省略、悬停看全 */}
+        {本项目联系人.has(c.id) && (本项目联系人.get(c.id)!.角色.length > 0 || 本项目联系人.get(c.id)!.立场) && (
+          <div className="rec-contact-line" data-testid="contact-project-role">
+            <span className="rec-contact-k">本项目</span>
+            <span className="rec-contact-v">{[...本项目联系人.get(c.id)!.角色, ...(本项目联系人.get(c.id)!.立场 ? [本项目联系人.get(c.id)!.立场!] : [])].join(" · ")}</span>
+          </div>
+        )}
+        {c.号码们 && 号码种类 ? (
+          /* 改版后（定稿 P5 第 24 条）：联系方式几行（类型 + 号码），一人可以好几个；性别、生日、爱好、地址填了才摆 */
+          <>
+            {c.号码们.map((m, i) =>
+              号码行(号码叫法(号码种类, m.kind), m.kind === "phone" || m.kind === "landline" ? <CopyValue 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.kind === "email" ? <CopyValue 种类="邮箱" 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.value, i === 0, `${m.kind}-${i}`),
+            )}
+            {c.号码们.length === 0 && 号码行("联系方式", <span className="rec-field-empty" title="没留联系方式">{空值符}</span>, true)}
+            {c.gender && <div className="rec-contact-line"><span className="rec-contact-k">性别</span><span className="rec-contact-v">{c.gender}</span></div>}
+            {c.birthday && <div className="rec-contact-line"><span className="rec-contact-k">生日</span><span className="rec-contact-v">{c.birthday}</span></div>}
+            {c.hobby && <div className="rec-contact-line"><span className="rec-contact-k">爱好</span><span className="rec-contact-v">{c.hobby}</span></div>}
+            {c.address && <div className="rec-contact-line"><span className="rec-contact-k">地址</span><span className="rec-contact-v">{c.address}</span></div>}
+          </>
+        ) : (
+          <>
+            {老号.length > 0 ? 老号.map((x, i) => 号码行(x.k, x.v, i === 0, x.k)) : 号码行("联系方式", <span className="rec-field-empty" title="没留联系方式">{空值符}</span>, true)}
+          </>
+        )}
+        {/* 名片、相册分两格（待定 19）；没给分格的个数时照旧一格 */}
+        {联系人分类附件数
+          ? (["名片", "相册"] as const).map((分类) => (
+              <ContactAttachments key={分类} contactId={c.id} 名字={c.name} 起始个数={联系人分类附件数[c.id]?.[分类] ?? 0} 只读={只读} 分类={分类} />
+            ))
+          : 联系人附件数 && <ContactAttachments contactId={c.id} 名字={c.name} 起始个数={联系人附件数[c.id] ?? 0} 只读={只读} />}
+      </>
+    );
+  };
   /*
-    企业版左栏联系人（11-12 用户）：第一位（当前项目的主联系人；没有就排序第一位）整张摊开；
-    其余收成手风琴，一行一个（名字、关键 / 挂靠、职位），默认收着，点了摊开整张；一位都没有其余就不摆这块。
-    整块限高、块里自己滚，联系人再多左栏也不被撑长
+    企业版左栏联系人（设计语言 D3 · M4-a 方案 A，用户 11-21 选）：每人一组行列表，组间一条细线；先摊开前 3 位，
+    其余收在「展开其余 N 位 / 收起其余 N 位」后面（原来 11-12 起第一位摊开、其余手风琴、整块限高自己滚）。
+    顺序和分组不变：关键 → 本项目 → 这位客户的其他联系人（P-界面-16）；刚新建的那位排在其余里最前（看得见）。
+    「挂到别的客户 / 换主客户」收进「⋯」（M4-c），挂靠那几行、就地填的格子由 ContactLinks 接在组里
   */
   const 首位联系人 = 排好的联系人[0];
-  const 其余联系人 = 刚加的排前(排好的联系人.slice(1), 刚加的联系人);
+  const 企业联系人序 = 首位联系人 ? [首位联系人, ...刚加的排前(排好的联系人.slice(1), 刚加的联系人)] : [];
+  const 先露几位 = 3;
+  const 收着几位 = Math.max(0, 企业联系人序.length - 先露几位);
+  const 一组 = (c: ContactRow) => (
+    <Fragment key={c.id}>
+      {c.id === 其他起点 && <div className="rec-contact-sub">这位客户的其他联系人</div>}
+      <div className={`rec-contact rec-cg${c.id === 刚加的联系人 ? " rec-tl-item-flash" : ""}`} data-contact={c.id}>
+        <ContactLinks customerId={customer.id} c={c} 只读={只读} 头={(更多) => 联系人头(c, 更多)}>
+          {联系人身(c)}
+        </ContactLinks>
+      </div>
+    </Fragment>
+  );
   const 企业联系人们 = 首位联系人 && (
     <>
-      <div className={`rec-contact${首位联系人.id === 刚加的联系人 ? " rec-tl-item-flash" : ""}`}>
-        {联系人头(首位联系人)}
-        {联系人身(首位联系人)}
-      </div>
-      {其余联系人.length > 0 && (
-        <div className="rec-contact-more" data-testid="contact-more">
-          {其余联系人.map((c) => {
-            const 开 = 开着的联系人.has(c.id);
-            const 身id = `contact-body-${c.id}`;
-            return (
-              <Fragment key={c.id}>
-                {c.id === 其他起点 && <div className="rec-contact-sub">这位客户的其他联系人</div>}
-                <div className={`rec-contact rec-contact-fold${开 ? " is-open" : ""}${c.id === 刚加的联系人 ? " rec-tl-item-flash" : ""}`}>
-                  {联系人头(c)}
-                  <button type="button" className="rec-contact-tog" aria-expanded={开} aria-controls={开 ? 身id : undefined} aria-label={`${开 ? "收起" : "展开"}联系人 ${空显(c.name)}`} onClick={() => 切联系人(c.id)}>
-                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden focusable="false"><path d="M4 6.5 8 10.5 12 6.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                  </button>
-                  {开 && <div id={身id}>{联系人身(c)}</div>}
-                </div>
-              </Fragment>
-            );
-          })}
-        </div>
+      {企业联系人序.slice(0, 先露几位).map(一组)}
+      {收着几位 > 0 && (
+        <>
+          {其余联系人开 && <div id="contact-rest" data-testid="contact-rest">{企业联系人序.slice(先露几位).map(一组)}</div>}
+          <Button type="link" size="small" className="rec-sec-more rec-contact-rest-btn" aria-expanded={其余联系人开} aria-controls={其余联系人开 ? "contact-rest" : undefined} onClick={() => set其余联系人开(!其余联系人开)}>
+            {其余联系人开 ? `收起其余 ${收着几位} 位` : `展开其余 ${收着几位} 位`}
+          </Button>
+        </>
       )}
     </>
   );
@@ -1048,9 +1074,9 @@ export default function RecordView({
   /* 项目模式（11-01 用户：「客户详情页各个模块都要分开，和项目详情页一致」）：每块一张卡、包 ProjectFold，
      卡头左边标题+计数、右边新增按钮、最右收起。普通函数调用，别写成 <节/>，否则每次渲染换组件、收起状态会丢 */
   /* 11-12 用户「模块内的按钮格式保持一致，都以完成节点为参照」：中栏模块给 连体，主动作和收起并成一颗连体按钮（FoldSplit） */
-  const 节 = (名: string, 数: number | string | undefined, 加: ReactNode, 身: ReactNode, 连体?: { 主: 连体主钮 | null; 色: 连体色 }) =>
+  const 节 = (名: string, 数: number | string | undefined, 加: ReactNode, 身: ReactNode, 连体?: { 主: 连体主钮 | null; 色: 连体色 }, id?: string) =>
     去项目跟进 ? (
-      <ProjectFold key={名} 名={名} 连体={!!连体}>
+      <ProjectFold key={名} id={id} 名={名} 连体={!!连体}>
         <Card className="rec-mod" title={数 === undefined ? 名 : `${名}（${数}）`} extra={连体 ? <Space size={8}>{加}<FoldSplit 主={连体.主} 色={连体.色} /></Space> : 加 || undefined}>
           {身}
         </Card>
@@ -1437,20 +1463,16 @@ export default function RecordView({
             )}
             {/* 历史负责人（企业版 D-36）：换过负责人才摆；悬停看每次谁转的、从谁到谁、什么时候。停用的人名字照旧显示 */}
             {历史负责人们(换负责人记录, customer.salesOwnerName).length > 0 && (
-              <Tooltip
-                title={
-                  <div style={{ maxHeight: 260, overflowY: "auto" }}>
-                    {[...换负责人记录].reverse().map((r, i) => (
-                      <div key={i} style={{ marginBottom: 4 }}>
-                        <span style={{ opacity: 0.75 }}>{fmtDateTime(r.at)}</span> {换负责人一句(r)}
-                      </div>
-                    ))}
-                  </div>
-                }
-              >
+              <Tooltip title={<div style={{ maxHeight: 260, overflowY: "auto" }}>{换负责人条们}</div>}>
                 <div className="rec-field" style={{ cursor: "default" }}>
                   <div className="rec-field-k">历史负责人</div>
-                  <div className="rec-field-v">{历史负责人们(换负责人记录, customer.salesOwnerName).join("、")}</div>
+                  {/* 设计语言 D3 · M3-a：人名不拆到两行，只在「、」处折；手机没有悬停，点「变更记录」开底部面板（M3-c，D12） */}
+                  <div className="rec-field-v rec-names">
+                    {历史负责人们(换负责人记录, customer.salesOwnerName).map((n, i) => (
+                      <Fragment key={i}>{i > 0 && "、"}<span className="rec-nm">{n}</span></Fragment>
+                    ))}
+                    <Button type="link" size="small" className="rec-hist-btn" onClick={() => set变更记录开(true)}>变更记录</Button>
+                  </div>
                 </div>
               </Tooltip>
             )}
@@ -1469,7 +1491,7 @@ export default function RecordView({
             {摆(customer.remark) && <InlineField 空时横线={企业} customerId={customer.id} field="remark" label="备注" value={customer.remark} kind="textarea" placeholder="点击写备注" />}
             {没填几项 > 0 && (
               <Button type="link" size="small" className="rec-sec-more" onClick={() => set资料全开(!资料全开)} aria-expanded={资料全开}>
-                {资料全开 ? "收起没填的" : `展开更多 ${没填几项} 项`}
+                {资料全开 ? "收起没填的" : `展开没填的 ${没填几项} 项`}
               </Button>
             )}
           </>)}
@@ -1479,9 +1501,14 @@ export default function RecordView({
           {/* 11-12 用户：去掉「全部 ›」（原来跳 /contacts?keyword=客户名），卡头只留一颗「＋」新增联系人（同一个 ContactForm、同样的只读判断）；
              企业版项目模式原来不给加（U-客户-03），这次用户点名要加回来 */}
           {节(去项目跟进 ? 客户详情左栏.联系人 : "联系人", contacts.length, !只读 && (
-                <Tooltip title="新增联系人">
-                  <Button type="text" size="small" className="rec-sec-add" icon={<PlusOutlined />} aria-label="新增联系人" onClick={() => { setEditingContact(null); setContactOpen(true); }} />
-                </Tooltip>
+                企业
+                  /* 设计语言 D3 · M4-b（D09）：卡头动作「＋ 新增」图标 + 字，和关联组织的「＋ 关联」同一款 */
+                  ? <Button type="text" size="small" className="rec-sec-add rec-head-act" icon={<PlusOutlined />} aria-label="新增联系人" onClick={() => { setEditingContact(null); setContactOpen(true); }}>新增</Button>
+                  : (
+                    <Tooltip title="新增联系人">
+                      <Button type="text" size="small" className="rec-sec-add" icon={<PlusOutlined />} aria-label="新增联系人" onClick={() => { setEditingContact(null); setContactOpen(true); }} />
+                    </Tooltip>
+                  )
               ), <>
             {contacts.length === 0 && <div className="rec-empty">还没有联系人</div>}
             {企业 ? 企业联系人们 : 刚加的排前(排好的联系人, 刚加的联系人).map((c) => (
@@ -1502,7 +1529,7 @@ export default function RecordView({
               {联系人附件数 && <ContactAttachments contactId={c.id} 名字={c.name} 起始个数={联系人附件数[c.id] ?? 0} 只读={只读} />}
               </Fragment>
             ))}
-          </>)}
+          </>, undefined, "cust-contacts")}
 
           {/* 企业版项目模式（10-26）：客户名下的项目替掉商机——用户：「去除掉商机，不要演用个人版的老模型」。
               「开项目」给这位客户再建一个项目（待定 16）：客户自动带上 */}
@@ -1785,7 +1812,22 @@ export default function RecordView({
         record={排新计划 ? null : plan}
         默认天数={排新计划 ? 7 : 3}
       />
-      <ContactForm open={contactOpen} onClose={() => setContactOpen(false)} onSaved={(新加的) => { setContactOpen(false); if (新加的) { set刚加的联系人(新加的); set开着的联系人((s) => new Set(s).add(新加的)); } router.refresh(); }} customerId={customer.id} record={editingContact} 号码种类={企业 ? 号码种类 : undefined} 职务选项={企业 ? 职务选项 : undefined} />
+      <Drawer
+        placement="bottom"
+        open={变更记录开}
+        onClose={() => set变更记录开(false)}
+        closable={false}
+        styles={{ wrapper: { height: "auto", maxHeight: "80dvh" }, body: { padding: "0 16px 16px" } }}
+        rootClassName="pane-sheet hist-sheet"
+      >
+        <div className="sheet-grab" aria-hidden="true" />
+        <div className="hist-sheet-h">
+          <b>负责人变更记录</b>
+          <Button type="text" className="sheet-x" icon={<CloseOutlined />} aria-label="关闭负责人变更记录" onClick={() => set变更记录开(false)} />
+        </div>
+        {换负责人条们}
+      </Drawer>
+      <ContactForm open={contactOpen} onClose={() => setContactOpen(false)} onSaved={(新加的) => { setContactOpen(false); if (新加的) set刚加的联系人(新加的); router.refresh(); }} customerId={customer.id} record={editingContact} 号码种类={企业 ? 号码种类 : undefined} 职务选项={企业 ? 职务选项 : undefined} />
       <ContractForm
         open={contractOpen}
         customerId={customer.id}

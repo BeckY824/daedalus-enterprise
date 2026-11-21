@@ -15,7 +15,9 @@ const plugin: Plugin = { name: "record-left-boundaries", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});export const usePathname=()=>\"/customers/x\";");
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
   stub(/(^|\/)ContactForm$/, "export default function F(p){return p.open?<div role='dialog' aria-label={p.record?'编辑联系人':'新增联系人'}>联系人表单</div>:null}");
-  stub(/(^|\/)(TaskForm|PlanForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|LinkedCustomers|NewProjectEntry|ContactLinks)$/, "export default function Empty(){return null}");
+  stub(/(^|\/)(TaskForm|PlanForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|LinkedCustomers|NewProjectEntry)$/, "export default function Empty(){return null}");
+  // 联系人组头和行经 ContactLinks 摆（D3 · 方案 A 的「⋯」在它里面）：桩照样把头和行摆出来，只是不给菜单
+  stub(/(^|\/)ContactLinks$/, "export default function L(p){return <>{p.头?.(null)}{p.children}</>}");
   stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({});export const ContactRemoveInline=()=>null;");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
   stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海,退回原因选项=async()=>[];");
@@ -68,8 +70,8 @@ async function open(企业: boolean, width = 1366, 项目模式 = false, 加?: R
 it("企业版：联系人一人一卡，电话 / 邮箱 / 微信都在；电话、邮箱是文字 + 复制键，不是链接；打码号不给复制键；没留的写明", async () => {
   const page = await open(true);
   try {
-    // 11-12 起左栏第一位联系人摊开、其余收在手风琴里：先全摊开再量
-    while (await page.locator('.rec-contact-tog[aria-expanded="false"]').count()) await page.locator('.rec-contact-tog[aria-expanded="false"]').first().click();
+    // D3 起左栏先摊开前 3 位、其余收在「展开其余 N 位」后面：先全摊开再量
+    if (await page.locator('.rec-contact-rest-btn[aria-expanded="false"]').count()) await page.locator('.rec-contact-rest-btn[aria-expanded="false"]').click();
     const cards = page.locator(".rec-contact");
     expect(await cards.count()).toBe(3);
     const first = cards.nth(0);
@@ -96,7 +98,7 @@ it("企业版：联系人一人一卡，电话 / 邮箱 / 微信都在；电话�
     expect(await page.getByText("旺旺 ID").count()).toBe(0);
   } finally { await page.close(); }
 });
-it("企业版：空字段收起、「展开更多」能展开；没有签约、推荐关系；1024 宽不横滚", async () => {
+it("企业版：空字段收起、「展开没填的 N 项」能展开；没有签约、推荐关系；1024 宽不横滚", async () => {
   const page = await open(true, 1024);
   try {
     expect(await page.locator("[data-field='remark']").count()).toBe(0);
@@ -112,7 +114,7 @@ it("企业版：空字段收起、「展开更多」能展开；没有签约、�
     await page.waitForFunction(() => (window as unknown as { __改?: unknown[] }).__改?.length === 1);
     expect(await page.evaluate(() => (window as unknown as { __改: unknown[] }).__改)).toEqual([["a", "name", "客户A新名"]]);
     expect(await page.locator("[data-field='name']").innerText()).toMatch(/全称\s*客户A新名/);
-    const more = page.getByRole("button", { name: /展开更多 \d+ 项/ });
+    const more = page.getByRole("button", { name: /展开没填的 \d+ 项/ });
     await more.click();
     expect(await page.locator("[data-field='remark']").count()).toBe(1);
     await page.getByRole("button", { name: "收起没填的" }).click();
@@ -130,7 +132,7 @@ it("开关关闭：左栏照旧——一行一个联系人、空字段都在、�
     expect(await page.locator(".rec-contact").count()).toBe(0);
     expect(await page.locator(".rec-mini").filter({ hasText: "李四" }).count()).toBe(1);
     expect(await page.locator("[data-field='remark']").count()).toBe(1);
-    expect(await page.getByRole("button", { name: /展开更多/ }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: /展开没填的/ }).count()).toBe(0);
     expect(await page.getByRole("button", { name: /^更多：/ }).count()).toBe(0);
     expect(await page.getByText("登记签约").count()).toBe(1);
     expect(await page.getByRole("link", { name: "13800138000" }).count()).toBe(0);
@@ -315,7 +317,7 @@ it("号码保护：每张卡一枚；有电话 + 客户有负责人 → 已开�
   } finally { await 关.close(); }
 });
 /* 11-09：联系人卡片里的电话、邮箱是真 RecordView + 真 CopyValue + globals.css；老三格和改版后的「号码们」都量 */
-it("超长号码、超长邮箱：1024 / 1280 / 1366 文字省略、复制键紧贴在格内能点到，不出卡片；打码号没有键", async () => {
+it("超长号码、超长邮箱：1024 / 1280 / 1366 不打省略号、整串折行看得全（D3 · M3-a），复制键 28 紧贴在格内能点到，不出卡片；打码号没有键", async () => {
   const 长号 = "+86 138-0013-8000 转 1234567890 分机 0987654321 备用 13800138001";
   const 长邮箱 = "very.long.mailbox.name.for.purchasing.department.and.more@example-supplier-company-with-long-name.com";
   const 联系人 = (id: string, 加: Record<string, unknown>) => ({ id, name: "赵六", position: null, phone: null, email: null, wechat: null, isPrimary: false, remark: null, updatedAt: "2026-01-01T00:00:00.000Z", ...加 });
@@ -327,8 +329,8 @@ it("超长号码、超长邮箱：1024 / 1280 / 1366 文字省略、复制键紧
   for (const w of [1024, 1280, 1366]) {
     const page = await open(true, w, false, { contacts, 号码种类 });
     try {
-      // 11-12 起左栏第一位联系人摊开、其余收在手风琴里：先全摊开再量
-      while (await page.locator('.rec-contact-tog[aria-expanded="false"]').count()) await page.locator('.rec-contact-tog[aria-expanded="false"]').first().click();
+      // D3 起左栏先摊开前 3 位、其余收在「展开其余 N 位」后面：先全摊开再量
+      if (await page.locator('.rec-contact-rest-btn[aria-expanded="false"]').count()) await page.locator('.rec-contact-rest-btn[aria-expanded="false"]').click();
       const 量 = await page.locator(".rec-contact .copy-val").evaluateAll((vs: HTMLElement[]) => vs.map(v => {
         const 字 = v.querySelector<HTMLElement>(".copy-val-t")!, 键 = v.querySelector<HTMLElement>("button");
         const 卡 = v.closest<HTMLElement>(".rec-contact")!.getBoundingClientRect(), 格 = v.closest<HTMLElement>(".rec-contact-v")!;
@@ -336,7 +338,7 @@ it("超长号码、超长邮箱：1024 / 1280 / 1366 文字省略、复制键紧
         const r = 键.getBoundingClientRect(), 字框 = 字.getBoundingClientRect();
         const 点到 = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
         return {
-          文字: 字.textContent, 无键: false, 被截: 字.scrollWidth > 字.clientWidth, title: 字.title,
+          文字: 字.textContent, 无键: false, 被截: 字.scrollWidth > 字.clientWidth + 1, 折行: 字框.height > 30, title: 字.title,
           键能点到: !!点到 && 键.contains(点到), 键宽: r.width,
           紧贴: r.left - 字框.right, 不重叠: 字框.right <= r.left + 0.5, 在格内: r.right <= 格.getBoundingClientRect().right + 0.5 && r.right <= 卡.right + 0.5,
           格不出界: 格.scrollWidth <= 格.clientWidth + 1,
@@ -344,11 +346,11 @@ it("超长号码、超长邮箱：1024 / 1280 / 1366 文字省略、复制键紧
       }));
       expect(量.length).toBe(6);
       for (const x of 量.filter(y => !y.无键)) {
-        expect(x, `宽 ${w}：${x.文字}`).toMatchObject({ 键能点到: true, 键宽: 20, 不重叠: true, 在格内: true, 格不出界: true, title: x.文字 });
+        expect(x, `宽 ${w}：${x.文字}`).toMatchObject({ 键能点到: true, 键宽: 28, 不重叠: true, 在格内: true, 格不出界: true, 被截: false, title: x.文字 });
         expect(x.紧贴!).toBeLessThanOrEqual(3);
       }
       expect(量.filter(x => x.无键).map(x => x.文字)).toEqual(["138****8001"]);
-      expect(量.filter(y => !y.无键 && y.被截).length).toBeGreaterThan(0);
+      expect(量.filter(y => !y.无键 && y.折行).length).toBeGreaterThan(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
     } finally { await page.close(); }
   }
@@ -387,50 +389,47 @@ it("客户状态留痕（A1，11-12 用户定）：没有进程变更卡时放�
   }
 }, 60_000);
 
-/* 11-12 用户：左栏联系人卡头去掉「全部 ›」，换一颗「＋」新增联系人；第一位整张摊开，其余收成手风琴（限高、块内滚），只有一位就不摆 */
-it("左栏联系人：卡头「＋」新增联系人、没有「全部 ›」；第一位整张摊开，其余收着、点开看全；只读不给「＋」", async () => {
-  const page = await open(true);
+/* 11-12 用户：左栏联系人卡头去掉「全部 ›」，换「＋」新增联系人。D3（方案 A，用户 11-21 选）：每人一组行列表，先摊开前 3 位，其余收在「展开其余 N 位」后面；
+   卡头「＋ 新增」图标 + 字；编辑和「⋯」常显 */
+it("左栏联系人：卡头「＋ 新增」、没有「全部 ›」；前 3 位摊开、多的收进「展开其余 N 位」；不限高不块内滚", async () => {
+  const 人 = (i: number, 加: Record<string, unknown> = {}) => ({ id: `c${i}`, name: `联系人${i}`, position: null, phone: `1380013800${i}`, email: null, wechat: null, isPrimary: i === 1, remark: null, updatedAt: "2026-01-01T00:00:00.000Z", ...加 });
+  const 八位 = Array.from({ length: 8 }, (_, i) => 人(i + 1));
+  const page = await open(true, 1366, false, { contacts: 八位 });
   try {
-    // 联系人那一节里没有任何链接（原来的「全部 ›」去 /contacts?keyword=客户名）；「项目」那节自己的「全部 ›」不归这里
+    // 联系人那一节里没有任何链接（原来的「全部 ›」去 /contacts?keyword=客户名）
     const 联系人节链 = () => page.locator(".rec-contact").first().evaluate(c => c.closest(".rec-sec, .proj-fold")!.querySelectorAll(":scope a:not(.rec-contact a)").length);
     expect(await 联系人节链()).toBe(0);
     expect(await page.locator('a[href^="/contacts"]').count()).toBe(0);
     const 加 = page.getByRole("button", { name: "新增联系人" });
     expect(await 加.count()).toBe(1);
-    await 加.hover();
-    await page.getByRole("tooltip").filter({ hasText: "新增联系人" }).waitFor();
-    // 第一位：电话、邮箱、微信都摆着；没有收起钮
-    const 卡们 = page.locator(".rec-contact");
-    const 首 = 卡们.first();
-    expect(await 首.innerText()).toContain("+86 138-0013-8000");
-    expect(await 首.innerText()).toContain("wx_buyer_2026");
-    expect(await 首.locator(".rec-contact-tog").count()).toBe(0);
-    // 其余两位在手风琴里、默认收着：只露名字那一行，号码不在
-    const 余 = page.getByTestId("contact-more").locator(".rec-contact");
-    expect(await 余.count()).toBe(2);
-    expect(await page.getByTestId("contact-more").evaluate(el => getComputedStyle(el).overflowY)).toBe("auto");
-    expect(await 余.first().locator(".rec-contact-line").count()).toBe(0);
-    expect(await 余.first().innerText()).not.toContain("138****8001");
-    const 钮 = 余.first().locator(".rec-contact-tog");
+    expect((await 加.innerText()).trim()).toBe("新增");
+    // 前 3 位整组摆着（号码都在），其余不在页面上
+    const 组 = page.locator(".rec-cg");
+    expect(await 组.count()).toBe(3);
+    expect(await 组.nth(2).innerText()).toContain("13800138003");
+    expect(await page.getByText("13800138004").count()).toBe(0);
+    expect(await page.locator(".rec-contact-tog").count()).toBe(0);
+    const 钮 = page.getByRole("button", { name: "展开其余 5 位" });
     expect(await 钮.getAttribute("aria-expanded")).toBe("false");
-    expect(await 钮.getAttribute("aria-label")).toMatch(/^展开联系人 /);
     await 钮.click();
-    expect(await 钮.getAttribute("aria-expanded")).toBe("true");
-    expect(await 余.first().innerText()).toContain("138****8001");
-    await 钮.click();
-    expect(await 余.first().innerText()).not.toContain("138****8001");
+    expect(await 组.count()).toBe(8);
+    expect(await page.getByTestId("contact-rest").evaluate(el => getComputedStyle(el).overflowY)).toBe("visible");
+    const 收 = page.getByRole("button", { name: "收起其余 5 位" });
+    expect(await 收.getAttribute("aria-expanded")).toBe("true");
+    await 收.click();
+    expect(await 组.count()).toBe(3);
     // 「＋」打开的还是原来那个新增联系人框
     await 加.click();
     await page.getByRole("dialog", { name: "新增联系人" }).waitFor();
   } finally { await page.close(); }
 });
 
-it("只有一位联系人：整张摊开，不摆手风琴；只读（管理员只读）时卡头没有「＋」", async () => {
+it("只有一位联系人：整组摊开，不摆「展开其余」；只读（管理员只读）时卡头没有「＋」", async () => {
   const 一位 = [{ id: "c1", name: "赵六", position: "采购", phone: "13900001111", email: null, wechat: null, isPrimary: true, remark: null, updatedAt: "2026-01-01T00:00:00.000Z" }];
   let page = await open(true, 1366, false, { contacts: 一位 });
   try {
     expect(await page.locator(".rec-contact").count()).toBe(1);
-    expect(await page.getByTestId("contact-more").count()).toBe(0);
+    expect(await page.getByRole("button", { name: /展开其余/ }).count()).toBe(0);
     expect(await page.locator(".rec-contact").innerText()).toContain("13900001111");
   } finally { await page.close(); }
   page = await open(true, 1366, false, { 管理员只读: true });
@@ -438,4 +437,27 @@ it("只有一位联系人：整张摊开，不摆手风琴；只读（管理员�
     expect(await page.getByRole("button", { name: "新增联系人" }).count()).toBe(0);
     expect(await page.locator('a[href^="/contacts"]').count()).toBe(0);
   } finally { await page.close(); }
+});
+
+/* D3 · M3-b（设计语言 11-21）：能改的格整行浅底 + 行尾一支笔，悬停 / 焦点才出；只读没有笔 */
+it("能改的格：行尾一支笔，平时不显、悬停出、整行 --row-hover；只读不摆笔", async () => {
+  const page = await open(true);
+  try {
+    const 格 = page.locator("[data-field='name']");
+    const 笔 = 格.locator(".rec-field-pen");
+    expect(await 笔.count()).toBe(1);
+    expect(await 笔.evaluate(e => getComputedStyle(e).opacity)).toBe("0");
+    await 格.hover();
+    await expect.poll(() => 笔.evaluate(e => getComputedStyle(e).opacity)).toBe("1");
+    const 浅 = await page.evaluate(() => { const s = document.createElement("span"); s.style.background = "var(--row-hover)"; document.body.append(s); const c = getComputedStyle(s).backgroundColor; s.remove(); return c; });
+    await expect.poll(() => 格.evaluate(e => getComputedStyle(e).backgroundColor)).toBe(浅);
+    // 笔在行尾、不压字
+    const [行, 笔框] = await Promise.all([格.boundingBox(), 笔.boundingBox()]);
+    expect(行!.x + 行!.width - (笔框!.x + 笔框!.width)).toBeLessThanOrEqual(10);
+    expect(await 格.locator(".rec-field-v").evaluate((v, 笔右) => v.getBoundingClientRect().right <= 笔右, 笔框!.x + 1)).toBe(true);
+  } finally { await page.close(); }
+  const 只读 = await open(true, 1366, false, { 管理员只读: true });
+  try {
+    expect(await 只读.locator("[data-field='name'] .rec-field-pen").count()).toBe(0);
+  } finally { await 只读.close(); }
 });

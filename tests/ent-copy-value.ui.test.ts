@@ -80,11 +80,11 @@ it("不是链接：文字 + 复制键，有 aria-label；打码的号没有键�
   } finally { await page.close(); }
 });
 
-it("复制的是完整值，不是屏幕上截断的那段；成功有提示、键变对勾；点键不进编辑，点这一行别处才进编辑", async () => {
+it("复制的是完整值；成功有提示、键变对勾；点键不进编辑，点这一行别处才进编辑", async () => {
   const page = await open("localhost", 记写入);
   try {
-    // 真被截了
-    expect(await page.locator(".rec-field[data-field=phone] .copy-val-t").evaluate(e => e.scrollWidth > e.clientWidth)).toBe(true);
+    // D3 · M3-a 起号码不打省略号、折行整串看得全
+    expect(await page.locator(".rec-field[data-field=phone] .copy-val-t").evaluate(e => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
     await 键(page, "phone").click();
     await page.getByText("已复制电话").waitFor();
     expect(await 键(page, "phone").evaluate(e => e.classList.contains("is-done"))).toBe(true);
@@ -141,7 +141,7 @@ it("两条路都不通：明确说复制不了，键不变对勾", async () => {
   } finally { await page.close(); }
 });
 
-it("左栏窄：1024 / 1280 / 1366 文字一行省略、键紧贴在格内能点到；别的单行值照旧省略；悬停看全文", async () => {
+it("左栏窄：1024 / 1280 / 1366 号码、邮箱不打省略号、折行看全（D3 · M3-a），键 28 紧贴在格内能点到；别的单行值照旧省略、悬停看全文", async () => {
   for (const w of [1024, 1280, 1366]) {
     const page = await open("localhost", 记写入, w);
     try {
@@ -151,9 +151,9 @@ it("左栏窄：1024 / 1280 / 1366 文字一行省略、键紧贴在格内能点
           const g = 格.getBoundingClientRect(), z = 字.getBoundingClientRect(), k = 键.getBoundingClientRect();
           const 点到 = document.elementFromPoint(k.left + k.width / 2, k.top + k.height / 2);
           const s = getComputedStyle(字);
-          return { 格不出界: 格.scrollWidth <= 格.clientWidth + 1, 字截了: 字.scrollWidth > 字.clientWidth, 省略: s.textOverflow, 折行: s.whiteSpace, 不重叠: z.right <= k.left + 0.5, 紧贴: k.left - z.right <= 3, 键在格内: k.right <= g.right + 0.5, 键能点到: !!点到 && 键.contains(点到), 键宽: k.width, 键高: k.height };
+          return { 格不出界: 格.scrollWidth <= 格.clientWidth + 1, 字截了: 字.scrollWidth > 字.clientWidth + 1, 省略: s.textOverflow, 折行: s.whiteSpace, 不重叠: z.right <= k.left + 0.5, 紧贴: k.left - z.right <= 3, 键在格内: k.right <= g.right + 0.5, 键能点到: !!点到 && 键.contains(点到), 键宽: k.width, 键高: k.height };
         });
-        expect(量, `宽 ${w} ${f}`).toEqual({ 格不出界: true, 字截了: true, 省略: "ellipsis", 折行: "nowrap", 不重叠: true, 紧贴: true, 键在格内: true, 键能点到: true, 键宽: 20, 键高: 20 });
+        expect(量, `宽 ${w} ${f}`).toEqual({ 格不出界: true, 字截了: false, 省略: "clip", 折行: "normal", 不重叠: true, 紧贴: true, 键在格内: true, 键能点到: true, 键宽: 28, 键高: 28 });
       }
       expect(await page.locator(".rec-field[data-field=school] .rec-field-v").evaluate(e => e.classList.contains("is-line") && getComputedStyle(e).textOverflow)).toBe("ellipsis");
       // title 给全文；悬停：截了的出浮层、显示全文；移开收起
@@ -162,8 +162,8 @@ it("左栏窄：1024 / 1280 / 1366 文字一行省略、键紧贴在格内能点
       await page.locator(".rec-field[data-field=school] .rec-field-v").hover();
       await expect.poll(() => 浮.evaluate(e => e.classList.contains("is-on"))).toBe(true);
       expect(await 浮.textContent()).toBe("很长的公司名字".repeat(4));
-      await page.locator(".rec-field[data-field=email] .copy-val-t").hover();
-      await expect.poll(() => 浮.textContent()).toBe(长邮箱);
+      // 邮箱整串摆着，用不着浮层
+      expect(await page.locator(".rec-field[data-field=email] .copy-val-t").innerText()).toBe(长邮箱);
       await page.mouse.move(900, 500);
       await expect.poll(() => 浮.evaluate(e => e.classList.contains("is-on"))).toBe(false);
     } finally { await page.close(); }

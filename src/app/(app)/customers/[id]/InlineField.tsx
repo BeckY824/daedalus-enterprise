@@ -7,6 +7,7 @@ import { 只读上下文, 只能看的格上下文 } from "./read-only";
 import { 是空值, 有值, 空值符 } from "@/lib/empty-value";
 import { useRouter } from "next/navigation";
 import { AutoComplete, Input, Select } from "antd";
+import { EditOutlined } from "@ant-design/icons";
 import { dayjs } from "@/lib/utils";
 import { patchCustomer, type PatchableKey } from "../actions";
 import { 带走说法 } from "@/lib/carry-over";
@@ -198,6 +199,8 @@ export default function InlineField({
             display || (只读 || 空时横线 ? 空值符 : placeholder)
           )}
         </div>
+        {/* 能改的格行尾一支笔（规范 M3-b）：现状主题悬停才出、触屏常显；别的主题不出 */}
+        {!只读 && <EditOutlined className="rec-field-pen" aria-hidden />}
         {话行}
       </div>
     );

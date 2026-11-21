@@ -148,6 +148,8 @@ export default function ContactForm({
     校验没过（validateFields 抛出）也会走 finally 放开
   */
   const [存着, set存着] = useState(false);
+  /** 企业版姓名、联系方式一项都没填就点保存（设计语言 D3 · M4-d，D03）：两格一起标红，原因写在联系方式下面 */
+  const [两格红, set两格红] = useState(false);
   /** 彻底删除没删成的原因：就地写在删除键旁（不弹顶部提示） */
   const [删错, set删错] = useState<string | null>(null);
   /**
@@ -213,6 +215,14 @@ export default function ContactForm({
     }
   }
   async function onOk(): Promise<{ ok: boolean; error?: string }> {
+    if (企业) {
+      const 号们 = ((form.getFieldValue("号码们") ?? []) as { value?: string }[]).map((x) => x?.value);
+      if (联系人姓名问题(true, form.getFieldValue("name"), 号们)) {
+        set两格红(true);
+        await form.validateFields().catch(() => {});
+        return { ok: false, error: "有几项没填好，看标红的" };
+      }
+    }
     const v = await form.validateFields();
     // 记录页给的 customerId 说了算；列表页上它在表单里
     const 归属 = customerId ?? (v.customerId as string);
@@ -331,7 +341,9 @@ export default function ContactForm({
         />
       )}
       {守.提示}
-      <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={() => { 守.改了(); 查序.current++; if (撞号) set撞号(null); if (回收站号) set回收站号(null); }}>
+      <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={() => { 守.改了(); 查序.current++; if (撞号) set撞号(null); if (回收站号) set回收站号(null); if (两格红) set两格红(false); }}>
+        {/* 设计语言 D3 · M4-d（D03）：规矩先写在上面，不等点了保存才知道 */}
+        {企业 && <div className="cf-rule">姓名、联系方式至少填一项</div>}
         <Row gutter={16}>
           {/* 从联系人列表进来时先选人：联系人挂在某一位学员下面，没有归属的联系人没有意义 */}
           {!customerId && (
@@ -359,8 +371,8 @@ export default function ContactForm({
             <Form.Item
               name="name"
               label="姓名"
-              dependencies={企业 ? ["号码们"] : undefined}
-              rules={企业 ? [{ validator: (_: unknown, v: unknown) => (联系人姓名问题(true, v, ((form.getFieldValue("号码们") ?? []) as { value?: string }[]).map((x) => x?.value)) ? Promise.reject(new Error(姓名号码至少一项)) : Promise.resolve()) }] : [requiredText("请填写姓名")]}
+              rules={企业 ? [] : [requiredText("请填写姓名")]}
+              {...(企业 && 两格红 ? { validateStatus: "error" as const } : {})}
             >
               <Input placeholder="张伟" />
             </Form.Item>
@@ -410,11 +422,12 @@ export default function ContactForm({
                             <Select style={{ width: 130 }} options={类型选项} aria-label="号码类型" />
                           </Form.Item>
                           <Form.Item name={[行.name, "value"]} noStyle>
-                            <Input maxLength={号码上限} placeholder="号码或账号" aria-label="号码" onBlur={() => void 失焦查号()} />
+                            <Input maxLength={号码上限} placeholder="号码或账号" aria-label="号码" status={两格红 ? "error" : undefined} onBlur={() => void 失焦查号()} />
                           </Form.Item>
                           <Button icon={<MinusCircleOutlined />} onClick={() => remove(行.name)} aria-label="去掉这一行" />
                         </Space.Compact>
                       ))}
+                      {两格红 && <div className="ant-form-item-explain-error cf-two-err" role="alert">{姓名号码至少一项}</div>}
                       {行们.length < 每人最多号码 && (
                         <Button type="dashed" block icon={<PlusOutlined />} onClick={() => add({ kind: 默认种类, value: "" })} style={{ marginBottom: 16 }}>
                           加一个联系方式
@@ -460,7 +473,8 @@ export default function ContactForm({
       </Form>
     </>
   );
-  const 题 = record ? `编辑联系人 · ${record.name || "—"}` : "添加联系人";
+  // 设计语言 D3 · M4-b / M4-d（D14）：新建叫「新建联系人」；编辑时名字空着只写「编辑联系人」，不写「· —」
+  const 题 = record ? (record.name?.trim() ? `编辑联系人 · ${record.name}` : "编辑联系人") : "新建联系人";
 
   return (
     <Modal
