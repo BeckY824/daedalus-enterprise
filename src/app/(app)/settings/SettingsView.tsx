@@ -51,6 +51,7 @@ const 说明表: Record<string, string> = {
   org: "部门、角色、直属和虚线上级",
   recycle: "沉睡待定、即将回收、自动进公海的天数和占位词",
   quota: "给下属设每月分几条线索",
+  assign: "暂停 / 恢复销售参与自动分配",
   perm: "按你的身份，能做和不能做的",
   rules: "影响全公司的规则，只能看",
 };
@@ -76,6 +77,7 @@ const 搜词表: Record<string, string[]> = {
   audit: ["日志", "谁改了"],
   trash: ["恢复", "删除"],
   quota: ["配额", "分配", "参与"],
+  assign: ["暂停", "恢复", "参与", "自动分配", "配额"],
   perm: ["权限", "能做什么"],
   rules: ["公海", "回收天数", "持有上限", "进程时限", "字段权限", "市场部门", "组织架构", "开通"],
 };
@@ -151,6 +153,7 @@ export default function SettingsView({
   只个人 = false,
   客户回收 = null,
   线索配额 = null,
+  线索分配栏 = null,
   身份 = "系统管理员",
   我的角色 = [],
   条线 = false,
@@ -196,6 +199,8 @@ export default function SettingsView({
   身份?: 设置身份;
   /** 不是系统管理员、手下有能设配额的人（PR10b ③）：单给一栏「线索配额」；null = 不摆（系统管理员在组织架构里设） */
   线索配额?: { 行: 分配情况; 不限额: boolean } | null;
+  /** 市场管理（客户 11-21 选 A）：单给一栏「线索分配」，只能暂停 / 允许销售参与自动分配；null = 不摆（系统管理员在组织架构里改） */
+  线索分配栏?: { 行: 分配情况; 不限额: boolean } | null;
   /** 我的业务角色（「我能做什么」按它列） */
   我的角色?: string[];
   /** 是条线总管理（总管理设了业务线） */
@@ -239,6 +244,7 @@ export default function SettingsView({
     ...(企业版 ? [{ key: "perm", label: "我能做什么", children: <PermTab 身份名={身份名} 项们={我能做什么(我的角色, 身份, 条线)} /> }] : []),
     ...(企业版 && 只个人 ? [{ key: "rules", label: "全公司规则", children: <RulesTab /> }] : []),
     ...(线索配额 ? [{ key: "quota", label: "线索配额", children: <LeadAssignCard rows={线索配额.行} 不限额={线索配额.不限额} /> }] : []),
+    ...(线索分配栏 ? [{ key: "assign", label: "线索分配", children: <LeadAssignCard rows={线索分配栏.行} 不限额={线索分配栏.不限额} 只拨暂停 /> }] : []),
     ...(客户回收 ? [{ key: "recycle", label: "客户回收", children: <RecycleTab value={客户回收} /> }] : []),
     ...(导入记录 ? [{ key: "imports", label: "导入记录", children: <ImportsTab /> }] : []),
     ...(企业版导入 ? [{ key: "enterprise", label: "企业版导入", children: <EnterpriseImportTab /> }] : []),
@@ -246,7 +252,7 @@ export default function SettingsView({
     ...(导出记录 ? [{ key: "exports", label: "导出记录", children: <AuditTab logs={导出记录} 导出 /> }] : []),
     { key: "audit", label: "操作日志", children: <AuditTab logs={logs} /> },
   ]
-    .filter((x) => !只个人 || ["profile", "password", "keymap", "appearance", "perm", "quota", "rules", "trash"].includes(x.key))
+    .filter((x) => !只个人 || ["profile", "password", "keymap", "appearance", "perm", "quota", "assign", "rules", "trash"].includes(x.key))
     // 不是托管版没有「已登录的机器」这一块（机器 = null），说明别提它（D1-2）
     .map((x) => ({ ...x, 说明: x.key === "password" && !机器 ? "改自己的登录密码" : 说明表[x.key] ?? "" })) as { key: string; label: string; 说明: string; children: React.ReactNode }[];
 
@@ -260,6 +266,7 @@ export default function SettingsView({
     ? [
         ["我自己", ["profile", "password", "keymap", "appearance", "perm"]],
         ["带团队", ["quota"]],
+        ["线索分配", ["assign"]],
         ["数据", ["trash"]],
         ["全公司规则", ["rules"]],
       ]

@@ -330,7 +330,7 @@ describe("自动分配线索", () => {
 describe("参与自动分配（允许 / 暂停 / 禁止）", () => {
   beforeEach(() => 开());
 
-  it("只有总管理员能改（11-01 A9）；市场管理、销售管理、销售都不能；只收能接线索的人、只收三种状态", async () => {
+  it("三态只有总管理员能改（11-01 A9）；销售管理、销售都不能（市场管理只拨暂停 / 允许，见 ent-mkt-pause-assign）；只收能接线索的人、只收三种状态", async () => {
     for (const [who, role] of [[老板, "ADMIN"], [总管, "SALES"]] as const) {
       当(who, role);
       expect(await 设自动分配参与(两边, "暂停")).toEqual({ ok: true });
@@ -340,10 +340,13 @@ describe("参与自动分配（允许 / 暂停 / 禁止）", () => {
       expect(await 设自动分配参与(两边, "允许")).toEqual({ ok: true });
       expect(await getSetting(自动分配不参与key)).toEqual({});
     }
-    for (const who of [市场, 销售经理, 虚线经理, 内贸]) {
+    for (const who of [销售经理, 虚线经理, 内贸]) {
       当(who);
-      expect(await 设自动分配参与(两边, "暂停")).toMatchObject({ ok: false, error: expect.stringMatching(/^只有总管理员能改销售的参与状态/) });
+      expect(await 设自动分配参与(两边, "暂停")).toMatchObject({ ok: false, error: expect.stringMatching(/^只有系统管理员、市场管理能改销售的参与状态/) });
     }
+    当(市场);
+    expect(await 设自动分配参与(两边, "禁止")).toMatchObject({ ok: false, error: expect.stringContaining("「禁止」只有系统管理员") });
+    当(老板, "ADMIN");
     expect(await getSetting(自动分配不参与key)).toEqual({});
     当(老板, "ADMIN");
     expect(await 设自动分配参与(渠道, "禁止")).toMatchObject({ ok: false, error: expect.stringContaining("不是销售") });
@@ -384,7 +387,7 @@ describe("参与自动分配（允许 / 暂停 / 禁止）", () => {
     await 设自动分配参与(内贸, "禁止");
     await 设自动分配参与(内贸, "允许");
     const 记 = await prisma.auditLog.findMany({ where: { entity: "EntLeadAssign", entityId: 内贸 } });
-    expect(记.map((a) => a.summary).sort()).toEqual(["暂停 内贸小王 参与自动分配（可随时恢复）", "禁止 内贸小王 参与自动分配", "恢复 内贸小王 参与自动分配"].sort());
+    expect(记.map((a) => a.summary).sort()).toEqual(["暂停 内贸小王 参与自动分配（可随时恢复），原为允许", "禁止 内贸小王 参与自动分配，原为暂停", "恢复 内贸小王 参与自动分配，原为禁止"].sort());
     // 允许本来就没存：不写、不留痕
     await 设自动分配参与(两边, "允许");
     expect(await prisma.auditLog.count({ where: { entity: "EntLeadAssign", entityId: 两边 } })).toBe(0);
@@ -565,7 +568,7 @@ describe("配额", () => {
     expect(await 分配线索({ projectId: await 项目("A", { bizLine: "外贸" }), toUserId: 外贸 })).toEqual({ ok: true });
     const 全 = (await 本月分配情况())!;
     expect(全.map((r) => r.userId).sort()).toEqual([销售经理, 虚线经理, 内贸, 外贸, 两边].sort());
-    expect(全.find((r) => r.userId === 外贸)).toMatchObject({ 已分: 1, 配额: 5, line: "外贸", 持有: 1, 参与: true, 能设配额: false, 能改参与: false });
+    expect(全.find((r) => r.userId === 外贸)).toMatchObject({ 已分: 1, 配额: 5, line: "外贸", 持有: 1, 参与: true, 能设配额: false, 能改参与: true, 参与可选: ["允许", "暂停"] });
     // 持有只数线索阶段、没结局、不在公海的
     await 项目("流失", { ownerId: 外贸, result: "线索流失" });
     await 项目("转了", { ownerId: 外贸, phase: "商机", node: "需求确认" });
@@ -574,7 +577,7 @@ describe("配额", () => {
     当(老板, "ADMIN");
     await 设自动分配参与(内贸, false);
     const 老板看 = (await 本月分配情况())!;
-    expect(老板看.find((r) => r.userId === 外贸)).toMatchObject({ 持有: 2, 能设配额: true, 能改参与: true });
+    expect(老板看.find((r) => r.userId === 外贸)).toMatchObject({ 持有: 2, 能设配额: true, 能改参与: true, 参与可选: ["允许", "暂停", "禁止"] });
     expect(老板看.find((r) => r.userId === 内贸)).toMatchObject({ 参与: false });
     // 销售管理能分配（手动指派），所以看全部；参与状态只有总管理员能改（11-01 A9）；配额只能设自己下属的
     当(虚线经理);

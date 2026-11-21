@@ -49,7 +49,7 @@ const 基本props = (extra: Record<string, unknown> = {}) => ({
   users: [], me: { id: "u1", name: "张敏", email: "zm", role: "SALES", title: "销售管理" }, isAdmin: false, logs: [],
   llm: { source: null, baseUrl: "", model: "", keyMasked: null, options: [] }, business: { customer: "客户" }, aiUsage: [], 机器: null, 企业版: true, 只个人: true, 身份: "成员", ...extra,
 });
-const 配额行 = [{ userId: "u2", name: "李想", line: "内贸", 已分: 3, 配额: 30, 设的配额: 30, 加额: 0, 持有: 2, 参与: true, 参与状态: "允许", 能设配额: true, 能改参与: false }];
+const 配额行 = [{ userId: "u2", name: "李想", line: "内贸", 已分: 3, 配额: 30, 设的配额: 30, 加额: 0, 持有: 2, 参与: true, 参与状态: "允许", 能设配额: true, 能改参与: false, 参与可选: [] }];
 
 it("③ 销售管理（只个人）手下有能设配额的人：有「线索配额」一栏，搜「配额」搜得到，进去能改", async () => {
   const { page, errors } = await 开页(browser, 页包, 基本props({ 线索配额: { 行: 配额行, 不限额: false } }));

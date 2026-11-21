@@ -20,13 +20,19 @@ const 轮到格 = (x: 分配情况[number]["轮到"]) => (!x ? 空值符 : x ===
  * 设置 → 组织架构 →「线索分配」（企业版 D-38，规则「线索分配和配额」开着才出现）。
  * 一屏看每个能接线索的人：业务线、本月已分 / 配额、当前持有、参与没参与自动分配。
  * - 配额：默认他的直属上级、虚线上级和老板能改，「后台设置谁能改」里可以再勾总管理员等（B2 第 6 条）；空着 = 手动分不限，但不参与自动分配（10-25），0 也不分。
- * - 参与：允许 / 暂停 / 禁止三态（10-26），老板、总管理员、销售管理能改（Q-12 默认）；暂停 = 暂时不参与、可随时恢复（一键恢复为允许），禁止 = 不参与；
- *   两种都不进自动分配轮转，手动分配照常。
+ * - 参与：允许 / 暂停 / 禁止三态（10-26），系统管理员能改（11-01 A9）；暂停 = 暂时不参与、可随时恢复（一键恢复为允许），禁止 = 不参与；
+ *   两种都不进自动分配轮转，手动分配照常。市场管理（客户 11-21 选 A）单有一栏「线索分配」，只能在允许 / 暂停之间拨，
+ *   已经禁止的人那一格灰着（禁止只有系统管理员能设、能改）；每行能选哪几态看服务端给的 参与可选。
  * - 不限额（10-30）：规则里选了「不设配额」，配额不起作用：配额框灰掉、不显示满额，设过的数留着，关掉照旧。
  * - 前面约几条（11-18 客户定第 2 题 A，assign-eta.ts）：按自动分配挑人规则估的「再分几条轮到他」；分配线索的人、总管理看全部，
  *   销售管理只看本组，别的行、不参加自动分配的人写「—」；系统里还没有分配记录写「暂无法估算」。
  */
-export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分配情况; 不限额?: boolean }) {
+export default function LeadAssignCard({ rows, 不限额 = false, 只拨暂停 = false }: {
+  rows: 分配情况;
+  不限额?: boolean;
+  /** 市场管理那一栏「线索分配」（客户 11-21 选 A）：只能暂停 / 允许，右上角写明禁止只有系统管理员能改 */
+  只拨暂停?: boolean;
+}) {
   const router = useRouter();
   // 就地提示（PR9：不弹顶部 message）
   const [就地, 提示条] = useSettingsNote();
@@ -70,7 +76,8 @@ export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分�
 
   return (
     <Card id="lead-assign" title="线索分配" data-testid="org-lead-assign" data-set-find="配额"
-      extra={!能改参与 && <span style={{ color: "var(--text-muted)" }}>参与状态只有总管理员能改</span>}>
+      extra={只拨暂停 ? <span className="muted" data-testid="org-lead-pause-only">你能暂停 / 恢复；「禁止」只有系统管理员能改</span>
+        : !能改参与 && <span className="muted">参与状态只有系统管理员能改（市场管理能暂停 / 恢复）</span>}>
       {提示条}
       {不限额 ? (
         <p className="muted" data-testid="org-lead-no-quota-note">
@@ -138,6 +145,9 @@ export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分�
                     {(() => {
                       const 现在 = r.userId in 拨了 ? 拨了[r.userId] : r.参与状态;
                       const 不能动 = !r.能改参与 || 忙 !== null || 刷新中;
+                      // 这一行能选的几态（市场管理只有允许 / 暂停）；一态都不能选的照三态摆出来、灰着，看得见现在是什么
+                      const 可选 = r.参与可选.length && r.参与可选.includes(现在) ? r.参与可选 : 参与选项;
+                      const 灰话 = !r.能改参与 && 只拨暂停 && 现在 === "禁止" ? "「禁止」只有系统管理员能改" : undefined;
                       const 改成 = (v: 参与状态) => {
                         if (v === 现在) return;
                         set拨了((x) => ({ ...x, [r.userId]: v }));
@@ -146,7 +156,7 @@ export default function LeadAssignCard({ rows, 不限额 = false }: { rows: 分�
                       };
                       return (
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                          <Segmented size="small" options={参与选项} value={现在} disabled={不能动}
+                          <Segmented size="small" options={可选} value={现在} disabled={不能动} title={灰话}
                             aria-label={`${r.name} 参与自动分配`} data-testid={`org-lead-auto-${r.userId}`}
                             onChange={(v) => 改成(v as 参与状态)} />
                           {现在 === "暂停" && (

@@ -68,7 +68,7 @@
   "app/(app)/settings/FeishuPushSwitch.tsx": 2,
   "app/(app)/settings/ImportsTab.tsx": 3,
   "app/(app)/settings/KeymapTab.tsx": 3,
-  "app/(app)/settings/LeadAssignCard.tsx": 7,
+  "app/(app)/settings/LeadAssignCard.tsx": 6,
   "app/(app)/settings/LineDeptCard.tsx": 6,
   "app/(app)/settings/MembersTab.tsx": 12,
   "app/(app)/settings/OrgSyncCard.tsx": 12,

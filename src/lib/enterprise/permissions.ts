@@ -333,6 +333,15 @@ export function 能分配线索(me: 谁, org: 组织 | null): boolean {
 }
 
 /**
+ * 把销售在「允许 / 暂停」参与自动分配之间拨（客户 11-21 选 A）：系统管理员，加市场管理（marketing_mgr）。
+ * 「禁止」仍只给系统管理员，那一道在 lead-assign 参与改动挡；只读管理员、设了「只看某人」的不行。只认业务角色，别的后台设置不跟着放开
+ */
+export function 能拨参与暂停(me: 谁, org: 组织 | null): boolean {
+  if (是系统管理员(me, org)) return true;
+  return !老() && !!org && !只读角色(me, org) && !只看的人(org, me.id) && 有(org, me.id, ["marketing_mgr"]);
+}
+
+/**
  * 公海：分给同事、撤销分配、把别人的客户放回公海、标无效客户（原 constants.ts 管全队客户 = 账号 ADMIN / MANAGER）：
  * 总管理（系统管理员、条线总管理）、销售管理。恢复无效客户另走 能恢复
  */
