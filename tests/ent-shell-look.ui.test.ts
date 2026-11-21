@@ -326,7 +326,7 @@ describe("⌘K（g.cmdk）", () => {
 });
 
 describe("静态质感（g.feel）", () => {
-  it("输入框：平时半透明灰底、框线透明；聚焦白底 + 主色框；报错的照旧红框", async () => {
+  it("输入框（设计 D1）：平时白底 + --field-line 框；聚焦白底 + 主色框；报错红框", async () => {
     const { page } = await 开(件包);
     try {
       const 读 = (名: string) => page.getByRole(名 === "金额" ? "spinbutton" : "textbox", { name: 名 }).evaluate((el) => {
@@ -335,19 +335,19 @@ describe("静态质感（g.feel）", () => {
         return { 底: cs.backgroundColor, 框线: cs.borderTopColor, 宽: cs.borderTopWidth };
       });
       const 平时 = await 读("客户名称");
-      expect(平时.底).not.toBe("rgb(255, 255, 255)");
-      expect(平时.底).toMatch(/0\.04\)$/);
-      expect(平时.框线).toBe("rgba(0, 0, 0, 0)");
-      expect(平时.宽, "框线只是透明，宽度不变，尺寸一像素不动").toBe("1px");
-      expect((await 读("金额")).底).toMatch(/0\.04\)$/);
+      expect(平时.底).toBe("rgb(255, 255, 255)");
+      expect(平时.框线, "--field-line #c7c7cc").toBe("rgb(199, 199, 204)");
+      expect(平时.宽, "框线宽度不变，尺寸一像素不动").toBe("1px");
+      expect((await 读("金额")).底).toBe("rgb(255, 255, 255)");
       await page.getByRole("textbox", { name: "客户名称" }).focus();
       // antd 的框自带过渡，等它走完
-      await expect.poll(async () => (await 读("客户名称")).底).toBe("rgb(255, 255, 255)");
+      await expect.poll(async () => (await 读("客户名称")).框线).not.toBe("rgb(199, 199, 204)");
       const 聚焦 = await 读("客户名称");
-      expect(聚焦.框线).not.toBe("rgba(0, 0, 0, 0)");
+      expect(聚焦.底).toBe("rgb(255, 255, 255)");
       const 报错 = await 读("手机号");
       expect(报错.底).toBe("rgb(255, 255, 255)");
-      expect(报错.框线).toMatch(/^rgb\(255, 77, 79\)$/);
+      const [r, g, b] = 报错.框线.match(/\d+/g)!.map(Number);
+      expect(r > 180 && g < 100 && b < 100, `报错框线是红色：${报错.框线}`).toBe(true);
     } finally { await page.context().close(); }
   });
 
