@@ -52,3 +52,16 @@ export const 关掉后果: Partial<Record<规则名, string>> = {
   超时自动转: "关掉以后不再发超时提醒、不再自动转；已经转出去的线索不收回，还在计时的停在原处。再打开时只对打开以后新分配的线索计时，之前分的不计时，不会一打开就转",
   主动放弃: "关掉以后项目页不再出「放弃（豁免）」按钮，新发的通知也不再带这个入口；已经放弃转出去的线索不收回，已记的待补照常优先补发，本月用过的次数照算",
 };
+
+/**
+ * 规则开关 Setting 行的值算不算开：只有存的是 JSON true 才算（不看 默认开的规则）。
+ * 数据层（visibility.ts 钩子里直接读 Setting 行）和组织表（org.ts 读组织 的 线索分配开着）共用这一句，口径一致
+ */
+export function 开关值开着(v: string | null | undefined): boolean {
+  if (v == null) return false;
+  try {
+    return JSON.parse(v) === true;
+  } catch {
+    return false;
+  }
+}

@@ -33,14 +33,14 @@ import { 卡片小字, 未填标签, type 项目行, type 看板一列, type 看
 import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
 import { 换客户页看法, 市场视图名 } from "@/lib/customers-view-pref";
 import type { 看板列 } from "@/lib/project/nodes";
-import type { 满额提醒 } from "@/lib/enterprise/lead-full-notice";
+import { 待分配筛, 待分配筛名, 待分配筛说明, type 待分配数 } from "@/lib/enterprise/await-assign-core";
 import { 字典of, 结局叫法, 阶段与进程, 阶段们, type 阶段, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import InviteInbox, { type 邀请行 } from "./InviteInbox";
 import VerifyInbox, { type 待复核行 } from "./VerifyInbox";
 import { 自动分配线索, 撤销自动分配, 分配带走的项目, type 自动分配结果 } from "../leads/assign-actions";
 import { useCarryConfirm } from "../customers/useCarryConfirm";
 import { AssignLeadModal, AssignedOutButton, useBatchAutoAssign } from "../leads/AssignLead";
-import LeadFullNotices from "../leads/LeadFullNotices";
+import AwaitAssignTodo from "../leads/AwaitAssignTodo";
 import { 滚法, 少动 } from "@/lib/reduced-motion";
 import { useMotionTheme } from "@/components/MotionTheme";
 import CountUp from "@/components/CountUp";
@@ -98,7 +98,7 @@ function 待分配格({ r }: { r: 项目行 }) {
 }
 
 export default function ProjectsView({
-  行, 列: 看板, 总数, 页, 每页, 要的页, 排序 = "", users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 能分公海客户项目 = false, 满额提醒: 提醒们 = [], 能按号码筛 = false, 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [], 客户页 = false, 基址 = "/projects", 标题, 换回客户列表 = false, 能新建客户 = false, 三态点, 每列,
+  行, 列: 看板, 总数, 页, 每页, 要的页, 排序 = "", users, filters, 企业版 = false, 出口叫法, 要下一步 = false, 邀请们 = [], 待复核们 = [], 阶段, 线索分配开着 = false, 能自动分配 = false, 能分公海客户项目 = false, 待分配 = null, 能按号码筛 = false, 能新建 = true, 待交接 = null, 市场 = null, 高亮, 渠道筛选项 = [], 客户页 = false, 基址 = "/projects", 标题, 换回客户列表 = false, 能新建客户 = false, 三态点, 每列,
 }: {
   行: 项目行[];
   列: 看板一列[];
@@ -112,7 +112,7 @@ export default function ProjectsView({
   要的页?: string;
   排序?: string;
   users: 可选成员[];
-  /** f：企业版首页指标卡点进来的筛选（lib/project/home-cards.ts），页头标出来、能清掉 */
+  /** f：企业版首页指标卡点进来的筛选（lib/project/home-cards.ts），或首页待办「待分配新线索」点进来的 await-assign，页头标出来、能清掉 */
   filters: { keyword: string; ownerId: string; pool: string; recycled: string; f: string; phase: string; node: string; creator?: string; channelId?: string; level?: string; projTag?: string; createdFrom?: string; createdTo?: string; phone?: string;
     /** 导入批次（11-19，lib/project/import-batch.ts）：数据页卡片点进来带的，页头挂一枚能关掉的标签，不进筛选栏 */
     batch?: string };
@@ -140,8 +140,8 @@ export default function ProjectsView({
   能自动分配?: boolean;
   /** 销售管理 / 总管理：客户在客户公海里的项目也摆「分配」（客户连名下公海项目整包给这位销售，P-公海-10）；自动分配照不摆 */
   能分公海客户项目?: boolean;
-  /** 自动分配因都已满额没分出去的提醒 */
-  满额提醒?: 满额提醒[];
+  /** 新线索页：「待分配新线索 N 条」那一行（11-21，替原来一事一张的黄色大卡；同首页，lib/project/list.ts 数待分配）；没有 / 正筛着它 = null */
+  待分配?: 待分配数 | null;
   /** 新线索页摆不摆「新线索」（11-03 D3-7 ④：没设业务角色、只读管理员不摆；服务端向导另拦）。默认摆 */
   能新建?: boolean;
   /** 企业版：我能处理、名下还有东西没交走的离职成员几位（11-03 B7-2）；null 不摆；0 = 我是谁的直属上级，摆入口不带数 */
@@ -371,6 +371,11 @@ export default function ProjectsView({
   const 卡标 = 卡 ? (
     <Tag className="proj-card-filter" closable title={首页卡口径[卡].说明} onClose={(e) => { e.preventDefault(); apply({ f: "" }); }} closeIcon={<CloseOutlined aria-label={`清掉「${首页卡口径[卡].名}」筛选`} />}>
       {首页卡口径[卡].名}
+    </Tag>
+  ) : filters.f === 待分配筛 ? (
+    // 首页待办「待分配新线索」点进来（11-21）：同一枚能关掉的标签，行数 = 首页那一行的条数
+    <Tag className="proj-card-filter" closable title={待分配筛说明} onClose={(e) => { e.preventDefault(); apply({ f: "" }); }} closeIcon={<CloseOutlined aria-label={`清掉「${待分配筛名}」筛选`} />}>
+      {待分配筛名}
     </Tag>
   ) : undefined;
   // 从数据页按导入批次点进来：同样挂一枚能关掉的标签，说清只看 / 排掉了哪一批
@@ -688,7 +693,7 @@ export default function ProjectsView({
       {换回客户列表 && 看法 === "列表" && 总数 === 0 && !在筛 && <div className="cust-view-seg">{换回切换}</div>}
       <InviteInbox 邀请们={邀请们} />
       <VerifyInbox 们={待复核们} />
-      {新线索 && <LeadFullNotices 提醒={提醒们} />}
+      {新线索 && filters.f !== 待分配筛 && <AwaitAssignTodo 数据={待分配} />}
 
       <div key={看法} ref={视图包} className={换过 ? "proj-view-in" : undefined}>
       {看法 === "列表" ? (

@@ -28,6 +28,7 @@
  */
 import { 是只读角色们, type 业务角色, type 业务线 } from "@/lib/sync/dept-policy";
 import { 项目业务线 } from "./assign-line";
+import { 本线放开看得到 } from "./await-assign-open";
 import { 按线的线, 按线范围of, 条线范围of } from "./line-viewer";
 import { 实线下属, 虚线下属, 是系统管理员of, type 组织 } from "./org-core";
 import { 企业版 } from "./switch";
@@ -35,7 +36,23 @@ import { 找条线总管理 } from "./tri-state-people";
 
 export type 谁 = { id: string; role?: string | null };
 /** 判权限用到的项目字段。已加入 = 点了同意（inviteStatus = JOINED）的组员 userId */
-export type 权限项目 = { ownerId: string; creatorId?: string | null; pooledAt?: Date | null; bizLine?: string | null; 已加入?: readonly string[] };
+export type 权限项目 = { ownerId: string; creatorId?: string | null; pooledAt?: Date | null; bizLine?: string | null; 已加入?: readonly string[];
+  /** 待分配本线放开（P-转-42）要的几格；没带 = 不按这条放开 */
+  phase?: string | null; result?: string | null; awaitAssignAt?: Date | null; scheduledAssignAt?: Date | null; deletedAt?: Date | null };
+
+/**
+ * 判 能看项目（等四权）要从库里取的全部项目列（组员另带）。凡是查出项目再交给 能看项目 的地方都用这份（或 权限项目选），
+ * 别各写一份：P-转-42 加了待分配本线放开的几格后，有几处 select 没带，判断恒为假（首页、列表有，点进去找不到）。
+ * 只是 Prisma select 用的纯数据（这个文件客户端组件也 import）
+ */
+export const 权限项目列 = {
+  ownerId: true, creatorId: true, pooledAt: true, bizLine: true,
+  phase: true, result: true, awaitAssignAt: true, scheduledAssignAt: true, deletedAt: true,
+} as const;
+/** 权限项目列 + 点了同意的组员（交给 能看项目 前用 带已加入 转成 已加入） */
+export const 权限项目选 = { ...权限项目列, members: { where: { inviteStatus: "JOINED" }, select: { userId: true } } } as const;
+/** 按 权限项目选 查回来的行 → 交给 能看项目 的 权限项目（members → 已加入） */
+export const 带已加入 = <T extends { members: readonly { userId: string }[] }>(r: T): T & { 已加入: string[] } => ({ ...r, 已加入: r.members.map((m) => m.userId) });
 
 /** 负责人规则能编辑的角色：销售、销管、渠运，项目组员被指定为负责人时也能（V3.5.1） */
 const 可编辑角色: readonly 业务角色[] = ["sales", "sales_mgr", "channel_ops", "project_ops"];
@@ -196,6 +213,9 @@ export function 能看项目(me: 谁, p: 权限项目, org: 组织 | null): bool
   if (p.creatorId === me.id && 有(org, me.id, 市场角色)) return true;
   // 市场管理：直属下级建的项目（线索）不管什么状态都看得到（11-05 客户定；列表同 team-scope 的 市场全看）
   if (p.creatorId && 有(org, me.id, ["marketing_mgr"]) && 实线下属(org, me.id, 1).has(p.creatorId)) return true;
+  // 还在待分配的新线索对本线销售管理、条线总管理放开看（P-转-42，用户 11-21 定）：只看和分配，改、推进、删、转让照旧按负责人判（能编辑项目 等不放）。
+  // 「线索分配」开关关着不放（org.线索分配开着，和 visibility.ts 数据层同一个 Setting、同一个认法）：「按组织看客户」关着时数据层不限定，详情只靠这里挡
+  if (本线放开看得到(org, me.id, p)) return true;
   return 看得到下属的(org, me.id, p.ownerId);
 }
 

@@ -2328,13 +2328,14 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .cli-ck .cli-col { max-width: none; margin: 0; min-width: 0; }
 .home-cards { position: sticky; top: var(--s5); align-self: start; display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
 /* 还没问（U-首页-01；11-01 改：「初始聊天框要和右侧的4个框的高度一致。应该是缩小，而不是放大」）：
-   右边四张卡照内容高、不拉伸，这一格的高就是四张卡的高（不再撑满整屏）；左边对话框不按自己的内容算高（contain: size），
-   被拉成和卡这一列一样高，上下边齐。框里放得下：问候、欢迎语、三条示例、输入框加起来比四张卡矮（ent-home-frame 量着） */
+   右边四张卡照内容高、不拉伸，这一格的高就是四张卡的高（不再撑满整屏）；左边对话框被网格拉成和卡这一列一样高（align 默认 stretch），上下边齐。
+   框里放得下：问候、欢迎语、三条示例、输入框加起来比四张卡矮（ent-home-frame 量着），没有待办时框 = 卡列高，和原来一样。
+   11-21 去掉框上的 contain: size：原来框的高只认卡列、不认自己的内容，框顶上摆了待办（放弃、待复核、待分配……）就把输入框挤出白卡底边；
+   现在框至少和卡列一样高，内容多了框跟着长（这一行跟着长），不越框、框里不出滚动条（tests/ent-home-frame-grow.test.ts） */
 .cli-empty .cli-ck-g { flex: none; }
 /* 11-01 用户要过「上下居中」；16a（11-11）改回顶上：居中时上面空一大块，框和四张卡的顶线贴着页边距，下面留白 */
 .cli-empty .cli-ck-g { margin-block: auto; }
 .cli-empty .home-cards { align-self: start; position: static; }
-.cli-empty .cli-ck .cli-frame { contain: size; }
 /* 问过之后（10-31 改版 R1）：右边四张卡收起，对话铺满这一格——你的话贴着右边、回答占满，右侧不再空一大片（照 Codex / Claude Code）。
    只打了字没发、点「新对话」回到空白：卡照摆（.cli-empty 只看这段对话有没有问过） */
 .cli:not(.cli-empty) .cli-ck-g { grid-template-columns: minmax(0, 1fr); }
@@ -2364,7 +2365,6 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
   .cli-ck-g { grid-template-columns: minmax(0, 1fr); align-content: start; }
   .home-cards { position: static; align-self: stretch; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cli-empty .home-cards { align-self: stretch; }
-  .cli-empty .cli-ck .cli-frame { contain: none; }
   .cli-ck .cli-frame { padding: var(--s4); }
 }
 @media (max-width: 767px) { .cli:has(.cli-ck) { min-height: 0; } }
@@ -5239,6 +5239,11 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 .home-cth-todo-warn { color: var(--warning-text); }
 .home-cth-todo-s { flex: 1 1 200px; min-width: 0; color: var(--text-muted); font-size: var(--fs-note); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-cth-todo-a { white-space: nowrap; margin-inline-start: auto; }
+/* 只占一行的首页待办（待分配新线索，11-21）：不换行、高度固定，窄了先省略中间那段再省略标题，不把首页左卡撑高。
+   省略只放在标题、中间那段上，整行不 overflow: hidden——不然「去分配」的键盘焦点框会被裁掉 */
+.home-cth-todo-one { flex-wrap: nowrap; align-items: center; }
+.home-cth-todo-one .home-cth-todo-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.home-cth-todo-one .home-cth-todo-s { flex-basis: 0; }
 /* 首页置顶「新分到你的线索，可以放弃（豁免）」（dashboard/GiveUpHomeTodo.tsx，11-21）：名字 + 时限在左、两颗 40 高的按钮在右；
    窄了按钮行折到名字下面、两颗各占一半，390 宽首屏可见、不横滚 */
 .home-giveup { display: grid; gap: var(--s2); margin-bottom: 16px; min-width: 0; }

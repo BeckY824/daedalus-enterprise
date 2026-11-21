@@ -26,6 +26,7 @@ import { 视图中跳过 } from "./view-as";
 import { 读组织 } from "./org";
 import { 规则开着 } from "./rules";
 import { 发待分配提醒 } from "./lead-full-notice";
+import { 挑不到原因 } from "./await-assign-core";
 import { notify } from "./notify";
 import { 定时分配令牌 } from "./scheduled-assign-token";
 import { 系统 } from "@/lib/project/timeout";
@@ -126,8 +127,9 @@ async function 分不出去提醒(p: { id: string; name: string; creatorId: stri
   try {
     const org = await 读组织();
     const 建的人 = await prisma.user.findUnique({ where: { id: p.creatorId }, select: { name: true } });
-    const 话 = `定时分配没分出去（${附}）：${为什么}`;
-    await 发待分配提醒(org, [p.name], 建的人?.name ?? "录入人", 话, 现在);
+    // 只要原因本身：挑不到人回的那句带着「已留在新线索待分配，可以手动指派」，后面另说留在待分配（11-21）
+    const 话 = `定时分配没分出去（${附}）：${挑不到原因(为什么)}`;
+    await 发待分配提醒(org, [{ id: p.id, 名: p.name }], 建的人?.name ?? "录入人", 话, 现在);
     // 录入人另收一条（他多半不在能分配的人里）：说清还留在待分配
     await notify([p.creatorId], {
       kind: "待分配",
