@@ -1,8 +1,8 @@
 /**
  * 企业版自动分配「都已满额」提醒（A8，重走 7.6 / Y22）。
- * 钉的是：自动分配因都满额没分出去，给市场管理、总管理员（含没建组织行的老板）各发一条站内提醒；
- * 一次点击（单条或批量）只发一条、列出没分出去的线索；有人接、或者是别的原因没分出去不发；
- * 各人关各人的，关了别人的照样在；不是企业版不读。
+ * 钉的是：自动分配因都满额没分出去，给市场管理、总管理员（含没建组织行的老板）各发一条站内提醒（铃铛 + 飞书，EntNotice）；
+ * 一次点击（单条或批量）只发一条、列出没分出去的线索；有人接、或者是别的原因没分出去不发；不是企业版不发。
+ * 11-21 起不再往每人的 Setting 存快照（首页、新线索页的黄卡换成一行现数的「待分配新线索」，见 ent-await-assign-todo.test.ts）
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -17,12 +17,14 @@ vi.mock("@/lib/enterprise/switch", () => ({ 企业版: () => mocks.企业版 }))
 import { prisma } from "@/lib/prisma";
 import { setSetting } from "@/lib/settings";
 import { resetDb } from "./reset";
-import { 自动分配线索, 批量自动分配, 我的满额提醒, 关满额提醒 } from "@/app/(app)/leads/assign-actions";
-import { 读满额提醒, 发满额提醒, 发待分配提醒 } from "@/lib/enterprise/lead-full-notice";
+import { 自动分配线索, 批量自动分配 } from "@/app/(app)/leads/assign-actions";
+import { 发满额提醒, 发待分配提醒 } from "@/lib/enterprise/lead-full-notice";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 不设配额key } from "@/lib/enterprise/lead-assign";
 
+/** 这个人收到的站内提醒（新的在前）：线索名单从正文里取（「名单」在 满额 正文冒号后、句号前） */
+const 读满额提醒 = async (userId: string, kind = "满额") => (await prisma.entNotice.findMany({ where: { userId, kind }, orderBy: { createdAt: "desc" } }));
 let 老板: string, 总管: string, 市场: string, 销售经理: string, 甲: string, 乙: string;
 
 const 名字 = new Map<string, string>();
@@ -72,7 +74,9 @@ describe("都已满额 → 提醒市场管理、总管理员", () => {
     for (const id of [市场, 总管, 老板]) {
       const 们 = await 读满额提醒(id);
       expect(们).toHaveLength(1);
-      expect(们[0]).toMatchObject({ 线索: ["L6"], 条数: 1, 谁点的: "市场小李" });
+      expect(们[0].title).toBe("自动分配没分出去：1 条线索都已满额");
+      expect(们[0].body).toContain("市场小李 点的自动分配");
+      expect(们[0].body).toContain("L6");
     }
     for (const id of [销售经理, 甲, 乙]) expect(await 读满额提醒(id)).toEqual([]);
   });
@@ -86,18 +90,19 @@ describe("都已满额 → 提醒市场管理、总管理员", () => {
 
     const 们 = await 读满额提醒(总管);
     expect(们).toHaveLength(1);
-    expect(们[0].条数).toBe(2);
-    expect(们[0].线索).toEqual(["L7", "L8"]);
+    expect(们[0].title).toBe("自动分配没分出去：2 条线索都已满额");
+    expect(们[0].body).toContain("L7、L8");
+    expect(们[0].body).not.toContain("L6");
     expect(await 读满额提醒(市场)).toHaveLength(1);
   });
 
-  it("再点一次再发一条，新的在前", async () => {
+  it("再点一次再发一条（一事一条，不合并）", async () => {
     await 配(甲, 0);
     await 配(乙, 0);
     await 自动分配线索(await 建线索("L6"));
     await 批量自动分配([await 建线索("L7"), await 建线索("L8")]);
     const 们 = await 读满额提醒(总管);
-    expect(们.map((x) => x.线索)).toEqual([["L7", "L8"], ["L6"]]);
+    expect(们.map((x) => x.title).sort()).toEqual(["自动分配没分出去：1 条线索都已满额", "自动分配没分出去：2 条线索都已满额"]);
   });
 
   it("有人接、或者不是满额（没人填配额）都不发", async () => {
@@ -111,25 +116,20 @@ describe("都已满额 → 提醒市场管理、总管理员", () => {
     expect(await 读满额提醒(总管)).toEqual([]);
   });
 
-  it("各人关各人的：总管关了，市场的还在；关别人的、关不存在的不报错也不动", async () => {
+  it("不是企业版：不发", async () => {
     await 配(甲, 0);
     await 配(乙, 0);
-    await 自动分配线索(await 建线索("L6"));
-    当(总管);
-    const [条] = await 我的满额提醒();
-    expect(await 关满额提醒(条.id)).toEqual({ ok: true });
-    expect(await 我的满额提醒()).toEqual([]);
-    expect(await 关满额提醒("不存在")).toEqual({ ok: true });
-    当(市场);
-    expect(await 我的满额提醒()).toHaveLength(1);
+    mocks.企业版 = false;
+    await 发满额提醒(await 读组织(), ["L6"], "市场小李");
+    expect(await prisma.entNotice.count()).toBe(0);
   });
 
-  it("不是企业版：读不到", async () => {
+  it("不再写 Setting 快照（11-21）", async () => {
     await 配(甲, 0);
     await 配(乙, 0);
     await 自动分配线索(await 建线索("L6"));
-    mocks.企业版 = false;
-    expect(await 我的满额提醒()).toEqual([]);
+    expect(await 读满额提醒(总管)).toHaveLength(1);
+    expect(await prisma.setting.count({ where: { key: { startsWith: "entLeadFullNotice:" } } })).toBe(0);
   });
 
   it("开关关闭时不变：自动分配照旧拒、不发提醒，直接调发提醒也不写库", async () => {
@@ -140,16 +140,16 @@ describe("都已满额 → 提醒市场管理、总管理员", () => {
     expect(await 自动分配线索(L)).toMatchObject({ ok: false });
     expect(await 批量自动分配([L])).toMatchObject({ ok: false });
     await 发满额提醒(await 读组织(), ["L6"], "市场小李");
-    expect(await prisma.setting.count({ where: { key: { startsWith: "entLeadFullNotice:" } } })).toBe(0);
+    expect(await prisma.entNotice.count()).toBe(0);
   });
 });
 
 describe("X-79 → P-转-03：「线索分配」开关关着，待分配提醒只发系统管理员", () => {
   const 收到 = async () => {
     const 们 = [老板, 总管, 市场, 销售经理, 甲];
-    return (await Promise.all(们.map(async (id) => ((await 读满额提醒(id)).length ? id : null)))).filter(Boolean);
+    return (await Promise.all(们.map(async (id) => ((await 读满额提醒(id, "待分配")).length ? id : null)))).filter(Boolean);
   };
-  it("关着：只有总管理员（老板、总管）收到，市场管理、销售管理没有；站内通知同样", async () => {
+  it("关着：只有总管理员（老板、总管）收到，市场管理、销售管理没有", async () => {
     await setSetting(规则.线索分配.key, false);
     await 发待分配提醒(await 读组织(), ["待分的"], "市场小李", "这条业务线没人可分");
     expect(await 收到()).toEqual([老板, 总管]);

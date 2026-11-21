@@ -30,6 +30,8 @@ import { 不算补建, 不算历史分析 } from "./system-created";
 import { 读批次, 批次参数, 批次条件 } from "./import-batch";
 import { 指定回复文字, 短时刻 } from "./time-fields";
 import { 客户显名 } from "@/lib/enterprise/customer-title";
+import { 待分配范围 } from "@/lib/enterprise/await-assign-scope";
+import { 待分配筛, type 待分配数 } from "@/lib/enterprise/await-assign-core";
 
 /** 判了无效的三个叫法：列表上叫法后面跟原因摘要（客户 11-05（X-09）：「初验无效 · 原因」） */
 const 带原因的叫法: ReadonlySet<验证结果叫法> = new Set<验证结果叫法>(["初验无效", "终验无效", "无效线索"]);
@@ -69,7 +71,10 @@ export async function 读验证痕们(projectIds: string[]): Promise<Map<string,
   return 全文;
 }
 
-/** f：企业版首页四张指标卡点进来带的筛选（month-new / key / no-follow / due-soon，口径见 home-cards.ts） */
+/**
+ * f：企业版首页四张指标卡点进来带的筛选（month-new / key / no-follow / due-soon，口径见 home-cards.ts）；
+ * 或首页待办「待分配新线索」点进来的 await-assign（await-assign-core.ts，范围见 await-assign-scope.ts）
+ */
 export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string; phase?: string; node?: string; creator?: string; channelId?: string; level?: string;
   /** 项目标签（F-项目-14）：字典项名原样比；「未填标签」= 没填的 */
   projTag?: string;
@@ -192,6 +197,9 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
   const 卡的圈: Prisma.ProjectWhereInput | undefined = 卡的人 ? { ownerId: { in: [...卡的人] } } : undefined;
   // 暂未跟进按负责人一路一路筛（只认现负责人记的沟通，home-cards.ts），和卡上的数同一批负责人
   const 卡负责人们 = 卡 === "no-follow" ? await 暂未跟进负责人们(卡的人) : undefined;
+  // 首页待办「待分配新线索」点进来（11-21）：和那一行的条数同一个条件（数待分配 也走这里）；没资格看 = 一条不列
+  const 待分配筛中 = 企 && sp.f === 待分配筛;
+  const 待分配 = 待分配筛中 ? await 待分配范围(me) : null;
   const 字典 = 字典of(企);
   const 阶进 = 阶段进程条件(sp, 字典);
   // 企业版市场视角（11-04 P-界面-05）：市场成员 = 自己负责的 ∪ 自己建的已分出去的；市场管理 = 本人 + 实线下属，可按创建人筛；公海的都不列
@@ -239,6 +247,7 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
     ...(卡 && 规则 ? [首页卡条件(卡, 规则, 字典of(企), 今, 卡负责人们), ...(卡的圈 ? [卡的圈] : [])] : []),
     // 3 天内回公海：粗筛之外再加紧筛（同首页卡的数，tests/ent-due-soon-prefilter.test.ts 两种筛对拍），候选少取一些；剩下的取回逐个算
     ...(卡 === "due-soon" && 规则 ? [即将逾期紧筛(规则, 字典of(企), 今) ?? { id: { in: [] } }] : []),
+    ...(待分配筛中 ? [待分配 ?? { id: { in: [] } }] : []),
     ...阶进.where,
     // 按客户的字段筛：客户不露的不列（和按客户名搜同一条，不然拿筛选试得出同事公海客户挂着哪些项目）
     ...(客户 ? [按客户(客户)] : []),
@@ -262,7 +271,22 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
     ...(sp.pool === "1" ? { pooledAt: { not: null } } : 企 && !卡 ? { pooledAt: null } : {}),
     ...(并且.length ? { AND: 并且 } : {}),
   };
-  return { where, 词, 企, 规则, 今, 卡, 阶进, 市场, 创建人, 来源, 级别筛, 标签筛, 号码, 收回筛, 批 };
+  return { where, 词, 企, 规则, 今, 卡, 阶进, 市场, 创建人, 来源, 级别筛, 标签筛, 号码, 收回筛, 批, 待分配筛中, 待分配 };
+}
+
+/**
+ * 首页待办「待分配新线索 N 条 · 最早 …」（11-21）：和新线索页 /leads?f=await-assign 同一个 列表条件（同一个范围、同一层可见限定），
+ * 点进去的行数 = 这里的条数。没资格（待分配范围 为 null）、一条都没有 = null，不画
+ */
+export async function 数待分配(me: Parameters<typeof 列表条件>[0]): Promise<待分配数 | null> {
+  if (!企业版()) return null;
+  const c = await 列表条件(me, { f: 待分配筛 }, "线索");
+  if (!c.待分配) return null;
+  const [条数, 早] = await Promise.all([
+    prisma.project.count({ where: c.where }),
+    prisma.project.findFirst({ where: c.where, orderBy: { awaitAssignAt: "asc" }, select: { awaitAssignAt: true } }),
+  ]);
+  return 条数 ? { 条数, 最早: 早?.awaitAssignAt?.toISOString() ?? null } : null;
 }
 
 /**
@@ -649,7 +673,7 @@ export async function 读项目列表(
     邀请们: 邀请.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
     // 企业版线索验证（P12）：等我复核 / 终验 / 认领的线索
     待复核们: 待复核.map((r) => ({ ...r, 更新于: r.更新于.toISOString() })),
-    filters: { keyword: 词, ownerId: typeof sp.ownerId === "string" ? sp.ownerId : "", pool: sp.pool === "1" ? "1" : "", recycled: 收回筛, f: 卡, phase: 阶进.阶段, node: 阶进.进程, creator: 创建人, channelId: 来源, level: 级别筛, projTag: 标签筛,
+    filters: { keyword: 词, ownerId: typeof sp.ownerId === "string" ? sp.ownerId : "", pool: sp.pool === "1" ? "1" : "", recycled: 收回筛, f: 卡 || (条件.待分配筛中 ? 待分配筛 : ""), phase: 阶进.阶段, node: 阶进.进程, creator: 创建人, channelId: 来源, level: 级别筛, projTag: 标签筛,
       // 原样回给界面（选择器回显）；写错的那头 创建时间段 当没给
       createdFrom: 是日期(sp.createdFrom) ? sp.createdFrom : "", createdTo: 是日期(sp.createdTo) ? sp.createdTo : "",
       phone: 号码 ? 搜索词(sp.phone) : "",

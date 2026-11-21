@@ -351,6 +351,16 @@ describe("待分配文案", () => {
     expect(n.body).toContain("手动分");
   });
 
+  it("挑不到人回的整句当为什么交进来：只留原因本身，不和「线索留在新线索」一句里两种说法（11-21）", async () => {
+    await 发待分配提醒(await 读组织(), ["线索一"], "市场小李", "外贸线没人可分。这条新线索留在原处，可以手动指派");
+    const [n] = await prisma.entNotice.findMany();
+    expect(n.body).toContain("外贸线没人可分。线索留在新线索、没有负责人：去新线索手动分。");
+    expect(n.body).not.toContain("留在原处");
+    expect(n.body).not.toContain("可以手动指派");
+    // 不再往 Setting 里存快照（首页那一行改成现数）
+    expect(await prisma.setting.count({ where: { key: { startsWith: "entLeadFullNotice:" } } })).toBe(0);
+  });
+
   it("满额：文案不变", async () => {
     await 发满额提醒(await 读组织(), ["线索一"], "市场小李");
     // 上面的组织没有市场管理，收件人是总管理

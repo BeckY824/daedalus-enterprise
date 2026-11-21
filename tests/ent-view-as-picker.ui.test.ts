@@ -11,7 +11,7 @@ import { chromium, type Browser, type Page } from "playwright";
 let browser: Browser; let bundle: string;
 const plugin: Plugin = { name: "ent-view-as-picker", setup(b) {
   b.onResolve({ filter: /^next\/(navigation|link)$/ }, a => ({ path: a.path, namespace: "fixture" }));
-  b.onResolve({ filter: /(^|\/)(WhatsNew|UpdateRow|FeedbackButton|AiCost|RailResizer|LeadFullNotices|RecordView|ProjectDetail|NoticeBell|AiDock)$/ }, a => ({ path: a.path, namespace: "empty-child" }));
+  b.onResolve({ filter: /(^|\/)(WhatsNew|UpdateRow|FeedbackButton|AiCost|RailResizer|AwaitAssignTodo|RecordView|ProjectDetail|NoticeBell|AiDock)$/ }, a => ({ path: a.path, namespace: "empty-child" }));
   // 对话栏引的 "use server" 文件换成空壳（不把库打进浏览器包）
   b.onResolve({ filter: /^\.\/threads$/ }, a => ({ path: a.path, namespace: "threads" }));
   b.onLoad({ filter: /.*/, namespace: "threads" }, () => ({ contents: "export async function 重命名对话(){return {ok:true}} export async function 删除对话(){return {ok:true}}" }));

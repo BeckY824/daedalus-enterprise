@@ -637,7 +637,10 @@ describe("新建线索向导：五种分配方式都生效（10-27 A7）", () =>
     if (!r.ok) return;
     expect(r.提示).toMatch("已提醒市场管理、销售管理、总管理员");
     expect((await 项目of(r.projectId)).awaitAssignAt).not.toBeNull();
-    expect(await prisma.setting.count({ where: { key: `entLeadFullNotice:${总管}` } })).toBe(1);
+    // 铃铛 + 飞书一事一条（11-21 起不再写 Setting 快照，首页那一行现数）；提示只说一种落点，不带「留在原处，可以手动指派」
+    expect(await prisma.entNotice.count({ where: { userId: 总管, kind: "待分配" } })).toBe(1);
+    expect(await prisma.setting.count({ where: { key: `entLeadFullNotice:${总管}` } })).toBe(0);
+    expect(r.提示).not.toMatch(/留在原处|可以手动指派/);
     // 外贸项目只能指派给外贸线的人：先把销售改回两边都做
     await prisma.entMember.update({ where: { userId: 销售 }, data: { line: null } });
     expect(await 分配线索({ projectId: r.projectId, toUserId: 销售 })).toMatchObject({ ok: true });
