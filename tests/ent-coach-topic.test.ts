@@ -236,6 +236,10 @@ describe("动作：发、回、关（服务端整条走一遍）", () => {
     expect(t).toMatchObject({ authorId: 人.教练, projectId: 项目, node: "线索验证", status: "待回复", title: "教练的主题" });
     const 收 = async () => (await raw.entNotice.findMany({ orderBy: { createdAt: "asc" } })).map((n) => [n.userId, n.kind]);
     expect(await 收()).toEqual([[人.甲, "主题"]]);
+    // 教练点评改版 PR1（11-21）：发起那条通知（铃铛、飞书同一句）说「发起了点评」，不再说「发起了主题」
+    const 发起那条 = (await raw.entNotice.findFirstOrThrow()).title;
+    expect(发起那条).toContain("发起了点评「教练的主题」");
+    expect(发起那条).not.toContain("发起了主题");
 
     当("甲");
     expect(await 回复主题动作(t.id, "周三再电话确认预算")).toEqual({ ok: true });

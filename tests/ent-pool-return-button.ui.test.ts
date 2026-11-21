@@ -156,17 +156,17 @@ it("客户列表：没传 放不了ids（都放得了）照旧摆", async () => 
   } finally { await page.close(); }
 });
 
-it("客户详情：能放公海 = false「客户操作」里没有「客户退回公海」，true 才有；三种宽度页头不撑出、点得到", async () => {
+it("客户详情：能放公海 = false「更多操作」里没有「客户退回公海」，true 才有；三种宽度页头不撑出、点得到", async () => {
   for (const w of 宽们) {
     for (const 能放 of [false, true]) {
       const { page, errors } = await 开(详情包, { 能放 }, w, ".rec-head");
       try {
-        // 11-12 用户「右上角只保存三个按钮」：客户退回公海收进「客户操作 ▾」；能放 = false 时菜单里没有这项（一项都没有整颗不摆）
-        const 头钮 = page.locator(".rec-head-acts button").filter({ hasText: /客户操作/ });
+        // 11-12 用户「右上角只保存三个按钮」：客户退回公海收进「客户操作 ▾」（11-21 教练点评改版 PR1 合进「更多操作 ▾」）；能放 = false 时菜单里没有这项（一项都没有整颗不摆）
+        const 头钮 = page.locator(".rec-head-acts button").filter({ hasText: /更多操作/ });
         expect(await 不撑出(page), `宽 ${w}`).toBe(true);
         let 项数 = 0;
         if (await 头钮.count()) {
-          expect(await 点得到(page, ".rec-head-acts button", /客户操作/), `宽 ${w}`).toBe(true);
+          expect(await 点得到(page, ".rec-head-acts button", /更多操作/), `宽 ${w}`).toBe(true);
           expect(await 头钮.evaluate((el) => el.getBoundingClientRect().height <= 40), `宽 ${w}`).toBe(true);
           await 头钮.click();
           const 项 = page.locator(".rec-head-menu").last().getByRole("menuitem", { name: /^客户退回公海$/ });

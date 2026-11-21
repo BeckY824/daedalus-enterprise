@@ -78,8 +78,8 @@ async function 开(width = 1280, 额外: { 自动?: boolean; 自回?: unknown; �
 }
 const 取 = (page: Page, k: string) => page.evaluate((k) => Reflect.get(window, k) ?? null, k);
 async function 点转让(page: Page) {
-  await page.locator(".rec-head-acts button").filter({ hasText: /客户操作/ }).click();
-  await page.locator(".rec-head-menu").last().getByRole("menuitem", { name: /^客户转让$/ }).click();
+  await page.locator(".rec-head-acts button").filter({ hasText: /更多操作/ }).click();
+  await page.locator(".rec-head-menu").last().getByRole("menuitem", { name: /^客户转让/ }).click();
   const 框 = page.getByRole("dialog").filter({ hasText: "客户转让" });
   await 框.waitFor();
   return 框;

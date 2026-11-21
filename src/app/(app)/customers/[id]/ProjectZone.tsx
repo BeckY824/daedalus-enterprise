@@ -255,7 +255,7 @@ export default function ProjectZone({ 数据, 槽, 挂动作, 报忙 }: { 数据
         <div className="cd-empty" data-testid="project-zone-empty">
           <div className="cd-empty-t">{数据.锁数 > 0 ? "没有你能看的项目" : "这位客户还没有项目"}</div>
           <div className="cd-empty-d">
-            {槽.开建项目 ? "阶段、沟通、待办都记在项目里。点「＋ 新建项目」或右上角「项目操作」给这位客户开一个。" : 槽.全只读 ? "这位客户你只能看。" : "项目由负责人新建。"}
+            {槽.开建项目 ? "阶段、沟通、待办都记在项目里。点「＋ 新建项目」或右上角「更多操作」给这位客户开一个。" : 槽.全只读 ? "这位客户你只能看。" : "项目由负责人新建。"}
           </div>
           {槽.开建项目 && (
             <button type="button" className="cd-add cd-add-big" onClick={槽.开建项目}>
