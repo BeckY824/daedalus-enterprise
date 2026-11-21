@@ -27,7 +27,7 @@ import { 认页面 } from "@/lib/ai-context-page";
 import { 订阅页面行, 读页面行, 读详情名 } from "@/lib/page-rows";
 import { useThread } from "@/lib/home-thread";
 import { useRunningKey } from "@/lib/ai-jobs";
-import { 登记打开AI浮窗, 订阅智能总结, 有智能总结, 打开智能总结 } from "@/lib/ai-float";
+import { 订阅智能总结, 有智能总结, 打开智能总结 } from "@/lib/ai-float";
 import type { 快捷项 } from "./AiQuickAsks";
 
 /** 服务端快照。固定一个引用，useSyncExternalStore 才不会每次都当成变了 */
@@ -41,6 +41,7 @@ export default function AiDock({
   set开着,
   企业版 = false,
   浮窗 = false,
+  手机 = false,
 }: {
   userName: string;
   /** 浮窗拖到哪按人记（useFloatDrag）：同一台电脑换个人登录，各是各的位置 */
@@ -60,6 +61,11 @@ export default function AiDock({
    * 右上角「−」收起回球。收起时不卸载（只藏起来、inert），正在跑的那一问接着跑，再点球原样回来
    */
   浮窗?: boolean;
+  /**
+   * 手机铺满屏那一支（AppShell 手机分支传，教练点评改版 PR1，11-21）：客户页页头「AI」去掉后，手机靠这里进智能总结——
+   * 空屏摆客户页快捷项；问过一句后空屏快捷没了，头一行留一颗小号「总结这位客户」。电脑常驻面板（非浮窗）不传，照旧
+   */
+  手机?: boolean;
 }) {
   /*
     不是地址栏：设置浮层开着时地址栏是 /settings，而底下还是刚才那页。
@@ -108,9 +114,6 @@ export default function AiDock({
     const id = requestAnimationFrame(() => 浮窗框.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true }));
     return () => cancelAnimationFrame(id);
   }, [浮窗, 开着]);
-
-  // 页里的按钮（客户页页头「AI」）叫浮窗出来，见 lib/ai-float.ts
-  useEffect(() => (浮窗 ? 登记打开AI浮窗(() => set开着(true)) : undefined), [浮窗, set开着]);
 
   // 点页面别处（正文、左栏）：对话缩成一行。弹层（下拉、确认框）挂在 body 上，不在正文里，点它们不算「别处」
   useEffect(() => {
@@ -172,14 +175,15 @@ export default function AiDock({
   /*
     客户页（dt.ai）空屏三颗快捷项。「总结这位客户」= 原来的「生成智能总结」：打开客户页那个抽屉，
     扣额度、确认都在 AiPanel 里照旧，浮窗不另起一次；另两颗把问句交给输入框直接发。
-    教练点评改版 PR1（11-21）客户页页头的「AI」按钮去掉后，手机（没有浮窗，浮标点开的是下面铺满屏那一支）也靠这里进智能总结：
-    企业版铺满屏那支一样摆（原来只有浮窗摆，手机上智能总结只在页头 AI 开的抽屉里）
+    教练点评改版 PR1（11-21）客户页页头的「AI」按钮去掉后，手机（没有浮窗，浮标点开的是下面铺满屏那一支，手机 = true）也靠这里进智能总结：
+    手机那支一样摆（原来只有浮窗摆，手机上智能总结只在页头 AI 开的抽屉里）；问过之后空屏快捷不摆了，头一行留一颗「总结这位客户」
   */
   const 客户页 = /^\/customers\/[^/]+$/.test(pathname) && 详情名 ? 详情名 : null;
+  // 抽屉从右边出来，浮窗 / 铺满屏的面板先收起，不叠在一起；只是开原抽屉，扣额度、确认都在 AiPanel 里照旧
+  const 开总结 = () => { if (打开智能总结()) 收起(); };
   const 快捷: 快捷项[] | undefined = 客户页
     ? [
-        // 抽屉从右边出来，浮窗 / 铺满屏的面板先收起，不叠在一起
-        ...(能总结 ? [{ label: "总结这位客户", 动作: () => { if (打开智能总结()) 收起(); } }] : []),
+        ...(能总结 ? [{ label: "总结这位客户", 动作: 开总结 }] : []),
         { label: "起草跟进话术", 问: `给${客户页}起草一段跟进话术` },
         { label: "现在卡在哪", 问: `${客户页}现在卡在哪？` },
       ]
@@ -272,6 +276,10 @@ export default function AiDock({
           那条列表可以翻，面板没有：在这一页问过的话，换一次页就再也找不回来，
           尽管它一直好好地躺在库里。历史只列**在这一页**问过的（scope）。
         */}
+        {/* 手机客户页问过之后：空屏快捷没了，智能总结的入口留在头一行（小号），点了收起面板、开原抽屉 */}
+        {手机 && 客户页 && 能总结 && 有对话 && (
+          <button type="button" className="dock-sum-btn" onClick={开总结}>总结这位客户</button>
+        )}
         <DockThreads scope={pathname} />
         <button type="button" className="dock-x" onClick={() => set开着(false)} aria-label="关闭 AI 面板">
           <CloseOutlined />
@@ -307,7 +315,7 @@ export default function AiDock({
           models={models}
           空库={false}
           企业版={企业版}
-          空屏快捷={企业版 ? 快捷 : undefined}
+          空屏快捷={手机 ? 快捷 : undefined}
         />
       </div>
     </aside>

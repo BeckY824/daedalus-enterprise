@@ -75,7 +75,8 @@ export function 更多操作菜单({ 项目, 客户 }: {
     for (const x of 项目.项们.filter((y) => y.key === "delete")) {
       删们.push({ key: x.key, danger: true, disabled: 忙, label: 忙 ? 两行(x.字, 项目忙说法) : x.字, ...(点 ? { onClick: () => 点(x.key) } : {}) });
     }
-    if (项们.length || 删们.length) {
+    // 小标题组只在有项目项时出；只剩「删除项目」时不出空的「项目」小标题，删除项目照样单独放最后
+    if (项们.length) {
       const 题 = 当前名 ? `项目 · 当前：${当前名}` : "项目";
       组们.push([{ type: "group", key: "g-project", label: <span className="rec-menu-cur-t" title={题}>{题}</span>, children: 项们 }]);
     }
