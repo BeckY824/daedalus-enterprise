@@ -115,8 +115,9 @@ it("1024 / 1280 / 1366：号码一类一行，不出左栏；带复制键的号�
       // D3（PR #401 实操）起带复制键的格整行展开：名字一行、号码一行（复制键 28 高跟在号码后面），所以至多「两行」= 6 + 22 + 28 + 6 ≈ 60。
       // 这份只跑现状主题（不挂 data-skin），换皮主题那边结构不变、见 ent-design-d3-skins.ui.test.ts
       const 两行 = 60;
-      expect(m.行们[0].高, `${w} 座机折行`).toBeGreaterThan(两行);
-      expect(m.行们[2].高, `${w} 邮箱折行`).toBeGreaterThan(两行);
+      // 长座机、长邮箱折不折到第三行看机器字体（CI 上 1024 的座机两行就放下了）：一个字不截由上面「截了」管，这里只要求不比短号码矮
+      expect(m.行们[0].高, `${w} 座机`).toBeGreaterThanOrEqual(m.行们[1].高);
+      expect(m.行们[2].高, `${w} 邮箱`).toBeGreaterThanOrEqual(m.行们[1].高);
       expect(m.行们[1].高, `${w} WhatsApp 两行以内`).toBeLessThanOrEqual(两行);
       expect(m.行们[1].号, `${w} WhatsApp 整串一行、复制键同一行跟在后面`).toEqual({ 字高: 22, 同行: true, 在后面: true });
       expect(m.行们[3].高, `${w} 微信`).toBeLessThan(44);
