@@ -24,7 +24,7 @@ import { 动作出错话 } from "@/lib/stale-deploy";
 
 type 结果 = { ok: true } | { ok: false; error: string };
 /** 没填的身份 / 角色 / 立场写灰字「—」（10-31 改成「暂未确认」，11-04 用户又统一回「—」），只是显示，库里还是空 */
-const 空 = <span className="unconfirmed" style={{ color: "var(--text-faint)" }}>{未选占位}</span>;
+const 空 = <span className="unconfirmed" style={{ color: "var(--empty-fg)" }}>{未选占位}</span>;
 /** 下拉选项 = 启用着的 + 这一行已经存着、后来停用的（不然下拉里显示不出来） */
 const 并上 = (启用: string[], 存着: readonly (string | null)[]) => [...启用, ...存着.filter((x): x is string => !!x && !启用.includes(x))].map((x) => ({ value: x, label: x }));
 

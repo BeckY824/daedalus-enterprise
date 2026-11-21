@@ -25,7 +25,9 @@ export const palette = {
 
   line: "#e3e3e8",
   lineSoft: "#ededf0",
-  lineStrong: "#d2d2d7",
+  fieldLine: "#c7c7cc",
+  fieldLineHover: "#86868b",
+  ctlLine: "#86868b",
   panel: "#ffffff",
   workbench: "#f5f5f7",
   hover: "#ececee",

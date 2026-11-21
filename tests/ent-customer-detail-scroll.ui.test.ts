@@ -225,7 +225,10 @@ it("10-31 改版 R7（16a 样板回六档）：标题 22、模块标题 15、值
     expect(await 样(".rec-sec-t, .rec-mod > .ant-card-head")).toEqual({ 字: "15px", 色: 墨 });
     expect(await 样("#r7-有 .rec-field-k")).toEqual({ 字: "13px", 色: 灰 });
     expect(await 样("#r7-有 .rec-field-v")).toEqual({ 字: "14px", 色: 墨 });
-    expect(await 样("#r7-空 .rec-field-empty")).toEqual({ 字: "14px", 色: 浅 });
+    // 空值「—」全站一个色 --empty-fg（= muted，D1 · 设计语言 11-21，D02）；原来是 faint（白底 2.21:1）
+    expect(await 样("#r7-空 .rec-field-empty")).toEqual({ 字: "14px", 色: await 色("--empty-fg") });
+    expect(await 色("--empty-fg")).toBe(灰);
+    expect(await 色("--empty-fg")).not.toBe(浅);
     expect(await 样(".rec-tl-time")).toEqual({ 字: "13px", 色: 灰 });
     expect(await 样(".rec-contact-p")).toEqual({ 字: "13px", 色: 灰 });
     expect((await 样(".rec-tl-content")).字).toBe("14px");

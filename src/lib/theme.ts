@@ -44,7 +44,7 @@ export const themeConfig: ThemeConfig = {
     /* 页面标题 22 / 区块标题 15，和 --fs-title / --fs-section 对齐 */
     fontSizeHeading4: 22,
     fontSizeHeading5: 15,
-    /* 控件三档（16a）：小 28、默认 32、主操作 40 */
+    /* 控件三档（16a）：小 28、默认 32、主操作 40。和 :root 的 --ctl-h-sm / --ctl-h / --ctl-h-lg 一字不差（tests/design-tokens.test.ts 对） */
     controlHeight: 32,
     controlHeightSM: 28,
     controlHeightLG: 40,
@@ -56,6 +56,8 @@ export const themeConfig: ThemeConfig = {
     colorTextDescription: palette.textMuted,
     /* --text-faint：placeholder、禁用、装饰。不许当正文 */
     colorTextTertiary: palette.textFaint,
+    /* 全局框色仍是 --line：按钮、分页、卡片靠它。输入框（--field-line）、复选 / 单选框（--ctl-line）在 globals.css 里
+       按控件单独换（D1 · 设计语言 11-21，D17），换皮主题不挂 */
     colorBorder: palette.line,
     colorBorderSecondary: palette.lineSoft,
     colorBgLayout: palette.workbench,
@@ -96,6 +98,7 @@ export const themeConfig: ThemeConfig = {
       /* 16a：卡片外壳圆角 14、不画边框（globals.css .ant-card 接 --card-line / --shadow-card，换主题时边框回来） */
       borderRadiusLG: 14,
       paddingLG: 16,
+      /* = --card-head-h */
       headerHeight: 48,
       headerFontSize: 15,
       colorBorderSecondary: palette.lineSoft,
@@ -126,10 +129,13 @@ export const themeConfig: ThemeConfig = {
       dangerShadow: "none",
       fontWeight: 500,
       defaultBorderColor: palette.line,
-      defaultHoverBorderColor: palette.lineStrong,
+      defaultHoverBorderColor: palette.fieldLine,
       defaultHoverColor: palette.ink,
     },
-    Input: { activeShadow: `0 0 0 3px ${alpha(palette.brand, 0.14)}` },
+    /* 聚焦光晕 = :root 的 --focus-ring（主色 18%）；报错 = --error-ring（红 12%）。现状主题下 globals.css 那段输入框规则也写同一个 */
+    Input: { activeShadow: `0 0 0 3px ${alpha(palette.brand, 0.18)}`, errorActiveShadow: `0 0 0 3px ${alpha(palette.danger, 0.12)}`, hoverBorderColor: palette.fieldLineHover },
+    InputNumber: { activeShadow: `0 0 0 3px ${alpha(palette.brand, 0.18)}`, errorActiveShadow: `0 0 0 3px ${alpha(palette.danger, 0.12)}`, hoverBorderColor: palette.fieldLineHover },
+    DatePicker: { activeShadow: `0 0 0 3px ${alpha(palette.brand, 0.18)}`, errorActiveShadow: `0 0 0 3px ${alpha(palette.danger, 0.12)}`, hoverBorderColor: palette.fieldLineHover },
     Statistic: { contentFontSize: 26, titleFontSize: 13 },
     Tabs: { titleFontSize: 14, horizontalItemPadding: "10px 0", inkBarColor: palette.ink, itemSelectedColor: palette.ink, itemHoverColor: palette.ink },
     /* 未选中那几段的字用次一级正文 inkSoft（照苹果分段控件：没选中的字也是正文色，选中靠白滑块区分）。
@@ -143,7 +149,7 @@ export const themeConfig: ThemeConfig = {
     Form: { labelFontSize: 13, verticalLabelPadding: "0 0 4px", labelColor: palette.textMuted },
     Breadcrumb: { fontSize: 13 },
     Dropdown: { borderRadiusLG: 14 },
-    Select: { optionSelectedBg: palette.brandBg, borderRadiusLG: 14 },
+    Select: { optionSelectedBg: palette.brandBg, borderRadiusLG: 14, hoverBorderColor: palette.fieldLineHover, activeOutlineColor: alpha(palette.brand, 0.18) },
     Alert: { borderRadiusLG: 10 },
   },
 };

@@ -10,7 +10,7 @@
   --cat-pink: var(--brand-deep); --cat-violet: var(--pencil); --cat-cyan: var(--text-muted); --cat-amber: var(--warning-text);
   --brand: #1f3d36; --brand-deep: #14281f; --brand-bg: #e6eeeb; --brand-line: #b9cbc4;
   --ink: #161616; --ink-soft: #3b3b39; --text-muted: #6e6e68; --text-faint: #a8a8a1;
-  --line: #e2e2dc; --line-soft: #ebebe6; --line-strong: #cbcbc4;
+  --line: #e2e2dc; --line-soft: #ebebe6; --field-line: #cbcbc4;
   --panel: #ffffff; --workbench: #f3f3f0; --hover: #ecece8; --row-hover: #f7f7f4;
   --success: #3e6a50; --success-text: #335a43; --success-bg: #eaf1ec; --success-line: #c3d8ca;
   --warning: #8a6726; --warning-text: #735520; --warning-bg: #f4efe3; --warning-line: #e0d1ae;

@@ -12,7 +12,7 @@
   --cat-pink: var(--brand-deep); --cat-violet: var(--pencil); --cat-cyan: var(--text-muted); --cat-amber: var(--warning-text);
   --brand: #2d3cff; --brand-deep: #1a22a8; --brand-bg: #e0e3ff; --brand-line: #9aa1ff;
   --ink: #111111; --ink-soft: #2b2b2b; --text-muted: #5d5d5d; --text-faint: #8e8e8e;
-  --line: #111111; --line-soft: #cfd0d3; --line-strong: #111111;
+  --line: #111111; --line-soft: #cfd0d3; --field-line: #111111;
   --panel: #ffffff; --workbench: #ebecee; --hover: #e1e2e5; --row-hover: #f3f3f5;
   --success: #0f7a35; --success-text: #0b5e28; --success-bg: #dcf2e3; --success-line: #9fd4b0;
   --warning: #9a5a00; --warning-text: #7a4700; --warning-bg: #fbecd2; --warning-line: #e8c688;

@@ -371,13 +371,13 @@ function 换人文字(l: 项目详情["logs"][number]): string {
  * 空着的字段（含导入时拿 "-" 占位的，用 有值 判）一律写「—」（11-01 会议：未填的字段都用 — 代替，原来写「待填写X / 待选择X」）；
  * 浅灰、悬停说是哪一格没填。只是显示，不存。0 算填了，由调用方用 !== null 判
  */
-const 待填 = (名: string) => <span style={{ color: "var(--text-faint)" }} title={`未填：${名}`} data-empty={名}>{空值符}</span>;
+const 待填 = (名: string) => <span style={{ color: "var(--empty-fg)" }} title={`未填：${名}`} data-empty={名}>{空值符}</span>;
 /** 这个进程配了必填、还没填的那几格：同样写「—」，悬停写「必填：X，填齐后自动往前推」（10-31 原来写「占位确认」四个字，11-01 会议改成一律 —） */
-const 占位确认 = (名: string) => <span style={{ color: "var(--text-faint)" }} title={`必填：${名}，填齐后自动往前推`} data-empty={名} data-required="">{空值符}</span>;
+const 占位确认 = (名: string) => <span style={{ color: "var(--empty-fg)" }} title={`必填：${名}，填齐后自动往前推`} data-empty={名} data-required="">{空值符}</span>;
 
 /** 项目级别格（企业版 P11）：星 + 档名（「★★★☆ A 重点」）；没分级写「—」（11-01 没填的统一「—」），认不出的原样给 */
 function 级别格(v: string | null) {
-  if (!有值(v)) return <span style={{ color: "var(--text-muted)" }}>{空值符}</span>;
+  if (!有值(v)) return <span style={{ color: "var(--empty-fg)" }}>{空值符}</span>;
   const 档 = 企业级别(v);
   if (!档) return <span>{v}</span>;
   return (
