@@ -116,6 +116,17 @@ export function 挂网页玻璃(开: boolean, el: HTMLElement = document.documen
 const 网页玻璃段 = `if(!/Electron\\//.test(navigator.userAgent)){var g=null;try{g=localStorage.getItem(${JSON.stringify(网页玻璃键)});}catch(_){}var r=false;try{r=matchMedia("(prefers-reduced-transparency: reduce)").matches;}catch(_){}if(g==="true"&&!r){e.classList.add("glass");e.classList.add("web-glass");}}`;
 
 /**
+ * 「格律」设计语言的可切换样板（P1，只在 feat/b33-gelv-p1 这条分支上，不合并）：<html data-gelv> 挂上时
+ * src/app/gelv-preview.css 里 `:root[data-gelv] …` 的规则才生效；不挂时全站和现在一个像素都不差。
+ * 地址栏带 ?gelv=1 / ?gelv=0 时记进这个键；用过一次以后页面底部正中出现「格律 开 / 关」小开关（components/GelvToggle.tsx）。
+ * 0b 批定方向后整段删掉（落地计划第 P1 / 0b 批）
+ */
+export const 格律键 = "ui-gelv";
+
+/** 地址栏 ?gelv=1 / 0 → 记下来；存的是 "1" 就挂 data-gelv。自己包一层 try：拿不到 location / localStorage 时别的外观照常挂 */
+const 格律段 = `try{var gq=/[?&]gelv=([01])(?:&|$)/.exec(location.search);if(gq)localStorage.setItem(${JSON.stringify(格律键)},gq[1]);if(localStorage.getItem(${JSON.stringify(格律键)})==="1")e.dataset.gelv="";}catch(_){}`;
+
+/**
  * 首次绘制前跑的那段。写成字符串塞进 <head>，它跑的时候 React 还没起来，所以不能 import 任何东西；
  * 认值的规矩和 读外观 / 解明暗 同一套（tests/appearance.test.ts 两边对一遍）。
  * Windows 上（网页和桌面端都算）顺手挂 os-win：globals.css 只有「压深默认主题浅灰字」那条不限 .shell-desktop，
@@ -123,4 +134,4 @@ const 网页玻璃段 = `if(!/Electron\\//.test(navigator.userAgent)){var g=null
  * 低配机（CPU ≤ 4 核或内存 ≤ 4GB，浏览器报得出来才算）挂 lite-fx：大面积 backdrop-filter 退回实色（⌘K 弹窗，PR2 外壳），
  * 整页模糊每帧都要重算，集显上会掉帧；报不出来的（老浏览器、Safari 没有 deviceMemory）按正常机器
  */
-export const 外观预设脚本 = `(function(){try{var d=${JSON.stringify(默认外观)},v={};try{v=JSON.parse(localStorage.getItem(${JSON.stringify(外观键)})||"{}")||{};}catch(_){}var P=${JSON.stringify(底色表.map((x) => x.key))},S=${JSON.stringify(主题表.map((x) => x.key))};var e=document.documentElement;e.dataset.paper=P.indexOf(v.paper)>-1?v.paper:d.paper;e.dataset.skin=S.indexOf(v.skin)>-1?v.skin:d.skin;var M=${JSON.stringify(明暗表.map((x) => x.key))},m=M.indexOf(v.mode)>-1?v.mode:d.mode;if(m==="system"){m="light";try{if(matchMedia(${JSON.stringify(系统暗查询)}).matches)m="dark";}catch(_){}}e.dataset.mode=m;if(/Windows/.test(navigator.userAgent))e.classList.add("os-win");try{var hc=navigator.hardwareConcurrency,dm=navigator.deviceMemory;if((hc>0&&hc<=4)||(dm>0&&dm<=4))e.classList.add("lite-fx");}catch(_){}${网页玻璃段}${名单宽预设段}}catch(_){}})();`;
+export const 外观预设脚本 = `(function(){try{var d=${JSON.stringify(默认外观)},v={};try{v=JSON.parse(localStorage.getItem(${JSON.stringify(外观键)})||"{}")||{};}catch(_){}var P=${JSON.stringify(底色表.map((x) => x.key))},S=${JSON.stringify(主题表.map((x) => x.key))};var e=document.documentElement;e.dataset.paper=P.indexOf(v.paper)>-1?v.paper:d.paper;e.dataset.skin=S.indexOf(v.skin)>-1?v.skin:d.skin;var M=${JSON.stringify(明暗表.map((x) => x.key))},m=M.indexOf(v.mode)>-1?v.mode:d.mode;if(m==="system"){m="light";try{if(matchMedia(${JSON.stringify(系统暗查询)}).matches)m="dark";}catch(_){}}e.dataset.mode=m;if(/Windows/.test(navigator.userAgent))e.classList.add("os-win");try{var hc=navigator.hardwareConcurrency,dm=navigator.deviceMemory;if((hc>0&&hc<=4)||(dm>0&&dm<=4))e.classList.add("lite-fx");}catch(_){}${网页玻璃段}${名单宽预设段}${格律段}}catch(_){}})();`;

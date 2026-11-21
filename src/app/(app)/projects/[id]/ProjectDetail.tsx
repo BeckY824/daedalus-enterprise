@@ -1082,7 +1082,7 @@ export default function ProjectDetail({
         </div>
       )}
       {p.必填 && !p.result && (
-        <div style={{ marginTop: 12, color: p.必填.还差.length ? "var(--text-muted)" : "var(--success-text)", overflowWrap: "anywhere" }}>
+        <div className={p.必填.还差.length ? "pd-req-note is-short" : "pd-req-note"} style={{ marginTop: 12, color: p.必填.还差.length ? "var(--text-muted)" : "var(--success-text)", overflowWrap: "anywhere" }}>
           {p.必填.还差.length
             ? `这个节点还差必填：${p.必填.还差.map(必填叫法).join("、")}（「暂无」「-」这类占位不算填了）`
             // 存一下就推（仅上级推下停在已齐的节点）只给 能管项目 的人（load.ts 能改）：他们改项目字段、画像、勾交付、传附件、记回款、记沟通都会按必填推一格，
@@ -1114,8 +1114,8 @@ export default function ProjectDetail({
         : <Button type="link" size="small" disabled={忙} onClick={() => set编辑开着(true)}>编辑</Button>)}
     >
       {p.线索验证 && (
-        <div style={行样}>
-          <span style={键样}>线索验证</span>
+        <div className="pd-kv" style={行样}>
+          <span className="pd-kv-k" style={键样}>线索验证</span>
           <Button type="text" size="small" style={{ paddingInline: 4, marginInlineStart: -4, height: "auto" }} onClick={() => set验证开着(true)} aria-label={`线索验证：${p.线索验证.叫法}，点开查看和操作`} data-testid="lead-verify-row">
             {/* 11-01 会议 §6：结果写成纯字、不套灰框（和下面各行的写法一致） */}
             <span style={{ marginInlineEnd: 4 }} data-testid="lead-verify-result">{p.线索验证.叫法}</span>
@@ -1124,16 +1124,16 @@ export default function ProjectDetail({
           </Button>
         </div>
       )}
-      <div style={行样}><span style={键样}>{b.customer}</span>{p.客户入口 === "只读卡" && p.客户卡名 ? <CustomerReadonlyCard projectId={p.id} name={p.客户卡名.name} company={p.客户卡名.school} /> : p.customer ? <CustomerLink id={p.客户入口 === "文字" ? null : p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>{p.pooled ? "领取后可见" : "无权查看"}</span>}</div>
+      <div className="pd-kv" style={行样}><span className="pd-kv-k" style={键样}>{b.customer}</span>{p.客户入口 === "只读卡" && p.客户卡名 ? <CustomerReadonlyCard projectId={p.id} name={p.客户卡名.name} company={p.客户卡名.school} /> : p.customer ? <CustomerLink id={p.客户入口 === "文字" ? null : p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>{p.pooled ? "领取后可见" : "无权查看"}</span>}</div>
       {p.来源线索 && (
-        <div style={行样}><span style={键样}>来源线索</span><span className="proj-one">{p.来源线索.name ?? <span style={{ color: "var(--text-muted)" }}>已删除的线索</span>}{p.来源线索.convertedAt && <span style={{ color: "var(--text-muted)" }}>（{p.来源线索.convertedAt} 转入）</span>}</span></div>
+        <div className="pd-kv" style={行样}><span className="pd-kv-k" style={键样}>来源线索</span><span className="proj-one">{p.来源线索.name ?? <span style={{ color: "var(--text-muted)" }}>已删除的线索</span>}{p.来源线索.convertedAt && <span style={{ color: "var(--text-muted)" }}>（{p.来源线索.convertedAt} 转入）</span>}</span></div>
       )}
       {/* 联系人名字、职位可能很长：在 1024 宽的项目卡里折行，不顶出卡片 */}
       {/* 11-04：企业版就地改联系人（下拉选本客户的联系人，可清空）；不是企业版照旧只读。
           可清空的就地下拉第一项都是「—」：误点了能选回没填（11-04 用户） */}
       {p.企业版 && 能就地改 && p.customer ? (
-        <div style={行样}>
-          <span style={键样}>联系人</span>
+        <div className="pd-kv" style={行样}>
+          <span className="pd-kv-k" style={键样}>联系人</span>
           <ProjectInlineField<string | null>
             名="联系人"
             值={p.contact?.id ?? null}
@@ -1149,12 +1149,12 @@ export default function ProjectDetail({
           />
         </div>
       ) : (
-        p.contact && <div style={行样}><span style={键样}>联系人</span><span className="proj-one">{空显(p.contact.name)}{p.contact.position ? ` · ${p.contact.position}` : ""}</span></div>
+        p.contact && <div className="pd-kv" style={行样}><span className="pd-kv-k" style={键样}>联系人</span><span className="proj-one">{空显(p.contact.name)}{p.contact.position ? ` · ${p.contact.position}` : ""}</span></div>
       )}
-      {p.contact && p.联系人附件 && <div style={行样}><span style={键样}>附件</span><ContactAttachmentsButton contactId={p.contact.id} 名字={p.contact.name} 起始个数={p.联系人附件.个数} 只读={p.联系人附件.只读} /></div>}
+      {p.contact && p.联系人附件 && <div className="pd-kv" style={行样}><span className="pd-kv-k" style={键样}>附件</span><ContactAttachmentsButton contactId={p.contact.id} 名字={p.contact.name} 起始个数={p.联系人附件.个数} 只读={p.联系人附件.只读} /></div>}
       {p.企业版 && p.level !== undefined && (
-        <div style={行样}>
-          <span style={键样}>级别</span>
+        <div className="pd-kv" style={行样}>
+          <span className="pd-kv-k" style={键样}>级别</span>
           <ProjectInlineField<string | null>
             名="级别"
             值={p.level}
@@ -1169,8 +1169,8 @@ export default function ProjectDetail({
       )}
       {/* 项目标签（F-项目-14）：和级别各一格、各自填，互不带动 */}
       {p.企业版 && p.项目标签 && (
-        <div style={行样}>
-          <span style={键样}>项目标签</span>
+        <div className="pd-kv" style={行样}>
+          <span className="pd-kv-k" style={键样}>项目标签</span>
           <ProjectInlineField<string | null>
             名="项目标签"
             值={p.项目标签.值}
@@ -1183,8 +1183,8 @@ export default function ProjectDetail({
           />
         </div>
       )}
-      <div style={行样}>
-        <span style={键样}>金额</span>
+      <div className="pd-kv" style={行样}>
+        <span className="pd-kv-k" style={键样}>金额</span>
         <ProjectInlineField<钱格值>
           名="金额"
           值={{ 数: p.amount || null, 币: p.currency }}
@@ -1198,8 +1198,8 @@ export default function ProjectDetail({
       </div>
       {p.企业版 && p.成交钱 && (
         <>
-          <div style={行样}>
-            <span style={键样}>定金金额</span>
+          <div className="pd-kv" style={行样}>
+            <span className="pd-kv-k" style={键样}>定金金额</span>
             <ProjectInlineField<钱格值>
               名="定金金额"
               值={{ 数: p.成交钱.depositAmount, 币: p.成交钱.depositCurrency ?? 默认币种 }}
@@ -1210,8 +1210,8 @@ export default function ProjectDetail({
               编辑器={钱编辑器("定金金额")}
             />
           </div>
-          <div style={行样}>
-            <span style={键样}>合同金额</span>
+          <div className="pd-kv" style={行样}>
+            <span className="pd-kv-k" style={键样}>合同金额</span>
             <ProjectInlineField<钱格值>
               名="合同金额"
               值={{ 数: p.成交钱.contractAmount, 币: p.成交钱.contractCurrency ?? 默认币种 }}
@@ -1223,8 +1223,8 @@ export default function ProjectDetail({
             />
           </div>
           {p.项目新字段?.contractStatus !== undefined && (
-            <div style={行样}>
-              <span style={键样}>合同状态</span>
+            <div className="pd-kv" style={行样}>
+              <span className="pd-kv-k" style={键样}>合同状态</span>
               <ProjectInlineField<string | null>
                 名="合同状态"
                 值={p.项目新字段.contractStatus}
@@ -1237,9 +1237,9 @@ export default function ProjectDetail({
               />
             </div>
           )}
-          {p.回款们 && <div style={行样}><span style={键样}>当前回款</span><span className="proj-one">{p.回款们.length ? 合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency)) : 待填("当前回款")}</span></div>}
-          <div style={多行行样}>
-            <span style={键样}>需求描述</span>
+          {p.回款们 && <div className="pd-kv" style={行样}><span className="pd-kv-k" style={键样}>当前回款</span><span className="proj-one">{p.回款们.length ? 合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency)) : 待填("当前回款")}</span></div>}
+          <div className="pd-kv" style={多行行样}>
+            <span className="pd-kv-k" style={键样}>需求描述</span>
             <ProjectInlineField<string>
               名="需求描述"
               规整={(v) => v.trim()}
@@ -1253,8 +1253,8 @@ export default function ProjectDetail({
             />
           </div>
           {p.项目新字段 && "painPoints" in p.项目新字段 && (
-            <div style={多行行样}>
-              <span style={键样}>痛点标注</span>
+            <div className="pd-kv" style={多行行样}>
+              <span className="pd-kv-k" style={键样}>痛点标注</span>
               <ProjectInlineField<string>
                 名="痛点标注"
                 规整={(v) => v.trim()}
@@ -1271,8 +1271,8 @@ export default function ProjectDetail({
         </>
       )}
       {p.企业版 && (
-        <div style={行样}>
-          <span style={键样}>预计成交</span>
+        <div className="pd-kv" style={行样}>
+          <span className="pd-kv-k" style={键样}>预计成交</span>
           <ProjectInlineField<string | null>
             名="预计成交"
             值={p.expectedDealAt ?? null}
@@ -1287,8 +1287,8 @@ export default function ProjectDetail({
       )}
       {/* 指定回复时间（11-17）：客户要求的联系时间点 / 时间段，两格选填；没填「—」 */}
       {p.指定回复 && (
-        <div style={行样}>
-          <span style={键样}>指定回复</span>
+        <div className="pd-kv" style={行样}>
+          <span className="pd-kv-k" style={键样}>指定回复</span>
           <ProjectInlineField<回复两格>
             名="指定回复"
             值={p.指定回复}
@@ -1305,8 +1305,8 @@ export default function ProjectDetail({
       )}
       {/* 指定分配时间（11-17 PR3）：还在待分配、到点由后台分；录入人和能分配的人能改时间、改成现在分配、取消定时 */}
       {p.定时分配 && (
-        <div style={定时行样} data-testid="project-schedule-row">
-          <span style={键样}>定时分配</span>
+        <div className="pd-kv" style={定时行样} data-testid="project-schedule-row">
+          <span className="pd-kv-k" style={键样}>定时分配</span>
           <ProjectInlineField<string>
             名="定时分配"
             值={p.定时分配.时间}
@@ -1335,16 +1335,16 @@ export default function ProjectDetail({
       {/* 嵌在客户页没有项目页头（审查 #2）：页头副标题里的负责人、创建人、创建时间挪到这张卡上 */}
       {嵌入 && (
         <>
-          <div style={行样} data-testid="project-owner-row"><span style={键样}>负责人</span><span className="proj-one" title={负责人说法(p)}>{负责人说法(p)}</span></div>
-          <div style={行样} data-testid="project-creator-row"><span style={键样}>创建人</span><span className="proj-one">{p.creatorName || 空值符}</span></div>
-          <div style={行样} data-testid="project-created-row"><span style={键样}>创建于</span><span className="proj-one">{fmtDateTime(p.createdAt)}</span></div>
+          <div className="pd-kv" style={行样} data-testid="project-owner-row"><span className="pd-kv-k" style={键样}>负责人</span><span className="proj-one" title={负责人说法(p)}>{负责人说法(p)}</span></div>
+          <div className="pd-kv" style={行样} data-testid="project-creator-row"><span className="pd-kv-k" style={键样}>创建人</span><span className="proj-one">{p.creatorName || 空值符}</span></div>
+          <div className="pd-kv" style={行样} data-testid="project-created-row"><span className="pd-kv-k" style={键样}>创建于</span><span className="proj-one">{fmtDateTime(p.createdAt)}</span></div>
         </>
       )}
-      {p.企业版 && p.数据来源 && <div style={行样} data-testid="project-data-source-row"><span style={键样}>数据来源</span><span className="proj-one"><Tag bordered={false} color="purple">{p.数据来源}</Tag></span></div>}
-      {p.企业版 && p.已立项天数 !== undefined && <div style={行样}><span style={键样}>已立项</span>{p.已立项天数 === 0 ? "今天立项" : `${p.已立项天数} 天`}</div>}
+      {p.企业版 && p.数据来源 && <div className="pd-kv" style={行样} data-testid="project-data-source-row"><span className="pd-kv-k" style={键样}>数据来源</span><span className="proj-one"><Tag bordered={false} color="purple">{p.数据来源}</Tag></span></div>}
+      {p.企业版 && p.已立项天数 !== undefined && <div className="pd-kv" style={行样}><span className="pd-kv-k" style={键样}>已立项</span>{p.已立项天数 === 0 ? "今天立项" : `${p.已立项天数} 天`}</div>}
       {p.企业版 && p.项目来源 !== undefined && (
-        <div style={行样}>
-          <span style={键样}>项目来源</span>
+        <div className="pd-kv" style={行样}>
+          <span className="pd-kv-k" style={键样}>项目来源</span>
           {/*
             项目来源（P-删-03，11-10 起同客户来源）：项目自己的来源有值就锁，这里只读；空着（跟客户来源走）的可以就地补一次，
             补了就锁、不给清空。服务端 改项目 同样拒换、拒清空，这里只是辅助。显示等 refresh 带回服务端拼好的名字
@@ -1362,8 +1362,8 @@ export default function ProjectDetail({
         </div>
       )}
       {p.企业版 && p.bizLine !== undefined && (
-        <div style={行样}>
-          <span style={键样}>业务线</span>
+        <div className="pd-kv" style={行样}>
+          <span className="pd-kv-k" style={键样}>业务线</span>
           {/* 11-04 就地改：三选一，不能清空（新建必填）；改线不换负责人 */}
           <ProjectInlineField<string | null>
             名="业务线"
@@ -1380,8 +1380,8 @@ export default function ProjectDetail({
       {p.企业版 && p.所在地 && (
         <>
           {/* 11-04 就地改：区域四格 + 详细地址一起改、一起存（和新建项目同一个地址组件）；地址看像别的业务线时提示一句，不自动改线 */}
-          <div style={行样}>
-            <span style={键样}>区域</span>
+          <div className="pd-kv" style={行样}>
+            <span className="pd-kv-k" style={键样}>区域</span>
             <ProjectInlineField<客户地址 & { location: string | null }>
               名="区域"
               值={p.所在地}
@@ -1409,11 +1409,11 @@ export default function ProjectDetail({
         </>
       )}
       {p.historyOwners.length > 0 && (
-        <div style={行样}><span style={键样}>历史</span><span className="proj-one" title={`历史负责人（把这个项目放回过公海的人）：${p.historyOwners.join("、")}`}>{p.historyOwners.join("、")}</span></div>
+        <div className="pd-kv" style={行样}><span className="pd-kv-k" style={键样}>历史</span><span className="proj-one" title={`历史负责人（把这个项目放回过公海的人）：${p.historyOwners.join("、")}`}>{p.historyOwners.join("、")}</span></div>
       )}
       {(p.nextStepText || p.nextStepAt) && !p.pooled && (
-        <div style={行样}>
-          <span style={键样}>下一步</span>
+        <div className="pd-kv" style={行样}>
+          <span className="pd-kv-k" style={键样}>下一步</span>
           <span className="proj-one">
             {p.nextStepText}
             {p.nextStepText && p.nextStepAt && <span style={{ color: "var(--text-muted)" }}> · </span>}
@@ -1422,8 +1422,8 @@ export default function ProjectDetail({
         </div>
       )}
       {能就地改 ? (
-        <div style={多行行样}>
-          <span style={键样}>备注</span>
+        <div className="pd-kv" style={多行行样}>
+          <span className="pd-kv-k" style={键样}>备注</span>
           <ProjectInlineField<string>
             名="备注"
             规整={(v) => v.trim()}
@@ -1447,8 +1447,8 @@ export default function ProjectDetail({
           缺着的必填在「完成节点」框里也能当场填 */}
       {p.企业版 && 备货物流 && (
         <div className="proj-stock-rows">
-          <div style={行样}>
-            <span style={键样}>备货状态</span>
+          <div className="pd-kv" style={行样}>
+            <span className="pd-kv-k" style={键样}>备货状态</span>
             <ProjectInlineField<string | null>
               名="备货状态"
               值={备货物流.备货状态}
@@ -1460,8 +1460,8 @@ export default function ProjectDetail({
               )}
             />
           </div>
-          <div style={行样}>
-            <span style={键样}>物流状态</span>
+          <div className="pd-kv" style={行样}>
+            <span className="pd-kv-k" style={键样}>物流状态</span>
             <ProjectInlineField<string | null>
               名="物流状态"
               值={备货物流.物流状态.值}
@@ -1473,8 +1473,8 @@ export default function ProjectDetail({
               )}
             />
           </div>
-          <div style={行样}>
-            <span style={键样}>物流单号</span>
+          <div className="pd-kv" style={行样}>
+            <span className="pd-kv-k" style={键样}>物流单号</span>
             <ProjectInlineField<string>
               名="物流单号"
               规整={(v) => v.trim()}
@@ -1574,9 +1574,9 @@ export default function ProjectDetail({
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <FollowTypeCell type={f.type} method={f.method} />
               {f.initiator && <Tag bordered={false}>{f.initiator}</Tag>}
-              <Tag>{f.node}</Tag>
+              <Tag className="gelv-dot">{f.node}</Tag>
               {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
-              <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
+              <span className="pd-follow-meta" style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>{f.who} · {fmtDateTime(f.occurredAt)}</span>
               {f.已修改 && <span data-testid="follow-edited" title="这条沟通提交后改过，改了什么见操作日志" className="proj-fu-edited">已修改</span>}
               {(能改这条(f) || p.可删沟通 || 卡点?.能发) && (
                 // 「…」放在这一行最右：发卡点、修改、删除（10-30 发卡点从行上收进来）；删除 = 这一条下面长出确认条（dt.talkdel），见 删沟通条
@@ -1607,7 +1607,7 @@ export default function ProjectDetail({
                 值={f.content}
                 能改={p.企业版 && 能改这条(f)}
                 多行
-                显示={(v) => <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{v}</div>}
+                显示={(v) => <div className="ty-prose" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{v}</div>}
                 存={(v) => 存沟通正文(f, v)}
                 编辑器={({ 草稿, set草稿, 忙 }) => <Input.TextArea aria-label="沟通内容" autoFocus autoSize={{ minRows: 3, maxRows: 14 }} disabled={忙} value={草稿} onChange={(e) => set草稿(e.target.value)} />}
               />

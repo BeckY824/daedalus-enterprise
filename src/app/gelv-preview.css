@@ -1,0 +1,322 @@
+/*
+ * 「格律」设计语言 · 可切换样板 P1（全局层 + 客户详情 /customers/[id]）
+ * 规范：~/Opensource_CRM/05-反馈与复盘/设计语言调研/草稿-设计语言规范-20261121.md（「格律」，含第 11 / 12 节）
+ * 落地计划：同目录 草稿-设计语言落地计划-20261121.md「第 P1 / P2 批」
+ *
+ * 开关：<html data-gelv>（lib/appearance.ts 的 格律段 在首次绘制前挂；地址栏 ?gelv=1 / ?gelv=0 记进 localStorage「ui-gelv」；
+ *       用过一次以后页面底部出现「格律 开 / 关」，components/GelvToggle.tsx）。
+ * 规矩：
+ *   - 这里的每一条都挂在 :root[data-gelv] 下；不开就一条都不生效，全站和现在一个像素都不差（.gelv-toggle 除外：它只在存过键的浏览器里画）
+ *   - 前缀写成 :root[data-gelv][data-skin][data-mode]（权重 0,4,0）：要压过 skins/shared.css 接 antd 变量那层（0,5,0 的块再加 0,1,0），
+ *     也压过现有三四层类名的详情页规则；个别对着行内样式的地方才用 !important（P 批允许，0b 去掉前缀时一并收掉）
+ *   - 不写色值（色板 hex 在 globals.css :root 和 dark.css / skins/tech.css 的 token 块里）；字号只写 var(--fs-*) / var(--ty-*-fs)；圆角只写 var(--r-*)
+ *   - 结构层（角色字号、表格密度、字重）所有主题都换；气质层（圆角、阴影、字体栈）只换「现状」，别的主题保留自己的（规范第 8 节）
+ *   - 只改样子，不碰行为：按钮顺序、文案、确认方式、节点条压缩、手机卡片化都不在这一批（落地计划「不做」）
+ */
+
+/* ======================================================================
+   0. 开关本身（只在用过 ?gelv 的浏览器里出现）
+   ====================================================================== */
+.gelv-toggle {
+  position: fixed; left: 50%; bottom: 12px; translate: -50% 0; z-index: 2100;
+  display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 5px 0 12px;
+  border: 1px solid var(--line-strong); border-radius: var(--r-ctl); background: var(--panel); color: var(--ink);
+  font: inherit; font-size: var(--fs-note); line-height: 20px; box-shadow: var(--shadow-pop); cursor: pointer;
+}
+.gelv-toggle-k { font-weight: 600; }
+.gelv-toggle-v { min-width: 30px; height: 22px; line-height: 22px; border-radius: 4px; background: var(--hover); color: var(--ink-soft); text-align: center; }
+.gelv-toggle-v.is-on { background: var(--brand); color: var(--on-ink); }
+.gelv-toggle:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+@media (max-width: 767px) { .gelv-toggle { bottom: calc(72px + env(safe-area-inset-bottom, 0px)); } }
+@media print { .gelv-toggle { display: none; } }
+
+/* ======================================================================
+   1. 档位层 + 角色层（规范 2.1 / 2.2 / 4.1 / 4.4）：所有主题共用的结构层
+   ====================================================================== */
+:root[data-gelv][data-skin][data-mode] {
+  /* 档位层：字号、行高、字重（手机专用的 15 / 17 / 18 / 24、行高 26 只给第 2 段手机角色块用） */
+  --fs-12: 12px; --fs-13: 13px; --fs-14: 14px; --fs-16: 16px; --fs-20: 20px; --fs-22: 22px; --fs-26: 26px;
+  --fs-15: 15px; --fs-17: 17px; --fs-18: 18px; --fs-24: 24px;
+  --lh-18: 18px; --lh-20: 20px; --lh-22: 22px; --lh-24: 24px; --lh-26: 26px; --lh-28: 28px; --lh-30: 30px; --lh-32: 32px;
+  --fw-regular: 400; --fw-strong: 600;
+  /* 间距：4 基数，6 是半步 */
+  --sp-2: 2px; --sp-4: 4px; --sp-6: 6px; --sp-8: 8px; --sp-12: 12px; --sp-16: 16px; --sp-20: 20px; --sp-24: 24px; --sp-32: 32px; --sp-40: 40px; --sp-48: 48px;
+  /* 圆角新加的两档：勾选框 / 小色块 4，胶囊 / 小按钮 6 */
+  --r-xs: 4px; --r-sm: 6px;
+
+  /* 角色层：每个角色三个变量，主题和手机只改这一层。页面标题、大数字是展示类，跟主题的 --fs-title / --fs-num 走（规范 8.1 气质层） */
+  --ty-page-fs: var(--fs-title);  --ty-page-lh: var(--lh-30);    --ty-page-fw: var(--fw-strong);
+  --ty-section-fs: var(--fs-16);  --ty-section-lh: var(--lh-24); --ty-section-fw: var(--fw-strong);
+  --ty-sub-fs: var(--fs-14);      --ty-sub-lh: var(--lh-22);     --ty-sub-fw: var(--fw-strong);
+  --ty-body-fs: var(--fs-14);     --ty-body-lh: var(--lh-22);    --ty-body-fw: var(--fw-regular);
+  --ty-prose-fs: var(--fs-14);    --ty-prose-lh: var(--lh-24);   --ty-prose-fw: var(--fw-regular);
+  --ty-cell-fs: var(--fs-14);     --ty-cell-lh: var(--lh-22);    --ty-cell-fw: var(--fw-regular);
+  --ty-th-fs: var(--fs-13);       --ty-th-lh: var(--lh-20);      --ty-th-fw: var(--fw-regular);
+  --ty-label-fs: var(--fs-13);    --ty-label-lh: var(--lh-22);   --ty-label-fw: var(--fw-regular);
+  --ty-note-fs: var(--fs-13);     --ty-note-lh: var(--lh-20);    --ty-note-fw: var(--fw-regular);
+  --ty-meta-fs: var(--fs-12);     --ty-meta-lh: var(--lh-18);    --ty-meta-fw: var(--fw-regular);
+  --ty-chip-fs: var(--fs-12);     --ty-chip-lh: var(--lh-20);    --ty-chip-fw: var(--fw-regular);
+  --ty-kpi-fs: var(--fs-num);     --ty-kpi-lh: var(--lh-32);     --ty-kpi-fw: var(--fw-strong);
+  --ty-kpi-m-fs: var(--fs-20);    --ty-kpi-m-lh: var(--lh-28);   --ty-kpi-m-fw: var(--fw-strong);
+  --ty-input-fs: var(--fs-14);
+
+  /* 表格一种密度（规范 6.3）：表头 36 → 40；账簿 / 高级 44、科技 36 也收回 40（规范 8.1 审改） */
+  --th-h: 40px; --row-h: 40px; --row-h-compact: 32px;
+  /* 强调色拆「填色」和「文字」（规范 3.2）：浅色下取同一个值 */
+  --accent-fill: var(--brand); --accent-fill-hover: var(--brand-deep); --accent-text: var(--brand); --accent-text-strong: var(--brand-deep);
+  /* 三档阴影：主题没给就借它自己的卡片影 / 浮层影（第 1b 段给「现状」写真值） */
+  --shadow-1: var(--shadow-card); --shadow-2: var(--shadow-pop); --shadow-3: var(--shadow-pop);
+  --focus-ring: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent-fill);
+  /* 字段名列宽只有两档（规范 6.4）：4 个字 13×4+8，6 个字 13×6+8 */
+  --fl-k4: 60px; --fl-k6: 86px;
+}
+
+/* 1b. 「现状」的气质层（规范 8.2：圆角 14→12、胶囊圆头→6、卡片薄影→纯线、字体栈去 Inter）。别的主题不动 */
+:root[data-gelv][data-skin="now"][data-mode] {
+  --r-pop: 12px;
+  --r-tag: var(--r-sm);
+  --shadow-1: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-2: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 4px 12px -2px rgba(0, 0, 0, 0.12);
+  --shadow-3: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 12px 32px -4px rgba(0, 0, 0, 0.18);
+  --shadow-card: none;
+  --card-line: var(--line);
+  --shadow-pop: var(--shadow-2);
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI",
+             "PingFang SC", "Hiragino Sans GB", "Daedalus YaHei", "Microsoft YaHei UI", "Microsoft YaHei",
+             "Noto Sans SC", "Source Han Sans SC", Roboto, sans-serif;
+}
+/* 深色：阴影几乎看不见，浮层靠更亮的底 + 1px 白 8% 轮廓分开（规范 3.5 第 3 条） */
+:root[data-gelv][data-skin="now"][data-mode="dark"] {
+  --shadow-1: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --shadow-2: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-3: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 16px 40px rgba(0, 0, 0, 0.6);
+}
+
+/* ======================================================================
+   2. 手机 390 的放大规则（规范 2.6）：只改角色层，组件不动
+   ====================================================================== */
+@media (max-width: 767px) {
+  :root[data-gelv][data-skin][data-mode] {
+    --ty-page-fs: min(var(--fs-title), var(--fs-20)); --ty-page-lh: var(--lh-28);
+    --ty-section-fs: var(--fs-17);
+    --ty-sub-fs: var(--fs-15);   --ty-sub-lh: var(--lh-24);
+    --ty-body-fs: var(--fs-15);  --ty-body-lh: var(--lh-24);
+    --ty-cell-fs: var(--fs-15);  --ty-cell-lh: var(--lh-24);
+    --ty-prose-fs: var(--fs-15); --ty-prose-lh: var(--lh-26);
+    --ty-kpi-fs: min(var(--fs-num), var(--fs-24));
+    --ty-kpi-m-fs: var(--fs-18);
+    --ty-input-fs: var(--fs-16);
+  }
+}
+
+/* ======================================================================
+   3. 角色类 .ty-*（规范 2.2）。数字一律等宽
+   ====================================================================== */
+:root[data-gelv][data-skin][data-mode] .ty-page    { font-size: var(--ty-page-fs);    line-height: var(--ty-page-lh);    font-weight: var(--ty-page-fw);    color: var(--ink); letter-spacing: 0; }
+:root[data-gelv][data-skin][data-mode] .ty-section { font-size: var(--ty-section-fs); line-height: var(--ty-section-lh); font-weight: var(--ty-section-fw); color: var(--ink); letter-spacing: 0; }
+:root[data-gelv][data-skin][data-mode] .ty-sub     { font-size: var(--ty-sub-fs);     line-height: var(--ty-sub-lh);     font-weight: var(--ty-sub-fw);     color: var(--ink); }
+:root[data-gelv][data-skin][data-mode] .ty-body    { font-size: var(--ty-body-fs);    line-height: var(--ty-body-lh);    font-weight: var(--ty-body-fw);    color: var(--ink); }
+:root[data-gelv][data-skin][data-mode] .ty-prose   { font-size: var(--ty-prose-fs);   line-height: var(--ty-prose-lh);   font-weight: var(--ty-prose-fw);   color: var(--ink-soft); }
+:root[data-gelv][data-skin][data-mode] .ty-cell    { font-size: var(--ty-cell-fs);    line-height: var(--ty-cell-lh);    font-weight: var(--ty-cell-fw);    color: var(--ink); }
+:root[data-gelv][data-skin][data-mode] .ty-th      { font-size: var(--ty-th-fs);      line-height: var(--ty-th-lh);      font-weight: var(--ty-th-fw);      color: var(--text-muted); }
+:root[data-gelv][data-skin][data-mode] .ty-label   { font-size: var(--ty-label-fs);   line-height: var(--ty-label-lh);   font-weight: var(--ty-label-fw);   color: var(--text-muted); }
+:root[data-gelv][data-skin][data-mode] .ty-note    { font-size: var(--ty-note-fs);    line-height: var(--ty-note-lh);    font-weight: var(--ty-note-fw);    color: var(--text-muted); }
+:root[data-gelv][data-skin][data-mode] .ty-meta    { font-size: var(--ty-meta-fs);    line-height: var(--ty-meta-lh);    font-weight: var(--ty-meta-fw);    color: var(--text-muted); font-variant-numeric: tabular-nums; }
+:root[data-gelv][data-skin][data-mode] .ty-chip    { font-size: var(--ty-chip-fs);    line-height: var(--ty-chip-lh);    font-weight: var(--ty-chip-fw); }
+:root[data-gelv][data-skin][data-mode] .ty-kpi     { font-size: var(--ty-kpi-fs);     line-height: var(--ty-kpi-lh);     font-weight: var(--ty-kpi-fw);     color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: var(--num-track); }
+:root[data-gelv][data-skin][data-mode] .ty-kpi-m   { font-size: var(--ty-kpi-m-fs);   line-height: var(--ty-kpi-m-lh);   font-weight: var(--ty-kpi-m-fw);   color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* ======================================================================
+   4. antd 映射（规范 7.2）：只覆盖 --ant-* 变量，theme.ts 一个值不动
+   ====================================================================== */
+:root[data-gelv][data-skin][data-mode] .css-var-dd {
+  --ant-font-family: var(--font-ui);
+  --ant-color-bg-elevated: var(--bg-elevated);
+  --ant-color-split: var(--line-soft);
+  --ant-font-weight-strong: 600;
+}
+:root[data-gelv][data-skin="now"][data-mode] .css-var-dd {
+  --ant-box-shadow: var(--shadow-3);
+  --ant-box-shadow-secondary: var(--shadow-2);
+  --ant-box-shadow-tertiary: none;
+}
+/* 按钮字 500 → 400（Windows 上从粗体变常规，可见变化）；小按钮圆角 6 只给「现状」 */
+:root[data-gelv][data-skin][data-mode] .css-var-dd:is(.ant-btn, .ant-btn-css-var) { --ant-button-font-weight: 400; }
+:root[data-gelv][data-skin="now"][data-mode] .css-var-dd:is(.ant-btn, .ant-btn-css-var) { --ant-border-radius-sm: var(--r-sm); }
+/* 卡片：圆角 14 → 10，卡头 15 → 16 */
+:root[data-gelv][data-skin][data-mode] .css-var-dd:is(.ant-card, .ant-card-css-var) {
+  --ant-border-radius-lg: var(--r-card);
+  --ant-card-header-font-size: var(--ty-section-fs);
+  --ant-card-header-font-size-sm: var(--ty-sub-fs);
+}
+/* 浮层：弹窗标题 15 → 16；弹窗、抽屉、气泡、下拉圆角走 --r-pop（现状 14 → 12） */
+:root[data-gelv][data-skin][data-mode] .css-var-dd:is(.ant-modal, .ant-modal-css-var) { --ant-modal-title-font-size: var(--ty-section-fs); --ant-border-radius-lg: var(--r-pop); }
+:root[data-gelv][data-skin][data-mode] .css-var-dd:is(.ant-drawer, .ant-drawer-css-var, .ant-popover, .ant-popover-css-var, .ant-dropdown, .ant-dropdown-css-var, .ant-select, .ant-select-css-var) { --ant-border-radius-lg: var(--r-pop); }
+/* 菜单项 34 → 36、图标 15 → 16 */
+:root[data-gelv][data-skin][data-mode] .css-var-dd:is(.ant-menu, .ant-menu-css-var) { --ant-menu-item-height: 36px; --ant-menu-icon-size: 16px; }
+/* 表格：表头圆角 14 → 10、表头灰字；内边距回到 6 / 4，高度由 --th-h / --row-h 撑 */
+:root[data-gelv][data-skin][data-mode] .css-var-dd:is(.ant-table, .ant-table-css-var) {
+  --ant-table-header-border-radius: var(--r-card);
+  --ant-table-header-color: var(--text-muted);
+  --ant-table-cell-padding-block: 6px; --ant-table-cell-padding-block-md: 6px; --ant-table-cell-padding-block-sm: 4px; --ant-table-cell-padding-inline: 12px;
+}
+/* 分段控件：选中块白底 + 贴面影 */
+:root[data-gelv][data-skin][data-mode] .css-var-dd:is(.ant-segmented, .ant-segmented-css-var) { --ant-segmented-item-selected-bg: var(--panel); }
+
+/* ======================================================================
+   5. 全局能换掉的（落地计划 P1 第 2 条）
+   ====================================================================== */
+/* 5.1 表头 40、表头字 13/400 灰、不加字距；表格两行 !important 在开关下盖回（规范 7.3「解开」） */
+:root[data-gelv][data-skin][data-mode] .ant-table-thead > tr > th {
+  font-size: var(--ty-th-fs); line-height: var(--ty-th-lh); font-weight: var(--ty-th-fw); letter-spacing: 0;
+  padding-block: 6px !important; border-bottom: 1px solid var(--line);
+}
+:root[data-gelv][data-skin][data-mode] .ant-table-tbody > tr > td { padding-block: 6px !important; font-variant-numeric: tabular-nums; }
+
+/* 5.2 卡片纯线（现状：发丝描边 + 两层薄影 → 1px --card-line，见 1b）；圆角统一 10（原来卡片外壳走 --r-pop 14）。
+   卡头和卡身之间不画线，列表型卡片（沟通记录）例外留一条 --line-soft（规范 6.2） */
+:root[data-gelv][data-skin][data-mode] :is(.home-card, .btodo-list, .rkpi, .chan-dash-kpi, .chan-dash-cell, .chan-block, .set-body, .start, .auth-solo .auth-form, .rec-card:not(.rec-rail-blocks, .rec-col-blocks), .bill-plan, .bill-pay, .cli-card, .cli-ck .cli-frame) { border-radius: var(--r-card); }
+:root[data-gelv][data-skin][data-mode] .ant-card .ant-card-head { border-bottom-color: transparent !important; }
+:root[data-gelv][data-skin][data-mode] .ant-card.cd-comm > .ant-card-head { border-bottom-color: var(--line-soft) !important; }
+:root[data-gelv][data-skin][data-mode] .ant-card .ant-card-head-title { letter-spacing: 0; }
+
+/* 5.3 标签胶囊 Chip（规范 3.4）：高 22、圆角 6、左右 6、12/20/400、浅底 + 同色 1px 内描边 + 深色字。
+   antd 预设色接到 10 色色板；没给色的是灰。三重类照现有 .ant-tag 那段（globals.css「标签」）的写法，压过 antd 预设色 */
+:root[data-gelv][data-skin][data-mode] .ant-tag.ant-tag.ant-tag {
+  display: inline-flex; align-items: center; height: 22px; padding-inline: var(--sp-6); border: 0; border-radius: var(--r-tag);
+  font-size: var(--ty-chip-fs); line-height: var(--ty-chip-lh); font-weight: var(--ty-chip-fw); vertical-align: middle;
+}
+:root[data-gelv][data-skin][data-mode] .ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled) { --chip-bg: var(--tag-gray-bg); --chip-line: var(--tag-gray-line); --chip-text: var(--tag-gray-text); --chip-dot: var(--tag-gray-dot);
+  background: var(--chip-bg); color: var(--chip-text); box-shadow: inset 0 0 0 1px var(--chip-line); }
+:root[data-gelv][data-skin][data-mode] .ant-tag.ant-tag.ant-tag:is(.ant-tag-blue, .ant-tag-geekblue, .ant-tag-processing, .tag-key) { --chip-bg: var(--tag-blue-bg); --chip-line: var(--tag-blue-line); --chip-text: var(--tag-blue-text); --chip-dot: var(--tag-blue-dot); }
+:root[data-gelv][data-skin][data-mode] .ant-tag.ant-tag.ant-tag:is(.ant-tag-green, .ant-tag-success, .ant-tag-lime) { --chip-bg: var(--tag-green-bg); --chip-line: var(--tag-green-line); --chip-text: var(--tag-green-text); --chip-dot: var(--tag-green-dot); }
+:root[data-gelv][data-skin][data-mode] .ant-tag.ant-tag.ant-tag:is(.ant-tag-gold, .ant-tag-yellow) { --chip-bg: var(--tag-yellow-bg); --chip-line: var(--tag-yellow-line); --chip-text: var(--tag-yellow-text); --chip-dot: var(--tag-yellow-dot); }
+:root[data-gelv][data-skin][data-mode] .ant-tag.ant-tag.ant-tag:is(.ant-tag-orange, .ant-tag-warning) { --chip-bg: var(--tag-orange-bg); --chip-line: var(--tag-orange-line); --chip-text: var(--tag-orange-text); --chip-dot: var(--tag-orange-dot); }
+:root[data-gelv][data-skin][data-mode] .ant-tag.ant-tag.ant-tag:is(.ant-tag-red, .ant-tag-volcano, .ant-tag-error) { --chip-bg: var(--tag-red-bg); --chip-line: var(--tag-red-line); --chip-text: var(--tag-red-text); --chip-dot: var(--tag-red-dot); }
+:root[data-gelv][data-skin][data-mode] .ant-tag.ant-tag.ant-tag:is(.ant-tag-magenta, .ant-tag-pink) { --chip-bg: var(--tag-pink-bg); --chip-line: var(--tag-pink-line); --chip-text: var(--tag-pink-text); --chip-dot: var(--tag-pink-dot); }
+:root[data-gelv][data-skin][data-mode] .ant-tag.ant-tag.ant-tag.ant-tag-purple { --chip-bg: var(--tag-purple-bg); --chip-line: var(--tag-purple-line); --chip-text: var(--tag-purple-text); --chip-dot: var(--tag-purple-dot); }
+:root[data-gelv][data-skin][data-mode] .ant-tag.ant-tag.ant-tag.ant-tag-cyan { --chip-bg: var(--tag-cyan-bg); --chip-line: var(--tag-cyan-line); --chip-text: var(--tag-cyan-text); --chip-dot: var(--tag-cyan-dot); }
+/* 公海标签：虚线只许给 AI 未确认的内容（规范 3.6），改成灰胶囊 */
+:root[data-gelv][data-skin][data-mode] .ant-tag.ant-tag.ant-tag.pool-tag { border-style: none; }
+:root[data-gelv][data-skin][data-mode] .ant-tag :is(.anticon, .ant-tag-close-icon) { color: inherit; opacity: .7; }
+
+/* 5.4 状态 StatusDot（规范 3.4 / 6.7）：6px 圆点（填色档）+ 墨字，不铺底、不描边。挂 .gelv-dot 的 <Tag>（客户状态、沟通的节点） */
+:root[data-gelv][data-skin][data-mode] .ant-tag.ant-tag.ant-tag.gelv-dot {
+  gap: var(--sp-6); height: auto; padding-inline: 0; background: transparent; box-shadow: none; color: var(--ink);
+  font-size: var(--ty-note-fs); line-height: var(--ty-note-lh);
+}
+:root[data-gelv][data-skin][data-mode] .ant-tag.gelv-dot::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--chip-dot, var(--tag-gray-dot)); opacity: 1; }
+/* 科技主题给标签前后加了方括号（skins/tech.css），圆点占了前一个，后一个也去掉 */
+:root[data-gelv][data-skin][data-mode] .ant-tag.gelv-dot::after { content: none; }
+
+/* 5.5 链接主列：500 → 600（Windows 上 500 已是粗体，两边对齐成两档）；悬停变 --accent-text */
+:root[data-gelv][data-skin][data-mode] .link-strong { font-weight: 600; }
+:root[data-gelv][data-skin][data-mode] .link-strong:hover { color: var(--accent-text); }
+
+/* 5.6 左栏 / 名单（规范 6.10、2.3）：名单标题 15 → 16、字距归零；页签选中不靠加粗；分组头是小标题；计数、箭头不用 --text-faint 当字 */
+:root[data-gelv][data-skin][data-mode] :is(.pane-t, .pane-n) { letter-spacing: 0; }
+:root[data-gelv][data-skin][data-mode] .pane-t { font-size: var(--ty-section-fs); line-height: var(--ty-section-lh); }
+:root[data-gelv][data-skin][data-mode] .rail-item b { letter-spacing: 0; }
+:root[data-gelv][data-skin][data-mode] .roster-tab { font-weight: 400; }
+:root[data-gelv][data-skin][data-mode] .roster-sec { font-size: var(--ty-sub-fs); line-height: var(--ty-sub-lh); font-weight: var(--ty-sub-fw); color: var(--ink); }
+:root[data-gelv][data-skin][data-mode] :is(.roster-car, .roster-cnt) { color: var(--text-muted); font-weight: 400; }
+:root[data-gelv][data-skin][data-mode] .roster-cnt { font-variant-numeric: tabular-nums; }
+
+/* 5.7 分段控件（客户页沟通卡头「本项目 / 这位客户全部」）：槽 8、滑块 6（同心：8 − 2）；可点的字不小于 13；滑块贴面影 */
+:root[data-gelv][data-skin][data-mode] .cd-seg { border-radius: var(--r-ctl); }
+:root[data-gelv][data-skin][data-mode] .cd-seg > button { border-radius: var(--r-sm); font-size: var(--ty-note-fs); }
+:root[data-gelv][data-skin][data-mode] .cd-seg > button.on { box-shadow: var(--shadow-1); }
+/* 阶段条的滑块同理；没到的节点名不用 --text-faint（2.21:1，不合格），用 muted */
+:root[data-gelv][data-skin][data-mode] .proj-stage-thumb { box-shadow: var(--shadow-1); }
+:root[data-gelv][data-skin][data-mode] .proj-stage-node { color: var(--text-muted); }
+:root[data-gelv][data-skin][data-mode] .proj-stage-tab.is-away { color: var(--text-muted); }
+
+/* ======================================================================
+   6. 客户详情 /customers/[id] 一页做全（落地计划 P1 第 3 条；规范 6.1 / 6.2 / 6.4 / 6.15）
+   ====================================================================== */
+/* 6.1 详情页的 --dt-* 别名（globals.css「详情页字号」那段，一百多处在用）先接到角色上：模块标题 15 → 16 */
+:root[data-gelv][data-skin][data-mode] :is(.rec-page, .proj-wrap) {
+  --dt-title: var(--ty-page-fs); --dt-module: var(--ty-section-fs); --dt-body: var(--ty-body-fs); --dt-label: var(--ty-label-fs); --dt-aux: var(--ty-note-fs);
+}
+
+/* 6.2 记录头（规范 6.1）：客户名 ty-page，字距归零；下面一行编号 · 负责人是说明 */
+:root[data-gelv][data-skin][data-mode] .rec-page .rec-head-name { line-height: var(--ty-page-lh); letter-spacing: 0; }
+:root[data-gelv][data-skin][data-mode] .rec-page .rec-head-sub { font-size: var(--ty-note-fs); line-height: var(--ty-note-lh); font-variant-numeric: tabular-nums; }
+:root[data-gelv][data-skin][data-mode] .rec-page .rec-head-av { font-size: var(--ty-section-fs); }
+:root[data-gelv][data-skin][data-mode] .rec-page .rec-tags-n { font-size: var(--ty-note-fs); line-height: var(--ty-note-lh); }
+
+/* 6.3 卡片（规范 6.2）：卡头 48、16/600；卡身内边距 16（左栏窄卡里字段行自带 8 的悬停底，外面留 8） */
+:root[data-gelv][data-skin][data-mode] .rec-page .rec-mod > .ant-card-head,
+:root[data-gelv][data-skin][data-mode] .rec-page .ant-card > .ant-card-head { line-height: var(--ty-section-lh); letter-spacing: 0; }
+:root[data-gelv][data-skin][data-mode] .rec-page.ui-v2 :is(.rec-rail-blocks, .rec-col-blocks) > .proj-fold + .proj-fold { margin-top: var(--sp-16); }
+
+/* 6.4 字段（规范 6.4 FieldList）：字段名 ty-label 13/22 灰、值 ty-body 14/22 墨，两边同一行高、基线对齐；
+   字段名列宽只有 60 / 86 两档。左栏客户资料最长的内置字段名是五个字（销售负责人、历史负责人），取 86；项目资料、项目画像四个字，取 60 */
+:root[data-gelv][data-skin][data-mode] .rec-page .rec-field { grid-template-columns: var(--fl-k6) minmax(0, 1fr); }
+/* 窄容器（< 360）改「字段名在上、值在下」，中间隔 2（规范 6.4，照旧用容器查询）：左栏卡只有 260 宽，86 的字段名列会把号码挤成省略号 */
+:root[data-gelv][data-skin][data-mode] .rec-page .rec-rail-blocks .rec-mod > .ant-card-body { container: gelv-fl / inline-size; }
+@container gelv-fl (max-width: 359px) {
+  :root[data-gelv][data-skin][data-mode] .rec-page .rec-field { grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); }
+}
+:root[data-gelv][data-skin][data-mode] .rec-page .rec-field.is-multi,
+:root[data-gelv][data-skin][data-mode] .rec-page .rec-field.cn-editing { grid-template-columns: minmax(0, 1fr); }
+:root[data-gelv][data-skin][data-mode] .rec-page :is(.rec-field-k, .rec-contact-k) { font-size: var(--ty-label-fs); line-height: var(--ty-label-lh); font-weight: var(--ty-label-fw); color: var(--text-muted); }
+:root[data-gelv][data-skin][data-mode] .rec-page .rec-field-v { font-size: var(--ty-body-fs); line-height: var(--ty-body-lh); color: var(--ink); font-variant-numeric: tabular-nums; }
+/* 空值「—」和一行空状态：不用 --text-faint 当字（规范 3.1 / 6.8），一行空状态是 ty-note */
+:root[data-gelv][data-skin][data-mode] .rec-page .rec-field-empty { color: var(--text-muted); }
+:root[data-gelv][data-skin][data-mode] .rec-page .rec-empty { font-size: var(--ty-note-fs); line-height: var(--ty-note-lh); color: var(--text-muted); }
+:root[data-gelv][data-skin][data-mode] .rec-page [data-empty] { color: var(--text-muted) !important; }
+:root[data-gelv][data-skin][data-mode] .rec-page .rec-field-hint { font-size: var(--ty-meta-fs); line-height: var(--ty-meta-lh); }
+:root[data-gelv][data-skin][data-mode] .rec-page .rec-field-more { font-size: var(--ty-note-fs); }
+
+/* 项目资料（ProjectDetail 的「行样 / 键样」，挂 .pd-kv / .pd-kv-k）：行距 8、字段名 60 一档、13/22 灰 */
+:root[data-gelv][data-skin][data-mode] .pd-kv { gap: var(--sp-8) !important; align-items: baseline !important; }
+:root[data-gelv][data-skin][data-mode] .pd-kv-k { flex: 0 0 var(--fl-k4) !important; font-size: var(--ty-label-fs) !important; line-height: var(--ty-label-lh); white-space: normal !important; overflow-wrap: anywhere; color: var(--text-muted) !important; }
+:root[data-gelv][data-skin][data-mode] .pd-kv :is(.proj-one, .proj-inline-val) { line-height: var(--ty-body-lh); font-variant-numeric: tabular-nums; }
+/* 项目画像：字段名列宽 56 → 60，字段名 14 → 13（字段名比值小一号、灰一档） */
+:root[data-gelv][data-skin][data-mode] .proj-profile-row { grid-template-columns: var(--fl-k4) minmax(0, 1fr); gap: var(--sp-8); }
+:root[data-gelv][data-skin][data-mode] .proj-profile-key { font-size: var(--ty-label-fs); line-height: var(--ty-label-lh); white-space: normal; }
+:root[data-gelv][data-skin][data-mode] .proj-wrap .proj-profile-row { grid-template-columns: var(--fl-k4) minmax(0, 1fr); }
+
+/* 6.5 进程卡：「项目」小标是辅助字（12/400 灰，不又小又粗）；项目名是区块标题 16/600 */
+:root[data-gelv][data-skin][data-mode] .cd-cap { font-size: var(--ty-meta-fs); line-height: var(--ty-meta-lh); font-weight: var(--ty-meta-fw); color: var(--text-muted); }
+:root[data-gelv][data-skin][data-mode] .cd-pj-one > .cd-pj-nm { font-size: var(--ty-section-fs); line-height: var(--ty-section-lh); }
+:root[data-gelv][data-skin][data-mode] .cd-pj-tag { font-size: var(--ty-meta-fs); }
+/* 「这个节点还差必填」：是一句说明（13/20）；差项是要人动手的状态，字用 --warning-text（规范 3.3） */
+:root[data-gelv][data-skin][data-mode] .pd-req-note { font-size: var(--ty-note-fs); line-height: var(--ty-note-lh); }
+:root[data-gelv][data-skin][data-mode] .pd-req-note.is-short { color: var(--warning-text) !important; }
+:root[data-gelv][data-skin][data-mode] .proj-stage-note { font-size: var(--ty-note-fs); line-height: var(--ty-note-lh); }
+
+/* 6.6 沟通记录（时间线）：行之间一条 --line-soft（线先于影）；类型 14 墨、节点是 StatusDot、谁 · 何时是说明 + 等宽数字；
+   正文是长文 ty-prose 14/24 次墨（原来 14/22 墨，三行以上的段落行高不够） */
+:root[data-gelv][data-skin][data-mode] .proj-follow-row + .proj-follow-row { padding-top: var(--sp-12); border-top: 1px solid var(--line-soft); }
+:root[data-gelv][data-skin][data-mode] .pd-follow-meta { font-size: var(--ty-note-fs) !important; line-height: var(--ty-note-lh); font-variant-numeric: tabular-nums; }
+:root[data-gelv][data-skin][data-mode] .proj-follow-row .ftype { font-size: var(--ty-body-fs); line-height: var(--ty-body-lh); color: var(--ink); }
+:root[data-gelv][data-skin][data-mode] .proj-follow-row .follow-att-tip { font-size: var(--ty-note-fs); }
+:root[data-gelv][data-skin][data-mode] .proj-att-h { font-size: var(--ty-sub-fs); line-height: var(--ty-sub-lh); }
+/* 个人版那条时间线（.rec-tl-*，企业版客户页不画）：倒挂改正——正文 15 压回 14 的那条直接取 ty-prose */
+:root[data-gelv][data-skin][data-mode] .rec-page .rec-tl-content { font-size: var(--ty-prose-fs); line-height: var(--ty-prose-lh); color: var(--ink-soft); }
+:root[data-gelv][data-skin][data-mode] .rec-page .rec-tl-type { font-size: var(--ty-sub-fs); line-height: var(--ty-sub-lh); }
+:root[data-gelv][data-skin][data-mode] .rec-page .rec-tl-time { font-size: var(--ty-meta-fs); }
+
+/* 6.7 AI 栏（规范 2.1 审计 #2 #3：分段标题 12/600 比内容 14 小、草稿标题比正文小，倒挂）。企业版没配模型时不画，样子照规范写好 */
+:root[data-gelv][data-skin][data-mode] .rec-ai-title { font-size: var(--ty-section-fs); line-height: var(--ty-section-lh); }
+:root[data-gelv][data-skin][data-mode] .rec-ai-sec-k { font-size: var(--ty-sub-fs); line-height: var(--ty-sub-lh); font-weight: var(--ty-sub-fw); color: var(--ink); letter-spacing: 0; }
+:root[data-gelv][data-skin][data-mode] .rec-ai-sec-v { font-size: var(--ty-prose-fs); line-height: var(--ty-prose-lh); }
+:root[data-gelv][data-skin][data-mode] .rec-ai-draft-t { font-size: var(--ty-sub-fs); line-height: var(--ty-sub-lh); font-weight: var(--ty-sub-fw); color: var(--ink); }
+:root[data-gelv][data-skin][data-mode] .rec-ai-foot { font-size: var(--ty-meta-fs); line-height: var(--ty-meta-lh); }
+/* AI 草稿：AI 起草、还没人确认 = 铅笔（虚线浅灰、字 --pencil-text），规范 3.6 */
+:root[data-gelv][data-skin][data-mode] .rec-ai-draft { border: 1px var(--draft) var(--pencil); background: var(--panel); font-size: var(--ty-prose-fs); line-height: var(--ty-prose-lh); color: var(--pencil-text); }
+
+/* 6.8 AI 建议卡（规范 6.15）：卡是 Panel 的结构、边是铅笔；右上「AI 建议」ty-meta；正文 ty-prose、字 --pencil-text */
+:root[data-gelv][data-skin][data-mode] .prop { padding: var(--sp-12) var(--sp-16); border-radius: var(--r-card); }
+:root[data-gelv][data-skin][data-mode] .prop-tag { font-size: var(--ty-meta-fs); line-height: var(--ty-meta-lh); border-radius: var(--r-sm); }
+:root[data-gelv][data-skin][data-mode] .prop-t { font-weight: var(--ty-sub-fw); }
+:root[data-gelv][data-skin][data-mode] .prop-why { font-size: var(--ty-prose-fs); line-height: var(--ty-prose-lh); color: var(--pencil-text); }
+:root[data-gelv][data-skin][data-mode] .prop-f-l { font-size: var(--ty-label-fs); line-height: var(--ty-label-lh); }
+
+/* 6.9 手机：卡片内边距 12（规范 6.2）；输入框字 16，iOS 聚焦时不放大整页（规范 2.6） */
+@media (max-width: 767px) {
+  :root[data-gelv][data-skin][data-mode] .rec-page.ui-v2 .rec-mod > .ant-card-body { padding-inline: var(--sp-12); }
+  :root[data-gelv][data-skin][data-mode] :is(input.ant-input, textarea.ant-input, .ant-select-selection-search-input) { font-size: var(--ty-input-fs); }
+}

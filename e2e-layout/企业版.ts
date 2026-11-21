@@ -57,8 +57,10 @@ async function 建库() {
 
   const 密码 = randomBytes(9).toString("base64url");
   const env: NodeJS.ProcessEnv = { ...process.env, DATABASE_URL: `file:${企业版库}`, CRM_ENTERPRISE: "1", INIT_PASSWORD: 密码 };
-  execFileSync("npx", ["prisma", "db", "push", "--skip-generate", "--accept-data-loss"], { cwd: ROOT, env, stdio: "pipe" });
-  execFileSync("npx", ["tsx", "prisma/seed.ts"], { cwd: ROOT, env, stdio: "pipe" });
+  // Windows 上 npx 是 npx.cmd，不走 shell 起不来（「格律」样板的 Windows 截图 workflow 在 windows-latest 上跑这一份）；别的系统照旧不走 shell
+  const 走壳 = process.platform === "win32";
+  execFileSync("npx", ["prisma", "db", "push", "--skip-generate", "--accept-data-loss"], { cwd: ROOT, env, stdio: "pipe", shell: 走壳 });
+  execFileSync("npx", ["tsx", "prisma/seed.ts"], { cwd: ROOT, env, stdio: "pipe", shell: 走壳 });
 
   const db = new PrismaClient({ datasources: { db: { url: `file:${企业版库}` } } });
   try {

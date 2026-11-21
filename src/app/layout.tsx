@@ -4,6 +4,7 @@ import { App as AntdApp } from "antd";
 import AntdConfig from "@/components/AntdConfig";
 import MotionTheme from "@/components/MotionTheme";
 import ModeFollow from "@/components/ModeFollow";
+import GelvToggle from "@/components/GelvToggle";
 import { 外观预设脚本, 默认外观 } from "@/lib/appearance";
 import { 旧浏览器提示脚本 } from "@/lib/old-browser";
 import "./globals.css";
@@ -18,6 +19,8 @@ import "./skins/luxe.css";
 import "./skins/ledger.css";
 /* 暗色（设置 → 外观 → 明暗）：一层中性 token 叠在上面几套主题上，必须排在所有主题之后（tests/dark-mode.test.ts） */
 import "./dark.css";
+/* 「格律」样板（P1，不合并）：规则都挂在 :root[data-gelv] 下，不开就不生效；排在 dark.css 后面，同权重时它说了算 */
+import "./gelv-preview.css";
 import "@fontsource/pixelify-sans/latin-500.css";
 import "@fontsource/pixelify-sans/latin-700.css";
 import "@fontsource/silkscreen/latin-400.css";
@@ -58,6 +61,7 @@ export default function RootLayout({
             </MotionTheme>
           </AntdConfig>
         </AntdRegistry>
+        <GelvToggle />
       </body>
     </html>
   );

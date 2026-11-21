@@ -77,7 +77,8 @@ function 档外(值: string, 有定义: Set<string>): string[] {
 
 describe("圆角只用五档 token", () => {
   const 根 = 根变量();
-  const 有定义 = new Set([...去注释(fs.readFileSync(path.join(源, "app/globals.css"), "utf8")).matchAll(/(--r-[\w-]+)\s*:/g)].map((m) => m[1]));
+  /* 「格律」样板（P1，不合并）：新加的两档 --r-xs 4 / --r-sm 6 定义在 app/gelv-preview.css 的 :root[data-gelv] 块里（规范 4.3），0b 并进 globals.css 时这一行删掉 */
+  const 有定义 = new Set(["app/globals.css", "app/gelv-preview.css"].flatMap((f) => [...去注释(fs.readFileSync(path.join(源, f), "utf8")).matchAll(/(--r-[\w-]+)\s*:/g)].map((m) => m[1])));
 
   it("css 的 border-radius 只写 var(--r-*) / 4 / 8 / 10 / 14 / 999px / 0 / 50%", () => {
     const 错: string[] = [];

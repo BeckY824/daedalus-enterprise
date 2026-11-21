@@ -65,13 +65,15 @@ function css字号声明(): 声明[] {
 describe("字号只用六档 token", () => {
   const 根 = 根变量();
   /** globals.css 里定义过的字号 token：:root 的 --fs-* / --ic，和详情页从 --fs-* 推出来的 --dt-*（.rec-page 那块） */
-  const 有定义 = new Set([...去注释(fs.readFileSync(path.join(源, "app/globals.css"), "utf8")).matchAll(/(--(?:fs|dt)-[\w-]+|--ic)\s*:/g)].map((m) => m[1]));
+  /* 「格律」样板（P1，feat/b33-gelv-p1 不合并）：档位层 --fs-16 / --fs-20…和角色层 --ty-*-fs 定义在 app/gelv-preview.css 的 :root[data-gelv] 块里，
+     只在开关下生效（规范 2.1：字号只写档位或角色）。0b 并进 globals.css 时这一行删掉 */
+  const 有定义 = new Set(["app/globals.css", "app/gelv-preview.css"].flatMap((f) => [...去注释(fs.readFileSync(path.join(源, f), "utf8")).matchAll(/(--(?:fs|dt)-[\w-]+|--ty-[\w-]+-fs|--ic)\s*:/g)].map((m) => m[1])));
 
   it("css 的 font-size 只写 var(--fs-*)，写死的只放行图标/字形", () => {
     const 错: string[] = [];
     for (const d of css字号声明()) {
       if (d.值 === "inherit" || d.值 === "0") continue;
-      const v = /^var\((--(?:fs|dt)-[\w-]+|--ic)(?:,\s*([^)]+))?\)$/.exec(d.值);
+      const v = /^var\((--(?:fs|dt)-[\w-]+|--ty-[\w-]+-fs|--ic)(?:,\s*([^)]+))?\)$/.exec(d.值);
       if (v) {
         if (!有定义.has(v[1])) 错.push(`${d.rel}:${d.行} ${d.选择器} → ${d.值}（globals.css 里没定义这个 token）`);
         const 备 = v[2] && /^(\d+(?:\.\d+)?)px$/.exec(v[2].trim());

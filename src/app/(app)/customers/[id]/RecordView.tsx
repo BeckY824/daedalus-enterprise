@@ -1262,12 +1262,12 @@ export default function RecordView({
         {/* 项目模式按名下项目自动算（10-30）：章只读，不套 StatusPicker */}
         {企业 && (客户状态自动 ? (
           <Tooltip title="按这位客户名下的项目自动算">
-            <Tag color={customer.custStatus ? 客户状态色of(客户状态色, customer.custStatus) : undefined} style={{ margin: 0 }} aria-label="客户状态">{customer.custStatus ?? "暂无项目"}</Tag>
+            <Tag className="gelv-dot" color={customer.custStatus ? 客户状态色of(客户状态色, customer.custStatus) : undefined} style={{ margin: 0 }} aria-label="客户状态">{customer.custStatus ?? "暂无项目"}</Tag>
           </Tooltip>
         ) : (
           <StatusPicker customerId={customer.id} field="custStatus" value={customer.custStatus ?? ""} 释义={字典释义?.状态}
             options={[...new Set([...客户状态选项, ...(customer.custStatus ? [customer.custStatus] : [])])].map((s) => ({ value: s, label: s }))}>
-            <Tag color={customer.custStatus ? 客户状态色of(客户状态色, customer.custStatus) : undefined} style={{ margin: 0 }} aria-label="客户状态">{customer.custStatus ?? "未设客户状态"}</Tag>
+            <Tag className="gelv-dot" color={customer.custStatus ? 客户状态色of(客户状态色, customer.custStatus) : undefined} style={{ margin: 0 }} aria-label="客户状态">{customer.custStatus ?? "未设客户状态"}</Tag>
           </StatusPicker>
         ))}
         {/* 来源（照毛玻璃原型的那枚「来源：WhatsApp」）：渠道或推荐人。自然流量不摆——没有来源就不占位 */}

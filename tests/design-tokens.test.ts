@@ -81,6 +81,9 @@ describe("色值只在 :root 和 palette.ts 里写死", () => {
   it("颜色总数有上限：语义色 + 八个分类色 + 八个头像色，再多就是又开始各拍各的", () => {
     const 根 = 去注释(css.slice(css.indexOf(":root"), css.indexOf("\n}", css.indexOf(":root"))));
     const 不同 = new Set((根.match(HEX) ?? []).map((h) => h.toLowerCase()));
-    expect(不同.size).toBeLessThanOrEqual(48);
+    /* 48 = 语义色 + 分类色 + 头像色（2026-09-18）；「格律」标签色板（规范 3.4，P1 样板）十色 × 圆点 / 浅底 / 描边 / 字，
+       和 success / danger / cat-blue / line / ink-soft 重的指过去不另写，净增 29 个（灰 2、蓝 3、黄橙粉紫青青绿各 4）→ 77。
+       规范 3.4 审改写死上限 80 */
+    expect(不同.size).toBeLessThanOrEqual(80);
   });
 });

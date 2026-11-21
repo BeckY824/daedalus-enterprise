@@ -53,6 +53,21 @@
   --avatar-5: #ede9fe; --avatar-6: #e0f2fe; --avatar-7: #fce7f3; --avatar-8: #e2e8f0;
   /* 标的两色（components/Logo.tsx）：浅底深框蓝线，暗底由 dark.css / tech.css 换成浅框亮蓝 */
   --logo-frame: #0b1b33; --logo-line: #1554e8;
+  /* 「格律」标签色板（规范 3.4，P1 样板先放进来；只有 :root[data-gelv] 下的胶囊用，开关关着时没人读，界面一个像素都不变）。
+     十色 × 圆点 / 浅底 / 描边 / 字；和 success / danger / cat-blue / line / ink-soft 重的直接指过去，不另写一份。
+     色值取自 Tailwind 调色板（MIT），暗色那一列在 dark.css 通用暗块和 skins/tech.css（深底主题）里 */
+  --tag-gray-dot: #8e8e93;   --tag-gray-bg: #f2f2f4;           --tag-gray-line: var(--line);           --tag-gray-text: var(--ink-soft);
+  --tag-blue-dot: var(--cat-blue); --tag-blue-bg: #eff6ff;     --tag-blue-line: #bfdbfe;               --tag-blue-text: #1d4ed8;
+  --tag-green-dot: var(--success); --tag-green-bg: var(--success-bg); --tag-green-line: var(--success-line); --tag-green-text: var(--success-text);
+  --tag-yellow-dot: #a16207; --tag-yellow-bg: #fefce8;         --tag-yellow-line: #fef08a;             --tag-yellow-text: #854d0e;
+  --tag-orange-dot: #ea580c; --tag-orange-bg: #fff7ed;         --tag-orange-line: #fed7aa;             --tag-orange-text: #9a3412;
+  --tag-red-dot: var(--danger); --tag-red-bg: var(--danger-bg); --tag-red-line: var(--danger-line);   --tag-red-text: var(--danger-text);
+  --tag-pink-dot: #db2777;   --tag-pink-bg: #fdf2f8;           --tag-pink-line: #fbcfe8;               --tag-pink-text: #be185d;
+  --tag-purple-dot: #7c3aed; --tag-purple-bg: #f5f3ff;         --tag-purple-line: #ddd6fe;             --tag-purple-text: #6d28d9;
+  --tag-cyan-dot: #0891b2;   --tag-cyan-bg: #ecfeff;           --tag-cyan-line: #a5f3fc;               --tag-cyan-text: #155e75;
+  --tag-teal-dot: #0d9488;   --tag-teal-bg: #f0fdfa;           --tag-teal-line: #99f6e4;               --tag-teal-text: #115e59;
+  /* 浮层的底（规范 3.1）：浅色就是面板；暗色比面板亮一档（dark.css） */
+  --bg-elevated: var(--panel);
 
   /* ---------- 字号：四级，外加一个下限 ----------
      方案里原写「正文 9pt、说明 7pt」，那是印刷品的尺寸，1440 屏上读不了。
