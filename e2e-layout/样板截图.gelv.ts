@@ -1,5 +1,5 @@
 /**
- * 「格律」样板的假数据截图（落地计划 1.2 第 1 条，P1 最小版）：挂在排版闸门的企业版服务上（e2e-layout/企业版.ts 建库灌数据，
+ * 「格律」样板的假数据截图（落地计划 1.2 第 1 条；P1 客户详情，P2 加客户列表、项目详情）：挂在排版闸门的企业版服务上（e2e-layout/企业版.ts 建库灌数据，
  * 长英文公司名、整段询盘、阿拉伯文这类编的数据），同一构建、同一份数据里切 ?gelv=0 / ?gelv=1 各截一张。
  *
  * 不进排版闸门的分片表（不是 *.spec.ts，playwright.layout.config.ts 不认它），单独一份配置跑：
@@ -17,14 +17,17 @@
 import { test } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { 企业版地址, 企业版进门 } from "./企业版";
+import { 企业版地址, 企业版进门, 企业版种子 } from "./企业版";
 
 const 系统 = process.env.GELV_SHOT_OS || (process.platform === "win32" ? "windows" : process.platform === "darwin" ? "mac" : "linux");
 const 出处 = process.env.GELV_SHOT_DIR || path.resolve(__dirname, "../test-results/gelv-shots", 系统);
 
+// P2 加客户列表、项目详情（企业版 /projects/<id> 跳客户页项目区，直接写跳过去的地址，同排版闸门）
 const 页们 = [
-  { 名: "客户详情", 址: "/customers/gate-scandi" },
-  { 名: "客户详情-长英文名", 址: "/customers/gate-long-uk" },
+  { 名: "客户详情", 址: () => "/customers/gate-scandi" },
+  { 名: "客户详情-长英文名", 址: () => "/customers/gate-long-uk" },
+  { 名: "客户列表", 址: () => "/customers" },
+  { 名: "项目详情", 址: () => `/customers/gate-scandi?project=${企业版种子().项目}` },
 ] as const;
 
 type 一张 = { 宽: number; skin: string; mode: "light" | "dark"; 格律: boolean };
@@ -35,14 +38,14 @@ for (const skin of ["pixel", "tech", "luxe", "ledger"]) 组合.push({ 宽: 1366,
 /** 要量的元素：带角色的（data-ty / .ty-*），加上客户详情几处有代表性的位置 */
 const 量的选择器 = [
   "[data-ty]", "[class*='ty-']", ".rec-head-name", ".rec-head-sub", ".ant-card-head-title", ".rec-field-k", ".rec-field-v", ".rec-empty",
-  ".pd-kv-k", ".pd-follow-meta", ".gelv-dot", ".ant-tag", ".ant-btn", ".cd-pj-nm", ".cd-cap", ".pane-t", ".roster-n", ".rec-ai-title", ".rec-ai-sec-k", ".rec-ai-sec-v",
+  ".pd-kv-k", ".pd-follow-meta", ".gelv-dot", ".page-head h1", ".page-head p", ".cust-ponly-head", ".cust-ponly-h", ".ant-table-thead th", ".ant-pagination-total-text", ".pd-blk-type", ".pd-blk-desc", ".ant-tag", ".ant-btn", ".cd-pj-nm", ".cd-cap", ".pane-t", ".roster-n", ".rec-ai-title", ".rec-ai-sec-k", ".rec-ai-sec-v",
 ].join(", ");
 
 const 文件名 = (x: 一张, 页: string) => `${x.宽}-${x.skin}-${x.mode}-${x.格律 ? "格律" : "现在"}-${页}.png`;
 
 test.describe.configure({ mode: "serial" });
 
-test("格律样板：客户详情截图 + computed.json", async ({ browser }) => {
+test("格律样板：客户详情、客户列表、项目详情截图 + computed.json", async ({ browser }) => {
   test.setTimeout(20 * 60_000);
   mkdirSync(出处, { recursive: true });
   const 记录: Record<string, unknown>[] = [];
@@ -62,7 +65,8 @@ test("格律样板：客户详情截图 + computed.json", async ({ browser }) =>
         报错.length = 0;
         // 外观和开关都在首次绘制前由外观预设脚本读出来（lib/appearance.ts），先写进本地再进页
         await page.evaluate(([skin, mode]) => localStorage.setItem("daedalus.appearance", JSON.stringify({ paper: "tone", skin, mode })), [x.skin, x.mode]);
-        await page.goto(`${页.址}?gelv=${x.格律 ? 1 : 0}`);
+        const 址 = 页.址();
+        await page.goto(`${址}${址.includes("?") ? "&" : "?"}gelv=${x.格律 ? 1 : 0}`);
         await page.waitForLoadState("networkidle").catch(() => {});
         // 开关本身和开发模式的角标不进图：两张图只差「格律」那层
         await page.addStyleTag({ content: ".gelv-toggle, nextjs-portal { display: none !important; }" });
@@ -81,7 +85,7 @@ test("格律样板：客户详情截图 + computed.json", async ({ browser }) =>
           const d = document.documentElement;
           return { 元素: Object.fromEntries(去重), scrollWidth: d.scrollWidth, clientWidth: d.clientWidth, 格律: d.dataset.gelv !== undefined };
         }, 量的选择器);
-        记录.push({ 图: 名, 页: 页.名, 址: 页.址, ...x, ...量, 横滚: 量.scrollWidth > 量.clientWidth, 控制台报错: [...报错] });
+        记录.push({ 图: 名, 页: 页.名, 址, ...x, ...量, 横滚: 量.scrollWidth > 量.clientWidth, 控制台报错: [...报错] });
       }
     }
     await ctx.close();
@@ -98,5 +102,5 @@ test("格律样板：客户详情截图 + computed.json", async ({ browser }) =>
   行们.push(`<h2>另外 4 套主题 · 打开格律（只看不崩）</h2><div class="row">${组合.filter((c) => c.skin !== "now").flatMap((c) => 页们.map((p) => 格(文件名(c, p.名)))).join("")}</div>`);
   writeFileSync(path.join(出处, "对照.html"), `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>格律样板对照（${系统}）</title>
 <style>body{font-family:system-ui,sans-serif;margin:16px;background:#f5f5f7;color:#1d1d1f}h1{font-size:22px}h2{font-size:16px;margin:24px 0 8px}.row{display:flex;flex-wrap:wrap;gap:12px}figure{margin:0;background:#fff;border:1px solid #e3e3e8;border-radius:10px;padding:8px;max-width:calc(50% - 6px)}img{max-width:100%;display:block}figcaption{font-size:12px;color:#6e6e73;margin-top:4px}</style>
-<h1>「格律」样板对照 · ${系统} · 假数据</h1><p>左「现在」、右「格律」；同一构建、同一份数据，只切 ?gelv。只改样子，按钮顺序、文案、确认方式不在这一批。</p>${行们.join("\n")}</html>`);
+<h1>「格律」样板对照 · ${系统} · 假数据</h1><p>左「现在」、右「格律」；同一构建、同一份数据，只切 ?gelv。只改样子；按钮顺序只换视觉顺序，文案、确认方式不在这一批。</p>${行们.join("\n")}</html>`);
 });

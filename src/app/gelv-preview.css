@@ -1,5 +1,5 @@
 /*
- * 「格律」设计语言 · 可切换样板 P1（全局层 + 客户详情 /customers/[id]）
+ * 「格律」设计语言 · 可切换样板 P1（全局层 + 客户详情 /customers/[id]）+ P2（客户列表 /customers、项目详情——企业版并在客户页项目区）
  * 规范：~/Opensource_CRM/05-反馈与复盘/设计语言调研/草稿-设计语言规范-20261121.md（「格律」，含第 11 / 12 节）
  * 落地计划：同目录 草稿-设计语言落地计划-20261121.md「第 P1 / P2 批」
  *
@@ -331,11 +331,12 @@
 :root[data-gelv][data-skin][data-mode] .ant-btn.proj-done-btn:disabled { background: var(--ant-color-bg-container-disabled); border-color: var(--ant-color-border); color: var(--ant-color-text-disabled); opacity: 1; }
 :root[data-gelv][data-skin][data-mode] .ant-space-compact > .ant-btn.proj-done-btn + .ant-btn.proj-done-btn:not(:disabled),
 :root[data-gelv][data-skin][data-mode] .ant-space-compact > .proj-stage-tip + .ant-btn.proj-done-btn:not(:disabled) { border-left-color: color-mix(in srgb, var(--ant-color-text-light-solid) 45%, var(--ant-color-primary)); }
-:root[data-gelv][data-skin][data-mode] .ant-space-compact.split-brand :is(.ant-btn-primary, .ant-btn-primary:hover, .ant-btn-primary:active):not(:disabled) {
+/* 卡点卡片里的「认领」（每张卡一颗实心）同理降成次按钮：一页只留「完成节点」一个品牌色实心 */
+:root[data-gelv][data-skin][data-mode] :is(.ant-space-compact.split-brand, .pd-blk) :is(.ant-btn-primary, .ant-btn-primary:hover, .ant-btn-primary:active):not(:disabled, .ant-btn-dangerous) {
   background: var(--ant-color-bg-container); border-color: var(--ant-color-border); color: var(--ant-color-text); box-shadow: none;
 }
 :root[data-gelv][data-skin][data-mode] .ant-space-compact.split-brand .ant-btn-primary::before { display: none; }
-:root[data-gelv][data-skin][data-mode] .ant-space-compact.split-brand .ant-btn-primary:not(:disabled):hover { border-color: var(--ant-color-primary-hover); color: var(--ant-color-primary-hover); position: relative; z-index: 2; }
+:root[data-gelv][data-skin][data-mode] :is(.ant-space-compact.split-brand, .pd-blk) .ant-btn-primary:not(:disabled, .ant-btn-dangerous):hover { border-color: var(--ant-color-primary-hover); color: var(--ant-color-primary-hover); position: relative; z-index: 2; }
 
 /* 6.11 按钮顺序（规范 6.6）：次要在左、主按钮在最右。行内编辑原来「存 / 取消」主在左（客户详情 5 处、项目关联 2 处，挂 .gelv-acts），
    开关下只换视觉顺序（order），DOM 和 Tab 顺序不动；连体（Space.Compact）的圆角跟着换到最右那颗。
@@ -355,3 +356,64 @@
   :root[data-gelv][data-skin][data-mode] :is(.proj-profile-row, .proj-wrap .proj-profile-row) { grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); }
   :root[data-gelv][data-skin][data-mode] :is(input.ant-input, textarea.ant-input, .ant-select-selection-search-input) { font-size: var(--ty-input-fs); }
 }
+
+/* ======================================================================
+   7. P2 · 客户列表 /customers（落地计划 P2；规范 6.1 / 6.3 / 6.14.1 / 6.14.2）
+      页头、筛选条、分页、批量条是共用件（PageHead、DataList），开关下所有列表页一起变；「仅项目」块只在客户列表
+   ====================================================================== */
+/* 7.1 页头（规范 6.1）：标题是 ty-page（字号、字重照主题的展示字，气质层），字距归零；下面一行说明是 ty-note；页头和正文隔 16 */
+:root[data-gelv][data-skin][data-mode] .page-head { margin-bottom: var(--sp-16); }
+:root[data-gelv][data-skin][data-mode] .page-head h1 { font-size: var(--ty-page-fs); line-height: var(--ty-page-lh); letter-spacing: 0; }
+:root[data-gelv][data-skin][data-mode] .page-head p { margin-top: var(--sp-2); font-size: var(--ty-note-fs); line-height: var(--ty-note-lh); }
+/* 7.2 筛选条（规范 6.14.1）：整行控件 32 高、控件之间 8；和下面（「仅项目」块或表格）隔 12 */
+:root[data-gelv][data-skin][data-mode] .list-bar { gap: var(--sp-8); margin-bottom: var(--sp-12); }
+:root[data-gelv][data-skin][data-mode] .list-bar :is(.ant-input-affix-wrapper, .ant-select, .ant-btn:not(.ant-btn-sm), .ant-segmented) { min-height: 32px; }
+/* 7.3 批量操作条：「已选 N 项」是 ty-body、数字等宽；「取消选择」是文字按钮，可点的字不小于 13 */
+:root[data-gelv][data-skin][data-mode] .list-sel { font-size: var(--ty-body-fs); line-height: var(--ty-body-lh); }
+:root[data-gelv][data-skin][data-mode] .list-sel-n { font-variant-numeric: tabular-nums; }
+:root[data-gelv][data-skin][data-mode] .list-sel-x:not(.list-sel-float-x) { font-size: var(--ty-note-fs); }
+/* 7.4 分页（规范 6.14.2）：页码 28 高（antd small 档）；「共 N 条」是 ty-meta 灰、等宽数字 */
+:root[data-gelv][data-skin][data-mode] .css-var-dd:is(.ant-pagination, .ant-pagination-css-var) { --ant-pagination-item-size: 28px; --ant-pagination-item-size-sm: 28px; }
+:root[data-gelv][data-skin][data-mode] .ant-pagination .ant-pagination-total-text { font-size: var(--ty-meta-fs); line-height: 28px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+:root[data-gelv][data-skin][data-mode] .ant-pagination :is(.ant-pagination-item, .ant-pagination-prev, .ant-pagination-next, .ant-pagination-jump-prev, .ant-pagination-jump-next) { font-variant-numeric: tabular-nums; }
+/* 7.5「仅项目」伪表格（规范 6.3：伪表格的表头用同一个 ty-th）：表头 13/600 → 13/400 灰、高 40；行高 40、行线 --line-soft，和下面的客户表一个密度；
+   块标题「仅项目」是小标题 ty-sub，后面那句说明是 ty-note */
+:root[data-gelv][data-skin][data-mode] .cust-ponly { margin-bottom: var(--sp-16); }
+:root[data-gelv][data-skin][data-mode] .cust-ponly-h { margin-bottom: var(--sp-8); font-size: var(--ty-sub-fs); line-height: var(--ty-sub-lh); font-weight: var(--ty-sub-fw); }
+:root[data-gelv][data-skin][data-mode] .cust-ponly-h .muted { font-size: var(--ty-note-fs); line-height: var(--ty-note-lh); }
+:root[data-gelv][data-skin][data-mode] .cust-ponly-head { min-height: var(--th-h); font-size: var(--ty-th-fs); line-height: var(--ty-th-lh); font-weight: var(--ty-th-fw); color: var(--text-muted); border-bottom: 1px solid var(--line); }
+:root[data-gelv][data-skin][data-mode] .cust-ponly-row { min-height: var(--row-h); font-size: var(--ty-cell-fs); line-height: var(--ty-cell-lh); font-variant-numeric: tabular-nums; }
+:root[data-gelv][data-skin][data-mode] .cust-ponly-row + .cust-ponly-row { border-top-color: var(--line-soft); }
+:root[data-gelv][data-skin][data-mode] .cust-ponly-head + .cust-ponly-row { border-top: 0; }
+:root[data-gelv][data-skin][data-mode] .cust-ponly-row:hover { background: var(--row-hover); }
+:root[data-gelv][data-skin][data-mode] .cust-ponly-h > span:first-child { flex: none; white-space: nowrap; }
+/* 单元格左右 12 和客户表对齐；手机上 10 列挤在 366 里（现状就挤，名单卡片化留到 4b），照旧 8，不再挤 */
+@media (min-width: 768px) { :root[data-gelv][data-skin][data-mode] .cust-ponly-c { padding-inline: 12px; } }
+/* 7.6 客户表：编号、电话这类纯数字列等宽；看板卡片上的客户名是小标题 */
+:root[data-gelv][data-skin][data-mode] :is(.cust-no, .list-total-n) { font-variant-numeric: tabular-nums; }
+
+/* ======================================================================
+   8. P2 · 项目详情（企业版：/projects/<id> 跳到客户页项目区；落地计划 P2「卡头 16、卡点卡片标题、字段名列宽两档」）
+      卡头 16 已由第 4 段 antd 卡片变量给（--ant-card-header-font-size = ty-section）
+   ====================================================================== */
+/* 8.1 卡点卡片（审计 2.1 #6：没有标题，内联 12 / 13 / 14 混用）：类型那颗标签当标题（ty-sub 14/600 墨，不铺胶囊底），排到最前；
+   编号是 ty-meta 等宽；描述是长文 ty-prose；耗时 · 谁发布是 ty-meta；会签、资源申请、解决方案、备注是 ty-note。老卡点的标题行是 ty-sub */
+:root[data-gelv][data-skin][data-mode] .pd-blk-head { gap: var(--sp-6) !important; }
+:root[data-gelv][data-skin][data-mode] .ant-tag.ant-tag.ant-tag.pd-blk-type {
+  order: -1; height: auto; padding-inline: 0; background: transparent; box-shadow: none; color: var(--ink);
+  font-size: var(--ty-sub-fs); line-height: var(--ty-sub-lh); font-weight: var(--ty-sub-fw);
+}
+:root[data-gelv][data-skin][data-mode] .ant-tag.pd-blk-type::after { content: none; }
+:root[data-gelv][data-skin][data-mode] .pd-blk-code { font-size: var(--ty-meta-fs) !important; line-height: var(--ty-meta-lh); font-variant-numeric: tabular-nums; }
+:root[data-gelv][data-skin][data-mode] .pd-blk-title { font-size: var(--ty-sub-fs); line-height: var(--ty-sub-lh); font-weight: var(--ty-sub-fw) !important; color: var(--ink); }
+:root[data-gelv][data-skin][data-mode] .pd-blk-desc { margin-top: var(--sp-6) !important; font-size: var(--ty-prose-fs); line-height: var(--ty-prose-lh); color: var(--ink-soft); }
+:root[data-gelv][data-skin][data-mode] .pd-blk-meta { margin-top: var(--sp-4) !important; font-size: var(--ty-meta-fs) !important; line-height: var(--ty-meta-lh); font-variant-numeric: tabular-nums; }
+:root[data-gelv][data-skin][data-mode] .pd-blk-note { font-size: var(--ty-note-fs) !important; line-height: var(--ty-note-lh); }
+:root[data-gelv][data-skin][data-mode] .pd-blk-on-k { font-size: var(--ty-label-fs); line-height: var(--ty-label-lh); }
+:root[data-gelv][data-skin][data-mode] .pd-blk { padding-bottom: var(--sp-12) !important; border-bottom-color: var(--line-soft) !important; }
+/* 8.2 关联客户 / 联系人的字段（.proj-rel-field，原来 40 / 30 两种宽）：并进字段名列宽的 4 字档 60（规范 6.4 只有两档） */
+:root[data-gelv][data-skin][data-mode] :is(.proj-rel-field, .proj-wrap .proj-rel-field) { grid-template-columns: var(--fl-k4) minmax(0, 1fr); }
+:root[data-gelv][data-skin][data-mode] .proj-rel-key { font-size: var(--ty-label-fs); line-height: var(--ty-label-lh); color: var(--text-muted); }
+/* 8.3 项目资料卡上的值：等宽数字（金额、日期、天数对成一条竖线，规范 6.14.3） */
+:root[data-gelv][data-skin][data-mode] .pd-kv { font-variant-numeric: tabular-nums; }
+

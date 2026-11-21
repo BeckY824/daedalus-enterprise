@@ -160,10 +160,10 @@ export function PublishBlockerModal({ followUpId, 默认, 原因们, 沟通们, 
 export function 卡点头({ b, 带项目 = false }: { b: 卡点卡; 带项目?: boolean }) {
   return (
     <>
-      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-muted)" }}>{b.code}</span>
+      <div className="pd-blk-head" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
+        <span className="pd-blk-code" style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-muted)" }}>{b.code}</span>
         <Tag color={状态色[b.status]}>{b.status}</Tag>
-        <Tag color={类型色[b.type]}>{b.type}</Tag>
+        <Tag className="pd-blk-type" data-ty="title" color={类型色[b.type]}>{b.type}</Tag>
         <Tag>{b.impact}</Tag>
         {b.原因们.map((r) => (
           <Tag key={r.id} color={r.status === "待审核" ? "warning" : undefined} title={r.status === "待审核" ? "新加的原因，等总管理员审核" : undefined} style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -178,7 +178,7 @@ export function 卡点头({ b, 带项目 = false }: { b: 卡点卡; 带项目?: 
         {带项目 && <Link href={`/projects/${b.projectId}`} style={{ overflowWrap: "anywhere" }}>{b.项目}</Link>}
       </div>
       {/* 11-19：新卡点不存标题，类型、原因上面的标签已经写了，不再加粗重复一遍；老卡点有标题照旧显示 */}
-      {b.有标题 && <div style={{ fontWeight: 600, marginTop: 4, overflowWrap: "anywhere" }}>{b.title}</div>}
+      {b.有标题 && <div className="pd-blk-title" style={{ fontWeight: 600, marginTop: 4, overflowWrap: "anywhere" }}>{b.title}</div>}
     </>
   );
 }
@@ -232,22 +232,22 @@ export function BlockerList({ 们, 带项目 = false, 空 = "还没有卡点" }:
   return (
     <>
       {们.map((b) => (
-        <div key={b.id} className={`pd-blk${刚认领.has(b.id) ? " is-claimed" : ""}`} data-status={刚认领.has(b.id) && b.status === "待接受" ? "处理中" : b.status} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid var(--line-soft)", minWidth: 0 }}>
+        <div key={b.id} className={`pd-blk${刚认领.has(b.id) ? " is-claimed" : ""}`} data-ty-box="" data-status={刚认领.has(b.id) && b.status === "待接受" ? "处理中" : b.status} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid var(--line-soft)", minWidth: 0 }}>
           <卡点头 b={b} 带项目={带项目} />
           {/* 11-19 起新卡点不写「卡在哪儿」：没有就不占一行；老卡点的照旧显示 */}
-          {b.description && <div style={{ whiteSpace: "pre-wrap", marginTop: 4, overflowWrap: "anywhere" }}>{b.description}</div>}
-          <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 2, overflowWrap: "anywhere" }}>
+          {b.description && <div className="pd-blk-desc" data-ty="body" style={{ whiteSpace: "pre-wrap", marginTop: 4, overflowWrap: "anywhere" }}>{b.description}</div>}
+          <div className="pd-blk-meta" style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 2, overflowWrap: "anywhere" }}>
             {耗时文字(b)}{" · "}{b.发布人} 发布{b.followUpId ? "" : " · 来源沟通已删除"}
           </div>
-          <div style={{ fontSize: 13, marginTop: 4, overflowWrap: "anywhere" }} aria-label="会签进度">{会签文字(b)}</div>
+          <div className="pd-blk-note" style={{ fontSize: 13, marginTop: 4, overflowWrap: "anywhere" }} aria-label="会签进度">{会签文字(b)}</div>
           {b.认领.filter((c) => c.note).map((c) => (
-            <div key={c.名字} style={{ fontSize: 13, color: "var(--text-muted)", overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>
+            <div key={c.名字} className="pd-blk-note" style={{ fontSize: 13, color: "var(--text-muted)", overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>
               {c.名字}：{c.note}
             </div>
           ))}
-          {b.resourceRequest && <div style={{ fontSize: 13, overflowWrap: "anywhere" }}>资源申请：{b.resourceRequest}</div>}
-          {b.solution && <div style={{ fontSize: 13, overflowWrap: "anywhere" }}>解决方案：{b.solution}</div>}
-          {b.result && <div style={{ fontSize: 13, overflowWrap: "anywhere" }}>解决结果：{b.result}</div>}
+          {b.resourceRequest && <div className="pd-blk-note" style={{ fontSize: 13, overflowWrap: "anywhere" }}>资源申请：{b.resourceRequest}</div>}
+          {b.solution && <div className="pd-blk-note" style={{ fontSize: 13, overflowWrap: "anywhere" }}>解决方案：{b.solution}</div>}
+          {b.result && <div className="pd-blk-note" style={{ fontSize: 13, overflowWrap: "anywhere" }}>解决结果：{b.result}</div>}
           <Space wrap size={4} style={{ marginTop: 6 }}>
             {b.能.认领 && !刚认领.has(b.id) && <Button size="small" type="primary" disabled={忙} onClick={() => void 认领(b)}>认领</Button>}
             {刚认领.has(b.id) && b.status === "待接受" && <span role="status" className="pd-blk-claimed">已认领</span>}
