@@ -5709,18 +5709,31 @@ button.proj-miss-chip { cursor: pointer; }
 :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-hl { flex: 1 1 auto; display: grid; gap: 8px; max-width: 420px; }
 :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-hl > .cd-skel-name { --skel-h: 20px; width: 60%; }
 :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-hl > .cd-skel-sub { width: 36%; }
-:root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-cols { display: grid; grid-template-columns: 240px minmax(0, 1fr) var(--ai-w, 340px); gap: 14px; align-items: start; }
+/* 栏数照真页面实际决定栏数的两层规则（3703/3704 实操对过）：
+   外层 = 客户页 .rec-page.ui-v2 > .rec.rec-cd（左栏 260 + 项目区；rec ≤1039 左栏 232、≤629 一栏、项目区排前）；
+   项目区 = .rec-zone（容器 cdzone）> .cd-zb（中栏 + 右栏 300；≤819 右栏 244；≤559 一栏；rec ≤629 也一栏）。改那边的门槛要一起改这里（d5-skins 有一条对栏数的用例） */
+:root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-cols { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 14px; align-items: start; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-zone { container: cd-skel-zone / inline-size; min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-zb { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
 :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-col { display: grid; gap: 12px; min-width: 0; }
 :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-card { display: grid; gap: 10px; padding: 16px; background: var(--panel); border-radius: var(--r-card); }
 :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-card > .cd-skel-ct { --skel-h: 14px; width: 40%; }
-/* 栏数跟客户页 .rec 同一对容器门槛（1090 三栏 → 两栏、630 两栏 → 一栏，见上面 @container rec），按骨架自己的宽度判断，不用视口断点 */
-@container cd-skel (max-width: 1089px) {
-  :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-cols { grid-template-columns: 240px minmax(0, 1fr); }
-  :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-col:nth-child(n + 3) { display: none; }
+@container cd-skel (max-width: 1039px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-cols { grid-template-columns: 232px minmax(0, 1fr); gap: 12px; }
 }
 @container cd-skel (max-width: 629px) {
   :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-cols { grid-template-columns: minmax(0, 1fr); }
-  :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-col:nth-child(n + 2) { display: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-zone { order: -1; }
+}
+@container cd-skel-zone (max-width: 819px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-zb { grid-template-columns: minmax(0, 1fr) 244px; gap: 12px; }
+}
+@container cd-skel-zone (max-width: 559px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-zb { grid-template-columns: minmax(0, 1fr); }
+}
+/* 同真页面：rec ≤629 那条排在 cdzone 两条后面，单栏时中栏、右栏也叠起来 */
+@container cd-skel (max-width: 629px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .cd-skel-zb { grid-template-columns: minmax(0, 1fr); }
 }
 /* M12 找不到：说明一句一行，句里只在标点处折（「不正确」不拆成两行），一句比一行还长才在句中断 */
 :root:is(:not([data-skin]), [data-skin="now"]) .empty-state-h > .sp-sent { display: block; word-break: keep-all; overflow-wrap: anywhere; }

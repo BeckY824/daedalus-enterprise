@@ -305,6 +305,32 @@ describe("现状主题：D5 新样子", () => {
     } finally { await page.close(); }
   });
 
+  /* #403 实操：骨架栏数要和真页面一致。容器宽取 3704 上量到的（1366 → 1038、1024 → 916、390 → 358：窗口减去左边导航 / 名单 / 页边），
+     真页面按同一宽度摆一份只带类名的空架子（.rec-page.ui-v2 > .rec.rec-cd > 左栏 + .rec-zone > .cd-zb > 中栏 + 右栏），用的是同一份 globals.css */
+  for (const [窗, 宽] of [[1366, 1038], [1024, 916], [390, 358]] as const)
+    it(`${窗}px（容器 ${宽}）：加载骨架和真页面的栏数一样`, async () => {
+      const { page, errors } = await 开("now", {}, { 画: "加载", width: 窗 });
+      try {
+        await page.getByTestId("customer-skeleton").waitFor();
+        const r = await page.evaluate((w) => {
+          const 根 = document.getElementById("root")!;
+          根.style.width = `${w}px`;
+          const 真 = document.createElement("div");
+          真.style.width = `${w}px`;
+          真.innerHTML = `<div class="rec-page ui-v2"><div class="rec rec-cd"><div class="rec-rail"><div>左</div></div><section class="rec-zone"><div class="cd-zb"><div class="cd-mid"><div>中</div></div><div class="cd-side"><div>右</div></div></div></section></div></div>`;
+          document.body.append(真);
+          const 栏数 = (els: Element[]) => new Set(els.map((e) => Math.round(e.getBoundingClientRect().left))).size;
+          return {
+            骨架: 栏数([...document.querySelectorAll(".cd-skel-col")]),
+            真页面: 栏数([...真.querySelectorAll(".rec-rail, .cd-mid, .cd-side")]),
+          };
+        }, 宽);
+        expect(r.骨架).toBe(r.真页面);
+        expect(r.骨架).toBe(窗 === 390 ? 1 : 3);
+        expect(errors).toEqual([]);
+      } finally { await page.close(); }
+    });
+
   it("390 找不到：说明一句一行，「不正确」不拆到两行", async () => {
     const { page, errors } = await 开("now", {}, { 画: "找不到", width: 390 });
     try {

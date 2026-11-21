@@ -27,10 +27,15 @@ export default function Loading() {
             <div className="skel-bar cd-skel-sub" />
           </div>
         </div>
+        {/* 栏数照真页面：外层 = 左栏 + 项目区（同 .rec.rec-cd），项目区里再分中栏 + 右栏（同 .rec-zone > .cd-zb），门槛见 globals.css */}
         <div className="cd-skel-cols">
           <div className="cd-skel-col"><卡 行={5} /><卡 行={3} /></div>
-          <div className="cd-skel-col"><卡 行={3} /><卡 行={6} /></div>
-          <div className="cd-skel-col"><卡 行={8} /></div>
+          <div className="cd-skel-zone">
+            <div className="cd-skel-zb">
+              <div className="cd-skel-col"><卡 行={3} /><卡 行={6} /></div>
+              <div className="cd-skel-col"><卡 行={8} /></div>
+            </div>
+          </div>
         </div>
       </div>
       <div className="cd-ld-old"><AppLoading /></div>
