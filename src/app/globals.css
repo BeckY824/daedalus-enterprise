@@ -75,6 +75,9 @@
   --r-ctl: 8px;              /* 控件（16a 起 6 → 8：32 高的控件配 8 圆角；五档 4 / 8 / 10 / 14 / 999） */
   --r-card: 10px;            /* 卡片 */
   --r-pop: 14px;             /* 浮层、抽屉、气泡 */
+  /* 内容卡（16a 那段卡片、列表表格卡）的圆角（设计语言 D-1，11-22）：原来借浮层的 --r-pop。
+     这里给换皮主题兜底接回 --r-pop（它们的卡片形状不动）；现状在下面「外观」那段改读 --r-card 10 */
+  --r-mod: var(--r-pop);
 
   /* ---------- 动效 ----------
      2026-11 动效底座（P-界面-38）：照 Apple 默认的「不回弹」弹簧走——快、能打断、到位不越过。
@@ -157,11 +160,11 @@
   --r-tag: 999px;                      /* 状态标签 */
   --bw: 1px;                           /* 控件边框粗细（喂给 antd 的 lineWidth） */
   --draft: dashed;                     /* 铅笔的线型：AI 起草、还没确认的 */
-  /* 16a：卡片不画边框，靠很淡的阴影从地面（#F5F5F7）上浮起来；浮层（弹窗、抽屉、下拉、气泡）共用 --shadow-pop。
-     2026-11 PR2 外壳（原型 g.feel「细描边、柔阴影」）：两档都在最前面加一圈 0.5px 的发丝描边——白卡片压在白底上
-     （白底地面、弹窗里的卡）也认得出边；卡片那层影收短收淡（4/16 → 1/2 + 3/10），浮起来但不发虚 */
-  --shadow-card: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04), 0 3px 10px rgba(0, 0, 0, 0.03);
-  --card-line: transparent;            /* 卡片边框：现状不画（发丝描边在 --shadow-card 里）；别的主题、暗黑接回 --line */
+  /* 16a：卡片不画边框，靠很淡的阴影从地面（#F5F5F7）上浮起来；PR2 外壳加过一圈 0.5px 发丝描边。
+     设计语言 D-1（11-22，底色与模块分区两方案共用的底子）：卡片不再用阴影，阴影只留给浮层（--shadow-pop）；
+     卡边接回 1px --line（和暗黑、换皮同一写法），白卡压在白底上也认得出边。换皮主题各有自己的 --shadow-card / --card-line，不受影响 */
+  --shadow-card: none;
+  --card-line: var(--line);            /* 卡片边框：现状、暗黑都是 --line；换皮主题各自定义 */
   --shadow-pop: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04), 0 12px 32px rgba(0, 0, 0, 0.10);
   /* 聚焦 / 报错的光晕（D1 · 设计语言 11-21）：输入框、按钮键盘聚焦 --focus-ring，报错格子 --error-ring。
      原来的「输入框铺 4% 墨色灰底、不画框」（--field-bg）和底色只有约 1.08:1，用户 11-21 定为缺陷（D17），整段换掉 */
@@ -201,6 +204,8 @@
    只换值，不换结构。<html> 上的 data-paper / data-skin 在第一次绘制前由 layout 里那段小脚本挂好，
    所以刷新时不会先闪一下原底。这里不许写裸色值（tests/design-tokens.test.ts），只许指到已有 token 上 */
 :root[data-paper="white"] { --page-bg: var(--panel); }
+/* 设计语言 D-1（11-22）：现状的内容卡圆角统一到卡片那档 10（原来 14，借的浮层圆角；暗黑下本来就是 10） */
+:root:is(:not([data-skin]), [data-skin="now"]), [data-skin-preview="now"] { --r-mod: var(--r-card); }
 /* 白底地面上左栏选中块退回浅灰：白底 + 阴影压在白地面上只剩一圈影子，认不出选中的是哪项 */
 :root[data-paper="white"]:not([data-mode="dark"]) { --nav-on-bg: var(--hover); }
 /* 设置 → 外观 那一栏 */
@@ -374,6 +379,11 @@ html.glass .auth-solo .auth-main { background: transparent; }
 /* 企业版切换视图（M-权限-08）：钉在顶上正中一条「正在以 X 的视图查看（只读）· 退出」。固定定位不占栅格，
    名字长了省略号收尾，「退出」永远在条里看得见；窄屏两边各留 16px */
 .view-as-bar { position: fixed; top: 6px; left: 50%; transform: translateX(-50%); z-index: 1100; display: flex; align-items: center; gap: 6px; max-width: calc(100vw - 32px); padding: 4px 6px 4px 12px; border: 1px solid var(--warning-line); border-radius: 999px; background: var(--warning-bg); color: var(--warning-text); font-size: var(--fs-min); line-height: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); white-space: nowrap; }
+/* 手机顶栏（AppShell 小屏那支的 Header）：底下一根线和页面分开。
+   设计语言 D-1（11-22）：现状里顶栏是一张白纸（--panel，暗黑下跟着变暗；原来 antd 的 headerBg 是 JS 写死的白），底线加深到 --line——
+   页面以后也是白的，这根线是顶栏和正文之间唯一的分界。换皮主题照旧 --line-soft */
+.m-top { border-bottom: 1px solid var(--line-soft); }
+:root:is(:not([data-skin]), [data-skin="now"]) .m-top { background: var(--panel); border-bottom-color: var(--line); }
 /* 手机：顶栏只有一行，浮在上面会盖住菜单键，改成排在顶栏上方；电脑上内容区顶部另留了空（AppShell） */
 @media (max-width: 767px) { .view-as-bar { position: static; transform: none; align-self: center; margin: 6px 16px; } }
 .view-as-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -2070,6 +2080,9 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .btodo-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3); transition: opacity var(--t) var(--ease); }
 @container (max-width: 560px) { .btodo-board { grid-template-columns: minmax(0, 1fr); } }
 .btodo-col { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; padding: var(--s2) var(--s2) var(--s3); border-radius: var(--r-card); background: var(--page-bg); }
+/* 设计语言 D-1（11-22）：现状的看板列不铺灰底——外卡白、列灰、待办卡白，一共套了四层（页面 → 外卡 → 列 → 卡）。
+   列只靠列头的点和标题分开，待办卡自己有 1px 线 */
+:root:is(:not([data-skin]), [data-skin="now"]) .btodo-col { background: transparent; }
 .btodo-col-h { display: flex; align-items: center; gap: var(--s2); padding: var(--s1) var(--s1) 0; min-width: 0; }
 .btodo-col-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); }
 .btodo-col-overdue .btodo-col-dot { background: var(--danger); }
@@ -4337,15 +4350,16 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 
 
 /* ================= 16a 全站观感（2026-11-11，客户两页样板用户认可后铺开） =================
-   值都在 :root（主色 #0A66D8、文字三档、地面 #F5F5F7、--shadow-card 两层淡阴影、--card-line 现状透明）。
+   值都在 :root（主色 #0A66D8、文字三档、地面 #F5F5F7；D-1 11-22 起 --shadow-card 为 none、--card-line 为 --line、卡片圆角 --r-mod）。
    这一块只放「形」：卡片不画框、浮层同一阴影和圆角、标签降色、表格成卡、看板去掉框里套框。
    换主题 / 暗黑时这些规则照样吃，但值是那套主题自己的（--card-line 接回 --line、阴影各有各的），不会坏 */
 
-/* ---------- 卡片：antd Card 和几类自家卡，一律无框 + 淡阴影 + 圆角 14 ---------- */
+/* ---------- 卡片：antd Card 和几类自家卡，同一个边（--card-line）、影（--shadow-card）、圆角（--r-mod）----------
+   现状 D-1（11-22）起：1px --line、无影、圆角 10；换皮主题照它们自己的 token */
 .ant-card.ant-card-bordered { border-color: var(--card-line); box-shadow: var(--shadow-card); }
 .ant-card .ant-card-head { border-bottom-color: var(--line-soft) !important; }
 :is(.home-card, .btodo-list, .rkpi, .chan-dash-kpi, .chan-dash-cell, .chan-block, .set-body, .start, .auth-solo .auth-form, .rec-card:not(.rec-rail-blocks, .rec-col-blocks), .bill-plan, .bill-pay, .cli-card, .cli-ck .cli-frame) {
-  border-color: var(--card-line); box-shadow: var(--shadow-card); border-radius: var(--r-pop);
+  border-color: var(--card-line); box-shadow: var(--shadow-card); border-radius: var(--r-mod);
 }
 
 /* ---------- 浮层：弹窗、抽屉、下拉、气泡、选择框面板，同一个阴影、圆角 14（圆角在 lib/theme.ts） ----------
@@ -4420,9 +4434,11 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 :root:is(:not([data-skin]), [data-skin="now"]) .ant-tag.ant-tag.ant-tag.tag-key:not(.ant-tag-solid, .ant-tag-disabled) { background: var(--brand-bg); color: var(--brand-deep); }
 :root:is(:not([data-skin]), [data-skin="now"]) .ant-tag.ant-tag.ant-tag.pool-tag:not(.ant-tag-solid, .ant-tag-disabled) { background: transparent; color: var(--ink-soft); }
 
-/* ---------- 列表页：表格成一张白卡（圆角 14、淡阴影），表头白底灰字；行高、表头高不动（40 / 36） ---------- */
-.list .ant-table-wrapper .ant-table { border-radius: var(--r-pop); box-shadow: var(--shadow-card); background: var(--panel); }
-.list .ant-table-wrapper .ant-table-container { border-radius: var(--r-pop); overflow: hidden; }
+/* ---------- 列表页：表格成一张白卡（圆角 --r-mod、--shadow-card；现状 D-1 起 10、无影），表头白底灰字；行高、表头高不动（40 / 36） ---------- */
+.list .ant-table-wrapper .ant-table { border-radius: var(--r-mod); box-shadow: var(--shadow-card); background: var(--panel); }
+.list .ant-table-wrapper .ant-table-container { border-radius: var(--r-mod); overflow: hidden; }
+/* 现状 D-1：表格卡没了阴影，用一圈 1px --card-line 认边（画在阴影位，不占尺寸、不挪表格一个像素） */
+:root:is(:not([data-skin]), [data-skin="now"]) .list .ant-table-wrapper .ant-table { box-shadow: 0 0 0 1px var(--card-line); }
 .list .ant-table-thead > tr > th { background: var(--panel); border-bottom-color: var(--line-soft); }
 .list .ant-table-thead > tr > th::before { display: none; }
 .list .ant-table-tbody > tr > td { border-bottom-color: var(--line-soft); }
@@ -4665,6 +4681,8 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
   padding: 6px 10px 6px 12px; background: var(--panel); border-radius: var(--r-card); box-shadow: var(--shadow-card); border-left: 4px solid var(--field-line);
   font-size: var(--fs-note); }
 .tri-bar.pend { border-left-color: var(--warning); }
+/* D-1（11-22）：卡片去了阴影，状态条在现状下改用上、右、下三边 1px --card-line 认边（左边那道 4px 状态色不动） */
+:root:is(:not([data-skin]), [data-skin="now"]) .tri-bar { border-top: 1px solid var(--card-line); border-right: 1px solid var(--card-line); border-bottom: 1px solid var(--card-line); }
 .tri-bar.hold { border-left-color: var(--cat-violet); }
 .tri-st { flex: none; height: 22px; line-height: 22px; padding: 0 8px; border-radius: var(--r-tag); font-size: var(--fs-min); font-weight: 600; white-space: nowrap; }
 .tri-st.sleep { background: var(--hover); color: var(--text-muted); }
