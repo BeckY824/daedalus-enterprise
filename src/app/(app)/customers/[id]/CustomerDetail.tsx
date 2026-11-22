@@ -6,13 +6,20 @@ import { 项目菜单项们, type 项目动作键 } from "../../projects/[id]/pr
 import ProjectZone, { type 项目区数据 } from "./ProjectZone";
 import { StartReviewButton } from "../../projects/[id]/CoachTopics";
 import type { RecordProps, 项目联系人 } from "./types";
+import { FollowOptionsProvider, type 沟通下拉们 } from "@/components/FollowMethodSelect";
 
 /**
  * 客户详情（企业版项目模式，11-12 客户详情合并第 2 批）：客户和项目合成一页。
  * RecordView 画客户那一层（客户名一行 + 左栏客户资料），右边项目区交给 ProjectZone（当前页签的项目详情）。
  * 两边要互相递东西（客户全部沟通、待办卡给项目区；当前项目的联系人主次给左栏），在这一层接起来
  */
-export default function CustomerDetail({ 项目数据: 项目区, ...记录 }: RecordProps & { 项目数据: 项目区数据 | null }) {
+export default function CustomerDetail({ 沟通选项, ...其余 }: RecordProps & { 项目数据: 项目区数据 | null; 沟通选项?: 沟通下拉们 }) {
+  // 记沟通表单的两样下拉页面带下来了（11-22 C3）：整页包一层，客户层和项目区的表单都直接用，不再各调 server action
+  const 页 = <CustomerDetailBody {...其余} />;
+  return 沟通选项 ? <FollowOptionsProvider value={沟通选项}>{页}</FollowOptionsProvider> : 页;
+}
+
+function CustomerDetailBody({ 项目数据: 项目区, ...记录 }: RecordProps & { 项目数据: 项目区数据 | null }) {
   // 右上角「更多操作 ▾」里项目那几项点了哪项 → 嵌入版 ProjectDetail 挂在这里的处理函数（开框、确认都还是它的）
   const 动作口 = useRef<((key: 项目动作键) => void) | null>(null);
   const 挂动作 = useCallback((做: ((key: 项目动作键) => void) | null) => { 动作口.current = 做; }, []);

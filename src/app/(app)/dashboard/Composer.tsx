@@ -38,6 +38,7 @@ import { ComposerFoot, ComposerTools, ComposerTop, SendKey } from "./ComposerPar
 import ComposerPlus from "./ComposerPlus";
 import { useNarrow } from "@/lib/roster";
 import { useIsNowSkin } from "@/lib/use-skin";
+import { 加引用, 引用事件 } from "./TurnMenu";
 import type { Suggestion } from "./HomeChat";
 import type { 这一屏 } from "./useHomeTurns";
 
@@ -244,6 +245,27 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
   const 动效 = useMotionTheme();
   const 少动 = useReducedMotion();
   useComposerHeight(composerRef);
+  /*
+    设计语言 HC-2a（C8-A）：回答 ⋯ 里的「引用到新问题」。TurnView 从那一轮冒一个事件上来，
+    在这段对话的根（.cli，首页和全局浮窗各一个）上接住：引用填到输入框最前面、光标放到末尾，等人接着打字。
+  */
+  useEffect(() => {
+    const 根 = composerRef.current?.closest(".cli");
+    if (!根) return;
+    const 接 = (e: Event) => {
+      const 片段 = (e as CustomEvent<string>).detail;
+      if (!片段) return;
+      setQ((v) => 加引用(v, 片段));
+      requestAnimationFrame(() => {
+        const ta = taRef.current;
+        if (!ta) return;
+        ta.focus();
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+      });
+    };
+    根.addEventListener(引用事件, 接);
+    return () => 根.removeEventListener(引用事件, 接);
+  }, []);
 
   function 认一下粘的是什么(e: React.ClipboardEvent<HTMLTextAreaElement>) {
     const 全文 = e.clipboardData?.getData("text") ?? "";

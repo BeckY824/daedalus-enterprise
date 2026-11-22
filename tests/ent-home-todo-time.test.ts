@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { 时段smart } from "@/app/(app)/dashboard/todo-time";
+import { 时段smart, 到期字 } from "@/app/(app)/dashboard/todo-time";
 import ReplyDueTodo from "@/app/(app)/dashboard/ReplyDueTodo";
 import AwaitAssignTodo from "@/app/(app)/leads/AwaitAssignTodo";
 import { 短时刻, 指定回复文字 } from "@/lib/project/time-fields";
@@ -67,5 +67,35 @@ describe("首页待办行用 ISO，不用短串", () => {
     expect(html).toContain('最早 <span class="home-cth-todo-time">昨天</span>');
     现在是("2027-01-01 00:20");
     expect(renderToStaticMarkup(createElement(AwaitAssignTodo, { 数据: { 条数: 2, 最早: "2027-01-01 00:10", 最早At: 京("2027-01-01 00:10") } }))).toContain('<span class="home-cth-todo-time">今天 00:10</span>');
+  });
+});
+
+/**
+ * 复盘「任务」页签的到期（设计语言 R-B）：没定钟点的（明确钟点 = false；旧数据 null 且在零点，同提醒 lib/reminders.ts 定了时刻）只写日子，
+ * 今天 / 明天也不带「00:00」（3703 实操：只定了日子的跟进计划写成「明天 00:00」）；定了钟点的远处补钟点；跨年短写
+ */
+describe("到期字（复盘任务页签的到期）", () => {
+  it.each([
+    ["今天", "2026-11-21"],
+    ["明天", "2026-11-22"],
+    ["昨天", "2026-11-20"],
+  ])("%s：没定钟点（false / 旧数据 null 零点）只写日子不带钟点，定了钟点带钟点", (叫, 日) => {
+    现在是("2026-11-21 12:00");
+    expect(到期字(京(`${日} 00:00`), false)).toBe(叫);
+    expect(到期字(京(`${日} 00:00`), null)).toBe(叫);
+    // 明确钟点 = false 时就算存的不是零点也不写钟点
+    expect(到期字(京(`${日} 15:30`), false)).toBe(叫);
+    expect(到期字(京(`${日} 00:00`), true)).toBe(`${叫} 00:00`);
+    // 旧数据不在零点 = 当时定了钟点（同提醒口径）
+    expect(到期字(京(`${日} 15:30`), null)).toBe(`${叫} 15:30`);
+  });
+
+  it("远处补钟点；跨年短写 YYYY-MM-DD（HH:mm）", () => {
+    现在是("2026-11-21 12:00");
+    expect(到期字(京("2026-11-18 15:00"), true)).toBe("3 天前 15:00");
+    expect(到期字(京("2026-11-25 09:30"), null)).toBe("11 月 25 日 09:30");
+    expect(到期字(京("2026-11-25 00:00"), null)).toBe("11 月 25 日");
+    expect(到期字(京("2025-10-26 09:30"), true)).toBe("2025-10-26 09:30");
+    expect(到期字(京("2025-10-26 00:00"), false)).toBe("2025-10-26");
   });
 });

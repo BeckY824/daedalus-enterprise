@@ -23,7 +23,8 @@ import { 不挂项目也能存 } from "@/lib/project/follow-needs-project";
 import { saveCustomer } from "@/app/(app)/customers/actions";
 import { 选通道 } from "./channel";
 import { 认背调状态 } from "./state";
-import { 报告文本, 背调标题, 背调标题前缀 } from "./report";
+import { 报告文本, 背调标题 } from "./report";
+import { 读最近背调, type 最近背调结果 } from "./latest";
 import { 认号码, type 号码信息 } from "./person";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 是业务线 } from "@/lib/enterprise/assign-line";
@@ -115,12 +116,7 @@ export async function 找同名客户(name: string): Promise<{ id: string; name:
   return prisma.customer.findMany({ where: { name: { contains: 词 } }, select: { id: true, name: true }, take: 5, orderBy: { updatedAt: "desc" } });
 }
 
-export async function 最近背调(customerId: string): Promise<{ id: string; title: string; content: string; at: string } | null> {
+export async function 最近背调(customerId: string): Promise<最近背调结果> {
   await requireUser();
-  const f = await prisma.followUp.findFirst({
-    where: { customerId, type: "OTHER", title: { startsWith: 背调标题前缀 } },
-    orderBy: { occurredAt: "desc" },
-    select: { id: true, title: true, content: true, occurredAt: true },
-  });
-  return f ? { id: f.id, title: f.title, content: f.content, at: f.occurredAt.toISOString() } : null;
+  return 读最近背调(customerId);
 }

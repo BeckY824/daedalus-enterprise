@@ -54,7 +54,7 @@ describe("表格", () => {
 describe("格子里带竖线（名字、抬头里常有）", () => {
   /** 每行的格子文字，按 <tr> 切；格子里套着 span，只取纯文字 */
   const 行们 = (h: string) =>
-    [...h.matchAll(/<tr>(.*?)<\/tr>/g)].map((m) => [...m[1].matchAll(/<t[hd]>(.*?)<\/t[hd]>/g)].map((c) => c[1].replace(/<[^>]+>/g, "")));
+    [...h.matchAll(/<tr>(.*?)<\/tr>/g)].map((m) => [...m[1].matchAll(/<t[hd](?: class="md-num")?>(.*?)<\/t[hd]>/g)].map((c) => c[1].replace(/<[^>]+>/g, "")));
   const 头 = "| 渠道 | 新增 | 负责人 |\n|---|---|---|\n";
 
   it("GFM 转义 \\| 不是分界，渲出来是一个 |", () => {
@@ -102,7 +102,7 @@ describe("格子里带竖线（名字、抬头里常有）", () => {
 
 describe("竖线：列数、正文、已知盲区", () => {
   const 行们 = (h: string) =>
-    [...h.matchAll(/<tr>(.*?)<\/tr>/g)].map((m) => [...m[1].matchAll(/<t[hd]>(.*?)<\/t[hd]>/g)].map((c) => c[1].replace(/<[^>]+>/g, "")));
+    [...h.matchAll(/<tr>(.*?)<\/tr>/g)].map((m) => [...m[1].matchAll(/<t[hd](?: class="md-num")?>(.*?)<\/t[hd]>/g)].map((c) => c[1].replace(/<[^>]+>/g, "")));
 
   it("列数按分隔行定：表头名字里自带没转义的 | 不把列数算大", () => {
     const h = 渲("| 区域|主体 | 新增 |\n|---|:--:|\n| 华东 | 区域|主体2 | 3 |\n| 华北 | 4 |");
@@ -160,5 +160,16 @@ describe("原来就有的那几样没被表格这一段带坏", () => {
 
   it("分隔线仍然不占位", () => {
     expect(渲("上\n---\n下")).not.toContain("<hr");
+  });
+});
+
+describe("数字列（设计语言 HC-2a，C6-A：现状主题右对齐、等宽）", () => {
+  it("整列有字的格都是数字（金额、百分比、带单位）才加 .md-num，表头同列也加；日期、文字列不加", async () => {
+    const { 数字列 } = await import("@/components/Markdown");
+    expect([...数字列([["华东", "¥12,800", "35%", "11-20", "3 个"], ["北岸", "960", "—", "11-02", "12 个"]])]).toEqual([1, 2, 4]);
+    const h = 渲("| 客户 | 金额 |\n|---|---|\n| 华东 | ¥12,800 |\n| 北岸 | 960 |");
+    expect(h).toContain('<th class="md-num">');
+    expect(h.match(/<td class="md-num">/g)?.length).toBe(2);
+    expect(h).toMatch(/<td>.*华东.*?<\/td>/);
   });
 });

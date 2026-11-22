@@ -36,6 +36,16 @@ describe("一次只显示一条，挑哪一条", () => {
     expect(条.名).toBe("没答上来的");
   });
 
+  it("人自己点了停（设计语言 HC-2a，C11-A）：写「已停下」不写「没答上来」，也不再叫人", () => {
+    const 停 = { ...项("b", "error", "停了的"), 停下: true };
+    const 条 = 挑一条([项("a", "done", "答完的"), 停])!;
+    expect(条.态).toBe("停下");
+    expect(条.说明).toBe("已停下");
+    expect(类名[条.态]).toBe("stopped");
+    expect(通知文案(停)).toBeNull();
+    expect(通知文案(项("c", "error", "真出错"))?.标题).toBe("没答上来");
+  });
+
   it("答完但带着建议卡的，排在单纯答完的前面：它在等人点确认", () => {
     const 条 = 挑一条([项("a", "done", "只是答完"), 项("b", "done", "记一笔", true)])!;
     expect(条.态).toBe("待确认");
@@ -57,8 +67,8 @@ describe("一次只显示一条，挑哪一条", () => {
     expect(挑一条([项("a", "loading", "面板里问的")])!.去).toBeUndefined();
   });
 
-  it("四种态各有一个样式表认得的类名", () => {
-    expect(类名).toEqual({ 跑着: "loading", 失败: "error", 待确认: "wait", 答完: "done" });
+  it("五种态各有一个样式表认得的类名（停下 = HC-2a 加的）", () => {
+    expect(类名).toEqual({ 跑着: "loading", 失败: "error", 停下: "stopped", 待确认: "wait", 答完: "done" });
   });
 });
 
