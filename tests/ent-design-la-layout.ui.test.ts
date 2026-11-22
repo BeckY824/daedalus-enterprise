@@ -152,6 +152,22 @@ for (const w of [1024, 1280, 1366, 390]) {
   });
 }
 
+it("M1-c：390 宽导入、导出只剩图标也是触屏点击区（≥ 44×44，--hit-touch），点得中", async () => {
+  const { page, errors } = await 开(390);
+  try {
+    const 两颗 = page.locator(".page-head-a .cust-head-io");
+    expect(await 两颗.count()).toBe(2);
+    const 尺寸 = await 两颗.evaluateAll((bs) => bs.map((b) => { const r = b.getBoundingClientRect(); return { 宽: r.width, 高: r.height, 名: b.getAttribute("aria-label") ?? b.textContent }; }));
+    for (const x of 尺寸) {
+      expect(x.宽, `${x.名} 宽`).toBeGreaterThanOrEqual(44);
+      expect(x.高, `${x.名} 高`).toBeGreaterThanOrEqual(44);
+    }
+    for (const x of await 点得中(page, ".page-head-a .cust-head-io")) expect(x, `390 宽 ${x.字}`).toEqual({ 字: x.字, 中: true, 在屏: true });
+    expect(await 页横滚(page)).toBe(false);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it("L-新3：销售（没有导入导出、没有离职交接）只剩「新建 ▾」；只读管理员一颗都没有", async () => {
   const { page, errors } = await 开(1366, { 导入导出: false, 交接: null, 管: false });
   try {

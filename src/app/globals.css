@@ -5754,7 +5754,8 @@ button.proj-miss-chip { cursor: pointer; }
 @media (max-width: 767px) {
   /* D06 手机宽首屏多露行：页头副标题收起；导入、导出只留图标（D35 图标已分开，字靠 aria-label），四颗一排 */
   :root:is(:not([data-skin]), [data-skin="now"]) .page-head:has(.cust-scope) > :first-child > p { display: none; }
-  :root:is(:not([data-skin]), [data-skin="now"]) .cust-head-io { width: var(--ctl-h); padding-inline: 0; }
+  /* M1-c：只剩图标也守触屏点击区 44（--hit-touch），不是 32 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-head-io { width: var(--hit-touch); min-width: var(--hit-touch); height: var(--hit-touch); padding-inline: 0; }
   :root:is(:not([data-skin]), [data-skin="now"]) .cust-head-io > span:not(.ant-btn-icon) { display: none; }
   /* 筛选行三排：①「列表 | 看板」…「列」②搜索 + 重置 ③客户状态、负责人、更多筛选（阶段 / 进程收进更多筛选，同 1366，L-新5）。
      原来五排（列表 | 看板 / 搜索 / 状态 + 负责人 / 阶段 + 进程 / 更多筛选 + 重置）再单独一排「列」，表格从 y≈420 才开始。
