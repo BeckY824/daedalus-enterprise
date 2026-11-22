@@ -1,10 +1,11 @@
 "use client";
 
-import { memo } from "react";
+import { createContext, memo, useContext } from "react";
 import { Popover } from "antd";
 import type { BriefRecord } from "@/lib/ai-draft";
 import { splitCitations } from "@/lib/ai-draft";
 import { 表格行, 无序行, 有序行, 切淡片, 块属性相等, type 块属性 } from "@/lib/stream-reveal";
+import type { 链段 } from "@/lib/ai-entity-link";
 
 /**
  * 够用就好的 Markdown：标题、无序/有序列表、表格、**加粗**、`行内代码`、段落，外加 [n] 引用圆标。
@@ -21,6 +22,13 @@ export default function Markdown({ text, records = [] }: { text: string; records
 }
 
 type 引用表 = Map<number, BriefRecord>;
+
+/**
+ * 回答里要链成链接的名字（设计语言 HC-2b）：TurnView 按这一轮 answer.customers 在全文里找好（lib/ai-entity-link.ts），
+ * 偏移和这里每段字的「起」同一套；画 = 把那几个字包成链接（悬停小卡，components/RecordPeek.tsx）。
+ * 不给（别处的 Markdown、还在流）就和原来一样只是字
+ */
+export const 实体链Context = createContext<{ 段们: readonly 链段[]; 画: (段: 链段, 字: React.ReactNode) => React.ReactNode } | null>(null);
 const 不淡: readonly number[] = [];
 
 /**
@@ -199,7 +207,28 @@ function 淡入(文: string, 起: number, 淡: readonly number[]): React.ReactNo
   );
 }
 
+/**
+ * 一段纯文本里落着要链的名字：切开，名字那截交给 画 包成链接（里面照样淡入）。
+ * 名字整个落在这段里才链；段里有 \| 转义时偏移会差一位，不链（那种段多半是表格里的渠道名，本来也不是客户名）
+ */
+function 链上(原: string, at: number, 淡: readonly number[], 链: { 段们: readonly 链段[]; 画: (段: 链段, 字: React.ReactNode) => React.ReactNode } | null): React.ReactNode {
+  const 字 = 原.replace(/\\\|/g, "|");
+  if (!链 || 字 !== 原) return 淡入(字, at, 淡);
+  const 落着 = 链.段们.filter((x) => x.起 >= at && x.止 <= at + 原.length);
+  if (落着.length === 0) return 淡入(字, at, 淡);
+  const out: React.ReactNode[] = [];
+  let o = at;
+  for (const x of 落着) {
+    if (x.起 > o) out.push(<span key={`t${o}`}>{淡入(原.slice(o - at, x.起 - at), o, 淡)}</span>);
+    out.push(<span key={`e${x.起}`}>{链.画(x, 淡入(原.slice(x.起 - at, x.止 - at), x.起, 淡))}</span>);
+    o = x.止;
+  }
+  if (o < at + 原.length) out.push(<span key={`t${o}`}>{淡入(原.slice(o - at), o, 淡)}</span>);
+  return out;
+}
+
 function Inline({ text, byN, 起, 淡 }: { text: string; byN: 引用表; 起: number; 淡: readonly number[] }) {
+  const 链 = useContext(实体链Context);
   // 先切加粗和行内代码，再在每段里切引用。代码段里的东西原样给，不再找引用
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
   const 各起: number[] = [];
@@ -225,7 +254,8 @@ function Inline({ text, byN, 起, 淡 }: { text: string; byN: 引用表; 起: nu
           const at = 内起 + c;
           c += seg.length;
           // 提示词让模型把格子里的 | 写成 \|，正文里提到同一个名字时它也会照写：正文也还原成 |，行内代码里的原样
-          return <span key={j}>{淡入(seg.replace(/\\\|/g, "|"), at, 淡)}</span>;
+          // 这一轮提到的客户名（HC-2b）在这里变链接
+          return <span key={j}>{链上(seg, at, 淡, 链)}</span>;
         });
         return bold ? <strong key={i}>{nodes}</strong> : <span key={i}>{nodes}</span>;
       })}

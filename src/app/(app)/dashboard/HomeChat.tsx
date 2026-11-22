@@ -204,7 +204,7 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
       ) : empty ? (
         <Welcome userName={userName} 信号={信号} context={context} 欢迎={驾驶舱 ? `欢迎使用 ${产品名 ?? 默认产品名}` : undefined} 示例槽={外框 ? set示例槽 : undefined} />
       ) : (
-        <TurnLog turns={turns} 刚发的={刚发的} scope={scope} 动作={动作} 企业版={企业版} />
+        <TurnLog turns={turns} 刚发的={刚发的} scope={scope} 动作={动作} />
       )}
       {/*
         换对话按这一屏装着的对话 id 重挂（不按地址上的 会话：地址先变、库里那段要等 useHomeTurns 的效果装进来，

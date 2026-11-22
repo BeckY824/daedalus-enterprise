@@ -57,7 +57,7 @@ export function 历史成屏(messages: 历史消息[]): { turns: Turn[]; jobs: {
     const a = messages[i + 1]?.role === "assistant" ? messages[i + 1] : null;
     if (!a) continue;
     i++;
-    const refs = (a.refs ?? {}) as { records?: BriefRecord[]; customers?: AgentAnswer["customers"]; research?: unknown };
+    const refs = (a.refs ?? {}) as { records?: BriefRecord[]; customers?: AgentAnswer["customers"]; research?: unknown; 写不了?: unknown; 拒了写?: unknown };
     // 背调那一轮：报告整份存在 refs.research 里，读回来照样画成卡（形状不对就退回当一段字显示）
     const research = 认背调状态(refs.research) ?? undefined;
     turns.push({ id: u.id, question: u.text, kind: research ? "research" : "ask", at: Date.parse(u.createdAt), ...(research ? { 公司: research.目标.name } : {}) });
@@ -68,7 +68,15 @@ export function 历史成屏(messages: 历史消息[]): { turns: Turn[]; jobs: {
         text: a.text,
         ms: a.ms ?? undefined,
         research,
-        answer: { text: a.text, records: refs.records ?? [], customers: refs.customers ?? [], proposals: [], ...(research ? { research } : {}) },
+        answer: {
+          text: a.text,
+          records: refs.records ?? [],
+          customers: refs.customers ?? [],
+          proposals: [],
+          ...(research ? { research } : {}),
+          ...(typeof refs.写不了 === "string" ? { 写不了: refs.写不了 } : {}),
+          ...(refs.拒了写 === true ? { 拒了写: true } : {}),
+        },
       },
     });
   }

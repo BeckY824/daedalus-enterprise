@@ -82,7 +82,7 @@ export function runStream<T>(key: string, body: StreamBody, meta?: string, 标�
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = "";
-      let final: { ok: true; value: StreamJob<T> } | { ok: false; error: string; value?: StreamJob<T> } | null = null;
+      let final: { ok: true; value: StreamJob<T> } | { ok: false; error: string; code?: string; value?: StreamJob<T> } | null = null;
       let finished = false;
       while (!finished) {
         let chunkRead: ReadableStreamReadResult<Uint8Array>;
@@ -137,9 +137,11 @@ export function runStream<T>(key: string, body: StreamBody, meta?: string, 标�
             text = "";
             patchJob<StreamJob<T>>(key, { steps, text });
           } else if (e.type === "result") {
-            const r = e as unknown as { ok: boolean; answer?: T; error?: string };
-            // 出错也把走过的步骤留着：人能看到卡在哪一步
-            final = r.ok ? { ok: true, value: { steps, answer: r.answer, text, ms: Date.now() - t0, research } } : { ok: false, error: r.error ?? "生成失败", value: { steps, text, ms: Date.now() - t0, research } };
+            const r = e as unknown as { ok: boolean; answer?: T; error?: string; code?: unknown };
+            // 出错也把走过的步骤留着：人能看到卡在哪一步。code 是服务端的固定错误码（lib/ai-stream-codes.ts），界面按它认超时
+            final = r.ok
+              ? { ok: true, value: { steps, answer: r.answer, text, ms: Date.now() - t0, research } }
+              : { ok: false, error: r.error ?? "生成失败", ...(typeof r.code === "string" ? { code: r.code } : {}), value: { steps, text, ms: Date.now() - t0, research } };
           }
         }
       }

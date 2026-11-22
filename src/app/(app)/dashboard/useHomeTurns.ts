@@ -70,7 +70,14 @@ export function useHomeTurns({ 会话, scope, model, 模式, 上下文提示, �
           ms: job.value?.ms ?? null,
           steps: job.value?.steps,
           // 建议卡不存：它是一件当时就处理完的事，翻历史不该再摆回来。背调的整份报告存着：翻历史还是那张卡
-          refs: { records: job.value?.answer?.records ?? [], customers: job.value?.answer?.customers ?? [], ...(job.value?.answer?.research ? { research: job.value.answer.research } : {}) },
+          refs: {
+            records: job.value?.answer?.records ?? [],
+            customers: job.value?.answer?.customers ?? [],
+            ...(job.value?.answer?.research ? { research: job.value.answer.research } : {}),
+            // 只读标记（HC-2b）也存下：翻回这段对话，带锁那行和「不给写的追问」照旧
+            ...(job.value?.answer?.写不了 ? { 写不了: job.value.answer.写不了 } : {}),
+            ...(job.value?.answer?.拒了写 ? { 拒了写: true } : {}),
+          },
           标题前缀: 标题前缀,
           // 新建那条对话时记下「在哪一页问的」。标题前缀是给人看的，这个才是键
           scope,

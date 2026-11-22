@@ -23,6 +23,8 @@ export type JobState<T> = {
   startedAt: number;
   /** 出错时几点停的（设计语言 HC-2a：超时写「等了 N 秒没回来」要用；重新打开这一屏时 now 早就不对了） */
   endedAt?: number;
+  /** 出错时服务端给的固定错误码（HC-2b，lib/ai-stream-codes.ts）：超时 = "timeout"。界面按它认，不看 error 文案 */
+  code?: string;
   /**
    * 给侧栏那条「AI 任务」用的：这条任务叫什么、点了回哪儿。
    * 不给就不在侧栏出现——起草话术那种几秒钟就回来的不值得占一行。
@@ -35,7 +37,7 @@ export type JobState<T> = {
     窄模式（右侧面板）下人是在别的页面问的，拽他去首页是把他赶走 */
 export type 任务标签 = { 名: string; 去?: string };
 
-type Result<T> = { ok: true; value: T } | { ok: false; error: string; value?: T };
+type Result<T> = { ok: true; value: T } | { ok: false; error: string; code?: string; value?: T };
 
 const jobs = new Map<string, JobState<unknown>>();
 const listeners = new Set<() => void>();
@@ -66,7 +68,7 @@ export function runJob<T>(key: string, fn: () => Promise<Result<T>>, meta?: stri
     .then((r) => {
       if (!还算数()) return;
       // AI 卡上的报错不直出英文（25C）：服务端回的中文照给；上游原文（fetch failed、Internal Server Error…）换成中文，原文进日志
-      jobs.set(key, r.ok ? { status: "done", value: r.value, meta, startedAt: 起, 标签 } : { status: "error", error: 给人看的错(r.error, AI没答上来话, "AI 任务"), value: r.value, meta, startedAt: 起, endedAt: Date.now(), 标签 });
+      jobs.set(key, r.ok ? { status: "done", value: r.value, meta, startedAt: 起, 标签 } : { status: "error", error: 给人看的错(r.error, AI没答上来话, "AI 任务"), ...(r.code ? { code: r.code } : {}), value: r.value, meta, startedAt: 起, endedAt: Date.now(), 标签 });
     })
     .catch((e: unknown) => {
       if (!还算数()) return;

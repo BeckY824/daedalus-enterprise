@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest";
 
-const 记 = vi.hoisted(() => ({ 工具: [] as string[][], 系统: [] as string[] }));
+const 记 = vi.hoisted(() => ({ 工具: [] as string[][], 系统: [] as string[], 出招: null as null | ((第: number) => unknown) }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/llm", () => ({
   buildSystemPrompt: () => "系统提示",
@@ -19,7 +19,7 @@ vi.mock("@/lib/llm", () => ({
   chatTools: async (ms: { role: string; content: unknown }[], tools: { function: { name: string } }[]) => {
     记.工具.push(tools.map((t) => t.function.name));
     记.系统.push(String(ms[0]?.content ?? ""));
-    return { text: "", toolCalls: [] };
+    return 记.出招?.(记.工具.length) ?? { text: "", toolCalls: [] };
   },
 }));
 
@@ -52,6 +52,7 @@ beforeEach(async () => {
   invalidateSettingsCache();
   记.工具 = [];
   记.系统 = [];
+  记.出招 = null;
 });
 afterEach(() => { vi.unstubAllEnvs(); 忘掉企业版范围(); });
 afterAll(async () => { await prisma.$disconnect(); });
@@ -67,6 +68,9 @@ describe("只读的人不给出卡工具（20c）", () => {
     expect(记.工具[0].length).toBeGreaterThan(0);
     expect(记.工具[0].filter((n) => n.startsWith("propose_"))).toEqual([]);
     expect(记.工具[0]).toContain("find_person");
+    // HC-2b：要记 / 改 / 删时调 say_read_only，服务端带固定标记，界面统一说一句
+    expect(记.工具[0]).toContain("say_read_only");
+    expect(记.系统[0]).toContain("先调 say_read_only");
     expect(记.系统[0]).toContain("这个账号只能看、不能改任何数据");
     expect(记.系统[0]).toContain(话);
     expect(记.系统[0]).not.toContain("取值表（propose_*");
@@ -93,7 +97,9 @@ describe("只读的人不给出卡工具（20c）", () => {
     expect(记.工具[0]).toContain("propose_project_followup");
     expect(记.系统[0]).toContain("取值表（propose_*");
     expect(记.系统[0]).not.toContain("这个账号只能看");
+    expect(记.工具[0]).not.toContain("say_read_only");
     expect(r.写不了).toBeUndefined();
+    expect(r.拒了写).toBeUndefined();
   });
 
   it("不是企业版不看业务角色", async () => {
@@ -101,5 +107,22 @@ describe("只读的人不给出卡工具（20c）", () => {
     const me = await 造人("戊", null);
     await 问(me);
     expect(记.工具[0]).toContain("propose_followup");
+  });
+});
+
+describe("只读被拒的固定标记（设计语言 HC-2b）", () => {
+  it("模型调了 say_read_only：结果带 拒了写，没调就不带", async () => {
+    const me = await 造人("己", "admin");
+    记.出招 = (第) => (第 === 1 ? { text: "", toolCalls: [{ id: "x1", type: "function", function: { name: "say_read_only", arguments: "{}" } }] } : { text: "", toolCalls: [] });
+    try {
+      const r = await 问(me);
+      expect(r.写不了).toContain("管理员只能看");
+      expect(r.拒了写).toBe(true);
+      expect(r.proposals).toEqual([]);
+    } finally {
+      记.出招 = null;
+    }
+    const r2 = await 问(me);
+    expect(r2.拒了写).toBeUndefined();
   });
 });

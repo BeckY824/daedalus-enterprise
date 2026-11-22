@@ -42,6 +42,8 @@ export function 这一家的工具(b: Pick<BusinessConfig, "projectMode">, 只�
   const TOOLS = 全部工具
     // 只读的人（只读管理员、销售教练、只看某人、没设业务角色）不给任何出卡工具：给了它照样出卡，人点确认才报错（批次 20c）
     .filter((t) => !(写不了 && t.name.startsWith("propose_")))
+    // 反过来，say_read_only 只给只读的人（HC-2b）：要记 / 改 / 删时调它，回答带固定标记、界面统一说一句
+    .filter((t) => 写不了 || t.name !== "say_read_only")
     .filter((t) => (t.name === "list_projects" ? b.projectMode === true : true))
     .filter((t) => !(只用项目 && 只用项目不给.includes(t.name)))
     // 项目类建议卡（推进节点、卡点、回款、验证、联系人、删客户）只在只用项目的企业版给：别处没有这些表
@@ -105,8 +107,11 @@ export type AgentEvents = {
   signal?: AbortSignal;
 };
 
-/** 回答里提到的客户，前端据此给「打开记录页 / 起草话术」动作 */
-export type 提到的客户 = { id: string; name: string; followStatus: string };
+/**
+ * 回答里提到的客户，前端据此给「打开记录页 / 起草话术」动作。
+ * 负责人、上次跟进（HC-2b）：回答里的名字悬停出小卡用。只取工具这一轮已经查回来的（按可见范围过滤过），不为它另查库；没有就不给
+ */
+export type 提到的客户 = { id: string; name: string; followStatus: string; owner?: string; lastFollowAt?: string };
 
 export type AgentResult = {
   text: string;
@@ -115,8 +120,10 @@ export type AgentResult = {
   /** 写入提议：渲染成卡片，人点确认才落库 */
   proposals: Proposal[];
   steps: number;
-  /** 这个人写不了时那句话（批次 20c）：调用方据此不摆别的来路的卡（名片识别的卡） */
+  /** 这个人写不了时那句话（批次 20c）：调用方据此不摆别的来路的卡（名片识别的卡）；界面据此不给写的追问（HC-2b） */
   写不了?: string;
+  /** 只读的人这一轮要 AI 记 / 改 / 删、被拒了（模型调了 say_read_only，HC-2b）：界面出一行带锁的说明。固定标记，不靠模型的原话 */
+  拒了写?: boolean;
 };
 
 const MAX_STEPS = 8;
@@ -388,7 +395,7 @@ const 出卡规则 = `- 你不能修改任何数据。propose_* 工具只是生�
 
 /** 只读的人：没有出卡工具，提示词里也不教出卡（批次 20c）。人要改数据时照实说这个账号只能看 */
 const 只读规则 = (话: string) => `- **这个账号只能看、不能改任何数据**（${话}）。你没有任何 propose_* 工具，也不会有建议卡：
-  人要记跟进、建线索、改资料、推进项目、删东西时，直接告诉他这个账号是只读的、要改请找负责的同事；不要说"已经给出建议""你确认一下"，也不要提卡片`;
+  人要记跟进、建线索、改资料、推进项目、删东西时，**先调 say_read_only**（不带参数），界面会统一写一行说明只读；之后只回答能查的部分，不要再自己解释只读，不要说"已经给出建议""你确认一下"，也不要提卡片`;
 
 export async function runAgent(
   input: {
@@ -583,7 +590,10 @@ ${写不了 ? 只读规则(写不了) : 出卡规则}
     if (tool.name === "get_customer" && result.data && typeof result.data === "object" && "id" in result.data) {
       const d = result.data as { id: string; name: string; profile: string };
       const m = d.profile.match(/跟进状态「([^」]+)」/);
-      customers.set(d.id, { id: d.id, name: d.name, followStatus: m?.[1] ?? "" });
+      // 负责人在 profile 那句话里（tools.ts get_customer）；上次跟进 = 跟进记录按时间倒序的第一条
+      const 负责人 = d.profile.match(/负责人 ([^；]+)/)?.[1]?.trim();
+      const 上次 = result.records?.[0]?.date;
+      customers.set(d.id, { id: d.id, name: d.name, followStatus: m?.[1] ?? "", ...(负责人 ? { owner: 负责人 } : {}), ...(上次 ? { lastFollowAt: 上次 } : {}) });
     } else {
       // 搜索 / 盯盘 / 计划里出现过的人先记着，回答里提到了才给动作
       for (const r of listCustomers(result.data)) mentioned.set(r.id, r);
@@ -847,7 +857,7 @@ ${写不了 ? 只读规则(写不了) : 出卡规则}
   if (只有空查询() && !有DSML(text) && !不是答案(text, 工具名单)) {
     ev.onToken?.(空查询话());
     ev.emit?.({ id: "answer", label: "组织回答", status: "done" });
-    return { text: 空查询话(), records, customers: [...customers.values()], proposals: ctx.proposals, steps, ...(写不了 ? { 写不了 } : {}) };
+    return { text: 空查询话(), records, customers: [...customers.values()], proposals: ctx.proposals, steps, ...(写不了 ? { 写不了 } : {}), ...(ctx.拒了写 ? { 拒了写: true } : {}) };
   }
   /*
     **回答里吐的是一个认得出来的工具调用**：它还想查（或者想提一张卡），只是这一步手上没有工具，
@@ -975,7 +985,7 @@ ${写不了 ? 只读规则(写不了) : 出卡规则}
   if (只有空查询()) { text = 空查询话(); ev.onToken?.(text); }
   ev.emit?.({ id: "answer", label: "组织回答", status: "done" });
   for (const r of mentioned.values()) if (!customers.has(r.id) && customers.size < 5 && text.includes(r.name)) customers.set(r.id, r);
-  return { text, records, customers: [...customers.values()], proposals: ctx.proposals, steps, ...(写不了 ? { 写不了 } : {}) };
+  return { text, records, customers: [...customers.values()], proposals: ctx.proposals, steps, ...(写不了 ? { 写不了 } : {}), ...(ctx.拒了写 ? { 拒了写: true } : {}) };
 }
 
 /** 从工具结果里捞出「id + 姓名」的行（搜索名单、盯盘、计划的形状各不同，只认字段名） */
@@ -984,9 +994,16 @@ function listCustomers(data: unknown): 提到的客户[] {
   const out: 提到的客户[] = [];
   for (const r of rows) {
     if (!r || typeof r !== "object") continue;
-    const o = r as { id?: unknown; customerId?: unknown; name?: unknown; followStatus?: unknown };
+    const o = r as { id?: unknown; customerId?: unknown; name?: unknown; followStatus?: unknown; owner?: unknown; lastFollowAt?: unknown };
     const id = typeof o.id === "string" ? o.id : typeof o.customerId === "string" ? o.customerId : "";
-    if (id && typeof o.name === "string") out.push({ id, name: o.name, followStatus: typeof o.followStatus === "string" ? o.followStatus : "" });
+    if (id && typeof o.name === "string")
+      out.push({
+        id,
+        name: o.name,
+        followStatus: typeof o.followStatus === "string" ? o.followStatus : "",
+        ...(typeof o.owner === "string" && o.owner ? { owner: o.owner } : {}),
+        ...(typeof o.lastFollowAt === "string" && o.lastFollowAt ? { lastFollowAt: o.lastFollowAt } : {}),
+      });
   }
   return out;
 }
