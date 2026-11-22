@@ -15,6 +15,7 @@ import { 邮件摘要 } from "@/components/research/MailPaste";
 import type { 背调价目 } from "@/lib/research/actions";
 import type { 邮件信号 } from "@/lib/research/verify/mail";
 import type { Suggestion } from "./HomeChat";
+import { useIsNowSkin } from "@/lib/use-skin";
 
 export function ComposerTools({ 宽, 摆背调键, 背调模式, on切背调, files, setFiles, 在跑, 邮件, on开邮件, 摆粘贴键, on粘贴, on预载, 附件字, 摆附件键 = true }: {
   宽: boolean;
@@ -218,11 +219,14 @@ export function ComposerFoot({ 摆建议, 示例槽, suggestions, suggIdx, 空, 
 }) {
   /* 4–6 个能直接点的具体问题，就摆在输入框底下——人的视线落在框上。
      ↑↓ 在这里面走，回车发选中的那条。企业版驾驶舱（10-31）搬到欢迎语下面、每条一行，点了照旧只填进输入框 */
+  const 现状 = useIsNowSkin();
+  /* 设计语言 HC-1（C5-A，原 H-新9）：「帮我记一条：…」读着像被截断——现状主题去掉末尾的「：…」，点了照旧填「帮我记一条：」 */
+  const 叫 = (x: Suggestion) => (现状 ? x.label.replace(/[:：]\s*…$/, "") : x.label);
   const 示例 = 摆建议 ? (
     <div className="cli-welcome-q">
       {suggestions.map((x, i) => (
         <button key={x.label} type="button" className={`cli-q${i === suggIdx ? " cli-q-on" : ""}`} onClick={(e) => on问(x, e.currentTarget)} disabled={AI已用完}>
-          {x.label}
+          {叫(x)}
         </button>
       ))}
     </div>
@@ -248,7 +252,7 @@ export function ComposerFoot({ 摆建议, 示例槽, suggestions, suggIdx, 空, 
         <span style={{ flex: 1 }} />
         {!空 && suggestions.slice(0, 3).map((x) => (
           <button key={x.label} type="button" className="cli-sugg" disabled={AI已用完} onClick={() => on问(x)}>
-            {x.label}
+            {叫(x)}
           </button>
         ))}
       </div>

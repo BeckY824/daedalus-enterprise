@@ -5854,3 +5854,115 @@ button.proj-miss-chip { cursor: pointer; }
 :root:is(:not([data-skin]), [data-skin="now"]) :is(.rail-num, .chat-g-h, .cmdk-sec, .notice-meta, .rail-search kbd, .rail-ask-k) { color: var(--text-muted); }
 /* H-新10：⌘K 底部只一行三颗键，放不下也不折 */
 :root:is(:not([data-skin]), [data-skin="now"]) .cmdk-foot-one { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* =====================================================================
+   设计语言 HC-1（11-22，首页对话：骨架、头部、列宽、待办、滚动、390 对话栏；
+   依据 现在-首页对话-20261122.md HC-01/02/03/04/07/21/22/24/25，用户 11-22 选 C0-A / C1-A / C2-A / C3-A / C5-A / C12-A / C13-A）。
+   只挂现状主题、只首页驾驶舱问过之后（HomeChat 给 .cli 加 .cli-paper）；换皮主题、右侧 AI 面板（窄）照旧
+   ===================================================================== */
+/* C2-A：对话列。问句、回答、输入框同宽同边，在框里左右居中；框本身仍从和别的页同一左边缘开始 */
+:root:is(:not([data-skin]), [data-skin="now"]) { --chat-col: 760px; }
+/* C0-A：一张纸——页面不滚，框 = 视口高减上下各 24，四边一律 --s5（原来上 22 / 下 78、1024 上 54） */
+@media (min-width: 768px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .main:has(.cli-paper) { height: 100vh; height: 100dvh; display: flex; flex-direction: column; padding: var(--s5) !important; }
+  /* 切换视图那条提示浮在顶上（.view-as-bar fixed），顶边让出它的高，和 AppShell 那条 44 同一个数 */
+  :root:is(:not([data-skin]), [data-skin="now"]) body:has(.view-as-bar) .main:has(.cli-paper) { padding-top: 44px !important; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .main:has(.cli-paper) > div:has(> .cli-paper) { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; }
+}
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-paper { flex: 1; min-height: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-ck { min-height: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-ck-g { min-height: 0; grid-template-rows: minmax(0, 1fr); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-ck .cli-frame { padding: 0; min-height: 0; overflow: hidden; }
+/* 对话在框里滚；只有一轮时从顶上排（原 H-新16：短答不再贴着框底、上面空一大块）。size 容器：刚发那一轮按框高留空（100cqh = 去掉底边留白的可见高） */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-log {
+  flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin;
+  justify-content: flex-start; padding: 0 var(--s5) var(--s4); container-type: size;
+}
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-log > * { flex: none; width: 100%; max-width: var(--chat-col); margin-inline: auto; }
+/* C12-A：发出去的那一问顶到框顶，下面留出一框高的空、回答往下长（ChatGPT / Claude 的做法）；再发一问，上一轮的空收回 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-log > .cli-turn-new { min-height: 100cqh; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-composer-sticky { position: static; flex: none; background: none; padding: var(--s2) var(--s5) var(--s5); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-composer > * { max-width: var(--chat-col); margin-inline: auto; }
+
+/* C1-A：框头一行。左「显示对话列表」（列表不在时）、标题（点了改名）；右「待办 N」、「新建对话」（列表不在时）、⋯。
+   对话滚过顶才出下沿细线 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-head {
+  flex: none; position: relative; z-index: 4; display: flex; align-items: center; gap: var(--s1);
+  height: 48px; padding: 0 var(--s3) 0 var(--s4); border-bottom: 1px solid transparent; transition: border-color var(--t-fast) var(--ease);
+}
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-frame[data-scrolled] > .cli-head { border-bottom-color: var(--line-soft); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-head-t {
+  flex: 0 1 auto; min-width: 0; margin-left: calc(-1 * var(--s2)); padding: 4px var(--s2); border: 0; border-radius: var(--r-ctl); background: none;
+  font: inherit; font-size: var(--fs-body); font-weight: 600; line-height: 20px; color: var(--ink); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: text;
+}
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-head-t:hover:not(.is-static) { background: var(--row-hover); box-shadow: inset 0 0 0 1px var(--line); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-head-t:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-head-t.is-static { cursor: default; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-head > .pane-toggle + :is(.cli-head-t, .cli-head-in) { margin-left: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-head-in {
+  flex: 0 1 320px; min-width: 120px; height: var(--ctl-h); margin-left: calc(-1 * var(--s2)); padding: 0 var(--s2);
+  font: inherit; font-size: var(--fs-body); font-weight: 600; color: var(--ink); background: var(--panel);
+  border: 1px solid var(--brand); border-radius: var(--r-ctl); box-shadow: var(--focus-ring); outline: 0;
+}
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-head-sp { flex: 1; min-width: var(--s2); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-head-ib {
+  flex: none; width: var(--hit); height: var(--hit); padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: var(--r-ctl); background: none; color: var(--text-muted); font-size: var(--fs-section); cursor: pointer;
+}
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-head-ib:hover { background: var(--hover); color: var(--ink); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-head-ib:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
+/* C3-A：顶部待办提示行问过之后收成「待办 N」，点开一层浮层，每行原样 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-head-todo { position: relative; flex: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-head-chip {
+  display: inline-flex; align-items: center; gap: var(--s1); height: var(--ctl-h-sm); padding: 0 10px;
+  border: 1px solid var(--line); border-radius: var(--r-tag); background: var(--panel); color: var(--ink-soft);
+  font: inherit; font-size: var(--fs-note); white-space: nowrap; cursor: pointer;
+}
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-head-chip b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-head-chip:is(:hover, [aria-expanded="true"]) { background: var(--row-hover); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-head-chip:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-head-pop {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; width: min(440px, calc(100vw - 32px)); max-height: min(60vh, 420px); overflow-y: auto;
+  padding: var(--s2); background: var(--panel); border-radius: var(--r-pop); box-shadow: var(--shadow-pop);
+  animation: cli-drop-in var(--t-pop) var(--ease) backwards;
+}
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-head-pop[hidden] { display: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-head-pop-l { display: flex; flex-direction: column; gap: var(--s2); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-head-pop-l > * { margin: 0; }
+@media (prefers-reduced-motion: reduce) { :root:is(:not([data-skin]), [data-skin="now"]) .cli-head-pop { animation: none; } }
+/* C12-A：往上翻时输入框上方一颗「↓ 回到最新」，下面有新字带蓝点 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-latest { position: relative; z-index: 3; flex: none; height: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-latest-b {
+  position: absolute; left: 50%; bottom: var(--s2); translate: -50% 0; width: var(--ctl-h); height: var(--ctl-h); padding: 0;
+  display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 50%;
+  background: var(--panel); color: var(--ink-soft); font-size: var(--fs-body); box-shadow: var(--shadow-pop); cursor: pointer;
+}
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-latest-b[hidden] { display: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-latest-b:hover { color: var(--ink); background: var(--row-hover); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-latest-b.has-new::after {
+  content: ""; position: absolute; top: 0; right: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--brand); box-shadow: 0 0 0 2px var(--panel);
+}
+/* C5（用户 11-22 补：「对话框放到下面一点…和晚上好那一行上下整体留白间距保持一致」）：还没问时问候、快捷问题、输入框这一组在问答卡里上下居中——
+   「晚上好」上方的空 = 输入框下方的空（顶部待办照旧摆在卡顶，不算在这一组里）。原来输入框贴卡底（margin-top: auto），中间空一截 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-empty .cli-ck .cli-frame > .cli-welcome { margin-top: auto; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-empty .cli-ck .cli-frame > .cli-composer { margin-top: 0; margin-bottom: auto; }
+/* C5：「帮我记一条：」填进框时框亮一下（借提醒点进来那一圈 rec-ring），人知道填到哪了 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-input.is-filled { animation: rec-ring 0.9s var(--ease); }
+@media (prefers-reduced-motion: reduce) { :root:is(:not([data-skin]), [data-skin="now"]) .cli-input.is-filled { animation: none; } }
+/* C1：同名对话行尾带时间（ConversationList） */
+:root:is(:not([data-skin]), [data-skin="now"]) .chat-row-b:has(> .chat-row-tm) { display: flex; align-items: baseline; gap: var(--s2); }
+:root:is(:not([data-skin]), [data-skin="now"]) .chat-row-n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chat-row-tm { flex: none; font-size: var(--fs-min); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+/* C13-A：手机 390。全站顶栏不动，正文最上面一条对话栏（列表 · 标题 · 待办 · 新建 · ⋯），点击区 44；框铺满、在框里滚，输入框贴底留安全区 */
+@media (max-width: 767px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .ant-layout:has(> .app-content .cli-paper) { height: 100vh; height: 100dvh; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .app-content:has(.cli-paper) { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 !important; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-ck .cli-frame { border: 0; border-radius: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-head { height: 52px; padding: 0 var(--s1); gap: 0; border-bottom-color: var(--line-soft); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-head-ib { width: var(--hit-touch); height: var(--hit-touch); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-head-t { margin-left: 0; font-size: var(--fs-section); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-head-chip { height: var(--ctl-h); margin-inline: var(--s1); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-head-in { flex: 1 1 auto; margin-left: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-log { padding: 0 var(--s4) var(--s3); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-composer-sticky { padding: var(--s2) var(--s3) calc(var(--s3) + env(safe-area-inset-bottom)); }
+}

@@ -72,8 +72,21 @@ function composerH(): number {
  * （2026-09-19 实测：发送前 scrollTop=0，发送后 588.5）。
  * 对话是对话，正文不该动。
  */
-function 滚动容器(el: HTMLElement | null): HTMLElement | null {
-  return el?.closest<HTMLElement>(".dock-body") ?? null;
+export function 滚动容器(el: HTMLElement | null): HTMLElement | null {
+  const 面板 = el?.closest<HTMLElement>(".dock-body");
+  if (面板) return 面板;
+  /*
+    首页对话框（设计语言 HC-1，只现状主题驾驶舱问过之后）：对话在 .cli-log 里滚，整页不滚。
+    样式只挂现状主题——换皮主题下 .cli-log 不滚、还是整页滚，所以要看它真在不在滚，不能光认类名
+  */
+  const log = el?.closest<HTMLElement>(".cli-log");
+  if (log && /(auto|scroll)/.test(getComputedStyle(log).overflowY)) return log;
+  return null;
+}
+
+/** 首页对话框在框里滚（HC-1）：发出去的那一问顶到框顶、回答往下长，不跟着答案往下拽（用户 11-22 选 C12-A）。全局浮窗照旧跟随 */
+function 首页框里(容器: HTMLElement | null): boolean {
+  return !!容器?.classList.contains("cli-log");
 }
 
 /**
@@ -194,6 +207,7 @@ export default function TurnView({
   }, []);
   const 跟一下 = useCallback(() => {
     const 容器 = 滚动容器(ref.current);
+    if (首页框里(容器)) return;
     if (容器 ? !跟随中.current : !贴着底部(null)) return;
     滚到(ref.current, "end");
   }, []);
@@ -256,7 +270,7 @@ export default function TurnView({
   */
   if (turn.kind === "research" && (turn.公司 || turn.待选 || turn.人)) {
     return (
-      <div ref={ref} className="cli-turn">
+      <div ref={ref} className={`cli-turn${scrollOnMount ? " cli-turn-new" : ""}`}>
         <div className="cli-user">
           <div className="cli-bubble">{turn.question}</div>
         </div>
@@ -305,7 +319,7 @@ export default function TurnView({
   }
 
   return (
-    <div ref={ref} className="cli-turn">
+    <div ref={ref} className={`cli-turn${scrollOnMount ? " cli-turn-new" : ""}`}>
       <div className="cli-user">
         <div className="cli-bubble">{turn.question}</div>
       </div>

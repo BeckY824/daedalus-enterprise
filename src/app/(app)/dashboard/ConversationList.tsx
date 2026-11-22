@@ -5,12 +5,12 @@ import { dayjs } from "@/lib/utils";
 import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Drawer, Dropdown, Input, Modal } from "antd";
-import { useConsequence } from "@/components/ConsequenceDialog";
 import { PlusOutlined, MoreOutlined } from "@ant-design/icons";
-import { 删掉对话的屏, 新起一屏, 当前对话, 首页屏, useThread, useConversationId } from "@/lib/home-thread";
+import { 新起一屏, 当前对话, 首页屏, useThread, useConversationId } from "@/lib/home-thread";
 import { 占位标题 } from "./home-look";
-import { clearJob } from "@/lib/ai-jobs";
-import { 重命名对话, 删除对话, type 对话概要 } from "./threads";
+import { 重命名对话, type 对话概要 } from "./threads";
+import { useDeleteChat } from "./use-delete-chat";
+import { useIsNowSkin } from "@/lib/use-skin";
 import WidthHandle, { 对话列表把手 } from "@/components/WidthHandle";
 import PaneToggle from "@/components/PaneToggle";
 import { useMiddlePane, usePaneShortcut } from "@/lib/middle-pane";
@@ -34,7 +34,7 @@ import { 视图AI对话话 } from "@/lib/enterprise/view-as-words";
 export default function ConversationList({ rows }: { rows: 对话概要[] }) {
   const router = useRouter();
   const sp = useSearchParams();
-  const [问后果, 后果框] = useConsequence();
+  const [删, 后果框] = useDeleteChat();
   /** 改名没改成：原因写在改名框里，框不关（g.save，不弹顶部提示） */
   const [改名错, set改名错] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -77,37 +77,13 @@ export default function ConversationList({ rows }: { rows: 对话概要[] }) {
     startTransition(() => router.refresh());
   }
 
-  /** 删对话：后果框（回不来 + 不受影响两条），没删掉原因写在框里、框不关 */
-  function 删(c: 对话概要) {
-    void 问后果({
-      题: `删掉对话「${c.title}」`,
-      后果: [
-        { 标: "回不来", 话: `连同里面 ${c.条数} 条消息一起删掉，不能撤销`, 级: "危" },
-        { 标: "不动", 话: "客户、跟进这些业务数据不受影响" },
-      ],
-      是: "删掉",
-      做: async () => {
-        const r = await 删除对话(c.id);
-        if (!r.ok) return { ok: false, error: "删不掉这条对话" };
-        /*
-          库里删了还不算删完：**每一页的面板各自存着一屏**（见 lib/home-thread），
-          那几屏里还挂着这条对话问过的话。2026-09-19 报上来的：在这条列表里把对话
-          全删了，回到数据页、线索页，面板里那几句问过的话还在——人以为删干净了。
-          所以按对话 id 把所有挂在它名下的屏一并空掉，对应的任务（答案存在那儿）也清掉。
-        */
-        for (const id of 删掉对话的屏(c.id)) clearJob(`home:${id}`);
-        // 删的正好是开着的那条：回到一屏新对话
-        if (c.id === 选中) {
-          新起一屏(首页屏);
-          router.push("/dashboard");
-        }
-        startTransition(() => router.refresh());
-        return { ok: true };
-      },
-    });
-  }
-
   const 组 = 分组(rows);
+  /*
+    设计语言 HC-1（用户 11-22 选 C1：同名的列表里带时间）：标题取第一句前 18 字，同一句问几次就几条同名；
+    同名的行尾带上次问的时间（今天 / 昨天写钟点，更早写月-日），不多调模型起名。只现状主题，换皮主题照旧
+  */
+  const 现状 = useIsNowSkin();
+  const 同名 = 现状 ? 重名(rows) : null;
   /** 切换视图：服务端已回空（threads.ts），这里说一句为什么是空的 */
   const 视图中 = useViewAs();
 
@@ -145,7 +121,14 @@ export default function ConversationList({ rows }: { rows: 对话概要[] }) {
                 {条目.map((c) => (
                   <div key={c.id} className={`chat-row${c.id === 选中 ? " on" : ""}`}>
                     <button type="button" className="chat-row-b" onClick={() => 打开(c.id)} title={c.title}>
-                      {c.title}
+                      {同名?.has(c.title) ? (
+                        <>
+                          <span className="chat-row-n">{c.title}</span>
+                          <span className="chat-row-tm">{短时间(c.lastAskedAt)}</span>
+                        </>
+                      ) : (
+                        c.title
+                      )}
                     </button>
                     <Dropdown
                       trigger={["click"]}
@@ -154,7 +137,7 @@ export default function ConversationList({ rows }: { rows: 对话概要[] }) {
                           { key: "rename", label: "重命名" },
                           { key: "delete", label: "删掉", danger: true },
                         ],
-                        onClick: ({ key }) => (key === "rename" ? set改名({ id: c.id, title: c.title }) : 删(c)),
+                        onClick: ({ key }) => (key === "rename" ? set改名({ id: c.id, title: c.title }) : 删({ id: c.id, title: c.title, 条数: c.条数 })),
                       }}
                     >
                       <button type="button" className="chat-row-m" aria-label={`${c.title} 的操作`}>
@@ -233,4 +216,17 @@ function 分组(rows: 对话概要[]): [string, 对话概要[]][] {
     out[d >= 今 ? "今天" : d >= 昨 ? "昨天" : "更早"].push(r);
   }
   return [["今天", out.今天], ["昨天", out.昨天], ["更早", out.更早]];
+}
+
+/** 列表里出现不止一次的标题 */
+export function 重名(rows: { title: string }[]): Set<string> {
+  const 数 = new Map<string, number>();
+  for (const r of rows) 数.set(r.title, (数.get(r.title) ?? 0) + 1);
+  return new Set([...数].filter(([, n]) => n > 1).map(([t]) => t));
+}
+
+/** 同名对话行尾那个时间：今天、昨天写钟点（组名已经说了哪天），更早写月-日 */
+export function 短时间(at: string): string {
+  const d = dayjs(at);
+  return d.isAfter(dayjs().subtract(1, "day").startOf("day")) ? d.format("HH:mm") : d.format("MM-DD");
 }
