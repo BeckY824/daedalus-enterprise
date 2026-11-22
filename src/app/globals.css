@@ -2933,6 +2933,28 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .chan-dash-pool-list b { font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .chan-dash-pool-d { color: var(--text-muted); }
 .chan-dash-empty { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; padding: var(--s2) var(--s4); border: 1px dashed var(--field-line); border-radius: var(--r-card); font-size: var(--fs-note); color: var(--text-muted); }
+/* 设计语言 C-A1（11-22）不分主题的：漏斗四层、环形图色块、TOP5 条宽改成类（原来行内样式，看起来一样，ChannelDash.tsx） */
+.chan-fun-l0 { width: 100%; background: color-mix(in srgb, var(--brand) 34%, var(--panel)); }
+.chan-fun-l1 { width: 80%; background: color-mix(in srgb, var(--brand) 27%, var(--panel)); }
+.chan-fun-l2 { width: 60%; background: color-mix(in srgb, var(--brand) 20%, var(--panel)); }
+.chan-fun-l3 { width: 40%; background: color-mix(in srgb, var(--brand) 13%, var(--panel)); }
+.chan-dash-donut circle.chan-c0 { stroke: var(--brand); }
+.chan-dash-donut circle.chan-c1 { stroke: var(--cat-green); }
+.chan-dash-donut circle.chan-c2 { stroke: var(--cat-amber); }
+.chan-dash-donut circle.chan-c3 { stroke: var(--cat-violet); }
+.chan-dash-donut circle.chan-c-other { stroke: var(--field-line); }
+.chan-dash-legend i.chan-c0 { background: var(--brand); }
+.chan-dash-legend i.chan-c1 { background: var(--cat-green); }
+.chan-dash-legend i.chan-c2 { background: var(--cat-amber); }
+.chan-dash-legend i.chan-c3 { background: var(--cat-violet); }
+.chan-dash-legend i.chan-c-other { background: var(--field-line); }
+.chan-dash-top-bar i.chan-w0 { width: 0; }
+.chan-dash-top-bar i.chan-w5 { width: 5%; } .chan-dash-top-bar i.chan-w10 { width: 10%; } .chan-dash-top-bar i.chan-w15 { width: 15%; } .chan-dash-top-bar i.chan-w20 { width: 20%; }
+.chan-dash-top-bar i.chan-w25 { width: 25%; } .chan-dash-top-bar i.chan-w30 { width: 30%; } .chan-dash-top-bar i.chan-w35 { width: 35%; } .chan-dash-top-bar i.chan-w40 { width: 40%; }
+.chan-dash-top-bar i.chan-w45 { width: 45%; } .chan-dash-top-bar i.chan-w50 { width: 50%; } .chan-dash-top-bar i.chan-w55 { width: 55%; } .chan-dash-top-bar i.chan-w60 { width: 60%; }
+.chan-dash-top-bar i.chan-w65 { width: 65%; } .chan-dash-top-bar i.chan-w70 { width: 70%; } .chan-dash-top-bar i.chan-w75 { width: 75%; } .chan-dash-top-bar i.chan-w80 { width: 80%; }
+.chan-dash-top-bar i.chan-w85 { width: 85%; } .chan-dash-top-bar i.chan-w90 { width: 90%; } .chan-dash-top-bar i.chan-w95 { width: 95%; } .chan-dash-top-bar i.chan-w100 { width: 100%; }
+
 @container (max-width: 900px) {
   .chan-dash-kpi { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .chan-dash-k:nth-child(3n + 1) { border-left: 0; }
@@ -5738,6 +5760,73 @@ button.proj-miss-chip { cursor: pointer; }
 /* M12 找不到：说明一句一行，句里只在标点处折（「不正确」不拆成两行），一句比一行还长才在句中断 */
 :root:is(:not([data-skin]), [data-skin="now"]) .empty-state-h > .sp-sent { display: block; word-break: keep-all; overflow-wrap: anywhere; }
 
+/* ── 设计语言 C-A1（11-22）渠道看板 + 抽屉（现状主题部分）── */
+/* 现状主题：页头计数、看板小节头（总览 · 口径 · 时段 ｜ 按筛选出的 N 个渠道算）、卡头统一（48 高、15/600、下分隔，D19）、
+   KPI 数字 --fs-num、说明换行不截（D33）、金额窄格缩写每段不拆（D39）、「?」点击区 28（D05）、漏斗写转化率（C-新2）、
+   低效预警普通卡 + 橙圆点（C-新3）、三层转化率规范卡（一行三格、不用浅蓝底）、进公海表格化对齐、可点数字只换色（D30）、
+   390 / 窄看板次要卡收成卡头一行（C-新4，KPI 照旧 2×3） */
+:root:is(:not([data-skin]), [data-skin="now"]) .page-count { color: var(--count-fg); font-size: var(--fs-section); font-weight: 400; font-variant-numeric: tabular-nums; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-title { margin: 0; font-size: var(--fs-section); font-weight: 600; line-height: var(--ctl-h-sm); color: var(--ink); }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-when { flex-wrap: wrap; gap: var(--s2) var(--s3); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-cell { padding: 0 var(--card-pad) var(--s3); }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-h { flex-wrap: wrap; min-height: var(--card-head-h); margin: 0 calc(-1 * var(--card-pad)) var(--s3); padding: var(--s1) var(--card-pad); border-bottom: 1px solid var(--line-soft); font-size: var(--fs-section); font-weight: 600; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-count { color: var(--count-fg); font-size: var(--fs-note); font-weight: 400; font-variant-numeric: tabular-nums; }
+/* 「?」16×16 带 1px 边：::after 的 inset 量的是 14 的内边距盒，按 14 算才是 28（按 16 算只有 26） */
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-q { position: relative; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-q::after { content: ""; position: absolute; inset: calc((14px - var(--hit)) / 2); }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-kk, :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-ks { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-kv { font-size: var(--fs-num); line-height: 1.2; white-space: normal; overflow: visible; text-overflow: clip; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-amt { white-space: nowrap; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-todo .link-plain { color: var(--brand); }
+/* 「去补录 ›」字只有 19 高：点击区用 ::after 上下撑到 28（D05），不改行高 */
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-todo-go { position: relative; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-todo-go::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: var(--hit); transform: translateY(-50%); }
+/* 切到「按主渠道」时开关旁的灰字「看板按子渠道算」 */
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-basis { color: var(--text-muted); font-size: var(--fs-note); white-space: nowrap; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-fun li { grid-template-columns: minmax(0, 1fr) minmax(56px, auto); }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-fun-side { overflow: visible; text-overflow: clip; color: var(--ink); }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-warn { gap: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-warn li { display: grid; grid-template-columns: 8px minmax(0, 1fr); align-items: center; column-gap: var(--s2); padding: 6px 0; border: 0; border-bottom: 1px solid var(--line-soft); border-radius: 0; background: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-warn li:last-child { border-bottom: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-warn-v { grid-column: 2; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dot { width: 8px; height: 8px; border-radius: 50%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dot.is-warn { background: var(--warning); }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-tiers { gap: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-tier { padding: 0 var(--s3); border-left: 1px solid var(--line-soft); border-radius: 0; background: none; text-align: left; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-tier:first-child { padding-left: 0; border-left: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-tier b { font-size: var(--fs-title); line-height: 1.2; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-top-n:hover b { text-decoration: none; color: var(--brand); }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-pool-list li { grid-template-columns: minmax(0, 1fr) minmax(9em, auto) minmax(0, 1.6fr); }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-pool-list b { text-align: right; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-fold { display: none; align-items: center; margin-left: auto; padding: 0 var(--s2); border: 0; background: none; color: var(--brand); font-size: var(--fs-note); font-weight: 400; cursor: pointer; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-pool-who ~ .chan-fold { margin-left: 0; }
+/* KPI 数字 26 号 + 金额缩写「¥ 129.47 亿」：一格要约 150 宽，看板窄于 1040（1280 宽 + 侧栏）就排 3×2，不截不挤（D33、D39） */
+@container (min-width: 561px) and (max-width: 1040px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-kpi { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-k:nth-child(3n + 1) { border-left: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-k:nth-child(n + 4) { border-top: 1px solid var(--line-soft); }
+}
+@container (max-width: 560px) {
+  /* 「展开」本身不撑高卡头（卡头统一 48，D19）：点击区靠 ::after 撑到 44 高、至少 44 宽 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-fold { display: inline-flex; position: relative; align-self: center; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-fold::after { content: ""; position: absolute; top: 50%; left: 50%; width: max(100%, var(--hit-touch)); height: var(--hit-touch); transform: translate(-50%, -50%); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-cell.is-fold { padding-bottom: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-cell.is-fold > :not(.chan-dash-h) { display: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-cell.is-fold > .chan-dash-h { margin-bottom: 0; border-bottom: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-pool-list li { grid-template-columns: minmax(0, 1fr) auto; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-pool-d { grid-column: 1 / -1; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-tiers { grid-template-columns: minmax(0, 1fr); gap: var(--s2); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-tier { padding: 0; border-left: 0; }
+}
+/* 抽屉（C5）：卡头「标题 ｜ 动作 ghost」、字段标签无冒号定宽 112 不折行、空值「—」--empty-fg、投入空态句（D02、D21） */
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-block-h { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); min-height: var(--ctl-h-sm); font-size: var(--fs-section); }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-desc .ant-descriptions-item-label { width: 112px; white-space: nowrap; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-desc .muted { color: var(--empty-fg); }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-invest-none { display: flex; flex-direction: column; gap: var(--s1); padding: var(--s2) 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-invest-none-t { color: var(--ink); }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-invest-none-s { color: var(--text-muted); font-size: var(--fs-note); }
+@media (max-width: 767px), (pointer: coarse) { :root:is(:not([data-skin]), [data-skin="now"]) .chan-block-h .ant-btn { min-height: var(--hit-touch); } }
+:root:is(:not([data-skin]), [data-skin="now"]) :is(.chan-dash-kv-tip, .chan-empty-tip) { cursor: help; }
 /* ---------- 设计语言 L-A · 客户列表页头、工具栏 / 筛选（11-21，只挂现状主题；换皮主题外观不动） ---------- */
 /* L-新7 客户状态下拉：每项释义只占一行，放不下省略号、悬停看全（components/DictNote.tsx 一行） */
 :root:is(:not([data-skin]), [data-skin="now"]) .dict-note-1l { font-size: var(--fs-min); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
