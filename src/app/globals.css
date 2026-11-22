@@ -6760,3 +6760,25 @@ button.proj-miss-chip { cursor: pointer; }
 :root:root .cli-queue-x { flex: none; white-space: nowrap; }
 /* C10-A：问过之后输入框下只剩额度那一句（要计次的人才有）；没有就整行不占地方 */
 :root:root .cli-hints-quota:empty { display: none; }
+
+/* ────────────────────────────────────────────────────────────────────────────
+   设计语言 HC-4（11-22，对话列表选中行、390 抽屉；用户选 C4-B）。
+   C4-B：行照现在内缩圆角（和左栏导航同一种行），当前对话只用 --brand-bg 浅蓝底，**不加左竖条**——
+   这是「选中行 = --brand-bg + 左 2px --brand」在对话列表的例外（docs/DESIGN_SYSTEM.md 记了一笔）。
+   ──────────────────────────────────────────────────────────────────────────── */
+:root:root .chat-row.on,
+:root:root .chat-row.on:hover { background: var(--brand-bg); color: var(--ink); }
+/* 390 左抽屉（ConversationList 手机时给 .pane-drawer-phone，宽 82%）：顶上「新建对话」一整颗描边钮，行 44 高，⋯ 常显、点击区 44 */
+:root:root .pane-drawer-phone .pane-rows { padding: 0 var(--s3) var(--s4); }
+:root:root .pane-drawer-phone .chat-new {
+  justify-content: center; min-height: var(--hit-touch); margin-bottom: var(--s2);
+  border: 1px solid var(--line); border-radius: var(--r-card); font-size: var(--fs-body);
+}
+:root:root .pane-drawer-phone .chat-row { min-height: var(--hit-touch); padding: 0 0 0 var(--s3); border-radius: var(--r-card); font-size: var(--fs-body); }
+:root:root .pane-drawer-phone .chat-row-b { align-self: stretch; }
+:root:root .pane-drawer-phone .chat-row-b:has(> .chat-row-tm) { align-items: center; }
+:root:root .pane-drawer-phone .chat-row-m { width: var(--hit-touch); height: var(--hit-touch); opacity: 1; color: var(--text-muted); font-size: var(--fs-note); }
+:root:root .pane-drawer-phone .chat-g-h { padding: 0 var(--s3) var(--s1); }
+/* 别的触屏（平板竖着、中栏收成抽屉）：没有悬停，⋯ 也常显 */
+@media (hover: none) { :root:root .chat-row-m { opacity: 1; } }
+
