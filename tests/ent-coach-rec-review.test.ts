@@ -37,16 +37,17 @@ vi.mock("@/lib/prisma", async () => {
 });
 vi.mock("@/lib/enterprise/feishu-push", () => ({ 推通知们: async () => {} }));
 
-import { defaultClient as raw } from "@/lib/prisma";
+import { defaultClient as raw, prisma } from "@/lib/prisma";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { resetAiQuota } from "@/lib/ai-quota";
 import { 录音点评开关键 } from "@/lib/enterprise/coach-rec-db";
-import { 读项目主题 } from "@/lib/enterprise/coach-topic-db";
+import { 读项目主题, 复盘主题of } from "@/lib/enterprise/coach-topic-db";
 import { 录音根 } from "@/lib/enterprise/coach-rec-store";
-import { 整理一轮, 清转写内存 } from "@/lib/enterprise/coach-rec-jobs";
-import { 正文字数, 认整理结果, 整理提示词, 要第四段, 没听清话, AI整理 } from "@/lib/enterprise/coach-rec-summary";
+import { 整理一轮, 清转写内存, 整理写失败等毫秒 } from "@/lib/enterprise/coach-rec-jobs";
+import { 正文字数, 认整理结果, 整理提示词, 要第四段, 没听清话, AI整理, 回的不对话 } from "@/lib/enterprise/coach-rec-summary";
+import { 打码还原 } from "@/lib/enterprise/notice-mask";
 import { 清自检缓存 } from "@/lib/enterprise/asr/ffmpeg";
 import { POST as 重试 } from "@/app/api/coach-rec/[id]/retry/route";
 import { POST as 发 } from "@/app/api/coach-rec/[id]/send/route";
@@ -129,8 +130,11 @@ describe("整理的提示词和结果", () => {
     const 四 = 认整理结果({ 可总结: true, 主题: "a", 做得好的: ["x"], 对方的回应: ["答应周一确认", 3] }, true);
     expect(四.可总结 && 四.要点).toBe("【做得好的】\n· x\n【对方的回应 / 达成的共识】\n· 答应周一确认");
     expect(认整理结果({ 可总结: false }, false)).toEqual({ 可总结: false });
-    expect(认整理结果({ 可总结: true, 主题: "a" }, false)).toEqual({ 可总结: false });
-    expect(认整理结果("坏", false)).toEqual({ 可总结: false });
+    // 只有模型明说 可总结: false 才算没听清；认不出的（缺要点、不是对象）= 整理失败（PR5 审查）
+    expect(() => 认整理结果({ 可总结: true, 主题: "a" }, false)).toThrow(回的不对话);
+    expect(() => 认整理结果("坏", false)).toThrow(回的不对话);
+    expect(() => 认整理结果(null, false)).toThrow(回的不对话);
+    expect(() => 认整理结果([1], false)).toThrow(回的不对话);
   });
 });
 
@@ -180,6 +184,38 @@ describe("整理一轮", () => {
     const id2 = await 放一条();
     await 整理一轮({ 整理: 假整理({ 抛: new Error("socket hang up") }) });
     expect((await 行(id2)).error).toContain("AI 没整理成（AI 没回话）");
+    // 模型回的认不出：整理失败，不说没听清
+    const id3 = await 放一条();
+    await 整理一轮({ 整理: 假整理({ 抛: new Error(回的不对话) }) });
+    expect(await 行(id3)).toMatchObject({ status: "整理失败", draftTitle: null });
+    expect((await 行(id3)).error).toContain("AI 回的内容格式不对");
+    expect((await 行(id3)).error).not.toBe(没听清话);
+  });
+
+  it("写结果出错：算一次失败（整理失败），不留在整理中每 5 秒再调模型；连失败也写不进的 10 分钟内不再拿出来", async () => {
+    const id = await 放一条();
+    const 模型 = 假整理();
+    const 探 = vi.spyOn(prisma.entCoachRecording, "updateMany").mockRejectedValueOnce(new Error("database is locked"));
+    await 整理一轮({ 整理: 模型 });
+    探.mockRestore();
+    expect(模型).toHaveBeenCalledTimes(1);
+    expect(await 行(id)).toMatchObject({ status: "整理失败" });
+    expect((await 行(id)).error).toContain("存的时候出错了");
+    await 整理一轮({ 整理: 模型 });
+    expect(模型).toHaveBeenCalledTimes(1);
+    // 连 整理失败 也写不进：留在整理中，10 分钟内不再调模型，过了再试
+    const id2 = await 放一条();
+    const 现在 = Date.now();
+    const 探2 = vi.spyOn(prisma.entCoachRecording, "updateMany").mockRejectedValue(new Error("database is locked"));
+    await 整理一轮({ 整理: 模型, 现在 });
+    探2.mockRestore();
+    expect(模型).toHaveBeenCalledTimes(2);
+    expect((await 行(id2)).status).toBe("整理中");
+    expect(await 整理一轮({ 整理: 模型, 现在: 现在 + 60_000 })).toBe(0);
+    expect(模型).toHaveBeenCalledTimes(2);
+    await 整理一轮({ 整理: 模型, 现在: 现在 + 整理写失败等毫秒 + 1 });
+    expect(模型).toHaveBeenCalledTimes(3);
+    expect((await 行(id2)).status).toBe("待确认");
   });
 });
 
@@ -238,6 +274,36 @@ describe("稍后再发、发出", () => {
     await 开关(false);
     expect((await 读(await 发(请(`/api/coach-rec/${别人}/send`, { title: "a", body: "b" }), 参(别人)))).status).toBe(404);
   });
+
+  it("库里存原文（PR5 审查）：教练看到打码的草稿，没改号码就存回原号码；改过的照他写的存；负责人看到原号码", async () => {
+    const id = await 放一条({ status: "待确认", draftTitle: "回访 13812345678", draftBody: "· 打 13812345678 确认数量" });
+    当("教练");
+    const 教 = (await 读项目主题(我("教练"), 项目))!.录音!.草稿们.find((d) => d.id === id)!;
+    expect(教.确认?.主题).toBe("回访 138****5678");
+    // 稍后再发：只改了别的字，号码段没动 → 库里还是原号码
+    const 存 = await 读(await 存稿(请(`/api/coach-rec/${id}/draft`, { title: `${教.确认!.主题}（周二）`, body: `${教.确认!.要点}\n· 另一个号 13900001111` }), 参(id)));
+    expect(存.status).toBe(200);
+    expect(await 行(id)).toMatchObject({ draftTitle: "回访 13812345678（周二）", draftBody: "· 打 13812345678 确认数量\n· 另一个号 13900001111" });
+    // 再打开还是打码的；发出：抄了转写里的号码（打码样子）也换回原号码
+    const 再 = (await 读项目主题(我("教练"), 项目))!.录音!.草稿们.find((d) => d.id === id)!;
+    expect(再.确认?.主题).toBe("回访 138****5678（周二）");
+    const r = await 读(await 发(请(`/api/coach-rec/${id}/send`, { title: 再.确认!.主题, body: "· 打 138****5678 确认；改成 138****0000" }), 参(id)));
+    expect(r.status).toBe(200);
+    const t = await raw.entCoachTopic.findUniqueOrThrow({ where: { id: r.体.id as string } });
+    expect(t.title).toBe("回访 13812345678（周二）");
+    expect(t.body).toBe("· 打 13812345678 确认；改成 138****0000");
+    expect((await 行(id)).draftBody).toBe(t.body);
+    const 负责人看 = (await 读项目主题(我("甲"), 项目))!.们[0];
+    expect(负责人看.title).toBe("回访 13812345678（周二）");
+    expect(负责人看.body).toContain("13812345678");
+  });
+
+  it("打码还原：同一个打码样子对应几个原号码按顺序轮；对不上的不动；没有号码的原文不动", () => {
+    expect(打码还原("a 138****5678 b 138****5678", ["13812345678 和 13811115678"])).toBe("a 13812345678 b 13811115678");
+    expect(打码还原("139****0000", ["13812345678"])).toBe("139****0000");
+    expect(打码还原("没号码", ["13812345678"])).toBe("没号码");
+    expect(打码还原("138****5678", [null, "没号码"])).toBe("138****5678");
+  });
 });
 
 describe("给人看的：确认框数据、沟通卡", () => {
@@ -275,5 +341,20 @@ describe("给人看的：确认框数据、沟通卡", () => {
     const 关了 = (await 读项目主题(我("甲"), 项目))!.们[0];
     expect(关了.录音).toBeUndefined();
     expect(关了.title).toBe("回访客户");
+  });
+
+  it("录音主题的标题：教练看到号码打码（沟通卡、复盘列表）；负责人原样；写点评发的主题不动", async () => {
+    const id = await 放一条({ status: "待确认" });
+    当("教练");
+    expect((await 读(await 发(请(`/api/coach-rec/${id}/send`, { title: "回访 13812345678", body: "· 确认数量" }), 参(id)))).status).toBe(200);
+    await raw.entCoachTopic.create({ data: { projectId: 项目, node: "线索验证", title: "写点评 13900001111", body: "x", authorId: 人.教练 } });
+    const 教 = (await 读项目主题(我("教练"), 项目))!.们;
+    expect(教.map((t) => t.title).sort()).toEqual(["写点评 13900001111", "回访 138****5678"]);
+    const 负 = (await 读项目主题(我("甲"), 项目))!.们;
+    expect(负.map((t) => t.title).sort()).toEqual(["写点评 13900001111", "回访 13812345678"]);
+    const 复盘教 = await 复盘主题of(我("教练"), undefined, { 范围: "mine" });
+    expect(复盘教.行.map((x) => x.标题).sort()).toEqual(["写点评 13900001111", "回访 138****5678"]);
+    const 复盘负 = await 复盘主题of(我("甲"), undefined, { 范围: "wait" });
+    expect(复盘负.行.map((x) => x.标题).sort()).toEqual(["写点评 13900001111", "回访 13812345678"]);
   });
 });

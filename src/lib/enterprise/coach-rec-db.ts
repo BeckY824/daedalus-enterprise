@@ -20,8 +20,8 @@ import { recordAudit } from "@/lib/audit";
 import { getSetting } from "@/lib/settings";
 import { 企业版 } from "./switch";
 import { 读组织 } from "./org";
-import { 权限项目选, type 谁 } from "./permissions";
-import { 文件名打码 } from "./notice-mask";
+import { 权限项目选, 是教练, type 谁 } from "./permissions";
+import { 文件名打码, 打码还原 } from "./notice-mask";
 import { 正在切换视图 } from "./view-as";
 import type { 主题项目 } from "./coach-topic";
 import {
@@ -390,7 +390,7 @@ async function 交去整理(me: 人, r: 录音库行, 从: "整理失败" | "待
 
 /**
  * 稍后再发（POST :id/draft，PR5）：只有录的人；待确认、整理失败的存下确认框里改过的主题、要点（空也行，下次接着写）。
- * 销售教练看到的是打过码的草稿，存回去的就是打码后的字（不会把号码再写回来）
+ * 销售教练看到的是打过码的草稿：库里要存原文（PR5 审查），提交上来没改动的打码段按原文换回原号码（打码还原），教练自己改的照他写的存
  */
 export async function 存录音草稿(me: 人, id: unknown, 输入: { title?: unknown; body?: unknown }): Promise<结果<{ 录音: 录音给界面 }>> {
   if (!(await 录音点评开着())) return 不行(没开放话, 404);
@@ -399,8 +399,10 @@ export async function 存录音草稿(me: 人, id: unknown, 输入: { title?: un
   if (r.status !== "待确认" && r.status !== "整理失败") return 不行(r.status === "已发出" ? "这条已经发出了" : "这条还没整理好", 409);
   const 问题 = 草稿输入问题(输入);
   if (问题) return 不行(问题, 400);
-  const title = String(输入.title ?? "").trim();
-  const body = String(输入.body ?? "").trim();
+  const 原文们 = [r.draftTitle, r.draftBody, r.transcript];
+  const 教练 = 是教练(me, await 读组织());
+  const title = 教练 ? 打码还原(String(输入.title ?? "").trim(), 原文们) : String(输入.title ?? "").trim();
+  const body = 教练 ? 打码还原(String(输入.body ?? "").trim(), 原文们) : String(输入.body ?? "").trim();
   await 主题写(() => prisma.entCoachRecording.updateMany({
     where: { id: r.id, status: r.status, deletedAt: null },
     data: { draftTitle: title || null, draftBody: body || null },
