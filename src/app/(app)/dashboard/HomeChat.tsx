@@ -1,5 +1,7 @@
 "use client";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useIsNowSkin } from "@/lib/use-skin";
+import { usePinCenter } from "./use-pin-center";
 import { motion } from "motion/react";
 import type { 页面范围 } from "@/lib/ai-context-page";
 import { useModel } from "@/components/ModelPicker";
@@ -143,6 +145,9 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
   const 外框 = 驾驶舱 && !(empty && 空库);
   /** 外框里欢迎语下面那一格：示例的状态（↑↓ 选中哪条、点了填进输入框）还在 Composer 里，只是画到这儿来 */
   const [示例槽, set示例槽] = useState<HTMLDivElement | null>(null);
+  const 现状 = useIsNowSkin();
+  const 网格 = useRef<HTMLDivElement>(null);
+  usePinCenter(网格, 现状 && 驾驶舱 && empty);
 
   const 对话列 = (
     <div className={`cli-col${外框 ? " cli-frame" : ""}`}>
@@ -204,7 +209,7 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
         {驾驶舱 ? (
           /* 容器查询量的是这一格（去掉左栏、对话列表之后剩的宽），不是整个窗口；PaneToggle 是 fixed，得留在它外面 */
           <div className="cli-ck">
-            <div className="cli-ck-g">
+            <div className="cli-ck-g" ref={网格}>
               {对话列}
               <HomeCards 数={指标卡} />
             </div>
@@ -218,3 +223,4 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
     </新线索来源.Provider>
   );
 }
+

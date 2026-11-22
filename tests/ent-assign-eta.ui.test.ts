@@ -54,14 +54,16 @@ const 没截 = (page: Page, sel: string) => page.locator(sel).first().evaluate((
 
 it("首页：有数写「前面约 N 条」、0 条写「下一条就轮到你」、没记录写「暂无法估算」，都带估算说明；不参加不画", async () => {
   const a = await 开首页({ 数: 7 });
-  expect(await a.page.getByTestId("home-assign-eta").textContent()).toBe("自动分配：按现在的数，前面约 7 条轮到你这是估算：指定分配、有人暂停或新同事加入都会让它变");
+  // 设计语言 H-A（11-21，H-新8）：粗的只有「自动分配：前面约 N 条轮到你」，估算说明在后面那截灰字
+  expect(await a.page.locator(".home-eta-t").textContent()).toBe("自动分配：前面约 7 条轮到你");
+  expect(await a.page.getByTestId("home-assign-eta").textContent()).toBe("自动分配：前面约 7 条轮到你这是估算：指定分配、有人暂停或新同事加入都会让它变");
   expect(a.errors).toEqual([]);
   await a.page.close();
   const b = await 开首页({ 数: 0 });
-  expect(await b.page.getByTestId("home-assign-eta").textContent()).toContain("自动分配：按现在的数，下一条就轮到你");
+  expect(await b.page.getByTestId("home-assign-eta").textContent()).toContain("自动分配：下一条就轮到你");
   await b.page.close();
   const c = await 开首页("暂无法估算");
-  expect(await c.page.getByTestId("home-assign-eta").textContent()).toContain("自动分配：暂无法估算（还没有分配记录）");
+  expect(await c.page.getByTestId("home-assign-eta").textContent()).toContain("自动分配：暂无法估算还没有分配记录 · 这是估算");
   expect(await c.page.getByTestId("home-assign-eta").textContent()).toContain("这是估算");
   await c.page.close();
   const d = await 开首页(null);

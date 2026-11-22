@@ -9,14 +9,19 @@
  * 而是这张卡原地长开：写全「几个、什么口径」，下面一颗「看这 N 个项目 ›」才去项目页。
  * 名单本身首页手上没有（卡上只有数），要在这里列名单得另起一条查询——这一版不加，名单还是在项目页看。
  * 同一时刻只展开一张；Esc / 再点一下 / 「收起」收回。
+ *
+ * 设计语言 H-A（11-21，H-新2）：现状主题卡右上一个 ›（展开时转成朝下），告诉人「点得开」；悬停只换底色、不上浮、数字不变蓝（globals.css 现状主题那段）。
+ * 换皮主题不摆 ›、外观照旧（lib/use-skin.ts）
  */
 import { useState } from "react";
 import Link from "next/link";
 import CountUp from "@/components/CountUp";
+import { useIsNowSkin } from "@/lib/use-skin";
 import { 首页摆的卡, 首页卡口径, 首页卡色, 首页卡链接, type 首页卡数 } from "@/lib/project/home-cards";
 
 export default function HomeCards({ 数 }: { 数: 首页卡数 }) {
   const [开着, set开着] = useState<string | null>(null);
+  const 现状 = useIsNowSkin();
   return (
     <aside className="home-cards" aria-label="项目指标" onKeyDown={(e) => { if (e.key === "Escape") set开着(null); }}>
       {首页摆的卡.map((键) => {
@@ -39,6 +44,7 @@ export default function HomeCards({ 数 }: { 数: 首页卡数 }) {
                 <CountUp 值={n} 记号={`home-card:${键}`} />
               </b>
               <span className="muted home-kpi-note">{说明}</span>
+              {现状 && <span className="home-kpi-chev" aria-hidden>›</span>}
             </button>
             {开 && (
               <div className="home-kpi-body">

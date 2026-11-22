@@ -100,7 +100,8 @@ afterEach(() => { vi.unstubAllEnvs(); });
 describe("谁看得到、看哪几条（开关开着）", () => {
   it("系统管理员：全部 4 条，最早那条的时间；定时的、进公海的、有结局的、进回收站的、已分走的、转了商机的都不算", async () => {
     // 最早：服务端按北京墙钟写好（不在浏览器里按本地时区格式化）
-    expect(await 数(老板)).toEqual({ 条数: 4, 最早: 短时刻(早) });
+    // 最早At（设计语言 H-A 11-21）：同一刻的 ISO，首页现状主题拿它走 smartTime
+    expect(await 数(老板)).toEqual({ 条数: 4, 最早: 短时刻(早), 最早At: new Date(早).toISOString() });
     expect(await 两边对得上(老板)).toEqual(["内贸的", "外贸的", "暂不分配的", "没填线外贸人建的"].sort());
   });
 

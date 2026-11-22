@@ -5775,3 +5775,68 @@ button.proj-miss-chip { cursor: pointer; }
   /* K9 市场管理的客户页（我分出去的）：标题块独占一行，按钮换到下一行，标题不再挤成「客…」、副标题不竖排 */
   :root:is(:not([data-skin]), [data-skin="now"]) .cust-market > .page-head > :first-child { flex-basis: 100% !important; }
 }
+/* =====================================================================
+   设计语言 H-A（11-21，首页骨架、顶部提示、输入框、指标卡；依据 现在-首页-20261121.md H0 / H4 / H6 / H7）。
+   只挂现状主题，换皮主题（像素、账簿、奢华、科技）外观不动（用户 11-21）
+   ===================================================================== */
+/* H-新4：还没问时问答卡 + 指标卡这一组上下居中照留（11-11 用户定）；问答卡变高（多行、命令表、展开指标卡）时
+   HomeChat usePinCenter 把多出来的那半往下挪（--ck-nudge），顶边不动、整块不往上跳 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-empty .cli-ck-g { position: relative; top: var(--ck-nudge, 0px); }
+/* H-新4：首页外框里的命令表从输入框上沿往上浮出（0 高的锚 + 绝对定位），不占高度、不撑高问答卡；输入框保持整圈圆角 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-cmds-float { position: relative; height: 0; z-index: 3; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-cmds-float > .cli-cmds {
+  position: absolute; left: 0; right: 0; bottom: 6px; margin: 0; max-height: min(50vh, 320px); overflow-y: auto;
+  border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: var(--shadow-pop);
+  animation: cli-drop-in var(--t-pop) var(--ease) backwards;
+}
+@media (prefers-reduced-motion: reduce) { :root:is(:not([data-skin]), [data-skin="now"]) .cli-cmds-float > .cli-cmds { animation: none; } }
+/* H-新3：键盘选中、鼠标悬停只亮一行——指到哪行选中就挪到哪行（Composer on指命令），没选中的行悬停不再另铺一层灰 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-cmds-one .cli-cmd:hover:not(.cli-cmd-on) { background: transparent; }
+/* H-新5：首页（外框 .cli-frame）的发送钮（打断钮同）用品牌蓝，这一屏只这一颗主色钮；空的时候照旧浅灰。
+   别的页右侧 AI 面板不改：那些页已有页面自己的主色钮（每屏一个主色钮） */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-frame .cli-send:not(:disabled) { background: var(--brand); color: var(--on-ink); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-frame .cli-send:not(:disabled):hover { background: var(--brand-deep); }
+/* D38：手机（P-界面-14 飞书网页 390）不写键盘提示，触屏没有 Enter / Shift / 「/」这几个键 */
+@media (max-width: 767px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-hints-keys { display: none; }
+}
+/* D16：模型备注绿字压浅绿底，小字用深一档的 --success-text（对比 ≥4.5:1），不拿状态纯色当小字 */
+:root:is(:not([data-skin]), [data-skin="now"]) .mp-note { color: var(--success-text); }
+
+/* H-新12 / 新13 / 新14：顶部提示同一种行（待分配新线索、待回复主题、待回复客户、自动分配、待复核）：
+   粗体短标题「X N 条」｜灰字说明（时间在最前、smartTime）｜右端动作。时间不拆行；窄屏说明整句折行、不省略 */
+:root:is(:not([data-skin]), [data-skin="now"]) .home-cth-todo-time { white-space: nowrap; }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-cth-todo-one { flex-wrap: wrap; align-items: baseline; }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-cth-todo-one .home-cth-todo-s { flex-basis: 200px; }
+@media (max-width: 767px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .home-cth-todo-s { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+}
+/* H-新7 / 新12：首页的待复核不再是带表头的卡，每条一行（VerifyInbox 首页）：标签 + 项目名｜负责人 · 时间 · 附言｜判有效 / 判无效（行内文字钮） */
+:root:is(:not([data-skin]), [data-skin="now"]) .home-verify-t { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--s2); min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-verify-t .ant-tag { margin: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-verify-name { font-weight: 600; }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-verify-s { flex-basis: 240px; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-verify-a { display: inline-flex; align-items: center; gap: var(--s1); }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-verify-a .ant-btn { height: var(--ctl-h-sm); padding-inline: 6px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-verify-err { flex-basis: 100%; }
+@media (max-width: 767px), (pointer: coarse) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .home-verify-a .ant-btn { height: var(--hit-touch); }
+}
+
+/* H-新1 / 新2（D30）：指标卡悬停只换底色——不上浮、不加阴影、数字不变蓝（「暂未跟进」橙数悬停还是橙）；右上一个 ›，展开时转朝下 */
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-card:is(:hover, :active) { transform: none; box-shadow: none; background: var(--row-hover); border-color: var(--line); }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-card:hover { transition: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-card { transition: background var(--t-leave) var(--ease), border-color var(--t-leave) var(--ease); }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-card:hover .home-card-v { color: var(--ink); }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-card:hover .home-card-v.home-kpi-soon { color: var(--warning); }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-card.home-card-good:hover .home-card-v { color: var(--success-text); }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-head { position: relative; padding-right: calc(var(--s4) + 16px); }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-chev {
+  position: absolute; top: var(--s3); right: var(--s3); width: 16px; text-align: center;
+  color: var(--text-muted); font-size: var(--fs-section); line-height: 20px; transition: rotate var(--t) var(--ease);
+}
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-card.is-open .home-kpi-chev { rotate: 90deg; }
+/* H-新15：展开后「看这 N 个项目 ›」放不下就折行、不截；「收起」不竖着折 */
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-body { flex-wrap: wrap; align-items: baseline; }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-go { flex: 1 1 auto; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: break-word; }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-close { flex: none; white-space: nowrap; }
