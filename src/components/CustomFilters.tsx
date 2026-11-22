@@ -33,6 +33,8 @@ function MoreFiltersButton({
   恢复默认: () => void;
 }) {
   const 名字 = 筛了几个 > 0 ? `更多筛选，已筛 ${筛了几个} 项` : "更多筛选";
+  /* 现状主题（设计语言 L-B，P-界面-12）：按钮写「更多筛选（N）」；窄窗口文字藏了只剩数字（.cf-more-t 连括号一起藏）。换皮主题照旧「更多筛选 · N」 */
+  const 新样 = useIsNowSkin();
   const [开着, 设开着] = useState(false);
   const [看清单, 设看清单] = useState(false);
   // 全摆出去了就没有第一屏，直接给清单：不然这个按钮点开是空的
@@ -85,10 +87,18 @@ function MoreFiltersButton({
       {/* 窄窗口只留图标和数字（globals.css .cf-more-t），文字藏了靠 aria-label / title 说清 */}
       <Button icon={<FilterOutlined />} aria-label={名字} title={名字}>
         {筛了几个 > 0 ? (
+          新样 ? (
+            <span>
+              <span className="cf-more-t">更多筛选（</span>
+              {筛了几个}
+              <span className="cf-more-t">）</span>
+            </span>
+          ) : (
           <span>
             <span className="cf-more-t">更多筛选 · </span>
             {筛了几个}
           </span>
+          )
         ) : (
           <span className="cf-more-t">更多筛选</span>
         )}

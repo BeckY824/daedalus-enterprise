@@ -1,6 +1,7 @@
 "use client";
 
 import { Tag } from "antd";
+import { useIsNowSkin } from "@/lib/use-skin";
 import { RowLink } from "@/components/ui";
 import { 有值 } from "@/lib/empty-value";
 import { 客户编号显示 } from "@/lib/customer-no";
@@ -22,6 +23,7 @@ const 列头 = ["客户", "编号", "客户类型", "地区", "当前节点", "�
  * 和下面的客户表格分开：不能勾、没有行菜单、不进总数和导出；负责人、级别、客户状态、最近跟进几格空着（这些他看不到）。点一行（客户名链接铺满整行）进受限客户详情
  */
 export default function ProjectOnlyBlock({ 行们, 超了 = false }: { 行们: 仅项目列表行[]; 超了?: boolean }) {
+  const 新样 = useIsNowSkin();
   if (!行们.length) return null;
   return (
     <section className="cust-ponly" aria-label="仅项目的客户" data-testid="project-only-block">
@@ -52,7 +54,10 @@ export default function ProjectOnlyBlock({ 行们, 超了 = false }: { 行们: �
             <span className="cust-ponly-c" role="cell">
               {r.当前节点 ? <Tag className="clamp-1 cust-node-tag" color={r.当前阶段 === "订单" ? "blue" : undefined} title={r.当前节点}>{r.当前节点}</Tag> : null}
             </span>
-            {格(r.项目数)}
+            {/* L-新11（现状主题）：手机宽列头收起、一行折成两排（globals.css .cust-ponly），光一个数看不出是什么，后面带「个项目」；电脑宽这几个字藏着 */}
+            {新样
+              ? <span className="cust-ponly-c" role="cell" title={`${r.项目数} 个项目`}>{r.项目数}<span className="cust-ponly-unit"> 个项目</span></span>
+              : 格(r.项目数)}
             {/* 这几格他看不到，空着（不写「—」：不是「没有」，是不给看） */}
             {格(null)}{格(null)}{格(null)}{格(null)}
           </div>

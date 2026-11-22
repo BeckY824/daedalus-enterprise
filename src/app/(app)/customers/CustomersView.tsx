@@ -951,6 +951,11 @@ export default function CustomersView({
   */
   const 三态挤 = 企业 && !!三态标;
   const 宽 = (常: number, 三态开: number) => (三态挤 ? 三态开 : 常);
+  // D20（现状主题）：筛选行「只看…」胶囊同筛选控件一个高（32，.list-chip），不再各写各的内边距；换皮主题照旧
+  const 旧胶囊 = { margin: 0, padding: "3px 10px" } as const;
+  // L-新8（现状主题）：号码不再被省略号截掉——「联系电话」列宽按这一页最长的号码给（数字、+、空格按 0.62em，中文 1em；
+  // 加格子左右留白 16 + 复制键 22），150 起、260 封顶，再长的才省略、悬停看全。换皮主题照旧 150
+  const 电话宽 = 新样 ? Math.min(260, Math.max(150, Math.ceil(Math.max(0, ...rows.map((r) => [...(r.phone ?? "")].reduce((w, c) => w + (/[\u3000-\u9fff\uff00-\uffef]/.test(c) ? 14 : 8.7), 0)))) + 16 + 22 + 6)) : 150;
   /** 这一页有公海里的：操作列多一颗「领取」、加宽到 132，手机宽照旧钉右 */
   const 有领取 = !不问归属 && rows.some((r) => r.pool);
   const 企业列: 列<CustomerRow>[] = [
@@ -1024,7 +1029,7 @@ export default function CustomersView({
       默认显示、紧跟客户名 / 编号（#381 实操，客户口径「号码可以全部显示」）：摆在最后 1280 宽要横滚才看得到，等于没默认显示。
       存过列设置的老用户：只有主动藏过（存了 -phone）的照旧收着，其余（存过别的列、没提过号码）一律显示（PR #384 审查）
     */
-    { title: "联系电话", key: "phone", dataIndex: "phone", width: 150, render: (v: string | null) => (v ? <CopyValue 叫法="电话" value={v} /> : 空) },
+    { title: "联系电话", key: "phone", dataIndex: "phone", width: 电话宽, render: (v: string | null) => (v ? <CopyValue 叫法="电话" value={v} /> : 空) },
     /*
       「当前节点」「项目数」（11-12 客户详情合并第 3 批，定稿 UI 表格）：只算我能看的项目。
       当前节点 = 点进这位客户默认停的那个项目页签的节点（lib/project/customer-list-projects.ts）；没有我能看的项目写「—」，项目数写 0。
@@ -1164,8 +1169,12 @@ export default function CustomersView({
             children: 成员选项(分给们).map((o) => ({ key: `assign:${o.value}`, label: o.label, onClick: async () => 公海提示(await 分配公海([r.id], o.value), "分配", [r.id]) })),
           }] : []),
           { key: "edit", label: "编辑", onClick: () => 去编辑(r) },
-          // 先数清会一起删掉什么再问（排查 B1，见 useDeleteCustomers）
-          ...(能删 && !删不了.has(r.id) ? [{ key: "delete", label: "删除", onClick: () => void 问删除([{ id: r.id, name: 叫(r) }]) }] : []),
+          // 先数清会一起删掉什么再问（排查 B1，见 useDeleteCustomers）；点了照旧弹后果确认框（P-界面-40）
+          // L-新2（现状主题）：删除是危险项——红字、上面一道分隔线，和编辑隔开；换皮主题照旧
+          ...(能删 && !删不了.has(r.id) ? [
+            ...(新样 ? [{ type: "divider" as const, key: "delete-sep" }] : []),
+            { key: "delete", label: "删除", danger: 新样, onClick: () => void 问删除([{ id: r.id, name: 叫(r) }]) },
+          ] : []),
         ];
         return (
           <div>
@@ -1413,7 +1422,7 @@ export default function CustomersView({
         没对上={
           公海里匹配 > 0 ? (
             <div className="list-none">
-              这里没有符合条件的；
+              {新样 ? (f.keyword ? `没有对得上「${f.keyword}」的${b.customer}；` : `没有对得上这些筛选的${b.customer}；`) : "这里没有符合条件的；"}
               <Button type="link" size="small" style={{ padding: 0 }} onClick={() => (统一公海
                 ? router.push(f.keyword ? `/pool?${new URLSearchParams({ keyword: f.keyword })}` : "/pool")
                 : apply({ pool: "1", salesOwnerId: "" }))}>
@@ -1422,6 +1431,9 @@ export default function CustomersView({
             </div>
           ) : 公海页 && !Object.entries(filters).some(([k, v]) => k !== "pool" && v) ? (
             <div className="list-none">公海里现在没有{b.customer}</div>
+          ) : 新样 ? (
+            // D21（现状主题）空态句式：搜索时「没有对得上「词」的客户」，只是筛了写「没有对得上这些筛选的客户」，后面指回「重置」；13 muted、不带句号
+            <div className="list-none">{f.keyword ? `没有对得上「${f.keyword}」的${b.customer}` : `没有对得上这些筛选的${b.customer}`}，换个条件或点「重置」看全部</div>
           ) : undefined
         }
         列={列表}
@@ -1447,23 +1459,23 @@ export default function CustomersView({
           {看法切换 && <div className="list-view-seg">{看法切换}</div>}
           <Space wrap size={[10, 10]}>
             {子集 && f.pool && (
-              <Tag closable onClose={() => apply({ pool: "" })} color="processing" style={{ margin: 0, padding: "3px 10px" }}>
+              <Tag closable onClose={() => apply({ pool: "" })} color="processing" className="list-chip" style={新样 ? undefined : 旧胶囊}>
                 只看公海里的
               </Tag>
             )}
             {/* 从「数据」页那张卡走进来的：说清这是一个子集，并给一条回到全部的路 */}
             {本月新增 && (
-              <Tag closable onClose={() => apply({ createdWithin: "" })} color="processing" style={{ margin: 0, padding: "3px 10px" }}>
+              <Tag closable onClose={() => apply({ createdWithin: "" })} color="processing" className="list-chip" style={新样 ? undefined : 旧胶囊}>
                 只看本月新增
               </Tag>
             )}
             {直接推荐 && (
-              <Tag closable onClose={() => apply({ directOf: "" })} color="processing" style={{ margin: 0, padding: "3px 10px" }}>
+              <Tag closable onClose={() => apply({ directOf: "" })} color="processing" className="list-chip" style={新样 ? undefined : 旧胶囊}>
                 只看「{直接推荐}」直接带来的 · {total} 位
               </Tag>
             )}
             {本批 && (
-              <Tag closable onClose={() => apply({ batch: "" })} color="processing" style={{ margin: 0, padding: "3px 10px" }}>
+              <Tag closable onClose={() => apply({ batch: "" })} color="processing" className="list-chip" style={新样 ? undefined : 旧胶囊}>
                 只看刚导入的这一批 · {本批.几位} 位
               </Tag>
             )}
