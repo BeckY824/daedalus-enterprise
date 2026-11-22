@@ -94,10 +94,15 @@ for (const width of [1024, 1280, 1366]) {
     }));
     for (const 余 of 卡高) expect(余).toBeLessThan(2);
     expect(await page.locator(".cli-frame").evaluate((e) => e.scrollHeight <= e.clientHeight + 1)).toBe(true);
-    // 框里还剩的空（最后一条示例到输入框上沿，减去输入框自己的上留白）：两行的长产品名也要放得下（一行字 ≈ 30px）
+    // 框里还剩的空：两行的长产品名也要放得下（一行字 ≈ 30px）。
+    // 设计语言 HC-1（用户 11-22 补 C5）起现状主题这块空分在问候上面和输入框下面两段（各一半），不再夹在示例和输入框中间——两段加起来算
+    await page.waitForTimeout(700);
     const 空 = await page.evaluate(() => {
-      const qs = [...document.querySelectorAll(".cli-frame-q .cli-q")]; const c = document.querySelector(".cli-frame .cli-composer")!;
-      return c.getBoundingClientRect().top + parseFloat(getComputedStyle(c).paddingTop) - qs[qs.length - 1].getBoundingClientRect().bottom - parseFloat(getComputedStyle(c).paddingTop);
+      const f = document.querySelector(".cli-frame")!, w = document.querySelector(".cli-frame > .cli-welcome")!, c = document.querySelector(".cli-frame .cli-composer")!;
+      const fs = getComputedStyle(f), fr = f.getBoundingClientRect();
+      const 上 = w.getBoundingClientRect().top - fr.top - parseFloat(fs.borderTopWidth) - parseFloat(fs.paddingTop);
+      const 下 = fr.bottom - parseFloat(fs.borderBottomWidth) - parseFloat(fs.paddingBottom) - c.getBoundingClientRect().bottom;
+      return 上 + 下;
     });
     expect(空).toBeGreaterThan(30);
     // 11-01「首页这两个要居中」：框和卡这一组在首页（.cli）里上下居中。16a 改过一次贴顶，11-11 用户「首页按之前的设计，右侧模块整体居中」改回
@@ -111,7 +116,8 @@ for (const width of [1024, 1280, 1366]) {
     expect(await page.locator(".cli-frame .cli-welcome-t").innerText()).toMatch(/^.+，测试员。$/);
     expect(问候.l - 外.l).toBeGreaterThan(8);
     expect(问候.l - 外.l).toBeLessThan(40);
-    expect(问候.t - 外.t).toBeLessThan(48);
+    // HC-1（用户 11-22 补 C5）：问候这一组在框里上下居中，不再贴框顶；上下两段留白相等由 ent-hc1-layout.ui.test.ts 量
+    expect(问候.t - 外.t).toBeGreaterThanOrEqual(20);
     // 第二行：欢迎使用 {产品名}，左对齐
     const 欢迎 = await 字(page, ".cli-frame .cli-welcome-brand");
     expect(await page.locator(".cli-frame .cli-welcome-brand").innerText()).toBe("欢迎使用 测试产品");
@@ -135,7 +141,7 @@ for (const width of [1024, 1280, 1366]) {
     expect(入.r).toBeLessThan(外.r);
     expect(外.w - 入.w).toBeLessThanOrEqual(64);
     expect(Math.abs((入.l - 外.l) - (外.r - 入.r))).toBeLessThan(1);
-    expect(外.b - 入.b).toBeLessThan(90);
+    // 设计语言 HC-1（用户 11-22 补 C5）：现状主题不再贴框底，问候到输入框这一组在框里上下居中（两段留白相等，ent-hc1-layout.ui.test.ts 量）
     expect(外.b - 入.b).toBeGreaterThan(0);
     expect(await 不溢出(page)).toBe(true);
     expect(errors).toEqual([]);

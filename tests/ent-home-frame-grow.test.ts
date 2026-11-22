@@ -19,8 +19,8 @@ describe("首页左框高度：至少和卡列一样高，内容多了跟着长"
     for (const r of 框规则) expect(r.体, r.选).not.toMatch(/contain\s*:\s*(size|strict|layout\s+size|size\s+layout)/);
   });
 
-  it("框不定高、不设最大高、不出内部滚动条", () => {
-    for (const r of 框规则.filter((r) => /\.cli-frame\s*$/.test(r.选) || /\.cli-frame\s*,/.test(r.选))) {
+  it("框不定高、不设最大高、不出内部滚动条（问过之后的「一张纸」.cli-paper 除外：设计语言 HC-1 用户 11-22 定框钉视口高、对话在框里滚）", () => {
+    for (const r of 框规则.filter((r) => (/\.cli-frame\s*$/.test(r.选) || /\.cli-frame\s*,/.test(r.选)) && !r.选.includes(".cli-paper"))) {
       expect(r.体, r.选).not.toMatch(/(^|[;\s])(height|max-height)\s*:/);
       expect(r.体, r.选).not.toMatch(/overflow(-y)?\s*:\s*(auto|scroll|hidden)/);
     }
@@ -35,7 +35,7 @@ describe("首页左框高度：至少和卡列一样高，内容多了跟着长"
     expect(/\.cli-ck \.cli-col \{[^}]*align-self/.test(规则)).toBe(false);
   });
 
-  it("输入框还是贴框底（margin-top: auto）", () => {
+  it("输入框还是贴框底（margin-top: auto；现状主题 HC-1 起改成问候到输入框这一组上下居中，见 ent-hc1-layout.ui.test.ts C5，这条老规则留给换皮主题）", () => {
     expect(规则).toMatch(/\.cli-empty \.cli-frame \.cli-composer \{ margin-top: auto;/);
   });
 
@@ -50,6 +50,10 @@ describe("首页左框高度：至少和卡列一样高，内容多了跟着长"
     const src = readFileSync("src/app/(app)/dashboard/HomeChat.tsx", "utf8");
     const 列 = /const 对话列 = \(([\s\S]*?)\n  \);/.exec(src)?.[1] ?? "";
     expect(列).toMatch(/cli-col\$\{外框 \? " cli-frame" : ""\}/);
-    for (const 件 of ["放弃条", "<AwaitAssignTodo", "<CoachTopicTodo", "<ReplyDueTodo", "待复核", "<AssignEtaLine", "<Composer"]) expect(列).toContain(件);
+    // HC-1：待办那几行收成一份 待办，还没问时原样摆在框顶，问过之后（一张纸）递给框头「待办 N」
+    expect(列).toMatch(/\{一张纸 \? <ChatHead [\s\S]*?待办=\{待办\} \/> : 待办\}/);
+    expect(列).toContain("<Composer");
+    const 待办 = /const 待办 = !窄 && \(([\s\S]*?)\n  \);/.exec(src)?.[1] ?? "";
+    for (const 件 of ["放弃条", "<AwaitAssignTodo", "<CoachTopicTodo", "<ReplyDueTodo", "待复核", "<AssignEtaLine"]) expect(待办).toContain(件);
   });
 });
