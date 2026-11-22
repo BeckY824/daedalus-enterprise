@@ -6,6 +6,7 @@
  *   卡片：认领 / 我已完成 / ⋯ 点得中（elementFromPoint）；不在分栏（项目详情）时首行写状态
  *   「我已完成」框：提交键一直能点、最后一位写「我已完成，标为已解决」，没填的格子下一行红字、焦点到第一处；填好才交
  *   ⋯ → 删除：原地确认「连流转记录一起删」，确认了才删
+ *   有筛选、三栏都空：整体收成一句「没有对得上筛选的卡点」+ 一颗「重置」（不三栏各写一遍）；390 范围分段 44 高
  * 内容区按真实页面算：≥768 左边留 232 侧栏（1024 时内容约 760），390 没有侧栏、底部留 AI 安全区。
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -41,7 +42,7 @@ beforeAll(async () => {
       卡(22,'处理中',{认领:[人('甲',false,null),{...人('我',false,null),是我:true}],进度:{完成:0,共:2},能:{认领:false,完成:true,最后一个:false,删:false}})];
     window.__画=(o)=>{
       const 里=o.页==='detail'?<section className="rbk-card"><BlockerList 们={详情们}/></section>
-        :<BoardBlockers 开 全部 能管 栏={栏} 已解决共={0} 统计={统计} 项目们={[{id:'p1',name:'华东二期产线改造项目'+长}]} 原因们={[{id:'r0',name:'价格',status:'启用'}]} 筛={o.筛??{}}/>;
+        :<BoardBlockers 开 全部 能管 栏={o.空?{待接受:[],处理中:[],已解决:[]}:栏} 已解决共={0} 统计={o.空?{未解决:0,已解决:0,按影响:[],按原因:[]}:统计} 项目们={[{id:'p1',name:'华东二期产线改造项目'+长}]} 原因们={[{id:'r0',name:'价格',status:'启用'}]} 筛={o.筛??{}}/>;
       const 窄=window.innerWidth<768;
       createRoot(document.getElementById('root')).render(<App><div style={{display:'flex'}}>{窄?null:<aside style={{flex:'0 0 232px'}}/>}<main style={{flex:'1 1 0',minWidth:0,padding:窄?16:24}}>{里}</main></div></App>);
     };
@@ -133,6 +134,10 @@ it("筛选行：1366 一行；1024 范围一行、四个下拉一行；390 收�
     const { page } = await 打开({ 页: "block", 筛: { 原因: "r0" } }, 390);
     try {
       expect(await page.locator(".rbk-sels").isVisible()).toBe(false);
+      // 范围分段触屏点击区 44
+      const 段高 = await page.locator(".rbk-scope .ant-segmented-item").evaluateAll(es => es.map(e => e.getBoundingClientRect().height));
+      expect(段高.length).toBeGreaterThanOrEqual(2);
+      for (const h of 段高) expect(h).toBeGreaterThanOrEqual(44);
       const 钮 = page.locator(".rbk-more");
       expect(await 钮.innerText()).toMatch(/筛选（1）/);
       expect((await 钮.boundingBox())!.height).toBeGreaterThanOrEqual(44);
@@ -194,3 +199,19 @@ it("项目详情（不在分栏）：首行写状态；三人会签带备注；�
     } finally { await page.close(); }
   }
 }, 60_000);
+
+it.each([1366, 390])("有筛选、三栏都空 %ipx：整体一句「没有对得上筛选的卡点」+ 一颗重置，不三栏各写一遍", async (w) => {
+  const { page, errors } = await 打开({ 页: "block", 空: true, 筛: { 原因: "r0" } }, w);
+  try {
+    expect(await page.getByText("没有对得上筛选的卡点").count()).toBe(1);
+    expect(await page.locator(".rbk-col").count()).toBe(0);
+    expect(await page.locator('section[aria-label="卡点概况"]').count()).toBe(1);
+    const 钮 = page.locator(".rbk-filter-none").getByRole("button", { name: /重\s*置/ });
+    expect(await 点得中(page, 钮)).toBe(true);
+    if (w === 390) expect((await 钮.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await 钮.click();
+    expect(await page.evaluate(() => (window as unknown as { __去?: string[] }).__去 ?? [])).toEqual(["/overview?tab=block"]);
+    expect(await 不溢出(page)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});

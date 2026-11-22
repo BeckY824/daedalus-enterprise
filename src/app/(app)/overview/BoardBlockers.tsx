@@ -357,6 +357,13 @@ function BoardBlockersNow({ 开, 全部, 栏, 已解决共, 统计, 项目们, �
             </div>
           </section>
 
+          {有筛 && 栏序.every((s) => !栏[s].length) ? (
+            // 有筛选、三栏都空：整体收成一句 + 重置（不三栏各写一遍）
+            <section className="rbk-card rbk-empty rbk-filter-none" aria-label="卡点">
+              <span className="rbk-empty-s">没有对得上筛选的卡点</span>
+              <Button className="rbk-none-reset" onClick={重置}>重置</Button>
+            </section>
+          ) : (
           <div className="rbk-cols">
             {栏序.map((s) => {
               const 们 = 栏[s];
@@ -378,6 +385,7 @@ function BoardBlockersNow({ 开, 全部, 栏, 已解决共, 统计, 项目们, �
               );
             })}
           </div>
+          )}
         </>
       )}
     </div>

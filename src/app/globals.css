@@ -5788,6 +5788,7 @@ button.proj-miss-chip { cursor: pointer; }
 :root:is(:not([data-skin]), [data-skin="now"]) .rbk-empty { display: flex; flex-direction: column; gap: var(--s1); padding: var(--s5) var(--card-pad); }
 :root:is(:not([data-skin]), [data-skin="now"]) .rbk-empty-t { font-size: var(--fs-section); font-weight: 600; color: var(--ink); }
 :root:is(:not([data-skin]), [data-skin="now"]) .rbk-empty-s { color: var(--text-muted); font-size: var(--fs-note); overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-filter-none { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--s3); }
 
 /* ② 概况卡：三格，竖线分开；窄了竖排 */
 :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sum-body { display: grid; grid-template-columns: minmax(150px, 0.6fr) minmax(0, 1fr) minmax(0, 1.3fr); }
@@ -5886,6 +5887,10 @@ button.proj-miss-chip { cursor: pointer; }
 :root:is(:not([data-skin]), [data-skin="now"]) .bk-timeline { margin-top: var(--s2); }
 :root:is(:not([data-skin]), [data-skin="now"]) .bk-when { color: var(--text-muted); font-size: var(--fs-min); }
 @media (max-width: 767px), (pointer: coarse) { :root:is(:not([data-skin]), [data-skin="now"]) .bk-acts .ant-btn { min-height: var(--hit-touch); } }
-@media (max-width: 767px), (pointer: coarse) { :root:is(:not([data-skin]), [data-skin="now"]) :is(.rbk-more, .rbk-reset).ant-btn { min-height: var(--hit-touch); } }
+@media (max-width: 767px), (pointer: coarse) {
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.rbk-more, .rbk-reset, .rbk-none-reset).ant-btn { min-height: var(--hit-touch); }
+  /* 范围分段：触屏点击区 44（同 L-A 导入导出） */
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-scope .ant-segmented-item-label { min-height: var(--hit-touch); line-height: var(--hit-touch); }
+}
 /* 「我已完成」框：每格有标签，格间 12 */
 :root:is(:not([data-skin]), [data-skin="now"]) .bk-done-form { display: flex; flex-direction: column; gap: var(--s3); }
