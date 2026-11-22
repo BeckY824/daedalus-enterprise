@@ -5747,7 +5747,7 @@ button.proj-miss-chip { cursor: pointer; }
 :root:is(:not([data-skin]), [data-skin="now"]) .data-shell-who-sheet-body .data-shell-who { width: 100%; }
 @media (max-width: 767px) {
   :root:is(:not([data-skin]), [data-skin="now"]) .data-shell-who-inline { display: none; }
-  :root:is(:not([data-skin]), [data-skin="now"]) .data-shell-who-btn { display: inline-flex; max-width: 40vw; min-height: var(--hit-touch); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .data-shell-who-btn { display: inline-flex; max-width: 30vw; min-height: var(--hit-touch); }
   :root:is(:not([data-skin]), [data-skin="now"]) .data-shell-who-btn > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 

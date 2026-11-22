@@ -28,21 +28,23 @@ beforeAll(async () => {
     import BoardBlockers from '@/app/(app)/overview/BoardBlockers';
     import {BlockerList} from '@/app/(app)/projects/BlockerPanel';
     const 长='某某超长名字的智能制造装备与工业自动化系统集成有限公司华东区域销售中心';
+    const 网址='https://example.com/'+'abcdefghij'.repeat(19);
     const 前天=new Date(Date.now()-2*86400000).toISOString();
     const 人=(n,done,note)=>({名字:n+长,done,note,doneAt:null,是我:false});
     const 卡=(i,status,x={})=>({id:'b'+i,code:'BLK-20261122-'+String(i).padStart(3,'0'),title:'',有标题:false,projectId:'p'+i,项目:'华东二期产线改造项目'+长,followUpId:'f'+i,phase:'订单',type:i%2?'重要卡点':'中度卡点',impact:'可能丢单',
-      原因们:[{id:'r1',name:'价格'+长,status:'启用'},{id:'r9',name:'前台新加的'+长,status:'待审核'}],description:'第'+i+'个卡点：'+长.repeat(3),status,发布人:'很长很长的发布人名字'+长,resourceRequest:'要总部特批价格'+长,solution:null,result:null,
+      原因们:[{id:'r1',name:'价格'+长,status:'启用'},{id:'r9',name:'前台新加的'+长,status:'待审核'}],description:'第'+i+'个卡点：'+长.repeat(3),status,发布人:'很长很长的发布人名字'+长,resourceRequest:'要总部特批价格'+网址,solution:null,result:null,
       resolvedAt:null,createdAt:前天,流转:[],认领:[],进度:{完成:0,共:0},能:{认领:status==='待接受',完成:false,最后一个:false,删:true},...x});
     const 原因=['价格','交期','技术方案','竞品','付款方式','资质','内部审批','客户换人'].map((n,i)=>({id:'r'+i,名:n+长,状态:i===3?'待审核':'启用',数:9-i}));
     原因.push({id:'r-none',名:'未分类',状态:'启用',数:1});
+    const 统计无待审={未解决:13,已解决:0,按影响:[{名:'可能丢单',数:13}],按原因:原因.filter(r=>r.状态!=='待审核')};
     const 统计={未解决:13,已解决:0,按影响:[{名:'可能丢单',数:8},{名:'短期不影响',数:5}],按原因:原因};
     const 栏={待接受:Array.from({length:13},(_,i)=>卡(i+1,'待接受')),处理中:[],已解决:[]};
     // 项目详情：不在分栏；一条三人会签带备注、轮到我且是最后一位
-    const 详情们=[卡(21,'处理中',{认领:[人('甲',true,'我这边报价改好了'+长),人('乙',true,'合同条款对过了'),{...人('我',false,null),是我:true}],进度:{完成:2,共:3},能:{认领:false,完成:true,最后一个:true,删:true}}),
+    const 详情们=[卡(21,'处理中',{认领:[人('甲',true,'我这边报价改好了'+长+网址),人('乙',true,'合同条款对过了'),{...人('我',false,null),是我:true}],进度:{完成:2,共:3},能:{认领:false,完成:true,最后一个:true,删:true}}),
       卡(22,'处理中',{认领:[人('甲',false,null),{...人('我',false,null),是我:true}],进度:{完成:0,共:2},能:{认领:false,完成:true,最后一个:false,删:false}})];
     window.__画=(o)=>{
       const 里=o.页==='detail'?<section className="rbk-card"><BlockerList 们={详情们}/></section>
-        :<BoardBlockers 开 全部 能管 栏={o.空?{待接受:[],处理中:[],已解决:[]}:栏} 已解决共={0} 统计={o.空?{未解决:0,已解决:0,按影响:[],按原因:[]}:统计} 项目们={[{id:'p1',name:'华东二期产线改造项目'+长}]} 原因们={[{id:'r0',name:'价格',status:'启用'}]} 筛={o.筛??{}}/>;
+        :<BoardBlockers 开 全部 能管={o.能管??true} 栏={o.空?{待接受:[],处理中:[],已解决:[]}:栏} 已解决共={0} 统计={o.空?{未解决:0,已解决:0,按影响:[],按原因:[]}:o.无待审?统计无待审:统计} 项目们={[{id:'p1',name:'华东二期产线改造项目'+长}]} 原因们={[{id:'r0',name:'价格',status:'启用'}]} 筛={o.筛??{}}/>;
       const 窄=window.innerWidth<768;
       createRoot(document.getElementById('root')).render(<App><div style={{display:'flex'}}>{窄?null:<aside style={{flex:'0 0 232px'}}/>}<main style={{flex:'1 1 0',minWidth:0,padding:窄?16:24}}>{里}</main></div></App>);
     };
@@ -214,4 +216,27 @@ it.each([1366, 390])("有筛选、三栏都空 %ipx：整体一句「没有对�
     expect(await 不溢出(page)).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
+});
+
+it.each([390, 1366])("%ipx：资源申请 / 认领备注里一串 200 字符不带空格的网址折行，不撑出卡片、不横滚", async (w) => {
+  for (const 页 of ["block", "detail"]) {
+    const { page, errors } = await 打开({ 页 }, w);
+    try {
+      await page.getByText(/example\.com/).first().waitFor();
+      expect(await 不溢出(page)).toBe(true);
+      const 出 = await page.locator(".bk-card").evaluateAll(cs => cs.some(c => { const r = c.getBoundingClientRect(); return [...c.querySelectorAll("*")].some(e => e.getBoundingClientRect().right > r.right + 1); }));
+      expect(出).toBe(false);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+it("「去审核 ›」只在 能管 + 有待审核 时出：能管无待审核、有待审核不能管 都不出", async () => {
+  const 有 = async (o: Record<string, unknown>) => {
+    const { page } = await 打开({ 页: "block", ...o }, 1366);
+    try { await page.locator('[aria-label="按阻碍原因"]').waitFor(); return await page.getByRole("link", { name: /去审核/ }).count(); } finally { await page.close(); }
+  };
+  expect(await 有({ 能管: true })).toBe(1);
+  expect(await 有({ 能管: true, 无待审: true })).toBe(0);
+  expect(await 有({ 能管: false })).toBe(0);
 });

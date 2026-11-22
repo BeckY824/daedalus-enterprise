@@ -23,16 +23,16 @@ beforeAll(async () => {
     import DataShell from '@/app/(app)/overview/DataShell';
     import {BusinessProvider} from '@/lib/business-client';
     import {DEFAULT_BUSINESS} from '@/lib/business-config';
-    const 选人={选项:[{value:'u2',label:'某某超长名字的华东区域销售管理'}],当前:'',我:'u1'};
-    window.__画=(页签)=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
-      <DataShell view="现在" 项目 选人={选人} 页签={页签}><div>内容</div></DataShell>
+    const 选项=[{value:'u2',label:'某某超长名字的华东区域销售管理'},{value:'u3',label:'Alexandria-Konstantinopoulou-华东华南两大区域渠道拓展专员'}];
+    window.__画=(页签,当前='')=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
+      <DataShell view="现在" 项目 选人={{选项,当前,我:'u1'}} 页签={页签}><div>内容</div></DataShell>
     </BusinessProvider></App>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
   bundle = r.outputFiles[0].text; browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function 打开(页签: string, width = 1024, skin?: string): Promise<{ page: Page; errors: string[] }> {
+async function 打开(页签: string, width = 1024, skin?: string, 当前 = ""): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 700 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://ent.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
@@ -40,7 +40,7 @@ async function 打开(页签: string, width = 1024, skin?: string): Promise<{ pa
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   if (skin) await page.evaluate((k) => { document.documentElement.dataset.skin = k; }, skin);
   await page.addScriptTag({ content: bundle });
-  await page.evaluate((t) => (window as unknown as { __画: (t: string) => void }).__画(t), 页签);
+  await page.evaluate(([t, d]) => (window as unknown as { __画: (t: string, d: string) => void }).__画(t, d), [页签, 当前] as const);
   await page.getByRole("tab", { name: "卡点" }).waitFor();
   return { page, errors };
 }
@@ -100,6 +100,36 @@ it("390：右端收成「看谁」钮，点开底部面板里有我的 / 团队�
   const 顶2 = await 卡点.page.getByRole("tab", { name: "卡点" }).evaluate((el) => Math.round(el.getBoundingClientRect().top));
   expect(顶2).toBe(顶1);
   await 卡点.page.close();
+});
+
+it("390：选了长名字的人，四个页签都还在（「数据」没折进「⋯」）、「看谁」钮压在约 30vw；面板里选了人就收起", async () => {
+  const { page, errors } = await 打开("todo", 390, undefined, "u3");
+  const 钮 = page.locator(".data-shell-who-btn");
+  expect(await 钮.innerText()).toContain("Alexandria");
+  expect((await 钮.boundingBox())!.width).toBeLessThanOrEqual(390 * 0.3 + 1);
+  expect(await page.locator(".data-shell-tabs .ant-tabs-nav-more").evaluate((e) => getComputedStyle(e).visibility !== "hidden" && (e as HTMLElement).offsetWidth > 0).catch(() => false)).toBe(false);
+  for (const 名 of ["任务", "卡点", "沟通", "数据"]) {
+    const t = (await page.getByRole("tab", { name: 名 }).boundingBox())!;
+    expect(t.x).toBeGreaterThanOrEqual(0);
+    expect(t.x + t.width).toBeLessThanOrEqual((await 钮.boundingBox())!.x + 1);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  // 面板里选人：选了就收起
+  await 钮.click();
+  const 面板 = page.locator(".data-shell-who-sheet");
+  const 开着 = () => 面板.first().isVisible().catch(() => false);
+  await expect.poll(开着).toBe(true);
+  await 面板.getByRole("combobox", { name: "看谁的" }).click();
+  await page.locator(".ant-select-item-option").filter({ hasText: "某某超长名字" }).click();
+  await expect.poll(开着).toBe(false);
+  // 我的 / 团队 也一样
+  await 钮.click();
+  await expect.poll(开着).toBe(true);
+  await 面板.getByText("团队", { exact: true }).waitFor();
+  await 面板.getByText("团队", { exact: true }).click();
+  await expect.poll(开着).toBe(false);
+  expect(errors).toEqual([]);
+  await page.close();
 });
 
 it("换皮主题（账簿）：照旧——人员行在页签上面，卡点页签留在原地变淡、点不了", async () => {

@@ -127,7 +127,8 @@ export default function DataShell({
       {!页签 && 选人 && 人下拉()}
     </div>
   );
-  function 我的团队() {
+  /** 关 = 在 390「看谁」底部面板里：选了就收起面板 */
+  function 我的团队(关?: () => void) {
     const 我 = 选人?.我;
     if (!我) return null;
     // 选了别的成员时两个都不亮（Segmented 的 value 给一个不在选项里的值）
@@ -138,12 +139,12 @@ export default function DataShell({
         aria-label="看我的还是团队的"
         disabled={人不适用}
         value={值}
-        onChange={(v) => 改({ ownerId: v === "mine" ? 我 : undefined, p: undefined })}
+        onChange={(v) => { 改({ ownerId: v === "mine" ? 我 : undefined, p: undefined }); 关?.(); }}
         options={[{ value: "mine", label: "我的" }, { value: "team", label: "团队" }]}
       />
     );
   }
-  function 人下拉() {
+  function 人下拉(关?: () => void) {
     return (
       <Select
         className="data-shell-who"
@@ -151,7 +152,7 @@ export default function DataShell({
         disabled={人不适用}
         value={显人}
         // 换了人，待办从第一页看起
-        onChange={(v: string) => 改({ ownerId: v || undefined, p: undefined })}
+        onChange={(v: string) => { 改({ ownerId: v || undefined, p: undefined }); 关?.(); }}
         showSearch
         optionFilterProp="label"
         popupMatchSelectWidth={false}
@@ -199,7 +200,7 @@ export default function DataShell({
           />
           {新样 && 选人 && (
             <Drawer open={看谁开} placement="bottom" height="auto" title="看谁" className="data-shell-who-sheet" onClose={() => set看谁开(false)}>
-              <div className="data-shell-who-sheet-body">{我的团队()}{人下拉()}</div>
+              <div className="data-shell-who-sheet-body">{我的团队(() => set看谁开(false))}{人下拉(() => set看谁开(false))}</div>
             </Drawer>
           )}
           {/* g.tabswitch：换了页签——立刻切过去、先出骨架（旧页签的内容不再灰着留 1 秒）；
