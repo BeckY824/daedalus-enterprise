@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Drawer, Grid, Modal, Segmented } from "antd";
 import type { 录音给界面 } from "@/lib/enterprise/coach-rec-db";
+import { 复制文字 } from "@/lib/clipboard";
 import { 按住上限毫秒, 点按上限毫秒, 最短录音毫秒, 录音每片毫秒, 片上限字节, type 打断原因 } from "@/lib/enterprise/coach-rec";
 import { 建片队列, 慢话, type 片队列, type 队列状态 } from "./uploader";
 import { 能网页录, 麦克风权限, 开麦, 开麦错话, 开录, 网页录每秒字节, type 网页录音 } from "./web-recorder";
@@ -442,7 +443,7 @@ export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }
           <div className="crec-warn">这里录不了音：可以改用「传录音文件」，或者复制链接到手机浏览器里打开再录。</div>
           <span className="crec-acts">
             {改传文件 && <Button onClick={改传文件}>传录音文件</Button>}
-            <Button onClick={() => { void navigator.clipboard?.writeText(location.href).then(() => set提示({ 话: "链接已复制" }), () => set提示({ 话: "复制不了，请长按地址栏复制", 坏: true })); }}>复制链接</Button>
+            <Button onClick={() => { void 复制文字(location.href).then((成) => set提示(成 ? { 话: "链接已复制" } : { 话: "复制不了，请长按地址栏复制", 坏: true })); }}>复制链接</Button>
           </span>
         </div>
       ) : (
