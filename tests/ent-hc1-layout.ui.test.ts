@@ -24,7 +24,7 @@ const plugin: Plugin = { name: "ent-hc1", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, (a) => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__刷新=(window.__刷新||0)+1},push(u){window.__去=u},prefetch(){}});export const usePathname=()=>'/dashboard';export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({href,prefetch,...p}){return <a href={href} {...p}/>}");
-  stub(/\/threads$/, 补全动作桩("src/app/(app)/dashboard/threads.ts", "export const 重命名对话=async(id,t)=>{window.__改名=[id,t];return {ok:true}};"));
+  stub(/\/threads$/, 补全动作桩("src/app/(app)/dashboard/threads.ts", "export const 重命名对话=async(id,t)=>{window.__改名=[id,t];return window.__改名失败?{ok:false,error:'x'}:{ok:true}};"));
   b.onLoad({ filter: /.*/, namespace: "fixture" }, (a) => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 
@@ -210,6 +210,34 @@ it("C1：标题点了就地改名（回车存、Esc 不改）；⋯ 菜单有重
   } finally { await page.close(); }
 });
 
+it("C1（改名失败）：「改不了这条对话」不一直挂着——鼠标移开就收，不动也 3 秒后自己收", async () => {
+  const { page, errors } = await 开({ 宽: 1366, 收列表: true });
+  try {
+    await page.evaluate(() => { (window as unknown as { __改名失败: boolean }).__改名失败 = true; });
+    const 提示 = page.locator(".ant-tooltip:not(.ant-tooltip-hidden)", { hasText: "改不了这条对话" });
+    // 用 element.click() 进改名：鼠标不挪到标题上，免得「移开」那一下抢先把提示收了
+    const 改一下 = async (名: string) => {
+      await page.mouse.move(5, 600);
+      await page.locator(".cli-head-t").evaluate((e) => (e as HTMLElement).click());
+      await page.locator(".cli-head-in").fill(名);
+      await page.locator(".cli-head-in").press("Enter");
+      await 提示.waitFor();
+      expect(await page.locator(".cli-head-t").textContent()).toBe("今天该跟谁");
+    };
+    // 鼠标移开就收（远早于 3 秒）
+    await 改一下("改名一");
+    await page.locator(".cli-head-t").hover();
+    await page.mouse.move(5, 600);
+    await expect.poll(() => 提示.count(), { timeout: 1500 }).toBe(0);
+    // 不动：3 秒后自己收
+    await 改一下("改名二");
+    await page.waitForTimeout(2000);
+    expect(await 提示.count()).toBe(1);
+    await expect.poll(() => 提示.count(), { timeout: 2500 }).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it("C3：顶部待办收成「待办 N」（N = 真画出来的行），点开浮层每行原样，Esc / 点外面收；没有待办不出钮", async () => {
   const { page, errors } = await 开({ 宽: 1366, 待办: 3 });
   try {
@@ -237,6 +265,21 @@ it("C3：顶部待办收成「待办 N」（N = 真画出来的行），点开�
   } finally { await page.close(); }
 });
 
+it("C3（390）：点「待办 N」，浮层对着整条对话栏、左右各留 16，不出屏", async () => {
+  const { page, errors } = await 开({ 宽: 390, 高: 844, 待办: 2 });
+  try {
+    await page.locator(".cli-head-chip").click();
+    const 层 = await 盒(page, ".cli-head-pop");
+    expect(层.l, JSON.stringify(层)).toBeGreaterThanOrEqual(0);
+    expect(层.r, JSON.stringify(层)).toBeLessThanOrEqual(390);
+    expect(Math.abs(层.l - 16)).toBeLessThanOrEqual(1);
+    expect(Math.abs(390 - 层.r - 16)).toBeLessThanOrEqual(1);
+    expect(await page.locator(".cli-head-pop .home-cth-todo").count()).toBe(2);
+    expect(await 不横滚(page)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it("C12：往上翻出「↓」，下面长新字带蓝点，点了回到最新；框头滚过顶才出下沿线；刚发那一轮留一框高的空", async () => {
   const { page, errors } = await 开({ 宽: 1366, 轮数: 14 });
   try {
@@ -251,6 +294,25 @@ it("C12：往上翻出「↓」，下面长新字带蓝点，点了回到最新�
     const b = await 盒(page, ".cli-latest-b"), 输 = await 盒(page, ".cli-frame .cli-input"), 框 = await 盒(page, ".cli-frame");
     expect(b.b).toBeLessThanOrEqual(输.t);
     expect(Math.abs((b.l + b.r) / 2 - (框.l + 框.r) / 2)).toBeLessThanOrEqual(1);
+    expect(await 钮.evaluate((e) => e.classList.contains("has-new"))).toBe(false);
+    // 步骤条上的秒数、回答时间那行在变不算新内容（#410：还在查数据、正文没出字蓝点就亮了）
+    await page.locator(".cli-log .cli-turn").last().evaluate((t) => {
+      const 条 = document.createElement("div"); 条.className = "ais"; 条.innerHTML = "<span class='ais-t'>查数据 · 1 秒</span>";
+      const 时 = document.createElement("span"); 时.className = "cli-bar-t"; 时.textContent = "刚刚";
+      t.append(条, 时);
+    });
+    await page.waitForTimeout(50);
+    // 上面插进去那一下本身算新结构：先回到底再翻上去，清掉
+    await page.locator(".cli-log").evaluate((e) => { e.scrollTop = e.scrollHeight; e.dispatchEvent(new Event("scroll")); });
+    await page.waitForTimeout(50);
+    await page.locator(".cli-log").evaluate((e) => { e.scrollTop = 0; e.dispatchEvent(new Event("scroll")); });
+    await page.waitForTimeout(50);
+    expect(await 钮.evaluate((e) => e.classList.contains("has-new"))).toBe(false);
+    for (const n of [2, 3, 4]) {
+      await page.locator(".cli-log .ais .ais-t").evaluate((e, n) => { e.firstChild!.textContent = "查数据 · " + n + " 秒"; }, n);
+      await page.locator(".cli-log .cli-bar-t").evaluate((e, n) => { e.textContent = n + " 秒前"; }, n);
+      await page.waitForTimeout(30);
+    }
     expect(await 钮.evaluate((e) => e.classList.contains("has-new"))).toBe(false);
     await page.locator(".cli-log .cli-a").last().evaluate((e) => { e.append(" 又出了几个字"); });
     await page.waitForTimeout(50);

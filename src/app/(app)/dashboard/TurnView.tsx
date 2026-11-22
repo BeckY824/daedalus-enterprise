@@ -211,7 +211,12 @@ export default function TurnView({
     if (容器 ? !跟随中.current : !贴着底部(null)) return;
     滚到(ref.current, "end");
   }, []);
-  useEffect(跟一下, [跟一下, job?.value?.text?.length, done]);
+  /*
+    步骤也算「长了东西」（3704 实操 #410）：还在查数据、正文一个字没出时，浮窗里步骤条一步步变高（换步、多一行），
+    原来只认正文字数，答案前那段不跟，离底部最远差 74px。首页框里本来就不跟（首页框里），这里只影响浮窗 / 整页
+  */
+  const 步况 = (job?.value?.steps ?? []).map((s) => `${s.id}:${s.status}`).join("|");
+  useEffect(跟一下, [跟一下, job?.value?.text?.length, done, 步况]);
 
   const interrupted = job?.status === "error" && job.error === "已取消";
   /*

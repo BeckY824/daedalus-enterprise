@@ -34,9 +34,14 @@ export default function ToLatest({ 刚发: 刚发的 }: { 刚发: boolean }) {
     };
     看();
     log.addEventListener("scroll", 看, { passive: true });
-    // 下面长出新字（流式、答完、新的一轮）：往上翻着的话钮上亮个点
-    const mo = new MutationObserver(() => {
-      if (露着.current) set新(true);
+    /*
+      下面长出新字（流式、答完、新的一轮）：往上翻着的话钮上亮个点。
+      步骤条上的秒数每秒在变、回答时间那行也会刷新——那不是新内容（3704 实操 #410：还在查数据、正文一个字没出蓝点就亮了），
+      所以只认步骤条（.ais）和时间（.cli-bar-t）以外的变化
+    */
+    const 不算 = (n: Node) => !!(n.nodeType === 1 ? (n as Element) : n.parentElement)?.closest(".ais, .cli-bar-t");
+    const mo = new MutationObserver((记录) => {
+      if (露着.current && 记录.some((r) => !不算(r.target))) set新(true);
       看();
     });
     mo.observe(log, { childList: true, subtree: true, characterData: true });

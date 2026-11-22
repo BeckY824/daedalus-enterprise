@@ -5963,6 +5963,9 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-head-t { margin-left: 0; font-size: var(--fs-section); }
   :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-head-chip { height: var(--ctl-h); margin-inline: var(--s1); }
   :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-head-in { flex: 1 1 auto; margin-left: 0; }
+  /* 「待办 N」浮层：右边还有新建、⋯ 两颗 44 的钮，对着待办钮右对齐会从左边出屏（#410：left −60）。手机上对着整条对话栏，左右各留 16 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-head-todo { position: static; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-head-pop { left: var(--s4); right: var(--s4); width: auto; }
   :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-log { padding: 0 var(--s4) var(--s3); }
   :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-composer-sticky { padding: var(--s2) var(--s3) calc(var(--s3) + env(safe-area-inset-bottom)); }
 }

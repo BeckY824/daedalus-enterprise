@@ -54,6 +54,13 @@ export default function ChatHead({ 标题, 对话id, 能改, 待办 }: {
     startTransition(() => router.refresh());
   }
 
+  // 「改不了这条对话」不一直挂着：3 秒后自己收，鼠标移开也收（3704 实操 #410）
+  useEffect(() => {
+    if (!错) return;
+    const t = setTimeout(() => set错(null), 3000);
+    return () => clearTimeout(t);
+  }, [错]);
+
   function 新建() {
     新起一屏(首页屏);
     router.push("/dashboard");
@@ -65,7 +72,7 @@ export default function ChatHead({ 标题, 对话id, 能改, 待办 }: {
       {改着 ? (
         <RenameBox 初={名} on存={存} on不改={() => set改着(false)} />
       ) : (
-        <Tooltip title={错 ?? (可改 ? "点一下改名" : undefined)} open={错 ? true : undefined} placement="bottomLeft" mouseEnterDelay={0.6}>
+        <Tooltip title={错 ?? (可改 ? "点一下改名" : undefined)} open={错 ? true : undefined} onOpenChange={(开) => { if (!开 && 错) set错(null); }} placement="bottomLeft" mouseEnterDelay={0.6}>
           <button
             type="button"
             className={`cli-head-t${可改 ? "" : " is-static"}`}
