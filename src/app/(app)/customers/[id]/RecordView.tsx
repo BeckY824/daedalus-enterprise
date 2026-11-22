@@ -184,6 +184,7 @@ export default function RecordView({
   users,
   channels,
   aiEnabled,
+  上次背调,
   已收藏 = false,
   能放公海 = false,
   能转让客户 = true,
@@ -1817,13 +1818,13 @@ export default function RecordView({
           <Space orientation="vertical" size={14} style={{ width: "100%" }}>
             {aiEnabled && !AI在抽屉里 && (
               <div className={量到 ? "rec-card" : "rec-card rec-ai-guess-col"}>
-                <AiPanel customerId={customer.id} customerName={customer.name} 显示名={叫这位} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸 && !企业} hasRecords={followUps.length > 0} on记跟进={点跟进} 简报叫={企业 ? "智能总结" : "简报"} 不背调={!摆法.背调} 背调另放={摆法.背调卡} />
+                <AiPanel customerId={customer.id} customerName={customer.name} 显示名={叫这位} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸 && !企业} hasRecords={followUps.length > 0} on记跟进={点跟进} 简报叫={企业 ? "智能总结" : "简报"} 不背调={!摆法.背调} 背调另放={摆法.背调卡} 上次背调={上次背调} />
               </div>
             )}
 
             {/* 企业版：客户背调单独一张卡（P14 第 5 条），不挂在 AI 面板、「跟进」菜单里；AI 收进抽屉时它照样在右栏。
                 背调是 AI 的活，同 AI 面板一样只在开了 AI 时摆 */}
-            {摆法.背调卡 && aiEnabled && !去项目跟进 && <CustomerResearchCard customerId={customer.id} customerName={customer.name} 显示名={叫这位} 档案={背调档案} on记跟进={点跟进} />}
+            {摆法.背调卡 && aiEnabled && !去项目跟进 && <CustomerResearchCard customerId={customer.id} customerName={customer.name} 显示名={叫这位} 档案={背调档案} on记跟进={点跟进} 上次初值={上次背调} />}
 
             {!去项目跟进 && 待办卡}
 
@@ -1858,7 +1859,7 @@ export default function RecordView({
           进程内任务表上（lib/ai-jobs），不在组件 state 里，关掉再开还在那儿 */}
       {aiEnabled && (!!项目区 || !量到 || AI在抽屉里) && (
         <Drawer placement="right" styles={{ wrapper: { width: 380 } }} open={AI抽屉开着} onClose={() => setAI抽屉开着(false)} title={`AI · ${叫这位}`}>
-          <AiPanel customerId={customer.id} customerName={customer.name} 显示名={叫这位} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸 && !企业} hasRecords={followUps.length > 0} on记跟进={点跟进} 简报叫={企业 ? "智能总结" : "简报"} 不背调={!摆法.背调} 背调另放={摆法.背调卡} />
+          <AiPanel customerId={customer.id} customerName={customer.name} 显示名={叫这位} 档案={背调档案} fingerprint={fingerprint} signed={customer.followStatus === "已签约" && !外贸 && !企业} hasRecords={followUps.length > 0} on记跟进={点跟进} 简报叫={企业 ? "智能总结" : "简报"} 不背调={!摆法.背调} 背调另放={摆法.背调卡} 上次背调={上次背调} />
         </Drawer>
       )}
 

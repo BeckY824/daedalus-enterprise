@@ -17,6 +17,7 @@ import { 起草语言们, 起草语气们, type 起草语言, type 起草语气 
 import { useLocalPref } from "@/lib/local-pref";
 import type { 客户档案 } from "@/lib/research/subject";
 import { useCustomerResearch } from "./useCustomerResearch";
+import type { 最近背调结果 } from "@/lib/research/latest";
 
 type BriefAnswer = { brief: CustomerBrief; records: BriefRecord[] };
 
@@ -40,6 +41,7 @@ export default function AiPanel({
   企业版,
   不背调 = false,
   背调另放 = false,
+  上次背调,
 }: {
   customerId: string;
   /** 客户全称（企业版可能空着）：只给背调认对象用 */
@@ -65,6 +67,8 @@ export default function AiPanel({
   不背调?: boolean;
   /** 企业版客户页：背调整段交给右栏「客户背调」卡（CustomerResearchCard），AI 面板里一点不摆（P14 第 5 条） */
   背调另放?: boolean;
+  /** 详情页渲染时带下来的上一次背调（11-22 C3，useCustomerResearch 的 上次初值）；不给 = 进页自己取 */
+  上次背调?: 最近背调结果;
 }) {
   const b = useBusiness();
   const 企业 = 企业版 ?? 简报叫 === "智能总结";
@@ -82,7 +86,7 @@ export default function AiPanel({
   const inviteJob = useJob<string>(草稿键("invite", customerId));
   const [q, setQ] = useState("");
   /* 背调（lib/research）整段在 useCustomerResearch：企业版客户页把它单拎成一张卡（P14 第 5 条），这里就不摆 */
-  const 背调 = useCustomerResearch({ customerId, customerName, 显示名, 档案, on记跟进, 能发起: !不背调, 开: !背调另放 });
+  const 背调 = useCustomerResearch({ customerId, customerName, 显示名, 档案, on记跟进, 能发起: !不背调, 开: !背调另放, 上次初值: 上次背调 });
   const 叫 = 显示名 || customerName;
 
   /** 侧栏那条「AI 任务」认这个：叫什么、点了回哪儿 */

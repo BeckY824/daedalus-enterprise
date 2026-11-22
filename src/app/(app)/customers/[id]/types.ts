@@ -231,6 +231,11 @@ export type RecordProps = {
   channels: { id: string; name: string }[];
   /** 服务端是否配置了 AI。没配时 AI 面板整体不渲染 */
   aiEnabled: boolean;
+  /**
+   * 上一次背调（11-22 页面切换提速 C3）：AI 开着时详情页渲染一并取好带下来，背调卡 / AI 面板进页不再各调一次 最近背调。
+   * 不给 = 照原来进页自己取
+   */
+  上次背调?: import("@/lib/research/latest").最近背调结果;
 };
 
 /** 当前项目页签的联系人主次（项目详情 关联.联系人们 + contact 算出来） */

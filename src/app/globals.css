@@ -831,6 +831,12 @@ body.rail-resizing .shell .rail { transition: none; }
    正文先窄后宽跳一下（1024 宽实测单栏 → 两栏）。窄于名单门槛（lib/roster.ts，220+312+52+630）时
    水合后它必定在抽屉里，所以这里直接不画整栏那个 aside，不会误藏。服务端那帧右边面板一律收着，门槛不用加 380 */
 @media (max-width: 1213px) { aside.pane-roster { display: none; } }
+/* 名单载入中的骨架（CustomerRosterSkeleton，11-22）：栏框立刻有，灰条 --skel-delay 后才淡入，快的不闪 */
+.roster-skel { display: grid; gap: 14px; padding: 16px; animation: app-loading-in var(--t) var(--ease) var(--skel-delay) both; }
+.roster-skel-h { width: 60%; }
+.roster-skel-row { display: flex; gap: var(--s2); align-items: flex-start; }
+.roster-skel-av { width: 24px; height: 24px; border-radius: 50%; flex: none; background: var(--hover); }
+.roster-skel-m { flex: 1; display: grid; gap: 6px; }
 
 /* 首页中栏：问过的对话。
    **比记录页那条名单还窄**（232 vs 312）：一行就是一句话，不摆头像不摆标签，
