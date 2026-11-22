@@ -40,14 +40,18 @@ export function usePinCenter(网格: RefObject<HTMLDivElement | null>, 开: bool
     看.observe(g);
     看.observe(容器);
     window.addEventListener("resize", 量);
-    // 捕获阶段：里面的按钮、输入框自己拦了事件也算动过
-    g.addEventListener("pointerdown", 动了, true);
-    g.addEventListener("keydown", 动了, true);
+    /*
+      捕获阶段：里面的按钮、输入框自己拦了事件也算动过。
+      只认 pointerdown / keydown 不够（3703 补点 11-22）：没有按下那一下的点击（读屏、自动化、浏览器扩展里的 element.click()、
+      部分触屏辅助）直接来一个 click，动过 一直是 false，展开指标卡就按「还没人动过」重新居中，整块上移半个卡高（1024 销售 19px）。
+      click、input 也算：它们都在 React 改状态之前先到这里（捕获在 g 上，React 的冒泡处理在根上）
+    */
+    const 动过的事 = ["pointerdown", "keydown", "click", "input"] as const;
+    for (const t of 动过的事) g.addEventListener(t, 动了, true);
     return () => {
       看.disconnect();
       window.removeEventListener("resize", 量);
-      g.removeEventListener("pointerdown", 动了, true);
-      g.removeEventListener("keydown", 动了, true);
+      for (const t of 动过的事) g.removeEventListener(t, 动了, true);
       g.style.removeProperty("--ck-nudge");
     };
   }, [网格, 开]);

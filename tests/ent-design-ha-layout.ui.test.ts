@@ -61,7 +61,7 @@ beforeAll(async () => {
     const 今天串 = 两位(北京.getUTCMonth() + 1) + '-' + 两位(北京.getUTCDate());
     const 今天日 = 北京.getUTCFullYear() + '-' + 今天串;
     const 京 = (hm) => new Date(今天日 + 'T' + hm + ':00+08:00').toISOString();
-    function 首页({ 待办, 卡数 }) {
+    function 首页({ 待办, 卡数, 短名 }) {
       const [槽, set槽] = useState(null);
       const [q, setQ] = useState("");
       const [idx, setIdx] = useState(0);
@@ -75,14 +75,14 @@ beforeAll(async () => {
             {待办 && <>
               <AwaitAssignTodo 数据={{ 条数: 128, 最早: 今天串 + ' 09:30', 最早At: 京('09:30') }} />
               {待办 === true && <CoachTopicTodo 数据={{ 条数: 12, 最早: { at: new Date(今.getTime() - 3600_000).toISOString(), projectId: 'p1', title: '主题' + 长 } }} />}
-              <ReplyDueTodo 数据={{ 条数: 8, 超时: 3, 最早: { projectId: 'p2', name: 长, 时: 今天串 + ' 21:00 – 22:00', 始: 京('21:00'), 终: 京('22:00'), 超时: true } }} />
+              {待办 !== 1 && <ReplyDueTodo 数据={{ 条数: 8, 超时: 3, 最早: { projectId: 'p2', name: 长, 时: 今天串 + ' 21:00 – 22:00', 始: 京('21:00'), 终: 京('22:00'), 超时: true } }} />}
               {待办 === true && <VerifyInbox 首页 们={[
                 { projectId: 'p3', 项目: '超长项目名' + 长, 负责人: '负责人' + 长, 步: '市场复核', 无效原因: '其他：' + 长, 初判说明: '说明' + 长, 复核说明: null, 异议说明: null, 更新于: new Date(今.getTime() - 2 * 86400_000).toISOString() },
                 { projectId: 'p4', 项目: '二号', 负责人: '乙', 步: '销售终验', 无效原因: null, 初判说明: null, 复核说明: null, 异议说明: null, 更新于: 今.toISOString() },
               ]} />}
               {待办 === true && <AssignEtaLine 轮到={{ 数: 128, 待补: 2, 放弃待补: 1 }} />}
             </>}
-            <Welcome userName={"测试员" + 长} context="" 欢迎={"欢迎使用 测试产品"} 示例槽={set槽} />
+            <Welcome userName={短名 ? "测试员" : "测试员" + 长} context="" 欢迎={"欢迎使用 测试产品"} 示例槽={set槽} />
             <div className="cli-composer">
               <ComposerTop 客户="客户" 背调模式={false} 邮件={null} on去掉邮件={() => {}} 提示粘贴={null} on切={() => {}} on不切={() => {}}
                 没这个命令={false} q={q} cmdMatches={开命令 ? 命令们 : []} cmdIdx={idx} on选命令={() => {}}
@@ -102,7 +102,7 @@ beforeAll(async () => {
       );
     }
     const root = createRoot(document.getElementById('root'));
-    window.__画 = (待办, 卡数) => root.render(<ConfigProvider locale={zhCN}><App><首页 待办={待办} 卡数={卡数} /></App></ConfigProvider>);
+    window.__画 = (待办, 卡数, 短名) => root.render(<ConfigProvider locale={zhCN}><App><首页 待办={待办} 卡数={卡数} 短名={短名} /></App></ConfigProvider>);
     window.__输 = (v) => { const ta = document.querySelector('.cli-frame textarea'); const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set; set.call(ta, v); ta.dispatchEvent(new Event('input', { bubbles: true })); ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; };
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, loader: { ".css": "empty" }, plugins: [plugin], logLevel: "silent" });
   bundle = "window.process = { env: {} };\n" + r.outputFiles[0].text;
@@ -112,16 +112,16 @@ afterAll(async () => { await browser?.close(); });
 
 type 皮 = "now" | "ledger" | "tech";
 const 卡数 = { "month-new": 591, key: 123, "no-follow": 4802, "due-soon": 0 };
-async function 开(o: { 宽: number; 高?: number; 待办?: boolean | 2; skin?: 皮 }): Promise<{ page: Page; errors: string[] }> {
+async function 开(o: { 宽: number; 高?: number; 待办?: boolean | 1 | 2; skin?: 皮; 壳?: boolean; 短名?: boolean }): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width: o.宽, height: o.高 ?? 900 }, reducedMotion: "reduce", timezoneId: "Europe/London" });
   page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   const skin = o.skin ?? "now";
-  await page.route("http://ha.test/**", (r) => r.fulfill({ contentType: "text/html", body: `<!doctype html><html${skin === "now" ? "" : ` data-skin="${skin}" data-paper="tone" data-mode="light"`}><meta charset='utf-8'><main style='padding:24px'><div id='root'></div></main></html>` }));
+  await page.route("http://ha.test/**", (r) => r.fulfill({ contentType: "text/html", body: `<!doctype html><html${skin === "now" ? "" : ` data-skin="${skin}" data-paper="tone" data-mode="light"`}><meta charset='utf-8'><body style='margin:0'>${o.壳 ? "<div class='shell'><nav style='width:220px;flex:none'></nav><main class='main app-content' style='padding:22px 26px'><div style='max-width:1720px;margin:0 auto'><div id='root'></div></div></main></div>" : "<main style='padding:24px'><div id='root'></div></main>"}</body></html>` }));
   await page.goto("http://ha.test/dashboard");
   for (const f of ["globals.css", ...(skin === "now" ? [] : ["skins/shared.css", `skins/${skin}.css`])]) await page.addStyleTag({ path: path.resolve("src/app", f) });
   await page.addScriptTag({ content: bundle });
-  await page.evaluate(([待办, 数]) => (window as unknown as { __画: (a: unknown, b: unknown) => void }).__画(待办, 数), [o.待办 ?? true, 卡数] as const);
+  await page.evaluate(([待办, 数, 短名]) => (window as unknown as { __画: (a: unknown, b: unknown, c: unknown) => void }).__画(待办, 数, 短名), [o.待办 ?? true, 卡数, !!o.短名] as const);
   await page.locator(".cli-frame .cli-input").waitFor();
   await page.locator(".cli-frame-q .cli-q").first().waitFor();
   if (errors.length) throw new Error(errors.join("\n"));
@@ -317,4 +317,35 @@ it.each([[1024, 768], [1366, 900]])("H-新4（%i×%i，顶部 2 行待办）：�
     await page.waitForTimeout(150);
     expect(Math.abs(await 顶(page, ".cli-ck-g") - 起), `${宽} 展开 + 多行`).toBeLessThanOrEqual(1);
   } finally { await page.close(); }
+});
+
+/*
+  3703 补点（11-22）：销售 1024、还没问、顶部只有 1 行待办，直接展开「暂未跟进」指标卡，整块上移约 19px（2 行待办时 −1.2px）。
+  原因：usePinCenter 只把 pointerdown / keydown 算「有人动过」，没有按下那一下的点击（element.click()：读屏、自动化、扩展）
+  到来时还按「没人动过」重新居中，卡列变高 → 整块上移半个增量。2 行待办时问答卡比卡列高，展开卡不改这一组的高，所以看不出。
+  修：click、input 也算动过。真鼠标点、element.click() 各量一次；1 行待办时这一组确实变高了（钉住生效，不是白量）
+*/
+it.each([[1, 1024, 768], [1, 1366, 900], [2, 1024, 768], [2, 1366, 900]] as const)("H-新4（顶部 %i 行待办，%i×%i，照 AppShell 外壳）：进页直接展开指标卡（鼠标 / element.click()），卡顶不动（≤1px）", async (行, 宽, 高) => {
+  for (const 点法 of ["鼠标", "click()"] as const) {
+    const { page } = await 开({ 宽, 高, 待办: 行, 壳: true, 短名: true });
+    try {
+      expect(await page.locator(".cli-frame .home-cth-todo").count()).toBe(行);
+      await page.waitForTimeout(300);
+      const 起 = await 顶(page, ".cli-ck-g");
+      const 框起 = await 顶(page, ".cli-frame");
+      const 组高 = await page.locator(".cli-ck-g").evaluate((e) => e.getBoundingClientRect().height);
+      const 头 = page.locator(".home-kpi-card").nth(2).locator(".home-kpi-head");
+      const 点 = () => (点法 === "鼠标" ? 头.click() : 头.evaluate((e) => (e as HTMLElement).click()));
+      await 点();
+      await page.locator(".home-kpi-body").waitFor();
+      await page.waitForTimeout(400);
+      const 标 = `${行} 行 ${宽}×${高} ${点法}`;
+      if (行 === 1) expect(await page.locator(".cli-ck-g").evaluate((e) => e.getBoundingClientRect().height), `${标} 这一组变高了`).toBeGreaterThan(组高 + 10);
+      expect(Math.abs(await 顶(page, ".cli-ck-g") - 起), `${标} 展开`).toBeLessThanOrEqual(1);
+      expect(Math.abs(await 顶(page, ".cli-frame") - 框起), `${标} 问答卡顶`).toBeLessThanOrEqual(1);
+      await 点();
+      await page.waitForTimeout(400);
+      expect(Math.abs(await 顶(page, ".cli-ck-g") - 起), `${标} 收起`).toBeLessThanOrEqual(1);
+    } finally { await page.close(); }
+  }
 });
