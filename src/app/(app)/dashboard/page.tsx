@@ -85,7 +85,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const 轮到 = 企业版() ? await 我的轮到(await 读组织(), user.id).catch((e) => { console.error("[快轮到] 首页没算出来", e); return null; }) : null;
   // 企业版首页待办「待我复核」（审核 11-18 节点 P2-3，P-线索-02 / 03）：和项目列表、客户页同一份数据（能拍板的人）；读不出来不挡首页
   const 待复核们 = 企业版() ? (await 待我复核的(user).catch((e) => { console.error("[待我复核] 首页没读出来", e); return []; })).map((r) => ({ ...r, 更新于: r.更新于.toISOString() })) : [];
-  const 待复核 = 待复核们.length ? <VerifyInbox 们={待复核们} /> : undefined;
+  const 待复核 = 待复核们.length ? <VerifyInbox 们={待复核们} 首页 /> : undefined;
   // 开关关 / 本月用过 / 没资格 = 空、不画（组件自己不画），出错不挡首页。
   // 企业版一直挂着、不按条数挂：放弃成了 router.refresh() 后本月次数用完、列表变空，组件不能被卸掉，
   // 不然「已放弃「X」，转给 某某」那句跟着一闪就没（3703 实操 11-21）

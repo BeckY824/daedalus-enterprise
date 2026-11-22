@@ -176,6 +176,21 @@ export function 成员选项(users: 可选成员[]): { value: string; label: str
   return users.map((u) => ({ value: u.id, label: 叫.get(u.id)! }));
 }
 
+/**
+ * 同 成员选项，同名的带**部门**（设计语言 L-A · L-新6，客户列表负责人筛选）：登录名是系统里的串，看的人认的是「哪个部门的张伟」。
+ * 部门也一样（或没分部门）的，部门后面再带登录名，总能分开；不同名的照旧只写名字
+ */
+export function 成员选项带部门(users: (可选成员 & { 部门?: string | null })[]): { value: string; label: string }[] {
+  const 同名 = new Map<string, (可选成员 & { 部门?: string | null })[]>();
+  for (const u of users) 同名.set(u.name, [...(同名.get(u.name) ?? []), u]);
+  return users.map((u) => {
+    const 们 = 同名.get(u.name)!;
+    if (们.length < 2) return { value: u.id, label: u.name };
+    const 部门撞了 = !u.部门 || 们.some((x) => x.id !== u.id && x.部门 === u.部门);
+    return { value: u.id, label: `${u.name}（${[u.部门, 部门撞了 && u.email].filter(Boolean).join(" · ")}）` };
+  });
+}
+
 /** 成员 id → 显示名：同名的（两个王芳）后面带邮箱，不同名的就是名字。名单、下拉都用这一份（10-27 持有上限 / 组织架构分不出同名） */
 export function 同名带邮箱(users: 可选成员[]): Map<string, string> {
   const 同名计数 = new Map<string, number>();

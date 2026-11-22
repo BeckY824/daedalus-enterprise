@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Badge, Button, ConfigProvider, Drawer } from "antd";
+import { Badge, Button, ConfigProvider, Drawer, Tooltip } from "antd";
 import { BellOutlined } from "@ant-design/icons";
 import { AnimatePresence, motion } from "motion/react";
 import { businessDayjs } from "@/lib/business-clock";
 import { useSystemReducedMotion } from "@/lib/reduced-motion";
+import { useIsNowSkin } from "@/lib/use-skin";
 import { 时长, 曲线, 间隔 } from "@/lib/motion";
 import { 读我的通知, 读未读通知数, 标已读, 全部标已读 } from "@/app/(app)/notice-actions";
 import type { 通知行 } from "@/lib/enterprise/notify";
@@ -134,12 +135,23 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
     }
   };
 
+  const 现状 = useIsNowSkin();
   const 说法 = 未读 > 0 ? `通知，${未读} 条未读` : "通知";
   return (
     <>
-      <Badge count={未读} size="small" overflowCount={99} offset={手机 ? undefined : [-4, 4]}>
-        <Button type="text" className={手机 ? undefined : "notice-bell"} icon={<BellOutlined />} aria-label={说法} title={说法} onClick={打开} />
-      </Badge>
+      {现状 && !手机 ? (
+        /* 设计语言 H-B · H-新11：悬停出一句提示（「通知，N 条未读」），不再只有一块灰底；
+           红数收进铃铛这颗钮的右上角（globals.css .notice-bell-badge），99+ 也不压出钮外、不压到左栏边 */
+        <Tooltip title={说法} placement="bottom" mouseEnterDelay={0.3}>
+          <Badge count={未读} size="small" overflowCount={99} className="notice-bell-badge">
+            <Button type="text" className="notice-bell" icon={<BellOutlined />} aria-label={说法} onClick={打开} />
+          </Badge>
+        </Tooltip>
+      ) : (
+        <Badge count={未读} size="small" overflowCount={99} offset={手机 ? undefined : [-4, 4]}>
+          <Button type="text" className={手机 ? undefined : "notice-bell"} icon={<BellOutlined />} aria-label={说法} title={说法} onClick={打开} />
+        </Badge>
+      )}
       {挂过 && (
         <ConfigProvider theme={{ token: { motion: !少 } }}>
           <Drawer

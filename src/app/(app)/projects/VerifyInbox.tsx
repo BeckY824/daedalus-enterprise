@@ -4,7 +4,8 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Card, Input, Modal, Space, Tag } from "antd";
-import { fmtDate } from "@/lib/utils";
+import { fmtDate, smartTime } from "@/lib/utils";
+import { useIsNowSkin } from "@/lib/use-skin";
 import { 原因上限 } from "@/lib/project/nodes";
 import { 市场复核Action, 总管理终判Action } from "./actions";
 import { showUndo } from "@/components/UndoBar";
@@ -25,7 +26,16 @@ const 步叫法: Record<待复核行["步"], string> = { 市场复核: "等你�
  * 判有效一步完成（原型 pr.verify，P-界面-40）：这一条马上收起，底部撤销条（全站同一条，g.undo）6 秒内能撤销、
  * 也能「补一句」复核说明，6 秒后才交给服务端（到点才做：撤销 = 不交）；判无效照旧先弹框确认（会记线索流失、补额度）
  */
-export default function VerifyInbox({ 们 }: { 们: 待复核行[] }) {
+export default function VerifyInbox({ 们, 首页 = false }: {
+  们: 待复核行[];
+  /**
+   * 摆在首页顶部待办里（dashboard/page.tsx）。设计语言 H-A（11-21，H-新7 / 新12）：现状主题首页不再是带表头的卡，
+   * 每条一行，和「待回复客户」「待分配新线索」同一种行（home-cth-todo）：标签 + 项目名｜负责人 · smartTime · 附言｜判有效 / 判无效；
+   * 时间不掉行、不截（窄屏整句折行）。新线索页、项目页顶上和换皮主题照旧是卡
+   */
+  首页?: boolean;
+}) {
+  const 现状 = useIsNowSkin();
   const router = useRouter();
   const [忙, set忙] = useState(false);
   // 没判成的原因：一行一行写在那一行下面；说明框里的写在框里（原型 g.notice：不弹顶部提示）
@@ -101,11 +111,62 @@ export default function VerifyInbox({ 们 }: { 们: 待复核行[] }) {
       set忙(false);
     }
   };
+  const 附言of = (r: 待复核行) => [r.无效原因 ? `无效原因：${r.无效原因}` : null, r.初判说明, r.步 === "总管理终判" && r.异议说明 ? `异议：${r.异议说明}` : null, r.步 === "销售终验" && r.复核说明 ? `复核说明：${r.复核说明}` : null].filter(Boolean).join(" · ");
+  const 判框 = (
+    <Modal
+      open={!!框}
+      title={框 ? `判${框.有效 ? "有效" : "无效"}` : ""}
+      okText="确定"
+      okButtonProps={{ loading: 忙, danger: !!框 && !框.有效 }}
+      onCancel={() => { 稿.丢掉(); set框(null); }}
+      onOk={() => void 判()}
+    >
+      {稿.提示}
+      <div style={{ marginBottom: 8, color: "var(--text-muted)", overflowWrap: "anywhere" }}>
+        「{框?.r.项目}」{框?.有效 ? "判有效会交回负责人继续推进。" : "判无效后这条线索结束（记为线索流失）；现负责人占过名额的（自动、指定都算，不限月；补发来的也算）记 1 个判无效待补，下一条自动分配优先补发给他；随客户分到的、转来的、没分配记录的不补。"}
+      </div>
+      <Input.TextArea rows={4} maxLength={原因上限} showCount value={说明} onChange={(e) => set说明(e.target.value)} placeholder="复核说明（可不写）" aria-label="复核说明" />
+      {框错 && <div role="alert" className="csq-err">{框错}</div>}
+    </Modal>
+  );
+  if (首页 && 现状)
+    return (
+      <div className="home-verify" role="group" aria-label={`待复核的线索（${摆着.length}）`} data-testid="verify-inbox">
+        {摆着.map((r) => {
+          const 复核 = r.步 === "市场复核" || r.步 === "总管理终判";
+          const 附 = 附言of(r);
+          return (
+            <div key={r.projectId} className="home-cth-todo home-verify-row" data-testid={`verify-row-${r.projectId}`}>
+              <span className="home-cth-todo-t home-verify-t">
+                <Tag color={复核 ? "orange" : "blue"}>{步叫法[r.步]}</Tag>
+                <Link href={`/projects/${r.projectId}`} className="home-verify-name">{r.项目}</Link>
+              </span>
+              <span className="home-cth-todo-s home-verify-s">
+                负责人 {r.负责人 || "已不在的成员"} · <span className="home-cth-todo-time">{smartTime(r.更新于)}</span>
+                {附 ? ` · ${附}` : ""}
+              </span>
+              <span className="home-cth-todo-a home-verify-a">
+                {复核 ? (
+                  <>
+                    <Button type="link" size="small" disabled={忙} onClick={() => 判有效(r)}>判有效</Button>
+                    <Button type="link" danger size="small" disabled={忙} onClick={() => { 记错(r.projectId, null); set说明(""); set框错(""); set框({ r, 有效: false }); }}>判无效</Button>
+                  </>
+                ) : (
+                  <Link className="link-strong" href={`/projects/${r.projectId}`}>去处理 ›</Link>
+                )}
+              </span>
+              {错[r.projectId] && <div role="alert" className="cd-task-err home-verify-err">{错[r.projectId]}</div>}
+            </div>
+          );
+        })}
+        {判框}
+      </div>
+    );
   return (
     <Card title={`待复核的线索（${摆着.length}）`} size="small" style={{ marginBottom: 16 }} data-testid="verify-inbox">
       {摆着.map((r) => {
         const 复核 = r.步 === "市场复核" || r.步 === "总管理终判";
-        const 附 = [r.无效原因 ? `无效原因：${r.无效原因}` : null, r.初判说明, r.步 === "总管理终判" && r.异议说明 ? `异议：${r.异议说明}` : null, r.步 === "销售终验" && r.复核说明 ? `复核说明：${r.复核说明}` : null].filter(Boolean).join(" · ");
+        const 附 = 附言of(r);
         return (
           <div key={r.projectId} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }} data-testid={`verify-row-${r.projectId}`}>
             <span style={{ flex: "1 1 240px", minWidth: 0, overflowWrap: "anywhere" }}>
@@ -126,21 +187,7 @@ export default function VerifyInbox({ 们 }: { 们: 待复核行[] }) {
           </div>
         );
       })}
-      <Modal
-        open={!!框}
-        title={框 ? `判${框.有效 ? "有效" : "无效"}` : ""}
-        okText="确定"
-        okButtonProps={{ loading: 忙, danger: !!框 && !框.有效 }}
-        onCancel={() => { 稿.丢掉(); set框(null); }}
-        onOk={() => void 判()}
-      >
-        {稿.提示}
-        <div style={{ marginBottom: 8, color: "var(--text-muted)", overflowWrap: "anywhere" }}>
-          「{框?.r.项目}」{框?.有效 ? "判有效会交回负责人继续推进。" : "判无效后这条线索结束（记为线索流失）；现负责人占过名额的（自动、指定都算，不限月；补发来的也算）记 1 个判无效待补，下一条自动分配优先补发给他；随客户分到的、转来的、没分配记录的不补。"}
-        </div>
-        <Input.TextArea rows={4} maxLength={原因上限} showCount value={说明} onChange={(e) => set说明(e.target.value)} placeholder="复核说明（可不写）" aria-label="复核说明" />
-        {框错 && <div role="alert" className="csq-err">{框错}</div>}
-      </Modal>
+      {判框}
     </Card>
   );
 }

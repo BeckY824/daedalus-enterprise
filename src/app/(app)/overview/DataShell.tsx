@@ -2,9 +2,11 @@
 
 import { useBusiness } from "@/lib/business-client";
 import { 签约叫 } from "@/lib/business-config";
-import { useOptimistic, useRef, useTransition } from "react";
+import { useOptimistic, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Segmented, Select, Tabs } from "antd";
+import { Button, Drawer, Segmented, Select, Tabs } from "antd";
+import { DownOutlined } from "@ant-design/icons";
+import { useIsNowSkin } from "@/lib/use-skin";
 import { PageHead } from "@/components/ui";
 import Skeleton from "@/components/Skeleton";
 import { 视图们, type 视图 } from "./views";
@@ -67,6 +69,9 @@ export default function DataShell({
   // 点了「自定义」先亮起来、日期段先摆出来（默认本月 1 号到今天，同服务端），不等那一屏回来
   const [显视图, set显视图] = useOptimistic(view);
   const [显批, set显批] = useOptimistic(批次?.当前 ?? "");
+  /** 设计语言 R-A：现状主题把人员选择并进页签那一行右端；换皮主题照旧在页签上面 */
+  const 新样 = useIsNowSkin();
+  const [看谁开, set看谁开] = useState(false);
 
   /** 在当前地址上改几个参数：页签、人、视图都保留另外几样（看着某个人切到「数据」还是那个人，回到「待办」筛选还在） */
   const 地址 = (k: Record<string, string | undefined>) => {
@@ -122,7 +127,8 @@ export default function DataShell({
       {!页签 && 选人 && 人下拉()}
     </div>
   );
-  function 我的团队() {
+  /** 关 = 在 390「看谁」底部面板里：选了就收起面板 */
+  function 我的团队(关?: () => void) {
     const 我 = 选人?.我;
     if (!我) return null;
     // 选了别的成员时两个都不亮（Segmented 的 value 给一个不在选项里的值）
@@ -133,12 +139,12 @@ export default function DataShell({
         aria-label="看我的还是团队的"
         disabled={人不适用}
         value={值}
-        onChange={(v) => 改({ ownerId: v === "mine" ? 我 : undefined, p: undefined })}
+        onChange={(v) => { 改({ ownerId: v === "mine" ? 我 : undefined, p: undefined }); 关?.(); }}
         options={[{ value: "mine", label: "我的" }, { value: "team", label: "团队" }]}
       />
     );
   }
-  function 人下拉() {
+  function 人下拉(关?: () => void) {
     return (
       <Select
         className="data-shell-who"
@@ -146,7 +152,7 @@ export default function DataShell({
         disabled={人不适用}
         value={显人}
         // 换了人，待办从第一页看起
-        onChange={(v: string) => 改({ ownerId: v || undefined, p: undefined })}
+        onChange={(v: string) => { 改({ ownerId: v || undefined, p: undefined }); 关?.(); }}
         showSearch
         optionFilterProp="label"
         popupMatchSelectWidth={false}
@@ -162,7 +168,7 @@ export default function DataShell({
         <>
           {/* 人员选择器在页签上面：四个页签共用，切页签不丢（沟通页签的「按负责人筛」就是它） */}
           {/* 卡点按角色开关定能看谁、不跟人员选择：这一行不撤（撤了整页往上跳一截，ov.layout），留在原地变淡、点不了 */}
-          {选人 && (
+          {!新样 && 选人 && (
             <div
               className={`data-shell-bar data-shell-bar-who${人不适用 ? " is-na" : ""}`}
               title={人不适用 ? "卡点按角色定能看谁，不跟这里的人员选择" : undefined}
@@ -171,7 +177,19 @@ export default function DataShell({
             </div>
           )}
           <Tabs
-            className="data-shell-tabs"
+            className={`data-shell-tabs${新样 ? " data-shell-tabs-who" : ""}`}
+            // R-A：人员选择在页签行右端（四个页签共用）；卡点页签不跟人员选择，右端空着、行高不变（页签顶不挪，ov.layout）。
+            // 390：右端收成「看谁 ▾」，点开底部面板
+            tabBarExtraContent={新样 && 选人 ? {
+              right: 人不适用 ? null : (
+                <>
+                  <div className="data-shell-bar-who data-shell-who-inline">{我的团队()}{人下拉()}</div>
+                  <Button className="data-shell-who-btn" onClick={() => set看谁开(true)}>
+                    {显人 === "" ? "全部成员" : 显人 === 选人.我 ? "我的" : 选人.选项.find((o) => o.value === 显人)?.label ?? "看谁"} <DownOutlined />
+                  </Button>
+                </>
+              ),
+            } : undefined}
             activeKey={显签}
             // 「任务」也明写 tab=todo：地址栏里留着 view= 时，不写会被当成要看数（读页签）。
             // 换页签从第一页看起（p 几个页签共用）；各页签自己的筛选（f / kind / bs / t）留着，切回来还在
@@ -180,6 +198,11 @@ export default function DataShell({
             animated={{ inkBar: true, tabPane: false }}
             items={复盘页签们.map((k) => ({ key: k, label: <span onMouseEnter={() => 预取(读页签(k))}>{复盘页签叫法[k]}</span> }))}
           />
+          {新样 && 选人 && (
+            <Drawer open={看谁开} placement="bottom" height="auto" title="看谁" className="data-shell-who-sheet" onClose={() => set看谁开(false)}>
+              <div className="data-shell-who-sheet-body">{我的团队(() => set看谁开(false))}{人下拉(() => set看谁开(false))}</div>
+            </Drawer>
+          )}
           {/* g.tabswitch：换了页签——立刻切过去、先出骨架（旧页签的内容不再灰着留 1 秒）；
               同一页签里换筛选 / 换人——旧内容留在原地淡一点（不清空，下面不塌一截再撑开） */}
           {切着 && 显签 !== 页签 ? (

@@ -79,8 +79,10 @@ function 渲染块(text: string, byN: 引用表, 起 = 0, 淡: readonly number[]
       li--;
       const 是分隔 = (l: string) => /^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?$/.test(l.trim());
       const 有表头 = 块.length >= 2 && 是分隔(块[1].l);
-      const 表头 = 有表头 ? 切格(块[0].l, 块[0].at) : null;
-      const 体 = (有表头 ? 块.slice(2) : 块).filter((r) => !是分隔(r.l)).map((r) => 切格(r.l, r.at));
+      // 列数按分隔行定（GFM 的规矩）：表头里的名字自带没转义的 | 时，按表头数会算大
+      const 列数 = 有表头 ? 切格(块[1].l, 块[1].at).length : undefined;
+      const 表头 = 有表头 ? 切格(块[0].l, 块[0].at, 列数) : null;
+      const 体 = (有表头 ? 块.slice(2) : 块).filter((r) => !是分隔(r.l)).map((r) => 切格(r.l, r.at, 列数));
       out.push(
         <div key={out.length} className="md-tw">
           <table className="md-table">
@@ -130,23 +132,56 @@ function 渲染块(text: string, byN: 引用表, 起 = 0, 淡: readonly number[]
 
 /**
  * 表格的一行切成格，每格带它在全文里的起点。
- * 切法和原来一样：去首尾空白、去掉首尾各一个 |、按 | 切、每格去空白。
+ * 切法：去首尾空白、去掉首尾各一个 |、按**没转义的** | 切、每格去空白。
+ *
+ * 名字里带半角竖线（渠道「主渠道|子渠道」、客户抬头「NO.86565|线索验证」）原来会被当成分界，整行往右错一格。
+ * 现在两头管：
+ * - 认 GFM 的转义 `\|`：它不是分界，渲出来是一个 |。回答的提示词要求模型这么写（lib/agent/run.ts）。
+ * - 模型没转义、或是改之前存下的老对话：`列数`（分隔行的格数）给了且这行切多了，把多出的格并回去。
+ *   先并「两边都贴着字」的竖线——模型画表在分界两边留空格，名字里的竖线一般不留；
+ *   还多就并进第一列：名字照惯例在第一列。并回去的那条竖线原样显示。
+ * 全角「｜」本来就不是分界，不动。
  */
-function 切格(raw: string, 行起: number): { 文: string; 起: number }[] {
+function 切格(raw: string, 行起: number, 列数?: number): { 文: string; 起: number }[] {
   let t = raw.trim();
   let o = 行起 + raw.length - raw.trimStart().length;
   if (t.startsWith("|")) {
     t = t.slice(1);
     o++;
   }
-  if (t.endsWith("|")) t = t.slice(0, -1);
-  const out: { 文: string; 起: number }[] = [];
-  let p = 0;
-  for (const part of t.split("|")) {
-    out.push({ 文: part.trim(), 起: o + p + part.length - part.trimStart().length });
-    p += part.length + 1;
+  if (t.endsWith("|") && !t.endsWith("\\|")) t = t.slice(0, -1);
+  // 先按没转义的 | 切成原样的段（带各自起点），并回去时直接拼原文
+  let 段们: { s: string; 起: number }[] = [];
+  let 段起 = 0;
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] === "\\" && t[i + 1] === "|") {
+      i++;
+      continue;
+    }
+    if (t[i] === "|") {
+      段们.push({ s: t.slice(段起, i), 起: o + 段起 });
+      段起 = i + 1;
+    }
   }
-  return out;
+  段们.push({ s: t.slice(段起), 起: o + 段起 });
+  if (列数 && 列数 > 0 && 段们.length > 列数) 段们 = 并回(段们, 列数);
+  return 段们.map(({ s, 起 }) => ({
+    // 去掉转义的反斜杠。格子里此后的字在全文里的偏移差一位，只影响流式淡入落在哪个字上
+    文: s.trim().replace(/\\\|/g, "|"),
+    起: 起 + s.length - s.trimStart().length,
+  }));
+}
+
+/** 切多了的格并回到 列数 格，见 切格 的说明 */
+function 并回(段们: { s: string; 起: number }[], 列数: number): { s: string; 起: number }[] {
+  const 段 = [...段们];
+  const 贴字 = (a: string, b: string) => /\S$/.test(a) && /^\S/.test(b);
+  for (let i = 0; 段.length > 列数 && i < 段.length - 1; ) {
+    if (贴字(段[i].s, 段[i + 1].s)) 段.splice(i, 2, { s: `${段[i].s}|${段[i + 1].s}`, 起: 段[i].起 });
+    else i++;
+  }
+  while (段.length > 列数) 段.splice(0, 2, { s: `${段[0].s}|${段[1].s}`, 起: 段[0].起 });
+  return 段;
 }
 
 /** 一段纯文本：没有刚到的字就原样返回字符串；有就把刚到的那几截各包一个 .md-in */
@@ -188,7 +223,8 @@ function Inline({ text, byN, 起, 淡 }: { text: string; byN: 引用表; 起: nu
           }
           const at = 内起 + c;
           c += seg.length;
-          return <span key={j}>{淡入(seg, at, 淡)}</span>;
+          // 提示词让模型把格子里的 | 写成 \|，正文里提到同一个名字时它也会照写：正文也还原成 |，行内代码里的原样
+          return <span key={j}>{淡入(seg.replace(/\\\|/g, "|"), at, 淡)}</span>;
         });
         return bold ? <strong key={i}>{nodes}</strong> : <span key={i}>{nodes}</span>;
       })}
