@@ -1,5 +1,5 @@
 "use client";
-import Shortcut from "./Shortcut";
+import Shortcut, { useModifierKey } from "./Shortcut";
 import { 交给首页问 } from "@/lib/home-ask";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -50,6 +50,8 @@ export default function CommandBar({ 有AI, 企业版项目 = false, 全局搜�
   const router = useRouter();
   const b = useBusiness();
   const 现状 = useIsNowSkin();
+  /** 悬停说明是纯文字，不能套 <Shortcut>：按平台换成 ⌘ / Ctrl+（Windows 上原来悬停里写的是 ⌘K，CI platform-shortcuts 挡下） */
+  const 修饰键 = useModifierKey();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [idx, setIdx] = useState(0);
@@ -263,7 +265,7 @@ export default function CommandBar({ 有AI, 企业版项目 = false, 全局搜�
         </div>
         {现状 ? (
           /* 设计语言 H-B · H-新10：底部只留三颗键一行；⌘K 在各页分别做什么那句长话收进悬停说明，不再占两三行 */
-          <div className="cmdk-foot cmdk-foot-one" title={`首页有问答框时 ⌘K 回到输入框，在${b.customer}记录页换一位，其余页面打开跳转单`}>
+          <div className="cmdk-foot cmdk-foot-one" title={`首页有问答框时 ${修饰键}K 回到输入框，在${b.customer}记录页换一位，其余页面打开跳转单`}>
             <kbd>↑↓</kbd> 选 · <kbd>↵</kbd> 去 · <kbd>Esc</kbd> 关
           </div>
         ) : (

@@ -26,8 +26,11 @@ it.each([["Win32","Control","Ctrl+"],["MacIntel","Meta","⌘"]])("%s 对应快�
   expect(await page.evaluate(()=>Reflect.get(window,"__new"))).toBe(1);
   await page.keyboard.press(key+"+k");
   const dialog=page.getByRole("dialog");await dialog.waitFor();
-  expect(await dialog.innerText()).toContain(label+"K");
-  if(platform==="Win32") expect(await dialog.innerText()).not.toContain("⌘");
+  // 设计语言 H-B（H-新10）：现状主题底部只留 ↑↓ / ↵ / Esc 一行，「⌘K 在各页做什么」那句收进底栏的悬停说明——标签照样要和键一致
+  const 底栏=dialog.locator(".cmdk-foot");
+  const 说明=(await 底栏.getAttribute("title"))??"";
+  expect(说明).toContain(label+"K");
+  if(platform==="Win32"){expect(await dialog.innerText()).not.toContain("⌘");expect(说明).not.toContain("⌘");}
   const input=dialog.locator("input");await input.fill("跟进计划");
   await input.press(key+"+n");
   expect(await page.evaluate(()=>Reflect.get(window,"__new"))).toBe(1);
@@ -41,4 +44,18 @@ it("W-050 外贸快捷跳转没有订单，也没有关闭的供应商与报价�
  const page=await browser.newPage();await page.route("http://keys.test/**",r=>r.fulfill({contentType:"text/html",body:"<meta charset='utf-8'><div id='root'></div>"}));
  await page.goto("http://keys.test");await page.evaluate(()=>Reflect.set(window,"__trade",true));await page.addScriptTag({content:bundle});await page.locator("#key").waitFor();await page.keyboard.press("Meta+k");
  const dialog=page.getByRole("dialog");await dialog.waitFor();expect(await dialog.innerText()).not.toContain("订单");expect(await dialog.innerText()).not.toContain("供应商");expect(await dialog.innerText()).not.toContain("报价明细");await page.close();
+});
+
+it("换皮主题（账簿）照旧：⌘K 那句还写在底栏上，标签与键一致",async()=>{
+  const page=await browser.newPage();page.setDefaultTimeout(5000);
+  await page.addInitScript(()=>Object.defineProperty(navigator,"platform",{get:()=>"Win32"}));
+  await page.route("http://keys.test/**",r=>r.fulfill({contentType:"text/html",body:"<html data-skin='ledger'><meta charset='utf-8'><div id='root'></div></html>"}));
+  await page.goto("http://keys.test");await page.evaluate(()=>Object.assign(window,{__new:0,__route:""}));
+  await page.addScriptTag({content:bundle});
+  await expect.poll(()=>page.locator("#key").innerText()).toBe("Ctrl+↵");
+  await page.keyboard.press("Control+k");
+  const dialog=page.getByRole("dialog");await dialog.waitFor();
+  expect(await dialog.innerText()).toContain("Ctrl+K");
+  expect(await dialog.innerText()).not.toContain("⌘");
+  await page.close();
 });
