@@ -15,9 +15,9 @@ import type { 录音给界面 } from "@/lib/enterprise/coach-rec-db";
 import type { 项目主题们 } from "@/lib/enterprise/coach-topic-db";
 import { 主题标题上限, 主题内容上限 } from "@/lib/enterprise/coach-topic";
 
-async function 调(url: string, 体?: unknown): Promise<{ ok: boolean; 体: Record<string, unknown> }> {
+async function 调(url: string, 体?: unknown): Promise<{ ok: boolean; status: number; 体: Record<string, unknown> }> {
   const r = await fetch(url, { method: "POST", credentials: "same-origin", cache: "no-store", headers: { "content-type": "application/json" }, body: JSON.stringify(体 ?? {}) });
-  return { ok: r.ok, 体: (await r.json().catch(() => ({}))) as Record<string, unknown> };
+  return { ok: r.ok, status: r.status, 体: (await r.json().catch(() => ({}))) as Record<string, unknown> };
 }
 const 话 = (x: { 体: Record<string, unknown> }, 默认: string) => (typeof x.体.error === "string" ? x.体.error : 默认);
 const 读时长 = (毫秒: number) => `${Math.floor(毫秒 / 60000)}:${String(Math.floor((毫秒 / 1000) % 60)).padStart(2, "0")}`;
@@ -33,11 +33,17 @@ export function CoachRecConfirm({ 录, 数据, 可整理, 关 }: { 录: 录音�
   const 改过 = title !== (录.确认?.主题 ?? "") || body !== (录.确认?.要点 ?? "");
   const AI起草 = !!录.确认?.主题 || !!录.确认?.要点;
 
-  const 跑 = async (哪个: "发" | "存" | "弃" | "重整", 做: () => Promise<{ ok: boolean; 体: Record<string, unknown> }>, 默认话: string) => {
+  const 跑 = async (哪个: "发" | "存" | "弃" | "重整", 做: () => Promise<{ ok: boolean; status: number; 体: Record<string, unknown> }>, 默认话: string, 关着 = false) => {
     set忙(哪个);
     set错(null);
     const r = await 做().catch(() => null);
     set忙(null);
+    // 点 × / Esc 关框时存草稿：这条已经在别处发出、删掉、变了（409、404）就不拦着，关掉框刷新（PR5 审查）
+    if (关着 && r && (r.status === 409 || r.status === 404)) {
+      关();
+      router.refresh();
+      return true;
+    }
     if (!r || !r.ok) {
       set错(r ? 话(r, 默认话) : "网络断了，请重试");
       return false;
@@ -48,7 +54,7 @@ export function CoachRecConfirm({ 录, 数据, 可整理, 关 }: { 录: 录音�
   };
   const 发 = () => 跑("发", () => 调(`/api/coach-rec/${录.id}/send`, { title, body }), "没发出去，请重试");
   // 稍后再发 / 点 ×：没改过就直接关（不白写一次库）
-  const 存 = () => (改过 ? 跑("存", () => 调(`/api/coach-rec/${录.id}/draft`, { title, body }), "草稿没存上，请重试") : (关(), Promise.resolve(true)));
+  const 存 = (关着 = false) => (改过 ? 跑("存", () => 调(`/api/coach-rec/${录.id}/draft`, { title, body }), "草稿没存上，请重试", 关着) : (关(), Promise.resolve(true)));
   const 弃 = () => 跑("弃", () => 调(`/api/coach-rec/${录.id}/abandon`), "没删掉，请重试");
   const 重整 = () => 跑("重整", () => 调(`/api/coach-rec/${录.id}/retry`), "没交上，请重试");
 
@@ -61,7 +67,7 @@ export function CoachRecConfirm({ 录, 数据, 可整理, 关 }: { 录: 录音�
     <Button key="send" type="primary" disabled={(!!忙 && 忙 !== "发") || !title.trim() || !body.trim()} loading={忙 === "发"} onClick={() => void 发()} data-testid="crec-confirm-send">发出</Button>,
   ];
   return (
-    <Modal open title="确认录音点评" onCancel={() => void 存()} destroyOnHidden width={560} maskClosable={false} className="crec-modal crec-confirm" footer={底}>
+    <Modal open title="确认录音点评" onCancel={() => void 存(true)} destroyOnHidden width={560} maskClosable={false} className="crec-modal crec-confirm" footer={底}>
       <div className="cth-form" data-testid="crec-confirm">
         {录.错 && <div role="status" className="crec-warn" data-testid="crec-confirm-hint">{录.错}</div>}
         {行("关联项目", <span className="cth-ellipsis" title={数据?.项目名}>{数据?.项目名 ?? "—"}</span>)}
