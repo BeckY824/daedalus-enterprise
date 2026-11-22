@@ -440,7 +440,10 @@ export default function ProjectsView({
   const 普通列表: 列<项目行>[] = [
     // 常驻：第一列是「这一行是谁」，钉左边、表格按列宽排；不钉的话长客户名、长负责人名把它和「进程」挤成两个字一行
     // 项目名整段显示、放不下折行（10-30 用户：「要显示完整」，原来两行截断）；企业版每格一行、放不下省略号悬停看全（11-01 会议 §11，DataList 单行）
-    { title: "项目", dataIndex: "name", width: 170, 常驻: true, render: (v: string) => <span className="fulltext" title={v}>{v}</span> },
+    // 老客户重复咨询（重复咨询第一步）：项目名前一枚小标签「重复咨询」，悬停说清来历；名字照旧放不下省略号
+    { title: "项目", dataIndex: "name", width: 170, 常驻: true, render: (v: string, r: 项目行) => (r.重复咨询
+      ? <span className="proj-name-tagged"><Tag bordered={false} color="purple" className="proj-repeat-tag" title="老客户重复咨询：市场成员查号码撞上已有客户另建的线索">重复咨询</Tag><span className="fulltext" title={v}>{v}</span></span>
+      : <span className="fulltext" title={v}>{v}</span>) },
     { title: b.customer, key: "customer", width: 160, render: (_, r) => (r.customerName == null ? <span style={{ color: "var(--text-muted)" }}>{领了再看(r)}</span> : <CustomerLink id={r.进不了客户详情 ? null : r.customerId} name={r.customerName} />) },
     // P11：阶段、进程分两列；新线索页全是线索阶段，不摆阶段列
     ...(新线索 ? [] : [{ title: "阶段", key: "phase", width: 72, ...收起, render: (_: unknown, r: 项目行) => 阶段与进程(r, 字典).阶段 }]),

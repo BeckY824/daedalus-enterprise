@@ -31,6 +31,7 @@ import { 计不计数, 月份, type 线 } from "./lead-assign";
 import { 方向分配理由, type 分配方向 } from "./customer-region";
 import { 客户默认分配方向 } from "./assign-direction-db";
 import { 本套名, 字典of, 第一个节点 } from "@/lib/project/nodes";
+import { 重复咨询来源 } from "@/lib/project/system-created";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 记沟通标记 } from "@/lib/project/stage-gates";
 import { 项目名上限, type 规整好的沟通 } from "@/lib/project/wizard";
@@ -262,7 +263,9 @@ export async function 落对接人(tx: Prisma.TransactionClient, customerId: str
  * 新建线索项目那条路（查重领取口径.新建线索项目）：事务里给这位刚出公海的客户另建一条线索项目，直接建在接手人名下。
  * 起点节点（同新建线索，第一个节点）、项目来源 = 这次选的渠道（客户来源不动，P-删-03 项目来源各记各的）、对接人 = 选的客户联系人（不新建、不改联系人）、
  * 创建人 = 市场成员、分配方式 = 自动分配；业务线 = 这次的分配方向，判不出按接手人的线、再没有内贸（同 补潜客培育，X-86 A1）。记第一行节点变更。
- * 「市场分给销售进线索验证」由调用方接着推（同新线索自动分配）
+ * 项目来源标记（Project.source）= 老客户重复咨询（重复咨询第一步：撞上公海客户另建的这条同样打标，客户 11-22）。
+ * 「市场分给销售进线索验证」由调用方接着推（同新线索自动分配）。
+ * 出口 C（repeat-inquiry.ts）也用它建：接手人 = 客户负责人、分配方式 = 指定分配、线 = 跟负责人走（调用方算好传进来）
  */
 export async function 查重领取建线索项目(
   tx: Prisma.TransactionClient,
@@ -275,6 +278,7 @@ export async function 查重领取建线索项目(
       ownerId: a.接手人, creatorId: a.创建人, amount: 0, currency: 默认币种, bizLine: 接手人线 === "外贸" ? "外贸" : "内贸",
       phase: 第一个节点.phase, node: 第一个节点.node,
       ...新项目默认值(true, { 分配方式: a.分配方式, 项目来源: a.渠道 }),
+      source: 重复咨询来源,
     },
   });
   await tx.projectNodeLog.create({ data: { projectId: p.id, userId: a.创建人, toPhase: 第一个节点.phase, toNode: 第一个节点.node } });

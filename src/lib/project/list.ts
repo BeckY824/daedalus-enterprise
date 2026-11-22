@@ -26,7 +26,7 @@ import { 渠道筛选选项 } from "@/lib/enterprise/channel-options";
 import { 企业级别 } from "@/lib/enterprise/customer-v2";
 import { 未分级 } from "@/app/(app)/customers/query-shared";
 import { 创建时间段, 是日期 } from "@/lib/custom-date-range";
-import { 不算补建, 不算历史分析 } from "./system-created";
+import { 不算补建, 不算历史分析, 是重复咨询 } from "./system-created";
 import { 读批次, 批次参数, 批次条件 } from "./import-batch";
 import { 指定回复文字, 短时刻 } from "./time-fields";
 import { 客户显名 } from "@/lib/enterprise/customer-title";
@@ -527,6 +527,8 @@ async function 拼项目行(
     pooled: !!p.pooledAt,
     ...(企 && p.customer.pool ? { 客户在公海: true } : {}),
     ...(企 && p.awaitAssignAt && !p.pooledAt ? { 待分配: true } : {}),
+    // 老客户重复咨询（重复咨询第一步）：项目名旁一枚小标签
+    ...(企 && 是重复咨询(p) ? { 重复咨询: true as const } : {}),
     // 指定分配时间（PR3）：还没到点的定时，负责人那格写「定时 11-20 15:00」，悬停看分给谁
     ...(企 && p.awaitAssignAt && !p.pooledAt && p.scheduledAssignAt ? { 定时分配: { 时: 短时刻(p.scheduledAssignAt, 今) ?? "", 给谁: p.scheduledAssignTo ? 名字.get(p.scheduledAssignTo) ?? "已不在的成员" : null } } : {}),
     ...(企 ? { 即将回收: 将收(p), 回收日: 规则 && !p.pooledAt ? 项目回收日(规则, p, 超时线们) : null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null, 指定回复: p.replyStartAt || p.replyEndAt ? 指定回复文字(p.replyStartAt, p.replyEndAt, 今) : null } : {}),

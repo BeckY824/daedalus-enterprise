@@ -38,7 +38,7 @@ const 没名字 = "（没填姓名）";
 
 /** 带进来的渠道（向导给 id、AI 卡给渠道名）：在这次能选的里才带，认不出就空着让人选 */
 export type 带进来的渠道 = { id?: string | null; 名?: string | null };
-function 认带进来的(带: 带进来的渠道 | null | undefined, 们: { id: string; name: string }[]): string | null {
+export function 认带进来的(带: 带进来的渠道 | null | undefined, 们: { id: string; name: string }[]): string | null {
   if (带?.id && (带.id.startsWith(主渠道入口前缀) || 们.some((c) => c.id === 带.id))) return 带.id;
   const 名 = 带?.名?.trim();
   if (!名) return null;
@@ -47,7 +47,7 @@ function 认带进来的(带: 带进来的渠道 | null | undefined, 们: { id: 
 }
 
 /** 草稿键不放号码（号码进本机存储的键名里不好）：有客户 id 用客户 id，没有用号码的短哈希 */
-function 号哈希(s: string): string {
+export function 号哈希(s: string): string {
   let h = 5381;
   for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
   return (h >>> 0).toString(36);

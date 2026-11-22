@@ -149,7 +149,7 @@ describe("新建线索项目（用户 11-19：项目来源以每次新建的为�
     expect(们).toHaveLength(3);
     expect(们.filter((p) => p.id === 早 || p.id === 晚).map((p) => [p.ownerId, p.pooledAt])).toEqual([[甲.id, null], [甲.id, null]]);
     const 新项目 = 们.find((p) => p.id !== 早 && p.id !== 晚)!;
-    expect(新项目).toMatchObject({ ownerId: 甲.id, creatorId: 市场.id, channelId: 新渠道, contactId: c.王, assignMode: "自动分配", pooledAt: null, bizLine: "内贸" });
+    expect(新项目).toMatchObject({ ownerId: 甲.id, creatorId: 市场.id, channelId: 新渠道, contactId: c.王, assignMode: "自动分配", pooledAt: null, bizLine: "内贸", source: "repeat-inquiry" });
     // 市场分给销售：进线索验证（同新线索自动分配）
     expect(新项目.node).toBe("线索验证");
     const 记 = await prisma.entLeadAssign.findMany();

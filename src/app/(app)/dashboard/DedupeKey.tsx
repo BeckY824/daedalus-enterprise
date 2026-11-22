@@ -12,6 +12,7 @@ import { FileSearchOutlined } from "@ant-design/icons";
 import { 查号码, type 查号码结果 } from "../customers/number-actions";
 import RescueKey from "../customers/RescueKey";
 import DedupeClaimKey from "../customers/DedupeClaimKey";
+import RepeatInquiryKey from "../customers/RepeatInquiryKey";
 import { 向导能选类型, 号码类型叫法, type 号码类型 } from "@/lib/enterprise/contact-format";
 import { 动作出错话 } from "@/lib/stale-deploy";
 
@@ -81,11 +82,13 @@ export default function DedupeKey({ 宽, 藏键 = false, 开: 开ref }: {
             description={结果.状态 === "回收站里有" ? <RescueKey 类型={类型} 值={结果.值} 捞回了={set结果} />
               // 市场成员撞上公海（F-016）：就地领取并记沟通，领了自动分给销售
               : 结果.市场可领 ? <DedupeClaimKey 类型={类型} 值={结果.值} 客户id={结果.撞?.id} />
-              : 结果.撞?.id || 结果.归属地 ? (
+              : 结果.撞?.id || 结果.归属地 || 结果.出口C ? (
               <span>
                 {结果.撞?.id && <><Link href={`/customers/${结果.撞.id}`} onClick={() => set开(false)}>{结果.撞.name}</Link>{结果.撞.school ? ` · ${结果.撞.school}` : ""} · 在 {结果.撞.salesOwnerName} 名下</>}
                 {结果.撞?.id && 结果.归属地 ? " · " : ""}
                 {结果.归属地 ? `归属地：${结果.归属地}` : ""}
+                {/* 重复咨询第一步（出口 C）：市场成员撞上同事名下的客户，在负责人名下新建线索 */}
+                {结果.出口C && <span className="home-dedupe-act"><RepeatInquiryKey 类型={类型} 值={结果.值} 负责人名={结果.出口C.负责人名} /></span>}
               </span>
             ) : undefined}
           />

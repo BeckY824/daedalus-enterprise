@@ -24,6 +24,7 @@ const plugin: Plugin = { name: "ai-lead-card-boundaries", setup(b) {
   stub(/card-scan\/originals$/, "export const 取走名片原图=()=>[],记下刚建的=()=>{},忘掉刚建的=()=>{};");
   stub(/attachment-upload$/, "export const 传附件=async(挂,f,类,票)=>{(window.__传??=[]).push({挂,名:f.name,票});return{ok:true}};");
   stub(/customers\/RescueKey$/, "export default function R(){return null}");
+  stub(/customers\/RepeatInquiryKey$/, "export default function R(){return null}");
   stub(/customers\/DedupeClaimKey$/, "export default function D(){return null}");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };

@@ -89,8 +89,14 @@ async function 同组(customerId: string, 我: string): Promise<同组情况 | n
 
 type 台账行 = {
   userId: string; keyType: 撞号键类型; keyValue: string; customerId: string; ownerId: string;
-  sameGroup: boolean; result: "拦截" | "写进现有项目" | "同组提示";
+  sameGroup: boolean; result: 撞号结果;
 };
+
+/**
+ * 台账「结果」：查重按钮、保存被拦 = 拦截；同号协同写进了现有项目（出口 A）= 写进现有项目；市场成员在负责人名下新建了线索（出口 C，重复咨询第一步）= 新建线索；
+ * 查的人在同一个项目组 = 同组提示
+ */
+export type 撞号结果 = "拦截" | "写进现有项目" | "新建线索" | "同组提示";
 
 /** 记一行（10 分钟内同一人同一客户同一键的并进上一行），新记的看要不要预警。从不抛：台账没记上不挡查重 */
 async function 记撞号(d: 台账行): Promise<{ id: string; action: string | null } | null> {
@@ -102,7 +108,7 @@ async function 记撞号(d: 台账行): Promise<{ id: string; action: string | n
       select: { id: true, action: true, result: true },
     });
     if (有) {
-      // 查重按钮记的「拦截」，保存时写进了现有项目：改成后者
+      // 查重按钮记的「拦截」，保存时写进了现有项目 / 新建了线索：改成后者
       if (d.result !== "拦截" && 有.result !== d.result) await prisma.entDupeHit.update({ where: { id: 有.id }, data: { result: d.result } });
       return { id: 有.id, action: 有.action };
     }
@@ -115,10 +121,13 @@ async function 记撞号(d: 台账行): Promise<{ id: string; action: string | n
   }
 }
 
-/** 第一档、第二档：数够了就发，同一对象 7 天内同一档只发一次（按 warnTier 的位看发没发过） */
+/**
+ * 第一档、第二档：数够了就发，同一对象 7 天内同一档只发一次（按 warnTier 的位看发没发过）。
+ * 结果是「新建线索」的不算次数（出口 C 是正常承接，不是试探；重复咨询研判 11-21 默认）
+ */
 async function 看预警(行id: string, d: 台账行): Promise<void> {
   const 起 = new Date(Date.now() - 撞号预警.天数 * 86_400_000);
-  const 不同组 = { customerId: d.customerId, sameGroup: false, createdAt: { gte: 起 } };
+  const 不同组 = { customerId: d.customerId, sameGroup: false, createdAt: { gte: 起 }, result: { not: "新建线索" } };
   const [org, 客户, 查的人] = await Promise.all([
     读组织(),
     看全部(() => prisma.customer.findUnique({ where: { id: d.customerId }, select: { id: true, name: true, shortName: true, customerNo: true } })),
@@ -164,10 +173,10 @@ async function 看预警(行id: string, d: 台账行): Promise<void> {
 
 /**
  * 撞上这位客户：露出负责人、记台账。公海 / 没负责人 / 占位负责人 / 我自己名下的 = null（不提示、不记）。
- * 结果 = 这次怎么处理的：查重按钮、保存被拦都是「拦截」，同号协同写进了现有项目是「写进现有项目」
+ * 结果 = 这次怎么处理的：查重按钮、保存被拦都是「拦截」，同号协同写进了现有项目是「写进现有项目」，出口 C 建了线索是「新建线索」
  */
 export async function 撞上客户(
-  我: string, 读的我: 谁 | null, 键类型: 撞号键类型, 键值: string, customerId: string, 结果: "拦截" | "写进现有项目" = "拦截",
+  我: string, 读的我: 谁 | null, 键类型: 撞号键类型, 键值: string, customerId: string, 结果: Exclude<撞号结果, "同组提示"> = "拦截",
 ): Promise<撞号露出 | null> {
   if (!企业版()) return null;
   const c = await 看全部(() => prisma.customer.findUnique({
@@ -196,7 +205,7 @@ export async function 撞上客户(
 }
 
 /** 号码撞了（查号结论「重复」）：认首条（同 撞号结论），露出 + 记台账 */
-export async function 号码撞上(我: string, 读的我: 谁 | null, 号: 验好的号, 结果: "拦截" | "写进现有项目" = "拦截"): Promise<撞号露出 | null> {
+export async function 号码撞上(我: string, 读的我: 谁 | null, 号: 验好的号, 结果: Exclude<撞号结果, "同组提示"> = "拦截"): Promise<撞号露出 | null> {
   if (!企业版() || !["手机号", "邮箱", "微信", "旺旺ID"].includes(号.类型)) return null;
   const 挑 = await 首条撞的(prisma, await 全公司查号(prisma, 号.类型, 号.值, 号.键));
   return 挑 ? 撞上客户(我, 读的我, 号.类型 as 撞号键类型, 号.值, 挑.id, 结果) : null;

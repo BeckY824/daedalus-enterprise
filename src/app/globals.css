@@ -2399,6 +2399,13 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 @media (max-width: 767px) { .cli:has(.cli-ck) { min-height: 0; } }
 /* 输入框旁「查重」点开的小框 */
 .home-dedupe { display: flex; flex-direction: column; gap: var(--s3); width: 340px; max-width: calc(100vw - 64px); }
+/* 项目列表项目名前「重复咨询」小标签（重复咨询第一步）：标签不缩，名字照旧单行省略（.fulltext） */
+/* 线索验证判无效框：老客户重复咨询那条的提示（重复咨询第一步） */
+.lv-repeat-hint { margin-bottom: var(--s2); color: var(--text-muted); }
+.proj-name-tagged { display: flex; align-items: center; gap: var(--s1); min-width: 0; }
+.proj-name-tagged .proj-repeat-tag { margin-inline-end: 0; flex-shrink: 0; }
+/* 首页查重框里「在 X 名下新建线索」（重复咨询出口 C）：另起一行，键和结果那句可折行 */
+.home-dedupe-act { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin-top: var(--s2); }
 /* 问答贴着输入框往上长。原来是 flex:1 顶在上边，于是只问了一句、答案还在流的时候，
    过程条挂在页顶、输入框钉在页底，中间空一大片（2026-09-18 报上来的那张图）。
    往上长还有一个好处：新的一轮总是出现在眼睛已经在看的地方。 */
