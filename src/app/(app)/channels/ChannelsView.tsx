@@ -363,7 +363,8 @@ export default function ChannelsView({
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") e.stopPropagation(); }}>?</span>
         </Tooltip>
       </span>
-    ) : <Tooltip title={说明}><span className="nowrap">{标题}</span></Tooltip>, key: 键, width: 新样 && 键 === "有效线索" ? 120 : 104, align: "right",
+    ) : <Tooltip title={说明}><span className="nowrap">{标题}</span></Tooltip>, key: 键, width: 新样 && 键 === "有效线索" ? 132 : 104, align: "right",
+    // 「有效线索」列 132：表头字 +「?」（16）+ 它点击区多出的 6 + 排序箭头 + 左右 14 内边距，Linux 字体下要 127（PR #413 排版闸门「字溢出」，原 120）
     // 带「?」的那列不要 antd 的「点击升序」提示：悬停时和「?」的说明叠成两个
     ...(新样 && 键 === "有效线索" ? { showSorterTooltip: false } : {}),
     // 有效线索没判过（「—」）排在判过、0 条有效的后面（同看板，有效线索显示）

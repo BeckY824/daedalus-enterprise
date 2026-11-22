@@ -27,7 +27,7 @@ const plugin: Plugin = { name: "ca2-layout", setup(b) {
 
 beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
-    import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
+    import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';import {themeConfig} from '@/lib/theme';
     import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {我Provider} from '@/lib/me-client';
     import ChannelsView from '@/app/(app)/channels/ChannelsView';
     const 长='某某超长跨境电商直播间合作渠道华东区旗舰店'.repeat(2);
@@ -41,7 +41,7 @@ beforeAll(async () => {
     const 公格=(n)=>({线索:100,进:n,方式:{超时回收:1,被退回:n-1,回收站:0,判无效:0,验证判无效:0,离职交接:0},退回因:{['客户说预算要再批一下'+长]:n-1},无效因:{},验证无效因:{}});
     const 公底=Object.fromEntries(rows.slice(0,6).map((r,i)=>[r.id,{me:公格(12-i)}]));
     const 公海={视角:'市场管理',创建人们:[{id:'me',name:'小王'}],底:{本月:公底,本季:公底,全部:公底}};
-    const 壳=(x)=>createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'me',name:'小王'}}>{x}</我Provider></BusinessProvider></App></ConfigProvider>);
+    const 壳=(x)=>createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN} theme={themeConfig}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'me',name:'小王'}}>{x}</我Provider></BusinessProvider></App></ConfigProvider>);
     window.__画=(o)=>壳(<ChannelsView rows={rows} users={users} 属性选项={['公域引流']} 能管={o.能管!==false} 能录={o.能录!==false} 看板底数={底数} 公海={o.公海===false?null:公海} 两层 主渠道们={[{id:'m1',name:'主渠道'+长,active:true,allowSub:true,attr:null,ownerId:null,owner:null}]}/>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
@@ -258,6 +258,20 @@ it("账簿主题：照旧（说明行、带框录投入、删除不红、没有�
     await 菜单.waitFor();
     expect(await 菜单.locator(".ant-dropdown-menu-item-danger").count()).toBe(0);
     expect(await 菜单.locator(".ant-dropdown-menu-item-divider").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+// 排版闸门「字溢出」量的是 nowrap 盒子的 scrollWidth：「?」的 ::after 点击区（28）伸出圈外 6px 也算，原来「有效线索?」字宽 79、盒子 73（PR #413 CI）
+for (const w of [1024, 1280, 1366]) it(`${w}：「有效线索」表头连「?」和它的点击区都在自己的盒子里，不压排序箭头`, async () => {
+  const { page, errors } = await 打开(w);
+  try {
+    const 量 = await page.locator("th.dl-col-有效线索").first().evaluate((th) => {
+      const 头 = th.querySelector(".chan-th") as HTMLElement, 题 = th.querySelector(".ant-table-column-title")!.getBoundingClientRect();
+      const 箭 = th.querySelector(".ant-table-column-sorter")!.getBoundingClientRect(), 盒 = 头.getBoundingClientRect();
+      return { 字宽: 头.scrollWidth, 盒子: 头.clientWidth, 在标题里: 盒.right <= 题.right + 0.5, 不压箭头: 盒.right <= 箭.left + 0.5 };
+    });
+    expect(量.字宽).toBeLessThanOrEqual(量.盒子);
+    expect(量).toMatchObject({ 在标题里: true, 不压箭头: true });
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
