@@ -182,8 +182,8 @@ export type 项目详情 = {
   项目来源?: { name: string; 跟客户: boolean } | null; channelId?: string | null; 已立项天数?: number; 渠道们?: 可选渠道[]; aiEnabled?: boolean;
   /** 数据来源（迁移 151）：历史沟通分析回填的项目是「历史分析」，显示成标签；正常建的不传、不摆这一行 */
   数据来源?: string;
-  /** 老客户重复咨询（重复咨询第一步 · 出口 C 建的线索）：这位客户别的在推项目，我负责的给名字、同事的只给个数（load.ts 现算） */
-  重复咨询?: { 我的: { id: string; name: string }[]; 同事的: number };
+  /** 老客户重复咨询（重复咨询第一步 · 出口 C 建的线索）：这位客户别的在推项目，我看得到的给名字、看不到的只给个数；重复线索名 = 字典现名（load.ts 现算） */
+  重复咨询?: { 看得到: { id: string; name: string }[]; 看不到: number; 重复线索名: string };
   /**
    * 企业版（P11 定稿 -2 版，迁移 093）：项目级别 S / A / B / C（null = 没分级），显示成星；
    * 所在地 = 地址四格 + 详细地址，跟客户资料一样公海里同事客户的项目没领之前是 null（不摆）。不是企业版都不传
@@ -1541,10 +1541,10 @@ export default function ProjectDetail({
         <div {...资料行()} data-testid="project-repeat-others-row">
           <span style={键样}>其他在推项目</span>
           <span className="proj-one">
-            {p.重复咨询.我的.length === 0 && p.重复咨询.同事的 === 0 ? "—" : (
+            {p.重复咨询.看得到.length === 0 && p.重复咨询.看不到 === 0 ? "—" : (
               <>
-                {p.重复咨询.我的.map((x, i) => <span key={x.id}>{i > 0 && "、"}<Link href={`/projects/${x.id}`}>{x.name}</Link></span>)}
-                {p.重复咨询.同事的 > 0 && <span className="muted">{p.重复咨询.我的.length > 0 && "；"}同事负责的 {p.重复咨询.同事的} 个</span>}
+                {p.重复咨询.看得到.map((x, i) => <span key={x.id}>{i > 0 && "、"}<Link href={`/projects/${x.id}`}>{x.name}</Link></span>)}
+                {p.重复咨询.看不到 > 0 && <span className="muted">{p.重复咨询.看得到.length > 0 && "；"}另有 {p.重复咨询.看不到} 个你看不到的</span>}
               </>
             )}
           </span>
@@ -2087,7 +2087,7 @@ export default function ProjectDetail({
       {p.线索验证 && (
         <Modal open={验证开着} title="线索验证" footer={null} width={560} onCancel={() => set验证开着(false)} destroyOnHidden>
           <LeadVerifyPanel projectId={p.id} v={p.线索验证} 无效原因选项={p.原因选项.无效} 字数上限={p.字数上限} 跑={跑} 忙={忙} 缺有效沟通话={缺有效沟通话} 不给推={p.不给推} 线索验证必填={p.线索验证必填 ?? []}
-            重复咨询={!!p.重复咨询}
+            重复线索名={p.重复咨询?.重复线索名}
             有效还差={新样 && 没有效沟通 ? p.有效沟通差 : []}
             沟通半句={沟通半句}
             on去填={能去填 ? (叫) => { set验证开着(false); window.setTimeout(() => 去填(叫法到键(叫)), 80); } : undefined}

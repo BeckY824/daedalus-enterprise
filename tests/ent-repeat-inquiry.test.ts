@@ -30,8 +30,9 @@ import { 默认组织规则 } from "@/lib/project/org-rules";
 import { 查号码 } from "@/app/(app)/customers/number-actions";
 import { 出口C建线索, 出口C框数据 } from "@/app/(app)/customers/repeat-inquiry-actions";
 import type { 查重领取沟通 } from "@/app/(app)/customers/pool-actions";
-import { 不是市场成员出口C话, 出口C作废话, 负责人接不了话, 负责人到上限话, 客户其他在推项目, 出口C已转话 } from "@/lib/enterprise/repeat-inquiry";
+import { 不是市场成员出口C话, 出口C作废话, 负责人接不了话, 负责人到上限话, 客户其他在推项目, 出口C已转话, 出口C已转过话 } from "@/lib/enterprise/repeat-inquiry";
 import { 读项目列表 } from "@/lib/project/list";
+import { 线索初判Action } from "@/app/(app)/projects/actions";
 import { 以谁的身份 } from "@/lib/enterprise/visibility";
 import { 重复咨询来源 } from "@/lib/project/system-created";
 
@@ -99,11 +100,16 @@ describe("出口 C：在负责人名下新建线索", () => {
   });
 
   it("建：负责人名下、市场成员建、这次的渠道、指定分配、带标记；计入本月已分、进线索验证、沟通记在新线索上；线跟负责人（外贸）；客户和旧项目不改", async () => {
+    // 按组织看客户开着（正式库的样子）：市场成员看不到同事的客户、联系人、项目，事务里照样写得进（3703 实操查出节点没推、对接人报删了）
+    await setSetting(规则.按组织看客户.key, true);
+    invalidateSettingsCache();
+    忘掉企业版范围();
     const c = await 同事客户(外贸甲.id);
     const 客户前 = await prisma.customer.findUniqueOrThrow({ where: { id: c.id } });
     const 联系人前 = await prisma.contact.findMany({ where: { customerId: c.id }, orderBy: { id: "asc" } });
     当(市场);
-    const r = await 出口C建线索("手机号", c.号, 沟通(), { 渠道: 新渠道, 对接人: { 撞上的: true }, 负责人名: 外贸甲.name });
+    // 带上市场成员的身份跑（限定层按它收）
+    const r = await 以谁的身份(市场.id, () => 出口C建线索("手机号", c.号, 沟通(), { 渠道: 新渠道, 对接人: { 撞上的: true }, 负责人名: 外贸甲.name }));
     if (!r.ok) throw new Error(r.error);
     expect(r).toEqual({ ok: true, 提示: 出口C已转话(外贸甲.name), 负责人: 外贸甲.name });
     expect(r.提示).not.toMatch(/老客户|重复咨询-/);
@@ -136,6 +142,12 @@ describe("出口 C：在负责人名下新建线索", () => {
     const 台账 = await prisma.entDupeHit.findMany({ where: { customerId: c.id } });
     expect(台账.map((x) => x.result)).toContain("新建线索");
     expect(台账.every((x) => x.warnTier === 0)).toBe(true);
+    // 负责人在线索验证面板里判得了：判无效（原因重复线索）交复核
+    当(外贸甲);
+    忘掉企业版范围();
+    const 判 = await 以谁的身份(外贸甲.id, () => 线索初判Action(p.id, "无效", { invalidReason: "重复线索" }));
+    expect(判).toMatchObject({ ok: true });
+    expect(await prisma.entLeadVerify.findUniqueOrThrow({ where: { projectId: p.id } })).toMatchObject({ verdict: "初验无效", invalidReason: "重复线索" });
   });
 
   it("同事客户的名称不露给市场成员（按组织看客户开着、他看不到这位客户）：项目列表里有这条线索（名字是重复咨询-编号），客户名一处都没有", async () => {
@@ -159,7 +171,7 @@ describe("出口 C：在负责人名下新建线索", () => {
     const 交 = () => 出口C建线索("手机号", c.号, 沟通(), { 渠道: 新渠道, 对接人: { 撞上的: true }, 负责人名: 外贸甲.name });
     const [一, 二] = [await 交(), await 交()];
     expect(一).toMatchObject({ ok: true });
-    expect(二).toEqual(一);
+    expect(二).toEqual({ ok: true, 提示: 出口C已转过话(外贸甲.name, 10), 负责人: 外贸甲.name });
     expect(await prisma.project.count({ where: { customerId: c.id } })).toBe(2);
     expect(await prisma.entLeadAssign.count()).toBe(1);
     expect(await 本月已分(外贸甲.id)).toBe(1);
@@ -261,20 +273,37 @@ describe("撞号台账：「新建线索」不计入预警次数", () => {
 });
 
 describe("项目详情：这位客户其他在推的项目", () => {
-  it("我负责的给名字，同事负责的只给个数；结束的、公海里的、回收站里的、这一条自己都不算", async () => {
-    const c = await 同事客户(外贸甲.id);
-    const 我的 = await prisma.project.create({ data: { name: "甲的另一条", customerId: c.id, ownerId: 外贸甲.id, creatorId: 外贸甲.id, phase: "线索", node: "潜客培育" } });
+  async function 造(c: { id: string }) {
+    const 这条 = await prisma.project.create({ data: { name: "重复咨询-这条", customerId: c.id, ownerId: 外贸甲.id, creatorId: 市场.id, phase: "线索", node: "线索验证" } });
     await prisma.project.create({ data: { name: "乙的", customerId: c.id, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育" } });
     await prisma.project.create({ data: { name: "丢了的", customerId: c.id, ownerId: 外贸甲.id, creatorId: 外贸甲.id, phase: "商机", node: "共识方案", result: "丢单" } });
     await prisma.project.create({ data: { name: "公海里的", customerId: c.id, ownerId: "", creatorId: 外贸甲.id, phase: "线索", node: "潜客培育", pooledAt: new Date() } });
     await prisma.project.create({ data: { name: "回收站里的", customerId: c.id, ownerId: 外贸甲.id, creatorId: 外贸甲.id, phase: "线索", node: "潜客培育", deletedAt: new Date() } });
-    const r = await 客户其他在推项目(外贸甲.id, 我的.id, c.id);
-    expect(r.我的.map((x) => x.id)).toEqual([c.旧]);
-    expect(r.我的[0].name).toMatch(/^旧项目/);
-    expect(r.同事的).toBe(1);
-    // 乙看：自己那条给名字，甲的两条只给个数
-    const 乙看 = await 客户其他在推项目(乙.id, 我的.id, c.id);
-    expect([乙看.我的.map((x) => x.name), 乙看.同事的]).toEqual([["乙的"], 1]);
+    return 这条.id;
+  }
+
+  it("看得到的给名字（同项目切换条一个口径）；结束的、公海里的、回收站里的、这一条自己都不算；重复线索名跟字典现名", async () => {
+    const c = await 同事客户(外贸甲.id);
+    const 这条 = await 造(c);
+    const r = await 以谁的身份(总管.id, () => 客户其他在推项目(这条, c.id));
+    expect(r.看得到.map((x) => x.name)).toEqual([expect.stringMatching(/^旧项目/), "乙的"]);
+    expect(r.看不到).toBe(0);
+    expect(r.重复线索名).toBe("重复线索");
+    await prisma.entDictItem.create({ data: { id: "dict-invalid-5", kind: "invalid", name: "老客户同一需求", sort: 5 } });
+    expect((await 客户其他在推项目(这条, c.id)).重复线索名).toBe("老客户同一需求");
+  });
+
+  it("按组织看客户开着：看不到的只给个数，名字不露", async () => {
+    await setSetting(规则.按组织看客户.key, true);
+    invalidateSettingsCache();
+    忘掉企业版范围();
+    const c = await 同事客户(外贸甲.id);
+    const 这条 = await 造(c);
+    const 乙看 = await 以谁的身份(乙.id, () => 客户其他在推项目(这条, c.id));
+    expect(乙看.看得到.map((x) => x.name)).toEqual(["乙的"]);
+    expect(乙看.看不到).toBe(1);
+    忘掉企业版范围();
+    const 总管看 = await 以谁的身份(总管.id, () => 客户其他在推项目(这条, c.id));
+    expect(总管看.看得到.length + 总管看.看不到).toBe(2);
   });
 });
-

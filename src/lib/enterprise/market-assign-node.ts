@@ -16,6 +16,7 @@ import type { Prisma } from "@/generated/prisma";
 import { 企业版 } from "./switch";
 import { 是市场成员of, type 组织 } from "./org-core";
 import { 是销售角色 } from "./permissions";
+import { 看全部 } from "@/lib/team-scope";
 
 /** 从哪进哪：企业版、团队版字典里线索阶段前两个节点同名（stage-dict.ts） */
 export const 市场分配从 = "潜客培育";
@@ -53,25 +54,29 @@ export async function 市场分配进线索验证(
   if (!企业版()) return [];
   const 们 = [...new Set(ids.filter((x): x is string => !!x))];
   if (!们.length) return [];
-  const 推: string[] = [];
-  for (let i = 0; i < 们.length; i += 500) {
-    const ps = await tx.project.findMany({
-      where: { id: { in: 们.slice(i, i + 500) }, ownerId: 接手人, phase: "线索", node: 市场分配从, result: null, pooledAt: null, awaitAssignAt: null },
-      select: { id: true },
-    });
-    if (!ps.length) continue;
-    const 这批 = ps.map((p) => p.id);
-    // 条件再带一遍：读和写之间被人动过的不碰
-    await tx.project.updateMany({ where: { id: { in: 这批 }, phase: "线索", node: 市场分配从, result: null }, data: { node: 市场分配到 } });
-    await tx.projectNodeLog.createMany({
-      data: 这批.map((projectId) => ({
-        projectId, userId: 操作人, kind: "node", reason: 市场分配进验证理由,
-        fromPhase: "线索", fromNode: 市场分配从, fromResult: null, toPhase: "线索", toNode: 市场分配到, toResult: null,
-      })),
-    });
-    推.push(...这批);
-  }
-  return 推;
+  // 整段看全部：项目在接手人（同事）名下，操作人（市场成员）的限定写碰不到——按组织看客户开着时 updateMany 一行没改、节点变更却记上了
+  // （重复咨询出口 C 在 3703 实操查出）。谁能分、分给谁调用方已经判过
+  return 看全部(async () => {
+    const 推: string[] = [];
+    for (let i = 0; i < 们.length; i += 500) {
+      const ps = await tx.project.findMany({
+        where: { id: { in: 们.slice(i, i + 500) }, ownerId: 接手人, phase: "线索", node: 市场分配从, result: null, pooledAt: null, awaitAssignAt: null },
+        select: { id: true },
+      });
+      if (!ps.length) continue;
+      const 这批 = ps.map((p) => p.id);
+      // 条件再带一遍：读和写之间被人动过的不碰
+      await tx.project.updateMany({ where: { id: { in: 这批 }, phase: "线索", node: 市场分配从, result: null }, data: { node: 市场分配到 } });
+      await tx.projectNodeLog.createMany({
+        data: 这批.map((projectId) => ({
+          projectId, userId: 操作人, kind: "node", reason: 市场分配进验证理由,
+          fromPhase: "线索", fromNode: 市场分配从, fromResult: null, toPhase: "线索", toNode: 市场分配到, toResult: null,
+        })),
+      });
+      推.push(...这批);
+    }
+    return 推;
+  });
 }
 
 /**

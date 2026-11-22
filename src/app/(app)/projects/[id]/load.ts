@@ -308,7 +308,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     // 数据来源（迁移 151）：历史沟通分析回填的项目写「历史分析」；系统里正常建的不给（界面不摆那一行）
     ...(p.source ? { 数据来源: 来源字(p.source) } : {}),
     // 老客户重复咨询（重复咨询第一步）：现算这位客户别的在推项目，给负责人判是不是同一需求；验证框里提示选「重复线索」
-    ...(是重复咨询(p) ? { 重复咨询: await 客户其他在推项目(me.id, p.id, p.customerId) } : {}),
+    ...(是重复咨询(p) ? { 重复咨询: await 客户其他在推项目(p.id, p.customerId) } : {}),
     已立项天数: 已立项天数(p.createdAt),
     ...(能改 ? { 渠道们: await 可选渠道们(p.channelId) } : {}),
     aiEnabled: 能记沟通 && 露 ? await llmEnabled() : false,

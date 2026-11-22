@@ -58,6 +58,9 @@ import { 动作出错话 } from "@/lib/stale-deploy";
 import BatchFilterTag from "@/components/BatchFilterTag";
 
 
+/** 老客户重复咨询（重复咨询第一步）的小标签：列表项目名前、看板卡片第二行，紫色（globals.css .proj-repeat-tag） */
+const 重复咨询标 = <Tag bordered={false} className="proj-repeat-tag" title="老客户重复咨询：市场成员查号码撞上已有客户另建的线索">重复咨询</Tag>;
+
 /** 看板列的颜色：三个阶段沿用商机管道的蓝绿黄（企业版进程列跟所在阶段），成功交付（企业版叫 交付结清）粉、没成（流失 / 丢单）灰 */
 const 列色: Record<看板列, string> = {
   线索: 主题颜色(categorical.blue),
@@ -442,7 +445,7 @@ export default function ProjectsView({
     // 项目名整段显示、放不下折行（10-30 用户：「要显示完整」，原来两行截断）；企业版每格一行、放不下省略号悬停看全（11-01 会议 §11，DataList 单行）
     // 老客户重复咨询（重复咨询第一步）：项目名前一枚小标签「重复咨询」，悬停说清来历；名字照旧放不下省略号
     { title: "项目", dataIndex: "name", width: 170, 常驻: true, render: (v: string, r: 项目行) => (r.重复咨询
-      ? <span className="proj-name-tagged"><Tag bordered={false} color="purple" className="proj-repeat-tag" title="老客户重复咨询：市场成员查号码撞上已有客户另建的线索">重复咨询</Tag><span className="fulltext" title={v}>{v}</span></span>
+      ? <span className="proj-name-tagged">{重复咨询标}<span className="fulltext" title={v}>{v}</span></span>
       : <span className="fulltext" title={v}>{v}</span>) },
     { title: b.customer, key: "customer", width: 160, render: (_, r) => (r.customerName == null ? <span style={{ color: "var(--text-muted)" }}>{领了再看(r)}</span> : <CustomerLink id={r.进不了客户详情 ? null : r.customerId} name={r.customerName} />) },
     // P11：阶段、进程分两列；新线索页全是线索阶段，不摆阶段列
@@ -824,9 +827,11 @@ export default function ProjectsView({
                               );
                             })()}
                             {/* L-新12（现状主题）：项目名和客户名一字不差时第二行不再写一遍（两行的摆法 P-界面-43 不变，只是不重复） */}
-                            {!(新样 && r.customerName != null && r.customerName.trim() === r.name.trim()) && (
+                            {/* 「重复咨询」标签（重复咨询第一步）：同列表，项目名前一枚；名字和客户名一样不重写时也留这一行放标签 */}
+                            {(r.重复咨询 || !(新样 && r.customerName != null && r.customerName.trim() === r.name.trim())) && (
                               <div className="pipe-card-m">
-                                <span className="pipe-card-o pipe-card-full">{r.name}</span>
+                                {r.重复咨询 && 重复咨询标}
+                                {!(新样 && r.customerName != null && r.customerName.trim() === r.name.trim()) && <span className="pipe-card-o pipe-card-full">{r.name}</span>}
                               </div>
                             )}
                           </>) : (<>

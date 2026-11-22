@@ -23,6 +23,7 @@ import { getBusiness } from "@/lib/business";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 看全部 } from "@/lib/team-scope";
 import { 客户编号文字 } from "@/lib/customer-no";
+import { 重复线索名们 } from "./cust-status-auto-db";
 import { 企业版 } from "./switch";
 import { 权限组织 } from "./org";
 import { 是市场成员of, type 组织 } from "./org-core";
@@ -44,6 +45,12 @@ export const 负责人到上限话 = (负责人名: string) => `${负责人名}�
 
 /** 成功的话：只说转给了负责人跟进，不带项目名、客户名（同事的客户，市场成员看不到它的名称） */
 export const 出口C已转话 = (负责人名: string) => `已转给该客户负责人 ${负责人名} 跟进（在其名下新建了一条线索），这次的沟通已记在上面；你在项目列表里能看到进度`;
+/**
+ * 防重命中（同一客户、同一人几分钟内已建过）：这次不新建、这次填的沟通也不记——几分钟内同一人再交多半是两个标签页 / 连点，
+ * 追加会把同一条沟通记两遍、再拨一次三态；真有新内容让负责人在线索上记（市场成员对同事的线索只看进度）
+ */
+export const 出口C已转过话 = (负责人名: string, 分钟: number) =>
+  `${分钟} 分钟内你已经把这位客户转给负责人 ${负责人名} 跟进过了，这次没有新建线索，这次填的沟通也没有记；有新的情况请告诉 ${负责人名}`;
 /** 新线索的项目名：「重复咨询-客户编号」，不带客户名称和联系方式（负责人之后可以自己改名）；没编号的老数据只写「重复咨询」 */
 export const 出口C项目名 = (customerNo: number | null | undefined) => {
   const 号 = 客户编号文字(customerNo);
@@ -117,19 +124,22 @@ export async function 出口C的线(org: 组织, 负责人: string, customerId: 
   return 向.线 ?? "内贸";
 }
 
-/** 项目详情「这位客户其他在推的项目」：我负责的给名字（点得进），同事负责的只给个数（P-看-12 / X-49：写项目名 = 越权暴露） */
-export type 其他在推 = { 我的: { id: string; name: string }[]; 同事的: number };
+/**
+ * 项目详情「这位客户其他在推的项目」：我看得到的给名字（点得进，同详情顶上项目切换条一个口径），看不到的只给个数（P-看-12 / X-49：写项目名 = 越权暴露）。
+ * 重复线索名 = 字典里「重复线索」现在的叫法（管理员改过名，判无效框的提示跟着变）
+ */
+export type 其他在推 = { 看得到: { id: string; name: string }[]; 看不到: number; 重复线索名: string };
 
 /**
- * 带「老客户重复咨询」标记的线索，详情里现算这位客户名下别的在推项目（没结局、不在公海、不是这一条），给负责人判是不是同一需求。
- * 不加「原项目」列（客户 11-22 方案：现算，不用迁移）
+ * 带「老客户重复咨询」标记的线索，详情里现算这位客户名下别的在推项目（没结局、不在公海、不在回收站、不是这一条），给负责人判是不是同一需求。
+ * 不加「原项目」列（客户 11-22 方案：现算，不用迁移）。看得到 = 限定读查得到的（按当前请求的身份），总数用看全部数
  */
-export async function 客户其他在推项目(meId: string, projectId: string, customerId: string): Promise<其他在推> {
-  const 们 = await 看全部(() => prisma.project.findMany({
-    where: { customerId, id: { not: projectId }, result: null, pooledAt: null, deletedAt: null },
-    select: { id: true, name: true, ownerId: true },
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-  }));
-  const 我的 = 们.filter((p) => p.ownerId === meId).map((p) => ({ id: p.id, name: p.name }));
-  return { 我的, 同事的: 们.length - 我的.length };
+export async function 客户其他在推项目(projectId: string, customerId: string): Promise<其他在推> {
+  const where = { customerId, id: { not: projectId }, result: null, pooledAt: null, deletedAt: null };
+  const [全, 看得到, 名们] = await Promise.all([
+    看全部(() => prisma.project.count({ where })),
+    prisma.project.findMany({ where, select: { id: true, name: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
+    看全部(() => 重复线索名们()),
+  ]);
+  return { 看得到, 看不到: Math.max(0, 全 - 看得到.length), 重复线索名: 名们[名们.length - 1] };
 }

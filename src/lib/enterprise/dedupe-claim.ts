@@ -250,7 +250,8 @@ export async function 认对接人(db: 库, customerId: string, 录: unknown): P
  */
 export async function 落对接人(tx: Prisma.TransactionClient, customerId: string, 认: 认好的对接人, 建的人: string): Promise<string> {
   if ("挂" in 认) {
-    const 在 = await tx.contact.findFirst({ where: { id: 认.挂, customerId, deletedAt: null }, select: { id: true } });
+    // 看全部：出口 C 挂的是同事客户名下的联系人，发起人的限定读看不到（3703 实操：报「刚被删了」）
+    const 在 = await 看全部(() => tx.contact.findFirst({ where: { id: 认.挂, customerId, deletedAt: null }, select: { id: true } }));
     if (!在) throw new 查重领取作废("选的对接人刚被删了或不在这位客户名下了，这次没领；关掉重新打开");
     return 在.id;
   }

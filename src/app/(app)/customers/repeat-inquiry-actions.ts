@@ -23,7 +23,7 @@ import { 规整沟通 } from "@/lib/project/wizard";
 import { 落到渠道, 新数据渠道不行 } from "@/lib/enterprise/channel-main";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import { 查重领取记沟通, 查重领取建线索项目, 认对接人, 落对接人, 撞上的联系人, 查重领取作废, type 认好的对接人 } from "@/lib/enterprise/dedupe-claim";
-import { 出口C可用, 出口C的线, 出口C作废, 出口C作废话, 负责人到上限话, 出口C项目名, 出口C防重分钟, 出口C已转话 } from "@/lib/enterprise/repeat-inquiry";
+import { 出口C可用, 出口C的线, 出口C作废, 出口C作废话, 负责人到上限话, 出口C项目名, 出口C防重分钟, 出口C已转话, 出口C已转过话 } from "@/lib/enterprise/repeat-inquiry";
 import { 企划线索计数key, 月份, 计不计数 } from "@/lib/enterprise/lead-assign";
 import { 写流转线 } from "@/lib/enterprise/flow-line";
 import { 算市场建给销售, 市场分配进线索验证 } from "@/lib/enterprise/market-assign-node";
@@ -105,7 +105,9 @@ export async function 出口C建线索(类型: string, 值: string, 沟通: 查�
 
   let 项目id = "";
   try {
-    const r = await 整批或不做(() => prisma.$transaction(async (tx) => {
+    // 整段看全部：客户、联系人、项目都是同事名下的，发起人的限定读看不到（按组织看客户开着时，限定层下的 findFirst / updateMany
+    // 一行都碰不到：对接人报「刚被删了」、进线索验证留了痕却没改节点、持有数也数少了）。谁能做已经在 出口C可用 判过
+    const r = await 整批或不做(() => 看全部(() => prisma.$transaction(async (tx) => {
       // 事务里再核：客户还不在公海、还在这位负责人名下（打开框到交之间进了公海 / 换了人 = 作废）
       const 现 = await 看全部(() => tx.customer.findUnique({ where: { id: 客户.id }, select: { salesOwnerId: true, customerNo: true, pool: { select: { customerId: true } } } }));
       if (!现 || 现.pool || 现.salesOwnerId !== 负责人) throw new 出口C作废(出口C作废话);
@@ -127,9 +129,9 @@ export async function 出口C建线索(类型: string, 值: string, 沟通: 查�
       await 查重领取记沟通(tx, me.id, id, 好, new Date());
       await 看全部(() => 跟着项目重算(tx, 状态开, [客户.id]));
       return { 新: id };
-    }));
+    })));
     if (!r.ok) return { ok: false, error: 负责人到上限话(负责人名) };
-    if ("已有" in r.值) return { ok: true, 提示: 出口C已转话(负责人名), 负责人: 负责人名 };
+    if ("已有" in r.值) return { ok: true, 提示: 出口C已转过话(负责人名, 出口C防重分钟), 负责人: 负责人名 };
     项目id = r.值.新;
   } catch (e) {
     if (e instanceof 出口C作废 || e instanceof 查重领取作废) return { ok: false, error: e.message.replace("这次没领", "这次没建") };

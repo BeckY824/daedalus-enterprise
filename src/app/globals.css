@@ -16,6 +16,7 @@
   --brand-deep: #0850a8;     /* 压在浅蓝上的字 */
   --brand-bg: #e8f0fb;       /* 选中行、AI 的浅蓝材质 */
   --brand-line: #b9d2f2;
+  --violet: #6d4bd1;          /* 「重复咨询」标签：紫，只这一处（标签别的色仍按 D10 归档） */
 
   --ink: #1d1d1f;            /* 正文 */
   --ink-soft: #424245;       /* 次一级正文：长段落、时间线内容 */
@@ -2404,6 +2405,8 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .lv-repeat-hint { margin-bottom: var(--s2); color: var(--text-muted); }
 .proj-name-tagged { display: flex; align-items: center; gap: var(--s1); min-width: 0; }
 .proj-name-tagged .proj-repeat-tag { margin-inline-end: 0; flex-shrink: 0; }
+/* 看板卡片第二行：标签不缩、项目名照旧省略 */
+.pipe-card-m .proj-repeat-tag { flex: none; margin-inline-end: var(--s1); }
 /* 首页查重框里「在 X 名下新建线索」（重复咨询出口 C）：另起一行，键和结果那句可折行 */
 .home-dedupe-act { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin-top: var(--s2); }
 /* 问答贴着输入框往上长。原来是 flex:1 顶在上边，于是只问了一句、答案还在流的时候，
@@ -4425,6 +4428,9 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 :root:is(:not([data-skin]), [data-skin="now"]) .ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled):is(.ant-tag-red, .ant-tag-volcano, .ant-tag-error) { background: var(--danger-bg); color: var(--danger-text); }
 :root:is(:not([data-skin]), [data-skin="now"]) .ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled):is(.ant-tag-orange, .ant-tag-warning) { background: var(--warning-bg); color: var(--warning-text); }
 :root:is(:not([data-skin]), [data-skin="now"]) .ant-tag.ant-tag.ant-tag.tag-key:not(.ant-tag-solid, .ant-tag-disabled) { background: var(--brand-bg); color: var(--brand-deep); }
+/* 「重复咨询」标签紫底紫字（重复咨询第一步，PR 定的色；压过「其余一律灰」，换皮 / 现状主题、明暗都认）：底 = 紫 12% 透明，字 = 紫混正文色，暗色下自动变浅 */
+.ant-tag.ant-tag.ant-tag.proj-repeat-tag:not(.ant-tag-solid, .ant-tag-disabled) { background: color-mix(in srgb, var(--violet) 12%, transparent); color: color-mix(in srgb, var(--violet) 75%, var(--ink)); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-tag.ant-tag.ant-tag.proj-repeat-tag:not(.ant-tag-solid, .ant-tag-disabled) { background: color-mix(in srgb, var(--violet) 12%, transparent); color: color-mix(in srgb, var(--violet) 75%, var(--ink)); }
 :root:is(:not([data-skin]), [data-skin="now"]) .ant-tag.ant-tag.ant-tag.pool-tag:not(.ant-tag-solid, .ant-tag-disabled) { background: transparent; color: var(--ink-soft); }
 
 /* ---------- 列表页：表格成一张白卡（圆角 14、淡阴影），表头白底灰字；行高、表头高不动（40 / 36） ---------- */
