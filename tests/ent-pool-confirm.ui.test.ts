@@ -7,6 +7,8 @@
  *   P-界面-44：回收站行上直接「恢复」，一步完成、底部撤销条
  *   权限被挡（server 回 ok:false）：原因就地写出来，不出撤销条、不说成功
  *   Windows 1024 / 1280 / 1366 + 超长名字：确认展开后按钮在屏里、点得到，后果在格子里折行，页面不横向撑出
+ * 设计语言 G-A（11-22）：现状主题（默认）领取确认挪到这一行下面的确认条（.pool-ask，表格展开行，K4），下面用 确认处() 找；
+ *   「后果写在名字那一格、按钮在操作格里展开」是换皮主题的老摆法，那两条用例切到账簿主题照旧守着。现状主题的排版见 ent-design-ga-layout.ui.test.ts
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -54,35 +56,38 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function open(width = 1366, o: { 挡?: boolean } = {}) {
+async function open(width = 1366, o: { 挡?: boolean; 皮?: string } = {}) {
   const page = await browser.newPage({ viewport: { width, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://route.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://route.test/pool"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
-  await page.evaluate((挡) => { const w = window as unknown as W; w.__挡 = 挡; w.__render(); }, !!o.挡);
+  await page.evaluate(([挡, 皮]) => { if (皮) document.documentElement.dataset.skin = 皮 as string; const w = window as unknown as W; w.__挡 = !!挡; w.__render(); }, [!!o.挡, o.皮 ?? ""] as const);
   await page.locator("tr[data-row-key='c1']").waitFor();
   return { page, errors };
 }
 const 调 = (page: Page, 名: string) => page.evaluate((n) => ((window as unknown as W).__调[n] ?? []).length, 名);
 const 行 = (page: Page, id: string) => page.locator(`tr[data-row-key='${id}']`);
 const 撤销条 = (page: Page) => page.locator(".undo-bar");
+/** 领取确认在哪：现状主题是这一行下面的确认条（展开行 .pool-ask-tr），换皮主题是这一行自己——两处并起来找 */
+const 确认处 = (page: Page, id: string) => page.locator(`tr[data-row-key='${id}'], tr.pool-ask-tr:has(.pool-ask[data-for='${id}'])`);
 
 it("单个领取：先原地确认、写清后果；取消不调；确认连点只领一次，之后底部撤销条", async () => {
   const { page, errors } = await open();
   try {
     await page.evaluate(() => (window as unknown as W).__render({ 持有: { 有: 3, 上限: 10 } }));
     const r = 行(page, "c1");
+    const q = 确认处(page, "c1");
     await r.getByRole("button", { name: /^领取/ }).click();
-    const 确认 = r.getByRole("button", { name: "确认领取" });
+    const 确认 = q.getByRole("button", { name: "确认领取" });
     await 确认.waitFor();
-    const 后果 = await r.locator(".pool-why").innerText();
+    const 后果 = await q.locator(".pool-why").innerText();
     expect(后果).toContain("收回公海");
     expect(后果).toContain("不能再领回");
     expect(await 调(page, "领取")).toBe(0);
     // 取消 → 回到「领取」，什么都没做
-    await r.getByRole("button", { name: "取消" }).click();
+    await q.getByRole("button", { name: "取消" }).click();
     await r.getByRole("button", { name: /^领取/ }).waitFor();
-    await expect.poll(() => r.locator(".pool-why").count()).toBe(0); // 后果收回去有一下收起动画（原型 pool.claim），等它放完
+    await expect.poll(() => q.locator(".pool-why").count()).toBe(0); // 后果收回去有一下收起动画（原型 pool.claim），等它放完
     expect(await 调(page, "领取")).toBe(0);
     // 再来：确认连点三下只领一次
     await r.getByRole("button", { name: /^领取/ }).click();
@@ -100,9 +105,10 @@ it("号码不全并进领取确认（不另弹框）", async () => {
   const { page } = await open();
   try {
     const r = 行(page, "c2");
+    const q = 确认处(page, "c2");
     await r.getByRole("button", { name: /^领取/ }).click();
-    await r.getByRole("button", { name: "确认领取" }).waitFor();
-    expect(await r.locator(".pool-why").innerText()).toContain("号码不全，领到后记得补全");
+    await q.getByRole("button", { name: "确认领取" }).waitFor();
+    expect(await q.locator(".pool-why").innerText()).toContain("号码不全，领到后记得补全");
     expect(await page.getByRole("dialog").count()).toBe(0);
   } finally { await page.close(); }
 });
@@ -114,9 +120,10 @@ it.each([1024, 1280, 1366])("%ipx 行内领客户：原地确认里列出会一�
     const 长项目 = "超长项目名字".repeat(12);
     await page.evaluate((长) => { const x = window as unknown as W; x.__预览 = { 项目数: 3, 项目: [{ name: 长, 客户: "蓝湾科技", 负责人: "线索公海" }, { name: "二期扩容", 客户: "蓝湾科技" }], 同事: { 项目数: 1 } }; x.__render({ 转走: true }); }, 长项目);
     const r = 行(page, "c1");
+    const q = 确认处(page, "c1");
     await r.getByRole("button", { name: /^领取/ }).click();
-    await r.getByRole("button", { name: "确认领取" }).waitFor();
-    const 名单 = r.locator(".pool-carry");
+    await q.getByRole("button", { name: "确认领取" }).waitFor();
+    const 名单 = q.locator(".pool-carry");
     await 名单.waitFor();
     expect(await 调(page, "转走预览")).toBe(1);
     expect(JSON.parse(await page.evaluate(() => JSON.stringify((window as unknown as W).__调.转走预览[0])))).toEqual([["c1"]]);
@@ -129,7 +136,7 @@ it.each([1024, 1280, 1366])("%ipx 行内领客户：原地确认里列出会一�
     expect(await 名单.locator("li").evaluateAll((ls) => ls.every((l) => l.scrollWidth >= l.clientWidth && l.getBoundingClientRect().right <= l.parentElement!.getBoundingClientRect().right + 1))).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `宽 ${w}`).toBe(true);
     // 确认键照旧在屏里点得到（名单长在名字那一格下面，不挤操作格）
-    const 键 = r.getByRole("button", { name: "确认领取" });
+    const 键 = q.getByRole("button", { name: "确认领取" });
     expect(await 键.evaluate((el) => { const b = el.getBoundingClientRect(); const 顶 = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return b.right <= innerWidth && (el === 顶 || el.contains(顶)); })).toBe(true);
     await 键.click();
     await expect.poll(() => 调(page, "领取")).toBe(1);
@@ -142,16 +149,18 @@ it("行内领客户：名下没有会一起走的项目不列；预览取不到�
   try {
     await page.evaluate(() => { const x = window as unknown as W; x.__预览 = { 项目数: 0, 项目: [] }; x.__render({ 转走: true }); });
     let r = 行(page, "c1");
+    let q = 确认处(page, "c1");
     await r.getByRole("button", { name: /^领取/ }).click();
-    await r.getByRole("button", { name: "确认领取" }).waitFor();
+    await q.getByRole("button", { name: "确认领取" }).waitFor();
     await expect.poll(() => 调(page, "转走预览")).toBe(1);
     await page.waitForTimeout(150);
-    expect(await r.locator(".pool-carry").count()).toBe(0);
-    await r.getByRole("button", { name: "取消" }).click();
+    expect(await q.locator(".pool-carry").count()).toBe(0);
+    await q.getByRole("button", { name: "取消" }).click();
     await page.evaluate(() => { (window as unknown as W).__预览 = "坏"; });
     r = 行(page, "c2");
+    q = 确认处(page, "c2");
     await r.getByRole("button", { name: /^领取/ }).click();
-    await r.getByRole("button", { name: "确认领取" }).click();
+    await q.getByRole("button", { name: "确认领取" }).click();
     await expect.poll(() => 调(page, "领取")).toBe(1);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
@@ -252,10 +261,11 @@ it("权限被挡：领取 / 批量领取 / 标无效 / 分配 / 恢复都不提�
   try {
     // 单个领取
     const r = 行(page, "c1");
+    const q = 确认处(page, "c1");
     await r.getByRole("button", { name: /^领取/ }).click();
-    await r.getByRole("button", { name: "确认领取" }).click();
-    await expect.poll(() => r.locator(".pool-row-err").count()).toBe(1);
-    expect(await r.locator(".pool-row-err").innerText()).toContain("只有销售");
+    await q.getByRole("button", { name: "确认领取" }).click();
+    await expect.poll(() => q.locator(".pool-row-err").count()).toBe(1);
+    expect(await q.locator(".pool-row-err").innerText()).toContain("只有销售");
     // 批量领取
     await 行(page, "c2").locator(".ant-checkbox-input").check();
     const 条 = page.locator(".list-sel");
@@ -288,8 +298,8 @@ it("权限被挡：领取 / 批量领取 / 标无效 / 分配 / 恢复都不提�
   } finally { await page.close(); }
 });
 
-it.each([1024, 1280, 1366])("Windows %ipx + 超长名字：领取确认展开后按钮在屏里点得到，后果不撑破，页面不横向撑出", async (w) => {
-  const { page, errors } = await open(w);
+it.each([1024, 1280, 1366])("换皮主题（账簿）Windows %ipx + 超长名字：领取确认展开后按钮在屏里点得到，后果不撑破，页面不横向撑出", async (w) => {
+  const { page, errors } = await open(w, { 皮: "ledger" });
   try {
     await page.evaluate(() => (window as unknown as W).__render({ 持有: { 有: 9, 上限: 10 } }));
     const r = 行(page, "c1");
@@ -368,8 +378,8 @@ it("分配选人框（P-界面-43）：按部门分组，写持有 / 上限，�
   } finally { await page.close(); }
 });
 
-it("领取确认（原型 pool.claim）：后果写在名字下、高度长出来；操作格不挂全文悬停；确认后按钮处「已领取 ✓」、行滑出；撤销后滑回（pool.undo）", async () => {
-  const { page, errors } = await open();
+it("换皮主题（账簿）领取确认（原型 pool.claim）：后果写在名字下、高度长出来；操作格不挂全文悬停；确认后按钮处「已领取 ✓」、行滑出；撤销后滑回（pool.undo）", async () => {
+  const { page, errors } = await open(1366, { 皮: "ledger" });
   try {
     const r = 行(page, "c1");
     const 高0 = (await r.boundingBox())!.height;
