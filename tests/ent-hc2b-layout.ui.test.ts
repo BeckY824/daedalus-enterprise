@@ -138,6 +138,35 @@ it("手机（390 触屏）：名字点了直接去详情、不出小卡；超长
   } finally { await page.close(); }
 });
 
+it("手机（390 触屏）：小卡出不来，「涉及」那一行每个名字后面一颗「起草」（点击区 44），点了起草这一位；电脑上不摆", async () => {
+  const { page, errors } = await 开({ 宽: 390, 触屏: true });
+  try {
+    await 画(page, 答完({ customers: 客户们.slice(0, 3) }));
+    const 钮 = page.locator(".cli-inv .cli-inv-draft");
+    expect(await 钮.count()).toBe(3);
+    expect(await 钮.allTextContents()).toEqual(["起草", "起草", "起草"]);
+    expect(await 钮.nth(1).getAttribute("aria-label")).toBe("起草跟进话术：某展具");
+    for (const r of await 钮.evaluateAll((es) => es.map((e) => e.getBoundingClientRect()).map((r) => ({ w: r.width, h: r.height, r: r.right })))) {
+      expect(r.w).toBeGreaterThanOrEqual(44);
+      expect(r.h).toBeGreaterThanOrEqual(44);
+      expect(r.r).toBeLessThanOrEqual(390);
+    }
+    // 起草钮不压着名字：名字和钮不重叠
+    const 叠 = await page.locator(".cli-inv-i").evaluateAll((items) => items.some((it) => { const a = it.querySelector(".md-ent")!.getBoundingClientRect(), b = it.querySelector(".cli-inv-draft")!.getBoundingClientRect(); return a.right > b.left + 0.5 && a.bottom > b.top && b.bottom > a.top && a.left < b.right; }));
+    expect(叠).toBe(false);
+    await 钮.nth(1).tap();
+    expect(await page.evaluate(() => (window as unknown as { __起草: unknown }).__起草)).toEqual(["wakeup", "c2"]);
+    expect(await 不横滚(page)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+  // 电脑（有悬停）：不摆这颗，起草在小卡里
+  const pc = await 开();
+  try {
+    await 画(pc.page, 答完({ customers: 客户们.slice(0, 3) }));
+    expect(await pc.page.locator(".cli-inv-draft").count()).toBe(0);
+  } finally { await pc.page.close(); }
+});
+
 it("C11-A 只读被拒：一行带锁的说明（流着时认 say_read_only 那一步就出），追问里没有写的动作；只读但没要写：不出那一行", async () => {
   const { page, errors } = await 开();
   try {

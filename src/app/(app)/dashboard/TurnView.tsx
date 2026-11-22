@@ -14,6 +14,7 @@ import dynamic from "next/dynamic";
 import StreamMarkdown from "@/components/StreamMarkdown";
 import { 实体链Context } from "@/components/Markdown";
 import RecordPeek from "@/components/RecordPeek";
+import { useNarrow } from "@/lib/roster";
 import { 找实体, type 链段 } from "@/lib/ai-entity-link";
 import type { BriefRecord } from "@/lib/ai-draft";
 import { useBusiness } from "@/lib/business-client";
@@ -513,6 +514,8 @@ export default function TurnView({
 function InvolvedLine({ customers, 总数 }: { customers: 提到的客户[]; 总数: number }) {
   const b = useBusiness();
   const AI已用完 = useAiOutOfCredits();
+  /* 触屏没有悬停、小卡出不来：每个名字后面直接摆一颗「起草」（点击区 44），起草入口不丢（11-22 定） */
+  const 触屏 = useNarrow("(hover: none)");
   return (
     <div className="cli-inv-w">
       <div className="cli-inv">
@@ -529,6 +532,7 @@ function InvolvedLine({ customers, 总数 }: { customers: 提到的客户[]; 总
             >
               {c.name}
             </RecordPeek>
+            {触屏 && <DraftButton id={c.id} disabled={AI已用完} 短名={c.name} />}
             {/* 间隔点挂在前一个名字后面：折行时下一行从名字起头，不从一个点起头 */}
             {i < customers.length - 1 && <span className="cli-inv-dot" aria-hidden="true">·</span>}
           </span>
@@ -541,12 +545,20 @@ function InvolvedLine({ customers, 总数 }: { customers: 提到的客户[]; 总
   );
 }
 
-function DraftButton({ id, disabled }: { id: string; disabled: boolean }) {
+/** 起草跟进话术。给了 短名 = 触屏那一行名字后面的小钮：只写「起草」、点击区 44，读屏念全称 */
+function DraftButton({ id, disabled, 短名 }: { id: string; disabled: boolean; 短名?: string }) {
   const job = useJob<string>(草稿键("wakeup", id));
+  const 在起 = job?.status === "loading";
   return (
-    <button type="button" className="cli-link" onClick={() => 起草("wakeup", id, "从首页发起")} disabled={job?.status === "loading" || disabled}>
-      {job?.status === "loading" ? "起草中…" : "起草跟进话术"}
-      {job?.status !== "loading" && <AiCost />}
+    <button
+      type="button"
+      className={短名 ? "cli-link cli-inv-draft" : "cli-link"}
+      aria-label={短名 ? `起草跟进话术：${短名}` : undefined}
+      onClick={() => 起草("wakeup", id, "从首页发起")}
+      disabled={在起 || disabled}
+    >
+      {在起 ? "起草中…" : 短名 ? "起草" : "起草跟进话术"}
+      {!在起 && <AiCost />}
     </button>
   );
 }

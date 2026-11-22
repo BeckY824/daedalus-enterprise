@@ -6811,4 +6811,8 @@ button.proj-miss-chip { cursor: pointer; }
 :root:root .cli-inv-i .md-ent { text-decoration: none; overflow-wrap: anywhere; }
 :root:root .cli-inv-i .md-ent:hover { text-decoration: underline; text-decoration-color: var(--brand-line); }
 :root:root .cli-inv-dot { color: var(--text-faint); }
+/* 触屏：名字后面那颗「起草」，点击区 44（不拿负外边距吃回来：折行时会盖住上下两行的名字，宁可这一行高一点）；灰字，是名字旁边的次要动作，和蓝色的名字分开 */
+:root:root .cli-inv-draft { display: inline-flex; align-items: center; justify-content: center; min-width: var(--hit-touch); min-height: var(--hit-touch); padding: 0 var(--s2); font-size: var(--fs-note); color: var(--text-muted); white-space: nowrap; }
+:root:root .cli-inv:has(.cli-inv-draft) { align-items: center; }
+:root:root .cli-inv-i:has(.cli-inv-draft) { align-items: center; gap: 0; }
 :root:root .cli-inv-w .cli-draft { margin: var(--s2) 0 0; }

@@ -563,6 +563,13 @@ ${写不了 ? 只读规则(写不了) : 出卡规则}
   let 顶过 = false;
   /** 这一轮调过哪些「工具 + 参数」，值是当时的结果摘要。用来拦原地打转 */
   const 调过的 = new Map<string, string>();
+  /**
+   * 只读被拒的兜底（HC-2b，11-22 定）：say_read_only 靠模型自己调。只读的人这一轮模型想调写类工具
+   * （propose_*，只读的人本来就没有，会被当成「没有这个工具」拒掉）也算要写被拒，照样带 拒了写，界面出那一行
+   */
+  const 认拒写 = (名: string) => {
+    if (写不了 && 名.startsWith("propose_")) ctx.拒了写 = true;
+  };
 
   /** 真正跑一个工具：记步数、画过程条、收集记录和提到的人。循环里和「回答里吐了调用」那条路共用 */
   const 执行 = async (tool: NonNullable<ReturnType<typeof TOOL_MAP.get>>, args: Record<string, unknown>, thought: string, stepId: string) => {
@@ -690,6 +697,7 @@ ${写不了 ? 只读规则(写不了) : 出卡规则}
           回执: [{ role: "assistant", content: r.text || null, tool_calls: [c] }],
         };
         if (!TOOL_MAP.get(c.function.name)) {
+          认拒写(c.function.name);
           messages.push(...选择.回执, { role: "tool", tool_call_id: c.id, content: `没有叫「${c.function.name}」的工具。可用：${工具表.map((t) => t.function.name).join(", ")}` });
           continue;
         }
@@ -721,6 +729,7 @@ ${写不了 ? 只读规则(写不了) : 出卡规则}
       console.info(`[agent] 第 ${i + 1} 步决策 ${Date.now() - t0}ms：${选的}`);
       if (raw?.final || action.final || typeof action.tool !== "string") break;
       if (!TOOL_MAP.get(action.tool)) {
+        认拒写(action.tool);
         messages.push({ role: "assistant", content: JSON.stringify(raw) }, { role: "user", content: `没有叫「${String(action.tool)}」的工具。可用：${TOOLS.map((t) => t.name).join(", ")}` });
         continue;
       }
@@ -890,6 +899,7 @@ ${写不了 ? 只读规则(写不了) : 出卡规则}
         console.warn(`[agent] 回炉那一步失败，退回标记里认出来的：${e instanceof Error ? e.message.slice(0, 120) : e}`);
       }
     }
+    for (const c of 调用们) if (!TOOL_MAP.get(c.function.name)) 认拒写(c.function.name);
     调用们 = 调用们.filter((c) => TOOL_MAP.get(c.function.name)).slice(0, 3);
     const 回执: ToolMessage[] = [{ role: "assistant", content: 说明, tool_calls: 调用们 }];
     let n = 0;
@@ -985,6 +995,8 @@ ${写不了 ? 只读规则(写不了) : 出卡规则}
   if (只有空查询()) { text = 空查询话(); ev.onToken?.(text); }
   ev.emit?.({ id: "answer", label: "组织回答", status: "done" });
   for (const r of mentioned.values()) if (!customers.has(r.id) && customers.size < 5 && text.includes(r.name)) customers.set(r.id, r);
+  // 只读被拒的兜底（HC-2b）：只读的人这一轮，回答里却说「已记下 / 已改好」——库里什么都没动，照样带 拒了写，界面那一行把话说清
+  if (写不了 && 声称已写入(text)) ctx.拒了写 = true;
   return { text, records, customers: [...customers.values()], proposals: ctx.proposals, steps, ...(写不了 ? { 写不了 } : {}), ...(ctx.拒了写 ? { 拒了写: true } : {}) };
 }
 

@@ -7,14 +7,14 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest";
 
-const 记 = vi.hoisted(() => ({ 工具: [] as string[][], 系统: [] as string[], 出招: null as null | ((第: number) => unknown) }));
+const 记 = vi.hoisted(() => ({ 工具: [] as string[][], 系统: [] as string[], 出招: null as null | ((第: number) => unknown), 答: "好的" }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/llm", () => ({
   buildSystemPrompt: () => "系统提示",
   chatMessagesJSON: async () => ({ final: true }),
   chatTextStream: async (_m: unknown, _o: unknown, onToken: (t: string) => void) => {
-    onToken("好的");
-    return "好的";
+    onToken(记.答);
+    return 记.答;
   },
   chatTools: async (ms: { role: string; content: unknown }[], tools: { function: { name: string } }[]) => {
     记.工具.push(tools.map((t) => t.function.name));
@@ -53,6 +53,7 @@ beforeEach(async () => {
   记.工具 = [];
   记.系统 = [];
   记.出招 = null;
+  记.答 = "好的";
 });
 afterEach(() => { vi.unstubAllEnvs(); 忘掉企业版范围(); });
 afterAll(async () => { await prisma.$disconnect(); });
@@ -124,5 +125,27 @@ describe("只读被拒的固定标记（设计语言 HC-2b）", () => {
     }
     const r2 = await 问(me);
     expect(r2.拒了写).toBeUndefined();
+  });
+
+  it("兜底：模型没调 say_read_only，却想调写类工具（只读的人没有，被拒）——照样带 拒了写", async () => {
+    const me = await 造人("庚", "coach");
+    记.出招 = (第) => (第 === 1 ? { text: "", toolCalls: [{ id: "x2", type: "function", function: { name: "propose_followup", arguments: '{"customer":"王总","content":"聊了报价","reason":"记一笔"}' } }] } : { text: "", toolCalls: [] });
+    const r = await 问(me);
+    expect(r.拒了写).toBe(true);
+    expect(r.proposals).toEqual([]);
+  });
+
+  it("兜底：模型没调 say_read_only，回答里却说「已经帮你记下了」——照样带 拒了写；说「要找同事改」不算", async () => {
+    const me = await 造人("辛", "admin");
+    记.答 = "好的，已经帮你记下了这条跟进。";
+    expect((await 问(me)).拒了写).toBe(true);
+    记.答 = "这个账号只能看，要记跟进请找负责的同事。";
+    expect((await 问(me)).拒了写).toBeUndefined();
+  });
+
+  it("能写的人回答里说「已记下」不带 拒了写", async () => {
+    const me = await 造人("壬", "sales");
+    记.答 = "已经帮你记下了。";
+    expect((await 问(me)).拒了写).toBeUndefined();
   });
 });
