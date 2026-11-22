@@ -6674,7 +6674,8 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .home-cards > .home-card:nth-child(even) { border-left: 1px solid var(--mod-line); }
 }
 @media (max-width: 767px) {
-  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .cli:not(.cli-paper) .cli-ck .cli-frame { margin-inline: calc(-1 * var(--content-pad-x)); padding-inline: var(--s4); }
+  /* 框本身是 .cli-col（width: 100%）：光给负外边距只会整块左移 12、右边缺一截（3703 实操 390：框 0→366、内容偏左）。宽度跟着加两边的 --content-pad-x，和下面 .home-cards 一样铺满 */
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .cli:not(.cli-paper) .cli-ck .cli-frame { width: calc(100% + 2 * var(--content-pad-x)); margin-inline: calc(-1 * var(--content-pad-x)); padding-inline: var(--s4); }
   :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .home-cards { margin-inline: calc(-1 * var(--content-pad-x)); }
 }
 
