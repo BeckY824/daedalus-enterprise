@@ -3911,6 +3911,13 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .mcp-hint { margin-bottom: 10px; }
 .mcp-cmd-k { margin: 4px 0 6px; font-size: var(--fs-min); font-weight: 600; color: var(--ink); }
 .mcp-hint code { font-size: var(--fs-min); font-family: var(--font-mono); }
+/* 语音转文字（录音点评 PR4，settings/AsrCard.tsx）：状态是「项：值」两列，窄屏照样两列（值折行） */
+.asr-switch { margin-left: 12px; }
+.asr-status { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 8px 0; font-size: var(--fs-min); }
+.asr-status dd { margin: 0; overflow-wrap: anywhere; }
+.asr-big { display: grid; gap: 4px; margin: 8px 0; font-size: var(--fs-min); }
+.asr-test-hint { margin-left: 8px; }
+.asr-last { margin-top: 8px; font-size: var(--fs-min); overflow-wrap: anywhere; }
 
 /* 业务配置底下的演示数据那一小块。和表单隔开：它不是一个配置项，是一个动作 */
 .biz-demo { margin-top: var(--s5); padding-top: var(--s4); border-top: 1px solid var(--line-soft); }

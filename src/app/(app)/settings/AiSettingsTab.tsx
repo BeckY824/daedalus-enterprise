@@ -1,6 +1,7 @@
 "use client";
 
 import { useSettingsNote } from "./InlineNote";
+import AsrCard from "./AsrCard";
 import { useConsequence } from "@/components/ConsequenceDialog";
 import InlineConfirm from "@/components/InlineConfirm";
 import { isFormValidationError } from "@/lib/form-validation";
@@ -330,6 +331,9 @@ export default function AiSettingsTab({ llm, usage, 企业版 = false }: { llm: 
 
       <AssistBlock 企业版={企业版} />
 
+      {/* 录音点评的语音转文字（11-22 PR4）：只有企业版有 */}
+      {企业版 && <AsrCard />}
+
       <McpBlock />
 
       {llm.source !== null && (
@@ -343,6 +347,7 @@ export default function AiSettingsTab({ llm, usage, 企业版 = false }: { llm: 
             {usage.filter((u) => !(企业版 && u.feature === "invite" && u.count === 0)).map((u) => (
               <span key={u.feature} style={{ fontSize: 13 }}>
                 {u.label} <Typography.Text strong>{u.count}</Typography.Text>
+                {u.秒 !== undefined && u.count > 0 && <Typography.Text type="secondary">（{Math.max(1, Math.round(u.秒 / 60))} 分钟）</Typography.Text>}
               </span>
             ))}
           </Space>

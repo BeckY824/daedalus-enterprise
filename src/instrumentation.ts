@@ -2,7 +2,7 @@
  * Next.js 服务启动时调一次。企业版开着时起两个钟：飞书 / 钉钉增量同步（见 enterprise-import/sync.ts）、
  * 每天 00:05 的超时回收（见 project/nightly.ts；起钟时等下面的老数据活做完马上跑一遍，补服务停着时漏的提醒和回收）；再排着做四件只做一次的老数据活：清掉企业版用不到的商机 / 合同老数据（enterprise/legacy-cleanup.ts）、
  * 老线索转线索阶段的项目（enterprise/lead-to-project.ts）、预计成交日期回填（project/expected-deal.ts）、客户级别 D 改 C（enterprise/customer-v2-db.ts）、卡点 11-01 改版的老数据（project/blocker-migrate.ts）；
- * 最后补联系人主客户的挂靠行（同一文件，每次启动都跑、只补没有的）。
+ * 最后补联系人主客户的挂靠行（同一文件，每次启动都跑、只补没有的）。录音点评的转写钟（lib/enterprise/coach-rec-jobs.ts，每 5 秒）也在这里起。
  * 桌面端、团队版服务器不设 CRM_ENTERPRISE，这里什么都不做，也不加载这些代码。
  * 另：CRM_REQ_LOG=1 时先开慢请求日志（lib/request-log.ts）；企业版常开运行记录（慢请求、服务端出错落盘，lib/telemetry/）。
  * 多进程部署（11-16）：上面的钟和老数据活只在 CRM_JOBS 开着、并且占到「jobs」跨进程锁的那个进程跑（lib/jobs.ts）；样式落盘和慢请求日志每个进程都开。
@@ -38,6 +38,10 @@ async function 跑后台任务() {
   })();
   // 钟照常每分钟一遍；起钟那遍补跑等老数据活做完（最多等一分钟），不和它们抢写锁
   启动夜扫(60_000, 老数据活);
+  // 录音点评的转写钟（11-22 PR4，lib/enterprise/coach-rec-jobs.ts）：每 5 秒看一眼转写中的录音，开关关着什么都不做；
+  // 重启后接着轮询已经交上的、接着交排队的
+  const { 启动转写钟 } = await import("./lib/enterprise/coach-rec-jobs");
+  启动转写钟();
 }
 
 /**

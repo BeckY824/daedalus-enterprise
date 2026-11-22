@@ -32,6 +32,8 @@ const 桩插件: Plugin = {
       export const 查自动判断 = () => new Promise(() => {});
       export const 设自动判断开关 = 叫("自动判断", { ok: true });
     `);
+    // 语音转文字那一块（录音点评 PR4，企业版才渲染）：服务器动作换成一直等着的
+    桩(/^\.\/asr-actions$/, `const 等=()=>new Promise(()=>{});export const 读转写设置=等,设录音点评开关=等,设大文件交法=等,测转写连接=等;`);
     桩(/^next\/navigation$/, `export const useRouter = () => ({ refresh() {}, push() {}, replace() {} });`);
     b.onLoad({ filter: /.*/, namespace: "stub" }, (a) => ({ contents: a.pluginData as string, loader: "jsx", resolveDir: process.cwd() }));
   },
