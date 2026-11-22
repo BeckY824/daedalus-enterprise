@@ -12,7 +12,7 @@
  * 10-30 交互改版：领取、分配都带 6 秒撤销（规则 B）；老板、主管行内「⋯」和批量里有「分配给同事」（11-15 P-界面-43 写全、走选人框），业务员没有；
  * 领取灰着时原因写在按钮下面（规则 A）；持有上限开着时页头写「我手上 N / 上限 M」；批量有没领到的，提示条能展开看每一条为什么
  */
-import { useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { Button, Checkbox, Dropdown, Grid, Segmented, Select, Space, Tag } from "antd";
@@ -41,6 +41,7 @@ import { 转走项目列表 } from "../customers/useCarryConfirm";
 import { 公海规则, 原负责人不能领回提示, 项目不能单独领提示, 无效客户不能领短话 } from "@/lib/enterprise/pool-rules";
 import { 公海属性们, 快捷们, 排序们, 默认排序, 多次退回起, 没原因, 入池类叫法, type 公海行, type 公海属性, type 快捷 } from "@/lib/enterprise/unified-pool";
 import { 领取, 分配公海, 撤销公海, type 公海结果 } from "../customers/pool-actions";
+import { 确认条行们 } from "@/lib/enterprise/pool-ask-rows";
 import { 标无效客户, 恢复有效客户, 分配公海项目, 撤销公海项目, type 整包撤销 } from "./actions";
 
 type Props = {
@@ -195,6 +196,18 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
   const [问后果, 后果框] = useConsequence();
   /** 正在就地确认领取的那一行（同一时刻只一行） */
   const [问着, set问着] = useState<string | null>(null);
+  /*
+    行下确认条（现状主题）是键盘点开的：焦点从行上的「领取」挪到条里的「取消」，和旧摆法（InlineConfirm 包着键）一样——
+    回车再按一下是退出不是领取；焦点在条里 InlineConfirm 才停住 8 秒计时、Esc 才收得回（G-A 审查）。
+    只认键盘（:focus-visible）：鼠标点开的不挪，焦点停在条里会让它一直不收。收起时焦点还给「领取」见 收确认
+  */
+  useEffect(() => {
+    if (!问着) return;
+    const 键 = document.activeElement;
+    if (!(键 instanceof HTMLElement) || 键.dataset.claim !== 问着 || !键.matches(":focus-visible")) return;
+    const 帧 = requestAnimationFrame(() => document.querySelector<HTMLElement>(`.pool-ask[data-for="${CSS.escape(问着)}"] .inlc-no`)?.focus());
+    return () => cancelAnimationFrame(帧);
+  }, [问着]);
   /** 鼠标停在行下确认条上：读到一半不自己收（现状主题） */
   const [悬着, set悬着] = useState(false);
   /**
@@ -745,7 +758,9 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
     d ? <span className="nowrap pool-t" title={fmtDateTime(d)}>{smartTime(d)}</span> : <span className="muted">{空}</span>;
   const 新列: 列<公海行>[] = [
     {
-      title: "客户名称", key: "客户", width: 窄 ? 132 : 168, 常驻: true,
+      // 列宽留余量（G-A 审查）：1366 各列 + 勾选列 1062 对内容区 1094、1024 是 720 对 752，各留 32——Windows 纵向滚动条占 17 也不横滚、
+      // 钉住的操作列不冒阴影线；客户名、项目名各让出 8（原来 168 / 160、窄档 132 / 116，只留 16）
+      title: "客户名称", key: "客户", width: 窄 ? 124 : 160, 常驻: true,
       render: (_, r) => r.子 ? (
         <span className="pool-name">
           <RightOutlined className="pool-fold" rotate={展开的.includes(r.id) ? 90 : 0} aria-hidden />
@@ -758,7 +773,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
       render: (_: unknown, r: 公海行) => <Tag className="pool-attr">{r.属性}</Tag>,
     }]),
     {
-      title: "项目名称", key: "项目", width: 窄 ? 116 : 160,
+      title: "项目名称", key: "项目", width: 窄 ? 108 : 152,
       render: (_, r) => {
         if (r.子) return (
           <span className="pool-many">
@@ -937,7 +952,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
     : `${filters.keyword ? `没有对得上「${filters.keyword}」的客户或项目` : "没有对得上这些筛选的客户或项目"}，换个条件或点「重置」看全部`;
   /** 行下确认条 / 没领到的原因（现状主题，K4）：表格展开行；客户池并成一行的照旧展开子列表 */
   const 顶行 = new Set(行.filter((r) => !r.子).map((r) => r.id));
-  const 条行 = 新样 ? [...(问着 && 顶行.has(问着) ? [问着] : []), ...Object.keys(行错).filter((id) => 顶行.has(id) && id !== 问着)] : [];
+  const 条行 = 确认条行们({ 新样, 问着, 行错, 走的, 顶行 });
 
   return (
     <>

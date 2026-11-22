@@ -30,7 +30,8 @@ beforeAll(async () => {
     const 成 = "async(...a)=>{await new Promise(r=>setTimeout(r,40));return {ok:true,updated:a[0].length,unchanged:0,原负责人:a[0].map(id=>({id,值:''})),项目:{领到:a[2]||[],没领到:[]},给谁:{id:'u1',name:'同事'}}}";
     stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(u){(window.__去=window.__去||[]).push(u)},replace(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
     stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
-    stub(/customers\/pool-actions$/, `export const 领取=${成},分配公海=${成},撤销公海=async()=>({ok:true,updated:1});`);
+    // 领取调用次数记在 window.__领（G4「取消不领」要断言一次都没调）
+    stub(/customers\/pool-actions$/, `export const 领取=async(...a)=>{window.__领=(window.__领||0)+1;return (${成})(...a)},分配公海=${成},撤销公海=async()=>({ok:true,updated:1});`);
     stub(/\/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 领取项目=async()=>({ok:true,updated:0});"));
     stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
     stub(/^\.\/actions$/, "const f=async()=>({ok:true,updated:1,unchanged:0});export const 标无效客户=f,恢复有效客户=f,分配公海项目=async(a)=>({ok:true,分到:a,没分到:[],给谁:{id:'u1',name:'同事'}}),撤销公海项目=f;");
@@ -132,7 +133,7 @@ for (const w of [1024, 1280, 1366]) {
   });
 }
 
-it("G1：回收站开关 = 入池方式「无效客户」（地址栏 quick 不变）、按下态；选了某一池写清数是这一池里的", async () => {
+it("G1：回收站开关 = 入池方式「无效客户」（地址栏 quick 改成「无效客户」）、按下态；选了某一池写清数是这一池里的", async () => {
   const { page, errors } = await 开(1366, { attr: "线索池" });
   try {
     const 钮 = page.getByRole("button", { name: /公海回收站/ });
@@ -272,9 +273,52 @@ for (const w of [1024, 1366, 390]) {
       expect((await 点得中(page, ".pool-ask .inlc-yes, .pool-ask .inlc-no")).every((x) => x.中 && x.在屏)).toBe(true);
       await 条.getByRole("button", { name: "取消" }).click();
       await expect.poll(() => page.locator(".pool-ask").count()).toBe(0);
+      // 取消不领：领取一次都没调
+      expect(await page.evaluate(() => (window as unknown as { __领?: number }).__领 ?? 0)).toBe(0);
       await 钮.click();
       await page.getByRole("group", { name: /^确认领取 某某超长/ }).getByRole("button", { name: "确认领取" }).click();
       await page.locator("tr[data-row-key='c0']").getByText("已领取 ✓").waitFor();
+      expect(await page.evaluate(() => (window as unknown as { __领?: number }).__领 ?? 0)).toBe(1);
+      expect(await 页横滚(page)).toBe(false);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}
+
+it("G4 / K4：键盘打开领取确认条——焦点到「取消」、8 秒不自己收、Esc 收回且焦点回「领取」（同旧摆法）", async () => {
+  const { page, errors } = await 开(1366);
+  try {
+    const 钮 = page.locator("tr[data-row-key='c0']").getByRole("button", { name: /^领取/ });
+    await 钮.focus();
+    await page.keyboard.press("Enter");
+    const 条 = page.getByRole("group", { name: /^确认领取 某某超长/ });
+    await 条.waitFor();
+    await expect.poll(() => page.evaluate(() => document.activeElement?.matches(".pool-ask .inlc-no") ?? false)).toBe(true);
+    // 焦点在条里：8 秒计时停住
+    await page.waitForTimeout(8500);
+    expect(await 条.count()).toBe(1);
+    await page.keyboard.press("Escape");
+    await expect.poll(() => page.locator(".pool-ask").count()).toBe(0);
+    await expect.poll(() => page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.claim ?? "")).toBe("c0");
+    expect(await page.evaluate(() => (window as unknown as { __领?: number }).__领 ?? 0)).toBe(0);
+    // 鼠标点开的不挪焦点（焦点停在条里会让它一直不收）；先让焦点离开（键盘焦点还在「领取」上时再点，它仍算 :focus-visible）
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await 钮.click();
+    await 条.waitFor();
+    expect(await page.evaluate(() => document.activeElement?.closest(".pool-ask") ? "条里" : "外面")).toBe("外面");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 30_000);
+
+for (const w of [1024, 1366]) {
+  it(`列宽留够余量（${w} 宽）：内容区减掉 Windows 纵向滚动条 17px、再减到 24px，表格都不横滚`, async () => {
+    const { page, errors } = await 开(w);
+    try {
+      const 框 = page.locator(".ant-table-content").first();
+      for (const 让 of [17, 24]) {
+        await page.addStyleTag({ content: `.app-content{padding-right:${26 + 让}px}` });
+        await expect.poll(() => 框.evaluate((el) => el.scrollWidth <= el.clientWidth), { message: `内容区减 ${让}px 横滚了（差 1px 也算：Windows 上就是这 1px）` }).toBe(true);
+      }
       expect(await 页横滚(page)).toBe(false);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
