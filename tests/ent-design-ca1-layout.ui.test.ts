@@ -134,6 +134,28 @@ it.each([1024, 1280, 1366, 390])("%ipx：50 个长名渠道、成交过亿不横
   } finally { await page.close(); }
 });
 
+it("键盘 Tab 到看板「?」（商机 / 订单 / 预警规则 / 进公海）和漏斗「→ x%」，提示照样出（trigger 带 focus，同金额格；原来只认悬停）", async () => {
+  const { page, errors } = await 打开(1366);
+  try {
+    const 要: [string, RegExp][] = [
+      ['.chan-dash-q[aria-label="商机怎么数"]', /按头一回到商机/], ['.chan-dash-q[aria-label="订单怎么数"]', /按头一回进订单/],
+      ['.chan-dash-q[aria-label="预警规则"]', /线索不少于/], ['.chan-dash-q[aria-label="进公海怎么算"]', /这段时间进公海/],
+      [".chan-dash-fun-side", /流失/],
+    ];
+    for (const [选, 字] of 要) {
+      const q = page.locator(选).first();
+      await q.scrollIntoViewIfNeeded();
+      // 紧挨着它前面放一颗钮、先聚焦它，再按一下 Tab：焦点是键盘走过去的，不是鼠标
+      await q.evaluate((e) => { const b = document.createElement("button"); b.id = "tab-前"; e.before(b); b.focus(); });
+      await page.keyboard.press("Tab");
+      expect(await q.evaluate((e) => document.activeElement === e)).toBe(true);
+      await page.getByRole("tooltip").filter({ hasText: 字 }).first().waitFor({ state: "visible" });
+      await page.evaluate(() => document.getElementById("tab-前")?.remove());
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it("漏斗写转化率「→ x%」不写流失率；三层转化率卡留着、不用浅蓝底；低效渠道普通卡 + 橙圆点；进公海写「全部创建人」、数字右对齐", async () => {
   const { page, errors } = await 打开(1366);
   try {
