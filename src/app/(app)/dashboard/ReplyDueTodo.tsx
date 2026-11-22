@@ -10,8 +10,7 @@
 import Link from "next/link";
 import type { 待回复客户数 } from "@/lib/enterprise/reply-notice";
 import { useIsNowSkin } from "@/lib/use-skin";
-import { smartTime } from "@/lib/utils";
-import { 时段smart } from "./todo-time";
+import { 时段smart, 带钟点smart } from "./todo-time";
 
 export default function ReplyDueTodo({ 数据 }: { 数据: 待回复客户数 | null | undefined }) {
   const 现状 = useIsNowSkin();
@@ -19,8 +18,8 @@ export default function ReplyDueTodo({ 数据 }: { 数据: 待回复客户数 | 
   const 早 = 数据.最早;
   const 说 = 早.分配话 ? `${早.name} · ${早.时} 分配 · ${早.分配话}` : `${早.name} · 指定回复 ${早.时}${早.超时 ? " · 超时未跟进" : ""}`;
   // 现状主题：时间在前（「指定回复 今天 21:00 – 22:00 · 名字」），名字再长也不把时间挤出去
-  // 时间用服务端多传的 ISO（始 / 终）走 smartTime；旧数据没有就照摆服务端写好的短串
-  const 时 = 早.分配话 ? `${早.始 ? smartTime(早.始) : 早.时} 分配` : `指定回复 ${时段smart(早.始, 早.终) ?? 早.时}`;
+  // 时间用服务端多传的 ISO（始 / 终）走 smartTime，远处也补钟点（回复时限的钟点对员工有用，H-A 审查 11-21）；旧数据没有就照摆服务端写好的短串
+  const 时 = 早.分配话 ? `${早.始 ? 带钟点smart(早.始) : 早.时} 分配` : `指定回复 ${时段smart(早.始, 早.终) ?? 早.时}`;
   const 后 = [早.name, 早.分配话 ?? (早.超时 ? "超时未跟进" : "")].filter(Boolean).join(" · ");
   return (
     <div className="home-cth-todo" role="status" data-testid="home-reply-due">
