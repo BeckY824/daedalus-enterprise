@@ -253,13 +253,18 @@ describe("saveContact 守卫（提交 2）", () => {
 });
 
 describe("客户名称选填（11-19 审查）：仅项目的人看没全称的客户", () => {
-  it("受限详情页头走客户抬头，没全称、没简称也不空（兜到客户编号）；带简称的叫简称", async () => {
+  it("受限详情页头走客户抬头，没全称、没简称也不空（项目名 F-040 → 兜到客户编号）；带简称的叫简称", async () => {
     const c = await 客户(甲.id, { name: "", customerNo: 4321 });
-    await 项目(c, 乙.id);
+    const 我的 = await 项目(c, 乙.id, { name: "" });
     忘掉企业版范围();
     const 详情 = (await 以(乙, () => 读受限客户详情(乙 as never, c, null)))!;
     expect(详情.客户.name.trim()).not.toBe("");
     expect(详情.客户.name).toContain("04321");
+    // F-040：全空客户写项目名，只拿我自己项目的名字；甲后来动过的项目名不给乙看
+    await prisma.project.update({ where: { id: 我的 }, data: { name: "乙起的项目名" } });
+    await 项目(c, 甲.id, { name: "甲的项目名" });
+    忘掉企业版范围();
+    expect((await 以(乙, () => 读受限客户详情(乙 as never, c, null)))!.客户.name).toBe("乙起的项目名");
     await prisma.customer.update({ where: { id: c }, data: { shortName: "编的简称" } });
     忘掉企业版范围();
     expect((await 以(乙, () => 读受限客户详情(乙 as never, c, null)))!.客户.name).toContain("编的简称");
@@ -345,7 +350,7 @@ describe("客户列表「仅项目」一小块（收尾 7）", () => {
     expect(d.rows.map((r) => r.id)).toEqual([乙自己]);
     expect(d.total).toBe(1);
     const 块 = d.仅项目行![0];
-    expect(Object.keys(块).sort()).toEqual(["customerAttr", "customerNo", "customerType", "id", "name", "school", "shortName", "仅项目", "地区", "当前节点", "当前阶段", "项目数"].sort());
+    expect(Object.keys(块).sort()).toEqual(["addrCity", "addrCountry", "addrDistrict", "addrProvince", "customerAttr", "customerNo", "customerType", "id", "name", "school", "shortName", "仅项目", "地区", "当前节点", "当前阶段", "抬头格", "项目数"].sort());
     expect(块).toMatchObject({ name: 行.name, customerNo: 行.customerNo, 仅项目: true, 项目数: 1, 地区: "浙江省 杭州市" });
     const 字 = JSON.stringify(d.仅项目行);
     for (const 不该有 of [行.phone!, "13744445555", "块特征备注", "块特征状态", 甲.name, 甲.id]) expect(字, 不该有).not.toContain(不该有);

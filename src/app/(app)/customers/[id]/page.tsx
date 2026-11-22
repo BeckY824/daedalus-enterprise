@@ -49,7 +49,7 @@ import { 字典of } from "@/lib/project/stage-dict";
 import { 客户参与的项目 } from "@/lib/project/relate";
 import { 我回避的公海项目, 回避豁免 } from "@/lib/project/pool-owner";
 import { 客户页沟通两样 } from "@/lib/enterprise/customer-follow-feed";
-import { 抬头节点们 } from "@/lib/enterprise/customer-title";
+import { 抬头节点们, 只留看得见的项目名 } from "@/lib/enterprise/customer-title";
 import { 页面看得到的客户 } from "@/lib/project/visible-customers";
 import { 显示用客户状态 } from "@/lib/enterprise/cust-status-auto-db";
 import { 读客户三态, 读冷项目 } from "@/lib/enterprise/tri-state-detail";
@@ -210,8 +210,9 @@ export default async function CustomerDetailPage({
           冷: t?.活跃 && z ? await 读冷项目(z.页签们.map((x) => x.id)) : ({} as Record<string, number>),
         }))
       : null,
-    // 页头抬头（11-17 客户抬头 PR-5，出口 2）：简称、全称、类型都空才要当前节点，一句（含公海项目、不按看的人算，U9）；别的不查
-    企 ? 抬头节点们(prisma, [customer]).then((m) => m[customer.id] ?? null) : null,
+    // 页头抬头（11-17 客户抬头 PR-5，出口 2）：简称、全称、类型都空才要当前节点，一句（含公海项目、不按看的人算，U9）；别的不查。
+    // 项目名（F-040）只给我看得见的项目：走限定层主键查一句，看不见的回到「编号|节点」（P-看-12）
+    企 ? 抬头节点们(prisma, [customer]).then((m) => 只留看得见的项目名(m, (ids) => prisma.project.findMany({ where: { id: { in: ids } }, select: { id: true } }))).then((m) => m[customer.id] ?? null) : null,
   ]);
   const 冷项目 = 三态?.冷 ?? {};
   if (项目区) 项目区.页签们 = 项目区.页签们.map((t) => (冷项目[t.id] != null ? { ...t, 冷天数: 冷项目[t.id] } : t));
