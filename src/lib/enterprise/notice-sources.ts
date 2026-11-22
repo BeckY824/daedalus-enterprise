@@ -825,3 +825,23 @@ export async function 主题通知(me: 人, 事件: 主题事件, t: { id: strin
     });
   });
 }
+
+/* ───────────────────────── 录音点评（11-22 PR4） ───────────────────────── */
+
+/**
+ * 录音没整理成（coach-rec-jobs.ts 转写失败时调）：只发给录的人自己（铃铛 + 飞书，只推已绑定的）。
+ * 标题只写项目名，正文写为什么（给人看的那句，不带密钥、签名）和去哪重试；不带录音、转写内容、文件名（文件名里可能有号码）。
+ * 键带时刻：同一条重试后又失败，各算一条
+ */
+export async function 录音没整理成通知(authorId: string, r: { id: string; projectId: string }, 话: string): Promise<void> {
+  await 稳("录音没整理成通知", async () => {
+    const p = await 看全部(() => prisma.project.findUnique({ where: { id: r.projectId }, select: { name: true } }));
+    await notify([authorId], {
+      kind: "录音",
+      title: `你在项目「${p?.name ?? "（项目不在了）"}」交的录音点评没整理成`,
+      body: `${话.slice(0, 120)}。到项目详情「沟通记录」卡顶上的录音草稿里点「重试整理」，或者删掉重新传`,
+      link: `/projects/${r.projectId}`,
+      key: `coach-rec-fail:${r.id}:${分钟()}`,
+    });
+  });
+}

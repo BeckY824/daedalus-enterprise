@@ -29,7 +29,7 @@ beforeAll(async () => {
     import CoachTopics,{StartReviewButton} from '@/app/(app)/projects/[id]/CoachTopics';
     const root=createRoot(document.getElementById('root'));
     const 长项目='项目名很长'+'Y'.repeat(120);
-    const 基=(录音)=>({们:[],能发:true,填写人:{id:'u1',name:'教练',身份:'销售教练'},负责人:{id:'u2',name:'负责人'},项目名:长项目,当前节点:'线索验证',待回复数:0,冻结:false,...(录音?{录音}:{})});
+    const 基=(录音)=>({们:[],能发:true,填写人:{id:'u1',name:'教练',身份:'销售教练'},负责人:{id:'u2',name:'负责人'},项目名:长项目,当前节点:'线索验证',待回复数:0,冻结:false,...(录音?{录音:{可录:true,...录音}}:{})});
     window.__render=(what,录音)=>root.render(<App><div className="card-like" style={{maxWidth:'min(560px, calc(100vw - 32px))',margin:'0 auto',padding:16,border:'1px solid #ddd'}}>{
       what==='form'?<StartReviewButton 数据={基(录音)} projectId='p1'/>:<CoachTopics 数据={基(录音)} projectId='p1'/>
     }</div></App>);
@@ -67,6 +67,7 @@ const 假服务器 = () => {
       if (w.__已完) return 回(200, { ok: true, 录音: 录({ status: "待提交", 文件名: "通话录音.m4a", 总字节: 12 * MB, 已收字节: 12 * MB, 能听: true }) });
       return 回(200, { ok: true, 录音: 录({ 文件名: "通话录音.m4a", 总字节: 12 * MB, 已收片: w.__已收, 已收字节: w.__已收.reduce((a, x) => a + x.字节, 0) }) });
     }
+    if (url.endsWith("/submit") || url.endsWith("/retry")) return 回(200, { ok: true, 录音: 录({ id: url.split("/")[3], status: "转写中", 文件名: "通话录音.m4a", 总字节: 12 * MB, 已收字节: 12 * MB, 更新于: "9999", 时长毫秒: 65_000 }) });
     if (url.endsWith("/finish")) return 回(200, { ok: true, 录音: 录({ status: "待提交", 文件名: "通话录音.m4a", 已收字节: 12 * MB, 能听: true }) });
     if (url.endsWith("/abandon")) return 回(200, { ok: true });
     return 回(404, { error: "没有" });
@@ -127,10 +128,36 @@ it("开着、电脑：下拉多一项传录音文件；选 12MB 文件 → 3 片
   expect(await 请求们(page)).toEqual(["POST /api/coach-rec/start", "PUT /api/coach-rec/crec1/chunk/1/0", "PUT /api/coach-rec/crec1/chunk/1/1", "PUT /api/coach-rec/crec1/chunk/1/2", "POST /api/coach-rec/crec1/finish"]);
   const 片们 = await page.evaluate(() => (window as unknown as { __已收: { 字节: number }[] }).__已收.map((x) => x.字节));
   expect(片们).toEqual([5 * MB, 5 * MB, 2 * MB]);
-  expect(await page.locator(".crec-pending button[title]").first().isDisabled()).toBe(true); // 提交整理：转写接上前灰着
+  expect(await page.getByTestId("crec-submit").isDisabled()).toBe(false); // 提交整理：录音可用（PR4）时能点
   expect(await page.evaluate(() => (window as unknown as { __刷?: number }).__刷)).toBe(1);
   expect(errors).toEqual([]);
   await page.close();
+});
+
+it("提交整理（PR4）：点了 POST submit、卡上变「正在转写」带服务端时长、删掉收起；整理失败的写原因、给重试整理；不可录时不出传录音文件、提交整理灰着", async () => {
+  const 待 = { id: "crec2", status: "待提交", sourceKind: "上传", 文件名: "通话录音.m4a", 总字节: 12 * MB, 已收字节: 12 * MB, 已收片: [], 格式: "m4a", 开始于: "", 更新于: "1", 能听: false };
+  const 败 = { ...待, id: "crec3", status: "整理失败", 错: "腾讯云读不了这个录音（格式或内容有问题）" };
+  const { page, errors } = await open("list", { 草稿们: [待, 败] }, 1280);
+  const 卡 = page.getByTestId("crec-pending");
+  expect(await 卡.nth(1).getByTestId("crec-fail").innerText()).toBe("腾讯云读不了这个录音（格式或内容有问题）");
+  await 卡.nth(0).getByTestId("crec-submit").click();
+  await page.locator("[data-testid=crec-pending][data-status=转写中]").waitFor();
+  expect(await 卡.nth(0).innerText()).toContain("正在转写，好了会通知你");
+  expect(await 卡.nth(0).innerText()).toContain("1:05");
+  expect(await 卡.nth(0).getByRole("button", { name: "删掉" }).count()).toBe(0);
+  await 卡.nth(1).getByTestId("crec-retry").click();
+  await page.locator("[data-testid=crec-pending][data-status=转写中]").nth(1).waitFor();
+  expect(await 请求们(page)).toEqual(["POST /api/coach-rec/crec2/submit", "POST /api/coach-rec/crec3/retry"]);
+  expect(errors).toEqual([]);
+  await page.close();
+  const 灰列 = await open("list", { 草稿们: [待], 可录: false }, 1280);
+  expect(await 灰列.page.getByTestId("crec-submit").isDisabled()).toBe(true);
+  await 灰列.page.close();
+  const 灰 = await open("form", { 草稿们: [待], 可录: false }, 1280);
+  await 灰.page.getByTestId("coach-topic-new").click();
+  await 灰.page.getByTestId("coach-review-write").waitFor();
+  expect(await 灰.page.getByTestId("coach-review-upload").count()).toBe(0);
+  await 灰.page.close();
 });
 
 it("超过 200MB 不让传；超过 20MB 提示连 Wi-Fi", async () => {

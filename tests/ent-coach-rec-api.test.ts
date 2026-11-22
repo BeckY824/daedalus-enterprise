@@ -189,7 +189,8 @@ describe("开关关着（默认）", () => {
 
   it("开着时才有 录音 这一格（能发的人才有）", async () => {
     await 开关(true);
-    expect((await 读项目主题({ id: 人.教练, role: "ADMIN" }, 项目))?.录音).toEqual({ 草稿们: [] });
+    // PR4：没配转写密钥（测试环境没有）= 可录 false（不出「传录音文件」，草稿照给）
+    expect((await 读项目主题({ id: 人.教练, role: "ADMIN" }, 项目))?.录音).toEqual({ 草稿们: [], 可录: false });
     expect((await 读项目主题({ id: 人.管理员, role: "SALES" }, 项目))?.录音).toBeUndefined();
     expect((await 读项目主题({ id: 人.甲, role: "SALES" }, 项目))?.录音).toBeUndefined();
   });

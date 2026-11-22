@@ -14,7 +14,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { 附件目录 } from "@/lib/attachments";
-import { 是录音编号, 录音月份, 是录音格式, 片上限字节, 片读超时毫秒, type 录音格式 } from "./coach-rec";
+import { 是录音编号, 录音月份, 是录音格式, 片上限字节, 片读超时毫秒, 片总时长毫秒, type 录音格式 } from "./coach-rec";
 
 /** 数据目录下的 coach-rec/（和 attachments/ 同级） */
 export function 录音根(): string {
@@ -39,7 +39,7 @@ export function 认录音文件(相对: string | null | undefined, 根 = 录音�
 }
 
 export class 片超限 extends Error {}
-/** 收一片时 片读超时毫秒 内一个字节都没来（对方网断了、挂着不发）：停下，接口回 408 */
+/** 收一片时 片读超时毫秒 内一个字节都没来（对方网断了、挂着不发），或者从开始收已经过了 片总时长毫秒：停下，接口回 408 */
 export class 片读超时 extends Error {}
 
 /** 读一下请求体，超时就抛 片读超时（计时器读完就清，不留悬着的 setTimeout） */
@@ -61,10 +61,11 @@ async function 写盘同步目录(dir: string): Promise<void> {
 }
 
 /**
- * 收一片：边读边写到 .tmp，超过 片上限字节 就停、删临时文件、抛 片超限；超过 片读超时毫秒 没来新字节就停、抛 片读超时；
- * 读完 fsync、改名成正式片（同号覆盖）。回写了多少字节、开头 16 字节（每段第 0 片拿去认格式）
+ * 收一片：边读边写到 .tmp，超过 片上限字节 就停、删临时文件、抛 片超限；超过 片读超时毫秒 没来新字节、或者整片收了超过 片总时长毫秒，
+ * 都停、抛 片读超时；读完 fsync、改名成正式片（同号覆盖）。回写了多少字节、开头 16 字节（每段第 0 片拿去认格式）
  */
-export async function 写片(dir: string, 段: number, 片: number, 体: ReadableStream<Uint8Array> | null, 上限 = 片上限字节, 超时 = 片读超时毫秒): Promise<{ 字节: number; 头: Uint8Array }> {
+export async function 写片(dir: string, 段: number, 片: number, 体: ReadableStream<Uint8Array> | null, 上限 = 片上限字节, 超时 = 片读超时毫秒, 总时长 = 片总时长毫秒): Promise<{ 字节: number; 头: Uint8Array }> {
+  const 截止 = Date.now() + 总时长;
   const 段目录 = path.join(dir, 段名(段));
   await fsp.mkdir(段目录, { recursive: true });
   const 正式 = path.join(段目录, 片名(片));
@@ -77,7 +78,8 @@ export async function 写片(dir: string, 段: number, 片: number, 体: Readabl
     if (体) {
       const 读 = 体.getReader();
       for (;;) {
-        const { done, value } = await 限时读(读.read(), 超时).catch(async (e) => {
+        const 剩 = 截止 - Date.now();
+        const { done, value } = await (剩 <= 0 ? Promise.reject<ReadableStreamReadResult<Uint8Array>>(new 片读超时()) : 限时读(读.read(), Math.min(超时, 剩))).catch(async (e) => {
           if (e instanceof 片读超时) await 读.cancel().catch(() => {});
           throw e;
         });

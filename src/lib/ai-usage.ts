@@ -23,6 +23,8 @@ export const AI_FEATURES = {
   importClean: "导入清洗",
   // 2026-11-17：首页对话框带截图问，图里的字在服务器上认（app/api/mobile/scan?use=ask）
   shot: "截图识字",
+  // 2026-11-22 录音点评 PR4：转写成功一次记一条（coach-rec-jobs.ts，明细里带秒数），设置页另按秒合计
+  asr: "录音转写",
 } as const;
 export type AiFeature = keyof typeof AI_FEATURES;
 
@@ -35,7 +37,8 @@ export async function recordAiUse(user: Actor, feature: AiFeature, summary: stri
   await recordAudit({ user, action: "ai_use", entity: "Ai", entityId: feature, summary, detail: entityId ? { 对象: entityId } : undefined });
 }
 
-export type AiUsage = { feature: AiFeature; label: string; count: number }[];
+/** 秒：只有录音转写有（本月转了多少秒，按每条明细里的 秒 加起来） */
+export type AiUsage = { feature: AiFeature; label: string; count: number; 秒?: number }[];
 
 /** 本月（自然月）各功能的调用次数，含 0 的项，按功能固定顺序 */
 export async function aiUsageThisMonth(now = new Date()): Promise<AiUsage> {
@@ -46,5 +49,19 @@ export async function aiUsageThisMonth(now = new Date()): Promise<AiUsage> {
     _count: { _all: true },
   });
   const map = new Map(rows.map((r) => [r.entityId, r._count._all]));
-  return (Object.keys(AI_FEATURES) as AiFeature[]).map((f) => ({ feature: f, label: f === "brief" && 企业版() ? "智能总结" : AI_FEATURES[f], count: map.get(f) ?? 0 }));
+  // 录音转写按秒：只有企业版有，没转过就不查
+  let 转写秒 = 0;
+  if (企业版() && map.get("asr")) {
+    for (const r of await prisma.auditLog.findMany({ where: { action: "ai_use", entityId: "asr", at: { gte: start } }, select: { detail: true } })) {
+      try {
+        const 秒 = Number((JSON.parse(r.detail ?? "{}") as { 秒?: unknown }).秒);
+        if (Number.isFinite(秒) && 秒 > 0) 转写秒 += 秒;
+      } catch {
+        /* 明细坏了的不算秒，次数照算 */
+      }
+    }
+  }
+  return (Object.keys(AI_FEATURES) as AiFeature[])
+    .filter((f) => f !== "asr" || 企业版())
+    .map((f) => ({ feature: f, label: f === "brief" && 企业版() ? "智能总结" : AI_FEATURES[f], count: map.get(f) ?? 0, ...(f === "asr" ? { 秒: 转写秒 } : {}) }));
 }

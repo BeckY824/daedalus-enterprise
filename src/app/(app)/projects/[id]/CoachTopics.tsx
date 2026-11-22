@@ -30,7 +30,7 @@ export const 录音点评未开放 = "录音点评即将开放";
  * 客户页摆在右上角、「更多操作 ▾」左边；独立项目页（看不到客户的上级留在 /projects/<id>）摆在沟通卡头。
  * 下拉：灰字小标题「项目 · 名字（节点）」（设计语言 D2 · M1-b，和「更多操作 ▾」同一句）→「写点评」（原「发起主题」那只框，字段、服务端都不变）→「录音点评」（灰着、点不动，第二行写为什么）
  * 录音点评 PR2（11-22）：开关开着时（服务端给了 数据.录音）多一项「传录音文件」；手机（≤767）上改成从底部弹出的选择板，三项纵排、整行可点。
- * 开关关着时没有 数据.录音，和原来一模一样
+ * 开关关着时没有 数据.录音，和原来一模一样；PR4 起还要 数据.录音.可录（密钥 + ffmpeg 自检过）才出「传录音文件」
  */
 export function StartReviewButton({ 数据, projectId, size }: { 数据: 项目主题们 | null | undefined; projectId: string; size?: "small" }) {
   const [开, set开] = useState<"写" | "传" | null>(null);
@@ -38,7 +38,8 @@ export function StartReviewButton({ 数据, projectId, size }: { 数据: 项目�
   const 屏 = Grid.useBreakpoint();
   if (!数据?.能发) return null;
   const 当前 = 项目小标题(数据.项目名, 数据.当前节点);
-  const 录音 = !!数据.录音;
+  // PR4：开关开着还要能用（密钥 + ffmpeg 自检过）才出「传录音文件」；不能用时下拉和开关关着一样（已有的草稿在沟通卡上照样显示）
+  const 录音 = !!数据.录音?.可录;
   const 写项 = { key: "write", label: <span data-testid="coach-review-write">{两行("写点评", "打字写，和原来的「发起主题」一样")}</span>, onClick: () => set开("写") };
   const 传项 = { key: "upload", label: <span data-testid="coach-review-upload">{两行("传录音文件", "手机录音机、通话录音录好的文件")}</span>, onClick: () => set开("传") };
   const 录项 = { key: "voice", disabled: true, label: <span data-testid="coach-review-voice" title={录音点评未开放}>{两行("录音点评", 录音点评未开放)}</span> };
@@ -70,7 +71,7 @@ export function StartReviewButton({ 数据, projectId, size }: { 数据: 项目�
         </Drawer>
       )}
       {开 === "写" && <NewTopicModal 数据={数据} projectId={projectId} 关={() => set开(null)} />}
-      {开 === "传" && <CoachRecUploadModal projectId={projectId} 项目名={数据.项目名} 关={() => set开(null)} />}
+      {开 === "传" && <CoachRecUploadModal projectId={projectId} 项目名={数据.项目名} 可提交={录音} 关={() => set开(null)} />}
     </>
   );
 }
@@ -121,7 +122,7 @@ function NewTopicModal({ 数据, projectId, 关 }: { 数据: 项目主题们; pr
 export default function CoachTopics({ 数据, projectId }: { 数据: 项目主题们 | null | undefined; projectId?: string }) {
   const [看关的, set看关的] = useState(false);
   // 录音草稿（录音点评 PR2，只有录的人自己的；开关关着没有 数据.录音）：钉在主题上面
-  const 草稿 = 数据?.录音?.草稿们.length && projectId ? <CoachRecDrafts projectId={projectId} 项目名={数据.项目名} 草稿们={数据.录音.草稿们} /> : null;
+  const 草稿 = 数据?.录音?.草稿们.length && projectId ? <CoachRecDrafts projectId={projectId} 项目名={数据.项目名} 草稿们={数据.录音.草稿们} 可提交={数据.录音.可录} /> : null;
   if (!数据 || !数据.们.length) return 草稿;
   const 开着 = 数据.们.filter((t) => t.status !== "已关闭");
   const 关了 = 数据.们.filter((t) => t.status === "已关闭");
