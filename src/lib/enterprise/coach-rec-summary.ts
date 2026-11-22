@@ -58,6 +58,13 @@ const 条们 = (v: unknown): string[] =>
 
 /** 模型回的内容认不出（不是对象、缺主题或要点）：当整理失败，不当「没听清」（PR5 审查） */
 export const 回的不对话 = "AI 回的内容格式不对";
+/** 模型回了话、但内容认不出（JSON 解不开、缺主题要点）：调过模型，整理一轮照记用量（PR5 审查） */
+export class 回的不对错 extends Error {
+  readonly 调了 = true;
+  constructor() {
+    super(回的不对话);
+  }
+}
 
 /**
  * 模型回的 JSON → 主题、要点（按段拼成「【段名】\n· 一条」；超长按主题上限截）。
@@ -85,7 +92,18 @@ export function 认整理结果(j: unknown, 四段: boolean): 整理结果 {
 export async function AI整理(转写: string, 说话人数: number | null, 切段了: boolean): Promise<整理结果 & { 调了: boolean }> {
   if (正文字数(转写) < 最少可总结字数) return { 可总结: false, 调了: false };
   const 四段 = 要第四段(说话人数, 切段了);
-  const { chatJSON } = await import("@/lib/llm");
-  const j = await chatJSON(整理提示词(转写, 四段), { feature: "other", timeoutMs: 120_000, maxTokens: 2_000, temperature: 0.2 });
-  return { ...认整理结果(j, 四段), 调了: true };
+  const { chatJSON, JSON格式不对 } = await import("@/lib/llm");
+  let j: unknown;
+  try {
+    j = await chatJSON(整理提示词(转写, 四段), { feature: "other", timeoutMs: 120_000, maxTokens: 2_000, temperature: 0.2 });
+  } catch (e) {
+    // 模型回了、但不是 JSON：算调过（记用量），话照「格式不对」给人看
+    if (e instanceof Error && e.message === JSON格式不对) throw new 回的不对错();
+    throw e;
+  }
+  try {
+    return { ...认整理结果(j, 四段), 调了: true };
+  } catch {
+    throw new 回的不对错();
+  }
 }

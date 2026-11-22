@@ -93,6 +93,7 @@ const 假环境 = ([不能录]: [boolean]) => {
     const m = /\/api\/coach-rec\/([^/]+)\/chunk\/(\d+)\/(\d+)$/.exec(url);
     if (m) {
       if (w.__断网) return 回(503, { error: "忙" });
+      if (w.__拒段 === Number(m[2])) return 回(415, { error: "这一段和前面录的格式不一样" });
       片们.push({ 段: Number(m[2]), 片: Number(m[3]) });
       return 回(200, { ok: true });
     }
@@ -499,12 +500,12 @@ it("PR3 审查：飞书原生录中途没给文件 → 这段丢掉，这一页�
   await page.close();
 });
 
-it("PR3 审查：补段沿用第一段的录法——网页录的在飞书里补也走网页录；飞书原生录的锁按住、走飞书；录法切换锁住", async () => {
+it("PR3 审查：补段沿用第一段的录法——网页录的在飞书里补也走网页录（按住 / 点按不锁）；飞书原生录的锁按住、走飞书", async () => {
   const 草稿 = (sourceKind: string) => ({ id: "crec9", status: "待提交", sourceKind, 文件名: null, 总字节: 9000, 已收字节: 9000, 已收片: [], 格式: "m4a", 开始于: "", 更新于: "1", 能听: true, 时长毫秒: 5000, 段数: 1, 打断们: [], 能补: true, 错: null });
   const 一 = await open("list", { 草稿们: [草稿("网页录")] }, { 飞书: true });
   await 一.page.getByTestId("crec-add-seg").click();
   await 一.page.getByTestId("ptt-panel").waitFor();
-  expect(await 一.page.locator(".ptt-modal .ant-segmented").getAttribute("class")).toContain("ant-segmented-disabled");
+  expect(await 一.page.locator(".ptt-modal .ant-segmented").getAttribute("class")).not.toContain("ant-segmented-disabled");
   await 按住(一.page);
   await 等录着(一.page);
   await 一.page.waitForTimeout(1100);
@@ -531,6 +532,46 @@ it("PR3 审查：补段沿用第一段的录法——网页录的在飞书里补
   expect(await 请求们(二.page)).toEqual(["POST /api/coach-rec/crec9/resume", "PUT /api/coach-rec/crec9/chunk/2/0", "POST /api/coach-rec/crec9/finish"]);
   expect(二.errors).toEqual([]);
   await 二.page.close();
+});
+
+it("PR3 二审：补段传片被拒（415）→ 丢掉这段、退回待提交，前面的段留着，能接着提交", async () => {
+  const 草稿 = { id: "crec9", status: "待提交", sourceKind: "网页录", 文件名: null, 总字节: 9000, 已收字节: 9000, 已收片: [], 格式: "m4a", 开始于: "", 更新于: "1", 能听: true, 时长毫秒: 5000, 段数: 1, 打断们: [], 能补: true, 错: null };
+  const { page, errors } = await open("list", { 草稿们: [草稿] });
+  await page.evaluate(() => { (window as unknown as Record<string, unknown>).__拒段 = 2; });
+  await page.getByTestId("crec-add-seg").click();
+  await page.getByTestId("ptt-panel").waitFor();
+  await 按住(page);
+  await 等录着(page);
+  await page.waitForTimeout(1100);
+  await page.mouse.up();
+  await page.getByTestId("ptt-tip").filter({ hasText: "这一段没留，前面录的还在" }).waitFor();
+  expect(await page.getByTestId("ptt-tip").innerText()).toBe("这一段和前面录的格式不一样；这一段没留，前面录的还在");
+  expect(await 请求们(page)).toEqual(["POST /api/coach-rec/crec9/resume", "PUT /api/coach-rec/crec9/chunk/2/0", "POST /api/coach-rec/crec9/drop"]);
+  await page.getByTestId("ptt-pending").filter({ hasText: "已录 1 段" }).waitFor();
+  expect(await page.getByTestId("ptt-pending").getAttribute("data-status")).toBe("待提交");
+  await page.getByTestId("ptt-submit").click();
+  await page.waitForFunction(() => (window as unknown as 页).__请求.includes("POST /api/coach-rec/crec9/submit"));
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
+it("PR3 二审：网页录第一段点按录了 30 分钟，补段默认按住超了 10 分钟 → 提示改用点按；切到点按能接着录", async () => {
+  const 草稿 = { id: "crec9", status: "待提交", sourceKind: "网页录", 文件名: null, 总字节: 9000, 已收字节: 9000, 已收片: [], 格式: "m4a", 开始于: "", 更新于: "1", 能听: true, 时长毫秒: 30 * 60_000, 段数: 1, 打断们: [], 能补: true, 错: null };
+  const { page, errors } = await open("list", { 草稿们: [草稿] });
+  await page.getByTestId("crec-add-seg").click();
+  await page.getByTestId("ptt-panel").waitFor();
+  await 按住(page);
+  await page.getByTestId("ptt-tip").filter({ hasText: "改用「点按录音」接着录" }).waitFor();
+  await page.mouse.up();
+  await page.locator(".ptt-modal .ant-segmented-item").filter({ hasText: "点按录音" }).click();
+  await page.getByTestId("ptt-btn").click();
+  await 等录着(page);
+  await page.waitForTimeout(1100);
+  await page.getByTestId("ptt-btn").click();
+  await page.waitForFunction(() => (window as unknown as 页).__请求.some((x) => x.endsWith("/finish")));
+  expect(await 请求们(page)).toEqual(["POST /api/coach-rec/crec9/resume", "PUT /api/coach-rec/crec9/chunk/2/0", "POST /api/coach-rec/crec9/finish"]);
+  expect(errors).toEqual([]);
+  await page.close();
 });
 
 it("草稿条：录的待提交卡写打断、「再录一段」→ 面板「按住 再补一段」→ resume、第 2 段、finish", async () => {
