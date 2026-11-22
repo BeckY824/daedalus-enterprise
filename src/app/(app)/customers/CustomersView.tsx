@@ -1264,6 +1264,8 @@ export default function CustomersView({
   */
   const 导出范围名 = 客户范围 && filters.scope ? 客户范围名[filters.scope as 客户范围] : undefined;
   const 导出说明 = `按当前${[导出范围名 && `范围「${导出范围名}」`, 筛了 > 0 && "筛选"].filter(Boolean).join("和") || "条件"}导出 ${total.toLocaleString("zh-CN")} 位${b.customer}（含跟进记录）`;
+  /** 导出中旁边那颗「取消导出」：只有它 abort（离开页面不打断导出，D8-3）；现状主题摆在页头下一行，换皮主题照原样摆在导出键旁边 */
+  const 取消导出钮 = <Button size="small" onClick={() => 导出取消.current?.abort()}>取消导出</Button>;
   /** 离职交接（C15）：页头右端。谁看得见、数怎么数照原来的入口（离职交接入口），不是这页自己数 */
   const 离职交接钮 = 待交接 != null && <Link key="handover" href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>;
   /** 「新建 ▾」（11-12 用户：「右上角改为新建，然后可以选择新建项目或者新建客户」）：只能建一样时直接是那一样，一样都不能不摆 */
@@ -1369,7 +1371,7 @@ export default function CustomersView({
               >
                 导出
               </Button>
-              {导出中 && <Space><span role="status" style={{ fontSize: 12 }}>{导出进度}</span><Button size="small" onClick={() => 导出取消.current?.abort()}>取消导出</Button></Space>}
+              {导出中 && <Space><span role="status" style={{ fontSize: 12 }}>{导出进度}</span>{取消导出钮}</Space>}
               {!导出中 && 导出话 && <span role={导出话.错 ? "alert" : "status"} className={导出话.错 ? "cu-said cu-said-err" : "cu-said"}>{导出话.话}</span>}
             </>)}
             {新建钮}
@@ -1381,7 +1383,7 @@ export default function CustomersView({
       {新样 && 能导入导出 && 导出中 && (
         <div role="status" className="cu-said cu-said-row cust-export-row">
           <span>{导出进度}</span>
-          <Button size="small" onClick={() => 导出取消.current?.abort()}>取消导出</Button>
+          {取消导出钮}
         </div>
       )}
       {新样 && !导出中 && 导出话 && <div role={导出话.错 ? "alert" : "status"} className={导出话.错 ? "cu-said cu-said-row cu-said-err" : "cu-said cu-said-row"}>{导出话.话}</div>}
