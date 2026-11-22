@@ -551,6 +551,14 @@ const 派生: Record<string, Record<string, string>> = {
     closedAt: "关闭的时刻，系统写", deletedAt: "系统管理员删除时系统写（只打记号）",
   },
   EntCoachReply: { topicId: "回在哪个主题下，系统定", userId: "回复人，当前登录账号" },
+  // 企业版录音点评的录音（2026-11-22，迁移 162，录音点评 PR2）：lib/enterprise/coach-rec-db.ts 系统写，界面只传文件、点放弃
+  EntCoachRecording: {
+    projectId: "在哪个项目上开始的，开始时定", authorId: "录 / 传的人，当前登录账号（不能代别人）", status: "上传中 / 待提交 / 已放弃……：传完、放弃时系统改",
+    sourceKind: "上传 / 网页录 / 飞书原生录，开始时按入口定", fileName: "传文件时浏览器给的原文件名，开始时记", mime: "浏览器报的类型，开始时记（只作参考）",
+    format: "服务端按文件头认的格式，收第一片时系统写", bytes: "传文件开始时报的总字节数，传完系统核对", chunks: "收到几片，传完系统数",
+    segCount: "几段，传完系统数", audioPath: "拼好的文件在数据目录下的相对路径，传完系统写", startedAt: "开始的时刻，系统写",
+    endedAt: "传完的时刻，系统写", deletedAt: "放弃的时刻，系统写（文件当场删）",
+  },
   // 企业版撞号台账（2026-11-10，迁移 115）：lib/enterprise/dupe-ledger.ts 系统写，用户只能点「申请挂靠」
   EntDupeHit: {
     userId: "查询人，当前登录账号", keyType: "撞的是哪种键（手机号 / 客户名……），查重时系统定", keyValue: "撞的值，查重时系统写",
@@ -689,6 +697,14 @@ const 已知缺口: Record<string, Record<string, string>> = {
   ProjectMember: { inviteStatus: "1a 拉人一律写 JOINED；用户能动它要等 1b 进组邀请（团队版会话）" },
   // 企业版组织架构（2026-10-24）：这一步只有表和 helper，设置里的「组织架构」页在下一个 PR，到时挪进 可写
   EntDept: { name: "设置里的组织架构页在下一个 PR 才有写入口", parentId: "设置里的组织架构页在下一个 PR 才有写入口", sort: "设置里的组织架构页在下一个 PR 才有写入口" },
+  // 企业版录音点评（2026-11-22，迁移 162）：表在 PR2 一次建全（迁移只加表），这几列等后面的 PR 才写
+  EntCoachRecording: {
+    durationMs: "PR4 转写前服务端用 ffprobe 算（不信客户端）", sampleRate: "PR4 转写前服务端用 ffprobe 读出来，定用哪个引擎", interrupts: "PR3 按住说话 / 点按录音被打断时系统写",
+    transcript: "PR4 腾讯云转写回来的全文，系统写", segments: "PR4 腾讯云转写回来的分段，系统写", speakers: "PR4 腾讯云转写认出的说话人数，系统写",
+    engine: "PR4 提交转写时系统写用的哪个引擎", asrTaskId: "PR4 提交转写时系统写腾讯云任务号", asrSubmittedAt: "PR4 提交转写时系统写提交时刻",
+    draftTitle: "PR5 AI 整理出的主题、确认框里改过的也存这里", draftBody: "PR5 AI 整理出的要点、确认框里改过的也存这里", error: "PR4 / PR5 转写或整理失败时系统写给人看的原因",
+    topicId: "PR5 确认发出时系统写对应的主题", remindedAt: "PR6 草稿到期前一天提醒时系统写", audioPurgedAt: "PR6 录音 180 天到期删音频时系统写",
+  },
   EntMember: {
     userId: "设置里的组织架构页在下一个 PR 才有写入口", deptId: "设置里的组织架构页在下一个 PR 才有写入口", bizRole: "设置里的组织架构页在下一个 PR 才有写入口",
     line: "设置里的组织架构页在下一个 PR 才有写入口", managerId: "设置里的组织架构页在下一个 PR 才有写入口", dottedManagerId: "设置里的组织架构页在下一个 PR 才有写入口",

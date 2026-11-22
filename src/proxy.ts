@@ -79,6 +79,9 @@ function 登录后回来(request: NextRequest): string | null {
   return 站内路径(串 ? `${pathname}?${串}` : pathname);
 }
 
+/** 腾讯云取录音文件的签名地址前缀（app/api/coach-rec/fetch/[id]/route.ts，只认签名） */
+const 录音取文件前缀 = "/api/coach-rec/fetch/";
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   // /api 只为切换视图进来：别的照旧不经过这里（登录跳转、页面跳转都不管 /api）
@@ -118,9 +121,11 @@ export async function proxy(request: NextRequest) {
   // /terms 与 /privacy 是注册前要读的条款，当然不能要求先登录；
   // /forgot 是找回密码，忘了密码的人当然是未登录状态；
   // /m 是手机版（2026-10-15）：页面本身没有数据，数据在手机本地、接口凭手机自己的令牌（Bearer），不用网页会话
+  // /api/coach-rec/fetch/ 是给腾讯云取录音文件的签名地址（录音点评 PR2，11-22）：不认会话、只认签名，路由里验签、验过期、验状态。
+  //   /api 平时不经这里（matcher），写进名单是兜底：以后 matcher 变了也不会把腾讯云的请求跳去登录页
   const 公开 =
     pathname === "/login" || pathname === "/signup" || pathname === "/forgot" || pathname === "/terms" || pathname === "/privacy" ||
-    pathname === "/m" || pathname.startsWith("/m/");
+    pathname === "/m" || pathname.startsWith("/m/") || pathname.startsWith(录音取文件前缀);
 
   if (!valid && !公开) {
     const url = request.nextUrl.clone();
