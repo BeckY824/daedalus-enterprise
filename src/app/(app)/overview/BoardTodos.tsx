@@ -15,12 +15,20 @@ import { 跟进类型们 } from "@/lib/constants";
 import type { 预警行 } from "@/lib/project/review-extras";
 import { dayjs, fmtDateTime, smartTime } from "@/lib/utils";
 import { 带钟点smart } from "../dashboard/todo-time";
+import { 定了时刻 } from "@/lib/reminders";
 
 /**
  * 现状主题的到期写法（设计语言 R-B，11-22 总控定）：同首页待办，带钟点的 smartTime（「3 天前 15:00」「11 月 25 日 09:30」，今天 / 明天本来带钟点）。
- * 只定了日子没定钟点的（明确钟点 = false）不补钟点，免得写出没人定过的「00:00」
+ * 补不补钟点和提醒同一套口径（lib/reminders.ts 定了时刻）：新记录看明确钟点；旧数据明确钟点是 null，零点当只定了日子，不写没人定过的「00:00」。
+ * 跨年的 smartTime 写成「2025 年 10 月 26 日 09:30」（约 165px），表格「到期」列放不下、伸进「内容」列（R-B 审查 11-22），
+ * 跨年改写短的「2025-10-26 09:30」（同悬停全时间、账簿主题的写法），到期列现状主题放到 148
  */
-const 到期字 = (t: string, 明确钟点: boolean | null) => (明确钟点 === false ? smartTime(t) : 带钟点smart(t));
+const 到期字 = (t: string, 明确钟点: boolean | null) => {
+  const 钟点 = 定了时刻(new Date(t), 明确钟点);
+  const s = smartTime(t);
+  if (s.includes("年")) return dayjs(t).format(钟点 ? "YYYY-MM-DD HH:mm" : "YYYY-MM-DD");
+  return 钟点 ? 带钟点smart(t) : s;
+};
 import { useIsNowSkin } from "@/lib/use-skin";
 import EmptyState, { 表格空态 } from "@/components/EmptyState";
 import CountUp from "@/components/CountUp";
@@ -184,7 +192,8 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
     {
       title: "到期",
       key: "时间",
-      width: 132,
+      // 现状主题 148：最长的写法是跨年短写「2025-10-26 09:30」（实量约 125，格子内边距左右各 8），132 只剩 116 放不下（R-B 审查 11-22）
+      width: 新样 ? 148 : 132,
       render: (_: unknown, x: 复盘待办行) => <span className="nowrap btodo-time" title={x.时间 ? fmtDateTime(x.时间) : undefined} suppressHydrationWarning>{x.时间 ? (新样 ? 到期字(x.时间, x.明确钟点) : fmtDateTime(x.时间)) : "没定日期"}</span>,
     },
     {

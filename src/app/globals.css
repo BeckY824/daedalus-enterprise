@@ -6313,13 +6313,25 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]) .rtalk-side.is-now .rtalk-side-line { display: block; line-height: var(--hit-touch); padding: 0 var(--card-pad); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
 }
 
-/* R4 数据：概况 6 格 + 阶段 4 格两排同款，数字同号 26，不截（窄格金额已缩写，全值在悬停） */
-:root:is(:not([data-skin]), [data-skin="now"]) .rkpi-v { overflow: visible; text-overflow: clip; font-size: var(--fs-num); }
-:root:is(:not([data-skin]), [data-skin="now"]) .rkpi-s { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: var(--fs-note); color: var(--text-muted); }
+/* R4 数据：概况 6 格 + 阶段 4 格两排同款，数字同号 26（窄格金额已缩写，全值在悬停）；大数仍放不下时省略号兜底（基础规则），不压隔壁格（R-B 审查 11-22） */
+:root:is(:not([data-skin]), [data-skin="now"]) .rkpi-v { font-size: var(--fs-num); }
+/* 小字不截、放不下就折行：1024 扣掉左栏四格每格约 155、390 两格每格约 150，一截就把句尾的数截没了（R-B 审查 11-22）；整句也并进了悬停提示 */
+:root:is(:not([data-skin]), [data-skin="now"]) .rkpi-s { white-space: normal; overflow-wrap: anywhere; min-width: 0; font-size: var(--fs-note); color: var(--text-muted); }
 :root:is(:not([data-skin]), [data-skin="now"]) a.rkpi-i:hover { background: var(--row-hover); }
 :root:is(:not([data-skin]), [data-skin="now"]) .rkpi.rkpi-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 :root:is(:not([data-skin]), [data-skin="now"]) .rkpi.rkpi-4 > .rkpi-i { border-top: 0; border-left: 1px solid var(--line-soft); }
 :root:is(:not([data-skin]), [data-skin="now"]) .rkpi.rkpi-4 > .rkpi-i:first-child { border-left: 0; }
+/* 1200–1439 概况一排 6 格、每格内容只剩 ~136（1280 扣掉左栏 220 和正文内边距），「¥ 123.46 亿」这种百亿金额差几像素被省略号截：
+   两排格子左右内边距一起收到 12（两排数字左边仍对齐），1280 起放得下；更窄（1200 出头）再放不下才走省略号兜底，全值在悬停（R-B 审查 11-22） */
+@media (min-width: 1200px) and (max-width: 1439px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .rkpi-i { padding-inline: var(--s3); }
+}
+/* AI 面板开着、正文只剩 ~840 时（同 xl-6 指标卡那条 1799 重映射）：概况 6 格改三格一排，金额不至于缩到省略号 */
+@media (min-width: 1200px) and (max-width: 1799px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .shell-dock-open .rkpi:not(.rkpi-4) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .shell-dock-open .rkpi:not(.rkpi-4) > .rkpi-i:nth-child(3n + 1) { border-left: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .shell-dock-open .rkpi:not(.rkpi-4) > .rkpi-i:nth-child(n + 4) { border-top: 1px solid var(--line-soft); }
+}
 @media (max-width: 767px) {
   :root:is(:not([data-skin]), [data-skin="now"]) .rkpi.rkpi-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   :root:is(:not([data-skin]), [data-skin="now"]) .rkpi.rkpi-4 > .rkpi-i:nth-child(odd) { border-left: 0; }
@@ -6329,10 +6341,15 @@ button.proj-miss-chip { cursor: pointer; }
 :root:is(:not([data-skin]), [data-skin="now"]) .rkpi-blk-sum { margin: 0; color: var(--ink-soft); overflow-wrap: anywhere; }
 :root:is(:not([data-skin]), [data-skin="now"]) .rkpi-blk-sum b { font-variant-numeric: tabular-nums; color: var(--ink); }
 /* 漏斗：个数在条外右侧一列，不压条（D39 后半）；「已经结束的」在卡底（R-新13） */
-:root:is(:not([data-skin]), [data-skin="now"]) .pfun-now .pfun-row { grid-template-columns: 3em minmax(0, 1fr) minmax(4ch, auto) 5.5em; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pfun-now .pfun-row { grid-template-columns: 3em minmax(0, 1fr) 6ch 5.5em; }
 :root:is(:not([data-skin]), [data-skin="now"]) .pfun-now .pfun-bar { min-width: 4px; padding: 0; }
 :root:is(:not([data-skin]), [data-skin="now"]) .pfun-n-out { text-align: end; }
 :root:is(:not([data-skin]), [data-skin="now"]) .pfun-foot { margin: var(--s3) 0 0; padding-top: var(--s3); border-top: 1px solid var(--line-soft); font-size: var(--fs-note); color: var(--text-muted); overflow-wrap: anywhere; }
 /* 按负责人：默认 10 行，多的藏起来（R-新12） */
 :root:is(:not([data-skin]), [data-skin="now"]) .stat-row-more { display: none; }
 :root:is(:not([data-skin]), [data-skin="now"]) .stat-more.ant-btn { margin-top: var(--s2); min-height: var(--hit); padding-inline: 0; }
+/* 触屏点击区 44（R-B 审查 11-22）：「展开全部 N 人 / 收起」；卡点卡头的「去卡点页签 ›」上下负外边距抵掉，卡头不长高 */
+@media (max-width: 767px), (pointer: coarse) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .stat-more.ant-btn { min-height: var(--hit-touch); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rkpi-blk-go { display: inline-flex; align-items: center; min-height: var(--hit-touch); margin-block: -11px; }
+}

@@ -62,7 +62,10 @@ export function KPI排({ 格们, 名, 新样 = false, 列 = 6 }: { 格们: 格[]
             {g.小 != null && <span className="rkpi-s">{g.小}</span>}
           </>
         );
-        const 说 = g.全 ? <>{g.全}<br />{g.注}</> : g.注;
+        // 小字窄格里折行不截，悬停也要看得到整句（数字常在句尾）：小字是一句话就并进提示，注已经包含在小字里的不重复（R-B 审查 11-22）
+        const 小字 = 新样 && typeof g.小 === "string" && g.小 !== g.注 ? g.小 : null;
+        const 行们 = [g.全, 小字, 小字?.includes(g.注) ? null : g.注].filter((x): x is string => !!x);
+        const 说 = 行们.length > 1 ? 行们.map((x, i) => <span key={i}>{i > 0 && <br />}{x}</span>) : 行们[0];
         return (
           // hover + focus 不用 click：触屏长按时 pointerenter 延时打开、抬起后 click 又切回关，闪一下就没（C-A1 3704 实操同一个坑）；
           // 格子有 tabIndex=0，点按即聚焦、点别处才收
@@ -96,7 +99,7 @@ function ReviewAlertRow({ 分布, 预警, 将回公海, 不跟批次 = false }: 
               <b className="section-title">卡点<span className="card-count">（{分布.总数}）</span></b>
               {不跟批次 && <span className="muted rkpi-cap">{不跟批次话}</span>}
             </span>
-            <Link href="/overview?tab=block" className="link-strong nowrap">去卡点页签 ›</Link>
+            <Link href="/overview?tab=block" className="link-strong nowrap rkpi-blk-go">去卡点页签 ›</Link>
           </div>
           {分布.总数 === 0 ? (
             <p className="btodo-recycle-off">没有未解决的卡点</p>

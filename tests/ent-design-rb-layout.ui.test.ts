@@ -58,7 +58,7 @@ beforeAll(async () => {
       预警:[{id:'w0',名:'要回公海的项目'+长,节点:'潜客培育',负责人:'小王',回收日:'2026-11-25'}],
       分布:{总数:9,按主体:[{主体:'客户',数:5},{主体:'某个特别长特别长特别长特别长特别长的阻碍主体',数:3},{主体:'没填',数:1}],按状态:[{状态:'待接受',数:4},{状态:'处理中',数:5}]}};
     const 一段={
-      合计:{新建:6,转商机:4,转订单:2,成功交付:3,交付金额:23456789012,线索流失:1,丢单:1,异常状态:0},
+      合计:{新建:6,转商机:4,转订单:2,成功交付:3,交付金额:23456789012,线索流失:1,丢单:1,异常状态:2},
       trend:Array.from({length:26},(_,i)=>({label:'10-'+String(i+1).padStart(2,'0'),新建:i%3,转商机:i%2,转订单:i%4===0?1:0,成功交付:i%5===0?1:0})),
       按人:Array.from({length:人数},(_,i)=>({id:'u'+i,name:长+i,新建:3,转商机:2,转订单:1,成功交付:1,交付金额:23456789,没成:1})),
       外币:0,
@@ -67,8 +67,11 @@ beforeAll(async () => {
       线索转商机:4,
     };
     const 天前=(n)=>new Date(Date.now()-n*86400000).toISOString();
+    // 第 3 行跨年（去年 10 月 26 日 09:30，R-B 审查：smartTime 写成「2025 年 10 月 26 日 09:30」撑出到期列）；
+    // 第 4 行旧数据：明确钟点 = null、本地零点（只定了日子），不该写出「00:00」
+    const 今=new Date(), 去年=new Date(今.getFullYear()-1,9,26,9,30).toISOString(), 旧零点=new Date(今.getFullYear(),今.getMonth(),今.getDate()-20).toISOString();
     const 待办行=(n)=>Array.from({length:n},(_,i)=>({
-      key:'task:'+i, kind:'task', id:String(i), 时间:i===0?天前(3):天前(40+i), 明确钟点:i!==1,
+      key:'task:'+i, kind:'task', id:String(i), 时间:i===0?天前(3):i===3?去年:i===4?旧零点:天前(40+i), 明确钟点:i===4?null:i!==1,
       内容:'第'+i+'条：'+长+'的方案回访和报价确认', customerId:'c'+i, customerName:长+i, projectName:'华东二期产线改造项目'+长,
       ownerId:'u1', ownerName:'很长很长的负责人名字', 组:'逾期', 去:'/projects/p'+i,
     }));
@@ -88,7 +91,7 @@ beforeAll(async () => {
       else if(o.页==='month'){ 页签='data'; view='本月'; 里=<ProjectPeriodView 数={一段} 本位币="CNY" 口径="2026 年 10 月" 单人={false}/>; }
       else { 页签='data'; 里=<ProjectNowView 数={现在} 本位币="CNY" 单人={false} 概况={概况}/>; }
       createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
-        <main style={{padding:16}}><DataShell view={view} 项目 页签={页签} 选人={{选项:[{value:'u1',label:'小王'}],当前:''}}>{里}</DataShell></main>
+        <DataShell view={view} 项目 页签={页签} 选人={{选项:[{value:'u1',label:'小王'}],当前:''}}>{里}</DataShell>
       </BusinessProvider></App>);
     };
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
@@ -97,12 +100,19 @@ beforeAll(async () => {
 afterAll(async () => { await browser?.close(); });
 
 type 页 = "todo" | "talk" | "topic" | "data" | "month";
-async function 打开(页: 页, width = 1280, skin?: string, 布局?: "board"): Promise<{ page: Page; errors: string[] }> {
-  const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: width < 768 }); page.setDefaultTimeout(5000);
+/**
+ * 壳（R-B 审查 11-22，同 G-A 布局测试 tests/ent-design-ga-layout.ui.test.ts）：正文在 main.app-content 里，电脑宽左边让出左栏 220、正文内边距 22 / 26，
+ * 宽度才是真实宽度（原来只有 padding 16，1024 下每格多出五六十）。面板 = AI 面板开着：外层 .shell-dock-open、右边让出 380
+ */
+async function 打开(页: 页, width = 1280, skin?: string, 布局?: "board", 面板 = false): Promise<{ page: Page; errors: string[] }> {
+  const 手 = width < 768;
+  const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: 手 }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
-  await page.route("http://ent.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
+  const 壳 = `<div class='${面板 ? "shell-dock-open " : ""}has-ai-fab'><main class='main app-content'><div id='root'></div></main></div>`;
+  await page.route("http://ent.test/**", r => r.fulfill({ contentType: "text/html", body: `<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><style>body{margin:0}</style>${壳}` }));
   await page.goto("http://ent.test/overview");
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+  await page.addStyleTag({ content: 手 ? ".app-content{display:block}" : `.app-content{display:block;margin-left:220px;padding:22px 26px${面板 ? ";margin-right:380px" : ""}}` });
   if (skin) await page.evaluate((k) => { document.documentElement.dataset.skin = k; }, skin);
   await page.addScriptTag({ content: bundle });
   await page.evaluate((x) => (window as unknown as { __画: (o: unknown) => void }).__画(x), { 页, 布局 });
@@ -154,6 +164,53 @@ it.each([1024, 1280, 1366, 390])("数据·现在 %ipx：概况 6 格 + 阶段 4 
   expect(errors).toEqual([]); await page.close();
 });
 
+/** R-B 审查 11-22：真实宽度下 KPI 小字不截（折行，数字在句尾也看得到），整句也并进悬停提示；大数省略号兜底不压隔壁格 */
+it.each([1024, 390])("数据 %ipx：KPI 小字不截、放不下折行；数字格 overflow hidden + 省略号兜底", async (w) => {
+  for (const 页 of ["data", "month"] as const) {
+    const { page, errors } = await 打开(页, w);
+    const r = await page.locator(".rkpi-s").evaluateAll((els) => els.map((e) => {
+      const b = e.getBoundingClientRect(), p = e.closest(".rkpi-i")!, pb = p.getBoundingClientRect();
+      return { t: (e as HTMLElement).innerText, 截: e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1, 出: b.right > pb.right + 1 || b.bottom > pb.bottom + 1 };
+    }));
+    expect(r.length).toBe(4);
+    for (const x of r) expect(x, `${页}「${x.t}」`).toMatchObject({ 截: false, 出: false });
+    expect(await page.locator(".rkpi-v").first().evaluate((e) => [getComputedStyle(e).overflow, getComputedStyle(e).textOverflow])).toEqual(["hidden", "ellipsis"]);
+    expect(await 不横滚(page)).toBe(true);
+    expect(errors).toEqual([]); await page.close();
+  }
+});
+
+it("数据 1024：小字整句在悬停提示里（本月「没成」的另有异常、现在「异常状态」的公海进行中的项目）", async () => {
+  const m = await 打开("month", 1024);
+  await m.page.locator('section[aria-label="这一段"] .rkpi-i', { hasText: "没成" }).hover();
+  await expect.poll(() => m.page.locator(".ant-tooltip:not(.ant-tooltip-hidden)").innerText().catch(() => "")).toContain("另有异常 2，不算在没成里");
+  await m.page.close();
+  const d = await 打开("data", 1024);
+  await d.page.locator('section[aria-label="各阶段"] .rkpi-i', { hasText: "异常状态" }).locator(".rkpi-k").hover();
+  await expect.poll(() => d.page.locator(".ant-tooltip:not(.ant-tooltip-hidden)").innerText().catch(() => "")).toContain("公海里还有 2 个进行中的项目");
+  await d.page.close();
+});
+
+it("数据·现在 1440 + AI 面板开着：概况 6 格改三格一排，数字都露着", async () => {
+  const { page, errors } = await 打开("data", 1440, undefined, undefined, true);
+  const 概况 = page.locator('section[aria-label="复盘概况"]');
+  expect(await 概况.evaluate((e) => getComputedStyle(e).gridTemplateColumns.split(" ").length)).toBe(3);
+  expect(await 数字都露着(page, 'section[aria-label="复盘概况"] .rkpi-v', ".rkpi-i")).toBe(6);
+  expect(await 不横滚(page)).toBe(true);
+  expect(errors).toEqual([]); await page.close();
+});
+
+it("数据·现在 390 触屏：「展开全部 N 人」「去卡点页签 ›」点击区 ≥ 44，卡点卡头不长高", async () => {
+  const { page } = await 打开("data", 390);
+  const 高 = (sel: string) => page.locator(sel).first().evaluate((e) => e.getBoundingClientRect().height);
+  expect(await 高(".stat-more")).toBeGreaterThanOrEqual(44);
+  expect(await 高(".rkpi-blk-go")).toBeGreaterThanOrEqual(44);
+  expect(await 高('section[aria-label="卡点"] > .btodo-head')).toBeLessThanOrEqual(49);
+  // 链接中心点点得中自己（没被卡头别的东西盖住）
+  expect(await page.locator(".rkpi-blk-go").evaluate((e) => { e.scrollIntoView({ block: "center" }); const b = e.getBoundingClientRect(); const 中 = document.elementFromPoint(b.left + b.width / 2, b.top + 4); return !!中 && e.contains(中); })).toBe(true);
+  await page.close();
+});
+
 /**
  * 像手指那样点按：按下停 150ms 再抬起。Playwright 的 tap() 一瞬间，测不出 trigger 带 click 时
  * 「按下 pointerenter 延时打开、抬起后 click 又切回关」那一闪（C-A1 3704 实操同一个坑）
@@ -191,6 +248,9 @@ it.each([1024, 1280, 390])("数据·现在 %ipx：漏斗个数在条外不压条
   expect(行们.length).toBe(4);
   for (const x of 行们) expect(x).toEqual({ 条里有数: false, 压: false, 出: false });
   expect(await page.locator(".pfun-now .pfun-n-out").first().innerText()).toBe("2,003");
+  // 个数列定宽：各行条的比例尺一致（原来 minmax(4ch, auto) 每行各算各的，「2,003」那行条短一截）
+  const 列宽 = await page.locator(".pfun-now .pfun-row").evaluateAll((rows) => [...new Set(rows.map((r) => `${Math.round(r.querySelector(".pfun-n-out")!.getBoundingClientRect().width)}/${Math.round(r.querySelector(".pfun-track")!.getBoundingClientRect().width)}`))]);
+  expect(列宽.length).toBe(1);
   const 脚 = page.locator(".pfun-card .pfun-foot");
   expect(await 脚.innerText()).toMatch(/^已经结束的：.*交付结清 5/);
   expect(await page.locator(".data-shell-body > * > p.muted", { hasText: "已经结束的" }).count()).toBe(0);
@@ -286,15 +346,24 @@ it.each([1024, 1280, 1366, 390])("任务 %ipx：卡头「全部待办（45）」
   expect(errors).toEqual([]); await page.close();
 });
 
-it.each([1280, 390])("任务 %ipx：只定了日子没定钟点的待办（明确钟点 = false）不补钟点；表格到期列整格不截", async (w) => {
+it.each([1024, 1280, 390])("任务 %ipx：只定了日子没定钟点的（明确钟点 = false、旧数据零点）不补钟点；跨年也不撑出到期列", async (w) => {
   const { page, errors } = await 打开("todo", w);
   const 时 = await page.locator(".btodo-time").allInnerTexts();
   expect(时[0]).toMatch(/^3 天前 \d{2}:\d{2}$/);
   expect(时[1]).not.toMatch(/\d{2}:\d{2}/);
   expect(时[2]).toMatch(/ \d{2}:\d{2}$/);
-  // 到期格不省略、不折行：文字宽不超过格子
-  const 溢 = await page.locator(".btodo-time").evaluateAll((els) => els.filter((e) => (e as HTMLElement).scrollWidth > (e as HTMLElement).clientWidth + 1 || e.getBoundingClientRect().height > 24).length);
-  expect(溢).toBe(0);
+  // 跨年：短写「YYYY-MM-DD 09:30」（smartTime 的「2025 年 10 月 26 日 09:30」放不下）
+  expect(时[3]).toBe(`${new Date().getFullYear() - 1}-10-26 09:30`);
+  // 旧数据（明确钟点 = null）零点 = 只定了日子：同提醒口径（lib/reminders.ts 定了时刻），不写「00:00」
+  expect(时[4]).not.toMatch(/\d{2}:\d{2}/);
+  // 到期字整段在格子的内容区里：量 span 的实际宽，和 td 去掉左右内边距的宽比（行内元素的 scrollWidth / clientWidth 都是 0，量不出来）
+  const 量 = await page.locator("td:has(> .btodo-time) > .btodo-time").evaluateAll((els) => els.map((e) => {
+    const td = e.parentElement!, s = getComputedStyle(td);
+    const 内 = td.getBoundingClientRect().width - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight);
+    return { t: (e as HTMLElement).innerText, 宽: e.getBoundingClientRect().width, 内, 高: e.getBoundingClientRect().height };
+  }));
+  expect(量.length).toBe(6);
+  for (const x of 量) expect(x.宽 <= x.内 + 0.5 && x.高 <= 24, `「${x.t}」宽 ${x.宽.toFixed(1)} / 格内 ${x.内.toFixed(1)}`).toBe(true);
   expect(await 不横滚(page)).toBe(true);
   expect(errors).toEqual([]); await page.close();
 });

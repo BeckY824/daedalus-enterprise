@@ -164,7 +164,7 @@ export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口�
             { k: "商机阶段", 值: String(段.商机?.count ?? 0), 数: 段.商机?.count ?? 0, 注: `进行中的商机 · ${money(段.商机?.amount ?? 0)}`, 小: `进行中的 · ${金额缩写(段.商机?.amount ?? 0, 本位币)}`, 去: 链("/projects") },
             { k: "订单阶段", 值: String(段.订单?.count ?? 0), 数: 段.订单?.count ?? 0, 注: `进行中的订单 · ${money(段.订单?.amount ?? 0)}`, 小: `进行中的 · ${金额缩写(段.订单?.amount ?? 0, 本位币)}`, 去: 链("/projects") },
             数.公海
-              ? { k: "异常状态", 值: String(异常), 数: 异常, 注: "订单阶段停住的", 小: <Link href={批次 ? 带批次("/pool?open=1", 批次) : "/pool"} className="link-strong">公海里还有 {数.公海} 个 ›</Link> }
+              ? { k: "异常状态", 值: String(异常), 数: 异常, 注: `订单阶段停住的；公海里还有 ${数.公海} 个进行中的项目`, 小: <Link href={批次 ? 带批次("/pool?open=1", 批次) : "/pool"} className="link-strong">公海里还有 {数.公海} 个 ›</Link> }
               : { k: "异常状态", 值: String(异常), 数: 异常, 注: "订单阶段停住的", 小: "订单阶段停住的", 去: 链("/projects") },
           ]}
         />
