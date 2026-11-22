@@ -134,10 +134,10 @@ it("浮层 1366×768：正文滚过之后，右边的下拉照样贴着输入框
     expect(await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest(".ant-select-dropdown"), [项.x + 10, 项.y + 项.height / 2] as const)).toBe(true);
     // 开着下拉再滚正文：下拉跟着输入框走（antd 盯着滚动的祖先重新对位），不留在原地飘着
     await 正文.evaluate((el) => { el.scrollTop = 20; });
-    await page.waitForTimeout(200);
-    const s2 = (await 框.boundingBox())!, d2 = (await 下拉.boundingBox())!;
+    const s2 = (await 框.boundingBox())!;
     expect(s2.y - s.y).toBeCloseTo(20, 0);
-    expect(Math.min(Math.abs(d2.y - (s2.y + s2.height)), Math.abs(d2.y + d2.height - s2.y))).toBeLessThan(12);
+    // antd 在滚动后的下一帧才重新对位，CI 机器忙时固定等 200ms 不够（11-22 main run 44987177182 撞上：量到差 17 = 还停在原位）；等它对上为止
+    await expect.poll(async () => { const d2 = (await 下拉.boundingBox())!; return Math.min(Math.abs(d2.y - (s2.y + s2.height)), Math.abs(d2.y + d2.height - s2.y)); }, { timeout: 3000 }).toBeLessThan(12);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
