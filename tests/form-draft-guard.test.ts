@@ -19,6 +19,7 @@ const 不留草稿: Record<string, string> = {
   "src/components/ProjectProposalFields.tsx": "AI 项目卡上的几格，draft 由外层 ProposalCard 持有、草稿也由它统一存",
   "src/components/research/MailPaste.tsx": "框里写明「原文不上传、不保存，关掉就没了」：询盘邮件原文不进浏览器存储；粘贴来的，丢了再粘一次",
   "src/app/(app)/customers/import-steps.tsx": "粘进来的整份名单 / 聊天记录（原处还在，丢了再粘一次）；整份带号码的名单不留在浏览器里",
+  "src/app/(app)/projects/[id]/CoachRecConfirm.tsx": "录音点评确认框：草稿存在服务器的录音行上（「稍后再发」、点 × 都存，下次打开带回）；转写、要点可能带号码，不留在浏览器里",
   "src/app/(app)/projects/[id]/GiveUpDialog.tsx": "放弃（豁免）框里选「其他」时补一句原因（100 字以内、一月一次），丢了重写一句；不值得为它留草稿",
 };
 

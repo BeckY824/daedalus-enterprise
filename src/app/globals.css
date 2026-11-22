@@ -5367,6 +5367,15 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 :root:is(:not([data-skin]), [data-skin="now"]) .crec-sheet-item:last-child { border-bottom: 0; }
 :root:is(:not([data-skin]), [data-skin="now"]) .crec-sheet-item:disabled { color: var(--text-muted); cursor: not-allowed; }
 :root:is(:not([data-skin]), [data-skin="now"]) .crec-sheet-item .menu-2l { max-width: none; }
+/* 录音点评 PR5：确认框里 AI 起草的两格虚线框；转写全文（收起、只读、等宽换行）；沟通卡上「录音点评」标签（话筒、虚线框）和下面的播放 / 转写 */
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-ai.ant-input, :root:is(:not([data-skin]), [data-skin="now"]) .crec-ai.ant-input-affix-wrapper, :root:is(:not([data-skin]), [data-skin="now"]) .crec-ai .ant-input { border-style: dashed; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-confirm-audio { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-transcript { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-transcript-h { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-transcript-t { max-height: 320px; margin: 0; padding: var(--s2) var(--s3); overflow: auto; border-radius: var(--r-ctl); background: var(--hover); color: var(--ink-soft); font: inherit; font-size: var(--fs-note); white-space: pre-wrap; overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cth-rec-tag { border-style: dashed; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cth-rec { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s1); margin-top: var(--s2); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cth-rec .crec-audio { width: 100%; max-width: 360px; }
 @media (max-width: 767px) {
   /* 手机整屏：弹框铺满、内容区可滚、底部按钮通栏贴底（让出安全区） */
   :root:is(:not([data-skin]), [data-skin="now"]) .crec-modal.ant-modal { top: 0; width: 100vw !important; max-width: 100vw; margin: 0; padding: 0; }

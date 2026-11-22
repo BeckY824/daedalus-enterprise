@@ -13,7 +13,7 @@
  */
 import { 能发主题, type 主题项目 } from "./coach-topic";
 import { 能看项目, 是教练, type 谁 } from "./permissions";
-import { 文件名打码 } from "./notice-mask";
+import { 文件名打码, 通知文字打码 } from "./notice-mask";
 import { 认格式 } from "@/lib/mic-test-echo";
 import type { 组织 } from "./org-core";
 
@@ -144,6 +144,15 @@ export function 能听原声(me: 谁, r: 录音行, p: 主题项目, org: 组织
 export function 给人看的文件名(name: string | null | undefined, me: 谁, org: 组织 | null): string | null {
   if (!name) return null;
   return org && 是教练(me, org) ? 文件名打码(name) : name;
+}
+
+/**
+ * 给这个人看的转写、要点、确认框里的草稿（PR5，§9 第 3 件「转写给销售教练时电话号码打码」）：销售教练看到的号码打码（通知文字打码，
+ * 日期、时间、金额不动；录的人自己是教练也照打）；别的人原样。库里存原文，只在出给教练时打；原声照旧能听
+ */
+export function 给人看的文字(s: string | null | undefined, me: 谁, org: 组织 | null): string | null {
+  if (!s) return s ?? null;
+  return org && 是教练(me, org) ? 通知文字打码(s) : s;
 }
 
 /** 原文件名规整：只留最后一段、去控制字符、最长 120 字（只是给人看的，不拿来拼路径） */

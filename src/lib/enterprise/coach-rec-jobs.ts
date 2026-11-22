@@ -10,11 +10,12 @@
  *      切段的每交上一段就先落任务号（asrSubmittedAt 还空 = 没交齐），重试、重启后起点对得上的段不再交（防重复计费）
  *      交不上：网络、5xx、限频 → 30 秒 / 2 分钟 / 10 分钟各再试一次，还不行 → 整理失败；密钥不对、参数不对这类 → 当场整理失败
  *   3. 查（交上了的，可以几条一起）：交后 2 分钟内 10 秒一次，之后 30 秒一次；超过 3 小时没结果 → 整理失败
- *      全部成功 → 落库（transcript「(mm:ss) 说话人 N：…」、segments、speakers、durationMs）、状态 → 整理中（PR5 接着做 AI 整理）
+ *      全部成功 → 落库（transcript「(mm:ss) 说话人 N：…」、segments、speakers、durationMs）、状态 → 整理中
+ *   4. 整理（PR5，整理一轮，钟上单独一条线）：整理中 → AI 整理 → 待确认 + 通知「整理好了」；模型出错 → 整理失败（转写留着）
  *      有一段失败 → 整理失败（腾讯云原话不给人看，按关键字归成一句白话）
  *   整理失败：error 写一句给人看的话（不带密钥、签名、请求原文），给录的人发一条通知（铃铛 + 飞书，notice-sources.ts 录音没整理成通知）
  * 服务重启：交上了的（asrSubmittedAt 有值）接着轮询——超过 3 小时的那一轮就判失败（腾讯云结果只留 24 小时，3 小时以内都还在）；
- *   排队的（还没交）接着交；重试次数在内存里，重启后从头数（不自动重跑一串，最多多试 3 次）
+ *   排队的（还没交）接着交；重试次数在内存里，重启后从头数（不自动重跑一串，最多多试 3 次）；整理中的（PR5）重启后再整理一次
  * 用量：转写成功记一条 ai_use（功能键 asr，「录音转写」，明细里带秒数），设置页按秒合计
  */
 import path from "node:path";
@@ -28,7 +29,8 @@ import { 时长上限毫秒 } from "./coach-rec";
 import { 录音根, 录音相对目录, 认录音文件 } from "./coach-rec-store";
 import { 签取文件地址 } from "./coach-rec-sign";
 import { 站点源 } from "./feishu-jsapi";
-import { 录音没整理成通知 } from "./notice-sources";
+import { 录音没整理成通知, 录音整理好了通知 } from "./notice-sources";
+import { AI整理, 没听清话 } from "./coach-rec-summary";
 import { 选通道, 通道错, 请求体上限字节, type 转写通道, type 转写句, type 交的音频 } from "./asr/channel";
 import { 规整, 切段, 采样档, ffmpeg自检 } from "./asr/ffmpeg";
 
@@ -55,14 +57,15 @@ const 选 = { id: true, projectId: true, authorId: true, status: true, format: t
 type 行 = { id: string; projectId: string; authorId: string; status: string; format: string | null; segCount: number; audioPath: string | null; durationMs: number | null; sampleRate: number | null;
   asrTaskId: string | null; asrSubmittedAt: Date | null; createdAt: Date };
 
-type 内存 = { 退避: Map<string, { 次: number; 下次: number }>; 上次查: Map<string, number>; 在跑: boolean; 钟?: ReturnType<typeof setInterval> };
+type 内存 = { 退避: Map<string, { 次: number; 下次: number }>; 上次查: Map<string, number>; 在跑: boolean; 整理在跑: boolean; 钟?: ReturnType<typeof setInterval> };
 const g = globalThis as unknown as { __录音转写?: 内存 };
-const 存: 内存 = (g.__录音转写 ??= { 退避: new Map(), 上次查: new Map(), 在跑: false });
+const 存: 内存 = (g.__录音转写 ??= { 退避: new Map(), 上次查: new Map(), 在跑: false, 整理在跑: false });
 /** 测试用：模拟进程重启（内存里的重试次数、上次查的时刻都清掉） */
 export function 清转写内存(): void {
   存.退避.clear();
   存.上次查.clear();
   存.在跑 = false;
+  存.整理在跑 = false;
 }
 
 export function 读任务们(x: string | null): 任务[] {
@@ -85,11 +88,11 @@ export function 拼全文(句们: readonly 转写句[]): string {
   return 句们.map((x) => `(${时刻(x.起)}) ${x.说话人 === null ? "" : `说话人 ${x.说话人 + 1}：`}${x.文字}`).join("\n");
 }
 
-/** 整理失败：只改还在转写中的；改到了给录的人发通知、清内存 */
-async function 失败(r: 行, 话: string): Promise<void> {
+/** 整理失败：只改还在转写中（或整理中）的；改到了给录的人发通知、清内存 */
+async function 失败(r: { id: string; projectId: string; authorId: string }, 话: string, 从: "转写中" | "整理中" = "转写中"): Promise<void> {
   存.退避.delete(r.id);
   存.上次查.delete(r.id);
-  const 改 = await 主题写(() => prisma.entCoachRecording.updateMany({ where: { id: r.id, status: "转写中" }, data: { status: "整理失败", error: 话.slice(0, 300) } }));
+  const 改 = await 主题写(() => prisma.entCoachRecording.updateMany({ where: { id: r.id, status: 从, deletedAt: null }, data: { status: "整理失败", error: 话.slice(0, 300) } }));
   if (改.count !== 1) return;
   console.warn(`[录音转写] ${r.id} 整理失败：${话.slice(0, 120)}`);
   await 录音没整理成通知(r.authorId, { id: r.id, projectId: r.projectId }, 话);
@@ -247,7 +250,45 @@ async function 查一条(r: 行, 通道: 转写通道 | null, 现在: number): P
   const 秒 = Math.round((r.durationMs ?? 时长) / 1000);
   const 作者 = await defaultClient.user.findUnique({ where: { id: r.authorId }, select: { id: true, name: true } });
   if (作者) await recordAudit({ user: 作者, action: "ai_use", entity: "Ai", entityId: "asr", summary: `录音转写 ${秒} 秒`, detail: { 对象: r.id, 秒 } });
-  // PR5：这里接 AI 整理（整理中 → 待确认，通知「整理好了」）
+  // 整理中 → AI 整理（整理一轮，钟上另一条线，不挡这边轮询）
+}
+
+/**
+ * AI 整理一条（PR5，改版方案 §4.3–4.4）：整理中 → 待确认（draftTitle、draftBody；没听清的草稿空着、error 写一句提示），通知录的人「整理好了」。
+ * 模型出错 → 整理失败（转写留着：确认框照开、自己写主题要点也能发；「重试整理」直接再整理，不再转写）。
+ * 调了模型就记一笔 ai_use（coachSum「录音点评整理」，不扣个人 AI 提问次数）；字数不够没调模型的不记。
+ * 一次一条（模型一次最多两分钟，单独一条线，不挡转写轮询）。服务重启时还在整理中的：重启后这里接着再整理一次（不另判失败）
+ */
+export async function 整理一轮(opt: { 整理?: typeof AI整理 } = {}): Promise<number> {
+  if (!(await 录音点评开着())) return 0;
+  const r = await defaultClient.entCoachRecording.findFirst({
+    where: { status: "整理中", deletedAt: null },
+    orderBy: { updatedAt: "asc" },
+    select: { id: true, projectId: true, authorId: true, transcript: true, speakers: true, asrTaskId: true },
+  });
+  if (!r) return 0;
+  if (!r.transcript) {
+    await 失败(r, "转写结果不在了，点「重试整理」重新转写", "整理中");
+    return 1;
+  }
+  let 果: Awaited<ReturnType<typeof AI整理>>;
+  try {
+    果 = await (opt.整理 ?? AI整理)(r.transcript, r.speakers, 读任务们(r.asrTaskId).length > 1);
+  } catch (e) {
+    const 原话 = e instanceof Error && /[\u4e00-\u9fa5]/.test(e.message) ? e.message.replace(/[，。]?请?稍后(再)?重试。?$/, "").slice(0, 80) : "AI 没回话";
+    await 失败(r, `AI 没整理成（${原话}），可以点「重试整理」，或者打开确认框自己写主题和要点发出`, "整理中");
+    return 1;
+  }
+  const 改 = await 主题写(() => prisma.entCoachRecording.updateMany({
+    where: { id: r.id, status: "整理中", deletedAt: null },
+    data: 果.可总结
+      ? { status: "待确认", draftTitle: 果.主题, draftBody: 果.要点, error: null }
+      : { status: "待确认", draftTitle: null, draftBody: null, error: 没听清话 },
+  }));
+  const 作者 = await defaultClient.user.findUnique({ where: { id: r.authorId }, select: { id: true, name: true } });
+  if (果.调了 && 作者) await recordAudit({ user: 作者, action: "ai_use", entity: "Ai", entityId: "coachSum", summary: "录音点评整理", detail: { 对象: r.id } });
+  if (改.count === 1) await 录音整理好了通知(r.authorId, { id: r.id, projectId: r.projectId });
+  return 1;
 }
 
 /**
@@ -275,15 +316,22 @@ export async function 转写一轮(opt: { 现在?: number; 通道?: 转写通道
   return 数;
 }
 
-/** 起钟（instrumentation.ts 跑后台任务时调）：每 5 秒一轮，上一轮没跑完就跳过这一轮 */
+/** 起钟（instrumentation.ts 跑后台任务时调）：每 5 秒一轮，转写、整理两条线各自跑，上一轮没跑完就跳过这一轮 */
 export function 启动转写钟(间隔 = 钟间隔毫秒): void {
   if (存.钟) return;
   存.钟 = setInterval(() => {
-    if (存.在跑) return;
-    存.在跑 = true;
-    转写一轮()
-      .catch((e) => console.warn(`[录音转写] 这一轮出错：${e instanceof Error ? e.message.slice(0, 200) : e}`))
-      .finally(() => { 存.在跑 = false; });
+    if (!存.在跑) {
+      存.在跑 = true;
+      转写一轮()
+        .catch((e) => console.warn(`[录音转写] 这一轮出错：${e instanceof Error ? e.message.slice(0, 200) : e}`))
+        .finally(() => { 存.在跑 = false; });
+    }
+    if (!存.整理在跑) {
+      存.整理在跑 = true;
+      整理一轮()
+        .catch((e) => console.warn(`[录音整理] 这一轮出错：${e instanceof Error ? e.message.slice(0, 200) : e}`))
+        .finally(() => { 存.整理在跑 = false; });
+    }
   }, 间隔);
   存.钟.unref?.();
 }
