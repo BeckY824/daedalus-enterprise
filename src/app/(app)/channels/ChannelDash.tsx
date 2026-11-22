@@ -42,7 +42,16 @@ const 环色数 = 4;
 const 环类 = (名: string, i: number) => (名 === "其他" ? "chan-c-other" : `chan-c${i % 环色数}`);
 /** 条宽按 5% 一档给类（.chan-w0…100），不写行内样式 */
 const 宽类 = (比: number) => `chan-w${Math.min(100, Math.max(比 > 0 ? 5 : 0, Math.round(比 * 20) * 5))}`;
-/** 金额窄格（设计语言 D39）：缩写，每个币种一段不拆行 */
+/**
+ * 金额窄格（设计语言 D39）：缩写，每个币种一段不拆行；全值用 Tooltip（悬停、触屏点按都出，规范「悬停 / 长按看全值」），
+ * 不只靠 title（触屏看不到）
+ */
+const 缩写格 = (合计: { 币种: string; 合计: number }[]) => (
+  <Tooltip title={合计文字(合计)} trigger={["hover", "click"]}>
+    <span className="chan-dash-kv chan-dash-kv-tip" tabIndex={0} aria-label={合计文字(合计)}>{缩写段(合计)}</span>
+  </Tooltip>
+);
+/** 金额窄格：缩写，每个币种一段不拆行 */
 const 缩写段 = (合计: { 币种: string; 合计: number }[]) =>
   合计缩写(合计).split(" · ").map((x, i) => <span key={i} className="chan-amt">{i ? " · " : ""}{x}</span>);
 
@@ -213,12 +222,12 @@ export default function ChannelDash({
         </div>
         <div className="chan-dash-k">
           <span className="chan-dash-kk">成交额</span>
-          <span className="chan-dash-kv" title={合计文字(k.成交)}>{新样 ? 缩写段(k.成交) : 合计文字(k.成交)}</span>
+          {新样 ? 缩写格(k.成交) : <span className="chan-dash-kv" title={合计文字(k.成交)}>{合计文字(k.成交)}</span>}
           <span className="chan-dash-ks">按进订单的时间</span>
         </div>
         <div className={`chan-dash-k${投入空 ? " chan-dash-k-empty" : ""}`}>
           <span className="chan-dash-kk">投入 / ROI</span>
-          <span className="chan-dash-kv" title={投入空 ? undefined : 合计文字(k.投入)}>{投入空 ? "—" : 新样 ? 缩写段(k.投入) : 合计文字(k.投入)}</span>
+          {新样 && !投入空 ? 缩写格(k.投入) : <span className="chan-dash-kv" title={投入空 ? undefined : 合计文字(k.投入)}>{投入空 ? "—" : 合计文字(k.投入)}</span>}
           <span className="chan-dash-ks">{投入空 ? "待录入" : k.产出比 !== null ? `ROI ${k.产出比}` : k.产出比说明}</span>
           {/* 现状主题：「投入数据待录入」并进这一格（C2f），不再单占一条虚线框；「去补录 ›」只给能录的（P-渠道-16） */}
           {新样 && k.未录投入 > 0 && (

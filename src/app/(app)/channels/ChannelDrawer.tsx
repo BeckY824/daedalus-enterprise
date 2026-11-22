@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Descriptions, Drawer, Empty, Form, Input, Skeleton, Space, Tag } from "antd";
+import { Button, Descriptions, Drawer, Empty, Form, Input, Skeleton, Space, Tag, Tooltip } from "antd";
 import AmountInput, { 金额框挡住话, 金额认不出 } from "@/components/AmountInput";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import type { Dayjs } from "dayjs";
@@ -32,6 +32,12 @@ import { RosterNote } from "./RosterNote";
 
 const 投入备注上限 = 200;
 const 无 = <span className="muted">—</span>;
+/** 现状主题：空值写「—」，原因用 Tooltip（悬停、触屏点按都出，规范「空值」「悬停 / 长按」），不只靠 title */
+const 空因 = (因: string | null | undefined) => (因 ? (
+  <Tooltip title={因} trigger={["hover", "click"]}>
+    <span className="muted chan-empty-tip" tabIndex={0} aria-label={`— ${因}`}>—</span>
+  </Tooltip>
+) : 无);
 
 /**
  * 同名分布：同一个渠道名称下各来源的产出比平均值 / 最高值 / 最低值（列表那三列算好的，传进来跟着「投入产出比」摆）；
@@ -239,7 +245,7 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
           { key: "项目", label: "关联项目", children: 数(s, "关联项目") },
           { key: "线索转商机", label: "线索→商机", children: 转(s?.线索转商机) },
           { key: "商机转订单", label: "商机→订单", children: 转(s?.商机转订单) },
-          { key: "比", label: "投入产出比", children: s?.产出比 ?? <span className="muted" title={s?.产出比说明 ?? undefined}>{新样 ? "—" : s?.产出比说明 ?? "—"}</span> },
+          { key: "比", label: "投入产出比", children: s?.产出比 ?? (新样 ? 空因(s?.产出比说明) : <span className="muted" title={s?.产出比说明 ?? undefined}>{s?.产出比说明 ?? "—"}</span>) },
           ...(同名分布 !== undefined
             ? [{
                 key: "分布",
@@ -251,7 +257,7 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
                     <span className="muted">（「{row.platform ?? row.name}」下 {同名分布.个数} 个来源能算）</span>
                   </span>
                 ) : 新样 ? (
-                  <span className="muted" title={`「${row.platform ?? row.name}」下的来源都还算不了产出比`}>—</span>
+                  空因(`「${row.platform ?? row.name}」下的来源都还算不了产出比`)
                 ) : (
                   <span className="muted">「{row.platform ?? row.name}」下的来源都还算不了产出比</span>
                 ),

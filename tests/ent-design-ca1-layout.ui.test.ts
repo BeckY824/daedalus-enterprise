@@ -51,8 +51,8 @@ beforeAll(async () => {
 afterAll(async () => { await browser?.close(); });
 
 /** 内容区按真实页面算：≥768 左边留 232 侧栏 + 24 页边距；390 没侧栏、16 边距 */
-async function 打开(width: number, o: Record<string, unknown> = {}, skin?: string): Promise<{ page: Page; errors: string[] }> {
-  const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
+async function 打开(width: number, o: Record<string, unknown> = {}, skin?: string, 触屏 = false): Promise<{ page: Page; errors: string[] }> {
+  const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: 触屏 }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   const 窄 = width < 768;
   const 壳 = 窄 ? "padding:0 16px" : "margin-left:232px;padding:0 24px";
@@ -92,10 +92,11 @@ it.each([1024, 1280, 1366, 390])("%ipx：50 个长名渠道、成交过亿不横
     expect(kv).toBe("26px");
     const 截 = await page.locator(".chan-dash-k").evaluateAll((ks) => ks.flatMap((k) => [...k.querySelectorAll(".chan-dash-ks, .chan-dash-kv")].filter((e) => getComputedStyle(e).textOverflow === "ellipsis" || e.scrollWidth > e.clientWidth + 1).map((e) => `${e.className}:${(e as HTMLElement).innerText}:${e.scrollWidth}/${e.clientWidth}`)));
     expect(截).toEqual([]);
-    // 成交额缩写（过亿），悬停 title 是全值
+    // 成交额缩写（过亿），悬停出全值（antd Tooltip，不只靠 title）
     const 成交 = page.locator(".chan-dash-k").filter({ hasText: "成交额" }).locator(".chan-dash-kv");
     expect(await 成交.innerText()).toMatch(/^¥ [\d.]+ 亿$/);
-    expect(await 成交.getAttribute("title")).toMatch(/^¥ [\d,]+$/);
+    await 成交.hover();
+    expect(await page.getByRole("tooltip").filter({ hasText: /^¥ [\d,]+$/ }).first().innerText()).toMatch(/^¥ 12,9\d{2},\d{3},\d{3}$/);
     // 投入待录入并进投入格；能录才有「去补录 ›」；没有虚线条
     const 投入 = page.locator(".chan-dash-k").filter({ hasText: "投入 / ROI" });
     expect(await 投入.innerText()).toMatch(/47 个渠道没录/);
@@ -230,6 +231,31 @@ it("页头计数跟当前视图走：按子渠道写渠道个数，切「按主�
     await page.locator(".chan-dash-bar [aria-label='统计口径']").getByText("按主渠道").click();
     await expect.poll(() => page.locator(".page-count").innerText()).toBe("1");
     expect(await page.locator(".page-count").getAttribute("aria-label")).toBe("共 1 个主渠道");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("390 触屏：点按 KPI 缩写金额出全值；抽屉里「投入产出比 —」点按出原因", async () => {
+  const { page, errors } = await 打开(390, {}, undefined, true);
+  try {
+    const 成交 = page.locator(".chan-dash-k").filter({ hasText: "成交额" }).locator(".chan-dash-kv");
+    await 成交.scrollIntoViewIfNeeded();
+    await 成交.tap();
+    await page.getByRole("tooltip").filter({ hasText: /^¥ 12,9\d{2},\d{3},\d{3}$/ }).first().waitFor();
+    const 投入 = page.locator(".chan-dash-k").filter({ hasText: "投入 / ROI" }).locator(".chan-dash-kv");
+    expect(await 投入.innerText()).toBe("¥ 1,598 万");
+    await 投入.tap();
+    await page.getByRole("tooltip").filter({ hasText: "¥ 15,978,000" }).first().waitFor();
+    // 抽屉：没录投入的渠道，投入产出比「—」点按出原因
+    await page.locator(".ant-table-tbody tr.ant-table-row").first().waitFor();
+    await page.locator(".ant-table-tbody button.chan-name").nth(5).tap();
+    const 抽 = page.locator(".ant-drawer").filter({ has: page.locator("section[aria-label='基本信息']") });
+    await 抽.waitFor();
+    const 横 = 抽.locator(".ant-descriptions-item").filter({ hasText: "投入产出比" }).locator(".chan-empty-tip");
+    await expect.poll(async () => { const b = await 横.boundingBox(); return b ? Math.round(b.x) : 99999; }).toBeLessThan(390);
+    await 横.tap();
+    await page.getByRole("tooltip").filter({ hasText: "还没录投入" }).first().waitFor();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

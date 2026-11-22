@@ -170,7 +170,9 @@ export function 金额或空(n: number | null | undefined, 币种: string = 默�
  *   - 不到 1 万：原样「¥ 8,600」
  *   - 1 万 ～ 不到 1,000 万：万，一位小数、.0 省掉「¥ 532.6 万」「US$ 12 万」
  *   - 1,000 万 ～ 不到 1 亿：万，取整、带千分位「¥ 1,280 万」
- *   - 1 亿起：亿，两位小数、末尾 0 省掉「¥ 1.28 亿」「¥ 12 亿」
+ *   - 1 亿 ～ 不到 1 万亿：亿，两位小数、末尾 0 省掉「¥ 1.28 亿」「¥ 12 亿」
+ *   - 1 万亿起：万亿，两位小数「¥ 1.2 万亿」
+ *   按四舍五入后的值定档，进位到上沿的落下一档（不出「¥ 10,000 万」「¥ 10,000 亿」）
  * 不换汇；多币种照 合计文字 用「 · 」连。四舍五入只在显示上，统计数不变
  */
 export function 金额缩写(n: number | null | undefined, 币种: string = 默认币种): string {
@@ -180,9 +182,14 @@ export function 金额缩写(n: number | null | undefined, 币种: string = 默�
   const 号 = 币种符号(币种);
   const 负 = v < 0 ? "-" : "";
   const 去零 = (x: number, 位: number) => x.toLocaleString("zh-CN", { minimumFractionDigits: 0, maximumFractionDigits: 位 });
-  if (a < 1e7) return `${负}${号} ${去零(Math.round(a / 1e3) / 10, 1)} 万`;
-  if (a < 1e8) return `${负}${号} ${去零(Math.round(a / 1e4), 0)} 万`;
-  return `${负}${号} ${去零(Math.round(a / 1e6) / 100, 2)} 亿`;
+  // 先按四舍五入后的值定档：进位到下一档上沿的（9,999,500 →「1,000 万」、99,995,000 →「1 亿」、9,999.995 亿 →「1 万亿」）落下一档
+  const 万1 = Math.round(a / 1e3) / 10;
+  if (万1 < 1000) return `${负}${号} ${去零(万1, 1)} 万`;
+  const 万0 = Math.round(a / 1e4);
+  if (万0 < 1e4) return `${负}${号} ${去零(万0, 0)} 万`;
+  const 亿 = Math.round(a / 1e6) / 100;
+  if (亿 < 1e4) return `${负}${号} ${去零(亿, 2)} 亿`;
+  return `${负}${号} ${去零(Math.round(a / 1e10) / 100, 2)} 万亿`;
 }
 
 /** 按币种合计的缩写版（KPI 窄格用）；没有一笔写本位币 0 */

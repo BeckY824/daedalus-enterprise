@@ -5818,3 +5818,4 @@ button.proj-miss-chip { cursor: pointer; }
 :root:is(:not([data-skin]), [data-skin="now"]) .chan-invest-none-t { color: var(--ink); }
 :root:is(:not([data-skin]), [data-skin="now"]) .chan-invest-none-s { color: var(--text-muted); font-size: var(--fs-note); }
 @media (max-width: 767px), (pointer: coarse) { :root:is(:not([data-skin]), [data-skin="now"]) .chan-block-h .ant-btn { min-height: var(--hit-touch); } }
+:root:is(:not([data-skin]), [data-skin="now"]) :is(.chan-dash-kv-tip, .chan-empty-tip) { cursor: help; }
