@@ -26,6 +26,8 @@ import { 起草, 草稿键, useCopyDraft, type 草稿类 } from "@/lib/draft-job
 import AiCost, { useAiOutOfCredits } from "@/components/AiCost";
 import ResearchRun, { ResearchPick } from "@/components/research/ResearchRun";
 import ResearchPerson from "@/components/research/ResearchPerson";
+import { useIsNowSkin } from "@/lib/use-skin";
+import TurnMenu, { 有表格 } from "./TurnMenu";
 
 // 后发照片那张「存到刚建的客户名下」卡（11-01 速度闸门）：AI 面板每一页都在，用到时才去拿
 const PhotoSaveCard = dynamic(() => import("@/components/PhotoSaveCard"), { ssr: false });
@@ -147,6 +149,8 @@ export default function TurnView({
   const b = useBusiness();
   const 复制 = useCopy();
   const AI已用完 = useAiOutOfCredits();
+  /** 现状主题（设计语言 HC-2a，C8-A）：操作行的 × 收进 ⋯（复制为表格 / 引用到新问题 / 移除这一轮）；状态条不写「Esc 打断」 */
+  const 现状 = useIsNowSkin();
   const job = useJob<StreamJob<AgentAnswer>>(`home:${turn.id}`);
   const ref = useRef<HTMLDivElement>(null);
   const done = job?.status === "done" || job?.status === "error";
@@ -311,11 +315,15 @@ export default function TurnView({
                 <ReloadOutlined />
               </button>
             </Tooltip>
-            <Tooltip title="移除这一轮">
-              <button type="button" className="cli-ic" aria-label="移除这一轮" onClick={() => set移走中(true)}>
-                <CloseOutlined />
-              </button>
-            </Tooltip>
+            {现状 ? (
+              <TurnMenu 根={ref} 问句={turn.question} 表格={false} on移除={() => set移走中(true)} />
+            ) : (
+              <Tooltip title="移除这一轮">
+                <button type="button" className="cli-ic" aria-label="移除这一轮" onClick={() => set移走中(true)}>
+                  <CloseOutlined />
+                </button>
+              </Tooltip>
+            )}
             <span className="cli-bar-t">{whenLabel(turn.at)}</span>
           </div>
         )}
@@ -345,12 +353,12 @@ export default function TurnView({
           steps={steps}
           态={态}
           起={job.startedAt}
-          ms={ms}
+          ms={ms ?? (job.status === "error" && job.endedAt ? job.endedAt - job.startedAt : undefined)}
           客户={b.customer}
           原因={job.status === "error" ? job.error : undefined}
           写着={writing}
           等确认={待确认}
-          附注={!done ? "Esc 打断" : undefined}
+          附注={!done && !现状 ? "Esc 打断" : undefined}
           onRetry={onRetry}
         />
       )}
@@ -451,11 +459,15 @@ export default function TurnView({
               <AiCost />
             </button>
           </Tooltip>
-          <Tooltip title="移除这一轮">
-            <button type="button" className="cli-ic" aria-label="移除这一轮" onClick={() => set移走中(true)}>
-              <CloseOutlined />
-            </button>
-          </Tooltip>
+          {现状 ? (
+            <TurnMenu 根={ref} 问句={turn.question} 表格={有表格(answer?.text ?? text)} on移除={() => set移走中(true)} />
+          ) : (
+            <Tooltip title="移除这一轮">
+              <button type="button" className="cli-ic" aria-label="移除这一轮" onClick={() => set移走中(true)}>
+                <CloseOutlined />
+              </button>
+            </Tooltip>
+          )}
           <span className="cli-bar-t">{whenLabel(turn.at)}</span>
         </div>
       )}

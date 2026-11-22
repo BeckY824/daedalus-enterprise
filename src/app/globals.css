@@ -6282,3 +6282,58 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-log { padding: 0 var(--s4) var(--s3); }
   :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-composer-sticky { padding: var(--s2) var(--s3) calc(var(--s3) + env(safe-area-inset-bottom)); }
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+   设计语言 HC-2a（11-22，回答排版、步骤条、操作行、打断 / 出错；用户选 C6-A / C7-A / C8-A / C11-A）。
+   只现状主题；首页、全局浮窗（HomeChat 窄模式）都吃这一段，客户页 AI 面板只吃步骤条（.ais）。
+   ──────────────────────────────────────────────────────────────────────────── */
+/* C6-A 一条左边线：步骤条、正文、表格、确认卡、涉及客户、追问、操作行都从同一处起，不再各缩 16–20 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-a { padding-left: 0; font-size: var(--fs-body); line-height: 1.7; }
+:root:is(:not([data-skin]), [data-skin="now"]) :is(.cli-stopped, .cli-err, .cli-next) { padding-left: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-turn > :is(.cli-card, .prop-list) { margin-left: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-bubble { max-width: 75%; }
+/* 表格：细线、表头 muted、数字列右对齐等宽（Markdown.tsx 给 .md-num）、宽了在表格里横滑 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-a .md-tw { max-width: 100%; overflow-x: auto; margin: var(--s2) 0 var(--s3); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-a .md-table { font-size: var(--fs-note); line-height: 1.5; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-a .md-table th { color: var(--text-muted); font-weight: 500; border-bottom: 1px solid var(--line); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-a .md-table td { border-bottom: 1px solid var(--line-soft); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-a .md-table :is(th, td):first-child { padding-left: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-a .md-table .md-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* 确认卡：卡里「确认」是这一屏唯一的实心主色钮（输入框空着时发送钮本来是灰的） */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-turn .prop-ok:not(:disabled) { background: var(--brand); color: var(--on-ink); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-turn .prop-ok:not(:disabled):hover { background: var(--brand-deep); }
+
+/* C7-A 步骤条：四种状态同一行、不带框不带底；圆点 + 人话 + 第 N 步 · X 秒 + ›，点开竖排 */
+:root:is(:not([data-skin]), [data-skin="now"]) .ais { border: 0; border-radius: 0; background: none; max-width: none; overflow: visible; }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-hd { padding-right: 0; gap: var(--s2); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-hd-b { flex: 0 1 auto; gap: var(--s2); padding: 4px var(--s2); margin-left: calc(-1 * var(--s2)); border-radius: var(--r-ctl); }
+:root:is(:not([data-skin]), [data-skin="now"]) button.ais-hd-b:hover { background: var(--row-hover); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-hd-b:focus-visible { border-radius: var(--r-ctl); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-tt { flex: 0 1 auto; font-weight: 400; color: var(--ink-soft); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-chev { flex: none; color: var(--text-faint); line-height: 1; transition: transform var(--t) var(--ease); }
+:root:is(:not([data-skin]), [data-skin="now"]) button.ais-hd-b:hover .ais-chev { color: var(--ink-soft); }
+:root:is(:not([data-skin]), [data-skin="now"]) button.ais-hd-b[aria-expanded="true"] .ais-chev { transform: rotate(90deg); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-bd { padding: 0 0 4px var(--s4); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-done .ais-tt { color: var(--text-muted); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-wait .ais-tt { color: var(--warning-text); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-error .ais-tt { color: var(--danger-text); }
+/* 打断：灰点「已停下」，不和完成同一个绿 */
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-stopped .ais-dot { background: var(--text-faint); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-stopped .ais-tt { color: var(--text-muted); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-compact .ais-hd-b { padding-block: 2px; }
+/* 左栏 AI 任务：人自己点停的那条（「已停下」）灰图标 */
+:root:is(:not([data-skin]), [data-skin="now"]) .aitask-stopped .aitask-i { color: var(--text-faint); }
+
+/* C8-A 操作行：和正文同一条左边线（图标在 28 的钮里居中，钮往左挪半个空），时间在末尾；
+   最后一轮常显，之前的悬停 / 键盘聚焦 / 菜单开着才出；触屏常显、钮 44 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-bar { padding-left: 0; margin-left: -7px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-bar-t { color: var(--text-muted); }
+@media (hover: hover) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-turn:has(~ .cli-turn) > .cli-bar { opacity: 0; transition: opacity var(--t-leave) var(--ease); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-turn:has(~ .cli-turn):is(:hover, :focus-within) > .cli-bar,
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-turn:has(~ .cli-turn) > .cli-bar:has(.ant-dropdown-open) { opacity: 1; transition-duration: var(--t-fast); }
+}
+@media (hover: none) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-bar .cli-ic { min-width: 44px; height: 44px; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-bar { margin-left: -15px; }
+}
