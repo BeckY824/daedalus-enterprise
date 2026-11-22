@@ -83,14 +83,15 @@ function 渲染块(text: string, byN: 引用表, 起 = 0, 淡: readonly number[]
       const 列数 = 有表头 ? 切格(块[1].l, 块[1].at).length : undefined;
       const 表头 = 有表头 ? 切格(块[0].l, 块[0].at, 列数) : null;
       const 体 = (有表头 ? 块.slice(2) : 块).filter((r) => !是分隔(r.l)).map((r) => 切格(r.l, r.at, 列数));
+      const 数列 = 数字列(体.map((r) => r.map((c) => c.文)));
       out.push(
         <div key={out.length} className="md-tw">
           <table className="md-table">
             {表头 && (
-              <thead><tr>{表头.map((h, i) => <th key={i}><Inline text={h.文} byN={byN} 起={h.起} 淡={淡} /></th>)}</tr></thead>
+              <thead><tr>{表头.map((h, i) => <th key={i} className={数列.has(i) ? "md-num" : undefined}><Inline text={h.文} byN={byN} 起={h.起} 淡={淡} /></th>)}</tr></thead>
             )}
             <tbody>
-              {体.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j}><Inline text={c.文} byN={byN} 起={c.起} 淡={淡} /></td>)}</tr>)}
+              {体.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j} className={数列.has(j) ? "md-num" : undefined}><Inline text={c.文} byN={byN} 起={c.起} 淡={淡} /></td>)}</tr>)}
             </tbody>
           </table>
         </div>,
@@ -249,4 +250,21 @@ function Cite({ n, r }: { n: number; r?: BriefRecord }) {
       <span className="cite">{n}</span>
     </Popover>
   );
+}
+
+/** 一格算不算数字：金额、数量、百分比、带常见单位（¥1,200 / 35% / 12 个 / 3.5 万 / -2） */
+const 数字格 = /^[-+−]?\s*[¥$€£]?\s*\d[\d,，]*(\.\d+)?\s*(%|％|万|亿|元|万元|个|次|天|人|家|条|项|位|笔|单|台|件)?$/;
+
+/**
+ * 表格里哪几列是数字列（设计语言 HC-2a，C6-A：数字右对齐、等宽）：这一列有字的格全是数字、且至少一格。
+ * 只加一个 class（.md-num），样子只在现状主题里给（globals.css），换皮主题看不出差别。
+ */
+export function 数字列(行们: string[][]): Set<number> {
+  const 列: Set<number> = new Set();
+  const 宽 = Math.max(0, ...行们.map((r) => r.length));
+  for (let j = 0; j < 宽; j++) {
+    const 格 = 行们.map((r) => (r[j] ?? "").replace(/\*\*/g, "").trim()).filter((v) => v && v !== "—" && v !== "-");
+    if (格.length > 0 && 格.every((v) => 数字格.test(v))) 列.add(j);
+  }
+  return 列;
 }

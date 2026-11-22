@@ -14,6 +14,8 @@ export type 一轮的动作 = {
   在跑: () => boolean;
   /** 走输入框那条完整的发送路（命令、背调意图、排队都认） */
   问: (q: string) => void;
+  /** 把这一轮记成「刚发的」：重新回答和刚发一问一样，问句顶到框顶、下面留一框高的空、流式不拽人（HC-1 3703 补点） */
+  刚发: (id: string) => void;
 };
 
 /** 已经问过的那一列。只在换了几轮、或刚发了一问时重渲；流式出字只重渲正在流的那一轮（ai-jobs 按键订阅） */
@@ -31,6 +33,7 @@ function TurnLog({ turns, 刚发的, scope, 动作, 企业版 = false }: { turns
             // 找公司后接着背调的那一轮：重新背调是新的一次（新 runId，照常扣），不再沿用找公司那一笔
             if (t.接着) updateTurn(scope, t.id, { 接着: undefined });
             if (动作.在跑()) dequeueTurn(scope, t.id);
+            动作.刚发(t.id);
             动作.start(t);
           }}
           onRemove={() => {

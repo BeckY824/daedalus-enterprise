@@ -45,12 +45,17 @@ async function open() {
 }
 const 画 = (page: Page, job: unknown, 卡态?: string) => page.evaluate(([j, k]) => (window as unknown as { __render: (j: unknown, k?: string) => void }).__render(j, k), [job, 卡态] as const);
 
-it("跑着：一个状态条，不铺 .cli-step；出错停在第几步、重试走 onRetry；打断写已打断", async () => {
+it("跑着：一个状态条，不铺 .cli-step；出错停在第几步、重试走 onRetry；打断写已停下", async () => {
   const { page, errors } = await open();
   await 画(page, { status: "loading", startedAt: 起, value: { steps: [步(0, "search_customers(张三)", "done", "1 位"), 步(1, "get_customer(c1)", "running")] } });
   expect(await page.locator(".cli-step").count()).toBe(0);
   expect(await page.locator(".ais-tt").innerText()).toBe("正在读客户的记录…");
+  // 设计语言 HC-2a（C7-A）：现状主题不写「Esc 打断」（停止在输入框）；换皮主题照旧
+  expect(await page.locator(".ais-mt").innerText()).not.toContain("Esc 打断");
+  await page.evaluate(() => { document.documentElement.dataset.skin = "ledger"; });
+  await 画(page, { status: "loading", startedAt: 起, value: { steps: [步(0, "search_customers(张三)", "done", "1 位"), 步(1, "get_customer(c1)", "running")] } });
   expect(await page.locator(".ais-mt").innerText()).toContain("Esc 打断");
+  await page.evaluate(() => { delete document.documentElement.dataset.skin; });
 
   await 画(page, { status: "error", error: "网络断了", startedAt: 起, value: { steps: [步(0, "search_customers(张三)", "done", "1 位"), 步(1, "get_customer(c1)", "running")] } });
   expect(await page.locator(".ais-tt").innerText()).toBe("停在第 2 步：网络断了");
@@ -59,7 +64,7 @@ it("跑着：一个状态条，不铺 .cli-step；出错停在第几步、重试
   expect(await page.evaluate(() => (window as unknown as { __重试: number }).__重试)).toBe(1);
 
   await 画(page, { status: "error", error: "已取消", startedAt: 起, value: { steps: [步(0, "search_customers(张三)", "done", "1 位"), 步(1, "get_customer(c1)", "running")] } });
-  expect(await page.locator(".ais-tt").innerText()).toBe("已打断 · 做了 2 步");
+  expect(await page.locator(".ais-tt").innerText()).toBe("已停下 · 第 2 步");
   await page.locator(".ais-hd-b").click();
   expect(await page.locator(".ais-line").nth(1).innerText()).toContain("被打断");
   expect(errors).toEqual([]);

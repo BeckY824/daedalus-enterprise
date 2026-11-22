@@ -1,24 +1,35 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Select } from "antd";
 import { 沟通方式选项, 发起主体选项, 我常用的沟通方式 } from "@/app/(app)/follow-method-actions";
 import type { 一条方式 } from "@/lib/follow-habit";
 import { 方式对类型, 补的方式, 对得上的方式 } from "@/lib/follow-method";
+
+/**
+ * 页面已经带下来的两样下拉（11-22 页面切换提速 C3）：客户详情页渲染时按 follow-method-actions.ts 同一口径算好，
+ * 包在这个上下文里的表单直接用，不再调 沟通方式选项 / 发起主体选项（server action 一次只走一个，和背调那次排队等）。
+ * 没包（别的页面）= undefined，照旧调 action
+ */
+export type 沟通下拉们 = { 方式: string[] | null; 主体: string[] | null };
+const 沟通下拉上下文 = createContext<沟通下拉们 | undefined>(undefined);
+export const FollowOptionsProvider = 沟通下拉上下文.Provider;
 
 // 一页只取一次：几张表单共用，管理员改了字典刷新页面就是新的；取失败下次再取
 let 取着: Promise<string[] | null> | null = null;
 
 /** 企业版沟通方式的启用项；没取到 / 不是企业版是 null（表单照旧用类型下拉，服务端按类型补方式） */
 export function useFollowMethods(): string[] | null {
+  const 带下来的 = useContext(沟通下拉上下文);
   const [们, set们] = useState<string[] | null>(null);
   useEffect(() => {
+    if (带下来的) return;
     let 作废 = false;
     取着 ??= 沟通方式选项().catch(() => { 取着 = null; return null; });
     取着.then((r) => { if (!作废) set们(r); });
     return () => { 作废 = true; };
-  }, []);
-  return 们;
+  }, [带下来的]);
+  return 带下来的 ? 带下来的.方式 : 们;
 }
 
 /**
@@ -60,14 +71,16 @@ let 取主体: Promise<string[] | null> | null = null;
 
 /** 企业版发起主体的启用项（11-01）；不是企业版 / 没取到是 null（表单不摆这一格，服务端也不写） */
 export function useFollowInitiators(): string[] | null {
+  const 带下来的 = useContext(沟通下拉上下文);
   const [们, set们] = useState<string[] | null>(null);
   useEffect(() => {
+    if (带下来的) return;
     let 作废 = false;
     取主体 ??= 发起主体选项().catch(() => { 取主体 = null; return null; });
     取主体.then((r) => { if (!作废) set们(r); });
     return () => { 作废 = true; };
-  }, []);
-  return 们;
+  }, [带下来的]);
+  return 带下来的 ? 带下来的.主体 : 们;
 }
 
 /** 新记沟通的默认（11-01 客户答复 #2）：沟通方式「微信沟通」、发起主体「我方发起」——字典里停用了就不默认 */

@@ -3,7 +3,7 @@
  *
  *   卡点：11-01 卡点页签换成卡点 v2 三栏看板（待接受 / 处理中 / 已解决，见 BoardBlockers），这里只量三栏摆得出、筛选写地址、窄屏不溢出
  *   沟通：方式下拉写 m=、时间分段写 t=（自定义再摆日期段，写 tf= tt=）、时间线卡片（发起 / 附件 / 编号有才摆）、点一条去项目页、空态、旁边「还没沟通过的项目」和它的空态
- *   数据：六格 KPI（3 天内回公海没开 = —）、卡点分布、超时预警和两种空
+ *   数据：六格 KPI（3 天内回公海没开 = —）、卡点摘要（R-B；账簿主题照旧卡点分布）、超时预警和两种空
  *   Windows 1024：不横向溢出、长名字单行省略
  */
 import { beforeAll, afterAll, expect, it } from "vitest";
@@ -135,9 +135,9 @@ it("卡点（换皮主题·账簿）：照旧一张卡里标题 + 筛选 + 统�
   expect(errors).toEqual([]); await page.close();
 });
 
-it("数据页签卡点分布超过 8 种主体：前 7 种 + 「其他」", async () => {
+it("数据页签卡点分布超过 8 种主体（账簿主题；现状主题 R-B 收成摘要）：前 7 种 + 「其他」", async () => {
   const 多 = { 总数: 10, 按主体: Array.from({ length: 10 }, (_, i) => ({ 主体: `主体${i}`, 数: 1 })), 按状态: [{ 状态: "待接受", 数: 10 }] };
-  const { page } = await 打开({ 页: "data", 分布: 多 });
+  const { page } = await 打开({ 页: "data", 分布: 多 }, 1280, "/overview", "ledger");
   const k = await page.locator('section[aria-label="卡点分布"] .btodo-rc-k').allInnerTexts();
   expect(k).toHaveLength(8);
   expect(k.at(-1)).toBe("其他");
@@ -149,8 +149,10 @@ it("沟通：时间线卡片；发起 / 附件 / 编号有才摆；标题和内�
   const { page, errors } = await 打开({ 页: "talk", 缺: 7 });
   expect(await page.locator("ol.rtalk-tl > li.rtalk-i").count()).toBe(4);
   const 二 = page.locator(".rtalk-k").nth(1);
-  expect(await 二.locator(".rblk-k-meta").innerText()).toMatch(/线下拜访[\s\S]*发起 客户主动[\s\S]*附件 3 个[\s\S]*FUL0001[\s\S]*记录人1/);
-  expect(await page.locator(".rtalk-k").nth(2).locator(".rtalk-meta").allInnerTexts()).toEqual(["记录人2"]);
+  // 现状主题（R-B）：末行一行灰字「方式 · 发起 · 附件 · 记录人」，编号悬停看
+  expect(await 二.locator(".rtalk-foot").innerText()).toBe("线下拜访 · 客户主动 · 附件 3 个 · 记录人1");
+  expect(await 二.locator(".rtalk-foot").getAttribute("title")).toBe("编号 FUL0001");
+  expect(await page.locator(".rtalk-k").nth(2).locator(".rtalk-foot").innerText()).toBe("线下拜访 · 记录人2");
   expect(await page.locator(".rtalk-k").first().locator(".rtalk-t").innerText()).toBe("第0次回访");
   await 二.click();
   expect(await 去了(page)).toEqual(["/projects/p1"]);
@@ -182,10 +184,11 @@ it("沟通 · 自定义：日期段摆在分段后面、回显两头；挑一段
   const 区间 = { from: "2026-10-01", to: "2026-10-31" };
   const { page, errors } = await 打开({ 页: "talk", 段: "custom", 区间 }, 1280, "/overview?tab=talk&ownerId=u1&t=custom&tf=2026-10-01&tt=2026-10-31&p=2");
   expect(await page.locator('[aria-label="时间范围"] .ant-segmented-item-selected').innerText()).toBe("自定义");
-  const 框 = page.locator(".btodo-head-r .custom-range input");
+  // 现状主题（R-B）：时间段在卡外筛选条
+  const 框 = page.locator(".rtalk-bar .custom-range input");
   expect(await 框.evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value))).toEqual(["2026-10-01", "2026-10-31"]);
   // 没有清空按钮
-  expect(await page.locator(".btodo-head-r .custom-range .ant-picker-clear").count()).toBe(0);
+  expect(await page.locator(".rtalk-bar .custom-range .ant-picker-clear").count()).toBe(0);
   await 框.first().click();
   await 框.first().fill("2026-09-01");
   await 框.first().press("Enter");
@@ -215,18 +218,19 @@ it("沟通：没记录 → 「没有沟通记录」；筛过时提示选全部�
   await 无.page.close();
 });
 
-it("数据 · 现在：六格 KPI、链接、逾期有数标红；卡点分布 + 超时预警", async () => {
+it("数据 · 现在：六格 KPI、链接、逾期有数标红；卡点摘要 + 超时预警", async () => {
   const { page, errors } = await 打开({ 页: "data", 分布 });
   const 格 = page.locator('section[aria-label="复盘概况"] .rkpi-i');
   expect(await 格.locator(".rkpi-k").allInnerTexts()).toEqual(["在跟项目", "逾期任务", "未解决卡点", "已回款", "待回款", "3 天内回公海"]);
   const 值 = await 格.locator(".rkpi-v").allInnerTexts();
   expect(值[0]).toBe("12"); expect(值[1]).toBe("3"); expect(值[5]).toBe("2");
-  expect(值[3]).toMatch(/123,456/);
+  // 现状主题（R-B，D39）：金额窄格缩写，全值在悬停
+  expect(值[3]).toMatch(/12\.3 万/);
   expect(await 格.nth(1).getAttribute("href")).toBe("/overview?tab=todo&f=overdue");
   expect(await 格.nth(5).getAttribute("href")).toBe("/projects?f=due-soon");
   expect(await 格.nth(1).locator(".rkpi-v").getAttribute("class")).toContain("rkpi-v-hot");
   expect(await 格.nth(2).locator(".rkpi-v").getAttribute("class")).not.toContain("rkpi-v-hot");
-  expect(await page.locator('.rkpi-pair section[aria-label="卡点分布"] .btodo-rc-k').allInnerTexts()).toEqual(["客户", "某个特别长特别长特别长特别长特别长的阻碍主体", "没填"]);
+  expect((await page.locator('.rkpi-pair section[aria-label="卡点"] .rkpi-blk-sum').innerText()).replace(/\s+/g, "")).toBe("未解决9条·按阻碍主体前3：客户5、某个特别长特别长特别长特别长特别长的阻碍主体3、没填1");
   const 警 = page.locator(".rkpi-warn li");
   expect(await 警.count()).toBe(2);
   expect(await 警.first().innerText()).toMatch(/要回公海的项目0[\s\S]*潜客培育 · 小0[\s\S]*2026-11-02 收回/);
@@ -240,7 +244,7 @@ it("数据 · 现在：超时回收没开 → 那格「—」、预警写一句�
   expect(值[5]).toBe("—");
   expect(await page.locator('.rkpi-i').nth(5).evaluate((e) => e.tagName)).toBe("DIV");
   expect(await page.locator('section[aria-label="超时预警"]').innerText()).toContain("组织规则里没开超时回收");
-  expect(await page.locator('section[aria-label="卡点分布"]').innerText()).toContain("没有未解决的卡点");
+  expect(await page.locator('section[aria-label="卡点"]').innerText()).toContain("没有未解决的卡点");
   await page.close();
   const 空 = await 打开({ 页: "data", 将回公海: 0, 预警: 0 });
   expect(await 空.page.locator('section[aria-label="超时预警"]').innerText()).toContain("3 天内没有要回公海的项目");
@@ -258,16 +262,16 @@ it.each([1024, 1366])("Windows %ipx + 超长名字：三个页签都不横向溢
   expect(await 不溢出(谈.page)).toBe(true);
   await 单行省略(谈.page, ".rtalk-t", ".rtalk-k");
   await 单行省略(谈.page, ".rtalk-miss-n", ".rtalk-side");
-  // 方式下拉和时间分段同一行
-  const ys = await 谈.page.locator(".btodo-head-r").first().evaluate((e) => [...e.children].map((c) => Math.round(c.getBoundingClientRect().top + c.getBoundingClientRect().height / 2)));
+  // 现状主题（R-B）：时间分段在卡外筛选条，一行
+  const ys = await 谈.page.locator(".rtalk-bar").first().evaluate((e) => [...e.children].map((c) => Math.round(c.getBoundingClientRect().top + c.getBoundingClientRect().height / 2)));
   expect(new Set(ys).size).toBe(1);
   await 谈.page.close();
-  // 选了自定义：方式下拉、分段、日期段还是同一行，不溢出
+  // 选了自定义：分段、日期段还是同一行，不溢出（现状主题在卡外筛选条，R-B）
   const 自 = await 打开({ 页: "talk", 缺: 3, 段: "custom", 区间: { from: "2026-10-01", to: "2026-11-04" } }, w);
   await 自.page.waitForTimeout(150);
   expect(await 不溢出(自.page)).toBe(true);
-  const 自ys = await 自.page.locator(".btodo-head-r").first().evaluate((e) => [...e.children].map((c) => Math.round(c.getBoundingClientRect().top + c.getBoundingClientRect().height / 2)));
-  expect(自ys).toHaveLength(3);
+  const 自ys = await 自.page.locator(".rtalk-bar").first().evaluate((e) => [...e.children].map((c) => Math.round(c.getBoundingClientRect().top + c.getBoundingClientRect().height / 2)));
+  expect(自ys).toHaveLength(2);
   expect(new Set(自ys).size).toBe(1);
   await 自.page.close();
   const 数 = await 打开({ 页: "data", 分布, 外币: 2 }, w);

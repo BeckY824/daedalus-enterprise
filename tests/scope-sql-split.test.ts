@@ -30,7 +30,7 @@ import { prisma as db, defaultClient as raw } from "@/lib/prisma";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 无负责人占位邮箱 } from "@/lib/pool";
-import { 看得到的范围SQL, 看得到的客户数, 看得到的跟进数, 最近跟进的客户 } from "@/lib/scope-sql";
+import { 看得到的范围SQL, 看得到的客户数, 看得到的跟进数, 看得到的非公海数, 最近跟进的客户 } from "@/lib/scope-sql";
 
 const 系管 = "s_sys", 线总 = "s_line", 只读 = "s_ro", 线读 = "s_rol", 经理 = "s_mgr", 小王 = "s_wang", 小张 = "s_zhang", 小赵 = "s_zhao";
 const 外人 = "s_other", 渠运 = "s_chan", 市管 = "s_mkt", 市员 = "s_mkt1", 组员 = "s_pm", 回避人 = "s_back", 没角色 = "s_none", 停用 = "s_off", 占位 = "s_hold";
@@ -146,6 +146,8 @@ async function 对拍(谁: string) {
     const 范围 = await 看得到的范围SQL();
     const 新数 = await 看得到的客户数();
     expect({ 谁, n: 新数 }).toEqual({ 谁, n: await db.customer.count() });
+    // 中栏名单总数（11-22 C1）：不在公海的，快路（名下那句直接数）和 Prisma 路都 = 限定层数 pool 为空的
+    expect({ 谁, 非公海: await 看得到的非公海数() }).toEqual({ 谁, 非公海: await db.customer.count({ where: { pool: { is: null } } }) });
     const 新跟进 = [] as number[];
     for (const 筛 of 跟进筛们) {
       const n = await 看得到的跟进数(筛);

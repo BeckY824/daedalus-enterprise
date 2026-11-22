@@ -254,6 +254,24 @@ describe("公海页从数据页点进来（open=1&batch=…）", () => {
   });
 });
 
+describe("公海页从数据页点进来（没选批次，只带 open=1）", () => {
+  it("按项目一条一行，条数 = 数据页「公海里还有 N 个」：不算历史分析回填的、已结束的（3703 实操：原来去 /pool 列的是全部公海客户）", async () => {
+    await prisma.project.create({ data: { name: "自建公海流失", customerId: 普通客户, ownerId: "", creatorId: 销售.id, phase: "线索", node: "潜客培育", result: "线索流失", pooledAt: new Date() } });
+    const 筛 = 读公海页筛({ open: "1" });
+    expect(筛.open).toBe("1");
+    expect(按名单(筛)).toBe(true);
+    设(老板);
+    const 数 = await 以谁的身份(老板.id, () => 项目现在("CNY"));
+    expect(数.公海).toBe(14);
+    const 页 = await 以谁的身份(老板.id, () => 读公海页(老板, {}, 1, 100, { open: 筛.open }));
+    expect(页.总数).toBe(数.公海);
+    const 名 = 页.行.map((r) => r.项目名);
+    expect(名).toContain("自建公海");
+    expect(名).not.toContain("历史");
+    expect(名).not.toContain("自建公海流失");
+  });
+});
+
 describe("谁能按批次看", () => {
   it("总管理：摆下拉、认 batch=；库里没有的批次当全部", async () => {
     const 人 = await 看板的人(老板);

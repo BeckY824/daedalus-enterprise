@@ -154,6 +154,9 @@ async function 备货物流格(p: { stockStatus: string | null; logisticsStatus:
 /** 项目详情这一屏读的字典（回收 / 无效原因、项目画像各项、关联的身份 / 角色 / 立场）：客户页项目区和项目页开头一起预读，合成两句 */
 export const 项目详情字典们: readonly 字典种类[] = ["recycle", "invalid", ...项目画像项.map((x) => x.种类), "projTag", "projLogistics", "projCustRole", "projContactRole", "projStance"];
 
+/** 节点变更（logs）最多取几条：页面上的历史只摆最近这些 */
+const 留痕取几条 = 200;
+
 /** 项目详情（团队版项目模式 1a）：改节点、勾尾款 / 验收、节点变更和挂在项目上的沟通。开关关着时不存在 */
 export async function 读项目详情(me: SessionUser, id: string): Promise<项目详情载入> {
   const p = await prisma.project.findUnique({
@@ -163,10 +166,9 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
       channel: { select: { name: true } },
       contact: { select: { id: true, name: true, position: true } },
       exceptionCategory: { select: { name: true } },
-      logs: { orderBy: { at: "desc" }, take: 200 },
+      logs: { orderBy: { at: "desc" }, take: 留痕取几条 },
       members: { orderBy: { createdAt: "asc" } },
       followUps: { include: { followUp: { select: { id: true, type: true, title: true, method: true, initiator: true, content: true, occurredAt: true, ownerId: true, createdAt: true, updatedAt: true } } } },
-      _count: { select: { logs: true } },
     },
   });
   if (!p) return { 种: "无" };
@@ -373,6 +375,12 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   // 读的是同一个开关、同一份节点表，判法照 lib/project/stage-gates.ts 企业版推进关（沟通挂的节点新旧名都算）；只管提示，拦照旧在服务端
   const 线索验证缺沟通 = 企业 && 现.phase === "线索" && 现.node === 有效线索节点 && !p.result && 规则.阶段.前两节点要沟通
     && 要沟通的节点().includes(有效线索节点) && !p.followUps.some((f) => 同名们(有效线索节点).includes(f.node));
+  /*
+    删项目前的确认框要「一共几条节点变更」。原来 include 里带 _count.logs：Prisma 把它写成「整张 ProjectNodeLog 先按项目分组数完、
+    带着范围层的回避子查询，再按 id 接回来」，和取的是哪一个项目无关——8.6 万客户库拷贝上每次 270–300 ms（销售、销售管理进客户详情的大头，11-22 切页卡顿调研）。
+    logs 是同一个关系、同一个范围，取回不到上限条就是全部，直接用条数；到了上限才另数一句（只数这一个项目）
+  */
+  const 留痕数 = p.logs.length < 留痕取几条 ? p.logs.length : await prisma.projectNodeLog.count({ where: { projectId: p.id } });
   const 详情: 项目详情 = {
     收藏了: await 项目收藏了吗(me.id, id),
     id: p.id, name: p.name, remark: p.remark, amount: p.amount, currency: p.currency,
@@ -452,7 +460,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     ...(关联 ? { 关联 } : {}),
     ...(项目附件 ? { 项目附件 } : {}),
     ...(回款们 ? { 回款们 } : {}),
-    删前清点: { 留痕: p._count.logs, 组员: p.members.length, 沟通: p.followUps.length },
+    删前清点: { 留痕: 留痕数, 组员: p.members.length, 沟通: p.followUps.length },
   };
   return {
     种: "有", customerId: p.customerId, 露, 客户入口,
