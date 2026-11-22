@@ -26,7 +26,7 @@ const 临时 = vi.hoisted(() => {
   return { dir };
 });
 const 登录 = vi.hoisted(() => ({ user: null as Record<string, unknown> | null }));
-const 盘 = vi.hoisted(() => ({ 剩: null as number | null }));
+const 盘 = vi.hoisted(() => ({ 剩: null as number | null, 用: null as number | null }));
 const 假头 = vi.hoisted(() => () => ({
   cookies: async () => ({ get: () => undefined, set: () => {}, delete: () => {} }),
   headers: async () => new Headers(),
@@ -42,7 +42,10 @@ vi.mock("@/lib/prisma", async () => {
   return { prisma: 加上限定(raw), defaultClient: raw };
 });
 vi.mock("@/lib/enterprise/feishu-push", () => ({ 推通知们: async () => {} }));
-vi.mock("@/lib/enterprise/coach-rec-store", async (原) => ({ ...(await 原<object>()), 磁盘剩字节: async () => 盘.剩 }));
+vi.mock("@/lib/enterprise/coach-rec-store", async (原) => {
+  const 真 = await 原<typeof import("@/lib/enterprise/coach-rec-store")>();
+  return { ...真, 磁盘剩字节: async () => 盘.剩, 目录字节: async (d: string) => 盘.用 ?? 真.目录字节(d) };
+});
 
 import { defaultClient as raw } from "@/lib/prisma";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
@@ -76,6 +79,7 @@ async function 建() {
   await raw.setting.create({ data: { key: 规则.按组织看客户.key, value: "true" } });
   fs.rmSync(录音根(), { recursive: true, force: true });
   盘.剩 = null;
+  盘.用 = null;
   忘掉存储情况();
   invalidateSettingsCache();
   忘掉企业版范围();
@@ -205,11 +209,13 @@ describe("清理一轮", () => {
     expect(fs.existsSync(新.dir)).toBe(true);
   });
 
-  it("兜底：转写成了的只留规整件；拼好的剩下的片目录删；没主的目录满 1 天删、刚建的不删、_asrtest 不动", async () => {
+  it("兜底：转写成了的只留规整件；拼好的剩下的片目录（1 小时前的）删、刚写的不动；没主的目录满 1 天删、刚建的不删、_asrtest 不动", async () => {
     await 开关(true);
     const 成 = await 一条({ status: "待确认", endedAt: new Date(), transcript: "转写", audioPath: "asr.m4a", 文件: { "asr.m4a": "规整", "seg-01.m4a": "原", "seg-02.m4a": "原", "seg-03/": "", "seg-03/0000.part": "片", "asr-concat.txt": "x" } });
     const 规整件不在 = await 一条({ status: "待确认", endedAt: new Date(), transcript: "转写", audioPath: "asr.m4a", 文件: { "seg-01.m4a": "原" } });
-    const 拼好 = await 一条({ status: "待提交", endedAt: new Date(), 文件: { "seg-01.m4a": "原", "seg-02/": "", "seg-02/0000.part": "片" } });
+    const 拼好 = await 一条({ status: "待提交", endedAt: new Date(), 文件: { "seg-01.m4a": "原", "seg-02/": "", "seg-02/0000.part": "片", "seg-03/": "", "seg-03/0000.part": "片" } });
+    const 两小时前 = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    fs.utimesSync(path.join(拼好.dir, "seg-02"), 两小时前, 两小时前); // seg-03 刚写：可能是用户正在补的一段，不动
     const 老主 = path.join(录音根(), "202601", "zzzzzzzzzzzzzzzzzzzzzz01");
     const 新主 = path.join(录音根(), "202601", "zzzzzzzzzzzzzzzzzzzzzz02");
     const 样例 = path.join(录音根(), "_asrtest");
@@ -220,7 +226,7 @@ describe("清理一轮", () => {
     expect(果.没主目录).toBe(1);
     expect(fs.readdirSync(成.dir).sort()).toEqual(["asr.m4a"]);
     expect(fs.readdirSync(规整件不在.dir).sort()).toEqual(["seg-01.m4a"]); // 规整件不在：原始段不能删
-    expect(fs.readdirSync(拼好.dir).sort()).toEqual(["seg-01.m4a"]);
+    expect(fs.readdirSync(拼好.dir).sort()).toEqual(["seg-01.m4a", "seg-03"]);
     expect(fs.existsSync(老主)).toBe(false);
     expect(fs.existsSync(新主)).toBe(true);
     expect(fs.existsSync(样例)).toBe(true);
@@ -260,6 +266,8 @@ describe("当场连带", () => {
     const b = await 一条({ status: "已发出", transcript: "x", topicId: "t1" });
     expect(await 停用成员录音(人.教练)).toBe(1);
     expect((await 行(a.id)).status).toBe("已放弃");
+    // 当场删了、audioPurgedAt 记上（清理一轮不会再看到它）：这里自己留一条「系统」的痕
+    expect(await raw.auditLog.findMany({ where: { entity: "EntCoachRecording", entityId: a.id }, select: { userName: true, action: true, summary: true } })).toEqual([{ userName: "系统", action: "delete", summary: "录音成员停用，没发出的录音已自动删除" }]);
     expect((await 行(a.id)).audioPurgedAt).not.toBeNull();
     expect(fs.existsSync(a.dir)).toBe(false);
     expect(fs.existsSync(b.dir)).toBe(true);
@@ -302,6 +310,25 @@ describe("容量闸、通知、到期于", () => {
     当(人.老板);
     const 概况 = await 读转写设置({ id: 人.老板, name: "老板", role: "SALES" });
     expect(概况 && "存储" in 概况 ? 概况.存储 : null).toMatchObject({ 剩: 500 * 1024 ** 2, 满了: true });
+  });
+
+  it("录音目录超过 5GB（磁盘还宽裕）：开始录音 409；设置概况标满了；降回去以后能开始", async () => {
+    await 开关(true);
+    当(人.教练);
+    const 开 = async () => 开始(请("/api/coach-rec/start", { method: "POST", body: JSON.stringify({ projectId: 项目, sourceKind: "网页录" }) }));
+    盘.剩 = 100 * 1024 ** 3;
+    盘.用 = 5 * 1024 ** 3 + 1;
+    忘掉存储情况();
+    const 满 = await 开();
+    expect(满.status).toBe(409);
+    expect(((await 满.json()) as { error: string }).error).toContain("请联系系统管理员");
+    当(人.老板);
+    const 概况 = await 读转写设置({ id: 人.老板, name: "老板", role: "SALES" });
+    expect(概况 && "存储" in 概况 ? 概况.存储 : null).toMatchObject({ 用了: 5 * 1024 ** 3 + 1, 满了: true });
+    当(人.教练);
+    盘.用 = 5 * 1024 ** 3;
+    忘掉存储情况();
+    expect((await 开()).status).toBe(200);
   });
 
   it("「整理好了」通知写 7 天后自动删除；草稿给界面带到期于（待提交、待确认、整理失败）", async () => {

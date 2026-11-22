@@ -203,12 +203,17 @@ export async function 只留规整件(r: { id: string; createdAt: Date; audioPat
   return 删;
 }
 
-/** 已经拼好的录音（不是上传中）还剩着的片目录 seg-NN/（拼完删片中途出错留下的）：兜底删。回删了几个 */
-export async function 删剩下的片目录(r: { id: string; createdAt: Date }, 根 = 录音根()): Promise<number> {
+/**
+ * 已经拼好的录音（不是上传中）还剩着的片目录 seg-NN/（拼完删片中途出错留下的）：兜底删。回删了几个。
+ * 最近 留毫秒 内改过的片目录不动（清理这一轮里用户刚「再录一段」、正在往里写片，PR6 二审）
+ */
+export async function 删剩下的片目录(r: { id: string; createdAt: Date }, 根 = 录音根(), 留毫秒 = 60 * 60 * 1000, 现在 = Date.now()): Promise<number> {
   const dir = 录音目录(r, 根);
   let 删 = 0;
   for (const d of await fsp.readdir(dir, { withFileTypes: true }).catch(() => [])) {
     if (!d.isDirectory() || !/^seg-\d{2}$/.test(d.name)) continue;
+    const 改于 = await fsp.stat(path.join(dir, d.name)).then((x) => x.mtimeMs, () => 现在);
+    if (现在 - 改于 < 留毫秒) continue;
     await fsp.rm(path.join(dir, d.name), { recursive: true, force: true });
     删 += 1;
   }

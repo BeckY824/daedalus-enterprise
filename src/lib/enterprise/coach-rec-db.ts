@@ -19,6 +19,7 @@ import { 主题写 } from "@/lib/team-scope";
 import { recordAudit } from "@/lib/audit";
 import { getSetting } from "@/lib/settings";
 import { 企业版 } from "./switch";
+import { 系统 } from "@/lib/project/timeout";
 import { 读组织 } from "./org";
 import { 权限项目选, 是教练, type 谁 } from "./permissions";
 import { 文件名打码, 打码还原, 还原超长话 } from "./notice-mask";
@@ -603,7 +604,7 @@ export async function 停用成员录音(userId: string): Promise<number> {
   if (!企业版() || !userId) return 0;
   const 们 = await defaultClient.entCoachRecording.findMany({
     where: { authorId: userId, status: { notIn: ["已发出", "已放弃"] }, deletedAt: null },
-    select: { id: true, createdAt: true },
+    select: { id: true, createdAt: true, fileName: true },
   });
   if (!们.length) return 0;
   const 改 = await 主题写(() => prisma.entCoachRecording.updateMany({
@@ -612,6 +613,8 @@ export async function 停用成员录音(userId: string): Promise<number> {
   }));
   for (const r of 们) {
     if (await 删录音文件(r).then(() => true, () => false)) await 记音频已删(r.id).catch(() => {});
+    // 留痕（PR6 二审）：audioPurgedAt 记上了，清理一轮不会再看到它，这里自己记一条「系统」删的
+    await recordAudit({ user: 系统, action: "delete", entity: "EntCoachRecording", entityId: r.id, summary: `${r.fileName ? `录音文件「${文件名打码(r.fileName)}」` : "录音"}${自动删话.停用}` }).catch(() => {});
   }
   return 改.count;
 }

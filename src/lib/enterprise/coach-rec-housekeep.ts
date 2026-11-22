@@ -128,9 +128,12 @@ export async function 清理一轮(opt: { 现在?: number } = {}): Promise<清�
   const 在用id = new Set(在用.map((r) => r.id));
   for (const r of 在用) {
     try {
-      if (r.status !== "上传中") 果.兜底 += await 删剩下的片目录(r);
+      // 本轮开头的快照可能旧了（这期间用户「再录一段」回到上传中、或者重新交了转写）：动文件前按编号重读一遍（PR6 二审）
+      const 现 = await defaultClient.entCoachRecording.findUnique({ where: { id: r.id }, select: { status: true, deletedAt: true, transcript: true } });
+      if (!现 || 现.deletedAt || 现.status === "上传中") continue;
+      果.兜底 += await 删剩下的片目录(r, 录音根(), undefined, 现在);
       // 转写成了（有转写、不在转写中）：只留规整件。转写中的不动（交的时候还要原始段）
-      if (r.transcript && r.status !== "转写中") 果.兜底 += await 只留规整件(r);
+      if (现.transcript && 现.status !== "转写中") 果.兜底 += await 只留规整件(r);
     } catch (e) {
       记错("兜底", r.id, e);
     }
