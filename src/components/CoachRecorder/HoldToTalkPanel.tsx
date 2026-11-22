@@ -6,7 +6,8 @@
  *   按着往上滑 ≥60px（鼠标拖出按钮）/ 按 Esc = 待取消，松手丢掉；不到 1 秒丢掉（「说话时间太短」）；9:30 起「还能说 30 秒」，10:00 自动当松手。
  *   飞书里优先飞书原生录（feishu-recorder.ts，准备不好退网页录）；第一次用（麦克风还没问过）这一次只拿授权不录。
  * 点按录音（线下陪练这类长录音，一条最长 2 小时）：点一下开始、再点一下停，单独「取消」（先问一句再丢，Esc 不管用，PR3 审查）；一律网页录；手机上开录前提示别锁屏、申请屏幕常亮；录着离开页面先问。
- * 补段沿用第一段的录法（看 sourceKind：飞书原生录的只能接着飞书录、只能按住；网页录的在飞书里也走网页录），补段时录法切换锁住（PR3 审查：格式不一样服务端拒收）。
+ * 补段沿用第一段的录法（看 sourceKind：飞书原生录的只能接着飞书录、只能按住，录法切换锁住；网页录的在飞书里也走网页录，
+ *   按住 / 点按都是网页录、格式一样，不锁——第一段点按录了 30 分钟的，补段照样能点按，PR3 二审）。补段传片被拒（格式、大小）：丢掉这段、退回待提交，前面的段留着。
  * 「准备中」（引飞书 SDK、问麦克风权限）面板关了：中止，不再开麦克风（PR3 审查）。
  * 打断（来电、锁屏、切后台、话筒被占用、录音器出错、触摸被系统收走）→ 当作松手：已录的进待提交，卡上写「录音在 0:42 被打断（…），已录部分已保存」，
  *   可以「再按住补一段」（同一条录音的下一段，服务端拼）。
@@ -97,7 +98,8 @@ export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }
 
   // 补段：沿用第一段的录法（飞书原生录 / 网页录），录法切换锁住；飞书原生录只有按住说话
   const 定的来源 = 录 && 录.段数 >= 1 && 录.sourceKind !== "上传" ? 录.sourceKind : null;
-  const 式: 录法式 = 定的来源 === "飞书原生录" ? "按住" : 选式;
+  const 锁式 = 定的来源 === "飞书原生录";
+  const 式: 录法式 = 锁式 ? "按住" : 选式;
   // 已经录了多少（补段时前面几段的；服务端算的时长，读不出按 0）
   const 前面 = 录?.时长毫秒 ?? 0;
   const 上限 = 式 === "按住" ? 按住上限毫秒 : 点按上限毫秒;
@@ -161,7 +163,20 @@ export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }
     }
     const 错 = x.队列.状态().错;
     这次.current = null;
-    if (错) { set阶("空"); set提示({ 话: 错, 坏: true }); return; }
+    if (错) {
+      // 补段（前面已有拼好的段）传片被拒（格式不一样、超大小）：丢掉这段、退回待提交，不让整条停在上传中（7 天后连前面的段一起删，PR3 二审）
+      if (x.段 > 1) {
+        const d = await 调(`/api/coach-rec/${id}/drop`).catch(() => null);
+        if (d?.ok) set录((d.体.录音 as 录音给界面 | null) ?? null);
+        set阶("空");
+        set提示({ 话: `${错}；这一段没留，前面录的还在`, 坏: true });
+        router.refresh();
+        return;
+      }
+      set阶("空");
+      set提示({ 话: 错, 坏: true });
+      return;
+    }
     const 秒 = Math.round((前面 + 时长) / 1000);
     const r = await 调(`/api/coach-rec/${id}/finish`, 打断 ? { 打断: { 秒, 原因: 打断 } } : {}).catch(() => null);
     set阶("空");
@@ -175,7 +190,7 @@ export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }
   const 开始 = useCallback(async () => {
     if (阶 !== "空" || 这次.current) return;
     set提示(null);
-    if (还能 <= 最短录音毫秒) return set提示({ 话: `这条已经录满 ${上限 / 60_000} 分钟，提交以后另录一条`, 坏: true });
+    if (还能 <= 最短录音毫秒) return set提示({ 话: 式 === "按住" && 定的来源 === "网页录" && 前面 < 点按上限毫秒 ? `这条已经超过 ${上限 / 60_000} 分钟，改用「点按录音」接着录，或者先提交` : `这条已经录满 ${上限 / 60_000} 分钟，提交以后另录一条`, 坏: true });
     if (录 && !录.能补) return set提示({ 话: "这条已经交了，另起一条录", 坏: true });
     set阶("准备");
     // 选录法：补段沿用第一段的；新的一条：按住说话在飞书里先原生（这一页原生录坏过的直接网页录），不行退网页录；点按录音一律网页录
@@ -245,7 +260,7 @@ export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }
         常亮.current = null; // 拿不到不报错
       }
     }
-  }, [阶, 还能, 上限, 录, 式, 定的来源, projectId, 收尾]);
+  }, [阶, 还能, 上限, 前面, 录, 式, 定的来源, projectId, 收尾]);
 
   useEffect(() => { 音量条.current?.style.setProperty("transform", `scaleX(${Math.max(0.05, 音量)})`); });
 
@@ -379,7 +394,7 @@ export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }
   const 体 = (
     <div className="ptt-panel" data-testid="ptt-panel" ref={面板} tabIndex={-1}>
       <div className="crec-notice">请先告知在场的人正在录音。录音挂在项目「{项目名}」上；原声只有你和项目负责人能听。</div>
-      <Segmented block value={式} disabled={阶 !== "空" || !!定的来源} onChange={(v) => { set式(v as 录法式); 记式(v as 录法式); set提示(null); }}
+      <Segmented block value={式} disabled={阶 !== "空" || 锁式} onChange={(v) => { set式(v as 录法式); 记式(v as 录法式); set提示(null); }}
         options={[{ label: "按住说话", value: "按住" }, { label: "点按录音", value: "点按" }]} data-testid="ptt-mode" />
       <div className="crec-hint">{式 === "按住" ? `按住说话，松手结束；往上滑（或按 Esc）取消。一条最长 ${按住上限毫秒 / 60_000} 分钟，适合短点评。` : `点一下开始、再点一下停，适合陪练这类长录音，一条最长 ${点按上限毫秒 / 3_600_000} 小时。`}</div>
       {/* 按着的时候按钮上面的东西不能变高变矮（按钮一挪，指针就「出了按钮」= 取消）：待提交块录着也留着（只收起按钮），计时条占一格固定高的位置，提示写在按钮下面 */}
