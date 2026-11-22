@@ -193,7 +193,7 @@ const 录音变了 = "这条录音刚变了（可能在别的窗口发出或删�
  * 发起 = 写一条主题（+ 录音点评：同一个事务里把录音改成已发出、记上主题编号；录音不是待确认 / 整理失败了就整个不写）。
  * 权限、输入、留痕、通知同一套（P-教练-21：负责人收到的仍是主题通知，标题 + 去哪看，不带录音、转写）
  */
-async function 发起(me: 人, projectId: string, 输入: { title?: unknown; body?: unknown }, 录音id: string | null): Promise<结果<{ id: string }>> {
+async function 发起(me: 人, projectId: string, 输入: { title?: unknown; body?: unknown }, 录音id: string | null, 录音版本?: Date): Promise<结果<{ id: string }>> {
   if (!企业版()) return { ok: false, error: "教练主题只在企业版里有" };
   const p = await 读项目(projectId);
   if (!p) return { ok: false, error: "项目不在了，刷新看看" };
@@ -212,7 +212,8 @@ async function 发起(me: 人, projectId: string, 输入: { title?: unknown; bod
       const 新 = await tx.entCoachTopic.create({ data: { projectId: p.id, node: p.node, title, body, authorId: me.id }, select: { id: true } });
       if (录音id) {
         const 改 = await tx.entCoachRecording.updateMany({
-          where: { id: 录音id, authorId: me.id, projectId: p.id, status: { in: ["待确认", "整理失败"] }, deletedAt: null },
+          // 录音版本（#428 审查）：只在库里还是还原时读到的那一版才发，不然整个事务回滚（主题不建）
+          where: { id: 录音id, authorId: me.id, projectId: p.id, status: { in: ["待确认", "整理失败"] }, deletedAt: null, ...(录音版本 ? { updatedAt: 录音版本 } : {}) },
           data: { status: "已发出", topicId: 新.id, draftTitle: title, draftBody: body, error: null },
         });
         if (改.count !== 1) throw new Error(录音变了);
@@ -252,8 +253,14 @@ export async function 发录音点评(me: 人, 录音id: unknown, 输入: { titl
   // 还原后变长超了上限（带分隔的号码）：给清楚的话，不回笼统的「最多 N 字」（PR5 审查）
   const 超 = 教练 ? 还原超长话(输入.title, 改后.title, 主题标题上限, "主题") ?? 还原超长话(输入.body, 改后.body, 主题内容上限, "要点") : null;
   if (超) return { ok: false, error: 超, 状态: 400 };
-  const x = await 发起(me, r.projectId, 改后, r.id);
+  // 带了版本的：按还原时读到的那一版写（读完到写之间别处又整理了 → 回 412，和上面同一句，#428 审查）
+  const 带版本 = typeof 输入.版本 === "string" && !!原;
+  const x = await 发起(me, r.projectId, 改后, r.id, 带版本 ? 原!.updatedAt : undefined);
   if (x.ok) return x;
+  if (带版本 && x.error === 录音变了) {
+    const 现 = await defaultClient.entCoachRecording.findUnique({ where: { id: r.id }, select: { status: true, deletedAt: true } });
+    if (现 && !现.deletedAt && (现.status === "待确认" || 现.status === "整理失败")) return { ok: false, error: 内容变了话, 状态: 412 };
+  }
   return { ...x, 状态: x.error === 录音变了 ? 409 : /最多|要写/.test(x.error) ? 400 : /不在了/.test(x.error) ? 404 : 403 };
 }
 

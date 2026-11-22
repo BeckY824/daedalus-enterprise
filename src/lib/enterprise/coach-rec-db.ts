@@ -513,10 +513,14 @@ export async function 存录音草稿(me: 人, id: unknown, 输入: { title?: un
   if (教练 && 版本变了(输入.版本, r.updatedAt) && (有对不上的码(title, 原文们) || 有对不上的码(body, 原文们))) return 不行(内容变了话, 412);
   const 超 = 还原超长话(输入.title ?? "", title, 主题标题上限, "主题") ?? 还原超长话(输入.body ?? "", body, 主题内容上限, "要点");
   if (超) return 不行(超, 400);
-  await 主题写(() => prisma.entCoachRecording.updateMany({
-    where: { id: r.id, status: r.status, deletedAt: null },
+  // 带了版本的（确认框）：只在库里还是上面读到的那一版时写（#428 审查）。读完到写之间别处又整理了，还原用的原文已经不是这一版，
+  // 照写可能把打码样子落库：一样回 412 让人重新打开。没带版本的（老页面）照旧只看状态
+  const 带版本 = typeof 输入.版本 === "string";
+  const 改 = await 主题写(() => prisma.entCoachRecording.updateMany({
+    where: { id: r.id, status: r.status, deletedAt: null, ...(带版本 ? { updatedAt: r.updatedAt } : {}) },
     data: { draftTitle: title || null, draftBody: body || null },
   }));
+  if (带版本 && 改.count !== 1) return 不行(内容变了话, 412);
   return { ok: true, 录音: await 给界面(me, (await 读录音(r.id))!, await 读项目(r.projectId)) };
 }
 

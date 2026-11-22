@@ -365,6 +365,45 @@ describe("稍后再发、发出", () => {
     expect((await 行(id)).draftTitle).toBe("新主题");
   });
 
+  it("并发（#428 审查）：读完到写之间别处又整理了（原号码没了）→ 存草稿、发出都回 412，打码样子不落库、主题不建", async () => {
+    const 转写没号 = "(00:00) 说话人 1：报价单下周二前发过去，数量周一电话确认。\n(00:05) 说话人 2：好的。";
+    const id = await 放一条({ status: "待确认", transcript: 转写没号, draftTitle: "回访 13912345678", draftBody: "· 打 13912345678 确认数量" });
+    当("教练");
+    const 教 = (await 读项目主题(我("教练"), 项目))!.录音!.草稿们.find((d) => d.id === id)!;
+    // 第 n 次读这条录音之后，别处的「按转写重新整理」落库（原号码没了、更新于变了）；读到的还是旧的那一版
+    const 插一手 = (n: number) => {
+      const 原读 = raw.entCoachRecording.findUnique.bind(raw.entCoachRecording);
+      let 次 = 0;
+      return vi.spyOn(raw.entCoachRecording, "findUnique").mockImplementation((async (a: Parameters<typeof 原读>[0]) => {
+        const 行 = await 原读(a);
+        if (++次 === n) {
+          await new Promise((r) => setTimeout(r, 5));
+          await raw.entCoachRecording.update({ where: { id }, data: { draftTitle: "报价单下周二前发出", draftBody: "· 周一电话确认数量" } });
+        }
+        return 行;
+      }) as never);
+    };
+    const 存间 = 插一手(1);
+    const 存 = await 读(await 存稿(请(`/api/coach-rec/${id}/draft`, { title: 教.确认!.主题, body: `${教.确认!.要点}（改）`, 版本: 教.更新于 }), 参(id)));
+    存间.mockRestore();
+    expect(存).toMatchObject({ status: 412, 体: { error: "内容已在别处更新，请重新打开" } });
+    // 还原用的是读到的旧原文（能换回原号码），但库里已经是新一版：不写
+    expect(await 行(id)).toMatchObject({ draftTitle: "报价单下周二前发出", draftBody: "· 周一电话确认数量" });
+    // 发出：读了两次（状态、原文），第二次之后别处落库
+    await raw.entCoachRecording.update({ where: { id }, data: { draftTitle: "回访 13912345678", draftBody: "· 打 13912345678 确认数量" } });
+    const 再 = (await 读项目主题(我("教练"), 项目))!.录音!.草稿们.find((d) => d.id === id)!;
+    const 发间 = 插一手(2);
+    const 发出 = await 读(await 发(请(`/api/coach-rec/${id}/send`, { title: 再.确认!.主题, body: 再.确认!.要点, 版本: 再.更新于 }), 参(id)));
+    发间.mockRestore();
+    expect(发出).toMatchObject({ status: 412, 体: { error: "内容已在别处更新，请重新打开" } });
+    expect(await raw.entCoachTopic.count()).toBe(0);
+    expect(await 行(id)).toMatchObject({ status: "待确认", topicId: null });
+    expect(JSON.stringify(await raw.entCoachRecording.findMany())).not.toContain("****");
+    // 没人插手：带同一版照常发出
+    const 三 = (await 读项目主题(我("教练"), 项目))!.录音!.草稿们.find((d) => d.id === id)!;
+    expect((await 读(await 发(请(`/api/coach-rec/${id}/send`, { title: 三.确认!.主题, body: 三.确认!.要点, 版本: 三.更新于 }), 参(id)))).status).toBe(200);
+  });
+
   it("打码还原：同一个打码样子对应几个原号码按顺序轮；对不上的不动；没有号码的原文不动", () => {
     expect(打码还原("a 138****5678 b 138****5678", ["13812345678 和 13811115678"])).toBe("a 13812345678 b 13811115678");
     expect(打码还原("139****0000", ["13812345678"])).toBe("139****0000");
