@@ -1044,6 +1044,10 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
   white-space: nowrap;
 }
 
+/* K1（设计语言 E6b）：深色提示框（antd Tooltip）里的链接——文字链按钮、Typography.Link 原来是品牌蓝压在深底上（3.94:1），看不清。
+   跟提示框的字同色（antd 给的浅色字，各主题、深色模式都配好了对比），靠下划线认出是链接 */
+.ant-tooltip :is(a, .ant-typography-link, .ant-btn-link) { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.ant-tooltip :is(a, .ant-typography-link, .ant-btn-link):hover { color: inherit; opacity: .85; }
 /* 截了就悬停看全文的浮层（TruncTip 挂在 body 上，盖过弹窗、抽屉） */
 .trunc-tip {
   position: fixed;
