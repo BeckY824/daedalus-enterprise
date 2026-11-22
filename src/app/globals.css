@@ -6241,6 +6241,10 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]) .pool-pick-attr .ant-select-content > .pool-seg { display: flex; gap: 4px; min-width: 0; max-width: 100%; }
   :root:is(:not([data-skin]), [data-skin="now"]) .pool-pick-attr .pool-seg-k { min-width: 1em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   :root:is(:not([data-skin]), [data-skin="now"]) .pool-pick-attr .pool-seg .pool-n { flex: none; }
+  /* 375 下拉比 390 再窄 15，线索池五位数（「线索池 54,341」）的数右沿超出下拉内容框约 10px（#414 3704 补点「线 53,83」）：
+     手机宽回收站开关、下拉左右内边距各收到 8（不另加断点，三档断点守卫），让出的宽给下拉，数照全写、池名照样只截省略号 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-pools > .ant-btn.pool-bin { padding-inline: var(--s2); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-pools > .pool-pick-attr { padding-inline: var(--s2); }
   :root:is(:not([data-skin]), [data-skin="now"]) .pool-fl { flex: 1 1 100%; order: 2; }
   :root:is(:not([data-skin]), [data-skin="now"]) .pool-fl > .ant-input-affix-wrapper { order: 0; flex: 1 1 160px; width: auto !important; }
   :root:is(:not([data-skin]), [data-skin="now"]) .pool-fl > .ant-select.pool-sort { order: 1; flex: 0 1 120px; min-width: 0; }
@@ -6253,12 +6257,6 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]) .pool-sub-row > :first-child { flex: 1 0 100%; }
   :root:is(:not([data-skin]), [data-skin="now"]) .pool-sub-row > :not(:first-child, .pool-sub-act) { flex: 0 1 auto; min-width: 0; font-size: var(--fs-note); }
   :root:is(:not([data-skin]), [data-skin="now"]) .pool-sub-row > .pool-sub-act { flex: 1 0 auto; flex-wrap: wrap; }
-}
-/* 375（≤400）：下拉比 390 再窄 15，线索池五位数（「线索池 54,341」）的数右沿超出下拉内容框约 10px（#414 3704 补点「线 53,83」）。
-   回收站开关、下拉左右内边距各收到 8，让出的宽给下拉，数照全写、池名照样只截省略号 */
-@media (max-width: 400px) {
-  :root:is(:not([data-skin]), [data-skin="now"]) .pool-pools > .ant-btn.pool-bin { padding-inline: var(--s2); }
-  :root:is(:not([data-skin]), [data-skin="now"]) .pool-pools > .pool-pick-attr { padding-inline: var(--s2); }
 }
 
 /* =====================================================================
