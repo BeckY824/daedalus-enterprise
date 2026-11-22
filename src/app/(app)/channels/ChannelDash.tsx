@@ -359,7 +359,8 @@ export default function ChannelDash({
                 return (
                   <li key={x.id}>
                     <button type="button" className="link-plain chan-dash-ell" title={x.name} onClick={() => 看详情(x.id)}>{x.name}</button>
-                    <span className="chan-dash-top-bar"><i className={宽类(榜顶 ? x.线索 / 榜顶 : 0)} /></span>
+                    {/* 条宽：现状主题按 5% 一档给类；换皮主题照原样（用户 11-21「不动」） */}
+                    <span className="chan-dash-top-bar">{新样 ? <i className={宽类(榜顶 ? x.线索 / 榜顶 : 0)} /> : <i style={{ width: `${(x.线索 / 榜顶) * 100}%` }} />}</span>
                     {名单段(x.线索, x.名单) ? <Tooltip title={<RosterNote 总数={x.线索} 名单={x.名单} channelId={x.id} 链={链} />}>{数字}</Tooltip> : 数字}
                   </li>
                 );

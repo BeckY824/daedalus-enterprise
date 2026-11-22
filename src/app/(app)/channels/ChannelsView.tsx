@@ -250,6 +250,13 @@ export default function ChannelsView({
     () => (两层 && 按主看 ? [...按主渠道汇总(rows, 主渠道们), ...只有主渠道的(主渠道们, new Set(子渠道数.keys()), { kw, attr, ownerId, active, creator, 主 })] : []),
     [两层, 按主看, rows, 主渠道们, 子渠道数, kw, attr, ownerId, active, creator, 主],
   );
+  /** 页头计数（现状主题）：跟当前视图走——按子渠道 = 渠道个数，按主渠道 = 主渠道个数；都不带筛选 */
+  const 头计数 = useMemo(
+    () => (两层 && 按主看
+      ? 按主渠道汇总(全部行, 主渠道们).length + 只有主渠道的(主渠道们, new Set(子渠道数.keys()), { kw: "", attr: "", ownerId: "", active: "", creator: "", 主: "" }).length
+      : 全部行.length),
+    [两层, 按主看, 全部行, 主渠道们, 子渠道数],
+  );
   /** 从「按主渠道」那张表打开的主渠道编辑弹窗（能管渠道的人才有） */
   const [改主, set改主] = useState<主渠道编辑中 | null>(null);
   const 按id找主 = useMemo(() => new Map(主渠道们.map((m) => [m.id, m])), [主渠道们]);
@@ -727,7 +734,7 @@ export default function ChannelsView({
           // 现状主题：标题后写渠道个数（--count-fg）；口径切换在看板头（见 口径进看板）
           新样 ? (
             <>
-              <span className="page-count" aria-label={`共 ${全部行.length} 个渠道`}>{全部行.length}</span>
+              <span className="page-count" aria-label={两层 && 按主看 ? `共 ${头计数} 个主渠道` : `共 ${头计数} 个渠道`}>{头计数}</span>
               {口径进看板 ? null : 口径钮}
             </>
           ) : 口径钮 ?? undefined

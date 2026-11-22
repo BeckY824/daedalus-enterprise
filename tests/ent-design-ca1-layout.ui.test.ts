@@ -214,6 +214,22 @@ it("换皮主题（账簿）：页头照旧挂口径切换，看板头没有「�
     expect(await page.locator(".chan-dash-bar h2").count()).toBe(0);
     expect(await page.locator(".chan-dash-empty").count()).toBe(1);
     expect(await page.locator(".page-count").count()).toBe(0);
+    // TOP5 条宽照原样（行内样式按比例，不按 5% 取整）
+    const 第二条 = page.getByTestId("chan-dash-top").locator(".chan-dash-top-bar i").nth(1);
+    expect(await 第二条.getAttribute("style")).toMatch(/width:\s*98\.8/);
+    expect(await 第二条.getAttribute("class")).toBeNull();
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("页头计数跟当前视图走：按子渠道写渠道个数，切「按主渠道」写主渠道个数；现状主题 TOP5 条宽按 5% 一档给类", async () => {
+  const { page, errors } = await 打开(1366);
+  try {
+    expect(await page.locator(".page-count").innerText()).toBe("50");
+    expect(await page.getByTestId("chan-dash-top").locator(".chan-dash-top-bar i").nth(1).getAttribute("class")).toBe("chan-w100");
+    await page.locator(".chan-dash-bar [aria-label='统计口径']").getByText("按主渠道").click();
+    await expect.poll(() => page.locator(".page-count").innerText()).toBe("1");
+    expect(await page.locator(".page-count").getAttribute("aria-label")).toBe("共 1 个主渠道");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
