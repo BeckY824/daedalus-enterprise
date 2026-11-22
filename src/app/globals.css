@@ -6007,3 +6007,65 @@ button.proj-miss-chip { cursor: pointer; }
 :root:is(:not([data-skin]), [data-skin="now"]) :is(.rail-num, .chat-g-h, .cmdk-sec, .notice-meta, .rail-search kbd, .rail-ask-k) { color: var(--text-muted); }
 /* H-新10：⌘K 底部只一行三颗键，放不下也不折 */
 :root:is(:not([data-skin]), [data-skin="now"]) .cmdk-foot-one { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- 设计语言 L-B · 客户列表表格、批量条、仅项目、看板（11-22，只挂现状主题；换皮主题外观不动） ---------- */
+/* L-新9 钉住列边上那道渐隐：原来贴边压一层墨色、从表头通到底，像一根滚动条；现在只留底色淡出，宽收成 --edge-fade（24）。
+   滑到钉住列底下的字（国家「土耳其」，L-新8 后半）是淡出去的，不是一刀切成半截再压一道灰边 */
+:root:is(:not([data-skin]), [data-skin="now"]) .list :is(.ant-table-cell-fix-end, .ant-table-container)::after {
+  width: var(--edge-fade); background: linear-gradient(to left, var(--panel), transparent);
+}
+:root:is(:not([data-skin]), [data-skin="now"]) .list .ant-table-cell-fix-start::after {
+  width: var(--edge-fade); background: linear-gradient(to right, var(--panel), transparent);
+}
+/* 选中 / 悬停的行底色不同：渐隐接这一行自己的底色，不在浅蓝底上透出一截白 */
+:root:is(:not([data-skin]), [data-skin="now"]) .list .ant-table-row:hover > .ant-table-cell-fix-end::after { background: linear-gradient(to left, var(--row-hover), transparent); }
+:root:is(:not([data-skin]), [data-skin="now"]) .list .ant-table-row:hover > .ant-table-cell-fix-start::after { background: linear-gradient(to right, var(--row-hover), transparent); }
+:root:is(:not([data-skin]), [data-skin="now"]) .list .ant-table-row-selected > .ant-table-cell-fix-end::after { background: linear-gradient(to left, var(--brand-bg), transparent); }
+:root:is(:not([data-skin]), [data-skin="now"]) .list .ant-table-row-selected > .ant-table-cell-fix-start::after { background: linear-gradient(to right, var(--brand-bg), transparent); }
+/* L-新14 批量条：表格单独成一层（isolation），钉住列的层级（antd 按列数算，二三十）只在表格里比，浮起的批量条（z 5）不再被客户列压住 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cu-morph-wrap .list .ant-table-wrapper { isolation: isolate; }
+/* D20 筛选行「只看…」胶囊：同筛选控件一个高（32），圆角、字号同全站标签；关闭钮点得中 */
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-tag.list-chip { margin: 0; height: var(--ctl-h); display: inline-flex; align-items: center; padding-inline: var(--s3); font-size: var(--fs-note); }
+/* D20 表格里的小标签一套：回收状态（三态，tri-state-ui.css 自写的 20 高）和全站 antd 标签同高 22、全圆角、12 号字；
+   沉睡接中性灰（--tag-bg / --tag-fg），待回收（要人处理）橙不变 */
+:root:is(:not([data-skin]), [data-skin="now"]) .tri-tag { height: 22px; line-height: 22px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .tri-tag.tri-沉睡 { background: var(--tag-bg); color: var(--tag-fg); }
+/* D30 看板卡悬停只换底色（规范：悬停只换底色），不再浮起换阴影；拖着的卡片照旧浮起，只看进度的卡片悬停不变 */
+:root:is(:not([data-skin]), [data-skin="now"]) .pipe-card:not(.pipe-card-ro, .is-dragging):hover { background: var(--row-hover); box-shadow: var(--shadow-card); }
+:root:is(:not([data-skin]), [data-skin="now"]) .pipe-card.pipe-card-ro:hover { box-shadow: var(--shadow-card); }
+:root:is(:not([data-skin]), [data-skin="now"]) .pipe-card { transition: background var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
+/* 「仅项目」小表的「个项目」：只在手机宽两排摆法里出（电脑宽有列头「项目数」） */
+:root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-unit { display: none; }
+@media (min-width: 768px) {
+  /* F-040 / L-新11：仅项目小表后四列（负责人、级别、客户状态、最近跟进）他永远看不到、一直空着，却占了 32% 宽，
+     1024 宽客户名那列只剩 ~47px；现状主题不摆这四列，宽度还给客户名 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-r { grid-template-columns: minmax(0, 1fr) 96px 12% 14% 14% 9%; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-r > :nth-child(n + 7) { display: none; }
+}
+@media (max-width: 767px) {
+  /* L-新14 批量条：手机宽靠左、右边让出 --ai-safe（72），不压在右下 AI 球上；放不下就在条里折行（折行后圆角换卡片档） */
+  :root:is(:not([data-skin]), [data-skin="now"]) .list-sel.list-sel-float { margin-inline: 0 auto; max-width: calc(100% - var(--ai-safe)); border-radius: var(--r-card); row-gap: var(--s1); }
+  /* L-新11「仅项目」小表 390：标题不折成两行、说明折行写完；列头收起，每位客户两排——
+     ①「仅项目」+ 客户名（折行写完，不省略，一点不再冒黑气泡盖住整行）②编号 · 类型 · 地区 · 节点 · N 个项目（空的不摆）。
+     原来十列网格（96px + 81%）在 358 宽里把客户名那列挤成 0 宽（3703 实操 F-040 截图） */
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-h { flex-wrap: wrap; row-gap: 2px; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-h > :first-child { flex: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-h .muted { flex: 1 1 200px; white-space: normal; overflow: visible; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-head { display: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s3); padding: var(--s2) var(--s3); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-head + .cust-ponly-row { border-top: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-row > .cust-ponly-c { padding: 0; flex: none; max-width: 100%; font-size: var(--fs-note); color: var(--text-muted); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-row > .cust-ponly-c:empty { display: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-row > .cust-ponly-name { flex: 1 0 100%; align-items: flex-start; overflow: visible; font-size: var(--fs-body); color: var(--ink); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-row > .cust-ponly-name > a { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-unit { display: inline; }
+}
+/* L-B · 行内动作 .row-act 一种款（D09，落地计划「只在 L-B 改一次」）：带字的行内按钮（领取、录投入、详情、恢复、展开……）是文字按钮——
+   蓝字、不带框、悬停浅蓝底；行上不标红。只剩图标的（⋯、编辑、停用，本来就是 type="text"）不变。触屏点击区 44 照旧（上面 pointer: coarse 那条）。
+   用在：渠道、客户列表、公海、成员表（跟进计划行尾是 .plan-row-act 图标钮，不用这一款） */
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-btn.row-act.ant-btn-variant-outlined { border-color: transparent; background: transparent; box-shadow: none; color: var(--brand); padding-inline: var(--s1); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-btn.row-act.ant-btn-variant-outlined:not(:disabled):hover { border-color: transparent; background: var(--brand-bg); color: var(--brand-deep); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-btn.row-act.ant-btn-variant-outlined:disabled { border-color: transparent; background: transparent; color: var(--text-faint); }
+/* D37 补（L-A 补点发现）：市场管理客户页（我分出去的）的「看板」视图，筛选在看板上方 .pipe-top，不在 .list-bar——
+   「全部成员 / 全部创建人 / 全部进程」占位字也墨色，和「全部阶段」（选中值）一个颜色。销售客户页的看板筛选仍是 .list-bar，上面 L-A 那条已管 */
+:root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .pipe-top .ant-select-placeholder { color: var(--ink); }
