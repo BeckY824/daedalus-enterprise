@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Button, Card, Modal, Tag, Tooltip } from "antd";
 import { GlobalOutlined } from "@ant-design/icons";
 import { useBusiness } from "@/lib/business-client";
@@ -13,6 +13,7 @@ import { dayjs } from "@/lib/utils";
 import { useIsNowSkin } from "@/lib/use-skin";
 import { 最近背调, 背调价目 } from "@/lib/research/actions";
 import { 客户背调对象, 对象说明, type 客户档案 } from "@/lib/research/subject";
+import type { 最近背调结果 } from "@/lib/research/latest";
 
 /**
  * 客户背调（lib/research）：按钮、跑起来那一块、上一次背调的摘要。
@@ -31,6 +32,7 @@ export function useCustomerResearch({
   on记跟进,
   能发起 = true,
   开 = true,
+  上次初值,
 }: {
   customerId: string;
   /** 客户全称（企业版可能空着）：背调对象按它认联系人 / 公司，不拿编号顶 */
@@ -42,6 +44,11 @@ export function useCustomerResearch({
   /** false = 不摆背调按钮（以前存下的背调摘要照样能看） */
   能发起?: boolean;
   开?: boolean;
+  /**
+   * 详情页渲染时带下来的上一次背调（11-22 页面切换提速 C3）：给了就先用它、进页不再调一次 最近背调；
+   * 背调跑完（任务状态变了）照旧重取。undefined = 没带，照原来进页就取
+   */
+  上次初值?: 最近背调结果;
 }): { 按钮: ReactNode; 区: ReactNode; 能发起: boolean; 有上次: boolean; 状态: 背调状态 } {
   const b = useBusiness();
   const 叫 = 显示名 || customerName;
@@ -53,7 +60,9 @@ export function useCustomerResearch({
   /* 背调谁（10-21 客户反馈：以前拿客户名当公司查）。没公司的先找公司，点选了候选就接着背调那家（同一个 runId，不另扣） */
   const 对象 = useMemo(() => 客户背调对象({ name: customerName, ...档案 }, b.fields.school), [customerName, 档案, b.fields.school]);
   const [接着, set接着] = useState<Turn["接着"]>();
-  const [上次背调, set上次背调] = useState<Awaited<ReturnType<typeof 最近背调>>>(null);
+  const [上次背调, set上次背调] = useState<最近背调结果>(上次初值 ?? null);
+  /** 带下来的初值只顶进页那一次：之后换客户、背调跑完都照旧去取 */
+  const 初值顶过 = useRef(false);
   const [看上次, set看上次] = useState(false);
   /* 按钮上写「背调 · 剩 N 次」：点按钮本身就是确认（10-16 用户），所以扣费得写在按钮上，不够就点不了 */
   const [背调价, set背调价] = useState<Awaited<ReturnType<typeof 背调价目>> | null>(null);
@@ -88,11 +97,17 @@ export function useCustomerResearch({
                   : "背调次数用完了，需要加次数请联系我们");
   useEffect(() => {
     if (!开) return;
+    if (上次初值 !== undefined && !初值顶过.current) {
+      初值顶过.current = true;
+      return;
+    }
     let 活 = true;
     最近背调(customerId).then((r) => 活 && set上次背调(r)).catch(() => {});
     return () => {
       活 = false;
     };
+    // 上次初值 只认进页那一次，不放进依赖（之后页面刷新带下来的新值不触发重取，同原来）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerId, researchJob?.status, 开]);
 
   if (!开) return { 按钮: null, 区: null, 能发起: false, 有上次: false, 状态: "无" };
@@ -172,7 +187,7 @@ const 背调状态色: Record<背调状态, string | undefined> = { 已有: "gre
  * 企业版客户页左栏的「客户背调」块（U-客户-03）：只摆一个状态标签（已有 / 无 / 进行中），点标签弹框看详情、发起背调。
  * 钩子挂在这个组件上，框关了任务和状态都还在
  */
-export function CustomerResearchTag(props: { customerId: string; customerName: string; 显示名?: string; 档案?: Omit<客户档案, "name">; on记跟进?: () => void; 卡?: boolean }) {
+export function CustomerResearchTag(props: { customerId: string; customerName: string; 显示名?: string; 档案?: Omit<客户档案, "name">; on记跟进?: () => void; 卡?: boolean; 上次初值?: 最近背调结果 }) {
   const { 按钮, 区, 能发起, 有上次, 状态 } = useCustomerResearch(props);
   const [开着, set开着] = useState(false);
   /** 设计语言 D3 · M5-a「无」不挂标签只在现状主题；换皮主题照旧挂（use-skin.ts） */
@@ -235,7 +250,7 @@ export function CustomerResearchTag(props: { customerId: string; customerName: s
  * 企业版客户页的「客户背调」卡（P14 第 5 条）：和右栏其他卡一个样子（rec-card rec-side-card），
  * 不再挂在 AI 面板或「跟进」菜单里。企业版网页上背调通道走不通时按钮不摆，只看以前存下的背调；都没有就说一句
  */
-export function CustomerResearchCard(props: { customerId: string; customerName: string; 显示名?: string; 档案?: Omit<客户档案, "name">; on记跟进?: () => void }) {
+export function CustomerResearchCard(props: { customerId: string; customerName: string; 显示名?: string; 档案?: Omit<客户档案, "name">; on记跟进?: () => void; 上次初值?: 最近背调结果 }) {
   const { 按钮, 区, 能发起, 有上次 } = useCustomerResearch(props);
   return (
     <div className="rec-card rec-side-card" aria-label="客户背调">

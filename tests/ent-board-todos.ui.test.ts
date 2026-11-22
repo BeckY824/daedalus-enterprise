@@ -113,7 +113,8 @@ it("逾期是 0：不红", async () => {
 it("点卡换 f=、回到第一页，旧链接带的 kind= 顺手去掉；选中的卡再点不动", async () => {
   const { page } = await 打开({ 卡: "week" }, 1280, "/overview?ownerId=u1&f=week&kind=plan&p=2");
   expect(await page.locator(".btodo-card").nth(2).getAttribute("aria-pressed")).toBe("true");
-  expect(await page.locator(".btodo-head .section-title").innerText()).toBe("本周到期");
+  // 现状主题卡头带计数（R-B R1）
+  expect((await page.locator(".btodo-head .section-title").innerText()).replace(/\s+/g, "")).toBe("本周到期（1）");
   await page.locator(".btodo-card").nth(2).click();
   expect(await 去了(page)).toEqual([]);
   await page.locator(".btodo-card").nth(0).click();

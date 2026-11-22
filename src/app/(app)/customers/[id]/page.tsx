@@ -19,6 +19,7 @@ import { followHistoryInclude, followHistoryOrder, serializeFollowHistory } from
 import { 负责人候选 } from "@/lib/owners";
 import { 可选渠道 } from "@/lib/options";
 import { llmEnabled } from "@/lib/llm";
+import { 读最近背调 } from "@/lib/research/latest";
 import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 带币种, 签约金额, 签约币种, 签约合计 } from "@/lib/money-db";
 import { 客户来源线索 } from "@/lib/customer-lead-origin";
@@ -126,7 +127,8 @@ export default async function CustomerDetailPage({
   const 挂来的P = 企 ? 客户的联系人们(customer.id) : Promise.resolve([]);
   const 全部联系人idP = 挂来的P.then((挂来的) => [...customer.contacts.map((c) => c.id), ...挂来的.map((x) => x.contact.id)]);
   // 这一屏要读的字典先说一声，合成两句（客户层 7 类 + 项目区那几类，lib/enterprise/dict.ts 预读页面字典）
-  if (企) 预读页面字典(["custStatus", "custType", "custAttr", "custAssign", "contactTitle", "contactKind", "transfer", ...(只项目 ? 项目详情字典们 : [])]);
+  // 记沟通表单的沟通方式、发起主体也一起（11-22 页面切换提速 C3：原来表单打开时各调一次 server action，和背调那次串着排队）
+  if (企) 预读页面字典(["custStatus", "custType", "custAttr", "custAssign", "contactTitle", "contactKind", "transfer", "followMethod", "followInitiator", ...(只项目 ? 项目详情字典们 : [])]);
   const 规则P = 只项目 ? 生效组织规则() : null;
   // 企业版只用项目：商机一节换成这位名下的项目（10-26）；库里存着旧节点名 / 旧结局的按企业版的新名显示（10-31 改名）
   // 先摆成 promise：项目区（读项目区）挂在它后面和下面的大 Promise.all 并行（第 2 批审查 #4）
@@ -140,12 +142,13 @@ export default async function CustomerDetailPage({
     : null;
   // 客户详情合并（11-12 第 2 批）：企业版项目模式下右边是项目区，?project=<id> 选页签；按项目详情页同一个取数读当前项目
   const 项目区P = 项目们P ? 项目们P.then((ps) => 读项目区(me, customer.id, ps, sp.project ?? null)) : Promise.resolve(null);
+  const aiP = llmEnabled();
   const [
     号, users, channels, 挂来的, 另挂, 只项目几样,
     sourceLead, aiEnabled, 已收藏, 换负责人记录, 旺旺们, 项目们, 参与项目们, 只读, 客户状态选项,
     联系人分类附件, 关联们, 号码种类, 分配方式选项, 客户类型选项, 规则, 联系人附件数,
     可改沟通, 可删沟通, 客户状态字典, 职务选项, 客户属性选项, 字典释义, 项目区,
-    三态, 抬头节点,
+    三态, 抬头节点, 沟通方式们, 发起主体们, 上次背调,
   ] = await Promise.all([
     // 演示区是公开的，同一份数据所有访客共用：号码一律打码。自己部署的实例不受影响——销售要照着这个号打电话。
     号码脱敏器(),
@@ -167,7 +170,7 @@ export default async function CustomerDetailPage({
         ])
       : null,
     客户来源线索(customer.id),
-    llmEnabled(),
+    aiP,
     收藏了吗(me.id, id),
     // 历史负责人只企业版摆；记录不管开没开都记着（换负责人那一刻写，开了以后之前的也看得到）
     企 ? 历史负责人of(customer.id) : [],
@@ -213,6 +216,11 @@ export default async function CustomerDetailPage({
     // 页头抬头（11-17 客户抬头 PR-5，出口 2）：简称、全称、类型都空才要当前节点，一句（含公海项目、不按看的人算，U9）；别的不查。
     // 项目名（F-040）只给我看得见的项目：走限定层主键查一句，看不见的回到「编号|节点」（P-看-12）
     企 ? 抬头节点们(prisma, [customer]).then((m) => 只留看得见的项目名(m, (ids) => prisma.project.findMany({ where: { id: { in: ids } }, select: { id: true } }))).then((m) => m[customer.id] ?? null) : null,
+    // 11-22 页面切换提速 C3：记沟通表单的两样下拉、上一次背调跟页面一起带下去（原来进页后客户端再调 3 次 server action，
+    // server action 一次只走一个，排着队等）。下拉口径同 follow-method-actions.ts（启用项，空的给 null）；背调只在 AI 开着时有人要
+    企 ? 页面可选项("followMethod").then((们) => (们.length ? 们 : null)) : undefined,
+    企 ? 页面可选项("followInitiator").then((们) => (们.length ? 们 : null)) : undefined,
+    aiP.then((开) => (开 ? 读最近背调(customer.id) : undefined)),
   ]);
   const 冷项目 = 三态?.冷 ?? {};
   if (项目区) 项目区.页签们 = 项目区.页签们.map((t) => (冷项目[t.id] != null ? { ...t, 冷天数: 冷项目[t.id] } : t));
@@ -262,6 +270,8 @@ export default async function CustomerDetailPage({
       users={users}
       channels={channels}
       aiEnabled={aiEnabled}
+      上次背调={上次背调}
+      沟通选项={企 ? { 方式: 沟通方式们 ?? null, 主体: 发起主体们 ?? null } : undefined}
       已收藏={已收藏}
       // P-公海-05：和服务端 放进公海 同一个判定（能放回 = 能转让，P-公海-02）
       能放公海={能放回客户公海(me, { salesOwnerId: customer.salesOwnerId, 在公海: !!customer.pool }, await 权限组织())}

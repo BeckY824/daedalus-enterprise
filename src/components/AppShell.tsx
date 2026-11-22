@@ -645,7 +645,8 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
       <Layout className={显示浮标 ? "has-ai-fab" : undefined} style={{ minHeight: "100vh", background: "var(--page-bg)" }}>
         {视图条}
         {挑人框}
-        <Header style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 12px", borderBottom: "1px solid var(--line-soft)", position: "sticky", top: 0, zIndex: 10, height: 48 }}>
+        {/* 底线和底色在 globals.css .m-top（设计语言 D-1：现状顶栏白底 + 一根 --line，换皮主题照旧 --line-soft） */}
+        <Header className="m-top" style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 12px", position: "sticky", top: 0, zIndex: 10, height: 48 }}>
           <Dropdown
             trigger={["click"]}
             menu={{

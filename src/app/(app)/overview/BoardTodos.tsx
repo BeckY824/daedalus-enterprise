@@ -14,6 +14,9 @@ import FollowMethodSelect, { useHabitDefault } from "@/components/FollowMethodSe
 import { 跟进类型们 } from "@/lib/constants";
 import type { 预警行 } from "@/lib/project/review-extras";
 import { dayjs, fmtDateTime } from "@/lib/utils";
+import { 到期字 } from "../dashboard/todo-time";
+
+import { useIsNowSkin } from "@/lib/use-skin";
 import EmptyState, { 表格空态 } from "@/components/EmptyState";
 import CountUp from "@/components/CountUp";
 import { useMotionTheme } from "@/components/MotionTheme";
@@ -40,7 +43,7 @@ import { 即将逾期天数 } from "@/lib/project/home-cards";
  * 右上角「看板 / 列表」切换（lay=list 回到上面那张表）；点逾期 / 今天 / 本周那几张卡照旧是筛过的表。
  * 看板下面是「回收提醒」：按节点一条，天数从组织规则读，条长 = 这一圈 3 天内要回公海的项目数。
  */
-export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 回收项目 = [], 只看自己, 看全员 }: {
+export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 回收项目 = [], 只看自己, 看全员, 只读 = false }: {
   /** 表格那份（列表时给） */
   数?: 复盘待办;
   /** 三列看板那份（全部待办、没选列表时给）；给了就摆看板、不摆表 */
@@ -52,9 +55,13 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
   /** 3 天内要回公海的那几个项目（同 将回公海of 的 预警，回收日早的在前、最多 8 个）：回收提醒点开节点就列它们，原地记沟通 */
   回收项目?: 预警行[];
   只看自己: boolean; 看全员: boolean;
+  /** 只读角色（业务角色只读管理员 / 销售教练，lib/enterprise/permissions.ts 只读角色）：不摆行首的勾、回收提醒里不摆「记一条沟通」——点了服务端也拒（3703 实操：只读管理员能点） */
+  只读?: boolean;
 }) {
   const router = useRouter();
   const sp = useSearchParams();
+  // 设计语言 R-B（R1）：现状主题卡头写计数、到期用带钟点的 smartTime（同首页待办，dashboard/todo-time）、空态「还没有待办」；换皮主题照旧
+  const 新样 = useIsNowSkin();
   const [刚完成, set刚完成] = useState<string[]>([]);
   /** 没完成成的原因：就地写在列表标题旁（g.save），不弹顶部提示、不提示成功 */
   const [错, set错] = useState<string | null>(null);
@@ -157,7 +164,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
   const 去 = (x: 复盘待办行) => { if (x.去) router.push(x.去); };
 
   const cols = [
-    {
+    ...(只读 ? [] : [{
       key: "勾",
       width: 44,
       render: (_: unknown, x: 复盘待办行) => (
@@ -170,12 +177,13 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
           />
         </span>
       ),
-    },
+    }]),
     {
       title: "到期",
       key: "时间",
-      width: 132,
-      render: (_: unknown, x: 复盘待办行) => <span className="nowrap btodo-time">{x.时间 ? fmtDateTime(x.时间) : "没定日期"}</span>,
+      // 现状主题 148：最长的写法是跨年短写「2025-10-26 09:30」（实量约 125，格子内边距左右各 8），132 只剩 116 放不下（R-B 审查 11-22）
+      width: 新样 ? 148 : 132,
+      render: (_: unknown, x: 复盘待办行) => <span className="nowrap btodo-time" title={x.时间 ? fmtDateTime(x.时间) : undefined} suppressHydrationWarning>{x.时间 ? (新样 ? 到期字(x.时间, x.明确钟点) : fmtDateTime(x.时间)) : "没定日期"}</span>,
     },
     {
       title: "内容",
@@ -230,7 +238,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
             <button
               key={k}
               type="button"
-              className={`home-card btodo-card${选中 ? " is-on" : ""}${k === "overdue" && n > 0 ? " home-card-warn" : ""}`}
+              className={`home-card btodo-card${选中 ? " is-on" : ""}${k === "overdue" && n > 0 ? " home-card-warn" : ""}${k === "overdue" && n === 0 ? " is-zero" : ""}`}
               aria-pressed={选中}
               onClick={() => { if (!选中) 改({ f: k }); }}
             >
@@ -243,7 +251,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
       </div>
       <section className="btodo-list" aria-label="待办列表">
         <div className="btodo-head">
-          <b className="section-title">{待办卡叫法[卡]}</b>
+          <b className="section-title">{待办卡叫法[卡]}{新样 && <span className="card-count">（{计数[卡]}）</span>}</b>
           {错 && <span className="ov-todo-err" role="alert" title={错}>{错}</span>}
           <div className="btodo-head-r">
             {卡 === "all" && (
@@ -260,7 +268,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
           </div>
         </div>
         {看板 && 计数.all === 0 ? (
-          <EmptyState title="没有待办" hint={空提示} demo={false} />
+          <EmptyState title={新样 ? "还没有待办" : "没有待办"} hint={空提示} demo={false} />
         ) : 看板 ? (
           <div className={`btodo-board${换着 && !变形中 ? " is-pending" : ""}`}>
             {看板列们.map((c) => {
@@ -276,7 +284,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
                     <ul className="btodo-col-list">
                       {列.行.map((x) => (
                         <li key={x.key} data-morph-key={x.key}>
-                          <待办卡片 x={x} 完成中={刚完成.includes(x.key)} 看全员={看全员} 完成={() => void 完成(x)} />
+                          <待办卡片 x={x} 完成中={刚完成.includes(x.key)} 看全员={看全员} 新样={新样} 只读={只读} 完成={() => void 完成(x)} />
                         </li>
                       ))}
                     </ul>
@@ -321,24 +329,24 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
             role: "link",
             "aria-label": `${x.内容}，${x.customerName}`,
           } : {}}
-          locale={表格空态({ title: "没有待办", hint: 空提示, demo: false })}
+          locale={表格空态({ title: 新样 ? "还没有待办" : "没有待办", hint: 空提示, demo: false })}
         />
         )}
       </section>
-      {回收 && <RecycleBlock 回收={回收} 项目={回收项目} />}
+      {回收 && <RecycleBlock 回收={回收} 项目={回收项目} 只读={只读} />}
     </div>
   );
 }
 
 /** 看板上的一张卡：项目（没有写客户）+ 级别、内容、到期 + 逾几天、负责人（看全员时）、「去跟进」；左边的勾直接完成 */
-function 待办卡片({ x, 完成中, 看全员, 完成 }: { x: 复盘待办行; 完成中: boolean; 看全员: boolean; 完成: () => void }) {
+function 待办卡片({ x, 完成中, 看全员, 新样 = false, 只读 = false, 完成 }: { x: 复盘待办行; 完成中: boolean; 看全员: boolean; 新样?: boolean; 只读?: boolean; 完成: () => void }) {
   const 名 = x.projectName ?? x.customerName;
   const 全名 = x.projectName ? `${x.customerName} · ${x.projectName}` : x.customerName;
   const 级 = 企业级别(x.projectLevel);
   const 逾 = x.组 === "逾期" ? 逾天数(x.时间, dayjs()) : 0;
   return (
     <article className={`btodo-k${完成中 ? " btodo-row-done" : ""}${x.组 === "逾期" ? " btodo-k-late" : ""}`}>
-      <Checkbox aria-label={`完成「${x.内容}」`} checked={完成中} disabled={完成中} onChange={完成} />
+      {!只读 && <Checkbox aria-label={`完成「${x.内容}」`} checked={完成中} disabled={完成中} onChange={完成} />}
       <div className="btodo-k-main">
         <div className="btodo-k-top">
           <Tooltip title={全名} placement="topLeft" mouseEnterDelay={0.4}>
@@ -350,7 +358,7 @@ function 待办卡片({ x, 完成中, 看全员, 完成 }: { x: 复盘待办行;
           <span className="btodo-k-t btodo-t">{x.内容}</span>
         </Tooltip>
         <div className="btodo-k-meta">
-          <span className="btodo-time nowrap">{x.时间 ? fmtDateTime(x.时间) : "没定日期"}</span>
+          <span className="btodo-time nowrap" title={x.时间 ? fmtDateTime(x.时间) : undefined} suppressHydrationWarning>{x.时间 ? (新样 ? 到期字(x.时间, x.明确钟点) : fmtDateTime(x.时间)) : "没定日期"}</span>
           {逾 > 0 && <span className="btodo-k-over nowrap" suppressHydrationWarning>逾 {逾} 天</span>}
           {看全员 && <span className="btodo-k-owner">{x.ownerName}</span>}
           {x.去 && <Link href={x.去} className="btodo-k-go nowrap">去跟进 ›</Link>}
@@ -365,7 +373,7 @@ function 待办卡片({ x, 完成中, 看全员, 完成 }: { x: 复盘待办行;
  * PR5b ov.recycle：点一条原地展开这一节点快到期的项目（还剩几天），每个项目「记一条沟通」原地长出一个小表单，
  * 记上了（记项目沟通Action，同项目详情）回收的钟就重新走；成败都在保存键里（SaveButton），不弹顶部提示、不整页跳。
  */
-function RecycleBlock({ 回收, 项目 }: { 回收: 回收提醒; 项目: 预警行[] }) {
+function RecycleBlock({ 回收, 项目, 只读 = false }: { 回收: 回收提醒; 项目: 预警行[]; 只读?: boolean }) {
   const 最多 = Math.max(1, ...回收.条.map((c) => c.数));
   const [开着, set开着] = useState<string | null>(null);
   return (
@@ -399,7 +407,7 @@ function RecycleBlock({ 回收, 项目 }: { 回收: 回收提醒; 项目: 预警
                 </Tooltip>
                 {开 && (
                   <ul className="ov-rc-list" aria-label={`${c.节点} 快到期的项目`}>
-                    {这节点.map((p) => <RecycleProjectRow key={p.id} p={p} />)}
+                    {这节点.map((p) => <RecycleProjectRow key={p.id} p={p} 只读={只读} />)}
                     {c.数 > 这节点.length && (
                       <li className="ov-rc-more">
                         <Link href="/projects?f=due-soon" className="link-strong">还有 {c.数 - 这节点.length} 个 · 去项目页看 ›</Link>
@@ -416,8 +424,11 @@ function RecycleBlock({ 回收, 项目 }: { 回收: 回收提醒; 项目: 预警
   );
 }
 
-/** 展开后的一行：项目名、还剩几天；「记一条沟通」原地长出小表单（内容 + 下一步 + 下一步时间，默认 3 天后，P-界面-34） */
-function RecycleProjectRow({ p }: { p: 预警行 }) {
+/**
+ * 展开后的一行：项目名、还剩几天；「记一条沟通」原地长出小表单（内容 + 下一步 + 下一步时间，默认 3 天后，P-界面-34）。
+ * 只读角色不摆「记一条沟通」（同服务端：记项目沟通 按 只读角色 拒写），项目名照旧点得进项目页看
+ */
+function RecycleProjectRow({ p, 只读 = false }: { p: 预警行; 只读?: boolean }) {
   const router = useRouter();
   const [记, set记] = useState(false);
   const [内容, set内容] = useState("");
@@ -448,7 +459,7 @@ function RecycleProjectRow({ p }: { p: 预警行 }) {
       <div className="ov-rc-prow">
         <Link href={`/projects/${p.id}`} className="ov-rc-name" title={p.名}>{p.名}</Link>
         <span className={`ov-rc-left${剩 <= 1 ? " is-late" : ""}`}>{剩 === 0 ? "今天收回" : `还剩 ${剩} 天`}</span>
-        {!记 && (
+        {!记 && !只读 && (
           <button type="button" className="ov-rc-log" onClick={() => { set推话(null); set记(true); }}>记一条沟通</button>
         )}
       </div>
