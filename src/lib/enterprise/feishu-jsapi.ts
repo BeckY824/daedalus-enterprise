@@ -59,11 +59,11 @@ export function 算签名(票: string, 随机串: string, 时间戳: number, 地
 }
 
 /**
- * 校验要签的地址：http(s)、路径在 可签页面 里（或客户页 /customers/<id>、项目页 /projects/<id>）、和本站公开地址（ENT_PUBLIC_URL 的源）同源（协议 + 主机 + 端口）。
+ * 校验要签的地址：http(s)、路径在 可签页面 里（或客户页 /customers/<id>、项目页 /projects/<id>——只在 录音页 为真、即录音点评开关开着时，PR3 审查）、和本站公开地址（ENT_PUBLIC_URL 的源）同源（协议 + 主机 + 端口）。
  * 没有公开地址一律不签：请求里的 Host / X-Forwarded-Host 客户端能伪造，不拿来认本站。
  * 合格返回去掉 # 之后的地址（飞书按这个比对），不合格返回 null
  */
-export function 可签地址(raw: string | null, 本站源: string | null): string | null {
+export function 可签地址(raw: string | null, 本站源: string | null, 录音页 = false): string | null {
   if (!本站源) return null;
   if (!raw || raw.length > 2048) return null;
   let u: URL;
@@ -74,7 +74,7 @@ export function 可签地址(raw: string | null, 本站源: string | null): stri
   }
   if (u.protocol !== "https:" && u.protocol !== "http:") return null;
   if (u.username || u.password) return null;
-  if (!可签页面.has(u.pathname) && !可签页面式.test(u.pathname)) return null;
+  if (!可签页面.has(u.pathname) && !(录音页 && 可签页面式.test(u.pathname))) return null;
   if (u.origin !== 本站源) return null;
   return raw.split("#")[0];
 }

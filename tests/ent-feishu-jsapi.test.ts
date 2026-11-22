@@ -10,6 +10,7 @@ import { NextRequest } from "next/server";
 
 const 罐 = vi.hoisted(() => ({
   用户: null as null | { id: string },
+  录音开: true,
   凭据: { appId: "cli_test", appSecret: "s-test", 基址: "https://open.feishu.test" } as null | { appId: string; appSecret: string; 基址: string },
 }));
 vi.mock("@/lib/auth", () => ({ getCurrentUser: vi.fn(async () => 罐.用户) }));
@@ -17,6 +18,7 @@ vi.mock("@/lib/enterprise/feishu-push", () => ({
   推送凭据: vi.fn(async () => 罐.凭据),
   飞书租户令牌: vi.fn(async () => "t-token"),
 }));
+vi.mock("@/lib/enterprise/coach-rec-db", () => ({ 录音点评开着: vi.fn(async () => 罐.录音开) }));
 
 import { GET } from "../src/app/api/feishu/jsapi-sign/route";
 import { 可签地址, 站点源, 算签名, 清JSAPI票 } from "@/lib/enterprise/feishu-jsapi";
@@ -30,6 +32,7 @@ let 飞书请求: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   清JSAPI票();
   罐.用户 = null;
+  罐.录音开 = true;
   罐.凭据 = { appId: "cli_test", appSecret: "s-test", 基址: "https://open.feishu.test" };
   飞书请求 = vi.fn(async () => 票回("TICKET-1"));
   vi.stubGlobal("fetch", 飞书请求);
@@ -106,6 +109,18 @@ describe("签名接口", () => {
     expect((await GET(请求("https://119.0.0.1/mic-test.html"))).status).toBe(200);
   });
 
+  it("客户页、项目页只在录音点评开关开着时签（PR3 审查）；实测页不看开关", async () => {
+    罐.用户 = { id: "u1" };
+    罐.录音开 = false;
+    expect((await GET(请求("https://crm.example.test/customers/c1"))).status).toBe(400);
+    expect((await GET(请求("https://crm.example.test/projects/p1"))).status).toBe(400);
+    expect(飞书请求).not.toHaveBeenCalled();
+    expect((await GET(请求(页))).status).toBe(200);
+    罐.录音开 = true;
+    expect((await GET(请求("https://crm.example.test/customers/c1"))).status).toBe(200);
+    expect((await GET(请求("https://crm.example.test/projects/p1"))).status).toBe(200);
+  });
+
   it("票每进程缓存，快过期（提前 5 分钟）就换新", async () => {
     罐.用户 = { id: "u1" };
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -149,11 +164,15 @@ describe("可签地址 / 算签名", () => {
     expect(可签地址("https://a.test:8443/mic-test.html", 本站)).toBeNull();
     expect(可签地址("https://a.test:8443/mic-test.html", 站点源("https://a.test:8443"))).toBe("https://a.test:8443/mic-test.html");
     // PR3：客户页、独立项目页（飞书里按住说话的原生录音要鉴权）；别的页、带子路径的不签
-    expect(可签地址("https://a.test/customers/c123?project=p1#x", 本站)).toBe("https://a.test/customers/c123?project=p1");
-    expect(可签地址("https://a.test/projects/p_1-a", 本站)).toBe("https://a.test/projects/p_1-a");
-    expect(可签地址("https://a.test/customers/c1/edit", 本站)).toBeNull();
-    expect(可签地址("https://a.test/settings", 本站)).toBeNull();
-    expect(可签地址("https://b.test/customers/c1", 本站)).toBeNull();
+    expect(可签地址("https://a.test/customers/c123?project=p1#x", 本站, true)).toBe("https://a.test/customers/c123?project=p1");
+    expect(可签地址("https://a.test/projects/p_1-a", 本站, true)).toBe("https://a.test/projects/p_1-a");
+    expect(可签地址("https://a.test/customers/c1/edit", 本站, true)).toBeNull();
+    expect(可签地址("https://a.test/settings", 本站, true)).toBeNull();
+    expect(可签地址("https://b.test/customers/c1", 本站, true)).toBeNull();
+    // PR3 审查：录音点评开关关着，客户页、项目页不签；实测页照签
+    expect(可签地址("https://a.test/customers/c123", 本站)).toBeNull();
+    expect(可签地址("https://a.test/projects/p_1-a", 本站, false)).toBeNull();
+    expect(可签地址("https://a.test/mic-test.html", 本站, false)).toBe("https://a.test/mic-test.html");
   });
 
   it("没有本站源（ENT_PUBLIC_URL 没配 / 配错）一律不签", () => {

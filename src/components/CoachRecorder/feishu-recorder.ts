@@ -6,6 +6,7 @@
  * 录：按下 start（16k 单声道，iOS 出 m4a、安卓出 wav），松手 stop；onStop 给 tempFilePath → getFileSystemManager().readFile 读成字节
  *   （安卓实测：tt.uploadFile 不可用，readFile + fetch 可以）→ 调用方按 5MB 切片走 PUT chunk。
  * 音量：有 onFrameRecorded 就按帧画（不是真响度，只是在动）；中断：onInterruptionBegin / onError → 断了。
+ * 中途坏了（停的时候没给文件、readFile 失败、超时没回、录着出错）：这一页记下「原生录坏了」，之后 准备飞书录音 一律回 null、改走网页录，不再反复试原生（PR3 审查）。
  * 产品代码不带桩：测试在页面里注入假的 window.tt / window.h5sdk。
  */
 import type { 打断原因 } from "@/lib/enterprise/coach-rec";
@@ -105,12 +106,15 @@ export type 飞书录音器 = {
 };
 
 let 准备好: Promise<飞书录音器 | null> | null = null;
+/** 这一页飞书原生录中途坏过：之后都走网页录 */
+let 原生坏了 = false;
+export const 飞书录坏过 = () => 原生坏了;
 /** 测试用：重新准备 */
-export const 忘掉飞书准备 = () => { 准备好 = null; };
+export const 忘掉飞书准备 = () => { 准备好 = null; 原生坏了 = false; };
 
-/** 准备飞书原生录（每页一次；失败的也记着，不反复试）：不在飞书里、SDK / 鉴权 / 授权 / 管理器任一步不行 = null */
+/** 准备飞书原生录（每页一次；失败的也记着，不反复试）：不在飞书里、这一页原生录坏过、SDK / 鉴权 / 授权 / 管理器任一步不行 = null */
 export function 准备飞书录音(): Promise<飞书录音器 | null> {
-  if (!在飞书里()) return Promise.resolve(null);
+  if (!在飞书里() || 原生坏了) return Promise.resolve(null);
   准备好 ??= (async () => {
     if (!(await 引SDK())) return null;
     if (!(await 鉴权())) return null;
@@ -135,6 +139,7 @@ function 包管理器(m: 管理器): 飞书录音器 {
   m.onError?.(() => {
     const x = 这段;
     if (!x) return;
+    原生坏了 = true;
     if (x.等停) x.等停.坏(new Error("飞书录音出错"));
     else x.断了?.("录音出错");
   });
@@ -154,8 +159,12 @@ function 包管理器(m: 管理器): 飞书录音器 {
       m.start({ duration: 600_000, sampleRate: 16_000, numberOfChannels: 1, encodeBitRate: 48_000, format: "aac" });
     },
     停() {
-      return new Promise<飞书一段>((ok, 坏) => {
-        if (!这段) return 坏(new Error("没在录"));
+      return new Promise<飞书一段>((成, 败) => {
+        // 只认第一个结果：读到文件以后 15 秒的超时不再算「坏了」
+        let 定了 = false;
+        const ok = (x: 飞书一段) => { if (定了) return; 定了 = true; 成(x); };
+        const 坏 = (e: Error) => { if (定了) return; 定了 = true; 原生坏了 = true; 败(e); };
+        if (!这段) return 败(new Error("没在录"));
         这段.等停 = { ok, 坏 };
         try {
           m.stop();
