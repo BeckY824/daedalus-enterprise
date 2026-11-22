@@ -22,6 +22,7 @@ import { prisma } from "@/lib/prisma";
 import { getBusiness } from "@/lib/business";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 看全部 } from "@/lib/team-scope";
+import { 客户编号文字 } from "@/lib/customer-no";
 import { 企业版 } from "./switch";
 import { 权限组织 } from "./org";
 import { 是市场成员of, type 组织 } from "./org-core";
@@ -40,6 +41,16 @@ export const 负责人接不了话 = "这位客户的负责人现在接不了指
 export const 交接中话 = "这位客户正在转让交接中，等接手人确认后再录";
 /** 持有上限的那句不带别人名下的数（市场成员看不到同事的持有数）：只说原因和怎么办 */
 export const 负责人到上限话 = (负责人名: string) => `${负责人名}名下线索 / 商机阶段的项目已到持有上限，这次没建；可以写进现有项目，或找销售管理`;
+
+/** 成功的话：只说转给了负责人跟进，不带项目名、客户名（同事的客户，市场成员看不到它的名称） */
+export const 出口C已转话 = (负责人名: string) => `已转给该客户负责人 ${负责人名} 跟进（在其名下新建了一条线索），这次的沟通已记在上面；你在项目列表里能看到进度`;
+/** 新线索的项目名：「重复咨询-客户编号」，不带客户名称和联系方式（负责人之后可以自己改名）；没编号的老数据只写「重复咨询」 */
+export const 出口C项目名 = (customerNo: number | null | undefined) => {
+  const 号 = 客户编号文字(customerNo);
+  return 号 ? `重复咨询-${号}` : "重复咨询";
+};
+/** 防重复提交：同一客户、同一发起人这么多分钟内已经由出口 C 建过一条，就认那一条、不再建、不再计数（两个标签页同时交） */
+export const 出口C防重分钟 = 10;
 
 /** 事务里发现对不上（客户刚进公海、换了负责人、对接人刚被删）：抛出来整笔回滚，调用方接住说人话 */
 export class 出口C作废 extends Error {}
@@ -115,7 +126,7 @@ export type 其他在推 = { 我的: { id: string; name: string }[]; 同事的: 
  */
 export async function 客户其他在推项目(meId: string, projectId: string, customerId: string): Promise<其他在推> {
   const 们 = await 看全部(() => prisma.project.findMany({
-    where: { customerId, id: { not: projectId }, result: null, pooledAt: null },
+    where: { customerId, id: { not: projectId }, result: null, pooledAt: null, deletedAt: null },
     select: { id: true, name: true, ownerId: true },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   }));

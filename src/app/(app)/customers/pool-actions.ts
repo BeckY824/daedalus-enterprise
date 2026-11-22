@@ -855,7 +855,7 @@ async function 新建这条(
   a: { cid: string; 客户名: string; 谁: string; me: string; 渠道: string; 对接人: 认好的对接人; 线: "内贸" | "外贸" | null; way: string; org: NonNullable<Awaited<ReturnType<typeof 权限组织>>> },
 ): Promise<string> {
   const 对接人 = await 落对接人(tx, a.cid, a.对接人, a.me);
-  const id = await 查重领取建线索项目(tx, { customerId: a.cid, 客户名: a.客户名, 接手人: a.谁, 创建人: a.me, 渠道: a.渠道, 对接人, 线: a.线, 分配方式: a.way });
+  const id = await 查重领取建线索项目(tx, { customerId: a.cid, 项目名: a.客户名, 接手人: a.谁, 创建人: a.me, 渠道: a.渠道, 对接人, 线: a.线, 分配方式: a.way });
   if (算市场建给销售(a.org, a.me, a.谁)) await 市场分配进线索验证(tx, [id], a.谁, a.me);
   return id;
 }

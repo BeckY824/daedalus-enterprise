@@ -23,7 +23,7 @@ import { 规整沟通 } from "@/lib/project/wizard";
 import { 落到渠道, 新数据渠道不行 } from "@/lib/enterprise/channel-main";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import { 查重领取记沟通, 查重领取建线索项目, 认对接人, 落对接人, 撞上的联系人, 查重领取作废, type 认好的对接人 } from "@/lib/enterprise/dedupe-claim";
-import { 出口C可用, 出口C的线, 出口C作废, 出口C作废话, 负责人到上限话 } from "@/lib/enterprise/repeat-inquiry";
+import { 出口C可用, 出口C的线, 出口C作废, 出口C作废话, 负责人到上限话, 出口C项目名, 出口C防重分钟, 出口C已转话 } from "@/lib/enterprise/repeat-inquiry";
 import { 企划线索计数key, 月份, 计不计数 } from "@/lib/enterprise/lead-assign";
 import { 写流转线 } from "@/lib/enterprise/flow-line";
 import { 算市场建给销售, 市场分配进线索验证 } from "@/lib/enterprise/market-assign-node";
@@ -33,7 +33,8 @@ import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-st
 import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
 import { 分配通知 } from "@/lib/enterprise/notice-sources";
 import { 号码撞上 } from "@/lib/enterprise/dupe-ledger";
-import { 客户引, 全称或显名 } from "@/lib/enterprise/customer-title";
+import { 客户引 } from "@/lib/enterprise/customer-title";
+import { 重复咨询来源 } from "@/lib/project/system-created";
 import { getBusiness } from "@/lib/business";
 import type { 可选渠道 } from "@/components/ChannelPicker";
 import type { 查重领取沟通 } from "./pool-actions";
@@ -49,7 +50,8 @@ export type 出口C框 =
 export type 出口C对接人 = { 撞上的?: boolean; 名字?: string | null; 职务?: string | null };
 /** 负责人名 = 框打开时看到的那位：交的时候客户换了负责人就作废（不认 id，同查号码不给前端客户 id 以外的东西） */
 export type 出口C新项目 = { 渠道?: string | null; 对接人?: 出口C对接人 | null; 负责人名?: string | null };
-export type 出口C结果 = { ok: true; 提示: string; 负责人: string; 项目: string } | { ok: false; error: string };
+/** 成功的话不带项目名、客户名（同事的客户，市场成员看不到它的名称）：只说转给了负责人跟进 */
+export type 出口C结果 = { ok: true; 提示: string; 负责人: string } | { ok: false; error: string };
 
 export async function 出口C框数据(类型: string, 值: string): Promise<出口C框> {
   const me = await requireUser();
@@ -105,12 +107,18 @@ export async function 出口C建线索(类型: string, 值: string, 沟通: 查�
   try {
     const r = await 整批或不做(() => prisma.$transaction(async (tx) => {
       // 事务里再核：客户还不在公海、还在这位负责人名下（打开框到交之间进了公海 / 换了人 = 作废）
-      const 现 = await 看全部(() => tx.customer.findUnique({ where: { id: 客户.id }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } }));
+      const 现 = await 看全部(() => tx.customer.findUnique({ where: { id: 客户.id }, select: { salesOwnerId: true, customerNo: true, pool: { select: { customerId: true } } } }));
       if (!现 || 现.pool || 现.salesOwnerId !== 负责人) throw new 出口C作废(出口C作废话);
+      // 防重复提交：同一客户、我、10 分钟内出口 C 已经建过（指定分配、带标记、还在）= 认那一条，不新建、不再计数
+      const 刚建 = await 看全部(() => tx.project.findFirst({
+        where: { customerId: 客户.id, creatorId: me.id, source: 重复咨询来源, assignMode: way, deletedAt: null, createdAt: { gte: new Date(Date.now() - 出口C防重分钟 * 60_000) } },
+        select: { id: true }, orderBy: { createdAt: "desc" },
+      }));
+      if (刚建) return { 已有: 刚建.id };
       // 持有上限（M-公海-18）：同客户页指定给别人，新建的线索算 1 个
       await 写前核上限(tx, await 持有上限起点(tx, 规则, 负责人), 1, "分配");
       const 对接人id = await 落对接人(tx, 客户.id, 对接人, me.id);
-      const id = await 查重领取建线索项目(tx, { customerId: 客户.id, 客户名: 全称或显名(客户), 接手人: 负责人, 创建人: me.id, 渠道, 对接人: 对接人id, 线, 分配方式: way });
+      const id = await 查重领取建线索项目(tx, { customerId: 客户.id, 项目名: 出口C项目名(现.customerNo), 接手人: 负责人, 创建人: me.id, 渠道, 对接人: 对接人id, 线, 分配方式: way });
       // 流转线（32G）：市场指定分配那一刻按这次的线写（线跟负责人走）
       await 写流转线(tx, 线, { 项目: [id] });
       await tx.entLeadAssign.create({ data: { projectId: id, toUserId: 负责人, fromUserId: me.id, byUserId: me.id, line: 线, kind: "营销", counted: 算数, month: 月, way } });
@@ -118,10 +126,11 @@ export async function 出口C建线索(类型: string, 值: string, 沟通: 查�
       if (算市场建给销售(org!, me.id, 负责人)) await 市场分配进线索验证(tx, [id], 负责人, me.id);
       await 查重领取记沟通(tx, me.id, id, 好, new Date());
       await 看全部(() => 跟着项目重算(tx, 状态开, [客户.id]));
-      return id;
+      return { 新: id };
     }));
     if (!r.ok) return { ok: false, error: 负责人到上限话(负责人名) };
-    项目id = r.值;
+    if ("已有" in r.值) return { ok: true, 提示: 出口C已转话(负责人名), 负责人: 负责人名 };
+    项目id = r.值.新;
   } catch (e) {
     if (e instanceof 出口C作废 || e instanceof 查重领取作废) return { ok: false, error: e.message.replace("这次没领", "这次没建") };
     throw e;
@@ -143,5 +152,5 @@ export async function 出口C建线索(类型: string, 值: string, 沟通: 查�
   revalidatePath("/projects");
   revalidatePath("/leads");
   revalidatePath(`/customers/${客户.id}`);
-  return { ok: true, 提示: `已在 ${负责人名} 名下新建线索「${项目名}」，沟通已记在上面；你在项目列表里能看到进度`, 负责人: 负责人名, 项目: 项目名 };
+  return { ok: true, 提示: 出口C已转话(负责人名), 负责人: 负责人名 };
 }

@@ -30,7 +30,7 @@ const plugin: Plugin = { name: "ent-dedupe-claim", setup(b) {
   // 查号码：撞上公海里的「星河电子」；市场可领 / 原负责人是我 由用例设
   stub(/(^|\/)number-actions$/, 补全动作桩("src/app/(app)/customers/number-actions.ts", "export const 查号码=async(t,v)=>(window.__查次=(window.__查次??0)+1,{ok:true,状态:'公海待捞',提示:'这个号码的客户在公海，本次录入已拦截，可去公海领取',值:v,撞:{id:'c7',name:'星河电子',school:null,salesOwnerName:'无负责人',createdAt:null},归属地:null,...(window.__可领?{市场可领:true}:{}),...(window.__我退的?{原负责人是我:true}:{}),...(window.__重复?{状态:'重复',提示:'销售甲某已有该客户信息',撞:{id:'c8',name:'星河电子',school:null,salesOwnerName:'销售甲某',createdAt:null},出口C:{负责人名:'销售甲某'}}:{})});export const 查客户名=async()=>({ok:true,撞:null});"));
   // 出口 C（重复咨询第一步）：框数据给负责人、渠道、撞上的联系人；交的时候记下参数
-  stub(/repeat-inquiry-actions$/, 补全动作桩("src/app/(app)/customers/repeat-inquiry-actions.ts", "export const 出口C框数据=async()=>({ok:true,负责人名:'销售甲某',渠道们:[{id:'ch1',name:'小红书|笔记',attr:null,platform:'小红书',active:true}],有撞上的联系人:true});export const 出口C建线索=async(t,v,f,n)=>{window.__建=[t,v,f,n];return{ok:true,提示:'已在 销售甲某 名下新建线索「星河电子」，沟通已记在上面；你在项目列表里能看到进度',负责人:'销售甲某',项目:'星河电子'}};"));
+  stub(/repeat-inquiry-actions$/, 补全动作桩("src/app/(app)/customers/repeat-inquiry-actions.ts", "export const 出口C框数据=async()=>({ok:true,负责人名:'销售甲某',渠道们:[{id:'ch1',name:'小红书|笔记',attr:null,platform:'小红书',active:true}],有撞上的联系人:true});export const 出口C建线索=async(t,v,f,n)=>{window.__建=[t,v,f,n];return{ok:true,提示:'已转给该客户负责人 销售甲某 跟进（在其名下新建了一条线索），这次的沟通已记在上面；你在项目列表里能看到进度',负责人:'销售甲某'}};"));
   stub(/(^|\/)pool-actions$/, 补全动作桩("src/app/(app)/customers/pool-actions.ts", "export const 查重领取框数据=async()=>window.__框??{ok:true,新建线索项目:true,客户名:'星河电子',渠道们:[{id:'ch1',name:'小红书|笔记',attr:null,platform:'小红书',active:true}],联系人们:[{id:'k1',name:'王经理',position:'采购'},{id:'k2',name:'李工',position:null}],默认对接人:'k1'};export const 查重领取=async(t,v,f,id,n)=>{window.__领=[t,v,f,id,n];return window.__回??{ok:true,提示:'已领取并自动分配给 销售甲某，沟通已记在项目「星河电子-咨询」上',接手人:'销售甲某',项目:'星河电子-咨询',为什么:''}};"));
   stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[];");
   stub(/customers\/\[id\]\/project-actions$/, 补全动作桩("src/app/(app)/customers/[id]/project-actions.ts", "export const 新项目分配数据=async()=>({分配方式们:[],默认分配方式:0,是销售:false,客户业务线:'内贸',客户区域线:null,客户有地址:false});export const 建项目带走的项目=async()=>({项目数:0,项目:[]});"));
@@ -287,7 +287,7 @@ it("出口 C（重复咨询第一步）：撞上同事名下的客户、服务�
     await 选渠道(page);
     expect(await 交.isDisabled()).toBe(false);
     await 交.click();
-    await 向导.getByRole("status").filter({ hasText: "已在 销售甲某 名下新建线索" }).first().waitFor();
+    await 向导.getByRole("status").filter({ hasText: "已转给该客户负责人 销售甲某 跟进" }).first().waitFor();
     const 建 = await page.evaluate(() => (window as unknown as { __建: unknown[] }).__建);
     expect(建.slice(0, 2)).toEqual(["手机号", "13905712266"]);
     expect(建[2]).toMatchObject({ content: "老客户来电问新一期报价" });

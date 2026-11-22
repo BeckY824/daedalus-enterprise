@@ -7,6 +7,9 @@
  *   - 撞号台账记「新建线索」，不计入预警
  *   - 不给的：不是市场成员、负责人暂停参与分配、负责人是市场成员、客户在公海；框打开后换了负责人 = 作废；负责人到持有上限 = 一行不写
  *   - 对接人：挂号码撞上的那位（不改他）或新建一位（不设主联系人）
+ *   - 同事客户的名称不露给市场成员：项目名「重复咨询-客户编号」、成功的话只说转给负责人跟进；项目列表里也看不到客户名
+ *   - 防重复提交：同一客户、同一发起人 10 分钟内已建过就认那一条，不再建、不再计数
+ *   - 详情「其他在推项目」不算回收站里的
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 
@@ -27,7 +30,9 @@ import { 默认组织规则 } from "@/lib/project/org-rules";
 import { 查号码 } from "@/app/(app)/customers/number-actions";
 import { 出口C建线索, 出口C框数据 } from "@/app/(app)/customers/repeat-inquiry-actions";
 import type { 查重领取沟通 } from "@/app/(app)/customers/pool-actions";
-import { 不是市场成员出口C话, 出口C作废话, 负责人接不了话, 负责人到上限话, 客户其他在推项目 } from "@/lib/enterprise/repeat-inquiry";
+import { 不是市场成员出口C话, 出口C作废话, 负责人接不了话, 负责人到上限话, 客户其他在推项目, 出口C已转话 } from "@/lib/enterprise/repeat-inquiry";
+import { 读项目列表 } from "@/lib/project/list";
+import { 以谁的身份 } from "@/lib/enterprise/visibility";
 import { 重复咨询来源 } from "@/lib/project/system-created";
 
 type 人 = { id: string; name: string };
@@ -46,7 +51,7 @@ let 序 = 0;
 async function 同事客户(owner: string): Promise<{ id: string; 号: string; 王: string; 旧: string }> {
   序 += 1;
   const 号 = `1390000${String(序).padStart(4, "0")}`;
-  const c = await prisma.customer.create({ data: { name: `老客户${序}`, phone: 号, salesOwnerId: owner, channelId: 老渠道, attributionChannelId: 老渠道 } });
+  const c = await prisma.customer.create({ data: { name: `老客户${序}`, phone: 号, salesOwnerId: owner, channelId: 老渠道, attributionChannelId: 老渠道, customerNo: 序 } });
   const 王 = await prisma.contact.create({ data: { name: "王经理", position: "采购", phone: 号, isPrimary: true, customerId: c.id } });
   const 旧 = await prisma.project.create({ data: { name: `旧项目${序}`, customerId: c.id, ownerId: owner, creatorId: owner, phase: "商机", node: "明确需求", channelId: 老渠道 } });
   return { id: c.id, 号, 王: 王.id, 旧: 旧.id };
@@ -100,10 +105,12 @@ describe("出口 C：在负责人名下新建线索", () => {
     当(市场);
     const r = await 出口C建线索("手机号", c.号, 沟通(), { 渠道: 新渠道, 对接人: { 撞上的: true }, 负责人名: 外贸甲.name });
     if (!r.ok) throw new Error(r.error);
-    expect(r.负责人).toBe(外贸甲.name);
+    expect(r).toEqual({ ok: true, 提示: 出口C已转话(外贸甲.name), 负责人: 外贸甲.name });
+    expect(r.提示).not.toMatch(/老客户|重复咨询-/);
 
     const p = await prisma.project.findFirstOrThrow({ where: { customerId: c.id, id: { not: c.旧 } } });
     expect(p).toMatchObject({
+      name: `重复咨询-NO.${String(序).padStart(5, "0")}`,
       ownerId: 外贸甲.id, creatorId: 市场.id, channelId: 新渠道, source: 重复咨询来源,
       phase: "线索", node: "线索验证", result: null, pooledAt: null, bizLine: "外贸", flowLine: "外贸", contactId: c.王, assignMode: "指定分配",
     });
@@ -129,6 +136,39 @@ describe("出口 C：在负责人名下新建线索", () => {
     const 台账 = await prisma.entDupeHit.findMany({ where: { customerId: c.id } });
     expect(台账.map((x) => x.result)).toContain("新建线索");
     expect(台账.every((x) => x.warnTier === 0)).toBe(true);
+  });
+
+  it("同事客户的名称不露给市场成员（按组织看客户开着、他看不到这位客户）：项目列表里有这条线索（名字是重复咨询-编号），客户名一处都没有", async () => {
+    await setSetting(规则.按组织看客户.key, true);
+    invalidateSettingsCache();
+    忘掉企业版范围();
+    const c = await 同事客户(外贸甲.id);
+    当(市场);
+    const r = await 出口C建线索("手机号", c.号, 沟通(), { 渠道: 新渠道, 对接人: { 撞上的: true }, 负责人名: 外贸甲.name });
+    if (!r.ok) throw new Error(r.error);
+    expect(JSON.stringify(r)).not.toContain("老客户");
+    const me = { id: 市场.id, name: 市场.name, email: "mkt@x", role: "SALES", title: "" };
+    const 列表 = JSON.stringify(await 以谁的身份(市场.id, () => 读项目列表(me as never, { pageSize: "100" })));
+    expect(列表).toContain("重复咨询-NO.");
+    expect(列表).not.toContain("老客户");
+  });
+
+  it("防重复提交：同一客户、同一人 10 分钟内再交（两个标签页）= 认第一条，不再建、不再计数、沟通只记一条", async () => {
+    const c = await 同事客户(外贸甲.id);
+    当(市场);
+    const 交 = () => 出口C建线索("手机号", c.号, 沟通(), { 渠道: 新渠道, 对接人: { 撞上的: true }, 负责人名: 外贸甲.name });
+    const [一, 二] = [await 交(), await 交()];
+    expect(一).toMatchObject({ ok: true });
+    expect(二).toEqual(一);
+    expect(await prisma.project.count({ where: { customerId: c.id } })).toBe(2);
+    expect(await prisma.entLeadAssign.count()).toBe(1);
+    expect(await 本月已分(外贸甲.id)).toBe(1);
+    expect(await prisma.followUp.count({ where: { customerId: c.id } })).toBe(1);
+    // 10 分钟以后再来：是新的一次咨询，照建
+    await prisma.project.updateMany({ where: { customerId: c.id, id: { not: c.旧 } }, data: { createdAt: new Date(Date.now() - 11 * 60_000) } });
+    expect(await 交()).toMatchObject({ ok: true });
+    expect(await prisma.project.count({ where: { customerId: c.id } })).toBe(3);
+    expect(await 本月已分(外贸甲.id)).toBe(2);
   });
 
   it("新的对接人：在客户下新建一位（不设主联系人），只挂在新线索上", async () => {
@@ -221,12 +261,13 @@ describe("撞号台账：「新建线索」不计入预警次数", () => {
 });
 
 describe("项目详情：这位客户其他在推的项目", () => {
-  it("我负责的给名字，同事负责的只给个数；结束的、公海里的、这一条自己都不算", async () => {
+  it("我负责的给名字，同事负责的只给个数；结束的、公海里的、回收站里的、这一条自己都不算", async () => {
     const c = await 同事客户(外贸甲.id);
     const 我的 = await prisma.project.create({ data: { name: "甲的另一条", customerId: c.id, ownerId: 外贸甲.id, creatorId: 外贸甲.id, phase: "线索", node: "潜客培育" } });
     await prisma.project.create({ data: { name: "乙的", customerId: c.id, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育" } });
     await prisma.project.create({ data: { name: "丢了的", customerId: c.id, ownerId: 外贸甲.id, creatorId: 外贸甲.id, phase: "商机", node: "共识方案", result: "丢单" } });
     await prisma.project.create({ data: { name: "公海里的", customerId: c.id, ownerId: "", creatorId: 外贸甲.id, phase: "线索", node: "潜客培育", pooledAt: new Date() } });
+    await prisma.project.create({ data: { name: "回收站里的", customerId: c.id, ownerId: 外贸甲.id, creatorId: 外贸甲.id, phase: "线索", node: "潜客培育", deletedAt: new Date() } });
     const r = await 客户其他在推项目(外贸甲.id, 我的.id, c.id);
     expect(r.我的.map((x) => x.id)).toEqual([c.旧]);
     expect(r.我的[0].name).toMatch(/^旧项目/);

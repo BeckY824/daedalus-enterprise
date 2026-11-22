@@ -265,16 +265,17 @@ export async function 落对接人(tx: Prisma.TransactionClient, customerId: str
  * 创建人 = 市场成员、分配方式 = 自动分配；业务线 = 这次的分配方向，判不出按接手人的线、再没有内贸（同 补潜客培育，X-86 A1）。记第一行节点变更。
  * 项目来源标记（Project.source）= 老客户重复咨询（重复咨询第一步：撞上公海客户另建的这条同样打标，客户 11-22）。
  * 「市场分给销售进线索验证」由调用方接着推（同新线索自动分配）。
- * 出口 C（repeat-inquiry.ts）也用它建：接手人 = 客户负责人、分配方式 = 指定分配、线 = 跟负责人走（调用方算好传进来）
+ * 出口 C（repeat-inquiry.ts）也用它建：接手人 = 客户负责人、分配方式 = 指定分配、线 = 跟负责人走（调用方算好传进来）；
+ * 项目名由调用方给：查重领取 = 客户全称（市场成员领了能看这位客户）；出口 C = 「重复咨询-客户编号」（同事的客户，名称不露给市场成员）
  */
 export async function 查重领取建线索项目(
   tx: Prisma.TransactionClient,
-  a: { customerId: string; 客户名: string; 接手人: string; 创建人: string; 渠道: string; 对接人: string | null; 线: "内贸" | "外贸" | null; 分配方式: string },
+  a: { customerId: string; 项目名: string; 接手人: string; 创建人: string; 渠道: string; 对接人: string | null; 线: "内贸" | "外贸" | null; 分配方式: string },
 ): Promise<string> {
   const 接手人线 = a.线 ?? (await tx.entMember.findUnique({ where: { userId: a.接手人 }, select: { line: true } }))?.line ?? null;
   const p = await tx.project.create({
     data: {
-      name: a.客户名.trim().slice(0, 项目名上限) || "新线索", customerId: a.customerId, contactId: a.对接人,
+      name: a.项目名.trim().slice(0, 项目名上限) || "新线索", customerId: a.customerId, contactId: a.对接人,
       ownerId: a.接手人, creatorId: a.创建人, amount: 0, currency: 默认币种, bizLine: 接手人线 === "外贸" ? "外贸" : "内贸",
       phase: 第一个节点.phase, node: 第一个节点.node,
       ...新项目默认值(true, { 分配方式: a.分配方式, 项目来源: a.渠道 }),
