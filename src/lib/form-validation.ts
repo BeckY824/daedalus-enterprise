@@ -26,3 +26,15 @@ export function 电话格验(v: string | null | undefined, 原?: string | null):
   const r = 录入电话(s, { 必填: false });
   return r.ok ? Promise.resolve() : Promise.reject(new Error(r.error));
 }
+
+/**
+ * 设计语言 E1（D03，同 D4 新建沟通 / 待办 / 卡点）：antd 表单校验没过——红字在各格下面，再把焦点挪到第一处没填好的格
+ * （等红字画出来再挪）。用法：`form.validateFields().catch(跳到第一处(form))`，没过回 null
+ */
+export function 跳到第一处(form: { focusField: (name: (string | number)[]) => void }) {
+  return (e: unknown): null => {
+    const 名 = isFormValidationError(e) ? (e as { errorFields: { name: (string | number)[] }[] }).errorFields[0]?.name : undefined;
+    if (名) window.setTimeout(() => form.focusField(名), 0);
+    return null;
+  };
+}

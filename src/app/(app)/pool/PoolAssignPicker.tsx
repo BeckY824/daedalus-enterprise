@@ -212,7 +212,8 @@ export default function PoolAssignPicker({
             })}
           </div>
         ))}
-        {!剩.length && <div className="muted pool-pick-none">没找到「{q.trim()}」</div>}
+        {/* 设计语言 E1（D21）：搜了没对上统一写「没有对得上「词」的 X」 */}
+        {!剩.length && <div className="muted pool-pick-none">{`没有对得上「${q.trim()}」的同事`}</div>}
       </div>
     </Modal>
   );

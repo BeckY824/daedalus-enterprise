@@ -155,7 +155,16 @@ it("写点评框（原「发起主题」）：项目、节点、填写人锁定�
   expect(文).toMatch(/会通知项目负责人 · 负责人W+/);
   // 锁定的三格不是输入框：框里只有主题、内容两个输入
   expect(await 框.locator("input, textarea").count()).toBe(2);
-  expect(await page.getByTestId("coach-topic-send").isDisabled()).toBe(true);
+  // 设计语言 E1（D03 / D14）：提交键「保存」一直能点；空着点，两格下面报红、焦点到主题，不交
+  const 送 = page.getByTestId("coach-topic-send");
+  expect(await 送.innerText()).toMatch(/^保\s*存$/);
+  expect(await 送.isDisabled()).toBe(false);
+  await 送.click();
+  expect(await 框.locator(".fm-err").allInnerTexts()).toEqual(["请写一句主题", "请写点评或建议"]);
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute("aria-label"))).toBe("主题");
+  expect(await page.evaluate(() => (window as unknown as { __发?: unknown }).__发)).toBeUndefined();
+  // * 在标签前
+  expect(await 框.locator(".cth-form-k:has(.fm-req)").allInnerTexts()).toEqual(["*主题", "*内容"]);
   await 框.getByLabel("主题").fill("先问清预算");
   await 框.getByLabel("内容").fill("下次沟通先确认预算范围");
   await page.getByTestId("coach-topic-send").click();

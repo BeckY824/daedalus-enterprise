@@ -373,6 +373,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   const 问一起转 = useCarryConfirm();
   const [交中, set交中] = useState(false);
   const [建好了, set建好了] = useState(false);
+  // 设计语言 E1（D14）：提交键统一叫「保存」（建好 → 保存、建好并分出去 → 保存并分出去、已建好 → 已保存）
   // 原型 cr.submit / g.save：建好了在「建好」按钮里打勾，不弹顶部提示；没建成 / 没查成的原因就地写（role=alert）：
   // 查重的写在客户那节头下面，建档的写在底栏上面。下一次点的时候清掉
   const [查错, set查错] = useState("");
@@ -1229,7 +1230,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
           <Button type="primary" autoFocus onClick={知道了}>{知道了字}</Button>
         ) : (
           <Button type="primary" loading={交中 && !建好了} icon={建好了 ? <CheckOutlined /> : undefined} onClick={() => void 点建好()}>
-            {建好了 ? "已建好" : 自动分出去 ? "建好并分出去" : "建好"}
+            {建好了 ? "已保存" : 自动分出去 ? "保存并分出去" : "保存"}
           </Button>
         )}
       </div>
