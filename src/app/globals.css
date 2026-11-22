@@ -2302,7 +2302,8 @@ button.ais-hd-b { cursor: pointer; }
    11-21 去掉框上的 contain: size：原来框的高只认卡列、不认自己的内容，框顶上摆了待办（放弃、待复核、待分配……）就把输入框挤出白卡底边；
    现在框至少和卡列一样高，内容多了框跟着长（这一行跟着长），不越框、框里不出滚动条（tests/ent-home-frame-grow.test.ts） */
 .cli-empty .cli-ck-g { flex: none; }
-/* 11-01 用户要过「上下居中」；16a（11-11）改回顶上：居中时上面空一大块，框和四张卡的顶线贴着页边距，下面留白 */
+/* 上下居中（margin-block: auto）：11-01 用户要过「上下居中」；16a（11-11）一度改回贴顶，又按用户 11-11「首页按之前的设计，右侧模块整体居中」撤回（b18c1c3c）。
+   现在就是居中，别再按「贴顶」改回去（设计语言 E6 · D11：原注释还写着「改回顶上」，和代码对不上） */
 .cli-empty .cli-ck-g { margin-block: auto; }
 .cli-empty .home-cards { align-self: start; position: static; }
 /* 问过之后（10-31 改版 R1）：右边四张卡收起，对话铺满这一格——你的话贴着右边、回答占满，右侧不再空一大片（照 Codex / Claude Code）。
