@@ -82,19 +82,43 @@ export async function 看得到的客户数(): Promise<number> {
     // 限定层见到「不在公海」会去掉「OR 在公海」那支（team-scope 限在非公海）；公海那头 = 公海页签数。原来一句带 OR 整表扫，市场相关的人 50 ms
     // 不在公海的那句（市场相关的人单句 ~29 ms，OR 里带建档人那支、只能顺 deletedAt 索引扫）人人范围不同，按范围短时缓存（第四轮 11-14）：
     // 键 = 企业版 / 看不看已删 + 这个人读客户时限定层并进去的整句条件（同 看得到的下拉值），存活 3 秒、写过库就作废（pool-count-cache.ts）
-    const 条件 = await 客户读条件(defaultClient);
-    const [非公海, 公海] = await Promise.all([
-      缓存分组数("客户数:不在公海", [企业版(), 在看已删(), 条件], () => prisma.customer.count({ where: { pool: { is: null } } })),
-      看得到的公海数(),
-    ]);
+    const [非公海, 公海] = await Promise.all([限定的不在公海数(), 看得到的公海数()]);
     return 非公海 + 公海;
   }
   // 名下（不在公海）+ 公海里看得到的（= 公海页签数，走主键、只减回避的那几位），两路不相交，相加就是原来那句的数
-  const [[r], 公海] = await Promise.all([
-    prisma.$queryRawUnsafe<{ n: bigint | number }[]>(`SELECT COUNT(*) AS n FROM "Customer" c WHERE ${范围.名下.where}`, ...范围.名下.参数),
-    看得到的公海数(),
-  ]);
-  return Number(r.n) + 公海;
+  const [非公海, 公海] = await Promise.all([名下数(范围.名下), 看得到的公海数()]);
+  return 非公海 + 公海;
+}
+
+/**
+ * 看得到的、不在公海的客户几位（= 客户页签数() 的「非公海」= 看得到的客户数() − 看得到的公海数()）。三路和 看得到的客户数 一一对应，
+ * 只是不数公海那头：限定了的两路本来就是「不在公海 + 公海」相加，这里只取前一项；不限定的照旧「全部 − 公海」（那时公海数走主键，很快）。
+ *
+ * 客户详情的窄名单每次导航都要这个数（11-22 c2 切页卡顿调研）：原来走 客户页签数() 先数公海——原负责人回避名单过上限（null）的人，
+ * 公海那句要带着回避的关联子查询把 6.6 万位公海客户逐位过一遍（8.6 万客户库拷贝上 170–550 ms，c2 上销售进详情 p50 1.7 s 的大头），
+ * 而名单只用非公海这一个数。tests/scope-sql-split.test.ts 逐个身份对拍「= 看得到的客户数 − 看得到的公海数」
+ */
+export async function 看得到的非公海数(): Promise<number> {
+  const 范围 = await 看得到的();
+  if (范围) return 名下数(范围.名下);
+  if (await 读的我(defaultClient)) return 限定的不在公海数();
+  const [全部, 公海] = await Promise.all([prisma.customer.count(), 看得到的公海数()]);
+  return 全部 - 公海;
+}
+
+/** 名下这一路（不在公海）几位：走负责人索引，只碰自己那几千行 */
+async function 名下数(名下: { where: string; 参数: string[] }): Promise<number> {
+  const [r] = await prisma.$queryRawUnsafe<{ n: bigint | number }[]>(`SELECT COUNT(*) AS n FROM "Customer" c WHERE ${名下.where}`, ...名下.参数);
+  return Number(r.n);
+}
+
+/**
+ * 限定了但裸 SQL 接不住的人（有市场只读、原负责人回避名单过上限）不在公海的几位：走 Prisma，限定层见到「不在公海」会去掉「OR 在公海」那支。
+ * 人人范围不同，按范围短时缓存（第四轮 11-14）：键 = 企业版 / 看不看已删 + 这个人读客户时限定层并进去的整句条件，存活 3 秒、写过库就作废（pool-count-cache.ts）
+ */
+async function 限定的不在公海数(): Promise<number> {
+  const 条件 = await 客户读条件(defaultClient);
+  return 缓存分组数("客户数:不在公海", [企业版(), 在看已删(), 条件], () => prisma.customer.count({ where: { pool: { is: null } } }));
 }
 
 /**
