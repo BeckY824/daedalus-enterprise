@@ -111,10 +111,13 @@ test("外接屏 2560：数据页四张指标卡一排；直接打开设置不铺
   await 登录(page);
   // 企业版项目模式复盘页默认开「待办」页签（P15），指标卡在「数据」页签里
   await page.goto("/overview?tab=data");
-  const 卡 = page.locator(".ant-col-xl-6");
+  // 设计语言 R-B（R4 / R-新11）：现状主题（默认）的四张阶段卡收成一排 4 格 KPI（.rkpi-4），不再是 4 个 Col xl=6 的 StatCard。
+  // 不能再认 .ant-col-xl-6：加载骨架（app/(app)/loading.tsx）也是 4 个 xl=6，先露一下就被换掉，取到的是 0 个
+  const 卡 = page.locator(".rkpi.rkpi-4 > .rkpi-i");
+  await expect(卡).toHaveCount(4);
   await expect(卡.first()).toBeVisible();
   const 顶 = await 卡.evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
-  expect(new Set(顶.slice(0, 4)).size).toBe(1);
+  expect(new Set(顶).size, `四格的顶：${顶.join(",")}`).toBe(1);
 
   await page.goto("/settings");
   const 设置 = page.locator(".set").first();
