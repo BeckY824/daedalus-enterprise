@@ -6060,3 +6060,12 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-row > .cust-ponly-name > a { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
   :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-unit { display: inline; }
 }
+/* L-B · 行内动作 .row-act 一种款（D09，落地计划「只在 L-B 改一次」）：带字的行内按钮（领取、录投入、详情、恢复、展开……）是文字按钮——
+   蓝字、不带框、悬停浅蓝底；行上不标红。只剩图标的（⋯、编辑、停用，本来就是 type="text"）不变。触屏点击区 44 照旧（上面 pointer: coarse 那条）。
+   用在：渠道、客户列表、公海、成员表（跟进计划行尾是 .plan-row-act 图标钮，不用这一款） */
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-btn.row-act.ant-btn-variant-outlined { border-color: transparent; background: transparent; box-shadow: none; color: var(--brand); padding-inline: var(--s1); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-btn.row-act.ant-btn-variant-outlined:not(:disabled):hover { border-color: transparent; background: var(--brand-bg); color: var(--brand-deep); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-btn.row-act.ant-btn-variant-outlined:disabled { border-color: transparent; background: transparent; color: var(--text-faint); }
+/* D37 补（L-A 补点发现）：市场管理客户页（我分出去的）的「看板」视图，筛选在看板上方 .pipe-top，不在 .list-bar——
+   「全部成员 / 全部创建人 / 全部进程」占位字也墨色，和「全部阶段」（选中值）一个颜色。销售客户页的看板筛选仍是 .list-bar，上面 L-A 那条已管 */
+:root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .pipe-top .ant-select-placeholder { color: var(--ink); }
