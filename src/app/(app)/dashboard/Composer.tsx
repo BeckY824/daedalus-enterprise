@@ -384,6 +384,13 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
         if (!ta) return;
         ta.focus();
         ta.setSelectionRange(x.question.length, x.question.length);
+        // 设计语言 HC-1（C5-A）：框亮一下，人知道填到哪了（样式只挂现状主题，globals.css .cli-input.is-filled）
+        const 框 = ta.closest(".cli-input");
+        if (框) {
+          框.classList.remove("is-filled");
+          void (框 as HTMLElement).offsetWidth;
+          框.classList.add("is-filled");
+        }
       });
       return;
     }

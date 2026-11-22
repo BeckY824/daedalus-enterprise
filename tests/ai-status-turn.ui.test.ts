@@ -26,7 +26,8 @@ const plugin: Plugin = { name: "turn-status-boundaries", setup(b) {
 beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `import React from 'react';import{createRoot}from'react-dom/client';import{flushSync}from'react-dom';import{App}from'antd';import Turn from'@/app/(app)/dashboard/TurnView';import{BusinessProvider}from'@/lib/business-client';import{DEFAULT_BUSINESS}from'@/lib/business-config';
     const root=createRoot(document.getElementById('root'));
-    window.__render=(job,卡态)=>{window.__job=job;window.__卡态=卡态;window.__重试=0;flushSync(()=>root.render(<App><BusinessProvider value={DEFAULT_BUSINESS}><Turn key={Math.random()} turn={{id:'qa',question:'QA问题',kind:'ask',at:Date.now()}} onRetry={()=>{window.__重试++}} onRemove={()=>{}} onAsk={()=>{}} scrollOnMount={false}/></BusinessProvider></App>))};`,
+    window.__render=(job,卡态)=>{window.__job=job;window.__卡态=卡态;window.__重试=0;flushSync(()=>root.render(<App><BusinessProvider value={DEFAULT_BUSINESS}><Turn key={Math.random()} turn={{id:'qa',question:'QA问题',kind:'ask',at:Date.now()}} onRetry={()=>{window.__重试++}} onRemove={()=>{}} onAsk={()=>{}} scrollOnMount={false}/></BusinessProvider></App>))};
+    window.__renderDock=(job)=>{window.__job=job;flushSync(()=>root.render(<App><BusinessProvider value={DEFAULT_BUSINESS}><div className='dock-body' style={{height:300,overflowY:'auto',display:'block'}}><div style={{height:600,flex:'none'}}/><Turn key='dock' turn={{id:'qa',question:'QA问题',kind:'ask',at:Date.now()}} onRetry={()=>{}} onRemove={()=>{}} onAsk={()=>{}} scrollOnMount={false}/><div style={{height:400,flex:'none'}}/></div></BusinessProvider></App>))};`,
     loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
@@ -87,5 +88,29 @@ it("答完：≥2 张卡走合并清单、状态条「等你确认」；1 张照
   await expect.poll(() => page.locator(".ais-tt").innerText()).toBe("等你确认 1 项");
   await 画(page, 答(0));
   await expect.poll(() => page.locator(".ais-tt").innerText()).toBe("用了 4 秒 · 1 步");
+  await page.close();
+});
+
+it("浮窗里还在查数据、正文一个字没出：换一步也跟着往下滚（#410：原来只认正文字数，离底部最远差 74px）", async () => {
+  const { page, errors } = await open();
+  const 跑 = (n: number) => ({ status: "loading", startedAt: 起, value: { steps: Array.from({ length: n }, (_, i) => 步(i, `get_customer(c${i})`, i < n - 1 ? "done" : "running")) } });
+  const 渲 = (job: unknown) => page.evaluate((j) => (window as unknown as { __renderDock: (j: unknown) => void }).__renderDock(j), job);
+  const 离底 = () => page.locator(".dock-body").evaluate((e) => e.scrollHeight - e.scrollTop - e.clientHeight);
+  await 渲(跑(1));
+  await expect.poll(离底, { timeout: 2000 }).toBeLessThan(2);
+  for (const n of [2, 3]) {
+    // 人没滚（跟随中），容器停在顶上；正文没字、只多了一步
+    await page.locator(".dock-body").evaluate((e) => { e.scrollTop = 0; });
+    await page.waitForTimeout(300);
+    expect(await page.locator(".dock-body").evaluate((e) => e.scrollTop)).toBe(0);
+    await 渲(跑(n));
+    await expect.poll(离底, { timeout: 2000 }).toBeLessThan(2);
+  }
+  // 步骤没变（只是秒数在走）不来回拽
+  await page.locator(".dock-body").evaluate((e) => { e.scrollTop = 0; });
+  await 渲(跑(3));
+  await page.waitForTimeout(300);
+  expect(await page.locator(".dock-body").evaluate((e) => e.scrollTop)).toBe(0);
+  expect(errors).toEqual([]);
   await page.close();
 });
