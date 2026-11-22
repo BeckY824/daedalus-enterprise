@@ -5,18 +5,29 @@
  * 超时未跟进（reply-overdue.ts，11-17）：发过超时提醒、还没记沟通的也算在里面，标「（超时 N）」，先链到超时那条。
  * 没填指定回复时间、按分配时刻起算的超时（11-20）：那行写「分配后 1 小时未跟进」，不写「指定回复」
  * 样式借「待回复主题」那一行（同一种首页待办）
+ * 设计语言 H-A（11-21，H-新13 / 新14）：现状主题量词写「N 条」、时间走 smartTime、时间挪到名字前面（窄屏名字长也不把时间挤掉）；换皮主题照旧
  */
 import Link from "next/link";
 import type { 待回复客户数 } from "@/lib/enterprise/reply-notice";
+import { useIsNowSkin } from "@/lib/use-skin";
+import { 墙钟smart, 时段smart } from "./todo-time";
 
 export default function ReplyDueTodo({ 数据 }: { 数据: 待回复客户数 | null | undefined }) {
+  const 现状 = useIsNowSkin();
   if (!数据?.条数 || !数据.最早) return null;
   const 早 = 数据.最早;
   const 说 = 早.分配话 ? `${早.name} · ${早.时} 分配 · ${早.分配话}` : `${早.name} · 指定回复 ${早.时}${早.超时 ? " · 超时未跟进" : ""}`;
+  // 现状主题：时间在前（「指定回复 今天 21:00 – 22:00 · 名字」），名字再长也不把时间挤出去
+  const 时 = 早.分配话 ? `${墙钟smart(早.时)} 分配` : `指定回复 ${时段smart(早.时)}`;
+  const 后 = [早.name, 早.分配话 ?? (早.超时 ? "超时未跟进" : "")].filter(Boolean).join(" · ");
   return (
     <div className="home-cth-todo" role="status" data-testid="home-reply-due">
-      <span className="home-cth-todo-t">待回复客户 {数据.条数}{数据.超时 ? <span data-testid="home-reply-overdue" className="home-cth-todo-warn">（超时 {数据.超时}）</span> : null}</span>
-      <span className="home-cth-todo-s" title={说}>{说}</span>
+      <span className="home-cth-todo-t">待回复客户 {数据.条数}{现状 ? " 条" : ""}{数据.超时 ? <span data-testid="home-reply-overdue" className="home-cth-todo-warn">（超时 {数据.超时}{现状 ? " 条" : ""}）</span> : null}</span>
+      {现状 ? (
+        <span className="home-cth-todo-s" title={`${时} · ${后}`}><span className="home-cth-todo-time">{时}</span> · {后}</span>
+      ) : (
+        <span className="home-cth-todo-s" title={说}>{说}</span>
+      )}
       <Link className="link-strong home-cth-todo-a" href={`/projects/${encodeURIComponent(早.projectId)}`}>去联系 ›</Link>
     </div>
   );
