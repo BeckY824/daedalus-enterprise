@@ -24,7 +24,7 @@ const plugin: Plugin = { name: "ent-hc1", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, (a) => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__刷新=(window.__刷新||0)+1},push(u){window.__去=u},prefetch(){}});export const usePathname=()=>'/dashboard';export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({href,prefetch,...p}){return <a href={href} {...p}/>}");
-  stub(/\/threads$/, 补全动作桩("src/app/(app)/dashboard/threads.ts", "export const 重命名对话=async(id,t)=>{window.__改名=[id,t];return window.__改名失败?{ok:false,error:'x'}:{ok:true}};"));
+  stub(/\/threads$/, 补全动作桩("src/app/(app)/dashboard/threads.ts", "export const 重命名对话=async(id,t)=>{window.__改名=[id,t];if(window.__改名抛)throw new TypeError('Failed to fetch');return window.__改名失败?{ok:false,error:'x'}:{ok:true}};"));
   b.onLoad({ filter: /.*/, namespace: "fixture" }, (a) => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 
@@ -51,7 +51,7 @@ beforeAll(async () => {
     ];
     const 待办们 = (n) => n ? <>
       <AwaitAssignTodo 数据={{ 条数: 128, 最早: '11-22 09:30', 最早At: new Date().toISOString() }} />
-      <ReplyDueTodo 数据={{ 条数: 8, 超时: 3, 最早: { projectId: 'p2', name: 长, 时: '11-22 21:00 – 22:00', 始: new Date().toISOString(), 终: new Date().toISOString(), 超时: true } }} />
+      <ReplyDueTodo 数据={{ 条数: window.__长时段 ? 1 : 8, 超时: window.__长时段 ? 0 : 3, 最早: { projectId: 'p2', name: 长, 时: '11-22 21:00 – 22:00', 始: window.__长时段 ? new Date(Date.now() - 3 * 864e5).toISOString() : new Date().toISOString(), 终: window.__长时段 ? new Date(Date.now() + 3 * 864e5).toISOString() : new Date().toISOString(), 超时: true } }} />
       {n > 2 && <AssignEtaLine 轮到={{ 数: 12, 待补: 0, 放弃待补: 0 }} />}
       {null}
     </> : null;
@@ -110,7 +110,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 开参 = { 宽: number; 高?: number; 样?: "问过" | "没问"; 轮数?: number; 待办?: number; 新?: boolean; 收列表?: boolean; skin?: "now" | "ledger" };
+type 开参 = { 宽: number; 高?: number; 样?: "问过" | "没问"; 轮数?: number; 待办?: number; 新?: boolean; 收列表?: boolean; skin?: "now" | "ledger"; 长时段?: boolean };
 async function 开(o: 开参): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width: o.宽, height: o.高 ?? 900 }, reducedMotion: "reduce", timezoneId: "Europe/London" });
   page.setDefaultTimeout(5000);
@@ -127,6 +127,7 @@ async function 开(o: 开参): Promise<{ page: Page; errors: string[] }> {
   if (o.收列表) await page.evaluate(() => localStorage.setItem("pane.chat.collapsed", "true"));
   for (const f of ["globals.css", ...(skin === "now" ? [] : ["skins/shared.css", `skins/${skin}.css`])]) await page.addStyleTag({ path: path.resolve("src/app", f) });
   await page.addScriptTag({ content: bundle });
+  if (o.长时段) await page.evaluate(() => { (window as unknown as { __长时段: boolean }).__长时段 = true; });
   await page.evaluate(([样, opt]) => (window as unknown as { __画: (el: Element, s: string, o: unknown) => void }).__画(document.getElementById("root")!, 样 as string, opt), [o.样 ?? "问过", { 轮数: o.轮数 ?? 12, 待办: o.待办 ?? 2, 新: o.新 ?? false }] as const);
   await page.locator(".cli-frame .cli-input").waitFor();
   await page.waitForTimeout(50);
@@ -234,6 +235,9 @@ it("C1（改名失败）：「改不了这条对话」不一直挂着——鼠�
     await page.waitForTimeout(2000);
     expect(await 提示.count()).toBe(1);
     await expect.poll(() => 提示.count(), { timeout: 2500 }).toBe(0);
+    // 断网（重命名对话 直接抛错、不是回 ok:false）：同样回退到原名、出提示（3703 补点）
+    await page.evaluate(() => { const w = window as unknown as { __改名失败: boolean; __改名抛: boolean }; w.__改名失败 = false; w.__改名抛 = true; });
+    await 改一下("断网时改的名");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -275,6 +279,27 @@ it("C3（390）：点「待办 N」，浮层对着整条对话栏、左右各留
     expect(Math.abs(层.l - 16)).toBeLessThanOrEqual(1);
     expect(Math.abs(390 - 层.r - 16)).toBeLessThanOrEqual(1);
     expect(await page.locator(".cli-head-pop .home-cth-todo").count()).toBe(2);
+    expect(await 不横滚(page)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("C3（390，标题短 + 跨天的指定回复时段）：浮层里不折行的时间串整段摆得下，浮层不横滚、每格不出行右边（3703 补点）", async () => {
+  const { page, errors } = await 开({ 宽: 390, 高: 844, 待办: 2, 长时段: true });
+  try {
+    await page.locator(".cli-head-chip").click();
+    const 时 = await page.locator(".cli-head-pop .home-cth-todo-time", { hasText: "指定回复" }).evaluate((e) => ({ t: e.textContent, w: e.getBoundingClientRect().width }));
+    expect(时.t).toMatch(/^指定回复 .+ – .+/);
+    expect(时.w, "时间串要够长才测得出（3703 上是 249 宽）").toBeGreaterThan(200);
+    const 层 = await page.locator(".cli-head-pop").evaluate((e) => ({ sw: e.scrollWidth, cw: e.clientWidth }));
+    expect(层.sw, JSON.stringify(层)).toBeLessThanOrEqual(层.cw);
+    const 越界 = await page.locator(".cli-head-pop .home-cth-todo").evaluateAll((rows) => rows.flatMap((row) => {
+      const R = row.getBoundingClientRect();
+      return [...row.querySelectorAll<HTMLElement>(".home-cth-todo-s, .home-cth-todo-time, .home-cth-todo-a")]
+        .map((x) => ({ c: x.className, r: Math.round(x.getBoundingClientRect().right), 行右: Math.round(R.right) }))
+        .filter((x) => x.r > x.行右 + 1);
+    }));
+    expect(越界).toEqual([]);
     expect(await 不横滚(page)).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }

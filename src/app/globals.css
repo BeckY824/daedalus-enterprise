@@ -5929,6 +5929,8 @@ button.proj-miss-chip { cursor: pointer; }
 :root:is(:not([data-skin]), [data-skin="now"]) .cli-head-pop[hidden] { display: none; }
 :root:is(:not([data-skin]), [data-skin="now"]) .cli-head-pop-l { display: flex; flex-direction: column; gap: var(--s2); }
 :root:is(:not([data-skin]), [data-skin="now"]) .cli-head-pop-l > * { margin: 0; }
+/* 浮层里每条的说明独占一行（3703 补点：390 浮层行宽 342，说明按 flex-basis 200 只剩约 200，「指定回复 3 天前 21:00 – 11 月 25 日 22:00」不折行的时间串 249 宽，顶出浮层横滚） */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-head-pop .home-cth-todo-s { flex-basis: 100%; }
 @media (prefers-reduced-motion: reduce) { :root:is(:not([data-skin]), [data-skin="now"]) .cli-head-pop { animation: none; } }
 /* C12-A：往上翻时输入框上方一颗「↓ 回到最新」，下面有新字带蓝点 */
 :root:is(:not([data-skin]), [data-skin="now"]) .cli-latest { position: relative; z-index: 3; flex: none; height: 0; }

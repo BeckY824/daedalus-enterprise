@@ -44,7 +44,8 @@ export default function ChatHead({ 标题, 对话id, 能改, 待办 }: {
     const t = v.trim();
     if (!对话id || !t || t === 名) return;
     set改后({ id: 对话id, 名: t });
-    const r = await 重命名对话(对话id, t);
+    // 断网 / 服务端抛错（不是回 ok:false）：和没改成一样回退名字、出提示（3703 补点：原来没接住，框头一直挂着没存上的新名）
+    const r = await 重命名对话(对话id, t).catch(() => ({ ok: false as const }));
     if (!r.ok) {
       set改后(null);
       set错("改不了这条对话");
