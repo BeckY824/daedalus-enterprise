@@ -66,12 +66,29 @@ const 天 = 24 * 60 * 60 * 1000;
 let 项目: string;
 let 客户: string;
 
+/**
+ * 清库：CI 分片里 prisma/test.db 可能已经被同片别的用例写过（渠道、商机、合同……挂着人和客户），本机单跑是干净的（#426 CI 外键错）。
+ * 引用了 User / Customer 的表（按库里的外键现查，不靠手写名单）先清掉；清的时候关外键检查（单连接，PRAGMA 在这条连接上生效），清完再开
+ */
+async function 清库() {
+  await raw.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
+  try {
+    const 表们 = (await raw.$queryRawUnsafe<{ name: string }[]>(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_prisma%' AND sql NOT LIKE 'CREATE VIRTUAL%'`)).map((x) => x.name);
+    const 挂着的 = new Set<string>();
+    for (const t of 表们) {
+      const 键们 = await raw.$queryRawUnsafe<{ table: string }[]>(`SELECT "table" FROM pragma_foreign_key_list('${t.replace(/'/g, "''")}')`);
+      if (键们.some((k) => k.table === "User" || k.table === "Customer")) 挂着的.add(t);
+    }
+    for (const t of ["EntCoachRecording", "EntCoachReply", "EntCoachTopic", "EntNotice", "AuditLog", "ProjectMember", "Project", "Setting", "EntMember", "EntDept", "FollowUpProject", ...挂着的, "Customer", "User"]) {
+      if (表们.includes(t)) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
+    }
+  } finally {
+    await raw.$executeRawUnsafe("PRAGMA foreign_keys = ON");
+  }
+}
+
 async function 建() {
-  for (const t of ["EntCoachRecording", "EntCoachReply", "EntCoachTopic", "EntNotice", "AuditLog", "ProjectMember", "Project", "Setting", "EntMember", "EntDept"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`).catch(() => {});
-  await raw.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
-  for (const t of ["FollowUpProject", "FollowUp", "Contact", "Lead", "CustomerPool", "CustomerClaim", "CustomerCreator", "Task", "FollowPlan"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`).catch(() => {});
-  await raw.$executeRawUnsafe('DELETE FROM "Customer"');
-  await raw.$executeRawUnsafe('DELETE FROM "User"');
+  await 清库();
   for (const [名, id] of Object.entries(人)) await raw.user.create({ data: { id, email: `${id}@x.com`, name: 名, password: "x", role: 名 === "教练" ? "ADMIN" : "SALES", active: true } });
   await raw.entMember.createMany({ data: [{ userId: 人.老板, bizRole: "director" }, { userId: 人.甲, bizRole: "sales" }, { userId: 人.教练, bizRole: "coach" }] });
   客户 = (await raw.customer.create({ data: { name: "甲的客户", phone: "13800001111", salesOwnerId: 人.甲 } })).id;
