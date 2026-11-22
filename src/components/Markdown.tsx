@@ -79,8 +79,10 @@ function 渲染块(text: string, byN: 引用表, 起 = 0, 淡: readonly number[]
       li--;
       const 是分隔 = (l: string) => /^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?$/.test(l.trim());
       const 有表头 = 块.length >= 2 && 是分隔(块[1].l);
-      const 表头 = 有表头 ? 切格(块[0].l, 块[0].at) : null;
-      const 体 = (有表头 ? 块.slice(2) : 块).filter((r) => !是分隔(r.l)).map((r) => 切格(r.l, r.at, 表头?.length));
+      // 列数按分隔行定（GFM 的规矩）：表头里的名字自带没转义的 | 时，按表头数会算大
+      const 列数 = 有表头 ? 切格(块[1].l, 块[1].at).length : undefined;
+      const 表头 = 有表头 ? 切格(块[0].l, 块[0].at, 列数) : null;
+      const 体 = (有表头 ? 块.slice(2) : 块).filter((r) => !是分隔(r.l)).map((r) => 切格(r.l, r.at, 列数));
       out.push(
         <div key={out.length} className="md-tw">
           <table className="md-table">
@@ -135,7 +137,7 @@ function 渲染块(text: string, byN: 引用表, 起 = 0, 淡: readonly number[]
  * 名字里带半角竖线（渠道「主渠道|子渠道」、客户抬头「NO.86565|线索验证」）原来会被当成分界，整行往右错一格。
  * 现在两头管：
  * - 认 GFM 的转义 `\|`：它不是分界，渲出来是一个 |。回答的提示词要求模型这么写（lib/agent/run.ts）。
- * - 模型没转义、或是改之前存下的老对话：`列数` 给了（有表头）且这行切多了，把多出的格并回去。
+ * - 模型没转义、或是改之前存下的老对话：`列数`（分隔行的格数）给了且这行切多了，把多出的格并回去。
  *   先并「两边都贴着字」的竖线——模型画表在分界两边留空格，名字里的竖线一般不留；
  *   还多就并进第一列：名字照惯例在第一列。并回去的那条竖线原样显示。
  * 全角「｜」本来就不是分界，不动。
@@ -221,7 +223,8 @@ function Inline({ text, byN, 起, 淡 }: { text: string; byN: 引用表; 起: nu
           }
           const at = 内起 + c;
           c += seg.length;
-          return <span key={j}>{淡入(seg, at, 淡)}</span>;
+          // 提示词让模型把格子里的 | 写成 \|，正文里提到同一个名字时它也会照写：正文也还原成 |，行内代码里的原样
+          return <span key={j}>{淡入(seg.replace(/\\\|/g, "|"), at, 淡)}</span>;
         });
         return bold ? <strong key={i}>{nodes}</strong> : <span key={i}>{nodes}</span>;
       })}
