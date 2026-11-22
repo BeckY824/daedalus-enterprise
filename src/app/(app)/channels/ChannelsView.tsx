@@ -357,7 +357,8 @@ export default function ChannelsView({
       // 现状主题（设计语言 C-A2 · C-新5）：「—」和「0」意思不同，表头写个「?」说清；点「?」不触发排序
       <span className="nowrap chan-th">
         {标题}
-        <Tooltip trigger={["hover", "click"]} title={<>「—」= 这批线索销售还没在线索验证里判过；「0」= 判过了、没有判有效的。<br />{说明}</>}>
+        {/* hover + focus 不用 click：触屏按下 pointerenter 延时开、抬起后 click 又切回关，闪一下就没（C-A1 3704 实操） */}
+        <Tooltip trigger={["hover", "focus"]} title={<>「—」= 这批线索销售还没在线索验证里判过；「0」= 判过了、没有判有效的。<br />{说明}</>}>
           <span className="chan-dash-q" tabIndex={0} role="button" aria-label="「—」和「0」的区别" onClick={(e) => e.stopPropagation()}>?</span>
         </Tooltip>
       </span>
@@ -724,7 +725,7 @@ export default function ChannelsView({
         <div className="chan-period-note chan-list-head" data-testid="chan-period-note">
           <b className="section-title">{两层 && 按主看 ? "主渠道" : "渠道"}<span className="card-count">（{(两层 && 按主看 ? 主行们.length : rows.length).toLocaleString("zh-CN")}）</span></b>
           <span className="chan-period-label">· 统计：{时段字(期, 时段)}</span>
-          <Tooltip trigger={["hover", "click"]} title={<span className="chan-period-hint">{列表时段说明}</span>}>
+          <Tooltip trigger={["hover", "focus"]} title={<span className="chan-period-hint">{列表时段说明}</span>}>
             <span className="chan-dash-q" tabIndex={0} role="button" aria-label="列表按哪段时间算">?</span>
           </Tooltip>
         </div>

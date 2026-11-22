@@ -50,7 +50,7 @@ afterAll(async () => { await browser?.close(); });
 
 /** 内容区按真实页面算：≥768 左边留 232 侧栏 + 24 页边距；390 没侧栏、16 边距 */
 async function 打开(width: number, o: Record<string, unknown> = {}, skin?: string, 触屏 = false): Promise<{ page: Page; errors: string[] }> {
-  const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: 触屏 }); page.setDefaultTimeout(5000);
+  const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: 触屏, isMobile: 触屏 }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   const 窄 = width < 768;
   const 壳 = 窄 ? "padding:0 16px" : "margin-left:232px;padding:0 24px";
@@ -71,6 +71,20 @@ async function 点得中(page: Page, loc: import("playwright").Locator) {
   expect(b.x).toBeGreaterThanOrEqual(0);
   expect(b.x + b.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   return loc.evaluate((e, [x, y]) => { const h = document.elementFromPoint(x, y); return !!h && (h === e || e.contains(h)); }, [b.x + b.width / 2, b.y + b.height / 2] as const);
+}
+
+/**
+ * 像手指那样点按：按下停 150ms 再抬起。Playwright 的 tap() 是一瞬间的，测不出 trigger 带 click 时
+ * 「按下 pointerenter 延时打开、抬起后 click 又切回关」那一闪（C-A1 3704 实操同一个坑）
+ */
+async function 指点(page: Page, loc: import("playwright").Locator) {
+  await loc.scrollIntoViewIfNeeded();
+  const b = (await loc.boundingBox())!;
+  const s = await page.context().newCDPSession(page);
+  await s.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: b.x + b.width / 2, y: b.y + b.height / 2 }] });
+  await page.waitForTimeout(150);
+  await s.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await s.detach();
 }
 
 const 字 = (s: string) => s.replace(/\s+/g, "");
@@ -134,6 +148,25 @@ it("「有效线索」表头「?」：悬停说清「—」和「0」，点了�
     // C3「?」悬停写列表按哪种时间算
     await page.getByTestId("chan-period-note").locator(".chan-dash-q").hover();
     await expect.poll(() => page.locator(".ant-tooltip:not(.ant-tooltip-hidden)", { hasText: "全部时间；在上方看板切换时段" }).isVisible()).toBe(true);
+  } finally { await page.close(); }
+});
+
+it("390 触屏：点按表格卡头「?」、「有效线索」表头「?」，说明出来留住不闪；点表头「?」不排序", async () => {
+  const { page, errors } = await 打开(390, {}, undefined, true);
+  try {
+    await 指点(page, page.getByTestId("chan-period-note").locator(".chan-dash-q"));
+    const 时段 = page.locator(".ant-tooltip:not(.ant-tooltip-hidden)", { hasText: "全部时间；在上方看板切换时段" });
+    await expect.poll(() => 时段.isVisible()).toBe(true);
+    await page.waitForTimeout(500);
+    expect(await 时段.isVisible()).toBe(true);
+    const 前 = await 列字(page, "有效线索");
+    await 指点(page, page.locator(".chan-list .ant-table-thead .chan-th .chan-dash-q"));
+    const 区别 = page.locator(".ant-tooltip:not(.ant-tooltip-hidden)", { hasText: "「—」= 这批线索销售还没在线索验证里判过" });
+    await expect.poll(() => 区别.isVisible()).toBe(true);
+    await page.waitForTimeout(500);
+    expect(await 区别.isVisible()).toBe(true);
+    expect(await 列字(page, "有效线索")).toEqual(前);
+    expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
 
