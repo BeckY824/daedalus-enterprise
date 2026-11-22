@@ -421,6 +421,11 @@ function 级别格(v: string | null) {
  * antd 把这个对象原样并进浮层库的 overflow（_util/placements getOverflowOptions），shiftY 浮层库认、antd 的类型没列，只能断言
  */
 const 补填框挪进屏 = { adjustX: 1, adjustY: 1, shiftY: true } as Exclude<PopoverProps["autoAdjustOverflow"], boolean | undefined>;
+/*
+  K5（设计语言 E2，29K⑥）：浮层库往屏里挪（shiftY）时不算挂在按钮下面那 4px 间距，挪完外框下沿总比屏幕低 3–4px、页面能多滚这一截。
+  把间距从「偏移」挪进外框（globals.css .pd-fill-pop 上边留白），偏移归零，挪的时候整块都算进去
+*/
+const 补填框不偏移: PopoverProps["align"] = { offset: [0, 0] };
 
 /**
  * 公海提示条那句（项目页、客户页项目区同一个）：能领说领了怎样；领不了说为什么。
@@ -1122,6 +1127,7 @@ export default function ProjectDetail({
                   // 下面放不下：先试翻到按钮上面，还放不下就整块往上挪到屏里（11-20 c2 实操：375 宽缺得多时底下按钮比屏幕低、要滚一下才看得到）。
                   // 默认只翻不挪，翻上去也放不下就照旧挂在下面伸出屏外；挪的时候按浮层外框算，外框底下留的安全区见 globals.css .pd-fill-pop
                   autoAdjustOverflow={补填框挪进屏}
+                  align={补填框不偏移}
                   arrow={false}
                   destroyOnHidden
                   classNames={{ root: "pd-fill-pop" }}
@@ -2047,7 +2053,7 @@ export default function ProjectDetail({
       {!p.放弃 && <GiveUpBanner projectId={p.id} />}
       {p.线索验证 && (
         <Modal open={验证开着} title="线索验证" footer={null} width={560} onCancel={() => set验证开着(false)} destroyOnHidden>
-          <LeadVerifyPanel projectId={p.id} v={p.线索验证} 无效原因选项={p.原因选项.无效} 字数上限={p.字数上限} 跑={跑} 忙={忙} 缺有效沟通话={缺有效沟通话} 不给推={p.不给推} 线索验证必填={p.线索验证必填 ?? []}
+          <LeadVerifyPanel projectId={p.id} 项目名={p.name} v={p.线索验证} 无效原因选项={p.原因选项.无效} 字数上限={p.字数上限} 跑={跑} 忙={忙} 缺有效沟通话={缺有效沟通话} 不给推={p.不给推} 线索验证必填={p.线索验证必填 ?? []}
             有效还差={没有效沟通 ? p.有效沟通差 : []}
             沟通半句={沟通半句}
             on去填={能去填 ? (叫) => { set验证开着(false); window.setTimeout(() => 去填(叫法到键(叫)), 80); } : undefined}

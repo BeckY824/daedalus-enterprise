@@ -28,7 +28,7 @@ beforeAll(async () => {
     ];
     const 跑=async(f)=>{const r=await f();return r.ok;};
     window.__render=(我能,没有效沟通,配)=>root.render(<ConfigProvider locale={zhCN}><App><div style={{display:'flex',flexDirection:'column',gap:16}}>
-      <LeadVerifyPanel projectId='p1' v={{判定:我能==='初判'?'暂未判定':'初验无效',待:我能==='初判'?null:我能,无效原因:我能==='初判'?null:'其他：'+词,复核结果:null,最终结果:null,终验:null,初判即终判:false,叫法:我能==='初判'?'暂未验证':'初验无效',我能,能撤回:我能!=='初判',痕:我能==='初判'?[]:痕}}
+      <LeadVerifyPanel projectId='p1' 项目名='样例项目' v={{判定:我能==='初判'?'暂未判定':'初验无效',待:我能==='初判'?null:我能,无效原因:我能==='初判'?null:'其他：'+词,复核结果:null,最终结果:null,终验:null,初判即终判:false,叫法:我能==='初判'?'暂未验证':'初验无效',我能,能撤回:我能!=='初判',痕:我能==='初判'?[]:痕}}
         无效原因选项={['需求不存在','联系方式无效','其他']} 跑={跑} 忙={false} 缺有效沟通话={没有效沟通?"还差有效沟通：需求状态":null} 不给推={null} 线索验证必填={配||[]}/>
       <VerifyInbox 们={[
         {projectId:'p1',项目:'超长项目名'+词,负责人:'业务员'+词,步:'市场复核',无效原因:'其他：'+词,初判说明:串,复核说明:null,异议说明:null,更新于:'2026-10-29T01:00:00.000Z'},
@@ -141,5 +141,35 @@ it("销售终验：看得到复核说明；提交异议不写说明确定点不�
     await 确定.click();
     await page.waitForFunction(() => ((window as unknown as { __calls?: unknown[] }).__calls ?? []).length > 0);
     expect(await 调用(page)).toEqual([["销售终验", "p1", false, "客户明说不需要"]]);
+  } finally { await page.close(); }
+});
+
+/*
+  D04（设计语言 E2）：销售认领那一步的「放回公海」照 P-界面-40 走后果框（原来是气泡确认「退回线索公海？」）：
+  标题写这条线索、后果分条、确认键写「退回公海」；取消不交，确认才交
+*/
+it("D04：「放回公海」是后果框——标题带项目名、后果分条、取消不交、「退回公海」才交", async () => {
+  const { page, errors } = await open("销售认领", 1366);
+  try {
+    await page.getByTestId("lead-verify-return").click();
+    const 框 = page.getByRole("dialog").filter({ hasText: "退回线索公海" });
+    await 框.waitFor();
+    const 字 = await 框.innerText();
+    expect(字).toContain("把「样例项目」退回线索公海");
+    expect(字).toContain("领不回");
+    expect(字).toContain("你自己不能再领回来");
+    expect(字).toContain("客户不动");
+    expect(字).toContain("算你主动退回");
+    expect(await page.locator(".ant-popover").filter({ hasText: "退回线索公海？" }).count()).toBe(0);
+    await 框.getByRole("button", { name: /^取\s*消$/ }).click();
+    await 框.waitFor({ state: "hidden" });
+    expect(await 调用(page)).toEqual([]);
+    await page.getByTestId("lead-verify-return").click();
+    await 框.waitFor();
+    await 框.getByRole("button", { name: "退回公海", exact: true }).click();
+    await page.waitForFunction(() => ((window as unknown as { __calls?: unknown[] }).__calls ?? []).length > 0);
+    expect(await 调用(page)).toEqual([["销售认领", "p1", false]]);
+    await 框.waitFor({ state: "hidden" });
+    expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

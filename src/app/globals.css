@@ -5857,21 +5857,23 @@ button.proj-miss-chip { cursor: pointer; }
   :root:root .cust-head-io > span:not(.ant-btn-icon) { display: none; }
   /* 筛选行三排：①「列表 | 看板」…「列」②搜索 + 重置 ③客户状态、负责人、更多筛选（阶段 / 进程收进更多筛选，同 1366，L-新5）。
      原来五排（列表 | 看板 / 搜索 / 状态 + 负责人 / 阶段 + 进程 / 更多筛选 + 重置）再单独一排「列」，表格从 y≈420 才开始。
-     市场管理的客户页（我分出去的，.cust-market）同一摆法：「客户列表 | 我分出去的」…「列」/ 搜索 + 重置 / 成员、创建人、更多筛选 */
-  :root:root :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space { order: 1; flex-basis: 100%; }
-  :root:root :is(.cu-morph-wrap, .cust-market) .list-bar > .list-bar-end { order: 2; }
-  :root:root :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item { order: 2; min-width: 0; }
-  :root:root :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item:has(> .ant-tag) { order: 0; }
-  :root:root :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item:has(> .ant-input-affix-wrapper) { order: 0; flex: 1 1 200px; }
-  :root:root :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 100% !important; }
-  :root:root :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item:has(> .list-reset) { order: 1; flex: none; }
-  :root:root :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item:has(> .ant-select) { flex: 1 1 96px; }
-  :root:root :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item > .ant-select { width: 100% !important; }
+     市场管理的客户页（我分出去的，.cust-market）同一摆法：「客户列表 | 我分出去的」…「列」/ 搜索 + 重置 / 成员、创建人、更多筛选；
+     项目页（.proj-page，设计语言 E2 · D31）同一摆法：「列表 | 看板」…「列」/ 搜索 + 重置 / 负责人等、更多筛选 */
+  :root:root :is(.cu-morph-wrap, .cust-market, .proj-page) .list-bar > .ant-space { order: 1; flex-basis: 100%; }
+  :root:root :is(.cu-morph-wrap, .cust-market, .proj-page) .list-bar > .list-bar-end { order: 2; }
+  :root:root :is(.cu-morph-wrap, .cust-market, .proj-page) .list-bar > .ant-space > .ant-space-item { order: 2; min-width: 0; }
+  :root:root :is(.cu-morph-wrap, .cust-market, .proj-page) .list-bar > .ant-space > .ant-space-item:has(> .ant-tag) { order: 0; }
+  :root:root :is(.cu-morph-wrap, .cust-market, .proj-page) .list-bar > .ant-space > .ant-space-item:has(> .ant-input-affix-wrapper) { order: 0; flex: 1 1 200px; }
+  :root:root :is(.cu-morph-wrap, .cust-market, .proj-page) .list-bar > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 100% !important; }
+  :root:root :is(.cu-morph-wrap, .cust-market, .proj-page) .list-bar > .ant-space > .ant-space-item:has(> .list-reset) { order: 1; flex: none; }
+  :root:root :is(.cu-morph-wrap, .cust-market, .proj-page) .list-bar > .ant-space > .ant-space-item:has(> .ant-select) { flex: 1 1 96px; }
+  :root:root :is(.cu-morph-wrap, .cust-market, .proj-page) .list-bar > .ant-space > .ant-space-item > .ant-select { width: 100% !important; }
   /* 「全部客户状态」手机上换短写「全部状态」，一格放得下不截 */
   :root:root .ph-full { display: none; }
   :root:root .ph-short { display: inline; }
-  /* K9 市场管理的客户页（我分出去的）：标题块独占一行，按钮换到下一行，标题不再挤成「客…」、副标题不竖排 */
-  :root:root .cust-market > .page-head > :first-child { flex-basis: 100% !important; }
+  /* K9 市场管理的客户页（我分出去的）：标题块独占一行，按钮换到下一行，标题不再挤成「客…」、副标题不竖排；
+     项目页同（K3，设计语言 E2：带「离职交接」的角色 375 宽标题原来挤成一字一行） */
+  :root:root :is(.cust-market, .proj-page) > .page-head > :first-child { flex-basis: 100% !important; }
 }
 /* =====================================================================
    设计语言 H-A（11-21，首页骨架、顶部提示、输入框、指标卡；依据 现在-首页-20261121.md H0 / H4 / H6 / H7）。
@@ -6750,3 +6752,8 @@ button.proj-miss-chip { cursor: pointer; }
   :root:root .leads-page .list-bar > .ant-space > .ant-space-item:has(> .ant-select) { order: 3; flex: 1 1 calc(50% - var(--s1)); }
   :root:root .leads-page .list-bar > .ant-space > .ant-space-item > .ant-select { width: 100% !important; }
 }
+
+/* ---------- 设计语言 E2 · 项目页、项目详情独有部分（11-22，结构改动在 ProjectsView.tsx：外层 .proj-page、
+   「列表 | 看板」挪进筛选行；手机宽筛选摆法、K3 页头标题独占一行并进上面 L-A 那两段的选择器） ---------- */
+/* K5 补填框：挂在「完成节点」下面那 4px 间距从浮层偏移挪进外框（ProjectDetail 补填框不偏移）——浮层库往屏里挪时把它也算进去，外框下沿不再出屏 3–4px */
+:root:root .pd-fill-pop.ant-popover:is(.ant-popover-placement-bottom, .ant-popover-placement-bottomLeft, .ant-popover-placement-bottomRight) { padding-top: 4px; }

@@ -2323,7 +2323,10 @@ it("手机 390 / 360 宽：「完成节点」补填框不出屏（贴左右各 8
         // 宽屏照旧：右边和按钮右边对齐（右下对齐，箭头关着），框在按钮下面
         expect(Math.abs(框位.right - 钮位.right), `宽 ${w}`).toBeLessThanOrEqual(1);
       }
-      expect(框位.top, `宽 ${w}`).toBeGreaterThanOrEqual(钮位.bottom);
+      // K5（设计语言 E2）起 4px 间距在外框上边留白里、偏移归零：外框贴着按钮（浮层库取整，差不到 1px），看得见的卡在按钮下面 4px
+      expect(框位.top, `宽 ${w}`).toBeGreaterThanOrEqual(钮位.bottom - 1);
+      const 卡顶 = await 框.locator(".ant-popover-container, .ant-popover-inner").first().evaluate((e) => e.getBoundingClientRect().top);
+      expect(卡顶, `宽 ${w}`).toBeGreaterThanOrEqual(钮位.bottom + 3);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
@@ -2357,6 +2360,32 @@ it.each([[375, 623], [375, 667], [375, 812], [390, 844], [360, 640], [1024, 680]
     expect(m.框顶, JSON.stringify(m)).toBeGreaterThanOrEqual(0);
     expect(m.点得到, JSON.stringify(m)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+/*
+  K5（设计语言 E2，29K⑥）：补填框外框下沿超屏 3–4px——上面那条量的是框里的卡（.ant-popover-container），外面那层 .pd-fill-pop
+  （带给手机底部安全区的留白）和卡的阴影要一起在屏里。缺得多、框长到最高，几种手机高度和电脑宽都量
+*/
+it.each([[375, 623], [375, 667], [390, 844], [360, 640], [1024, 680], [1366, 680]])("K5 %i×%i：补填框外框（含外层留白）下沿不出屏", async (w, h) => {
+  const { page, errors } = await open(true, w);
+  try {
+    await page.setViewportSize({ width: w, height: h });
+    const 缺 = ["金额", "预计成交日期", "项目方案", "客户等级", "主联系人", "需求描述", "项目名称", "项目来源", "项目所在地", "项目级别", "项目标签", "合同已生效"];
+    await page.evaluate((x) => (window as unknown as { __over: (x: unknown) => void }).__over(x), { phase: "商机", node: "方案敲定", 必填: { 配了: 缺, 还差: 缺 } });
+    const 钮 = page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" });
+    await 钮.scrollIntoViewIfNeeded();
+    await 钮.click();
+    await page.locator(".pd-fill-pop .pd-fill-pop-body").waitFor();
+    await page.waitForTimeout(400);
+    const m = await page.evaluate(() => {
+      const 外 = document.querySelector(".pd-fill-pop")!.getBoundingClientRect();
+      const 卡 = document.querySelector(".pd-fill-pop .ant-popover-container, .pd-fill-pop .ant-popover-inner")!.getBoundingClientRect();
+      return { 外底: 外.bottom, 外顶: 外.top, 卡底: 卡.bottom, 屏高: window.innerHeight };
+    });
+    expect(m.外底, JSON.stringify(m)).toBeLessThanOrEqual(m.屏高);
+    expect(m.外顶, JSON.stringify(m)).toBeGreaterThanOrEqual(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
