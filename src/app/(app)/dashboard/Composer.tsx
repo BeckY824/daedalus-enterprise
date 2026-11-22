@@ -24,7 +24,7 @@ import type { AgentAnswer } from "@/lib/thread-history";
 import type { Proposal } from "@/lib/agent/proposals";
 import { 记下对话截图, type 刚建的人 } from "@/lib/card-scan/originals";
 import { cancelStream } from "@/lib/ai-stream";
-import { addTurn, clearThread, type Turn } from "@/lib/home-thread";
+import { addTurn, clearThread, removeTurn, type Turn } from "@/lib/home-thread";
 import { 是刚交过来的 } from "@/lib/home-ask";
 import AskBox from "@/components/AskBox";
 import { 认背调意图 } from "@/lib/research/intent";
@@ -34,7 +34,7 @@ import MailPaste from "@/components/research/MailPaste";
 import { useResearchEntry } from "@/components/research/ResearchEntry";
 import { 像邮件原文, type 邮件信号 } from "@/lib/research/verify/mail";
 import { 是免费邮箱 } from "@/lib/research/verify/domain";
-import { ComposerFoot, ComposerTools, ComposerTop, SendKey } from "./ComposerParts";
+import { ComposerFoot, ComposerTools, ComposerTop, QueueChip, SendKey } from "./ComposerParts";
 import ComposerPlus from "./ComposerPlus";
 import { useNarrow } from "@/lib/roster";
 import { 加引用, 引用事件 } from "./TurnMenu";
@@ -443,6 +443,8 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
     <>
       <div ref={composerRef} className={`cli-composer${empty ? "" : " cli-composer-sticky"}`}>
         {稿.提示}
+        {/* 设计语言 HC-3（C9-A）：排队的问题挪到框上方（TurnView 不再在对话流里画排队那一轮） */}
+        <QueueChip 排队={turns.filter((t) => t.queued)} on取消={(id) => removeTurn(scope, id)} />
         <AskBox
           引用={taRef}
           value={q}
@@ -458,7 +460,7 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
             背调模式
               ? "输入公司名、官网或一句需求，比如：帮我查 Rexel 适不适合我们"
               : running
-                ? "正在回答… 再问会排队，Esc 打断"
+                ? "可以接着打字，回车后排在这一条后面"
                 : `问一位${b.customer}，或问一个数`
           }
           栏左={
@@ -546,7 +548,7 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
             {拖错}
           </div>
         )}
-        <ComposerFoot 摆建议={摆建议} 示例槽={示例槽} suggestions={suggestions} suggIdx={suggIdx} 空={empty} 在跑={running != null} 背调模式={背调模式} 背调价={调.背调价} AI已用完={AI已用完} on问={问这条} />
+        <ComposerFoot 摆建议={摆建议} 示例槽={示例槽} suggestions={suggestions} suggIdx={suggIdx} 空={empty} 在跑={running != null} 背调模式={背调模式} 背调价={调.背调价} AI已用完={AI已用完} on问={问这条} 只留额度={宽 && !empty} />
       </div>
 
       <ComposerDoors 粘={粘} 调={调} aiEnabled={models.length > 0} q={q} setQ={setQ} taRef={taRef} 企业版={企业版} />

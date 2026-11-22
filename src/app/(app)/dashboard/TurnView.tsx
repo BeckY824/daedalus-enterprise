@@ -191,11 +191,13 @@ export default function TurnView({
   };
   // 刚发出的这一问（或刚点了重答的这一轮）：把问题滚到视口顶部，答案往下面的空白里生成。
   // 不能用 block:"end"——那会把它顶到输入框后面，人看不见自己刚发的话。
-  // 只在「变成刚发的」那一刻（挂上时、或重答时）顶一次；翻历史不乱跳
+  // 只在「变成刚发的」那一刻（挂上时、或重答时、或排队的那一轮露出来时）顶一次；翻历史不乱跳
+  // 设计语言 HC-3：排队的那一轮先不画（挪到输入框上方的小签），轮到它开跑时才露出来——那时再滚
+  const 排队藏着 = !!turn.queued;
   useEffect(() => {
-    if (!scrollOnMount) return;
+    if (!scrollOnMount || 排队藏着) return;
     滚到(ref.current, "start");
-  }, [scrollOnMount, 重答次]);
+  }, [scrollOnMount, 重答次, 排队藏着]);
 
   /*
     流式跟随。整页滚动（首页）时沿用老判据「离底部够近就跟」；
@@ -216,7 +218,8 @@ export default function TurnView({
       容器.removeEventListener("wheel", on);
       容器.removeEventListener("touchmove", on);
     };
-  }, []);
+    // 排队藏着的那一轮还没画（ref 是空的）：露出来时再认一次滚动容器
+  }, [排队藏着]);
   const 跟一下 = useCallback(() => {
     const 容器 = 滚动容器(ref.current);
     if (首页框里(容器)) return;
@@ -269,6 +272,8 @@ export default function TurnView({
         ...answer.customers.slice(0, 2).map((c) => `${c.name}这边下一步该做什么`),
         ...(answer.customers.length > 0 && answer.proposals.length === 0 ? [`帮我给${answer.customers[0].name}排一次跟进`] : []),
       ].slice(0, 3);
+
+  if (排队藏着) return null;
 
   if (移走中) {
     return (
