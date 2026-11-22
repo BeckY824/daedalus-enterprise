@@ -771,7 +771,7 @@ export default function ProjectsView({
                     </div>
                     <div className="pipe-bar" style={{ background: 列色[c.色] }} />
                     {/* 等筛选回包：卡片原地留着、整块变淡（见上面 筛前），不再整列换成骨架卡 */}
-                    {这列卡.length === 0 && <div className="pipe-empty">{在筛 ? "这一列没有对上的" : c.空态}</div>}
+                    {这列卡.length === 0 && <div className="pipe-empty">{在筛 ? (新样 ? "这一列没有对得上的项目" : "这一列没有对上的") : c.空态}</div>}
                     {这列卡.map((r, 序) => {
                       const 异常 = r.result === "异常状态";
                       const 小字 = 卡片小字(r, 字典);
@@ -820,9 +820,12 @@ export default function ProjectsView({
                                 <div className="pipe-card-t pipe-card-full" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看(r)}</div>
                               );
                             })()}
-                            <div className="pipe-card-m">
-                              <span className="pipe-card-o pipe-card-full">{r.name}</span>
-                            </div>
+                            {/* L-新12（现状主题）：项目名和客户名一字不差时第二行不再写一遍（两行的摆法 P-界面-43 不变，只是不重复） */}
+                            {!(新样 && r.customerName != null && r.customerName.trim() === r.name.trim()) && (
+                              <div className="pipe-card-m">
+                                <span className="pipe-card-o pipe-card-full">{r.name}</span>
+                              </div>
+                            )}
                           </>) : (<>
                             <div className="pipe-card-t pipe-card-full">{r.name}</div>
                             <div className="pipe-card-m">

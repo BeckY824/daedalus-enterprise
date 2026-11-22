@@ -157,7 +157,8 @@ test("J-013 有数据的库里搜一个不存在的词：写「没有符合条�
     }
     await page.goto(`${路}?keyword=${encodeURIComponent("根本没有这个人")}`);
     // 服务端流式出页时，React 揭晓 Suspense 之前会有一份藏着（hidden）的同样内容在 DOM 里，只认看得见的那份
-    await expect(page.getByText(/没有符合条件的/).filter({ visible: true })).toBeVisible();
+    // 客户页现状主题（设计语言 L-B D21）写「没有对得上「词」的客户」；线索页照旧「没有符合条件的」
+    await expect(page.getByText(/没有符合条件的|没有对得上「根本没有这个人」的/).filter({ visible: true })).toBeVisible();
     await expect(page.getByRole("button", { name: 主 })).toHaveCount(0);
     await expect(page.getByPlaceholder(/姓名|名称|搜索/).first()).toHaveValue("根本没有这个人");
   }
