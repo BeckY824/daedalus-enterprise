@@ -1,5 +1,5 @@
 "use client";
-import Shortcut from "./Shortcut";
+import Shortcut, { useModifierKey } from "./Shortcut";
 import { 交给首页问 } from "@/lib/home-ask";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -13,6 +13,7 @@ import { useBusiness } from "@/lib/business-client";
 import { 换一位 } from "@/lib/roster";
 import { 公海入口 } from "@/lib/enterprise/nav";
 import { 没找到说法 } from "@/lib/cmdk";
+import { useIsNowSkin } from "@/lib/use-skin";
 // 只引类型：搜索动作由 layout（服务端）当 prop 传进来，客户端包里不带服务端代码
 import type { 全局搜索结果 } from "@/app/(app)/global-search";
 
@@ -48,6 +49,9 @@ function 在输入框里(e: KeyboardEvent) {
 export default function CommandBar({ 有AI, 企业版项目 = false, 全局搜索 }: { 有AI: boolean; 企业版项目?: boolean; 全局搜索?: (q: string) => Promise<全局搜索结果> }) {
   const router = useRouter();
   const b = useBusiness();
+  const 现状 = useIsNowSkin();
+  /** 悬停说明是纯文字，不能套 <Shortcut>：按平台换成 ⌘ / Ctrl+（Windows 上原来悬停里写的是 ⌘K，CI platform-shortcuts 挡下） */
+  const 修饰键 = useModifierKey();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [idx, setIdx] = useState(0);
@@ -259,9 +263,16 @@ export default function CommandBar({ 有AI, 企业版项目 = false, 全局搜�
             </LayoutGroup>
           )}
         </div>
-        <div className="cmdk-foot">
-          <kbd>↑↓</kbd> 选 · <kbd>↵</kbd> 去 · <kbd>Esc</kbd> 关 · 首页有问答框时 <kbd><Shortcut>⌘K</Shortcut></kbd> 回到输入框，在{b.customer}记录页换一位，其余页面打开跳转单
-        </div>
+        {现状 ? (
+          /* 设计语言 H-B · H-新10：底部只留三颗键一行；⌘K 在各页分别做什么那句长话收进悬停说明，不再占两三行 */
+          <div className="cmdk-foot cmdk-foot-one" title={`首页有问答框时 ${修饰键}K 回到输入框，在${b.customer}记录页换一位，其余页面打开跳转单`}>
+            <kbd>↑↓</kbd> 选 · <kbd>↵</kbd> 去 · <kbd>Esc</kbd> 关
+          </div>
+        ) : (
+          <div className="cmdk-foot">
+            <kbd>↑↓</kbd> 选 · <kbd>↵</kbd> 去 · <kbd>Esc</kbd> 关 · 首页有问答框时 <kbd><Shortcut>⌘K</Shortcut></kbd> 回到输入框，在{b.customer}记录页换一位，其余页面打开跳转单
+          </div>
+        )}
       </div>
     </Modal>
   );

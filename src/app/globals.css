@@ -5994,3 +5994,16 @@ button.proj-miss-chip { cursor: pointer; }
 }
 /* 「我已完成」框：每格有标签，格间 12 */
 :root:is(:not([data-skin]), [data-skin="now"]) .bk-done-form { display: flex; flex-direction: column; gap: var(--s3); }
+/* =====================================================================
+   设计语言 H-B（11-22，全站外壳：左栏 / 顶栏、⌘K、铃铛；依据 现在-首页-20261121.md H1 / H2 / H3）。
+   只挂现状主题，换皮主题外观不动
+   ===================================================================== */
+/* H-新11：铃铛的红数收进钮的右上角（NoticeBell 现状主题不给 offset）：不压出 32 的钮、不压到左栏边，99+ 也一样；
+   窄栏（rail-mini）同一条 */
+:root:is(:not([data-skin]), [data-skin="now"]) .notice-bell-badge > .ant-badge-count {
+  top: 1px; right: 1px; inset-inline-end: 1px; transform: none; transform-origin: 100% 0%; pointer-events: none;
+}
+/* D01：计数、分组小标题、通知时间、⌘K / ⌘J 提示从 faint 提到 muted（faint 只留给占位字和停用） */
+:root:is(:not([data-skin]), [data-skin="now"]) :is(.rail-num, .chat-g-h, .cmdk-sec, .notice-meta, .rail-search kbd, .rail-ask-k) { color: var(--text-muted); }
+/* H-新10：⌘K 底部只一行三颗键，放不下也不折 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cmdk-foot-one { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
