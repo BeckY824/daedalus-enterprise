@@ -5,7 +5,7 @@ import { chromium, type Browser } from "playwright";
 /* 暗黑下 antd 分段控件选中字、页签未选中字（11-22 修 main 上原有的缺陷）：
    lib/theme.ts 里 Segmented / Tabs 的字色是写死的浅色墨色 palette.ink #1d1d1f，skins/shared.css 暗黑那条只换了轨道和选中底，
    字还是 #1d1d1f，压在暗底上看不见（/overview「团队 / 看板」「卡点 / 沟通 / 数据」）。
-   修：shared.css 同一条里把这几项接到 --ink。量：现状暗黑下是暗黑的 --ink；现状浅色一个像素不变；换皮主题跟着它自己的 --ink 走
+   修：shared.css 同一条里把这几项接到 --ink；现状暗黑下分段选中底抬亮一档、比轨道亮（照 .cd-seg，规则在 globals.css）。量：现状暗黑下是暗黑的 --ink；现状浅色一个像素不变；换皮主题跟着它自己的 --ink 走
    用真的 lib/theme.ts（ConfigProvider）+ globals.css + dark.css + skins/*.css */
 let browser: Browser, bundle: string;
 
@@ -35,8 +35,11 @@ async function 量(属性: { skin?: string; mode?: string }) {
   const r = await page.evaluate(() => {
     const 字 = (sel: string) => getComputedStyle(document.querySelector(sel)!).color;
     const s = document.createElement("span"); s.style.color = "var(--ink)"; document.body.append(s); const ink = getComputedStyle(s).color; s.remove();
+    const 亮 = (c: string) => { const 分 = c.startsWith("color(") ? 1 : 255; const [r, g, b] = (c.replace(/^color\(srgb/, "").match(/[\d.]+/g) ?? []).slice(0, 3).map(Number).map(x => x / 分).map(x => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4)); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
     return {
       ink,
+      选中底亮: 亮(getComputedStyle(document.querySelector("#seg .ant-segmented-item-selected")!).backgroundColor),
+      轨道亮: 亮(getComputedStyle(document.querySelector("#seg")!).backgroundColor),
       段选中: 字("#seg .ant-segmented-item-selected"),
       签未选: 字("#tabs .ant-tabs-tab:not(.ant-tabs-tab-active) .ant-tabs-tab-btn"),
       签选中: 字("#tabs .ant-tabs-tab-active .ant-tabs-tab-btn"),
@@ -53,6 +56,8 @@ it("现状暗黑：分段选中字、页签未选中 / 选中字都是暗黑的 
   expect(r.段选中).toBe(r.ink);
   expect(r.签未选).toBe(r.ink);
   expect(r.签选中).toBe(r.ink);
+  // 分段选中底比轨道亮（原来读 --panel，比轨道 --hover 还暗）
+  expect(r.选中底亮).toBeGreaterThan(r.轨道亮);
 });
 
 it("现状浅色：照旧是 #1d1d1f（这次不动浅色）", async () => {
