@@ -30,7 +30,7 @@ import { 录音根, 录音相对目录, 认录音文件 } from "./coach-rec-stor
 import { 签取文件地址 } from "./coach-rec-sign";
 import { 站点源 } from "./feishu-jsapi";
 import { 录音没整理成通知, 录音整理好了通知 } from "./notice-sources";
-import { AI整理, 没听清话 } from "./coach-rec-summary";
+import { AI整理, 没听清话, 回的不对错 } from "./coach-rec-summary";
 import { 选通道, 通道错, 请求体上限字节, type 转写通道, type 转写句, type 交的音频 } from "./asr/channel";
 import { 规整, 切段, 采样档, ffmpeg自检 } from "./asr/ffmpeg";
 
@@ -259,6 +259,12 @@ async function 查一条(r: 行, 通道: 转写通道 | null, 现在: number): P
   // 整理中 → AI 整理（整理一轮，钟上另一条线，不挡这边轮询）
 }
 
+/** 调了模型记一笔 ai_use（coachSum「录音点评整理」）；记不上不挡 */
+async function 记整理用量(r: { id: string; authorId: string }): Promise<void> {
+  const 作者 = await defaultClient.user.findUnique({ where: { id: r.authorId }, select: { id: true, name: true } }).catch(() => null);
+  if (作者) await recordAudit({ user: 作者, action: "ai_use", entity: "Ai", entityId: "coachSum", summary: "录音点评整理", detail: { 对象: r.id } }).catch(() => {});
+}
+
 /**
  * AI 整理一条（PR5，改版方案 §4.3–4.4）：整理中 → 待确认（draftTitle、draftBody；没听清的草稿空着、error 写一句提示），通知录的人「整理好了」。
  * 模型出错 → 整理失败（转写留着：确认框照开、自己写主题要点也能发；「重试整理」直接再整理，不再转写）。
@@ -283,13 +289,14 @@ export async function 整理一轮(opt: { 整理?: typeof AI整理; 现在?: num
   try {
     果 = await (opt.整理 ?? AI整理)(r.transcript, r.speakers, 读任务们(r.asrTaskId).length > 1);
   } catch (e) {
+    // 模型回了但内容认不出（回的不对错）：调过模型，照记用量（PR5 审查）
+    if (e instanceof 回的不对错) await 记整理用量(r);
     const 原话 = e instanceof Error && /[\u4e00-\u9fa5]/.test(e.message) ? e.message.replace(/[，。]?请?稍后(再)?重试。?$/, "").slice(0, 80) : "AI 没回话";
     await 失败(r, `AI 没整理成（${原话}），可以点「重试整理」，或者打开确认框自己写主题和要点发出`, "整理中");
     return 1;
   }
   // 调了模型就先记用量（后面写库失败也算调过一次）
-  const 作者 = await defaultClient.user.findUnique({ where: { id: r.authorId }, select: { id: true, name: true } });
-  if (果.调了 && 作者) await recordAudit({ user: 作者, action: "ai_use", entity: "Ai", entityId: "coachSum", summary: "录音点评整理", detail: { 对象: r.id } }).catch(() => {});
+  if (果.调了) await 记整理用量(r);
   let 改: { count: number };
   try {
     改 = await 主题写(() => prisma.entCoachRecording.updateMany({
@@ -301,8 +308,11 @@ export async function 整理一轮(opt: { 整理?: typeof AI整理; 现在?: num
   } catch (e) {
     // 写库失败（锁住、磁盘问题）：算一次失败，不留在整理中让下一轮再调模型（PR5 审查）；连失败也写不进的，这条 10 分钟内不再拿出来
     console.warn(`[录音整理] ${r.id} 写结果出错：${e instanceof Error ? e.message.slice(0, 200) : e}`);
-    整理别碰().set(r.id, 现在 + 整理写失败等毫秒);
+    // 只在连「整理失败」也写不进（还停在整理中）时才记别碰：写进了的，用户马上「重试整理」不该被晾 10 分钟（PR5 审查）
     await 失败(r, "AI 整理好了，但存的时候出错了，可以点「重试整理」", "整理中").catch(() => {});
+    const 还在 = await defaultClient.entCoachRecording.findUnique({ where: { id: r.id }, select: { status: true } }).catch(() => null);
+    if (!还在 || 还在.status === "整理中") 整理别碰().set(r.id, 现在 + 整理写失败等毫秒);
+    else 整理别碰().delete(r.id);
     return 1;
   }
   整理别碰().delete(r.id);

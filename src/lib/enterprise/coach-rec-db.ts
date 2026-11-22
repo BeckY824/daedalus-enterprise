@@ -21,7 +21,7 @@ import { getSetting } from "@/lib/settings";
 import { 企业版 } from "./switch";
 import { 读组织 } from "./org";
 import { 权限项目选, 是教练, type 谁 } from "./permissions";
-import { 文件名打码, 打码还原 } from "./notice-mask";
+import { 文件名打码, 打码还原, 还原超长话 } from "./notice-mask";
 import { 正在切换视图 } from "./view-as";
 import type { 主题项目 } from "./coach-topic";
 import {
@@ -403,6 +403,8 @@ export async function 存录音草稿(me: 人, id: unknown, 输入: { title?: un
   const 教练 = 是教练(me, await 读组织());
   const title = 教练 ? 打码还原(String(输入.title ?? "").trim(), 原文们) : String(输入.title ?? "").trim();
   const body = 教练 ? 打码还原(String(输入.body ?? "").trim(), 原文们) : String(输入.body ?? "").trim();
+  const 超 = 还原超长话(输入.title ?? "", title, 主题标题上限, "主题") ?? 还原超长话(输入.body ?? "", body, 主题内容上限, "要点");
+  if (超) return 不行(超, 400);
   await 主题写(() => prisma.entCoachRecording.updateMany({
     where: { id: r.id, status: r.status, deletedAt: null },
     data: { draftTitle: title || null, draftBody: body || null },

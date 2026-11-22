@@ -120,3 +120,14 @@ export function 文件名打码(name: string): string {
     return 数字.length >= 7 ? maskPhone(数字.replace(/^86(?=1[3-9]\d{9}$)/, "")) : 段;
   });
 }
+
+/**
+ * 打码还原以后变长了（带分隔的号码 139-1234-5678 打码成 139****5678，还原回来多出几个字）超过上限：回一句给人看的话；没超回 null（PR5 审查）。
+ * 提交的本身就超的不在这里管（照原来的「最多 N 字」）
+ */
+export function 还原超长话(提交: unknown, 还原后: unknown, 上限: number, 名: string): string | null {
+  if (typeof 提交 !== "string" || typeof 还原后 !== "string") return null;
+  const 长 = 还原后.trim().length;
+  return 提交.trim().length <= 上限 && 长 > 上限 ? `${名}里的号码换回原号码后有 ${长} 字，超过 ${上限} 字，请删几个字再发` : null;
+}
+

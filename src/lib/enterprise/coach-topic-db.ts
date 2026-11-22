@@ -17,10 +17,10 @@ import { 读组织, type 组织 } from "./org";
 import { 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
 import {
   发起身份of, 能发主题, 不能发主题话, 能看主题, 能回主题, 能关主题, 能删主题, 冻结了, 回复后状态, 主题输入问题, 回复输入问题,
-  发起通知谁, 回复通知谁, 关闭通知谁, type 主题项目, type 发起身份, type 主题状态,
+  发起通知谁, 回复通知谁, 关闭通知谁, 主题标题上限, 主题内容上限, type 主题项目, type 发起身份, type 主题状态,
 } from "./coach-topic";
 import { 能看项目, 权限项目选, 是教练, type 谁 } from "./permissions";
-import { 打码还原 } from "./notice-mask";
+import { 打码还原, 还原超长话 } from "./notice-mask";
 import { 录音点评开着, 录音可用, 我的录音草稿, 没开放话, type 录音给界面 } from "./coach-rec-db";
 import { 能听原声, 给人看的文字 } from "./coach-rec";
 import { 夹页, 复盘列表每页, type 主题范围, type 主题状态筛, type 复盘主题 } from "@/lib/project/review-tabs";
@@ -245,7 +245,11 @@ export async function 发录音点评(me: 人, 录音id: unknown, 输入: { titl
   const 原文们 = [原?.draftTitle, 原?.draftBody, 原?.transcript];
   const 还原 = (x: unknown) => (typeof x === "string" ? 打码还原(x, 原文们) : x);
   const 教练 = 是教练(me, await 读组织());
-  const x = await 发起(me, r.projectId, 教练 ? { title: 还原(输入.title), body: 还原(输入.body) } : 输入, r.id);
+  const 改后 = 教练 ? { title: 还原(输入.title), body: 还原(输入.body) } : 输入;
+  // 还原后变长超了上限（带分隔的号码）：给清楚的话，不回笼统的「最多 N 字」（PR5 审查）
+  const 超 = 教练 ? 还原超长话(输入.title, 改后.title, 主题标题上限, "主题") ?? 还原超长话(输入.body, 改后.body, 主题内容上限, "要点") : null;
+  if (超) return { ok: false, error: 超, 状态: 400 };
+  const x = await 发起(me, r.projectId, 改后, r.id);
   if (x.ok) return x;
   return { ...x, 状态: x.error === 录音变了 ? 409 : /最多|要写/.test(x.error) ? 400 : /不在了/.test(x.error) ? 404 : 403 };
 }
