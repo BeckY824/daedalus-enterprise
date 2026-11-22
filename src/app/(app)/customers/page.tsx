@@ -37,7 +37,7 @@ import { 能导入导出, 新建只给自己 } from "@/lib/enterprise/import-per
 import { 删除挡 } from "@/lib/enterprise/soft-delete";
 import { 客户项目概况们 } from "@/lib/project/customer-list-projects";
 import { 列表最近一句们 } from "@/lib/enterprise/customer-follow-feed";
-import { 抬头节点们 } from "@/lib/enterprise/customer-title";
+import { 抬头节点们, 只留看得见的项目名 } from "@/lib/enterprise/customer-title";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { cookies } from "next/headers";
 import { 客户页看法键 } from "@/lib/customers-view-pref";
@@ -334,9 +334,10 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     企 && !看板视图 ? 行P.then((rs) => 列表最近一句们(me, rs, 按项目)) : undefined,
     /*
       第一列的抬头（11-17 客户抬头 PR-5，lib/enterprise/customer-title.ts）：区域、简称、全称、类型都在行上，现算；
-      只有简称、全称、类型都空的客户要当前节点，这一页一句取回（一位都没有就不查），含公海项目、不按看的人算（U9）
+      只有简称、全称、类型都空的客户要当前节点，这一页一句取回（一位都没有就不查），含公海项目、不按看的人算（U9）；
+      项目名（F-040）只给我看得见的项目：限定层主键查多一句，看不见的回到「编号|节点」（P-看-12）。看板卡片用的也是这一份
     */
-    企 && !看板视图 ? 行P.then((rs) => 抬头节点们(prisma, rs)) : undefined,
+    企 && !看板视图 ? 行P.then((rs) => 抬头节点们(prisma, rs)).then((m) => 只留看得见的项目名(m, (ids) => prisma.project.findMany({ where: { id: { in: ids } }, select: { id: true } }))) : undefined,
   ]);
   const 三态开 = !!组织规则?.三态.开;
   /*

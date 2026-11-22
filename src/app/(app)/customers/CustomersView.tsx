@@ -82,7 +82,7 @@ import NewMenuButton from "@/components/NewMenuButton";
 import { 取客户页表单料, type 客户页表单料 } from "./form-data-action";
 import { 看板工具位 } from "./board-slot";
 import { 客户编号显示 } from "@/lib/customer-no";
-import { 客户抬头, 客户显名 } from "@/lib/enterprise/customer-title";
+import { 客户抬头, 客户显名, type 抬头节点格 } from "@/lib/enterprise/customer-title";
 import { 出错原话 } from "@/lib/stale-deploy";
 
 /** 「新增客户」弹窗（10-31 P5，整套建档向导）：点了才要，单拆一包，不压客户列表首屏 JS（速度闸门 850 KB） */
@@ -255,7 +255,7 @@ type Props = {
    * 抬头里的当前节点（企业版，11-17 客户抬头 PR-5，lib/enterprise/customer-title.ts 抬头节点们）：只有简称、全称、类型都空的客户才有，
    * 名下最近有动静的项目（含公海、不按看的人算）；不给 / 不在里面 = 没有这一段
    */
-  抬头节点?: Record<string, string>;
+  抬头节点?: Record<string, 抬头节点格>;
   /**
    * 「仅项目」一小块（只负责项目的人，第 1 页、没筛别的才有，page.tsx 给）：和 rows 分开，不进 total、不能勾、没有行菜单。
    * 其他角色不给。看板（服务端的、本地的）都不摆
@@ -998,7 +998,7 @@ export default function CustomersView({
       key: "name",
       dataIndex: "name",
       /*
-        企业版显示抬头（11-17 客户抬头 PR-5，出口 1）：区域|简称 / 全称 / 类型 / 当前节点，全空写编号|节点（lib/enterprise/customer-title.ts）。
+        企业版显示抬头（11-17 客户抬头 PR-5，出口 1）：区域|简称 / 全称 / 类型 / 当前节点，全空写当前项目名、没项目名写编号|节点（F-040，lib/enterprise/customer-title.ts）。
         一行、放不下省略号，悬停看全文（P-抬头-11，同 11-04 全站一行省略，.fulltext 现在就是一行；TruncTip 量到截了才出，title 兜底）
       */
       width: 企业 ? 宽(200, 136) : 160,

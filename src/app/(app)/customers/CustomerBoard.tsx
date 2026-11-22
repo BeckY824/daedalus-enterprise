@@ -5,7 +5,7 @@ import LevelLetter from "@/components/LevelLetter";
 import { 客户看板分列 } from "@/lib/enterprise/cust-attr";
 import { 有值, 空显 } from "@/lib/empty-value";
 import type { CustomerRow } from "./CustomerForm";
-import { 客户抬头 } from "@/lib/enterprise/customer-title";
+import { 客户抬头, type 抬头节点格 } from "@/lib/enterprise/customer-title";
 
 /**
  * 客户看板（U-客户-06）：一列一个客户属性（lib/enterprise/cust-attr.ts 客户看板分列），没填的（含导入占位的 "-"）进「—」那一列、没人时不摆（11-01）。
@@ -22,7 +22,7 @@ export default function CustomerBoard({ 行们, 字典, 加载中, 页, 每页, 
   翻页: (页: number, 每页: number) => void;
   去: (id: string) => void;
   /** 抬头里的当前节点（同列表第一列，CustomersView 的 抬头节点）：只有简称、全称、类型都空的客户才有 */
-  抬头节点?: Record<string, string>;
+  抬头节点?: Record<string, 抬头节点格>;
 }) {
   const 列们 = 客户看板分列(行们, (r) => r.customerAttr, 字典);
   return (
