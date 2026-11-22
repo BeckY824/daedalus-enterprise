@@ -147,9 +147,13 @@ test("导出按当前的子集和筛选：本月新增里导出的是这 22 位�
   await expect(page.getByRole("status").filter({ hasText: "已完整导出 22 位" })).toBeVisible();
 });
 
-test("J-013 有数据的库里搜一个不存在的词：写「没有符合条件的」，不画「新建第一位」，筛选栏还在", async ({ page }) => {
+test("J-013 有数据的库里搜一个不存在的词：客户页写「没有对得上「词」的客户」、线索页写「没有符合条件的」，不画「新建第一位」，筛选栏还在", async ({ page }) => {
   await 登录(page);
-  for (const [路, 主] of [["/customers", "新建第一位客户"], ["/leads", "新建第一条线索"]] as const) {
+  // 客户页现状主题（设计语言 L-B D21）只写新句「没有对得上「词」的客户」；线索页照旧「没有符合条件的」
+  for (const [路, 主, 句] of [
+    ["/customers", "新建第一位客户", /没有对得上「根本没有这个人」的客户/],
+    ["/leads", "新建第一条线索", /没有符合条件的/],
+  ] as const) {
     if (路 === "/leads") {
       const p = 连库();
       await p.lead.create({ data: { name: "有一条线索", ownerId: 张三 } });
@@ -157,8 +161,7 @@ test("J-013 有数据的库里搜一个不存在的词：写「没有符合条�
     }
     await page.goto(`${路}?keyword=${encodeURIComponent("根本没有这个人")}`);
     // 服务端流式出页时，React 揭晓 Suspense 之前会有一份藏着（hidden）的同样内容在 DOM 里，只认看得见的那份
-    // 客户页现状主题（设计语言 L-B D21）写「没有对得上「词」的客户」；线索页照旧「没有符合条件的」
-    await expect(page.getByText(/没有符合条件的|没有对得上「根本没有这个人」的/).filter({ visible: true })).toBeVisible();
+    await expect(page.getByText(句).filter({ visible: true })).toBeVisible();
     await expect(page.getByRole("button", { name: 主 })).toHaveCount(0);
     await expect(page.getByPlaceholder(/姓名|名称|搜索/).first()).toHaveValue("根本没有这个人");
   }
