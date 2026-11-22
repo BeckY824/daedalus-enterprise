@@ -87,6 +87,16 @@ async function 指点(page: Page, loc: import("playwright").Locator) {
   await s.detach();
 }
 
+/**
+ * 行内文字钮（L-B .row-act 一种款，D09）：不带框、透明底、蓝字。按长相量，不认 antd 的 type 类名（渠道页不再自己设 type="link"）。
+ * 颜色有过渡，等它停下
+ */
+async function 文字钮(page: Page, loc: import("playwright").Locator) {
+  const 蓝 = await page.evaluate(() => { const d = document.createElement("i"); d.style.color = "var(--brand)"; document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; });
+  await expect.poll(() => loc.evaluate((e) => { const c = getComputedStyle(e); return [c.borderTopColor, c.backgroundColor, c.color].join(" | "); }))
+    .toBe(["rgba(0, 0, 0, 0)", "rgba(0, 0, 0, 0)", 蓝].join(" | "));
+}
+
 const 字 = (s: string) => s.replace(/\s+/g, "");
 const 表头 = (page: Page) => page.locator(".chan-list .ant-table-thead th").allInnerTexts().then((x) => x.map((t) => 字(t).replace("?", "")));
 async function 列字(page: Page, 名: string) {
@@ -112,7 +122,8 @@ it.each([1024, 1280, 1366, 390])("%ipx：筛选「全部 X」墨色、表格卡�
     expect((await 头.boundingBox())!.height).toBeGreaterThanOrEqual(47.5);
     // C4：录投入文字钮（不带框）、点得中；「—」和「0」分开写
     const 钮 = page.locator(".chan-list .ant-table-tbody tr.ant-table-row").first().getByRole("button", { name: /录投入/ });
-    expect(await 钮.getAttribute("class")).toContain("ant-btn-link");
+    expect(await 钮.getAttribute("class")).not.toContain("ant-btn-link");
+    await 文字钮(page, 钮);
     expect(await 点得中(page, 钮)).toBe(true);
     const 有效 = await 列字(page, "有效线索");
     expect(有效.slice(0, 3)).toEqual(["—", "0", "42"]);
@@ -186,12 +197,14 @@ it("「⋯」菜单：删除红字，前面一条分隔线；有关联数据的�
   } finally { await page.close(); }
 });
 
-it("按主渠道：卡头「主渠道（1）」，编辑是文字钮", async () => {
+it("按主渠道：卡头「主渠道（1）」，编辑是文字钮（.row-act 一种款）", async () => {
   const { page } = await 打开(1280);
   try {
     await page.locator("[aria-label='统计口径']").getByText("按主渠道").click();
     await expect.poll(async () => 字(await page.getByTestId("chan-period-note").innerText())).toBe("主渠道（1）·统计：全部?");
-    expect(await page.locator(".chan-list .ant-table-tbody").getByRole("button", { name: /编辑主渠道/ }).getAttribute("class")).toContain("ant-btn-link");
+    const 编辑 = page.locator(".chan-list .ant-table-tbody").getByRole("button", { name: /编辑主渠道/ });
+    expect(await 编辑.getAttribute("class")).not.toContain("ant-btn-link");
+    await 文字钮(page, 编辑);
   } finally { await page.close(); }
 });
 
@@ -202,6 +215,8 @@ it("账簿主题：照旧（说明行、带框录投入、删除不红、没有�
     expect(await page.locator(".chan-list .chan-th").count()).toBe(0);
     const 钮 = page.locator(".chan-list .ant-table-tbody tr.ant-table-row").first().getByRole("button", { name: /录投入/ });
     expect(await 钮.getAttribute("class")).not.toContain("ant-btn-link");
+    // 账簿照旧带框
+    expect(await 钮.evaluate((e) => getComputedStyle(e).borderTopColor)).not.toBe("rgba(0, 0, 0, 0)");
     await page.locator(".chan-list .ant-table-tbody tr.ant-table-row").nth(3).getByRole("button", { name: /更多操作/ }).click();
     const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu");
     await 菜单.waitFor();

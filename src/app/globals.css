@@ -6182,4 +6182,3 @@ button.proj-miss-chip { cursor: pointer; }
 :root:is(:not([data-skin]), [data-skin="now"]) .chan-empty { color: var(--empty-fg); }
 :root:is(:not([data-skin]), [data-skin="now"]) .chan-th { display: inline-flex; align-items: center; gap: var(--s1); }
 :root:is(:not([data-skin]), [data-skin="now"]) .chan-list { padding-bottom: var(--ai-safe); }
-:root:is(:not([data-skin]), [data-skin="now"]) .chan-list .ant-btn-link.row-act { padding-inline: var(--s1); }

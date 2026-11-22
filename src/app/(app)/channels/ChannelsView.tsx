@@ -585,10 +585,10 @@ export default function ChannelsView({
           <span className="ch-act">
           <Space size={2}>
             {能录 ? (
-              // 现状主题（D09）：行内动作一种样式——文字按钮，不带框（同公海「领取」）
-              <Button className="row-act" type={新样 ? "link" : undefined} aria-label={`给 ${r.name} 录投入`} size="small" onClick={() => 看详情(r.id, true)}>录投入</Button>
+              // 现状主题（D09）：行内动作一种样式——文字按钮、不带框，只靠 .row-act（L-B 定的款，globals.css），不自己设 type
+              <Button className="row-act" aria-label={`给 ${r.name} 录投入`} size="small" onClick={() => 看详情(r.id, true)}>录投入</Button>
             ) : (
-              <Button className="row-act" type={新样 ? "link" : undefined} aria-label={`${r.name} 的详情`} size="small" onClick={() => 看详情(r.id)}>详情</Button>
+              <Button className="row-act" aria-label={`${r.name} 的详情`} size="small" onClick={() => 看详情(r.id)}>详情</Button>
             )}
             {能管 && (
               <Dropdown trigger={["click"]} menu={{ items: 菜单, onClick: ({ domEvent }) => domEvent.stopPropagation() }}>
@@ -670,7 +670,7 @@ export default function ChannelsView({
     // 行尾「编辑」：改这个主渠道的名字、负责人、渠道属性（能管渠道的人才有；还没补挂主渠道的老渠道那几行没有）
     ...(能管 ? [{
       title: "", key: "act", width: 72, 常驻: true, fixed: "right",
-      render: (_: unknown, r: 主渠道汇总) => (r.mainId ? <Button className="row-act" type={新样 ? "link" : undefined} aria-label={`编辑主渠道 ${r.name}`} size="small" onClick={() => 开改主(r.mainId!)}>编辑</Button> : null),
+      render: (_: unknown, r: 主渠道汇总) => (r.mainId ? <Button className="row-act" aria-label={`编辑主渠道 ${r.name}`} size="small" onClick={() => 开改主(r.mainId!)}>编辑</Button> : null),
     } as 列<主渠道汇总>] : []),
   ];
 
