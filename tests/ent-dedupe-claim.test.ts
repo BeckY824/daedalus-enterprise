@@ -37,7 +37,7 @@ import { 只看某人键 } from "@/lib/enterprise/org-core";
 import { 默认组织规则 } from "@/lib/project/org-rules";
 import { 分配谁能用key } from "@/lib/enterprise/assign-use";
 import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
-import { 盘点超时链, 顺延到可执行, 超时转生效key } from "@/lib/enterprise/reply-overdue";
+import { 盘点超时链, 超时提醒到期, 超时转生效key } from "@/lib/enterprise/reply-overdue";
 /** pool-actions.ts 里的那句（"use server" 文件不导出常量） */
 const 无效不能领提示 = "标了无效的客户不能领取，要系统管理员先恢复";
 import { 不能领公海话 } from "@/lib/enterprise/permissions";
@@ -122,7 +122,7 @@ describe("新建线索项目（用户 11-19：项目来源以每次新建的为�
     const r = await 查重领取("手机号", c.号, 沟通(), c.id, 新(c));
     if (!r.ok) throw new Error(r.error);
     const 记 = await prisma.entLeadAssign.findFirstOrThrow();
-    const 扫于 = 顺延到可执行(new Date(记.createdAt.getTime() + 61 * 60_000));
+    const 扫于 = 超时提醒到期(new Date(记.createdAt.getTime() + 60_000));
     expect((await 盘点超时链(扫于)).find((x) => x.id === 记.projectId)).toMatchObject({ ownerId: 甲.id, 按分配: true, 基: 记.createdAt, 回了: false, 下一步: "提醒" });
     // 旧的那条跟着客户带出线索公海（总控 11-20 定：查重领取带出的不算分给他）
     expect(await prisma.projectNodeLog.findFirst({ where: { projectId: 旧, kind: "pool-claim" } })).toMatchObject({ userId: 市场.id, toOwnerId: 甲.id, reason: expect.stringMatching(/^跟着客户转过来/) });
@@ -309,7 +309,7 @@ describe("只领旧项目（查重领取口径.新建线索项目 = false，好�
     expect(日志?.summary).toContain("经号码查重");
     expect(日志?.summary).toContain(甲.name);
     // 超时未跟进自动转（总控 11-20 定）：查重领取带出线索公海的旧项目（含挂沟通、记了分配的那条）都不算分给他、不进链
-    const 扫于 = 顺延到可执行(new Date(记[0].createdAt.getTime() + 61 * 60_000));
+    const 扫于 = 超时提醒到期(new Date(记[0].createdAt.getTime() + 60_000));
     for (const p of [早, 晚]) expect((await 盘点超时链(扫于)).some((x) => x.id === p && x.按分配)).toBe(false);
   });
 
