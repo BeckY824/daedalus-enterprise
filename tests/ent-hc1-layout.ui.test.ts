@@ -32,7 +32,7 @@ beforeAll(async () => {
   const r = await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import ChatHead from '@/app/(app)/dashboard/ChatHead';
-    import ToLatest from '@/app/(app)/dashboard/ToLatest';
+    import ToLatest, { useToLatestKey } from '@/app/(app)/dashboard/ToLatest';
     import Welcome from '@/app/(app)/dashboard/Welcome';
     import { ComposerFoot, SendKey } from '@/app/(app)/dashboard/ComposerParts';
     import HomeCards from '@/app/(app)/dashboard/HomeCards';
@@ -66,6 +66,8 @@ beforeAll(async () => {
     );
     function 问过({ 轮数, 待办, 新, 对话 }) {
       const 现状 = useIsNowSkin();
+      // 照 HomeChat：key 按这一屏装着的对话 id 换，认领（空 → 真 id、刚发的还在）不换
+      const 键 = useToLatestKey(对话 === undefined ? 'c1' : 对话, !!新);
       const 轮们 = Array.from({ length: 轮数 }, (_, i) => i);
       return (
         <div className={'cli' + (现状 ? ' cli-paper' : '')}><div className="cli-ck"><div className="cli-ck-g">
@@ -80,7 +82,7 @@ beforeAll(async () => {
               ))}
               <div />
             </div>
-            {现状 && <ToLatest key={对话 ?? 'c1'} 刚发={!!新} />}
+            {现状 && <ToLatest key={键} 刚发={!!新} />}
             {输入框(false)}
           </div>
           <HomeCards 数={卡数} />
@@ -358,7 +360,7 @@ it("C12：往上翻出「↓」，下面长新字带蓝点，点了回到最新�
   } finally { await page.close(); }
 });
 
-type 画参 = { 轮数: number; 待办?: number; 新?: boolean; 对话?: string };
+type 画参 = { 轮数: number; 待办?: number; 新?: boolean; 对话?: string | null };
 const 重画 = (page: Page, o: 画参) => page.evaluate((o) => (window as unknown as { __重画: (s: string, o: unknown) => void }).__重画("问过", { 待办: 2, ...o }), o);
 const 离底 = (page: Page) => page.locator(".cli-log").evaluate((e) => e.scrollHeight - e.scrollTop - e.clientHeight);
 const 钮态 = (page: Page) => page.locator(".cli-latest-b").evaluate((e) => ({ 露: !(e as HTMLButtonElement).hidden, 蓝点: e.classList.contains("has-new") }));
@@ -406,7 +408,8 @@ it("C12（换对话，不回归）：刚发的问句仍顶到框顶离顶 14、�
     const 新轮离顶 = () => page.locator(".cli-log").evaluate((e) => {
       const L = e.getBoundingClientRect().top;
       const t = e.querySelector(".cli-turn-new") as HTMLElement;
-      return { 轮: Math.round(t.getBoundingClientRect().top - L), 问: Math.round(t.querySelector(".cli-user")!.getBoundingClientRect().top - L) };
+      // `|| 0`：-0 和 0 在 toEqual 里不等（亚像素四舍五入出 -0）
+      return { 轮: Math.round(t.getBoundingClientRect().top - L) || 0, 问: Math.round(t.querySelector(".cli-user")!.getBoundingClientRect().top - L) || 0 };
     });
     // a) 换到一段、挂上时就是刚发（新一轮带 cli-turn-new，TurnView 把它顶到框顶）：回答长出来不落底
     await 重画(page, { 轮数: 4, 对话: "刚发", 新: true });
@@ -444,6 +447,44 @@ it("C12（换对话，不回归）：刚发的问句仍顶到框顶离顶 14、�
     await page.locator(".cli-log .cli-a").last().evaluate((e) => { e.append(" 流出来的字"); (e as HTMLElement).style.paddingBottom = "900px"; });
     await page.waitForTimeout(80);
     expect(await page.locator(".cli-log").evaluate((e) => e.scrollTop)).toBe(前);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("C12（新对话认领）：欢迎页问第一问、回答超出一框、往上翻着带蓝点，答完认领成新对话（id 空 → 真 id）——「↓」和蓝点原样留着；还没认领就点列表另一段照样落底（HC-1 3703 补点）", async () => {
+  const { page, errors } = await 开({ 宽: 1366, 轮数: 2 });
+  try {
+    // 一屏新对话：对话 id 还是空，刚发的那一问在屏上
+    await 重画(page, { 轮数: 2, 对话: null, 新: true });
+    await page.waitForTimeout(80);
+    // 回答流出来、超出一框；人往上翻着看，下面又出字 → 钮亮、带蓝点
+    await page.locator(".cli-log .cli-turn-new .cli-a").evaluate((e) => { e.append(" 流出来的字".repeat(60)); (e as HTMLElement).style.paddingBottom = "1200px"; });
+    await page.waitForTimeout(50);
+    await page.locator(".cli-log").evaluate((e) => { e.scrollTop = 100; e.dispatchEvent(new Event("scroll")); });
+    await page.waitForTimeout(50);
+    await page.locator(".cli-log .cli-turn-new .cli-a").evaluate((e) => { e.append(" 答完了"); });
+    await page.waitForTimeout(50);
+    expect(await 钮态(page)).toEqual({ 露: true, 蓝点: true });
+    const 前 = await page.locator(".cli-log").evaluate((e) => e.scrollTop);
+    // 答完落库、认领上 id：不重挂，钮和蓝点照旧、位置不动
+    await 重画(page, { 轮数: 2, 对话: "认领的", 新: true });
+    await page.waitForTimeout(80);
+    expect(await 钮态(page)).toEqual({ 露: true, 蓝点: true });
+    expect(await page.locator(".cli-log").evaluate((e) => e.scrollTop)).toBe(前);
+    // 之后在这段里换到别的对话：照样重挂落底
+    await 重画(page, { 轮数: 12, 对话: "别的" });
+    await page.waitForTimeout(80);
+    expect(await 离底(page)).toBeLessThan(2);
+    expect(await 钮态(page)).toEqual({ 露: false, 蓝点: false });
+    // 新起一屏又问了一问、还没认领（刚发的在屏上），就点列表里另一段：那几轮整个换掉、刚发的不在了 → 照样算换对话、落底
+    await 重画(page, { 轮数: 2, 对话: null, 新: true });
+    await page.waitForTimeout(80);
+    await page.locator(".cli-log").evaluate((e) => { e.scrollTop = 0; e.dispatchEvent(new Event("scroll")); });
+    await page.waitForTimeout(50);
+    await 重画(page, { 轮数: 14, 对话: "列表里另一段" });
+    await page.waitForTimeout(80);
+    expect(await 离底(page)).toBeLessThan(2);
+    expect(await 钮态(page)).toEqual({ 露: false, 蓝点: false });
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

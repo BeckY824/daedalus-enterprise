@@ -740,7 +740,7 @@ export async function 公海名单条件(me: { id: string }, 候选: Prisma.Proj
   return { AND: [候选, { pooledAt: { not: null } }, ...(露 ? [{ OR: [{ channelId: { not: null } }, 露] }] : [])] };
 }
 
-/** 公海页按项目一条一行时的筛选（地址栏 projChannel / phase / createdFrom / createdTo）；空的那项不筛 */
+/** 公海页按项目一条一行时的筛选（地址栏 projChannel / phase / createdFrom / createdTo / batch / open）；空的那项不筛 */
 export type 公海名单筛 = { channelId?: string; phase?: string; createdFrom?: string; createdTo?: string; /** 同 项目筛选.onlyNew */ onlyNew?: string; /** 同 项目筛选.open */ open?: string;
   /** 同 项目筛选.batch（数据页「线索池」点进来带的，11-19）：只看 / 排掉某一批；带了也按项目一条一行 */
   batch?: string };
@@ -758,6 +758,9 @@ export function 公海名单候选(f: 公海名单筛): Prisma.ProjectWhereInput
     ...(建于 ? [{ createdAt: 建于, ...(f.onlyNew === "1" ? 不算补建 : {}) }] : []),
     // 导入批次：数据页的线索池数不算历史分析回填的，点进来同样排掉，条数对得上
     ...(批 ? [批次条件(批)!, 不算历史分析] : []),
+    // 只带 open=1（数据页没选导入批次时「公海里还有 N 个 ›」点进来，3703 实操）：公海里没结局的项目一个一行，
+    // 同 项目现在 的「公海」那个数——不算历史分析回填的，条数对得上；open 跟着渠道 / 时间段 / 批次来的照旧只是附加条件
+    ...(f.open === "1" && !f.channelId && !建于 && !批 ? [不算历史分析] : []),
   ];
   if (!并.length) return null;
   return { AND: [...并, ...(f.phase || f.open ? 阶段进程条件({ phase: f.phase, open: f.open }, 字典of(企业版())).where : [])] };

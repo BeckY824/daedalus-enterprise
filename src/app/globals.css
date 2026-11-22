@@ -858,6 +858,12 @@ body.rail-resizing .shell .rail { transition: none; }
    正文先窄后宽跳一下（1024 宽实测单栏 → 两栏）。窄于名单门槛（lib/roster.ts，220+312+52+630）时
    水合后它必定在抽屉里，所以这里直接不画整栏那个 aside，不会误藏。服务端那帧右边面板一律收着，门槛不用加 380 */
 @media (max-width: 1213px) { aside.pane-roster { display: none; } }
+/* 名单载入中的骨架（CustomerRosterSkeleton，11-22）：栏框立刻有，灰条 --skel-delay 后才淡入，快的不闪 */
+.roster-skel { display: grid; gap: 14px; padding: 16px; animation: app-loading-in var(--t) var(--ease) var(--skel-delay) both; }
+.roster-skel-h { width: 60%; }
+.roster-skel-row { display: flex; gap: var(--s2); align-items: flex-start; }
+.roster-skel-av { width: 24px; height: 24px; border-radius: 50%; flex: none; background: var(--hover); }
+.roster-skel-m { flex: 1; display: grid; gap: 6px; }
 
 /* 首页中栏：问过的对话。
    **比记录页那条名单还窄**（232 vs 312）：一行就是一句话，不摆头像不摆标签，
@@ -5375,6 +5381,45 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 .cth-ellipsis { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .cth-closed-toggle { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--text-muted); font-size: var(--fs-note); cursor: pointer; }
 .cth-closed-toggle:hover { color: var(--ink); text-decoration: underline; }
+/* 录音点评 ·「传录音文件」（11-22，录音点评 PR2，(app)/projects/[id]/CoachRecUpload.tsx）：外观只放 now 皮肤（别的主题沿用 antd 默认样子，功能不受影响）。
+   电脑是 520 宽弹框；手机（≤767）整屏：告知在最上、主按钮通栏贴底让出安全区、进度条通栏。发起点评的手机底部选择板（.crec-sheet）三项纵排、每项整行 ≥ 触屏点击区（--hit-touch）；手机上框里、草稿条、待提交卡的按钮也都 ≥ --hit-touch */
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-form { display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-notice { padding: var(--s2) var(--s3); border-radius: var(--r-ctl); background: var(--hover); color: var(--ink-soft); font-size: var(--fs-note); line-height: 1.5; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-row { display: flex; align-items: baseline; gap: var(--s3); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-k { flex: none; width: 5em; color: var(--text-muted); }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-v { flex: 1; min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-hint { color: var(--text-muted); font-size: var(--fs-note); overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-file { display: flex; flex-direction: column; gap: var(--s1); padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r-ctl); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-warn { padding: var(--s2) var(--s3); border: 1px solid var(--warning-line); border-radius: var(--r-ctl); background: var(--warning-bg); color: var(--warning-text); font-size: var(--fs-note); overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-progress { display: flex; flex-direction: column; gap: var(--s2); }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-pending { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s2) var(--s3); border: 1px solid var(--line-soft); border-radius: var(--r-card); background: var(--panel); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-pending-h { display: flex; align-items: baseline; gap: var(--s2); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-pending-h .crec-file-name { flex: 1 1 auto; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-pending-h .crec-hint { flex: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-audio { width: 100%; max-width: 100%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-acts { display: inline-flex; flex-wrap: wrap; gap: var(--s2); flex: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-drafts { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-draft-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); padding: var(--s2) var(--s3); border: 1px dashed var(--line); border-radius: var(--r-card); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-draft-t { flex: 1 1 200px; min-width: 0; color: var(--ink-soft); font-size: var(--fs-note); overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-draft-row .crec-acts { margin-inline-start: auto; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-sheet-list { display: flex; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-sheet-item { display: block; width: 100%; min-height: var(--hit-touch); padding: var(--s2) var(--s4); border: 0; border-bottom: 1px solid var(--line-soft); background: none; color: var(--ink); text-align: start; cursor: pointer; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-sheet-item:last-child { border-bottom: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-sheet-item:disabled { color: var(--text-muted); cursor: not-allowed; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-sheet-item .menu-2l { max-width: none; }
+@media (max-width: 767px) {
+  /* 手机整屏：弹框铺满、内容区可滚、底部按钮通栏贴底（让出安全区） */
+  :root:is(:not([data-skin]), [data-skin="now"]) .crec-modal.ant-modal { top: 0; width: 100vw !important; max-width: 100vw; margin: 0; padding: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .crec-modal :is(.ant-modal-container, .ant-modal-content) { display: flex; flex-direction: column; min-height: 100dvh; border-radius: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .crec-modal .ant-modal-body { flex: 1; overflow-y: auto; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .crec-modal .ant-modal-footer { display: flex; gap: var(--s2); padding-bottom: calc(var(--s3) + env(safe-area-inset-bottom)); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .crec-modal .ant-modal-footer > .ant-btn { flex: 1 1 0; min-width: 0; height: var(--hit-touch); margin: 0; }
+  /* 「选录音文件」、待提交卡的「提交整理 / 删掉」、草稿条的「接着传 / 删掉」、删前确认条的「取消 / 确认删掉」：390 宽点击区 ≥ 44（PR2 审查必修 3） */
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.crec-form, .crec-acts, .crec-draft .pd-del-band) .ant-btn { min-height: var(--hit-touch); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .crec-draft-row .crec-acts { width: 100%; justify-content: flex-end; }
+}
 /* 首页待办「待回复主题」（overview 之外的首页，dashboard/CoachTopicTodo.tsx）：一行，窄了折行，长主题省略 */
 .home-cth-todo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px var(--s3); margin-bottom: 16px; padding: var(--s2) var(--s3); border: 1px solid var(--line-soft); border-radius: var(--r-card); background: var(--panel); min-width: 0; }
 .home-cth-todo-t { font-weight: 600; color: var(--ink); white-space: nowrap; }
@@ -6201,6 +6246,33 @@ button.proj-miss-chip { cursor: pointer; }
 /* D37 补（L-A 补点发现）：市场管理客户页（我分出去的）的「看板」视图，筛选在看板上方 .pipe-top，不在 .list-bar——
    「全部成员 / 全部创建人 / 全部进程」占位字也墨色，和「全部阶段」（选中值）一个颜色。销售客户页的看板筛选仍是 .list-bar，上面 L-A 那条已管 */
 :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .pipe-top .ant-select-placeholder { color: var(--ink); }
+/* ===== 设计语言 C-A2（11-22，落地计划-三页设计）：渠道筛选 + 列表。只挂现状主题；换皮主题外观不动 ===== */
+/* C1 筛选：下拉「全部主渠道 / 全部属性 / 全部负责人」墨色（D37，同客户页 L-A）；「更多筛选」1200 起写字 */
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar .ant-select-placeholder { color: var(--ink); }
+@media (min-width: 1200px) and (max-width: 1439px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .cf-more-t { display: inline; }
+}
+@media (max-width: 767px) {
+  /* 390（D06，同客户页 L-A 摆法）：① 搜索 + 重置 ② 下拉两两一排 + 更多筛选；「列」在第一排右端 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar > .ant-space { order: 1; flex-basis: 100%; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar > .ant-space > .ant-space-item { order: 2; min-width: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar > .ant-space > .ant-space-item:has(> .ant-input-affix-wrapper) { order: 0; flex: 1 1 200px; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 100% !important; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar > .ant-space > .ant-space-item:has(> .list-reset) { order: 1; flex: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar > .ant-space > .ant-space-item:has(> .ant-select) { flex: 1 1 120px; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar > .ant-space > .ant-space-item > .ant-select { width: 100% !important; }
+}
+/* C3 表格卡头：「渠道（N）· 统计：…」+「?」 */
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-period-note.chan-list-head { align-items: center; gap: var(--s1) var(--s2); min-height: var(--card-head-h); margin: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-list-head .section-title { font-size: var(--fs-section); font-weight: 600; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-list-head .chan-period-label { font-weight: 400; color: var(--text-muted); }
+/* C4 列表：「—」没有数据（--empty-fg），「0」照数字色（C-新5）；表头「?」；末行不被 AI 球盖（D40） */
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-empty { color: var(--empty-fg); }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-th { display: inline-flex; align-items: center; gap: var(--s1); }
+/* 「?」的 ::after 点击区（--hit 28）比 16 的圈每边多出 6px，在 nowrap 的表头里算作字冲出盒子（PR #413 排版闸门「有效线索? 字宽 79，盒子 73」）。
+   右边先留出这一截：点击区不伸到排序箭头上，盒子也装得下 */
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-th:has(> .chan-dash-q:last-child) { padding-inline-end: calc((var(--hit) - 16px) / 2); }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-list { padding-bottom: var(--ai-safe); }
 
 /* ---------- 设计语言 G-A · 公海（11-22，只挂现状主题；换皮主题外观不动。结构改动在 PoolView.tsx 新样） ---------- */
 /* G0 标题后的总数（--count-fg，等宽数字）；右上「我手上 N / 上限 M」中性胶囊，到上限换要人处理的橙底 */
@@ -6327,7 +6399,8 @@ button.proj-miss-chip { cursor: pointer; }
 }
 :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-log > * { flex: none; width: 100%; max-width: var(--chat-col); margin-inline: auto; }
 /* C12-A：发出去的那一问顶到框顶，下面留出一框高的空、回答往下长（ChatGPT / Claude 的做法）；再发一问，上一轮的空收回 */
-:root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-log > .cli-turn-new { min-height: 100cqh; }
+/* 只给最后一轮留（后面只剩 TurnLog 末尾那个空 div）：中间某一轮点了重新回答，下面本来就有内容能把它顶到框顶，不在两轮之间空出一框高 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-log > .cli-turn-new:nth-last-child(2) { min-height: 100cqh; }
 :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-composer-sticky { position: static; flex: none; background: none; padding: var(--s2) var(--s5) var(--s5); }
 :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-composer > * { max-width: var(--chat-col); margin-inline: auto; }
 
@@ -6425,6 +6498,142 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-log { padding: 0 var(--s4) var(--s3); }
   :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-composer-sticky { padding: var(--s2) var(--s3) calc(var(--s3) + env(safe-area-inset-bottom)); }
 }
+/* ===== 设计语言 R-B（11-22，落地计划-三页设计）：复盘「任务 / 沟通 / 数据」三页签。只挂现状主题 ===== */
+/* 两套卡统一卡头（D19）：自家 .btodo-list 照 antd Card（卡头 48、标题 15/600、左右 16、头下一条细线） */
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-body .btodo-list { padding: 0 var(--card-pad) var(--card-pad); }
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-body .btodo-list > .btodo-head { min-height: var(--card-head-h); margin: 0 calc(-1 * var(--card-pad)) var(--s3); padding: var(--s2) var(--card-pad); border-bottom: 1px solid var(--line-soft); }
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-body .section-title { font-size: var(--fs-section); font-weight: 600; }
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-body .card-count { font-weight: 400; }
+/* 可点卡只换底（D30）：不上浮、不加阴影、数字不变色 */
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-body .home-card:hover,
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-body .home-card:active { transform: none; box-shadow: var(--shadow-card); }
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-body .home-card:not(.is-on):hover { border-color: var(--card-line); background: var(--row-hover); }
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-body .home-card:not(.home-card-warn, .home-card-good):hover .home-card-v { color: inherit; }
+/* R1 逾期 0 条：数字灰（不是 0 也标红） */
+:root:is(:not([data-skin]), [data-skin="now"]) .btodo-card.is-zero .home-card-v { color: var(--count-fg); }
+/* 换筛选：旧内容淡一档不低于 0.7（R-新1，卡点页签 R-A 已改） */
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-pending,
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-body .is-pending { opacity: 0.7; }
+/* 末行不被 AI 球盖（D40）；卡点页签 R-A 的 .rbk 自己留了（390），不叠两份 */
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-body:not(:has(.rbk)) { padding-bottom: var(--ai-safe); }
+
+/* R3 沟通 / 主题：筛选条在卡外一行，「沟通｜主题」最左、时间段 / 谁跟着 */
+:root:is(:not([data-skin]), [data-skin="now"]) .rtalk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); min-width: 0; margin-bottom: var(--s3); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rtalk-bar .ant-segmented { max-width: 100%; overflow-x: auto; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rtalk-foot { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-note); color: var(--text-muted); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rtalk-side-line { display: none; }
+@media (max-width: 767px) {
+  /* 390：时间线和「还没沟通过的项目」上下摆、各占一整行。基础那条 @container (max-width: 760px) 查的是 .rtalk-wrap 自己（它就是容器），
+     容器查询管不到容器本身、一直没生效，390 被挤成 90 + 260 两列（3703 实操）；现状主题在手机档直接改单列 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .rtalk-wrap.rtalk-has-side { grid-template-columns: minmax(0, 1fr); }
+  /* 390：「还没沟通过的项目」整块收成一行（R-新10） */
+  :root:is(:not([data-skin]), [data-skin="now"]) .rtalk-side.is-now:has(.rtalk-side-line) { padding: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rtalk-side.is-now:has(.rtalk-side-line) > :not(.rtalk-side-line) { display: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rtalk-side.is-now .rtalk-side-line { display: block; line-height: var(--hit-touch); padding: 0 var(--card-pad); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+}
+
+/* R4 数据：概况 6 格 + 阶段 4 格两排同款，数字同号 26（窄格金额已缩写，全值在悬停）；大数仍放不下时省略号兜底（基础规则），不压隔壁格（R-B 审查 11-22） */
+:root:is(:not([data-skin]), [data-skin="now"]) .rkpi-v { font-size: var(--fs-num); }
+/* 小字不截、放不下就折行：1024 扣掉左栏四格每格约 155、390 两格每格约 150，一截就把句尾的数截没了（R-B 审查 11-22）；整句也并进了悬停提示 */
+:root:is(:not([data-skin]), [data-skin="now"]) .rkpi-s { white-space: normal; overflow-wrap: anywhere; min-width: 0; font-size: var(--fs-note); color: var(--text-muted); }
+:root:is(:not([data-skin]), [data-skin="now"]) a.rkpi-i:hover { background: var(--row-hover); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rkpi.rkpi-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rkpi.rkpi-4 > .rkpi-i { border-top: 0; border-left: 1px solid var(--line-soft); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rkpi.rkpi-4 > .rkpi-i:first-child { border-left: 0; }
+/* 1200–1439 概况一排 6 格、每格内容只剩 ~136（1280 扣掉左栏 220 和正文内边距），「¥ 123.46 亿」这种百亿金额差几像素被省略号截：
+   两排格子左右内边距一起收到 12（两排数字左边仍对齐），1280 起放得下；更窄（1200 出头）再放不下才走省略号兜底，全值在悬停（R-B 审查 11-22） */
+@media (min-width: 1200px) and (max-width: 1439px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .rkpi-i { padding-inline: var(--s3); }
+}
+/* AI 面板开着、正文只剩 ~840 时（同 xl-6 指标卡那条 1799 重映射）：概况 6 格改三格一排，金额不至于缩到省略号 */
+@media (min-width: 1200px) and (max-width: 1799px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .shell-dock-open .rkpi:not(.rkpi-4) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .shell-dock-open .rkpi:not(.rkpi-4) > .rkpi-i:nth-child(3n + 1) { border-left: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .shell-dock-open .rkpi:not(.rkpi-4) > .rkpi-i:nth-child(n + 4) { border-top: 1px solid var(--line-soft); }
+}
+@media (max-width: 767px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .rkpi.rkpi-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rkpi.rkpi-4 > .rkpi-i:nth-child(odd) { border-left: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rkpi.rkpi-4 > .rkpi-i:nth-child(n + 3) { border-top: 1px solid var(--line-soft); }
+}
+/* 卡点摘要（R-新5）：一句话 + 去卡点页签 */
+:root:is(:not([data-skin]), [data-skin="now"]) .rkpi-blk-sum { margin: 0; color: var(--ink-soft); overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rkpi-blk-sum b { font-variant-numeric: tabular-nums; color: var(--ink); }
+/* 漏斗：个数在条外右侧一列，不压条（D39 后半）；「已经结束的」在卡底（R-新13） */
+:root:is(:not([data-skin]), [data-skin="now"]) .pfun-now .pfun-row { grid-template-columns: 3em minmax(0, 1fr) 6ch 5.5em; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pfun-now .pfun-bar { min-width: 4px; padding: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pfun-n-out { text-align: end; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pfun-foot { margin: var(--s3) 0 0; padding-top: var(--s3); border-top: 1px solid var(--line-soft); font-size: var(--fs-note); color: var(--text-muted); overflow-wrap: anywhere; }
+/* 按负责人：默认 10 行，多的藏起来（R-新12） */
+:root:is(:not([data-skin]), [data-skin="now"]) .stat-row-more { display: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .stat-more.ant-btn { margin-top: var(--s2); min-height: var(--hit); padding-inline: 0; }
+/* 触屏点击区 44（R-B 审查 11-22）：「展开全部 N 人 / 收起」；卡点卡头的「去卡点页签 ›」上下负外边距抵掉，卡头不长高 */
+@media (max-width: 767px), (pointer: coarse) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .stat-more.ant-btn { min-height: var(--hit-touch); min-width: var(--hit-touch); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rkpi-blk-go { display: inline-flex; align-items: center; min-height: var(--hit-touch); margin-block: -11px; }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   设计语言 HC-2a（11-22，回答排版、步骤条、操作行、打断 / 出错；用户选 C6-A / C7-A / C8-A / C11-A）。
+   只现状主题；首页、全局浮窗（HomeChat 窄模式）都吃这一段，客户页 AI 面板只吃步骤条（.ais）。
+   ──────────────────────────────────────────────────────────────────────────── */
+/* C6-A 一条左边线：步骤条、正文、表格、确认卡、涉及客户、追问、操作行都从同一处起，不再各缩 16–20 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-a { padding-left: 0; font-size: var(--fs-body); line-height: 1.7; }
+:root:is(:not([data-skin]), [data-skin="now"]) :is(.cli-stopped, .cli-err, .cli-next) { padding-left: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-turn > :is(.cli-card, .prop-list) { margin-left: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-bubble { max-width: 75%; }
+/* 表格：细线、表头 muted、数字列右对齐等宽（Markdown.tsx 给 .md-num）、宽了在表格里横滑 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-a .md-tw { max-width: 100%; overflow-x: auto; margin: var(--s2) 0 var(--s3); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-a .md-table { font-size: var(--fs-note); line-height: 1.5; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-a .md-table th { color: var(--text-muted); font-weight: 500; border-bottom: 1px solid var(--line); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-a .md-table td { border-bottom: 1px solid var(--line-soft); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-a .md-table :is(th, td):first-child { padding-left: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-a .md-table .md-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* 确认卡：卡里「确认」是这一屏唯一的实心主色钮（输入框空着时发送钮本来是灰的） */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-turn .prop-ok:not(:disabled) { background: var(--brand); color: var(--on-ink); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-turn .prop-ok:not(:disabled):hover { background: var(--brand-deep); }
+
+/* C7-A 步骤条：四种状态同一行、不带框不带底；圆点 + 人话 + 第 N 步 · X 秒 + ›，点开竖排 */
+:root:is(:not([data-skin]), [data-skin="now"]) .ais { border: 0; border-radius: 0; background: none; max-width: none; overflow: visible; }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-hd { padding-right: 0; gap: var(--s2); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-hd-b { flex: 0 1 auto; gap: var(--s2); padding: 4px var(--s2); margin-left: calc(-1 * var(--s2)); border-radius: var(--r-ctl); }
+:root:is(:not([data-skin]), [data-skin="now"]) button.ais-hd-b:hover { background: var(--row-hover); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-hd-b:focus-visible { border-radius: var(--r-ctl); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-tt { flex: 0 1 auto; font-weight: 400; color: var(--ink-soft); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-chev { flex: none; color: var(--text-faint); line-height: 1; transition: transform var(--t) var(--ease); }
+:root:is(:not([data-skin]), [data-skin="now"]) button.ais-hd-b:hover .ais-chev { color: var(--ink-soft); }
+:root:is(:not([data-skin]), [data-skin="now"]) button.ais-hd-b[aria-expanded="true"] .ais-chev { transform: rotate(90deg); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-bd { padding: 0 0 4px var(--s4); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-done .ais-tt { color: var(--text-muted); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-wait .ais-tt { color: var(--warning-text); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-error .ais-tt { color: var(--danger-text); }
+/* 打断：灰点「已停下」，不和完成同一个绿 */
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-stopped .ais-dot { background: var(--text-faint); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-stopped .ais-tt { color: var(--text-muted); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ais-compact .ais-hd-b { padding-block: 2px; }
+/* 左栏 AI 任务：人自己点停的那条（「已停下」）灰图标 */
+:root:is(:not([data-skin]), [data-skin="now"]) .aitask-stopped .aitask-i { color: var(--text-faint); }
+
+/* C8-A 操作行：和正文同一条左边线（图标在 28 的钮里居中，钮往左挪半个空），时间在末尾；
+   最后一轮常显，之前的悬停 / 键盘聚焦 / 菜单开着才出；触屏常显、钮 44 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-bar { padding-left: 0; margin-left: -7px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-bar-t { color: var(--text-muted); }
+@media (hover: hover) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-turn:has(~ .cli-turn:not(.cli-turn-gone)) > .cli-bar { opacity: 0; transition: opacity var(--t-leave) var(--ease); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-turn:has(~ .cli-turn:not(.cli-turn-gone)):is(:hover, :focus-within) > .cli-bar,
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-turn:has(~ .cli-turn:not(.cli-turn-gone)) > .cli-bar:has(.ant-dropdown-open) { opacity: 1; transition-duration: var(--t-fast); }
+}
+/* 触屏（hover: none）或 ≤767：操作行钮、步骤条展开钮、「重新回答 / 重试」点击区都 ≥ --hit-touch（#420 审查挡合 2）。
+   操作行钮本来就常显，撑大后图标仍居中，整行往左挪半个空保持同一条左边线；
+   步骤条那一行不变高：展开钮上下内边距各加 E、外边距各收 −E，只变点击区不变行高（普通 E = 8：28.5 → 44.5；紧凑 E = 11：23 → 45）；
+   「重新回答 / 重试」撑到 44、上下负外边距收到 22（比紧凑那一行 23 还矮，不撑行） */
+@media (hover: none), (max-width: 767px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-bar .cli-ic { min-width: var(--hit-touch); height: var(--hit-touch); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-bar { margin-left: calc((var(--hit) - var(--hit-touch)) / 2 - 7px); }
+  :root:is(:not([data-skin]), [data-skin="now"]) button.ais-hd-b { padding-block: calc(4px + (var(--hit-touch) - var(--hit)) / 2); margin-block: calc((var(--hit) - var(--hit-touch)) / 2); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .ais-compact button.ais-hd-b { padding-block: calc(5px + (var(--hit-touch) - var(--hit)) / 2); margin-block: calc((var(--hit) - var(--hit-touch)) / 2 - 3px); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .ais-retry { display: inline-flex; align-items: center; justify-content: center; min-width: var(--hit-touch); min-height: var(--hit-touch); padding-inline: var(--s2); margin-block: calc((var(--hit) - 6px - var(--hit-touch)) / 2); margin-inline-start: calc(-1 * var(--s2)); }
+}
 
 
 /* ================= 设计语言 D-2 · 方案 A「一张纸 + 分隔线」（11-22 用户定，评审页 评审-底色与模块分区-20261122） =================
@@ -6436,7 +6645,8 @@ button.proj-miss-chip { cursor: pointer; }
      4. 容器不许有底色，只有叶子小块（问句气泡、步骤条 .ais-done、节点条、草稿框）可以铺一档 --workbench / --hover
      5. 浮层是全站唯一带阴影的东西（--shadow-pop，底 --pop-bg）
      6. 手机（≤767）：模块铺满全宽，不再留 12 的外边距和圆角，内容左右 16
-   这一批只做首页、客户详情、复盘三页；客户列表、公海、渠道、设置等其余页（D-3）照旧是白卡（1px 线、圆角 10、无影） */
+   这一批只做首页、客户详情、复盘三页；客户列表、公海、渠道、设置等其余页（D-3）照旧是白卡（1px 线、圆角 10、无影）
+   这一段放在 R-B（复盘三页签）、HC-2a 之后：两边同权重的规则（复盘 .btodo-list 卡头等）方案 A 后写的赢；「原底」不挂这段，照旧是 R-B 的白卡卡头 */
 
 /* ---------- 外壳：栏与栏之间一根 --mod-line ---------- */
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rail, :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .pane { border-right-color: var(--mod-line); }
@@ -6509,7 +6719,8 @@ button.proj-miss-chip { cursor: pointer; }
 }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-list { border: 0; border-top: 1px solid var(--mod-line); border-radius: 0; background: transparent; padding: 0 0 var(--s4); }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-wrap > .btodo-list + :is(.btodo-list, .rtalk-side) { margin-top: 0; }
-:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-list > .btodo-head { min-height: 40px; margin-bottom: var(--s2); }
+/* R-B 给复盘卡头（.data-shell-body 里）的是 antd Card 那套：48 高、左右负外边距贴卡边、头下一条细线。方案 A 没有卡：头不外伸、不画线，和模块标题一样 40 高 */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-list > .btodo-head { min-height: 40px; margin: 0 0 var(--s2); padding: 0; border-bottom: 0; }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-list > .btodo-head .section-title { font-size: var(--fs-note); font-weight: 600; color: var(--mod-title); }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rkpi { border: 0; border-block: 1px solid var(--mod-line); border-radius: 0; background: transparent; }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board { gap: 0; }

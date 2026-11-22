@@ -116,10 +116,11 @@ it("列表页头标签：最长批次名 390 / 1024 宽不撑出、一行省略�
   await page.close();
 });
 
-it("选了批次：卡点分布、超时预警、客户分布标题旁写「不跟导入批次」；没选不写", async () => {
+it("选了批次：卡点（摘要）、超时预警、客户分布标题旁写「不跟导入批次」；没选不写", async () => {
   const { page, errors } = await open(1024);
   await page.evaluate(() => (window as unknown as { __note: (b: boolean) => void }).__note(true));
-  for (const 区 of ["卡点分布", "超时预警", "客户分布·按国家", "客户分布·按业务线"]) {
+  // 现状主题卡点分布收成「卡点」摘要（R-B R-新5）
+  for (const 区 of ["卡点", "超时预警", "客户分布·按国家", "客户分布·按业务线"]) {
     expect(await page.getByRole("region", { name: 区 }).locator(".btodo-head").innerText(), 区).toContain("不跟导入批次");
   }
   expect(await 不溢出(page)).toBe(true);

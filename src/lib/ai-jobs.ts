@@ -21,6 +21,8 @@ export type JobState<T> = {
   /** 调用方自带的小标记，比如首页提问框记"哪个按钮在转" */
   meta?: string;
   startedAt: number;
+  /** 出错时几点停的（设计语言 HC-2a：超时写「等了 N 秒没回来」要用；重新打开这一屏时 now 早就不对了） */
+  endedAt?: number;
   /**
    * 给侧栏那条「AI 任务」用的：这条任务叫什么、点了回哪儿。
    * 不给就不在侧栏出现——起草话术那种几秒钟就回来的不值得占一行。
@@ -64,11 +66,11 @@ export function runJob<T>(key: string, fn: () => Promise<Result<T>>, meta?: stri
     .then((r) => {
       if (!还算数()) return;
       // AI 卡上的报错不直出英文（25C）：服务端回的中文照给；上游原文（fetch failed、Internal Server Error…）换成中文，原文进日志
-      jobs.set(key, r.ok ? { status: "done", value: r.value, meta, startedAt: 起, 标签 } : { status: "error", error: 给人看的错(r.error, AI没答上来话, "AI 任务"), value: r.value, meta, startedAt: 起, 标签 });
+      jobs.set(key, r.ok ? { status: "done", value: r.value, meta, startedAt: 起, 标签 } : { status: "error", error: 给人看的错(r.error, AI没答上来话, "AI 任务"), value: r.value, meta, startedAt: 起, endedAt: Date.now(), 标签 });
     })
     .catch((e: unknown) => {
       if (!还算数()) return;
-      jobs.set(key, { status: "error", error: 给人看的错(e, AI没答上来话, "AI 任务"), meta, startedAt: 起, 标签 });
+      jobs.set(key, { status: "error", error: 给人看的错(e, AI没答上来话, "AI 任务"), meta, startedAt: 起, endedAt: Date.now(), 标签 });
     })
     .finally(notify);
 }
@@ -171,7 +173,8 @@ const subscribe = (l: () => void) => {
  * 快照要缓存：useSyncExternalStore 每次都拿新数组会无限重渲。
  * 任务表一变就重算一次，不变就返回上一次那个引用。
  */
-let 快照: { key: string; status: JobState<unknown>["status"]; 标签: 任务标签; 有建议: boolean }[] = [];
+type 快照行 = { key: string; status: JobState<unknown>["status"]; 标签: 任务标签; 有建议: boolean; 停下?: boolean };
+let 快照: 快照行[] = [];
 let 快照版本 = -1;
 let 版本 = 0;
 
@@ -196,12 +199,14 @@ export function 任务快照() {
       /* 「需确认」= 答完了、但里面有还没处理（确认 / 忽略）的建议卡。
          各种模式的返回结构不一样，这里只认这一个共同的形状 */
       有建议: ((j.value as { answer?: { proposals?: { id: string }[] } } | undefined)?.answer?.proposals ?? []).some((p) => !处理过的建议.has(`${key}:${p.id}`)),
+      /* 人自己点了停（ai-stream 的「已取消」）：不是失败，左栏写「已停下」（设计语言 HC-2a，C11-A） */
+      停下: j.status === "error" && j.error === "已取消",
     }))
     .sort((a, b) => (a.status === "loading" ? -1 : b.status === "loading" ? 1 : 0));
   return 快照;
 }
 
-const 空快照: { key: string; status: JobState<unknown>["status"]; 标签: 任务标签; 有建议: boolean }[] = [];
+const 空快照: 快照行[] = [];
 
 /** 订阅一个任务的状态；key 为 null 时不订阅。服务端渲染一律 undefined */
 export function useJob<T>(key: string | null): JobState<T> | undefined {

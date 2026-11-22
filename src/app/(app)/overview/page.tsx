@@ -25,6 +25,8 @@ import BoardBlockers from "./BoardBlockers";
 import BoardTalks from "./BoardTalks";
 import BoardTopics from "./BoardTopics";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
+import { 权限组织 } from "@/lib/enterprise/org";
+import { 只读角色 } from "@/lib/enterprise/permissions";
 import { 读日期段, 日期段界, 日期段粒度, 日期段叫法, type 日期段 } from "@/lib/custom-date-range";
 
 export const dynamic = "force-dynamic";
@@ -89,14 +91,16 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
     const 卡 = 读卡(sp.f);
       // 「全部待办」默认三列看板（lay=list 回到表格）；四张卡筛的时候照旧是表格（首页链接 f=today 落表格）
     const 布局 = 卡 === "all" ? 读布局(sp.lay) : "list";
-    const [d, 板, 回公海] = await Promise.all([
+    const [d, 板, 回公海, 只读] = await Promise.all([
       布局 === "list" ? 复盘待办of(范围, { 卡, 页: 读页码(sp.p), 我id: user.id }) : undefined,
       布局 === "board" ? 复盘看板of(范围, { 我id: user.id }) : undefined,
       将回公海of(范围),
+      // 只读角色（业务角色只读管理员 / 销售教练）不摆「勾完成」：只认业务角色，同服务端那道（permissions.ts 只读角色）
+      权限组织().then((org) => 只读角色(user, org)),
     ]);
     return (
       <DataShell view={view} 项目 选人={选人} 页签="todo">
-        <BoardTodos 数={d} 看板={板} 布局={布局} 回收={回公海.提醒} 回收项目={回公海.预警} 卡={卡} 只看自己={只看 === user.id} 看全员={只看 !== user.id} />
+        <BoardTodos 数={d} 看板={板} 布局={布局} 回收={回公海.提醒} 回收项目={回公海.预警} 卡={卡} 只看自己={只看 === user.id} 看全员={只看 !== user.id} 只读={只读} />
       </DataShell>
     );
   }

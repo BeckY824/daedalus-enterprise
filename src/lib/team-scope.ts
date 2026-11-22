@@ -83,11 +83,14 @@ async function 视图拦(动作: string): Promise<void> {
   await 视图写拦(动作);
 }
 const 主题写这段 = 全进程上下文<true>("主题写");
-/** 教练主题的两张表（11-17）：只读角色（销售教练）也要能发主题、回复、关自己的。只认 主题写 包着的写 */
-const 主题表 = new Set(["EntCoachTopic", "EntCoachReply"]);
+/**
+ * 教练主题的两张表（11-17）：只读角色（销售教练）也要能发主题、回复、关自己的。只认 主题写 包着的写。
+ * 录音点评的录音表（11-22，迁移 162）同理：销售教练能传录音，判定在 lib/enterprise/coach-rec.ts，写在 coach-rec-db.ts 里包 主题写
+ */
+const 主题表 = new Set(["EntCoachTopic", "EntCoachReply", "EntCoachRecording"]);
 /**
  * 这一段里写教练主题两张表：已经过了 lib/enterprise/coach-topic.ts 的判定（coach-topic-db.ts 才调），只读角色的写也放。
- * 只放这两张表；包在里面写别的表照样拦。直接拿 prisma 写这两张表（没包）照样拦；切换视图照样拦（视图拦 在前、不看这里）
+ * 只放 主题表 那几张；包在里面写别的表照样拦。直接拿 prisma 写这几张表（没包）照样拦；切换视图照样拦（视图拦 在前、不看这里）
  */
 export function 主题写<T>(fn: () => Promise<T>): Promise<T> {
   return 主题写这段.run(true, async () => await fn());

@@ -46,5 +46,5 @@ export function 读公海页筛(sp: 公海页地址) {
 }
 export type 公海页筛 = ReturnType<typeof 读公海页筛>;
 
-/** 按项目一条一行（渠道名单 / 创建时间 / 导入批次）：这几样有一样就是 */
-export const 按名单 = (f: Pick<公海页筛, "projChannel" | "createdFrom" | "createdTo" | "batch">) => !!(f.projChannel || f.createdFrom || f.createdTo || f.batch);
+/** 按项目一条一行（渠道名单 / 创建时间 / 导入批次 / 只带 open=1 的数据页「公海里还有 N 个」）：这几样有一样就是 */
+export const 按名单 = (f: Pick<公海页筛, "projChannel" | "createdFrom" | "createdTo" | "batch" | "open">) => !!(f.projChannel || f.createdFrom || f.createdTo || f.batch || f.open);
