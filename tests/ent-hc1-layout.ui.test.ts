@@ -64,7 +64,7 @@ beforeAll(async () => {
         <ComposerFoot 摆建议={空} 示例槽={空 ? window.__槽 : undefined} suggestions={示例们} suggIdx={-1} 空={空} 在跑={false} 背调模式={false} 背调价={null} AI已用完={false} on问={() => {}} />
       </div>
     );
-    function 问过({ 轮数, 待办, 新 }) {
+    function 问过({ 轮数, 待办, 新, 对话 }) {
       const 现状 = useIsNowSkin();
       const 轮们 = Array.from({ length: 轮数 }, (_, i) => i);
       return (
@@ -80,7 +80,7 @@ beforeAll(async () => {
               ))}
               <div />
             </div>
-            {现状 && <ToLatest 刚发={!!新} />}
+            {现状 && <ToLatest key={对话 ?? 'c1'} 刚发={!!新} />}
             {输入框(false)}
           </div>
           <HomeCards 数={卡数} />
@@ -356,6 +356,134 @@ it("C12：往上翻出「↓」，下面长新字带蓝点，点了回到最新�
     expect(Math.abs(顶差)).toBeLessThanOrEqual(1);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
+});
+
+type 画参 = { 轮数: number; 待办?: number; 新?: boolean; 对话?: string };
+const 重画 = (page: Page, o: 画参) => page.evaluate((o) => (window as unknown as { __重画: (s: string, o: unknown) => void }).__重画("问过", { 待办: 2, ...o }), o);
+const 离底 = (page: Page) => page.locator(".cli-log").evaluate((e) => e.scrollHeight - e.scrollTop - e.clientHeight);
+const 钮态 = (page: Page) => page.locator(".cli-latest-b").evaluate((e) => ({ 露: !(e as HTMLButtonElement).hidden, 蓝点: e.classList.contains("has-new") }));
+
+for (const [宽, 高] of [[1366, 900], [390, 844]] as const) {
+  it(`C12（${宽}，换对话）：列表里先点短的、再点长的——内容后到、后长高，都落到最底；不出「↓」、不带蓝点（3703 实操 #410）`, async () => {
+    const { page, errors } = await 开({ 宽, 高, 轮数: 14 });
+    try {
+      expect(await 离底(page)).toBeLessThan(2);
+      // 1) 长 → 短（ToLatest 换 key 重挂，内容同一次提交到）
+      await 重画(page, { 轮数: 2, 对话: "短" });
+      await page.waitForTimeout(80);
+      expect(await 离底(page)).toBeLessThan(2);
+      expect(await 钮态(page)).toEqual({ 露: false, 蓝点: false });
+      // 2) 短 → 长，内容异步到：先在旧（短）内容上重挂，过一会儿长内容才装进来（库里读回来）
+      await 重画(page, { 轮数: 2, 对话: "长" });
+      await page.waitForTimeout(80);
+      await 重画(page, { 轮数: 16, 对话: "长" });
+      await page.waitForTimeout(80);
+      expect(await 离底(page), "长内容到了要落到最底").toBeLessThan(2);
+      expect(await page.locator(".cli-log").evaluate((e) => e.scrollTop)).toBeGreaterThan(0);
+      expect(await 钮态(page)).toEqual({ 露: false, 蓝点: false });
+      // 3) 再后来某一轮自己长高（表格 / 卡片排版后变高，没有 DOM 结构变化，只有 ResizeObserver 看得见）
+      await page.locator(".cli-log .cli-a").last().evaluate((e) => { (e as HTMLElement).style.paddingBottom = "700px"; });
+      await page.waitForTimeout(80);
+      expect(await 离底(page), "后长高的也跟着落底").toBeLessThan(2);
+      expect(await 钮态(page)).toEqual({ 露: false, 蓝点: false });
+      // 4) 长 → 另一段长：上一段停在中间（往上翻着、钮亮着），换过去照样落底、钮收
+      await page.locator(".cli-log").evaluate((e) => { e.scrollTop = 300; e.dispatchEvent(new Event("scroll")); });
+      await page.waitForTimeout(50);
+      expect((await 钮态(page)).露).toBe(true);
+      await 重画(page, { 轮数: 12, 对话: "又一段" });
+      await page.waitForTimeout(80);
+      expect(await 离底(page)).toBeLessThan(2);
+      expect(await 钮态(page)).toEqual({ 露: false, 蓝点: false });
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}
+
+it("C12（换对话，不回归）：刚发的问句仍顶到框顶离顶 14、回答长高不被落底拽走；换过去后往上翻 / 在框里按了键，流式回答不拽回底部、往上翻着照旧亮蓝点", async () => {
+  const { page, errors } = await 开({ 宽: 1366, 轮数: 14 });
+  try {
+    const 顶到新轮 = () => page.locator(".cli-log").evaluate((e) => { const t = e.querySelector(".cli-turn-new") as HTMLElement; e.scrollTop = t.offsetTop; e.dispatchEvent(new Event("scroll")); });
+    const 新轮离顶 = () => page.locator(".cli-log").evaluate((e) => {
+      const L = e.getBoundingClientRect().top;
+      const t = e.querySelector(".cli-turn-new") as HTMLElement;
+      return { 轮: Math.round(t.getBoundingClientRect().top - L), 问: Math.round(t.querySelector(".cli-user")!.getBoundingClientRect().top - L) };
+    });
+    // a) 换到一段、挂上时就是刚发（新一轮带 cli-turn-new，TurnView 把它顶到框顶）：回答长出来不落底
+    await 重画(page, { 轮数: 4, 对话: "刚发", 新: true });
+    await page.waitForTimeout(80);
+    await 顶到新轮();
+    await page.locator(".cli-log .cli-turn-new .cli-a").evaluate((e) => { e.append(" 流出来的字".repeat(40)); (e as HTMLElement).style.paddingBottom = "1500px"; });
+    await page.waitForTimeout(80);
+    expect(await 新轮离顶()).toEqual({ 轮: 0, 问: 14 });
+    // b) 打开一段（还在贴底）、什么都没动就发了一问：刚发那一刻起不再贴底
+    await 重画(page, { 轮数: 10, 对话: "再发" });
+    await page.waitForTimeout(80);
+    expect(await 离底(page)).toBeLessThan(2);
+    await 重画(page, { 轮数: 11, 对话: "再发", 新: true });
+    await page.waitForTimeout(80);
+    await 顶到新轮();
+    await page.locator(".cli-log .cli-turn-new .cli-a").evaluate((e) => { e.append(" 流出来的字".repeat(40)); (e as HTMLElement).style.paddingBottom = "1500px"; });
+    await page.waitForTimeout(80);
+    expect(await 新轮离顶()).toEqual({ 轮: 0, 问: 14 });
+    // c) 换过去之后人往上翻：流式回答不拽回底部，钮亮、下面出字带蓝点（原行为）
+    await 重画(page, { 轮数: 12, 对话: "翻上去" });
+    await page.waitForTimeout(80);
+    expect(await 离底(page)).toBeLessThan(2);
+    await page.locator(".cli-log").evaluate((e) => { e.scrollTop = 0; e.dispatchEvent(new Event("scroll")); });
+    await page.waitForTimeout(50);
+    await page.locator(".cli-log .cli-a").last().evaluate((e) => { e.append(" 又出了几个字"); (e as HTMLElement).style.paddingBottom = "400px"; });
+    await page.waitForTimeout(80);
+    expect(await page.locator(".cli-log").evaluate((e) => e.scrollTop)).toBe(0);
+    expect(await 钮态(page)).toEqual({ 露: true, 蓝点: true });
+    // d) 换过去之后人在框里按了键（输入框里打字 / 回车发问、重试）：还在底上也不再跟着往下拽
+    await 重画(page, { 轮数: 12, 对话: "按了键" });
+    await page.waitForTimeout(80);
+    expect(await 离底(page)).toBeLessThan(2);
+    await page.locator(".cli-frame textarea").press("a");
+    const 前 = await page.locator(".cli-log").evaluate((e) => e.scrollTop);
+    await page.locator(".cli-log .cli-a").last().evaluate((e) => { e.append(" 流出来的字"); (e as HTMLElement).style.paddingBottom = "900px"; });
+    await page.waitForTimeout(80);
+    expect(await page.locator(".cli-log").evaluate((e) => e.scrollTop)).toBe(前);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("C13（390，触屏点击区）：框头标题改名钮、「待办 N」、「↓ 回到最新」点击区 ≥ 44（--hit-touch）；外观不变；1366 不撑", async () => {
+  const 量 = (page: Page, sel: string) => page.locator(sel).first().evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
+    // 以中心为准 44 见方（±21.5）的四角、四边中点都要点得中它
+    const 点 = [-21.5, 0, 21.5].flatMap((dx) => [-21.5, 0, 21.5].map((dy) => [cx + dx, cy + dy]));
+    const 没中 = 点.filter(([x, y]) => document.elementFromPoint(x, y)?.closest("button") !== el).map(([x, y]) => [Math.round(x - cx), Math.round(y - cy)]);
+    return { w: Math.round(r.width), h: Math.round(r.height), 没中 };
+  });
+  const { page, errors } = await 开({ 宽: 390, 高: 844, 轮数: 10, 待办: 2 });
+  try {
+    await page.locator(".cli-log").evaluate((e) => { e.scrollTop = 0; e.dispatchEvent(new Event("scroll")); });
+    await page.waitForTimeout(50);
+    const 标题 = await 量(page, ".cli-head-t");
+    expect(标题.没中, JSON.stringify(标题)).toEqual([]);
+    expect(标题.h).toBeGreaterThanOrEqual(44);
+    const 待办 = await 量(page, ".cli-head-chip");
+    expect(待办.没中, JSON.stringify(待办)).toEqual([]);
+    expect(待办.h, "「待办 N」外观仍 32 高").toBe(32);
+    const 回 = await 量(page, ".cli-latest-b");
+    expect(回.没中, JSON.stringify(回)).toEqual([]);
+    expect([回.w, 回.h], "「↓」外观仍 32 见方").toEqual([32, 32]);
+    // 撑出去的那圈不挡别的：框头仍 52 高、点「待办 N」照样开浮层
+    expect((await 盒(page, ".cli-head")).h).toBe(52);
+    await page.locator(".cli-head-chip").click();
+    expect(await page.locator(".cli-head-pop").isVisible()).toBe(true);
+    expect(await 不横滚(page)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+  // 电脑宽度不撑（只 390 / 触屏）
+  const 宽屏 = await 开({ 宽: 1366, 轮数: 10, 待办: 2 });
+  try {
+    expect(await 宽屏.page.locator(".cli-head-chip").evaluate((e) => getComputedStyle(e, "::before").content)).toBe("none");
+    expect((await 盒(宽屏.page, ".cli-head-t")).h).toBe(28);
+    expect(宽屏.errors).toEqual([]);
+  } finally { await 宽屏.page.close(); }
 });
 
 it("C13（390）：全站顶栏下一条对话栏 52 高、钮 44；框铺满、在框里滚，输入框贴视口底；不横滚、不整页滚", async () => {

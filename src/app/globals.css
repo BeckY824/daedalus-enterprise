@@ -6269,6 +6269,13 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-head-t { margin-left: 0; font-size: var(--fs-section); }
   :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-head-chip { height: var(--ctl-h); margin-inline: var(--s1); }
   :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-head-in { flex: 1 1 auto; margin-left: 0; }
+  /* 触屏点击区 ≥ 44（--hit-touch）：标题改名钮上下各撑到 44（对话栏 52 高、标题行高 20，栏不变高；它自己 overflow: hidden 截省略号，伪元素扩不出去，只能用内边距）；
+     「待办 N」（32 高）和「↓ 回到最新」（32 见方）外观不变，用透明伪元素把点击区四边撑到 44 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-head-t { padding-block: calc((var(--hit-touch) - 20px) / 2); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-head-chip { position: relative; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper :is(.cli-head-chip, .cli-latest-b)::before {
+    content: ""; position: absolute; inset: min(0px, calc((100% - var(--hit-touch)) / 2));
+  }
   /* 「待办 N」浮层：右边还有新建、⋯ 两颗 44 的钮，对着待办钮右对齐会从左边出屏（#410：left −60）。手机上对着整条对话栏，左右各留 16 */
   :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-head-todo { position: static; }
   :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-head-pop { left: var(--s4); right: var(--s4); width: auto; }

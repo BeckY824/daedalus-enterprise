@@ -199,7 +199,11 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
       ) : (
         <TurnLog turns={turns} 刚发的={刚发的} scope={scope} 动作={动作} 企业版={企业版} />
       )}
-      {一张纸 && <ToLatest key={会话?.id ?? "new"} 刚发={turns.some((t) => t.id === 刚发的)} />}
+      {/*
+        换对话按这一屏装着的对话 id 重挂（不按地址上的 会话：地址先变、库里那段要等 useHomeTurns 的效果装进来，
+        按地址换会在旧内容上挂上、「刚发」也拿旧那几轮算）。挂上后内容再长高 ToLatest 自己跟着落底（3703 实操 #410）
+      */}
+      {一张纸 && <ToLatest key={对话id ?? "new"} 刚发={turns.some((t) => t.id === 刚发的)} />}
 
       <Composer
         ref={composerRef}
