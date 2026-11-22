@@ -55,7 +55,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
   /** 3 天内要回公海的那几个项目（同 将回公海of 的 预警，回收日早的在前、最多 8 个）：回收提醒点开节点就列它们，原地记沟通 */
   回收项目?: 预警行[];
   只看自己: boolean; 看全员: boolean;
-  /** 只读角色（业务角色只读管理员 / 销售教练，lib/enterprise/permissions.ts 只读角色）：不摆行首的勾——点了服务端也拒（3703 实操：只读管理员能点） */
+  /** 只读角色（业务角色只读管理员 / 销售教练，lib/enterprise/permissions.ts 只读角色）：不摆行首的勾、回收提醒里不摆「记一条沟通」——点了服务端也拒（3703 实操：只读管理员能点） */
   只读?: boolean;
 }) {
   const router = useRouter();
@@ -333,7 +333,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
         />
         )}
       </section>
-      {回收 && <RecycleBlock 回收={回收} 项目={回收项目} />}
+      {回收 && <RecycleBlock 回收={回收} 项目={回收项目} 只读={只读} />}
     </div>
   );
 }
@@ -373,7 +373,7 @@ function 待办卡片({ x, 完成中, 看全员, 新样 = false, 只读 = false,
  * PR5b ov.recycle：点一条原地展开这一节点快到期的项目（还剩几天），每个项目「记一条沟通」原地长出一个小表单，
  * 记上了（记项目沟通Action，同项目详情）回收的钟就重新走；成败都在保存键里（SaveButton），不弹顶部提示、不整页跳。
  */
-function RecycleBlock({ 回收, 项目 }: { 回收: 回收提醒; 项目: 预警行[] }) {
+function RecycleBlock({ 回收, 项目, 只读 = false }: { 回收: 回收提醒; 项目: 预警行[]; 只读?: boolean }) {
   const 最多 = Math.max(1, ...回收.条.map((c) => c.数));
   const [开着, set开着] = useState<string | null>(null);
   return (
@@ -407,7 +407,7 @@ function RecycleBlock({ 回收, 项目 }: { 回收: 回收提醒; 项目: 预警
                 </Tooltip>
                 {开 && (
                   <ul className="ov-rc-list" aria-label={`${c.节点} 快到期的项目`}>
-                    {这节点.map((p) => <RecycleProjectRow key={p.id} p={p} />)}
+                    {这节点.map((p) => <RecycleProjectRow key={p.id} p={p} 只读={只读} />)}
                     {c.数 > 这节点.length && (
                       <li className="ov-rc-more">
                         <Link href="/projects?f=due-soon" className="link-strong">还有 {c.数 - 这节点.length} 个 · 去项目页看 ›</Link>
@@ -424,8 +424,11 @@ function RecycleBlock({ 回收, 项目 }: { 回收: 回收提醒; 项目: 预警
   );
 }
 
-/** 展开后的一行：项目名、还剩几天；「记一条沟通」原地长出小表单（内容 + 下一步 + 下一步时间，默认 3 天后，P-界面-34） */
-function RecycleProjectRow({ p }: { p: 预警行 }) {
+/**
+ * 展开后的一行：项目名、还剩几天；「记一条沟通」原地长出小表单（内容 + 下一步 + 下一步时间，默认 3 天后，P-界面-34）。
+ * 只读角色不摆「记一条沟通」（同服务端：记项目沟通 按 只读角色 拒写），项目名照旧点得进项目页看
+ */
+function RecycleProjectRow({ p, 只读 = false }: { p: 预警行; 只读?: boolean }) {
   const router = useRouter();
   const [记, set记] = useState(false);
   const [内容, set内容] = useState("");
@@ -456,7 +459,7 @@ function RecycleProjectRow({ p }: { p: 预警行 }) {
       <div className="ov-rc-prow">
         <Link href={`/projects/${p.id}`} className="ov-rc-name" title={p.名}>{p.名}</Link>
         <span className={`ov-rc-left${剩 <= 1 ? " is-late" : ""}`}>{剩 === 0 ? "今天收回" : `还剩 ${剩} 天`}</span>
-        {!记 && (
+        {!记 && !只读 && (
           <button type="button" className="ov-rc-log" onClick={() => { set推话(null); set记(true); }}>记一条沟通</button>
         )}
       </div>
