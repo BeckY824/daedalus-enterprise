@@ -26,6 +26,8 @@ import { 起草, 草稿键, useCopyDraft, type 草稿类 } from "@/lib/draft-job
 import AiCost, { useAiOutOfCredits } from "@/components/AiCost";
 import ResearchRun, { ResearchPick } from "@/components/research/ResearchRun";
 import ResearchPerson from "@/components/research/ResearchPerson";
+import { useIsNowSkin } from "@/lib/use-skin";
+import TurnMenu, { 有表格 } from "./TurnMenu";
 
 // 后发照片那张「存到刚建的客户名下」卡（11-01 速度闸门）：AI 面板每一页都在，用到时才去拿
 const PhotoSaveCard = dynamic(() => import("@/components/PhotoSaveCard"), { ssr: false });
@@ -147,6 +149,8 @@ export default function TurnView({
   const b = useBusiness();
   const 复制 = useCopy();
   const AI已用完 = useAiOutOfCredits();
+  /** 现状主题（设计语言 HC-2a，C8-A）：操作行的 × 收进 ⋯（复制为表格 / 引用到新问题 / 移除这一轮）；状态条不写「Esc 打断」 */
+  const 现状 = useIsNowSkin();
   const job = useJob<StreamJob<AgentAnswer>>(`home:${turn.id}`);
   const ref = useRef<HTMLDivElement>(null);
   const done = job?.status === "done" || job?.status === "error";
@@ -177,13 +181,23 @@ export default function TurnView({
   useEffect(() => () => {
     if (移走中Ref.current) 移走.current();
   }, []);
-  // 刚发出的这一问：把问题滚到视口顶部，答案往下面的空白里生成。
+  /*
+    重新回答 / 重试 / 再问一次：和刚发一问一样（HC-1 3703 实操补点：老对话最后一轮点「重新回答」，问句停在框底附近、
+    回答全在视线下面）。onRetry 那头把这一轮记成「刚发的」（TurnLog），这里再记一次数——
+    同一轮连着重答两次时「刚发的」没变，靠这个数让下面那个效果再顶一次
+  */
+  const [重答次, set重答次] = useState(0);
+  const 重答 = () => {
+    onRetry();
+    set重答次((n) => n + 1);
+  };
+  // 刚发出的这一问（或刚点了重答的这一轮）：把问题滚到视口顶部，答案往下面的空白里生成。
   // 不能用 block:"end"——那会把它顶到输入框后面，人看不见自己刚发的话。
+  // 只在「变成刚发的」那一刻（挂上时、或重答时）顶一次；翻历史不乱跳
   useEffect(() => {
     if (!scrollOnMount) return;
     滚到(ref.current, "start");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [scrollOnMount, 重答次]);
 
   /*
     流式跟随。整页滚动（首页）时沿用老判据「离底部够近就跟」；
@@ -307,15 +321,19 @@ export default function TurnView({
         {done && (
           <div className="cli-bar">
             <Tooltip title="重新背调（会再扣一次）">
-              <button type="button" className="cli-ic" aria-label="重新背调" onClick={onRetry}>
+              <button type="button" className="cli-ic" aria-label="重新背调" onClick={重答}>
                 <ReloadOutlined />
               </button>
             </Tooltip>
-            <Tooltip title="移除这一轮">
-              <button type="button" className="cli-ic" aria-label="移除这一轮" onClick={() => set移走中(true)}>
-                <CloseOutlined />
-              </button>
-            </Tooltip>
+            {现状 ? (
+              <TurnMenu 根={ref} 问句={turn.question} 表格={false} on移除={() => set移走中(true)} />
+            ) : (
+              <Tooltip title="移除这一轮">
+                <button type="button" className="cli-ic" aria-label="移除这一轮" onClick={() => set移走中(true)}>
+                  <CloseOutlined />
+                </button>
+              </Tooltip>
+            )}
             <span className="cli-bar-t">{whenLabel(turn.at)}</span>
           </div>
         )}
@@ -345,13 +363,13 @@ export default function TurnView({
           steps={steps}
           态={态}
           起={job.startedAt}
-          ms={ms}
+          ms={ms ?? (job.status === "error" && job.endedAt ? job.endedAt - job.startedAt : undefined)}
           客户={b.customer}
           原因={job.status === "error" ? job.error : undefined}
           写着={writing}
           等确认={待确认}
-          附注={!done ? "Esc 打断" : undefined}
-          onRetry={onRetry}
+          附注={!done && !现状 ? "Esc 打断" : undefined}
+          onRetry={重答}
         />
       )}
 
@@ -382,7 +400,7 @@ export default function TurnView({
         <div className="cli-stopped">
           <span className="cli-stop-mark" />
           这一条的回答不在了
-          <button type="button" className="cli-link" onClick={onRetry}>
+          <button type="button" className="cli-link" onClick={重答}>
             再问一次
           </button>
         </div>
@@ -446,16 +464,20 @@ export default function TurnView({
             </Tooltip>
           )}
           <Tooltip title="重新回答">
-            <button type="button" className="cli-ic" aria-label="重新回答" disabled={AI已用完} onClick={onRetry}>
+            <button type="button" className="cli-ic" aria-label="重新回答" disabled={AI已用完} onClick={重答}>
               <ReloadOutlined />
               <AiCost />
             </button>
           </Tooltip>
-          <Tooltip title="移除这一轮">
-            <button type="button" className="cli-ic" aria-label="移除这一轮" onClick={() => set移走中(true)}>
-              <CloseOutlined />
-            </button>
-          </Tooltip>
+          {现状 ? (
+            <TurnMenu 根={ref} 问句={turn.question} 表格={有表格(answer?.text ?? text)} on移除={() => set移走中(true)} />
+          ) : (
+            <Tooltip title="移除这一轮">
+              <button type="button" className="cli-ic" aria-label="移除这一轮" onClick={() => set移走中(true)}>
+                <CloseOutlined />
+              </button>
+            </Tooltip>
+          )}
           <span className="cli-bar-t">{whenLabel(turn.at)}</span>
         </div>
       )}

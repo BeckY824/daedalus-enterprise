@@ -179,7 +179,7 @@ export default function AiPanel({
           steps={steps}
           态={loading ? "running" : 打断了 ? "interrupted" : 调用错 ? "error" : "done"}
           起={shown?.startedAt}
-          ms={shown?.value?.ms}
+          ms={shown?.value?.ms ?? (shown?.status === "error" && shown.endedAt ? shown.endedAt - shown.startedAt : undefined)}
           客户={b.customer}
           原因={调用错 ?? undefined}
           onRetry={AI已用完 ? undefined : 重试}
