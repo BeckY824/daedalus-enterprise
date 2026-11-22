@@ -3896,6 +3896,7 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .asr-switch { margin-left: 12px; }
 .asr-status { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 8px 0; font-size: var(--fs-min); }
 .asr-status dd { margin: 0; overflow-wrap: anywhere; }
+.asr-status dd.asr-full { color: var(--danger-text); font-weight: 600; }
 .asr-big { display: grid; gap: 4px; margin: 8px 0; font-size: var(--fs-min); }
 .asr-test-hint { margin-left: 8px; }
 .asr-last { margin-top: 8px; font-size: var(--fs-min); overflow-wrap: anywhere; }

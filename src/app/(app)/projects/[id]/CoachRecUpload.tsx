@@ -259,6 +259,9 @@ export function CoachRecUploadModal({ projectId, 项目名, 续, 可提交 = fal
 const 状态字 = (x: 录音给界面): string =>
   x.status === "转写中" ? "正在转写，好了会通知你" : x.status === "整理中" ? "转写好了，正在整理要点" : x.status === "整理失败" ? "没整理成" : x.status === "待确认" ? "整理好了，待确认" : "待提交";
 
+/** 草稿哪天自动删（PR6）：「11 月 29 日」 */
+const 到期日 = (iso: string) => { const d = new Date(iso); return `${d.getMonth() + 1} 月 ${d.getDate()} 日`; };
+
 /**
  * 待提交卡：回放、「提交整理」、删掉。只有录的人看得到（数据只给录的人）。
  * PR4：可提交（录音可用：开关 + 密钥 + ffmpeg）时「提交整理」能点 → 转写中；整理失败的写原因、给「重试整理」。不可提交时按钮灰着
@@ -296,6 +299,7 @@ export function PendingCard({ 录, 删, 可提交 = false, 开确认, 补段 }: 
           ))
         : <audio className="crec-audio" controls preload="none" src={`/api/coach-rec/${现.id}/audio`} aria-label="回放录音" />)}
       {现.status === "整理失败" && 现.错 && <div role="alert" className="crec-warn" data-testid="crec-fail">{现.错}</div>}
+      {现.到期于 && <div className="crec-hint" data-testid="crec-expire">没发出的草稿 {到期日(现.到期于)} 自动删除</div>}
       <div className="crec-acts">
         {现.status === "待提交" && <Button size="small" type="primary" disabled={!可提交} loading={忙} title={灰话} onClick={() => void 交(false)} data-testid="crec-submit">提交整理</Button>}
         {补段 && 可提交 && 现.status === "待提交" && 现.能补 && <Button size="small" disabled={忙} onClick={() => 补段(现)} data-testid="crec-add-seg">再录一段</Button>}

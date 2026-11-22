@@ -4,6 +4,8 @@
  * 目录：数据目录下 coach-rec/<年月>/<录音编号>/（和 attachments/ 同级，跟着备份走：ent-backup.sh 本机增量拷、异地按文件加密传）
  *   seg-01/0000.part、0001.part……  浏览器一片一片传上来的（每片 ≤5MB，同一片重复传按片号覆盖）
  *   seg-01.<格式>                   传完拼好的一段（拼好就删片；传文件只有这一段）
+ *   asr.<格式>                      PR4 规整好交转写的一份（audioPath 指着它）；PR6 起转写成了只留它，原始段、片删掉
+ * PR6 清理：只留规整件、删剩下的片目录、目录字节 / 磁盘剩字节（容量闸）、全部录音目录（兜底删没主的），调用在 coach-rec-housekeep.ts
  * 路径只由录音编号、开始年月、段号、片号拼，客户端给的文件名不进路径。
  * 每片先写到 .tmp、fsync、再改名，传一半断了不会留下半片冒充整片；改名后 fsync 目录。
  * 临时文件名带 randomUUID、用 "wx" 独占新建（PR2 审查必修 1）：同一片 / 同一段两个请求同时写，各写各的临时文件，不会写进同一个、拼坏；
@@ -176,4 +178,71 @@ export function 文件大小(绝: string): number | null {
   } catch {
     return null;
   }
+}
+
+/* ── PR6 清理 ── */
+
+/** 原始段、片目录、规整 / 切段的临时件：转写成了以后不再要（规整件 asr.* 留一份） */
+const 原始件 = (名: string) => /^seg-\d{2}(\.[a-z0-9]{2,4})?$/.test(名) || /^asr-part-\d{3}\./.test(名) || 名 === "asr-concat.txt" || 名.endsWith(".tmp");
+
+/**
+ * 规整件和原始段只留一份（PR6）：转写成了，留规整件（audioPath 指着的 asr.*，回放、重新整理、到期删都只认它），删原始段 seg-NN.*、片目录 seg-NN/、切段临时件。
+ * 规整件不在（读不到、不在这个目录、不是 asr.*）就什么都不删。回删了几个
+ */
+export async function 只留规整件(r: { id: string; createdAt: Date; audioPath: string | null }, 根 = 录音根()): Promise<number> {
+  const 留 = 认录音文件(r.audioPath, 根);
+  const dir = 录音目录(r, 根);
+  if (!留 || path.dirname(留) !== dir || !/^asr\.[a-z0-9]{2,4}$/.test(path.basename(留))) return 0;
+  if (!(await fsp.stat(留).then((x) => x.isFile() && x.size > 0, () => false))) return 0;
+  let 删 = 0;
+  for (const 名 of await fsp.readdir(dir).catch(() => [] as string[])) {
+    if (!原始件(名)) continue;
+    await fsp.rm(path.join(dir, 名), { recursive: true, force: true });
+    删 += 1;
+  }
+  return 删;
+}
+
+/** 已经拼好的录音（不是上传中）还剩着的片目录 seg-NN/（拼完删片中途出错留下的）：兜底删。回删了几个 */
+export async function 删剩下的片目录(r: { id: string; createdAt: Date }, 根 = 录音根()): Promise<number> {
+  const dir = 录音目录(r, 根);
+  let 删 = 0;
+  for (const d of await fsp.readdir(dir, { withFileTypes: true }).catch(() => [])) {
+    if (!d.isDirectory() || !/^seg-\d{2}$/.test(d.name)) continue;
+    await fsp.rm(path.join(dir, d.name), { recursive: true, force: true });
+    删 += 1;
+  }
+  return 删;
+}
+
+/** 目录一共多少字节（往下走，链接不跟）；没有目录 = 0 */
+export async function 目录字节(dir: string): Promise<number> {
+  let 合 = 0;
+  for (const d of await fsp.readdir(dir, { withFileTypes: true }).catch(() => [])) {
+    const 全 = path.join(dir, d.name);
+    if (d.isDirectory()) 合 += await 目录字节(全);
+    else if (d.isFile()) 合 += await fsp.stat(全).then((x) => x.size, () => 0);
+  }
+  return 合;
+}
+
+/** 录音根所在磁盘还剩多少字节（根还没建就看上一级）；读不出 = null（不拦） */
+export async function 磁盘剩字节(根 = 录音根()): Promise<number | null> {
+  for (let d = 根; ; d = path.dirname(d)) {
+    const st = await fsp.statfs(d).catch(() => null);
+    if (st) return Number(st.bavail) * Number(st.bsize);
+    if (path.dirname(d) === d) return null;
+  }
+}
+
+/** 录音根下面按月的目录里，一条条录音的目录（编号 + 绝对路径）：兜底删没主的目录用。_asrtest 这类不是年月的不看 */
+export async function 全部录音目录(根 = 录音根()): Promise<{ id: string; dir: string }[]> {
+  const 出: { id: string; dir: string }[] = [];
+  for (const 月 of await fsp.readdir(根, { withFileTypes: true }).catch(() => [])) {
+    if (!月.isDirectory() || !/^\d{6}$/.test(月.name)) continue;
+    for (const d of await fsp.readdir(path.join(根, 月.name), { withFileTypes: true }).catch(() => [])) {
+      if (d.isDirectory() && 是录音编号(d.name)) 出.push({ id: d.name, dir: path.join(根, 月.name, d.name) });
+    }
+  }
+  return 出;
 }

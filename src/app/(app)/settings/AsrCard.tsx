@@ -5,6 +5,9 @@ import { Button, Radio, Switch } from "antd";
 import { useSettingsNote } from "./InlineNote";
 import { 读转写设置, 设录音点评开关, 设大文件交法, 测转写连接 } from "./asr-actions";
 import type { 转写设置概况 } from "@/lib/enterprise/coach-rec-asr-settings";
+import { 录音目录上限字节, 草稿保留天, 音频保留天 } from "@/lib/enterprise/coach-rec";
+
+const 读GB = (字节: number) => (字节 >= 1024 ** 3 ? `${(字节 / 1024 ** 3).toFixed(1)}GB` : `${Math.round(字节 / 1024 ** 2)}MB`);
 
 const 密钥话: Record<转写设置概况["密钥"], string> = {
   已配置: "已配置（服务器环境）",
@@ -78,6 +81,11 @@ export default function AsrCard() {
         <dd>{概况.ffmpeg.话}</dd>
         <dt className="muted">站点地址</dt>
         <dd>{概况.配了地址 ? "已配置（大文件可以给腾讯云签名下载地址）" : "没配 ENT_PUBLIC_URL：大文件只能切段提交"}</dd>
+        <dt className="muted">录音存储</dt>
+        <dd data-testid="asr-storage" className={概况.存储.满了 ? "asr-full" : undefined}>
+          录音占 {读GB(概况.存储.用了)}（上限 {读GB(录音目录上限字节)}）{概况.存储.剩 !== null ? `，磁盘还剩 ${读GB(概况.存储.剩)}` : ""}
+          {概况.存储.满了 ? `：空间不够了，现在不能录新的、传文件。清掉服务器上别的大文件，或者等过期的录音自动删（草稿 ${草稿保留天} 天、音频 ${音频保留天} 天）` : ""}
+        </dd>
       </dl>
       <div className="asr-big">
         <span>大文件（规整后超过约 3.6MB）怎么交给腾讯云</span>

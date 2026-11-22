@@ -51,7 +51,7 @@ import { 客户状态自动, 跟着项目重算, 项目变了重算 } from "@/li
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { notify } from "@/lib/enterprise/notify";
 import { 项目业务线, 认业务线, 业务线不认得, 业务线必填, type 成员线查 } from "@/lib/enterprise/assign-line";
-import { 进公海后负责人, 历史负责人, 进公海关待办, 一批id数, 进公海清组员, 进公海关主题 } from "./pool-owner";
+import { 进公海后负责人, 历史负责人, 进公海关待办, 一批id数, 进公海清组员, 进公海关主题, 放弃没发出的录音 } from "./pool-owner";
 import { 卡点随项目换人, 公海领走接手理由, 转让接手理由, 移出组员接手理由 } from "./blocker";
 import { 换负责人待办, 待办痕, 手动转让痕 } from "./carry-tasks";
 import { 换负责人 } from "@/lib/project/owner-write";
@@ -512,6 +512,8 @@ export async function 删项目(me: 谁, projectId: string): Promise<结果 & { 
       if (验?.pending) return { ok: false as const, error: `这条线索在验证中（等${验.pending}），不能删；验证走完再删` };
       if (!(await 看全部(() => tx.project.count({ where: { customerId: p.customerId, id: { not: p.id } } })))) return { ok: false as const, error: "这是客户名下最后一个项目，不能单删；要删就删客户" };
       await 软删一条(tx, "Project", p.id);
+      // 录音点评（PR6）：进回收站的项目上没发出的录音一起放弃（文件、通知清理一轮接着做）
+      await 放弃没发出的录音(tx, [p.id]);
       // 进了回收站的项目不算进客户状态
       await 跟着项目重算(tx, 状态开, [p.customerId]);
       // P-删-10：删的时候谁负责（项目公海里的没有），删除入口据此通知负责人

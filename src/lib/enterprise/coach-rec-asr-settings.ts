@@ -18,7 +18,7 @@ import { 企业版 } from "./switch";
 import { 权限组织 } from "./org";
 import { 能改后台设置, 有业务角色 } from "./permissions";
 import { 正在切换视图 } from "./view-as";
-import { 录音点评开关键, 录音点评开着, 样例编号头, 样例目录 } from "./coach-rec-db";
+import { 录音点评开关键, 录音点评开着, 样例编号头, 样例目录, 读存储情况, type 存储情况 } from "./coach-rec-db";
 import { 大文件交法键, 大文件交法们, 读大文件交法, type 大文件交法 } from "./coach-rec-jobs";
 import { 签取文件地址 } from "./coach-rec-sign";
 import { 站点源 } from "./feishu-jsapi";
@@ -37,6 +37,8 @@ export type 转写设置概况 = {
   配了地址: boolean;
   交法: 大文件交法;
   上次测试: 测试结果 | null;
+  /** 录音存储（PR6 容量闸）：录音目录用了多少、磁盘剩多少；满了 = 拒新录音和传文件 */
+  存储: 存储情况;
 };
 
 type 人 = Actor & { role: string };
@@ -54,11 +56,11 @@ async function 能看(me: 人): Promise<boolean> {
 }
 
 async function 概况of(me: 人): Promise<转写设置概况> {
-  const [开, 改, 密钥, 检, 交法, 上次] = await Promise.all([录音点评开着(), 能改(me), 通道密钥状态(), ffmpeg自检(), 读大文件交法(), getSetting<测试结果>(上次测试键)]);
+  const [开, 改, 密钥, 检, 交法, 上次, 存储] = await Promise.all([录音点评开着(), 能改(me), 通道密钥状态(), ffmpeg自检(), 读大文件交法(), getSetting<测试结果>(上次测试键), 读存储情况(true)]);
   return {
     开, 能改: 改, 密钥,
     ffmpeg: 检.ok ? { ok: true, 话: `正常（${检.版本}）` } : { ok: false, 话: 检.话 },
-    配了地址: !!站点源(process.env.ENT_PUBLIC_URL), 交法, 上次测试: 上次 && typeof 上次 === "object" && "at" in 上次 ? 上次 : null,
+    配了地址: !!站点源(process.env.ENT_PUBLIC_URL), 交法, 上次测试: 上次 && typeof 上次 === "object" && "at" in 上次 ? 上次 : null, 存储,
   };
 }
 

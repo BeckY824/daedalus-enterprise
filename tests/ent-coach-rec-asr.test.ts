@@ -257,8 +257,19 @@ describe.skipIf(!有ffmpeg)("全链路（假通道）", () => {
     // 本月用量（操作日志按人限定是原有口径，这里只核按秒合计）
     expect((await 看全部(() => aiUsageThisMonth())).find((u) => u.feature === "asr")).toMatchObject({ label: "录音转写", count: 1, 秒: 3 });
     expect((await 读项目主题({ id: 人.教练, role: "ADMIN" }, 项目))?.录音?.草稿们.map((d) => d.status)).toEqual(["整理中"]);
-    // 原始段还在（规整失败可以从头再来）
-    expect(fs.readdirSync(path.dirname(path.join(录音根(), x.audioPath!))).sort()).toEqual(["asr.m4a", expect.stringMatching(/^seg-01\.(m4a|mp4)$/)]);
+    // 只留一份（PR6）：转写成了，原始段删掉、只留规整件
+    const 目录 = path.dirname(path.join(录音根(), x.audioPath!));
+    expect(fs.readdirSync(目录).sort()).toEqual(["asr.m4a"]);
+    // 原始段没了以后再从头转写（整理失败、转写不在）：直接用规整件交，不判「文件不在了」
+    await raw.entCoachRecording.update({ where: { id }, data: { status: "整理失败", transcript: null, segments: null } });
+    当("教练");
+    expect((await 重交(id)).status).toBe(200);
+    await 转写一轮({ 现在: t0 + 60_000 });
+    x = await 行(id);
+    expect(x.status).toBe("转写中");
+    expect(x.asrSubmittedAt).not.toBeNull();
+    expect(x.audioPath).toMatch(/asr\.m4a$/);
+    expect(fs.readdirSync(目录).sort()).toEqual(["asr.m4a"]);
   });
 
   it("大文件：签名地址（取文件路由给规整后的文件）；设成切段 → 每段 ≤ 上限、起点按时间接；没配地址的签名地址也退到切段", async () => {
