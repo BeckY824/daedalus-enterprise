@@ -3,7 +3,7 @@
  * 界面在 app/(app)/settings/AsrCard.tsx，服务器动作在 app/(app)/settings/asr-actions.ts（只是认人 + 调这里）。
  *
  * - 谁能改：和改后台设置一个口径（能改后台设置：系统管理员，勾了「不管设置」的不行；管理员 admin 只读）；切换视图时只读
- * - 谁能看：只有系统管理员和管理员 admin（PR4 审查：销售教练等别的只读角色不看，回 403）
+ * - 谁能看：只有系统管理员（和前端一致：admin 进不了 AI 接入页签；销售教练等别的只读角色也不看，回 403）
  * - 密钥：这里只回「已配置（服务器环境）/ 未配置 / 解不开 / 假通道」，**不提供输入框**、不回任何密钥内容（方案 §4.5）
  * - 开开关要密钥在、ffmpeg 自检过；关随时能关。改开关、改交法、测连接都进审计（摘要里没有密钥、签名、地址）
  * - 测试连接：ffmpeg 现生成 3 秒正弦音（不是业务数据）放 coach-rec/_asrtest/<样例编号>.m4a，两条路同时交、各等最多 45 秒；
@@ -16,7 +16,7 @@ import { recordAudit, type Actor } from "@/lib/audit";
 import { getSetting, setSetting } from "@/lib/settings";
 import { 企业版 } from "./switch";
 import { 权限组织 } from "./org";
-import { 能改后台设置, 有业务角色 } from "./permissions";
+import { 能改后台设置 } from "./permissions";
 import { 正在切换视图 } from "./view-as";
 import { 录音点评开关键, 录音点评开着, 样例编号头, 样例目录, 读存储情况, type 存储情况 } from "./coach-rec-db";
 import { 大文件交法键, 大文件交法们, 读大文件交法, type 大文件交法 } from "./coach-rec-jobs";
@@ -49,10 +49,9 @@ async function 能改(me: 人): Promise<boolean> {
 }
 const 密钥齐 = (x: 密钥状态) => x === "已配置" || x === "假通道";
 
-/** 能看这一块：系统管理员（能改后台设置）、管理员 admin。销售教练等别的只读角色不看（PR4 审查） */
+/** 能看这一块：只有系统管理员（能改后台设置），和前端 AI 接入页签一致、最小权限。管理员 admin、销售教练等都不看 */
 async function 能看(me: 人): Promise<boolean> {
-  const org = await 权限组织();
-  return 能改后台设置(me, org) || 有业务角色(me, org, "admin");
+  return 能改后台设置(me, await 权限组织());
 }
 
 async function 概况of(me: 人): Promise<转写设置概况> {
@@ -64,8 +63,8 @@ async function 概况of(me: 人): Promise<转写设置概况> {
   };
 }
 
-export const 不给看话 = "只有系统管理员和管理员能看语音转文字设置";
-/** 看状态：系统管理员、管理员 admin 拿概况；别的人回 403（界面不画这一块）；不是企业版回 null */
+export const 不给看话 = "只有系统管理员能看语音转文字设置";
+/** 看状态：系统管理员拿概况；别的人回 403（界面不画这一块）；不是企业版回 null */
 export async function 读转写设置(me: 人): Promise<转写设置概况 | { ok: false; status: 403; error: string } | null> {
   if (!企业版()) return null;
   if (!(await 能看(me))) return { ok: false, status: 403, error: 不给看话 };

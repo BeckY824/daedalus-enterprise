@@ -478,13 +478,13 @@ describe("轮询、重启（不要文件）", () => {
 });
 
 describe("设置「语音转文字」", () => {
-  it("系统管理员能开关、改交法（进审计）；管理员 admin 只读；没配密钥开不了", async () => {
+  it("系统管理员能开关、改交法（进审计）；管理员 admin 读不了（403）；没配密钥开不了", async () => {
     const 概 = await 读转写设置(我("老板"));
     expect(概).toMatchObject({ 开: false, 能改: true, 密钥: "假通道", 交法: "签名地址", 配了地址: false, 上次测试: null });
     // 本月没转过：用量里不列「录音转写」（开关关着时设置页和现在一样）
     expect((await 看全部(() => aiUsageThisMonth())).some((u) => u.feature === "asr")).toBe(false);
-    const 管 = await 读转写设置(我("管理员"));
-    expect(管 && "密钥" in 管 && 管.能改).toBe(false);
+    // 管理员 admin：前端进不了 AI 接入页签，服务端也只放系统管理员，回 403
+    expect(await 读转写设置(我("管理员"))).toMatchObject({ ok: false, status: 403 });
     // 销售教练（也是只读角色）、销售：拿不到，回 403（PR4 审查）
     expect(await 读转写设置(我("教练"))).toMatchObject({ ok: false, status: 403 });
     expect(await 读转写设置(我("甲"))).toMatchObject({ ok: false, status: 403 });
