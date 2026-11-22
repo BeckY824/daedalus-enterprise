@@ -173,8 +173,9 @@ it("G1 / D34 / D06：390 池子改下拉（不横滑），同一排回收站开�
   } finally { await page.close(); }
 });
 
-for (const 池 of ["", "订单池", "线索池"]) it(`G1 / D34：390 池子下拉选了「${池 || "全部"}」，后面的数显示全（挤的时候只截池名）`, async () => {
-  const { page, errors } = await 开(390, { attr: 池 });
+// 375 × 线索池五位数（54,341）：375 下拉比 390 窄 15，原来数字右沿超出下拉内容框约 10px，显示成「线 53,83」（#414 3704 补点）
+for (const [w, 池] of [[390, ""], [390, "订单池"], [390, "线索池"], [375, ""], [375, "线索池"]] as const) it(`G1 / D34：${w} 池子下拉选了「${池 || "全部"}」，后面的数显示全（挤的时候只截池名）`, async () => {
+  const { page, errors } = await 开(w, { attr: 池 });
   try {
     const 数 = page.locator(".pool-pick-attr .ant-select-content .pool-n");
     const 量 = await 数.evaluate((el) => {

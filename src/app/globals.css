@@ -6254,6 +6254,10 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]) .pool-sub-row > :not(:first-child, .pool-sub-act) { flex: 0 1 auto; min-width: 0; font-size: var(--fs-note); }
   :root:is(:not([data-skin]), [data-skin="now"]) .pool-sub-row > .pool-sub-act { flex: 1 0 auto; flex-wrap: wrap; }
 }
+/* 375（≤400）：下拉比 390 再窄 15，线索池五位数（「线索池 54,341」）的数右沿超出下拉内容框约 10px（#414 3704 补点「线 53,83」）。
+   回收站开关、下拉左右内边距各收到 8，让出的宽给下拉，数照全写、池名照样只截省略号 */
+@media (max-width: 400px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-pools > .ant-btn.pool-bin { padding-inline: var(--s2); }
   :root:is(:not([data-skin]), [data-skin="now"]) .pool-pools > .pool-pick-attr { padding-inline: var(--s2); }
 }
 
