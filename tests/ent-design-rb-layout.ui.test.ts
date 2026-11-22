@@ -68,7 +68,7 @@ beforeAll(async () => {
     };
     const 天前=(n)=>new Date(Date.now()-n*86400000).toISOString();
     const 待办行=(n)=>Array.from({length:n},(_,i)=>({
-      key:'task:'+i, kind:'task', id:String(i), 时间:i===0?天前(3):天前(40+i), 明确钟点:true,
+      key:'task:'+i, kind:'task', id:String(i), 时间:i===0?天前(3):天前(40+i), 明确钟点:i!==1,
       内容:'第'+i+'条：'+长+'的方案回访和报价确认', customerId:'c'+i, customerName:长+i, projectName:'华东二期产线改造项目'+长,
       ownerId:'u1', ownerName:'很长很长的负责人名字', 组:'逾期', 去:'/projects/p'+i,
     }));
@@ -80,7 +80,9 @@ beforeAll(async () => {
     const 主题行=(id,状态)=>({id,时间:'2026-11-17T02:00:00.000Z',projectId:'p'+id,项目:'项目'+长,节点:'线索验证',状态,标题:'主题'+长,发起人:'教练',身份:'销售教练',回复数:2});
     window.__画=(o)=>{
       let 里, 页签=o.页, view='现在';
-      if(o.页==='todo') 里=<BoardTodos 数={{计数:{overdue:0,today:2,week:1,all:45},总数:6,页:1,行:待办行(6)}} 布局="list" 卡="all" 只看自己={false} 看全员={true}/>;
+      if(o.页==='todo') 里=o.布局==='board'
+        ? <BoardTodos 数={{计数:{overdue:0,today:2,week:1,all:45},总数:6,页:1,行:[]}} 看板={{计数:{overdue:0,today:2,week:1,all:45},列:{overdue:{总数:2,行:待办行(2)},today:{总数:0,行:[]},later:{总数:0,行:[]}}}} 布局="board" 卡="all" 只看自己={false} 看全员={true}/>
+        : <BoardTodos 数={{计数:{overdue:0,today:2,week:1,all:45},总数:6,页:1,行:待办行(6)}} 布局="list" 卡="all" 只看自己={false} 看全员={true}/>;
       else if(o.页==='talk') 里=<BoardTalks 数={{总数:1234,页:1,行:沟通(4)}} 段="all" 方式="" 只看自己={false} 有主题 缺={{总数:4567,行:缺行(5)}}/>;
       else if(o.页==='topic'){ 页签='talk'; 里=<BoardTopics 数={{总数:3,页:1,行:[主题行('1','待回复'),主题行('2','已回复'),主题行('3','已关闭')]}} 范围="all" 状态=""/>; }
       else if(o.页==='month'){ 页签='data'; view='本月'; 里=<ProjectPeriodView 数={一段} 本位币="CNY" 口径="2026 年 10 月" 单人={false}/>; }
@@ -95,7 +97,7 @@ beforeAll(async () => {
 afterAll(async () => { await browser?.close(); });
 
 type 页 = "todo" | "talk" | "topic" | "data" | "month";
-async function 打开(页: 页, width = 1280, skin?: string): Promise<{ page: Page; errors: string[] }> {
+async function 打开(页: 页, width = 1280, skin?: string, 布局?: "board"): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: width < 768 }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://ent.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
@@ -103,7 +105,7 @@ async function 打开(页: 页, width = 1280, skin?: string): Promise<{ page: Pa
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   if (skin) await page.evaluate((k) => { document.documentElement.dataset.skin = k; }, skin);
   await page.addScriptTag({ content: bundle });
-  await page.evaluate((x) => (window as unknown as { __画: (o: unknown) => void }).__画(x), { 页 });
+  await page.evaluate((x) => (window as unknown as { __画: (o: unknown) => void }).__画(x), { 页, 布局 });
   await page.locator(".data-shell-body").first().waitFor();
   await page.waitForTimeout(400);
   return { page, errors };
@@ -251,11 +253,12 @@ it.each([1280, 390])("主题 %ipx：筛选条最左「沟通｜主题」主题�
   expect(errors).toEqual([]); await page.close();
 });
 
-it.each([1024, 1280, 1366, 390])("任务 %ipx：卡头「全部待办（45）」、日期 smartTime + 悬停全时间、逾期 0 灰；不横滚", async (w) => {
+it.each([1024, 1280, 1366, 390])("任务 %ipx：卡头「全部待办（45）」、到期带钟点的 smartTime + 悬停全时间、逾期 0 灰；不横滚", async (w) => {
   const { page, errors } = await 打开("todo", w);
   expect(字(await page.locator('section[aria-label="待办列表"] > .btodo-head .section-title').innerText())).toBe("全部待办（45）");
   const 时间 = page.locator(".btodo-time").first();
-  expect(await 时间.innerText()).toBe("3 天前");
+  // 到期带钟点（同首页待办 dashboard/todo-time 带钟点smart，11-22 总控定）
+  expect(await 时间.innerText()).toMatch(/^3 天前 \d{2}:\d{2}$/);
   expect(await 时间.getAttribute("title")).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}|\d+ 月 \d+ 日/);
   const 逾期 = page.locator(".btodo-card").first();
   expect(await 逾期.getAttribute("class")).toContain("is-zero");
@@ -263,6 +266,34 @@ it.each([1024, 1280, 1366, 390])("任务 %ipx：卡头「全部待办（45）」
   expect(灰).not.toBe("");
   expect(色).not.toBe("rgb(0, 0, 0)");
   expect(await 不横滚(page)).toBe(true);
+  expect(errors).toEqual([]); await page.close();
+});
+
+it.each([1280, 390])("任务 %ipx：只定了日子没定钟点的待办（明确钟点 = false）不补钟点；表格到期列整格不截", async (w) => {
+  const { page, errors } = await 打开("todo", w);
+  const 时 = await page.locator(".btodo-time").allInnerTexts();
+  expect(时[0]).toMatch(/^3 天前 \d{2}:\d{2}$/);
+  expect(时[1]).not.toMatch(/\d{2}:\d{2}/);
+  expect(时[2]).toMatch(/ \d{2}:\d{2}$/);
+  // 到期格不省略、不折行：文字宽不超过格子
+  const 溢 = await page.locator(".btodo-time").evaluateAll((els) => els.filter((e) => (e as HTMLElement).scrollWidth > (e as HTMLElement).clientWidth + 1 || e.getBoundingClientRect().height > 24).length);
+  expect(溢).toBe(0);
+  expect(await 不横滚(page)).toBe(true);
+  expect(errors).toEqual([]); await page.close();
+});
+
+it("任务看板 1280：卡上的到期也带钟点（和表格同一写法）", async () => {
+  const { page, errors } = await 打开("todo", 1280, undefined, "board");
+  const 时 = await page.locator(".btodo-k .btodo-time").allInnerTexts();
+  expect(时.length).toBe(2);
+  expect(时[0]).toMatch(/^3 天前 \d{2}:\d{2}$/);
+  expect(时[1]).not.toMatch(/\d{2}:\d{2}/);
+  expect(errors).toEqual([]); await page.close();
+});
+
+it("账簿主题 任务 1280：到期照旧写完整日期时间", async () => {
+  const { page, errors } = await 打开("todo", 1280, "ledger");
+  expect(await page.locator(".btodo-time").first().innerText()).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$|\d+ 月 \d+ 日 \d{2}:\d{2}/);
   expect(errors).toEqual([]); await page.close();
 });
 

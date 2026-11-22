@@ -14,6 +14,13 @@ import FollowMethodSelect, { useHabitDefault } from "@/components/FollowMethodSe
 import { 跟进类型们 } from "@/lib/constants";
 import type { 预警行 } from "@/lib/project/review-extras";
 import { dayjs, fmtDateTime, smartTime } from "@/lib/utils";
+import { 带钟点smart } from "../dashboard/todo-time";
+
+/**
+ * 现状主题的到期写法（设计语言 R-B，11-22 总控定）：同首页待办，带钟点的 smartTime（「3 天前 15:00」「11 月 25 日 09:30」，今天 / 明天本来带钟点）。
+ * 只定了日子没定钟点的（明确钟点 = false）不补钟点，免得写出没人定过的「00:00」
+ */
+const 到期字 = (t: string, 明确钟点: boolean | null) => (明确钟点 === false ? smartTime(t) : 带钟点smart(t));
 import { useIsNowSkin } from "@/lib/use-skin";
 import EmptyState, { 表格空态 } from "@/components/EmptyState";
 import CountUp from "@/components/CountUp";
@@ -56,7 +63,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
 }) {
   const router = useRouter();
   const sp = useSearchParams();
-  // 设计语言 R-B（R1）：现状主题卡头写计数、日期 smartTime、空态「还没有待办」；换皮主题照旧
+  // 设计语言 R-B（R1）：现状主题卡头写计数、到期用带钟点的 smartTime（同首页待办，dashboard/todo-time）、空态「还没有待办」；换皮主题照旧
   const 新样 = useIsNowSkin();
   const [刚完成, set刚完成] = useState<string[]>([]);
   /** 没完成成的原因：就地写在列表标题旁（g.save），不弹顶部提示、不提示成功 */
@@ -178,7 +185,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
       title: "到期",
       key: "时间",
       width: 132,
-      render: (_: unknown, x: 复盘待办行) => <span className="nowrap btodo-time" title={x.时间 ? fmtDateTime(x.时间) : undefined} suppressHydrationWarning>{x.时间 ? (新样 ? smartTime(x.时间) : fmtDateTime(x.时间)) : "没定日期"}</span>,
+      render: (_: unknown, x: 复盘待办行) => <span className="nowrap btodo-time" title={x.时间 ? fmtDateTime(x.时间) : undefined} suppressHydrationWarning>{x.时间 ? (新样 ? 到期字(x.时间, x.明确钟点) : fmtDateTime(x.时间)) : "没定日期"}</span>,
     },
     {
       title: "内容",
@@ -353,7 +360,7 @@ function 待办卡片({ x, 完成中, 看全员, 新样 = false, 完成 }: { x: 
           <span className="btodo-k-t btodo-t">{x.内容}</span>
         </Tooltip>
         <div className="btodo-k-meta">
-          <span className="btodo-time nowrap" title={x.时间 ? fmtDateTime(x.时间) : undefined} suppressHydrationWarning>{x.时间 ? (新样 ? smartTime(x.时间) : fmtDateTime(x.时间)) : "没定日期"}</span>
+          <span className="btodo-time nowrap" title={x.时间 ? fmtDateTime(x.时间) : undefined} suppressHydrationWarning>{x.时间 ? (新样 ? 到期字(x.时间, x.明确钟点) : fmtDateTime(x.时间)) : "没定日期"}</span>
           {逾 > 0 && <span className="btodo-k-over nowrap" suppressHydrationWarning>逾 {逾} 天</span>}
           {看全员 && <span className="btodo-k-owner">{x.ownerName}</span>}
           {x.去 && <Link href={x.去} className="btodo-k-go nowrap">去跟进 ›</Link>}
