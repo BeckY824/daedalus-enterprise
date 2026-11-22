@@ -12,6 +12,7 @@ import FlipRows from "@/components/FlipRows";
 import { palette, categorical } from "@/lib/palette";
 import { 金额, 金额缩写 } from "@/lib/currency";
 import { useIsNowSkin } from "@/lib/use-skin";
+import { 滚法 } from "@/lib/reduced-motion";
 import type { 项目现在, 项目一段, 人行现在, 人行一段 } from "./project-stats";
 import ProjectFunnel from "./ProjectFunnel";
 import LeadWaterfall from "./LeadWaterfall";
@@ -66,7 +67,22 @@ function useOwnerFold(总: number, 新样: boolean) {
   return {
     行类: (_: unknown, i: number) => (收 && i >= 默认人数 ? "stat-row-more" : ""),
     钮: 新样 && 总 > 默认人数 ? (
-      <Button type="link" size="small" className="stat-more" aria-expanded={全开} onClick={() => set全开((x) => !x)}>
+      <Button
+        type="link"
+        size="small"
+        className="stat-more"
+        aria-expanded={全开}
+        onClick={(e) => {
+          const 收起 = 全开;
+          set全开(!全开);
+          if (!收起) return;
+          // 收起后多的行藏掉，按钮跟着往上跑（390 / 1366 实操跑出视口约 560）：这张卡的顶在视口上方就滚回来
+          const 卡 = e.currentTarget.closest(".ant-card");
+          requestAnimationFrame(() => {
+            if (卡 && 卡.getBoundingClientRect().top < 0) 卡.scrollIntoView({ block: "start", behavior: 滚法() });
+          });
+        }}
+      >
         {全开 ? "收起" : `展开全部 ${总} 人`}
       </Button>
     ) : null,
@@ -161,10 +177,10 @@ export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口�
           列={4}
           格们={[
             { k: "新线索", 值: String(段.线索?.count ?? 0), 数: 段.线索?.count ?? 0, 注: "线索阶段、进行中的", 小: "线索阶段、进行中的", 去: 链("/leads") },
-            { k: "商机阶段", 值: String(段.商机?.count ?? 0), 数: 段.商机?.count ?? 0, 注: `进行中的商机 · ${money(段.商机?.amount ?? 0)}`, 小: `进行中的 · ${金额缩写(段.商机?.amount ?? 0, 本位币)}`, 去: 链("/projects") },
-            { k: "订单阶段", 值: String(段.订单?.count ?? 0), 数: 段.订单?.count ?? 0, 注: `进行中的订单 · ${money(段.订单?.amount ?? 0)}`, 小: `进行中的 · ${金额缩写(段.订单?.amount ?? 0, 本位币)}`, 去: 链("/projects") },
+            { k: "商机阶段", 值: String(段.商机?.count ?? 0), 数: 段.商机?.count ?? 0, 注: `进行中的商机 · ${money(段.商机?.amount ?? 0)}`, 小: <>进行中的 · <span className="nowrap">{金额缩写(段.商机?.amount ?? 0, 本位币)}</span></>, 去: 链("/projects") },
+            { k: "订单阶段", 值: String(段.订单?.count ?? 0), 数: 段.订单?.count ?? 0, 注: `进行中的订单 · ${money(段.订单?.amount ?? 0)}`, 小: <>进行中的 · <span className="nowrap">{金额缩写(段.订单?.amount ?? 0, 本位币)}</span></>, 去: 链("/projects") },
             数.公海
-              ? { k: "异常状态", 值: String(异常), 数: 异常, 注: `订单阶段停住的；公海里还有 ${数.公海} 个进行中的项目`, 小: <Link href={批次 ? 带批次("/pool?open=1", 批次) : "/pool"} className="link-strong">公海里还有 {数.公海} 个 ›</Link> }
+              ? { k: "异常状态", 值: String(异常), 数: 异常, 注: `订单阶段停住的；公海里还有 ${数.公海} 个进行中的项目`, 小: <Link href={带批次("/pool?open=1", 批次)} className="link-strong">公海里还有 {数.公海} 个 ›</Link> }
               : { k: "异常状态", 值: String(异常), 数: 异常, 注: "订单阶段停住的", 小: "订单阶段停住的", 去: 链("/projects") },
           ]}
         />
@@ -180,7 +196,7 @@ export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口�
           <StatCard icon={<ShoppingOutlined />} color={阶段色.订单} label="订单阶段" value={段.订单?.count ?? 0} note={`进行中的 · ${money(段.订单?.amount ?? 0)}`} href={链("/projects")} />
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <StatCard icon={<WarningOutlined />} color={categorical.orange} label="异常状态" value={异常} note={数.公海 ? `公海里还有 ${数.公海} 个进行中的项目` : "订单阶段停住的"} href={链("/projects")} noteHref={数.公海 ? (批次 ? 带批次("/pool?open=1", 批次) : "/pool") : undefined} />
+          <StatCard icon={<WarningOutlined />} color={categorical.orange} label="异常状态" value={异常} note={数.公海 ? `公海里还有 ${数.公海} 个进行中的项目` : "订单阶段停住的"} href={链("/projects")} noteHref={数.公海 ? (带批次("/pool?open=1", 批次)) : undefined} />
         </Col>
       </Row>
       )}
@@ -240,6 +256,8 @@ export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口�
 }
 
 export function ProjectPeriodView({ 数, 本位币, 口径, 单人, 出口叫法, 批次 }: { 数: 项目一段; 本位币: string; 口径: string; 单人: boolean; 出口叫法?: 出口叫法改动; 批次?: string }) {
+  // 自定义时间段的口径以日期结尾（「… 2026-11-22」），后面直接接「新建的」会粘在一起：补一个空格（3703 实操）
+  const 段前 = /\d$/.test(口径) ? `${口径} ` : 口径;
   const 字典 = 字典of(true, 出口叫法);
   const 新样 = useIsNowSkin();
   const 人表 = useOwnerFold(数.按人.length, 新样);
@@ -285,22 +303,22 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人, 出口叫法
           新样
           列={4}
           格们={[
-            { k: "新建项目", 值: String(t.新建), 数: t.新建, 注: `${口径}新建的，含已结束`, 小: `${口径}新建的，含已结束` },
+            { k: "新建项目", 值: String(t.新建), 数: t.新建, 注: `${段前}新建的，含已结束`, 小: `${段前}新建的，含已结束` },
             { k: "转商机阶段", 值: String(t.转商机), 数: t.转商机, 注: "来回改只数一次", 小: `来回改只数一次 · 转订单 ${t.转订单}` },
-            { k: "交付结清", 值: String(t.成功交付), 数: t.成功交付, 注: `${口径}结束的`, 小: `${口径}结束的 · ${金额缩写(t.交付金额, 本位币)}`, 全: `交付金额 ${money(t.交付金额)}` },
+            { k: "交付结清", 值: String(t.成功交付), 数: t.成功交付, 注: `${段前}结束的`, 小: <>{段前}结束的 · <span className="nowrap">{金额缩写(t.交付金额, 本位币)}</span></>, 全: `交付金额 ${money(t.交付金额)}` },
             { k: "没成", 值: String(t.线索流失 + t.丢单), 数: t.线索流失 + t.丢单, 注: "异常还在处理，不算没成", 小: `${流失名} ${t.线索流失} · ${丢单名} ${t.丢单}${t.异常状态 ? `；另有异常 ${t.异常状态}，不算在没成里` : ""}` },
           ]}
         />
       ) : (
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} xl={6}>
-          <StatCard icon={<PlusCircleOutlined />} color={阶段色.线索} label="新建项目" value={t.新建} note={`${口径}新建的，含已结束`} />
+          <StatCard icon={<PlusCircleOutlined />} color={阶段色.线索} label="新建项目" value={t.新建} note={`${段前}新建的，含已结束`} />
         </Col>
         <Col xs={24} sm={12} xl={6}>
           <StatCard icon={<RiseOutlined />} color={阶段色.商机} label="转商机阶段" value={t.转商机} note={`来回改只数一次 · 转订单 ${t.转订单}`} />
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <StatCard icon={<TrophyOutlined />} color={阶段色.订单} label="交付结清" value={t.成功交付} note={`${口径}结束的 · ${money(t.交付金额)}`} />
+          <StatCard icon={<TrophyOutlined />} color={阶段色.订单} label="交付结清" value={t.成功交付} note={`${段前}结束的 · ${money(t.交付金额)}`} />
         </Col>
         <Col xs={24} sm={12} xl={6}>
           {/* 没成 = 线索流失 + 商机丢单；异常还在处理，不算没成。原来三个数并排写，看着像加不平（10-27） */}
@@ -311,8 +329,8 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人, 出口叫法
 
       <漏斗与瀑布
         数={数}
-        漏斗说明={`${口径}新建的项目，现在走到了哪一步`}
-        瀑布说明={`${口径}新建的线索，各进程停着几个、流出去几个，加上已转商机阶段的，垒到合计`}
+        漏斗说明={`${段前}新建的项目，现在走到了哪一步`}
+        瀑布说明={`${段前}新建的线索，各进程停着几个、流出去几个，加上已转商机阶段的，垒到合计`}
         空={{ title: "这一段没有新建项目", hint: "漏斗从这段时间新建的项目往下数。换一个时间段看看。" }}
       />
 

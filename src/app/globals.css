@@ -6307,6 +6307,9 @@ button.proj-miss-chip { cursor: pointer; }
 :root:is(:not([data-skin]), [data-skin="now"]) .rtalk-foot { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-note); color: var(--text-muted); }
 :root:is(:not([data-skin]), [data-skin="now"]) .rtalk-side-line { display: none; }
 @media (max-width: 767px) {
+  /* 390：时间线和「还没沟通过的项目」上下摆、各占一整行。基础那条 @container (max-width: 760px) 查的是 .rtalk-wrap 自己（它就是容器），
+     容器查询管不到容器本身、一直没生效，390 被挤成 90 + 260 两列（3703 实操）；现状主题在手机档直接改单列 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .rtalk-wrap.rtalk-has-side { grid-template-columns: minmax(0, 1fr); }
   /* 390：「还没沟通过的项目」整块收成一行（R-新10） */
   :root:is(:not([data-skin]), [data-skin="now"]) .rtalk-side.is-now:has(.rtalk-side-line) { padding: 0; }
   :root:is(:not([data-skin]), [data-skin="now"]) .rtalk-side.is-now:has(.rtalk-side-line) > :not(.rtalk-side-line) { display: none; }
@@ -6350,6 +6353,6 @@ button.proj-miss-chip { cursor: pointer; }
 :root:is(:not([data-skin]), [data-skin="now"]) .stat-more.ant-btn { margin-top: var(--s2); min-height: var(--hit); padding-inline: 0; }
 /* 触屏点击区 44（R-B 审查 11-22）：「展开全部 N 人 / 收起」；卡点卡头的「去卡点页签 ›」上下负外边距抵掉，卡头不长高 */
 @media (max-width: 767px), (pointer: coarse) {
-  :root:is(:not([data-skin]), [data-skin="now"]) .stat-more.ant-btn { min-height: var(--hit-touch); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .stat-more.ant-btn { min-height: var(--hit-touch); min-width: var(--hit-touch); }
   :root:is(:not([data-skin]), [data-skin="now"]) .rkpi-blk-go { display: inline-flex; align-items: center; min-height: var(--hit-touch); margin-block: -11px; }
 }

@@ -13,22 +13,9 @@ import { 自动推进话of } from "@/lib/project/auto-advance-text";
 import FollowMethodSelect, { useHabitDefault } from "@/components/FollowMethodSelect";
 import { 跟进类型们 } from "@/lib/constants";
 import type { 预警行 } from "@/lib/project/review-extras";
-import { dayjs, fmtDateTime, smartTime } from "@/lib/utils";
-import { 带钟点smart } from "../dashboard/todo-time";
-import { 定了时刻 } from "@/lib/reminders";
+import { dayjs, fmtDateTime } from "@/lib/utils";
+import { 到期字 } from "../dashboard/todo-time";
 
-/**
- * 现状主题的到期写法（设计语言 R-B，11-22 总控定）：同首页待办，带钟点的 smartTime（「3 天前 15:00」「11 月 25 日 09:30」，今天 / 明天本来带钟点）。
- * 补不补钟点和提醒同一套口径（lib/reminders.ts 定了时刻）：新记录看明确钟点；旧数据明确钟点是 null，零点当只定了日子，不写没人定过的「00:00」。
- * 跨年的 smartTime 写成「2025 年 10 月 26 日 09:30」（约 165px），表格「到期」列放不下、伸进「内容」列（R-B 审查 11-22），
- * 跨年改写短的「2025-10-26 09:30」（同悬停全时间、账簿主题的写法），到期列现状主题放到 148
- */
-const 到期字 = (t: string, 明确钟点: boolean | null) => {
-  const 钟点 = 定了时刻(new Date(t), 明确钟点);
-  const s = smartTime(t);
-  if (s.includes("年")) return dayjs(t).format(钟点 ? "YYYY-MM-DD HH:mm" : "YYYY-MM-DD");
-  return 钟点 ? 带钟点smart(t) : s;
-};
 import { useIsNowSkin } from "@/lib/use-skin";
 import EmptyState, { 表格空态 } from "@/components/EmptyState";
 import CountUp from "@/components/CountUp";
@@ -56,7 +43,7 @@ import { 即将逾期天数 } from "@/lib/project/home-cards";
  * 右上角「看板 / 列表」切换（lay=list 回到上面那张表）；点逾期 / 今天 / 本周那几张卡照旧是筛过的表。
  * 看板下面是「回收提醒」：按节点一条，天数从组织规则读，条长 = 这一圈 3 天内要回公海的项目数。
  */
-export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 回收项目 = [], 只看自己, 看全员 }: {
+export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 回收项目 = [], 只看自己, 看全员, 只读 = false }: {
   /** 表格那份（列表时给） */
   数?: 复盘待办;
   /** 三列看板那份（全部待办、没选列表时给）；给了就摆看板、不摆表 */
@@ -68,6 +55,8 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
   /** 3 天内要回公海的那几个项目（同 将回公海of 的 预警，回收日早的在前、最多 8 个）：回收提醒点开节点就列它们，原地记沟通 */
   回收项目?: 预警行[];
   只看自己: boolean; 看全员: boolean;
+  /** 只读角色（业务角色只读管理员 / 销售教练，lib/enterprise/permissions.ts 只读角色）：不摆行首的勾——点了服务端也拒（3703 实操：只读管理员能点） */
+  只读?: boolean;
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -175,7 +164,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
   const 去 = (x: 复盘待办行) => { if (x.去) router.push(x.去); };
 
   const cols = [
-    {
+    ...(只读 ? [] : [{
       key: "勾",
       width: 44,
       render: (_: unknown, x: 复盘待办行) => (
@@ -188,7 +177,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
           />
         </span>
       ),
-    },
+    }]),
     {
       title: "到期",
       key: "时间",
@@ -295,7 +284,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
                     <ul className="btodo-col-list">
                       {列.行.map((x) => (
                         <li key={x.key} data-morph-key={x.key}>
-                          <待办卡片 x={x} 完成中={刚完成.includes(x.key)} 看全员={看全员} 新样={新样} 完成={() => void 完成(x)} />
+                          <待办卡片 x={x} 完成中={刚完成.includes(x.key)} 看全员={看全员} 新样={新样} 只读={只读} 完成={() => void 完成(x)} />
                         </li>
                       ))}
                     </ul>
@@ -350,14 +339,14 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
 }
 
 /** 看板上的一张卡：项目（没有写客户）+ 级别、内容、到期 + 逾几天、负责人（看全员时）、「去跟进」；左边的勾直接完成 */
-function 待办卡片({ x, 完成中, 看全员, 新样 = false, 完成 }: { x: 复盘待办行; 完成中: boolean; 看全员: boolean; 新样?: boolean; 完成: () => void }) {
+function 待办卡片({ x, 完成中, 看全员, 新样 = false, 只读 = false, 完成 }: { x: 复盘待办行; 完成中: boolean; 看全员: boolean; 新样?: boolean; 只读?: boolean; 完成: () => void }) {
   const 名 = x.projectName ?? x.customerName;
   const 全名 = x.projectName ? `${x.customerName} · ${x.projectName}` : x.customerName;
   const 级 = 企业级别(x.projectLevel);
   const 逾 = x.组 === "逾期" ? 逾天数(x.时间, dayjs()) : 0;
   return (
     <article className={`btodo-k${完成中 ? " btodo-row-done" : ""}${x.组 === "逾期" ? " btodo-k-late" : ""}`}>
-      <Checkbox aria-label={`完成「${x.内容}」`} checked={完成中} disabled={完成中} onChange={完成} />
+      {!只读 && <Checkbox aria-label={`完成「${x.内容}」`} checked={完成中} disabled={完成中} onChange={完成} />}
       <div className="btodo-k-main">
         <div className="btodo-k-top">
           <Tooltip title={全名} placement="topLeft" mouseEnterDelay={0.4}>

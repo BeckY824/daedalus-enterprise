@@ -18,6 +18,9 @@ export type 复盘概况数 = { 概况: 复盘概况; 预警: 预警行[]; 分�
 /** 小 = 数下面常显的一行小字（现状主题的阶段排用）；全 = 缩写了的金额的全值（悬停、点按看） */
 export type 格 = { k: string; 值: string; 数?: number; 写法?: (n: number) => string; 注: string; 去?: string; 急?: boolean; 小?: ReactNode; 全?: string };
 
+/** 现状主题 KPI 的整数带千分位（19,532），和漏斗个数同一写法（3703 实操：KPI 写 19532、漏斗写 21,654） */
+const 千分 = (n: number) => n.toLocaleString("zh-CN");
+
 /** 滚的半路取整（金额半路不出分），到位那一下用原数原写法，和服务端那一趟一字不差 */
 function 滚动写法(终: number, 写法: (n: number) => string = String) {
   return (n: number) => (n === 终 ? 写法(终) : 写法(Math.round(n)));
@@ -57,7 +60,7 @@ export function KPI排({ 格们, 名, 新样 = false, 列 = 6 }: { 格们: 格[]
           <>
             <span className="rkpi-k">{g.k}</span>
             <b className={`rkpi-v${g.急 ? " rkpi-v-hot" : ""}`}>
-              {g.数 === undefined ? g.值 : <CountUp 值={g.数} 记号={`rkpi:${g.k}`} 只滚变化 格式={滚动写法(g.数, g.写法)} />}
+              {g.数 === undefined ? g.值 : <CountUp 值={g.数} 记号={`rkpi:${g.k}`} 只滚变化 格式={滚动写法(g.数, g.写法 ?? (新样 ? 千分 : undefined))} />}
             </b>
             {g.小 != null && <span className="rkpi-s">{g.小}</span>}
           </>

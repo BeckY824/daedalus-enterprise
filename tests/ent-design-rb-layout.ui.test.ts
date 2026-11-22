@@ -84,11 +84,11 @@ beforeAll(async () => {
     window.__画=(o)=>{
       let 里, 页签=o.页, view='现在';
       if(o.页==='todo') 里=o.布局==='board'
-        ? <BoardTodos 数={{计数:{overdue:0,today:2,week:1,all:45},总数:6,页:1,行:[]}} 看板={{计数:{overdue:0,today:2,week:1,all:45},列:{overdue:{总数:2,行:待办行(2)},today:{总数:0,行:[]},later:{总数:0,行:[]}}}} 布局="board" 卡="all" 只看自己={false} 看全员={true}/>
-        : <BoardTodos 数={{计数:{overdue:0,today:2,week:1,all:45},总数:6,页:1,行:待办行(6)}} 布局="list" 卡="all" 只看自己={false} 看全员={true}/>;
+        ? <BoardTodos 数={{计数:{overdue:0,today:2,week:1,all:45},总数:6,页:1,行:[]}} 看板={{计数:{overdue:0,today:2,week:1,all:45},列:{overdue:{总数:2,行:待办行(2)},today:{总数:0,行:[]},later:{总数:0,行:[]}}}} 布局="board" 卡="all" 只看自己={false} 看全员={true} 只读={!!o.只读}/>
+        : <BoardTodos 数={{计数:{overdue:0,today:2,week:1,all:45},总数:6,页:1,行:待办行(6)}} 布局="list" 卡="all" 只看自己={false} 看全员={true} 只读={!!o.只读}/>;
       else if(o.页==='talk') 里=<BoardTalks 数={{总数:1234,页:1,行:沟通(4)}} 段="all" 方式="" 只看自己={false} 有主题 缺={{总数:4567,行:缺行(5)}}/>;
       else if(o.页==='topic'){ 页签='talk'; 里=<BoardTopics 数={{总数:3,页:1,行:[主题行('1','待回复'),主题行('2','已回复'),主题行('3','已关闭')]}} 范围="all" 状态=""/>; }
-      else if(o.页==='month'){ 页签='data'; view='本月'; 里=<ProjectPeriodView 数={一段} 本位币="CNY" 口径="2026 年 10 月" 单人={false}/>; }
+      else if(o.页==='month'){ 页签='data'; view='本月'; 里=<ProjectPeriodView 数={一段} 本位币="CNY" 口径={o.口径||"2026 年 10 月"} 单人={false}/>; }
       else { 页签='data'; 里=<ProjectNowView 数={现在} 本位币="CNY" 单人={false} 概况={概况}/>; }
       createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
         <DataShell view={view} 项目 页签={页签} 选人={{选项:[{value:'u1',label:'小王'}],当前:''}}>{里}</DataShell>
@@ -104,7 +104,7 @@ type 页 = "todo" | "talk" | "topic" | "data" | "month";
  * 壳（R-B 审查 11-22，同 G-A 布局测试 tests/ent-design-ga-layout.ui.test.ts）：正文在 main.app-content 里，电脑宽左边让出左栏 220、正文内边距 22 / 26，
  * 宽度才是真实宽度（原来只有 padding 16，1024 下每格多出五六十）。面板 = AI 面板开着：外层 .shell-dock-open、右边让出 380
  */
-async function 打开(页: 页, width = 1280, skin?: string, 布局?: "board", 面板 = false): Promise<{ page: Page; errors: string[] }> {
+async function 打开(页: 页, width = 1280, skin?: string, 布局?: "board", 面板 = false, 另?: { 只读?: boolean; 口径?: string }): Promise<{ page: Page; errors: string[] }> {
   const 手 = width < 768;
   const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: 手 }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -115,7 +115,7 @@ async function 打开(页: 页, width = 1280, skin?: string, 布局?: "board", �
   await page.addStyleTag({ content: 手 ? ".app-content{display:block}" : `.app-content{display:block;margin-left:220px;padding:22px 26px${面板 ? ";margin-right:380px" : ""}}` });
   if (skin) await page.evaluate((k) => { document.documentElement.dataset.skin = k; }, skin);
   await page.addScriptTag({ content: bundle });
-  await page.evaluate((x) => (window as unknown as { __画: (o: unknown) => void }).__画(x), { 页, 布局 });
+  await page.evaluate((x) => (window as unknown as { __画: (o: unknown) => void }).__画(x), { 页, 布局, ...另 });
   await page.locator(".data-shell-body").first().waitFor();
   await page.waitForTimeout(400);
   return { page, errors };
@@ -159,7 +159,7 @@ it.each([1024, 1280, 1366, 390])("数据·现在 %ipx：概况 6 格 + 阶段 4 
   expect(await 概况.locator(".rkpi-i", { hasText: "待回款" }).locator(".rkpi-v").innerText()).toMatch(/亿/);
   expect(await 阶段.locator(".rkpi-i", { hasText: "商机阶段" }).locator(".rkpi-s").innerText()).toMatch(/进行中的 · .*亿/);
   // 异常格：公海链接在小字里
-  expect(await 阶段.locator(".rkpi-i", { hasText: "异常状态" }).getByRole("link", { name: "公海里还有 2 个 ›" }).getAttribute("href")).toBe("/pool");
+  expect(await 阶段.locator(".rkpi-i", { hasText: "异常状态" }).getByRole("link", { name: "公海里还有 2 个 ›" }).getAttribute("href")).toBe("/pool?open=1");
   expect(await 不横滚(page)).toBe(true);
   expect(errors).toEqual([]); await page.close();
 });
@@ -209,6 +209,55 @@ it("数据·现在 390 触屏：「展开全部 N 人」「去卡点页签 ›�
   // 链接中心点点得中自己（没被卡头别的东西盖住）
   expect(await page.locator(".rkpi-blk-go").evaluate((e) => { e.scrollIntoView({ block: "center" }); const b = e.getBoundingClientRect(); const 中 = document.elementFromPoint(b.left + b.width / 2, b.top + 4); return !!中 && e.contains(中); })).toBe(true);
   await page.close();
+});
+
+/** 3703 实操回改：小字里的金额整体不拆行；自定义时间段口径和「新建的」之间有空格；KPI 整数带千分位 */
+it.each([1024, 390])("数据 %ipx：小字金额整体不拆行（「¥」和数不分家）、日期口径后带空格、KPI 整数千分位", async (w) => {
+  const d = await 打开("data", w);
+  const 钱 = await d.page.locator('section[aria-label="各阶段"] .rkpi-s .nowrap').evaluateAll((els) => els.map((e) => ({ t: (e as HTMLElement).innerText, 行: e.getClientRects().length })));
+  expect(钱.length).toBe(2);
+  for (const x of 钱) expect(x, x.t).toMatchObject({ 行: 1 });
+  expect(钱[0].t).toMatch(/^¥ [\d.,]+ 亿$/);
+  expect(await d.page.locator('section[aria-label="复盘概况"] .rkpi-v').first().innerText()).toBe("123,456");
+  expect(await d.page.locator('section[aria-label="各阶段"] .rkpi-v').first().innerText()).toBe("12,345");
+  await d.page.close();
+  const m = await 打开("month", w, undefined, undefined, false, { 口径: "2026-11-01 – 2026-11-22" });
+  const 排 = m.page.locator('section[aria-label="这一段"]');
+  expect(await 排.locator(".rkpi-i", { hasText: "新建项目" }).locator(".rkpi-s").innerText()).toBe("2026-11-01 – 2026-11-22 新建的，含已结束");
+  const 交付 = 排.locator(".rkpi-i", { hasText: "交付结清" }).locator(".rkpi-s");
+  expect(字(await 交付.innerText())).toMatch(/^2026-11-01–2026-11-22结束的·¥[\d.,]+亿$/);
+  expect(await 交付.locator(".nowrap").evaluate((e) => e.getClientRects().length)).toBe(1);
+  await m.page.close();
+});
+
+it.each([390, 1366])("数据 %ipx：按负责人展开后滚到底点「收起」，这张卡的顶回到视口里；390 收起钮宽高 ≥ 44", async (w) => {
+  const { page } = await 打开("data", w);
+  const 卡 = page.locator(".ant-card", { hasText: "按负责人" }).first();
+  await 卡.getByRole("button", { name: "展开全部 14 人" }).click();
+  const 收 = 卡.getByRole("button", { name: "收起" });
+  await 收.scrollIntoViewIfNeeded();
+  if (w < 768) {
+    const b = (await 收.boundingBox())!;
+    expect(b.width).toBeGreaterThanOrEqual(44);
+    expect(b.height).toBeGreaterThanOrEqual(44);
+  }
+  await 收.click();
+  await page.waitForTimeout(800);
+  const 顶 = await 卡.evaluate((e) => e.getBoundingClientRect().top);
+  expect(顶).toBeGreaterThanOrEqual(-1);
+  expect(顶).toBeLessThan(900);
+  await page.close();
+});
+
+it.each(["list", "board"] as const)("只读角色 任务 %s：不摆行首的勾（点了服务端也拒）；非只读照旧有", async (布局) => {
+  const 只读 = await 打开("todo", 1280, undefined, 布局 === "board" ? "board" : undefined, false, { 只读: true });
+  expect(await 只读.page.locator(".btodo-list .ant-checkbox, .btodo-board .ant-checkbox").count()).toBe(0);
+  expect(await 只读.page.locator(".btodo-time").count()).toBeGreaterThan(0);
+  expect(await 不横滚(只读.page)).toBe(true);
+  expect(只读.errors).toEqual([]); await 只读.page.close();
+  const 平常 = await 打开("todo", 1280, undefined, 布局 === "board" ? "board" : undefined);
+  expect(await 平常.page.locator(".btodo-list .ant-checkbox, .btodo-board .ant-checkbox").count()).toBeGreaterThan(0);
+  await 平常.page.close();
 });
 
 /**
@@ -303,6 +352,16 @@ it.each([1024, 1280, 1366, 390])("沟通 %ipx：「沟通｜主题」在筛选�
   expect(字(await page.locator(".rtalk-foot").nth(1).innerText())).toBe(字("线下拜访 · 客户主动 · 附件 3 个 · 记录人1"));
   expect(await page.locator(".rblk-k-meta").count()).toBe(0);
   const 侧 = page.locator(".rtalk-side");
+  // 时间线卡占满一行（3703 实操：390 被挤成 90 + 260 两列），「全部方式」下拉不伸出卡片左边
+  const 量卡 = await page.evaluate(() => {
+    const 卡 = document.querySelector('section[aria-label="沟通记录列表"]')!.getBoundingClientRect();
+    const 正文 = document.querySelector(".app-content")!, s = getComputedStyle(正文);
+    const 内宽 = 正文.getBoundingClientRect().width - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight);
+    const 下拉 = document.querySelector('section[aria-label="沟通记录列表"] .rtalk-m')!.getBoundingClientRect();
+    return { 卡宽: 卡.width, 内宽, 下拉出左: 下拉.left < 卡.left - 0.5, 下拉出右: 下拉.right > 卡.right + 0.5 };
+  });
+  expect(量卡.下拉出左 || 量卡.下拉出右, JSON.stringify(量卡)).toBe(false);
+  if (w < 768) expect(量卡.卡宽, JSON.stringify(量卡)).toBeGreaterThanOrEqual(量卡.内宽 - 1);
   if (w < 768) {
     // 390：整块收成一行
     const 行 = 侧.locator(".rtalk-side-line");
