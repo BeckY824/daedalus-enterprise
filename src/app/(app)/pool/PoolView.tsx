@@ -185,6 +185,12 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
   ) : undefined;
   // 导入批次（数据页「公海里还有 N 个」点进来）：说清只看 / 排掉了哪一批，能关掉；样子同项目列表那一枚
   const 批标 = filters.batch ? <BatchFilterTag batch={filters.batch} 清掉={() => 改名单({ batch: "" })} /> : undefined;
+  // 只带 open=1（数据页没选批次时「公海里还有 N 个 ›」点进来）：公海里还没结局的项目一个一行，条数 = 那个 N；能关掉回到平常的公海
+  const 进行中标 = filters.open && !(filters.projChannel || filters.createdFrom || filters.createdTo || filters.batch) ? (
+    <Tag closable title="从数据页点进来的：公海里还没结局的项目，一个一行" onClose={(e) => { e.preventDefault(); 改名单({}); }} closeIcon={<CloseOutlined aria-label="清掉进行中项目筛选" />}>
+      公海里进行中的项目
+    </Tag>
+  ) : undefined;
   const 到上限 = !!持有 && 持有.有 >= 持有.上限;
   const 分给谁 = 成员选项(users);
   /** 客户池并成一行、展开着的（行 id） */
@@ -964,8 +970,9 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
     <>
       <PageHead
         title="公海"
-        // G0（现状主题）：标题后挂总数（四池之和，--count-fg，同客户列表「客户 N」的位置）；跟着搜索 / 来源变，不跟池子、入池方式变
-        titleAside={新样 ? <><span className="pool-head-n" title="四个池加起来">{数(属性数.全部)}</span>{名单标}{批标}</> : 名单标 || 批标 ? <>{名单标}{批标}</> : undefined}
+        // G0（现状主题）：标题后挂总数（四池之和，--count-fg，同客户列表「客户 N」的位置）；跟着搜索 / 来源变，不跟池子、入池方式变。
+        // 名单类标签（渠道名单 / 导入批次 / 数据页点进来的「公海里进行中的项目」）跟在后面；换皮主题照旧只摆标签
+        titleAside={新样 ? <><span className="pool-head-n" title="四个池加起来">{数(属性数.全部)}</span>{名单标}{批标}{进行中标}</> : 名单标 || 批标 || 进行中标 ? <>{名单标}{批标}{进行中标}</> : undefined}
         subtitle="没人负责的客户和项目都在这里：领了就归你"
         extra={新样 ? (
           // G0：「我手上 N / 上限 M」做成右上一枚中性胶囊（--tag-bg），到上限换要人处理的橙底（--warning-bg）

@@ -6478,6 +6478,80 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-log { padding: 0 var(--s4) var(--s3); }
   :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-composer-sticky { padding: var(--s2) var(--s3) calc(var(--s3) + env(safe-area-inset-bottom)); }
 }
+/* ===== 设计语言 R-B（11-22，落地计划-三页设计）：复盘「任务 / 沟通 / 数据」三页签。只挂现状主题 ===== */
+/* 两套卡统一卡头（D19）：自家 .btodo-list 照 antd Card（卡头 48、标题 15/600、左右 16、头下一条细线） */
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-body .btodo-list { padding: 0 var(--card-pad) var(--card-pad); }
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-body .btodo-list > .btodo-head { min-height: var(--card-head-h); margin: 0 calc(-1 * var(--card-pad)) var(--s3); padding: var(--s2) var(--card-pad); border-bottom: 1px solid var(--line-soft); }
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-body .section-title { font-size: var(--fs-section); font-weight: 600; }
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-body .card-count { font-weight: 400; }
+/* 可点卡只换底（D30）：不上浮、不加阴影、数字不变色 */
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-body .home-card:hover,
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-body .home-card:active { transform: none; box-shadow: var(--shadow-card); }
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-body .home-card:not(.is-on):hover { border-color: var(--card-line); background: var(--row-hover); }
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-body .home-card:not(.home-card-warn, .home-card-good):hover .home-card-v { color: inherit; }
+/* R1 逾期 0 条：数字灰（不是 0 也标红） */
+:root:is(:not([data-skin]), [data-skin="now"]) .btodo-card.is-zero .home-card-v { color: var(--count-fg); }
+/* 换筛选：旧内容淡一档不低于 0.7（R-新1，卡点页签 R-A 已改） */
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-pending,
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-body .is-pending { opacity: 0.7; }
+/* 末行不被 AI 球盖（D40）；卡点页签 R-A 的 .rbk 自己留了（390），不叠两份 */
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-body:not(:has(.rbk)) { padding-bottom: var(--ai-safe); }
+
+/* R3 沟通 / 主题：筛选条在卡外一行，「沟通｜主题」最左、时间段 / 谁跟着 */
+:root:is(:not([data-skin]), [data-skin="now"]) .rtalk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); min-width: 0; margin-bottom: var(--s3); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rtalk-bar .ant-segmented { max-width: 100%; overflow-x: auto; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rtalk-foot { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-note); color: var(--text-muted); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rtalk-side-line { display: none; }
+@media (max-width: 767px) {
+  /* 390：时间线和「还没沟通过的项目」上下摆、各占一整行。基础那条 @container (max-width: 760px) 查的是 .rtalk-wrap 自己（它就是容器），
+     容器查询管不到容器本身、一直没生效，390 被挤成 90 + 260 两列（3703 实操）；现状主题在手机档直接改单列 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .rtalk-wrap.rtalk-has-side { grid-template-columns: minmax(0, 1fr); }
+  /* 390：「还没沟通过的项目」整块收成一行（R-新10） */
+  :root:is(:not([data-skin]), [data-skin="now"]) .rtalk-side.is-now:has(.rtalk-side-line) { padding: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rtalk-side.is-now:has(.rtalk-side-line) > :not(.rtalk-side-line) { display: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rtalk-side.is-now .rtalk-side-line { display: block; line-height: var(--hit-touch); padding: 0 var(--card-pad); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+}
+
+/* R4 数据：概况 6 格 + 阶段 4 格两排同款，数字同号 26（窄格金额已缩写，全值在悬停）；大数仍放不下时省略号兜底（基础规则），不压隔壁格（R-B 审查 11-22） */
+:root:is(:not([data-skin]), [data-skin="now"]) .rkpi-v { font-size: var(--fs-num); }
+/* 小字不截、放不下就折行：1024 扣掉左栏四格每格约 155、390 两格每格约 150，一截就把句尾的数截没了（R-B 审查 11-22）；整句也并进了悬停提示 */
+:root:is(:not([data-skin]), [data-skin="now"]) .rkpi-s { white-space: normal; overflow-wrap: anywhere; min-width: 0; font-size: var(--fs-note); color: var(--text-muted); }
+:root:is(:not([data-skin]), [data-skin="now"]) a.rkpi-i:hover { background: var(--row-hover); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rkpi.rkpi-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rkpi.rkpi-4 > .rkpi-i { border-top: 0; border-left: 1px solid var(--line-soft); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rkpi.rkpi-4 > .rkpi-i:first-child { border-left: 0; }
+/* 1200–1439 概况一排 6 格、每格内容只剩 ~136（1280 扣掉左栏 220 和正文内边距），「¥ 123.46 亿」这种百亿金额差几像素被省略号截：
+   两排格子左右内边距一起收到 12（两排数字左边仍对齐），1280 起放得下；更窄（1200 出头）再放不下才走省略号兜底，全值在悬停（R-B 审查 11-22） */
+@media (min-width: 1200px) and (max-width: 1439px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .rkpi-i { padding-inline: var(--s3); }
+}
+/* AI 面板开着、正文只剩 ~840 时（同 xl-6 指标卡那条 1799 重映射）：概况 6 格改三格一排，金额不至于缩到省略号 */
+@media (min-width: 1200px) and (max-width: 1799px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .shell-dock-open .rkpi:not(.rkpi-4) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .shell-dock-open .rkpi:not(.rkpi-4) > .rkpi-i:nth-child(3n + 1) { border-left: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .shell-dock-open .rkpi:not(.rkpi-4) > .rkpi-i:nth-child(n + 4) { border-top: 1px solid var(--line-soft); }
+}
+@media (max-width: 767px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .rkpi.rkpi-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rkpi.rkpi-4 > .rkpi-i:nth-child(odd) { border-left: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rkpi.rkpi-4 > .rkpi-i:nth-child(n + 3) { border-top: 1px solid var(--line-soft); }
+}
+/* 卡点摘要（R-新5）：一句话 + 去卡点页签 */
+:root:is(:not([data-skin]), [data-skin="now"]) .rkpi-blk-sum { margin: 0; color: var(--ink-soft); overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rkpi-blk-sum b { font-variant-numeric: tabular-nums; color: var(--ink); }
+/* 漏斗：个数在条外右侧一列，不压条（D39 后半）；「已经结束的」在卡底（R-新13） */
+:root:is(:not([data-skin]), [data-skin="now"]) .pfun-now .pfun-row { grid-template-columns: 3em minmax(0, 1fr) 6ch 5.5em; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pfun-now .pfun-bar { min-width: 4px; padding: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pfun-n-out { text-align: end; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pfun-foot { margin: var(--s3) 0 0; padding-top: var(--s3); border-top: 1px solid var(--line-soft); font-size: var(--fs-note); color: var(--text-muted); overflow-wrap: anywhere; }
+/* 按负责人：默认 10 行，多的藏起来（R-新12） */
+:root:is(:not([data-skin]), [data-skin="now"]) .stat-row-more { display: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .stat-more.ant-btn { margin-top: var(--s2); min-height: var(--hit); padding-inline: 0; }
+/* 触屏点击区 44（R-B 审查 11-22）：「展开全部 N 人 / 收起」；卡点卡头的「去卡点页签 ›」上下负外边距抵掉，卡头不长高 */
+@media (max-width: 767px), (pointer: coarse) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .stat-more.ant-btn { min-height: var(--hit-touch); min-width: var(--hit-touch); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rkpi-blk-go { display: inline-flex; align-items: center; min-height: var(--hit-touch); margin-block: -11px; }
+}
 
 /* ────────────────────────────────────────────────────────────────────────────
    设计语言 HC-2a（11-22，回答排版、步骤条、操作行、打断 / 出错；用户选 C6-A / C7-A / C8-A / C11-A）。

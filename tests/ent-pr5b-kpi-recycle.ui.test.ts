@@ -40,7 +40,7 @@ beforeAll(async () => {
     window.__画=(o)=>{
       createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
         {o==='home'?<div style={{width:320}}><HomeCards 数={{'month-new':12,key:3,'no-follow':480,'due-soon':5}}/></div>
-          :<BoardTodos 数={{计数:{overdue:0,today:0,week:0,all:0},总数:0,页:1,行:[]}} 卡="all" 布局="list" 回收={回收} 回收项目={项目} 只看自己={false} 看全员={true}/>}
+          :<BoardTodos 数={{计数:{overdue:0,today:0,week:0,all:0},总数:0,页:1,行:[]}} 卡="all" 布局="list" 回收={回收} 回收项目={项目} 只看自己={false} 看全员={true} 只读={o==='todos-ro'}/>}
       </BusinessProvider></App>);
     };
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
@@ -107,6 +107,24 @@ it("ov.recycle：点节点原地展开快到期的项目，数为 0 的点不开
   expect(await 去了(page)).toEqual([]);
   expect(await 横滚(page)).toBeLessThanOrEqual(0);
   await page.close();
+});
+
+it("ov.recycle：只读角色（只读管理员 / 销售教练）展开节点照旧看到快到期的项目，但不摆「记一条沟通」（服务端也拒写）", async () => {
+  const page = await 打开("todos-ro");
+  await page.getByRole("button", { name: /潜客培育 · 7 天没跟进收回/ }).click();
+  const 单 = page.getByRole("list", { name: "潜客培育 快到期的项目" });
+  await 单.waitFor();
+  expect(await 单.getByText("乙项目").count()).toBe(1);
+  expect(await 单.getByText("还剩 3 天").count()).toBe(1);
+  expect(await 单.getByRole("button", { name: "记一条沟通" }).count()).toBe(0);
+  expect(await 单.getByRole("link", { name: "乙项目" }).getAttribute("href")).toBe("/projects/p2");
+  expect(await 调了(page)).toEqual([]);
+  await page.close();
+  // 非只读照旧摆
+  const 平常 = await 打开("todos");
+  await 平常.getByRole("button", { name: /潜客培育 · 7 天没跟进收回/ }).click();
+  expect(await 平常.getByRole("list", { name: "潜客培育 快到期的项目" }).getByRole("button", { name: "记一条沟通" }).count()).toBe(2);
+  await 平常.close();
 });
 
 it("ov.recycle：记成了，表单收起；超长项目名 1024 宽单行省略不横滚", async () => {
