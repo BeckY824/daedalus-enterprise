@@ -173,6 +173,20 @@ it("G1 / D34 / D06：390 池子改下拉（不横滑），同一排回收站开�
   } finally { await page.close(); }
 });
 
+for (const 池 of ["", "订单池", "线索池"]) it(`G1 / D34：390 池子下拉选了「${池 || "全部"}」，后面的数显示全（挤的时候只截池名）`, async () => {
+  const { page, errors } = await 开(390, { attr: 池 });
+  try {
+    const 数 = page.locator(".pool-pick-attr .ant-select-content .pool-n");
+    const 量 = await 数.evaluate((el) => {
+      const 框 = el.closest(".ant-select-content")!.getBoundingClientRect(), r = el.getBoundingClientRect();
+      return { 字: el.textContent, 全: el.scrollWidth <= el.clientWidth && r.right <= 框.right + 0.5 && r.left >= 框.left - 0.5 && r.width > 0 };
+    });
+    expect(量).toEqual({ 字: { "": "67,093", 订单池: "33", 线索池: "54,341" }[池], 全: true });
+    expect(await 页横滚(page)).toBe(false);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it("K2：1024 宽「更多筛选」里的创建时间面板整块在屏里", async () => {
   const { page, errors } = await 开(1024);
   try {
@@ -301,10 +315,12 @@ it("G4 / K4：键盘打开领取确认条——焦点到「取消」、8 秒不�
     await expect.poll(() => page.locator(".pool-ask").count()).toBe(0);
     await expect.poll(() => page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.claim ?? "")).toBe("c0");
     expect(await page.evaluate(() => (window as unknown as { __领?: number }).__领 ?? 0)).toBe(0);
-    // 鼠标点开的不挪焦点（焦点停在条里会让它一直不收）；先让焦点离开（键盘焦点还在「领取」上时再点，它仍算 :focus-visible）
-    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    // 鼠标点开的不挪焦点（焦点停在条里会让它一直不收）。紧接着点：Esc 收回后焦点回到「领取」还带着 :focus-visible，
+    // 这时鼠标点它也不能当成键盘打开（#414 3704 实操）
+    expect(await page.evaluate(() => document.activeElement?.matches(":focus-visible") ?? false)).toBe(true);
     await 钮.click();
     await 条.waitFor();
+    await page.waitForTimeout(100);
     expect(await page.evaluate(() => document.activeElement?.closest(".pool-ask") ? "条里" : "外面")).toBe("外面");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
@@ -325,8 +341,8 @@ for (const w of [1024, 1366]) {
   });
 }
 
-it("G4 / D34：390 触屏「领取」44 高、宽随字（不是 44 × 44 方块），「⋯」也 44", async () => {
-  const { page, errors } = await 开(390);
+for (const w of [375, 390]) it(`G4 / D34：${w} 触屏「领取」44 高、宽随字（不是 44 × 44 方块），「⋯」也 44；不撑出操作格`, async () => {
+  const { page, errors } = await 开(w);
   try {
     const 框 = await page.locator("tr[data-row-key='c1']").getByRole("button", { name: /^领取/ }).evaluate((el) => { const r = el.getBoundingClientRect(); return { 高: Math.round(r.height), 宽: Math.round(r.width) }; });
     expect(框.高).toBeGreaterThanOrEqual(44);
@@ -334,6 +350,16 @@ it("G4 / D34：390 触屏「领取」44 高、宽随字（不是 44 × 44 方块
     const 更 = await page.locator("tr[data-row-key='c1']").getByRole("button", { name: /^更多操作/ }).evaluate((el) => Math.round(el.getBoundingClientRect().height));
     expect(更).toBeGreaterThanOrEqual(44);
     expect((await 点得中(page, "tr[data-row-key='c1'] td.dl-col-操作 button")).every((x) => x.中 && x.在屏)).toBe(true);
+    // 排版闸门「撑出」（PR #414 CI，375 / 390）：「领取 · ⋯」那一组不伸出 .pool-op、也不伸出操作格的内容区
+    const 伸出 = await page.locator("td.dl-col-操作 .pool-act").evaluateAll((els) => els.flatMap((el) => {
+      const op = el.closest(".pool-op")!, td = el.closest("td")!;
+      const s = getComputedStyle(td);
+      const 格右 = td.getBoundingClientRect().right - parseFloat(s.paddingRight), 组右 = op.getBoundingClientRect().right;
+      const 右 = el.getBoundingClientRect().right;
+      const 多 = Math.max(右 - 组右, 右 - 格右);
+      return 多 > 0.5 ? [`${el.closest("tr")!.getAttribute("data-row-key")} 伸出 ${Math.round(多)}px`] : [];
+    }));
+    expect(伸出).toEqual([]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

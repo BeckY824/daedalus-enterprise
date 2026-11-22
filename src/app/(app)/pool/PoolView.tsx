@@ -199,12 +199,16 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
   /*
     行下确认条（现状主题）是键盘点开的：焦点从行上的「领取」挪到条里的「取消」，和旧摆法（InlineConfirm 包着键）一样——
     回车再按一下是退出不是领取；焦点在条里 InlineConfirm 才停住 8 秒计时、Esc 才收得回（G-A 审查）。
-    只认键盘（:focus-visible）：鼠标点开的不挪，焦点停在条里会让它一直不收。收起时焦点还给「领取」见 收确认
+    只认键盘点开的：按这一下是怎么点的算（click 的 detail 为 0 = 回车 / 空格），不看 :focus-visible——
+    键盘开过一次、Esc 收回后焦点回到「领取」还带着 :focus-visible，再用鼠标点它会被当成键盘（#414 3704 实操）。
+    鼠标点开的不挪，焦点停在条里会让它一直不收。收起时焦点还给「领取」见 收确认
   */
+  const 键盘开 = useRef(false);
   useEffect(() => {
-    if (!问着) return;
+    if (!问着 || !键盘开.current) return;
+    键盘开.current = false;
     const 键 = document.activeElement;
-    if (!(键 instanceof HTMLElement) || 键.dataset.claim !== 问着 || !键.matches(":focus-visible")) return;
+    if (!(键 instanceof HTMLElement) || 键.dataset.claim !== 问着) return;
     const 帧 = requestAnimationFrame(() => document.querySelector<HTMLElement>(`.pool-ask[data-for="${CSS.escape(问着)}"] .inlc-no`)?.focus());
     return () => cancelAnimationFrame(帧);
   }, [问着]);
@@ -535,7 +539,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
           </SaveButton>
         ) : !只读 && 行下确认 ? (
           <Button className="row-act" aria-label={`领取 ${行名(r)}`} aria-expanded={问} data-claim={r.id} disabled={!!因} size="small"
-            onClick={() => { 清行错(r.id); if (问) set问着(null); else { set问着(r.id); 数转走(r); } }}>
+            onClick={(e) => { 清行错(r.id); if (问) set问着(null); else { 键盘开.current = e.detail === 0; set问着(r.id); 数转走(r); } }}>
             领取
           </Button>
         ) : !只读 && (
@@ -809,7 +813,8 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
         { title: "入池时间", key: "入池", width: 104, align: "right" as const, className: "pool-tcol", render: (_: unknown, r: 公海行) => 时间(r.入池时间) },
       ]),
     { title: "入池原因", key: "原因", width: 窄 ? 120 : 140, render: (_, r) => 原因格(r) },
-    { title: "操作", key: "操作", width: 手机 ? 120 : 104, 常驻: true, fixed: "right", render: (_, r) => 操作格(r, true) },
+    // 手机宽「领取」触屏 44 高、左右各 12 内边距（D34，约 54 宽）+「⋯」44：格子 136 才放得下，原来 120 撑出 12（PR #414 排版闸门 375 / 390）
+    { title: "操作", key: "操作", width: 手机 ? 136 : 104, 常驻: true, fixed: "right", render: (_, r) => 操作格(r, true) },
   ];
   const 全部列 = 新样 ? 新列 : 旧列;
   const 列们 = 全部列.filter((c) => !(只读 && c.key === "操作" && !能分配 && !能标无效 && !能恢复));
@@ -905,7 +910,8 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
    *   筛选行：搜索（占位写全）、入池方式（「全部入池方式」墨色，D37）、排序、更多筛选（N）、有筛选才出的重置；右端「列」。1024 不折第三行
    */
   const 池名 = (k: "全部" | 公海属性) => (
-    <span className="pool-seg">{k} <span className="pool-n">{数(属性数[k])}</span></span>
+    // 池名单独一个 span：390 下拉选了值、挤的时候只截池名，后面的数照全写（globals.css .pool-pick-attr）
+    <span className="pool-seg"><span className="pool-seg-k">{k}</span> <span className="pool-n">{数(属性数[k])}</span></span>
   );
   const 池选项 = (["全部", ...公海属性们] as const).map((k) => ({ value: k, label: 池名(k) }));
   const 新筛选 = (
@@ -922,7 +928,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
           title={`标了无效的客户都在这里：全员看得到、查重查得到，不会自动删${f.attr ? `；数字是${f.attr}里的` : ""}`}
           onClick={切回收站}>
           {/* 一整段字（antd 按钮里每个子元素是一格 flex，分开写会被按钮的 gap 隔开） */}
-          <span>{公海回收站}{f.attr ? <span className="pool-n">（{f.attr} {数(快捷数.无效客户)}）</span> : <> <span className="pool-n">{数(快捷数.无效客户)}</span></>}</span>
+          <span>{公海回收站}{f.attr ? <span className="pool-n">（<span className="pool-bin-attr">{f.attr} </span>{数(快捷数.无效客户)}）</span> : <> <span className="pool-n">{数(快捷数.无效客户)}</span></>}</span>
         </Button>
       </div>
       <div className="pool-fl">

@@ -6235,6 +6235,12 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]) .pool-pools { flex: 1 1 0; order: 0; }
   :root:is(:not([data-skin]), [data-skin="now"]) .list-bar:has(> .pool-bar) > :not(.pool-bar) { order: 1; flex: none; }
   :root:is(:not([data-skin]), [data-skin="now"]) .pool-pools > .pool-pick-attr { flex: 0 1 auto; min-width: 0; }
+  /* 选了某一池：390 下拉就在回收站开关左边、已写着池名，开关括号里不再重复池名（「公海回收站（2,949）」，悬停说明照旧写「数字是 X 里的」），
+     让出宽给下拉；还挤时下拉只截池名（省略号），后面的数照全写（「订单池…」把数截掉了，#414 3704 实操） */
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-bin .pool-bin-attr { display: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-pick-attr .ant-select-content > .pool-seg { display: flex; gap: 4px; min-width: 0; max-width: 100%; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-pick-attr .pool-seg-k { min-width: 1em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-pick-attr .pool-seg .pool-n { flex: none; }
   :root:is(:not([data-skin]), [data-skin="now"]) .pool-fl { flex: 1 1 100%; order: 2; }
   :root:is(:not([data-skin]), [data-skin="now"]) .pool-fl > .ant-input-affix-wrapper { order: 0; flex: 1 1 160px; width: auto !important; }
   :root:is(:not([data-skin]), [data-skin="now"]) .pool-fl > .ant-select.pool-sort { order: 1; flex: 0 1 120px; min-width: 0; }
