@@ -25,6 +25,8 @@ export type 快照项 = {
   status: "loading" | "done" | "error";
   标签: { 名: string; 去?: string };
   有建议: boolean;
+  /** 人自己点了停（不是出错）：左栏写「已停下」，不写「没答上来」 */
+  停下?: boolean;
 };
 
 export type 任务条 = {
@@ -36,7 +38,7 @@ export type 任务条 = {
    * 分四种而不是「跑着 / 要你 / 答完」三种：失败和待确认虽然都得留着，
    * 但一个是红的、一个是等人点，图标和颜色不一样，合成一种样式表就得去猜说明文字。
    */
-  态: "跑着" | "失败" | "待确认" | "答完";
+  态: "跑着" | "失败" | "停下" | "待确认" | "答完";
   /** 右边那一行小字 */
   说明: string;
   /** 同时还有几条（不含这一条）。0 就不显示 */
@@ -57,7 +59,7 @@ export function 挑一条(任务: 快照项[]): 任务条 | null {
   if (跑着.length) return 成条(跑着[0], "跑着", 跑着.length - 1);
 
   const 失败 = 任务.filter((t) => t.status === "error");
-  if (失败.length) return 成条(失败[0], "失败", 失败.length - 1);
+  if (失败.length) return 成条(失败[0], 失败[0].停下 ? "停下" : "失败", 失败.length - 1);
 
   const 待确认 = 任务.filter((t) => t.status === "done" && t.有建议);
   if (待确认.length) return 成条(待确认[0], "待确认", 待确认.length - 1);
@@ -72,6 +74,7 @@ export function 挑一条(任务: 快照项[]): 任务条 | null {
 const 说明: Record<任务条["态"], string> = {
   跑着: "正在想…",
   失败: "没答上来",
+  停下: "已停下",
   待确认: "等你确认",
   答完: "答完了",
 };
@@ -80,6 +83,7 @@ const 说明: Record<任务条["态"], string> = {
 export const 类名: Record<任务条["态"], string> = {
   跑着: "loading",
   失败: "error",
+  停下: "stopped",
   待确认: "wait",
   答完: "done",
 };
@@ -106,6 +110,8 @@ export function 该自动消(t: 快照项): boolean {
  */
 export function 通知文案(t: 快照项): { 标题: string; 正文: string } | null {
   if (t.status === "loading") return null;
+  // 人自己点的停：不用再叫他一声
+  if (t.status === "error" && t.停下) return null;
   if (t.status === "error") return { 标题: "没答上来", 正文: t.标签.名 };
   if (t.有建议) return { 标题: "答完了，有一条等你确认", 正文: t.标签.名 };
   return { 标题: "答完了", 正文: t.标签.名 };
