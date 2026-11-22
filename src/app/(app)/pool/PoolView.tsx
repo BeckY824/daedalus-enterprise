@@ -12,12 +12,12 @@
  * 10-30 交互改版：领取、分配都带 6 秒撤销（规则 B）；老板、主管行内「⋯」和批量里有「分配给同事」（11-15 P-界面-43 写全、走选人框），业务员没有；
  * 领取灰着时原因写在按钮下面（规则 A）；持有上限开着时页头写「我手上 N / 上限 M」；批量有没领到的，提示条能展开看每一条为什么
  */
-import { useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
-import { Button, Checkbox, Dropdown, Segmented, Select, Space, Tag } from "antd";
+import { Button, Checkbox, Dropdown, Grid, Segmented, Select, Space, Tag } from "antd";
 import type { MenuProps } from "antd";
-import { CloseOutlined, MoreOutlined } from "@ant-design/icons";
+import { CloseOutlined, MoreOutlined, RightOutlined } from "@ant-design/icons";
 import DataList, { type 列 } from "@/components/DataList";
 import { useConsequence } from "@/components/ConsequenceDialog";
 import InlineConfirm from "@/components/InlineConfirm";
@@ -34,12 +34,14 @@ import { useCustomFilters } from "@/components/CustomFilters";
 import { PageHead, RowLink } from "@/components/ui";
 import { fmtDateTime, smartTime, 成员选项, type 可选成员 } from "@/lib/utils";
 import { useUrlFilters } from "@/lib/url-filters";
+import { useIsNowSkin } from "@/lib/use-skin";
 import BatchFilterTag from "@/components/BatchFilterTag";
 import { 带走说法, 转走项目说法, type 转走项目预览 } from "@/lib/carry-over";
 import { 转走项目列表 } from "../customers/useCarryConfirm";
 import { 公海规则, 原负责人不能领回提示, 项目不能单独领提示, 无效客户不能领短话 } from "@/lib/enterprise/pool-rules";
 import { 公海属性们, 快捷们, 排序们, 默认排序, 多次退回起, 没原因, 入池类叫法, type 公海行, type 公海属性, type 快捷 } from "@/lib/enterprise/unified-pool";
 import { 领取, 分配公海, 撤销公海, type 公海结果 } from "../customers/pool-actions";
+import { 确认条行们 } from "@/lib/enterprise/pool-ask-rows";
 import { 标无效客户, 恢复有效客户, 分配公海项目, 撤销公海项目, type 整包撤销 } from "./actions";
 
 type Props = {
@@ -156,6 +158,17 @@ function ResultNote({ 文案, 没领到, 关 }: { 文案: string; 没领到: 没
 export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快捷数, 属性数, 截断, 库里有, filters, 渠道筛选项, 能标无效, 能恢复, 能分配, 别线ids = [], users, 候选信息 = {}, 无效原因选项 = [], 转走预览, 持有, 只读 = false, 三态开 = false, 号码不全数 = null }: Props) {
   const 别线 = new Set(别线ids);
   const router = useRouter();
+  /**
+   * 现状主题（默认）：设计语言 G-A 的新摆法只在这里出——页头计数和持有胶囊、池子行 + 筛选行两行、回收站开关挪到池子行右端、
+   * 390 池子改下拉、属性列灰标签 / 选了池整列不摆、同客户名、1024 列取舍、领取确认挪到行下、批量条同客户列表。换皮主题照原样（用户 11-21「不动」）
+   */
+  const 新样 = useIsNowSkin();
+  const 屏 = Grid.useBreakpoint();
+  /** 手机宽（< 768；服务端那一版还不知道多宽，照电脑画）：池子分段改下拉（D34） */
+  const 手机 = 屏.md === false;
+  /** 1024 这一档（< 1200）：不摆「当前进程」、两列时间并成一列，「入池原因」留着（G-新4） */
+  const 窄 = 屏.xl === false;
+  const 数 = (n: number) => n.toLocaleString("zh-CN");
   const { f, setF, apply, 翻页, reset, pending } = useUrlFilters("/pool", filters, pageSize);
   const 在筛 = !!(f.keyword || f.attr || f.quick || f.sort || f.channelId || f.projChannel || f.createdFrom || f.createdTo || f.batch || (三态开 && f.phoneIncomplete));
   /** 关掉名单类的标签 / 清掉创建时间：名单的条件都没了，open / onlyNew 一起去掉（它们只对名单起作用，留着会跟到下次筛的名单上） */
@@ -183,6 +196,24 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
   const [问后果, 后果框] = useConsequence();
   /** 正在就地确认领取的那一行（同一时刻只一行） */
   const [问着, set问着] = useState<string | null>(null);
+  /*
+    行下确认条（现状主题）是键盘点开的：焦点从行上的「领取」挪到条里的「取消」，和旧摆法（InlineConfirm 包着键）一样——
+    回车再按一下是退出不是领取；焦点在条里 InlineConfirm 才停住 8 秒计时、Esc 才收得回（G-A 审查）。
+    只认键盘点开的：按这一下是怎么点的算（click 的 detail 为 0 = 回车 / 空格），不看 :focus-visible——
+    键盘开过一次、Esc 收回后焦点回到「领取」还带着 :focus-visible，再用鼠标点它会被当成键盘（#414 3704 实操）。
+    鼠标点开的不挪，焦点停在条里会让它一直不收。收起时焦点还给「领取」见 收确认
+  */
+  const 键盘开 = useRef(false);
+  useEffect(() => {
+    if (!问着 || !键盘开.current) return;
+    键盘开.current = false;
+    const 键 = document.activeElement;
+    if (!(键 instanceof HTMLElement) || 键.dataset.claim !== 问着) return;
+    const 帧 = requestAnimationFrame(() => document.querySelector<HTMLElement>(`.pool-ask[data-for="${CSS.escape(问着)}"] .inlc-no`)?.focus());
+    return () => cancelAnimationFrame(帧);
+  }, [问着]);
+  /** 鼠标停在行下确认条上：读到一半不自己收（现状主题） */
+  const [悬着, set悬着] = useState(false);
   /**
    * 行内领客户时会一起转走的项目（行 id → 说法；「取中」= 在数，null = 没有要转走的 / 数不出来）：点「领取」时现取，原地确认里列名单（同客户详情页的领取框）。
    * 数不出来不拦着（领取本身照样带走项目），只是不列
@@ -482,12 +513,19 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
     if (别线.has(r.id)) return items;
     // P-界面-43：写全「分配给同事」，人多走选人框（不再是二级菜单点人就分）
     if (能分配 && !无效 && 分给谁.length) items.push({ key: "分配", label: "分配给同事", onClick: () => set选人({ 们: [r], 批: false }) });
-    if (r.种 === "客户" && !无效 && 能标无效) items.push({ key: "无效", label: "标成无效客户", onClick: () => 标无效(r) });
+    if (r.种 === "客户" && !无效 && 能标无效) {
+      // G4（现状主题）：前面有别的项时隔一道分隔线；不标红——标了能恢复，不是删除（落地计划危险色：行上不红、只有不可恢复的删除用红字）
+      if (新样 && items.length) items.push({ type: "divider", key: "无效-线" });
+      items.push({ key: "无效", label: "标成无效客户", onClick: () => 标无效(r) });
+    }
     return items;
   }
 
-  /** 一个项目的领取（就地确认，P-界面-41）/ 恢复 + ⋯（行末和展开里共用） */
-  function 操作(r: 公海行, 因: string | null, 菜单: MenuProps["items"]): ReactNode {
+  /**
+   * 一个项目的领取（就地确认，P-界面-41）/ 恢复 + ⋯（行末和展开里共用）。
+   * 行下确认（现状主题、表格里的一行，K4）：「领取」只是开关，确认条在这一行下面整行宽（确认条()），操作格不再变成「确认领取 · 取消」
+   */
+  function 操作(r: 公海行, 因: string | null, 菜单: MenuProps["items"], 行下确认 = false): ReactNode {
     const 问 = 问着 === r.id;
     const 能恢复这行 = 可恢复(r);
     // 刚领到 / 分出去：按钮处写「已领取 ✓」，这一行随后滑出（原型 pool.claim）
@@ -499,6 +537,11 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
           <SaveButton type="default" size="small" className="row-act" aria-label={`恢复 ${行名(r)}`} 已保存="已恢复" 没保存="没恢复上" 做={() => 恢复(r)}>
             恢复
           </SaveButton>
+        ) : !只读 && 行下确认 ? (
+          <Button className="row-act" aria-label={`领取 ${行名(r)}`} aria-expanded={问} data-claim={r.id} disabled={!!因} size="small"
+            onClick={(e) => { 清行错(r.id); if (问) set问着(null); else { 键盘开.current = e.detail === 0; set问着(r.id); 数转走(r); } }}>
+            领取
+          </Button>
         ) : !只读 && (
           <InlineConfirm 问="" 中性 是="确认领取" 毫秒={8000} 开={问} set开={(v) => set问着(v ? r.id : null)} 做={() => 领一个(r)}>
             <Button className="row-act" aria-label={`领取 ${行名(r)}`} disabled={!!因} size="small"
@@ -543,6 +586,37 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
     );
   }
 
+  /**
+   * 行下确认条（现状主题，K4 / P-界面-41）：表格展开行，整行宽、贴着可视区（antd 展开行在横滚表里是 sticky 的），不被钉住的操作列盖。
+   * 左边后果（名额、超时收回、不能领回、号码不全、会一起转走的项目），右边「确认领取 · 取消」；8 秒不动自己收，鼠标停在条上不收，Esc 取消（InlineConfirm）。
+   * 没领到的原因也写在这里（不弹顶部提示）
+   */
+  function 确认条(r: 公海行): ReactNode {
+    const 问 = 问着 === r.id;
+    const 错 = !问 && !走的[r.id] ? 行错[r.id] : undefined;
+    if (!问 && !错) return null;
+    return (
+      <div className="pool-ask" data-for={r.id} data-no-tip role={问 ? "group" : undefined} aria-label={问 ? `确认领取 ${行名(r)}` : undefined}
+        onMouseEnter={() => set悬着(true)} onMouseLeave={() => set悬着(false)}>
+        {问 ? (
+          <>
+            <div className="pool-why" aria-live="polite">{领取后果([r]).map((t) => <div key={t}>{t}</div>)}{转走说法(r)}</div>
+            <InlineConfirm 问="" 中性 是="确认领取" 毫秒={悬着 ? 3_600_000 : 8000} 开 set开={(v) => { if (!v) 收确认(r.id); }} 做={() => 领一个(r)}>
+              {null}
+            </InlineConfirm>
+          </>
+        ) : <div className="pool-err pool-row-err" role="alert">{错}</div>}
+      </div>
+    );
+  }
+  /** 收起行下确认条：焦点在条里的，还给这一行的「领取」，不掉回 <body> */
+  function 收确认(id: string) {
+    const 条里 = !!document.activeElement?.closest(".pool-ask");
+    set问着((x) => (x === id ? null : x));
+    set悬着(false);
+    if (条里) requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-claim="${CSS.escape(id)}"]`)?.focus());
+  }
+
   /** 原地确认里「会一起转走的 N 个项目」：项目名一行一个（同客户详情页领取框，useCarryConfirm 的 转走项目列表）；同事在推的只说个数 */
   function 转走说法(r: 公海行): ReactNode {
     const 说 = 转走[r.id];
@@ -582,7 +656,50 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
     );
   }
 
-  const 全部列: 列<公海行>[] = [
+  /** 入池原因那一格：退回原因（M-公海-09）；标了无效的前面多一个红标，原因照旧写（无效是入池方式，不是原因） */
+  const 原因格 = (r: 公海行): ReactNode => (
+    <span className="clamp" title={r.类 === "无效" ? `无效客户：${r.入池原因}` : r.入池原因}>
+      {r.类 === "无效" && <Tag color="red" style={{ marginInlineEnd: 4 }}>无效</Tag>}
+      <span className={r.入池原因 === 没原因 ? "muted" : undefined}>{r.入池原因}</span>
+    </span>
+  );
+
+  /** 客户名称那一格（新旧两样共用）：三态号码不全的小红标；看不到的写「领取后可见」 */
+  const 客户格 = (r: 公海行): ReactNode => r.客户名
+    ? (三态开 && r.号码不全
+      // C14：客户名后一个小红标签（三态自动收回时打的）
+      ? (
+        <span className="tri-name-row">
+          <RowLink href={`/customers/${r.customerId}`} className="link-strong fulltext" title={r.客户名}>{r.客户名}</RowLink>
+          <span className="tri-miss" title={号码不全说明}>号码不全</span>
+        </span>
+      )
+      : <RowLink href={`/customers/${r.customerId}`} className="link-strong fulltext" title={r.客户名}>{r.客户名}</RowLink>)
+    : <span className="muted">领取后可见</span>;
+
+  /** 操作那一格（新旧两样共用）：客户池并成一行的是「展开 N 个 / 收起」，别的是领取 / 恢复 + ⋯，领不了的短原因写在下面 */
+  const 操作格 = (r: 公海行, 行下确认: boolean): ReactNode => {
+    if (r.子) {
+      const 开 = 展开的.includes(r.id);
+      return (
+        <Button className="row-act" size="small" aria-expanded={开} aria-label={`${开 ? "收起" : "展开"} ${行名(r)} 名下 ${r.子.length} 个项目`}
+          onClick={(e) => { e.stopPropagation(); 切展开(r.id); }}>
+          {开 ? "收起" : `展开 ${r.子.length} 个`}
+        </Button>
+      );
+    }
+    const 因 = 领不了(r);
+    const 菜单 = 更多(r);
+    return (
+      <div className="pool-op" data-no-tip>
+        {操作(r, 因, 菜单, 行下确认)}
+        {/* 操作列窄：长的那句（项目不能单独领）行内写短的、整句放悬停里；回收站「标了无效…」那句折行写完，不被表格右边裁掉（原型 pool.bin） */}
+        {因 && !只读 && !可恢复(r) && !走的[r.id] && <span className="muted pool-op-why" title={因}>{因 === 项目不能单独领提示 ? 项目不能单独领短说 : 因}</span>}
+      </div>
+    );
+  };
+
+  const 旧列: 列<公海行>[] = [
     {
       title: "公海属性", key: "属性", width: 96, 常驻: true,
       render: (_, r) => <Tag color={属性色[r.属性]} style={{ marginInlineEnd: 0 }}>{r.属性}</Tag>,
@@ -590,22 +707,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
     {
       title: "客户名称", key: "客户", width: 168,
       // 原型 pool.claim：领取确认的后果、没领到的原因写在名字下（客户池并成一行的在展开的每一小行里写）
-      render: (_, r) => (
-        <>
-          {r.客户名
-            ? (三态开 && r.号码不全
-              // C14：客户名后一个小红标签（三态自动收回时打的）
-              ? (
-                <span className="tri-name-row">
-                  <RowLink href={`/customers/${r.customerId}`} className="link-strong fulltext" title={r.客户名}>{r.客户名}</RowLink>
-                  <span className="tri-miss" title={号码不全说明}>号码不全</span>
-                </span>
-              )
-              : <RowLink href={`/customers/${r.customerId}`} className="link-strong fulltext" title={r.客户名}>{r.客户名}</RowLink>)
-            : <span className="muted">领取后可见</span>}
-          {!r.子 && 行下(r)}
-        </>
-      ),
+      render: (_, r) => <>{客户格(r)}{!r.子 && 行下(r)}</>,
     },
     {
       title: "项目名称", key: "项目", width: 168,
@@ -640,45 +742,89 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
     {
       title: "入池原因", key: "原因", width: 140,
       // 退回原因（M-公海-09）；标了无效的前面多一个红标，原因照旧写（无效是入池方式，不是原因）
-      render: (_, r) => (
-        <span className="clamp" title={r.类 === "无效" ? `无效客户：${r.入池原因}` : r.入池原因}>
-          {r.类 === "无效" && <Tag color="red" style={{ marginInlineEnd: 4 }}>无效</Tag>}
-          <span className={r.入池原因 === 没原因 ? "muted" : undefined}>{r.入池原因}</span>
-        </span>
-      ),
+      render: (_, r) => 原因格(r),
     },
     {
       title: "操作", key: "操作", width: 136, 常驻: true, fixed: "right",
-      render: (_, r) => {
-        if (r.子) {
-          const 开 = 展开的.includes(r.id);
-          return (
-            <Button className="row-act" size="small" aria-expanded={开} aria-label={`${开 ? "收起" : "展开"} ${行名(r)} 名下 ${r.子.length} 个项目`}
-              onClick={(e) => { e.stopPropagation(); 切展开(r.id); }}>
-              {开 ? "收起" : `展开 ${r.子.length} 个`}
-            </Button>
-          );
-        }
-        const 因 = 领不了(r);
-        const 菜单 = 更多(r);
-        return (
-          <div className="pool-op" data-no-tip>
-            {操作(r, 因, 菜单)}
-            {/* 操作列只有 136 宽：长的那句（项目不能单独领）行内写短的、整句放悬停里；回收站「标了无效…」那句折行写完，不被表格右边裁掉（原型 pool.bin） */}
-            {因 && !只读 && !可恢复(r) && !走的[r.id] && <span className="muted pool-op-why" title={因}>{因 === 项目不能单独领提示 ? 项目不能单独领短说 : 因}</span>}
-          </div>
-        );
-      },
+      render: (_, r) => 操作格(r, false),
     },
   ];
+
+  /**
+   * 现状主题的列（设计语言 G-A · G3）：
+   *   客户名称排第一、钉左（这一行是谁，同客户列表；390 不再是属性钉着、客户名滑到操作列底下）；客户池并成一行的名字前一个展开箭头（G5）
+   *   公海属性：「全部」里灰标签（D10：绿只给完成）；选了某一池整列不摆（同一池不用每行说）
+   *   项目名 = 客户名：项目格写灰字「同客户名」，照旧点得进、悬停看全名（G-新5）
+   *   最后跟进跨年写全「2025 年 10 月 26 日」不截（D15）；日期 13 号字、右对齐、等宽数字（并成两行那一列 12 号）
+   *   1024 这一档：不摆「当前进程」，「最后跟进」「入池时间」并成一列两行，「入池原因」留着（G-新4：领不领看它）
+   */
+  const 时间 = (d: string | Date | null | undefined, 空 = "没跟进过") =>
+    d ? <span className="nowrap pool-t" title={fmtDateTime(d)}>{smartTime(d)}</span> : <span className="muted">{空}</span>;
+  const 新列: 列<公海行>[] = [
+    {
+      // 列宽留余量（G-A 审查）：1366 各列 + 勾选列 1062 对内容区 1094、1024 是 720 对 752，各留 32——Windows 纵向滚动条占 17 也不横滚、
+      // 钉住的操作列不冒阴影线；客户名、项目名各让出 8（原来 168 / 160、窄档 132 / 116，只留 16）
+      title: "客户名称", key: "客户", width: 窄 ? 124 : 160, 常驻: true,
+      render: (_, r) => r.子 ? (
+        <span className="pool-name">
+          <RightOutlined className="pool-fold" rotate={展开的.includes(r.id) ? 90 : 0} aria-hidden />
+          {客户格(r)}
+        </span>
+      ) : 客户格(r),
+    },
+    ...(filters.attr ? [] : [{
+      title: "公海属性", key: "属性", width: 92, 常驻: true,
+      render: (_: unknown, r: 公海行) => <Tag className="pool-attr">{r.属性}</Tag>,
+    }]),
+    {
+      title: "项目名称", key: "项目", width: 窄 ? 108 : 152,
+      render: (_, r) => {
+        if (r.子) return (
+          <span className="pool-many">
+            <span className="fulltext" title={r.子.map((c) => c.项目名 ?? "").join("、")}>{r.项目名}</span>
+            <span className="pool-many-n">{r.子.length} 个项目</span>
+          </span>
+        );
+        if (!r.项目名) return <span className="muted">领取后可见</span>;
+        const 同 = !!r.客户名 && r.项目名 === r.客户名;
+        const 类 = 同 ? "fulltext pool-same" : "fulltext";
+        const 字 = 同 ? "同客户名" : r.项目名;
+        return r.projectId && r.种 === "项目"
+          ? <RowLink href={`/projects/${r.projectId}`} className={类} title={r.项目名}>{字}</RowLink>
+          : <span className={类} title={r.项目名}>{字}</span>;
+      },
+    },
+    ...(窄 ? [] : [{
+      title: "当前进程", key: "进程", width: 128,
+      render: (_: unknown, r: 公海行) => r.进程 ? <span className="clamp" title={r.进程明细 ?? r.进程}>{r.进程}</span> : <span className="muted">—</span>,
+    }]),
+    ...(窄
+      ? [{
+        title: "入池 / 跟进", key: "时间", width: 140, align: "right" as const, className: "pool-tcol",
+        render: (_: unknown, r: 公海行) => (
+          <div className="pool-t2">
+            <div>{时间(r.入池时间)}</div>
+            <div className="muted">{时间(r.最后跟进)}</div>
+          </div>
+        ),
+      }]
+      : [
+        { title: "最后跟进", key: "跟进", width: 150, align: "right" as const, className: "pool-tcol", render: (_: unknown, r: 公海行) => 时间(r.最后跟进) },
+        { title: "入池时间", key: "入池", width: 104, align: "right" as const, className: "pool-tcol", render: (_: unknown, r: 公海行) => 时间(r.入池时间) },
+      ]),
+    { title: "入池原因", key: "原因", width: 窄 ? 120 : 140, render: (_, r) => 原因格(r) },
+    // 手机宽「领取」触屏 44 高、左右各 12 内边距（D34，约 54 宽）+「⋯」44：格子 136 才放得下，原来 120 撑出 12（PR #414 排版闸门 375 / 390）
+    { title: "操作", key: "操作", width: 手机 ? 136 : 104, 常驻: true, fixed: "right", render: (_, r) => 操作格(r, true) },
+  ];
+  const 全部列 = 新样 ? 新列 : 旧列;
   const 列们 = 全部列.filter((c) => !(只读 && c.key === "操作" && !能分配 && !能标无效 && !能恢复));
 
   // 自定义筛选（11-06）：属性分段、排序、搜索固定；默认摆的和原来一样只有入池方式，「客户来源」收在更多筛选
   const { 外露: 筛选外露, 更多按钮: 更多筛选按钮 } = useCustomFilters("pool", [
     {
-      键: "quick", 名: "入池方式", 宽: 150, 默认外露: true, 有值: !!f.quick,
+      键: "quick", 名: "入池方式", 宽: 新样 ? 140 : 150, 默认外露: true, 有值: !!f.quick,
       渲染: (style: CSSProperties) => (
-        <Select style={style} aria-label="入池方式" placeholder="入池方式" allowClear
+        <Select style={style} aria-label="入池方式" placeholder={新样 ? "全部入池方式" : "入池方式"} allowClear
           popupMatchSelectWidth={260}
           value={f.quick || undefined}
           onChange={(v) => 换池({ quick: v ?? "" })}
@@ -719,7 +865,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
     }] : []),
   ]);
 
-  const 筛选 = (
+  const 旧筛选 = (
     <div className="pool-filters" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px 8px", minWidth: 0 }}>
       <div style={{ overflowX: "auto", maxWidth: "100%" }}>
         <Segmented
@@ -754,17 +900,81 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
     </div>
   );
 
+  /** 公海回收站开关（P-公海-09）= 入池方式筛「无效客户」，再点一次取消；和入池方式下拉同一个值、联动照旧 */
+  const 回收站开 = f.quick === "无效客户";
+  const 切回收站 = () => 换池({ quick: 回收站开 ? "" : "无效客户" });
+  /**
+   * 现状主题（设计语言 G-A · G1）：两行固定结构——
+   *   池子行：全部 / 线索池 / 商机池 / 订单池 / 客户池（数用 --count-fg 灰、等宽，0 的照摆）；最右「公海回收站」独立开关（按下态，不并进分段、不叫池），
+   *     数是当前池里的（选了某一池写「（线索池 N）」）；390 池子改下拉（D34：分段横滑「订单池」露半个、「客户池」看不到）
+   *   筛选行：搜索（占位写全）、入池方式（「全部入池方式」墨色，D37）、排序、更多筛选（N）、有筛选才出的重置；右端「列」。1024 不折第三行
+   */
+  const 池名 = (k: "全部" | 公海属性) => (
+    // 池名单独一个 span：390 下拉选了值、挤的时候只截池名，后面的数照全写（globals.css .pool-pick-attr）
+    <span className="pool-seg"><span className="pool-seg-k">{k}</span> <span className="pool-n">{数(属性数[k])}</span></span>
+  );
+  const 池选项 = (["全部", ...公海属性们] as const).map((k) => ({ value: k, label: 池名(k) }));
+  const 新筛选 = (
+    <div className="pool-bar">
+      <div className="pool-pools">
+        {手机 ? (
+          <Select aria-label="公海属性" className="pool-pick-attr" value={f.attr || "全部"} popupMatchSelectWidth={false}
+            onChange={(v) => 换池({ attr: v === "全部" ? "" : String(v) })} options={池选项} />
+        ) : (
+          <Segmented aria-label="公海属性" className="pool-seg-attr" value={f.attr || "全部"}
+            onChange={(v) => 换池({ attr: v === "全部" ? "" : String(v) })} options={池选项} />
+        )}
+        <Button className="pool-bin nowrap" aria-pressed={回收站开}
+          title={`标了无效的客户都在这里：全员看得到、查重查得到，不会自动删${f.attr ? `；数字是${f.attr}里的` : ""}`}
+          onClick={切回收站}>
+          {/* 一整段字（antd 按钮里每个子元素是一格 flex，分开写会被按钮的 gap 隔开） */}
+          <span>{公海回收站}{f.attr ? <span className="pool-n">（<span className="pool-bin-attr">{f.attr} </span>{数(快捷数.无效客户)}）</span> : <> <span className="pool-n">{数(快捷数.无效客户)}</span></>}</span>
+        </Button>
+      </div>
+      <div className="pool-fl">
+        <ListSearch
+          value={f.keyword}
+          onChange={(v) => setF({ ...f, keyword: v })}
+          onSearch={(v) => apply({ keyword: v })}
+          placeholder="搜客户名 / 项目名"
+          width={240}
+        />
+        {筛选外露}
+        <Select className="pool-sort" aria-label="排序"
+          value={f.sort || 默认排序}
+          onChange={(v) => apply({ sort: v === 默认排序 ? "" : v })}
+          options={排序们.map((o) => ({ value: o.value, label: `按${o.label}` }))}
+        />
+        {更多筛选按钮}
+        <ResetFilters 显示={在筛} onClick={reset} />
+      </div>
+    </div>
+  );
+  const 筛选 = 新样 ? 新筛选 : 旧筛选;
+
+  /** G7 / D21（现状主题）：筛了没对上时那一句；只选了某一池、别的都没筛时说「X 池里还没有」 */
+  const 只筛了池 = !!filters.attr && !filters.keyword && !filters.quick && !filters.channelId && !filters.projChannel && !filters.createdFrom && !filters.createdTo && !filters.batch && !(三态开 && filters.phoneIncomplete);
+  const 没对上话 = 只筛了池 ? `${filters.attr}里还没有`
+    : `${filters.keyword ? `没有对得上「${filters.keyword}」的客户或项目` : "没有对得上这些筛选的客户或项目"}，换个条件或点「重置」看全部`;
+  /** 行下确认条 / 没领到的原因（现状主题，K4）：表格展开行；客户池并成一行的照旧展开子列表 */
+  const 顶行 = new Set(行.filter((r) => !r.子).map((r) => r.id));
+  const 条行 = 确认条行们({ 新样, 问着, 行错, 走的, 顶行 });
+
   return (
     <>
       <PageHead
         title="公海"
-        titleAside={名单标 || 批标 ? <>{名单标}{批标}</> : undefined}
+        // G0（现状主题）：标题后挂总数（四池之和，--count-fg，同客户列表「客户 N」的位置）；跟着搜索 / 来源变，不跟池子、入池方式变
+        titleAside={新样 ? <><span className="pool-head-n" title="四个池加起来">{数(属性数.全部)}</span>{名单标}{批标}</> : 名单标 || 批标 ? <>{名单标}{批标}</> : undefined}
         subtitle="没人负责的客户和项目都在这里：领了就归你"
-        extra={
+        extra={新样 ? (
+          // G0：「我手上 N / 上限 M」做成右上一枚中性胶囊（--tag-bg），到上限换要人处理的橙底（--warning-bg）
+          持有 ? <span className="pool-hold nowrap" data-full={到上限 || undefined}>我手上 {持有.有} / 上限 {持有.上限}</span> : undefined
+        ) : (
           <Space size={12} wrap>
             {持有 && <span className={到上限 ? "nowrap" : "muted nowrap"} style={到上限 ? { color: "var(--warning-text)" } : undefined}>我手上 {持有.有} / 上限 {持有.上限}</span>}
           </Space>
-        }
+        )}
       />
       <DataList<公海行>
         页="pool"
@@ -773,19 +983,29 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
         列={列们}
         行={行}
         空库={!库里有 && !在筛}
-        空态={{ title: "公海是空的", hint: "超时没跟进、被退回的客户和项目会出现在这里", demo: false }}
+        空态={新样
+          // G7 / D21 空态句（现状主题）
+          ? { title: "公海里还没有客户和项目", hint: "超时没跟进、被退回的客户和项目会出现在这里", demo: false }
+          : { title: "公海是空的", hint: "超时没跟进、被退回的客户和项目会出现在这里", demo: false }}
+        没对上={新样 ? <div className="list-none">{没对上话}</div> : undefined}
         筛选={筛选}
         汇总={结果 || 截断 ? (
           <>
             {结果 && <ResultNote 文案={结果.文案} 没领到={结果.没领到} 关={() => set结果(null)} />}
-            {截断 && <div className="muted" style={{ fontSize: 12 }}>公海里太多了，这里只列最近入池的一批；更早的请用搜索找</div>}
+            {截断 && (新样
+              // G2（现状主题）：13 号灰字、写数
+              ? <div className="muted pool-cut">公海里太多了，这里只列最近入池的 {数(总数)} 条；更早的请用搜索找</div>
+              : <div className="muted" style={{ fontSize: 12 }}>公海里太多了，这里只列最近入池的一批；更早的请用搜索找</div>)}
           </>
         ) : undefined}
         批量={只读 ? undefined : (选中, 清空, 选中行) => {
           const 键 = 选中.join(",");
           // 原型 pool.batch：选择条原地变确认，写清后果；确认后清掉勾选、底部撤销条
+          // G6（现状主题）：批量条同客户列表那一款（浮在底部）；条头自己写「已选 N 个」——公海一行可能是客户也可能是项目，不说「位」
+          const 已选 = 新样 ? <b className="pool-sel-n">已选 {选中.length} 个</b> : null;
           if (批问 === 键) return (
             <span className="pool-batch-ask" role="group" aria-label="确认批量领取">
+              {已选}
               <b>领取 {选中行.length} 个？</b>
               <span className="pool-batch-why">{领取后果(选中行).join(" · ")}</span>
               {批错 && <span className="pool-err" role="alert">{批错}</span>}
@@ -808,13 +1028,15 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
           );
           return (
             <Space size={6} wrap>
+              {已选}
               {/* 原型 pool.carry：带待办跟着这一批走，默认勾上，可当场改 */}
               {公海规则.换负责人带待办 && (
                 <Checkbox className="nowrap" checked={带待办} onChange={(e) => set带待办(e.target.checked)} title="原负责人没做完的待办一起转给新负责人">
                   原负责人的待办一起转
                 </Checkbox>
               )}
-              <Button size="small" onClick={() => { set批错(""); set批问(键); }}>领取</Button>
+              {/* 现状主题：「领取」是这一条唯一的主色钮 */}
+              <Button size="small" type={新样 ? "primary" : undefined} onClick={() => { set批错(""); set批问(键); }}>领取</Button>
               {能分配 && 分给谁.length > 0 && (
                 <Button size="small" onClick={() => set选人({ 们: 选中行, 批: true, 完: 清空 })}>分配给同事</Button>
               )}
@@ -828,7 +1050,10 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
         // 客户池并成一行的：点行展开 / 收起（客户归别人，不跳客户页）
         行链接={(r) => (r.子 ? "" : r.种 === "项目" ? `/projects/${r.projectId}` : `/customers/${r.customerId}`)}
         行点击={(r) => { if (r.子) 切展开(r.id); }}
-        展开={{ expandedRowKeys: 展开的, showExpandColumn: false, rowExpandable: (r) => !!r.子, expandedRowRender: 子列表 }}
+        浮起操作条={新样}
+        展开={新样
+          ? { expandedRowKeys: [...展开的, ...条行], showExpandColumn: false, rowExpandable: (r) => !!r.子 || 条行.includes(r.id), expandedRowRender: (r) => (r.子 ? 子列表(r) : 确认条(r)), expandedRowClassName: (r) => (r.子 ? "pool-sub-tr" : "pool-ask-tr") }
+          : { expandedRowKeys: 展开的, showExpandColumn: false, rowExpandable: (r) => !!r.子, expandedRowRender: 子列表 }}
         行类={(r) => [r.类 === "无效" ? "row-off" : "", 走的[r.id] ? "pool-row-leave" : "", 回来的.includes(r.id) ? "pool-row-back" : ""].filter(Boolean).join(" ") || undefined}
         分页={{ 当前页, 每页: pageSize, 总数, 翻页, ...(分项 ? { 单位: (n: ReactNode) => (分项.项目 ? <>{n} 行：客户 {分项.客户} 位、项目 {分项.项目} 个</> : <>{n} 位客户</>) } : {}) }}
       />
