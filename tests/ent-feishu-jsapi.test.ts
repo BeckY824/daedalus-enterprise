@@ -148,6 +148,12 @@ describe("可签地址 / 算签名", () => {
     expect(可签地址("https://a.test/mic-test.html/../login", 本站)).toBeNull();
     expect(可签地址("https://a.test:8443/mic-test.html", 本站)).toBeNull();
     expect(可签地址("https://a.test:8443/mic-test.html", 站点源("https://a.test:8443"))).toBe("https://a.test:8443/mic-test.html");
+    // PR3：客户页、独立项目页（飞书里按住说话的原生录音要鉴权）；别的页、带子路径的不签
+    expect(可签地址("https://a.test/customers/c123?project=p1#x", 本站)).toBe("https://a.test/customers/c123?project=p1");
+    expect(可签地址("https://a.test/projects/p_1-a", 本站)).toBe("https://a.test/projects/p_1-a");
+    expect(可签地址("https://a.test/customers/c1/edit", 本站)).toBeNull();
+    expect(可签地址("https://a.test/settings", 本站)).toBeNull();
+    expect(可签地址("https://b.test/customers/c1", 本站)).toBeNull();
   });
 
   it("没有本站源（ENT_PUBLIC_URL 没配 / 配错）一律不签", () => {

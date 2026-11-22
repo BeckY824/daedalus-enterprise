@@ -19,13 +19,17 @@ import { 动作出错话 } from "@/lib/stale-deploy";
 import { useFormDraft } from "@/components/FormDraft";
 import { 两行, 项目小标题 } from "./project-menu";
 import { CoachRecUploadModal, CoachRecDrafts } from "./CoachRecUpload";
+import { HoldToTalkPanel } from "@/components/CoachRecorder/HoldToTalkPanel";
 
 const 状态色: Record<string, string> = { 待回复: "orange", 已回复: "blue", 已关闭: "default" };
 
-/** 「录音点评」还没开放（教练点评改版 PR1 只做页头，11-21 用户「相关按钮功能目前点不动即可」）：下拉里灰着，这句既是第二行小字也是悬停说明 */
+/** 「录音点评」还没开放（教练点评改版 PR1 只做页头，11-21 用户「相关按钮功能目前点不动即可」）：下拉里灰着，这句既是第二行小字也是悬停说明。
+ * 录音点评 PR3（11-22）起录音可用（数据.录音.可录）时放开、打开录音面板；开关关着 / 不可用时照旧灰着 */
 export const 录音点评未开放 = "录音点评即将开放";
 /** 录音点评发出的主题：标签（话筒、虚线框）；转写下面的小字（改版方案 §4.5） */
 export const 录音点评标签 = "录音点评";
+/** 放开后「录音点评」第二行 */
+const 录音说明 = "按住说话；长的点一下开始录";
 const 机器识别话 = "机器识别，可能有错字，以录音为准";
 const 读时长 = (毫秒: number) => `${Math.floor(毫秒 / 60000)}:${String(Math.floor((毫秒 / 1000) % 60)).padStart(2, "0")}`;
 
@@ -35,9 +39,10 @@ const 读时长 = (毫秒: number) => `${Math.floor(毫秒 / 60000)}:${String(Ma
  * 下拉：灰字小标题「项目 · 名字（节点）」（设计语言 D2 · M1-b，和「更多操作 ▾」同一句）→「写点评」（原「发起主题」那只框，字段、服务端都不变）→「录音点评」（灰着、点不动，第二行写为什么）
  * 录音点评 PR2（11-22）：开关开着时（服务端给了 数据.录音）多一项「传录音文件」；手机（≤767）上改成从底部弹出的选择板，三项纵排、整行可点。
  * 开关关着时没有 数据.录音，和原来一模一样；PR4 起还要 数据.录音.可录（密钥 + ffmpeg 自检过）才出「传录音文件」
+ * PR3（11-22）：可录时「录音点评」放开（第二行「按住说话，或点按录长的」），打开录音面板 components/CoachRecorder/HoldToTalkPanel.tsx
  */
 export function StartReviewButton({ 数据, projectId, size }: { 数据: 项目主题们 | null | undefined; projectId: string; size?: "small" }) {
-  const [开, set开] = useState<"写" | "传" | null>(null);
+  const [开, set开] = useState<"写" | "传" | "录" | null>(null);
   const [板, set板] = useState(false);
   const 屏 = Grid.useBreakpoint();
   if (!数据?.能发) return null;
@@ -46,7 +51,9 @@ export function StartReviewButton({ 数据, projectId, size }: { 数据: 项目�
   const 录音 = !!数据.录音?.可录;
   const 写项 = { key: "write", label: <span data-testid="coach-review-write">{两行("写点评", "打字写，和原来的「发起主题」一样")}</span>, onClick: () => set开("写") };
   const 传项 = { key: "upload", label: <span data-testid="coach-review-upload">{两行("传录音文件", "手机录音机、通话录音录好的文件")}</span>, onClick: () => set开("传") };
-  const 录项 = { key: "voice", disabled: true, label: <span data-testid="coach-review-voice" title={录音点评未开放}>{两行("录音点评", 录音点评未开放)}</span> };
+  const 录项 = 录音
+    ? { key: "voice", label: <span data-testid="coach-review-voice">{两行("录音点评", 录音说明)}</span>, onClick: () => set开("录") }
+    : { key: "voice", disabled: true, label: <span data-testid="coach-review-voice" title={录音点评未开放}>{两行("录音点评", 录音点评未开放)}</span> };
   const items: MenuProps["items"] = [{
     type: "group",
     key: "cur",
@@ -55,7 +62,7 @@ export function StartReviewButton({ 数据, projectId, size }: { 数据: 项目�
   }];
   // 手机底部选择板只在录音开着时用（关着时下拉照旧，页面和原来一样）；md 没算出来之前（首屏）按电脑
   const 用板 = 录音 && 屏.md === false;
-  const 选 = (k: "写" | "传") => { set板(false); set开(k); };
+  const 选 = (k: "写" | "传" | "录") => { set板(false); set开(k); };
   return (
     <>
       {用板
@@ -70,12 +77,13 @@ export function StartReviewButton({ 数据, projectId, size }: { 数据: 项目�
           <div className="crec-sheet-list" data-testid="coach-review-sheet">
             <button type="button" className="crec-sheet-item" onClick={() => 选("写")}>{两行("写点评", "打字写，和原来的「发起主题」一样")}</button>
             <button type="button" className="crec-sheet-item" onClick={() => 选("传")} data-testid="coach-review-upload">{两行("传录音文件", "手机录音机、通话录音录好的文件")}</button>
-            <button type="button" className="crec-sheet-item" disabled title={录音点评未开放}>{两行("录音点评", 录音点评未开放)}</button>
+            <button type="button" className="crec-sheet-item" onClick={() => 选("录")} data-testid="coach-review-voice">{两行("录音点评", 录音说明)}</button>
           </div>
         </Drawer>
       )}
       {开 === "写" && <NewTopicModal 数据={数据} projectId={projectId} 关={() => set开(null)} />}
       {开 === "传" && <CoachRecUploadModal projectId={projectId} 项目名={数据.项目名} 可提交={录音} 关={() => set开(null)} />}
+      {开 === "录" && <HoldToTalkPanel projectId={projectId} 项目名={数据.项目名} 关={() => set开(null)} 改传文件={() => set开("传")} />}
     </>
   );
 }

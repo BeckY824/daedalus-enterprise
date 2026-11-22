@@ -16,8 +16,9 @@
 import { createHash, randomBytes } from "node:crypto";
 import { 推送凭据, 飞书租户令牌, type 推送凭据 as 凭据 } from "./feishu-push";
 
-/** 只给这几页签（现在只有实测页） */
+/** 只给这几页签：实测页；PR3 起客户页、独立项目页（飞书里按住说话走原生录音，要先鉴权） */
 export const 可签页面 = new Set(["/mic-test.html"]);
+const 可签页面式 = /^\/(customers|projects)\/[A-Za-z0-9_-]{1,64}$/;
 
 /** 飞书说令牌不对 / 过期了：换新令牌再拿一次票 */
 const 令牌失效码 = new Set([99991661, 99991663, 99991668]);
@@ -58,7 +59,7 @@ export function 算签名(票: string, 随机串: string, 时间戳: number, 地
 }
 
 /**
- * 校验要签的地址：http(s)、路径在 可签页面 里、和本站公开地址（ENT_PUBLIC_URL 的源）同源（协议 + 主机 + 端口）。
+ * 校验要签的地址：http(s)、路径在 可签页面 里（或客户页 /customers/<id>、项目页 /projects/<id>）、和本站公开地址（ENT_PUBLIC_URL 的源）同源（协议 + 主机 + 端口）。
  * 没有公开地址一律不签：请求里的 Host / X-Forwarded-Host 客户端能伪造，不拿来认本站。
  * 合格返回去掉 # 之后的地址（飞书按这个比对），不合格返回 null
  */
@@ -73,7 +74,7 @@ export function 可签地址(raw: string | null, 本站源: string | null): stri
   }
   if (u.protocol !== "https:" && u.protocol !== "http:") return null;
   if (u.username || u.password) return null;
-  if (!可签页面.has(u.pathname)) return null;
+  if (!可签页面.has(u.pathname) && !可签页面式.test(u.pathname)) return null;
   if (u.origin !== 本站源) return null;
   return raw.split("#")[0];
 }
