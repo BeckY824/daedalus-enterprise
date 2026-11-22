@@ -661,7 +661,7 @@ it("切列表 / 看板不跳：两个视图里切换器位置一样（1024 / 128
   }
 });
 
-it("看板视图（C17 / C18 / C15）：页头照客户列表（导入、导出、新建 ▾），离职交接在页头最右端带数；筛选行照摆、表格换成看板；切回列表筛选留着、页码去掉", async () => {
+it("看板视图（C17 / C18 / C15）：页头照客户列表（导入、导出、新建 ▾），离职交接在页头右端带数（设计语言 L-A：排在「新建 ▾」左边，新建最右）；筛选行照摆、表格换成看板；切回列表筛选留着、页码去掉", async () => {
   for (const w of [1024, 1280, 1366]) {
     const page = await browser.newPage({ viewport: { width: w, height: 900 } }); page.setDefaultTimeout(5000);
     const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -676,7 +676,7 @@ it("看板视图（C17 / C18 / C15）：页头照客户列表（导入、导出�
       expect(await page.locator("tr.ant-table-row").count(), `宽 ${w}`).toBe(0);
       const 钮 = (await page.locator(".page-head button").allInnerTexts()).map((t) => t.replace(/\s+/g, ""));
       // 页头「新建 ▾」（11-12）：看板视图也是这一颗，看板上不再单独有「新增项目」
-      expect(钮, `宽 ${w}`).toEqual(["导入", "导出", "新建", "离职交接3"]);
+      expect(钮, `宽 ${w}`).toEqual(["导入", "导出", "离职交接3", "新建"]);
       expect(await page.getByRole("button", { name: /新增项目|分配/ }).count(), `宽 ${w}`).toBe(0);
       // 同一行筛选：搜索框、阶段、进程都在
       expect(await page.getByRole("combobox", { name: "阶段" }).count() + await page.getByText("更多筛选").count(), `宽 ${w}`).toBeGreaterThan(0);

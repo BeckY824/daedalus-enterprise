@@ -5,6 +5,7 @@ import { useContext, useEffect, useLayoutEffect, useRef, useState, useTransition
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { useIsNowSkin } from "@/lib/use-skin";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
 import { Button, Pagination, Select, Space, Segmented, Tag, Typography, type SelectProps } from "antd";
 import { CloseOutlined, PlusOutlined, ThunderboltOutlined } from "@ant-design/icons";
@@ -186,6 +187,8 @@ export default function ProjectsView({
   const 问一起转 = useCarryConfirm();
   const 字典 = 字典of(企业版, 出口叫法);
   const b = useBusiness();
+  /** 现状主题（默认）：设计语言 L-A 市场管理客户页的页头同序只在这里出（换皮主题照原样，lib/use-skin.ts） */
+  const 新样 = useIsNowSkin();
   const 新线索 = 阶段 === "线索";
   // 企业版项目页阶段筛到「线索」：分配入口也摆在这儿（11-01 会议 §5「分配入口搬进项目列表但不看配额」）。
   // 只是多一处入口、不显示配额字样；分不分得出去、配额拦不拦照旧由服务端定
@@ -536,14 +539,15 @@ export default function ProjectsView({
         : []),
       ...(!新线索
         ? [{
-            键: "phase", 名: "阶段", 宽: 110, 默认外露: true, 有值: !!f.phase,
+            // 市场管理的客户页（我分出去的）：阶段 / 进程同客户页带「挤」——一行放不下先收进「更多筛选」，现状主题手机上一律收（设计语言 L-A · L-新5 / D06）
+            键: "phase", 名: "阶段", 宽: 110, 默认外露: true, 挤: 换回客户列表, 有值: !!f.phase,
             渲染: (style: CSSProperties) => (
               <Select style={style} aria-label="阶段" value={f.phase || ""} onChange={(v: string) => apply({ phase: v, node: "" })} options={[{ value: "", label: "全部阶段" }, ...阶段们.map((s) => ({ value: s, label: s }))]} />
             ),
           }]
         : []),
       {
-        键: "node", 名: "进程", 宽: 130, 默认外露: true, 有值: !!f.node,
+        键: "node", 名: "进程", 宽: 130, 默认外露: true, 挤: 换回客户列表, 有值: !!f.node,
         渲染: (style: CSSProperties) => (
           <Select style={style} aria-label="进程" placeholder="全部进程" allowClear value={f.node || undefined} onChange={(v?: string | null) => apply({ node: v ?? "" })} options={进程选项} popupMatchSelectWidth={false} />
         ),
@@ -622,13 +626,20 @@ export default function ProjectsView({
   </>);
 
   const 有分出去钮 = (新线索 || 项目页分) && 线索分配开着;
+  /*
+    市场管理的客户页（我分出去的，现状主题）：页头和客户页同序（设计语言 L-A · L-新3 / D31）——「列表 | 看板」照客户页的先后，
+    离职交接排在主按钮左边，「新建 ▾」固定最右（原来离职交接在最左、切换是「看板 | 列表」）。谁看得见不变；项目页、换皮主题照原样
+  */
+  const 市场同序 = 新样 && 换回客户列表;
+  const 离职交接钮 = !新线索 && !客户页 && 待交接 != null && <Link key="handover" href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>;
   /** 项目专用的几颗按钮：项目页在页头；客户页看板视图在筛选行右端（C17 / C4；11-12 起新增项目挪进客户页页头「新建 ▾」） */
   const 项目按钮 = (
     <>
       {有分出去钮 && <AssignedOutButton />}
       {/* 客户页看板视图的离职交接在客户页页头（C15），这里不再摆一个 */}
-      {!新线索 && !客户页 && 待交接 != null && <Link href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>}
-      {!新线索 && !客户页 && <Segmented<"列表" | "看板"> options={["看板", "列表"]} value={看法} onChange={换看法} />}
+      {!市场同序 && 离职交接钮}
+      {!新线索 && !客户页 && <Segmented<"列表" | "看板"> key="view" options={市场同序 ? ["列表", "看板"] : ["看板", "列表"]} value={看法} onChange={换看法} />}
+      {市场同序 && 离职交接钮}
       {/* 一个主按钮：新线索页叫「新线索」；企业版项目首页叫「新增项目」，点开先选新客户还是老客户（11-01 去掉旁边的下拉）。
           市场角色客户页的「我分出去的」：和客户页页头同一颗「新建 ▾」（新建客户 / 新建项目，11-12）。客户页看板视图不摆（在客户页页头） */}
       {!客户页 && (换回客户列表
@@ -662,7 +673,8 @@ export default function ProjectsView({
   );
 
   return (
-    <div>
+    // cust-market：市场管理的客户页（我分出去的），手机宽页头标题不挤（K9，globals.css）
+    <div className={换回客户列表 ? "cust-market" : undefined}>
       {进筛选行 ? (
         工具位 && createPortal(<>{回到看板}{项目按钮}</>, 工具位)
       ) : 客户页 ? (
