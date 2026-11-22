@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Tooltip } from "antd";
-import { 金额 } from "@/lib/currency";
+import { 金额, 金额缩写 } from "@/lib/currency";
+import { useIsNowSkin } from "@/lib/use-skin";
 import { 即将逾期天数 } from "@/lib/project/home-cards";
 import EmptyState from "@/components/EmptyState";
 import CountUp from "@/components/CountUp";
@@ -14,7 +15,8 @@ import type { 复盘概况, 预警行, 卡点分布, 客户分布 } from "@/lib/
 export type 复盘概况数 = { 概况: 复盘概况; 预警: 预警行[]; 分布: 卡点分布 };
 
 /** 数 = 这一格背后的那个数：给了就在变化时从旧值滚到新值（PR2 外壳 g.numbers），值 是它的写法、也是服务端那一趟的样子 */
-type 格 = { k: string; 值: string; 数?: number; 写法?: (n: number) => string; 注: string; 去?: string; 急?: boolean };
+/** 小 = 数下面常显的一行小字（现状主题的阶段排用）；全 = 缩写了的金额的全值（悬停、点按看） */
+export type 格 = { k: string; 值: string; 数?: number; 写法?: (n: number) => string; 注: string; 去?: string; 急?: boolean; 小?: ReactNode; 全?: string };
 
 /** 滚的半路取整（金额半路不出分），到位那一下用原数原写法，和服务端那一趟一字不差 */
 function 滚动写法(终: number, 写法: (n: number) => string = String) {
@@ -23,21 +25,33 @@ function 滚动写法(终: number, 写法: (n: number) => string = String) {
 
 /** 最上面那排六格：在跟项目 / 逾期任务 / 未解决卡点 / 已回款 / 待回款 / 3 天内回公海 */
 /** 不算 = 待回款不算哪些结局（按企业版叫法传进来） */
-export function 复盘概况排({ 数, 本位币, 不算 = "商机丢单 / 线索流失" }: { 数: 复盘概况; 本位币: string; 不算?: string }) {
-  const 钱 = (n: number) => 金额(n, 本位币);
+export const 复盘概况排 = ReviewSummaryRow;
+function ReviewSummaryRow({ 数, 本位币, 不算 = "商机丢单 / 线索流失" }: { 数: 复盘概况; 本位币: string; 不算?: string }) {
+  // 现状主题：金额窄格缩写「¥ 1.68 亿」，全值进悬停 / 点按（D39，原来「¥167,599,5…」被截）
+  const 新样 = useIsNowSkin();
+  const 钱 = (n: number) => (新样 ? 金额缩写(n, 本位币) : 金额(n, 本位币));
+  const 全 = (n: number) => (新样 ? 金额(n, 本位币) : undefined);
   const 外 = 数.外币项目 ? `；另有 ${数.外币项目} 个项目是外币，没算进来` : "";
   const 格们: 格[] = [
     { k: "在跟项目", 值: String(数.在跟), 数: 数.在跟, 注: "进行中、不在公海的", 去: "/projects" },
     { k: "逾期任务", 值: String(数.逾期任务), 数: 数.逾期任务, 注: "任务 + 跟进计划，过了时间没办", 去: "/overview?tab=todo&f=overdue", 急: 数.逾期任务 > 0 },
     { k: "未解决卡点", 值: String(数.未解决卡点), 数: 数.未解决卡点, 注: "待接受、处理中的", 去: "/overview?tab=block", 急: 数.未解决卡点 > 0 },
-    { k: "已回款", 值: 钱(数.已回款), 数: 数.已回款, 写法: 钱, 注: `项目上记的回款，只合 ${本位币}${外}` },
-    { k: "待回款", 值: 钱(数.待回款), 数: 数.待回款, 写法: 钱, 注: `合同金额减已回款，${本位币} 合同，${不算}的不算${外}` },
+    { k: "已回款", 值: 钱(数.已回款), 数: 数.已回款, 写法: 钱, 注: `项目上记的回款，只合 ${本位币}${外}`, 全: 全(数.已回款) },
+    { k: "待回款", 值: 钱(数.待回款), 数: 数.待回款, 写法: 钱, 注: `合同金额减已回款，${本位币} 合同，${不算}的不算${外}`, 全: 全(数.待回款) },
     数.将回公海 === null
       ? { k: `${即将逾期天数} 天内回公海`, 值: "—", 注: "组织规则里没开超时回收" }
       : { k: `${即将逾期天数} 天内回公海`, 值: String(数.将回公海), 数: 数.将回公海, 注: "按节点天数没跟进就收回", 去: "/projects?f=due-soon", 急: 数.将回公海 > 0 },
   ];
+  return <KPI排 格们={格们} 名="复盘概况" 新样={新样} />;
+}
+
+/**
+ * 一排 KPI（复盘概况 6 格；现状主题下阶段 4 格、本月 / 本年视图 4 格也用它，设计语言 R-B：两排同款、同号 26、不带彩色图标）。
+ * 现状主题：缩写了的金额全值 + 口径进 Tooltip，悬停、触屏点按都出（D39）；可点的格悬停只换底（D30）
+ */
+export function KPI排({ 格们, 名, 新样 = false, 列 = 6 }: { 格们: 格[]; 名: string; 新样?: boolean; 列?: 4 | 6 }) {
   return (
-    <section className="rkpi" aria-label="复盘概况">
+    <section className={`rkpi${列 === 4 ? " rkpi-4" : ""}`} aria-label={名}>
       {格们.map((g) => {
         const 里 = (
           <>
@@ -45,10 +59,12 @@ export function 复盘概况排({ 数, 本位币, 不算 = "商机丢单 / 线�
             <b className={`rkpi-v${g.急 ? " rkpi-v-hot" : ""}`}>
               {g.数 === undefined ? g.值 : <CountUp 值={g.数} 记号={`rkpi:${g.k}`} 只滚变化 格式={滚动写法(g.数, g.写法)} />}
             </b>
+            {g.小 != null && <span className="rkpi-s">{g.小}</span>}
           </>
         );
+        const 说 = g.全 ? <>{g.全}<br />{g.注}</> : g.注;
         return (
-          <Tooltip key={g.k} title={g.注} placement="bottom" mouseEnterDelay={0.3}>
+          <Tooltip key={g.k} title={说} placement="bottom" mouseEnterDelay={0.3} trigger={新样 && !g.去 ? ["hover", "click"] : undefined}>
             {g.去 ? <Link href={g.去} className="rkpi-i">{里}</Link> : <div className="rkpi-i" tabIndex={0}>{里}</div>}
           </Tooltip>
         );
@@ -64,9 +80,31 @@ export function 复盘概况排({ 数, 本位币, 不算 = "商机丢单 / 线�
 const 不跟批次话 = "不跟导入批次";
 
 /** 卡点分布 + 超时预警，并排（窄了上下）。不跟批次：数据页正按导入批次筛，标题旁写一句「不跟导入批次」 */
-export function 复盘提醒排({ 分布, 预警, 将回公海, 不跟批次 = false }: { 分布: 卡点分布; 预警: 预警行[]; 将回公海: number | null; 不跟批次?: boolean }) {
+export const 复盘提醒排 = ReviewAlertRow;
+function ReviewAlertRow({ 分布, 预警, 将回公海, 不跟批次 = false }: { 分布: 卡点分布; 预警: 预警行[]; 将回公海: number | null; 不跟批次?: boolean }) {
+  // 现状主题（R-新5，U-复盘-01）：卡点不再在数据页签重画一份，收成一行摘要 + 去卡点页签的链接，数不变
+  const 新样 = useIsNowSkin();
+  const 前三 = 分布.按主体.slice(0, 3);
   return (
     <div className="rkpi-pair">
+      {新样 ? (
+        <section className="btodo-list rkpi-blk" aria-label="卡点">
+          <div className="btodo-head">
+            <span className="rkpi-head-l">
+              <b className="section-title">卡点<span className="card-count">（{分布.总数}）</span></b>
+              {不跟批次 && <span className="muted rkpi-cap">{不跟批次话}</span>}
+            </span>
+            <Link href="/overview?tab=block" className="link-strong nowrap">去卡点页签 ›</Link>
+          </div>
+          {分布.总数 === 0 ? (
+            <p className="btodo-recycle-off">没有未解决的卡点</p>
+          ) : (
+            <p className="rkpi-blk-sum">
+              未解决 <b>{分布.总数}</b> 条{前三.length > 0 && <> · 按阻碍主体前 {前三.length}：{前三.map((x) => `${x.主体} ${x.数}`).join("、")}</>}
+            </p>
+          )}
+        </section>
+      ) : (
       <section className="btodo-list" aria-label="卡点分布">
         <div className="btodo-head">
           <b className="section-title">卡点分布</b>
@@ -78,6 +116,7 @@ export function 复盘提醒排({ 分布, 预警, 将回公海, 不跟批次 = f
           <分布横条 们={分布.按主体.map((x) => ({ 名: x.主体, 数: x.数 }))} 单位="条" />
         )}
       </section>
+      )}
       <section className="btodo-list" aria-label="超时预警">
         <div className="btodo-head">
           <span className="rkpi-head-l">

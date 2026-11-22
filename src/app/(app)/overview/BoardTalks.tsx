@@ -18,6 +18,7 @@ import CustomRangePicker from "@/components/CustomRangePicker";
 import { 读日期段, type 日期段 } from "@/lib/custom-date-range";
 import { 沟通按天 } from "@/lib/project/talk-days";
 import { TalkKindSwitch } from "./BoardTopics";
+import { useIsNowSkin } from "@/lib/use-skin";
 
 /**
  * 复盘页「沟通」页签（P7 U-复盘-01；11-01 参考复盘稿融合改成时间线）：项目负责人本人在项目上记的跟进（别人记的不算，11-02），时间倒序。
@@ -34,6 +35,9 @@ export default function BoardTalks({ 数, 段, 区间, 方式 = "", 只看自己
 }) {
   const router = useRouter();
   const sp = useSearchParams();
+  // 设计语言 R-B（R3）：现状主题「沟通 / 主题」和时间段挪到卡外筛选条（最左是沟通 / 主题，R-新9），卡头「项目沟通（N）」+ 方式下拉；
+  // 每条末行灰字「方式 · 发起 · 附件 · 记录人」，编号悬停看；换皮主题照旧
+  const 新样 = useIsNowSkin();
   const [换着, start] = useTransition();
   // 点了「自定义」先亮、日期段先摆出来，不等服务端那一屏
   const [显段, set显段] = useOptimistic(段);
@@ -66,18 +70,8 @@ export default function BoardTalks({ 数, 段, 区间, 方式 = "", 只看自己
   };
   const 去 = (x: 复盘沟通行) => router.push(`/projects/${encodeURIComponent(x.projectId)}`);
 
-  return (
-    <div className={`btodo-wrap rtalk-wrap${缺 ? " rtalk-has-side" : ""}`}>
-      <section className={`btodo-list${换着 ? " is-pending" : ""}`} aria-label="沟通记录列表" aria-busy={换着}>
-        <div className="btodo-head">
-          {有主题 ? (
-            <span className="rtopic-head-l">
-              <b className="section-title">项目沟通</b>
-              <TalkKindSwitch 当前="talk" />
-            </span>
-          ) : <b className="section-title">项目沟通</b>}
-          <div className="btodo-head-r">
-            <Select<沟通方式 | "">
+  const 方式下拉 = (
+      <Select<沟通方式 | "">
               size="small"
               className="rtalk-m"
               aria-label="沟通方式"
@@ -86,6 +80,9 @@ export default function BoardTalks({ 数, 段, 区间, 方式 = "", 只看自己
               options={[{ value: "", label: "全部方式" }, ...沟通方式们.map((k) => ({ value: k, label: 筛选方式名(k) }))]}
               popupMatchSelectWidth={false}
             />
+  );
+  const 时段钮 = (
+    <>
             <Segmented
               size="small"
               aria-label="时间范围"
@@ -96,11 +93,40 @@ export default function BoardTalks({ 数, 段, 区间, 方式 = "", 只看自己
             {显段 === "custom" && (
               <CustomRangePicker size="small" 段={区间 ?? 读日期段()} 改={(d) => 改({ t: "custom", 区间: d })} />
             )}
+    </>
+  );
+  return (
+    <>
+    {新样 && (
+      <div className="rtalk-bar" role="group" aria-label="沟通筛选">
+        {有主题 && <TalkKindSwitch 当前="talk" />}
+        {时段钮}
+      </div>
+    )}
+    <div className={`btodo-wrap rtalk-wrap${缺 ? " rtalk-has-side" : ""}`}>
+      <section className={`btodo-list${换着 ? " is-pending" : ""}`} aria-label="沟通记录列表" aria-busy={换着}>
+        {新样 ? (
+          <div className="btodo-head">
+            <b className="section-title">项目沟通<span className="card-count">（{数.总数.toLocaleString("zh-CN")}）</span></b>
+            <div className="btodo-head-r">{方式下拉}</div>
+          </div>
+        ) : (
+        <div className="btodo-head">
+          {有主题 ? (
+            <span className="rtopic-head-l">
+              <b className="section-title">项目沟通</b>
+              <TalkKindSwitch 当前="talk" />
+            </span>
+          ) : <b className="section-title">项目沟通</b>}
+          <div className="btodo-head-r">
+            {方式下拉}
+            {时段钮}
           </div>
         </div>
+        )}
         {数.行.length === 0 ? (
           <EmptyState
-            title="没有沟通记录"
+            title={新样 ? "还没有沟通记录" : "没有沟通记录"}
             hint={段 !== "all" || 方式 ? "时间、方式都选「全部」看看。" : 只看自己 ? "你还没在项目上记过沟通，沟通在项目页的节点上记。" : "项目上还没有沟通记录，沟通在项目页的节点上记。"}
             demo={false}
           />
@@ -110,7 +136,7 @@ export default function BoardTalks({ 数, 段, 区间, 方式 = "", 只看自己
             <section key={g.键} className="rtalk-day" aria-label={g.叫法}>
               <h3 className="rtalk-day-h">{g.叫法}</h3>
               <ol className="rtalk-tl">
-                {g.行.map((x) => <沟通条 key={x.id} x={x} 去={() => 去(x)} />)}
+                {g.行.map((x) => <沟通条 key={x.id} x={x} 新样={新样} 去={() => 去(x)} />)}
               </ol>
             </section>
           ))
@@ -128,12 +154,13 @@ export default function BoardTalks({ 数, 段, 区间, 方式 = "", 只看自己
           />
         )}
       </section>
-      {缺 && <缺沟通块 缺={缺} />}
+      {缺 && <缺沟通块 缺={缺} 新样={新样} />}
     </div>
+    </>
   );
 }
 
-function 沟通条({ x, 去 }: { x: 复盘沟通行; 去: () => void }) {
+function 沟通条({ x, 新样 = false, 去 }: { x: 复盘沟通行; 新样?: boolean; 去: () => void }) {
   // 页面记的沟通没有标题，只显示内容，别留个「：」打头（11-03 测试 C6-1）
   const 全 = 有值(x.内容) && x.内容 !== x.标题 ? (有值(x.标题) ? `${x.标题}：${x.内容}` : x.内容) : x.标题;
   return (
@@ -163,6 +190,12 @@ function 沟通条({ x, 去 }: { x: 复盘沟通行; 去: () => void }) {
             {全 !== x.标题 && <span>{有值(x.标题) ? "：" : ""}{x.内容}</span>}
           </div>
         </Tooltip>
+        {新样 ? (
+          // 末行 13 muted 一行字（不用胶囊）；编号悬停看，不常显
+          <div className="rtalk-foot" title={x.编号 ? `编号 ${x.编号}` : undefined}>
+            {[x.方式, x.发起 ? `${x.发起}` : null, x.附件 > 0 ? `附件 ${x.附件} 个` : null, x.负责人].filter(Boolean).join(" · ")}
+          </div>
+        ) : (
         <div className="rblk-k-meta">
           <span className="rblk-tag">{x.方式}</span>
           {x.发起 && <span className="rtalk-meta" title="发起主体">发起 {x.发起}</span>}
@@ -170,19 +203,30 @@ function 沟通条({ x, 去 }: { x: 复盘沟通行; 去: () => void }) {
           {x.编号 && <span className="rblk-code">{x.编号}</span>}
           <span className="rtalk-meta rtalk-who" title="记录人">{x.负责人}</span>
         </div>
+        )}
       </article>
     </li>
   );
 }
 
 /** 还没沟通过的项目：同首页「暂未跟进」卡，最多 5 个 + 总数，看全部去项目页 */
-function 缺沟通块({ 缺 }: { 缺: 缺沟通 }) {
+function 缺沟通块({ 缺, 新样 = false }: { 缺: 缺沟通; 新样?: boolean }) {
   return (
-    <aside className="btodo-list rtalk-side" aria-label="还没沟通过的项目">
+    <aside className={`btodo-list rtalk-side${新样 ? " is-now" : ""}`} aria-label="还没沟通过的项目">
+      {/* 现状主题 · 390：整块收成一行「还有 N 个项目没沟通过 ›」（R-新10） */}
+      {新样 && 缺.总数 > 0 && (
+        <Link href="/projects?f=no-follow" className="rtalk-side-line">还有 {缺.总数.toLocaleString("zh-CN")} 个项目没沟通过 ›</Link>
+      )}
+      {新样 ? (
+        <div className="btodo-head">
+          <b className="section-title">还没沟通过的项目<span className="card-count">（{缺.总数.toLocaleString("zh-CN")}）</span></b>
+        </div>
+      ) : (
       <div className="btodo-head">
         <b className="section-title">还没沟通过的项目</b>
         <span className={`btodo-col-n${缺.总数 ? " rtalk-side-n" : ""}`}>{缺.总数}</span>
       </div>
+      )}
       {缺.行.length === 0 ? (
         <p className="btodo-recycle-off">在推的项目都记过沟通了。</p>
       ) : (

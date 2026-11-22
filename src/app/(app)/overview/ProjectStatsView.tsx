@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
-import { Card, Row, Col, Table, Typography } from "antd";
+import { useMemo, useState, type ReactNode } from "react";
+import { Button, Card, Row, Col, Table, Typography } from "antd";
 import { FunnelPlotOutlined, ProjectOutlined, ShoppingOutlined, WarningOutlined, PlusCircleOutlined, RiseOutlined, TrophyOutlined, StopOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import type { EChartsCoreOption } from "echarts/core";
@@ -10,11 +10,12 @@ import { StatCard } from "@/components/ui";
 import EmptyState, { 表格空态 } from "@/components/EmptyState";
 import FlipRows from "@/components/FlipRows";
 import { palette, categorical } from "@/lib/palette";
-import { 金额 } from "@/lib/currency";
+import { 金额, 金额缩写 } from "@/lib/currency";
+import { useIsNowSkin } from "@/lib/use-skin";
 import type { 项目现在, 项目一段, 人行现在, 人行一段 } from "./project-stats";
 import ProjectFunnel from "./ProjectFunnel";
 import LeadWaterfall from "./LeadWaterfall";
-import { 复盘概况排, 复盘提醒排, 客户分布排, type 复盘概况数 } from "./ReviewSummary";
+import { 复盘概况排, 复盘提醒排, 客户分布排, KPI排, type 复盘概况数 } from "./ReviewSummary";
 import type { 客户分布 } from "@/lib/project/review-extras";
 import { 字典of, 结局叫法, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import { 带批次 } from "@/lib/project/import-batch";
@@ -57,12 +58,28 @@ const 名字列 = (去: (id: string) => string) => ({
   },
 });
 
+/** 按负责人表（现状主题，R-新12）：默认摆 10 行，多了「展开全部 N 人」；排序照旧在全部人上排（多的行按序号藏，不是先截再排） */
+const 默认人数 = 10;
+function useOwnerFold(总: number, 新样: boolean) {
+  const [全开, set全开] = useState(false);
+  const 收 = 新样 && 总 > 默认人数 && !全开;
+  return {
+    行类: (_: unknown, i: number) => (收 && i >= 默认人数 ? "stat-row-more" : ""),
+    钮: 新样 && 总 > 默认人数 ? (
+      <Button type="link" size="small" className="stat-more" aria-expanded={全开} onClick={() => set全开((x) => !x)}>
+        {全开 ? "收起" : `展开全部 ${总} 人`}
+      </Button>
+    ) : null,
+    题: (名: string) => (新样 ? <span className="section-title">{名}<span className="card-count">（{总}）</span></span> : <span className="section-title">{名}</span>),
+  };
+}
+
 /** 漏斗（矮）和线索瀑布并排一行（P15）；1280 以下（xl 以下）上下摆，各占一整行 */
-function 漏斗与瀑布({ 数, 漏斗说明, 瀑布说明, 空 }: { 数: { 漏斗: 项目现在["漏斗"]; 线索节点: 项目现在["线索节点"]; 线索转商机: number }; 漏斗说明: string; 瀑布说明: string; 空: { title: string; hint: string } }) {
+function 漏斗与瀑布({ 数, 漏斗说明, 瀑布说明, 空, 脚 }: { 数: { 漏斗: 项目现在["漏斗"]; 线索节点: 项目现在["线索节点"]; 线索转商机: number }; 漏斗说明: string; 瀑布说明: string; 空: { title: string; hint: string }; 脚?: ReactNode }) {
   return (
     <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
       <Col xs={24} xl={12}>
-        <ProjectFunnel 矮 漏斗={数.漏斗} 说明={漏斗说明} 空={空} />
+        <ProjectFunnel 矮 漏斗={数.漏斗} 说明={漏斗说明} 空={空} 脚={脚} />
       </Col>
       <Col xs={24} xl={12}>
         <LeadWaterfall 节点={数.线索节点} 转商机={数.线索转商机} 说明={瀑布说明} />
@@ -77,12 +94,17 @@ function 漏斗与瀑布({ 数, 漏斗说明, 瀑布说明, 空 }: { 数: { 漏�
  */
 export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口叫法, 批次 }: { 数: 项目现在; 本位币: string; 单人: boolean; 概况?: 复盘概况数; 客户?: 客户分布; 出口叫法?: 出口叫法改动; 批次?: string }) {
   const 链 = (href: string) => 带批次(href, 批次);
+  // 设计语言 R-B（R4）：现状主题阶段卡收成和概况同款的一排 KPI（4 格、同号 26、不带彩色图标，R-新11）、
+  // 「已经结束的」并进漏斗卡底、按负责人默认 10 行；换皮主题照旧
+  const 新样 = useIsNowSkin();
+  const 人表 = useOwnerFold(数.按人.length, 新样);
   // 结局按企业版叫法（商机丢单 / 交付结清，后台改过就用改的），别露库里的「丢单」（11-03 客户：看板底部用了丢单）
   const 字典 = 字典of(true, 出口叫法);
   const money = (n: number) => 金额(n, 本位币);
   const 段 = Object.fromEntries(数.阶段.map((s) => [s.phase, s]));
   const 异常 = 数.结局.find((r) => r.result === "异常状态")?.count ?? 0;
   const 有项目 = 数.阶段.some((s) => s.count > 0);
+  const 已结束字 = `已经结束的：${数.结局.filter((r) => r.result !== "异常状态").map((r) => `${结局叫法(r.result, 字典)} ${r.count}`).join(" · ")}`;
 
   // 横着画：14 个节点名竖着排，窄屏也放得下，不用斜着字
   const 节点option: EChartsCoreOption = useMemo(() => {
@@ -132,6 +154,21 @@ export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口�
     <>
       <外币提示 n={数.外币} 本位币={本位币} 说="进行中的项目" />
       {概况 && <复盘概况排 数={概况.概况} 本位币={本位币} 不算={`${字典.出口们.商机[1].叫法} / ${字典.出口们.线索[1].叫法}`} />}
+      {新样 ? (
+        <KPI排
+          名="各阶段"
+          新样
+          列={4}
+          格们={[
+            { k: "新线索", 值: String(段.线索?.count ?? 0), 数: 段.线索?.count ?? 0, 注: "线索阶段、进行中的", 小: "线索阶段、进行中的", 去: 链("/leads") },
+            { k: "商机阶段", 值: String(段.商机?.count ?? 0), 数: 段.商机?.count ?? 0, 注: `进行中的商机 · ${money(段.商机?.amount ?? 0)}`, 小: `进行中的 · ${金额缩写(段.商机?.amount ?? 0, 本位币)}`, 去: 链("/projects") },
+            { k: "订单阶段", 值: String(段.订单?.count ?? 0), 数: 段.订单?.count ?? 0, 注: `进行中的订单 · ${money(段.订单?.amount ?? 0)}`, 小: `进行中的 · ${金额缩写(段.订单?.amount ?? 0, 本位币)}`, 去: 链("/projects") },
+            数.公海
+              ? { k: "异常状态", 值: String(异常), 数: 异常, 注: "订单阶段停住的", 小: <Link href={批次 ? 带批次("/pool?open=1", 批次) : "/pool"} className="link-strong">公海里还有 {数.公海} 个 ›</Link> }
+              : { k: "异常状态", 值: String(异常), 数: 异常, 注: "订单阶段停住的", 小: "订单阶段停住的", 去: 链("/projects") },
+          ]}
+        />
+      ) : (
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} xl={6}>
           <StatCard icon={<FunnelPlotOutlined />} color={阶段色.线索} label="新线索" value={段.线索?.count ?? 0} note="线索阶段、进行中的" href={链("/leads")} />
@@ -146,12 +183,14 @@ export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口�
           <StatCard icon={<WarningOutlined />} color={categorical.orange} label="异常状态" value={异常} note={数.公海 ? `公海里还有 ${数.公海} 个进行中的项目` : "订单阶段停住的"} href={链("/projects")} noteHref={数.公海 ? (批次 ? 带批次("/pool?open=1", 批次) : "/pool") : undefined} />
         </Col>
       </Row>
+      )}
 
       <漏斗与瀑布
         数={数}
         漏斗说明="看得到的全部项目走到了哪一步，含已结束的"
         瀑布说明="线索阶段各进程停着几个、流出去几个（线索流失 / 判无效 / 放回公海），加上已转商机阶段的，垒到合计"
         空={{ title: "还没有项目", hint: "新建一条线索，或者从飞书 / Excel 导入，这里会按线索 → 商机 → 订单 → 交付数出来。" }}
+        脚={新样 ? 已结束字 : undefined}
       />
 
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
@@ -166,13 +205,14 @@ export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口�
         </Col>
         {!单人 && (
           <Col xs={24} xxl={12}>
-            <Card title={<span className="section-title">按负责人</span>} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>进行中的，公海里的不算</Typography.Text>} styles={{ body: { paddingTop: 8 } }}>
+            <Card title={人表.题("按负责人")} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>进行中的，公海里的不算</Typography.Text>} styles={{ body: { paddingTop: 8 } }}>
               <FlipRows>
               <Table<人行现在>
                 size="small"
                 rowKey="id"
                 dataSource={数.按人}
                 columns={cols}
+                rowClassName={人表.行类}
                 pagination={false}
                 // 窄了在卡片里横滚：1024 宽 + AI 栏常驻时卡片只剩三百多，五列数字 496 就放不下，不给就伸出卡片（排版闸门 10-28）。
                 // 给数字不给 max-content：名字照旧能折行，宽的时候不会无端横滚。616 = 名字留 120 + 72×3 + 140×2
@@ -180,6 +220,7 @@ export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口�
                 locale={表格空态({ title: "还没有人手上有项目", hint: "分了线索、建了项目之后这里按人拆。", demo: false })}
               />
               </FlipRows>
+              {人表.钮}
             </Card>
           </Col>
         )}
@@ -187,9 +228,11 @@ export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口�
 
       {概况 && <复盘提醒排 分布={概况.分布} 预警={概况.预警} 将回公海={概况.概况.将回公海} 不跟批次={!!批次} />}
 
+      {!新样 && (
       <p className="muted" style={{ marginTop: 12 }}>
-        已经结束的：{数.结局.filter((r) => r.result !== "异常状态").map((r) => `${结局叫法(r.result, 字典)} ${r.count}`).join(" · ")}
+        {已结束字}
       </p>
+      )}
 
       {客户 && <客户分布排 分布={客户} 不跟批次={!!批次} />}
     </>
@@ -198,6 +241,8 @@ export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口�
 
 export function ProjectPeriodView({ 数, 本位币, 口径, 单人, 出口叫法, 批次 }: { 数: 项目一段; 本位币: string; 口径: string; 单人: boolean; 出口叫法?: 出口叫法改动; 批次?: string }) {
   const 字典 = 字典of(true, 出口叫法);
+  const 新样 = useIsNowSkin();
+  const 人表 = useOwnerFold(数.按人.length, 新样);
   const [流失名, 丢单名] = [字典.出口们.线索[1].叫法, 字典.出口们.商机[1].叫法];
   const money = (n: number) => 金额(n, 本位币);
   const t = 数.合计;
@@ -234,6 +279,19 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人, 出口叫法
   return (
     <>
       <外币提示 n={数.外币} 本位币={本位币} 说="这一段交付的项目" />
+      {新样 ? (
+        <KPI排
+          名="这一段"
+          新样
+          列={4}
+          格们={[
+            { k: "新建项目", 值: String(t.新建), 数: t.新建, 注: `${口径}新建的，含已结束`, 小: `${口径}新建的，含已结束` },
+            { k: "转商机阶段", 值: String(t.转商机), 数: t.转商机, 注: "来回改只数一次", 小: `来回改只数一次 · 转订单 ${t.转订单}` },
+            { k: "交付结清", 值: String(t.成功交付), 数: t.成功交付, 注: `${口径}结束的`, 小: `${口径}结束的 · ${金额缩写(t.交付金额, 本位币)}`, 全: `交付金额 ${money(t.交付金额)}` },
+            { k: "没成", 值: String(t.线索流失 + t.丢单), 数: t.线索流失 + t.丢单, 注: "异常还在处理，不算没成", 小: `${流失名} ${t.线索流失} · ${丢单名} ${t.丢单}${t.异常状态 ? `；另有异常 ${t.异常状态}，不算在没成里` : ""}` },
+          ]}
+        />
+      ) : (
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} xl={6}>
           <StatCard icon={<PlusCircleOutlined />} color={阶段色.线索} label="新建项目" value={t.新建} note={`${口径}新建的，含已结束`} />
@@ -249,6 +307,7 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人, 出口叫法
           <StatCard icon={<StopOutlined />} color={categorical.orange} label="没成" value={t.线索流失 + t.丢单} note={`${流失名} ${t.线索流失} · ${丢单名} ${t.丢单}${t.异常状态 ? `；另有异常 ${t.异常状态}，不算在没成里` : ""}`} />
         </Col>
       </Row>
+      )}
 
       <漏斗与瀑布
         数={数}
@@ -266,19 +325,21 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人, 出口叫法
       </Card>
 
       {!单人 && (
-        <Card style={{ marginTop: 16 }} title={<span className="section-title">按负责人</span>} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>按项目现在的负责人算</Typography.Text>} styles={{ body: { paddingTop: 8 } }}>
+        <Card style={{ marginTop: 16 }} title={人表.题("按负责人")} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>按项目现在的负责人算</Typography.Text>} styles={{ body: { paddingTop: 8 } }}>
           <FlipRows>
           <Table<人行一段>
             size="small"
             rowKey="id"
             dataSource={数.按人}
             columns={cols}
+            rowClassName={人表.行类}
             pagination={false}
             // 同上：窄了在卡片里横滚，不伸出。640 = 名字留 120 + 76×5 + 140
             scroll={{ x: 640 }}
             locale={表格空态({ title: "这一段还没有人动过项目", hint: "换一个时间段看看。", demo: false })}
           />
           </FlipRows>
+          {人表.钮}
         </Card>
       )}
 

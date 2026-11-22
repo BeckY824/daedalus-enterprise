@@ -13,7 +13,8 @@ import { 自动推进话of } from "@/lib/project/auto-advance-text";
 import FollowMethodSelect, { useHabitDefault } from "@/components/FollowMethodSelect";
 import { 跟进类型们 } from "@/lib/constants";
 import type { 预警行 } from "@/lib/project/review-extras";
-import { dayjs, fmtDateTime } from "@/lib/utils";
+import { dayjs, fmtDateTime, smartTime } from "@/lib/utils";
+import { useIsNowSkin } from "@/lib/use-skin";
 import EmptyState, { 表格空态 } from "@/components/EmptyState";
 import CountUp from "@/components/CountUp";
 import { useMotionTheme } from "@/components/MotionTheme";
@@ -55,6 +56,8 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
 }) {
   const router = useRouter();
   const sp = useSearchParams();
+  // 设计语言 R-B（R1）：现状主题卡头写计数、日期 smartTime、空态「还没有待办」；换皮主题照旧
+  const 新样 = useIsNowSkin();
   const [刚完成, set刚完成] = useState<string[]>([]);
   /** 没完成成的原因：就地写在列表标题旁（g.save），不弹顶部提示、不提示成功 */
   const [错, set错] = useState<string | null>(null);
@@ -175,7 +178,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
       title: "到期",
       key: "时间",
       width: 132,
-      render: (_: unknown, x: 复盘待办行) => <span className="nowrap btodo-time">{x.时间 ? fmtDateTime(x.时间) : "没定日期"}</span>,
+      render: (_: unknown, x: 复盘待办行) => <span className="nowrap btodo-time" title={x.时间 ? fmtDateTime(x.时间) : undefined} suppressHydrationWarning>{x.时间 ? (新样 ? smartTime(x.时间) : fmtDateTime(x.时间)) : "没定日期"}</span>,
     },
     {
       title: "内容",
@@ -230,7 +233,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
             <button
               key={k}
               type="button"
-              className={`home-card btodo-card${选中 ? " is-on" : ""}${k === "overdue" && n > 0 ? " home-card-warn" : ""}`}
+              className={`home-card btodo-card${选中 ? " is-on" : ""}${k === "overdue" && n > 0 ? " home-card-warn" : ""}${k === "overdue" && n === 0 ? " is-zero" : ""}`}
               aria-pressed={选中}
               onClick={() => { if (!选中) 改({ f: k }); }}
             >
@@ -243,7 +246,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
       </div>
       <section className="btodo-list" aria-label="待办列表">
         <div className="btodo-head">
-          <b className="section-title">{待办卡叫法[卡]}</b>
+          <b className="section-title">{待办卡叫法[卡]}{新样 && <span className="card-count">（{计数[卡]}）</span>}</b>
           {错 && <span className="ov-todo-err" role="alert" title={错}>{错}</span>}
           <div className="btodo-head-r">
             {卡 === "all" && (
@@ -260,7 +263,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
           </div>
         </div>
         {看板 && 计数.all === 0 ? (
-          <EmptyState title="没有待办" hint={空提示} demo={false} />
+          <EmptyState title={新样 ? "还没有待办" : "没有待办"} hint={空提示} demo={false} />
         ) : 看板 ? (
           <div className={`btodo-board${换着 && !变形中 ? " is-pending" : ""}`}>
             {看板列们.map((c) => {
@@ -276,7 +279,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
                     <ul className="btodo-col-list">
                       {列.行.map((x) => (
                         <li key={x.key} data-morph-key={x.key}>
-                          <待办卡片 x={x} 完成中={刚完成.includes(x.key)} 看全员={看全员} 完成={() => void 完成(x)} />
+                          <待办卡片 x={x} 完成中={刚完成.includes(x.key)} 看全员={看全员} 新样={新样} 完成={() => void 完成(x)} />
                         </li>
                       ))}
                     </ul>
@@ -321,7 +324,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
             role: "link",
             "aria-label": `${x.内容}，${x.customerName}`,
           } : {}}
-          locale={表格空态({ title: "没有待办", hint: 空提示, demo: false })}
+          locale={表格空态({ title: 新样 ? "还没有待办" : "没有待办", hint: 空提示, demo: false })}
         />
         )}
       </section>
@@ -331,7 +334,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
 }
 
 /** 看板上的一张卡：项目（没有写客户）+ 级别、内容、到期 + 逾几天、负责人（看全员时）、「去跟进」；左边的勾直接完成 */
-function 待办卡片({ x, 完成中, 看全员, 完成 }: { x: 复盘待办行; 完成中: boolean; 看全员: boolean; 完成: () => void }) {
+function 待办卡片({ x, 完成中, 看全员, 新样 = false, 完成 }: { x: 复盘待办行; 完成中: boolean; 看全员: boolean; 新样?: boolean; 完成: () => void }) {
   const 名 = x.projectName ?? x.customerName;
   const 全名 = x.projectName ? `${x.customerName} · ${x.projectName}` : x.customerName;
   const 级 = 企业级别(x.projectLevel);
@@ -350,7 +353,7 @@ function 待办卡片({ x, 完成中, 看全员, 完成 }: { x: 复盘待办行;
           <span className="btodo-k-t btodo-t">{x.内容}</span>
         </Tooltip>
         <div className="btodo-k-meta">
-          <span className="btodo-time nowrap">{x.时间 ? fmtDateTime(x.时间) : "没定日期"}</span>
+          <span className="btodo-time nowrap" title={x.时间 ? fmtDateTime(x.时间) : undefined} suppressHydrationWarning>{x.时间 ? (新样 ? smartTime(x.时间) : fmtDateTime(x.时间)) : "没定日期"}</span>
           {逾 > 0 && <span className="btodo-k-over nowrap" suppressHydrationWarning>逾 {逾} 天</span>}
           {看全员 && <span className="btodo-k-owner">{x.ownerName}</span>}
           {x.去 && <Link href={x.去} className="btodo-k-go nowrap">去跟进 ›</Link>}
