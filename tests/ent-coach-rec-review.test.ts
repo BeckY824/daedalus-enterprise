@@ -36,6 +36,8 @@ vi.mock("@/lib/prisma", async () => {
   return { prisma: 加上限定(raw), defaultClient: raw };
 });
 vi.mock("@/lib/enterprise/feishu-push", () => ({ 推通知们: async () => {} }));
+const 模型回 = vi.hoisted(() => ({ 值: null as unknown, 抛: null as Error | null }));
+vi.mock("@/lib/llm", async (原) => ({ ...(await 原<object>()), chatJSON: async () => { if (模型回.抛) throw 模型回.抛; return 模型回.值; } }));
 
 import { defaultClient as raw, prisma } from "@/lib/prisma";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
@@ -46,7 +48,7 @@ import { 录音点评开关键 } from "@/lib/enterprise/coach-rec-db";
 import { 读项目主题, 复盘主题of } from "@/lib/enterprise/coach-topic-db";
 import { 录音根 } from "@/lib/enterprise/coach-rec-store";
 import { 整理一轮, 清转写内存, 整理写失败等毫秒 } from "@/lib/enterprise/coach-rec-jobs";
-import { 正文字数, 认整理结果, 整理提示词, 要第四段, 没听清话, AI整理, 回的不对话 } from "@/lib/enterprise/coach-rec-summary";
+import { 正文字数, 认整理结果, 整理提示词, 要第四段, 没听清话, AI整理, 回的不对话, 回的不对错 } from "@/lib/enterprise/coach-rec-summary";
 import { 打码还原 } from "@/lib/enterprise/notice-mask";
 import { 清自检缓存 } from "@/lib/enterprise/asr/ffmpeg";
 import { POST as 重试 } from "@/app/api/coach-rec/[id]/retry/route";
@@ -119,6 +121,20 @@ describe("整理的提示词和结果", () => {
     expect(正文字数("(00:01) 说话人 1：你好。\n(1:02:03) 说话人 2：嗯")).toBe(3);
     expect(await AI整理("(00:01) 说话人 1：嗯嗯，好的。", 1, false)).toEqual({ 可总结: false, 调了: false });
   });
+  it("模型回了但认不出（不是 JSON、缺主题要点）抛 回的不对错（算调过模型）；超时这类照原样抛（PR5 审查）", async () => {
+    const { JSON格式不对 } = await import("@/lib/llm");
+    const 长 = `(00:01) 说话人 1：${"这次拜访客户主要聊了报价和交期，".repeat(6)}`;
+    模型回.抛 = null;
+    模型回.值 = { 主题: "缺要点" };
+    await expect(AI整理(长, 1, false)).rejects.toBeInstanceOf(回的不对错);
+    模型回.抛 = new Error(JSON格式不对);
+    await expect(AI整理(长, 1, false)).rejects.toBeInstanceOf(回的不对错);
+    模型回.抛 = new Error("AI 响应超时，请稍后重试");
+    const e = await AI整理(长, 1, false).catch((x) => x);
+    expect(e).not.toBeInstanceOf(回的不对错);
+    expect(e.message).toBe("AI 响应超时，请稍后重试");
+    模型回.抛 = null;
+  });
   it("四段只在多人、整段交时要；结果按段拼、空段不写、主题截 40 字", () => {
     expect(要第四段(2, false)).toBe(true);
     expect(要第四段(2, true)).toBe(false);
@@ -184,12 +200,14 @@ describe("整理一轮", () => {
     const id2 = await 放一条();
     await 整理一轮({ 整理: 假整理({ 抛: new Error("socket hang up") }) });
     expect((await 行(id2)).error).toContain("AI 没整理成（AI 没回话）");
-    // 模型回的认不出：整理失败，不说没听清
+    // 模型回的认不出：整理失败，不说没听清；调过模型，照记用量（PR5 审查）；超时这类没回话的不记
+    expect(await raw.auditLog.count({ where: { action: "ai_use", entityId: "coachSum" } })).toBe(0);
     const id3 = await 放一条();
-    await 整理一轮({ 整理: 假整理({ 抛: new Error(回的不对话) }) });
+    await 整理一轮({ 整理: 假整理({ 抛: new 回的不对错() }) });
     expect(await 行(id3)).toMatchObject({ status: "整理失败", draftTitle: null });
     expect((await 行(id3)).error).toContain("AI 回的内容格式不对");
     expect((await 行(id3)).error).not.toBe(没听清话);
+    expect(await raw.auditLog.findMany({ where: { action: "ai_use", entityId: "coachSum" }, select: { detail: true } })).toEqual([{ detail: JSON.stringify({ 对象: id3 }) }]);
   });
 
   it("写结果出错：算一次失败（整理失败），不留在整理中每 5 秒再调模型；连失败也写不进的 10 分钟内不再拿出来", async () => {
@@ -203,18 +221,23 @@ describe("整理一轮", () => {
     expect((await 行(id)).error).toContain("存的时候出错了");
     await 整理一轮({ 整理: 模型 });
     expect(模型).toHaveBeenCalledTimes(1);
+    // 整理失败写进了：不进 10 分钟别碰名单，用户马上「重试整理」（回到整理中）下一轮就接着整理（PR5 审查）
+    await raw.entCoachRecording.update({ where: { id }, data: { status: "整理中" } });
+    await 整理一轮({ 整理: 模型 });
+    expect(模型).toHaveBeenCalledTimes(2);
+    expect((await 行(id)).status).toBe("待确认");
     // 连 整理失败 也写不进：留在整理中，10 分钟内不再调模型，过了再试
     const id2 = await 放一条();
     const 现在 = Date.now();
     const 探2 = vi.spyOn(prisma.entCoachRecording, "updateMany").mockRejectedValue(new Error("database is locked"));
     await 整理一轮({ 整理: 模型, 现在 });
     探2.mockRestore();
-    expect(模型).toHaveBeenCalledTimes(2);
+    expect(模型).toHaveBeenCalledTimes(3);
     expect((await 行(id2)).status).toBe("整理中");
     expect(await 整理一轮({ 整理: 模型, 现在: 现在 + 60_000 })).toBe(0);
-    expect(模型).toHaveBeenCalledTimes(2);
-    await 整理一轮({ 整理: 模型, 现在: 现在 + 整理写失败等毫秒 + 1 });
     expect(模型).toHaveBeenCalledTimes(3);
+    await 整理一轮({ 整理: 模型, 现在: 现在 + 整理写失败等毫秒 + 1 });
+    expect(模型).toHaveBeenCalledTimes(4);
     expect((await 行(id2)).status).toBe("待确认");
   });
 });
@@ -296,6 +319,25 @@ describe("稍后再发、发出", () => {
     const 负责人看 = (await 读项目主题(我("甲"), 项目))!.们[0];
     expect(负责人看.title).toBe("回访 13812345678（周二）");
     expect(负责人看.body).toContain("13812345678");
+  });
+
+  it("还原后变长超了上限（带分隔的号码）：存草稿、发出都回 400 和清楚的话，库不动（PR5 审查）", async () => {
+    // 主题上限 40：带分隔的号码打码后短 2 个字，教练看到的正好 40，还原后 42
+    const 原题 = `回访 139-1234-5678 ${"字".repeat(23)}`;
+    const id = await 放一条({ status: "待确认", draftTitle: 原题, draftBody: "· 要点" });
+    当("教练");
+    const 教 = (await 读项目主题(我("教练"), 项目))!.录音!.草稿们.find((d) => d.id === id)!;
+    expect(教.确认!.主题.length).toBeLessThanOrEqual(40);
+    const 加 = `${教.确认!.主题}${"多".repeat(40 - 教.确认!.主题.length)}`;
+    expect(加.length).toBe(40);
+    const 存 = await 读(await 存稿(请(`/api/coach-rec/${id}/draft`, { title: 加, body: "· 要点" }), 参(id)));
+    expect(存.status).toBe(400);
+    expect(存.体.error).toMatch(/^主题里的号码换回原号码后有 4\d 字，超过 40 字，请删几个字再发$/);
+    const 发出 = await 读(await 发(请(`/api/coach-rec/${id}/send`, { title: 加, body: "· 要点" }), 参(id)));
+    expect(发出.status).toBe(400);
+    expect(发出.体.error).toContain("换回原号码后");
+    expect(await 行(id)).toMatchObject({ status: "待确认", draftTitle: 原题 });
+    expect(await raw.entCoachTopic.count()).toBe(0);
   });
 
   it("打码还原：同一个打码样子对应几个原号码按顺序轮；对不上的不动；没有号码的原文不动", () => {
