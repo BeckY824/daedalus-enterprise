@@ -10,7 +10,7 @@
  *   - 轮询：交后 2 分钟内 10 秒一次、之后 30 秒一次；超 3 小时判失败；腾讯云回失败判失败；查的时候网断了下一轮再查
  *   - 重启：交上了的接着查、不重交；排队的接着交
  *   - 重试整理：只有录的人、只认整理失败、占 AI 限频（满了 429）
- *   - 设置：系统管理员能开关（要密钥在、ffmpeg 过）、改大文件交法、测试连接（两条路，样例音频测完删）；管理员 admin 只读；都进审计；样例音频开关关着也能被取、过期不给
+ *   - 设置：系统管理员能开关（要密钥在、ffmpeg 过）、改大文件交法、测试连接（两条路，样例音频测完删）；管理员 admin 只读、销售教练和销售看不到；都进审计；样例音频开关关着也能被取、过期不给
  *   - 密钥不进库、留痕、通知（明文密钥设成记号串，失败后全库搜不到）
  *   - PR2 遗留：传完占位被接手后原请求不删目录；放弃 / 认不出格式删文件后记 audioPurgedAt；收一片总时长到点就停
  * 用拷出来的一份库、显式单连接，数据目录用临时目录。要 ffmpeg 的几组本机没装就跳过。
@@ -30,7 +30,7 @@ const 临时 = vi.hoisted(() => {
   return { dir };
 });
 const 登录 = vi.hoisted(() => ({ user: { id: "", name: "", email: "", role: "SALES", title: "", avatar: null } as Record<string, unknown> | null }));
-const 钩 = vi.hoisted(() => ({ 拼段前: null as null | (() => Promise<void>) }));
+const 钩 = vi.hoisted(() => ({ 拼段前: null as null | (() => Promise<void>), 切段坏: false }));
 const 假头 = vi.hoisted(() => () => ({
   cookies: async () => ({ get: () => undefined, set: () => {}, delete: () => {} }),
   headers: async () => new Headers(),
@@ -49,6 +49,18 @@ vi.mock("@/lib/enterprise/feishu-push", () => ({ 推通知们: async () => {} })
 vi.mock("@/lib/enterprise/coach-rec-store", async (原) => {
   const m = await 原<typeof import("@/lib/enterprise/coach-rec-store")>();
   return { ...m, 拼段: async (...a: Parameters<typeof m.拼段>) => { if (钩.拼段前) await 钩.拼段前(); return m.拼段(...a); } };
+});
+// 切段中途坏掉：先切出一段半截再抛（核「残留的 asr-part-* 删掉」）
+vi.mock("@/lib/enterprise/asr/ffmpeg", async (原) => {
+  const m = await 原<typeof import("@/lib/enterprise/asr/ffmpeg")>();
+  return {
+    ...m,
+    切段: async (...a: Parameters<typeof m.切段>) => {
+      if (!钩.切段坏) return m.切段(...a);
+      fs.writeFileSync(path.join(a[2], "asr-part-000.wav"), "半截");
+      throw new Error("测试：切段中途坏了");
+    },
+  };
 });
 
 import { defaultClient as raw } from "@/lib/prisma";
@@ -101,6 +113,7 @@ async function 建() {
   清转写内存();
   resetAiQuota();
   钩.拼段前 = null;
+  钩.切段坏 = false;
   delete process.env.ENT_PUBLIC_URL;
   process.env.ENT_ASR_FAKE = "1";
 }
@@ -339,6 +352,56 @@ describe.skipIf(!有ffmpeg)("交不上、重试", () => {
     expect(await 行(id2)).toMatchObject({ status: "整理失败", error: "腾讯云密钥不对" });
   });
 
+  it("切段交到一半交不上：交上的段先落任务号，重试、重启后只补交没交上的段（不重复计费）", async () => {
+    await 设(大文件交法键, "切段");
+    const id = await 传好(音.长!, "长.wav");
+    当("教练");
+    await 交(id);
+    // 第 2 段起网络断：第 1 段的任务号已经落库，asrSubmittedAt 还空着（没交齐、不查）
+    let 断 = true;
+    const c = 记通道({ 提交: async (_i, 第) => { if (断 && 第 >= 2) throw new 通道错("连不上腾讯云（网络断了或超时），稍后会自动再试", true, "网络"); return `t${第}`; } });
+    const t0 = Date.now();
+    await 转写一轮({ 通道: c.通, 现在: t0 });
+    expect(c.交们).toHaveLength(2);
+    let x = await 行(id);
+    expect(x.asrSubmittedAt).toBeNull();
+    expect(读任务们(x.asrTaskId)).toEqual([{ t: "t1", 起: 0 }]);
+    // 进程重启（内存清掉）后接着交：第 1 段不再交，后面各段交齐
+    清转写内存();
+    断 = false;
+    await 转写一轮({ 通道: c.通, 现在: t0 + 1_000 });
+    x = await 行(id);
+    expect(x.asrSubmittedAt).not.toBeNull();
+    const 任们 = 读任务们(x.asrTaskId);
+    expect(任们.length).toBeGreaterThanOrEqual(2);
+    expect(任们[0]).toEqual({ t: "t1", 起: 0 });
+    expect(c.交们).toHaveLength(2 + 任们.length - 1); // 第一轮 2 次（1 成 1 断）+ 补交其余各段
+    expect(c.交们.slice(2).every((i) => i.音频.方式 === "请求体")).toBe(true);
+    for (let i = 1; i < 任们.length; i++) expect(任们[i].起).toBeGreaterThan(任们[i - 1].起);
+    expect(fs.readdirSync(path.dirname(path.join(录音根(), x.audioPath!))).filter((f) => f.startsWith("asr-part-"))).toEqual([]);
+  });
+
+  it("临时文件：切段中途抛错 → 半截的 asr-part-* 删掉；重试时规整格式变了 → 旧的 asr.* 删掉", async () => {
+    await 设(大文件交法键, "切段");
+    const id = await 传好(音.长!, "长.wav");
+    当("教练");
+    await 交(id);
+    钩.切段坏 = true;
+    await 转写一轮({ 通道: 记通道().通 });
+    const x = await 行(id);
+    expect(x.status).toBe("整理失败");
+    const 目录 = path.dirname(path.join(录音根(), x.audioPath!));
+    expect(fs.readdirSync(目录).filter((f) => f.startsWith("asr-part-"))).toEqual([]);
+    // 上次规整留下另一种格式（比如 copy 成 ogg）：这次规整成 wav 以后旧的删掉，只留一份
+    钩.切段坏 = false;
+    fs.writeFileSync(path.join(目录, "asr.ogg"), "旧的");
+    当("教练");
+    expect((await 重交(id)).status).toBe(200);
+    await 转写一轮({ 通道: 记通道().通 });
+    expect((await 行(id)).asrSubmittedAt).not.toBeNull();
+    expect(fs.readdirSync(目录).filter((f) => f.startsWith("asr")).sort()).toEqual(["asr.wav"]);
+  });
+
   it("重试整理：只认整理失败、只有录的人；回转写中、清掉任务号；占 AI 限频，满了 429", async () => {
     const id = await 放一条({ status: "整理失败", error: "x", asrTaskId: "[]", asrSubmittedAt: new Date() });
     当("老板");
@@ -407,7 +470,13 @@ describe("设置「语音转文字」", () => {
   it("系统管理员能开关、改交法（进审计）；管理员 admin 只读；没配密钥开不了", async () => {
     const 概 = await 读转写设置(我("老板"));
     expect(概).toMatchObject({ 开: false, 能改: true, 密钥: "假通道", 交法: "签名地址", 配了地址: false, 上次测试: null });
-    expect((await 读转写设置(我("管理员")))?.能改).toBe(false);
+    // 本月没转过：用量里不列「录音转写」（开关关着时设置页和现在一样）
+    expect((await 看全部(() => aiUsageThisMonth())).some((u) => u.feature === "asr")).toBe(false);
+    const 管 = await 读转写设置(我("管理员"));
+    expect(管 && "密钥" in 管 && 管.能改).toBe(false);
+    // 销售教练（也是只读角色）、销售：拿不到，回 403（PR4 审查）
+    expect(await 读转写设置(我("教练"))).toMatchObject({ ok: false, status: 403 });
+    expect(await 读转写设置(我("甲"))).toMatchObject({ ok: false, status: 403 });
     expect(await 设录音点评开关(我("管理员"), true)).toMatchObject({ ok: false });
     delete process.env.ENT_ASR_FAKE;
     const 没 = await 设录音点评开关(我("老板"), true);
@@ -432,7 +501,8 @@ describe("设置「语音转文字」", () => {
     delete process.env.ENT_PUBLIC_URL;
     const r2 = await 测转写连接(我("老板"), { 间隔: 5 });
     expect(r2.ok && r2.结果.签名地址).toEqual({ ok: false, 话: "服务器没配 ENT_PUBLIC_URL，签名地址这条测不了（大文件会自动切段提交）" });
-    expect((await 读转写设置(我("老板")))?.上次测试?.签名地址.ok).toBe(false);
+    const 老 = await 读转写设置(我("老板"));
+    expect(老 && "密钥" in 老 && 老.上次测试?.签名地址.ok).toBe(false);
     expect(await raw.setting.count({ where: { key: 上次测试键 } })).toBe(1);
     expect(await 测转写连接(我("管理员"))).toMatchObject({ ok: false });
   });

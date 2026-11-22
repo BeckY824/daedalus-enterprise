@@ -40,7 +40,7 @@ export async function recordAiUse(user: Actor, feature: AiFeature, summary: stri
 /** 秒：只有录音转写有（本月转了多少秒，按每条明细里的 秒 加起来） */
 export type AiUsage = { feature: AiFeature; label: string; count: number; 秒?: number }[];
 
-/** 本月（自然月）各功能的调用次数，含 0 的项，按功能固定顺序 */
+/** 本月（自然月）各功能的调用次数，含 0 的项（录音转写例外：0 次不列），按功能固定顺序 */
 export async function aiUsageThisMonth(now = new Date()): Promise<AiUsage> {
   const start = businessDayjs(now).startOf("month").toDate();
   const rows = await prisma.auditLog.groupBy({
@@ -62,6 +62,7 @@ export async function aiUsageThisMonth(now = new Date()): Promise<AiUsage> {
     }
   }
   return (Object.keys(AI_FEATURES) as AiFeature[])
-    .filter((f) => f !== "asr" || 企业版())
+    // 录音转写：只企业版、本月转过才列（开关关着 / 没用过时设置页和现在一样，PR4 审查；同设置页对 invite 的做法）
+    .filter((f) => f !== "asr" || (企业版() && (map.get("asr") ?? 0) > 0))
     .map((f) => ({ feature: f, label: f === "brief" && 企业版() ? "智能总结" : AI_FEATURES[f], count: map.get(f) ?? 0, ...(f === "asr" ? { 秒: 转写秒 } : {}) }));
 }

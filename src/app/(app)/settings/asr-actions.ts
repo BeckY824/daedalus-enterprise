@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { 读转写设置 as 读, 设录音点评开关 as 设开关, 设大文件交法 as 设交法, 测转写连接 as 测, type 转写设置概况 } from "@/lib/enterprise/coach-rec-asr-settings";
 
-export async function 读转写设置(): Promise<转写设置概况 | null> {
+export async function 读转写设置(): Promise<转写设置概况 | { ok: false; status: 403; error: string } | null> {
   return 读(await requireUser());
 }
 

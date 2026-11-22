@@ -7,6 +7,7 @@
  *        规整后 ≤ 请求体上限字节 → 请求体；更大的按设置「大文件怎么交」：签名地址（ENT_PUBLIC_URL + 签取文件地址，30 分钟有效）
  *        或 切段（每段 ≤ 请求体上限、各自提交、结果按时间接起来）。没配 ENT_PUBLIC_URL 的签名地址也退到切段
  *      交上了：asrTaskId 记任务号们（JSON：[{t: 任务号, 起: 这段在整条里的起点毫秒}]）、asrSubmittedAt、engine
+ *      切段的每交上一段就先落任务号（asrSubmittedAt 还空 = 没交齐），重试、重启后起点对得上的段不再交（防重复计费）
  *      交不上：网络、5xx、限频 → 30 秒 / 2 分钟 / 10 分钟各再试一次，还不行 → 整理失败；密钥不对、参数不对这类 → 当场整理失败
  *   3. 查（交上了的，可以几条一起）：交后 2 分钟内 10 秒一次，之后 30 秒一次；超过 3 小时没结果 → 整理失败
  *      全部成功 → 落库（transcript「(mm:ss) 说话人 N：…」、segments、speakers、durationMs）、状态 → 整理中（PR5 接着做 AI 整理）
@@ -132,6 +133,10 @@ async function 交一条(r: 行, 通道: 转写通道 | null, 现在: number): P
   if (规.时长毫秒 === null) return 失败(r, "读不出录音有多长（文件可能坏了），可以删掉重新传");
   if (规.时长毫秒 > 时长上限毫秒) return 失败(r, `录音超过 ${时长上限毫秒 / 3_600_000} 小时，转不了；可以用录音机 App 分成几段再传`);
   if (规.时长毫秒 < 最短毫秒) return 失败(r, "录音太短（不到 1 秒），没有可转的内容");
+  // 重试时规整出的格式变了（比如上次 copy 成 ogg、这次重编成 m4a）：旧的 asr.* 删掉，目录里只留这一份（PR4 审查）
+  for (const f of await fsp.readdir(目录).catch(() => [] as string[])) {
+    if (/^asr\.[a-z0-9]{2,4}$/.test(f) && path.join(目录, f) !== 规.文件) await fsp.rm(path.join(目录, f), { force: true }).catch(() => {});
+  }
   const 相对 = path.relative(录音根(), 规.文件);
   await 主题写(() => prisma.entCoachRecording.updateMany({
     where: { id: r.id, status: "转写中" },
@@ -139,39 +144,53 @@ async function 交一条(r: 行, 通道: 转写通道 | null, 现在: number): P
   }));
   const 档 = 采样档(规.采样率);
   const 大小 = (await fsp.stat(规.文件)).size;
-  // 交法：小的放请求体；大的按设置走签名地址或切段（签名地址要配了 ENT_PUBLIC_URL）
-  const 段们: { 音频: 交的音频; 起: number }[] = [];
   const 源 = 站点源(process.env.ENT_PUBLIC_URL);
-  let 切出: string[] = [];
+  // 交法：小的放请求体；大的按设置走签名地址或切段（签名地址要配了 ENT_PUBLIC_URL）。音频到交的时候才读（已交过的段不读）
+  const 段们: { 取: () => Promise<交的音频>; 起: number }[] = [];
   try {
-    if (大小 <= 请求体上限字节) 段们.push({ 音频: { 方式: "请求体", 数据: await fsp.readFile(规.文件) }, 起: 0 });
-    else if ((await 读大文件交法()) === "签名地址" && 源) 段们.push({ 音频: { 方式: "地址", url: `${源}${签取文件地址(r.id)}` }, 起: 0 });
+    if (大小 <= 请求体上限字节) 段们.push({ 取: async () => ({ 方式: "请求体", 数据: await fsp.readFile(规.文件) }), 起: 0 });
+    else if ((await 读大文件交法()) === "签名地址" && 源) 段们.push({ 取: async () => ({ 方式: "地址", url: `${源}${签取文件地址(r.id)}` }), 起: 0 });
     else {
-      const 切 = await 切段(规.文件, 规.时长毫秒, 目录);
-      切出 = 切.map((x) => x.文件);
-      for (const x of 切) 段们.push({ 音频: { 方式: "请求体", 数据: await fsp.readFile(x.文件) }, 起: x.起毫秒 });
+      try {
+        for (const x of await 切段(规.文件, 规.时长毫秒, 目录)) 段们.push({ 取: async () => ({ 方式: "请求体", 数据: await fsp.readFile(x.文件) }), 起: x.起毫秒 });
+      } catch (e) {
+        console.warn(`[录音转写] ${r.id} 切段失败：${e instanceof Error ? e.message.slice(0, 200) : e}`);
+        return 失败(r, "录音切段失败，可以删掉重新传，或者请系统管理员把「大文件怎么交」改成签名地址");
+      }
     }
-  } catch (e) {
-    console.warn(`[录音转写] ${r.id} 切段失败：${e instanceof Error ? e.message.slice(0, 200) : e}`);
-    return 失败(r, "录音切段失败，可以删掉重新传，或者请系统管理员把「大文件怎么交」改成签名地址");
+    // 防重复计费（PR4 审查）：切段时每交上一段就把任务号落库（asrTaskId，asrSubmittedAt 还空着 = 没交齐）；
+    // 退一步重试、进程重启后再进来，起点对得上的段直接用上次的任务号、不再交。整条只有一个任务（请求体 / 签名地址）的，上次的半截不认
+    const 多段 = 段们.length > 1;
+    const 起们 = new Set(段们.map((x) => x.起));
+    const 任务们: 任务[] = 多段 ? 读任务们(r.asrTaskId).filter((t) => 起们.has(t.起)) : [];
+    try {
+      for (const x of 段们) {
+        if (任务们.some((t) => t.起 === x.起)) continue;
+        任务们.push({ t: await 通道.提交({ 档, 音频: await x.取() }), 起: x.起 });
+        if (!多段) continue;
+        const 记 = await 主题写(() => prisma.entCoachRecording.updateMany({
+          where: { id: r.id, status: "转写中", asrSubmittedAt: null },
+          data: { asrTaskId: JSON.stringify(任务们) },
+        }));
+        if (记.count !== 1) return; // 这条刚被删 / 放弃了：剩下的段不交了
+      }
+    } catch (e) {
+      if (e instanceof 通道错 && !e.可重试) return 失败(r, e.话);
+      const 话 = e instanceof 通道错 ? e.话 : "提交转写时出错了，稍后会自动再试";
+      if (!(e instanceof 通道错)) console.warn(`[录音转写] ${r.id} 提交出错：${e instanceof Error ? e.message.slice(0, 200) : e}`);
+      return 退一步(r, 话, 现在);
+    }
+    任务们.sort((x, y) => x.起 - y.起);
+    存.退避.delete(r.id);
+    存.上次查.set(r.id, 现在);
+    await 主题写(() => prisma.entCoachRecording.updateMany({
+      where: { id: r.id, status: "转写中", asrSubmittedAt: null },
+      data: { asrTaskId: JSON.stringify(任务们), asrSubmittedAt: new Date(现在), engine: `${通道.名}·${通道.引擎(档)}`, error: null },
+    }));
   } finally {
-    for (const f of 切出) await fsp.rm(f, { force: true }).catch(() => {});
+    // 切出来的段交完（或中途出错）都删掉，切段本身抛错时留下的半截也一起删（PR4 审查）
+    for (const f of await fsp.readdir(目录).catch(() => [] as string[])) if (/^asr-part-\d{3}\./.test(f)) await fsp.rm(path.join(目录, f), { force: true }).catch(() => {});
   }
-  const 任务们: 任务[] = [];
-  try {
-    for (const x of 段们) 任务们.push({ t: await 通道.提交({ 档, 音频: x.音频 }), 起: x.起 });
-  } catch (e) {
-    if (e instanceof 通道错 && !e.可重试) return 失败(r, e.话);
-    const 话 = e instanceof 通道错 ? e.话 : "提交转写时出错了，稍后会自动再试";
-    if (!(e instanceof 通道错)) console.warn(`[录音转写] ${r.id} 提交出错：${e instanceof Error ? e.message.slice(0, 200) : e}`);
-    return 退一步(r, 话, 现在);
-  }
-  存.退避.delete(r.id);
-  存.上次查.set(r.id, 现在);
-  await 主题写(() => prisma.entCoachRecording.updateMany({
-    where: { id: r.id, status: "转写中", asrSubmittedAt: null },
-    data: { asrTaskId: JSON.stringify(任务们), asrSubmittedAt: new Date(现在), engine: `${通道.名}·${通道.引擎(档)}`, error: null },
-  }));
 }
 
 /** 原始段的路径：按 segCount 和上传时认出的格式（format 列被规整改过时，从目录里找 seg-NN.*） */
