@@ -2,7 +2,9 @@
  * 客户抬头（11-17 客户抬头 PR-5，P-抬头-06～12）：客户列表第一列、客户详情页头上显示的客户名称。
  * 不是全称也不是简称，是由区域、简称、全称、客户类型、当前进程节点现算出来的展示名，列表和详情共用这一个算法（U1：现算，不存列）。
  *
- *   全称、简称、类型、区域全空 → 客户编号|当前节点；没有项目只写客户编号（先判，答复 2.4 末行示例；U9 零项目）
+ *   全称、简称、类型、区域全空 → 当前项目的项目名（F-040，用户 11-21：员工自己起的那个名，详情页待办「项目」那行点进去的；
+ *                    后面「· 下一步计划」不用显示）；项目名空着（或就是客户编号）才落回 客户编号|当前节点；
+ *                    没有项目只写客户编号（答复 2.4 末行示例；U9 零项目）
  *   否则             → 区域段|主体段，哪段空就只写另一段
  *   区域段 = 地址里最小一级：区县（含县级市）→ 市 → 省 → 国家，只取一级、不叠加；照库里原值写，不去「市 / 区 / 县」后缀（Q4a）。
  *            国外客户只填国家和城市，有城市就是城市（按「最小一级」）
@@ -75,14 +77,37 @@ export function 要查节点(c: Pick<抬头料, "name" | "shortName" | "customer
 }
 
 /**
+ * 抬头节点们 给一位客户的那一格：当前项目的节点，外加那个项目的名字（F-040）。
+ * 老调用方（项目行、测试）只传节点字也行
+ */
+export type 抬头节点格 = string | { 节点: string; 项目名?: string | null; 项目id?: string };
+
+/** 项目名能不能当抬头用：空的、「暂无名称」、就是这位客户的编号 / 短号（没名客户建档时项目跟着客户编号起名）都不算 */
+function 项目名可用(名: string, c: Pick<抬头料, "id" | "customerNo">): boolean {
+  if (!名 || 名 === 暂无名称 || 名.startsWith(`${暂无名称}｜`)) return false;
+  return 名.toUpperCase() !== 客户编号显示(c).toUpperCase();
+}
+
+/**
+ * 全空客户（全称、简称、类型、区域都没有）的抬头：项目名 → 客户编号|节点 → 客户编号（F-040）。
+ * 只写项目名、不带节点和下一步（用户 11-21 原话：后面「· 跟进」不用显示）；编号在列表编号列、节点在当前节点列照旧看得到
+ */
+function 全空抬头(c: 抬头料, 格?: 抬头节点格 | null): string {
+  const 节 = 值(typeof 格 === "string" ? 格 : 格?.节点);
+  const 项目名 = typeof 格 === "object" && 格 ? 值(格.项目名) : "";
+  if (项目名可用(项目名, c)) return 项目名;
+  return [客户编号显示(c), 节].filter(Boolean).join(抬头分隔);
+}
+
+/**
  * 抬头。节点 = 抬头节点们 给这位客户的那一格（没查、没项目都传 null / 不传）
  */
-export function 客户抬头(c: 抬头料, 节点?: string | null): string {
+export function 客户抬头(c: 抬头料, 节点?: 抬头节点格 | null): string {
   const { 全称, 补区域 } = 显示全称(c);
   const 区 = 区域段(c, 补区域);
   const 主 = 值(c.shortName) || 全称 || 值(c.customerType);
-  const 节 = 值(节点);
-  if (!区 && !主) return [客户编号显示(c), 节].filter(Boolean).join(抬头分隔);
+  if (!区 && !主) return 全空抬头(c, 节点);
+  const 节 = 值(typeof 节点 === "string" ? 节点 : 节点?.节点);
   return [区, 主 || 节].filter(Boolean).join(抬头分隔);
 }
 
@@ -130,10 +155,10 @@ type 库 = { $queryRawUnsafe<T = unknown>(sql: string, ...values: unknown[]): Pr
  * 一句取回名单上客户的项目：没删的，含公海（pooledAt 不管）。走裸 SQL：不经限定层（U9 不按看的人算），
  * 名单用一个参数（json_each）带过去，不受绑定参数个数上限管；Project.customerId 有索引
  */
-export const 抬头节点SQL = `SELECT p."customerId" AS "customerId", p.phase AS phase, p.node AS node, p.result AS result, p."updatedAt" AS "updatedAt"
+export const 抬头节点SQL = `SELECT p.id AS id, p."customerId" AS "customerId", p.phase AS phase, p.node AS node, p.result AS result, p."updatedAt" AS "updatedAt", p.name AS name
 FROM "Project" p WHERE p."deletedAt" IS NULL AND p."customerId" IN (SELECT value FROM json_each(?))`;
 
-type 项目行 = { customerId: string; phase: string; node: string; result: string | null; updatedAt: unknown };
+type 项目行 = { id: string; customerId: string; phase: string; node: string; result: string | null; updatedAt: unknown; name?: string | null };
 
 /** 裸 SQL 取回的 DateTime 可能是 Date、毫秒数（number / bigint）或字符串，统一成毫秒 */
 function 毫秒(v: unknown): number {
@@ -150,7 +175,7 @@ function 毫秒(v: unknown): number {
  * 选哪个项目同客户列表「当前节点」（customer-list-projects.ts 最近有动静的）：updatedAt 最新的，一样新取节点更靠后的；
  * 写法同那一列（节点字）：有结局写结局，异常写「异常 · 节点」，库里的旧节点名按企业版新名
  */
-export async function 抬头节点们(db: 库, 客户们: readonly 抬头料[]): Promise<Record<string, string>> {
+export async function 抬头节点们(db: 库, 客户们: readonly 抬头料[]): Promise<Record<string, Exclude<抬头节点格, string>>> {
   const ids = [...new Set(客户们.filter(要查节点).map((c) => c.id))];
   if (!ids.length) return {};
   const 行们 = await db.$queryRawUnsafe<项目行[]>(抬头节点SQL, JSON.stringify(ids));
@@ -161,10 +186,29 @@ export async function 抬头节点们(db: 库, 客户们: readonly 抬头料[]):
     const 旧 = 选.get(行.customerId);
     if (!旧 || 时 > 旧.时 || (时 === 旧.时 && 序 > 旧.序)) 选.set(行.customerId, { 行, 时, 序 });
   }
-  const 结果: Record<string, string> = {};
+  const 结果: Record<string, Exclude<抬头节点格, string>> = {};
   for (const [cid, { 行 }] of 选) {
     const 位 = 本套位置({ phase: 行.phase, node: 行.node, result: 行.result }, 企业版字典);
-    结果[cid] = 位.result === "异常状态" ? `异常 · ${位.node}` : 位.result ?? 位.node;
+    // 项目名只有全空客户用（全空抬头）；有区域没主体的照旧「区域|节点」
+    结果[cid] = { 节点: 位.result === "异常状态" ? `异常 · ${位.node}` : 位.result ?? 位.node, 项目名: 行.name ?? null, 项目id: 行.id };
   }
   return 结果;
+}
+
+/**
+ * 项目名按看的人的可见范围过一遍（F-040 审查，P-看-12 / X-49：同事的项目写名字等于越权暴露）。
+ * 抬头节点们 走裸 SQL、不经限定层（节点人人一样，U9 不动）；项目名只给看的人看得见的项目：
+ * 查 = 走限定层的主键查（服务端传 (ids) => prisma.project.findMany({ where: { id: { in: ids } }, select: { id: true } })），
+ * 一页多一句；不在结果里的格把项目名置 null → 抬头回到「客户编号|节点」。没有带项目名的格就不查
+ */
+export async function 只留看得见的项目名<T extends Record<string, Exclude<抬头节点格, string>>>(
+  格们: T,
+  查: (ids: string[]) => PromiseLike<{ id: string }[]>,
+): Promise<T> {
+  const ids = [...new Set(Object.values(格们).filter((g) => g.项目id && 值(g.项目名)).map((g) => g.项目id!))];
+  if (!ids.length) return 格们;
+  const 看得见 = new Set((await 查(ids)).map((r) => r.id));
+  const 结果 = {} as Record<string, Exclude<抬头节点格, string>>;
+  for (const [cid, g] of Object.entries(格们)) 结果[cid] = g.项目id && 看得见.has(g.项目id) ? g : { ...g, 项目名: null };
+  return 结果 as T;
 }

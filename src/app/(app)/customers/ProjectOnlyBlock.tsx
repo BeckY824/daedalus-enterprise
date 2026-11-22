@@ -42,8 +42,8 @@ export default function ProjectOnlyBlock({ 行们, 超了 = false }: { 行们: �
           <div key={r.id} className="cust-ponly-r cust-ponly-row" role="row">
             <span className="cust-ponly-c cust-ponly-name" role="cell">
               <Tag className="cust-ponly-tag" title="这位客户不归你，你只负责其中的项目：客户资料只能看">仅项目</Tag>
-              {/* 客户名称选填（11-19）：和下面客户表格第一列同一个抬头算法（没全称也不空，最后兜客户编号 | 当前节点） */}
-              <RowLink href={`/customers/${r.id}`} className="link-strong" title={客户抬头(r, r.当前节点)}>{客户抬头(r, r.当前节点)}</RowLink>
+              {/* 客户名称选填（11-19）：和下面客户表格第一列同一个抬头算法（没全称也不空：当前项目名，再兜客户编号 | 当前节点，F-040） */}
+              <RowLink href={`/customers/${r.id}`} className="link-strong" title={客户抬头(r, r.抬头格 ?? r.当前节点)}>{客户抬头(r, r.抬头格 ?? r.当前节点)}</RowLink>
             </span>
             {/* 编号一行放全不省略（列宽在 globals.css 按「NO.123456」给）；存量回填前没有编号的写短号，同客户表格 */}
             <span className="cust-ponly-c cust-no" role="cell">{客户编号显示(r)}</span>

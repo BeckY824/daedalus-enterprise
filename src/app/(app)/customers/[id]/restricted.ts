@@ -96,8 +96,9 @@ export async function 读受限客户详情(me: SessionUser, customerId: string,
   const 记的人 = new Map((await 看全部(() => prisma.user.findMany({ where: { id: { in: [...new Set(沟通行.map((r) => r.followUp.ownerId))] } }, select: { id: true, name: true } }))).map((u) => [u.id, u.name]));
 
   return {
-    // 页头和客户详情同一个抬头算法（11-19 客户名称选填：没全称也不空，最后兜客户编号）
-    客户: { id: 客户行.id, name: 客户抬头(客户行, (await 抬头节点们(prisma, [客户行]))[客户行.id] ?? null) },
+    // 页头和客户详情同一个抬头算法（11-19 客户名称选填：没全称也不空，最后兜客户编号）。
+    // 全空客户写项目名（F-040）：这里只拿我自己最近动过的那个项目的名字，别人的项目名不给仅项目的人看
+    客户: { id: 客户行.id, name: 客户抬头(客户行, 仅我的项目名((await 抬头节点们(prisma, [客户行]))[客户行.id], 项目行[0]?.name)) },
     卡,
     可改联系人: 我建的.map((c) => ({
       id: c.id, name: c.name, position: c.position, phone: 号(c.phone), email: c.email, wechat: c.wechat,
@@ -119,4 +120,10 @@ export async function 读受限客户详情(me: SessionUser, customerId: string,
     号码种类,
     职务选项,
   };
+}
+
+/** 受限详情页头的抬头格（F-040）：节点照旧人人一样（U9），项目名换成我自己项目的名字 */
+function 仅我的项目名(格: { 节点: string } | undefined, 我的项目名: string | undefined): { 节点: string; 项目名: string | null } | null {
+  if (!格) return null;
+  return { 节点: 格.节点, 项目名: 我的项目名 ?? null };
 }
