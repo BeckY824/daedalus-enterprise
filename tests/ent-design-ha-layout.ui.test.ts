@@ -28,7 +28,7 @@ const plugin: Plugin = { name: "ent-design-ha", setup(b) {
 
 beforeAll(async () => {
   const r = await build({ stdin: { contents: `
-    import React, { useRef, useState } from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
+    import React, { useEffect, useRef, useState } from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import Welcome from '@/app/(app)/dashboard/Welcome';
     import { ComposerFoot, ComposerTop, SendKey } from '@/app/(app)/dashboard/ComposerParts';
     import HomeCards from '@/app/(app)/dashboard/HomeCards';
@@ -61,7 +61,11 @@ beforeAll(async () => {
     const 今天串 = 两位(北京.getUTCMonth() + 1) + '-' + 两位(北京.getUTCDate());
     const 今天日 = 北京.getUTCFullYear() + '-' + 今天串;
     const 京 = (hm) => new Date(今天日 + 'T' + hm + ':00+08:00').toISOString();
-    function 首页({ 待办, 卡数, 短名 }) {
+    function 首页({ 待办: 给的待办, 卡数, 短名, 晚到 }) {
+      /* 晚到：顶部待办进页后才出现（数据晚一步到、或别的提示行后挂上），先 0 行、200ms 后才是给的那几行 */
+      const [到了, set到了] = useState(!晚到);
+      useEffect(() => { if (!晚到) return; const t = setTimeout(() => set到了(true), 200); return () => clearTimeout(t); }, [晚到]);
+      const 待办 = 到了 ? 给的待办 : false;
       const [槽, set槽] = useState(null);
       const [q, setQ] = useState("");
       const [idx, setIdx] = useState(0);
@@ -102,7 +106,7 @@ beforeAll(async () => {
       );
     }
     const root = createRoot(document.getElementById('root'));
-    window.__画 = (待办, 卡数, 短名) => root.render(<ConfigProvider locale={zhCN}><App><首页 待办={待办} 卡数={卡数} 短名={短名} /></App></ConfigProvider>);
+    window.__画 = (待办, 卡数, 短名, 晚到) => root.render(<ConfigProvider locale={zhCN}><App><首页 待办={待办} 卡数={卡数} 短名={短名} 晚到={晚到} /></App></ConfigProvider>);
     window.__输 = (v) => { const ta = document.querySelector('.cli-frame textarea'); const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set; set.call(ta, v); ta.dispatchEvent(new Event('input', { bubbles: true })); ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; };
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, loader: { ".css": "empty" }, plugins: [plugin], logLevel: "silent" });
   bundle = "window.process = { env: {} };\n" + r.outputFiles[0].text;
@@ -112,16 +116,16 @@ afterAll(async () => { await browser?.close(); });
 
 type 皮 = "now" | "ledger" | "tech";
 const 卡数 = { "month-new": 591, key: 123, "no-follow": 4802, "due-soon": 0 };
-async function 开(o: { 宽: number; 高?: number; 待办?: boolean | 1 | 2; skin?: 皮; 壳?: boolean; 短名?: boolean }): Promise<{ page: Page; errors: string[] }> {
+async function 开(o: { 宽: number; 高?: number; 待办?: boolean | 1 | 2; skin?: 皮; 壳?: boolean; 短名?: boolean; 晚到?: boolean; 进场?: boolean }): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width: o.宽, height: o.高 ?? 900 }, reducedMotion: "reduce", timezoneId: "Europe/London" });
   page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   const skin = o.skin ?? "now";
-  await page.route("http://ha.test/**", (r) => r.fulfill({ contentType: "text/html", body: `<!doctype html><html${skin === "now" ? "" : ` data-skin="${skin}" data-paper="tone" data-mode="light"`}><meta charset='utf-8'><body style='margin:0'>${o.壳 ? "<div class='shell'><nav style='width:220px;flex:none'></nav><main class='main app-content' style='padding:22px 26px'><div style='max-width:1720px;margin:0 auto'><div id='root'></div></div></main></div>" : "<main style='padding:24px'><div id='root'></div></main>"}</body></html>` }));
+  await page.route("http://ha.test/**", (r) => r.fulfill({ contentType: "text/html", body: `<!doctype html><html${skin === "now" ? "" : ` data-skin="${skin}" data-paper="tone" data-mode="light"`}><meta charset='utf-8'><body style='margin:0'>${o.壳 ? "<div class='shell'><nav style='width:220px;flex:none'></nav><main class='main app-content' style='padding:22px 26px'><div id='above'></div><div id='wrap' style='max-width:1720px;margin:0 auto" + (o.进场 ? ";transform:translateY(4px)" : "") + "'><div id='root'></div></div></main></div>" : "<main style='padding:24px'><div id='root'></div></main>"}</body></html>` }));
   await page.goto("http://ha.test/dashboard");
   for (const f of ["globals.css", ...(skin === "now" ? [] : ["skins/shared.css", `skins/${skin}.css`])]) await page.addStyleTag({ path: path.resolve("src/app", f) });
   await page.addScriptTag({ content: bundle });
-  await page.evaluate(([待办, 数, 短名]) => (window as unknown as { __画: (a: unknown, b: unknown, c: unknown) => void }).__画(待办, 数, 短名), [o.待办 ?? true, 卡数, !!o.短名] as const);
+  await page.evaluate(([待办, 数, 短名, 晚到]) => (window as unknown as { __画: (a: unknown, b: unknown, c: unknown, d: unknown) => void }).__画(待办, 数, 短名, 晚到), [o.待办 ?? true, 卡数, !!o.短名, !!o.晚到] as const);
   await page.locator(".cli-frame .cli-input").waitFor();
   await page.locator(".cli-frame-q .cli-q").first().waitFor();
   if (errors.length) throw new Error(errors.join("\n"));
@@ -346,6 +350,40 @@ it.each([[1, 1024, 768], [1, 1366, 900], [2, 1024, 768], [2, 1366, 900]] as cons
       await 点();
       await page.waitForTimeout(400);
       expect(Math.abs(await 顶(page, ".cli-ck-g") - 起), `${标} 收起`).toBeLessThanOrEqual(1);
+    } finally { await page.close(); }
+  }
+});
+
+/*
+  #408 审查 + 3704 实操（11-22）：上面那条修（click 也算动过）在真实例上没生效——销售 1024、1 行待办，鼠标点和 element.click() 都上移 19px、--ck-nudge 一直 0。
+  真因：「顶」记的是进页时量的位置，之后过期。进页后这一组还会挪位（换页淡入那层 transform 收掉、正文上方挂上提示条），
+  它自己和外层尺寸都不变，尺寸监听不触发；第一次点开时原顶 ≥ 旧「顶」，走了「重新钉」，--ck-nudge 归 0。
+  修：位置改量「这一组相对外层 .cli-ck 的上沿」（上面怎么挪都不算）；第一次动的时候（捕获阶段，早于 React 改状态）先按此刻的位置钉一次再算动过。
+  三种「进页后才挪」各量一次：待办行晚到（0 → 1 行）、正文上方晚挂一条提示、换页淡入的 transform 收掉；鼠标 / element.click() 两种点法
+*/
+it.each([
+  ["待办行晚到（0 → 1 行）", { 晚到: true }],
+  ["正文上方晚挂一条提示", { 上方: true }],
+  ["换页淡入的 transform 收掉", { 进场: true }],
+] as const)("H-新4（1024×768，1 行待办）：%s，再展开指标卡，卡顶不动（≤1px）", async (_名, 情形) => {
+  for (const 点法 of ["鼠标", "click()"] as const) {
+    const { page } = await 开({ 宽: 1024, 高: 768, 待办: 1, 壳: true, 短名: true, 晚到: "晚到" in 情形, 进场: "进场" in 情形 });
+    try {
+      await page.waitForTimeout(400);
+      expect(await page.locator(".cli-frame .home-cth-todo").count()).toBe(1);
+      if ("上方" in 情形) await page.evaluate(() => { document.getElementById("above")!.style.height = "40px"; });
+      if ("进场" in 情形) await page.evaluate(() => { document.getElementById("wrap")!.style.transform = "none"; });
+      await page.waitForTimeout(200);
+      const 起 = await 顶(page, ".cli-ck-g");
+      const 组高 = await page.locator(".cli-ck-g").evaluate((e) => e.getBoundingClientRect().height);
+      const 头 = page.locator(".home-kpi-card").nth(2).locator(".home-kpi-head");
+      if (点法 === "鼠标") await 头.click();
+      else await 头.evaluate((e) => (e as HTMLElement).click());
+      await page.locator(".home-kpi-body").waitFor();
+      await page.waitForTimeout(400);
+      const 标 = `${_名} ${点法}`;
+      expect(await page.locator(".cli-ck-g").evaluate((e) => e.getBoundingClientRect().height), `${标} 这一组变高了`).toBeGreaterThan(组高 + 10);
+      expect(Math.abs(await 顶(page, ".cli-ck-g") - 起), `${标} 展开`).toBeLessThanOrEqual(1);
     } finally { await page.close(); }
   }
 });

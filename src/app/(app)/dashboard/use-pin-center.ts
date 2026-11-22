@@ -5,7 +5,7 @@ import { useLayoutEffect, type RefObject } from "react";
  * 设计语言 H-A（11-21，H-新4）：还没问时问答卡和指标卡这一组上下居中（11-11 用户定，照留）；之后问答卡变高——
  * 输入好几行、开命令表、展开一张指标卡——不再跟着重新居中（整块往上跳），顶边钉在刚进页时的位置、往下长。
  * 变矮（清空输入、收起）就回到原位；窗口尺寸变了按那时的位置重新钉。只挪 --ck-nudge（globals.css 现状主题那段 position: relative + top），
- * 不改布局，量的是网格自己的 offsetTop（去掉已挪的那段），滚动不影响。换皮主题、问过之后不钉。
+ * 不改布局，量的是网格相对外层 .cli-ck 的位置（去掉已挪的那段），滚动、外面整体挪都不影响。换皮主题、问过之后不钉。
  * 人第一次在这一组里按下（点、按键）之前照常居中：刚进页时示例画进槽里、字体到了这类自己长高的，不算「跳」，不钉
  */
 export function usePinCenter(网格: RefObject<HTMLDivElement | null>, 开: boolean) {
@@ -20,9 +20,22 @@ export function usePinCenter(网格: RefObject<HTMLDivElement | null>, 开: bool
     let 钉时视口 = "";
     let 挪 = 0;
     let 动过 = false;
-    const 动了 = () => { 动过 = true; };
+    /*
+      量的是这一组相对外层 .cli-ck 上沿的位置（去掉已挪的那段），不是 offsetTop（#408 审查 + 3704 实操，11-22）：
+      进页后这一组还会整体挪——换页淡入那层 motion.div 的 transform 收掉时 offsetParent 跟着变、offsetTop 一下差出正文内边距；
+      正文上方晚挂一条提示——它自己和外层尺寸都没变，尺寸监听不触发，「顶」就过期了。第一次点开指标卡时原顶 ≥ 旧「顶」，
+      走了「重新钉」，--ck-nudge 归 0，整块上移半个增量（销售 1024、1 行待办 19px）。相对外层量，外面怎么挪都不算
+    */
+    const 现顶 = () => g.getBoundingClientRect().top - 容器.getBoundingClientRect().top - 挪;
+    const 动了 = () => {
+      if (动过) return;
+      // 第一次动：此刻还没改状态（捕获阶段，早于 React），先按现在的位置和视口钉一次，再算动过
+      顶 = 现顶();
+      钉时视口 = 视口();
+      动过 = true;
+    };
     const 量 = () => {
-      const 原顶 = g.offsetTop - 挪;
+      const 原顶 = 现顶();
       const v = 视口();
       // 还没人动过、窗口尺寸变了、或者变矮了回到比钉的位置还低：按现在的位置重新钉
       if (!动过 || v !== 钉时视口 || 原顶 >= 顶) {
