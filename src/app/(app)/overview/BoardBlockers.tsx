@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Button, Drawer, Segmented, Select, Switch, Tag } from "antd";
+import { Button, Segmented, Select, Switch, Tag } from "antd";
 import { useIsNowSkin } from "@/lib/use-skin";
 import { 卡点类型们, 影响等级们, type 卡点状态 } from "@/lib/project/blocker-rules";
 import type { 看板筛选, 看板统计 } from "@/lib/project/blocker";
@@ -19,7 +19,7 @@ import { BlockerList, 状态色, type 卡点卡 } from "../projects/BlockerPanel
  *
  * 设计语言 R-A（11-22，落地计划-三页设计）：现状主题拆成四块，各做一件事——
  *   ① 筛选条（卡外）：范围「全部｜只看自己｜我认领的」一个分段（地址栏 bo / bm 照旧）+ 四个下拉（写选中值「全部原因」，不靠占位字）+ 有筛才出「重置」；
- *      1366 一行，1024 固定两行，390 收「筛选（N）」底部面板。不用 CustomFilters（P-界面-12 只给四个列表）
+ *      1366 一行，1024 固定两行，390 同客户列表（L-A）：范围 + 重置一排、四个下拉两两一排摆在外面（不收进底部面板）。不用 CustomFilters（P-界面-12 只给四个列表）
  *   ② 概况卡：未解决 / 已解决、按影响、按阻碍原因三格，横条行「名称｜条｜数」对齐；原因行可点 = 筛；待审核挂小橙标，系统管理员多「去审核 ›」
  *   ③ 三栏：每栏一张卡，卡头圆点 + 「待接受（13）」；空栏收成窄栏，有内容的栏分剩下的宽、栏里卡片自动排多列
  *   ④ 卡片：BlockerList 在分栏（不重复状态）
@@ -209,7 +209,6 @@ function BoardBlockersNow({ 开, 全部, 栏, 已解决共, 统计, 项目们, �
   const sp = useSearchParams();
   const [换着, start] = useTransition();
   const [原因全开, set原因全开] = useState(false);
-  const [筛面板, set筛面板] = useState(false);
 
   /** 一次改几个键（换范围要同时清掉另一个） */
   const 改多 = (kv: Partial<Record<keyof typeof 键, string | boolean | undefined>>) => {
@@ -290,19 +289,8 @@ function BoardBlockersNow({ 开, 全部, 栏, 已解决共, 统计, 项目们, �
           options={范围项}
         />
         <div className="rbk-sels">{下拉们}</div>
-        <Button className="rbk-more" onClick={() => set筛面板(true)}>{下拉数 ? `筛选（${下拉数}）` : "筛选"}</Button>
         {有筛 && <Button type="text" className="rbk-reset" onClick={重置}>重置</Button>}
       </div>
-      <Drawer
-        open={筛面板}
-        placement="bottom"
-        height="auto"
-        title="筛选卡点"
-        className="rbk-sheet"
-        onClose={() => set筛面板(false)}
-      >
-        <div className="rbk-sheet-body">{下拉们}</div>
-      </Drawer>
 
       {一条没有 && !有筛 ? (
         <section className="rbk-card rbk-empty" aria-label="卡点">

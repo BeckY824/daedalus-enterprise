@@ -218,7 +218,8 @@ export default function SettingsView({
   // 当前页签由地址栏 ?tab= 决定：中栏那列设置项就是一组带 tab 的链接，刷新、回退都对得上
   const timeZone = useBusinessTimeZone();
   const pathname = usePathname();
-  const tab = useSearchParams().get("tab") ?? "members";
+  const 写明的栏 = useSearchParams().get("tab");
+  const tab = 写明的栏 ?? "members";
 
   /** 设置的几项。说明一句话写清这一项管什么——只有名字的话，「业务配置」是个谜 */
   // 持有上限名单每人一行：同名的带邮箱才分得清是谁（10-27）
@@ -296,7 +297,8 @@ export default function SettingsView({
   useEffect(() => {
     const el = 正文.current;
     if (!el) return;
-    const 换栏了 = 上一栏.current !== null && 上一栏.current !== 当前;
+    const 首次 = 上一栏.current === null;
+    const 换栏了 = !首次 && 上一栏.current !== 当前;
     上一栏.current = 当前;
     const 跳 = 待跳.current;
     if (跳 && 跳.key === 当前) {
@@ -313,7 +315,15 @@ export default function SettingsView({
       return;
     }
     if (换栏了) 正文回顶(el);
-  }, [当前, 跳次]);
+    /*
+      地址上写明了要哪一栏（客户页「导入」→ ?tab=enterprise 等）、目录压在正文上面（手机 390）：进页第一下就落到那一栏的正文，
+      不停在一屏目录上让人往下找（设计语言 L-A · L-新10，P-全局-02 / P-界面-14）。两栏并排（电脑）时正文本来就在眼前，正文回顶不动窗口
+    */
+    else if (首次 && 写明的栏 === 当前) {
+      const 目录 = el.parentElement?.querySelector(".set-nav");
+      if (目录 && 目录.getBoundingClientRect().bottom <= el.getBoundingClientRect().top + 1) 正文回顶(el);
+    }
+  }, [当前, 跳次, 写明的栏]);
 
   const 词 = 搜.trim().toLowerCase();
   /** 命中的是哪一项（页签名、说明没中、具体那一项中了时写出来） */

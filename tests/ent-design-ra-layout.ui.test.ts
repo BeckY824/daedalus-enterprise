@@ -2,7 +2,7 @@
  * 设计语言 R-A（11-22）复盘 · 卡点 排版门槛：超长数据下 1024 / 1280 / 1366 / 390 不横向溢出、按钮点得中。
  *
  *   看板：13 条待接受 + 处理中、已解决都空 → 空栏收窄（不是平均三等分）；9 个阻碍原因（含待审核、未分类）只露前 5 + 「其余 N 个」
- *   筛选：1366 一行；1024（内容区约 760）范围一行、四个下拉一行；390 下拉收成「筛选」钮、点开底部面板
+ *   筛选：1366 一行；1024（内容区约 760）范围一行、四个下拉一行；390 同客户列表（L-A）：范围 + 重置一排，四个下拉两两一排摆在外面
  *   卡片：认领 / 我已完成 / ⋯ 点得中（elementFromPoint）；不在分栏（项目详情）时首行写状态
  *   「我已完成」框：提交键一直能点、最后一位写「我已完成，标为已解决」，没填的格子下一行红字、焦点到第一处；填好才交
  *   ⋯ → 删除：原地确认「连流转记录一起删」，确认了才删
@@ -109,7 +109,7 @@ it("1366：13 / 0 / 0 时空栏收窄，待接受那栏占大头（不是平均�
   } finally { await page.close(); }
 });
 
-it("筛选行：1366 一行；1024 范围一行、四个下拉一行；390 收成「筛选」钮、点开底部面板", async () => {
+it("筛选行：1366 一行；1024 范围一行、四个下拉一行；390 范围 + 重置一排、四个下拉两两一排（同 L-A，不收底部面板）", async () => {
   const 顶 = (page: Page, sel: string) => page.locator(sel).evaluate(e => Math.round(e.getBoundingClientRect().top));
   {
     const { page } = await 打开({ 页: "block" }, 1366);
@@ -118,7 +118,6 @@ it("筛选行：1366 一行；1024 范围一行、四个下拉一行；390 收�
       const 下 = await page.locator(".rbk-sel").evaluateAll(es => es.map(e => Math.round(e.getBoundingClientRect().top)));
       expect(下.every(t => Math.abs(t - 下[0]) <= 2)).toBe(true);
       expect(Math.abs(下[0] - 范)).toBeLessThanOrEqual(4);
-      expect(await page.locator(".rbk-more").isVisible()).toBe(false);
     } finally { await page.close(); }
   }
   {
@@ -135,17 +134,20 @@ it("筛选行：1366 一行；1024 范围一行、四个下拉一行；390 收�
   {
     const { page } = await 打开({ 页: "block", 筛: { 原因: "r0" } }, 390);
     try {
-      expect(await page.locator(".rbk-sels").isVisible()).toBe(false);
       // 范围分段触屏点击区 44
       const 段高 = await page.locator(".rbk-scope .ant-segmented-item").evaluateAll(es => es.map(e => e.getBoundingClientRect().height));
       expect(段高.length).toBeGreaterThanOrEqual(2);
       for (const h of 段高) expect(h).toBeGreaterThanOrEqual(44);
-      const 钮 = page.locator(".rbk-more");
-      expect(await 钮.innerText()).toMatch(/筛选（1）/);
-      expect((await 钮.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-      await 钮.click();
-      await page.locator(".rbk-sheet .rbk-sel").first().waitFor();
-      expect(await page.locator(".rbk-sheet .rbk-sel").count()).toBe(4);
+      // 范围和「重置」同一排；四个下拉摆在外面、两两一排，都在范围下面、不出屏
+      const 范 = await page.locator(".rbk-scope").boundingBox();
+      const 重置 = await page.locator(".rbk-reset").boundingBox();
+      expect(Math.abs((重置!.y + 重置!.height / 2) - (范!.y + 范!.height / 2))).toBeLessThanOrEqual(4);
+      const 下 = await page.locator(".rbk-sel").evaluateAll(es => es.map(e => { const r = e.getBoundingClientRect(); return { 顶: Math.round(r.top), 左: Math.round(r.left), 右: Math.round(r.right)}; }));
+      expect(下).toHaveLength(4);
+      expect(new Set(下.map(x => x.顶)).size).toBe(2);
+      expect(下[0].顶).toBeGreaterThan(范!.y + 范!.height - 1);
+      for (const x of 下) expect(x.右).toBeLessThanOrEqual(390);
+      expect(await page.locator(".ant-drawer").count()).toBe(0);
       expect(await 不溢出(page)).toBe(true);
     } finally { await page.close(); }
   }

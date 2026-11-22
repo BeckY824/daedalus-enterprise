@@ -16,7 +16,9 @@ export const 待分配筛说明 = "还在新线索、没定时、没进公海、
 export const 待分配链接 = `/leads?f=${待分配筛}`;
 
 /** 首页那一行要的：几条、最早那条从什么时候起待分配（服务端按北京墙钟写好的「MM-DD HH:mm」，跨年带年）。没有 = null，不画 */
-export type 待分配数 = { 条数: number; 最早: string | null };
+export type 待分配数 = { 条数: number; 最早: string | null;
+  /** 同一刻的 ISO 瞬间（设计语言 H-A 11-21：首页现状主题拿它走 smartTime；短串没年份、跨年会认错）。旧数据没有 = 只摆 最早 */
+  最早At?: string | null };
 
 /**
  * 正在等人手动分的新线索：线索阶段、标了待分配、没定时（定时的到点后台分，P-转-37）、不在公海、没结局、没进回收站。

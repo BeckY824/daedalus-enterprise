@@ -10,11 +10,13 @@ import { useMotionTheme } from "@/components/MotionTheme";
 import { 量变形起点, 放变形 } from "../projects/view-morph";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button, Select, Space, Dropdown, Tag, Segmented, type MenuProps, type SelectProps } from "antd";
+import { Button, Select, Space, Dropdown, Tag, Segmented, Tooltip, type MenuProps, type SelectProps } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import {
+  DownloadOutlined,
   ExportOutlined,
   ImportOutlined,
+  UploadOutlined,
   UserSwitchOutlined,
   TagsOutlined,
   DeleteOutlined,
@@ -24,7 +26,8 @@ import {
 } from "@ant-design/icons";
 import { FOLLOW_STATUSES, DECISION_STATUSES } from "@/lib/constants";
 import { 合计文字 } from "@/lib/currency";
-import { smartTime, fmtDate, 成员选项, 可选成员 } from "@/lib/utils";
+import { smartTime, fmtDate, 成员选项, 成员选项带部门, 可选成员 } from "@/lib/utils";
+import { useIsNowSkin } from "@/lib/use-skin";
 import ListSearch from "@/components/ListSearch";
 import { RowLink, FollowStatusTag, PageHead, UserCell, DecisionStatusTag } from "@/components/ui";
 import DataList, { type 列 } from "@/components/DataList";
@@ -137,7 +140,8 @@ type Props = {
   /** 摆不摆「手机号」筛选：电话藏着的人（字段权限 Y27）不摆，服务端也不认。不给 = 摆 */
   能按号码筛?: boolean;
   排序币种?: string;
-  users: 可选成员[];
+  /** 部门：企业版按组织架构带上（负责人筛选同名的带部门，L-新6）；不是企业版不带 */
+  users: (可选成员 & { 部门?: string | null })[];
   /** 老板（管理员）：公海里的客户能直接「分配给…」某位同事（2026-10-20）。业务员不摆 */
   能分配公海?: boolean;
   /** 企业版负责人转出自己的客户（11-02）：批量分配摆给他，选了别人的服务端 assignSalesOwner 拦 */
@@ -382,6 +386,8 @@ export default function CustomersView({
     return () => clearTimeout(t);
   }, [导出话]);
   const 视图中 = useViewAs();
+  /** 现状主题（默认）：设计语言 L-A 的页头顺序、导出提示那一行、筛选摆法只在这里出；换皮主题照原样（用户 11-21「不动」，lib/use-skin.ts） */
+  const 新样 = useIsNowSkin();
   const { 问删除 } = useDeleteCustomers((话) => 说(话, true));
   /** 确认框、按钮读屏名里叫这一行（11-19 企业版全称选填：空着兜简称 / 客户编号） */
   const 叫 = (r: CustomerRow) => (企业 ? 客户显名(r) : r.name);
@@ -640,8 +646,12 @@ export default function CustomersView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** 一共筛着几个。0 的时候「重置」看不见——没筛过的页面上它是个哑按钮（位置留着，见 ResetFilters）。页签不算筛选 */
-  const 筛了 = Object.entries(f).filter(([k, v]) => k !== "pool" && v && !(k === "scope" && v === 客户范围?.默认)).length;
+  /**
+   * 一共筛着几个。0 的时候「重置」看不见——没筛过的页面上它是个哑按钮（位置留着，见 ResetFilters）。页签不算筛选。
+   * 排序币种（sortCurrency）也不算（设计语言 L-A · L-新1，3703 复现）：f 里一直带着它（没给就是默认币种），原来被算成 1 项，
+   * 刚进列表「重置」就亮着、点了列表纹丝不动；它只管「按金额排」时折算成哪种币，不收窄列表
+   */
+  const 筛了 = Object.entries(f).filter(([k, v]) => k !== "pool" && k !== "sortCurrency" && v && !(k === "scope" && v === 客户范围?.默认)).length;
   /** 重置留在当前页签：在「公海」里点重置，回到的是全部公海，不是跳回「客户」 */
   const 重置 = () => (f.pool && !子集 ? apply({ ...(Object.fromEntries(Object.keys(f).map((k) => [k, ""])) as typeof f), pool: "1" })
     // 市场角色：地址不带 scope 时服务端画「我分出去的」→ 重置要留着默认范围，回到列表（#395 审查必修）
@@ -675,9 +685,13 @@ export default function CustomersView({
       ? [{
           键: "custStatus", 名: "客户状态", 宽: 140, 默认外露: true, 有值: !!f.custStatus,
           渲染: (style: CSSProperties) => (
-            <Select style={style} placeholder="全部客户状态" allowClear aria-label="客户状态"
+            <Select style={style} allowClear aria-label="客户状态"
+              /* 手机宽（390）这一格只有约 120 宽，「全部客户状态」会被截成「全部客户…」：现状主题手机上换成短写「全部状态」，
+                 悬停看全写、读屏照 aria-label「客户状态」（globals.css .ph-short / .ph-full）；换皮主题照原样 */
+              placeholder={新样 ? <><span className="ph-full">全部客户状态</span><span className="ph-short" title="全部客户状态">全部状态</span></> : "全部客户状态"}
               popupRender={(menu) => <>{下拉说明(字典定义.custStatus.说明)}{menu}</>} popupMatchSelectWidth={false}
-              {...释义下拉(字典释义?.状态)}
+              // 释义收成一行（L-新7）：原来每项两三行，一屏只露 4 项；放不下省略号、悬停看全
+              {...释义下拉(字典释义?.状态, undefined, 新样)}
               value={f.custStatus || undefined} onChange={(v) => apply({ custStatus: v ?? "" })}
               options={[...new Set([...客户状态选项, ...(f.custStatus ? [f.custStatus] : [])])].map((s) => ({ value: s, label: s }))} />
           ),
@@ -729,10 +743,11 @@ export default function CustomersView({
       ? [{
           键: "salesOwnerId", 名: "负责人", 宽: 150, 默认外露: true, 有值: !!f.salesOwnerId,
           渲染: (style: CSSProperties) => (
-            <Select style={style} placeholder="全部负责人" allowClear
+            <Select style={style} placeholder="全部负责人" allowClear aria-label="负责人"
               value={f.salesOwnerId || undefined}
               onChange={(v) => apply({ salesOwnerId: v ?? "" })}
-              options={成员选项(users)} />
+              // 同名的带部门（L-新6）：两位同名同事原来只能靠登录名分；部门是看的人认得的
+              options={新样 ? 成员选项带部门(users) : 成员选项(users)} />
           ),
         }]
       : []),
@@ -1229,6 +1244,35 @@ export default function CustomersView({
     ...(项目看板 && 能新建和领取 ? [{ key: "project", label: "新建项目", onClick: 点新建项目 }] : []),
   ];
   const [工具位, set工具位] = useState<HTMLDivElement | null>(null);
+  /** 导出：按服务端这次查询用的条件导全部（filters），不是当前这一页，也不是输入框里还没搜的草稿 */
+  const 导出做 = async () => {
+    const controller = new AbortController();
+    导出取消.current = controller;
+    set导出中(true);
+    set导出话(null);
+    try {
+      const r = await 完整导出(filters, b, set导出进度, controller.signal);
+      set导出话({ 话: `已完整导出 ${r.客户} 位${b.customer}、${r.跟进} 条跟进，ZIP内附分批Excel和核对清单` });
+    } catch (error) {
+      if (!controller.signal.aborted) set导出话({ 话: 出错原话(error, "导出失败，请重试"), 错: true });
+    } finally {
+      导出取消.current = null;
+      set导出中(false);
+      set导出进度("");
+    }
+  };
+  /*
+    「导出」悬停说清导什么、导多少（设计语言 L-A · L-新4）：点了直接按当前范围和筛选导全部，原来事先一个字不说。
+    不加确认框（P-界面-40「能一次做完的不加确认」）；条数 = 列表上面的总数（同一份 filters，仅项目那一小块本来不进导出）
+  */
+  const 导出范围名 = 客户范围 && filters.scope ? 客户范围名[filters.scope as 客户范围] : undefined;
+  const 导出说明 = `按当前${[导出范围名 && `范围「${导出范围名}」`, 筛了 > 0 && "筛选"].filter(Boolean).join("和") || "条件"}导出 ${total.toLocaleString("zh-CN")} 位${b.customer}（含跟进记录）`;
+  /** 导出中旁边那颗「取消导出」：只有它 abort（离开页面不打断导出，D8-3）；现状主题摆在页头下一行，换皮主题照原样摆在导出键旁边 */
+  const 取消导出钮 = <Button size="small" onClick={() => 导出取消.current?.abort()}>取消导出</Button>;
+  /** 离职交接（C15）：页头右端。谁看得见、数怎么数照原来的入口（离职交接入口），不是这页自己数 */
+  const 离职交接钮 = 待交接 != null && <Link key="handover" href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>;
+  /** 「新建 ▾」（11-12 用户：「右上角改为新建，然后可以选择新建项目或者新建客户」）：只能建一样时直接是那一样，一样都不能不摆 */
+  const 新建钮 = <NewMenuButton key="new" 项={新建项} 载入中={项目流程载入 || 表单料取中} 预取={() => { void 取新建项目流程().catch(() => {}); void 要表单料(false); }} />;
 
   return (
     <>
@@ -1296,7 +1340,24 @@ export default function CustomersView({
             ]}
           />
         ) : undefined}
-        extra={
+        extra={新样 ? (
+          /*
+            现状主题（设计语言 L-A · L-新3 / D31）：主按钮「新建 ▾」固定最右，离职交接排在它左边（谁看得见不变，P-界面-18 / P-转-06）；
+            导入、导出是次动作排最左，图标分开（D35：导入 = 往上传、导出 = 往下载，原来两个都是方框加箭头）。
+            手机宽导入、导出只留图标（字靠 aria-label / 悬停），四颗一排放得下，首屏多露几行（D06）。
+            导出中 / 导完那句不再塞在这排按钮中间（L-新13：导完那句约 40 字，把按钮往左推约 440），写在页头下一行
+          */
+          <Space wrap>
+            {能导入导出 && <Button key="import" className="cust-head-io" aria-label="导入" icon={<UploadOutlined />} disabled={视图中} title={视图中 ? 视图外部话 : undefined} onClick={去导入}>导入</Button>}
+            {能导入导出 && !空库 && (
+              <Tooltip key="export" title={视图中 ? 视图外部话 : 导出说明}>
+                <Button className="cust-head-io" aria-label="导出" icon={<DownloadOutlined />} loading={导出中} disabled={视图中} onClick={导出做}>导出</Button>
+              </Tooltip>
+            )}
+            {离职交接钮}
+            {新建钮}
+          </Space>
+        ) : (
           /* 主动作在页头右上角，全站六张列表页同一个位置（设计稿 11/PAGE）。
              导出是次动作，排在它左边，空库时没什么可导，不出现 */
           <Space wrap>
@@ -1309,36 +1370,26 @@ export default function CustomersView({
                 loading={导出中}
                 disabled={视图中}
                 title={视图中 ? 视图外部话 : undefined}
-                onClick={async () => {
-                  // 按服务端这次查询用的条件导全部（filters），不是当前这一页，也不是输入框里还没搜的草稿
-                  const controller = new AbortController();
-                  导出取消.current = controller;
-                  set导出中(true);
-                  set导出话(null);
-                  try {
-                    const r = await 完整导出(filters, b, set导出进度, controller.signal);
-                    set导出话({ 话: `已完整导出 ${r.客户} 位${b.customer}、${r.跟进} 条跟进，ZIP内附分批Excel和核对清单` });
-                  } catch (error) {
-                    if (!controller.signal.aborted) set导出话({ 话: 出错原话(error, "导出失败，请重试"), 错: true });
-                  } finally {
-                    导出取消.current = null;
-                    set导出中(false);
-                    set导出进度("");
-                  }
-                }}
+                onClick={导出做}
               >
                 导出
               </Button>
-              {导出中 && <Space><span role="status" style={{ fontSize: 12 }}>{导出进度}</span><Button size="small" onClick={() => 导出取消.current?.abort()}>取消导出</Button></Space>}
+              {导出中 && <Space><span role="status" style={{ fontSize: 12 }}>{导出进度}</span>{取消导出钮}</Space>}
               {!导出中 && 导出话 && <span role={导出话.错 ? "alert" : "status"} className={导出话.错 ? "cu-said cu-said-err" : "cu-said"}>{导出话.话}</span>}
             </>)}
-            {/* 「新建 ▾」（11-12 用户：「右上角改为新建，然后可以选择新建项目或者新建客户」）：只能建一样时直接是那一样，一样都不能不摆 */}
-            <NewMenuButton 项={新建项} 载入中={项目流程载入 || 表单料取中} 预取={() => { void 取新建项目流程().catch(() => {}); void 要表单料(false); }} />
-            {/* 离职交接（C15）：页头最右端。谁看得见、数怎么数照原来的入口（离职交接入口），不是这页自己数 */}
-            {待交接 != null && <Link href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>}
+            {新建钮}
+            {离职交接钮}
           </Space>
-        }
+        )}
       />
+      {/* 导出中 / 导完（现状主题，L-新13）：页头下一行，进度 + 「取消导出」、导完那句 8 秒后收；页头按钮不跟着挪 */}
+      {新样 && 能导入导出 && 导出中 && (
+        <div role="status" className="cu-said cu-said-row cust-export-row">
+          <span>{导出进度}</span>
+          {取消导出钮}
+        </div>
+      )}
+      {新样 && !导出中 && 导出话 && <div role={导出话.错 ? "alert" : "status"} className={导出话.错 ? "cu-said cu-said-row cu-said-err" : "cu-said cu-said-row"}>{导出话.话}</div>}
 
       {/* 市场角色空库也摆（另一边「我分出去的」不看客户多少）：空库时筛选行整条不画（DataList），只这一种情况照原来单独一行 */}
       {空库 && 看法切换 && <div className="cust-view-seg">{看法切换}</div>}

@@ -5738,6 +5738,109 @@ button.proj-miss-chip { cursor: pointer; }
 /* M12 找不到：说明一句一行，句里只在标点处折（「不正确」不拆成两行），一句比一行还长才在句中断 */
 :root:is(:not([data-skin]), [data-skin="now"]) .empty-state-h > .sp-sent { display: block; word-break: keep-all; overflow-wrap: anywhere; }
 
+/* ---------- 设计语言 L-A · 客户列表页头、工具栏 / 筛选（11-21，只挂现状主题；换皮主题外观不动） ---------- */
+/* L-新7 客户状态下拉：每项释义只占一行，放不下省略号、悬停看全（components/DictNote.tsx 一行） */
+:root:is(:not([data-skin]), [data-skin="now"]) .dict-note-1l { font-size: var(--fs-min); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 390 筛选格的短写（客户状态「全部状态」）：电脑上只出全写（短写只在现状主题渲染，CustomersView 新样） */
+:root:is(:not([data-skin]), [data-skin="now"]) .ph-short { display: none; }
+/* L-新13 导出中：进度 +「取消导出」在页头下一行，不挤页头按钮 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cust-export-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2); }
+/* D37 筛选行「全部 X」一个颜色：占位字原来是 faint（2.21:1，像禁用），和选中值（墨色）一排两种深浅；客户页、市场管理客户页 */
+:root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .list-bar .ant-select-placeholder { color: var(--ink); }
+/* L-新5「更多筛选」写字：1200 起摆得下（1280 / 1366 和 390 一样写「更多筛选」）；1024 正文只有 752，照旧只留图标和数字 */
+@media (min-width: 1200px) and (max-width: 1439px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .cf-more-t { display: inline; }
+}
+@media (max-width: 767px) {
+  /* D06 手机宽首屏多露行：页头副标题收起；导入、导出只留图标（D35 图标已分开，字靠 aria-label），四颗一排 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .page-head:has(.cust-scope) > :first-child > p { display: none; }
+  /* M1-c：只剩图标也守触屏点击区 44（--hit-touch），不是 32 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-head-io { width: var(--hit-touch); min-width: var(--hit-touch); height: var(--hit-touch); padding-inline: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-head-io > span:not(.ant-btn-icon) { display: none; }
+  /* 筛选行三排：①「列表 | 看板」…「列」②搜索 + 重置 ③客户状态、负责人、更多筛选（阶段 / 进程收进更多筛选，同 1366，L-新5）。
+     原来五排（列表 | 看板 / 搜索 / 状态 + 负责人 / 阶段 + 进程 / 更多筛选 + 重置）再单独一排「列」，表格从 y≈420 才开始。
+     市场管理的客户页（我分出去的，.cust-market）同一摆法：「客户列表 | 我分出去的」…「列」/ 搜索 + 重置 / 成员、创建人、更多筛选 */
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space { order: 1; flex-basis: 100%; }
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .list-bar > .list-bar-end { order: 2; }
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item { order: 2; min-width: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item:has(> .ant-tag) { order: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item:has(> .ant-input-affix-wrapper) { order: 0; flex: 1 1 200px; }
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 100% !important; }
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item:has(> .list-reset) { order: 1; flex: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item:has(> .ant-select) { flex: 1 1 96px; }
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item > .ant-select { width: 100% !important; }
+  /* 「全部客户状态」手机上换短写「全部状态」，一格放得下不截 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .ph-full { display: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .ph-short { display: inline; }
+  /* K9 市场管理的客户页（我分出去的）：标题块独占一行，按钮换到下一行，标题不再挤成「客…」、副标题不竖排 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-market > .page-head > :first-child { flex-basis: 100% !important; }
+}
+/* =====================================================================
+   设计语言 H-A（11-21，首页骨架、顶部提示、输入框、指标卡；依据 现在-首页-20261121.md H0 / H4 / H6 / H7）。
+   只挂现状主题，换皮主题（像素、账簿、奢华、科技）外观不动（用户 11-21）
+   ===================================================================== */
+/* H-新4：还没问时问答卡 + 指标卡这一组上下居中照留（11-11 用户定）；问答卡变高（多行、命令表、展开指标卡）时
+   HomeChat usePinCenter 把多出来的那半往下挪（--ck-nudge），顶边不动、整块不往上跳 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-empty .cli-ck-g { position: relative; top: var(--ck-nudge, 0px); }
+/* H-新4：首页外框里的命令表从输入框上沿往上浮出（0 高的锚 + 绝对定位），不占高度、不撑高问答卡；输入框保持整圈圆角 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-cmds-float { position: relative; height: 0; z-index: 3; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-cmds-float > .cli-cmds {
+  position: absolute; left: 0; right: 0; bottom: 6px; margin: 0; max-height: min(50vh, 320px); overflow-y: auto;
+  border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: var(--shadow-pop);
+  animation: cli-drop-in var(--t-pop) var(--ease) backwards;
+}
+@media (prefers-reduced-motion: reduce) { :root:is(:not([data-skin]), [data-skin="now"]) .cli-cmds-float > .cli-cmds { animation: none; } }
+/* H-新3：键盘选中、鼠标悬停只亮一行——指到哪行选中就挪到哪行（Composer on指命令），没选中的行悬停不再另铺一层灰 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-cmds-one .cli-cmd:hover:not(.cli-cmd-on) { background: transparent; }
+/* H-新5：首页（外框 .cli-frame）的发送钮（打断钮同）用品牌蓝，这一屏只这一颗主色钮；空的时候照旧浅灰。
+   别的页右侧 AI 面板不改：那些页已有页面自己的主色钮（每屏一个主色钮） */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-frame .cli-send:not(:disabled) { background: var(--brand); color: var(--on-ink); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-frame .cli-send:not(:disabled):hover { background: var(--brand-deep); }
+/* D38：手机（P-界面-14 飞书网页 390）不写键盘提示，触屏没有 Enter / Shift / 「/」这几个键 */
+@media (max-width: 767px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .cli-hints-keys { display: none; }
+}
+/* D16：模型备注绿字压浅绿底，小字用深一档的 --success-text（对比 ≥4.5:1），不拿状态纯色当小字 */
+:root:is(:not([data-skin]), [data-skin="now"]) .mp-note { color: var(--success-text); }
+
+/* H-新12 / 新13 / 新14：顶部提示同一种行（待分配新线索、待回复主题、待回复客户、自动分配、待复核）：
+   粗体短标题「X N 条」｜灰字说明（时间在最前、smartTime）｜右端动作。时间不拆行；窄屏说明整句折行、不省略 */
+:root:is(:not([data-skin]), [data-skin="now"]) .home-cth-todo-time { white-space: nowrap; }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-cth-todo-one { flex-wrap: wrap; align-items: baseline; }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-cth-todo-one .home-cth-todo-s { flex-basis: 200px; }
+@media (max-width: 767px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .home-cth-todo-s { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+}
+/* H-新7 / 新12：首页的待复核不再是带表头的卡，每条一行（VerifyInbox 首页）：标签 + 项目名｜负责人 · 时间 · 附言｜判有效 / 判无效（行内文字钮） */
+:root:is(:not([data-skin]), [data-skin="now"]) .home-verify-t { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--s2); min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-verify-t .ant-tag { margin: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-verify-name { font-weight: 600; }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-verify-s { flex-basis: 240px; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-verify-a { display: inline-flex; align-items: center; gap: var(--s1); }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-verify-a .ant-btn { height: var(--ctl-h-sm); padding-inline: 6px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-verify-err { flex-basis: 100%; }
+@media (max-width: 767px), (pointer: coarse) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .home-verify-a .ant-btn { height: var(--hit-touch); }
+}
+
+/* H-新1 / 新2（D30）：指标卡悬停只换底色——不上浮、不加阴影、数字不变蓝（「暂未跟进」橙数悬停还是橙）；右上一个 ›，展开时转朝下 */
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-card:is(:hover, :active) { transform: none; box-shadow: none; background: var(--row-hover); border-color: var(--line); }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-card:hover { transition: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-card { transition: background var(--t-leave) var(--ease), border-color var(--t-leave) var(--ease); }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-card:hover .home-card-v { color: var(--ink); }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-card:hover .home-card-v.home-kpi-soon { color: var(--warning); }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-card.home-card-good:hover .home-card-v { color: var(--success-text); }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-head { position: relative; padding-right: calc(var(--s4) + 16px); }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-chev {
+  position: absolute; top: var(--s3); right: var(--s3); width: 16px; text-align: center;
+  color: var(--text-muted); font-size: var(--fs-section); line-height: 20px; transition: rotate var(--t) var(--ease);
+}
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-card.is-open .home-kpi-chev { rotate: 90deg; }
+/* H-新15：展开后「看这 N 个项目 ›」放不下就折行、不截；「收起」不竖着折 */
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-body { flex-wrap: wrap; align-items: baseline; }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-go { flex: 1 1 auto; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: break-word; }
+:root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-close { flex: none; white-space: nowrap; }
+
 /* ===== 设计语言 R-A（11-22，落地计划-三页设计）：复盘「卡点」页签四块 + 卡点卡片五段 + 人员行并进页签行。只挂现状主题 ===== */
 /* 人员选择在页签行右端：行高跟页签走（控件 32 < 页签 46），切到卡点右端空着，页签顶不挪 */
 :root:is(:not([data-skin]), [data-skin="now"]) .data-shell-tabs-who > .ant-tabs-nav .ant-tabs-extra-content { display: flex; align-items: center; min-width: 0; }
@@ -5753,14 +5856,13 @@ button.proj-miss-chip { cursor: pointer; }
 
 :root:is(:not([data-skin]), [data-skin="now"]) .rbk { container-type: inline-size; display: flex; flex-direction: column; gap: var(--card-gap); min-width: 0; transition: opacity var(--t) var(--ease); }
 :root:is(:not([data-skin]), [data-skin="now"]) .rbk.is-pending { opacity: 0.7; }
-/* ① 筛选条：卡外一行；1024 固定两行；390 范围一行 +「筛选（N）」 */
+/* ① 筛选条：卡外一行；1024 固定两行；390 同客户列表 L-A：范围 + 重置一排，四个下拉两两一排摆在外面 */
 :root:is(:not([data-skin]), [data-skin="now"]) .rbk-filter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); min-width: 0; }
 :root:is(:not([data-skin]), [data-skin="now"]) .rbk-scope { flex: none; }
 :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels { display: flex; align-items: center; gap: var(--s2); min-width: 0; flex: 1 1 auto; }
 :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sel { width: 140px; min-width: 0; }
 :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels > .rbk-sel:first-child, :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels > .rbk-sel:last-child { width: 176px; }
 :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sel .ant-select-content { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-:root:is(:not([data-skin]), [data-skin="now"]) .rbk-more { display: none; }
 :root:is(:not([data-skin]), [data-skin="now"]) .rbk-reset { flex: none; margin-inline-start: auto; }
 @container (max-width: 1000px) {
   :root:is(:not([data-skin]), [data-skin="now"]) .rbk-filter { display: grid; grid-template-columns: auto 1fr auto; }
@@ -5769,14 +5871,12 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels > .rbk-sel, :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels > .rbk-sel:first-child, :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels > .rbk-sel:last-child { width: auto; }
 }
 @container (max-width: 560px) {
-  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-filter { grid-template-columns: minmax(0, 1fr) auto auto; }
-  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels { display: none; }
-  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-more { display: inline-flex; grid-column: 2; grid-row: 1; }
-  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-reset { grid-column: 3; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-filter { grid-template-columns: minmax(0, 1fr) auto; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-reset { grid-column: 2; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels { display: flex; flex-wrap: wrap; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels > .rbk-sel, :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels > .rbk-sel:first-child, :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels > .rbk-sel:last-child { flex: 1 1 140px; width: auto; }
   :root:is(:not([data-skin]), [data-skin="now"]) .rbk-scope { min-width: 0; max-width: 100%; overflow-x: auto; }
 }
-:root:is(:not([data-skin]), [data-skin="now"]) .rbk-sheet-body { display: flex; flex-direction: column; gap: var(--s3); }
-:root:is(:not([data-skin]), [data-skin="now"]) .rbk-sheet-body .rbk-sel { width: 100%; }
 
 /* 卡：客户详情那款（卡头 48、标题 15/600、左右 16） */
 :root:is(:not([data-skin]), [data-skin="now"]) .rbk-card { min-width: 0; padding: 0 var(--card-pad) var(--card-pad); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); }

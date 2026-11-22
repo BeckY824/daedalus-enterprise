@@ -4,6 +4,7 @@ import { cloneElement, useLayoutEffect, useRef, useState, type CSSProperties, ty
 import { Button, Checkbox, Popover, Select, Space, type SelectProps } from "antd";
 import { FilterOutlined, LeftOutlined, SettingOutlined } from "@ant-design/icons";
 import { useLocalPref } from "@/lib/local-pref";
+import { useIsNowSkin } from "@/lib/use-skin";
 import { 切换外露, 拆筛选项, 筛选偏好键, type 筛选项元 } from "@/lib/custom-filters";
 
 export type 筛选项 = 筛选项元 & {
@@ -118,7 +119,11 @@ function 外露项(x: 筛选项): ReactElement {
 export function useCustomFilters(页: string, 项: 筛选项[], { 停用 = false }: { 停用?: boolean } = {}): { 外露: ReactNode[]; 更多按钮: ReactNode } {
   const [存的, 存] = useLocalPref<string[] | null>(筛选偏好键(页), null);
   const 能挤 = 项.some((x) => x.挤);
-  const [挤掉, 探针] = useSqueezeRow(能挤);
+  /*
+    现状主题手机宽也收（设计语言 L-A · L-新5 / D06）：带「挤」的项（客户页阶段 / 进程 / 回收状态）原来 1366 收进「更多筛选」、390 摆外面，
+    同一组筛选两种摆法；手机上还多占一整行、表格首屏少几行。现在两边一样：外面只摆搜索、客户状态、负责人。换皮主题照原样
+  */
+  const [挤掉, 探针] = useSqueezeRow(能挤, useIsNowSkin());
   const { 可见, 外露, 收着, 筛了几个 } = 拆筛选项(项, 停用 ? null : 存的, 挤掉);
   return {
     外露: [
@@ -151,9 +156,9 @@ const 一行高 = 40;
  * 行宽减去行里别的格（最左的「列表 / 看板」、右端那一格、「列」……弹性空格不算宽）和格间距。
  * 可用宽比那一刻宽了就放回来试一次（还放不下再收、记新的可用宽，不会来回抖）。只看行宽不够：
  * 客户页看板往右端那一格放「分配」「我分出去的」、后来又拿走时行宽不变，原来收进去就放不回来（11-12 复审）。
- * 所以行、组、行里别的格都盯着。在画之前量（layout effect），人看不到跳一下。手机宽（< 768）筛选行本来就折，不挤
+ * 所以行、组、行里别的格都盯着。在画之前量（layout effect），人看不到跳一下。手机宽（< 768）筛选行本来就折，不量：现状主题一律收（手机也收），换皮主题一律摆外面
  */
-function useSqueezeRow(能挤: boolean): [boolean, (el: HTMLSpanElement | null) => void] {
+function useSqueezeRow(能挤: boolean, 手机也收 = false): [boolean, (el: HTMLSpanElement | null) => void] {
   const [挤掉, set挤掉] = useState(false);
   const [探针, set探针] = useState<HTMLSpanElement | null>(null);
   const 挤时可用 = useRef(0);
@@ -171,7 +176,7 @@ function useSqueezeRow(能挤: boolean): [boolean, (el: HTMLSpanElement | null) 
       return 行.clientWidth - 占 - 间距 * 格.length;
     };
     const 量 = () => {
-      if (!window.matchMedia("(min-width: 768px)").matches) return set挤掉(false);
+      if (!window.matchMedia("(min-width: 768px)").matches) return set挤掉(手机也收);
       const 宽 = 可用宽();
       if (!挤掉) {
         if (组.getBoundingClientRect().height > 一行高) { 挤时可用.current = 宽; set挤掉(true); }
@@ -192,6 +197,6 @@ function useSqueezeRow(能挤: boolean): [boolean, (el: HTMLSpanElement | null) 
       ro.disconnect();
       mo.disconnect();
     };
-  }, [能挤, 探针, 挤掉]);
+  }, [能挤, 探针, 挤掉, 手机也收]);
   return [挤掉, set探针];
 }
