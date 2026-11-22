@@ -1,7 +1,9 @@
 /**
- * 复盘页「页头不跳」（前端改版逐块确认 ov.layout）：切到「卡点」时，上方「我的 / 团队」+ 人员下拉不再消失（整页上跳一截），
- * 留在原地、变淡、点不了——卡点看谁按角色开关定，不跟人员选择（page.tsx 卡点分支注释）。
- * 回到「任务」照旧能点。Windows 1024 宽：人员那一行在卡点页签和任务页签高度一样，页签的顶不挪。
+ * 复盘页「页头不跳」（前端改版逐块确认 ov.layout）。
+ * 设计语言 R-A（11-22）起，现状主题把「我的 / 团队」+ 人员下拉并进页签那一行的右端（四个页签共用）；
+ * 卡点页签不跟人员选择（page.tsx 卡点分支注释），右端空着——行高跟页签走，切页签时页签的顶不挪。
+ * 390：右端收成「看谁 ▾」，点开底部面板。换皮主题照旧：人员行在页签上面，卡点页签留在原地变淡、点不了。
+ * Windows 1024 / 1280 / 1366：页签顶不挪、不横向溢出。
  */
 import { beforeAll, afterAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -30,44 +32,86 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function 打开(页签: string, width = 1024): Promise<{ page: Page; errors: string[] }> {
+async function 打开(页签: string, width = 1024, skin?: string): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 700 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://ent.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
-  await page.goto("http://ent.test/overview"); await page.addScriptTag({ content: bundle });
+  await page.goto("http://ent.test/overview");
+  await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+  if (skin) await page.evaluate((k) => { document.documentElement.dataset.skin = k; }, skin);
+  await page.addScriptTag({ content: bundle });
   await page.evaluate((t) => (window as unknown as { __画: (t: string) => void }).__画(t), 页签);
   await page.getByRole("tab", { name: "卡点" }).waitFor();
   return { page, errors };
 }
 
-it("卡点页签：人员选择还在原地，点不了", async () => {
+it("现状主题 · 卡点页签：页签行右端不出人员选择（卡点按角色定能看谁）", async () => {
   const { page, errors } = await 打开("block");
-  expect(await page.getByRole("combobox", { name: "看谁的" }).isDisabled()).toBe(true);
-  expect(await page.getByRole("radio", { name: "我的" }).isDisabled()).toBe(true);
-  expect(await page.getByTitle("卡点按角色定能看谁，不跟这里的人员选择").count()).toBe(1);
+  expect(await page.getByRole("combobox", { name: "看谁的" }).count()).toBe(0);
+  expect(await page.getByRole("radio", { name: "我的" }).count()).toBe(0);
+  expect(await page.locator(".data-shell-bar-who.is-na").count()).toBe(0);
   expect(errors).toEqual([]);
   await page.close();
 });
 
-it("任务页签：人员选择照旧能点", async () => {
-  const { page, errors } = await 打开("todo");
-  expect(await page.getByRole("combobox", { name: "看谁的" }).isDisabled()).toBe(false);
+it("现状主题 · 任务页签：人员选择在页签同一行右端，能点", async () => {
+  const { page, errors } = await 打开("todo", 1280);
+  const 下拉 = page.getByRole("combobox", { name: "看谁的" });
+  expect(await 下拉.isDisabled()).toBe(false);
   expect(await page.getByRole("radio", { name: "我的" }).isDisabled()).toBe(false);
+  const 签 = (await page.getByRole("tab", { name: "卡点" }).boundingBox())!;
+  const 人 = (await page.locator(".data-shell-who-inline").boundingBox())!;
+  // 同一行：人员控件的竖向中线落在页签那一格里，在页签右边
+  expect(人.y + 人.height / 2).toBeGreaterThan(签.y);
+  expect(人.y + 人.height / 2).toBeLessThan(签.y + 签.height);
+  expect(人.x).toBeGreaterThan(签.x + 签.width);
   expect(errors).toEqual([]);
   await page.close();
 });
 
-it("1024 / 1280 / 1366：卡点和任务页签的页签顶线一样高，不横向溢出", async () => {
+it("1024 / 1280 / 1366：四个页签的页签顶线一样高，不横向溢出", async () => {
   for (const w of [1024, 1280, 1366]) {
     const tops: number[] = [];
-    for (const t of ["todo", "block"]) {
+    for (const t of ["todo", "block", "talk", "data"]) {
       const { page } = await 打开(t, w);
       tops.push(await page.getByRole("tab", { name: "卡点" }).evaluate((el) => Math.round(el.getBoundingClientRect().top)));
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       await page.close();
     }
-    expect(tops[1], `${w} 宽`).toBe(tops[0]);
+    expect(new Set(tops).size, `${w} 宽 ${tops.join(",")}`).toBe(1);
   }
+});
+
+it("390：右端收成「看谁」钮，点开底部面板里有我的 / 团队和人员下拉；切卡点页签顶不挪", async () => {
+  const { page, errors } = await 打开("todo", 390);
+  expect(await page.locator(".data-shell-who-inline").isVisible()).toBe(false);
+  const 钮 = page.locator(".data-shell-who-btn");
+  expect(await 钮.isVisible()).toBe(true);
+  const b = (await 钮.boundingBox())!;
+  expect(b.height).toBeGreaterThanOrEqual(44);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const 顶1 = await page.getByRole("tab", { name: "卡点" }).evaluate((el) => Math.round(el.getBoundingClientRect().top));
+  await 钮.click();
+  await page.locator(".data-shell-who-sheet").getByRole("combobox", { name: "看谁的" }).waitFor();
+  expect(await page.locator(".data-shell-who-sheet").getByRole("radio", { name: "我的" }).count()).toBe(1);
+  expect(errors).toEqual([]);
+  await page.close();
+  const 卡点 = await 打开("block", 390);
+  const 顶2 = await 卡点.page.getByRole("tab", { name: "卡点" }).evaluate((el) => Math.round(el.getBoundingClientRect().top));
+  expect(顶2).toBe(顶1);
+  await 卡点.page.close();
+});
+
+it("换皮主题（账簿）：照旧——人员行在页签上面，卡点页签留在原地变淡、点不了", async () => {
+  const { page, errors } = await 打开("block", 1024, "ledger");
+  expect(await page.getByRole("combobox", { name: "看谁的" }).isDisabled()).toBe(true);
+  expect(await page.getByRole("radio", { name: "我的" }).isDisabled()).toBe(true);
+  expect(await page.getByTitle("卡点按角色定能看谁，不跟这里的人员选择").count()).toBe(1);
+  const 人 = (await page.locator(".data-shell-bar-who").boundingBox())!;
+  const 签 = (await page.getByRole("tab", { name: "卡点" }).boundingBox())!;
+  expect(人.y + 人.height).toBeLessThanOrEqual(签.y);
+  expect(errors).toEqual([]);
+  await page.close();
 });
 
 it("g.tabswitch：鼠标停在页签上就预取那一页；同一个页签只预取一次", async () => {

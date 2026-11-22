@@ -693,7 +693,7 @@ export type 看板筛选 = {
   我的认领?: boolean; 只看自己?: boolean; 原因?: string; 类型?: string; 影响?: string; 项目?: string;
 };
 export type 看板统计 = { 未解决: number; 已解决: number; 按影响: { 名: string; 数: number }[]; 按原因: { id: string; 名: string; 状态: string; 数: number }[] };
-export type 卡点看板数 = { 开: boolean; 全部: boolean; 栏: Record<卡点状态, 卡点视图[]>; 已解决共: number; 统计: 看板统计; 项目们: { id: string; name: string }[]; 原因们: { id: string; name: string; status: string }[] };
+export type 卡点看板数 = { 开: boolean; 全部: boolean; /** 能管卡点设置（= 卡点权限().能管：系统管理员）：复盘卡点原因统计里的「去审核 ›」 */ 能管?: boolean; 栏: Record<卡点状态, 卡点视图[]>; 已解决共: number; 统计: 看板统计; 项目们: { id: string; name: string }[]; 原因们: { id: string; name: string; status: string }[] };
 /** 已解决那一栏只列最近的这么多条（总数照数） */
 export const 已解决栏上限 = 50;
 
@@ -744,7 +744,7 @@ export async function 卡点看板(me: 谁, f: 看板筛选 = {}): Promise<卡�
     const 用到的 = await prisma.entBlockerReason.findMany({ where: { id: { in: 原因数.map((r) => r.reasonId) } }, select: { id: true, name: true, status: true } });
     const 原因of = new Map(用到的.map((r) => [r.id, r]));
     return {
-      开: true, 全部: 权.全部, 栏, 已解决共,
+      开: true, 全部: 权.全部, 能管: 权.能管, 栏, 已解决共,
       统计: {
         未解决: 开着.length, 已解决: 已解决共,
         按影响: 影响等级们.map((名) => ({ 名, 数: 按影响.find((x) => x.impact === 名)?._count._all ?? 0 })),
